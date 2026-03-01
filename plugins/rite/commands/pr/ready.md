@@ -1,0 +1,454 @@
+---
+description: PR を Ready for review に変更
+---
+
+# /rite:pr:ready
+
+Change PR to Ready for review and update the related Issue's Status
+
+---
+
+When this command is executed, run the following phases in order.
+
+## Arguments
+
+| Argument | Description |
+|------|------|
+| `[pr_number]` | PR number (defaults to the PR for the current branch if omitted) |
+
+---
+
+## Placeholder Legend
+
+| Placeholder | Description | How to Obtain |
+|---------------|------|----------|
+| `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) |
+
+---
+
+## Phase 0: Load Work Memory (End-to-End Flow Only)
+
+> **This phase is only executed within the `/rite:issue:start` end-to-end flow. Skip when running standalone.**
+
+> **Warning**: Work memory is published as Issue comments. In public repositories, third parties can view it. Do not record sensitive information (credentials, personal data, internal URLs, etc.) in work memory.
+
+### 0.1 End-to-End Flow Detection
+
+| Condition | Result | Action |
+|------|---------|------|
+| Conversation history has rich context from `/rite:pr:review` | Within end-to-end flow | PR number can be obtained from conversation context |
+| `/rite:pr:ready` was executed standalone | Standalone execution | Obtain from argument or current branch PR |
+
+### 0.2 Retrieve Information from Work Memory
+
+If determined to be within the end-to-end flow, extract the Issue number from the branch name and load work memory from local file (SoT):
+
+```bash
+# 1. 現在のブランチから Issue 番号を抽出
+issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
+```
+
+**Local work memory (SoT)**: Read `.rite-work-memory/issue-{issue_number}.md` with the Read tool.
+
+**Fallback (local file missing/corrupt)**:
+
+```bash
+# リポジトリ情報を取得
+gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'
+
+# Issue comment から作業メモリを読み込む（backup）
+gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body'
+```
+
+**Fields to extract:**
+
+| Field | Extraction Pattern | Purpose |
+|-----------|-------------|------|
+| Issue number | `- **Issue**: #(\d+)` | Identify the related Issue |
+| PR number | `- **番号**: #(\d+)` | Identify the target PR |
+| Branch name | `- **ブランチ**: (.+)` | For verification |
+
+**When PR number exists in work memory:**
+
+Even if the argument is omitted, retrieve and use the PR number from work memory.
+
+---
+
+## Phase 1: Identify the PR
+
+### 1.1 Check Arguments
+
+If a PR number is specified as an argument, use that PR.
+
+### 1.2 Identify PR from Current Branch
+
+If no argument is provided, search for a PR from the current branch:
+
+```bash
+git branch --show-current
+```
+
+**If on main/master branch:**
+
+```
+エラー: 現在 {branch} ブランチにいます
+
+Ready for review にする PR を指定してください:
+/rite:pr:ready <PR番号>
+```
+
+End processing.
+
+### 1.3 Retrieve PR Information
+
+Retrieve the PR associated with the current branch:
+
+```bash
+gh pr view --json number,title,state,isDraft,url,headRefName,body
+```
+
+**If PR is not found:**
+
+```
+エラー: 現在のブランチに関連する PR が見つかりません
+
+現在のブランチ: {branch}
+
+対処:
+1. `/rite:pr:create` で PR を作成
+2. または PR 番号を直接指定: `/rite:pr:ready <PR番号>`
+```
+
+End processing.
+
+### 1.4 Check PR State
+
+**If already Ready for review:**
+
+```
+PR #{number} は既に Ready for review です
+
+URL: {pr_url}
+```
+
+End processing.
+
+**If already merged or closed:**
+
+```
+エラー: PR #{number} は既に{state}されています
+
+状態: {state}
+```
+
+End processing.
+
+---
+
+## Phase 2: Execution Confirmation
+
+### 2.1 Confirm with User
+
+Confirm using `AskUserQuestion`:
+
+```
+PR #{number} を Ready for review に変更します。
+
+タイトル: {title}
+URL: {pr_url}
+
+よろしいですか？
+
+オプション:
+- はい、変更する（推奨）: Ready for review に変更し、Status を更新します
+- キャンセル: 処理を中止します
+```
+
+**If "Cancel" is selected:**
+
+```
+処理を中止しました。
+```
+
+End processing.
+
+---
+
+## Phase 3: Change to Ready for Review
+
+### 3.1 Execute gh pr ready
+
+```bash
+gh pr ready {pr_number}
+```
+
+**On success:**
+
+Proceed to the next phase.
+
+**On failure:**
+
+```
+エラー: PR #{number} を Ready for review に変更できませんでした
+
+考えられる原因:
+- 権限不足
+- ネットワークエラー
+- PR が既にクローズされている
+
+対処:
+1. `gh pr view {number}` で PR の状態を確認
+2. GitHub Web UI から直接変更を試す
+```
+
+End processing.
+
+---
+
+### 3.2 Update Local Work Memory
+
+After `gh pr ready` succeeds, update local work memory (SoT):
+
+```bash
+WM_SOURCE="ready" \
+  WM_PHASE="phase5_ready" \
+  WM_PHASE_DETAIL="Ready for review に変更完了" \
+  WM_NEXT_ACTION="レビュー待ち" \
+  WM_BODY_TEXT="PR marked as ready for review." \
+  WM_ISSUE_NUMBER="{issue_number}" \
+  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+```
+
+**On lock failure**: Log a warning and continue — local work memory update is best-effort.
+
+**Step 2: Sync to Issue comment (backup)** at phase transition (per C3 backup sync rule).
+
+```bash
+comment_id=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty')
+
+# Claude が本文をパースし、セッション情報セクションの該当行を更新して PATCH
+# - **フェーズ**: phase5_ready
+# - **フェーズ詳細**: Ready for review に変更完了
+# - **最終更新**: {timestamp}
+```
+
+---
+
+## Phase 4: Update Issue Status
+
+> **Note**: In the end-to-end flow (`/rite:issue:start`), `start.md` Phase 5.5.1 also performs this Status update as defense-in-depth. This Phase 4 remains essential for standalone `/rite:pr:ready` execution.
+
+**Critical**: Do NOT skip this phase. After `gh pr ready` succeeds in Phase 3, this Status update MUST be executed before proceeding to Phase 5.
+
+### 4.1 Identify Related Issue
+
+Extract the related Issue from the PR body:
+
+```bash
+gh pr view {pr_number} --json body,headRefName
+```
+
+**Extraction patterns:**
+1. `Closes #XX`, `Fixes #XX`, `Resolves #XX` in the PR body
+2. `issue-XX` pattern in the branch name
+
+### 4.2 Retrieve Project Configuration
+
+Retrieve Project information from `rite-config.yml`:
+
+```yaml
+github:
+  projects:
+    project_number: {number}
+    owner: "{owner}"
+```
+
+### 4.3 Retrieve Issue's Project Item Information
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          id
+          project {
+            id
+            number
+          }
+        }
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
+```
+
+### 4.4 Retrieve the Status Field
+
+**Important**: The option ID (`{in_review_option_id}`) must always be fetched from the API. Only field IDs can be specified via `field_ids`; option IDs for each status (Done, In Progress, In Review, etc.) are not included.
+
+**Retrieving the field ID:**
+
+If `github.projects.field_ids.status` is set in `rite-config.yml`, use that value directly as `{status_field_id}` (skip extracting the field ID from the API result):
+
+Replace the configured value with your actual project ID (see CONFIGURATION.md for how to obtain it):
+
+```yaml
+github:
+  projects:
+    field_ids:
+      status: "PVTSSF_your-status-field-id"
+```
+
+**Retrieving the option ID (always required):**
+
+**Note**: This file (ready.md) uses GraphQL instead of `gh project field-list`.
+
+**Differences from other command files (close.md, start.md, cleanup.md):**
+- Other files: Use the `gh project field-list` CLI command (adequate when retrieving field lists only)
+- This file: Uses GraphQL (an intentional design decision for the following reasons)
+
+**Reasons for using GraphQL:**
+- Both field ID and option ID can be fetched in a single query
+- Provides a consistent method for fetching option IDs whether `field_ids` is configured or not
+- Easier to handle complex cases including Organization/User detection
+
+#### Organization Detection (Before Executing the GraphQL Query)
+
+Before executing the GraphQL query, determine whether the owner is a User or Organization:
+
+```bash
+gh api users/{owner} --jq '.type'
+```
+
+| Result | Action |
+|------|------|
+| `"Organization"` | Change `user(login: $owner)` to `organization(login: $owner)` in the query |
+| `"User"` | Use the query as-is |
+
+#### Execute the GraphQL Query
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $projectNumber: Int!) {
+  user(login: $owner) {
+    projectV2(number: $projectNumber) {
+      id
+      fields(first: 20) {
+        nodes {
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            options {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="{owner}" -F projectNumber={project_number}
+```
+
+**Note**: The above is the query for User. For Organization, replace `user` with `organization`.
+
+**Retrieval logic:**
+1. Execute the API (always required for obtaining option IDs)
+2. Check `github.projects.field_ids.status` in `rite-config.yml`
+3. Determine the field ID:
+   - If configured: Use the configured value as `{status_field_id}`
+   - If not configured: Obtain `{status_field_id}` from the GraphQL result
+4. Option ID: Obtain `{in_review_option_id}` from the GraphQL result
+
+### 4.5 Update Status to "In Review"
+
+```bash
+gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {in_review_option_id}
+```
+
+**If Project is not configured:**
+
+```
+警告: GitHub Projects が設定されていません
+Status の更新をスキップします
+```
+
+---
+
+## Phase 5: Completion Report
+
+### 5.0 Determine the Caller
+
+Determine the caller from the conversation context:
+
+| Condition | Result | Action |
+|------|---------|---------------------|
+| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (Phase 5.6 handles the report) |
+| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (Phase 5.6 handles the report) |
+| `/rite:pr:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
+
+**Detection method:**
+
+Check the conversation history and determine "within end-to-end flow" if any of the following apply:
+
+1. `/rite:issue:start` was executed in the conversation
+2. A `/rite:pr:review` -> `/rite:pr:ready` call chain is confirmed in the conversation
+3. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
+
+### 5.1 Output the Completion Report
+
+#### 5.1.1 End-to-End Flow (Skip Completion Report)
+
+When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` Phase 5.6 — outputting it here causes duplicate reports.
+
+End this phase without any additional output. Control returns to `start.md` automatically. No template loading, no inline format, no completion table.
+
+#### 5.1.2 Standalone Execution
+
+When `/rite:pr:ready` is executed standalone, use the following simple format:
+
+```
+PR #{number} を Ready for review に変更しました
+
+タイトル: {title}
+URL: {pr_url}
+
+関連 Issue: #{issue_number}
+Status: In Review
+
+次のステップ:
+1. レビュアーにレビューを依頼
+2. レビューコメントに対応
+3. PR マージ後、Issue は自動クローズされます
+```
+
+**If no related Issue exists:**
+
+```
+PR #{number} を Ready for review に変更しました
+
+タイトル: {title}
+URL: {pr_url}
+
+次のステップ:
+1. レビュアーにレビューを依頼
+2. レビューコメントに対応
+3. PR をマージ
+```
+
+---
+
+## Error Handling
+
+See [Common Error Handling](../../references/common-error-handling.md) for shared patterns (Not Found, Permission, Network errors).
+
+| Error | Recovery |
+|-------|----------|
+| PR Not Found | See [common patterns](../../references/common-error-handling.md) |
+| Permission Error | See [common patterns](../../references/common-error-handling.md) |
+| Network Error | See [common patterns](../../references/common-error-handling.md) |
+| Issue Not Found | See [common patterns](../../references/common-error-handling.md) |

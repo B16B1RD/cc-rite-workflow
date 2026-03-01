@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/USERNAME/cc-rite-workflow/blob/main/docs/SPEC.md
+    about: Read the specification and documentation
+  - name: Discussions
+    url: https://github.com/USERNAME/cc-rite-workflow/discussions
+    about: Ask questions and share ideas

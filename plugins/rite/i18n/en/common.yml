@@ -1,0 +1,47 @@
+# rite-workflow English messages
+messages:
+  # Status
+  status_todo: "Todo"
+  status_in_progress: "In Progress"
+  status_in_review: "In Review"
+  status_done: "Done"
+
+  # Errors
+  error_no_issue: "No Issue found"
+  error_no_pr: "No PR found"
+  error_gh_not_installed: "GitHub CLI (gh) is not installed"
+  error_not_authenticated: "Not authenticated with GitHub"
+
+  # Branch
+  branch_created: "Created branch {branch}"
+  branch_exists: "Branch {branch} already exists"
+  branch_base_detected: "Base branch: {branch}"
+  branch_base_default: "Base branch: {branch} (branch.base not set in rite-config.yml, using default)"
+  branch_fetching_base: "Fetching latest base branch..."
+  branch_checkout_base: "Checking out base branch {branch}..."
+
+  # Workflow command
+  workflow_title: "rite workflow"
+  workflow_diagram_title: "Workflow Overview"
+  workflow_commands_title: "Available Commands"
+  workflow_status_title: "Current Status"
+  workflow_quickstart_title: "Quick Start"
+  workflow_project_status_title: "Project Status"
+  workflow_not_initialized: "rite workflow is not initialized"
+  workflow_run_init: "Please run /rite:init to complete setup first"
+  workflow_current_branch: "Current branch"
+  workflow_working_issue: "Working on Issue"
+  workflow_next_steps: "Next Steps"
+  workflow_open_issues: "Open Issues"
+  workflow_open_prs: "Open PRs"
+  workflow_status_transition: "Status Transitions"
+
+  # Categories
+  category_setup: "Setup"
+  category_issue: "Issue Management"
+  category_pr: "PR Management"
+  category_utility: "Utilities"
+
+  # Prompts
+  prompt_project_type: "What type of project is this?"
+  prompt_confirm_overwrite: "Overwrite existing file?"

@@ -1,0 +1,55 @@
+# Library project configuration
+type: library
+name: "Library / Package"
+
+# Common library commands
+commands:
+  build: null   # auto-detect
+  test: null    # auto-detect
+  lint: null    # auto-detect
+
+# GitHub Projects fields
+fields:
+  status:
+    enabled: true
+    options:
+      - { name: "Todo", default: true }
+      - { name: "In Progress" }
+      - { name: "In Review" }
+      - { name: "Done" }
+  priority:
+    enabled: true
+    options:
+      - { name: "Critical" }
+      - { name: "High" }
+      - { name: "Medium", default: true }
+      - { name: "Low" }
+  complexity:
+    enabled: true
+    options:
+      - { name: "XS" }
+      - { name: "S" }
+      - { name: "M", default: true }
+      - { name: "L" }
+      - { name: "XL" }
+  breaking_change:
+    enabled: true
+    options:
+      - { name: "Yes" }
+      - { name: "No", default: true }
+
+# Branch naming
+branch:
+  pattern: "{type}/issue-{number}-{slug}"
+  types:
+    feature: "feat"
+    bugfix: "fix"
+    breaking: "breaking"
+    documentation: "docs"
+    refactor: "refactor"
+    chore: "chore"
+
+# Commit style
+commit:
+  style: conventional
+  enforce: true

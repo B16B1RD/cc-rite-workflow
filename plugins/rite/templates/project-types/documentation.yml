@@ -1,0 +1,47 @@
+# Documentation project configuration
+type: documentation
+name: "Documentation"
+
+# Common documentation commands
+commands:
+  build: null   # auto-detect: docusaurus, mkdocs, etc.
+  test: null    # link check, spell check
+  lint: null    # textlint, markdownlint
+
+# GitHub Projects fields
+fields:
+  status:
+    enabled: true
+    options:
+      - { name: "Todo", default: true }
+      - { name: "In Progress" }
+      - { name: "In Review" }
+      - { name: "Done" }
+  priority:
+    enabled: true
+    options:
+      - { name: "High" }
+      - { name: "Medium", default: true }
+      - { name: "Low" }
+  doc_type:
+    enabled: true
+    options:
+      - { name: "New Page" }
+      - { name: "Update" }
+      - { name: "Translation" }
+      - { name: "Restructure" }
+
+# Branch naming
+branch:
+  pattern: "{type}/issue-{number}-{slug}"
+  types:
+    feature: "docs"
+    bugfix: "fix"
+    translation: "i18n"
+    restructure: "refactor"
+    chore: "chore"
+
+# Commit style
+commit:
+  style: conventional
+  enforce: false

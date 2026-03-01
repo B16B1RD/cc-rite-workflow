@@ -1,0 +1,54 @@
+# CLI Application project configuration
+type: cli
+name: "CLI Application"
+
+# Common CLI commands
+commands:
+  build: null   # auto-detect
+  test: null    # auto-detect
+  lint: null    # auto-detect
+
+# GitHub Projects fields
+fields:
+  status:
+    enabled: true
+    options:
+      - { name: "Todo", default: true }
+      - { name: "In Progress" }
+      - { name: "In Review" }
+      - { name: "Done" }
+  priority:
+    enabled: true
+    options:
+      - { name: "High" }
+      - { name: "Medium", default: true }
+      - { name: "Low" }
+  complexity:
+    enabled: true
+    options:
+      - { name: "XS" }
+      - { name: "S" }
+      - { name: "M", default: true }
+      - { name: "L" }
+      - { name: "XL" }
+  command_scope:
+    enabled: true
+    options:
+      - { name: "New Command" }
+      - { name: "Existing Command" }
+      - { name: "Global" }
+
+# Branch naming
+branch:
+  pattern: "{type}/issue-{number}-{slug}"
+  types:
+    feature: "feat"
+    bugfix: "fix"
+    documentation: "docs"
+    refactor: "refactor"
+    chore: "chore"
+
+# Commit style
+commit:
+  style: conventional
+  enforce: true

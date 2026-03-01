@@ -1,0 +1,47 @@
+# rite-workflow 日本語メッセージ
+messages:
+  # ステータス
+  status_todo: "Todo"
+  status_in_progress: "In Progress"
+  status_in_review: "In Review"
+  status_done: "Done"
+
+  # エラー
+  error_no_issue: "Issue が見つかりません"
+  error_no_pr: "PR が見つかりません"
+  error_gh_not_installed: "GitHub CLI (gh) がインストールされていません"
+  error_not_authenticated: "GitHub に認証されていません"
+
+  # ブランチ
+  branch_created: "ブランチ {branch} を作成しました"
+  branch_exists: "ブランチ {branch} は既に存在します"
+  branch_base_detected: "ベースブランチ: {branch}"
+  branch_base_default: "ベースブランチ: {branch}（rite-config.yml の branch.base が未設定のためデフォルト値を使用）"
+  branch_fetching_base: "ベースブランチを最新化しています..."
+  branch_checkout_base: "ベースブランチ {branch} にチェックアウトしています..."
+
+  # Workflow コマンド
+  workflow_title: "rite workflow"
+  workflow_diagram_title: "ワークフロー全体図"
+  workflow_commands_title: "コマンド一覧"
+  workflow_status_title: "現在の作業状況"
+  workflow_quickstart_title: "クイックスタート"
+  workflow_project_status_title: "プロジェクト状況"
+  workflow_not_initialized: "rite workflow が初期化されていません"
+  workflow_run_init: "まず /rite:init を実行してセットアップを完了してください"
+  workflow_current_branch: "現在のブランチ"
+  workflow_working_issue: "作業中の Issue"
+  workflow_next_steps: "次のステップ"
+  workflow_open_issues: "オープン Issue"
+  workflow_open_prs: "オープン PR"
+  workflow_status_transition: "Status 遷移"
+
+  # カテゴリ
+  category_setup: "セットアップ"
+  category_issue: "Issue 管理"
+  category_pr: "PR 管理"
+  category_utility: "ユーティリティ"
+
+  # プロンプト
+  prompt_project_type: "プロジェクトの種類を選択してください"
+  prompt_confirm_overwrite: "既存ファイルを上書きしますか？"

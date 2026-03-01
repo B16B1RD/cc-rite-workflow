@@ -1,0 +1,48 @@
+# Generic project configuration
+type: generic
+name: "Generic Project"
+
+# Build/test/lint commands (auto-detect)
+commands:
+  build: null
+  test: null
+  lint: null
+
+# GitHub Projects fields
+fields:
+  status:
+    enabled: true
+    options:
+      - { name: "Todo", default: true }
+      - { name: "In Progress" }
+      - { name: "In Review" }
+      - { name: "Done" }
+  priority:
+    enabled: true
+    options:
+      - { name: "High" }
+      - { name: "Medium", default: true }
+      - { name: "Low" }
+  complexity:
+    enabled: true
+    options:
+      - { name: "XS" }
+      - { name: "S" }
+      - { name: "M", default: true }
+      - { name: "L" }
+      - { name: "XL" }
+
+# Branch naming
+branch:
+  pattern: "{type}/issue-{number}-{slug}"
+  types:
+    feature: "feat"
+    bugfix: "fix"
+    documentation: "docs"
+    refactor: "refactor"
+    chore: "chore"
+
+# Commit style
+commit:
+  style: conventional
+  enforce: false

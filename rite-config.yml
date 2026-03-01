@@ -1,0 +1,145 @@
+# Claude Code Rite Workflow configuration for this repository (self-hosted)
+version: "1.0"
+
+# Project settings
+project:
+  type: generic
+  name: "cc-rite-workflow"
+
+# GitHub Projects integration
+github:
+  projects:
+    enabled: true
+    project_number: 6  # cc-rite-workflow project
+    owner: "B16B1RD"   # Project owner (user or organization)
+    fields:
+      status:
+        enabled: true
+        options:
+          - { name: "Todo", default: true }
+          - { name: "In Progress" }
+          - { name: "In Review" }
+          - { name: "Done" }
+      priority:
+        enabled: true
+        options:
+          - { name: "High" }
+          - { name: "Medium", default: true }
+          - { name: "Low" }
+      complexity:
+        enabled: true
+        options:
+          - { name: "XS" }
+          - { name: "S" }
+          - { name: "M", default: true }
+          - { name: "L" }
+          - { name: "XL" }
+
+# Iteration/Sprint settings (optional)
+iteration:
+  enabled: false          # true to enable iteration features
+  field_name: "Sprint"    # Name of the iteration field in Projects
+  auto_assign: true       # Auto-assign to current iteration on issue:start
+  show_in_list: true      # Show iteration column in issue:list
+
+# Branch naming rules
+branch:
+  base: "develop"    # Development base branch (Git Flow)
+  release: "main"    # Production release branch
+  pattern: "{type}/issue-{number}-{slug}"
+  types:
+    feature: "feat"
+    bugfix: "fix"
+    documentation: "docs"
+    refactor: "refactor"
+    chore: "chore"
+
+# Commit message
+commit:
+  style: conventional
+  enforce: true
+
+# Build/test/lint commands
+commands:
+  build: null
+  test: null
+  lint: null
+
+# Verification gate settings
+verification:
+  run_tests_before_pr: true          # Run tests before commit/PR (requires commands.test)
+  acceptance_criteria_check: true    # Check acceptance criteria from Issue body before PR
+
+# TDD Light mode settings
+tdd:
+  mode: "off"              # off | light (default: off)
+  tag_prefix: "AC"         # Tag prefix for test skeleton markers
+  run_baseline: true       # Run baseline test before skeleton generation
+  max_skeletons: 20        # Maximum number of skeletons to generate per Issue
+
+# Review settings
+review:
+  min_reviewers: 1      # Fallback when no reviewers match
+  criteria:
+    - file_types
+    - content_analysis
+  loop:
+    max_iterations: 7           # review-fix ループ強制終了回数（デフォルト: 7）
+    relax_medium_after: 3       # MEDIUM/LOW 緩和開始回数（デフォルト: 3）
+    relax_high_after: 5         # HIGH 緩和開始回数（デフォルト: 5）
+    verification_mode: true     # サイクル2+で検証モードを有効化（デフォルト: true）
+    allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
+  security_reviewer:
+    mandatory: false                          # 全 PR で必須選定するか（デフォルト: false）
+    recommended_for_code_changes: true        # 実行可能コード変更時は推奨（デフォルト: true）
+  debate:
+    enabled: true            # レビュアー間討論フェーズを有効化（デフォルト: true）
+    max_rounds: 1            # 最大討論ラウンド数（コスト制御、デフォルト: 1）
+
+# Parallel implementation settings
+parallel:
+  enabled: true   # Enable parallel implementation (default: true)
+  max_agents: 3   # Maximum concurrent agents (default: 3)
+  mode: "shared"  # "shared" (default, agents share working directory) or "worktree" (each agent gets independent worktree)
+  worktree_base: ".worktrees"  # Base directory for worktrees when mode is "worktree" (default: ".worktrees")
+
+# Team-based sprint execution settings
+team:
+  enabled: true              # Enable /rite:sprint:team-execute (default: true)
+  max_concurrent_issues: 3   # Max Issues to process in parallel per batch (default: 3, uses parallel.max_agents if not set)
+  teammate_model: "sonnet"   # Model for teammate agents (default: "sonnet")
+  auto_review: true          # Auto-run /rite:pr:review after all PRs created (default: true)
+
+# Notification settings
+notifications:
+  slack:
+    enabled: false
+    webhook_url: null
+  discord:
+    enabled: false
+    webhook_url: null
+  teams:
+    enabled: false
+    webhook_url: null
+
+# Metrics settings
+metrics:
+  enabled: true            # Enable/disable metrics recording
+  baseline_issues: 3       # Number of Issues for baseline collection (measure-only period)
+  thresholds:
+    plan_deviation_rate: 30       # Max plan vs actual step divergence (%)
+    test_pass_rate: 100           # Required test pass rate at PR creation (%)
+    review_fix_loops: 3           # Max acceptable review-fix loop count
+    review_critical_high_improvement: 0.80  # MA5 improvement factor for CRITICAL+HIGH findings
+    plan_deviation_improvement: 0.90        # MA5 improvement factor for plan deviation count
+
+# Safety settings (fail-closed thresholds)
+safety:
+  max_review_fix_loops: 7          # review-fix loop hard limit (existing, also in review.loop.max_iterations)
+  max_implementation_rounds: 20    # implementation round hard limit per Issue
+  time_budget_minutes: 120         # time budget per Issue (advisory, not enforced by timer)
+  auto_stop_on_repeated_failure: true   # stop when same failure class repeats
+  repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop
+
+# Language setting
+language: ja

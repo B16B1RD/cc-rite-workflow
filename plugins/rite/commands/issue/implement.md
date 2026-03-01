@@ -1,0 +1,740 @@
+---
+description: 実装作業・コミット・プッシュ・チェックリスト更新ロジック
+---
+
+# Implementation Guidance
+
+This module handles the actual implementation work, commits, pushes, and checklist updates.
+
+## 5.1 Implementation Work
+
+Perform actual implementation work following the implementation plan approved in Phase 3.
+
+> **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
+> In particular, check `simplicity_enforcement`, `scope_discipline`, and `dead_code_hygiene`.
+
+**Basic implementation flow:**
+
+1. Check current file content with Read tool
+2. Apply changes with Edit tool
+3. After changes, verify behavior with Bash as needed (test execution, etc.)
+4. Repeat following plan order when there are multiple file changes
+
+**Tools used:**
+
+| Tool | Usage |
+|------|-------|
+| Read | Check content of files to change |
+| Edit | Add/modify code |
+| Bash | Verify changes with `git status`, run tests |
+| Glob/Grep | Explore related files (when needed) |
+
+**When there is an implementation plan:**
+- Follow the plan's "Implementation steps (dependency graph)" — pick the next step whose `depends_on` prerequisites are all complete
+- After each step completion, re-evaluate remaining steps (see 5.1.0.5 Adaptive Re-evaluation)
+- Update work memory after each step completion as needed (described below)
+
+**When the implementation plan was skipped:**
+- Refer to the Issue's **What** (what to do) and **Where** (where to change) for work
+- Explore related files with Glob tool (file pattern search) or Grep tool (keyword search) as needed
+
+**Decisions during implementation:**
+- Record important design decisions in work memory
+- Pause and record the situation when unexpected problems occur
+
+**Work memory update (optional):**
+
+For large changes or work spanning multiple sessions, invoke `/rite:issue:update` via Skill tool to record progress:
+
+```
+Skill ツール呼び出し:
+  skill: "rite:issue:update"
+```
+
+**Note**: Can be omitted for small changes. Recommended at session end or interruption.
+
+### 5.1.0.T TDD Light: Test Skeleton Generation (Conditional)
+
+> **Reference**: [TDD Light Reference](../../references/tdd-light.md) for complete specification (classification logic, hash normalization, skeleton templates, idempotency rules).
+
+**Skip conditions** (any match → skip to 5.1.0):
+
+- `tdd.mode` is not `"light"` (or `tdd` section undefined → `off`)
+- `commands.test` is `null` or not set
+- `tdd_state.skeleton_generated` is `true` AND tag strings exist in codebase (idempotency)
+
+When skipped, display: `TDD Light: スキップ（{reason}）` — where `{reason}` is one of `tdd.mode: off`, `commands.test 未設定`, `スケルトン生成済み`.
+
+**Execution steps** (when not skipped):
+
+**Step 1: Baseline** (if `tdd.run_baseline: true`)
+
+Run existing tests to capture baseline state per [Output Processing](../../references/tdd-light.md#output-processing):
+
+```bash
+baseline_output=$(mktemp)
+trap 'rm -f "$baseline_output"' EXIT
+set -o pipefail
+TERM=dumb {test_command} 2>&1 | sed 's/\x1b\[[0-9;]*m//g' > "$baseline_output"
+baseline_rc=${PIPESTATUS[0]}
+```
+
+Record baseline exit code. Existing failures are logged but do not block.
+
+**Step 2: Extract acceptance criteria**
+
+Extract from Issue body (use body from Phase 0.1). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。スケルトン生成をスキップします`, record skip stub in work memory, and skip to 5.1.0.
+
+**Heading match rules**: Match any of the following headings (case-insensitive, level 2 `##`):
+
+| Pattern | Examples |
+|---------|---------|
+| `## 受入条件` | Exact match (Japanese) |
+| `## Acceptance Criteria` | Exact match (English) |
+| `## 受け入れ条件` | Alternative Japanese form |
+
+The section extends from the matched heading to the next `##` heading or end of body.
+
+- Pattern: lines matching `^- \[[ xX]\] (.+)$` under the heading
+- Exclude Issue references: `^- \[[ xX]\] #\d+`
+
+If no acceptance criteria section found (none of the above headings found), record skip stub in work memory and skip to 5.1.0.
+
+**Step 3: Generate skeletons**
+
+For each criterion (up to `tdd.max_skeletons`):
+
+1. Compute hash per [Hash Normalization](../../references/tdd-light.md#hash-normalization)
+2. Sanitize summary per [Criterion Summary Sanitization](../../references/tdd-light.md#criterion-summary-sanitization)
+3. Check per-criterion idempotency (tag exists in test files → skip)
+4. Generate skeleton using framework-appropriate template (see [Skeleton Templates](../../references/tdd-light.md#skeleton-templates))
+
+If framework cannot be determined, skip generation and record skip stub.
+
+**Step 4: Red confirmation**
+
+Run tests per [Output Processing](../../references/tdd-light.md#output-processing) and classify result per [Classification Logic](../../references/tdd-light.md#classification-logic):
+
+| Classification | Action |
+|---------------|--------|
+| `TDD_RED_CONFIRMED` | Proceed to implementation (5.1.0) |
+| `TDD_TRIVIALLY_PASSING` | WARNING — review skeletons, then proceed |
+| `TDD_ALL_PASSING` | INFO — no skeleton tests detected, proceed |
+| `TDD_NO_SKELETON_OUTPUT` | WARNING — skeletons may not be reachable, proceed |
+| `TDD_RUNNER_ABORTED_OR_BLOCKED` | ERROR — display error, proceed with implementation |
+
+**Step 5: Record and commit**
+
+1. Update work memory `### TDD 状態` section (see [Work Memory Format - TDD State](../../skills/rite-workflow/references/work-memory-format.md#tdd-state-section))
+2. Commit skeleton files: `test(tdd): add acceptance criteria skeletons for #{issue_number}`
+3. Push to remote
+
+### 5.1.0 Parallel Implementation (Conditional)
+
+Execute parallel implementation when conditions are met if `parallel.enabled` is `true` (default) in `rite-config.yml`.
+
+#### 5.1.0.1 Parallel Implementation Condition Check
+
+Execute parallel implementation when **all** of the following conditions are met:
+
+| Condition | Determination Method |
+|-----------|---------------------|
+| `parallel.enabled: true` | From `rite-config.yml` (default: `true`) |
+| Complexity M or above | Issue's Complexity field, or `## 複雑度` section in body |
+| 2 or more independent tasks | Determined from implementation plan (see below) |
+
+**Independent task determination:**
+
+Analyze the "files to change" from the implementation plan (Phase 3) and determine independence using the following criteria:
+
+| Criterion | Determined as Independent | Determined as Dependent |
+|-----------|--------------------------|------------------------|
+| Inter-file imports | No cross-references | One imports the other |
+| Shared state | No shared variables/state | Shares global state |
+| Execution order | Order-independent | Requires preceding task results |
+
+**Determination flow:**
+
+```
+parallel.enabled を確認
+├─ false → 通常の順次実装（5.1.0 をスキップ、5.1.1 へ）
+└─ true → 複雑度を確認
+    ├─ XS/S → 通常の順次実装
+    └─ M 以上 → 独立タスクを分析
+        ├─ 独立タスク 1 件以下 → 通常の順次実装
+        └─ 独立タスク 2 件以上 → parallel.mode を確認
+            ├─ "shared"（デフォルト）→ 5.1.0.2 共有モード実行
+            └─ "worktree" → 5.1.0.2W Worktree モード実行
+```
+
+#### 5.1.0.2 Parallel Implementation Execution (Shared Mode)
+
+**Applies when**: `parallel.mode: "shared"` (default) or `parallel.mode` is not set.
+
+Invoke multiple Task tools (`subagent_type: "general-purpose"`) **within a single message** for parallel execution. When exceeding `max_agents` (default: 3), split into batches of `max_agents`, waiting for each batch to complete before executing the next.
+
+#### 5.1.0.2W Parallel Implementation Execution (Worktree Mode)
+
+**Applies when**: `parallel.mode: "worktree"` in `rite-config.yml`.
+
+> **Reference**: [Git Worktree Patterns](../../references/git-worktree-patterns.md) for complete operation patterns, merge strategy, and safety mechanisms.
+
+**Step 1: Stale worktree detection and `.gitignore` verification**
+
+Check for existing worktrees from previous runs:
+
+```bash
+# List existing worktrees (more than 1 entry means worktrees exist beyond the main)
+git worktree list --porcelain
+
+# Check for stale worktrees under the worktree base directory
+ls -d {worktree_base}/*/* 2>/dev/null
+```
+
+If stale worktrees are found, offer cleanup via `AskUserQuestion` (see [Safety Mechanisms](../../references/git-worktree-patterns.md#safety-mechanisms)).
+
+Verify `.worktrees/` is in `.gitignore`:
+
+```bash
+grep -q '^\.worktrees/' .gitignore 2>/dev/null || echo '.worktrees/' >> .gitignore
+```
+
+**Step 2: Create worktrees**
+
+For each independent task identified in 5.1.0.1:
+
+```bash
+mkdir -p {worktree_base}/{issue_number}
+git worktree add {worktree_base}/{issue_number}/{task_id} -b {branch_name}/{task_id} {branch_name}
+```
+
+Where `{worktree_base}` is from `parallel.worktree_base` in rite-config.yml (default: `.worktrees`).
+
+**Error handling**: If `git worktree add` fails (e.g., branch already exists, path conflict):
+
+| Exit Code | Likely Cause | Action |
+|-----------|-------------|--------|
+| Non-zero with "already exists" | Branch from previous run | Remove stale branch with `git branch -D {branch_name}/{task_id}` and retry |
+| Non-zero with "is a worktree" | Path conflict | Remove with `git worktree remove --force {path}` and retry |
+| Other non-zero | Unexpected error | Skip this task and fall back to sequential implementation |
+
+**Step 3: Spawn agents in worktrees**
+
+Invoke multiple Task tools **within a single message**, each with a specific worktree path. When exceeding `max_agents`, split into batches.
+
+```
+Task tool parameters:
+  subagent_type: "general-purpose"
+  prompt: "{task_description}. Work ONLY in {worktree_path}. Use ABSOLUTE paths for all file operations (e.g., {worktree_path}/src/file.ts). Do NOT run any git commands (checkout, commit, push, branch, merge, stash). You may use Read, Edit, Write, Glob, Grep, and Bash (for non-git commands like test/lint) tools."
+```
+
+**Critical**: Agent prompts must explicitly prohibit git operations (checkout, commit, push, branch, merge, stash). Only the orchestrator performs git operations.
+
+**Step 4: Quality gate per worktree**
+
+After all agents complete, run quality checks in each worktree if `commands.test` or `commands.lint` is configured:
+
+```bash
+cd {worktree_path} && {test_command} && {lint_command}
+```
+
+Exclude failed worktrees from merge (see [Quality Gate per Worktree](../../references/git-worktree-patterns.md#quality-gate-per-worktree)).
+
+**Step 5: Merge worktree branches**
+
+Merge each passing task branch back to the Issue branch using `--no-ff`:
+
+```bash
+git checkout {branch_name}
+git merge --no-ff {branch_name}/{task_id} -m "chore(parallel): integrate {task_id} ({task_description})"
+```
+
+On merge conflict, follow the [first-merge-wins convention](../../references/git-worktree-patterns.md#conflict-resolution-convention).
+
+**Step 6: Cleanup**
+
+Remove all worktrees and task branches:
+
+```bash
+git worktree remove {worktree_base}/{issue_number}/{task_id}
+git branch -d {branch_name}/{task_id}
+```
+
+Then prune worktree metadata: `git worktree prune`.
+
+#### 5.1.0.3 Parallel Implementation Result Integration
+
+Display results in a table. On partial failure, retain successful results and prompt manual handling for failures. Fall back to sequential implementation when all tasks fail. After parallel implementation, check for conflicts with `git status`.
+
+**Worktree mode additional reporting**: When `parallel.mode: "worktree"`, include merge status and any conflict resolution actions in the results table.
+
+#### 5.1.0.4 Parallel Implementation Skip
+
+Use sequential implementation when: `parallel.enabled: false`, complexity S or below, 1 or fewer independent tasks, or plan was skipped.
+
+#### 5.1.0.5 Adaptive Re-evaluation Checkpoint
+
+After completing each implementation step, re-evaluate the remaining steps before proceeding to the next one. This follows the "tackle the next most obvious problem" strategy from autonomous agent patterns.
+
+**When to execute**: After every step completion when the plan uses the dependency graph format (Phase 3.3 table with `depends_on` column). Skip if the plan was skipped in Phase 3.4 or if the plan lacks a `depends_on` column (pre-existing numbered list format).
+
+**Relationship with parallel implementation (5.1.0.1-5.1.0.4)**: When parallel implementation is active, execute the re-evaluation checkpoint **after each parallel batch completes** (not after each individual parallel task). The batch completion triggers dependency state update, and newly unblocked steps are candidates for the next parallel batch.
+
+**Re-evaluation procedure**:
+
+1. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are also recorded in work memory's progress summary (updated in bulk at commit time, not after every step)
+2. **Update dependency state**: Identify newly unblocked steps (steps whose `depends_on` are all complete)
+3. **Select next step**: From the unblocked steps, pick the one with highest priority using:
+
+| Priority | Criterion | Reason |
+|----------|-----------|--------|
+| 1 | Steps that unblock the most downstream steps | Maximize parallelism |
+| 2 | Steps with highest implementation risk | Fail fast — surface problems early |
+| 3 | Steps with smallest scope | Quick wins build momentum |
+
+4. **Check for plan deviation**: If the implementation reveals that a planned step is unnecessary, needs modification, or a new step is required:
+   - Record the deviation in work memory's "計画逸脱ログ" section (see work-memory-format.md)
+   - Adjust the remaining plan accordingly
+   - **Minor adjustments** (no user confirmation needed): Changing implementation approach within the same step, skipping a step that became unnecessary, adding a small helper step (scope < 1 file)
+   - **Significant scope changes** (ask user via `AskUserQuestion`): Adding new files not in the original plan, changing public API/interface contracts, scope expansion exceeding 50% of original estimate, changing the dependency structure of 3+ remaining steps
+
+5. **Bottleneck detection**: After the step completes, check if it exceeded any bottleneck threshold. Metrics are counted from when the step started to when it finished. This is a guard clause — skip immediately when no threshold is exceeded (zero overhead on normal path).
+
+   > **Reference**: [Bottleneck Detection Reference](../../references/bottleneck-detection.md) for complete thresholds, Oracle discovery protocol, and re-decomposition procedure.
+
+   **Threshold check** (any match triggers detection):
+
+| Threshold | Condition |
+|-----------|-----------|
+| Round count | > 3 rounds (Read/Edit/Bash cycles) within the step |
+| File count | > 5 files modified (Edit/Write) within the step |
+| Line count | > 200 lines changed (insertions + deletions) within the step |
+
+   **When no threshold exceeded**: Return immediately — proceed to display format below. No further action.
+
+   **When threshold exceeded**:
+   1. **Discover Oracle and re-decompose**: Follow [Bottleneck Detection Reference](../../references/bottleneck-detection.md) — discover Oracle (Priority 1→2→3), then re-decompose step into sub-steps `S{n}.1`, `S{n}.2`, etc.
+   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [3.5.1 Mid-Implementation Replanning](./implementation-plan.md#351-mid-implementation-replanning-triggered-by-bottleneck-detection)
+   3. **Display and record**: Use the bottleneck display format (see below). Add entry to work memory "ボトルネック検出ログ" section at next bulk update (commit time)
+   4. **Continue**: Execute the first sub-step (`S{n}.1`) — do NOT re-evaluate the parent step
+
+**Display format** (after each step, normal path — no bottleneck):
+
+```
+✅ Step {completed_id} 完了: {step_description}
+
+次のステップ候補:
+| Step | 内容 | 状態 | 選出理由 |
+|------|------|------|---------|
+| {next_id} | {description} | 🔓 実行可能 | {reason} |
+| {other_id} | {description} | 🔒 依存待ち ({pending_deps}) | - |
+
+→ 次に実行: Step {next_id}
+```
+
+**Display format** (after step with bottleneck detected — Oracle found):
+
+```
+⚠️ ボトルネック検出: Step S{n} ({step_description})
+検出理由: {threshold_exceeded} （{actual_value}/{threshold_value}）
+
+Oracle: {oracle_source} ({oracle_file_path})
+
+再分解:
+| Step | 内容 | depends_on |
+|------|------|------------|
+| S{n}.1 | {sub_step_1} | — |
+| S{n}.2 | {sub_step_2} | S{n}.1 |
+
+→ 次に実行: Step S{n}.1
+```
+
+**Display format** (after step with bottleneck detected — no Oracle found):
+
+```
+⚠️ ボトルネック検出: Step S{n} ({step_description})
+検出理由: {threshold_exceeded} （{actual_value}/{threshold_value}）
+
+Oracle: なし（フォールバック分解を適用）
+
+再分解:
+| Step | 内容 | depends_on |
+|------|------|------------|
+| S{n}.1 | {sub_step_1} | — |
+| S{n}.2 | {sub_step_2} | S{n}.1 |
+
+→ 次に実行: Step S{n}.1
+```
+
+> **Reference**: See [Bottleneck Detection Reference - User Notification](../../references/bottleneck-detection.md#user-notification) for complete display format details.
+
+**When all steps are complete**: Proceed to 5.1.0.6 (Test Verification Gate) or 5.1.1 (Commit).
+
+#### 5.1.0.6 Test Verification Gate (Conditional)
+
+Execute test verification before committing when conditions are met.
+
+##### Condition Check
+
+Read `rite-config.yml` and check:
+
+| Condition | Check Method |
+|-----------|-------------|
+| `commands.test` is set | Non-null value in `rite-config.yml` |
+| `verification.run_tests_before_pr` is `true` | From `rite-config.yml` (default: `true`) |
+
+**Skip conditions** (any match → skip to 5.1.1):
+- `commands.test` is `null` or not set
+- `verification.run_tests_before_pr` is `false`
+
+When skipped, display the appropriate message:
+- `commands.test` not set: `テスト検証: スキップ（commands.test 未設定）`
+- `run_tests_before_pr: false`: `テスト検証: スキップ（verification.run_tests_before_pr: false）`
+
+##### Test Execution
+
+```bash
+# rite-config.yml の commands.test を実行
+{test_command}
+```
+
+**Result handling:**
+
+| Exit Code | Action |
+|-----------|--------|
+| 0 | Tests passed → proceed to 5.1.0.6.1 (acceptance criteria check) then 5.1.1 (commit) |
+| Non-zero | Tests failed → display failures, return to 5.1 implementation |
+
+**On test failure:**
+
+```
+テスト失敗: {test_error_count} 件のテストが失敗しました
+
+失敗したテスト:
+{test_output}
+
+実装を修正してテストを再実行してください。
+```
+
+Return to Phase 5.1 (implementation). Do NOT proceed to commit.
+
+**Re-execution limit**: Test re-execution follows the `safety.max_implementation_rounds` limit in `rite-config.yml`. When the limit is reached, display via `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
+
+**Note**: When called from the `/rite:issue:start` end-to-end flow, test results are retained in conversation context. The subsequent `/rite:lint` Phase 3.4 can skip duplicate test execution if tests were already run and passed in this phase.
+
+##### 5.1.0.6.1 Acceptance Criteria Check (Conditional)
+
+**Condition**: `verification.acceptance_criteria_check` is `true` (default: `true`) AND Issue body contains an acceptance criteria section.
+
+**Heading match rules**: Match any of the following headings (case-insensitive, level 2 `##`):
+
+| Pattern | Examples |
+|---------|---------|
+| `## 受入条件` | Exact match (Japanese) |
+| `## Acceptance Criteria` | Exact match (English) |
+| `## 受け入れ条件` | Alternative Japanese form |
+
+The section extends from the matched heading to the next `##` heading or end of body.
+
+**Skip conditions** (any match → skip to 5.1.1):
+- `verification.acceptance_criteria_check` is `false`
+- Issue body does not contain an acceptance criteria section (none of the above headings found)
+
+**Issue body retrieval**: Use the Issue body already obtained in Phase 0.1 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.1.
+
+**Check procedure:**
+
+1. Extract acceptance criteria items from Issue body (lines matching `- [ ]` or `- [x]` under the acceptance criteria heading)
+2. For each criterion, evaluate whether the current implementation satisfies it based on:
+   - Changed files and their content
+   - Test results (if tests were run)
+   - Implementation plan completion status
+3. Display verification results:
+
+```
+受入条件チェック:
+- {criterion_1} — 満たされています
+- {criterion_2} — 満たされています
+- {criterion_3} — 確認が必要です（理由: {reason}）
+```
+
+**Result handling:**
+
+| Result | Action |
+|--------|--------|
+| All criteria satisfied | Proceed to 5.1.1 (commit) |
+| Some need attention | Display via `AskUserQuestion`: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
+
+**Note**: This check is advisory — it helps catch missed requirements but does not block the flow when the user chooses to proceed.
+
+### 5.1.1 Commit and Push Changes
+
+After implementation is complete, push changes to remote:
+
+**Commit procedure:**
+
+1. Check changed files with `git status`
+2. Stage changes with `git add`
+3. Generate commit message in Conventional Commits format
+4. Commit with `git commit`
+5. Push to remote with `git push -u origin {branch_name}`
+
+**Commit message generation:**
+
+> **⚠️ CRITICAL**: The `description` part of the commit message **MUST** follow the `language` setting in `rite-config.yml`. The examples below are for reference only — always generate the description in the language determined by the setting, not by copying the example language.
+
+Generated based on Issue title and implementation content:
+- Format: `{type}({scope}): {description}`
+- Examples:
+  - English: `feat(issue): add end-to-end workflow support`
+  - Japanese: `feat(issue): Issue一気通貫ワークフローを追加`
+
+**Commit message language:**
+
+Follow the `language` setting in `rite-config.yml` (`auto`: detect user input language, `ja`: Japanese, `en`: English). For `auto`, determine by presence of Japanese characters (hiragana, katakana, kanji). type/scope are always in English.
+
+**Commit body (recommended):**
+
+Include the reason for the change ("why") in the commit body (lines after the first line). This improves git history readability and traceability.
+
+- Leave a blank line between the description line and the body
+- Write in free-form — no specific prefix or template required
+- Focus on "why" the change was needed, not "what" was changed (the description line already covers "what")
+- Follow the same language setting as the description line
+- Can be omitted for trivial changes (typo fixes, formatting, etc.)
+
+```bash
+git add .
+git commit -m "$(cat <<'EOF'
+{commit_message}
+EOF
+)"
+git push -u origin {branch_name}
+```
+
+**Note**: Commit and push must be completed before invoking `/rite:pr:create`.
+
+#### 5.1.1.1 Issue Body Checklist Update
+
+**Execution condition**: Execute only when Issue body checklist was extracted and retained in Phase 3.6.
+
+**Update as each task is completed**. Immediately update the Issue body checklist as implementation, test, and documentation tasks are completed.
+
+**Update trigger:** After `git commit` succeeds and at Phase 5.1 completion, Claude determines the relevance between changed files and checklist items, and updates `[ ]` to `[x]` for completed items.
+
+> **⚠️ 注意**: `--body "$var"` による直接更新は body 消失のリスクがあるため禁止。必ず `--body-file` + 一時ファイルパターンを使用すること。
+
+**Update procedure** (3-step safe update pattern):
+
+Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effective within the same process, all sub-steps in Step 1 must be executed within the same Bash tool call. On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
+
+**Step 1: Bash tool call — Fetch body and validate**
+
+```bash
+# Create temp files (for reading and writing)
+tmpfile_read=$(mktemp)
+tmpfile_write=$(mktemp)
+trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
+
+gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
+
+# Validate retrieval result
+if [ ! -s "$tmpfile_read" ]; then
+  echo "WARNING: Issue body の取得に失敗。チェックリスト更新をスキップします" >&2
+  exit 0  # Skip — do not abort workflow
+fi
+
+# Record original length for Step 3 comparison
+original_length=$(wc -c < "$tmpfile_read")
+echo "original_length=$original_length"
+
+# Output mktemp paths for use in subsequent Read/Write tool calls
+echo "tmpfile_read=$tmpfile_read"
+echo "tmpfile_write=$tmpfile_write"
+```
+
+**Step 2: Read tool + Write tool — Write checkbox-updated body**
+
+1. Read the contents of `$tmpfile_read` (path output by `mktemp` in Step 1) using Claude Code's Read tool
+2. Create the full text with `[ ]` → `[x]` updates based on the read content
+3. Write the updated body to `$tmpfile_write` (another path output by `mktemp` in Step 1) using Claude Code's Write tool
+
+> **CRITICAL**: The Write tool output MUST contain the ENTIRE Issue body with only checkbox changes. Never output partial content or only the changed lines.
+
+**Step 3: Bash tool call — Validate and apply**
+
+```bash
+# Set paths output by mktemp in Step 1 (shell variables do not carry over between Bash tool calls, so directly write the actual paths from Step 1 output)
+tmpfile_read="/tmp/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output
+tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output
+original_length=XXXXX                # ← Replace with the original_length= value from Step 1 output
+
+# Validate update content before applying
+if [ ! -s "$tmpfile_write" ]; then
+  echo "WARNING: 更新内容が空。チェックリスト更新をスキップします" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
+  exit 0  # Skip — do not abort workflow
+fi
+
+# Body length comparison safety check (reject if updated body is less than 50% of original)
+updated_length=$(wc -c < "$tmpfile_write")
+if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+  echo "WARNING: 更新後の body が元の50%未満 (${updated_length}/${original_length})。body 消失の可能性があるためスキップします" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
+  exit 0  # Skip — do not abort workflow
+fi
+
+gh issue edit {issue_number} --body-file "$tmpfile_write"
+
+# trap does not carry over between processes (Bash tool calls), so delete explicitly
+rm -f "$tmpfile_read" "$tmpfile_write"
+```
+
+Also synchronize the "Issue checklist" section in the work memory.
+
+#### 5.1.1.2 Local Work Memory Update
+
+**Execution condition**: Execute when on a work branch with an Issue number (`issue-{n}` pattern).
+
+After commit and push, update the local work memory file to record the phase transition to lint. Uses `mkdir` lock for concurrent access safety with pre-compact hook.
+
+Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details and marketplace install notes.
+
+```bash
+WM_SOURCE="implement" \
+  WM_PHASE="phase5_lint" \
+  WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint を実行" \
+  WM_BODY_TEXT="Post-implementation. Proceeding to lint." \
+  WM_ISSUE_NUMBER="{issue_number}" \
+  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+```
+
+**On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The `.rite-flow-state` update (step 4a) is the primary state record.
+
+#### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
+
+**Execution condition**: Execute only when working on a child Issue selected in Phase 1.6.
+
+**5.1.2.1 Tasklist Update**
+
+Update the relevant child Issue's `- [ ]` to `- [x]` in the `## Sub-Issues` section of the parent Issue body.
+
+> **⚠️ 注意**: `--body "$var"` による直接更新は body 消失のリスクがあるため禁止。必ず `--body-file` + 一時ファイルパターンを使用すること。
+
+Execute in 3 stages (Bash → Read+Write → Bash). On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
+
+**Step 1: Bash tool call — Fetch parent Issue body and validate**
+
+```bash
+# Create temp files (for reading and writing)
+tmpfile_read=$(mktemp)
+tmpfile_write=$(mktemp)
+trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
+
+gh issue view {parent_issue_number} --json body --jq '.body' > "$tmpfile_read"
+
+# Validate retrieval result
+if [ ! -s "$tmpfile_read" ]; then
+  echo "WARNING: Parent Issue body の取得に失敗。タスクリスト更新をスキップします" >&2
+  exit 0  # Skip — do not abort workflow
+fi
+
+# Record original length for Step 3 comparison
+original_length=$(wc -c < "$tmpfile_read")
+echo "original_length=$original_length"
+
+# Output mktemp paths for use in subsequent Read/Write tool calls
+echo "tmpfile_read=$tmpfile_read"
+echo "tmpfile_write=$tmpfile_write"
+```
+
+**Step 2: Read tool + Write tool — Write tasklist-updated body**
+
+1. Read the contents of `$tmpfile_read` (path output by `mktemp` in Step 1) using Claude Code's Read tool
+2. In the `## Sub-Issues` section only, update the relevant child Issue's `- [ ]` to `- [x]`. Do not modify other sections
+3. Write the updated body to `$tmpfile_write` (another path output by `mktemp` in Step 1) using Claude Code's Write tool
+
+> **CRITICAL**: The Write tool output MUST contain the ENTIRE parent Issue body with only the `## Sub-Issues` section checkbox change. Never output partial content or only the changed lines.
+
+**Step 3: Bash tool call — Validate and apply**
+
+```bash
+# Set paths output by mktemp in Step 1 (shell variables do not carry over between Bash tool calls, so directly write the actual paths from Step 1 output)
+tmpfile_read="/tmp/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output
+tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output
+original_length=XXXXX                # ← Replace with the original_length= value from Step 1 output
+
+# Validate update content before applying
+if [ ! -s "$tmpfile_write" ]; then
+  echo "WARNING: 更新内容が空。タスクリスト更新をスキップします" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
+  exit 0  # Skip — do not abort workflow
+fi
+
+# Body length comparison safety check (reject if updated body is less than 50% of original)
+updated_length=$(wc -c < "$tmpfile_write")
+if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+  echo "WARNING: 更新後の body が元の50%未満 (${updated_length}/${original_length})。body 消失の可能性があるためスキップします" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
+  exit 0  # Skip — do not abort workflow
+fi
+
+gh issue edit {parent_issue_number} --body-file "$tmpfile_write"
+
+# trap does not carry over between processes (Bash tool calls), so delete explicitly
+rm -f "$tmpfile_read" "$tmpfile_write"
+```
+
+**5.1.2.2 Progress Comment Addition**
+
+Record progress in a comment on the parent Issue (completed child Issues, progress status, suggest next candidates when 1-3 remain).
+
+**5.1.2.3 Remaining Child Issues Check**
+
+Check the state of remaining child Issues with `trackedIssues` and calculate `remaining_count`. Full child Issue completion check is performed in Phase 5.7.
+
+**After 5.1.1 commit/push completion:**
+
+1. Parent Issue progress update (only when working on child Issue, see 5.1.2)
+2. **Update work memory** (record phase info, changed files, next steps)
+3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.2 above
+4. **CRITICAL: Initialize `.rite-flow-state` and invoke lint** (atomic pair - MUST execute both):
+
+   > **Note**: All `.rite-flow-state` writes use **atomic write** (PID-based temp file `$$` + `mv`) to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact). If the `jq` command fails, the temp file is cleaned up and execution continues to the next step — stop hook and compaction recovery may not reflect the current phase, but the primary workflow is not blocked.
+
+   **4a**: Create state file:
+
+   ```bash
+   TMP_STATE=".rite-flow-state.tmp.$$"
+   if jq -n \
+     --argjson active true \
+     --argjson issue {issue_number} \
+     --arg branch "{branch_name}" \
+     --arg phase "phase5_lint" \
+     --argjson loop 0 \
+     --argjson pr 0 \
+     --arg next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop." \
+     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+     '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
+     > "$TMP_STATE"; then
+     mv "$TMP_STATE" .rite-flow-state
+   else
+     rm -f "$TMP_STATE"
+   fi
+   ```
+
+   **4b**: **Immediately** invoke `rite:lint` via Skill tool (following the flow continuation principle, stopping is prohibited)
+
+### Mandatory Action After Phase 5.1.1 Completion (Absolute Requirement)
+
+> **Warning**: Stopping without executing the following actions is prohibited.
+>
+> 1. Confirm that commit and push succeeded
+> 2. **Immediately** invoke `rite:lint` via Skill tool
+> 3. Do NOT stop and guide the user with "Next steps"
+
+**Flow verification check (must confirm at Phase 5.1.1 completion):**
+- [ ] Commit complete
+- [ ] Push complete
+- [ ] **Next action**: Invoke `rite:lint` via Skill tool (**execute now**)

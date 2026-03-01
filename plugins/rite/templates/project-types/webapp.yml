@@ -1,0 +1,58 @@
+# Web Application project configuration
+type: webapp
+name: "Web Application"
+
+# Common webapp commands (examples)
+commands:
+  build: null  # auto-detect: npm/yarn/pnpm build
+  test: null   # auto-detect: npm/yarn/pnpm test
+  lint: null   # auto-detect: eslint, prettier
+
+# GitHub Projects fields
+fields:
+  status:
+    enabled: true
+    options:
+      - { name: "Todo", default: true }
+      - { name: "In Progress" }
+      - { name: "In Review" }
+      - { name: "Done" }
+  priority:
+    enabled: true
+    options:
+      - { name: "Critical" }
+      - { name: "High" }
+      - { name: "Medium", default: true }
+      - { name: "Low" }
+  complexity:
+    enabled: true
+    options:
+      - { name: "XS" }
+      - { name: "S" }
+      - { name: "M", default: true }
+      - { name: "L" }
+      - { name: "XL" }
+  component:
+    enabled: true
+    options:
+      - { name: "Frontend" }
+      - { name: "Backend" }
+      - { name: "Database" }
+      - { name: "Infrastructure" }
+
+# Branch naming
+branch:
+  pattern: "{type}/issue-{number}-{slug}"
+  types:
+    feature: "feat"
+    bugfix: "fix"
+    hotfix: "hotfix"
+    documentation: "docs"
+    refactor: "refactor"
+    style: "style"
+    chore: "chore"
+
+# Commit style
+commit:
+  style: conventional
+  enforce: true

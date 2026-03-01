@@ -1,0 +1,148 @@
+# rite-workflow configuration file
+version: "1.0"
+
+# Project settings
+project:
+  type: generic  # generic | webapp | library | cli | documentation
+  name: "My Project"
+
+# GitHub Projects integration
+github:
+  projects:
+    enabled: true
+    project_number: null  # Project number (null = auto-detect from repository)
+    owner: null           # Project owner (null = use repository owner)
+    fields:
+      status:
+        enabled: true
+        options:
+          - { name: "Todo", default: true }
+          - { name: "In Progress" }
+          - { name: "In Review" }
+          - { name: "Done" }
+      priority:
+        enabled: true
+        options:
+          - { name: "High" }
+          - { name: "Medium", default: true }
+          - { name: "Low" }
+      complexity:
+        enabled: true
+        options:
+          - { name: "XS" }
+          - { name: "S" }
+          - { name: "M", default: true }
+          - { name: "L" }
+          - { name: "XL" }
+    # Explicit field IDs (optional, overrides auto-detection)
+    # Use this when:
+    #   - API auto-detection fails (e.g., permission issues, organization policy restrictions)
+    #   - You want consistent field IDs without relying on auto-detection
+    # Note: Option IDs (e.g., "In Progress", "Done") are always fetched via API
+    # Find field IDs: gh project field-list {project_number} --owner {owner} --format json
+    # field_ids:
+    #   status: "PVTSSF_..."      # Status field ID
+    #   priority: "PVTSSF_..."    # Priority field ID
+    #   complexity: "PVTSSF_..."  # Complexity field ID
+    #   # Custom fields
+    #   work_type: "PVTSSF_..."   # Custom Single Select field ID
+
+# Iteration/Sprint settings (optional)
+# To use this feature, create an Iteration field in GitHub Projects manually
+iteration:
+  enabled: false          # true to enable iteration features
+  field_name: "Sprint"    # Name of the iteration field in Projects
+  auto_assign: true       # Auto-assign to current iteration on issue:start
+  show_in_list: true      # Show iteration column in issue:list
+
+# Branch naming rules
+branch:
+  # Base branch for feature branches (default PR target)
+  base: "main"      # default: main (use "develop" for Git Flow)
+  # Release branch (for production releases)
+  release: "main"   # default: main
+  pattern: "{type}/issue-{number}-{slug}"
+  types:
+    feature: "feat"
+    bugfix: "fix"
+    documentation: "docs"
+    refactor: "refactor"
+    chore: "chore"
+    style: "style"
+  # Recognized patterns for non-standard branches (optional)
+  # These patterns allow rite workflow to recognize existing branches
+  # that don't follow the standard issue-based naming convention
+  # recognized_patterns:
+  #   - "migration/phase{n}-{category}"    # e.g., migration/phase4-admin-tutorials
+  #   - "i18n/{locale}"                    # e.g., i18n/zh-tw
+  #   - "hotfix/{date}-{description}"      # e.g., hotfix/20250109-critical-fix
+
+# Commit message
+commit:
+  style: conventional  # conventional | free
+  enforce: false
+
+# Build/test/lint commands (null = auto-detect)
+commands:
+  build: null
+  test: null
+  lint: null
+
+# TDD Light mode settings (off by default)
+# tdd:
+#   mode: "off"              # off | light (default: off)
+#   tag_prefix: "AC"         # Tag prefix for test skeleton markers
+#   run_baseline: true       # Run baseline test before skeleton generation
+#   max_skeletons: 20        # Maximum number of skeletons to generate per Issue
+
+# Issue settings / Issue 設定
+issue:
+  auto_decompose_threshold: M  # XS | S | M | L | XL | none (default: M)
+  # Three-tier judgment: below threshold → skip, at threshold → analyze body, above → show proposal
+  # 3層判定: 閾値未満 → スキップ、閾値と同じ → 本文解析、閾値超過 → 分解提案
+  # - XS: Analyze body at XS (minimum); show proposal for S and above / XS で本文解析（最小値）; S 以上で提案
+  # - S: Skip for XS; analyze at S / XS をスキップ; S で解析
+  # - M: Skip for XS/S; analyze at M (default) / XS/S をスキップ; M で解析（デフォルト）
+  # - L: Skip for XS/S/M; analyze at L / XS/S/M をスキップ; L で解析
+  # - XL: Skip for XS-L; analyze at XL only (no proposal) / XS-L をスキップ; XL のみ解析（提案なし）
+  # - none: Always show decomposition prompt / 常に分解提案を表示
+
+# Review settings
+review:
+  min_reviewers: 1      # Fallback when no reviewers match
+  criteria:
+    - file_types
+    - content_analysis
+  # review-fix ループの段階的緩和設定
+  # ループが長引いた場合、低 severity 指摘を非ブロックに緩和して収束を促進
+  loop:
+    max_iterations: 7           # 強制終了（デフォルト: 7）。全残指摘を別 Issue 化してループ離脱
+    relax_medium_after: 3       # MEDIUM/LOW 緩和開始（デフォルト: 3）。MEDIUM/LOW は非ブロック指摘に
+    relax_high_after: 5         # HIGH 緩和開始（デフォルト: 5）。HIGH も非ブロック指摘に
+    verification_mode: true     # サイクル2+で検証モードを有効化（デフォルト: true）
+                                # true: 前回指摘の修正検証 + incremental diff リグレッションチェックに限定
+                                # false: 毎サイクルフルレビュー（従来動作）
+    allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
+                                                  # false: stability_concern として報告のみ（blocking にしない）
+                                                  # true: 通常の指摘として blocking 判定に含む
+  # セキュリティレビュアーの選定設定
+  security_reviewer:
+    mandatory: false                          # 全 PR で必須選定するか（デフォルト: false）
+                                              # true: ファイル種別に関係なく常にセキュリティ専門家を含む
+                                              # false: 条件に応じて選定（実行可能コード変更時は推奨）
+    recommended_for_code_changes: true        # 実行可能コード変更時は推奨（デフォルト: true）
+
+# Notification settings
+notifications:
+  slack:
+    enabled: false
+    webhook_url: null
+  discord:
+    enabled: false
+    webhook_url: null
+  teams:
+    enabled: false
+    webhook_url: null
+
+# Language setting (auto = auto-detect)
+language: auto  # auto | ja | en

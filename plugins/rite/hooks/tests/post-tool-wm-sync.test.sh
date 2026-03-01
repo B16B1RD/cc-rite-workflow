@@ -1,0 +1,135 @@
+#!/bin/bash
+# Tests for post-tool-wm-sync.sh
+# Usage: bash plugins/rite/hooks/tests/post-tool-wm-sync.test.sh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+HOOK="$SCRIPT_DIR/../post-tool-wm-sync.sh"
+TEST_DIR="$(mktemp -d)"
+PASS=0
+FAIL=0
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: jq is required but not installed" >&2
+  exit 1
+fi
+
+cleanup() {
+  rm -rf "$TEST_DIR"
+}
+trap cleanup EXIT
+
+pass() {
+  PASS=$((PASS + 1))
+  echo "  ✅ PASS: $1"
+}
+
+fail() {
+  FAIL=$((FAIL + 1))
+  echo "  ❌ FAIL: $1"
+}
+
+# Helper: create a state file
+create_state_file() {
+  local dir="$1"
+  local content="$2"
+  echo "$content" > "$dir/.rite-flow-state"
+}
+
+# Helper: run hook with given CWD
+run_hook() {
+  local cwd="$1"
+  local rc=0
+  echo "{\"tool_name\": \"Bash\", \"cwd\": \"$cwd\"}" | bash "$HOOK" 2>/dev/null || rc=$?
+  return $rc
+}
+
+echo "=== post-tool-wm-sync.sh tests ==="
+echo ""
+
+# --- TC-001: No state file → no-op ---
+echo "TC-001: No state file → no-op"
+dir001="$TEST_DIR/tc001"
+mkdir -p "$dir001"
+run_hook "$dir001"
+rc001=$?
+if [ ! -d "$dir001/.rite-work-memory" ]; then
+  pass "No work memory created without state file (exit code: $rc001)"
+else
+  fail "Work memory directory should not exist"
+fi
+echo ""
+
+# --- TC-002: active: false → no work memory created ---
+echo "TC-002: active: false → no work memory created"
+dir002="$TEST_DIR/tc002"
+mkdir -p "$dir002"
+create_state_file "$dir002" '{"active": false, "issue_number": 42, "phase": "completed"}'
+run_hook "$dir002" || true
+if [ ! -d "$dir002/.rite-work-memory" ]; then
+  pass "No work memory created when active: false"
+else
+  fail "Work memory should not be created when active: false"
+fi
+echo ""
+
+# --- TC-003: active: true, phase: completed → no work memory created (#776) ---
+echo "TC-003: active: true, phase: completed → no work memory created (#776)"
+dir003="$TEST_DIR/tc003"
+mkdir -p "$dir003"
+create_state_file "$dir003" '{"active": true, "issue_number": 42, "phase": "completed"}'
+run_hook "$dir003" || true
+wm_file="$dir003/.rite-work-memory/issue-42.md"
+if [ ! -f "$wm_file" ]; then
+  pass "No work memory created when phase: completed (defense-in-depth)"
+else
+  fail "Work memory should NOT be created when phase: completed"
+fi
+echo ""
+
+# --- TC-004: active: true, phase: phase5_lint, file exists → no recreation ---
+echo "TC-004: active: true, file already exists → no recreation"
+dir004="$TEST_DIR/tc004"
+mkdir -p "$dir004/.rite-work-memory"
+echo "existing content" > "$dir004/.rite-work-memory/issue-42.md"
+create_state_file "$dir004" '{"active": true, "issue_number": 42, "phase": "phase5_lint"}'
+run_hook "$dir004" || true
+content=$(cat "$dir004/.rite-work-memory/issue-42.md")
+if [ "$content" = "existing content" ]; then
+  pass "Existing work memory file not overwritten"
+else
+  fail "Existing file was modified: $content"
+fi
+echo ""
+
+# --- TC-005: Happy path — active: true, phase: impl, file not exists → WM created ---
+echo "TC-005: Happy path — active: true, phase: impl → work memory created"
+dir005="$TEST_DIR/tc005"
+mkdir -p "$dir005"
+create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "phase5_implementation", "branch": "feat/issue-42-test"}'
+run_hook "$dir005" || true
+wm_file="$dir005/.rite-work-memory/issue-42.md"
+if [ -f "$wm_file" ]; then
+  # Verify essential fields in created work memory
+  wm_ok=true
+  if ! grep -q "issue_number: 42" "$wm_file"; then
+    fail "Work memory missing issue_number field"
+    wm_ok=false
+  fi
+  if ! grep -q "phase:" "$wm_file"; then
+    fail "Work memory missing phase field"
+    wm_ok=false
+  fi
+  if [ "$wm_ok" = true ]; then
+    pass "Work memory created with correct fields on happy path"
+  fi
+else
+  fail "Work memory file not created on happy path: $wm_file"
+fi
+echo ""
+
+# --- Summary ---
+echo "=== Results: $PASS passed, $FAIL failed ==="
+if [ "$FAIL" -gt 0 ]; then
+  exit 1
+fi
