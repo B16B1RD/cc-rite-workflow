@@ -749,6 +749,7 @@ WM_SOURCE="review" \
 
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ このパターンは 5.4.6 (After Fix) と同一構造。変更時は両方を更新すること
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -757,20 +758,29 @@ current_body=$(echo "$comment_data" | jq -r '.body // empty')
 if [ -z "$comment_id" ]; then
   echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
 else
-  backup_file="/tmp/rite-wm-backup-{issue_number}-$(date +%s).md"
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
   printf '%s' "$current_body" > "$backup_file"
   original_length=$(printf '%s' "$current_body" | wc -c)
 
-  # Update session info fields only (selective update)
+  # Update session info fields only (Python-based; sed/awk 使用禁止)
   tmpfile=$(mktemp)
-  trap 'rm -f "$tmpfile"' EXIT
-  printf '%s' "$current_body" | sed \
-    -e "s/^\(- \*\*最終更新\*\*: \).*/\1$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')/" \
-    -e "s/^\(- \*\*フェーズ\*\*: \).*/\1phase5_post_review/" \
-    -e "s/^\(- \*\*フェーズ詳細\*\*: \).*/\1レビュー完了/" \
-    > "$tmpfile"
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", rf"\g<1>{timestamp}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", rf"\g<1>{phase}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", rf"\g<1>{phase_detail}", body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_post_review" "レビュー完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
 
-  # Safety checks before PATCH
+  # Safety checks before PATCH (includes 50% body length comparison; see gh-cli-patterns.md)
   if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
     echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
   elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
@@ -859,6 +869,7 @@ WM_SOURCE="fix" \
 
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ このパターンは 5.4.3 (After Review) と同一構造。変更時は両方を更新すること
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -867,20 +878,29 @@ current_body=$(echo "$comment_data" | jq -r '.body // empty')
 if [ -z "$comment_id" ]; then
   echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
 else
-  backup_file="/tmp/rite-wm-backup-{issue_number}-$(date +%s).md"
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
   printf '%s' "$current_body" > "$backup_file"
   original_length=$(printf '%s' "$current_body" | wc -c)
 
-  # Update session info fields only (selective update)
+  # Update session info fields only (Python-based; sed/awk 使用禁止)
   tmpfile=$(mktemp)
-  trap 'rm -f "$tmpfile"' EXIT
-  printf '%s' "$current_body" | sed \
-    -e "s/^\(- \*\*最終更新\*\*: \).*/\1$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')/" \
-    -e "s/^\(- \*\*フェーズ\*\*: \).*/\1phase5_post_fix/" \
-    -e "s/^\(- \*\*フェーズ詳細\*\*: \).*/\1修正完了/" \
-    > "$tmpfile"
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", rf"\g<1>{timestamp}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", rf"\g<1>{phase}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", rf"\g<1>{phase_detail}", body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_post_fix" "修正完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
 
-  # Safety checks before PATCH
+  # Safety checks before PATCH (includes 50% body length comparison; see gh-cli-patterns.md)
   if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
     echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
   elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then

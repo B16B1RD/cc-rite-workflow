@@ -92,6 +92,8 @@ Verify the created comment has the expected structure. This catches silent failu
 
 ```bash
 # Retrieve the last work memory comment and validate structure
+# Note: GitHub API has eventual consistency — the comment may not appear immediately after creation.
+# A brief delay (1-2 seconds) or a single retry is acceptable if the initial fetch returns empty.
 created_body=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body // empty')
 
@@ -104,7 +106,7 @@ elif ! echo "$created_body" | grep -q '### 進捗サマリー'; then
 fi
 ```
 
-**On validation failure**: Display the warning and continue (non-blocking). The work memory will be rebuilt in subsequent phases (Phase 3.5, Phase 5.5.2) which re-fetch and validate before updating.
+**On validation failure**: Display the warning and continue (non-blocking). The work memory will be rebuilt in subsequent phases (Phase 3.5, Phase 5.5.2) which re-fetch and validate before updating. Note that `created_body` being empty immediately after creation may be caused by GitHub API eventual consistency rather than an actual failure — this is expected behavior and the warning is intentionally non-blocking.
 
 Timestamp format: `YYYY-MM-DDTHH:MM:SS+09:00` (ISO 8601)
 

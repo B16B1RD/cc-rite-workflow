@@ -209,8 +209,8 @@ backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
 trap 'rm -f "$tmpfile"' EXIT
 
 # 1. Backup before update
-printf '%s' "$current_body" > "$backup_file"
-original_length=$(printf '%s' "$current_body" | wc -c)
+printf '%s' "$comment_body" > "$backup_file"
+original_length=$(printf '%s' "$comment_body" | wc -c)
 
 # 2. Write the selectively-updated body
 printf '%s' "$updated_body" > "$tmpfile"
@@ -248,7 +248,7 @@ if [[ "${patch_status:-1}" -ne 0 ]]; then
 fi
 ```
 
-**Implementation note for Claude**: `$updated_body` is the `comment_body` from Phase 3.5.1 with **only** the changes specified in Phase 3.5.2 applied. The `実装計画` section is inserted (or replaced if already present). All other sections must be copied verbatim from the re-fetched body. **Do NOT reconstruct the body from memory — use the re-fetched text as the base.** `$current_body` is the same re-fetched body used for backup.
+**Implementation note for Claude**: `$updated_body` is the `comment_body` from Phase 3.5.1 with **only** the changes specified in Phase 3.5.2 applied. The `実装計画` section is inserted (or replaced if already present). All other sections must be copied verbatim from the re-fetched body. **Do NOT reconstruct the body from memory — use the re-fetched text as the base.** `$comment_body` is the same re-fetched body used for backup.
 
 #### 3.5.4 Local Work Memory Sync
 
