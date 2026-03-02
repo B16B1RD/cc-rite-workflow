@@ -614,4 +614,7 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (sub-Issues created via Phase 0.9, or cancelled and delegated to `create-register`), the Issue creation workflow is complete. The caller (`create.md`) should NOT take any additional action — the completion report has already been output by this sub-skill (or by the delegated `create-register` sub-skill).
+When this sub-skill completes, the caller (`create.md`) should NOT take any additional action. Completion occurs via one of the following paths:
+
+- **Normal path** (sub-Issues created via Phase 0.9): The completion report has already been output by this sub-skill.
+- **Delegation path** (cancelled and delegated to `create-register`): The completion report will be output by `create-register`. This sub-skill is NOT terminal in this path — `create-register` takes over and completes the workflow.
