@@ -393,13 +393,22 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 ```bash
 TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --arg phase "create_interview" \
-  --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+if [ -f ".rite-flow-state" ]; then
+  # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
+  jq --arg phase "create_interview" \
+     --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+     '.active = true | .phase = $phase | .next_action = $next | .updated_at = $ts' \
+     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+else
+  jq -n \
+    --argjson active true \
+    --arg phase "create_interview" \
+    --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+    --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+    '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+    > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+fi
 ```
 
 Invoke `skill: "rite:issue:create-interview"`.
@@ -509,13 +518,22 @@ Based on Phase 0.6 result, delegate to the appropriate sub-command.
 
 ```bash
 TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --arg phase "create_delegation" \
-  --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+if [ -f ".rite-flow-state" ]; then
+  # Preserve existing fields (issue_number, branch, etc.) from caller
+  jq --arg phase "create_delegation" \
+     --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
+     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+     '.active = true | .phase = $phase | .next_action = $next | .updated_at = $ts' \
+     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+else
+  jq -n \
+    --argjson active true \
+    --arg phase "create_delegation" \
+    --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
+    --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+    '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+    > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+fi
 ```
 
 ### When decomposition is selected

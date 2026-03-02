@@ -38,6 +38,8 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 ## Phase Flow Quick Reference
 
 > **CRITICAL**: After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop, do NOT re-invoke the completed skill.
+>
+> This table lists phases with sub-skill invocations or key decision points. Phases not listed (2.4 Projects Status, 2.5 Iteration, 5.0 Stop Hook, 5.5.1 Status Update, 5.5.2 Metrics, 5.7 Parent Completion) execute inline without stopping.
 
 | Phase | Sub-skill Invoked | Next Phase | Stop Allowed? |
 |-------|-------------------|------------|---------------|
@@ -66,7 +68,7 @@ This protocol applies to **every** sub-skill invocation in this document. Each �
 1. When a sub-skill outputs a result pattern and returns control, do **NOT** stop responding and do **NOT** re-invoke the same skill — it already completed.
 2. **Immediately** check the 🚨 Mandatory After section for that phase and execute the specified next action.
 3. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
-4. Update `.rite-flow-state` as specified in each phase's pre-write block, then proceed.
+4. Execute the post-return `.rite-flow-state` update specified in the 🚨 Mandatory After section, then proceed.
 
 ---
 
