@@ -27,3 +27,6 @@ Rite Workflow の主要な変更を記録します。
 - 多言語対応（日本語、英語）
 - TDD Light モード
 - git worktree による並列実装サポート
+
+[0.1.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.1.0

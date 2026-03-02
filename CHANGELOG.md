@@ -27,3 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - i18n support (Japanese, English)
 - TDD Light mode
 - Parallel implementation with git worktree support
+
+[0.1.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.1.0
