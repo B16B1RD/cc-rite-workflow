@@ -503,6 +503,21 @@ else
 fi
 ```
 
+#### 3.5. Body Length Comparison
+
+```bash
+# Detect significant content loss by comparing original vs updated body size
+# Guards against partial overwrites where header is preserved but sections are lost
+updated_length=$(wc -c < "$updated_tmp")
+if [ "$original_length" -gt 0 ] && [ "$updated_length" -lt $((original_length / 2)) ]; then
+  echo "ERROR: Updated body is less than 50% of original size ($updated_length < $original_length/2). Aborting PATCH." >&2
+  echo "Backup saved at: $backup_file" >&2
+  exit 1
+fi
+```
+
+> **Note**: `$original_length` は Step 1 で `printf '%s' "$current_body" | wc -c` として取得した値。50% 閾値は、セクション追記による増加は許容しつつ、大幅な内容消失を検出するためのバランス値。
+
 #### 4. Safe Write with Error Handling
 
 ```bash

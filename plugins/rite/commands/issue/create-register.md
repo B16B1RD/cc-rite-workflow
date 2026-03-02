@@ -6,12 +6,22 @@ description: 単一 Issue の確認・作成・登録
 
 Classify, confirm, create, and register a single Issue. This sub-command is invoked from `create.md` when a single Issue is created (no decomposition), or from `create-decompose.md` when decomposition is cancelled.
 
-**Prerequisites**: Phase 0.1-0.6 have completed in the parent `create.md` flow. The following information is available in conversation context:
-- Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1
-- Interview results from Phase 0.5 (if conducted)
-- Tentative slug from Phase 0.1.3
-- Goal classification from Phase 0.4
-- Language setting from Preparation phase
+**Prerequisites**: Phase 0.1 and Phase 0.6 have completed in the parent `create.md` flow. Phases 0.3-0.5 may or may not have been executed depending on the flow path. The following information is available in conversation context:
+- Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1 — **always available**
+- Interview results from Phase 0.5 — available if conducted; `null` if skipped
+- Tentative slug from Phase 0.1.3 — **always available**
+- Goal classification from Phase 0.4 — available if conducted; `null` if skipped (Phase 0.1.5 early decomposition path)
+- Language setting from Preparation phase — **always available**
+- `phases_skipped` flag — `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition; `null` otherwise
+- Specification document path — available when invoked from `create-decompose.md` cancel (Phase 0.7.3)
+
+**Fallback rules for missing prerequisites**:
+
+| Missing Prerequisite | Fallback |
+|----------------------|----------|
+| Goal classification (Phase 0.4) | Infer from Phase 0.1 extraction: keywords in title/What → Type mapping (see Phase 1.2 Work Type Classification) |
+| Tentative complexity (Phase 0.4.1) | Use XL as baseline when `phases_skipped` is `"0.3-0.5"` (from Phase 0.1.5 detection); finalize via Heuristics Scoring (Phase 1.1) which takes precedence |
+| Interview results (Phase 0.5) | Apply [EDGE-3 row 4](./create.md#edge-3-interview-result-reflection-rules): MUST sections per Complexity Gate with `<!-- 情報未収集 -->` placeholders |
 
 ---
 
@@ -20,6 +30,8 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 ### 1.1 Complexity Estimation
 
 Finalize the complexity using the tentative estimation from Phase 0.4.1 as a baseline. Refer to the Tentative Complexity Estimation table in `create-interview.md` Phase 0.4.1 for the base criteria (XS through XL).
+
+**When Phase 0.4.1 was not executed** (Phase 0.1.5 early decomposition path): Use XL as the tentative baseline (the task was detected as large-scope in Phase 0.1.5). Heuristics Scoring below takes precedence and may adjust the final complexity downward if the scoring conditions indicate a lower complexity.
 
 #### Complexity Heuristics Scoring
 
@@ -220,8 +232,9 @@ Apply the interview-to-template mapping from the template:
 |-----------|----------|
 | Interview not conducted for a perspective | Omit target sections (unless MUST by Complexity Gate) |
 | Interview conducted for a perspective | Populate target sections with interview results |
-| Section is MUST but no interview data | Include section with placeholder comment |
+| Section is MUST but no interview data | Include section with placeholder comment (`<!-- 情報未収集 -->`) |
 | Phase 0.7 cancel path with specification document | Include `docs/designs/{slug}.md` content as design context in Section 4 (Implementation Details). The pre-validated specification supplements interview results for Section 4.1-4.5 |
+| Phase 0.3-0.5 all skipped (`phases_skipped: "0.3-0.5"`) | Apply [EDGE-3 row 4](./create.md#edge-3-interview-result-reflection-rules): populate all MUST sections per Complexity Gate using Phase 0.1 context (What/Why/Where). For MUST sections where no data is available from Phase 0.1, include `<!-- 情報未収集 -->` placeholder. AI-inferred content is marked with `（推定）`. SHOULD/OMIT sections follow normal Gate rules |
 
 **Step 4: Generate Acceptance Criteria**
 
@@ -551,3 +564,9 @@ When a GraphQL API call fails:
 3. **Error reporting**: Display specific error messages and remediation steps
 
 See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for details.
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes (Phase 3 completion report output), the Issue creation workflow is **complete**. The Issue has been created and registered to GitHub Projects. Control returns to the caller (`create.md`), which handles any remaining cleanup (e.g., `.rite-flow-state` deactivation).

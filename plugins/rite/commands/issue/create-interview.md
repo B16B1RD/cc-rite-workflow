@@ -490,3 +490,13 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 | **Full** (L, XL) | After confirming all 6 perspectives, present the end confirmation dialog. Continue until user explicitly ends |
 
 **End confirmation dialog format**: Use the dialog template defined in the [Interview Flow > End confirmation question format](#interview-flow) section (mandatory after all applicable perspectives are covered).
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller MUST immediately proceed to Phase 0.6 (Task Decomposition Decision).
+
+**WARNING**: The Issue has NOT been created yet. No GitHub Issue exists at this point. The interview only collected information — creation happens in `create-register.md` or `create-decompose.md`. Stopping here would completely abandon the workflow with no Issue created.
+
+**→ Return to `create.md` and proceed to Phase 0.6 now. Do NOT stop.**

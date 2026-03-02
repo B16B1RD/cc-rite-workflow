@@ -325,6 +325,7 @@ trap 'rm -f "$tmpfile"' EXIT
 
 # Step 1: Backup current content before PATCH
 printf '%s' "$current_body" > "$backup_file"
+original_length=$(printf '%s' "$current_body" | wc -c)
 
 # Step 2: Write the selectively-updated body
 printf '%s' "$updated_body" > "$tmpfile"
@@ -338,6 +339,13 @@ if grep -q -- '📜 rite 作業メモリ' "$tmpfile"; then
   : # Header present, proceed
 else
   echo "ERROR: Updated body missing work memory header. Aborting PATCH. Backup: $backup_file" >&2
+  exit 1
+fi
+
+# Step 3.5: Body length comparison safety check (reject if updated body is less than 50% of original)
+updated_length=$(wc -c < "$tmpfile")
+if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+  echo "ERROR: Updated body is less than 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
   exit 1
 fi
 

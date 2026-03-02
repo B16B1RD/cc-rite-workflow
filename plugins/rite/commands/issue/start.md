@@ -31,7 +31,46 @@ This table clarifies responsibility boundaries between `start.md`, `create.md`, 
 
 ---
 
-Execute phases sequentially.
+Execute phases sequentially. **Do NOT stop between phases unless the user explicitly selects a "cancel" or "later" option.**
+
+---
+
+## Phase Flow Quick Reference
+
+> **CRITICAL**: After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop, do NOT re-invoke the completed skill.
+>
+> This table lists phases with sub-skill invocations or key decision points. Phases not listed (2.4 Projects Status, 2.5 Iteration, 5.0 Stop Hook, 5.5.1 Status Update, 5.5.2 Metrics, 5.7 Parent Completion) execute inline without stopping.
+
+| Phase | Sub-skill Invoked | Next Phase | Stop Allowed? |
+|-------|-------------------|------------|---------------|
+| 0 (Detection) | — | 1 | No |
+| 1 (Quality) | — | 1.5 | No |
+| 1.5 (Parent Routing) | `rite:issue:parent-routing` | 1.6 or 2 | **No** |
+| 1.6 (Child Selection) | `rite:issue:child-issue-selection` | 2 | **No** |
+| 2.3 (Branch) | `rite:issue:branch-setup` | 2.4 | **No** |
+| 2.6 (Work Memory) | `rite:issue:work-memory-init` | 3 | **No** |
+| 3 (Plan) | `rite:issue:implementation-plan` | 4 | **No** |
+| 4 (Guidance) | — | 5 or terminate | Yes (user choice) |
+| 5.1 (Implement) | — | 5.2 (lint) | **No** |
+| 5.2 (Lint) | `rite:lint` | 5.2.1 | **No** |
+| 5.3 (PR) | `rite:pr:create` | 5.4 | **No** |
+| 5.4.1 (Review) | `rite:pr:review` | 5.4.3→5.4.4 or 5.5 | **No** |
+| 5.4.4 (Fix) | `rite:pr:fix` | 5.4.6→5.4.1 or 5.5 | **No** |
+| 5.5 (Ready) | `rite:pr:ready` | 5.5.1 | **No** |
+| 5.6 (Report) | — | 5.7 or end | Yes |
+
+---
+
+## Sub-skill Return Protocol (Global)
+
+This protocol applies to **every** sub-skill invocation in this document. Each 🚨 Mandatory After section enforces it at specific transition points.
+
+1. When a sub-skill outputs a result pattern and returns control, do **NOT** stop responding and do **NOT** re-invoke the same skill — it already completed.
+2. **Immediately** check the 🚨 Mandatory After section for that phase and execute the specified next action.
+3. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
+4. Execute the post-return `.rite-flow-state` update specified in the 🚨 Mandatory After section, then proceed.
+
+---
 
 ## Arguments
 
@@ -43,27 +82,20 @@ Execute phases sequentially.
 
 ## Placeholder Legend
 
-How to obtain the placeholders used in this document:
-
-| Placeholder | Description | How to Obtain |
-|-------------|-------------|---------------|
-| `{issue_number}` | Issue number | From the argument |
-| `{owner}` | Repository owner | `gh repo view --json owner --jq '.owner.login'` |
-| `{repo}` | Repository name | `gh repo view --json name --jq '.name'` |
-| `{base_branch}` | Base branch name | `branch.base` in `rite-config.yml` (defaults to `main` if not set). Obtained in Phase 2.3.1 |
-| `{fallback_branch}` | Fallback branch | Determined in Phase 2.3.2.3 Step 1 (`main` preferred, default branch if `main` doesn't exist). **Scope**: Phase 2.3.2.3 only |
-| `{default_branch}` | Repository default branch | Obtained via `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` in Phase 2.3.2.3 Step 1 when `main` doesn't exist. **Scope**: Phase 2.3.2.3 only |
-| `{project_number}` | GitHub Projects project number | From `github.projects.project_number` in `rite-config.yml` (read via Read tool before Phase 1.5.4.6 Step 1 first execution, retain in context). Used from Phase 1.5.4.6 onward |
-| `{project_id}` | GitHub Projects project ID (GraphQL Node ID) | From Phase 1.5.4.6 Step 2 GraphQL query (`projectV2.id`). Obtained only once, reused in subsequent steps and child Issues. Also used in Phase 2.4.2 (parent Issue Projects registration), also obtained in Phase 5.5.1 Step 1, Phase 5.2.0.1 Step 3, and Phase 5.7.2 Step 1 |
-| `{sub_issue_url}` | URL of the created child Issue | From the stdout of `gh issue create` in Phase 1.5.4.5 |
-| `{parent_issue_number}` | Parent Issue number | Same as `{issue_number}` of the Issue being evaluated for decomposition in Phase 1.5.4 |
-| `{item_id}` | Item ID on GitHub Projects | From Phase 1.5.4.6 Step 2 GraphQL query result, the `id` of the node whose `content.number` matches the child Issue. Also obtained in Phase 5.5.1 Step 1, Phase 5.2.0.1 Step 3, and Phase 5.7.2 Step 1 |
-| `{plugin_root}` | Absolute path to the plugin root directory | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) (Phase 4.1, 5.0, 5.6) |
-| `{status_field_id}` | Status field ID on GitHub Projects | From `github.projects.field_ids.status` in `rite-config.yml`, or from `gh project field-list` result. Used in Phase 2.4.4, 5.5.1, 5.7.2 |
-| `{in_review_option_id}` | "In Review" option ID for the Status field | From `gh project field-list` result (the option with `name` "In Review"). Used in Phase 5.5.1 |
-| `{done_option_id}` | "Done" option ID for the Status field | From `gh project field-list` result (the option with `name` "Done"). Used in Phase 5.7.2 Step 2 |
-
-Retrieve `{owner}` and `{repo}` before Phase 0.1: `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`
+| Placeholder | Source |
+|-------------|--------|
+| `{issue_number}` | From the argument |
+| `{owner}`, `{repo}` | `gh repo view --json owner,name` (retrieve before Phase 0.1) |
+| `{base_branch}` | `branch.base` in `rite-config.yml` (default: `main`). Phase 2.3.1 |
+| `{fallback_branch}` | Phase 2.3.2.3 only (`main` preferred, else default branch) |
+| `{default_branch}` | `gh repo view --json defaultBranchRef` (Phase 2.3.2.3 only) |
+| `{project_number}` | `github.projects.project_number` in `rite-config.yml` |
+| `{project_id}` | GraphQL query result (`projectV2.id`). Obtained once, reused |
+| `{item_id}` | GraphQL query result (node matching child Issue number) |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) |
+| `{status_field_id}` | `github.projects.field_ids.status` in `rite-config.yml`, or `gh project field-list` |
+| `{in_review_option_id}` | `gh project field-list` ("In Review" option) |
+| `{done_option_id}` | `gh project field-list` ("Done" option) |
 
 ---
 
@@ -158,7 +190,9 @@ Invoke `skill: "rite:issue:parent-routing"`.
 
 ### 🚨 Mandatory After 1.5
 
-Do **NOT** stop after `rite:issue:parent-routing` returns. Proceed to the next phase immediately after the sub-skill returns. **→ Proceed to Phase 1.6 (if child issues exist) or Phase 2 now**.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing sub-skill only performs detection — branch creation and implementation have NOT started yet. **→ Proceed to Phase 1.6 (if child issues exist) or Phase 2 now**.
 
 ## Phase 1.6: Child Issue Selection
 
@@ -186,7 +220,9 @@ Invoke `skill: "rite:issue:child-issue-selection"`.
 
 ### 🚨 Mandatory After 1.6
 
-Do **NOT** stop after `rite:issue:child-issue-selection` returns. Proceed to the next phase immediately after the sub-skill returns. **→ Proceed to Phase 2 now**.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+Do **NOT** stop after `rite:issue:child-issue-selection` returns. Branch creation and implementation have NOT started yet. **→ Proceed to Phase 2 now**.
 
 ---
 
@@ -242,7 +278,9 @@ Invoke `skill: "rite:issue:branch-setup"`.
 
 ### 🚨 Mandatory After 2.3
 
-Do **NOT** stop after `rite:issue:branch-setup` returns. Proceed to the next phase immediately after the sub-skill returns. **→ Proceed to Phase 2.4 now**.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+Do **NOT** stop after `rite:issue:branch-setup` returns. Projects status update and work memory initialization are still pending. **→ Proceed to Phase 2.4 now**.
 
 ### 2.4 GitHub Projects Status Update
 
@@ -280,6 +318,8 @@ jq -n \
 Invoke `skill: "rite:issue:work-memory-init"`.
 
 ### 🚨 Mandatory After 2.6
+
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
 
 Defense-in-depth: verify local work memory was created. If the sub-skill skipped it, create via fallback:
 
@@ -320,7 +360,9 @@ Invoke `skill: "rite:issue:implementation-plan"`.
 
 ### 🚨 Mandatory After 3
 
-Do **NOT** stop after `rite:issue:implementation-plan` returns. Proceed to the next phase immediately after the sub-skill returns. **→ Proceed to Phase 4 now**.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+Do **NOT** stop after `rite:issue:implementation-plan` returns. Implementation has NOT started yet — the plan is just a plan. **→ Proceed to Phase 4 now**.
 
 ---
 
@@ -396,10 +438,7 @@ If exit code is `1` (blocked), stop execution and display the preflight output. 
 
 **Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed/conditional-merge/loop-limit:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`).
 
-**Sub-skill return protocol** (defense-in-depth — intentional redundancy with stop-guard stderr):
-1. After any sub-skill returns a result pattern, do **NOT** stop responding and do **NOT** re-invoke the same skill — it already completed.
-2. **Stop-guard mechanism**: When stop-guard blocks a stop attempt (exit 2), its stderr message is fed back to the assistant. The message prioritizes checking recent skill result patterns before falling back to `next_action` from `.rite-flow-state`. This is normal after sub-skill completion; follow the `ACTION:` instructions in the stderr message to proceed.
-3. Each 🚨 Mandatory After section below enforces this protocol at specific transition points.
+**Sub-skill return protocol**: See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global). Each 🚨 Mandatory After section below enforces it at specific transition points.
 
 Invocation: `skill: "rite:lint"` or `skill: "rite:pr:review", args: "67"`
 
@@ -556,7 +595,9 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 ### 🚨 Mandatory After 5.2
 
-**Ignore** `/rite:lint` "Next steps" (standalone only). **Immediately** update `.rite-flow-state` and execute 5.2.1. Follow sub-skill return protocol above.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+**Ignore** `/rite:lint` "Next steps" (standalone only). **Immediately** update `.rite-flow-state` and execute 5.2.1.
 
 **Step 1**: Update `.rite-flow-state` to post-lint phase (atomic). This second write (after the Phase 5.2 pre-check write) transitions from `phase5_lint` to `phase5_post_lint`, ensuring stop-guard routes to checklist confirmation rather than re-invoking lint:
 
@@ -621,7 +662,9 @@ Invoke `skill: "rite:pr:create"`.
 
 ### 🚨 Mandatory After 5.3
 
-**Verify**: `[pr:created:{number}]`, number saved. Follow sub-skill return protocol above. **→ Proceed to 5.4 now**.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+**Verify**: `[pr:created:{number}]`, number saved. Review has NOT started yet. **→ Proceed to 5.4 now**.
 
 ### 5.4 Review-Fix Loop
 
@@ -666,7 +709,9 @@ Invoke `skill: "rite:pr:review"`. Increment `loop_count`.
 
 #### 5.4.3 🚨 After Review
 
-**Verify**: Pattern confirmed, parsed. Follow sub-skill return protocol above.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+**Verify**: Pattern confirmed, parsed.
 
 **Step 1**: Update `.rite-flow-state` to post-review phase (atomic). This second write (after the Phase 5.4.1 pre-write) transitions from `phase5_review` to `phase5_post_review`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #719):
 
@@ -696,6 +741,61 @@ WM_SOURCE="review" \
   WM_ISSUE_NUMBER="{issue_number}" \
   WM_READ_FROM_FLOW_STATE="true" \
   bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+```
+
+**Step 2.5**: Sync local work memory to Issue comment (backup):
+
+> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns).
+
+```bash
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ このパターンは 5.4.6 (After Fix) と同一構造。変更時は両方を更新すること
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
+
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  # Update session info fields only (Python-based; sed/awk 使用禁止)
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", rf"\g<1>{timestamp}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", rf"\g<1>{phase}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", rf"\g<1>{phase_detail}", body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_post_review" "レビュー完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+  # Safety checks before PATCH (includes 50% body length comparison; see gh-cli-patterns.md)
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
 ```
 
 **Step 3**: **→ Execute 5.4.2 branch now**.
@@ -729,7 +829,9 @@ Invoke `skill: "rite:pr:fix"`.
 
 #### 5.4.6 🚨 After Fix
 
-**Verify**: Pattern confirmed, parsed. Follow sub-skill return protocol above.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+**Verify**: Pattern confirmed, parsed.
 
 **Step 1**: Update `.rite-flow-state` to post-fix phase (atomic). This second write (after the Phase 5.4.4 pre-write) transitions from `phase5_fix` to `phase5_post_fix`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #709):
 
@@ -761,6 +863,61 @@ WM_SOURCE="fix" \
   bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
+**Step 2.5**: Sync local work memory to Issue comment (backup):
+
+> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns).
+
+```bash
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ このパターンは 5.4.3 (After Review) と同一構造。変更時は両方を更新すること
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
+
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  # Update session info fields only (Python-based; sed/awk 使用禁止)
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", rf"\g<1>{timestamp}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", rf"\g<1>{phase}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", rf"\g<1>{phase_detail}", body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_post_fix" "修正完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+  # Safety checks before PATCH (includes 50% body length comparison; see gh-cli-patterns.md)
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
+```
+
 **Step 3**: **→ Execute 5.4.5 branch now**.
 
 ### 5.5 Ready for Review
@@ -780,7 +937,9 @@ When loop completes, confirm:
 
 #### 5.5.0.1 🚨 Mandatory After 5.5
 
-**Verify**: `rite:pr:ready` returned successfully. Follow sub-skill return protocol above.
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+**Verify**: `rite:pr:ready` returned successfully. Status update and completion report are still pending.
 
 **Step 1**: Update `.rite-flow-state` to post-ready phase (atomic). This write transitions from `phase5_post_review`/`phase5_post_fix` to `phase5_post_ready`, ensuring stop-guard routes to Status update rather than re-invoking ready (fixes #781):
 

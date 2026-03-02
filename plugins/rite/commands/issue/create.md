@@ -41,6 +41,15 @@ create.md (orchestrator)
 
 ---
 
+**CRITICAL**: This command orchestrates Issue creation end-to-end. After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop until the Issue is created and the completion report (Issue URL) is output.
+
+| Phase | Sub-skill | Next Phase | Stop Allowed? |
+|-------|-----------|------------|---------------|
+| 0.1-0.4 (Analysis) | — | Interview | No |
+| Interview | `rite:issue:create-interview` | 0.6 | **No** |
+| 0.6 (Decomposition) | — | Delegation | No |
+| Delegation | `rite:issue:create-register` or `rite:issue:create-decompose` | (completes) | **No** |
+
 When this command is executed, follow the phases below in order.
 
 ## Arguments
@@ -380,13 +389,35 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 ## Delegation to Interview
 
-Invoke `skill: "rite:issue:create-interview"`.
+**Pre-write** (before invoking interview sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
 
-After the sub-skill completes, continue to Phase 0.6.
+```bash
+TMP_STATE=".rite-flow-state.tmp.$$"
+if [ -f ".rite-flow-state" ]; then
+  # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
+  jq --arg phase "create_interview" \
+     --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+     '.active = true | .phase = $phase | .next_action = $next | .updated_at = $ts' \
+     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+else
+  jq -n \
+    --argjson active true \
+    --arg phase "create_interview" \
+    --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+    --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+    '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+    > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+fi
+```
+
+Invoke `skill: "rite:issue:create-interview"`.
 
 ### 🚨 Mandatory After Interview
 
-Do **NOT** stop after `rite:issue:create-interview` returns. Proceed to Phase 0.6 immediately.
+Do **NOT** stop after `rite:issue:create-interview` returns. Proceed to the next phase immediately after the sub-skill returns. The interview sub-skill only collects information — the actual Issue creation has NOT happened yet.
+
+**→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
 ---
 
@@ -468,19 +499,42 @@ When "単一 Issue として作成" is selected (Phase 0.6) or "キャンセル"
 | Phase 0.5 executed with interview results | **MUST populate** target sections per interview-to-section mapping (`create-register.md` Phase 2.2 Step 3) | Map each interview perspective to corresponding Implementation Contract sections (e.g., Technical Implementation → 4.1, 4.3, 4.4) |
 | Phase 0.5 skipped (XS/Bug Fix/Chore) | **Populate if** Phase 0.4 gathered useful context | Summary of Phase 0.4 context in relevant sections; omit optional sections if no meaningful detail exists |
 | Phase 0.5 executed but user gave minimal responses | **MUST populate** | Whatever was gathered, plus AI-inferred details marked with `（推定）` |
+| Phase 0.3-0.5 all skipped (Phase 0.1.5 early decomposition → cancel back to single Issue) | **MUST populate** MUST sections per Complexity Gate | Phase 0.1 context (What/Why/Where) for available sections; `<!-- 情報未収集 -->` placeholder for MUST sections without data. Goal classification: infer from Phase 0.1 extraction. Complexity: use XL (from Phase 0.1.5 detection) as tentative baseline, finalize via Heuristics Scoring in `create-register.md` Phase 1.1 |
 
 **Display rules for Implementation Contract sections**:
 
-1. **Complexity Gate compliance**: Follow the Complexity Gate table to determine which sections are MUST/SHOULD/OMIT for the given complexity level
+1. **Complexity Gate compliance**: Follow the Complexity Gate table to determine which sections are MUST/SHOULD/OMIT for the given complexity level. This applies uniformly regardless of which phases were executed or skipped
 2. **AI inference marking**: When AI infers details not explicitly confirmed by the user, mark them with `（推定）` suffix
-3. **Cross-reference with Phase 0.4**: Include any What/Why/Where context from Phase 0.4 that was not repeated in Phase 0.5 to avoid information loss
-4. **MUST section placeholder**: If a section is MUST by Complexity Gate but no interview data exists, include the section with a placeholder comment (`<!-- 情報未収集 -->`)
+3. **Cross-reference with Phase 0.4**: Include any What/Why/Where context from Phase 0.4 that was not repeated in Phase 0.5 to avoid information loss. When Phase 0.4 was not executed, use Phase 0.1 context directly
+4. **MUST section placeholder**: If a section is MUST by Complexity Gate but no interview data exists, include the section with a placeholder comment (`<!-- 情報未収集 -->`). This rule applies to all paths — no path is exempt from Complexity Gate compliance
 
 ---
 
 ## Delegation Routing
 
-Based on Phase 0.6 result, delegate to the appropriate sub-command:
+Based on Phase 0.6 result, delegate to the appropriate sub-command.
+
+**Pre-write** (before invoking delegation sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
+
+```bash
+TMP_STATE=".rite-flow-state.tmp.$$"
+if [ -f ".rite-flow-state" ]; then
+  # Preserve existing fields (issue_number, branch, etc.) from caller
+  jq --arg phase "create_delegation" \
+     --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
+     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+     '.active = true | .phase = $phase | .next_action = $next | .updated_at = $ts' \
+     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+else
+  jq -n \
+    --argjson active true \
+    --arg phase "create_delegation" \
+    --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
+    --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+    '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+    > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+fi
+```
 
 ### When decomposition is selected
 
@@ -490,9 +544,35 @@ Invoke `skill: "rite:issue:create-decompose"`.
 
 Invoke `skill: "rite:issue:create-register"`.
 
+**Context handoff to `create-register`**: The following context MUST be available when `create-register` is invoked. When invoking the skill, include these as part of the prompt context to prevent information loss across skill boundaries:
+
+| Context | Source | When Phase 0.3-0.5 skipped (Phase 0.1.5 path) |
+|---------|--------|------------------------------------------------|
+| What/Why/Where | Phase 0.1 extraction | Always available |
+| Goal classification | Phase 0.4 | **Not available** — `create-register` Phase 1.2 infers from Phase 0.1 |
+| Tentative complexity | Phase 0.4.1 | **Not available** — `create-register` Phase 1.1 uses XL as baseline (from Phase 0.1.5 detection) and finalizes via Heuristics Scoring |
+| Interview results | Phase 0.5 | **Not available** — EDGE-3 row 4 applies (MUST sections with placeholders) |
+| Tentative slug | Phase 0.1.3 | Always available |
+| `phases_skipped` flag | Phase 0.1.5 | Set to `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition. Set to `null` otherwise |
+
 ### 🚨 Mandatory After Delegation
 
-Do **NOT** stop after the sub-skill returns. The sub-command handles all remaining phases (creation, registration, completion report).
+Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs its completion report. The sub-command handles all remaining phases (creation, registration, completion report). Once the completion report (Issue URL) is output, the workflow is complete — no further action is needed.
+
+**→ Wait for the sub-skill to output its Phase 3 completion report (Issue URL). Do NOT stop before that.**
+
+**Post-completion cleanup**: After the sub-skill outputs the completion report, deactivate flow state:
+
+```bash
+TMP_STATE=".rite-flow-state.tmp.$$"
+jq -n \
+  --argjson active false \
+  --arg phase "create_completed" \
+  --arg next "none" \
+  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+  '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+```
 
 ---
 
