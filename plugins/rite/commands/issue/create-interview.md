@@ -495,6 +495,8 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller MUST immediately proceed to Phase 0.6 (Task Decomposition Decision). The Issue has NOT been created yet — stopping here would abandon the workflow mid-flow.
+When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller MUST immediately proceed to Phase 0.6 (Task Decomposition Decision).
+
+**WARNING**: The Issue has NOT been created yet. No GitHub Issue exists at this point. The interview only collected information — creation happens in `create-register.md` or `create-decompose.md`. Stopping here would completely abandon the workflow with no Issue created.
 
 **→ Return to `create.md` and proceed to Phase 0.6 now. Do NOT stop.**
