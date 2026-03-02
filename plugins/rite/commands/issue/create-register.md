@@ -19,7 +19,7 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 
 | Missing Prerequisite | Fallback |
 |----------------------|----------|
-| Goal classification (Phase 0.4) | Infer from Phase 0.1 extraction: keywords in title/What → Type mapping (see Phase 1.2 heuristics) |
+| Goal classification (Phase 0.4) | Infer from Phase 0.1 extraction: keywords in title/What → Type mapping (see Phase 1.2 Work Type Classification) |
 | Tentative complexity (Phase 0.4.1) | Use XL as baseline when `phases_skipped` is `"0.3-0.5"` (from Phase 0.1.5 detection); finalize via Heuristics Scoring (Phase 1.1) which takes precedence |
 | Interview results (Phase 0.5) | Apply [EDGE-3 row 4](./create.md#edge-3-interview-result-reflection-rules): MUST sections per Complexity Gate with `<!-- 情報未収集 -->` placeholders |
 

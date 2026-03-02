@@ -6,11 +6,11 @@ description: Issue の仕様書作成・分解・一括作成
 
 Generate a specification document, decompose into sub-Issues, and create them in bulk. This sub-command is invoked from `create.md` when the user selects decomposition in Phase 0.6.
 
-**Prerequisites**: Phase 0.1-0.6 have completed in the parent `create.md` flow. The following information is available in conversation context:
-- Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1
-- Interview results from Phase 0.5 (if conducted)
-- Tentative slug from Phase 0.1.3
-- Decomposition decision from Phase 0.6
+**Prerequisites**: Phase 0.1 and Phase 0.6 have completed in the parent `create.md` flow. Phases 0.3-0.5 may or may not have been executed depending on the flow path (Phase 0.1.5 early decomposition skips Phase 0.3-0.5). The following information is available in conversation context:
+- Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1 — **always available**
+- Interview results from Phase 0.5 — available if conducted; `null` if skipped
+- Tentative slug from Phase 0.1.3 — **always available**
+- Decomposition decision from Phase 0.6 — **always available**
 
 ---
 
@@ -154,13 +154,13 @@ Information collected through Phase 0.5 and Phase 0.7 is utilized in Phase 1 onw
 
 **When "キャンセル" is selected**: Invoke `skill: "rite:issue:create-register"` to create the Issue as a single Issue. Phase 1+ in `create-register.md` uses the context carryover described above.
 
-**Context handoff to `create-register`**: When invoking the skill, include these in the prompt context to prevent information loss across skill boundaries:
+**Context handoff to `create-register`**: When invoking the skill, include these in the prompt context to prevent information loss across skill boundaries. This table extends the base context from `create.md` Delegation Routing with decompose-specific items (Specification document, EDGE-3 applicable row):
 
 | Context | Value |
 |---------|-------|
 | What/Why/Where | From Phase 0.1 extraction (always available) |
 | Goal classification | From Phase 0.4 if executed; otherwise `null` (create-register infers from Phase 0.1) |
-| Tentative complexity | XL (from Phase 0.1.5 / Phase 0.6 decomposition trigger) |
+| Tentative complexity | XL (from Phase 0.1.5 detection); Phase 0.4.1 value (when Phase 0.6 triggered after normal flow) |
 | Interview results | From Phase 0.5 if executed; otherwise `null` |
 | Specification document | `docs/designs/{slug}.md` (retained on cancel) — referenced in Implementation Contract Section 4 |
 | `phases_skipped` flag | `"0.3-0.5"` if Phase 0.1.5 triggered early decomposition; `null` if Phase 0.3-0.5 were executed normally |
