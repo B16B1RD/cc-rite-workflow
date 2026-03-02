@@ -41,6 +41,15 @@ create.md (orchestrator)
 
 ---
 
+**CRITICAL**: This command orchestrates Issue creation end-to-end. After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop until the Issue is created and the completion report (Issue URL) is output.
+
+| Phase | Sub-skill | Next Phase | Stop Allowed? |
+|-------|-----------|------------|---------------|
+| 0.1-0.4 (Analysis) | — | Interview | No |
+| Interview | `rite:issue:create-interview` | 0.6 | **No** |
+| 0.6 (Decomposition) | — | Delegation | No |
+| Delegation | `rite:issue:create-register` or `rite:issue:create-decompose` | (completes) | **No** |
+
 When this command is executed, follow the phases below in order.
 
 ## Arguments
@@ -380,6 +389,19 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 ## Delegation to Interview
 
+**Pre-write** (before invoking interview sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
+
+```bash
+TMP_STATE=".rite-flow-state.tmp.$$"
+jq -n \
+  --argjson active true \
+  --arg phase "create_interview" \
+  --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+  '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+```
+
 Invoke `skill: "rite:issue:create-interview"`.
 
 ### 🚨 Mandatory After Interview
@@ -481,7 +503,20 @@ When "単一 Issue として作成" is selected (Phase 0.6) or "キャンセル"
 
 ## Delegation Routing
 
-Based on Phase 0.6 result, delegate to the appropriate sub-command:
+Based on Phase 0.6 result, delegate to the appropriate sub-command.
+
+**Pre-write** (before invoking delegation sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
+
+```bash
+TMP_STATE=".rite-flow-state.tmp.$$"
+jq -n \
+  --argjson active true \
+  --arg phase "create_delegation" \
+  --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
+  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+  '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+```
 
 ### When decomposition is selected
 
@@ -507,6 +542,19 @@ Invoke `skill: "rite:issue:create-register"`.
 Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs its completion report. The sub-command handles all remaining phases (creation, registration, completion report). Once the completion report (Issue URL) is output, the workflow is complete — no further action is needed.
 
 **→ Wait for the sub-skill to output its Phase 3 completion report (Issue URL). Do NOT stop before that.**
+
+**Post-completion cleanup**: After the sub-skill outputs the completion report, deactivate flow state:
+
+```bash
+TMP_STATE=".rite-flow-state.tmp.$$"
+jq -n \
+  --argjson active false \
+  --arg phase "create_completed" \
+  --arg next "none" \
+  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+  '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
+  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+```
 
 ---
 

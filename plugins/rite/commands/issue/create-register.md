@@ -569,4 +569,6 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (Phase 3 completion report output), the Issue creation workflow is complete. The caller (`create.md`) should NOT take any additional action — the completion report (Issue URL and Projects settings) has already been output by this sub-skill.
+When this sub-skill completes (Phase 3 completion report output), the Issue creation workflow is **complete**. The Issue has been created and registered to GitHub Projects. The caller (`create.md`) should:
+1. NOT take any additional action — the completion report (Issue URL and Projects settings) has already been output
+2. Clean up `.rite-flow-state` as specified in `create.md`'s "🚨 Mandatory After Delegation" section
