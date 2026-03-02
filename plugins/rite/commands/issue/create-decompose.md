@@ -609,3 +609,12 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 | Sub-Issue を追加 | Confirm the Sub-Issue content with the user, add to the list, then return to Phase 0.8.4 confirmation |
 | Sub-Issue を統合 | Confirm which Sub-Issue numbers to merge, combine into one, then return to Phase 0.8.4 confirmation |
 | 分解をやり直す | Return to Phase 0.8.1. Change decomposition criteria and re-decompose. Confirm with the user "which criteria to use for re-decomposition" |
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes, the caller (`create.md`) should NOT take any additional action. Completion occurs via one of the following paths:
+
+- **Normal path** (sub-Issues created via Phase 0.9): The completion report has already been output by this sub-skill.
+- **Delegation path** (cancelled and delegated to `create-register`): The completion report will be output by `create-register`. This sub-skill is NOT terminal in this path — `create-register` takes over and completes the workflow.

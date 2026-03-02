@@ -564,3 +564,9 @@ When a GraphQL API call fails:
 3. **Error reporting**: Display specific error messages and remediation steps
 
 See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for details.
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes (Phase 3 completion report output), the Issue creation workflow is complete. The caller (`create.md`) should NOT take any additional action — the completion report (Issue URL and Projects settings) has already been output by this sub-skill.

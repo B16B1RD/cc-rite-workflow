@@ -382,11 +382,11 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-After the sub-skill completes, continue to Phase 0.6.
-
 ### 🚨 Mandatory After Interview
 
-Do **NOT** stop after `rite:issue:create-interview` returns. Proceed to Phase 0.6 immediately.
+Do **NOT** stop after `rite:issue:create-interview` returns. Proceed to the next phase immediately after the sub-skill returns. The interview sub-skill only collects information — the actual Issue creation has NOT happened yet.
+
+**→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
 ---
 
@@ -504,7 +504,9 @@ Invoke `skill: "rite:issue:create-register"`.
 
 ### 🚨 Mandatory After Delegation
 
-Do **NOT** stop after the sub-skill returns. The sub-command handles all remaining phases (creation, registration, completion report).
+Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs its completion report. The sub-command handles all remaining phases (creation, registration, completion report). Once the completion report (Issue URL) is output, the workflow is complete — no further action is needed.
+
+**→ Wait for the sub-skill to output its Phase 3 completion report (Issue URL). Do NOT stop before that.**
 
 ---
 
