@@ -86,6 +86,26 @@ EOF
 gh issue comment {issue_number} --body-file "$tmpfile"
 ```
 
+#### 2.6.3 Post-Creation Validation
+
+Verify the created comment has the expected structure. This catches silent failures where `gh issue comment` succeeds but the content is truncated or corrupted:
+
+```bash
+# Retrieve the last work memory comment and validate structure
+created_body=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body // empty')
+
+if [ -z "$created_body" ]; then
+  echo "WARNING: 作業メモリコメントの作成を確認できません。後続フェーズで再作成される可能性があります。" >&2
+elif ! echo "$created_body" | grep -q '### セッション情報'; then
+  echo "WARNING: 作業メモリコメントの構造が不完全です（セッション情報セクション欠落）。" >&2
+elif ! echo "$created_body" | grep -q '### 進捗サマリー'; then
+  echo "WARNING: 作業メモリコメントの構造が不完全です（進捗サマリーセクション欠落）。" >&2
+fi
+```
+
+**On validation failure**: Display the warning and continue (non-blocking). The work memory will be rebuilt in subsequent phases (Phase 3.5, Phase 5.5.2) which re-fetch and validate before updating.
+
 Timestamp format: `YYYY-MM-DDTHH:MM:SS+09:00` (ISO 8601)
 
 **Progress summary state notation:**
