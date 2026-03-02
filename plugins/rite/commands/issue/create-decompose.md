@@ -154,6 +154,18 @@ Information collected through Phase 0.5 and Phase 0.7 is utilized in Phase 1 onw
 
 **When "キャンセル" is selected**: Invoke `skill: "rite:issue:create-register"` to create the Issue as a single Issue. Phase 1+ in `create-register.md` uses the context carryover described above.
 
+**Context handoff to `create-register`**: When invoking the skill, include these in the prompt context to prevent information loss across skill boundaries:
+
+| Context | Value |
+|---------|-------|
+| What/Why/Where | From Phase 0.1 extraction (always available) |
+| Goal classification | From Phase 0.4 if executed; otherwise `null` (create-register infers from Phase 0.1) |
+| Tentative complexity | XL (from Phase 0.1.5 / Phase 0.6 decomposition trigger) |
+| Interview results | From Phase 0.5 if executed; otherwise `null` |
+| Specification document | `docs/designs/{slug}.md` (retained on cancel) — referenced in Implementation Contract Section 4 |
+| `phases_skipped` flag | `"0.3-0.5"` if Phase 0.1.5 triggered early decomposition; `null` if Phase 0.3-0.5 were executed normally |
+| EDGE-3 applicable row | Determined by Phase 0.5 status (see [EDGE-3 condition table](./create.md#edge-3-interview-result-reflection-rules)). When Phase 0.3-0.5 all skipped, row 4 applies |
+
 ---
 
 ## Phase 0.8: Sub-Issue Decomposition
