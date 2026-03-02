@@ -200,16 +200,55 @@ comment_body=$(gh api repos/{owner}/{repo}/issues/comments/${comment_id} --jq '.
 
 #### 3.5.3 Update the Comment
 
+> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns) for all steps below.
+
 ```bash
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
 tmpfile=$(mktemp)
+backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
 trap 'rm -f "$tmpfile"' EXIT
+
+# 1. Backup before update
+printf '%s' "$comment_body" > "$backup_file"
+original_length=$(printf '%s' "$comment_body" | wc -c)
+
+# 2. Write the selectively-updated body
 printf '%s' "$updated_body" > "$tmpfile"
+
+# 3. Empty body guard (10 bytes = minimum plausible work memory content)
+if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+  echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
+  exit 1
+fi
+
+# 4. Header validation
+if grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+  : # Header present, proceed
+else
+  echo "ERROR: Updated body missing work memory header. Restoring from backup." >&2
+  cp "$backup_file" "$tmpfile"
+  exit 1
+fi
+
+# 5. Body length comparison safety check (reject if updated body is less than 50% of original)
+updated_length=$(wc -c < "$tmpfile")
+if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+  echo "ERROR: Updated body is less than 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
+  exit 1
+fi
+
+# 6. Safe PATCH with error handling
 jq -n --rawfile body "$tmpfile" '{"body": $body}' | gh api repos/{owner}/{repo}/issues/comments/${comment_id} \
   -X PATCH \
   --input -
+patch_status=$?
+if [[ "${patch_status:-1}" -ne 0 ]]; then
+  echo "ERROR: PATCH failed (exit code: $patch_status). Backup saved at: $backup_file" >&2
+  exit 1
+fi
 ```
 
-**Implementation note for Claude**: `$updated_body` is the `comment_body` from Phase 3.5.1 with **only** the changes specified in Phase 3.5.2 applied. The `実装計画` section is inserted (or replaced if already present). All other sections must be copied verbatim from the re-fetched body. **Do NOT reconstruct the body from memory — use the re-fetched text as the base.**
+**Implementation note for Claude**: `$updated_body` is the `comment_body` from Phase 3.5.1 with **only** the changes specified in Phase 3.5.2 applied. The `実装計画` section is inserted (or replaced if already present). All other sections must be copied verbatim from the re-fetched body. **Do NOT reconstruct the body from memory — use the re-fetched text as the base.** `$comment_body` is the same re-fetched body used for backup.
 
 #### 3.5.4 Local Work Memory Sync
 

@@ -743,6 +743,61 @@ WM_SOURCE="review" \
   bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
+**Step 2.5**: Sync local work memory to Issue comment (backup):
+
+> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns).
+
+```bash
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ このパターンは 5.4.6 (After Fix) と同一構造。変更時は両方を更新すること
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
+
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  # Update session info fields only (Python-based; sed/awk 使用禁止)
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", rf"\g<1>{timestamp}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", rf"\g<1>{phase}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", rf"\g<1>{phase_detail}", body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_post_review" "レビュー完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+  # Safety checks before PATCH (includes 50% body length comparison; see gh-cli-patterns.md)
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
+```
+
 **Step 3**: **→ Execute 5.4.2 branch now**.
 
 #### 5.4.4 Fix
@@ -806,6 +861,61 @@ WM_SOURCE="fix" \
   WM_ISSUE_NUMBER="{issue_number}" \
   WM_LOOP_INCREMENT="true" \
   bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+```
+
+**Step 2.5**: Sync local work memory to Issue comment (backup):
+
+> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns).
+
+```bash
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ このパターンは 5.4.3 (After Review) と同一構造。変更時は両方を更新すること
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
+
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  # Update session info fields only (Python-based; sed/awk 使用禁止)
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", rf"\g<1>{timestamp}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", rf"\g<1>{phase}", body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", rf"\g<1>{phase_detail}", body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_post_fix" "修正完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+  # Safety checks before PATCH (includes 50% body length comparison; see gh-cli-patterns.md)
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
 ```
 
 **Step 3**: **→ Execute 5.4.5 branch now**.
