@@ -609,3 +609,9 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 | Sub-Issue を追加 | Confirm the Sub-Issue content with the user, add to the list, then return to Phase 0.8.4 confirmation |
 | Sub-Issue を統合 | Confirm which Sub-Issue numbers to merge, combine into one, then return to Phase 0.8.4 confirmation |
 | 分解をやり直す | Return to Phase 0.8.1. Change decomposition criteria and re-decompose. Confirm with the user "which criteria to use for re-decomposition" |
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes (sub-Issues created via Phase 0.9, or cancelled and delegated to `create-register`), the Issue creation workflow is complete. The caller (`create.md`) should NOT take any additional action — the completion report has already been output by this sub-skill (or by the delegated `create-register` sub-skill).
