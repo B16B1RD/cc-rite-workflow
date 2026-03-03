@@ -9,7 +9,7 @@ set -euo pipefail
 # reaching -f; the comment describes the logical invariant, not the exit path.)
 INPUT=$(cat) || INPUT=""
 
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+CWD=$(jq -r '.cwd // empty' <<< "$INPUT")
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
@@ -29,9 +29,13 @@ log_debug() {
 log_diag() {
   local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true
-  # Ring buffer: truncate to last 50 lines
-  if [ -f "$diag_file" ] && [ "$(wc -l < "$diag_file" 2>/dev/null || echo 0)" -gt 50 ]; then
-    tail -50 "$diag_file" > "${diag_file}.tmp" 2>/dev/null && mv "${diag_file}.tmp" "$diag_file" 2>/dev/null || rm -f "${diag_file}.tmp"
+  # Ring buffer: truncate to last 50 lines (mapfile avoids wc -l subshell)
+  if [ -f "$diag_file" ]; then
+    local -a _lines
+    mapfile -t _lines < "$diag_file" 2>/dev/null
+    if [ "${#_lines[@]}" -gt 50 ]; then
+      printf '%s\n' "${_lines[@]: -50}" > "$diag_file" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -108,7 +112,8 @@ parse_iso8601_to_epoch() {
   fi
   # Try macOS date -j -f (strip colon from timezone offset: +09:00 -> +0900)
   local ts_nocolon
-  ts_nocolon=$(echo "$ts" | sed 's/\([+-][0-9][0-9]\):\([0-9][0-9]\)$/\1\2/')
+  # Strip colon from timezone offset: +09:00 -> +0900 (bash parameter expansion avoids sed subshell)
+  ts_nocolon="${ts%:*}${ts##*:}"
   if epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$ts_nocolon" +%s 2>/dev/null); then
     echo "$epoch"
     return 0
