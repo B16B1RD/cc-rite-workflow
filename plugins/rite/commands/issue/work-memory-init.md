@@ -21,7 +21,7 @@ WM_SOURCE="init" \
   WM_NEXT_ACTION="実装計画を生成" \
   WM_BODY_TEXT="Work memory initialized. Issue #{issue_number} の作業を開始しました。" \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh
+  bash {plugin_root}/hooks/local-wm-update.sh
 ```
 
 **Placeholder value:**
@@ -99,10 +99,14 @@ created_body=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 
 if [ -z "$created_body" ]; then
   echo "WARNING: 作業メモリコメントの作成を確認できません。後続フェーズで再作成される可能性があります。" >&2
-elif ! echo "$created_body" | grep -q '### セッション情報'; then
-  echo "WARNING: 作業メモリコメントの構造が不完全です（セッション情報セクション欠落）。" >&2
-elif ! echo "$created_body" | grep -q '### 進捗サマリー'; then
-  echo "WARNING: 作業メモリコメントの構造が不完全です（進捗サマリーセクション欠落）。" >&2
+else
+  session_count=$(echo "$created_body" | grep -c '### セッション情報' || true)
+  progress_count=$(echo "$created_body" | grep -c '### 進捗サマリー' || true)
+  if [ "$session_count" -eq 0 ]; then
+    echo "WARNING: 作業メモリコメントの構造が不完全です（セッション情報セクション欠落）。" >&2
+  elif [ "$progress_count" -eq 0 ]; then
+    echo "WARNING: 作業メモリコメントの構造が不完全です（進捗サマリーセクション欠落）。" >&2
+  fi
 fi
 ```
 
