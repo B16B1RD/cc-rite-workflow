@@ -149,7 +149,7 @@ fi
 echo "TC-005: GNU date -d による ISO 8601 パース検証"
 dir005="$GUARD_TEST_DIR/tc005"
 mkdir -p "$dir005"
-# 5分前のタイムスタンプ → AGE < 3600 → block (exit 2 + stderr)
+# 5分前のタイムスタンプ → AGE < 7200 → block (exit 2 + stderr)
 recent_ts=$(date -u -d "5 minutes ago" +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date -u -v-5M +"%Y-%m-%dT%H:%M:%S+00:00")
 create_state_file "$dir005" "{\"active\": true, \"updated_at\": \"$recent_ts\", \"phase\": \"impl\", \"next_action\": \"continue\"}"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir005\"}"
@@ -175,7 +175,7 @@ fi
 echo "TC-006: タイムゾーン付き日時文字列（+09:00 形式）"
 dir006="$GUARD_TEST_DIR/tc006"
 mkdir -p "$dir006"
-# 古い固定日時（JST +09:00）→ AGE > 3600 → exit 0
+# 古い固定日時（JST +09:00）→ AGE > 7200 → exit 0
 old_ts="2020-01-01T00:00:00+09:00"
 create_state_file "$dir006" "{\"active\": true, \"updated_at\": \"$old_ts\", \"phase\": \"test\", \"next_action\": \"test\"}"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir006\"}"
@@ -189,7 +189,7 @@ fi
 # --------------------------------------------------------------------------
 # TC-007: STATE_TS=0 時のフォールバック動作
 #
-# STATE_TS=0 の場合、AGE = CURRENT - 0 = CURRENT（数十億秒）→ > 3600 → exit 0
+# STATE_TS=0 の場合、AGE = CURRENT - 0 = CURRENT（数十億秒）→ > 7200 → exit 0
 # --------------------------------------------------------------------------
 echo "TC-007: STATE_TS=0 フォールバック動作"
 dir007="$GUARD_TEST_DIR/tc007"
@@ -205,9 +205,9 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-008: 通常ケース（アクティブ、1時間以内）→ block
+# TC-008: 通常ケース（アクティブ、2時間以内）→ block
 # --------------------------------------------------------------------------
-echo "TC-008: アクティブかつ1時間以内 → block (exit 2 + stderr)"
+echo "TC-008: アクティブかつ2時間以内 → block (exit 2 + stderr)"
 dir008="$GUARD_TEST_DIR/tc008"
 mkdir -p "$dir008"
 now_ts=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
