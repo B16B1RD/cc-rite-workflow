@@ -112,21 +112,141 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 ### 2.4.7 Parent Issue Status Update (for child Issues)
 
-**Execution condition**: Execute only when the current Issue is a child Issue of another Issue
+**Execution condition**: Execute only when the current Issue is a child Issue of another Issue.
+
+**Non-blocking**: All steps in 2.4.7 are non-blocking. Any failure displays a warning and continues the workflow.
 
 #### 2.4.7.1 Parent Issue Detection
 
-1. **Sub-Issues API (preferred)**: Retrieve `parent` via `gh api graphql -H "GraphQL-Features: sub_issues"`
-2. **Tasklist fallback**: Search for parent via `gh issue list --search "in:body \"- [ ] #{issue_number}\""`
-3. If not found, process as a standalone Issue
+Detect the parent Issue of the current (child) Issue. Try methods in order; use the first successful result.
 
-#### 2.4.7.2 Parent Issue Status Update
+**Method 1: Sub-Issues API (preferred)**
 
-Update the parent Issue's Projects Status from "Todo" to "In Progress" only if it is currently "Todo".
+```bash
+gh api graphql -H "GraphQL-Features: sub_issues" -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      parent {
+        number
+        title
+        state
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
+```
+
+If `parent` is not null, extract `parent.number` as `{parent_issue_number}`. Proceed to 2.4.7.2.
+
+**Method 2: Tasklist search (fallback)**
+
+If Method 1 fails (API error or `parent` is null):
+
+```bash
+gh issue list --state open --search "in:body \"- [ ] #{issue_number}\"" --json number,title --limit 5
+```
+
+If results are non-empty, use the first result's `number` as `{parent_issue_number}`. Proceed to 2.4.7.2.
+
+**When no parent found**: Process as a standalone Issue. Display no warning (this is normal). Skip 2.4.7.2–2.4.7.4.
+
+#### 2.4.7.2 Retrieve Parent Issue Project Item and Current Status
+
+Retrieve the parent Issue's project item ID and current Status in a single query:
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          id
+          project {
+            id
+            number
+          }
+          fieldValues(first: 10) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field {
+                  ... on ProjectV2SingleSelectField {
+                    name
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={parent_issue_number}
+```
+
+From the result:
+
+1. Find the node where `project.number` matches `{project_number}` from `rite-config.yml`
+2. Extract `{parent_item_id}` (node `id`) and `{parent_project_id}` (node `project.id`)
+3. From `fieldValues.nodes`, find the entry where `field.name` is `"Status"` and extract the current `name` value as `{current_status}`
+
+**When `projectItems.nodes` is empty** (parent Issue not registered in Project):
+
+```
+警告: 親 Issue #{parent_issue_number} は Project に登録されていません
+親 Issue の Status 更新をスキップします
+```
+
+Display warning and skip 2.4.7.3–2.4.7.4 (non-blocking).
+
+#### 2.4.7.3 Status Condition Check
+
+Only update the parent Issue's Status if it is currently "Todo". This prevents overwriting a more advanced Status (e.g., "In Progress" set by a sibling child Issue).
+
+| Current Status | Action |
+|---------------|--------|
+| **Todo** | Proceed to 2.4.7.4 (update to "In Progress") |
+| **In Progress** | Skip — already at target status. Display: `親 Issue #{parent_issue_number} は既に In Progress です` |
+| **In Review** / **Done** | Skip — more advanced status. Display: `親 Issue #{parent_issue_number} は既に {current_status} です（更新スキップ）` |
+
+#### 2.4.7.4 Update Parent Issue Status to "In Progress"
+
+**Step 1**: Retrieve the "In Progress" option ID:
+
+```bash
+gh project field-list {project_number} --owner {owner} --format json
+```
+
+From the result, find the field with `name` "Status". Extract:
+- `{status_field_id}`: the field's `id` (skip if `github.projects.field_ids.status` is set in `rite-config.yml`)
+- `{in_progress_option_id}`: the `id` of the option with `name` "In Progress"
+
+**Step 2**: Update the Status:
+
+```bash
+gh project item-edit --project-id {parent_project_id} --id {parent_item_id} --field-id {status_field_id} --single-select-option-id {in_progress_option_id}
+```
+
+**Step 3**: Display result:
+
+```
+親 Issue #{parent_issue_number} の Status を "In Progress" に更新しました
+```
 
 #### 2.4.7.5 Error Handling
 
-Parent Issue Status update failure does not block the start of work. Display a warning and continue.
+Parent Issue Status update failure does **not** block the start of work. Each step handles errors independently:
+
+| Step | Error Case | Response |
+|------|-----------|----------|
+| 2.4.7.1 | Sub-Issues API fails | Try Tasklist fallback. If both fail, skip silently |
+| 2.4.7.1 | Tasklist search returns no results | Skip silently (standalone Issue) |
+| 2.4.7.2 | GraphQL query fails | Display `⚠️ 親 Issue の Projects 情報取得に失敗しました。Status 更新をスキップします` |
+| 2.4.7.2 | Parent not registered in Project | Display warning and skip (see 2.4.7.2) |
+| 2.4.7.4 | field-list fails | Display `⚠️ Status フィールド情報の取得に失敗しました` and skip |
+| 2.4.7.4 | item-edit fails | Display `⚠️ 親 Issue #{parent_issue_number} の Status 更新に失敗しました` and continue |
 
 ## 2.5 Iteration Assignment (Optional)
 
