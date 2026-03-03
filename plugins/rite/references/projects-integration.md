@@ -147,7 +147,7 @@ If Method 1 fails (API error or `parent` is null):
 gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number,title,state --limit 5
 ```
 
-**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)).
+**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub normalizes uppercase `[X]` to lowercase `[x]` in rendered markdown, so matching `[x]` alone is sufficient for the search API.
 
 If results are non-empty, use the first result's `number` as `{parent_issue_number}`. Proceed to 2.4.7.2.
 
@@ -192,12 +192,12 @@ From the result:
 
 1. Find the node where `project.number` matches `{project_number}` from `rite-config.yml`
 2. Extract `{parent_item_id}` (node `id`) and `{parent_project_id}` (node `project.id`)
-3. From `fieldValues.nodes`, find the entry where `field.name` is `"Status"` and extract the current `name` value as `{current_status}`
+3. From `fieldValues.nodes`, find the entry where `field.name` is `"Status"` and extract the current `name` value as `{current_status}`. If no Status entry exists in `fieldValues.nodes` (Status field value is unset/null), treat `{current_status}` as `null` and proceed to 2.4.7.3 (handled as equivalent to "Todo")
 
 **When `projectItems.nodes` is empty** (parent Issue not registered in Project):
 
 ```
-⚠️ 警告: 親 Issue #{parent_issue_number} は Project に登録されていません
+警告: 親 Issue #{parent_issue_number} は Project に登録されていません
 親 Issue の Status 更新をスキップします
 ```
 
@@ -210,8 +210,9 @@ Only update the parent Issue's Status if it is currently "Todo". This prevents o
 | Current Status | Action |
 |---------------|--------|
 | **Todo** | Proceed to 2.4.7.4 (update to "In Progress") |
-| **In Progress** | Skip — already at target status. Display: `⚠️ 親 Issue #{parent_issue_number} は既に In Progress です` |
-| **In Review** / **Done** | Skip — more advanced status. Display: `⚠️ 親 Issue #{parent_issue_number} は既に {current_status} です（更新スキップ）` |
+| **null (unset)** | Proceed to 2.4.7.4 — treat as equivalent to "Todo" (Status field value not yet selected) |
+| **In Progress** | Skip — already at target status. Display: `警告: 親 Issue #{parent_issue_number} は既に In Progress です` |
+| **In Review** / **Done** | Skip — more advanced status. Display: `警告: 親 Issue #{parent_issue_number} は既に {current_status} です（更新スキップ）` |
 
 #### 2.4.7.4 Update Parent Issue Status to "In Progress"
 
@@ -249,10 +250,10 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 |------|-----------|----------|
 | 2.4.7.1 | Sub-Issues API fails | Try Tasklist fallback. If both fail, skip silently |
 | 2.4.7.1 | Tasklist search returns no results | Skip silently (standalone Issue) |
-| 2.4.7.2 | GraphQL query fails | Display `⚠️ 親 Issue の Projects 情報取得に失敗しました。Status 更新をスキップします` |
+| 2.4.7.2 | GraphQL query fails | Display `警告: 親 Issue の Projects 情報取得に失敗しました。Status 更新をスキップします` |
 | 2.4.7.2 | Parent not registered in Project | Display warning and skip (see 2.4.7.2) |
-| 2.4.7.4 | field-list fails | Display `⚠️ Status フィールド情報の取得に失敗しました` and skip |
-| 2.4.7.4 | item-edit fails | Display `⚠️ 親 Issue #{parent_issue_number} の Status 更新に失敗しました` and continue |
+| 2.4.7.4 | field-list fails | Display `警告: Status フィールド情報の取得に失敗しました` and skip |
+| 2.4.7.4 | item-edit fails | Display `警告: 親 Issue #{parent_issue_number} の Status 更新に失敗しました` and continue |
 
 ## 2.5 Iteration Assignment (Optional)
 
