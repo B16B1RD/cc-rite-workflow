@@ -236,18 +236,33 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-010: Invalid JSON in state file → jq parse error (non-zero exit)
+# TC-010: Invalid JSON in state file → line 111 fallback (ACTIVE=false) → exit 0
+# Note: Line 111's `jq '.active' || ACTIVE=false` catches invalid JSON before
+# reaching the defense-in-depth fallback at line 213-221. Line 213-221 is only
+# reachable if the file becomes corrupt between the two jq reads (race condition)
+# and cannot be unit-tested with static file content.
 # --------------------------------------------------------------------------
-echo "TC-010: Invalid JSON in state file → non-zero exit"
+echo "TC-010: Invalid JSON in state file → exit 0 (line 111 ACTIVE fallback)"
 dir010="$TEST_DIR/tc010"
 mkdir -p "$dir010"
 echo "{broken json" > "$dir010/.rite-flow-state"
 
-output=$(echo "{\"cwd\": \"$dir010\"}" | bash "$HOOK" 2>/dev/null) && rc=0 || rc=$?
-if [ $rc -ne 0 ]; then
-  pass "Invalid JSON → non-zero exit (rc=$rc)"
+output=$(run_hook_with_source "$dir010" "compact") && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  # Verify no jq parse error leaked to stderr (2>/dev/null on line 111 suppresses it)
+  if [ -s "$LAST_STDERR_FILE" ]; then
+    stderr_content=$(cat "$LAST_STDERR_FILE")
+    # Only jq parse errors are unexpected; rite: warnings are expected (defense-in-depth)
+    if echo "$stderr_content" | grep -qv "^rite:"; then
+      fail "Unexpected stderr output: $stderr_content"
+    else
+      pass "Invalid JSON → exit 0 (line 111 ACTIVE fallback, no jq error on stderr)"
+    fi
+  else
+    pass "Invalid JSON → exit 0 (line 111 ACTIVE fallback, clean stderr)"
+  fi
 else
-  fail "Expected non-zero exit for invalid JSON, got exit 0"
+  fail "Expected exit 0 for invalid JSON (line 111 ACTIVE fallback), got exit $rc"
 fi
 echo ""
 
