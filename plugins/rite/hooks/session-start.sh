@@ -42,6 +42,7 @@ _cleanup_stale_compact() {
     rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
     rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || true
   fi
+  rm -f "$STATE_ROOT/.rite-guidance-shown" 2>/dev/null || true
 }
 
 # Reset context pressure counter on startup/clear (#889)

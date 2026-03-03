@@ -52,16 +52,20 @@ COMPACT_DATA=$(jq -r '[.compact_state // "unknown", .compact_state_set_at // ""]
 # IFS is command-scoped here (not global); only affects this read invocation
 IFS=$'\t' read -r COMPACT_VAL SET_AT_TS <<< "$COMPACT_DATA"
 
-# normal → allow
+GUIDANCE_FLAG="$STATE_ROOT/.rite-guidance-shown"
+
+# normal → allow (clean up guidance flag)
 if [ "$COMPACT_VAL" = "normal" ]; then
+  rm -f "$GUIDANCE_FLAG" 2>/dev/null || true
   exit 0
 fi
 
-# resuming → always allow
+# resuming → always allow (clean up guidance flag)
 # resume.md Phase 3.0 runs Steps 1-3 sequentially before Skill invocation,
 # so "resuming" is only a transient intermediate state.
 # Orphaned "resuming" (e.g., from a crash) is cleaned up by session-start.sh startup cleanup.
 if [ "$COMPACT_VAL" = "resuming" ]; then
+  rm -f "$GUIDANCE_FLAG" 2>/dev/null || true
   exit 0
 fi
 
@@ -80,7 +84,8 @@ else
   SET_AT="不明"
 fi
 
-cat <<EOF
+if [ ! -f "$GUIDANCE_FLAG" ]; then
+  cat <<EOF
 ⚠️ compact が検出されたため、コマンドの実行がブロックされました。
 
 状態: ${COMPACT_VAL}
@@ -90,4 +95,8 @@ Issue: #${ACTIVE_ISSUE}
 
 ACTION: /clear を実行してから /rite:resume で復帰してください。
 EOF
+  touch "$GUIDANCE_FLAG" 2>/dev/null || true
+else
+  echo "⚠️ compact ブロック中（Issue: #${ACTIVE_ISSUE}）。/clear → /rite:resume で再開してください。"
+fi
 exit 1
