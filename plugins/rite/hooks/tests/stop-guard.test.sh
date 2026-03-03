@@ -585,7 +585,7 @@ input="{\"stop_hook_active\": false, \"cwd\": \"$dir024\"}"
 stderr_file024="$(mktemp "$GUARD_TEST_DIR/stderr024.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file024") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file024" "compact 検出" "/clear"); then
+  if missing=$(assert_stderr_contains "$stderr_file024" "compact 検出" "/clear" "/rite:resume"); then
     pass "compact_state=blocked → exit 0（デッドロック防止 #30）"
   else
     fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file024")'"
@@ -660,7 +660,7 @@ input="{\"stop_hook_active\": false, \"cwd\": \"$dir027\"}"
 stderr_file027="$(mktemp "$GUARD_TEST_DIR/stderr027.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file027") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file027" "compact 検出" "/clear"); then
+  if missing=$(assert_stderr_contains "$stderr_file027" "compact 検出" "/clear" "/rite:resume"); then
     pass "needs_clear=true + compact_state=blocked → exit 0（#30 デッドロック防止優先）"
   else
     fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file027")'"
