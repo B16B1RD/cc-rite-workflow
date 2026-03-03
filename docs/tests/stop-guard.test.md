@@ -249,6 +249,28 @@ date -j -f "%Y-%m-%dT%H:%M:%S%z" "2026-02-08T12:00:00+0900" +%s
 # 期待: エポック秒が出力される
 ```
 
+### TC-028: exit 2 パスで診断ログに EXIT:2 が記録される（AC-3）
+
+**目的**: stop-guard.sh が exit 2（ブロック）で終了した際、診断ログファイル（`.rite-stop-guard-diag.log`）に `EXIT:2` が記録されることを確認。
+
+**ステートファイル**: `active: true`, `updated_at: <現在時刻>`, `phase: "phase5_review"`, `error_count: 0`
+
+**期待結果**: exit 2、`.rite-stop-guard-diag.log` に `EXIT:2` が記録される
+
+**検証ポイント**: `log_diag` 関数が exit 2 パスで正しく呼び出され、診断ログに exit reason が記録されること。
+
+---
+
+### TC-029: exit 0 パスで診断ログに reason=not_active が記録される（AC-3）
+
+**目的**: stop-guard.sh が `active: false` で exit 0 した際、診断ログファイルに `reason=not_active` が記録されることを確認。
+
+**ステートファイル**: `active: false`, `updated_at: "2026-01-01T00:00:00+00:00"`
+
+**期待結果**: exit 0、`.rite-stop-guard-diag.log` に `reason=not_active` が記録される
+
+**検証ポイント**: `log_diag` 関数が exit 0 パスでも正しく呼び出され、exit reason が記録されること。
+
 ---
 
 ## テスト実行記録
@@ -264,6 +286,7 @@ date -j -f "%Y-%m-%dT%H:%M:%S%z" "2026-02-08T12:00:00+0900" +%s
 | 2026-02-08 | Claude (rite:pr:fix) | 14/14 PASS | 第4回レビュー指摘対応（変数名改善、stderr mktemp 化、テストヘッダー英語化） |
 | 2026-02-08 | Claude (rite:pr:fix) | 14/14 PASS | 第5回レビュー指摘対応（TC-013 コメント追記、TC-008 固定テキスト検証、概要整理） |
 | 2026-02-11 | Claude | 14/14 PASS | exit 2 + stderr 方式への移行、TC-001 更新（stop_hook_active チェック削除対応） |
+| 2026-03-03 | Claude (rite:issue:start) | 29/29 PASS | #22 対応: compact_state 修正、診断ログ追加、TC-028/029 追加 |
 
 ---
 
@@ -278,3 +301,4 @@ date -j -f "%Y-%m-%dT%H:%M:%S%z" "2026-02-08T12:00:00+0900" +%s
 | 2026-02-08 | 第4回レビュー指摘対応: 変数名改善、stderr mktemp 化、TC-001 コメント追加、表記統一、TC-008 検証条件明確化 |
 | 2026-02-08 | 第5回レビュー指摘対応: TC-013 コメント追記、TC-008 固定テキスト検証追加、概要箇条書き化、境界値テスト群説明追加、README 互換性注記 |
 | 2026-02-11 | exit 2 + stderr 方式への移行: TC-001 更新（stop_hook_active チェック削除）、block テストを exit 2 + stderr 検証に変更、デバッグログ追加 |
+| 2026-03-03 | #22 対応: compact_state=blocked/resuming で exit 0 する旧コード削除（AC-1/AC-6）、log_diag 診断ログ追加（AC-3）、INPUT ガード追加（AC-5）、TC-028/029 追加 |

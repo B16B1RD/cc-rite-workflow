@@ -670,6 +670,51 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-028: exit 2 パスで診断ログに EXIT:2 が記録される（AC-3）
+# --------------------------------------------------------------------------
+echo "TC-028: exit 2 パスで診断ログに EXIT:2 が記録される"
+dir028="$GUARD_TEST_DIR/tc028"
+mkdir -p "$dir028"
+now_ts028=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir028" "{\"active\": true, \"updated_at\": \"$now_ts028\", \"phase\": \"phase5_review\", \"next_action\": \"proceed to fix\", \"error_count\": 0}"
+# Clear any existing diag log
+rm -f "$dir028/.rite-stop-guard-diag.log"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir028\"}"
+echo "$input" | bash "$GUARD" 2>/dev/null && rc=0 || rc=$?
+if [ $rc -eq 2 ]; then
+  diag_file="$dir028/.rite-stop-guard-diag.log"
+  if [ -f "$diag_file" ] && grep -q "EXIT:2" "$diag_file"; then
+    pass "exit 2 パスで診断ログに EXIT:2 が記録された（AC-3）"
+  else
+    fail "exit 2 だが診断ログに EXIT:2 が記録されていない（ファイル存在: $([ -f "$diag_file" ] && echo yes || echo no)）"
+  fi
+else
+  fail "exit=$rc（期待: exit 2）"
+fi
+
+# --------------------------------------------------------------------------
+# TC-029: exit 0 パスで診断ログに reason=not_active が記録される（AC-3）
+# --------------------------------------------------------------------------
+echo "TC-029: exit 0 パスで診断ログに reason=not_active が記録される"
+dir029="$GUARD_TEST_DIR/tc029"
+mkdir -p "$dir029"
+create_state_file "$dir029" '{"active": false, "updated_at": "2026-01-01T00:00:00+00:00"}'
+# Clear any existing diag log
+rm -f "$dir029/.rite-stop-guard-diag.log"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir029\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 0 ] && [ -z "$output" ]; then
+  diag_file="$dir029/.rite-stop-guard-diag.log"
+  if [ -f "$diag_file" ] && grep -q "reason=not_active" "$diag_file"; then
+    pass "exit 0 パスで診断ログに reason=not_active が記録された（AC-3）"
+  else
+    fail "exit 0 だが診断ログに reason=not_active が記録されていない（ファイル存在: $([ -f "$diag_file" ] && echo yes || echo no)）"
+  fi
+else
+  fail "exit=$rc, output='$output'（期待: exit 0）"
+fi
+
+# --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ $FAIL -gt 0 ]; then

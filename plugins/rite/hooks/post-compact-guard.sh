@@ -56,7 +56,7 @@ echo "[rite] /clear → /rite:resume で再開してください。" >&2
 
 # Deny this tool use and instruct LLM to stop.
 # compact_state stays "blocked" so ALL subsequent tool calls are also denied.
-# The stop-guard.sh will allow the stop because compact_state is "blocked".
+# The stop-guard.sh blocks even when compact_state is blocked (AC-6).
 # Minimal deny reason to reduce token overhead (#889).
 jq -n \
   --arg issue "$ISSUE" \
