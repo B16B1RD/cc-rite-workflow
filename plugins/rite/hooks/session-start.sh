@@ -210,6 +210,10 @@ find "$STATE_ROOT" -maxdepth 1 -name ".rite-flow-state.tmp.*" -type f -mmin +1 -
 # Extract all fields in a single jq call for efficiency
 # Use IFS=$'\t' because @tsv outputs tab-delimited fields; default IFS includes
 # spaces which would break values like "After rite:lint, execute Phase 5.2.1...".
+# Defense-in-depth: Line 111's ACTIVE check already catches invalid JSON (jq
+# fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
+# the file becomes corrupt between the two jq reads (e.g., race condition,
+# partial write). It is not reachable by normal unit tests.
 _tsv_output=$(jq -r '[
   (.issue_number // "" | tostring),
   (.phase // "unknown"),
