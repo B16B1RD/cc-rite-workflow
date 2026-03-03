@@ -569,13 +569,13 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-024: compact_state=blocked + active=true → exit 2（stop ブロック維持）
+# TC-024: compact_state=blocked + active=true → exit 0（デッドロック防止 #30）
 #
-# post-compact-guard がワンショットブロック+自動リカバリに変更されたため、
-# compact_state=blocked でも stop-guard は停止をブロックする（AC-6）。
-# デッドロック防止は error_count 閾値メカニズムに一元化（D-02）。
+# compact_state=blocked のとき、post-compact-guard が全ツール使用を拒否する。
+# stop-guard も stop をブロックするとデッドロックになるため、即座に stop を
+# 許可する（exit 0）。旧 AC-6 の動作を #30 で上書き。
 # --------------------------------------------------------------------------
-echo "TC-024: compact_state=blocked + active=true → exit 2（stop ブロック維持）"
+echo "TC-024: compact_state=blocked + active=true → exit 0（デッドロック防止 #30）"
 dir024="$GUARD_TEST_DIR/tc024"
 mkdir -p "$dir024"
 now_ts024=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
@@ -584,14 +584,14 @@ echo '{"compact_state": "blocked"}' > "$dir024/.rite-compact-state"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir024\"}"
 stderr_file024="$(mktemp "$GUARD_TEST_DIR/stderr024.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file024") && rc=0 || rc=$?
-if [ $rc -eq 2 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file024" "Normal operation" "impl" "NOT re-invoke"); then
-    pass "compact_state=blocked → exit 2（stop ブロック維持、AC-6）"
+if [ $rc -eq 0 ] && [ -z "$output" ]; then
+  if missing=$(assert_stderr_contains "$stderr_file024" "compact 検出" "/clear"); then
+    pass "compact_state=blocked → exit 0（デッドロック防止 #30）"
   else
-    fail "exit 2 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file024")'"
+    fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file024")'"
   fi
 else
-  fail "exit=$rc, output='$output'（期待: exit 2）"
+  fail "exit=$rc, output='$output'（期待: exit 0）"
 fi
 
 # --------------------------------------------------------------------------
@@ -644,13 +644,13 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-027: needs_clear=true + compact_state=blocked + active=true → exit 2
+# TC-027: needs_clear=true + compact_state=blocked + active=true → exit 0
 #
-# 旧来のコードでは needs_clear=true で stop を許可、compact_state=blocked でも
-# stop を許可していた。両方が同時に存在する場合でも、新仕様では stop がブロック
-# されることを検証（AC-1 + AC-6 の組み合わせ）。
+# needs_clear=true は廃止フラグで無視される（AC-1）。
+# compact_state=blocked は即座に stop を許可する（#30）。
+# 両方が存在する場合、compact_state=blocked が優先され exit 0 となる。
 # --------------------------------------------------------------------------
-echo "TC-027: needs_clear=true + compact_state=blocked → exit 2（AC-1+AC-6 組み合わせ）"
+echo "TC-027: needs_clear=true + compact_state=blocked → exit 0（#30 優先）"
 dir027="$GUARD_TEST_DIR/tc027"
 mkdir -p "$dir027"
 now_ts027=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
@@ -659,14 +659,14 @@ echo '{"compact_state": "blocked"}' > "$dir027/.rite-compact-state"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir027\"}"
 stderr_file027="$(mktemp "$GUARD_TEST_DIR/stderr027.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file027") && rc=0 || rc=$?
-if [ $rc -eq 2 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file027" "Normal operation" "phase5_review" "NOT re-invoke"); then
-    pass "needs_clear=true + compact_state=blocked → exit 2（AC-1+AC-6 組み合わせ）"
+if [ $rc -eq 0 ] && [ -z "$output" ]; then
+  if missing=$(assert_stderr_contains "$stderr_file027" "compact 検出" "/clear"); then
+    pass "needs_clear=true + compact_state=blocked → exit 0（#30 デッドロック防止優先）"
   else
-    fail "exit 2 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file027")'"
+    fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file027")'"
   fi
 else
-  fail "exit=$rc, output='$output'（期待: exit 2）"
+  fail "exit=$rc, output='$output'（期待: exit 0）"
 fi
 
 # --------------------------------------------------------------------------

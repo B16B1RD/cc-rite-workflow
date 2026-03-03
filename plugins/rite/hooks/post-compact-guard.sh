@@ -61,7 +61,7 @@ fi
 
 # Deny this tool use and instruct LLM to stop.
 # compact_state stays "blocked" so ALL subsequent tool calls are also denied.
-# The stop-guard.sh blocks even when compact_state is blocked (AC-6).
+# When compact_state is blocked, stop-guard.sh allows stop to prevent deadlock (#30).
 # Minimal deny reason to reduce token overhead (#889).
 jq -n \
   --arg issue "$ISSUE" \

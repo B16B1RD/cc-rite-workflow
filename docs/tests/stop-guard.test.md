@@ -391,9 +391,9 @@ safety:
 
 ---
 
-### TC-024: compact_state=blocked + active=true → exit 2（stop ブロック維持）
+### TC-024: compact_state=blocked + active=true → exit 0（デッドロック防止 #30）
 
-**目的**: `compact_state=blocked` の場合でも stop がブロックされることを確認。旧コードでは exit 0 で停止を許可していたが、新仕様（AC-6）では stop ブロックを維持する。
+**目的**: `compact_state=blocked` の場合、stop-guard が即座に stop を許可することを確認。compact_state=blocked のとき post-compact-guard が全ツール使用を拒否するため、stop もブロックするとデッドロックになる。#30 で AC-6 の動作を上書きし、即座に exit 0 で stop を許可する。
 
 **ステートファイル**:
 ```json
@@ -405,9 +405,9 @@ safety:
 {"compact_state": "blocked"}
 ```
 
-**期待結果**: exit 2、stderr にフェーズ/アクション情報を含むメッセージ
+**期待結果**: exit 0、stderr に `compact 検出` と `/clear` を含む案内メッセージ
 
-**検証ポイント**: デッドロック防止は `error_count` 閾値メカニズムに一元化（D-02）。
+**検証ポイント**: デッドロック防止のため compact_state=blocked で即座に stop を許可（#30）。
 
 ---
 
@@ -442,9 +442,9 @@ safety:
 
 ---
 
-### TC-027: needs_clear=true + compact_state=blocked → exit 2（AC-1+AC-6 組み合わせ）
+### TC-027: needs_clear=true + compact_state=blocked → exit 0（#30 優先）
 
-**目的**: `needs_clear=true` と `compact_state=blocked` が同時に存在する場合でも、新仕様では stop がブロックされることを確認。旧コードでは両条件とも exit 0 を許可していた。
+**目的**: `needs_clear=true`（廃止フラグ、AC-1 で無視）と `compact_state=blocked` が同時に存在する場合、compact_state=blocked が優先され即座に stop を許可することを確認（#30）。
 
 **ステートファイル**:
 ```json
@@ -456,9 +456,9 @@ safety:
 {"compact_state": "blocked"}
 ```
 
-**期待結果**: exit 2、stderr にフェーズ情報を含むメッセージ
+**期待結果**: exit 0、stderr に `compact 検出` と `/clear` を含む案内メッセージ
 
-**検証ポイント**: AC-1（needs_clear 無視）と AC-6（compact_state でブロック維持）の組み合わせテスト。
+**検証ポイント**: AC-1（needs_clear 無視）と #30（compact_state=blocked で即座に stop 許可）の組み合わせテスト。
 
 ---
 
@@ -515,3 +515,4 @@ safety:
 | 2026-02-08 | 第5回レビュー指摘対応: TC-013 コメント追記、TC-008 固定テキスト検証追加、概要箇条書き化、境界値テスト群説明追加、README 互換性注記 |
 | 2026-02-11 | exit 2 + stderr 方式への移行: TC-001 更新（stop_hook_active チェック削除）、block テストを exit 2 + stderr 検証に変更、デバッグログ追加 |
 | 2026-03-03 | #22 対応: compact_state=blocked/resuming で exit 0 する旧コード削除（AC-1/AC-6）、log_diag 診断ログ追加（AC-3）、INPUT ガード追加（AC-5）、TC-028/029 追加 |
+| 2026-03-04 | #30 対応: TC-024/TC-027 の期待値を exit 0 に変更（compact_state=blocked で即座に stop 許可）、AC-6 参照を #30 に更新 |

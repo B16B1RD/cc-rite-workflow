@@ -64,6 +64,7 @@ if [ "$ACTIVE" != "true" ]; then
 fi
 
 # compact_state check: allow stop immediately when blocked to prevent deadlock (#30).
+# Supersedes AC-6 behavior (previously: block stop even when compact_state=blocked).
 # When compact_state is "blocked", post-compact-guard denies ALL tool uses.
 # If stop-guard also blocks stop, the workflow enters a deadlock until error_count
 # threshold is reached (multiple wasted rounds, 11+ minutes stuck).
