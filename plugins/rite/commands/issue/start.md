@@ -329,9 +329,11 @@ if [ ! -f ".rite-work-memory/issue-{issue_number}.md" ]; then
     WM_NEXT_ACTION="実装計画を生成" \
     WM_BODY_TEXT="Work memory initialized (fallback). Issue #{issue_number} の作業を開始しました。" \
     WM_ISSUE_NUMBER="{issue_number}" \
-    bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+    bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 fi
 ```
+
+> **Note**: `{plugin_root}` が未解決の場合は、[Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) に従い事前に解決すること。このコードブロックは Phase 4.1 よりも前に実行されるため、Phase 4.1 での解決に依存できない。相対パス `plugins/rite/hooks/` は、マーケットプレイスインストール環境ではスクリプトが見つからないため使用不可。
 
 Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next phase immediately after the sub-skill returns. **→ Proceed to Phase 3 now**.
 
@@ -740,7 +742,7 @@ WM_SOURCE="review" \
   WM_BODY_TEXT="Post-review sync." \
   WM_ISSUE_NUMBER="{issue_number}" \
   WM_READ_FROM_FLOW_STATE="true" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **Step 2.5**: Sync local work memory to Issue comment (backup):
@@ -860,7 +862,7 @@ WM_SOURCE="fix" \
   WM_BODY_TEXT="Post-fix sync." \
   WM_ISSUE_NUMBER="{issue_number}" \
   WM_LOOP_INCREMENT="true" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **Step 2.5**: Sync local work memory to Issue comment (backup):
@@ -968,7 +970,7 @@ WM_SOURCE="ready" \
   WM_BODY_TEXT="Post-ready sync." \
   WM_ISSUE_NUMBER="{issue_number}" \
   WM_READ_FROM_FLOW_STATE="true" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **Step 3**: **→ Proceed to 5.5.1 now**.
