@@ -144,8 +144,10 @@ If `parent` is not null, extract `parent.number` as `{parent_issue_number}`. Pro
 If Method 1 fails (API error or `parent` is null):
 
 ```bash
-gh issue list --state open --search "in:body \"- [ ] #{issue_number}\"" --json number,title --limit 5
+gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number,title,state --limit 5
 ```
+
+**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)).
 
 If results are non-empty, use the first result's `number` as `{parent_issue_number}`. Proceed to 2.4.7.2.
 
@@ -153,7 +155,7 @@ If results are non-empty, use the first result's `number` as `{parent_issue_numb
 
 #### 2.4.7.2 Retrieve Parent Issue Project Item and Current Status
 
-Retrieve the parent Issue's project item ID and current Status in a single query:
+Retrieve the parent Issue's (identified in 2.4.7.1 as `{parent_issue_number}`) project item ID and current Status in a single query:
 
 ```bash
 gh api graphql -f query='
@@ -195,7 +197,7 @@ From the result:
 **When `projectItems.nodes` is empty** (parent Issue not registered in Project):
 
 ```
-警告: 親 Issue #{parent_issue_number} は Project に登録されていません
+⚠️ 警告: 親 Issue #{parent_issue_number} は Project に登録されていません
 親 Issue の Status 更新をスキップします
 ```
 
@@ -208,12 +210,14 @@ Only update the parent Issue's Status if it is currently "Todo". This prevents o
 | Current Status | Action |
 |---------------|--------|
 | **Todo** | Proceed to 2.4.7.4 (update to "In Progress") |
-| **In Progress** | Skip — already at target status. Display: `親 Issue #{parent_issue_number} は既に In Progress です` |
-| **In Review** / **Done** | Skip — more advanced status. Display: `親 Issue #{parent_issue_number} は既に {current_status} です（更新スキップ）` |
+| **In Progress** | Skip — already at target status. Display: `⚠️ 親 Issue #{parent_issue_number} は既に In Progress です` |
+| **In Review** / **Done** | Skip — more advanced status. Display: `⚠️ 親 Issue #{parent_issue_number} は既に {current_status} です（更新スキップ）` |
 
 #### 2.4.7.4 Update Parent Issue Status to "In Progress"
 
-**Step 1**: Retrieve the "In Progress" option ID:
+**Step 1**: Retrieve the "In Progress" option ID.
+
+If 2.4.4 was already executed in this workflow run, reuse the `{status_field_id}` and `{in_progress_option_id}` values obtained there (no additional API call needed). Otherwise (e.g., 2.4.7 is referenced standalone), retrieve them as follows. See [2.4.4](#244-retrieve-status-field-information) for the full retrieval logic including `field_ids` optimization.
 
 ```bash
 gh project field-list {project_number} --owner {owner} --format json
@@ -222,6 +226,8 @@ gh project field-list {project_number} --owner {owner} --format json
 From the result, find the field with `name` "Status". Extract:
 - `{status_field_id}`: the field's `id` (skip if `github.projects.field_ids.status` is set in `rite-config.yml`)
 - `{in_progress_option_id}`: the `id` of the option with `name` "In Progress"
+
+**Important**: Option IDs always need to be retrieved from the API (consistent with 2.4.4). Only field IDs can be specified via `field_ids`.
 
 **Step 2**: Update the Status:
 
