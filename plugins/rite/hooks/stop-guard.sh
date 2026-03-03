@@ -7,7 +7,7 @@ set -euo pipefail
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
 # reaching -f; the comment describes the logical invariant, not the exit path.)
-INPUT=$(cat)
+INPUT=$(cat) || INPUT=""
 
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
@@ -23,10 +23,23 @@ log_debug() {
   [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] stop-guard: $1" >> "$STATE_ROOT/.rite-flow-debug.log" 2>/dev/null || true
 }
 
+# Diagnostic logging (always enabled, exit points only, ~100 bytes per entry)
+# Output: $STATE_ROOT/.rite-stop-guard-diag.log (ring buffer: 50 lines max)
+# .gitignore の *.log で自動除外済み
+log_diag() {
+  local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true
+  # Ring buffer: truncate to last 50 lines
+  if [ -f "$diag_file" ] && [ "$(wc -l < "$diag_file" 2>/dev/null || echo 0)" -gt 50 ]; then
+    tail -50 "$diag_file" > "${diag_file}.tmp" 2>/dev/null && mv "${diag_file}.tmp" "$diag_file" 2>/dev/null || rm -f "${diag_file}.tmp"
+  fi
+}
+
 # Check for active workflow
 STATE_FILE="$STATE_ROOT/.rite-flow-state"
 if [ ! -f "$STATE_FILE" ]; then
   log_debug "no state file"
+  log_diag "EXIT:0 reason=no_state_file"
   exit 0
 fi
 
@@ -34,6 +47,7 @@ fi
 # (fail-open was a source of intermittent flow interruptions)
 fail_closed() {
   log_debug "$1"
+  log_diag "EXIT:2 reason=fail_closed detail=$1"
   cat >&2 <<'STOP_MSG'
 [rite] Normal operation — stop prevented (state unreadable).
 ACTION: Read .rite-flow-state and continue the active workflow. Do NOT stop.
@@ -45,25 +59,19 @@ ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || \
   fail_closed "state parse error on .active"
 if [ "$ACTIVE" != "true" ]; then
   log_debug "workflow not active"
+  log_diag "EXIT:0 reason=not_active"
   exit 0
 fi
 
-# Allow stop when compact has occurred — the LLM should stop and advise user to /clear → /rite:resume
-# This check must come after active=true (non-active workflows always allow stop above)
-# and before staleness (compact takes priority over age-based expiry).
+# compact_state check: log only, do NOT allow stop (AC-6).
+# Deadlock prevention is handled by error_count threshold (D-02).
+# Flow: post-compact-guard denies tool use → stop-guard blocks stop →
+# error_count reaches threshold → stop allowed → user runs /clear → /rite:resume.
 COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 if [ -f "$COMPACT_STATE" ]; then
   COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
   if [ "$COMPACT_VAL" = "blocked" ] || [ "$COMPACT_VAL" = "resuming" ]; then
-    log_debug "compact detected (compact_state=$COMPACT_VAL), allowing stop"
-    COMPACT_PHASE=$(jq -r '.phase // "unknown"' "$STATE_FILE" 2>/dev/null) || COMPACT_PHASE="unknown"
-    COMPACT_ISSUE=$(jq -r '.issue_number // 0' "$STATE_FILE" 2>/dev/null) || COMPACT_ISSUE="0"
-    cat >&2 <<STOP_MSG
-[rite] Compact detected — stop allowed.
-Phase: $COMPACT_PHASE | Issue: #$COMPACT_ISSUE
-ACTION: Tell the user to run /clear then /rite:resume to safely resume the workflow.
-STOP_MSG
-    exit 0
+    log_debug "compact detected (compact_state=$COMPACT_VAL), stop still blocked (AC-6)"
   fi
 fi
 
@@ -104,6 +112,7 @@ UPDATED_AT=$(jq -r '.updated_at // empty' "$STATE_FILE" 2>/dev/null) || \
   fail_closed "state parse error on .updated_at"
 if [ -z "$UPDATED_AT" ]; then
   log_debug "no updated_at"
+  log_diag "EXIT:0 reason=no_updated_at"
   exit 0
 fi
 
@@ -112,6 +121,7 @@ STATE_TS=$(parse_iso8601_to_epoch "$UPDATED_AT")
 AGE=$(( CURRENT - STATE_TS ))
 if [ "$AGE" -gt 7200 ]; then
   log_debug "stale workflow (age=${AGE}s)"
+  log_diag "EXIT:0 reason=stale age=${AGE}s"
   exit 0
 fi
 
@@ -144,6 +154,7 @@ fi
 # Allow stop when error_count has reached the threshold — the workflow is stuck in an error loop
 if [ "$ERROR_COUNT" -ge "$THRESHOLD" ]; then
   log_debug "error_count=$ERROR_COUNT >= threshold=$THRESHOLD, allowing stop"
+  log_diag "EXIT:0 reason=error_threshold error_count=$ERROR_COUNT threshold=$THRESHOLD"
   cat >&2 <<STOP_MSG
 [rite] Error threshold reached (${ERROR_COUNT} consecutive blocked stops, threshold: ${THRESHOLD}) — stop allowed.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
@@ -165,6 +176,7 @@ fi
 
 # Block the stop (exit 2 + stderr = Claude Code stops the end_turn and feeds stderr to assistant)
 log_debug "blocking stop (phase=$PHASE, next=$NEXT, error_count=$((ERROR_COUNT + 1))/$THRESHOLD)"
+log_diag "EXIT:2 reason=blocking phase=$PHASE issue=#$ISSUE error_count=$((ERROR_COUNT + 1))/$THRESHOLD"
 cat >&2 <<STOP_MSG
 [rite] Normal operation — stop prevented.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
