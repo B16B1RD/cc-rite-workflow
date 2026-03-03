@@ -6,6 +6,11 @@ description: Issue に作業メモリコメントを初期化
 
 This module handles the initialization of work memory — both local file (SoT) and Issue comment (backup replica).
 
+**Placeholder legend:**
+- `{issue_number}`: Issue number (from caller argument)
+- `{owner}`, `{repo}`: Repository information (from caller context or `gh repo view --json owner,name`)
+- `{plugin_root}`: Plugin root directory. Resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing any bash code blocks in this module.
+
 ## Phase 2.6: Work Memory Initialization
 
 > **⚠️ 注意**: 作業メモリは Issue のコメントとして公開されます。公開リポジトリでは第三者に閲覧可能です。機密情報（認証情報、個人情報、内部 URL 等）を作業メモリに記録しないでください。

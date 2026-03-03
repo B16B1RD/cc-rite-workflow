@@ -333,7 +333,7 @@ if [ ! -f ".rite-work-memory/issue-{issue_number}.md" ]; then
 fi
 ```
 
-> **Note**: `{plugin_root}` は Phase 4.1 または Phase 5.0 で解決済みのプラグインルートパスを使用すること。相対パス `plugins/rite/hooks/` は、マーケットプレイスインストール環境ではスクリプトが見つからないため使用不可。
+> **Note**: `{plugin_root}` が未解決の場合は、[Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) に従い事前に解決すること。このコードブロックは Phase 4.1 よりも前に実行されるため、Phase 4.1 での解決に依存できない。相対パス `plugins/rite/hooks/` は、マーケットプレイスインストール環境ではスクリプトが見つからないため使用不可。
 
 Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next phase immediately after the sub-skill returns. **→ Proceed to Phase 3 now**.
 
