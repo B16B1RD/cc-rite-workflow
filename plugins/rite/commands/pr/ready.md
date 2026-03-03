@@ -202,6 +202,12 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
+**In e2e flow**: If `.rite-flow-state` exists, output `[ready:error]` before ending to signal the failure to the caller (`start.md` Phase 5.5):
+
+```
+[ready:error]
+```
+
 End processing.
 
 ---
@@ -377,10 +383,6 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 Status の更新をスキップします
 ```
 
----
-
-## Phase 5: Completion Report
-
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
 Before outputting the result pattern (`[ready:completed]`) or skipping output, update `.rite-flow-state` to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
@@ -391,14 +393,14 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop.` |
+| `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop.` |
 
 ```bash
 if [ -f ".rite-flow-state" ]; then
   TMP_STATE=".rite-flow-state.tmp.$$"
   jq --arg phase "phase5_post_ready" \
      --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-     --arg next "rite:pr:ready completed. Proceed to Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
+     --arg next "rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
      '.phase = $phase | .updated_at = $ts | .next_action = $next' \
      ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
 fi
@@ -410,7 +412,7 @@ fi
 WM_SOURCE="ready" \
   WM_PHASE="phase5_post_ready" \
   WM_PHASE_DETAIL="Ready処理完了" \
-  WM_NEXT_ACTION="Phase 5.5.1 Status 更新 → 5.5.2 メトリクス → 5.6 完了レポートを実行" \
+  WM_NEXT_ACTION="start.md Phase 5.5.1 Status 更新 → 5.5.2 メトリクス → 5.6 完了レポートを実行" \
   WM_BODY_TEXT="Post-ready phase sync." \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
@@ -419,6 +421,10 @@ WM_SOURCE="ready" \
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
+
+---
+
+## Phase 5: Completion Report
 
 ### 5.0 Determine the Caller
 

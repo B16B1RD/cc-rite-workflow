@@ -438,7 +438,7 @@ bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:issue:start" --c
 
 If exit code is `1` (blocked), stop execution and display the preflight output. Do NOT proceed.
 
-**Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed/conditional-merge/loop-limit:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`), ready (`[ready:completed]`).
+**Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed/conditional-merge/loop-limit:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`), ready (`[ready:completed/error]`).
 
 **Sub-skill return protocol**: See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global). Each 🚨 Mandatory After section below enforces it at specific transition points.
 
@@ -939,7 +939,7 @@ When loop completes, confirm:
 
 **🚨 Immediate after ready returns**: When `rite:pr:ready` outputs `[ready:completed]` and returns control, do **NOT** churn or pause — **immediately** proceed to 5.5.0.1 🚨 Mandatory After 5.5 below. The ready sub-skill has already updated `.rite-flow-state` to `phase5_post_ready` via Phase 4.6 (defense-in-depth, fixes #17); execute the 5.5.0.1 steps without delay. The completion report (Phase 5.6) has NOT been output yet — `ready.md` intentionally skips it in e2e flow. You MUST continue to Phase 5.5.1, 5.5.2, and 5.6.
 
-**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6.
+**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→ask user (retry / skip to 5.6 / terminate).
 
 #### 5.5.0.1 🚨 Mandatory After 5.5
 
