@@ -381,6 +381,45 @@ Status の更新をスキップします
 
 ## Phase 5: Completion Report
 
+### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
+
+Before outputting the result pattern (`[ready:completed]`) or skipping output, update `.rite-flow-state` to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+
+**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
+
+**State update**:
+
+| Result | Phase | Phase Detail | Next Action |
+|--------|-------|-------------|-------------|
+| `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop.` |
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  TMP_STATE=".rite-flow-state.tmp.$$"
+  jq --arg phase "phase5_post_ready" \
+     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
+     --arg next "rite:pr:ready completed. Proceed to Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
+     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
+     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
+fi
+```
+
+**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
+
+```bash
+WM_SOURCE="ready" \
+  WM_PHASE="phase5_post_ready" \
+  WM_PHASE_DETAIL="Ready処理完了" \
+  WM_NEXT_ACTION="Phase 5.5.1 Status 更新 → 5.5.2 メトリクス → 5.6 完了レポートを実行" \
+  WM_BODY_TEXT="Post-ready phase sync." \
+  WM_REQUIRE_FLOW_STATE="true" \
+  WM_READ_FROM_FLOW_STATE="true" \
+  WM_ISSUE_NUMBER="{issue_number}" \
+  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+```
+
+**On lock failure**: Log a warning and continue — local work memory update is best-effort.
+
 ### 5.0 Determine the Caller
 
 Determine the caller from the conversation context:
@@ -401,11 +440,19 @@ Check the conversation history and determine "within end-to-end flow" if any of 
 
 ### 5.1 Output the Completion Report
 
-#### 5.1.1 End-to-End Flow (Skip Completion Report)
+#### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
 When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` Phase 5.6 — outputting it here causes duplicate reports.
 
-End this phase without any additional output. Control returns to `start.md` automatically. No template loading, no inline format, no completion table.
+**Instead, output the following machine-readable signal** to indicate successful completion to the caller:
+
+```
+[ready:completed]
+```
+
+This pattern is **mandatory** in e2e flow. It allows `start.md` Phase 5.5 to detect that `rite:pr:ready` has completed successfully and immediately proceed to Phase 5.5.1 (Status update), 5.5.2 (metrics), and 5.6 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before Phase 5.6.
+
+No template loading, no inline format, no completion table — only the `[ready:completed]` pattern.
 
 #### 5.1.2 Standalone Execution
 

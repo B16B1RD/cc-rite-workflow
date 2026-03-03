@@ -56,7 +56,7 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 | 5.3 (PR) | `rite:pr:create` | 5.4 | **No** |
 | 5.4.1 (Review) | `rite:pr:review` | 5.4.3→5.4.4 or 5.5 | **No** |
 | 5.4.4 (Fix) | `rite:pr:fix` | 5.4.6→5.4.1 or 5.5 | **No** |
-| 5.5 (Ready) | `rite:pr:ready` | 5.5.1 | **No** |
+| 5.5 (Ready) | `rite:pr:ready` | 5.5.0.1→5.5.1 | **No** |
 | 5.6 (Report) | — | 5.7 or end | Yes |
 
 ---
@@ -422,7 +422,7 @@ Resume via work memory (`/rite:resume` or `/rite:issue:start`).
   5.4.1 rite:pr:review → [mergeable]→5.5 / [fix-needed]→fix→5.4.1 / [conditional/loop-limit]→fix(別Issue化)→5.5
   (5.4.2-5.4.3 review routing/after, 5.4.5-5.4.6 fix routing/after)
   5.4.4 rite:pr:fix → [pushed]→5.4.1 / [issues-created]→5.4.1 / [replied-only]→5.5 / [error]→処理
-5.5 Ready for Review 確認 → 5.5.1 Status 更新 → 5.5.2
+5.5 Ready for Review 確認 → rite:pr:ready → [ready:completed]→5.5.0.1→5.5.1 Status 更新 → 5.5.2
 5.5.2 メトリクス記録 → 5.6
 5.6 完了報告
 5.7 親 Issue 完了処理
@@ -438,7 +438,7 @@ bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:issue:start" --c
 
 If exit code is `1` (blocked), stop execution and display the preflight output. Do NOT proceed.
 
-**Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed/conditional-merge/loop-limit:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`).
+**Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed/conditional-merge/loop-limit:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`), ready (`[ready:completed]`).
 
 **Sub-skill return protocol**: See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global). Each 🚨 Mandatory After section below enforces it at specific transition points.
 
@@ -937,11 +937,15 @@ When loop completes, confirm:
 
 **Ready**→invoke `rite:pr:ready`→5.5.1. **Draft**→5.6. **More fixes**→terminate.
 
+**🚨 Immediate after ready returns**: When `rite:pr:ready` outputs `[ready:completed]` and returns control, do **NOT** churn or pause — **immediately** proceed to 5.5.0.1 🚨 Mandatory After 5.5 below. The ready sub-skill has already updated `.rite-flow-state` to `phase5_post_ready` via Phase 4.6 (defense-in-depth, fixes #17); execute the 5.5.0.1 steps without delay. The completion report (Phase 5.6) has NOT been output yet — `ready.md` intentionally skips it in e2e flow. You MUST continue to Phase 5.5.1, 5.5.2, and 5.6.
+
+**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6.
+
 #### 5.5.0.1 🚨 Mandatory After 5.5
 
 > See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
 
-**Verify**: `rite:pr:ready` returned successfully. Status update and completion report are still pending.
+**Verify**: `[ready:completed]` pattern confirmed. `rite:pr:ready` returned successfully. Status update, metrics recording, and completion report are still pending — these are the **primary deliverables** of the e2e flow that the user expects to see.
 
 **Step 1**: Update `.rite-flow-state` to post-ready phase (atomic). This write transitions from `phase5_post_review`/`phase5_post_fix` to `phase5_post_ready`, ensuring stop-guard routes to Status update rather than re-invoking ready (fixes #781):
 
