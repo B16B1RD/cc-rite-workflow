@@ -108,7 +108,7 @@ if [ ! -f "$STATE_FILE" ]; then
   exit 0
 fi
 
-ACTIVE=$(jq -r '.active // false' "$STATE_FILE")
+ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || ACTIVE=false
 if [ "$ACTIVE" != "true" ]; then
   # Clean stale compact state on startup/clear when flow is inactive (#756, #800)
   [ "$SOURCE" != "compact" ] && _cleanup_stale_compact
@@ -120,13 +120,13 @@ fi
 # hook not registered). Reset to active=false and show a soft message instead of
 # the alarming "CRITICAL: Active rite workflow detected" message.
 if [ "$SOURCE" = "startup" ]; then
-  PHASE=$(jq -r '.phase // ""' "$STATE_FILE")
-  ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE")
-  BRANCH=$(jq -r '.branch // ""' "$STATE_FILE")
+  PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
+  ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
+  BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
   TMP_FILE="${STATE_FILE}.tmp.$$"
   trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
+     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>/dev/null; then
     mv "$TMP_FILE" "$STATE_FILE"
   else
     rm -f "$TMP_FILE"
@@ -180,13 +180,13 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
   # Otherwise (no compact-state file, or non-blocked state), apply the same
   # defensive reset as startup to avoid false "interrupted workflow" detection.
   if [ "$SOURCE" = "clear" ] && [ "$COMPACT_TRANSITIONED" = "false" ]; then
-    PHASE=$(jq -r '.phase // ""' "$STATE_FILE")
-    ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE")
-    BRANCH=$(jq -r '.branch // ""' "$STATE_FILE")
+    PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
+    ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
+    BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
     TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
     trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE"; then
+       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE" 2>/dev/null; then
       mv "$TMP_CLEAR_FILE" "$STATE_FILE"
     else
       rm -f "$TMP_CLEAR_FILE"
