@@ -236,18 +236,18 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-010: Invalid JSON in state file → jq parse error (non-zero exit)
+# TC-010: Invalid JSON in state file → graceful fallback (exit 0)
 # --------------------------------------------------------------------------
-echo "TC-010: Invalid JSON in state file → non-zero exit"
+echo "TC-010: Invalid JSON in state file → exit 0 (graceful fallback)"
 dir010="$TEST_DIR/tc010"
 mkdir -p "$dir010"
 echo "{broken json" > "$dir010/.rite-flow-state"
 
 output=$(echo "{\"cwd\": \"$dir010\"}" | bash "$HOOK" 2>/dev/null) && rc=0 || rc=$?
-if [ $rc -ne 0 ]; then
-  pass "Invalid JSON → non-zero exit (rc=$rc)"
+if [ $rc -eq 0 ]; then
+  pass "Invalid JSON → exit 0 (graceful fallback)"
 else
-  fail "Expected non-zero exit for invalid JSON, got exit 0"
+  fail "Expected exit 0 for invalid JSON (graceful fallback), got exit $rc"
 fi
 echo ""
 

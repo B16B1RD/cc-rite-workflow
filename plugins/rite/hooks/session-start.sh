@@ -210,15 +210,16 @@ find "$STATE_ROOT" -maxdepth 1 -name ".rite-flow-state.tmp.*" -type f -mmin +1 -
 # Extract all fields in a single jq call for efficiency
 # Use IFS=$'\t' because @tsv outputs tab-delimited fields; default IFS includes
 # spaces which would break values like "After rite:lint, execute Phase 5.2.1...".
-# Note: If the process substitution (jq) fails, read returns non-zero but under
-# set -e the subshell exit status is not propagated. The subsequent -z "$ISSUE"
-# check catches this case by detecting empty/missing fields.
-IFS=$'\t' read -r ISSUE PHASE NEXT LOOP < <(jq -r '[
+_tsv_output=$(jq -r '[
   (.issue_number // "" | tostring),
   (.phase // "unknown"),
   (.next_action // "unknown"),
   (.loop_count // 0 | tostring)
-] | @tsv' "$STATE_FILE")
+] | @tsv' "$STATE_FILE" 2>/dev/null) || {
+  echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
+  exit 0
+}
+IFS=$'\t' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
