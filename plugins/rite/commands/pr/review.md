@@ -1353,6 +1353,9 @@ WM_SOURCE="review" \
 
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ 置換型パターン（Python で既存行を正規表現置換）: backup sync は non-blocking のため
+#    エラー時は WARNING を出力してスキップする（exit 1 しない）。
+#    追記型パターン（printf + cat >> heredoc）の exit 1 方式とは意図的に異なる。
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -1375,9 +1378,10 @@ body_path, out_path = sys.argv[1], sys.argv[2]
 phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
 with open(body_path, "r") as f:
     body = f.read()
-body = re.sub(r"^(- \*\*最終更新\*\*: ).*", rf"\g<1>{timestamp}", body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", rf"\g<1>{phase}", body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", rf"\g<1>{phase_detail}", body, count=1, flags=re.MULTILINE)
+# lambda を使用: re.sub の置換文字列メタ文字（\1 等）の誤解釈を防止
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + phase, body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + phase_detail, body, count=1, flags=re.MULTILINE)
 with open(out_path, "w") as f:
     f.write(body)
 ' "$body_tmp" "$tmpfile" "phase5_review" "レビュー中" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"

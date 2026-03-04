@@ -861,7 +861,8 @@ if [ -n "$comment_id" ]; then
     body_tmp=$(mktemp)
     trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
 
-    # チェックボックス置換が必要な場合は Python で実行（sed multibyte 問題を回避）
+    # 置換型パターン: Python で既存行を正規表現置換 + 追記型で末尾に追加
+    # trap に body_tmp を含むのは置換型パターンの特徴（追記型のみの場合は tmpfile のみ）
     printf '%s' "$current_body" > "$body_tmp"
     python3 -c '
 import sys, re
@@ -878,7 +879,6 @@ for task_name in task_names:
 with open(out_path, "w") as f:
     f.write(body)
 ' "$body_tmp" "$tmpfile" "{completed_unchecked_task_names}"
-    # ↑ {completed_unchecked_task_names}: 改行区切りの完了済みタスク名リスト（空なら置換なし）
 
     # 追記内容を末尾に追加
     cat >> "$tmpfile" << 'NEW_SECTION_EOF'
@@ -903,7 +903,8 @@ NEW_SECTION_EOF
 
     jq -n --rawfile body "$tmpfile" '{"body": $body}' \
       | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input -
+        -X PATCH --input - || \
+        echo "WARNING: PATCH failed. Backup: $backup_file" >&2
   fi
 fi
 ```

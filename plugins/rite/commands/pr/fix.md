@@ -944,7 +944,8 @@ NEW_SECTION_EOF
 
     jq -n --rawfile body "$tmpfile" '{"body": $body}' \
       | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input -
+        -X PATCH --input - || \
+        echo "WARNING: PATCH failed. Backup: $backup_file" >&2
   fi
 fi
 ```
