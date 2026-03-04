@@ -125,7 +125,7 @@ if [ "$SOURCE" = "startup" ]; then
   PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
   ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
   BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
-  TMP_FILE="${STATE_FILE}.tmp.$$"
+  TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
   trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
      '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>/dev/null; then
@@ -165,7 +165,7 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
     COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
     if [ "$COMPACT_VAL" = "blocked" ]; then
       COMPACT_TRANSITIONED=true
-      TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+      TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
       if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
         '.compact_state = "resuming" | .compact_state_set_at = $ts' \
         "$COMPACT_STATE" > "$TMP_COMPACT" 2>/dev/null; then
@@ -185,7 +185,7 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
     PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
     ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
     BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
-    TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
+    TMP_CLEAR_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
     trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
        '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE" 2>/dev/null; then
@@ -207,7 +207,7 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
 fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
-find "$STATE_ROOT" -maxdepth 1 -name ".rite-flow-state.tmp.*" -type f -mmin +1 -delete 2>/dev/null || true
+find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency
 # Use IFS=$'\t' because @tsv outputs tab-delimited fields; default IFS includes
