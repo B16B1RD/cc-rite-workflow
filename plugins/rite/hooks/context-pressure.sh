@@ -5,7 +5,7 @@
 # when system prompt is close to the 200K API token limit (#889).
 set -euo pipefail
 
-INPUT=$(cat)
+INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 

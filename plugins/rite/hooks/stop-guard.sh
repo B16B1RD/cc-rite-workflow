@@ -34,7 +34,8 @@ log_diag() {
     local -a _lines
     mapfile -t _lines < "$diag_file" 2>/dev/null || true
     if [ "${#_lines[@]}" -gt 50 ]; then
-      local _tmp_diag="${diag_file}.tmp.$$"
+      local _tmp_diag
+      _tmp_diag=$(mktemp "${diag_file}.XXXXXX" 2>/dev/null) || _tmp_diag="${diag_file}.tmp.$$"
       printf '%s\n' "${_lines[@]: -50}" > "$_tmp_diag" 2>/dev/null && mv "$_tmp_diag" "$diag_file" 2>/dev/null || { rm -f "$_tmp_diag" 2>/dev/null; true; }
     fi
   fi

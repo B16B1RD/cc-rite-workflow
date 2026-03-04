@@ -7,7 +7,7 @@ set -euo pipefail
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
 # reaching -f; the comment describes the logical invariant, not the exit path.)
-INPUT=$(cat)
+INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
