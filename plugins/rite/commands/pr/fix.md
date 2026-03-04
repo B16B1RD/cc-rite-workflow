@@ -916,12 +916,32 @@ if [[ -n "$comment_id" ]]; then
   if [[ -z "$current_body" ]]; then
     echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
   else
+    backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+    printf '%s' "$current_body" > "$backup_file"
+    original_length=$(printf '%s' "$current_body" | wc -c)
+
     tmpfile=$(mktemp)
     trap 'rm -f "$tmpfile"' EXIT
     printf '%s\n\n' "$current_body" > "$tmpfile"
     cat >> "$tmpfile" << 'NEW_SECTION_EOF'
 {4.5.3 の内容を実際の値で置換して記述}
 NEW_SECTION_EOF
+
+    # Safety checks before PATCH (see gh-cli-patterns.md)
+    if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+      echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
+      exit 1
+    fi
+    if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+      echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
+      exit 1
+    fi
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
+      exit 1
+    fi
+
     jq -n --rawfile body "$tmpfile" '{"body": $body}' \
       | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
         -X PATCH --input -

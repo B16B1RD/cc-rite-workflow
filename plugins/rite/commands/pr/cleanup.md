@@ -853,12 +853,54 @@ if [ -n "$comment_id" ]; then
   if [ -z "$current_body" ]; then
     echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
   else
+    backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+    printf '%s' "$current_body" > "$backup_file"
+    original_length=$(printf '%s' "$current_body" | wc -c)
+
     tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    printf '%s\n\n' "$current_body" > "$tmpfile"
+    body_tmp=$(mktemp)
+    trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+
+    # チェックボックス置換が必要な場合は Python で実行（sed multibyte 問題を回避）
+    printf '%s' "$current_body" > "$body_tmp"
+    python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+# task_names は改行区切りで渡す（空なら置換なし）
+task_names = sys.argv[3].strip().split("\n") if sys.argv[3].strip() else []
+with open(body_path, "r") as f:
+    body = f.read()
+for task_name in task_names:
+    if task_name:
+        # re.escape で特殊文字をエスケープ
+        pattern = r"^(- \[) (\] " + re.escape(task_name) + r")$"
+        body = re.sub(pattern, r"\g<1>x\g<2>", body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "{completed_unchecked_task_names}"
+    # ↑ {completed_unchecked_task_names}: 改行区切りの完了済みタスク名リスト（空なら置換なし）
+
+    # 追記内容を末尾に追加
     cat >> "$tmpfile" << 'NEW_SECTION_EOF'
+
 {1.7.4 の内容を実際の値で置換して記述}
 NEW_SECTION_EOF
+
+    # Safety checks before PATCH (see gh-cli-patterns.md)
+    if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+      echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
+      exit 1
+    fi
+    if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+      echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
+      exit 1
+    fi
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
+      exit 1
+    fi
+
     jq -n --rawfile body "$tmpfile" '{"body": $body}' \
       | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
         -X PATCH --input -
@@ -866,7 +908,7 @@ NEW_SECTION_EOF
 fi
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。Phase 1.6.1 のシェル変数は参照せず、このブロック内で再取得する。なお Phase 1.7.4 では「完了済み（チェック漏れ）」と判定したタスクのチェックボックスを `- [ ]` から `- [x]` に置換する操作も行う。その場合は heredoc 追記に加え、`$current_body` 内のチェックボックスを置換（`sed 's/^- \[ \] {task_name}/- [x] {task_name}/'` 等）してから `printf` で tmpfile に書き出すこと。`{1.7.4 の内容を実際の値で置換して記述}` を「Update content」テンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。Phase 1.6.1 のシェル変数は参照せず、このブロック内で再取得する。なお Phase 1.7.4 では「完了済み（チェック漏れ）」と判定したタスクのチェックボックスを `- [ ]` から `- [x]` に置換する操作も行う。その場合は Python インラインスクリプトで置換する（`sed` は multibyte 文字で失敗するため使用禁止）。`{completed_unchecked_task_names}` を改行区切りの完了済みタスク名リストで、`{1.7.4 の内容を実際の値で置換して記述}` を「Update content」テンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
 
 **Update content:**
 
@@ -1187,12 +1229,32 @@ if [ -n "$comment_id" ]; then
   if [ -z "$current_body" ]; then
     echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
   else
+    backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+    printf '%s' "$current_body" > "$backup_file"
+    original_length=$(printf '%s' "$current_body" | wc -c)
+
     tmpfile=$(mktemp)
     trap 'rm -f "$tmpfile"' EXIT
     printf '%s\n\n' "$current_body" > "$tmpfile"
     cat >> "$tmpfile" << 'NEW_SECTION_EOF'
 {3.5.2の内容を実際の値で置換して記述}
 NEW_SECTION_EOF
+
+    # Safety checks before PATCH (see gh-cli-patterns.md)
+    if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+      echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
+      exit 1
+    fi
+    if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+      echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
+      exit 1
+    fi
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
+      exit 1
+    fi
+
     jq -n --rawfile body "$tmpfile" '{"body": $body}' \
       | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
         -X PATCH --input -

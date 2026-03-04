@@ -462,6 +462,17 @@ gh pr diff {pr_number} | awk '
 
 > **🚫 MANDATORY RULE**: 作業メモリ（`📜 rite 作業メモリ`）の更新時は、以下の安全パターンを必ず適用すること。
 
+### 禁止パターン
+
+以下のパターンは**絶対に使用してはならない**:
+
+| 禁止パターン | 理由 | 代替 |
+|-------------|------|------|
+| `# Claude が本文をパースし...PATCH` | Claude への曖昧な委任。safety check なしで PATCH される危険性 | 明示的な bash コードブロックで `current_body` 取得 → Python 置換 → 安全検証 → PATCH |
+| `-f body=` | API エラーレスポンスがそのまま body として PATCH される危険性 | `jq -n --rawfile body "$tmpfile" '{"body": $body}'` + `--input -` |
+| `sed` で multibyte テキスト処理 | 日本語・emoji でエラーが発生し空 body を PATCH する危険性 | Python インラインスクリプト（`python3 -c '...'`）による正規表現置換 |
+| PATCH 前に `current_body` 未検証 | API 404 レスポンスがそのまま body として書き込まれる危険性 | 必ず `current_body` の空チェック + ヘッダー検証 + 50% 長検証を実施 |
+
 **Prerequisites**: The following shell variables must be set before using these patterns:
 - `$current_body`: Current work memory content (retrieved via `gh api`)
 - `$updated_tmp`: Path to the temp file containing updated content
