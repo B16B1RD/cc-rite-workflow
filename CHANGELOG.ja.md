@@ -18,7 +18,7 @@ Rite Workflow の主要な変更を記録します。
 
 ### 追加
 
-- Rite Workflow 初回リリース（Zen Workflow からリブランド）
+- Rite Workflow 初回リリース
 - Claude Code 用 Issue ドリブン開発ワークフロー
 - マルチレビュアー PR レビューシステム（討論フェーズ付き）
 - スプリント計画・チーム実行
