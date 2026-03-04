@@ -6,7 +6,8 @@ set -euo pipefail
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
-INPUT=$(cat)
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0

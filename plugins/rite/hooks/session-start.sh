@@ -7,7 +7,8 @@ set -euo pipefail
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
 # reaching -f; the comment describes the logical invariant, not the exit path.)
-INPUT=$(cat)
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 
 # Plugin dual-load collision guard (#591)
 # Only warn when this script is running from a local plugin-dir (not from

@@ -7,6 +7,7 @@ set -euo pipefail
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
 # reaching -f; the comment describes the logical invariant, not the exit path.)
+# cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
 CWD=$(jq -r '.cwd // empty' <<< "$INPUT")
@@ -34,7 +35,9 @@ log_diag() {
     local -a _lines
     mapfile -t _lines < "$diag_file" 2>/dev/null || true
     if [ "${#_lines[@]}" -gt 50 ]; then
-      local _tmp_diag="${diag_file}.tmp.$$"
+      local _tmp_diag
+      # fallback to PID-based name if mktemp fails (e.g., disk full, permission denied)
+      _tmp_diag=$(mktemp "${diag_file}.XXXXXX" 2>/dev/null) || _tmp_diag="${diag_file}.tmp.$$"
       printf '%s\n' "${_lines[@]: -50}" > "$_tmp_diag" 2>/dev/null && mv "$_tmp_diag" "$diag_file" 2>/dev/null || { rm -f "$_tmp_diag" 2>/dev/null; true; }
     fi
   fi

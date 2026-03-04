@@ -13,7 +13,8 @@
 #   stdout JSON with permissionDecision: "deny" — block
 set -euo pipefail
 
-INPUT=$(cat)
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 
 # Only inspect Bash tool calls
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)

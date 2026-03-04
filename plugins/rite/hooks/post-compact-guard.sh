@@ -3,7 +3,8 @@
 # Blocks ALL tool uses after compaction until user runs /clear → /rite:resume.
 set -euo pipefail
 
-INPUT=$(cat)
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
