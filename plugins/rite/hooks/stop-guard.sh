@@ -29,13 +29,14 @@ log_debug() {
 # .gitignore の *.log で自動除外済み
 log_diag() {
   local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+  local _tmp_diag=""
+  trap '[ -n "$_tmp_diag" ] && rm -f "$_tmp_diag" 2>/dev/null; true' RETURN
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true
   # Ring buffer: truncate to last 50 lines (mapfile avoids wc -l subshell)
   if [ -f "$diag_file" ]; then
     local -a _lines
     mapfile -t _lines < "$diag_file" 2>/dev/null || true
     if [ "${#_lines[@]}" -gt 50 ]; then
-      local _tmp_diag
       # fallback to PID-based name if mktemp fails (e.g., disk full, permission denied)
       _tmp_diag=$(mktemp "${diag_file}.XXXXXX" 2>/dev/null) || _tmp_diag="${diag_file}.tmp.$$"
       printf '%s\n' "${_lines[@]: -50}" > "$_tmp_diag" 2>/dev/null && mv "$_tmp_diag" "$diag_file" 2>/dev/null || { rm -f "$_tmp_diag" 2>/dev/null; true; }
@@ -193,7 +194,7 @@ fi
 # Atomically increment error_count before blocking.
 # If the write fails (disk full, permissions), skip silently — the primary goal is protection.
 TMP_STATE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_STATE="${STATE_FILE}.tmp.$$"
-trap 'rm -f "$TMP_STATE" 2>/dev/null' TERM INT
+trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
 if jq --argjson cnt "$((ERROR_COUNT + 1))" '.error_count = $cnt' "$STATE_FILE" > "$TMP_STATE" 2>/dev/null; then
   mv "$TMP_STATE" "$STATE_FILE" 2>/dev/null || rm -f "$TMP_STATE"
 else
