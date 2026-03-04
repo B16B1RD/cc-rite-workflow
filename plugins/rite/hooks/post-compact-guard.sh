@@ -3,7 +3,8 @@
 # Blocks ALL tool uses after compaction until user runs /clear → /rite:resume.
 set -euo pipefail
 
-INPUT=$(cat)
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
@@ -36,9 +37,11 @@ if [ "$FLOW_ACTIVE" != "true" ]; then
 fi
 
 COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
+GUIDANCE_FLAG="$STATE_ROOT/.rite-guidance-shown"
 
-# normal or resuming → allow
+# normal or resuming → allow (clean up guidance flag)
 if [ "$COMPACT_VAL" = "normal" ] || [ "$COMPACT_VAL" = "resuming" ]; then
+  rm -f "$GUIDANCE_FLAG" 2>/dev/null || true
   exit 0
 fi
 
@@ -50,13 +53,16 @@ fi
 PHASE=$(jq -r '.phase // "unknown"' "$FLOW_STATE" 2>/dev/null) || PHASE="unknown"
 ISSUE=$(jq -r '.issue_number // 0 | tostring' "$FLOW_STATE" 2>/dev/null) || ISSUE="0"
 
-# stderr: displayed directly to user's terminal (guaranteed visibility)
-echo "[rite] ⚠️ compact 後ブロック中。Phase: $PHASE | Issue: #$ISSUE" >&2
-echo "[rite] /clear → /rite:resume で再開してください。" >&2
+# stderr: displayed directly to user's terminal (show only once per compact event)
+if [ ! -f "$GUIDANCE_FLAG" ]; then
+  echo "[rite] ⚠️ compact 後ブロック中。Phase: $PHASE | Issue: #$ISSUE" >&2
+  echo "[rite] /clear → /rite:resume で再開してください。" >&2
+  touch "$GUIDANCE_FLAG" 2>/dev/null || true
+fi
 
 # Deny this tool use and instruct LLM to stop.
 # compact_state stays "blocked" so ALL subsequent tool calls are also denied.
-# The stop-guard.sh will allow the stop because compact_state is "blocked".
+# When compact_state is blocked, stop-guard.sh allows stop to prevent deadlock (#30).
 # Minimal deny reason to reduce token overhead (#889).
 jq -n \
   --arg issue "$ISSUE" \

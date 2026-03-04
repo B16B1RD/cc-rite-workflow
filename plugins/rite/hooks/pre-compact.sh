@@ -6,8 +6,9 @@ set -euo pipefail
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
-INPUT=$(cat)
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
+CWD=$(jq -r '.cwd // empty' <<< "$INPUT")
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
@@ -37,7 +38,7 @@ trap cleanup EXIT TERM INT
 if acquire_wm_lock "$LOCKDIR"; then
   # Update .rite-flow-state timestamp (inside lock for atomicity)
   if [ -f "$FLOW_STATE" ]; then
-    TMP_FILE="${FLOW_STATE}.tmp.$$"
+    TMP_FILE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_FILE="${FLOW_STATE}.tmp.$$"
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" '.updated_at = $ts' "$FLOW_STATE" > "$TMP_FILE"; then
       mv "$TMP_FILE" "$FLOW_STATE"
     else
@@ -72,7 +73,7 @@ if acquire_wm_lock "$LOCKDIR"; then
   # Now post-compact-guard no longer transitions (stays blocked), and pre-compact
   # always sets "blocked" to ensure every compact triggers a full stop.
   # Only /clear (session-start.sh) transitions blocked→resuming.
-  TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+  TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
   if jq -n \
     --arg state "blocked" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \

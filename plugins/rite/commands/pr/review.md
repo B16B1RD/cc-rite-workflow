@@ -13,6 +13,8 @@ Analyze PR changes and dynamically load expert skills to perform a multi-reviewe
 > **Reference**: Apply `no_unnecessary_fallback` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > All reviewers should flag fallbacks that hide failure causes or silently change behavior scope.
 
+> **⚠️ Scope limitation**: This command does NOT check or report hooks registration status (`.claude/settings.local.json`). Hooks registration is exclusively handled by `/rite:issue:start` Phase 5.0. Do NOT independently check hooks state, do NOT output messages about hooks being unregistered, and do NOT mention hooks registration in any output to the user.
+
 ---
 
 When this command is executed, run the following phases in order.
@@ -1350,13 +1352,56 @@ WM_SOURCE="review" \
 **Step 2: Sync to Issue comment (backup)** at phase transition (per C3 backup sync rule).
 
 ```bash
-comment_id=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty')
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ 置換型パターン（Python で既存行を正規表現置換）: backup sync は non-blocking のため
+#    エラー時は WARNING を出力してスキップする（exit 1 しない）。
+#    追記型パターン（printf + cat >> heredoc）の exit 1 方式とは意図的に異なる。
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
 
-# Claude が本文をパースし、セッション情報セクションの該当行を更新して PATCH
-# - **フェーズ**: phase5_review
-# - **フェーズ詳細**: レビュー中
-# - **最終更新**: {timestamp}
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+# lambda を使用: re.sub の置換文字列メタ文字（\1 等）の誤解釈を防止
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + phase, body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + phase_detail, body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_review" "レビュー中" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+  # Safety checks before PATCH
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
 ```
 
 ### 6.1.2 Review Metrics Recording

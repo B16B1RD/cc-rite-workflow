@@ -149,7 +149,7 @@ fi
 echo "TC-005: GNU date -d による ISO 8601 パース検証"
 dir005="$GUARD_TEST_DIR/tc005"
 mkdir -p "$dir005"
-# 5分前のタイムスタンプ → AGE < 3600 → block (exit 2 + stderr)
+# 5分前のタイムスタンプ → AGE < 7200 → block (exit 2 + stderr)
 recent_ts=$(date -u -d "5 minutes ago" +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date -u -v-5M +"%Y-%m-%dT%H:%M:%S+00:00")
 create_state_file "$dir005" "{\"active\": true, \"updated_at\": \"$recent_ts\", \"phase\": \"impl\", \"next_action\": \"continue\"}"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir005\"}"
@@ -175,7 +175,7 @@ fi
 echo "TC-006: タイムゾーン付き日時文字列（+09:00 形式）"
 dir006="$GUARD_TEST_DIR/tc006"
 mkdir -p "$dir006"
-# 古い固定日時（JST +09:00）→ AGE > 3600 → exit 0
+# 古い固定日時（JST +09:00）→ AGE > 7200 → exit 0
 old_ts="2020-01-01T00:00:00+09:00"
 create_state_file "$dir006" "{\"active\": true, \"updated_at\": \"$old_ts\", \"phase\": \"test\", \"next_action\": \"test\"}"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir006\"}"
@@ -189,7 +189,7 @@ fi
 # --------------------------------------------------------------------------
 # TC-007: STATE_TS=0 時のフォールバック動作
 #
-# STATE_TS=0 の場合、AGE = CURRENT - 0 = CURRENT（数十億秒）→ > 3600 → exit 0
+# STATE_TS=0 の場合、AGE = CURRENT - 0 = CURRENT（数十億秒）→ > 7200 → exit 0
 # --------------------------------------------------------------------------
 echo "TC-007: STATE_TS=0 フォールバック動作"
 dir007="$GUARD_TEST_DIR/tc007"
@@ -205,9 +205,9 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-008: 通常ケース（アクティブ、1時間以内）→ block
+# TC-008: 通常ケース（アクティブ、2時間以内）→ block
 # --------------------------------------------------------------------------
-echo "TC-008: アクティブかつ1時間以内 → block (exit 2 + stderr)"
+echo "TC-008: アクティブかつ2時間以内 → block (exit 2 + stderr)"
 dir008="$GUARD_TEST_DIR/tc008"
 mkdir -p "$dir008"
 now_ts=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
@@ -569,13 +569,13 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-024: compact_state=blocked + active=true → exit 2（stop ブロック維持）
+# TC-024: compact_state=blocked + active=true → exit 0（デッドロック防止 #30）
 #
-# post-compact-guard がワンショットブロック+自動リカバリに変更されたため、
-# compact_state=blocked でも stop-guard は停止をブロックする（AC-6）。
-# デッドロック防止は error_count 閾値メカニズムに一元化（D-02）。
+# compact_state=blocked のとき、post-compact-guard が全ツール使用を拒否する。
+# stop-guard も stop をブロックするとデッドロックになるため、即座に stop を
+# 許可する（exit 0）。旧 AC-6 の動作を #30 で上書き。
 # --------------------------------------------------------------------------
-echo "TC-024: compact_state=blocked + active=true → exit 2（stop ブロック維持）"
+echo "TC-024: compact_state=blocked + active=true → exit 0（デッドロック防止 #30）"
 dir024="$GUARD_TEST_DIR/tc024"
 mkdir -p "$dir024"
 now_ts024=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
@@ -584,14 +584,14 @@ echo '{"compact_state": "blocked"}' > "$dir024/.rite-compact-state"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir024\"}"
 stderr_file024="$(mktemp "$GUARD_TEST_DIR/stderr024.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file024") && rc=0 || rc=$?
-if [ $rc -eq 2 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file024" "Normal operation" "impl" "NOT re-invoke"); then
-    pass "compact_state=blocked → exit 2（stop ブロック維持、AC-6）"
+if [ $rc -eq 0 ] && [ -z "$output" ]; then
+  if missing=$(assert_stderr_contains "$stderr_file024" "compact 検出" "/clear" "/rite:resume"); then
+    pass "compact_state=blocked → exit 0（デッドロック防止 #30）"
   else
-    fail "exit 2 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file024")'"
+    fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file024")'"
   fi
 else
-  fail "exit=$rc, output='$output'（期待: exit 2）"
+  fail "exit=$rc, output='$output'（期待: exit 0）"
 fi
 
 # --------------------------------------------------------------------------
@@ -644,13 +644,13 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-027: needs_clear=true + compact_state=blocked + active=true → exit 2
+# TC-027: needs_clear=true + compact_state=blocked + active=true → exit 0
 #
-# 旧来のコードでは needs_clear=true で stop を許可、compact_state=blocked でも
-# stop を許可していた。両方が同時に存在する場合でも、新仕様では stop がブロック
-# されることを検証（AC-1 + AC-6 の組み合わせ）。
+# needs_clear=true は廃止フラグで無視される（AC-1）。
+# compact_state=blocked は即座に stop を許可する（#30）。
+# 両方が存在する場合、compact_state=blocked が優先され exit 0 となる。
 # --------------------------------------------------------------------------
-echo "TC-027: needs_clear=true + compact_state=blocked → exit 2（AC-1+AC-6 組み合わせ）"
+echo "TC-027: needs_clear=true + compact_state=blocked → exit 0（#30 優先）"
 dir027="$GUARD_TEST_DIR/tc027"
 mkdir -p "$dir027"
 now_ts027=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
@@ -659,14 +659,59 @@ echo '{"compact_state": "blocked"}' > "$dir027/.rite-compact-state"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir027\"}"
 stderr_file027="$(mktemp "$GUARD_TEST_DIR/stderr027.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file027") && rc=0 || rc=$?
-if [ $rc -eq 2 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file027" "Normal operation" "phase5_review" "NOT re-invoke"); then
-    pass "needs_clear=true + compact_state=blocked → exit 2（AC-1+AC-6 組み合わせ）"
+if [ $rc -eq 0 ] && [ -z "$output" ]; then
+  if missing=$(assert_stderr_contains "$stderr_file027" "compact 検出" "/clear" "/rite:resume"); then
+    pass "needs_clear=true + compact_state=blocked → exit 0（#30 デッドロック防止優先）"
   else
-    fail "exit 2 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file027")'"
+    fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file027")'"
   fi
 else
-  fail "exit=$rc, output='$output'（期待: exit 2）"
+  fail "exit=$rc, output='$output'（期待: exit 0）"
+fi
+
+# --------------------------------------------------------------------------
+# TC-028: exit 2 パスで診断ログに EXIT:2 が記録される（AC-3）
+# --------------------------------------------------------------------------
+echo "TC-028: exit 2 パスで診断ログに EXIT:2 が記録される"
+dir028="$GUARD_TEST_DIR/tc028"
+mkdir -p "$dir028"
+now_ts028=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir028" "{\"active\": true, \"updated_at\": \"$now_ts028\", \"phase\": \"phase5_review\", \"next_action\": \"proceed to fix\", \"error_count\": 0}"
+# Clear any existing diag log
+rm -f "$dir028/.rite-stop-guard-diag.log"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir028\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && [ -z "$output" ]; then
+  diag_file="$dir028/.rite-stop-guard-diag.log"
+  if [ -f "$diag_file" ] && grep -q "EXIT:2" "$diag_file"; then
+    pass "exit 2 パスで診断ログに EXIT:2 が記録された（AC-3）"
+  else
+    fail "exit 2 だが診断ログに EXIT:2 が記録されていない（ファイル存在: $([ -f "$diag_file" ] && echo yes || echo no)）"
+  fi
+else
+  fail "exit=$rc, output='$output'（期待: exit 2, stdout 空）"
+fi
+
+# --------------------------------------------------------------------------
+# TC-029: exit 0 パスで診断ログに reason=not_active が記録される（AC-3）
+# --------------------------------------------------------------------------
+echo "TC-029: exit 0 パスで診断ログに reason=not_active が記録される"
+dir029="$GUARD_TEST_DIR/tc029"
+mkdir -p "$dir029"
+create_state_file "$dir029" '{"active": false, "updated_at": "2026-01-01T00:00:00+00:00"}'
+# Clear any existing diag log
+rm -f "$dir029/.rite-stop-guard-diag.log"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir029\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 0 ] && [ -z "$output" ]; then
+  diag_file="$dir029/.rite-stop-guard-diag.log"
+  if [ -f "$diag_file" ] && grep -q "reason=not_active" "$diag_file"; then
+    pass "exit 0 パスで診断ログに reason=not_active が記録された（AC-3）"
+  else
+    fail "exit 0 だが診断ログに reason=not_active が記録されていない（ファイル存在: $([ -f "$diag_file" ] && echo yes || echo no)）"
+  fi
+else
+  fail "exit=$rc, output='$output'（期待: exit 0）"
 fi
 
 # --------------------------------------------------------------------------

@@ -29,6 +29,7 @@ temp/
 .rite-compact-state.tmp.*
 .rite-work-memory/
 .rite-context-counter
+.rite-guidance-shown
 
 # Git worktrees for parallel agents
 .worktrees/

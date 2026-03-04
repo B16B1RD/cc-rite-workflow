@@ -6,6 +6,8 @@ description: PR を Ready for review に変更
 
 Change PR to Ready for review and update the related Issue's Status
 
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:completed]` or `[ready:error]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
+
 ---
 
 When this command is executed, run the following phases in order.
@@ -202,6 +204,23 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
+**In e2e flow**: If `.rite-flow-state` exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` Phase 5.5):
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  TMP_STATE=".rite-flow-state.tmp.$$"
+  jq --arg phase "phase5_ready_error" \
+     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
+     --arg next "rite:pr:ready failed. Ask user: retry / skip to Phase 5.6 / terminate." \
+     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
+     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
+fi
+```
+
+```
+[ready:error]
+```
+
 End processing.
 
 ---
@@ -225,13 +244,56 @@ WM_SOURCE="ready" \
 **Step 2: Sync to Issue comment (backup)** at phase transition (per C3 backup sync rule).
 
 ```bash
-comment_id=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty')
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+# ⚠️ 置換型パターン（Python で既存行を正規表現置換）: backup sync は non-blocking のため
+#    エラー時は WARNING を出力してスキップする（exit 1 しない）。
+#    追記型パターン（printf + cat >> heredoc）の exit 1 方式とは意図的に異なる。
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
 
-# Claude が本文をパースし、セッション情報セクションの該当行を更新して PATCH
-# - **フェーズ**: phase5_ready
-# - **フェーズ詳細**: Ready for review に変更完了
-# - **最終更新**: {timestamp}
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  python3 -c '
+import sys, re
+body_path, out_path = sys.argv[1], sys.argv[2]
+phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
+with open(body_path, "r") as f:
+    body = f.read()
+# lambda を使用: re.sub の置換文字列メタ文字（\1 等）の誤解釈を防止
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + phase, body, count=1, flags=re.MULTILINE)
+body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + phase_detail, body, count=1, flags=re.MULTILINE)
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "phase5_ready" "Ready for review に変更完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+  # Safety checks before PATCH
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
 ```
 
 ---
@@ -377,6 +439,47 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 Status の更新をスキップします
 ```
 
+### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
+
+Before outputting the result pattern (`[ready:completed]`) or skipping output, update `.rite-flow-state` to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+
+**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
+
+**State update**:
+
+| Result | Phase | Phase Detail | Next Action |
+|--------|-------|-------------|-------------|
+| `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop.` |
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  TMP_STATE=".rite-flow-state.tmp.$$"
+  jq --arg phase "phase5_post_ready" \
+     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
+     --arg next "rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
+     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
+     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
+fi
+```
+
+**Note on `error_count`**: This patch-style `jq` command intentionally preserves `error_count` from the existing `.rite-flow-state` (consistent with `lint.md` Phase 4.0, `review.md` Phase 8.0, and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
+
+**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
+
+```bash
+WM_SOURCE="ready" \
+  WM_PHASE="phase5_post_ready" \
+  WM_PHASE_DETAIL="Ready処理完了" \
+  WM_NEXT_ACTION="start.md Phase 5.5.1 Status 更新 → 5.5.2 メトリクス → 5.6 完了レポートを実行" \
+  WM_BODY_TEXT="Post-ready phase sync." \
+  WM_REQUIRE_FLOW_STATE="true" \
+  WM_READ_FROM_FLOW_STATE="true" \
+  WM_ISSUE_NUMBER="{issue_number}" \
+  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+```
+
+**On lock failure**: Log a warning and continue — local work memory update is best-effort.
+
 ---
 
 ## Phase 5: Completion Report
@@ -401,11 +504,19 @@ Check the conversation history and determine "within end-to-end flow" if any of 
 
 ### 5.1 Output the Completion Report
 
-#### 5.1.1 End-to-End Flow (Skip Completion Report)
+#### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
 When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` Phase 5.6 — outputting it here causes duplicate reports.
 
-End this phase without any additional output. Control returns to `start.md` automatically. No template loading, no inline format, no completion table.
+**Instead, output the following machine-readable signal** to indicate successful completion to the caller:
+
+```
+[ready:completed]
+```
+
+This pattern is **mandatory** in e2e flow. It allows `start.md` Phase 5.5 to detect that `rite:pr:ready` has completed successfully and immediately proceed to Phase 5.5.1 (Status update), 5.5.2 (metrics), and 5.6 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before Phase 5.6.
+
+No template loading, no inline format, no completion table — only the `[ready:completed]` pattern.
 
 #### 5.1.2 Standalone Execution
 

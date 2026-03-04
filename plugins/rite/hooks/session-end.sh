@@ -7,7 +7,8 @@ set -euo pipefail
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
 # reaching -f; the comment describes the logical invariant, not the exit path.)
-INPUT=$(cat)
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
@@ -29,10 +30,8 @@ fi
 
 # Deactivate flow state if it exists
 if [ -f "$STATE_FILE" ]; then
-    # PID-based temp file: simpler than mktemp, sufficient for single-process hook
-    # execution.  The file is created in the project CWD (owned by the developer),
-    # so symlink-based attacks against /tmp do not apply.
-    TMP_FILE="${STATE_FILE}.tmp.$$"
+    # mktemp with PID-based fallback (consistent with stop-guard.sh)
+    TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
     # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
     trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
@@ -47,5 +46,5 @@ fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
 if [ -d "$CWD" ]; then
-    find "$CWD" -maxdepth 1 -name ".rite-flow-state.tmp.*" -type f -mmin +1 -delete 2>/dev/null || true
+    find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
 fi

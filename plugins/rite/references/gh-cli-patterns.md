@@ -462,6 +462,34 @@ gh pr diff {pr_number} | awk '
 
 > **🚫 MANDATORY RULE**: 作業メモリ（`📜 rite 作業メモリ`）の更新時は、以下の安全パターンを必ず適用すること。
 
+> **Note: 2種類の更新パターンについて**
+>
+> 作業メモリ更新には「**置換型**」と「**追記型**」の2種類がある。それぞれ目的・trap 構成・エラー処理方針が異なる:
+>
+> | 項目 | 置換型（Python 正規表現置換） | 追記型（printf + cat >> heredoc） |
+> |------|-------------------------------|----------------------------------|
+> | **用途** | 既存行の値を更新（フェーズ、タイムスタンプ等） | 末尾にセクションを追加（レビュー履歴、メトリクス等） |
+> | **trap 構成** | `trap 'rm -f "$tmpfile" "$body_tmp"' EXIT`（`body_tmp` あり） | `trap 'rm -f "$tmpfile"' EXIT`（`body_tmp` なし） |
+> | **エラー処理** | non-blocking: WARNING でスキップ（backup sync 用途のため） | blocking: safety check 失敗時は `exit 1` で中断、PATCH 送信失敗時は WARNING（backup 保全済みのため） |
+> | **理由** | backup sync の失敗はフロー継続に影響しない | safety check（空body・ヘッダー欠落・サイズ縮小）はデータ不整合を招くため `exit 1`。PATCH ネットワーク失敗は backup が保全済みのため WARNING で継続 |
+>
+> `body_tmp` は置換型で Python スクリプトの入力ファイルとして使用するため追加される。追記型では `current_body` を直接 `tmpfile` に書き込むため不要。
+
+### 禁止パターン（作業メモリ更新固有）
+
+> 一般的な禁止パターンは [Dangerous Patterns (Prohibited)](#dangerous-patterns-prohibited) および [All Prohibited Alternatives](#all-prohibited-alternatives) を参照。以下は作業メモリ更新に特有の禁止パターンをまとめたものである。
+>
+> **言語方針**: 本セクションは日本語で記述されている。これは作業メモリ自体が日本語コンテンツを扱うため、禁止パターンの説明も日本語で統一した。一般的な安全パターン（上記リンク先）は英語で記述されている。
+
+以下のパターンは**絶対に使用してはならない**:
+
+| 禁止パターン | 理由 | 代替 |
+|-------------|------|------|
+| `# Claude が本文をパースし、セッション情報セクションの該当行を更新して PATCH` （コマンド .md ファイル内で自然言語指示のみで PATCH 処理を委任するパターン） | Claude への曖昧な委任。safety check なしで PATCH される危険性 | 明示的な bash コードブロックで: `current_body` 取得 → `jq -n --rawfile` + `--input -` で PATCH。正規表現置換が必要な場合は `python3 -c` で置換後、安全検証 → PATCH |
+| `-f body=` | API エラーレスポンスがそのまま body として PATCH される危険性 | `jq -n --rawfile body "$tmpfile" '{"body": $body}'` + `--input -` |
+| `sed` で multibyte テキスト処理 | 日本語・emoji でエラーが発生し空 body を PATCH する危険性 | `jq -n --rawfile` + `--input -` パターンによるテキスト処理。正規表現置換が必要な場合は Python インラインスクリプト（`python3 -c '...'`）を使用 |
+| PATCH 前に `current_body` 未検証 | API 404 レスポンスがそのまま body として書き込まれる危険性 | 必ず `current_body` の空チェック + ヘッダー検証 + 50% サイズ検証（[Body Length Comparison](#body-length-comparison)）を実施 |
+
 **Prerequisites**: The following shell variables must be set before using these patterns:
 - `$current_body`: Current work memory content (retrieved via `gh api`)
 - `$updated_tmp`: Path to the temp file containing updated content
@@ -522,14 +550,12 @@ fi
 
 ```bash
 # Update via jq + gh api (backup preserved on failure for manual recovery)
+# PATCH 送信失敗時は WARNING で継続（backup が保全されているため復旧可能）
+# 注: 追記型・置換型ともに同じパターン。safety check（Step 2-3）の exit 1 とは役割が異なる
 jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
     | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-      -X PATCH --input -
-patch_status=$?
-if [ "$patch_status" -ne 0 ]; then
-  echo "ERROR: PATCH failed. Backup saved at: $backup_file" >&2
-  exit 1
-fi
+      -X PATCH --input - || \
+      echo "WARNING: PATCH failed. Backup saved at: $backup_file" >&2
 ```
 
 ---

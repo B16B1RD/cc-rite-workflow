@@ -7,7 +7,8 @@ set -euo pipefail
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
 # reaching -f; the comment describes the logical invariant, not the exit path.)
-INPUT=$(cat)
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 
 # Plugin dual-load collision guard (#591)
 # Only warn when this script is running from a local plugin-dir (not from
@@ -42,6 +43,7 @@ _cleanup_stale_compact() {
     rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
     rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || true
   fi
+  rm -f "$STATE_ROOT/.rite-guidance-shown" 2>/dev/null || true
 }
 
 # Reset context pressure counter on startup/clear (#889)
@@ -108,7 +110,7 @@ if [ ! -f "$STATE_FILE" ]; then
   exit 0
 fi
 
-ACTIVE=$(jq -r '.active // false' "$STATE_FILE")
+ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || ACTIVE=false
 if [ "$ACTIVE" != "true" ]; then
   # Clean stale compact state on startup/clear when flow is inactive (#756, #800)
   [ "$SOURCE" != "compact" ] && _cleanup_stale_compact
@@ -120,13 +122,13 @@ fi
 # hook not registered). Reset to active=false and show a soft message instead of
 # the alarming "CRITICAL: Active rite workflow detected" message.
 if [ "$SOURCE" = "startup" ]; then
-  PHASE=$(jq -r '.phase // ""' "$STATE_FILE")
-  ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE")
-  BRANCH=$(jq -r '.branch // ""' "$STATE_FILE")
-  TMP_FILE="${STATE_FILE}.tmp.$$"
+  PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
+  ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
+  BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
+  TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
   trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
+     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>/dev/null; then
     mv "$TMP_FILE" "$STATE_FILE"
   else
     rm -f "$TMP_FILE"
@@ -163,7 +165,7 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
     COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
     if [ "$COMPACT_VAL" = "blocked" ]; then
       COMPACT_TRANSITIONED=true
-      TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+      TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
       if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
         '.compact_state = "resuming" | .compact_state_set_at = $ts' \
         "$COMPACT_STATE" > "$TMP_COMPACT" 2>/dev/null; then
@@ -180,13 +182,13 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
   # Otherwise (no compact-state file, or non-blocked state), apply the same
   # defensive reset as startup to avoid false "interrupted workflow" detection.
   if [ "$SOURCE" = "clear" ] && [ "$COMPACT_TRANSITIONED" = "false" ]; then
-    PHASE=$(jq -r '.phase // ""' "$STATE_FILE")
-    ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE")
-    BRANCH=$(jq -r '.branch // ""' "$STATE_FILE")
-    TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
+    PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
+    ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
+    BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
+    TMP_CLEAR_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
     trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE"; then
+       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE" 2>/dev/null; then
       mv "$TMP_CLEAR_FILE" "$STATE_FILE"
     else
       rm -f "$TMP_CLEAR_FILE"
@@ -205,20 +207,25 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
 fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
-find "$STATE_ROOT" -maxdepth 1 -name ".rite-flow-state.tmp.*" -type f -mmin +1 -delete 2>/dev/null || true
+find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency
 # Use IFS=$'\t' because @tsv outputs tab-delimited fields; default IFS includes
 # spaces which would break values like "After rite:lint, execute Phase 5.2.1...".
-# Note: If the process substitution (jq) fails, read returns non-zero but under
-# set -e the subshell exit status is not propagated. The subsequent -z "$ISSUE"
-# check catches this case by detecting empty/missing fields.
-IFS=$'\t' read -r ISSUE PHASE NEXT LOOP < <(jq -r '[
+# Defense-in-depth: Line 111's ACTIVE check already catches invalid JSON (jq
+# fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
+# the file becomes corrupt between the two jq reads (e.g., race condition,
+# partial write). It is not reachable by normal unit tests.
+_tsv_output=$(jq -r '[
   (.issue_number // "" | tostring),
   (.phase // "unknown"),
   (.next_action // "unknown"),
   (.loop_count // 0 | tostring)
-] | @tsv' "$STATE_FILE")
+] | @tsv' "$STATE_FILE" 2>/dev/null) || {
+  echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
+  exit 0
+}
+IFS=$'\t' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
