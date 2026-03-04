@@ -680,8 +680,8 @@ create_state_file "$dir028" "{\"active\": true, \"updated_at\": \"$now_ts028\", 
 # Clear any existing diag log
 rm -f "$dir028/.rite-stop-guard-diag.log"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir028\"}"
-echo "$input" | bash "$GUARD" 2>/dev/null && rc=0 || rc=$?
-if [ $rc -eq 2 ]; then
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && [ -z "$output" ]; then
   diag_file="$dir028/.rite-stop-guard-diag.log"
   if [ -f "$diag_file" ] && grep -q "EXIT:2" "$diag_file"; then
     pass "exit 2 パスで診断ログに EXIT:2 が記録された（AC-3）"
@@ -689,7 +689,7 @@ if [ $rc -eq 2 ]; then
     fail "exit 2 だが診断ログに EXIT:2 が記録されていない（ファイル存在: $([ -f "$diag_file" ] && echo yes || echo no)）"
   fi
 else
-  fail "exit=$rc（期待: exit 2）"
+  fail "exit=$rc, output='$output'（期待: exit 2, stdout 空）"
 fi
 
 # --------------------------------------------------------------------------
