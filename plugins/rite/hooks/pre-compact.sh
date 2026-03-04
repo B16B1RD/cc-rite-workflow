@@ -8,7 +8,7 @@ set -euo pipefail
 # missing the state file won't exist and the hook exits at the -f check below.
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+CWD=$(jq -r '.cwd // empty' <<< "$INPUT")
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
