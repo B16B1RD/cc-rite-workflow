@@ -111,6 +111,8 @@ else
     echo "WARNING: 作業メモリコメントの構造が不完全です（セッション情報セクション欠落）。" >&2
   elif [ "$progress_count" -eq 0 ]; then
     echo "WARNING: 作業メモリコメントの構造が不完全です（進捗サマリーセクション欠落）。" >&2
+  else
+    echo "OK: 作業メモリコメントの構造検証が完了しました" >&2
   fi
 fi
 ```
