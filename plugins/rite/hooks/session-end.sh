@@ -46,5 +46,5 @@ fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
 if [ -d "$CWD" ]; then
-    find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????" \) -type f -mmin +1 -delete 2>/dev/null || true
+    find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
 fi

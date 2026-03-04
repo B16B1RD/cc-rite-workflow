@@ -207,7 +207,7 @@ if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
 fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
-find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????" \) -type f -mmin +1 -delete 2>/dev/null || true
+find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency
 # Use IFS=$'\t' because @tsv outputs tab-delimited fields; default IFS includes
