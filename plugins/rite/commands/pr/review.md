@@ -13,6 +13,8 @@ Analyze PR changes and dynamically load expert skills to perform a multi-reviewe
 > **Reference**: Apply `no_unnecessary_fallback` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > All reviewers should flag fallbacks that hide failure causes or silently change behavior scope.
 
+> **⚠️ Scope limitation**: This command does NOT check or report hooks registration status (`.claude/settings.local.json`). Hooks registration is exclusively handled by `/rite:issue:start` Phase 5.0. Do NOT independently check hooks state, do NOT output messages about hooks being unregistered, and do NOT mention hooks registration in any output to the user.
+
 ---
 
 When this command is executed, run the following phases in order.
