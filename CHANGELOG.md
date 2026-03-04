@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Implementation Contract format not applied when creating single Issue for large-scope tasks (#2)
 - Fixed `/rite:issue:create` interruption after sub-skill return (#6)
 - Fixed `/rite:issue:start` interruption during end-to-end flow (#7)
-- Fixed work memory corruption on update — add safety patterns and destruction prevention (#8)
+- Fixed work memory corruption on update — added safety patterns and destruction prevention (#8)
 
 ## [0.1.0] - 2026-03-01
 
