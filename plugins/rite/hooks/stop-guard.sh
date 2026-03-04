@@ -32,9 +32,10 @@ log_diag() {
   # Ring buffer: truncate to last 50 lines (mapfile avoids wc -l subshell)
   if [ -f "$diag_file" ]; then
     local -a _lines
-    mapfile -t _lines < "$diag_file" 2>/dev/null
+    mapfile -t _lines < "$diag_file" 2>/dev/null || true
     if [ "${#_lines[@]}" -gt 50 ]; then
-      printf '%s\n' "${_lines[@]: -50}" > "$diag_file" 2>/dev/null || true
+      local _tmp_diag="${diag_file}.tmp.$$"
+      printf '%s\n' "${_lines[@]: -50}" > "$_tmp_diag" 2>/dev/null && mv "$_tmp_diag" "$diag_file" 2>/dev/null || { rm -f "$_tmp_diag" 2>/dev/null; true; }
     fi
   fi
 }
@@ -113,6 +114,11 @@ parse_iso8601_to_epoch() {
   # Try macOS date -j -f (strip colon from timezone offset: +09:00 -> +0900)
   local ts_nocolon
   # Strip colon from timezone offset: +09:00 -> +0900 (bash parameter expansion avoids sed subshell)
+  # e.g. ts="2026-03-04T00:04:17+09:00"
+  #   ${ts%:*}  -> "2026-03-04T00:04:17+09"  (remove shortest suffix matching :*)
+  #   ${ts##*:} -> "00"                       (remove longest prefix matching *:)
+  #   result    -> "2026-03-04T00:04:17+0900"
+  # Requires: ts has already passed the regex validation above (line 102)
   ts_nocolon="${ts%:*}${ts##*:}"
   if epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$ts_nocolon" +%s 2>/dev/null); then
     echo "$epoch"
