@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release of Rite Workflow (rebranded from Zen Workflow)
+- Initial release of Rite Workflow
 - Issue-driven development workflow for Claude Code
 - Multi-reviewer PR review system with debate phase
 - Sprint planning and team execution
