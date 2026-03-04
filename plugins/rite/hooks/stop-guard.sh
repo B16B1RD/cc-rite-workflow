@@ -167,7 +167,8 @@ IFS=$'\t' read -r PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase // "unknow
 THRESHOLD=3
 RITE_CONFIG="$STATE_ROOT/rite-config.yml"
 if [ -f "$RITE_CONFIG" ]; then
-  cfg_val=$(grep -A20 '^safety:' "$RITE_CONFIG" 2>/dev/null | grep 'repeated_failure_threshold' | head -1 | sed 's/.*:[[:space:]]*//' | tr -d '[:space:]' 2>/dev/null || echo "")
+  # awk: ^safety: セクション内を動的に抽出（次のトップレベルキーまで）
+  cfg_val=$(awk '/^safety:/{f=1;next} f && /^[^[:space:]]/{exit} f && /repeated_failure_threshold/' "$RITE_CONFIG" 2>/dev/null | head -1 | sed 's/.*:[[:space:]]*//' | tr -d '[:space:]' 2>/dev/null || echo "")
   if [[ "$cfg_val" =~ ^[0-9]+$ ]]; then
     THRESHOLD="$cfg_val"
   fi
