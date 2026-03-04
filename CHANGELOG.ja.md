@@ -18,9 +18,9 @@ Rite Workflow の主要な変更を記録します。
 - `/rite:issue:start` の完了レポート（Phase 5.6）が実行されない問題を修正 (#17)
 - 親 Issue の Projects ステータスが Todo から In Progress に更新されない問題を修正 (#15)
 - `/rite:issue:start` 実行時の Bash コマンドエラーを修正 (#13)
-- find クリーンアップパターンを mktemp サフィックス長非依存に修正
-- `ready.md` に出力パターンと Defense-in-Depth を追加
-- 作業メモリ更新の安全パターンを全コマンドに統一適用
+- find クリーンアップパターンを mktemp サフィックス長非依存に修正 (#44)
+- `ready.md` に出力パターンと Defense-in-Depth を追加 (#32)
+- 作業メモリ更新の安全パターンを全コマンドに統一適用 (#50)
 - stop-guard と post-compact-guard の競合デッドロックを修正 (#30)
 - `/clear → /rite:resume` 案内メッセージの重複表示を修正 (#27)
 

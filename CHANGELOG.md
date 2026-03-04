@@ -18,9 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix `/rite:issue:start` completion report (Phase 5.6) not executing (#17)
 - Fix parent Issue Projects status not updating from Todo to In Progress (#15)
 - Fix `/rite:issue:start` Bash command errors (#13)
-- Fix find cleanup pattern to be mktemp suffix-length independent
-- Fix `ready.md` output pattern and defense-in-depth for Mandatory After
-- Apply work memory update safety patterns consistently across all commands
+- Fix find cleanup pattern to be mktemp suffix-length independent (#44)
+- Fix `ready.md` output pattern and defense-in-depth for Mandatory After (#32)
+- Apply work memory update safety patterns consistently across all commands (#50)
 - Fix stop-guard and post-compact-guard deadlock race condition (#30)
 - Fix `/clear → /rite:resume` duplicate guidance message (#27)
 
