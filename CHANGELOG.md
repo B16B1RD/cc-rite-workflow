@@ -9,40 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fix `work-memory-init` validation script missing else branch for success case (#48)
-- Fix work memory comment being overwritten by API error response (#47)
-- Fix unnecessary hooks unregistered message during rite workflow execution (#46)
-- Fix `stop-guard.sh` trap missing EXIT signal (#39, #41)
-- Fix `stop-guard.sh` compact_state stop block failure (#22)
-- Fix `session-start.sh` jq error handling issues (#18, #20)
-- Fix `/rite:issue:start` completion report (Phase 5.6) not executing (#17)
-- Fix parent Issue Projects status not updating from Todo to In Progress (#15)
-- Fix `/rite:issue:start` Bash command errors (#13)
-- Fix find cleanup pattern to be mktemp suffix-length independent (#44)
-- Fix `ready.md` output pattern and defense-in-depth for Mandatory After (#32)
-- Apply work memory update safety patterns consistently across all commands (#50)
-- Fix stop-guard and post-compact-guard deadlock race condition (#30)
-- Fix `/clear → /rite:resume` duplicate guidance message (#27)
+- Fixed `work-memory-init` validation script missing else branch for success case (#48)
+- Fixed work memory comment being overwritten by API error response (#47)
+- Fixed unnecessary hooks unregistered message during rite workflow execution (#46)
+- Fixed `stop-guard.sh` trap missing EXIT signal (#39, #41)
+- Fixed `stop-guard.sh` compact_state stop block failure (#22)
+- Fixed `session-start.sh` jq error handling issues (#18, #20)
+- Fixed `/rite:issue:start` completion report (Phase 5.6) not executing (#17)
+- Fixed parent Issue Projects status not updating from Todo to In Progress (#15)
+- Fixed `/rite:issue:start` Bash command errors (#13)
+- Fixed find cleanup pattern to be mktemp suffix-length independent (#44)
+- Fixed `ready.md` output pattern and defense-in-depth for Mandatory After (#32)
+- Applied work memory update safety patterns consistently across all commands (#50)
+- Fixed stop-guard and post-compact-guard deadlock race condition (#30)
+- Fixed `/clear → /rite:resume` duplicate guidance message (#27)
 
 ### Changed
 
-- Refactor `stop-guard.sh` grep -A20 fixed value to awk section extraction (#35)
-- Refactor `pre-compact.sh` echo|jq pipe to here-string (#34)
-- Refactor `stop-guard.sh` subshell optimization (#24)
-- Unify PID-based temp file naming to mktemp with fallback (#38)
+- Refactored `stop-guard.sh` grep -A20 hard-coded value to awk section extraction (#35)
+- Refactored `pre-compact.sh` echo|jq pipe to here-string (#34)
+- Refactored `stop-guard.sh` subshell optimization (#24)
+- Unified PID-based temp file naming to mktemp with fallback (#38)
 
 ### Removed
 
-- Remove rebrand mentions from v0.1.0 changelog entries (#52)
+- Removed rebrand mentions from v0.1.0 changelog entries (#52)
 
 ## [0.1.1] - 2026-03-03
 
 ### Fixed
 
-- Fix Implementation Contract format not applied when creating single Issue for large-scope tasks (#2)
-- Fix `/rite:issue:create` interruption after sub-skill return (#6)
-- Fix `/rite:issue:start` interruption during end-to-end flow (#7)
-- Fix work memory corruption on update — add safety patterns and destruction prevention (#8)
+- Fixed Implementation Contract format not applied when creating single Issue for large-scope tasks (#2)
+- Fixed `/rite:issue:create` interruption after sub-skill return (#6)
+- Fixed `/rite:issue:start` interruption during end-to-end flow (#7)
+- Fixed work memory corruption on update with safety patterns and destruction prevention (#8)
 
 ## [0.1.0] - 2026-03-01
 
