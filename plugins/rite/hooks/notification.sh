@@ -10,6 +10,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 # Read CWD from stdin JSON (consistent with other hooks).
 # CWD is provided by the Claude Code runtime and is already an absolute path;
 # realpath normalization is unnecessary and would add a portability concern.
+# cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then

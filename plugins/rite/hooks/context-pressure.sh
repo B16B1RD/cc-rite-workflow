@@ -5,6 +5,7 @@
 # when system prompt is close to the 200K API token limit (#889).
 set -euo pipefail
 
+# cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
