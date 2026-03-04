@@ -470,8 +470,8 @@ gh pr diff {pr_number} | awk '
 > |------|-------------------------------|----------------------------------|
 > | **用途** | 既存行の値を更新（フェーズ、タイムスタンプ等） | 末尾にセクションを追加（レビュー履歴、メトリクス等） |
 > | **trap 構成** | `trap 'rm -f "$tmpfile" "$body_tmp"' EXIT`（`body_tmp` あり） | `trap 'rm -f "$tmpfile"' EXIT`（`body_tmp` なし） |
-> | **エラー処理** | non-blocking: WARNING でスキップ（backup sync 用途のため） | blocking: `exit 1` で中断（primary update 用途のため） |
-> | **理由** | backup sync の失敗はフロー継続に影響しない | primary update の失敗はデータ不整合を招く |
+> | **エラー処理** | non-blocking: WARNING でスキップ（backup sync 用途のため） | blocking: safety check 失敗時は `exit 1` で中断、PATCH 送信失敗時は WARNING（backup 保全済みのため） |
+> | **理由** | backup sync の失敗はフロー継続に影響しない | safety check（空body・ヘッダー欠落・サイズ縮小）はデータ不整合を招くため `exit 1`。PATCH ネットワーク失敗は backup が保全済みのため WARNING で継続 |
 >
 > `body_tmp` は置換型で Python スクリプトの入力ファイルとして使用するため追加される。追記型では `current_body` を直接 `tmpfile` に書き込むため不要。
 
@@ -550,14 +550,12 @@ fi
 
 ```bash
 # Update via jq + gh api (backup preserved on failure for manual recovery)
+# PATCH 送信失敗時は WARNING で継続（backup が保全されているため復旧可能）
+# 注: 追記型・置換型ともに同じパターン。safety check（Step 2-3）の exit 1 とは役割が異なる
 jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
     | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-      -X PATCH --input -
-patch_status=$?
-if [ "$patch_status" -ne 0 ]; then
-  echo "ERROR: PATCH failed. Backup saved at: $backup_file" >&2
-  exit 1
-fi
+      -X PATCH --input - || \
+      echo "WARNING: PATCH failed. Backup saved at: $backup_file" >&2
 ```
 
 ---
