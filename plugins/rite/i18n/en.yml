@@ -957,3 +957,6 @@ messages:
   template_reset_error_action_manual_create: "Manually create templates"
   template_reset_error_action_manual_create_detail: "Manually create `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md`"
 
+  # Hook version update notification
+  hook_version_updated: "Plugin updated (v{old} -> v{new}). Run /rite:init to re-register hooks."
+

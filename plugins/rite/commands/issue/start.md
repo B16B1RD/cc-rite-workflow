@@ -442,6 +442,15 @@ chmod +x {plugin_root}/hooks/stop-guard.sh {plugin_root}/hooks/pre-compact.sh {p
 
 If `chmod` fails, display `⚠️ Hook scripts may not be executable. Flow may require manual continuation after sub-skill returns.` If hook registration fails (e.g., file permission error), display the same warning and continue — 🚨 Mandatory After instructions provide textual fallback.
 
+**Step 5**: Update version marker after hook registration:
+
+```bash
+VERSION=$(jq -r '.version' "{plugin_root}/.claude-plugin/plugin.json" 2>/dev/null)
+if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
+  echo "$VERSION" > "$STATE_ROOT/.rite-initialized-version"
+fi
+```
+
 ### 5.1 Implementation
 
 Run [Preflight Protocol](#preflight-protocol) before starting implementation.
