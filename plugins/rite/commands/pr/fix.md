@@ -175,7 +175,7 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 }' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number}
 ```
 
-### 1.2.1 Retrieve Zen Review Results
+### 1.2.1 Retrieve rite Review Results
 
 Retrieve the `/rite:pr:review` results from PR comments and extract severity information:
 

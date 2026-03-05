@@ -9,7 +9,7 @@ It works with any software development project regardless of language or framewo
 
 ### Design Principles
 
-- **Zen**: Simple and harmonious workflow
+- **Rite**: Structured process that ensures consistent, repeatable workflows
 - **Universality**: No dependency on specific tech stacks
 - **Automation**: Auto-detection and auto-configuration where possible
 - **Customizability**: Flexible adjustment via configuration files
@@ -18,8 +18,8 @@ It works with any software development project regardless of language or framewo
 
 The command prefix `rite` was chosen for:
 
-1. **Meaning**: The spirit of Zen - a simple, harmonious workflow
-2. **Practicality**: Starts with 'z' (late alphabet), so commands appear later in `/` autocomplete, avoiding interference with regular work
+1. **Meaning**: A rite is a structured ceremony or process - representing consistent, repeatable workflows
+2. **Practicality**: Short (4 characters), easy to type, and distinctive as a command prefix
 3. **Trademark**: Low trademark risk as it's a common English word
 
 ---
