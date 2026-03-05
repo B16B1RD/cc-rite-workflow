@@ -727,6 +727,20 @@ Missing or non-executable scripts will be skipped at runtime.
 
 ---
 
+### 4.5.5 Record Installed Version
+
+Write the current plugin version to a marker file for update detection by `session-start.sh`:
+
+```bash
+PLUGIN_JSON="{hooks_dir}/../.claude-plugin/plugin.json"
+VERSION=$(jq -r '.version' "$PLUGIN_JSON" 2>/dev/null)
+if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
+  echo "$VERSION" > "{state_root}/.rite-initialized-version"
+fi
+```
+
+---
+
 ## Phase 4.6: Work Memory Directory Setup
 
 Create the local work memory directory:
@@ -740,7 +754,7 @@ Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not alrea
 
 ```bash
 # Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*"; do
+for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version"; do
   if ! grep -qF "$entry" .gitignore 2>/dev/null; then
     echo "$entry" >> .gitignore
   fi

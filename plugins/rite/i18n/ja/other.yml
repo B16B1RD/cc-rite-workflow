@@ -746,6 +746,9 @@ messages:
   template_reset_error_action_manual_create: "手動でテンプレートを作成"
   template_reset_error_action_manual_create_detail: ".github/ISSUE_TEMPLATE/` と `.github/PULL_REQUEST_TEMPLATE.md` を手動作成"
 
+  # Hook version update notification
+  hook_version_updated: "プラグインが更新されました (v{old} -> v{new})。/rite:init を実行して hooks を再登録してください。"
+
   # Resume コマンド
   resume_current_branch: "現在のブランチ"
   resume_option_manual_number: "Issue 番号を手動で指定: `/rite:resume {issue_number}`"
