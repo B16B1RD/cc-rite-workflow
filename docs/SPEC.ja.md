@@ -131,6 +131,7 @@ rite-workflow/
 │   └── plugin.json          # プラグインメタデータ
 ├── commands/
 │   ├── init.md              # /rite:init
+│   ├── getting-started.md   # /rite:getting-started
 │   ├── workflow.md          # /rite:workflow
 │   ├── issue/
 │   │   ├── list.md          # /rite:issue:list
@@ -146,8 +147,12 @@ rite-workflow/
 │   │   ├── fix.md           # /rite:pr:fix
 │   │   ├── cleanup.md       # /rite:pr:cleanup
 │   │   └── references/
-│   │       ├── assessment-rules.md    # レビュー評価ルール
-│   │       └── archive-procedures.md  # アーカイブ手続き
+│   │       ├── assessment-rules.md        # レビュー評価ルール
+│   │       ├── archive-procedures.md      # アーカイブ手続き
+│   │       ├── review-context-optimization.md  # レビューコンテキスト最適化
+│   │       ├── reviewer-fallbacks.md      # レビュアーフォールバックプロファイル
+│   │       ├── change-intelligence.md     # 変更インテリジェンス
+│   │       └── fix-relaxation-rules.md    # 修正緩和ルール
 │   ├── lint.md              # /rite:lint
 │   ├── resume.md            # /rite:resume
 │   ├── skill/
@@ -171,7 +176,8 @@ rite-workflow/
 │   ├── test-reviewer.md            # テスト品質レビュー
 │   ├── dependencies-reviewer.md    # 依存関係セキュリティレビュー
 │   ├── prompt-engineer-reviewer.md # スキル/コマンド定義レビュー
-│   └── tech-writer-reviewer.md     # ドキュメントレビュー
+│   ├── tech-writer-reviewer.md     # ドキュメントレビュー
+│   └── sprint-teammate.md          # Sprint チームメンバー
 ├── skills/
 │   ├── rite-workflow/
 │   │   ├── SKILL.md         # 自動適用スキル
@@ -195,6 +201,7 @@ rite-workflow/
 │   ├── state-path-resolve.sh
 │   ├── flow-state-update.sh
 │   ├── issue-body-safe-update.sh
+│   ├── context-pressure.sh
 │   └── notification.sh
 ├── templates/
 │   ├── completion-report.md  # 完了報告フォーマット定義
