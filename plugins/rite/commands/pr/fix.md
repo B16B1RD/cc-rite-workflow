@@ -5,6 +5,10 @@ context: fork
 
 # /rite:pr:fix
 
+## Contract
+**Input**: PR number, review findings from `/rite:pr:review`, `.rite-flow-state` with `phase: phase5_fix` (e2e flow)
+**Output**: `[fix:pushed]` | `[fix:issues-created:{n}]` | `[fix:replied-only]` | `[fix:error]`
+
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
 
 ---
@@ -1036,17 +1040,13 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (defense-in-depth, fixes #709). This prevents stop-guard `error_count` from accumulating when the flow continues after this skill returns:
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  TMP_STATE=".rite-flow-state.tmp.$$"
-  jq --arg phase "phase5_post_fix" \
-     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-     --arg next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
-     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
-     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
-fi
+bash plugins/rite/hooks/flow-state-update.sh patch \
+  --phase "phase5_post_fix" \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
+  --if-exists
 ```
 
-**Note on `error_count`**: This patch-style `jq` command intentionally preserves `error_count` from the existing `.rite-flow-state` (unlike `start.md` which uses `jq -n` to create a fresh object without `error_count`). The count is effectively reset when `/rite:issue:start` Phase 5.4.1 or 5.4.4 writes a new complete object via `jq -n`.
+**Note on `error_count`**: The `flow-state-update.sh` patch mode preserves all existing fields not explicitly set (`phase`, `updated_at`, `next_action`), so `error_count` is retained from the existing `.rite-flow-state` (unlike `start.md` which creates a fresh object without `error_count`). The count is effectively reset when `/rite:issue:start` Phase 5.4.1 or 5.4.4 writes a new complete object via `jq -n`.
 
 **Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with `loop_count` increment and phase transition:
 

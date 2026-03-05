@@ -5,6 +5,10 @@ context: fork
 
 # /rite:pr:review
 
+## Contract
+**Input**: PR number (or auto-detected from current branch), `.rite-flow-state` with `phase: phase5_review` (e2e flow)
+**Output**: `[review:mergeable]` | `[review:fix-needed:{n}]` | `[review:conditional-merge:{n}]` | `[review:loop-limit:{n}]`
+
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.
 
 > **Reference**: Apply `push_back_when_warranted` (push back when warranted) from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
@@ -352,19 +356,7 @@ If the skill file is not found, use the built-in pattern table from Phase 2.2 an
 
 Match changed files against the pattern table in SKILL.md.
 
-**Note**: Only representative patterns are shown below. See the Available Reviewers table in `skills/reviewers/SKILL.md` for details. The Activation section in each skill file is the source of truth.
-
-| File Pattern | Recommended Reviewer | Skill File |
-|-----------------|----------------|----------------|
-| `**/security/**`, `**/auth/**`, `auth*`, `crypto*`, `**/middleware/auth*` | Security Expert | `security.md` |
-| `.github/**`, `Dockerfile*`, `docker-compose*`, `*.yml` (CI/CD determination: see `devops.md`), `Makefile` | DevOps Expert | `devops.md` |
-| `**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/__tests__/**`, `jest.config.*`, `vitest.config.*`, `cypress/**`, `playwright/**` | Test Expert | `test.md` |
-| `**/api/**`, `**/routes/**`, `**/handlers/**`, `**/controllers/**`, `openapi.*`, `swagger.*` | API Design Expert | `api.md` |
-| `**/*.css`, `**/*.scss`, `**/styles/**`, `**/components/**`, `*.jsx`, `*.tsx`, `*.vue` | Frontend Expert | `frontend.md` |
-| `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**` | Database Expert | `database.md` |
-| `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` | Dependencies Expert | `dependencies.md` |
-| `commands/**/*.md`, `skills/**/*.md` | Prompt Engineer | `prompt-engineer.md` |
-| `**/*.md` (other than above), `docs/**`, `README*` | Technical Writer | `tech-writer.md` |
+Match changed files against the Available Reviewers table in `skills/reviewers/SKILL.md` (source of truth for file patterns). Each skill file's Activation section defines detailed patterns.
 
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md` -> Prompt Engineer (highest priority)
@@ -402,21 +394,7 @@ Analyze the diff content to determine if additional expertise is needed:
 
 **Japanese conversion for display:**
 
-Refer to the "Reviewer Type Identifiers" table in `skills/reviewers/SKILL.md`. The following is an excerpt for reference:
-
-| reviewer_type | Japanese Display |
-|---------------|-----------|
-| security | セキュリティ専門家 |
-| devops | DevOps 専門家 |
-| test | テスト専門家 |
-| api | API 設計専門家 |
-| frontend | フロントエンド専門家 |
-| database | データベース専門家 |
-| dependencies | 依存関係専門家 |
-| prompt-engineer | プロンプトエンジニア |
-| tech-writer | テクニカルライター |
-
-**Note**: The SKILL.md table is the source of truth. When adding new reviewers, update SKILL.md first.
+Refer to the "Reviewer Type Identifiers" table in `skills/reviewers/SKILL.md` (source of truth). When adding new reviewers, update SKILL.md first.
 
 ---
 
@@ -1079,91 +1057,7 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 
 Claude aggregates all reviewer assessments and findings, and **evaluates the following logic from top to bottom**. The result of the first matching condition is adopted as the overall assessment.
 
-#### 5.3.1 Assessment Rules (Loop Count Aware)
-
-**Red blocking rule: If even 1 blocking finding exists, it MUST NOT be assessed as "Merge OK"**
-
-Distinguish between "blocking findings" and "non-blocking findings" based on loop count. Determined from the `review.loop` settings in `rite-config.yml` and the review-fix loop count in conversation context. When executed standalone (outside a loop), treat as loop iteration 1.
-
-**Gradual relaxation table:**
-
-| Loop Count | Gate Mode | Blocking Target | Non-Blocking |
-|-----------|------------|------------|--------------|
-| 1 to `relax_medium_after - 1` (default: 1-2) | Strict mode | CRITICAL/HIGH/MEDIUM/LOW | None |
-| `relax_medium_after` to `relax_high_after - 1` (default: 3-4) | MEDIUM/LOW relaxation | CRITICAL/HIGH | MEDIUM/LOW |
-| `relax_high_after` to `max_iterations - 1` (default: 5-6) | HIGH relaxation | CRITICAL only | HIGH/MEDIUM/LOW |
-| `max_iterations` (default: 7) | Forced termination | -- | All remaining findings are converted to separate Issues and the loop exits |
-
-Load `review.loop` from `rite-config.yml` (defaults: max_iterations=7, relax_medium_after=3, relax_high_after=5). Non-blocking findings reported but not in `total_blocking_findings`; candidates for separate Issue creation.
-
-#### 5.3.3 Assessment Logic (Loop Count Aware)
-
-Use **only blocking findings** for determination. Priority: CRITICAL blocking → Requires fixes | HIGH/MEDIUM/LOW blocking → Cannot merge (findings exist) | 0 blocking → Merge OK.
-
-#### 5.3.5 Output Format at Assessment Decision Time
-
-When determining the assessment, explicitly output the finding count and loop information in the following format:
-
-```
-【ループ情報】
-- 現在のループ回数: {loop_count} / {max_iterations}
-- 適用中のゲート: {厳格モード / MEDIUM/LOW 緩和 / HIGH 緩和 / 強制終了}
-- 非ブロック指摘: {non_blocking_count} 件（別 Issue 化対象）
-
-【指摘件数サマリー】
-- CRITICAL: {count} 件
-- HIGH: {count} 件 {※非ブロック の場合は "(非ブロック)" を付記}
-- MEDIUM: {count} 件 {※非ブロック の場合は "(非ブロック)" を付記}
-- LOW: {count} 件 {※非ブロック の場合は "(非ブロック)" を付記}
-- 合計: {total} 件（ブロック: {blocking} 件 / 非ブロック: {non_blocking} 件）
-
-【評価判定】
-- ブロック指摘件数: {blocking} 件
-- 優先度 {n} に該当: {条件の説明}
-- 総合評価: {マージ可 / マージ不可（指摘あり） / 修正必要}
-```
-
-**Note**: For standalone execution (outside a loop), display the loop count in the "Loop Information" section as "1 / {max_iterations} (standalone execution)".
-
-**Additional output for verification mode:**
-
-When `review_mode == "verification"`, output the following in addition to the above:
-
-```
-【検証モード情報】
-- レビューモード: 検証 (verification)
-- 前回レビュー commit: {last_reviewed_commit}
-- 修正検証: FIXED {fixed} / NOT_FIXED {not_fixed} / PARTIAL {partial}
-- リグレッション: {regression_count} 件
-- Stability Concerns: {stability_concern_count} 件（非ブロック）
-```
-
-**⚠️ Important**: Blocking findings → cannot merge → `/rite:issue:start` loop continues. "Merge OK" = 0 blocking findings (non-blocking handled via separate Issues).
-
-#### 5.3.6 Return Values to Caller (Important)
-
-Return: total_findings, **total_blocking_findings** (if >0, `/rite:pr:fix` required), total_non_blocking_findings, evaluation, loop_count, gate_mode, review_mode, stability_concerns.
-
-**Red important constraint:**
-
-The caller (`/rite:issue:start` Phase 5.5) **mechanically** invokes `/rite:pr:fix` when `total_blocking_findings > 0` or `evaluation != "マージ可"`, **regardless of AI judgment**.
-
-The following decisions MUST NOT be made by `/rite:pr:review`:
-- "Since blocking findings are 0, non-blocking findings can also be ignored"
-- "The findings are minor, so no action is needed"
-- Independently modifying the gradual relaxation table configuration values
-
-`/rite:pr:review` is responsible only for accurately reporting the assessment results. Gradual relaxation is applied mechanically according to the `rite-config.yml` settings.
-
----
-
-#### 5.3.7 Prohibition of Independent Judgment After Assessment
-
-> **It is prohibited for the AI to override the assessment logic (5.3.3) results.**
-
-Prohibited actions: Exception handling by severity (e.g., "Only LOWs, so minor"), overriding assessment (e.g., "Effectively merge-OK"), inserting user confirmation.
-
-**Principle:** Assessment logic result = final decision. AI's role = reporting + mechanical transition to the next phase only.
+> See [references/assessment-rules.md](./references/assessment-rules.md) for the full assessment rules (5.3.1-5.3.7): gradual relaxation table, assessment logic, output format, return values, and prohibition of independent judgment.
 
 ### 5.4 Integrated Report Generation
 
@@ -1735,19 +1629,15 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 | `[review:loop-limit:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:loop-limit:{n}]. Proceed to Phase 5.4.4 (fix) then Phase 5.5. Do NOT stop.` |
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  TMP_STATE=".rite-flow-state.tmp.$$"
-  jq --arg phase "phase5_post_review" \
-     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-     --arg next "{next_action_value}" \
-     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
-     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
-fi
+bash plugins/rite/hooks/flow-state-update.sh patch \
+  --phase "phase5_post_review" \
+  --next "{next_action_value}" \
+  --if-exists
 ```
 
 Replace `{next_action_value}` with the value from the table above based on the review result. Also replace `{n}` in the next_action string with the actual finding count from the review result (e.g., if the result is `[review:fix-needed:3]`, then `{n}` = `3`).
 
-**Note on `error_count`**: This patch-style `jq` command intentionally preserves `error_count` from the existing `.rite-flow-state` (consistent with `lint.md` Phase 4.0 and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
+**Note on `error_count`**: `flow-state-update.sh` patch mode preserves all existing fields not explicitly set — only `phase`, `updated_at`, and `next_action` are changed (consistent with `lint.md` Phase 4.0 and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
 
 ### 8.1 Output Pattern (Return Control to Caller)
 

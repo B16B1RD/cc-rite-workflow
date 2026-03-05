@@ -392,22 +392,15 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 **Pre-write** (before invoking interview sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
 if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
-  jq --arg phase "create_interview" \
-     --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = true | .phase = $phase | .next_action = $next | .updated_at = $ts' \
-     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+  bash plugins/rite/hooks/flow-state-update.sh patch \
+    --phase "create_interview" \
+    --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 else
-  jq -n \
-    --argjson active true \
-    --arg phase "create_interview" \
-    --arg next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-    --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-    '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
-    > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+  bash plugins/rite/hooks/flow-state-update.sh create \
+    --phase "create_interview" --issue 0 --branch "" --loop 0 --pr 0 \
+    --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 fi
 ```
 
@@ -517,22 +510,15 @@ Based on Phase 0.6 result, delegate to the appropriate sub-command.
 **Pre-write** (before invoking delegation sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
 if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller
-  jq --arg phase "create_delegation" \
-     --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
-     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = true | .phase = $phase | .next_action = $next | .updated_at = $ts' \
-     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+  bash plugins/rite/hooks/flow-state-update.sh patch \
+    --phase "create_delegation" \
+    --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 else
-  jq -n \
-    --argjson active true \
-    --arg phase "create_delegation" \
-    --arg next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop." \
-    --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-    '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
-    > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+  bash plugins/rite/hooks/flow-state-update.sh create \
+    --phase "create_delegation" --issue 0 --branch "" --loop 0 --pr 0 \
+    --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 fi
 ```
 
@@ -564,14 +550,9 @@ Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issu
 **Post-completion cleanup**: After the sub-skill outputs the completion report, deactivate flow state:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active false \
-  --arg phase "create_completed" \
-  --arg next "none" \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, phase: $phase, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "create_completed" --issue 0 --branch "" --loop 0 --pr 0 \
+  --next "none" --active false
 ```
 
 ---

@@ -5,6 +5,10 @@ context: fork
 
 # /rite:pr:create
 
+## Contract
+**Input**: Branch with commits, Issue number (from branch name or flow state)
+**Output**: `[pr:created:{number}]` | `[pr:create-failed]`
+
 ドラフト PR を作成し、関連 Issue と連携する
 
 ---

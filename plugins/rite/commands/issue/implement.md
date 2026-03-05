@@ -531,64 +531,29 @@ Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effecti
 **Step 1: Bash tool call — Fetch body and validate**
 
 ```bash
-# Create temp files (for reading and writing)
-tmpfile_read=$(mktemp)
-tmpfile_write=$(mktemp)
-trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
-
-gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
-
-# Validate retrieval result
-if [ ! -s "$tmpfile_read" ]; then
-  echo "WARNING: Issue body の取得に失敗。チェックリスト更新をスキップします" >&2
-  exit 0  # Skip — do not abort workflow
-fi
-
-# Record original length for Step 3 comparison
-original_length=$(wc -c < "$tmpfile_read")
-echo "original_length=$original_length"
-
-# Output mktemp paths for use in subsequent Read/Write tool calls
-echo "tmpfile_read=$tmpfile_read"
-echo "tmpfile_write=$tmpfile_write"
+bash plugins/rite/hooks/issue-body-safe-update.sh fetch --issue {issue_number}
 ```
+
+Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`. If fetch fails, outputs WARNING and exits 0 (skip).
 
 **Step 2: Read tool + Write tool — Write checkbox-updated body**
 
-1. Read the contents of `$tmpfile_read` (path output by `mktemp` in Step 1) using Claude Code's Read tool
+1. Read the contents of `$tmpfile_read` (path output in Step 1) using Claude Code's Read tool
 2. Create the full text with `[ ]` → `[x]` updates based on the read content
-3. Write the updated body to `$tmpfile_write` (another path output by `mktemp` in Step 1) using Claude Code's Write tool
+3. Write the updated body to `$tmpfile_write` (path output in Step 1) using Claude Code's Write tool
 
+> Partial content causes the entire Issue body to be replaced with a fragment, losing all other sections (description, acceptance criteria, etc.).
 > **CRITICAL**: The Write tool output MUST contain the ENTIRE Issue body with only checkbox changes. Never output partial content or only the changed lines.
 
 **Step 3: Bash tool call — Validate and apply**
 
 ```bash
-# Set paths output by mktemp in Step 1 (shell variables do not carry over between Bash tool calls, so directly write the actual paths from Step 1 output)
-tmpfile_read="/tmp/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output
-tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output
-original_length=XXXXX                # ← Replace with the original_length= value from Step 1 output
-
-# Validate update content before applying
-if [ ! -s "$tmpfile_write" ]; then
-  echo "WARNING: 更新内容が空。チェックリスト更新をスキップします" >&2
-  rm -f "$tmpfile_read" "$tmpfile_write"
-  exit 0  # Skip — do not abort workflow
-fi
-
-# Body length comparison safety check (reject if updated body is less than 50% of original)
-updated_length=$(wc -c < "$tmpfile_write")
-if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-  echo "WARNING: 更新後の body が元の50%未満 (${updated_length}/${original_length})。body 消失の可能性があるためスキップします" >&2
-  rm -f "$tmpfile_read" "$tmpfile_write"
-  exit 0  # Skip — do not abort workflow
-fi
-
-gh issue edit {issue_number} --body-file "$tmpfile_write"
-
-# trap does not carry over between processes (Bash tool calls), so delete explicitly
-rm -f "$tmpfile_read" "$tmpfile_write"
+bash plugins/rite/hooks/issue-body-safe-update.sh apply --issue {issue_number} \
+  --tmpfile-read "{tmpfile_read}" --tmpfile-write "{tmpfile_write}" \
+  --original-length {original_length}
 ```
+
+Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values output in Step 1. Validates body length (rejects <50% shrinkage), applies via `--body-file`, and cleans up temp files.
 
 Also synchronize the "Issue checklist" section in the work memory.
 
@@ -701,27 +666,15 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.2 above
 4. **CRITICAL: Initialize `.rite-flow-state` and invoke lint** (atomic pair - MUST execute both):
 
-   > **Note**: All `.rite-flow-state` writes use **atomic write** (PID-based temp file `$$` + `mv`) to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact). If the `jq` command fails, the temp file is cleaned up and execution continues to the next step — stop hook and compaction recovery may not reflect the current phase, but the primary workflow is not blocked.
+   > **Note**: All `.rite-flow-state` writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
 
    **4a**: Create state file:
 
    ```bash
-   TMP_STATE=".rite-flow-state.tmp.$$"
-   if jq -n \
-     --argjson active true \
-     --argjson issue {issue_number} \
-     --arg branch "{branch_name}" \
-     --arg phase "phase5_lint" \
-     --argjson loop 0 \
-     --argjson pr 0 \
-     --arg next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop." \
-     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-     > "$TMP_STATE"; then
-     mv "$TMP_STATE" .rite-flow-state
-   else
-     rm -f "$TMP_STATE"
-   fi
+   bash plugins/rite/hooks/flow-state-update.sh create \
+     --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
+     --loop 0 --pr 0 \
+     --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
    ```
 
    **4b**: **Immediately** invoke `rite:lint` via Skill tool (following the flow continuation principle, stopping is prohibited)
