@@ -102,6 +102,33 @@ if [ "$SOURCE" = "startup" ]; then
   fi
 fi
 
+# --- Plugin version check on startup ---
+if [ "$SOURCE" = "startup" ]; then
+  _version_file="$STATE_ROOT/.rite-initialized-version"
+  if [ -f "$_version_file" ]; then
+    _installed_ver=$(cat "$_version_file" 2>/dev/null | tr -d '[:space:]')
+    _plugin_json="$SCRIPT_DIR/../.claude-plugin/plugin.json"
+    _current_ver=$(jq -r '.version // empty' "$_plugin_json" 2>/dev/null)
+    if [ -n "$_installed_ver" ] && [ -n "$_current_ver" ] && [ "$_installed_ver" != "$_current_ver" ]; then
+      # i18n: read language from rite-config.yml (same awk pattern as stop-guard.sh)
+      _lang="en"
+      _rite_config="$STATE_ROOT/rite-config.yml"
+      if [ -f "$_rite_config" ]; then
+        _cfg_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]')
+        [ -n "$_cfg_lang" ] && _lang="$_cfg_lang"
+      fi
+      case "$_lang" in
+        ja)
+          echo "[rite] プラグインが更新されました (v${_installed_ver} -> v${_current_ver})。/rite:init を実行して hooks を再登録してください。" >&2
+          ;;
+        *)
+          echo "[rite] Plugin updated (v${_installed_ver} -> v${_current_ver}). Run /rite:init to re-register hooks." >&2
+          ;;
+      esac
+    fi
+  fi
+fi
+
 STATE_FILE="$STATE_ROOT/.rite-flow-state"
 
 if [ ! -f "$STATE_FILE" ]; then

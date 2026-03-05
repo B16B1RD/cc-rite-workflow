@@ -692,7 +692,7 @@ Add the following hooks to `.claude/settings.local.json`:
 
 **Important**:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks that do NOT contain `rite/hooks/` in their command, preserve them as-is. Do not overwrite or remove user-defined hooks.
-- **Zen hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
+- **rite hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
 - **Missing rite hooks**: If any of the required rite hooks (Stop, PreCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them.
 - **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `context-pressure.sh` uses `"matcher": ""` to fire on all tool calls. All other hooks use `"matcher": ""`. When multiple PreToolUse or PostToolUse entries exist (different matchers), they are separate array elements.
 - **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
@@ -727,6 +727,20 @@ Missing or non-executable scripts will be skipped at runtime.
 
 ---
 
+### 4.5.5 Record Installed Version
+
+Write the current plugin version to a marker file for update detection by `session-start.sh`:
+
+```bash
+PLUGIN_JSON="{hooks_dir}/../.claude-plugin/plugin.json"
+VERSION=$(jq -r '.version' "$PLUGIN_JSON" 2>/dev/null)
+if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
+  echo "$VERSION" > "{state_root}/.rite-initialized-version"
+fi
+```
+
+---
+
 ## Phase 4.6: Work Memory Directory Setup
 
 Create the local work memory directory:
@@ -740,7 +754,7 @@ Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not alrea
 
 ```bash
 # Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*"; do
+for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version"; do
   if ! grep -qF "$entry" .gitignore 2>/dev/null; then
     echo "$entry" >> .gitignore
   fi
