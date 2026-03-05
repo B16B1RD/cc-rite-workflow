@@ -52,7 +52,9 @@ chore: maintenance
 plugins/rite/
 ├── commands/         # Slash command execution procedures (Markdown)
 │   ├── issue/        #   Issue operations (start, create, list, edit, close, update)
+│   │   └── completion-report.md  # Completion report format (extracted from start.md)
 │   ├── pr/           #   PR operations (create, review, fix, ready, cleanup)
+│   │   └── references/  # Assessment rules, archive procedures
 │   ├── sprint/       #   Sprint operations (plan, list, current)
 │   ├── skill/        #   Skill operations (suggest)
 │   ├── template/     #   Template operations (reset)
@@ -92,6 +94,9 @@ plugins/rite/hooks/
 ├── work-memory-parse.py    # YAML frontmatter parser for work memory files
 ├── state-path-resolve.sh   # Resolves root directory for rite state files
 ├── cleanup-work-memory.sh  # Deterministic cleanup of local work memory files
+├── flow-state-update.sh    # Atomic .rite-flow-state create/patch/increment operations
+├── issue-body-safe-update.sh  # Safe Issue body fetch/apply with backup and validation
+├── context-pressure.sh     # Context pressure detection and optimization hints
 └── tests/                  # Test scripts
 ```
 

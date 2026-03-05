@@ -131,19 +131,28 @@ rite-workflow/
 │   └── plugin.json          # Plugin metadata
 ├── commands/
 │   ├── init.md              # /rite:init
+│   ├── getting-started.md   # /rite:getting-started
 │   ├── workflow.md          # /rite:workflow
 │   ├── issue/
 │   │   ├── list.md          # /rite:issue:list
 │   │   ├── create.md        # /rite:issue:create
 │   │   ├── start.md         # /rite:issue:start
 │   │   ├── update.md        # /rite:issue:update
-│   │   └── close.md         # /rite:issue:close
+│   │   ├── close.md         # /rite:issue:close
+│   │   └── completion-report.md  # Completion report format
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready
 │   │   ├── review.md        # /rite:pr:review
 │   │   ├── fix.md           # /rite:pr:fix
-│   │   └── cleanup.md       # /rite:pr:cleanup
+│   │   ├── cleanup.md       # /rite:pr:cleanup
+│   │   └── references/
+│   │       ├── assessment-rules.md        # Review assessment rules
+│   │       ├── archive-procedures.md      # Archive procedures
+│   │       ├── review-context-optimization.md  # Review context optimization
+│   │       ├── reviewer-fallbacks.md      # Reviewer fallback profiles
+│   │       ├── change-intelligence.md     # Change intelligence
+│   │       └── fix-relaxation-rules.md    # Fix relaxation rules
 │   ├── lint.md              # /rite:lint
 │   ├── resume.md            # /rite:resume
 │   ├── skill/
@@ -167,10 +176,14 @@ rite-workflow/
 │   ├── test-reviewer.md            # Test quality review
 │   ├── dependencies-reviewer.md    # Dependency security review
 │   ├── prompt-engineer-reviewer.md # Skill/command definition review
-│   └── tech-writer-reviewer.md     # Documentation review
+│   ├── tech-writer-reviewer.md     # Documentation review
+│   └── sprint-teammate.md          # Sprint team member
 ├── skills/
-│   └── rite-workflow/
-│       └── SKILL.md         # Auto-apply skill
+│   ├── rite-workflow/
+│   │   ├── SKILL.md         # Auto-apply skill
+│   │   └── references/      # Coding principles, context management
+│   └── reviewers/
+│       └── SKILL.md         # Reviewer skill + review criteria
 ├── hooks/
 │   ├── session-start.sh
 │   ├── session-end.sh
@@ -186,8 +199,12 @@ rite-workflow/
 │   ├── work-memory-parse.py
 │   ├── cleanup-work-memory.sh
 │   ├── state-path-resolve.sh
+│   ├── flow-state-update.sh
+│   ├── issue-body-safe-update.sh
+│   ├── context-pressure.sh
 │   └── notification.sh
 ├── templates/
+│   ├── completion-report.md  # Completion report format definition
 │   ├── project-types/
 │   │   ├── generic.yml
 │   │   ├── webapp.yml
@@ -202,6 +219,12 @@ rite-workflow/
 │       ├── library.md
 │       ├── cli.md
 │       └── documentation.md
+├── scripts/
+│   └── create-issue-with-projects.sh  # Issue creation with Projects integration
+├── references/
+│   ├── gh-cli-patterns.md
+│   ├── graphql-helpers.md
+│   └── ...                   # Other reference documents
 ├── i18n/
 │   ├── ja.yml
 │   └── en.yml
@@ -215,7 +238,7 @@ Plugin metadata file format:
 ```json
 {
   "name": "rite",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "B16B1RD" },
   "license": "MIT"
