@@ -25,4 +25,4 @@ Closes #
 - [ ] CHANGELOG.md updated
 
 ---
-🤖 Generated with [rite workflow](https://github.com/USERNAME/cc-rite-workflow)
+🤖 Generated with [rite workflow](https://github.com/B16B1RD/cc-rite-workflow)

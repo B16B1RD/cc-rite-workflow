@@ -137,13 +137,17 @@ rite-workflow/
 │   │   ├── create.md        # /rite:issue:create
 │   │   ├── start.md         # /rite:issue:start
 │   │   ├── update.md        # /rite:issue:update
-│   │   └── close.md         # /rite:issue:close
+│   │   ├── close.md         # /rite:issue:close
+│   │   └── completion-report.md  # 完了報告フォーマット
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready
 │   │   ├── review.md        # /rite:pr:review
 │   │   ├── fix.md           # /rite:pr:fix
-│   │   └── cleanup.md       # /rite:pr:cleanup
+│   │   ├── cleanup.md       # /rite:pr:cleanup
+│   │   └── references/
+│   │       ├── assessment-rules.md    # レビュー評価ルール
+│   │       └── archive-procedures.md  # アーカイブ手続き
 │   ├── lint.md              # /rite:lint
 │   ├── resume.md            # /rite:resume
 │   ├── skill/
@@ -169,8 +173,11 @@ rite-workflow/
 │   ├── prompt-engineer-reviewer.md # スキル/コマンド定義レビュー
 │   └── tech-writer-reviewer.md     # ドキュメントレビュー
 ├── skills/
-│   └── rite-workflow/
-│       └── SKILL.md         # 自動適用スキル
+│   ├── rite-workflow/
+│   │   ├── SKILL.md         # 自動適用スキル
+│   │   └── references/      # コーディング原則、コンテキスト管理
+│   └── reviewers/
+│       └── SKILL.md         # レビュアースキル + 各レビュー基準
 ├── hooks/
 │   ├── session-start.sh
 │   ├── session-end.sh
@@ -186,8 +193,11 @@ rite-workflow/
 │   ├── work-memory-parse.py
 │   ├── cleanup-work-memory.sh
 │   ├── state-path-resolve.sh
+│   ├── flow-state-update.sh
+│   ├── issue-body-safe-update.sh
 │   └── notification.sh
 ├── templates/
+│   ├── completion-report.md  # 完了報告フォーマット定義
 │   ├── project-types/
 │   │   ├── generic.yml
 │   │   ├── webapp.yml
@@ -202,6 +212,12 @@ rite-workflow/
 │       ├── library.md
 │       ├── cli.md
 │       └── documentation.md
+├── scripts/
+│   └── create-issue-with-projects.sh  # Issue 作成 + Projects 連携
+├── references/
+│   ├── gh-cli-patterns.md
+│   ├── graphql-helpers.md
+│   └── ...                   # その他リファレンス
 ├── i18n/
 │   ├── ja.yml
 │   └── en.yml
@@ -215,7 +231,7 @@ rite-workflow/
 ```json
 {
   "name": "rite",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "B16B1RD" },
   "license": "MIT"
