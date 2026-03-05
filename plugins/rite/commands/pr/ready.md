@@ -4,6 +4,10 @@ description: PR を Ready for review に変更
 
 # /rite:pr:ready
 
+## Contract
+**Input**: PR number (or auto-detected), `.rite-flow-state` (optional, e2e flow)
+**Output**: `[ready:completed]` | `[ready:error]`
+
 Change PR to Ready for review and update the related Issue's Status
 
 > **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:completed]` or `[ready:error]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
@@ -207,14 +211,10 @@ Proceed to the next phase.
 **In e2e flow**: If `.rite-flow-state` exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` Phase 5.5):
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  TMP_STATE=".rite-flow-state.tmp.$$"
-  jq --arg phase "phase5_ready_error" \
-     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-     --arg next "rite:pr:ready failed. Ask user: retry / skip to Phase 5.6 / terminate." \
-     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
-     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
-fi
+bash plugins/rite/hooks/flow-state-update.sh patch \
+  --phase "phase5_ready_error" \
+  --next "rite:pr:ready failed. Ask user: retry / skip to Phase 5.6 / terminate." \
+  --if-exists
 ```
 
 ```
@@ -452,17 +452,13 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 | `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop.` |
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  TMP_STATE=".rite-flow-state.tmp.$$"
-  jq --arg phase "phase5_post_ready" \
-     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-     --arg next "rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
-     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
-     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
-fi
+bash plugins/rite/hooks/flow-state-update.sh patch \
+  --phase "phase5_post_ready" \
+  --next "rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
+  --if-exists
 ```
 
-**Note on `error_count`**: This patch-style `jq` command intentionally preserves `error_count` from the existing `.rite-flow-state` (consistent with `lint.md` Phase 4.0, `review.md` Phase 8.0, and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
+**Note on `error_count`**: The `flow-state-update.sh patch` mode preserves all existing fields not explicitly set (including `error_count`), consistent with `lint.md` Phase 4.0, `review.md` Phase 8.0, and `fix.md` Phase 8.1. The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
 
 **Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
 

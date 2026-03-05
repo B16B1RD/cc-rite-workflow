@@ -5,6 +5,10 @@ context: fork
 
 # /rite:lint
 
+## Contract
+**Input**: rite-config.yml `commands` section (lint/test/typecheck commands), `.rite-flow-state` (optional, e2e flow)
+**Output**: `[lint:success]` | `[lint:skipped]` | `[lint:error]` | `[lint:aborted]`
+
 品質チェック（lint）を実行し、結果を報告する
 
 ---
@@ -197,6 +201,7 @@ When lint is skipped, output the completion message in the following format:
 {i18n:lint_flow_continue}
 ```
 
+> If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation (5.2.1) in the caller, potentially creating a PR with incomplete tasks.
 > **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after Phase 5.2.1 is complete.
 
 **Meaning of output patterns:**
@@ -425,19 +430,15 @@ Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint
 | `[lint:aborted]` | `phase5_aborted` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to Phase 5.6 (completion report). Do NOT stop.` |
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  TMP_STATE=".rite-flow-state.tmp.$$"
-  jq --arg phase "{phase_value}" \
-     --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-     --arg next "{next_action_value}" \
-     '.phase = $phase | .updated_at = $ts | .next_action = $next' \
-     ".rite-flow-state" > "$TMP_STATE" && mv "$TMP_STATE" ".rite-flow-state" || rm -f "$TMP_STATE"
-fi
+bash plugins/rite/hooks/flow-state-update.sh patch \
+  --phase "{phase_value}" \
+  --next "{next_action_value}" \
+  --if-exists
 ```
 
 Replace `{phase_value}` and `{next_action_value}` with the values from the table above based on the lint result.
 
-**Note on `error_count`**: This patch-style `jq` command intentionally preserves `error_count` from the existing `.rite-flow-state` (consistent with `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
+**Note on `error_count`**: `flow-state-update.sh` patch mode preserves all existing fields not explicitly set (only `phase`, `updated_at`, `next_action` are changed), so `error_count` is retained (consistent with `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
 
 **Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
 

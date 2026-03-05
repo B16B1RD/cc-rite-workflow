@@ -5,6 +5,18 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.1.3] - 2026-03-05
+
+### 変更
+
+- 確定的処理をシェルスクリプト（`flow-state-update.sh`、`issue-body-safe-update.sh`）にオフロードし、8ファイル・24箇所の jq + atomic write パターンを1行コールに置換
+- `start.md` から完了報告セクションを `completion-report.md` に分離
+- `review.md` から評価ルールを `references/assessment-rules.md` に分離
+- `cleanup.md` からアーカイブ処理を `references/archive-procedures.md` に分離
+- SKILL.md の description を能動的スタイルに最適化し、テーブルをポインタ+概要に圧縮
+- 7つの主要コマンドの MUST/CRITICAL 箇所に Why-driven の理由文を追加
+- 7つの主要コマンドに Input/Output Contract セクションを追加
+
 ## [0.1.2] - 2026-03-04
 
 ### 修正
@@ -58,6 +70,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.1.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.1.0

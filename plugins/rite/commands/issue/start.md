@@ -4,6 +4,10 @@ description: Issue の作業を開始（ブランチ作成 → 実装 → PR 作
 
 # /rite:issue:start
 
+## Contract
+**Input**: Issue number (required), optionally `.rite-flow-state` from a previous interrupted session
+**Output**: `## 完了報告` (completion report with Issue/PR details and phase progress table)
+
 End-to-end Issue workflow: branch → implementation → quality check → PR → review/fix loop.
 
 **Flow:** Branch setup → plan → implementation → `/rite:lint` → `/rite:pr:create` → `/rite:pr:review` + `/rite:pr:fix` loop. Skills output machine-readable patterns; `/rite:issue:start` orchestrates next actions. See Phase 5.
@@ -37,6 +41,7 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 
 ## Phase Flow Quick Reference
 
+> Stopping between phases leaves the workflow in an inconsistent state (e.g., branch created but no PR), requiring manual recovery via `/rite:resume`.
 > **CRITICAL**: After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop, do NOT re-invoke the completed skill.
 >
 > This table lists phases with sub-skill invocations or key decision points. Phases not listed (2.4 Projects Status, 2.5 Iteration, 5.0 Stop Hook, 5.5.1 Status Update, 5.5.2 Metrics, 5.7 Parent Completion) execute inline without stopping.
@@ -169,19 +174,11 @@ Execute after Phase 1.1-1.3.
 **Pre-write** (before invoking `rite:issue:parent-routing`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
 # branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "" \
-  --arg phase "phase1_5_parent" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "After rite:issue:parent-routing returns: proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase1_5_parent" --issue {issue_number} --branch "" \
+  --loop 0 --pr 0 \
+  --next "After rite:issue:parent-routing returns: proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
 ```
 
 > **Module**: [Parent Issue Routing](./parent-routing.md) - Handles: detection (1.5.1), child state/Projects retrieval (1.5.2-1.5.3), decomposition (1.5.4.1-1.5.4.6), auto-close (1.5.5).
@@ -199,19 +196,11 @@ Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing su
 **Pre-write** (before invoking `rite:issue:child-issue-selection`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
 # branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "" \
-  --arg phase "phase1_6_child" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "After rite:issue:child-issue-selection returns: proceed to Phase 2 (work preparation). Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase1_6_child" --issue {issue_number} --branch "" \
+  --loop 0 --pr 0 \
+  --next "After rite:issue:child-issue-selection returns: proceed to Phase 2 (work preparation). Do NOT stop."
 ```
 
 > **Module**: [Child Issue Selection](./child-issue-selection.md) - Automatic child selection with priority logic, dependencies, user confirmation.
@@ -258,18 +247,10 @@ Skip Phase 2.4/2.5/2.6 (no Issue number). User manually links. Phase 3+ normal.
 **Pre-write** (before invoking `rite:issue:branch-setup`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase2_branch" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "After rite:issue:branch-setup returns: proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase2_branch" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --next "After rite:issue:branch-setup returns: proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
 ```
 
 > **Module**: [Branch Setup](./branch-setup.md) - Creates branch from `branch.base`, handles fallback when base doesn't exist.
@@ -299,18 +280,10 @@ Execute only if `iteration.enabled: true` and `iteration.auto_assign: true` in r
 **Pre-write** (before invoking `rite:issue:work-memory-init`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase2_work_memory" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "After rite:issue:work-memory-init returns: proceed to Phase 3 (implementation plan). Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase2_work_memory" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --next "After rite:issue:work-memory-init returns: proceed to Phase 3 (implementation plan). Do NOT stop."
 ```
 
 > **Module**: [Work Memory Initialization](./work-memory-init.md) - Initializes Issue comment with progress summary, confirmation items, session info. Format: [Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md).
@@ -342,18 +315,10 @@ Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next
 **Pre-write** (before invoking `rite:issue:implementation-plan`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase3_plan" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "After rite:issue:implementation-plan returns: proceed to Phase 4 (work start guidance). Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase3_plan" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --next "After rite:issue:implementation-plan returns: proceed to Phase 4 (work start guidance). Do NOT stop."
 ```
 
 > **Module**: [Implementation Plan Generation](./implementation-plan.md) - Analyzes Issue, identifies files, generates plan, gets user confirmation, records to work memory, updates Issue body checklist.
@@ -483,6 +448,7 @@ Run [Preflight Protocol](#preflight-protocol) before starting implementation.
 
 > **Module**: [Implementation Guidance](./implement.md) - Follow Phase 3 plan. Handles: Read/Edit/Bash, parallel (5.1.0), commit message (5.1.1), checklist update (5.1.1.1), parent progress (5.1.2), `.rite-flow-state`, mandatory `rite:lint` invocation.
 
+Skipping lint risks merging code that violates project quality standards, creating technical debt that compounds across subsequent Issues.
 **Critical**: After 5.1.1, **immediately** invoke `rite:lint`. Do NOT stop.
 
 #### 5.1.3 Safety Check (Implementation Rounds)
@@ -494,8 +460,7 @@ Read `safety.max_implementation_rounds` from rite-config.yml (default: 20). Trac
 **Round count tracking**: When re-entering Phase 5.1, update `.rite-flow-state` atomically:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq '.implementation_round = ((.implementation_round // 0) + 1)' .rite-flow-state > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh increment --field "implementation_round"
 ```
 
 **When round count exceeds limit**:
@@ -517,18 +482,10 @@ Run [Preflight Protocol](#preflight-protocol) before invoking lint.
 **Pre-check** (defense-in-depth): Always update `.rite-flow-state` before invoking lint to ensure the stop-guard has correct phase and fresh timestamp. This unconditional write prevents stale state from causing intermittent flow stops (fixes #666):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_lint" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
 ```
 
 Invoke `skill: "rite:lint"` after 5.1.
@@ -604,18 +561,10 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 **Step 1**: Update `.rite-flow-state` to post-lint phase (atomic). This second write (after the Phase 5.2 pre-check write) transitions from `phase5_lint` to `phase5_post_lint`, ensuring stop-guard routes to checklist confirmation rather than re-invoking lint:
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_post_lint" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop." \
-  --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_post_lint" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop."
 ```
 
 **Step 2**: **→ Proceed to 5.2.1 now**.
@@ -642,18 +591,10 @@ Run [Preflight Protocol](#preflight-protocol) before creating PR.
 After 5.2.1, update `.rite-flow-state` (atomic, see 5.1 step 3):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_pr" \
-  --argjson loop 0 \
-  --argjson pr 0 \
-  --arg next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->Phase 5.6. Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->Phase 5.6. Do NOT stop."
 ```
 
 > **Data Handoff**: When invoking `rite:pr:create`, include the Issue information retrieved in Phase 0.1 (`number`, `title`, `body`, `labels`) in the Skill prompt to avoid redundant `gh issue view` calls in the child command.
@@ -683,18 +624,10 @@ Run [Preflight Protocol](#preflight-protocol) before each review cycle.
 Update `.rite-flow-state` (atomic, see 5.1 step 3):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_review" \
-  --argjson loop {loop_count} \
-  --argjson pr {pr_number} \
-  --arg next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_review" --issue {issue_number} --branch "{branch_name}" \
+  --loop {loop_count} --pr {pr_number} \
+  --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
 ```
 
 > **Note**: `{pr_number}` in the `--arg next` is a document placeholder that Claude replaces with the actual PR number at execution time (same as `--argjson pr {pr_number}` above). The `{N}` in result patterns refers to a count value returned by the sub-skill.
@@ -718,18 +651,10 @@ Invoke `skill: "rite:pr:review"`. Increment `loop_count`.
 **Step 1**: Update `.rite-flow-state` to post-review phase (atomic). This second write (after the Phase 5.4.1 pre-write) transitions from `phase5_review` to `phase5_post_review`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #719):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_post_review" \
-  --argjson loop {loop_count} \
-  --argjson pr {pr_number} \
-  --arg next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop." \
-  --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_post_review" --issue {issue_number} --branch "{branch_name}" \
+  --loop {loop_count} --pr {pr_number} \
+  --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
 ```
 
 **Step 2**: Sync to local work memory:
@@ -807,18 +732,10 @@ fi
 Update `.rite-flow-state` (atomic):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_fix" \
-  --argjson loop {loop_count} \
-  --argjson pr {pr_number} \
-  --arg next "After rite:pr:fix returns: [fix:pushed]+fix-needed->Phase 5.4.1. [fix:pushed]+conditional/loop-limit->Phase 5.5. [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop." \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_fix" --issue {issue_number} --branch "{branch_name}" \
+  --loop {loop_count} --pr {pr_number} \
+  --next "After rite:pr:fix returns: [fix:pushed]+fix-needed->Phase 5.4.1. [fix:pushed]+conditional/loop-limit->Phase 5.5. [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
 ```
 
 > **Data Handoff**: When invoking `rite:pr:fix`, PR number and review results are passed via work memory. Issue information from Phase 0.1 is available in work memory, avoiding redundant `gh issue view` calls.
@@ -838,18 +755,10 @@ Invoke `skill: "rite:pr:fix"`.
 **Step 1**: Update `.rite-flow-state` to post-fix phase (atomic). This second write (after the Phase 5.4.4 pre-write) transitions from `phase5_fix` to `phase5_post_fix`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #709):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_post_fix" \
-  --argjson loop {loop_count} \
-  --argjson pr {pr_number} \
-  --arg next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
-  --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_post_fix" --issue {issue_number} --branch "{branch_name}" \
+  --loop {loop_count} --pr {pr_number} \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
 ```
 
 **Step 2**: Sync to local work memory (with loop_count increment):
@@ -950,18 +859,10 @@ When loop completes, confirm:
 **Step 1**: Update `.rite-flow-state` to post-ready phase (atomic). This write transitions from `phase5_post_review`/`phase5_post_fix` to `phase5_post_ready`, ensuring stop-guard routes to Status update rather than re-invoking ready (fixes #781):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active true \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "phase5_post_ready" \
-  --argjson loop {loop_count} \
-  --argjson pr {pr_number} \
-  --arg next "Phase 5.5.1: Update Issue Status to In Review, then Phase 5.5.2 metrics, then Phase 5.6 completion report. Do NOT stop." \
-  --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "phase5_post_ready" --issue {issue_number} --branch "{branch_name}" \
+  --loop {loop_count} --pr {pr_number} \
+  --next "Phase 5.5.1: Update Issue Status to In Review, then Phase 5.5.2 metrics, then Phase 5.6 completion report. Do NOT stop."
 ```
 
 **Step 2**: Sync to local work memory:
@@ -1187,18 +1088,10 @@ Present options via `AskUserQuestion`:
 **Post-completion**: Update `.rite-flow-state` `active: false` (atomic):
 
 ```bash
-TMP_STATE=".rite-flow-state.tmp.$$"
-jq -n \
-  --argjson active false \
-  --argjson issue {issue_number} \
-  --arg branch "{branch_name}" \
-  --arg phase "completed" \
-  --argjson loop {loop_count} \
-  --argjson pr {pr_number} \
-  --arg next "none" \
-  --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-  '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-  > "$TMP_STATE" && mv "$TMP_STATE" .rite-flow-state || rm -f "$TMP_STATE"
+bash plugins/rite/hooks/flow-state-update.sh create \
+  --phase "completed" --issue {issue_number} --branch "{branch_name}" \
+  --loop {loop_count} --pr {pr_number} \
+  --next "none" --active false
 ```
 
 **After flow state update (regardless of success/failure)**: Clean up `.rite-compact-state` to prevent stale blocked state from affecting the next session (#756):
@@ -1212,135 +1105,7 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || true
 
 ### 5.6 Completion Report
 
-Execute the following steps **in order**. Do NOT skip any step. Always base your output on the template file read in Step 1 (or the inline fallback below if the Read tool fails).
-
-**Step 1 — Read template** (MANDATORY):
-
-Use the Read tool to read `{plugin_root}/templates/completion-report.md`. Select the appropriate section:
-- PR created → **"一気通貫フロー完了時のフォーマット（Phase 5.6 用）"** section
-- PR not created → **"PR 未作成時のフォーマット（エッジケース）"** section
-
-If the Read tool fails, proceed to Step 2 using the inline fallback below instead.
-
-**Step 2 — Substitute placeholders**:
-
-Using the template content you just read in Step 1, replace **only** `{...}` placeholders with actual values. Do NOT alter table structure, headings, row order, or add/remove any rows.
-
-| Placeholder | Value Source |
-|-------------|-------------|
-| `{number}`, `{title}` | Issue info from Phase 0.1 |
-| `{owner}`, `{repo}` | Repository info from pre-Phase 0.1 |
-| `{pr_number}` | PR number from Phase 5.3 |
-| `{pr_state}` | Draft / Ready for Review / Merged |
-| `{status}` | Current Projects Status |
-| `{score}` | Quality score from Phase 1.1 |
-| `{branch_name}` | Branch from Phase 2.1 |
-| `{changed_files_count}` | `git diff --name-only origin/{base_branch}...HEAD \| wc -l` (`{base_branch}` = PR base ref from Phase 2.1, e.g. `develop`) |
-| `{review_result}` | Review assessment from Phase 5.4 |
-
-**Step 3 — Output**:
-
-Output the substituted template as your response. First determine which case applies, then verify the output matches **all three required sections** for that case:
-
-**Case A — PR was created** (normal case, `{pr_number}` is set):
-1. **項目テーブル** (7 rows: Issue, Issue URL, PR, PR URL, PR 状態, 関連 Issue, Status)
-2. **フェーズ進捗テーブル** (6 rows: Issue 分析, ブランチ作成, 実装, 品質チェック, PR 作成, セルフレビュー — all ✅)
-3. **次のステップ** (3 items, using the content from the template read in Step 1)
-
-**Case B — PR was NOT created** (edge case, no `{pr_number}`):
-1. **項目テーブル** (5 rows: Issue, Issue URL, PR, ブランチ, Status)
-2. **フェーズ進捗テーブル** (6 rows: completed phases ✅, incomplete phases ⏳)
-3. **次のステップ** (3 items, using the content from the template read in Step 1)
-
-**Step 4 — Self-verification**:
-
-After outputting, verify your output matches the case determined in Step 3:
-
-For **Case A** (PR created):
-- [ ] `## 完了報告` heading
-- [ ] 項目テーブル with exactly **7** data rows
-- [ ] `### フェーズ進捗` heading with exactly 6 data rows
-- [ ] `### 次のステップ` heading with exactly 3 numbered items
-
-For **Case B** (PR not created):
-- [ ] `## 完了報告` heading
-- [ ] 項目テーブル with exactly **5** data rows
-- [ ] `### フェーズ進捗` heading with exactly 6 data rows (with ⏳ for incomplete phases)
-- [ ] `### 次のステップ` heading with exactly 3 numbered items
-
-If any check fails, re-read the template and regenerate.
-
-**MUST NOT**: Omit any template rows, merge fields into a single line, invent fields not in the template, or change the table format (e.g., no ASCII box-drawing).
-
----
-
-**Inline fallbacks** (use ONLY if Read tool fails on the template file). Select the matching case:
-
-**Case A fallback — PR created**:
-
-```markdown
-## 完了報告
-
-| 項目 | 値 |
-|------|-----|
-| Issue | #{number} - {title} |
-| Issue URL | https://github.com/{owner}/{repo}/issues/{number} |
-| PR | #{pr_number} |
-| PR URL | https://github.com/{owner}/{repo}/pull/{pr_number} |
-| PR 状態 | {pr_state} |
-| 関連 Issue | #{number} |
-| Status | {status} |
-
-### フェーズ進捗
-
-| フェーズ | 状態 | 備考 |
-|---------|------|------|
-| Issue 分析 | ✅ | 品質スコア: {score} |
-| ブランチ作成 | ✅ | {branch_name} |
-| 実装 | ✅ | {changed_files_count} ファイル変更 |
-| 品質チェック | ✅ | lint 通過 |
-| PR 作成 | ✅ | #{pr_number} |
-| セルフレビュー | ✅ | {review_result} |
-
-### 次のステップ
-
-1. レビュアーに PR レビューを依頼
-2. レビューコメントに対応
-3. PR マージ後、Issue は自動クローズ
-```
-
-**Case B fallback — PR not created**:
-
-```markdown
-## 完了報告
-
-| 項目 | 値 |
-|------|-----|
-| Issue | #{number} - {title} |
-| Issue URL | https://github.com/{owner}/{repo}/issues/{number} |
-| PR | 未作成 |
-| ブランチ | {branch_name} |
-| Status | In Progress |
-
-### フェーズ進捗
-
-| フェーズ | 状態 | 備考 |
-|---------|------|------|
-| Issue 分析 | ✅ | 品質スコア: {score} |
-| ブランチ作成 | ✅ | {branch_name} |
-| 実装 | ✅ | {changed_files_count} ファイル変更 |
-| 品質チェック | ⏳ | 未実施 |
-| PR 作成 | ⏳ | - |
-| セルフレビュー | ⏳ | - |
-
-### 次のステップ
-
-1. `/rite:pr:create` で PR を作成
-2. `/rite:pr:review` でセルフレビュー
-3. レビュアーに PR レビューを依頼
-```
-
-See template "エッジケース対応表" for other edge cases.
+> See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
 
 ### 5.7 Parent Issue Completion
 
