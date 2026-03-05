@@ -8,7 +8,7 @@
       "name": "rite",
       "source": "./plugins/rite",
       "description": "Universal Issue-driven development workflow for Claude Code",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "author": { "name": "B16B1RD" },
       "license": "MIT"
     }
