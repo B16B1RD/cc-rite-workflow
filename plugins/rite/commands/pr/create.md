@@ -474,11 +474,27 @@ If 5 or more unresolved issues are detected, recommend batch processing:
 
 If "Create separate Issues and continue with PR creation" is selected, create an Issue for each unresolved problem:
 
-Create Issues using the `--body-file` pattern (see `gh-cli-patterns.md`):
+> **Reference**: [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md)
+
+**Note**: The heredoc below contains `{placeholder}` markers. Claude substitutes these with actual values **before** generating the bash script — they are not shell variables.
+
+**Important**: The entire script block must be executed in a **single Bash tool invocation**.
+
+**Priority mapping**: Default → Medium
+
+**Complexity mapping**: XS: single-line/single-location fix. S: multi-line change within 1-2 files
+
+**Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得し、プレースホルダーを置換すること):
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
+| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
+| `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
 
 ```bash
-# Note: Empty check is required because {problem_summary} and {problem_details} are dynamically generated.
-# Naming convention: Use descriptive names like tmpfile_issue/tmpfile_pr when multiple tmpfiles exist in short succession
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
@@ -503,8 +519,53 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-gh issue create --title "fix: {problem_summary}" --body-file "$tmpfile"
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+  --arg title "fix: {problem_summary}" \
+  --arg body_file "$tmpfile" \
+  --argjson projects_enabled {projects_enabled} \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg priority "Medium" \
+  --arg complexity "S" \
+  --arg iter_mode "{iteration_mode}" \
+  '{
+    issue: { title: $title, body_file: $body_file },
+    projects: {
+      enabled: $projects_enabled,
+      project_number: $project_number,
+      owner: $owner,
+      status: "Todo",
+      priority: $priority,
+      complexity: $complexity,
+      iteration: { mode: $iter_mode }
+    },
+    options: { source: "pr_create", non_blocking_projects: true }
+  }'
+)")
+
+if [ -z "$result" ]; then
+  echo "ERROR: create-issue-with-projects.sh returned empty result" >&2
+  exit 1
+fi
+created_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
+created_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
+project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
+printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
 ```
+
+**⚠️ Projects 登録失敗時の警告表示（必須）**: スクリプト実行後、`project_registration` の値を必ず確認し、`"partial"` または `"failed"` の場合は以下を表示すること:
+
+```
+⚠️ Projects 登録が完全に完了しませんでした（status: {project_registration}）
+手動登録: gh project item-add {project_number} --owner {owner} --url {created_issue_url}
+```
+
+**Error handling:**
+
+| Error Case | Response |
+|------------|----------|
+| Script returns `issue_url: ""` | Display warning with error details. If remaining candidates exist, continue creating others |
+| `project_registration: "partial"` or `"failed"` | Display warnings from result. Issue creation itself succeeded |
 
 Apply the `tech-debt` label only if it exists (skip if not). On Issue creation failure, choose retry/skip/abort (max 2 retries).
 
