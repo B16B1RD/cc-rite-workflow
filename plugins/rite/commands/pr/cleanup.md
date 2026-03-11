@@ -24,14 +24,16 @@ When this command is executed, run the following phases in order.
 
 ## Phase 1.0: Activate Flow State
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 Activate `.rite-flow-state` so that `stop-guard.sh` blocks premature `end_turn` during cleanup phases.
 
 ```bash
 if [ -f .rite-flow-state ]; then
-  bash plugins/rite/hooks/flow-state-update.sh patch \
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup" --next "Execute cleanup phases. Do NOT stop."
 else
-  bash plugins/rite/hooks/flow-state-update.sh create \
+  bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "cleanup" --issue 0 --branch "" --loop 0 --pr 0 \
     --next "Execute cleanup phases. Do NOT stop."
 fi

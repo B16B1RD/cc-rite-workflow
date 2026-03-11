@@ -17,6 +17,8 @@ Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 This command can be invoked in two ways: standalone execution or from the `/rite:issue:start` end-to-end flow (via Phase 5.3).
 
 | Caller | Subsequent Action |
@@ -647,7 +649,7 @@ WM_SOURCE="create" \
   WM_NEXT_ACTION="rite:pr:review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

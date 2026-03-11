@@ -1040,7 +1040,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (defense-in-depth, fixes #709). This prevents stop-guard `error_count` from accumulating when the flow continues after this skill returns:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_fix" \
   --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
   --if-exists
@@ -1060,7 +1060,7 @@ WM_SOURCE="fix" \
   WM_BODY_TEXT="Post-fix. loop_count incremented." \
   WM_LOOP_INCREMENT="true" \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

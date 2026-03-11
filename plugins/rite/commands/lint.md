@@ -17,6 +17,8 @@ Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 This command has two invocation cases: standalone execution and being called from the `/rite:issue:start` end-to-end flow.
 
 | Caller | Output Pattern | Subsequent Action |
@@ -430,7 +432,7 @@ Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint
 | `[lint:aborted]` | `phase5_aborted` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to Phase 5.6 (completion report). Do NOT stop.` |
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "{phase_value}" \
   --next "{next_action_value}" \
   --if-exists
@@ -453,7 +455,7 @@ WM_SOURCE="lint" \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.rite-flow-state` update above. Claude substitutes these with the actual values based on the lint result before executing.

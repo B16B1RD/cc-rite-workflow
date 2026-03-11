@@ -10,6 +10,8 @@ Manually update the work memory comment on an Issue
 
 ## Overview
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 This command is for **manually** updating the work memory.
 
 ### Automatic vs Manual Updates
@@ -304,7 +306,7 @@ WM_SOURCE="update" \
   WM_NEXT_ACTION="作業を継続" \
   WM_BODY_TEXT="Manual update via rite:issue:update." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

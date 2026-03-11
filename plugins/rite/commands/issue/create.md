@@ -389,16 +389,18 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 ## Delegation to Interview
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 **Pre-write** (before invoking interview sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
 
 ```bash
 if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
-  bash plugins/rite/hooks/flow-state-update.sh patch \
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_interview" \
     --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 else
-  bash plugins/rite/hooks/flow-state-update.sh create \
+  bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_interview" --issue 0 --branch "" --loop 0 --pr 0 \
     --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 fi
@@ -512,11 +514,11 @@ Based on Phase 0.6 result, delegate to the appropriate sub-command.
 ```bash
 if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller
-  bash plugins/rite/hooks/flow-state-update.sh patch \
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_delegation" \
     --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 else
-  bash plugins/rite/hooks/flow-state-update.sh create \
+  bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_delegation" --issue 0 --branch "" --loop 0 --pr 0 \
     --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 fi
@@ -550,7 +552,7 @@ Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issu
 **Post-completion cleanup**: After the sub-skill outputs the completion report, deactivate flow state:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "create_completed" --issue 0 --branch "" --loop 0 --pr 0 \
   --next "none" --active false
 ```
