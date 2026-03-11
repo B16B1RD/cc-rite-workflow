@@ -23,7 +23,7 @@ When called from the `/rite:issue:start` end-to-end flow, minimize output to red
 | Phase 4.3 (Summary) | Full table | **Skip entirely** |
 | Phase 4.4 (Work Memory) | Full update | Full update (no change) |
 
-**Detection**: Reuse Phase 0.1 end-to-end flow determination.
+**Detection**: See [Caller Context and End-to-End Flow](#caller-context-and-end-to-end-flow) determination method below.
 
 ---
 
