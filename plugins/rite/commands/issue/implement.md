@@ -559,7 +559,7 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 Also synchronize the "Issue checklist" section in the work memory.
 
-#### 5.1.1.1.1 Work Memory Progress Summary and Changed Files Update
+##### 5.1.1.1.1 Work Memory Progress Summary and Changed Files Update
 
 **Execution condition**: Execute after commit and push succeed, when on a work branch with an Issue number (`issue-{n}` pattern).
 
@@ -576,8 +576,8 @@ diff_files=$(git diff --name-only origin/{base_branch}...HEAD 2>/dev/null)
 
 Claude determines statuses based on `diff_files`:
 - **実装**: `✅ 完了` (implementation is complete since we are at the commit stage)
-- **テスト**: `✅ 完了` if test files (*.test.*, *.spec.*) exist in `diff_files`, otherwise `⬜ 未着手`
-- **ドキュメント**: `✅ 完了` if documentation files (*.md in docs/, README.md, etc.) exist in `diff_files`, otherwise `⬜ 未着手`
+- **テスト**: `✅ 完了` if test files (*.test.*, *.spec.*, test_*, tests/**) exist in `diff_files`, otherwise `⬜ 未着手`
+- **ドキュメント**: `✅ 完了` if documentation files (*.md in docs/, README.md, CHANGELOG.md, API.md, etc.) exist in `diff_files`, otherwise `⬜ 未着手`
 
 **Step 2: Generate changed files list**
 
@@ -610,24 +610,39 @@ else
 
   tmpfile=$(mktemp)
   body_tmp=$(mktemp)
-  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  files_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp" "$files_tmp"' EXIT
   printf '%s' "$current_body" > "$body_tmp"
+  printf '%s' "{changed_files_md}" > "$files_tmp"
 
   python3 -c '
 import sys, re
 
 body_path, out_path = sys.argv[1], sys.argv[2]
 impl_status, test_status, doc_status = sys.argv[3], sys.argv[4], sys.argv[5]
-changed_files_md = sys.argv[6]
+files_path = sys.argv[6]
 timestamp = sys.argv[7]
 
 with open(body_path, "r") as f:
     body = f.read()
+with open(files_path, "r") as f:
+    changed_files_md = f.read()
 
-# Update progress summary table cells
+# Update progress summary table cells (v2 format: Markdown table)
+v2_updated = False
 for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
     pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
-    body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+    new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+    if new_body != body:
+        v2_updated = True
+    body = new_body
+
+# v1 format fallback: checkbox style (- [ ] 実装開始 → - [x] 実装開始)
+if not v2_updated:
+    if "### 進捗" in body and "### 進捗サマリー" not in body:
+        for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
+            if "完了" in status:
+                body = re.sub(r"- \[ \] " + re.escape(item), "- [x] " + item, body, count=1)
 
 # Replace changed files section content
 pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
@@ -638,7 +653,7 @@ body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp
 
 with open(out_path, "w") as f:
     f.write(body)
-' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "{changed_files_md}" "$(date +'%Y-%m-%dT%H:%M:%S+09:00')"
+' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "$files_tmp" "$(date +'%Y-%m-%dT%H:%M:%S+09:00')"
 
   # Safety checks before PATCH
   if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
@@ -658,7 +673,7 @@ with open(out_path, "w") as f:
 fi
 ```
 
-**Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings determined in Step 1 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). `{changed_files_md}` is the formatted file list from Step 2. All other `{...}` placeholders follow the standard placeholder legend.
+**Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings determined in Step 1 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). `{changed_files_md}` is the formatted file list from Step 2 (written to a temp file to avoid backtick command substitution in shell). All other `{...}` placeholders follow the standard placeholder legend.
 
 **On failure**: Display WARNING and continue (non-blocking). The progress update is best-effort; `.rite-flow-state` is the primary state record.
 

@@ -734,9 +734,11 @@ git log --oneline origin/{base_branch}...HEAD
 
 #### 4.1.2 Retrieve and Update Work Memory Comment
 
+The update has two parts: (A) **update existing sections** in the work memory via Python, and (B) **append new sections** for PR-specific information via heredoc.
+
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693）
+# comment_data の取得・Python 更新・追記・PATCH を分割すると変数が失われる（Issue #693）
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -750,11 +752,67 @@ if [ -n "$comment_id" ]; then
     printf '%s' "$current_body" > "$backup_file"
     original_length=$(printf '%s' "$current_body" | wc -c)
 
+    body_tmp=$(mktemp)
+    files_tmp=$(mktemp)
     tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    printf '%s\n\n' "$current_body" > "$tmpfile"
+    trap 'rm -f "$body_tmp" "$files_tmp" "$tmpfile"' EXIT
+    printf '%s' "$current_body" > "$body_tmp"
+    printf '%s' "{changed_files_md}" > "$files_tmp"
+
+    # Part (A): Update existing sections via Python
+    python3 -c '
+import sys, re
+
+body_path, out_path = sys.argv[1], sys.argv[2]
+files_path = sys.argv[3]
+pr_number, timestamp = sys.argv[4], sys.argv[5]
+
+with open(body_path, "r") as f:
+    body = f.read()
+with open(files_path, "r") as f:
+    changed_files_md = f.read()
+
+# Update progress summary: 実装 → ✅ 完了 (v2 format)
+v2_updated = False
+for item, status in [("実装", "✅ 完了")]:
+    pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
+    new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+    if new_body != body:
+        v2_updated = True
+    body = new_body
+
+# v1 format fallback: checkbox style
+if not v2_updated:
+    if "### 進捗" in body and "### 進捗サマリー" not in body:
+        body = re.sub(r"- \[ \] 実装", "- [x] 実装", body, count=1)
+
+# Replace changed files section content
+pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
+
+# Update next steps section
+next_steps = f"### 次のステップ\n- **コマンド**: /rite:pr:review #{pr_number}\n- **状態**: 待機中\n- **備考**: PR 作成完了、レビュー準備完了"
+pattern = r"### 次のステップ\n.*?(?=\n### |\Z)"
+body = re.sub(pattern, next_steps, body, count=1, flags=re.DOTALL)
+
+# Update timestamp
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "$files_tmp" "{pr_number}" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+    # Part (B): Append new sections (PR-specific information)
     cat >> "$tmpfile" << 'NEW_SECTION_EOF'
-{4.1.3 の内容を実際の値で置換して記述}
+
+### 関連 PR
+- **番号**: #{pr_number}
+- **タイトル**: {pr_title}
+- **URL**: {pr_url}
+- **作成日時**: {timestamp}
+
+### コミット履歴
+{commit_log}
 NEW_SECTION_EOF
 
     # Safety checks before PATCH (see gh-cli-patterns.md)
@@ -779,64 +837,22 @@ NEW_SECTION_EOF
 fi
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。`{4.1.3 の内容を実際の値で置換して記述}` を 4.1.3 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・Python 更新・Part (B) 追記・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。Part (B) の heredoc 内の `{placeholder}` は Claude が実際の値で置換すること。`{changed_files_md}` はバッククォートを含むためファイル経由で Python に渡す（コマンド置換を防止）。
 
-#### 4.1.3 Update Content
+#### 4.1.3 Update Content Reference
 
-The update has two parts: (A) **update existing sections** in the work memory, and (B) **append new sections** for PR-specific information.
+The 4.1.2 bash block performs the following updates:
 
-**(A) Update existing sections** (in the body already fetched in 4.1.2):
+**(A) Update existing sections** (via Python inline script):
 
-Use Python to update the existing `### 進捗サマリー` table and `### 変更ファイル` section in-place, and update `### 次のステップ`:
+| Section | Update |
+|---------|--------|
+| `進捗サマリー` table | `実装` → `✅ 完了`（v2）/ `- [x] 実装`（v1 fallback） |
+| `変更ファイル` section | Replace entire content with `{changed_files_md}` |
+| `次のステップ` section | Set to `/rite:pr:review #{pr_number}` |
+| `最終更新` timestamp | Replace with current timestamp |
 
-```python
-import re
-
-def update_existing_sections(body, changed_files_md, pr_number, timestamp):
-    """Update existing work memory sections for PR creation.
-
-    Args:
-        body: Current work memory body text
-        changed_files_md: Formatted file list (e.g., "- `path/file.ts` - 変更\\n...")
-        pr_number: PR number (int)
-        timestamp: ISO 8601 timestamp string
-    Returns:
-        Updated body text
-    """
-    # Update progress summary: 実装 → ✅ 完了
-    for item, status in [("実装", "✅ 完了")]:
-        pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
-        body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
-
-    # Replace changed files section content
-    pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
-    body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
-
-    # Update next steps section
-    next_steps = f"### 次のステップ\n- **コマンド**: /rite:pr:review #{pr_number}\n- **状態**: 待機中\n- **備考**: PR 作成完了、レビュー準備完了"
-    pattern = r"### 次のステップ\n.*?(?=\n### |\Z)"
-    body = re.sub(pattern, next_steps, body, count=1, flags=re.DOTALL)
-
-    # Update timestamp
-    body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
-
-    return body
-```
-
-**(B) Append new sections** after the existing body (PR-specific information not present in initial work memory):
-
-```markdown
-### 関連 PR
-- **番号**: #{pr_number}
-- **タイトル**: {pr_title}
-- **URL**: {pr_url}
-- **作成日時**: {timestamp}
-
-### コミット履歴
-{commit_log}
-```
-
-**Integration**: In the 4.1.2 bash block, apply part (A) via the Python script to `current_body`, then append part (B) via `cat >>`. The combined result is written to `$tmpfile` for the PATCH operation.
+**(B) Append new sections** (via heredoc):
 
 **Note**: `{pr_number}` is replaced with the actual PR number when recording. It must not be recorded as a placeholder.
 
