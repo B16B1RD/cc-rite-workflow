@@ -359,12 +359,35 @@ Start→Phase 5 (end-to-end). Later→terminate, resume via Phase 2.2.
 
 ## Phase 5: End-to-End Execution
 
+### Context Budget & Output Minimization (#80)
+
+The e2e flow must minimize context consumption to complete within a single session. Each sub-skill has an **E2E Output Minimization** section that reduces output when called from this flow.
+
+**Orchestrator rules** (apply throughout Phase 5):
+
+1. **Minimize intermediate text output**: Between tool calls, output only essential status updates (1-2 lines max). Skip explanations, summaries, and guidance text that the user doesn't need during automated flow.
+2. **Trust result patterns**: When a sub-skill returns a result pattern (e.g., `[lint:success]`), do NOT re-summarize what happened. Immediately proceed to the next phase.
+3. **Avoid redundant reads**: Information from Phase 0.1 (Issue details) is retained in context. Do NOT re-fetch Issue body, title, or labels in later phases.
+4. **Batch bash operations**: Combine related bash commands into single tool calls where possible (e.g., flow-state update + work memory sync).
+
+**Sub-skill output expectations** (e2e flow):
+
+| Sub-skill | Expected Output | Max Lines |
+|-----------|-----------------|-----------|
+| `rite:lint` | `[lint:success/error]` + 1-line summary | 2 |
+| `rite:pr:create` | `[pr:created:{n}]` + PR URL | 2 |
+| `rite:pr:review` | `[review:mergeable]` or `[review:fix-needed:{n}]` etc. | 2 |
+| `rite:pr:fix` | `[fix:{result}]` + change summary | 2 |
+| `rite:pr:ready` | `[ready:completed]` | 1 | <!-- ready.md の出力は元々1行程度のため E2E Output Minimization セクション不要 -->
+
 ### Context Management
 
 > **Reference**: [Review Context Optimization](../pr/references/review-context-optimization.md)
 
-**Pressure detection (heuristics)**:
-- Tool calls >50 → diff optimization
+**Pressure detection (heuristics)** (counted via `.rite-context-counter` file, managed by `context-pressure.sh` PostToolUse hook; thresholds are configurable via `rite-config.yml` `context_optimization.pressure_thresholds`):
+- Tool calls >= YELLOW threshold (default: 60) → diff optimization + output minimization hint
+- Tool calls >= ORANGE threshold (default: 90) → output minimization mode (skip optional displays)
+- Tool calls >= RED threshold (default: 120) → context optimization (per-file diffs, history summarization, /compact recommendation)
 - Read >5000 lines or >10 files → omit unnecessary info
 - diff >2000 → file splitting in review
 - Loop ≥2 → verification mode (if `review.loop.verification_mode: true`)
@@ -633,6 +656,38 @@ Invoke `skill: "rite:pr:create"`.
 **Local work memory sync rule**: At each phase transition within the review-fix loop (5.4.1, 5.4.3, 5.4.4, 5.4.6), after updating `.rite-flow-state`, also sync `loop_count` and phase to the local work memory file (`.rite-work-memory/issue-{n}.md`). Use the self-resolving wrapper `local-wm-update.sh` with appropriate `WM_*` env vars. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for the recommended pattern.
 
 **Issue comment backup sync rule**: After each review cycle completes (at 5.4.3 and 5.4.6), sync local work memory to the Issue comment as a backup. Use the existing `gh api` PATCH pattern from `fix.md` Phase 4.5.2. This ensures the Issue comment reflects the latest `loop_count` and phase for recovery after context compaction.
+
+#### 5.4.0 Agent Delegation Option (Context Pressure Mitigation)
+
+When context pressure is detected (tool call count > `context_optimization.agent_delegation_threshold` from rite-config.yml, default: 80), the review-fix loop can be delegated to an Agent to isolate its context consumption from the main flow.
+
+**Note**: `agent_delegation_threshold` is independent from `pressure_thresholds` (YELLOW/ORANGE/RED). Pressure thresholds control graduated warnings via the `context-pressure.sh` hook, while `agent_delegation_threshold` controls whether the review-fix loop is offloaded to a sub-agent. Both use the same `.rite-context-counter` value but serve different purposes.
+
+**Condition**: Check `.rite-context-counter` value. If above threshold AND `context_optimization.agent_delegation: true` in rite-config.yml (default: false):
+
+```
+⚠️ コンテキスト圧迫を検出しました（{count} tool calls）。
+レビュー・修正ループをエージェントに委譲して、メインコンテキストを保護します。
+```
+
+**Agent delegation flow**:
+1. Save current state to `.rite-flow-state` and local work memory
+2. Spawn a general-purpose Agent with the following prompt:
+   ```
+   Execute the review-fix loop for PR #{pr_number} (Issue #{issue_number}).
+   1. Invoke skill "rite:pr:review" with args "{pr_number}"
+   2. Based on the result pattern:
+      - [review:mergeable] → return "AGENT_RESULT: [review:mergeable]"
+      - [review:fix-needed:{n}] → invoke skill "rite:pr:fix", then re-review (max {max_iterations} loops)
+      - [review:conditional-merge:{n}] → invoke skill "rite:pr:fix" for blocking only, then return result
+      - [review:loop-limit:{n}] → invoke skill "rite:pr:fix" for blocking only, then return result
+   3. Return final result: "AGENT_RESULT: [review:{final_result}] loop_count={n} findings={total}"
+   ```
+3. Parse `AGENT_RESULT` from agent output
+4. Update `.rite-flow-state` with agent results (loop_count, pr_number)
+5. Continue to Phase 5.5 (Ready) based on the result
+
+**When agent delegation is disabled or threshold not reached**: Execute 5.4.1-5.4.6 inline as before.
 
 #### 5.4.1 Review
 

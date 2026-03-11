@@ -11,6 +11,23 @@ context: fork
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
 
+## E2E Output Minimization
+
+When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+
+| Phase | Standalone | E2E Flow |
+|-------|-----------|----------|
+| Fix implementation | Full output | Full output (needed for code changes) |
+| Phase 7 (Completion) | Full report | Result pattern + 1-line summary only |
+| Phase 8 (Work Memory) | Full update | Full update (no change) |
+
+**E2E output format** (Phase 7, replaces full report):
+```
+[fix:{result}] — {fixed_count} fixed, {deferred_count} deferred, {files_changed} files changed
+```
+
+**Detection**: Reuse Phase 0.1 end-to-end flow determination.
+
 ---
 
 Execute the following phases in order when this command is run.

@@ -385,6 +385,16 @@ Execute command-specific resume processing based on the `コマンド` and `フ�
 | `phase5_fix` | Continue review fix work |
 | `phase5_post_fix` | Execute Phase 5.4.5 fix result routing, then proceed to re-review or completion |
 | `phase5_post_ready` | Resume from Phase 5.5.1 (Issue Status update to "In Review") |
+| `completed` | Issue already completed — display status and offer next actions |
+
+**Context counter recovery**: If `.rite-flow-state` contains `context_counter_at_compact`, restore `.rite-context-counter` to that value after resume. This continues context pressure monitoring from the last known count before compaction (approximate, as compaction itself consumes some context):
+
+```bash
+COUNTER_AT_COMPACT=$(jq -r '.context_counter_at_compact // empty' .rite-flow-state 2>/dev/null)
+if [ -n "$COUNTER_AT_COMPACT" ]; then
+  echo "$COUNTER_AT_COMPACT" > .rite-context-counter 2>/dev/null || true
+fi
+```
 
 **Resume execution:**
 

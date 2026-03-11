@@ -11,6 +11,17 @@ context: fork
 
 ドラフト PR を作成し、関連 Issue と連携する
 
+## E2E Output Minimization
+
+When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+
+| Phase | Standalone | E2E Flow |
+|-------|-----------|----------|
+| Phase 3 (PR Creation) | Full output | `[pr:created:{number}]` + PR URL only |
+| Phase 4 (Completion) | Full report | **Skip** (pattern already output) |
+
+**Detection**: Reuse Caller Context determination in the "Caller Context and End-to-End Flow" section below.
+
 ---
 
 Execute the following phases in order when this command is invoked.

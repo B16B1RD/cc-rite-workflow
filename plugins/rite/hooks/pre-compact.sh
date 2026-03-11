@@ -121,6 +121,19 @@ if acquire_wm_lock "$LOCKDIR"; then
       WM_LOOP_COUNT="$LOOP_CNT" \
         update_local_work_memory
     ) || echo "rite: pre-compact: work memory update failed (exit $?)" >&2
+
+    # Extended state preservation (#80): Save context counter for resume continuity
+    COUNTER_FILE="$STATE_ROOT/.rite-context-counter"
+    if [ -f "$COUNTER_FILE" ]; then
+      COUNTER_VAL=$(cat "$COUNTER_FILE" 2>/dev/null) || COUNTER_VAL="0"
+      TMP_FILE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_FILE="${FLOW_STATE}.tmp.$$"
+      if jq --arg cc "$COUNTER_VAL" '.context_counter_at_compact = ($cc | tonumber)' "$FLOW_STATE" > "$TMP_FILE" 2>/dev/null; then
+        mv "$TMP_FILE" "$FLOW_STATE"
+      else
+        rm -f "$TMP_FILE"
+      fi
+      TMP_FILE=""
+    fi
   fi
 
   release_wm_lock "$LOCKDIR"

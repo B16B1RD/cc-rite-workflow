@@ -11,6 +11,23 @@ context: fork
 
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.
 
+## E2E Output Minimization
+
+When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+
+| Phase | Standalone | E2E Flow |
+|-------|-----------|----------|
+| Phase 5 (Consolidation) | Full findings table | Result pattern + summary counts only |
+| Phase 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
+| Phase 7 (Completion) | Full report + guidance | **Skip** — pattern already output in Phase 6 |
+
+**E2E output format** (Phase 6, replaces full display):
+```
+[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low} LOW)
+```
+
+**Detection**: Reuse Invocation Context determination in the "Invocation Context and End-to-End Flow" section below.
+
 > **Reference**: Apply `push_back_when_warranted` (push back when warranted) from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > Point out problematic implementations with alternative suggestions.
 >

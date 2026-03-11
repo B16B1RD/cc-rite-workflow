@@ -133,6 +133,16 @@ metrics:
     review_critical_high_improvement: 0.80  # MA5 improvement factor for CRITICAL+HIGH findings
     plan_deviation_improvement: 0.90        # MA5 improvement factor for plan deviation count
 
+# Context optimization settings (#80)
+context_optimization:
+  agent_delegation: false            # Enable agent delegation for review-fix loop under context pressure
+  agent_delegation_threshold: 80     # Tool call count threshold to trigger agent delegation
+  output_minimization: true          # Enable e2e output minimization for sub-skills (default: true)
+  pressure_thresholds:
+    yellow: 60                       # Warning threshold (phase-aware: adjusted by ±10 per phase)
+    orange: 90                       # Optimization mode activation threshold
+    red: 120                         # Critical / compact recommendation threshold
+
 # Safety settings (fail-closed thresholds)
 safety:
   max_review_fix_loops: 7          # review-fix loop hard limit (existing, also in review.loop.max_iterations)
