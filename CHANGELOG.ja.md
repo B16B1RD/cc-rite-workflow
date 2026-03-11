@@ -31,9 +31,6 @@ Rite Workflow の主要な変更を記録します。
 ### 変更
 
 - 進捗サマリー正規表現を堅牢化 (#92)
-
-### ドキュメント
-
 - `lint.md` の不正確な参照修正と `start.md` の具体例追加 (#87)
 - `resume.md` カウンター復元スニペットを正式サブセクションに構造化 (#88)
 - `review.md` Phase 6.2 セッション情報更新の defense-in-depth 意図を明文化 (#93)
@@ -113,6 +110,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.2.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.1...v0.1.2

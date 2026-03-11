@@ -31,9 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Progress summary regex hardened for robustness (#92)
-
-### Documentation
-
 - `lint.md` inaccurate reference fix and `start.md` concrete examples (#87)
 - `resume.md` counter restoration snippet structured as formal subsection (#88)
 - `review.md` Phase 6.2 session info update defense-in-depth intent documented (#93)
@@ -113,6 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.2.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.1...v0.1.2
