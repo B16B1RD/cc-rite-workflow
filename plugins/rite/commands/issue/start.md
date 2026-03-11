@@ -68,12 +68,18 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 
 ## Sub-skill Return Protocol (Global)
 
+> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important rule in this document. When a sub-skill returns, you MUST continue responding in the same turn. Ending your response after a sub-skill returns is a **bug** that forces the user to type "continue" manually.
+
 This protocol applies to **every** sub-skill invocation in this document. Each 🚨 Mandatory After section enforces it at specific transition points.
 
-1. When a sub-skill outputs a result pattern and returns control, do **NOT** stop responding and do **NOT** re-invoke the same skill — it already completed.
-2. **Immediately** check the 🚨 Mandatory After section for that phase and execute the specified next action.
-3. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
-4. Execute the post-return `.rite-flow-state` update specified in the 🚨 Mandatory After section, then proceed.
+**When a sub-skill outputs a result pattern (e.g., `[review:mergeable]`, `[fix:pushed]`, `[pr:created:123]`) and returns control to you:**
+
+1. **DO NOT end your response.** You are still in the middle of the e2e flow. Ending your response here is equivalent to crashing mid-workflow.
+2. **DO NOT re-invoke the completed skill.** It already finished. Re-invoking wastes time and may cause errors.
+3. **IMMEDIATELY** locate the 🚨 Mandatory After section for the current phase and execute its steps — starting with the `.rite-flow-state` update, then proceeding to the next phase.
+4. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
+
+**Self-check**: After every sub-skill returns, ask yourself: "Have I output the completion report (Phase 5.6)?" If not, you are NOT done — keep going.
 
 ---
 
@@ -610,6 +616,8 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 Invoke `skill: "rite:pr:create"`.
 
+**🚨 Immediate after pr:create returns**: When `rite:pr:create` outputs a result pattern (`[pr:created:{N}]` or `[pr:create-failed]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.3 below. The review-fix loop has NOT started yet — you MUST continue to Phase 5.4.
+
 **Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→5.6.
 
 ### 🚨 Mandatory After 5.3
@@ -750,6 +758,8 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 > **Data Handoff**: When invoking `rite:pr:fix`, PR number and review results are passed via work memory. Issue information from Phase 0.1 is available in work memory, avoiding redundant `gh issue view` calls.
 
 Invoke `skill: "rite:pr:fix"`.
+
+**🚨 Immediate after fix returns**: When `rite:pr:fix` outputs a result pattern (`[fix:pushed]`, `[fix:issues-created:{N}]`, `[fix:replied-only]`, or `[fix:error]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.6 🚨 After Fix below. The fix sub-skill has already updated `.rite-flow-state` to `phase5_post_fix` via its defense-in-depth mechanism (fixes #709); execute the 5.4.6 steps without delay.
 
 #### 5.4.5 Fix Patterns
 
