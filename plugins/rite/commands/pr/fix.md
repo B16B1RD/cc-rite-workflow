@@ -1014,7 +1014,7 @@ with open(history_path, "r") as f:
 # --- Progress summary update (v2 format: Markdown table) ---
 v2_updated = False
 for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
-    pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
+    pattern = r"(\| " + re.escape(item) + r" \| )[^|]*( \|.*\|)"
     new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
     if new_body != body:
         v2_updated = True
