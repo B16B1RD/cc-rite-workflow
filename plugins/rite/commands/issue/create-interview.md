@@ -495,8 +495,13 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller MUST immediately proceed to Phase 0.6 (Task Decomposition Decision).
+When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller (`create.md`) **MUST immediately** execute its 🚨 Mandatory After Interview section:
 
-**WARNING**: The Issue has NOT been created yet. No GitHub Issue exists at this point. The interview only collected information — creation happens in `create-register.md` or `create-decompose.md`. Stopping here would completely abandon the workflow with no Issue created.
+1. Update `.rite-flow-state` to `create_post_interview` phase
+2. Proceed to Phase 0.6 (Task Decomposition Decision)
+
+**WARNING**: **No GitHub Issue has been created yet.** No GitHub Issue exists at this point. The interview only collected information — creation happens in `create-register.md` or `create-decompose.md`. Stopping here would completely abandon the workflow with no Issue created.
+
+**Concrete next action for caller**: Evaluate decomposition triggers (Phase 0.6.1), then delegate to `rite:issue:create-register` (single Issue) or `rite:issue:create-decompose` (sub-Issue decomposition).
 
 **→ Return to `create.md` and proceed to Phase 0.6 now. Do NOT stop.**
