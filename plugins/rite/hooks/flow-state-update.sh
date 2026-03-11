@@ -136,7 +136,7 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .active = (\$active_val == \"true\")"
       JQ_ARGS+=(--arg active_val "$ACTIVE")
     fi
-    if jq "${JQ_ARGS[@]}" "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
+    if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else
       rm -f "$TMP_STATE"
