@@ -1012,7 +1012,7 @@ if not v2_updated:
 
 # --- Changed files section update ---
 pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
-body = re.sub(pattern, r"\g<1>" + file_list_markdown, body, count=1, flags=re.DOTALL)
+body = re.sub(pattern, lambda m: m.group(1) + file_list_markdown, body, count=1, flags=re.DOTALL)
 
 # --- Append review response history ---
 # Find existing レビュー対応履歴 section and append; if not found, add before 次のステップ
