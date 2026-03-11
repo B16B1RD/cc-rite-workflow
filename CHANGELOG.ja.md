@@ -5,6 +5,39 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.2.1] - 2026-03-12
+
+### 追加
+
+- e2e フローのコンテキストウィンドウオーバーフロー防止機構 (#80)
+- エージェント委譲プロンプトに Skill ツール書式を追加 (#83)
+- エージェント委譲の AGENT_RESULT フォールバック処理を追加 (#84)
+
+### 修正
+
+- サブスキル遷移で Claude 停止を防ぐプロンプト強化 (#79)
+- 作業メモリの進捗サマリー・変更ファイル更新ロジックを具体化 (#75)
+- create ワークフローのサブスキル遷移指示を強化 (#76)
+- ハードコードされた bash フックパスを `{plugin_root}` に置換しマーケットプレイス互換に (#73)
+- `resume.md` のカウンター復元の実行タイミング・実行主体を明示 (#85)
+- `context-pressure.sh` の python3 起動最適化と COUNTER_VAL バリデーション追加 (#86)
+- PR コマンドの Issue 作成時に GitHub Projects 登録を確実にする (#100)
+- 進捗サマリー・変更ファイル更新セクションをチェックリスト更新から独立化 (#104)
+- `flow-state-update.sh` の patch モードで `--active` フラグをサポート (#109)
+- `flow-state-update.sh` の patch モードで jq フィルター前に `--` セパレータを追加 (#109)
+- `fix.md` Phase 4.5.2 の trap に `$pr_body_tmp` を追加 (#94)
+- review/fix ループ中に進捗サマリー・変更ファイルが更新されるよう修正 (#90)
+
+### 変更
+
+- 進捗サマリー正規表現を堅牢化 (#92)
+
+### ドキュメント
+
+- `lint.md` の不正確な参照修正と `start.md` の具体例追加 (#87)
+- `resume.md` カウンター復元スニペットを正式サブセクションに構造化 (#88)
+- `review.md` Phase 6.2 セッション情報更新の defense-in-depth 意図を明文化 (#93)
+
 ## [0.2.0] - 2026-03-05
 
 ### 追加
