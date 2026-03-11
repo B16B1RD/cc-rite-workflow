@@ -675,12 +675,19 @@ When context pressure is detected (tool call count > `context_optimization.agent
 2. Spawn a general-purpose Agent with the following prompt:
    ```
    Execute the review-fix loop for PR #{pr_number} (Issue #{issue_number}).
-   1. Invoke skill "rite:pr:review" with args "{pr_number}"
+
+   Use the Skill tool to invoke each skill. The exact invocation format is:
+
+   - Review: `skill: "rite:pr:review", args: "{pr_number}"`
+   - Fix: `skill: "rite:pr:fix"`
+
+   Steps:
+   1. Invoke `skill: "rite:pr:review", args: "{pr_number}"`
    2. Based on the result pattern:
       - [review:mergeable] → return "AGENT_RESULT: [review:mergeable]"
-      - [review:fix-needed:{n}] → invoke skill "rite:pr:fix", then re-review (max {max_iterations} loops)
-      - [review:conditional-merge:{n}] → invoke skill "rite:pr:fix" for blocking only, then return result
-      - [review:loop-limit:{n}] → invoke skill "rite:pr:fix" for blocking only, then return result
+      - [review:fix-needed:{n}] → invoke `skill: "rite:pr:fix"`, then re-review (max {max_iterations} loops)
+      - [review:conditional-merge:{n}] → invoke `skill: "rite:pr:fix"` for blocking only, then return result
+      - [review:loop-limit:{n}] → invoke `skill: "rite:pr:fix"` for blocking only, then return result
    3. Return final result: "AGENT_RESULT: [review:{final_result}] loop_count={n} findings={total}"
    ```
 3. Parse `AGENT_RESULT` from agent output
