@@ -15,23 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Sub-skill transition Claude stop prevention prompt reinforcement (#79)
-- Work memory progress summary and changed files update logic (#75)
+- Reinforced prompt to prevent Claude from stopping during sub-skill transitions (#79)
+- Clarified work memory progress summary and changed files update logic (#75)
 - Sub-skill transition instructions strengthened in create workflow (#76)
 - Hardcoded bash hook paths replaced with `{plugin_root}` for marketplace compatibility (#73)
-- Resume counter restoration execution timing and ownership (#85)
+- Clarified resume counter restoration execution timing and ownership (#85)
 - `context-pressure.sh` python3 startup optimization and COUNTER_VAL validation (#86)
-- PR command Issue creation GitHub Projects registration (#100)
-- Work memory progress summary and changed files update section independence from checklist update (#104)
+- Ensured GitHub Projects registration when creating Issues via PR command (#100)
+- Separated work memory progress summary and changed files update from checklist update (#104)
 - `flow-state-update.sh` `--active` flag support in patch mode (#109)
 - `flow-state-update.sh` `--` separator before jq filter in patch mode (#109)
 - `fix.md` Phase 4.5.2 trap integration for `$pr_body_tmp` (#94)
-- Review/fix loop work memory progress summary and changed files update (#90)
+- Fixed work memory progress summary and changed files not updating during review/fix loop (#90)
 
 ### Changed
 
 - Progress summary regex hardened for robustness (#92)
-- `lint.md` inaccurate reference fix and `start.md` concrete examples (#87)
+- Updated `lint.md` references and added concrete examples to `start.md` (#87)
 - `resume.md` counter restoration snippet structured as formal subsection (#88)
 - `review.md` Phase 6.2 session info update defense-in-depth intent documented (#93)
 
