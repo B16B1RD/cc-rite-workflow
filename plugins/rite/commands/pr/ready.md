@@ -211,7 +211,7 @@ Proceed to the next phase.
 **In e2e flow**: If `.rite-flow-state` exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` Phase 5.5):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_ready_error" \
   --next "rite:pr:ready failed. Ask user: retry / skip to Phase 5.6 / terminate." \
   --if-exists
@@ -236,7 +236,7 @@ WM_SOURCE="ready" \
   WM_NEXT_ACTION="レビュー待ち" \
   WM_BODY_TEXT="PR marked as ready for review." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
@@ -452,7 +452,7 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 | `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop.` |
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_ready" \
   --next "rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
   --if-exists
@@ -471,7 +471,7 @@ WM_SOURCE="ready" \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

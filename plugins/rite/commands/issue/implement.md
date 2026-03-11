@@ -13,6 +13,8 @@ Perform actual implementation work following the implementation plan approved in
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, and `dead_code_hygiene`.
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 **Basic implementation flow:**
 
 1. Check current file content with Read tool
@@ -531,7 +533,7 @@ Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effecti
 **Step 1: Bash tool call — Fetch body and validate**
 
 ```bash
-bash plugins/rite/hooks/issue-body-safe-update.sh fetch --issue {issue_number}
+bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {issue_number}
 ```
 
 Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`. If fetch fails, outputs WARNING and exits 0 (skip).
@@ -548,7 +550,7 @@ Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`. I
 **Step 3: Bash tool call — Validate and apply**
 
 ```bash
-bash plugins/rite/hooks/issue-body-safe-update.sh apply --issue {issue_number} \
+bash {plugin_root}/hooks/issue-body-safe-update.sh apply --issue {issue_number} \
   --tmpfile-read "{tmpfile_read}" --tmpfile-write "{tmpfile_write}" \
   --original-length {original_length}
 ```
@@ -557,7 +559,125 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 Also synchronize the "Issue checklist" section in the work memory.
 
-#### 5.1.1.2 Local Work Memory Update
+#### 5.1.1.2 Work Memory Progress Summary and Changed Files Update
+
+**Execution condition**: Execute after commit and push succeed, when on a work branch with an Issue number (`issue-{n}` pattern).
+
+**Purpose**: Update the progress summary table and changed files section in the Issue work memory comment to reflect the actual implementation state. This ensures these sections are not left in their initial "⬜ 未着手" / "_まだ変更はありません_" state after implementation completes.
+
+**Step 1: Determine progress summary statuses**
+
+Analyze the committed changes to determine the status of each progress item:
+
+```bash
+# ベースブランチからの変更ファイル一覧を取得
+diff_files=$(git diff --name-only origin/{base_branch}...HEAD 2>/dev/null)
+```
+
+Claude determines statuses based on `diff_files`:
+- **実装**: `✅ 完了` (implementation is complete since we are at the commit stage)
+- **テスト**: `✅ 完了` if test files (*.test.*, *.spec.*, test_*, tests/**) exist in `diff_files`, otherwise `⬜ 未着手`
+- **ドキュメント**: `✅ 完了` if documentation files (*.md in docs/, README.md, CHANGELOG.md, API.md, etc.) exist in `diff_files`, otherwise `⬜ 未着手`
+
+**Step 2: Generate changed files list**
+
+Format the changed files from `git diff --name-status origin/{base_branch}...HEAD`:
+
+```markdown
+- `path/to/file1.md` - 変更
+- `path/to/file2.md` - 変更
+```
+
+Status mapping: `A` → 追加, `M` → 変更, `D` → 削除, `R` → 名前変更.
+
+**Step 3: Update Issue work memory comment**
+
+> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns).
+
+```bash
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
+
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping progress update." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  files_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp" "$files_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+  printf '%s' "{changed_files_md}" > "$files_tmp"
+
+  python3 -c '
+import sys, re
+
+body_path, out_path = sys.argv[1], sys.argv[2]
+impl_status, test_status, doc_status = sys.argv[3], sys.argv[4], sys.argv[5]
+files_path = sys.argv[6]
+timestamp = sys.argv[7]
+
+with open(body_path, "r") as f:
+    body = f.read()
+with open(files_path, "r") as f:
+    changed_files_md = f.read()
+
+# Update progress summary table cells (v2 format: Markdown table)
+v2_updated = False
+for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
+    pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
+    new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+    if new_body != body:
+        v2_updated = True
+    body = new_body
+
+# v1 format fallback: checkbox style (- [ ] 実装開始 → - [x] 実装開始)
+if not v2_updated:
+    if "### 進捗" in body and "### 進捗サマリー" not in body:
+        for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
+            if "完了" in status:
+                body = re.sub(r"- \[ \] " + re.escape(item), "- [x] " + item, body, count=1)
+
+# Replace changed files section content
+pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
+
+# Update timestamp
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "$files_tmp" "$(date +'%Y-%m-%dT%H:%M:%S+09:00')"
+
+  # Safety checks before PATCH
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Progress update PATCH failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
+```
+
+**Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings determined in Step 1 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). `{changed_files_md}` is the formatted file list from Step 2 (written to a temp file to avoid backtick command substitution in shell). All other `{...}` placeholders follow the standard placeholder legend.
+
+**On failure**: Display WARNING and continue (non-blocking). The progress update is best-effort; `.rite-flow-state` is the primary state record.
+
+#### 5.1.1.3 Local Work Memory Update
 
 **Execution condition**: Execute when on a work branch with an Issue number (`issue-{n}` pattern).
 
@@ -572,7 +692,7 @@ WM_SOURCE="implement" \
   WM_NEXT_ACTION="rite:lint を実行" \
   WM_BODY_TEXT="Post-implementation. Proceeding to lint." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The `.rite-flow-state` update (step 4a) is the primary state record.
@@ -663,7 +783,7 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 
 1. Parent Issue progress update (only when working on child Issue, see 5.1.2)
 2. **Update work memory** (record phase info, changed files, next steps)
-3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.2 above
+3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
 4. **CRITICAL: Initialize `.rite-flow-state` and invoke lint** (atomic pair - MUST execute both):
 
    > **Note**: All `.rite-flow-state` writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
@@ -671,7 +791,7 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
    **4a**: Create state file:
 
    ```bash
-   bash plugins/rite/hooks/flow-state-update.sh create \
+   bash {plugin_root}/hooks/flow-state-update.sh create \
      --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
      --loop 0 --pr 0 \
      --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."

@@ -68,12 +68,18 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 
 ## Sub-skill Return Protocol (Global)
 
+> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important rule in this document. When a sub-skill returns, you MUST continue responding in the same turn. Ending your response after a sub-skill returns is a **bug** that forces the user to type "continue" manually.
+
 This protocol applies to **every** sub-skill invocation in this document. Each 🚨 Mandatory After section enforces it at specific transition points.
 
-1. When a sub-skill outputs a result pattern and returns control, do **NOT** stop responding and do **NOT** re-invoke the same skill — it already completed.
-2. **Immediately** check the 🚨 Mandatory After section for that phase and execute the specified next action.
-3. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
-4. Execute the post-return `.rite-flow-state` update specified in the 🚨 Mandatory After section, then proceed.
+**When a sub-skill outputs a result pattern (e.g., `[review:mergeable]`, `[fix:pushed]`, `[pr:created:123]`) and returns control to you:**
+
+1. **DO NOT end your response.** You are still in the middle of the e2e flow. Ending your response here is equivalent to crashing mid-workflow.
+2. **DO NOT re-invoke the completed skill.** It already finished. Re-invoking wastes time and may cause errors.
+3. **IMMEDIATELY** locate the 🚨 Mandatory After section for the current phase and execute its steps — starting with the `.rite-flow-state` update, then proceeding to the next phase.
+4. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
+
+**Self-check**: After every sub-skill returns, ask yourself: "Have I output the completion report (Phase 5.6)?" If not, you are NOT done — keep going.
 
 ---
 
@@ -175,7 +181,7 @@ Execute after Phase 1.1-1.3.
 
 ```bash
 # branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_5_parent" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
   --next "After rite:issue:parent-routing returns: proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
@@ -197,7 +203,7 @@ Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing su
 
 ```bash
 # branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_6_child" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
   --next "After rite:issue:child-issue-selection returns: proceed to Phase 2 (work preparation). Do NOT stop."
@@ -247,7 +253,7 @@ Skip Phase 2.4/2.5/2.6 (no Issue number). User manually links. Phase 3+ normal.
 **Pre-write** (before invoking `rite:issue:branch-setup`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_branch" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:issue:branch-setup returns: proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
@@ -280,7 +286,7 @@ Execute only if `iteration.enabled: true` and `iteration.auto_assign: true` in r
 **Pre-write** (before invoking `rite:issue:work-memory-init`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_work_memory" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:issue:work-memory-init returns: proceed to Phase 3 (implementation plan). Do NOT stop."
@@ -315,7 +321,7 @@ Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next
 **Pre-write** (before invoking `rite:issue:implementation-plan`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase3_plan" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:issue:implementation-plan returns: proceed to Phase 4 (work start guidance). Do NOT stop."
@@ -353,12 +359,35 @@ Start→Phase 5 (end-to-end). Later→terminate, resume via Phase 2.2.
 
 ## Phase 5: End-to-End Execution
 
+### Context Budget & Output Minimization (#80)
+
+The e2e flow must minimize context consumption to complete within a single session. Each sub-skill has an **E2E Output Minimization** section that reduces output when called from this flow.
+
+**Orchestrator rules** (apply throughout Phase 5):
+
+1. **Minimize intermediate text output**: Between tool calls, output only essential status updates (1-2 lines max). Skip explanations, summaries, and guidance text that the user doesn't need during automated flow.
+2. **Trust result patterns**: When a sub-skill returns a result pattern (e.g., `[lint:success]`), do NOT re-summarize what happened. Immediately proceed to the next phase.
+3. **Avoid redundant reads**: Information from Phase 0.1 (Issue details) is retained in context. Do NOT re-fetch Issue body, title, or labels in later phases.
+4. **Batch bash operations**: Combine related bash commands into single tool calls where possible. Examples: `flow-state-update.sh create ... && WM_SOURCE=... bash local-wm-update.sh` (flow-state + work memory sync in one call), `gh api graphql ... && gh project item-edit ...` (Projects query + update in one call).
+
+**Sub-skill output expectations** (e2e flow):
+
+| Sub-skill | Expected Output | Max Lines |
+|-----------|-----------------|-----------|
+| `rite:lint` | `[lint:success/error]` + 1-line summary | 2 |
+| `rite:pr:create` | `[pr:created:{n}]` + PR URL | 2 |
+| `rite:pr:review` | `[review:mergeable]` or `[review:fix-needed:{n}]` etc. | 2 |
+| `rite:pr:fix` | `[fix:{result}]` + change summary | 2 |
+| `rite:pr:ready` | `[ready:completed]` | 1 | <!-- ready.md の出力は元々1行程度のため E2E Output Minimization セクション不要 -->
+
 ### Context Management
 
 > **Reference**: [Review Context Optimization](../pr/references/review-context-optimization.md)
 
-**Pressure detection (heuristics)**:
-- Tool calls >50 → diff optimization
+**Pressure detection (heuristics)** (counted via `.rite-context-counter` file, managed by `context-pressure.sh` PostToolUse hook; thresholds are configurable via `rite-config.yml` `context_optimization.pressure_thresholds`):
+- Tool calls >= YELLOW threshold (default: 60) → diff optimization + output minimization hint
+- Tool calls >= ORANGE threshold (default: 90) → output minimization mode (skip optional displays)
+- Tool calls >= RED threshold (default: 120) → context optimization (per-file diffs, history summarization, /compact recommendation)
 - Read >5000 lines or >10 files → omit unnecessary info
 - diff >2000 → file splitting in review
 - Loop ≥2 → verification mode (if `review.loop.verification_mode: true`)
@@ -469,7 +498,7 @@ Read `safety.max_implementation_rounds` from rite-config.yml (default: 20). Trac
 **Round count tracking**: When re-entering Phase 5.1, update `.rite-flow-state` atomically:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh increment --field "implementation_round"
+bash {plugin_root}/hooks/flow-state-update.sh increment --field "implementation_round"
 ```
 
 **When round count exceeds limit**:
@@ -491,7 +520,7 @@ Run [Preflight Protocol](#preflight-protocol) before invoking lint.
 **Pre-check** (defense-in-depth): Always update `.rite-flow-state` before invoking lint to ensure the stop-guard has correct phase and fresh timestamp. This unconditional write prevents stale state from causing intermittent flow stops (fixes #666):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
@@ -570,7 +599,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 **Step 1**: Update `.rite-flow-state` to post-lint phase (atomic). This second write (after the Phase 5.2 pre-check write) transitions from `phase5_lint` to `phase5_post_lint`, ensuring stop-guard routes to checklist confirmation rather than re-invoking lint:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop."
@@ -600,7 +629,7 @@ Run [Preflight Protocol](#preflight-protocol) before creating PR.
 After 5.2.1, update `.rite-flow-state` (atomic, see 5.1 step 3):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->Phase 5.6. Do NOT stop."
@@ -609,6 +638,8 @@ bash plugins/rite/hooks/flow-state-update.sh create \
 > **Data Handoff**: When invoking `rite:pr:create`, include the Issue information retrieved in Phase 0.1 (`number`, `title`, `body`, `labels`) in the Skill prompt to avoid redundant `gh issue view` calls in the child command.
 
 Invoke `skill: "rite:pr:create"`.
+
+**🚨 Immediate after pr:create returns**: When `rite:pr:create` outputs a result pattern (`[pr:created:{N}]` or `[pr:create-failed]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.3 below. The review-fix loop has NOT started yet — you MUST continue to Phase 5.4.
 
 **Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→5.6.
 
@@ -626,6 +657,72 @@ Invoke `skill: "rite:pr:create"`.
 
 **Issue comment backup sync rule**: After each review cycle completes (at 5.4.3 and 5.4.6), sync local work memory to the Issue comment as a backup. Use the existing `gh api` PATCH pattern from `fix.md` Phase 4.5.2. This ensures the Issue comment reflects the latest `loop_count` and phase for recovery after context compaction.
 
+#### 5.4.0 Agent Delegation Option (Context Pressure Mitigation)
+
+When context pressure is detected (tool call count > `context_optimization.agent_delegation_threshold` from rite-config.yml, default: 80), the review-fix loop can be delegated to an Agent to isolate its context consumption from the main flow.
+
+**Note**: `agent_delegation_threshold` is independent from `pressure_thresholds` (YELLOW/ORANGE/RED). Pressure thresholds control graduated warnings via the `context-pressure.sh` hook, while `agent_delegation_threshold` controls whether the review-fix loop is offloaded to a sub-agent. Both use the same `.rite-context-counter` value but serve different purposes.
+
+**Condition**: Check `.rite-context-counter` value. If above threshold AND `context_optimization.agent_delegation: true` in rite-config.yml (default: false):
+
+```
+⚠️ コンテキスト圧迫を検出しました（{count} tool calls）。
+レビュー・修正ループをエージェントに委譲して、メインコンテキストを保護します。
+```
+
+**Agent delegation flow**:
+1. Save current state to `.rite-flow-state` and local work memory
+2. Spawn a general-purpose Agent with the following prompt:
+   ```
+   Execute the review-fix loop for PR #{pr_number} (Issue #{issue_number}).
+
+   Use the Skill tool to invoke each skill. The exact invocation format is:
+
+   - Review: `skill: "rite:pr:review", args: "{pr_number}"`
+   - Fix: `skill: "rite:pr:fix"`
+
+   Steps:
+   1. Invoke `skill: "rite:pr:review", args: "{pr_number}"`
+   2. Based on the result pattern:
+      - [review:mergeable] → return "AGENT_RESULT: [review:mergeable]"
+      - [review:fix-needed:{n}] → invoke `skill: "rite:pr:fix"`, then re-review (max {max_iterations} loops)
+      - [review:conditional-merge:{n}] → invoke `skill: "rite:pr:fix"` for blocking only, then return result
+      - [review:loop-limit:{n}] → invoke `skill: "rite:pr:fix"` for blocking only, then return result
+   3. Return final result: "AGENT_RESULT: [review:{final_result}] loop_count={n} findings={total}"
+   ```
+3. Parse `AGENT_RESULT` from agent output. If the agent output does not contain a valid `AGENT_RESULT:` pattern (agent error, timeout, or unexpected output):
+
+   **Fallback handling**:
+   ```
+   ⚠️ エージェント委譲の結果を取得できませんでした。
+   エージェント出力に AGENT_RESULT パターンが見つかりません。
+   ```
+
+   Present options via `AskUserQuestion`:
+   - **inline 実行にフォールバック（推奨）**: Execute 5.4.1-5.4.6 inline as normal (reset `loop_count = 0`, proceed to 5.4.1)
+   - **完了報告に遷移**: Skip review-fix loop and proceed to Phase 5.6 (completion report with review skipped)
+   - **手動介入**: Terminate and let the user handle manually
+
+   Update `.rite-flow-state` based on the chosen option:
+
+   | Option | `--phase` | `--next` |
+   |--------|-----------|----------|
+   | inline フォールバック | `phase5_review` | `Agent delegation failed. Executing 5.4.1-5.4.6 inline. Proceed to Phase 5.4.1 (review). Do NOT stop.` |
+   | 完了報告に遷移 | `phase5_aborted` | `Agent delegation failed. User chose to skip review. Proceed to Phase 5.6 (completion report). Do NOT stop.` |
+   | 手動介入 | `phase5_manual` | `Agent delegation failed. User chose manual intervention. Terminate.` |
+
+   ```bash
+   bash plugins/rite/hooks/flow-state-update.sh create \
+     --phase "{phase_value}" --issue {issue_number} --branch "{branch_name}" \
+     --loop 0 --pr {pr_number} \
+     --next "{next_action_value}"
+   ```
+
+4. Update `.rite-flow-state` with agent results (loop_count, pr_number)
+5. Continue to Phase 5.5 (Ready) based on the result
+
+**When agent delegation is disabled or threshold not reached**: Execute 5.4.1-5.4.6 inline as before.
+
 #### 5.4.1 Review
 
 Run [Preflight Protocol](#preflight-protocol) before each review cycle.
@@ -633,7 +730,7 @@ Run [Preflight Protocol](#preflight-protocol) before each review cycle.
 Update `.rite-flow-state` (atomic, see 5.1 step 3):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
@@ -660,7 +757,7 @@ Invoke `skill: "rite:pr:review"`. Increment `loop_count`.
 **Step 1**: Update `.rite-flow-state` to post-review phase (atomic). This second write (after the Phase 5.4.1 pre-write) transitions from `phase5_review` to `phase5_post_review`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #719):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
@@ -741,7 +838,7 @@ fi
 Update `.rite-flow-state` (atomic):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "After rite:pr:fix returns: [fix:pushed]+fix-needed->Phase 5.4.1. [fix:pushed]+conditional/loop-limit->Phase 5.5. [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
@@ -750,6 +847,8 @@ bash plugins/rite/hooks/flow-state-update.sh create \
 > **Data Handoff**: When invoking `rite:pr:fix`, PR number and review results are passed via work memory. Issue information from Phase 0.1 is available in work memory, avoiding redundant `gh issue view` calls.
 
 Invoke `skill: "rite:pr:fix"`.
+
+**🚨 Immediate after fix returns**: When `rite:pr:fix` outputs a result pattern (`[fix:pushed]`, `[fix:issues-created:{N}]`, `[fix:replied-only]`, or `[fix:error]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.6 🚨 After Fix below. The fix sub-skill has already updated `.rite-flow-state` to `phase5_post_fix` via its defense-in-depth mechanism (fixes #709); execute the 5.4.6 steps without delay.
 
 #### 5.4.5 Fix Patterns
 
@@ -764,7 +863,7 @@ Invoke `skill: "rite:pr:fix"`.
 **Step 1**: Update `.rite-flow-state` to post-fix phase (atomic). This second write (after the Phase 5.4.4 pre-write) transitions from `phase5_fix` to `phase5_post_fix`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #709):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
@@ -868,7 +967,7 @@ When loop completes, confirm:
 **Step 1**: Update `.rite-flow-state` to post-ready phase (atomic). This write transitions from `phase5_post_review`/`phase5_post_fix` to `phase5_post_ready`, ensuring stop-guard routes to Status update rather than re-invoking ready (fixes #781):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_ready" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "Phase 5.5.1: Update Issue Status to In Review, then Phase 5.5.2 metrics, then Phase 5.6 completion report. Do NOT stop."
@@ -1097,7 +1196,7 @@ Present options via `AskUserQuestion`:
 **Post-completion**: Update `.rite-flow-state` `active: false` (atomic):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "completed" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "none" --active false

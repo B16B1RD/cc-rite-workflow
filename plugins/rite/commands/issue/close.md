@@ -371,7 +371,7 @@ WM_SOURCE="close" \
   WM_NEXT_ACTION="なし" \
   WM_BODY_TEXT="Issue closed." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort. The file will be deleted in Phase 5 regardless.

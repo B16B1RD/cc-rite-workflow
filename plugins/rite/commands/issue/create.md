@@ -389,16 +389,18 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 ## Delegation to Interview
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 **Pre-write** (before invoking interview sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
 
 ```bash
 if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
-  bash plugins/rite/hooks/flow-state-update.sh patch \
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_interview" \
     --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 else
-  bash plugins/rite/hooks/flow-state-update.sh create \
+  bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_interview" --issue 0 --branch "" --loop 0 --pr 0 \
     --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 fi
@@ -406,11 +408,29 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
+**🚨 Immediate after interview returns**: When `rite:issue:create-interview` completes (interview finished or skipped) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below.
+
 ### 🚨 Mandatory After Interview
 
-Do **NOT** stop after `rite:issue:create-interview` returns. Proceed to the next phase immediately after the sub-skill returns. The interview sub-skill only collects information — the actual Issue creation has NOT happened yet.
+> See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-**→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
+Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
+
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). This write transitions from `create_interview` to `create_post_interview`, ensuring stop-guard routes to Phase 0.6 rather than re-invoking the interview:
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --next "Phase 0.6: Task Decomposition Decision. Evaluate decomposition triggers, then delegate to create-register or create-decompose. Issue has NOT been created yet. Do NOT stop."
+else
+  bash {plugin_root}/hooks/flow-state-update.sh create \
+    --phase "create_post_interview" --issue 0 --branch "" --loop 0 --pr 0 \
+    --next "Phase 0.6: Task Decomposition Decision. Evaluate decomposition triggers, then delegate to create-register or create-decompose. Issue has NOT been created yet. Do NOT stop."
+fi
+```
+
+**Step 2**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
 ---
 
@@ -512,11 +532,11 @@ Based on Phase 0.6 result, delegate to the appropriate sub-command.
 ```bash
 if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller
-  bash plugins/rite/hooks/flow-state-update.sh patch \
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_delegation" \
     --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 else
-  bash plugins/rite/hooks/flow-state-update.sh create \
+  bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_delegation" --issue 0 --branch "" --loop 0 --pr 0 \
     --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 fi
@@ -543,14 +563,18 @@ Invoke `skill: "rite:issue:create-register"`.
 
 ### 🚨 Mandatory After Delegation
 
-Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs its completion report. The sub-command handles all remaining phases (creation, registration, completion report). Once the completion report (Issue URL) is output, the workflow is complete — no further action is needed.
+> See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
+
+Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs its completion report. The sub-command handles all remaining phases (creation, registration, completion report). **No GitHub Issue has been created yet** — stopping here would abandon the workflow with no deliverable.
+
+Once the completion report (Issue URL) is output, the workflow is complete — no further action is needed.
 
 **→ Wait for the sub-skill to output its Phase 3 completion report (Issue URL). Do NOT stop before that.**
 
 **Post-completion cleanup**: After the sub-skill outputs the completion report, deactivate flow state:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "create_completed" --issue 0 --branch "" --loop 0 --pr 0 \
   --next "none" --active false
 ```

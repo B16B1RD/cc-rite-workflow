@@ -5,6 +5,36 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-12
+
+### Added
+
+- E2E flow context window overflow prevention mechanism (#80)
+- Agent delegation Skill tool format in prompts (#83)
+- Agent delegation AGENT_RESULT fallback handling (#84)
+
+### Fixed
+
+- Reinforced prompt to prevent Claude from stopping during sub-skill transitions (#79)
+- Clarified work memory progress summary and changed files update logic (#75)
+- Sub-skill transition instructions strengthened in create workflow (#76)
+- Hardcoded bash hook paths replaced with `{plugin_root}` for marketplace compatibility (#73)
+- Clarified resume counter restoration execution timing and ownership (#85)
+- `context-pressure.sh` python3 startup optimization and COUNTER_VAL validation (#86)
+- Ensured GitHub Projects registration when creating Issues via PR command (#100)
+- Separated work memory progress summary and changed files update from checklist update (#104)
+- `flow-state-update.sh` `--active` flag support in patch mode (#109)
+- `flow-state-update.sh` `--` separator before jq filter in patch mode (#109)
+- `fix.md` Phase 4.5.2 trap integration for `$pr_body_tmp` (#94)
+- Fixed work memory progress summary and changed files not updating during review/fix loop (#90)
+
+### Changed
+
+- Progress summary regex hardened for robustness (#92)
+- Updated `lint.md` references and added concrete examples to `start.md` (#87)
+- `resume.md` counter restoration snippet structured as formal subsection (#88)
+- `review.md` Phase 6.2 session info update defense-in-depth intent documented (#93)
+
 ## [0.2.0] - 2026-03-05
 
 ### Added
@@ -80,6 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.2.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.1...v0.1.2

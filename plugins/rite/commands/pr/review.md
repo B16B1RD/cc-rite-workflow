@@ -11,6 +11,23 @@ context: fork
 
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.
 
+## E2E Output Minimization
+
+When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+
+| Phase | Standalone | E2E Flow |
+|-------|-----------|----------|
+| Phase 5 (Consolidation) | Full findings table | Result pattern + summary counts only |
+| Phase 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
+| Phase 7 (Completion) | Full report + guidance | **Skip** — pattern already output in Phase 6 |
+
+**E2E output format** (Phase 6, replaces full display):
+```
+[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low} LOW)
+```
+
+**Detection**: Reuse Invocation Context determination in the "Invocation Context and End-to-End Flow" section below.
+
 > **Reference**: Apply `push_back_when_warranted` (push back when warranted) from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > Point out problematic implementations with alternative suggestions.
 >
@@ -1238,7 +1255,7 @@ WM_SOURCE="review" \
   WM_NEXT_ACTION="レビュー結果に基づき次のアクションを決定" \
   WM_BODY_TEXT="Review cycle completed." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
@@ -1363,19 +1380,30 @@ Append the metrics section (format defined in [Execution Metrics](../../referenc
      printf '%s' "$current_body" > "$body_tmp"
      # Python-based line replacement (awk-free, sed-free)
      # File-based argument passing to avoid Japanese string issues in shell expansion
+     # Also updates session info fields for consistency with Phase 6.1.1 local work memory (Issue #90)
+     # Defense-in-depth: Phase 6.1.1 updates local work memory (SoT), but this Phase 6.2 code
+     # redundantly updates the same fields in the Issue comment (backup). This intentional
+     # duplication ensures the backup stays consistent even if Phase 6.1.1 silently fails.
      python3 -c '
 import sys, re
-body_path, out_path, new_count = sys.argv[1], sys.argv[2], sys.argv[3]
+body_path, out_path, new_count, timestamp = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 with open(body_path, "r") as f:
     body = f.read()
+# Update loop count
 updated = re.sub(
     r"^- \*\*現在のループ回数\*\*: \d+",
     f"- **現在のループ回数**: {new_count}",
     body, count=1, flags=re.MULTILINE
 )
+# Defense-in-depth: redundantly update session info fields here (Issue comment backup)
+# even though Phase 6.1.1 already updated local work memory (SoT) with the same values.
+# This ensures backup consistency if Phase 6.1.1 silently fails. See Issue #90, #93.
+updated = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, updated, count=1, flags=re.MULTILINE)
+updated = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + "phase5_review", updated, count=1, flags=re.MULTILINE)
+updated = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + "レビュー中", updated, count=1, flags=re.MULTILINE)
 with open(out_path, "w") as f:
     f.write(updated)
-' "$body_tmp" "$updated_tmp" "$new_loop_count"
+' "$body_tmp" "$updated_tmp" "$new_loop_count" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
      # Step 2: Validate updated content (10 bytes = minimum plausible work memory content)
      if [ ! -s "$updated_tmp" ] || [[ "$(wc -c < "$updated_tmp")" -lt 10 ]]; then
        echo "ERROR: Updated body is empty or too short. Aborting. Backup: $backup_file" >&2
@@ -1404,6 +1432,8 @@ with open(out_path, "w") as f:
 5. **Update next steps**: Set the next command based on the review assessment
 
 6. **Write back**: Update the comment using `jq -n --rawfile` + `gh api --input -`
+
+**Consistency guarantee (Issue #90)**: Steps 3-6 collectively ensure that the Issue comment (backup) is consistent with the local work memory (SoT) updated in Phase 6.1.1. Both sources now reflect the same phase (`phase5_review`), timestamp, and loop count after Phase 6 completes. This is a **defense-in-depth** design: Phase 6.1.1 (local SoT) and Phase 6.2 Step 3 (Issue comment backup) intentionally perform the same session info updates. If either path silently fails, the other guarantees at least one source has correct state for recovery.
 
 **Next command determination:** Merge OK → `/rite:pr:ready` | Cannot merge/Requires fixes → `/rite:pr:fix`
 
@@ -1504,6 +1534,23 @@ Create Issues directly using `gh issue create` and register them in GitHub Proje
 **Priority mapping**: CRITICAL→High, HIGH→Medium, MEDIUM→Low
 
 **Complexity mapping**: XS: single-line/single-location fix. S: multi-line change within 1-2 files
+
+**Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得し、プレースホルダーを置換すること):
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
+| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
+| `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
+
+**⚠️ Projects 登録失敗時の警告表示（必須）**: スクリプト実行後、`project_registration` の値を必ず確認し、`"partial"` または `"failed"` の場合は以下を表示すること:
+
+```
+⚠️ Projects 登録が完全に完了しませんでした（status: {project_registration}）
+手動登録: gh project item-add {project_number} --owner {owner} --url {created_issue_url}
+```
 
 ```bash
 tmpfile=$(mktemp)
@@ -1629,7 +1676,7 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 | `[review:loop-limit:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:loop-limit:{n}]. Proceed to Phase 5.4.4 (fix) then Phase 5.5. Do NOT stop.` |
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_review" \
   --next "{next_action_value}" \
   --if-exists

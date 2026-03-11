@@ -11,6 +11,23 @@ context: fork
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
 
+## E2E Output Minimization
+
+When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+
+| Phase | Standalone | E2E Flow |
+|-------|-----------|----------|
+| Fix implementation | Full output | Full output (needed for code changes) |
+| Phase 7 (Completion) | Full report | Result pattern + 1-line summary only |
+| Phase 8 (Work Memory) | Full update | Full update (no change) |
+
+**E2E output format** (Phase 7, replaces full report):
+```
+[fix:{result}] — {fixed_count} fixed, {deferred_count} deferred, {files_changed} files changed
+```
+
+**Detection**: Reuse Phase 0.1 end-to-end flow determination.
+
 ---
 
 Execute the following phases in order when this command is run.
@@ -777,6 +794,23 @@ Generate the Issue title in the following format:
 
 **Complexity mapping**: XS: single-line/single-location fix. S: multi-line change within 1-2 files
 
+**Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得し、プレースホルダーを置換すること):
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
+| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
+| `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
+
+**⚠️ Projects 登録失敗時の警告表示（必須）**: スクリプト実行後、`project_registration` の値を必ず確認し、`"partial"` または `"failed"` の場合は以下を表示すること:
+
+```
+⚠️ Projects 登録が完全に完了しませんでした（status: {project_registration}）
+手動登録: gh project item-add {project_number} --owner {owner} --url {created_issue_url}
+```
+
 ```bash
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
@@ -904,13 +938,24 @@ fi
 
 **Implementation note for Claude**: `{pr_body}` はドキュメントのプレースホルダ（Phase 4.3.4 の注記と同等）。Claude はスクリプト生成前に実際の PR body で置換する。body に改行・シングルクォート・`$` 記号等の特殊文字が含まれる場合は `echo "..."` への直接埋め込みを避け、`printf '%s' '{pr_body}'` または一時ファイル経由（`tmpfile=$(mktemp)` + HEREDOC）でパターンマッチを実行すること。
 
-If no Issue number is found, skip the work memory update.
+If no Issue number is found, display a warning and skip the work memory update:
+
+```
+⚠️ Issue 番号が特定できないため作業メモリ更新をスキップしました
+PR 本文に Closes/Fixes/Resolves #XX が含まれていないか、ブランチ名に issue-{number} パターンがありません。
+```
 
 #### 4.5.2 Retrieve and Update Work Memory Comment
 
+The work memory update performs **three operations** in a single Bash tool invocation:
+
+1. **進捗サマリー更新**: Update the progress summary table to reflect implementation status
+2. **変更ファイル更新**: Replace the changed files section with actual file changes from `git diff`
+3. **レビュー対応履歴追記**: Append the review response history (4.5.3 content)
+
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693）
+# comment_data の取得・更新内容の生成・PATCH を分割すると変数が失われる（Issue #693, #90）
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -924,12 +969,81 @@ if [[ -n "$comment_id" ]]; then
     printf '%s' "$current_body" > "$backup_file"
     original_length=$(printf '%s' "$current_body" | wc -c)
 
+    # Step 1: 変更ファイル一覧を取得
+    base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' || echo "develop")
+    changed_files_md=$(git diff --name-status "origin/${base_branch}...HEAD" 2>/dev/null | while read -r status file; do
+      case "$status" in
+        A) echo "- \`${file}\` - 追加" ;;
+        M) echo "- \`${file}\` - 変更" ;;
+        D) echo "- \`${file}\` - 削除" ;;
+        R*) echo "- \`${file}\` - 名前変更" ;;
+        *) echo "- \`${file}\` - ${status}" ;;
+      esac
+    done)
+    if [[ -z "$changed_files_md" ]]; then
+      changed_files_md="_まだ変更はありません_"
+    fi
+
+    # Step 2: Python で進捗サマリー・変更ファイルを更新 + レビュー対応履歴を追記
+    body_tmp=$(mktemp)
     tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    printf '%s\n\n' "$current_body" > "$tmpfile"
-    cat >> "$tmpfile" << 'NEW_SECTION_EOF'
+    files_tmp=$(mktemp)
+    history_tmp=$(mktemp)
+    trap 'rm -f "$pr_body_tmp" "$body_tmp" "$tmpfile" "$files_tmp" "$history_tmp"' EXIT
+    printf '%s' "$current_body" > "$body_tmp"
+    printf '%s' "$changed_files_md" > "$files_tmp"
+    cat > "$history_tmp" << 'HISTORY_EOF'
 {4.5.3 の内容を実際の値で置換して記述}
-NEW_SECTION_EOF
+HISTORY_EOF
+
+    python3 -c '
+import sys, re
+
+body_path, out_path = sys.argv[1], sys.argv[2]
+impl_status, test_status, doc_status = sys.argv[3], sys.argv[4], sys.argv[5]
+files_path = sys.argv[6]
+history_path = sys.argv[7]
+
+with open(body_path, "r") as f:
+    body = f.read()
+with open(files_path, "r") as f:
+    file_list_markdown = f.read()
+with open(history_path, "r") as f:
+    history_entry = f.read().strip()
+
+# --- Progress summary update (v2 format: Markdown table) ---
+v2_updated = False
+for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
+    pattern = r"(\| " + re.escape(item) + r" \| )[^|]*( \|.*\|)"
+    new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+    if new_body != body:
+        v2_updated = True
+    body = new_body
+
+# v1 format fallback: checkbox style
+if not v2_updated:
+    if "### 進捗" in body and "### 進捗サマリー" not in body:
+        for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
+            if "完了" in status:
+                body = re.sub(r"- \[ \] " + re.escape(item), "- [x] " + item, body, count=1)
+
+# --- Changed files section update ---
+pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+body = re.sub(pattern, lambda m: m.group(1) + file_list_markdown, body, count=1, flags=re.DOTALL)
+
+# --- Append review response history ---
+# Find existing レビュー対応履歴 section and append; if not found, add before 次のステップ
+if "### レビュー対応履歴" in body:
+    # Append to existing section (before the next ### heading or end)
+    pattern = r"(### レビュー対応履歴\n.*?)(?=\n### |\Z)"
+    body = re.sub(pattern, lambda m: m.group(1).rstrip() + "\n\n" + history_entry, body, count=1, flags=re.DOTALL)
+else:
+    # Insert before 次のステップ
+    body = re.sub(r"(### 次のステップ)", "### レビュー対応履歴\n" + history_entry + "\n\n" + r"\1", body, count=1)
+
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "$files_tmp" "$history_tmp"
 
     # Safety checks before PATCH (see gh-cli-patterns.md)
     if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
@@ -954,7 +1068,21 @@ NEW_SECTION_EOF
 fi
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。`{4.5.3 の内容を実際の値で置換して記述}` を 4.5.3 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Placeholder descriptions for Claude**:
+
+| Placeholder | Description | Determination |
+|-------------|-------------|---------------|
+| `{impl_status}` | 実装ステータス | 修正コミットがあれば `✅ 完了` or `🔄 進行中` |
+| `{test_status}` | テストステータス | テストファイルの変更があれば `🔄 進行中` or `✅ 完了`、なければ `⬜ 未着手` |
+| `{doc_status}` | ドキュメントステータス | ドキュメントファイルの変更があれば `🔄 進行中` or `✅ 完了`、なければ `⬜ 未着手` |
+| `{4.5.3 の内容}` | レビュー対応履歴エントリ | Phase 4.5.3 のテンプレートから生成 |
+
+**Status detection logic**: Claude determines each status by analyzing `git diff --name-status` output:
+- 実装: Target code files have changes → `✅ 完了` (all planned changes done) or `🔄 進行中`
+- テスト: Test files (`*.test.*`, `*.spec.*`) have changes → update accordingly
+- ドキュメント: Documentation files (`*.md`, `docs/*`) have changes → update accordingly
+
+**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・Python 更新スクリプト実行・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。`{4.5.3 の内容を実際の値で置換して記述}` を 4.5.3 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
 
 #### 4.5.3 Update Content
 
@@ -1040,7 +1168,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (defense-in-depth, fixes #709). This prevents stop-guard `error_count` from accumulating when the flow continues after this skill returns:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_fix" \
   --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
   --if-exists
@@ -1060,7 +1188,7 @@ WM_SOURCE="fix" \
   WM_BODY_TEXT="Post-fix. loop_count incremented." \
   WM_LOOP_INCREMENT="true" \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

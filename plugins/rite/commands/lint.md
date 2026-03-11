@@ -11,11 +11,27 @@ context: fork
 
 品質チェック（lint）を実行し、結果を報告する
 
+## E2E Output Minimization
+
+When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+
+| Phase | Standalone | E2E Flow |
+|-------|-----------|----------|
+| Phase 3 (Execution) | Full output | Full output (needed for error diagnosis) |
+| Phase 4.1 (Success) | Full report | `[lint:success]` + 1-line summary only |
+| Phase 4.2 (Error) | Full output + suggestions | `[lint:error]` + error count + first 10 lines only |
+| Phase 4.3 (Summary) | Full table | **Skip entirely** |
+| Phase 4.4 (Work Memory) | Full update | Full update (no change) |
+
+**Detection**: See [Caller Context and End-to-End Flow](#caller-context-and-end-to-end-flow) determination method below.
+
 ---
 
 Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
+
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
 
 This command has two invocation cases: standalone execution and being called from the `/rite:issue:start` end-to-end flow.
 
@@ -430,7 +446,7 @@ Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint
 | `[lint:aborted]` | `phase5_aborted` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to Phase 5.6 (completion report). Do NOT stop.` |
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "{phase_value}" \
   --next "{next_action_value}" \
   --if-exists
@@ -453,7 +469,7 @@ WM_SOURCE="lint" \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.rite-flow-state` update above. Claude substitutes these with the actual values based on the lint result before executing.
@@ -473,19 +489,12 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {i18n:lint_command}: {lint_command}
 ```
 
-**When called from `/rite:issue:start`:**
+**When called from `/rite:issue:start` (E2E Output Minimization):**
 ```
-[lint:success]
-{i18n:lint_complete}
-
-{i18n:lint_result_success}
-
-{i18n:lint_target_path}: {target_description}
-{i18n:lint_command}: {lint_command}
-
----
-{i18n:lint_flow_continue}
+[lint:success] — lint passed ({target_file_count} files)
 ```
+
+> **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
 > **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after Phase 5.2.1 is complete.
 
@@ -493,6 +502,15 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 
 ### 4.2 When Issues Found
 
+**E2E flow (minimized output):**
+```
+[lint:error] — {error_count} errors, {warning_count} warnings
+{first 10 lines of lint_output}
+```
+
+> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to Phase 5.1 for fixes). Only include first 10 lines of lint output to identify the issue category.
+
+**Standalone execution:**
 ```
 [lint:error]
 {i18n:lint_complete}
@@ -531,6 +549,10 @@ Analyze the error content and present fix suggestions when possible:
    Present specific fix suggestions for each error.
 
 ### 4.3 Summary Display
+
+> **E2E flow**: Skip this phase entirely (context savings). The result pattern in 4.1/4.2 already contains sufficient information for the caller.
+
+**Standalone execution only:**
 
 ```
 {i18n:lint_summary_title}

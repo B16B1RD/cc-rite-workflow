@@ -11,11 +11,24 @@ context: fork
 
 ドラフト PR を作成し、関連 Issue と連携する
 
+## E2E Output Minimization
+
+When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+
+| Phase | Standalone | E2E Flow |
+|-------|-----------|----------|
+| Phase 3 (PR Creation) | Full output | `[pr:created:{number}]` + PR URL only |
+| Phase 4 (Completion) | Full report | **Skip** (pattern already output) |
+
+**Detection**: Reuse Caller Context determination in the "Caller Context and End-to-End Flow" section below.
+
 ---
 
 Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
+
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
 
 This command can be invoked in two ways: standalone execution or from the `/rite:issue:start` end-to-end flow (via Phase 5.3).
 
@@ -461,11 +474,27 @@ If 5 or more unresolved issues are detected, recommend batch processing:
 
 If "Create separate Issues and continue with PR creation" is selected, create an Issue for each unresolved problem:
 
-Create Issues using the `--body-file` pattern (see `gh-cli-patterns.md`):
+> **Reference**: [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md)
+
+**Note**: The heredoc below contains `{placeholder}` markers. Claude substitutes these with actual values **before** generating the bash script — they are not shell variables.
+
+**Important**: The entire script block must be executed in a **single Bash tool invocation**.
+
+**Priority mapping**: Default → Medium
+
+**Complexity mapping**: XS: single-line/single-location fix. S: multi-line change within 1-2 files
+
+**Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得し、プレースホルダーを置換すること):
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
+| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
+| `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
 
 ```bash
-# Note: Empty check is required because {problem_summary} and {problem_details} are dynamically generated.
-# Naming convention: Use descriptive names like tmpfile_issue/tmpfile_pr when multiple tmpfiles exist in short succession
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
@@ -490,8 +519,53 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-gh issue create --title "fix: {problem_summary}" --body-file "$tmpfile"
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+  --arg title "fix: {problem_summary}" \
+  --arg body_file "$tmpfile" \
+  --argjson projects_enabled {projects_enabled} \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg priority "Medium" \
+  --arg complexity "S" \
+  --arg iter_mode "{iteration_mode}" \
+  '{
+    issue: { title: $title, body_file: $body_file },
+    projects: {
+      enabled: $projects_enabled,
+      project_number: $project_number,
+      owner: $owner,
+      status: "Todo",
+      priority: $priority,
+      complexity: $complexity,
+      iteration: { mode: $iter_mode }
+    },
+    options: { source: "pr_create", non_blocking_projects: true }
+  }'
+)")
+
+if [ -z "$result" ]; then
+  echo "ERROR: create-issue-with-projects.sh returned empty result" >&2
+  exit 1
+fi
+created_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
+created_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
+project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
+printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
 ```
+
+**⚠️ Projects 登録失敗時の警告表示（必須）**: スクリプト実行後、`project_registration` の値を必ず確認し、`"partial"` または `"failed"` の場合は以下を表示すること:
+
+```
+⚠️ Projects 登録が完全に完了しませんでした（status: {project_registration}）
+手動登録: gh project item-add {project_number} --owner {owner} --url {created_issue_url}
+```
+
+**Error handling:**
+
+| Error Case | Response |
+|------------|----------|
+| Script returns `issue_url: ""` | Display warning with error details. If remaining candidates exist, continue creating others |
+| `project_registration: "partial"` or `"failed"` | Display warnings from result. Issue creation itself succeeded |
 
 Apply the `tech-debt` label only if it exists (skip if not). On Issue creation failure, choose retry/skip/abort (max 2 retries).
 
@@ -647,7 +721,7 @@ WM_SOURCE="create" \
   WM_NEXT_ACTION="rite:pr:review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
@@ -732,9 +806,11 @@ git log --oneline origin/{base_branch}...HEAD
 
 #### 4.1.2 Retrieve and Update Work Memory Comment
 
+The update has two parts: (A) **update existing sections** in the work memory via Python, and (B) **append new sections** for PR-specific information via heredoc.
+
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693）
+# comment_data の取得・Python 更新・追記・PATCH を分割すると変数が失われる（Issue #693）
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -748,11 +824,67 @@ if [ -n "$comment_id" ]; then
     printf '%s' "$current_body" > "$backup_file"
     original_length=$(printf '%s' "$current_body" | wc -c)
 
+    body_tmp=$(mktemp)
+    files_tmp=$(mktemp)
     tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    printf '%s\n\n' "$current_body" > "$tmpfile"
+    trap 'rm -f "$body_tmp" "$files_tmp" "$tmpfile"' EXIT
+    printf '%s' "$current_body" > "$body_tmp"
+    printf '%s' "{changed_files_md}" > "$files_tmp"
+
+    # Part (A): Update existing sections via Python
+    python3 -c '
+import sys, re
+
+body_path, out_path = sys.argv[1], sys.argv[2]
+files_path = sys.argv[3]
+pr_number, timestamp = sys.argv[4], sys.argv[5]
+
+with open(body_path, "r") as f:
+    body = f.read()
+with open(files_path, "r") as f:
+    changed_files_md = f.read()
+
+# Update progress summary: 実装 → ✅ 完了 (v2 format)
+v2_updated = False
+for item, status in [("実装", "✅ 完了")]:
+    pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
+    new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+    if new_body != body:
+        v2_updated = True
+    body = new_body
+
+# v1 format fallback: checkbox style
+if not v2_updated:
+    if "### 進捗" in body and "### 進捗サマリー" not in body:
+        body = re.sub(r"- \[ \] 実装", "- [x] 実装", body, count=1)
+
+# Replace changed files section content
+pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
+
+# Update next steps section
+next_steps = f"### 次のステップ\n- **コマンド**: /rite:pr:review #{pr_number}\n- **状態**: 待機中\n- **備考**: PR 作成完了、レビュー準備完了"
+pattern = r"### 次のステップ\n.*?(?=\n### |\Z)"
+body = re.sub(pattern, next_steps, body, count=1, flags=re.DOTALL)
+
+# Update timestamp
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "$files_tmp" "{pr_number}" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+
+    # Part (B): Append new sections (PR-specific information)
     cat >> "$tmpfile" << 'NEW_SECTION_EOF'
-{4.1.3 の内容を実際の値で置換して記述}
+
+### 関連 PR
+- **番号**: #{pr_number}
+- **タイトル**: {pr_title}
+- **URL**: {pr_url}
+- **作成日時**: {timestamp}
+
+### コミット履歴
+{commit_log}
 NEW_SECTION_EOF
 
     # Safety checks before PATCH (see gh-cli-patterns.md)
@@ -777,44 +909,35 @@ NEW_SECTION_EOF
 fi
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。`{4.1.3 の内容を実際の値で置換して記述}` を 4.1.3 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・Python 更新・Part (B) 追記・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。Part (B) の heredoc 内の `{placeholder}` は Claude が実際の値で置換すること。`{changed_files_md}` はバッククォートを含むためファイル経由で Python に渡す（コマンド置換を防止）。
 
-#### 4.1.3 Update Content
+#### 4.1.3 Update Content Reference
 
-Automatically append the following to work memory:
+The 4.1.2 bash block performs the following updates:
 
-```markdown
-### 進捗
-- [x] 実装完了
-- [x] PR 作成済み
+**(A) Update existing sections** (via Python inline script):
 
-### 変更ファイル
-| ファイル | 状態 |
-|---------|------|
-| {path} | {status} |
+| Section | Update |
+|---------|--------|
+| `進捗サマリー` table | `実装` → `✅ 完了`（v2）/ `- [x] 実装`（v1 fallback） |
+| `変更ファイル` section | Replace entire content with `{changed_files_md}` |
+| `次のステップ` section | Set to `/rite:pr:review #{pr_number}` |
+| `最終更新` timestamp | Replace with current timestamp |
 
-### 関連 PR
-- **番号**: #{pr_number}
-- **タイトル**: {pr_title}
-- **URL**: {pr_url}
-- **作成日時**: {timestamp}
-
-### コミット履歴
-{commit_log}
-
-### 次のステップ
-- **コマンド**: /rite:pr:review #{pr_number}
-- **状態**: 待機中
-- **備考**: PR 作成完了、レビュー準備完了
-```
+**(B) Append new sections** (via heredoc):
 
 **Note**: `{pr_number}` is replaced with the actual PR number when recording. It must not be recorded as a placeholder.
 
-**Status determination:**
-- `A` -> Added
-- `M` -> Modified
-- `D` -> Deleted
-- `R` -> Renamed
+**Changed files format** (for `changed_files_md`):
+
+Generate from `git diff --name-status origin/{base_branch}...HEAD`:
+
+```markdown
+- `path/to/file1.ts` - 変更
+- `path/to/file2.ts` - 追加
+```
+
+Status mapping: `A` → 追加, `M` → 変更, `D` → 削除, `R` → 名前変更.
 
 **Note**: If the work memory comment is not found, skip the update and display a warning.
 
