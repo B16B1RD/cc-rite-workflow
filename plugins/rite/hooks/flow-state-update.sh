@@ -11,7 +11,7 @@
 #
 #   Patch mode (update fields in existing file):
 #     bash plugins/rite/hooks/flow-state-update.sh patch \
-#       --phase phase5_post_lint --next "Proceed to next phase." [--if-exists]
+#       --phase phase5_post_lint --next "Proceed to next phase." [--active true] [--if-exists]
 #
 #   Increment mode (increment a numeric field):
 #     bash plugins/rite/hooks/flow-state-update.sh increment \
@@ -24,7 +24,7 @@
 #   --loop           Loop count (create mode, default: 0)
 #   --pr             PR number (create mode, default: 0)
 #   --next           next_action text (required for create/patch)
-#   --active         Active flag (create mode, default: true)
+#   --active         Active flag (create mode: default true; patch mode: update only if specified)
 #   --field          Field name to increment (increment mode)
 #   --if-exists      Only execute if .rite-flow-state exists (patch/increment mode)
 #
@@ -50,7 +50,7 @@ BRANCH=""
 LOOP=0
 PR=0
 NEXT=""
-ACTIVE="true"
+ACTIVE=""
 IF_EXISTS=false
 FIELD=""
 
@@ -106,6 +106,10 @@ TMP_STATE="${FLOW_STATE}.tmp.$$"
 
 case "$MODE" in
   create)
+    # Default active to true if not explicitly specified
+    if [[ -z "$ACTIVE" ]]; then
+      ACTIVE="true"
+    fi
     if jq -n \
       --argjson active "$ACTIVE" \
       --argjson issue "$ISSUE" \
@@ -125,11 +129,14 @@ case "$MODE" in
     fi
     ;;
   patch)
-    if jq --arg phase "$PHASE" \
-       --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" \
-       --arg next "$NEXT" \
-       '.phase = $phase | .updated_at = $ts | .next_action = $next' \
-       "$FLOW_STATE" > "$TMP_STATE"; then
+    # Build jq filter: always update phase, timestamp, next_action; conditionally update active
+    JQ_FILTER='.phase = $phase | .updated_at = $ts | .next_action = $next'
+    JQ_ARGS=(--arg phase "$PHASE" --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" --arg next "$NEXT")
+    if [[ -n "$ACTIVE" ]]; then
+      JQ_FILTER="$JQ_FILTER | .active = (\$active_val == \"true\")"
+      JQ_ARGS+=(--arg active_val "$ACTIVE")
+    fi
+    if jq "${JQ_ARGS[@]}" "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else
       rm -f "$TMP_STATE"
