@@ -58,9 +58,10 @@ BASE_YELLOW=60
 BASE_ORANGE=90
 BASE_RED=120
 
-# Early return: skip config read and phase adjustment when count is far from thresholds
+# Early return: skip config read and phase adjustment when count is below thresholds
 # This avoids python3 startup cost on every tool call (#80 performance review)
-if [ "$count" -lt "$((BASE_YELLOW - 10))" ] || [ "$count" -gt "$((BASE_RED + 10))" ]; then
+# Note: Only lower bound check. Upper bound removed to ensure RED warning always fires (#80 review fix)
+if [ "$count" -lt "$((BASE_YELLOW - 10))" ]; then
   exit 0
 fi
 

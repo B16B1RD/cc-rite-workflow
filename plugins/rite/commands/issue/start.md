@@ -378,16 +378,16 @@ The e2e flow must minimize context consumption to complete within a single sessi
 | `rite:pr:create` | `[pr:created:{n}]` + PR URL | 2 |
 | `rite:pr:review` | `[review:mergeable]` or `[review:fix-needed:{n}]` etc. | 2 |
 | `rite:pr:fix` | `[fix:{result}]` + change summary | 2 |
-| `rite:pr:ready` | `[ready:completed]` | 1 |
+| `rite:pr:ready` | `[ready:completed]` | 1 | <!-- ready.md の出力は元々1行程度のため E2E Output Minimization セクション不要 -->
 
 ### Context Management
 
 > **Reference**: [Review Context Optimization](../pr/references/review-context-optimization.md)
 
-**Pressure detection (heuristics)** (counted via `.rite-context-counter` file, managed by `context-pressure.sh` PostToolUse hook):
-- Tool calls >50 → diff optimization
-- Tool calls >70 → output minimization mode (skip optional displays)
-- Tool calls >90 → context optimization (per-file diffs, history summarization)
+**Pressure detection (heuristics)** (counted via `.rite-context-counter` file, managed by `context-pressure.sh` PostToolUse hook; thresholds are configurable via `rite-config.yml` `context_optimization.pressure_thresholds`):
+- Tool calls >= YELLOW threshold (default: 60) → diff optimization + output minimization hint
+- Tool calls >= ORANGE threshold (default: 90) → output minimization mode (skip optional displays)
+- Tool calls >= RED threshold (default: 120) → context optimization (per-file diffs, history summarization, /compact recommendation)
 - Read >5000 lines or >10 files → omit unnecessary info
 - diff >2000 → file splitting in review
 - Loop ≥2 → verification mode (if `review.loop.verification_mode: true`)
@@ -660,6 +660,8 @@ Invoke `skill: "rite:pr:create"`.
 #### 5.4.0 Agent Delegation Option (Context Pressure Mitigation)
 
 When context pressure is detected (tool call count > `context_optimization.agent_delegation_threshold` from rite-config.yml, default: 80), the review-fix loop can be delegated to an Agent to isolate its context consumption from the main flow.
+
+**Note**: `agent_delegation_threshold` is independent from `pressure_thresholds` (YELLOW/ORANGE/RED). Pressure thresholds control graduated warnings via the `context-pressure.sh` hook, while `agent_delegation_threshold` controls whether the review-fix loop is offloaded to a sub-agent. Both use the same `.rite-context-counter` value but serve different purposes.
 
 **Condition**: Check `.rite-context-counter` value. If above threshold AND `context_optimization.agent_delegation: true` in rite-config.yml (default: false):
 
