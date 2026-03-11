@@ -989,7 +989,7 @@ if [[ -n "$comment_id" ]]; then
     tmpfile=$(mktemp)
     files_tmp=$(mktemp)
     history_tmp=$(mktemp)
-    trap 'rm -f "$body_tmp" "$tmpfile" "$files_tmp" "$history_tmp"' EXIT
+    trap 'rm -f "$pr_body_tmp" "$body_tmp" "$tmpfile" "$files_tmp" "$history_tmp"' EXIT
     printf '%s' "$current_body" > "$body_tmp"
     printf '%s' "$changed_files_md" > "$files_tmp"
     cat > "$history_tmp" << 'HISTORY_EOF'
