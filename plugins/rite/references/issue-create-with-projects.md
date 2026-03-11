@@ -113,7 +113,7 @@ projects:
     mode: "none|auto"        # Default: "none". "auto" assigns to current iteration
     field_name: "Sprint"     # Default: "Sprint"
 options:
-  source: string             # Caller identifier (pr_review|pr_fix|cleanup|lint|interactive|parent_routing|xl_decomposition)
+  source: string             # Caller identifier (pr_review|pr_fix|pr_create|cleanup|lint|interactive|parent_routing|xl_decomposition)
   non_blocking_projects: true  # Default: true. Projects failure doesn't block Issue creation
 ```
 
