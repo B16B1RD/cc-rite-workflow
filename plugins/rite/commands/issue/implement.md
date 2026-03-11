@@ -559,7 +559,7 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 Also synchronize the "Issue checklist" section in the work memory.
 
-##### 5.1.1.1.1 Work Memory Progress Summary and Changed Files Update
+#### 5.1.1.2 Work Memory Progress Summary and Changed Files Update
 
 **Execution condition**: Execute after commit and push succeed, when on a work branch with an Issue number (`issue-{n}` pattern).
 
@@ -677,7 +677,7 @@ fi
 
 **On failure**: Display WARNING and continue (non-blocking). The progress update is best-effort; `.rite-flow-state` is the primary state record.
 
-#### 5.1.1.2 Local Work Memory Update
+#### 5.1.1.3 Local Work Memory Update
 
 **Execution condition**: Execute when on a work branch with an Issue number (`issue-{n}` pattern).
 
@@ -783,7 +783,7 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 
 1. Parent Issue progress update (only when working on child Issue, see 5.1.2)
 2. **Update work memory** (record phase info, changed files, next steps)
-3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.2 above
+3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
 4. **CRITICAL: Initialize `.rite-flow-state` and invoke lint** (atomic pair - MUST execute both):
 
    > **Note**: All `.rite-flow-state` writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
