@@ -11,6 +11,7 @@ Guide for using the common shell script that creates a GitHub Issue and register
 Referenced from:
 - `commands/pr/fix.md` Phase 4.3.4 Step 2
 - `commands/pr/review.md` Phase 7.4.2
+- `commands/pr/create.md` Phase 2.5.5
 - `commands/issue/create.md` Phase 2.2
 - `commands/pr/cleanup.md` Phase 1.7.3.2
 - `commands/issue/parent-routing.md` Phase 1.5.4.5
@@ -158,6 +159,12 @@ Each caller determines Priority using its own logic before passing it to the scr
 | CRITICAL | High | Requires immediate attention |
 | HIGH | Medium | Normal priority |
 | MEDIUM | Low | Lower priority |
+
+### create.md (Phase 2.5.5): Default Medium
+
+| Context | Issue Priority | Reason |
+|---------|----------------|--------|
+| Unresolved issues detected during PR creation | Medium | Default for detected problems |
 
 ### cleanup.md (Phase 1.7.3): Default Medium
 

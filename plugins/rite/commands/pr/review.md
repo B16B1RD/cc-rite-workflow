@@ -1530,6 +1530,23 @@ Create Issues directly using `gh issue create` and register them in GitHub Proje
 
 **Complexity mapping**: XS: single-line/single-location fix. S: multi-line change within 1-2 files
 
+**Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得し、プレースホルダーを置換すること):
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
+| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `"B16B1RD"` |
+| `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
+
+**⚠️ Projects 登録失敗時の警告表示（必須）**: スクリプト実行後、`project_registration` の値を必ず確認し、`"partial"` または `"failed"` の場合は以下を表示すること:
+
+```
+⚠️ Projects 登録が完全に完了しませんでした（status: {project_registration}）
+手動登録: gh project item-add {project_number} --owner {owner} --url {created_issue_url}
+```
+
 ```bash
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
