@@ -26,7 +26,7 @@ When called from the `/rite:issue:start` end-to-end flow, minimize output to red
 [review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low} LOW)
 ```
 
-**Detection**: Reuse Invocation Context determination above.
+**Detection**: Reuse Invocation Context determination in the "Invocation Context and End-to-End Flow" section below.
 
 > **Reference**: Apply `push_back_when_warranted` (push back when warranted) from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > Point out problematic implementations with alternative suggestions.

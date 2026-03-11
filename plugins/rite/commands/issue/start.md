@@ -376,7 +376,7 @@ The e2e flow must minimize context consumption to complete within a single sessi
 |-----------|-----------------|-----------|
 | `rite:lint` | `[lint:success/error]` + 1-line summary | 2 |
 | `rite:pr:create` | `[pr:created:{n}]` + PR URL | 2 |
-| `rite:pr:review` | `[review:{result}:{n}]` + finding counts | 2 |
+| `rite:pr:review` | `[review:mergeable]` or `[review:fix-needed:{n}]` etc. | 2 |
 | `rite:pr:fix` | `[fix:{result}]` + change summary | 2 |
 | `rite:pr:ready` | `[ready:completed]` | 1 |
 
@@ -384,7 +384,7 @@ The e2e flow must minimize context consumption to complete within a single sessi
 
 > **Reference**: [Review Context Optimization](../pr/references/review-context-optimization.md)
 
-**Pressure detection (heuristics)**:
+**Pressure detection (heuristics)** (counted via `.rite-context-counter` file, managed by `context-pressure.sh` PostToolUse hook):
 - Tool calls >50 → diff optimization
 - Tool calls >70 → output minimization mode (skip optional displays)
 - Tool calls >90 → context optimization (per-file diffs, history summarization)

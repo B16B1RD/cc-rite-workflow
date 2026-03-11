@@ -20,7 +20,7 @@ When called from the `/rite:issue:start` end-to-end flow, minimize output to red
 | Phase 3 (PR Creation) | Full output | `[pr:created:{number}]` + PR URL only |
 | Phase 4 (Completion) | Full report | **Skip** (pattern already output) |
 
-**Detection**: Reuse Caller Context determination above.
+**Detection**: Reuse Caller Context determination in the "Caller Context and End-to-End Flow" section below.
 
 ---
 

@@ -22,8 +22,16 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 [ -f "$FLOW_STATE" ] || exit 0
 
+# Read active state and phase in a single jq call
+FLOW_DATA=$(jq -r '[.active // false, .phase // "unknown"] | @tsv' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
+if [ -n "$FLOW_DATA" ]; then
+  IFS=$'\t' read -r FLOW_ACTIVE PHASE <<< "$FLOW_DATA"
+else
+  FLOW_ACTIVE="false"
+  PHASE="unknown"
+fi
+
 # Only track during active workflows
-FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || FLOW_ACTIVE="false"
 [ "$FLOW_ACTIVE" = "true" ] || exit 0
 
 COUNTER_FILE="$STATE_ROOT/.rite-context-counter"
@@ -43,14 +51,21 @@ count=$((count + 1))
 echo "$count" > "$COUNTER_FILE" 2>/dev/null || true
 chmod 600 "$COUNTER_FILE" 2>/dev/null || true
 
-# Read current phase for phase-aware thresholds
-PHASE=$(jq -r '.phase // "unknown"' "$FLOW_STATE" 2>/dev/null) || PHASE="unknown"
+# PHASE is already set from the single jq call above (line 26)
 
-# Read configurable thresholds from rite-config.yml (fallback to defaults)
-CONFIG_FILE="$STATE_ROOT/rite-config.yml"
+# Default thresholds (used for early return check before config read)
 BASE_YELLOW=60
 BASE_ORANGE=90
 BASE_RED=120
+
+# Early return: skip config read and phase adjustment when count is far from thresholds
+# This avoids python3 startup cost on every tool call (#80 performance review)
+if [ "$count" -lt "$((BASE_YELLOW - 10))" ] || [ "$count" -gt "$((BASE_RED + 10))" ]; then
+  exit 0
+fi
+
+# Read configurable thresholds from rite-config.yml (fallback to defaults)
+CONFIG_FILE="$STATE_ROOT/rite-config.yml"
 if [ -f "$CONFIG_FILE" ] && command -v python3 >/dev/null 2>&1; then
   THRESHOLDS=$(python3 -c '
 import yaml, sys
@@ -64,6 +79,10 @@ except Exception:
 ' "$CONFIG_FILE" 2>/dev/null) || THRESHOLDS=""
   if [ -n "$THRESHOLDS" ]; then
     read -r BASE_YELLOW BASE_ORANGE BASE_RED <<< "$THRESHOLDS"
+    # Validate all values are positive integers (security: prevent arithmetic injection)
+    [[ "$BASE_YELLOW" =~ ^[0-9]+$ ]] || BASE_YELLOW=60
+    [[ "$BASE_ORANGE" =~ ^[0-9]+$ ]] || BASE_ORANGE=90
+    [[ "$BASE_RED" =~ ^[0-9]+$ ]]    || BASE_RED=120
   fi
 fi
 
