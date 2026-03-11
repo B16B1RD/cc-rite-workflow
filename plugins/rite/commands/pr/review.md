@@ -1381,6 +1381,9 @@ Append the metrics section (format defined in [Execution Metrics](../../referenc
      # Python-based line replacement (awk-free, sed-free)
      # File-based argument passing to avoid Japanese string issues in shell expansion
      # Also updates session info fields for consistency with Phase 6.1.1 local work memory (Issue #90)
+     # Defense-in-depth: Phase 6.1.1 updates local work memory (SoT), but this Phase 6.2 code
+     # redundantly updates the same fields in the Issue comment (backup). This intentional
+     # duplication ensures the backup stays consistent even if Phase 6.1.1 silently fails.
      python3 -c '
 import sys, re
 body_path, out_path, new_count, timestamp = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
@@ -1392,7 +1395,9 @@ updated = re.sub(
     f"- **現在のループ回数**: {new_count}",
     body, count=1, flags=re.MULTILINE
 )
-# Update session info fields for consistency with Phase 6.1.1 (Issue #90)
+# Defense-in-depth: redundantly update session info fields here (Issue comment backup)
+# even though Phase 6.1.1 already updated local work memory (SoT) with the same values.
+# This ensures backup consistency if Phase 6.1.1 silently fails. See Issue #90, #93.
 updated = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, updated, count=1, flags=re.MULTILINE)
 updated = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + "phase5_review", updated, count=1, flags=re.MULTILINE)
 updated = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + "レビュー中", updated, count=1, flags=re.MULTILINE)
@@ -1428,7 +1433,7 @@ with open(out_path, "w") as f:
 
 6. **Write back**: Update the comment using `jq -n --rawfile` + `gh api --input -`
 
-**Consistency guarantee (Issue #90)**: Steps 3-6 collectively ensure that the Issue comment (backup) is consistent with the local work memory (SoT) updated in Phase 6.1.1. Both sources now reflect the same phase (`phase5_review`), timestamp, and loop count after Phase 6 completes.
+**Consistency guarantee (Issue #90)**: Steps 3-6 collectively ensure that the Issue comment (backup) is consistent with the local work memory (SoT) updated in Phase 6.1.1. Both sources now reflect the same phase (`phase5_review`), timestamp, and loop count after Phase 6 completes. This is a **defense-in-depth** design: Phase 6.1.1 (local SoT) and Phase 6.2 Step 3 (Issue comment backup) intentionally perform the same session info updates. If either path silently fails, the other guarantees at least one source has correct state for recovery.
 
 **Next command determination:** Merge OK → `/rite:pr:ready` | Cannot merge/Requires fixes → `/rite:pr:fix`
 
