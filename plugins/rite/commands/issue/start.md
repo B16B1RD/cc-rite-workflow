@@ -703,7 +703,20 @@ When context pressure is detected (tool call count > `context_optimization.agent
    - **完了報告に遷移**: Skip review-fix loop and proceed to Phase 5.6 (completion report with review skipped)
    - **手動介入**: Terminate and let the user handle manually
 
-   Update `.rite-flow-state` with the chosen action before proceeding.
+   Update `.rite-flow-state` based on the chosen option:
+
+   | Option | `--phase` | `--next` |
+   |--------|-----------|----------|
+   | inline フォールバック | `phase5_review` | `Agent delegation failed. Executing 5.4.1-5.4.6 inline. Proceed to Phase 5.4.1 (review). Do NOT stop.` |
+   | 完了報告に遷移 | `phase5_aborted` | `Agent delegation failed. User chose to skip review. Proceed to Phase 5.6 (completion report). Do NOT stop.` |
+   | 手動介入 | `phase5_manual` | `Agent delegation failed. User chose manual intervention. Terminate.` |
+
+   ```bash
+   bash plugins/rite/hooks/flow-state-update.sh create \
+     --phase "{phase_value}" --issue {issue_number} --branch "{branch_name}" \
+     --loop 0 --pr {pr_number} \
+     --next "{next_action_value}"
+   ```
 
 4. Update `.rite-flow-state` with agent results (loop_count, pr_number)
 5. Continue to Phase 5.5 (Ready) based on the result
