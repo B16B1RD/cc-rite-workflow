@@ -126,6 +126,10 @@ if acquire_wm_lock "$LOCKDIR"; then
     COUNTER_FILE="$STATE_ROOT/.rite-context-counter"
     if [ -f "$COUNTER_FILE" ]; then
       COUNTER_VAL=$(cat "$COUNTER_FILE" 2>/dev/null) || COUNTER_VAL="0"
+      # Validate: must be numeric (same pattern as context-pressure.sh #86)
+      if ! [[ "$COUNTER_VAL" =~ ^[0-9]+$ ]]; then
+        COUNTER_VAL="0"
+      fi
       TMP_FILE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_FILE="${FLOW_STATE}.tmp.$$"
       if jq --arg cc "$COUNTER_VAL" '.context_counter_at_compact = ($cc | tonumber)' "$FLOW_STATE" > "$TMP_FILE" 2>/dev/null; then
         mv "$TMP_FILE" "$FLOW_STATE"

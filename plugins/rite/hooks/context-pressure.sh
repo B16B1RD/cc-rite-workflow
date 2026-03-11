@@ -66,8 +66,9 @@ if [ "$count" -lt "$((BASE_YELLOW - 10))" ]; then
 fi
 
 # Read configurable thresholds from rite-config.yml (fallback to defaults)
+# Pre-check: skip python3 startup (~50-100ms) when config has no pressure_thresholds key (#86)
 CONFIG_FILE="$STATE_ROOT/rite-config.yml"
-if [ -f "$CONFIG_FILE" ] && command -v python3 >/dev/null 2>&1; then
+if [ -f "$CONFIG_FILE" ] && grep -q 'pressure_thresholds' "$CONFIG_FILE" && command -v python3 >/dev/null 2>&1; then
   THRESHOLDS=$(python3 -c '
 import yaml, sys
 try:
