@@ -690,7 +690,21 @@ When context pressure is detected (tool call count > `context_optimization.agent
       - [review:loop-limit:{n}] → invoke `skill: "rite:pr:fix"` for blocking only, then return result
    3. Return final result: "AGENT_RESULT: [review:{final_result}] loop_count={n} findings={total}"
    ```
-3. Parse `AGENT_RESULT` from agent output
+3. Parse `AGENT_RESULT` from agent output. If the agent output does not contain a valid `AGENT_RESULT:` pattern (agent error, timeout, or unexpected output):
+
+   **Fallback handling**:
+   ```
+   ⚠️ エージェント委譲の結果を取得できませんでした。
+   エージェント出力に AGENT_RESULT パターンが見つかりません。
+   ```
+
+   Present options via `AskUserQuestion`:
+   - **inline 実行にフォールバック（推奨）**: Execute 5.4.1-5.4.6 inline as normal (reset `loop_count = 0`, proceed to 5.4.1)
+   - **完了報告に遷移**: Skip review-fix loop and proceed to Phase 5.6 (completion report with review skipped)
+   - **手動介入**: Terminate and let the user handle manually
+
+   Update `.rite-flow-state` with the chosen action before proceeding.
+
 4. Update `.rite-flow-state` with agent results (loop_count, pr_number)
 5. Continue to Phase 5.5 (Ready) based on the result
 
