@@ -559,6 +559,109 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 Also synchronize the "Issue checklist" section in the work memory.
 
+#### 5.1.1.1.1 Work Memory Progress Summary and Changed Files Update
+
+**Execution condition**: Execute after commit and push succeed, when on a work branch with an Issue number (`issue-{n}` pattern).
+
+**Purpose**: Update the progress summary table and changed files section in the Issue work memory comment to reflect the actual implementation state. This ensures these sections are not left in their initial "⬜ 未着手" / "_まだ変更はありません_" state after implementation completes.
+
+**Step 1: Determine progress summary statuses**
+
+Analyze the committed changes to determine the status of each progress item:
+
+```bash
+# ベースブランチからの変更ファイル一覧を取得
+diff_files=$(git diff --name-only origin/{base_branch}...HEAD 2>/dev/null)
+```
+
+Claude determines statuses based on `diff_files`:
+- **実装**: `✅ 完了` (implementation is complete since we are at the commit stage)
+- **テスト**: `✅ 完了` if test files (*.test.*, *.spec.*) exist in `diff_files`, otherwise `⬜ 未着手`
+- **ドキュメント**: `✅ 完了` if documentation files (*.md in docs/, README.md, etc.) exist in `diff_files`, otherwise `⬜ 未着手`
+
+**Step 2: Generate changed files list**
+
+Format the changed files from `git diff --name-status origin/{base_branch}...HEAD`:
+
+```markdown
+- `path/to/file1.md` - 変更
+- `path/to/file2.md` - 変更
+```
+
+Status mapping: `A` → 追加, `M` → 変更, `D` → 削除, `R` → 名前変更.
+
+**Step 3: Update Issue work memory comment**
+
+> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns).
+
+```bash
+# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
+comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+current_body=$(echo "$comment_data" | jq -r '.body // empty')
+
+if [ -z "$comment_id" ]; then
+  echo "WARNING: Work memory comment not found. Skipping progress update." >&2
+else
+  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+  printf '%s' "$current_body" > "$backup_file"
+  original_length=$(printf '%s' "$current_body" | wc -c)
+
+  tmpfile=$(mktemp)
+  body_tmp=$(mktemp)
+  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
+  printf '%s' "$current_body" > "$body_tmp"
+
+  python3 -c '
+import sys, re
+
+body_path, out_path = sys.argv[1], sys.argv[2]
+impl_status, test_status, doc_status = sys.argv[3], sys.argv[4], sys.argv[5]
+changed_files_md = sys.argv[6]
+timestamp = sys.argv[7]
+
+with open(body_path, "r") as f:
+    body = f.read()
+
+# Update progress summary table cells
+for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
+    pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
+    body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+
+# Replace changed files section content
+pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
+
+# Update timestamp
+body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+
+with open(out_path, "w") as f:
+    f.write(body)
+' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "{changed_files_md}" "$(date +'%Y-%m-%dT%H:%M:%S+09:00')"
+
+  # Safety checks before PATCH
+  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
+    echo "WARNING: Updated body is empty. Skipping. Backup: $backup_file" >&2
+  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
+    updated_length=$(wc -c < "$tmpfile")
+    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
+      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
+    else
+      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
+        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
+        echo "WARNING: Progress update PATCH failed (non-blocking)." >&2
+    fi
+  else
+    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
+  fi
+fi
+```
+
+**Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings determined in Step 1 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). `{changed_files_md}` is the formatted file list from Step 2. All other `{...}` placeholders follow the standard placeholder legend.
+
+**On failure**: Display WARNING and continue (non-blocking). The progress update is best-effort; `.rite-flow-state` is the primary state record.
+
 #### 5.1.1.2 Local Work Memory Update
 
 **Execution condition**: Execute when on a work branch with an Issue number (`issue-{n}` pattern).

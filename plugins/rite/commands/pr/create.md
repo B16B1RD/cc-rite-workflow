@@ -783,18 +783,49 @@ fi
 
 #### 4.1.3 Update Content
 
-Automatically append the following to work memory:
+The update has two parts: (A) **update existing sections** in the work memory, and (B) **append new sections** for PR-specific information.
+
+**(A) Update existing sections** (in the body already fetched in 4.1.2):
+
+Use Python to update the existing `### 進捗サマリー` table and `### 変更ファイル` section in-place, and update `### 次のステップ`:
+
+```python
+import re
+
+def update_existing_sections(body, changed_files_md, pr_number, timestamp):
+    """Update existing work memory sections for PR creation.
+
+    Args:
+        body: Current work memory body text
+        changed_files_md: Formatted file list (e.g., "- `path/file.ts` - 変更\\n...")
+        pr_number: PR number (int)
+        timestamp: ISO 8601 timestamp string
+    Returns:
+        Updated body text
+    """
+    # Update progress summary: 実装 → ✅ 完了
+    for item, status in [("実装", "✅ 完了")]:
+        pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
+        body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
+
+    # Replace changed files section content
+    pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+    body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
+
+    # Update next steps section
+    next_steps = f"### 次のステップ\n- **コマンド**: /rite:pr:review #{pr_number}\n- **状態**: 待機中\n- **備考**: PR 作成完了、レビュー準備完了"
+    pattern = r"### 次のステップ\n.*?(?=\n### |\Z)"
+    body = re.sub(pattern, next_steps, body, count=1, flags=re.DOTALL)
+
+    # Update timestamp
+    body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
+
+    return body
+```
+
+**(B) Append new sections** after the existing body (PR-specific information not present in initial work memory):
 
 ```markdown
-### 進捗
-- [x] 実装完了
-- [x] PR 作成済み
-
-### 変更ファイル
-| ファイル | 状態 |
-|---------|------|
-| {path} | {status} |
-
 ### 関連 PR
 - **番号**: #{pr_number}
 - **タイトル**: {pr_title}
@@ -803,20 +834,22 @@ Automatically append the following to work memory:
 
 ### コミット履歴
 {commit_log}
-
-### 次のステップ
-- **コマンド**: /rite:pr:review #{pr_number}
-- **状態**: 待機中
-- **備考**: PR 作成完了、レビュー準備完了
 ```
+
+**Integration**: In the 4.1.2 bash block, apply part (A) via the Python script to `current_body`, then append part (B) via `cat >>`. The combined result is written to `$tmpfile` for the PATCH operation.
 
 **Note**: `{pr_number}` is replaced with the actual PR number when recording. It must not be recorded as a placeholder.
 
-**Status determination:**
-- `A` -> Added
-- `M` -> Modified
-- `D` -> Deleted
-- `R` -> Renamed
+**Changed files format** (for `changed_files_md`):
+
+Generate from `git diff --name-status origin/{base_branch}...HEAD`:
+
+```markdown
+- `path/to/file1.ts` - 変更
+- `path/to/file2.ts` - 追加
+```
+
+Status mapping: `A` → 追加, `M` → 変更, `D` → 削除, `R` → 名前変更.
 
 **Note**: If the work memory comment is not found, skip the update and display a warning.
 

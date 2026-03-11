@@ -258,7 +258,7 @@ If this fails, fall back to the content retained from Phase 1. Retain this conte
 | `コマンド` (in セッション情報) | Set to `rite:issue:update` |
 | `フェーズ` (in セッション情報) | Set to current phase |
 | `フェーズ詳細` (in セッション情報) | Set to current phase detail |
-| `変更ファイル` | Regenerate from `git status --porcelain` output (Phase 2.2 format) |
+| `変更ファイル` | **Replace entire section content** with regenerated file list from `git status --porcelain` and `git diff --name-status origin/{base_branch}...HEAD` output (Phase 2.2 format). See "Changed files section update procedure" below |
 | `進捗サマリー` | Update status per detection logic below |
 | `決定事項・メモ` | **Append** new memo if provided (preserve all existing entries) |
 | `要確認事項` | **Append** new question if `--question` provided (preserve all existing entries) |
@@ -275,15 +275,83 @@ If this fails, fall back to the content retained from Phase 1. Retain this conte
 - `Issue チェックリスト` (if exists)
 - Any other section not listed in the UPDATE table above
 
-**Progress summary status detection logic:**
+**Progress summary status detection and update procedure:**
+
+**Step 1: Collect git state**
+
+```bash
+# 変更ファイル一覧を取得（ステージング済み + 未ステージング + 未追跡）
+changed_files=$(git status --porcelain)
+# ベースブランチからの差分（コミット済みの変更も含む）
+diff_files=$(git diff --name-only origin/{base_branch}...HEAD 2>/dev/null || git diff --name-only HEAD)
+# 両方を結合して重複排除
+all_changed=$(printf '%s\n%s' "$changed_files" "$diff_files" | sed 's/^.. //' | sort -u | grep -v '^$')
+```
+
+**Step 2: Determine status for each item**
 
 | Item | In-progress condition | Completion condition |
 |------|-------------|-----------|
-| 実装 | Target code files (.ts, .js, .py, etc.) have changes | All files in the implementation plan have been modified |
+| 実装 | Target code files (.ts, .js, .py, .sh, .yml, etc.) have changes | All files in the implementation plan have been modified |
 | テスト | Test files (*.test.*, *.spec.*, etc.) have changes | Test files have been added/modified |
 | ドキュメント | Documentation files (*.md, docs/*, etc.) have changes | Required documentation has been updated |
 
-Status notation: `⬜ 未着手` (no changes), `🔄 進行中` (incomplete), `✅ 完了` (complete). Detection is a guideline only.
+Status notation: `⬜ 未着手` (no changes), `🔄 進行中` (incomplete), `✅ 完了` (complete).
+
+Claude determines the status for each item by analyzing `all_changed` against the conditions above and the implementation plan (if present in work memory).
+
+**Step 3: Update the progress summary table cells**
+
+Use Python to replace the status cells in the existing table. This is **mandatory** — Claude MUST execute this replacement when any changed files are detected.
+
+```python
+# Python inline script for table cell replacement
+# Input: body (work memory body text), statuses dict
+import re
+
+def update_progress_summary(body, statuses):
+    """Update progress summary table cells in work memory body.
+
+    Args:
+        body: Full work memory body text
+        statuses: dict like {"実装": "🔄 進行中", "テスト": "⬜ 未着手", "ドキュメント": "✅ 完了"}
+    Returns:
+        Updated body text
+    """
+    for item, new_status in statuses.items():
+        # Match table row: | 実装 | <any status> | <any note> |
+        pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
+        replacement = r"\g<1>" + new_status + r"\2"
+        body = re.sub(pattern, replacement, body, count=1)
+    return body
+```
+
+**Integration**: When building the updated body in Phase 3.2, apply `update_progress_summary()` to the re-fetched body along with the other selective updates. The statuses dict is populated from the Step 2 analysis.
+
+**Changed files section update procedure:**
+
+Replace the entire content of the `### 変更ファイル` section (from the heading to the next `###` heading or end of body) with the regenerated file list from Phase 2.1/2.2. Use Python to perform the replacement:
+
+```python
+def update_changed_files_section(body, file_list_markdown):
+    """Replace the 変更ファイル section content with updated file list.
+
+    Args:
+        body: Full work memory body text
+        file_list_markdown: Formatted file list string (Phase 2.2 format),
+            e.g. "- `path/to/file.ts` - 変更\\n- `path/to/other.ts` - 追加"
+            When no files changed, use "_まだ変更はありません_"
+    Returns:
+        Updated body text
+    """
+    import re
+    # Match from ### 変更ファイル heading to the next ### heading or end
+    pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+    replacement = r"\1" + file_list_markdown
+    return re.sub(pattern, replacement, body, count=1, flags=re.DOTALL)
+```
+
+**Integration**: Apply `update_changed_files_section()` after `update_progress_summary()` when building the updated body. The `file_list_markdown` is generated from Phase 2.1/2.2 output. If no changed files exist, pass `"_まだ変更はありません_"`.
 
 **Updating pending questions:**
 
