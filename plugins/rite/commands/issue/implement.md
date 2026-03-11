@@ -13,6 +13,8 @@ Perform actual implementation work following the implementation plan approved in
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, and `dead_code_hygiene`.
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 **Basic implementation flow:**
 
 1. Check current file content with Read tool
@@ -531,7 +533,7 @@ Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effecti
 **Step 1: Bash tool call — Fetch body and validate**
 
 ```bash
-bash plugins/rite/hooks/issue-body-safe-update.sh fetch --issue {issue_number}
+bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {issue_number}
 ```
 
 Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`. If fetch fails, outputs WARNING and exits 0 (skip).
@@ -548,7 +550,7 @@ Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`. I
 **Step 3: Bash tool call — Validate and apply**
 
 ```bash
-bash plugins/rite/hooks/issue-body-safe-update.sh apply --issue {issue_number} \
+bash {plugin_root}/hooks/issue-body-safe-update.sh apply --issue {issue_number} \
   --tmpfile-read "{tmpfile_read}" --tmpfile-write "{tmpfile_write}" \
   --original-length {original_length}
 ```
@@ -572,7 +574,7 @@ WM_SOURCE="implement" \
   WM_NEXT_ACTION="rite:lint を実行" \
   WM_BODY_TEXT="Post-implementation. Proceeding to lint." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The `.rite-flow-state` update (step 4a) is the primary state record.
@@ -671,7 +673,7 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
    **4a**: Create state file:
 
    ```bash
-   bash plugins/rite/hooks/flow-state-update.sh create \
+   bash {plugin_root}/hooks/flow-state-update.sh create \
      --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
      --loop 0 --pr 0 \
      --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."

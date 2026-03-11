@@ -13,6 +13,8 @@ This module handles Issue content analysis and implementation plan generation.
 
 > **Relationship with `create.md` Phase 0.7**: If the Issue was created via `/rite:issue:create`, a specification document (high-level design: What/Why/Where) may exist in `docs/designs/`. This module generates the **detailed implementation plan** (How/Step-by-step) that builds on that specification. Check for a linked design doc in the Issue body before starting analysis — it provides pre-validated requirements and architectural decisions that reduce redundant exploration.
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+
 ### 3.1 Issue Content Analysis
 
 Leverage the quality score and extracted information validated in Phase 1 to perform analysis for implementation plan generation:
@@ -261,7 +263,7 @@ WM_SOURCE="plan" \
   WM_NEXT_ACTION="実装計画に沿って作業開始" \
   WM_BODY_TEXT="Implementation plan recorded." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **Notes**:

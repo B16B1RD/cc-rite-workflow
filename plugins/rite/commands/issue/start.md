@@ -175,7 +175,7 @@ Execute after Phase 1.1-1.3.
 
 ```bash
 # branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_5_parent" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
   --next "After rite:issue:parent-routing returns: proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
@@ -197,7 +197,7 @@ Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing su
 
 ```bash
 # branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_6_child" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
   --next "After rite:issue:child-issue-selection returns: proceed to Phase 2 (work preparation). Do NOT stop."
@@ -247,7 +247,7 @@ Skip Phase 2.4/2.5/2.6 (no Issue number). User manually links. Phase 3+ normal.
 **Pre-write** (before invoking `rite:issue:branch-setup`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_branch" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:issue:branch-setup returns: proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
@@ -280,7 +280,7 @@ Execute only if `iteration.enabled: true` and `iteration.auto_assign: true` in r
 **Pre-write** (before invoking `rite:issue:work-memory-init`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_work_memory" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:issue:work-memory-init returns: proceed to Phase 3 (implementation plan). Do NOT stop."
@@ -315,7 +315,7 @@ Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next
 **Pre-write** (before invoking `rite:issue:implementation-plan`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase3_plan" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:issue:implementation-plan returns: proceed to Phase 4 (work start guidance). Do NOT stop."
@@ -469,7 +469,7 @@ Read `safety.max_implementation_rounds` from rite-config.yml (default: 20). Trac
 **Round count tracking**: When re-entering Phase 5.1, update `.rite-flow-state` atomically:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh increment --field "implementation_round"
+bash {plugin_root}/hooks/flow-state-update.sh increment --field "implementation_round"
 ```
 
 **When round count exceeds limit**:
@@ -491,7 +491,7 @@ Run [Preflight Protocol](#preflight-protocol) before invoking lint.
 **Pre-check** (defense-in-depth): Always update `.rite-flow-state` before invoking lint to ensure the stop-guard has correct phase and fresh timestamp. This unconditional write prevents stale state from causing intermittent flow stops (fixes #666):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
@@ -570,7 +570,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 **Step 1**: Update `.rite-flow-state` to post-lint phase (atomic). This second write (after the Phase 5.2 pre-check write) transitions from `phase5_lint` to `phase5_post_lint`, ensuring stop-guard routes to checklist confirmation rather than re-invoking lint:
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop."
@@ -600,7 +600,7 @@ Run [Preflight Protocol](#preflight-protocol) before creating PR.
 After 5.2.1, update `.rite-flow-state` (atomic, see 5.1 step 3):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
   --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->Phase 5.6. Do NOT stop."
@@ -633,7 +633,7 @@ Run [Preflight Protocol](#preflight-protocol) before each review cycle.
 Update `.rite-flow-state` (atomic, see 5.1 step 3):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
@@ -660,7 +660,7 @@ Invoke `skill: "rite:pr:review"`. Increment `loop_count`.
 **Step 1**: Update `.rite-flow-state` to post-review phase (atomic). This second write (after the Phase 5.4.1 pre-write) transitions from `phase5_review` to `phase5_post_review`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #719):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
@@ -741,7 +741,7 @@ fi
 Update `.rite-flow-state` (atomic):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "After rite:pr:fix returns: [fix:pushed]+fix-needed->Phase 5.4.1. [fix:pushed]+conditional/loop-limit->Phase 5.5. [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
@@ -764,7 +764,7 @@ Invoke `skill: "rite:pr:fix"`.
 **Step 1**: Update `.rite-flow-state` to post-fix phase (atomic). This second write (after the Phase 5.4.4 pre-write) transitions from `phase5_fix` to `phase5_post_fix`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #709):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
@@ -868,7 +868,7 @@ When loop completes, confirm:
 **Step 1**: Update `.rite-flow-state` to post-ready phase (atomic). This write transitions from `phase5_post_review`/`phase5_post_fix` to `phase5_post_ready`, ensuring stop-guard routes to Status update rather than re-invoking ready (fixes #781):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_ready" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "Phase 5.5.1: Update Issue Status to In Review, then Phase 5.5.2 metrics, then Phase 5.6 completion report. Do NOT stop."
@@ -1097,7 +1097,7 @@ Present options via `AskUserQuestion`:
 **Post-completion**: Update `.rite-flow-state` `active: false` (atomic):
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "completed" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --next "none" --active false

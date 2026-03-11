@@ -1238,7 +1238,7 @@ WM_SOURCE="review" \
   WM_NEXT_ACTION="レビュー結果に基づき次のアクションを決定" \
   WM_BODY_TEXT="Review cycle completed." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
@@ -1629,7 +1629,7 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 | `[review:loop-limit:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:loop-limit:{n}]. Proceed to Phase 5.4.4 (fix) then Phase 5.5. Do NOT stop.` |
 
 ```bash
-bash plugins/rite/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_review" \
   --next "{next_action_value}" \
   --if-exists

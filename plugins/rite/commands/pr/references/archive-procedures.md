@@ -386,7 +386,7 @@ Replace `- [ ] #{issue_number}` with `- [x] #{issue_number}` in the parent Issue
 **Step 1: Bash tool call -- retrieve and validate the body**
 
 ```bash
-bash plugins/rite/hooks/issue-body-safe-update.sh fetch --issue {parent_issue_number} --parent
+bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {parent_issue_number} --parent
 ```
 
 Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`.
@@ -401,7 +401,7 @@ Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`.
 **Step 3: Bash tool call -- validate and apply**
 
 ```bash
-bash plugins/rite/hooks/issue-body-safe-update.sh apply --issue {parent_issue_number} \
+bash {plugin_root}/hooks/issue-body-safe-update.sh apply --issue {parent_issue_number} \
   --tmpfile-read "{tmpfile_read}" --tmpfile-write "{tmpfile_write}" \
   --original-length {original_length} --parent --diff-check
 ```
