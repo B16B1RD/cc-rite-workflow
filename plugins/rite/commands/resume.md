@@ -321,6 +321,22 @@ if [ -f "$COMPACT_STATE" ]; then
 fi
 ```
 
+### 3.0.1 Restore Flow State Active Flag
+
+Ensure `.rite-flow-state` has `active: true` so that the stop-guard hook blocks premature stops during the resumed workflow. Without this, the stop-guard sees `active: false` (or missing state) and allows Claude to stop mid-flow (root cause of Issue #79's resume-session variant).
+
+```bash
+STATE_FILE=".rite-flow-state"
+if [ -f "$STATE_FILE" ]; then
+  TMP_STATE="${STATE_FILE}.tmp.$$"
+  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+    '.active = true | .updated_at = $ts | .error_count = 0' \
+    "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE" || rm -f "$TMP_STATE"
+fi
+```
+
+**If `.rite-flow-state` does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here.
+
 ### 3.1 Switch Branch
 
 If the current branch differs from the branch in work memory:
