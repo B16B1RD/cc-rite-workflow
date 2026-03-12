@@ -3,6 +3,10 @@
 # Blocks ALL tool uses after compaction until user runs /clear → /rite:resume.
 set -euo pipefail
 
+# Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
@@ -10,7 +14,7 @@ if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 

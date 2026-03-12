@@ -273,7 +273,9 @@ Do **NOT** stop after `rite:issue:branch-setup` returns. Projects status update 
 
 > **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update)
 
-Skip if `projects.enabled: false` in rite-config.yml. Otherwise: get item ID, update Status to "In Progress", auto-add if not registered. Handles: config (2.4.1), registration check (2.4.2), auto-add (2.4.3), Status field with field_ids optimization (2.4.4), Status update (2.4.5), parent Status (2.4.7).
+Skip if `projects.enabled: false` in rite-config.yml. Otherwise: get item ID, update Status to "In Progress", auto-add if not registered. Execute sub-phases in order: config (2.4.1), registration check (2.4.2), auto-add (2.4.3), Status field with field_ids optimization (2.4.4), Status update (2.4.5).
+
+**After 2.4.5 completes, always execute 2.4.7** (Parent Issue Status Update). 2.4.7.1 performs parent detection — if no parent is found, it skips silently. Do NOT skip 2.4.7 even if the current Issue was not identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents).
 
 ### 2.5 Iteration Assignment
 

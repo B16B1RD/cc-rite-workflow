@@ -112,7 +112,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 ### 2.4.7 Parent Issue Status Update (for child Issues)
 
-**Execution condition**: Execute only when the current Issue is a child Issue of another Issue.
+**Execution condition**: Always execute 2.4.7.1 (parent detection). If a parent is found, proceed to 2.4.7.2–2.4.7.4. If no parent is found, skip silently (this is normal for standalone Issues).
 
 **Non-blocking**: All steps in 2.4.7 are non-blocking. Any failure displays a warning and continues the workflow.
 
