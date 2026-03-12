@@ -493,6 +493,35 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 
 ---
 
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-interview phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+else
+  bash {plugin_root}/hooks/flow-state-update.sh create \
+    --phase "create_post_interview" --issue 0 --branch "" --loop 0 --pr 0 \
+    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+fi
+```
+
+## Result Pattern Output
+
+Output the appropriate result pattern before returning:
+
+- **Interview completed**: `[interview:completed]`
+- **Interview skipped** (XS, Bug Fix, Chore): `[interview:skipped]`
+
+This pattern is consumed by the orchestrator (`create.md`) to determine the next action.
+
+---
+
 ## 🚨 Caller Return Protocol
 
 When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller (`create.md`) **MUST immediately** execute its 🚨 Mandatory After Interview section:
