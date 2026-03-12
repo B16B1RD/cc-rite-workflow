@@ -31,7 +31,7 @@ _rite_resolve_hook_path() {
 
   local current_install_path
   current_install_path=$(jq -r '
-    .plugins | to_entries[] | select(.key | startswith("rite@")) |
+    limit(1; .plugins | to_entries[] | select(.key | startswith("rite@"))) |
     .value[0].installPath // empty
   ' "$plugins_file" 2>/dev/null) || return 0
 
@@ -41,10 +41,15 @@ _rite_resolve_hook_path() {
   local current_hooks_dir="$current_install_path/plugins/rite/hooks"
   [ "$SCRIPT_DIR" != "$current_hooks_dir" ] || return 0
 
+  # Validate resolved path stays within expected prefix (defense-in-depth)
+  local resolved_hooks_dir
+  resolved_hooks_dir=$(realpath "$current_hooks_dir" 2>/dev/null) || return 0
+  [[ "$resolved_hooks_dir" == "$HOME/.claude/plugins/cache/"* ]] || return 0
+
   # Verify target script exists
   local script_name
   script_name=$(basename "$caller_path")
-  local target_script="$current_hooks_dir/$script_name"
+  local target_script="$resolved_hooks_dir/$script_name"
   [ -f "$target_script" ] || return 0
 
   # Redirect to new version (stdin is preserved across exec)

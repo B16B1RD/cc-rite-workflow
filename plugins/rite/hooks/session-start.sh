@@ -5,7 +5,11 @@ set -euo pipefail
 
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+if [ -n "${RITE_DEBUG:-}" ]; then
+  source "$SCRIPT_DIR/hook-preamble.sh" || true
+else
+  source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+fi
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -110,7 +114,7 @@ fi
 if [ "$SOURCE" = "startup" ]; then
   _version_file="$STATE_ROOT/.rite-initialized-version"
   if [ -f "$_version_file" ]; then
-    _installed_ver=$(cat "$_version_file" 2>/dev/null | tr -d '[:space:]')
+    _installed_ver=$(tr -d '[:space:]' < "$_version_file" 2>/dev/null)
     _plugin_json="$SCRIPT_DIR/../.claude-plugin/plugin.json"
     _current_ver=$(jq -r '.version // empty' "$_plugin_json" 2>/dev/null)
     if [ -n "$_installed_ver" ] && [ -n "$_current_ver" ] && [ "$_installed_ver" != "$_current_ver" ]; then
@@ -128,8 +132,8 @@ if [ "$SOURCE" = "startup" ]; then
         _settings_local="$STATE_ROOT/.claude/settings.local.json"
         if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
           # Find old hooks dir from settings.local.json and replace with current SCRIPT_DIR
-          _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp="${_settings_local}.tmp.$$"
-          if python3 -c '
+          _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp=""
+          if [ -n "$_repair_tmp" ] && python3 -c '
 import json, sys, re, os
 
 settings_path = sys.argv[1]
@@ -156,7 +160,8 @@ for event_name, entries in hooks.items():
             cmd = hook.get("command", "")
             m = hook_path_re.search(cmd)
             if m and m.group(2) != new_hooks_dir + "/":
-                new_cmd = hook_path_re.sub(r"\g<1>" + new_hooks_dir + r"/\3", cmd)
+                old_path = m.group(2)
+                new_cmd = cmd.replace(old_path, new_hooks_dir + "/")
                 hook["command"] = new_cmd
                 changed = True
 
