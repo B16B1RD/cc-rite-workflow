@@ -13,6 +13,10 @@
 #   stdout JSON with permissionDecision: "deny" — block
 set -euo pipefail
 
+# Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 

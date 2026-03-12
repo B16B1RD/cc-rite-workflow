@@ -4,6 +4,10 @@
 # Fires after every Bash tool use; quick-exits in most cases.
 set -euo pipefail
 
+# Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+
 # Recursion guard
 [ -z "${RITE_WM_HOOK_ACTIVE:-}" ] || exit 0
 export RITE_WM_HOOK_ACTIVE=1
@@ -14,7 +18,7 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 
 # Resolve state root (git root or CWD)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 FLOW_STATE="$STATE_ROOT/.rite-flow-state"

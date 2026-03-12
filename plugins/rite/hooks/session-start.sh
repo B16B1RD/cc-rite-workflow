@@ -3,6 +3,10 @@
 # Re-injects flow state after compact or resume
 set -euo pipefail
 
+# Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
@@ -13,8 +17,8 @@ INPUT=$(cat) || INPUT=""
 # Plugin dual-load collision guard (#591)
 # Only warn when this script is running from a local plugin-dir (not from
 # the marketplace cache). Normal marketplace users should have it enabled.
-SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$SCRIPT_PATH" != *"/.claude/plugins/cache/"* ]] && command -v jq &>/dev/null; then
+# SCRIPT_DIR already set in preamble block above (replaces SCRIPT_PATH)
+if [[ "$SCRIPT_DIR" != *"/.claude/plugins/cache/"* ]] && command -v jq &>/dev/null; then
   settings_file="$HOME/.claude/settings.json"
   if [ -f "$settings_file" ]; then
     rite_marketplace=$(jq -r '.enabledPlugins["rite@rite-marketplace"] // false' "$settings_file" 2>/dev/null)
@@ -32,7 +36,7 @@ if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
 fi
 
 # Resolve state root (git root or CWD) — consistent with pre-compact.sh / session-end.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 # Helper: remove stale .rite-compact-state when no active flow (#756)
@@ -102,7 +106,7 @@ if [ "$SOURCE" = "startup" ]; then
   fi
 fi
 
-# --- Plugin version check on startup ---
+# --- Plugin version check + auto-repair on startup ---
 if [ "$SOURCE" = "startup" ]; then
   _version_file="$STATE_ROOT/.rite-initialized-version"
   if [ -f "$_version_file" ]; then
@@ -117,14 +121,80 @@ if [ "$SOURCE" = "startup" ]; then
         _cfg_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]')
         [ -n "$_cfg_lang" ] && _lang="$_cfg_lang"
       fi
-      case "$_lang" in
-        ja)
-          echo "[rite] プラグインが更新されました (v${_installed_ver} -> v${_current_ver})。/rite:init を実行して hooks を再登録してください。" >&2
-          ;;
-        *)
-          echo "[rite] Plugin updated (v${_installed_ver} -> v${_current_ver}). Run /rite:init to re-register hooks." >&2
-          ;;
-      esac
+
+      # Auto-repair settings.local.json hook paths for marketplace installations
+      _auto_repaired=false
+      if [[ "$SCRIPT_DIR" == *"/.claude/plugins/cache/"* ]]; then
+        _settings_local="$STATE_ROOT/.claude/settings.local.json"
+        if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
+          # Find old hooks dir from settings.local.json and replace with current SCRIPT_DIR
+          _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp="${_settings_local}.tmp.$$"
+          if python3 -c '
+import json, sys, re, os
+
+settings_path = sys.argv[1]
+new_hooks_dir = sys.argv[2]
+out_path = sys.argv[3]
+
+with open(settings_path, "r") as f:
+    data = json.load(f)
+
+hooks = data.get("hooks", {})
+if not hooks:
+    sys.exit(1)
+
+# Pattern: bash /path/to/hooks/script.sh
+hook_path_re = re.compile(r"(bash\s+)(/[^\s]+/plugins/rite/hooks/)(\S+)")
+changed = False
+
+for event_name, entries in hooks.items():
+    if not isinstance(entries, list):
+        continue
+    for entry in entries:
+        hook_list = entry.get("hooks", [])
+        for hook in hook_list:
+            cmd = hook.get("command", "")
+            m = hook_path_re.search(cmd)
+            if m and m.group(2) != new_hooks_dir + "/":
+                new_cmd = hook_path_re.sub(r"\g<1>" + new_hooks_dir + r"/\3", cmd)
+                hook["command"] = new_cmd
+                changed = True
+
+if not changed:
+    sys.exit(1)
+
+with open(out_path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+' "$_settings_local" "$SCRIPT_DIR" "$_repair_tmp" 2>/dev/null; then
+            mv "$_repair_tmp" "$_settings_local" 2>/dev/null && _auto_repaired=true
+          else
+            rm -f "$_repair_tmp" 2>/dev/null
+          fi
+        fi
+      fi
+
+      if [ "$_auto_repaired" = "true" ]; then
+        # Update version marker after successful auto-repair
+        echo "$_current_ver" > "$_version_file" 2>/dev/null || true
+        case "$_lang" in
+          ja)
+            echo "[rite] フックパスを自動修復しました (v${_installed_ver} -> v${_current_ver})。" >&2
+            ;;
+          *)
+            echo "[rite] Hook paths auto-repaired (v${_installed_ver} -> v${_current_ver})." >&2
+            ;;
+        esac
+      else
+        case "$_lang" in
+          ja)
+            echo "[rite] プラグインが更新されました (v${_installed_ver} -> v${_current_ver})。/rite:init を実行して hooks を再登録してください。" >&2
+            ;;
+          *)
+            echo "[rite] Plugin updated (v${_installed_ver} -> v${_current_ver}). Run /rite:init to re-register hooks." >&2
+            ;;
+        esac
+      fi
     fi
   fi
 fi
