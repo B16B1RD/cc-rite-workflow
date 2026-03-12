@@ -10,13 +10,17 @@
 # - RED: Critical warning + flow split recommendation
 set -euo pipefail
 
+# Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 
 # Resolve state root (git root or CWD)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 FLOW_STATE="$STATE_ROOT/.rite-flow-state"

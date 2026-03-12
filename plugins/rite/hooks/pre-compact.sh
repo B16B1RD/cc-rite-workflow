@@ -4,6 +4,10 @@
 # compact itself cannot be prevented; this hook records state for safe resumption.
 set -euo pipefail
 
+# Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
 # cat failure does not abort under set -e; || guard is defensive
@@ -14,7 +18,7 @@ if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
 fi
 
 # Resolve state root (git root or CWD)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
