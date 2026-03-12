@@ -52,6 +52,20 @@ create.md (orchestrator)
 
 When this command is executed, follow the phases below in order.
 
+## Sub-skill Return Protocol
+
+> **Reference**: This protocol mirrors `start.md`'s [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
+
+**When a sub-skill outputs a result pattern (e.g., `[interview:completed]`, `[register:created:{N}]`) and returns control to you:**
+
+1. **DO NOT end your response.** You are still in the middle of the create flow. Ending your response here forces the user to type "continue" manually — this is a **bug**.
+2. **DO NOT re-invoke the completed skill.** It already finished.
+3. **IMMEDIATELY** locate the 🚨 Mandatory After section for the current phase and execute its steps — starting with the `.rite-flow-state` update, then proceeding to the next phase.
+
+**Self-check**: After every sub-skill returns, ask yourself: "Has the Issue been created and the completion report output?" If not, you are NOT done — keep going.
+
+**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`) updates `.rite-flow-state` to a `post_*` phase before returning. This ensures the stop-guard blocks any premature stop attempt, even if the orchestrator's 🚨 Mandatory After instructions are not executed immediately.
+
 ## Arguments
 
 | Argument | Description |
@@ -408,11 +422,13 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-**🚨 Immediate after interview returns**: When `rite:issue:create-interview` completes (interview finished or skipped) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below.
+**🚨 Immediate after interview returns**: When `rite:issue:create-interview` outputs a result pattern (`[interview:completed]` or `[interview:skipped]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below. The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section; execute the 🚨 Mandatory After Interview steps without delay.
 
 ### 🚨 Mandatory After Interview
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
+
+**Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** update `.rite-flow-state` and proceed.
 
 Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
 
@@ -561,23 +577,25 @@ Invoke `skill: "rite:issue:create-register"`.
 | Tentative slug | Phase 0.1.3 | Always available |
 | `phases_skipped` flag | Phase 0.1.5 | Set to `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition. Set to `null` otherwise |
 
+**🚨 Immediate after delegation returns**: When the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs a result pattern (`[register:created:{N}]` or decompose completion) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Delegation below. The sub-skill has already updated `.rite-flow-state` to `create_post_delegation` via its Defense-in-Depth section; execute the 🚨 Mandatory After Delegation steps without delay.
+
 ### 🚨 Mandatory After Delegation
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-Do **NOT** stop before the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs its completion report. The sub-command handles all remaining phases (creation, registration, completion report). **No GitHub Issue has been created yet** — stopping here would abandon the workflow with no deliverable.
+**Verify**: Result pattern confirmed (e.g., `[register:created:{N}]`). The Issue has been created.
 
-Once the completion report (Issue URL) is output, the workflow is complete — no further action is needed.
+Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state deactivation) is still pending — this is a required step to prevent the stop-guard from blocking future sessions.
 
-**→ Wait for the sub-skill to output its Phase 3 completion report (Issue URL). Do NOT stop before that.**
-
-**Post-completion cleanup**: After the sub-skill outputs the completion report, deactivate flow state:
+**Step 1**: Deactivate flow state:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "create_completed" --issue 0 --branch "" --loop 0 --pr 0 \
   --next "none" --active false
 ```
+
+**Step 2**: The workflow is now complete. Stop is allowed after cleanup.
 
 ---
 

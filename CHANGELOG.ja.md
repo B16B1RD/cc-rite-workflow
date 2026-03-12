@@ -5,6 +5,12 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.2.3] - 2026-03-13
+
+### 修正
+
+- create ワークフローのサブスキル返却後の自動継続を強化 (#125)
+
 ## [0.2.2] - 2026-03-12
 
 ### 追加
@@ -120,6 +126,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.3...v0.2.0

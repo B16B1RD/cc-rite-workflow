@@ -567,6 +567,34 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 ---
 
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-delegation phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_delegation" \
+    --next "rite:issue:create-register completed. Issue created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
+else
+  bash {plugin_root}/hooks/flow-state-update.sh create \
+    --phase "create_post_delegation" --issue 0 --branch "" --loop 0 --pr 0 \
+    --next "rite:issue:create-register completed. Issue created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
+fi
+```
+
+## Result Pattern Output
+
+Output the result pattern after the completion report:
+
+- **Issue created**: `[register:created:{number}]` (where `{number}` is the created Issue number)
+
+This pattern is consumed by the orchestrator (`create.md`) to confirm Issue creation and trigger post-completion cleanup.
+
+---
+
 ## 🚨 Caller Return Protocol
 
 When this sub-skill completes (Phase 3 completion report output), the Issue creation workflow is **complete**. The Issue has been created and registered to GitHub Projects. Control returns to the caller (`create.md`), which handles any remaining cleanup (e.g., `.rite-flow-state` deactivation).
