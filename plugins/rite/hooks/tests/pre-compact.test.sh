@@ -465,7 +465,7 @@ if run_hook "$dir015"; then
     tc015_ok=false
   fi
   if [ "$tc015_ok" = true ]; then
-    pass "compact_state overwritten from 'resuming' to 'blocked' with new timestamp (#854)"
+    pass "compact_state overwritten from 'resuming' to 'recovering' with new timestamp (#854)"
   fi
 else
   fail "Hook should exit 0"
@@ -482,7 +482,7 @@ echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z",
 if run_hook "$dir016"; then
   wm_file="$dir016/.rite-work-memory/issue-160.md"
   tc016_ok=true
-  # compact_state should now be blocked (overwritten from resuming — #854)
+  # compact_state should now be recovering (overwritten from resuming — #854)
   cs_state=$(jq -r '.compact_state' "$dir016/.rite-compact-state" 2>/dev/null)
   if [ "$cs_state" != "recovering" ]; then
     fail "compact_state should be 'recovering', got '$cs_state'"
