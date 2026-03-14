@@ -292,20 +292,21 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-012: source=compact + compact_state=blocked → STOP message
+# TC-012: source=compact + compact_state=recovering → CRITICAL message (#133)
+# PostCompact hook now handles recovery; SessionStart(compact) falls through to CRITICAL.
 # --------------------------------------------------------------------------
-echo "TC-012: source=compact + compact_state=blocked → STOP message"
+echo "TC-012: source=compact + compact_state=recovering → CRITICAL message (#133)"
 dir012="$TEST_DIR/tc012"
 mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "implementing"}'
-echo '{"compact_state": "blocked", "active_issue": 55}' > "$dir012/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir012" "compact")
-if echo "$output" | grep -q "STOP. DO NOT CONTINUE" && \
-   echo "$output" | grep -q "Affected Issue: #55"; then
-  pass "source=compact + blocked → STOP message with issue number"
+if echo "$output" | grep -q "CRITICAL: Active rite workflow detected" && \
+   echo "$output" | grep -q "Issue: #55"; then
+  pass "source=compact + recovering → CRITICAL message (PostCompact handles recovery)"
 else
-  fail "Expected STOP message with issue #55, got: $output"
+  fail "Expected CRITICAL message with issue #55, got: $output"
 fi
 echo ""
 
@@ -345,21 +346,23 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-015: source=clear + compact_state=blocked → transition to resuming
+# TC-015: source=clear + compact_state=recovering → defensive reset (#133)
+# /clear now applies the same defensive reset as startup (compact recovery is handled by PostCompact).
 # --------------------------------------------------------------------------
-echo "TC-015: source=clear + compact_state=blocked → transition to resuming"
+echo "TC-015: source=clear + compact_state=recovering → defensive reset (#133)"
 dir015="$TEST_DIR/tc015"
 mkdir -p "$dir015"
 create_state_file "$dir015" '{"active": true, "issue_number": 58, "phase": "implementing"}'
-echo '{"compact_state": "blocked", "active_issue": 58}' > "$dir015/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 58}' > "$dir015/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir015" "clear")
-COMPACT_VAL=$(jq -r '.compact_state' "$dir015/.rite-compact-state" 2>/dev/null)
-if [ "$COMPACT_VAL" = "resuming" ] && \
-   echo "$output" | grep -q "CRITICAL: Active rite workflow detected"; then
-  pass "source=clear + blocked → compact_state transitioned to resuming + CRITICAL message"
+ACTIVE_VAL=$(jq -r '.active' "$dir015/.rite-flow-state" 2>/dev/null)
+if [ "$ACTIVE_VAL" = "false" ] && \
+   ! [ -f "$dir015/.rite-compact-state" ] && \
+   echo "$output" | grep -q "リセットしました"; then
+  pass "source=clear + recovering → defensive reset (active=false, compact state cleaned)"
 else
-  fail "Expected compact_state=resuming and CRITICAL message, got state=$COMPACT_VAL, output: $output"
+  fail "Expected defensive reset, got active=$ACTIVE_VAL, compact_exists=$([ -f "$dir015/.rite-compact-state" ] && echo yes || echo no), output: $output"
 fi
 echo ""
 
@@ -370,7 +373,7 @@ echo "TC-016: source=startup + compact_state=blocked + active=true → defensive
 dir016="$TEST_DIR/tc016"
 mkdir -p "$dir016"
 create_state_file "$dir016" '{"active": true, "issue_number": 59, "phase": "reviewing"}'
-echo '{"compact_state": "blocked", "active_issue": 59}' > "$dir016/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 59}' > "$dir016/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir016" "startup")
 if echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました" && \
@@ -388,7 +391,7 @@ echo "TC-017: source=startup + compact_state=blocked + active=false → clean co
 dir017="$TEST_DIR/tc017"
 mkdir -p "$dir017"
 create_state_file "$dir017" '{"active": false, "issue_number": 60, "phase": "completed"}'
-echo '{"compact_state": "blocked", "active_issue": 60}' > "$dir017/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 60}' > "$dir017/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir017" "startup") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ ! -f "$dir017/.rite-compact-state" ]; then
@@ -405,7 +408,7 @@ echo "TC-018: source=startup + compact_state=blocked + no flow state → clean c
 dir018="$TEST_DIR/tc018"
 mkdir -p "$dir018"
 # No .rite-flow-state at all
-echo '{"compact_state": "blocked", "active_issue": 61}' > "$dir018/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 61}' > "$dir018/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir018" "startup") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ ! -f "$dir018/.rite-compact-state" ]; then
@@ -422,7 +425,7 @@ echo "TC-019: source=startup + compact_state=blocked + active=true → compact s
 dir019="$TEST_DIR/tc019"
 mkdir -p "$dir019"
 create_state_file "$dir019" '{"active": true, "issue_number": 62, "phase": "implementing"}'
-echo '{"compact_state": "blocked", "active_issue": 62}' > "$dir019/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 62}' > "$dir019/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir019" "startup") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ ! -f "$dir019/.rite-compact-state" ]; then
@@ -439,7 +442,7 @@ echo "TC-020: source=startup + compact_state=blocked + lockdir → both cleaned"
 dir020="$TEST_DIR/tc020"
 mkdir -p "$dir020"
 create_state_file "$dir020" '{"active": false, "issue_number": 63, "phase": "completed"}'
-echo '{"compact_state": "blocked", "active_issue": 63}' > "$dir020/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 63}' > "$dir020/.rite-compact-state"
 mkdir -p "$dir020/.rite-compact-state.lockdir"
 
 output=$(run_hook_with_source "$dir020" "startup") && rc=0 || rc=$?
@@ -451,19 +454,20 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-021: source=compact + compact_state=blocked + active=false → DO NOT clean (#756)
+# TC-021: source=compact + compact_state=recovering + active=false → clean (#133, #756)
+# PostCompact handles active flows; SessionStart always cleans up inactive state.
 # --------------------------------------------------------------------------
-echo "TC-021: source=compact + compact_state=blocked + active=false → compact state preserved"
+echo "TC-021: source=compact + compact_state=recovering + active=false → compact state cleaned (#133)"
 dir021="$TEST_DIR/tc021"
 mkdir -p "$dir021"
 create_state_file "$dir021" '{"active": false, "issue_number": 64, "phase": "completed"}'
-echo '{"compact_state": "blocked", "active_issue": 64}' > "$dir021/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 64}' > "$dir021/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir021" "compact") && rc=0 || rc=$?
-if [ $rc -eq 0 ] && [ -f "$dir021/.rite-compact-state" ]; then
-  pass "source=compact + active=false → compact state NOT cleaned (startup only)"
+if [ $rc -eq 0 ] && ! [ -f "$dir021/.rite-compact-state" ]; then
+  pass "source=compact + active=false → compact state cleaned (#133)"
 else
-  fail "Expected exit 0 and .rite-compact-state preserved for non-startup source, got rc=$rc"
+  fail "Expected exit 0 and .rite-compact-state cleaned, got rc=$rc, exists=$([ -f "$dir021/.rite-compact-state" ] && echo yes || echo no)"
 fi
 echo ""
 
@@ -491,7 +495,7 @@ echo "TC-023: source=startup + active=true + phase=completed → silent reset + 
 dir023="$TEST_DIR/tc023"
 mkdir -p "$dir023"
 create_state_file "$dir023" '{"active": true, "issue_number": 70, "branch": "fix/issue-70-test", "phase": "completed"}'
-echo '{"compact_state": "blocked", "active_issue": 70}' > "$dir023/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 70}' > "$dir023/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir023" "startup") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$dir023/.rite-flow-state" 2>/dev/null)

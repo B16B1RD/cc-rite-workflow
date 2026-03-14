@@ -290,11 +290,10 @@ Skill ツール呼び出し:
 
 ## Phase 3: Resume Work
 
-### 3.0 Clear Compact State (blocked → resuming → normal)
+### 3.0 Clear Compact State (recovering → normal)
 
-Transition compact state through `blocked → resuming → normal` before resuming work. Both steps run sequentially before Phase 3.1/3.2, so `"resuming"` is only a transient intermediate state.
-
-**Step 1: Set to `resuming`** (allows subsequent `/rite:*` commands during resume):
+Transition compact state to `normal` before resuming work. PostCompact hook normally handles
+this automatically (#133), but `/rite:resume` serves as a fallback when PostCompact doesn't fire.
 
 ```bash
 COMPACT_STATE=".rite-compact-state"
@@ -303,21 +302,9 @@ if [ -f "$COMPACT_STATE" ]; then
   if [ "$COMPACT_VAL" != "normal" ]; then
     TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
     jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-      '.compact_state = "resuming" | .compact_state_set_at = $ts' \
+      '.compact_state = "normal" | .compact_state_set_at = $ts' \
       "$COMPACT_STATE" > "$TMP_COMPACT" && mv "$TMP_COMPACT" "$COMPACT_STATE" || rm -f "$TMP_COMPACT"
   fi
-fi
-```
-
-**Step 2: Set to `normal`** (completes state transition before branch switch / Skill invocation):
-
-```bash
-COMPACT_STATE=".rite-compact-state"
-if [ -f "$COMPACT_STATE" ]; then
-  TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
-  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-    '.compact_state = "normal" | .compact_state_set_at = $ts' \
-    "$COMPACT_STATE" > "$TMP_COMPACT" && mv "$TMP_COMPACT" "$COMPACT_STATE" || rm -f "$TMP_COMPACT"
 fi
 ```
 

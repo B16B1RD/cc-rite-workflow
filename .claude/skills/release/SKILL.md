@@ -207,10 +207,19 @@ gh release create "v{VERSION}" \
 
 PR マージで自動クローズされなければ手動でクローズ。
 
-### 3.5 develop ブランチに戻る
+### 3.5 develop ブランチの復旧・同期
+
+GitHub のリポジトリ設定で「マージ後にブランチを自動削除」が有効な場合、develop→main の PR マージで develop ブランチがリモートから削除される。ローカルの develop を再プッシュして復旧すること。
 
 ```bash
 git checkout develop
+
+# リモートに develop が存在するか確認
+if ! git ls-remote --exit-code origin develop &>/dev/null; then
+  echo "develop branch was auto-deleted on remote, re-pushing..."
+  git push origin develop
+fi
+
 git pull origin develop
 ```
 

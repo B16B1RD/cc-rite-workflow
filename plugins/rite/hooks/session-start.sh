@@ -45,13 +45,12 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 
 # Helper: remove stale .rite-compact-state when no active flow (#756)
 # Called on startup when .rite-flow-state is absent or inactive, to prevent
-# post-compact-guard from blocking all tool calls in the new session.
+# stale recovering state from persisting across sessions.
 _cleanup_stale_compact() {
   if [ -f "$STATE_ROOT/.rite-compact-state" ]; then
     rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
     rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || true
   fi
-  rm -f "$STATE_ROOT/.rite-guidance-shown" 2>/dev/null || true
 }
 
 # Reset context pressure counter on startup/clear (#889)
@@ -208,14 +207,14 @@ STATE_FILE="$STATE_ROOT/.rite-flow-state"
 
 if [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists (#756, #800)
-  [ "$SOURCE" != "compact" ] && _cleanup_stale_compact
+  _cleanup_stale_compact
   exit 0
 fi
 
 ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || ACTIVE=false
 if [ "$ACTIVE" != "true" ]; then
   # Clean stale compact state on startup/clear when flow is inactive (#756, #800)
-  [ "$SOURCE" != "compact" ] && _cleanup_stale_compact
+  _cleanup_stale_compact
   exit 0
 fi
 
@@ -246,66 +245,29 @@ if [ "$SOURCE" = "startup" ]; then
   exit 0
 fi
 
-# --- Post-compact / post-clear state handling ---
-if [ "$SOURCE" = "compact" ] || [ "$SOURCE" = "clear" ]; then
-  COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
-  COMPACT_TRANSITIONED=false
-
-  # Post-compact: compact_state=blocked → force STOP message
-  if [ "$SOURCE" = "compact" ] && [ -f "$COMPACT_STATE" ]; then
-    COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
-    if [ "$COMPACT_VAL" = "blocked" ]; then
-      ACTIVE_ISSUE=$(jq -r '.active_issue // "unknown"' "$COMPACT_STATE" 2>/dev/null) || ACTIVE_ISSUE="unknown"
-      # Minimal message to reduce post-compaction token overhead (#889)
-      echo "STOP. Compact occurred. Issue #${ACTIVE_ISSUE}. Say: /clear then /rite:resume. STOP."
-      exit 0
-    fi
+# --- Defensive reset on /clear (#781, #133) ---
+# PostCompact hook now handles compact recovery automatically.
+# /clear applies the same defensive reset as startup.
+if [ "$SOURCE" = "clear" ]; then
+  PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
+  ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
+  BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
+  TMP_CLEAR_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
+  trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
+  if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE" 2>/dev/null; then
+    mv "$TMP_CLEAR_FILE" "$STATE_FILE"
+  else
+    rm -f "$TMP_CLEAR_FILE"
   fi
-
-  # After /clear: transition compact_state from blocked → resuming
-  if [ "$SOURCE" = "clear" ] && [ -f "$COMPACT_STATE" ]; then
-    COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
-    if [ "$COMPACT_VAL" = "blocked" ]; then
-      COMPACT_TRANSITIONED=true
-      TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
-      if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-        '.compact_state = "resuming" | .compact_state_set_at = $ts' \
-        "$COMPACT_STATE" > "$TMP_COMPACT" 2>/dev/null; then
-        mv "$TMP_COMPACT" "$COMPACT_STATE"
-      else
-        rm -f "$TMP_COMPACT"
-      fi
-    fi
-  fi
-
-  # --- Defensive reset on /clear without active compact flow (#781) ---
-  # If compact_state was "blocked", we transitioned it to "resuming" above and
-  # fall through to the CRITICAL message for the compact → clear → resume flow.
-  # Otherwise (no compact-state file, or non-blocked state), apply the same
-  # defensive reset as startup to avoid false "interrupted workflow" detection.
-  if [ "$SOURCE" = "clear" ] && [ "$COMPACT_TRANSITIONED" = "false" ]; then
-    PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
-    ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
-    BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
-    TMP_CLEAR_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
-    trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
-    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE" 2>/dev/null; then
-      mv "$TMP_CLEAR_FILE" "$STATE_FILE"
-    else
-      rm -f "$TMP_CLEAR_FILE"
-    fi
-    _cleanup_stale_compact
-    # Silent reset for completed workflows (#772): no message, no /rite:resume suggestion
-    if [ "$PHASE" = "completed" ]; then
-      exit 0
-    fi
-    if [ -n "$ISSUE" ]; then
-      echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${ISSUE}, branch: ${BRANCH})。再開するには /rite:resume を使用してください。"
-    fi
+  _cleanup_stale_compact
+  if [ "$PHASE" = "completed" ]; then
     exit 0
   fi
-  # fall through to normal CRITICAL message handling (compact → clear → resume flow)
+  if [ -n "$ISSUE" ]; then
+    echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${ISSUE}, branch: ${BRANCH})。再開するには /rite:resume を使用してください。"
+  fi
+  exit 0
 fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)

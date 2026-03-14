@@ -249,7 +249,7 @@ fi
 echo ""
 
 # --- TC-009: Lock delegation — compact state file is written under lock ---
-echo "TC-009: Lock delegation — compact state written with blocked state"
+echo "TC-009: Lock delegation — compact state written with recovering state"
 dir009="$TEST_DIR/tc009"
 mkdir -p "$dir009"
 create_state_file "$dir009" '{"active": true, "phase": "review", "issue_number": 55}'
@@ -258,8 +258,8 @@ if run_hook "$dir009"; then
   if [ -f "$dir009/.rite-compact-state" ]; then
     cs_state=$(jq -r '.compact_state' "$dir009/.rite-compact-state" 2>/dev/null)
     cs_issue=$(jq -r '.active_issue' "$dir009/.rite-compact-state" 2>/dev/null)
-    if [ "$cs_state" = "blocked" ] && [ "$cs_issue" = "55" ]; then
-      pass "Compact state written: state=blocked, issue=55"
+    if [ "$cs_state" = "recovering" ] && [ "$cs_issue" = "55" ]; then
+      pass "Compact state written: state=recovering, issue=55"
     else
       fail "Unexpected compact state: state=$cs_state, issue=$cs_issue"
     fi
@@ -300,8 +300,8 @@ if [ $rc1 -ne 0 ] && [ $rc2 -ne 0 ]; then
 elif [ -f "$dir010/.rite-compact-state" ]; then
   if jq . "$dir010/.rite-compact-state" >/dev/null 2>&1; then
     cs_state=$(jq -r '.compact_state' "$dir010/.rite-compact-state" 2>/dev/null)
-    if [ "$cs_state" = "blocked" ]; then
-      pass "Concurrent invocations produce valid state: compact_state=blocked"
+    if [ "$cs_state" = "recovering" ]; then
+      pass "Concurrent invocations produce valid state: compact_state=recovering"
     else
       fail "Unexpected compact_state after concurrent run: $cs_state"
     fi
@@ -390,8 +390,8 @@ if run_hook "$dir013"; then
   # Verify compact state IS still written (compact state records state regardless of active flag)
   if [ -f "$dir013/.rite-compact-state" ]; then
     cs_state=$(jq -r '.compact_state' "$dir013/.rite-compact-state" 2>/dev/null)
-    if [ "$cs_state" != "blocked" ]; then
-      fail "Compact state should be 'blocked', got: $cs_state"
+    if [ "$cs_state" != "recovering" ]; then
+      fail "Compact state should be 'recovering', got: $cs_state"
       tc013_ok=false
     fi
   else
@@ -444,8 +444,8 @@ else
 fi
 echo ""
 
-# --- TC-015: resuming state is overwritten to blocked (#854, supersedes #851 AC-1) ---
-echo "TC-015: resuming state overwritten to blocked — every compact sets blocked (#854)"
+# --- TC-015: resuming state is overwritten to recovering (#854, supersedes #851 AC-1) ---
+echo "TC-015: resuming state overwritten to recovering — every compact sets recovering (#854)"
 dir015="$TEST_DIR/tc015"
 mkdir -p "$dir015"
 create_state_file "$dir015" '{"active": true, "phase": "phase5_lint", "issue_number": 851}'
@@ -456,8 +456,8 @@ if run_hook "$dir015"; then
   cs_state=$(jq -r '.compact_state' "$dir015/.rite-compact-state" 2>/dev/null)
   cs_ts=$(jq -r '.compact_state_set_at' "$dir015/.rite-compact-state" 2>/dev/null)
   tc015_ok=true
-  if [ "$cs_state" != "blocked" ]; then
-    fail "compact_state should be overwritten to 'blocked', got '$cs_state'"
+  if [ "$cs_state" != "recovering" ]; then
+    fail "compact_state should be overwritten to 'recovering', got '$cs_state'"
     tc015_ok=false
   fi
   if [ "$cs_ts" = "2026-01-01T00:00:00Z" ]; then
@@ -465,15 +465,15 @@ if run_hook "$dir015"; then
     tc015_ok=false
   fi
   if [ "$tc015_ok" = true ]; then
-    pass "compact_state overwritten from 'resuming' to 'blocked' with new timestamp (#854)"
+    pass "compact_state overwritten from 'resuming' to 'recovering' with new timestamp (#854)"
   fi
 else
   fail "Hook should exit 0"
 fi
 echo ""
 
-# --- TC-016: resuming→blocked overwrite still saves work memory snapshot (#854, supersedes #851 AC-3) ---
-echo "TC-016: resuming→blocked overwrite still saves work memory snapshot (#854)"
+# --- TC-016: resuming→recovering overwrite still saves work memory snapshot (#854, supersedes #851 AC-3) ---
+echo "TC-016: resuming→recovering overwrite still saves work memory snapshot (#854)"
 dir016="$TEST_DIR/tc016"
 mkdir -p "$dir016"
 create_state_file "$dir016" '{"active": true, "phase": "phase5_review", "issue_number": 160, "branch": "fix/issue-160-test"}'
@@ -482,10 +482,10 @@ echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z",
 if run_hook "$dir016"; then
   wm_file="$dir016/.rite-work-memory/issue-160.md"
   tc016_ok=true
-  # compact_state should now be blocked (overwritten from resuming — #854)
+  # compact_state should now be recovering (overwritten from resuming — #854)
   cs_state=$(jq -r '.compact_state' "$dir016/.rite-compact-state" 2>/dev/null)
-  if [ "$cs_state" != "blocked" ]; then
-    fail "compact_state should be 'blocked', got '$cs_state'"
+  if [ "$cs_state" != "recovering" ]; then
+    fail "compact_state should be 'recovering', got '$cs_state'"
     tc016_ok=false
   fi
   # work memory snapshot should still be created regardless of compact_state
@@ -497,19 +497,19 @@ if run_hook "$dir016"; then
       tc016_ok=false
     fi
   else
-    fail "Work memory snapshot not created when compact_state was resuming→blocked"
+    fail "Work memory snapshot not created when compact_state was resuming→recovering"
     tc016_ok=false
   fi
   if [ "$tc016_ok" = true ]; then
-    pass "compact_state overwritten to 'blocked' AND work memory snapshot created (#854)"
+    pass "compact_state overwritten to 'recovering' AND work memory snapshot created (#854)"
   fi
 else
   fail "Hook should exit 0"
 fi
 echo ""
 
-# --- TC-017: corrupted compact state JSON falls back to blocked (#851 AC-4, T-04) ---
-echo "TC-017: corrupted compact state JSON → falls back to blocked (#851)"
+# --- TC-017: corrupted compact state JSON falls back to recovering (#851 AC-4, T-04) ---
+echo "TC-017: corrupted compact state JSON → falls back to recovering (#851)"
 dir017="$TEST_DIR/tc017"
 mkdir -p "$dir017"
 create_state_file "$dir017" '{"active": true, "phase": "phase5_fix", "issue_number": 170}'
@@ -517,18 +517,18 @@ echo '{broken json' > "$dir017/.rite-compact-state"
 
 if run_hook "$dir017"; then
   cs_state=$(jq -r '.compact_state' "$dir017/.rite-compact-state" 2>/dev/null)
-  if [ "$cs_state" = "blocked" ]; then
-    pass "Corrupted compact state overwritten with 'blocked' (AC-4, fail-closed)"
+  if [ "$cs_state" = "recovering" ]; then
+    pass "Corrupted compact state overwritten with 'recovering' (AC-4, fail-closed)"
   else
-    fail "Expected 'blocked' after corrupted compact state, got '$cs_state'"
+    fail "Expected 'recovering' after corrupted compact state, got '$cs_state'"
   fi
 else
   fail "Hook should exit 0"
 fi
 echo ""
 
-# --- TC-018: normal compact state transitions to blocked (#851 AC-2, T-02) ---
-echo "TC-018: normal compact state → blocked (#851)"
+# --- TC-018: normal compact state transitions to recovering (#133 AC-3) ---
+echo "TC-018: normal compact state → recovering (#133)"
 dir018="$TEST_DIR/tc018"
 mkdir -p "$dir018"
 create_state_file "$dir018" '{"active": true, "phase": "phase5_impl", "issue_number": 180}'
@@ -536,10 +536,10 @@ echo '{"compact_state":"normal","compact_state_set_at":"2026-01-01T00:00:00Z","a
 
 if run_hook "$dir018"; then
   cs_state=$(jq -r '.compact_state' "$dir018/.rite-compact-state" 2>/dev/null)
-  if [ "$cs_state" = "blocked" ]; then
-    pass "normal compact_state transitions to 'blocked' (AC-2)"
+  if [ "$cs_state" = "recovering" ]; then
+    pass "normal compact_state transitions to 'recovering' (AC-2)"
   else
-    fail "Expected 'blocked', got '$cs_state'"
+    fail "Expected 'recovering', got '$cs_state'"
   fi
 else
   fail "Hook should exit 0"

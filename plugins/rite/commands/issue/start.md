@@ -456,9 +456,9 @@ Register all rite hooks by merging the following into `.claude/settings.local.js
 |------------|---------|---------|
 | Stop | `bash {plugin_root}/hooks/stop-guard.sh` | `""` |
 | PreCompact | `bash {plugin_root}/hooks/pre-compact.sh` | `""` |
+| PostCompact | `bash {plugin_root}/hooks/post-compact.sh` | `""` |
 | SessionStart | `bash {plugin_root}/hooks/session-start.sh` | `""` |
 | SessionEnd | `bash {plugin_root}/hooks/session-end.sh` | `""` |
-| PreToolUse | `bash {plugin_root}/hooks/post-compact-guard.sh` | `""` |
 | PreToolUse | `bash {plugin_root}/hooks/pre-tool-bash-guard.sh` | `"Bash"` |
 | PostToolUse | `bash {plugin_root}/hooks/post-tool-wm-sync.sh` | `"Bash"` |
 | PostToolUse | `bash {plugin_root}/hooks/context-pressure.sh` | `""` |
@@ -468,7 +468,7 @@ Each hook entry uses the format: `{"matcher": "", "hooks": [{"type": "command", 
 **Step 4**: Ensure scripts are executable:
 
 ```bash
-chmod +x {plugin_root}/hooks/stop-guard.sh {plugin_root}/hooks/pre-compact.sh {plugin_root}/hooks/session-start.sh {plugin_root}/hooks/session-end.sh {plugin_root}/hooks/post-compact-guard.sh {plugin_root}/hooks/pre-tool-bash-guard.sh {plugin_root}/hooks/post-tool-wm-sync.sh {plugin_root}/hooks/context-pressure.sh 2>/dev/null || true
+chmod +x {plugin_root}/hooks/stop-guard.sh {plugin_root}/hooks/pre-compact.sh {plugin_root}/hooks/post-compact.sh {plugin_root}/hooks/session-start.sh {plugin_root}/hooks/session-end.sh {plugin_root}/hooks/pre-tool-bash-guard.sh {plugin_root}/hooks/post-tool-wm-sync.sh {plugin_root}/hooks/context-pressure.sh 2>/dev/null || true
 ```
 
 If `chmod` fails, display `⚠️ Hook scripts may not be executable. Flow may require manual continuation after sub-skill returns.` If hook registration fails (e.g., file permission error), display the same warning and continue — 🚨 Mandatory After instructions provide textual fallback.

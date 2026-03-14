@@ -54,17 +54,11 @@ When this command is executed, follow the phases below in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: This protocol mirrors `start.md`'s [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
-
-**When a sub-skill outputs a result pattern (e.g., `[interview:completed]`, `[register:created:{N}]`) and returns control to you:**
-
-1. **DO NOT end your response.** You are still in the middle of the create flow. Ending your response here forces the user to type "continue" manually — this is a **bug**.
-2. **DO NOT re-invoke the completed skill.** It already finished.
-3. **IMMEDIATELY** locate the 🚨 Mandatory After section for the current phase and execute its steps — starting with the `.rite-flow-state` update, then proceeding to the next phase.
+> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the full protocol. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section.
 
 **Self-check**: After every sub-skill returns, ask yourself: "Has the Issue been created and the completion report output?" If not, you are NOT done — keep going.
 
-**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`) updates `.rite-flow-state` to a `post_*` phase before returning. This ensures the stop-guard blocks any premature stop attempt, even if the orchestrator's 🚨 Mandatory After instructions are not executed immediately.
+**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`, `create-decompose.md`) updates `.rite-flow-state` to a `post_*` phase before returning. This ensures the stop-guard blocks any premature stop attempt, even if the orchestrator's 🚨 Mandatory After instructions are not executed immediately.
 
 ## Arguments
 
@@ -428,23 +422,11 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-**Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** update `.rite-flow-state` and proceed.
+**Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** proceed to the next phase.
 
 Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
 
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). This write transitions from `create_interview` to `create_post_interview`, ensuring stop-guard routes to Phase 0.6 rather than re-invoking the interview:
-
-```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --next "Phase 0.6: Task Decomposition Decision. Evaluate decomposition triggers, then delegate to create-register or create-decompose. Issue has NOT been created yet. Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_post_interview" --issue 0 --branch "" --loop 0 --pr 0 \
-    --next "Phase 0.6: Task Decomposition Decision. Evaluate decomposition triggers, then delegate to create-register or create-decompose. Issue has NOT been created yet. Do NOT stop."
-fi
-```
+**Step 1**: The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section. No additional flow-state write is needed here (eliminating the redundant double write).
 
 **Step 2**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
@@ -577,13 +559,13 @@ Invoke `skill: "rite:issue:create-register"`.
 | Tentative slug | Phase 0.1.3 | Always available |
 | `phases_skipped` flag | Phase 0.1.5 | Set to `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition. Set to `null` otherwise |
 
-**🚨 Immediate after delegation returns**: When the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs a result pattern (`[register:created:{N}]` or decompose completion) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Delegation below. The sub-skill has already updated `.rite-flow-state` to `create_post_delegation` via its Defense-in-Depth section; execute the 🚨 Mandatory After Delegation steps without delay.
+**🚨 Immediate after delegation returns**: When the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs a result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Delegation below. The sub-skill has already updated `.rite-flow-state` to `create_post_delegation` via its Defense-in-Depth section; execute the 🚨 Mandatory After Delegation steps without delay.
 
 ### 🚨 Mandatory After Delegation
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-**Verify**: Result pattern confirmed (e.g., `[register:created:{N}]`). The Issue has been created.
+**Verify**: Result pattern confirmed (e.g., `[register:created:{N}]` or `[decompose:completed:{N}]`). The Issue(s) have been created.
 
 Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state deactivation) is still pending — this is a required step to prevent the stop-guard from blocking future sessions.
 

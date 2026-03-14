@@ -76,29 +76,6 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# compact_state check: allow stop immediately when blocked to prevent deadlock (#30).
-# Supersedes AC-6 behavior (previously: block stop even when compact_state=blocked).
-# When compact_state is "blocked", post-compact-guard denies ALL tool uses.
-# If stop-guard also blocks stop, the workflow enters a deadlock until error_count
-# threshold is reached (multiple wasted rounds, 11+ minutes stuck).
-# Fix: allow stop immediately when "blocked" so the user can /clear → /rite:resume.
-# "resuming" state: keep blocking stop (normal workflow recovery in progress).
-COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
-if [ -f "$COMPACT_STATE" ]; then
-  COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
-  if [ "$COMPACT_VAL" = "blocked" ]; then
-    log_debug "compact_state=blocked, allowing stop to prevent deadlock (#30)"
-    log_diag "EXIT:0 reason=compact_blocked"
-    cat >&2 <<'STOP_MSG'
-[rite] compact 検出 — stop を許可します。
-/clear → /rite:resume で作業を再開してください。
-STOP_MSG
-    exit 0
-  elif [ "$COMPACT_VAL" = "resuming" ]; then
-    log_debug "compact detected (compact_state=resuming), stop still blocked"
-  fi
-fi
-
 # Parse ISO 8601 timestamp to epoch seconds (GNU/macOS compatible)
 # NOTE: jq's fromdate only supports Z suffix (UTC), not timezone offsets (+HH:MM).
 # Since .rite-flow-state uses +00:00 offset (set by pre-compact.sh), we must use date(1)
@@ -147,6 +124,33 @@ if [ -z "$UPDATED_AT" ]; then
 fi
 
 CURRENT=$(date +%s)
+
+# compact_state check: PostCompact hook handles auto-recovery (#133).
+# When compact_state is "recovering", PostCompact will auto-restore context.
+# Block stop briefly to let PostCompact process. If recovering persists > 120s
+# (PostCompact failure), allow stop as a safety valve.
+COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
+if [ -f "$COMPACT_STATE" ]; then
+  COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
+  if [ "$COMPACT_VAL" = "recovering" ]; then
+    COMPACT_TS=$(jq -r '.compact_state_set_at // empty' "$COMPACT_STATE" 2>/dev/null) || COMPACT_TS=""
+    if [ -n "$COMPACT_TS" ]; then
+      COMPACT_EPOCH=$(parse_iso8601_to_epoch "$COMPACT_TS")
+      COMPACT_AGE=$(( CURRENT - COMPACT_EPOCH ))
+      if [ "$COMPACT_AGE" -gt 120 ]; then
+        log_debug "compact_state=recovering for ${COMPACT_AGE}s (>120s), allowing stop (PostCompact failure fallback)"
+        log_diag "EXIT:0 reason=compact_recovering_timeout age=${COMPACT_AGE}s"
+        cat >&2 <<'STOP_MSG'
+[rite] PostCompact タイムアウト — stop を許可します。
+/rite:resume で作業を再開してください。
+STOP_MSG
+        exit 0
+      fi
+    fi
+    log_debug "compact_state=recovering, blocking stop (PostCompact will handle)"
+  fi
+fi
+
 STATE_TS=$(parse_iso8601_to_epoch "$UPDATED_AT")
 AGE=$(( CURRENT - STATE_TS ))
 if [ "$AGE" -gt 7200 ]; then
