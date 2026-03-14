@@ -5,6 +5,24 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.2.4] - 2026-03-14
+
+### 修正
+
+- 作業メモリコメントの実装計画ステップ状態をコミット時に一括更新 (#138)
+- create-decompose.md に Defense-in-Depth パターンを適用 (#127)
+- テスト内の旧状態名 blocked を recovering に統一
+- develop ブランチ自動削除時の復旧手順を追加
+
+### 変更
+
+- Defense-in-Depth パターンの順序明確化と冗長性解消 (#126)
+- PostCompact フック導入による auto-compact 復帰の自動化 (#133)
+
+### 改善
+
+- create サブスキルのプロンプト品質改善 (#128)
+
 ## [0.2.3] - 2026-03-13
 
 ### 修正
@@ -126,6 +144,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.0...v0.2.1
