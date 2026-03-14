@@ -428,23 +428,11 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-**Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** update `.rite-flow-state` and proceed.
+**Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** proceed to the next phase.
 
 Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
 
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). This write transitions from `create_interview` to `create_post_interview`, ensuring stop-guard routes to Phase 0.6 rather than re-invoking the interview:
-
-```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --next "Phase 0.6: Task Decomposition Decision. Evaluate decomposition triggers, then delegate to create-register or create-decompose. Issue has NOT been created yet. Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_post_interview" --issue 0 --branch "" --loop 0 --pr 0 \
-    --next "Phase 0.6: Task Decomposition Decision. Evaluate decomposition triggers, then delegate to create-register or create-decompose. Issue has NOT been created yet. Do NOT stop."
-fi
-```
+**Step 1**: The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section. No additional flow-state write is needed here (eliminating the redundant double write).
 
 **Step 2**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
