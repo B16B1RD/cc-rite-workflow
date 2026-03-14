@@ -54,17 +54,11 @@ When this command is executed, follow the phases below in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: This protocol mirrors `start.md`'s [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
-
-**When a sub-skill outputs a result pattern (e.g., `[interview:completed]`, `[register:created:{N}]`) and returns control to you:**
-
-1. **DO NOT end your response.** You are still in the middle of the create flow. Ending your response here forces the user to type "continue" manually — this is a **bug**.
-2. **DO NOT re-invoke the completed skill.** It already finished.
-3. **IMMEDIATELY** locate the 🚨 Mandatory After section for the current phase and execute its steps — starting with the `.rite-flow-state` update, then proceeding to the next phase.
+> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the full protocol. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section.
 
 **Self-check**: After every sub-skill returns, ask yourself: "Has the Issue been created and the completion report output?" If not, you are NOT done — keep going.
 
-**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`) updates `.rite-flow-state` to a `post_*` phase before returning. This ensures the stop-guard blocks any premature stop attempt, even if the orchestrator's 🚨 Mandatory After instructions are not executed immediately.
+**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`, `create-decompose.md`) updates `.rite-flow-state` to a `post_*` phase before returning. This ensures the stop-guard blocks any premature stop attempt, even if the orchestrator's 🚨 Mandatory After instructions are not executed immediately.
 
 ## Arguments
 
