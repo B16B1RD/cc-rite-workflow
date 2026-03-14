@@ -612,9 +612,37 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 
 ---
 
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-delegation phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+**Condition**: Execute only on the **Normal path** (sub-Issues created via Phase 0.9). On the **Delegation path** (cancelled and delegated to `create-register`), `create-register.md` handles its own Defense-in-Depth — do NOT execute this section.
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_delegation" \
+    --next "rite:issue:create-decompose completed. Sub-Issues created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
+else
+  bash {plugin_root}/hooks/flow-state-update.sh create \
+    --phase "create_post_delegation" --issue 0 --branch "" --loop 0 --pr 0 \
+    --next "rite:issue:create-decompose completed. Sub-Issues created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
+fi
+```
+
+After the flow-state update above, output the appropriate result pattern:
+
+- **Decomposition completed**: `[decompose:completed:{count}]` (where `{count}` is the number of sub-Issues created)
+
+This pattern is consumed by the orchestrator (`create.md`) to confirm sub-Issue creation and trigger post-completion cleanup.
+
+---
+
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes, the caller (`create.md`) should NOT take any additional action. Completion occurs via one of the following paths:
+When this sub-skill completes, the caller (`create.md`) should NOT take any additional action beyond flow-state deactivation. Completion occurs via one of the following paths:
 
-- **Normal path** (sub-Issues created via Phase 0.9): The completion report has already been output by this sub-skill.
-- **Delegation path** (cancelled and delegated to `create-register`): The completion report will be output by `create-register`. This sub-skill is NOT terminal in this path — `create-register` takes over and completes the workflow.
+- **Normal path** (sub-Issues created via Phase 0.9): The completion report has already been output by this sub-skill. The Defense-in-Depth section above has updated `.rite-flow-state` to `create_post_delegation`.
+- **Delegation path** (cancelled and delegated to `create-register`): The completion report will be output by `create-register`. This sub-skill is NOT terminal in this path — `create-register` takes over and completes the workflow (including its own Defense-in-Depth).

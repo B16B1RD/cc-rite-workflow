@@ -565,13 +565,13 @@ Invoke `skill: "rite:issue:create-register"`.
 | Tentative slug | Phase 0.1.3 | Always available |
 | `phases_skipped` flag | Phase 0.1.5 | Set to `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition. Set to `null` otherwise |
 
-**🚨 Immediate after delegation returns**: When the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs a result pattern (`[register:created:{N}]` or decompose completion) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Delegation below. The sub-skill has already updated `.rite-flow-state` to `create_post_delegation` via its Defense-in-Depth section; execute the 🚨 Mandatory After Delegation steps without delay.
+**🚨 Immediate after delegation returns**: When the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs a result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Delegation below. The sub-skill has already updated `.rite-flow-state` to `create_post_delegation` via its Defense-in-Depth section; execute the 🚨 Mandatory After Delegation steps without delay.
 
 ### 🚨 Mandatory After Delegation
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-**Verify**: Result pattern confirmed (e.g., `[register:created:{N}]`). The Issue has been created.
+**Verify**: Result pattern confirmed (e.g., `[register:created:{N}]` or `[decompose:completed:{N}]`). The Issue(s) have been created.
 
 Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state deactivation) is still pending — this is a required step to prevent the stop-guard from blocking future sessions.
 
