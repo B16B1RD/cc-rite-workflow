@@ -522,14 +522,14 @@ Read `.claude/settings.local.json` and check for existing hooks section. If the 
 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
-1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across Stop, PreCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
+1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
 2. Identify commands containing `rite/hooks/` (this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths)
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `stop-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
 
 **Note**: Phase 4.5.0 resolves `{hooks_dir}` as an absolute path (via `cd ... && pwd`). If existing hooks use relative paths (e.g., `bash plugins/rite/hooks/stop-guard.sh`), they will not match the absolute path and will be correctly marked for update. This is intentional — converting relative paths to absolute paths is one of the goals of this validation.
 
-**Display when outdated paths are detected** (where `{event}` is the hook event name such as Stop/PreCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
+**Display when outdated paths are detected** (where `{event}` is the hook event name such as Stop/PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
 ```
 ⚠️ Outdated rite hook paths detected:
 | Hook Event | Current Command | Expected Command |
@@ -543,7 +543,7 @@ If the file already contains hooks, check each hook command for rite hook patter
 
 **⚠️ このサブフェーズは 4.5.1.1 の結果に関わらず必ず実行する。** 4.5.1.1 が「全パス正常」と判定しても、フックイベント自体が欠落している可能性がある（例: SessionEnd, PreToolUse が未登録）。
 
-After validating existing hook paths in 4.5.1.1, verify that **all** required rite hooks are registered. This check prevents the scenario where some hooks (e.g., Stop, PreCompact, SessionStart) are correctly configured but others (e.g., SessionEnd, PreToolUse) are missing entirely.
+After validating existing hook paths in 4.5.1.1, verify that **all** required rite hooks are registered. This check prevents the scenario where some hooks (e.g., Stop, PreCompact, SessionStart) are correctly configured but others (e.g., SessionEnd, PostCompact) are missing entirely.
 
 **Required hooks**:
 
@@ -551,9 +551,9 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 |------------|--------|---------|---------|
 | Stop | `stop-guard.sh` | `""` | Prevent premature workflow stops |
 | PreCompact | `pre-compact.sh` | `""` | Save state before compaction |
-| SessionStart | `session-start.sh` | `""` | Re-inject state after compaction/resume |
+| PostCompact | `post-compact.sh` | `""` | Auto-recover workflow after compaction |
+| SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
-| PreToolUse | `post-compact-guard.sh` | `""` | Block tools after compaction |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
 | PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM |
 | PostToolUse | `context-pressure.sh` | `""` | Context pressure monitoring (#889) |
@@ -589,9 +589,8 @@ Add the following hooks to `.claude/settings.local.json`:
 |------------|--------|---------|
 | Stop | `bash {hooks_dir}/stop-guard.sh` | Prevent premature workflow stops |
 | PreCompact | `bash {hooks_dir}/pre-compact.sh` | Save state before compaction |
-| SessionStart (compact) | `bash {hooks_dir}/session-start.sh` | Re-inject state after compaction |
-| SessionStart (resume) | `bash {hooks_dir}/session-start.sh` | Re-inject state on resume |
-| PreToolUse | `bash {hooks_dir}/post-compact-guard.sh` | Block tools after compaction |
+| PostCompact | `bash {hooks_dir}/post-compact.sh` | Auto-recover workflow after compaction |
+| SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
 | PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM |
@@ -635,16 +634,18 @@ Add the following hooks to `.claude/settings.local.json`:
         ]
       }
     ],
-    "PreToolUse": [
+    "PostCompact": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "bash {hooks_dir}/post-compact-guard.sh"
+            "command": "bash {hooks_dir}/post-compact.sh"
           }
         ]
-      },
+      }
+    ],
+    "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
@@ -693,7 +694,8 @@ Add the following hooks to `.claude/settings.local.json`:
 **Important**:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks that do NOT contain `rite/hooks/` in their command, preserve them as-is. Do not overwrite or remove user-defined hooks.
 - **rite hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
-- **Missing rite hooks**: If any of the required rite hooks (Stop, PreCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them.
+- **Missing rite hooks**: If any of the required rite hooks (Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them.
+- **Obsolete hooks**: If `post-compact-guard.sh` exists in PreToolUse, **remove** it (replaced by PostCompact `post-compact.sh` in #133).
 - **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `context-pressure.sh` uses `"matcher": ""` to fire on all tool calls. All other hooks use `"matcher": ""`. When multiple PreToolUse or PostToolUse entries exist (different matchers), they are separate array elements.
 - **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
 
@@ -702,7 +704,7 @@ Add the following hooks to `.claude/settings.local.json`:
 Attempt to set executable permissions regardless of source type (LOCAL or MARKETPLACE):
 
 ```bash
-chmod +x {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/post-compact-guard.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
+chmod +x {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
 ```
 
 If `chmod` fails (e.g., permission denied, read-only filesystem), display a warning and continue:
@@ -716,7 +718,7 @@ If hooks fail to run, manually run: chmod +x {hooks_dir}/*.sh
 Verify the hook scripts exist and are executable:
 
 ```bash
-ls -la {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/post-compact-guard.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
+ls -la {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
 ```
 
 If any file is missing or lacks execute permission, display a warning and continue to Phase 5:

@@ -575,18 +575,20 @@ fi
 # stop-guard も stop をブロックするとデッドロックになるため、即座に stop を
 # 許可する（exit 0）。旧 AC-6 の動作を #30 で上書き。
 # --------------------------------------------------------------------------
-echo "TC-024: compact_state=blocked + active=true → exit 0（デッドロック防止 #30）"
+echo "TC-024: compact_state=recovering (>120s) + active=true → exit 0（タイムアウト #133）"
 dir024="$GUARD_TEST_DIR/tc024"
 mkdir -p "$dir024"
 now_ts024=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 create_state_file "$dir024" "{\"active\": true, \"updated_at\": \"$now_ts024\", \"phase\": \"impl\", \"next_action\": \"continue\", \"error_count\": 0}"
-echo '{"compact_state": "blocked"}' > "$dir024/.rite-compact-state"
+# Set compact_state_set_at to 200 seconds ago (>120s timeout)
+old_ts024=$(date -u -d "200 seconds ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-200S +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "2020-01-01T00:00:00Z")
+echo "{\"compact_state\": \"recovering\", \"compact_state_set_at\": \"$old_ts024\"}" > "$dir024/.rite-compact-state"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir024\"}"
 stderr_file024="$(mktemp "$GUARD_TEST_DIR/stderr024.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file024") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file024" "compact 検出" "/clear" "/rite:resume"); then
-    pass "compact_state=blocked → exit 0（デッドロック防止 #30）"
+  if missing=$(assert_stderr_contains "$stderr_file024" "PostCompact タイムアウト" "/rite:resume"); then
+    pass "compact_state=recovering (>120s) → exit 0（PostCompact タイムアウト #133）"
   else
     fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file024")'"
   fi
@@ -600,18 +602,19 @@ fi
 # resuming 状態ではツールが使えるため、デッドロックではない。
 # stop-guard は通常通り停止をブロックすべき。
 # --------------------------------------------------------------------------
-echo "TC-025: compact_state=resuming + active=true → exit 2（通常ブロック維持）"
+echo "TC-025: compact_state=recovering (<120s) + active=true → exit 2（PostCompact 処理待ち #133）"
 dir025="$GUARD_TEST_DIR/tc025"
 mkdir -p "$dir025"
 now_ts025=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 create_state_file "$dir025" "{\"active\": true, \"updated_at\": \"$now_ts025\", \"phase\": \"impl\", \"next_action\": \"continue\", \"error_count\": 0}"
-echo '{"compact_state": "resuming"}' > "$dir025/.rite-compact-state"
+# Set compact_state_set_at to just now (<120s, PostCompact should process soon)
+echo "{\"compact_state\": \"recovering\", \"compact_state_set_at\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}" > "$dir025/.rite-compact-state"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir025\"}"
 stderr_file025="$(mktemp "$GUARD_TEST_DIR/stderr025.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file025") && rc=0 || rc=$?
 if [ $rc -eq 2 ] && [ -z "$output" ]; then
   if missing=$(assert_stderr_contains "$stderr_file025" "Normal operation" "impl" "NOT re-invoke"); then
-    pass "compact_state=resuming → exit 2（デッドロックではないので通常ブロック）"
+    pass "compact_state=recovering (<120s) → exit 2（PostCompact 処理待ち）"
   else
     fail "exit 2 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file025")'"
   fi
@@ -650,18 +653,19 @@ fi
 # compact_state=blocked は即座に stop を許可する（#30）。
 # 両方が存在する場合、compact_state=blocked が優先され exit 0 となる。
 # --------------------------------------------------------------------------
-echo "TC-027: needs_clear=true + compact_state=blocked → exit 0（#30 優先）"
+echo "TC-027: needs_clear=true + compact_state=recovering (>120s) → exit 0（タイムアウト優先 #133）"
 dir027="$GUARD_TEST_DIR/tc027"
 mkdir -p "$dir027"
 now_ts027=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 create_state_file "$dir027" "{\"active\": true, \"updated_at\": \"$now_ts027\", \"phase\": \"phase5_review\", \"next_action\": \"proceed to fix\", \"error_count\": 0, \"needs_clear\": true}"
-echo '{"compact_state": "blocked"}' > "$dir027/.rite-compact-state"
+old_ts027=$(date -u -d "200 seconds ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-200S +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "2020-01-01T00:00:00Z")
+echo "{\"compact_state\": \"recovering\", \"compact_state_set_at\": \"$old_ts027\"}" > "$dir027/.rite-compact-state"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir027\"}"
 stderr_file027="$(mktemp "$GUARD_TEST_DIR/stderr027.XXXXXX")"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file027") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ -z "$output" ]; then
-  if missing=$(assert_stderr_contains "$stderr_file027" "compact 検出" "/clear" "/rite:resume"); then
-    pass "needs_clear=true + compact_state=blocked → exit 0（#30 デッドロック防止優先）"
+  if missing=$(assert_stderr_contains "$stderr_file027" "PostCompact タイムアウト" "/rite:resume"); then
+    pass "needs_clear=true + compact_state=recovering (>120s) → exit 0（タイムアウト優先 #133）"
   else
     fail "exit 0 だが stderr にパターン不在 '$missing': '$(cat "$stderr_file027")'"
   fi

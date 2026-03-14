@@ -70,16 +70,15 @@ if acquire_wm_lock "$LOCKDIR"; then
     fi
   fi
 
-  # Write compact state — always set to "blocked" regardless of current state (#854)
+  # Write compact state — always set to "recovering" regardless of current state (#854, #133)
   # The previous "skip if resuming" guard (#851) was insufficient: when
   # post-compact-guard transitioned blocked→resuming on first denial, a second
   # compact would see "resuming" and skip, leaving all guards permissive.
-  # Now post-compact-guard no longer transitions (stays blocked), and pre-compact
-  # always sets "blocked" to ensure every compact triggers a full stop.
-  # Only /clear (session-start.sh) transitions blocked→resuming.
+  # Now PostCompact hook handles auto-recovery (recovering→normal), and pre-compact
+  # always sets "recovering" to ensure every compact triggers PostCompact processing.
   TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
   if jq -n \
-    --arg state "blocked" \
+    --arg state "recovering" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     --argjson issue "$ACTIVE_ISSUE" \
     '{compact_state: $state, compact_state_set_at: $ts, active_issue: $issue}' \
@@ -119,7 +118,7 @@ if acquire_wm_lock "$LOCKDIR"; then
       WM_PHASE="$PHASE" \
       WM_PHASE_DETAIL="compact 前 snapshot" \
       WM_NEXT_ACTION="$NEXT_ACT" \
-      WM_BODY_TEXT="Pre-compact snapshot. Resume with /clear then /rite:resume." \
+      WM_BODY_TEXT="Pre-compact snapshot. PostCompact will auto-recover." \
       WM_PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")" \
       WM_PR_NUMBER="$PR_NUM" \
       WM_LOOP_COUNT="$LOOP_CNT" \
@@ -155,10 +154,11 @@ if [ "${FLOW_ACTIVE:-false}" = "true" ]; then
   _PHASE="${PHASE:-unknown}"
 
   # stderr: displayed directly to user's terminal (guaranteed visibility)
-  echo "[rite] ⚠️ compact detected (Issue #${_ISSUE}, Phase: ${_PHASE}). run /clear, then /rite:resume" >&2
+  echo "[rite] ⚠️ compact detected (Issue #${_ISSUE}, Phase: ${_PHASE}). Auto-recovery will proceed via PostCompact." >&2
 
   # stdout: fed to model as hook output (#887, #889)
   # Minimal message to reduce post-compaction token overhead.
   # System prompt alone is ~200K tokens; every token saved here helps stay under API limit.
-  echo "STOP. Compact detected. Issue #${_ISSUE}. Tell user: /clear then /rite:resume. STOP."
+  # PostCompact hook will restore full context after compaction completes.
+  echo "STOP. Compact detected. Issue #${_ISSUE}. PostCompact will restore context. STOP."
 fi

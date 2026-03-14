@@ -90,7 +90,7 @@ echo ""
 echo "TC-003: compact_state=blocked → exit 1 (block)"
 dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003"
-create_compact_state "$dir003" '{"compact_state": "blocked", "active_issue": 42, "compact_state_set_at": "2026-01-01T00:00:00Z"}'
+create_compact_state "$dir003" '{"compact_state": "recovering", "active_issue": 42, "compact_state_set_at": "2026-01-01T00:00:00Z"}'
 output=$(bash "$HOOK" --command-id "/rite:issue:start" --cwd "$dir003" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   if echo "$output" | grep -q "#42"; then
@@ -109,7 +109,7 @@ echo ""
 echo "TC-004: compact_state=blocked + /rite:resume → exit 0 (allow)"
 dir004="$TEST_DIR/tc004"
 mkdir -p "$dir004"
-create_compact_state "$dir004" '{"compact_state": "blocked", "active_issue": 42}'
+create_compact_state "$dir004" '{"compact_state": "recovering", "active_issue": 42}'
 if run_hook "$dir004" "/rite:resume"; then
   pass "Blocked state + /rite:resume → allowed"
 else
@@ -222,7 +222,7 @@ echo ""
 echo "TC-011: Blocked state output contains Issue and timestamp"
 dir011="$TEST_DIR/tc011"
 mkdir -p "$dir011"
-create_compact_state "$dir011" '{"compact_state": "blocked", "active_issue": 123, "compact_state_set_at": "2026-02-22T00:00:00Z"}'
+create_compact_state "$dir011" '{"compact_state": "recovering", "active_issue": 123, "compact_state_set_at": "2026-02-22T00:00:00Z"}'
 output=$(bash "$HOOK" --command-id "/rite:issue:list" --cwd "$dir011" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   if echo "$output" | grep -q "#123" && echo "$output" | grep -q "/rite:issue:list"; then
