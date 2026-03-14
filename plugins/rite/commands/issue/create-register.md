@@ -589,7 +589,7 @@ fi
 
 Output the result pattern after the completion report:
 
-- **Issue created**: `[register:created:{number}]` (where `{number}` is the created Issue number)
+- **Issue created**: `[register:created:{number}]` (where `{number}` is the `$issue_number` from Phase 2.2 — the actual GitHub Issue number returned by `gh issue create`)
 
 This pattern is consumed by the orchestrator (`create.md`) to confirm Issue creation and trigger post-completion cleanup.
 
