@@ -284,7 +284,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
 **Re-evaluation procedure**:
 
-1. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are also recorded in work memory's progress summary (updated in bulk at commit time, not after every step)
+1. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step)
 2. **Update dependency state**: Identify newly unblocked steps (steps whose `depends_on` are all complete)
 3. **Select next step**: From the unblocked steps, pick the one with highest priority using:
 
@@ -563,7 +563,7 @@ Also synchronize the "Issue checklist" section in the work memory.
 
 **Execution condition**: Execute after commit and push succeed, when on a work branch with an Issue number (`issue-{n}` pattern).
 
-**Purpose**: Update the progress summary table and changed files section in the Issue work memory comment to reflect the actual implementation state. This ensures these sections are not left in their initial "⬜ 未着手" / "_まだ変更はありません_" state after implementation completes.
+**Purpose**: Update the progress summary table, implementation plan step statuses (`状態` column), and changed files section in the Issue work memory comment to reflect the actual implementation state. This ensures these sections are not left in their initial "⬜ 未着手" / "_まだ変更はありません_" state after implementation completes.
 
 **Step 1: Determine progress summary statuses**
 
@@ -644,6 +644,17 @@ if not v2_updated:
             if "完了" in status:
                 body = re.sub(r"- \[ \] " + re.escape(item), "- [x] " + item, body, count=1)
 
+# Update implementation plan step statuses (状態 column)
+# Marks all steps as ✅ at commit time (bulk update).
+# The 状態 column format: | S{n} | ... | ⬜ | → | S{n} | ... | ✅ |
+# Only updates rows where 状態 is ⬜ (not already ✅ or ⚠️)
+if "### 実装計画" in body:
+    body = re.sub(
+        r"(\| S\d+(?:\.\d+)? \|.*?\| )(⬜)( \|)",
+        r"\g<1>✅\g<3>",
+        body
+    )
+
 # Replace changed files section content
 pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
 body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
@@ -674,6 +685,8 @@ fi
 ```
 
 **Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings determined in Step 1 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). `{changed_files_md}` is the formatted file list from Step 2 (written to a temp file to avoid backtick command substitution in shell). All other `{...}` placeholders follow the standard placeholder legend.
+
+**Implementation plan step status update**: The Python script also updates the `### 実装計画` section's `状態` column, marking all `⬜` steps as `✅` at commit time. Steps already marked as `✅` or `⚠️ 再分解` are preserved. This provides bulk persistence of step completion state that was previously only tracked in conversation context (see 5.1.0.5).
 
 **On failure**: Display WARNING and continue (non-blocking). The progress update is best-effort; `.rite-flow-state` is the primary state record.
 
