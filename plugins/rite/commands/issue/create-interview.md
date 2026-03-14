@@ -511,9 +511,7 @@ else
 fi
 ```
 
-## Result Pattern Output
-
-Output the appropriate result pattern before returning:
+After the flow-state update above, output the appropriate result pattern:
 
 - **Interview completed**: `[interview:completed]`
 - **Interview skipped** (XS, Bug Fix, Chore): `[interview:skipped]`
@@ -526,8 +524,7 @@ This pattern is consumed by the orchestrator (`create.md`) to determine the next
 
 When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller (`create.md`) **MUST immediately** execute its 🚨 Mandatory After Interview section:
 
-1. Update `.rite-flow-state` to `create_post_interview` phase
-2. Proceed to Phase 0.6 (Task Decomposition Decision)
+1. Proceed to Phase 0.6 (Task Decomposition Decision)
 
 **WARNING**: **No GitHub Issue has been created yet.** No GitHub Issue exists at this point. The interview only collected information — creation happens in `create-register.md` or `create-decompose.md`. Stopping here would completely abandon the workflow with no Issue created.
 
