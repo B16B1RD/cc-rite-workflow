@@ -29,6 +29,8 @@ When this command is executed, run the following phases in order.
 
 ## Phase 1: Configuration Check
 
+> **Reference**: [Contextual Commits Reference](../../skills/rite-workflow/references/contextual-commits.md) for action line format, generation source priority, and queryability patterns.
+
 ### 1.1 Read Configuration
 
 Read `rite-config.yml` with the Read tool and check `commit.contextual`:
@@ -75,20 +77,32 @@ Based on the mode determined in Phase 2:
 
 **mode = "branch" (現在ブランチ)**:
 
+Before executing git log, verify the base branch exists:
+
 ```bash
-git log {base_branch}..HEAD --format="%H%n%s%n%ai%n%b---COMMIT_END---"
+# Step 1: Verify base branch exists
+git rev-parse --verify {base_branch} 2>/dev/null
+# If fails, try remote:
+git rev-parse --verify origin/{base_branch} 2>/dev/null
+# If both fail: display "{i18n:issue_recall_error_no_base_branch}" and terminate
+```
+
+Use `{base_branch}` if local exists, otherwise `origin/{base_branch}`:
+
+```bash
+git log {base_branch}..HEAD --format="%H%n%s%n%ai%n%b---COMMIT_END---" --max-count=200
 ```
 
 **mode = "scope"**:
 
 ```bash
-git log --all --grep="({scope}" --format="%H%n%s%n%ai%n%b---COMMIT_END---" --max-count=100
+git log --all --fixed-strings --grep="({scope}" --format="%H%n%s%n%ai%n%b---COMMIT_END---" --max-count=100
 ```
 
 **mode = "action_scope"**:
 
 ```bash
-git log --all --grep="{action}({scope}" --format="%H%n%s%n%ai%n%b---COMMIT_END---" --max-count=100
+git log --all --fixed-strings --grep="{action}({scope}" --format="%H%n%s%n%ai%n%b---COMMIT_END---" --max-count=100
 ```
 
 ### 3.2 Empty Result Handling
@@ -111,11 +125,12 @@ Terminate.
 
 ### 4.1 Parse Commits
 
-For each commit in the git log output, extract:
-- `hash`: commit SHA (short, first 7 chars)
-- `subject`: commit subject line
-- `date`: commit date
-- `body`: commit body
+Split the git log output by `---COMMIT_END---` delimiter. For each commit block, parse by newline position:
+
+- **Line 1**: `hash` — full commit SHA (display first 7 chars)
+- **Line 2**: `subject` — commit subject line
+- **Line 3**: `date` — author date (ISO-like format from `%ai`)
+- **Line 4+**: `body` — commit body (all remaining lines until the delimiter)
 
 ### 4.2 Extract Action Lines
 
