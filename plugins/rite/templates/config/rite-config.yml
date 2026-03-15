@@ -81,6 +81,7 @@ branch:
 commit:
   style: conventional  # conventional | free
   enforce: false
+  contextual: true     # Contextual Commits action lines in commit body (true | false)
 
 # Build/test/lint commands (null = auto-detect)
 commands:
