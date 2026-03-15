@@ -544,9 +544,50 @@ Before generating the commit message, check the `language` field in `rite-config
 | `en` or `auto` (English input) | `fix(review): address review feedback` |
 | `ja` or `auto` (Japanese input) | `fix(review): レビュー指摘に対応` |
 
-**Commit body (recommended):**
+**Commit body:**
 
-Include the reason for the change ("why") in the commit body (lines after the first line). This improves git history readability and traceability.
+> **Reference**: [Contextual Commits Reference](../../skills/rite-workflow/references/contextual-commits.md) for action line specification, mapping tables, output rules, and scope derivation.
+
+Check `commit.contextual` in `rite-config.yml` to determine the commit body format.
+
+**When `commit.contextual: true` (default):**
+
+Generate structured action lines in the commit body following the Contextual Commits format. Review-fix commits are rich in decisions, making action lines particularly valuable.
+
+- Leave a blank line between the description line and the action lines
+- Can be omitted for trivial changes (typo fixes, formatting, etc.)
+
+**Generation procedure:**
+
+1. **Read review findings**: Extract from the review findings being addressed — the review指摘 and chosen対応方針 are the primary source for `decision` (Priority 1 — highest reliability for review-fix commits)
+2. **Read work memory**: Extract from `決定事項・メモ`, `計画逸脱ログ`, `要確認事項` sections (Priority 2)
+3. **Infer from diff**: When the diff shows clear technical choices, infer `decision` (Priority 3 — use only when evident)
+4. **Apply review-fix mapping table**: Map each extracted item to action types using the [Review-Fix Commit Mapping](../../skills/rite-workflow/references/contextual-commits.md#review-fix-commit-mapping-prfixmd) table:
+   - レビュー指摘の対応方針 → `decision(scope)`
+   - 対応しなかった指摘とその理由 → `rejected(scope)`
+   - 対応中に発見した制約 → `constraint(scope)`
+   - 対応中の発見事項 → `learned(scope)`
+5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `intent` (intent is preserved last as the core "why")
+
+**Output rules:**
+- Action type names are always in English (`intent`, `decision`, `rejected`, `constraint`, `learned`)
+- Description follows the `language` setting in `rite-config.yml`
+- Do not repeat information already visible in the diff
+- Do not fabricate action lines without evidence from review findings, work memory, or diff
+
+**Example (language: ja):**
+
+```
+fix(review): レビュー指摘に対応
+
+decision(validation): 入力バリデーションを追加（レビュー指摘: 未検証の入力がエラーを引き起こす可能性）
+rejected(refactor): ハンドラー全体のリファクタリングは見送り — スコープ外、別 Issue で対応
+learned(error-handling): エラーレスポンスのフォーマットは既存の middleware と統一する必要あり
+```
+
+**When `commit.contextual: false`:**
+
+Use free-form commit body. Include the reason for the change ("why") in the commit body.
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required
@@ -563,8 +604,7 @@ Include the reason for the change ("why") in the commit body (lines after the fi
 
 fix(review): {description}
 
-- {change_1}
-- {change_2}
+{action_lines (when commit.contextual: true)}
 
 {trailer}
 
