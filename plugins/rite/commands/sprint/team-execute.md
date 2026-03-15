@@ -343,8 +343,6 @@ git -C {worktree_path} add -A
 
 **Step 2**: Generate commit message with Contextual Commits action lines:
 
-**Commit body:**
-
 > **Reference**: [Contextual Commits Reference](../../skills/rite-workflow/references/contextual-commits.md) for action line specification, mapping tables, output rules, and scope derivation.
 
 Check `commit.contextual` in `rite-config.yml` to determine the commit body format.
@@ -358,7 +356,9 @@ Generate structured action lines in the commit body following the Contextual Com
 
 **Generation procedure (team-execute specific):**
 
-1. **Read teammate output**: Extract decisions, issues, and implementation summary from the teammate's Task result (Priority 1 — direct output from the implementing agent)
+> **Note**: This overrides the standard source priority in [contextual-commits.md](../../skills/rite-workflow/references/contextual-commits.md#generation-source-priority) — teammate Task output replaces work memory as the highest-priority source because teammates do not commit directly and their work results are the most reliable source of implementation decisions in parallel execution.
+
+1. **Read teammate output**: Extract changed file list, implementation summary, issues, and concerns from the teammate's Task result (Priority 1 — direct output from the implementing agent, as defined in Phase 3.1.4 Result collection)
 2. **Read work memory**: If available in `{worktree_path}/.rite-work-memory/issue-{issue_number}.md`, extract from `決定事項・メモ`, `計画逸脱ログ`, `要確認事項` sections (Priority 2)
 3. **Extract from Issue body**: Derive `intent` from Issue purpose/motivation, `constraint` from acceptance criteria and technical restrictions (Priority 3)
 4. **Infer from diff**: When `git -C {worktree_path} diff --cached` shows clear technical choices (new dependencies, library switches, API design), infer `decision` (Priority 4 — use only when evident)
@@ -384,14 +384,32 @@ decision(source): teammate の Task 結果サマリーを最優先ソースと�
 
 Use free-form commit body. Include the reason for the change ("why") in the commit body.
 
+- Leave a blank line between the description line and the body
+- Focus on "why" the change was needed, not "what" was changed
+- Follow the `language` setting in `rite-config.yml`
+
 **Step 3**: Commit with the generated message:
 
+**When `commit.contextual: true`:**
+
 ```bash
-# Commit with conventional commit message
 git -C {worktree_path} commit -m "$(cat <<'EOF'
 {commit_type}(#{issue_number}): {commit_message}
 
-{action_lines (when commit.contextual: true)}
+{action_lines}
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+EOF
+)"
+```
+
+**When `commit.contextual: false`:**
+
+```bash
+git -C {worktree_path} commit -m "$(cat <<'EOF'
+{commit_type}(#{issue_number}): {commit_message}
+
+{free_form_body}
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
