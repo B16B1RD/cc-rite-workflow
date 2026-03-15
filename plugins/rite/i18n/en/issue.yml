@@ -184,3 +184,13 @@ messages:
   issue_list_filter_sprint: "Sprint: {sprint_name}"
   issue_list_filter_backlog: "Backlog"
   issue_list_iteration: "Iteration"
+
+  # Issue Recall command
+  issue_recall_disabled: "Contextual Commits is disabled (commit.contextual: false). Enable it in rite-config.yml"
+  issue_recall_invalid_action: "Invalid action type. Valid values: intent, decision, rejected, constraint, learned"
+  issue_recall_no_results: "No action lines found"
+  issue_recall_no_results_branch_hint: "No contextual commits on current branch. Set commit.contextual: true to include action lines in commits"
+  issue_recall_no_results_scope_hint: "No action lines match the specified scope. Try broadening the scope or use /rite:issue:recall for all results"
+  issue_recall_large_result: "Results exceed 50 entries. Filter with a more specific scope or action type"
+  issue_recall_error_not_git: "Please run inside a Git repository"
+  issue_recall_error_no_base_branch: "Base branch {branch} not found. Check branch.base in rite-config.yml"

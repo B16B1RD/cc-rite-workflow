@@ -5,6 +5,22 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-03-16
+
+### Added
+
+- Contextual Commits integration: structured action lines in commit body for decision persistence (#144)
+  - Configuration and reference documentation (`commit.contextual` setting) (#145, #150)
+  - Action line generation in `implement.md` commit flow (#146, #151)
+  - Action line generation in `pr/fix.md` review-fix commit flow (#147, #152)
+  - `/rite:issue:recall` command for searching contextual commit history (#148, #153)
+  - Action line generation in `team-execute.md` parallel commit flow (#149, #156)
+
+### Fixed
+
+- Edge case handling in `recall.md`: base branch fallback, grep metacharacter escaping, max-count consistency (#154, #155)
+- Added GitHub Projects integration and status transitions to release skill
+
 ## [0.2.4] - 2026-03-14
 
 ### Fixed
@@ -144,6 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.1...v0.2.2

@@ -58,6 +58,7 @@ branch:
 commit:
   style: conventional
   enforce: true
+  contextual: true    # Contextual Commits action lines in commit body
 
 # Build/test/lint commands
 commands:

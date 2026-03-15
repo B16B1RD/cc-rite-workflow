@@ -5,6 +5,22 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.2.5] - 2026-03-16
+
+### 追加
+
+- Contextual Commits 統合: コミット body に構造化アクションラインを埋め込み、意思決定を永続化 (#144)
+  - 設定とリファレンスドキュメント（`commit.contextual` 設定） (#145, #150)
+  - `implement.md` のコミットフローにアクションライン生成を追加 (#146, #151)
+  - `pr/fix.md` のレビュー修正コミットにアクションライン生成を追加 (#147, #152)
+  - `/rite:issue:recall` コマンドを新設（コンテキストコミット履歴の検索） (#148, #153)
+  - `team-execute.md` の並列コミットにアクションライン生成を追加 (#149, #156)
+
+### 修正
+
+- `recall.md` のエッジケース対応: base branch フォールバック、grep メタ文字対策、max-count 一貫性 (#154, #155)
+- リリーススキルに GitHub Projects 連携とステータス遷移を追加
+
 ## [0.2.4] - 2026-03-14
 
 ### 修正
@@ -144,6 +160,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.1...v0.2.2

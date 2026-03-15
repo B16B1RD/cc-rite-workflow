@@ -334,28 +334,95 @@ If only one command is configured, run that command alone. If neither is configu
 
 **Owner: Team Lead only.** For each passing worktree:
 
-**Step 1**: Stage and commit changes using `git -C` (no `cd` needed):
+**Step 1**: Stage changes using `git -C` (no `cd` needed):
 
 ```bash
 # Stage all changes in the worktree
 git -C {worktree_path} add -A
+```
 
-# Commit with conventional commit message
+**Step 2**: Generate commit message with Contextual Commits action lines:
+
+> **Reference**: [Contextual Commits Reference](../../skills/rite-workflow/references/contextual-commits.md) for action line specification, mapping tables, output rules, and scope derivation.
+
+Check `commit.contextual` in `rite-config.yml` to determine the commit body format.
+
+**When `commit.contextual: true` (default):**
+
+Generate structured action lines in the commit body following the Contextual Commits format. In team-execute, the Team Lead generates action lines from each teammate's work results.
+
+- Leave a blank line between the description line and the action lines
+- Can be omitted for trivial changes (typo fixes, formatting, dependency bumps, etc.)
+
+**Generation procedure (team-execute specific):**
+
+> **Note**: This overrides the standard source priority in [contextual-commits.md](../../skills/rite-workflow/references/contextual-commits.md#generation-source-priority) — teammate Task output replaces work memory as the highest-priority source because teammates do not commit directly and their work results are the most reliable source of implementation decisions in parallel execution.
+
+1. **Read teammate output**: Extract changed file list, implementation summary, issues, and concerns from the teammate's Task result (Priority 1 — direct output from the implementing agent, as defined in Phase 3.1.4 Result collection)
+2. **Read work memory**: If available in `{worktree_path}/.rite-work-memory/issue-{issue_number}.md`, extract from `決定事項・メモ`, `計画逸脱ログ`, `要確認事項` sections (Priority 2)
+3. **Extract from Issue body**: Derive `intent` from Issue purpose/motivation, `constraint` from acceptance criteria and technical restrictions (Priority 3)
+4. **Infer from diff**: When `git -C {worktree_path} diff --cached` shows clear technical choices (new dependencies, library switches, API design), infer `decision` (Priority 4 — use only when evident)
+5. **Apply mapping table**: Map each extracted item to action types using the [Work Memory → Action Line Mapping](../../skills/rite-workflow/references/contextual-commits.md#work-memory--action-line-mapping) table
+6. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `intent` (intent is preserved last as the core "why")
+
+**Output rules:**
+- Action type names are always in English (`intent`, `decision`, `rejected`, `constraint`, `learned`)
+- Description follows the `language` setting in `rite-config.yml`
+- Do not repeat information already visible in the diff
+- Do not fabricate action lines without evidence from teammate output, work memory, Issue body, or diff
+
+**Example (language: ja):**
+
+```
+feat(#149): team-execute のコミットテンプレートに Contextual Commits を追加
+
+intent(team-execute): 並列実行時のコミットにも意思決定の永続記録を埋め込む
+decision(source): teammate の Task 結果サマリーを最優先ソースとして使用（worktree 内の作業メモリは存在しない場合がある）
+```
+
+**When `commit.contextual: false`:**
+
+Use free-form commit body. Include the reason for the change ("why") in the commit body.
+
+- Leave a blank line between the description line and the body
+- Focus on "why" the change was needed, not "what" was changed
+- Follow the `language` setting in `rite-config.yml`
+
+**Step 3**: Commit with the generated message:
+
+**When `commit.contextual: true`:**
+
+```bash
 git -C {worktree_path} commit -m "$(cat <<'EOF'
 {commit_type}(#{issue_number}): {commit_message}
+
+{action_lines}
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
 )"
 ```
 
-**Step 2**: Push the branch (from main repo, not worktree):
+**When `commit.contextual: false`:**
+
+```bash
+git -C {worktree_path} commit -m "$(cat <<'EOF'
+{commit_type}(#{issue_number}): {commit_message}
+
+{free_form_body}
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+EOF
+)"
+```
+
+**Step 4**: Push the branch (from main repo, not worktree):
 
 ```bash
 git push origin {branch_name}
 ```
 
-**Step 3**: Update GitHub Projects Status to "In Progress":
+**Step 5**: Update GitHub Projects Status to "In Progress":
 
 Follow [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update) pattern.
 
