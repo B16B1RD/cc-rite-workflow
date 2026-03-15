@@ -22,6 +22,7 @@ This skill provides context for rite workflow operations.
 - branch, commit
 - GitHub Projects
 - review, lint
+- recall, 決定事項検索, コンテキスト, なぜ
 
 ## Context
 
@@ -69,6 +70,7 @@ Detect current state from:
 | Long session (30+ minutes elapsed) | `/rite:issue:update` |
 | Sprint with Todo Issues available | `/rite:sprint:execute` to run Issues sequentially |
 | Sprint with multiple independent Issues | `/rite:sprint:team-execute` to run Issues in parallel with worktrees |
+| Want to recall past decisions or context | `/rite:issue:recall` or `/rite:issue:recall {scope}` |
 
 ## Question Management
 

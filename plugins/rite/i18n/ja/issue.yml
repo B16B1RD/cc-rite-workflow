@@ -184,3 +184,13 @@ messages:
   issue_list_filter_sprint: "スプリント: {sprint_name}"
   issue_list_filter_backlog: "バックログ"
   issue_list_iteration: "Iteration"
+
+  # Issue Recall コマンド
+  issue_recall_disabled: "Contextual Commits が無効です（commit.contextual: false）。rite-config.yml で有効にしてください"
+  issue_recall_invalid_action: "無効なアクションタイプです。有効な値: intent, decision, rejected, constraint, learned"
+  issue_recall_no_results: "アクションラインが見つかりませんでした"
+  issue_recall_no_results_branch_hint: "現在のブランチにはコンテキストコミットがありません。コミットにアクションラインを含めるには commit.contextual: true を設定してください"
+  issue_recall_no_results_scope_hint: "指定した scope に一致するアクションラインがありません。scope を広げるか、/rite:issue:recall で全件検索してください"
+  issue_recall_large_result: "結果が 50 件を超えています。より具体的な scope またはアクションタイプでフィルタしてください"
+  issue_recall_error_not_git: "Git リポジトリ内で実行してください"
+  issue_recall_error_no_base_branch: "ベースブランチ {branch} が見つかりません。rite-config.yml の branch.base を確認してください"
