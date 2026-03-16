@@ -863,7 +863,7 @@ When context pressure is detected (tool call count > `context_optimization.agent
    bash plugins/rite/hooks/flow-state-update.sh create \
      --phase "{phase_value}" --issue {issue_number} --branch "{branch_name}" \
      --pr {pr_number} \
-        --next "{next_action_value}"
+     --next "{next_action_value}"
    ```
 
 4. Update `.rite-flow-state` with agent results (pr_number)
