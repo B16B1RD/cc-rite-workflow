@@ -6,6 +6,7 @@ set -euo pipefail
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -76,42 +77,7 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# Parse ISO 8601 timestamp to epoch seconds (GNU/macOS compatible)
-# NOTE: jq's fromdate only supports Z suffix (UTC), not timezone offsets (+HH:MM).
-# Since .rite-flow-state uses +00:00 offset (set by pre-compact.sh), we must use date(1)
-# to parse the timestamp correctly on both GNU (Linux) and BSD (macOS) systems.
-parse_iso8601_to_epoch() {
-  local ts="$1"
-  local epoch
-  # Validate ISO 8601 format before passing to date
-  # Supports both +HH:MM/-HH:MM offsets and Z suffix (UTC)
-  if ! [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$ ]]; then
-    echo 0
-    return 0
-  fi
-  # Normalize Z suffix to +00:00 for consistent parsing
-  ts="${ts/%Z/+00:00}"
-  # Try GNU date -d first (Linux)
-  if epoch=$(date -d "$ts" +%s 2>/dev/null); then
-    echo "$epoch"
-    return 0
-  fi
-  # Try macOS date -j -f (strip colon from timezone offset: +09:00 -> +0900)
-  local ts_nocolon
-  # Strip colon from timezone offset: +09:00 -> +0900 (bash parameter expansion avoids sed subshell)
-  # e.g. ts="2026-03-04T00:04:17+09:00"
-  #   ${ts%:*}  -> "2026-03-04T00:04:17+09"  (remove shortest suffix matching :*)
-  #   ${ts##*:} -> "00"                       (remove longest prefix matching *:)
-  #   result    -> "2026-03-04T00:04:17+0900"
-  # Requires: ts has already passed the regex validation above (line 102)
-  ts_nocolon="${ts%:*}${ts##*:}"
-  if epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$ts_nocolon" +%s 2>/dev/null); then
-    echo "$epoch"
-    return 0
-  fi
-  # Fallback: return 0 (will be treated as stale)
-  echo 0
-}
+# parse_iso8601_to_epoch is now provided by session-ownership.sh (sourced above)
 
 # Check staleness (over 2 hours = likely abandoned; extended from 1h to accommodate
 # multi-reviewer reviews which can take 60-90 minutes, fixes #719)
