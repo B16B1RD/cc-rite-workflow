@@ -1208,13 +1208,13 @@ Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (d
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_fix" \
-  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (re-review). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
   --if-exists
 ```
 
 **Note on `error_count`**: The `flow-state-update.sh` patch mode preserves all existing fields not explicitly set (`phase`, `updated_at`, `next_action`), so `error_count` is retained from the existing `.rite-flow-state` (unlike `start.md` which creates a fresh object without `error_count`). The count is effectively reset when `/rite:issue:start` Phase 5.4.1 or 5.4.4 writes a new complete object via `jq -n`.
 
-**Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with `loop_count` increment and phase transition:
+**Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details and marketplace install notes.
 
@@ -1223,8 +1223,7 @@ WM_SOURCE="fix" \
   WM_PHASE="phase5_post_fix" \
   WM_PHASE_DETAIL="レビュー修正後処理" \
   WM_NEXT_ACTION="re-review or completion" \
-  WM_BODY_TEXT="Post-fix. loop_count incremented." \
-  WM_LOOP_INCREMENT="true" \
+  WM_BODY_TEXT="Post-fix sync." \
   WM_ISSUE_NUMBER="{issue_number}" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```

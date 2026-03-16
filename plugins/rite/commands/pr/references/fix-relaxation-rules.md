@@ -4,7 +4,7 @@ Defines how fix targets are determined in the `/rite:issue:start` review-fix loo
 
 ## Overview
 
-All findings are always blocking regardless of loop count or severity. The review-fix loop continues until all findings are resolved (0 findings remaining) or `max_iterations` is reached.
+All findings are always blocking regardless of severity. The review-fix loop continues until all findings are resolved (0 findings remaining).
 
 ## Fix Target Classification
 
@@ -22,7 +22,8 @@ All findings (CRITICAL/HIGH/MEDIUM/LOW) are always fix targets. There is no auto
 | Condition | Result |
 |-----------|--------|
 | 0 findings remaining | Loop exits with `[review:mergeable]` |
-| `max_iterations` reached | Loop exits with `[review:loop-limit:{n}]`, remaining findings converted to separate Issues |
+
+The only exit condition is zero findings. There is no forced termination based on loop count or iteration limits.
 
 ## Caller Detection
 

@@ -16,12 +16,9 @@ Use **all findings** for determination (all findings are blocking). Priority: CR
 
 ## 5.3.5 Output Format at Assessment Decision Time
 
-When determining the assessment, explicitly output the finding count and loop information in the following format:
+When determining the assessment, explicitly output the finding count in the following format:
 
 ```
-【ループ情報】
-- 現在のループ回数: {loop_count} / {max_iterations}
-
 【指摘件数サマリー】
 - CRITICAL: {count} 件
 - HIGH: {count} 件
@@ -34,8 +31,6 @@ When determining the assessment, explicitly output the finding count and loop in
 - 優先度 {n} に該当: {条件の説明}
 - 総合評価: {マージ可 / マージ不可（指摘あり） / 修正必要}
 ```
-
-**Note**: For standalone execution (outside a loop), display the loop count in the "Loop Information" section as "1 / {max_iterations} (standalone execution)".
 
 **Additional output for verification mode:**
 
@@ -53,7 +48,7 @@ When `review_mode == "verification"`, output the following in addition to the ab
 
 ## 5.3.6 Return Values to Caller (Important)
 
-Return: total_findings (if >0, `/rite:pr:fix` required), evaluation, loop_count, review_mode.
+Return: total_findings (if >0, `/rite:pr:fix` required), evaluation, review_mode.
 
 **Red important constraint:**
 
