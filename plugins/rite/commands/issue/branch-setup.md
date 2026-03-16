@@ -76,7 +76,19 @@ On Step 2 failure, process with the following flow:
    - Remote exists -> Determine as network error etc., display error and abort
    - Remote absent -> Proceed to 2.3.2.2
 
-2. **2.3.2.2**: Check local existence with `local_match=$(git branch --list "{base_branch}")` — check **output** (non-empty = exists), NOT exit code (always 0)
+2. **2.3.2.2**: Check local existence — check **output** (non-empty = exists), NOT exit code (always 0)
+
+   > **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found.
+
+   ```bash
+   local_match=$(git branch --list "{base_branch}")
+   if [ -n "$local_match" ]; then
+     echo "BRANCH_EXISTS"
+   else
+     echo "BRANCH_NOT_FOUND"
+   fi
+   ```
+
    - `local_match` non-empty (local exists) -> Confirm with `AskUserQuestion` (push and continue / use local as base / fix config / cancel)
    - `local_match` empty (local absent) -> Proceed to 2.3.2.3
 

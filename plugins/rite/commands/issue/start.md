@@ -234,7 +234,18 @@ local_match=$(git branch --list "{branch_name}")
 remote_match=$(git branch -r --list "origin/{branch_name}")
 ```
 
-**Determination**: Check the **output** of each command (NOT the exit code). `git branch --list` always returns exit code 0 regardless of match. If `local_match` or `remote_match` is non-empty, the branch exists.
+> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found.
+
+**Determination**: If `local_match` or `remote_match` is non-empty, the branch exists.
+
+```bash
+# 判定ロジック（出力文字列の空チェック）
+if [ -n "$local_match" ] || [ -n "$remote_match" ]; then
+  echo "BRANCH_EXISTS"
+else
+  echo "BRANCH_NOT_FOUND"
+fi
+```
 
 If exists: `ブランチ {branch_name} は既に存在します。オプション: 既存ブランチに切り替え / 別名でブランチを作成（サフィックス追加）/ キャンセル`
 
