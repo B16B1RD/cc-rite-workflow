@@ -115,7 +115,7 @@ case "$MODE" in
     # Auto-read session_id from .rite-session-id if --session was not provided or is empty (#216)
     if [[ -z "$SESSION" ]]; then
       _session_id_file="$STATE_ROOT/.rite-session-id"
-      SESSION=$(tr -d '[:space:]' < "$_session_id_file" 2>/dev/null) || SESSION=""
+      SESSION=$(cat "$_session_id_file" 2>/dev/null | tr -d '[:space:]') || SESSION=""
       # Validate UUID format (reject tampered or corrupt content)
       if [[ -n "$SESSION" && ! "$SESSION" =~ ^[0-9a-f-]{36}$ ]]; then
         SESSION=""
