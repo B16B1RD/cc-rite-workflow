@@ -40,6 +40,7 @@ if [ -f "$STATE_FILE" ]; then
     _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
     if [ "$_ownership" = "other" ]; then
         # Another session's active state — do not modify
+        echo "rite: skipping deactivation (state belongs to another session)" >&2
         exit 0
     fi
 
