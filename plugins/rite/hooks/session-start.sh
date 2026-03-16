@@ -18,6 +18,15 @@ fi
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
+# --- DEBUG: session_id field verification (#174) ---
+# Dump hook JSON payload to stderr for field name inspection
+echo "[rite-debug] === Hook JSON payload (session-start) ===" >&2
+echo "$INPUT" | jq '.' >&2 2>/dev/null || echo "$INPUT" >&2
+echo "[rite-debug] === session_id extraction attempt ===" >&2
+echo "$INPUT" | jq -r '{session_id: .session_id, sessionId: .sessionId, session: .session}' >&2 2>/dev/null || true
+echo "[rite-debug] === end ===" >&2
+# --- END DEBUG ---
+
 # Plugin dual-load collision guard (#591)
 # Only warn when this script is running from a local plugin-dir (not from
 # the marketplace cache). Normal marketplace users should have it enabled.
