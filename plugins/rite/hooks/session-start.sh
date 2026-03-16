@@ -53,6 +53,14 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
+# Save session_id to .rite-session-id for flow-state-update.sh auto-read (#216)
+if [ -n "$SESSION_ID" ]; then
+  (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
+    true
+  }
+fi
+
 # Helper: remove stale .rite-compact-state when no active flow (#756)
 # Called on startup when .rite-flow-state is absent or inactive, to prevent
 # stale recovering state from persisting across sessions.
