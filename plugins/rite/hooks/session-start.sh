@@ -232,6 +232,7 @@ fi
 # Shared by startup and clear blocks. Resets active=false and shows a soft message.
 # Always proceeds with reset regardless of session ownership (#206).
 # Note: This function always terminates via exit 0 — it never returns to the caller.
+# When issue_number is empty (e.g., state file has no issue), exits silently without message.
 _reset_active_state() {
   local _phase _issue _branch
   _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || _phase=""
