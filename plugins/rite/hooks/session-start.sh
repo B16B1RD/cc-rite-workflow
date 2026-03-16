@@ -237,11 +237,11 @@ _reset_active_state() {
   _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
   _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
 
-  # Debug log when resetting another session's state (#206)
+  # Debug log when resetting a non-own session's state (#206)
   if [ -n "${RITE_DEBUG:-}" ]; then
     local _ownership
     _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
-    [ "$_ownership" = "other" ] && echo "[rite] Resetting state from previous session (ownership: other)" >&2
+    [ "$_ownership" != "own" ] && echo "[rite] Resetting state from previous session (ownership: $_ownership)" >&2
   fi
 
   local _tmp
@@ -250,8 +250,10 @@ _reset_active_state() {
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
      '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>/dev/null; then
     mv "$_tmp" "$STATE_FILE"
+    trap - EXIT TERM INT
   else
     rm -f "$_tmp"
+    trap - EXIT TERM INT
   fi
   _cleanup_stale_compact
   # Silent reset for completed workflows (#772): no message, no /rite:resume suggestion
