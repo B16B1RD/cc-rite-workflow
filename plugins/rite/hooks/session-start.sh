@@ -239,12 +239,9 @@ if [ "$SOURCE" = "startup" ]; then
   ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
   BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
 
-  # Check session ownership before resetting
+  # Check session ownership — always proceed with reset on startup (#206)
   _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
-  if [ "$_ownership" = "other" ]; then
-    # Previous session likely did not fire session-end — proceed with reset (#206)
-    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Resetting state from previous session (ownership: other)" >&2
-  fi
+  [ -n "${RITE_DEBUG:-}" ] && [ "$_ownership" = "other" ] && echo "[rite] Resetting state from previous session (ownership: other)" >&2
 
   TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
   trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
@@ -274,12 +271,9 @@ if [ "$SOURCE" = "clear" ]; then
   ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
   BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
 
-  # Check session ownership before resetting
+  # Check session ownership — always proceed with reset on clear (#206)
   _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
-  if [ "$_ownership" = "other" ]; then
-    # Previous session likely did not fire session-end — proceed with reset (#206)
-    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Resetting state from previous session (ownership: other)" >&2
-  fi
+  [ -n "${RITE_DEBUG:-}" ] && [ "$_ownership" = "other" ] && echo "[rite] Resetting state from previous session (ownership: other)" >&2
 
   TMP_CLEAR_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
   trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
