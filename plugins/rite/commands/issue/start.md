@@ -839,8 +839,8 @@ fi
 |----------------|--------|
 | `[review:mergeable]` | **→ Proceed to Phase 5.5** (Ready for Review). Skip fix entirely. |
 | `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4). After it returns, proceed to 🚨 After Fix (5.4.6). |
-| `[review:conditional-merge:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for blocking issues only. After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
-| `[review:loop-limit:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for blocking issues only (convert remaining to Issues). After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
+| `[review:conditional-merge:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for non-blocking issues. After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
+| `[review:loop-limit:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for remaining issues (convert to Issues where appropriate). After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
 
 > **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。
 
