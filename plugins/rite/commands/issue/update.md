@@ -303,68 +303,43 @@ Claude determines the status for each item by analyzing `all_changed` against th
 
 **Step 3: Update the progress summary table cells and changed files section**
 
-Use Python to replace the status cells in the existing table and update the changed files section. This is **mandatory** — Claude MUST execute this replacement when any changed files are detected.
-
-The following bash block integrates both `update_progress_summary()` and `update_changed_files_section()` into a single executable script. Claude MUST use this pattern when building the updated body in Phase 3.2.
+Claude determines the progress status (Step 2) and generates the changed files list (Phase 2.2), then writes the file list to a temp file for the sync script. The script handles retrieval, Python-based transformation, safety checks, and PATCH atomically.
 
 ```bash
-# ⚠️ Phase 3.2 の body 更新ブロック内で実行すること（body_tmp, tmpfile は既に定義済み）
-# changed_files_md はバッククォートを含むため、ファイル経由で渡す（コマンド置換を防止）
+# 変更ファイルリストを一時ファイルに書き出す（バッククォート対策）
 files_tmp=$(mktemp)
 trap 'rm -f "$files_tmp"' EXIT
 printf '%s' "{file_list_markdown}" > "$files_tmp"
 
-python3 -c '
-import sys, re
+# 進捗サマリー + 変更ファイル更新
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-progress \
+  --impl-status "{impl_status}" --test-status "{test_status}" --doc-status "{doc_status}" \
+  --changed-files-file "$files_tmp" \
+  2>/dev/null || true
 
-body_path, out_path = sys.argv[1], sys.argv[2]
-impl_status, test_status, doc_status = sys.argv[3], sys.argv[4], sys.argv[5]
-files_path = sys.argv[6]
-
-with open(body_path, "r") as f:
-    body = f.read()
-with open(files_path, "r") as f:
-    file_list_markdown = f.read()
-
-# --- Progress summary update ---
-# v2 format: Markdown table (| 実装 | ⬜ 未着手 | - |)
-v2_updated = False
-for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
-    pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
-    new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
-    if new_body != body:
-        v2_updated = True
-    body = new_body
-
-# v1 format fallback: checkbox style (- [ ] 実装開始 → - [x] 実装開始)
-if not v2_updated:
-    if "### 進捗" in body and "### 進捗サマリー" not in body:
-        for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
-            if "完了" in status:
-                body = re.sub(r"- \[ \] " + re.escape(item), "- [x] " + item, body, count=1)
-
-# --- Changed files section update ---
-# Match from ### 変更ファイル heading to the next ### heading or end
-pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
-body = re.sub(pattern, r"\g<1>" + file_list_markdown, body, count=1, flags=re.DOTALL)
-
-with open(out_path, "w") as f:
-    f.write(body)
-' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "$files_tmp"
+rm -f "$files_tmp"
 ```
 
-**Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings from Step 2 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). `{file_list_markdown}` is the formatted file list from Phase 2.1/2.2 output (written to a temp file to avoid backtick command substitution in shell). If no changed files exist, pass `"_まだ変更はありません_"`.
-
-**v1/v2 format handling**: The Python script automatically detects the format. For v2 (Markdown table), it replaces table cells. For v1 (checkbox `- [ ]`), it checks/unchecks items. If neither format is detected, the update is silently skipped (no error).
+**Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings from Step 2 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). `{file_list_markdown}` is the formatted file list from Phase 2.1/2.2 output. If no changed files exist, pass `"_まだ変更はありません_"`.
 
 **Updating pending questions:**
 
-If `--question` is provided, append to the `要確認事項` section (preserve existing items):
+If `--question` is provided, write the question to a temp file and append to the `要確認事項` section:
 
-```markdown
-### 要確認事項
-{existing_items}
-{n}. [ ] {new_question}
+```bash
+question_tmp=$(mktemp)
+trap 'rm -f "$question_tmp"' EXIT
+printf '%s' "- [ ] {new_question}" > "$question_tmp"
+
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-section \
+  --section "要確認事項" --content-file "$question_tmp" \
+  2>/dev/null || true
+
+rm -f "$question_tmp"
 ```
 
 ### 3.3 Update Local Work Memory (SoT)
@@ -383,60 +358,25 @@ WM_SOURCE="update" \
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
 
-**Implementation note for Claude**: `$updated_body` is the content from Phase 3.1 with **only** the target sections from Phase 3.2 modified. Parse the existing content by `### ` heading boundaries, apply updates per Phase 3.2 rules, and reassemble. All sections not listed in the UPDATE table must be copied verbatim from the re-read content. **Do NOT reconstruct the body from memory — use the re-read text as the base.**
-
 ### 3.4 Sync to Issue Comment (Backup)
 
-After updating the local file, sync to the Issue comment as backup.
+Phase 3.2 already handles Issue comment sync via `issue-comment-wm-sync.sh`. No additional PATCH is needed here.
 
-> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns) for all steps below.
+If a memo was provided, append it to the `決定事項・メモ` section:
 
 ```bash
-tmpfile=$(mktemp)
-# backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-trap 'rm -f "$tmpfile"' EXIT
+memo_tmp=$(mktemp)
+trap 'rm -f "$memo_tmp"' EXIT
+printf '%s' "- {memo_text}" > "$memo_tmp"
 
-# Step 1: Backup current content before PATCH
-printf '%s' "$current_body" > "$backup_file"
-original_length=$(printf '%s' "$current_body" | wc -c)
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-section \
+  --section "決定事項・メモ" --content-file "$memo_tmp" \
+  2>/dev/null || true
 
-# Step 2: Write the selectively-updated body
-printf '%s' "$updated_body" > "$tmpfile"
-
-# Step 3: Validate before PATCH (10 bytes = minimum plausible work memory content)
-if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-  echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
-  exit 1
-fi
-if grep -q -- '📜 rite 作業メモリ' "$tmpfile"; then
-  : # Header present, proceed
-else
-  echo "ERROR: Updated body missing work memory header. Aborting PATCH. Backup: $backup_file" >&2
-  exit 1
-fi
-
-# Step 3.5: Body length comparison safety check (reject if updated body is less than 50% of original)
-updated_length=$(wc -c < "$tmpfile")
-if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-  echo "ERROR: Updated body is less than 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
-  exit 1
-fi
-
-# Step 4: Apply update with error handling
-jq -n --rawfile body "$tmpfile" '{"body": $body}' | gh api repos/{owner}/{repo}/issues/comments/{comment_id} \
-  -X PATCH \
-  --input -
-patch_status=$?
-if [[ "${patch_status:-1}" -ne 0 ]]; then
-  echo "ERROR: PATCH failed. Backup saved at: $backup_file" >&2
-  exit 1
-fi
+rm -f "$memo_tmp"
 ```
-
-**Note for Claude**: ⚠️ 作業メモリ更新時は必ずバックアップ→検証→PATCH の順で実行すること。awk は使用禁止（Python インラインスクリプトを使用）。空body での PATCH は絶対に行わないこと。
-
-**Note**: If `{comment_id}` is not available (Phase 1.3 returned empty), skip this sync and display a warning.
 
 ---
 

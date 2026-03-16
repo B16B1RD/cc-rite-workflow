@@ -710,6 +710,8 @@ gh pr create --draft --base "{base_branch}" --title "{title}" --body-file "$tmpf
 
 After PR creation, update the local work memory (SoT) and sync to Issue comment (backup).
 
+**Note**: Phase 3.5 performs immediate phase transition (`phase5_pr`) right after PR creation. Phase 4.1.2 later adds detailed information (progress summary, changed files, PR metadata). The `update-progress` in Phase 4.1.2 also updates the timestamp, effectively superseding Phase 3.5's timestamp. This two-step approach ensures the phase transition is recorded even if Phase 4 fails.
+
 **Step 1: Update local work memory**
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details.
@@ -729,57 +731,11 @@ WM_SOURCE="create" \
 **Step 2: Sync to Issue comment (backup)**
 
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
-# ⚠️ 置換型パターン（Python で既存行を正規表現置換）: backup sync は non-blocking のため
-#    エラー時は WARNING を出力してスキップする（exit 1 しない）。
-#    追記型パターン（printf + cat >> heredoc）の exit 1 方式とは意図的に異なる。
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
-
-if [ -z "$comment_id" ]; then
-  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
-else
-  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-  printf '%s' "$current_body" > "$backup_file"
-  original_length=$(printf '%s' "$current_body" | wc -c)
-
-  tmpfile=$(mktemp)
-  body_tmp=$(mktemp)
-  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
-  printf '%s' "$current_body" > "$body_tmp"
-  python3 -c '
-import sys, re
-body_path, out_path = sys.argv[1], sys.argv[2]
-# {pr_number}: Claude が PR 作成結果の番号で置換するプレースホルダ（シェル変数ではない）
-phase, phase_detail, timestamp, pr_number = sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6]
-with open(body_path, "r") as f:
-    body = f.read()
-# lambda を使用: re.sub の置換文字列メタ文字（\1 等）の誤解釈を防止
-body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + phase, body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + phase_detail, body, count=1, flags=re.MULTILINE)
-with open(out_path, "w") as f:
-    f.write(body)
-' "$body_tmp" "$tmpfile" "phase5_pr" "PR作成完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" "{pr_number}"
-
-  # Safety checks before PATCH
-  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
-  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
-    updated_length=$(wc -c < "$tmpfile")
-    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
-    else
-      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
-        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
-        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
-    fi
-  else
-    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
-  fi
-fi
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-phase \
+  --phase "phase5_pr" --phase-detail "PR作成完了" \
+  2>/dev/null || true
 ```
 
 ---
@@ -806,77 +762,42 @@ git log --oneline origin/{base_branch}...HEAD
 
 #### 4.1.2 Retrieve and Update Work Memory Comment
 
-The update has two parts: (A) **update existing sections** in the work memory via Python, and (B) **append new sections** for PR-specific information via heredoc.
+The update has two parts: (A) **update progress and changed files**, and (B) **append PR-specific sections**. Both use `issue-comment-wm-sync.sh` for deterministic execution.
 
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・Python 更新・追記・PATCH を分割すると変数が失われる（Issue #693）
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
+# Part (A): 進捗サマリー + 変更ファイル更新
+files_tmp=$(mktemp)
+trap 'rm -f "$files_tmp"' EXIT
+printf '%s' "{changed_files_md}" > "$files_tmp"
 
-if [ -n "$comment_id" ]; then
-  if [ -z "$current_body" ]; then
-    echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
-  else
-    backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-    printf '%s' "$current_body" > "$backup_file"
-    original_length=$(printf '%s' "$current_body" | wc -c)
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-progress \
+  --impl-status "✅ 完了" --test-status "{test_status}" --doc-status "{doc_status}" \
+  --changed-files-file "$files_tmp" \
+  2>/dev/null || true
 
-    body_tmp=$(mktemp)
-    files_tmp=$(mktemp)
-    tmpfile=$(mktemp)
-    trap 'rm -f "$body_tmp" "$files_tmp" "$tmpfile"' EXIT
-    printf '%s' "$current_body" > "$body_tmp"
-    printf '%s' "{changed_files_md}" > "$files_tmp"
+rm -f "$files_tmp"
 
-    # Part (A): Update existing sections via Python
-    python3 -c '
-import sys, re
+# Part (A'): 次のステップ置換
+next_tmp=$(mktemp)
+trap 'rm -f "$next_tmp"' EXIT
+printf '%s' "- **コマンド**: /rite:pr:review #{pr_number}
+- **状態**: 待機中
+- **備考**: PR 作成完了、レビュー準備完了" > "$next_tmp"
 
-body_path, out_path = sys.argv[1], sys.argv[2]
-files_path = sys.argv[3]
-pr_number, timestamp = sys.argv[4], sys.argv[5]
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform replace-section \
+  --section "次のステップ" --content-file "$next_tmp" \
+  2>/dev/null || true
 
-with open(body_path, "r") as f:
-    body = f.read()
-with open(files_path, "r") as f:
-    changed_files_md = f.read()
+rm -f "$next_tmp"
 
-# Update progress summary: 実装 → ✅ 完了 (v2 format)
-v2_updated = False
-for item, status in [("実装", "✅ 完了")]:
-    pattern = r"(\| " + re.escape(item) + r" \| ).*?( \|.*\|)"
-    new_body = re.sub(pattern, lambda m: m.group(1) + status + m.group(2), body, count=1)
-    if new_body != body:
-        v2_updated = True
-    body = new_body
-
-# v1 format fallback: checkbox style
-if not v2_updated:
-    if "### 進捗" in body and "### 進捗サマリー" not in body:
-        body = re.sub(r"- \[ \] 実装", "- [x] 実装", body, count=1)
-
-# Replace changed files section content
-pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
-body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
-
-# Update next steps section
-next_steps = f"### 次のステップ\n- **コマンド**: /rite:pr:review #{pr_number}\n- **状態**: 待機中\n- **備考**: PR 作成完了、レビュー準備完了"
-pattern = r"### 次のステップ\n.*?(?=\n### |\Z)"
-body = re.sub(pattern, next_steps, body, count=1, flags=re.DOTALL)
-
-# Update timestamp
-body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
-
-with open(out_path, "w") as f:
-    f.write(body)
-' "$body_tmp" "$tmpfile" "$files_tmp" "{pr_number}" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
-
-    # Part (B): Append new sections (PR-specific information)
-    cat >> "$tmpfile" << 'NEW_SECTION_EOF'
-
+# Part (B): 関連 PR + コミット履歴追記
+pr_info_tmp=$(mktemp)
+trap 'rm -f "$pr_info_tmp"' EXIT
+cat > "$pr_info_tmp" << 'PR_EOF'
 ### 関連 PR
 - **番号**: #{pr_number}
 - **タイトル**: {pr_title}
@@ -885,31 +806,18 @@ with open(out_path, "w") as f:
 
 ### コミット履歴
 {commit_log}
-NEW_SECTION_EOF
+PR_EOF
 
-    # Safety checks before PATCH (see gh-cli-patterns.md)
-    if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-      echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
-    if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
-      echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
-      exit 1
-    fi
-    updated_length=$(wc -c < "$tmpfile")
-    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-      echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-section \
+  --section "レビュー対応履歴" --content-file "$pr_info_tmp" \
+  2>/dev/null || true
 
-    jq -n --rawfile body "$tmpfile" '{"body": $body}' \
-      | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input -
-  fi
-fi
+rm -f "$pr_info_tmp"
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・Python 更新・Part (B) 追記・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。Part (B) の heredoc 内の `{placeholder}` は Claude が実際の値で置換すること。`{changed_files_md}` はバッククォートを含むためファイル経由で Python に渡す（コマンド置換を防止）。
+**Note for Claude**: `{changed_files_md}` はバッククォートを含むためファイル経由で渡す。heredoc 内の `{placeholder}` は Claude が実際の値で置換すること。
 
 #### 4.1.3 Update Content Reference
 

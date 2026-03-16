@@ -1263,56 +1263,11 @@ WM_SOURCE="review" \
 **Step 2: Sync to Issue comment (backup)** at phase transition (per C3 backup sync rule).
 
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
-# ⚠️ 置換型パターン（Python で既存行を正規表現置換）: backup sync は non-blocking のため
-#    エラー時は WARNING を出力してスキップする（exit 1 しない）。
-#    追記型パターン（printf + cat >> heredoc）の exit 1 方式とは意図的に異なる。
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
-
-if [ -z "$comment_id" ]; then
-  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
-else
-  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-  printf '%s' "$current_body" > "$backup_file"
-  original_length=$(printf '%s' "$current_body" | wc -c)
-
-  tmpfile=$(mktemp)
-  body_tmp=$(mktemp)
-  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
-  printf '%s' "$current_body" > "$body_tmp"
-  python3 -c '
-import sys, re
-body_path, out_path = sys.argv[1], sys.argv[2]
-phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
-with open(body_path, "r") as f:
-    body = f.read()
-# lambda を使用: re.sub の置換文字列メタ文字（\1 等）の誤解釈を防止
-body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + phase, body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + phase_detail, body, count=1, flags=re.MULTILINE)
-with open(out_path, "w") as f:
-    f.write(body)
-' "$body_tmp" "$tmpfile" "phase5_review" "レビュー中" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
-
-  # Safety checks before PATCH
-  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
-  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
-    updated_length=$(wc -c < "$tmpfile")
-    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
-    else
-      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
-        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
-        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
-    fi
-  else
-    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
-  fi
-fi
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-phase \
+  --phase "phase5_review" --phase-detail "レビュー中" \
+  2>/dev/null || true
 ```
 
 ### 6.1.2 Review Metrics Recording
@@ -1343,99 +1298,61 @@ Append the metrics section (format defined in [Execution Metrics](../../referenc
 
 **Steps:**
 
-1. **Get comment ID**: Retrieve the work memory comment ID and body using the Issue number obtained in Phase 1.3:
-   ```bash
-   gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-     --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}'
-   ```
+All steps use `issue-comment-wm-sync.sh` for API operations. No direct `gh api` calls are needed — the script handles comment ID retrieval, caching, backup, safety checks, and PATCH internally.
 
-2. **Retrieve current body**: Extract the `body` field from the result of Step 1 (no additional API call needed)
+1. **Increment `現在のループ回数`**:
+   - If found: `new_loop_count = current_value + 1`. Preserves all other content in the section.
+   - If not found (first review): Creates the `### レビュー対応履歴` section with `count=1`.
 
-3. **Increment `現在のループ回数`**:
-   - Extract the current value from the `### レビュー対応履歴` section:
-     - Pattern: `- \*\*現在のループ回数\*\*: (\d+)`
-   - If found: `new_loop_count = current_value + 1`. **Update only this single line** — preserve all other content in the section (e.g., history entries appended by `/rite:pr:fix`). Do NOT replace the entire section.
-   - If not found (first review): `new_loop_count = 1`. Create the `### レビュー対応履歴` section with just this line (Step 4 will append the history entry below it):
-     ```
-     ### レビュー対応履歴
-     - **現在のループ回数**: {new_loop_count}
-     ```
+2. **Update session info** (defense-in-depth): Phase 6.1.1 で local work memory (SoT) を更新済みだが、Issue comment (backup) のセッション情報も冗長に更新する (Issue #90, #93)。
 
-   **Bash implementation (Python-based single-line update):**
+3. **Append review history**: Add review result summary to the work memory body.
 
-   ```bash
-   # ⚠️ 以下の処理は Steps 1-6 の単一 Bash ブロック内で実行すること（クロスプロセス変数参照を防止）
-   # backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-   backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-   body_tmp=$(mktemp)
-   updated_tmp=$(mktemp)
-   trap 'rm -f "$body_tmp" "$updated_tmp"' EXIT
+4. **Update next steps**: Set the next command based on the review assessment.
 
-   # Step 1: Backup current body
-   printf '%s' "$current_body" > "$backup_file"
+```bash
+# Step 1: ループ回数インクリメント（セクション未存在時は自動作成）
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform increment-loop-count \
+  2>/dev/null || true
 
-   current_count=$(echo "$current_body" | grep -E -- '^- \*\*現在のループ回数\*\*: [0-9]+' | grep -oE '[0-9]+$' || true)
-   if [[ -n "${current_count}" ]]; then
-     new_loop_count=$(( ${current_count:-0} + 1 ))  # :-0 is defensive (see references/bash-defensive-patterns.md)
-     printf '%s' "$current_body" > "$body_tmp"
-     # Python-based line replacement (awk-free, sed-free)
-     # File-based argument passing to avoid Japanese string issues in shell expansion
-     # Also updates session info fields for consistency with Phase 6.1.1 local work memory (Issue #90)
-     # Defense-in-depth: Phase 6.1.1 updates local work memory (SoT), but this Phase 6.2 code
-     # redundantly updates the same fields in the Issue comment (backup). This intentional
-     # duplication ensures the backup stays consistent even if Phase 6.1.1 silently fails.
-     python3 -c '
-import sys, re
-body_path, out_path, new_count, timestamp = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-with open(body_path, "r") as f:
-    body = f.read()
-# Update loop count
-updated = re.sub(
-    r"^- \*\*現在のループ回数\*\*: \d+",
-    f"- **現在のループ回数**: {new_count}",
-    body, count=1, flags=re.MULTILINE
-)
-# Defense-in-depth: redundantly update session info fields here (Issue comment backup)
-# even though Phase 6.1.1 already updated local work memory (SoT) with the same values.
-# This ensures backup consistency if Phase 6.1.1 silently fails. See Issue #90, #93.
-updated = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, updated, count=1, flags=re.MULTILINE)
-updated = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + "phase5_review", updated, count=1, flags=re.MULTILINE)
-updated = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + "レビュー中", updated, count=1, flags=re.MULTILINE)
-with open(out_path, "w") as f:
-    f.write(updated)
-' "$body_tmp" "$updated_tmp" "$new_loop_count" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
-     # Step 2: Validate updated content (10 bytes = minimum plausible work memory content)
-     if [ ! -s "$updated_tmp" ] || [[ "$(wc -c < "$updated_tmp")" -lt 10 ]]; then
-       echo "ERROR: Updated body is empty or too short. Aborting. Backup: $backup_file" >&2
-       exit 1
-     fi
-     if grep -q -- '📜 rite 作業メモリ' "$updated_tmp"; then
-       : # Header present, proceed
-     else
-       echo "ERROR: Updated body missing header. Restoring backup." >&2
-       cp "$backup_file" "$updated_tmp"
-       exit 1
-     fi
-     current_body=$(cat "$updated_tmp")
-   else
-     new_loop_count=1
-     current_body="${current_body}
-### レビュー対応履歴
-- **現在のループ回数**: ${new_loop_count}"
-   fi
-   ```
+# Step 2: セッション情報更新（defense-in-depth）
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-phase \
+  --phase "phase5_review" --phase-detail "レビュー中" \
+  2>/dev/null || true
 
-   **Note for Claude**: ⚠️ awk・sed は使用禁止。Python インラインスクリプトによる行置換を使用すること。更新前バックアップ・空body検証・ヘッダー検証を必ず実行すること。参照: [gh-cli-patterns.md の Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns)。
+# Step 3: レビュー対応履歴追記
+review_tmp=$(mktemp)
+trap 'rm -f "$review_tmp"' EXIT
+cat > "$review_tmp" << 'REVIEW_EOF'
+{review_history_content}
+REVIEW_EOF
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-section \
+  --section "レビュー対応履歴" --content-file "$review_tmp" \
+  2>/dev/null || true
 
-4. **Append review history**: Add review result summary to the work memory body
+# Step 4: 次のステップ更新
+next_tmp=$(mktemp)
+trap 'rm -f "$next_tmp"' EXIT
+printf '%s' "{next_step_content}" > "$next_tmp"
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform replace-section \
+  --section "次のステップ" --content-file "$next_tmp" \
+  2>/dev/null || true
+rm -f "$review_tmp" "$next_tmp"
+```
 
-5. **Update next steps**: Set the next command based on the review assessment
+**Placeholder descriptions:**
+- `{review_history_content}`: Review result summary (assessment, finding counts, commit SHA). Claude generates from Phase 5 results.
+- `{next_step_content}`: Next command based on assessment. Merge OK → `/rite:pr:ready` | Requires fixes → `/rite:pr:fix`
 
-6. **Write back**: Update the comment using `jq -n --rawfile` + `gh api --input -`
-
-**Consistency guarantee (Issue #90)**: Steps 3-6 collectively ensure that the Issue comment (backup) is consistent with the local work memory (SoT) updated in Phase 6.1.1. Both sources now reflect the same phase (`phase5_review`), timestamp, and loop count after Phase 6 completes. This is a **defense-in-depth** design: Phase 6.1.1 (local SoT) and Phase 6.2 Step 3 (Issue comment backup) intentionally perform the same session info updates. If either path silently fails, the other guarantees at least one source has correct state for recovery.
-
-**Next command determination:** Merge OK → `/rite:pr:ready` | Cannot merge/Requires fixes → `/rite:pr:fix`
+**Consistency guarantee (Issue #90)**: Steps 1-4 collectively ensure that the Issue comment (backup) is consistent with the local work memory (SoT) updated in Phase 6.1.1. This is a **defense-in-depth** design: if either path silently fails, the other guarantees at least one source has correct state for recovery.
 
 ### 6.3 Completion Report
 

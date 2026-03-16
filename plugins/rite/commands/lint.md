@@ -595,32 +595,25 @@ If no Issue number is found, skip the work memory update.
 
 #### 4.4.2 Retrieve and Update Work Memory Comment
 
-```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693）
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
+Write the lint result content (from 4.4.3 template) to a temp file, then append to the work memory comment:
 
-if [ -n "$comment_id" ]; then
-  if [ -z "$current_body" ]; then
-    echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
-  else
-    tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    printf '%s\n\n' "$current_body" > "$tmpfile"
-    cat >> "$tmpfile" << 'NEW_SECTION_EOF'
-{4.4.3 の内容を実際の値で置換して記述}
-NEW_SECTION_EOF
-    jq -n --rawfile body "$tmpfile" '{"body": $body}' \
-      | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input -
-  fi
-fi
+```bash
+lint_result_tmp=$(mktemp)
+trap 'rm -f "$lint_result_tmp"' EXIT
+cat > "$lint_result_tmp" << 'LINT_EOF'
+{lint_result_content}
+LINT_EOF
+
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-section \
+  --section "品質チェック履歴" --content-file "$lint_result_tmp" \
+  2>/dev/null || true
+
+rm -f "$lint_result_tmp"
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。`{4.4.3 の内容を実際の値で置換して記述}` を 4.4.3 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: `{lint_result_content}` を 4.4.3 のテンプレートから生成した実際の追記内容で置換すること。
 
 #### 4.4.3 Update Content
 
@@ -684,105 +677,27 @@ After the quality check is complete, record "next steps" in work memory.
 4. If the section is not found, append to the end of the body
 
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# ⚠️ TOCTOU 防止: 必ず Phase 4.4.2 の PATCH 完了後に実行すること。
-#    4.4.2 と 4.4.4 を別の Bash ツール呼び出しで実行する場合、4.4.2 の PATCH が GitHub API に
-#    反映される前に 4.4.4 が旧バージョンの body を取得し、4.4.2 の追記を上書きする可能性がある。
-#    最も安全な実装は 4.4.2 と 4.4.4 を一つの Bash ツール呼び出しに結合し、
-#    一度のフェッチ → Python セクション置換 → 1回の PATCH にすること。
-# lint 結果に応じて replacement の内容を上記 3 ケース（success/skip/error）から選択すること
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
+# lint 結果に応じて次のステップの内容を選択し、一時ファイルに書き出す
+next_steps_tmp=$(mktemp)
+trap 'rm -f "$next_steps_tmp"' EXIT
 
-if [[ -n "$comment_id" ]] && [[ -n "$current_body" ]]; then
-  repl_file=$(mktemp)
-  body_tmp=$(mktemp)
-  updated_tmp=$(mktemp)
-  # backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-  trap 'rm -f "$repl_file" "$body_tmp" "$updated_tmp"' EXIT
-
-  # Step 1: Backup current body
-  printf '%s' "$current_body" > "$backup_file"
-
-  # lint 結果（success/skip/error）に応じて上記テンプレートの内容を repl_file に書き込む
-  # 例（lint success の場合）:
-  cat > "$repl_file" << 'REPL_EOF'
-### 次のステップ
+# 例（lint success の場合）:
+cat > "$next_steps_tmp" << 'NEXT_EOF'
 - **コマンド**: /rite:pr:create
 - **状態**: 待機中
 - **備考**: lint 完了、PR 作成準備完了
-REPL_EOF
+NEXT_EOF
 
-  printf '%s' "$current_body" > "$body_tmp"
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform replace-section \
+  --section "次のステップ" --content-file "$next_steps_tmp" \
+  2>/dev/null || true
 
-  # Step 2: Python-based section replacement (awk-free)
-  python3 -c '
-import sys
-
-body_path = sys.argv[1]
-repl_path = sys.argv[2]
-out_path = sys.argv[3]
-
-with open(body_path, "r") as f:
-    body = f.read()
-with open(repl_path, "r") as f:
-    replacement = f.read().rstrip("\n")
-
-lines = body.split("\n")
-result = []
-in_section = False
-found = False
-
-for line in lines:
-    if line.rstrip() == "### 次のステップ" and not found:
-        result.append(replacement)
-        in_section = True
-        found = True
-        continue
-    if in_section:
-        if line.startswith("### "):
-            in_section = False
-            result.append(line)
-        continue
-    result.append(line)
-
-if not found:
-    result.append("")
-    result.append(replacement)
-
-output = "\n".join(result)
-if body.endswith("\n") and not output.endswith("\n"):
-    output += "\n"
-with open(out_path, "w") as f:
-    f.write(output)
-' "$body_tmp" "$repl_file" "$updated_tmp"
-
-  # Step 3: Validate updated content (10 bytes = minimum plausible work memory content)
-  if [ ! -s "$updated_tmp" ] || [[ "$(wc -c < "$updated_tmp")" -lt 10 ]]; then
-    echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
-    exit 1
-  fi
-  if grep -q -- '📜 rite 作業メモリ' "$updated_tmp"; then
-    : # Header present, proceed
-  else
-    echo "ERROR: Updated body missing work memory header. Aborting PATCH. Backup: $backup_file" >&2
-    exit 1
-  fi
-
-  # Step 4: Apply update
-  if ! jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
-      | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input -; then
-    echo "ERROR: PATCH failed. Backup: $backup_file" >&2
-    exit 1
-  fi
-fi
+rm -f "$next_steps_tmp"
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`REPL_EOF` ヒアドキュメントには lint 結果（success/skip/error）に応じて上記 3 ケースのいずれかを記述すること。awk は使用禁止 — Python インラインスクリプトでセクション置換を行うこと。更新前バックアップ、空body検証、ヘッダー検証を必ず実行すること。
+**Note for Claude**: lint 結果（success/skip/error）に応じて上記 3 ケースのいずれかを `NEXT_EOF` ヒアドキュメントに記述すること。
 
 ---
 
