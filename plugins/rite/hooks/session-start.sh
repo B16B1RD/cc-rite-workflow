@@ -55,7 +55,10 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 
 # Save session_id to .rite-session-id for flow-state-update.sh auto-read (#216)
 if [ -n "$SESSION_ID" ]; then
-  printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id" 2>/dev/null || true
+  (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
+    true
+  }
 fi
 
 # Helper: remove stale .rite-compact-state when no active flow (#756)

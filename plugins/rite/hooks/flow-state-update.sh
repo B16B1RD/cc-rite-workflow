@@ -114,9 +114,11 @@ case "$MODE" in
     fi
     # Auto-read session_id from .rite-session-id if --session was not provided or is empty (#216)
     if [[ -z "$SESSION" ]]; then
-      SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
-      if [[ -f "$SESSION_ID_FILE" ]]; then
-        SESSION=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || SESSION=""
+      _session_id_file="$STATE_ROOT/.rite-session-id"
+      SESSION=$(tr -d '[:space:]' < "$_session_id_file" 2>/dev/null) || SESSION=""
+      # Validate UUID format (reject tampered or corrupt content)
+      if [[ -n "$SESSION" && ! "$SESSION" =~ ^[0-9a-f-]{36}$ ]]; then
+        SESSION=""
       fi
     fi
     # Session ownership: overwrite protection for active state owned by another session
