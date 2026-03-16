@@ -231,31 +231,28 @@ fi
 # --- Defensive reset helper (#761, #173, #206) ---
 # Shared by startup and clear blocks. Resets active=false and shows a soft message.
 # Always proceeds with reset regardless of session ownership (#206).
+# Note: This function always terminates via exit 0 — it never returns to the caller.
 _reset_active_state() {
   local _phase _issue _branch
   _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || _phase=""
   _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
   _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
 
-  # Debug log when resetting a non-own session's state (#206)
-  # Logs for "other", "stale", and "legacy" (pre-session-ownership state).
-  # "legacy" is treated as own for ownership purposes but logged here for diagnostics.
+  # Debug log for session ownership diagnostics (#206)
   if [ -n "${RITE_DEBUG:-}" ]; then
     local _ownership
     _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
-    [ "$_ownership" != "own" ] && echo "[rite] Resetting state from previous session (ownership: $_ownership)" >&2
+    echo "[rite] Resetting active state (ownership: $_ownership)" >&2
   fi
 
+  # Atomic write: jq to temp file, then mv. No trap — explicit cleanup on failure.
   local _tmp
   _tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _tmp="${STATE_FILE}.tmp.$$"
-  trap 'rm -f "$_tmp" 2>/dev/null' EXIT TERM INT
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
      '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>/dev/null; then
     mv "$_tmp" "$STATE_FILE"
-    trap - EXIT TERM INT
   else
-    rm -f "$_tmp"
-    trap - EXIT TERM INT
+    rm -f "$_tmp" 2>/dev/null
   fi
   _cleanup_stale_compact
   # Silent reset for completed workflows (#772): no message, no /rite:resume suggestion
