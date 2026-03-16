@@ -778,7 +778,6 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
    bash {plugin_root}/hooks/flow-state-update.sh create \
      --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
      --pr 0 \
-     --session {session_id} \
      --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
    ```
 

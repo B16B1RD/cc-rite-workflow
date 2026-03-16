@@ -321,7 +321,8 @@ Ensure `.rite-flow-state` has `active: true` so that the stop-guard hook blocks 
 STATE_FILE=".rite-flow-state"
 if [ -f "$STATE_FILE" ]; then
   TMP_STATE="${STATE_FILE}.tmp.$$"
-  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" --arg sid "{session_id}" \
+  _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
+  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" --arg sid "$_sid" \
     '.active = true | .updated_at = $ts | .error_count = 0 | .session_id = $sid' \
     "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE" || rm -f "$TMP_STATE"
 fi
