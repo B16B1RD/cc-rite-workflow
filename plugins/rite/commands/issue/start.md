@@ -1072,7 +1072,9 @@ fi
 
 ### 5.5 Ready for Review
 
-When loop completes, confirm:
+> **⚠️ MANDATORY**: The following `AskUserQuestion` confirmation MUST be executed. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review.
+
+When loop completes, confirm via `AskUserQuestion`:
 
 ```
 レビューが完了しました（一気通貫フロー）

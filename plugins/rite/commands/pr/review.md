@@ -505,6 +505,8 @@ When the reviewer count reaches 4 or more, recommend splitting the review execut
 
 ### 3.3 Confirm Reviewers
 
+> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm the reviewer configuration before review execution begins.
+
 Confirm the reviewer configuration with `AskUserQuestion` (fallback: see Phase 1.4 note):
 
 ```
