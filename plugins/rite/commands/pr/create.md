@@ -710,6 +710,8 @@ gh pr create --draft --base "{base_branch}" --title "{title}" --body-file "$tmpf
 
 After PR creation, update the local work memory (SoT) and sync to Issue comment (backup).
 
+**Note**: Phase 3.5 performs immediate phase transition (`phase5_pr`) right after PR creation. Phase 4.1.2 later adds detailed information (progress summary, changed files, PR metadata). The `update-progress` in Phase 4.1.2 also updates the timestamp, effectively superseding Phase 3.5's timestamp. This two-step approach ensures the phase transition is recorded even if Phase 4 fails.
+
 **Step 1: Update local work memory**
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details.

@@ -35,12 +35,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/issue-comment-wm-update.py"
 
 # Resolve repository root for .rite-flow-state access
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
+CWD="${CWD:-$(pwd)}"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 
 # --- Get owner/repo ---
 get_owner_repo() {
   gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>/dev/null || echo ""
+}
+
+# --- Cache comment ID in flow-state ---
+cache_comment_id() {
+  local cid="$1"
+  if [ -f "$FLOW_STATE" ]; then
+    local tmp
+    tmp=$(mktemp)
+    jq --arg cid "$cid" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$tmp" 2>/dev/null && mv "$tmp" "$FLOW_STATE" || rm -f "$tmp"
+  fi
 }
 
 # --- Get comment ID (with flow-state cache) ---
@@ -73,11 +84,7 @@ get_comment_id() {
   fi
 
   # Cache the ID in flow-state
-  if [ -f "$FLOW_STATE" ]; then
-    local tmp
-    tmp=$(mktemp)
-    jq --arg cid "$comment_id" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$tmp" 2>/dev/null && mv "$tmp" "$FLOW_STATE" || rm -f "$tmp"
-  fi
+  cache_comment_id "$comment_id"
 
   echo "$comment_id"
   return 0
@@ -248,11 +255,7 @@ INIT_EOF
   done
 
   if [ -n "$created_id" ]; then
-    # Cache comment ID
-    if [ -f "$FLOW_STATE" ]; then
-      local_tmp=$(mktemp)
-      jq --arg cid "$created_id" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$local_tmp" 2>/dev/null && mv "$local_tmp" "$FLOW_STATE" || rm -f "$local_tmp"
-    fi
+    cache_comment_id "$created_id"
     echo "status=success"
   else
     echo "WARNING: Could not verify work memory comment creation." >&2
@@ -277,6 +280,9 @@ COMMENT_ID=$(get_comment_id "$ISSUE" "$OWNER_REPO") || {
 body_tmp=$(mktemp)
 updated_tmp=$(mktemp)
 py_err_tmp=$(mktemp)
+# Backup preserved on failure for post-mortem; cleaned up on success (line 326).
+# In long-running or parallel scenarios, stale backups may accumulate in /tmp
+# and require manual cleanup: rm -f /tmp/rite-wm-backup-*
 backup_file="/tmp/rite-wm-backup-${ISSUE}-$(date +%s).md"
 trap 'rm -f "$body_tmp" "$updated_tmp" "$py_err_tmp"' EXIT
 

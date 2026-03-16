@@ -1298,51 +1298,61 @@ Append the metrics section (format defined in [Execution Metrics](../../referenc
 
 **Steps:**
 
-1. **Get comment ID**: Retrieve the work memory comment ID and body using the Issue number obtained in Phase 1.3:
-   ```bash
-   gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-     --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}'
-   ```
+All steps use `issue-comment-wm-sync.sh` for API operations. No direct `gh api` calls are needed — the script handles comment ID retrieval, caching, backup, safety checks, and PATCH internally.
 
-2. **Retrieve current body**: Extract the `body` field from the result of Step 1 (no additional API call needed)
+1. **Increment `現在のループ回数`**:
+   - If found: `new_loop_count = current_value + 1`. Preserves all other content in the section.
+   - If not found (first review): Creates the `### レビュー対応履歴` section with `count=1`.
 
-3. **Increment `現在のループ回数`**:
-   - Extract the current value from the `### レビュー対応履歴` section:
-     - Pattern: `- \*\*現在のループ回数\*\*: (\d+)`
-   - If found: `new_loop_count = current_value + 1`. **Update only this single line** — preserve all other content in the section (e.g., history entries appended by `/rite:pr:fix`). Do NOT replace the entire section.
-   - If not found (first review): `new_loop_count = 1`. Create the `### レビュー対応履歴` section with just this line (Step 4 will append the history entry below it):
-     ```
-     ### レビュー対応履歴
-     - **現在のループ回数**: {new_loop_count}
-     ```
+2. **Update session info** (defense-in-depth): Phase 6.1.1 で local work memory (SoT) を更新済みだが、Issue comment (backup) のセッション情報も冗長に更新する (Issue #90, #93)。
 
-   **Script-based implementation:**
+3. **Append review history**: Add review result summary to the work memory body.
 
-   ```bash
-   # ループ回数インクリメント（セクション未存在時は自動作成）
-   bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
-     --issue {issue_number} \
-     --transform increment-loop-count \
-     2>/dev/null || true
+4. **Update next steps**: Set the next command based on the review assessment.
 
-   # Defense-in-depth: Phase 6.1.1 で local work memory (SoT) を更新済みだが、
-   # Issue comment (backup) のセッション情報も冗長に更新する (Issue #90, #93)
-   bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
-     --issue {issue_number} \
-     --transform update-phase \
-     --phase "phase5_review" --phase-detail "レビュー中" \
-     2>/dev/null || true
-   ```
+```bash
+# Step 1: ループ回数インクリメント（セクション未存在時は自動作成）
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform increment-loop-count \
+  2>/dev/null || true
 
-4. **Append review history**: Add review result summary to the work memory body
+# Step 2: セッション情報更新（defense-in-depth）
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-phase \
+  --phase "phase5_review" --phase-detail "レビュー中" \
+  2>/dev/null || true
 
-5. **Update next steps**: Set the next command based on the review assessment
+# Step 3: レビュー対応履歴追記
+review_tmp=$(mktemp)
+trap 'rm -f "$review_tmp"' EXIT
+cat > "$review_tmp" << 'REVIEW_EOF'
+{review_history_content}
+REVIEW_EOF
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-section \
+  --section "レビュー対応履歴" --content-file "$review_tmp" \
+  2>/dev/null || true
 
-6. **Write back**: Update the comment using `jq -n --rawfile` + `gh api --input -`
+# Step 4: 次のステップ更新
+next_tmp=$(mktemp)
+trap 'rm -f "$next_tmp"' EXIT
+printf '%s' "{next_step_content}" > "$next_tmp"
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform replace-section \
+  --section "次のステップ" --content-file "$next_tmp" \
+  2>/dev/null || true
+rm -f "$review_tmp" "$next_tmp"
+```
 
-**Consistency guarantee (Issue #90)**: Steps 3-6 collectively ensure that the Issue comment (backup) is consistent with the local work memory (SoT) updated in Phase 6.1.1. Both sources now reflect the same phase (`phase5_review`), timestamp, and loop count after Phase 6 completes. This is a **defense-in-depth** design: Phase 6.1.1 (local SoT) and Phase 6.2 Step 3 (Issue comment backup) intentionally perform the same session info updates. If either path silently fails, the other guarantees at least one source has correct state for recovery.
+**Placeholder descriptions:**
+- `{review_history_content}`: Review result summary (assessment, finding counts, commit SHA). Claude generates from Phase 5 results.
+- `{next_step_content}`: Next command based on assessment. Merge OK → `/rite:pr:ready` | Requires fixes → `/rite:pr:fix`
 
-**Next command determination:** Merge OK → `/rite:pr:ready` | Cannot merge/Requires fixes → `/rite:pr:fix`
+**Consistency guarantee (Issue #90)**: Steps 1-4 collectively ensure that the Issue comment (backup) is consistent with the local work memory (SoT) updated in Phase 6.1.1. This is a **defense-in-depth** design: if either path silently fails, the other guarantees at least one source has correct state for recovery.
 
 ### 6.3 Completion Report
 

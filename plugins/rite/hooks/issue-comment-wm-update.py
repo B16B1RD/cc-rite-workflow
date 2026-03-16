@@ -47,7 +47,12 @@ def get_timestamp() -> str:
 def update_progress(body: str, impl_status: str, test_status: str,
                     doc_status: str, changed_files_md: str | None = None,
                     timestamp: str | None = None) -> str:
-    """Update progress summary table (v2/v1 auto-detection) and changed files section."""
+    """Update progress summary table (v2/v1 auto-detection) and changed files section.
+
+    v2 format: Markdown table cells are updated directly.
+    v1 fallback: Only statuses containing '完了' are converted to [x]. Other statuses
+    (e.g., '未着手', '進行中') are silently skipped — checkboxes remain unchecked.
+    """
     ts = timestamp or get_timestamp()
 
     # v2 format: Markdown table (| 実装 | ⬜ 未着手 | - |)
@@ -69,7 +74,7 @@ def update_progress(body: str, impl_status: str, test_status: str,
     # Update changed files section
     if changed_files_md is not None:
         pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
-        body = re.sub(pattern, r"\g<1>" + changed_files_md, body, count=1, flags=re.DOTALL)
+        body = re.sub(pattern, lambda m: m.group(1) + changed_files_md, body, count=1, flags=re.DOTALL)
 
     # Update timestamp
     body = re.sub(
@@ -158,8 +163,9 @@ def append_section(body: str, section_name: str, content: str) -> str:
 
 def replace_section(body: str, section_name: str, content: str) -> str:
     """Replace the entire content of a named section (header preserved)."""
+    normalized = content.rstrip("\n") + "\n"
     pattern = r"(### " + re.escape(section_name) + r"\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
-    body = re.sub(pattern, r"\g<1>" + content, body, count=1, flags=re.DOTALL)
+    body = re.sub(pattern, lambda m: m.group(1) + normalized, body, count=1, flags=re.DOTALL)
 
     return body
 
