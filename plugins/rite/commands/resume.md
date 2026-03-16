@@ -217,8 +217,13 @@ Verify the following:
 gh issue view {issue_number} --json state --jq '.state'
 
 # ブランチ確認（出力の有無で判定。終了コードは常に 0 のため使用不可）
+# DO NOT use exit code (&&, ||, $?) to determine branch existence.
 branch_match=$(git branch --list "{branch}")
-# branch_match が非空ならブランチ存在、空なら不在
+if [ -n "$branch_match" ]; then
+  echo "BRANCH_EXISTS"
+else
+  echo "BRANCH_NOT_FOUND"
+fi
 ```
 
 **Timestamp validation:**
