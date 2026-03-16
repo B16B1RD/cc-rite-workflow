@@ -278,3 +278,42 @@ Issue #{number} のすべての子 Issue が完了しています。
 ```bash
 gh issue close {issue_number} --comment "すべての子 Issue が完了したため、自動クローズします。"
 ```
+
+---
+
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-parent-routing phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "phase1_5_post_parent" \
+    --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2 (work preparation). Do NOT stop."
+else
+  bash {plugin_root}/hooks/flow-state-update.sh create \
+    --phase "phase1_5_post_parent" --issue {issue_number} --branch "" --loop 0 --pr 0 \
+    --session {session_id} \
+    --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2 (work preparation). Do NOT stop."
+fi
+```
+
+After the flow-state update above, output the appropriate result pattern:
+
+- **Parent detected (with children)**: `[parent-routing:parent:{count}]` (where `{count}` is the number of child Issues)
+- **Not a parent Issue**: `[parent-routing:not-parent]`
+- **Parent detected (no children, decomposition proposed)**: `[parent-routing:decomposed]`
+
+This pattern is consumed by the orchestrator (`start.md`) to determine the next action.
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes, control **MUST** return to the caller (`start.md`). The caller **MUST immediately** execute its 🚨 Mandatory After 1.5 section:
+
+1. Proceed to Phase 1.6 (if child issues exist) or Phase 2
+
+**→ Return to `start.md` and proceed to Phase 1.6 or Phase 2 now. Do NOT stop.**

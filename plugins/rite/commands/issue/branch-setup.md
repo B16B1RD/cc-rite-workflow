@@ -117,3 +117,40 @@ Abort with error if no fallback exists.
 4. Display error and abort on any step failure
 
 After Step 3 completion, proceed to Step 4 of 2.3 (feature branch creation).
+
+---
+
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-branch phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "phase2_post_branch" \
+    --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
+else
+  bash {plugin_root}/hooks/flow-state-update.sh create \
+    --phase "phase2_post_branch" --issue {issue_number} --branch "{branch_name}" --loop 0 --pr 0 \
+    --session {session_id} \
+    --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
+fi
+```
+
+After the flow-state update above, output the result pattern:
+
+- **Branch created**: `[branch:created:{branch_name}]`
+
+This pattern is consumed by the orchestrator (`start.md`) to determine the next action.
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes, control **MUST** return to the caller (`start.md`). The caller **MUST immediately** execute its 🚨 Mandatory After 2.3 section:
+
+1. Proceed to Phase 2.4 (Projects Status update to In Progress)
+
+**→ Return to `start.md` and proceed to Phase 2.4 now. Do NOT stop.**

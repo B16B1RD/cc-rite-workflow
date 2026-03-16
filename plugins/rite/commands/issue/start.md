@@ -196,7 +196,19 @@ Invoke `skill: "rite:issue:parent-routing"`.
 
 > See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
 
-Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing sub-skill only performs detection — branch creation and implementation have NOT started yet. **→ Proceed to Phase 1.6 (if child issues exist) or Phase 2 now**.
+Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing sub-skill only performs detection — branch creation and implementation have NOT started yet.
+
+**Step 1**: Update `.rite-flow-state` to post-parent-routing phase (atomic). The sub-skill has already updated to `phase1_5_post_parent` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase1_5_post_parent" --issue {issue_number} --branch "" \
+  --loop 0 --pr 0 \
+  --session {session_id} \
+  --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 1.6 (if child issues exist) or Phase 2 now**.
 
 ## Phase 1.6: Child Issue Selection
 
@@ -219,7 +231,19 @@ Invoke `skill: "rite:issue:child-issue-selection"`.
 
 > See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
 
-Do **NOT** stop after `rite:issue:child-issue-selection` returns. Branch creation and implementation have NOT started yet. **→ Proceed to Phase 2 now**.
+Do **NOT** stop after `rite:issue:child-issue-selection` returns. Branch creation and implementation have NOT started yet.
+
+**Step 1**: Update `.rite-flow-state` to post-child-selection phase (atomic). The sub-skill has already updated to `phase1_6_post_child` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase1_6_post_child" --issue {issue_number} --branch "" \
+  --loop 0 --pr 0 \
+  --session {session_id} \
+  --next "rite:issue:child-issue-selection completed. Proceed to Phase 2 (work preparation). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 2 now**.
 
 ---
 
@@ -281,7 +305,19 @@ Invoke `skill: "rite:issue:branch-setup"`.
 
 > See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
 
-Do **NOT** stop after `rite:issue:branch-setup` returns. Projects status update and work memory initialization are still pending. **→ Proceed to Phase 2.4 now**.
+Do **NOT** stop after `rite:issue:branch-setup` returns. Projects status update and work memory initialization are still pending.
+
+**Step 1**: Update `.rite-flow-state` to post-branch phase (atomic). The sub-skill has already updated to `phase2_post_branch` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase2_post_branch" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --session {session_id} \
+  --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 2.4 now**.
 
 ### 2.4 GitHub Projects Status Update
 
@@ -317,7 +353,17 @@ Invoke `skill: "rite:issue:work-memory-init"`.
 
 > See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
 
-Defense-in-depth: verify local work memory was created. If the sub-skill skipped it, create via fallback:
+**Step 1**: Update `.rite-flow-state` to post-work-memory phase (atomic). The sub-skill has already updated to `phase2_post_work_memory` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase2_post_work_memory" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --session {session_id} \
+  --next "rite:issue:work-memory-init completed. Proceed to Phase 3 (implementation plan). Do NOT stop."
+```
+
+**Step 2**: Defense-in-depth: verify local work memory was created. If the sub-skill skipped it, create via fallback:
 
 ```bash
 if [ ! -f ".rite-work-memory/issue-{issue_number}.md" ]; then
@@ -331,7 +377,7 @@ fi
 
 > **Note**: `{plugin_root}` が未解決の場合は、[Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) に従い事前に解決すること。このコードブロックは Phase 4.1 よりも前に実行されるため、Phase 4.1 での解決に依存できない。相対パス `plugins/rite/hooks/` は、マーケットプレイスインストール環境ではスクリプトが見つからないため使用不可。
 
-Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next phase immediately after the sub-skill returns. **→ Proceed to Phase 3 now**.
+**Step 3**: Do **NOT** stop after `rite:issue:work-memory-init` returns. **→ Proceed to Phase 3 now**.
 
 ## Phase 3: Implementation Plan
 
@@ -353,7 +399,19 @@ Invoke `skill: "rite:issue:implementation-plan"`.
 
 > See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
 
-Do **NOT** stop after `rite:issue:implementation-plan` returns. Implementation has NOT started yet — the plan is just a plan. **→ Proceed to Phase 4 now**.
+Do **NOT** stop after `rite:issue:implementation-plan` returns. Implementation has NOT started yet — the plan is just a plan.
+
+**Step 1**: Update `.rite-flow-state` to post-plan phase (atomic). The sub-skill has already updated to `phase3_post_plan` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase3_post_plan" --issue {issue_number} --branch "{branch_name}" \
+  --loop 0 --pr 0 \
+  --session {session_id} \
+  --next "rite:issue:implementation-plan completed. Proceed to Phase 4 (work start guidance). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 4 now**.
 
 ---
 
