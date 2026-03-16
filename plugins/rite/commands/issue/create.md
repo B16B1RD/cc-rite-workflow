@@ -577,7 +577,17 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "none" --active false
 ```
 
-**Step 2**: The workflow is now complete. Stop is allowed after cleanup.
+**Step 2**: Output the next steps as the final message. This ensures "次のステップ" appears after all internal processing (flow-state deactivation) is complete:
+
+```
+次のステップ:
+1. `/rite:issue:start {number}` で作業を開始
+2. 作業完了後 `/rite:pr:create` で PR 作成
+```
+
+Where `{number}` is the Issue number extracted from the sub-skill's result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`).
+
+**Step 3**: The workflow is now complete. Stop is allowed after cleanup.
 
 ---
 
