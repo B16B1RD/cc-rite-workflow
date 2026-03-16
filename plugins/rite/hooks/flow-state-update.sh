@@ -36,6 +36,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source session ownership helper for stale detection in create mode
+source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+
 # Resolve repository root
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
 FLOW_STATE="$STATE_ROOT/.rite-flow-state"
@@ -53,6 +56,7 @@ NEXT=""
 ACTIVE=""
 IF_EXISTS=false
 FIELD=""
+SESSION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -65,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --active)   ACTIVE="$2"; shift 2 ;;
     --if-exists) IF_EXISTS=true; shift ;;
     --field)    FIELD="$2"; shift 2 ;;
+    --session)  SESSION="$2"; shift 2 ;;
     *) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -110,6 +115,27 @@ case "$MODE" in
     if [[ -z "$ACTIVE" ]]; then
       ACTIVE="true"
     fi
+    # Session ownership: overwrite protection for active state owned by another session
+    if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
+      _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"
+      if [[ "$_existing_active" == "true" ]]; then
+        _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>/dev/null) || _existing_sid=""
+        if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
+          # Different session owns the state — check staleness
+          _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>/dev/null) || _updated_at=""
+          if [[ -n "$_updated_at" ]]; then
+            _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>/dev/null) || _state_epoch=0
+            _now_epoch=$(date +%s)
+            _diff=$((_now_epoch - _state_epoch))
+            if [[ "$_diff" -le 7200 ]]; then
+              echo "ERROR: 別のワークフローが進行中です（2時間以内に更新）。" >&2
+              echo "INFO: 上書きするには先に /rite:resume で所有権を移転するか、2時間待ってください。" >&2
+              exit 1
+            fi
+          fi
+        fi
+      fi
+    fi
     if jq -n \
       --argjson active "$ACTIVE" \
       --argjson issue "$ISSUE" \
@@ -119,7 +145,8 @@ case "$MODE" in
       --argjson pr "$PR" \
       --arg next "$NEXT" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts, last_synced_phase: ""}' \
+      --arg sid "$SESSION" \
+      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else
