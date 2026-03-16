@@ -3,6 +3,10 @@
 # Re-injects flow state after compact or resume
 set -euo pipefail
 
+# Double-execution guard (hooks.json + settings.local.json migration)
+[ -z "${_RITE_HOOK_RUNNING_SESSIONSTART:-}" ] || exit 0
+export _RITE_HOOK_RUNNING_SESSIONSTART=1
+
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -n "${RITE_DEBUG:-}" ]; then
