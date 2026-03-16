@@ -13,6 +13,8 @@ description: |
 
 rite workflow のリリースを4フェーズで実行する。各フェーズでユーザーの確認を挟みながら進める。
 
+**ユーザーへの質問は必ず `AskUserQuestion` ツールを使うこと。** テキスト出力で質問して応答を待つのではなく、AskUserQuestion で明示的に入力を求める。これにより、ユーザーが何を求められているか明確になり、ワークフローの中断ポイントがはっきりする。
+
 ---
 
 ## GitHub Projects 連携の共通手順
@@ -76,7 +78,7 @@ echo "Current version: $current_version"
    - **major**: 破壊的変更がある場合
    - **minor**: 新機能追加がある場合
    - **patch**: バグ修正のみの場合
-3. ユーザーに確認: `v{proposed_version} でリリースしますか？`
+3. `AskUserQuestion` ツールでユーザーに確認: `v{proposed_version} でリリースしますか？`
 
 ### 1.3 リリース内容のプレビュー
 
@@ -89,7 +91,7 @@ if [ -n "$latest_tag" ]; then
 fi
 ```
 
-関連する Issue/PR 番号も `gh` で確認し、CHANGELOG エントリの草案を作成してユーザーに提示する。
+関連する Issue/PR 番号も `gh` で確認し、CHANGELOG エントリの草案を作成して `AskUserQuestion` でユーザーに提示し、リリースを進めてよいか確認する。
 
 ---
 
@@ -188,13 +190,25 @@ gh pr create \
   --body "Closes #{PREP_ISSUE_NUMBER}"
 ```
 
-ユーザーに PR 確認を促し、承認後にマージ:
+`AskUserQuestion` でユーザーに PR を確認してマージしてよいか確認し、承認後にマージ:
 
 ```bash
 gh pr merge --merge
 ```
 
 マージ後、**Issue の Status を `Done` に更新する**。`Closes` キーワードで自動クローズされるが、されなければ手動でクローズ。
+
+**ブランチ削除**: マージ後、不要になったリリース準備ブランチをローカルとリモートから削除する:
+
+```bash
+# develop に切り替え
+git checkout develop
+git pull origin develop
+
+# リリース準備ブランチを削除
+git branch -d chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
+git push origin --delete chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep 2>/dev/null || true
+```
 
 ---
 
@@ -232,7 +246,7 @@ gh pr create \
   --body "Merge develop into main for v{VERSION} release. Closes #{RELEASE_ISSUE_NUMBER}"
 ```
 
-ユーザー確認後にマージ:
+`AskUserQuestion` でユーザーに main へのマージを確認し、承認後にマージ:
 
 ```bash
 gh pr merge --merge
@@ -289,6 +303,7 @@ git pull origin develop
 | 3 | タグが正しいコミットを指している | `git log v{VERSION} --oneline -1` |
 | 4 | 両 Issue がクローズされている | `gh issue view {PREP_ISSUE} --json state && gh issue view {RELEASE_ISSUE} --json state` |
 | 5 | 両 Issue の Projects Status が Done | `gh issue view {PREP_ISSUE} --json projectItems && gh issue view {RELEASE_ISSUE} --json projectItems` |
+| 6 | リリース準備ブランチが削除されている | `git branch --list 'chore/issue-*-release-prep'` が空であること |
 
 ### 4.2 結果報告
 
