@@ -925,6 +925,8 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 
 When verification mode AND `allow_new_findings_in_unchanged_code == false`: Check if finding is in incremental diff. Unchanged code: CRITICAL/HIGH → genuine (blocking), MEDIUM/LOW → stability_concern (non-blocking, informational).
 
+**例外**: この stability_concern 分類は、Phase 4.5.1 の verification テンプレート（Part 2: リグレッションチェック）由来の指摘にのみ適用される。Phase 4.5 の通常テンプレート（フルレビュー）由来の指摘には適用しない。フルレビュー由来の指摘は 5.1.1 に従い、重要度に関わらず blocking とする。
+
 ### 5.2 Cross-Validation
 
 **Same file/line check**: Group by `file:line`. 2+ reviewers → mark "High Confidence" + boost severity (LOW→MEDIUM→HIGH→CRITICAL).
