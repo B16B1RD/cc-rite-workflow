@@ -410,6 +410,7 @@ if [ -f ".rite-flow-state" ]; then
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_interview" --issue 0 --branch "" --loop 0 --pr 0 \
+    --session {session_id} \
     --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 fi
 ```
@@ -536,6 +537,7 @@ if [ -f ".rite-flow-state" ]; then
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_delegation" --issue 0 --branch "" --loop 0 --pr 0 \
+    --session {session_id} \
     --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 fi
 ```
@@ -574,6 +576,7 @@ Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "create_completed" --issue 0 --branch "" --loop 0 --pr 0 \
+  --session {session_id} \
   --next "none" --active false
 ```
 
