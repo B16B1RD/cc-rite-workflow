@@ -423,11 +423,19 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
+> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-interview` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually. See also the delegation section below for the same pattern.
+
 **Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** proceed to the next phase.
 
 Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
 
-**Step 1**: The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section. No additional flow-state write is needed here (eliminating the redundant double write).
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes to the correct next phase:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "create_post_interview" \
+  --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+```
 
 **Step 2**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
@@ -567,11 +575,21 @@ Invoke `skill: "rite:issue:create-register"`.
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
+> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-register` or `rite:issue:create-decompose` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually.
+
 **Verify**: Result pattern confirmed (e.g., `[register:created:{N}]` or `[decompose:completed:{N}]`). The Issue(s) have been created.
 
 Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state deactivation) is still pending — this is a required step to prevent the stop-guard from blocking future sessions.
 
-**Step 1**: Deactivate flow state:
+**Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic). The sub-skill has already written `create_post_delegation` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes correctly:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "create_post_delegation" \
+  --next "Sub-skill completed. Deactivate flow state and output next steps. Do NOT stop."
+```
+
+**Step 2**: Deactivate flow state:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -579,7 +597,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "none" --active false
 ```
 
-**Step 2**: Output the next steps as the final message. This ensures "次のステップ" appears after all internal processing (flow-state deactivation) is complete:
+**Step 3**: Output the next steps as the final message. This ensures "次のステップ" appears after all internal processing (flow-state deactivation) is complete:
 
 ```
 次のステップ:
@@ -589,7 +607,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 Where `{number}` is the Issue number extracted from the sub-skill's result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`).
 
-**Step 3**: The workflow is now complete. Stop is allowed after cleanup.
+**Step 4**: The workflow is now complete. Stop is allowed after cleanup.
 
 ---
 
