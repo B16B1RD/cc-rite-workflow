@@ -393,3 +393,37 @@ If a checklist exists, record it in the "Issue checklist" section of the work me
 #### 3.6.4 When No Checklist Exists
 
 If the Issue body has no checklist, skip this section and do not record in the work memory.
+
+---
+
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-plan phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase3_post_plan" \
+  --next "rite:issue:implementation-plan completed. Proceed to Phase 4 (work start guidance). Do NOT stop." \
+  --if-exists
+```
+
+After the flow-state update above, output the appropriate result pattern:
+
+- **Plan approved**: `[plan:approved]`
+- **Plan skipped**: `[plan:skipped]`
+
+This pattern is consumed by the orchestrator (`start.md`) to determine the next action.
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes (plan approved or skipped), control **MUST** return to the caller (`start.md`). The caller **MUST immediately** execute its 🚨 Mandatory After 3 section:
+
+1. Proceed to Phase 4 (work start guidance)
+
+**WARNING**: Implementation has NOT started yet — the plan is just a plan. Stopping here would abandon the workflow before any code changes are made.
+
+**→ Return to `start.md` and proceed to Phase 4 now. Do NOT stop.**

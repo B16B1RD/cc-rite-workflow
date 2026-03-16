@@ -3,6 +3,10 @@
 # Prevents Claude from stopping during an active rite workflow
 set -euo pipefail
 
+# Double-execution guard (hooks.json + settings.local.json migration)
+[ -z "${_RITE_HOOK_RUNNING_STOP:-}" ] || exit 0
+export _RITE_HOOK_RUNNING_STOP=1
+
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true

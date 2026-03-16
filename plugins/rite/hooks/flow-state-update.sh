@@ -7,7 +7,7 @@
 #   Create mode (full object with jq -n):
 #     bash plugins/rite/hooks/flow-state-update.sh create \
 #       --phase phase5_lint --issue 42 --branch "feat/issue-42-test" \
-#       --loop 0 --pr 0 --next "Proceed to Phase 5.2.1." [--active true]
+#       --pr 0 --next "Proceed to Phase 5.2.1." [--active true]
 #
 #   Patch mode (update fields in existing file):
 #     bash plugins/rite/hooks/flow-state-update.sh patch \
@@ -21,7 +21,6 @@
 #   --phase          Phase value (required for create/patch)
 #   --issue          Issue number (create mode, default: 0)
 #   --branch         Branch name (create mode, default: "")
-#   --loop           Loop count (create mode, default: 0)
 #   --pr             PR number (create mode, default: 0)
 #   --next           next_action text (required for create/patch)
 #   --active         Active flag (create mode: default true; patch mode: update only if specified)
@@ -50,7 +49,6 @@ shift 2>/dev/null || true
 PHASE=""
 ISSUE=0
 BRANCH=""
-LOOP=0
 PR=0
 NEXT=""
 ACTIVE=""
@@ -63,7 +61,6 @@ while [[ $# -gt 0 ]]; do
     --phase)    PHASE="$2"; shift 2 ;;
     --issue)    ISSUE="$2"; shift 2 ;;
     --branch)   BRANCH="$2"; shift 2 ;;
-    --loop)     LOOP="$2"; shift 2 ;;
     --pr)       PR="$2"; shift 2 ;;
     --next)     NEXT="$2"; shift 2 ;;
     --active)   ACTIVE="$2"; shift 2 ;;
@@ -115,6 +112,15 @@ case "$MODE" in
     if [[ -z "$ACTIVE" ]]; then
       ACTIVE="true"
     fi
+    # Auto-read session_id from .rite-session-id if --session was not provided or is empty (#216)
+    if [[ -z "$SESSION" ]]; then
+      _session_id_file="$STATE_ROOT/.rite-session-id"
+      SESSION=$(cat "$_session_id_file" 2>/dev/null | tr -d '[:space:]') || SESSION=""
+      # Validate UUID format (reject tampered or corrupt content)
+      if [[ -n "$SESSION" && ! "$SESSION" =~ ^[0-9a-f-]{36}$ ]]; then
+        SESSION=""
+      fi
+    fi
     # Session ownership: overwrite protection for active state owned by another session
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
       _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"
@@ -141,12 +147,11 @@ case "$MODE" in
       --argjson issue "$ISSUE" \
       --arg branch "$BRANCH" \
       --arg phase "$PHASE" \
-      --argjson loop "$LOOP" \
       --argjson pr "$PR" \
       --arg next "$NEXT" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
       --arg sid "$SESSION" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
+      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else

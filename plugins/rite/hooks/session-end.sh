@@ -3,6 +3,10 @@
 # Saves final state when session ends
 set -euo pipefail
 
+# Double-execution guard (hooks.json + settings.local.json migration)
+[ -z "${_RITE_HOOK_RUNNING_SESSIONEND:-}" ] || exit 0
+export _RITE_HOOK_RUNNING_SESSIONEND=1
+
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true

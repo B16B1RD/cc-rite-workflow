@@ -114,15 +114,12 @@ review:
   criteria:
     - file_types
     - content_analysis
-  # review-fix ループの段階的緩和設定
-  # ループが長引いた場合、低 severity 指摘を非ブロックに緩和して収束を促進
+  # review-fix ループ設定
+  # 全指摘が必須修正。指摘 0 件になるまでループ継続
   loop:
-    max_iterations: 7           # 強制終了（デフォルト: 7）。全残指摘を別 Issue 化してループ離脱
-    relax_medium_after: 3       # MEDIUM/LOW 緩和開始（デフォルト: 3）。MEDIUM/LOW は非ブロック指摘に
-    relax_high_after: 5         # HIGH 緩和開始（デフォルト: 5）。HIGH も非ブロック指摘に
-    verification_mode: true     # サイクル2+で検証モードを有効化（デフォルト: true）
-                                # true: 前回指摘の修正検証 + incremental diff リグレッションチェックに限定
-                                # false: 毎サイクルフルレビュー（従来動作）
+    verification_mode: true     # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: true）
+                                # true: 検証レビュー（前回指摘の修正検証 + リグレッションチェック）をフルレビューの補足として実施
+                                # false: 毎サイクルフルレビューのみ（従来動作）
     allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
                                                   # false: stability_concern として報告のみ（blocking にしない）
                                                   # true: 通常の指摘として blocking 判定に含む
