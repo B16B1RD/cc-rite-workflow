@@ -645,7 +645,7 @@ When incomplete checklist items are detected, evaluate each item's fulfillment s
 
 1. **Collect evidence**: Use `git diff origin/{base_branch}...HEAD --name-only` and `git log --oneline origin/{base_branch}...HEAD` to understand what was implemented.
 
-2. **Evaluate each incomplete item**: For each `- [ ]` item, the AI assesses whether the item is satisfied based on the implementation evidence:
+2. **Evaluate each incomplete item**: For each `- [ ]` item, assess whether the item is satisfied based on the implementation evidence:
 
    | Assessment | Criteria | Action |
    |-----------|----------|--------|
@@ -658,29 +658,49 @@ When incomplete checklist items are detected, evaluate each item's fulfillment s
    Follow the "Checkbox Update" pattern in [gh-cli-patterns.md](../../references/gh-cli-patterns.md#safe-checklist-operation-patterns). Use Python for safe `- [ ]` → `- [x]` replacement (do NOT use `sed`).
 
    ```bash
-   # Step 1: Retrieve current body
+   # Step 1: Retrieve current body and validate
    tmpfile_read=$(mktemp)
    tmpfile_write=$(mktemp)
    trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
    gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
+
+   if [ ! -s "$tmpfile_read" ]; then
+     echo "ERROR: Issue body の取得に失敗" >&2
+     exit 1
+   fi
+
+   # Output paths for subsequent Read/Write tool calls
+   echo "tmpfile_read=$tmpfile_read"
+   echo "tmpfile_write=$tmpfile_write"
    ```
 
-   Then use the Read tool to read `$tmpfile_read`, apply `- [ ]` → `- [x]` replacements for satisfied items using the Write tool to `$tmpfile_write`, and apply:
+   Then use the Read tool to read `$tmpfile_read` (the path output above), apply `- [ ]` → `- [x]` replacements for satisfied items using the Write tool to `$tmpfile_write`, and apply:
+
+   **Note**: Shell variables do not carry over between Bash tool calls. Use the literal paths output by `echo "tmpfile_read=..."` in Step 1 directly in the command below.
 
    ```bash
+   # Replace with actual paths from Step 1 output (e.g., /tmp/tmp.XXXXXXXXXX)
+   tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Step 1 の出力値に置換
+
+   if [ ! -s "$tmpfile_write" ]; then
+     echo "ERROR: Updated content is empty" >&2
+     exit 1
+   fi
+
    gh issue edit {issue_number} --body-file "$tmpfile_write"
-   rm -f "$tmpfile_read" "$tmpfile_write"
    ```
 
 4. **Re-check**: After updating, re-run the checklist check:
 
    ```bash
    issue_body=$(gh issue view {issue_number} --json body --jq '.body')
+   [ -z "$issue_body" ] && echo "ERROR: Issue body の取得に失敗" >&2 && exit 1
    echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true
    ```
 
    - `0` (all complete) → Proceed to Phase 5.3
    - `≥1` (still incomplete) → Display remaining incomplete items and return to Phase 5.1
+   - Empty body → retry Phase 5.1
 
 **User confirmation for uncertain items**:
 
