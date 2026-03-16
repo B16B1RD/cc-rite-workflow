@@ -6,6 +6,7 @@ set -euo pipefail
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -34,6 +35,14 @@ fi
 
 # Deactivate flow state if it exists
 if [ -f "$STATE_FILE" ]; then
+    # Session ownership check (#173): only deactivate own/legacy/stale state.
+    # Other session's fresh state (within 2h) must not be modified.
+    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+    if [ "$_ownership" = "other" ]; then
+        # Another session's active state — do not modify
+        exit 0
+    fi
+
     # mktemp with PID-based fallback (consistent with stop-guard.sh)
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
     # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
