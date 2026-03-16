@@ -13,6 +13,7 @@ set -euo pipefail
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
@@ -37,6 +38,11 @@ fi
 
 # Only track during active workflows
 [ "$FLOW_ACTIVE" = "true" ] || exit 0
+
+# Session ownership check (#173): skip counter operations for other session's state
+# to prevent non-atomic read-modify-write counter corruption across concurrent sessions
+_ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE" 2>/dev/null) || _ownership="own"
+[ "$_ownership" != "other" ] || exit 0
 
 COUNTER_FILE="$STATE_ROOT/.rite-context-counter"
 

@@ -8,6 +8,7 @@ set -euo pipefail
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # Recursion guard
 [ -z "${RITE_WM_HOOK_ACTIVE:-}" ] || exit 0
@@ -29,6 +30,9 @@ _flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostr
 IFS=$'\t' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0
 [ -n "$issue_number" ] || exit 0
+# Session ownership check (#173): skip sync for other session's state
+_ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE" 2>/dev/null) || _ownership="own"
+[ "$_ownership" != "other" ] || exit 0
 # Defense-in-depth: don't recreate WM for completed workflows (#776)
 [ "$_phase" != "completed" ] || exit 0
 [ "$_phase" != "cleanup" ] || exit 0
