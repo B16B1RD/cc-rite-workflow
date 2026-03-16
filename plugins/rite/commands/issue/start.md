@@ -833,7 +833,16 @@ with open(out_path, "w") as f:
 fi
 ```
 
-**Step 3**: **→ Execute 5.4.2 branch now**.
+**Step 3**: Based on the review result pattern from `rite:pr:review`, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
+
+| Result Pattern | Action |
+|----------------|--------|
+| `[review:mergeable]` | **→ Proceed to Phase 5.5** (Ready for Review). Skip fix entirely. |
+| `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4). After it returns, proceed to 🚨 After Fix (5.4.6). |
+| `[review:conditional-merge:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for blocking issues only. After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
+| `[review:loop-limit:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for blocking issues only (convert remaining to Issues). After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
+
+> **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。
 
 #### 5.4.4 Fix
 
@@ -939,7 +948,17 @@ with open(out_path, "w") as f:
 fi
 ```
 
-**Step 3**: **→ Execute 5.4.5 branch now**.
+**Step 3**: Based on the fix result pattern from `rite:pr:fix` **and** the preceding review result pattern, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
+
+| Fix Result Pattern | Preceding Review Pattern | Action |
+|--------------------|--------------------------|--------|
+| `[fix:pushed]` | `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
+| `[fix:pushed]` | `[review:conditional-merge:{n}]` or `[review:loop-limit:{n}]` | **→ Proceed to Phase 5.5** (Ready for Review). |
+| `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
+| `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
+| `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` (retry / skip to 5.6 / terminate). |
+
+> **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。再レビューは必ず `skill: "rite:pr:review"` を Skill ツールで呼び出すこと。
 
 ### 5.5 Ready for Review
 
