@@ -574,9 +574,8 @@ Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state
 **Step 1**: Deactivate flow state:
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "create_completed" --issue 0 --branch "" --loop 0 --pr 0 \
-  --session {session_id} \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "create_completed" \
   --next "none" --active false
 ```
 

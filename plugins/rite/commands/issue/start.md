@@ -1328,10 +1328,8 @@ Present options via `AskUserQuestion`:
 **Post-completion**: Update `.rite-flow-state` `active: false` (atomic):
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "completed" --issue {issue_number} --branch "{branch_name}" \
-  --loop {loop_count} --pr {pr_number} \
-  --session {session_id} \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "completed" \
   --next "none" --active false
 ```
 
