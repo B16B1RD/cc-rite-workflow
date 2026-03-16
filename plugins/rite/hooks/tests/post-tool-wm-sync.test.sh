@@ -134,13 +134,14 @@ dir006="$TEST_DIR/tc006"
 mkdir -p "$dir006/.rite-work-memory"
 echo "existing wm" > "$dir006/.rite-work-memory/issue-42.md"
 create_state_file "$dir006" '{"active": true, "issue_number": 42, "phase": "phase5_lint", "last_synced_phase": "phase5_lint"}'
-run_hook "$dir006" || true
-# Verify flow-state was NOT modified (last_synced_phase unchanged = no sync attempted)
+rc006=0
+run_hook "$dir006" || rc006=$?
+# Verify exit code is 0 (not a crash)
 synced=$(jq -r '.last_synced_phase' "$dir006/.rite-flow-state" 2>/dev/null)
-if [ "$synced" = "phase5_lint" ]; then
-  pass "No sync when phase matches last_synced_phase (no-op)"
+if [ "$synced" = "phase5_lint" ] && [ "$rc006" -eq 0 ]; then
+  pass "No sync when phase matches last_synced_phase (no-op, exit code: $rc006)"
 else
-  fail "last_synced_phase was unexpectedly changed to: $synced"
+  fail "Unexpected: last_synced_phase=$synced, exit code=$rc006"
 fi
 echo ""
 
@@ -150,14 +151,16 @@ dir007="$TEST_DIR/tc007"
 mkdir -p "$dir007/.rite-work-memory"
 echo "existing wm" > "$dir007/.rite-work-memory/issue-42.md"
 create_state_file "$dir007" '{"active": true, "issue_number": 42, "phase": "phase5_pr_created", "last_synced_phase": "phase5_lint"}'
+# Enable debug logging to verify phase change was detected
+export RITE_DEBUG=1
 run_hook "$dir007" || true
-# issue-comment-wm-sync.sh will fail (no gh auth in test env), but last_synced_phase
-# should remain unchanged (only updated on sync success)
-# The key test is that the hook does NOT crash/abort
-synced=$(jq -r '.last_synced_phase' "$dir007/.rite-flow-state" 2>/dev/null)
-# Since sync fails in test env, last_synced_phase stays at old value OR gets updated
-# Either way, the hook should exit 0 (non-blocking)
-pass "Hook completed without error when phase differs (sync attempted)"
+unset RITE_DEBUG
+# Verify phase change was detected via debug log (not unconditional pass)
+if [ -f "$dir007/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir007/.rite-flow-debug.log" 2>/dev/null; then
+  pass "Phase change detected and sync attempted when phase differs"
+else
+  fail "Phase change not detected in debug log"
+fi
 echo ""
 
 # --- TC-008: last_synced_phase missing (backward compat) → sync attempted ---
@@ -166,10 +169,16 @@ dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008/.rite-work-memory"
 echo "existing wm" > "$dir008/.rite-work-memory/issue-42.md"
 create_state_file "$dir008" '{"active": true, "issue_number": 42, "phase": "phase3_plan"}'
+# Enable debug logging to verify phase change was detected
+export RITE_DEBUG=1
 run_hook "$dir008" || true
-# Without last_synced_phase field, it defaults to "" which differs from "phase3_plan"
-# Hook should attempt sync and exit 0
-pass "Hook completed without error when last_synced_phase missing (backward compat)"
+unset RITE_DEBUG
+# Verify phase change was detected (last_synced_phase defaults to "" which differs from "phase3_plan")
+if [ -f "$dir008/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir008/.rite-flow-debug.log" 2>/dev/null; then
+  pass "Phase change detected when last_synced_phase missing (backward compat)"
+else
+  fail "Phase change not detected in debug log for backward compat case"
+fi
 echo ""
 
 # --- TC-009: phase5_lint triggers progress update path ---
@@ -179,7 +188,9 @@ mkdir -p "$dir009/.rite-work-memory"
 echo "existing wm" > "$dir009/.rite-work-memory/issue-42.md"
 create_state_file "$dir009" '{"active": true, "issue_number": 42, "phase": "phase5_lint", "last_synced_phase": "phase5_implementation"}'
 # Enable debug logging to verify progress sync path is reached
-RITE_DEBUG=1 run_hook "$dir009" || true
+export RITE_DEBUG=1
+run_hook "$dir009" || true
+unset RITE_DEBUG
 if [ -f "$dir009/.rite-flow-debug.log" ]; then
   if grep -q "progress sync completed\|update-progress failed" "$dir009/.rite-flow-debug.log" 2>/dev/null; then
     pass "Progress sync path was triggered for phase5_lint"

@@ -70,8 +70,8 @@ fi
 # === Phase diff detection & Issue comment auto-sync (Issue #167) ===
 # Scope: phase changes only. next_action and loop_count changes are
 # handled by explicit calls in command files (Phase 2 follow-up).
-[ "$_phase" != "$_last_synced_phase" ] || exit 0
 [ -n "$_phase" ] || exit 0
+[ "$_phase" != "$_last_synced_phase" ] || exit 0
 
 log_debug "phase changed: $_last_synced_phase -> $_phase, syncing to issue comment"
 
@@ -92,15 +92,19 @@ _phase_detail=$(python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>/dev/nu
 # to a post-implementation phase (phase5_lint and beyond).
 case "$_phase" in
   phase5_lint|phase5_post_lint|phase5_pr*|phase5_post_review|phase5_post_ready)
-    cd "$STATE_ROOT" || true
+    cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; exit 0; }
 
-    # Determine base branch from rite-config.yml
-    _base_branch=$(grep -E '^  base:' rite-config.yml 2>/dev/null | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/' || echo "develop")
+    # Determine base branch from rite-config.yml (absolute path for consistency with other hooks)
+    _base_branch=$(grep -E '^  base:' "$STATE_ROOT/rite-config.yml" 2>/dev/null | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/' || echo "develop")
     [ -n "$_base_branch" ] || _base_branch="develop"
 
-    # Generate changed files list
+    # Get changed files list (single git diff call, reuse for both file list and status detection)
     _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="/tmp/rite-wm-sync-files.$$"
-    git diff --name-status "origin/${_base_branch}...HEAD" 2>/dev/null | while IFS=$'\t' read -r status file; do
+    _diff_raw=$(git diff --name-status "origin/${_base_branch}...HEAD" 2>/dev/null || echo "")
+
+    # Generate formatted changed files list from raw diff
+    echo "$_diff_raw" | while IFS=$'\t' read -r status file; do
+      [ -n "$status" ] || continue
       case "$status" in
         A) echo "- \`$file\` - 追加" ;;
         M) echo "- \`$file\` - 変更" ;;
@@ -109,8 +113,8 @@ case "$_phase" in
       esac
     done > "$_changed_files_tmp" 2>/dev/null || true
 
-    # Determine statuses based on git diff
-    _diff_files=$(git diff --name-only "origin/${_base_branch}...HEAD" 2>/dev/null || echo "")
+    # Determine statuses from raw diff (reuse _diff_raw, no second git call)
+    _diff_files=$(echo "$_diff_raw" | awk -F'\t' '{print $2}')
     _impl_status="✅ 完了"
     _test_status="⬜ 未着手"
     _doc_status="⬜ 未着手"
