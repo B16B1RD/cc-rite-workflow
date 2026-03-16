@@ -54,7 +54,7 @@ All reviewers must follow these quality standards when reporting findings. These
 
 ### All Findings Are Mandatory Fixes
 
-**Every finding reported will be treated as a mandatory fix** — there is no auto-defer or gradual relaxation mechanism. The review-fix loop continues until all findings are resolved (0 findings remaining) or `max_iterations` is reached.
+**Every finding reported will be treated as a mandatory fix** — there is no auto-defer or gradual relaxation mechanism. The review-fix loop continues until all findings are resolved (0 findings remaining).
 
 This means reviewers must exercise careful judgment about what to report:
 
