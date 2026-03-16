@@ -1632,16 +1632,15 @@ Based on the Phase 6 review results, output the corresponding machine-readable p
 - The caller determines the next action based on this output pattern
 - The prohibited actions defined in Phase 5.3.7 "Prohibition of Independent Judgment After Assessment" also apply here
 
-**When assessed as "Merge OK" but blocking findings > 0:**
--> Correct to `[review:fix-needed:{blocking_count}]`
+**When assessed as "Merge OK" but findings > 0:**
+-> Correct to `[review:fix-needed:{total_findings}]`
 
 **Example output:**
 ```
 📜 rite レビュー結果
 
 総合評価: マージ可
-ブロック指摘: 0件
-非ブロック指摘: 0件
+指摘: 0件
 
 [review:mergeable]
 ```
