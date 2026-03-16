@@ -4,7 +4,6 @@ version: "1.0"
 # Project settings
 project:
   type: generic
-  name: "cc-rite-workflow"
 
 # GitHub Projects integration
 github:
@@ -45,19 +44,10 @@ iteration:
 # Branch naming rules
 branch:
   base: "develop"    # Development base branch (Git Flow)
-  release: "main"    # Production release branch
   pattern: "{type}/issue-{number}-{slug}"
-  types:
-    feature: "feat"
-    bugfix: "fix"
-    documentation: "docs"
-    refactor: "refactor"
-    chore: "chore"
 
 # Commit message
 commit:
-  style: conventional
-  enforce: true
   contextual: true    # Contextual Commits action lines in commit body
 
 # Build/test/lint commands
@@ -77,6 +67,10 @@ tdd:
   tag_prefix: "AC"         # Tag prefix for test skeleton markers
   run_baseline: true       # Run baseline test before skeleton generation
   max_skeletons: 20        # Maximum number of skeletons to generate per Issue
+
+# Issue settings
+issue:
+  auto_decompose_threshold: M  # XS | S | M | L | XL | none — threshold above which issues are auto-decomposed
 
 # Review settings
 review:
@@ -108,34 +102,22 @@ team:
   teammate_model: "sonnet"   # Model for teammate agents (default: "sonnet")
   auto_review: true          # Auto-run /rite:pr:review after all PRs created (default: true)
 
-# Notification settings
-notifications:
-  slack:
-    enabled: false
-    webhook_url: null
-  discord:
-    enabled: false
-    webhook_url: null
-  teams:
-    enabled: false
-    webhook_url: null
-
 # Metrics settings
 metrics:
   enabled: true            # Enable/disable metrics recording
   baseline_issues: 3       # Number of Issues for baseline collection (measure-only period)
-  thresholds:
-    plan_deviation_rate: 30       # Max plan vs actual step divergence (%)
-    test_pass_rate: 100           # Required test pass rate at PR creation (%)
-    review_fix_loops: 3           # Max acceptable review-fix loop count
-    review_critical_high_improvement: 0.80  # MA5 improvement factor for CRITICAL+HIGH findings
-    plan_deviation_improvement: 0.90        # MA5 improvement factor for plan deviation count
+  # thresholds: 現在コード内にハードコード。将来の動的読み込み実装時に有効化予定
+  # thresholds:
+  #   plan_deviation_rate: 30       # Max plan vs actual step divergence (%)
+  #   test_pass_rate: 100           # Required test pass rate at PR creation (%)
+  #   review_fix_loops: 3           # Max acceptable review-fix loop count
+  #   review_critical_high_improvement: 0.80  # MA5 improvement factor for CRITICAL+HIGH findings
+  #   plan_deviation_improvement: 0.90        # MA5 improvement factor for plan deviation count
 
 # Context optimization settings (#80)
 context_optimization:
   agent_delegation: false            # Enable agent delegation for review-fix loop under context pressure
   agent_delegation_threshold: 80     # Tool call count threshold to trigger agent delegation
-  output_minimization: true          # Enable e2e output minimization for sub-skills (default: true)
   pressure_thresholds:
     yellow: 60                       # Warning threshold (phase-aware: adjusted by ±10 per phase)
     orange: 90                       # Optimization mode activation threshold
@@ -143,7 +125,6 @@ context_optimization:
 
 # Safety settings (fail-closed thresholds)
 safety:
-  max_review_fix_loops: 7          # review-fix loop hard limit
   max_implementation_rounds: 20    # implementation round hard limit per Issue
   time_budget_minutes: 120         # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats
