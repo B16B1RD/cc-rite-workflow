@@ -466,15 +466,13 @@ The e2e flow must minimize context consumption to complete within a single sessi
 - Tool calls >= RED threshold (default: 120) → context optimization (per-file diffs, history summarization, /compact recommendation)
 - Read >5000 lines or >10 files → omit unnecessary info
 - diff >2000 → file splitting in review
-- Loop ≥2 → verification mode (if `review.loop.verification_mode: true`)
-- Loop >3 → history summarization + MEDIUM/LOW relaxation
+- Previous review comment exists → verification mode (if `review.loop.verification_mode: true`)
 
 Count: Tool results in history (parallel=1). Read=sum max line numbers. Changed=additions+deletions.
 
 **Optimizations**: Verification mode (cycle 2+, previous fix + incremental diff), per-file diff, omit error details, summarize loops ("Cycle N: X→fix"), incremental retrieval. Display "⚠️ Context optimization mode".
 
 **Split/termination**:
-- Loop limit (`review.loop.max_iterations`, default 7) → convert remaining to Issues
 - >50 files → new session recommended
 - Multiple features → split Issue
 
@@ -489,7 +487,7 @@ Resume via work memory (`/rite:resume` or `/rite:issue:start`).
 5.2.1 チェックリスト完了確認 → 全完了なら 5.3 / 未完了なら 5.1
 5.3 PR 作成 → 5.4
 5.4 レビュー・修正ループ:
-  5.4.1 rite:pr:review → [mergeable]→5.5 / [fix-needed]→fix→5.4.1 / [conditional/loop-limit]→fix(別Issue化)→5.5
+  5.4.1 rite:pr:review → [mergeable]→5.5 / [fix-needed]→fix→5.4.1
   (5.4.2-5.4.3 review routing/after, 5.4.5-5.4.6 fix routing/after)
   5.4.4 rite:pr:fix → [pushed]→5.4.1 / [issues-created]→5.4.1 / [replied-only]→5.5 / [error]→処理
 5.5 Ready for Review 確認 → rite:pr:ready → [ready:completed]→5.5.0.1→5.5.1 Status 更新 → 5.5.2
@@ -508,7 +506,7 @@ bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:issue:start" --c
 
 If exit code is `1` (blocked), stop execution and display the preflight output. Do NOT proceed.
 
-**Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed/conditional-merge/loop-limit:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`), ready (`[ready:completed/error]`).
+**Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`), ready (`[ready:completed/error]`).
 
 **Sub-skill return protocol**: See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global). Each 🚨 Mandatory After section below enforces it at specific transition points.
 
@@ -816,11 +814,11 @@ Invoke `skill: "rite:pr:create"`.
 
 ### 5.4 Review-Fix Loop
 
-`/rite:issue:start` orchestrates. Read `review.loop.max_iterations` from rite-config.yml (default: 7). Init `loop_count = 0`.
+`/rite:issue:start` orchestrates the review-fix loop.
 
-**Local work memory sync rule**: At each phase transition within the review-fix loop (5.4.1, 5.4.3, 5.4.4, 5.4.6), after updating `.rite-flow-state`, also sync `loop_count` and phase to the local work memory file (`.rite-work-memory/issue-{n}.md`). Use the self-resolving wrapper `local-wm-update.sh` with appropriate `WM_*` env vars. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for the recommended pattern.
+**Local work memory sync rule**: At each phase transition within the review-fix loop (5.4.1, 5.4.3, 5.4.4, 5.4.6), after updating `.rite-flow-state`, also sync phase to the local work memory file (`.rite-work-memory/issue-{n}.md`). Use the self-resolving wrapper `local-wm-update.sh` with appropriate `WM_*` env vars. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for the recommended pattern.
 
-**Issue comment backup sync rule**: After each review cycle completes (at 5.4.3 and 5.4.6), sync local work memory to the Issue comment as a backup. Use the existing `gh api` PATCH pattern from `fix.md` Phase 4.5.2. This ensures the Issue comment reflects the latest `loop_count` and phase for recovery after context compaction.
+**Issue comment backup sync rule**: After each review cycle completes (at 5.4.3 and 5.4.6), sync local work memory to the Issue comment as a backup. Use the existing `gh api` PATCH pattern from `fix.md` Phase 4.5.2. This ensures the Issue comment reflects the latest phase for recovery after context compaction.
 
 #### 5.4.0 Agent Delegation Option (Context Pressure Mitigation)
 
@@ -850,10 +848,8 @@ When context pressure is detected (tool call count > `context_optimization.agent
    1. Invoke `skill: "rite:pr:review", args: "{pr_number}"`
    2. Based on the result pattern:
       - [review:mergeable] → return "AGENT_RESULT: [review:mergeable]"
-      - [review:fix-needed:{n}] → invoke `skill: "rite:pr:fix"`, then re-review (max {max_iterations} loops)
-      - [review:conditional-merge:{n}] → invoke `skill: "rite:pr:fix"` for blocking only, then return result
-      - [review:loop-limit:{n}] → invoke `skill: "rite:pr:fix"` for blocking only, then return result
-   3. Return final result: "AGENT_RESULT: [review:{final_result}] loop_count={n} findings={total}"
+      - [review:fix-needed:{n}] → invoke `skill: "rite:pr:fix"`, then re-review (loop until 0 findings)
+   3. Return final result: "AGENT_RESULT: [review:{final_result}] findings={total}"
    ```
 3. Parse `AGENT_RESULT` from agent output. If the agent output does not contain a valid `AGENT_RESULT:` pattern (agent error, timeout, or unexpected output):
 
@@ -864,7 +860,7 @@ When context pressure is detected (tool call count > `context_optimization.agent
    ```
 
    Present options via `AskUserQuestion`:
-   - **inline 実行にフォールバック（推奨）**: Execute 5.4.1-5.4.6 inline as normal (reset `loop_count = 0`, proceed to 5.4.1)
+   - **inline 実行にフォールバック（推奨）**: Execute 5.4.1-5.4.6 inline as normal (proceed to 5.4.1)
    - **完了報告に遷移**: Skip review-fix loop and proceed to Phase 5.6 (completion report with review skipped)
    - **手動介入**: Terminate and let the user handle manually
 
@@ -884,7 +880,7 @@ When context pressure is detected (tool call count > `context_optimization.agent
      --next "{next_action_value}"
    ```
 
-4. Update `.rite-flow-state` with agent results (loop_count, pr_number)
+4. Update `.rite-flow-state` with agent results (pr_number)
 5. Continue to Phase 5.5 (Ready) based on the result
 
 **When agent delegation is disabled or threshold not reached**: Execute 5.4.1-5.4.6 inline as before.
@@ -900,20 +896,20 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --session {session_id} \
-  --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
+  --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. Do NOT stop."
 ```
 
 > **Note**: `{pr_number}` in the `--arg next` is a document placeholder that Claude replaces with the actual PR number at execution time (same as `--argjson pr {pr_number}` above). The `{N}` in result patterns refers to a count value returned by the sub-skill.
 
 > **Data Handoff**: When invoking `rite:pr:review`, the PR number is passed as an argument. Issue information from Phase 0.1 is available in work memory (loaded by `rite:pr:review` Phase 0), avoiding additional `gh issue view` calls.
 
-Invoke `skill: "rite:pr:review"`. Increment `loop_count`.
+Invoke `skill: "rite:pr:review"`.
 
 **🚨 Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 🚨 After Review below. The review sub-skill has already updated `.rite-flow-state` to `phase5_post_review` via Phase 8.0 (defense-in-depth, #719); execute the 5.4.3 steps without delay.
 
 #### 5.4.2 Review Patterns
 
-`[review:mergeable]`→5.5, `[review:fix-needed:{n}]`→5.4.4, `[review:conditional-merge:{n}]`→5.4.4→5.5, `[review:loop-limit:{n}]`→5.4.4→5.5.
+`[review:mergeable]`→5.5, `[review:fix-needed:{n}]`→5.4.4.
 
 #### 5.4.3 🚨 After Review
 
@@ -928,7 +924,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --session {session_id} \
-  --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
+  --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). Do NOT stop."
 ```
 
 **Step 2**: Sync to local work memory:
@@ -1005,8 +1001,6 @@ fi
 |----------------|--------|
 | `[review:mergeable]` | **→ Proceed to Phase 5.5** (Ready for Review). Skip fix entirely. |
 | `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4). After it returns, proceed to 🚨 After Fix (5.4.6). |
-| `[review:conditional-merge:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for non-blocking issues. After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
-| `[review:loop-limit:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for remaining issues (convert to Issues where appropriate). After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
 
 > **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。
 
@@ -1019,7 +1013,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --session {session_id} \
-  --next "After rite:pr:fix returns: [fix:pushed]+fix-needed->Phase 5.4.1. [fix:pushed]+conditional/loop-limit->Phase 5.5. [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
+  --next "After rite:pr:fix returns: [fix:pushed]->Phase 5.4.1 (re-review). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
 ```
 
 > **Data Handoff**: When invoking `rite:pr:fix`, PR number and review results are passed via work memory. Issue information from Phase 0.1 is available in work memory, avoiding redundant `gh issue view` calls.
@@ -1030,7 +1024,7 @@ Invoke `skill: "rite:pr:fix"`.
 
 #### 5.4.5 Fix Patterns
 
-`[fix:pushed]` + `[review:fix-needed]`→5.4.1. `[fix:pushed]` + `[conditional/loop-limit]`→5.5. `[fix:issues-created:{n}]`→5.4.1. `[fix:replied-only]`→5.5. `[fix:error]`→error, ask user.
+`[fix:pushed]`→5.4.1. `[fix:issues-created:{n}]`→5.4.1. `[fix:replied-only]`→5.5. `[fix:error]`→error, ask user.
 
 #### 5.4.6 🚨 After Fix
 
@@ -1045,10 +1039,10 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
   --session {session_id} \
-  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (re-review). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
 ```
 
-**Step 2**: Sync to local work memory (with loop_count increment):
+**Step 2**: Sync to local work memory:
 
 ```bash
 WM_SOURCE="fix" \
@@ -1057,7 +1051,6 @@ WM_SOURCE="fix" \
   WM_NEXT_ACTION="修正結果に基づき次アクションを実行" \
   WM_BODY_TEXT="Post-fix sync." \
   WM_ISSUE_NUMBER="{issue_number}" \
-  WM_LOOP_INCREMENT="true" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
@@ -1120,8 +1113,7 @@ fi
 
 | Fix Result Pattern | Preceding Review Pattern | Action |
 |--------------------|--------------------------|--------|
-| `[fix:pushed]` | `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
-| `[fix:pushed]` | `[review:conditional-merge:{n}]` or `[review:loop-limit:{n}]` | **→ Proceed to Phase 5.5** (Ready for Review). |
+| `[fix:pushed]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
 | `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
 | `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
 | `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` (retry / skip to 5.6 / terminate). |
@@ -1252,7 +1244,7 @@ Skip if `metrics.enabled: false` in rite-config.yml. Otherwise:
 | `plan_deviation_rate` | Issue body checklist items (Phase 3.6) vs completed items | `planned_steps` = total checklist items added in Phase 3.6. `actual_steps` = checked items at completion. Formula: `abs(actual - planned) / planned * 100`. If `planned = 0`, set judgment to `skip` |
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
-| `review_fix_loops` | `.rite-flow-state` | Read `loop_count` field: `jq '.loop_count' .rite-flow-state` |
+| `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
 | `plan_deviation_count` | `.rite-flow-state` | Read `implementation_round` field (set by Phase 5.1.3): `jq '.implementation_round // 0' .rite-flow-state`. This counts re-entries to Phase 5.1 from checklist failures |
 
 **Step 2**: Evaluate thresholds.
