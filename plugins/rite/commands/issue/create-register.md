@@ -577,7 +577,6 @@ if [ -f ".rite-flow-state" ]; then
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_post_delegation" --issue 0 --branch "" --pr 0 \
-    --session {session_id} \
     --next "rite:issue:create-register completed. Issue created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
 fi
 ```

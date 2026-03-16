@@ -35,7 +35,6 @@ if [ -f .rite-flow-state ]; then
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "cleanup" --issue 0 --branch "" --pr 0 \
-    --session {session_id} \
     --next "Execute cleanup phases. Do NOT stop."
 fi
 ```

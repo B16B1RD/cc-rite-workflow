@@ -323,9 +323,7 @@ If the user provides a different instruction, respect it but mention the pending
 Read .rite-flow-state for full state details.
 EOF
 
-# --- Session ID notification (#173) ---
-# Output session_id to stdout so Claude can use it in --session parameters
-# for flow-state-update.sh create calls during the workflow.
-if [ -n "$SESSION_ID" ]; then
-  echo "rite_session_id: $SESSION_ID"
-fi
+# --- Session ID notification (#173, #221) ---
+# session_id is now auto-read from .rite-session-id by flow-state-update.sh.
+# stdout output removed to prevent Claude from fabricating inconsistent values
+# via the {session_id} placeholder. See Issue #221.
