@@ -515,10 +515,6 @@ Projects 設定:
 - Priority: {priority}
 - Complexity: {complexity}
 - Iteration: {iteration_name または "バックログ"}  <!-- Iteration 有効時のみ表示 -->
-
-次のステップ:
-1. `/rite:issue:start {number}` で作業を開始
-2. 作業完了後 `/rite:pr:create` で PR 作成
 ```
 
 ---
