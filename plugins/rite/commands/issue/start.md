@@ -236,7 +236,7 @@ remote_match=$(git branch -r --list "origin/{branch_name}")
 
 > **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found.
 
-**Determination**: Check the **output** of each command (NOT the exit code). `git branch --list` always returns exit code 0 regardless of match. If `local_match` or `remote_match` is non-empty, the branch exists.
+**Determination**: If `local_match` or `remote_match` is non-empty, the branch exists.
 
 ```bash
 # 判定ロジック（出力文字列の空チェック）

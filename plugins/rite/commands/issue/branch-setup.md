@@ -83,9 +83,9 @@ On Step 2 failure, process with the following flow:
    ```bash
    local_match=$(git branch --list "{base_branch}")
    if [ -n "$local_match" ]; then
-     echo "LOCAL_EXISTS"
+     echo "BRANCH_EXISTS"
    else
-     echo "LOCAL_NOT_FOUND"
+     echo "BRANCH_NOT_FOUND"
    fi
    ```
 
