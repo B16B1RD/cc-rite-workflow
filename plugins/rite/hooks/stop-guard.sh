@@ -16,6 +16,8 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 INPUT=$(cat) || INPUT=""
 
 CWD=$(jq -r '.cwd // empty' <<< "$INPUT")
+# Extract session_id from hook JSON for ownership checks and diagnostic logging (#173)
+SESSION_ID=$(extract_session_id "$INPUT" 2>/dev/null) || SESSION_ID=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
@@ -53,7 +55,7 @@ log_diag() {
 STATE_FILE="$STATE_ROOT/.rite-flow-state"
 if [ ! -f "$STATE_FILE" ]; then
   log_debug "no state file"
-  log_diag "EXIT:0 reason=no_state_file"
+  log_diag "EXIT:0 reason=no_state_file session_id=${SESSION_ID:-unknown}"
   exit 0
 fi
 
@@ -61,7 +63,7 @@ fi
 # (fail-open was a source of intermittent flow interruptions)
 fail_closed() {
   log_debug "$1"
-  log_diag "EXIT:2 reason=fail_closed detail=$1"
+  log_diag "EXIT:2 reason=fail_closed detail=$1 session_id=${SESSION_ID:-unknown}"
   cat >&2 <<'STOP_MSG'
 [rite] Normal operation — stop prevented (state unreadable).
 ACTION: Read .rite-flow-state and continue the active workflow. Do NOT stop.
@@ -73,11 +75,20 @@ ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || \
   fail_closed "state parse error on .active"
 if [ "$ACTIVE" != "true" ]; then
   log_debug "workflow not active"
-  log_diag "EXIT:0 reason=not_active"
+  log_diag "EXIT:0 reason=not_active session_id=${SESSION_ID:-unknown}"
   exit 0
 fi
 
 # parse_iso8601_to_epoch is now provided by session-ownership.sh (sourced above)
+
+# Session ownership check (#173): if state belongs to another session, allow stop
+# (this session should not be blocked by another session's active workflow)
+_ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+if [ "$_ownership" = "other" ]; then
+  log_debug "state belongs to another session, allowing stop"
+  log_diag "EXIT:0 reason=other_session session_id=${SESSION_ID:-unknown}"
+  exit 0
+fi
 
 # Check staleness (over 2 hours = likely abandoned; extended from 1h to accommodate
 # multi-reviewer reviews which can take 60-90 minutes, fixes #719)
@@ -85,7 +96,7 @@ UPDATED_AT=$(jq -r '.updated_at // empty' "$STATE_FILE" 2>/dev/null) || \
   fail_closed "state parse error on .updated_at"
 if [ -z "$UPDATED_AT" ]; then
   log_debug "no updated_at"
-  log_diag "EXIT:0 reason=no_updated_at"
+  log_diag "EXIT:0 reason=no_updated_at session_id=${SESSION_ID:-unknown}"
   exit 0
 fi
 
@@ -105,7 +116,7 @@ if [ -f "$COMPACT_STATE" ]; then
       COMPACT_AGE=$(( CURRENT - COMPACT_EPOCH ))
       if [ "$COMPACT_AGE" -gt 120 ]; then
         log_debug "compact_state=recovering for ${COMPACT_AGE}s (>120s), allowing stop (PostCompact failure fallback)"
-        log_diag "EXIT:0 reason=compact_recovering_timeout age=${COMPACT_AGE}s"
+        log_diag "EXIT:0 reason=compact_recovering_timeout age=${COMPACT_AGE}s session_id=${SESSION_ID:-unknown}"
         cat >&2 <<'STOP_MSG'
 [rite] PostCompact タイムアウト — stop を許可します。
 /rite:resume で作業を再開してください。
@@ -121,7 +132,7 @@ STATE_TS=$(parse_iso8601_to_epoch "$UPDATED_AT")
 AGE=$(( CURRENT - STATE_TS ))
 if [ "$AGE" -gt 7200 ]; then
   log_debug "stale workflow (age=${AGE}s)"
-  log_diag "EXIT:0 reason=stale age=${AGE}s"
+  log_diag "EXIT:0 reason=stale age=${AGE}s session_id=${SESSION_ID:-unknown}"
   exit 0
 fi
 
@@ -155,7 +166,7 @@ fi
 # Allow stop when error_count has reached the threshold — the workflow is stuck in an error loop
 if [ "$ERROR_COUNT" -ge "$THRESHOLD" ]; then
   log_debug "error_count=$ERROR_COUNT >= threshold=$THRESHOLD, allowing stop"
-  log_diag "EXIT:0 reason=error_threshold error_count=$ERROR_COUNT threshold=$THRESHOLD"
+  log_diag "EXIT:0 reason=error_threshold error_count=$ERROR_COUNT threshold=$THRESHOLD session_id=${SESSION_ID:-unknown}"
   cat >&2 <<STOP_MSG
 [rite] Error threshold reached (${ERROR_COUNT} consecutive blocked stops, threshold: ${THRESHOLD}) — stop allowed.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
@@ -177,7 +188,7 @@ fi
 
 # Block the stop (exit 2 + stderr = Claude Code stops the end_turn and feeds stderr to assistant)
 log_debug "blocking stop (phase=$PHASE, next=$NEXT, error_count=$((ERROR_COUNT + 1))/$THRESHOLD)"
-log_diag "EXIT:2 reason=blocking phase=$PHASE issue=#$ISSUE error_count=$((ERROR_COUNT + 1))/$THRESHOLD"
+log_diag "EXIT:2 reason=blocking phase=$PHASE issue=#$ISSUE error_count=$((ERROR_COUNT + 1))/$THRESHOLD session_id=${SESSION_ID:-unknown}"
 cat >&2 <<STOP_MSG
 [rite] Normal operation — stop prevented.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
