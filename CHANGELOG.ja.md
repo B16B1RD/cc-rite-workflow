@@ -5,6 +5,36 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.0] - 2026-03-16
+
+### 追加
+
+- Session ownership システムによるマルチセッション競合防止 (#174, #175, #176, #177, #178, #179)
+  - Session ownership ヘルパー関数と flow-state 上書き保護 (#175)
+  - `session-start.sh` に session ownership 対応を追加 (#176)
+  - `session-end.sh` と `stop-guard.sh` に session ownership 対応を追加 (#177)
+  - `wm-sync`、`pre-compact`、`context-pressure` フックに session ownership 対応を追加 (#178)
+  - 全コマンドファイルに `--session {session_id}` パラメータを追加 + `resume.md` の所有権移転 (#179)
+
+### 修正
+
+- Phase 5.2.1 チェックリスト確認に自動チェック処理を追加 (#170)
+- ブランチ存在チェックで exit code ではなく出力文字列で判定するよう修正 (#172)
+- Issue create 完了時の出力順序を改善し次のステップを末尾に移動 (#168)
+- PostToolUse hook で Issue コメント作業メモリを phase 変化時に自動同期 (#167)
+- `review.md` に READ-ONLY 制約を追加し review-fix ループを正常化 (#165)
+- review → fix ループの分岐指示を命令形条件分岐に書き換え (#163)
+- `session-end.sh` の other session exit パスに診断ログを追加
+- フックからデバッグ出力の痕跡を除去 (#174)
+
+### 変更
+
+- Issue コメント作業メモリ更新ロジックをスクリプト化し確定的実行にする (#161)
+
+### ドキュメント
+
+- `gh-cli-commands.md` に `git branch --list` の DO NOT 警告を追加 (#181)
+
 ## [0.2.5] - 2026-03-16
 
 ### 追加
@@ -160,6 +190,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3
