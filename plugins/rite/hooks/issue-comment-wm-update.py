@@ -26,8 +26,8 @@ Usage:
 
 Exit codes:
     0: Success (updated body written to stdout)
-    1: Usage error (missing arguments)
-    2: Transform error (regex failed, no changes made — original body written to stdout)
+    1: Usage error (missing arguments, unknown option)
+    2: File read error (content-file or changed-files-file not found)
 """
 
 import re
@@ -181,28 +181,27 @@ def parse_args(args: list[str]) -> tuple[str, dict]:
     opts: dict = {}
     i = 1
 
+    value_opts = {
+        "--impl-status": "impl_status",
+        "--test-status": "test_status",
+        "--doc-status": "doc_status",
+        "--changed-files-file": "changed_files_file",
+        "--phase": "phase",
+        "--phase-detail": "phase_detail",
+        "--section": "section",
+        "--content-file": "content_file",
+        "--tasks": "tasks",
+        "--timestamp": "timestamp",
+    }
+
     while i < len(args):
         arg = args[i]
-        if arg == "--impl-status":
-            opts["impl_status"] = args[i + 1]; i += 2
-        elif arg == "--test-status":
-            opts["test_status"] = args[i + 1]; i += 2
-        elif arg == "--doc-status":
-            opts["doc_status"] = args[i + 1]; i += 2
-        elif arg == "--changed-files-file":
-            opts["changed_files_file"] = args[i + 1]; i += 2
-        elif arg == "--phase":
-            opts["phase"] = args[i + 1]; i += 2
-        elif arg == "--phase-detail":
-            opts["phase_detail"] = args[i + 1]; i += 2
-        elif arg == "--section":
-            opts["section"] = args[i + 1]; i += 2
-        elif arg == "--content-file":
-            opts["content_file"] = args[i + 1]; i += 2
-        elif arg == "--tasks":
-            opts["tasks"] = args[i + 1]; i += 2
-        elif arg == "--timestamp":
-            opts["timestamp"] = args[i + 1]; i += 2
+        if arg in value_opts:
+            if i + 1 >= len(args):
+                print(f"ERROR: {arg} requires a value", file=sys.stderr)
+                sys.exit(1)
+            opts[value_opts[arg]] = args[i + 1]
+            i += 2
         else:
             print(f"ERROR: Unknown option: {arg}", file=sys.stderr)
             sys.exit(1)
@@ -212,7 +211,11 @@ def parse_args(args: list[str]) -> tuple[str, dict]:
 
 def read_file_content(file_path: str) -> str:
     """Read content from a file path."""
-    return Path(file_path).read_text(encoding="utf-8").rstrip("\n")
+    try:
+        return Path(file_path).read_text(encoding="utf-8").rstrip("\n")
+    except OSError as e:
+        print(f"ERROR: Cannot read file {file_path}: {e}", file=sys.stderr)
+        sys.exit(2)
 
 
 def main():

@@ -176,9 +176,6 @@ fi
 if [ "$MODE" = "init" ]; then
   TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S+09:00')
 
-  # Get Issue title
-  ISSUE_TITLE=$(gh issue view "$ISSUE" --json title --jq '.title' 2>/dev/null) || ISSUE_TITLE="Issue #${ISSUE}"
-
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
 
@@ -270,8 +267,9 @@ COMMENT_ID=$(get_comment_id "$ISSUE" "$OWNER_REPO") || {
 # Step 2: Get current body
 body_tmp=$(mktemp)
 updated_tmp=$(mktemp)
+py_err_tmp=$(mktemp)
 backup_file="/tmp/rite-wm-backup-${ISSUE}-$(date +%s).md"
-trap 'rm -f "$body_tmp" "$updated_tmp"' EXIT
+trap 'rm -f "$body_tmp" "$updated_tmp" "$py_err_tmp"' EXIT
 
 current_body=$(gh api "repos/${OWNER_REPO}/issues/comments/${COMMENT_ID}" --jq '.body // empty' 2>/dev/null) || current_body=""
 
@@ -287,11 +285,13 @@ printf '%s' "$current_body" > "$body_tmp"
 original_length=$(printf '%s' "$current_body" | wc -c)
 
 # Step 4: Apply Python transformation
-cat "$body_tmp" | python3 "$PYTHON_SCRIPT" "$TRANSFORM" "${TRANSFORM_ARGS[@]}" > "$updated_tmp" 2>/dev/null
+cat "$body_tmp" | python3 "$PYTHON_SCRIPT" "$TRANSFORM" "${TRANSFORM_ARGS[@]}" > "$updated_tmp" 2>"$py_err_tmp"
 transform_status=$?
 
 if [ "$transform_status" -ne 0 ]; then
+  py_err=$(cat "$py_err_tmp" 2>/dev/null)
   echo "WARNING: Python transform failed (exit $transform_status). Skipping PATCH. Backup: $backup_file" >&2
+  [ -n "$py_err" ] && echo "  Detail: $py_err" >&2
   echo "status=error"
   exit 0
 fi
@@ -313,5 +313,7 @@ if [ "$patch_status" -ne 0 ]; then
   exit 0
 fi
 
+# Clean up backup on success (only needed on failure for post-mortem)
+rm -f "$backup_file"
 echo "status=success"
 exit 0

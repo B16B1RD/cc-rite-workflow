@@ -39,7 +39,8 @@ Add a work memory comment to the Issue as a backup. The script handles template 
 ```bash
 bash {plugin_root}/hooks/issue-comment-wm-sync.sh init \
   --issue {issue_number} \
-  --branch "{branch_name}"
+  --branch "{branch_name}" \
+  2>/dev/null || true
 ```
 
 **On failure**: The script outputs `WARNING` on stderr and exits 0 (non-blocking). The work memory will be rebuilt in subsequent phases (Phase 3.5, Phase 5.5.2) which re-fetch and validate before updating.
