@@ -252,12 +252,27 @@ gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
 
 ### Check Branch
 
+> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found. Check the **output** instead (non-empty = exists).
+
 ```bash
 # Current branch
 git branch --show-current
 
-# Check remote branch
-git branch -r --list "origin/{branch_name}"
+# Check local branch existence (check OUTPUT, not exit code)
+local_match=$(git branch --list "{branch_name}")
+if [ -n "$local_match" ]; then
+  echo "BRANCH_EXISTS"
+else
+  echo "BRANCH_NOT_FOUND"
+fi
+
+# Check remote branch existence (check OUTPUT, not exit code)
+remote_match=$(git branch -r --list "origin/{branch_name}")
+if [ -n "$remote_match" ]; then
+  echo "REMOTE_EXISTS"
+else
+  echo "REMOTE_NOT_FOUND"
+fi
 ```
 
 ### Push
