@@ -184,6 +184,7 @@ Execute after Phase 1.1-1.3.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_5_parent" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:parent-routing returns: proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
 ```
 
@@ -206,6 +207,7 @@ Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing su
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_6_child" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:child-issue-selection returns: proceed to Phase 2 (work preparation). Do NOT stop."
 ```
 
@@ -267,6 +269,7 @@ Skip Phase 2.4/2.5/2.6 (no Issue number). User manually links. Phase 3+ normal.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_branch" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:branch-setup returns: proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
 ```
 
@@ -302,6 +305,7 @@ Execute only if `iteration.enabled: true` and `iteration.auto_assign: true` in r
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_work_memory" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:work-memory-init returns: proceed to Phase 3 (implementation plan). Do NOT stop."
 ```
 
@@ -337,6 +341,7 @@ Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase3_plan" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:implementation-plan returns: proceed to Phase 4 (work start guidance). Do NOT stop."
 ```
 
@@ -536,6 +541,7 @@ Run [Preflight Protocol](#preflight-protocol) before invoking lint.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
 ```
 
@@ -615,6 +621,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop."
 ```
 
@@ -731,6 +738,7 @@ After 5.2.1, update `.rite-flow-state` (atomic, see 5.1 step 3):
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->Phase 5.6. Do NOT stop."
 ```
 
@@ -814,6 +822,7 @@ When context pressure is detected (tool call count > `context_optimization.agent
    bash plugins/rite/hooks/flow-state-update.sh create \
      --phase "{phase_value}" --issue {issue_number} --branch "{branch_name}" \
      --loop 0 --pr {pr_number} \
+     --session {session_id} \
      --next "{next_action_value}"
    ```
 
@@ -832,6 +841,7 @@ Update `.rite-flow-state` (atomic, see 5.1 step 3):
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
 ```
 
@@ -859,6 +869,7 @@ Invoke `skill: "rite:pr:review"`. Increment `loop_count`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
 ```
 
@@ -949,6 +960,7 @@ Update `.rite-flow-state` (atomic):
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "After rite:pr:fix returns: [fix:pushed]+fix-needed->Phase 5.4.1. [fix:pushed]+conditional/loop-limit->Phase 5.5. [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
 ```
 
@@ -974,6 +986,7 @@ Invoke `skill: "rite:pr:fix"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
 ```
 
@@ -1088,6 +1101,7 @@ When loop completes, confirm:
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_ready" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "Phase 5.5.1: Update Issue Status to In Review, then Phase 5.5.2 metrics, then Phase 5.6 completion report. Do NOT stop."
 ```
 
@@ -1317,6 +1331,7 @@ Present options via `AskUserQuestion`:
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "completed" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "none" --active false
 ```
 
