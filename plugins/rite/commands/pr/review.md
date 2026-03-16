@@ -1316,71 +1316,23 @@ Append the metrics section (format defined in [Execution Metrics](../../referenc
      - **現在のループ回数**: {new_loop_count}
      ```
 
-   **Bash implementation (Python-based single-line update):**
+   **Script-based implementation:**
 
    ```bash
-   # ⚠️ 以下の処理は Steps 1-6 の単一 Bash ブロック内で実行すること（クロスプロセス変数参照を防止）
-   # backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-   backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-   body_tmp=$(mktemp)
-   updated_tmp=$(mktemp)
-   trap 'rm -f "$body_tmp" "$updated_tmp"' EXIT
+   # ループ回数インクリメント（セクション未存在時は自動作成）
+   bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+     --issue {issue_number} \
+     --transform increment-loop-count \
+     2>/dev/null || true
 
-   # Step 1: Backup current body
-   printf '%s' "$current_body" > "$backup_file"
-
-   current_count=$(echo "$current_body" | grep -E -- '^- \*\*現在のループ回数\*\*: [0-9]+' | grep -oE '[0-9]+$' || true)
-   if [[ -n "${current_count}" ]]; then
-     new_loop_count=$(( ${current_count:-0} + 1 ))  # :-0 is defensive (see references/bash-defensive-patterns.md)
-     printf '%s' "$current_body" > "$body_tmp"
-     # Python-based line replacement (awk-free, sed-free)
-     # File-based argument passing to avoid Japanese string issues in shell expansion
-     # Also updates session info fields for consistency with Phase 6.1.1 local work memory (Issue #90)
-     # Defense-in-depth: Phase 6.1.1 updates local work memory (SoT), but this Phase 6.2 code
-     # redundantly updates the same fields in the Issue comment (backup). This intentional
-     # duplication ensures the backup stays consistent even if Phase 6.1.1 silently fails.
-     python3 -c '
-import sys, re
-body_path, out_path, new_count, timestamp = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-with open(body_path, "r") as f:
-    body = f.read()
-# Update loop count
-updated = re.sub(
-    r"^- \*\*現在のループ回数\*\*: \d+",
-    f"- **現在のループ回数**: {new_count}",
-    body, count=1, flags=re.MULTILINE
-)
-# Defense-in-depth: redundantly update session info fields here (Issue comment backup)
-# even though Phase 6.1.1 already updated local work memory (SoT) with the same values.
-# This ensures backup consistency if Phase 6.1.1 silently fails. See Issue #90, #93.
-updated = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, updated, count=1, flags=re.MULTILINE)
-updated = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + "phase5_review", updated, count=1, flags=re.MULTILINE)
-updated = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + "レビュー中", updated, count=1, flags=re.MULTILINE)
-with open(out_path, "w") as f:
-    f.write(updated)
-' "$body_tmp" "$updated_tmp" "$new_loop_count" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
-     # Step 2: Validate updated content (10 bytes = minimum plausible work memory content)
-     if [ ! -s "$updated_tmp" ] || [[ "$(wc -c < "$updated_tmp")" -lt 10 ]]; then
-       echo "ERROR: Updated body is empty or too short. Aborting. Backup: $backup_file" >&2
-       exit 1
-     fi
-     if grep -q -- '📜 rite 作業メモリ' "$updated_tmp"; then
-       : # Header present, proceed
-     else
-       echo "ERROR: Updated body missing header. Restoring backup." >&2
-       cp "$backup_file" "$updated_tmp"
-       exit 1
-     fi
-     current_body=$(cat "$updated_tmp")
-   else
-     new_loop_count=1
-     current_body="${current_body}
-### レビュー対応履歴
-- **現在のループ回数**: ${new_loop_count}"
-   fi
+   # Defense-in-depth: Phase 6.1.1 で local work memory (SoT) を更新済みだが、
+   # Issue comment (backup) のセッション情報も冗長に更新する (Issue #90, #93)
+   bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+     --issue {issue_number} \
+     --transform update-phase \
+     --phase "phase5_review" --phase-detail "レビュー中" \
+     2>/dev/null || true
    ```
-
-   **Note for Claude**: ⚠️ awk・sed は使用禁止。Python インラインスクリプトによる行置換を使用すること。更新前バックアップ・空body検証・ヘッダー検証を必ず実行すること。参照: [gh-cli-patterns.md の Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns)。
 
 4. **Append review history**: Add review result summary to the work memory body
 

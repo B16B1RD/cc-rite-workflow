@@ -332,6 +332,7 @@ If `--question` is provided, write the question to a temp file and append to the
 question_tmp=$(mktemp)
 trap 'rm -f "$question_tmp"' EXIT
 printf '%s' "{n}. [ ] {new_question}" > "$question_tmp"
+# {n}: 要確認事項セクション内の既存番号付きアイテム数 + 1（例: 既存が 1., 2. なら n=3）
 
 bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   --issue {issue_number} \

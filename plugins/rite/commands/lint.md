@@ -601,7 +601,7 @@ Write the lint result content (from 4.4.3 template) to a temp file, then append 
 lint_result_tmp=$(mktemp)
 trap 'rm -f "$lint_result_tmp"' EXIT
 cat > "$lint_result_tmp" << 'LINT_EOF'
-{4.4.3 の内容を実際の値で置換して記述}
+{lint_result_content}
 LINT_EOF
 
 bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
@@ -613,7 +613,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 rm -f "$lint_result_tmp"
 ```
 
-**Note for Claude**: `{4.4.3 の内容を実際の値で置換して記述}` を 4.4.3 のテンプレートから生成した実際の追記内容で置換すること。
+**Note for Claude**: `{lint_result_content}` を 4.4.3 のテンプレートから生成した実際の追記内容で置換すること。
 
 #### 4.4.3 Update Content
 

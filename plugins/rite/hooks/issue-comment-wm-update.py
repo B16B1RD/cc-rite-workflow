@@ -24,6 +24,8 @@ Usage:
     cat body.txt | python3 issue-comment-wm-update.py update-checkboxes \
         --tasks "task1,task2" > updated.txt
 
+    cat body.txt | python3 issue-comment-wm-update.py increment-loop-count > updated.txt
+
 Exit codes:
     0: Success (updated body written to stdout)
     1: Usage error (missing arguments, unknown option)
@@ -171,6 +173,31 @@ def update_checkboxes(body: str, task_names: list[str]) -> str:
     return body
 
 
+def increment_loop_count(body: str) -> str:
+    """Increment 現在のループ回数 in レビュー対応履歴 section.
+
+    If the field exists, increment by 1.
+    If the section doesn't exist, create it with count=1.
+    """
+    match = re.search(r"^- \*\*現在のループ回数\*\*: (\d+)", body, flags=re.MULTILINE)
+    if match:
+        new_count = int(match.group(1)) + 1
+        body = re.sub(
+            r"^(- \*\*現在のループ回数\*\*: )\d+",
+            lambda m: m.group(1) + str(new_count),
+            body, count=1, flags=re.MULTILINE,
+        )
+    else:
+        # Section doesn't exist — create it before 次のステップ or at end
+        section = "\n### レビュー対応履歴\n- **現在のループ回数**: 1"
+        if "### 次のステップ" in body:
+            body = re.sub(r"(### 次のステップ)", section + r"\n\n\1", body, count=1)
+        else:
+            body = body.rstrip() + "\n" + section + "\n"
+
+    return body
+
+
 def parse_args(args: list[str]) -> tuple[str, dict]:
     """Parse command-line arguments. Returns (subcommand, options dict)."""
     if len(args) < 1:
@@ -271,6 +298,9 @@ def main():
             sys.exit(1)
         task_names = [t.strip() for t in opts["tasks"].split(",") if t.strip()]
         body = update_checkboxes(body, task_names)
+
+    elif subcommand == "increment-loop-count":
+        body = increment_loop_count(body)
 
     else:
         print(f"ERROR: Unknown subcommand: {subcommand}", file=sys.stderr)

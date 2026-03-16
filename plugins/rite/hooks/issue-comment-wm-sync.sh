@@ -134,8 +134,13 @@ while [[ $# -gt 0 ]]; do
     --issue)     ISSUE="$2"; shift 2 ;;
     --branch)    BRANCH="$2"; shift 2 ;;
     --transform) TRANSFORM="$2"; shift 2 ;;
+    --)
+      shift
+      TRANSFORM_ARGS+=("$@")
+      break
+      ;;
     *)
-      # Pass remaining args to Python script
+      # Forward to Python script (issue-comment-wm-update.py validates and rejects unknown options)
       TRANSFORM_ARGS+=("$1")
       shift
       ;;
@@ -233,10 +238,14 @@ INIT_EOF
     exit 0
   }
 
-  # Validate creation
-  sleep 1
-  created_id=$(gh api "repos/${OWNER_REPO}/issues/${ISSUE}/comments" \
-    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' 2>/dev/null) || created_id=""
+  # Validate creation (retry up to 3 times with 1s intervals)
+  created_id=""
+  for attempt in 1 2 3; do
+    created_id=$(gh api "repos/${OWNER_REPO}/issues/${ISSUE}/comments" \
+      --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' 2>/dev/null) || created_id=""
+    [ -n "$created_id" ] && break
+    [ "$attempt" -lt 3 ] && sleep 1
+  done
 
   if [ -n "$created_id" ]; then
     # Cache comment ID

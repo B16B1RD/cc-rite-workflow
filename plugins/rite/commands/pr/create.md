@@ -795,7 +795,7 @@ rm -f "$next_tmp"
 # Part (B): 関連 PR + コミット履歴追記
 pr_info_tmp=$(mktemp)
 trap 'rm -f "$pr_info_tmp"' EXIT
-cat > "$pr_info_tmp" << PR_EOF
+cat > "$pr_info_tmp" << 'PR_EOF'
 ### 関連 PR
 - **番号**: #{pr_number}
 - **タイトル**: {pr_title}

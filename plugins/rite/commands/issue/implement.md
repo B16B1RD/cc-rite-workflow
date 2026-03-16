@@ -636,9 +636,9 @@ Generate a changed files list and write it to a temp file, then invoke the sync 
 # Step 3a: 変更ファイルリスト生成
 changed_files_tmp=$(mktemp)
 trap 'rm -f "$changed_files_tmp"' EXIT
-git diff --name-status origin/{base_branch}...HEAD | while IFS=$'\t' read status file; do
+git diff --name-status origin/{base_branch}...HEAD 2>/dev/null | while IFS=$'\t' read status file; do
   case "$status" in A) echo "- \`$file\` - 追加";; M) echo "- \`$file\` - 変更";; D) echo "- \`$file\` - 削除";; R*) echo "- \`$file\` - 名前変更";; esac
-done > "$changed_files_tmp"
+done > "$changed_files_tmp" || true
 
 # Step 3b: 進捗サマリー + 変更ファイル更新
 bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
