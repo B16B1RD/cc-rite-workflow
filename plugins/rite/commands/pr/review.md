@@ -7,7 +7,7 @@ context: fork
 
 ## Contract
 **Input**: PR number (or auto-detected from current branch), `.rite-flow-state` with `phase: phase5_review` (e2e flow)
-**Output**: `[review:mergeable]` | `[review:fix-needed:{n}]` | `[review:conditional-merge:{n}]` | `[review:loop-limit:{n}]`
+**Output**: `[review:mergeable]` | `[review:fix-needed:{n}]` | `[review:loop-limit:{n}]`
 
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.
 
@@ -739,6 +739,8 @@ Generate instructions for each reviewer.
 
 **Finding quality guidelines:** No vague findings. Investigate with tools (Read/Grep/WebSearch) before reporting. Report only confirmed problems with specific facts/evidence.
 
+**Mandatory fix policy:** All reported findings will be treated as mandatory fixes. The review-fix loop continues until 0 findings remain. Reviewers must therefore exercise careful judgment — report only substantive issues that genuinely improve quality. Avoid nitpicking, trivial style preferences, or hypothetical concerns without concrete evidence.
+
 **Placeholder embedding method:**
 
 | Placeholder | Source | Extraction Method |
@@ -1086,7 +1088,7 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 
 Claude aggregates all reviewer assessments and findings, and **evaluates the following logic from top to bottom**. The result of the first matching condition is adopted as the overall assessment.
 
-> See [references/assessment-rules.md](./references/assessment-rules.md) for the full assessment rules (5.3.1-5.3.7): gradual relaxation table, assessment logic, output format, return values, and prohibition of independent judgment.
+> See [references/assessment-rules.md](./references/assessment-rules.md) for the full assessment rules (5.3.1-5.3.7): assessment logic, output format, return values, and prohibition of independent judgment. All findings are blocking regardless of severity or loop count.
 
 ### 5.4 Integrated Report Generation
 
@@ -1406,9 +1408,8 @@ Output a machine-readable pattern and return control to `/rite:issue:start` Phas
 
 | Overall Assessment | Output Pattern |
 |---------|------------------------|
-| **Merge OK** (0 blocking, 0 non-blocking) | `[review:mergeable]` |
-| **Conditional merge** (0 blocking, non-blocking > 0) | `[review:conditional-merge:{non_blocking_count}]` |
-| **Requires fixes** (blocking > 0) | `[review:fix-needed:{blocking_count}]` |
+| **Merge OK** (0 findings) | `[review:mergeable]` |
+| **Requires fixes** (findings > 0) | `[review:fix-needed:{total_findings}]` |
 | **Loop limit reached** | `[review:loop-limit:{total_remaining}]` |
 
 **Note**: Within the loop, `/rite:pr:review` only outputs results via patterns. Subsequent processing (invoking `/rite:pr:fix`, confirming `/rite:pr:ready` execution, etc.) is determined and executed by `/rite:issue:start` Phase 5.4.
@@ -1591,7 +1592,7 @@ commands:
 
 ### 8.0 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`, `[review:conditional-merge:{n}]`, `[review:loop-limit:{n}]`), update `.rite-flow-state` to reflect the post-review phase (defense-in-depth, fixes #719). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`, `[review:loop-limit:{n}]`), update `.rite-flow-state` to reflect the post-review phase (defense-in-depth, fixes #719). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
 
 **Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
@@ -1601,7 +1602,6 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 |--------|-------|-------------|
 | `[review:mergeable]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:mergeable]. Proceed to Phase 5.5 (Ready for Review). Do NOT stop.` |
 | `[review:fix-needed:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to Phase 5.4.4 (fix). Do NOT stop.` |
-| `[review:conditional-merge:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:conditional-merge:{n}]. Proceed to Phase 5.4.4 (fix) then Phase 5.5. Do NOT stop.` |
 | `[review:loop-limit:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:loop-limit:{n}]. Proceed to Phase 5.4.4 (fix) then Phase 5.5. Do NOT stop.` |
 
 ```bash
@@ -1621,9 +1621,8 @@ Based on the Phase 6 review results, output the corresponding machine-readable p
 
 | Condition | Output Pattern |
 |-----------|---------------|
-| 0 blocking AND 0 non-blocking findings | `[review:mergeable]` |
-| 0 blocking AND non-blocking findings > 0 | `[review:conditional-merge:{non_blocking_count}]` |
-| 1 or more blocking findings | `[review:fix-needed:{blocking_count}]` |
+| 0 findings | `[review:mergeable]` |
+| 1 or more findings | `[review:fix-needed:{total_findings}]` |
 | Loop limit reached (`loop_count >= max_iterations`) | `[review:loop-limit:{total_remaining}]` |
 
 **Important**:

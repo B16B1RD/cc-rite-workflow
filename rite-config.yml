@@ -86,8 +86,6 @@ review:
     - content_analysis
   loop:
     max_iterations: 7           # review-fix ループ強制終了回数（デフォルト: 7）
-    relax_medium_after: 3       # MEDIUM/LOW 緩和開始回数（デフォルト: 3）
-    relax_high_after: 5         # HIGH 緩和開始回数（デフォルト: 5）
     verification_mode: true     # サイクル2+で検証モードを有効化（デフォルト: true）
     allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
   security_reviewer:

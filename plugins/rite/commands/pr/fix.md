@@ -23,7 +23,7 @@ When called from the `/rite:issue:start` end-to-end flow, minimize output to red
 
 **E2E output format** (Phase 7, replaces full report):
 ```
-[fix:{result}] — {fixed_count} fixed, {deferred_count} deferred, {files_changed} files changed
+[fix:{result}] — {fixed_count} fixed, {skipped_count} skipped, {files_changed} files changed
 ```
 
 **Detection**: Reuse Phase 0.1 end-to-end flow determination.
@@ -34,7 +34,7 @@ Execute the following phases in order when this command is run.
 
 **⚠️ Integration with `/rite:issue:start`:**
 
-This command is automatically invoked within the review-fix loop of `/rite:issue:start` when the evaluation results in "not mergeable (issues found)" or "needs fixes". Based on the graduated relaxation gate tied to loop count (`review.loop` settings in `rite-config.yml`), **only blocking issues are targeted for fixes**, while non-blocking issues are automatically deferred and converted to separate Issues. After completion, this command outputs a machine-readable output pattern and **returns control to the caller** (`/rite:issue:start`).
+This command is automatically invoked within the review-fix loop of `/rite:issue:start` when the evaluation results in "not mergeable (issues found)" or "needs fixes". **All findings are targeted for fixes** regardless of severity or loop count. After completion, this command outputs a machine-readable output pattern and **returns control to the caller** (`/rite:issue:start`).
 
 ## Arguments
 
@@ -305,10 +305,10 @@ When rite review results were not found, use conventional GitHub state-based cla
 
 | Caller | Option Selection | Target |
 |--------|-----------------|--------|
-| Within `/rite:issue:start` review-fix loop | **Skip** (auto-select) | Blocking issues + external reviews. Non-blocking auto-deferred |
+| Within `/rite:issue:start` review-fix loop | **Skip** (auto-select) | All findings + external reviews |
 | Manual `/rite:pr:fix` | Display | User-selected |
 
-> **Automatic target selection**: See [Graduated Relaxation Rules](./references/fix-relaxation-rules.md) for gate mode logic and fix target classification by loop count
+> **Automatic target selection**: Within the e2e loop, all findings are always blocking and targeted for fix. See [Fix Targeting Rules](./references/fix-relaxation-rules.md)
 
 ---
 
@@ -350,7 +350,7 @@ PR #{number} のレビューコメント
 
 | Option | Target | Use Case |
 |--------|--------|----------|
-| **すべての指摘に対応（推奨）** | All severities + external reviews | When full resolution is needed. Within `/rite:issue:start` loop, blocking issues are auto-selected based on gate mode |
+| **すべての指摘に対応（推奨）** | All severities + external reviews | When full resolution is needed. Within `/rite:issue:start` loop, all findings are auto-selected |
 | **CRITICAL/HIGH のみ対応** | CRITICAL + HIGH only | When addressing only urgent issues and deferring MEDIUM/LOW |
 | **特定の指摘を選択** | Individual selection | When addressing only specific findings |
 | **キャンセル** | - | Abort the process |
@@ -738,7 +738,6 @@ gh pr comment {pr_number} --body-file "$tmpfile"
 **⚠️ Important**: The following findings **must** be created as separate Issues. This is a required step to satisfy the loop termination condition of `/rite:issue:start`.
 
 - Findings where "スキップ（後で対応）" was selected in Phase 2.1
-- Non-blocking findings **auto-deferred** by the graduated relaxation gate in Phase 1.4
 
 #### 4.3.1 Collect Separate Issue Candidates
 
@@ -747,9 +746,8 @@ Collect **all** of the following findings as separate Issue candidates:
 | Condition | Description |
 |-----------|-------------|
 | **Manual skip** | "スキップ（後で対応）" was selected in Phase 2.1 |
-| **Auto defer** | Finding was treated as non-blocking by the graduated relaxation gate in Phase 1.4 |
 
-**Note**: Collect all skipped/deferred findings regardless of severity or skip reason. This guarantees no unaddressed findings remain.
+**Note**: Collect all skipped findings regardless of severity or skip reason. This guarantees no unaddressed findings remain.
 
 #### 4.3.2 When No Candidates Exist
 
