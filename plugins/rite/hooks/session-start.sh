@@ -228,77 +228,52 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# --- Defensive reset on new session startup (#761, #173) ---
-# If active=true on startup, session-end.sh likely did not fire (e.g., SessionEnd
-# hook not registered). Reset to active=false and show a soft message instead of
-# the alarming "CRITICAL: Active rite workflow detected" message.
-# Session ownership (#173): Only reset if own/legacy/stale session. Skip if another
-# session's fresh state (within 2h) to avoid disrupting concurrent workflows.
-if [ "$SOURCE" = "startup" ]; then
-  PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
-  ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
-  BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
+# --- Defensive reset helper (#761, #173, #206) ---
+# Shared by startup and clear blocks. Resets active=false and shows a soft message.
+# Always proceeds with reset regardless of session ownership (#206).
+# Note: This function always terminates via exit 0 — it never returns to the caller.
+# When issue_number is empty (e.g., state file has no issue), exits silently without message.
+_reset_active_state() {
+  local _phase _issue _branch
+  _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || _phase=""
+  _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
+  _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
 
-  # Check session ownership before resetting
-  _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
-  if [ "$_ownership" = "other" ]; then
-    # Another session's fresh state — do not reset, do not show alarming message
-    _cleanup_stale_compact
-    exit 0
+  # Debug log for session ownership diagnostics (#206)
+  if [ -n "${RITE_DEBUG:-}" ]; then
+    local _ownership
+    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
+    echo "[rite] Resetting active state (ownership: $_ownership)" >&2
   fi
 
-  TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
-  trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
+  # Atomic write: jq to temp file, then mv. No trap — explicit cleanup on failure.
+  local _tmp
+  _tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _tmp="${STATE_FILE}.tmp.$$"
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>/dev/null; then
-    mv "$TMP_FILE" "$STATE_FILE"
+     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>/dev/null; then
+    mv "$_tmp" "$STATE_FILE"
   else
-    rm -f "$TMP_FILE"
+    rm -f "$_tmp" 2>/dev/null
   fi
   _cleanup_stale_compact
   # Silent reset for completed workflows (#772): no message, no /rite:resume suggestion
-  if [ "$PHASE" = "completed" ]; then
+  if [ "$_phase" = "completed" ]; then
     exit 0
   fi
-  if [ -n "$ISSUE" ]; then
-    echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${ISSUE}, branch: ${BRANCH})。再開するには /rite:resume を使用してください。"
+  if [ -n "$_issue" ]; then
+    echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${_issue}, branch: ${_branch})。再開するには /rite:resume を使用してください。"
   fi
   exit 0
+}
+
+# --- Defensive reset on new session startup (#761, #173) ---
+if [ "$SOURCE" = "startup" ]; then
+  _reset_active_state
 fi
 
 # --- Defensive reset on /clear (#781, #133, #173) ---
-# PostCompact hook now handles compact recovery automatically.
-# /clear applies the same defensive reset as startup.
-# Session ownership (#173): Same ownership check as startup block above.
 if [ "$SOURCE" = "clear" ]; then
-  PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
-  ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
-  BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
-
-  # Check session ownership before resetting
-  _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
-  if [ "$_ownership" = "other" ]; then
-    # Another session's fresh state — do not reset
-    _cleanup_stale_compact
-    exit 0
-  fi
-
-  TMP_CLEAR_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
-  trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
-  if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_CLEAR_FILE" 2>/dev/null; then
-    mv "$TMP_CLEAR_FILE" "$STATE_FILE"
-  else
-    rm -f "$TMP_CLEAR_FILE"
-  fi
-  _cleanup_stale_compact
-  if [ "$PHASE" = "completed" ]; then
-    exit 0
-  fi
-  if [ -n "$ISSUE" ]; then
-    echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${ISSUE}, branch: ${BRANCH})。再開するには /rite:resume を使用してください。"
-  fi
-  exit 0
+  _reset_active_state
 fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
