@@ -5,6 +5,20 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.2] - 2026-03-17
+
+### 修正
+
+- `/rite:init` が `settings.json` の既存 hooks を検出し競合を防止するように修正 (#229)
+
+### 変更
+
+- `rite-config.yml` から未使用設定を削除し欠落設定を追加
+
+### ドキュメント
+
+- リリーススキルに AskUserQuestion 強制・ブランチ削除手順を追加
+
 ## [0.3.1] - 2026-03-17
 
 ### 修正
@@ -221,6 +235,7 @@ Rite Workflow の主要な変更を記録します。
 
 [0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
+[0.3.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.1...v0.3.2
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3

@@ -510,7 +510,37 @@ echo "LATEST:${LATEST_VERSION:-unknown}"
   claude plugin update rite
 ```
 
-Continue to Phase 4.5.1 in all cases.
+Continue to Phase 4.5.0.1.
+
+### 4.5.0.1 Check for Conflicting Hooks in settings.json
+
+Read `.claude/settings.json` (the project-level, non-local settings file) and check for hooks that may conflict with rite hooks.
+
+**Purpose**: Claude Code executes hooks from both `.claude/settings.json` and `.claude/settings.local.json`. If non-rite hooks exist in `settings.json` for the same events that rite registers (e.g., SessionStart, SessionEnd, PreCompact), they will be executed alongside rite hooks, causing duplicate execution. This check warns the user about such conflicts.
+
+**Check procedure**:
+
+1. Read `.claude/settings.json` with the Read tool. If the file does not exist or has no `.hooks` section (empty `{}` or missing), skip this sub-phase entirely and proceed to Phase 4.5.1.
+2. For each hook event in `.hooks`, examine all `.hooks.{EventName}[*].hooks[*].command` values.
+3. **Exclude** commands containing `rite/hooks/` (these are rite's own hooks, which may be registered here in older installations).
+4. Collect remaining (non-rite) hook commands as **conflicting hooks**.
+
+**If conflicting hooks are found**, display:
+```
+⚠️ .claude/settings.json に既存の hooks が検出されました:
+| Hook Event | Command |
+|------------|---------|
+| {event}    | {command} |
+
+rite は .claude/settings.local.json で hooks を管理します。
+settings.json の hooks は rite hooks と二重実行されます。
+
+→ settings.json の hooks セクションを `"hooks": {}` に変更することを推奨します。
+```
+
+**If no conflicting hooks are found**, no output is displayed.
+
+**Important**: This check is **advisory only**. Do not modify `.claude/settings.json` automatically. Do not block init execution regardless of the result. Continue to Phase 4.5.1 in all cases.
 
 ### 4.5.1 Check Existing Hook Configuration
 
