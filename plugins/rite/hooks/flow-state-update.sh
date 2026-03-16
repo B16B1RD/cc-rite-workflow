@@ -112,6 +112,13 @@ case "$MODE" in
     if [[ -z "$ACTIVE" ]]; then
       ACTIVE="true"
     fi
+    # Auto-read session_id from .rite-session-id if --session was not provided or is empty (#216)
+    if [[ -z "$SESSION" ]]; then
+      SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
+      if [[ -f "$SESSION_ID_FILE" ]]; then
+        SESSION=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || SESSION=""
+      fi
+    fi
     # Session ownership: overwrite protection for active state owned by another session
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
       _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"

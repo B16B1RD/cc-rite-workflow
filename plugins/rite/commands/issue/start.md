@@ -107,6 +107,7 @@ This protocol applies to **every** sub-skill invocation in this document. Each ð
 | `{status_field_id}` | `github.projects.field_ids.status` in `rite-config.yml`, or `gh project field-list` |
 | `{in_review_option_id}` | `gh project field-list` ("In Review" option) |
 | `{done_option_id}` | `gh project field-list` ("Done" option) |
+| `{session_id}` | Auto-read from `.rite-session-id` (written by `session-start.sh`). `flow-state-update.sh create` reads this file automatically when `--session` is empty â€” Claude does not need to resolve this placeholder manually. Pass `--session ""` to use auto-read. |
 
 ---
 
