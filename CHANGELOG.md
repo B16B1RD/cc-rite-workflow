@@ -5,6 +5,35 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-03-17
+
+### Fixed
+
+- Verification mode now triggers full review instead of partial review (#223)
+- Removed `{session_id}` placeholder and unified to auto-read pattern (#221)
+- Strengthened sub-skill return interruption prevention in `create.md` (#205)
+- Fixed Issue comment work memory backup sync (#204)
+- Fixed bash redirection error when `.rite-session-id` is absent
+- Fixed `session-start.sh` not resetting other sessions' active state on startup/clear (#206)
+- Removed graduated relaxation logic from review-fix loop — all findings now require fix (#202)
+- Made reviewer confirmation and Ready confirmation unskippable in e2e flow (#198)
+- Used patch method for flow-state deactivation (#195)
+- Fixed blocking/non-blocking remnants in review template output examples
+- Fixed path resolution inconsistency with `--if-exists` pattern
+- Added Defense-in-Depth flow-state updates to Phase 1-3 sub-skills
+
+### Changed
+
+- Abolished `loop_count`/`max_iterations`/`loop-limit` parameters (#210)
+- Completely removed `--loop` parameter from `flow-state-update.sh` (#211)
+- Added `hooks/hooks.json` native method with double-execution guard (#194)
+- Added 3 quality rules to Phase 4.5 review template (#209)
+- Abolished trap in `session-start.sh` and improved debug logging
+
+### Docs
+
+- Updated review-fix loop documentation (#212)
+
 ## [0.3.0] - 2026-03-16
 
 ### Added
@@ -190,6 +219,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
