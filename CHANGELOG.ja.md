@@ -5,6 +5,35 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.1] - 2026-03-17
+
+### 修正
+
+- verification mode 時にフルレビューが実施されない問題を修正 (#223)
+- `{session_id}` プレースホルダーを削除し auto-read に一本化 (#221)
+- `create.md` サブスキル返却後の中断防止ロジック強化 (#205)
+- Issue コメントの作業メモリバックアップ同期を修正 (#204)
+- `.rite-session-id` 不在時の bash リダイレクションエラーを修正
+- `session-start.sh` が startup/clear 時に他セッションの active 状態をリセットしない問題を修正 (#206)
+- review-fix ループの段階的緩和ロジックを削除し全指摘必須修正に統一 (#202)
+- e2e フローでレビュアー確認・Ready 確認をスキップ不可に (#198)
+- flow-state deactivation で patch 方式を使用 (#195)
+- レビューテンプレート出力例の blocking/non-blocking 残存表記を修正
+- パス解決不整合を修正し `--if-exists` パターンに統一
+- Phase 1-3 サブスキルに Defense-in-Depth flow-state 更新を追加
+
+### 変更
+
+- `loop_count`/`max_iterations`/`loop-limit` パラメータを廃止 (#210)
+- `flow-state-update.sh` から `--loop` パラメータを完全削除 (#211)
+- `hooks/hooks.json` ネイティブ方式を追加し二重実行ガードを設置 (#194)
+- Phase 4.5 レビューテンプレートに品質3ルールを追加 (#209)
+- `session-start.sh` の trap 廃止とデバッグログ改善
+
+### ドキュメント
+
+- review-fix ループのドキュメント更新 (#212)
+
 ## [0.3.0] - 2026-03-16
 
 ### 追加
@@ -190,6 +219,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
