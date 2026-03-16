@@ -19,12 +19,13 @@ fi
 INPUT=$(cat) || INPUT=""
 
 # --- DEBUG: session_id field verification (#174) ---
-# Dump hook JSON payload to stderr for field name inspection
-echo "[rite-debug] === Hook JSON payload (session-start) ===" >&2
-echo "$INPUT" | jq '.' >&2 2>/dev/null || echo "$INPUT" >&2
-echo "[rite-debug] === session_id extraction attempt ===" >&2
-echo "$INPUT" | jq -r '{session_id: .session_id, sessionId: .sessionId, session: .session}' >&2 2>/dev/null || true
-echo "[rite-debug] === end ===" >&2
+# Dump hook JSON payload to file for field name inspection
+_debug_file="/tmp/rite-debug-session-start-$(date +%s).json"
+echo "$INPUT" | jq '.' > "$_debug_file" 2>/dev/null || echo "$INPUT" > "$_debug_file"
+echo "[rite-debug] Hook JSON saved to: $_debug_file" >&2
+# Also extract candidate session_id fields
+echo "$INPUT" | jq -r '{session_id: .session_id, sessionId: .sessionId, session: .session}' > "/tmp/rite-debug-session-id-candidates.json" 2>/dev/null || true
+echo "[rite-debug] Session ID candidates saved to: /tmp/rite-debug-session-id-candidates.json" >&2
 # --- END DEBUG ---
 
 # Plugin dual-load collision guard (#591)
