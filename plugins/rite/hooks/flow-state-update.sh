@@ -119,7 +119,7 @@ case "$MODE" in
       --argjson pr "$PR" \
       --arg next "$NEXT" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
+      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else
