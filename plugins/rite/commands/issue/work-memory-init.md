@@ -68,16 +68,10 @@ Accumulate confirmation items that arise during work (design decisions, specific
 Before returning control to the caller, update `.rite-flow-state` to the post-work-memory phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "phase2_post_work_memory" \
-    --next "rite:issue:work-memory-init completed. Proceed to Phase 3 (implementation plan). Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "phase2_post_work_memory" --issue {issue_number} --branch "{branch_name}" --loop 0 --pr 0 \
-    --session {session_id} \
-    --next "rite:issue:work-memory-init completed. Proceed to Phase 3 (implementation plan). Do NOT stop."
-fi
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase2_post_work_memory" \
+  --next "rite:issue:work-memory-init completed. Proceed to Phase 3 (implementation plan). Do NOT stop." \
+  --if-exists
 ```
 
 After the flow-state update above, output the result pattern:

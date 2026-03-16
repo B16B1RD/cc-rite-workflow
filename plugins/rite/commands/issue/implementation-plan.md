@@ -403,16 +403,10 @@ If the Issue body has no checklist, skip this section and do not record in the w
 Before returning control to the caller, update `.rite-flow-state` to the post-plan phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "phase3_post_plan" \
-    --next "rite:issue:implementation-plan completed. Proceed to Phase 4 (work start guidance). Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "phase3_post_plan" --issue {issue_number} --branch "{branch_name}" --loop 0 --pr 0 \
-    --session {session_id} \
-    --next "rite:issue:implementation-plan completed. Proceed to Phase 4 (work start guidance). Do NOT stop."
-fi
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase3_post_plan" \
+  --next "rite:issue:implementation-plan completed. Proceed to Phase 4 (work start guidance). Do NOT stop." \
+  --if-exists
 ```
 
 After the flow-state update above, output the appropriate result pattern:

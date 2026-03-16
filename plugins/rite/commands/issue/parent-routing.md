@@ -287,17 +287,13 @@ gh issue close {issue_number} --comment "すべての子 Issue が完了した�
 
 Before returning control to the caller, update `.rite-flow-state` to the post-parent-routing phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands below.
+
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "phase1_5_post_parent" \
-    --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2 (work preparation). Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "phase1_5_post_parent" --issue {issue_number} --branch "" --loop 0 --pr 0 \
-    --session {session_id} \
-    --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2 (work preparation). Do NOT stop."
-fi
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase1_5_post_parent" \
+  --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2 (work preparation). Do NOT stop." \
+  --if-exists
 ```
 
 After the flow-state update above, output the appropriate result pattern:

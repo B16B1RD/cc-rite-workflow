@@ -126,17 +126,13 @@ After Step 3 completion, proceed to Step 4 of 2.3 (feature branch creation).
 
 Before returning control to the caller, update `.rite-flow-state` to the post-branch phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands below.
+
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "phase2_post_branch" \
-    --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "phase2_post_branch" --issue {issue_number} --branch "{branch_name}" --loop 0 --pr 0 \
-    --session {session_id} \
-    --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
-fi
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase2_post_branch" \
+  --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop." \
+  --if-exists
 ```
 
 After the flow-state update above, output the result pattern:
