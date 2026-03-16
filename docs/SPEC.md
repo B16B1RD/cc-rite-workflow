@@ -746,13 +746,11 @@ Starts when "Start implementation" is selected. The following steps are executed
 | Approve with conditions | Fix with `/rite:pr:fix` → Return to 5.4 |
 | Request changes | Fix with `/rite:pr:fix` → Return to 5.4 |
 
-**Review-Fix Cycle Continuation:** The `/rite:pr:review` → `/rite:pr:fix` → `/rite:pr:review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The cycle uses a 3-layer convergence mechanism:
+**Review-Fix Cycle Continuation:** The `/rite:pr:review` → `/rite:pr:fix` → `/rite:pr:review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The loop exits only when all findings are resolved — there is no iteration limit or progressive relaxation.
 
-1. **Verification mode** (`review.loop.verification_mode`): From cycle 2+, reviews switch to verification mode — verifying previous fixes and checking incremental diffs for regressions only. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns".
-2. **Progressive relaxation** (`review.loop.relax_medium_after`, `review.loop.relax_high_after`): MEDIUM/LOW become non-blocking after cycle 3 (default), HIGH after cycle 5.
-3. **Force exit** (`review.loop.max_iterations`): At cycle 7 (default), all remaining findings are converted to separate issues and the loop exits.
+**Verification mode** (`review.loop.verification_mode`): From cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns".
 
-**Definition of "Approve":** Zero blocking findings (accounting for the current gate mode's relaxation level).
+**Definition of "Approve":** Zero blocking findings.
 
 ### Automatic Work Memory Updates
 

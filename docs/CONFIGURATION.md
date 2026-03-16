@@ -107,10 +107,7 @@ review:
     - file_types
     - content_analysis
   loop:
-    max_iterations: 7           # Force exit review-fix loop (default: 7)
-    relax_medium_after: 3       # Relax MEDIUM/LOW after N iterations (default: 3)
-    relax_high_after: 5         # Relax HIGH after N iterations (default: 5)
-    verification_mode: true     # Enable verification mode for cycle 2+ (default: true)
+    verification_mode: true     # Enable verification mode as supplement to full review (default: true)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
   security_reviewer:
     mandatory: false                          # Require security reviewer for all PRs (default: false)
@@ -434,10 +431,7 @@ issue:
 |-------|------|---------|-------------|
 | `min_reviewers` | integer | `1` | Minimum number of reviewers (fallback when no reviewers match) |
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
-| `loop.max_iterations` | integer | `7` | Force exit review-fix loop after N iterations |
-| `loop.relax_medium_after` | integer | `3` | Relax MEDIUM/LOW findings to non-blocking after N iterations |
-| `loop.relax_high_after` | integer | `5` | Relax HIGH findings to non-blocking after N iterations |
-| `loop.verification_mode` | boolean | `true` | Enable verification mode for cycle 2+. When enabled, reviews after the first cycle focus on verifying previous fixes and checking incremental diffs for regressions, rather than full re-review |
+| `loop.verification_mode` | boolean | `true` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
 | `security_reviewer.mandatory` | boolean | `false` | Require security reviewer for all PRs regardless of file types |
 | `security_reviewer.recommended_for_code_changes` | boolean | `true` | Include security reviewer when executable code files are changed |
@@ -446,13 +440,9 @@ issue:
 
 **Review-fix loop convergence:**
 
-The review-fix loop uses a 3-layer defense to ensure convergence:
+The review-fix loop exits only when all findings are resolved (zero blocking findings). There is no iteration limit or progressive relaxation — every finding must be addressed.
 
-1. **Verification mode** (Layer 1): From cycle 2+, reviews switch from full review to verification mode — only checking if previous findings were fixed and scanning incremental diffs for regressions. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking).
-2. **Progressive relaxation** (Layer 2): After `relax_medium_after` iterations, MEDIUM/LOW findings become non-blocking. After `relax_high_after`, HIGH also becomes non-blocking.
-3. **Force exit** (Layer 3): At `max_iterations`, all remaining findings are converted to separate issues and the loop exits.
-
-Set `verification_mode: false` to revert to the previous behavior (full review every cycle + progressive relaxation only).
+**Verification mode** (`verification_mode: true`): From cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). Set `verification_mode: false` to perform full review only every cycle.
 
 **Review execution:**
 
@@ -646,7 +636,7 @@ Fail-closed safety thresholds to prevent runaway workflows.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `max_review_fix_loops` | integer | `7` | Hard limit for review-fix loop iterations. When both this and `review.loop.max_iterations` are set, the lower value takes effect |
+| `max_review_fix_loops` | integer | `7` | Hard limit for review-fix loop iterations. Acts as a safety net to prevent runaway loops |
 | `max_implementation_rounds` | integer | `20` | Hard limit for implementation rounds per Issue (re-entries from checklist failures) |
 | `time_budget_minutes` | integer | `120` | Advisory time budget per Issue in minutes (not enforced by timer) |
 | `auto_stop_on_repeated_failure` | boolean | `true` | Stop workflow when the same failure class repeats consecutively |
