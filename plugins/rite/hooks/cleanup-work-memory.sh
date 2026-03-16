@@ -68,11 +68,10 @@ if [ "$CLOSE_MODE" = false ]; then
       --argjson issue "${ISSUE_NUMBER:-0}" \
       --arg branch "" \
       --arg phase "completed" \
-      --argjson loop 0 \
       --argjson pr 0 \
       --arg next "none" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, loop_count: $loop, pr_number: $pr, next_action: $next, updated_at: $ts}' \
+      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}' \
       > "$TMP_STATE" 2>/dev/null; then
       mv "$TMP_STATE" "$FLOW_STATE" 2>/dev/null || {
         echo "WARNING: .rite-flow-state の更新に失敗しました（mv エラー）" >&2
