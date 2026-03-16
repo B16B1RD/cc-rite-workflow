@@ -184,6 +184,7 @@ Execute after Phase 1.1-1.3.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_5_parent" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:parent-routing returns: proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
 ```
 
@@ -206,6 +207,7 @@ Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing su
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase1_6_child" --issue {issue_number} --branch "" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:child-issue-selection returns: proceed to Phase 2 (work preparation). Do NOT stop."
 ```
 
@@ -234,7 +236,18 @@ local_match=$(git branch --list "{branch_name}")
 remote_match=$(git branch -r --list "origin/{branch_name}")
 ```
 
-**Determination**: Check the **output** of each command (NOT the exit code). `git branch --list` always returns exit code 0 regardless of match. If `local_match` or `remote_match` is non-empty, the branch exists.
+> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found.
+
+**Determination**: If `local_match` or `remote_match` is non-empty, the branch exists.
+
+```bash
+# 判定ロジック（出力文字列の空チェック）
+if [ -n "$local_match" ] || [ -n "$remote_match" ]; then
+  echo "BRANCH_EXISTS"
+else
+  echo "BRANCH_NOT_FOUND"
+fi
+```
 
 If exists: `ブランチ {branch_name} は既に存在します。オプション: 既存ブランチに切り替え / 別名でブランチを作成（サフィックス追加）/ キャンセル`
 
@@ -256,6 +269,7 @@ Skip Phase 2.4/2.5/2.6 (no Issue number). User manually links. Phase 3+ normal.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_branch" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:branch-setup returns: proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
 ```
 
@@ -291,6 +305,7 @@ Execute only if `iteration.enabled: true` and `iteration.auto_assign: true` in r
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_work_memory" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:work-memory-init returns: proceed to Phase 3 (implementation plan). Do NOT stop."
 ```
 
@@ -326,6 +341,7 @@ Do **NOT** stop after `rite:issue:work-memory-init` returns. Proceed to the next
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase3_plan" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:issue:implementation-plan returns: proceed to Phase 4 (work start guidance). Do NOT stop."
 ```
 
@@ -525,6 +541,7 @@ Run [Preflight Protocol](#preflight-protocol) before invoking lint.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
 ```
 
@@ -604,6 +621,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_lint" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop."
 ```
 
@@ -622,7 +640,93 @@ echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+'
 echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true
 ```
 
-**Determine**: `grep -c` output `0`→all complete→5.3. `≥1`→incomplete→display, return 5.1. Empty body→retry 5.1. **Mandatory**, cannot skip.
+**Determine**: `grep -c` output `0`→all complete→5.3. `≥1`→incomplete→proceed to 5.2.1.1 (auto-check). Empty body→retry 5.1. **Mandatory**, cannot skip.
+
+#### 5.2.1.1 Auto-Check Evaluation
+
+When incomplete checklist items are detected, evaluate each item's fulfillment status based on the current implementation state before returning to Phase 5.1.
+
+**Purpose**: Prevent infinite loops where implementation is complete but Definition of Done checklist items remain unchecked because no process updates them to `- [x]`.
+
+**Evaluation procedure**:
+
+1. **Collect evidence**: Use `git diff origin/{base_branch}...HEAD --name-only` and `git log --oneline origin/{base_branch}...HEAD` to understand what was implemented.
+
+2. **Evaluate each incomplete item**: For each `- [ ]` item, assess whether the item is satisfied based on the implementation evidence:
+
+   | Assessment | Criteria | Action |
+   |-----------|----------|--------|
+   | **Satisfied** | Implementation evidence clearly fulfills the item | Mark as `- [x]` |
+   | **Not satisfied** | No evidence of fulfillment, or clearly incomplete | Keep as `- [ ]` |
+   | **Uncertain** | Cannot confidently determine | Present to user via `AskUserQuestion` |
+
+3. **Update Issue body**: If any items are newly marked as satisfied, update the Issue body via `gh issue edit`:
+
+   Follow the "Checkbox Update" pattern in [gh-cli-patterns.md](../../references/gh-cli-patterns.md#safe-checklist-operation-patterns). Use Python for safe `- [ ]` → `- [x]` replacement (do NOT use `sed`).
+
+   ```bash
+   # Step 1: Retrieve current body and validate
+   tmpfile_read=$(mktemp)
+   tmpfile_write=$(mktemp)
+   trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
+   gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
+
+   if [ ! -s "$tmpfile_read" ]; then
+     echo "ERROR: Issue body の取得に失敗" >&2
+     exit 1
+   fi
+
+   # Output paths for subsequent Read/Write tool calls
+   echo "tmpfile_read=$tmpfile_read"
+   echo "tmpfile_write=$tmpfile_write"
+   ```
+
+   Then use the Read tool to read `$tmpfile_read` (the path output above), apply `- [ ]` → `- [x]` replacements for satisfied items using the Write tool to `$tmpfile_write`, and apply:
+
+   **Note**: Shell variables do not carry over between Bash tool calls. Use the literal paths output by `echo "tmpfile_read=..."` in Step 1 directly in the command below.
+
+   ```bash
+   # Replace with actual paths from Step 1 output (e.g., /tmp/tmp.XXXXXXXXXX)
+   tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Step 1 の出力値に置換
+
+   if [ ! -s "$tmpfile_write" ]; then
+     echo "ERROR: Updated content is empty" >&2
+     exit 1
+   fi
+
+   gh issue edit {issue_number} --body-file "$tmpfile_write"
+   ```
+
+4. **Re-check**: After updating, re-run the checklist check:
+
+   ```bash
+   issue_body=$(gh issue view {issue_number} --json body --jq '.body')
+   [ -z "$issue_body" ] && echo "ERROR: Issue body の取得に失敗" >&2 && exit 1
+   echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true
+   ```
+
+   - `0` (all complete) → Proceed to Phase 5.3
+   - `≥1` (still incomplete) → Display remaining incomplete items and return to Phase 5.1
+   - Empty body → retry Phase 5.1
+
+**User confirmation for uncertain items**:
+
+When items are assessed as "Uncertain", use `AskUserQuestion`:
+
+```
+以下のチェックリスト項目の充足状態を確認してください:
+
+- [ ] {item_text}
+
+オプション:
+- 充足済みとしてチェック（推奨）: この項目を完了とマークします
+- 未充足: Phase 5.1 に戻って対応します
+```
+
+**Constraints**:
+- Already checked items (`- [x]`) are never modified (AC-3 non-regression)
+- Issue reference items (`- [ ] #XX`) are excluded from evaluation (parent-child tracking)
+- Auto-check is executed **at most once per 5.2.1 invocation** to prevent evaluation loops
 
 ### 5.3 PR Creation
 
@@ -634,6 +738,7 @@ After 5.2.1, update `.rite-flow-state` (atomic, see 5.1 step 3):
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
   --loop 0 --pr 0 \
+  --session {session_id} \
   --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->Phase 5.6. Do NOT stop."
 ```
 
@@ -717,6 +822,7 @@ When context pressure is detected (tool call count > `context_optimization.agent
    bash plugins/rite/hooks/flow-state-update.sh create \
      --phase "{phase_value}" --issue {issue_number} --branch "{branch_name}" \
      --loop 0 --pr {pr_number} \
+     --session {session_id} \
      --next "{next_action_value}"
    ```
 
@@ -735,6 +841,7 @@ Update `.rite-flow-state` (atomic, see 5.1 step 3):
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
 ```
 
@@ -762,6 +869,7 @@ Invoke `skill: "rite:pr:review"`. Increment `loop_count`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_review" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). [review:conditional-merge/loop-limit]->Phase 5.4.4 then 5.5. Do NOT stop."
 ```
 
@@ -833,7 +941,16 @@ with open(out_path, "w") as f:
 fi
 ```
 
-**Step 3**: **→ Execute 5.4.2 branch now**.
+**Step 3**: Based on the review result pattern from `rite:pr:review`, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
+
+| Result Pattern | Action |
+|----------------|--------|
+| `[review:mergeable]` | **→ Proceed to Phase 5.5** (Ready for Review). Skip fix entirely. |
+| `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4). After it returns, proceed to 🚨 After Fix (5.4.6). |
+| `[review:conditional-merge:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for non-blocking issues. After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
+| `[review:loop-limit:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4) for remaining issues (convert to Issues where appropriate). After it returns, proceed to 🚨 After Fix (5.4.6), then Phase 5.5. |
+
+> **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。
 
 #### 5.4.4 Fix
 
@@ -843,6 +960,7 @@ Update `.rite-flow-state` (atomic):
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "After rite:pr:fix returns: [fix:pushed]+fix-needed->Phase 5.4.1. [fix:pushed]+conditional/loop-limit->Phase 5.5. [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
 ```
 
@@ -868,6 +986,7 @@ Invoke `skill: "rite:pr:fix"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_fix" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]+fix-needed->Phase 5.4.1 (re-review). [fix:pushed]+conditional/loop-limit->Phase 5.5 (ready). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
 ```
 
@@ -939,7 +1058,17 @@ with open(out_path, "w") as f:
 fi
 ```
 
-**Step 3**: **→ Execute 5.4.5 branch now**.
+**Step 3**: Based on the fix result pattern from `rite:pr:fix` **and** the preceding review result pattern, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
+
+| Fix Result Pattern | Preceding Review Pattern | Action |
+|--------------------|--------------------------|--------|
+| `[fix:pushed]` | `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
+| `[fix:pushed]` | `[review:conditional-merge:{n}]` or `[review:loop-limit:{n}]` | **→ Proceed to Phase 5.5** (Ready for Review). |
+| `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
+| `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
+| `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` (retry / skip to 5.6 / terminate). |
+
+> **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。再レビューは必ず `skill: "rite:pr:review"` を Skill ツールで呼び出すこと。
 
 ### 5.5 Ready for Review
 
@@ -972,6 +1101,7 @@ When loop completes, confirm:
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_ready" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "Phase 5.5.1: Update Issue Status to In Review, then Phase 5.5.2 metrics, then Phase 5.6 completion report. Do NOT stop."
 ```
 
@@ -1201,6 +1331,7 @@ Present options via `AskUserQuestion`:
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "completed" --issue {issue_number} --branch "{branch_name}" \
   --loop {loop_count} --pr {pr_number} \
+  --session {session_id} \
   --next "none" --active false
 ```
 

@@ -11,6 +11,9 @@ else
   source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 fi
 
+# Source session ownership helper for session_id extraction and ownership checks
+source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
@@ -35,6 +38,9 @@ fi
 
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"')
+
+# Extract session_id from hook JSON payload (#173)
+SESSION_ID=$(extract_session_id "$INPUT" 2>/dev/null) || SESSION_ID=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
@@ -218,14 +224,25 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# --- Defensive reset on new session startup (#761) ---
+# --- Defensive reset on new session startup (#761, #173) ---
 # If active=true on startup, session-end.sh likely did not fire (e.g., SessionEnd
 # hook not registered). Reset to active=false and show a soft message instead of
 # the alarming "CRITICAL: Active rite workflow detected" message.
+# Session ownership (#173): Only reset if own/legacy/stale session. Skip if another
+# session's fresh state (within 2h) to avoid disrupting concurrent workflows.
 if [ "$SOURCE" = "startup" ]; then
   PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
   ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
   BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
+
+  # Check session ownership before resetting
+  _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+  if [ "$_ownership" = "other" ]; then
+    # Another session's fresh state — do not reset, do not show alarming message
+    _cleanup_stale_compact
+    exit 0
+  fi
+
   TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
   trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
@@ -245,13 +262,23 @@ if [ "$SOURCE" = "startup" ]; then
   exit 0
 fi
 
-# --- Defensive reset on /clear (#781, #133) ---
+# --- Defensive reset on /clear (#781, #133, #173) ---
 # PostCompact hook now handles compact recovery automatically.
 # /clear applies the same defensive reset as startup.
+# Session ownership (#173): Same ownership check as startup block above.
 if [ "$SOURCE" = "clear" ]; then
   PHASE=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || PHASE=""
   ISSUE=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || ISSUE=""
   BRANCH=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || BRANCH=""
+
+  # Check session ownership before resetting
+  _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+  if [ "$_ownership" = "other" ]; then
+    # Another session's fresh state — do not reset
+    _cleanup_stale_compact
+    exit 0
+  fi
+
   TMP_CLEAR_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_CLEAR_FILE="${STATE_FILE}.tmp.$$"
   trap 'rm -f "$TMP_CLEAR_FILE" 2>/dev/null' EXIT TERM INT
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
@@ -308,3 +335,10 @@ Then suggest running /rite:resume to continue from where it left off.
 If the user provides a different instruction, respect it but mention the pending workflow.
 Read .rite-flow-state for full state details.
 EOF
+
+# --- Session ID notification (#173) ---
+# Output session_id to stdout so Claude can use it in --session parameters
+# for flow-state-update.sh create calls during the workflow.
+if [ -n "$SESSION_ID" ]; then
+  echo "rite_session_id: $SESSION_ID"
+fi

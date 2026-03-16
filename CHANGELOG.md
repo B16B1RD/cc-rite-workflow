@@ -5,6 +5,36 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-16
+
+### Added
+
+- Session ownership system for multi-session conflict prevention (#174, #175, #176, #177, #178, #179)
+  - Session ownership helper functions and flow-state overwrite protection (#175)
+  - Session ownership support in `session-start.sh` (#176)
+  - Session ownership support in `session-end.sh` and `stop-guard.sh` (#177)
+  - Session ownership support in `wm-sync`, `pre-compact`, `context-pressure` hooks (#178)
+  - `--session {session_id}` parameter added to all command files + `resume.md` ownership transfer (#179)
+
+### Fixed
+
+- Phase 5.2.1 checklist auto-check processing added (#170)
+- Branch existence check now uses output string instead of exit code (#172)
+- Issue create output order improved — next steps moved to end (#168)
+- PostToolUse hook auto-syncs Issue comment work memory on phase change (#167)
+- `review.md` READ-ONLY constraint added to normalize review-fix loop (#165)
+- Review → fix loop branch instructions rewritten to imperative conditional (#163)
+- `session-end.sh` diagnostic log added for other session exit path
+- Debug output remnants removed from hooks (#174)
+
+### Changed
+
+- Issue comment work memory update logic refactored to script for deterministic execution (#161)
+
+### Docs
+
+- Added `git branch --list` DO NOT warning to `gh-cli-commands.md` (#181)
+
 ## [0.2.5] - 2026-03-16
 
 ### Added
@@ -160,6 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3

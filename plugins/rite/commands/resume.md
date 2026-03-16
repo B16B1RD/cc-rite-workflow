@@ -217,8 +217,13 @@ Verify the following:
 gh issue view {issue_number} --json state --jq '.state'
 
 # ブランチ確認（出力の有無で判定。終了コードは常に 0 のため使用不可）
+# DO NOT use exit code (&&, ||, $?) to determine branch existence.
 branch_match=$(git branch --list "{branch}")
-# branch_match が非空ならブランチ存在、空なら不在
+if [ -n "$branch_match" ]; then
+  echo "BRANCH_EXISTS"
+else
+  echo "BRANCH_NOT_FOUND"
+fi
 ```
 
 **Timestamp validation:**
@@ -316,8 +321,8 @@ Ensure `.rite-flow-state` has `active: true` so that the stop-guard hook blocks 
 STATE_FILE=".rite-flow-state"
 if [ -f "$STATE_FILE" ]; then
   TMP_STATE="${STATE_FILE}.tmp.$$"
-  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-    '.active = true | .updated_at = $ts | .error_count = 0' \
+  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" --arg sid "{session_id}" \
+    '.active = true | .updated_at = $ts | .error_count = 0 | .session_id = $sid' \
     "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE" || rm -f "$TMP_STATE"
 fi
 ```

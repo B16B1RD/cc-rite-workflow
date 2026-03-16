@@ -515,10 +515,6 @@ Projects 設定:
 - Priority: {priority}
 - Complexity: {complexity}
 - Iteration: {iteration_name または "バックログ"}  <!-- Iteration 有効時のみ表示 -->
-
-次のステップ:
-1. `/rite:issue:start {number}` で作業を開始
-2. 作業完了後 `/rite:pr:create` で PR 作成
 ```
 
 ---
@@ -581,6 +577,7 @@ if [ -f ".rite-flow-state" ]; then
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_post_delegation" --issue 0 --branch "" --loop 0 --pr 0 \
+    --session {session_id} \
     --next "rite:issue:create-register completed. Issue created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
 fi
 ```

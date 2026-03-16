@@ -507,6 +507,7 @@ if [ -f ".rite-flow-state" ]; then
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "create_post_interview" --issue 0 --branch "" --loop 0 --pr 0 \
+    --session {session_id} \
     --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 fi
 ```

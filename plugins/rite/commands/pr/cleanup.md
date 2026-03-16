@@ -35,6 +35,7 @@ if [ -f .rite-flow-state ]; then
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
     --phase "cleanup" --issue 0 --branch "" --loop 0 --pr 0 \
+    --session {session_id} \
     --next "Execute cleanup phases. Do NOT stop."
 fi
 ```
@@ -849,74 +850,30 @@ Issue を作成しました:
 After all task processing is complete, update the work memory:
 
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693）
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
+# Step 1: チェックボックス更新（完了済みだがチェック漏れのタスク）
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-checkboxes \
+  --tasks "{completed_unchecked_task_names_comma_separated}" \
+  2>/dev/null || true
 
-if [ -n "$comment_id" ]; then
-  if [ -z "$current_body" ]; then
-    echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
-  else
-    backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-    printf '%s' "$current_body" > "$backup_file"
-    original_length=$(printf '%s' "$current_body" | wc -c)
-
-    tmpfile=$(mktemp)
-    body_tmp=$(mktemp)
-    trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
-
-    # 置換型パターン: Python で既存行を正規表現置換 + 追記型で末尾に追加
-    # trap に body_tmp を含むのは置換型パターンの特徴（追記型のみの場合は tmpfile のみ）
-    printf '%s' "$current_body" > "$body_tmp"
-    python3 -c '
-import sys, re
-body_path, out_path = sys.argv[1], sys.argv[2]
-# task_names は改行区切りで渡す（空なら置換なし）
-task_names = sys.argv[3].strip().split("\n") if sys.argv[3].strip() else []
-with open(body_path, "r") as f:
-    body = f.read()
-for task_name in task_names:
-    if task_name:
-        # re.escape で特殊文字をエスケープ
-        pattern = r"^(- \[) (\] " + re.escape(task_name) + r")$"
-        body = re.sub(pattern, r"\g<1>x\g<2>", body, count=1, flags=re.MULTILINE)
-with open(out_path, "w") as f:
-    f.write(body)
-' "$body_tmp" "$tmpfile" "{completed_unchecked_task_names}"
-
-    # 追記内容を末尾に追加
-    cat >> "$tmpfile" << 'NEW_SECTION_EOF'
-
+# Step 2: 未完了タスク処理結果を追記
+task_result_tmp=$(mktemp)
+trap 'rm -f "$task_result_tmp"' EXIT
+cat > "$task_result_tmp" << 'RESULT_EOF'
 {1.7.4 の内容を実際の値で置換して記述}
-NEW_SECTION_EOF
+RESULT_EOF
 
-    # Safety checks before PATCH (see gh-cli-patterns.md)
-    if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-      echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
-    if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
-      echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
-      exit 1
-    fi
-    updated_length=$(wc -c < "$tmpfile")
-    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-      echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-section \
+  --section "未完了タスクの処理結果" --content-file "$task_result_tmp" \
+  2>/dev/null || true
 
-    jq -n --rawfile body "$tmpfile" '{"body": $body}' \
-      | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input - || \
-        echo "WARNING: PATCH failed. Backup: $backup_file" >&2
-  fi
-fi
+rm -f "$task_result_tmp"
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。Phase 1.6.1 のシェル変数は参照せず、このブロック内で再取得する。なお Phase 1.7.4 では「完了済み（チェック漏れ）」と判定したタスクのチェックボックスを `- [ ]` から `- [x]` に置換する操作も行う。その場合は Python インラインスクリプトで置換する（`sed` は multibyte 文字で失敗するため使用禁止）。`{completed_unchecked_task_names}` を改行区切りの完了済みタスク名リストで、`{1.7.4 の内容を実際の値で置換して記述}` を「Update content」テンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: `{completed_unchecked_task_names_comma_separated}` を完了済みタスク名のカンマ区切りリストで置換すること（例: `"タスクA,タスクB"`）。`{1.7.4 の内容を実際の値で置換して記述}` を「Update content」テンプレートから生成した実際の追記内容で置換すること。
 
 **Update content:**
 

@@ -7,6 +7,7 @@ set -euo pipefail
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -37,6 +38,15 @@ cleanup() {
 source "$SCRIPT_DIR/work-memory-update.sh"
 
 trap cleanup EXIT TERM INT
+
+# Session ownership check (#173): skip state updates for other session's state.
+# Must run before lock to avoid holding the lock while doing nothing.
+if [ -f "$FLOW_STATE" ]; then
+  _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE" 2>/dev/null) || _ownership="own"
+  if [ "$_ownership" = "other" ]; then
+    exit 0
+  fi
+fi
 
 # --- All state updates inside lock ---
 if acquire_wm_lock "$LOCKDIR"; then

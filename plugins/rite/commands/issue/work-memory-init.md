@@ -34,90 +34,16 @@ WM_SOURCE="init" \
 
 ### 2.6.2 Issue Comment (Backup Replica)
 
-Add a work memory comment to the Issue as a backup:
+Add a work memory comment to the Issue as a backup. The script handles template generation, comment creation, post-creation validation, and comment ID caching in `.rite-flow-state`:
 
 ```bash
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-
-cat <<'EOF' > "$tmpfile"
-## 📜 rite 作業メモリ
-
-### セッション情報
-- **Issue**: #{issue_number}
-- **開始**: {timestamp}
-- **ブランチ**: {branch_name}
-- **最終更新**: {timestamp}
-- **コマンド**: rite:issue:start
-- **フェーズ**: phase2
-- **フェーズ詳細**: ブランチ作成・準備
-
-### 進捗サマリー
-
-| 項目 | 状態 | 備考 |
-|------|------|------|
-| 実装 | ⬜ 未着手 | - |
-| テスト | ⬜ 未着手 | - |
-| ドキュメント | ⬜ 未着手 | - |
-
-### 要確認事項
-<!-- 作業中に発生した確認事項を蓄積。セッション終了時にまとめて確認 -->
-_確認事項はありません_
-
-### 変更ファイル
-<!-- 自動更新 -->
-_まだ変更はありません_
-
-### 決定事項・メモ
-<!-- 重要な判断や発見 -->
-
-### 計画逸脱ログ
-<!-- 実装中に計画から逸脱した場合に記録 -->
-_計画逸脱はありません_
-
-### ボトルネック検出ログ
-<!-- ボトルネック検出 → Oracle 発見 → 再分解の履歴 -->
-_ボトルネック検出はありません_
-
-### レビュー対応履歴
-<!-- レビュー対応時に自動記録 -->
-_レビュー対応はありません_
-
-### 次のステップ
-1. Issue の内容を確認
-2. 実装を開始
-EOF
-
-gh issue comment {issue_number} --body-file "$tmpfile"
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh init \
+  --issue {issue_number} \
+  --branch "{branch_name}" \
+  2>/dev/null || true
 ```
 
-#### 2.6.3 Post-Creation Validation
-
-Verify the created comment has the expected structure. This catches silent failures where `gh issue comment` succeeds but the content is truncated or corrupted:
-
-```bash
-# Retrieve the last work memory comment and validate structure
-# Note: GitHub API has eventual consistency — the comment may not appear immediately after creation.
-# A brief delay (1-2 seconds) or a single retry is acceptable if the initial fetch returns empty.
-created_body=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body // empty')
-
-if [ -z "$created_body" ]; then
-  echo "WARNING: 作業メモリコメントの作成を確認できません。後続フェーズで再作成される可能性があります。" >&2
-else
-  session_count=$(echo "$created_body" | grep -c '### セッション情報' || true)
-  progress_count=$(echo "$created_body" | grep -c '### 進捗サマリー' || true)
-  if [ "$session_count" -eq 0 ]; then
-    echo "WARNING: 作業メモリコメントの構造が不完全です（セッション情報セクション欠落）。" >&2
-  elif [ "$progress_count" -eq 0 ]; then
-    echo "WARNING: 作業メモリコメントの構造が不完全です（進捗サマリーセクション欠落）。" >&2
-  else
-    echo "OK: 作業メモリコメントの構造検証が完了しました" >&2
-  fi
-fi
-```
-
-**On validation failure**: Display the warning and continue (non-blocking). The work memory will be rebuilt in subsequent phases (Phase 3.5, Phase 5.5.2) which re-fetch and validate before updating. Note that `created_body` being empty immediately after creation may be caused by GitHub API eventual consistency rather than an actual failure — this is expected behavior and the warning is intentionally non-blocking.
+**On failure**: The script outputs `WARNING` on stderr and exits 0 (non-blocking). The work memory will be rebuilt in subsequent phases (Phase 3.5, Phase 5.5.2) which re-fetch and validate before updating.
 
 Timestamp format: `YYYY-MM-DDTHH:MM:SS+09:00` (ISO 8601)
 
