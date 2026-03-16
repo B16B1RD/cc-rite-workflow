@@ -58,3 +58,34 @@ Timestamp format: `YYYY-MM-DDTHH:MM:SS+09:00` (ISO 8601)
 **Purpose of confirmation items:**
 
 Accumulate confirmation items that arise during work (design decisions, specification confirmations, review request items, etc.). Follow the "consolidation of confirmation items" rule in SKILL.md and request confirmation collectively at session end.
+
+---
+
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-work-memory phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase2_post_work_memory" \
+  --next "rite:issue:work-memory-init completed. Proceed to Phase 3 (implementation plan). Do NOT stop." \
+  --if-exists
+```
+
+After the flow-state update above, output the result pattern:
+
+- **Work memory initialized**: `[work-memory:initialized]`
+
+This pattern is consumed by the orchestrator (`start.md`) to determine the next action.
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes, control **MUST** return to the caller (`start.md`). The caller **MUST immediately** execute its 🚨 Mandatory After 2.6 section:
+
+1. Proceed to Phase 3 (implementation plan)
+
+**→ Return to `start.md` and proceed to Phase 3 now. Do NOT stop.**

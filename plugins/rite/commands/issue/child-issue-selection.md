@@ -167,3 +167,37 @@ After a child Issue is selected:
 ```
 
 **Important**: Subsequent Phases are executed for the selected child Issue.
+
+---
+
+## Defense-in-Depth: Flow State Update (Before Return)
+
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+
+Before returning control to the caller, update `.rite-flow-state` to the post-child-selection phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands below.
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase1_6_post_child" \
+  --next "rite:issue:child-issue-selection completed. Proceed to Phase 2 (work preparation). Do NOT stop." \
+  --if-exists
+```
+
+After the flow-state update above, output the appropriate result pattern:
+
+- **Child selected**: `[child-selection:selected:{number}]` (where `{number}` is the selected child Issue number)
+- **No children / skipped**: `[child-selection:skipped]`
+
+This pattern is consumed by the orchestrator (`start.md`) to determine the next action.
+
+---
+
+## 🚨 Caller Return Protocol
+
+When this sub-skill completes, control **MUST** return to the caller (`start.md`). The caller **MUST immediately** execute its 🚨 Mandatory After 1.6 section:
+
+1. Proceed to Phase 2 (work preparation)
+
+**→ Return to `start.md` and proceed to Phase 2 now. Do NOT stop.**
