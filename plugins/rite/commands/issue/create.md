@@ -423,13 +423,13 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-interview` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually.
+> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-interview` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually. See also the delegation section below for the same pattern.
 
 **Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** proceed to the next phase.
 
 Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
 
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next phase:
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes to the correct next phase:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -575,13 +575,13 @@ Invoke `skill: "rite:issue:create-register"`.
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When the delegation sub-skill returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually.
+> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-register` or `rite:issue:create-decompose` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually.
 
 **Verify**: Result pattern confirmed (e.g., `[register:created:{N}]` or `[decompose:completed:{N}]`). The Issue(s) have been created.
 
 Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state deactivation) is still pending — this is a required step to prevent the stop-guard from blocking future sessions.
 
-**Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic). The sub-skill has already written `create_post_delegation` via its Defense-in-Depth section; this second write ensures stop-guard routes correctly and provides a fresh timestamp:
+**Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic). The sub-skill has already written `create_post_delegation` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes correctly:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
