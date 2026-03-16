@@ -238,6 +238,8 @@ _reset_active_state() {
   _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
 
   # Debug log when resetting a non-own session's state (#206)
+  # Logs for "other", "stale", and "legacy" (pre-session-ownership state).
+  # "legacy" is treated as own for ownership purposes but logged here for diagnostics.
   if [ -n "${RITE_DEBUG:-}" ]; then
     local _ownership
     _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
