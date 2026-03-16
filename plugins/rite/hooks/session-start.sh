@@ -242,7 +242,7 @@ _reset_active_state() {
   # "legacy" is treated as own for ownership purposes but logged here for diagnostics.
   if [ -n "${RITE_DEBUG:-}" ]; then
     local _ownership
-    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
     [ "$_ownership" != "own" ] && echo "[rite] Resetting state from previous session (ownership: $_ownership)" >&2
   fi
 
