@@ -52,6 +52,19 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 
 All reviewers must follow these quality standards when reporting findings. These are detailed in each skill file's "Finding Quality Guidelines" section.
 
+### All Findings Are Mandatory Fixes
+
+**Every finding reported will be treated as a mandatory fix** — there is no auto-defer or gradual relaxation mechanism. The review-fix loop continues until all findings are resolved (0 findings remaining) or `max_iterations` is reached.
+
+This means reviewers must exercise careful judgment about what to report:
+
+| Guideline | Description |
+|-----------|-------------|
+| **Report Only Substantive Issues** | Only report findings that genuinely improve code quality, correctness, or maintainability |
+| **No Nitpicking** | Avoid trivial style preferences, pedantic naming suggestions, or cosmetic issues that do not affect functionality or readability |
+| **No Hypothetical Concerns** | Do not report speculative issues ("this might cause problems in the future") without concrete evidence |
+| **Consider Fix Cost vs Value** | If the effort to fix exceeds the value gained, do not report it as a finding |
+
 ### Principles
 
 | Principle | Description |
