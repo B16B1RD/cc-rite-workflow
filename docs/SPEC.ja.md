@@ -238,7 +238,7 @@ rite-workflow/
 ```json
 {
   "name": "rite",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "B16B1RD" },
   "license": "MIT"
