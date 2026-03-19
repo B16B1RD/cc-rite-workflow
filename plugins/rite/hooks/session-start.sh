@@ -40,8 +40,8 @@ if [[ "$SCRIPT_DIR" != *"/.claude/plugins/cache/"* ]] && command -v jq &>/dev/nu
   fi
 fi
 
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
-SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"')
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
+SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null) || SOURCE="startup"
 
 # Extract session_id from hook JSON payload (#173)
 SESSION_ID=$(extract_session_id "$INPUT" 2>/dev/null) || SESSION_ID=""
