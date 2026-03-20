@@ -36,6 +36,7 @@ plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rit
 ```bash
 if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/hooks" ]; then
   echo "ERROR: plugin_root resolution failed (resolved: '${plugin_root:-<empty>}')" >&2
+  exit 1
 fi
 ```
 
@@ -72,7 +73,7 @@ fi
 ### Result Handling
 
 - `PLUGIN_ROOT:<path>` → Extract the absolute path after `PLUGIN_ROOT:` and use it as `{plugin_root}` for all subsequent file reads in the current command.
-- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite-plugin-root` exists but points to a deleted directory. Display warning and fall back to Priority 2/3.
+- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite-plugin-root` exists but points to a deleted directory. Display warning: `Stale .rite-plugin-root detected. Re-run session or use /rite:init.` The Full Version script does not auto-fallback to Priority 2/3 in this case; use the inline one-liner (which handles fallback automatically) instead.
 - `PLUGIN_ROOT_NOT_FOUND:NO_INSTALL` → Display warning: `Plugin installation not found.` Fall back to hardcoded relative paths or inline fallback content.
 
 ## How `.rite-plugin-root` Works
@@ -86,7 +87,7 @@ session-start.sh 実行時:
   → $STATE_ROOT/.rite-plugin-root に書き出し
 ```
 
-This is consistent with `hooks.json` using `${CLAUDE_PLUGIN_ROOT}` (resolved by Claude Code natively).
+This is consistent with `hooks.json` using `${CLAUDE_PLUGIN_ROOT}`, an environment variable that Claude Code automatically sets when executing hooks registered in `hooks.json`. The variable points to the plugin's install directory (e.g., `~/.claude/plugins/cache/rite-marketplace/rite/0.3.3/`). Note that `${CLAUDE_PLUGIN_ROOT}` is only available during hook execution — it is NOT set during normal Bash tool calls from command/skill files, which is why `.rite-plugin-root` is needed.
 
 ## Usage Convention
 
@@ -114,7 +115,7 @@ Command files that need plugin path resolution should include the inline one-lin
 > ```
 ```
 
-**Important**: Do NOT reference this document with a link and expect Claude to read it. Embed the one-liner directly in the command file to prevent Claude from improvising its own resolution logic.
+**Important**: New command files should embed the one-liner directly rather than referencing this document with a link. Existing command files that still use the link-reference pattern (`per [Plugin Path Resolution](...)`) will be migrated incrementally to the inline one-liner in future Issues.
 
 ## Relationship to init.md Hook Path Resolution
 

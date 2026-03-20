@@ -24,7 +24,7 @@ When this command is executed, run the following phases in order.
 
 ## Phase 1.0: Activate Flow State
 
-> **Plugin Path**: Resolve `{plugin_root}` using the inline one-liner below before executing bash hook commands in this file. Do NOT improvise a different resolution script.
+> **Plugin Path**: Resolve `{plugin_root}` using the inline one-liner in **Step 0** below before executing bash hook commands in this file. Do NOT improvise a different resolution script.
 
 **Step 0: Resolve plugin root** (execute once, reuse throughout):
 
