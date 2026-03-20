@@ -24,7 +24,20 @@ When this command is executed, run the following phases in order.
 
 ## Phase 1.0: Activate Flow State
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` using the inline one-liner in **Step 0** below before executing bash hook commands in this file. Do NOT improvise a different resolution script.
+
+**Step 0: Resolve plugin root** (execute once, reuse throughout):
+
+```bash
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/hooks" ]; then
+  echo "ERROR: plugin_root resolution failed (resolved: '${plugin_root:-<empty>}')" >&2
+  exit 1
+fi
+echo "plugin_root=$plugin_root"
+```
+
+Retain the `plugin_root` value output above and use it for all subsequent `{plugin_root}` references in this command.
 
 Activate `.rite-flow-state` so that `stop-guard.sh` blocks premature `end_turn` during cleanup phases.
 
