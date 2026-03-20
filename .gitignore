@@ -31,6 +31,7 @@ temp/
 .rite-context-counter
 .rite-session-id
 .rite-guidance-shown
+.rite-plugin-root
 
 # Git worktrees for parallel agents
 .worktrees/

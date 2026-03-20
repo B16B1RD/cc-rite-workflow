@@ -5,6 +5,12 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.4] - 2026-03-20
+
+### 変更
+
+- Plugin path resolution をバージョン非依存方式に統一 — `session-start.sh` が `.rite-plugin-root` に解決済みパスを書き出し、コマンドファイルは `cat` で読むだけに (#241)
+
 ## [0.3.3] - 2026-03-19
 
 ### 修正
@@ -241,6 +247,7 @@ Rite Workflow の主要な変更を記録します。
 
 [0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
+[0.3.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.1...v0.3.2
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5

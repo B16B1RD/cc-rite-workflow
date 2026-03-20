@@ -53,6 +53,12 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
+# Write plugin root for command-file consumption (version-independent, #241)
+_plugin_root="$(dirname "$SCRIPT_DIR")"
+if [ -d "$_plugin_root/hooks" ]; then
+  printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
+fi
+
 # Save session_id to .rite-session-id for flow-state-update.sh auto-read (#216)
 if [ -n "$SESSION_ID" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
