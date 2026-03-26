@@ -409,10 +409,10 @@ fi
 > **Path derivation**: `{hooks_dir}` has the format `.../cache/{marketplace_name}/{plugin_name}/{version}/hooks`. Removing the last component (`hooks`) gives the install root, then navigating two levels up yields a directory whose basename is the marketplace name. This name is used to construct the marketplace source directory path `$HOME/.claude/plugins/marketplaces/{marketplace_name}`.
 
 **Result handling**:
-- `SYMLINK` → Display "✅ Symlink インストールを検出（自動更新可能）" and **skip to Phase 4.5.1**.
+- `SYMLINK` → Display "✅ Symlink インストールを検出（自動更新可能）" and **skip to Phase 4.5.0.2**.
 - `GIT_CLONE` → Proceed to Step 2a.
 - `COPY` → Proceed to Step 2b.
-- `NOT_FOUND` → Display "ℹ️ マーケットプレースソースディレクトリが見つかりません。更新チェックをスキップします。" and **skip to Phase 4.5.1**.
+- `NOT_FOUND` → Display "ℹ️ マーケットプレースソースディレクトリが見つかりません。更新チェックをスキップします。" and **skip to Phase 4.5.0.2**.
 
 #### Step 2a: Git Clone Freshness Check (GIT_CLONE only)
 
@@ -433,7 +433,7 @@ cd "{marketplace_dir}" && \
   fi
 ```
 
-- `UP_TO_DATE` → Display "✅ プラグインは最新です（git clone）" and **skip to Phase 4.5.1**.
+- `UP_TO_DATE` → Display "✅ プラグインは最新です（git clone）" and **skip to Phase 4.5.0.2**.
 - `BEHIND:{n}` → Display:
     ```
     ⚠️ プラグインの更新があります（{n} コミット遅れ）。
@@ -441,8 +441,8 @@ cd "{marketplace_dir}" && \
       cd {marketplace_dir} && git pull
       または: claude plugin update rite
     ```
-    Continue to Phase 4.5.1.
-- If `git fetch` fails (network error etc.) → Display "ℹ️ リモートの確認に失敗しました。更新チェックをスキップします。" and **skip to Phase 4.5.1**.
+    Continue to Phase 4.5.0.2.
+- If `git fetch` fails (network error etc.) → Display "ℹ️ リモートの確認に失敗しました。更新チェックをスキップします。" and **skip to Phase 4.5.0.2**.
 
 #### Step 2b: Version Comparison (COPY only)
 
@@ -458,7 +458,7 @@ echo "INSTALLED:${INSTALLED_VERSION:-unknown}"
 echo "OWNER:${OWNER:-unknown}"
 ```
 
-If `INSTALLED_VERSION` or `OWNER` is empty/unknown → Display the copy-type warning without version comparison (see "Version unknown" below) and **skip to Phase 4.5.1**.
+If `INSTALLED_VERSION` or `OWNER` is empty/unknown → Display the copy-type warning without version comparison (see "Version unknown" below) and **skip to Phase 4.5.0.2**.
 
 Otherwise, attempt to retrieve the latest release version. Try the marketplace name as repo name, then search the owner's repos for a `claude-plugin` topic match:
 
@@ -520,7 +520,7 @@ Read `.claude/settings.json` (the project-level, non-local settings file) and ch
 
 **Check procedure**:
 
-1. Read `.claude/settings.json` with the Read tool. If the file does not exist or has no `.hooks` section (empty `{}` or missing), skip this sub-phase entirely and proceed to Phase 4.5.1.
+1. Read `.claude/settings.json` with the Read tool. If the file does not exist or has no `.hooks` section (empty `{}` or missing), skip this sub-phase entirely and proceed to Phase 4.5.0.2.
 2. For each hook event in `.hooks`, examine all `.hooks.{EventName}[*].hooks[*].command` values.
 3. **Exclude** commands containing `rite/hooks/` (these are rite's own hooks, which may be registered here in older installations).
 4. Collect remaining (non-rite) hook commands as **conflicting hooks**.
@@ -540,7 +540,7 @@ settings.json の hooks は rite hooks と二重実行されます。
 
 **If no conflicting hooks are found**, no output is displayed.
 
-**Important**: This check is **advisory only**. Do not modify `.claude/settings.json` automatically. Do not block init execution regardless of the result. Continue to Phase 4.5.1 in all cases.
+**Important**: This check is **advisory only**. Do not modify `.claude/settings.json` automatically. Do not block init execution regardless of the result. Continue to Phase 4.5.0.2 in all cases.
 
 ### 4.5.0.2 Native Hook Management Check (hooks.json)
 

@@ -216,8 +216,11 @@ with open(out_path, "w") as f:
       fi
     fi
 
-    # Write cleanup marker to prevent re-checking on every startup
-    echo "cleaned" > "$_hooks_cleaned_marker" 2>/dev/null || true
+    # Write cleanup marker when: (1) cleanup succeeded, or (2) no settings.local.json / no rite hooks
+    # Do NOT write marker when python3 is unavailable but settings.local.json has rite hooks (allow retry)
+    if [ "$_auto_cleaned" = "true" ] || [ ! -f "$_settings_local" ]; then
+      echo "cleaned" > "$_hooks_cleaned_marker" 2>/dev/null || true
+    fi
 
     if [ "$_auto_cleaned" = "true" ]; then
       [ -n "$_current_ver" ] && echo "$_current_ver" > "$_version_file" 2>/dev/null || true
