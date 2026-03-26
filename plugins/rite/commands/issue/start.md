@@ -504,15 +504,20 @@ Invocation: `skill: "rite:lint"` or `skill: "rite:pr:review", args: "67"`
 
 ### 5.0 Stop Hook Verification
 
-Before entering the end-to-end flow, verify that the stop-guard hook is registered to prevent flow interruptions when sub-skills return.
+Before entering the end-to-end flow, verify that the stop-guard hook is active to prevent flow interruptions when sub-skills return.
 
 **Step 1**: Resolve `{plugin_root}` (if not already resolved in Phase 4.1) per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script).
 
-**Step 2**: Read `.claude/settings.local.json` with Read tool. Check if `.hooks.Stop` exists and contains a command matching `bash {plugin_root}/hooks/stop-guard.sh` (full path match to avoid stale path false positives).
+**Step 2**: Check if `{plugin_root}/hooks/hooks.json` exists.
 
-**Step 3**: If stop-guard.sh is NOT registered (missing or stale path):
+- If **hooks.json exists** (native hook management): hooks are managed by Claude Code's plugin system via `${CLAUDE_PLUGIN_ROOT}`. No `settings.local.json` registration is needed. Optionally clean up stale rite hooks from `settings.local.json` if present (same cleanup logic as [init.md Phase 4.5.0.2](../init.md)). **Skip Step 3** and proceed to Step 4.
+- If **hooks.json does not exist**: Proceed to Step 3 (legacy registration).
 
-Register all rite hooks by merging the following into `.claude/settings.local.json` (preserve existing non-rite hooks and all other top-level keys like `permissions`):
+**Step 3** (legacy fallback — only when hooks.json does not exist):
+
+Read `.claude/settings.local.json` with Read tool. Check if `.hooks.Stop` exists and contains a command matching `bash {plugin_root}/hooks/stop-guard.sh` (full path match to avoid stale path false positives).
+
+If stop-guard.sh is NOT registered (missing or stale path), register all rite hooks by merging the following into `.claude/settings.local.json` (preserve existing non-rite hooks and all other top-level keys like `permissions`):
 
 | Hook Event | Command | Matcher |
 |------------|---------|---------|

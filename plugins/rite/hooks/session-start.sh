@@ -133,35 +133,48 @@ if [ "$SOURCE" = "startup" ]; then
   fi
 fi
 
-# --- Plugin version check + auto-repair on startup ---
+# --- Plugin version check + legacy hook cleanup on startup ---
 if [ "$SOURCE" = "startup" ]; then
   _version_file="$STATE_ROOT/.rite-initialized-version"
+  _hooks_cleaned_marker="$STATE_ROOT/.rite-settings-hooks-cleaned"
+
+  _needs_cleanup=false
+  _installed_ver=""
+  _current_ver=""
+
   if [ -f "$_version_file" ]; then
     _installed_ver=$(tr -d '[:space:]' < "$_version_file" 2>/dev/null)
     _plugin_json="$SCRIPT_DIR/../.claude-plugin/plugin.json"
     _current_ver=$(jq -r '.version // empty' "$_plugin_json" 2>/dev/null)
     if [ -n "$_installed_ver" ] && [ -n "$_current_ver" ] && [ "$_installed_ver" != "$_current_ver" ]; then
-      # i18n: read language from rite-config.yml (same awk pattern as stop-guard.sh)
-      _lang="en"
-      _rite_config="$STATE_ROOT/rite-config.yml"
-      if [ -f "$_rite_config" ]; then
-        _cfg_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]')
-        [ -n "$_cfg_lang" ] && _lang="$_cfg_lang"
-      fi
+      _needs_cleanup=true
+    fi
+  fi
 
-      # Auto-repair settings.local.json hook paths for marketplace installations
-      _auto_repaired=false
-      if [[ "$SCRIPT_DIR" == *"/.claude/plugins/cache/"* ]]; then
-        _settings_local="$STATE_ROOT/.claude/settings.local.json"
-        if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
-          # Find old hooks dir from settings.local.json and replace with current SCRIPT_DIR
-          _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp=""
-          if [ -n "$_repair_tmp" ] && python3 -c '
-import json, sys, re, os
+  # One-time migration: clean up settings.local.json hooks even if versions match
+  if [ ! -f "$_hooks_cleaned_marker" ]; then
+    _needs_cleanup=true
+  fi
+
+  if [ "$_needs_cleanup" = "true" ]; then
+    # i18n: read language from rite-config.yml (same awk pattern as stop-guard.sh)
+    _lang="en"
+    _rite_config="$STATE_ROOT/rite-config.yml"
+    if [ -f "$_rite_config" ]; then
+      _cfg_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]')
+      [ -n "$_cfg_lang" ] && _lang="$_cfg_lang"
+    fi
+
+    # Remove rite hook entries from settings.local.json (hooks.json handles them natively)
+    _auto_cleaned=false
+    _settings_local="$STATE_ROOT/.claude/settings.local.json"
+    if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
+      _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp=""
+      if [ -n "$_repair_tmp" ] && python3 -c '
+import json, sys, re
 
 settings_path = sys.argv[1]
-new_hooks_dir = sys.argv[2]
-out_path = sys.argv[3]
+out_path = sys.argv[2]
 
 with open(settings_path, "r") as f:
     data = json.load(f)
@@ -170,23 +183,25 @@ hooks = data.get("hooks", {})
 if not hooks:
     sys.exit(1)
 
-# Pattern: bash /path/to/hooks/script.sh
-hook_path_re = re.compile(r"(bash\s+)(/[^\s]+/plugins/rite/hooks/)(\S+)")
+rite_hook_re = re.compile(r"rite.*?/hooks/")
 changed = False
 
-for event_name, entries in hooks.items():
+for event_name in list(hooks.keys()):
+    entries = hooks[event_name]
     if not isinstance(entries, list):
         continue
+    new_entries = []
     for entry in entries:
         hook_list = entry.get("hooks", [])
-        for hook in hook_list:
-            cmd = hook.get("command", "")
-            m = hook_path_re.search(cmd)
-            if m and m.group(2) != new_hooks_dir + "/":
-                old_path = m.group(2)
-                new_cmd = cmd.replace(old_path, new_hooks_dir + "/")
-                hook["command"] = new_cmd
-                changed = True
+        has_rite = any(rite_hook_re.search(h.get("command", "")) for h in hook_list)
+        if has_rite:
+            changed = True
+        else:
+            new_entries.append(entry)
+    if new_entries:
+        hooks[event_name] = new_entries
+    else:
+        del hooks[event_name]
 
 if not changed:
     sys.exit(1)
@@ -194,35 +209,36 @@ if not changed:
 with open(out_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
-' "$_settings_local" "$SCRIPT_DIR" "$_repair_tmp" 2>/dev/null; then
-            mv "$_repair_tmp" "$_settings_local" 2>/dev/null && _auto_repaired=true
-          else
-            rm -f "$_repair_tmp" 2>/dev/null
-          fi
-        fi
-      fi
-
-      if [ "$_auto_repaired" = "true" ]; then
-        # Update version marker after successful auto-repair
-        echo "$_current_ver" > "$_version_file" 2>/dev/null || true
-        case "$_lang" in
-          ja)
-            echo "[rite] フックパスを自動修復しました (v${_installed_ver} -> v${_current_ver})。" >&2
-            ;;
-          *)
-            echo "[rite] Hook paths auto-repaired (v${_installed_ver} -> v${_current_ver})." >&2
-            ;;
-        esac
+' "$_settings_local" "$_repair_tmp" 2>/dev/null; then
+        mv "$_repair_tmp" "$_settings_local" 2>/dev/null && _auto_cleaned=true
       else
-        case "$_lang" in
-          ja)
-            echo "[rite] プラグインが更新されました (v${_installed_ver} -> v${_current_ver})。/rite:init を実行して hooks を再登録してください。" >&2
-            ;;
-          *)
-            echo "[rite] Plugin updated (v${_installed_ver} -> v${_current_ver}). Run /rite:init to re-register hooks." >&2
-            ;;
-        esac
+        rm -f "$_repair_tmp" 2>/dev/null
       fi
+    fi
+
+    # Write cleanup marker to prevent re-checking on every startup
+    echo "cleaned" > "$_hooks_cleaned_marker" 2>/dev/null || true
+
+    if [ "$_auto_cleaned" = "true" ]; then
+      [ -n "$_current_ver" ] && echo "$_current_ver" > "$_version_file" 2>/dev/null || true
+      case "$_lang" in
+        ja)
+          echo "[rite] レガシー hook 設定を settings.local.json から削除しました（hooks.json で管理）。" >&2
+          ;;
+        *)
+          echo "[rite] Removed legacy hook entries from settings.local.json (managed by hooks.json)." >&2
+          ;;
+      esac
+    elif [ -n "$_installed_ver" ] && [ -n "$_current_ver" ] && [ "$_installed_ver" != "$_current_ver" ]; then
+      echo "$_current_ver" > "$_version_file" 2>/dev/null || true
+      case "$_lang" in
+        ja)
+          echo "[rite] プラグインが更新されました (v${_installed_ver} -> v${_current_ver})。" >&2
+          ;;
+        *)
+          echo "[rite] Plugin updated (v${_installed_ver} -> v${_current_ver})." >&2
+          ;;
+      esac
     fi
   fi
 fi

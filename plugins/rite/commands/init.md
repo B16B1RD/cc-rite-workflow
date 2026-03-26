@@ -542,7 +542,98 @@ settings.json の hooks は rite hooks と二重実行されます。
 
 **Important**: This check is **advisory only**. Do not modify `.claude/settings.json` automatically. Do not block init execution regardless of the result. Continue to Phase 4.5.1 in all cases.
 
+### 4.5.0.2 Native Hook Management Check (hooks.json)
+
+**Purpose**: `hooks.json` が存在する場合、Claude Code はプラグインの hook をネイティブに管理する（`${CLAUDE_PLUGIN_ROOT}` を動的に解決）。この場合、`settings.local.json` への hook 登録は不要であり、バージョン更新時にパスが壊れる原因となる。
+
+**Check procedure**:
+
+```bash
+# hooks.json の存在を確認（{hooks_dir} の親ディレクトリに hooks.json があるか）
+_hooks_json="{hooks_dir}/hooks.json"
+if [ -f "{hooks_dir}/../hooks/hooks.json" ]; then
+  _hooks_json="{hooks_dir}/../hooks/hooks.json"
+elif [ -f "{hooks_dir}/hooks.json" ]; then
+  _hooks_json="{hooks_dir}/hooks.json"
+fi
+[ -f "$_hooks_json" ] && echo "NATIVE" || echo "LEGACY"
+```
+
+**Note**: `{hooks_dir}` は Phase 4.5.0 で解決された hooks ディレクトリの絶対パス。`hooks.json` は通常 `{hooks_dir}/hooks.json` に存在する。
+
+**When `NATIVE` is returned** (hooks.json exists):
+
+1. Display:
+   ```
+   ✅ hooks.json によるネイティブ hook 管理を検出。settings.local.json の hook 登録をスキップします。
+   ```
+
+2. **Clean up stale rite hooks from `settings.local.json`**: Read `.claude/settings.local.json` and remove all hook entries whose command contains `rite/hooks/`. Non-rite hooks must be preserved. If the file does not exist or has no rite hooks, skip this step silently.
+
+   ```bash
+   # settings.local.json から rite hook エントリを削除
+   _settings_local=".claude/settings.local.json"
+   if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
+     _tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _tmp=""
+     if [ -n "$_tmp" ] && python3 -c '
+   import json, sys, re
+   settings_path = sys.argv[1]
+   out_path = sys.argv[2]
+   with open(settings_path, "r") as f:
+       data = json.load(f)
+   hooks = data.get("hooks", {})
+   if not hooks:
+       sys.exit(1)
+   rite_hook_re = re.compile(r"rite.*?/hooks/")
+   changed = False
+   for event_name in list(hooks.keys()):
+       entries = hooks[event_name]
+       if not isinstance(entries, list):
+           continue
+       new_entries = []
+       for entry in entries:
+           hook_list = entry.get("hooks", [])
+           has_rite = any(rite_hook_re.search(h.get("command", "")) for h in hook_list)
+           if has_rite:
+               changed = True
+           else:
+               new_entries.append(entry)
+       if new_entries:
+           hooks[event_name] = new_entries
+       else:
+           del hooks[event_name]
+   if not changed:
+       sys.exit(1)
+   with open(out_path, "w") as f:
+       json.dump(data, f, indent=2, ensure_ascii=False)
+       f.write("\n")
+   ' "$_settings_local" "$_tmp" 2>/dev/null; then
+       mv "$_tmp" "$_settings_local" 2>/dev/null
+       echo "CLEANED"
+     else
+       rm -f "$_tmp" 2>/dev/null
+       echo "NO_RITE_HOOKS"
+     fi
+   fi
+   ```
+
+   - If `CLEANED` → display `ℹ️ settings.local.json からレガシー rite hook エントリを削除しました。`
+   - If `NO_RITE_HOOKS` → no output (already clean)
+
+3. Write cleanup marker:
+   ```bash
+   echo "cleaned" > ".rite-settings-hooks-cleaned" 2>/dev/null || true
+   ```
+
+4. **Skip Phase 4.5.1 and Phase 4.5.2** entirely. Proceed directly to **Phase 4.5.3** (chmod).
+
+**When `LEGACY` is returned** (hooks.json does not exist):
+
+Proceed to Phase 4.5.1 (existing flow — validate and register hooks in `settings.local.json`).
+
 ### 4.5.1 Check Existing Hook Configuration
+
+> **Note**: This phase is only executed when Phase 4.5.0.2 returned `LEGACY` (hooks.json does not exist).
 
 Read `.claude/settings.local.json` and check for existing hooks section. If the file does not exist, it will be created.
 
@@ -786,7 +877,7 @@ Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not alrea
 
 ```bash
 # Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version"; do
+for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned"; do
   if ! grep -qF "$entry" .gitignore 2>/dev/null; then
     echo "$entry" >> .gitignore
   fi
