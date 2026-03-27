@@ -130,5 +130,10 @@ safety:
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop
 
+# Investigation settings
+investigate:
+  codex_review:
+    enabled: true    # false で Phase 6（Codex クロスチェック）をスキップし代替検証を実施
+
 # Language setting
 language: ja
