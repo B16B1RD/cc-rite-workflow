@@ -5,6 +5,15 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-03-27
+
+### Added
+
+- Sprint Contract — per-step verification criteria for implementation phases (#260)
+- Evaluator calibration — few-shot examples and skeptical tone for reviewers (#261)
+- Post-Step Quality Gate — self-check after each implementation step (#262)
+- Context reset strategy enhancement — stronger context management across phases (#263)
+
 ## [0.3.5] - 2026-03-27
 
 ### Added
@@ -257,6 +266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.4...v0.3.5
 [0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
