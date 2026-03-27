@@ -1,12 +1,12 @@
 ---
 name: investigate
 description: |
-  コード調査（/investigate）を実行するスキル。grep でコード構造の場所を特定し、
-  Read で実際の内容を検証し、Codex（オプション）でクロスチェックする3段階プロセスで、
-  推測による誤報告を防ぐ。関数呼び出し、ハッシュ、条件式、メソッドチェーン等の
-  コード構造全般を対象とする。
-  「調査」「investigate」「コード調査」「grep で調べて」「呼び出し箇所」「使われ方」
-  「一覧」「全件」「どこで使われている」で発動する。
+  Investigate code structures (/investigate) using a 3-phase process: Grep to locate,
+  Read to verify, and Codex (optional) to cross-check. Prevents false reports from
+  guessing. Covers all code structures: function calls, hashes, conditionals,
+  method chains, class definitions, and configuration values.
+  Activates on "調査", "investigate", "コード調査", "grep で調べて", "呼び出し箇所",
+  "使われ方", "一覧", "全件", "どこで使われている".
 ---
 
 # Investigate Skill
@@ -55,7 +55,13 @@ Reads `investigate` section from `rite-config.yml`:
 ```yaml
 investigate:
   codex_review:
-    enabled: true    # false で Phase 6 の Codex クロスチェックをスキップ
+    enabled: true    # Set false to skip Codex cross-check in Phase 6
 ```
 
-When `codex_review.enabled` is `false` or Codex MCP is unavailable, Claude performs self-verification as an alternative (Phase 6b).
+When `codex_review.enabled` is `false` or Codex MCP is unavailable, Claude performs self-verification as an alternative (Phase 6b: 代替検証).
+
+## Command
+
+Full investigation procedure: [commands/investigate.md](../../commands/investigate.md)
+
+Lightweight protocol for use in other phases: [references/investigation-protocol.md](../../references/investigation-protocol.md)

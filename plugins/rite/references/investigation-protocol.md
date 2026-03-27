@@ -8,26 +8,23 @@
 
 コード構造を調査するときは、以下の3段階を必ず守る:
 
-### 1. 検索（Grep）— 場所の特定のみ
+### 1. 検索（Grep）— 場所の特定のみ（[commands/investigate.md Phase 2](../commands/investigate.md#phase-2-検索grep) に相当）
 
 - Grep ツールで対象パターンを検索し、ファイルと行番号を特定する
 - **この段階では値を読み取らない** — 場所の特定のみ
-- 複数行にまたがる構造（関数呼び出し、ハッシュ、条件式、メソッドチェーン等）には2段階検索を使う:
-  - Step 1: 構造の開始パターンで全出現箇所を特定
-  - Step 2: 検索対象キーワードでファイルを絞り込み
-  - 照合: Step 1 と Step 2 の結果を突き合わせ
+- 複数行にまたがる構造には2段階検索を使う（詳細は [commands/investigate.md Phase 2](../commands/investigate.md#2段階検索複数行にまたがる構造対策) を参照）
 
-### 2. 検証（Read）— 実際の確認
+### 2. 検証（Read）— 実際の確認（[commands/investigate.md Phase 3](../commands/investigate.md#phase-3-検証read) に相当）
 
 - Grep で特定した**各箇所**を Read ツールで実際に確認する
 - **必須ルール**:
-  - 構造の開始から終了まで読む（前後5行を含める）
+  - 構造の開始から終了まで読む（最低でも前後5行。構造が超える場合は終了まで）
   - 推測で値を補完しない（未確認なら「未確認」と報告）
   - 変数は定義元を追跡する
   - 大きなファイルは offset/limit で分割読み
 - **完全性チェック**: grep ヒット数 = Read 検証数であることを確認。不一致なら追加 Read
 
-### 3. クロスチェック — 信頼性の担保
+### 3. クロスチェック — 信頼性の担保（[commands/investigate.md Phase 6](../commands/investigate.md#phase-6-クロスチェック) に相当）
 
 `rite-config.yml` の `investigate.codex_review.enabled` に基づき:
 
@@ -36,12 +33,10 @@
 | `enabled: true` + Codex MCP 接続 | Codex にクロスチェックを依頼 |
 | `enabled: true` + Codex MCP 未接続 | 代替検証にフォールバック |
 | `enabled: false` | 代替検証を実施 |
-| セクション未設定 | デフォルト `true` として動作 |
+| `codex_review.enabled` 未設定 | デフォルト `true` として動作 |
+| `investigate` セクション自体が未設定 | デフォルト `true` として動作 |
 
-**代替検証**（Codex 不使用時）:
-1. サンプル再検証: 結果から最大5件を Read で再確認
-2. 網羅性チェック: grep パターンを変形して再検索
-3. 整合性チェック: 結果テーブル内の値同士の矛盾を検証
+**代替検証**（Codex 不使用時）: 詳細は [commands/investigate.md Phase 6b](../commands/investigate.md#phase-6b-代替検証enabled-false-または-codex-mcp-未接続時) を参照。
 
 ## 他フェーズでの簡易適用ガイド
 
@@ -50,7 +45,7 @@
 ### 最低限守るべきルール
 
 1. **grep だけで値を確定しない** — 必ず Read で該当行を確認する
-2. **複数行構造を1行で判断しない** — 前後5行を含めて読む
+2. **複数行構造を1行で判断しない** — 最低でも前後5行を含めて読む
 3. **全件処理を保証する** — grep ヒット数と Read 検証数を照合する
 4. **推測を事実と混同しない** — Read で確認できない値は「未確認」と明記する
 
