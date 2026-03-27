@@ -356,6 +356,44 @@ git checkout {branch}
 - {i18n:resume_option_cancel}
 ```
 
+### 3.1.1 Context Delta Display (Post-/clear Resume)
+
+After switching to the correct branch, display a summary of what has changed since the last work memory save to help the user quickly re-orient. This is particularly useful after `/clear` + `/rite:resume` where all conversation context was lost.
+
+**Steps:**
+
+1. **Retrieve last known commit** from work memory (`last_commit` field in schema v1, or `### コミット履歴` section in Issue comment format).
+
+2. **Show delta since last save**:
+   ```bash
+   # last_commit が取得できた場合のみ実行
+   if [ -n "{last_commit}" ]; then
+     echo "=== 前回保存時点からの変更 ==="
+     git log --oneline {last_commit}..HEAD 2>/dev/null || echo "差分なし（コミット変更なし）"
+     echo "=== 変更ファイル ==="
+     git diff --name-only {last_commit}..HEAD 2>/dev/null || echo "なし"
+   fi
+   ```
+
+3. **Display implementation plan progress**: Read the implementation plan from work memory and show completed/remaining steps.
+
+**Display format:**
+
+```
+📋 前回の /clear 以降の状態:
+
+コミット差分: {commit_count} commits since last save
+変更ファイル: {file_list}
+
+実装計画の進捗:
+| Step | 内容 | 状態 |
+|------|------|------|
+| S1 | {description} | ✅ |
+| S2 | {description} | ⬜ ← 再開ポイント |
+```
+
+**When no delta is detected** (no commits since last save): Display "前回の保存時点から変更はありません。中断した地点から再開します。"
+
 ### 3.2 Command-Specific Resume Processing
 
 Execute command-specific resume processing based on the `コマンド` and `フェーズ` values from the work memory. The mapping is defined in the tables below for each command type.
