@@ -132,9 +132,8 @@ elif [ "$count" -eq "$ORANGE" ]; then
   echo "[rite] Context optimization mode activated. Minimize all output. Skip optional displays. Use result patterns only. Consider recommending /clear + /rite:resume to the user — work memory will preserve state for seamless resumption."
   echo "[rite] 🟠 High context pressure: ${count} tool calls. Work memory を保存し、/clear で再開することを推奨します。/rite:resume で状態を復元できます。" >&2
   # Auto-save work memory at ORANGE threshold for safe context reset
-  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   if [ -f "$SCRIPT_DIR/local-wm-update.sh" ]; then
-    ISSUE_NUM=$(jq -r '.issue // empty' .rite-flow-state 2>/dev/null)
+    ISSUE_NUM=$(jq -r '.issue // empty' "$FLOW_STATE" 2>/dev/null)
     if [ -n "$ISSUE_NUM" ] && [ "$ISSUE_NUM" != "null" ]; then
       WM_SOURCE="context-pressure" \
         WM_PHASE="$PHASE" \
