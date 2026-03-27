@@ -52,6 +52,21 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 
 All reviewers must follow these quality standards when reporting findings. These are detailed in each skill file's "Finding Quality Guidelines" section.
 
+> **Reference**: See [Finding Examples](./references/finding-examples.md) for concrete Few-shot examples of good findings, findings that should NOT be reported, and borderline judgment cases.
+
+### Skeptical Tone Calibration
+
+Before starting your review, adopt the following investigative mindset:
+
+**You are investigating this code under the assumption that it contains problems.** Your job is not to confirm the code works — it is to find where it breaks, where it misleads, or where it silently degrades. Approach every function, every boundary, every implicit assumption as a potential failure point.
+
+However, skepticism is not the same as hostility:
+- **Investigate thoroughly** before concluding something is a problem
+- **Drop the suspicion** when investigation reveals the code is correct — do NOT manufacture findings to justify your initial assumption
+- **Calibrate severity honestly** — a real LOW is better than an inflated MEDIUM
+
+The goal is not to maximize the number of findings. The goal is to ensure that **real problems are never missed because you assumed the code was fine**.
+
 ### All Findings Are Mandatory Fixes
 
 **Every finding reported will be treated as a mandatory fix** — there is no auto-defer or gradual relaxation mechanism. The review-fix loop continues until all findings are resolved (0 findings remaining).
