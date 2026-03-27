@@ -295,7 +295,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
    | Config value | `Read` or `Grep` tool |
    | Line count / structure | `Read` tool + count |
 
-   **When criteria is met**: Proceed to step 2 (mark complete).
+   **When criteria is met**: Proceed to step 2 (Post-Step Quality Gate).
 
    **When criteria is NOT met**:
    - Re-attempt the implementation to satisfy the criteria
@@ -305,9 +305,36 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
    **When no `検証基準` column exists** (legacy plans or skipped plans): Skip this verification step and proceed to step 2 directly.
 
-2. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step)
-3. **Update dependency state**: Identify newly unblocked steps (steps whose `depends_on` are all complete)
-4. **Select next step**: From the unblocked steps, pick the one with highest priority using:
+2. **Post-Step Quality Gate** (mental check — no tool calls required, complete within 10 seconds):
+
+   After verifying completion criteria (or skipping verification), perform a lightweight self-check on the just-completed step using the immediately available work context. This gate catches scope drift, regression risks, and specification misalignment early — before they compound across subsequent steps.
+
+   **Relationship with parallel implementation**: When a parallel batch completes multiple steps simultaneously, run the Quality Gate for each step in the batch individually, using each step's specific work context.
+
+   **Check items**:
+
+   | # | Check | Question | Trigger |
+   |---|-------|----------|---------|
+   | 1 | **Scope drift** | Did you modify files not listed in the implementation plan? | Edited files outside the plan's "変更対象ファイル" |
+   | 2 | **Regression concern** | If shared/common code was changed, are you aware of the impact scope? | Modified a shared utility, configuration, or common module file that you observed being referenced by other files during this implementation session |
+   | 3 | **Specification alignment** | Is the change consistent with the Issue's What/Why? | Change purpose diverges from the Issue description |
+
+   **Evaluation**: For each check, assess pass/flag based on the work context already in memory (files edited, step description, Issue body). Do NOT invoke Read, Grep, Bash, or any other tool — this is a mental evaluation only.
+
+   **When all checks pass**: Proceed to step 3 (mark complete). No output needed.
+
+   **When any check is flagged**:
+   - Record the flagged item(s) in work memory's "計画逸脱ログ" section using the existing table format (consistent with step 6's plan deviation recording):
+     ```
+     | {next_number} | S{n} | QG | {check_name}: {brief description} | — | — |
+     ```
+     Where `逸脱種別` is `QG` (Quality Gate). `影響範囲` and `代替ステップ` are `—` (not applicable for informational flags).
+   - **Continue execution** (do NOT stop or ask the user). The Quality Gate is informational — it logs concerns for later review but does not block progress.
+   - Proceed to step 3 (mark complete).
+
+3. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step)
+4. **Update dependency state**: Identify newly unblocked steps (steps whose `depends_on` are all complete)
+5. **Select next step**: From the unblocked steps, pick the one with highest priority using:
 
 | Priority | Criterion | Reason |
 |----------|-----------|--------|
@@ -315,13 +342,13 @@ After completing each implementation step, re-evaluate the remaining steps befor
 | 2 | Steps with highest implementation risk | Fail fast — surface problems early |
 | 3 | Steps with smallest scope | Quick wins build momentum |
 
-5. **Check for plan deviation**: If the implementation reveals that a planned step is unnecessary, needs modification, or a new step is required:
+6. **Check for plan deviation**: If the implementation reveals that a planned step is unnecessary, needs modification, or a new step is required:
    - Record the deviation in work memory's "計画逸脱ログ" section (see work-memory-format.md)
    - Adjust the remaining plan accordingly
    - **Minor adjustments** (no user confirmation needed): Changing implementation approach within the same step, skipping a step that became unnecessary, adding a small helper step (scope < 1 file)
    - **Significant scope changes** (ask user via `AskUserQuestion`): Adding new files not in the original plan, changing public API/interface contracts, scope expansion exceeding 50% of original estimate, changing the dependency structure of 3+ remaining steps
 
-6. **Bottleneck detection**: After the step completes, check if it exceeded any bottleneck threshold. Metrics are counted from when the step started to when it finished. This is a guard clause — skip immediately when no threshold is exceeded (zero overhead on normal path).
+7. **Bottleneck detection**: After the step completes, check if it exceeded any bottleneck threshold. Metrics are counted from when the step started to when it finished. This is a guard clause — skip immediately when no threshold is exceeded (zero overhead on normal path).
 
    > **Reference**: [Bottleneck Detection Reference](../../references/bottleneck-detection.md) for complete thresholds, Oracle discovery protocol, and re-decomposition procedure.
 

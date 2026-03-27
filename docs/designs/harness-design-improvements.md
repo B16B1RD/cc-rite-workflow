@@ -6,7 +6,7 @@
 |---|---------|-----------|-------|
 | 1 | Sprint Contract（検証基準） | ✅ 実装済み | #256 |
 | 2 | Evaluator キャリブレーション（Few-shot 例） | ⬜ 未着手 | #257 |
-| 3 | Post-Step Quality Gate（セルフチェック） | ⬜ 未着手 | #258 |
+| 3 | Post-Step Quality Gate（セルフチェック） | ✅ 実装済み | #258 |
 | 4 | コンテキストリセット戦略強化 | ⬜ 未着手 | #259 |
 
 <!-- Section ID: SPEC-OVERVIEW -->
@@ -17,7 +17,7 @@ Anthropic Engineering ブログ記事 "[Harness design for long-running applicat
 対象となる改善は 4 領域:
 1. Sprint Contract（実装ステップごとの検証基準）— **実装済み**
 2. Evaluator キャリブレーション（Few-shot 例追加）
-3. Post-Step Quality Gate（実装後セルフチェック）
+3. Post-Step Quality Gate（実装後セルフチェック）— **実装済み**
 4. コンテキストリセット戦略強化
 
 <!-- Section ID: SPEC-BACKGROUND -->
@@ -66,7 +66,7 @@ rite workflow は既に Generator-Evaluator 分離、ファイルベース通信
 | コンポーネント | 改善 | 役割 | ステータス |
 |--------------|------|------|-----------|
 | `plugins/rite/commands/issue/implementation-plan.md` | 1 | 依存グラフテンプレートに検証基準列を追加 | ✅ 実装済み |
-| `plugins/rite/commands/issue/implement.md` | 1, 3 | 5.1.0.5 に検証ステップを追加（改善1）、Post-Step Quality Gate を追加（改善3） | 改善1: ✅ / 改善3: ⬜ |
+| `plugins/rite/commands/issue/implement.md` | 1, 3 | 5.1.0.5 に検証ステップを追加（改善1）、Post-Step Quality Gate を追加（改善3） | 改善1: ✅ / 改善3: ✅ |
 | `plugins/rite/skills/reviewers/references/finding-examples.md` | 2 | Few-shot 例集（新規作成） | ⬜ 未着手 |
 | `plugins/rite/skills/reviewers/SKILL.md` | 2 | 懐疑的トーン設定 + finding-examples.md 参照追加 | ⬜ 未着手 |
 | `plugins/rite/hooks/context-pressure.sh` | 4 | ORANGE 閾値メッセージ強化 | ⬜ 未着手 |
