@@ -299,7 +299,7 @@ WM_SOURCE="plan" \
 
 This section is executed **during Phase 5.1** (not during Phase 3) when the bottleneck detection in [5.1.0.5](./implement.md) triggers step re-decomposition. It defines how re-decomposed sub-steps are integrated back into the implementation plan and work memory.
 
-**Trigger**: Invoked from `implement.md` 5.1.0.5 step 5 (Bottleneck detection) when a threshold is exceeded and the step is re-decomposed into sub-steps.
+**Trigger**: Invoked from `implement.md` 5.1.0.5 step 6 (Bottleneck detection) when a threshold is exceeded and the step is re-decomposed into sub-steps.
 
 #### Plan Update Procedure
 
@@ -316,14 +316,14 @@ Update the "実装計画" section in work memory to reflect the re-decomposition
 ```markdown
 ### 実装計画（更新済み）
 
-| Step | 内容 | depends_on | 並列グループ | 状態 |
-|------|------|------------|-------------|------|
-| S1 | {step_1} | — | A | ✅ |
-| S2 | {step_2} | — | A | ✅ |
-| ~~S3~~ | ~~{original_step_3}~~ | S1 | B | ⚠️ 再分解 |
-| S3.1 | {sub_step_1} | S1 | B' | ⬜ |
-| S3.2 | {sub_step_2} | S3.1 | B' | ⬜ |
-| S4 | {step_4} | S3.2 | C | 🔒 |
+| Step | 内容 | depends_on | 並列グループ | 状態 | 検証基準 |
+|------|------|------------|-------------|------|---------|
+| S1 | {step_1} | — | A | ✅ | {criteria_1} |
+| S2 | {step_2} | — | A | ✅ | {criteria_2} |
+| ~~S3~~ | ~~{original_step_3}~~ | S1 | B | ⚠️ 再分解 | ~~{criteria_3}~~ |
+| S3.1 | {sub_step_1} | S1 | B' | ⬜ | {sub_criteria_1} |
+| S3.2 | {sub_step_2} | S3.1 | B' | ⬜ | {sub_criteria_2} |
+| S4 | {step_4} | S3.2 | C | 🔒 | {criteria_4} |
 ```
 
 **Note**: The re-decomposition is also recorded in the "ボトルネック検出ログ" section (see [bottleneck-detection.md](../../references/bottleneck-detection.md#work-memory-recording-format)).

@@ -293,6 +293,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
    | Pattern presence | `Grep` tool |
    | Test passage | `Bash` tool (run test command) |
    | Config value | `Read` or `Grep` tool |
+   | Line count / structure | `Read` tool + count |
 
    **When criteria is met**: Proceed to step 2 (mark complete).
 
@@ -300,6 +301,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
    - Re-attempt the implementation to satisfy the criteria
    - If the criteria itself is incorrect (implementation approach changed), record the deviation in work memory's "計画逸脱ログ" section and update the criteria before marking complete
    - Do NOT mark the step as complete until the (original or updated) criteria is verified
+   - **Escalation**: If 2 re-attempts fail to satisfy the criteria, use `AskUserQuestion` to ask the user whether to (a) continue retrying, (b) update the criteria, or (c) skip verification and mark complete with a deviation log entry
 
    **When no `検証基準` column exists** (legacy plans or skipped plans): Skip this verification step and proceed to step 2 directly.
 
