@@ -17,7 +17,7 @@ Anthropic Engineering ブログ記事 "[Harness design for long-running applicat
 対象となる改善は 4 領域:
 1. Sprint Contract（実装ステップごとの検証基準）— **実装済み**
 2. Evaluator キャリブレーション（Few-shot 例追加）
-3. Post-Step Quality Gate（実装後セルフチェック）
+3. Post-Step Quality Gate（実装後セルフチェック）— **実装済み**
 4. コンテキストリセット戦略強化
 
 <!-- Section ID: SPEC-BACKGROUND -->

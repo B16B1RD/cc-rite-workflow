@@ -309,12 +309,14 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
    After verifying completion criteria (or skipping verification), perform a lightweight self-check on the just-completed step using the immediately available work context. This gate catches scope drift, regression risks, and specification misalignment early — before they compound across subsequent steps.
 
+   **Relationship with parallel implementation**: When a parallel batch completes multiple steps simultaneously, run the Quality Gate for each step in the batch individually, using each step's specific work context.
+
    **Check items**:
 
    | # | Check | Question | Trigger |
    |---|-------|----------|---------|
    | 1 | **Scope drift** | Did you modify files not listed in the implementation plan? | Edited files outside the plan's "変更対象ファイル" |
-   | 2 | **Regression concern** | If shared/common code was changed, are you aware of the impact scope? | Modified files imported/referenced by 3+ other files |
+   | 2 | **Regression concern** | If shared/common code was changed, are you aware of the impact scope? | Modified a shared utility, configuration, or common module file that you observed being referenced by other files during this implementation session |
    | 3 | **Specification alignment** | Is the change consistent with the Issue's What/Why? | Change purpose diverges from the Issue description |
 
    **Evaluation**: For each check, assess pass/flag based on the work context already in memory (files edited, step description, Issue body). Do NOT invoke Read, Grep, Bash, or any other tool — this is a mental evaluation only.
@@ -322,10 +324,11 @@ After completing each implementation step, re-evaluate the remaining steps befor
    **When all checks pass**: Proceed to step 3 (mark complete). No output needed.
 
    **When any check is flagged**:
-   - Record the flagged item(s) in work memory's "計画逸脱ログ" section with the format:
+   - Record the flagged item(s) in work memory's "計画逸脱ログ" section using the existing table format (consistent with step 6's plan deviation recording):
      ```
-     - [Quality Gate] Step S{n}: {check_name} — {brief description of the concern}
+     | {next_number} | S{n} | QG | {check_name}: {brief description} | — | — |
      ```
+     Where `逸脱種別` is `QG` (Quality Gate). `影響範囲` and `代替ステップ` are `—` (not applicable for informational flags).
    - **Continue execution** (do NOT stop or ask the user). The Quality Gate is informational — it logs concerns for later review but does not block progress.
    - Proceed to step 3 (mark complete).
 
