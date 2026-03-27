@@ -128,9 +128,22 @@ esac
 if [ "$count" -eq "$YELLOW" ]; then
   echo "[rite] ⚠️ Context pressure: ${count} tool calls (phase: ${PHASE}). 出力を簡潔にしてください。" >&2
 elif [ "$count" -eq "$ORANGE" ]; then
-  # stdout: hint to model for output optimization
-  echo "[rite] Context optimization mode activated. Minimize all output. Skip optional displays. Use result patterns only."
-  echo "[rite] 🟠 High context pressure: ${count} tool calls. 出力最小化モードに切り替えてください。" >&2
+  # stdout: hint to model for output optimization + context reset recommendation
+  echo "[rite] Context optimization mode activated. Minimize all output. Skip optional displays. Use result patterns only. Consider recommending /clear + /rite:resume to the user — work memory will preserve state for seamless resumption."
+  echo "[rite] 🟠 High context pressure: ${count} tool calls. Work memory を保存し、/clear で再開することを推奨します。/rite:resume で状態を復元できます。" >&2
+  # Auto-save work memory at ORANGE threshold for safe context reset
+  if [ -f "$SCRIPT_DIR/local-wm-update.sh" ]; then
+    ISSUE_NUM=$(jq -r '.issue // empty' "$FLOW_STATE" 2>/dev/null)
+    if [ -n "$ISSUE_NUM" ] && [ "$ISSUE_NUM" != "null" ]; then
+      WM_SOURCE="context-pressure" \
+        WM_PHASE="$PHASE" \
+        WM_PHASE_DETAIL="コンテキスト圧迫検出" \
+        WM_NEXT_ACTION="出力最小化モード。/clear + /rite:resume を推奨" \
+        WM_BODY_TEXT="Auto-saved at ORANGE threshold (${count} tool calls)." \
+        WM_ISSUE_NUMBER="$ISSUE_NUM" \
+        bash "$SCRIPT_DIR/local-wm-update.sh" 2>/dev/null || true
+    fi
+  fi
 elif [ "$count" -eq "$RED" ]; then
   echo "[rite] CRITICAL: Context limit approaching. Complete current phase and prepare for /compact. Save state to work memory NOW."
   echo "[rite] 🔴 Critical context pressure: ${count} tool calls. /compact を強く推奨します。" >&2

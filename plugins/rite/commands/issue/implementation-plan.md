@@ -93,6 +93,27 @@ Limit to **max 3 reference files** to avoid information overload.
 → プロジェクト全体の慣習に従ってください
 ```
 
+### 3.2.2 Verification Criteria Guidelines
+
+When generating the implementation plan (Phase 3.3), each step MUST include a `検証基準` (verification criteria) column. The criteria define what "done" means for each step and are mechanically verified by the Adaptive Re-evaluation checkpoint (5.1.0.5 in `implement.md`).
+
+**Criteria must be tool-verifiable** — conditions that can be confirmed using Read, Grep, Glob, or Bash tools without subjective judgment:
+
+| Criteria Type | Example | Verification Tool |
+|--------------|---------|-------------------|
+| File existence | `src/auth.ts` が存在する | Glob / Read |
+| Function/export existence | `authMiddleware` がエクスポートされている | Grep (`export.*authMiddleware`) |
+| Pattern presence | テーブルに `検証基準` 列が含まれる | Grep |
+| Test passage | `npm test -- auth.test.ts` が pass | Bash |
+| Config value | `rite-config.yml` に `verification` キーが存在する | Grep / Read |
+| Line count / structure | セクションが 3 行以上ある | Read + count |
+
+**Avoid non-verifiable criteria**:
+- ❌ 「コードが読みやすい」（主観的）
+- ❌ 「パフォーマンスが良い」（閾値なし）
+- ❌ 「適切に実装されている」（曖昧）
+- ✅ 「`handleError` 関数が `try-catch` で呼び出し元をラップしている」（Grep で確認可能）
+
 ### 3.3 Implementation Plan Generation
 
 Generate an implementation plan in the following format:
@@ -116,16 +137,17 @@ Generate an implementation plan in the following format:
 
 ### 実装ステップ（依存グラフ）
 
-| Step | 内容 | depends_on | 並列グループ | 状態 |
-|------|------|------------|-------------|------|
-| S1 | {step_1} | — | A | ⬜ |
-| S2 | {step_2} | — | A | ⬜ |
-| S3 | {step_3} | S1 | B | ⬜ |
-| S4 | {step_4} | S1, S2 | C | ⬜ |
+| Step | 内容 | depends_on | 並列グループ | 状態 | 検証基準 |
+|------|------|------------|-------------|------|---------|
+| S1 | {step_1} | — | A | ⬜ | {verification_criteria_1} |
+| S2 | {step_2} | — | A | ⬜ | {verification_criteria_2} |
+| S3 | {step_3} | S1 | B | ⬜ | {verification_criteria_3} |
+| S4 | {step_4} | S1, S2 | C | ⬜ | {verification_criteria_4} |
 
 > **depends_on**: そのステップの前提となるステップ ID（`—` は依存なし＝最初に実行可能）
 > **並列グループ**: 同じグループのステップは並列実行可能（依存関係がないため）
 > **状態**: `⬜` 未着手 / `✅` 完了 / `⚠️ 再分解` — コミット時に作業メモリコメントへ一括反映される（5.1.1.2 参照）
+> **検証基準**: ステップ完了を確認するための具体的な条件。Adaptive Re-evaluation (5.1.0.5) でツールを使って機械的に検証される
 
 ### 注意点・考慮事項
 - {consideration_1}
@@ -277,7 +299,7 @@ WM_SOURCE="plan" \
 
 This section is executed **during Phase 5.1** (not during Phase 3) when the bottleneck detection in [5.1.0.5](./implement.md) triggers step re-decomposition. It defines how re-decomposed sub-steps are integrated back into the implementation plan and work memory.
 
-**Trigger**: Invoked from `implement.md` 5.1.0.5 step 5 (Bottleneck detection) when a threshold is exceeded and the step is re-decomposed into sub-steps.
+**Trigger**: Invoked from `implement.md` 5.1.0.5 step 6 (Bottleneck detection) when a threshold is exceeded and the step is re-decomposed into sub-steps.
 
 #### Plan Update Procedure
 
@@ -294,14 +316,14 @@ Update the "実装計画" section in work memory to reflect the re-decomposition
 ```markdown
 ### 実装計画（更新済み）
 
-| Step | 内容 | depends_on | 並列グループ | 状態 |
-|------|------|------------|-------------|------|
-| S1 | {step_1} | — | A | ✅ |
-| S2 | {step_2} | — | A | ✅ |
-| ~~S3~~ | ~~{original_step_3}~~ | S1 | B | ⚠️ 再分解 |
-| S3.1 | {sub_step_1} | S1 | B' | ⬜ |
-| S3.2 | {sub_step_2} | S3.1 | B' | ⬜ |
-| S4 | {step_4} | S3.2 | C | 🔒 |
+| Step | 内容 | depends_on | 並列グループ | 状態 | 検証基準 |
+|------|------|------------|-------------|------|---------|
+| S1 | {step_1} | — | A | ✅ | {criteria_1} |
+| S2 | {step_2} | — | A | ✅ | {criteria_2} |
+| ~~S3~~ | ~~{original_step_3}~~ | S1 | B | ⚠️ 再分解 | ~~{criteria_3}~~ |
+| S3.1 | {sub_step_1} | S1 | B' | ⬜ | {sub_criteria_1} |
+| S3.2 | {sub_step_2} | S3.1 | B' | ⬜ | {sub_criteria_2} |
+| S4 | {step_4} | S3.2 | C | 🔒 | {criteria_4} |
 ```
 
 **Note**: The re-decomposition is also recorded in the "ボトルネック検出ログ" section (see [bottleneck-detection.md](../../references/bottleneck-detection.md#work-memory-recording-format)).

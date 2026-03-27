@@ -156,6 +156,7 @@ mv "$TMP_WM" "$LOCAL_WM"
 | `### 次のステップ` → `- **コマンド**: {value}` | `next_action` | `""` |
 | `### 関連 PR` → `- **番号**: #{value}` | `pr_number` | `null` |
 | `### レビュー対応履歴` → `- **現在のループ回数**: {value}` | `loop_count` | `0` |
+| (not available in Issue comment format) | `last_commit` | `""` |
 
 **If work memory is not found (neither local nor Issue comment):**
 
@@ -355,6 +356,51 @@ git checkout {branch}
 - {i18n:resume_option_discard_and_switch}
 - {i18n:resume_option_cancel}
 ```
+
+### 3.1.1 Context Delta Display (Post-Resume Orientation)
+
+After switching to the correct branch, display a summary of what has changed since the last work memory save to help the user quickly re-orient. This is useful after `/clear` + `/rite:resume` (context reset) or crash/disconnect recovery where conversation context was lost.
+
+**Steps:**
+
+1. **Retrieve last known commit** from work memory:
+   - **Schema v1 (local file)**: Use the `last_commit` field from the frontmatter
+   - **Issue comment fallback**: `last_commit` is not available in the Issue comment format (the `### コミット履歴` section contains multi-line log output, not a single hash). When restoring from Issue comment, skip Step 2 and proceed directly to Step 3
+   - **When `last_commit` is empty or unavailable**: Skip Step 2
+
+2. **Show delta since last save** (only when `last_commit` is available):
+   ```bash
+   # last_commit が取得できた場合のみ実行
+   if [ -n "{last_commit}" ]; then
+     echo "=== 前回保存時点からの変更 ==="
+     git log --oneline {last_commit}..HEAD 2>/dev/null || echo "差分なし（コミット変更なし）"
+     echo "=== 変更ファイル ==="
+     git diff --name-only {last_commit}..HEAD 2>/dev/null || echo "なし"
+   fi
+   ```
+   The `git log` output line count serves as the commit count, and the `git diff --name-only` output serves as the file list for the display format below.
+
+3. **Display implementation plan progress**: Read the local work memory file (`.rite-work-memory/issue-{issue_number}.md`) with the Read tool. Extract the `## Detail` section and identify step entries matching the pattern `S{n}` with `✅` (completed) or `⬜` (pending). Display the first pending step as the resume point. If the local file is unavailable, read the Issue body checklist (`- [x]`/`- [ ]` items) as a fallback indicator of progress.
+
+**Display format:**
+
+```
+📋 前回の保存時点からの状態:
+
+コミット差分: {git log output line count} commits since last save
+変更ファイル:
+{git diff --name-only output}
+
+実装計画の進捗:
+| Step | 内容 | 状態 |
+|------|------|------|
+| S1 | {description} | ✅ |
+| S2 | {description} | ⬜ ← 再開ポイント |
+```
+
+**When `last_commit` is unavailable** (Issue comment fallback): Omit the "コミット差分" and "変更ファイル" sections. Display only the implementation plan progress.
+
+**When no delta is detected** (no commits since last save): Display "前回の保存時点から変更はありません。中断した地点から再開します。"
 
 ### 3.2 Command-Specific Resume Processing
 

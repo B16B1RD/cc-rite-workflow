@@ -5,6 +5,15 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.6] - 2026-03-27
+
+### 追加
+
+- Sprint Contract — 実装ステップごとの検証基準追加 (#260)
+- Evaluator キャリブレーション — Few-shot 例集と懐疑的トーン追加 (#261)
+- Post-Step Quality Gate — 実装後セルフチェック追加 (#262)
+- コンテキストリセット戦略強化 (#263)
+
 ## [0.3.5] - 2026-03-27
 
 ### 追加
@@ -257,6 +266,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.4...v0.3.5
 [0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
