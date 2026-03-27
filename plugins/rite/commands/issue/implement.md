@@ -284,9 +284,30 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
 **Re-evaluation procedure**:
 
-1. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step)
-2. **Update dependency state**: Identify newly unblocked steps (steps whose `depends_on` are all complete)
-3. **Select next step**: From the unblocked steps, pick the one with highest priority using:
+1. **Verify completion criteria**: If the implementation plan includes a `検証基準` column, verify the completed step's criteria using the appropriate tool before marking it complete:
+
+   | Criteria Type | Verification Method |
+   |--------------|---------------------|
+   | File existence | `Glob` or `Read` tool |
+   | Function/export existence | `Grep` tool (e.g., `export.*functionName`) |
+   | Pattern presence | `Grep` tool |
+   | Test passage | `Bash` tool (run test command) |
+   | Config value | `Read` or `Grep` tool |
+   | Line count / structure | `Read` tool + count |
+
+   **When criteria is met**: Proceed to step 2 (mark complete).
+
+   **When criteria is NOT met**:
+   - Re-attempt the implementation to satisfy the criteria
+   - If the criteria itself is incorrect (implementation approach changed), record the deviation in work memory's "計画逸脱ログ" section and update the criteria before marking complete
+   - Do NOT mark the step as complete until the (original or updated) criteria is verified
+   - **Escalation**: If 2 re-attempts fail to satisfy the criteria, use `AskUserQuestion` to ask the user whether to (a) continue retrying, (b) update the criteria, or (c) skip verification and mark complete with a deviation log entry
+
+   **When no `検証基準` column exists** (legacy plans or skipped plans): Skip this verification step and proceed to step 2 directly.
+
+2. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step)
+3. **Update dependency state**: Identify newly unblocked steps (steps whose `depends_on` are all complete)
+4. **Select next step**: From the unblocked steps, pick the one with highest priority using:
 
 | Priority | Criterion | Reason |
 |----------|-----------|--------|
@@ -294,13 +315,13 @@ After completing each implementation step, re-evaluate the remaining steps befor
 | 2 | Steps with highest implementation risk | Fail fast — surface problems early |
 | 3 | Steps with smallest scope | Quick wins build momentum |
 
-4. **Check for plan deviation**: If the implementation reveals that a planned step is unnecessary, needs modification, or a new step is required:
+5. **Check for plan deviation**: If the implementation reveals that a planned step is unnecessary, needs modification, or a new step is required:
    - Record the deviation in work memory's "計画逸脱ログ" section (see work-memory-format.md)
    - Adjust the remaining plan accordingly
    - **Minor adjustments** (no user confirmation needed): Changing implementation approach within the same step, skipping a step that became unnecessary, adding a small helper step (scope < 1 file)
    - **Significant scope changes** (ask user via `AskUserQuestion`): Adding new files not in the original plan, changing public API/interface contracts, scope expansion exceeding 50% of original estimate, changing the dependency structure of 3+ remaining steps
 
-5. **Bottleneck detection**: After the step completes, check if it exceeded any bottleneck threshold. Metrics are counted from when the step started to when it finished. This is a guard clause — skip immediately when no threshold is exceeded (zero overhead on normal path).
+6. **Bottleneck detection**: After the step completes, check if it exceeded any bottleneck threshold. Metrics are counted from when the step started to when it finished. This is a guard clause — skip immediately when no threshold is exceeded (zero overhead on normal path).
 
    > **Reference**: [Bottleneck Detection Reference](../../references/bottleneck-detection.md) for complete thresholds, Oracle discovery protocol, and re-decomposition procedure.
 
