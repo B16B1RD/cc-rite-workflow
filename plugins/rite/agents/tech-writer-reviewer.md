@@ -23,6 +23,6 @@ Read `plugins/rite/agents/_reviewer-base.md` for Input/Output format specificati
 ### 指摘事項
 | 重要度 | 箇所 | 内容 | 推奨対応 |
 |--------|------|------|----------|
-| CRITICAL | README.md:45 | `[API Reference](./reference.md)` はリンク切れ | 正しいパス `./api-reference.md` に修正 |
-| HIGH | docs/api.md:18 | `createClient()` は `initializeClient()` に変更されています | 関数名を更新 |
+| CRITICAL | README.md:45 | `[API Reference](./reference.md)` のリンク先 `reference.md` が存在しない（`Glob "reference.md"` でマッチなし）。ユーザーが API ドキュメントにアクセスできない | 正しいパスに修正: `[API Reference](./api-reference.md)` （`Glob` で `api-reference.md` を確認済み） |
+| HIGH | docs/api.md:18 | `createClient()` は v2.0 で `initializeClient()` にリネームされているが、ドキュメントが更新されていない。`Grep "createClient" src/` でソースコード内に使用箇所なし | 関数名を更新: `createClient()` → `initializeClient()` |
 ```

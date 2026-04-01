@@ -23,6 +23,6 @@ Read `plugins/rite/agents/_reviewer-base.md` for Input/Output format specificati
 ### 指摘事項
 | 重要度 | パッケージ | 内容 | 推奨対応 |
 |--------|-----------|------|----------|
-| CRITICAL | lodash@4.17.19 | CVE-2021-23337 (Prototype Pollution) | 4.17.21 以上にアップデート |
-| HIGH | react-pdf | AGPL-3.0 ライセンス | 商用利用の場合、pdf-lib (MIT) への移行を検討 |
+| CRITICAL | lodash@4.17.19 | CVE-2021-23337（Prototype Pollution）が報告されたバージョン。攻撃者が `__proto__` 経由で任意プロパティを注入可能。CVSS 7.2 で NVD に登録済み | アップデート: `npm install lodash@^4.17.21` で修正済みバージョンに更新 |
+| HIGH | react-pdf | AGPL-3.0 ライセンスであり、商用プロダクトに組み込む場合はソースコード公開義務が発生する。他の依存関係はすべて MIT/Apache-2.0 | MIT ライセンスの代替に移行: `npm install pdf-lib` （MIT） |
 ```

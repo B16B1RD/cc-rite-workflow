@@ -23,6 +23,6 @@ Read `plugins/rite/agents/_reviewer-base.md` for Input/Output format specificati
 ### 指摘事項
 | 重要度 | 箇所 | 内容 | 推奨対応 |
 |--------|------|------|----------|
-| CRITICAL | Phase 2.3 | `AskUser` は存在しないツールです | `AskUserQuestion` に修正 |
-| HIGH | Phase 3 | `gh issue view` が 404 を返した場合の処理が未定義 | エラーケースを追加 |
+| CRITICAL | Phase 2.3 | `AskUser` は Claude Code に存在しないツール名であり、実行時にエラーとなる。正式名称は `AskUserQuestion`（ToolSearch で確認済み） | ツール名を修正: `AskUser` → `AskUserQuestion` |
+| HIGH | Phase 3 | `gh issue view` が 404 を返した場合の処理が未定義であり、Issue が削除・移動された場合にフロー全体が停止する。Phase 2 では同様のコマンドにエラーハンドリングあり | エラーケース追加: `if [ $? -ne 0 ]; then echo "ERROR: Issue not found"; exit 1; fi` |
 ```
