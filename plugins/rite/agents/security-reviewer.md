@@ -23,6 +23,6 @@ Read `plugins/rite/agents/_reviewer-base.md` for Input/Output format specificati
 ### 指摘事項
 | 重要度 | ファイル:行 | 内容 | 推奨対応 |
 |--------|------------|------|----------|
-| CRITICAL | src/db/users.ts:42 | ユーザー入力を直接 SQL に連結 | Prepared Statement を使用 |
-| HIGH | src/config.ts:5 | API キーがハードコード | 環境変数 `API_KEY` を使用 |
+| CRITICAL | src/db/users.ts:42 | ユーザー入力を直接 SQL クエリに連結しており、SQL インジェクション攻撃が可能。`auth.ts:30` では Prepared Statement を使用しているが本ファイルでは未適用 | Prepared Statement に変更: `db.query('SELECT * FROM users WHERE id = ?', [userId])` |
+| HIGH | src/config.ts:5 | API キーがソースコードにハードコードされており、リポジトリにアクセスできる全員に漏洩する。`.env` パターンが他のキーでは使用されている | 環境変数に移行: `process.env.API_KEY` を使用し、`.env.example` にキー名を追加 |
 ```
