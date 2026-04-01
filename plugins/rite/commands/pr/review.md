@@ -25,8 +25,10 @@ When called from the `/rite:issue:start` end-to-end flow, minimize output to red
 
 **E2E output format** (Phase 6, replaces full display):
 ```
-[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low} LOW)
+[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low} LOW) | fact-check: {v}✅ {c}❌ {u}⚠️
 ```
+
+**Note**: The `| fact-check: ...` suffix is appended only when fact-check was executed (external claims > 0). Omit entirely when fact-check was skipped (`review.fact_check.enabled: false` or 0 external claims). `{total_findings}` is the post-fact-check count (CONTRADICTED and UNVERIFIED:ソース未確認 excluded).
 
 **Detection**: Reuse Invocation Context determination in the "Invocation Context and End-to-End Flow" section below.
 
@@ -1032,6 +1034,36 @@ For each detected contradiction:
    - Description: Merge into a description integrating multiple perspectives
    - Note: Append "Flagged by multiple reviewers"
 
+#### Fact-Checking Phase
+
+> **Reference**: See [Fact-Checking Phase specification](./references/fact-check.md) for the full protocol (claim classification, verification execution, finding modification rules).
+
+**Execution condition**: Execute only when:
+1. `review.fact_check.enabled: true` in `rite-config.yml`
+2. At least 1 external specification claim is detected among findings
+
+**Skip condition**: When `enabled: false` OR 0 external claims detected, skip this phase entirely and proceed to Specification Consistency Verification.
+
+**Configuration loading:**
+
+Read `review.fact_check` from `rite-config.yml`:
+- `enabled`: Enable/disable fact-checking phase (default: `true`)
+- `max_claims`: Maximum claims to verify per review (default: `10`)
+
+**Execution flow:**
+
+1. Classify all findings into internal vs external claims per [Claim Classification](./references/fact-check.md#claim-classification). Scan `内容` and `推奨対応` columns for signal keywords (library behavior, tool configuration, version-specific behavior, API compatibility, CVE, external best practices, runtime behavior).
+2. If external claims > `max_claims`: sort by severity, verify top `max_claims`, mark remainder as `UNVERIFIED:リソース超過` (blocking maintained).
+3. For each external claim (up to `max_claims`): verify via WebSearch/WebFetch per [Verification Execution](./references/fact-check.md#verification-execution).
+4. Modify findings based on verification results per [Finding Modification Rules](./references/fact-check.md#finding-modification-rules):
+   - VERIFIED (✅): Keep in `全指摘事項`, append source URL to `推奨対応`
+   - CONTRADICTED (❌): Remove from `全指摘事項` AND `高信頼度の指摘`, move to dedicated section
+   - UNVERIFIED:ソース未確認 (⚠️): Remove from both sections (blocking removed), move to dedicated section
+   - UNVERIFIED:リソース超過: Keep in `全指摘事項` (blocking maintained), add annotation
+5. Output inline summary per [Fact-Check Metrics](./references/fact-check.md#fact-check-metrics).
+
+**Verification mode**: When `review_mode == "verification"`, previously VERIFIED findings are not re-verified; source URLs are inherited from the previous review comment. See [Verification Mode Handling](./references/fact-check.md#verification-mode-handling).
+
 #### Specification Consistency Verification
 
 **Execution condition**: Execute only when `{issue_spec}` was obtained in Phase 1.3.1. Skip if no specification information is available.
@@ -1137,6 +1169,24 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 |--------|------------|------|--------|
 | {severity} | {file:line} | {description} | {reviewers} |
 
+### 外部仕様の検証結果（該当がある場合のみ）
+<!-- Fact-Checking Phase で外部仕様の検証が実行された場合のみ表示。外部仕様の主張が0件の場合はこのセクション自体を省略 -->
+
+| 指摘 | 主張 | 検証結果 | ソース |
+|------|------|---------|--------|
+| {file:line} ({reviewer}) | {claim_summary} | ✅ 検証済み / ⚠️ 未検証 | [source](URL) |
+
+**ファクトチェック**: {verified}✅ {contradicted}❌ {unverified}⚠️
+
+### 矛盾により除外された指摘（該当がある場合のみ）
+<!-- CONTRADICTED 指摘がある場合のみ表示。0件の場合はこのセクション自体を省略 -->
+
+> このセクションの指摘は、公式ドキュメントと矛盾しているため指摘事項から除外されました。
+
+| 重要度 | ファイル:行 | 当初の主張 | 公式ドキュメントの記述 | ソース |
+|--------|------------|-----------|----------------------|--------|
+| {severity} | {file:line} | {original_claim} | {correct_info} | [source](URL) |
+
 ### 全指摘事項
 
 #### {Reviewer Type}
@@ -1218,6 +1268,24 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 | 重要度 | ファイル:行 | 内容 | 指摘者 |
 |--------|------------|------|--------|
 | {severity} | {file:line} | {description} | {reviewers} |
+
+### 外部仕様の検証結果（該当がある場合のみ）
+<!-- Fact-Checking Phase で外部仕様の検証が実行された場合のみ表示。外部仕様の主張が0件の場合はこのセクション自体を省略 -->
+
+| 指摘 | 主張 | 検証結果 | ソース |
+|------|------|---------|--------|
+| {file:line} ({reviewer}) | {claim_summary} | ✅ 検証済み / ⚠️ 未検証 | [source](URL) |
+
+**ファクトチェック**: {verified}✅ {contradicted}❌ {unverified}⚠️
+
+### 矛盾により除外された指摘（該当がある場合のみ）
+<!-- CONTRADICTED 指摘がある場合のみ表示。0件の場合はこのセクション自体を省略 -->
+
+> このセクションの指摘は、公式ドキュメントと矛盾しているため指摘事項から除外されました。
+
+| 重要度 | ファイル:行 | 当初の主張 | 公式ドキュメントの記述 | ソース |
+|--------|------------|-----------|----------------------|--------|
+| {severity} | {file:line} | {original_claim} | {correct_info} | [source](URL) |
 
 ### 全指摘事項
 
@@ -1640,6 +1708,8 @@ Based on the Phase 6 review results, output the corresponding machine-readable p
 |-----------|---------------|
 | 0 findings | `[review:mergeable]` |
 | 1 or more findings | `[review:fix-needed:{total_findings}]` |
+
+**Fact-check suffix**: When fact-check was executed (external claims > 0), append the fact-check summary to the E2E output line: `| fact-check: {v}✅ {c}❌ {u}⚠️`. `{total_findings}` is the post-fact-check count (CONTRADICTED and UNVERIFIED:ソース未確認 excluded). See [E2E Output Minimization](#e2e-output-minimization) for the full format.
 
 **Important**:
 - **[READ-ONLY RULE]**: `Edit`/`Write` ツールでプロジェクトのソースファイルを修正してはなりません。指摘がある場合は `[review:fix-needed:{n}]` を出力し、修正は `/rite:pr:fix` に委譲してください

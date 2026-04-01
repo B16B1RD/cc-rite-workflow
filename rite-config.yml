@@ -87,6 +87,9 @@ review:
   debate:
     enabled: true            # レビュアー間討論フェーズを有効化（デフォルト: true）
     max_rounds: 1            # 最大討論ラウンド数（コスト制御、デフォルト: 1）
+  fact_check:
+    enabled: true            # ファクトチェック Phase の有効/無効（デフォルト: true）
+    max_claims: 10           # 1レビューあたり最大検証数（デフォルト: 10）
 
 # Parallel implementation settings
 parallel:
