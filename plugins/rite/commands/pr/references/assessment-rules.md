@@ -8,6 +8,8 @@
 
 All findings (CRITICAL/HIGH/MEDIUM/LOW) are always blocking regardless of loop count. There is no gradual relaxation — every finding must be resolved before merge.
 
+**Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
+
 When executed standalone (outside a loop), the same rule applies: all findings are blocking.
 
 ## 5.3.3 Assessment Logic
@@ -30,6 +32,19 @@ When determining the assessment, explicitly output the finding count in the foll
 - 指摘件数: {total} 件
 - 優先度 {n} に該当: {条件の説明}
 - 総合評価: {マージ可 / マージ不可（指摘あり） / 修正必要}
+```
+
+**Additional output when fact-check was executed:**
+
+When `review.fact_check.enabled: true` and external claims > 0, output the following in addition to the above:
+
+```
+【外部仕様検証】
+- 外部仕様の主張: {total_external} 件
+- 検証済み (✅): {verified} 件
+- 矛盾 (❌): {contradicted} 件（指摘から除外済み）
+- 未検証:ソース未確認 (⚠️): {unverified_source} 件（指摘から除外済み）
+- 未検証:リソース超過: {unverified_limit} 件（blocking 維持）
 ```
 
 **Additional output for verification mode:**

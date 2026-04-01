@@ -107,6 +107,19 @@ Reviewers should investigate using these tools before reporting:
 
 **Required (concrete):** Cite specific evidence from investigation (Grep results, file locations, OWASP references, performance metrics)
 
+### External Claim Awareness
+
+When citing external specifications (library behavior, tool configuration, version compatibility, API behavior, CVE/vulnerability information) in findings, reviewers should follow these guidelines:
+
+| Guideline | Description |
+|-----------|-------------|
+| **Cite specific versions** | Include the version number when claiming version-specific behavior (e.g., "npm v11.10.0 introduced..." instead of "npm supports...") |
+| **Prefer observable facts** | Reference behavior observable in the codebase (package.json versions, config files) rather than general claims about external tools |
+| **Flag uncertainty** | If unsure about external behavior, note "要検証" in the recommendation column to signal that fact-checking should prioritize this claim |
+| **Avoid speculation** | Do not claim specific library/tool behavior without concrete evidence from investigation or documentation |
+
+**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` Phase 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
+
 ## Reviewer Type Identifiers
 
 Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this table when adding new reviewers.
