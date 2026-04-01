@@ -118,7 +118,7 @@ When citing external specifications (library behavior, tool configuration, versi
 | **Flag uncertainty** | If unsure about external behavior, note "要検証" in the recommendation column to signal that fact-checking should prioritize this claim |
 | **Avoid speculation** | Do not claim specific library/tool behavior without concrete evidence from investigation or documentation |
 
-**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` Phase 5.2) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
+**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` Phase 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
 
 ## Reviewer Type Identifiers
 

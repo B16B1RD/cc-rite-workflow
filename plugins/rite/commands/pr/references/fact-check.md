@@ -1,6 +1,6 @@
 # Fact-Checking Phase Reference
 
-> **Source**: Referenced from `review.md` Phase 5.2 (`#### Fact-Checking Phase`). This file is the source of truth for fact-checking rules.
+> **Source**: Referenced from `review.md` Phase 5 Critic Phase (`#### Fact-Checking Phase`, between Deduplication and Specification Consistency Verification). This file is the source of truth for fact-checking rules.
 
 ## Overview
 
@@ -62,6 +62,8 @@ Read `review.fact_check` from `rite-config.yml`:
 
 Findings の `内容` 列と `推奨対応` 列をスキャンし、上記シグナルテーブルに該当するキーワードを含むものを External として分類する。
 
+**"要検証" マーカー**: `推奨対応` 列に "要検証" が含まれる場合は、レビュアーが外部仕様の確信度が低いことを明示的にシグナルしている。この finding は無条件で External として分類する。また、max_claims 超過時の優先度ソートでは、"要検証" 付きの claim を同一 severity 内で優先する。
+
 ---
 
 ## Verification Execution
@@ -71,7 +73,7 @@ Findings の `内容` 列と `推奨対応` 列をスキャンし、上記シグ
 1. **WebSearch** — ツール設定、CLI 動作、バージョン情報、CVE、ベストプラクティス → 公式ドキュメントサイトでフィルタ
 2. **WebFetch** — 公式ドキュメントの URL が判明している場合 → 直接取得
 
-> **Note**: context7 MCP ツール（`resolve-library-id` / `query-docs`）は本フェーズのスコープ外（別 Issue で統合予定）。
+> **Note**: context7 MCP ツール（`resolve-library-id` / `query-docs`）は本フェーズのスコープ外（TODO: 別 Issue で統合予定、Issue 未作成）。
 
 ### Verification Steps (per claim)
 
@@ -152,8 +154,9 @@ Fact-Checking Phase の結果に基づき、findings を以下のルールで修
 外部 claim が `max_claims` を超過した場合:
 
 1. 全 External claims を severity 順にソート（CRITICAL > HIGH > MEDIUM > LOW）
-2. 上位 `max_claims` 件を検証対象として選択
-3. 残りは `UNVERIFIED:リソース超過` として `全指摘事項` に残す（blocking 維持）
+2. 同一 severity 内の tiebreak: "要検証" マーカー付きを優先、その後は findings テーブル上の出現順
+3. 上位 `max_claims` 件を検証対象として選択
+4. 残りは `UNVERIFIED:リソース超過` として `全指摘事項` に残す（blocking 維持）
 
 ---
 
@@ -187,7 +190,7 @@ Fact-Checking Phase の結果に基づき、findings を以下のルールで修
 
 ## Fact-Check Metrics
 
-Phase 完了後、Spec Consistency に進む前にインラインサマリーを出力:
+Phase 完了後、Spec Consistency に進む前にインラインサマリーを出力する。このサマリーは Phase 間遷移時の中間確認用。Assessment Decision Time の最終出力は `assessment-rules.md` の `【外部仕様検証】` セクションを参照。
 
 ```
 ファクトチェック完了:
@@ -223,6 +226,8 @@ Phase 完了後、Spec Consistency に進む前にインラインサマリーを
 
 **ファクトチェック**: {verified}✅ {contradicted}❌ {unverified}⚠️
 ```
+
+**Note**: `UNVERIFIED:リソース超過` finding はこのテーブルに含めない。リソース超過 finding は `全指摘事項` に `[未検証:リソース超過]` アノテーション付きで残る（blocking 維持）。このテーブルは検証を実施した claim のみを記録する。
 
 ### `### 矛盾により除外された指摘` セクション
 

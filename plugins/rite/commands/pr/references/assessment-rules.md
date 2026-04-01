@@ -8,7 +8,7 @@
 
 All findings (CRITICAL/HIGH/MEDIUM/LOW) are always blocking regardless of loop count. There is no gradual relaxation — every finding must be resolved before merge.
 
-**Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED findings (❌) and `[未検証:ソース未確認]` findings (⚠️) are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. `[未検証:リソース超過]` findings remain in `全指摘事項` and are counted (blocking maintained).
+**Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
 
 When executed standalone (outside a loop), the same rule applies: all findings are blocking.
 
