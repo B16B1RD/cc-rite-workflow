@@ -32,6 +32,8 @@ temp/
 .rite-session-id
 .rite-guidance-shown
 .rite-plugin-root
+.rite-initialized-version
+.rite-settings-hooks-cleaned
 
 # Git worktrees for parallel agents
 .worktrees/
