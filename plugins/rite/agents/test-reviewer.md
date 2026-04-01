@@ -23,6 +23,6 @@ Read `plugins/rite/agents/_reviewer-base.md` for Input/Output format specificati
 ### 指摘事項
 | 重要度 | ファイル:行 | 内容 | 推奨対応 |
 |--------|------------|------|----------|
-| CRITICAL | src/services/user.test.ts:42 | アサーションがないため常に成功します | `expect()` を追加 |
-| HIGH | src/utils/calc.ts:15 | `calculateTotal` にテストがありません | ユニットテストを追加 |
+| CRITICAL | src/services/user.test.ts:42 | テストにアサーションがなく、実装が壊れても常にパスする。CI でのリグレッション検出が機能しない false positive テスト | アサーション追加: `expect(result).toEqual({ id: 1, name: 'test' })` |
+| HIGH | src/utils/calc.ts:15 | `calculateTotal` は金額計算の中核関数だがテストが存在しない。`calc.test.ts` は他の関数のテストのみ | ユニットテスト追加: `expect(calculateTotal([100, 200])).toBe(300)` と境界値テスト |
 ```

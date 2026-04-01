@@ -24,4 +24,13 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 | {SEVERITY} | {file:line} | {issue} | {recommendation} |
 ```
 
+### Column Structure Rules
+
+| Column | Structure | Description |
+|--------|-----------|-------------|
+| **内容** | WHAT + WHY | 何が問題か（1文目）→ なぜそれが問題か（2文目: 影響、リスク、既存パターンとの比較） |
+| **推奨対応** | FIX + EXAMPLE | 具体的な修正方法 → インラインコード例（コード変更が伴う場合） |
+
+WHY が省略された findings は修正エージェントの判断精度を下げる。WHAT のみで WHY が自明な場合でも、影響範囲や既存コードとの比較を含めること。
+
 See [Severity Levels](../references/severity-levels.md) for common severity definitions and evaluation flowchart.

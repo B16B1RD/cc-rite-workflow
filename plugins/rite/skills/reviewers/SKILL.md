@@ -277,7 +277,7 @@ For review result output format, see [references/output-format.md](./references/
 
 | Severity | File:Line | Issue | Recommendation |
 |----------|-----------|-------|----------------|
-| {level}  | {location}| {description} | {fix suggestion} |
+| {level}  | {location}| {WHAT + WHY} | {FIX + EXAMPLE} |
 
 ## Error Handling
 

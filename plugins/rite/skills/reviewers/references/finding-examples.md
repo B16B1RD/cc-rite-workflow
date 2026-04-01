@@ -57,6 +57,26 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Why this is a good finding:** Identified a real contradiction by cross-referencing multiple documents, explained the downstream impact on agent behavior, provided specific resolution options.
 
+## Weak Findings (Improve Before Reporting)
+
+These findings have real issues but lack the WHY or EXAMPLE that makes them actionable for the fix agent.
+
+### Weak Example 1: Missing WHY
+
+| Severity | File:Line | Issue | Recommendation |
+|----------|-----------|-------|----------------|
+| HIGH | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. | Add validation. |
+
+**Problem:** The Issue column states WHAT is wrong but not WHY it matters. The fix agent cannot prioritize or verify the fix without understanding the risk (e.g., SQL injection? Data integrity? System boundary violation?). The Recommendation lacks a concrete EXAMPLE.
+
+**Improved version:**
+
+| Severity | File:Line | Issue | Recommendation |
+|----------|-----------|-------|----------------|
+| HIGH | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. This is a system boundary where external input enters the application, and other endpoints (`auth.ts:30`) validate with `zod`. | Add `zod` schema validation consistent with `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
+
+**Why the improved version is better:** The WHY ("system boundary where external input enters") tells the fix agent the severity class (injection risk, not just missing validation). The EXAMPLE (`z.object(...)`) gives a concrete code pattern to follow, reducing fix-review loop iterations.
+
 ## Findings That Should NOT Be Reported
 
 ### Non-Example 1: Style Preference Without Impact
