@@ -5,6 +5,17 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.8] - 2026-04-01
+
+### 追加
+
+- ファクトチェック Phase — PR レビューで外部仕様の主張を公式ドキュメントで検証し誤情報を防止 (#275)
+- context7 MCP ツールによる検証オプション — ファクトチェックの検証手段として追加（`review.fact_check.use_context7`、デフォルト: オフ）(#278)
+
+### 修正
+
+- `.rite-initialized-version` と `.rite-settings-hooks-cleaned` を `.gitignore` に追加 (#274)
+
 ## [0.3.7] - 2026-04-01
 
 ### 変更
@@ -272,6 +283,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.4...v0.3.5

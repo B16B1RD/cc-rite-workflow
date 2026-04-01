@@ -5,6 +5,17 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2026-04-01
+
+### Added
+
+- Fact-Checking Phase for PR review — verifies external specification claims against official documentation via WebSearch/WebFetch (#275)
+- context7 MCP tool integration as optional verification method for fact-checking (`review.fact_check.use_context7`, default: off) (#278)
+
+### Fixed
+
+- Added `.rite-initialized-version` and `.rite-settings-hooks-cleaned` to `.gitignore` (#274)
+
 ## [0.3.7] - 2026-04-01
 
 ### Changed
@@ -272,6 +283,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.4...v0.3.5
