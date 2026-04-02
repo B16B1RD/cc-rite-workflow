@@ -942,6 +942,45 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   2>/dev/null || true
 ```
 
+**Step 2.8: Review Quality Verification (defense-in-depth)**
+
+After the review result is received, verify that the review was properly executed with sub-agents by checking the PR comment structure:
+
+1. Retrieve the latest review comment:
+   ```bash
+   latest_review=$(gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
+     --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | last | .body')
+   ```
+
+2. Check for per-reviewer sections (`#### ` under `### 全指摘事項`):
+   ```bash
+   has_reviewer_sections=$(echo "$latest_review" | grep -c '^#### ' || true)
+   echo "reviewer_sections=$has_reviewer_sections"
+   ```
+
+3. **When `reviewer_sections == 0`**: The review was performed inline without sub-agents (rubber-stamp review detected).
+
+   **Circuit breaker guard** (check FIRST, before re-invoke): If this is already a re-invoked review cycle (i.e., Step 2.8 has already triggered a re-invoke earlier in this conversation turn), do NOT re-invoke again. Instead, display the fallback message and proceed to Step 3:
+
+   ```
+   ⚠️ 再試行後もサブエージェント未使用のレビューが検出されました。
+   現在のレビュー結果をそのまま使用して続行します。
+   ```
+
+   **Note**: Track re-invocation in conversation context, NOT via `.rite-flow-state` fields (flow-state fields are destroyed by `create` mode in Phase 5.4.3 Step 1). The LLM executing this step retains conversation history and can determine whether it already performed a Step 2.8 re-invoke in the current review cycle.
+
+   **Re-invoke** (only when circuit breaker guard passes — first occurrence):
+
+   ```
+   ⚠️ レビュー品質検証: サブエージェント未使用のレビューを検出しました。
+   PR コメントにレビュアー別セクション（#### {Reviewer Type}）が含まれていません。
+   サブエージェントによるフルレビューを再実行します。
+   ```
+
+   Invoke `skill: "rite:pr:review", args: "{pr_number}"`. This re-invocation counts as a new review cycle and is allowed **at most once** per review cycle.
+
+4. **When `reviewer_sections >= 1`**: Review quality verified. Proceed to Step 3.
+
 **Step 3**: Based on the review result pattern from `rite:pr:review`, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
 
 | Result Pattern | Action |
