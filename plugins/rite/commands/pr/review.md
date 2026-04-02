@@ -641,6 +641,10 @@ Use the fallback profile for the reviewer whose skill file failed to load.
 
 ### 4.3 Review Execution
 
+**Pre-execution message** (displayed before launching review agents):
+Output a brief status message to set user expectations:
+`{count} 人のレビュアーで並列レビューを実行中です。1-2分お待ちください。`
+
 Execute parallel reviews using sub-agents (defined in the `agents/` directory) corresponding to the reviewers selected in Phase 2.
 
 **Available reviewer agents:**
@@ -722,6 +726,8 @@ If the following issues occur with the sub-agent approach:
 - `prompt`: Full Phase 4.5 format (diff, spec, skill profile, checklist)
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
+
+**⚠️ CRITICAL**: Do NOT use `run_in_background: true` for review agents. Background agents cause the calling LLM to receive launch confirmation immediately and then repeatedly attempt to stop while waiting — triggering stop-guard blocks that inflate `error_count` and poison the circuit breaker for subsequent phases. Foreground agents launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
 
 ### 4.4 Retry Logic
 
