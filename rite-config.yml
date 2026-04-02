@@ -1,5 +1,5 @@
 # Claude Code Rite Workflow configuration for this repository (self-hosted)
-version: "1.0"
+schema_version: 2
 
 # Project settings
 project:

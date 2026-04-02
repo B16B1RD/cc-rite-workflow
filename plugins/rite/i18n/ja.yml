@@ -18,6 +18,20 @@ messages:
   init_projects_setup: "GitHub Projects を設定しています..."
   init_template_gen: "テンプレートを生成しています..."
 
+  # Init Upgrade コマンド
+  init_upgrade_start: "rite-config.yml のアップグレードを開始します"
+  init_upgrade_checking: "スキーマバージョンを確認しています..."
+  init_upgrade_outdated: "rite-config.yml のスキーマが古くなっています (v{current} → v{latest})"
+  init_upgrade_up_to_date: "rite-config.yml は最新です (v{current})"
+  init_upgrade_backup_created: "バックアップを作成しました: {path}"
+  init_upgrade_diff_preview: "以下の変更が適用されます:"
+  init_upgrade_confirm: "アップグレードを適用しますか？"
+  init_upgrade_applied: "rite-config.yml をアップグレードしました (v{current} → v{latest})"
+  init_upgrade_cancelled: "アップグレードをキャンセルしました"
+  init_upgrade_deprecated_removed: "廃止キーを削除しました: {keys}"
+  init_upgrade_sections_added: "新しいセクションを追加しました: {sections}"
+  init_upgrade_session_warning: "⚠️ rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade を実行してください。"  # command-layer reference only; session-start.sh hardcodes messages (see "Schema version check (#284)" section)
+
   # Issue コマンド
   issue_created: "Issue #{number} を作成しました"
   issue_started: "Issue #{number} の作業を開始しました"

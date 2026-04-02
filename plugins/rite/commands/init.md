@@ -8,7 +8,13 @@ Initial setup wizard for rite workflow
 
 ---
 
-When this command is executed, run the following phases in order.
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `--upgrade` | Upgrade existing rite-config.yml to the latest schema version |
+
+When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#413-upgrade-existing-configuration). Otherwise, run the following phases in order.
 
 ## Phase 1: Environment Check
 
@@ -252,20 +258,27 @@ If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: 
 
 ### 4.1 Generate rite-config.yml
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing any steps in Phase 4.1. This resolved path is used by 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
+
 #### 4.1.1 Check for Existing Configuration
 
 Read `rite-config.yml` in the project root with the Read tool.
 
 **If the file does not exist** (Read tool returns an error) → Proceed to 4.1.2 (new generation).
 
-**If the file exists** → Compare the existing values with the values detected in Phases 2-3.5. Identify fields that differ:
+**If the file exists** → Check `schema_version` field:
+
+1. Read `schema_version` value from the existing file. If missing, treat as v1.
+2. Read `schema_version` from template config (`{plugin_root}/templates/config/rite-config.yml`). If missing, treat as v1.
+3. If existing `schema_version` < template `schema_version`, display: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
+
+Then compare the existing values with the values detected in Phases 2-3.5. Identify fields that differ:
 
 | Field | Existing Value | Detected Value | Differs? |
 |-------|---------------|----------------|----------|
 | `project.type` | (from file) | (from Phase 2) | |
-| `project.name` | (from file) | (from Phase 1.3) | |
 | `github.projects.project_number` | (from file) | (from Phase 3) | |
-| `github.projects.owner` | (from file) | (from Phase 1.3) | |
+| `github.projects.owner` | (from file) | (from Phase 1.4) | |
 | `iteration.enabled` | (from file) | (from Phase 3.5) | |
 | `iteration.field_name` | (from file) | (from Phase 3.5) | |
 
@@ -285,46 +298,114 @@ rite-config.yml は既に存在します。以下の項目が検出値と異な�
 - **Skip**: Proceed to 4.2 without changes.
 - **Overwrite**: Proceed to 4.1.2 (full generation, replacing existing file).
 
-#### 4.1.2 New Generation
+#### 4.1.2 New Generation (Template-Based)
 
-Create `rite-config.yml` in the project root:
+Generate `rite-config.yml` from the template config file.
 
-```yaml
-# rite-workflow configuration
-version: "1.0"
+**Step 1**: Read the template config with the Read tool:
 
-project:
-  type: {detected-type}
-  name: "{repo-name}"
-
-github:
-  projects:
-    enabled: true
-    project_number: {project-number}
-    owner: "{owner}"
-
-branch:
-  pattern: "{type}/issue-{number}-{slug}"
-  types:
-    feature: "feat"
-    bugfix: "fix"
-    documentation: "docs"
-    refactor: "refactor"
-    chore: "chore"
-
-commit:
-  style: conventional
-  enforce: false
-
-# Iteration settings (from Phase 3.5)
-iteration:
-  enabled: {iteration-enabled}  # true if user enabled iteration
-  field_name: "{iteration-field-name}"  # detected or default "Sprint"
-  auto_assign: true
-  show_in_list: true
-
-language: auto
 ```
+{plugin_root}/templates/config/rite-config.yml
+```
+
+**Step 2**: Extract content up to (and excluding) the line `# --- Advanced (below this line) ---`. Everything after (and including) this line is **omitted** during new generation.
+
+**Step 3**: Replace placeholders in the extracted content with detected values:
+
+| Placeholder/Field | Replacement Value |
+|-------------------|-------------------|
+| `project.type` | `{detected-type}` from Phase 2 |
+| `github.projects.project_number` | `{project-number}` from Phase 3 (null if not detected) |
+| `github.projects.owner` | `"{owner}"` from Phase 1.4 (null if not detected) |
+| `iteration.enabled` | `{iteration-enabled}` from Phase 3.5 |
+| `iteration.field_name` | `"{iteration-field-name}"` from Phase 3.5 |
+
+**Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
+
+#### 4.1.3 Upgrade Existing Configuration
+
+> This phase is executed when `--upgrade` is specified. It upgrades an existing `rite-config.yml` to the latest schema version while preserving user-customized values.
+
+**Step 1: Read current config and template**
+
+Display "{i18n:init_upgrade_start}" and "{i18n:init_upgrade_checking}".
+
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
+
+Read both files with the Read tool:
+- `rite-config.yml` (project root)
+- `{plugin_root}/templates/config/rite-config.yml` (template)
+
+**Step 2: Check schema versions**
+
+- Current: Read `schema_version` from existing file. If missing, treat as v1.
+- Latest: Read `schema_version` from template. If missing, treat as v1.
+
+If current >= latest: Display "{i18n:init_upgrade_up_to_date}" and exit (no upgrade needed).
+
+**Step 3: Create backup**
+
+```bash
+cp rite-config.yml "rite-config.yml.bak.$(date +%Y%m%d-%H%M%S)"
+```
+
+Display "{i18n:init_upgrade_backup_created}".
+
+**Step 4: Identify changes**
+
+Compare current config against the template and classify each key:
+
+| Classification | Action |
+|---------------|--------|
+| **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
+| **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
+| **Missing section** (review.debate, review.fact_check, verification, etc.) | **Add** — insert from template with default values |
+| **Advanced section** (tdd, parallel, team, metrics, context_optimization, safety, investigate) | **Add as comments** — insert commented-out with default values |
+| **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
+
+**Step 5: Preview and confirm**
+
+Display the changes to the user:
+
+```
+{i18n:init_upgrade_diff_preview}
+
+廃止キー削除: {deprecated_keys}
+新規セクション追加: {new_sections}
+Advanced セクション追加（コメントアウト）: {advanced_sections}
+保持される既存設定: {preserved_keys}
+```
+
+Ask with `AskUserQuestion`:
+
+```
+{i18n:init_upgrade_confirm}
+オプション:
+- 適用する（推奨）: 上記の変更を適用します
+- キャンセル: アップグレードを中止します
+```
+
+**Step 6: Apply changes**
+
+If the user confirms:
+
+1. Update `schema_version` to latest value
+2. Remove deprecated keys using the Edit tool. Display "{i18n:init_upgrade_deprecated_removed}".
+3. Add missing sections from the template using the Edit tool. Display "{i18n:init_upgrade_sections_added}".
+4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
+5. Preserve all user-customized values
+
+Display "{i18n:init_upgrade_applied}" and exit. (`--upgrade` skips Phases 1-3, so Phase 4.2+ context is unavailable.)
+
+If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
+
+**MUST requirements**:
+- `schema_version` 未設定の config は暗黙的に v1 として扱う
+- ユーザーカスタム値（project_number, owner, iteration, branch 等）を保持する
+- バックアップ (`rite-config.yml.bak.{timestamp}`) を作成する
+- 廃止キー (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) を削除する
+- Advanced セクションはコメントアウトで追加する
+- テンプレートにないユーザー追加キーを削除しない（Unknown key → Preserve with warning）
 
 ### 4.2 Check Issue Templates
 
