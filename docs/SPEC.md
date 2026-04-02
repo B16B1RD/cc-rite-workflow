@@ -368,7 +368,7 @@ Uses YAML format for readability and comment support.
 
 ```yaml
 # rite-workflow configuration file
-version: "1.0"
+schema_version: 2
 
 # Project settings
 project:

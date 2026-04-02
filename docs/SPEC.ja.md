@@ -368,7 +368,7 @@ YAML 形式を採用（可読性が高くコメント記述可能）。
 
 ```yaml
 # rite-workflow 設定ファイル
-version: "1.0"
+schema_version: 2
 
 # プロジェクト基本設定
 project:
