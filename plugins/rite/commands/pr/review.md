@@ -642,10 +642,10 @@ Use the fallback profile for the reviewer whose skill file failed to load.
 
 ### 4.3 Review Execution
 
-**⚠️ CRITICAL — Sub-Agent Invocation is MANDATORY**: Regardless of `review_mode` (`full` or `verification`), Phase 4.3 **MUST** invoke sub-agents via the Agent tool. Do NOT perform review inline or manually verify the diff without sub-agents — this applies even when the incremental diff is small or when context pressure is high.
+**⚠️ CRITICAL — Sub-Agent Invocation is MANDATORY**: Regardless of `review_mode` (`full` or `verification`), Phase 4.3 **MUST** invoke sub-agents via the Task tool. Do NOT perform review inline or manually verify the diff without sub-agents — this applies even when the incremental diff is small or when context pressure is high.
 
 - `review_mode == "full"`: Sub-agents execute the Phase 4.5 template
-- `review_mode == "verification"`: Sub-agents execute BOTH Phase 4.5.1 (verification) AND Phase 4.5 (full) templates. Pass both templates in a single Agent tool prompt per reviewer. The sub-agent returns consolidated results covering both verification and full review.
+- `review_mode == "verification"`: Sub-agents execute BOTH Phase 4.5.1 (verification) AND Phase 4.5 (full) templates. Pass both templates in a single Task tool prompt per reviewer. The sub-agent returns consolidated results covering both verification and full review.
 
 Performing verification inline (without sub-agents) is a **review quality failure** — it bypasses the reviewer's Detection Process, Confidence Scoring, and Cross-File Impact Check, producing rubber-stamp approvals.
 
