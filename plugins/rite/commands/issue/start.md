@@ -966,11 +966,17 @@ After the review result is received, verify that the review was properly execute
    サブエージェントによるフルレビューを再実行します。
    ```
 
-   **Re-invoke**: Increment the circuit breaker counter, then return to Phase 5.4.1 and re-invoke `skill: "rite:pr:review", args: "{pr_number}"`. This re-invocation counts as a new review cycle.
+   **Re-invoke**: Increment the circuit breaker counter, then update flow state using `patch` (not `create`) to preserve the counter, and re-invoke review. This re-invocation counts as a new review cycle.
 
    ```bash
    bash {plugin_root}/hooks/flow-state-update.sh increment --field review_quality_retry_count --if-exists
+   bash {plugin_root}/hooks/flow-state-update.sh patch \
+     --phase "phase5_review" \
+     --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. Do NOT stop. (re-invoked from Step 2.8 quality verification)" \
+     --if-exists
    ```
+
+   Then invoke `skill: "rite:pr:review", args: "{pr_number}"`. **Do NOT use `flow-state-update.sh create`** for this re-invoke — `create` overwrites all fields and would destroy `review_quality_retry_count`.
 
    **Circuit breaker**: This re-invocation is allowed **at most once** per review cycle. Track via `.rite-flow-state` field `review_quality_retry_count` (default: 0). If `review_quality_retry_count >= 1`, do NOT re-invoke. Instead, display:
 
