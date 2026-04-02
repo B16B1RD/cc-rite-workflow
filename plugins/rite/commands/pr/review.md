@@ -15,10 +15,11 @@ Analyze PR changes and dynamically load expert skills to perform a multi-reviewe
 
 ## E2E Output Minimization
 
-When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent execution) runs in **full** — only Phase 5-7 **output** is minimized to reduce context window consumption:
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
+| Phase 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
 | Phase 5 (Consolidation) | Full findings table | Result pattern + summary counts only |
 | Phase 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | Phase 7 (Issue Creation) | Full report + guidance | **Recommendations only** — auto-create Issues for 推奨事項 with 別 Issue keywords (if any). Skip user confirmation. Only when `[review:mergeable]`. |
@@ -641,6 +642,13 @@ Use the fallback profile for the reviewer whose skill file failed to load.
 
 ### 4.3 Review Execution
 
+**⚠️ CRITICAL — Sub-Agent Invocation is MANDATORY**: Regardless of `review_mode` (`full` or `verification`), Phase 4.3 **MUST** invoke sub-agents via the Agent tool. Do NOT perform review inline or manually verify the diff without sub-agents — this applies even when the incremental diff is small or when context pressure is high.
+
+- `review_mode == "full"`: Sub-agents execute the Phase 4.5 template
+- `review_mode == "verification"`: Sub-agents execute BOTH Phase 4.5.1 (verification) AND Phase 4.5 (full) templates. Pass both templates in a single Agent tool prompt per reviewer. The sub-agent returns consolidated results covering both verification and full review.
+
+Performing verification inline (without sub-agents) is a **review quality failure** — it bypasses the reviewer's Detection Process, Confidence Scoring, and Cross-File Impact Check, producing rubber-stamp approvals.
+
 **Pre-execution message** (displayed before launching review agents):
 Output a brief status message to set user expectations:
 `{count} 人のレビュアーで並列レビューを実行中です。1-2分お待ちください。`
@@ -723,7 +731,9 @@ If the following issues occur with the sub-agent approach:
 **Parallel execution:** Invoke multiple Task tools within a single message for all selected reviewers. Each Task uses:
 - `description`: "セキュリティ専門家 PR レビュー" (short description)
 - `subagent_type`: `general-purpose` (access to all tools)
-- `prompt`: Full Phase 4.5 format (diff, spec, skill profile, checklist)
+- `prompt`:
+  - `review_mode == "full"`: Phase 4.5 format (diff, spec, skill profile, checklist)
+  - `review_mode == "verification"`: Phase 4.5.1 verification template + Phase 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from Phase 1.2.4) in addition to the standard inputs.
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 
