@@ -152,8 +152,15 @@ if [ "$SOURCE" = "startup" ]; then
     fi
 
     if [ "$_current_sv" -lt "$_latest_sv" ]; then
-      # i18n: read language from rite-config.yml
+      # i18n: read language from rite-config.yml (auto -> detect from locale)
       _sv_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]"')
+      if [ "$_sv_lang" = "auto" ] || [ -z "$_sv_lang" ]; then
+        # Detect from LANG environment variable (e.g., ja_JP.UTF-8 -> ja)
+        case "${LANG:-}" in
+          ja*) _sv_lang="ja" ;;
+          *) _sv_lang="en" ;;
+        esac
+      fi
       case "$_sv_lang" in
         ja)
           echo "[rite] ⚠️ rite-config.yml のスキーマが古くなっています (v${_current_sv} → v${_latest_sv})。/rite:init --upgrade を実行してください。" >&2

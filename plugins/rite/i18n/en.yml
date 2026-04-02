@@ -30,7 +30,7 @@ messages:
   init_upgrade_cancelled: "Upgrade cancelled"
   init_upgrade_deprecated_removed: "Deprecated keys removed: {keys}"
   init_upgrade_sections_added: "New sections added: {sections}"
-  init_upgrade_session_warning: "⚠️ rite-config.yml schema is outdated (v{current} → v{latest}). Run /rite:init --upgrade to update."
+  init_upgrade_session_warning: "⚠️ rite-config.yml schema is outdated (v{current} → v{latest}). Run /rite:init --upgrade to update."  # command-layer reference only; session-start.sh hardcodes messages
 
   # Issue commands
   issue_created: "Created Issue #{number}"

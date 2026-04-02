@@ -258,6 +258,8 @@ If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: 
 
 ### 4.1 Generate rite-config.yml
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing any steps in Phase 4.1. This resolved path is used by 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
+
 #### 4.1.1 Check for Existing Configuration
 
 Read `rite-config.yml` in the project root with the Read tool.
@@ -276,7 +278,7 @@ Then compare the existing values with the values detected in Phases 2-3.5. Ident
 |-------|---------------|----------------|----------|
 | `project.type` | (from file) | (from Phase 2) | |
 | `github.projects.project_number` | (from file) | (from Phase 3) | |
-| `github.projects.owner` | (from file) | (from Phase 1.3) | |
+| `github.projects.owner` | (from file) | (from Phase 1.4) | |
 | `iteration.enabled` | (from file) | (from Phase 3.5) | |
 | `iteration.field_name` | (from file) | (from Phase 3.5) | |
 
@@ -308,7 +310,7 @@ Generate `rite-config.yml` from the template config file.
 
 Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script).
 
-**Step 2**: Extract content up to the Advanced marker (`# --- Advanced`). Everything after (and including) this line is **omitted** during new generation.
+**Step 2**: Extract content up to the Advanced marker (the line containing `# --- Advanced`). Everything after (and including) this line is **omitted** during new generation. The actual marker in the template is `# --- Advanced (below this line) ---`.
 
 **Step 3**: Replace placeholders in the extracted content with detected values:
 
@@ -316,7 +318,7 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-pat
 |-------------------|-------------------|
 | `project.type` | `{detected-type}` from Phase 2 |
 | `github.projects.project_number` | `{project-number}` from Phase 3 (null if not detected) |
-| `github.projects.owner` | `"{owner}"` from Phase 1.3 (null if not detected) |
+| `github.projects.owner` | `"{owner}"` from Phase 1.4 (null if not detected) |
 | `iteration.enabled` | `{iteration-enabled}` from Phase 3.5 |
 | `iteration.field_name` | `"{iteration-field-name}"` from Phase 3.5 |
 
@@ -357,7 +359,7 @@ Compare current config against the template and classify each key:
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** (review.debate, review.fact_check, verification, safety, etc.) | **Add** — insert from template with default values |
+| **Missing section** (review.debate, review.fact_check, verification, etc.) | **Add** — insert from template with default values |
 | **Advanced section** (tdd, parallel, team, metrics, context_optimization, safety, investigate) | **Add as comments** — insert commented-out with default values |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
@@ -393,7 +395,7 @@ If the user confirms:
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
 5. Preserve all user-customized values
 
-Display "{i18n:init_upgrade_applied}".
+Display "{i18n:init_upgrade_applied}" and exit. (`--upgrade` skips Phases 1-3, so Phase 4.2+ context is unavailable.)
 
 If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
 
