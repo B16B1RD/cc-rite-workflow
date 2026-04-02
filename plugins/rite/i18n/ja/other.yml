@@ -20,7 +20,7 @@ messages:
   init_upgrade_cancelled: "アップグレードをキャンセルしました"
   init_upgrade_deprecated_removed: "廃止キーを削除しました: {keys}"
   init_upgrade_sections_added: "新しいセクションを追加しました: {sections}"
-  init_upgrade_session_warning: "⚠️ rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade を実行してください。"  # command-layer reference only; session-start.sh hardcodes messages at lines ~166-169
+  init_upgrade_session_warning: "⚠️ rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade を実行してください。"  # command-layer reference only; session-start.sh hardcodes messages (see "Schema version check (#284)" section)
 
   # Iteration/Sprint コマンド
   sprint_list_title: "Sprint 一覧"

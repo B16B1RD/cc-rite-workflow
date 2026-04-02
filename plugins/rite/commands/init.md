@@ -330,11 +330,11 @@ Generate `rite-config.yml` from the template config file.
 
 Display "{i18n:init_upgrade_start}" and "{i18n:init_upgrade_checking}".
 
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
+
 Read both files with the Read tool:
 - `rite-config.yml` (project root)
 - `{plugin_root}/templates/config/rite-config.yml` (template)
-
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script).
 
 **Step 2: Check schema versions**
 
