@@ -36,7 +36,7 @@ Before including a finding in the issues table, assign an internal confidence sc
 
 **Important**: The confidence score is an internal decision aid. Do NOT add a confidence column to the output table. The table structure `| 重要度 | ファイル:行 | 内容 | 推奨対応 |` must remain unchanged for fix.md parser compatibility.
 
-The confidence threshold is configurable via `review.confidence_threshold` in `rite-config.yml` (default: 80).
+The default confidence threshold is 80. This value is also recorded in `review.confidence_threshold` in `rite-config.yml` for reference.
 
 ## Input
 

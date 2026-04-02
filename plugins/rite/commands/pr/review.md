@@ -661,14 +661,25 @@ Execute parallel reviews using sub-agents (defined in the `agents/` directory) c
 
 2. On load failure, display a warning and skip that sub-agent
 
-3. **Extract `{agent_identity}`**: From the loaded agent file, extract the body content **excluding**:
-   - YAML frontmatter (between `---` delimiters)
-   - `## Detailed Checklist` section and everything after it
-   - `## Output Format` section and everything after it
+3. **Extract `{agent_identity}`**: Construct the agent identity from two sources:
 
-   The extracted content contains the agent's Identity statement, Core Principles, Detection Process, and Confidence Calibration — the sections that define *how* the agent thinks and investigates. This is embedded as `{agent_identity}` in the Phase 4.5 template.
+   **Part A — Shared reviewer principles** (from `_reviewer-base.md`):
+   - Load `{plugin_root}/agents/_reviewer-base.md` with the Read tool
+   - Extract the `## Reviewer Mindset` and `## Confidence Scoring` sections (everything between these headings and the next `##` heading or `## Input` section)
+   - These sections define the universal principles all reviewers must follow
 
-   **Fallback**: If extraction fails or yields empty content, set `{agent_identity}` to an empty string. The review will still function using `{skill_profile}` and `{checklist}`.
+   **Part B — Agent-specific identity** (from the agent file):
+   - From the loaded agent file, extract the body content **excluding**:
+     - YAML frontmatter (between `---` delimiters)
+     - `## Detailed Checklist` section and everything after it
+     - `## Output Format` section and everything after it
+     - `**Output example:**` line and everything after it (handles old-style agent files without `##` section markers)
+
+   **Combine**: `{agent_identity}` = Part A (shared principles) + Part B (agent-specific identity)
+
+   The combined content provides the agent with both universal reviewer discipline (Mindset, Confidence Scoring framework) and domain-specific guidance (Identity, Core Principles, Detection Process, Confidence Calibration).
+
+   **Fallback**: If extraction fails or yields empty content for either part, use whatever was successfully extracted. If both fail, set `{agent_identity}` to an empty string. The review will still function using `{skill_profile}` and `{checklist}`.
 
 **Parallel execution using the Task tool:**
 
@@ -762,7 +773,7 @@ Generate instructions for each reviewer.
 | `{checklist}` | Review Checklist section of skill file | Full text including Critical / Important / Recommendations |
 | `{issue_spec}` | Issue specification obtained in Phase 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from Phase 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
-| `{agent_identity}` | Agent definition file (`agents/{type}-reviewer.md`) | Extract the agent file body **excluding** YAML frontmatter and the `## Detailed Checklist` / `## Output Format` sections. Contains Identity + Core Principles + Detection Process + Confidence Calibration |
+| `{agent_identity}` | `_reviewer-base.md` (shared) + `agents/{type}-reviewer.md` (specific) | **Part A**: Extract `## Reviewer Mindset` + `## Confidence Scoring` from `_reviewer-base.md`. **Part B**: Extract agent file body excluding YAML frontmatter, `## Detailed Checklist`, `## Output Format`, and `**Output example:**` sections. Combine: Part A + Part B |
 | `{change_summary}` | Scale information from Phase 1.2.1 | Used only for large diffs. Change summary table |
 
 **`{diff_content}` by scale:** Small: entire diff | Medium: files matching `{relevant_files}` | Large: `{change_summary}` + matching files + Read tool instruction
