@@ -45,7 +45,6 @@ branch:
     restructure: "refactor"
     chore: "chore"
 
-# Commit style
+# Commit message
 commit:
-  style: conventional
-  enforce: false
+  contextual: true

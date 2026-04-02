@@ -442,8 +442,7 @@ branch:
 
 # Commit message
 commit:
-  style: conventional  # conventional | free
-  enforce: false  # If true, warn on format violation
+  contextual: true    # Contextual Commits action lines in commit body
 
 # Build/test/lint (auto-detect or manual specification)
 commands:
