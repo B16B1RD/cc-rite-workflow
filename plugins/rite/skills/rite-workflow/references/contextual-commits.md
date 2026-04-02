@@ -10,7 +10,6 @@ Conventional Commits の subject line を維持したまま、コミット body 
 
 ```yaml
 commit:
-  style: conventional
   contextual: true    # true (default) | false
 ```
 
