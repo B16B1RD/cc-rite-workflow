@@ -5,8 +5,9 @@ description: |
   or when user asks for "code review", "PR feedback", "security check", "review
   my changes", "レビューして", "PRレビュー", "コードチェック", "セキュリティ確認",
   "変更を確認", "コードレビュー". Spawns specialized reviewers (Security, API,
-  Database, DevOps, Frontend, Test, Dependencies, Prompt Engineer, Tech Writer)
-  based on changed file patterns. Produces unified findings with severity levels.
+  Database, DevOps, Frontend, Test, Dependencies, Prompt Engineer, Tech Writer,
+  Code Quality, Error Handling, Type Design) based on changed file patterns.
+  Produces unified findings with severity levels.
 disable-model-invocation: true
 ---
 
