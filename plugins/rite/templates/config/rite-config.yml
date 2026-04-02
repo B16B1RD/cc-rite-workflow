@@ -99,6 +99,7 @@ review:
   debate:
     enabled: true
     max_rounds: 1
+  confidence_threshold: 80   # Minimum confidence score for findings table (default: 80)
   fact_check:
     enabled: true
     max_claims: 10
