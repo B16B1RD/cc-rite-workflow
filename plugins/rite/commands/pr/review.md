@@ -395,6 +395,14 @@ Analyze the diff content to determine if additional expertise is needed:
 - `query`, `migration`, `schema`, `index`, `transaction`, `rollback`
 - On detection: Add Database Expert
 
+**Error handling keyword detection:**
+- `try`, `catch`, `throw`, `Error`, `reject`, `fallback`, `finally`
+- On detection: Add Error Handling Expert
+
+**Type design keyword detection:**
+- `interface`, `type`, `enum`, `class`, `struct`, `readonly`, `generic`
+- On detection: Add Type Design Expert
+
 ### 2.4 Create Reviewer Candidate List
 
 **`reviewer_type` format:**
@@ -650,6 +658,8 @@ Execute parallel reviews using sub-agents (defined in the `agents/` directory) c
 | Dependencies Expert | `dependencies-reviewer.md` | Package management, vulnerabilities |
 | Prompt Engineer | `prompt-engineer-reviewer.md` | Skill/command definition quality |
 | Technical Writer | `tech-writer-reviewer.md` | Document clarity, accuracy |
+| Error Handling Expert | `error-handling-reviewer.md` | Silent failures, error propagation, catch quality |
+| Type Design Expert | `type-design-reviewer.md` | Type encapsulation, invariant expression, enforcement |
 
 **Loading sub-agent definition files:**
 

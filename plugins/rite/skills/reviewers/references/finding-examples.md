@@ -149,6 +149,46 @@ These findings have real issues but lack the WHY or EXAMPLE that makes them acti
 
 **Why this is borderline:** The code works correctly today. The improvement is about observability, not correctness. The existing pattern in 3 other services suggests this may be an accepted trade-off. However, for payment processing (a critical path), the debugging benefit justifies a LOW finding. A MEDIUM would be too aggressive given the working status and existing pattern.
 
+## Confidence Calibration Examples
+
+These examples illustrate how the internal confidence scoring system (defined in `_reviewer-base.md`) should be applied across different reviewer domains. The score determines whether a finding appears in the issues table (80+), recommendations (60-79), or is not reported at all (<60).
+
+### High Confidence (90-100): Report in Issues Table
+
+| Domain | Score | Finding | Why High Confidence |
+|--------|-------|---------|---------------------|
+| Error Handling | 95 | `catch(e) {}` in payment processing with no logging or propagation | Verified by `Read` — empty catch in critical path. `order.ts:40` logs and re-throws in adjacent code |
+| Type Design | 95 | `status: string` with `Grep` showing 12 runtime comparisons against 3 specific values | Verified evidence of missing union type. Compiler could prevent invalid values |
+| Database | 90 | N+1 query in loop with pagination default of 100 items | Verified by `Grep` showing `findMany` used for the same entity elsewhere |
+| Security | 90 | API key hardcoded as string literal | Verified by `Grep` — no env var fallback, other keys use `process.env` |
+
+### Medium Confidence (60-79): Report in Recommendations Only
+
+| Domain | Score | Finding | Why Medium Confidence |
+|--------|-------|---------|----------------------|
+| Error Handling | 70 | Broad `catch(Error)` where specific `catch(NetworkError)` would be better | No `NetworkError` class exists in project — the fix would require new infrastructure |
+| Type Design | 70 | Generic parameter could be more constrained | Current usage is correct — the constraint would improve safety but isn't critical |
+| Performance | 65 | Missing `useMemo` on a filter operation | Component renders infrequently and the array is small — impact is theoretical |
+| Dependencies | 65 | Package has no updates in 2 years | No known CVEs, API is stable — abandonment is possible but not confirmed |
+
+### Low Confidence (<60): Do NOT Report
+
+| Domain | Score | Finding | Why Not Reported |
+|--------|-------|---------|------------------|
+| Error Handling | 50 | "Should use custom error classes" | Project doesn't use custom error classes anywhere — style preference |
+| Type Design | 45 | "Should use branded types for IDs" | Project has no branded type pattern. Introducing one for a single type adds complexity |
+| Frontend | 40 | "Should use a different CSS framework" | No evidence the current approach causes issues |
+| API | 30 | "Should implement HATEOAS" | Project doesn't follow HATEOAS. Hypothetical improvement with no immediate value |
+
+### Key Takeaway
+
+The confidence score answers one question: **"How certain am I that this is a real problem, verified by evidence?"**
+
+- Tools used (Grep, Read, WebSearch) → higher confidence
+- Comparison with existing project patterns → higher confidence
+- Speculation without evidence → lower confidence
+- Style preference without project convention → do NOT report
+
 ## Related
 
 - [Output Format](./output-format.md) - Findings table format
