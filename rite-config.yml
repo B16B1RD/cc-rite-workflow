@@ -90,7 +90,7 @@ review:
   fact_check:
     enabled: true            # ファクトチェック Phase の有効/無効（デフォルト: true）
     max_claims: 10           # 1レビューあたり最大検証数（デフォルト: 10）
-    use_context7: true      # context7 MCP ツールによる検証を使用（デフォルト: false）
+    use_context7: false      # context7 MCP ツールによる検証を使用（デフォルト: false）
 
 # Parallel implementation settings
 parallel:
