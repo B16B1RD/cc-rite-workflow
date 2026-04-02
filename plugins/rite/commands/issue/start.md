@@ -960,32 +960,24 @@ After the review result is received, verify that the review was properly execute
 
 3. **When `reviewer_sections == 0`**: The review was performed inline without sub-agents (rubber-stamp review detected).
 
-   ```
-   ⚠️ レビュー品質検証: サブエージェント未使用のレビューを検出しました。
-   PR コメントにレビュアー別セクション（#### {Reviewer Type}）が含まれていません。
-   サブエージェントによるフルレビューを再実行します。
-   ```
-
-   **Re-invoke**: Increment the circuit breaker counter, then update flow state using `patch` (not `create`) to preserve the counter, and re-invoke review. This re-invocation counts as a new review cycle.
-
-   ```bash
-   bash {plugin_root}/hooks/flow-state-update.sh increment --field review_quality_retry_count --if-exists
-   bash {plugin_root}/hooks/flow-state-update.sh patch \
-     --phase "phase5_review" \
-     --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. Do NOT stop. (re-invoked from Step 2.8 quality verification)" \
-     --if-exists
-   ```
-
-   Then invoke `skill: "rite:pr:review", args: "{pr_number}"`. **Do NOT use `flow-state-update.sh create`** for this re-invoke — `create` overwrites all fields and would destroy `review_quality_retry_count`.
-
-   **Circuit breaker**: This re-invocation is allowed **at most once** per review cycle. Track via `.rite-flow-state` field `review_quality_retry_count` (default: 0). If `review_quality_retry_count >= 1`, do NOT re-invoke. Instead, display:
+   **Circuit breaker guard** (check FIRST, before re-invoke): If this is already a re-invoked review cycle (i.e., Step 2.8 has already triggered a re-invoke earlier in this conversation turn), do NOT re-invoke again. Instead, display the fallback message and proceed to Step 3:
 
    ```
    ⚠️ 再試行後もサブエージェント未使用のレビューが検出されました。
    現在のレビュー結果をそのまま使用して続行します。
    ```
 
-   Proceed to Step 3 with the current result.
+   **Note**: Track re-invocation in conversation context, NOT via `.rite-flow-state` fields (flow-state fields are destroyed by `create` mode in Phase 5.4.3 Step 1). The LLM executing this step retains conversation history and can determine whether it already performed a Step 2.8 re-invoke in the current review cycle.
+
+   **Re-invoke** (only when circuit breaker guard passes — first occurrence):
+
+   ```
+   ⚠️ レビュー品質検証: サブエージェント未使用のレビューを検出しました。
+   PR コメントにレビュアー別セクション（#### {Reviewer Type}）が含まれていません。
+   サブエージェントによるフルレビューを再実行します。
+   ```
+
+   Invoke `skill: "rite:pr:review", args: "{pr_number}"`. This re-invocation counts as a new review cycle and is allowed **at most once** per review cycle.
 
 4. **When `reviewer_sections >= 1`**: Review quality verified. Proceed to Step 3.
 
