@@ -162,7 +162,7 @@ case "$MODE" in
     ;;
   patch)
     # Build jq filter: always update phase, timestamp, next_action; conditionally update active
-    JQ_FILTER='.phase = $phase | .updated_at = $ts | .next_action = $next'
+    JQ_FILTER='.phase = $phase | .updated_at = $ts | .next_action = $next | .error_count = 0'
     JQ_ARGS=(--arg phase "$PHASE" --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" --arg next "$NEXT")
     if [[ -n "$ACTIVE" ]]; then
       JQ_FILTER="$JQ_FILTER | .active = (\$active_val == \"true\")"
