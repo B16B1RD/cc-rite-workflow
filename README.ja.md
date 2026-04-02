@@ -104,7 +104,7 @@ Todo → In Progress → In Review → Done
 プロジェクトルートに `rite-config.yml` を作成:
 
 ```yaml
-version: "1.0"
+schema_version: 2
 
 project:
   type: webapp  # generic | webapp | library | cli | documentation

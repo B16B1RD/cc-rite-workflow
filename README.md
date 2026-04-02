@@ -105,7 +105,7 @@ Create   Start Work   Set Ready  Merged
 Create `rite-config.yml` in your project root:
 
 ```yaml
-version: "1.0"
+schema_version: 2
 
 project:
   type: webapp  # generic | webapp | library | cli | documentation
