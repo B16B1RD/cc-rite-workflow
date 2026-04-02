@@ -100,7 +100,6 @@ Defaults are determined in 2 tiers:
 | Item | Project Config | Fallback Value |
 |------|---------------|----------------|
 | Base branch | `rite-config.yml` `branch.base` | `main` |
-| Commit style | `rite-config.yml` `commit.style` | `conventional` |
 | Priority | `rite-config.yml` `github.projects.fields.priority` | `Medium` |
 | Complexity | `rite-config.yml` `github.projects.fields.complexity` | `M` |
 | Decomposition threshold | `rite-config.yml` `issue.auto_decompose_threshold` | `M` |
@@ -112,9 +111,6 @@ Defaults are determined in 2 tiers:
 ```text
 ❌ 「どのブランチから作成しますか？」
    → rite-config.yml の branch.base を参照
-
-❌ 「コミットメッセージのスタイルはどうしますか？」
-   → rite-config.yml の commit.style を参照
 
 ❌ 「Priority はどれにしますか？」
    → デフォルト Medium を適用
