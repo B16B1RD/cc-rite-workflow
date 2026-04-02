@@ -481,7 +481,7 @@ Example: `[ZEN-E001] rite-config.yml not found`
 
 **Recovery Steps**:
 1. Validate YAML syntax: `yq eval . rite-config.yml`
-2. Compare with template: `{plugin_root}/templates/rite-config.yml` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script))
+2. Compare with template: `{plugin_root}/templates/config/rite-config.yml` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script))
 3. Fix syntax errors or missing fields
 4. Retry the command
 
