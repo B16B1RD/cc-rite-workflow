@@ -1212,7 +1212,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --if-exists
 ```
 
-**Note on `error_count`**: The `flow-state-update.sh` patch mode preserves all existing fields not explicitly set (`phase`, `updated_at`, `next_action`), so `error_count` is retained from the existing `.rite-flow-state` (unlike `start.md` which creates a fresh object without `error_count`). The count is effectively reset when `/rite:issue:start` Phase 5.4.1 or 5.4.4 writes a new complete object via `jq -n`.
+**Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
 **Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
 
