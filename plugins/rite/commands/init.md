@@ -308,9 +308,7 @@ Generate `rite-config.yml` from the template config file.
 {plugin_root}/templates/config/rite-config.yml
 ```
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script).
-
-**Step 2**: Extract content up to the Advanced marker (the line containing `# --- Advanced`). Everything after (and including) this line is **omitted** during new generation. The actual marker in the template is `# --- Advanced (below this line) ---`.
+**Step 2**: Extract content up to (and excluding) the line `# --- Advanced (below this line) ---`. Everything after (and including) this line is **omitted** during new generation.
 
 **Step 3**: Replace placeholders in the extracted content with detected values:
 
@@ -329,6 +327,8 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-pat
 > This phase is executed when `--upgrade` is specified. It upgrades an existing `rite-config.yml` to the latest schema version while preserving user-customized values.
 
 **Step 1: Read current config and template**
+
+Display "{i18n:init_upgrade_start}" and "{i18n:init_upgrade_checking}".
 
 Read both files with the Read tool:
 - `rite-config.yml` (project root)
@@ -390,8 +390,8 @@ Ask with `AskUserQuestion`:
 If the user confirms:
 
 1. Update `schema_version` to latest value
-2. Remove deprecated keys using the Edit tool
-3. Add missing sections from the template using the Edit tool
+2. Remove deprecated keys using the Edit tool. Display "{i18n:init_upgrade_deprecated_removed}".
+3. Add missing sections from the template using the Edit tool. Display "{i18n:init_upgrade_sections_added}".
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
 5. Preserve all user-customized values
 
