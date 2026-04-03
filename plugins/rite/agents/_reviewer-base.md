@@ -17,7 +17,7 @@ All reviewers MUST adopt these principles:
 2. **Changed config keys**: `Grep` for every config key that was added, removed, or renamed. Flag any file that reads the old key without a fallback.
 3. **Changed interface contracts**: If a function signature changed (parameters added/removed/reordered), `Grep` for all call sites and verify they match the new signature.
 4. **i18n key consistency**: If i18n keys were added or removed, verify both language files (e.g., `ja.yml` and `en.yml`) have matching keys.
-5. **Keyword list / enumeration consistency**: If the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, status values, phase names, tool lists), `Grep` for all other copies of the same list across the codebase. Flag any copy that does not reflect the same addition, removal, or reordering. Skip this check when the diff does not touch any list-like structure.
+5. **Keyword list / enumeration consistency**: If the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names), `Grep` for all other copies of the same list across the codebase. Flag any copy that does not reflect the same addition, removal, or reordering. Skip this check when the diff does not touch any list-like structure.
 
 ## Confidence Scoring
 
