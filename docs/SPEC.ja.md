@@ -1529,11 +1529,9 @@ notifications:
 
 | イベント | 説明 |
 |---------|------|
-| `issue_created` | Issue 作成時 |
-| `issue_started` | 作業開始時 |
 | `pr_created` | PR 作成時 |
 | `pr_ready` | Ready for review 時 |
-| `review_completed` | レビュー完了時 |
+| `issue_closed` | Issue クローズ時 |
 
 ---
 

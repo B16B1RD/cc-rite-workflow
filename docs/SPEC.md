@@ -1385,11 +1385,9 @@ notifications:
 
 | Event | Description |
 |-------|-------------|
-| `issue_created` | When Issue created |
-| `issue_started` | When work started |
 | `pr_created` | When PR created |
 | `pr_ready` | When Ready for review |
-| `review_completed` | When review completed |
+| `issue_closed` | When Issue closed |
 
 ---
 
