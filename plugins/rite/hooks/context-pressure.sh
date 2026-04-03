@@ -103,8 +103,8 @@ except Exception:
 fi
 
 # Phase-aware threshold adjustment:
-# - Implementation phase (phase5_implementation): Higher thresholds (+10, more tool calls expected)
-# - Review/fix phase (phase5_review, phase5_fix): Higher thresholds (+30, review quality > context optimization)
+# - Implementation phase (phase5_implementation, phase5_lint): Higher thresholds (+10, more tool calls expected)
+# - Review/fix phase (phase5_review, phase5_fix, phase5_post_review, phase5_post_fix): Higher thresholds (+30, review quality > context optimization)
 # - Other phases: Default thresholds
 case "$PHASE" in
   phase5_implementation|phase5_lint)
