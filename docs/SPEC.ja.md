@@ -454,11 +454,6 @@ notifications:
   slack:
     enabled: false
     webhook_url: null
-    events:
-      - issue_created
-      - pr_created
-      - pr_ready
-      - review_completed
   discord:
     enabled: false
     webhook_url: null
@@ -1447,11 +1442,6 @@ notifications:
   slack:
     enabled: true
     webhook_url: "https://hooks.slack.com/services/..."
-    events:
-      - issue_created
-      - pr_created
-      - pr_ready
-      - review_completed
 ```
 
 ### Discord
