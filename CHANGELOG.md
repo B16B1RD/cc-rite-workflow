@@ -5,6 +5,22 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2026-04-03
+
+### Added
+
+- Reviewer foundation — `{agent_identity}` extraction, `_reviewer-base.md` shared principles, 4 core agents (security, code-quality, prompt-engineer, tech-writer) + confidence_threshold config (#292)
+- Reviewer expansion — 7 remaining agents rebuilt + 2 new reviewers (error-handling, type-design) (#293)
+- `schema_version` introduction + automatic upgrade mechanism for `rite-config.yml` (#285)
+
+### Fixed
+
+- Removed deprecated `commit.style` code examples from all documentation and project-type templates (#300, #302, #304, #305, #306)
+- Updated config examples in documentation to `schema_version: 2` format (#303)
+- Enforced sub-agent invocation in verification mode re-review (#299)
+- Auto-create Issues from recommendation items marked as "separate Issue" (#297)
+- Reset `error_count` to 0 on `flow-state-update.sh` patch mode to prevent stale circuit breaker (#295)
+
 ## [0.3.8] - 2026-04-01
 
 ### Added
@@ -283,6 +299,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
