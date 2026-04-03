@@ -177,6 +177,8 @@ rite-workflow/
 │   ├── dependencies-reviewer.md    # Dependency security review
 │   ├── prompt-engineer-reviewer.md # Skill/command definition review
 │   ├── tech-writer-reviewer.md     # Documentation review
+│   ├── error-handling-reviewer.md  # Error handling review
+│   ├── type-design-reviewer.md     # Type design review
 │   └── sprint-teammate.md          # Sprint team member
 ├── skills/
 │   ├── rite-workflow/
@@ -226,8 +228,18 @@ rite-workflow/
 │   ├── graphql-helpers.md
 │   └── ...                   # Other reference documents
 ├── i18n/
-│   ├── ja.yml
-│   └── en.yml
+│   ├── ja.yml              # Japanese root
+│   ├── en.yml              # English root
+│   ├── ja/                 # Japanese split files
+│   │   ├── common.yml
+│   │   ├── issue.yml
+│   │   ├── pr.yml
+│   │   └── other.yml
+│   └── en/                 # English split files
+│       ├── common.yml
+│       ├── issue.yml
+│       ├── pr.yml
+│       └── other.yml
 └── README.md
 ```
 
@@ -356,6 +368,8 @@ Agent documentation...
 | `dependencies-reviewer` | opus | Package dependencies, versions, supply chain security |
 | `prompt-engineer-reviewer` | opus | Claude Code skill and command definitions |
 | `tech-writer-reviewer` | opus | Documentation clarity, accuracy, completeness |
+| `error-handling-reviewer` | opus | Error handling patterns, silent failures, recovery logic |
+| `type-design-reviewer` | opus | Type design, encapsulation, invariant expression |
 
 ---
 
@@ -631,12 +645,38 @@ For C/D scores:
 1. Attempt auto-completion
 2. Ask user with `AskUserQuestion` if unable
 
+#### Phase 1.5: Parent Issue Routing
+
+Detects whether the target Issue is a parent (epic) Issue via:
+1. `trackedIssues` API (GraphQL)
+2. Body tasklist (`- [ ] #XX`)
+3. Labels (`epic`/`parent`/`umbrella`)
+
+If the Issue is a parent, routing logic determines the appropriate action: work on the parent directly, select a child Issue, or decompose into sub-Issues.
+
+#### Phase 1.6: Child Issue Selection
+
+When a parent Issue is detected, automatically selects the most appropriate child Issue to work on based on:
+- Priority and dependency ordering
+- Current status (skip completed/in-progress children)
+- User confirmation before proceeding
+
 #### Phase 2: Work Preparation
 
 1. Generate branch name (per config pattern)
-2. Create branch with `git checkout -b`
-3. Update GitHub Projects Status to "In Progress"
-4. Initialize work memory comment
+2. Check for existing branch (including recognized patterns from `branch.recognized_patterns` config)
+3. Create branch with `git checkout -b`
+4. Update GitHub Projects Status to "In Progress"
+5. Assign to current Iteration (if `iteration.enabled: true` and `iteration.auto_assign: true`)
+6. Initialize work memory comment
+
+##### Phase 2.2.1: Recognized Branch Patterns
+
+If `branch.recognized_patterns` is configured in rite-config.yml, detect existing non-Issue-numbered branches matching those patterns. When matched, the user can choose to use the existing branch or create a standard-pattern branch.
+
+##### Phase 2.5: Iteration Assignment (Optional)
+
+When `iteration.enabled: true` and `iteration.auto_assign: true` in rite-config.yml, automatically assigns the Issue to the current active Iteration/Sprint in GitHub Projects.
 
 **Work Memory Comment Format:**
 
@@ -657,11 +697,27 @@ Add a dedicated comment to Issue, update that same comment thereafter:
 - [ ] Task 1
 - [ ] Task 2
 
+### Confirmation Items
+<!-- Accumulate pending questions during work. Confirm collectively at session end -->
+_No confirmation items_
+
 ### Changed Files
 <!-- Auto-updated -->
 
 ### Decisions & Notes
 <!-- Important decisions and findings -->
+
+### Plan Deviation Log
+<!-- Record when deviating from the implementation plan -->
+_No plan deviations_
+
+### Bottleneck Detection Log
+<!-- Bottleneck detection → Oracle discovery → Re-decomposition history -->
+_No bottlenecks detected_
+
+### Review Response History
+<!-- Auto-recorded during review response -->
+_No review responses_
 
 ### Next Steps
 1. ...
@@ -675,7 +731,11 @@ The Session Info section of the work memory includes phase information indicatin
 |-------|--------------|
 | `phase0` | Epic/Sub-Issues detection |
 | `phase1` | Quality verification |
+| `phase1_5_parent` | Parent Issue routing |
+| `phase1_6_child` | Child Issue selection |
 | `phase2` | Branch creation & setup |
+| `phase2_branch` | Branch creation in progress |
+| `phase2_work_memory` | Work memory initialization |
 | `phase3` | Implementation planning |
 | `phase4` | Work start preparation |
 | `phase5_implementation` | Implementation in progress |
@@ -683,6 +743,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `phase5_pr` | PR creation in progress |
 | `phase5_review` | Review in progress |
 | `phase5_fix` | Review fix in progress |
+| `phase5_post_ready` | Post-ready processing |
 | `completed` | Completed |
 
 #### Phase 3: Implementation Planning
@@ -817,7 +878,9 @@ Spawn subagents in parallel (Task tool)
   ├─ test-reviewer: Test quality perspective
   ├─ dependencies-reviewer: Dependencies perspective
   ├─ prompt-engineer-reviewer: Prompt quality perspective
-  └─ tech-writer-reviewer: Documentation perspective
+  ├─ tech-writer-reviewer: Documentation perspective
+  ├─ error-handling-reviewer: Error handling perspective
+  └─ type-design-reviewer: Type design perspective
   ↓
 Collect results from each subagent
   ↓
@@ -1564,19 +1627,25 @@ Details: {technical details for debugging}
 
 ### Language File Structure
 
-```yaml
-# i18n/ja.yml
-messages:
-  issue_created: "Issue #{number} を作成しました"
-  branch_created: "ブランチ {branch} を作成しました"
-  ...
+Language files use a split directory structure organized by language and domain:
 
-# i18n/en.yml
-messages:
-  issue_created: "Created Issue #{number}"
-  branch_created: "Created branch {branch}"
-  ...
 ```
+plugins/rite/i18n/
+├── en.yml              # English root (imports from en/)
+├── ja.yml              # Japanese root (imports from ja/)
+├── en/
+│   ├── common.yml      # Common messages (shared across commands)
+│   ├── issue.yml       # Issue-related messages
+│   ├── pr.yml          # PR-related messages
+│   └── other.yml       # Other messages (init, resume, lint, etc.)
+└── ja/
+    ├── common.yml      # 共通メッセージ
+    ├── issue.yml       # Issue 関連メッセージ
+    ├── pr.yml          # PR 関連メッセージ
+    └── other.yml       # その他メッセージ（init, resume, lint 等）
+```
+
+Each domain file contains keys grouped by command context (e.g., `# rite:init`, `# rite:resume`). Messages are referenced in commands using `{i18n:key_name}` placeholder syntax.
 
 ---
 
