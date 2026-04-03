@@ -56,13 +56,13 @@ For each placeholder in the file:
 
 For each technical claim in the changed file (bash behavior, tool semantics, API contracts, shell quoting rules, exit code semantics):
 - Identify the claim and the context in which it appears
-- Verify the claim against known shell/tool behavior (e.g., `local` always returns 0 under `set -e`, `grep -c` returns exit code 1 on no match). Cross-reference with existing patterns in `commands/**/*.md` via `Grep`
+- Verify the claim against known shell/tool behavior (e.g., `local` always returns 0 regardless of the command substitution's exit code, `grep -c` returns exit code 1 when 0 matches are found and exit code 2 on error). Cross-reference with existing patterns in `commands/**/*.md` via `Grep`
 - Flag claims that are incorrect or misleading, citing the actual behavior
-- Pay special attention to: `set -e` / `set -o pipefail` interaction with `local`, `$(...)` subshell exit codes, `grep -c` exit codes, `jq` null handling, and `gh api` error responses
+- When the changed file contains bash code blocks, pay special attention to: `set -e` / `set -o pipefail` interaction with `local`, `$(...)` subshell exit codes, `grep -c` exit codes. For tool-specific claims: `jq` null handling, `gh api` error responses
 
 ### Step 6: Enumeration and Keyword List Consistency
 
-When the diff modifies a keyword list, enumeration, option set, or phase/step numbering:
+When the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names), or phase/step numbering:
 - `Grep` for all other locations where the same list appears (other files, comments, tables, examples)
 - `Read` each location to compare the full list content
 - Flag any copy that is missing items, has extra items, or uses a different ordering than the modified version
@@ -87,11 +87,11 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 ## Confidence Calibration
 
 - **95**: A bash command uses a variable (`$comment_id`) that is defined in a previous Bash tool call but not in the same call — shell state doesn't persist between calls
-- **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd` under `set -e`, but `local` always returns 0, masking the failure — verified by known shell semantics
+- **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd`, but `local` always returns 0 (regardless of `set -e`), masking the substitution's exit code — verified by known shell semantics
 - **92**: A Detection Process added Step 6 but the corresponding `skills/reviewers/*.md` checklist has no item that maps to Step 6 findings — confirmed by `Read` of both files
 - **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
-- **90**: A keyword list in `_reviewer-base.md` has 5 items but the same list in `prompt-engineer-reviewer.md` has only 4 — confirmed by `Grep` + `Read`
-- **88**: A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
+- **90**: (hypothetical) A keyword list in one file has 5 items but the same list in another file has only 4 — confirmed by `Grep` + `Read`
+- **88**: (hypothetical) A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
 - **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
 - **85**: A condition table claims 3 severity levels (CRITICAL/HIGH/MEDIUM) but the referenced `severity-levels.md` defines 4 (CRITICAL/HIGH/MEDIUM/LOW) — confirmed by `Read`
 - **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
