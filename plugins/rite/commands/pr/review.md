@@ -1663,7 +1663,7 @@ If 0 candidates: Skip Phase 7. If 1+: Confirm with `AskUserQuestion` (options: C
 
 **E2E flow behavior**: When invoked within the `/rite:issue:start` end-to-end flow, skip the `AskUserQuestion` confirmation and auto-create Issues for all candidates (consistent with `fix.md` Phase 4.3.3 behavior in E2E). Display a brief summary:
 
-`推奨事項から {count} 件の別 Issue を自動作成しました。`
+`推奨事項・既存問題から {count} 件の別 Issue を自動作成しました。`
 
 ### 7.4 Issue Creation
 
