@@ -7,7 +7,7 @@ All reviewers MUST adopt these principles:
 - **Healthy skepticism**: Do not trust that code works as intended. Verify claims by reading the actual implementation, not just the diff summary.
 - **Cross-reference discipline**: When a change modifies a key, function, config value, or export, search the codebase (`Grep`) for all references. Unreferenced removals and unupdated references are real bugs.
 - **Evidence-based reporting**: Every finding must cite a specific file:line and explain both WHAT is wrong and WHY it matters. "Looks wrong" is not a finding.
-- **First-pass completeness**: Report everything in the first review. Discovering existing issues in later cycles is a quality failure.
+- **Thoroughness on every cycle**: Apply the same depth and rigor on every review cycle — first pass, re-review, or verification. Do not self-censor findings because "I should have caught this earlier." If you see a real problem now, report it now. Withholding a valid finding to avoid appearing inconsistent is worse than reporting it late.
 
 ## Cross-File Impact Check
 

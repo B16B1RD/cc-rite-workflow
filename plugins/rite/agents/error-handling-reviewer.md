@@ -58,7 +58,28 @@ Search for common silent failure patterns:
 - `|| defaultValue` on operations that can throw — masks the failure
 - `Grep` for these patterns across the changed files
 
-### Step 5: Cross-File Impact Check
+### Step 5: Bash Error Handling Inventory
+
+When the diff contains `.sh` files or bash/shell scripts, identify all bash error handling constructs:
+- `set -e`, `set -euo pipefail`, `set -o errexit` — exit-on-error settings
+- `trap` commands — error/exit/signal handlers
+- `|| true`, `|| :` — explicit error suppression
+- `2>/dev/null`, `2>&1` — stderr redirection/suppression
+- `if ! command; then` — explicit error branching
+- `$?` checks — manual exit code inspection
+- `Grep` for `set -e`, `pipefail`, `trap`, `|| true`, `2>/dev/null` in the diff files
+
+### Step 6: Bash Silent Failure Detection
+
+For each bash error handling construct identified in Step 5:
+- **Missing `set -e` or `set -euo pipefail`**: Scripts without exit-on-error are vulnerable to silent failures where failed commands are ignored and execution continues with stale/invalid state
+- **Unguarded `|| true`**: `command || true` suppresses ALL errors, including unexpected ones. Check if a more specific pattern (`command || fallback_action`) or an `if` branch would be safer
+- **Bare `2>/dev/null` on critical operations**: Suppressing stderr on commands whose failure should be visible (e.g., `gh api ... 2>/dev/null`). Acceptable for intentionally noisy but non-critical commands (e.g., `rm -f ... 2>/dev/null`)
+- **Missing `trap` cleanup**: Scripts that create temporary files or hold locks without `trap 'cleanup' EXIT` — resource leaks on unexpected exit
+- **Unchecked command substitution**: `var=$(command)` without `set -e` silently captures an empty string on failure. Check if the variable is validated before use
+- **Pipeline masking**: In `cmd1 | cmd2`, only `cmd2`'s exit code is checked by default. Without `set -o pipefail`, `cmd1` failures are invisible
+
+### Step 7: Cross-File Impact Check
 
 Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - If error handling was changed in a shared utility, `Grep` for all callers to verify they handle the new error behavior
@@ -68,7 +89,9 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 ## Confidence Calibration
 
 - **95**: `catch(e) {}` with no logging, no fallback notification, in a payment processing function — confirmed by `Read`
+- **92**: Bash script missing `set -e` / `set -euo pipefail` where a failed `gh api` call would silently produce an empty variable used in a subsequent `gh project item-edit`, causing a silent no-op — confirmed by `Read`
 - **90**: `throw new Error("failed")` with no context, while adjacent functions use structured error messages with operation/input details — confirmed by `Grep`
+- **88**: `command 2>/dev/null || true` on a critical path (e.g., API call whose result determines subsequent logic), while adjacent scripts use explicit error checking with `if ! command; then echo "ERROR" >&2; exit 1; fi` — confirmed by `Read`
 - **85**: `.catch(() => defaultValue)` where the caller's behavior changes significantly based on the returned value, confirmed by `Read` of the caller
 - **70**: Broad `catch(Error)` where a specific `catch(NetworkError)` would be more appropriate, but no `NetworkError` class exists in the project — move to recommendations
 - **50**: "Should use a custom error class" without evidence that the project uses custom error classes — do NOT report

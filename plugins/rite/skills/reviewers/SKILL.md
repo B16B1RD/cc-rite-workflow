@@ -39,7 +39,7 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 | Dependencies Expert | `dependencies.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
 | Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md` |
 | Technical Writer | `tech-writer.md` | `**/*.md` (excluding commands/skills), `docs/**`, `README*` |
-| Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords |
+| Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `2>/dev/null` keywords (Bash); `**/*.sh` |
 | Type Design Expert | `type-design.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
 **Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth.
@@ -163,7 +163,7 @@ Analyze diff content for:
   - Security keywords (representative): password, token, secret, auth, crypto, hash, encrypt, decrypt, credential, api_key, private_key, cert
   - Performance keywords (representative): cache, async, await, promise, worker
   - Data keywords (representative): query, migration, schema, index, transaction
-  - Error handling keywords (representative): try, catch, throw, Error, reject, fallback, finally
+  - Error handling keywords (representative): try, catch, throw, Error, reject, fallback, finally (JS/TS); set -e, pipefail, trap, || true, 2>/dev/null (Bash)
   - Type design keywords (representative): interface, type, enum, class, struct, readonly, generic
 ```
 
