@@ -456,11 +456,13 @@ The e2e flow must minimize context consumption to complete within a single sessi
 - Tool calls >= RED threshold (default: 120) → context optimization (per-file diffs, history summarization, /compact recommendation)
 - Read >5000 lines or >10 files → omit unnecessary info
 - diff >2000 → file splitting in review
-- Previous review comment exists → verification mode (if `review.loop.verification_mode: true`)
+- Previous review comment exists → verification mode (if `review.loop.verification_mode: true`; default: `false` — full review every cycle)
 
 Count: Tool results in history (parallel=1). Read=sum max line numbers. Changed=additions+deletions.
 
-**Optimizations**: Verification mode (cycle 2+, previous fix + incremental diff), per-file diff, omit error details, summarize loops ("Cycle N: X→fix"), incremental retrieval. Display "⚠️ Context optimization mode".
+**Optimizations**: Per-file diff, omit error details, summarize loops ("Cycle N: X→fix"), incremental retrieval. Display "⚠️ Context optimization mode".
+
+**Context pressure guard for review-fix loop**: During review/fix phases (`phase5_review`, `phase5_fix`, `phase5_post_review`, `phase5_post_fix`), `context-pressure.sh` adjusts thresholds by +30 and outputs ORANGE/RED messages that prohibit loop interruption. This prevents context optimization from compromising review quality.
 
 **Split/termination**:
 - >50 files → new session recommended

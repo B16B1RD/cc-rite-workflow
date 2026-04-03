@@ -97,7 +97,7 @@ review:
     - file_types
     - content_analysis
   loop:
-    verification_mode: true     # Enable verification mode as supplement to full review (default: true)
+    verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
   security_reviewer:
     mandatory: false                          # Require security reviewer for all PRs (default: false)
@@ -409,7 +409,7 @@ issue:
 |-------|------|---------|-------------|
 | `min_reviewers` | integer | `1` | Minimum number of reviewers (fallback when no reviewers match) |
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
-| `loop.verification_mode` | boolean | `true` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
+| `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
 | `security_reviewer.mandatory` | boolean | `false` | Require security reviewer for all PRs regardless of file types |
 | `security_reviewer.recommended_for_code_changes` | boolean | `true` | Include security reviewer when executable code files are changed |
@@ -424,7 +424,7 @@ issue:
 
 The review-fix loop exits only when all findings are resolved (zero blocking findings). There is no iteration limit or progressive relaxation — every finding must be addressed.
 
-**Verification mode** (`verification_mode: true`): From cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). Set `verification_mode: false` to perform full review only every cycle.
+**Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, from cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). The default `false` performs full review only every cycle, maximizing review quality.
 
 **Review execution:**
 
