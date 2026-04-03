@@ -1631,8 +1631,8 @@ Language files use a split directory structure organized by language and domain:
 
 ```
 plugins/rite/i18n/
-├── en.yml              # English root (imports from en/)
-├── ja.yml              # Japanese root (imports from ja/)
+├── en.yml              # English (deprecated, kept for backward compatibility)
+├── ja.yml              # Japanese (deprecated, kept for backward compatibility)
 ├── en/
 │   ├── common.yml      # Common messages (shared across commands)
 │   ├── issue.yml       # Issue-related messages

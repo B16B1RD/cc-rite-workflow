@@ -1780,8 +1780,8 @@ diff 内容を LLM が解析し、以下を判断:
 
 ```
 plugins/rite/i18n/
-├── en.yml              # 英語ルート（en/ からインポート）
-├── ja.yml              # 日本語ルート（ja/ からインポート）
+├── en.yml              # 英語（deprecated、後方互換性のため保持）
+├── ja.yml              # 日本語（deprecated、後方互換性のため保持）
 ├── en/
 │   ├── common.yml      # 共通メッセージ（コマンド間で共有）
 │   ├── issue.yml       # Issue 関連メッセージ
