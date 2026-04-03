@@ -52,7 +52,6 @@ branch:
     refactor: "refactor"
     chore: "chore"
 
-# Commit style
+# Commit message
 commit:
-  style: conventional
-  enforce: true
+  contextual: true

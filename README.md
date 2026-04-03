@@ -120,7 +120,7 @@ branch:
   pattern: "{type}/issue-{number}-{slug}"
 
 commit:
-  style: conventional
+  contextual: true
 
 # Optional: Sprint/Iteration management
 iteration:

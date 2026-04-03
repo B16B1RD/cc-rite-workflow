@@ -87,8 +87,7 @@ branch:
 
 # Commit message
 commit:
-  style: conventional  # conventional | free
-  enforce: false
+  contextual: true    # Contextual Commits action lines in commit body
 
 # Build/test/lint commands
 commands:

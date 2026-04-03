@@ -442,8 +442,7 @@ branch:
 
 # コミットメッセージ
 commit:
-  style: conventional  # conventional | free
-  enforce: false  # true の場合、形式違反時に警告
+  contextual: true    # コミット本文に Contextual Commits のアクション行を含める
 
 # ビルド・テスト・リント（自動検出、または手動指定）
 commands:

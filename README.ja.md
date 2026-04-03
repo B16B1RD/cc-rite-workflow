@@ -124,7 +124,7 @@ branch:
 #   release: "main"    # main に本番リリース
 
 commit:
-  style: conventional
+  contextual: true
 
 # オプション: スプリント/イテレーション管理
 iteration:
