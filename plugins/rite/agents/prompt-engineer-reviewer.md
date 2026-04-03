@@ -56,7 +56,7 @@ For each placeholder in the file:
 
 For each technical claim in the changed file (bash behavior, tool semantics, API contracts, shell quoting rules, exit code semantics):
 - Identify the claim and the context in which it appears
-- Verify the claim against known behavior: use `Bash` to test shell semantics when possible, or cross-reference with authoritative sources
+- Verify the claim against known shell/tool behavior (e.g., `local` always returns 0 under `set -e`, `grep -c` returns exit code 1 on no match). Cross-reference with existing patterns in `commands/**/*.md` via `Grep`
 - Flag claims that are incorrect or misleading, citing the actual behavior
 - Pay special attention to: `set -e` / `set -o pipefail` interaction with `local`, `$(...)` subshell exit codes, `grep -c` exit codes, `jq` null handling, and `gh api` error responses
 
@@ -87,7 +87,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 ## Confidence Calibration
 
 - **95**: A bash command uses a variable (`$comment_id`) that is defined in a previous Bash tool call but not in the same call — shell state doesn't persist between calls
-- **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd` under `set -e`, but `local` always returns 0, masking the failure — verified with `Bash`
+- **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd` under `set -e`, but `local` always returns 0, masking the failure — verified by known shell semantics
 - **92**: A Detection Process added Step 6 but the corresponding `skills/reviewers/*.md` checklist has no item that maps to Step 6 findings — confirmed by `Read` of both files
 - **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
 - **90**: A keyword list in `_reviewer-base.md` has 5 items but the same list in `prompt-engineer-reviewer.md` has only 4 — confirmed by `Grep` + `Read`

@@ -103,7 +103,7 @@ Perform the following investigation before reporting findings:
 | Consistency with existing commands | Read | Check similar patterns in other `commands/*.md` files |
 | Consistency between phases | Read | Verify that referenced Phases exist within the same file |
 | Placeholder definitions | Grep | Search whether `{placeholder}` values are defined |
-| Technical claim accuracy | Bash/WebSearch | Verify bash semantics, tool behavior, or API contracts stated in instructions (e.g., `set -e` interaction with `local`) |
+| Technical claim accuracy | Read/Grep | Verify bash semantics and tool behavior by cross-referencing with known patterns in existing commands (e.g., `set -e` interaction with `local`) |
 | Keyword list consistency | Grep | When a list is modified, search for all other copies of the same list across the codebase |
 | Condition table completeness | Read | Verify decision/routing tables cover all valid input combinations by cross-referencing upstream producers |
 
