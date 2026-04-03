@@ -14,12 +14,12 @@ rite workflow supports multiple languages through an i18n key system. User-facin
 │   ├── common.yml  (~47 lines)  - Status, errors, branch, workflow
 │   ├── issue.yml   (~186 lines) - Issue commands
 │   ├── pr.yml      (~279 lines) - PR commands
-│   └── other.yml   (~903 lines) - Sprint, init, lint, template, resume, skill
+│   └── other.yml   (~460 lines) - Sprint, init, lint, template, resume, skill
 ├── en/
 │   ├── common.yml  (~47 lines)
 │   ├── issue.yml   (~186 lines)
 │   ├── pr.yml      (~279 lines)
-│   └── other.yml   (~903 lines)
+│   └── other.yml   (~460 lines)
 ├── ja.yml (DEPRECATED - kept for backward compatibility)
 └── en.yml (DEPRECATED - kept for backward compatibility)
 ```
@@ -281,7 +281,7 @@ The split structure reduces default session load:
 Commands load only what they need:
 - Issue commands: common (47) + issue (186) = **233 lines** (vs 945)
 - PR commands: common (47) + pr (279) = **326 lines** (vs 945)
-- Sprint commands: common (47) + other (903) = **950 lines** (similar to before, but others benefit)
+- Sprint commands: common (47) + other (460) = **507 lines** (vs 945)
 
 ## References
 
