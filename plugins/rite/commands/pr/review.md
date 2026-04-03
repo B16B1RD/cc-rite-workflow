@@ -400,7 +400,7 @@ Analyze the diff content to determine if additional expertise is needed:
 
 **Error handling keyword detection:**
 - JS/TS: `try`, `catch`, `throw`, `Error`, `reject`, `fallback`, `finally`
-- Bash: `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null`, `set -euo`
+- Bash: `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null`
 - On detection: Add Error Handling Expert
 
 **Type design keyword detection:**
