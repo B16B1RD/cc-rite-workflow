@@ -413,6 +413,13 @@ Analyze the diff content to determine if additional expertise is needed:
 - **Scope**: Only diff content is scanned (not the entire file). If the diff contains at least one fenced code block opening marker, the condition is met
 - **Note**: This does not affect `.md` files outside Prompt Engineer patterns (e.g., `docs/**/*.md`). Pure documentation `.md` changes without code blocks do not trigger this rule
 
+**Sole reviewer guard:**
+- After all keyword detection and code block detection rules above have been applied, if exactly **1 reviewer** has been selected (any reviewer type, not limited to Prompt Engineer), automatically add Code Quality reviewer as a **co-reviewer**
+- On detection: Add Code Quality reviewer as **co-reviewer** alongside the sole reviewer
+- **Condition**: The selected reviewer count is exactly 1 after all Phase 2.3 detection rules have been applied. If 2 or more reviewers are already selected, this guard does NOT activate
+- **Rationale**: A single reviewer has blind spots that cross-file consistency checks can miss. Adding a second perspective (Code Quality as baseline reviewer) mitigates this risk, following the same pattern as `pr-review-toolkit`'s always-on `code-reviewer`
+- **Note**: If Code Quality is already the sole reviewer (selected as fallback in Phase 3.2), this guard does not add a duplicate. The guard only applies when a non-Code-Quality reviewer is the sole selection
+
 ### 2.4 Create Reviewer Candidate List
 
 **`reviewer_type` format:**
