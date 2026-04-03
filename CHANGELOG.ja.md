@@ -5,6 +5,22 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.9] - 2026-04-03
+
+### 追加
+
+- レビュアー基盤強化 — `{agent_identity}` 抽出、`_reviewer-base.md` 共通原則、主要 agent 4種（security, code-quality, prompt-engineer, tech-writer）+ confidence_threshold 設定 (#292)
+- レビュアー拡充 — 残り agent 7種再構築 + 新規 reviewer 2種（error-handling, type-design）追加 (#293)
+- `schema_version` 導入 + `rite-config.yml` の自動アップグレード仕組み (#285)
+
+### 修正
+
+- deprecated な `commit.style` コード例を全ドキュメント・プロジェクトタイプテンプレートから削除 (#300, #302, #304, #305, #306)
+- ドキュメント内の config 例を `schema_version: 2` 形式に更新 (#303)
+- verification mode re-review でサブエージェント起動を必須化 (#299)
+- 推奨事項の「別 Issue 推奨」アイテムを自動 Issue 化する仕組みを追加 (#297)
+- `flow-state-update.sh` patch モードで `error_count` を 0 にリセットし、stale サーキットブレーカーを防止 (#295)
+
 ## [0.3.8] - 2026-04-01
 
 ### 追加
@@ -283,6 +299,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
