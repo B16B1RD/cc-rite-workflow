@@ -43,6 +43,7 @@ This skill is activated when reviewing files matching:
 - [ ] **Unhandled Promise Rejections**: Missing `.catch()` on Promises that can reject, especially in async chains
 - [ ] **Bash: Missing exit-on-error**: Scripts without `set -e` or `set -euo pipefail` where failed commands silently continue
 - [ ] **Bash: Unguarded error suppression**: `command || true` or `2>/dev/null` on critical operations (API calls, file writes) that hide actionable failures
+- [ ] **Bash: `local` masking exit code**: `local var=$(command)` suppresses non-zero exit code even with `set -e` — use `local var; var=$(command)` instead
 
 ### Important (Should Fix)
 
@@ -53,6 +54,7 @@ This skill is activated when reviewing files matching:
 - [ ] **Fallback Without Notification**: Returning defaults without informing the caller that the primary operation failed
 - [ ] **Bash: Missing trap cleanup**: Scripts creating temp files or holding locks without `trap 'cleanup' EXIT`
 - [ ] **Bash: Pipeline masking**: `cmd1 | cmd2` without `set -o pipefail`, hiding `cmd1` failures
+- [ ] **Bash: Unchecked command substitution**: `var=$(command)` without `set -e` silently captures empty string on failure
 
 ### Recommendations
 
