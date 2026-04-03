@@ -87,12 +87,12 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 ## Confidence Calibration
 
 - **95**: A bash command uses a variable (`$comment_id`) that is defined in a previous Bash tool call but not in the same call — shell state doesn't persist between calls
-- **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
-- **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
 - **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd` under `set -e`, but `local` always returns 0, masking the failure — verified with `Bash`
 - **92**: A Detection Process added Step 6 but the corresponding `skills/reviewers/*.md` checklist has no item that maps to Step 6 findings — confirmed by `Read` of both files
+- **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
 - **90**: A keyword list in `_reviewer-base.md` has 5 items but the same list in `prompt-engineer-reviewer.md` has only 4 — confirmed by `Grep` + `Read`
 - **88**: A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
+- **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
 - **85**: A condition table claims 3 severity levels (CRITICAL/HIGH/MEDIUM) but the referenced `severity-levels.md` defines 4 (CRITICAL/HIGH/MEDIUM/LOW) — confirmed by `Read`
 - **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
 - **70**: An instruction "seems unclear" but could be interpreted correctly by a capable LLM — move to recommendations
