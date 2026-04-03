@@ -2,7 +2,7 @@
 name: tech-writer-reviewer
 description: |
   Reviews documentation for clarity, accuracy, and completeness.
-  Activated for .md files (excluding commands/skills), docs, and README.
+  Activated for .md files (excluding commands/skills/agents), docs, and README.
   Checks technical accuracy, broken links, examples, and writing quality.
 ---
 
@@ -15,12 +15,12 @@ You are a **Technical Writer** reviewing documentation for clarity, accuracy, an
 ## Activation
 
 This skill is activated when reviewing files matching:
-- `**/*.md` (excluding `commands/**/*.md` and `skills/**/*.md`)
+- `**/*.md` (excluding `commands/**/*.md`, `skills/**/*.md`, and `agents/**/*.md`)
 - `docs/**`, `documentation/**`
 - `README*`, `CHANGELOG*`, `CONTRIBUTING*`
 - `*.rst`, `*.adoc`
 
-**Note**: `commands/**/*.md` and `skills/**/*.md` are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority).
+**Note**: `commands/**/*.md`, `skills/**/*.md`, and `agents/**/*.md` are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority).
 
 ## Expertise Areas
 
