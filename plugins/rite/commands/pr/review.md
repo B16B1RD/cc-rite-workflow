@@ -400,7 +400,7 @@ Analyze the diff content to determine if additional expertise is needed:
 
 **Error handling keyword detection:**
 - JS/TS: `try`, `catch`, `throw`, `Error`, `reject`, `fallback`, `finally`
-- Bash: `set -e`, `pipefail`, `trap`, `|| true`, `2>/dev/null`, `set -euo`
+- Bash: `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null`, `set -euo`
 - On detection: Add Error Handling Expert
 
 **Type design keyword detection:**
@@ -1633,7 +1633,7 @@ Extract candidates from **three sources**:
 
 **Source B — Recommendations (推奨事項)**: Extract items from the "推奨事項" section of the integrated report (Phase 5.4) where the "別 Issue 候補" column is ✅. No severity filter is applied (recommendations lack severity).
 
-**Source C — Pre-existing Issues (既存問題)**: Extract all items from the "既存問題（PR 対象ファイル）" section of the integrated report (Phase 5.4). All pre-existing issues are candidates for Issue creation (they are CRITICAL/HIGH by definition — only those severities are collected in Phase 5.1). Source C candidates are extracted only when the review result is `[review:mergeable]` (same as Source A/B).
+**Source C — Pre-existing Issues (既存問題)**: Extract all items from the "既存問題（PR 対象ファイル）" section of the integrated report (Phase 5.4). All pre-existing issues are candidates for Issue creation (they are CRITICAL/HIGH by definition — only those severities are collected in Phase 5.1). Source C candidates are extracted only when the review result is `[review:mergeable]`.
 
 Deduplicate across sources: if the same file:line appears in multiple sources, keep only the Source A entry (it has richer metadata). Source C entries for the same file:line as Source B are also deduplicated (keep Source C, which has severity).
 
@@ -1650,7 +1650,7 @@ If 0 candidates: Skip Phase 7. If 1+: Confirm with `AskUserQuestion` (options: C
 | 3 | 既存問題 | {file:line} | {content} | {severity} | {mapped_priority} |
 
 **Default values for pre-existing issue candidates** (Source C):
-- **Priority**: CRITICAL→High, HIGH→Medium (same as Source A)
+- **Priority**: CRITICAL→High, HIGH→Medium
 - **Complexity**: `S`
 - **Severity in Issue body**: Actual severity from the pre-existing issue table
 - **File:line**: From the pre-existing issue table

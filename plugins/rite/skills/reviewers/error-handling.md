@@ -3,7 +3,8 @@ name: error-handling-reviewer
 description: |
   Reviews error handling patterns for silent failures, inadequate logging,
   and inappropriate fallback behavior.
-  Activated for files containing try/catch, throw, Error, reject, or fallback patterns.
+  Activated for files containing try/catch, throw, Error, reject, fallback patterns (JS/TS)
+  or set -e, pipefail, trap, || true patterns (Bash).
   Checks error propagation, logging quality, catch specificity, and silent failure detection.
 ---
 
@@ -17,7 +18,7 @@ You are an **Error Handling Expert** reviewing error handling patterns, silent f
 
 This skill is activated when reviewing files matching:
 - Any file containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords in the diff (JS/TS/general)
-- Any file containing `set -e`, `pipefail`, `trap`, `|| true`, `2>/dev/null` keywords in the diff (Bash)
+- Any file containing `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords in the diff (Bash)
 - `**/*.ts`, `**/*.js`, `**/*.tsx`, `**/*.jsx` (primary)
 - `**/*.sh`, `**/hooks/**/*.sh` (bash scripts)
 - `**/*.py`, `**/*.go`, `**/*.rs`, `**/*.java` (secondary)

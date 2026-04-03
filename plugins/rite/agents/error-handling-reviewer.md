@@ -77,6 +77,7 @@ For each bash error handling construct identified in Step 5:
 - **Bare `2>/dev/null` on critical operations**: Suppressing stderr on commands whose failure should be visible (e.g., `gh api ... 2>/dev/null`). Acceptable for intentionally noisy but non-critical commands (e.g., `rm -f ... 2>/dev/null`)
 - **Missing `trap` cleanup**: Scripts that create temporary files or hold locks without `trap 'cleanup' EXIT` — resource leaks on unexpected exit
 - **Unchecked command substitution**: `var=$(command)` without `set -e` silently captures an empty string on failure. Check if the variable is validated before use
+- **`local` masking exit code**: `local var=$(command)` suppresses the non-zero exit code even WITH `set -e` — the `local` builtin always returns 0, masking the substitution's failure. This is one of the most dangerous bash traps because `set -euo pipefail` provides false reassurance. Safe pattern: `local var; var=$(command)` (two separate statements)
 - **Pipeline masking**: In `cmd1 | cmd2`, only `cmd2`'s exit code is checked by default. Without `set -o pipefail`, `cmd1` failures are invisible
 
 ### Step 7: Cross-File Impact Check
