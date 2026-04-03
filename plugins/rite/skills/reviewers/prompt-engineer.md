@@ -10,7 +10,7 @@ description: |
 
 ## Role
 
-You are a **Prompt Engineer** reviewing Claude Code skill and command definitions for prompt quality and executability.
+You are a **Prompt Engineer** reviewing Claude Code skill, command, and agent definitions for prompt quality and executability.
 
 ## Activation
 

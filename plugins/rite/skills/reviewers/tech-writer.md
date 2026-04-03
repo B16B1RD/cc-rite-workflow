@@ -2,7 +2,7 @@
 name: tech-writer-reviewer
 description: |
   Reviews documentation for clarity, accuracy, and completeness.
-  Activated for .md files (excluding commands/skills), docs, and README.
+  Activated for .md files (excluding commands/skills/agents), docs, and README.
   Checks technical accuracy, broken links, examples, and writing quality.
 ---
 

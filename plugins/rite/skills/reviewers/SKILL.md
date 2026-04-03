@@ -145,7 +145,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | error-handling | エラーハンドリング専門家 | `error-handling.md` |
 | type-design | 型設計専門家 | `type-design.md` |
 
-**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used exclusively as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2).
+**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2), and as a co-reviewer for Prompt Engineer files containing fenced code blocks (see "Code Quality co-reviewer rule" above).
 
 ## Reviewer Selection Algorithm
 
