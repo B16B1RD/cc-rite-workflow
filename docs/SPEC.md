@@ -373,7 +373,6 @@ schema_version: 2
 # Project settings
 project:
   type: webapp  # generic | webapp | library | cli | documentation
-  name: "My Project"
 
 # GitHub Projects integration
 github:
@@ -418,27 +417,17 @@ github:
       category:
         enabled: true
         options:
-          - { name: "BLOCKS" }
-          - { name: "Autonomous" }
-          - { name: "ComPath" }
-          - { name: "Migration" }
+          - { name: "Frontend" }
+          - { name: "Backend" }
+          - { name: "Infrastructure" }
           - { name: "Other" }
 
 # Branch naming rules (fully customizable)
 branch:
   # Base branch for feature branches (default PR target)
   base: "main"      # default: main (use "develop" for Git Flow)
-  # Release branch (for production releases)
-  release: "main"   # default: main
   pattern: "{type}/issue-{number}-{slug}"
   # Available variables: {type}, {number}, {slug}, {date}, {user}
-  types:
-    feature: "feat"
-    bugfix: "fix"
-    documentation: "docs"
-    refactor: "refactor"
-    chore: "chore"
-    style: "style"
 
 # Commit message
 commit:
@@ -465,11 +454,6 @@ notifications:
   slack:
     enabled: false
     webhook_url: null
-    events:
-      - issue_created
-      - pr_created
-      - pr_ready
-      - review_completed
   discord:
     enabled: false
     webhook_url: null
@@ -1036,6 +1020,7 @@ iteration:
 |------|--------|---------|
 | SessionStart | Session start | Load work memory, detect interrupted work |
 | PreCompact | Before compact | Save work memory, record compact state |
+| PostCompact | After compact | Restore work memory, clean compact state |
 | SessionEnd | Session end | Save final state |
 | Stop | On stop attempt (event-driven) | Prevent premature workflow stops |
 | PreToolUse | Before tool execution | Block tool usage after compact, detect dangerous command patterns |
@@ -1313,11 +1298,6 @@ notifications:
   slack:
     enabled: true
     webhook_url: "https://hooks.slack.com/services/..."
-    events:
-      - issue_created
-      - pr_created
-      - pr_ready
-      - review_completed
 ```
 
 ### Discord

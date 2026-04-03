@@ -373,7 +373,6 @@ schema_version: 2
 # プロジェクト基本設定
 project:
   type: webapp  # generic | webapp | library | cli | documentation
-  name: "My Project"
 
 # GitHub Projects 連携
 github:
@@ -418,27 +417,17 @@ github:
       category:
         enabled: true
         options:
-          - { name: "BLOCKS" }
-          - { name: "Autonomous" }
-          - { name: "ComPath" }
-          - { name: "Migration" }
+          - { name: "Frontend" }
+          - { name: "Backend" }
+          - { name: "Infrastructure" }
           - { name: "Other" }
 
 # ブランチ命名規則（完全カスタマイズ）
 branch:
   # フィーチャーブランチを切る元（PR のデフォルトマージ先）
   base: "main"      # デフォルト: main（Git Flow の場合は "develop"）
-  # リリース用ブランチ（本番リリース先）
-  release: "main"   # デフォルト: main
   pattern: "{type}/issue-{number}-{slug}"
   # 利用可能な変数: {type}, {number}, {slug}, {date}, {user}
-  types:
-    feature: "feat"
-    bugfix: "fix"
-    documentation: "docs"
-    refactor: "refactor"
-    chore: "chore"
-    style: "style"
 
 # コミットメッセージ
 commit:
@@ -465,11 +454,6 @@ notifications:
   slack:
     enabled: false
     webhook_url: null
-    events:
-      - issue_created
-      - pr_created
-      - pr_ready
-      - review_completed
   discord:
     enabled: false
     webhook_url: null
@@ -1180,6 +1164,7 @@ iteration:
 |--------|-----------|------|
 | SessionStart | セッション開始時 | 作業メモリの読み込み、中断作業の検出 |
 | PreCompact | コンパクト前 | 作業メモリの保存、compact 状態の記録 |
+| PostCompact | コンパクト後 | 作業メモリの復元、compact 状態のクリーンアップ |
 | SessionEnd | セッション終了時 | 最終状態の保存 |
 | Stop | 停止試行時（イベント駆動） | ワークフロー中の早期停止を防止 |
 | PreToolUse | ツール実行前 | compact 後のツール使用ブロック、危険なコマンドパターンの検出 |
@@ -1457,11 +1442,6 @@ notifications:
   slack:
     enabled: true
     webhook_url: "https://hooks.slack.com/services/..."
-    events:
-      - issue_created
-      - pr_created
-      - pr_ready
-      - review_completed
 ```
 
 ### Discord
