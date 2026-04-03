@@ -91,7 +91,7 @@ review:
     - file_types
     - content_analysis
   loop:
-    verification_mode: true
+    verification_mode: false
     allow_new_findings_in_unchanged_code: false
   security_reviewer:
     mandatory: false

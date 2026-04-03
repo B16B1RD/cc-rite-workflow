@@ -79,7 +79,7 @@ review:
     - file_types
     - content_analysis
   loop:
-    verification_mode: true     # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: true）
+    verification_mode: false    # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: false）
     allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
   security_reviewer:
     mandatory: false                          # 全 PR で必須選定するか（デフォルト: false）

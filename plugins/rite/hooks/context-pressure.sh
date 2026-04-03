@@ -104,7 +104,7 @@ fi
 
 # Phase-aware threshold adjustment:
 # - Implementation phase (phase5_implementation): Higher thresholds (+10, more tool calls expected)
-# - Review/fix phase (phase5_review, phase5_fix): Lower thresholds (-10, already deep in context)
+# - Review/fix phase (phase5_review, phase5_fix): Higher thresholds (+30, review quality > context optimization)
 # - Other phases: Default thresholds
 case "$PHASE" in
   phase5_implementation|phase5_lint)
@@ -113,9 +113,9 @@ case "$PHASE" in
     RED=$((BASE_RED + 10))
     ;;
   phase5_review|phase5_fix|phase5_post_review|phase5_post_fix)
-    YELLOW=$((BASE_YELLOW - 10))
-    ORANGE=$((BASE_ORANGE - 10))
-    RED=$((BASE_RED - 10))
+    YELLOW=$((BASE_YELLOW + 30))
+    ORANGE=$((BASE_ORANGE + 30))
+    RED=$((BASE_RED + 30))
     ;;
   *)
     YELLOW=$BASE_YELLOW
@@ -124,16 +124,30 @@ case "$PHASE" in
     ;;
 esac
 
+# Phase detection for review/fix loop
+is_review_fix_phase() {
+  case "$PHASE" in
+    phase5_review|phase5_fix|phase5_post_review|phase5_post_fix) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Graduated response (each threshold triggers exactly once)
 if [ "$count" -eq "$YELLOW" ]; then
   echo "[rite] ⚠️ Context pressure: ${count} tool calls (phase: ${PHASE}). 出力を簡潔にしてください。" >&2
 elif [ "$count" -eq "$ORANGE" ]; then
-  # stdout: hint to model for output optimization + context reset recommendation
-  echo "[rite] Context optimization mode activated. Minimize all output. Skip optional displays. Use result patterns only. Consider recommending /clear + /rite:resume to the user — work memory will preserve state for seamless resumption."
-  echo "[rite] 🟠 High context pressure: ${count} tool calls. Work memory を保存し、/clear で再開することを推奨します。/rite:resume で状態を復元できます。" >&2
+  if is_review_fix_phase; then
+    # Review/fix phase: Do NOT recommend interrupting the loop
+    echo "[rite] Context optimization mode activated. Minimize all output. Skip optional displays. Use result patterns only. Do NOT terminate the review-fix loop — review quality takes priority over context optimization."
+    echo "[rite] 🟠 High context pressure: ${count} tool calls (phase: ${PHASE}). レビュー・修正ループを継続してください。ループ完了後に /clear + /rite:resume を検討してください。" >&2
+  else
+    # Other phases: recommend /clear + /rite:resume
+    echo "[rite] Context optimization mode activated. Minimize all output. Skip optional displays. Use result patterns only. Consider recommending /clear + /rite:resume to the user — work memory will preserve state for seamless resumption."
+    echo "[rite] 🟠 High context pressure: ${count} tool calls. Work memory を保存し、/clear で再開することを推奨します。/rite:resume で状態を復元できます。" >&2
+  fi
   # Auto-save work memory at ORANGE threshold for safe context reset
   if [ -f "$SCRIPT_DIR/local-wm-update.sh" ]; then
-    ISSUE_NUM=$(jq -r '.issue // empty' "$FLOW_STATE" 2>/dev/null)
+    ISSUE_NUM=$(jq -r '.issue_number // empty' "$FLOW_STATE" 2>/dev/null)
     if [ -n "$ISSUE_NUM" ] && [ "$ISSUE_NUM" != "null" ]; then
       WM_SOURCE="context-pressure" \
         WM_PHASE="$PHASE" \
@@ -145,6 +159,12 @@ elif [ "$count" -eq "$ORANGE" ]; then
     fi
   fi
 elif [ "$count" -eq "$RED" ]; then
-  echo "[rite] CRITICAL: Context limit approaching. Complete current phase and prepare for /compact. Save state to work memory NOW."
-  echo "[rite] 🔴 Critical context pressure: ${count} tool calls. /compact を強く推奨します。" >&2
+  if is_review_fix_phase; then
+    # Review/fix phase: Do NOT recommend interrupting the loop
+    echo "[rite] CRITICAL: Context limit approaching. Do NOT terminate the review-fix loop. Complete the current review-fix cycle, then prepare for /compact after the loop exits."
+    echo "[rite] 🔴 Critical context pressure: ${count} tool calls (phase: ${PHASE}). レビュー・修正ループを完了してから /compact を実行してください。" >&2
+  else
+    echo "[rite] CRITICAL: Context limit approaching. Complete current phase and prepare for /compact. Save state to work memory NOW."
+    echo "[rite] 🔴 Critical context pressure: ${count} tool calls. /compact を強く推奨します。" >&2
+  fi
 fi

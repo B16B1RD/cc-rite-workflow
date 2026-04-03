@@ -792,7 +792,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 
 **Review-Fix Cycle Continuation:** The `/rite:pr:review` → `/rite:pr:fix` → `/rite:pr:review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The loop exits only when all findings are resolved — there is no iteration limit or progressive relaxation.
 
-**Verification mode** (`review.loop.verification_mode`): From cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns".
+**Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every cycle, maximizing review quality.
 
 **Definition of "Approve":** Zero blocking findings.
 

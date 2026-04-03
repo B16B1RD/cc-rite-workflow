@@ -209,7 +209,9 @@ Determine the review mode based on whether a previous review result comment exis
 
 **Loading configuration:**
 
-Retrieve `review.loop.verification_mode` from `rite-config.yml` (default: `true`).
+Retrieve `review.loop.verification_mode` from `rite-config.yml` (default: `false`).
+
+> **推奨**: レビュー品質を最大化するため、デフォルトの `false`（毎回フルレビュー）を維持することを推奨します。`true` に設定すると 2 回目以降で verification mode が有効になりますが、レビューの網羅性が低下する可能性があります。
 
 **Determination logic:**
 
