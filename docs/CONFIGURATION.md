@@ -17,7 +17,6 @@ schema_version: 2
 # Project settings
 project:
   type: webapp  # generic | webapp | library | cli | documentation
-  name: "My Project"
 
 # GitHub Projects integration
 github:
@@ -75,15 +74,7 @@ github:
 # Branch naming rules
 branch:
   base: "main"       # Base branch for feature branches (use "develop" for Git Flow)
-  release: "main"    # Release branch for production releases
   pattern: "{type}/issue-{number}-{slug}"
-  types:
-    feature: "feat"
-    bugfix: "fix"
-    documentation: "docs"
-    refactor: "refactor"
-    chore: "chore"
-    style: "style"
 
 # Commit message
 commit:
@@ -114,6 +105,11 @@ review:
   debate:
     enabled: true            # Enable inter-reviewer debate phase (default: true)
     max_rounds: 1            # Maximum debate rounds for cost control (default: 1)
+  confidence_threshold: 80   # Minimum confidence score for findings table (default: 80)
+  fact_check:
+    enabled: true            # Enable fact-check phase for review findings (default: true)
+    max_claims: 10           # Maximum number of claims to verify per review (default: 10)
+    use_context7: false      # Use context7 MCP tool for verification (default: false)
 
 # Iteration/Sprint settings (optional)
 iteration:
@@ -150,7 +146,6 @@ team:
 
 # Safety settings (fail-closed thresholds)
 safety:
-  max_review_fix_loops: 7          # review-fix loop hard limit (default: 7)
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
@@ -160,23 +155,12 @@ safety:
 metrics:
   enabled: true            # Enable/disable metrics recording (default: true)
   baseline_issues: 3       # Number of Issues for baseline collection (default: 3)
-  thresholds:
-    plan_deviation_rate: 30       # Max plan vs actual step divergence in % (default: 30)
-    test_pass_rate: 100           # Required test pass rate at PR creation in % (default: 100)
-    review_fix_loops: 3           # Max acceptable review-fix loop count (default: 3)
-    review_critical_high_improvement: 0.80  # MA5 improvement factor for CRITICAL+HIGH (default: 0.80)
-    plan_deviation_improvement: 0.90        # MA5 improvement factor for plan deviation (default: 0.90)
 
 # Notification settings
 notifications:
   slack:
     enabled: false
     webhook_url: null
-    events:
-      - issue_created
-      - pr_created
-      - pr_ready
-      - review_completed
   discord:
     enabled: false
     webhook_url: null
@@ -195,7 +179,6 @@ language: auto  # auto | ja | en
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `type` | string | `generic` | Project type: `generic`, `webapp`, `library`, `cli`, `documentation` |
-| `name` | string | Repository name | Project display name |
 
 ### github.projects
 
@@ -308,9 +291,7 @@ github:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `base` | string | `main` | Base branch for feature branches (PR target). Use `develop` for Git Flow. |
-| `release` | string | `main` | Release branch for production releases |
 | `pattern` | string | `{type}/issue-{number}-{slug}` | Branch name pattern |
-| `types` | object | See example | Mapping of work types to prefixes |
 
 **Git Flow Support:**
 
@@ -319,7 +300,6 @@ For Git Flow workflows, configure:
 ```yaml
 branch:
   base: "develop"    # Feature branches are created from develop
-  release: "main"    # Production releases go to main
 ```
 
 This affects the following commands:
@@ -377,8 +357,7 @@ These variables are used in `branch.pattern` to generate new branch names:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `style` | string | `conventional` | Commit style: `conventional` or `free` |
-| `enforce` | boolean | `false` | Warn on format violation if true |
+| `contextual` | boolean | `true` | Include Contextual Commits action lines in commit body |
 
 ### commands
 
@@ -436,6 +415,10 @@ issue:
 | `security_reviewer.recommended_for_code_changes` | boolean | `true` | Include security reviewer when executable code files are changed |
 | `debate.enabled` | boolean | `true` | Enable inter-reviewer debate phase |
 | `debate.max_rounds` | integer | `1` | Maximum debate rounds (cost control) |
+| `confidence_threshold` | integer | `80` | Minimum confidence score for findings to be included in findings table |
+| `fact_check.enabled` | boolean | `true` | Enable fact-check phase for review findings |
+| `fact_check.max_claims` | integer | `10` | Maximum number of claims to verify per review |
+| `fact_check.use_context7` | boolean | `false` | Use context7 MCP tool for verification |
 
 **Review-fix loop convergence:**
 
@@ -464,6 +447,8 @@ The following specialized reviewers are automatically selected based on the chan
 | `dependencies-reviewer` | Package dependencies, versions, supply chain security |
 | `prompt-engineer-reviewer` | Claude Code skill and command definitions |
 | `tech-writer-reviewer` | Documentation clarity, accuracy, completeness |
+| `error-handling-reviewer` | Silent failures, error propagation, catch block quality |
+| `type-design-reviewer` | Type encapsulation, invariant expression, enforcement |
 
 **Reviewer selection:**
 
@@ -635,7 +620,6 @@ Fail-closed safety thresholds to prevent runaway workflows.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `max_review_fix_loops` | integer | `7` | Hard limit for review-fix loop iterations. Acts as a safety net to prevent runaway loops |
 | `max_implementation_rounds` | integer | `20` | Hard limit for implementation rounds per Issue (re-entries from checklist failures) |
 | `time_budget_minutes` | integer | `120` | Advisory time budget per Issue in minutes (not enforced by timer) |
 | `auto_stop_on_repeated_failure` | boolean | `true` | Stop workflow when the same failure class repeats consecutively |
@@ -645,7 +629,6 @@ Fail-closed safety thresholds to prevent runaway workflows.
 
 ```yaml
 safety:
-  max_review_fix_loops: 7
   max_implementation_rounds: 20
   time_budget_minutes: 120
   auto_stop_on_repeated_failure: true
@@ -667,11 +650,8 @@ Settings for workflow execution metrics recording and threshold evaluation.
 |-------|------|---------|-------------|
 | `enabled` | boolean | `true` | Enable/disable metrics recording |
 | `baseline_issues` | integer | `3` | Number of Issues to complete before threshold evaluation begins (measure-only period) |
-| `thresholds.plan_deviation_rate` | integer | `30` | Maximum allowed plan vs actual step divergence (%) |
-| `thresholds.test_pass_rate` | integer | `100` | Required test pass rate at PR creation (%) |
-| `thresholds.review_fix_loops` | integer | `3` | Maximum acceptable review-fix loop count |
-| `thresholds.review_critical_high_improvement` | float | `0.80` | MA5 improvement factor for CRITICAL+HIGH findings |
-| `thresholds.plan_deviation_improvement` | float | `0.90` | MA5 improvement factor for plan deviation count |
+
+> **Note**: Metric thresholds (`plan_deviation_rate`, `test_pass_rate`, `review_fix_loops`, etc.) are currently hardcoded in the implementation. Configurable thresholds via `rite-config.yml` are planned for a future release.
 
 **Example:**
 
@@ -679,12 +659,6 @@ Settings for workflow execution metrics recording and threshold evaluation.
 metrics:
   enabled: true
   baseline_issues: 3
-  thresholds:
-    plan_deviation_rate: 30
-    test_pass_rate: 100
-    review_fix_loops: 3
-    review_critical_high_improvement: 0.80
-    plan_deviation_improvement: 0.90
 ```
 
 **How metrics work:**
@@ -702,17 +676,6 @@ Each notification service (slack, discord, teams) can have:
 |-------|------|-------------|
 | `enabled` | boolean | Enable this notification service |
 | `webhook_url` | string | Webhook URL for the service |
-| `events` | array | List of events to notify (slack only) |
-
-**Available events:**
-
-| Event | Description |
-|-------|-------------|
-| `issue_created` | When Issue is created |
-| `issue_started` | When work is started |
-| `pr_created` | When PR is created |
-| `pr_ready` | When PR is marked Ready for review |
-| `review_completed` | When review is completed |
 
 ### language
 

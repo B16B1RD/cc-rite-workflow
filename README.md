@@ -75,6 +75,7 @@ This will:
 | `/rite:pr:review` | Multi-reviewer review |
 | `/rite:pr:fix` | Address review feedback |
 | `/rite:pr:cleanup` | Post-merge cleanup |
+| `/rite:investigate` | Structured code investigation |
 | `/rite:lint` | Run quality checks |
 | `/rite:template:reset` | Regenerate templates |
 | `/rite:sprint:list` | List Sprints (optional) |
@@ -116,7 +117,6 @@ github:
 
 branch:
   base: "main"       # Base branch for feature branches (use "develop" for Git Flow)
-  release: "main"    # Release branch for production deployments
   pattern: "{type}/issue-{number}-{slug}"
 
 commit:
