@@ -228,8 +228,8 @@ rite-workflow/
 │   ├── graphql-helpers.md
 │   └── ...                   # その他リファレンス
 ├── i18n/
-│   ├── ja.yml              # 日本語ルート
-│   ├── en.yml              # 英語ルート
+│   ├── ja.yml              # 日本語（deprecated、後方互換性のため保持）
+│   ├── en.yml              # 英語（deprecated、後方互換性のため保持）
 │   ├── ja/                 # 日本語分割ファイル
 │   │   ├── common.yml
 │   │   ├── issue.yml
