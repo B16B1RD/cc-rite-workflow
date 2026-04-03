@@ -19,7 +19,10 @@ This skill is activated as a **fallback reviewer** when:
 - Files don't fit into specific categories (API, database, etc.)
 - General code changes that need quality assessment
 
-This is a catch-all reviewer that ensures all PRs receive at least one review perspective.
+Additionally, this skill is activated as a **co-reviewer** when:
+- `.md` files matching Prompt Engineer patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) contain fenced code blocks in the diff (see `review.md` Phase 2.3 "Code block detection")
+
+This is a catch-all reviewer that ensures all PRs receive at least one review perspective, and a co-reviewer for prompt engineering files that embed executable code snippets.
 
 ## Expertise Areas
 

@@ -378,7 +378,7 @@ Match changed files against the pattern table in SKILL.md.
 Match changed files against the Available Reviewers table in `skills/reviewers/SKILL.md` (source of truth for file patterns). Each skill file's Activation section defines detailed patterns.
 
 **Pattern priority rules:**
-1. `commands/**/*.md`, `skills/**/*.md` -> Prompt Engineer (highest priority)
+1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
 2. Other `**/*.md` -> Technical Writer
 3. If matching multiple patterns, include all matching reviewers as candidates
 
@@ -406,6 +406,12 @@ Analyze the diff content to determine if additional expertise is needed:
 **Type design keyword detection:**
 - `interface`, `type`, `enum`, `class`, `struct`, `readonly`, `generic`
 - On detection: Add Type Design Expert
+
+**Code block detection in `.md` files:**
+- When changed files include `.md` files matching Prompt Engineer patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`), scan the diff for fenced code blocks (` ```bash `, ` ```sh `, ` ```yaml `, ` ```python `, ` ```json `, ` ```javascript `, ` ```typescript `, or untyped ` ``` `)
+- On detection: Add Code Quality reviewer as **co-reviewer** alongside Prompt Engineer
+- **Scope**: Only diff content is scanned (not the entire file). If the diff contains at least one fenced code block opening marker, the condition is met
+- **Note**: This does not affect `.md` files outside Prompt Engineer patterns (e.g., `docs/**/*.md`). Pure documentation `.md` changes without code blocks do not trigger this rule
 
 ### 2.4 Create Reviewer Candidate List
 
