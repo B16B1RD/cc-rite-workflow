@@ -149,10 +149,15 @@ elif [ "$count" -eq "$ORANGE" ]; then
   if [ -f "$SCRIPT_DIR/local-wm-update.sh" ]; then
     ISSUE_NUM=$(jq -r '.issue_number // empty' "$FLOW_STATE" 2>/dev/null)
     if [ -n "$ISSUE_NUM" ] && [ "$ISSUE_NUM" != "null" ]; then
+      if is_review_fix_phase; then
+        WM_NEXT="レビュー・修正ループを継続中。ループ完了後に /clear + /rite:resume を実行"
+      else
+        WM_NEXT="出力最小化モード。/clear + /rite:resume を推奨"
+      fi
       WM_SOURCE="context-pressure" \
         WM_PHASE="$PHASE" \
         WM_PHASE_DETAIL="コンテキスト圧迫検出" \
-        WM_NEXT_ACTION="出力最小化モード。/clear + /rite:resume を推奨" \
+        WM_NEXT_ACTION="$WM_NEXT" \
         WM_BODY_TEXT="Auto-saved at ORANGE threshold (${count} tool calls)." \
         WM_ISSUE_NUMBER="$ISSUE_NUM" \
         bash "$SCRIPT_DIR/local-wm-update.sh" 2>/dev/null || true
