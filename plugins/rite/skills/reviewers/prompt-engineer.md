@@ -37,6 +37,8 @@ This skill is activated when reviewing files matching:
 - [ ] **Impossible Tasks**: Steps Claude cannot execute (missing tools, capabilities)
 - [ ] **Circular Logic**: Instructions that reference themselves or create loops
 - [ ] **Conflicting Instructions**: Contradictory steps in the same flow
+- [ ] **Inaccurate Technical Claims**: Assertions about tool behavior, shell semantics, or API contracts that contradict actual behavior (e.g., claiming `local var=$(cmd)` is safe under `set -e`)
+- [ ] **Enumeration / Keyword List Inconsistency**: A list (severity levels, phase names, status values, tool names) modified in one file but not updated in other files that duplicate or reference the same list
 
 ### Important (Should Fix)
 
@@ -45,6 +47,9 @@ This skill is activated when reviewing files matching:
 - [ ] **Phase Gaps**: Missing transitions between phases
 - [ ] **Tool Misuse**: Incorrect tool selection or parameters
 - [ ] **Assumption Leaks**: Implicit assumptions not validated
+- [ ] **Condition Table Coverage Gaps**: Decision/routing tables missing branches for valid input combinations or edge cases
+- [ ] **Detection-Checklist Misalignment**: Detection Process steps that have no corresponding checklist item, or checklist items with no detection step to surface them
+- [ ] **Stale Cross-References**: Phase numbers, step numbers, or section names referenced in text that no longer match the actual heading structure after renumbering
 
 ### Recommendations
 
@@ -98,6 +103,9 @@ Perform the following investigation before reporting findings:
 | Consistency with existing commands | Read | Check similar patterns in other `commands/*.md` files |
 | Consistency between phases | Read | Verify that referenced Phases exist within the same file |
 | Placeholder definitions | Grep | Search whether `{placeholder}` values are defined |
+| Technical claim accuracy | Bash/WebSearch | Verify bash semantics, tool behavior, or API contracts stated in instructions (e.g., `set -e` interaction with `local`) |
+| Keyword list consistency | Grep | When a list is modified, search for all other copies of the same list across the codebase |
+| Condition table completeness | Read | Verify decision/routing tables cover all valid input combinations by cross-referencing upstream producers |
 
 ### Prohibited vs Required Findings
 

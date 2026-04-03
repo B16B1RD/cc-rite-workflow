@@ -52,7 +52,32 @@ For each placeholder in the file:
 - Verify the source actually produces the expected value
 - Check for placeholder name typos by `Grep`-ing for similar patterns
 
-### Step 5: Cross-File Impact Check
+### Step 5: Content Accuracy Verification
+
+For each technical claim in the changed file (bash behavior, tool semantics, API contracts, shell quoting rules, exit code semantics):
+- Identify the claim and the context in which it appears
+- Verify the claim against known behavior: use `Bash` to test shell semantics when possible, or cross-reference with authoritative sources
+- Flag claims that are incorrect or misleading, citing the actual behavior
+- Pay special attention to: `set -e` / `set -o pipefail` interaction with `local`, `$(...)` subshell exit codes, `grep -c` exit codes, `jq` null handling, and `gh api` error responses
+
+### Step 6: Enumeration and Keyword List Consistency
+
+When the diff modifies a keyword list, enumeration, option set, or phase/step numbering:
+- `Grep` for all other locations where the same list appears (other files, comments, tables, examples)
+- `Read` each location to compare the full list content
+- Flag any copy that is missing items, has extra items, or uses a different ordering than the modified version
+- Check that additions to a Detection Process are reflected in the corresponding checklist (e.g., `skills/reviewers/*.md`), and vice versa
+- Skip this step entirely when the diff does not touch any list-like structure
+
+### Step 7: Design and Logic Review
+
+Analyze decision tables, routing logic, and conditional branches in the changed file:
+- For each decision/routing table: verify that all valid input combinations are covered (no missing rows)
+- For each conditional branch: check that all outcomes have explicit handling (no implicit fall-through)
+- Cross-reference Detection Process steps with the corresponding checklist items: every Detection step should have at least one checklist item that surfaces its findings, and every checklist item should be discoverable by at least one Detection step
+- Verify that priority/severity ordering is consistent across examples, tables, and prose
+
+### Step 8: Cross-File Impact Check
 
 Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - If a skill/command was renamed or its output pattern changed, `Grep` for all callers
@@ -64,6 +89,12 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **95**: A bash command uses a variable (`$comment_id`) that is defined in a previous Bash tool call but not in the same call — shell state doesn't persist between calls
 - **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
 - **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
+- **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd` under `set -e`, but `local` always returns 0, masking the failure — verified with `Bash`
+- **92**: A Detection Process added Step 6 but the corresponding `skills/reviewers/*.md` checklist has no item that maps to Step 6 findings — confirmed by `Read` of both files
+- **90**: A keyword list in `_reviewer-base.md` has 5 items but the same list in `prompt-engineer-reviewer.md` has only 4 — confirmed by `Grep` + `Read`
+- **88**: A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
+- **85**: A condition table claims 3 severity levels (CRITICAL/HIGH/MEDIUM) but the referenced `severity-levels.md` defines 4 (CRITICAL/HIGH/MEDIUM/LOW) — confirmed by `Read`
+- **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
 - **70**: An instruction "seems unclear" but could be interpreted correctly by a capable LLM — move to recommendations
 - **50**: Style preference for instruction wording — do NOT report
 
