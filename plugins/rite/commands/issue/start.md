@@ -462,7 +462,7 @@ Count: Tool results in history (parallel=1). Read=sum max line numbers. Changed=
 
 **Optimizations**: Per-file diff, omit error details, summarize loops ("Cycle N: X→fix"), incremental retrieval. Display "⚠️ Context optimization mode".
 
-**Context pressure guard for review-fix loop**: `context-pressure.sh` は review/fix フェーズ（`phase5_review`, `phase5_fix`, `phase5_post_review`, `phase5_post_fix`）では閾値を +30 調整し、ORANGE/RED メッセージでループの中断を禁止する指示を出力する。これにより、レビュー品質を犠牲にしたコンテキスト最適化を防止する。
+**Context pressure guard for review-fix loop**: During review/fix phases (`phase5_review`, `phase5_fix`, `phase5_post_review`, `phase5_post_fix`), `context-pressure.sh` adjusts thresholds by +30 and outputs ORANGE/RED messages that prohibit loop interruption. This prevents context optimization from compromising review quality.
 
 **Split/termination**:
 - >50 files → new session recommended

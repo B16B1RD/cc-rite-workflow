@@ -124,7 +124,8 @@ context_optimization:
   agent_delegation: false            # Enable agent delegation for review-fix loop under context pressure
   agent_delegation_threshold: 80     # Tool call count threshold to trigger agent delegation
   pressure_thresholds:
-    yellow: 60                       # Warning threshold (phase-aware: impl/lint +10, review/fix +30, default ±0)
+    # All thresholds are phase-aware: impl/lint +10, review/fix +30, default ±0
+    yellow: 60                       # Warning threshold
     orange: 90                       # Optimization mode activation threshold
     red: 120                         # Critical / compact recommendation threshold
 

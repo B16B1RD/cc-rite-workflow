@@ -65,7 +65,7 @@ count=$((count + 1))
 echo "$count" > "$COUNTER_FILE" 2>/dev/null || true
 chmod 600 "$COUNTER_FILE" 2>/dev/null || true
 
-# PHASE is already set from the single jq call above (line 26)
+# PHASE is already set from the single jq call above
 
 # Default thresholds (used for early return check before config read)
 BASE_YELLOW=60
@@ -125,6 +125,8 @@ case "$PHASE" in
 esac
 
 # Phase detection for review/fix loop
+# NOTE: Returns 1 for non-matching phases. Under set -e, callers
+# MUST use it in an if/while/||/&& context to prevent script abort.
 is_review_fix_phase() {
   case "$PHASE" in
     phase5_review|phase5_fix|phase5_post_review|phase5_post_fix) return 0 ;;
@@ -147,7 +149,7 @@ elif [ "$count" -eq "$ORANGE" ]; then
   fi
   # Auto-save work memory at ORANGE threshold for safe context reset
   if [ -f "$SCRIPT_DIR/local-wm-update.sh" ]; then
-    ISSUE_NUM=$(jq -r '.issue_number // empty' "$FLOW_STATE" 2>/dev/null)
+    ISSUE_NUM=$(jq -r '.issue_number // empty' "$FLOW_STATE" 2>/dev/null) || ISSUE_NUM=""
     if [ -n "$ISSUE_NUM" ] && [ "$ISSUE_NUM" != "null" ]; then
       if is_review_fix_phase; then
         WM_NEXT="レビュー・修正ループを継続中。ループ完了後に /clear + /rite:resume を実行"
