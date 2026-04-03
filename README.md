@@ -4,7 +4,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.3.8-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.3.8)
+[![Version](https://img.shields.io/badge/version-0.3.9-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.3.9)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Why "Rite"?
@@ -105,7 +105,7 @@ Create   Start Work   Set Ready  Merged
 Create `rite-config.yml` in your project root:
 
 ```yaml
-version: "1.0"
+schema_version: 2
 
 project:
   type: webapp  # generic | webapp | library | cli | documentation
@@ -120,7 +120,7 @@ branch:
   pattern: "{type}/issue-{number}-{slug}"
 
 commit:
-  style: conventional
+  contextual: true
 
 # Optional: Sprint/Iteration management
 iteration:

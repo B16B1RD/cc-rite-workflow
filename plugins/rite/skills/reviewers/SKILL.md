@@ -5,8 +5,9 @@ description: |
   or when user asks for "code review", "PR feedback", "security check", "review
   my changes", "レビューして", "PRレビュー", "コードチェック", "セキュリティ確認",
   "変更を確認", "コードレビュー". Spawns specialized reviewers (Security, API,
-  Database, DevOps, Frontend, Test, Dependencies, Prompt Engineer, Tech Writer)
-  based on changed file patterns. Produces unified findings with severity levels.
+  Database, DevOps, Frontend, Test, Dependencies, Prompt Engineer, Tech Writer,
+  Code Quality, Error Handling, Type Design) based on changed file patterns.
+  Produces unified findings with severity levels.
 disable-model-invocation: true
 ---
 
@@ -38,6 +39,8 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 | Dependencies Expert | `dependencies.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
 | Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md` |
 | Technical Writer | `tech-writer.md` | `**/*.md` (excluding commands/skills), `docs/**`, `README*` |
+| Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords |
+| Type Design Expert | `type-design.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
 **Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth.
 
@@ -137,6 +140,8 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | prompt-engineer | プロンプトエンジニア | `prompt-engineer.md` |
 | tech-writer | テクニカルライター | `tech-writer.md` |
 | code-quality | コード品質専門家 | `code-quality.md` |
+| error-handling | エラーハンドリング専門家 | `error-handling.md` |
+| type-design | 型設計専門家 | `type-design.md` |
 
 **Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used exclusively as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2).
 
@@ -158,6 +163,8 @@ Analyze diff content for:
   - Security keywords (representative): password, token, secret, auth, crypto, hash, encrypt, decrypt, credential, api_key, private_key, cert
   - Performance keywords (representative): cache, async, await, promise, worker
   - Data keywords (representative): query, migration, schema, index, transaction
+  - Error handling keywords (representative): try, catch, throw, Error, reject, fallback, finally
+  - Type design keywords (representative): interface, type, enum, class, struct, readonly, generic
 ```
 
 **Note**: The above are representative keyword examples. The authoritative keyword list is defined in `commands/pr/review.md` Phase 2.3 ("Security keyword detection" section). Detailed activation patterns are defined in each reviewer skill file (`security.md`, `database.md`, etc.) under the Activation section.

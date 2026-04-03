@@ -1,3 +1,7 @@
+# ⚠️ DEPRECATED: This file is kept for backward compatibility only.
+# New projects use plugins/rite/templates/config/rite-config.yml as the single source of truth.
+# This file will be removed in a future version.
+
 # CLI Application project configuration
 type: cli
 name: "CLI Application"
@@ -48,7 +52,6 @@ branch:
     refactor: "refactor"
     chore: "chore"
 
-# Commit style
+# Commit message
 commit:
-  style: conventional
-  enforce: true
+  contextual: true

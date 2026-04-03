@@ -460,7 +460,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --if-exists
 ```
 
-**Note on `error_count`**: The `flow-state-update.sh patch` mode preserves all existing fields not explicitly set (including `error_count`), consistent with `lint.md` Phase 4.0, `review.md` Phase 8.0, and `fix.md` Phase 8.1. The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
+**Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
 **Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
 

@@ -238,7 +238,7 @@ rite-workflow/
 ```json
 {
   "name": "rite",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "B16B1RD" },
   "license": "MIT"
@@ -368,7 +368,7 @@ YAML 形式を採用（可読性が高くコメント記述可能）。
 
 ```yaml
 # rite-workflow 設定ファイル
-version: "1.0"
+schema_version: 2
 
 # プロジェクト基本設定
 project:
@@ -442,8 +442,7 @@ branch:
 
 # コミットメッセージ
 commit:
-  style: conventional  # conventional | free
-  enforce: false  # true の場合、形式違反時に警告
+  contextual: true    # コミット本文に Contextual Commits のアクション行を含める
 
 # ビルド・テスト・リント（自動検出、または手動指定）
 commands:

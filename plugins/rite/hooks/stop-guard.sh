@@ -142,9 +142,9 @@ fi
 
 # Extract all fields in a single jq call for efficiency.
 # Fail-closed: if jq/read fails, use safe defaults so the stop is still blocked.
-# error_count is incremented on each blocked stop; it resets to 0 at the start of the
-# next workflow (when /rite:issue:start regenerates .rite-flow-state without error_count)
-# or when the user manually resets .rite-flow-state.
+# error_count is incremented on each blocked stop; it resets to 0 on each patch-mode
+# phase transition (flow-state-update.sh, since #294), at the start of the next workflow
+# (when /rite:issue:start regenerates .rite-flow-state), or when manually reset.
 IFS=$'\t' read -r PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase // "unknown"), (.next_action // "unknown"), (.issue_number // 0 | tostring), (.pr_number // 0 | tostring), (.error_count // 0 | tostring)] | @tsv' "$STATE_FILE" 2>/dev/null) || {
   PHASE="unknown"
   NEXT="Read .rite-flow-state and continue the active workflow. Do NOT stop."

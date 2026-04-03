@@ -12,7 +12,7 @@ The configuration file should be named `rite-config.yml` and placed in:
 
 ```yaml
 # Claude Code Rite Workflow configuration file
-version: "1.0"
+schema_version: 2
 
 # Project settings
 project:
@@ -87,8 +87,7 @@ branch:
 
 # Commit message
 commit:
-  style: conventional  # conventional | free
-  enforce: false
+  contextual: true    # Contextual Commits action lines in commit body
 
 # Build/test/lint commands
 commands:
@@ -728,7 +727,7 @@ Each notification service (slack, discord, teams) can have:
 For most projects, a minimal configuration is sufficient:
 
 ```yaml
-version: "1.0"
+schema_version: 2
 
 project:
   type: webapp

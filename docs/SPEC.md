@@ -238,7 +238,7 @@ Plugin metadata file format:
 ```json
 {
   "name": "rite",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "B16B1RD" },
   "license": "MIT"
@@ -368,7 +368,7 @@ Uses YAML format for readability and comment support.
 
 ```yaml
 # rite-workflow configuration file
-version: "1.0"
+schema_version: 2
 
 # Project settings
 project:
@@ -442,8 +442,7 @@ branch:
 
 # Commit message
 commit:
-  style: conventional  # conventional | free
-  enforce: false  # If true, warn on format violation
+  contextual: true    # Contextual Commits action lines in commit body
 
 # Build/test/lint (auto-detect or manual specification)
 commands:

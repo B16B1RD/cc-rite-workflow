@@ -8,6 +8,19 @@ messages:
   init_projects_setup: "Setting up GitHub Projects..."
   init_template_gen: "Generating templates..."
 
+  # Init Upgrade command
+  init_upgrade_start: "Starting rite-config.yml upgrade"
+  init_upgrade_checking: "Checking schema version..."
+  init_upgrade_outdated: "rite-config.yml schema is outdated (v{current} → v{latest})"
+  init_upgrade_up_to_date: "rite-config.yml is up to date (v{current})"
+  init_upgrade_backup_created: "Backup created: {path}"
+  init_upgrade_diff_preview: "The following changes will be applied:"
+  init_upgrade_confirm: "Apply the upgrade?"
+  init_upgrade_applied: "rite-config.yml upgraded (v{current} → v{latest})"
+  init_upgrade_cancelled: "Upgrade cancelled"
+  init_upgrade_deprecated_removed: "Deprecated keys removed: {keys}"
+  init_upgrade_sections_added: "New sections added: {sections}"
+  init_upgrade_session_warning: "⚠️ rite-config.yml schema is outdated (v{current} → v{latest}). Run /rite:init --upgrade to update."  # command-layer reference only; session-start.sh hardcodes messages (see "Schema version check (#284)" section)
 
   # Iteration/Sprint commands
   sprint_list_title: "Sprint List"

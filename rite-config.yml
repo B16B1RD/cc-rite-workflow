@@ -1,5 +1,5 @@
 # Claude Code Rite Workflow configuration for this repository (self-hosted)
-version: "1.0"
+schema_version: 2
 
 # Project settings
 project:
@@ -87,6 +87,7 @@ review:
   debate:
     enabled: true            # レビュアー間討論フェーズを有効化（デフォルト: true）
     max_rounds: 1            # 最大討論ラウンド数（コスト制御、デフォルト: 1）
+  confidence_threshold: 80   # 指摘事項テーブルに含める最低確信度スコア（デフォルト: 80）
   fact_check:
     enabled: true            # ファクトチェック Phase の有効/無効（デフォルト: true）
     max_claims: 10           # 1レビューあたり最大検証数（デフォルト: 10）

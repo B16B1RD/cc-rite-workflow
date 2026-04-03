@@ -131,6 +131,46 @@ if [ "$SOURCE" = "startup" ]; then
     echo "[rite] 長時間ワークフローでは auto-compact 後に API 上限 (200K tokens) を超える可能性があります。" >&2
     echo "[rite] 対策: 不要なプラグイン/MCP サーバーを無効化するか、定期的に /compact を実行してください。" >&2
   fi
+
+  # --- Schema version check (#284) ---
+  _rite_config="$STATE_ROOT/rite-config.yml"
+  if [ -f "$_rite_config" ]; then
+    # Read schema_version from project config (missing or non-numeric = v1)
+    _current_sv=$(awk '/^schema_version:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]"')
+    if [ -z "$_current_sv" ] || ! [[ "$_current_sv" =~ ^[0-9]+$ ]]; then
+      _current_sv=1
+    fi
+
+    # Read schema_version from template config (missing = v1 fallback)
+    _template_config="$SCRIPT_DIR/../templates/config/rite-config.yml"
+    _latest_sv=1
+    if [ -f "$_template_config" ]; then
+      _latest_sv=$(awk '/^schema_version:/{print $2}' "$_template_config" 2>/dev/null | tr -d '[:space:]"')
+      if [ -z "$_latest_sv" ] || ! [[ "$_latest_sv" =~ ^[0-9]+$ ]]; then
+        _latest_sv=1
+      fi
+    fi
+
+    if [ "$_current_sv" -lt "$_latest_sv" ]; then
+      # i18n: read language from rite-config.yml (auto -> detect from locale)
+      _sv_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]"')
+      if [ "$_sv_lang" = "auto" ] || [ -z "$_sv_lang" ]; then
+        # Detect from LANG environment variable (e.g., ja_JP.UTF-8 -> ja)
+        case "${LANG:-}" in
+          ja*) _sv_lang="ja" ;;
+          *) _sv_lang="en" ;;
+        esac
+      fi
+      case "$_sv_lang" in
+        ja)
+          echo "[rite] ⚠️ rite-config.yml のスキーマが古くなっています (v${_current_sv} → v${_latest_sv})。/rite:init --upgrade を実行してください。" >&2
+          ;;
+        *)
+          echo "[rite] ⚠️ rite-config.yml schema is outdated (v${_current_sv} → v${_latest_sv}). Run /rite:init --upgrade to update." >&2
+          ;;
+      esac
+    fi
+  fi
 fi
 
 # --- Plugin version check + legacy hook cleanup on startup ---

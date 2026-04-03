@@ -1,3 +1,7 @@
+# ⚠️ DEPRECATED: This file is kept for backward compatibility only.
+# New projects use plugins/rite/templates/config/rite-config.yml as the single source of truth.
+# This file will be removed in a future version.
+
 # Web Application project configuration
 type: webapp
 name: "Web Application"
@@ -52,7 +56,6 @@ branch:
     style: "style"
     chore: "chore"
 
-# Commit style
+# Commit message
 commit:
-  style: conventional
-  enforce: true
+  contextual: true
