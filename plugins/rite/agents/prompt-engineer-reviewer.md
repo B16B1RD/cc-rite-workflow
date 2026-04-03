@@ -62,7 +62,7 @@ For each technical claim in the changed file (bash behavior, tool semantics, API
 
 ### Step 6: Enumeration and Keyword List Consistency
 
-When the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names), or phase/step numbering:
+When the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names, file patterns), or phase/step numbering:
 - `Grep` for all other locations where the same list appears (other files, comments, tables, examples)
 - `Read` each location to compare the full list content
 - Flag any copy that is missing items, has extra items, or uses a different ordering than the modified version
@@ -110,9 +110,9 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **88**: (hypothetical) A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
 - **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
 - **85**: A condition table claims 3 severity levels (CRITICAL/HIGH/MEDIUM) but the referenced `severity-levels.md` defines 4 (CRITICAL/HIGH/MEDIUM/LOW) — confirmed by `Read`
-- **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
 - **88**: (hypothetical) A table row adds `agents/**/*.md` to Prompt Engineer's file patterns, but another reviewer's Note section says "excluding agents/" — confirmed by `Grep` for the pattern + `Read` of the exclusion Note
 - **85**: (hypothetical) A YAML frontmatter `description` says "Reviews skill and command definitions" but the Activation section lists patterns for `commands/**/*.md`, `skills/**/*.md`, AND `agents/**/*.md` — scope mismatch confirmed by `Read`
+- **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
 - **70**: An instruction "seems unclear" but could be interpreted correctly by a capable LLM — move to recommendations
 - **50**: Style preference for instruction wording — do NOT report
 

@@ -41,6 +41,7 @@ This skill is activated when reviewing files matching:
 - [ ] **Inaccurate Technical Claims**: Assertions about tool behavior, shell semantics, or API contracts that contradict actual behavior (e.g., claiming `local var=$(cmd)` is safe under `set -e`)
 - [ ] **Enumeration / Keyword List Inconsistency**: A list (severity levels, phase names, status values, tool names, file patterns) modified in one file but not updated in other files that duplicate or reference the same list. Includes:
   - Inverse reference inconsistency: a newly added file pattern overlaps with an exclusion list in another table row or Note section
+  - Table column prose inconsistency: table rows within the same table use inconsistent prose style or specificity level
   - Frontmatter-body scope mismatch: YAML `description` claims a scope not supported by the Activation/Scope sections in the body
 
 ### Important (Should Fix)

@@ -2,7 +2,8 @@
 name: code-quality-reviewer
 description: |
   Reviews code for quality issues (duplication, naming, error handling, structure, unnecessary fallbacks).
-  Used as fallback when no specialized reviewers match, and as co-reviewer for Prompt Engineer .md files containing code blocks.
+  Used as fallback when no specialized reviewers match, as co-reviewer for Prompt Engineer .md files
+  containing code blocks, and as sole reviewer guard co-reviewer when exactly 1 reviewer is selected.
   Focuses on maintainability, readability, and general code health.
 ---
 
