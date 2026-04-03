@@ -22,7 +22,7 @@ When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent exe
 | Phase 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
 | Phase 5 (Consolidation) | Full findings table | Result pattern + summary counts only |
 | Phase 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
-| Phase 7 (Issue Creation) | Full report + guidance | **Recommendations only** — auto-create Issues for 推奨事項 with 別 Issue keywords (if any). Skip user confirmation. Only when `[review:mergeable]`. |
+| Phase 7 (Issue Creation) | Full report + guidance | **Recommendations + pre-existing issues** — auto-create Issues for 推奨事項 with 別 Issue keywords and 既存問題 (if any). Skip user confirmation. Only when `[review:mergeable]`. |
 
 **E2E output format** (Phase 6, replaces full display):
 ```
@@ -1594,7 +1594,7 @@ Claude determines the invocation source from the conversation context:
 **Step 1: Process recommendation-based Issue candidates (Phase 7)**
 
 Before outputting the result pattern, execute Phase 7.1-7.4 to process recommendation-based Issue candidates:
-- Extract candidates per Phase 7.1 (Source B only — Source A findings are handled by the fix loop)
+- Extract candidates per Phase 7.1 (Source B and Source C — Source A findings are handled by the fix loop)
 - If candidates exist: auto-create Issues without user confirmation per Phase 7.2-7.3 E2E behavior
 - If no candidates: skip silently
 
@@ -1627,7 +1627,7 @@ Confirm the next action with `AskUserQuestion`. See Phase 1.4 for the AskUserQue
 
 ### 7.1 Extract Separate Issue Candidates
 
-Extract candidates from **two sources**:
+Extract candidates from **three sources**:
 
 **Source A — Findings (指摘事項)**: Extract findings meeting: Severity MEDIUM+ AND contains keywords (`スコープ外`, `別 Issue`, `out of scope`, `separate issue`, etc.)
 
@@ -1647,6 +1647,7 @@ If 0 candidates: Skip Phase 7. If 1+: Confirm with `AskUserQuestion` (options: C
 |---|--------|---------|------|--------|----------|
 | 1 | 指摘 | {file:line} | {content} | {severity} | {mapped_priority} |
 | 2 | 推奨 | {file:line or "—"} | {content} | — | Medium |
+| 3 | 既存問題 | {file:line} | {content} | {severity} | {mapped_priority} |
 
 **Default values for pre-existing issue candidates** (Source C):
 - **Priority**: CRITICAL→High, HIGH→Medium (same as Source A)
