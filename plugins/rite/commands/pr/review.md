@@ -677,7 +677,7 @@ Execute parallel reviews using sub-agents (defined in the `agents/` directory) c
 | Frontend Expert | `frontend-reviewer.md` | UI components, accessibility |
 | Test Expert | `test-reviewer.md` | Test quality, coverage |
 | Dependencies Expert | `dependencies-reviewer.md` | Package management, vulnerabilities |
-| Prompt Engineer | `prompt-engineer-reviewer.md` | Skill/command definition quality |
+| Prompt Engineer | `prompt-engineer-reviewer.md` | Skill/command/agent definition quality |
 | Technical Writer | `tech-writer-reviewer.md` | Document clarity, accuracy |
 | Error Handling Expert | `error-handling-reviewer.md` | Silent failures, error propagation, catch quality |
 | Type Design Expert | `type-design-reviewer.md` | Type encapsulation, invariant expression, enforcement |
