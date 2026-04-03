@@ -788,9 +788,9 @@ Generate instructions for each reviewer.
 
 **Mandatory fix policy:** All reported findings will be treated as mandatory fixes. The review-fix loop continues until 0 findings remain. Reviewers must therefore exercise careful judgment — report only substantive issues that genuinely improve quality. Avoid nitpicking, trivial style preferences, or hypothetical concerns without concrete evidence.
 
-**First-pass completeness obligation:** The review MUST detect all issues in a single pass. Discovering new findings in subsequent review cycles (that existed in the original diff but were missed) constitutes a review quality failure. Do not hold back findings for later — report everything you find in the first review.
+**Thoroughness on every cycle:** Apply the same depth and rigor on every review cycle — first pass, re-review, or verification. Do not self-censor findings because "I should have caught this earlier." If you see a real problem now, report it now. Withholding a valid finding to avoid appearing inconsistent is worse than reporting it late.
 
-**Scope judgment rule:** Only flag issues **introduced by this PR's diff**. Apply the revert test: "If this PR were reverted, would the problem disappear?" If No, it is a pre-existing issue — do not report it as a finding. Instead, mention it in the "推奨事項" section with a note to create a separate Issue. Pre-existing code smells, tech debt, or style inconsistencies outside the PR's changes are out of scope for findings.
+**Scope judgment rule:** Only flag issues **introduced by this PR's diff** as findings (指摘事項). Apply the revert test: "If this PR were reverted, would the problem disappear?" If No, it is a pre-existing issue — do not report it in the findings table. Instead, if the pre-existing issue is CRITICAL or HIGH severity, report it in the "既存問題（PR 対象ファイル）" section for visibility and automatic Issue creation. Pre-existing code smells, tech debt, or style inconsistencies below HIGH severity are out of scope entirely.
 
 **Placeholder embedding method:**
 
