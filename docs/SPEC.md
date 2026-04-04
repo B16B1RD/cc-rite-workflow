@@ -175,7 +175,7 @@ rite-workflow/
 │   ├── frontend-reviewer.md        # UI/accessibility review
 │   ├── test-reviewer.md            # Test quality review
 │   ├── dependencies-reviewer.md    # Dependency security review
-│   ├── prompt-engineer-reviewer.md # Skill/command definition review
+│   ├── prompt-engineer-reviewer.md # Skill/command/agent definition review
 │   ├── tech-writer-reviewer.md     # Documentation review
 │   ├── error-handling-reviewer.md  # Error handling review
 │   ├── type-design-reviewer.md     # Type design review
