@@ -15,7 +15,7 @@ source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 CWD=$(jq -r '.cwd // empty' <<< "$INPUT" 2>/dev/null) || CWD=""
-SOURCE=$(jq -r '.source // "auto"' <<< "$INPUT")
+SOURCE=$(jq -r '.source // "auto"' <<< "$INPUT" 2>/dev/null) || SOURCE="auto"
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
