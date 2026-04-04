@@ -5,6 +5,24 @@ All notable changes to Rite Workflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-04-04
+
+### Changed
+
+- Review-fix loop overhaul — bash error-handling detection, existing CRITICAL visibility, first-pass rule improvements (#325)
+- Sole reviewer guard + Step 6 sub-checks extension to eliminate blind spots in single-reviewer scenarios (#333)
+- Reviewer co-selection expanded — code-quality reviewer now co-selected for code blocks in .md files (#330)
+- prompt-engineer-reviewer detection scope expanded — Content Accuracy, List Consistency, Design Logic Review (#327)
+- Stale Cross-References detection step coverage added to Step 7 (#336)
+- Verification mode disabled by default + context-pressure phase condition branching (#322)
+- i18n Sprint key sections merged + en/ja other.yml duplicate sections normalized (#318, #320)
+- Hook scripts unified to `echo | jq` syntax (#341)
+
+### Fixed
+
+- Hook script jq extraction robustness — CWD fallback, pre-tool-bash-guard fallback, context-pressure.sh silent abort prevention (#334, #338, #342)
+- Review quality improvements — Confidence Calibration sort order, E2E auto-create flow, Phase 7 Source C consistency, multiple comment precision fixes (#313, #315, #317, #337)
+
 ## [0.3.9] - 2026-04-03
 
 ### Added
@@ -299,6 +317,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.3.10]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7

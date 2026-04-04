@@ -5,6 +5,24 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+## [0.3.10] - 2026-04-04
+
+### 変更
+
+- review-fix ループ根本修正 — bash エラーハンドリング検出 + 既存 CRITICAL 可視化 + first-pass ルール改善 (#325)
+- sole reviewer guard + Step 6 sub-checks 拡張 — 単一レビュアーの盲点を解消 (#333)
+- レビュアー共同選定拡張 — .md コードブロック検出時に code-quality reviewer を追加 (#330)
+- prompt-engineer-reviewer の検出スコープ拡張 — Content Accuracy + List Consistency + Design Logic Review (#327)
+- Step 7 に Stale Cross-References 検出ステップカバレッジを追加 (#336)
+- verification mode デフォルト無効化 + context-pressure フェーズ条件分岐 (#322)
+- i18n Sprint キーセクション統合 + en/ja other.yml 重複セクション正規化 (#318, #320)
+- フックスクリプトの jq 呼び出し構文を `echo | jq` に統一 (#341)
+
+### 修正
+
+- フックスクリプトの jq 抽出堅牢性改善 — CWD フォールバック追加、pre-tool-bash-guard フォールバック追加、context-pressure.sh の silent abort 防止 (#334, #338, #342)
+- レビュー品質改善 — Confidence Calibration 降順修正、E2E auto-create フロー改善、Phase 7 Source C 整合性修正、コメント精度改善 (#313, #315, #317, #337)
+
 ## [0.3.9] - 2026-04-03
 
 ### 追加
@@ -299,6 +317,7 @@ Rite Workflow の主要な変更を記録します。
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.3.10]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
