@@ -366,7 +366,7 @@ Agent documentation...
 | `frontend-reviewer` | opus | UI components, styling, accessibility, client-side code |
 | `test-reviewer` | opus | Test quality, coverage, testing strategies |
 | `dependencies-reviewer` | opus | Package dependencies, versions, supply chain security |
-| `prompt-engineer-reviewer` | opus | Claude Code skill and command definitions |
+| `prompt-engineer-reviewer` | opus | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | opus | Documentation clarity, accuracy, completeness |
 | `error-handling-reviewer` | opus | Error handling patterns, silent failures, recovery logic |
 | `type-design-reviewer` | opus | Type design, encapsulation, invariant expression |

@@ -366,7 +366,7 @@ tools:
 | `frontend-reviewer` | opus | UI コンポーネント、スタイリング、アクセシビリティ、クライアントサイドコード |
 | `test-reviewer` | opus | テスト品質、カバレッジ、テスト戦略 |
 | `dependencies-reviewer` | opus | パッケージ依存関係、バージョン、サプライチェーンセキュリティ |
-| `prompt-engineer-reviewer` | opus | Claude Code のスキルおよびコマンド定義 |
+| `prompt-engineer-reviewer` | opus | Claude Code のスキル、コマンド、およびエージェント定義 |
 | `tech-writer-reviewer` | opus | ドキュメントの明確さ、正確さ、完全性 |
 | `error-handling-reviewer` | opus | エラーハンドリングパターン、サイレント障害、復旧ロジック |
 | `type-design-reviewer` | opus | 型設計、カプセル化、不変条件の表現 |
