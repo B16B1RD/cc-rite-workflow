@@ -44,7 +44,10 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 
 **Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth.
 
-**Code Quality co-reviewer rule**: When `.md` files matching Prompt Engineer patterns contain fenced code blocks (` ```bash `, ` ```sh `, ` ```yaml `, etc.) in the diff, Code Quality reviewer is additionally selected as a co-reviewer alongside Prompt Engineer. This ensures embedded code snippets receive code quality review.
+**Code Quality co-reviewer rule**: Code Quality reviewer is additionally selected as a co-reviewer in the following cases:
+
+1. **Code block co-reviewer**: When `.md` files matching Prompt Engineer patterns contain fenced code blocks (` ```bash `, ` ```sh `, ` ```yaml `, etc.) in the diff, Code Quality is added alongside Prompt Engineer. This ensures embedded code snippets receive code quality review.
+2. **Sole reviewer guard**: When exactly 1 reviewer has been selected after all Phase 2.3 detection rules, Code Quality is automatically added as a co-reviewer. This prevents single-reviewer blind spots (cross-file inconsistency, missing updates). Does not activate when 2+ reviewers are already selected, or when Code Quality is already the sole reviewer (fallback).
 
 **Emoji usage policy**: Emojis are used only for the following visibility purposes. Individual skill file Findings output must not use emojis:
 - Unified report header (`📜 rite レビュー結果`)
@@ -145,7 +148,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | error-handling | エラーハンドリング専門家 | `error-handling.md` |
 | type-design | 型設計専門家 | `type-design.md` |
 
-**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2), and as a co-reviewer for Prompt Engineer files containing fenced code blocks (see "Code Quality co-reviewer rule" above).
+**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2), as a co-reviewer for Prompt Engineer files containing fenced code blocks, and as a sole reviewer guard co-reviewer (see "Code Quality co-reviewer rule" above).
 
 ## Reviewer Selection Algorithm
 

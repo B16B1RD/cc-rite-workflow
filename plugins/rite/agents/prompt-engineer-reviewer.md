@@ -62,12 +62,28 @@ For each technical claim in the changed file (bash behavior, tool semantics, API
 
 ### Step 6: Enumeration and Keyword List Consistency
 
-When the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names), or phase/step numbering:
+When the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names, file patterns), or phase/step numbering:
 - `Grep` for all other locations where the same list appears (other files, comments, tables, examples)
 - `Read` each location to compare the full list content
 - Flag any copy that is missing items, has extra items, or uses a different ordering than the modified version
 - Check that additions to a Detection Process are reflected in the corresponding checklist (e.g., `skills/reviewers/*.md`), and vice versa
 - Skip this step entirely when the diff does not touch any list-like structure
+
+**Sub-check 6a: Inverse reference consistency**
+When the diff adds or modifies file patterns (e.g., `commands/**/*.md`) or inclusion rules in a table row:
+- `Grep` for exclusion lists, `**Note**` sections, or other rows in the same table that explicitly exclude files matching the added pattern
+- `Read` each location to verify the exclusion is still valid
+- Flag when a newly added pattern overlaps with an existing exclusion in another row (e.g., adding `agents/**/*.md` to Prompt Engineer but a different reviewer's exclusion list still says "excluding agents/")
+
+**Sub-check 6b: Table column prose consistency**
+When the diff modifies a table row's descriptive text (e.g., "Change Description" or "Reason" column):
+- `Read` other rows in the same table to verify the prose style and specificity level are consistent
+- Flag when one row uses specific file paths while others use vague descriptions, or when technical terminology differs across rows describing the same concept
+
+**Sub-check 6c: Frontmatter-body scope sync**
+When the diff modifies a YAML frontmatter `description` field:
+- `Read` the file body sections (Activation, Scope, Overview) that describe the same scope
+- Flag when the frontmatter `description` claims a scope that the body does not support (e.g., frontmatter says "Reviews X and Y" but Activation section only lists patterns for X)
 
 ### Step 7: Design and Logic Review
 
@@ -92,8 +108,10 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
 - **90**: (hypothetical) A keyword list in one file has 5 items but the same list in another file has only 4 — confirmed by `Grep` + `Read`
 - **88**: (hypothetical) A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
+- **88**: (hypothetical) A table row adds `agents/**/*.md` to Prompt Engineer's file patterns, but another reviewer's Note section says "excluding agents/" — confirmed by `Grep` for the pattern + `Read` of the exclusion Note
 - **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
 - **85**: A condition table claims 3 severity levels (CRITICAL/HIGH/MEDIUM) but the referenced `severity-levels.md` defines 4 (CRITICAL/HIGH/MEDIUM/LOW) — confirmed by `Read`
+- **85**: (hypothetical) A YAML frontmatter `description` says "Reviews skill and command definitions" but the Activation section lists patterns for `commands/**/*.md`, `skills/**/*.md`, AND `agents/**/*.md` — scope mismatch confirmed by `Read`
 - **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
 - **70**: An instruction "seems unclear" but could be interpreted correctly by a capable LLM — move to recommendations
 - **50**: Style preference for instruction wording — do NOT report

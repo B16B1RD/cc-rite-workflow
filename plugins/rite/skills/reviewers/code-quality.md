@@ -2,7 +2,8 @@
 name: code-quality-reviewer
 description: |
   Reviews code for quality issues (duplication, naming, error handling, structure, unnecessary fallbacks).
-  Used as fallback when no specialized reviewers match, and as co-reviewer for Prompt Engineer .md files containing code blocks.
+  Used as fallback when no specialized reviewers match, as co-reviewer for Prompt Engineer .md files
+  containing code blocks, and as sole reviewer guard co-reviewer when exactly 1 reviewer is selected.
   Focuses on maintainability, readability, and general code health.
 ---
 
@@ -21,8 +22,9 @@ This skill is activated as a **fallback reviewer** when:
 
 Additionally, this skill is activated as a **co-reviewer** when:
 - `.md` files matching Prompt Engineer patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) contain fenced code blocks in the diff (see `review.md` Phase 2.3 "Code block detection")
+- Exactly 1 reviewer has been selected after all Phase 2.3 detection rules — **sole reviewer guard** (see `review.md` Phase 2.3 "Sole reviewer guard"). Does not activate when Code Quality is already the sole reviewer (fallback case)
 
-This is a catch-all reviewer that ensures all PRs receive at least one review perspective, and a co-reviewer for prompt engineering files that embed executable code snippets.
+This is a catch-all reviewer that ensures all PRs receive at least one review perspective, and a co-reviewer that prevents single-reviewer blind spots.
 
 ## Expertise Areas
 
