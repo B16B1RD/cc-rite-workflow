@@ -25,12 +25,12 @@ source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 INPUT=$(cat) || INPUT=""
 
 # Only inspect Bash tool calls
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || TOOL_NAME=""
 if [ "$TOOL_NAME" != "Bash" ]; then
   exit 0
 fi
 
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || COMMAND=""
 if [ -z "$COMMAND" ]; then
   exit 0
 fi
