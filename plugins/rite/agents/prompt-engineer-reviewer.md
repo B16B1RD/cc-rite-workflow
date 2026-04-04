@@ -92,6 +92,7 @@ Analyze decision tables, routing logic, and conditional branches in the changed 
 - For each conditional branch: check that all outcomes have explicit handling (no implicit fall-through)
 - Cross-reference Detection Process steps with the corresponding checklist items: every Detection step should have at least one checklist item that surfaces its findings, and every checklist item should be discoverable by at least one Detection step
 - Verify that priority/severity ordering is consistent across examples, tables, and prose
+- When the diff renumbers steps or phases, scan prose text within the same file for stale intra-file references (e.g., "see Step 3", "Phase 2.1 で定義された", "Step 5 above"). `Read` the full file and check that every prose reference to a step/phase number matches an actual heading. This complements Step 8's cross-file check by covering references that stay within the same file
 
 ### Step 8: Cross-File Impact Check
 
