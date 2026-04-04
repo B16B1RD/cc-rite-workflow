@@ -19,7 +19,7 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-CWD=$(jq -r '.cwd // empty' <<< "$INPUT" 2>/dev/null) || CWD=""
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 # Extract session_id from hook JSON for ownership checks and diagnostic logging (#173)
 SESSION_ID=$(extract_session_id "$INPUT" 2>/dev/null) || SESSION_ID=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
