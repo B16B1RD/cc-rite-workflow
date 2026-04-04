@@ -10,6 +10,8 @@ All findings (CRITICAL/HIGH/MEDIUM/LOW) are always blocking regardless of loop c
 
 **Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
 
+**Pre-existing issue exclusion**: Items in the "既存問題（PR 対象ファイル）" section are NOT included in `全指摘事項` and are NOT counted in `total_findings`. Pre-existing issues are problems that existed before the current PR's changes (confirmed via revert test). They are reported in a separate section for visibility and automatic Issue creation (Phase 7 Source C), but they do not affect the assessment or merge decision. This ensures the review-fix loop terminates correctly — only issues introduced by the current PR block merge.
+
 When executed standalone (outside a loop), the same rule applies: all findings are blocking.
 
 ## 5.3.3 Assessment Logic

@@ -20,7 +20,7 @@ export RITE_WM_HOOK_ACTIVE=1
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 
 # Resolve state root (git root or CWD)

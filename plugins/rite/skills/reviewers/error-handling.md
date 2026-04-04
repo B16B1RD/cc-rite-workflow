@@ -3,7 +3,8 @@ name: error-handling-reviewer
 description: |
   Reviews error handling patterns for silent failures, inadequate logging,
   and inappropriate fallback behavior.
-  Activated for files containing try/catch, throw, Error, reject, or fallback patterns.
+  Activated for files containing try/catch, throw, Error, reject, fallback patterns (JS/TS)
+  or set -e, pipefail, trap, || true patterns (Bash).
   Checks error propagation, logging quality, catch specificity, and silent failure detection.
 ---
 
@@ -16,8 +17,10 @@ You are an **Error Handling Expert** reviewing error handling patterns, silent f
 ## Activation
 
 This skill is activated when reviewing files matching:
-- Any file containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords in the diff
+- Any file containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords in the diff (JS/TS/general)
+- Any file containing `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords in the diff (Bash)
 - `**/*.ts`, `**/*.js`, `**/*.tsx`, `**/*.jsx` (primary)
+- `**/*.sh`, `**/hooks/**/*.sh` (bash scripts)
 - `**/*.py`, `**/*.go`, `**/*.rs`, `**/*.java` (secondary)
 - `**/error*`, `**/exception*`, `**/handler*`
 
@@ -38,6 +41,9 @@ This skill is activated when reviewing files matching:
 - [ ] **Lost Error Context**: Re-throwing errors without preserving the original cause or stack trace
 - [ ] **Silent Fallbacks in Critical Paths**: Returning default values in payment, auth, or data integrity operations without logging
 - [ ] **Unhandled Promise Rejections**: Missing `.catch()` on Promises that can reject, especially in async chains
+- [ ] **Bash: Missing exit-on-error**: Scripts without `set -e` or `set -euo pipefail` where failed commands silently continue
+- [ ] **Bash: Unguarded error suppression**: `command || true` or `2>/dev/null` on critical operations (API calls, file writes) that hide actionable failures
+- [ ] **Bash: `local` masking exit code**: `local var=$(command)` suppresses non-zero exit code even with `set -e` — use `local var; var=$(command)` instead
 
 ### Important (Should Fix)
 
@@ -46,6 +52,9 @@ This skill is activated when reviewing files matching:
 - [ ] **Missing Error Logging**: Catch blocks that handle the error but don't log for post-mortem analysis
 - [ ] **Inconsistent Error Patterns**: Different error handling approaches in the same module (some log, some don't)
 - [ ] **Fallback Without Notification**: Returning defaults without informing the caller that the primary operation failed
+- [ ] **Bash: Missing trap cleanup**: Scripts creating temp files or holding locks without `trap 'cleanup' EXIT`
+- [ ] **Bash: Pipeline masking**: `cmd1 | cmd2` without `set -o pipefail`, hiding `cmd1` failures
+- [ ] **Bash: Unchecked command substitution**: `var=$(command)` without `set -e` silently captures empty string on failure
 
 ### Recommendations
 
@@ -76,6 +85,8 @@ Perform the following investigation before reporting findings:
 | Verify caller expectations | Read | Does the caller check for null/error returns? |
 | Compare with adjacent error handling | Read | How do similar operations in the same file handle errors? |
 | Check logging infrastructure | Grep | Search for `logger`, `console.error`, `log.error` patterns |
+| Bash: Check `set -e`/`pipefail` usage | Grep | Search for `set -e`, `set -euo pipefail` in `.sh` files |
+| Bash: Verify error suppression intent | Read | Is `|| true` / `2>/dev/null` on a critical or non-critical path? |
 
 ### Prohibited vs Required Findings
 

@@ -37,12 +37,17 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 | Frontend Expert | `frontend.md` | `**/*.css`, `**/*.scss`, `**/styles/**`, `**/components/**`, `*.jsx`, `*.tsx`, `*.vue` |
 | Database Expert | `database.md` | `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**` |
 | Dependencies Expert | `dependencies.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
-| Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md` |
-| Technical Writer | `tech-writer.md` | `**/*.md` (excluding commands/skills), `docs/**`, `README*` |
-| Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords |
+| Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` |
+| Technical Writer | `tech-writer.md` | `**/*.md` (excluding commands/skills/agents), `docs/**`, `README*` |
+| Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords (Bash); `**/*.sh` |
 | Type Design Expert | `type-design.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
 **Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth.
+
+**Code Quality co-reviewer rule**: Code Quality reviewer is additionally selected as a co-reviewer in the following cases:
+
+1. **Code block co-reviewer**: When `.md` files matching Prompt Engineer patterns contain fenced code blocks (` ```bash `, ` ```sh `, ` ```yaml `, etc.) in the diff, Code Quality is added alongside Prompt Engineer. This ensures embedded code snippets receive code quality review.
+2. **Sole reviewer guard**: When exactly 1 reviewer has been selected after all Phase 2.3 detection rules, Code Quality is automatically added as a co-reviewer. This prevents single-reviewer blind spots (cross-file inconsistency, missing updates). Does not activate when 2+ reviewers are already selected, or when Code Quality is already the sole reviewer (fallback).
 
 **Emoji usage policy**: Emojis are used only for the following visibility purposes. Individual skill file Findings output must not use emojis:
 - Unified report header (`📜 rite レビュー結果`)
@@ -143,7 +148,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | error-handling | エラーハンドリング専門家 | `error-handling.md` |
 | type-design | 型設計専門家 | `type-design.md` |
 
-**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used exclusively as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2).
+**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2), as a co-reviewer for Prompt Engineer files containing fenced code blocks, and as a sole reviewer guard co-reviewer (see "Code Quality co-reviewer rule" above).
 
 ## Reviewer Selection Algorithm
 
@@ -163,7 +168,7 @@ Analyze diff content for:
   - Security keywords (representative): password, token, secret, auth, crypto, hash, encrypt, decrypt, credential, api_key, private_key, cert
   - Performance keywords (representative): cache, async, await, promise, worker
   - Data keywords (representative): query, migration, schema, index, transaction
-  - Error handling keywords (representative): try, catch, throw, Error, reject, fallback, finally
+  - Error handling keywords (representative): try, catch, throw, Error, reject, fallback, finally (JS/TS); set -e, pipefail, trap, || true, || :, 2>/dev/null (Bash)
   - Type design keywords (representative): interface, type, enum, class, struct, readonly, generic
 ```
 

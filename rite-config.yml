@@ -79,7 +79,7 @@ review:
     - file_types
     - content_analysis
   loop:
-    verification_mode: true     # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: true）
+    verification_mode: false    # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: false）
     allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
   security_reviewer:
     mandatory: false                          # 全 PR で必須選定するか（デフォルト: false）
@@ -124,7 +124,8 @@ context_optimization:
   agent_delegation: false            # Enable agent delegation for review-fix loop under context pressure
   agent_delegation_threshold: 80     # Tool call count threshold to trigger agent delegation
   pressure_thresholds:
-    yellow: 60                       # Warning threshold (phase-aware: adjusted by ±10 per phase)
+    # All thresholds are phase-aware: impl/lint +10, review/fix +30, default ±0
+    yellow: 60                       # Warning threshold
     orange: 90                       # Optimization mode activation threshold
     red: 120                         # Critical / compact recommendation threshold
 

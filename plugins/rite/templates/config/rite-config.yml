@@ -91,7 +91,7 @@ review:
     - file_types
     - content_analysis
   loop:
-    verification_mode: true
+    verification_mode: false
     allow_new_findings_in_unchanged_code: false
   security_reviewer:
     mandatory: false
@@ -156,6 +156,7 @@ language: auto  # auto | ja | en
 #   agent_delegation: false
 #   agent_delegation_threshold: 80
 #   pressure_thresholds:
+#     # All thresholds are phase-aware: impl/lint +10, review/fix +30, default ±0
 #     yellow: 60
 #     orange: 90
 #     red: 120

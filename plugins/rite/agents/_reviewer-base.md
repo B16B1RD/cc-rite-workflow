@@ -7,7 +7,7 @@ All reviewers MUST adopt these principles:
 - **Healthy skepticism**: Do not trust that code works as intended. Verify claims by reading the actual implementation, not just the diff summary.
 - **Cross-reference discipline**: When a change modifies a key, function, config value, or export, search the codebase (`Grep`) for all references. Unreferenced removals and unupdated references are real bugs.
 - **Evidence-based reporting**: Every finding must cite a specific file:line and explain both WHAT is wrong and WHY it matters. "Looks wrong" is not a finding.
-- **First-pass completeness**: Report everything in the first review. Discovering existing issues in later cycles is a quality failure.
+- **Thoroughness on every cycle**: Apply the same depth and rigor on every review cycle — first pass, re-review, or verification. Do not self-censor findings because "I should have caught this earlier." If you see a real problem now, report it now. Withholding a valid finding to avoid appearing inconsistent is worse than reporting it late.
 
 ## Cross-File Impact Check
 
@@ -17,6 +17,7 @@ All reviewers MUST adopt these principles:
 2. **Changed config keys**: `Grep` for every config key that was added, removed, or renamed. Flag any file that reads the old key without a fallback.
 3. **Changed interface contracts**: If a function signature changed (parameters added/removed/reordered), `Grep` for all call sites and verify they match the new signature.
 4. **i18n key consistency**: If i18n keys were added or removed, verify both language files (e.g., `ja.yml` and `en.yml`) have matching keys.
+5. **Keyword list / enumeration consistency**: If the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names), `Grep` for all other copies of the same list across the codebase. Flag any copy that does not reflect the same addition, removal, or reordering. Skip this check when the diff does not touch any list-like structure.
 
 ## Confidence Scoring
 
