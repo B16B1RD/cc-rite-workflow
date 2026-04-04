@@ -445,7 +445,7 @@ The following specialized reviewers are automatically selected based on the chan
 | `frontend-reviewer` | UI components, styling, accessibility, client-side code |
 | `test-reviewer` | Test quality, coverage, testing strategies |
 | `dependencies-reviewer` | Package dependencies, versions, supply chain security |
-| `prompt-engineer-reviewer` | Claude Code skill and command definitions |
+| `prompt-engineer-reviewer` | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | Documentation clarity, accuracy, completeness |
 | `error-handling-reviewer` | Silent failures, error propagation, catch block quality |
 | `type-design-reviewer` | Type encapsulation, invariant expression, enforcement |
