@@ -17,7 +17,7 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # missing the state file won't exist and the hook exits at the -f check below.
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
-CWD=$(jq -r '.cwd // empty' <<< "$INPUT")
+CWD=$(jq -r '.cwd // empty' <<< "$INPUT" 2>/dev/null) || CWD=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi

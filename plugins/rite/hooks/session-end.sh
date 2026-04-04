@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # reaching -f; the comment describes the logical invariant, not the exit path.)
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi

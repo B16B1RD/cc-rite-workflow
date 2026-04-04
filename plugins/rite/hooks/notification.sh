@@ -12,7 +12,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 # realpath normalization is unnecessary and would add a portability concern.
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
     exit 0
 fi
