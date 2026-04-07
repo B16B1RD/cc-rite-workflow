@@ -305,7 +305,7 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 **Success path retained flag** (必ず explicit set): `git diff --numstat` が成功した場合は以下を context に保持する:
 
 - `numstat_availability = "OK"`
-- `numstat_fallback_reason` は undefined のまま（Phase 5.4 template では条件分岐で「失敗時のみ記載」欄を空欄表示する）
+- `numstat_fallback_reason = ""` (空文字列で explicit set。Phase 5.4 template の placeholder 展開時に空欄として描画される。undefined を残すと placeholder 参照時に literal text または error になるリスクがあるため空文字列で defined にする)
 
 **Error handling**: If `git diff --numstat` fails (network error, timeout, missing base branch fetch, etc.):
 
@@ -400,10 +400,21 @@ if total_files_count == 0:
 # 変数名と config キー名の prefix 非対称について:
 #   - lines 方式: 変数 `doc_lines_ratio` / config `lines_ratio_threshold` (prefix 統一: "lines")
 #   - count 方式: 変数 `doc_files_count_ratio` / config `count_ratio_threshold` (prefix 異なる)
-# 後者で config 側に "files_" を含めなかった理由は、lines 方式との短縮対称性 (2 語 vs 2 語) を優先したため。
+# 後者で config 側に "files_" を含めなかった理由は、代替案 `files_count_ratio_threshold` (4 語) より
+# 短い 3 語 (`count_ratio_threshold`) を優先したため。変数名 `doc_files_count_ratio` 側は計算対象
+# (file 数 vs 行数) を明示するため "files_count" を保持している。
 # 計算対象はどちらもこの疑似コードで明示されているので drift リスクは低い。
 doc_lines_ratio       = doc_lines / total_diff_lines
 doc_files_count_ratio = doc_files_count / total_files_count
+
+# Self-only judgment (Exclusion rule の semantic 補完):
+# 全ての変更ファイルが exclusion patterns (commands/**, skills/**, agents/**, plugins/rite/i18n/**) に
+# 該当する場合、doc_lines_ratio == 0 とは別に "self-only" として記録する。
+# 「分子から除外、分母には含める」方式では rite plugin self-only PR でも数学的には
+# doc_lines == 0 (= ratio 0) になり、「ratio 未満」と区別不能になるため、明示的なフラグで補完する
+all_files_excluded = (doc_lines == 0
+                      AND total_diff_lines > 0
+                      AND 全変更ファイルが exclusion patterns に該当する)
 ```
 
 **Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, および `plugins/rite/i18n/**` は doc-heavy 判定対象から**除外**する。これらのファイルは prompt-engineer の専管領域 (commands/skills/agents) もしくは rite plugin 自身のドッグフーディング artifact (i18n) であり、Phase 2.2 の priority rule で prompt-engineer に振り分けられる、または rite plugin の自己記述として扱われる。
@@ -428,14 +439,21 @@ doc_heavy_pr = (doc_lines_ratio >= lines_ratio_threshold)
 # Phase 5.4 Integrated Report 表示用 retained flags の explicit set (Phase 5.1.3 Retained flags 節で参照される)
 doc_heavy_pr_value            = doc_heavy_pr   # boolean 表示用 (Phase 5.4 template から参照される)
 doc_heavy_pr_decision_summary = <1 行要約文字列>
-    # 要約の生成ルール (Claude は以下のテンプレートから実データを埋めて set する):
+    # 要約の生成ルール (Claude は以下のテンプレートから実データを埋めて set する。
+    # 評価順序は以下の上から下へ、最初にマッチしたケースの文字列を採用する):
     #   - doc_heavy_pr == true の場合:
-    #       lines 方式が発火した → "doc_lines_ratio={value} >= {lines_ratio_threshold}"
-    #       count 方式が発火した → "doc_files_count_ratio={value} >= {count_ratio_threshold} AND total_diff_lines={N} < {max_diff_lines_for_count}"
-    #   - doc_heavy_pr == false の場合:
-    #       rite plugin self-only (commands/skills/agents のみ変更) → "rite plugin self-only (excluded)"
-    #       ratio 未満 → "doc_lines_ratio={value} < {lines_ratio_threshold} AND doc_files_count_ratio={value} < {count_ratio_threshold}"
-    #       空 PR (total_diff_lines==0 or total_files_count==0) → "empty diff (no changed files)"
+    #       lines 方式が発火した (doc_lines_ratio >= lines_ratio_threshold) →
+    #         "doc_lines_ratio={value} >= {lines_ratio_threshold}"
+    #       count 方式が発火した (doc_files_count_ratio >= count_ratio_threshold AND total_diff_lines < max_diff_lines_for_count) →
+    #         "doc_files_count_ratio={value} >= {count_ratio_threshold} AND total_diff_lines={N} < {max_diff_lines_for_count}"
+    #   - doc_heavy_pr == false の場合 (上から評価して最初にマッチしたケースを採用):
+    #       (1) all_files_excluded == true (上記で計算済み) →
+    #             "rite plugin self-only (excluded): all changed files match exclusion patterns"
+    #       (2) total_diff_lines == 0 or total_files_count == 0 (空 PR) →
+    #             "empty diff (no changed files)"
+    #             ※実際にはゼロ除算ガードで早期 exit するためここには到達しないが、防御的に記載
+    #       (3) それ以外 (ratio 未満) →
+    #             "doc_lines_ratio={value} < {lines_ratio_threshold} AND doc_files_count_ratio={value} < {count_ratio_threshold}"
 ```
 
 Retain `{doc_heavy_pr}`, `{doc_heavy_pr_value}`, `{doc_heavy_pr_decision_summary}` in the conversation context for use in Phase 2.2.1, Phase 5.1.3, and Phase 5.4 template expansion. All 3 flags are **explicitly set** in every reachable path (including `total_diff_lines == 0` / `total_files_count == 0` early exits above, where `doc_heavy_pr = false` / `doc_heavy_pr_value = false` / `doc_heavy_pr_decision_summary = "empty diff (no changed files)"` must be set before `skip to Phase 1.3`).
@@ -540,7 +558,23 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
 3. **doc-heavy mode 指示の reviewer prompt 注入**: tech-writer のレビュー実行時に Phase 4.5 の prompt template に以下を注入する:
    - `{doc_heavy_pr}` placeholder に `true` を set
    - `{doc_heavy_mode_instructions}` placeholder に `tech-writer.md` の `## Doc-Heavy PR Mode (Conditional)` セクション全体 (Activation 行から "Cross-Reference with internal-consistency.md" セクション末尾まで) を埋め込む
-   
+
+   **必須含有性 check** (silent drift 防止 — tech-writer.md の章立て改修時の breaking change 早期検出):
+
+   注入された `{doc_heavy_mode_instructions}` の本文中に以下の必須キーワード 4 つが含まれていることを確認する。1 つでも欠けていれば WARNING を **stderr に出力** し、tech-writer.md の章立て drift を疑う:
+
+   - `Doc-Heavy mode finding requirements` — Evidence literal 形式義務化セクション
+   - `Doc-Heavy mode finding-count rules` — 件数非依存 META rules セクション (Phase 5.1.3 Step 2 で必要)
+   - `META: All 5 verification categories executed` — 必須 META 行 (variant a/b の prefix)
+   - `META: Cross-Reference partially skipped` — 部分スキップ用 META 行 (variant c)
+
+   いずれかが欠けている場合の WARNING:
+   ```
+   WARNING: tech-writer.md の `## Doc-Heavy PR Mode (Conditional)` セクションから {doc_heavy_mode_instructions} を抽出しましたが、必須キーワード {missing_keywords} が含まれていません。
+   tech-writer.md の章立てが Cycle 4 以前から drift している可能性があります。Phase 5.1.3 Step 2 (件数非依存 META check) が silent fail する恐れがあります。
+   Action: tech-writer.md の `## Doc-Heavy PR Mode (Conditional)` セクション全体を確認し、必須サブセクションが含まれているか検証してください。drift 検出 lint は Issue #353 で追跡中。
+   ```
+
    これにより `internal-consistency.md` の 5 カテゴリ verification protocol が reviewer に直接伝達され、各 finding に `- Evidence: tool=Grep, path=src/config/services.ts, line=5-12` の **literal 形式**の行を必須化する仕様が reviewer 側で有効になる (tool は `Grep` / `Read` / `Glob` / `WebFetch` から 1 つ選択 — 山括弧はメタ記法であり literal に書いてはならない。詳細は [`tech-writer.md`](../../skills/reviewers/tech-writer.md) の "Doc-Heavy mode finding requirements" セクション参照)。Phase 5.1.3 で post-condition check を実行する。
 
 **Relationship to Phase 2.3 sole reviewer guard**:
@@ -1193,81 +1227,86 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 
 **Verification steps**:
 
-1. **tech-writer finding 0 件警告** (silent non-compliance 防止):
+##### Step 1: tech-writer finding 0 件警告 (silent non-compliance 防止)
 
-   **判定条件** (単純化された AND 条件):
-   - tech-writer の `finding_count == 0` **かつ**
-   - tech-writer の出力に以下の META 行が 1 つも含まれない:
-     - `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` (negative confirmation)
-     - `META: Cross-Reference partially skipped` (外部参照スキップ、ステップ 3 で扱う)
+**判定条件** (単純化された AND 条件):
+- tech-writer の `finding_count == 0` **かつ**
+- tech-writer の出力に以下の META 行が 1 つも含まれない:
+  - `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` (negative confirmation)
+  - `META: Cross-Reference partially skipped` (外部参照スキップ、Step 3 で扱う)
 
-   上記両方が true の場合のみ、警告を発火する:
-     - **WARNING を必ず stderr に出力** (silent fall-through 禁止):
-       ```
-       WARNING: Doc-Heavy PR mode active, but tech-writer returned 0 findings without META confirmation.
-       Expected: Either explicit "META: All 5 verification categories executed, 0 inconsistencies found" declaration, or "META: Cross-Reference partially skipped" notice for external-repo documentation.
-       Action: Verify tech-writer executed the 5-category verification protocol from internal-consistency.md. Re-run with explicit Doc-Heavy mode instructions if needed.
-       ```
-     - レビュー結果に `doc_heavy_post_condition: warning` フラグを set
-     - overall assessment を `修正必要` に変更 (silent pass 防止)
+上記両方が true の場合のみ、警告を発火する:
+- **WARNING を必ず stderr に出力** (silent fall-through 禁止):
+  ```
+  WARNING: Doc-Heavy PR mode active, but tech-writer returned 0 findings without META confirmation.
+  Expected: Either explicit "META: All 5 verification categories executed, 0 inconsistencies found" declaration, or "META: Cross-Reference partially skipped" notice for external-repo documentation.
+  Action: Verify tech-writer executed the 5-category verification protocol from internal-consistency.md. Re-run with explicit Doc-Heavy mode instructions if needed.
+  ```
+- レビュー結果に `doc_heavy_post_condition: warning` フラグを set
+- overall assessment を `修正必要` に変更 (silent pass 防止)
 
-   **Note**: `finding_count >= 1` の場合はこのステップ 1 の **「finding 0 件警告」** をスキップするが、下記のステップ 1b (META 5 カテゴリ実行確認) は**件数に関係なく必ず実施する**。ステップ 1b + ステップ 2 の両方を満たした場合のみ post-condition は passed とみなされる。
+> **Note**: `finding_count >= 1` の場合はこの Step 1 の「finding 0 件警告」をスキップするが、下記の Step 2 (META 5 カテゴリ実行確認) は**件数に関係なく必ず実施する**。Step 2 + Step 3 (Evidence field 必須化) の両方を満たした場合のみ post-condition は passed とみなされる。
 
-1b. **META 5 カテゴリ実行確認** (件数非依存、silent non-compliance 防止):
+##### Step 2: META 5 カテゴリ実行確認 (件数非依存、silent non-compliance 防止)
 
-   **適用条件**: `finding_count` の値に関係なく **常に実施** する (`finding_count == 0` でも `finding_count >= 1` でも同じ)。
+**適用条件**: `finding_count` の値に関係なく **常に実施** する (`finding_count == 0` でも `finding_count >= 1` でも同じ)。
 
-   tech-writer の出力に以下のいずれかの META 行が含まれているかを検証する (`(?:^|<br\s*/?>|[\s|>(])` を行頭 anchor として multiline mode で検索):
-   - (a) `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]`
-   - (b) `META: All 5 verification categories executed. Findings below.` (finding_count >= 1 の場合)
-   - (c) `META: Cross-Reference partially skipped` (外部参照スキップ、ステップ 3 で扱う)
+tech-writer の出力に以下のいずれかの META 行が含まれているかを検証する (`(?:^|<br\s*/?>|[\s|>(])` を行頭 anchor として multiline mode で検索):
+- (a) `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` (finding_count == 0 の場合)
+- (b) `META: All 5 verification categories executed. Findings below.` (finding_count >= 1 の場合)
+- (c) `META: Cross-Reference partially skipped` (外部参照スキップ、Step 4 で扱う)
 
-   上記のいずれも含まれていない場合:
-   - **WARNING を必ず stderr に出力** (silent bypass 防止):
-     ```
-     WARNING: Doc-Heavy PR mode で tech-writer が META 5 カテゴリ実行確認行を出力していません。
-     finding_count={count} ですが、5 カテゴリ verification protocol を実行した証拠となる META 行が見つかりません。
-     これは「1-4 カテゴリだけ実行して finding を捏造し post-condition check を silent bypass する」
-     パターン (Issue #349 の根本目的に反する) の可能性があります。
-     Action: tech-writer を Doc-Heavy mode 指示を明示して再実行し、META 行を含む出力を得てください。
-     ```
-   - レビュー結果に `doc_heavy_post_condition: warning` フラグを set
-   - overall assessment を `修正必要` に変更 (silent pass 防止)
+上記のいずれも含まれていない場合:
+- **WARNING を必ず stderr に出力** (silent bypass 防止):
+  ```
+  WARNING: Doc-Heavy PR mode で tech-writer が META 5 カテゴリ実行確認行を出力していません。
+  finding_count={count} ですが、以下のいずれかの META 行が見つかりません:
+    (a) "META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]" (finding_count == 0 の場合)
+    (b) "META: All 5 verification categories executed. Findings below." (finding_count >= 1 の場合)
+    (c) "META: Cross-Reference partially skipped" (外部参照スキップの場合)
+  これは「1-4 カテゴリだけ実行して finding を捏造し post-condition check を silent bypass する」
+  パターン (Issue #349 の根本目的に反する) の可能性があります。
+  Action: tech-writer を Doc-Heavy mode 指示を明示して再実行し、上記 (a)/(b)/(c) のいずれかを含む出力を得てください。
+  ```
+- レビュー結果に `doc_heavy_post_condition: warning` フラグを set
+- overall assessment を `修正必要` に変更 (silent pass 防止)
 
-   **tech-writer prompt への反映**: Phase 2.2.1 step 3 の reviewer prompt 注入時に、tech-writer に対して「finding 件数に関係なく META 行を出力せよ」を strict 要件として明示する。具体的には:
-   - finding_count == 0 → `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [...]`
-   - finding_count >= 1 → `META: All 5 verification categories executed. Findings below.`
-   - 部分スキップ → `META: Cross-Reference partially skipped` (+ 詳細ブロック)
+**tech-writer prompt への反映**: Phase 2.2.1 step 3 の reviewer prompt 注入時に、tech-writer に対して「finding 件数に関係なく META 行を出力せよ」を strict 要件として明示する。具体的には:
+- finding_count == 0 → `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [...]`
+- finding_count >= 1 → `META: All 5 verification categories executed. Findings below.`
+- 部分スキップ → `META: Cross-Reference partially skipped` (+ 詳細ブロック)
 
-2. **Evidence field 必須化** (厳格検査 — Markdown テーブル対応):
-   - tech-writer の各 finding (CRITICAL/HIGH/MEDIUM/LOW すべて) について、**`内容` カラム本文中**に Evidence 記述が含まれているかを正規表現で検査する。
-   - **重要 — Markdown テーブル構造への配慮**: Markdown テーブルのセル本文内では物理的な改行は許容されず、各 finding 行は 1 物理行として表現される (セル内改行は `<br>` または同一行内の区切り文字で表現)。そのため、Evidence 検出の正規表現は**行頭 anchor (`^`) に依存してはならない**。代わりに「行頭または直前が空白/区切り文字/`<br>`/`|`/`>`」を許容する anchor を使用する:
-     - 正規表現 (multiline mode、行頭または直前が区切り文字):
-       ```
-       (?:(?:^|<br\s*/?>|[\s|>(])\s*)-?\s*Evidence:\s*tool=<?(Grep|Read|Glob|WebFetch)>?
-       ```
-     - 補助: `<br>` が使われない場合でも、セル内の `- Evidence: tool=Grep, ...` 形式はテキスト先頭 (`^`) または空白/`|`/`(` 直後に出現するためマッチする
-   - **山括弧メタ記法の許容**: `tool=<?(Grep|Read|Glob|WebFetch)>?` により、reviewer が tech-writer.md の example を literal に解釈して `tool=<Grep>` と書いた場合でもマッチする。これにより example ドキュメントのメタ記法との乖離による false positive を防ぐ。
-   - **評価方法**: 各 finding テーブル行の `内容` セルを `<br>` / `\n` でデコードしてから上記正規表現を適用することを推奨する。これにより、reviewer がセル内改行を `<br>` で表現した場合・単一行にまとめた場合の両方で一貫して検出できる。
-   - **注意**: reviewer 標準テンプレートの `ファイル:行` カラムは指摘対象の位置情報であり、検証の evidence とは別物。位置情報の存在のみをもって evidence ありと判定してはならない。
-   - **Evidence が欠落している finding を発見した場合**:
-     - 該当 finding を **`evidence_missing`** としてマーク
-     - レビュー全体の overall assessment を `修正必要` (要修正) に変更
-     - レビュー結果に `evidence_missing_count: {N}` フラグと該当 finding 一覧を set
-     - stderr に以下のエラーを出力:
-       ```
-       ERROR: Doc-Heavy PR mode で tech-writer が evidence なしの finding を返しました。
-       内訳: {N} 件の finding に evidence 欠落
-       - {file:line}: {content preview}
-       これらは内容の真偽を検証できないため、tech-writer の再実行 (Doc-Heavy mode 指示を明示的に再送) が必要です。
-       ```
+##### Step 3: Evidence field 必須化 (厳格検査 — Markdown テーブル対応)
 
-3. **META: Cross-Reference partially skipped 検出**:
-   - tech-writer の出力に正規表現 `(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:\s*Cross-Reference partially skipped` にマッチする行が含まれている場合:
-     - レビュー結果に `cross_reference_partial_skip: true` と外部リポジトリ情報 (META ブロック本文) を set
-     - Phase 5.4 (Integrated Report) の Doc-Heavy PR Mode 検証状態セクションに表示
-     - Phase 5.3 の overall assessment 判定時、ユーザーに明示的な acknowledgement を `AskUserQuestion` で求める
-     - acknowledgement なしでマージ判定を下さない (`修正必要` 扱い)
+- tech-writer の各 finding (CRITICAL/HIGH/MEDIUM/LOW すべて) について、**`内容` カラム本文中**に Evidence 記述が含まれているかを正規表現で検査する。
+- **重要 — Markdown テーブル構造への配慮**: Markdown テーブルのセル本文内では物理的な改行は許容されず、各 finding 行は 1 物理行として表現される (セル内改行は `<br>` または同一行内の区切り文字で表現)。そのため、Evidence 検出の正規表現は**行頭 anchor (`^`) に依存してはならない**。代わりに「行頭または直前が空白/区切り文字/`<br>`/`|`/`>`」を許容する anchor を使用する:
+  - 正規表現 (multiline mode、行頭または直前が区切り文字):
+    ```
+    (?:(?:^|<br\s*/?>|[\s|>(])\s*)-?\s*Evidence:\s*tool=<?(Grep|Read|Glob|WebFetch)>?
+    ```
+  - 補助: `<br>` が使われない場合でも、セル内の `- Evidence: tool=Grep, ...` 形式はテキスト先頭 (`^`) または空白/`|`/`(` 直後に出現するためマッチする
+- **山括弧メタ記法の許容**: `tool=<?(Grep|Read|Glob|WebFetch)>?` により、reviewer が tech-writer.md の example を literal に解釈して `tool=<Grep>` と書いた場合でもマッチする。これにより example ドキュメントのメタ記法との乖離による false positive を防ぐ。
+- **評価方法**: 各 finding テーブル行の `内容` セルを `<br>` / `\n` でデコードしてから上記正規表現を適用することを推奨する。これにより、reviewer がセル内改行を `<br>` で表現した場合・単一行にまとめた場合の両方で一貫して検出できる。
+- **注意**: reviewer 標準テンプレートの `ファイル:行` カラムは指摘対象の位置情報であり、検証の evidence とは別物。位置情報の存在のみをもって evidence ありと判定してはならない。
+- **Evidence が欠落している finding を発見した場合**:
+  - 該当 finding を **`evidence_missing`** としてマーク
+  - レビュー全体の overall assessment を `修正必要` (要修正) に変更
+  - レビュー結果に `evidence_missing_count: {N}` フラグと該当 finding 一覧を set
+  - stderr に以下のエラーを出力:
+    ```
+    ERROR: Doc-Heavy PR mode で tech-writer が evidence なしの finding を返しました。
+    内訳: {N} 件の finding に evidence 欠落
+    - {file:line}: {content preview}
+    これらは内容の真偽を検証できないため、tech-writer の再実行 (Doc-Heavy mode 指示を明示的に再送) が必要です。
+    ```
+
+##### Step 4: META Cross-Reference partially skipped 検出
+
+- tech-writer の出力に正規表現 `(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:\s*Cross-Reference partially skipped` にマッチする行が含まれている場合:
+  - レビュー結果に `cross_reference_partial_skip: true` と外部リポジトリ情報 (META ブロック本文) を set
+  - Phase 5.4 (Integrated Report) の Doc-Heavy PR Mode 検証状態セクションに表示
+  - Phase 5.3 の overall assessment 判定時、ユーザーに明示的な acknowledgement を `AskUserQuestion` で求める
+  - acknowledgement なしでマージ判定を下さない (`修正必要` 扱い)
 
 **Implementation note**: 本 Post-Condition Check は Phase 5.2 (Cross-Validation) の **前**に実行する。これにより evidence 欠落が cross-validation の対象になる前に検出され、tech-writer の再実行判断が早期に下せる。
 
@@ -1546,13 +1585,24 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 | {severity} | {file:line} | {original_claim} | {correct_info} | [source](URL) |
 
 ### Doc-Heavy PR Mode 検証状態（該当がある場合のみ）
-<!-- Phase 5.1.3 で post-condition check が実行された場合のみ表示。doc_heavy_pr == false または tech-writer が不在の場合は省略 -->
+<!-- 表示条件 (OR で評価):
+     (a) doc_heavy_pr == true で Phase 5.1.3 post-condition check が実行された場合
+     (b) numstat_availability == "unavailable" の場合 (numstat 失敗の可視性のため、doc_heavy_pr の値に関係なく表示)
+     非表示条件: 上記 (a) も (b) も成立せず、かつ tech-writer が reviewer に不在の場合のみ省略
+     詳細: Phase 5.1.3 末尾の「Phase 5.4 表示責務の分離」段落を参照 -->
 <!-- numstat 失敗時は numstat 可用性行に unavailable が表示される (Doc-Heavy 判定自体は Phase 1.1 files 配列で完結するため skip されず通常通り実行される) -->
 
 | 項目 | 状態 | 詳細 |
 |------|------|------|
-| numstat 可用性 | OK / **unavailable** | {numstat_fallback_reason — 失敗時のみ記載} |
-| Doc-Heavy 判定 | {doc_heavy_pr_value} | {判定根拠の 1 行 summary} |
+| numstat 可用性 | {numstat_availability} | {numstat_fallback_reason} |
+| Doc-Heavy 判定 | {doc_heavy_pr_value} | {doc_heavy_pr_decision_summary} |
+
+<!-- placeholder 展開ルール (undefined 参照防止):
+     - {numstat_availability}: "OK" or "unavailable" (Phase 1.2.6 で必ず explicit set される)
+     - {numstat_fallback_reason}: success path では空文字列 ""、failure path では 1 行要約 (Phase 1.2.6 で必ず explicit set される)
+     - {doc_heavy_pr_value}: true / false (Phase 1.2.7 Determination ブロックで explicit set される)
+     - {doc_heavy_pr_decision_summary}: Phase 1.2.7 の生成ルール (Determination ブロック直下のコメント) に従って生成された文字列 -->
+
 | Post-condition | passed / **warning** / **error** | {doc_heavy_post_condition 値} |
 | tech-writer finding 件数 | {doc_heavy_finding_count} | {0 件の場合は META negative confirmation の有無} |
 | Evidence 欠落 finding | {evidence_missing_count} 件 | {evidence_missing_list を箇条書き} |
@@ -1676,6 +1726,27 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 | 重要度 | ファイル:行 | 当初の主張 | 公式ドキュメントの記述 | ソース |
 |--------|------------|-----------|----------------------|--------|
 | {severity} | {file:line} | {original_claim} | {correct_info} | [source](URL) |
+
+### Doc-Heavy PR Mode 検証状態（該当がある場合のみ）
+<!-- 表示条件 (OR で評価):
+     (a) doc_heavy_pr == true で Phase 5.1.3 post-condition check が実行された場合
+     (b) numstat_availability == "unavailable" の場合 (numstat 失敗の可視性のため、doc_heavy_pr の値に関係なく表示)
+     非表示条件: 上記 (a) も (b) も成立せず、かつ tech-writer が reviewer に不在の場合のみ省略
+     詳細: Phase 5.1.3 末尾の「Phase 5.4 表示責務の分離」段落を参照
+     verification mode template にも本セクションを含める (Phase 5.1.3 は review_mode に依存しないため、
+     verification mode + Doc-Heavy PR の組み合わせでも post-condition check は実行される) -->
+
+| 項目 | 状態 | 詳細 |
+|------|------|------|
+| numstat 可用性 | {numstat_availability} | {numstat_fallback_reason} |
+| Doc-Heavy 判定 | {doc_heavy_pr_value} | {doc_heavy_pr_decision_summary} |
+| Post-condition | passed / **warning** / **error** | {doc_heavy_post_condition} |
+| tech-writer finding 件数 | {doc_heavy_finding_count} | {0 件の場合は META negative confirmation の有無} |
+| Evidence 欠落 finding | {evidence_missing_count} 件 | {evidence_missing_list を箇条書き} |
+| Cross-Reference partial skip | なし / **あり** | {cross_reference_skip_details — external repo 情報} |
+| ユーザー acknowledgement | 不要 / **取得済み** / **未取得** | {partial_skip あり時のみ記載} |
+
+**影響**: `post-condition == warning` または `error`、もしくは `evidence_missing_count >= 1`、または `cross_reference_partial_skip == true` かつ acknowledgement 未取得の場合、総合評価は自動的に **`修正必要`** に昇格する。
 
 ### 全指摘事項
 

@@ -258,7 +258,20 @@ jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
   echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
   exit 1
 }
-trap 'rm -f "$jq_err"' EXIT
+
+# Fast Path ハンドオフ一時ファイルのパスを先に定義し、trap 対象に含める
+# (書き出し前に変数を declare しておくことで、trap が早期 exit でも cleanup できる)
+body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
+author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
+skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+
+# 統合 trap: jq_err は常に削除、ハンドオフ 3 ファイルは「Fast Path 完了 = handoff_committed=1」
+# 時のみ保護 (trap 内で条件分岐)。これにより:
+#   - 書き出し前/書き出し中の exit 1 → 4 ファイル全削除 (orphan 防止)
+#   - 全書き出し成功+post-condition pass 後 → handoff 3 ファイルは保護、jq_err のみ削除
+#   - Phase 1.5 で明示的に cleanup を実行 (Fast Path 完了経路の正常 cleanup 経路)
+handoff_committed=0
+trap 'rc=$?; rm -f "$jq_err"; if [ "$handoff_committed" = "0" ]; then rm -f "$body_file" "$author_file" "$skip_file"; fi; exit $rc' EXIT
 
 if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>"$jq_err"); then
   echo "エラー: gh api レスポンスの JSON パースに失敗しました (.body 抽出)" >&2
@@ -299,13 +312,11 @@ fi
 # disk full / /tmp read-only (Docker RO volume, SELinux/AppArmor deny) / inode 枯渇のケースで
 # silent に空ファイルを残すと、後続 phase が空の target_body を Read して 0 件 finding で
 # silent pass する事故になる。各 printf の exit code を明示的に check し、失敗時は詳細を stderr に出力する。
-body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
-author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
-skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
-
+# 注: body_file / author_file / skip_file は trap セットアップ時に既に定義済み (trap 対象)
 if ! printf '%s' "$target_body" > "$body_file"; then
   echo "エラー: target_body の一時ファイル書き出しに失敗しました: $body_file" >&2
   echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
+  # exit 時に統合 trap が handoff_committed=0 のまま発火 → 書き出し済み body_file (もしあれば) も削除される
   exit 1
 fi
 if ! printf '%s' "$target_author" > "$author_file"; then
@@ -333,8 +344,10 @@ if [ ! -s "$skip_file" ]; then
   exit 1
 fi
 
-# 明示的 cleanup (trap 外の二重防御)
-rm -f "$jq_err"
+# Fast Path 完了: ハンドオフ 3 ファイルを trap の cleanup 対象から外す (handoff_committed=1)
+# これ以降、bash block 末尾に到達するか後続 phase でエラーが起きても、ハンドオフファイルは保護される
+# 後続 phase の cleanup (Phase 1.5 / Fast Path Cancel exit / Step C error exit) で明示的に削除する
+handoff_committed=1
 ```
 
 > **Note — 下流 phase でのハンドオフ参照**: Fast Path 完了後、Claude は以下 **3 つ**の一時ファイルを Read tool で読み戻してコンテキストに再注入する:
@@ -380,6 +393,8 @@ rm -f "$jq_err"
      | `MINOR`, `🟡`, `中`, `Normal` | `MEDIUM` |
      | `INFO`, `TRIVIAL`, `🔵`, `低`, `情報` | `LOW` |
 
+     > **Note — 絵文字エイリアスの実運用検証状況**: 絵文字 (`🔴`/`🟠`/`🟡`/`🔵`) は将来の互換性のため列挙していますが、現時点で `/verified-review` skill (rite plugin 標準) は CRITICAL/HIGH/MEDIUM/LOW を plain text で出力します。絵文字を出力する具体的な外部レビューツールは未検証です。新しい外部レビューツールへの対応として絵文字エイリアスを追加した場合は、本 Note にツール名を追記してください。
+
      - 上記のいずれにもマッチしない場合、`MEDIUM` をデフォルトとし、**認識不能な severity 値の一覧をユーザーに必ず警告表示する** (silent fallback 禁止):
        ```
        警告: 認識不能な severity 値が {N} 件あります
@@ -406,8 +421,26 @@ rm -f "$jq_err"
    | ユーザー応答 | 処理 |
    |-------------|------|
    | **手動で finding を入力** | Phase 1.4 (Display Comment List) で finding 手動入力モードに移行 (入力スキーマ: `severity \| file:line \| content \| recommendation` のテーブル) |
-   | **別のコメント URL を指定** | Phase 1.0 から再実行 (新しい argument を要求) |
-   | **キャンセル** | `[fix:cancelled-by-user]` を出力して exit 0 |
+   | **別のコメント URL を指定** | **Fast Path ハンドオフ一時ファイルを cleanup してから** Phase 1.0 から再実行 (新しい argument を要求)。詳細は下記「Cancel/Re-run 経路でのハンドオフ cleanup 義務」参照 |
+   | **キャンセル** | **Fast Path ハンドオフ一時ファイルを cleanup してから** `[fix:cancelled-by-user]` を出力して exit 0 |
+
+   **Cancel/Re-run 経路でのハンドオフ cleanup 義務** (silent orphan ファイル防止):
+
+   `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / Phase 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した 3 ファイルを **明示的に削除する** bash 呼び出しを必ず実行する。これは Phase 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、Phase 1.4 末尾の Phase 1.5 cleanup から到達しない経路をカバーする:
+
+   ```bash
+   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 ファイルを削除してから exit する
+   # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
+   # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
+   rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
+         "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
+         "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+   ```
+
+   この cleanup を実行する 3 つの経路:
+   - Cancel 選択 → cleanup → `[fix:cancelled-by-user]` 出力 → exit 0
+   - Re-run 選択 → cleanup → Phase 1.0 から新しい引数で再実行
+   - Step C 「2 回目も解釈不能」→ cleanup → `[fix:error]` 出力 → exit 1
 
    **解釈不能の判定基準と再質問ループ** (silent fall-through 防止):
 
@@ -432,7 +465,7 @@ rm -f "$jq_err"
       |------|--------|----------------------------------|
       | 1 | キャンセル | `キャンセル`, `cancel`, `中止`, `やめ`, `abort`（打ち消し集合に含まれる語はスキップ） |
       | 2 | 手動で finding を入力 | `手動`, `入力`, `manual` |
-      | 3 | 別のコメント URL を指定 | `別`, `url`, `新しい`, `別の URL`（「コメント」単独は誤マッチが多いため削除） |
+      | 3 | 別のコメント URL を指定 | `別`, `url`, `link`, `新しい`, `別の URL`, `another`（「コメント」単独は誤マッチが多いため削除。Step A の Option 2 と語彙を揃える） |
 
    **優先順位の変更理由**: 従来「キャンセルを最優先に置くことで安全側に倒す」という設計だったが、これはユーザーが明示的に「キャンセルせず〜」と述べた場合にも機械的にキャンセル側に倒してしまい、**ユーザー意図の逆転**を silent に引き起こす問題があった。上記の打ち消し集合による前処理を経た上で、option 2 (手動入力) と option 3 (別 URL) を入れ替えることで、否定形応答の正しい解釈と曖昧応答の再質問を両立させる。
 
@@ -455,7 +488,7 @@ rm -f "$jq_err"
 
       次回も解釈不能な応答の場合、処理を中止します。
       ```
-   2. **再質問の応答も解釈不能の場合**: `[fix:error]` を出力して exit 1 (**parse 0 件のまま Phase 2 進入は禁止**)。エラーメッセージに「解釈不能な応答が 2 回続いたため処理を中止しました。fix loop を手動で再実行してください」を含める
+   2. **再質問の応答も解釈不能の場合**: 上記「Cancel/Re-run 経路でのハンドオフ cleanup 義務」の bash block を実行して Fast Path 一時ファイル 3 本を削除してから、`[fix:error]` を出力して exit 1 (**parse 0 件のまま Phase 2 進入は禁止**)。エラーメッセージに「解釈不能な応答が 2 回続いたため処理を中止しました。fix loop を手動で再実行してください」を含める
 
    > **「無応答」について**: Claude Code の対話モデルでは「無応答」状態は通常発生しない (応答を待つ間ブロックされる) ため、上記から削除した。タイムアウト等で無応答が発生した場合は AskUserQuestion 自体のエラーとして扱われ、本ループには到達しない。
 
@@ -775,7 +808,23 @@ Confirm the fix approach for each finding:
 | Fast Path 経由 かつ `target_author_mention_skip == "false"` | `@{target_author}` | `@{target_author}` |
 | Fast Path 経由 かつ `target_author_mention_skip == "true"` | `(不明なレビュアー)` | `(unknown reviewer)` |
 
-Claude は Phase 1 末尾で `/tmp/rite-fix-target-author-skip-*.txt` を Read tool で読み、`"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
+Claude は Phase 1 末尾で `/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt` を Read tool で読み (specific path 必須、wildcard glob は並列セッション破壊のため絶対禁止)、`"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
+
+**複数 reviewer 時の `{reviewer_display_N}` 展開ルール** (Phase 3.2 trailer / Phase 4.3.4 Issue 本文 / Phase 4.2 PR comment 報告で使用):
+
+| reviewer 数 | trailer の展開 (日本語) | trailer の展開 (英語) |
+|------------|-------------------------|----------------------|
+| 0 (該当 reviewer なし) | trailer 行自体を**省略** | trailer 行自体を**省略** |
+| 1 | `{reviewer_display_1} のレビューコメントに対応` | `Addresses review comments from {reviewer_display_1}` |
+| 2 | `{reviewer_display_1}, {reviewer_display_2} のレビューコメントに対応` | `Addresses review comments from {reviewer_display_1}, {reviewer_display_2}` |
+| 3+ | `{reviewer_display_1}, {reviewer_display_2}, {reviewer_display_3}, ... のレビューコメントに対応` (出現順カンマ区切り) | 同様 |
+
+**`{reviewer_display_N}` の出現順序ルール**:
+- **Broad Retrieval 経由**: PR コメントの `created_at` 昇順 (古い順) で `_1`, `_2`, ... を割り当て
+- **Fast Path 経由**: 単一 author のみ (常に N=1)。`target_author_mention_skip == "true"` のときは `(不明なレビュアー)` で展開
+- **混在ケース**: Broad Retrieval 経路は単一の Phase 1.2 で完結し Fast Path 経路と排他のため、混在は発生しない
+
+**末尾カンマの省略**: reviewer 数が template 中の `{reviewer_display_N}` 個数より少ない場合、余った placeholder と直前のカンマ + スペース (`, `) を**まとめて削除**する (例: template が `_1, _2` で reviewer 1 名なら `_1` のみ生成、`, _2` 部分を削除)。
 
 **When "スキップ（後で対応）" is selected:**
 
@@ -1252,10 +1301,20 @@ cat <<'BODY_EOF' > "$tmpfile"
 - **ファイル**: {file}:{line}
 - **レビュアー**: {reviewer_display}
 - **指摘内容**: {original_comment}
+- **Confidence**: {confidence_value} (Confidence override: {confidence_override_value})
 
 <!-- {reviewer_display} の展開: Broad Retrieval 経由なら "@{reviewer}"、Fast Path 経由で
      target_author_mention_skip == "true" なら "(不明なレビュアー)" に置換。詳細は Phase 2.1
-     の展開ルール表を参照。Claude がスクリプト生成前に正しい値に置換する。 -->
+     の展開ルール表を参照。Claude がスクリプト生成前に正しい値に置換する。
+
+     {confidence_value} は finding が rite review 由来なら CRITICAL/HIGH/MEDIUM/LOW のいずれか。
+     外部ツール由来で Confidence 列なしの場合は "70 (暫定)" を入れる。
+
+     {confidence_override_value}:
+     - false (rite review 由来 / Confidence 列ありの外部ツール) → "false"
+     - true (外部ツール由来 + ユーザーがバイパスを承認) → "true (外部ツール由来、Confidence 70 のまま
+       80+ ゲートをバイパス、ユーザー承認済み)"
+     Issue #349 Cycle 3 M5 fix の追跡義務により、override 情報を Issue 本文にも明示する。 -->
 
 ### 別 Issue 化の理由
 {skip_reason}
@@ -1456,6 +1515,22 @@ with open(files_path, "r") as f:
 with open(history_path, "r") as f:
     history_entry = f.read().strip()
 
+# Cycle 3 L7 fix の git diff 失敗 fallback marker を検出し、visible WARNING ブロックに置き換える
+# (silent regression 防止: stderr WARNING は E2E flow / 自動 hook 経由では人間に見えないため、
+#  work memory body に明示的な警告ブロックを残す必要がある)
+if file_list_markdown.startswith("_変更ファイル取得失敗"):
+    print(
+        "ERROR: changed_files_md fallback marker detected. "
+        "Replacing with visible WARNING block in work memory.",
+        file=sys.stderr,
+    )
+    file_list_markdown = (
+        "> ⚠️ **WARNING**: `git diff --name-status` が失敗したため変更ファイル一覧を取得できませんでした。\n"
+        "> 上記 stderr の詳細を確認し、`git fetch origin <base_branch>` を実行後に再実行してください。\n"
+        "> このセクションは正確ではなく、変更があったかどうかの追跡には使えません。\n"
+        "> (Cycle 4 H2 fix: Cycle 3 L7 fallback marker を visible WARNING に変換)\n"
+    )
+
 # --- Progress summary update (v2 format: Markdown table) ---
 v2_updated = False
 for item, status in [("実装", impl_status), ("テスト", test_status), ("ドキュメント", doc_status)]:
@@ -1544,12 +1619,26 @@ Automatically append the following to work memory:
   | {comment_preview} | {response_type} |
 - **コミット**: {commit_sha}
 - **プッシュ**: 完了 / 未実行
+- **Confidence override**: {confidence_override_section}
 ```
 
 **Response types:**
 - `修正` - Code was fixed
 - `返信` - Explanation/reply only
 - `スキップ` - Deferred for later
+
+**`{confidence_override_section}` の生成ルール** (Phase 1.2 best-effort parse の Confidence override 追跡義務、Issue #349 Cycle 3 M5 fix):
+
+| 状況 | 展開内容 |
+|------|----------|
+| `confidence_override_count == 0` | `なし` |
+| `confidence_override_count >= 1` | 改行後に file:line 一覧を箇条書きで列挙 |
+
+`>= 1` のときの展開例:
+```
+- {file:line_1} (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパス、ユーザー承認済み)
+- {file:line_2} (...)
+```
 
 ### 4.6 Completion Report
 
@@ -1564,6 +1653,7 @@ PR #{number} のレビュー指摘対応を完了しました
 コミット: {commit_sha}
 プッシュ: 完了 / 未実行
 別 Issue 作成: {issue_count}件
+Confidence override (policy bypass): {confidence_override_count}件{confidence_override_files_suffix}
 
 次のステップ:
 - レビュアーの再レビューを待つ
@@ -1571,12 +1661,22 @@ PR #{number} のレビュー指摘対応を完了しました
 - すべて承認されたら `/rite:pr:ready` でマージ準備
 ```
 
+**`{confidence_override_count}` / `{confidence_override_files_suffix}` の展開ルール** (Issue #349 Cycle 3 M5 fix の追跡可視化):
+
+| 状況 | `{confidence_override_count}` | `{confidence_override_files_suffix}` |
+|------|------------------------------|--------------------------------------|
+| 0 件 (override なし、通常時) | `0` | 空文字列 |
+| 1 件以上 (override 適用あり) | `{N}` | ` ({file:line_1}, {file:line_2}, ...)` (先頭スペース付きカッコ内に一覧) |
+
+**重要**: `confidence_override_count == 0` の場合でも本行は省略せず常に表示する (override が「なし」であることを明示し、silent な policy bypass の有無を可視化するため)。
+
 **Field descriptions:**
 
 | Field | Description | Calculation |
 |-------|-------------|-------------|
 | `全指摘: {total_count}件` | Total number of findings | Number of review comment findings retrieved in Phase 1 |
 | `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count` |
+| `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | Phase 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Issue #349 Cycle 3 M5 fix 追跡義務)。0 件でも常時表示 |
 
 **Note**: The review-fix loop of `/rite:issue:start` checks the content of this completion report to determine the next action:
 - `プッシュ: 完了` -> Execute re-review (verify fix content)

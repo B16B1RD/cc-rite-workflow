@@ -44,20 +44,26 @@ This skill is activated when reviewing files matching:
 
 ### Critical (Must Fix)
 
-文書-実装整合性 (Doc-Impl Consistency):
+文書-実装整合性 (Doc-Impl Consistency) — **Doc-Heavy mode 限定 (`{doc_heavy_pr=true}` フラグ set 時のみ評価)**:
 
-- [ ] **Implementation Coverage**: ドキュメントが主張する機能網羅性が実装の機能集合と一致しない（例: 実装にある機能が紹介一覧から欠落、あるいは文書にある機能が実装に存在しない）
+> **適用条件**: 以下 5 項目は **Doc-Heavy PR Mode が activated されている場合のみ**評価する (`{doc_heavy_pr=true}` フラグの伝達経路は `commands/pr/review.md` Phase 1.2.7 / Phase 2.2.1 を参照)。通常の PR レビューでは適用されない。
+>
+> **理由**: これら 5 項目の検証プロトコルは [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md) の "Verification Protocol" セクションに定義されており、その protocol は Doc-Heavy mode の Activation 条件下でのみ tech-writer prompt に注入される (Phase 2.2.1 step 3)。non-Doc-Heavy mode では protocol が伝達されないため、これら 5 項目を強制すると「protocol なしで Must Fix を判定する」状態になり speculative 指摘の温床になる。
+>
+> **non-Doc-Heavy mode の tech-writer**: 下記の「基本的事項 (Baseline)」のみを Critical (Must Fix) として評価する。doc-impl 整合性を検証する余地があれば下記の Important (Should Fix) として報告するに留める。
+
+- [ ] **Implementation Coverage** (Doc-Heavy mode 専用): ドキュメントが主張する機能網羅性が実装の機能集合と一致しない（例: 実装にある機能が紹介一覧から欠落、あるいは文書にある機能が実装に存在しない）
   - 検証手段: `Grep` で実装側の機能識別子・ルート・エクスポート一覧を抽出し、ドキュメント列挙と集合差分
-- [ ] **Enumeration Completeness**: ドキュメントが主張する数値・集合（「3 つのサービス」「主要カテゴリ」等）と実装の定義数が不一致
+- [ ] **Enumeration Completeness** (Doc-Heavy mode 専用): ドキュメントが主張する数値・集合（「3 つのサービス」「主要カテゴリ」等）と実装の定義数が不一致
   - 検証手段: 実装のディレクトリ構造・定数配列・設定ファイルを `Read` して数え直す
-- [ ] **UX Flow Accuracy**: UX 手順書の状態遷移が、実装の state machine / route 定義と矛盾（ボタン配置、ページ遷移、必須フィールド、ステップ数）
+- [ ] **UX Flow Accuracy** (Doc-Heavy mode 専用): UX 手順書の状態遷移が、実装の state machine / route 定義と矛盾（ボタン配置、ページ遷移、必須フィールド、ステップ数）
   - 検証手段: フロントエンド route 定義、state machine、form schema を `Read` して照合
-- [ ] **Order / Emphasis Consistency**: ドキュメントの説明順序・強調点が、実装の主要機能の優先度や戦略的位置付けと乖離（例: サービス紹介順が実装の priority と逆転）
+- [ ] **Order / Emphasis Consistency** (Doc-Heavy mode 専用): ドキュメントの説明順序・強調点が、実装の主要機能の優先度や戦略的位置付けと乖離（例: サービス紹介順が実装の priority と逆転）
   - 検証手段: 実装のエントリーポイント / メインメニュー定義 / 設定ファイル記述順と比較
-- [ ] **Screenshot Presence**: 番号付き手順（「1. ... 2. ...」）または状態記述（「初回表示」「エラー時」「完了時」等）に対応する画像参照が存在しない、またはパスが無効
+- [ ] **Screenshot Presence** (Doc-Heavy mode 専用): 番号付き手順（「1. ... 2. ...」）または状態記述（「初回表示」「エラー時」「完了時」等）に対応する画像参照が存在しない、またはパスが無効
   - 検証手段: ドキュメント内の `^\d+\.\s` と `!\[...\](...)` を対比、`Glob` で画像ファイル存在確認
 
-基本的事項 (Baseline):
+基本的事項 (Baseline) — **常時必須 (mode 非依存)**:
 
 - [ ] **Incorrect Information**: Technically inaccurate statements
 - [ ] **Broken Links**: Links to non-existent pages or resources

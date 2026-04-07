@@ -255,15 +255,17 @@ CRITICAL: Screenshot Presence mismatch
 
 - [`../../../skills/reviewers/tech-writer.md`](../../../skills/reviewers/tech-writer.md) — Critical (Must Fix) チェックリストの「文書-実装整合性」5 項目および "Doc-Heavy PR Mode (Conditional)" セクション (Quick Reference テーブル + Verification skip handling)
 - [`../review.md`](../review.md) — Phase 1.2.7 Doc-Heavy PR Detection、Phase 2.2.1 Doc-Heavy Reviewer Override、Phase 5.1.3 Doc-Heavy Post-Condition Check
-- [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧テーブルの tech-writer 行 (representative file patterns)。本ファイル・tech-writer.md・review.md の 3 者と等価な doc_file_patterns を保持する (drift 監視対象)
+- [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧テーブルの tech-writer 行 (representative file patterns)。tech-writer.md / review.md / SKILL.md の 3 者で等価な doc_file_patterns を保持する (drift 監視対象、本ファイル自身は patterns を保持しない)
 
 **drift 検出の invariant** (3 ファイル等価性):
 
-tech-writer Activation patterns は以下 3 ファイルで**等価な集合**を参照する必要がある (syntax は異なってよいが、マッチするファイル集合が同一であること):
+tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合**を参照する必要がある (syntax は異なってよいが、マッチするファイル集合が同一であること):
 
 1. `plugins/rite/skills/reviewers/tech-writer.md` Activation セクション (source of truth)
 2. `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (疑似コード形式)
 3. `plugins/rite/skills/reviewers/SKILL.md` Reviewers テーブル tech-writer 行 (representative)
+
+> **Note — 本ファイル (`internal-consistency.md`) の位置付け**: 本ファイルは `doc_file_patterns` を**保持しない**(参照される検証プロトコルの定義書)。したがって drift 監視対象は上記 3 ファイル限定であり、本ファイルは invariant の対象外。Cycle 3 以前のドキュメントで「本ファイルを含む 3 ファイル」と記述していた箇所はすべて誤りで、Cycle 4 で訂正された。
 
 drift 検出の自動 lint は Issue #353 で追跡中。
 
