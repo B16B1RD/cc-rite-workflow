@@ -236,7 +236,7 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 #
 # 注: stderr は gh api から直接呼び出し元へ流れる (2>&1 で stdout に混入させない)。
 #     もし 2>&1 を付けると、成功時に gh が stderr に警告を出した場合
-#     $target_comment が invalid JSON となり直後の jq が失敗する (Issue #349 Cycle 2 MEDIUM #20)
+#     $target_comment が invalid JSON となり直後の jq が失敗する (過去の deprecation warning 事案の教訓)
 if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id}); then
   # gh api の stderr は既に呼び出し元に出力されている (上記 exec 時に直接流れる)
   echo "エラー: コメント #{target_comment_id} の取得に失敗しました" >&2
@@ -277,8 +277,23 @@ skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 # - TERM: 外部からの `kill -TERM` (Claude Code Bash tool timeout / sprint team-execute の親プロセス kill 等)
 # - HUP: 端末切断 / SIGHUP (hook timeout, セッション終了)
 # bash の EXIT trap は SIGTERM を捕捉しないため、INT/TERM/HUP を明示的に追加する必要がある
+#
+# Signal 別 exit code (silent exit 0 防止):
+# SIGINT/SIGTERM/SIGHUP 受信時の `$?` は「最後に完了したコマンドの exit status」で、
+# signal 自体が 130/143/129 を set するとは限らない。`printf` 成功直後に SIGTERM が来ると
+# `rc=0` となり、上位の fix loop 制御が「正常終了」と誤判定する silent failure が起きる。
+# これを防ぐため signal 別 trap で明示的に exit 130/143/129 を返す。
 handoff_committed=0
-trap 'rc=$?; rm -f "$jq_err"; if [ "$handoff_committed" = "0" ]; then rm -f "$body_file" "$author_file" "$skip_file"; fi; exit $rc' EXIT INT TERM HUP
+_rite_fix_fastpath_cleanup() {
+  rm -f "$jq_err"
+  if [ "$handoff_committed" = "0" ]; then
+    rm -f "$body_file" "$author_file" "$skip_file"
+  fi
+}
+trap '_rite_fix_fastpath_cleanup; exit $?' EXIT
+trap '_rite_fix_fastpath_cleanup; exit 130' INT
+trap '_rite_fix_fastpath_cleanup; exit 143' TERM
+trap '_rite_fix_fastpath_cleanup; exit 129' HUP
 
 if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>"$jq_err"); then
   echo "エラー: gh api レスポンスの JSON パースに失敗しました (.body 抽出)" >&2
@@ -937,8 +952,9 @@ When posting the reply:
 ```bash
 # PR レビューコメントへの返信（in_reply_to で元コメントを指定）
 # jq --rawfile で安全に JSON を生成し、gh api に渡す
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
 tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+trap 'rm -f "$tmpfile"' EXIT INT TERM HUP
 cat <<'REPLYEOF' > "$tmpfile"
 {reply_body}
 REPLYEOF
@@ -1191,8 +1207,9 @@ When posting the report:
 
 ```bash
 # ✅ SAFE: --body-file for dynamic report content
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
 tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+trap 'rm -f "$tmpfile"' EXIT INT TERM HUP
 cat <<'REPORT_EOF' > "$tmpfile"
 {report_body}
 REPORT_EOF
@@ -1316,8 +1333,9 @@ Generate the Issue title in the following format:
 ```
 
 ```bash
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
 tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+trap 'rm -f "$tmpfile"' EXIT INT TERM HUP
 
 cat <<'BODY_EOF' > "$tmpfile"
 ## 概要
@@ -1441,8 +1459,9 @@ Identify the related Issue from the PR or branch name.
 # 1. まず PR 本文から Closes #XX パターンを抽出（優先）
 # Phase 1.1 で --json に body を含めて取得済みのため、再取得不要
 # 保持している body フィールドから直接パターンマッチ
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
 pr_body_tmp=$(mktemp)
-trap 'rm -f "$pr_body_tmp"' EXIT
+trap 'rm -f "$pr_body_tmp"' EXIT INT TERM HUP
 printf '%s' "{pr_body}" > "$pr_body_tmp"
 issue_number=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" | head -1 | grep -oE '[0-9]+' || true)
 
@@ -1492,7 +1511,7 @@ if [[ -n "$comment_id" ]]; then
     # shallow clone / base branch 未 fetch で "unknown revision" 等が出た場合、silent に空文字に落ちると
     # work memory の変更ファイル一覧が「まだ変更はありません」と誤記録される silent regression の原因になる
 
-    # 共有 sentinel 文字列定数 (bash 側 fallback marker と Python 側 startswith 検出を完全一致比較)
+    # 共有 sentinel 文字列定数 (bash 側 fallback marker と Python 側で文字列完全一致比較)
     # 文言を変更する場合、bash 側と Python 側 (後の python3 -c 内) を必ず同時に変更すること
     GIT_DIFF_FAILED_SENTINEL="__RITE_FIX_CHANGED_FILES_GIT_DIFF_FAILED__"
 
@@ -1615,7 +1634,10 @@ with open(out_path, "w") as f:
     py_exit=$?
     if [ "$py_exit" -eq 2 ]; then
       echo "ERROR: Python script detected git diff failure marker and refused to PATCH work memory silently." >&2
-      echo "  visible WARNING block was injected into the body file ($tmpfile) for debug." >&2
+      # tmpfile の debug 参照を提供するため、exit 前に trap から tmpfile を除外して削除を防ぐ
+      # (exit 時に trap が発火して tmpfile が消えると、下記の debug 案内が嘘になる)
+      trap 'rm -f "$pr_body_tmp" "$body_tmp" "$files_tmp" "$history_tmp" "$diff_stderr_tmp"' EXIT INT TERM HUP
+      echo "  Debug: visible WARNING block was injected into the body file and preserved at: $tmpfile" >&2
       echo "  Backup of original work memory: $backup_file" >&2
       echo "  Action: git diff の失敗原因を解決後、再実行してください (上記 stderr の git diff WARNING を参照)" >&2
       exit 1
@@ -1696,8 +1718,10 @@ Automatically append the following to work memory:
 **`>= 1` のときの展開例** (`confidence_override_findings = ["src/foo.ts:42", "src/bar.ts:18"]` の場合):
 
 ```markdown
-- **Confidence override**: src/foo.ts:42; src/bar.ts:18 (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み)
+- **Confidence override**: src/foo.ts:42; src/bar.ts:18
 ```
+
+**placeholder 責務分離**: `{confidence_override_section}` には **純粋に findings 一覧のみ** (`; ` 区切り) を入れる。policy override の説明文 (`外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み`) は Phase 4.3.4 の `{confidence_override_value}` placeholder の展開ルール (Phase 1.2 data flow 表参照) にのみ含まれる。
 
 **重要 — 改行禁止**: bullet item 内に改行と子箇条書きを入れる場合 Markdown は子側に 2 スペースインデントを要求するが、placeholder 展開時の自動インデント処理は脆弱で履歴の構造を壊しやすい。そのため `{confidence_override_section}` は **同一行に押し込める** 形式を厳格に採用する。
 
@@ -1727,7 +1751,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 | 状況 | `{confidence_override_count}` | `{confidence_override_files_suffix}` |
 |------|------------------------------|--------------------------------------|
 | 0 件 (override なし、通常時) | `0` | 空文字列 |
-| 1 件以上 (override 適用あり) | `{N}` | ` ({file:line_1}, {file:line_2}, ...)` (先頭スペース付きカッコ内に一覧) |
+| 1 件以上 (override 適用あり) | `{N}` | ` ({file:line_1}; {file:line_2}; ...)` (先頭スペース付きカッコ内に `; ` 区切りで一覧、Phase 1.2 の data flow 定義と統一) |
 
 **重要**: `confidence_override_count == 0` の場合でも本行は省略せず常に表示する (override が「なし」であることを明示し、silent な policy bypass の有無を可視化するため)。
 

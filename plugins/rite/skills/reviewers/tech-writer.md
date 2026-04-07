@@ -155,7 +155,7 @@ Documentation PRs may describe an external product whose implementation lives in
    - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
    ```
 
-   **Failure signal の値**: 上記 6 種から 1 つを選択する。各値の意味は [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-禁止) の "Failure signal の値" 表を参照 (404 = リポジトリ非存在 / 401 = 認証エラー / 403 = 権限不足 / 5xx = HTTP サーバーエラー / timeout = タイムアウト / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
+   **Failure signal の値**: 上記 7 種から 1 つを選択する。各値の意味は [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-禁止) の "Failure signal の値" 表を参照 (404 = リポジトリ非存在 / 401 / 403 = 認証・権限不足 (2 値を区別して記録) / 5xx = HTTP サーバーエラー全般 / timeout = タイムアウト (2 回連続) / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
 3. The reviewer caller (review.md Phase 5.1.3) will surface this meta-finding and require explicit user acknowledgement before treating the review as complete
 
 ### Doc-Heavy mode finding requirements
@@ -190,7 +190,7 @@ Emit **one** of the following META lines based on your execution outcome:
 
 **重要**: finding_count >= 1 でも「5 カテゴリ実行 META 行」を省略することは silent bypass として禁止する。1 件の Evidence 付き finding だけを出して post-condition check を通過する攻撃パターン (Implementation Coverage だけ実行して他 4 カテゴリをスキップ) を防ぐため、META 行は**件数非依存で必ず出力**する。
 
-This negative/positive confirmation distinguishes "protocol was fully executed" from "protocol was partially executed or not executed". Phase 5.1.3 post-condition check will reject outputs that lack any of the 3 META line variants above regardless of finding count.
+This negative/positive confirmation distinguishes "protocol was fully executed" from "protocol was partially executed or not executed" (silent non-compliance prevention — this is the root purpose of the Doc-Heavy PR Mode post-condition check). Phase 5.1.3 post-condition check will reject outputs that lack any of the 3 META line variants above regardless of finding count.
 
 ### Cross-Reference with internal-consistency.md
 

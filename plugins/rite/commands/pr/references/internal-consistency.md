@@ -218,14 +218,17 @@ CRITICAL: Screenshot Presence mismatch
    - プライベートリポジトリで認証可能 → `gh api` で取得
 2. **「外部参照不可能」の判定条件** (silent skip を防ぐための厳格定義 — 以下のいずれかに該当する場合のみ「不可能」と扱う):
 
-   | 判定条件 | 具体的なシグナル |
-   |----------|------------------|
-   | **404 (リポジトリ非存在)** | `gh api` が exit code 404、または `WebFetch` が HTTP 404 |
-   | **401 / 403 (認証・権限不足)** | `gh api` が exit code 401 または 403。1 回のみリトライ (`gh auth refresh` の要否は判定しない)。リトライ後も同じエラーなら「不可能」 |
-   | **2xx 以外 (HTTP エラー全般)** | `WebFetch` が 500, 502, 503, 504 等。1 回リトライして同じなら「不可能」 |
-   | **タイムアウト** | `gh api` または `WebFetch` が 2 回連続タイムアウト (デフォルト Claude Code タイムアウトに準拠) |
-   | **空レスポンス** | exit code 0 だが stdout が空または `null` (gh API のコーナーケース) |
-   | **リポジトリ名が特定できない** | doc-only repo で cross-reference 対象の external repo owner/name を推定する情報が PR 本文・diff・config のどこにも存在しない |
+   | Failure signal 値 | 判定条件 | 具体的なシグナル |
+   |-------------------|----------|------------------|
+   | `404` | リポジトリ非存在 | `gh api` が exit code 404、または `WebFetch` が HTTP 404 |
+   | `401` | 認証エラー | `gh api` が exit code 401 (未認証)。1 回のみリトライ (`gh auth refresh` の要否は判定しない)。リトライ後も同じエラーなら「不可能」 |
+   | `403` | 権限不足 | `gh api` が exit code 403 (認証済みだが権限不足)。1 回のみリトライ。リトライ後も同じエラーなら「不可能」 |
+   | `5xx` | HTTP サーバーエラー | `WebFetch` が HTTP 500, 502, 503, 504 等の 5xx ステータス。1 回リトライして同じなら「不可能」 |
+   | `timeout` | タイムアウト | `gh api` または `WebFetch` が 2 回連続タイムアウト (デフォルト Claude Code タイムアウトに準拠) |
+   | `empty` | 空レスポンス | exit code 0 だが stdout が空または `null` (gh API のコーナーケース) |
+   | `name-unresolved` | 外部 repo 名特定不能 | doc-only repo で cross-reference 対象の external repo owner/name を推定する情報が PR 本文・diff・config のどこにも存在しない |
+
+   **注**: 401 と 403 は「認証・権限」系の問題として分類は同じだが、HTTP 仕様上は「未認証」と「認証済みだが権限不足」で区別され、デバッグ時の切り分けに有用なため **2 値を個別の行として分離**する。META 行の `Failure signal` フィールドにもどちらを検出したか具体値 (`401` または `403`) を記録する。
 
    **リトライしない判定条件**: 429 (rate limit) は一時的障害であり「不可能」とは判定しない — 指数バックオフで待機後に再試行する (上記テーブルに含めない)。
 
@@ -239,13 +242,7 @@ CRITICAL: Screenshot Presence mismatch
    - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
    ```
 
-   **Failure signal の値は上記判定条件テーブル (step 2) と完全に対応させる**:
-   - `404` — リポジトリ非存在
-   - `401` / `403` — 認証・権限不足 (2 値を区別して記録)
-   - `5xx` — HTTP サーバーエラー全般 (500, 502, 503, 504 等)
-   - `timeout` — タイムアウト (2 回連続)
-   - `empty` — 空レスポンス
-   - `name-unresolved` — 外部 repo 名が特定できない
+   **Failure signal の値は上記判定条件テーブル (step 2) の 7 値 (`404` / `401` / `403` / `5xx` / `timeout` / `empty` / `name-unresolved`) と完全に対応させる**。各値の意味は上記テーブルの「判定条件」列を参照。401 と 403 は分類上は「認証・権限」系で同カテゴリだが、HTTP 仕様の区別 (未認証 vs 認証済みだが権限不足) に従って 2 値を個別に記録する。
 
 4. レビュー呼び出し側 (review.md Phase 5.1.3 Doc-Heavy Post-Condition Check) はこのメタ情報を検出し、ユーザーに明示的な確認を求める。メタ情報なしで cross-reference を skip した finding は post-condition check で reject される。
 
@@ -265,7 +262,7 @@ tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合
 2. `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (疑似コード形式)
 3. `plugins/rite/skills/reviewers/SKILL.md` Reviewers テーブル tech-writer 行 (representative)
 
-> **Note — 本ファイル (`internal-consistency.md`) の位置付け**: 本ファイルは `doc_file_patterns` を**保持しない**(参照される検証プロトコルの定義書)。したがって drift 監視対象は上記 3 ファイル限定であり、本ファイルは invariant の対象外。Cycle 3 以前のドキュメントで「本ファイルを含む 3 ファイル」と記述していた箇所はすべて誤りで、Cycle 4 で訂正された。
+> **Note — 本ファイル (`internal-consistency.md`) の位置付け**: 本ファイルは `doc_file_patterns` を**保持しない**(参照される検証プロトコルの定義書)。したがって drift 監視対象は上記 3 ファイル限定であり、本ファイルは invariant の対象外。
 
 drift 検出の自動 lint は Issue #353 で追跡中。
 
