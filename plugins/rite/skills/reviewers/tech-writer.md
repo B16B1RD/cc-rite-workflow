@@ -150,9 +150,12 @@ Documentation PRs may describe an external product whose implementation lives in
    ```
    META: Cross-Reference partially skipped
    - Reason: Implementation source not found in this repository
+   - Failure signal: <404 / 401 / 403 / 5xx / timeout / empty / name-unresolved のいずれか>
    - Verified externally against: [list of external sources, or "none — manual verification required"]
    - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
    ```
+
+   **Failure signal の値**: 上記 6 種から 1 つを選択する。各値の意味は [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-禁止) の "Failure signal の値" 表を参照 (404 = リポジトリ非存在 / 401 = 認証エラー / 403 = 権限不足 / 5xx = HTTP サーバーエラー / timeout = タイムアウト / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
 3. The reviewer caller (review.md Phase 5.1.3) will surface this meta-finding and require explicit user acknowledgement before treating the review as complete
 
 ### Doc-Heavy mode finding requirements

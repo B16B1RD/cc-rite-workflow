@@ -270,8 +270,15 @@ skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 #   - 書き出し前/書き出し中の exit 1 → 4 ファイル全削除 (orphan 防止)
 #   - 全書き出し成功+post-condition pass 後 → handoff 3 ファイルは保護、jq_err のみ削除
 #   - Phase 1.5 で明示的に cleanup を実行 (Fast Path 完了経路の正常 cleanup 経路)
+#
+# trap 対象シグナル: EXIT INT TERM HUP の 4 種類すべて
+# - EXIT: 正常終了 / exit 1 等の意図的終了
+# - INT: Ctrl+C 等の interrupt (非対話モードでも `kill -INT` で発火)
+# - TERM: 外部からの `kill -TERM` (Claude Code Bash tool timeout / sprint team-execute の親プロセス kill 等)
+# - HUP: 端末切断 / SIGHUP (hook timeout, セッション終了)
+# bash の EXIT trap は SIGTERM を捕捉しないため、INT/TERM/HUP を明示的に追加する必要がある
 handoff_committed=0
-trap 'rc=$?; rm -f "$jq_err"; if [ "$handoff_committed" = "0" ]; then rm -f "$body_file" "$author_file" "$skip_file"; fi; exit $rc' EXIT
+trap 'rc=$?; rm -f "$jq_err"; if [ "$handoff_committed" = "0" ]; then rm -f "$body_file" "$author_file" "$skip_file"; fi; exit $rc' EXIT INT TERM HUP
 
 if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>"$jq_err"); then
   echo "エラー: gh api レスポンスの JSON パースに失敗しました (.body 抽出)" >&2
@@ -516,6 +523,30 @@ handoff_committed=1
 - Phase 4.6 完了報告に `confidence_override: N 件` を追加
 - Phase 4.5.3 work memory のレビュー対応履歴に `- confidence_override: {file:line} (外部ツール由来、ユーザーがバイパスを承認)` を記録
 - Phase 4.3 で別 Issue 化される finding にも `confidence_override=true` の事実を Issue 本文に記載
+
+**Retained context flags** (Phase 4.5.3 / 4.6 / 4.3.4 の placeholder 展開時に Read tool で会話履歴から読み戻す変数):
+
+| Flag | 型 | 初期値 | 更新タイミング |
+|------|---|--------|---------------|
+| `confidence_override_count` | int | `0` | best-effort parse で 1 件の override が確定するたびに `+1` |
+| `confidence_override_findings` | list[str] (`"file:line"` の配列) | `[]` | 同上、override が確定するたびに `append("{file}:{line}")` |
+
+**Claude による retain と再注入の手順** (data flow の具体化):
+
+1. Phase 1.2 best-effort parse で最初の override 候補が出現した時点で、上記 2 flag を会話コンテキストに明示宣言する (例: `[CONTEXT] confidence_override_count = 0; confidence_override_findings = []`)
+2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、count を +1 し、findings に file:line を append。更新後の値も会話コンテキストに明示する (例: `[CONTEXT] confidence_override_count = 2; confidence_override_findings = ["src/foo.ts:42", "src/bar.ts:18"]`)
+3. Phase 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、Claude は最新の `[CONTEXT]` 行を会話履歴から検索して値を読み戻す
+4. fix ループ中に他のフェーズから上記 flag を変更しない (immutable な追加のみ)
+
+**Phase 4.6 / 4.5.3 / 4.3.4 で参照する placeholder 一覧**:
+
+| Phase | placeholder | 展開ルール |
+|-------|-------------|----------|
+| 4.6 (完了報告) | `{confidence_override_count}` | `confidence_override_count` の値をそのまま展開 (0 含む) |
+| 4.6 (完了報告) | `{confidence_override_files_suffix}` | `confidence_override_count == 0` なら空文字列、`>= 1` なら ` (file_a.ts:10; file_b.ts:42; ...)` (先頭スペース付きカッコ + 配列を `; ` 区切り) |
+| 4.5.3 (work memory) | `{confidence_override_section}` | `confidence_override_count == 0` なら `なし`、`>= 1` なら同一行に `; ` 区切りで `findings` を列挙 (改行不要、Markdown bullet 構造を壊さない) |
+| 4.3.4 (Issue 本文) | `{confidence_value}` | finding 単位の値。rite review 由来なら finding の severity (CRITICAL/HIGH/MEDIUM/LOW)、外部ツール由来かつ Confidence 列なしなら literal `70 (暫定)` |
+| 4.3.4 (Issue 本文) | `{confidence_override_value}` | finding 単位の boolean。`confidence_override_findings` に当該 file:line が含まれていれば `true (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み)`、それ以外は `false` |
 
 この手順により、外部レビューツールの信頼度を silent に無視することなく、かつ hallucinated finding の混入も防ぎ、かつ Confidence 80+ ゲート invariant の破壊を silent に起こさない (override は常に trackable)。
 
@@ -1303,18 +1334,18 @@ cat <<'BODY_EOF' > "$tmpfile"
 - **指摘内容**: {original_comment}
 - **Confidence**: {confidence_value} (Confidence override: {confidence_override_value})
 
-<!-- {reviewer_display} の展開: Broad Retrieval 経由なら "@{reviewer}"、Fast Path 経由で
-     target_author_mention_skip == "true" なら "(不明なレビュアー)" に置換。詳細は Phase 2.1
-     の展開ルール表を参照。Claude がスクリプト生成前に正しい値に置換する。
+<!-- placeholder 展開ルール (Claude がスクリプト生成前に置換する):
+     - {reviewer_display}: Broad Retrieval 経由なら "@{reviewer}"、Fast Path 経由で
+       target_author_mention_skip == "true" なら "(不明なレビュアー)"。詳細は Phase 2.1 の展開ルール表を参照
+     - {confidence_value}: finding が rite review 由来なら CRITICAL/HIGH/MEDIUM/LOW のいずれか。
+       外部ツール由来で Confidence 列なしの場合は "70 (暫定)" を入れる
+     - {confidence_override_value}:
+         false (rite review 由来 / Confidence 列ありの外部ツール) → "false"
+         true (外部ツール由来 + ユーザーがバイパスを承認) → "true (外部ツール由来、Confidence 70 のまま
+         80+ ゲートをバイパスする policy override、ユーザー承認済み)" -->
 
-     {confidence_value} は finding が rite review 由来なら CRITICAL/HIGH/MEDIUM/LOW のいずれか。
-     外部ツール由来で Confidence 列なしの場合は "70 (暫定)" を入れる。
-
-     {confidence_override_value}:
-     - false (rite review 由来 / Confidence 列ありの外部ツール) → "false"
-     - true (外部ツール由来 + ユーザーがバイパスを承認) → "true (外部ツール由来、Confidence 70 のまま
-       80+ ゲートをバイパス、ユーザー承認済み)"
-     Issue #349 Cycle 3 M5 fix の追跡義務により、override 情報を Issue 本文にも明示する。 -->
+<!-- 補足: confidence_override 行を Issue 本文に含める理由は fix.md 本文の Phase 1.2 best-effort
+     parse セクション末尾「Confidence override の追跡義務」段落を参照すること。 -->
 
 ### 別 Issue 化の理由
 {skip_reason}
@@ -1460,6 +1491,11 @@ if [[ -n "$comment_id" ]]; then
     # 注: git diff --name-status の stderr を suppress せず、エラー時は明示的に WARNING を出す
     # shallow clone / base branch 未 fetch で "unknown revision" 等が出た場合、silent に空文字に落ちると
     # work memory の変更ファイル一覧が「まだ変更はありません」と誤記録される silent regression の原因になる
+
+    # 共有 sentinel 文字列定数 (bash 側 fallback marker と Python 側 startswith 検出を完全一致比較)
+    # 文言を変更する場合、bash 側と Python 側 (後の python3 -c 内) を必ず同時に変更すること
+    GIT_DIFF_FAILED_SENTINEL="__RITE_FIX_CHANGED_FILES_GIT_DIFF_FAILED__"
+
     base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' || echo "develop")
     diff_stderr_tmp=$(mktemp /tmp/rite-fix-git-diff-err-XXXXXX) || {
       echo "ERROR: git diff stderr 一時ファイルの作成に失敗" >&2
@@ -1470,7 +1506,8 @@ if [[ -n "$comment_id" ]]; then
       echo "  詳細: $(cat "$diff_stderr_tmp")" >&2
       echo "  考えられる原因: shallow clone (base branch 未 fetch) / 無効な base branch 名 / git リポジトリ外で実行" >&2
       echo "  対処: git fetch origin ${base_branch} を実行後に再試行、または rite-config.yml の branch.base を確認" >&2
-      changed_files_md="_変更ファイル取得失敗 (git diff エラー、上記 stderr を確認してください)_"
+      # sentinel 文字列のみを fallback 値とする (Python 側で完全一致比較で検出される)
+      changed_files_md="${GIT_DIFF_FAILED_SENTINEL}"
     else
       changed_files_md=$(printf '%s\n' "$changed_files_raw" | while read -r status file; do
         [ -z "$status" ] && continue
@@ -1493,7 +1530,9 @@ if [[ -n "$comment_id" ]]; then
     tmpfile=$(mktemp)
     files_tmp=$(mktemp)
     history_tmp=$(mktemp)
-    trap 'rm -f "$pr_body_tmp" "$body_tmp" "$tmpfile" "$files_tmp" "$history_tmp"' EXIT
+    # diff_stderr_tmp は通常 line 1526 で削除済みだが、SIGTERM/SIGINT で kill された場合に
+    # 上記 rm に到達しないリスクがあるため、念のため trap 対象にも追加 (defensive)
+    trap 'rm -f "$pr_body_tmp" "$body_tmp" "$tmpfile" "$files_tmp" "$history_tmp" "$diff_stderr_tmp"' EXIT INT TERM HUP
     printf '%s' "$current_body" > "$body_tmp"
     printf '%s' "$changed_files_md" > "$files_tmp"
     cat > "$history_tmp" << 'HISTORY_EOF'
@@ -1507,6 +1546,7 @@ body_path, out_path = sys.argv[1], sys.argv[2]
 impl_status, test_status, doc_status = sys.argv[3], sys.argv[4], sys.argv[5]
 files_path = sys.argv[6]
 history_path = sys.argv[7]
+git_diff_failed_sentinel = sys.argv[8]
 
 with open(body_path, "r") as f:
     body = f.read()
@@ -1515,21 +1555,29 @@ with open(files_path, "r") as f:
 with open(history_path, "r") as f:
     history_entry = f.read().strip()
 
-# Cycle 3 L7 fix の git diff 失敗 fallback marker を検出し、visible WARNING ブロックに置き換える
+# git diff 失敗 fallback marker を完全一致比較で検出し、visible WARNING ブロックに置き換える
 # (silent regression 防止: stderr WARNING は E2E flow / 自動 hook 経由では人間に見えないため、
 #  work memory body に明示的な警告ブロックを残す必要がある)
-if file_list_markdown.startswith("_変更ファイル取得失敗"):
+# 比較は startswith ではなく == で完全一致 (sentinel 文字列のみが fallback 値)
+if file_list_markdown == git_diff_failed_sentinel:
     print(
         "ERROR: changed_files_md fallback marker detected. "
-        "Replacing with visible WARNING block in work memory.",
+        "Replacing with visible WARNING block in work memory and aborting with non-zero exit.",
         file=sys.stderr,
     )
     file_list_markdown = (
         "> ⚠️ **WARNING**: `git diff --name-status` が失敗したため変更ファイル一覧を取得できませんでした。\n"
         "> 上記 stderr の詳細を確認し、`git fetch origin <base_branch>` を実行後に再実行してください。\n"
         "> このセクションは正確ではなく、変更があったかどうかの追跡には使えません。\n"
-        "> (Cycle 4 H2 fix: Cycle 3 L7 fallback marker を visible WARNING に変換)\n"
     )
+    # body に警告ブロックを差し込んでから書き出してから exit する (debug 用に出力ファイルは残す)
+    pattern = r"(### 変更ファイル\n)(?:<!-- .*?-->\n)?.*?(?=\n### |\Z)"
+    body = re.sub(pattern, lambda m: m.group(1) + file_list_markdown, body, count=1, flags=re.DOTALL)
+    with open(out_path, "w") as f:
+        f.write(body)
+    # 後続の PATCH を silent に成功させないため non-zero exit
+    # bash 側で `|| { echo "..." >&2; exit 1; }` でハンドルされる
+    sys.exit(2)
 
 # --- Progress summary update (v2 format: Markdown table) ---
 v2_updated = False
@@ -1563,7 +1611,18 @@ else:
 
 with open(out_path, "w") as f:
     f.write(body)
-' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "$files_tmp" "$history_tmp"
+' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "$files_tmp" "$history_tmp" "$GIT_DIFF_FAILED_SENTINEL"
+    py_exit=$?
+    if [ "$py_exit" -eq 2 ]; then
+      echo "ERROR: Python script detected git diff failure marker and refused to PATCH work memory silently." >&2
+      echo "  visible WARNING block was injected into the body file ($tmpfile) for debug." >&2
+      echo "  Backup of original work memory: $backup_file" >&2
+      echo "  Action: git diff の失敗原因を解決後、再実行してください (上記 stderr の git diff WARNING を参照)" >&2
+      exit 1
+    elif [ "$py_exit" -ne 0 ]; then
+      echo "ERROR: Python script failed with unexpected exit code $py_exit. Backup: $backup_file" >&2
+      exit 1
+    fi
 
     # Safety checks before PATCH (see gh-cli-patterns.md)
     if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
@@ -1627,18 +1686,20 @@ Automatically append the following to work memory:
 - `返信` - Explanation/reply only
 - `スキップ` - Deferred for later
 
-**`{confidence_override_section}` の生成ルール** (Phase 1.2 best-effort parse の Confidence override 追跡義務、Issue #349 Cycle 3 M5 fix):
+**`{confidence_override_section}` の生成ルール** (Phase 1.2 best-effort parse の Confidence override 追跡義務):
 
 | 状況 | 展開内容 |
 |------|----------|
 | `confidence_override_count == 0` | `なし` |
-| `confidence_override_count >= 1` | 改行後に file:line 一覧を箇条書きで列挙 |
+| `confidence_override_count >= 1` | 親 bullet と同一行に **`; ` 区切りで列挙** (改行なし、Markdown bullet 構造を壊さない) |
 
-`>= 1` のときの展開例:
+**`>= 1` のときの展開例** (`confidence_override_findings = ["src/foo.ts:42", "src/bar.ts:18"]` の場合):
+
+```markdown
+- **Confidence override**: src/foo.ts:42; src/bar.ts:18 (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み)
 ```
-- {file:line_1} (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパス、ユーザー承認済み)
-- {file:line_2} (...)
-```
+
+**重要 — 改行禁止**: bullet item 内に改行と子箇条書きを入れる場合 Markdown は子側に 2 スペースインデントを要求するが、placeholder 展開時の自動インデント処理は脆弱で履歴の構造を壊しやすい。そのため `{confidence_override_section}` は **同一行に押し込める** 形式を厳格に採用する。
 
 ### 4.6 Completion Report
 
@@ -1661,7 +1722,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 - すべて承認されたら `/rite:pr:ready` でマージ準備
 ```
 
-**`{confidence_override_count}` / `{confidence_override_files_suffix}` の展開ルール** (Issue #349 Cycle 3 M5 fix の追跡可視化):
+**`{confidence_override_count}` / `{confidence_override_files_suffix}` の展開ルール** (Confidence policy override の追跡可視化):
 
 | 状況 | `{confidence_override_count}` | `{confidence_override_files_suffix}` |
 |------|------------------------------|--------------------------------------|
@@ -1676,7 +1737,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 |-------|-------------|-------------|
 | `全指摘: {total_count}件` | Total number of findings | Number of review comment findings retrieved in Phase 1 |
 | `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count` |
-| `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | Phase 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Issue #349 Cycle 3 M5 fix 追跡義務)。0 件でも常時表示 |
+| `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | Phase 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 
 **Note**: The review-fix loop of `/rite:issue:start` checks the content of this completion report to determine the next action:
 - `プッシュ: 完了` -> Execute re-review (verify fix content)
