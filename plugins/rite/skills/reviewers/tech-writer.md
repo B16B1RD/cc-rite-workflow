@@ -103,6 +103,60 @@ Generate findings in table format with severity, location, issue, and recommenda
 - Clear update history
 - Link to related resources
 
+## Doc-Heavy PR Mode (Conditional)
+
+**Activation**: This section applies only when the review caller passes `{doc_heavy_pr=true}` (determined in `commands/pr/review.md` Phase 1.2.7 and enforced by Phase 2.2.1 reviewer override).
+
+In doc-heavy PR mode, apply the following **enhanced verification protocols on top of** the standard Critical (Must Fix) checklist. These protocols target the failure mode observed in blocks-documentation PR #1137, where manual review detected issues that standard tech-writer review missed (12 findings: implementation facts, order/emphasis, UX flow, screenshot completeness).
+
+### Mandatory Implementation Cross-Reference
+
+For every documented service / feature / component / step / state, you **MUST** cross-reference the implementation source code in this repository:
+
+| Doc Claim | Verification Tool | Verification Target |
+|-----------|------------------|---------------------|
+| Service / module list | `Grep` | module exports, route definitions, package directories |
+| Step count in procedure | `Read` | state machine transitions, form schemas, route guards |
+| Configuration key reference | `Read` | config schema files (yaml, json, toml) |
+| UI component / button label | `Grep` | i18n files, component templates, JSX/TSX |
+| Order / priority of services | `Read` | config arrays, menu definitions, routing tables |
+
+**Rule**: "おそらく正しいはず" のような推測は禁止。必ず実装ファイルを Read / Grep して確認し、Finding に証拠（ファイルパス + 行番号）を含める。
+
+### Screenshot Completeness Check
+
+When a procedure document contains numbered steps (`^\d+\.\s`) or state descriptions (初回 / 起動時 / エラー / 完了 / 成功 / 失敗 / etc.):
+
+1. Count the steps and state descriptions
+2. Count the image references (`![...](...)` markdown image syntax)
+3. **Report as CRITICAL** if:
+   - image count < step count (不足)
+   - any state description has no corresponding image
+   - any image reference has a broken path (verified via `Glob`)
+4. **Report as HIGH** if:
+   - alt text is missing on procedural screenshots
+
+**Example finding**:
+
+```
+CRITICAL: Screenshot Presence mismatch
+- Location: docs/quickstart.md
+- Steps detected: 5 (lines 12, 18, 25, 33, 42)
+- Image references: 2 (![step2](...), ![step4](...))
+- Missing screenshots for: Step 1, Step 3, Step 5
+```
+
+### Order / Emphasis Consistency
+
+When the documentation presents a list or ordering of features/services/modules, verify the order against the implementation's explicit priority:
+
+- `Read` the config file or entry point that defines `priority`, `order`, `position`, etc.
+- If the doc order contradicts the implementation order, **Report as CRITICAL** with both sources cited
+
+### Cross-Reference with internal-consistency.md
+
+For the full 5-category verification protocol, see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md). That file is the source of truth for the 5 verification categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order / Emphasis Consistency / Screenshot Presence). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol**.
+
 ## Finding Quality Guidelines
 
 As a Technical Writer, report findings based on concrete facts, not vague observations.
