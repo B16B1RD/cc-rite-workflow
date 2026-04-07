@@ -306,12 +306,18 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 
 1. **必ず stderr に WARNING を出力** (silent fallback 禁止):
    ```
-   WARNING: git diff --numstat failed. Doc-Heavy PR detection will fall back to Phase 1.1 `files` array only.
+   WARNING: git diff --numstat failed. Using Phase 1.1 `files` array (additions/deletions per file) instead.
    Reason: <error message>
-   Impact: doc_files_ratio / count_ratio computation may be less accurate; doc_heavy detection may be skipped or under-detected.
+   Note: Phase 1.2.7 Doc-Heavy PR detection uses only the Phase 1.1 `files` array fields (`additions + deletions`),
+         so this numstat failure does NOT affect Doc-Heavy detection accuracy. The fallback is equivalent data.
    ```
 2. Phase 1.1 の `additions`, `deletions`, `changedFiles`, `files` data を使って summary を生成する
-3. Phase 1.2.7 (Doc-Heavy PR Detection) が numstat に依存している場合、判定を skip した事実 (`doc_heavy_pr = false (numstat unavailable)`) をレビュー結果の Phase 5.4 出力にも含める
+3. **Retained context flags** (Phase 5.4 template 表示用。会話コンテキストに明示保持し、stderr WARNING の消失リスクを回避):
+   - `numstat_availability = "unavailable"`
+   - `numstat_fallback_reason = <error message の 1 行要約>`
+   - Phase 1.2.7 の `{doc_heavy_pr}` 計算は Phase 1.1 `files` 配列で完結するため `doc_heavy_pr` 判定自体は通常通り実行される (Phase 5.4 表示では「numstat unavailable だが Doc-Heavy 判定は実行済み」と表示される)
+
+   `numstat_availability` が `"OK"` (通常時) の場合、Phase 5.4 の numstat 可用性行はこの retained flag を参照して表示する。本項目は retained flag を**明示定義**するため、Phase 5.4 で `{numstat_fallback_reason}` placeholder が undefined 参照にならないことを保証する。
 
 #### 1.2.7 Doc-Heavy PR Detection
 
@@ -329,13 +335,13 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `true` | この Phase の有効/無効 |
-| `file_ratio_threshold` | `0.6` | `doc_lines / total_diff_lines` の閾値 |
-| `count_ratio_threshold` | `0.7` | `doc_files / total_files` の閾値 |
+| `lines_ratio_threshold` | `0.6` | `doc_lines / total_diff_lines` の閾値 (行数比率) |
+| `count_ratio_threshold` | `0.7` | `doc_files / total_files` の閾値 (ファイル数比率) |
 | `max_diff_lines_for_count` | `2000` | ファイル数比率判定を有効にする最大 diff 行数 |
 
 **Calculation**:
 
-Use the `files` array and numstat from Phase 1.2.6.
+Use the `files` array from Phase 1.2.6 (specifically the `additions` and `deletions` fields per file, already retrieved in Phase 1.1). This calculation does **not** depend on `git diff --numstat`; numstat failure in Phase 1.2.6 does not affect Doc-Heavy detection accuracy because the equivalent data is available from the `files` array.
 
 ```
 # Doc file patterns — single source of truth, kept in sync with tech-writer.md Activation.
@@ -369,7 +375,11 @@ if total_files_count == 0:
     doc_heavy_pr = false   # explicit set (Defensive guard)
     skip to Phase 1.3      # skip condition (changedFiles == 0) で本来到達しない
 
-doc_files_ratio       = doc_lines / total_diff_lines
+# 命名上の注意:
+# - doc_lines_ratio は「ドキュメント行数 / 全体 diff 行数」の比率 (行数ベース)
+# - doc_files_count_ratio は「ドキュメントファイル数 / 全体ファイル数」の比率 (ファイル数ベース)
+# config キー名は意味と一致している (lines_ratio_threshold / count_ratio_threshold)
+doc_lines_ratio       = doc_lines / total_diff_lines
 doc_files_count_ratio = doc_files_count / total_files_count
 ```
 
@@ -382,14 +392,14 @@ doc_files_count_ratio = doc_files_count / total_files_count
 - 例 1: `docs/foo.md (+50)` と `commands/bar.md (+50)` の PR
   - `doc_lines` = 50 (docs/ のみ、commands/ は除外)
   - `total_diff_lines` = 100 (両方含む)
-  - `doc_files_ratio` = 50/100 = 0.5 (< 0.6) → `doc_heavy_pr = false`
+  - `doc_lines_ratio` = 50/100 = 0.5 (< 0.6) → `doc_heavy_pr = false`
 - 例 2: `docs/foo.md (+80)` のみの PR
   - `doc_lines` = 80, `total_diff_lines` = 80, ratio = 1.0 → `doc_heavy_pr = true`
 
 **Determination**:
 
 ```
-doc_heavy_pr = (doc_files_ratio >= file_ratio_threshold)
+doc_heavy_pr = (doc_lines_ratio >= lines_ratio_threshold)
             OR (doc_files_count_ratio >= count_ratio_threshold AND total_diff_lines < max_diff_lines_for_count)
 ```
 
@@ -485,7 +495,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
 
 1. **tech-writer 必須昇格**: Phase 2.2 で tech-writer が候補に含まれている場合、その selection_type を `recommended → mandatory` に昇格する。含まれていない場合は mandatory として新規追加する
    - **到達可能性 note**: doc_heavy_pr = true でかつ tech-writer が候補にないケースは、tech-writer.md Activation と review.md `doc_file_patterns` の集合等価性が保たれている限り発生しない。しかし将来両者が drift する可能性に備え、新規追加経路を残す (防御的フォールバック)
-   - **TODO**: 両ファイルの Activation patterns 等価性を CI/lint で自動検証する test は未整備。現時点では drift を自動検出できないため、本 PR 以降で検証 test を別 Issue として登録することを推奨
+   - **TODO(#353)**: 両ファイルの Activation patterns 等価性を CI/lint で自動検証する test は未整備。drift 検出 lint の追加は Issue #353 で追跡中 (発端は PR #350 の verified-review で検出された SKILL.md drift 実例)
 2. **code-quality co-reviewer 追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。具体的な検証期待:
    - ドキュメント内 fenced code block (` ```bash `, ` ```yaml `, ` ```python ` 等) の構文・引用・エラーハンドリング
    - ドキュメントの「実装例」コードが既存の coding style / naming convention と整合しているか
@@ -1149,25 +1159,36 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 **Verification steps**:
 
 1. **tech-writer finding 0 件警告** (silent non-compliance 防止):
-   - tech-writer の finding count が 0 件の場合、**必ず以下のいずれかが出力に含まれているか検証する** (三重 AND ではなく、明示的 negative confirmation の有無を判定):
-     - (a) 有効な finding (evidence 行付き) が 1 件以上
-     - (b) `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` 形式の **明示的な negative confirmation** (protocol を実行したが 0 件だったことを明言)
-     - (c) `META: Cross-Reference partially skipped` 形式の外部参照 META (ステップ 3 で扱う)
-   - 上記いずれも含まれていない場合:
+
+   **判定条件** (単純化された AND 条件):
+   - tech-writer の `finding_count == 0` **かつ**
+   - tech-writer の出力に以下の META 行が 1 つも含まれない:
+     - `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` (negative confirmation)
+     - `META: Cross-Reference partially skipped` (外部参照スキップ、ステップ 3 で扱う)
+
+   上記両方が true の場合のみ、警告を発火する:
      - **WARNING を必ず stderr に出力** (silent fall-through 禁止):
        ```
        WARNING: Doc-Heavy PR mode active, but tech-writer returned 0 findings without META confirmation.
-       Expected: One of (a) evidence-backed findings, (b) explicit "META: All 5 verification categories executed, 0 inconsistencies found" declaration, or (c) "META: Cross-Reference partially skipped" notice for external-repo documentation.
+       Expected: Either explicit "META: All 5 verification categories executed, 0 inconsistencies found" declaration, or "META: Cross-Reference partially skipped" notice for external-repo documentation.
        Action: Verify tech-writer executed the 5-category verification protocol from internal-consistency.md. Re-run with explicit Doc-Heavy mode instructions if needed.
        ```
      - レビュー結果に `doc_heavy_post_condition: warning` フラグを set
      - overall assessment を `修正必要` に変更 (silent pass 防止)
 
-2. **Evidence field 必須化** (厳格検査):
-   - tech-writer の各 finding (CRITICAL/HIGH/MEDIUM/LOW すべて) について、**`内容` カラム本文中**に以下のいずれかが含まれているかを**正規表現で厳格に検査**する:
-     - 正規表現 `(?m)^\s*-?\s*Evidence:\s*tool=(Grep|Read|Glob|WebFetch)` にマッチする Evidence 行
-     - 正規表現 `(?m)^\s*-?\s*Verified via:\s*(Grep|Read|Glob|WebFetch)` にマッチする Verified via 行
-   - **注意**: reviewer 標準テンプレートの `ファイル:行` カラムは指摘対象の位置情報であり、検証の evidence とは別物。位置情報の存在のみをもって evidence ありと判定してはならない
+   **Note**: `finding_count >= 1` の場合はこのステップ 1 をスキップし、ステップ 2 (Evidence field 検査) に進む。ステップ 2 の Evidence 要件を満たせば post-condition は passed とみなされる。
+
+2. **Evidence field 必須化** (厳格検査 — Markdown テーブル対応):
+   - tech-writer の各 finding (CRITICAL/HIGH/MEDIUM/LOW すべて) について、**`内容` カラム本文中**に Evidence 記述が含まれているかを正規表現で検査する。
+   - **重要 — Markdown テーブル構造への配慮**: Markdown テーブルのセル本文内では物理的な改行は許容されず、各 finding 行は 1 物理行として表現される (セル内改行は `<br>` または同一行内の区切り文字で表現)。そのため、Evidence 検出の正規表現は**行頭 anchor (`^`) に依存してはならない**。代わりに「行頭または直前が空白/区切り文字/`<br>`/`|`/`>`」を許容する anchor を使用する:
+     - 正規表現 (multiline mode、行頭または直前が区切り文字):
+       ```
+       (?:(?:^|<br\s*/?>|[\s|>(])\s*)-?\s*Evidence:\s*tool=<?(Grep|Read|Glob|WebFetch)>?
+       ```
+     - 補助: `<br>` が使われない場合でも、セル内の `- Evidence: tool=Grep, ...` 形式はテキスト先頭 (`^`) または空白/`|`/`(` 直後に出現するためマッチする
+   - **山括弧メタ記法の許容**: `tool=<?(Grep|Read|Glob|WebFetch)>?` により、reviewer が tech-writer.md の example を literal に解釈して `tool=<Grep>` と書いた場合でもマッチする。これにより example ドキュメントのメタ記法との乖離による false positive を防ぐ。
+   - **評価方法**: 各 finding テーブル行の `内容` セルを `<br>` / `\n` でデコードしてから上記正規表現を適用することを推奨する。これにより、reviewer がセル内改行を `<br>` で表現した場合・単一行にまとめた場合の両方で一貫して検出できる。
+   - **注意**: reviewer 標準テンプレートの `ファイル:行` カラムは指摘対象の位置情報であり、検証の evidence とは別物。位置情報の存在のみをもって evidence ありと判定してはならない。
    - **Evidence が欠落している finding を発見した場合**:
      - 該当 finding を **`evidence_missing`** としてマーク
      - レビュー全体の overall assessment を `修正必要` (要修正) に変更
@@ -1181,7 +1202,7 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
        ```
 
 3. **META: Cross-Reference partially skipped 検出**:
-   - tech-writer の出力に正規表現 `(?m)^\s*META: Cross-Reference partially skipped` にマッチする行が含まれている場合:
+   - tech-writer の出力に正規表現 `(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:\s*Cross-Reference partially skipped` にマッチする行が含まれている場合:
      - レビュー結果に `cross_reference_partial_skip: true` と外部リポジトリ情報 (META ブロック本文) を set
      - Phase 5.4 (Integrated Report) の Doc-Heavy PR Mode 検証状態セクションに表示
      - Phase 5.3 の overall assessment 判定時、ユーザーに明示的な acknowledgement を `AskUserQuestion` で求める
@@ -1190,12 +1211,18 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 **Implementation note**: 本 Post-Condition Check は Phase 5.2 (Cross-Validation) の **前**に実行する。これにより evidence 欠落が cross-validation の対象になる前に検出され、tech-writer の再実行判断が早期に下せる。
 
 **Retained flags** (Phase 5.4 template 表示用):
+- `numstat_availability`: `"OK"` / `"unavailable"` (Phase 1.2.6 で set)
+- `numstat_fallback_reason`: numstat 失敗時のエラー要約 (Phase 1.2.6 で set、通常時は未定義)
+- `doc_heavy_pr_value`: `{doc_heavy_pr}` の boolean 値 (Phase 1.2.7 で set)
+- `doc_heavy_pr_decision_summary`: Doc-Heavy 判定根拠の 1 行要約 (例: `"doc_lines_ratio=0.72 >= 0.6"` / `"rite plugin self-only, excluded"`)
 - `doc_heavy_post_condition`: `passed` / `warning` / `error`
 - `doc_heavy_finding_count`: tech-writer の finding count
 - `evidence_missing_count`: evidence 欠落 finding の数
 - `evidence_missing_list`: 欠落 finding の file:line 一覧
 - `cross_reference_partial_skip`: boolean
 - `cross_reference_skip_details`: META ブロック本文 (外部参照情報)
+
+**Phase 5.4 表示責務の分離**: `doc_heavy_pr == false` (numstat 不在または ratio 未満) の場合、Phase 5.1.3 の post-condition check 自体はスキップされるが、Phase 5.4 Integrated Report の Doc-Heavy PR Mode 検証状態セクションでは `numstat_availability` と `doc_heavy_pr_value` を上記 retained flags から参照して表示する。これにより numstat 失敗の可視性は Phase 5.1.3 スキップとは独立に保たれる。
 
 ### 5.2 Cross-Validation
 

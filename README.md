@@ -21,7 +21,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Automated**: Auto-detection and auto-configuration
 - **Customizable**: Flexible configuration via YAML
 - **Integrated**: GitHub Projects, notifications (Slack/Discord/Teams)
-- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** — automatic detection of documentation-centric PRs activates tech-writer's 5-category verification protocol from `internal-consistency.md` (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) with mandatory `Evidence:` field on each finding
+- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs — see CHANGELOG for the verification protocol details
 - **External Review Integration**: `/rite:pr:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
 - **Sprint Management**: Optional Iteration/Sprint support with team execution
 - **TDD Light Mode**: Generate test skeletons from acceptance criteria before implementation

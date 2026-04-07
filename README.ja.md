@@ -19,7 +19,7 @@
 - **自動化**: プロジェクトタイプの自動検出・自動設定
 - **カスタマイズ**: YAML による柔軟な設定
 - **連携**: GitHub Projects、通知機能（Slack/Discord/Teams）
-- **スマートレビュー**: 動的なマルチレビュアーコードレビュー（**Doc-Heavy PR Mode** — ドキュメント中心 PR を自動検出し、tech-writer に `internal-consistency.md` の 5 カテゴリ verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を mandatory 化、各 finding に evidence 必須）
+- **スマートレビュー**: 動的なマルチレビュアーコードレビュー（ドキュメント中心 PR を自動検出する **Doc-Heavy PR Mode** 対応 — 検証プロトコルの詳細は CHANGELOG 参照）
 - **外部レビュー統合**: `/rite:pr:fix` は PR URL / コメント URL 引数を受け付け、外部レビューツール（`/verified-review` 等）の出力を fix ループに直接投入可能
 - **スプリント管理**: Iteration/スプリント管理（チーム実行対応）
 - **TDD Light モード**: 受入条件からテストスケルトンを先行生成

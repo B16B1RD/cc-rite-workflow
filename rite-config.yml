@@ -94,8 +94,8 @@ review:
     use_context7: false      # context7 MCP ツールによる検証を使用（デフォルト: false）
   doc_heavy:
     enabled: true                   # Doc-Heavy PR Detection / Override の有効/無効（デフォルト: true）
-    file_ratio_threshold: 0.6       # doc_lines / total_diff_lines の閾値（デフォルト: 0.6）
-    count_ratio_threshold: 0.7      # doc_files / total_files の閾値（デフォルト: 0.7）
+    lines_ratio_threshold: 0.6      # doc_lines / total_diff_lines の閾値（行数比率、デフォルト: 0.6）
+    count_ratio_threshold: 0.7      # doc_files / total_files の閾値（ファイル数比率、デフォルト: 0.7）
     max_diff_lines_for_count: 2000  # ファイル数比率判定を有効にする最大 diff 行数（デフォルト: 2000）
 
 # Parallel implementation settings

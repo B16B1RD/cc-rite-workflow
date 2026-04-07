@@ -28,8 +28,8 @@ Read `review.doc_heavy` from `rite-config.yml`:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | boolean | `true` | Doc-Heavy PR 判定と本プロトコルの有効/無効 |
-| `file_ratio_threshold` | number | `0.6` | ドキュメント行数比率の閾値 (total_diff に対する doc_lines の比率) |
-| `count_ratio_threshold` | number | `0.7` | ドキュメントファイル数比率の閾値 (total_files に対する doc_files の比率) |
+| `lines_ratio_threshold` | number | `0.6` | ドキュメント**行数比率**の閾値 (`doc_lines / total_diff_lines`、total_diff に対する doc_lines の比率) |
+| `count_ratio_threshold` | number | `0.7` | ドキュメント**ファイル数比率**の閾値 (`doc_files_count / total_files_count`、total_files に対する doc_files の比率) |
 | `max_diff_lines_for_count` | integer | `2000` | ファイル数比率判定を有効にする最大 diff 行数 |
 
 **Activation 条件**: 本プロトコルは `{doc_heavy_pr=true}` フラグ (review.md Phase 1.2.7 で計算される) が set されているときのみ発動する。
@@ -216,16 +216,30 @@ CRITICAL: Screenshot Presence mismatch
 1. **外部リポジトリへの直接アクセスを試みる**:
    - 公開リポジトリ → `gh api repos/{other_owner}/{other_repo}/contents/...` または `WebFetch`
    - プライベートリポジトリで認証可能 → `gh api` で取得
-2. **外部参照も不可能な場合**、以下のメタ情報を finding 出力の冒頭に**必ず含める** (silent skip 禁止):
+2. **「外部参照不可能」の判定条件** (silent skip を防ぐための厳格定義 — 以下のいずれかに該当する場合のみ「不可能」と扱う):
+
+   | 判定条件 | 具体的なシグナル |
+   |----------|------------------|
+   | **404 (リポジトリ非存在)** | `gh api` が exit code 404、または `WebFetch` が HTTP 404 |
+   | **401 / 403 (認証・権限不足)** | `gh api` が exit code 401 または 403。1 回のみリトライ (`gh auth refresh` の要否は判定しない)。リトライ後も同じエラーなら「不可能」 |
+   | **2xx 以外 (HTTP エラー全般)** | `WebFetch` が 500, 502, 503, 504 等。1 回リトライして同じなら「不可能」 |
+   | **タイムアウト** | `gh api` または `WebFetch` が 2 回連続タイムアウト (デフォルト Claude Code タイムアウトに準拠) |
+   | **空レスポンス** | exit code 0 だが stdout が空または `null` (gh API のコーナーケース) |
+   | **リポジトリ名が特定できない** | doc-only repo で cross-reference 対象の external repo owner/name を推定する情報が PR 本文・diff・config のどこにも存在しない |
+
+   **リトライしない判定条件**: 429 (rate limit) は一時的障害であり「不可能」とは判定しない — 指数バックオフで待機後に再試行する (上記テーブルに含めない)。
+
+3. **「外部参照不可能」と判定した場合**、以下のメタ情報を finding 出力の冒頭に**必ず含める** (silent skip 禁止):
 
    ```
    META: Cross-Reference partially skipped
    - Reason: Implementation source not found in this repository
+   - Failure signal: <404 / 401 / timeout / empty / name-unresolved のいずれか>
    - Verified externally against: [list of sources, or "none — manual verification required"]
    - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
    ```
 
-3. レビュー呼び出し側 (review.md Phase 5.1.3 Doc-Heavy Post-Condition Check) はこのメタ情報を検出し、ユーザーに明示的な確認を求める。メタ情報なしで cross-reference を skip した finding は post-condition check で reject される。
+4. レビュー呼び出し側 (review.md Phase 5.1.3 Doc-Heavy Post-Condition Check) はこのメタ情報を検出し、ユーザーに明示的な確認を求める。メタ情報なしで cross-reference を skip した finding は post-condition check で reject される。
 
 ## Cross-Reference
 
@@ -233,6 +247,17 @@ CRITICAL: Screenshot Presence mismatch
 
 - [`../../../skills/reviewers/tech-writer.md`](../../../skills/reviewers/tech-writer.md) — Critical (Must Fix) チェックリストの「文書-実装整合性」5 項目および "Doc-Heavy PR Mode (Conditional)" セクション (Quick Reference テーブル + Verification skip handling)
 - [`../review.md`](../review.md) — Phase 1.2.7 Doc-Heavy PR Detection、Phase 2.2.1 Doc-Heavy Reviewer Override、Phase 5.1.3 Doc-Heavy Post-Condition Check
+- [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧テーブルの tech-writer 行 (representative file patterns)。本ファイル・tech-writer.md・review.md の 3 者と等価な doc_file_patterns を保持する (drift 監視対象)
+
+**drift 検出の invariant** (3 ファイル等価性):
+
+tech-writer Activation patterns は以下 3 ファイルで**等価な集合**を参照する必要がある (syntax は異なってよいが、マッチするファイル集合が同一であること):
+
+1. `plugins/rite/skills/reviewers/tech-writer.md` Activation セクション (source of truth)
+2. `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (疑似コード形式)
+3. `plugins/rite/skills/reviewers/SKILL.md` Reviewers テーブル tech-writer 行 (representative)
+
+drift 検出の自動 lint は Issue #353 で追跡中。
 
 **関連ファイル** (本ファイルからの相対パスを明示):
 

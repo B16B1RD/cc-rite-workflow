@@ -111,13 +111,15 @@ Extract the following information from work memory and retain in context:
 
 | 順序 | Format | Regex (POSIX ERE 互換、lookaround なし) | Extracted |
 |------|--------|------------------------------------------|-----------|
-| 1 | 数字のみ | `^[0-9]+$` | `pr_number` (input as-is) |
-| 2 | Comment URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)$` | `pr_number` = group 1, `target_comment_id` = group 2 |
+| 1 | 数字のみ (ASCII / 全角) | `^[0-9０-９]+$` | `pr_number` (全角数字は半角に正規化してから as-is 保持) |
+| 2 | Comment URL (query string 任意) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)(\?.*)?$` | `pr_number` = group 1, `target_comment_id` = group 2 (末尾の `?notification_referrer_id=...` 等の query string は受け入れて無視) |
 | 3 | PR URL (trailing slash あり/なし) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
 | 4 | PR URL (trailing fragment、issuecomment 以外) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#.*$` | `pr_number` = group 1 (順序 2 が先にマッチするため、ここに到達するのは `#discussion_r123` 等の非 issuecomment fragment のみ) |
 | 5 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
 
-**重要 — bash 互換性**: 順序 4 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (検証済み: [POSIX Regular Expressions](https://www.w3tutorials.net/blog/posix-regular-expressions-excluding-a-word-in-an-expression/))。順序 2 を順序 4 より先に試すことで、issuecomment URL は順序 2 で先にマッチして抽出され、順序 4 に到達する時点で「issuecomment ではない fragment 付き PR URL」のみが残る。順序を保証することで lookaround 不要となる。
+**重要 — bash 互換性**: 順序 4 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (権威ある仕様根拠: [IEEE Std 1003.1 / The Open Group Chapter 9 — Regular Expressions](https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html) と [regular-expressions.info: Lookahead and Lookbehind](https://www.regular-expressions.info/lookaround.html) で確認済み)。順序 2 を順序 4 より先に試すことで、issuecomment URL は順序 2 で先にマッチして抽出され、順序 4 に到達する時点で「issuecomment ではない fragment 付き PR URL」のみが残る。順序を保証することで lookaround 不要となる。
+
+**全角数字の扱い** (順序 1): 日本語 IME の fullwidth モードで入力された `１２３` のような全角数字をユーザーが誤って投入するケースを救済する。マッチした場合は `tr '０-９' '0-9'` 相当の変換で半角に正規化してから `{pr_number}` として保持する。ASCII 数字のみの場合は変換せずそのまま使用。
 
 **Behavior**:
 
@@ -125,18 +127,23 @@ Extract the following information from work memory and retain in context:
 2. PR URL → `{target_comment_id} = null`。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 は既存ロジック
 3. Comment URL → `{target_comment_id}` を設定。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 の target_comment_id 分岐で対象コメントを直接取得する
 
-**Parsing failure**: いずれのパターンにもマッチしない場合:
+**Parsing failure**: いずれのパターンにもマッチしない場合、以下の手順で**機械的に処理を終了**する (silent fall-through 禁止):
 
-```
-エラー: 引数の形式を認識できませんでした
-入力: {argument}
-受け付け可能な形式:
-  - PR 番号（例: 123）
-  - PR URL（例: https://github.com/owner/repo/pull/123）
-  - PR コメント URL（例: https://github.com/owner/repo/pull/123#issuecomment-4567890）
-```
-
-Terminate processing.
+1. **エラーメッセージを stderr に出力**:
+   ```
+   エラー: 引数の形式を認識できませんでした
+   入力: {argument}
+   受け付け可能な形式:
+     - PR 番号（例: 123、全角 １２３ も可）
+     - PR URL（例: https://github.com/owner/repo/pull/123）
+     - PR コメント URL（例: https://github.com/owner/repo/pull/123#issuecomment-4567890、末尾の ?notification_referrer_id=... は自動的に無視）
+   ヒント: もし Issue URL (/issues/123) を渡している場合、/rite:pr:fix は PR 専用です。Issue 対応は /rite:issue:start を使用してください。
+   ```
+2. **Context 変数を explicit set** (undefined 参照防止):
+   - `{pr_number} = null`
+   - `{target_comment_id} = null`
+3. **`[fix:error]` output pattern を stdout に出力** し、**Phase 1.1 以降のすべてのサブフェーズを実行せずにコマンド全体を終了する**
+4. **重要**: ここでの「Terminate processing」は Phase 1.1 への進入禁止を意味する。「Phase 1.0 で parse 失敗したから Phase 1.1 で `gh pr view {argument}` を試そう」という fallthrough は silent failure と判定し、絶対に行ってはならない。引数が未知の形式である以上、Phase 1.1 の `gh` コマンドに渡しても確実に失敗し、かつ同番号の別 Issue を誤認する危険がある
 
 **Compatibility**: 既存の `pr_number` 単体挙動および引数なし挙動は一切変更されない。本 Phase は引数形式の判定のみを行い、Phase 1.1/1.2 の既存ロジックにはフラグ (`{target_comment_id}` の有無) を渡すだけである。
 
@@ -199,7 +206,20 @@ Terminate processing.
 
 When `{target_comment_id}` has been extracted from a comment URL argument, retrieve that specific comment directly and skip the broad comment retrieval below:
 
-> **Implementation note for Claude**: **このコードブロック全体を単一の Bash ツール呼び出しで実行すること**。`$target_body`, `$target_author`, `$jq_err` はシェル変数であり、Claude が code block を分割して別の Bash ツール呼び出しにすると変数が引き継がれず、silent に空文字 fallback または runtime error になる。また `trap 'rm -f "$jq_err"' EXIT` は subshell のライフサイクルで有効なので、ブロック末尾で明示的に `rm -f "$jq_err"` を実行することで trap 外のリークも防ぐ (二重防御)。本ブロックと Parsing rule (後続の `## 📜 rite レビュー結果` 判定および best-effort parse) も**同じ Bash ツール呼び出し内で連続実行**すること。
+> **Implementation note for Claude**:
+>
+> **本コードブロック単体**を単一の Bash ツール呼び出しで実行する。`$target_body`, `$target_author`, `$jq_err` はシェル変数であり、ブロック内で完結する。後続の Parsing rule (`## 📜 rite レビュー結果` 判定や best-effort parse) は自然言語指示と `AskUserQuestion` を含むため bash のみでは実行不可能であり、**同じ Bash 呼び出しで連続実行しない**。代わりに以下のハンドオフ方式を使う:
+>
+> 1. bash block 末尾で `$target_body` / `$target_author` を Claude 可読な一時ファイルに永続化する:
+>    ```bash
+>    printf '%s' "$target_body" > "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
+>    printf '%s' "$target_author" > "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
+>    ```
+>    (ブロック内の `{pr_number}` / `{target_comment_id}` は Claude が事前置換済み)
+> 2. bash 呼び出しから戻ったあと、Claude は Parsing rule を実行するために Read tool でこれら一時ファイルを読み直し、必要に応じて `$target_body` の中身をコンテキストに再注入する
+> 3. Parsing rule / best-effort parse が完了したあと、Phase 1 の末尾で `rm -f /tmp/rite-fix-target-body-*.txt /tmp/rite-fix-target-author-*.txt` を実行して一時ファイルを片付ける
+>
+> **trap の上書きリスクに注意**: 本ブロックの `trap 'rm -f "$jq_err"' EXIT` は bash 仕様上 1 signal につき 1 trap しか持てないため、**後続の bash block (Phase 2.4 reply、Phase 4.2 report、Phase 4.3.4 Issue 作成、Phase 4.5.1 work memory 更新) が同一 bash 呼び出しに含まれる場合、それらの `trap ... EXIT` に上書きされて `$jq_err` のリークが起きる**。これは本ブロックを後続 phase と結合しないことで回避するほか、ブロック末尾で明示的に `rm -f "$jq_err"` を実行することで二重防御している (trap が動かなくても cleanup は完了する)。将来 `trap` を連携する必要が出た場合は `add_trap` idiom (`existing=$(trap -p EXIT | sed -n "s/.*'\(.*\)'.*/\1/p"); trap "rm -f \"$jq_err\"; $existing" EXIT`) の採用を検討。
 
 ```bash
 # 対象コメントを直接取得
@@ -253,19 +273,39 @@ if ! target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty
   exit 1
 fi
 
-# .user.login が empty (null ユーザー等のコーナーケース) の場合は sentinel 値で継続
-# 下流 Phase 4.2 で reply 生成時に mention 省略するためのフラグ
+# .user.login が empty (GitHub Apps bot / 削除済みユーザー等のコーナーケース) の場合、
+# 空文字を保持して下流に mention 省略フラグとして伝達する (sentinel "unknown" は誤 mention の原因)
+# 下流 phase では `{target_author_mention_skip} == "true"` を参照して mention を生成しない
+target_author_mention_skip="false"
 if [ -z "$target_author" ]; then
-  target_author="unknown"
-  echo "警告: コメント #{target_comment_id} の .user.login が空です。sentinel 'unknown' を使用します" >&2
-  echo "下流 Phase 4.2 で mention (@) を生成する際は 'unknown' 検出時に mention 省略すること" >&2
+  target_author=""
+  target_author_mention_skip="true"
+  echo "WARNING: コメント #{target_comment_id} の .user.login が空です。" >&2
+  echo "  下流 phase の mention 生成は target_author_mention_skip=true を参照して省略されます。" >&2
 fi
+
+# Parsing rule / 下流 phase へのハンドオフ (シェル変数は bash 呼び出しを抜けると失われるため、
+# Claude 可読な一時ファイルに永続化する。後続 phase は Read tool でこれらを読み戻す)
+printf '%s' "$target_body" > "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
+printf '%s' "$target_author" > "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
+printf '%s' "$target_author_mention_skip" > "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 
 # 明示的 cleanup (trap 外の二重防御)
 rm -f "$jq_err"
 ```
 
-> **Note**: `$target_body` 変数のみを以後の Parsing rule で参照する。一時ファイルへの書き出しは不要。`jq_err` の cleanup は EXIT trap + 末尾の明示的 `rm -f` で二重防御されているため、異常終了・正常終了のいずれでも確実に削除される。
+> **Note — 下流 phase でのハンドオフ参照**: Fast Path 完了後、Claude は以下 3 つの一時ファイルを Read tool で読み戻してコンテキストに再注入する:
+>
+> - `/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` — Parsing rule で参照する finding 本文
+> - `/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt` — Phase 2.1 / 3.2 / 4.3.4 で `{target_author}` として参照
+> - `/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt` — `"true"` / `"false"` の文字列。下流 phase で mention を生成する前に必ずチェックする
+>
+> **下流 phase の mention 省略義務** (silent `@unknown` 誤記録の防止): Fast Path 経由で単一コメントを対象にしている場合、Phase 2.1 の `レビュアー: @{user}` 表示、Phase 3.2 commit trailer の `Addresses review comments from @{reviewer1}` / `@{reviewer1} のレビューコメントに対応`、Phase 4.3.4 Issue 本文の `- **レビュアー**: @{reviewer}` のいずれにおいても、`target_author_mention_skip == "true"` の場合は mention (`@` prefix) を生成せず、代わりに以下の文字列を使用する:
+>
+> - 日本語出力: `(不明なレビュアー)` (コメント投稿者が特定できないため mention を省略)
+> - 英語出力: `(unknown reviewer)` (mention omitted because the comment author could not be resolved)
+>
+> これにより GitHub 上に存在しない `@unknown` user への誤 mention を防ぐ。`jq_err` の cleanup は EXIT trap + 末尾の明示的 `rm -f` で二重防御されているため、異常終了・正常終了のいずれでも確実に削除される。`/tmp/rite-fix-target-body-*.txt` / `/tmp/rite-fix-target-author-*.txt` / `/tmp/rite-fix-target-author-skip-*.txt` は Phase 1 の末尾で明示的に削除する (Parsing rule 完了後)。
 
 **Parsing rule**:
 
@@ -326,15 +366,36 @@ rm -f "$jq_err"
 
    **解釈不能の判定基準と再質問ループ** (silent fall-through 防止):
 
-   **キーワード判定表** (優先順位順、**最初にマッチした option を選択する**。並列判定ではなく優先順位判定):
+   **Step A — option ID 完全一致の厳格判定** (最優先):
 
-   | 優先 | Option | マッチ条件 (大文字小文字無視、OR) |
-   |------|--------|----------------------------------|
-   | 1 | キャンセル | `キャンセル`, `cancel`, `中止`, `やめ`, `abort`, 単独の `c` |
-   | 2 | 別のコメント URL を指定 | `別`, `url`, `指定`, `コメント` のいずれか 1 つ以上含む, 単独の `2` / `b` |
-   | 3 | 手動で finding を入力 | `手動`, `入力`, `manual`, 単独の `1` / `a` |
+   まず、ユーザー応答を trim + lowercase した文字列が以下の option ID 集合のいずれかに**完全一致**するかを判定する:
 
-   優先順位 1 (キャンセル) を最優先することで「キャンセルせず手動で」のような応答でも明示的にキャンセルを優先する (安全側)。
+   | Option ID | 対応する選択肢 |
+   |-----------|----------------|
+   | `1`, `a`, `手動`, `manual` | 手動で finding を入力 |
+   | `2`, `b`, `url` | 別のコメント URL を指定 |
+   | `3`, `c`, `cancel`, `キャンセル` | キャンセル |
+
+   完全一致が成立した場合、それを採用する。**これにより「キャンセルせず手動で入力する」のような否定形文は Step A では完全一致しないため次の Step B に進む**。
+
+   **Step B — 否定語前処理を伴う部分マッチ判定** (Step A で完全一致しなかった場合):
+
+   1. **否定語前処理**: ユーザー応答に否定語 (`せず`, `しないで`, `ではなく`, `なしで`, `without`, `not`) が含まれる場合、否定語**直前**のキーワードを打ち消し集合に加える。例: 「キャンセルせず手動で」 → 否定語「せず」の直前「キャンセル」を打ち消し集合 `{キャンセル}` に加える
+   2. **キーワード判定表** (打ち消し集合を除外した上で、優先順位順に**最初にマッチした option を選択**):
+
+      | 優先 | Option | マッチ条件 (大文字小文字無視、OR) |
+      |------|--------|----------------------------------|
+      | 1 | キャンセル | `キャンセル`, `cancel`, `中止`, `やめ`, `abort`（打ち消し集合に含まれる語はスキップ） |
+      | 2 | 手動で finding を入力 | `手動`, `入力`, `manual` |
+      | 3 | 別のコメント URL を指定 | `別`, `url`, `新しい`, `別の URL`（「コメント」単独は誤マッチが多いため削除） |
+
+   **優先順位の変更理由**: 従来「キャンセルを最優先に置くことで安全側に倒す」という設計だったが、これはユーザーが明示的に「キャンセルせず〜」と述べた場合にも機械的にキャンセル側に倒してしまい、**ユーザー意図の逆転**を silent に引き起こす問題があった。上記の打ち消し集合による前処理を経た上で、option 2 (手動入力) と option 3 (別 URL) を入れ替えることで、否定形応答の正しい解釈と曖昧応答の再質問を両立させる。
+
+   **Step C — Step A も Step B も決着しない場合**: 以下のいずれかに該当すれば**解釈不能**と判定する:
+
+   - Step A で完全一致せず、Step B でもマッチキーワードが 1 つもない応答 (例: 「さあ...」「どうしよう」)
+   - 空文字列 / whitespace のみの応答
+   - 打ち消し集合により Step B の全 option がスキップされた結果、マッチが 0 件になった応答
 
    ユーザー応答が以下に該当する場合、**解釈不能** と判定する:
    - 上記 3 option のキーワードを **1 つも含まない** 応答 (例: 「さあ...」のような曖昧な返答)
@@ -360,13 +421,35 @@ rm -f "$jq_err"
    **重要**: parse 0 件で Phase 2 (Categorization) に進入することは silent failure として禁止する。必ず上記の選択肢のいずれかを処理した上で次の Phase へ進むこと。
 3. `{target_comment_id}` 経由で取得した finding のみを fix ループの対象とする。Phase 1.2 の「全コメント取得」はスキップされる
 
-> **Phase 1.2.1 の流用範囲 (Fast Path 経由)**: Phase 1.2.1 は概念的に 2 つの処理から成る:
-> - **(a) Comment retrieval (broad)**: PR から `📜 rite レビュー結果` コメントを `gh pr view --json comments` で取得する処理 — Fast Path では **実行しない**
-> - **(b) Markdown table parsing algorithm**: `### 全指摘事項` を起点に reviewer サブセクションごとの table を解析し `severity_map` を構築するロジック — Fast Path では **(b) のみを `$target_body` に対して再利用する**
+**外部ツール由来 finding の Confidence ゲート** (`feedback_review_zero_findings` / `feedback_review_quality.md` 準拠):
+
+外部ツール (`/verified-review`, `pr-review-toolkit:review-pr`, 手動コメント等) のコメントは `📜 rite レビュー結果` と異なり、Confidence 列を持たない形式が多い。そのまま fix ループに投入すると hallucinated finding (Confidence < 80 相当) が修正対象になり、rite の「Confidence 80+ のみ取り込み」原則を破る。
+
+**取り扱いルール**:
+
+| 状況 | 処理 |
+|------|------|
+| テーブルに Confidence 列が存在し数値がある | そのまま Confidence として採用 (`< 80` は警告表示の上でスキップ、`>= 80` のみ取り込み) |
+| Confidence 列がない、または数値が欠落 | **暫定値 Confidence=70 (< 80) を割り当て**、LOW に降格し、以下の警告を **stderr に必ず出力** する (silent pass 禁止): `WARNING: 外部ツール由来 finding {N} 件に Confidence 記載なし。暫定的に LOW/Confidence=70 として扱います。取り込み前にユーザー確認を求めます。` |
+| severity 別名マッピングによる MEDIUM fallback (severity 不明) | 同様に Confidence=70 扱いとし、ユーザー確認を求める |
+
+暫定 Confidence 値が割り当てられた finding については、`AskUserQuestion` で以下のいずれかを選択させる:
+- **そのまま取り込む** (Confidence を 80 に昇格し、fix ループに投入)
+- **LOW として記録のみ** (fix ループには投入せず、後日レビュー対象として残す)
+- **スキップ** (Phase 4.3 で別 Issue 化する候補として扱う)
+
+この手順により、外部レビューツールの信頼度を silent に無視することなく、かつ hallucinated finding の混入も防げる。
+
+> **Fast Path と Broad Retrieval の責任境界**: Phase 1.2 配下には以下 3 つの要素がある:
+>
+> | 要素 | 責任範囲 | Fast Path での実行 |
+> |------|---------|---------------------|
+> | Phase 1.2 冒頭の "Broad Comment Retrieval" ブロック (line 375 付近の bash block) | PR の全コメントを取得 (`gh api pulls/{n}/comments`, `gh pr view --json comments` 等) | **実行しない** (対象コメントは Fast Path 冒頭で既に取得済み) |
+> | `### 1.2.1 Retrieve rite Review Results` | (1) `$pr_comments` から `📜 rite レビュー結果` コメントをフィルタ選択、(2) 選択されたコメント本文に対して Markdown table parsing algorithm を適用して `severity_map` を構築 | **Markdown table parsing algorithm の部分のみを `$target_body` に対して再利用する**。フィルタ選択 (1) は Fast Path では不要 (対象コメントが既に決まっているため) |
 >
 > Fast Path 経由で `severity_map` を構築した場合、`pr_comments` 変数および関連する review thread 情報 (broad retrieval で取得されるデータ) は **未定義のまま**である。後続の Phase で `$pr_comments` や reviewThreads を参照しないこと (参照すると runtime error)。Fast Path はあくまで「単一コメントから finding を抽出する」フローであり、broad retrieval の結果には依存しない。
 
-パース完了後、抽出した findings を持って直接 Phase 2 (Categorization) に進む。Phase 1.2.1 のうち (a) Comment retrieval (broad) は実行しない (対象コメントは既に取得済みのため)。(b) Markdown table parsing algorithm のみを `$target_body` に適用する。
+パース完了後、抽出した findings を持って直接 Phase 2 (Categorization) に進む。Phase 1.2 の Broad Comment Retrieval ブロックおよび Phase 1.2.1 のフィルタ選択処理は Fast Path では実行しない (対象コメントは既に取得済みのため)。Phase 1.2.1 の Markdown table parsing algorithm のみを `$target_body` に適用する。
 
 #### Broad Comment Retrieval — when `{target_comment_id}` is NOT set
 
@@ -604,7 +687,7 @@ Confirm the fix approach for each finding:
 ```
 指摘 #{n}: {file}:{line}
 
-レビュアー: @{user}
+レビュアー: {reviewer_display}
 内容:
 {comment_body}
 
@@ -615,6 +698,16 @@ Confirm the fix approach for each finding:
 - 説明・返信のみ（修正不要）
 - スキップ（後で対応）
 ```
+
+**`{reviewer_display}` の展開ルール** (Fast Path 経由で `target_author_mention_skip == "true"` の場合の silent `@unknown` 誤記録防止):
+
+| 条件 | 展開結果 (日本語) | 展開結果 (英語) |
+|------|-----------------|----------------|
+| Broad Comment Retrieval 経由 (通常の `{user}`) | `@{user}` | `@{user}` |
+| Fast Path 経由 かつ `target_author_mention_skip == "false"` | `@{target_author}` | `@{target_author}` |
+| Fast Path 経由 かつ `target_author_mention_skip == "true"` | `(不明なレビュアー)` | `(unknown reviewer)` |
+
+Claude は Phase 1 末尾で `/tmp/rite-fix-target-author-skip-*.txt` を Read tool で読み、`"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
 
 **When "スキップ（後で対応）" is selected:**
 
@@ -820,6 +913,12 @@ Use free-form commit body. Include the reason for the change ("why") in the comm
 **Trailer**: Generate in the configured language:
 - English: `Addresses review comments from @{reviewer1}, @{reviewer2}`
 - Japanese: `@{reviewer1}, @{reviewer2} のレビューコメントに対応`
+
+**`target_author_mention_skip` との連携** (Fast Path での silent `@unknown` 誤記録防止): Fast Path 経由で `target_author_mention_skip == "true"` の場合、trailer 生成時は `@{reviewer1}` 該当位置の mention を省略し、代わりに以下のプレースホルダを使用する:
+- English: `Addresses review comments from (unknown reviewer)` (+ その他 identifiable reviewer があれば `@{reviewer2}` を併記)
+- Japanese: `(不明なレビュアー) のレビューコメントに対応` (+ その他 identifiable reviewer があれば `, @{reviewer2}` を併記)
+
+Broad Comment Retrieval 経由 (通常時) はこの変換を行わず、従来通り `@{reviewerN}` を生成する。
 
 ```
 コミットメッセージ案:
@@ -1086,8 +1185,12 @@ cat <<'BODY_EOF' > "$tmpfile"
 
 ### 元のレビュー指摘
 - **ファイル**: {file}:{line}
-- **レビュアー**: @{reviewer}
+- **レビュアー**: {reviewer_display}
 - **指摘内容**: {original_comment}
+
+<!-- {reviewer_display} の展開: Broad Retrieval 経由なら "@{reviewer}"、Fast Path 経由で
+     target_author_mention_skip == "true" なら "(不明なレビュアー)" に置換。詳細は Phase 2.1
+     の展開ルール表を参照。Claude がスクリプト生成前に正しい値に置換する。 -->
 
 ### 別 Issue 化の理由
 {skip_reason}

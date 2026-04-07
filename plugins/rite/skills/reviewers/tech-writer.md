@@ -145,11 +145,17 @@ Documentation PRs may describe an external product whose implementation lives in
 
 ### Doc-Heavy mode finding requirements
 
-Every finding emitted under this mode **MUST** include an `evidence` line in the `内容` column body with the form:
+Every finding emitted under this mode **MUST** include an `evidence` line in the `内容` column body. Use the following literal form — do **not** wrap the tool name or values in angle brackets:
 
 ```
-- Evidence: tool=<Grep|Read|Glob|WebFetch>, path=<file path>, line=<line number or range>
+- Evidence: tool=Grep, path=src/config/services.ts, line=5-12
 ```
+
+Accepted tool values: `Grep`, `Read`, `Glob`, `WebFetch`. Replace `path=` and `line=` values with the actual verification target (file path relative to the repository root, and the line number or range you consulted during verification).
+
+> **⚠️ Do not copy angle-bracket meta syntax literally**: Earlier versions of this guidance wrote `tool=<Grep|Read|Glob|WebFetch>` where `<...>` was meta syntax indicating "pick one". Some reviewers copied the angle brackets verbatim, producing `tool=<Grep>` in their findings, which then failed the `review.md` Phase 5.1.3 Evidence regex. The current literal form removes this ambiguity. The Phase 5.1.3 regex tolerates optional surrounding angle brackets (`tool=<?(Grep|Read|Glob|WebFetch)>?`) as a safety net, but you should still emit the bare form shown above.
+
+Markdown テーブルのセル内で `- Evidence: ...` を書く場合、セル内改行が使えない環境 (GitHub の標準テーブル描画等) では `<br>` を使うか、`推奨対応` カラムの後ろに続けて単一行で記述してもよい。Phase 5.1.3 の正規表現は `<br>` / `|` / 空白のいずれかを Evidence 行の直前 anchor として許容する。
 
 Findings without an `evidence` line will be rejected by review.md Phase 5.1.3 (Doc-Heavy post-condition check) and the review will be marked incomplete.
 

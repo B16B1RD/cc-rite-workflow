@@ -38,11 +38,11 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 | Database Expert | `database.md` | `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**` |
 | Dependencies Expert | `dependencies.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
 | Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, and corresponding `.mdx` (`commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`) |
-| Technical Writer | `tech-writer.md` | `**/*.md`, `**/*.mdx` (both excluding commands/skills/agents), `docs/**`, `documentation/**`, `**/README*`, `i18n/**/*.{md,mdx}` |
+| Technical Writer | `tech-writer.md` | `**/*.md`, `**/*.mdx` (both excluding commands/skills/agents), `docs/**`, `documentation/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `*.rst`, `*.adoc`, `i18n/**/*.{md,mdx}` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts) |
 | Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords (Bash); `**/*.sh` |
 | Type Design Expert | `type-design.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
-**Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth.
+**Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth. The tech-writer row is kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` and `plugins/rite/skills/reviewers/tech-writer.md` Activation section; see [`plugins/rite/commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#cross-reference) Cross-Reference section for the drift-prevention invariant (tracked by Issue #353 for automated lint).
 
 **Code Quality co-reviewer rule**: Code Quality reviewer is additionally selected as a co-reviewer in the following cases:
 
