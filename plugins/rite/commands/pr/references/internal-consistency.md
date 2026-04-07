@@ -1,6 +1,6 @@
 # Internal Consistency Verification Reference
 
-> **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」項目群、および `prompt-engineer.md` の skill/command 間整合性チェック。本ファイルは**プロダクト内部事実とドキュメント記述の整合性**を検証するための "source of truth" である。
+> **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**プロダクト内部事実とドキュメント記述の整合性**を検証するための "source of truth" である。`prompt-engineer.md` への統合は将来拡張として検討中（本ファイル末尾の Cross-Reference セクション参照）。
 
 ## Overview
 
@@ -91,15 +91,17 @@ CRITICAL: Implementation Coverage mismatch
    - 設定ファイル: yaml/json の配列長
 3. 不一致なら **CRITICAL** として報告
 
-**Grep パターン例**:
+**Grep パターン例** (Claude Code ツール呼び出しの擬似コード、bash コマンドではない):
 
-```bash
+```text
 # 「3 つ」「5 個」等の主張をドキュメントから抽出
 Grep: '^(\d+|三|五|十)\s*(つ|個|種類|項目|ステップ)'
 
 # 実装側の配列長
 Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
 ```
+
+> **Note**: 上記の数値表現パターン (`三|五|十`) は主要な日本語数詞のみカバー。「四」「六」「七」「八」「九」「百」等は意図的に省略 (実用シーンが少ない)。必要に応じて拡張可能。
 
 ### 3. UX Flow Accuracy
 
@@ -139,7 +141,7 @@ Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
 
 **注意**: 単純な "アルファベット順 vs カテゴリ順" のような表現差は Confidence 80 未満で除外。実装側の明確な priority (例: `priorityOrder = ['autonomous', ...]`) との乖離のみ報告。
 
-> **Severity**: 本項目の重要度は常に CRITICAL。詳細は本ファイル下部の [Severity Mapping](#severity-mapping) と `tech-writer.md:48` の Critical (Must Fix) チェックリストを参照。
+> **Severity**: 本項目の重要度は常に CRITICAL。詳細は本ファイル下部の [Severity Mapping](#severity-mapping) と `plugins/rite/skills/reviewers/tech-writer.md` の Critical (Must Fix) チェックリスト > "Order / Emphasis Consistency" 項目を参照。
 
 ### 5. Screenshot Presence
 
@@ -175,7 +177,7 @@ CRITICAL: Screenshot Presence mismatch
 
 ### Confidence Gate
 
-- **Confidence >= 80** の指摘のみ報告する (`_reviewer-base.md` の Confidence Scoring に従う)
+- **Confidence >= 80** の指摘のみ報告する (`plugins/rite/agents/_reviewer-base.md` の Confidence Scoring に従う)
 - "もしかしたら" "念のため" レベルの推測は**必ず除外** (sub-80)
 - 証拠 (ファイルパス + 行番号 + 具体的な差分) を伴う指摘のみ Confidence 80+ とみなす
 
@@ -209,8 +211,8 @@ CRITICAL: Screenshot Presence mismatch
 - **`plugins/rite/commands/pr/review.md`** Phase 1.2.7 Doc-Heavy PR Detection および Phase 2.2.1 Doc-Heavy Reviewer Override
 - **`plugins/rite/skills/reviewers/prompt-engineer.md`** (将来拡張時) — skill/command ドキュメント内の事実整合性チェック
 
-**関連**:
+**関連** (本ファイルからの相対パスを明示):
 
-- `fact-check.md` — 外部仕様検証の対応ファイル
-- `assessment-rules.md` — ALL findings are blocking ルール
-- `_reviewer-base.md` — Confidence Scoring 80+ ゲート
+- `plugins/rite/commands/pr/references/fact-check.md` (同ディレクトリ) — 外部仕様検証の対応ファイル
+- `plugins/rite/commands/pr/references/assessment-rules.md` (同ディレクトリ) — ALL findings are blocking ルール
+- `plugins/rite/agents/_reviewer-base.md` — Confidence Scoring 80+ ゲートの定義

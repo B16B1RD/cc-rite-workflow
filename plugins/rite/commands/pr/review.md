@@ -327,10 +327,13 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 Use the `files` array and numstat from Phase 1.2.6.
 
 ```
-# Doc file patterns (single source of truth — keep in sync with tech-writer.md Activation)
+# Doc file patterns (single source of truth — equivalent set with tech-writer.md Activation)
+# tech-writer.md は **/*.md (commands/skills/agents 除外) で任意ディレクトリの .md をカバーするため、
+# Phase 1.2.7 も同等のスコープを採用して "kept in sync" の主張と実態を一致させる
 doc_file_patterns = [
-  docs/**/*.md, docs/**/*.mdx,
-  documentation/**/*.md, documentation/**/*.mdx,
+  **/*.md   (excluding commands/**/*.md, skills/**/*.md, agents/**/*.md),
+  **/*.mdx  (excluding 同上),
+  docs/**, documentation/**,
   **/README*, CHANGELOG*, CONTRIBUTING*,
   i18n/**, *.rst, *.adoc
 ]
@@ -340,12 +343,17 @@ total_diff_lines   = sum(additions + deletions of all changed files)
 doc_files_count    = count(files matching doc_file_patterns)
 total_files_count  = changedFiles
 
-# Zero-division guard (inline — must be checked before divisions below)
+# Zero-division guards (inline — both divisors must be checked before division)
+# Defensive: skip condition (changedFiles == 0) は通常 total_files_count > 0 を保証するが、
+# skip section が将来変更された場合に備えて inline ガードも残す (二重防御)
 if total_diff_lines == 0:
     doc_heavy_pr = false
     return  # Skip the rest of Phase 1.2.7
 
-# At this point total_diff_lines > 0 and (skip condition guarantees) total_files_count > 0
+if total_files_count == 0:
+    doc_heavy_pr = false
+    return  # Defensive guard (skip condition should already handle this)
+
 doc_files_ratio       = doc_lines / total_diff_lines
 doc_files_count_ratio = doc_files_count / total_files_count
 ```

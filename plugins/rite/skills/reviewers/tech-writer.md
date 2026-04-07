@@ -21,7 +21,7 @@ This skill is activated when reviewing files matching:
 - `i18n/**`
 - `*.rst`, `*.adoc`
 
-> **Note**: These patterns are kept in sync with `commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior.
+> **Note**: These patterns are kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior. The "kept in sync" principle means the **set of files matched is equivalent**, not that the pattern syntax is identical (since one uses Activation pattern syntax and the other uses pseudo-code).
 
 **Note**: `commands/**/*.md`, `skills/**/*.md`, and `agents/**/*.md` are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority).
 
@@ -110,7 +110,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 **Activation**: This section applies only when the review caller passes `{doc_heavy_pr=true}` (determined in `commands/pr/review.md` Phase 1.2.7 and enforced by Phase 2.2.1 reviewer override).
 
-In doc-heavy PR mode, apply the following **enhanced verification protocols on top of** the standard Critical (Must Fix) checklist. These protocols target the failure mode observed in blocks-documentation PR #1137, where manual review detected issues that standard tech-writer review missed (12 findings: implementation facts, order/emphasis, UX flow, screenshot completeness).
+In doc-heavy PR mode, apply the following **enhanced verification protocols on top of** the standard Critical (Must Fix) checklist. These protocols target the failure mode observed in [tengine/blocks-documentation#1137](https://github.com/tengine/blocks-documentation/pull/1137) (MERGED), where manual review detected 12 issues that standard tech-writer review missed (implementation facts × 2, external specs × 1, order/emphasis × 2, enumeration completeness × 1, UX flow × 4, screenshot completeness × 2).
 
 ### Mandatory Implementation Cross-Reference
 

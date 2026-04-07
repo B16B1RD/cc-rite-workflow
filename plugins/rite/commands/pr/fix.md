@@ -160,15 +160,17 @@ Terminate processing.
 
 Before Phase 1.1 executes `gh pr view`, normalize the argument form to extract `{pr_number}` and (when applicable) `{target_comment_id}`.
 
-**Detection rules**:
+**Detection rules** (順序ベース判定 — bash POSIX ERE は negative lookahead 非対応のため、より特殊なパターンを先に試して fallthrough する):
 
-| Format | Regex | Extracted |
-|--------|-------|-----------|
-| 数字のみ | `^[0-9]+$` | `pr_number` (input as-is) |
-| PR URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
-| PR URL (trailing fragment, 非 issuecomment) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#(?!issuecomment-).*$` | `pr_number` = group 1 |
-| Comment URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)$` | `pr_number` = group 1, `target_comment_id` = group 2 |
-| 引数なし | — | 既存ロジック (current branch から PR 検出) |
+| 順序 | Format | Regex (POSIX ERE 互換、lookaround なし) | Extracted |
+|------|--------|------------------------------------------|-----------|
+| 1 | 数字のみ | `^[0-9]+$` | `pr_number` (input as-is) |
+| 2 | Comment URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)$` | `pr_number` = group 1, `target_comment_id` = group 2 |
+| 3 | PR URL (trailing slash あり/なし) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
+| 4 | PR URL (trailing fragment、issuecomment 以外) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#.*$` | `pr_number` = group 1 (順序 2 が先にマッチするため、ここに到達するのは `#discussion_r123` 等の非 issuecomment fragment のみ) |
+| 5 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
+
+**重要 — bash 互換性**: 順序 4 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (検証済み: [POSIX Regular Expressions](https://www.w3tutorials.net/blog/posix-regular-expressions-excluding-a-word-in-an-expression/))。順序 2 を順序 4 より先に試すことで、issuecomment URL は順序 2 で先にマッチして抽出され、順序 4 に到達する時点で「issuecomment ではない fragment 付き PR URL」のみが残る。順序を保証することで lookaround 不要となる。
 
 **Behavior**:
 
@@ -213,30 +215,77 @@ if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_commen
   echo "対処: コメント URL が正しいか、削除されていないかを確認してください" >&2
   exit 1
 fi
-# 正常取得後、body と author を抽出 (stdout には JSON のみが入っている)
-target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty')
-target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty')
+
+# 空 stdout チェック (gh api が exit 0 でも空文字列を返すコーナーケース)
+if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
+  echo "エラー: コメント #{target_comment_id} の取得結果が空です (gh api exit 0 だが本文なし)" >&2
+  echo "対処: コメント ID と権限を確認してください" >&2
+  exit 1
+fi
+
+# jq 実行を明示的にエラーチェック (parse error, jq バイナリ不在等を捕捉)
+# stderr を 2>&1 で stdout に取り込んで $target_body に格納し、失敗時にエラーメッセージとして表示する
+if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>&1); then
+  echo "エラー: gh api レスポンスの JSON パースに失敗しました" >&2
+  echo "詳細: $target_body" >&2
+  echo "対処: jq バージョン (jq --version) と gh api の生レスポンスを確認してください" >&2
+  exit 1
+fi
 if [ -z "$target_body" ]; then
   echo "エラー: コメント #{target_comment_id} の body が空です" >&2
   exit 1
 fi
-echo "$target_body" > /tmp/rite-fix-target-comment.md
+
+# author も同じ pattern で抽出 (best-effort parse の警告メッセージで使用)
+target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty' 2>/dev/null)
+
+# 一時ファイルに書き出し (PID 含めて並列実行衝突回避、書き込みエラーチェック付き)
+target_body_file="/tmp/rite-fix-target-comment-$$.md"
+if ! printf '%s\n' "$target_body" > "$target_body_file"; then
+  echo "エラー: 一時ファイル $target_body_file への書き込みに失敗しました" >&2
+  echo "対処: /tmp の空き容量と書き込み権限を確認してください" >&2
+  exit 1
+fi
 ```
 
 **Parsing rule**:
 
-1. If `$target_body` contains `## 📜 rite レビュー結果`: 通常の rite 形式として Phase 1.2.1 のパーサを適用する
+1. If `$target_body` contains `## 📜 rite レビュー結果`: **Phase 1.2.1 で定義された table パースロジック** (`### 全指摘事項` を起点に reviewer サブセクションごとの table を解析し `severity_map` を構築する手順) を `$target_body` に対して適用する。**Phase 1.2.1 のコメント取得処理 (broad retrieval) は実行しない** — 対象コメントは既に取得済みのため
 2. Otherwise (外部ツール: `/verified-review`, pr-review-toolkit, 手動コメント等): **best-effort parse**
    - **期待スキーマ**: 最低 **4 カラム** を持つ markdown table (`| severity | file:line | content | recommendation |` の順、またはヘッダー行から列順を推定)
-   - ヘッダー行検出: 表の 1 行目に `severity` / `重要度`, `file` / `ファイル`, `content` / `内容`, `recommendation` / `推奨` などのキーワードを含む行を検出した場合、その列順を使用する
-   - ヘッダー行なし: デフォルト列順 `severity | file:line | content | recommendation` を仮定する
+   - **ヘッダー行検出 (正規キーワードセット)**: 表の 1 行目に以下のキーワードのいずれかを含む行を検出した場合、その列順を使用する。検出成否は必ずログに記録する:
+
+     | 列名 | 認識キーワード (大文字小文字無視) |
+     |------|-----------------------------------|
+     | severity | `severity`, `重要度`, `sev`, `level`, `深刻度`, `priority` |
+     | file:line | `file`, `ファイル`, `path`, `location`, `場所` |
+     | content | `content`, `内容`, `message`, `description`, `指摘`, `issue` |
+     | recommendation | `recommendation`, `推奨`, `fix`, `suggestion`, `対応`, `action` |
+
+     **検出ログ**: `Header detected: yes/no. Column order: [severity, file, content, recommendation]` を必ず出力する
+   - **ヘッダー行なし**: デフォルト列順 `severity | file:line | content | recommendation` を仮定する (ログに `Header detected: no, using default column order` を出力)
    - **カラム数不足の扱い**:
-     - **3 カラム以下**: そのテーブル行を "unparseable" として skip し、警告ログに記録する
+     - **3 カラム以下**: そのテーブル行を "unparseable" として skip し、警告ログ (`WARNING: Skipping unparseable row (columns < 4): <row preview>`) に記録する
      - **4 カラム以上**: 最初の 4 カラムを severity / file:line / content / recommendation として抽出 (余分な列は無視)
-   - severity が認識できない (CRITICAL/HIGH/MEDIUM/LOW 以外) 場合: `MEDIUM` をデフォルトとする
+   - **severity 別名マッピング**: CRITICAL/HIGH/MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する:
+
+     | 認識される別名 | 正規化先 |
+     |---------------|---------|
+     | `BLOCKER`, `CRIT`, `🔴`, `重大`, `致命` | `CRITICAL` |
+     | `MAJOR`, `HIGH`, `🟠`, `重要`, `高` | `HIGH` |
+     | `MINOR`, `🟡`, `中`, `Normal` | `MEDIUM` |
+     | `INFO`, `TRIVIAL`, `🔵`, `低`, `情報` | `LOW` |
+
+     - 上記のいずれにもマッチしない場合、`MEDIUM` をデフォルトとし、**認識不能な severity 値の一覧をユーザーに必ず警告表示する** (silent fallback 禁止):
+       ```
+       警告: 認識不能な severity 値が {N} 件あります
+       - 値: ['{val_1}', '{val_2}', ...]
+       - すべて MEDIUM として扱いますが、適切な対応のため手動で再分類してください
+       - 認識可能な severity: CRITICAL / HIGH / MEDIUM / LOW (または上記の別名)
+       ```
    - **全テーブル行がパース不能** または **抽出結果 0 件** の場合、警告を表示してユーザーに確認を求める (silent failure 回避):
      ```
-     警告: コメント #{target_comment_id} から finding をパースできませんでした
+     警告: コメント #{target_comment_id} (@{target_author}) から finding をパースできませんでした
      - スキップした行: {N} 行 (4 カラム未満)
      - 認識された行: 0 件
      内容プレビュー: {target_body の先頭 300 文字}
@@ -245,7 +294,20 @@ echo "$target_body" > /tmp/rite-fix-target-comment.md
        - 別のコメント URL を指定
        - キャンセル
      ```
+
+   **選択肢の処理ルール (silent fall-through 禁止)**:
+
+   | ユーザー応答 | 処理 |
+   |-------------|------|
+   | **手動で finding を入力** | Phase 1.4 (Display Comment List) で finding 手動入力モードに移行 (入力スキーマ: `severity \| file:line \| content \| recommendation` のテーブル) |
+   | **別のコメント URL を指定** | Phase 1.1.1 から再実行 (新しい argument を要求) |
+   | **キャンセル** | `[fix:cancelled-by-user]` を出力して exit 0 |
+   | **無応答 / 解釈不能** | エラー終了 `[fix:error]` で exit 1 (**parse 0 件のまま Phase 2 進入は禁止**) |
+
+   **重要**: parse 0 件で Phase 2 (Categorization) に進入することは silent failure として禁止する。必ず上記の選択肢のいずれかを処理した上で次の Phase へ進むこと。
 3. `{target_comment_id}` 経由で取得した finding のみを fix ループの対象とする。Phase 1.2 の「全コメント取得」はスキップされる
+
+> **Variable scope guard for Fast Path users**: Target Comment Fast Path 経由で `severity_map` を構築した場合、`pr_comments` 変数および関連する review thread 情報 (Phase 1.2 の broad retrieval で取得されるデータ) は **未定義のまま**である。後続の Phase で `$pr_comments` や reviewThreads を参照しないこと (参照すると runtime error)。Fast Path はあくまで「単一コメントから finding を抽出する」フローであり、broad retrieval の結果には依存しない。
 
 After parsing, proceed directly to Phase 2 (Categorization) with the extracted findings. Skip Phase 1.2.1 (rite Review Results retrieval) since the target comment is already the source.
 
