@@ -135,9 +135,11 @@ Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
    - エントリーポイント: `src/index.ts` / `app/page.tsx` のレンダリング順
    - メインメニュー: nav / sidebar の項目順
    - 設定ファイル: `rite-config.yml` の記述順 (自己記述的な場合)
-3. 不一致であれば **HIGH** (戦略的意図が損なわれる) or **MEDIUM** (単純な順序ズレ) として報告
+3. 不一致であれば **CRITICAL** として報告 (Severity Mapping および `tech-writer.md` の Critical (Must Fix) チェックリストと整合)
 
 **注意**: 単純な "アルファベット順 vs カテゴリ順" のような表現差は Confidence 80 未満で除外。実装側の明確な priority (例: `priorityOrder = ['autonomous', ...]`) との乖離のみ報告。
+
+> **Severity**: 本項目の重要度は常に CRITICAL。詳細は本ファイル下部の [Severity Mapping](#severity-mapping) と `tech-writer.md:48` の Critical (Must Fix) チェックリストを参照。
 
 ### 5. Screenshot Presence
 

@@ -203,13 +203,17 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 # 対象コメントを直接取得
 # gh api は 404 や認証エラー時に exit != 0 を返すため、exit code を直接チェックする
 # (空文字列チェックではエラーを見逃す可能性がある)
-if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} 2>&1); then
+#
+# 注: stderr は gh api から直接呼び出し元へ流れる (2>&1 で stdout に混入させない)。
+#     もし 2>&1 を付けると、成功時に gh が stderr に警告を出した場合
+#     $target_comment が invalid JSON となり直後の jq が失敗する (Issue #349 Cycle 2 MEDIUM #20)
+if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id}); then
+  # gh api の stderr は既に呼び出し元に出力されている (上記 exec 時に直接流れる)
   echo "エラー: コメント #{target_comment_id} の取得に失敗しました" >&2
-  echo "詳細: $target_comment" >&2
   echo "対処: コメント URL が正しいか、削除されていないかを確認してください" >&2
   exit 1
 fi
-# 正常取得後、body と author を抽出
+# 正常取得後、body と author を抽出 (stdout には JSON のみが入っている)
 target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty')
 target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty')
 if [ -z "$target_body" ]; then
