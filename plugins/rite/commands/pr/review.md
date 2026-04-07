@@ -432,6 +432,24 @@ Match changed files against the Available Reviewers table in `skills/reviewers/S
 2. Other `**/*.md` -> Technical Writer
 3. If matching multiple patterns, include all matching reviewers as candidates
 
+### 2.2.1 Doc-Heavy Reviewer Override
+
+**Execution condition**: `{doc_heavy_pr} == true` (determined in Phase 1.2.7)
+
+**Skip condition**: `{doc_heavy_pr} == false` — proceed directly to Phase 2.3 with no change to the reviewer candidate list.
+
+When the PR is doc-heavy, override reviewer selection to ensure documentation quality is rigorously checked against implementation reality:
+
+1. **tech-writer 必須昇格**: Phase 2.2 で tech-writer が候補に含まれている場合、その selection_type を `recommended → mandatory` に昇格する。含まれていない場合は mandatory として新規追加する
+2. **code-quality co-reviewer 追加**: doc-heavy PR では実装ソースコードを Read/Grep する検証が必要。tech-writer 単独だと実装側の視点が偏るため、code-quality を co-reviewer として追加する (既に候補に含まれている場合は selection_type を引き上げる)
+3. **doc-heavy フラグの伝達**: tech-writer のレビュー実行時に `{doc_heavy_pr=true}` を渡し、`tech-writer.md` の "Doc-Heavy PR Mode (Conditional)" セクションを参照させる。これにより強化された Cross-Reference チェックと Screenshot Completeness Check が有効化される
+
+**Relationship to Phase 2.3 sole reviewer guard**:
+
+本 Override は Phase 2.3 (Content Analysis) および sole reviewer guard の**前**に実行される。本 Override 実行後は tech-writer (mandatory) + code-quality (co-reviewer) の >=2 reviewers が確定しているため、sole reviewer guard は発火しない (Phase 2.3 の既存ロジックはそのまま動作する)。
+
+**Override の累積効果**: 本 Override は reviewer 候補リストに対する**加算のみ**を行い、既存候補を削除しない。Phase 2.2 で候補に選定された他 reviewer (security, api, frontend, etc.) はそのまま保持される。
+
 ### 2.3 Content Analysis (Supplementary Determination)
 
 Analyze the diff content to determine if additional expertise is needed:
