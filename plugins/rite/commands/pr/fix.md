@@ -44,7 +44,7 @@ This command is automatically invoked within the review-fix loop of `/rite:issue
 | `[pr_url]` | PR URL (`https://github.com/{owner}/{repo}/pull/{N}`) |
 | `[comment_url]` | PR comment URL (`https://github.com/{owner}/{repo}/pull/{N}#issuecomment-{ID}`) |
 
-**Accepted formats**: すべての引数形式は Phase 1.1.1 で正規化され、`{pr_number}` と（該当時のみ）`{target_comment_id}` が抽出される。`comment_url` を指定すると、その特定コメントから直接 findings をパースする（Phase 1.2 で分岐）。`pr_number` 単体または引数なしの既存挙動は完全に維持される。
+**Accepted formats**: すべての引数形式は Phase 1.0.5 (Argument Parsing Pre-flight) で正規化され、`{pr_number}` と（該当時のみ）`{target_comment_id}` が抽出される。`comment_url` を指定すると、その特定コメントから直接 findings をパースする（Phase 1.2 で分岐）。`pr_number` 単体または引数なしの既存挙動は完全に維持される。
 
 ---
 
@@ -99,15 +99,50 @@ Extract the following information from work memory and retain in context:
 
 ## Phase 1: Retrieve and Organize Review Comments
 
-### 1.1 Identify the PR
+### 1.0.5 Argument Parsing (Pre-flight)
 
-**Step 0: Argument Parsing (Pre-flight) — MUST execute before any `gh pr view` call**
+> **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される。番号 `1.0.5` は Phase 1 の冒頭 (1.1 より先) を示すために選定されており、自然順で読み進める AI/人間どちらも順序通りに実行できる。
 
-Before retrieving repository information or calling `gh pr view`, **first execute Phase 1.1.1 (Argument Parsing) below** to normalize the argument and extract `{pr_number}` and (when applicable) `{target_comment_id}`. Phase 1.1.1 is physically located **after** Phase 1.1 in this document for readability, but its execution **must happen before** any of the Phase 1.1 steps below. Skip this step only when the argument is clearly a bare integer (`^[0-9]+$`) or absent.
+Before Phase 1.1 executes `gh pr view`, normalize the argument form to extract `{pr_number}` and (when applicable) `{target_comment_id}`. Skip this step only when the argument is clearly a bare integer (`^[0-9]+$`) or absent.
 
 > **Why this ordering matters**: If you pass a PR URL or comment URL directly to `gh pr view {pr_number}`, the command will fail and Phase 1.1 will terminate with "PR not found". The Fast Path in Phase 1.2 cannot be reached. Always normalize first.
 
-Once `{pr_number}` (and optionally `{target_comment_id}`) are extracted, retrieve repository information:
+**Detection rules** (順序ベース判定 — bash POSIX ERE は negative lookahead 非対応のため、より特殊なパターンを先に試して fallthrough する):
+
+| 順序 | Format | Regex (POSIX ERE 互換、lookaround なし) | Extracted |
+|------|--------|------------------------------------------|-----------|
+| 1 | 数字のみ | `^[0-9]+$` | `pr_number` (input as-is) |
+| 2 | Comment URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)$` | `pr_number` = group 1, `target_comment_id` = group 2 |
+| 3 | PR URL (trailing slash あり/なし) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
+| 4 | PR URL (trailing fragment、issuecomment 以外) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#.*$` | `pr_number` = group 1 (順序 2 が先にマッチするため、ここに到達するのは `#discussion_r123` 等の非 issuecomment fragment のみ) |
+| 5 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
+
+**重要 — bash 互換性**: 順序 4 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (検証済み: [POSIX Regular Expressions](https://www.w3tutorials.net/blog/posix-regular-expressions-excluding-a-word-in-an-expression/))。順序 2 を順序 4 より先に試すことで、issuecomment URL は順序 2 で先にマッチして抽出され、順序 4 に到達する時点で「issuecomment ではない fragment 付き PR URL」のみが残る。順序を保証することで lookaround 不要となる。
+
+**Behavior**:
+
+1. 数字または引数なし → `{target_comment_id} = null`。Phase 1.2 は既存ロジックで最新の `📜 rite レビュー結果` コメントを対象とする (既存挙動と完全互換)
+2. PR URL → `{target_comment_id} = null`。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 は既存ロジック
+3. Comment URL → `{target_comment_id}` を設定。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 の target_comment_id 分岐で対象コメントを直接取得する
+
+**Parsing failure**: いずれのパターンにもマッチしない場合:
+
+```
+エラー: 引数の形式を認識できませんでした
+入力: {argument}
+受け付け可能な形式:
+  - PR 番号（例: 123）
+  - PR URL（例: https://github.com/owner/repo/pull/123）
+  - PR コメント URL（例: https://github.com/owner/repo/pull/123#issuecomment-4567890）
+```
+
+Terminate processing.
+
+**Compatibility**: 既存の `pr_number` 単体挙動および引数なし挙動は一切変更されない。本 Phase は引数形式の判定のみを行い、Phase 1.1/1.2 の既存ロジックにはフラグ (`{target_comment_id}` の有無) を渡すだけである。
+
+### 1.1 Identify the PR
+
+After Phase 1.0.5 has extracted `{pr_number}` (and optionally `{target_comment_id}`), retrieve repository information:
 
 - **Within end-to-end flow**: `{owner}` and `{repo}` are already available from Phase 0.2. Reuse them — no additional `gh repo view` call needed.
 - **Standalone execution**: Phase 0 was not executed. Retrieve them here:
@@ -156,46 +191,9 @@ Terminate processing.
 
 Terminate processing.
 
-### 1.1.1 Argument Parsing
-
-Before Phase 1.1 executes `gh pr view`, normalize the argument form to extract `{pr_number}` and (when applicable) `{target_comment_id}`.
-
-**Detection rules** (順序ベース判定 — bash POSIX ERE は negative lookahead 非対応のため、より特殊なパターンを先に試して fallthrough する):
-
-| 順序 | Format | Regex (POSIX ERE 互換、lookaround なし) | Extracted |
-|------|--------|------------------------------------------|-----------|
-| 1 | 数字のみ | `^[0-9]+$` | `pr_number` (input as-is) |
-| 2 | Comment URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)$` | `pr_number` = group 1, `target_comment_id` = group 2 |
-| 3 | PR URL (trailing slash あり/なし) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
-| 4 | PR URL (trailing fragment、issuecomment 以外) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#.*$` | `pr_number` = group 1 (順序 2 が先にマッチするため、ここに到達するのは `#discussion_r123` 等の非 issuecomment fragment のみ) |
-| 5 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
-
-**重要 — bash 互換性**: 順序 4 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (検証済み: [POSIX Regular Expressions](https://www.w3tutorials.net/blog/posix-regular-expressions-excluding-a-word-in-an-expression/))。順序 2 を順序 4 より先に試すことで、issuecomment URL は順序 2 で先にマッチして抽出され、順序 4 に到達する時点で「issuecomment ではない fragment 付き PR URL」のみが残る。順序を保証することで lookaround 不要となる。
-
-**Behavior**:
-
-1. 数字または引数なし → `{target_comment_id} = null`。Phase 1.2 は既存ロジックで最新の `📜 rite レビュー結果` コメントを対象とする (既存挙動と完全互換)
-2. PR URL → `{target_comment_id} = null`。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 は既存ロジック
-3. Comment URL → `{target_comment_id}` を設定。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 の target_comment_id 分岐で対象コメントを直接取得する
-
-**Parsing failure**: いずれのパターンにもマッチしない場合:
-
-```
-エラー: 引数の形式を認識できませんでした
-入力: {argument}
-受け付け可能な形式:
-  - PR 番号（例: 123）
-  - PR URL（例: https://github.com/owner/repo/pull/123）
-  - PR コメント URL（例: https://github.com/owner/repo/pull/123#issuecomment-4567890）
-```
-
-Terminate processing.
-
-**Compatibility**: 既存の `pr_number` 単体挙動および引数なし挙動は一切変更されない。本 Phase は引数形式の判定のみを行い、Phase 1.1/1.2 の既存ロジックにはフラグ (`{target_comment_id}` の有無) を渡すだけである。
-
 ### 1.2 Retrieve Review Comments
 
-**Branch by `{target_comment_id}`** (set in Phase 1.1.1): Phase 1.2 has two execution paths depending on whether a comment URL was passed. The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) are **h4-level branches within Phase 1.2** and are independent execution paths — they are **not** numbered sub-phases of Phase 1.2.1. The existing `### 1.2.1 Retrieve rite Review Results` is a separate, h3-level sub-phase that runs only when the Broad Comment Retrieval path is taken (i.e. when `{target_comment_id}` is NOT set).
+**Branch by `{target_comment_id}`** (set in Phase 1.0.5): Phase 1.2 has two execution paths depending on whether a comment URL was passed. The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) are **h4-level branches within Phase 1.2** and are independent execution paths — they are **not** numbered sub-phases of Phase 1.2.1. The existing `### 1.2.1 Retrieve rite Review Results` is a separate, h3-level sub-phase that runs only when the Broad Comment Retrieval path is taken (i.e. when `{target_comment_id}` is NOT set).
 
 #### Target Comment Fast Path — when `{target_comment_id}` is set
 
@@ -224,10 +222,17 @@ if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
 fi
 
 # jq 実行を明示的にエラーチェック (parse error, jq バイナリ不在等を捕捉)
-# stderr を 2>&1 で stdout に取り込んで $target_body に格納し、失敗時にエラーメッセージとして表示する
-if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>&1); then
-  echo "エラー: gh api レスポンスの JSON パースに失敗しました" >&2
-  echo "詳細: $target_body" >&2
+# stderr を mktemp 経由の一時ファイルに逃がすことで、成功時の警告 (deprecation 等) が
+# stdout に混入して $target_body を汚染することを防ぐ。失敗時のみ stderr ファイルを表示する。
+jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
+  echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
+  exit 1
+}
+trap 'rm -f "$jq_err"' EXIT
+
+if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>"$jq_err"); then
+  echo "エラー: gh api レスポンスの JSON パースに失敗しました (.body 抽出)" >&2
+  echo "詳細: $(cat "$jq_err")" >&2
   echo "対処: jq バージョン (jq --version) と gh api の生レスポンスを確認してください" >&2
   exit 1
 fi
@@ -237,21 +242,20 @@ if [ -z "$target_body" ]; then
 fi
 
 # author も同じ pattern で抽出 (best-effort parse の警告メッセージで使用)
-target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty' 2>/dev/null)
-
-# 一時ファイルに書き出し (PID 含めて並列実行衝突回避、書き込みエラーチェック付き)
-target_body_file="/tmp/rite-fix-target-comment-$$.md"
-if ! printf '%s\n' "$target_body" > "$target_body_file"; then
-  echo "エラー: 一時ファイル $target_body_file への書き込みに失敗しました" >&2
-  echo "対処: /tmp の空き容量と書き込み権限を確認してください" >&2
-  exit 1
+# .body 抽出と統一: stderr を捨てるのではなく、失敗時に明示的に警告を出して空文字 fallback
+if ! target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty' 2>"$jq_err"); then
+  echo "警告: コメント #{target_comment_id} の author 抽出に失敗しました (best-effort、処理は継続)" >&2
+  echo "詳細: $(cat "$jq_err")" >&2
+  target_author=""
 fi
 ```
+
+> **Note**: `$target_body` 変数のみを以後の Parsing rule で参照する。一時ファイルへの書き出しは不要。`jq_err` の cleanup は EXIT trap で行うため、エラー終了時も含めて確実に削除される。
 
 **Parsing rule**:
 
 1. If `$target_body` contains `## 📜 rite レビュー結果`: **Phase 1.2.1 で定義された table パースロジック** (`### 全指摘事項` を起点に reviewer サブセクションごとの table を解析し `severity_map` を構築する手順) を `$target_body` に対して適用する。**Phase 1.2.1 のコメント取得処理 (broad retrieval) は実行しない** — 対象コメントは既に取得済みのため
-2. Otherwise (外部ツール: `/verified-review`, pr-review-toolkit, 手動コメント等): **best-effort parse**
+2. Otherwise (外部ツール: `/verified-review` skill、`pr-review-toolkit:review-pr` plugin、手動コメント等): **best-effort parse**
    - **期待スキーマ**: 最低 **4 カラム** を持つ markdown table (`| severity | file:line | content | recommendation |` の順、またはヘッダー行から列順を推定)
    - **ヘッダー行検出 (正規キーワードセット)**: 表の 1 行目に以下のキーワードのいずれかを含む行を検出した場合、その列順を使用する。検出成否は必ずログに記録する:
 
@@ -262,8 +266,10 @@ fi
      | content | `content`, `内容`, `message`, `description`, `指摘`, `issue` |
      | recommendation | `recommendation`, `推奨`, `fix`, `suggestion`, `対応`, `action` |
 
-     **検出ログ**: `Header detected: yes/no. Column order: [severity, file, content, recommendation]` を必ず出力する
-   - **ヘッダー行なし**: デフォルト列順 `severity | file:line | content | recommendation` を仮定する (ログに `Header detected: no, using default column order` を出力)
+     **検出ログ**: 以下を **stderr に必ず出力** する。E2E Output Minimization の対象外とし、parse の健全性を後追いできるようにする:
+     - ヘッダー検出成功: `Header detected: yes. Column order: [severity, file, content, recommendation]`
+     - ヘッダー検出失敗: `Header detected: no. Using default column order [severity, file, content, recommendation]`
+   - **ヘッダー行なし**: デフォルト列順 `severity | file:line | content | recommendation` を仮定する (上記の `Header detected: no` ログを stderr に必ず出力する)
    - **カラム数不足の扱い**:
      - **3 カラム以下**: そのテーブル行を "unparseable" として skip し、警告ログ (`WARNING: Skipping unparseable row (columns < 4): <row preview>`) に記録する
      - **4 カラム以上**: 最初の 4 カラムを severity / file:line / content / recommendation として抽出 (余分な列は無視)
@@ -300,16 +306,39 @@ fi
    | ユーザー応答 | 処理 |
    |-------------|------|
    | **手動で finding を入力** | Phase 1.4 (Display Comment List) で finding 手動入力モードに移行 (入力スキーマ: `severity \| file:line \| content \| recommendation` のテーブル) |
-   | **別のコメント URL を指定** | Phase 1.1.1 から再実行 (新しい argument を要求) |
+   | **別のコメント URL を指定** | Phase 1.0.5 から再実行 (新しい argument を要求) |
    | **キャンセル** | `[fix:cancelled-by-user]` を出力して exit 0 |
-   | **無応答 / 解釈不能** | エラー終了 `[fix:error]` で exit 1 (**parse 0 件のまま Phase 2 進入は禁止**) |
+
+   **解釈不能の判定基準と再質問ループ** (silent fall-through 防止):
+
+   ユーザー応答が以下のいずれかに該当する場合、**解釈不能** と判定する:
+   - 上記 3 option のキーワード (「手動」「コメント URL」「キャンセル」) を **1 つも含まない** 応答
+   - 上記 3 option のキーワードを **2 つ以上同時に含む** 矛盾した応答
+   - 空文字列 / whitespace のみの応答
+
+   解釈不能を検出した場合の処理:
+
+   1. **1 回だけ再質問**: 以下のメッセージを表示し、もう 1 度同じ AskUserQuestion を発行する:
+      ```
+      応答を解釈できませんでした。3 つの option のいずれかを明確に選択してください:
+      - 手動で finding を入力
+      - 別のコメント URL を指定
+      - キャンセル
+      ```
+   2. **再質問の応答も解釈不能の場合**: `[fix:error]` を出力して exit 1 (**parse 0 件のまま Phase 2 進入は禁止**)。エラーメッセージに「解釈不能な応答が 2 回続いたため処理を中止しました」を含める
+
+   > **「無応答」について**: Claude Code の対話モデルでは「無応答」状態は通常発生しない (応答を待つ間ブロックされる) ため、上記から削除した。タイムアウト等で無応答が発生した場合は AskUserQuestion 自体のエラーとして扱われ、本ループには到達しない。
 
    **重要**: parse 0 件で Phase 2 (Categorization) に進入することは silent failure として禁止する。必ず上記の選択肢のいずれかを処理した上で次の Phase へ進むこと。
 3. `{target_comment_id}` 経由で取得した finding のみを fix ループの対象とする。Phase 1.2 の「全コメント取得」はスキップされる
 
-> **Variable scope guard for Fast Path users**: Target Comment Fast Path 経由で `severity_map` を構築した場合、`pr_comments` 変数および関連する review thread 情報 (Phase 1.2 の broad retrieval で取得されるデータ) は **未定義のまま**である。後続の Phase で `$pr_comments` や reviewThreads を参照しないこと (参照すると runtime error)。Fast Path はあくまで「単一コメントから finding を抽出する」フローであり、broad retrieval の結果には依存しない。
+> **Phase 1.2.1 の流用範囲 (Fast Path 経由)**: Phase 1.2.1 は概念的に 2 つの処理から成る:
+> - **(a) Comment retrieval (broad)**: PR から `📜 rite レビュー結果` コメントを `gh pr view --json comments` で取得する処理 — Fast Path では **実行しない**
+> - **(b) Markdown table parsing algorithm**: `### 全指摘事項` を起点に reviewer サブセクションごとの table を解析し `severity_map` を構築するロジック — Fast Path では **(b) のみを `$target_body` に対して再利用する**
+>
+> Fast Path 経由で `severity_map` を構築した場合、`pr_comments` 変数および関連する review thread 情報 (broad retrieval で取得されるデータ) は **未定義のまま**である。後続の Phase で `$pr_comments` や reviewThreads を参照しないこと (参照すると runtime error)。Fast Path はあくまで「単一コメントから finding を抽出する」フローであり、broad retrieval の結果には依存しない。
 
-After parsing, proceed directly to Phase 2 (Categorization) with the extracted findings. Skip Phase 1.2.1 (rite Review Results retrieval) since the target comment is already the source.
+After parsing, proceed directly to Phase 2 (Categorization) with the extracted findings. Skip Phase 1.2.1 のうち (a) Comment retrieval (broad) は実行しない (対象コメントは既に取得済みのため)。(b) Markdown table parsing algorithm のみを `$target_body` に適用する。
 
 #### Broad Comment Retrieval — when `{target_comment_id}` is NOT set
 

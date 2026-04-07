@@ -302,7 +302,16 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 
 **Note**: This step uses data already retrieved in Phase 1.1 (`additions`, `deletions`, `changedFiles`, `files`). The `files` array provides per-file `path`, `additions`, and `deletions`, eliminating the need for a separate API call.
 
-**Error handling**: If `git diff --numstat` fails (network error, timeout, etc.), generate the summary using only the `additions`, `deletions`, `changedFiles`, and `files` data from Phase 1.1.
+**Error handling**: If `git diff --numstat` fails (network error, timeout, missing base branch fetch, etc.):
+
+1. **必ず stderr に WARNING を出力** (silent fallback 禁止):
+   ```
+   WARNING: git diff --numstat failed. Doc-Heavy PR detection will fall back to Phase 1.1 `files` array only.
+   Reason: <error message>
+   Impact: doc_files_ratio / count_ratio computation may be less accurate; doc_heavy detection may be skipped or under-detected.
+   ```
+2. Phase 1.1 の `additions`, `deletions`, `changedFiles`, `files` data を使って summary を生成する
+3. Phase 1.2.7 (Doc-Heavy PR Detection) が numstat に依存している場合、判定を skip した事実 (`doc_heavy_pr = false (numstat unavailable)`) をレビュー結果の Phase 5.4 出力にも含める
 
 #### 1.2.7 Doc-Heavy PR Detection
 
@@ -327,15 +336,18 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 Use the `files` array and numstat from Phase 1.2.6.
 
 ```
-# Doc file patterns (single source of truth — equivalent set with tech-writer.md Activation)
-# tech-writer.md は **/*.md (commands/skills/agents 除外) で任意ディレクトリの .md をカバーするため、
-# Phase 1.2.7 も同等のスコープを採用して "kept in sync" の主張と実態を一致させる
+# Doc file patterns — single source of truth, kept in sync with tech-writer.md Activation.
+# 両ファイルが同一の集合を「ドキュメント」として扱うことを保証する。
+# 等価性の具体: 両者ともに以下を含む — .md (rite plugin の commands/skills/agents 除外),
+# .mdx (同除外), docs/**, **/README*, CHANGELOG*, CONTRIBUTING*, i18n/** (plugins/rite/i18n/** 除外),
+# .rst, .adoc
 doc_file_patterns = [
   **/*.md   (excluding commands/**/*.md, skills/**/*.md, agents/**/*.md),
-  **/*.mdx  (excluding 同上),
+  **/*.mdx  (excluding commands/**/*.mdx, skills/**/*.mdx, agents/**/*.mdx),
   docs/**, documentation/**,
   **/README*, CHANGELOG*, CONTRIBUTING*,
-  i18n/**, *.rst, *.adoc
+  i18n/**  (excluding plugins/rite/i18n/**),
+  *.rst, *.adoc
 ]
 
 doc_lines          = sum(additions + deletions of files matching doc_file_patterns)
@@ -346,19 +358,20 @@ total_files_count  = changedFiles
 # Zero-division guards (inline — both divisors must be checked before division)
 # Defensive: skip condition (changedFiles == 0) は通常 total_files_count > 0 を保証するが、
 # skip section が将来変更された場合に備えて inline ガードも残す (二重防御)
+# 重要: 全ての early-exit 経路で {doc_heavy_pr} = false を必ず set する
 if total_diff_lines == 0:
-    doc_heavy_pr = false
-    return  # Skip the rest of Phase 1.2.7
+    doc_heavy_pr = false   # explicit set (silent undefined 防止)
+    skip to Phase 1.3      # Phase 1.2.7 の残り計算をスキップ
 
 if total_files_count == 0:
-    doc_heavy_pr = false
-    return  # Defensive guard (skip condition should already handle this)
+    doc_heavy_pr = false   # explicit set (Defensive guard)
+    skip to Phase 1.3      # skip condition (changedFiles == 0) で本来到達しない
 
 doc_files_ratio       = doc_lines / total_diff_lines
 doc_files_count_ratio = doc_files_count / total_files_count
 ```
 
-**Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` は doc-heavy 判定対象から**除外**する。これらのファイルは prompt-engineer の専管領域であり、Phase 2.2 の priority rule で prompt-engineer に振り分けられる。
+**Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, および `plugins/rite/i18n/**` は doc-heavy 判定対象から**除外**する。これらのファイルは prompt-engineer の専管領域 (commands/skills/agents) もしくは rite plugin 自身のドッグフーディング artifact (i18n) であり、Phase 2.2 の priority rule で prompt-engineer に振り分けられる、または rite plugin の自己記述として扱われる。
 
 **除外の計算上の扱い**: `doc_lines` と `doc_files_count` の計算から分子として除外するが、`total_diff_lines` と `total_files_count` は除外せず全体を維持する。つまり **「分子からは除外、分母には含める」** 方式。これにより rite plugin 自身のメンテナンス PR (dogfooding 時) では意図的に doc-heavy 判定が起きにくくなる (ratio の分子が削られて分母が変わらないため)。
 
@@ -380,7 +393,7 @@ doc_heavy_pr = (doc_files_ratio >= file_ratio_threshold)
 
 Retain `{doc_heavy_pr}` (boolean) in the conversation context for use in Phase 2.2.1.
 
-**Note**: ゼロ除算ガード (`total_diff_lines == 0`) は疑似コードブロック内にインラインで配置済み。Skip conditions section の `changedFiles == 0` と併せて、空 PR と分母 0 の両方を防ぐ二重ガードとなる。
+**Note**: ゼロ除算ガード (`total_diff_lines == 0` および `total_files_count == 0`) は疑似コードブロック内にインラインで配置済みで、両方とも `doc_heavy_pr = false` を **explicit set** してから `skip to Phase 1.3` する。Skip conditions section の `changedFiles == 0` と併せて、空 PR・分母 0・undefined 参照の三方向を防ぐ多重ガードとなる。Phase 2.2.1 で `{doc_heavy_pr} == true` を判定する時点で `{doc_heavy_pr}` が必ず boolean として set されていることが保証される。
 
 ### 1.3 Identify Related Issue
 
@@ -469,8 +482,14 @@ Match changed files against the Available Reviewers table in `skills/reviewers/S
 When the PR is doc-heavy, override reviewer selection to ensure documentation quality is rigorously checked against implementation reality:
 
 1. **tech-writer 必須昇格**: Phase 2.2 で tech-writer が候補に含まれている場合、その selection_type を `recommended → mandatory` に昇格する。含まれていない場合は mandatory として新規追加する
-2. **code-quality co-reviewer 追加**: doc-heavy PR では実装ソースコードを Read/Grep する検証が必要。tech-writer 単独だと実装側の視点が偏るため、code-quality を co-reviewer として追加する (既に候補に含まれている場合は selection_type を引き上げる)
-3. **doc-heavy フラグの伝達**: tech-writer のレビュー実行時に `{doc_heavy_pr=true}` を渡し、`tech-writer.md` の "Doc-Heavy PR Mode (Conditional)" セクションを参照させる。これにより強化された Cross-Reference チェックと Screenshot Completeness Check が有効化される
+   - **到達可能性 note**: doc_heavy_pr = true でかつ tech-writer が候補にないケースは、tech-writer.md Activation と review.md `doc_file_patterns` の集合等価性が保たれている限り発生しない。しかし将来両者が drift する可能性に備え、新規追加経路を残す (防御的フォールバック)
+2. **code-quality co-reviewer 追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。具体的な検証期待:
+   - ドキュメント内 fenced code block (` ```bash `, ` ```yaml `, ` ```python ` 等) の構文・引用・エラーハンドリング
+   - ドキュメントの「実装例」コードが既存の coding style / naming convention と整合しているか
+   - サンプル設定ファイル (yaml/toml/json snippets) のキー名・型・必須項目が実装スキーマと一致しているか
+   
+   既に候補に含まれている場合は selection_type を `mandatory` に引き上げる（昇格パスは Phase 3.2 selection_type と同じ語彙: `detected → recommended → mandatory`）
+3. **doc-heavy フラグの伝達**: tech-writer のレビュー実行時に `{doc_heavy_pr=true}` を渡し、`tech-writer.md` の "Doc-Heavy PR Mode (Conditional)" セクションを参照させる。これにより `internal-consistency.md` の 5-カテゴリ verification protocol が mandatory となり、各 finding に `evidence` 行が必須化される (Phase 5.1.3 で post-condition check)
 
 **Relationship to Phase 2.3 sole reviewer guard**:
 
@@ -1105,6 +1124,49 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 When verification mode AND `allow_new_findings_in_unchanged_code == false`: Check if finding is in incremental diff. Unchanged code: CRITICAL/HIGH → genuine (blocking), MEDIUM/LOW → stability_concern (non-blocking, informational).
 
 **例外**: この stability_concern 分類は、Phase 4.5.1 の verification テンプレート（Part 2: リグレッションチェック）由来の指摘にのみ適用される。Phase 4.5 の通常テンプレート（フルレビュー）由来の指摘には適用しない。フルレビュー由来の指摘は 5.1.1 に従い、重要度に関わらず blocking とする。
+
+#### 5.1.3 Doc-Heavy PR Mode Post-Condition Check
+
+**Execution condition**: `{doc_heavy_pr} == true` (set in Phase 1.2.7) AND tech-writer is in the reviewer set.
+
+**Skip condition**: `{doc_heavy_pr} == false` または tech-writer がレビュアー集合にない場合は本 Phase をスキップして直接 Phase 5.2 に進む。
+
+**Purpose**: Doc-Heavy PR Mode の "Mandatory Implementation Cross-Reference" ルール ([`tech-writer.md`](../../skills/reviewers/tech-writer.md) 参照) が **実際に実行されたか** を post-condition で検証する。これがないと、tech-writer が推測ベースの finding を返しても誰も気付かず silent non-compliance が成立してしまう (Issue #349 の根本目的)。
+
+**Verification steps**:
+
+1. **tech-writer finding 0 件警告**:
+   - tech-writer の finding count が 0 件、かつ 推奨事項セクションも空、かつ 既存問題セクションも空の場合:
+     - **WARNING を必ず stderr に出力** (silent fall-through 禁止):
+       ```
+       WARNING: Doc-Heavy PR mode active, but tech-writer returned 0 findings, 0 recommendations, and 0 pre-existing issues.
+       Expected: At least one of (a) cross-reference evidence findings, (b) META: Cross-Reference partially skipped notice, or (c) explicit "no inconsistencies found" rationale citing the verification categories that were checked.
+       Action: Verify tech-writer executed the Mandatory Implementation Cross-Reference protocol from internal-consistency.md.
+       ```
+     - レビュー結果には `doc_heavy_post_condition: warning` を含める
+
+2. **Evidence field 必須化**:
+   - tech-writer の各 finding (CRITICAL/HIGH/MEDIUM/LOW すべて) について、以下のいずれかが本文に含まれているかチェック:
+     - `Evidence: tool=...` 行 (推奨スキーマ)
+     - `Verified via: <Grep|Read|Glob>` のような検証手段への明示的言及
+     - 具体的なファイルパス + 行番号 (例: `src/foo.ts:42`)
+   - **Evidence が欠落している finding を発見した場合**:
+     - 該当 finding を **`evidence_missing`** としてマーク
+     - レビュー全体の overall assessment を `修正必要` (要修正) に変更
+     - レビュー結果に以下のメッセージを含める:
+       ```
+       ERROR: Doc-Heavy PR mode で tech-writer が evidence なしの finding を返しました。
+       内訳: {N} 件の finding に evidence 欠落
+       これらは内容の真偽を検証できないため、tech-writer の再実行 (verification mode で evidence 必須を強調) が必要です。
+       ```
+
+3. **META: Cross-Reference partially skipped 検出**:
+   - tech-writer の出力に `META: Cross-Reference partially skipped` が含まれている場合:
+     - レビュー結果に `cross_reference_partial_skip: true` と外部リポジトリ情報を含める
+     - Phase 5.4 (Integrated Report) の特別セクションに表示し、ユーザーに明示的な acknowledgement を求める (`AskUserQuestion`)
+     - acknowledgement なしでマージ判定を下さない
+
+**Implementation note**: 本 Post-Condition Check は Phase 5.2 (Cross-Validation) の **前**に実行する。これにより evidence 欠落が cross-validation の対象になる前に検出され、tech-writer の再実行判断が早期に下せる。
 
 ### 5.2 Cross-Validation
 

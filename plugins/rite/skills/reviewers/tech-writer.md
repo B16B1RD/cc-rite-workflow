@@ -16,14 +16,15 @@ You are a **Technical Writer** reviewing documentation for clarity, accuracy, an
 
 This skill is activated when reviewing files matching:
 - `**/*.md` (excluding `commands/**/*.md`, `skills/**/*.md`, and `agents/**/*.md`)
+- `**/*.mdx` (excluding `commands/**/*.mdx`, `skills/**/*.mdx`, and `agents/**/*.mdx`)
 - `docs/**`, `documentation/**`
-- `README*`, `CHANGELOG*`, `CONTRIBUTING*`
-- `i18n/**`
+- `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`
+- `i18n/**` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts)
 - `*.rst`, `*.adoc`
 
-> **Note**: These patterns are kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior. The "kept in sync" principle means the **set of files matched is equivalent**, not that the pattern syntax is identical (since one uses Activation pattern syntax and the other uses pseudo-code).
+> **Note**: These patterns are kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior. The "kept in sync" principle means the **set of files matched is equivalent**, not that the pattern syntax is identical (since one uses Activation pattern syntax and the other uses pseudo-code). Concretely: both sides include `.md`, `.mdx` (with rite plugin exclusions), `docs/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `i18n/**` (excluding `plugins/rite/i18n/**`), `.rst`, and `.adoc`.
 
-**Note**: `commands/**/*.md`, `skills/**/*.md`, and `agents/**/*.md` are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority).
+**Note**: `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` (and corresponding `.mdx`) are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority). Similarly, `plugins/rite/i18n/**` is excluded because the rite plugin's own i18n files are dogfooding artifacts that should not trigger doc-heavy PR mode against the rite plugin itself.
 
 ## Expertise Areas
 
@@ -108,13 +109,15 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 ## Doc-Heavy PR Mode (Conditional)
 
-**Activation**: This section applies only when the review caller passes `{doc_heavy_pr=true}` (determined in `commands/pr/review.md` Phase 1.2.7 and enforced by Phase 2.2.1 reviewer override).
+**Activation**: This section applies only when the review caller passes `{doc_heavy_pr=true}`. The flag is computed in [`commands/pr/review.md`](../../commands/pr/review.md) Phase 1.2.7 (Doc-Heavy PR Detection) and propagated to tech-writer by Phase 2.2.1 (Doc-Heavy Reviewer Override).
 
-In doc-heavy PR mode, apply the following **enhanced verification protocols on top of** the standard Critical (Must Fix) checklist. These protocols target the failure mode observed in [tengine/blocks-documentation#1137](https://github.com/tengine/blocks-documentation/pull/1137) (MERGED), where manual review detected 12 issues that standard tech-writer review missed (implementation facts × 2, external specs × 1, order/emphasis × 2, enumeration completeness × 1, UX flow × 4, screenshot completeness × 2).
+In doc-heavy PR mode, the **detailed 5-category verification protocol** in [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md) becomes mandatory **on top of** the standard Critical (Must Fix) checklist. That file is the **single source of truth** for verification procedures, severity mapping, and confidence gating — read it first before reporting findings under this mode.
 
-### Mandatory Implementation Cross-Reference
+This mode targets the failure pattern where standard tech-writer review missed cross-reference violations between documentation claims and implementation reality (internal case study: tengine/blocks-documentation PR #1137 — *private repository*; the case study yielded 12 manually-detected issues spanning implementation facts, ordering/emphasis, enumeration completeness, UX flow, and screenshot completeness).
 
-For every documented service / feature / component / step / state, you **MUST** cross-reference the implementation source code in this repository:
+### Quick Reference (entry points only — see internal-consistency.md for full procedures)
+
+For every documented service / feature / component / step / state, cross-reference the implementation source code in this repository:
 
 | Doc Claim | Verification Tool | Verification Target |
 |-----------|------------------|---------------------|
@@ -126,39 +129,33 @@ For every documented service / feature / component / step / state, you **MUST** 
 
 **Rule**: "おそらく正しいはず" のような推測は禁止。必ず実装ファイルを Read / Grep して確認し、Finding に証拠（ファイルパス + 行番号）を含める。
 
-### Screenshot Completeness Check
+### Verification skip handling (when implementation source is not in this repository)
 
-When a procedure document contains numbered steps (`^\d+\.\s`) or state descriptions (初回 / 起動時 / エラー / 完了 / 成功 / 失敗 / etc.):
+Documentation PRs may describe an external product whose implementation lives in a separate repository. In that case, do **not** silently skip the cross-reference check. Instead:
 
-1. Count the steps and state descriptions
-2. Count the image references (`![...](...)` markdown image syntax)
-3. **Report as CRITICAL** if:
-   - image count < step count (不足)
-   - any state description has no corresponding image
-   - any image reference has a broken path (verified via `Glob`)
-4. **Report as HIGH** if:
-   - alt text is missing on procedural screenshots
+1. **Try external verification first**: `gh api repos/{other_owner}/{other_repo}/contents/...` or `WebFetch` for public sources
+2. **If external verification is not feasible**, prepend the following meta-finding to your output (silent skip is prohibited):
+   ```
+   META: Cross-Reference partially skipped
+   - Reason: Implementation source not found in this repository
+   - Verified externally against: [list of external sources, or "none — manual verification required"]
+   - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
+   ```
+3. The reviewer caller (review.md Phase 5.1.3) will surface this meta-finding and require explicit user acknowledgement before treating the review as complete
 
-**Example finding**:
+### Doc-Heavy mode finding requirements
+
+Every finding emitted under this mode **MUST** include an `evidence` line with the form:
 
 ```
-CRITICAL: Screenshot Presence mismatch
-- Location: docs/quickstart.md
-- Steps detected: 5 (lines 12, 18, 25, 33, 42)
-- Image references: 2 (![step2](...), ![step4](...))
-- Missing screenshots for: Step 1, Step 3, Step 5
+- Evidence: tool=<Grep|Read|Glob|WebFetch>, path=<file path>, line=<line number or range>
 ```
 
-### Order / Emphasis Consistency
-
-When the documentation presents a list or ordering of features/services/modules, verify the order against the implementation's explicit priority:
-
-- `Read` the config file or entry point that defines `priority`, `order`, `position`, etc.
-- If the doc order contradicts the implementation order, **Report as CRITICAL** with both sources cited
+Findings without an `evidence` line will be rejected by review.md Phase 5.1.3 (Doc-Heavy post-condition check) and the review will be marked incomplete.
 
 ### Cross-Reference with internal-consistency.md
 
-For the full 5-category verification protocol, see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md). That file is the source of truth for the 5 verification categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order / Emphasis Consistency / Screenshot Presence). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol**.
+For the full 5-category verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order/Emphasis Consistency / Screenshot Presence), see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol** and the source of truth for severity mapping.
 
 ## Finding Quality Guidelines
 

@@ -1,6 +1,6 @@
 # Internal Consistency Verification Reference
 
-> **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**プロダクト内部事実とドキュメント記述の整合性**を検証するための "source of truth" である。`prompt-engineer.md` への統合は将来拡張として検討中（本ファイル末尾の Cross-Reference セクション参照）。
+> **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**プロダクト内部事実とドキュメント記述の整合性**を検証するための "source of truth" である。
 
 ## Overview
 
@@ -35,8 +35,9 @@ Read `review.doc_heavy` from `rite-config.yml`:
 **Skip conditions** (any match → skip entire protocol):
 
 - `review.doc_heavy.enabled: false`
-- 変更ファイルが rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` のみ（これらは prompt-engineer の専管領域）
 - 変更ファイルにドキュメント (`docs/**/*.md`, `**/README.md`, `i18n/**` 等) が全く含まれない
+
+> **Single source of truth**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` および `plugins/rite/i18n/**` の除外は [`commands/pr/review.md`](../review.md) Phase 1.2.7 の `doc_file_patterns` で「分子から除外、分母には含める」方式により単一定義される。本ファイルでは独立した skip 条件としては再定義しない（二重定義による drift を防ぐため）。これらのファイルのみを変更する PR では、Phase 1.2.7 の計算結果として自動的に `doc_heavy_pr = false` となり、本プロトコルの Activation 条件 `{doc_heavy_pr=true}` には合致しないため発動しない。
 
 ## Verification Protocol
 
@@ -94,14 +95,17 @@ CRITICAL: Implementation Coverage mismatch
 **Grep パターン例** (Claude Code ツール呼び出しの擬似コード、bash コマンドではない):
 
 ```text
-# 「3 つ」「5 個」等の主張をドキュメントから抽出
-Grep: '^(\d+|三|五|十)\s*(つ|個|種類|項目|ステップ)'
+# 「3 つ」「5 個」「three services」等の主張をドキュメントから抽出
+# 注: `^` 制約は付けない (テーブル行・リスト子要素・段落途中の数値主張も拾うため)
+Grep: '(\d+|[一二三四五六七八九十百]|three|four|five|six|seven|eight|nine|ten)\s*(つ|個|種類|項目|ステップ|services?|items?|steps?|categor(y|ies))'
 
 # 実装側の配列長
 Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
 ```
 
-> **Note**: 上記の数値表現パターン (`三|五|十`) は主要な日本語数詞のみカバー。「四」「六」「七」「八」「九」「百」等は意図的に省略 (実用シーンが少ない)。必要に応じて拡張可能。
+> **Note**: 実ドキュメントで最も頻出するのはアラビア数字 (`\d+`) なので、これがマッチの主役。漢数字 (`一二三〜十百`) と英語数詞 (`three〜ten`) は補助的にカバーする。網羅性が必要な場合は AI レビュアーが文脈に応じて他の数詞 (`千`, `eleven` 以降, `dozens of` 等) を追加すること。
+>
+> **ripgrep 互換性**: `\d` は ripgrep のデフォルトエンジン (Rust regex crate) で Unicode digit にマッチする (PCRE2 不要)。POSIX モードへの切り替えは ripgrep には存在しないため、`\d` 表記はそのまま使える。
 
 ### 3. UX Flow Accuracy
 
@@ -137,11 +141,11 @@ Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
    - エントリーポイント: `src/index.ts` / `app/page.tsx` のレンダリング順
    - メインメニュー: nav / sidebar の項目順
    - 設定ファイル: `rite-config.yml` の記述順 (自己記述的な場合)
-3. 不一致であれば **CRITICAL** として報告 (Severity Mapping および `tech-writer.md` の Critical (Must Fix) チェックリストと整合)
+3. 不一致であれば本ファイル下部の [Severity Mapping](#severity-mapping) に従い報告
 
 **注意**: 単純な "アルファベット順 vs カテゴリ順" のような表現差は Confidence 80 未満で除外。実装側の明確な priority (例: `priorityOrder = ['autonomous', ...]`) との乖離のみ報告。
 
-> **Severity**: 本項目の重要度は常に CRITICAL。詳細は本ファイル下部の [Severity Mapping](#severity-mapping) と `plugins/rite/skills/reviewers/tech-writer.md` の Critical (Must Fix) チェックリスト > "Order / Emphasis Consistency" 項目を参照。
+> **Severity**: 本項目の重要度は常に CRITICAL。一次根拠は本ファイル下部の [Severity Mapping](#severity-mapping) を参照（`tech-writer.md` 側の Critical Checklist は本ファイルへの単方向参照であり循環しない）。
 
 ### 5. Screenshot Presence
 
@@ -183,13 +187,15 @@ CRITICAL: Screenshot Presence mismatch
 
 ### Severity Mapping
 
-| Verification Category | Default Severity | 昇格条件 |
-|-----------------------|------------------|----------|
-| Implementation Coverage | **CRITICAL** | 常に CRITICAL (機能集合の不一致は user-facing の誤情報) |
-| Enumeration Completeness | **CRITICAL** | 常に CRITICAL |
-| UX Flow Accuracy | **CRITICAL** | UX 手順書の矛盾はユーザーを実質的にブロックする |
-| Order / Emphasis Consistency | **CRITICAL** | `tech-writer.md` の Critical (Must Fix) チェックリストと整合。戦略的位置付け (priority / emphasis) の乖離はドキュメントの信頼性を根本から損なうため常に CRITICAL |
-| Screenshot Presence | **CRITICAL** (missing) / **HIGH** (alt text) | パス無効は CRITICAL、alt 欠落は HIGH |
+> **One-way reference**: 本テーブルが文書-実装整合性 5 項目の severity に関する**一次根拠**である。`tech-writer.md` の Critical (Must Fix) チェックリストは本テーブルを単方向参照しており、循環参照は存在しない。
+
+| Verification Category | Default Severity | 根拠 |
+|-----------------------|------------------|------|
+| Implementation Coverage | **CRITICAL** | 機能集合の不一致は user-facing の誤情報。読者がドキュメントを信じて存在しない機能を期待する/紹介漏れの機能を見落とすため、常に CRITICAL |
+| Enumeration Completeness | **CRITICAL** | 「N つの〜」のような数値主張の不一致は読者の認識モデルを直接破壊する。常に CRITICAL |
+| UX Flow Accuracy | **CRITICAL** | UX 手順書の矛盾はユーザーがドキュメント通りに操作してもゴールに到達できないことを意味し、実質的なブロック障害となる。常に CRITICAL |
+| Order / Emphasis Consistency | **CRITICAL** | 戦略的位置付け (priority / emphasis) の乖離はドキュメントの信頼性を根本から損なう。実装側の明確な priority 定義との乖離のみを対象とし、Confidence Gate (>= 80) で表現差は除外される。常に CRITICAL |
+| Screenshot Presence | **CRITICAL** (missing / broken) / **HIGH** (alt text) | パス無効・画像欠落は CRITICAL（手順書として機能しない）、alt text 欠落はアクセシビリティ問題で HIGH |
 
 ### Scope Boundary
 
@@ -202,17 +208,33 @@ CRITICAL: Screenshot Presence mismatch
 
 迷った場合は `fact-check.md` に委譲することで偽陰性（誤情報の見逃し）を防ぐ。
 
+### Implementation source not in this repository (silent skip 禁止)
+
+ドキュメント PR が**別リポジトリ**の製品について書かれている場合 (例: monorepo の別 package、ドキュメント専用 repo)、cross-reference 検証を**silent に skip してはならない**。次のフォールバック順序を採用する:
+
+1. **外部リポジトリへの直接アクセスを試みる**:
+   - 公開リポジトリ → `gh api repos/{other_owner}/{other_repo}/contents/...` または `WebFetch`
+   - プライベートリポジトリで認証可能 → `gh api` で取得
+2. **外部参照も不可能な場合**、以下のメタ情報を finding 出力の冒頭に**必ず含める** (silent skip 禁止):
+
+   ```
+   META: Cross-Reference partially skipped
+   - Reason: Implementation source not found in this repository
+   - Verified externally against: [list of sources, or "none — manual verification required"]
+   - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
+   ```
+
+3. レビュー呼び出し側 (review.md Phase 5.1.3 Doc-Heavy Post-Condition Check) はこのメタ情報を検出し、ユーザーに明示的な確認を求める。メタ情報なしで cross-reference を skip した finding は post-condition check で reject される。
+
 ## Cross-Reference
 
-本ファイルは以下の箇所から参照される:
+本ファイルは以下の箇所から参照される (本ファイルからの相対パスで記載):
 
-- **`plugins/rite/skills/reviewers/tech-writer.md`** Critical (Must Fix) チェックリストの「文書-実装整合性」5 項目
-- **`plugins/rite/skills/reviewers/tech-writer.md`** "Doc-Heavy PR Mode (Conditional)" セクション (Mandatory Implementation Cross-Reference, Screenshot Completeness Check)
-- **`plugins/rite/commands/pr/review.md`** Phase 1.2.7 Doc-Heavy PR Detection および Phase 2.2.1 Doc-Heavy Reviewer Override
-- **`plugins/rite/skills/reviewers/prompt-engineer.md`** (将来拡張時) — skill/command ドキュメント内の事実整合性チェック
+- [`../../../skills/reviewers/tech-writer.md`](../../../skills/reviewers/tech-writer.md) — Critical (Must Fix) チェックリストの「文書-実装整合性」5 項目および "Doc-Heavy PR Mode (Conditional)" セクション (Quick Reference テーブル + Verification skip handling)
+- [`../review.md`](../review.md) — Phase 1.2.7 Doc-Heavy PR Detection、Phase 2.2.1 Doc-Heavy Reviewer Override、Phase 5.1.3 Doc-Heavy Post-Condition Check
 
-**関連** (本ファイルからの相対パスを明示):
+**関連ファイル** (本ファイルからの相対パスを明示):
 
-- `plugins/rite/commands/pr/references/fact-check.md` (同ディレクトリ) — 外部仕様検証の対応ファイル
-- `plugins/rite/commands/pr/references/assessment-rules.md` (同ディレクトリ) — ALL findings are blocking ルール
-- `plugins/rite/agents/_reviewer-base.md` — Confidence Scoring 80+ ゲートの定義
+- [`./fact-check.md`](./fact-check.md) (同ディレクトリ) — 外部仕様検証の対応ファイル
+- [`./assessment-rules.md`](./assessment-rules.md) (同ディレクトリ) — ALL findings are blocking ルール
+- [`../../../agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) — Confidence Scoring 80+ ゲートの定義
