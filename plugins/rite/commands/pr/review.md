@@ -304,6 +304,56 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 
 **Error handling**: If `git diff --numstat` fails (network error, timeout, etc.), generate the summary using only the `additions`, `deletions`, `changedFiles`, and `files` data from Phase 1.1.
 
+#### 1.2.7 Doc-Heavy PR Detection
+
+**Purpose**: Identify PRs whose primary change target is user-facing documentation, and flag them for stricter tech-writer review with implementation-consistency checks (see [internal-consistency.md](./references/internal-consistency.md)).
+
+**Skip conditions** (any match → skip this sub-phase and retain `{doc_heavy_pr} = false`):
+
+- `review.doc_heavy.enabled: false` in `rite-config.yml`
+- `changedFiles == 0` (edge case: empty diff)
+
+**Configuration**: Read `review.doc_heavy` from `rite-config.yml` with the following defaults when the key is absent:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | この Phase の有効/無効 |
+| `file_ratio_threshold` | `0.6` | `doc_lines / total_diff_lines` の閾値 |
+| `count_ratio_threshold` | `0.7` | `doc_files / total_files` の閾値 |
+| `max_diff_lines_for_count` | `2000` | ファイル数比率判定を有効にする最大 diff 行数 |
+
+**Calculation**:
+
+Use the `files` array and numstat from Phase 1.2.6.
+
+```
+doc_file_patterns = [
+  docs/**/*.md, docs/**/*.mdx, **/README*, CHANGELOG*, CONTRIBUTING*,
+  i18n/**, *.rst, *.adoc
+]
+
+doc_lines          = sum(additions + deletions of files matching doc_file_patterns)
+total_diff_lines   = sum(additions + deletions of all changed files)
+doc_files_count    = count(files matching doc_file_patterns)
+total_files_count  = changedFiles
+
+doc_files_ratio       = doc_lines / total_diff_lines
+doc_files_count_ratio = doc_files_count / total_files_count
+```
+
+**Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` は doc-heavy 判定対象から**除外**する。これらのファイルは prompt-engineer の専管領域であり、Phase 2.2 の priority rule で prompt-engineer に振り分けられる。除外は `doc_lines` と `doc_files_count` の両方の計算から行う (total_diff_lines / total_files_count はそのまま)。
+
+**Determination**:
+
+```
+doc_heavy_pr = (doc_files_ratio >= file_ratio_threshold)
+            OR (doc_files_count_ratio >= count_ratio_threshold AND total_diff_lines < max_diff_lines_for_count)
+```
+
+Retain `{doc_heavy_pr}` (boolean) in the conversation context for use in Phase 2.2.1.
+
+**Note**: 判定結果に関わらず、`total_diff_lines == 0` のときは安全側で `{doc_heavy_pr} = false` とする（ゼロ除算と空 PR 誤判定を防ぐ）。
+
 ### 1.3 Identify Related Issue
 
 Extract the Issue number from the PR branch name or body.
