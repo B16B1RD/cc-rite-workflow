@@ -22,7 +22,13 @@ This skill is activated when reviewing files matching:
 - `i18n/**/*.md`, `i18n/**/*.mdx` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts)
 - `*.rst`, `*.adoc`
 
-> **Note**: These patterns are kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior. The "kept in sync" principle means the **set of files matched is equivalent**, not that the pattern syntax is identical (since one uses Activation pattern syntax and the other uses pseudo-code). Concretely: both sides include `.md`, `.mdx` (with rite plugin exclusions), `docs/**`, `documentation/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `i18n/**/*.{md,mdx}` (excluding `plugins/rite/i18n/**`), `.rst`, and `.adoc`.
+> **Note**: These patterns are kept in sync across **3 files** that all treat the same set of files as "documentation":
+>
+> 1. **This file** (`plugins/rite/skills/reviewers/tech-writer.md`) — source of truth for reviewer activation
+> 2. **`plugins/rite/commands/pr/review.md`** Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection pseudo-code)
+> 3. **`plugins/rite/skills/reviewers/SKILL.md`** Reviewers テーブル tech-writer row (representative pattern summary)
+>
+> The "kept in sync" principle means the **set of files matched is equivalent across all 3 files**, not that the pattern syntax is identical (since each file uses different syntax: Activation patterns, pseudo-code, and representative table). Concretely, all 3 sides include `.md`, `.mdx` (with rite plugin exclusions `commands/`, `skills/`, `agents/`), `docs/**`, `documentation/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `i18n/**/*.{md,mdx}` (excluding `plugins/rite/i18n/**`), `.rst`, and `.adoc`. Drift detection between these 3 files is tracked by Issue #353 (automated lint to be added).
 
 **Note**: `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` (and corresponding `.mdx`) are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority). Similarly, `plugins/rite/i18n/**` is excluded because the rite plugin's own i18n files are dogfooding artifacts that should not trigger doc-heavy PR mode against the rite plugin itself. The `i18n/**` pattern is restricted to `.md` / `.mdx` files only because tech-writer reviews Markdown-style documentation; other translation formats (`.yml`, `.json`, `.po`) are out of scope.
 
@@ -163,15 +169,19 @@ Findings without an `evidence` line will be rejected by review.md Phase 5.1.3 (D
 
 ### Doc-Heavy mode finding-count rules
 
-If the review yields **0 findings** under Doc-Heavy mode, you **MUST** explicitly confirm that all 5 verification categories were executed by emitting the following META line at the top of your findings section:
+Under Doc-Heavy mode, you **MUST** emit a META line at the top of your findings section **regardless of finding count** (0 件でも 1+ 件でも). This allows `review.md` Phase 5.1.3 post-condition check to verify that all 5 verification categories were actually executed, not just a subset (silent non-compliance prevention — this is the root purpose of Issue #349).
 
-```
-META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]
-```
+Emit **one** of the following META lines based on your execution outcome:
 
-This negative confirmation distinguishes "protocol was executed, no issues found" from "protocol was not executed" (silent non-compliance). Phase 5.1.3 post-condition check will reject 0-finding outputs that lack this META line.
+| 状況 | 必須 META 行 |
+|------|-------------|
+| 0 件 (5 カテゴリ実行済み、inconsistency なし) | `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` |
+| 1 件以上 (5 カテゴリ実行済み、finding あり) | `META: All 5 verification categories executed. Findings below.` |
+| 部分スキップ (外部リポジトリ実装不在等) | `META: Cross-Reference partially skipped` (+ 詳細ブロック、下記 "Verification skip handling" 参照) |
 
-If verification was partial (e.g., implementation source not in this repository), emit the `META: Cross-Reference partially skipped` line instead, per the Verification skip handling section above.
+**重要**: finding_count >= 1 でも「5 カテゴリ実行 META 行」を省略することは silent bypass として禁止する。1 件の Evidence 付き finding だけを出して post-condition check を通過する攻撃パターン (Implementation Coverage だけ実行して他 4 カテゴリをスキップ) を防ぐため、META 行は**件数非依存で必ず出力**する。
+
+This negative/positive confirmation distinguishes "protocol was fully executed" from "protocol was partially executed or not executed". Phase 5.1.3 post-condition check will reject outputs that lack any of the 3 META line variants above regardless of finding count.
 
 ### Cross-Reference with internal-consistency.md
 
@@ -202,3 +212,10 @@ Perform the following investigation before reporting findings:
 | 「サービス紹介順を見直したほうがいい」 | 「`docs/overview.md:12` で「フローデザイナー → 最適化」の順だが、`src/config/services.ts:5` では `['autonomous', 'optimization', 'flow-designer']` の順。実装の priority と逆転」 |
 | 「スクショが足りない気がする」 | 「`docs/quickstart.md` のステップ 1-5 に対し `![...](...)` 参照が 2 つのみ（ステップ 2 と 4）。ステップ 1, 3, 5 のスクショが欠落」 |
 | 「LLM 関連の記述が曖昧」 | 「`docs/key-concepts.md:8` で「フローデザイナーで LLM を扱う」と記述だが、`src/flow-designer/blocks/` に LLM 関連ブロックなし。LLM は `src/autonomous/` 配下のみ」 |
+
+**Doc-Heavy mode 専用 example** (`{doc_heavy_pr=true}` フラグが set されている場合、各 finding に `- Evidence: ...` 行を必ず含める):
+
+| Prohibited (Vague) | Required (Doc-Heavy mode、Evidence literal 付き) |
+|------------------|---------------------------------------------------|
+| 「機能リストが合っていない気がする」 | 「`docs/overview.md:12-20` で 3 つのコア機能 (Flow Designer / Autonomous / Optimization) と記述だが、`src/config/services.ts:5` の `SERVICES` 定数は 5 要素 (`flow-designer`, `autonomous`, `optimization`, `compath`, `ingest`)。ComPath / Ingest が紹介から欠落。<br>- Evidence: tool=Read, path=src/config/services.ts, line=5」 |
+| 「スクリーンショットを確認してください」 | 「`docs/quickstart.md` のステップ 1-5 (`^\d+\.\s` 検出) に対し画像参照 `![...](...)` は line 18, 33 の 2 件のみ。ステップ 1 / 3 / 5 の画像が欠落。<br>- Evidence: tool=Grep, path=docs/quickstart.md, line=12-50」 |

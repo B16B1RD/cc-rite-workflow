@@ -234,10 +234,18 @@ CRITICAL: Screenshot Presence mismatch
    ```
    META: Cross-Reference partially skipped
    - Reason: Implementation source not found in this repository
-   - Failure signal: <404 / 401 / timeout / empty / name-unresolved のいずれか>
+   - Failure signal: <404 / 401 / 403 / 5xx / timeout / empty / name-unresolved のいずれか>
    - Verified externally against: [list of sources, or "none — manual verification required"]
    - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
    ```
+
+   **Failure signal の値は上記判定条件テーブル (step 2) と完全に対応させる**:
+   - `404` — リポジトリ非存在
+   - `401` / `403` — 認証・権限不足 (2 値を区別して記録)
+   - `5xx` — HTTP サーバーエラー全般 (500, 502, 503, 504 等)
+   - `timeout` — タイムアウト (2 回連続)
+   - `empty` — 空レスポンス
+   - `name-unresolved` — 外部 repo 名が特定できない
 
 4. レビュー呼び出し側 (review.md Phase 5.1.3 Doc-Heavy Post-Condition Check) はこのメタ情報を検出し、ユーザーに明示的な確認を求める。メタ情報なしで cross-reference を skip した finding は post-condition check で reject される。
 

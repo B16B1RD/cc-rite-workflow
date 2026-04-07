@@ -210,14 +210,22 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 >
 > **本コードブロック単体**を単一の Bash ツール呼び出しで実行する。`$target_body`, `$target_author`, `$jq_err` はシェル変数であり、ブロック内で完結する。後続の Parsing rule (`## 📜 rite レビュー結果` 判定や best-effort parse) は自然言語指示と `AskUserQuestion` を含むため bash のみでは実行不可能であり、**同じ Bash 呼び出しで連続実行しない**。代わりに以下のハンドオフ方式を使う:
 >
-> 1. bash block 末尾で `$target_body` / `$target_author` を Claude 可読な一時ファイルに永続化する:
+> 1. bash block 末尾で以下の **3 つ**のシェル変数を Claude 可読な一時ファイルに永続化する (ファイル名はセッション固有の `{pr_number}-{target_comment_id}` suffix 付き):
+>    - `$target_body` → `/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt`
+>    - `$target_author` → `/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt`
+>    - `$target_author_mention_skip` → `/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt`
+>
+>    書き出しは **各 `printf` の exit code を check し、失敗時は exit 1 で abort** する (上記 bash block 内の実装を参照)。さらに書き出し後に `[ -s "<path>" ]` / `[ -f "<path>" ]` で post-condition を検証する。
+> 2. bash 呼び出しから戻ったあと、Claude は Parsing rule を実行するために Read tool で上記 **3 ファイル**を読み直し、必要に応じて `$target_body` / `$target_author` / `$target_author_mention_skip` の中身をコンテキストに再注入する
+> 3. Parsing rule / best-effort parse が完了したあと、Phase 1 の末尾で下記の **明示的 cleanup bash block** を**必ず実行**する (prose 指示ではなく実装ブロックとして存在する)。削除対象は specific path (`{pr_number}-{target_comment_id}` suffix 付き) のみとし、wildcard glob は**絶対に使わない** (並列 fix 実行時に他セッションの一時ファイルを silent に消す事故を防ぐ):
 >    ```bash
->    printf '%s' "$target_body" > "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
->    printf '%s' "$target_author" > "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
+>    # Phase 1 終端で実行する cleanup (Phase 1.4 末尾または Phase 2 遷移直前)
+>    # 重要: wildcard `/tmp/rite-fix-target-body-*.txt` は絶対に使わない (他セッション破壊防止)
+>    rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
+>          "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
+>          "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 >    ```
->    (ブロック内の `{pr_number}` / `{target_comment_id}` は Claude が事前置換済み)
-> 2. bash 呼び出しから戻ったあと、Claude は Parsing rule を実行するために Read tool でこれら一時ファイルを読み直し、必要に応じて `$target_body` の中身をコンテキストに再注入する
-> 3. Parsing rule / best-effort parse が完了したあと、Phase 1 の末尾で `rm -f /tmp/rite-fix-target-body-*.txt /tmp/rite-fix-target-author-*.txt` を実行して一時ファイルを片付ける
+>    Broad Comment Retrieval 経路 (Fast Path を通らない場合) ではこれらの一時ファイルが存在しないため、`rm -f` は silent no-op となり問題ない。
 >
 > **trap の上書きリスクに注意**: 本ブロックの `trap 'rm -f "$jq_err"' EXIT` は bash 仕様上 1 signal につき 1 trap しか持てないため、**後続の bash block (Phase 2.4 reply、Phase 4.2 report、Phase 4.3.4 Issue 作成、Phase 4.5.1 work memory 更新) が同一 bash 呼び出しに含まれる場合、それらの `trap ... EXIT` に上書きされて `$jq_err` のリークが起きる**。これは本ブロックを後続 phase と結合しないことで回避するほか、ブロック末尾で明示的に `rm -f "$jq_err"` を実行することで二重防御している (trap が動かなくても cleanup は完了する)。将来 `trap` を連携する必要が出た場合は `add_trap` idiom (`existing=$(trap -p EXIT | sed -n "s/.*'\(.*\)'.*/\1/p"); trap "rm -f \"$jq_err\"; $existing" EXIT`) の採用を検討。
 
@@ -286,26 +294,61 @@ fi
 
 # Parsing rule / 下流 phase へのハンドオフ (シェル変数は bash 呼び出しを抜けると失われるため、
 # Claude 可読な一時ファイルに永続化する。後続 phase は Read tool でこれらを読み戻す)
-printf '%s' "$target_body" > "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
-printf '%s' "$target_author" > "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
-printf '%s' "$target_author_mention_skip" > "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+#
+# 重要 — 書き出しエラーは fail-fast で exit 1:
+# disk full / /tmp read-only (Docker RO volume, SELinux/AppArmor deny) / inode 枯渇のケースで
+# silent に空ファイルを残すと、後続 phase が空の target_body を Read して 0 件 finding で
+# silent pass する事故になる。各 printf の exit code を明示的に check し、失敗時は詳細を stderr に出力する。
+body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
+author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
+skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+
+if ! printf '%s' "$target_body" > "$body_file"; then
+  echo "エラー: target_body の一時ファイル書き出しに失敗しました: $body_file" >&2
+  echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
+  exit 1
+fi
+if ! printf '%s' "$target_author" > "$author_file"; then
+  echo "エラー: target_author の一時ファイル書き出しに失敗しました: $author_file" >&2
+  exit 1
+fi
+if ! printf '%s' "$target_author_mention_skip" > "$skip_file"; then
+  echo "エラー: target_author_mention_skip の一時ファイル書き出しに失敗しました: $skip_file" >&2
+  exit 1
+fi
+
+# 書き出し後の post-condition check (non-empty かつ存在することを確認)
+# target_author は空文字列でも許容 (target_author_mention_skip=true の sentinel として使う)
+# target_author_mention_skip は必ず "true" or "false" の文字列なので必ず non-empty
+if [ ! -s "$body_file" ]; then
+  echo "エラー: body_file の post-condition check に失敗: $body_file が空または存在しません" >&2
+  exit 1
+fi
+if [ ! -f "$author_file" ]; then
+  echo "エラー: author_file の post-condition check に失敗: $author_file が存在しません" >&2
+  exit 1
+fi
+if [ ! -s "$skip_file" ]; then
+  echo "エラー: skip_file の post-condition check に失敗: $skip_file が空または存在しません" >&2
+  exit 1
+fi
 
 # 明示的 cleanup (trap 外の二重防御)
 rm -f "$jq_err"
 ```
 
-> **Note — 下流 phase でのハンドオフ参照**: Fast Path 完了後、Claude は以下 3 つの一時ファイルを Read tool で読み戻してコンテキストに再注入する:
+> **Note — 下流 phase でのハンドオフ参照**: Fast Path 完了後、Claude は以下 **3 つ**の一時ファイルを Read tool で読み戻してコンテキストに再注入する:
 >
 > - `/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` — Parsing rule で参照する finding 本文
 > - `/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt` — Phase 2.1 / 3.2 / 4.3.4 で `{target_author}` として参照
 > - `/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt` — `"true"` / `"false"` の文字列。下流 phase で mention を生成する前に必ずチェックする
 >
-> **下流 phase の mention 省略義務** (silent `@unknown` 誤記録の防止): Fast Path 経由で単一コメントを対象にしている場合、Phase 2.1 の `レビュアー: @{user}` 表示、Phase 3.2 commit trailer の `Addresses review comments from @{reviewer1}` / `@{reviewer1} のレビューコメントに対応`、Phase 4.3.4 Issue 本文の `- **レビュアー**: @{reviewer}` のいずれにおいても、`target_author_mention_skip == "true"` の場合は mention (`@` prefix) を生成せず、代わりに以下の文字列を使用する:
+> **下流 phase の mention 省略義務** (silent `@unknown` 誤記録の防止): Fast Path 経由で単一コメントを対象にしている場合、Phase 1.2 best-effort parse failure 警告、Phase 2.1 の `レビュアー` 表示、Phase 3.2 commit trailer の `Addresses review comments from` / `のレビューコメントに対応`、Phase 4.3.4 Issue 本文の `- **レビュアー**` のいずれにおいても、`target_author_mention_skip == "true"` の場合は mention (`@` prefix) を生成せず、代わりに以下の文字列を使用する:
 >
 > - 日本語出力: `(不明なレビュアー)` (コメント投稿者が特定できないため mention を省略)
 > - 英語出力: `(unknown reviewer)` (mention omitted because the comment author could not be resolved)
 >
-> これにより GitHub 上に存在しない `@unknown` user への誤 mention を防ぐ。`jq_err` の cleanup は EXIT trap + 末尾の明示的 `rm -f` で二重防御されているため、異常終了・正常終了のいずれでも確実に削除される。`/tmp/rite-fix-target-body-*.txt` / `/tmp/rite-fix-target-author-*.txt` / `/tmp/rite-fix-target-author-skip-*.txt` は Phase 1 の末尾で明示的に削除する (Parsing rule 完了後)。
+> これにより GitHub 上に存在しない `@unknown` user への誤 mention を防ぐ。`jq_err` の cleanup は EXIT trap + 末尾の明示的 `rm -f` で二重防御されているため、異常終了・正常終了のいずれでも確実に削除される。ハンドオフ 3 ファイル (`body`, `author`, `author-skip`) は **Phase 1.4 末尾の明示的 cleanup bash block** (specific path 指定、wildcard glob は使用禁止) で削除する — 詳細は上記 Implementation note の手順 3 を参照。並列 fix 実行時の他セッション破壊を防ぐため `rm -f /tmp/rite-fix-target-body-*.txt` のような glob は絶対に使わない。
 
 **Parsing rule**:
 
@@ -346,7 +389,7 @@ rm -f "$jq_err"
        ```
    - **全テーブル行がパース不能** または **抽出結果 0 件** の場合、警告を表示してユーザーに確認を求める (silent failure 回避):
      ```
-     警告: コメント #{target_comment_id} (@{target_author}) から finding をパースできませんでした
+     警告: コメント #{target_comment_id} ({reviewer_display}) から finding をパースできませんでした
      - スキップした行: {N} 行 (4 カラム未満)
      - 認識された行: 0 件
      内容プレビュー: {target_body の先頭 300 文字}
@@ -355,6 +398,8 @@ rm -f "$jq_err"
        - 別のコメント URL を指定
        - キャンセル
      ```
+
+     **`{reviewer_display}` の展開**: Phase 2.1 の `{reviewer_display}` 展開ルール表を参照する。Fast Path 経由で `target_author_mention_skip == "true"` の場合は `(不明なレビュアー)` / `(unknown reviewer)` に置換し、`@` prefix は絶対に生成しない (silent `@unknown` 誤記録防止)。通常時は `@{target_author}` を使用する。
 
    **選択肢の処理ルール (silent fall-through 禁止)**:
 
@@ -373,7 +418,7 @@ rm -f "$jq_err"
    | Option ID | 対応する選択肢 |
    |-----------|----------------|
    | `1`, `a`, `手動`, `manual` | 手動で finding を入力 |
-   | `2`, `b`, `url` | 別のコメント URL を指定 |
+   | `2`, `b`, `url`, `link` | 別のコメント URL を指定 |
    | `3`, `c`, `cancel`, `キャンセル` | キャンセル |
 
    完全一致が成立した場合、それを採用する。**これにより「キャンセルせず手動で入力する」のような否定形文は Step A では完全一致しないため次の Step B に進む**。
@@ -396,10 +441,6 @@ rm -f "$jq_err"
    - Step A で完全一致せず、Step B でもマッチキーワードが 1 つもない応答 (例: 「さあ...」「どうしよう」)
    - 空文字列 / whitespace のみの応答
    - 打ち消し集合により Step B の全 option がスキップされた結果、マッチが 0 件になった応答
-
-   ユーザー応答が以下に該当する場合、**解釈不能** と判定する:
-   - 上記 3 option のキーワードを **1 つも含まない** 応答 (例: 「さあ...」のような曖昧な返答)
-   - 空文字列 / whitespace のみの応答
 
    解釈不能を検出した場合の処理:
 
@@ -434,11 +475,16 @@ rm -f "$jq_err"
 | severity 別名マッピングによる MEDIUM fallback (severity 不明) | 同様に Confidence=70 扱いとし、ユーザー確認を求める |
 
 暫定 Confidence 値が割り当てられた finding については、`AskUserQuestion` で以下のいずれかを選択させる:
-- **そのまま取り込む** (Confidence を 80 に昇格し、fix ループに投入)
-- **LOW として記録のみ** (fix ループには投入せず、後日レビュー対象として残す)
-- **スキップ** (Phase 4.3 で別 Issue 化する候補として扱う)
+- **Confidence 70 のまま 80+ ゲートをバイパスして投入 (policy override)** — finding を fix ループに投入するが、Confidence は 70 のまま保持し、`confidence_override=true` フラグを finding metadata に記録する。昇格ではなくバイパスであることをユーザーに明示する
+- **LOW として記録のみ** — fix ループには投入せず、後日レビュー対象として残す
+- **スキップ** — Phase 4.3 で別 Issue 化する候補として扱う
 
-この手順により、外部レビューツールの信頼度を silent に無視することなく、かつ hallucinated finding の混入も防げる。
+**Confidence override の追跡義務** (silent 改竄防止): 「Confidence 70 のままバイパス」を選択した finding については、以下の出力箇所で明示的に可視化する:
+- Phase 4.6 完了報告に `confidence_override: N 件` を追加
+- Phase 4.5.3 work memory のレビュー対応履歴に `- confidence_override: {file:line} (外部ツール由来、ユーザーがバイパスを承認)` を記録
+- Phase 4.3 で別 Issue 化される finding にも `confidence_override=true` の事実を Issue 本文に記載
+
+この手順により、外部レビューツールの信頼度を silent に無視することなく、かつ hallucinated finding の混入も防ぎ、かつ Confidence 80+ ゲート invariant の破壊を silent に起こさない (override は常に trackable)。
 
 > **Fast Path と Broad Retrieval の責任境界**: Phase 1.2 配下には以下 3 つの要素がある:
 >
@@ -676,6 +722,28 @@ PR #{number} にはレビューコメントがありません
 
 Terminate processing.
 
+### 1.5 Fast Path Handoff File Cleanup (Phase 1 終端)
+
+**Execution condition**: Fast Path 経由で一時ファイル (`/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成した場合のみ実行する。Broad Comment Retrieval 経路ではこれらのファイルは存在しないため、`rm -f` は silent no-op となる。
+
+**Purpose**: Phase 1.2 Fast Path で作成したハンドオフ一時ファイル 3 本を明示的に削除する。Phase 1.4 の末尾 (Phase 2 遷移直前) で必ず実行し、`/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
+
+**Important — specific path 必須** (並列 fix 実行の他セッション破壊防止):
+- wildcard glob (`/tmp/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / sprint team-execute / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
+- 必ず `{pr_number}-{target_comment_id}` suffix を含む specific path で削除する
+
+```bash
+# Phase 1.5: Fast Path Handoff File Cleanup
+# 実行条件: Fast Path 経由 (target_comment_id が set されている場合) のみ
+# Broad Comment Retrieval 経路では silent no-op (ファイルが存在しないため rm -f が exit 0 で終わる)
+# {pr_number} / {target_comment_id} は Claude が Phase 1.0 の parse 結果で事前置換済み
+rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+```
+
+**Idempotency**: `rm -f` は対象ファイルが存在しない場合でも exit 0 で成功するため、Broad Retrieval 経路でも安全に実行できる。また再実行時 (同一 pr_number + target_comment_id で再度 /rite:pr:fix を実行) でも古いファイルが確実に削除される。
+
 ---
 
 ## Phase 2: Assist with Fixes
@@ -910,15 +978,12 @@ Use free-form commit body. Include the reason for the change ("why") in the comm
 - Follow the same language setting as the description line
 - Can be omitted for trivial changes (typo fixes, formatting, etc.)
 
-**Trailer**: Generate in the configured language:
-- English: `Addresses review comments from @{reviewer1}, @{reviewer2}`
-- Japanese: `@{reviewer1}, @{reviewer2} のレビューコメントに対応`
+**Trailer**: Generate in the configured language using the unified `{reviewer_display_N}` placeholder (展開ルールは Phase 2.1 の `{reviewer_display}` 展開ルール表を参照 — Broad Retrieval 経由で `@{user}`、Fast Path 経由 + `target_author_mention_skip == "true"` で `(不明なレビュアー)` / `(unknown reviewer)` に展開される):
 
-**`target_author_mention_skip` との連携** (Fast Path での silent `@unknown` 誤記録防止): Fast Path 経由で `target_author_mention_skip == "true"` の場合、trailer 生成時は `@{reviewer1}` 該当位置の mention を省略し、代わりに以下のプレースホルダを使用する:
-- English: `Addresses review comments from (unknown reviewer)` (+ その他 identifiable reviewer があれば `@{reviewer2}` を併記)
-- Japanese: `(不明なレビュアー) のレビューコメントに対応` (+ その他 identifiable reviewer があれば `, @{reviewer2}` を併記)
+- English: `Addresses review comments from {reviewer_display_1}, {reviewer_display_2}`
+- Japanese: `{reviewer_display_1}, {reviewer_display_2} のレビューコメントに対応`
 
-Broad Comment Retrieval 経由 (通常時) はこの変換を行わず、従来通り `@{reviewerN}` を生成する。
+**展開ルールの単一源**: 本 phase と Phase 2.1 / Phase 4.3.4 の 3 箇所で同一の `{reviewer_display}` 展開ルール (Phase 2.1 の表) を参照する。mention 生成ロジックを書き直す場合は Phase 2.1 の表のみを更新し、本 phase の literal 記述は追加しない (drift 防止)。
 
 ```
 コミットメッセージ案:
@@ -1333,19 +1398,36 @@ if [[ -n "$comment_id" ]]; then
     original_length=$(printf '%s' "$current_body" | wc -c)
 
     # Step 1: 変更ファイル一覧を取得
+    # 注: git diff --name-status の stderr を suppress せず、エラー時は明示的に WARNING を出す
+    # shallow clone / base branch 未 fetch で "unknown revision" 等が出た場合、silent に空文字に落ちると
+    # work memory の変更ファイル一覧が「まだ変更はありません」と誤記録される silent regression の原因になる
     base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' || echo "develop")
-    changed_files_md=$(git diff --name-status "origin/${base_branch}...HEAD" 2>/dev/null | while read -r status file; do
-      case "$status" in
-        A) echo "- \`${file}\` - 追加" ;;
-        M) echo "- \`${file}\` - 変更" ;;
-        D) echo "- \`${file}\` - 削除" ;;
-        R*) echo "- \`${file}\` - 名前変更" ;;
-        *) echo "- \`${file}\` - ${status}" ;;
-      esac
-    done)
-    if [[ -z "$changed_files_md" ]]; then
-      changed_files_md="_まだ変更はありません_"
+    diff_stderr_tmp=$(mktemp /tmp/rite-fix-git-diff-err-XXXXXX) || {
+      echo "ERROR: git diff stderr 一時ファイルの作成に失敗" >&2
+      exit 1
+    }
+    if ! changed_files_raw=$(git diff --name-status "origin/${base_branch}...HEAD" 2>"$diff_stderr_tmp"); then
+      echo "WARNING: git diff --name-status \"origin/${base_branch}...HEAD\" が失敗しました。" >&2
+      echo "  詳細: $(cat "$diff_stderr_tmp")" >&2
+      echo "  考えられる原因: shallow clone (base branch 未 fetch) / 無効な base branch 名 / git リポジトリ外で実行" >&2
+      echo "  対処: git fetch origin ${base_branch} を実行後に再試行、または rite-config.yml の branch.base を確認" >&2
+      changed_files_md="_変更ファイル取得失敗 (git diff エラー、上記 stderr を確認してください)_"
+    else
+      changed_files_md=$(printf '%s\n' "$changed_files_raw" | while read -r status file; do
+        [ -z "$status" ] && continue
+        case "$status" in
+          A) echo "- \`${file}\` - 追加" ;;
+          M) echo "- \`${file}\` - 変更" ;;
+          D) echo "- \`${file}\` - 削除" ;;
+          R*) echo "- \`${file}\` - 名前変更" ;;
+          *) echo "- \`${file}\` - ${status}" ;;
+        esac
+      done)
+      if [[ -z "$changed_files_md" ]]; then
+        changed_files_md="_まだ変更はありません (git diff は成功したが変更なし)_"
+      fi
     fi
+    rm -f "$diff_stderr_tmp"
 
     # Step 2: Python で進捗サマリー・変更ファイルを更新 + レビュー対応履歴を追記
     body_tmp=$(mktemp)

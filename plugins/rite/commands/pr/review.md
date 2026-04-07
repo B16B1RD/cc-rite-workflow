@@ -302,6 +302,11 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 
 **Note**: This step uses data already retrieved in Phase 1.1 (`additions`, `deletions`, `changedFiles`, `files`). The `files` array provides per-file `path`, `additions`, and `deletions`, eliminating the need for a separate API call.
 
+**Success path retained flag** (必ず explicit set): `git diff --numstat` が成功した場合は以下を context に保持する:
+
+- `numstat_availability = "OK"`
+- `numstat_fallback_reason` は undefined のまま（Phase 5.4 template では条件分岐で「失敗時のみ記載」欄を空欄表示する）
+
 **Error handling**: If `git diff --numstat` fails (network error, timeout, missing base branch fetch, etc.):
 
 1. **必ず stderr に WARNING を出力** (silent fallback 禁止):
@@ -323,12 +328,20 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 
 **Purpose**: Identify PRs whose primary change target is user-facing documentation, and flag them for stricter tech-writer review with implementation-consistency checks (see [internal-consistency.md](./references/internal-consistency.md)).
 
-**Skip conditions** (any match → **explicit set `{doc_heavy_pr} = false`** and skip to Phase 1.3):
+**Skip conditions** (any match → **explicit set the 3 retained flags below** and skip to Phase 1.3):
 
 - `review.doc_heavy.enabled: false` in `rite-config.yml`
 - `changedFiles == 0` (edge case: empty diff)
 
-> **Note**: "retain" ではなく "explicit set" とする。これにより `{doc_heavy_pr}` が Phase 2.2.1 到達時点で必ず boolean として set されていることが保証される (undefined 参照防止)。
+skip 発動時に explicit set する 3 retained flags:
+
+| Flag | Value (skip 時) |
+|------|-----------------|
+| `{doc_heavy_pr}` | `false` |
+| `{doc_heavy_pr_value}` | `false` |
+| `{doc_heavy_pr_decision_summary}` | `"doc_heavy.enabled=false (skipped)"` または `"empty diff (changedFiles=0)"` (発動した skip 条件に応じて) |
+
+> **Note**: "retain" ではなく "explicit set" とする。これにより `{doc_heavy_pr}` / `{doc_heavy_pr_value}` / `{doc_heavy_pr_decision_summary}` の 3 つが Phase 2.2.1 / Phase 5.1.3 / Phase 5.4 到達時点で必ず set されていることが保証される (undefined 参照防止)。
 
 **Configuration**: Read `review.doc_heavy` from `rite-config.yml` with the following defaults when the key is absent:
 
@@ -366,19 +379,29 @@ total_files_count  = changedFiles
 # Zero-division guards (inline — both divisors must be checked before division)
 # Defensive: skip condition (changedFiles == 0) は通常 total_files_count > 0 を保証するが、
 # skip section が将来変更された場合に備えて inline ガードも残す (二重防御)
-# 重要: 全ての early-exit 経路で {doc_heavy_pr} = false を必ず set する
+# 重要: 全ての early-exit 経路で {doc_heavy_pr} / {doc_heavy_pr_value} / {doc_heavy_pr_decision_summary} の 3 つを必ず set する
 if total_diff_lines == 0:
-    doc_heavy_pr = false   # explicit set (silent undefined 防止)
-    skip to Phase 1.3      # Phase 1.2.7 の残り計算をスキップ
+    doc_heavy_pr                  = false                              # explicit set (silent undefined 防止)
+    doc_heavy_pr_value            = false
+    doc_heavy_pr_decision_summary = "empty diff (total_diff_lines=0)"
+    skip to Phase 1.3              # Phase 1.2.7 の残り計算をスキップ
 
 if total_files_count == 0:
-    doc_heavy_pr = false   # explicit set (Defensive guard)
-    skip to Phase 1.3      # skip condition (changedFiles == 0) で本来到達しない
+    doc_heavy_pr                  = false                              # explicit set (Defensive guard)
+    doc_heavy_pr_value            = false
+    doc_heavy_pr_decision_summary = "empty diff (total_files_count=0)"
+    skip to Phase 1.3              # skip condition (changedFiles == 0) で本来到達しない
 
 # 命名上の注意:
 # - doc_lines_ratio は「ドキュメント行数 / 全体 diff 行数」の比率 (行数ベース)
 # - doc_files_count_ratio は「ドキュメントファイル数 / 全体ファイル数」の比率 (ファイル数ベース)
 # config キー名は意味と一致している (lines_ratio_threshold / count_ratio_threshold)
+#
+# 変数名と config キー名の prefix 非対称について:
+#   - lines 方式: 変数 `doc_lines_ratio` / config `lines_ratio_threshold` (prefix 統一: "lines")
+#   - count 方式: 変数 `doc_files_count_ratio` / config `count_ratio_threshold` (prefix 異なる)
+# 後者で config 側に "files_" を含めなかった理由は、lines 方式との短縮対称性 (2 語 vs 2 語) を優先したため。
+# 計算対象はどちらもこの疑似コードで明示されているので drift リスクは低い。
 doc_lines_ratio       = doc_lines / total_diff_lines
 doc_files_count_ratio = doc_files_count / total_files_count
 ```
@@ -401,9 +424,21 @@ doc_files_count_ratio = doc_files_count / total_files_count
 ```
 doc_heavy_pr = (doc_lines_ratio >= lines_ratio_threshold)
             OR (doc_files_count_ratio >= count_ratio_threshold AND total_diff_lines < max_diff_lines_for_count)
+
+# Phase 5.4 Integrated Report 表示用 retained flags の explicit set (Phase 5.1.3 Retained flags 節で参照される)
+doc_heavy_pr_value            = doc_heavy_pr   # boolean 表示用 (Phase 5.4 template から参照される)
+doc_heavy_pr_decision_summary = <1 行要約文字列>
+    # 要約の生成ルール (Claude は以下のテンプレートから実データを埋めて set する):
+    #   - doc_heavy_pr == true の場合:
+    #       lines 方式が発火した → "doc_lines_ratio={value} >= {lines_ratio_threshold}"
+    #       count 方式が発火した → "doc_files_count_ratio={value} >= {count_ratio_threshold} AND total_diff_lines={N} < {max_diff_lines_for_count}"
+    #   - doc_heavy_pr == false の場合:
+    #       rite plugin self-only (commands/skills/agents のみ変更) → "rite plugin self-only (excluded)"
+    #       ratio 未満 → "doc_lines_ratio={value} < {lines_ratio_threshold} AND doc_files_count_ratio={value} < {count_ratio_threshold}"
+    #       空 PR (total_diff_lines==0 or total_files_count==0) → "empty diff (no changed files)"
 ```
 
-Retain `{doc_heavy_pr}` (boolean) in the conversation context for use in Phase 2.2.1.
+Retain `{doc_heavy_pr}`, `{doc_heavy_pr_value}`, `{doc_heavy_pr_decision_summary}` in the conversation context for use in Phase 2.2.1, Phase 5.1.3, and Phase 5.4 template expansion. All 3 flags are **explicitly set** in every reachable path (including `total_diff_lines == 0` / `total_files_count == 0` early exits above, where `doc_heavy_pr = false` / `doc_heavy_pr_value = false` / `doc_heavy_pr_decision_summary = "empty diff (no changed files)"` must be set before `skip to Phase 1.3`).
 
 **Note**: ゼロ除算ガード (`total_diff_lines == 0` および `total_files_count == 0`) は疑似コードブロック内にインラインで配置済みで、両方とも `doc_heavy_pr = false` を **explicit set** してから `skip to Phase 1.3` する。Skip conditions section の `changedFiles == 0` と併せて、空 PR・分母 0・undefined 参照の三方向を防ぐ多重ガードとなる。Phase 2.2.1 で `{doc_heavy_pr} == true` を判定する時点で `{doc_heavy_pr}` が必ず boolean として set されていることが保証される。
 
@@ -493,7 +528,7 @@ Match changed files against the Available Reviewers table in `skills/reviewers/S
 
 When the PR is doc-heavy, override reviewer selection to ensure documentation quality is rigorously checked against implementation reality:
 
-1. **tech-writer 必須昇格**: Phase 2.2 で tech-writer が候補に含まれている場合、その selection_type を `recommended → mandatory` に昇格する。含まれていない場合は mandatory として新規追加する
+1. **tech-writer 必須昇格**: Phase 2.2 で tech-writer が候補に含まれている場合、その selection_type を現在値 (`detected` / `recommended` のいずれか) から `mandatory` に昇格する (昇格パスは Phase 3.2 selection_type と同じ語彙: `detected → recommended → mandatory`)。含まれていない場合は mandatory として新規追加する
    - **到達可能性 note**: doc_heavy_pr = true でかつ tech-writer が候補にないケースは、tech-writer.md Activation と review.md `doc_file_patterns` の集合等価性が保たれている限り発生しない。しかし将来両者が drift する可能性に備え、新規追加経路を残す (防御的フォールバック)
    - **TODO(#353)**: 両ファイルの Activation patterns 等価性を CI/lint で自動検証する test は未整備。drift 検出 lint の追加は Issue #353 で追跡中 (発端は PR #350 の verified-review で検出された SKILL.md drift 実例)
 2. **code-quality co-reviewer 追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。具体的な検証期待:
@@ -506,7 +541,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    - `{doc_heavy_pr}` placeholder に `true` を set
    - `{doc_heavy_mode_instructions}` placeholder に `tech-writer.md` の `## Doc-Heavy PR Mode (Conditional)` セクション全体 (Activation 行から "Cross-Reference with internal-consistency.md" セクション末尾まで) を埋め込む
    
-   これにより `internal-consistency.md` の 5 カテゴリ verification protocol が reviewer に直接伝達され、各 finding に `- Evidence: tool=<Grep|Read|Glob|WebFetch>, path=<...>, line=<...>` 行を必須化する仕様が reviewer 側で有効になる (Phase 5.1.3 で post-condition check)
+   これにより `internal-consistency.md` の 5 カテゴリ verification protocol が reviewer に直接伝達され、各 finding に `- Evidence: tool=Grep, path=src/config/services.ts, line=5-12` の **literal 形式**の行を必須化する仕様が reviewer 側で有効になる (tool は `Grep` / `Read` / `Glob` / `WebFetch` から 1 つ選択 — 山括弧はメタ記法であり literal に書いてはならない。詳細は [`tech-writer.md`](../../skills/reviewers/tech-writer.md) の "Doc-Heavy mode finding requirements" セクション参照)。Phase 5.1.3 で post-condition check を実行する。
 
 **Relationship to Phase 2.3 sole reviewer guard**:
 
@@ -1176,7 +1211,33 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
      - レビュー結果に `doc_heavy_post_condition: warning` フラグを set
      - overall assessment を `修正必要` に変更 (silent pass 防止)
 
-   **Note**: `finding_count >= 1` の場合はこのステップ 1 をスキップし、ステップ 2 (Evidence field 検査) に進む。ステップ 2 の Evidence 要件を満たせば post-condition は passed とみなされる。
+   **Note**: `finding_count >= 1` の場合はこのステップ 1 の **「finding 0 件警告」** をスキップするが、下記のステップ 1b (META 5 カテゴリ実行確認) は**件数に関係なく必ず実施する**。ステップ 1b + ステップ 2 の両方を満たした場合のみ post-condition は passed とみなされる。
+
+1b. **META 5 カテゴリ実行確認** (件数非依存、silent non-compliance 防止):
+
+   **適用条件**: `finding_count` の値に関係なく **常に実施** する (`finding_count == 0` でも `finding_count >= 1` でも同じ)。
+
+   tech-writer の出力に以下のいずれかの META 行が含まれているかを検証する (`(?:^|<br\s*/?>|[\s|>(])` を行頭 anchor として multiline mode で検索):
+   - (a) `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]`
+   - (b) `META: All 5 verification categories executed. Findings below.` (finding_count >= 1 の場合)
+   - (c) `META: Cross-Reference partially skipped` (外部参照スキップ、ステップ 3 で扱う)
+
+   上記のいずれも含まれていない場合:
+   - **WARNING を必ず stderr に出力** (silent bypass 防止):
+     ```
+     WARNING: Doc-Heavy PR mode で tech-writer が META 5 カテゴリ実行確認行を出力していません。
+     finding_count={count} ですが、5 カテゴリ verification protocol を実行した証拠となる META 行が見つかりません。
+     これは「1-4 カテゴリだけ実行して finding を捏造し post-condition check を silent bypass する」
+     パターン (Issue #349 の根本目的に反する) の可能性があります。
+     Action: tech-writer を Doc-Heavy mode 指示を明示して再実行し、META 行を含む出力を得てください。
+     ```
+   - レビュー結果に `doc_heavy_post_condition: warning` フラグを set
+   - overall assessment を `修正必要` に変更 (silent pass 防止)
+
+   **tech-writer prompt への反映**: Phase 2.2.1 step 3 の reviewer prompt 注入時に、tech-writer に対して「finding 件数に関係なく META 行を出力せよ」を strict 要件として明示する。具体的には:
+   - finding_count == 0 → `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [...]`
+   - finding_count >= 1 → `META: All 5 verification categories executed. Findings below.`
+   - 部分スキップ → `META: Cross-Reference partially skipped` (+ 詳細ブロック)
 
 2. **Evidence field 必須化** (厳格検査 — Markdown テーブル対応):
    - tech-writer の各 finding (CRITICAL/HIGH/MEDIUM/LOW すべて) について、**`内容` カラム本文中**に Evidence 記述が含まれているかを正規表現で検査する。
@@ -1222,7 +1283,9 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 - `cross_reference_partial_skip`: boolean
 - `cross_reference_skip_details`: META ブロック本文 (外部参照情報)
 
-**Phase 5.4 表示責務の分離**: `doc_heavy_pr == false` (numstat 不在または ratio 未満) の場合、Phase 5.1.3 の post-condition check 自体はスキップされるが、Phase 5.4 Integrated Report の Doc-Heavy PR Mode 検証状態セクションでは `numstat_availability` と `doc_heavy_pr_value` を上記 retained flags から参照して表示する。これにより numstat 失敗の可視性は Phase 5.1.3 スキップとは独立に保たれる。
+**Phase 5.4 表示責務の分離**: `doc_heavy_pr == false` (ratio 未満 / rite plugin self-only 除外 / 空 PR のいずれか) の場合、Phase 5.1.3 の post-condition check 自体はスキップされるが、Phase 5.4 Integrated Report の Doc-Heavy PR Mode 検証状態セクションでは `numstat_availability` と `doc_heavy_pr_value` を上記 retained flags から参照して表示する。これにより numstat 失敗の可視性は Phase 5.1.3 スキップとは独立に保たれる。
+
+> **Note**: Phase 1.2.7 の Doc-Heavy 判定は Phase 1.1 の `files` 配列のみで完結し `git diff --numstat` に依存しない。したがって numstat 失敗は `doc_heavy_pr` の値には影響せず、`numstat_availability = "unavailable"` は**独立した情報提示**として Phase 5.4 に表示される (Doc-Heavy 判定の skip 原因とは無関係)。
 
 ### 5.2 Cross-Validation
 
@@ -1484,7 +1547,7 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
 ### Doc-Heavy PR Mode 検証状態（該当がある場合のみ）
 <!-- Phase 5.1.3 で post-condition check が実行された場合のみ表示。doc_heavy_pr == false または tech-writer が不在の場合は省略 -->
-<!-- Phase 1.2.6 で numstat 失敗して Doc-Heavy 判定が skip された場合もここに表示 -->
+<!-- numstat 失敗時は numstat 可用性行に unavailable が表示される (Doc-Heavy 判定自体は Phase 1.1 files 配列で完結するため skip されず通常通り実行される) -->
 
 | 項目 | 状態 | 詳細 |
 |------|------|------|
