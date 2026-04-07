@@ -41,6 +41,10 @@ This command is automatically invoked within the review-fix loop of `/rite:issue
 | Argument | Description |
 |----------|-------------|
 | `[pr_number]` | PR number (defaults to the PR for the current branch if omitted) |
+| `[pr_url]` | PR URL (`https://github.com/{owner}/{repo}/pull/{N}`) |
+| `[comment_url]` | PR comment URL (`https://github.com/{owner}/{repo}/pull/{N}#issuecomment-{ID}`) |
+
+**Accepted formats**: すべての引数形式は Phase 1.1.1 で正規化され、`{pr_number}` と（該当時のみ）`{target_comment_id}` が抽出される。`comment_url` を指定すると、その特定コメントから直接 findings をパースする（Phase 1.2 で分岐）。`pr_number` 単体または引数なしの既存挙動は完全に維持される。
 
 ---
 
@@ -146,9 +150,83 @@ Terminate processing.
 
 Terminate processing.
 
+### 1.1.1 Argument Parsing
+
+Before Phase 1.1 executes `gh pr view`, normalize the argument form to extract `{pr_number}` and (when applicable) `{target_comment_id}`.
+
+**Detection rules**:
+
+| Format | Regex | Extracted |
+|--------|-------|-----------|
+| 数字のみ | `^[0-9]+$` | `pr_number` (input as-is) |
+| PR URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
+| PR URL (trailing fragment, 非 issuecomment) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#(?!issuecomment).*$` | `pr_number` = group 1 |
+| Comment URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)$` | `pr_number` = group 1, `target_comment_id` = group 2 |
+| 引数なし | — | 既存ロジック (current branch から PR 検出) |
+
+**Behavior**:
+
+1. 数字または引数なし → `{target_comment_id} = null`。Phase 1.2 は既存ロジックで最新の `📜 rite レビュー結果` コメントを対象とする (既存挙動と完全互換)
+2. PR URL → `{target_comment_id} = null`。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 は既存ロジック
+3. Comment URL → `{target_comment_id}` を設定。Phase 1.1 で `gh pr view {pr_number}` を実行し、Phase 1.2 の target_comment_id 分岐で対象コメントを直接取得する
+
+**Parsing failure**: いずれのパターンにもマッチしない場合:
+
+```
+エラー: 引数の形式を認識できませんでした
+入力: {argument}
+受け付け可能な形式:
+  - PR 番号（例: 123）
+  - PR URL（例: https://github.com/owner/repo/pull/123）
+  - PR コメント URL（例: https://github.com/owner/repo/pull/123#issuecomment-4567890）
+```
+
+Terminate processing.
+
+**Compatibility**: 既存の `pr_number` 単体挙動および引数なし挙動は一切変更されない。本 Phase は引数形式の判定のみを行い、Phase 1.1/1.2 の既存ロジックにはフラグ (`{target_comment_id}` の有無) を渡すだけである。
+
 ### 1.2 Retrieve Review Comments
 
-Retrieve PR review comments:
+**Branch by `{target_comment_id}`** (set in Phase 1.1.1): Phase 1.2 has two execution paths depending on whether a comment URL was passed. The sub-sections below are **unnumbered** to avoid colliding with the existing Phase 1.2.1 (Retrieve rite Review Results).
+
+#### Target Comment Fast Path — when `{target_comment_id}` is set
+
+When `{target_comment_id}` has been extracted from a comment URL argument, retrieve that specific comment directly and skip the broad comment retrieval below:
+
+```bash
+# 対象コメントを直接取得
+target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} --jq '.')
+if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
+  echo "エラー: コメント #{target_comment_id} が見つかりません (404 または削除済み)" >&2
+  exit 1
+fi
+target_body=$(printf '%s' "$target_comment" | jq -r '.body')
+target_author=$(printf '%s' "$target_comment" | jq -r '.user.login')
+echo "$target_body" > /tmp/rite-fix-target-comment.md
+```
+
+**Parsing rule**:
+
+1. If `$target_body` contains `## 📜 rite レビュー結果`: 通常の rite 形式として Phase 1.2.1 のパーサを適用する
+2. Otherwise (外部ツール: `/verified-review`, pr-review-toolkit, 手動コメント等): **best-effort parse**
+   - Markdown table 行 (`| ... | ... | ... |` パターン) を抽出
+   - 各行を finding として扱う (severity は本文から推測、不明時は `MEDIUM` をデフォルト)
+   - パースに成功した finding が 0 件の場合、警告を表示してユーザーに確認を求める:
+     ```
+     警告: コメント #{target_comment_id} から finding をパースできませんでした
+     内容: {target_body の先頭 300 文字}
+     オプション:
+       - 手動で finding を入力
+       - 別のコメント URL を指定
+       - キャンセル
+     ```
+3. `{target_comment_id}` 経由で取得した finding のみを fix ループの対象とする。Phase 1.2 の「全コメント取得」はスキップされる
+
+After parsing, proceed directly to Phase 2 (Categorization) with the extracted findings. Skip Phase 1.2.1 (rite Review Results retrieval) since the target comment is already the source.
+
+#### Broad Comment Retrieval — when `{target_comment_id}` is NOT set
+
+When the standard flow is active (no `target_comment_id`), retrieve PR review comments as before:
 
 ```bash
 # レビューコメント（PR レビューに紐づくコメント）
