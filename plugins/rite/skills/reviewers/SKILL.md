@@ -37,8 +37,8 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 | Frontend Expert | `frontend.md` | `**/*.css`, `**/*.scss`, `**/styles/**`, `**/components/**`, `*.jsx`, `*.tsx`, `*.vue` |
 | Database Expert | `database.md` | `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**` |
 | Dependencies Expert | `dependencies.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
-| Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` |
-| Technical Writer | `tech-writer.md` | `**/*.md` (excluding commands/skills/agents), `docs/**`, `README*` |
+| Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, and corresponding `.mdx` (`commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`) |
+| Technical Writer | `tech-writer.md` | `**/*.md`, `**/*.mdx` (both excluding commands/skills/agents), `docs/**`, `documentation/**`, `**/README*`, `i18n/**/*.{md,mdx}` |
 | Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords (Bash); `**/*.sh` |
 | Type Design Expert | `type-design.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 

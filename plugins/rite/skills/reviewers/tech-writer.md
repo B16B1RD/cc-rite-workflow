@@ -19,12 +19,12 @@ This skill is activated when reviewing files matching:
 - `**/*.mdx` (excluding `commands/**/*.mdx`, `skills/**/*.mdx`, and `agents/**/*.mdx`)
 - `docs/**`, `documentation/**`
 - `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`
-- `i18n/**` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts)
+- `i18n/**/*.md`, `i18n/**/*.mdx` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts)
 - `*.rst`, `*.adoc`
 
-> **Note**: These patterns are kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior. The "kept in sync" principle means the **set of files matched is equivalent**, not that the pattern syntax is identical (since one uses Activation pattern syntax and the other uses pseudo-code). Concretely: both sides include `.md`, `.mdx` (with rite plugin exclusions), `docs/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `i18n/**` (excluding `plugins/rite/i18n/**`), `.rst`, and `.adoc`.
+> **Note**: These patterns are kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior. The "kept in sync" principle means the **set of files matched is equivalent**, not that the pattern syntax is identical (since one uses Activation pattern syntax and the other uses pseudo-code). Concretely: both sides include `.md`, `.mdx` (with rite plugin exclusions), `docs/**`, `documentation/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `i18n/**/*.{md,mdx}` (excluding `plugins/rite/i18n/**`), `.rst`, and `.adoc`.
 
-**Note**: `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` (and corresponding `.mdx`) are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority). Similarly, `plugins/rite/i18n/**` is excluded because the rite plugin's own i18n files are dogfooding artifacts that should not trigger doc-heavy PR mode against the rite plugin itself.
+**Note**: `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` (and corresponding `.mdx`) are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority). Similarly, `plugins/rite/i18n/**` is excluded because the rite plugin's own i18n files are dogfooding artifacts that should not trigger doc-heavy PR mode against the rite plugin itself. The `i18n/**` pattern is restricted to `.md` / `.mdx` files only because tech-writer reviews Markdown-style documentation; other translation formats (`.yml`, `.json`, `.po`) are out of scope.
 
 ## Expertise Areas
 
@@ -145,13 +145,27 @@ Documentation PRs may describe an external product whose implementation lives in
 
 ### Doc-Heavy mode finding requirements
 
-Every finding emitted under this mode **MUST** include an `evidence` line with the form:
+Every finding emitted under this mode **MUST** include an `evidence` line in the `内容` column body with the form:
 
 ```
 - Evidence: tool=<Grep|Read|Glob|WebFetch>, path=<file path>, line=<line number or range>
 ```
 
 Findings without an `evidence` line will be rejected by review.md Phase 5.1.3 (Doc-Heavy post-condition check) and the review will be marked incomplete.
+
+**Important**: The `ファイル:行` column of the standard reviewer output table indicates the **target location** of the finding, not the evidence. Evidence is a separate concept: it documents which tool was used to verify the claim against the implementation. Do not rely on the `ファイル:行` column alone to satisfy the evidence requirement.
+
+### Doc-Heavy mode finding-count rules
+
+If the review yields **0 findings** under Doc-Heavy mode, you **MUST** explicitly confirm that all 5 verification categories were executed by emitting the following META line at the top of your findings section:
+
+```
+META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]
+```
+
+This negative confirmation distinguishes "protocol was executed, no issues found" from "protocol was not executed" (silent non-compliance). Phase 5.1.3 post-condition check will reject 0-finding outputs that lack this META line.
+
+If verification was partial (e.g., implementation source not in this repository), emit the `META: Cross-Reference partially skipped` line instead, per the Verification skip handling section above.
 
 ### Cross-Reference with internal-consistency.md
 

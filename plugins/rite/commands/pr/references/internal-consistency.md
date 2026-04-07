@@ -32,12 +32,14 @@ Read `review.doc_heavy` from `rite-config.yml`:
 | `count_ratio_threshold` | number | `0.7` | ドキュメントファイル数比率の閾値 (total_files に対する doc_files の比率) |
 | `max_diff_lines_for_count` | integer | `2000` | ファイル数比率判定を有効にする最大 diff 行数 |
 
-**Skip conditions** (any match → skip entire protocol):
+**Activation 条件**: 本プロトコルは `{doc_heavy_pr=true}` フラグ (review.md Phase 1.2.7 で計算される) が set されているときのみ発動する。
 
-- `review.doc_heavy.enabled: false`
-- 変更ファイルにドキュメント (`docs/**/*.md`, `**/README.md`, `i18n/**` 等) が全く含まれない
-
-> **Single source of truth**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` および `plugins/rite/i18n/**` の除外は [`commands/pr/review.md`](../review.md) Phase 1.2.7 の `doc_file_patterns` で「分子から除外、分母には含める」方式により単一定義される。本ファイルでは独立した skip 条件としては再定義しない（二重定義による drift を防ぐため）。これらのファイルのみを変更する PR では、Phase 1.2.7 の計算結果として自動的に `doc_heavy_pr = false` となり、本プロトコルの Activation 条件 `{doc_heavy_pr=true}` には合致しないため発動しない。
+> **Single source of truth**: skip/activation に関する全ての判定は [`commands/pr/review.md`](../review.md) Phase 1.2.7 の `{doc_heavy_pr}` 計算結果に**完全に委譲**される。本ファイルでは独立した skip 条件を定義しない（二重定義による drift を防ぐため）。
+>
+> - `review.doc_heavy.enabled: false` → Phase 1.2.7 が `{doc_heavy_pr} = false` を explicit set → 本プロトコル非発動
+> - `changedFiles == 0` (空 PR) → Phase 1.2.7 が `{doc_heavy_pr} = false` を explicit set → 本プロトコル非発動
+> - rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, `plugins/rite/i18n/**` のみを変更 → Phase 1.2.7 の「分子から除外、分母には含める」方式で計算結果が自動的に `doc_heavy_pr = false` になる → 本プロトコル非発動
+> - 変更ファイルにドキュメントが全く含まれない → `doc_lines = 0` / `doc_files_count = 0` で ratio が閾値未満になり自動的に `doc_heavy_pr = false` → 本プロトコル非発動
 
 ## Verification Protocol
 
@@ -92,20 +94,19 @@ CRITICAL: Implementation Coverage mismatch
    - 設定ファイル: yaml/json の配列長
 3. 不一致なら **CRITICAL** として報告
 
-**Grep パターン例** (Claude Code ツール呼び出しの擬似コード、bash コマンドではない):
+**Grep パターン例** (Claude Code の Grep ツール (ripgrep) 専用の擬似コード、bash `grep -E` への直接適用は想定していない):
 
 ```text
 # 「3 つ」「5 個」「three services」等の主張をドキュメントから抽出
 # 注: `^` 制約は付けない (テーブル行・リスト子要素・段落途中の数値主張も拾うため)
-Grep: '(\d+|[一二三四五六七八九十百]|three|four|five|six|seven|eight|nine|ten)\s*(つ|個|種類|項目|ステップ|services?|items?|steps?|categor(y|ies))'
+# 注: すべて non-capture group `(?:...)` を使用し、キャプチャ番号のずれを防ぐ
+Grep: '(?:\d+|[一二三四五六七八九十百]|three|four|five|six|seven|eight|nine|ten)\s*(?:つ|個|種類|項目|ステップ|services?|items?|steps?|categor(?:y|ies))'
 
 # 実装側の配列長
 Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
 ```
 
-> **Note**: 実ドキュメントで最も頻出するのはアラビア数字 (`\d+`) なので、これがマッチの主役。漢数字 (`一二三〜十百`) と英語数詞 (`three〜ten`) は補助的にカバーする。網羅性が必要な場合は AI レビュアーが文脈に応じて他の数詞 (`千`, `eleven` 以降, `dozens of` 等) を追加すること。
->
-> **ripgrep 互換性**: `\d` は ripgrep のデフォルトエンジン (Rust regex crate) で Unicode digit にマッチする (PCRE2 不要)。POSIX モードへの切り替えは ripgrep には存在しないため、`\d` 表記はそのまま使える。
+> **Note**: 実ドキュメントで最も頻出するのはアラビア数字 (`\d+`) なので、これがマッチの主役。漢数字 (`一二三〜十百`) と英語数詞 (`three〜ten`) は補助的にカバーする。網羅性が必要な場合は AI レビュアーが文脈に応じて他の数詞 (`千`, `eleven` 以降, `dozens of` 等) を追加すること。`\d` は Claude Code の Grep ツール (ripgrep) で Unicode digit にマッチする。
 
 ### 3. UX Flow Accuracy
 
