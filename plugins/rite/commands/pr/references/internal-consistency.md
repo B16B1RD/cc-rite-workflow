@@ -49,14 +49,24 @@ Read `review.doc_heavy` from `rite-config.yml`:
 **検証ステップ**:
 
 1. ドキュメント側の主張を抽出 — 箇条書き / テーブル / 段落から機能名・モジュール名・サービス名を列挙
-2. 実装側の機能集合を `Grep` で抽出:
-   - ルート定義: `Grep` で `router.{get,post,put,delete,patch}\(` / `app.use\(`
-   - モジュールエクスポート: `Grep` で `export (const|function|class|default)`
-   - パッケージディレクトリ: `Glob` で `src/{modules,services,features}/*/`
-3. 集合差分を計算:
+2. リポジトリの主言語を判定 (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Gemfile`, `composer.json` 等の存在から)
+3. 実装側の機能集合を `Grep` で抽出 — **言語別パターン**:
+
+   | 言語 | ルート定義パターン例 | モジュールエクスポート例 |
+   |------|-------------------|------------------------|
+   | Node.js / TypeScript | `router\.(get\|post\|put\|delete\|patch)\(`, `app\.(use\|route)\(` | `export (const\|function\|class\|default)`, `module\.exports` |
+   | Python | `@app\.route\(`, `@router\.(get\|post\|...)\(`, `path\(`, `re_path\(` | `^def `, `^class `, `__all__` |
+   | Go | `http\.HandleFunc\(`, `r\.(GET\|POST\|...)\(`, `mux\.Handle\(` | `^func `, `^type ` (exported: 大文字始まり) |
+   | Rust | `#\[(get\|post\|put\|delete)\(`, `\.route\(`, `Router::new` | `^pub fn `, `^pub struct `, `^pub enum ` |
+   | Ruby (Rails) | `get '`, `post '`, `resources :` (routes.rb) | `class `, `module ` |
+   | PHP | `Route::(get\|post\|...)\(`, `$app->(get\|post)\(` | `class `, `function `, `interface ` |
+   - パッケージディレクトリ: `Glob` で `src/{modules,services,features}/*/` (言語別に調整)
+4. 集合差分を計算:
    - ドキュメントのみにある要素 = 実装に存在しない (偽の主張)
    - 実装のみにある要素 = ドキュメントから欠落 (紹介漏れ)
-4. いずれかが空でなければ **CRITICAL** として報告
+5. いずれかが空でなければ **CRITICAL** として報告
+
+**言語判定の fallback**: 主言語を自動判定できない場合は、変更ファイルの拡張子から推定する (`.ts/.tsx/.js/.jsx` → Node.js、`.py` → Python、`.go` → Go、`.rs` → Rust など)。それでも不明な場合は全パターンを試す。
 
 **出力例**:
 
@@ -174,7 +184,7 @@ CRITICAL: Screenshot Presence mismatch
 | Implementation Coverage | **CRITICAL** | 常に CRITICAL (機能集合の不一致は user-facing の誤情報) |
 | Enumeration Completeness | **CRITICAL** | 常に CRITICAL |
 | UX Flow Accuracy | **CRITICAL** | UX 手順書の矛盾はユーザーを実質的にブロックする |
-| Order / Emphasis Consistency | **HIGH** | 戦略的意図が明示されている場合は CRITICAL に昇格 |
+| Order / Emphasis Consistency | **CRITICAL** | `tech-writer.md` の Critical (Must Fix) チェックリストと整合。戦略的位置付け (priority / emphasis) の乖離はドキュメントの信頼性を根本から損なうため常に CRITICAL |
 | Screenshot Presence | **CRITICAL** (missing) / **HIGH** (alt text) | パス無効は CRITICAL、alt 欠落は HIGH |
 
 ### Scope Boundary

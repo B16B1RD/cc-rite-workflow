@@ -18,7 +18,10 @@ This skill is activated when reviewing files matching:
 - `**/*.md` (excluding `commands/**/*.md`, `skills/**/*.md`, and `agents/**/*.md`)
 - `docs/**`, `documentation/**`
 - `README*`, `CHANGELOG*`, `CONTRIBUTING*`
+- `i18n/**`
 - `*.rst`, `*.adoc`
+
+> **Note**: These patterns are kept in sync with `commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (Doc-Heavy PR Detection). Both files must treat the same set of files as "documentation" to ensure consistent Doc-Heavy override behavior.
 
 **Note**: `commands/**/*.md`, `skills/**/*.md`, and `agents/**/*.md` are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority).
 

@@ -327,8 +327,11 @@ Retain the generated summary as `{change_intelligence_summary}` in the conversat
 Use the `files` array and numstat from Phase 1.2.6.
 
 ```
+# Doc file patterns (single source of truth — keep in sync with tech-writer.md Activation)
 doc_file_patterns = [
-  docs/**/*.md, docs/**/*.mdx, **/README*, CHANGELOG*, CONTRIBUTING*,
+  docs/**/*.md, docs/**/*.mdx,
+  documentation/**/*.md, documentation/**/*.mdx,
+  **/README*, CHANGELOG*, CONTRIBUTING*,
   i18n/**, *.rst, *.adoc
 ]
 
@@ -337,11 +340,28 @@ total_diff_lines   = sum(additions + deletions of all changed files)
 doc_files_count    = count(files matching doc_file_patterns)
 total_files_count  = changedFiles
 
+# Zero-division guard (inline — must be checked before divisions below)
+if total_diff_lines == 0:
+    doc_heavy_pr = false
+    return  # Skip the rest of Phase 1.2.7
+
+# At this point total_diff_lines > 0 and (skip condition guarantees) total_files_count > 0
 doc_files_ratio       = doc_lines / total_diff_lines
 doc_files_count_ratio = doc_files_count / total_files_count
 ```
 
-**Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` は doc-heavy 判定対象から**除外**する。これらのファイルは prompt-engineer の専管領域であり、Phase 2.2 の priority rule で prompt-engineer に振り分けられる。除外は `doc_lines` と `doc_files_count` の両方の計算から行う (total_diff_lines / total_files_count はそのまま)。
+**Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` は doc-heavy 判定対象から**除外**する。これらのファイルは prompt-engineer の専管領域であり、Phase 2.2 の priority rule で prompt-engineer に振り分けられる。
+
+**除外の計算上の扱い**: `doc_lines` と `doc_files_count` の計算から分子として除外するが、`total_diff_lines` と `total_files_count` は除外せず全体を維持する。つまり **「分子からは除外、分母には含める」** 方式。これにより rite plugin 自身のメンテナンス PR (dogfooding 時) では意図的に doc-heavy 判定が起きにくくなる (ratio の分子が削られて分母が変わらないため)。
+
+**計算例**:
+
+- 例 1: `docs/foo.md (+50)` と `commands/bar.md (+50)` の PR
+  - `doc_lines` = 50 (docs/ のみ、commands/ は除外)
+  - `total_diff_lines` = 100 (両方含む)
+  - `doc_files_ratio` = 50/100 = 0.5 (< 0.6) → `doc_heavy_pr = false`
+- 例 2: `docs/foo.md (+80)` のみの PR
+  - `doc_lines` = 80, `total_diff_lines` = 80, ratio = 1.0 → `doc_heavy_pr = true`
 
 **Determination**:
 
@@ -352,7 +372,7 @@ doc_heavy_pr = (doc_files_ratio >= file_ratio_threshold)
 
 Retain `{doc_heavy_pr}` (boolean) in the conversation context for use in Phase 2.2.1.
 
-**Note**: 判定結果に関わらず、`total_diff_lines == 0` のときは安全側で `{doc_heavy_pr} = false` とする（ゼロ除算と空 PR 誤判定を防ぐ）。
+**Note**: ゼロ除算ガード (`total_diff_lines == 0`) は疑似コードブロック内にインラインで配置済み。Skip conditions section の `changedFiles == 0` と併せて、空 PR と分母 0 の両方を防ぐ二重ガードとなる。
 
 ### 1.3 Identify Related Issue
 

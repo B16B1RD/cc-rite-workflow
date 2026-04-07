@@ -101,7 +101,13 @@ Extract the following information from work memory and retain in context:
 
 ### 1.1 Identify the PR
 
-Retrieve repository information:
+**Step 0: Argument Parsing (Pre-flight) — MUST execute before any `gh pr view` call**
+
+Before retrieving repository information or calling `gh pr view`, **first execute Phase 1.1.1 (Argument Parsing) below** to normalize the argument and extract `{pr_number}` and (when applicable) `{target_comment_id}`. Phase 1.1.1 is physically located **after** Phase 1.1 in this document for readability, but its execution **must happen before** any of the Phase 1.1 steps below. Skip this step only when the argument is clearly a bare integer (`^[0-9]+$`) or absent.
+
+> **Why this ordering matters**: If you pass a PR URL or comment URL directly to `gh pr view {pr_number}`, the command will fail and Phase 1.1 will terminate with "PR not found". The Fast Path in Phase 1.2 cannot be reached. Always normalize first.
+
+Once `{pr_number}` (and optionally `{target_comment_id}`) are extracted, retrieve repository information:
 
 - **Within end-to-end flow**: `{owner}` and `{repo}` are already available from Phase 0.2. Reuse them — no additional `gh repo view` call needed.
 - **Standalone execution**: Phase 0 was not executed. Retrieve them here:
@@ -160,7 +166,7 @@ Before Phase 1.1 executes `gh pr view`, normalize the argument form to extract `
 |--------|-------|-----------|
 | 数字のみ | `^[0-9]+$` | `pr_number` (input as-is) |
 | PR URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
-| PR URL (trailing fragment, 非 issuecomment) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#(?!issuecomment).*$` | `pr_number` = group 1 |
+| PR URL (trailing fragment, 非 issuecomment) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#(?!issuecomment-).*$` | `pr_number` = group 1 |
 | Comment URL | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)$` | `pr_number` = group 1, `target_comment_id` = group 2 |
 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
 
@@ -187,7 +193,7 @@ Terminate processing.
 
 ### 1.2 Retrieve Review Comments
 
-**Branch by `{target_comment_id}`** (set in Phase 1.1.1): Phase 1.2 has two execution paths depending on whether a comment URL was passed. The sub-sections below are **unnumbered** to avoid colliding with the existing Phase 1.2.1 (Retrieve rite Review Results).
+**Branch by `{target_comment_id}`** (set in Phase 1.1.1): Phase 1.2 has two execution paths depending on whether a comment URL was passed. The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) are **h4-level branches within Phase 1.2** and are independent execution paths — they are **not** numbered sub-phases of Phase 1.2.1. The existing `### 1.2.1 Retrieve rite Review Results` is a separate, h3-level sub-phase that runs only when the Broad Comment Retrieval path is taken (i.e. when `{target_comment_id}` is NOT set).
 
 #### Target Comment Fast Path — when `{target_comment_id}` is set
 
@@ -195,13 +201,21 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 
 ```bash
 # 対象コメントを直接取得
-target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} --jq '.')
-if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
-  echo "エラー: コメント #{target_comment_id} が見つかりません (404 または削除済み)" >&2
+# gh api は 404 や認証エラー時に exit != 0 を返すため、exit code を直接チェックする
+# (空文字列チェックではエラーを見逃す可能性がある)
+if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} 2>&1); then
+  echo "エラー: コメント #{target_comment_id} の取得に失敗しました" >&2
+  echo "詳細: $target_comment" >&2
+  echo "対処: コメント URL が正しいか、削除されていないかを確認してください" >&2
   exit 1
 fi
-target_body=$(printf '%s' "$target_comment" | jq -r '.body')
-target_author=$(printf '%s' "$target_comment" | jq -r '.user.login')
+# 正常取得後、body と author を抽出
+target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty')
+target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty')
+if [ -z "$target_body" ]; then
+  echo "エラー: コメント #{target_comment_id} の body が空です" >&2
+  exit 1
+fi
 echo "$target_body" > /tmp/rite-fix-target-comment.md
 ```
 
@@ -209,12 +223,19 @@ echo "$target_body" > /tmp/rite-fix-target-comment.md
 
 1. If `$target_body` contains `## 📜 rite レビュー結果`: 通常の rite 形式として Phase 1.2.1 のパーサを適用する
 2. Otherwise (外部ツール: `/verified-review`, pr-review-toolkit, 手動コメント等): **best-effort parse**
-   - Markdown table 行 (`| ... | ... | ... |` パターン) を抽出
-   - 各行を finding として扱う (severity は本文から推測、不明時は `MEDIUM` をデフォルト)
-   - パースに成功した finding が 0 件の場合、警告を表示してユーザーに確認を求める:
+   - **期待スキーマ**: 最低 **4 カラム** を持つ markdown table (`| severity | file:line | content | recommendation |` の順、またはヘッダー行から列順を推定)
+   - ヘッダー行検出: 表の 1 行目に `severity` / `重要度`, `file` / `ファイル`, `content` / `内容`, `recommendation` / `推奨` などのキーワードを含む行を検出した場合、その列順を使用する
+   - ヘッダー行なし: デフォルト列順 `severity | file:line | content | recommendation` を仮定する
+   - **カラム数不足の扱い**:
+     - **3 カラム以下**: そのテーブル行を "unparseable" として skip し、警告ログに記録する
+     - **4 カラム以上**: 最初の 4 カラムを severity / file:line / content / recommendation として抽出 (余分な列は無視)
+   - severity が認識できない (CRITICAL/HIGH/MEDIUM/LOW 以外) 場合: `MEDIUM` をデフォルトとする
+   - **全テーブル行がパース不能** または **抽出結果 0 件** の場合、警告を表示してユーザーに確認を求める (silent failure 回避):
      ```
      警告: コメント #{target_comment_id} から finding をパースできませんでした
-     内容: {target_body の先頭 300 文字}
+     - スキップした行: {N} 行 (4 カラム未満)
+     - 認識された行: 0 件
+     内容プレビュー: {target_body の先頭 300 文字}
      オプション:
        - 手動で finding を入力
        - 別のコメント URL を指定
