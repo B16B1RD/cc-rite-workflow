@@ -1,6 +1,13 @@
 # Internal Consistency Verification Reference
 
-> **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**プロダクト内部事実とドキュメント記述の整合性**を検証するための "source of truth" である。
+> **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**ドキュメント記述とプロダクト実装の整合性**を検証するための "source of truth" である。
+>
+> **用語統一 (Canonical terminology)**: 本ファイル群では **「文書-実装整合性 (Doc-Impl Consistency)」** を canonical 表記とする。以下の同義表現が過去の文書や PR 本文・コミットメッセージに混在するが、いずれも本 canonical 表記の同義として扱う:
+>
+> - 「ドキュメント-実装整合性」/「実装-ドキュメント整合性」(順序逆) — 本テーマの本質は順序非依存だが、表記検索の容易性のため canonical を一つに固定
+> - 「内部事実」/「内部整合性」/「Doc-Impl Consistency」/「Internal Consistency」 — 本ファイルのタイトルおよび `internal-consistency.md` のファイル名が示す概念全体
+>
+> 新規ドキュメント・コミットメッセージ・Issue では canonical 表記「**文書-実装整合性 (Doc-Impl Consistency)**」を優先して使う。既存の同義表現はそのまま残してよい (機械的置換は drift リスクが大きいため)。
 
 ## Overview
 
@@ -32,7 +39,7 @@ Read `review.doc_heavy` from `rite-config.yml`:
 | `count_ratio_threshold` | number | `0.7` | ドキュメント**ファイル数比率**の閾値 (`doc_files_count / total_files_count`、total_files に対する doc_files の比率) |
 | `max_diff_lines_for_count` | integer | `2000` | ファイル数比率判定を有効にする最大 diff 行数 |
 
-**Activation 条件**: 本プロトコルは `{doc_heavy_pr=true}` フラグ (review.md Phase 1.2.7 で計算される) が set されているときのみ発動する。
+**Activation 条件**: 本プロトコルは `{doc_heavy_pr} == true` (review.md Phase 1.2.7 で計算される) のときのみ発動する。
 
 > **Single source of truth**: skip/activation に関する全ての判定は [`commands/pr/review.md`](../review.md) Phase 1.2.7 の `{doc_heavy_pr}` 計算結果に**完全に委譲**される。本ファイルでは独立した skip 条件を定義しない（二重定義による drift を防ぐため）。
 >
@@ -176,6 +183,67 @@ CRITICAL: Screenshot Presence mismatch
 - Missing screenshots for: Step 1, Step 3, Step 5
 ```
 
+## Inconclusive Verification Handling
+
+本プロトコルの 5 つの Verification Protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order/Emphasis Consistency / Screenshot Presence) は、いずれも `Grep` / `Read` / `Glob` / `WebFetch` 等のツールを使って実装側の対応物を確認する。**ツールが空集合を返した場合、対象ファイルが存在しなかった場合、tool 自体が timeout/error した場合**、reviewer は「対応物がないので OK」と silent pass しがちだが、これは本プロトコル設置の根本目的 (silent non-compliance 防止) に反する。
+
+本セクションは、各 Verification Protocol で「**検証が完遂できなかった**」状態の取り扱いを定義する。
+
+### 3 つの failure mode
+
+各 Verification Protocol step で以下のいずれかが発生した場合、それは "successful verification with 0 findings" ではなく "**inconclusive verification**" として記録する必要がある:
+
+| Failure mode | 発生条件 | 具体例 |
+|--------------|----------|--------|
+| `target_not_found` | 検証対象 (実装ファイル / コード定義 / 画像ファイル) が存在しない | Implementation Coverage Step 3 で `Grep` の対象パッケージディレクトリが存在しない / Enumeration Completeness Step 2 で `Read` 対象の `src/config/services.ts` が存在しない / Screenshot Presence Step 4 で `Glob` の image path が解決できない |
+| `extraction_failed` | ドキュメント側の主張抽出に失敗 | UX Flow Accuracy Step 1 で「ステップ手順の自然言語抽出ができない (ドキュメントが箇条書きでなく散文)」 / Implementation Coverage Step 1 で「機能名の列挙が抽出できない (ドキュメントの主張形式が非標準)」 |
+| `tool_failure` | tool 自体が timeout/error | `Grep` が permission denied / `Read` が encoding error / `Glob` が timeout / `WebFetch` が 5xx (本ファイル "Implementation source not in this repository" セクションの `Failure signal 値` テーブルを参照) |
+
+### Inconclusive 時の必須出力 (silent skip 禁止)
+
+各 step で上記 3 failure mode のいずれかが発生した場合、reviewer は finding 出力に**必ず以下のメタ情報を含める** (silent に「対応物がないので OK」と pass することを禁止する):
+
+```
+Inconclusive: <category>
+- failure_mode: <target_not_found / extraction_failed / tool_failure>
+- step: <Step N (例: "Step 3 - Grep")>
+- target: <検証しようとしたファイルパス / pattern / image path>
+- reason: <具体的な失敗理由 1 行要約>
+```
+
+例 (Implementation Coverage で対象パッケージディレクトリが見つからない場合):
+
+```
+Inconclusive: Implementation Coverage
+- failure_mode: target_not_found
+- step: Step 3 - Glob (パッケージディレクトリ探索)
+- target: src/{modules,services,features}/*/
+- reason: いずれのパッケージディレクトリも存在しない (リポジトリ構造が言語別パターンと不一致)
+```
+
+例 (Screenshot Presence で Glob が timeout した場合):
+
+```
+Inconclusive: Screenshot Presence
+- failure_mode: tool_failure
+- step: Step 4 - Glob (画像パス確認)
+- target: docs/images/quickstart/*.png
+- reason: Glob が timeout (>30s)、再試行 1 回でも同じ
+```
+
+### Inconclusive 集計 と META 行への反映
+
+reviewer は finding 出力末尾の META 行に、inconclusive となった category 数を集計して報告する義務がある。tech-writer.md の Doc-Heavy mode finding-count rules セクションで定義された 3 種類の正規 META 行 (variant a / b / c) に加え、**variant a / b に inconclusive が含まれる場合は以下の追加形式**を使う:
+
+- **(a + inconclusive)** `META: All 5 verification categories executed, 0 inconsistencies found, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]`
+- **(b + inconclusive)** `META: All 5 verification categories executed, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Findings below.`
+
+### review.md Phase 5.1.3 での扱い
+
+review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inconclusive) / (b + inconclusive) も accept する必要がある。さらに `inconclusive` 内容が 1 件以上ある場合、`cross_reference_partial_skip` と同じ acknowledgement プロセスを発火する必要がある (ユーザーに「inconclusive な category があるが続行するか」を `AskUserQuestion` で確認する)。
+
+これにより、tech-writer が「META は出しておこう」で post-condition を pass しつつ実質的には silent skip を行う抜け道を塞ぐ。
+
 ## Reporting Rules
 
 本プロトコルで検出した指摘は、以下のルールに従って報告する。
@@ -217,6 +285,8 @@ CRITICAL: Screenshot Presence mismatch
    - 公開リポジトリ → `gh api repos/{other_owner}/{other_repo}/contents/...` または `WebFetch`
    - プライベートリポジトリで認証可能 → `gh api` で取得
 2. **「外部参照不可能」の判定条件** (silent skip を防ぐための厳格定義 — 以下のいずれかに該当する場合のみ「不可能」と扱う):
+
+   #### Failure signal の値
 
    | Failure signal 値 | 判定条件 | 具体的なシグナル |
    |-------------------|----------|------------------|

@@ -44,9 +44,9 @@ This skill is activated when reviewing files matching:
 
 ### Critical (Must Fix)
 
-文書-実装整合性 (Doc-Impl Consistency) — **Doc-Heavy mode 限定 (`{doc_heavy_pr=true}` フラグ set 時のみ評価)**:
+文書-実装整合性 (Doc-Impl Consistency) — **Doc-Heavy mode 限定 (`{doc_heavy_pr} == true` のときのみ評価)**:
 
-> **適用条件**: 以下 5 項目は **Doc-Heavy PR Mode が activated されている場合のみ**評価する (`{doc_heavy_pr=true}` フラグの伝達経路は `commands/pr/review.md` Phase 1.2.7 / Phase 2.2.1 を参照)。通常の PR レビューでは適用されない。
+> **適用条件**: 以下 5 項目は **Doc-Heavy PR Mode が activated されている場合のみ**評価する (`{doc_heavy_pr} == true` の伝達経路は `commands/pr/review.md` Phase 1.2.7 / Phase 2.2.1 を参照)。通常の PR レビューでは適用されない。
 >
 > **理由**: これら 5 項目の検証プロトコルは [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md) の "Verification Protocol" セクションに定義されており、その protocol は Doc-Heavy mode の Activation 条件下でのみ tech-writer prompt に注入される (Phase 2.2.1 step 3)。non-Doc-Heavy mode では protocol が伝達されないため、これら 5 項目を強制すると「protocol なしで Must Fix を判定する」状態になり speculative 指摘の温床になる。
 >
@@ -121,7 +121,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 ## Doc-Heavy PR Mode (Conditional)
 
-**Activation**: This section applies only when the review caller passes `{doc_heavy_pr=true}`. The flag is computed in [`commands/pr/review.md`](../../commands/pr/review.md) Phase 1.2.7 (Doc-Heavy PR Detection) and propagated to tech-writer by Phase 2.2.1 (Doc-Heavy Reviewer Override).
+**Activation**: This section applies only when the review caller passes `{doc_heavy_pr} == true`. The flag is computed in [`commands/pr/review.md`](../../commands/pr/review.md) Phase 1.2.7 (Doc-Heavy PR Detection) and propagated to tech-writer by Phase 2.2.1 (Doc-Heavy Reviewer Override).
 
 In doc-heavy PR mode, the **detailed 5-category verification protocol** in [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md) becomes mandatory **on top of** the standard Critical (Must Fix) checklist. That file is the **single source of truth** for verification procedures, severity mapping, and confidence gating — read it first before reporting findings under this mode.
 
@@ -129,15 +129,15 @@ This mode targets the failure pattern where standard tech-writer review missed c
 
 ### Quick Reference (entry points only — see internal-consistency.md for full procedures)
 
-For every documented service / feature / component / step / state, cross-reference the implementation source code in this repository:
+For every documented service / feature / component / step / state, cross-reference the implementation source code in this repository. **本テーブルは [`internal-consistency.md`](../../commands/pr/references/internal-consistency.md) の 5 verification categories と 1:1 対応する**:
 
-| Doc Claim | Verification Tool | Verification Target |
-|-----------|------------------|---------------------|
-| Service / module list | `Grep` | module exports, route definitions, package directories |
-| Step count in procedure | `Read` | state machine transitions, form schemas, route guards |
-| Configuration key reference | `Read` | config schema files (yaml, json, toml) |
-| UI component / button label | `Grep` | i18n files, component templates, JSX/TSX |
-| Order / priority of services | `Read` | config arrays, menu definitions, routing tables |
+| Doc Claim (internal-consistency.md カテゴリ) | Verification Tool | Verification Target |
+|---------------------------------------------|-------------------|---------------------|
+| **Implementation Coverage** (機能リスト) | `Grep` | module exports, route definitions, package directories |
+| **Enumeration Completeness** (数値主張) | `Read` | config arrays, directory structures, constant definitions |
+| **UX Flow Accuracy** (手順書 / 状態遷移) | `Read` | state machine transitions, form schemas, route guards |
+| **Order / Emphasis Consistency** (順序・優先度) | `Read` | config arrays, menu definitions, routing tables |
+| **Screenshot Presence** (画像参照) | `Glob` / `Grep` | image paths, numbered steps, alt text |
 
 **Rule**: "おそらく正しいはず" のような推測は禁止。必ず実装ファイルを Read / Grep して確認し、Finding に証拠（ファイルパス + 行番号）を含める。
 
@@ -155,7 +155,7 @@ Documentation PRs may describe an external product whose implementation lives in
    - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
    ```
 
-   **Failure signal の値**: 上記 7 種から 1 つを選択する。各値の意味は [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-prohibited) の "Failure signal の値" 表を参照 (404 = リポジトリ非存在 / 401 / 403 = 認証・権限不足 (2 値を区別して記録) / 5xx = HTTP サーバーエラー全般 / timeout = タイムアウト (2 回連続) / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
+   **Failure signal の値**: 上記 7 種から 1 つを選択する。各値の意味は [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-prohibited) の "Failure signal の値" 見出し直下の判定条件テーブルを参照 (404 = リポジトリ非存在 / 401 / 403 = 認証・権限不足 (2 値を区別して記録) / 5xx = HTTP サーバーエラー全般 / timeout = タイムアウト (2 回連続) / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
 3. The reviewer caller (review.md Phase 5.1.3) will surface this meta-finding and require explicit user acknowledgement before treating the review as complete
 
 ### Doc-Heavy mode finding requirements
@@ -222,7 +222,7 @@ Perform the following investigation before reporting findings:
 | 「スクショが足りない気がする」 | 「`docs/quickstart.md` のステップ 1-5 に対し `![...](...)` 参照が 2 つのみ（ステップ 2 と 4）。ステップ 1, 3, 5 のスクショが欠落」 |
 | 「LLM 関連の記述が曖昧」 | 「`docs/key-concepts.md:8` で「フローデザイナーで LLM を扱う」と記述だが、`src/flow-designer/blocks/` に LLM 関連ブロックなし。LLM は `src/autonomous/` 配下のみ」 |
 
-**Doc-Heavy mode 専用 example** (`{doc_heavy_pr=true}` フラグが set されている場合、各 finding に `- Evidence: ...` 行を必ず含める):
+**Doc-Heavy mode 専用 example** (`{doc_heavy_pr} == true` のとき、各 finding に `- Evidence: ...` 行を必ず含める):
 
 | Prohibited (Vague) | Required (Doc-Heavy mode、Evidence literal 付き) |
 |------------------|---------------------------------------------------|

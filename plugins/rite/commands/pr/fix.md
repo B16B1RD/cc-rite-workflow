@@ -38,13 +38,16 @@ This command is automatically invoked within the review-fix loop of `/rite:issue
 
 ## Arguments
 
-| Argument | Description |
-|----------|-------------|
+以下の **3 つのうち 1 つを渡す** (mutually exclusive)。引数なしも許容される (4 番目の選択肢)。
+
+| Argument (one of) | Description |
+|-------------------|-------------|
 | `[pr_number]` | PR number (defaults to the PR for the current branch if omitted) |
 | `[pr_url]` | PR URL (`https://github.com/{owner}/{repo}/pull/{N}`) |
 | `[comment_url]` | PR comment URL (`https://github.com/{owner}/{repo}/pull/{N}#issuecomment-{ID}`) |
+| (引数なし) | 現在のブランチに紐づく PR を自動検出 |
 
-**Accepted formats**: すべての引数形式は Phase 1.0 (Argument Parsing Pre-flight) で正規化され、`{pr_number}` と（該当時のみ）`{target_comment_id}` が抽出される。`comment_url` を指定すると、その特定コメントから直接 findings をパースする（Phase 1.2 で分岐）。`pr_number` 単体または引数なしの既存挙動は完全に維持される。
+**Accepted formats**: すべての引数形式は Phase 1.0 (Argument Parsing Pre-flight) で正規化され、`{pr_number}` と（該当時のみ）`{target_comment_id}` が抽出される。`comment_url` を指定すると、その特定コメントから直接 findings をパースする（Phase 1.2 で分岐）。`pr_number` 単体または引数なしの既存挙動は完全に維持される。**複数の引数を同時に渡すことはできない** (Phase 1.0 は最初に解釈成功した形式のみを採用する)。
 
 ---
 
@@ -101,7 +104,7 @@ Extract the following information from work memory and retain in context:
 
 ### 1.0 Argument Parsing (Pre-flight)
 
-> **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される。番号 `1.0` は Phase 1 の冒頭 (1.1 より先) を示しており、自然順で読み進める AI/人間どちらも順序通りに実行できる。
+> **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。
 
 **Always run this sub-phase**. Phase 1.1 が `gh pr view` を実行する前に、引数形式を正規化して `{pr_number}` と（該当時のみ）`{target_comment_id}` を抽出する。bare integer (`^[0-9]+$`) や引数なしの場合でも本サブフェーズを実行し、Detection rules table の順序 1 / 順序 5 で pr_number を抽出した上で **`{target_comment_id} = null` を explicit set** する (undefined 参照防止)。
 
@@ -120,6 +123,16 @@ Extract the following information from work memory and retain in context:
 **重要 — bash 互換性**: 順序 4 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (権威ある仕様根拠: [IEEE Std 1003.1 / The Open Group Chapter 9 — Regular Expressions](https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html) と [regular-expressions.info: Lookahead and Lookbehind](https://www.regular-expressions.info/lookaround.html) で確認済み)。順序 2 を順序 4 より先に試すことで、issuecomment URL は順序 2 で先にマッチして抽出され、順序 4 に到達する時点で「issuecomment ではない fragment 付き PR URL」のみが残る。順序を保証することで lookaround 不要となる。
 
 **全角数字の扱い** (順序 1): 日本語 IME の fullwidth モードで入力された `１２３` のような全角数字をユーザーが誤って投入するケースを救済する。マッチした場合は `tr '０-９' '0-9'` 相当の変換で半角に正規化してから `{pr_number}` として保持する。ASCII 数字のみの場合は変換せずそのまま使用。
+
+**正規化発火時の通知** (silent transformation 防止): 全角→半角の正規化が発火した場合、以下を **stderr に必ず出力** する。これにより `１２３` を渡したつもりが別 PR `123` を fix する結果になっても、ユーザーは何が起きたか即座に理解できる:
+
+```
+INFO: 全角数字 '{original}' を半角 '{normalized}' として解釈しました
+  正規化対象: 順序 1 のパターン (^[0-9０-９]+$) でマッチした入力
+  対処: もし意図しない数値の場合、Ctrl+C で中断してから半角で再入力してください
+```
+
+ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない (no-op の冗長表示を避けるため)。
 
 **Behavior**:
 
@@ -217,15 +230,15 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 >
 >    書き出しは **各 `printf` の exit code を check し、失敗時は exit 1 で abort** する (上記 bash block 内の実装を参照)。さらに書き出し後に `[ -s "<path>" ]` / `[ -f "<path>" ]` で post-condition を検証する。
 > 2. bash 呼び出しから戻ったあと、Claude は Parsing rule を実行するために Read tool で上記 **3 ファイル**を読み直し、必要に応じて `$target_body` / `$target_author` / `$target_author_mention_skip` の中身をコンテキストに再注入する
-> 3. Parsing rule / best-effort parse が完了したあと、Phase 1 の末尾で下記の **明示的 cleanup bash block** を**必ず実行**する (prose 指示ではなく実装ブロックとして存在する)。削除対象は specific path (`{pr_number}-{target_comment_id}` suffix 付き) のみとし、wildcard glob は**絶対に使わない** (並列 fix 実行時に他セッションの一時ファイルを silent に消す事故を防ぐ):
+> 3. Parsing rule / best-effort parse が完了したあと、**Phase 1.5 (Fast Path Handoff File Cleanup) で下記の明示的 cleanup bash block を必ず実行する** (prose 指示ではなく実装ブロックとして存在する)。Phase 1.5 は Phase 1 の最終サブフェーズとして独立に実行され、Phase 2 遷移直前のタイミングで発火する。削除対象は specific path (`{pr_number}-{target_comment_id}` suffix 付き) のみとし、wildcard glob は**絶対に使わない** (並列 fix 実行時に他セッションの一時ファイルを silent に消す事故を防ぐ):
 >    ```bash
->    # Phase 1 終端で実行する cleanup (Phase 1.4 末尾または Phase 2 遷移直前)
+>    # Phase 1.5 (Fast Path Handoff File Cleanup) で実行する cleanup
 >    # 重要: wildcard `/tmp/rite-fix-target-body-*.txt` は絶対に使わない (他セッション破壊防止)
 >    rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
 >          "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
 >          "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 >    ```
->    Broad Comment Retrieval 経路 (Fast Path を通らない場合) ではこれらの一時ファイルが存在しないため、`rm -f` は silent no-op となり問題ない。
+>    Broad Comment Retrieval 経路 (Fast Path を通らない場合) ではこれらの一時ファイルが存在しないため、`rm -f` は silent no-op となり問題ない。**Phase 1.4 「キャンセル」経路は Phase 1.5 を通らないため、Phase 1.4 内の独立した cleanup block (defense-in-depth 経路) で削除される**。
 >
 > **trap の上書きリスクに注意**: 本ブロックの `trap 'rm -f "$jq_err"' EXIT` は bash 仕様上 1 signal につき 1 trap しか持てないため、**後続の bash block (Phase 2.4 reply、Phase 4.2 report、Phase 4.3.4 Issue 作成、Phase 4.5.1 work memory 更新) が同一 bash 呼び出しに含まれる場合、それらの `trap ... EXIT` に上書きされて `$jq_err` のリークが起きる**。これは本ブロックを後続 phase と結合しないことで回避するほか、ブロック末尾で明示的に `rm -f "$jq_err"` を実行することで二重防御している (trap が動かなくても cleanup は完了する)。将来 `trap` を連携する必要が出た場合は `add_trap` idiom (`existing=$(trap -p EXIT | sed -n "s/.*'\(.*\)'.*/\1/p"); trap "rm -f \"$jq_err\"; $existing" EXIT`) の採用を検討。
 
@@ -316,6 +329,38 @@ if [ -z "$target_body" ]; then
   exit 1
 fi
 
+# Post-condition: comment ID と pr_number の所属一致を検証 (silent misclassification 防止)
+#
+# 背景: GitHub REST API `/repos/{owner}/{repo}/issues/comments/{id}` は PR/Issue を区別しない
+# 単一エンドポイント (GitHub REST API ドキュメント: "Every pull request is an issue, but not
+# every issue is a pull request"). PR と Issue の issue comment は同じ ID space を共有するため、
+# ユーザーが `pull/123#issuecomment-456` を渡したつもりが 456 が**別 PR/Issue のコメント**だった
+# 場合、gh api は exit 0 で別の comment body を返してしまう (silent failure)。
+# これを防ぐため、レスポンスの .issue_url フィールドを抽出して /pull/{pr_number} または
+# /issues/{pr_number} を含むかを post-condition で検証する。
+if ! comment_issue_url=$(printf '%s' "$target_comment" | jq -r '.issue_url // empty' 2>"$jq_err"); then
+  echo "エラー: gh api レスポンスから .issue_url の抽出に失敗しました" >&2
+  echo "詳細: $(cat "$jq_err")" >&2
+  exit 1
+fi
+if [ -z "$comment_issue_url" ]; then
+  echo "エラー: コメント #{target_comment_id} のレスポンスに .issue_url フィールドがありません" >&2
+  echo "対処: gh api の生レスポンスを確認してください (GitHub API のスキーマ変更の可能性)" >&2
+  exit 1
+fi
+# /pull/{pr_number} または /issues/{pr_number} を末尾に含むことを確認
+# (GitHub では PR は内部的に Issue でもあるため、/issues/{N} と /pull/{N} のいずれかが返る)
+expected_pull_suffix="/pull/{pr_number}"
+expected_issues_suffix="/issues/{pr_number}"
+if ! printf '%s' "$comment_issue_url" | grep -qE "(${expected_pull_suffix}|${expected_issues_suffix})$"; then
+  echo "エラー: コメント #{target_comment_id} は PR #{pr_number} に属していません (silent misclassification 検出)" >&2
+  echo "  実際の所属: $comment_issue_url" >&2
+  echo "  期待値: ${expected_pull_suffix} または ${expected_issues_suffix} で終わる URL" >&2
+  echo "  対処: comment URL の pull/{N} 部分と #issuecomment-{ID} の整合性を確認してください。" >&2
+  echo "         GitHub UI で comment URL を再コピーすることを推奨します。" >&2
+  exit 1
+fi
+
 # author も同じ pattern で抽出 (fail-fast: .body が成功した状況で .user.login が失敗するのは
 # jq バイナリ異常または破損した JSON レスポンスの兆候なので、警告して exit するほうが安全)
 if ! target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty' 2>"$jq_err"); then
@@ -399,23 +444,31 @@ handoff_committed=1
 
 1. If `$target_body` contains `## 📜 rite レビュー結果`: **Phase 1.2.1 で定義された table パースロジック** (`### 全指摘事項` を起点に reviewer サブセクションごとの table を解析し `severity_map` を構築する手順) を `$target_body` に対して適用する。**Phase 1.2.1 のコメント取得処理 (broad retrieval) は実行しない** — 対象コメントは既に取得済みのため
 2. Otherwise (外部ツール: `/verified-review` skill、`pr-review-toolkit:review-pr` plugin、手動コメント等): **best-effort parse**
-   - **期待スキーマ**: 最低 **4 カラム** を持つ markdown table (`| severity | file:line | content | recommendation |` の順、またはヘッダー行から列順を推定)
+   - **期待スキーマ**: 最低 **4 カラム** または **5 カラム** を持つ markdown table。デフォルト列順は `| severity | file:line | content | recommendation [| confidence] |` (5 列目の confidence は optional)。ヘッダー行が存在する場合はそこから列順を推定する
    - **ヘッダー行検出 (正規キーワードセット)**: 表の 1 行目に以下のキーワードのいずれかを含む行を検出した場合、その列順を使用する。検出成否は必ずログに記録する:
 
-     | 列名 | 認識キーワード (大文字小文字無視) |
-     |------|-----------------------------------|
-     | severity | `severity`, `重要度`, `sev`, `level`, `深刻度`, `priority` |
-     | file:line | `file`, `ファイル`, `path`, `location`, `場所` |
-     | content | `content`, `内容`, `message`, `description`, `指摘`, `issue` |
-     | recommendation | `recommendation`, `推奨`, `fix`, `suggestion`, `対応`, `action` |
+     | 列名 | 認識キーワード (大文字小文字無視) | 必須/任意 |
+     |------|-----------------------------------|----------|
+     | severity | `severity`, `重要度`, `sev`, `level`, `深刻度`, `priority` | 必須 |
+     | file:line | `file`, `ファイル`, `path`, `location`, `場所` | 必須 |
+     | content | `content`, `内容`, `message`, `description`, `指摘`, `issue` | 必須 |
+     | recommendation | `recommendation`, `推奨`, `fix`, `suggestion`, `対応`, `action` | 必須 |
+     | confidence | `confidence`, `信頼度`, `conf`, `score`, `確信度` | **任意** (5 列目) |
 
      **検出ログ**: 以下を **stderr に必ず出力** する。E2E Output Minimization の対象外とし、parse の健全性を後追いできるようにする:
-     - ヘッダー検出成功: `Header detected: yes. Column order: [severity, file, content, recommendation]`
-     - ヘッダー検出失敗: `Header detected: no. Using default column order [severity, file, content, recommendation]`
-   - **ヘッダー行なし**: デフォルト列順 `severity | file:line | content | recommendation` を仮定する (上記の `Header detected: no` ログを stderr に必ず出力する)
+     - ヘッダー検出成功 (4 列): `Header detected: yes (4 columns). Column order: [severity, file, content, recommendation]. Confidence column: not found (will use Confidence=70 暫定値)`
+     - ヘッダー検出成功 (5 列): `Header detected: yes (5 columns). Column order: [severity, file, content, recommendation, confidence]. Confidence column: found at index {N}`
+     - ヘッダー検出失敗: `Header detected: no. Using default column order [severity, file, content, recommendation]. Confidence column: not assumed`
+   - **ヘッダー行なし**: デフォルト列順 `severity | file:line | content | recommendation` を仮定する (上記の `Header detected: no` ログを stderr に必ず出力する)。Confidence 列はヘッダーなしの場合は仮定しない (ユーザーが明示的にヘッダー行を書いた場合のみ confidence 列を尊重する)
    - **カラム数不足の扱い**:
      - **3 カラム以下**: そのテーブル行を "unparseable" として skip し、警告ログ (`WARNING: Skipping unparseable row (columns < 4): <row preview>`) に記録する
-     - **4 カラム以上**: 最初の 4 カラムを severity / file:line / content / recommendation として抽出 (余分な列は無視)
+     - **4 カラム**: severity / file:line / content / recommendation として抽出 (Confidence 列なし → Confidence=70 暫定値、後述の取り扱いルール参照)
+     - **5 カラム以上**: ヘッダー行で confidence 列が検出された場合はその index から抽出。検出されなかった場合は最初の 4 カラムを使用し、5 列目以降は **silent 破棄せず WARNING で通知する**:
+       ```
+       WARNING: 5 列以上のテーブルですが、ヘッダー行から confidence 列を特定できませんでした。
+       5 列目以降の値は破棄されます。Confidence 列を使うにはヘッダー行に
+       'confidence' / '信頼度' / 'conf' / 'score' / '確信度' のいずれかを含めてください。
+       ```
    - **severity 別名マッピング**: CRITICAL/HIGH/MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する:
 
      | 認識される別名 | 正規化先 |
@@ -533,11 +586,12 @@ handoff_committed=1
 
 **取り扱いルール**:
 
-| 状況 | 処理 |
-|------|------|
-| テーブルに Confidence 列が存在し数値がある | そのまま Confidence として採用 (`< 80` は警告表示の上でスキップ、`>= 80` のみ取り込み) |
-| Confidence 列がない、または数値が欠落 | **暫定値 Confidence=70 (< 80) を割り当て**、LOW に降格し、以下の警告を **stderr に必ず出力** する (silent pass 禁止): `WARNING: 外部ツール由来 finding {N} 件に Confidence 記載なし。暫定的に LOW/Confidence=70 として扱います。取り込み前にユーザー確認を求めます。` |
-| severity 別名マッピングによる MEDIUM fallback (severity 不明) | 同様に Confidence=70 扱いとし、ユーザー確認を求める |
+| 状況 | 処理 | `confidence_override_findings` 追跡 |
+|------|------|------------------------------------|
+| テーブルに Confidence 列が存在し数値がある (`>= 80`) | そのまま Confidence として採用、取り込み | 不要 (override ではない通常の取り込み) |
+| テーブルに Confidence 列が存在し数値がある (`< 80`) | 警告表示の上でスキップ | 不要 (取り込まないため) |
+| Confidence 列がない、または数値が欠落 | **暫定値 Confidence=70 (< 80) を割り当て**、LOW に降格し、以下の警告を **stderr に必ず出力** する (silent pass 禁止): `WARNING: 外部ツール由来 finding {N} 件に Confidence 記載なし。暫定的に LOW/Confidence=70 として扱います。取り込み前にユーザー確認を求めます。` | **必須**: ユーザーが「Confidence 70 のままバイパス」を選択した finding を `confidence_override_findings` に append |
+| severity 別名マッピングによる MEDIUM fallback (severity 不明) | 同様に Confidence=70 扱いとし、ユーザー確認を求める | **必須**: 上記と同じく override が確定した finding を append (severity 不明 fallback も Confidence override の追跡対象として扱う) |
 
 暫定 Confidence 値が割り当てられた finding については、`AskUserQuestion` で以下のいずれかを選択させる:
 - **Confidence 70 のまま 80+ ゲートをバイパスして投入 (policy override)** — finding を fix ループに投入するが、Confidence は 70 のまま保持し、`confidence_override=true` フラグを finding metadata に記録する。昇格ではなくバイパスであることをユーザーに明示する
@@ -793,7 +847,27 @@ PR #{number} のレビューコメント
 | **すべての指摘に対応（推奨）** | All severities + external reviews | When full resolution is needed. Within `/rite:issue:start` loop, all findings are auto-selected |
 | **CRITICAL/HIGH のみ対応** | CRITICAL + HIGH only | When addressing only urgent issues and deferring MEDIUM/LOW |
 | **特定の指摘を選択** | Individual selection | When addressing only specific findings |
-| **キャンセル** | - | Abort the process |
+| **キャンセル** | - | Abort the process (Fast Path 経由の場合はハンドオフファイルを削除してから exit) |
+
+**「キャンセル」選択時の Behavior** (silent orphan ファイル防止):
+
+`/rite:pr:fix` 実行時に Fast Path (Phase 1.2 Target Comment Fast Path) を経由してハンドオフ一時ファイル 3 本を作成した状態で「キャンセル」が選択された場合、Phase 1.5 cleanup を経由しないため、**Phase 1.4 末尾でも明示的にハンドオフファイルを削除する**。これは Phase 1.2 best-effort parse の「Cancel/Re-run 経路でのハンドオフ cleanup 義務」段落と同じ defense-in-depth 原則に従う。
+
+```bash
+# Phase 1.4 「キャンセル」選択時の cleanup (silent orphan ファイル防止)
+# Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
+# → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
+# Broad Comment Retrieval 経路ではこれらのファイルが存在しないため rm -f は silent no-op となる
+rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+
+# cleanup 後に exit
+echo "[fix:cancelled-by-user]"
+exit 0
+```
+
+> **Phase 1.5 との関係**: Phase 1.5 は「Phase 1.4 を完走して Phase 2 遷移直前」に発火する正常 cleanup 経路。「キャンセル」選択は Phase 1.4 から Phase 2 に遷移しないため Phase 1.5 に到達しない。本 cleanup は Phase 1.5 の代替経路として動作し、Phase 1 終端での 100% cleanup 保証を担う。
 
 **When there are no comments:**
 
@@ -813,9 +887,9 @@ Terminate processing.
 
 ### 1.5 Fast Path Handoff File Cleanup (Phase 1 終端)
 
-**Execution condition**: Fast Path 経由で一時ファイル (`/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成した場合のみ実行する。Broad Comment Retrieval 経路ではこれらのファイルは存在しないため、`rm -f` は silent no-op となる。
+**Execution condition**: Fast Path 経由で一時ファイル (`/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成し、かつ Phase 1.4 を「キャンセル以外」(= 「すべての指摘に対応」「CRITICAL/HIGH のみ対応」「特定の指摘を選択」のいずれか) で完走した場合のみ実行する。Broad Comment Retrieval 経路 (Fast Path 未経由) や Phase 1.4 「キャンセル」経路ではこれらのファイルは存在しないか別経路 (Phase 1.4 「キャンセル」Behavior block) で削除済みのため、`rm -f` は silent no-op となる。
 
-**Purpose**: Phase 1.2 Fast Path で作成したハンドオフ一時ファイル 3 本を明示的に削除する。Phase 1.4 の末尾 (Phase 2 遷移直前) で必ず実行し、`/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
+**Purpose**: Phase 1.2 Fast Path で作成したハンドオフ一時ファイル 3 本を明示的に削除する。**Phase 1.5 として独立に実行する** (Phase 1 の最終サブフェーズ、Phase 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
 
 **Important — specific path 必須** (並列 fix 実行の他セッション破壊防止):
 - wildcard glob (`/tmp/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / sprint team-execute / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
