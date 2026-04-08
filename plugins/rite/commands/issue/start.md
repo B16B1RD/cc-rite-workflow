@@ -1101,10 +1101,10 @@ This phase runs **after every Skill invocation in Phase 5** at the following exp
 
 | Caller | Invocation point | Trigger |
 |--------|------------------|---------|
-| Phase 5.2 (lint) | 🚨 Mandatory After 5.2 — Step 3 | Always after `[lint:*]` pattern |
-| Phase 5.3 (pr:create) | 🚨 Mandatory After 5.3 — Step 3 | Always after `[pr:created:{N}]` or `[pr:create-failed]` |
-| Phase 5.4.3 (pr:review) | 🚨 After Review — Step 4 | Always after `[review:*]` pattern |
-| Phase 5.4.6 (pr:fix) | 🚨 After Fix — Step 4 | Always after `[fix:*]` pattern |
+| Phase 5.2 (lint) | 🚨 Mandatory After 5.2 — Step 2 | Always after `[lint:*]` pattern |
+| Phase 5.3 (pr:create) | 🚨 Mandatory After 5.3 — between "Verify" and "Proceed to 5.4 now" | Always after `[pr:created:{N}]` or `[pr:create-failed]` |
+| Phase 5.4.3 (pr:review) | 🚨 After Review — Step 3 | Always after `[review:*]` pattern |
+| Phase 5.4.6 (pr:fix) | 🚨 After Fix — Step 3 | Always after `[fix:*]` pattern |
 | Phase 5.5.0.1 (pr:ready) | 🚨 Mandatory After 5.5 — Step 3 | Always after `[ready:*]` pattern |
 
 **Each 🚨 Mandatory After section MUST include a "Run Phase 5.4.4.1 detection" step** that directs the orchestrator to grep the recent conversation context for sentinel lines BEFORE proceeding to the next phase. The orchestrator's grep operates on the same conversation context that contains the bash subprocess stdout (for orchestrator-direct emits in Phase 5.2/5.3/5.5) and the sub-skill response message text (for sub-skill emits per the Sentinel Visibility Rule).
