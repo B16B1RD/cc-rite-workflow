@@ -2,12 +2,7 @@
 
 > **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**ドキュメント記述とプロダクト実装の整合性**を検証するための "source of truth" である。
 >
-> **用語統一 (Canonical terminology)**: 本ファイル群では **「文書-実装整合性 (Doc-Impl Consistency)」** を canonical 表記とする。以下の同義表現が過去の文書や PR 本文・コミットメッセージに混在するが、いずれも本 canonical 表記の同義として扱う:
->
-> - 「ドキュメント-実装整合性」/「実装-ドキュメント整合性」(順序逆) — 本テーマの本質は順序非依存だが、表記検索の容易性のため canonical を一つに固定
-> - 「内部事実」/「内部整合性」/「Doc-Impl Consistency」/「Internal Consistency」 — 本ファイルのタイトルおよび `internal-consistency.md` のファイル名が示す概念全体
->
-> 新規ドキュメント・コミットメッセージ・Issue では canonical 表記「**文書-実装整合性 (Doc-Impl Consistency)**」を優先して使う。既存の同義表現はそのまま残してよい (機械的置換は drift リスクが大きいため)。
+> **用語統一**: 本テーマの canonical 表記は **「文書-実装整合性」** とする (英訳: `Doc-Impl Consistency`)。「ドキュメント-実装整合性」/「内部事実」/「内部整合性」/「Internal Consistency」は同義として扱う。新規記述では canonical 表記を優先するが、既存の同義表現はそのまま残してよい (機械的置換は drift リスク)。
 >
 > **Canonical category names (literal-substring matched by Phase 5.1.3 META check)**: 5 verification categories の名前は以下の **canonical form を厳格に使う**。`commands/pr/review.md` Phase 5.1.3 Step 2 の variant (a) / (a + inconclusive) META 行は **literal substring match** で検査するため、表記揺れがあると `doc_heavy_post_condition: warning` の false positive が発火する:
 >
