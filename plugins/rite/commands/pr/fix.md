@@ -289,7 +289,15 @@ skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 # - INT: Ctrl+C 等の interrupt (非対話モードでも `kill -INT` で発火)
 # - TERM: 外部からの `kill -TERM` (Claude Code Bash tool timeout / sprint team-execute の親プロセス kill 等)
 # - HUP: 端末切断 / SIGHUP (hook timeout, セッション終了)
-# bash の EXIT trap は SIGTERM を捕捉しないため、INT/TERM/HUP を明示的に追加する必要がある
+#
+# 重要 — INT/TERM/HUP を明示する理由 (review.md line 475-478 と同根の説明、ファイル間整合性):
+# bash の EXIT trap 自体は SIGTERM/SIGHUP/SIGINT のいずれでも発火する (実証 + GNU bash manual で確認済み)。
+# しかし INT/TERM/HUP の trap action が **明示的な exit を含まないと bash は signal を consume して
+# 次のコマンドへ制御を渡してしまう** (権威ある根拠: GNU bash manual "Signals" — trap action 後に
+# bash は signal を consume し制御は次のコマンドに渡る)。trap 内で `exit <code>` を呼ばないと
+# cleanup 後に bash block が残りの命令を不完全な状態で実行する silent failure になる。
+# したがって signal 別 trap は「EXIT trap が SIGTERM で発火しないから」ではなく
+# 「signal 別に明示的な exit code (130/143/129) を返して continuation を防ぐため」に必要。
 #
 # Signal 別 exit code (silent exit 0 防止):
 # SIGINT/SIGTERM/SIGHUP 受信時の `$?` は「最後に完了したコマンドの exit status」で、
@@ -635,7 +643,7 @@ handoff_committed=1
 >
 > | 要素 | 責任範囲 | Fast Path での実行 |
 > |------|---------|---------------------|
-> | Phase 1.2 冒頭の "Broad Comment Retrieval" ブロック (line 375 付近の bash block) | PR の全コメントを取得 (`gh api pulls/{n}/comments`, `gh pr view --json comments` 等) | **実行しない** (対象コメントは Fast Path 冒頭で既に取得済み) |
+> | Phase 1.2 後半の `#### Broad Comment Retrieval — when {target_comment_id} is NOT set` ブロック (heading anchor 参照) | PR の全コメントを取得 (`gh api pulls/{n}/comments`, `gh pr view --json comments` 等) | **実行しない** (対象コメントは Fast Path 冒頭で既に取得済み) |
 > | `### 1.2.1 Retrieve rite Review Results` | (1) `$pr_comments` から `📜 rite レビュー結果` コメントをフィルタ選択、(2) 選択されたコメント本文に対して Markdown table parsing algorithm を適用して `severity_map` を構築 | **Markdown table parsing algorithm の部分のみを `$target_body` に対して再利用する**。フィルタ選択 (1) は Fast Path では不要 (対象コメントが既に決まっているため) |
 >
 > Fast Path 経由で `severity_map` を構築した場合、`pr_comments` 変数および関連する review thread 情報 (broad retrieval で取得されるデータ) は **未定義のまま**である。後続の Phase で `$pr_comments` や reviewThreads を参照しないこと (参照すると runtime error)。Fast Path はあくまで「単一コメントから finding を抽出する」フローであり、broad retrieval の結果には依存しない。
@@ -1038,7 +1046,7 @@ When posting the reply:
 ```bash
 # PR レビューコメントへの返信（in_reply_to で元コメントを指定）
 # jq --rawfile で安全に JSON を生成し、gh api に渡す
-# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (signal 受信時に明示的に exit 130/143/129 を返し bash の continuation を防ぐため。bash の EXIT trap 自体は SIGTERM でも発火するが、INT/TERM/HUP の trap action が exit を含まないと bash は signal を consume して次のコマンドへ制御を渡す silent failure になる)
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT INT TERM HUP
 cat <<'REPLYEOF' > "$tmpfile"
@@ -1293,7 +1301,7 @@ When posting the report:
 
 ```bash
 # ✅ SAFE: --body-file for dynamic report content
-# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (signal 受信時に明示的に exit 130/143/129 を返し bash の continuation を防ぐため。bash の EXIT trap 自体は SIGTERM でも発火するが、INT/TERM/HUP の trap action が exit を含まないと bash は signal を consume して次のコマンドへ制御を渡す silent failure になる)
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT INT TERM HUP
 cat <<'REPORT_EOF' > "$tmpfile"
@@ -1419,9 +1427,28 @@ Generate the Issue title in the following format:
 ```
 
 ```bash
-# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT INT TERM HUP
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (signal 受信時に明示的に exit 130/143/129
+# を返し、bash の continuation を防ぐ — bash の EXIT trap 自体は SIGTERM でも発火するが、
+# trap action が `exit` を含まないと bash は signal を consume して次のコマンドへ制御を渡してしまう
+# silent failure になるため、INT/TERM/HUP も明示する)
+#
+# 統合 cleanup 関数 (Fast Path / py_exit2 と同じパターン): bash block 後段で warnings_jq_err
+# を追加するため、trap を再定義すると前段の `tmpfile` cleanup が上書きで失われる (silent orphan 経路)。
+# これを防ぐため、cleanup 対象を関数にまとめて 1 つの trap で全変数をカバーする。
+# 関数内で参照する変数 (warnings_jq_err 等) が未定義の段階で trap が発火しても、`${var:-}`
+# 形式で展開すれば `rm -f ""` となり silent no-op で安全。
+_rite_fix_issue_create_cleanup() {
+  rm -f "${tmpfile:-}" "${warnings_jq_err:-}"
+}
+trap 'rc=$?; _rite_fix_issue_create_cleanup; exit $rc' EXIT
+trap '_rite_fix_issue_create_cleanup; exit 130' INT
+trap '_rite_fix_issue_create_cleanup; exit 143' TERM
+trap '_rite_fix_issue_create_cleanup; exit 129' HUP
+
+tmpfile=$(mktemp) || {
+  echo "ERROR: tmpfile mktemp 失敗" >&2
+  exit 1
+}
 
 cat <<'BODY_EOF' > "$tmpfile"
 ## 概要
@@ -1517,14 +1544,15 @@ project_reg=$(printf '%s' "$result" | jq -r '.project_registration // empty')
 # .warnings の jq 抽出を明示エラーチェック (`2>/dev/null` で隠蔽しない):
 # jq の stderr を一時ファイルに退避し、parse 失敗時は WARNING を出して詳細を表示する。
 # silent に「warnings 0 件」と誤認することを防ぐ (silent failure-hunter 指摘)
+#
+# 重要: warnings_jq_err は bash block 冒頭で定義した統合 cleanup 関数
+# `_rite_fix_issue_create_cleanup` の `rm -f` 対象に既に含まれている (`${warnings_jq_err:-}`)。
+# ここで trap を再定義すると前段の `$tmpfile` cleanup を上書きで失い silent orphan を引き起こす
+# (本 Issue #350 検証付きレビューで指摘済み)。trap 再定義は禁止 — 統合 trap がカバーする。
 warnings_jq_err=$(mktemp /tmp/rite-fix-warnings-jq-err-XXXXXX) || {
   echo "ERROR: warnings_jq_err 一時ファイルの作成に失敗" >&2
   exit 1
 }
-trap 'rm -f "$warnings_jq_err"' EXIT
-trap 'rm -f "$warnings_jq_err"; exit 130' INT
-trap 'rm -f "$warnings_jq_err"; exit 143' TERM
-trap 'rm -f "$warnings_jq_err"; exit 129' HUP
 
 if warnings_output=$(printf '%s' "$result" | jq -r '.warnings[]?' 2>"$warnings_jq_err"); then
   if [ -n "$warnings_output" ]; then
@@ -1536,6 +1564,8 @@ else
   echo "  Raw result: $result" >&2
   echo "  対処: create-issue-with-projects.sh の出力 schema を確認してください。" >&2
 fi
+# 統合 cleanup 関数が EXIT trap で warnings_jq_err も削除するため、ここでの明示的 rm は冗長だが
+# 二重防御として残す (Fast Path の jq_err 末尾 rm と同じパターン)
 rm -f "$warnings_jq_err"
 ```
 
@@ -1587,7 +1617,7 @@ Identify the related Issue from the PR or branch name.
 # 1. まず PR 本文から Closes #XX パターンを抽出（優先）
 # Phase 1.1 で --json に body を含めて取得済みのため、再取得不要
 # 保持している body フィールドから直接パターンマッチ
-# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (SIGTERM で kill された場合の orphan 防止)
+# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (signal 受信時に明示的に exit 130/143/129 を返し bash の continuation を防ぐため。bash の EXIT trap 自体は SIGTERM でも発火するが、INT/TERM/HUP の trap action が exit を含まないと bash は signal を consume して次のコマンドへ制御を渡す silent failure になる)
 pr_body_tmp=$(mktemp)
 trap 'rm -f "$pr_body_tmp"' EXIT INT TERM HUP
 printf '%s' "{pr_body}" > "$pr_body_tmp"
@@ -1687,13 +1717,29 @@ if [[ -n "$comment_id" ]]; then
     rm -f "$diff_stderr_tmp"
 
     # Step 2: Python で進捗サマリー・変更ファイルを更新 + レビュー対応履歴を追記
-    body_tmp=$(mktemp)
-    tmpfile=$(mktemp)
-    files_tmp=$(mktemp)
-    history_tmp=$(mktemp)
+    #
+    # 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path と同じパターン):
+    # mktemp を 4 連発した「後」に trap を設定すると、最初の mktemp 成功〜trap 設定までの
+    # 時間窓に SIGTERM/SIGINT が飛ぶと、その時点で有効な前段 trap (Phase 4.5.1 由来) が
+    # 新作成 4 ファイルを cleanup 対象に含まない silent orphan 経路になる
+    # (本 Issue #350 検証付きレビューで指摘済み)。Fast Path (line 237-240) は逆順で回避済み。
+    #
     # diff_stderr_tmp は git diff 処理ブロック直後の明示的 rm で削除済みだが、SIGTERM/SIGINT で
-    # kill された場合に上記 rm に到達しないリスクがあるため、念のため trap 対象にも追加 (defensive)
-    trap 'rm -f "$pr_body_tmp" "$body_tmp" "$tmpfile" "$files_tmp" "$history_tmp" "$diff_stderr_tmp"' EXIT INT TERM HUP
+    # kill された場合に上記 rm に到達しないリスクがあるため、新 trap の主な責務は新 mktemp 4 本の
+    # 保護 (これが本 trap 再定義の主目的)。diff_stderr_tmp は二重防御として trap 対象に含める。
+    #
+    # `${var:-}` 形式: mktemp 失敗で変数が空の場合でも `rm -f ""` となり silent no-op で安全
+    body_tmp=""
+    tmpfile=""
+    files_tmp=""
+    history_tmp=""
+    trap 'rm -f "${pr_body_tmp:-}" "${body_tmp:-}" "${tmpfile:-}" "${files_tmp:-}" "${history_tmp:-}" "${diff_stderr_tmp:-}"' EXIT INT TERM HUP
+
+    # mktemp を trap 設定後に実行し、各失敗を明示的に check
+    body_tmp=$(mktemp) || { echo "ERROR: body_tmp mktemp 失敗" >&2; exit 1; }
+    tmpfile=$(mktemp) || { echo "ERROR: tmpfile mktemp 失敗" >&2; exit 1; }
+    files_tmp=$(mktemp) || { echo "ERROR: files_tmp mktemp 失敗" >&2; exit 1; }
+    history_tmp=$(mktemp) || { echo "ERROR: history_tmp mktemp 失敗" >&2; exit 1; }
     printf '%s' "$current_body" > "$body_tmp"
     printf '%s' "$changed_files_md" > "$files_tmp"
     cat > "$history_tmp" << 'HISTORY_EOF'

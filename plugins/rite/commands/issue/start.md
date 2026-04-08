@@ -481,7 +481,7 @@ Resume via work memory (`/rite:resume` or `/rite:issue:start`).
 5.4 レビュー・修正ループ:
   5.4.1 rite:pr:review → [mergeable]→5.5 / [fix-needed]→fix→5.4.1
   (5.4.2-5.4.3 review routing/after, 5.4.5-5.4.6 fix routing/after)
-  5.4.4 rite:pr:fix → [pushed]→5.4.1 / [issues-created]→5.4.1 / [replied-only]→5.5 / [error]→処理
+  5.4.4 rite:pr:fix → [pushed]→5.4.1 / [pushed-wm-stale]→AskUserQuestion→5.4.1 (WM stale 警告) / [issues-created]→5.4.1 / [replied-only]→5.5 / [error]→処理
 5.5 Ready for Review 確認 → rite:pr:ready → [ready:completed]→5.5.0.1→5.5.1 Status 更新 → 5.5.2
 5.5.2 メトリクス記録 → 5.6
 5.6 完了報告
@@ -1058,6 +1058,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 | Fix Result Pattern | Preceding Review Pattern | Action |
 |--------------------|--------------------------|--------|
 | `[fix:pushed]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
+| `[fix:pushed-wm-stale]` | _(any)_ | **Work memory が stale です。手動介入が必要かを `AskUserQuestion` でユーザーに確認** (推奨: stale 警告ログを残した上で `skill: "rite:pr:review", args: "{pr_number}"` を起動して再レビューに進む / 中断して手動で work memory を修復する)。silent に `[fix:pushed]` 扱いしてはならない (fix.md Phase 8.1 caller semantics 参照)。 |
 | `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
 | `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
 | `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` (retry / skip to 5.6 / terminate). |
