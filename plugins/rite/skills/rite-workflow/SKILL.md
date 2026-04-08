@@ -165,9 +165,11 @@ The rite workflow auto-detects **workflow blockers** (Skill load failure, hook a
 ```yaml
 workflow_incident:
   enabled: true              # set to false to disable detection entirely
-  non_blocking: true         # do not abort flow on registration failure
-  dedupe_per_session: true   # 1 incident per type per session
+  non_blocking: true         # reserved for future use (current behavior: always non-blocking)
+  dedupe_per_session: true   # reserved for future use (current behavior: always session-local dedupe)
 ```
+
+> **Note**: Currently only `enabled` is effective. The `non_blocking` and `dedupe_per_session` keys are reserved for future use. See `docs/SPEC.md` "Workflow Incident Detection > Configuration" for details.
 
 **Sentinel format** (`root_cause_hint` is optional and entirely omitted when empty):
 

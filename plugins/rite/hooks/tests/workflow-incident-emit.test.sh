@@ -128,15 +128,16 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-009: Sanitization — semicolons in details replaced by commas
 # --------------------------------------------------------------------------
+# stdout / stderr 分離 (cycle 2 review M-NEW4 fix - TC-001~003 と一貫させる)
 echo "TC-009: Semicolons in --details replaced by commas (parser safety)"
-output=$(bash "$HOOK" --type skill_load_failure --details "a; b; c" 2>&1)
+output=$(bash "$HOOK" --type skill_load_failure --details "a; b; c" 2>"$STDERR_FILE")
 # Sentinel must have exactly 3 semicolons (separators) — none from details
 sentinel_only=$(echo "$output" | grep '^\[CONTEXT\]')
 sep_count=$(echo "$sentinel_only" | tr -cd ';' | wc -c)
 if [ "$sep_count" -eq 3 ] && echo "$output" | grep -q "details=a, b, c;"; then
   pass "Semicolons in details sanitized to commas"
 else
-  fail "Sanitization failed. sep_count=$sep_count output='$output'"
+  fail "Sanitization failed. sep_count=$sep_count output='$output' (stderr: $(cat "$STDERR_FILE"))"
 fi
 echo ""
 
@@ -144,13 +145,13 @@ echo ""
 # TC-010: Sanitization — newlines stripped from root_cause_hint
 # --------------------------------------------------------------------------
 echo "TC-010: Newlines in --root-cause-hint stripped"
-output=$(bash "$HOOK" --type hook_abnormal_exit --details "x" --root-cause-hint "$(printf 'line1\nline2')" 2>&1)
+output=$(bash "$HOOK" --type hook_abnormal_exit --details "x" --root-cause-hint "$(printf 'line1\nline2')" 2>"$STDERR_FILE")
 # Output must be a single line
 line_count=$(echo "$output" | wc -l)
 if [ "$line_count" -eq 1 ] && echo "$output" | grep -q "root_cause_hint=line1line2"; then
   pass "Newlines in root_cause_hint stripped"
 else
-  fail "Newline sanitization failed. line_count=$line_count output='$output'"
+  fail "Newline sanitization failed. line_count=$line_count output='$output' (stderr: $(cat "$STDERR_FILE"))"
 fi
 echo ""
 
@@ -159,13 +160,13 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-011: iteration_id epoch is current Unix time"
 before=$(date +%s)
-output=$(bash "$HOOK" --type skill_load_failure --details "epoch test" 2>&1)
+output=$(bash "$HOOK" --type skill_load_failure --details "epoch test" 2>"$STDERR_FILE")
 after=$(date +%s)
 epoch=$(echo "$output" | grep -oE 'iteration_id=0-[0-9]+' | grep -oE '[0-9]+$')
 if [ -n "$epoch" ] && [ "$epoch" -ge "$before" ] && [ "$epoch" -le "$after" ]; then
   pass "iteration_id epoch within expected range"
 else
-  fail "epoch=$epoch not in [$before, $after]"
+  fail "epoch=$epoch not in [$before, $after] (stderr: $(cat "$STDERR_FILE"))"
 fi
 echo ""
 

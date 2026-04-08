@@ -4,8 +4,8 @@
 # Generates a sentinel pattern that the orchestrator (start.md Phase 5.4.4.1)
 # detects via context grep to auto-register workflow incidents as Issues.
 #
-# Sentinel format:
-#   [CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; root_cause_hint=<hint>; iteration_id=<pr>-<epoch>
+# Sentinel format (root_cause_hint is optional and entirely omitted when empty):
+#   [CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
 #
 # Usage:
 #   bash workflow-incident-emit.sh \
