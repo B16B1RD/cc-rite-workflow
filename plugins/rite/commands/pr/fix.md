@@ -1218,11 +1218,34 @@ trap '_rite_fix_phase24_cleanup; exit 130' INT
 trap '_rite_fix_phase24_cleanup; exit 143' TERM
 trap '_rite_fix_phase24_cleanup; exit 129' HUP
 
-tmpfile=$(mktemp) || { echo "ERROR: tmpfile mktemp 失敗 (/tmp が read-only / inode 枯渇 / permission 拒否)" >&2; exit 1; }
+tmpfile=$(mktemp) || {
+  echo "ERROR: tmpfile mktemp 失敗 (/tmp が read-only / inode 枯渇 / permission 拒否)" >&2
+  # 本 Issue #350 検証付きレビュー H1 修正: mktemp 失敗経路にも retained flag を emit
+  # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPLY_POST_FAILED を検出しないと
+  # silent に [fix:replied-only] / [fix:pushed] と判定される。Phase 4.2 / 4.3.4 と対称にする)
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=mktemp_failed_reply_tmpfile"
+  exit 1
+}
 
-cat <<'REPLYEOF' > "$tmpfile"
+# 本 Issue #350 検証付きレビュー C3 修正: cat HEREDOC の exit code を捕捉
+# (Phase 4.2 / 4.3.4 の L-7 修正パターンと統一)
+# disk full / permission 拒否で HEREDOC 書き込みが中断した場合、jq --rawfile は truncated な
+# tmpfile を silent に成功扱いし、空/truncated な reply body が POST される regression を防ぐ
+if ! cat <<'REPLYEOF' > "$tmpfile"
 {reply_body}
 REPLYEOF
+then
+  echo "ERROR: reply body の HEREDOC 書き込みに失敗 (/tmp full / permission 拒否 / inode 枯渇)" >&2
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=cat_redirection_failed"
+  exit 1
+fi
+
+# 追加 post-condition: HEREDOC 成功扱いだが空ファイル (seek race / quota 等) も捕捉
+if [ ! -s "$tmpfile" ]; then
+  echo "ERROR: reply body tmpfile が空です (HEREDOC 書き込み後 post-condition 違反)" >&2
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=reply_tmpfile_empty"
+  exit 1
+fi
 
 # pipefail を有効化して jq | gh api パイプの前段失敗を確実に検出
 set -o pipefail
@@ -1504,6 +1527,10 @@ trap '_rite_fix_phase42_cleanup; exit 129' HUP
 
 tmpfile=$(mktemp) || {
   echo "ERROR: report tmpfile mktemp に失敗しました" >&2
+  # 本 Issue #350 検証付きレビュー H2 修正: mktemp 失敗経路にも retained flag を emit
+  # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPORT_POST_FAILED を検出
+  # しないと silent に [fix:pushed] と判定される。成功経路の L-7 修正と対称にする)
+  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}; reason=mktemp_failed_report_tmpfile"
   exit 1
 }
 
@@ -1691,7 +1718,11 @@ trap '_rite_fix_issue_create_cleanup; exit 143' TERM
 trap '_rite_fix_issue_create_cleanup; exit 129' HUP
 
 tmpfile=$(mktemp) || {
-  echo "ERROR: tmpfile mktemp 失敗" >&2
+  echo "ERROR: tmpfile mktemp 失敗 (/tmp が read-only / inode 枯渇 / permission 拒否)" >&2
+  # 本 Issue #350 検証付きレビュー H3 修正: mktemp 失敗経路にも retained flag を emit
+  # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が ISSUE_CREATE_FAILED を検出
+  # しないと silent に issues-created:0 と判定され scope 外 finding の追跡が失われる)
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=mktemp_failed_issue_body_tmpfile"
   exit 1
 }
 
@@ -1980,7 +2011,11 @@ if [ ! -s "$pr_body_tmp" ]; then
   echo "ERROR: pr_body_tmp が空または存在しません: $pr_body_tmp" >&2
   echo "対処: PR body 自体が空であった可能性があります (gh pr view --json body の出力を確認)" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_tmp_empty_or_missing"
+  # 本 Issue #350 検証付きレビュー H5 修正: 他の WM_UPDATE_FAILED emit と一貫性を保つため
+  # issue_number suffix を追加 (この経路では {issue_number} 抽出が完了前だが、上流 Phase 0.1
+  # の作業メモリ由来値が placeholder 置換で入る。literal `{issue_number}` が残る場合でも
+  # reason 表との invariant 維持の方を優先する)
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_tmp_empty_or_missing; issue_number={issue_number}"
   exit 1
 fi
 
@@ -2849,26 +2884,24 @@ Phase 8.1 の output pattern emit 直後に、fix ループ全体で使用して
 rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt"
 ```
 
-**Work memory backup_file cleanup** (累積汚染防止、本 Issue #350 検証付きレビュー L-8 で追加):
+**Work memory backup_file cleanup** (累積汚染防止、本 Issue #350 検証付きレビュー L-8 で追加 / C1 で恒久 no-op 修正):
 
 Phase 4.5.2 で `current_body` を `/tmp/rite-wm-backup-{issue_number}-{epoch}.md` に backup している (failed PATCH 時の debug 用)。Phase 8.1 で output pattern が `[fix:pushed]` または `[fix:issues-created:N]` (= 成功経路) の場合、backup_file は debug に不要なため明示削除する。失敗経路 (`[fix:pushed-wm-stale]` / `[fix:error]`) では debug 用に preserve する。
 
+**Claude の実行ルール** (C1 修正: 旧 `case "$output_pattern"` 版は変数未定義で恒久 no-op だったため撤去):
+
+Phase 8.1 で output pattern を決定した直後、Claude は自分が emit した output pattern を記憶し、以下の判定に基づいて bash コマンドを実行する or skip する:
+
+- **成功経路** (`[fix:pushed]` または `[fix:issues-created:N]`): 以下の `rm -f` を実行する
+- **失敗経路** (`[fix:pushed-wm-stale]` または `[fix:error]` または `[fix:replied-only]`): backup_file を debug 用に preserve するため **bash コマンドを skip する** (実行しない)
+
 ```bash
-# Phase 4.5.2 の backup_file の明示的 cleanup (成功経路のみ、debug 用 preserve は失敗経路のみ)
-# wildcard で本 fix セッションの backup_file を全削除する (issue_number は同じ)
-# 注: wildcard glob を使うのは「同一 issue_number prefix」に絞っているため並列セッション破壊の
-# リスクは限定的 (同一 issue を 2 セッションで同時 fix するケースが現実的に存在しないため)。
-# ただし安全側に倒すなら output pattern 判定で成功時のみ実行する。
-case "$output_pattern" in
-  '[fix:pushed]'|'[fix:issues-created:'*)
-    rm -f /tmp/rite-wm-backup-{issue_number}-*.md 2>/dev/null || true
-    ;;
-  *)
-    # 失敗経路: backup_file を debug 用に preserve (rm しない)
-    :
-    ;;
-esac
+rm -f /tmp/rite-wm-backup-{issue_number}-*.md
 ```
+
+**Note**:
+- wildcard glob は同一 `{issue_number}` prefix に絞られているため並列セッション破壊リスクは限定的 (同一 issue を 2 セッションで同時 fix するケースが現実的に存在しないため)。`backup_file` の specific path 化は Issue #355 Phase A の drift cleanup scope で追加改善する。
+- `2>/dev/null || true` は silent failure 抑制に該当するため撤廃済み (`rm -f` は non-existent file に対して exit 0 で、実在ファイルでも permission 違反以外はエラーにならない)。permission 違反が発生した場合は stderr に出力されて可視化される方が debug しやすい。
 
 **Example output:**
 ```
