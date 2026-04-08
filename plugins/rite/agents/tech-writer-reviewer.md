@@ -2,10 +2,6 @@
 name: tech-writer-reviewer
 description: Reviews documentation for clarity, accuracy, and completeness
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Tech Writer Reviewer

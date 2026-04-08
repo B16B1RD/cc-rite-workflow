@@ -2,10 +2,6 @@
 name: test-reviewer
 description: Reviews test quality, coverage, and testing strategies
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Test Reviewer

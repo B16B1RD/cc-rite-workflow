@@ -1,11 +1,6 @@
 ---
 name: error-handling-reviewer
 description: Reviews error handling patterns for silent failures, inadequate logging, and inappropriate fallbacks
-model: sonnet
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Error Handling Reviewer
