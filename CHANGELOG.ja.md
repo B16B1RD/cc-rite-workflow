@@ -19,7 +19,25 @@ Rite Workflow の主要な変更を記録します。
 
   tech-writer に `{doc_heavy_pr=true}` フラグを伝達し、`internal-consistency.md` の 5 カテゴリ verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を mandatory 化、各 finding に `Evidence:` 行を必須化、`review.md` の Phase 5.1.3 Doc-Heavy post-condition check で検証 (#349)
 - **`/rite:pr:fix` に PR URL / comment URL 直渡しサポート** — `/rite:pr:fix` が PR 番号に加え PR URL / コメント URL 引数を受け付け、`/verified-review` など外部レビューツールのコメントから直接 findings をパースして fix ループに投入可能に。受理可能な URL 形式は trailing path (`/files`)、query string (`?tab=files`)、fragment (`#diff-...`) を含み、すべて Phase 1.0 で正規化される。対象コメントには最低 4 カラム (optional 5 列目 confidence) の markdown テーブルが必要。詳細な引数仕様・ヘッダー検出キーワード・severity 別名マッピングは `plugins/rite/commands/pr/fix.md` Phase 1.0 / Phase 1.2 best-effort parse セクションを参照 (#349)
-- **`[fix:pushed-wm-stale]` 出力パターン** — `/rite:pr:fix` が Phase 4.5 work memory 更新で soft failure を検出した場合に新規出力する。発火条件 (例: `current_body` 空 / `issue_number` 抽出失敗 / PATCH 4xx/5xx / `pr_body` grep IO エラー / branch grep IO エラー / `gh api comments` 取得失敗 / Python script 異常終了 / work memory body 破損検出 / mktemp 失敗)。`reason` フィールドの取りうる値の完全な一覧は `commands/pr/fix.md` Phase 8.1 の reason 表を参照。`git diff` 失敗は別経路で hard fail-fast (`exit 1`) として扱われ、`[fix:pushed-wm-stale]` ではなく `[fix:error]` として surface する。caller (`/rite:issue:start` review-fix loop) は `[fix:pushed-wm-stale]` を **silent に `[fix:pushed]` 扱いしてはならず**、必ず `AskUserQuestion` で警告を提示してユーザーに「stale work memory のまま継続するか、手動修復のため中断するか」を選択させる義務を負う。詳細な caller セマンティクスは `commands/pr/fix.md` Phase 8.1 を参照 (#349)
+- **`[fix:pushed-wm-stale]` 出力パターン** — `/rite:pr:fix` が Phase 4.5 work memory 更新で soft failure を検出した場合に新規出力する。発火条件は `commands/pr/fix.md` Phase 8.1 の reason 表と 1:1 対応しており、以下に自然言語表現と `reason` ラベルの mapping を示す。完全な一覧は reason 表参照:
+    - `current_body` 空 → `current_body_empty`
+    - `issue_number` 抽出失敗 → `issue_number_not_found`
+    - PATCH 4xx/5xx → `patch_failed`
+    - `pr_body` grep IO エラー → `pr_body_grep_io_error` (stderr tempfile mktemp 失敗は `mktemp_failed_pr_body_grep_err`)
+    - branch grep IO エラー → `branch_grep_io_error` (同上 `mktemp_failed_branch_grep_err`)
+    - `gh api comments` 取得失敗 → `gh_api_comments_fetch_failed` (同上 `mktemp_failed_gh_api_err`)
+    - Python script 異常終了 → `python_unexpected_exit_$py_exit` / `python_sentinel_detected`
+    - work memory body 破損検出 → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
+    - mktemp 失敗 → `mktemp_failed_*` 系統 (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, 他)
+
+  `git diff` 失敗は別経路で hard fail-fast (`exit 1`) として扱われ、`[fix:pushed-wm-stale]` ではなく `[fix:error]` として surface する。caller (`/rite:issue:start` review-fix loop) は `[fix:pushed-wm-stale]` を **silent に `[fix:pushed]` 扱いしてはならず**、必ず `AskUserQuestion` で警告を提示してユーザーに「stale work memory のまま継続するか、手動修復のため中断するか」を選択させる義務を負う。詳細な caller セマンティクスは `commands/pr/fix.md` Phase 8.1 を参照 (#349)
+
+### 修正
+
+- **`review.md` の Part A 抽出バグ修正** — Phase 4.3 での `_reviewer-base.md` の Part A 抽出が `## Cross-File Impact Check`（`## Reviewer Mindset` と `## Confidence Scoring` の間にあるセクション）を完全にドロップしていた不具合を修正。抽出範囲を「document 先頭 ~ `## Input` heading (exclusive)」に変更し、5 つの必須 cross-file consistency check（削除/リネーム済み export、変更された config key、変更された interface contract、i18n key consistency、keyword list consistency）が **初めて** reviewer agent に届くようになった (#357)
+- **reviewer agent の tools/model frontmatter drift cleanup** — 全 13 reviewer agent (`api`, `code-quality`, `database`, `dependencies`, `devops`, `error-handling`, `frontend`, `performance`, `prompt-engineer`, `security`, `tech-writer`, `test`, `type-design`) から `tools:` frontmatter を削除、4 reviewer (`code-quality`, `error-handling`, `performance`, `type-design`) から `model: sonnet` を削除。現状は `subagent_type: general-purpose` 経由のため runtime で ignore されているが、Phase B で named subagent 化した瞬間に副作用 (tech-writer が Bash を失い Doc-Heavy PR Mode 全 blocking 化 / 4 reviewer が opus ユーザーに対して sonnet 固定で品質劣化) を引き起こすリスクがあったため、先行 cleanup で副作用ゼロに保つ (#357)
+- **Phase 5.1.1 post-condition check 追加** — `review.md` Phase 5.1.1 で verification mode 時に各 reviewer が `### 修正検証結果` テーブルを出力しているかを検証する post-condition を追加。欠落時は verification テンプレートを明示的に再送して 1 回まで retry、それでも欠落する場合は `要修正` に昇格して該当 reviewer の指摘を全件 blocking 扱い。reviewer が検証出力を silent skip して `finding_count == 0` 誤判定で silent pass する経路を閉塞する (#357)
+- **`commands/pr/fix.md` Phase 8.1 reason 表 drift 修正** — Phase 4.5.1 / 4.5.2 で実際に emit される 28 件の `WM_UPDATE_FAILED` reason を全て reason 表に登録 (従来は 12 件のみ登録、16 件未登録で drift)。評価順テーブル行 2 の括弧内固定列挙を撤廃し「reason 表参照」に置換、二重 drift を解消。DoD: `grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' plugins/rite/commands/pr/fix.md | sed 's/.*reason=//' | sort -u` の出力が Phase 8.1 reason 表の reason ラベル集合と完全一致 (#357, PR #350 C2 吸収)
 
 ## [0.3.10] - 2026-04-04
 

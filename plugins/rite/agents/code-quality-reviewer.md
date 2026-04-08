@@ -1,11 +1,6 @@
 ---
 name: code-quality-reviewer
 description: Reviews code for quality issues (duplication, naming, error handling, structure, unnecessary fallbacks)
-model: sonnet
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Code Quality Reviewer

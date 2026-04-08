@@ -2,12 +2,6 @@
 name: security-reviewer
 description: Reviews code for security vulnerabilities (injection, auth, data handling)
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
-  - WebSearch
-  - WebFetch
 ---
 
 # Security Reviewer

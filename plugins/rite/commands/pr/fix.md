@@ -2836,7 +2836,7 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
 | 1 (最優先) | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した (本 Issue #350 検証付きレビュー H-2 / H-3 / H-4) | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
-| 2 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`issue_number_not_found` / `pr_body_tmp_empty_or_missing` / `current_body_empty` / `patch_failed` / `gh_api_comments_fetch_failed` / `pr_body_grep_io_error` / `branch_grep_io_error` のいずれか) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
+| 2 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 3 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
 | 4 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
 | 5 | All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
@@ -2850,19 +2850,37 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 
 **`reason` フィールドの取りうる値** (Phase 4.5.1 / 4.5.2 で発火する経路の網羅):
 
+> **完全性保証**: 本表は fix.md 内で `echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=..."` として emit されるすべての reason を網羅する。DoD 検証スクリプト: `comm -3 <(grep -oE 'reason=[a-z_][a-z_0-9]*' plugins/rite/commands/pr/fix.md | sed 's/reason=//' | sort -u | grep -vE '^(mktemp_failed_override_err|wc_io_error|paste_io_error|mktemp_failed_reply_tmpfile|cat_redirection_failed|reply_tmpfile_empty|mktemp_failed_report_tmpfile|mktemp_failed_issue_body_tmpfile|script_exit|empty_stdout|missing_issue_url)$') <(awk '/^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*/); print substr($0, RSTART+1, RLENGTH-1)}' plugins/rite/commands/pr/fix.md | sort -u)` が空 (WM_UPDATE_FAILED 系 reason の diff が完全一致)。
+
 | reason | 発生 Phase | 発生条件 |
 |--------|------------|----------|
-| `issue_number_not_found` | Phase 4.5.1 | PR 本文に `Closes/Fixes/Resolves #N` がなく、ブランチ名にも `issue-N` がない |
+| `mktemp_failed_pr_body_tmp` | Phase 4.5.1 | PR body 退避用 tempfile の mktemp が失敗 (disk full / permission denied) |
 | `pr_body_tmp_empty_or_missing` | Phase 4.5.1 | `cat <<PRBODY_EOF > pr_body_tmp` 後の `[ -s pr_body_tmp ]` 検査が失敗 (PR body が空 or write 失敗) |
+| `mktemp_failed_pr_body_grep_err` | Phase 4.5.1 | PR 本文 grep の stderr 退避 tempfile の mktemp が失敗 |
 | `pr_body_grep_io_error` | Phase 4.5.1 | PR 本文 grep が IO/権限/構文エラー (rc=2) で失敗 |
+| `mktemp_failed_branch_grep_err` | Phase 4.5.1 | branch 名抽出 grep の stderr 退避 tempfile の mktemp が失敗 |
 | `branch_grep_io_error` | Phase 4.5.1 | branch 名抽出 grep が IO/権限エラーで失敗 |
+| `issue_number_not_found` | Phase 4.5.1 | PR 本文に `Closes/Fixes/Resolves #N` がなく、ブランチ名にも `issue-N` がない |
+| `mktemp_failed_gh_api_err` | Phase 4.5.2 | `gh api` stderr 退避用 tempfile の mktemp が失敗 |
 | `gh_api_comments_fetch_failed` | Phase 4.5.2 | `gh api ... /issues/{issue_number}/comments` が exit != 0 で失敗 (401/403/404/timeout/5xx 等) |
 | `mktemp_failed_jq_late_err` | Phase 4.5.2 | jq stderr 退避用 tempfile の mktemp が失敗 (M-1/L-4 対応) |
 | `jq_comment_id_extract_failed` | Phase 4.5.2 | `jq -r '.id // empty'` が exit != 0 で失敗 (jq バイナリ異常 / OOM / parse error) |
 | `jq_current_body_extract_failed` | Phase 4.5.2 | `jq -r '.body // empty'` が exit != 0 で失敗 (同上) |
+| `current_body_empty` | Phase 4.5.2 | gh api 成功だが `.body` フィールド抽出が空 |
+| `mktemp_failed_base_branch_grep_err` | Phase 4.5.2 | base_branch 抽出 grep の stderr 退避 tempfile の mktemp が失敗 |
+| `base_branch_grep_io_error` | Phase 4.5.2 | rite-config.yml `base:` 値の grep 抽出が IO/権限エラーで失敗 |
 | `mktemp_failed_sed_err` | Phase 4.5.2 | base_branch 抽出 sed の stderr 退避 tempfile の mktemp が失敗 (M-3 対応) |
 | `sed_extract_base_branch_failed` | Phase 4.5.2 | rite-config.yml `base:` 値の sed 抽出が IO/binary エラーで失敗 (sed 成功で値が空の場合は legitimate develop fallback で WM_UPDATE_FAILED は emit しない) |
-| `current_body_empty` | Phase 4.5.2 | gh api 成功だが `.body` フィールド抽出が空 |
+| `mktemp_failed_diff_stderr_tmp` | Phase 4.5.2 | `git diff` stderr 退避用 tempfile の mktemp が失敗 |
+| `mktemp_failed_body_tmp` | Phase 4.5.2 | 更新後 body 保存用 tempfile の mktemp が失敗 |
+| `mktemp_failed_tmpfile` | Phase 4.5.2 | 汎用 tempfile の mktemp が失敗 (Python scratch 等) |
+| `mktemp_failed_files_tmp` | Phase 4.5.2 | 変更ファイル一覧退避用 tempfile の mktemp が失敗 |
+| `mktemp_failed_history_tmp` | Phase 4.5.2 | 履歴退避用 tempfile の mktemp が失敗 |
+| `python_sentinel_detected` | Phase 4.5.2 | Python スクリプトが sentinel 文字列を出力 (work memory body 更新前の内部アサーション失敗) |
+| `python_unexpected_exit_$py_exit` | Phase 4.5.2 | Python スクリプトが非ゼロ exit code で異常終了 (`$py_exit` は実測 exit code に展開) |
+| `wm_body_empty_or_too_short` | Phase 4.5.2 | 更新後 work memory body が空 or 最小長 (10 bytes) 未満で棄却 |
+| `wm_header_missing` | Phase 4.5.2 | 更新後 work memory body に `📜 rite 作業メモリ` header が欠落 |
+| `wm_body_too_small` | Phase 4.5.2 | 更新後 work memory body が元サイズの 50% 未満で棄却 (大量削除検出) |
 | `patch_failed` | Phase 4.5.2 | `jq \| gh api PATCH` pipeline が失敗 |
 
 **`[fix:pushed-wm-stale]` の caller 側 semantics**: `/rite:issue:start` review-fix loop は本 pattern を受け取った場合、push 自体は完了しているが work memory が stale であることを認識し、次のいずれかを実行する: (a) 手動介入を促す (推奨)、(b) 警告ログを出した上で次の iteration に進む (loop 継続)。silent に `[fix:pushed]` 扱いしてはならない。

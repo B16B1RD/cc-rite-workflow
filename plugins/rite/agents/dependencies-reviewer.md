@@ -2,12 +2,6 @@
 name: dependencies-reviewer
 description: Reviews package dependencies, versions, and supply chain security
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
-  - WebSearch
-  - WebFetch
 ---
 
 # Dependencies Reviewer

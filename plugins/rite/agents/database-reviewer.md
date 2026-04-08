@@ -2,10 +2,6 @@
 name: database-reviewer
 description: Reviews schema design, queries, migrations, and data operations
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Database Reviewer

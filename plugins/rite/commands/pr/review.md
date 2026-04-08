@@ -1235,8 +1235,12 @@ Execute parallel reviews using sub-agents (defined in the `agents/` directory) c
 
    **Part A — Shared reviewer principles** (from `_reviewer-base.md`):
    - Load `{plugin_root}/agents/_reviewer-base.md` with the Read tool
-   - Extract the `## Reviewer Mindset` and `## Confidence Scoring` sections (everything between these headings and the next `##` heading or `## Input` section)
-   - These sections define the universal principles all reviewers must follow
+   - Extract **all sections** from `_reviewer-base.md` between the document start and the `## Input` heading (exclusive). This includes all of the following sections:
+     - `## Reviewer Mindset`
+     - `## Cross-File Impact Check`
+     - `## Confidence Scoring`
+   - **Important**: Do NOT extract only `## Reviewer Mindset` and `## Confidence Scoring` individually — this would drop `## Cross-File Impact Check` entirely (the section exists between them in document order). Extracting the contiguous range from the document start to `## Input` ensures all shared principles reach the reviewer agent.
+   - These sections define the universal principles all reviewers must follow (mindset, mandatory cross-file impact checks, and confidence scoring framework)
 
    **Part B — Agent-specific identity** (from the agent file):
    - From the loaded agent file, extract the body content **excluding**:
@@ -1541,6 +1545,62 @@ Task results are retained in conversation context with internal format (reviewer
 When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MISSED_CRITICAL (all blocking). FIXED findings recorded in Fix Verification Summary only.
 
 **フルレビュー由来の新規指摘**: verification mode では、検証レビューに加えてフルレビュー（Phase 4.5 の通常テンプレート）も実施される。フルレビューで検出された新規指摘は、重要度に関わらずすべて blocking 扱いとする。これは初回フルレビューと同等の基準を適用するためであり、verification mode であることを理由に指摘を非 blocking に降格してはならない。
+
+##### 5.1.1.1 Post-Condition Check: Verification Result Table Presence
+
+**Execution condition**: `review_mode == "verification"` (always enforced when verification mode is active).
+
+**Skip condition**: `review_mode == "full"` — skip this post-condition entirely.
+
+**Purpose**: verification mode では、各 reviewer が Phase 4.5.1 の verification テンプレートに従って `### 修正検証結果` テーブルを出力することが契約である。このテーブルが欠落している場合、reviewer は「前回指摘の修正検証」を **silent に skip している可能性が高く**、結果として `finding_count == 0` と誤判定されて silent pass する経路が成立する（本 Phase 5.1.1 post-condition 設置の根本目的）。Phase 5.1.3 の Doc-Heavy PR Mode post-condition と同じ構造で、silent non-compliance を検出する。
+
+**Verification step**: Collect all raw review outputs for the current cycle. For each reviewer output, search for the `### 修正検証結果` heading **in multiline mode** (since reviewer output is a multi-line markdown document):
+
+```
+(?m)^### 修正検証結果\s*$
+```
+
+**Judgment matrix**:
+
+| Condition | Classification | Action |
+|-----------|---------------|--------|
+| すべての reviewer 出力に `### 修正検証結果` heading が含まれている | `passed` | そのまま次の Phase (5.1.2) へ |
+| 1 人以上の reviewer 出力に `### 修正検証結果` heading が欠落 | `warning` | 下記の retry / fail 判定へ |
+
+**Retry / fail decision** (when `warning`):
+
+`verification_post_condition_retry_count` を本サイクル内で追跡する（初期値 `0`、再実行ごとに +1）。
+
+| Retry count | Action |
+|-------------|--------|
+| `0` (初回検出) | 該当 reviewer(s) に対して verification テンプレートを明示的に再送して再実行 (`+1`)。**再実行時の prompt には「`### 修正検証結果` テーブルを必ず出力すること、Phase 4.5.1 の verification テンプレートに従うこと」を strict 要件として追加する**。 |
+| `>= 1` (再実行後も欠落) | `verification_post_condition: fail` フラグを set、overall assessment を `要修正` に昇格、stderr に下記 ERROR を出力して該当 reviewer 由来の指摘を **全件 blocking 扱い**。silent pass 経路を完全に閉塞する。 |
+
+**再実行は同一サイクル内で 1 回まで**。2 回目以降は reviewer agent 自体の問題とみなし、fail として扱う。
+
+**WARNING (初回検出時、stderr)**:
+
+```
+WARNING: verification mode で reviewer の `### 修正検証結果` テーブルが欠落しています。
+該当 reviewer: {reviewer_list}
+Expected: Phase 4.5.1 の verification テンプレートに従い、「### 修正検証結果」heading と判定テーブル
+  (| # | 重要度 | ファイル:行 | 内容 | 判定 | 備考 |) を必ず出力する。
+Action: 当該 reviewer(s) を verification テンプレート明示的再送で 1 回だけ retry します。
+```
+
+**ERROR (retry 後も欠落、stderr)**:
+
+```
+ERROR: verification mode で reviewer の `### 修正検証結果` テーブルが retry 後も欠落しています。
+該当 reviewer: {reviewer_list}
+これは reviewer が前回指摘の修正検証を silent に skip している可能性があり、
+silent pass による品質劣化を防ぐため、本レビューは要修正として扱います。
+Action: 手動で当該 reviewer の出力を確認し、verification テンプレートへの準拠を強制してください。
+```
+
+**Post-condition の Phase 5.1.3 との関係**: Phase 5.1.3 は Doc-Heavy PR Mode（tech-writer 限定、カテゴリ別 META 行を対象）、Phase 5.1.1.1 は verification mode 全 reviewer（`### 修正検証結果` テーブル構造を対象）。両者は独立に動作し、同一レビューで両方発火する可能性がある（その場合は overall assessment は最も厳しい状態 = `要修正` に降格する）。
+
+**この post-condition 設置の根拠**: Phase 4.5.1 の verification テンプレートは `### 修正検証結果` の出力を義務付けているが、reviewer agent body が system prompt として与えられている現状では、reviewer が Phase 4.5 (full) の出力のみに集中して Phase 4.5.1 (verification) の出力を silent skip する経路が実証されている。Phase 5.1.1.1 は **契約違反を検出する post-condition** として、この silent skip 経路を閉塞する。
 
 #### 5.1.2 Finding Stability Analysis
 
