@@ -74,6 +74,38 @@ For each bash error handling construct identified in Step 5:
 - **Unchecked command substitution**: `var=$(command)` without `set -e` silently captures an empty string on failure. Check if the variable is validated before use
 - **`local` masking exit code**: `local var=$(command)` suppresses the non-zero exit code even WITH `set -e` — the `local` builtin always returns 0, masking the substitution's failure. This is one of the most dangerous bash traps because `set -euo pipefail` provides false reassurance. Safe pattern: `local var; var=$(command)` (two separate statements)
 - **Pipeline masking**: In `cmd1 | cmd2`, only `cmd2`'s exit code is checked by default. Without `set -o pipefail`, `cmd1` failures are invisible
+- **stderr/stdout mixing that corrupts downstream parsing**: `command 2>&1 | parser` merges stderr into stdout, which then gets fed into a parser (`jq`, `awk`, `grep -o`, etc.) that expects clean structured output. When the command prints anything to stderr — a warning, a deprecation notice, an auth prompt, an API error — the merged output is no longer valid input for the parser, and the parser either (a) silently emits garbage, (b) exits non-zero with an opaque error, or (c) partially parses before failing, leaving downstream state inconsistent. Especially dangerous with JSON-producing commands whose parser (`jq`) has no tolerance for non-JSON prefix/suffix bytes.
+
+  **Example: `gh api ... 2>&1 | jq` corrupts JSON parsing**
+
+  ```bash
+  # ❌ ANTI-PATTERN: stderr (auth warnings, rate-limit notices) merges into stdout
+  repo_info=$(gh api repos/owner/repo 2>&1 | jq -r '.default_branch')
+
+  # When gh emits a warning like "gh: authentication required" to stderr,
+  # the merged output becomes:
+  #   gh: authentication required
+  #   {"default_branch": "main", ...}
+  # jq then fails with: parse error: Invalid numeric literal at line 1, column 4
+  # OR silently returns empty if jq tolerates the prefix and the field is absent.
+  ```
+
+  **Fix patterns** (pick the one appropriate to the call site):
+
+  ```bash
+  # ✅ Pattern A: Redirect stderr to a separate file for inspection
+  gh api repos/owner/repo 2>/tmp/gh.err | jq -r '.default_branch'
+  [ -s /tmp/gh.err ] && echo "WARNING: gh stderr output: $(cat /tmp/gh.err)" >&2
+
+  # ✅ Pattern B: Capture stdout first, then parse
+  output=$(gh api repos/owner/repo) || { echo "ERROR: gh api failed" >&2; exit 1; }
+  default_branch=$(jq -r '.default_branch' <<< "$output")
+
+  # ✅ Pattern C: Use gh's --jq flag to parse inside gh (stderr stays separate)
+  default_branch=$(gh api repos/owner/repo --jq '.default_branch')
+  ```
+
+  **Detection heuristic**: `Grep` for `2>&1 | jq`, `2>&1 | awk`, `2>&1 | python -c`, and similar patterns in the diff. Confidence 90+ when the upstream command is known to print to stderr under common conditions (auth warnings, rate limits, deprecation notices). Confidence 80+ when the upstream command is a network/API call whose failure modes include stderr output.
 
 ### Step 7: Cross-File Impact Check
 
