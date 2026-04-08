@@ -2663,14 +2663,46 @@ Post Issue list to PR comment (`mktemp` + `--body-file`). Output completion repo
 
 ---
 
+## Workflow Incident Emit Helper (#366)
+
+When this skill encounters internal failures that fall back to alternative behavior (e.g., reviewer skill load failure → built-in profile fallback, comment post failure → text-only display), emit a workflow incident sentinel so the orchestrator (`/rite:issue:start` Phase 5.4.4.1) can detect it and auto-register an Issue.
+
+**When to emit**:
+
+| Failure Path | Sentinel Type | Details |
+|--------------|---------------|---------|
+| Reviewer sub-agent skill load failure (fallback to built-in profile in Phase 2) | `skill_load_failure` | `rite reviewer skill load failure: {reviewer_type}` |
+| Comment post failure in Phase 6 (gh api PATCH/POST returns error) | `hook_abnormal_exit` | `rite:pr:review comment post failure` |
+| Review execution error that user chose to skip | `manual_fallback_adopted` | `rite:pr:review execution error skipped by user` |
+
+**How to emit**:
+
+```bash
+# Step 1: emit sentinel via hook script (silent capture, non-blocking via || true)
+sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+  --type {sentinel_type} \
+  --details "{specific failure description}" \
+  --root-cause-hint "{optional hypothesis}" \
+  --pr-number {pr_number} 2>/dev/null) || true
+
+# Step 2: also echo to stderr for human-visible debugging
+[ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
+```
+
+**Step 3 — Sentinel Visibility (LLM responsibility, cycle 1 review C2 fix)**: Because `review.md` runs in `context: fork`, the bash subprocess stdout is NOT visible to the orchestrator. **The review.md LLM MUST include the captured `sentinel_line` value verbatim in its final response message text** so Phase 5.4.4.1 in `/rite:issue:start` can detect it via context grep.
+
+`|| true` ensures non-blocking behavior — emission failure does not abort the review flow. See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full specification.
+
+> **Note**: Sentinel emission is bounded by `workflow_incident.enabled` in `rite-config.yml`. If disabled, the orchestrator simply ignores the sentinel.
+
 ## Error Handling
 
 | Error | Action |
 |--------|------|
 | PR not found | Check with `gh pr list` and re-run with the correct number |
-| Skill file load failure | Fallback using built-in profiles |
-| Review execution error | Choose skip/retry/cancel |
-| Comment post failure | Display review results as text |
+| Skill file load failure | Fallback using built-in profiles (sentinel emit via Workflow Incident Emit Helper above) |
+| Review execution error | Choose skip/retry/cancel (sentinel emit on skip via Workflow Incident Emit Helper above) |
+| Comment post failure | Display review results as text (sentinel emit via Workflow Incident Emit Helper above) |
 
 ---
 

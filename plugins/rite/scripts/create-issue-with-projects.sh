@@ -26,7 +26,7 @@
 #       }
 #     },
 #     "options": {
-#       "source": "interactive|pr_review|pr_fix|cleanup|lint|parent_routing|xl_decomposition",
+#       "source": "interactive|pr_review|pr_fix|cleanup|lint|parent_routing|xl_decomposition|workflow_incident",
 #       "non_blocking_projects": true  # default: true
 #     }
 #   }
