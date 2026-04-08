@@ -420,49 +420,60 @@ all_files_excluded = (doc_lines == 0
 **`all_files_excluded` の bash 実装パターン** (Claude が任意実装する際の標準テンプレート):
 
 ```bash
-# Phase 1.1 で取得済みの files 配列 (gh pr view --json files の出力) を bash 配列に変換
-# gh pr view --json files が返すパスは **repository root 相対**形式 (例: "plugins/rite/commands/pr/fix.md")
-# changed_file_paths 配列を明示的に宣言し、処理前に必ず set しておく (Claude は ${pr_view_files_json} を
-# Phase 1.1 のコンテキストから読み戻す)
-mapfile -t changed_file_paths < <(printf '%s' "${pr_view_files_json}" | jq -r '.files[].path')
+# Step 1: 変更ファイル一覧を bash 配列として取得
+# gh pr view --json files を Phase 1.2.7 内で直接実行し、jq で path だけを抽出する
+# (Phase 1.1 で同じ API を呼んでいるが、結果を bash 変数として retain する仕組みがないため、
+#  Phase 1.2.7 で独立に呼び直す。重複 API call はネットワーク 1 往復分のコストのみで silent failure リスクを排除できる)
+# gh pr view --json files が返すパスは repository root 相対形式 (例: "plugins/rite/commands/pr/fix.md")
+mapfile -t changed_file_paths < <(gh pr view "{pr_number}" --json files --jq '.files[].path')
 
-# exclusion patterns に該当する変更ファイル数をカウント
-excluded_count=0
-total_count=0
-for f in "${changed_file_paths[@]}"; do
-  total_count=$((total_count + 1))
-  # gh は repository root 相対パスを返すため、まず plugins/rite/ prefix を剥がして正規化する
-  # ("plugins/rite/commands/pr/fix.md" → "commands/pr/fix.md")
-  # prefix がなければ文字列は不変。以降は「rite plugin root 相対」空間で照合する
-  f_rel="${f#plugins/rite/}"
-  case "$f_rel" in
-    # rite plugin の commands/skills/agents 配下 (.md / .mdx)
-    # case の glob `*` はディレクトリ区切りを跨がないため、深いネスト対応として 5 階層まで列挙
-    # (skills/reviewers/references/*.md のような 4 階層 + ファイル名)
-    commands/*.md|commands/*/*.md|commands/*/*/*.md|commands/*/*/*/*.md|commands/*/*/*/*/*.md| \
-    commands/*.mdx|commands/*/*.mdx|commands/*/*/*.mdx|commands/*/*/*/*.mdx|commands/*/*/*/*/*.mdx| \
-    skills/*.md|skills/*/*.md|skills/*/*/*.md|skills/*/*/*/*.md|skills/*/*/*/*/*.md| \
-    skills/*.mdx|skills/*/*.mdx|skills/*/*/*.mdx|skills/*/*/*/*.mdx|skills/*/*/*/*/*.mdx| \
-    agents/*.md|agents/*/*.md|agents/*/*/*.md|agents/*/*/*/*.md|agents/*/*/*/*/*.md| \
-    agents/*.mdx|agents/*/*.mdx|agents/*/*/*.mdx|agents/*/*/*/*.mdx|agents/*/*/*/*/*.mdx| \
-    i18n/*|i18n/*/*|i18n/*/*/*|i18n/*/*/*/*)
-      excluded_count=$((excluded_count + 1))
-      ;;
-  esac
-done
-
-# Self-only 判定: 全ての変更ファイルが exclusion patterns に該当する
-if [ "$excluded_count" -eq "$total_count" ] && [ "$doc_lines" -eq 0 ] && [ "$total_diff_lines" -gt 0 ]; then
-  all_files_excluded=true
-else
+# fail-fast guard: gh pr view が失敗 / 空配列の場合は all_files_excluded を false で固定 (silent false positive 防止)
+if [ ${#changed_file_paths[@]} -eq 0 ]; then
+  echo "WARNING: gh pr view --json files returned 0 files. Cannot compute all_files_excluded; defaulting to false." >&2
   all_files_excluded=false
+  # この場合、後続の Determination block はそのまま実行されるが、`doc_heavy_pr` は通常の ratio 計算で決定される
+else
+  # Step 2: exclusion patterns に該当する変更ファイル数をカウント
+  excluded_count=0
+  total_count=0
+  for f in "${changed_file_paths[@]}"; do
+    total_count=$((total_count + 1))
+    # rite plugin 配下か判定: prefix が一致する場合のみ exclusion 候補
+    # 非 rite-plugin repo (汎用プロジェクト) で同名 commands/skills/agents/i18n ディレクトリを持つ場合の
+    # silent misclassification 防止 (これがないと commands/foo.md 等が勝手に exclusion されてしまう)
+    if [[ "$f" == plugins/rite/* ]]; then
+      f_rel="${f#plugins/rite/}"
+      case "$f_rel" in
+        # rite plugin の commands/skills/agents 配下 (.md / .mdx)
+        # case の glob `*` はディレクトリ区切りを跨がないため、深いネスト対応として 5 階層まで列挙
+        commands/*.md|commands/*/*.md|commands/*/*/*.md|commands/*/*/*/*.md|commands/*/*/*/*/*.md| \
+        commands/*.mdx|commands/*/*.mdx|commands/*/*/*.mdx|commands/*/*/*/*.mdx|commands/*/*/*/*/*.mdx| \
+        skills/*.md|skills/*/*.md|skills/*/*/*.md|skills/*/*/*/*.md|skills/*/*/*/*/*.md| \
+        skills/*.mdx|skills/*/*.mdx|skills/*/*/*.mdx|skills/*/*/*/*.mdx|skills/*/*/*/*/*.mdx| \
+        agents/*.md|agents/*/*.md|agents/*/*/*.md|agents/*/*/*/*.md|agents/*/*/*/*/*.md| \
+        agents/*.mdx|agents/*/*.mdx|agents/*/*/*.mdx|agents/*/*/*/*.mdx|agents/*/*/*/*/*.mdx| \
+        i18n/*|i18n/*/*|i18n/*/*/*|i18n/*/*/*/*)
+          excluded_count=$((excluded_count + 1))
+          ;;
+      esac
+    fi
+    # 非 rite-plugin path (例: src/auth.ts, commands/foo.md (汎用 repo)) は excluded にカウントしない
+  done
+
+  # Step 3: Self-only 判定: 全ての変更ファイルが rite plugin 配下の exclusion patterns に該当する
+  if [ "$excluded_count" -eq "$total_count" ] && [ "$doc_lines" -eq 0 ] && [ "$total_diff_lines" -gt 0 ]; then
+    all_files_excluded=true
+  else
+    all_files_excluded=false
+  fi
 fi
 ```
 
 **実装上の注意**:
-- **Path 正規化**: `gh pr view --json files` は repository root 相対パス (例: `plugins/rite/commands/pr/fix.md`) を返すため、case 照合前に `f_rel="${f#plugins/rite/}"` で `plugins/rite/` prefix を剥がして rite plugin root 相対空間に正規化する。これにより case pattern は prefix を意識せず `commands/*.md` 形式で書ける
-- **`changed_file_paths` 配列の取得**: 冒頭の `mapfile -t changed_file_paths < <(printf '%s' "${pr_view_files_json}" | jq -r '.files[].path')` で明示的に bash 配列に変換する (`${pr_view_files_json}` は Phase 1.1 で `gh pr view --json ... files` の結果として取得したコンテキスト値)。これがないと `"${changed_file_paths[@]}"` の参照が未定義エラーまたは空ループになる
+- **Phase 1.1 と Phase 1.2.7 で `gh pr view --json files` を二重呼び出し**: Phase 1.1 の結果を bash 変数として retain する仕組み (`pr_view_files_json` 等) は context 依存で fragile なため、Phase 1.2.7 で独立に gh API を呼び直す。重複 API call のコストはネットワーク 1 往復分で許容範囲内。代わりに silent failure リスク (未定義変数 → 空配列 → false positive) を排除できる
+- **Path 正規化と rite-plugin scope check**: `if [[ "$f" == plugins/rite/* ]]; then ... fi` で rite plugin 配下か判定したうえで `f_rel="${f#plugins/rite/}"` を実行する。**この check がないと非 rite-plugin repo の `commands/foo.md` 等が誤 exclusion される silent misclassification が発生**するため必須
 - **`case` パターンの glob**: bash の **filename expansion ではなく case statement の pattern matching** で評価される (`*` はディレクトリ階層を 1 階層しか跨がない)。`plugins/rite/skills/reviewers/references/foo.md` のような 4 階層 + ファイル名の深いネストに対応するため、正規化後 `skills/reviewers/references/foo.md` = 3 階層 + ファイル名だが、将来のサブディレクトリ追加に備えて 5 階層まで列挙している
+- **fail-fast guard**: `gh pr view` 失敗 / 空配列のときは `all_files_excluded=false` を explicit set し、WARNING を stderr に出力する。silent false positive (空配列 → 全条件成立 → all_files_excluded=true) を防ぐ
 - bash 4+ では `shopt -s globstar` 後に `**/*.md` glob が利用可能だが、互換性のため case 文形式を採用
 - alternative 実装: Python script で `pathlib.PurePath` の `match()` を使う方が pattern 処理は簡潔。bash 実装と Python 実装のどちらを採用するかは Claude が呼び出し環境で判断する
 
@@ -1782,6 +1793,7 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
      (b) numstat_availability == "unavailable" の場合 (numstat 失敗の可視性のため、doc_heavy_pr の値に関係なく表示)
      非表示条件: 上記 (a) も (b) も成立せず、かつ tech-writer が reviewer に不在の場合のみ省略
      詳細: Phase 5.1.3 末尾の「Phase 5.4 表示責務の分離」段落を参照
+     numstat 失敗時は numstat 可用性行に unavailable が表示される (Doc-Heavy 判定自体は Phase 1.1 files 配列で完結するため skip されず通常通り実行される)
      verification mode template にも本セクションを含める (Phase 5.1.3 は review_mode に依存しないため、
      verification mode + Doc-Heavy PR の組み合わせでも post-condition check は実行される)
 

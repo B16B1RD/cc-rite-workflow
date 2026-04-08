@@ -209,7 +209,7 @@ CRITICAL: Screenshot Presence mismatch
 
 迷った場合は `fact-check.md` に委譲することで偽陰性（誤情報の見逃し）を防ぐ。
 
-### Implementation source not in this repository (silent skip 禁止)
+### Implementation source not in this repository (silent skip prohibited)
 
 ドキュメント PR が**別リポジトリ**の製品について書かれている場合 (例: monorepo の別 package、ドキュメント専用 repo)、cross-reference 検証を**silent に skip してはならない**。次のフォールバック順序を採用する:
 

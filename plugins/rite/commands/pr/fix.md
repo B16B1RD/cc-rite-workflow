@@ -283,14 +283,24 @@ skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 # signal 自体が 130/143/129 を set するとは限らない。`printf` 成功直後に SIGTERM が来ると
 # `rc=0` となり、上位の fix loop 制御が「正常終了」と誤判定する silent failure が起きる。
 # これを防ぐため signal 別 trap で明示的に exit 130/143/129 を返す。
+#
+# 重要 — EXIT trap の `rc=$?` capture (bash classic pitfall):
+# bash の EXIT trap が発火した時点で `$?` は元の exit status を保持するが、`_rite_fix_fastpath_cleanup`
+# 関数が実行されると関数最後のコマンド (`rm -f` または `[ ... ]` test) の戻り値で `$?` が**上書き**される。
+# したがって `trap '_rite_fix_fastpath_cleanup; exit $?' EXIT` は exit code が常に 0 (rm -f の戻り値) に
+# なる致命的バグを生む (本 bash block 内の全ての `exit 1` が silent に exit 0 に変換される)。
+# 必ず `rc=$?` で関数呼び出し**前**に元の exit code を変数に保存してから、cleanup → `exit $rc` する。
 handoff_committed=0
+# 関数責務: cleanup 操作のみを実行し、exit code を変更しない (関数の戻り値は trap action 側で無視される)。
+# exit code の決定は呼び出し側の trap action (`exit $rc` / `exit 130` 等) が責任を持つ。
+# 関数内に `exit` / `return <非ゼロ>` を追加してはならない (silent exit 0 regression を誘発する)。
 _rite_fix_fastpath_cleanup() {
   rm -f "$jq_err"
   if [ "$handoff_committed" = "0" ]; then
     rm -f "$body_file" "$author_file" "$skip_file"
   fi
 }
-trap '_rite_fix_fastpath_cleanup; exit $?' EXIT
+trap 'rc=$?; _rite_fix_fastpath_cleanup; exit $rc' EXIT
 trap '_rite_fix_fastpath_cleanup; exit 130' INT
 trap '_rite_fix_fastpath_cleanup; exit 143' TERM
 trap '_rite_fix_fastpath_cleanup; exit 129' HUP
@@ -1549,8 +1559,8 @@ if [[ -n "$comment_id" ]]; then
     tmpfile=$(mktemp)
     files_tmp=$(mktemp)
     history_tmp=$(mktemp)
-    # diff_stderr_tmp は通常 line 1526 で削除済みだが、SIGTERM/SIGINT で kill された場合に
-    # 上記 rm に到達しないリスクがあるため、念のため trap 対象にも追加 (defensive)
+    # diff_stderr_tmp は git diff 処理ブロック直後の明示的 rm で削除済みだが、SIGTERM/SIGINT で
+    # kill された場合に上記 rm に到達しないリスクがあるため、念のため trap 対象にも追加 (defensive)
     trap 'rm -f "$pr_body_tmp" "$body_tmp" "$tmpfile" "$files_tmp" "$history_tmp" "$diff_stderr_tmp"' EXIT INT TERM HUP
     printf '%s' "$current_body" > "$body_tmp"
     printf '%s' "$changed_files_md" > "$files_tmp"
@@ -1636,7 +1646,15 @@ with open(out_path, "w") as f:
       echo "ERROR: Python script detected git diff failure marker and refused to PATCH work memory silently." >&2
       # tmpfile の debug 参照を提供するため、exit 前に trap から tmpfile を除外して削除を防ぐ
       # (exit 時に trap が発火して tmpfile が消えると、下記の debug 案内が嘘になる)
-      trap 'rm -f "$pr_body_tmp" "$body_tmp" "$files_tmp" "$history_tmp" "$diff_stderr_tmp"' EXIT INT TERM HUP
+      # Fast Path と同じ signal 別 trap 構造に統一: SIGINT/SIGTERM/SIGHUP 受信時も明示的 exit code を返す
+      _rite_fix_py_exit2_cleanup() {
+        rm -f "$pr_body_tmp" "$body_tmp" "$files_tmp" "$history_tmp" "$diff_stderr_tmp"
+        # tmpfile は preserved for debug
+      }
+      trap 'rc=$?; _rite_fix_py_exit2_cleanup; exit $rc' EXIT
+      trap '_rite_fix_py_exit2_cleanup; exit 130' INT
+      trap '_rite_fix_py_exit2_cleanup; exit 143' TERM
+      trap '_rite_fix_py_exit2_cleanup; exit 129' HUP
       echo "  Debug: visible WARNING block was injected into the body file and preserved at: $tmpfile" >&2
       echo "  Backup of original work memory: $backup_file" >&2
       echo "  Action: git diff の失敗原因を解決後、再実行してください (上記 stderr の git diff WARNING を参照)" >&2
