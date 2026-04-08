@@ -7,6 +7,10 @@
 [![Version](https://img.shields.io/badge/version-0.3.10-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.3.10)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## ⚠️ Breaking Change (Unreleased)
+
+`/rite:pr:review` now invokes reviewer agents as **named subagents** (`rite:{reviewer_type}-reviewer`) instead of `general-purpose`. This gives reviewer discipline stronger system-prompt-level enforcement and activates per-reviewer `model` / `tools` frontmatter. Most noticeable effect: 9 reviewers are pinned to `model: opus`, so users previously running reviews on sonnet will see forced opus upgrade and a cost increase. See [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) for rationale, rollback scenarios, and opt-out instructions. Tracked in [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358).
+
 ## Why "Rite"?
 
 The name comes from the English word **rite**, meaning "ritual" or "ceremony." Issue-driven development — creating Issues, cutting branches, implementing, reviewing, and merging — is a set of practices that every team should follow as second nature. Rite Workflow embeds these practices as a repeatable ritual so they become the natural way you build software.

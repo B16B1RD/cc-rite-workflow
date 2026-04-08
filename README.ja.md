@@ -5,6 +5,10 @@
 [![Version](https://img.shields.io/badge/version-0.3.10-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.3.10)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## ⚠️ Breaking Change (Unreleased)
+
+`/rite:pr:review` の reviewer 呼び出しを `general-purpose` から **named subagent** (`rite:{reviewer_type}-reviewer`) 形式に切り替えました。これにより reviewer の役割定義が system prompt レベルで強制され、各 reviewer の `model` / `tools` frontmatter が実効化されます。最も顕著な影響: 9 個の reviewer agent が `model: opus` に pin されているため、これまで sonnet で `/rite:pr:review` を実行していたユーザーは強制 opus upgrade となりコストが増加します。詳細な背景、ロールバック手順、opt-out 方法は [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) を参照してください。トラッキング: [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358)。
+
 ## なぜ "Rite" なのか
 
 名前は英語の **rite**（儀式・作法）に由来しています。Issue を作り、ブランチを切り、実装し、レビューし、マージする — この一連の開発プラクティスを、チームが自然と身につける「お作法」として定着させたい。Rite Workflow はこれらのプラクティスを再現可能な儀式として組み込み、ソフトウェア開発の当たり前のやり方にします。
