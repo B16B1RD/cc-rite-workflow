@@ -424,7 +424,8 @@ doc_files_count_ratio = doc_files_count / total_files_count
 # "self-only" として記録する。
 # 注: 上記コメントの prefix `plugins/rite/` は意図的。汎用 repo (rite plugin 以外) で同名の
 # commands/skills/agents/i18n ディレクトリを持つ場合の silent misclassification 防止のため、
-# 下記 bash 実装 (line 444 の `[[ "$f" == plugins/rite/* ]]`) と同じ prefix で書く必要がある
+# 下記 bash 実装 (anchor: `# === all_files_excluded bash impl ===` 配下の `[[ "$f" == plugins/rite/* ]]`)
+# と同じ prefix で書く必要がある。anchor 参照は drift しやすいハードコード行番号を避けるための措置
 # 「分子から除外、分母には含める」方式では rite plugin self-only PR でも数学的には
 # doc_lines == 0 (= ratio 0) になり、「ratio 未満」と区別不能になるため、明示的なフラグで補完する
 all_files_excluded = (doc_lines == 0
@@ -434,7 +435,22 @@ all_files_excluded = (doc_lines == 0
 
 **`all_files_excluded` の bash 実装パターン** (Claude が任意実装する際の標準テンプレート):
 
+> **Anchor for cross-reference**: 上記 pseudo-code コメント (Self-only judgment) から本ブロックを参照する場合は、以下の `# === all_files_excluded bash impl ===` anchor を grep の起点として使う。ハードコードされた行番号は drift しやすいため使用しない。
+
 ```bash
+# === all_files_excluded bash impl ===
+#
+# 前提変数 (caller 側で必ず set すること、未 set の場合は下記の default 確保で fall back する):
+# - doc_lines       : Phase 1.2.7 pseudo-code で計算されるドキュメント変更行数 (整数)
+# - total_diff_lines: Phase 1.2.7 pseudo-code で計算される全変更行数 (整数)
+#
+# Default 値確保 (silent regression 防止):
+# 上記 2 変数が未定義の場合、bash の `[ "" -eq 0 ]` は "integer expression expected" で
+# 非 0 を返し AND 条件が常に false になる silent regression を引き起こす。
+# `${var:-0}` で必ず integer リテラルとして展開する。
+doc_lines="${doc_lines:-0}"
+total_diff_lines="${total_diff_lines:-0}"
+
 # Step 1: 変更ファイル一覧を bash 配列として取得
 # gh pr view --json files を Phase 1.2.7 内で直接実行し、jq で path だけを抽出する
 # (Phase 1.1 で同じ API を呼んでいるが、結果を bash 変数として retain する仕組みがないため、
@@ -454,7 +470,17 @@ gh_files_stdout=$(mktemp /tmp/rite-review-gh-files-out-XXXXXX) || {
   rm -f "$gh_files_stderr"
   exit 1
 }
-trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"' EXIT INT TERM HUP
+
+# trap 統一 (fix.md Fast Path block と同じ signal 別 explicit exit パターン):
+# - bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**
+#   (権威ある根拠: GNU bash manual "Signals" — trap action 後に bash は signal を consume し
+#    制御は次のコマンドに渡る。trap 内で `exit <code>` を呼ばないと cleanup 後に bash block が
+#    残りの命令 (mapfile / for / case) を不完全な状態で実行してしまう silent failure になる)
+# - signal 別 exit code: SIGINT=130 / SIGTERM=143 / SIGHUP=129 (POSIX 慣習: 128 + signal number)
+trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"' EXIT
+trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"; exit 130' INT
+trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"; exit 143' TERM
+trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"; exit 129' HUP
 
 if ! gh pr view "{pr_number}" --json files --jq '.files[].path' > "$gh_files_stdout" 2>"$gh_files_stderr"; then
   echo "ERROR: gh pr view --json files が失敗しました (exit != 0)" >&2
@@ -483,15 +509,16 @@ else
     if [[ "$f" == plugins/rite/* ]]; then
       f_rel="${f#plugins/rite/}"
       case "$f_rel" in
-        # rite plugin の commands/skills/agents 配下 (.md / .mdx)
+        # rite plugin の commands/skills/agents/i18n 配下 (.md / .mdx / 任意拡張子 for i18n)
         # case の glob `*` はディレクトリ区切りを跨がないため、深いネスト対応として 5 階層まで列挙
+        # i18n も commands/skills/agents と同じく 5 階層対称化 (将来のサブディレクトリ追加に備えた防御的拡張)
         commands/*.md|commands/*/*.md|commands/*/*/*.md|commands/*/*/*/*.md|commands/*/*/*/*/*.md| \
         commands/*.mdx|commands/*/*.mdx|commands/*/*/*.mdx|commands/*/*/*/*.mdx|commands/*/*/*/*/*.mdx| \
         skills/*.md|skills/*/*.md|skills/*/*/*.md|skills/*/*/*/*.md|skills/*/*/*/*/*.md| \
         skills/*.mdx|skills/*/*.mdx|skills/*/*/*.mdx|skills/*/*/*/*.mdx|skills/*/*/*/*/*.mdx| \
         agents/*.md|agents/*/*.md|agents/*/*/*.md|agents/*/*/*/*.md|agents/*/*/*/*/*.md| \
         agents/*.mdx|agents/*/*.mdx|agents/*/*/*.mdx|agents/*/*/*/*.mdx|agents/*/*/*/*/*.mdx| \
-        i18n/*|i18n/*/*|i18n/*/*/*|i18n/*/*/*/*)
+        i18n/*|i18n/*/*|i18n/*/*/*|i18n/*/*/*/*|i18n/*/*/*/*/*)
           excluded_count=$((excluded_count + 1))
           ;;
       esac
@@ -500,6 +527,8 @@ else
   done
 
   # Step 3: Self-only 判定: 全ての変更ファイルが rite plugin 配下の exclusion patterns に該当する
+  # 注: 上で `doc_lines="${doc_lines:-0}"` / `total_diff_lines="${total_diff_lines:-0}"` を実行済みのため、
+  # 未定義の場合でも integer 0 として正しく評価される (silent regression 防止)
   if [ "$excluded_count" -eq "$total_count" ] && [ "$doc_lines" -eq 0 ] && [ "$total_diff_lines" -gt 0 ]; then
     all_files_excluded=true
   else
@@ -671,7 +700,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    既に候補に含まれている場合は selection_type を `mandatory` に引き上げる (昇格パスは Phase 3.2 Selection Type テーブルの「昇格 priority」に従う)。fenced code block が検出されなかった場合は code-quality 追加自体を skip する (Phase 2.3 と同じ判定を二重に適用するわけではなく、Phase 2.2.1 段階での先取り追加のみ条件付き)
 3. **doc-heavy mode 指示の reviewer prompt 注入**: tech-writer のレビュー実行時に Phase 4.5 の prompt template に以下を注入する:
    - `{doc_heavy_pr}` placeholder に `true` を set
-   - `{doc_heavy_mode_instructions}` placeholder に `tech-writer.md` の `## Doc-Heavy PR Mode (Conditional)` セクション全体 (Activation 行から "Cross-Reference with internal-consistency.md" セクション末尾まで) を埋め込む
+   - `{doc_heavy_mode_instructions}` placeholder に `tech-writer.md` の `## Doc-Heavy PR Mode (Conditional)` heading から **down to (but excluding) the next `##` heading** までを埋め込む (Phase 4.5 placeholder 表の構造的ルールと**完全一致**。drift 防止のため両者は同じ抽出ルールに統一されている)
 
    **必須含有性 check** (silent drift 防止 — tech-writer.md の章立て改修時の breaking change 早期検出):
 
@@ -1375,7 +1404,7 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 
 **適用条件**: `finding_count` の値に関係なく **常に実施** する (`finding_count == 0` でも `finding_count >= 1` でも同じ)。
 
-tech-writer の出力に以下のいずれかの META 行が含まれているかを検証する (`(?:^|<br\s*/?>|[\s|>(])` を行頭 anchor として multiline mode で検索):
+tech-writer の出力に以下のいずれかの META 行が含まれているかを検証する。**正規表現は必ず multiline mode (`(?m)`) で実行**: `(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:` を行頭 anchor として検索する。`(?m)` を明示する理由は、tech-writer が META 行をテーブルセル内ではなくテーブル直後の段落 `- META: ...` 形式で書いた場合、行頭 `^` が multiline mode 無効ではファイル先頭のみを指して検出漏れになるため。Step 4 の正規表現も同じ理由で `(?m)` を明示している (drift 防止):
 - (a) `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` (finding_count == 0 の場合)
 - (b) `META: All 5 verification categories executed. Findings below.` (finding_count >= 1 の場合)
 - (c) `META: Cross-Reference partially skipped` (外部参照スキップ、Step 4 で扱う)

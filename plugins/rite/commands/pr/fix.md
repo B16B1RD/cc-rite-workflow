@@ -7,7 +7,7 @@ context: fork
 
 ## Contract
 **Input**: PR number, review findings from `/rite:pr:review`, `.rite-flow-state` with `phase: phase5_fix` (e2e flow)
-**Output**: `[fix:pushed]` | `[fix:issues-created:{n}]` | `[fix:replied-only]` | `[fix:error]`
+**Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:issues-created:{n}]` | `[fix:replied-only]` | `[fix:error]`
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
 
@@ -469,16 +469,18 @@ handoff_committed=1
        5 列目以降の値は破棄されます。Confidence 列を使うにはヘッダー行に
        'confidence' / '信頼度' / 'conf' / 'score' / '確信度' のいずれかを含めてください。
        ```
-   - **severity 別名マッピング**: CRITICAL/HIGH/MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する:
+   - **severity 別名マッピング** (大文字小文字無視で完全一致を試行する。Title Case や lower case の値も正規化対象): CRITICAL/HIGH/MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する。**比較は必ず case-insensitive** で行うこと (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ):
 
-     | 認識される別名 | 正規化先 |
-     |---------------|---------|
-     | `BLOCKER`, `CRIT`, `🔴`, `重大`, `致命` | `CRITICAL` |
-     | `MAJOR`, `HIGH`, `🟠`, `重要`, `高` | `HIGH` |
-     | `MINOR`, `🟡`, `中`, `Normal` | `MEDIUM` |
-     | `INFO`, `TRIVIAL`, `🔵`, `低`, `情報` | `LOW` |
+     | 認識される別名 (case-insensitive 比較) | 正規化先 |
+     |---------------------------------------|---------|
+     | `Critical`, `BLOCKER`, `CRIT`, `🔴`, `重大`, `致命` | `CRITICAL` |
+     | `Important`, `MAJOR`, `HIGH`, `🟠`, `重要`, `高` | `HIGH` |
+     | `Minor`, `MEDIUM`, `🟡`, `中`, `Normal` | `MEDIUM` |
+     | `Low`, `INFO`, `TRIVIAL`, `🔵`, `低`, `情報` | `LOW` |
 
-     > **Note — 絵文字エイリアスの実運用検証状況**: 絵文字 (`🔴`/`🟠`/`🟡`/`🔵`) は将来の互換性のため列挙していますが、現時点で `/verified-review` skill (rite plugin 標準) は CRITICAL/HIGH/MEDIUM/LOW を plain text で出力します。絵文字を出力する具体的な外部レビューツールは未検証です。新しい外部レビューツールへの対応として絵文字エイリアスを追加した場合は、本 Note にツール名を追記してください。
+     > **Note — 既知の外部ツール出力形式**: rite plugin 配下に `/verified-review` は存在しない (実体はユーザーレベルの `~/.claude/commands/verified-review.md` にある独立コマンドで、rite plugin が提供するものではない)。同コマンドが出力するレビュー結果テーブルは `重要度` 列に **Title Case の `Critical` / `Important`** を使うため、上記マッピング表ではこれらを HIGH / CRITICAL に正規化する経路を必須としている。`pr-review-toolkit:review-pr` も同様に Title Case を使う場合があり、同じ経路で吸収される。
+     >
+     > **絵文字エイリアスの実運用検証状況**: 絵文字 (`🔴`/`🟠`/`🟡`/`🔵`) は将来の互換性のため列挙しているが、上記 2 ツールが絵文字を出力する事例は未検証。新しい外部レビューツールへの対応として絵文字エイリアスを追加した場合は、本 Note にツール名を追記すること。
 
      - 上記のいずれにもマッチしない場合、`MEDIUM` をデフォルトとし、**認識不能な severity 値の一覧をユーザーに必ず警告表示する** (silent fallback 禁止):
        ```
@@ -1462,7 +1464,13 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# exit code を明示 check (silent failure 防止):
+# 旧実装は `result=$(...)` の後に `[ -z "$result" ]` で空チェックのみ。
+# しかし script が exit 1 で早期終了しつつ stdout に partial JSON を出力した場合、
+# (a) `result` は非空、(b) jq で `.issue_url` が抽出可能、(c) `.project_registration` が null
+# となり、後続の `jq '.warnings[]' 2>/dev/null` が stderr suppress により jq parse error も
+# 隠蔽し silent に「warnings 0 件」と誤認する。これを防ぐため `if !` 形式で exit code を捕捉する。
+if ! result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
   --arg title "{type}: {summary}" \
   --arg body_file "$tmpfile" \
   --argjson projects_enabled {projects_enabled} \
@@ -1484,15 +1492,51 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
     },
     options: { source: "pr_fix", non_blocking_projects: true }
   }'
-)")
-
-if [ -z "$result" ]; then
-  echo "ERROR: create-issue-with-projects.sh returned empty result" >&2
+)"); then
+  script_exit=$?
+  echo "ERROR: create-issue-with-projects.sh exit=$script_exit" >&2
+  echo "  Partial result (preserved for debug, not parsed): $result" >&2
+  echo "  対処: scripts/create-issue-with-projects.sh のログを確認し、根本原因を解決してから再実行してください。" >&2
+  echo "  本 finding は別 Issue 化されず、手動対応が必要です。" >&2
   exit 1
 fi
-created_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
-project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
-printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
+
+if [ -z "$result" ]; then
+  echo "ERROR: create-issue-with-projects.sh returned empty result (exit 0 だが stdout が空)" >&2
+  exit 1
+fi
+# .issue_url が空文字や null でないことも検証 (script が成功したのに JSON schema が壊れているケース)
+created_issue_url=$(printf '%s' "$result" | jq -r '.issue_url // empty')
+if [ -z "$created_issue_url" ]; then
+  echo "ERROR: create-issue-with-projects.sh の結果に .issue_url が含まれていません" >&2
+  echo "  Raw result: $result" >&2
+  exit 1
+fi
+project_reg=$(printf '%s' "$result" | jq -r '.project_registration // empty')
+
+# .warnings の jq 抽出を明示エラーチェック (`2>/dev/null` で隠蔽しない):
+# jq の stderr を一時ファイルに退避し、parse 失敗時は WARNING を出して詳細を表示する。
+# silent に「warnings 0 件」と誤認することを防ぐ (silent failure-hunter 指摘)
+warnings_jq_err=$(mktemp /tmp/rite-fix-warnings-jq-err-XXXXXX) || {
+  echo "ERROR: warnings_jq_err 一時ファイルの作成に失敗" >&2
+  exit 1
+}
+trap 'rm -f "$warnings_jq_err"' EXIT
+trap 'rm -f "$warnings_jq_err"; exit 130' INT
+trap 'rm -f "$warnings_jq_err"; exit 143' TERM
+trap 'rm -f "$warnings_jq_err"; exit 129' HUP
+
+if warnings_output=$(printf '%s' "$result" | jq -r '.warnings[]?' 2>"$warnings_jq_err"); then
+  if [ -n "$warnings_output" ]; then
+    printf '%s\n' "$warnings_output" | while read -r w; do echo "⚠️ $w"; done
+  fi
+else
+  echo "WARNING: .warnings フィールドの jq 抽出に失敗 (script schema 不整合の可能性)" >&2
+  echo "  jq stderr: $(cat "$warnings_jq_err")" >&2
+  echo "  Raw result: $result" >&2
+  echo "  対処: create-issue-with-projects.sh の出力 schema を確認してください。" >&2
+fi
+rm -f "$warnings_jq_err"
 ```
 
 **Error handling:**
@@ -1584,7 +1628,21 @@ current_body=$(echo "$comment_data" | jq -r '.body // empty')
 
 if [[ -n "$comment_id" ]]; then
   if [[ -z "$current_body" ]]; then
-    echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
+    # current_body 空時の silent fall-through 防止 (silent failure-hunter Finding):
+    # 単に stderr WARNING を出すだけだと、E2E flow (hook 経由実行) で人間に見えず、
+    # `/rite:issue:start` review-fix loop が「work memory 更新失敗」を一切認識しないまま
+    # `[fix:pushed]` を silent 出力 → 次の loop iteration が stale work memory のまま続行する
+    # silent regression になる。これを防ぐため:
+    #   1. ERROR を stderr に出す (人間が tail で見えるケースのため)
+    #   2. retained flag `WM_UPDATE_FAILED=1` を context に明示宣言 (Phase 8 が読む)
+    #   3. backup file path を提示 (debug 用)
+    # Phase 8.1 では `[CONTEXT] WM_UPDATE_FAILED=1` を検出した場合、`[fix:pushed]` ではなく
+    # `[fix:pushed-wm-stale]` を出力するルールを採用する (Phase 8.1 のテーブル参照)
+    echo "ERROR: 作業メモリの本文取得に失敗 (current_body が empty)。更新をスキップします。" >&2
+    echo "  原因: gh api comments の応答に body フィールドが欠落、または jq 抽出失敗の可能性" >&2
+    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+    echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=current_body_empty; comment_id=$comment_id"
   else
     backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
     printf '%s' "$current_body" > "$backup_file"
@@ -1892,7 +1950,7 @@ Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (d
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_fix" \
-  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (re-review). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (re-review). [fix:pushed-wm-stale]->Phase 5.4.1 with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
   --if-exists
 ```
 
@@ -1914,14 +1972,23 @@ WM_SOURCE="fix" \
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
 
-Then, based on the Phase 4.6 completion report content, output the corresponding machine-readable pattern:
+Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILED context flag**, output the corresponding machine-readable pattern:
 
-| Condition | Output Pattern |
-|-----------|---------------|
-| Push completed (`プッシュ: 完了`) | `[fix:pushed]` |
-| Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
-| All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
-| Unexpected state / error | `[fix:error]` |
+| 評価順 | Condition | Output Pattern |
+|--------|-----------|---------------|
+| 1 (最優先) | Phase 4.5.2 で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (current_body 空 etc.) | `[fix:pushed-wm-stale]` (Phase 4.5.2 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
+| 2 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
+| 3 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
+| 4 | All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
+| 5 | Unexpected state / error | `[fix:error]` |
+
+**評価順序の重要性**: 上から順に評価し、最初にマッチした条件の output pattern を採用する。`WM_UPDATE_FAILED=1` の検出は最優先 (silent regression 防止のため `[fix:pushed]` よりも先に判定する)。
+
+**`[CONTEXT] WM_UPDATE_FAILED=1` の検出方法** (Claude による retain と再注入):
+
+Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UPDATE_FAILED=1; reason=...; comment_id=...` を出力した場合、Claude は会話履歴からこの行を検索し、検出された場合は本 phase の Output Pattern 評価で `[fix:pushed-wm-stale]` を採用する。検出されなかった場合は通常の評価順序 (条件 2 以降) に従う。
+
+**`[fix:pushed-wm-stale]` の caller 側 semantics**: `/rite:issue:start` review-fix loop は本 pattern を受け取った場合、push 自体は完了しているが work memory が stale であることを認識し、次のいずれかを実行する: (a) 手動介入を促す (推奨)、(b) 警告ログを出した上で次の iteration に進む (loop 継続)。silent に `[fix:pushed]` 扱いしてはならない。
 
 **Important**:
 - Do **NOT** invoke `rite:pr:review` via the Skill tool
