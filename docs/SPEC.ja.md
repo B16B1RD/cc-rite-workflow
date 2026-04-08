@@ -1642,6 +1642,79 @@ diff 内容を LLM が解析し、以下を判断:
 
 ---
 
+## Workflow Incident Detection
+
+### 概要 (#366)
+
+rite workflow は `/rite:issue:start` の一気通貫実行中に発生する **workflow blocker** (Skill ロード失敗 / hook 異常終了 / 手動 fallback 採用) を自動検出し、Issue として登録することで silent loss を防ぎます。これは PR #363 で実証された通り、Skill loader bug (#365) のような workflow blocker が発生しても手動 Edit fallback で workflow を継続した瞬間に incident の追跡が消える問題への対策です。
+
+### 検出スコープ
+
+| Type | トリガー | ソース |
+|------|---------|--------|
+| `skill_load_failure` | Skill tool のロード失敗 (例: Markdown parser bash 解釈エラー) | Orchestrator post-condition check (期待される結果パターン欠如) |
+| `hook_abnormal_exit` | hook script が non-zero exit code または stderr ERROR を返す | Skill 内部 failure path (file 修正エラー、work memory PATCH 失敗 等) |
+| `manual_fallback_adopted` | ユーザーが orchestrator の `AskUserQuestion` で「手動 Edit fallback」を選択 | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
+
+### Sentinel フォーマット
+
+```
+[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; root_cause_hint=<hint>; iteration_id=<pr>-<epoch>
+```
+
+| フィールド | 型 | 必須 | 説明 |
+|-----------|-----|-----|------|
+| `type` | enum | 必須 | `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` のいずれか |
+| `details` | string | 必須 | 1 行の incident description (semicolon は comma に置換、改行は除去) |
+| `root_cause_hint` | string | 任意 | 原因仮説 (空の場合は sentinel から省略) |
+| `iteration_id` | string | 必須 | `{pr_number}-{epoch_seconds}` 形式の追跡 ID |
+
+Sentinel は `plugins/rite/hooks/workflow-incident-emit.sh` から emit されます。検出は `/rite:issue:start` Phase 5.4.4.1 で context grep により行われます。
+
+### 検出ロジック
+
+1. **Sentinel 検出**: Phase 5.4.4.1 で Phase 5 の各 Skill invocation 後に context grep で `[CONTEXT] WORKFLOW_INCIDENT=1` 行を検索
+2. **フィールド解析**: `type`, `details`, `root_cause_hint`, `iteration_id` を抽出
+3. **重複制御**: context-local の `workflow_incident_processed_types` set で session 内処理済み type を追跡。再発時は silent log のみで再提示しない
+4. **ユーザー確認**: `AskUserQuestion` で incident 詳細を提示し、「Issue として登録 (推奨) / skip」の選択を取得
+5. **Issue 作成**: ユーザー承認時に `plugins/rite/scripts/create-issue-with-projects.sh` を `Status: Todo / Priority: High / Complexity: S / source: workflow_incident` で呼び出し
+6. **Non-blocking エラーハンドリング**: Issue 作成失敗時も workflow は中断せず、incident は `workflow_incident_skipped` リストに retain され Phase 5.6 で報告
+
+### 設定
+
+```yaml
+workflow_incident:
+  enabled: true              # default-on; false で完全無効化
+  non_blocking: true         # 登録失敗時も workflow を中断しない
+  dedupe_per_session: true   # session 内で同 type は 1 件に集約
+```
+
+`workflow_incident:` セクションが未記載の場合はデフォルト値 (`enabled: true`) が適用されます。
+
+### Acceptance Criteria マッピング
+
+| AC | 振る舞い | 実装場所 |
+|----|---------|---------|
+| AC-1 | Skill load failure 検出 | `start.md` Phase 5.4.4.1 context grep + skill 内部 sentinel emit |
+| AC-2 | ユーザー承認時の Issue 作成 | `create-issue-with-projects.sh` 呼び出し (`Priority: High / Complexity: S`) |
+| AC-3 | skip 経路 retain | `workflow_incident_skipped` リスト + Phase 5.6 報告セクション |
+| AC-4 | 同 type 重複制御 | `workflow_incident_processed_types` context-local set |
+| AC-5 | hook 異常終了の検出 | `workflow-incident-emit.sh --type hook_abnormal_exit` (skill failure path から) |
+| AC-6 | 手動 fallback 採用検出 | Orchestrator fallback prompt option が `--type manual_fallback_adopted` を emit |
+| AC-7 | default-on | Phase 5.0 Step 6 で config 読み込み (未記載時は `true`) |
+| AC-8 | opt-out | `workflow_incident.enabled: false` で Phase 5.4.4.1 を完全 skip |
+| AC-9 | Phase 7 との非干渉 | 独立 codepath; `create-issue-with-projects.sh` のみ共有 |
+| AC-10 | 登録失敗時 non-blocking | `non_blocking_projects: true` + stderr warning + workflow 続行 |
+
+### Phase 7 との関係
+
+Phase 7 (review recommendation からの自動 Issue 作成) と Phase 5.4.4.1 (Workflow Incident Detection) は **独立した codepath** であり、`create-issue-with-projects.sh` のみを共通ヘルパーとして共有します。両者は同じ `/rite:issue:start` フロー内で同時実行され、それぞれ独立した Issue を作成します。ロジックの融合はありません。
+
+| Phase | 目的 | source フィールド |
+|-------|------|------------------|
+| Phase 7 | reviewer の「別 Issue として作成」推奨から Issue 作成 | `pr_review` |
+| Phase 5.4.4.1 | workflow blocker から Issue 作成 (sentinel 検出) | `workflow_incident` |
+
 ## エラーハンドリング
 
 ### 自動リトライ

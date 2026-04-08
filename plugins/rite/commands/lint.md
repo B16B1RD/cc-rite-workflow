@@ -701,6 +701,32 @@ rm -f "$next_steps_tmp"
 
 ---
 
+## Workflow Incident Emit Helper (#366)
+
+When this skill encounters internal failures that fall back to manual intervention or skipping (e.g., lint tool not found, repeated lint command failures, work memory PATCH failure), emit a workflow incident sentinel so the orchestrator (`/rite:issue:start` Phase 5.4.4.1) can detect it and auto-register an Issue.
+
+**When to emit**:
+
+| Failure Path | Sentinel Type | Details |
+|--------------|---------------|---------|
+| Lint command not detected and user chose "skip" in Phase 1.3 | `manual_fallback_adopted` | `rite:lint command not detected, user skipped` |
+| Lint tool not found at execution time (Phase 3) | `hook_abnormal_exit` | `rite:lint tool not found: {tool_name}` |
+| Work memory append failure in Phase 4.4 | `hook_abnormal_exit` | `rite:lint work memory append failure` |
+
+**How to emit**:
+
+```bash
+bash {plugin_root}/hooks/workflow-incident-emit.sh \
+  --type {sentinel_type} \
+  --details "{specific failure description}" \
+  --root-cause-hint "{optional hypothesis}" \
+  --pr-number 0
+```
+
+The sentinel becomes part of the orchestrator's conversation context. Phase 5.4.4.1 in `start.md` detects it and presents `AskUserQuestion` for Issue auto-registration. Emission is **non-blocking** — failure does not abort the lint flow.
+
+> **Note**: Sentinel emission is bounded by `workflow_incident.enabled` in `rite-config.yml`. If disabled, the orchestrator simply ignores the sentinel.
+
 ## Error Handling
 
 See [Common Error Handling](../references/common-error-handling.md) for shared patterns (Not Found, Permission, Network errors).
@@ -708,7 +734,7 @@ See [Common Error Handling](../references/common-error-handling.md) for shared p
 | Error | Recovery |
 |-------|----------|
 | When the lint command fails | See error output for details |
-| When the tool is not found | See [common patterns](../references/common-error-handling.md) |
+| When the tool is not found | See [common patterns](../references/common-error-handling.md) (sentinel emit via Workflow Incident Emit Helper above) |
 
 ## Language-Specific Details
 

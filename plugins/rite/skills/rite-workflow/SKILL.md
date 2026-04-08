@@ -150,6 +150,33 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 **Never** pass user-generated content directly via `--body` or `--comment` flags.
 
+## Workflow Incident Detection (#366)
+
+The rite workflow auto-detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption) during `/rite:issue:start` end-to-end execution and registers them as Issues to prevent silent loss.
+
+**Architecture**:
+1. Each skill (`rite:lint`, `rite:pr:fix`, `rite:pr:review`) emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` when an internal failure path is taken.
+2. The orchestrator (`/rite:issue:start` Phase 5.4.4.1) detects sentinels via context grep, presents `AskUserQuestion` for confirmation, and calls `create-issue-with-projects.sh` to register the incident with `Status: Todo / Priority: High / Complexity: S`.
+3. Same-session duplicate types are suppressed (1 incident per type per session).
+4. Failure to register is non-blocking — the workflow continues regardless.
+
+**Configuration** (default-on):
+
+```yaml
+workflow_incident:
+  enabled: true              # set to false to disable detection entirely
+  non_blocking: true         # do not abort flow on registration failure
+  dedupe_per_session: true   # 1 incident per type per session
+```
+
+**Sentinel format**:
+
+```
+[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; root_cause_hint=<hint>; iteration_id=<pr>-<epoch>
+```
+
+See `docs/SPEC.md` "Workflow Incident Detection" section for the full specification, including AC mapping and Phase 7 non-interference guarantees.
+
 ## Integration
 
 This skill works with:

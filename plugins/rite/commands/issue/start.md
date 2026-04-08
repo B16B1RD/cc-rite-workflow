@@ -551,6 +551,19 @@ if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
 fi
 ```
 
+**Step 6**: Read `workflow_incident.enabled` from `rite-config.yml` and cache for the rest of Phase 5 (used by Phase 5.4.4.1). Default to `true` when the section is absent (#366):
+
+```bash
+workflow_incident_enabled=$(grep -A2 '^workflow_incident:' rite-config.yml 2>/dev/null \
+  | grep -E '^\s+enabled:' | head -1 | awk -F: '{gsub(/[[:space:]]/, "", $2); print $2}')
+if [ -z "$workflow_incident_enabled" ]; then
+  workflow_incident_enabled="true"  # default-on (AC-7)
+fi
+echo "workflow_incident_enabled=$workflow_incident_enabled"
+```
+
+Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads this value and skips its entire processing if `false`.
+
 ### 5.1 Implementation
 
 Run [Preflight Protocol](#preflight-protocol) before starting implementation.
@@ -601,7 +614,7 @@ Invoke `skill: "rite:lint"` after 5.1.
 
 **🚨 Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.2 below. The lint sub-skill has already updated `.rite-flow-state` to `phase5_post_lint` via Phase 4.0 (defense-in-depth, #716); execute the 🚨 Mandatory After 5.2 steps without delay.
 
-**Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→5.6.
+**Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:lint aborted by user" --pr-number 0` (#366) then→5.6. If `[lint:error]` recurs more than 2 cycles consecutively, also emit `--type skill_load_failure --details "rite:lint repeated failure"` to trigger Phase 5.4.4.1 detection.
 
 #### 5.2.0.1 Out-of-Scope Warnings
 
@@ -798,7 +811,7 @@ Invoke `skill: "rite:pr:create"`.
 
 **🚨 Immediate after pr:create returns**: When `rite:pr:create` outputs a result pattern (`[pr:created:{N}]` or `[pr:create-failed]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.3 below. The review-fix loop has NOT started yet — you MUST continue to Phase 5.4.
 
-**Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→5.6.
+**Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→**emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:create returned create-failed" --pr-number 0` (#366), then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで PR 作成して continue (incident 記録)」/「Phase 5.6 へ」). If 「Edit ツールで PR 作成して continue」 is selected, additionally emit `--type manual_fallback_adopted --details "rite:pr:create manual fallback"`. The sentinel(s) will trigger Phase 5.4.4.1 detection in the next cycle.
 
 ### 🚨 Mandatory After 5.3
 
@@ -1009,6 +1022,134 @@ Invoke `skill: "rite:pr:fix"`.
 
 **🚨 Immediate after fix returns**: When `rite:pr:fix` outputs a result pattern (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created:{N}]`, `[fix:replied-only]`, or `[fix:error]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.6 🚨 After Fix below. The fix sub-skill has already updated `.rite-flow-state` to `phase5_post_fix` via its defense-in-depth mechanism (fixes #709); execute the 5.4.6 steps without delay.
 
+#### 5.4.4.1 Workflow Incident Detection (#366)
+
+> **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) for the full specification.
+
+**When to execute**: This phase runs **after every Skill invocation in Phase 5** (lint, pr:create, pr:review, pr:fix, pr:ready) where workflow flow may be interrupted by an unexpected failure. It is also triggered when an `AskUserQuestion` fallback option that emits a sentinel (e.g., "manual fallback") is selected.
+
+**Skip condition**: If `workflow_incident.enabled: false` is set in `rite-config.yml`, skip this entire phase. Read the value once at Phase 5.0 and cache for the rest of the flow.
+
+**Processing flow**:
+
+1. **Sentinel detection (context grep)**: Search the recent conversation context for sentinel lines matching the pattern:
+
+   ```
+   [CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
+   ```
+
+   Sentinels are emitted by:
+   - `plugins/rite/hooks/workflow-incident-emit.sh` (called from skill internal failure paths and orchestrator fallback prompts)
+   - The orchestrator itself when it detects an expected result pattern is missing after a Skill invocation (Skill load failure post-condition check)
+
+   If no sentinel is found, **skip the rest of this phase silently**.
+
+2. **Parse sentinel fields**: Extract `type`, `details`, `root_cause_hint` (optional), `iteration_id`. The `iteration_id` is `{pr_number}-{epoch_seconds}`.
+
+3. **Duplicate suppression (session-local)**: Maintain a conversation-context-local set `workflow_incident_processed_types` (no `.rite-flow-state` field needed — same approach as Phase 5.4.3 Step 2.8 re-invoke tracking). For each detected sentinel:
+
+   | Condition | Action |
+   |-----------|--------|
+   | `type` not in processed set | Continue to step 4 |
+   | `type` already in processed set | Log `incident type={type} suppressed (2nd occurrence)` to context, **do not** present `AskUserQuestion`, return |
+
+4. **User confirmation via `AskUserQuestion`**:
+
+   ```
+   ⚠️ Workflow incident を検出しました
+   Type: {type}
+   Details: {details}
+   Root cause hint: {root_cause_hint or "(none)"}
+
+   この incident を別 Issue として登録しますか？
+
+   オプション:
+   - はい、Issue として登録（推奨）
+   - skip（context に retain して完了レポートで言及）
+   ```
+
+5. **Branch on user choice**:
+
+   - **「はい」**: Proceed to step 6 (create Issue)
+   - **「skip」**: Add `type` to `workflow_incident_processed_types` (so it won't be re-asked in this session), append `{type, details, root_cause_hint}` to a context-local `workflow_incident_skipped` list (for Phase 5.6 reporting), return.
+
+6. **Create Issue via common script**:
+
+   > **Reference**: Apply the same [Issue Creation pattern](#5201-out-of-scope-warnings) as Phase 5.2.0.1 (out-of-scope warnings).
+
+   ```bash
+   tmpfile=$(mktemp)
+   trap 'rm -f "$tmpfile"' EXIT
+
+   cat <<'BODY_EOF' > "$tmpfile"
+   ## Workflow Incident (auto-registered)
+
+   - **Type**: {type}
+   - **Details**: {details}
+   - **Root cause hint**: {root_cause_hint or "(none)"}
+   - **Detected during**: Issue #{issue_number} / PR #{pr_number}
+   - **iteration_id**: {iteration_id}
+
+   ### Reproduction context
+
+   {context_excerpt — recent conversation lines around the sentinel for triage}
+
+   ### Next steps
+
+   このIncidentは `/rite:issue:start` の一気通貫フロー実行中に自動検出されました。手動 fallback / Edit 修正で workflow は継続済みです。
+   BODY_EOF
+
+   if [ ! -s "$tmpfile" ]; then
+     echo "ERROR: Issue body is empty" >&2
+     exit 1
+   fi
+
+   result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+     --arg title "incident: {type} - {details_truncated_60chars}" \
+     --arg body_file "$tmpfile" \
+     --argjson projects_enabled {projects_enabled} \
+     --argjson project_number {project_number} \
+     --arg owner "{owner}" \
+     --arg priority "High" \
+     --arg complexity "S" \
+     '{
+       issue: { title: $title, body_file: $body_file },
+       projects: {
+         enabled: $projects_enabled,
+         project_number: $project_number,
+         owner: $owner,
+         status: "Todo",
+         priority: $priority,
+         complexity: $complexity,
+         iteration: { mode: "none" }
+       },
+       options: { source: "workflow_incident", non_blocking_projects: true }
+     }'
+   )")
+
+   if [ -z "$result" ]; then
+     echo "WARNING: create-issue-with-projects.sh returned empty result. Incident retained in context for Phase 5.6 reporting." >&2
+     # Fallthrough — non-blocking, do NOT exit
+   else
+     new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url // empty')
+     new_issue_number=$(printf '%s' "$result" | jq -r '.issue_number // empty')
+     if [ -n "$new_issue_url" ]; then
+       # Append to context-local workflow_incident_registered list
+       echo "✅ Workflow incident auto-registered: #${new_issue_number} (${new_issue_url})"
+     else
+       echo "WARNING: Issue creation failed (no URL returned). Incident retained for Phase 5.6 reporting." >&2
+     fi
+   fi
+   ```
+
+7. **Add `type` to `workflow_incident_processed_types`** regardless of success/failure (so Phase 5.4.4.1 doesn't re-ask in this session even if creation failed).
+
+**Non-blocking guarantee** (AC-10): If `create-issue-with-projects.sh` fails (network error, API error, etc.), the orchestrator displays a warning to stderr and continues the workflow. The incident is retained in `workflow_incident_skipped` for Phase 5.6 reporting. **The workflow MUST NOT halt** because incident registration failed.
+
+**Phase 7 non-interference** (AC-9): This Phase 5.4.4.1 codepath is independent of Phase 7 (Issue creation from review recommendations). Both may run in the same flow and create separate Issues. They share only `create-issue-with-projects.sh` as a common helper — no logic merging.
+
+**Default-on behavior** (AC-7): When `workflow_incident:` section is absent from `rite-config.yml`, treat as if `enabled: true` (the default). Only `enabled: false` opts out.
+
 #### 5.4.5 Fix Patterns
 
 `[fix:pushed]`→5.4.1. `[fix:pushed-wm-stale]`→AskUserQuestion (WM stale warning)→5.4.1. `[fix:issues-created:{n}]`→5.4.1. `[fix:replied-only]`→5.5. `[fix:error]`→error, ask user.
@@ -1061,7 +1202,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 | `[fix:pushed-wm-stale]` | _(any)_ | **Work memory が stale です。手動介入が必要かを `AskUserQuestion` でユーザーに確認** (推奨: stale 警告ログを残した上で `skill: "rite:pr:review", args: "{pr_number}"` を起動して再レビューに進む / 中断して手動で work memory を修復する)。silent に `[fix:pushed]` 扱いしてはならない (fix.md Phase 8.1 caller semantics 参照)。 |
 | `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
 | `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
-| `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` (retry / skip to 5.6 / terminate). |
+| `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` with options: 「再試行」/「Edit ツールで手動 fallback (incident 記録)」/「Phase 5.6 にスキップ」/「terminate」. If user selects 「Edit ツールで手動 fallback」, **emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:pr:fix error fallback" --pr-number {pr_number}` before proceeding (#366). The sentinel will be picked up by Phase 5.4.4.1 in the next cycle. |
 
 > **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。再レビューは必ず `skill: "rite:pr:review"` を Skill ツールで呼び出すこと。
 
@@ -1084,7 +1225,7 @@ When loop completes, confirm via `AskUserQuestion`:
 
 **🚨 Immediate after ready returns**: When `rite:pr:ready` outputs `[ready:completed]` and returns control, do **NOT** churn or pause — **immediately** proceed to 5.5.0.1 🚨 Mandatory After 5.5 below. The ready sub-skill has already updated `.rite-flow-state` to `phase5_post_ready` via Phase 4.6 (defense-in-depth, fixes #17); execute the 5.5.0.1 steps without delay. The completion report (Phase 5.6) has NOT been output yet — `ready.md` intentionally skips it in e2e flow. You MUST continue to Phase 5.5.1, 5.5.2, and 5.6.
 
-**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→ask user (retry / skip to 5.6 / terminate).
+**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→**emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:ready returned error" --pr-number {pr_number}` (#366), then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで手動 Ready 化 (incident 記録)」/「Phase 5.6 へスキップ」/「terminate」). If 「Edit ツールで手動 Ready 化」 selected, additionally emit `--type manual_fallback_adopted --details "rite:pr:ready manual fallback" --pr-number {pr_number}`.
 
 #### 5.5.0.1 🚨 Mandatory After 5.5
 
@@ -1341,6 +1482,36 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || true
 ### 5.6 Completion Report
 
 > See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
+
+#### 5.6.1 Workflow Incident Reporting (#366)
+
+After the standard completion report sections, append a "未処理 incident" section listing any workflow incidents that were skipped (user chose "skip" in Phase 5.4.4.1) or whose Issue creation failed (`create-issue-with-projects.sh` returned empty).
+
+**Source**: The context-local `workflow_incident_skipped` list maintained by Phase 5.4.4.1. Each entry is `{type, details, root_cause_hint, iteration_id}`.
+
+**Output format** (only when the list is non-empty):
+
+```markdown
+### ⚠️ 未処理の workflow incident
+
+| # | Type | Details | Root cause hint | iteration_id |
+|---|------|---------|-----------------|--------------|
+| 1 | {type} | {details} | {root_cause_hint or "(none)"} | {iteration_id} |
+
+> これらの incident は workflow 実行中に検出されましたが、Issue として登録されませんでした (user skipped or registration failed)。手動で `/rite:issue:create` で記録することを推奨します。
+```
+
+**When the list is empty**: Skip this section entirely (do not display "no incidents" placeholder — minimize output).
+
+**Also report registered incidents** when `workflow_incident_registered` list is non-empty (auto-registered Issues from Phase 5.4.4.1 step 6):
+
+```markdown
+### ✅ 自動登録された workflow incident
+
+| # | Issue | Type | Details |
+|---|-------|------|---------|
+| 1 | #{new_issue_number} | {type} | {details} |
+```
 
 ### 5.7 Parent Issue Completion
 

@@ -146,5 +146,13 @@ investigate:
   codex_review:
     enabled: true    # false で Phase 6（Codex クロスチェック）をスキップし代替検証を実施
 
+# Workflow incident auto-registration (#366)
+# Detects workflow blockers (Skill load failure / hook 異常終了 / 手動 fallback 採用) and
+# auto-registers them as Issues to prevent silent loss. See docs/SPEC.md for details.
+workflow_incident:
+  enabled: true              # true で incident 検出機構を有効化（デフォルト: true）
+  non_blocking: true         # true で create-issue 失敗時も workflow を中断しない（デフォルト: true）
+  dedupe_per_session: true   # true で同 session 内の同 type incident を 1 件に集約（デフォルト: true）
+
 # Language setting
 language: ja
