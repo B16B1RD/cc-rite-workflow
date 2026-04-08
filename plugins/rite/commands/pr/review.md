@@ -1969,7 +1969,7 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
 **影響**: `post-condition == warning` または `error`、もしくは `evidence_missing_count >= 1`、または `cross_reference_partial_skip == true` かつ acknowledgement 未取得の場合、総合評価は自動的に **`修正必要`** に昇格する。
 
-> **Doc-Heavy PR Mode セクションの drift 防止**: 上記 markdown ブロックは verification mode template (本ファイル内の後続セクション) でも完全に同一内容で重複定義されている。**両 template (full mode / verification mode) のいずれかを更新する際は、必ずもう一方も同一内容で同期更新すること**。drift が発生すると Phase 5.4 表示が template 切り替え時に異なる挙動を示し silent failure の原因になる。将来は共通 partial への切り出しが望ましい (現状は実装複雑性を避けるため重複定義のまま維持)。
+> **Doc-Heavy PR Mode セクションの drift 防止**: 上記 markdown ブロックは verification mode template (本ファイル内の後続セクション) でも完全に同一内容で重複定義されている。**両 template (full mode / verification mode) のいずれかを更新する際は、必ずもう一方も同一内容で同期更新すること**。drift が発生すると Phase 5.4 表示が template 切り替え時に異なる挙動を示し silent failure の原因になる。将来は共通 partial への切り出しが望ましい (現状は実装複雑性を避けるため重複定義のまま維持)。詳細・自動 lint 化計画は [`./references/internal-consistency.md`](./references/internal-consistency.md) の「系統 3」を参照。
 
 ### 全指摘事項
 
@@ -2095,7 +2095,8 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
      非表示条件: 上記 (a) も (b) も成立しない場合 (= doc_heavy_pr == false かつ numstat_availability == "OK")
      → tech-writer が reviewer に存在するかどうかに関係なく省略する。tech-writer の存否は本セクションの
-        表示判定に影響しない。
+        表示判定に影響しない (本セクションは Doc-Heavy 機構と numstat 可用性の状態を可視化するためのものであり、
+        tech-writer 単独のレビュー結果を表示するセクションではないため)。
 
      詳細: Phase 5.1.3 末尾の「Phase 5.4 表示責務の分離」段落を参照
      numstat 失敗時は numstat 可用性行に unavailable が表示される (Doc-Heavy 判定自体は Phase 1.1 files 配列で完結するため skip されず通常通り実行される)
@@ -2123,7 +2124,7 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
 **影響**: `post-condition == warning` または `error`、もしくは `evidence_missing_count >= 1`、または `cross_reference_partial_skip == true` かつ acknowledgement 未取得の場合、総合評価は自動的に **`修正必要`** に昇格する。
 
-> **drift 防止**: 本セクションは full mode template (本ファイル前段) と同一内容で重複定義されている。**両 template のいずれかを更新する際は、必ずもう一方も同期更新すること**。
+> **Doc-Heavy PR Mode セクションの drift 防止**: 上記 markdown ブロックは full mode template (本ファイル前段) でも完全に同一内容で重複定義されている。**両 template (full mode / verification mode) のいずれかを更新する際は、必ずもう一方も同一内容で同期更新すること**。drift が発生すると Phase 5.4 表示が template 切り替え時に異なる挙動を示し silent failure の原因になる。将来は共通 partial への切り出しが望ましい (現状は実装複雑性を避けるため重複定義のまま維持)。詳細・自動 lint 化計画は [`./references/internal-consistency.md`](./references/internal-consistency.md) の「系統 3」を参照。
 
 ### 全指摘事項
 

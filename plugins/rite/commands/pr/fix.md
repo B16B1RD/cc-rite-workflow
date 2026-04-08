@@ -283,6 +283,18 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 # 3. signal 別 trap 4 行を mktemp の前に設定
 # 4. その後で mktemp / gh api を実行
 # Phase 4.5.1 / Phase 4.5.2 / Fast Path で同型の「パス先行宣言 → trap 先行設定 → mktemp」パターンに統一。
+#
+# H-1 修正 (本 Issue #350 検証付きレビュー H-1): confidence_override tempfile の orphan 防止
+# Phase 1.2 進入時に **無条件 truncate** を実行し、SIGINT/SIGTERM/SIGHUP で前セッションの
+# /tmp/rite-fix-confidence-override-{pr_number}.txt が orphan として残った場合でも、
+# 次回起動時の混入を決定論的に防ぐ。これは「Phase 1.2 best-effort parse の最初の override 候補
+# 出現時に truncate する」既存ロジック (line 705) を **より上流に前進化** させる修正。
+# specific path 必須 (並列セッション破壊防止) — wildcard glob は絶対に使わない。
+# truncate 失敗 (read-only / permission denied) は warning のみで継続する: 失敗時の影響は
+# 「override count が前回値と混ざる可能性」のみで fix loop 全体の破綻ではないため。
+: > "/tmp/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
+  echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
+
 gh_api_err=""
 jq_err=""
 # Fast Path ハンドオフ一時ファイルのパスを先に定義し、trap 対象に含める
@@ -702,7 +714,7 @@ handoff_committed=1
 
 **Claude による retain と再注入の手順** (data flow の具体化、ファイル永続化版):
 
-1. Phase 1.2 best-effort parse で最初の override 候補が出現した時点で `: > /tmp/rite-fix-confidence-override-{pr_number}.txt` で **truncate 付き空ファイル作成** (前セッションの stale データを必ず消去する)
+1. **H-1 修正 (本 Issue #350 検証付きレビュー H-1)**: Phase 1.2 進入時 (Fast Path / Broad Retrieval bash block 冒頭の両方) で `: > /tmp/rite-fix-confidence-override-{pr_number}.txt` を **無条件 truncate** する。これにより、SIGINT/SIGTERM/SIGHUP で前セッションの override file が orphan として残った場合でも、次回起動時の混入を決定論的に防ぐ。また、Phase 1.2 best-effort parse で最初の override 候補が出現した時点でも追加で truncate してよい (defense-in-depth、害なし)
 2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、bash block 内で `printf '%s\n' "{file}:{line}" >> /tmp/rite-fix-confidence-override-{pr_number}.txt` を実行 (追記、`>>` で append)
 3. Phase 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、bash block で以下を実行して値を取得 (会話履歴 grep に依存しない、`2>/dev/null` の silent IO suppression も撤廃):
    ```bash
@@ -775,6 +787,21 @@ handoff_committed=1
 When the standard flow is active (no `target_comment_id`), retrieve PR review comments as before:
 
 ```bash
+# H-1 修正 (本 Issue #350 検証付きレビュー H-1): confidence_override tempfile の orphan 防止
+# Fast Path 経路と同様に、Broad Retrieval 経路でも Phase 1.2 進入時に **無条件 truncate** を実行する。
+# SIGINT/SIGTERM/SIGHUP で前セッションの /tmp/rite-fix-confidence-override-{pr_number}.txt が orphan
+# として残った場合でも、次回起動時の混入を決定論的に防ぐ。
+# specific path 必須 (並列セッション破壊防止) — wildcard glob は絶対に使わない。
+: > "/tmp/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
+  echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
+
+# TODO(#354): Broad Retrieval 経路の以下 4 つの gh api 呼び出しは exit code を check しておらず、
+# HTTP error / network failure / auth error 時に silent に空配列を返して downstream で
+# 「コメントなし」と誤認する。Issue #354 で fail-fast or retained flag emit のいずれかに修正予定。
+# - レビューコメント (`gh api .../pulls/{pr_number}/comments`)
+# - PR レビュー本体 (`gh api .../pulls/{pr_number}/reviews`)
+# - 通常コメント (`gh pr view --json comments`)
+# - スレッド情報 (`gh api graphql`)
 # レビューコメント（PR レビューに紐づくコメント）
 # node_id はスレッド解決時の GraphQL mutation で必要
 gh api repos/{owner}/{repo}/pulls/{pr_number}/comments --jq '.[] | {id, node_id, path, line, original_line, body, user: .user.login, created_at, in_reply_to_id, pull_request_review_id}'
@@ -1199,6 +1226,13 @@ if ! jq -n --rawfile body "$tmpfile" --argjson in_reply_to "$comment_id" \
   -X POST \
   --input -; then
   echo "ERROR: reply 投稿 (jq | gh api POST) に失敗しました" >&2
+  echo "  対処: gh auth status / network 接続 / rate limit / PR #{pr_number} の存在 を確認してください" >&2
+  echo "  影響: レビュアーへの返信が PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
+  # H-2 修正 (本 Issue #350 検証付きレビュー H-2): retained flag emit
+  # bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPLY_POST_FAILED を検出しないと
+  # silent に [fix:replied-only] / [fix:pushed] と判定される。Phase 8.1 評価順テーブルに mapping を追加
+  # ([fix:error] へ昇格) するため、retained flag を context に明示宣言する。
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id"
   set +o pipefail
   exit 1
 fi
@@ -1481,6 +1515,11 @@ fi
 if ! gh pr comment {pr_number} --body-file "$tmpfile"; then
   echo "ERROR: gh pr comment による報告投稿に失敗しました" >&2
   echo "  対処: gh auth status / network 接続 / PR #{pr_number} の存在 を確認してください" >&2
+  echo "  影響: 対応完了報告コメントが PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
+  # H-3 修正 (本 Issue #350 検証付きレビュー H-3): retained flag emit
+  # Phase 8.1 評価順 1 (最優先) で REPORT_POST_FAILED=1 を検出し [fix:error] へ昇格させる。
+  # 旧実装は exit 1 のみで Claude のフロー制御にならず、silent に [fix:pushed] 等として完了判定された。
+  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}"
   exit 1
 fi
 ```
@@ -1720,6 +1759,12 @@ if ! result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n 
   echo "  Partial result (preserved for debug, not parsed): $result" >&2
   echo "  対処: scripts/create-issue-with-projects.sh のログを確認し、根本原因を解決してから再実行してください。" >&2
   echo "  本 finding は別 Issue 化されず、手動対応が必要です。" >&2
+  echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
+  # H-4 修正 (本 Issue #350 検証付きレビュー H-4): retained flag emit
+  # Phase 8.1 評価順 1 (最優先) で ISSUE_CREATE_FAILED=1 を検出し [fix:error] へ昇格させる。
+  # 旧実装は exit 1 のみで Claude のフロー制御にならず、silent に [fix:pushed] / [fix:replied-only]
+  # として完了判定され、scope 外 finding の追跡が失われていた。
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=script_exit_$script_exit"
   exit 1
 fi
 
@@ -1727,6 +1772,9 @@ if [ -z "$result" ]; then
   echo "ERROR: create-issue-with-projects.sh returned empty result (exit 0 だが stdout が空)" >&2
   echo "  Debug: Issue 本文 tmpfile が debug 用に preserved されています (issue_created=0 のため)" >&2
   echo "    tmpfile path: $tmpfile" >&2
+  echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
+  # H-4 修正 (本 Issue #350 検証付きレビュー H-4): retained flag emit (空 stdout 経路)
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=empty_stdout"
   exit 1
 fi
 # .issue_url が空文字や null でないことも検証 (script が成功したのに JSON schema が壊れているケース)
@@ -1736,6 +1784,9 @@ if [ -z "$created_issue_url" ]; then
   echo "  Raw result: $result" >&2
   echo "  Debug: Issue 本文 tmpfile が debug 用に preserved されています (issue_created=0 のため)" >&2
   echo "    tmpfile path: $tmpfile" >&2
+  echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
+  # H-4 修正 (本 Issue #350 検証付きレビュー H-4): retained flag emit (.issue_url 抽出失敗経路)
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=missing_issue_url"
   exit 1
 fi
 
@@ -1902,6 +1953,8 @@ PRBODY_EOF
 if [ ! -s "$pr_body_tmp" ]; then
   echo "ERROR: pr_body_tmp が空または存在しません: $pr_body_tmp" >&2
   echo "対処: PR body 自体が空であった可能性があります (gh pr view --json body の出力を確認)" >&2
+  echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_tmp_empty_or_missing"
   exit 1
 fi
 
@@ -1909,66 +1962,72 @@ fi
 #   exit 0: マッチあり (期待動作)
 #   exit 1: マッチなし (期待動作、no-op として fallback に進む)
 #   exit 2: IO/権限/構文エラー (真のエラー、silent に握りつぶしてはならない)
-# 従来の `|| true` は exit 1 と exit 2 を融合させて IO エラーを silent 化していた。
-# pipefail を有効化して pipeline 全体の exit を捕捉した上で、grep の rc を case で区別する。
 #
-# 重要 — 2>&1 を撤廃 (本 Issue #350 検証付きレビュー M-1 で指摘):
-# 旧実装 `grep -oE '...' "$pr_body_tmp" 2>&1 | head -1 | grep -oE '[0-9]+'` は grep の stderr を
-# stdout に merge していた。これにより grep の error message (Permission denied 等) は
-# 後段の `grep -oE '(Closes|Fixes|Resolves) #[0-9]+'` パターンに通常マッチしないため、
-# pipeline は exit 1 (no match) を返して silent に「マッチなし → branch fallback」へ降格する。
-# defense-in-depth の宣言と実装が不整合だった経路を、stderr を独立ファイルに退避することで修正する。
+# 重要 — 2 段 pipeline → 1 段独立 capture に変更 (本 Issue #350 検証付きレビュー C-2 で指摘):
+# 旧実装 `grep -oE '...' "$pr_body_tmp" 2>"$err" | head -1 | grep -oE '[0-9]+'` は pipefail 下でも
+# 先頭 grep の rc=2 (IO エラー) を捕捉できなかった。bash pipefail は **rightmost non-zero** を返すため、
+# 末尾 grep が空入力に対し rc=1 (no match) を返すと pipeline 全体の rc は **1** になり、
+# `case "$rc" in *) ...) reason=pr_body_grep_io_error` 分岐は到達不能 (実証: `(exit 2)|(exit 0)|(exit 1)` → rc=1)。
+# M-1 で導入した defense-in-depth (`2>&1` 撤廃 + 独立 stderr 退避 + IO error は `*)` で捕捉) はその土台ごと
+# 崩壊していた。本修正で先頭 grep を独立 if-else で実行し、grep の終了コードを直接 case 分岐する。
+# 数字抽出は後続の sed -n に移譲 (sed の失敗は無害な空文字結果を返すため pipeline 化しても safe)。
+# Source: bash man page / [Baeldung — Exit Status of Piped Processes](https://www.baeldung.com/linux/exit-status-piped-processes)
 pr_body_grep_err=$(mktemp /tmp/rite-fix-pr-body-grep-err-XXXXXX) || {
   echo "ERROR: pr_body_grep_err 一時ファイルの作成に失敗" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
   echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_grep_err"
   exit 1
 }
-set -o pipefail
 issue_number=""
-grep_pipeline_out=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" 2>"$pr_body_grep_err" | head -1 | grep -oE '[0-9]+')
-grep_pipeline_rc=$?
-case "$grep_pipeline_rc" in
-  0)
-    issue_number="$grep_pipeline_out"
-    ;;
-  1)
-    # PR 本文に Closes/Fixes/Resolves パターンなし — fallback (ブランチ名抽出) へ
-    # 注: stderr ファイルが空でない場合 (grep が warning を出した等) は念のため WARNING 表示
-    if [ -s "$pr_body_grep_err" ]; then
-      echo "WARNING: pr_body grep が exit 1 (no match) で完了しましたが stderr に出力がありました:" >&2
-      head -3 "$pr_body_grep_err" | sed 's/^/  /' >&2
-    fi
-    :
-    ;;
-  *)
-    # IO/権限/構文エラー: H-2 で fail-fast から soft failure に変更 (本 Issue #350 検証付きレビュー H-2 で指摘):
-    # 旧実装は `exit 1` で fix.md 全体を異常終了させる意図だったが、bash の `exit 1` は Bash tool の
-    # exit code に変換されるだけで Claude のフロー制御にはならない (line 1868 に明記)。Claude は次の Phase
-    # に進み、Phase 8.1 が会話履歴で `[CONTEXT] WM_UPDATE_FAILED=1` を検出して `[fix:pushed-wm-stale]` を
-    # 出力する。コメント宣言 (`[fix:error]` 相当) と実動作の矛盾を解消するため、soft failure (exit 1 削除)
-    # に統一する。これにより:
-    # - retained flag の伝達経路が一貫する (Phase 4.5 の失敗は全て [fix:pushed-wm-stale] 経路)
-    # - コミット済み fix の損失を防ぐ
-    # - caller (review-fix loop) は AskUserQuestion で続行/中断を判断できる
-    echo "ERROR: PR 本文の grep が IO/権限/構文エラーで失敗しました (rc=$grep_pipeline_rc)" >&2
-    echo "詳細 (stderr 先頭 5 行):" >&2
-    head -5 "$pr_body_grep_err" | sed 's/^/  /' >&2
-    echo "  対処: 環境の grep バイナリと権限を確認後、再実行してください" >&2
-    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$grep_pipeline_rc"
-    # exit 1 を削除: soft failure として retained flag のみ emit、Phase 8.1 が [fix:pushed-wm-stale] を出力する
-    # wm_emit_done=1 にすることで (M-5 対応):
-    #   - 下流の branch fallback if 文が skip され、IO error 後に branch grep が誤起動しない
-    #   - 下流の `if [[ -z "$issue_number" ]]` retained flag block も skip され、M-4 の 2 回連続 emit を防ぐ
-    wm_emit_done=1
-    issue_number=""  # branch fallback も skip して下流の WM_UPDATE_FAILED 経路に流す (M-5 対応)
-    ;;
-esac
+if closes_raw=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" 2>"$pr_body_grep_err"); then
+  # マッチあり: 先頭 1 件から数字部分を抽出 (sed -n の失敗は空文字結果として安全)
+  issue_number=$(printf '%s\n' "$closes_raw" | head -1 | sed -n 's/.*#\([0-9][0-9]*\).*/\1/p')
+else
+  pr_body_grep_rc=$?
+  case "$pr_body_grep_rc" in
+    1)
+      # PR 本文に Closes/Fixes/Resolves パターンなし — fallback (ブランチ名抽出) へ
+      # 注: stderr ファイルが空でない場合 (grep が warning を出した等) は念のため WARNING 表示
+      if [ -s "$pr_body_grep_err" ]; then
+        echo "WARNING: pr_body grep が exit 1 (no match) で完了しましたが stderr に出力がありました:" >&2
+        head -3 "$pr_body_grep_err" | sed 's/^/  /' >&2
+      fi
+      :
+      ;;
+    *)
+      # IO/権限/構文エラー: H-2 で fail-fast から soft failure に統一 (本 Issue #350 検証付きレビュー H-2 で指摘):
+      # 旧実装は `exit 1` で fix.md 全体を異常終了させる意図だったが、bash の `exit 1` は Bash tool の
+      # exit code に変換されるだけで Claude のフロー制御にはならない (line 1868 に明記)。Claude は次の Phase
+      # に進み、Phase 8.1 が会話履歴で `[CONTEXT] WM_UPDATE_FAILED=1` を検出して `[fix:pushed-wm-stale]` を
+      # 出力する。コメント宣言 (`[fix:error]` 相当) と実動作の矛盾を解消するため、soft failure (exit 1 削除)
+      # に統一する。これにより:
+      # - retained flag の伝達経路が一貫する (Phase 4.5 の失敗は全て [fix:pushed-wm-stale] 経路)
+      # - コミット済み fix の損失を防ぐ
+      # - caller (review-fix loop) は AskUserQuestion で続行/中断を判断できる
+      echo "ERROR: PR 本文の grep が IO/権限/構文エラーで失敗しました (rc=$pr_body_grep_rc)" >&2
+      echo "詳細 (stderr 先頭 5 行):" >&2
+      head -5 "$pr_body_grep_err" | sed 's/^/  /' >&2
+      echo "  対処: 環境の grep バイナリと権限を確認後、再実行してください" >&2
+      echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$pr_body_grep_rc"
+      # exit 1 を削除: soft failure として retained flag のみ emit、Phase 8.1 が [fix:pushed-wm-stale] を出力する
+      # wm_emit_done=1 にすることで (M-5 対応):
+      #   - 下流の branch fallback if 文が skip され、IO error 後に branch grep が誤起動しない
+      #   - 下流の `if [[ -z "$issue_number" ]]` retained flag block も skip され、M-4 の 2 回連続 emit を防ぐ
+      wm_emit_done=1
+      issue_number=""  # branch fallback も skip して下流の WM_UPDATE_FAILED 経路に流す (M-5 対応)
+      ;;
+  esac
+fi
 
 # 2. PR 本文で見つからない場合、ブランチ名から抽出
-# 同様に grep の exit 1 / exit 2 を区別する
-# M-1 / H-2 同等の修正: 2>&1 を撤廃し独立 stderr file に退避、IO error も soft failure に統一
+# 同様に IO error と「マッチなし」を融合させない。
+#
+# C-2 修正 (本 Issue #350 検証付きレビュー C-2): 旧実装は
+# `git branch --show-current 2>"$err" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'`
+# の 3 段 pipeline で、`git branch` の rc を末尾 grep の rc=1 (空入力) が隠蔽する
+# pipefail 罠を持っていた。git branch の終了コードを直接 if-else で捕捉し、
+# issue 番号抽出は sed -n に移譲する形に分解する。
 # wm_emit_done guard (M-5 対応): pr_body grep IO error 経路で既に retained flag emit 済みの場合、
 # branch fallback を実行せず skip する。旧実装は issue_number="" にするだけで直後の
 # `if [[ -z "$issue_number" ]]` が常に true になり、branch grep が誤起動して意図しない
@@ -1980,34 +2039,30 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
     echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_branch_grep_err"
     exit 1
   }
-  branch_pipeline_out=$(git branch --show-current 2>"$branch_grep_err" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
-  branch_pipeline_rc=$?
-  case "$branch_pipeline_rc" in
-    0)
-      issue_number="$branch_pipeline_out"
-      ;;
-    1)
-      # ブランチ名にも issue-N パターンなし — issue_number は空のまま (下流で WM_UPDATE_FAILED emit)
-      :
-      ;;
-    *)
-      # pr_body_grep_io_error と同根: H-2 修正で fail-fast から soft failure に統一
-      # (exit 1 は Claude のフロー制御にならず Phase 8.1 の [fix:pushed-wm-stale] 経路に
-      # 流れるため、retained flag のみ emit してコミット済み fix を保護する)
-      echo "ERROR: branch 名抽出 pipeline が IO/権限エラーで失敗しました (rc=$branch_pipeline_rc)" >&2
-      echo "詳細 (stderr 先頭 5 行):" >&2
-      head -5 "$branch_grep_err" | sed 's/^/  /' >&2
-      echo "  対処: 環境の git/grep バイナリと権限を確認後、再実行してください" >&2
-      echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_pipeline_rc"
-      # exit 1 を削除: soft failure として retained flag のみ emit
-      # wm_emit_done=1 により下流の retained flag block が skip される (M-4 対応: 2 回 emit 防止)
-      wm_emit_done=1
-      issue_number=""  # 下流 block は wm_emit_done guard で skip されるため stale WM 経路へ流れる
-      ;;
-  esac
+  if branch_name=$(git branch --show-current 2>"$branch_grep_err"); then
+    # branch 取得成功: issue-N パターンを抽出 (sed -n の失敗は空文字結果として安全)
+    issue_number=$(printf '%s\n' "$branch_name" | sed -n 's/.*issue-\([0-9][0-9]*\).*/\1/p')
+    # ブランチ名にも issue-N パターンがない場合は issue_number は空のまま (下流で WM_UPDATE_FAILED emit)
+  else
+    branch_rc=$?
+    # pr_body_grep_io_error と同根: H-2 修正で fail-fast から soft failure に統一
+    # (exit 1 は Claude のフロー制御にならず Phase 8.1 の [fix:pushed-wm-stale] 経路に
+    # 流れるため、retained flag のみ emit してコミット済み fix を保護する)
+    echo "ERROR: branch 名取得 (git branch --show-current) が IO/権限エラーで失敗しました (rc=$branch_rc)" >&2
+    echo "詳細 (stderr 先頭 5 行):" >&2
+    head -5 "$branch_grep_err" | sed 's/^/  /' >&2
+    echo "  対処: 環境の git バイナリと権限、cwd が git repo であることを確認後、再実行してください" >&2
+    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_rc"
+    # exit 1 を削除: soft failure として retained flag のみ emit
+    # wm_emit_done=1 により下流の retained flag block が skip される (M-4 対応: 2 回 emit 防止)
+    wm_emit_done=1
+    issue_number=""  # 下流 block は wm_emit_done guard で skip されるため stale WM 経路へ流れる
+  fi
 fi
-set +o pipefail
+# 注: set -o pipefail / set +o pipefail のペアは C-2 修正で削除済み (本 Issue #350 検証付きレビュー C-2)。
+# pipefail 仕様 (rightmost non-zero) による IO error 隠蔽を回避するため、grep / git branch を独立 if-else
+# で実行し終了コードを直接捕捉する設計に切り替えた。pipefail 依存は不要。
 ```
 
 > **Note**: `{pr_body}` is the `body` field from the Phase 1.1 result (retained in context). No additional `gh pr view` call is needed.
@@ -2038,6 +2093,10 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
   echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=issue_number_not_found"
   wm_emit_done=1
 fi
+# 注: set -o pipefail は C-2 修正 (本 Issue #350 検証付きレビュー C-2) で削除済み。
+# pipefail rightmost non-zero 仕様により 2 段 grep pipeline の IO error が末尾 grep の rc=1 に
+# 隠蔽される罠を避けるため、grep / git branch の終了コードを独立 if-else で直接捕捉する設計に
+# 切り替えた。pipefail 依存は不要になったため arming/disarm のペアごと撤廃した。
 ```
 
 > **⚠️ 重要 — Phase 4.5.2 を skip すること** (silent regression 防止):
@@ -2077,11 +2136,19 @@ body_tmp=""
 tmpfile=""
 files_tmp=""
 history_tmp=""
+# H-7 修正 (本 Issue #350 検証付きレビュー H-7): pr_body_tmp を Phase 4.5.2 cleanup に含める
+# Phase 4.5.1 と Phase 4.5.2 が同一 Bash invocation で連結された場合、Phase 4.5.2 の trap が
+# Phase 4.5.1 の trap を上書きするため、Phase 4.5.1 で作成された pr_body_tmp が orphan 化する。
+# `_rite_fix_py_exit2_cleanup` (line 2361-2365) には既に pr_body_tmp が含まれているため、
+# 通常 cleanup 経路でも同様に保護する。bash block 境界を越えた変数参照は通常 unset で no-op だが、
+# 同一 invocation 連結時の defense-in-depth として明示登録する。
+pr_body_tmp=""
 # 関数責務: cleanup 操作のみを実行し、exit code を変更しない (Fast Path と同型 — `${var:-}` で
 # 未定義時は `rm -f ""` の silent no-op になる)
 _rite_fix_phase452_cleanup() {
   rm -f "${gh_api_err:-}" "${base_branch_grep_err:-}" "${diff_stderr_tmp:-}" \
-        "${body_tmp:-}" "${tmpfile:-}" "${files_tmp:-}" "${history_tmp:-}"
+        "${body_tmp:-}" "${tmpfile:-}" "${files_tmp:-}" "${history_tmp:-}" \
+        "${pr_body_tmp:-}"
 }
 trap 'rc=$?; _rite_fix_phase452_cleanup; exit $rc' EXIT
 trap '_rite_fix_phase452_cleanup; exit 130' INT
@@ -2587,11 +2654,12 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
-| 1 (最優先) | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`issue_number_not_found` / `current_body_empty` / `patch_failed` / `gh_api_comments_fetch_failed` / `pr_body_grep_io_error` / `branch_grep_io_error` のいずれか) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
-| 2 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
-| 3 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
-| 4 | All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
-| 5 | Unexpected state / error | `[fix:error]` |
+| 1 (最優先) | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した (本 Issue #350 検証付きレビュー H-2 / H-3 / H-4) | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
+| 2 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`issue_number_not_found` / `pr_body_tmp_empty_or_missing` / `current_body_empty` / `patch_failed` / `gh_api_comments_fetch_failed` / `pr_body_grep_io_error` / `branch_grep_io_error` のいずれか) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
+| 3 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
+| 4 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
+| 5 | All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
+| 6 | Unexpected state / error | `[fix:error]` |
 
 **評価順序の重要性**: 上から順に評価し、最初にマッチした条件の output pattern を採用する。`WM_UPDATE_FAILED=1` の検出は最優先 (silent regression 防止のため `[fix:pushed]` よりも先に判定する)。
 
@@ -2604,6 +2672,7 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 | reason | 発生 Phase | 発生条件 |
 |--------|------------|----------|
 | `issue_number_not_found` | Phase 4.5.1 | PR 本文に `Closes/Fixes/Resolves #N` がなく、ブランチ名にも `issue-N` がない |
+| `pr_body_tmp_empty_or_missing` | Phase 4.5.1 | `cat <<PRBODY_EOF > pr_body_tmp` 後の `[ -s pr_body_tmp ]` 検査が失敗 (PR body が空 or write 失敗) |
 | `pr_body_grep_io_error` | Phase 4.5.1 | PR 本文 grep が IO/権限/構文エラー (rc=2) で失敗 |
 | `branch_grep_io_error` | Phase 4.5.1 | branch 名抽出 grep が IO/権限エラーで失敗 |
 | `gh_api_comments_fetch_failed` | Phase 4.5.2 | `gh api ... /issues/{issue_number}/comments` が exit != 0 で失敗 (401/403/404/timeout/5xx 等) |
