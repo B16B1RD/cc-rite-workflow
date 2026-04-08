@@ -1730,7 +1730,7 @@ tmpfile=$(mktemp) || {
 # 旧実装は `cat <<'EOF' > "$tmpfile"` 単独で exit code を check していなかった。
 # 直後の `[ ! -s "$tmpfile" ]` は size 0 のみ検出するが、disk full mid-write で
 # truncated body が書き込まれた場合 (size > 0 だが body 不完全) を検出できない。
-# `if !` で wrap し、cat 自体の exit code を check する。
+# `if ! ...` で wrap し、cat 自体の exit code を check する。
 if ! cat <<'BODY_EOF' > "$tmpfile"
 ## 概要
 
@@ -1782,7 +1782,7 @@ fi
 # しかし script が exit 1 で早期終了しつつ stdout に partial JSON を出力した場合、
 # (a) `result` は非空、(b) jq で `.issue_url` が抽出可能、(c) `.project_registration` が null
 # となり、後続の `jq '.warnings[]' 2>/dev/null` が stderr suppress により jq parse error も
-# 隠蔽し silent に「warnings 0 件」と誤認する。これを防ぐため `if !` 形式で exit code を捕捉する。
+# 隠蔽し silent に「warnings 0 件」と誤認する。これを防ぐため `if ! ...` 形式で exit code を捕捉する。
 if ! result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
   --arg title "{type}: {summary}" \
   --arg body_file "$tmpfile" \
@@ -2232,7 +2232,7 @@ gh_api_err=$(mktemp /tmp/rite-fix-gh-api-comments-err-XXXXXX) || {
 # 401/403/404/timeout/5xx で failure すると `$comment_data` が空 → `$comment_id` も空 →
 # 外側の `if [[ -n "$comment_id" ]]` が false → else 分岐を持たないため全処理が silent no-op となり、
 # Phase 8.1 が `[fix:pushed]` を出力する silent regression を起こす。
-# `if !` で exit code を捕捉し、失敗時は WM_UPDATE_FAILED を emit してから soft failure として進む
+# `if ! ...` で exit code を捕捉し、失敗時は WM_UPDATE_FAILED を emit してから soft failure として進む
 # (exit 1 はしない: 既にコミット/プッシュ済みの fix を保護するため、Phase 8.1 が
 # `[fix:pushed-wm-stale]` を出力できるよう retained flag だけ set する)。
 gh_api_failed=0
@@ -2363,7 +2363,7 @@ if [[ -n "$comment_id" ]]; then
         # M-3 修正 (本 Issue #350 検証付きレビュー M-3): sed の exit code を独立 capture
         # 旧実装は `base_branch=$(... | sed ...)` で sed 失敗を「値が空」fallback に隠蔽していた。
         # sed バイナリ異常 / pipe write error / signal 中断などの IO 系失敗を「キー値空」と区別するため、
-        # sed のみを独立変数に capture し、`if !` で exit code を判定する。
+        # sed のみを独立変数に capture し、`if ! ...` で exit code を判定する。
         # 「値が空」(sed 成功 + 抽出空) は legitimate fallback として develop に降格する。
         sed_err=$(mktemp /tmp/rite-fix-base-sed-err-XXXXXX) || {
           echo "ERROR: sed_err 一時ファイルの作成に失敗" >&2
@@ -2611,7 +2611,7 @@ with open(out_path, "w") as f:
     #
     # L-3 修正 (本 Issue #350 検証付きレビュー L-3): pipefail スコープの明文化
     # 本箇所の pipefail は **PATCH pipeline (jq | gh api PATCH) 周辺のみに限定** する設計選択である。
-    # 他の `gh api` 呼び出し (Phase 4.5.2 line 2163 の `gh api .../comments` 等) は `if !` で gh api 自体の
+    # 他の `gh api` 呼び出し (Phase 4.5.2 line 2163 の `gh api .../comments` 等) は `if ! ...` で gh api 自体の
     # exit code を捕捉済みで、`--jq` filter は gh の内部処理により exit code が伝播するため独立 pipeline
     # 化していない (gh CLI 内部で `--jq` filter 失敗を gh の exit code に正しく反映する仕様、確認済み)。
     # 将来 gh CLI の `--jq` filter exit code 伝播仕様に regression が発生した場合は、defense-in-depth で
