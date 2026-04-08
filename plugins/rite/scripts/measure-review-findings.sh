@@ -98,6 +98,11 @@ if [ -z "$PR_NUMBER" ] && [ -z "$LOCAL_FILE" ]; then
   exit 1
 fi
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: jq is required but not found in PATH" >&2
+  exit 1
+fi
+
 # --- Source acquisition ---
 # Path-first-declare → trap-first-set → mktemp-last order to eliminate the
 # race window between mktemp success and trap registration where SIGTERM/SIGINT
