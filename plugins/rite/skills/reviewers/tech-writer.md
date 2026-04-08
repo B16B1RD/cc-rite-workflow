@@ -120,7 +120,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 In doc-heavy PR mode, the **detailed 5-category verification protocol** in [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md) becomes mandatory **on top of** the standard Critical (Must Fix) checklist. That file is the **single source of truth** for verification procedures, severity mapping, and confidence gating — read it first before reporting findings under this mode.
 
-This mode targets the failure pattern where standard tech-writer review missed cross-reference violations between documentation claims and implementation reality (internal case study: an internal documentation PR — *private repository, organization name redacted*; the case study yielded 12 manually-detected issues spanning implementation facts, ordering/emphasis, enumeration completeness, UX flow, and screenshot completeness).
+This mode targets the failure pattern where standard tech-writer review missed cross-reference violations between documentation claims and implementation reality (internal case study: an internal documentation PR — *private repository, organization name redacted*; the case study yielded 12 manually-detected issues, of which 11 spanned the 5 internal-consistency categories — implementation facts, ordering/emphasis, enumeration completeness, UX flow, and screenshot completeness — and 1 was an external-spec finding handled separately by [`fact-check.md`](../../commands/pr/references/fact-check.md), so the 12 → 11 + 1 split reflects the responsibility boundary between the two reference files).
 
 ### Quick Reference (entry points only — see internal-consistency.md for full procedures)
 

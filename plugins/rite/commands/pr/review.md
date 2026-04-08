@@ -636,6 +636,18 @@ doc_heavy_pr_decision_summary = <1 行要約文字列>
 
 Retain `{doc_heavy_pr}`, `{doc_heavy_pr_value}`, `{doc_heavy_pr_decision_summary}` in the conversation context for use in Phase 2.2.1, Phase 5.1.3, and Phase 5.4 template expansion. All 3 flags are **explicitly set** in every reachable path (including `total_diff_lines == 0` / `total_files_count == 0` early exits above, where `doc_heavy_pr = false` / `doc_heavy_pr_value = false` / `doc_heavy_pr_decision_summary = "empty diff (no changed files)"` must be set before `skip to Phase 1.3`).
 
+**Mandatory `[CONTEXT]` emission for symmetry** (本 Issue #350 検証付きレビュー M-6 で追加):
+
+Determination block の計算が完了した直後 (上記 3 flag を explicit set した直後)、**正常経路でも skip 経路と対称に必ず以下の `[CONTEXT]` 行を bash block の stdout に echo する**。これは Phase 2.2.1 / Phase 5.1.3 / Phase 5.4 で会話履歴 grep により `{doc_heavy_pr}` 等を読み戻す際の決定論性を保証するための非対称性解消修正である:
+
+```bash
+# 全経路 (正常 / 空 PR / inconsistent files race / 全ファイル excluded) で必ず実行
+# 値は上記 Determination の計算結果 (boolean / string) を embed する
+echo "[CONTEXT] doc_heavy_pr=${doc_heavy_pr_value}; doc_heavy_pr_value=${doc_heavy_pr_value}; doc_heavy_pr_decision_summary=${doc_heavy_pr_decision_summary}"
+```
+
+**理由**: 旧実装では skip 経路 (例: `inconsistent_files_count_between_phase_1_1_and_1_2_7`) のみ `[CONTEXT]` 行を emit し、正常経路は emit しない**非対称設計**だった。後続 phase (Phase 2.2.1 / 5.1.3 / 5.4) は「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存していたが、これは Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路で対称に emit することで、後続 phase の grep は常に最新の `[CONTEXT]` 行を decisive に拾える。
+
 **Note**: ゼロ除算ガード (`total_diff_lines == 0` および `total_files_count == 0`) は疑似コードブロック内にインラインで配置済みで、両方とも `doc_heavy_pr = false` を **explicit set** してから `skip to Phase 1.3` する。Skip conditions section の `changedFiles == 0` と併せて、空 PR・分母 0・undefined 参照の三方向を防ぐ多重ガードとなる。Phase 2.2.1 で `{doc_heavy_pr} == true` を判定する時点で `{doc_heavy_pr}` が必ず boolean として set されていることが保証される。
 
 ### 1.3 Identify Related Issue
@@ -816,15 +828,23 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    # 読み取れない (会話文脈に何も残らない)。`[CONTEXT] code_quality_coreviewer_add_reason=...`
    # の形式で 3 状態を stdout に出力することで、後続 phase が context から値を読み戻して
    # candidate list 操作 (selection_type 昇格 / 新規追加 / no-op) を実行できる。
+   #
+   # M-7 修正 (本 Issue #350 検証付きレビュー M-7): iteration_id を付与
+   # 同一 session 内で同じ review が複数回実行されると、`[CONTEXT] code_quality_coreviewer_add_reason=`
+   # 行が会話履歴に複数残り、後続 phase の Claude が「最新値」を決定論的に判別できない問題があった。
+   # iteration_id (`pr_number-{epoch_seconds}` 形式) を suffix に付与することで、後続 phase は
+   # 「最大の iteration_id を持つ行が最新」と決定論的に判定できる (Phase 4.5.2 の confidence_override
+   # tempfile path 命名規約と同型のアプローチ)。
+   p221_iteration_id="{pr_number}-$(date +%s)"
    case "$has_added_fenced_block" in
      "__FAIL_SAFE_ADD__")
-       echo "[CONTEXT] code_quality_coreviewer_add_reason=fail_safe_diff_or_grep_failure"
+       echo "[CONTEXT] code_quality_coreviewer_add_reason=fail_safe_diff_or_grep_failure; iteration_id=$p221_iteration_id"
        ;;
      "")
-       echo "[CONTEXT] code_quality_coreviewer_add_reason=none"
+       echo "[CONTEXT] code_quality_coreviewer_add_reason=none; iteration_id=$p221_iteration_id"
        ;;
      *)
-       echo "[CONTEXT] code_quality_coreviewer_add_reason=fenced_block_detected"
+       echo "[CONTEXT] code_quality_coreviewer_add_reason=fenced_block_detected; iteration_id=$p221_iteration_id"
        ;;
    esac
 
@@ -832,7 +852,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    set +o pipefail
    ```
 
-   **後続 phase での読み取り**: Claude は本 bash block 終了後、stdout から `[CONTEXT] code_quality_coreviewer_add_reason=` 行を会話履歴で検索して値を取得し、以下のいずれかの操作を実行する:
+   **後続 phase での読み取り**: Claude は本 bash block 終了後、stdout から `[CONTEXT] code_quality_coreviewer_add_reason=` 行を会話履歴で検索して値を取得し、以下のいずれかの操作を実行する。**M-7 修正 (本 Issue #350 検証付きレビュー M-7)**: 同一 session 内で複数行マッチした場合は **`iteration_id=` suffix の値が最大のもの (`pr_number-{epoch_seconds}` 形式の epoch_seconds が最大のもの) を最新値として採用** すること。後段の grep regex 例: `\[CONTEXT\] code_quality_coreviewer_add_reason=([^;]+); iteration_id=([0-9]+-[0-9]+)$`。
 
    | reason 値 | 操作 |
    |-----------|------|

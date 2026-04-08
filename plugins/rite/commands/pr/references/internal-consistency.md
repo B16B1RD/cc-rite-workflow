@@ -14,6 +14,20 @@
 >
 > 新規 finding を書く際、CHANGELOG / README / tech-writer.md checklist 項目を編集する際、META 行を構成する際のいずれにおいても上記 canonical form を使う。3 形式併存は Phase 5.1.3 Step 2 が破壊する silent 障害の root cause となる。
 
+## Doc-Heavy 用語集 (本 Issue #350 検証付きレビュー L-12 で追加)
+
+「ドキュメント中心 PR」を表す語が複数存在し、それぞれの用法を統一する:
+
+| 表記 | 用法 | 出現箇所 |
+|------|------|----------|
+| `Doc-Heavy PR Mode` | **固有名詞**: `commands/pr/review.md` Phase 1.2.7 で判定される機能名 | 見出し / 文中の機能名参照 (英) |
+| `doc-heavy` | **形容詞** (小文字): `doc-heavy PR` / `doc-heavy mode` のような前置形容用法 | 文中の形容詞 (英) |
+| `{doc_heavy_pr}` | **変数名** (snake_case): retained context flag の名前 | bash 変数 / placeholder |
+| `ドキュメント中心 PR` | **一般説明** (日): 日本語本文での描写 | CHANGELOG.ja.md / 日本語ドキュメント |
+| `documentation-centric PR` | **一般説明** (英): 英語本文での描写 | CHANGELOG.md / 英語ドキュメント |
+
+**統一規則**: 同一段落内で機能名 (`Doc-Heavy PR Mode`) と一般説明 (`documentation-centric PR`) を混在させてもよいが、形容詞 `doc-heavy` を `Doc-Heavy` と書き分ける必要はない (大文字小文字は文脈で許容される)。日本語と英語は同一文章内で混在させない (CHANGELOG.md は英語、CHANGELOG.ja.md は日本語)。
+
 ## Overview
 
 AI レビュアーが、ドキュメントが主張する事実（機能集合、列挙数、UX フロー、順序、ビジュアル資産）をリポジトリ内のコードベースで検証し、**文書と実装の乖離を初回レビューで検出する**。`fact-check.md`（外部仕様検証）と対の関係にあり、両者で "外部仕様" と "内部事実" を網羅する。
@@ -323,15 +337,19 @@ review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inco
 
 ## Cross-Reference
 
+**Note** (本 Issue #350 検証付きレビュー L-16 で構造整理): 以下は「本ファイルがどこから参照されているか」のリンク集のみで、drift 監視 invariant の詳細は次の `## Drift Detection Invariants` セクションに分離した。
+
 本ファイルは以下の箇所から参照される (本ファイルからの相対パスで記載):
 
 - [`../../../skills/reviewers/tech-writer.md`](../../../skills/reviewers/tech-writer.md) — Critical (Must Fix) チェックリストの「文書-実装整合性」5 項目および "Doc-Heavy PR Mode (Conditional)" セクション (Quick Reference テーブル + Verification skip handling)
 - [`../review.md`](../review.md) — Phase 1.2.7 Doc-Heavy PR Detection、Phase 2.2.1 Doc-Heavy Reviewer Override、Phase 5.1.3 Doc-Heavy Post-Condition Check
 - [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧テーブルの tech-writer 行 (representative file patterns)。tech-writer.md / review.md / SKILL.md の 3 者で等価な doc_file_patterns を保持する (drift 監視対象、本ファイル自身は patterns を保持しない)
 
-**drift 検出の invariant** (2 系統の 3 ファイル等価性 — 区別が必要):
+## Drift Detection Invariants
 
-本 PR では **2 種類** の「3 ファイル等価性」が存在する。両者は対象集合が異なるため混同してはならない (本 Issue #350 検証付きレビュー L-1 で指摘):
+**drift 検出の invariant** (3 系統の drift 監視対象 — 区別が必要):
+
+本 PR では **3 種類** の drift 監視対象が存在する。系統 1 と系統 2 はいずれも「3 ファイル間の等価性」だが対象集合が異なり、系統 3 は「同一ファイル内の 2 箇所重複」で構造的に異なる (本 Issue #350 検証付きレビュー L-1 / M-12 で指摘):
 
 #### 系統 1: `doc_file_patterns` の 3 ファイル等価性
 
