@@ -334,11 +334,7 @@ description: |
 ---
 name: agent-name
 description: 短い目的の説明
-model: sonnet  # opus | sonnet | haiku
-tools:
-  - Read
-  - Grep
-  - Glob
+model: opus  # opus | sonnet | haiku (optional — 省略時は親セッションから継承)
 ---
 
 # エージェント名
@@ -350,16 +346,18 @@ tools:
 |-----------|------|------|
 | `name` | はい | 一意のエージェント識別子 |
 | `description` | はい | Task ツール用の短い説明 |
-| `model` | いいえ | モデル選択（デフォルト: 親から継承） |
-| `tools` | はい | 利用可能なツールのリスト |
+| `model` | いいえ | モデル選択（デフォルト: 親セッションから継承） |
+| `tools` | いいえ | 利用可能なツールのリスト（デフォルト: 親セッションの全ツールを継承。省略で全ツール有効） |
+
+**`tools` フィールドに関する注記**: rite plugin のレビュアー agent は現状 `subagent_type: general-purpose` 経由で呼び出されているため、frontmatter の `tools` 値にかかわらず親セッションの全ツールにアクセスできる。将来 named subagent 呼び出しを導入する際に silent なツール制限が発生するのを防ぐため、全レビュアー agent で `tools` フィールドを省略している。
 
 **現在のエージェント:**
 
 | エージェント | モデル | 目的 |
 |-------------|--------|------|
 | `security-reviewer` | opus | セキュリティ脆弱性、認証、データ処理 |
-| `performance-reviewer` | opus | N+1 クエリ、メモリリーク、アルゴリズム効率 |
-| `code-quality-reviewer` | opus | 重複、命名、エラーハンドリング、構造 |
+| `performance-reviewer` | inherit | N+1 クエリ、メモリリーク、アルゴリズム効率 |
+| `code-quality-reviewer` | inherit | 重複、命名、エラーハンドリング、構造 |
 | `api-reviewer` | opus | API 設計、REST 規約、インターフェース契約 |
 | `database-reviewer` | opus | スキーマ設計、クエリ、マイグレーション、データ操作 |
 | `devops-reviewer` | opus | インフラストラクチャ、CI/CD パイプライン、デプロイ設定 |
@@ -368,8 +366,8 @@ tools:
 | `dependencies-reviewer` | opus | パッケージ依存関係、バージョン、サプライチェーンセキュリティ |
 | `prompt-engineer-reviewer` | opus | Claude Code のスキル、コマンド、およびエージェント定義 |
 | `tech-writer-reviewer` | opus | ドキュメントの明確さ、正確さ、完全性 |
-| `error-handling-reviewer` | opus | エラーハンドリングパターン、サイレント障害、復旧ロジック |
-| `type-design-reviewer` | opus | 型設計、カプセル化、不変条件の表現 |
+| `error-handling-reviewer` | inherit | エラーハンドリングパターン、サイレント障害、復旧ロジック |
+| `type-design-reviewer` | inherit | 型設計、カプセル化、不変条件の表現 |
 
 ---
 

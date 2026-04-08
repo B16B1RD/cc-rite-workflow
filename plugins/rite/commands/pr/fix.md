@@ -2850,7 +2850,20 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 
 **`reason` フィールドの取りうる値** (Phase 4.5.1 / 4.5.2 で発火する経路の網羅):
 
-> **完全性保証**: 本表は fix.md 内で `echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=..."` として emit されるすべての reason を網羅する。DoD 検証スクリプト: `comm -3 <(grep -oE 'reason=[a-z_][a-z_0-9]*' plugins/rite/commands/pr/fix.md | sed 's/reason=//' | sort -u | grep -vE '^(mktemp_failed_override_err|wc_io_error|paste_io_error|mktemp_failed_reply_tmpfile|cat_redirection_failed|reply_tmpfile_empty|mktemp_failed_report_tmpfile|mktemp_failed_issue_body_tmpfile|script_exit|empty_stdout|missing_issue_url)$') <(awk '/^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*/); print substr($0, RSTART+1, RLENGTH-1)}' plugins/rite/commands/pr/fix.md | sort -u)` が空 (WM_UPDATE_FAILED 系 reason の diff が完全一致)。
+> **完全性保証**: 本表は fix.md 内で `echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=..."` として emit されるすべての reason を網羅する。DoD 検証スクリプト (手動実行、実測空出力で一致確認済み):
+> ```bash
+> comm -3 \
+>   <(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' plugins/rite/commands/pr/fix.md \
+>     | sed 's/.*reason=//' | sort -u) \
+>   <(awk '/^\*\*`reason` フィールド/{in_table=1; next} in_table && /^\*\*/{in_table=0} in_table && /^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*[^`]*`/); print substr($0, RSTART+1, RLENGTH-2)}' plugins/rite/commands/pr/fix.md \
+>     | sed 's/\$.*//' | sort -u)
+> # → 空出力 (完全一致)
+> ```
+>
+> **設計上の要点**:
+> - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を自動除外する (前方一致による一発フィルタ)
+> - `awk` 側は `**\`reason\` フィールド` セクションから次の `**` heading までを `in_table=1` 範囲とし、fix.md 内の他テーブル (`auto` / `en` / `ja` / `confidence_override_count` / `confidence_override_findings` / `project_registration` 等) を拾わない
+> - `sed 's/\$.*//'` で `python_unexpected_exit_$py_exit` のような shell 変数展開部分を切り落とし、両側で同じ prefix (`python_unexpected_exit_`) として比較する
 
 | reason | 発生 Phase | 発生条件 |
 |--------|------------|----------|
@@ -2876,7 +2889,7 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 | `mktemp_failed_tmpfile` | Phase 4.5.2 | 汎用 tempfile の mktemp が失敗 (Python scratch 等) |
 | `mktemp_failed_files_tmp` | Phase 4.5.2 | 変更ファイル一覧退避用 tempfile の mktemp が失敗 |
 | `mktemp_failed_history_tmp` | Phase 4.5.2 | 履歴退避用 tempfile の mktemp が失敗 |
-| `python_sentinel_detected` | Phase 4.5.2 | Python スクリプトが sentinel 文字列を出力 (work memory body 更新前の内部アサーション失敗) |
+| `python_sentinel_detected` | Phase 4.5.2 | Python スクリプトが `GIT_DIFF_FAILED_SENTINEL` を検出し `sys.exit(2)` で異常終了 (`git diff` 失敗による silent PATCH 拒否専用。`python_unexpected_exit_$py_exit` と異なり、この label は git diff 失敗経路に**予約**されている。詳細は fix.md 内 "`sys.exit(2)` は GIT_DIFF_FAILED_SENTINEL マッチ専用に予約" 段落を参照) |
 | `python_unexpected_exit_$py_exit` | Phase 4.5.2 | Python スクリプトが非ゼロ exit code で異常終了 (`$py_exit` は実測 exit code に展開) |
 | `wm_body_empty_or_too_short` | Phase 4.5.2 | 更新後 work memory body が空 or 最小長 (10 bytes) 未満で棄却 |
 | `wm_header_missing` | Phase 4.5.2 | 更新後 work memory body に `📜 rite 作業メモリ` header が欠落 |

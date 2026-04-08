@@ -334,11 +334,7 @@ Agent files (`agents/*.md`) define subagents for specialized tasks:
 ---
 name: agent-name
 description: Short purpose description
-model: sonnet  # opus | sonnet | haiku
-tools:
-  - Read
-  - Grep
-  - Glob
+model: opus  # opus | sonnet | haiku (optional; omit to inherit from parent session)
 ---
 
 # Agent Name
@@ -350,16 +346,18 @@ Agent documentation...
 |-------|----------|-------------|
 | `name` | Yes | Unique agent identifier |
 | `description` | Yes | Short description for Task tool |
-| `model` | No | Model selection (default: inherit from parent) |
-| `tools` | Yes | List of available tools |
+| `model` | No | Model selection (default: inherit from parent session) |
+| `tools` | No | List of available tools (default: inherit all tools from parent; omit to enable all tools) |
+
+**Note on `tools`**: Reviewer agents in the rite plugin are currently invoked via `subagent_type: general-purpose`, which gives them access to all tools from the parent session regardless of the `tools` frontmatter. The `tools` field is therefore optional and is omitted from all reviewer agents to prevent accidental silent tool restrictions when named subagent invocation is introduced in a future phase.
 
 **Current Agents:**
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | `security-reviewer` | opus | Security vulnerabilities, authentication, data handling |
-| `performance-reviewer` | opus | N+1 queries, memory leaks, algorithm efficiency |
-| `code-quality-reviewer` | opus | Duplication, naming, error handling, structure |
+| `performance-reviewer` | inherit | N+1 queries, memory leaks, algorithm efficiency |
+| `code-quality-reviewer` | inherit | Duplication, naming, error handling, structure |
 | `api-reviewer` | opus | API design, REST conventions, interface contracts |
 | `database-reviewer` | opus | Schema design, queries, migrations, data operations |
 | `devops-reviewer` | opus | Infrastructure, CI/CD pipelines, deployment configurations |
@@ -368,8 +366,8 @@ Agent documentation...
 | `dependencies-reviewer` | opus | Package dependencies, versions, supply chain security |
 | `prompt-engineer-reviewer` | opus | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | opus | Documentation clarity, accuracy, completeness |
-| `error-handling-reviewer` | opus | Error handling patterns, silent failures, recovery logic |
-| `type-design-reviewer` | opus | Type design, encapsulation, invariant expression |
+| `error-handling-reviewer` | inherit | Error handling patterns, silent failures, recovery logic |
+| `type-design-reviewer` | inherit | Type design, encapsulation, invariant expression |
 
 ---
 
