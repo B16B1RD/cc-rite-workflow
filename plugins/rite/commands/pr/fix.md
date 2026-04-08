@@ -584,15 +584,17 @@ handoff_committed=1
 
    **Cancel/Re-run 経路でのハンドオフ cleanup 義務** (silent orphan ファイル防止):
 
-   `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / Phase 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した 3 ファイルを **明示的に削除する** bash 呼び出しを必ず実行する。これは Phase 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、Phase 1.4 末尾の Phase 1.5 cleanup から到達しない経路をカバーする:
+   `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / Phase 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した 3 ファイル **および confidence_override tempfile** を **明示的に削除する** bash 呼び出しを必ず実行する。これは Phase 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、Phase 1.4 末尾の Phase 1.5 cleanup から到達しない経路をカバーする:
 
    ```bash
-   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 ファイルを削除してから exit する
+   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 ファイル + confidence_override tempfile を削除してから exit する
    # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
    # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
+   # confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
    rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
          "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+         "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
+         "/tmp/rite-fix-confidence-override-{pr_number}.txt"
    ```
 
    この cleanup を実行する 3 つの経路:
@@ -688,31 +690,60 @@ handoff_committed=1
 **Tempfile lifecycle** (specific path 必須、wildcard glob 禁止):
 
 - **Path**: `/tmp/rite-fix-confidence-override-{pr_number}.txt` ({pr_number} は Phase 1.0 で正規化済み)
-- **作成タイミング**: Phase 1.2 best-effort parse で最初の override 候補が出現した時点で `touch` (空ファイルとして作成)
+- **作成タイミング**: Phase 1.2 best-effort parse で最初の override 候補が出現した時点で **truncate 付きで作成** (`: > {path}` または `printf '' > {path}`)。旧仕様の `touch` は POSIX 仕様上既存ファイルを truncate しない ([POSIX touch(1p)](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/touch.html) — 既存ファイルには `utimensat()` のみで content は変更されない) ため、前セッションの stale データに追記してしまう silent regression の原因になる。必ず `: > {path}` で truncate すること (本 Issue #350 検証付きレビュー H-2 で指摘)。
 - **追記タイミング**: AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに `printf '%s\n' "{file}:{line}" >> {path}`
 - **読み出しタイミング**: Phase 4.6 / 4.5.3 / 4.3.4 で `wc -l < {path}` (件数) / `cat {path}` (本文) で取得
-- **削除タイミング**: Phase 8.1 の output pattern emit 直後、または Phase 1.4 cancel/error 経路 (Fast Path 一時ファイル cleanup と同じパターン)
+- **削除タイミング**: 以下の **すべての終了経路** で明示的に削除する (orphan 防止、specific path 必須):
+  - **E2E flow**: Phase 8.1 の output pattern emit 直後
+  - **Standalone flow**: Phase 8 は skip されるため、Phase 4.6 の completion report 出力後に明示的 cleanup bash block を実行する
+  - **Phase 1.4 cancel 経路**: 既存の Fast Path 一時ファイル cleanup bash block に追加 (同一 block 内で削除)
+  - **Phase 1.2 best-effort parse error 経路**: Cancel/Re-run cleanup に追加
 - **並列セッション分離**: `{pr_number}` suffix で specific path とすることで、並列 fix 実行時の他セッション破壊を防ぐ。`/tmp/rite-fix-confidence-override-*.txt` のような wildcard glob は **絶対に使わない**
 
 **Claude による retain と再注入の手順** (data flow の具体化、ファイル永続化版):
 
-1. Phase 1.2 best-effort parse で最初の override 候補が出現した時点で `touch /tmp/rite-fix-confidence-override-{pr_number}.txt` (空ファイル作成)
+1. Phase 1.2 best-effort parse で最初の override 候補が出現した時点で `: > /tmp/rite-fix-confidence-override-{pr_number}.txt` で **truncate 付き空ファイル作成** (前セッションの stale データを必ず消去する)
 2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、bash block 内で `printf '%s\n' "{file}:{line}" >> /tmp/rite-fix-confidence-override-{pr_number}.txt` を実行 (追記、`>>` で append)
-3. Phase 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、bash block で以下を実行して値を取得 (会話履歴 grep に依存しない):
+3. Phase 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、bash block で以下を実行して値を取得 (会話履歴 grep に依存しない、`2>/dev/null` の silent IO suppression も撤廃):
    ```bash
    override_path="/tmp/rite-fix-confidence-override-{pr_number}.txt"
    if [ -f "$override_path" ]; then
-     confidence_override_count=$(wc -l < "$override_path" 2>/dev/null | tr -d ' ')
-     # findings 一覧 (1 行 1 finding) は cat で取得
-     # 改行区切り → "; " 区切り変換が必要なら paste -sd ';' で結合
-     confidence_override_findings_str=$(paste -sd ';' "$override_path" 2>/dev/null | sed 's/;/; /g')
+     # wc -l の stderr を独立退避ファイルに分離 (本 Issue #350 検証付きレビュー H-3 で指摘):
+     # 旧実装 `wc -l < "$override_path" 2>/dev/null` は read permission 拒否 / inode 破損 /
+     # ファイル内容破壊などの IO エラーで silent に空文字列 → count=0 に落ちて
+     # policy override の監査トレースが完成報告から silent drop する。
+     override_err=$(mktemp /tmp/rite-fix-confidence-override-err-XXXXXX) || {
+       echo "ERROR: override_err mktemp 失敗" >&2
+       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=mktemp_failed_override_err"
+       exit 1
+     }
+     if ! confidence_override_count_raw=$(wc -l < "$override_path" 2>"$override_err"); then
+       echo "ERROR: wc -l による override_path 読み出し失敗: $(cat "$override_err")" >&2
+       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=wc_io_error; path=$override_path"
+       rm -f "$override_err"
+       exit 1
+     fi
+     confidence_override_count=$(printf '%s' "$confidence_override_count_raw" | tr -d ' ')
+     # findings 一覧 (1 行 1 finding) は paste で "; " 区切りに変換
+     if ! confidence_override_findings_raw=$(paste -sd ';' "$override_path" 2>"$override_err"); then
+       echo "ERROR: paste による override_path 読み出し失敗: $(cat "$override_err")" >&2
+       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=paste_io_error; path=$override_path"
+       rm -f "$override_err"
+       exit 1
+     fi
+     confidence_override_findings_str=$(printf '%s' "$confidence_override_findings_raw" | sed 's/;/; /g')
+     rm -f "$override_err"
    else
      confidence_override_count=0
      confidence_override_findings_str=""
    fi
    ```
 4. fix ループ中に他のフェーズから上記ファイルを上書きしない (append-only)
-5. Phase 8.1 終了時に明示的削除: `rm -f /tmp/rite-fix-confidence-override-{pr_number}.txt` (Phase 1.5 cleanup と同様、specific path 必須)
+5. 終了経路の明示的削除:
+   - **E2E flow (Phase 8.1)**: `rm -f /tmp/rite-fix-confidence-override-{pr_number}.txt`
+   - **Standalone flow (Phase 8.2)**: Phase 4.6 の completion report 出力後に明示的 cleanup bash block で削除
+   - **Phase 1.4 cancel 経路**: Fast Path ハンドオフ cleanup bash block 内で同時に削除 (下記 Cancel cleanup block 参照)
+   - **Phase 1.2 best-effort parse cancel/error 経路**: 「Cancel/Re-run 経路でのハンドオフ cleanup 義務」bash block 内で同時に削除
 
 **互換性**: 旧 `[CONTEXT] confidence_override_count = N; confidence_override_findings = [...]` 行の emit は、debug 補助として **継続して併用してよい** (人間が tail で見えるケースのため)。ただし機械的な値の取得は必ずファイル経由とし、`[CONTEXT]` 行の grep には依存しない。
 
@@ -957,9 +988,11 @@ PR #{number} のレビューコメント
 # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
 # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
 # Broad Comment Retrieval 経路ではこれらのファイルが存在しないため rm -f は silent no-op となる
+# confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
 rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-confidence-override-{pr_number}.txt"
 
 # cleanup 後に exit
 echo "[fix:cancelled-by-user]"
@@ -999,6 +1032,8 @@ Terminate processing.
 # 実行条件: Fast Path 経由 (target_comment_id が set されている場合) のみ
 # Broad Comment Retrieval 経路では silent no-op (ファイルが存在しないため rm -f が exit 0 で終わる)
 # {pr_number} / {target_comment_id} は Claude が Phase 1.0 の parse 結果で事前置換済み
+# 注: confidence_override tempfile は Phase 1.5 では削除しない。fix ループ全体で参照されるため、
+# Phase 8.1 (E2E flow) または Phase 4.6 後 (Standalone flow) で削除する (H-2 対応)。
 rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
@@ -1137,14 +1172,21 @@ When posting the reply:
 # jq --rawfile で安全に JSON を生成し、gh api に渡す
 # trap は Phase 4.5.1/4.5.2/Fast Path と同型の signal 別 4 行パターンに統一
 # (signal 受信時に明示的 exit code 130/143/129 を返し silent INT/TERM/HUP continuation を防ぐ)
-tmpfile=$(mktemp) || { echo "ERROR: tmpfile mktemp 失敗 (/tmp が read-only / inode 枯渇 / permission 拒否)" >&2; exit 1; }
+#
+# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
+# mktemp を先に実行して trap を後追いで設定すると、mktemp 成功〜trap 設定間の race window で
+# SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが orphan として残る。
+# `${var:-}` は未定義時 silent no-op で安全 (他の cleanup 関数と同型)。
+tmpfile=""
 _rite_fix_phase24_cleanup() {
-  rm -f "$tmpfile"
+  rm -f "${tmpfile:-}"
 }
 trap 'rc=$?; _rite_fix_phase24_cleanup; exit $rc' EXIT
 trap '_rite_fix_phase24_cleanup; exit 130' INT
 trap '_rite_fix_phase24_cleanup; exit 143' TERM
 trap '_rite_fix_phase24_cleanup; exit 129' HUP
+
+tmpfile=$(mktemp) || { echo "ERROR: tmpfile mktemp 失敗 (/tmp が read-only / inode 枯渇 / permission 拒否)" >&2; exit 1; }
 
 cat <<'REPLYEOF' > "$tmpfile"
 {reply_body}
@@ -1571,7 +1613,7 @@ Generate the Issue title in the following format:
 # bash block 後段で warnings_jq_err を追加するため、cleanup 対象を関数にまとめて 1 つの trap で全変数を
 # カバーする。trap を再定義すると前段の `tmpfile` cleanup が上書きで失われる (silent orphan 経路)。
 #
-# issue_created フラグ (Fast Path の `handoff_committed` と同じ 3-state pattern):
+# issue_created フラグ (Fast Path の `handoff_committed` と同型の 2-state commit pattern):
 #
 # 状態遷移:
 #   - issue_created=0 (初期値): cleanup は tmpfile を **preserve** する (Issue 作成失敗時に
@@ -1697,10 +1739,14 @@ if [ -z "$created_issue_url" ]; then
   exit 1
 fi
 
-# Issue 作成成功: tmpfile を統合 cleanup の対象から外す (issue_created=1)
-# 以降、bash block 末尾に到達するか後続でエラーが起きても tmpfile は削除されない
-# (gh issue create が成功したので Issue 本文の preserve 義務は果たされ、ここで cleanup へ移行可能だが、
-#  Phase 4.3.5 の表示時に tmpfile path が必要になるため preserve しておく)
+# Issue 作成成功: preserve 義務が果たされたため tmpfile を削除対象に切り替える (issue_created=1)
+# 状態遷移 (line 1581-1589 の説明と一致):
+#   - issue_created=0: cleanup 関数は tmpfile を preserve (debug 用)
+#   - issue_created=1: cleanup 関数は tmpfile を rm -f (debug 不要、正常完了)
+# 以降、EXIT trap 発火時に `_rite_fix_issue_create_cleanup` (line 1593-1602) が
+# `if [ "$issue_created" = "1" ]` 分岐で tmpfile を削除する。
+# Phase 4.3.5 は {issue_number} / {issue_title} のみを参照し tmpfile path は使わないため
+# preserve 不要 (Phase 4.3.5 の表示テンプレートは line 1808 付近を参照)。
 issue_created=1
 
 # .project_registration の jq 抽出 + partial / failed 警告 (silent drop 防止):
@@ -1824,6 +1870,11 @@ pr_body_tmp=""
 # ことに伴い、独立 stderr 退避ファイルが必要になった)。`${var:-}` は未定義時 silent no-op で安全。
 pr_body_grep_err=""
 branch_grep_err=""
+# wm_emit_done フラグ (M-4 / M-5 対応): retained flag が 1 度 emit されたら、以降の経路で
+# 重複 emit と branch fallback 誤起動を防ぐための gate。Phase 8.1 の reason 表で「最初に emit された
+# reason を採用」としたくても、複数 emit が混在すると debug UX が悪化し root cause 特定が遅れる。
+# 0: まだ emit していない / 1: 既に emit 済み → 以降の retained flag emit と issue_number 依存処理を skip
+wm_emit_done=0
 _rite_fix_phase451_cleanup() {
   rm -f "${pr_body_tmp:-}" "${pr_body_grep_err:-}" "${branch_grep_err:-}"
 }
@@ -1835,6 +1886,8 @@ trap '_rite_fix_phase451_cleanup; exit 129' HUP
 pr_body_tmp=$(mktemp) || {
   echo "ERROR: pr_body_tmp の mktemp に失敗しました" >&2
   echo "対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+  echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_tmp"
   exit 1
 }
 # HEREDOC 経由で pr_body を書き出す (single-quoted delimiter で shell expansion を完全抑制)。
@@ -1867,6 +1920,8 @@ fi
 # defense-in-depth の宣言と実装が不整合だった経路を、stderr を独立ファイルに退避することで修正する。
 pr_body_grep_err=$(mktemp /tmp/rite-fix-pr-body-grep-err-XXXXXX) || {
   echo "ERROR: pr_body_grep_err 一時ファイルの作成に失敗" >&2
+  echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_grep_err"
   exit 1
 }
 set -o pipefail
@@ -1903,16 +1958,26 @@ case "$grep_pipeline_rc" in
     echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
     echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$grep_pipeline_rc"
     # exit 1 を削除: soft failure として retained flag のみ emit、Phase 8.1 が [fix:pushed-wm-stale] を出力する
-    issue_number=""  # branch fallback も skip して下流の WM_UPDATE_FAILED 経路に流す
+    # wm_emit_done=1 にすることで (M-5 対応):
+    #   - 下流の branch fallback if 文が skip され、IO error 後に branch grep が誤起動しない
+    #   - 下流の `if [[ -z "$issue_number" ]]` retained flag block も skip され、M-4 の 2 回連続 emit を防ぐ
+    wm_emit_done=1
+    issue_number=""  # branch fallback も skip して下流の WM_UPDATE_FAILED 経路に流す (M-5 対応)
     ;;
 esac
 
 # 2. PR 本文で見つからない場合、ブランチ名から抽出
 # 同様に grep の exit 1 / exit 2 を区別する
 # M-1 / H-2 同等の修正: 2>&1 を撤廃し独立 stderr file に退避、IO error も soft failure に統一
-if [[ -z "$issue_number" ]]; then
+# wm_emit_done guard (M-5 対応): pr_body grep IO error 経路で既に retained flag emit 済みの場合、
+# branch fallback を実行せず skip する。旧実装は issue_number="" にするだけで直後の
+# `if [[ -z "$issue_number" ]]` が常に true になり、branch grep が誤起動して意図しない
+# 「IO error 経路なのに issue_number が設定される」semantics 破壊を引き起こしていた。
+if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
   branch_grep_err=$(mktemp /tmp/rite-fix-branch-grep-err-XXXXXX) || {
     echo "ERROR: branch_grep_err 一時ファイルの作成に失敗" >&2
+    echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_branch_grep_err"
     exit 1
   }
   branch_pipeline_out=$(git branch --show-current 2>"$branch_grep_err" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
@@ -1936,7 +2001,9 @@ if [[ -z "$issue_number" ]]; then
       echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
       echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_pipeline_rc"
       # exit 1 を削除: soft failure として retained flag のみ emit
-      issue_number=""  # 下流の if [[ -z "$issue_number" ]] 経路で WM_UPDATE_FAILED が再 emit される
+      # wm_emit_done=1 により下流の retained flag block が skip される (M-4 対応: 2 回 emit 防止)
+      wm_emit_done=1
+      issue_number=""  # 下流 block は wm_emit_done guard で skip されるため stale WM 経路へ流れる
       ;;
   esac
 fi
@@ -1959,12 +2026,17 @@ If no Issue number is found, display a warning **and emit a `WM_UPDATE_FAILED=1`
 #   2. retained flag `WM_UPDATE_FAILED=1` を context に明示宣言 (Phase 8 が読む)
 # Phase 8.1 では `[CONTEXT] WM_UPDATE_FAILED=1` を検出した場合、`[fix:pushed]` ではなく
 # `[fix:pushed-wm-stale]` を出力するルールを採用する (Phase 8.1 のテーブル参照)
-if [[ -z "$issue_number" ]]; then
+#
+# wm_emit_done guard (M-4 対応): 上流の pr_body_grep_io_error / branch_grep_io_error 経路で
+# 既に retained flag が emit されている場合、ここでの重複 emit を防ぐ。
+# 重複 emit は Phase 8.1 の reason 解釈が非決定的になり debug UX を悪化させる。
+if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
   echo "⚠️ Issue 番号が特定できないため作業メモリ更新をスキップしました" >&2
   echo "  PR 本文に Closes/Fixes/Resolves #XX が含まれていないか、ブランチ名に issue-{number} パターンがありません。" >&2
   echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
   echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
   echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=issue_number_not_found"
+  wm_emit_done=1
 fi
 ```
 
@@ -2017,8 +2089,13 @@ trap '_rite_fix_phase452_cleanup; exit 143' TERM
 trap '_rite_fix_phase452_cleanup; exit 129' HUP
 
 # gh api の stderr 退避ファイル (失敗時に 詳細を表示するため)
+# mktemp 失敗時も retained flag を必ず emit (silent [fix:pushed] 防止):
+# bash の `exit 1` は Claude のフロー制御にならず Phase 8.1 は retained flag 未検出で
+# silent `[fix:pushed]` を出力するため、exit 前に `[CONTEXT] WM_UPDATE_FAILED=1` を必須で emit する。
 gh_api_err=$(mktemp /tmp/rite-fix-gh-api-comments-err-XXXXXX) || {
   echo "ERROR: gh_api_err 一時ファイルの作成に失敗" >&2
+  echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_gh_api_err; issue_number={issue_number}"
   exit 1
 }
 
@@ -2106,6 +2183,8 @@ if [[ -n "$comment_id" ]]; then
       # grep の exit 1 (no match) と exit 2 (IO error) を分離 (silent IO suppression 防止)
       base_branch_grep_err=$(mktemp /tmp/rite-fix-base-grep-err-XXXXXX) || {
         echo "ERROR: base_branch_grep_err 一時ファイルの作成に失敗" >&2
+        echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+        echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_base_branch_grep_err; issue_number={issue_number}"
         exit 1
       }
       if ! base_branch_raw=$(grep -E '^\s*base:' rite-config.yml 2>"$base_branch_grep_err"); then
@@ -2120,6 +2199,8 @@ if [[ -n "$comment_id" ]]; then
           echo "ERROR: rite-config.yml の grep が IO/権限エラーで失敗しました (rc=$base_branch_grep_rc)" >&2
           echo "  詳細: $(cat "$base_branch_grep_err")" >&2
           echo "  対処: rite-config.yml の権限を確認後、再実行してください" >&2
+          echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=base_branch_grep_io_error; rc=$base_branch_grep_rc; issue_number={issue_number}"
           rm -f "$base_branch_grep_err"
           exit 1
         fi
@@ -2137,6 +2218,8 @@ if [[ -n "$comment_id" ]]; then
 
     diff_stderr_tmp=$(mktemp /tmp/rite-fix-git-diff-err-XXXXXX) || {
       echo "ERROR: git diff stderr 一時ファイルの作成に失敗" >&2
+      echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_diff_stderr_tmp; issue_number={issue_number}"
       exit 1
     }
     if ! changed_files_raw=$(git diff --name-status "origin/${base_branch}...HEAD" 2>"$diff_stderr_tmp"); then
@@ -2169,10 +2252,27 @@ if [[ -n "$comment_id" ]]; then
     # body_tmp / tmpfile / files_tmp / history_tmp は冒頭で空文字宣言済みで cleanup 対象に
     # 含まれているため、ここでは mktemp のみを実行する (パス先行宣言 → trap 先行設定 → mktemp の
     # 順序が成立しており、race window は存在しない)。
-    body_tmp=$(mktemp) || { echo "ERROR: body_tmp mktemp 失敗" >&2; exit 1; }
-    tmpfile=$(mktemp) || { echo "ERROR: tmpfile mktemp 失敗" >&2; exit 1; }
-    files_tmp=$(mktemp) || { echo "ERROR: files_tmp mktemp 失敗" >&2; exit 1; }
-    history_tmp=$(mktemp) || { echo "ERROR: history_tmp mktemp 失敗" >&2; exit 1; }
+    # mktemp 失敗経路も retained flag 必須 (silent [fix:pushed] 防止):
+    body_tmp=$(mktemp) || {
+      echo "ERROR: body_tmp mktemp 失敗" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_body_tmp; issue_number={issue_number}"
+      exit 1
+    }
+    tmpfile=$(mktemp) || {
+      echo "ERROR: tmpfile mktemp 失敗" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_tmpfile; issue_number={issue_number}"
+      exit 1
+    }
+    files_tmp=$(mktemp) || {
+      echo "ERROR: files_tmp mktemp 失敗" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_files_tmp; issue_number={issue_number}"
+      exit 1
+    }
+    history_tmp=$(mktemp) || {
+      echo "ERROR: history_tmp mktemp 失敗" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_history_tmp; issue_number={issue_number}"
+      exit 1
+    }
     printf '%s' "$current_body" > "$body_tmp"
     printf '%s' "$changed_files_md" > "$files_tmp"
     cat > "$history_tmp" << 'HISTORY_EOF'
@@ -2270,24 +2370,34 @@ with open(out_path, "w") as f:
       echo "  Debug: visible WARNING block was injected into the body file and preserved at: $tmpfile" >&2
       echo "  Backup of original work memory: $backup_file" >&2
       echo "  Action: git diff の失敗原因を解決後、再実行してください (上記 stderr の git diff WARNING を参照)" >&2
+      echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=python_sentinel_detected; backup=$backup_file; issue_number={issue_number}"
       exit 1
     elif [ "$py_exit" -ne 0 ]; then
       echo "ERROR: Python script failed with unexpected exit code $py_exit. Backup: $backup_file" >&2
+      echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=python_unexpected_exit_$py_exit; backup=$backup_file; issue_number={issue_number}"
       exit 1
     fi
 
     # Safety checks before PATCH (see gh-cli-patterns.md)
+    # 各 safety check failure でも retained flag を emit (silent [fix:pushed] 防止):
+    # Python が body を書き出したが内容が壊れていた場合、PATCH を silent に skip すると
+    # work memory が stale のまま fix loop が完走する。retained flag で Phase 8.1 に通知する。
     if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
       echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_body_empty_or_too_short; backup=$backup_file; issue_number={issue_number}"
       exit 1
     fi
     if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
       echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_header_missing; backup=$backup_file; issue_number={issue_number}"
       exit 1
     fi
     updated_length=$(wc -c < "$tmpfile")
     if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
       echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_body_too_small; updated=${updated_length}; original=${original_length}; backup=$backup_file; issue_number={issue_number}"
       exit 1
     fi
 
@@ -2507,6 +2617,18 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 - Return control to the caller (`/rite:issue:start`)
 - The caller determines the next action based on this output pattern
 
+**Confidence override tempfile cleanup** (silent orphan 防止、本 Issue #350 検証付きレビュー H-2 で追加):
+
+Phase 8.1 の output pattern emit 直後に、fix ループ全体で使用していた confidence_override tempfile を明示的に削除する。specific path 必須 (並列セッション破壊防止)。
+
+```bash
+# confidence_override tempfile の明示的 cleanup (E2E flow 経路)
+# fix ループ全体で append されてきたファイルを終了時に削除する。
+# 削除しないと次回実行時の truncate (`: >`) に依存するが、truncate 忘れの経路があった場合に
+# 前セッションの stale データが混入する silent regression のリスクがあるため defense-in-depth で削除する。
+rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt"
+```
+
 **Example output:**
 ```
 PR #123 のレビュー指摘対応を完了しました
@@ -2528,3 +2650,16 @@ PR #123 のレビュー指摘対応を完了しました
 ### 8.2 Standalone Execution Behavior
 
 For standalone execution, Phase 8 is not executed. The completion report from Phase 4.6 will guide the user.
+
+**Confidence override tempfile cleanup** (Standalone 経路の orphan 防止、本 Issue #350 検証付きレビュー H-2 で追加):
+
+Standalone 実行では Phase 8 が skip されるため、Phase 4.6 の completion report 出力**直後**に明示的な cleanup bash block を実行して confidence_override tempfile を削除する。これを忘れると `/tmp/rite-fix-confidence-override-{pr_number}.txt` が orphan として永続残留し、次回同 PR 実行時に `touch` ではなく `: >` truncate を入れていても、何らかの経路で truncate 呼び出しが skip された場合に stale データが混入するリスクがある (defense-in-depth)。
+
+```bash
+# Phase 8.2 Standalone 経路: confidence_override tempfile の明示的 cleanup
+# 実行タイミング: Phase 4.6 の completion report を表示した直後
+# {pr_number} は Claude が Phase 1.0 の parse 結果で事前置換済み
+rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt"
+```
+
+**Idempotency**: override tempfile が作成されなかった経路 (confidence override 発動なし) では `rm -f` は silent no-op となり安全。

@@ -729,7 +729,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    - **TODO(#353)**: 両ファイルの Activation patterns 等価性を CI/lint で自動検証する test は未整備。drift 検出 lint の追加は Issue #353 で追跡中 (過去に SKILL.md と review.md / tech-writer.md の drift が発生した実例に基づく)
 2. **code-quality co-reviewer 条件付き追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。**ただし純粋散文 (README 文言修正のみ等) PR で空所見の reviewer がトリガーされノイズ化することを防ぐため、Phase 2.3 「Code block detection in `.md` files」と同じスキャンロジックを再利用し、diff 内に fenced code block (` ```bash `, ` ```yaml `, ` ```python ` 等) が検出された場合のみ追加する**。
 
-   **scan ロジック** (Phase 2.3 の Code block detection と同じ scan 手順を tagged fence のみに対して再利用 — Phase 2.3 が untyped fence ` ``` ` も検出するのに対し、本 Phase 2.2.1 では tagged fence のみに限定する。理由は本 phase が code-quality 追加判定の先取りであり、untyped fence は Phase 2.3 の「Code block detection in `.md` files」で同じ目的を達成するため。CHANGELOG の "fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.)" 文言とも一致):
+   **scan ロジック** (Phase 2.3 と **同じ fenced code block 検出正規表現** (`^\+[[:space:]]*` + tagged fence `` ``` `` + 言語 tag) を使う。ただし **scope は異なる** — Phase 2.2.1 は Doc-Heavy PR の性質上 `*.md` 全体を scan 対象とするのに対し、Phase 2.3 の Code block detection は Prompt Engineer の Activation patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) のみを scan 対象とする。さらに Phase 2.3 が untyped fence ` ``` ` も検出するのに対し、本 Phase 2.2.1 では tagged fence のみに限定する。理由は本 phase が code-quality 追加判定の先取りであり、untyped fence は Phase 2.3 で同じ目的を達成するため。CHANGELOG の "fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.)" 文言とも一致):
 
    ```bash
    # diff 全体に fenced code block の追加が含まれるかをスキャン

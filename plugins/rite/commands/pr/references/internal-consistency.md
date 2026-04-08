@@ -353,7 +353,19 @@ tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合
 
 > **Note — `SKILL.md` は本系統の対象外**: SKILL.md は `doc_file_patterns` (Reviewers テーブルの tech-writer 行) のみを保持し、canonical category name は一切登場しない。Issue #353 の drift 検出 lint を実装する際は、本系統 1 と系統 2 の **2 種類の 3 ファイル集合** を区別して検査する必要がある (集合は重複するが完全同一ではない: 系統 1 は SKILL.md を含み internal-consistency.md を含まない / 系統 2 は internal-consistency.md を含み SKILL.md を含まない)。
 
-drift 検出の自動 lint は Issue #353 で追跡中。
+#### 系統 3: Phase 5.4 Doc-Heavy 報告セクションの 2 箇所重複 (drift 種 — Issue #353 拡張対象)
+
+本 Issue #350 検証付きレビュー L-2 で発見された新しい drift リスク:
+
+`plugins/rite/commands/pr/review.md` の Phase 5.4 には、Doc-Heavy PR Mode の検証状態を表示するセクションが **full mode template と verification mode template の 2 箇所で完全重複** (約 50 行) 定義されている。PR 自身が drift 防止を手動ルールで宣言しているが、ドッグフーディング repo では過去に同種の 3 ファイル等価性 drift (系統 1 / 系統 2) が複数回発生しており、手動ルールだけでは再発防止に不十分であることが実証済み。
+
+**TODO(#353)**: Issue #353 の drift 検出 lint の対象範囲に、本系統 3 (review.md 内 Phase 5.4 Doc-Heavy セクションの 2 箇所重複) も含めること。具体的な検査方法:
+
+- `review.md` 内で「Doc-Heavy PR Mode の検証状態」を示す同一見出しパターン (例: `#### Doc-Heavy PR Mode 検証状態` / `#### Doc-Heavy verification state` 等) が **2 回以上** 出現するかを検査
+- 出現した場合は、両方のセクション本文を diff して literal 一致を確認 (drift があれば lint エラー)
+- 将来的には full mode template 側のみを source of truth とし、verification mode template 側は参照 1 行に置き換える (または独立 reference ファイルに切り出す) リファクタリングを優先検討する
+
+drift 検出の自動 lint は Issue #353 で追跡中 (系統 1 / 系統 2 / 系統 3 の 3 集合すべてをカバーする)。
 
 **関連ファイル** (本ファイルからの相対パスを明示):
 

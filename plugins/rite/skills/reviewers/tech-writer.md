@@ -179,13 +179,17 @@ Emit **one** of the following META lines based on your execution outcome:
 
 | 状況 | 必須 META 行 |
 |------|-------------|
-| 0 件 (5 カテゴリ実行済み、inconsistency なし) | `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` |
-| 1 件以上 (5 カテゴリ実行済み、finding あり) | `META: All 5 verification categories executed. Findings below.` |
-| 部分スキップ (外部リポジトリ実装不在等) | `META: Cross-Reference partially skipped` (+ 詳細ブロック、下記 "Verification skip handling" 参照) |
+| (a) 0 件 (5 カテゴリ実行済み、inconsistency なし) | `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` |
+| (b) 1 件以上 (5 カテゴリ実行済み、finding あり) | `META: All 5 verification categories executed. Findings below.` |
+| (c) 部分スキップ (外部リポジトリ実装不在等) | `META: Cross-Reference partially skipped` (+ 詳細ブロック、下記 "Verification skip handling" 参照) |
+| (d) (a) + Inconclusive あり | `META: All 5 verification categories executed, 0 inconsistencies found, {N} inconclusive. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` |
+| (e) (b) + Inconclusive あり | `META: All 5 verification categories executed. {N} inconclusive. Findings below.` |
+
+**(d) / (e) の詳細**: 5 カテゴリのいずれかで `target_not_found` / `extraction_failed` / `tool_failure` のような Inconclusive 判定が発生した場合、(a) / (b) の META 行に `, {N} inconclusive` を挿入する。Inconclusive の集計ルールと META 行への反映方法の詳細は [`commands/pr/references/internal-consistency.md#inconclusive-%E9%9B%86%E8%A8%88-%E3%81%A8-meta-%E8%A1%8C%E3%81%B8%E3%81%AE%E5%8F%8D%E6%98%A0`](../../commands/pr/references/internal-consistency.md#inconclusive-集計-と-meta-行への反映) を参照すること。
 
 **重要**: finding_count >= 1 でも「5 カテゴリ実行 META 行」を省略することは silent bypass として禁止する。1 件の Evidence 付き finding だけを出して post-condition check を通過する攻撃パターン (Implementation Coverage だけ実行して他 4 カテゴリをスキップ) を防ぐため、META 行は**件数非依存で必ず出力**する。
 
-This negative/positive confirmation distinguishes "protocol was fully executed" from "protocol was partially executed or not executed" (silent non-compliance prevention — this is the root purpose of the Doc-Heavy PR Mode post-condition check). Phase 5.1.3 post-condition check will reject outputs that lack any of the 3 META line variants above regardless of finding count, ensuring the protocol is rigorously enforced for every Doc-Heavy PR review.
+This negative/positive confirmation distinguishes "protocol was fully executed" from "protocol was partially executed or not executed" (silent non-compliance prevention — this is the root purpose of the Doc-Heavy PR Mode post-condition check). Phase 5.1.3 post-condition check will reject outputs that lack any of the 5 META line variants (3 standard: a/b/c + 2 inconclusive: d/e) above regardless of finding count, ensuring the protocol is rigorously enforced for every Doc-Heavy PR review.
 
 ### Cross-Reference with internal-consistency.md
 
