@@ -1231,29 +1231,22 @@ Execute parallel reviews using sub-agents (defined in the `agents/` directory) c
 
 2. On load failure, display a warning and skip that sub-agent
 
-3. **Extract `{agent_identity}`**: Construct the agent identity from two sources:
+3. **Extract `{shared_reviewer_principles}`** (from `_reviewer-base.md`):
 
-   **Part A — Shared reviewer principles** (from `_reviewer-base.md`):
+   Under named subagent invocation (Phase B / #358), the agent file body becomes the **system prompt** automatically — so the agent-specific identity no longer needs to be extracted or injected via the user prompt. Agent-specific discipline (Core Principles, Detection Process, Confidence Calibration, Detailed Checklist, Output Format) is delivered through the named subagent's system prompt.
+
+   However, `_reviewer-base.md` (the shared reviewer principles) is **not** automatically injected into named subagents — it is a separate file that only a reviewer *agent* would reference. To preserve the cross-file impact checks and shared discipline across all reviewers (Phase A / #357 bug fix), this hybrid approach continues to extract `_reviewer-base.md` and pass it via the **user prompt** as `{shared_reviewer_principles}`.
+
+   **Extraction procedure**:
    - Load `{plugin_root}/agents/_reviewer-base.md` with the Read tool
-   - Extract **all sections** from `_reviewer-base.md` between the document start and the `## Input` heading (exclusive). This includes all of the following sections:
+   - Extract **all sections** from `_reviewer-base.md` between the document start and the `## Input` heading (exclusive). This includes:
      - `## Reviewer Mindset`
      - `## Cross-File Impact Check`
      - `## Confidence Scoring`
    - **Important**: Do NOT extract only `## Reviewer Mindset` and `## Confidence Scoring` individually — this would drop `## Cross-File Impact Check` entirely (the section exists between them in document order). Extracting the contiguous range from the document start to `## Input` ensures all shared principles reach the reviewer agent.
    - These sections define the universal principles all reviewers must follow (mindset, mandatory cross-file impact checks, and confidence scoring framework)
 
-   **Part B — Agent-specific identity** (from the agent file):
-   - From the loaded agent file, extract the body content **excluding**:
-     - YAML frontmatter (between `---` delimiters)
-     - `## Detailed Checklist` section and everything after it
-     - `## Output Format` section and everything after it
-     - `**Output example:**` line and everything after it (handles old-style agent files without `##` section markers)
-
-   **Combine**: `{agent_identity}` = Part A (shared principles) + Part B (agent-specific identity)
-
-   The combined content provides the agent with both universal reviewer discipline (Mindset, Confidence Scoring framework) and domain-specific guidance (Identity, Core Principles, Detection Process, Confidence Calibration).
-
-   **Fallback**: If extraction fails or yields empty content for either part, use whatever was successfully extracted. If both fail, set `{agent_identity}` to an empty string. The review will still function using `{skill_profile}` and `{checklist}`.
+   **Fallback**: If extraction fails or yields empty content, set `{shared_reviewer_principles}` to an empty string. The review will still function using the named subagent's system prompt (which contains the reviewer-specific identity) plus `{skill_profile}` and `{checklist}` from the user prompt.
 
 **Parallel execution using the Task tool:**
 
@@ -1263,8 +1256,9 @@ Pass the following information to each sub-agent:
 - PR diff (or related file diffs - see reference below)
 - Changed file list
 - Related Issue specification (obtained in Phase 1.3.1)
-- Sub-agent definition (contents of agents/*.md)
-- Agent identity (`{agent_identity}` extracted above)
+- Shared reviewer principles (`{shared_reviewer_principles}` extracted above from `_reviewer-base.md`)
+
+> **Note**: Agent-specific identity (Core Principles, Detection Process, Detailed Checklist, Output Format) is delivered automatically as the named subagent's **system prompt** when invoked via `subagent_type: rite:{reviewer_type}-reviewer`. Do NOT re-inject the agent file body via the user prompt — this would duplicate the agent body and may confuse the reviewer about which set of instructions is authoritative.
 
 > **Diff optimization**: Apply scale-based diff passing per [Review Context Optimization](./references/review-context-optimization.md#diff-passing-optimization). Small scale: full diff. Medium/Large scale: related file diffs only + change summary for large diffs.
 
@@ -1280,12 +1274,34 @@ If the following issues occur with the sub-agent approach:
 
 ### 4.3.1 Task Tool Sub-Agent Invocation
 
+**⚠️ IMPORTANT — Named Subagent Invocation**: Since Phase B (#358), reviewers are invoked as **named subagents** using the scoped format `rite:{reviewer_type}-reviewer`. This activates the agent body as the **system prompt** (rather than a user-prompt injection), giving reviewer discipline stronger enforcement. See [Migration Guide: Named Subagent Switch](../../../../docs/migration-guides/review-named-subagent.md) for rationale and rollback.
+
 **Parallel execution:** Invoke multiple Task tools within a single message for all selected reviewers. Each Task uses:
 - `description`: "セキュリティ専門家 PR レビュー" (short description)
-- `subagent_type`: `general-purpose` (access to all tools)
+- `subagent_type`: `rite:{reviewer_type}-reviewer` — scoped name derived from the reviewer selected in Phase 2 (see table below)
 - `prompt`:
-  - `review_mode == "full"`: Phase 4.5 format (diff, spec, skill profile, checklist)
+  - `review_mode == "full"`: Phase 4.5 format (diff, spec, shared reviewer principles, skill profile, checklist)
   - `review_mode == "verification"`: Phase 4.5.1 verification template + Phase 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from Phase 1.2.4) in addition to the standard inputs.
+
+**`reviewer_type` → `subagent_type` mapping:**
+
+| `reviewer_type` (selected in Phase 2) | `subagent_type` (used in Task call) |
+|---------------------------------------|-------------------------------------|
+| `security` | `rite:security-reviewer` |
+| `performance` | `rite:performance-reviewer` |
+| `code-quality` | `rite:code-quality-reviewer` |
+| `api` | `rite:api-reviewer` |
+| `database` | `rite:database-reviewer` |
+| `devops` | `rite:devops-reviewer` |
+| `frontend` | `rite:frontend-reviewer` |
+| `test` | `rite:test-reviewer` |
+| `dependencies` | `rite:dependencies-reviewer` |
+| `prompt-engineer` | `rite:prompt-engineer-reviewer` |
+| `tech-writer` | `rite:tech-writer-reviewer` |
+| `error-handling` | `rite:error-handling-reviewer` |
+| `type-design` | `rite:type-design-reviewer` |
+
+**Formula**: `subagent_type = "rite:" + reviewer_type + "-reviewer"` (the `rite:` prefix is mandatory in plugin distribution; bare `{reviewer_type}-reviewer` fails agent resolution — verified empirically in Phase 0 Item 2, see `docs/investigations/review-quality-gap-baseline.md` Section 2).
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 
@@ -1303,6 +1319,7 @@ Retry procedure when a Task tool returns an error:
 | Network error | Yes (up to 1 time) | Re-execute with the same prompt |
 | Invalid output format | Yes (up to 1 time) | Re-execute with "output in the exact format" appended to the prompt |
 | Skill file load failure | No | Substitute with fallback profile |
+| subagent resolution failure | No | Fail immediately. Display the scoped name used (`rite:{reviewer_type}-reviewer`) and the error message. Do NOT silently fall back to `general-purpose` — that would defeat the Phase B quality improvement. Mark the reviewer as "incomplete" and continue with other reviewers. If all reviewers fail this way, prompt the user with `AskUserQuestion` (retry / rollback to `general-purpose` temporarily / abort review) |
 
 **Error type determination method:**
 
@@ -1314,6 +1331,7 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
 | Network error | Response contains "network", "connection", "ECONNREFUSED", "unreachable", etc. |
 | Invalid output format | Does not match the above and does not contain expected output format (e.g., `### 評価:` section) |
 | Skill file load failure | Read tool returned an error (occurs before Task execution) |
+| subagent resolution failure | Task tool returns an error message like `Agent type 'rite:{reviewer_type}-reviewer' not found. Available agents: ...`. This indicates the named subagent is not registered in the current Claude Code installation (plugin not installed, version mismatch, or agent file moved) |
 
 **Retry procedure:**
 
@@ -1351,7 +1369,7 @@ Generate instructions for each reviewer.
 | `{checklist}` | Review Checklist section of skill file | Full text including Critical / Important / Recommendations |
 | `{issue_spec}` | Issue specification obtained in Phase 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from Phase 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
-| `{agent_identity}` | `_reviewer-base.md` (shared) + `agents/{type}-reviewer.md` (specific) | **Part A**: Extract `## Reviewer Mindset` + `## Confidence Scoring` from `_reviewer-base.md`. **Part B**: Extract agent file body excluding YAML frontmatter, `## Detailed Checklist`, `## Output Format`, and `**Output example:**` sections. Combine: Part A + Part B |
+| `{shared_reviewer_principles}` | `_reviewer-base.md` (shared) | Extract all sections from the document start to the `## Input` heading (exclusive). This covers `## Reviewer Mindset`, `## Cross-File Impact Check`, and `## Confidence Scoring` as a contiguous block. Agent-specific identity is NOT included here — it is delivered via the named subagent's system prompt (Phase B / #358). See Phase 4.3 step 3 for the full extraction procedure |
 | `{change_summary}` | Scale information from Phase 1.2.1 | Used only for large diffs. Change summary table |
 | `{doc_heavy_pr}` | Phase 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `skills/reviewers/tech-writer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
@@ -1384,8 +1402,9 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 2. **仕様自体に問題がある（矛盾、曖昧さ、技術的に不可能）と判断した場合** → 指摘として挙げず、「仕様への疑問」セクションに記載し、ユーザー確認を促す
 3. **仕様に記載がない実装判断** → 通常のレビュー基準で評価
 
-## あなたのアイデンティティと検出プロセス
-{agent_identity}
+## 共通レビュー原則
+<!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity (Core Principles / Detection Process / Detailed Checklist / Output Format) は named subagent の system prompt として自動注入されるためここには含めない -->
+{shared_reviewer_principles}
 
 ## あなたの役割
 {skill_profile}
@@ -1482,8 +1501,9 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 
 **重要（Part 2 スコープのみに適用）**: 前回の Fix サイクルで変更されていないコードに対して新規の MEDIUM/LOW 指摘を生成しないこと。未変更コードの CRITICAL/HIGH 指摘のみ「見落とし」として報告可。この制約は Part 2（リグレッションチェック）にのみ適用されます。フルレビュー（Phase 4.5 の通常テンプレート）では、すべてのコードを対象にレビューを行ってください。
 
-## あなたのアイデンティティと検出プロセス
-{agent_identity}
+## 共通レビュー原則
+<!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity は named subagent の system prompt として自動注入される -->
+{shared_reviewer_principles}
 
 ## あなたの役割
 {skill_profile}
