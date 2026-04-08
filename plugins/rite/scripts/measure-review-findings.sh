@@ -30,7 +30,7 @@
 #
 # Exit codes:
 #   0  Success
-#   1  Invalid arguments
+#   1  Invalid arguments or missing required dependency (jq, python3)
 #   2  GitHub API or file read error
 #   3  Parse failure (no review comments found)
 
@@ -102,9 +102,13 @@ fi
 # Path-first-declare → trap-first-set → mktemp-last order to eliminate the
 # race window between mktemp success and trap registration where SIGTERM/SIGINT
 # could leave an orphan tempfile (matches review.md / fix.md project pattern).
+# All mktemp results below MUST be assigned to a variable that is already
+# tracked by this trap.
 tmpfile=""
 gh_err_file=""
-trap 'rm -f "${tmpfile:-}" "${gh_err_file:-}"' EXIT
+separator_tmp=""
+trap 'rm -f "${tmpfile:-}" "${gh_err_file:-}" "${separator_tmp:-}"' EXIT
+gh_err_file=$(mktemp)
 tmpfile=$(mktemp)
 
 if [ -n "$LOCAL_FILE" ]; then
@@ -116,8 +120,9 @@ if [ -n "$LOCAL_FILE" ]; then
   source_label="file:$LOCAL_FILE"
 else
   if [ -z "$OWNER" ] && [ -z "$REPO" ]; then
-    repo_info=$(gh repo view --json owner,name 2>/dev/null) || {
-      echo "ERROR: gh repo view failed; specify --owner and --repo explicitly" >&2
+    repo_info=$(gh repo view --json owner,name 2>"$gh_err_file") || {
+      echo "ERROR: gh repo view failed: $(cat "$gh_err_file")" >&2
+      echo "  hint: specify --owner and --repo explicitly to bypass auto-detect" >&2
       exit 2
     }
     # Use `// empty` so jq returns "" instead of the literal string "null"
@@ -133,7 +138,6 @@ else
     echo "ERROR: --owner and --repo must be specified together (or both omitted to auto-detect)" >&2
     exit 1
   fi
-  gh_err_file=$(mktemp)
   # `--paginate` is required because GitHub API defaults to 30 comments per
   # page; PRs with many review cycles (e.g. PR #350 with 16+ cycles) would
   # silently truncate without it. Capture stderr to a file so error messages
@@ -148,10 +152,12 @@ else
   # by newlines). Insert the parser separator between bodies so the Python
   # parser can split them later. We rebuild the file in-place via a second
   # tempfile to avoid feeding awk both stdin and stdout of the same path.
+  # `separator_tmp` is declared at top-level and tracked by the EXIT trap.
   separator_tmp=$(mktemp)
   awk 'NR > 1 && /^## 📜 rite レビュー結果/ { printf "\n---REVIEW-COMMENT-SEPARATOR---\n" } { print }' \
     "$tmpfile" > "$separator_tmp"
   mv "$separator_tmp" "$tmpfile"
+  separator_tmp=""
   source_label="pr:${PR_NUMBER}"
 fi
 
