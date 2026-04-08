@@ -2751,14 +2751,20 @@ When this skill encounters internal failures that fall back to manual interventi
 **How to emit** (call this immediately before falling back to manual flow or returning a soft-failure pattern):
 
 ```bash
-bash {plugin_root}/hooks/workflow-incident-emit.sh \
+# Step 1: emit sentinel via hook script (silent capture, non-blocking via || true)
+sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
   --type hook_abnormal_exit \
   --details "{specific failure description}" \
   --root-cause-hint "{optional hypothesis}" \
-  --pr-number {pr_number}
+  --pr-number {pr_number} 2>/dev/null) || true
+
+# Step 2: also echo to stderr for human-visible debugging
+[ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
 ```
 
-The sentinel is printed to stdout and becomes part of the orchestrator's conversation context. Phase 5.4.4.1 in `start.md` detects it via context grep and presents `AskUserQuestion` for Issue auto-registration. This is **non-blocking** — emission failure does not abort the fix flow.
+**Step 3 — Sentinel Visibility (LLM responsibility, cycle 1 review C2 fix)**: Because `fix.md` runs in `context: fork`, the bash subprocess stdout is NOT visible to the orchestrator. **The fix.md LLM MUST include the captured `sentinel_line` value verbatim in its final response message text** so Phase 5.4.4.1 in `/rite:issue:start` can detect it via context grep. Without this step, AC-5 (hook abnormal exit detection) is silently broken.
+
+`|| true` ensures non-blocking behavior — emission failure does not abort the fix flow. See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full specification.
 
 > **Note**: Sentinel emission is bounded by `workflow_incident.enabled` in `rite-config.yml`. If disabled, the orchestrator simply ignores the sentinel.
 

@@ -551,18 +551,27 @@ if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
 fi
 ```
 
-**Step 6**: Read `workflow_incident.enabled` from `rite-config.yml` and cache for the rest of Phase 5 (used by Phase 5.4.4.1). Default to `true` when the section is absent (#366):
+**Step 6**: Read `workflow_incident.enabled` from `rite-config.yml` and cache for the rest of Phase 5 (used by Phase 5.4.4.1). Default to `true` when the section is absent (#366).
+
+> **Parser correctness** (cycle 1 review C1 / devops 既存問題): The previous 1-liner used `awk -F:` which split on **any** colon — including the one inside trailing comments like `# true で incident 検出機構を有効化（デフォルト: true）` — producing garbage strings such as `true#trueでincident...`. This broke `enabled: false` opt-out (AC-8) detection. The corrected implementation strips comments first via `sed 's/#.*//'`, then extracts the value. Use `[[:space:]]` instead of `\s` for portability across BSD/GNU grep.
 
 ```bash
-workflow_incident_enabled=$(grep -A2 '^workflow_incident:' rite-config.yml 2>/dev/null \
-  | grep -E '^\s+enabled:' | head -1 | awk -F: '{gsub(/[[:space:]]/, "", $2); print $2}')
-if [ -z "$workflow_incident_enabled" ]; then
-  workflow_incident_enabled="true"  # default-on (AC-7)
-fi
+# 1) workflow_incident: section の enabled 行を取得 (BSD/GNU 互換 grep)
+# 2) コメント除去 (sed 's/#.*//') を先行して trailing comment の : で誤 split を防ぐ
+# 3) `enabled:` の右辺を抽出して空白除去
+workflow_incident_enabled=$(grep -A3 '^workflow_incident:' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
+case "$workflow_incident_enabled" in
+  true|false) ;;  # 正常値
+  *) workflow_incident_enabled="true" ;;  # 不明値 / 空 → default-on (AC-7)
+esac
 echo "workflow_incident_enabled=$workflow_incident_enabled"
 ```
 
 Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads this value and skips its entire processing if `false`.
+
+> **Note on `non_blocking` / `dedupe_per_session`** (cycle 1 review H10 / tech-writer): Currently only `enabled` is read by the orchestrator. The `workflow_incident.non_blocking` and `workflow_incident.dedupe_per_session` keys in `rite-config.yml` are **reserved for future use** — the current implementation always behaves as if both are `true` (non-blocking error handling, session-local dedupe). See `docs/SPEC.md` "Workflow Incident Detection > Configuration" for details.
 
 ### 5.1 Implementation
 
@@ -614,7 +623,13 @@ Invoke `skill: "rite:lint"` after 5.1.
 
 **🚨 Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.2 below. The lint sub-skill has already updated `.rite-flow-state` to `phase5_post_lint` via Phase 4.0 (defense-in-depth, #716); execute the 🚨 Mandatory After 5.2 steps without delay.
 
-**Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:lint aborted by user" --pr-number 0` (#366) then→5.6. If `[lint:error]` recurs more than 2 cycles consecutively, also emit `--type skill_load_failure --details "rite:lint repeated failure"` to trigger Phase 5.4.4.1 detection.
+**Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel and proceed to 5.6** (#366):
+
+```bash
+bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:lint aborted by user" --pr-number 0 || true
+```
+
+`|| true` is required to ensure non-blocking behavior (AC-10) — emit failure must not halt the workflow. **The orchestrator MUST then include the emitted sentinel line as part of its visible output text** so Phase 5.4.4.1 in subsequent context can detect it via grep (cycle 1 review C2 fix - see Workflow Incident Sentinel Visibility Rule below).
 
 #### 5.2.0.1 Out-of-Scope Warnings
 
@@ -811,7 +826,19 @@ Invoke `skill: "rite:pr:create"`.
 
 **🚨 Immediate after pr:create returns**: When `rite:pr:create` outputs a result pattern (`[pr:created:{N}]` or `[pr:create-failed]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.3 below. The review-fix loop has NOT started yet — you MUST continue to Phase 5.4.
 
-**Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→**emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:create returned create-failed" --pr-number 0` (#366), then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで PR 作成して continue (incident 記録)」/「Phase 5.6 へ」). If 「Edit ツールで PR 作成して continue」 is selected, additionally emit `--type manual_fallback_adopted --details "rite:pr:create manual fallback"`. The sentinel(s) will trigger Phase 5.4.4.1 detection in the next cycle.
+**Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→**emit sentinel and ask user** (#366):
+
+```bash
+bash {plugin_root}/hooks/workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:create returned create-failed" --pr-number 0 || true
+```
+
+Then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで PR 作成して continue (incident 記録)」/「Phase 5.6 へ」). If 「Edit ツールで PR 作成して continue」 is selected, additionally emit:
+
+```bash
+bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:pr:create manual fallback" --pr-number 0 || true
+```
+
+**The orchestrator MUST include the emitted sentinel lines in its visible output text** so Phase 5.4.4.1 detection via context grep can trigger in the next cycle (cycle 1 review C2 / H2 fix).
 
 ### 🚨 Mandatory After 5.3
 
@@ -1026,6 +1053,38 @@ Invoke `skill: "rite:pr:fix"`.
 
 > **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) for the full specification.
 
+**Workflow Incident Sentinel Visibility Rule** (cycle 1 review C2 fix):
+
+Sub-skills declared with `context: fork` (`lint.md`, `pr/fix.md`, `pr/review.md`) execute Bash tool calls in an **isolated subprocess context**. The orchestrator (`/rite:issue:start`, this file) does NOT see those subprocess `stdout` directly — it only sees the **final response message** that the sub-skill LLM returns.
+
+Therefore, when a sub-skill emits a workflow incident sentinel via `bash workflow-incident-emit.sh`, the sub-skill **MUST also include the emitted sentinel line as part of its final visible response text** (not only as bash stdout). Otherwise the orchestrator's context grep in this phase will never see the sentinel and AC-5 (hook abnormal exit detection) becomes silently broken.
+
+**Concrete pattern for sub-skills** (used in `fix.md` / `review.md` / `lint.md` Workflow Incident Emit Helper sections):
+
+```bash
+# Step 1: emit sentinel via hook script (silent capture)
+sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+  --type {sentinel_type} \
+  --details "{specific failure description}" \
+  --pr-number {pr_number} 2>/dev/null) || true
+
+# Step 2: also echo to stderr for human-visible debugging
+[ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
+```
+
+**Step 3 (LLM responsibility)**: The sub-skill LLM must then include the captured `sentinel_line` value (if non-empty) **verbatim in its final response message text**, e.g.:
+
+```
+[lint:error] — 3 errors detected
+[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=rite:lint tool not found: ruff; iteration_id=0-1775650793
+```
+
+This way, when control returns to `/rite:issue:start`, the sentinel becomes part of the conversation context and Phase 5.4.4.1's grep can find it.
+
+**Orchestrator-direct emit** (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error): The orchestrator runs the bash command itself (not inside a fork), so the sentinel stdout is already part of the orchestrator's conversation context. Still, the orchestrator MUST include the sentinel line in its response text for clarity and for self-detection in subsequent context grep iterations.
+
+---
+
 **When to execute**: This phase runs **after every Skill invocation in Phase 5** (lint, pr:create, pr:review, pr:fix, pr:ready) where workflow flow may be interrupted by an unexpected failure. It is also triggered when an `AskUserQuestion` fallback option that emits a sentinel (e.g., "manual fallback") is selected.
 
 **Skip condition**: If `workflow_incident.enabled: false` is set in `rite-config.yml`, skip this entire phase. Read the value once at Phase 5.0 and cache for the rest of the flow.
@@ -1071,7 +1130,7 @@ Invoke `skill: "rite:pr:fix"`.
 5. **Branch on user choice**:
 
    - **「はい」**: Proceed to step 6 (create Issue)
-   - **「skip」**: Add `type` to `workflow_incident_processed_types` (so it won't be re-asked in this session), append `{type, details, root_cause_hint}` to a context-local `workflow_incident_skipped` list (for Phase 5.6 reporting), return.
+   - **「skip」**: Add `type` to `workflow_incident_processed_types` (so it won't be re-asked in this session), append `{type, details, root_cause_hint, iteration_id}` to a context-local `workflow_incident_skipped` list (for Phase 5.6 reporting). Both successful skip and failed registration paths (step 6 fallthrough) MUST add to this list to prevent silent loss (cycle 1 review M1).
 
 6. **Create Issue via common script**:
 
@@ -1099,45 +1158,61 @@ Invoke `skill: "rite:pr:fix"`.
    このIncidentは `/rite:issue:start` の一気通貫フロー実行中に自動検出されました。手動 fallback / Edit 修正で workflow は継続済みです。
    BODY_EOF
 
+   # AC-10 non-blocking guarantee: Issue body が空 (HEREDOC 失敗 / disk full / inode 枯渇) でも
+   # workflow を halt せず、warning + workflow_incident_skipped 追加で fallthrough する。
+   # 旧実装の `exit 1` は AC-10 と論理矛盾するため除去 (cycle 1 review C3 で指摘)
    if [ ! -s "$tmpfile" ]; then
-     echo "ERROR: Issue body is empty" >&2
-     exit 1
-   fi
-
-   result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-     --arg title "incident: {type} - {details_truncated_60chars}" \
-     --arg body_file "$tmpfile" \
-     --argjson projects_enabled {projects_enabled} \
-     --argjson project_number {project_number} \
-     --arg owner "{owner}" \
-     --arg priority "High" \
-     --arg complexity "S" \
-     '{
-       issue: { title: $title, body_file: $body_file },
-       projects: {
-         enabled: $projects_enabled,
-         project_number: $project_number,
-         owner: $owner,
-         status: "Todo",
-         priority: $priority,
-         complexity: $complexity,
-         iteration: { mode: "none" }
-       },
-       options: { source: "workflow_incident", non_blocking_projects: true }
-     }'
-   )")
-
-   if [ -z "$result" ]; then
-     echo "WARNING: create-issue-with-projects.sh returned empty result. Incident retained in context for Phase 5.6 reporting." >&2
-     # Fallthrough — non-blocking, do NOT exit
+     echo "WARNING: Issue body is empty (HEREDOC failure?). Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
+     # context-local list に追加して Phase 5.6.1 で表示する (fallthrough、exit しない)
+     # workflow_incident_skipped に {type, details, root_cause_hint, iteration_id} を追加
+     # その後 step 7 (processed_types に追加) を実行してから本 step を抜ける
    else
-     new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url // empty')
-     new_issue_number=$(printf '%s' "$result" | jq -r '.issue_number // empty')
-     if [ -n "$new_issue_url" ]; then
-       # Append to context-local workflow_incident_registered list
-       echo "✅ Workflow incident auto-registered: #${new_issue_number} (${new_issue_url})"
+     # jq -n を別変数に切り出して exit code をチェック (cycle 1 review H6 / error-handling 指摘)
+     # 旧実装は jq parse error を silent に握りつぶしていた
+     jq_err=$(mktemp)
+     trap 'rm -f "$jq_err"' EXIT
+     if json_args=$(jq -n \
+       --arg title "incident: {type} - {details_truncated_60chars}" \
+       --arg body_file "$tmpfile" \
+       --argjson projects_enabled {projects_enabled} \
+       --argjson project_number {project_number} \
+       --arg owner "{owner}" \
+       --arg priority "High" \
+       --arg complexity "S" \
+       '{
+         issue: { title: $title, body_file: $body_file },
+         projects: {
+           enabled: $projects_enabled,
+           project_number: $project_number,
+           owner: $owner,
+           status: "Todo",
+           priority: $priority,
+           complexity: $complexity,
+           iteration: { mode: "none" }
+         },
+         options: { source: "workflow_incident", non_blocking_projects: true }
+       }' 2>"$jq_err"); then
+       result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$json_args")
      else
-       echo "WARNING: Issue creation failed (no URL returned). Incident retained for Phase 5.6 reporting." >&2
+       echo "WARNING: jq -n failed to build JSON args (placeholder unsubstituted? --argjson type mismatch?): $(cat "$jq_err")" >&2
+       echo "WARNING: Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
+       result=""
+     fi
+     rm -f "$jq_err"
+
+     if [ -z "$result" ]; then
+       echo "WARNING: create-issue-with-projects.sh returned empty result. Incident retained for Phase 5.6 reporting." >&2
+       # Fallthrough — non-blocking, do NOT exit
+       # workflow_incident_skipped に追加 (cycle 1 review M1 で指摘 - failure path も明示)
+     else
+       new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url // empty')
+       new_issue_number=$(printf '%s' "$result" | jq -r '.issue_number // empty')
+       if [ -n "$new_issue_url" ]; then
+         # Append to context-local workflow_incident_registered list
+         echo "✅ Workflow incident auto-registered: #${new_issue_number} (${new_issue_url})"
+       else
+         echo "WARNING: Issue creation failed (no URL returned). Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
+       fi
      fi
    fi
    ```
@@ -1225,7 +1300,19 @@ When loop completes, confirm via `AskUserQuestion`:
 
 **🚨 Immediate after ready returns**: When `rite:pr:ready` outputs `[ready:completed]` and returns control, do **NOT** churn or pause — **immediately** proceed to 5.5.0.1 🚨 Mandatory After 5.5 below. The ready sub-skill has already updated `.rite-flow-state` to `phase5_post_ready` via Phase 4.6 (defense-in-depth, fixes #17); execute the 5.5.0.1 steps without delay. The completion report (Phase 5.6) has NOT been output yet — `ready.md` intentionally skips it in e2e flow. You MUST continue to Phase 5.5.1, 5.5.2, and 5.6.
 
-**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→**emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:ready returned error" --pr-number {pr_number}` (#366), then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで手動 Ready 化 (incident 記録)」/「Phase 5.6 へスキップ」/「terminate」). If 「Edit ツールで手動 Ready 化」 selected, additionally emit `--type manual_fallback_adopted --details "rite:pr:ready manual fallback" --pr-number {pr_number}`.
+**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→**emit sentinel and ask user** (#366):
+
+```bash
+bash {plugin_root}/hooks/workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:ready returned error" --pr-number {pr_number} || true
+```
+
+Then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで手動 Ready 化 (incident 記録)」/「Phase 5.6 へスキップ」/「terminate」). If 「Edit ツールで手動 Ready 化」 selected, additionally emit:
+
+```bash
+bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:pr:ready manual fallback" --pr-number {pr_number} || true
+```
+
+**The orchestrator MUST include the emitted sentinel lines in its visible output text** so Phase 5.4.4.1 detection via context grep can trigger in the next cycle (cycle 1 review C2 / H3 fix).
 
 #### 5.5.0.1 🚨 Mandatory After 5.5
 

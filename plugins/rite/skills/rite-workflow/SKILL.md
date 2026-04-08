@@ -169,10 +169,10 @@ workflow_incident:
   dedupe_per_session: true   # 1 incident per type per session
 ```
 
-**Sentinel format**:
+**Sentinel format** (`root_cause_hint` is optional and entirely omitted when empty):
 
 ```
-[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; root_cause_hint=<hint>; iteration_id=<pr>-<epoch>
+[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
 ```
 
 See `docs/SPEC.md` "Workflow Incident Detection" section for the full specification, including AC mapping and Phase 7 non-interference guarantees.

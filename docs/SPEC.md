@@ -37,12 +37,13 @@ The command prefix `rite` was chosen for:
 9. [Notification Integration](#notification-integration)
 10. [Build/Test/Lint Auto-Detection](#buildtestlint-auto-detection)
 11. [Dynamic Reviewer Generation](#dynamic-reviewer-generation)
-12. [Error Handling](#error-handling)
-13. [Migration](#migration)
-14. [Internationalization](#internationalization)
-15. [Dependencies](#dependencies)
-16. [Distribution](#distribution)
-17. [Project Types](#project-types)
+12. [Workflow Incident Detection](#workflow-incident-detection)
+13. [Error Handling](#error-handling)
+14. [Migration](#migration)
+15. [Internationalization](#internationalization)
+16. [Dependencies](#dependencies)
+17. [Distribution](#distribution)
+18. [Project Types](#project-types)
 
 ---
 
@@ -472,6 +473,15 @@ notifications:
   teams:
     enabled: false
     webhook_url: null
+
+# Workflow incident auto-registration (#366)
+# Detects workflow blockers (Skill load failure / hook abnormal exit / manual fallback adoption)
+# and auto-registers them as Issues to prevent silent loss.
+# See "Workflow Incident Detection" section for details.
+workflow_incident:
+  enabled: true              # default-on; set false to opt out (AC-8)
+  non_blocking: true         # reserved for future use; current behavior is always non-blocking
+  dedupe_per_session: true   # reserved for future use; current behavior is always session-local dedupe
 
 # Language setting (auto for auto-detection)
 language: auto  # auto | ja | en
@@ -1514,8 +1524,10 @@ The rite workflow auto-detects **workflow blockers** during `/rite:issue:start` 
 
 ### Sentinel Format
 
+The `root_cause_hint` field is **optional** and entirely omitted from the sentinel line when empty:
+
 ```
-[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; root_cause_hint=<hint>; iteration_id=<pr>-<epoch>
+[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
 ```
 
 | Field | Type | Required | Description |
@@ -1541,11 +1553,13 @@ Sentinels are emitted by `plugins/rite/hooks/workflow-incident-emit.sh`. Detecti
 ```yaml
 workflow_incident:
   enabled: true              # default-on; set false to opt out entirely
-  non_blocking: true         # do not abort flow on registration failure
-  dedupe_per_session: true   # 1 incident per type per session
+  non_blocking: true         # reserved for future use (current behavior: always non-blocking)
+  dedupe_per_session: true   # reserved for future use (current behavior: always session-local dedupe)
 ```
 
 When the `workflow_incident:` section is absent, defaults are used (effective `enabled: true`).
+
+> **Implementation note** (cycle 1 review H10): Currently only `enabled` is read by the orchestrator (`/rite:issue:start` Phase 5.0 Step 6). The `non_blocking` and `dedupe_per_session` keys are **reserved for future use** — the current implementation always behaves as if both are `true`. If a user sets `non_blocking: false`, the behavior does not change. These keys exist in the schema to document intent and provide forward compatibility.
 
 ### Acceptance Criteria Mapping
 

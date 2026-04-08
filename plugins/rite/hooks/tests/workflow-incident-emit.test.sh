@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../workflow-incident-emit.sh"
 TEST_DIR="$(mktemp -d)"
+STDERR_FILE="$TEST_DIR/stderr"
 PASS=0
 FAIL=0
 
@@ -30,12 +31,13 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-001: Basic skill_load_failure sentinel
 # --------------------------------------------------------------------------
+# stdout / stderr 分離パターン (cycle 1 review M2 fix - pre-tool-bash-guard.test.sh と同型)
 echo "TC-001: skill_load_failure → sentinel with required fields"
-output=$(bash "$HOOK" --type skill_load_failure --details "rite:pr:fix loader error" 2>&1)
+output=$(bash "$HOOK" --type skill_load_failure --details "rite:pr:fix loader error" 2>"$STDERR_FILE")
 if echo "$output" | grep -qE '^\[CONTEXT\] WORKFLOW_INCIDENT=1; type=skill_load_failure; details=rite:pr:fix loader error; iteration_id=0-[0-9]+$'; then
   pass "skill_load_failure sentinel format correct"
 else
-  fail "Unexpected output: $output"
+  fail "Unexpected output: $output (stderr: $(cat "$STDERR_FILE"))"
 fi
 echo ""
 
@@ -43,11 +45,11 @@ echo ""
 # TC-002: hook_abnormal_exit with root_cause_hint
 # --------------------------------------------------------------------------
 echo "TC-002: hook_abnormal_exit + root_cause_hint → sentinel includes hint"
-output=$(bash "$HOOK" --type hook_abnormal_exit --details "guard exit 1" --root-cause-hint "missing arg" 2>&1)
+output=$(bash "$HOOK" --type hook_abnormal_exit --details "guard exit 1" --root-cause-hint "missing arg" 2>"$STDERR_FILE")
 if echo "$output" | grep -qE '^\[CONTEXT\] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=guard exit 1; root_cause_hint=missing arg; iteration_id=0-[0-9]+$'; then
   pass "hook_abnormal_exit with hint emits correctly"
 else
-  fail "Unexpected output: $output"
+  fail "Unexpected output: $output (stderr: $(cat "$STDERR_FILE"))"
 fi
 echo ""
 
@@ -55,11 +57,11 @@ echo ""
 # TC-003: manual_fallback_adopted with --pr-number
 # --------------------------------------------------------------------------
 echo "TC-003: manual_fallback_adopted + --pr-number → iteration_id includes PR"
-output=$(bash "$HOOK" --type manual_fallback_adopted --details "Edit fallback" --pr-number 363 2>&1)
+output=$(bash "$HOOK" --type manual_fallback_adopted --details "Edit fallback" --pr-number 363 2>"$STDERR_FILE")
 if echo "$output" | grep -qE '^\[CONTEXT\] WORKFLOW_INCIDENT=1; type=manual_fallback_adopted; details=Edit fallback; iteration_id=363-[0-9]+$'; then
   pass "iteration_id format includes PR number"
 else
-  fail "Unexpected output: $output"
+  fail "Unexpected output: $output (stderr: $(cat "$STDERR_FILE"))"
 fi
 echo ""
 

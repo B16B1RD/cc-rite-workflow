@@ -716,14 +716,20 @@ When this skill encounters internal failures that fall back to manual interventi
 **How to emit**:
 
 ```bash
-bash {plugin_root}/hooks/workflow-incident-emit.sh \
+# Step 1: emit sentinel via hook script (silent capture, non-blocking via || true)
+sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
   --type {sentinel_type} \
   --details "{specific failure description}" \
   --root-cause-hint "{optional hypothesis}" \
-  --pr-number 0
+  --pr-number 0 2>/dev/null) || true
+
+# Step 2: also echo to stderr for human-visible debugging
+[ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
 ```
 
-The sentinel becomes part of the orchestrator's conversation context. Phase 5.4.4.1 in `start.md` detects it and presents `AskUserQuestion` for Issue auto-registration. Emission is **non-blocking** — failure does not abort the lint flow.
+**Step 3 — Sentinel Visibility (LLM responsibility, cycle 1 review C2 fix)**: Because `lint.md` runs in `context: fork`, the bash subprocess stdout is NOT visible to the orchestrator. **The lint.md LLM MUST include the captured `sentinel_line` value verbatim in its final response message text** so Phase 5.4.4.1 in `/rite:issue:start` can detect it via context grep.
+
+`|| true` ensures non-blocking behavior — emission failure does not abort the lint flow. See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full specification.
 
 > **Note**: Sentinel emission is bounded by `workflow_incident.enabled` in `rite-config.yml`. If disabled, the orchestrator simply ignores the sentinel.
 
