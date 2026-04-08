@@ -73,12 +73,20 @@ OWNER=""
 REPO=""
 LOCAL_FILE=""
 
+require_arg() {
+  if [ $# -lt 2 ]; then
+    echo "ERROR: $1 requires an argument" >&2
+    show_help >&2
+    exit 1
+  fi
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pr)    PR_NUMBER="${2:-}"; shift 2 ;;
-    --owner) OWNER="${2:-}";     shift 2 ;;
-    --repo)  REPO="${2:-}";      shift 2 ;;
-    --file)  LOCAL_FILE="${2:-}"; shift 2 ;;
+    --pr)    require_arg "$@"; PR_NUMBER="$2"; shift 2 ;;
+    --owner) require_arg "$@"; OWNER="$2";     shift 2 ;;
+    --repo)  require_arg "$@"; REPO="$2";      shift 2 ;;
+    --file)  require_arg "$@"; LOCAL_FILE="$2"; shift 2 ;;
     --help|-h) show_help; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; show_help >&2; exit 1 ;;
   esac
@@ -91,8 +99,13 @@ if [ -z "$PR_NUMBER" ] && [ -z "$LOCAL_FILE" ]; then
 fi
 
 # --- Source acquisition ---
+# Path-first-declare → trap-first-set → mktemp-last order to eliminate the
+# race window between mktemp success and trap registration where SIGTERM/SIGINT
+# could leave an orphan tempfile (matches review.md / fix.md project pattern).
+tmpfile=""
+gh_err_file=""
+trap 'rm -f "${tmpfile:-}" "${gh_err_file:-}"' EXIT
 tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
 
 if [ -n "$LOCAL_FILE" ]; then
   if [ ! -f "$LOCAL_FILE" ]; then
@@ -102,20 +115,43 @@ if [ -n "$LOCAL_FILE" ]; then
   cp "$LOCAL_FILE" "$tmpfile"
   source_label="file:$LOCAL_FILE"
 else
-  if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
+  if [ -z "$OWNER" ] && [ -z "$REPO" ]; then
     repo_info=$(gh repo view --json owner,name 2>/dev/null) || {
       echo "ERROR: gh repo view failed; specify --owner and --repo explicitly" >&2
       exit 2
     }
-    OWNER="${OWNER:-$(echo "$repo_info" | jq -r '.owner.login')}"
-    REPO="${REPO:-$(echo "$repo_info" | jq -r '.name')}"
+    # Use `// empty` so jq returns "" instead of the literal string "null"
+    # when a field is missing — `${OWNER:-...}` would otherwise treat "null"
+    # as a non-empty value and propagate it into the gh api URL.
+    OWNER="${OWNER:-$(echo "$repo_info" | jq -r '.owner.login // empty')}"
+    REPO="${REPO:-$(echo "$repo_info" | jq -r '.name // empty')}"
+    if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
+      echo "ERROR: could not resolve repository owner/name from gh repo view output" >&2
+      exit 2
+    fi
+  elif [ -z "$OWNER" ] || [ -z "$REPO" ]; then
+    echo "ERROR: --owner and --repo must be specified together (or both omitted to auto-detect)" >&2
+    exit 1
   fi
-  gh api "repos/${OWNER}/${REPO}/issues/${PR_NUMBER}/comments" \
-    --jq '[.[] | select(.body | contains("📜 rite レビュー結果")) | .body] | join("\n\n---REVIEW-COMMENT-SEPARATOR---\n\n")' \
-    > "$tmpfile" 2>/dev/null || {
-      echo "ERROR: failed to fetch comments for PR #${PR_NUMBER}" >&2
+  gh_err_file=$(mktemp)
+  # `--paginate` is required because GitHub API defaults to 30 comments per
+  # page; PRs with many review cycles (e.g. PR #350 with 16+ cycles) would
+  # silently truncate without it. Capture stderr to a file so error messages
+  # surface the actual gh diagnostic instead of a generic "failed to fetch".
+  gh api --paginate "repos/${OWNER}/${REPO}/issues/${PR_NUMBER}/comments" \
+    --jq '.[] | select(.body | contains("📜 rite レビュー結果")) | .body' \
+    > "$tmpfile" 2>"$gh_err_file" || {
+      echo "ERROR: gh api failed for PR #${PR_NUMBER}: $(cat "$gh_err_file")" >&2
       exit 2
     }
+  # `--paginate` returns a stream of bodies (one per matched comment, separated
+  # by newlines). Insert the parser separator between bodies so the Python
+  # parser can split them later. We rebuild the file in-place via a second
+  # tempfile to avoid feeding awk both stdin and stdout of the same path.
+  separator_tmp=$(mktemp)
+  awk 'NR > 1 && /^## 📜 rite レビュー結果/ { printf "\n---REVIEW-COMMENT-SEPARATOR---\n" } { print }' \
+    "$tmpfile" > "$separator_tmp"
+  mv "$separator_tmp" "$tmpfile"
   source_label="pr:${PR_NUMBER}"
 fi
 
@@ -131,6 +167,11 @@ fi
 #   2. Within each comment, parse the "レビュアー合意状況" table for per-reviewer counts
 #   3. Sum across reviewers to compute severity totals per cycle
 #   4. Aggregate across cycles for totals
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "ERROR: python3 is required but not found in PATH" >&2
+  exit 1
+fi
 
 python3 - "$tmpfile" "$source_label" <<'PYTHON'
 import json
@@ -187,8 +228,11 @@ for comment in comments:
         if not m:
             continue
         reviewer = m.group(1)
-        # Skip table header rows
-        if reviewer.lower() in ("レビュアー", "reviewer"):
+        # Skip the English "Reviewer" header row. The Japanese "レビュアー"
+        # header is filtered out structurally because reviewer_row_re's first
+        # group only matches ASCII identifiers ([a-zA-Z][\w\-]*), so non-ASCII
+        # headers never reach this point.
+        if reviewer.lower() == "reviewer":
             continue
         crit, high, med, low = (int(m.group(i)) for i in (3, 4, 5, 6))
         reviewer_total = crit + high + med + low
