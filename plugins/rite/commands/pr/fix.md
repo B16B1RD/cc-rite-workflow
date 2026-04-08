@@ -106,7 +106,7 @@ Extract the following information from work memory and retain in context:
 
 > **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。
 
-**Always run this sub-phase**. Phase 1.1 が `gh pr view` を実行する前に、引数形式を正規化して `{pr_number}` と（該当時のみ）`{target_comment_id}` を抽出する。bare integer (`^[0-9]+$`) や引数なしの場合でも本サブフェーズを実行し、Detection rules table の順序 1 / 順序 5 で pr_number を抽出した上で **`{target_comment_id} = null` を explicit set** する (undefined 参照防止)。
+**Always run this sub-phase**. Phase 1.1 が `gh pr view` を実行する前に、引数形式を正規化して `{pr_number}` と（該当時のみ）`{target_comment_id}` を抽出する。bare integer (`^[0-9]+$`) や引数なしの場合でも本サブフェーズを実行し、Detection rules table の順序 1 / 順序 4 で pr_number を抽出した上で **`{target_comment_id} = null` を explicit set** する (undefined 参照防止)。
 
 > **Why this ordering matters**: If you pass a PR URL or comment URL directly to `gh pr view {pr_number}`, the command will fail and Phase 1.1 will terminate with "PR not found". The Fast Path in Phase 1.2 cannot be reached. Always normalize first.
 
@@ -116,11 +116,12 @@ Extract the following information from work memory and retain in context:
 |------|--------|------------------------------------------|-----------|
 | 1 | 数字のみ (ASCII / 全角) | `^[0-9０-９]+$` | `pr_number` (全角数字は半角に正規化してから as-is 保持) |
 | 2 | Comment URL (query string 任意) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#issuecomment-([0-9]+)(\?.*)?$` | `pr_number` = group 1, `target_comment_id` = group 2 (末尾の `?notification_referrer_id=...` 等の query string は受け入れて無視) |
-| 3 | PR URL (trailing slash あり/なし) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)/?$` | `pr_number` = group 1 |
-| 4 | PR URL (trailing fragment、issuecomment 以外) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)#.*$` | `pr_number` = group 1 (順序 2 が先にマッチするため、ここに到達するのは `#discussion_r123` 等の非 issuecomment fragment のみ) |
-| 5 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
+| 3 | PR URL (trailing path / query / fragment 任意) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)(/[^#?]*)?(\?[^#]*)?(#.*)?$` | `pr_number` = group 1 (trailing `/files`, `/commits`, `/checks` 等の sub-page、`?tab=...` 等の query string、`#diff-...` 等の fragment はすべて受け入れて無視) |
+| 4 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
 
-**重要 — bash 互換性**: 順序 4 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (権威ある仕様根拠: [IEEE Std 1003.1 / The Open Group Chapter 9 — Regular Expressions](https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html) と [regular-expressions.info: Lookahead and Lookbehind](https://www.regular-expressions.info/lookaround.html) で確認済み)。順序 2 を順序 4 より先に試すことで、issuecomment URL は順序 2 で先にマッチして抽出され、順序 4 に到達する時点で「issuecomment ではない fragment 付き PR URL」のみが残る。順序を保証することで lookaround 不要となる。
+**重要 — bash 互換性と順序保証**: 順序 3 の regex は **negative lookahead `(?!issuecomment-)` を使わない**。これは bash の `[[ =~ ]]` (POSIX ERE) や `grep -E` が POSIX BRE/ERE であり、lookaround 系の構文を一切サポートしないため (権威ある仕様根拠: [IEEE Std 1003.1 / The Open Group Chapter 9 — Regular Expressions](https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html) と [regular-expressions.info: Lookahead and Lookbehind](https://www.regular-expressions.info/lookaround.html) で確認済み)。**順序 2 (issuecomment URL) を順序 3 (一般 PR URL) より先に試す**ことで、`pull/123#issuecomment-456` のようなコメント URL は順序 2 で先にマッチして `target_comment_id` が抽出される。順序 3 が permissive な fragment 受理 (`(#.*)?`) を持っていても、issuecomment URL がここに到達することはない。順序を保証することで lookaround 不要となる。
+
+**順序 3 の受理範囲拡張** (silent-failure-hunter MED-1 対応): GitHub の "Files changed" タブから URL をコピーすると `https://github.com/owner/repo/pull/123/files` や `https://github.com/owner/repo/pull/123?tab=files` が返る ([GitHub Docs: Filtering files in a pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/filtering-files-in-a-pull-request) で確認済み)。従来の `/?$` 終端要求の regex はこれらを reject していたが、ユーザーの実運用では非常に頻繁な投入パターンであるため、`(/[^#?]*)?(\?[^#]*)?(#.*)?$` 形式に拡張して trailing path / query / fragment を optional で受理する。`/files`, `/commits`, `/checks`, `/files/abc.ts` 等のサブパス、`?tab=files`, `?notification_referrer_id=...` 等のクエリ、`#diff-{sha256}` 等のフラグメントはすべて受け入れて無視 (pr_number のみ抽出)。
 
 **全角数字の扱い** (順序 1): 日本語 IME の fullwidth モードで入力された `１２３` のような全角数字をユーザーが誤って投入するケースを救済する。マッチした場合は `tr '０-９' '0-9'` 相当の変換で半角に正規化してから `{pr_number}` として保持する。ASCII 数字のみの場合は変換せずそのまま使用。
 
@@ -148,7 +149,7 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
    入力: {argument}
    受け付け可能な形式:
      - PR 番号（例: 123、全角 １２３ も可）
-     - PR URL（例: https://github.com/owner/repo/pull/123）
+     - PR URL（例: https://github.com/owner/repo/pull/123、trailing /files や ?tab=... も可）
      - PR コメント URL（例: https://github.com/owner/repo/pull/123#issuecomment-4567890、末尾の ?notification_referrer_id=... は自動的に無視）
    ヒント: もし Issue URL (/issues/123) を渡している場合、/rite:pr:fix は PR 専用です。Issue 対応は /rite:issue:start を使用してください。
    ```
@@ -240,22 +241,55 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 >    ```
 >    Broad Comment Retrieval 経路 (Fast Path を通らない場合) ではこれらの一時ファイルが存在しないため、`rm -f` は silent no-op となり問題ない。**Phase 1.4 「キャンセル」経路は Phase 1.5 を通らないため、Phase 1.4 内の独立した cleanup block (defense-in-depth 経路) で削除される**。
 >
-> **trap の上書きリスクに注意**: 本ブロックの `trap 'rm -f "$jq_err"' EXIT` は bash 仕様上 1 signal につき 1 trap しか持てないため、**後続の bash block (Phase 2.4 reply、Phase 4.2 report、Phase 4.3.4 Issue 作成、Phase 4.5.1 work memory 更新) が同一 bash 呼び出しに含まれる場合、それらの `trap ... EXIT` に上書きされて `$jq_err` のリークが起きる**。これは本ブロックを後続 phase と結合しないことで回避するほか、ブロック末尾で明示的に `rm -f "$jq_err"` を実行することで二重防御している (trap が動かなくても cleanup は完了する)。将来 `trap` を連携する必要が出た場合は `add_trap` idiom (`existing=$(trap -p EXIT | sed -n "s/.*'\(.*\)'.*/\1/p"); trap "rm -f \"$jq_err\"; $existing" EXIT`) の採用を検討。
+> **trap の上書きリスクに注意**: 本ブロックの `trap 'rm -f "$jq_err"' EXIT` は bash 仕様上 1 signal につき 1 trap しか持てないため、**後続の bash block (Phase 2.4 reply、Phase 4.2 report、Phase 4.3.4 Issue 作成、Phase 4.5.1 work memory 更新) が同一 bash 呼び出しに含まれる場合、それらの `trap ... EXIT` に上書きされて `$jq_err` のリークが起きる**。これは本ブロックを後続 phase と結合しないことで回避するほか、ブロック末尾で明示的に `rm -f "$jq_err"` を実行することで二重防御している (trap が動かなくても cleanup は完了する)。
+>
+> **将来 `trap` を連携する必要が出た場合**: bash の `trap -p` 出力は POSIX 仕様上「shell に reinput 可能なフォーマット (proper quoting 込み)」を保証しており ([POSIX `trap`](https://pubs.opengroup.org/onlinepubs/009604599/utilities/trap.html), [`trap(1p)`](https://man7.org/linux/man-pages/man1/trap.1p.html))、reinput には `eval "$(trap -p EXIT)"` を使うのが正規イディオム。**sed で trap action を抽出する idiom (`sed -n "s/.*'\(.*\)'.*/\1/p"` 等) は trap action 内のシングルクォート `'\''` 埋め込みを誤抽出するため使ってはならない** (silent-failure-hunter MED-9 で指摘)。代替として bash 配列で trap 登録を管理するパターンを使う:
+>
+> ```bash
+> # 配列で trap action を蓄積し、EXIT 時にループ実行
+> _rite_trap_actions=()
+> _rite_run_trap_actions() {
+>   for _action in "${_rite_trap_actions[@]}"; do
+>     eval "$_action"
+>   done
+> }
+> trap '_rite_run_trap_actions' EXIT
+> # 新たな action を追加するときは push するだけ
+> _rite_trap_actions+=('rm -f "$jq_err"')
+> _rite_trap_actions+=('rm -f "$body_file"')
+> ```
+>
+> この方式は `trap -p` 出力のパースに依存しないため quote エスケープ問題を回避できる。
 
 ```bash
 # 対象コメントを直接取得
 # gh api は 404 や認証エラー時に exit != 0 を返すため、exit code を直接チェックする
 # (空文字列チェックではエラーを見逃す可能性がある)
 #
-# 注: stderr は gh api から直接呼び出し元へ流れる (2>&1 で stdout に混入させない)。
+# 注: stderr は gh api から専用一時ファイルに退避する (2>&1 で stdout に混入させない)。
 #     もし 2>&1 を付けると、成功時に gh が stderr に警告を出した場合
 #     $target_comment が invalid JSON となり直後の jq が失敗する (過去の deprecation warning 事案の教訓)
-if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id}); then
-  # gh api の stderr は既に呼び出し元に出力されている (上記 exec 時に直接流れる)
+#
+# silent-failure-hunter MED-3 対応: stderr を独立ファイルに分離することで、404 / 403 / 5xx などの
+# gh api 詳細メッセージ (HTTP status, request ID, rate limit info, auth hint 等) を失敗時に
+# 添付できる。従来の独自 echo メッセージで上書きすると、ユーザーが「コメント取得失敗」しか見えず
+# debug 導線が薄かった。Fast Path の jq_err と対称な実装にする。
+gh_api_err=$(mktemp /tmp/rite-fix-gh-api-err-XXXXXX) || {
+  echo "エラー: gh_api_err 一時ファイルの作成に失敗しました" >&2
+  exit 1
+}
+# gh_api_err は本 bash block の末尾で明示的に削除する (jq_err と同じく統合 trap で cleanup)
+# 後続の trap セットアップで gh_api_err も cleanup 対象に追加する (下記 _rite_fix_fastpath_cleanup 参照)
+
+if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} 2>"$gh_api_err"); then
   echo "エラー: コメント #{target_comment_id} の取得に失敗しました" >&2
-  echo "対処: コメント URL が正しいか、削除されていないかを確認してください" >&2
+  echo "詳細 (gh api stderr 先頭 5 行):" >&2
+  head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  echo "対処: コメント URL が正しいか、削除されていないか、認証 (gh auth status) を確認してください" >&2
+  rm -f "$gh_api_err"
   exit 1
 fi
+rm -f "$gh_api_err"
 
 # 空 stdout チェック (gh api が exit 0 でも空文字列を返すコーナーケース)
 if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
@@ -358,12 +392,20 @@ if [ -z "$comment_issue_url" ]; then
 fi
 # /pull/{pr_number} または /issues/{pr_number} を末尾に含むことを確認
 # (GitHub では PR は内部的に Issue でもあるため、/issues/{N} と /pull/{N} のいずれかが返る)
-expected_pull_suffix="/pull/{pr_number}"
-expected_issues_suffix="/issues/{pr_number}"
-if ! printf '%s' "$comment_issue_url" | grep -qE "(${expected_pull_suffix}|${expected_issues_suffix})$"; then
+#
+# silent-failure-hunter MED-4 対応: pr_number を grep regex に直接埋め込む際は、
+# (1) literal `/pull/` / `/issues/` を直書きして括弧グループ内のバリエーションを減らす
+# (2) pr_number 自体が数字のみであることを事前に validate (Phase 1.0 で normalize 済みだが defense-in-depth)
+# これにより将来 pr_number に他の文字が混入する拡張がなされた場合の silent false positive を防ぐ
+if ! printf '%s' "{pr_number}" | grep -qE '^[0-9]+$'; then
+  echo "エラー: pr_number が数字以外を含んでいます: '{pr_number}'" >&2
+  echo "  Phase 1.0 で正規化された pr_number は数字のみのはずですが、何らかの経路で異常値が混入しました" >&2
+  exit 1
+fi
+if ! printf '%s' "$comment_issue_url" | grep -qE "/(pull|issues)/{pr_number}$"; then
   echo "エラー: コメント #{target_comment_id} は PR #{pr_number} に属していません (silent misclassification 検出)" >&2
   echo "  実際の所属: $comment_issue_url" >&2
-  echo "  期待値: ${expected_pull_suffix} または ${expected_issues_suffix} で終わる URL" >&2
+  echo "  期待値: /pull/{pr_number} または /issues/{pr_number} で終わる URL" >&2
   echo "  対処: comment URL の pull/{N} 部分と #issuecomment-{ID} の整合性を確認してください。" >&2
   echo "         GitHub UI で comment URL を再コピーすることを推奨します。" >&2
   exit 1
@@ -1301,13 +1343,41 @@ When posting the report:
 
 ```bash
 # ✅ SAFE: --body-file for dynamic report content
-# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (signal 受信時に明示的に exit 130/143/129 を返し bash の continuation を防ぐため。bash の EXIT trap 自体は SIGTERM でも発火するが、INT/TERM/HUP の trap action が exit を含まないと bash は signal を consume して次のコマンドへ制御を渡す silent failure になる)
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT INT TERM HUP
-cat <<'REPORT_EOF' > "$tmpfile"
+#
+# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
+# mktemp を先に実行して trap を後追いで設定すると、mktemp 成功〜trap 設定間の race window で
+# SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが orphan として残る。
+# bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**ため、
+# signal 別 exit code (130/143/129) を必ず返す。
+tmpfile=""
+_rite_fix_phase42_cleanup() {
+  rm -f "${tmpfile:-}"
+}
+trap 'rc=$?; _rite_fix_phase42_cleanup; exit $rc' EXIT
+trap '_rite_fix_phase42_cleanup; exit 130' INT
+trap '_rite_fix_phase42_cleanup; exit 143' TERM
+trap '_rite_fix_phase42_cleanup; exit 129' HUP
+
+tmpfile=$(mktemp) || {
+  echo "ERROR: report tmpfile mktemp に失敗しました" >&2
+  exit 1
+}
+
+if ! cat <<'REPORT_EOF' > "$tmpfile"
 {report_body}
 REPORT_EOF
-gh pr comment {pr_number} --body-file "$tmpfile"
+then
+  echo "ERROR: report body の tmpfile 書き込みに失敗しました: $tmpfile" >&2
+  exit 1
+fi
+
+# gh pr comment の exit code を明示的にチェック (silent-failure-hunter MED-6 対応):
+# 投稿失敗が silent に発生すると、レビュアーには通知されないまま fix loop が完了と判定される
+if ! gh pr comment {pr_number} --body-file "$tmpfile"; then
+  echo "ERROR: gh pr comment による報告投稿に失敗しました" >&2
+  echo "  対処: gh auth status / network 接続 / PR #{pr_number} の存在 を確認してください" >&2
+  exit 1
+fi
 ```
 
 ### 4.3 Automatic Separate Issue Creation (Required)
@@ -1437,8 +1507,29 @@ Generate the Issue title in the following format:
 # これを防ぐため、cleanup 対象を関数にまとめて 1 つの trap で全変数をカバーする。
 # 関数内で参照する変数 (warnings_jq_err 等) が未定義の段階で trap が発火しても、`${var:-}`
 # 形式で展開すれば `rm -f ""` となり silent no-op で安全。
+#
+# silent-failure-hunter MED-5 対応 (issue_created フラグ):
+# Fast Path の `handoff_committed` と同じ 3-state pattern を採用する。
+#
+# 状態遷移:
+#   - issue_created=0 (初期値): cleanup は tmpfile を **preserve** する (Issue 作成失敗時に
+#     debug 用に Issue 本文を残すため)。stderr に preserved path を表示する。
+#   - issue_created=1 (gh issue create 成功後): cleanup は tmpfile を **削除** する (debug 不要)。
+#
+# Issue 作成に失敗した場合 (`gh issue create` の 5xx / rate limit / network error 等) には、
+# tmpfile を preserve することで、ユーザーが事後的に Issue 本文を検証して手動で再作成できる。
+issue_created=0
+tmpfile=""
+warnings_jq_err=""
 _rite_fix_issue_create_cleanup() {
-  rm -f "${tmpfile:-}" "${warnings_jq_err:-}"
+  if [ "$issue_created" = "1" ]; then
+    rm -f "${tmpfile:-}"
+  else
+    if [ -n "${tmpfile:-}" ] && [ -f "${tmpfile:-}" ]; then
+      echo "  [debug preserved] Issue 本文 tmpfile: $tmpfile" >&2
+    fi
+  fi
+  rm -f "${warnings_jq_err:-}"
 }
 trap 'rc=$?; _rite_fix_issue_create_cleanup; exit $rc' EXIT
 trap '_rite_fix_issue_create_cleanup; exit 130' INT
@@ -1530,6 +1621,8 @@ fi
 
 if [ -z "$result" ]; then
   echo "ERROR: create-issue-with-projects.sh returned empty result (exit 0 だが stdout が空)" >&2
+  echo "  Debug: Issue 本文 tmpfile が debug 用に preserved されています (issue_created=0 のため)" >&2
+  echo "    tmpfile path: $tmpfile" >&2
   exit 1
 fi
 # .issue_url が空文字や null でないことも検証 (script が成功したのに JSON schema が壊れているケース)
@@ -1537,8 +1630,16 @@ created_issue_url=$(printf '%s' "$result" | jq -r '.issue_url // empty')
 if [ -z "$created_issue_url" ]; then
   echo "ERROR: create-issue-with-projects.sh の結果に .issue_url が含まれていません" >&2
   echo "  Raw result: $result" >&2
+  echo "  Debug: Issue 本文 tmpfile が debug 用に preserved されています (issue_created=0 のため)" >&2
+  echo "    tmpfile path: $tmpfile" >&2
   exit 1
 fi
+
+# Issue 作成成功: tmpfile を統合 cleanup の対象から外す (issue_created=1)
+# 以降、bash block 末尾に到達するか後続でエラーが起きても tmpfile は削除されない
+# (gh issue create が成功したので Issue 本文の preserve 義務は果たされ、ここで cleanup へ移行可能だが、
+#  Phase 4.3.5 の表示時に tmpfile path が必要になるため preserve しておく)
+issue_created=1
 project_reg=$(printf '%s' "$result" | jq -r '.project_registration // empty')
 
 # .warnings の jq 抽出を明示エラーチェック (`2>/dev/null` で隠蔽しない):
@@ -1617,27 +1718,114 @@ Identify the related Issue from the PR or branch name.
 # 1. まず PR 本文から Closes #XX パターンを抽出（優先）
 # Phase 1.1 で --json に body を含めて取得済みのため、再取得不要
 # 保持している body フィールドから直接パターンマッチ
-# trap は EXIT INT TERM HUP の 4 シグナルすべてを捕捉 (signal 受信時に明示的に exit 130/143/129 を返し bash の continuation を防ぐため。bash の EXIT trap 自体は SIGTERM でも発火するが、INT/TERM/HUP の trap action が exit を含まないと bash は signal を consume して次のコマンドへ制御を渡す silent failure になる)
-pr_body_tmp=$(mktemp)
-trap 'rm -f "$pr_body_tmp"' EXIT INT TERM HUP
-printf '%s' "{pr_body}" > "$pr_body_tmp"
-issue_number=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" | head -1 | grep -oE '[0-9]+' || true)
+#
+# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path / Phase 4.5.2 と同じパターン):
+# mktemp を先に実行して trap を後追いで設定すると、mktemp 成功〜trap 設定間の極小時間窓に
+# SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが orphan として残る race window がある。
+# また trap action に signal 別 exit code (130/143/129) を含めないと、bash は INT/TERM/HUP を
+# consume して次のコマンドへ制御を渡し silent failure になる (Fast Path Implementation note 参照)。
+# 加えて mktemp 失敗時の exit code を check しないと、$pr_body_tmp が空文字列になり後続の
+# `printf > ""` が silent redirection error を起こして空ファイルを参照、issue_number が
+# silent empty に落ちる。
+pr_body_tmp=""
+_rite_fix_phase451_cleanup() {
+  rm -f "${pr_body_tmp:-}"
+}
+trap 'rc=$?; _rite_fix_phase451_cleanup; exit $rc' EXIT
+trap '_rite_fix_phase451_cleanup; exit 130' INT
+trap '_rite_fix_phase451_cleanup; exit 143' TERM
+trap '_rite_fix_phase451_cleanup; exit 129' HUP
+
+pr_body_tmp=$(mktemp) || {
+  echo "ERROR: pr_body_tmp の mktemp に失敗しました" >&2
+  echo "対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+  exit 1
+}
+if ! printf '%s' "{pr_body}" > "$pr_body_tmp"; then
+  echo "ERROR: pr_body_tmp への書き込みに失敗しました: $pr_body_tmp" >&2
+  exit 1
+fi
+
+# grep の exit code を明示的に区別 (silent failure-hunter HIGH-2 対応):
+#   exit 0: マッチあり (期待動作)
+#   exit 1: マッチなし (期待動作、no-op として fallback に進む)
+#   exit 2: IO/権限/構文エラー (真のエラー、silent に握りつぶしてはならない)
+# 従来の `|| true` は exit 1 と exit 2 を融合させて IO エラーを silent 化していた。
+# pipefail を有効化して pipeline 全体の exit を捕捉した上で、grep の rc を case で区別する。
+set -o pipefail
+issue_number=""
+grep_pipeline_out=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" 2>&1 | head -1 | grep -oE '[0-9]+')
+grep_pipeline_rc=$?
+case "$grep_pipeline_rc" in
+  0)
+    issue_number="$grep_pipeline_out"
+    ;;
+  1)
+    # PR 本文に Closes/Fixes/Resolves パターンなし — fallback (ブランチ名抽出) へ
+    :
+    ;;
+  *)
+    echo "ERROR: PR 本文の grep が IO/権限/構文エラーで失敗しました (rc=$grep_pipeline_rc)" >&2
+    echo "詳細: $grep_pipeline_out" >&2
+    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+    echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$grep_pipeline_rc"
+    set +o pipefail
+    exit 1
+    ;;
+esac
 
 # 2. PR 本文で見つからない場合、ブランチ名から抽出
+# 同様に grep の exit 1 / exit 2 を区別する
 if [[ -z "$issue_number" ]]; then
-  issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+' || true)
+  branch_pipeline_out=$(git branch --show-current 2>&1 | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
+  branch_pipeline_rc=$?
+  case "$branch_pipeline_rc" in
+    0)
+      issue_number="$branch_pipeline_out"
+      ;;
+    1)
+      # ブランチ名にも issue-N パターンなし — issue_number は空のまま
+      :
+      ;;
+    *)
+      echo "ERROR: branch 名抽出 pipeline が IO/権限エラーで失敗しました (rc=$branch_pipeline_rc)" >&2
+      echo "詳細: $branch_pipeline_out" >&2
+      echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_pipeline_rc"
+      set +o pipefail
+      exit 1
+      ;;
+  esac
 fi
+set +o pipefail
 ```
 
 > **Note**: `{pr_body}` is the `body` field from the Phase 1.1 result (retained in context). No additional `gh pr view` call is needed.
 
 **Implementation note for Claude**: `{pr_body}` はドキュメントのプレースホルダ（Phase 4.3.4 の注記と同等）。Claude はスクリプト生成前に実際の PR body で置換する。body に改行・シングルクォート・`$` 記号等の特殊文字が含まれる場合は `echo "..."` への直接埋め込みを避け、`printf '%s' '{pr_body}'` または一時ファイル経由（`tmpfile=$(mktemp)` + HEREDOC）でパターンマッチを実行すること。
 
-If no Issue number is found, display a warning and skip the work memory update:
+If no Issue number is found, display a warning **and emit a `WM_UPDATE_FAILED=1` retained flag** so the caller (`/rite:issue:start` review-fix loop) treats the result as `[fix:pushed-wm-stale]` instead of silently treating it as `[fix:pushed]`:
 
-```
-⚠️ Issue 番号が特定できないため作業メモリ更新をスキップしました
-PR 本文に Closes/Fixes/Resolves #XX が含まれていないか、ブランチ名に issue-{number} パターンがありません。
+```bash
+# Phase 4.5.1 で issue_number 抽出に失敗した場合の silent regression 防止 (HIGH-2 対応):
+# 単に WARNING を出すだけだと、E2E flow / hook 経由実行で人間の目に見えず、
+# `/rite:issue:start` review-fix loop が「work memory 更新失敗」を一切認識しないまま
+# `[fix:pushed]` を silent 出力 → 次の loop iteration が stale work memory のまま続行する
+# silent regression になる。これを防ぐため:
+#   1. WARNING を stderr に出す (人間が tail で見えるケースのため)
+#   2. retained flag `WM_UPDATE_FAILED=1` を context に明示宣言 (Phase 8 が読む)
+# Phase 8.1 では `[CONTEXT] WM_UPDATE_FAILED=1` を検出した場合、`[fix:pushed]` ではなく
+# `[fix:pushed-wm-stale]` を出力するルールを採用する (Phase 8.1 のテーブル参照)
+if [[ -z "$issue_number" ]]; then
+  echo "⚠️ Issue 番号が特定できないため作業メモリ更新をスキップしました" >&2
+  echo "  PR 本文に Closes/Fixes/Resolves #XX が含まれていないか、ブランチ名に issue-{number} パターンがありません。" >&2
+  echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+  echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=issue_number_not_found"
+  # Phase 4.5.2 の work memory 更新は実行できないため early return
+  # 後続の Phase 4.6 / Phase 8.1 が WM_UPDATE_FAILED を検出して [fix:pushed-wm-stale] を出力する
+fi
 ```
 
 #### 4.5.2 Retrieve and Update Work Memory Comment
@@ -1857,10 +2045,24 @@ with open(out_path, "w") as f:
       exit 1
     fi
 
-    jq -n --rawfile body "$tmpfile" '{"body": $body}' \
-      | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input - || \
-        echo "WARNING: PATCH failed. Backup: $backup_file" >&2
+    # silent-failure-hunter MED-8 対応:
+    # 従来の `|| echo "WARNING: PATCH failed"` は右辺 echo が exit 0 で pipeline 全体を成功扱いにし、
+    # PATCH 失敗時に WM_UPDATE_FAILED が set されないまま `[fix:pushed]` 出力に流れる silent regression
+    # の根本原因だった。`if !; ... fi` で囲み、失敗時に明示的に WM_UPDATE_FAILED retained flag を
+    # 出力して Phase 8.1 が `[fix:pushed-wm-stale]` を出力できるようにする。
+    if ! jq -n --rawfile body "$tmpfile" '{"body": $body}' \
+        | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
+          -X PATCH --input -; then
+      echo "ERROR: work memory PATCH failed (gh api PATCH exit != 0)" >&2
+      echo "  Backup: $backup_file" >&2
+      echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+      echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=patch_failed; comment_id=$comment_id; backup=$backup_file"
+      # PATCH 失敗は致命的だが exit 1 はしない: caller (Phase 8.1) が WM_UPDATE_FAILED フラグを
+      # 検出して [fix:pushed-wm-stale] を出力すれば、review-fix loop は stale 状態を認識した上で
+      # AskUserQuestion 経由で続行/中断を判断できる。bash exit 1 で fix.md 全体を kill すると
+      # コミット済みの fix 結果まで失われるため、retained flag による soft failure を採用する。
+    fi
   fi
 fi
 ```

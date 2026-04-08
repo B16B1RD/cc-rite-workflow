@@ -8,6 +8,16 @@
 > - 「内部事実」/「内部整合性」/「Doc-Impl Consistency」/「Internal Consistency」 — 本ファイルのタイトルおよび `internal-consistency.md` のファイル名が示す概念全体
 >
 > 新規ドキュメント・コミットメッセージ・Issue では canonical 表記「**文書-実装整合性 (Doc-Impl Consistency)**」を優先して使う。既存の同義表現はそのまま残してよい (機械的置換は drift リスクが大きいため)。
+>
+> **Canonical category names (literal-substring matched by Phase 5.1.3 META check)**: 5 verification categories の名前は以下の **canonical form を厳格に使う**。`commands/pr/review.md` Phase 5.1.3 Step 2 の variant (a) / (a + inconclusive) META 行は **literal substring match** で検査するため、表記揺れがあると `doc_heavy_post_condition: warning` の false positive が発火する:
+>
+> - `Implementation Coverage`
+> - `Enumeration Completeness`
+> - `UX Flow Accuracy`
+> - `Order-Emphasis Consistency` ← **ハイフン形式必須**。`Order / Emphasis Consistency` (空白付きスラッシュ) や `Order/Emphasis Consistency` (空白なしスラッシュ) は**禁止**
+> - `Screenshot Presence`
+>
+> 新規 finding を書く際、CHANGELOG / README / tech-writer.md checklist 項目を編集する際、META 行を構成する際のいずれにおいても上記 canonical form を使う。3 形式併存は Phase 5.1.3 Step 2 が破壊する silent 障害の root cause となる。
 
 ## Overview
 
@@ -138,7 +148,7 @@ Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
 | Form schema | `Read` | `loginSchema.ts` の `required` フィールド |
 | UI コンポーネント | `Grep` | button/input のラベル・プレースホルダ |
 
-### 4. Order / Emphasis Consistency
+### 4. Order-Emphasis Consistency
 
 **何を検証するか**: ドキュメントでの説明順序・強調点が、実装側の優先度や戦略的位置付けと乖離していないか。
 
@@ -185,7 +195,7 @@ CRITICAL: Screenshot Presence mismatch
 
 ## Inconclusive Verification Handling
 
-本プロトコルの 5 つの Verification Protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order/Emphasis Consistency / Screenshot Presence) は、いずれも `Grep` / `Read` / `Glob` / `WebFetch` 等のツールを使って実装側の対応物を確認する。**ツールが空集合を返した場合、対象ファイルが存在しなかった場合、tool 自体が timeout/error した場合**、reviewer は「対応物がないので OK」と silent pass しがちだが、これは本プロトコル設置の根本目的 (silent non-compliance 防止) に反する。
+本プロトコルの 5 つの Verification Protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) は、いずれも `Grep` / `Read` / `Glob` / `WebFetch` 等のツールを使って実装側の対応物を確認する。**ツールが空集合を返した場合、対象ファイルが存在しなかった場合、tool 自体が timeout/error した場合**、reviewer は「対応物がないので OK」と silent pass しがちだが、これは本プロトコル設置の根本目的 (silent non-compliance 防止) に反する。
 
 本セクションは、各 Verification Protocol で「**検証が完遂できなかった**」状態の取り扱いを定義する。
 
@@ -263,7 +273,7 @@ review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inco
 | Implementation Coverage | **CRITICAL** | 機能集合の不一致は user-facing の誤情報。読者がドキュメントを信じて存在しない機能を期待する/紹介漏れの機能を見落とすため、常に CRITICAL |
 | Enumeration Completeness | **CRITICAL** | 「N つの〜」のような数値主張の不一致は読者の認識モデルを直接破壊する。常に CRITICAL |
 | UX Flow Accuracy | **CRITICAL** | UX 手順書の矛盾はユーザーがドキュメント通りに操作してもゴールに到達できないことを意味し、実質的なブロック障害となる。常に CRITICAL |
-| Order / Emphasis Consistency | **CRITICAL** | 戦略的位置付け (priority / emphasis) の乖離はドキュメントの信頼性を根本から損なう。実装側の明確な priority 定義との乖離のみを対象とし、Confidence Gate (>= 80) で表現差は除外される。常に CRITICAL |
+| Order-Emphasis Consistency | **CRITICAL** | 戦略的位置付け (priority / emphasis) の乖離はドキュメントの信頼性を根本から損なう。実装側の明確な priority 定義との乖離のみを対象とし、Confidence Gate (>= 80) で表現差は除外される。常に CRITICAL |
 | Screenshot Presence | **CRITICAL** (missing / broken) / **HIGH** (alt text) | パス無効・画像欠落は CRITICAL（手順書として機能しない）、alt text 欠落はアクセシビリティ問題で HIGH |
 
 ### Scope Boundary

@@ -58,8 +58,9 @@ This skill is activated when reviewing files matching:
   - 検証手段: 実装のディレクトリ構造・定数配列・設定ファイルを `Read` して数え直す
 - [ ] **UX Flow Accuracy** (Doc-Heavy mode 専用): UX 手順書の状態遷移が、実装の state machine / route 定義と矛盾（ボタン配置、ページ遷移、必須フィールド、ステップ数）
   - 検証手段: フロントエンド route 定義、state machine、form schema を `Read` して照合
-- [ ] **Order / Emphasis Consistency** (Doc-Heavy mode 専用): ドキュメントの説明順序・強調点が、実装の主要機能の優先度や戦略的位置付けと乖離（例: サービス紹介順が実装の priority と逆転）
+- [ ] **Order-Emphasis Consistency** (Doc-Heavy mode 専用): ドキュメントの説明順序・強調点が、実装の主要機能の優先度や戦略的位置付けと乖離（例: サービス紹介順が実装の priority と逆転）
   - 検証手段: 実装のエントリーポイント / メインメニュー定義 / 設定ファイル記述順と比較
+  - **Canonical name**: `Order-Emphasis Consistency` (ハイフン形式)。Phase 5.1.3 Step 2 の META literal check と完全一致させるため、本カテゴリ名は `Order / Emphasis Consistency` や `Order/Emphasis Consistency` ではなく必ずハイフン形式で記述する (silent META check 失敗防止)
 - [ ] **Screenshot Presence** (Doc-Heavy mode 専用): 番号付き手順（「1. ... 2. ...」）または状態記述（「初回表示」「エラー時」「完了時」等）に対応する画像参照が存在しない、またはパスが無効
   - 検証手段: ドキュメント内の `^\d+\.\s` と `!\[...\](...)` を対比、`Glob` で画像ファイル存在確認
 
@@ -136,7 +137,7 @@ For every documented service / feature / component / step / state, cross-referen
 | **Implementation Coverage** (機能リスト) | `Grep` | module exports, route definitions, package directories |
 | **Enumeration Completeness** (数値主張) | `Read` | config arrays, directory structures, constant definitions |
 | **UX Flow Accuracy** (手順書 / 状態遷移) | `Read` | state machine transitions, form schemas, route guards |
-| **Order / Emphasis Consistency** (順序・優先度) | `Read` | config arrays, menu definitions, routing tables |
+| **Order-Emphasis Consistency** (順序・優先度) | `Read` | config arrays, menu definitions, routing tables |
 | **Screenshot Presence** (画像参照) | `Glob` / `Grep` | image paths, numbered steps, alt text |
 
 **Rule**: "おそらく正しいはず" のような推測は禁止。必ず実装ファイルを Read / Grep して確認し、Finding に証拠（ファイルパス + 行番号）を含める。
@@ -194,7 +195,9 @@ This negative/positive confirmation distinguishes "protocol was fully executed" 
 
 ### Cross-Reference with internal-consistency.md
 
-For the full 5-category verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order/Emphasis Consistency / Screenshot Presence), see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol** and the source of truth for severity mapping.
+For the full 5-category verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence), see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol** and the source of truth for severity mapping.
+
+> **Canonical category naming**: The 5 categories above use the canonical hyphenated form (`Order-Emphasis Consistency`). This form is **literal-substring matched** by the Phase 5.1.3 Step 2 META check in `commands/pr/review.md`. Do not introduce variants like `Order / Emphasis Consistency` or `Order/Emphasis Consistency` — they will fail the META check and trigger a `doc_heavy_post_condition: warning` false positive.
 
 ## Finding Quality Guidelines
 

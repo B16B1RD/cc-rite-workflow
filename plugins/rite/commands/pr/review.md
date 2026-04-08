@@ -479,26 +479,36 @@ total_diff_lines="${total_diff_lines:-0}"
 # 内側のコマンド (gh pr view) の exit code を直接受け取れない (silent failure リスク)。
 # これを防ぐため、(1) gh pr view の stderr を一時ファイルに退避、(2) stdout を一時ファイルに保存、
 # (3) gh pr view の exit code を if で明示的に check し、(4) 成功時のみ mapfile で読み込む。
+#
+# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (fix.md Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
+# mktemp を 2 連発した「後」に trap を設定すると、1 つ目 mktemp 成功〜 2 つ目 mktemp 完了までと、
+# 2 つ目 mktemp 完了〜 trap 設定までの極小時間窓に SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが
+# orphan として残る。並列 review 実行 (sprint team-execute 等) で /tmp に累積し、wildcard glob で
+# 掃除する誘惑 → 他セッション破壊につながる構造的リスク。
+#
+# bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**
+# (権威ある根拠: GNU bash manual "Signals" — trap action 後に bash は signal を consume し
+#  制御は次のコマンドに渡る。trap 内で `exit <code>` を呼ばないと cleanup 後に bash block が
+#  残りの命令 (mapfile / for / case) を不完全な状態で実行してしまう silent failure になる)
+# signal 別 exit code: SIGINT=130 / SIGTERM=143 / SIGHUP=129 (POSIX 慣習: 128 + signal number)
+gh_files_stderr=""
+gh_files_stdout=""
+_rite_review_p127_cleanup() {
+  rm -f "${gh_files_stderr:-}" "${gh_files_stdout:-}"
+}
+trap 'rc=$?; _rite_review_p127_cleanup; exit $rc' EXIT
+trap '_rite_review_p127_cleanup; exit 130' INT
+trap '_rite_review_p127_cleanup; exit 143' TERM
+trap '_rite_review_p127_cleanup; exit 129' HUP
+
 gh_files_stderr=$(mktemp /tmp/rite-review-gh-files-err-XXXXXX) || {
   echo "ERROR: gh_files_stderr 一時ファイルの作成に失敗" >&2
   exit 1
 }
 gh_files_stdout=$(mktemp /tmp/rite-review-gh-files-out-XXXXXX) || {
   echo "ERROR: gh_files_stdout 一時ファイルの作成に失敗" >&2
-  rm -f "$gh_files_stderr"
   exit 1
 }
-
-# trap 統一 (fix.md Fast Path block と同じ signal 別 explicit exit パターン):
-# - bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**
-#   (権威ある根拠: GNU bash manual "Signals" — trap action 後に bash は signal を consume し
-#    制御は次のコマンドに渡る。trap 内で `exit <code>` を呼ばないと cleanup 後に bash block が
-#    残りの命令 (mapfile / for / case) を不完全な状態で実行してしまう silent failure になる)
-# - signal 別 exit code: SIGINT=130 / SIGTERM=143 / SIGHUP=129 (POSIX 慣習: 128 + signal number)
-trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"' EXIT
-trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"; exit 130' INT
-trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"; exit 143' TERM
-trap 'rm -f "$gh_files_stderr" "$gh_files_stdout"; exit 129' HUP
 
 if ! gh pr view "{pr_number}" --json files --jq '.files[].path' > "$gh_files_stdout" 2>"$gh_files_stderr"; then
   echo "ERROR: gh pr view --json files が失敗しました (exit != 0)" >&2
@@ -507,7 +517,16 @@ if ! gh pr view "{pr_number}" --json files --jq '.files[].path' > "$gh_files_std
   echo "  対処: 上記詳細を確認の上、必要に応じて再実行してください。Doc-Heavy 判定の根拠データが取得できないため処理を中止します。" >&2
   exit 1
 fi
-mapfile -t changed_file_paths < "$gh_files_stdout"
+
+# mapfile の exit code を明示的に check (silent-failure-hunter MEDIUM-2 対応):
+# read permission denied / IO error / 破損ファイルで失敗した場合、`changed_file_paths` は空配列のまま
+# 後続の `if [ ${#changed_file_paths[@]} -eq 0 ]` 分岐で「gh pr view が exit 0 で 0 ファイルを返しました」の
+# 誤診断メッセージに流れる silent regression を防ぐ。本当の失敗原因 (mapfile IO エラー) を fail-fast で検出する。
+if ! mapfile -t changed_file_paths < "$gh_files_stdout"; then
+  echo "ERROR: mapfile が gh_files_stdout からの読み込みに失敗しました: $gh_files_stdout" >&2
+  echo "  考えられる原因: read permission denied / IO error / ファイル破損 / inode 枯渇" >&2
+  exit 1
+fi
 
 # 空配列 guard: gh pr view が exit 0 で空 stdout を返したコーナーケース (PR が完全に空など)
 # exit code が成功しているため fatal error ではないが、警告を出して all_files_excluded=false で固定する
@@ -697,7 +716,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    - **TODO(#353)**: 両ファイルの Activation patterns 等価性を CI/lint で自動検証する test は未整備。drift 検出 lint の追加は Issue #353 で追跡中 (過去に SKILL.md と review.md / tech-writer.md の drift が発生した実例に基づく)
 2. **code-quality co-reviewer 条件付き追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。**ただし純粋散文 (README 文言修正のみ等) PR で空所見の reviewer がトリガーされノイズ化することを防ぐため、Phase 2.3 「Code block detection in `.md` files」と同じスキャンロジックを再利用し、diff 内に fenced code block (` ```bash `, ` ```yaml `, ` ```python ` 等) が検出された場合のみ追加する**。
 
-   **scan ロジック** (Phase 2.3 の Code block detection と完全に同じ手順):
+   **scan ロジック** (Phase 2.3 の Code block detection と同じ scan 手順を tagged fence のみに対して再利用 — Phase 2.3 が untyped fence ` ``` ` も検出するのに対し、本 Phase 2.2.1 では tagged fence のみに限定する。理由は本 phase が code-quality 追加判定の先取りであり、untyped fence は Phase 2.3 の「Code block detection in `.md` files」で同じ目的を達成するため。CHANGELOG の "fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.)" 文言とも一致):
 
    ```bash
    # diff 全体に fenced code block の追加が含まれるかをスキャン
@@ -721,18 +740,24 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
        exit 1 ;;
    esac
 
+   # 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (fix.md Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
+   # mktemp を先に実行して trap を後追いで設定すると、mktemp 成功〜trap 設定間の極小時間窓に
+   # SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが orphan として残る race window がある。
+   # bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**ため、
+   # signal 別 exit code (130/143/129) を必ず返す。
+   git_diff_err=""
+   _rite_review_p221_cleanup() {
+     rm -f "${git_diff_err:-}"
+   }
+   trap 'rc=$?; _rite_review_p221_cleanup; exit $rc' EXIT
+   trap '_rite_review_p221_cleanup; exit 130' INT
+   trap '_rite_review_p221_cleanup; exit 143' TERM
+   trap '_rite_review_p221_cleanup; exit 129' HUP
+
    git_diff_err=$(mktemp /tmp/rite-review-p221-diff-err-XXXXXX) || {
      echo "ERROR: git_diff_err 一時ファイルの作成に失敗" >&2
      exit 1
    }
-   # signal 別 trap で SIGINT/SIGTERM/SIGHUP 受信時に明示的 exit code を返す
-   # (bash の EXIT trap は SIGTERM でも発火するが、INT/TERM/HUP の trap action が
-   #  exit を含まないと bash は signal を consume して次のコマンドへ制御を渡す silent failure
-   #  になるため、signal 別に明示的 exit code を返す)
-   trap 'rm -f "$git_diff_err"' EXIT
-   trap 'rm -f "$git_diff_err"; exit 130' INT
-   trap 'rm -f "$git_diff_err"; exit 143' TERM
-   trap 'rm -f "$git_diff_err"; exit 129' HUP
 
    # git diff を独立実行し exit code を明示 check (silent failure-hunter Finding 対応)
    if ! diff_out=$(git diff "{base_branch}...HEAD" -- '*.md' 2>"$git_diff_err"); then
@@ -744,18 +769,54 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
      # fail-safe sentinel で「判定不能」を後続に伝達
      has_added_fenced_block="__FAIL_SAFE_ADD__"
    else
-     # `|| true` で grep が「マッチなし」(exit 1) を返しても全体 exit 0 にする
-     # (pipefail 環境下で grep の exit 1 が pipeline 全体を fail させないようにする)
-     has_added_fenced_block=$(printf '%s\n' "$diff_out" | grep -E '^\+[[:space:]]*```[a-zA-Z]' | head -1 || true)
+     # grep の exit 1 (no match) と exit 2 (IO error) を区別 (silent failure-hunter HIGH-5 対応):
+     # `|| true` で吸収すると IO error と「マッチなし」が silent に融合する。pipefail 下で
+     # rc=$? を捕捉し、exit 1 のみ no-op として扱う。
+     grep_out=$(printf '%s\n' "$diff_out" | grep -E '^\+[[:space:]]*```[a-zA-Z]' | head -1)
+     grep_rc=$?
+     case "$grep_rc" in
+       0)
+         has_added_fenced_block="$grep_out"
+         ;;
+       1)
+         # マッチなし (期待動作) — 純粋散文 PR
+         has_added_fenced_block=""
+         ;;
+       *)
+         echo "WARNING: Phase 2.2.1 の grep pipeline が IO/権限エラーで失敗しました (rc=$grep_rc)" >&2
+         echo "  fail-safe: 同じく __FAIL_SAFE_ADD__ sentinel で code-quality 追加に倒します" >&2
+         has_added_fenced_block="__FAIL_SAFE_ADD__"
+         ;;
+     esac
    fi
 
-   if [ -n "$has_added_fenced_block" ]; then
-     # code-quality を co-reviewer として追加 (既に候補にあれば selection_type を mandatory に引き上げ)
-     # 昇格パスは Phase 3.2 Selection Type テーブルの「昇格 priority」に従う: detected → recommended → mandatory
-     # `__FAIL_SAFE_ADD__` sentinel の場合も含めてここに到達する (fail-safe で追加経路に倒す)
-     :
-   fi
+   # 機械検証可能な形で 3 状態を stdout に明示 (silent-failure-hunter HIGH-5 対応):
+   # bash block 内で `:` no-op だけだと、Claude の後続 phase が本 block の判定結果を機械的に
+   # 読み取れない (会話文脈に何も残らない)。`[CONTEXT] code_quality_coreviewer_add_reason=...`
+   # の形式で 3 状態を stdout に出力することで、後続 phase が context から値を読み戻して
+   # candidate list 操作 (selection_type 昇格 / 新規追加 / no-op) を実行できる。
+   case "$has_added_fenced_block" in
+     "__FAIL_SAFE_ADD__")
+       echo "[CONTEXT] code_quality_coreviewer_add_reason=fail_safe_diff_or_grep_failure"
+       ;;
+     "")
+       echo "[CONTEXT] code_quality_coreviewer_add_reason=none"
+       ;;
+     *)
+       echo "[CONTEXT] code_quality_coreviewer_add_reason=fenced_block_detected"
+       ;;
+   esac
    ```
+
+   **後続 phase での読み取り**: Claude は本 bash block 終了後、stdout から `[CONTEXT] code_quality_coreviewer_add_reason=` 行を会話履歴で検索して値を取得し、以下のいずれかの操作を実行する:
+
+   | reason 値 | 操作 |
+   |-----------|------|
+   | `fenced_block_detected` | code-quality を co-reviewer として追加 (既に候補にあれば selection_type を mandatory に引き上げ) |
+   | `fail_safe_diff_or_grep_failure` | 同上 (fail-safe で追加経路に倒す)。WARNING を表示してユーザーに git diff 失敗を通知 |
+   | `none` | 純粋散文 PR — code-quality 追加なし (no-op)。Phase 2.3 の sole reviewer guard が後段で追加可能性を再評価する |
+
+   selection_type の昇格パスは Phase 3.2 Selection Type テーブルに従う: `detected → recommended → mandatory`。
 
    具体的な検証期待 (code-quality が追加された場合):
    - ドキュメント内 fenced code block の構文・引用・エラーハンドリング
@@ -791,7 +852,17 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
 
 **Relationship to Phase 2.3 sole reviewer guard**:
 
-本 Override は Phase 2.3 (Content Analysis) および sole reviewer guard の**前**に実行される。本 Override 実行後は tech-writer (mandatory) + code-quality (co-reviewer) の >=2 reviewers が確定しているため、sole reviewer guard は発火しない (Phase 2.3 の既存ロジックはそのまま動作する)。
+本 Override は Phase 2.3 (Content Analysis) および sole reviewer guard の**前**に実行される。Override 実行後に確定する reviewer 数は **fenced code block 検出の有無により分岐**する:
+
+| `code_quality_coreviewer_add_reason` | 確定 reviewer | sole reviewer guard の挙動 |
+|--------------------------------------|--------------|------------------------------|
+| `fenced_block_detected` | tech-writer (mandatory) + code-quality (co-reviewer) → ≥2 reviewers | guard は**発火しない** (既に >=2 のため) |
+| `fail_safe_diff_or_grep_failure` | 同上 (fail-safe で code-quality を追加) → ≥2 reviewers | guard は**発火しない** |
+| `none` (純粋散文 PR — fenced block なし) | tech-writer のみ 1 人 | **guard が発火**して fallback 経路で code-quality を追加 → 最終的に ≥2 reviewers が保たれる |
+
+つまり「Phase 2.2.1 で先取り追加が発生する」か「Phase 2.3 の sole reviewer guard が後段で fallback 追加する」かのいずれかの経路で必ず ≥2 reviewers が保たれる。Phase 2.3 の既存ロジックは破壊されず、Override は加算経路を 1 つ追加するだけである。
+
+> **設計補足**: 純粋散文 PR で Phase 2.2.1 の先取り追加が skip されても、最終結果として code-quality は追加される。Phase 2.2.1 の意義は「先取り追加によって sole reviewer guard が走らない fast path を提供する」ことであり、guard 経由の fallback も同等の最終状態 (≥2 reviewers) に到達することを保証している。
 
 **Override の累積効果**: 本 Override は reviewer 候補リストに対する**加算のみ**を行い、既存候補を削除しない。Phase 2.2 で候補に選定された他 reviewer (security, api, frontend, etc.) はそのまま保持される。
 
@@ -1472,6 +1543,14 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 ##### Step 2: META 5 カテゴリ実行確認 (件数非依存、silent non-compliance 防止)
 
 **適用条件**: `finding_count` の値に関係なく **常に実施** する (`finding_count == 0` でも `finding_count >= 1` でも同じ)。
+
+**照合方式の厳格性宣言** (silent fall-through 防止 — variant ごとに異なる照合方式を明示):
+- **variant (a) / (a + inconclusive)**: `Categories: [...]` ブロック内のカテゴリ名を **literal substring match** で検査する。「`Implementation Coverage`」「`Enumeration Completeness`」「`UX Flow Accuracy`」「`Order-Emphasis Consistency`」「`Screenshot Presence`」の **5 つすべてが literal で含まれていること**を要求する。`Order / Emphasis Consistency` (空白付きスラッシュ) や `Order/Emphasis Consistency` (空白なしスラッシュ) のような表記揺れは literal substring match で**マッチしないため Step 2 が `passed` にならず**、`doc_heavy_post_condition: warning` 強制昇格の経路に流れる。
+- **variant (b)**: 「`META: All 5 verification categories executed.`」「`Findings below.`」の 2 トークンを literal substring match で検査する (Categories list は variant (b) では出現しない)。
+- **variant (c)**: 「`META: Cross-Reference partially skipped`」を literal substring match で検査する。
+- **variant (b + inconclusive)**: variant (b) のトークン + 「`but {N} categories were inconclusive`」「`Inconclusive: [...]`」を literal substring match で検査する (`{N}` 部分は数字 1 文字以上を許容)。
+
+**重要**: literal substring match は「カテゴリ名の空白/記号の差異を厳格に検出する」設計選択であり、reviewer が `internal-consistency.md` / `tech-writer.md` の canonical form (`Order-Emphasis Consistency`) から逸脱した瞬間に発火する。これは「文書-実装整合性 mode の自己整合性」を Phase 5.1.3 自身が監視するための仕組みである (本 Issue #350 の C-1 指摘の根本対応)。
 
 tech-writer の出力に以下のいずれかの META 行が含まれているかを検証する。**正規表現は必ず multiline mode (`(?m)`) で実行**: `(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:` を行頭 anchor として検索する。`(?m)` を明示する理由は、tech-writer が META 行をテーブルセル内ではなくテーブル直後の段落 `- META: ...` 形式で書いた場合、行頭 `^` が multiline mode 無効ではファイル先頭のみを指して検出漏れになるため。Step 4 の正規表現も同じ理由で `(?m)` を明示している (drift 防止):
 - (a) `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` (finding_count == 0 の場合)
