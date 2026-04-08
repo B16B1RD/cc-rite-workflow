@@ -84,13 +84,34 @@ If the version is too old, upgrade Claude Code first, then re-run `/rite:pr:revi
 
 **Cause**: Plugin not installed correctly, version mismatch, or agent file moved.
 
-**Workaround (manual)**: Revert the Phase B commit on your local branch while keeping the Phase A fixes:
+**Workaround (manual)**: Revert the Phase B changes on your local branch while keeping the Phase A fixes. The exact commands depend on whether Phase B has already been merged into the base branch.
+
+**Pre-merge rollback** (you still have the Phase B feature branch locally, before it is merged):
+
+Revert both Phase B commits (the refactor commit and the docs commit) in reverse order:
 
 ```bash
-git revert <phase-b-commit-sha>
+# Phase B was split into 2 commits on the feature branch:
+#   763166a refactor(review): named subagent 切替で reviewer 呼び出しを刷新 (#358)
+#   9e93a71 docs(migration): Migration Guide + CHANGELOG + README 更新 (#358)
+git revert 9e93a71 763166a
 ```
 
-This restores `subagent_type: general-purpose` with `{agent_identity}` extraction. The Phase A Part A bug fix (Cross-File Impact Check) and tools/model frontmatter cleanup remain intact.
+**Post-merge rollback** (Phase B has already been merged into `develop`/`main` via a merge commit):
+
+This repository uses merge commits (not squash merges) by default, so the Phase B PR appears as a single merge commit in the target branch. Reverting a merge commit requires the `-m <parent-number>` flag:
+
+```bash
+# Find the Phase B merge commit on the target branch:
+git log --merges --grep='#358' develop
+
+# Revert the merge commit, specifying parent 1 (the mainline parent):
+git revert -m 1 <phase-b-merge-commit-sha>
+```
+
+> **Why `-m 1` is required**: Without `-m`, `git revert` fails with `commit is a merge but no -m option was given` because it cannot automatically determine which parent represents the "mainline" to revert back to. `-m 1` tells git to treat the first parent (the target branch before merge) as the mainline and revert the changes introduced by the second parent (the feature branch).
+
+In both cases, the Phase A fixes (Part A bug fix, tools/model frontmatter cleanup) remain intact because they were merged in PR #357 as separate commits that are not touched by the Phase B revert. After rollback, `subagent_type: general-purpose` with `{agent_identity}` extraction is restored and reviewers fall back to the pre-Phase-B behavior.
 
 **Long-term fix**: Upgrade Claude Code to the version that supports plugin-scoped subagent names.
 

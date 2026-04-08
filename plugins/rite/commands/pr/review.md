@@ -1596,13 +1596,17 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 
 該当 reviewer に対して Phase 4.3.1 Task tool 呼び出し手順を再利用して verification テンプレートを再送する:
 
-- `subagent_type`: `general-purpose` (Phase 4.3.1 と同じ)
+- `subagent_type`: `rite:{reviewer_type}-reviewer` (Phase 4.3.1 の mapping table を参照。Phase B / #358 以降、reviewer は named subagent として呼び出される)
 - `prompt` 内容: Phase 4.5.1 verification テンプレート + Phase 4.5 full テンプレート（元レビューと同じ 2 テンプレート concat）に、以下の strict 要件を追加:
   - 「`### 修正検証結果` heading と判定テーブル (`| # | 重要度 | ファイル:行 | 内容 | 判定 | 備考 |`) を **必ず**出力すること」
   - 「Phase 4.5.1 verification テンプレートの Part 1 (前回指摘の修正検証) を skip せずに実行すること」
 - 入力データ (`{previous_findings_table}` / `{incremental_diff}` / `{change_intelligence_summary}`): Phase 1.2.4 で取得済みのものを再供給
 - **結果 merge 戦略**: retry 結果は元 reviewer の output を **置き換える** (append ではない)。元 output は破棄し、retry output のみを Phase 5.1 結果集合に使用する
 - retry 実行後、`verification_post_condition_retry_count[{reviewer_type}]` を +1 し、もう一度判定条件を評価する。retry 後も欠落していれば `error` に昇格する
+
+**Phase 4.4 retry classification との関係** (#358 Phase B で明示化):
+
+この Phase 5.1.1.1 retry 中に Phase 4.4 の `subagent resolution failure` (`Agent type 'rite:{reviewer_type}-reviewer' not found`) が発生した場合、Phase 5.1.1.1 の retry counter は increment **せず**、即 `error` に昇格し、Phase 4.4 の Action (即 fail + `AskUserQuestion`) に従う。Phase 5.1.1.1 の retry は **output format 異常** (verification table 欠落) のみを対象とし、subagent resolution failure とは独立した経路である。この分離により、scoped subagent の解決不能という "インフラレベル" の障害と、output format の契約違反という "semantic レベル" の障害が混線することを防ぐ。
 
 **Failure Procedure** (`error` 検出時):
 
