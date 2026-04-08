@@ -329,7 +329,11 @@ review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inco
 - [`../review.md`](../review.md) — Phase 1.2.7 Doc-Heavy PR Detection、Phase 2.2.1 Doc-Heavy Reviewer Override、Phase 5.1.3 Doc-Heavy Post-Condition Check
 - [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧テーブルの tech-writer 行 (representative file patterns)。tech-writer.md / review.md / SKILL.md の 3 者で等価な doc_file_patterns を保持する (drift 監視対象、本ファイル自身は patterns を保持しない)
 
-**drift 検出の invariant** (3 ファイル等価性):
+**drift 検出の invariant** (2 系統の 3 ファイル等価性 — 区別が必要):
+
+本 PR では **2 種類** の「3 ファイル等価性」が存在する。両者は対象集合が異なるため混同してはならない (本 Issue #350 検証付きレビュー L-1 で指摘):
+
+#### 系統 1: `doc_file_patterns` の 3 ファイル等価性
 
 tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合**を参照する必要がある (syntax は異なってよいが、マッチするファイル集合が同一であること):
 
@@ -337,7 +341,17 @@ tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合
 2. `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (疑似コード形式)
 3. `plugins/rite/skills/reviewers/SKILL.md` Reviewers テーブル tech-writer 行 (representative)
 
-> **Note — 本ファイル (`internal-consistency.md`) の位置付け**: 本ファイルは `doc_file_patterns` を**保持しない**(参照される検証プロトコルの定義書)。したがって drift 監視対象は上記 3 ファイル限定であり、本ファイルは invariant の対象外。
+> **Note — 本ファイル (`internal-consistency.md`) の位置付け**: 本ファイルは `doc_file_patterns` を**保持しない**(参照される検証プロトコルの定義書)。したがって本系統の drift 監視対象は上記 3 ファイル限定であり、本ファイルは invariant の対象外。
+
+#### 系統 2: canonical category name の 3 ファイル literal 一致
+
+5 verification categories の canonical name (`Implementation Coverage` / `Enumeration Completeness` / `UX Flow Accuracy` / `Order-Emphasis Consistency` / `Screenshot Presence`) は以下 **3 ファイル**で **literal substring match に耐えうる完全同一文字列** で書かれる必要がある (review.md Phase 5.1.3 Step 2 が literal substring match で検査するため):
+
+1. `plugins/rite/commands/pr/references/internal-consistency.md` (本ファイル、source of truth)
+2. `plugins/rite/skills/reviewers/tech-writer.md` Critical Checklist と Doc-Heavy PR Mode セクション
+3. `plugins/rite/commands/pr/review.md` Phase 5.1.3 Step 2 META check の literal substring 一覧
+
+> **Note — `SKILL.md` は本系統の対象外**: SKILL.md は `doc_file_patterns` (Reviewers テーブルの tech-writer 行) のみを保持し、canonical category name は一切登場しない。Issue #353 の drift 検出 lint を実装する際は、本系統 1 と系統 2 の **2 種類の 3 ファイル集合** を区別して検査する必要がある (集合は重複するが完全同一ではない: 系統 1 は SKILL.md を含み internal-consistency.md を含まない / 系統 2 は internal-consistency.md を含み SKILL.md を含まない)。
 
 drift 検出の自動 lint は Issue #353 で追跡中。
 

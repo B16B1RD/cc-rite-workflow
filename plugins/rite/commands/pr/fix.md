@@ -270,50 +270,21 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 > この方式は `trap -p` 出力のパースに依存しないため quote エスケープ問題を回避できる。
 
 ```bash
-# 対象コメントを直接取得
-# gh api は 404 や認証エラー時に exit != 0 を返すため、exit code を直接チェックする
-# (空文字列チェックではエラーを見逃す可能性がある)
+# Fast Path 統合 trap セットアップ (本 Issue #350 検証付きレビュー H-3 で指摘):
+# 旧実装は gh_api_err の mktemp が trap セットアップの 80 行以上前に位置し、その間に
+# SIGTERM/SIGINT が到達すると orphan ファイルが残る race window があった。さらに
+# `_rite_fix_fastpath_cleanup` 関数が gh_api_err を cleanup 対象に含めておらず、
+# コメント (line 290) の宣言「後続の trap セットアップで gh_api_err も cleanup 対象に追加する」と
+# 実装が不整合だった。
 #
-# 注: stderr は gh api から専用一時ファイルに退避する (2>&1 で stdout に混入させない)。
-#     もし 2>&1 を付けると、成功時に gh が stderr に警告を出した場合
-#     $target_comment が invalid JSON となり直後の jq が失敗する (過去の deprecation warning 事案の教訓)
-#
-# stderr を独立ファイルに分離することで、404 / 403 / 5xx などの
-# gh api 詳細メッセージ (HTTP status, request ID, rate limit info, auth hint 等) を失敗時に
-# 添付できる。従来の独自 echo メッセージで上書きすると、ユーザーが「コメント取得失敗」しか見えず
-# debug 導線が薄かった。Fast Path の jq_err と対称な実装にする。
-gh_api_err=$(mktemp /tmp/rite-fix-gh-api-err-XXXXXX) || {
-  echo "エラー: gh_api_err 一時ファイルの作成に失敗しました" >&2
-  exit 1
-}
-# gh_api_err は本 bash block の末尾で明示的に削除する (jq_err と同じく統合 trap で cleanup)
-# 後続の trap セットアップで gh_api_err も cleanup 対象に追加する (下記 _rite_fix_fastpath_cleanup 参照)
-
-if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} 2>"$gh_api_err"); then
-  echo "エラー: コメント #{target_comment_id} の取得に失敗しました" >&2
-  echo "詳細 (gh api stderr 先頭 5 行):" >&2
-  head -5 "$gh_api_err" | sed 's/^/  /' >&2
-  echo "対処: コメント URL が正しいか、削除されていないか、認証 (gh auth status) を確認してください" >&2
-  rm -f "$gh_api_err"
-  exit 1
-fi
-rm -f "$gh_api_err"
-
-# 空 stdout チェック (gh api が exit 0 でも空文字列を返すコーナーケース)
-if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
-  echo "エラー: コメント #{target_comment_id} の取得結果が空です (gh api exit 0 だが本文なし)" >&2
-  echo "対処: コメント ID と権限を確認してください" >&2
-  exit 1
-fi
-
-# jq 実行を明示的にエラーチェック (parse error, jq バイナリ不在等を捕捉)
-# stderr を mktemp 経由の一時ファイルに逃がすことで、成功時の警告 (deprecation 等) が
-# stdout に混入して $target_body を汚染することを防ぐ。失敗時のみ stderr ファイルを表示する。
-jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
-  echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
-  exit 1
-}
-
+# 本修正では:
+# 1. 全パスを先行宣言 (gh_api_err / jq_err / body_file / author_file / skip_file)
+# 2. cleanup 関数で全 5 ファイルを `${var:-}` 安全化
+# 3. signal 別 trap 4 行を mktemp の前に設定
+# 4. その後で mktemp / gh api を実行
+# Phase 4.5.1 / Phase 4.5.2 / Fast Path で同型の「パス先行宣言 → trap 先行設定 → mktemp」パターンに統一。
+gh_api_err=""
+jq_err=""
 # Fast Path ハンドオフ一時ファイルのパスを先に定義し、trap 対象に含める
 # (書き出し前に変数を declare しておくことで、trap が早期 exit でも cleanup できる)
 body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
@@ -357,16 +328,58 @@ handoff_committed=0
 # 関数責務: cleanup 操作のみを実行し、exit code を変更しない (関数の戻り値は trap action 側で無視される)。
 # exit code の決定は呼び出し側の trap action (`exit $rc` / `exit 130` 等) が責任を持つ。
 # 関数内に `exit` / `return <非ゼロ>` を追加してはならない (silent exit 0 regression を誘発する)。
+#
+# H-3 修正: gh_api_err を cleanup 対象に追加 (旧実装は jq_err / body_file / author_file / skip_file の
+# 4 ファイルのみで、gh_api_err が trap 未保護だった)。`${var:-}` 形式で未定義時も silent no-op で安全。
 _rite_fix_fastpath_cleanup() {
-  rm -f "$jq_err"
+  rm -f "${gh_api_err:-}" "${jq_err:-}"
   if [ "$handoff_committed" = "0" ]; then
-    rm -f "$body_file" "$author_file" "$skip_file"
+    rm -f "${body_file:-}" "${author_file:-}" "${skip_file:-}"
   fi
 }
 trap 'rc=$?; _rite_fix_fastpath_cleanup; exit $rc' EXIT
 trap '_rite_fix_fastpath_cleanup; exit 130' INT
 trap '_rite_fix_fastpath_cleanup; exit 143' TERM
 trap '_rite_fix_fastpath_cleanup; exit 129' HUP
+
+# 対象コメントを直接取得 (trap セットアップ後に gh_api_err と gh api 呼び出しを実行)
+# gh api は 404 や認証エラー時に exit != 0 を返すため、exit code を直接チェックする
+# (空文字列チェックではエラーを見逃す可能性がある)
+#
+# 注: stderr は gh api から専用一時ファイルに退避する (2>&1 で stdout に混入させない)。
+#     もし 2>&1 を付けると、成功時に gh が stderr に警告を出した場合
+#     $target_comment が invalid JSON となり直後の jq が失敗する (過去の deprecation warning 事案の教訓)
+#
+# stderr を独立ファイルに分離することで、404 / 403 / 5xx などの
+# gh api 詳細メッセージ (HTTP status, request ID, rate limit info, auth hint 等) を失敗時に
+# 添付できる。Fast Path の jq_err と対称な実装にする。
+gh_api_err=$(mktemp /tmp/rite-fix-gh-api-err-XXXXXX) || {
+  echo "エラー: gh_api_err 一時ファイルの作成に失敗しました" >&2
+  exit 1
+}
+
+if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} 2>"$gh_api_err"); then
+  echo "エラー: コメント #{target_comment_id} の取得に失敗しました" >&2
+  echo "詳細 (gh api stderr 先頭 5 行):" >&2
+  head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  echo "対処: コメント URL が正しいか、削除されていないか、認証 (gh auth status) を確認してください" >&2
+  exit 1
+fi
+
+# 空 stdout チェック (gh api が exit 0 でも空文字列を返すコーナーケース)
+if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
+  echo "エラー: コメント #{target_comment_id} の取得結果が空です (gh api exit 0 だが本文なし)" >&2
+  echo "対処: コメント ID と権限を確認してください" >&2
+  exit 1
+fi
+
+# jq 実行を明示的にエラーチェック (parse error, jq バイナリ不在等を捕捉)
+# stderr を mktemp 経由の一時ファイルに逃がすことで、成功時の警告 (deprecation 等) が
+# stdout に混入して $target_body を汚染することを防ぐ。失敗時のみ stderr ファイルを表示する。
+jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
+  echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
+  exit 1
+}
 
 if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>"$jq_err"); then
   echo "エラー: gh api レスポンスの JSON パースに失敗しました (.body 抽出)" >&2
@@ -663,19 +676,45 @@ handoff_committed=1
 - Phase 4.5.3 work memory のレビュー対応履歴に `- confidence_override: {file:line} (外部ツール由来、ユーザーがバイパスを承認)` を記録
 - Phase 4.3 で別 Issue 化される finding にも `confidence_override=true` の事実を Issue 本文に記載
 
-**Retained context flags** (Phase 4.5.3 / 4.6 / 4.3.4 の placeholder 展開時に Read tool で会話履歴から読み戻す変数):
+**Retained context flags + tempfile-based persistence** (Phase 4.5.3 / 4.6 / 4.3.4 の placeholder 展開時に参照する変数):
 
-| Flag | 型 | 初期値 | 更新タイミング |
-|------|---|--------|---------------|
-| `confidence_override_count` | int | `0` | best-effort parse で 1 件の override が確定するたびに `+1` |
-| `confidence_override_findings` | list[str] (`"file:line"` の配列) | `[]` | 同上、override が確定するたびに `append("{file}:{line}")` |
+> **本 Issue #350 検証付きレビュー M-7 で指摘**: 旧仕様は会話履歴の `[CONTEXT]` 行を Claude が grep する方式だったが、長い conversation history で `[CONTEXT]` 行が複数あると順序依存 / 重複参照のリスクがあり silent drop の原因になっていた。本仕様では **specific path の一時ファイルへの append** に切り替え、bash で件数取得と本文取得を一貫化する。
 
-**Claude による retain と再注入の手順** (data flow の具体化):
+| Flag | 型 | 初期値 | 永続化先 |
+|------|---|--------|---------|
+| `confidence_override_count` | int | `0` | `wc -l < /tmp/rite-fix-confidence-override-{pr_number}.txt` の出力 (空ファイル → `0`) |
+| `confidence_override_findings` | list[str] (`"file:line"` の配列) | `[]` | `/tmp/rite-fix-confidence-override-{pr_number}.txt` の各行 (1 行 1 finding) |
 
-1. Phase 1.2 best-effort parse で最初の override 候補が出現した時点で、上記 2 flag を会話コンテキストに明示宣言する (例: `[CONTEXT] confidence_override_count = 0; confidence_override_findings = []`)
-2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、count を +1 し、findings に file:line を append。更新後の値も会話コンテキストに明示する (例: `[CONTEXT] confidence_override_count = 2; confidence_override_findings = ["src/foo.ts:42", "src/bar.ts:18"]`)
-3. Phase 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、Claude は最新の `[CONTEXT]` 行を会話履歴から検索して値を読み戻す
-4. fix ループ中に他のフェーズから上記 flag を変更しない (immutable な追加のみ)
+**Tempfile lifecycle** (specific path 必須、wildcard glob 禁止):
+
+- **Path**: `/tmp/rite-fix-confidence-override-{pr_number}.txt` ({pr_number} は Phase 1.0 で正規化済み)
+- **作成タイミング**: Phase 1.2 best-effort parse で最初の override 候補が出現した時点で `touch` (空ファイルとして作成)
+- **追記タイミング**: AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに `printf '%s\n' "{file}:{line}" >> {path}`
+- **読み出しタイミング**: Phase 4.6 / 4.5.3 / 4.3.4 で `wc -l < {path}` (件数) / `cat {path}` (本文) で取得
+- **削除タイミング**: Phase 8.1 の output pattern emit 直後、または Phase 1.4 cancel/error 経路 (Fast Path 一時ファイル cleanup と同じパターン)
+- **並列セッション分離**: `{pr_number}` suffix で specific path とすることで、並列 fix 実行時の他セッション破壊を防ぐ。`/tmp/rite-fix-confidence-override-*.txt` のような wildcard glob は **絶対に使わない**
+
+**Claude による retain と再注入の手順** (data flow の具体化、ファイル永続化版):
+
+1. Phase 1.2 best-effort parse で最初の override 候補が出現した時点で `touch /tmp/rite-fix-confidence-override-{pr_number}.txt` (空ファイル作成)
+2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、bash block 内で `printf '%s\n' "{file}:{line}" >> /tmp/rite-fix-confidence-override-{pr_number}.txt` を実行 (追記、`>>` で append)
+3. Phase 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、bash block で以下を実行して値を取得 (会話履歴 grep に依存しない):
+   ```bash
+   override_path="/tmp/rite-fix-confidence-override-{pr_number}.txt"
+   if [ -f "$override_path" ]; then
+     confidence_override_count=$(wc -l < "$override_path" 2>/dev/null | tr -d ' ')
+     # findings 一覧 (1 行 1 finding) は cat で取得
+     # 改行区切り → "; " 区切り変換が必要なら paste -sd ';' で結合
+     confidence_override_findings_str=$(paste -sd ';' "$override_path" 2>/dev/null | sed 's/;/; /g')
+   else
+     confidence_override_count=0
+     confidence_override_findings_str=""
+   fi
+   ```
+4. fix ループ中に他のフェーズから上記ファイルを上書きしない (append-only)
+5. Phase 8.1 終了時に明示的削除: `rm -f /tmp/rite-fix-confidence-override-{pr_number}.txt` (Phase 1.5 cleanup と同様、specific path 必須)
+
+**互換性**: 旧 `[CONTEXT] confidence_override_count = N; confidence_override_findings = [...]` 行の emit は、debug 補助として **継続して併用してよい** (人間が tail で見えるケースのため)。ただし機械的な値の取得は必ずファイル経由とし、`[CONTEXT]` 行の grep には依存しない。
 
 **Phase 4.6 / 4.5.3 / 4.3.4 で参照する placeholder 一覧**:
 
@@ -1524,7 +1563,10 @@ Generate the Issue title in the following format:
 # 統合 cleanup 関数 + signal 別 trap 4 行パターン (Fast Path / py_exit2 / Phase 4.5.1 / Phase 4.5.2 と同型)。
 # トラップ semantics の詳細根拠 (signal 別 exit code 130/143/129 の必要性、bash の signal continuation
 # 挙動、関数内 `${var:-}` による未定義変数 silent no-op) は Fast Path 冒頭 (Phase 1.2) の Implementation
-# note と本ファイル冒頭 (line 326-348 周辺) のコメントブロックを参照。
+# note と Fast Path bash block の `_rite_fix_fastpath_cleanup` 関数定義箇所周辺の
+# コメントブロック (signal 別 trap setup の根拠説明) を参照。
+# (行番号参照は drift しやすいため Phase 1.2 Fast Path bash block 内の `_rite_fix_fastpath_cleanup`
+#  関数定義を grep の起点とする)
 #
 # bash block 後段で warnings_jq_err を追加するため、cleanup 対象を関数にまとめて 1 つの trap で全変数を
 # カバーする。trap を再定義すると前段の `tmpfile` cleanup が上書きで失われる (silent orphan 経路)。
@@ -1660,7 +1702,39 @@ fi
 # (gh issue create が成功したので Issue 本文の preserve 義務は果たされ、ここで cleanup へ移行可能だが、
 #  Phase 4.3.5 の表示時に tmpfile path が必要になるため preserve しておく)
 issue_created=1
-project_reg=$(printf '%s' "$result" | jq -r '.project_registration // empty')
+
+# .project_registration の jq 抽出 + partial / failed 警告 (silent drop 防止):
+# `.warnings[]` 経由の警告とは独立に、`.project_registration` 自体の値も検査する。
+# `.warnings` が空で `.project_registration == "failed"` のスキーマ差分ケースで、Projects 登録失敗が
+# 完全に silent drop する経路を防ぐ (本 Issue #350 検証付きレビュー M-2 で指摘)。
+project_reg_jq_err=$(mktemp /tmp/rite-fix-project-reg-jq-err-XXXXXX) || {
+  echo "ERROR: project_reg_jq_err 一時ファイルの作成に失敗" >&2
+  exit 1
+}
+# 注意: project_reg_jq_err は本 if-else 直後に明示 rm。統合 trap には追加しない (短命変数のため)
+if ! project_reg=$(printf '%s' "$result" | jq -r '.project_registration // empty' 2>"$project_reg_jq_err"); then
+  echo "WARNING: .project_registration の jq 抽出に失敗 (schema 破損の可能性)" >&2
+  echo "  jq stderr: $(cat "$project_reg_jq_err")" >&2
+  echo "  Raw result (preserved for debug): $result" >&2
+  project_reg=""  # 後続 case 文を空文字 fallback で安全に通す
+fi
+rm -f "$project_reg_jq_err"
+
+case "$project_reg" in
+  partial|failed)
+    echo "⚠️ Projects 登録が完全に完了しませんでした (status: $project_reg)" >&2
+    echo "  Issue は作成済み: $created_issue_url" >&2
+    echo "  手動登録: gh project item-add {project_number} --owner {owner} --url $created_issue_url" >&2
+    ;;
+  ""|completed)
+    # 通常時 (空 = .project_registration フィールド未設定 / completed = 正常完了) は no-op
+    :
+    ;;
+  *)
+    # 未知の値が入った場合は警告 (schema 拡張時に silent に握りつぶさない)
+    echo "WARNING: .project_registration に未知の値: '$project_reg' (Raw result: $result)" >&2
+    ;;
+esac
 
 # .warnings の jq 抽出を明示エラーチェック (`2>/dev/null` で隠蔽しない):
 # jq の stderr を一時ファイルに退避し、parse 失敗時は WARNING を出して詳細を表示する。
@@ -1741,12 +1815,17 @@ Identify the related Issue from the PR or branch name.
 #
 # 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path / Phase 4.5.2 と同じパターン)。
 # 順序とトラップ semantics の根拠 (race window / signal 別 exit code 130/143/129 の必要性) は
-# Fast Path Implementation note と本ファイル冒頭 (line 326-348 周辺) のコメントブロックを参照。
+# Fast Path Implementation note と Fast Path bash block の `_rite_fix_fastpath_cleanup` 関数定義箇所
+# 周辺のコメントブロック (signal 別 trap setup の根拠説明) を参照 (行番号 drift 防止のため anchor 参照)。
 # mktemp 失敗時の exit code を check しないと、$pr_body_tmp が空文字列になり後続の
 # `printf > ""` が silent redirection error で空ファイルを参照し、issue_number が silent empty に落ちる。
 pr_body_tmp=""
+# pr_body_grep_err / branch_grep_err も先行宣言して cleanup 対象に含める (M-1 で 2>&1 を撤廃した
+# ことに伴い、独立 stderr 退避ファイルが必要になった)。`${var:-}` は未定義時 silent no-op で安全。
+pr_body_grep_err=""
+branch_grep_err=""
 _rite_fix_phase451_cleanup() {
-  rm -f "${pr_body_tmp:-}"
+  rm -f "${pr_body_tmp:-}" "${pr_body_grep_err:-}" "${branch_grep_err:-}"
 }
 trap 'rc=$?; _rite_fix_phase451_cleanup; exit $rc' EXIT
 trap '_rite_fix_phase451_cleanup; exit 130' INT
@@ -1779,9 +1858,20 @@ fi
 #   exit 2: IO/権限/構文エラー (真のエラー、silent に握りつぶしてはならない)
 # 従来の `|| true` は exit 1 と exit 2 を融合させて IO エラーを silent 化していた。
 # pipefail を有効化して pipeline 全体の exit を捕捉した上で、grep の rc を case で区別する。
+#
+# 重要 — 2>&1 を撤廃 (本 Issue #350 検証付きレビュー M-1 で指摘):
+# 旧実装 `grep -oE '...' "$pr_body_tmp" 2>&1 | head -1 | grep -oE '[0-9]+'` は grep の stderr を
+# stdout に merge していた。これにより grep の error message (Permission denied 等) は
+# 後段の `grep -oE '(Closes|Fixes|Resolves) #[0-9]+'` パターンに通常マッチしないため、
+# pipeline は exit 1 (no match) を返して silent に「マッチなし → branch fallback」へ降格する。
+# defense-in-depth の宣言と実装が不整合だった経路を、stderr を独立ファイルに退避することで修正する。
+pr_body_grep_err=$(mktemp /tmp/rite-fix-pr-body-grep-err-XXXXXX) || {
+  echo "ERROR: pr_body_grep_err 一時ファイルの作成に失敗" >&2
+  exit 1
+}
 set -o pipefail
 issue_number=""
-grep_pipeline_out=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" 2>&1 | head -1 | grep -oE '[0-9]+')
+grep_pipeline_out=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" 2>"$pr_body_grep_err" | head -1 | grep -oE '[0-9]+')
 grep_pipeline_rc=$?
 case "$grep_pipeline_rc" in
   0)
@@ -1789,45 +1879,64 @@ case "$grep_pipeline_rc" in
     ;;
   1)
     # PR 本文に Closes/Fixes/Resolves パターンなし — fallback (ブランチ名抽出) へ
+    # 注: stderr ファイルが空でない場合 (grep が warning を出した等) は念のため WARNING 表示
+    if [ -s "$pr_body_grep_err" ]; then
+      echo "WARNING: pr_body grep が exit 1 (no match) で完了しましたが stderr に出力がありました:" >&2
+      head -3 "$pr_body_grep_err" | sed 's/^/  /' >&2
+    fi
     :
     ;;
   *)
-    # IO/権限/構文エラーは「issue_number 抽出が部分的に成功した可能性すらない」状態で
-    # work memory PATCH を試みると上書き事故になりかねないため、fail-fast (`exit 1`) で fix.md 全体を
-    # 異常終了させる。`[CONTEXT]` 行は exit 直前のデバッグ補助 (会話履歴の grep には残るが、
-    # この経路では Phase 8.1 に到達しないため `[fix:pushed-wm-stale]` 出力には使われない →
-    # 上位ハンドラから見えるのは `[fix:error]` 相当)。
+    # IO/権限/構文エラー: H-2 で fail-fast から soft failure に変更 (本 Issue #350 検証付きレビュー H-2 で指摘):
+    # 旧実装は `exit 1` で fix.md 全体を異常終了させる意図だったが、bash の `exit 1` は Bash tool の
+    # exit code に変換されるだけで Claude のフロー制御にはならない (line 1868 に明記)。Claude は次の Phase
+    # に進み、Phase 8.1 が会話履歴で `[CONTEXT] WM_UPDATE_FAILED=1` を検出して `[fix:pushed-wm-stale]` を
+    # 出力する。コメント宣言 (`[fix:error]` 相当) と実動作の矛盾を解消するため、soft failure (exit 1 削除)
+    # に統一する。これにより:
+    # - retained flag の伝達経路が一貫する (Phase 4.5 の失敗は全て [fix:pushed-wm-stale] 経路)
+    # - コミット済み fix の損失を防ぐ
+    # - caller (review-fix loop) は AskUserQuestion で続行/中断を判断できる
     echo "ERROR: PR 本文の grep が IO/権限/構文エラーで失敗しました (rc=$grep_pipeline_rc)" >&2
-    echo "詳細: $grep_pipeline_out" >&2
+    echo "詳細 (stderr 先頭 5 行):" >&2
+    head -5 "$pr_body_grep_err" | sed 's/^/  /' >&2
     echo "  対処: 環境の grep バイナリと権限を確認後、再実行してください" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$grep_pipeline_rc; exit_mode=fail_fast"
-    set +o pipefail
-    exit 1
+    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$grep_pipeline_rc"
+    # exit 1 を削除: soft failure として retained flag のみ emit、Phase 8.1 が [fix:pushed-wm-stale] を出力する
+    issue_number=""  # branch fallback も skip して下流の WM_UPDATE_FAILED 経路に流す
     ;;
 esac
 
 # 2. PR 本文で見つからない場合、ブランチ名から抽出
 # 同様に grep の exit 1 / exit 2 を区別する
+# M-1 / H-2 同等の修正: 2>&1 を撤廃し独立 stderr file に退避、IO error も soft failure に統一
 if [[ -z "$issue_number" ]]; then
-  branch_pipeline_out=$(git branch --show-current 2>&1 | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
+  branch_grep_err=$(mktemp /tmp/rite-fix-branch-grep-err-XXXXXX) || {
+    echo "ERROR: branch_grep_err 一時ファイルの作成に失敗" >&2
+    exit 1
+  }
+  branch_pipeline_out=$(git branch --show-current 2>"$branch_grep_err" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
   branch_pipeline_rc=$?
   case "$branch_pipeline_rc" in
     0)
       issue_number="$branch_pipeline_out"
       ;;
     1)
-      # ブランチ名にも issue-N パターンなし — issue_number は空のまま
+      # ブランチ名にも issue-N パターンなし — issue_number は空のまま (下流で WM_UPDATE_FAILED emit)
       :
       ;;
     *)
-      # pr_body_grep_io_error と同根: fail-fast で fix.md 全体を異常終了させる
-      # (`[CONTEXT]` 行は会話履歴の debug 用、Phase 8.1 経由の `[fix:pushed-wm-stale]` 出力には使われない)
+      # pr_body_grep_io_error と同根: H-2 修正で fail-fast から soft failure に統一
+      # (exit 1 は Claude のフロー制御にならず Phase 8.1 の [fix:pushed-wm-stale] 経路に
+      # 流れるため、retained flag のみ emit してコミット済み fix を保護する)
       echo "ERROR: branch 名抽出 pipeline が IO/権限エラーで失敗しました (rc=$branch_pipeline_rc)" >&2
-      echo "詳細: $branch_pipeline_out" >&2
-      echo "  対処: 環境の grep バイナリと権限を確認後、再実行してください" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_pipeline_rc; exit_mode=fail_fast"
-      set +o pipefail
-      exit 1
+      echo "詳細 (stderr 先頭 5 行):" >&2
+      head -5 "$branch_grep_err" | sed 's/^/  /' >&2
+      echo "  対処: 環境の git/grep バイナリと権限を確認後、再実行してください" >&2
+      echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_pipeline_rc"
+      # exit 1 を削除: soft failure として retained flag のみ emit
+      issue_number=""  # 下流の if [[ -z "$issue_number" ]] 経路で WM_UPDATE_FAILED が再 emit される
       ;;
   esac
 fi
@@ -1878,10 +1987,75 @@ The work memory update performs **three operations** in a single Bash tool invoc
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
 # comment_data の取得・更新内容の生成・PATCH を分割すると変数が失われる（Issue #693, #90）
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
+#
+# 重要 — Phase 4.5.2 統合 trap セットアップ (本 Issue #350 検証付きレビュー H-1 / M-4 で指摘):
+# Fast Path / Phase 4.5.1 と同じ「パス先行宣言 → trap 先行設定 → mktemp」パターンを採用。
+# 旧実装は trap 設定が mktemp 群より後にあり、最初の mktemp 〜 trap 設定までの race window で
+# SIGTERM/SIGINT を受けた場合に新規 tmp ファイルが orphan として残る経路があった。
+#
+# 統合 trap で保護する対象 (Phase 4.5.2 で作成される全一時ファイル):
+# - gh_api_err: gh api の stderr 退避用 (H-1 で新設)
+# - base_branch_grep_err: rite-config.yml grep の stderr 退避用 (M-3 で新設)
+# - diff_stderr_tmp: git diff の stderr 退避用
+# - body_tmp / tmpfile / files_tmp / history_tmp: Python 入出力用
+gh_api_err=""
+base_branch_grep_err=""
+diff_stderr_tmp=""
+body_tmp=""
+tmpfile=""
+files_tmp=""
+history_tmp=""
+# 関数責務: cleanup 操作のみを実行し、exit code を変更しない (Fast Path と同型 — `${var:-}` で
+# 未定義時は `rm -f ""` の silent no-op になる)
+_rite_fix_phase452_cleanup() {
+  rm -f "${gh_api_err:-}" "${base_branch_grep_err:-}" "${diff_stderr_tmp:-}" \
+        "${body_tmp:-}" "${tmpfile:-}" "${files_tmp:-}" "${history_tmp:-}"
+}
+trap 'rc=$?; _rite_fix_phase452_cleanup; exit $rc' EXIT
+trap '_rite_fix_phase452_cleanup; exit 130' INT
+trap '_rite_fix_phase452_cleanup; exit 143' TERM
+trap '_rite_fix_phase452_cleanup; exit 129' HUP
+
+# gh api の stderr 退避ファイル (失敗時に 詳細を表示するため)
+gh_api_err=$(mktemp /tmp/rite-fix-gh-api-comments-err-XXXXXX) || {
+  echo "ERROR: gh_api_err 一時ファイルの作成に失敗" >&2
+  exit 1
+}
+
+# gh api 呼び出しに exit code check を追加 (本 Issue #350 検証付きレビュー H-1 で指摘):
+# 旧実装 `comment_data=$(gh api ...)` は exit code を一切 check せず、
+# 401/403/404/timeout/5xx で failure すると `$comment_data` が空 → `$comment_id` も空 →
+# 外側の `if [[ -n "$comment_id" ]]` が false → else 分岐を持たないため全処理が silent no-op となり、
+# Phase 8.1 が `[fix:pushed]` を出力する silent regression を起こす。
+# `if !` で exit code を捕捉し、失敗時は WM_UPDATE_FAILED を emit してから soft failure として進む
+# (exit 1 はしない: 既にコミット/プッシュ済みの fix を保護するため、Phase 8.1 が
+# `[fix:pushed-wm-stale]` を出力できるよう retained flag だけ set する)。
+gh_api_failed=0
+if ! comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}' \
+    2>"$gh_api_err"); then
+  echo "ERROR: gh api による作業メモリコメント取得に失敗 (HTTP error / network / auth)" >&2
+  echo "  詳細 (gh api stderr 先頭 5 行):" >&2
+  head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  echo "  対処: gh auth status / network / Issue #{issue_number} の存在を確認後、再実行してください" >&2
+  echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=gh_api_comments_fetch_failed; issue_number={issue_number}"
+  gh_api_failed=1
+  comment_data=""  # 後続の jq 抽出を空文字 fallback で安全に通す
+fi
+
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
 current_body=$(echo "$comment_data" | jq -r '.body // empty')
+
+# comment_id 空ケースの分岐 (silent misclassification 防止):
+# - gh_api_failed=1 → 既に上で WM_UPDATE_FAILED emit 済み → ここでは何もしない
+# - gh_api_failed=0 かつ comment_id 空 → gh api 成功だが該当コメントなし (初回 fix / コメント削除済み)
+#   → INFO log のみ、WM_UPDATE_FAILED は set しない (PATCH 不要のため stale ではない legitimate no-op)
+if [[ -z "$comment_id" ]] && [ "$gh_api_failed" = "0" ]; then
+  echo "INFO: 作業メモリコメント (📜 rite 作業メモリ) が PR/Issue 内に未検出 (legitimate no-op)" >&2
+  echo "  原因候補: 初回 fix / コメント削除済み / 該当 Issue にまだ rite 作業メモリが投稿されていない" >&2
+  echo "  この経路では PATCH 不要のため WM_UPDATE_FAILED は set せず通常終了します" >&2
+fi
 
 if [[ -n "$comment_id" ]]; then
   if [[ -z "$current_body" ]]; then
@@ -1914,7 +2088,53 @@ if [[ -n "$comment_id" ]]; then
     # 文言を変更する場合、bash 側と Python 側 (後の python3 -c 内) を必ず同時に変更すること
     GIT_DIFF_FAILED_SENTINEL="__RITE_FIX_CHANGED_FILES_GIT_DIFF_FAILED__"
 
-    base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' || echo "develop")
+    # base_branch の解決 (silent fallback 防止 — 本 Issue #350 検証付きレビュー M-3 で指摘):
+    # 旧実装 `grep -E ... 2>/dev/null | head -1 | sed ... || echo "develop"` は以下を silent 化:
+    #   - rite-config.yml 不在 (2>/dev/null で suppress)
+    #   - permission denied / IO error (2>/dev/null で suppress)
+    #   - `base:` キーなし (grep exit 1 → || echo "develop" で fallback)
+    #   - sed 抽出失敗 (空文字 → || echo "develop" で fallback)
+    # main / master を base にしているプロジェクトで silent に develop 誤使用 →
+    # 下流 git diff origin/develop...HEAD が失敗 → sentinel 経路に落ちる連鎖 silent failure を起こす。
+    # 対処: ファイル存在 check と grep の exit 1 / 2 区別を分離し、fallback 理由を WARNING で明示する。
+    base_branch=""
+    if [ ! -f rite-config.yml ]; then
+      echo "WARNING: rite-config.yml が存在しないため base_branch を 'develop' に fallback します" >&2
+      echo "  対処: rite plugin が正しくセットアップされていない可能性があります (/rite:init を実行)" >&2
+      base_branch="develop"
+    else
+      # grep の exit 1 (no match) と exit 2 (IO error) を分離 (silent IO suppression 防止)
+      base_branch_grep_err=$(mktemp /tmp/rite-fix-base-grep-err-XXXXXX) || {
+        echo "ERROR: base_branch_grep_err 一時ファイルの作成に失敗" >&2
+        exit 1
+      }
+      if ! base_branch_raw=$(grep -E '^\s*base:' rite-config.yml 2>"$base_branch_grep_err"); then
+        base_branch_grep_rc=$?
+        if [ "$base_branch_grep_rc" = "1" ]; then
+          # exit 1: rite-config.yml に `base:` キーがない
+          echo "WARNING: rite-config.yml に 'base:' キーが存在しないため base_branch を 'develop' に fallback します" >&2
+          echo "  対処: rite-config.yml の branch.base を明示的に設定してください" >&2
+          base_branch="develop"
+        else
+          # exit 2 以上: IO エラー / 権限エラー / 構文エラー — fail-fast
+          echo "ERROR: rite-config.yml の grep が IO/権限エラーで失敗しました (rc=$base_branch_grep_rc)" >&2
+          echo "  詳細: $(cat "$base_branch_grep_err")" >&2
+          echo "  対処: rite-config.yml の権限を確認後、再実行してください" >&2
+          rm -f "$base_branch_grep_err"
+          exit 1
+        fi
+      else
+        # grep 成功 — sed で値を抽出 (sed 失敗時は空文字になり後段で fallback)
+        base_branch=$(printf '%s' "$base_branch_raw" | head -1 | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/')
+        if [ -z "$base_branch" ]; then
+          echo "WARNING: rite-config.yml の 'base:' キーから値を抽出できなかったため 'develop' に fallback します" >&2
+          echo "  生値: $base_branch_raw" >&2
+          base_branch="develop"
+        fi
+      fi
+      rm -f "$base_branch_grep_err"
+    fi
+
     diff_stderr_tmp=$(mktemp /tmp/rite-fix-git-diff-err-XXXXXX) || {
       echo "ERROR: git diff stderr 一時ファイルの作成に失敗" >&2
       exit 1
@@ -1945,34 +2165,10 @@ if [[ -n "$comment_id" ]]; then
 
     # Step 2: Python で進捗サマリー・変更ファイルを更新 + レビュー対応履歴を追記
     #
-    # 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path と同じパターン):
-    # mktemp を 4 連発した「後」に trap を設定すると、最初の mktemp 成功〜trap 設定までの
-    # 時間窓に SIGTERM/SIGINT が飛ぶと、その時点で有効な前段 trap (Phase 4.5.1 由来) が
-    # 新作成 4 ファイルを cleanup 対象に含まない silent orphan 経路になる
-    # (本 Issue #350 検証付きレビューで指摘済み)。Fast Path (line 237-240) は逆順で回避済み。
-    #
-    # diff_stderr_tmp は git diff 処理ブロック直後の明示的 rm で削除済みだが、SIGTERM/SIGINT で
-    # kill された場合に上記 rm に到達しないリスクがあるため、新 trap の主な責務は新 mktemp 4 本の
-    # 保護 (これが本 trap 再定義の主目的)。diff_stderr_tmp は二重防御として trap 対象に含める。
-    #
-    # `${var:-}` 形式: mktemp 失敗で変数が空の場合でも `rm -f ""` となり silent no-op で安全
-    body_tmp=""
-    tmpfile=""
-    files_tmp=""
-    history_tmp=""
-    # Phase 4.5.1 / Fast Path と同型の signal 別 trap 4 行パターン (silent INT/TERM/HUP continuation 防止)
-    # 単一 action 形式 `trap '...' EXIT INT TERM HUP` は signal 受信時に exit を含まないと
-    # bash が signal を consume して次のコマンドへ制御を渡す silent failure になる
-    # (Phase 1.2 Fast Path 冒頭と Phase 4.5.1 の trap セットアップ説明を参照、同根の理由)
-    _rite_fix_phase452_cleanup() {
-      rm -f "${pr_body_tmp:-}" "${body_tmp:-}" "${tmpfile:-}" "${files_tmp:-}" "${history_tmp:-}" "${diff_stderr_tmp:-}"
-    }
-    trap 'rc=$?; _rite_fix_phase452_cleanup; exit $rc' EXIT
-    trap '_rite_fix_phase452_cleanup; exit 130' INT
-    trap '_rite_fix_phase452_cleanup; exit 143' TERM
-    trap '_rite_fix_phase452_cleanup; exit 129' HUP
-
-    # mktemp を trap 設定後に実行し、各失敗を明示的に check
+    # 注: 統合 trap (`_rite_fix_phase452_cleanup`) は本 bash block 冒頭で既に設定済み。
+    # body_tmp / tmpfile / files_tmp / history_tmp は冒頭で空文字宣言済みで cleanup 対象に
+    # 含まれているため、ここでは mktemp のみを実行する (パス先行宣言 → trap 先行設定 → mktemp の
+    # 順序が成立しており、race window は存在しない)。
     body_tmp=$(mktemp) || { echo "ERROR: body_tmp mktemp 失敗" >&2; exit 1; }
     tmpfile=$(mktemp) || { echo "ERROR: tmpfile mktemp 失敗" >&2; exit 1; }
     files_tmp=$(mktemp) || { echo "ERROR: files_tmp mktemp 失敗" >&2; exit 1; }
@@ -2063,7 +2259,8 @@ with open(out_path, "w") as f:
       # (exit 時に trap が発火して tmpfile が消えると、下記の debug 案内が嘘になる)
       # Fast Path と同じ signal 別 trap 構造に統一: SIGINT/SIGTERM/SIGHUP 受信時も明示的 exit code を返す
       _rite_fix_py_exit2_cleanup() {
-        rm -f "$pr_body_tmp" "$body_tmp" "$files_tmp" "$history_tmp" "$diff_stderr_tmp"
+        rm -f "${pr_body_tmp:-}" "${body_tmp:-}" "${files_tmp:-}" "${history_tmp:-}" \
+              "${diff_stderr_tmp:-}" "${gh_api_err:-}" "${base_branch_grep_err:-}"
         # tmpfile は preserved for debug
       }
       trap 'rc=$?; _rite_fix_py_exit2_cleanup; exit $rc' EXIT
@@ -2280,7 +2477,7 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
-| 1 (最優先) | Phase 4.5.2 で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (current_body 空 etc.) | `[fix:pushed-wm-stale]` (Phase 4.5.2 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
+| 1 (最優先) | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`issue_number_not_found` / `current_body_empty` / `patch_failed` / `gh_api_comments_fetch_failed` / `pr_body_grep_io_error` / `branch_grep_io_error` のいずれか) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 2 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
 | 3 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
 | 4 | All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
@@ -2290,7 +2487,18 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 **`[CONTEXT] WM_UPDATE_FAILED=1` の検出方法** (Claude による retain と再注入):
 
-Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UPDATE_FAILED=1; reason=...; comment_id=...` を出力した場合、Claude は会話履歴からこの行を検索し、検出された場合は本 phase の Output Pattern 評価で `[fix:pushed-wm-stale]` を採用する。検出されなかった場合は通常の評価順序 (条件 2 以降) に従う。
+Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UPDATE_FAILED=1; reason=...; ...` を出力した場合、Claude は会話履歴からこの行を検索し、検出された場合は本 phase の Output Pattern 評価で `[fix:pushed-wm-stale]` を採用する。検出されなかった場合は通常の評価順序 (条件 2 以降) に従う。
+
+**`reason` フィールドの取りうる値** (Phase 4.5.1 / 4.5.2 で発火する経路の網羅):
+
+| reason | 発生 Phase | 発生条件 |
+|--------|------------|----------|
+| `issue_number_not_found` | Phase 4.5.1 | PR 本文に `Closes/Fixes/Resolves #N` がなく、ブランチ名にも `issue-N` がない |
+| `pr_body_grep_io_error` | Phase 4.5.1 | PR 本文 grep が IO/権限/構文エラー (rc=2) で失敗 |
+| `branch_grep_io_error` | Phase 4.5.1 | branch 名抽出 grep が IO/権限エラーで失敗 |
+| `gh_api_comments_fetch_failed` | Phase 4.5.2 | `gh api ... /issues/{issue_number}/comments` が exit != 0 で失敗 (401/403/404/timeout/5xx 等) |
+| `current_body_empty` | Phase 4.5.2 | gh api 成功だが `.body` フィールド抽出が空 |
+| `patch_failed` | Phase 4.5.2 | `jq \| gh api PATCH` pipeline が失敗 |
 
 **`[fix:pushed-wm-stale]` の caller 側 semantics**: `/rite:issue:start` review-fix loop は本 pattern を受け取った場合、push 自体は完了しているが work memory が stale であることを認識し、次のいずれかを実行する: (a) 手動介入を促す (推奨)、(b) 警告ログを出した上で次の iteration に進む (loop 継続)。silent に `[fix:pushed]` 扱いしてはならない。
 
