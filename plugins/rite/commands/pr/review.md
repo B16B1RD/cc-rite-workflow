@@ -1606,7 +1606,20 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 
 **Phase 4.4 retry classification との関係** (#358 Phase B で明示化):
 
-この Phase 5.1.1.1 retry 中に Phase 4.4 の `subagent resolution failure` (`Agent type 'rite:{reviewer_type}-reviewer' not found`) が発生した場合、Phase 5.1.1.1 の retry counter は increment **せず**、即 `error` に昇格し、Phase 4.4 の Action (即 fail + `AskUserQuestion`) に従う。Phase 5.1.1.1 の retry は **output format 異常** (verification table 欠落) のみを対象とし、subagent resolution failure とは独立した経路である。この分離により、scoped subagent の解決不能という "インフラレベル" の障害と、output format の契約違反という "semantic レベル" の障害が混線することを防ぐ。
+この Phase 5.1.1.1 retry 中に Phase 4.4 の `subagent resolution failure` (`Agent type 'rite:{reviewer_type}-reviewer' not found`) が発生した場合、以下の順序で処理する:
+
+1. **Phase 5.1.1.1 retry counter の扱い**: `verification_post_condition_retry_count[{reviewer_type}]` は increment **しない** (Phase 4.4 の `Retry: No` 規則に従うため retry 試行自体が成立しない)。counter は 0 のまま保持されるが、以下 Step 2-3 で set される `verification_post_condition: error` + `incomplete` mark が **pre-condition で以後の再 retry を permanent に skip する terminal state** として機能するため、次の cycle で「まだ retry 余地あり」と誤解されることはない
+2. **Phase 4.4 default action への委譲**: 当該 reviewer を Phase 4.4 の 2 段階 Action に従って処理する:
+   - **(a) 個別 reviewer failure (default case)**: 当該 reviewer を `incomplete` としてマークし、他 reviewer の verification retry / verification processing を **継続する**。これは Phase 4.4 line 1322 の Action column の default 動作である
+   - **(b) 全 reviewer failure (例外 case)**: **全 reviewer が同一 subagent resolution failure になった場合のみ**、Phase 4.4 の all-failed 経路に進み `AskUserQuestion` で retry / rollback / abort をユーザーに確認する
+3. **Phase 5.1.1.1 Failure Procedure との合流**: 上記と並行して、当該 reviewer の verification classification を `error` に昇格する。具体的な state transition:
+   - 元 reviewer の output (resolution failure 時は通常空、retry 試行前の初回 invocation で table 欠落状態の output が残る場合は元 output) を Phase 5.1.1.1 Failure Procedure の入力として使用
+   - `verification_post_condition: error` flag を set
+   - overall assessment を `修正必要` に昇格
+   - Failure Procedure Step 3 「該当 reviewer 由来の指摘を全件 blocking 扱い」は、resolution failure 時に output が空のため「0 件 blocking 扱い」という空集合処理となり実質 no-op になる。これは意図通りの挙動で、**blocking subject が存在しなくても overall 昇格 (Step 1-2) は発火する** ため silent pass は起きない
+   - stderr に Failure Procedure の ERROR メッセージを出力
+
+**分離の意図**: Phase 5.1.1.1 の retry 機構は **output format 異常** (verification table 欠落) のみを対象とし、`subagent resolution failure` とは独立した経路である。この分離により、scoped subagent の解決不能という "インフラレベル" の障害と、output format の契約違反という "semantic レベル" の障害が混線することを防ぐ。LLM は上記 Step 1-3 の順序を必ず守り、「Phase 4.4 Action のみ発火」「Failure Procedure のみ発火」のいずれか一方だけを実行してはならない (両方を並行実行する)。
 
 **Failure Procedure** (`error` 検出時):
 

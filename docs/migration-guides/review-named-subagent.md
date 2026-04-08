@@ -31,7 +31,7 @@ Under named subagent invocation, the **agent file body** (`plugins/rite/agents/{
 
 `plugins/rite/agents/_reviewer-base.md` contains **shared reviewer principles** (Reviewer Mindset, Cross-File Impact Check, Confidence Scoring) that apply to every reviewer. These are **not** automatically injected into named subagents, because `_reviewer-base.md` is a reference file — not a named sub-agent.
 
-To preserve the Cross-File Impact Check (added as a Phase A / [#357](https://github.com/B16B1RD/cc-rite-workflow/pull/357) bug fix), Phase B adopts a **hybrid approach**:
+To preserve the Cross-File Impact Check (added as a Phase A bug fix — tracked as [Issue #357](https://github.com/B16B1RD/cc-rite-workflow/issues/357) and merged via [PR #363](https://github.com/B16B1RD/cc-rite-workflow/pull/363)), Phase B adopts a **hybrid approach**:
 
 - Agent-specific identity (Core Principles, Detection Process, Detailed Checklist, Output Format) is delivered via the named subagent's **system prompt**
 - Shared principles (from `_reviewer-base.md`) are extracted as `{shared_reviewer_principles}` and injected into the **user prompt** — preserving the Phase A bug fix without duplicating 40 lines of content across 13 agent files
@@ -84,26 +84,41 @@ If the version is too old, upgrade Claude Code first, then re-run `/rite:pr:revi
 
 **Cause**: Plugin not installed correctly, version mismatch, or agent file moved.
 
-**Workaround (manual)**: Revert the Phase B changes on your local branch while keeping the Phase A fixes. The exact commands depend on whether Phase B has already been merged into the base branch.
+**Workaround (manual)**: Revert all Phase B changes on your local branch while keeping the Phase A fixes. The exact commands depend on whether Phase B has already been merged into the base branch.
 
 **Pre-merge rollback** (you still have the Phase B feature branch locally, before it is merged):
 
-Revert both Phase B commits (the refactor commit and the docs commit) in reverse order:
+Identify all Phase B commits on the feature branch and revert them in reverse chronological order (newest first):
 
 ```bash
-# Phase B was split into 2 commits on the feature branch:
+# List all Phase B commits accumulated on the feature branch
+# (includes the base refactor commit, the docs commit, and any subsequent fix commits from review cycles)
+git log --oneline refactor/issue-358-named-subagent-switch ^develop
+
+# Example output — the exact SHAs and count depend on how many review-fix cycles ran:
+#   69f9080 fix(review): cycle 1 レビュー指摘 3 件対応 (#371 #358)
+#   9e93a71 docs(migration): named subagent 切替の Migration Guide + CHANGELOG + README 更新 (#358)
 #   763166a refactor(review): named subagent 切替で reviewer 呼び出しを刷新 (#358)
-#   9e93a71 docs(migration): Migration Guide + CHANGELOG + README 更新 (#358)
-git revert 9e93a71 763166a
+
+# Revert ALL listed commits in reverse chronological order (newest first)
+# For the example output above:
+git revert 69f9080 9e93a71 763166a
+
+# If your feature branch has more or fewer commits (e.g., additional review-fix cycles),
+# adjust the SHA list accordingly — always include every commit listed by `git log`.
 ```
+
+> **Why all commits matter**: Review-fix cycles can add additional commits (`fix(review): cycle N` etc.) that are semantically part of Phase B. Reverting only a subset leaves `review.md` and related files in an inconsistent state where some lines reference `rite:{reviewer_type}-reviewer` while others still reference `general-purpose`.
 
 **Post-merge rollback** (Phase B has already been merged into `develop`/`main` via a merge commit):
 
 This repository uses merge commits (not squash merges) by default, so the Phase B PR appears as a single merge commit in the target branch. Reverting a merge commit requires the `-m <parent-number>` flag:
 
 ```bash
-# Find the Phase B merge commit on the target branch:
-git log --merges --grep='#358' develop
+# Find the Phase B merge commit on the target branch.
+# Search by the Phase B PR number (#371) for the most reliable match —
+# searching by #358 (Issue number) can also match unrelated merge commits that reference the Issue in passing.
+git log --merges --grep='#371' develop
 
 # Revert the merge commit, specifying parent 1 (the mainline parent):
 git revert -m 1 <phase-b-merge-commit-sha>
@@ -111,7 +126,7 @@ git revert -m 1 <phase-b-merge-commit-sha>
 
 > **Why `-m 1` is required**: Without `-m`, `git revert` fails with `commit is a merge but no -m option was given` because it cannot automatically determine which parent represents the "mainline" to revert back to. `-m 1` tells git to treat the first parent (the target branch before merge) as the mainline and revert the changes introduced by the second parent (the feature branch).
 
-In both cases, the Phase A fixes (Part A bug fix, tools/model frontmatter cleanup) remain intact because they were merged in PR #357 as separate commits that are not touched by the Phase B revert. After rollback, `subagent_type: general-purpose` with `{agent_identity}` extraction is restored and reviewers fall back to the pre-Phase-B behavior.
+In both cases, the Phase A fixes (Part A bug fix, tools/model frontmatter cleanup) remain intact because they were merged via [PR #363](https://github.com/B16B1RD/cc-rite-workflow/pull/363) (which fixed [Issue #357](https://github.com/B16B1RD/cc-rite-workflow/issues/357)) as a separate PR that is not touched by the Phase B revert. After rollback, `subagent_type: general-purpose` with `{agent_identity}` extraction is restored and reviewers fall back to the pre-Phase-B behavior.
 
 **Long-term fix**: Upgrade Claude Code to the version that supports plugin-scoped subagent names.
 
