@@ -274,8 +274,8 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 **集計ルール** (silent inflation 防止のため明示定義):
 
 - **✅ 検出あり**: reviewer がそのカテゴリに該当する finding を 1 件以上報告した
-- **✅ verify 済み (finding 0 件)**: reviewer がそのカテゴリを明示的に verify したが finding なし (例: i18n parity で両言語を突き合わせた上で「問題なし」と宣言)。5/6 の分子に含める
-- **⚠️ 間接検出**: 別カテゴリの finding として報告されたが、対象カテゴリに間接的に寄与する。**5/6 の分子には含めない**
+- **✅ verify 済み (finding 0 件)**: reviewer がそのカテゴリを明示的に verify したが finding なし (例: i18n parity で両言語を突き合わせた上で「問題なし」と宣言)。カバレッジ判定の分子 (分母 6) に含める
+- **⚠️ 間接検出**: 別カテゴリの finding として報告されたが、対象カテゴリに間接的に寄与する。**カバレッジ判定の分子 (分母 6) には含めない**
 - **❌ 未検出**: reviewer が明示的に verify せず、finding もなし
 
 目標: 6 カテゴリ中 **4 以上**で ✅ 判定。
@@ -306,7 +306,7 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 ### 4.5 Phase D 完了条件
 
 - [x] Option A (worktree replay) による PR #350 の実測データ取得
-- [x] カテゴリカバレッジ実測値の確定 (5/6, ≥4/6 達成)
+- [x] カテゴリカバレッジ実測値の確定 (4/6, ≥4/6 達成)
 - [ ] baseline_V の signal rate 監査 (Option C, dedicated extraction session 必要)
 - [ ] カバレッジ率・FP rate の実測値確定 (signal rate 監査後に実施)
 - [ ] 対照 PR 3 件での検証 (TS / Bash / mixed)
