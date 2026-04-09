@@ -95,10 +95,11 @@ For each bash error handling construct identified in Step 5:
 
   **Fix patterns** (all three capture the parsed value in `default_branch` matching the anti-pattern's intent, while separating stderr handling. Patterns A and B additionally keep the full JSON response in `repo_info` for callers that need it.):
 
-  > **Pre-condition for all three patterns**: The patterns below assume the caller has already enabled strict mode with `set -euo pipefail` earlier in the script (this is the standard convention across this repository's bash code). The rationale notes below this code block explain several behaviors that depend on strict mode. When copying these patterns into a script that does not enable strict mode, either add `set -euo pipefail` at the script's entry point or re-evaluate whether the rationale's assumptions still hold.
+  > **Strict mode for all three patterns**: The example below enables `set -euo pipefail` explicitly at the top of the block for self-contained demonstration (matching this repository's standard convention for bash code). The rationale notes below this code block depend on strict mode being active. When adapting these patterns into a larger script that already enables strict mode at its entry point, the redundant `set -euo pipefail` line inside the example can be omitted — either arrangement produces the same behavior.
 
   ```bash
-  # Pre-condition: this example assumes `set -euo pipefail` has been enabled earlier in the script.
+  # Enable strict mode for this self-contained example. Safe to omit if the caller's
+  # script already enables strict mode at its entry point.
   set -euo pipefail
 
   # ✅ Pattern A: Full repo-convention mktemp + trap + if/else — surfaces stderr on both success and failure
@@ -111,7 +112,14 @@ For each bash error handling construct identified in Step 5:
   # (1) path declared before trap, (2) trap installed before mktemp, (3) signal-specific
   # exit codes (EXIT/INT/TERM/HUP), (4) explicit mktemp failure handling, (5) gh api wrapped
   # in if/else to surface stderr in both success and failure branches, (6) `mktemp` uses a
-  # named template `/tmp/rite-<purpose>-XXXXXX` for debug traceability and collision safety.
+  # named template for debug traceability and collision safety.
+  #
+  # Note on mktemp template naming: The repository's phase-scoped callers (commands/pr/*.md)
+  # use a 3-segment form `/tmp/rite-<phase(review|fix)>-<purpose>-XXXXXX` to preserve origin
+  # traceability when many phases share /tmp. This reviewer example is a generic pattern not
+  # tied to a specific phase, so we use the simpler 2-segment form `/tmp/rite-<purpose>-XXXXXX`.
+  # When adapting this example into a phase-scoped script, extend the template to match
+  # (for example, `/tmp/rite-review-gh-api-err-XXXXXX` inside commands/pr/review.md).
   gh_err=""
   _pa_cleanup() { rm -f "${gh_err:-}"; }
   trap 'rc=$?; _pa_cleanup; exit $rc' EXIT
@@ -152,7 +160,7 @@ For each bash error handling construct identified in Step 5:
   >
   > **Why the full path-declare → trap → mktemp pattern?** Two kinds of race conditions exist: (a) **hardcoded-path race** (filename collisions, symlink attacks — solved by `mktemp`), and (b) **signal-delivery race window** (a SIGTERM/SIGINT/SIGHUP arriving between `mktemp` success and `trap` installation leaves the tmp file orphaned — solved by declaring the path variable first, installing the trap, then running `mktemp`). The repository's standard convention (`plugins/rite/commands/pr/review.md` Phase 2.2.1, `plugins/rite/commands/pr/fix.md` Phase 4.5.2) addresses both. Pattern A mirrors that convention.
   >
-  > **Why signal-specific trap entries (INT/TERM/HUP)?** Two separate bash behaviors are at play here, and they are easy to conflate. First, **a bare `trap '...' EXIT`** (with no signal-specific entries) does not override bash's default signal handling: when SIGINT/SIGTERM/SIGHUP arrives, bash terminates the script with exit status 128+signum, and the EXIT trap runs **during that termination** — the script does not continue. This alone would seem to be enough, but it has two drawbacks: (a) the exit code is whatever bash chose (128+signum), which is inconvenient for callers that expect POSIX-conventional codes (SIGINT=130, SIGTERM=143, SIGHUP=129), and (b) there is no hook point to run signal-aware cleanup before bash terminates. Second, when you **install an explicit signal-specific trap** (e.g., `trap 'cleanup' INT`), bash runs the handler and then **resumes the interrupted command** by default rather than exiting — unless the handler explicitly calls `exit`. That is the real hazard: an explicit signal-specific trap without `exit` lets the script silently continue executing after a signal, producing undefined behavior. The solution is to install signal-specific entries for INT/TERM/HUP that call `_pa_cleanup` **and** explicitly `exit` with the POSIX-conventional code (130/143/129). This guarantees (a) cleanup runs with the correct per-signal exit code, (b) the script exits deterministically rather than resuming, and (c) callers see standard exit codes instead of bash's implementation-defined defaults. The EXIT trap still fires as a belt-and-braces catch-all for the "exited normally or via non-signal failure" case.
+  > **Why signal-specific trap entries (INT/TERM/HUP)?** Relying on a bare `trap '...' EXIT` alone to handle signals is risky for two independent reasons. First, when you install an explicit signal-specific trap (e.g., `trap 'cleanup' INT`), bash's default behavior after the handler is to **continue executing** the script rather than exit — unless the handler explicitly calls `exit`. If you forget the `exit`, your script silently keeps running after an interrupt. Second, bash's signal dispatch for a bare EXIT trap (with no signal-specific entry) is **context-sensitive**: it varies with interactive vs non-interactive mode, whether a foreground child is running, and which signal was received. Rather than depending on those details, install signal-specific entries for INT/TERM/HUP that (a) run `_pa_cleanup`, and (b) explicitly `exit` with POSIX-conventional codes (SIGINT=130, SIGTERM=143, SIGHUP=129). This guarantees three things regardless of the execution context: cleanup runs with the correct per-signal exit code, the script exits deterministically rather than continuing, and callers see standard exit codes. The EXIT trap still fires as a belt-and-braces catch-all for the normal-exit and non-signal-failure cases. For the full details of bash's signal handling, see `man bash` section "SIGNALS".
   >
   > **Why wrap `gh api` in `if ... then ... else ... fi` in Pattern A?** Without the wrapper, under `set -euo pipefail` a `gh api` failure exits the script before the success-path `[ -s "$gh_err" ]` stderr check can run. The stderr capture would be silently dropped in exactly the failure case the user most needs to debug (auth error, rate limit, network error). The `if/else` form guarantees that both the success path (with deprecation notices) and the failure path (with error details) surface the captured stderr.
   >
