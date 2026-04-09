@@ -143,12 +143,12 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 ### 2.4 Phase C2 (#361): 分散伝播漏れ検出 lint
 
 **変更内容** (PR #373):
-- 5 パターンの分散修正 drift 検出 lint を新規実装
-- Pattern-1: 同一構造の修正が一部 Phase にしか伝播しない
-- Pattern-2: 変数名・関数名の rename が一部にのみ適用
-- Pattern-3: 列挙型の要素追加が一部 case 文にのみ反映
-- Pattern-4: config key の追加/変更が一部参照箇所にのみ反映
-- Pattern-5: エラーメッセージ / コメントの更新が一部にのみ反映
+- 5 パターンの分散修正 drift 検出 lint を新規実装 (設計書 `review-quality-gap-closure.md` + `distributed-fix-drift-check.sh` 準拠)
+- Pattern-1: retained flag coverage — `exit 1` 直前の `[CONTEXT] *_FAILED=1` emit 欠落検出
+- Pattern-2: reason table drift — reason テーブル列挙と実 emit 箇所の突き合わせ
+- Pattern-3: if-wrap drift — `cat <<'EOF' > "$tmpfile"` が `if !` で wrap されていない箇所の検出
+- Pattern-4: anchor drift — Markdown `#anchor` 参照が見出しに解決できるかの内部リンクチェック
+- Pattern-5: evaluation-order table 列挙 drift — 評価順テーブルの括弧内列挙と実 emit の突き合わせ
 
 **理論的カバレッジ効果**:
 
@@ -189,14 +189,14 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 
 #### Option A: Worktree ベースの replay (推奨)
 
-1. **Phase A マージ前の commit** (`54b291f` = PR #350 merge commit の直後) から worktree を作成
-2. worktree 上で PR #350 の diff を apply (Phase A/B/C/C2 による conflict なし)
+1. **PR #350 マージ直前の develop HEAD** (`e1498f5` = PR #350 merge commit `54b291f` の第一親) から worktree を作成
+2. worktree 上で PR #350 の diff を apply (この commit には PR #350 の変更が含まれていないため clean apply 可能)
 3. investigation PR を作成し、**現在の Claude Code セッション** (改善後のプラグイン) で `/rite:pr:review` を実行
 4. これにより「改善後の review system」×「PR #350 の diff」の組み合わせで実測可能
 
 ```bash
 # 推奨手順
-git worktree add /tmp/phase-d-investigation 54b291f
+git worktree add /tmp/phase-d-investigation e1498f5
 cd /tmp/phase-d-investigation
 git checkout -b investigation/phase-d-pr350
 gh pr diff 350 | git apply
@@ -207,7 +207,7 @@ gh pr create --base develop --head investigation/phase-d-pr350 --draft \
   --body "Phase D quantitative validation (no merge intended)"
 ```
 
-> **注意**: worktree 内の `plugins/rite/` は Phase A/B/C/C2 **前** の状態。Claude Code が使うプラグインは **メインの working directory のもの** が優先されるため、改善後の review system で旧 diff をレビューできる。
+> **注意**: `e1498f5` は PR #350 merge commit (`54b291f`) の第一親であり、PR #350 の変更を含まない develop HEAD。worktree 内の `plugins/rite/` は Phase A/B/C/C2 **前** の状態だが、Claude Code が使うプラグインは **メインの working directory のもの** が優先されるため、改善後の review system で旧 diff をレビューできる。
 
 #### Option B: 新規 PR での代替測定
 
