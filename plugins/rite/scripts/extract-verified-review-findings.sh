@@ -48,8 +48,9 @@
 #
 # 除外:
 #   - V{N} / X{N} prefix の行 (verified facts / cross-checked claims)
-#   - documentation example (e.g. "docs/foo.md:12 ... WHAT問題") を heuristic で除外:
-#       file_line に "docs/foo.md", "src/foo.ts", "src/auth.ts" を含むもの
+#   - documentation example を heuristic で除外: file_line が `DOC_EXAMPLE_PATHS`
+#     (Python 側 set 定義参照) のいずれかを含むもの。除外対象は教材専用 path に
+#     限定する (real PR で存在しうる generic 名 (例: src/auth.ts) は意図的に除外しない)
 #
 # Limitations:
 #   - cycle 番号推定はヒューリスティック。明示的な「Cycle N」見出しがない範囲では
@@ -57,7 +58,10 @@
 #     (集計時は (source_session, cycle) のタプルで識別すること)
 #   - reviewer 列の判定は `silent-failure-hunter` / `code-reviewer` 等の reviewer
 #     suffix を allow-list ベースで判定する heuristic。新しい reviewer 種別が
-#     追加された場合は本ファイルの REVIEWER_NAMES set を更新すること
+#     追加された場合は本ファイルの REVIEWER_NAMES set を更新すること。
+#     **bare alias (suffix なしの略称、例: `tech-writer`, `code-quality`) は
+#     description 内自然語と誤マッチするため追加しないこと。canonical 形式
+#     (`-reviewer` / `-hunter` / `-analyzer` suffix) のみを allow-list に含める**
 #   - dedup key は (severity, file_line[:120], col3[:100], cycle) のタプル。
 #     再発 finding (異なる cycle で同一指摘が再出現) は cycle が key に含まれる
 #     ため dedup されず保持される (Phase D 用途では再発も重要 signal)

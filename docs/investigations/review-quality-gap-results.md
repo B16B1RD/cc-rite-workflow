@@ -11,7 +11,7 @@
 
 | 指標 | 目標 | 結果 | 判定 |
 |------|------|------|------|
-| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 273)、intersection 計算は未着手 | 分母は確定したが、`baseline_A ∩ baseline_V′` の本体計算はフォローアップ Issue で追跡予定 (詳細は §4.5 Phase D 完了条件) |
+| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 285、cycle 3 fix 後の最新値)、intersection 計算は未着手 | 分母は確定したが、`baseline_A ∩ baseline_V′` の本体計算はフォローアップ Issue で追跡予定 (詳細は §4.5 Phase D 完了条件) |
 | False positive rate | ≤20% | 🔶 未測定 (手動判定セッション未実施) | 後続セッションで手動判定 |
 | **カテゴリカバレッジ (6中4以上)** | **≥4/6** | ✅ **4/6 実測達成** (理論分析では 6/6) | **✅ 達成** |
 | 対照 PR FP rate | ≤30% | 🔶 対照 PR 未実施 (PR #384 replay のみ) | 時間制約により replay のみ実施 |
@@ -27,7 +27,7 @@
 
 **制約事項** (詳細は [§4.5 Phase D 完了条件](#45-phase-d-完了条件)):
 - Phase A/B/C/C2 が全てマージ済みのため、**個別ラウンド測定 (Round 1-3) は実施不可**
-- baseline_V 個別指摘データ抽出済み (詳細は [§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10)、baseline_V′ ≒ 273)
+- baseline_V 個別指摘データ抽出済み (詳細は [§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10)、baseline_V′ ≒ 285 = cycle 3 fix 後の最新値)
 - 対照 PR 3 件 (TS code / Bash script / mixed) は時間制約で未実施 — Phase D 主目的 "改善後 review system で PR #350 diff を測定" は達成
 
 ---
@@ -111,7 +111,9 @@
 
 **Multi-session 走査結果** (`--session-dir`, `--from 2026-04-07 --to 2026-04-09`, `--min-size 500000`):
 
-| Source session | 件数 |
+> **⚠️ Note — Phase 0 スナップショット (PR #400 cycle 1 fix 時点)**: 以下の数値表は当初の Phase D 監査時に取得したスナップショットです。PR #400 cycle 3 fix (allow-list 厳格化 + DOC_EXAMPLE_PATHS 縮小) 後に再抽出した最新値は §1.2.2.5 末尾の「cycle 3 再抽出値」に記載しています。signal rate 監査結論 (100%, point estimate) は population の遷移に依存しないため不変です。
+
+| Source session | 件数 (cycle 1 fix 時点) |
 |---|---|
 | `763024b7-*` | 80 |
 | `1378f23f-*` | 58 |
@@ -122,13 +124,18 @@
 | `1f5e3701-*` | 15 |
 | `f5debd1f-*` | 12 |
 | 他 13 sessions | 20 |
-| **合計 (raw, dedup 後)** | **315** |
+| **合計 (raw, dedup 後、cycle 1 fix 時点)** | **315** |
 
 > **Note**: 「他 13 sessions」は scratch / 別 Issue 作業中の rite 関連セッションで、各 1〜3 件程度の散発的な finding を含む。verified-review が主要に実行された session は上記 8 session (合計 295 件) で全体の ~94% を占める。
 
-**Severity 内訳**: CRITICAL 35 / HIGH 140 / MEDIUM 100 / LOW 40
+**Severity 内訳 (cycle 1 fix 時点)**: CRITICAL 35 / HIGH 140 / MEDIUM 100 / LOW 40
 
-> **Note (PR #400 cycle 1 review fix 後の再抽出)**: 当初実装の dedup key `(severity, file_line[:120], col3[:100])` を `(severity, file_line[:120], col3[:100], cycle)` に変更し再発 finding を保持するように改修した結果、population は 302 → 315 に再計上された (cycle key の追加で同一 file:line 異 cycle の再発が dedup されなくなったため)。signal rate 監査結果 (100%) は変わらないため、本セクションの結論には影響しない。
+> **Note (Population 遷移履歴)**:
+> - **当初実装**: dedup key `(severity, file_line[:120], col3[:100])` → 302 件
+> - **PR #400 cycle 1 fix**: dedup key に `cycle` を追加し再発 finding を保持 → 315 件
+> - **PR #400 cycle 3 fix**: allow-list 厳格化 (bare alias 削除) + DOC_EXAMPLE_PATHS 縮小 (`src/auth.ts` 除外解除) → **329 件** (詳細は §1.2.2.5 末尾)
+>
+> いずれの遷移でも signal rate 監査結論 (100%, point estimate) は不変。サンプル監査の母集団は当初の n=30 (effective 26) を維持しており、母集団拡大に対する追加サンプル監査は scope 外。
 
 ##### 1.2.2.3 サンプリング監査
 
@@ -179,12 +186,21 @@
 
 ##### 1.2.2.5 baseline_V′ 補正 (extraction artifact 除外後)
 
-抽出スクリプトの parsing 精度を改善する余地はあるが、サンプルから推定した artifact rate は **13.3%** (4/30)。これを改修後 population (315) に適用すると:
+抽出スクリプトの parsing 精度を改善する余地はあるが、サンプルから推定した artifact rate は **13.3%** (4/30)。population に適用すると:
 
-- **baseline_V′ (artifact-removed estimate)**: 315 × (1 - 0.133) ≒ **273 件**
-- **真 finding 推定数**: 273 × 1.0 (signal rate point estimate) ≒ **273 件**
+- **baseline_V′ (cycle 1 fix 時点、population 315 ベース)**: 315 × (1 - 0.133) ≒ **273 件**
 
-**注**: この `273` は新たな `baseline_V` の推奨値。Issue #355 当初の `172` は cycle 集計値であり個別 finding 数とは異なる概念のため、coverage rate の分母として使う場合は **273 を採用** することを推奨する。当初実装の population 302 ベースでは baseline_V′ ≒ 262 だったが、PR #400 cycle 1 review fix で dedup key に cycle を含めるよう改修し再発 finding を保持した結果 273 に再計上された (改修の根拠は §1.2.2.2 末尾の Note を参照)。
+**Population 遷移と baseline_V′ 推移**:
+
+| 時点 | dedup key / DOC_EXAMPLE_PATHS / allow-list | population | baseline_V′ (artifact-removed) |
+|---|---|---|---|
+| 当初実装 | (sev, file:120, col3:100) / `src/auth.ts` 含む / bare alias 含む | 302 | 262 |
+| cycle 1 fix | + `cycle` を dedup key に追加 (再発保持) | 315 | 273 |
+| **cycle 3 fix** (推奨) | + `src/auth.ts` 除外解除 + bare alias 削除 | **329** | **285** |
+
+**cycle 3 再抽出値** (推奨): cycle 3 fix 後のスクリプト (`0c93fdd` 以降) で同一監査ウィンドウ (`--from 2026-04-07 --to 2026-04-09 --min-size 500000`) を再抽出すると **329 件** (allow-list 厳格化により以前の dedup 取りこぼしが解消)。これに artifact rate 13.3% を適用すると **baseline_V′ ≒ 329 × 0.867 ≒ 285 件**。
+
+**注**: この `285` が cycle 3 fix 後の最新 `baseline_V′` 推奨値。Issue #355 当初の `172` は cycle 集計値であり個別 finding 数とは異なる概念のため、coverage rate の分母として使う場合は **285 を採用** することを推奨する。signal rate 監査結論 (100%, point estimate) は population 遷移に依存しないため不変。サンプル監査の母集団拡大 (302 → 329) に対する追加サンプル監査は scope 外。
 
 ##### 1.2.2.6 監査の限界事項
 
@@ -444,7 +460,7 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 |------|------|------|------|
 | カテゴリカバレッジ | ≥4/6 | **4/6** (✅ 4 件 / ⚠️ 2 件) | ✅ **達成** |
 | 総 finding 数 vs baseline_A | improvement | 14 → 19 (件数 +35.7%) | ⚠️ 検出数は増加 (FP rate 未測定のため改善の質は保留) |
-| カバレッジ率 | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 273)、intersection 計算は未着手 | 分母は確定したが、baseline_A ∩ baseline_V′ の計算は別タスク |
+| カバレッジ率 | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 285、cycle 3 fix 後)、intersection 計算は未着手 | 分母は確定したが、baseline_A ∩ baseline_V′ の計算は別タスク |
 | FP rate | ≤20% | 未測定 | 手動判定セッション未実施 |
 | signal rate (baseline_V) | ≥90% | ✅ **100.0%** (point estimate, 95% CI [87.1%, 100%]) | ✅ **達成** ([§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10) — Issue #391 サンプリング監査, n=26 effective) |
 
