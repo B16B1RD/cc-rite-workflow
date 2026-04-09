@@ -336,7 +336,7 @@ This explains both the non-obvious choice and the historical reason — clearly 
 
 1. **Exported module members** (`export` in TS/JS, uppercase-leading in Go, `pub` in Rust, `public` in Java/C#): API-facing → HIGH
 2. **Public class methods** not prefixed with `_`/`#`/`private`: API-facing → HIGH
-3. **CLI command handlers**, **route handlers**, **event handler registrations**: API-facing → HIGH
+3. **CLI command handlers**, **route handlers**, **event handler registrations**, **published REST/GraphQL endpoints**: API-facing → HIGH
 4. **Internal-only functions** (private helpers, closures, test fixtures, local utilities): non-API-facing → MEDIUM
 5. **Uncertain**: Default to HIGH (err on the side of safety for external callers). If the reviewer cannot confidently determine the visibility, treat as API-facing.
 
