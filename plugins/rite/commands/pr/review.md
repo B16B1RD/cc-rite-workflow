@@ -477,17 +477,8 @@ total_diff_lines="${total_diff_lines:-0}"
 # これを防ぐため、(1) gh pr view の stderr を一時ファイルに退避、(2) stdout を一時ファイルに保存、
 # (3) gh pr view の exit code を if で明示的に check し、(4) 成功時のみ mapfile で読み込む。
 #
-# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (fix.md Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
-# mktemp を 2 連発した「後」に trap を設定すると、1 つ目 mktemp 成功〜 2 つ目 mktemp 完了までと、
-# 2 つ目 mktemp 完了〜 trap 設定までの極小時間窓に SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが
-# orphan として残る。並列 review 実行 (sprint team-execute 等) で /tmp に累積し、wildcard glob で
-# 掃除する誘惑 → 他セッション破壊につながる構造的リスク。
-#
-# bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**
-# (権威ある根拠: GNU bash manual "Signals" — trap action 後に bash は signal を consume し
-#  制御は次のコマンドに渡る。trap 内で `exit <code>` を呼ばないと cleanup 後に bash block が
-#  残りの命令 (mapfile / for / case) を不完全な状態で実行してしまう silent failure になる)
-# signal 別 exit code: SIGINT=130 / SIGTERM=143 / SIGHUP=129 (POSIX 慣習: 128 + signal number)
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: 「パス先行宣言 → trap 先行設定 → mktemp」の順序、signal 別 exit code 130/143/129、${var:-} safety)
 gh_files_stderr=""
 gh_files_stdout=""
 _rite_review_p127_cleanup() {
@@ -765,11 +756,8 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
        exit 1 ;;
    esac
 
-   # 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (fix.md Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
-   # mktemp を先に実行して trap を後追いで設定すると、mktemp 成功〜trap 設定間の極小時間窓に
-   # SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが orphan として残る race window がある。
-   # bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**ため、
-   # signal 別 exit code (130/143/129) を必ず返す。
+   # trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+   # (rationale: 「パス先行宣言 → trap 先行設定 → mktemp」の順序、signal 別 exit code、${var:-} safety)
    git_diff_err=""
    _rite_review_p221_cleanup() {
      rm -f "${git_diff_err:-}"
