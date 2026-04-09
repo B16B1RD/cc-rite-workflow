@@ -465,7 +465,7 @@ bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
 
 If the script exits with 0, the update succeeded (or was skipped by `--diff-check` if no changes were needed). If non-zero, display a warning and proceed to Phase 5.
 
-**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The `--parent` flag ensures errors are treated as warnings, not fatal errors. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
+**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The `--parent` flag is passed for future differentiation but currently all errors are treated as warnings by the script. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
 
 Proceed to Phase 5.
 
