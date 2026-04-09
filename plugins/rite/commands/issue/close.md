@@ -401,7 +401,7 @@ When a child Issue is closed, automatically update the parent Issue's body to re
 
 Extract the parent Issue number from the closing Issue's body. The `## 親 Issue` section is added by `/rite:issue:create-decompose` when creating child Issues.
 
-**Detection pattern**: Search the Issue body (retrieved in Phase 1.1) for the `## 親 Issue` section header, then extract the Issue number from the line below it:
+**Detection pattern**: Search the Issue body for the `## 親 Issue` section header, then extract the Issue number from the line below it:
 
 ```
 ## 親 Issue
@@ -409,9 +409,10 @@ Extract the parent Issue number from the closing Issue's body. The `## 親 Issue
 #{parent_number} - {parent_title}
 ```
 
-**Extraction**:
+**Extraction**: Retrieve the Issue body and extract the parent Issue number in a single bash block:
 
 ```bash
+issue_body=$(gh issue view {issue_number} --json body --jq '.body')
 parent_number=$(echo "$issue_body" | grep -A1 '^## 親 Issue' | grep -oE '#[0-9]+' | head -1 | tr -d '#')
 echo "parent_number=${parent_number:-none}"
 ```
@@ -424,102 +425,87 @@ echo "parent_number=${parent_number:-none}"
 
 Skip the rest of Phase 4.5 and proceed to Phase 5. This is normal behavior (AC-3), not an error.
 
-### 4.5.2 Retrieve Parent Issue Body
+### 4.5.2 Update Parent Issue Body
+
+Update the parent Issue's Sub-Issues checkbox and 実装フェーズ status using the 3-step safe update pattern via `issue-body-safe-update.sh`.
+
+> **Reference**: Uses the same safe update pattern as `implement.md` and `archive-procedures.md` — fetch/edit/apply with body shrinkage detection and diff-check idempotency.
+
+**Step 1: Fetch parent Issue body**
 
 ```bash
-parent_body=$(gh issue view {parent_number} --json body --jq '.body')
-if [ -z "$parent_body" ]; then
+fetch_result=$(bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {parent_number} --parent)
+if [ $? -ne 0 ]; then
   echo "警告: 親 Issue #{parent_number} の本文を取得できませんでした" >&2
+  # Non-blocking: proceed to Phase 5 (AC-4)
+else
+  eval "$fetch_result"
+  echo "tmpfile_read=$tmpfile_read"
+  echo "tmpfile_write=$tmpfile_write"
+  echo "original_length=$original_length"
 fi
-echo "parent_body_length=${#parent_body}"
 ```
 
 **On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4).
 
-### 4.5.3 Update Sub-Issues Checkbox
+**Step 2: Apply updates via Python** (Sub-Issues checkbox + 実装フェーズ status in a single pass)
 
-Update the checkbox for the closing Issue in the parent Issue's `## Sub-Issues` section.
-
-**Pattern**: `- [ ] #{issue_number}` → `- [x] #{issue_number}` (only the matching Issue number line)
-
-Use Python for safe replacement (avoid `sed` special character issues per gh-cli-patterns.md):
+Use the Read tool to read `$tmpfile_read` (the path from Step 1), then apply updates via Python and write to `$tmpfile_write`:
 
 ```bash
-tmpfile_parent=$(mktemp)
-trap 'rm -f "$tmpfile_parent"' EXIT
-
-gh issue view {parent_number} --json body --jq '.body' > "$tmpfile_parent"
-
 python3 -c "
-import re, sys
+import re
 
-with open('$tmpfile_parent', 'r') as f:
+tmpfile_read = '{tmpfile_read}'
+tmpfile_write = '{tmpfile_write}'
+issue_number = '{issue_number}'
+
+with open(tmpfile_read, 'r') as f:
     body = f.read()
 
-# Only replace the specific Issue number's checkbox
-# Matches: - [ ] #{issue_number} (followed by space, dash, or end of line)
+# 1. Update Sub-Issues checkbox: - [ ] #{issue_number} -> - [x] #{issue_number}
 body = re.sub(
-    r'^(- \[) (\] #' + str({issue_number}) + r'(?:\s|$))',
+    r'^(- \[) (\] #' + issue_number + r'(?:\s|$))',
     r'\g<1>x\g<2>',
     body,
     flags=re.MULTILINE
 )
 
-with open('$tmpfile_parent', 'w') as f:
-    f.write(body)
-"
-```
-
-### 4.5.4 Update Implementation Phase Status
-
-Update the status of the row corresponding to the closing Issue in the parent Issue's `## 実装フェーズ` section.
-
-**Pattern**: In the 実装フェーズ table, find the row whose `内容` column contains `#{issue_number}` or `Sub-Issue {n}` referencing this Issue, and replace `[ ] 未着手` with `[x] 完了` in that row.
-
-```bash
-python3 -c "
-import re, sys
-
-with open('$tmpfile_parent', 'r') as f:
-    body = f.read()
-
-# Find rows in the 実装フェーズ table that reference this Issue number
-# The table format is: | フェーズ | 内容 | 状態 |
-# Match lines containing #{issue_number} and replace [ ] 未着手 with [x] 完了
+# 2. Update 実装フェーズ table: find rows referencing #{issue_number} and replace status
 lines = body.split('\n')
 updated_lines = []
 for line in lines:
-    if '#${issue_number}' in line or '#{issue_number}' in line:
+    if '#' + issue_number in line:
         line = line.replace('[ ] 未着手', '[x] 完了')
     updated_lines.append(line)
-
 body = '\n'.join(updated_lines)
 
-with open('$tmpfile_parent', 'w') as f:
+with open(tmpfile_write, 'w') as f:
     f.write(body)
 "
 ```
 
-**Note**: Only rows containing a reference to `#{issue_number}` are modified. Other rows and sections remain untouched (R7).
+**Note**: Only lines containing `#{issue_number}` are modified. Other sections remain untouched (R7). The `import sys` is omitted as it is not used.
 
-### 4.5.5 Apply Parent Issue Update
-
-Apply the updated body to the parent Issue:
+**Step 3: Apply the update**
 
 ```bash
-if [ ! -s "$tmpfile_parent" ]; then
-  echo "警告: 更新後の親 Issue 本文が空です。更新をスキップします。" >&2
+bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+  --issue {parent_number} \
+  --tmpfile-read "$tmpfile_read" \
+  --tmpfile-write "$tmpfile_write" \
+  --original-length "$original_length" \
+  --parent --diff-check
+
+apply_exit=$?
+if [ "$apply_exit" -eq 0 ]; then
+  echo "親 Issue #{parent_number} の本文を更新しました（Sub-Issues / 実装フェーズ）"
 else
-  gh issue edit {parent_number} --body-file "$tmpfile_parent"
-  if [ $? -eq 0 ]; then
-    echo "親 Issue #{parent_number} の本文を更新しました（Sub-Issues / 実装フェーズ）"
-  else
-    echo "警告: 親 Issue #{parent_number} の本文更新に失敗しました" >&2
-  fi
+  echo "警告: 親 Issue #{parent_number} の本文更新に失敗しました" >&2
 fi
 ```
 
-**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The Issue close itself (Phase 4.1) has already succeeded at this point.
+**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The `--parent` flag ensures errors are treated as warnings, not fatal errors. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
 
 Proceed to Phase 5.
 
