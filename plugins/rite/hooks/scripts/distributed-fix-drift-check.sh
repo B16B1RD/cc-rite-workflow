@@ -84,7 +84,7 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
   exit 2
 fi
 
-DRIFT_COUNT_FILE="$(mktemp)"
+DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 trap 'rm -f "$DRIFT_COUNT_FILE"' EXIT
 echo 0 > "$DRIFT_COUNT_FILE"
 report() {
@@ -155,8 +155,11 @@ check_pattern_2() {
   ' "$file" | sort -u)
   emit_reasons=$(grep -oE 'reason=[a-z_][a-z0-9_]*' "$file" 2>/dev/null \
     | sed 's/reason=//' | sort -u)
-  [ -z "$table_reasons" ] && [ -z "$emit_reasons" ] && return 0
-  [ -z "$table_reasons$emit_reasons" ] && return 0
+  # If the file has no reason table at all, Pattern-2 does not apply.
+  # Skipping here prevents false "never emitted" flags for emit-only files.
+  [ -z "$table_reasons" ] && return 0
+  # If the file has a table but no emits, all table entries are unused — still a drift,
+  # so we continue through to the comm comparison below.
   # Drift = symmetric difference
   missing=$(comm -23 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_reasons"))
   extra=$(comm -13 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_reasons"))
@@ -232,6 +235,9 @@ check_pattern_4() {
         headings=$(grep -E '^#{1,6}[[:space:]]' "$abs_path" 2>/dev/null \
           | sed -E 's/^#+[[:space:]]+//' \
           | while IFS= read -r h; do github_anchor "$h"; done)
+        # Skip files with no markdown headings (e.g. pure code files) to avoid
+        # false positives where every anchor would be reported as unresolved.
+        [ -z "$headings" ] && continue
         if ! grep -Fxq "$anchor" <<< "$headings"; then
           report 4 "$file" 0 "anchor '#$anchor' not found in $target_path"
         fi
@@ -251,7 +257,11 @@ check_pattern_5() {
     | tr -d '`' | sort -u)
   emit_reasons=$(grep -oE 'reason=[a-z_][a-z0-9_]*' "$file" 2>/dev/null \
     | sed 's/reason=//' | sort -u)
+  # Short-circuit when either side is empty to avoid comm's environment-dependent
+  # behavior with empty/unsorted input. A file without an eval-table or without
+  # any emits is out of scope for Pattern-5.
   [ -z "$table_words" ] && return 0
+  [ -z "$emit_reasons" ] && return 0
   missing=$(comm -23 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_words"))
   if [ -n "$missing" ]; then
     while IFS= read -r r; do

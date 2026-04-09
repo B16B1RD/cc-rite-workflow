@@ -57,7 +57,14 @@ trap 'rm -f "${TMPFILES[@]}"' EXIT
 TMP_FIX=$(mktemp)
 TMPFILES+=("$TMP_FIX")
 
-if git show "${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" > "$TMP_FIX" 2>/dev/null; then
+# Verify baseline commit is reachable before running Test 3. On shallow clones
+# (typical CI setup), silently SKIP-ing would produce a false green. Fail the
+# suite instead so the problem is visible.
+if ! git cat-file -e "${BASELINE_COMMIT}^{commit}" 2>/dev/null; then
+  echo "FAIL: baseline commit ${BASELINE_COMMIT} is not reachable" >&2
+  echo "  Hint: run 'git fetch --depth=1 origin ${BASELINE_COMMIT}' or unshallow the repo" >&2
+  FAIL=$((FAIL + 1))
+elif git show "${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" > "$TMP_FIX" 2>/dev/null; then
   out=$("$SCRIPT" --target "$TMP_FIX" 2>&1)
   rc=$?
   count=$(grep -c '^\[drift\]' <<< "$out" || true)
@@ -72,7 +79,8 @@ if git show "${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" > "$TMP_FIX" 2>
   p2_count=$(grep -c '^\[drift\]\[P2\]' <<< "$out" || true)
   assert_ge "cec0140 fix.md Pattern-2 (reason-table drift) detects >=1" 1 "$p2_count"
 else
-  echo "SKIP: baseline commit ${BASELINE_COMMIT} not available"
+  echo "FAIL: git show failed for ${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" >&2
+  FAIL=$((FAIL + 1))
 fi
 
 # --- Test 4: synthetic clean file produces no drift --------------------------
