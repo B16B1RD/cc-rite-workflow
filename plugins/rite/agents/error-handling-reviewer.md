@@ -90,20 +90,37 @@ For each bash error handling construct identified in Step 5:
   # OR silently returns empty if jq tolerates the prefix and the field is absent.
   ```
 
-  **Fix patterns** (pick the one appropriate to the call site):
+  **Fix patterns** (all three preserve the variable assignment from the anti-pattern and use `mktemp` + trap cleanup per this repository's standard bash safety conventions):
 
   ```bash
-  # ✅ Pattern A: Redirect stderr to a separate file for inspection
-  gh api repos/owner/repo 2>/tmp/gh.err | jq -r '.default_branch'
-  [ -s /tmp/gh.err ] && echo "WARNING: gh stderr output: $(cat /tmp/gh.err)" >&2
+  # ✅ Pattern A: Redirect stderr to a mktemp-created file, preserve variable assignment
+  # Use this pattern when you need to capture BOTH the parsed result AND inspect stderr warnings.
+  gh_err=$(mktemp)
+  trap 'rm -f "$gh_err"' EXIT
+  repo_info=$(gh api repos/owner/repo 2>"$gh_err")
+  default_branch=$(jq -r '.default_branch' <<< "$repo_info")
+  if [ -s "$gh_err" ]; then
+    echo "WARNING: gh stderr output: $(cat "$gh_err")" >&2
+  fi
 
   # ✅ Pattern B: Capture stdout first, then parse
+  # Use this pattern when you want explicit exit handling on gh failure.
   output=$(gh api repos/owner/repo) || { echo "ERROR: gh api failed" >&2; exit 1; }
   default_branch=$(jq -r '.default_branch' <<< "$output")
 
   # ✅ Pattern C: Use gh's --jq flag to parse inside gh (stderr stays separate)
+  # Use this pattern when you only need the parsed value and stderr can be discarded.
   default_branch=$(gh api repos/owner/repo --jq '.default_branch')
   ```
+
+  **Pattern selection guide**:
+  - **Pattern A** — When you need the full JSON response in a variable for later use AND you want to surface any stderr warnings to the user (e.g., auth hints, deprecation notices). Uses `mktemp` + trap to avoid race conditions and works correctly under `set -euo pipefail` because the `if [ -s ... ]; then ... fi` form returns exit 0 on the happy path (no stderr output).
+  - **Pattern B** — When you want the most explicit failure handling on `gh api` error (fail fast with a clear message). Best for scripts where silent `gh` failures must not be tolerated.
+  - **Pattern C** — When you only need a single parsed field and don't care about stderr warnings. Most concise but loses access to full response and stderr.
+
+  > **Why not hardcoded `/tmp/gh.err`?** The previous revision of this example used a hardcoded path, which is vulnerable to race conditions when the script runs concurrently (two instances clobbering each other's stderr file) and to symlink attacks on multi-user systems. The rest of this repository uniformly uses `mktemp` + `trap 'rm -f' EXIT` for temp files (see `plugins/rite/commands/pr/review.md` Phase 2.2.1, `plugins/rite/commands/pr/fix.md` Phase 4.5.2). Example code in a reviewer file must not teach patterns that the reviewer itself would flag.
+  >
+  > **Why `if [ -s "$gh_err" ]; then ... fi` and not `[ -s ... ] && echo ...`?** Under `set -euo pipefail`, the `&&` form returns a non-zero exit code on the happy path (when `[ -s ]` is false because stderr is empty). If this appears as the final statement in a function or script, the script exits with that non-zero code. The `if ... then ... fi` form always returns exit 0, matching the "this is a non-fatal notification" semantics the code expresses.
 
   **Detection heuristic**: `Grep` for `2>&1 | jq`, `2>&1 | awk`, `2>&1 | python -c`, and similar patterns in the diff. Confidence 90+ when the upstream command is known to print to stderr under common conditions (auth warnings, rate limits, deprecation notices). Confidence 80+ when the upstream command is a network/API call whose failure modes include stderr output.
 

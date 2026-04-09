@@ -48,7 +48,9 @@ The diff contains additions or deletions of comment/docstring tokens, including:
 
 **Invariant note**: This conditional activation does **not** expand the `doc_file_patterns` invariant tracked across the 3 files listed above. The doc_file_patterns invariant governs **file-type matching** for doc-heavy PR detection and tech-writer's base activation; the conditional activation described here is a **diff-content condition** orthogonal to file-type matching. When a code file with comment changes is reviewed, the `doc_file_patterns` check still classifies the file as non-documentation (so doc-heavy PR detection is unaffected), but tech-writer is additionally invoked for the comment scope. Do **not** add code file globs to the doc_file_patterns invariant in `review.md` Phase 1.2.7 or `SKILL.md` Reviewers table — those remain strictly file-type-based.
 
-**Reviewer selection integration (follow-up note)**: Actual invocation of tech-writer on code PRs with comment changes depends on `review.md` Phase 4.3 (reviewer selection) detecting comment/docstring diffs. The selection logic may need a follow-up extension to honor this conditional activation; until then, tech-writer is selected only when a doc file is also in the diff. This is tracked informally — Issue #359 Phase C's scope is limited to the reviewer definition itself.
+**Reviewer selection integration (follow-up note)**: Actual invocation of tech-writer on code PRs with comment changes depends on `review.md` Phase 2.2 (File Pattern Analysis) and Phase 2.3 (Content Analysis) detecting comment/docstring diffs as part of the reviewer selection logic. The Phase 2.2/2.3 selection logic may need a follow-up extension to honor this conditional activation (for example, adding a content-keyword detection branch in Phase 2.3 that flags comment/docstring token changes as a tech-writer trigger); until then, tech-writer is selected only when a doc file is also in the diff via Phase 2.2's file-type matching. This is tracked informally — Issue #359 Phase C's scope is limited to the reviewer definition itself.
+
+> **Phase reference note**: `review.md` Phase 4.3 is "Review Execution" (Task tool sub-agent invocation), not reviewer selection. Reviewer selection happens in Phase 2 — specifically Phase 2.2 (File Pattern Analysis against the SKILL.md reviewer table) and Phase 2.3 (Content Analysis for keyword/code-block detection), plus Phase 3.2 (Reviewer Selection for the Security Expert conditional logic).
 
 ## Expertise Areas
 
@@ -326,9 +328,17 @@ This explains both the non-obvious choice and the historical reason — clearly 
 | Severity | Pattern |
 |----------|---------|
 | **CRITICAL** | Comment documents security/correctness properties that no longer hold (e.g., "this function sanitizes SQL input" above code that no longer sanitizes). Comment actively misleads about safety. |
-| **HIGH** | Comment rot that contradicts current behavior (check #3 critical pattern). Orphan TODO referencing CLOSED Issue in a production path (check #4). Signature-docstring drift that would mislead API callers (check #1). |
-| **MEDIUM** | Reference to non-existent identifier (check #2). Unassigned TODO in non-critical path (check #4). WHY-WHAT imbalance in a publicly-documented API. |
+| **HIGH** | Comment rot that contradicts current behavior (check #3 critical pattern). Orphan TODO referencing CLOSED Issue in a production path (check #4). Signature-docstring drift on an **API-facing** function/method/class (exported module members, public class methods, published REST/GraphQL endpoints, CLI-exposed commands) that would mislead external callers (check #1). |
+| **MEDIUM** | Reference to non-existent identifier (check #2). Unassigned TODO in non-critical path (check #4). WHY-WHAT imbalance in a publicly-documented API. Signature-docstring drift on a **non-API-facing** function (private helpers, internal-only utilities, test fixtures) where the drift is contained to the file or module (check #1). |
 | **LOW** | Redundant WHAT comment in private helper (check #5). Stale TODO with no clear expiry. Minor wording drift that doesn't change meaning. |
+
+**API-facing determination**: Use the following rules to classify signature-docstring drift severity:
+
+1. **Exported module members** (`export` in TS/JS, uppercase-leading in Go, `pub` in Rust, `public` in Java/C#): API-facing → HIGH
+2. **Public class methods** not prefixed with `_`/`#`/`private`: API-facing → HIGH
+3. **CLI command handlers**, **route handlers**, **event handler registrations**: API-facing → HIGH
+4. **Internal-only functions** (private helpers, closures, test fixtures, local utilities): non-API-facing → MEDIUM
+5. **Uncertain**: Default to HIGH (err on the side of safety for external callers). If the reviewer cannot confidently determine the visibility, treat as API-facing.
 
 ### Comment Accuracy Prohibited vs Required Findings
 
