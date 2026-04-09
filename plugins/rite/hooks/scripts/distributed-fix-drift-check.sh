@@ -127,7 +127,7 @@ check_pattern_1() {
         for (i = 2; i <= 6; i++) {
           v = (i==2?buf2:(i==3?buf3:(i==4?buf4:(i==5?buf5:buf6))))
           if (v ~ /trap[[:space:]]/) { is_excluded = 1; break }
-          if (v ~ /best-effort||[[:space:]]+true|2>\/dev\/null/) { is_excluded = 1; break }
+          if (v ~ /(best-effort|[[:space:]]+\|\|[[:space:]]+true|2>\/dev\/null)/) { is_excluded = 1; break }
         }
         if (!has_flag && !is_excluded) {
           printf "%d\n", line_no
@@ -149,7 +149,7 @@ check_pattern_2() {
     /^\| `[a-z_][a-z0-9_]*`/ {
       gsub(/[|`]/, " ")
       for (i = 1; i <= NF; i++) {
-        if ($i ~ /^[a-z_][a-z0-9_]*$/ && length($i) > 2) { print $i; break }
+        if ($i ~ /^[a-z_][a-z0-9_]*$/) { print $i; break }
       }
     }
   ' "$file" | sort -u)
@@ -180,9 +180,10 @@ check_pattern_3() {
   local file="$1"
   [ -f "$file" ] || return 0
   awk '
+    BEGIN { line_no = 0; prev1 = ""; curr = "" }
     {
       line_no++
-      prev2 = prev1; prev1 = curr; curr = $0
+      prev1 = curr; curr = $0
       if (curr ~ /cat[[:space:]]+<<[\x27]?[A-Z_]+[\x27]?[[:space:]]*>[[:space:]]*"\$tmpfile"/) {
         wrapped = 0
         if (curr ~ /^[[:space:]]*if[[:space:]]+!/) wrapped = 1
@@ -210,9 +211,10 @@ check_pattern_4() {
   [ -f "$file" ] || return 0
   local file_dir
   file_dir="$(dirname "$file")"
-  # Extract markdown links with #anchor
-  grep -oE '\[[^]]*\]\([^)]+\)' "$file" 2>/dev/null \
-    | grep -oE '\([^)]*#[^)]+\)' \
+  # Extract markdown links with #anchor. `|| true` makes no-match explicit
+  # (prevents pipefail from propagating grep exit 1 if callers enable it).
+  { grep -oE '\[[^]]*\]\([^)]+\)' "$file" 2>/dev/null || true; } \
+    | { grep -oE '\([^)]*#[^)]+\)' || true; } \
     | sed -e 's/^(//' -e 's/)$//' \
     | while IFS= read -r ref; do
         local target_path anchor abs_path
@@ -221,12 +223,9 @@ check_pattern_4() {
         # Skip URL-style links and self-only anchors here (handled separately if needed)
         case "$target_path" in
           ""|http*|mailto:*) continue ;;
+          /*) abs_path="$REPO_ROOT$target_path" ;;
+          *)  abs_path="$file_dir/$target_path" ;;
         esac
-        if [ "${target_path:0:1}" = "/" ]; then
-          abs_path="$REPO_ROOT$target_path"
-        else
-          abs_path="$file_dir/$target_path"
-        fi
         [ -f "$abs_path" ] || continue
         # Build heading anchor list
         local headings

@@ -49,9 +49,13 @@ assert "--help exits 0" "0" "$?"
 "$SCRIPT" >/dev/null 2>&1
 assert "no args exits 2" "2" "$?"
 
+# Accumulating tempfile manager (trap is set once, list grows as tests add files)
+TMPFILES=()
+trap 'rm -f "${TMPFILES[@]}"' EXIT
+
 # --- Test 3: cec0140 fix.md baseline detects drift ---------------------------
 TMP_FIX=$(mktemp)
-trap 'rm -f "$TMP_FIX"' EXIT
+TMPFILES+=("$TMP_FIX")
 
 if git show "${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" > "$TMP_FIX" 2>/dev/null; then
   out=$("$SCRIPT" --target "$TMP_FIX" 2>&1)
@@ -73,6 +77,7 @@ fi
 
 # --- Test 4: synthetic clean file produces no drift --------------------------
 CLEAN=$(mktemp)
+TMPFILES+=("$CLEAN")
 cat > "$CLEAN" <<'EOF'
 # Clean test fixture
 
@@ -82,7 +87,6 @@ Some prose explaining behavior.
 EOF
 "$SCRIPT" --target "$CLEAN" >/dev/null 2>&1
 assert "synthetic clean file exits 0" "0" "$?"
-rm -f "$CLEAN"
 
 # --- Summary -----------------------------------------------------------------
 echo
