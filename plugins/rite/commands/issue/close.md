@@ -389,6 +389,84 @@ Status: Done
 関連 PR: #{pr_number} (Merged)
 ```
 
+Proceed to Phase 4.5.
+
+---
+
+## Phase 4.5: Parent Issue Body Update
+
+When a child Issue is closed, automatically update the parent Issue's body to reflect the child's completion status.
+
+### 4.5.1 Detect Parent Issue
+
+Extract the parent Issue number from the closing Issue's body. The `## 親 Issue` section is added by `/rite:issue:create-decompose` when creating child Issues.
+
+**Detection pattern**: Search the Issue body for the `## 親 Issue` section header, then extract the Issue number from the line below it:
+
+```
+## 親 Issue
+
+#{parent_number} - {parent_title}
+```
+
+**Extraction**: Retrieve the Issue body and extract the parent Issue number in a single bash block:
+
+```bash
+issue_body=$(gh issue view {issue_number} --json body --jq '.body')
+parent_number=$(echo "$issue_body" | grep -A2 '^## 親 Issue' | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+echo "parent_number=${parent_number:-none}"
+```
+
+**When no parent Issue is found** (`parent_number` is empty):
+
+```
+親 Issue の参照が見つかりませんでした。親 Issue 更新をスキップします。
+```
+
+Skip the rest of Phase 4.5 and proceed to Phase 5. This is normal behavior (AC-3), not an error.
+
+### 4.5.2 Update Parent Issue Body
+
+Update the parent Issue's Sub-Issues checkbox and 実装フェーズ status using the 3-step safe update pattern via `issue-body-safe-update.sh`.
+
+> **Reference**: Uses the same safe update pattern as `implement.md` and `archive-procedures.md` — fetch/edit/apply with body shrinkage detection and diff-check idempotency.
+
+**Step 1: Fetch parent Issue body**
+
+Execute the fetch script directly. The LLM reads `tmpfile_read`, `tmpfile_write`, and `original_length` from the Bash tool output:
+
+```bash
+bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {parent_number} --parent
+```
+
+If the output contains `tmpfile_read=`, `tmpfile_write=`, and `original_length=`, proceed to Step 2. If the script outputs only a WARNING or fails, display a warning and proceed to Phase 5 (non-blocking, AC-4).
+
+**Step 2: Apply updates via Read tool + Write tool** (Sub-Issues checkbox + 実装フェーズ status in a single pass)
+
+Read `$tmpfile_read` (the path from Step 1 output) using the Read tool. Then apply the following two replacements to the body text:
+
+1. **Sub-Issues checkbox**: Find the line matching `- [ ] #{issue_number}` and replace `- [ ]` with `- [x]` (only the specific Issue number line)
+2. **実装フェーズ table**: Find rows whose `内容` column contains `#{issue_number}` and replace `[ ] 未着手` with `[x] 完了` in those rows
+
+Write the updated body to `$tmpfile_write` (the path from Step 1 output) using the Write tool.
+
+**Note**: Only lines containing `#{issue_number}` are modified. Other sections remain untouched (R7).
+
+**Step 3: Apply the update**
+
+```bash
+bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+  --issue {parent_number} \
+  --tmpfile-read "$tmpfile_read" \
+  --tmpfile-write "$tmpfile_write" \
+  --original-length "$original_length" \
+  --parent --diff-check
+```
+
+If the script exits with 0, the update succeeded (or was skipped by `--diff-check` if no changes were needed). If non-zero, display a warning and proceed to Phase 5.
+
+**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The `--parent` flag is passed for future differentiation but currently all errors are treated as warnings by the script. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
+
 Proceed to Phase 5.
 
 ---
