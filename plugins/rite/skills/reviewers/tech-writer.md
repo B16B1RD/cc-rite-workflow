@@ -26,6 +26,32 @@ This skill is activated when reviewing files matching:
 
 **Note**: `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` (and corresponding `.mdx`) are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority). Similarly, `plugins/rite/i18n/**` is excluded because the rite plugin's own i18n files are dogfooding artifacts that should not trigger doc-heavy PR mode against the rite plugin itself. The `i18n/**` pattern is restricted to `.md` / `.mdx` files only because tech-writer reviews Markdown-style documentation; other translation formats (`.yml`, `.json`, `.po`) are out of scope.
 
+### Conditional Activation: Code Comment/Docstring Changes
+
+In addition to the file-type-based activation above, tech-writer is **conditionally activated** when a diff touches code files whose comments or docstrings change. This extends tech-writer's scope beyond standalone documentation to embedded technical writing (code comments, function docstrings, module headers).
+
+**Trigger condition** (diff-content-based, not file-type-based):
+
+The diff contains additions or deletions of comment/docstring tokens, including:
+
+- `# ...` (Python / shell / Ruby / YAML / Perl single-line comments)
+- `// ...` (C / C++ / Java / JavaScript / TypeScript / Go / Rust single-line comments)
+- `/* ... */` (C-family block comments, CSS comments)
+- `"""..."""` (Python module/function/class docstrings)
+- `'''...'''` (Python alternative docstring form)
+- JSDoc blocks (`/** ... */` with `@param`, `@returns`, etc.)
+- Rustdoc (`///` and `//!`)
+- GoDoc (the comment block directly above an exported identifier)
+- `<!-- ... -->` (HTML / Markdown inline comments, when changed in a code file)
+
+**Review scope under this conditional activation**: When activated by comment/docstring changes (not by file type), tech-writer reviews **only** the modified comments/docstrings and their surrounding code — not the entire file. Use the `## Comment Accuracy Review` section below as the primary checklist. The standard Documentation Critical/Important/Recommendations checklists still apply to the comment content itself, but implementation-consistency checks (`Doc-Heavy PR Mode`) do NOT activate because this conditional path is independent of the doc-heavy PR ratio calculation.
+
+**Invariant note**: This conditional activation does **not** expand the `doc_file_patterns` invariant tracked across the 3 files listed above. The doc_file_patterns invariant governs **file-type matching** for doc-heavy PR detection and tech-writer's base activation; the conditional activation described here is a **diff-content condition** orthogonal to file-type matching. When a code file with comment changes is reviewed, the `doc_file_patterns` check still classifies the file as non-documentation (so doc-heavy PR detection is unaffected), but tech-writer is additionally invoked for the comment scope. Do **not** add code file globs to the doc_file_patterns invariant in `review.md` Phase 1.2.7 or `SKILL.md` Reviewers table — those remain strictly file-type-based.
+
+**Reviewer selection integration (follow-up note)**: Actual invocation of tech-writer on code PRs with comment changes depends on `review.md` Phase 2.2 (File Pattern Analysis) and Phase 2.3 (Content Analysis) detecting comment/docstring diffs as part of the reviewer selection logic. The Phase 2.2/2.3 selection logic may need a follow-up extension to honor this conditional activation (for example, adding a content-keyword detection branch in Phase 2.3 that flags comment/docstring token changes as a tech-writer trigger); until then, tech-writer is selected only when a doc file is also in the diff via Phase 2.2's file-type matching. This is tracked informally — Issue #359 Phase C's scope is limited to the reviewer definition itself.
+
+> **Phase reference note**: `review.md` Phase 4.3 is "Review Execution" (Task tool sub-agent invocation), not reviewer selection. Reviewer selection happens in Phase 2 — specifically Phase 2.2 (File Pattern Analysis against the SKILL.md reviewer table) and Phase 2.3 (Content Analysis for keyword/code-block detection), plus Phase 3.2 (Reviewer Selection for the Security Expert conditional logic).
+
 ## Expertise Areas
 
 - Documentation structure
@@ -196,6 +222,132 @@ This negative/positive confirmation distinguishes "protocol was fully executed" 
 For the full 5-category verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence), see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol** and the source of truth for severity mapping.
 
 > **Canonical category naming**: The 5 categories above use the canonical hyphenated form (`Order-Emphasis Consistency`). This form is **literal-substring matched** by the Phase 5.1.3 Step 2 META check in `commands/pr/review.md`. Do not introduce variants like `Order / Emphasis Consistency` or `Order/Emphasis Consistency` — they will fail the META check and trigger a `doc_heavy_post_condition: warning` false positive.
+
+## Comment Accuracy Review
+
+**Applies when**: Tech-writer is activated via the "Conditional Activation: Code Comment/Docstring Changes" path (diff contains modified comments/docstrings in code files). Also applies as an additional lens when reviewing standalone doc files that contain embedded code examples with inline comments.
+
+**Goal**: Ensure that comments and docstrings accurately describe the code they annotate, remain in sync with the code they document, and provide WHY-level explanation rather than redundant WHAT-level narration.
+
+### Detection Checklist
+
+Perform the following 5 checks for every comment/docstring touched by the diff. Skip checks that do not apply to the specific comment form (e.g., TODO expiry does not apply to a docstring summary).
+
+#### 1. Function Signature / Docstring Consistency
+
+When the diff modifies a function, method, or class **and** its docstring (or the docstring precedes/follows the definition), verify that the docstring accurately describes the current signature.
+
+- **Parameter drift**: Each parameter named in the docstring (`@param`, `:param:`, `Args:`, `Parameters:`) must exist in the current signature with the same name. Flag renamed, removed, or reordered parameters where the docstring still references the old form.
+- **Return drift**: Each `@returns`, `Returns:`, or `Yields:` description must match what the current function actually returns. Flag docstrings that describe a return type or shape the function no longer produces.
+- **Type drift**: If the docstring declares a type (`int`, `str`, `Optional[User]`), it must match the current type annotation on the signature. Flag mismatches.
+- **Raise/throw drift**: `Raises:` / `@throws` sections must match the current `raise` / `throw` statements in the function body. Flag documented exceptions that are no longer raised, and undocumented exceptions that ARE raised.
+
+**Verification procedure**: Use `Read` to open the file at the comment's line range; compare the docstring to the signature directly below (or above, for Rustdoc `///`). Do NOT rely on diff context alone — signature and docstring may be on different diff hunks.
+
+#### 2. Reference Existence Verification
+
+Comments and docstrings often name other identifiers (functions, classes, variables, config keys, file paths). Every such reference must point to something that actually exists **now**, not at some past point in the codebase.
+
+- Extract every `` `identifier` ``, `function_name()`, `ClassName`, `config.key`, and file path reference from the modified comment.
+- For each reference, use `Grep` to confirm the identifier still exists. File path references should be verified via `Glob` or `Read`.
+- Flag references to removed, renamed, or never-existed identifiers. Be especially vigilant for references that sounded correct because the reviewer "knows" they used to exist.
+
+**Common patterns to flag**:
+
+- Comment says "see `oldHelper()` in utils.ts" but `oldHelper` was renamed to `legacyHelper`
+- Docstring says "uses `CONFIG.retryCount`" but the key is now `config.retry.count`
+- Module header says "depends on `auth/v1/verify.ts`" but the path is now `auth/v2/verify.ts`
+
+#### 3. Comment Rot Detection
+
+Comment rot = a comment that USED to be accurate but no longer matches the code around it, typically because the code was refactored and the comment was not updated.
+
+- For each comment/docstring in the diff's surrounding context, verify the comment's claims match the current code behavior.
+- If the comment describes an algorithm, step count, or order of operations, trace the code and verify the comment still applies.
+- If the comment describes a constraint ("must be called before `init()`"), verify the constraint still holds.
+- **Critical rot pattern**: A comment that correctly described the code BEFORE the diff but now contradicts the code AFTER the diff. Flag these as HIGH severity because they actively mislead future readers.
+
+**Example**:
+
+```python
+# Returns a list of active users sorted by last login
+def get_users():
+    return User.objects.filter(active=True)  # sort was removed, comment not updated
+```
+
+This is comment rot — the comment's "sorted by last login" claim is no longer true. Flag as HIGH and recommend either updating the comment or restoring the sort.
+
+#### 4. TODO / FIXME / HACK Expiry Check
+
+Comments of the form `TODO(...)`, `FIXME`, `HACK`, `XXX`, `BUG(...)` often reference an external tracker, a deadline, or a precondition that should be resolved.
+
+- **Expired TODOs**: TODOs with date references (`TODO: remove after 2025-Q2`) whose date has passed. Flag as HIGH.
+- **Orphan TODOs**: TODOs referencing an Issue/ticket number (`TODO(#123)`) where the Issue is CLOSED. Verify via `gh issue view` when Issue numbers are cited.
+- **Unassigned TODOs**: TODOs with no owner, no date, and no Issue reference. Flag as MEDIUM (they are technical debt that never expires).
+- **FIXME in production paths**: `FIXME` comments in code paths that are exercised in production. Flag as HIGH if the FIXME describes a known bug that could surface.
+
+**Verification procedure**: Use `Grep` on the comment-change hunks to find all TODO/FIXME markers, then check each marker's context (date, Issue number, owner). For Issue references, use `gh issue view N --json state` to confirm the state.
+
+#### 5. WHY vs WHAT Balance
+
+Comments should explain **WHY** (the reason, trade-off, or non-obvious constraint), not **WHAT** (what the code already says verbatim). Redundant WHAT comments add noise without information; they also rot faster because every code change invalidates them.
+
+**Flag as LOW** (Recommendations — not blocking):
+
+- Comments that literally restate the next line of code (`# increment i by 1` above `i += 1`)
+- Docstrings that only say "Gets the foo" above `def get_foo()` without adding context about what "foo" means or why it's fetched this way
+- Comments that describe syntax rather than intent (`// this is a loop` above `for (...)`)
+
+**Acceptable WHAT comments** (do NOT flag):
+
+- Complex regex or math where a WHAT explanation prevents misreading
+- Public API docstrings where the WHAT is part of the contract (even if obvious from the name)
+- Comments in languages where the surrounding code is genuinely hard to read (legacy Perl, obfuscated JS)
+
+**Example of flaggable redundancy**:
+
+```javascript
+// Set the user's name to the provided value
+user.name = providedName;
+```
+
+The comment adds nothing the code doesn't already say. Recommend deletion OR rewriting to explain WHY this assignment happens here (validation deferred? migration step?).
+
+**Example of acceptable WHY comment**:
+
+```javascript
+// Use loose equality because legacy API returns "1" (string) for boolean true.
+// Tightening to === would break users on v1.x clients (see PR #342).
+if (response.success == 1) { ... }
+```
+
+This explains both the non-obvious choice and the historical reason — clearly WHY-oriented.
+
+### Comment Accuracy Finding Severity
+
+| Severity | Pattern |
+|----------|---------|
+| **CRITICAL** | Comment documents security/correctness properties that no longer hold (e.g., "this function sanitizes SQL input" above code that no longer sanitizes). Comment actively misleads about safety. |
+| **HIGH** | Comment rot that contradicts current behavior (check #3 critical pattern). Orphan TODO referencing CLOSED Issue in a production path (check #4). Signature-docstring drift on an **API-facing** function/method/class (exported module members, public class methods, CLI command handlers, route handlers, event handler registrations, published REST/GraphQL endpoints — see "API-facing determination" rules below for the authoritative list) that would mislead external callers (check #1). |
+| **MEDIUM** | Reference to non-existent identifier (check #2). Unassigned TODO in non-critical path (check #4). WHY-WHAT imbalance in a publicly-documented API. Signature-docstring drift on a **non-API-facing** function (private helpers, internal-only utilities, test fixtures) where the drift is contained to the file or module (check #1). |
+| **LOW** | Redundant WHAT comment in private helper (check #5). Stale TODO with no clear expiry. Minor wording drift that doesn't change meaning. |
+
+**API-facing determination**: Use the following rules to classify signature-docstring drift severity:
+
+1. **Exported module members** (`export` in TS/JS, uppercase-leading in Go, `pub` in Rust, `public` in Java/C#): API-facing → HIGH
+2. **Public class methods** not prefixed with `_`/`#`/`private`: API-facing → HIGH
+3. **CLI command handlers**, **route handlers**, **event handler registrations**, **published REST/GraphQL endpoints**: API-facing → HIGH
+4. **Internal-only functions** (private helpers, closures, test fixtures, local utilities): non-API-facing → MEDIUM
+5. **Uncertain**: Default to HIGH (err on the side of safety for external callers). If the reviewer cannot confidently determine the visibility, treat as API-facing.
+
+### Comment Accuracy Prohibited vs Required Findings
+
+| Prohibited (Vague) | Required (Concrete) |
+|------------------|-------------------|
+| 「コメントが古そう」 | 「`src/auth.ts:45` の docstring が `@param token: string` と記載だが、current signature は `verify(user: User, context: AuthContext)` (line 47)。`token` パラメータは 3 commits 前に削除済 (`git log -S 'token' src/auth.ts`)。docstring drift」 |
+| 「TODO の期限が切れている気がする」 | 「`src/api/legacy.ts:120` の `// TODO(#234): remove before 2025-Q1` だが Issue #234 は `state: CLOSED` かつ 2025-03-15 マージ済 (`gh issue view 234`)。該当コードは依然 active path。orphan TODO」 |
+| 「参照先が存在しないかも」 | 「`src/utils.ts:8` の `// See also: helpers/format.ts::formatCurrency` だが `Grep 'formatCurrency' src/` で hit 0 件。`format/currency.ts::format` にリネーム済 (`git log --diff-filter=R`)。broken reference」 |
+| 「コメントが冗長」 | 「`src/store/user.ts:22` の `// Set the user id` (line 23: `user.id = id;`) は WHAT only の redundant comment。前後の context にも validation / migration / transaction の WHY 情報なし。deletion 推奨」 |
 
 ## Finding Quality Guidelines
 
