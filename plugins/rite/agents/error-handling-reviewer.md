@@ -79,8 +79,11 @@ For each bash error handling construct identified in Step 5:
   **Example: `gh api ... 2>&1 | jq` corrupts JSON parsing**
 
   ```bash
-  # ❌ ANTI-PATTERN: stderr (auth warnings, rate-limit notices) merges into stdout
-  repo_info=$(gh api repos/owner/repo 2>&1 | jq -r '.default_branch')
+  # ❌ ANTI-PATTERN: stderr (auth warnings, rate-limit notices) merges into stdout.
+  # Note: the variable is named `default_branch` because that's what the broken call site
+  # actually intends to capture after the `| jq` pipeline. The parse error or silent empty
+  # result means this name may or may not match the actual contents — which is part of the bug.
+  default_branch=$(gh api repos/owner/repo 2>&1 | jq -r '.default_branch')
 
   # When gh emits a warning like "gh: authentication required" to stderr,
   # the merged output becomes:
@@ -90,23 +93,44 @@ For each bash error handling construct identified in Step 5:
   # OR silently returns empty if jq tolerates the prefix and the field is absent.
   ```
 
-  **Fix patterns** (all three preserve the variable assignment from the anti-pattern and use `mktemp` + trap cleanup per this repository's standard bash safety conventions):
+  **Fix patterns** (all three capture the parsed value in `default_branch` matching the anti-pattern's intent, while separating stderr handling. Patterns A and B additionally keep the full JSON response in `repo_info` for callers that need it.):
 
   ```bash
-  # ✅ Pattern A: Redirect stderr to a mktemp-created file, preserve variable assignment
-  # Use this pattern when you need to capture BOTH the parsed result AND inspect stderr warnings.
-  gh_err=$(mktemp)
-  trap 'rm -f "$gh_err"' EXIT
-  repo_info=$(gh api repos/owner/repo 2>"$gh_err")
-  default_branch=$(jq -r '.default_branch' <<< "$repo_info")
-  if [ -s "$gh_err" ]; then
-    echo "WARNING: gh stderr output: $(cat "$gh_err")" >&2
+  # ✅ Pattern A: Full repo-convention mktemp + trap + if/else — surfaces stderr on both success and failure
+  # Use this pattern when you need the full JSON response AND want stderr warnings visible
+  # in BOTH the success path (deprecation / rate-limit notices) AND the failure path
+  # (auth errors, network failures, gh internal errors).
+  #
+  # This example follows the repository's standard bash safety convention used in
+  # plugins/rite/commands/pr/review.md Phase 2.2.1 and plugins/rite/commands/pr/fix.md Phase 4.5.2:
+  # (1) path declared before trap, (2) trap installed before mktemp, (3) signal-specific
+  # exit codes (EXIT/INT/TERM/HUP), (4) explicit mktemp failure handling, (5) gh api wrapped
+  # in if/else to surface stderr in both success and failure branches.
+  gh_err=""
+  _pa_cleanup() { rm -f "${gh_err:-}"; }
+  trap 'rc=$?; _pa_cleanup; exit $rc' EXIT
+  trap '_pa_cleanup; exit 130' INT
+  trap '_pa_cleanup; exit 143' TERM
+  trap '_pa_cleanup; exit 129' HUP
+  gh_err=$(mktemp) || { echo "ERROR: mktemp failed" >&2; exit 1; }
+
+  if repo_info=$(gh api repos/owner/repo 2>"$gh_err"); then
+    # Success path: surface any stderr warnings (deprecation, rate-limit notices)
+    if [ -s "$gh_err" ]; then
+      echo "WARNING: gh stderr output: $(cat "$gh_err")" >&2
+    fi
+    default_branch=$(jq -r '.default_branch' <<< "$repo_info")
+  else
+    # Failure path: show full stderr for debugging, then exit
+    echo "ERROR: gh api failed: $(cat "$gh_err")" >&2
+    exit 1
   fi
 
   # ✅ Pattern B: Capture stdout first, then parse
-  # Use this pattern when you want explicit exit handling on gh failure.
-  output=$(gh api repos/owner/repo) || { echo "ERROR: gh api failed" >&2; exit 1; }
-  default_branch=$(jq -r '.default_branch' <<< "$output")
+  # Use this pattern when you want the most explicit failure handling on gh error.
+  # Simpler than Pattern A because it does not inspect stderr on success, only on failure.
+  repo_info=$(gh api repos/owner/repo) || { echo "ERROR: gh api failed" >&2; exit 1; }
+  default_branch=$(jq -r '.default_branch' <<< "$repo_info")
 
   # ✅ Pattern C: Use gh's --jq flag to parse inside gh (stderr stays separate)
   # Use this pattern when you only need the parsed value and stderr can be discarded.
@@ -114,11 +138,17 @@ For each bash error handling construct identified in Step 5:
   ```
 
   **Pattern selection guide**:
-  - **Pattern A** — When you need the full JSON response in a variable for later use AND you want to surface any stderr warnings to the user (e.g., auth hints, deprecation notices). Uses `mktemp` + trap to avoid race conditions and works correctly under `set -euo pipefail` because the `if [ -s ... ]; then ... fi` form returns exit 0 on the happy path (no stderr output).
-  - **Pattern B** — When you want the most explicit failure handling on `gh api` error (fail fast with a clear message). Best for scripts where silent `gh` failures must not be tolerated.
-  - **Pattern C** — When you only need a single parsed field and don't care about stderr warnings. Most concise but loses access to full response and stderr.
+  - **Pattern A** — When you need the full JSON response in `repo_info` AND want stderr warnings visible in **both** the success path (deprecation / rate-limit notices) and the failure path (auth errors, network errors, rate limits). The `if repo_info=$(...); then ...; else ...; fi` wrapper ensures the stderr capture is surfaced in both branches, avoiding the silent-drop trap where `set -euo pipefail` kills the script before the success-path `[ -s ... ]` check can run. This is the right choice when the script must debug `gh api` failures in the field.
+  - **Pattern B** — When you want the full JSON response and explicit failure handling, but don't care about stderr warnings on the success path (deprecation notices). Simpler than Pattern A. Best for scripts where `gh api` failures must fail fast with a clear message and success-path warnings are low-value.
+  - **Pattern C** — When you only need a single parsed field and don't care about stderr warnings at all. Most concise but loses access to the full JSON response (cannot parse additional fields later).
 
-  > **Why not hardcoded `/tmp/gh.err`?** The previous revision of this example used a hardcoded path, which is vulnerable to race conditions when the script runs concurrently (two instances clobbering each other's stderr file) and to symlink attacks on multi-user systems. The rest of this repository uniformly uses `mktemp` + `trap 'rm -f' EXIT` for temp files (see `plugins/rite/commands/pr/review.md` Phase 2.2.1, `plugins/rite/commands/pr/fix.md` Phase 4.5.2). Example code in a reviewer file must not teach patterns that the reviewer itself would flag.
+  > **Why not hardcoded `/tmp/gh.err`?** The previous revision of this example used a hardcoded path, which is vulnerable to hardcoded-path race conditions (filename collisions when the script runs concurrently, symlink attacks on multi-user systems). The rest of this repository uniformly uses `mktemp` for temp files (see `plugins/rite/commands/pr/review.md` Phase 2.2.1, `plugins/rite/commands/pr/fix.md` Phase 4.5.2). Example code in a reviewer file must not teach patterns that the reviewer itself would flag.
+  >
+  > **Why the full path-declare → trap → mktemp pattern?** Two kinds of race conditions exist: (a) **hardcoded-path race** (filename collisions, symlink attacks — solved by `mktemp`), and (b) **signal-delivery race window** (a SIGTERM/SIGINT/SIGHUP arriving between `mktemp` success and `trap` installation leaves the tmp file orphaned — solved by declaring the path variable first, installing the trap, then running `mktemp`). The repository's standard convention (`plugins/rite/commands/pr/review.md` Phase 2.2.1, `plugins/rite/commands/pr/fix.md` Phase 4.5.2) addresses both. Pattern A mirrors that convention.
+  >
+  > **Why signal-specific trap entries (INT/TERM/HUP)?** A bare `trap '...' EXIT` does run on SIGTERM/SIGINT/SIGHUP in most bash builds, but the default action after the trap body is to **continue** with the next command unless the trap explicitly calls `exit`. Without explicit signal-specific entries that return POSIX-conventional exit codes (SIGINT=130, SIGTERM=143, SIGHUP=129), the script can silently resume executing later commands after a signal, producing undefined behavior. Each signal gets its own trap entry with a hard-coded exit code.
+  >
+  > **Why wrap `gh api` in `if ... then ... else ... fi` in Pattern A?** Without the wrapper, under `set -euo pipefail` a `gh api` failure exits the script before the success-path `[ -s "$gh_err" ]` stderr check can run. The stderr capture would be silently dropped in exactly the failure case the user most needs to debug (auth error, rate limit, network error). The `if/else` form guarantees that both the success path (with deprecation notices) and the failure path (with error details) surface the captured stderr.
   >
   > **Why `if [ -s "$gh_err" ]; then ... fi` and not `[ -s ... ] && echo ...`?** Under `set -euo pipefail`, the `&&` form returns a non-zero exit code on the happy path (when `[ -s ]` is false because stderr is empty). If this appears as the final statement in a function or script, the script exits with that non-zero code. The `if ... then ... fi` form always returns exit 0, matching the "this is a non-fatal notification" semantics the code expresses.
 
