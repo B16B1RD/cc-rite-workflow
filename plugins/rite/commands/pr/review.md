@@ -786,14 +786,24 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
      # `|| true` で吸収すると IO error と「マッチなし」が silent に融合する。pipefail 下で
      # rc=$? を捕捉し、exit 1 のみ no-op として扱う。
      #
-     # 重要 — `head -1` ではなく `grep -m 1` を使う:
-     # `printf | grep | head -1` は pipefail 下で `head` の早期終了 → 後段 close → 上流 grep が
-     # SIGPIPE (rc=141) を受けて pipeline 全体が rc=141 になる経路があり、case 文の `*)` (IO error
-     # 扱い) で `__FAIL_SAFE_ADD__` sentinel が誤発火する (本 Issue #350 検証付きレビュー M-6 で指摘)。
-     # `grep -m 1` で grep 自身が 1 件マッチで早期終了するように変更すれば、下流に SIGPIPE が
-     # 届かないため pipefail 下でも grep の exit 0 (マッチあり) / 1 (なし) / 2 (IO error) を
+     # 重要 — `printf | grep -m 1` ではなく here-string `<<<` を使う (本 Issue #389):
+     # pipeline `printf '%s\n' "$diff_out" | grep -m 1 ...` では **printf が上流 (writer)**、
+     # **grep が下流 (reader)** となる。`grep -m 1` が 1 件マッチで早期終了すると、下流の
+     # reader が閉じるため、**上流の printf に SIGPIPE が届く経路** が存在する。pipefail
+     # 有効時、`$diff_out` が pipe buffer (Linux デフォルト 64KB) を超えるサイズだと printf
+     # が書き込み途中で SIGPIPE を受けて rc=141 を返し、pipeline 全体の rc が 141 になる。
+     # この場合 case 文の `*)` (IO error 扱い) で `__FAIL_SAFE_ADD__` sentinel が誤発火する
+     # (Doc-Heavy PR で大きな diff のときに silent false positive が起こる経路)。
+     #
+     # `<<< "$diff_out"` は bash が入力を一時ファイル経由で grep に渡すため、書き込み中の
+     # subprocess (printf) が存在せず、grep -m 1 の早期終了で SIGPIPE を受ける相手がいない。
+     # これにより pipefail 下でも grep の exit 0 (マッチあり) / 1 (なし) / 2 (IO error) を
      # そのまま捕捉できる。
-     grep_out=$(printf '%s\n' "$diff_out" | grep -m 1 -E '^\+[[:space:]]*```[a-zA-Z]')
+     #
+     # (旧実装では「`grep -m 1` に変更すれば下流に SIGPIPE が届かない」と記述していたが、
+     # これは pipeline 方向を誤解していた。printf が上流なので SIGPIPE は上流 printf に
+     # 届く。Issue #389 で修正。)
+     grep_out=$(grep -m 1 -E '^\+[[:space:]]*```[a-zA-Z]' <<< "$diff_out")
      grep_rc=$?
      case "$grep_rc" in
        0)
