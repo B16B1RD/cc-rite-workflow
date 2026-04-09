@@ -303,46 +303,16 @@ body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
 skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 
-# 統合 trap: jq_err は常に削除、ハンドオフ 3 ファイルは「Fast Path 完了 = handoff_committed=1」
-# 時のみ保護 (trap 内で条件分岐)。これにより:
-#   - 書き出し前/書き出し中の exit 1 → 4 ファイル全削除 (orphan 防止)
-#   - 全書き出し成功+post-condition pass 後 → handoff 3 ファイルは保護、jq_err のみ削除
-#   - Phase 1.5 で明示的に cleanup を実行 (Fast Path 完了経路の正常 cleanup 経路)
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: signal 別 exit code 130/143/129、race window 回避、rc=$? capture、${var:-} safety、関数契約)
 #
-# trap 対象シグナル: EXIT INT TERM HUP の 4 種類すべて
-# - EXIT: 正常終了 / exit 1 等の意図的終了
-# - INT: Ctrl+C 等の interrupt (非対話モードでも `kill -INT` で発火)
-# - TERM: 外部からの `kill -TERM` (Claude Code Bash tool timeout / sprint team-execute の親プロセス kill 等)
-# - HUP: 端末切断 / SIGHUP (hook timeout, セッション終了)
+# 本 site 固有: 2-state commit pattern (handoff_committed)
+# - handoff_committed=0 (初期値): 書き出し前/書き出し中の exit → ハンドオフ 3 ファイル全削除 (orphan 防止)
+# - handoff_committed=1 (全書き出し成功+post-condition pass 後): ハンドオフ 3 ファイルは保護、jq_err のみ削除
+# Phase 1.5 で明示的に cleanup を実行 (Fast Path 完了経路の正常 cleanup 経路)
 #
-# 重要 — INT/TERM/HUP を明示する理由 (review.md Phase 1.2.7 / Phase 2.2.1 の trap セットアップ説明と同根、ファイル間整合性):
-# bash の EXIT trap 自体は SIGTERM/SIGHUP/SIGINT のいずれでも発火する (実証 + GNU bash manual で確認済み)。
-# しかし INT/TERM/HUP の trap action が **明示的な exit を含まないと bash は signal を consume して
-# 次のコマンドへ制御を渡してしまう** (権威ある根拠: GNU bash manual "Signals" — trap action 後に
-# bash は signal を consume し制御は次のコマンドに渡る)。trap 内で `exit <code>` を呼ばないと
-# cleanup 後に bash block が残りの命令を不完全な状態で実行する silent failure になる。
-# したがって signal 別 trap は「EXIT trap が SIGTERM で発火しないから」ではなく
-# 「signal 別に明示的な exit code (130/143/129) を返して continuation を防ぐため」に必要。
-#
-# Signal 別 exit code (silent exit 0 防止):
-# SIGINT/SIGTERM/SIGHUP 受信時の `$?` は「最後に完了したコマンドの exit status」で、
-# signal 自体が 130/143/129 を set するとは限らない。`printf` 成功直後に SIGTERM が来ると
-# `rc=0` となり、上位の fix loop 制御が「正常終了」と誤判定する silent failure が起きる。
-# これを防ぐため signal 別 trap で明示的に exit 130/143/129 を返す。
-#
-# 重要 — EXIT trap の `rc=$?` capture (bash classic pitfall):
-# bash の EXIT trap が発火した時点で `$?` は元の exit status を保持するが、`_rite_fix_fastpath_cleanup`
-# 関数が実行されると関数最後のコマンド (`rm -f` または `[ ... ]` test) の戻り値で `$?` が**上書き**される。
-# したがって `trap '_rite_fix_fastpath_cleanup; exit $?' EXIT` は exit code が常に 0 (rm -f の戻り値) に
-# なる致命的バグを生む (本 bash block 内の全ての `exit 1` が silent に exit 0 に変換される)。
-# 必ず `rc=$?` で関数呼び出し**前**に元の exit code を変数に保存してから、cleanup → `exit $rc` する。
+# H-3: gh_api_err も cleanup 対象に含める (trap 未保護による silent orphan regression を防止)
 handoff_committed=0
-# 関数責務: cleanup 操作のみを実行し、exit code を変更しない (関数の戻り値は trap action 側で無視される)。
-# exit code の決定は呼び出し側の trap action (`exit $rc` / `exit 130` 等) が責任を持つ。
-# 関数内に `exit` / `return <非ゼロ>` を追加してはならない (silent exit 0 regression を誘発する)。
-#
-# H-3 修正: gh_api_err を cleanup 対象に追加 (旧実装は jq_err / body_file / author_file / skip_file の
-# 4 ファイルのみで、gh_api_err が trap 未保護だった)。`${var:-}` 形式で未定義時も silent no-op で安全。
 _rite_fix_fastpath_cleanup() {
   rm -f "${gh_api_err:-}" "${jq_err:-}"
   if [ "$handoff_committed" = "0" ]; then
@@ -1202,13 +1172,9 @@ When posting the reply:
 ```bash
 # PR レビューコメントへの返信（in_reply_to で元コメントを指定）
 # jq --rawfile で安全に JSON を生成し、gh api に渡す
-# trap は Phase 4.5.1/4.5.2/Fast Path と同型の signal 別 4 行パターンに統一
-# (signal 受信時に明示的 exit code 130/143/129 を返し silent INT/TERM/HUP continuation を防ぐ)
 #
-# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
-# mktemp を先に実行して trap を後追いで設定すると、mktemp 成功〜trap 設定間の race window で
-# SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが orphan として残る。
-# `${var:-}` は未定義時 silent no-op で安全 (他の cleanup 関数と同型)。
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: 「パス先行宣言 → trap 先行設定 → mktemp」の順序、signal 別 exit code、${var:-} safety)
 tmpfile=""
 _rite_fix_phase24_cleanup() {
   rm -f "${tmpfile:-}"
@@ -1511,11 +1477,8 @@ When posting the report:
 ```bash
 # ✅ SAFE: --body-file for dynamic report content
 #
-# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path / Phase 4.5.1/4.5.2 と同じパターン):
-# mktemp を先に実行して trap を後追いで設定すると、mktemp 成功〜trap 設定間の race window で
-# SIGTERM/SIGINT が到達した場合に作成済み tmp ファイルが orphan として残る。
-# bash の INT/TERM/HUP trap action は **明示的な exit を含まないと処理を継続する**ため、
-# signal 別 exit code (130/143/129) を必ず返す。
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: 「パス先行宣言 → trap 先行設定 → mktemp」の順序、signal 別 exit code、${var:-} safety)
 tmpfile=""
 _rite_fix_phase42_cleanup() {
   rm -f "${tmpfile:-}"
@@ -1673,34 +1636,20 @@ Generate the Issue title in the following format:
 ```
 
 ```bash
-# 統合 cleanup 関数 + signal 別 trap 4 行パターン (Fast Path / py_exit2 / Phase 4.5.1 / Phase 4.5.2 と同型)。
-# トラップ semantics の詳細根拠 (signal 別 exit code 130/143/129 の必要性、bash の signal continuation
-# 挙動、関数内 `${var:-}` による未定義変数 silent no-op) は Fast Path 冒頭 (Phase 1.2) の Implementation
-# note と Fast Path bash block の `_rite_fix_fastpath_cleanup` 関数定義箇所周辺の
-# コメントブロック (signal 別 trap setup の根拠説明) を参照。
-# (行番号参照は drift しやすいため Phase 1.2 Fast Path bash block 内の `_rite_fix_fastpath_cleanup`
-#  関数定義を grep の起点とする)
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
 #
-# bash block 後段で warnings_jq_err を追加するため、cleanup 対象を関数にまとめて 1 つの trap で全変数を
-# カバーする。trap を再定義すると前段の `tmpfile` cleanup が上書きで失われる (silent orphan 経路)。
+# 本 site 固有: 2-state commit pattern (issue_created) — Fast Path の handoff_committed と同型
+# - issue_created=0 (初期値): cleanup は tmpfile を preserve (Issue 作成失敗時に debug 用本文を残す)
+# - issue_created=1 (gh issue create 成功後): cleanup は tmpfile を削除 (debug 不要)
 #
-# issue_created フラグ (Fast Path の `handoff_committed` と同型の 2-state commit pattern):
-#
-# 状態遷移:
-#   - issue_created=0 (初期値): cleanup は tmpfile を **preserve** する (Issue 作成失敗時に
-#     debug 用に Issue 本文を残すため)。stderr に preserved path を表示する。
-#   - issue_created=1 (gh issue create 成功後): cleanup は tmpfile を **削除** する (debug 不要)。
-#
-# Issue 作成に失敗した場合 (`gh issue create` の 5xx / rate limit / network error 等) には、
-# tmpfile を preserve することで、ユーザーが事後的に Issue 本文を検証して手動で再作成できる。
+# 短命変数も統合 trap で保護する (M-4): mktemp 成功〜直後の rm -f までの race window で
+# SIGINT/SIGTERM/SIGHUP 到達時の orphan を防ぐため、warnings_jq_err / project_reg_jq_err も
+# cleanup 対象に含める。bash block 後段で warnings_jq_err を追加するため、cleanup は関数にまとめて
+# 1 つの trap で全変数をカバーする (trap 再定義による前段 cleanup 上書き防止)。
 issue_created=0
 tmpfile=""
 warnings_jq_err=""
-# M-4 修正 (本 Issue #350 検証付きレビュー M-4): project_reg_jq_err も統合 trap で保護
-# 旧実装は「短命変数のため統合 trap には追加しない」と明示していたが、bash の signal 到達は
-# どんな短命変数でも可能 (mktemp 成功 〜 直後の rm -f までの間に SIGINT/SIGTERM/SIGHUP が到達すると
-# orphan として残る)。並列 fix セッション × race window で /tmp 累積汚染が起きるため、
-# 統合 cleanup 関数の `rm -f` 対象に追加する。defense-in-depth として `${var:-}` 形式で安全化。
 project_reg_jq_err=""
 _rite_fix_issue_create_cleanup() {
   if [ "$issue_created" = "1" ]; then
@@ -1967,15 +1916,13 @@ Identify the related Issue from the PR or branch name.
 # Phase 1.1 で --json に body を含めて取得済みのため、再取得不要
 # 保持している body フィールドから直接パターンマッチ
 #
-# 重要 — パス先行宣言 → trap 先行設定 → mktemp の順序 (Fast Path / Phase 4.5.2 と同じパターン)。
-# 順序とトラップ semantics の根拠 (race window / signal 別 exit code 130/143/129 の必要性) は
-# Fast Path Implementation note と Fast Path bash block の `_rite_fix_fastpath_cleanup` 関数定義箇所
-# 周辺のコメントブロック (signal 別 trap setup の根拠説明) を参照 (行番号 drift 防止のため anchor 参照)。
-# mktemp 失敗時の exit code を check しないと、$pr_body_tmp が空文字列になり後続の
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: 「パス先行宣言 → trap 先行設定 → mktemp」の順序、signal 別 exit code、${var:-} safety)
+#
+# 本 site 固有: mktemp 失敗時の exit code を check しないと、$pr_body_tmp が空文字列になり後続の
 # `printf > ""` が silent redirection error で空ファイルを参照し、issue_number が silent empty に落ちる。
+# M-1 で 2>&1 撤廃に伴い pr_body_grep_err / branch_grep_err も独立 stderr 退避ファイルとして統合 trap で保護。
 pr_body_tmp=""
-# pr_body_grep_err / branch_grep_err も先行宣言して cleanup 対象に含める (M-1 で 2>&1 を撤廃した
-# ことに伴い、独立 stderr 退避ファイルが必要になった)。`${var:-}` は未定義時 silent no-op で安全。
 pr_body_grep_err=""
 branch_grep_err=""
 # wm_emit_done フラグ (M-4 / M-5 対応): retained flag が 1 度 emit されたら、以降の経路で
@@ -2180,16 +2127,16 @@ The work memory update performs **three operations** in a single Bash tool invoc
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
 # comment_data の取得・更新内容の生成・PATCH を分割すると変数が失われる（Issue #693, #90）
 #
-# 重要 — Phase 4.5.2 統合 trap セットアップ (本 Issue #350 検証付きレビュー H-1 / M-4 で指摘):
-# Fast Path / Phase 4.5.1 と同じ「パス先行宣言 → trap 先行設定 → mktemp」パターンを採用。
-# 旧実装は trap 設定が mktemp 群より後にあり、最初の mktemp 〜 trap 設定までの race window で
-# SIGTERM/SIGINT を受けた場合に新規 tmp ファイルが orphan として残る経路があった。
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: 「パス先行宣言 → trap 先行設定 → mktemp」の順序、signal 別 exit code、${var:-} safety、関数契約)
 #
-# 統合 trap で保護する対象 (Phase 4.5.2 で作成される全一時ファイル):
+# 本 site 固有: 統合 trap で保護する対象 (Phase 4.5.2 で作成される全一時ファイル)
 # - gh_api_err: gh api の stderr 退避用 (H-1 で新設)
 # - base_branch_grep_err: rite-config.yml grep の stderr 退避用 (M-3 で新設)
 # - diff_stderr_tmp: git diff の stderr 退避用
 # - body_tmp / tmpfile / files_tmp / history_tmp: Python 入出力用
+# - pr_body_tmp: H-7 — Phase 4.5.1 と 4.5.2 が同一 Bash invocation で連結された場合の
+#   trap 上書きによる orphan を defense-in-depth として防止
 gh_api_err=""
 base_branch_grep_err=""
 diff_stderr_tmp=""
@@ -2197,15 +2144,7 @@ body_tmp=""
 tmpfile=""
 files_tmp=""
 history_tmp=""
-# H-7 修正 (本 Issue #350 検証付きレビュー H-7): pr_body_tmp を Phase 4.5.2 cleanup に含める
-# Phase 4.5.1 と Phase 4.5.2 が同一 Bash invocation で連結された場合、Phase 4.5.2 の trap が
-# Phase 4.5.1 の trap を上書きするため、Phase 4.5.1 で作成された pr_body_tmp が orphan 化する。
-# `_rite_fix_py_exit2_cleanup` (line 2361-2365) には既に pr_body_tmp が含まれているため、
-# 通常 cleanup 経路でも同様に保護する。bash block 境界を越えた変数参照は通常 unset で no-op だが、
-# 同一 invocation 連結時の defense-in-depth として明示登録する。
 pr_body_tmp=""
-# 関数責務: cleanup 操作のみを実行し、exit code を変更しない (Fast Path と同型 — `${var:-}` で
-# 未定義時は `rm -f ""` の silent no-op になる)
 _rite_fix_phase452_cleanup() {
   rm -f "${gh_api_err:-}" "${base_branch_grep_err:-}" "${diff_stderr_tmp:-}" \
         "${body_tmp:-}" "${tmpfile:-}" "${files_tmp:-}" "${history_tmp:-}" \
@@ -2548,14 +2487,14 @@ with open(out_path, "w") as f:
       echo "ERROR: Python script detected git diff failure marker and refused to PATCH work memory silently." >&2
       # tmpfile の debug 参照を提供するため、exit 前に trap から tmpfile を除外して削除を防ぐ
       # (exit 時に trap が発火して tmpfile が消えると、下記の debug 案内が嘘になる)
-      # Fast Path と同じ signal 別 trap 構造に統一: SIGINT/SIGTERM/SIGHUP 受信時も明示的 exit code を返す
+      #
+      # trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+      # (rationale: signal 別 exit code 130/143/129、関数契約、${var:-} safety)
+      #
+      # 本 site 固有: pr_body_tmp は通常 unset (別 bash invocation のスコープ変数) だが、Phase 4.5.1 と
+      # Phase 4.5.2 が誤って同一 invocation に統合された場合の defense-in-depth として cleanup 対象に含める
+      # (L-9 / H-7 同根)。tmpfile は debug 参照用に preserve する。
       _rite_fix_py_exit2_cleanup() {
-        # L-9 修正 (本 Issue #350 検証付きレビュー L-9): pr_body_tmp 参照の意図文書化
-        # `${pr_body_tmp:-}` は通常 unset (Phase 4.5.1 のスコープ変数で、Phase 4.5.2 とは別 bash invocation)
-        # のため、`rm -f ""` の silent no-op となり実害なし。defense-in-depth として残す:
-        # Phase 4.5.1 と Phase 4.5.2 が誤って同一 invocation に統合された場合 (将来の refactoring ミス)
-        # でも pr_body_tmp が cleanup されるよう保護する。`_rite_fix_phase452_cleanup` (line 2138 付近) も
-        # 同じ理由で `${pr_body_tmp:-}` を含めている (H-7 修正での一貫性)。
         rm -f "${pr_body_tmp:-}" "${body_tmp:-}" "${files_tmp:-}" "${history_tmp:-}" \
               "${diff_stderr_tmp:-}" "${gh_api_err:-}" "${base_branch_grep_err:-}"
         # tmpfile は preserved for debug
