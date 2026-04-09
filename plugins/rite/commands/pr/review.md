@@ -1600,6 +1600,7 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
   - 「Phase 4.5.1 verification テンプレートの Part 1 (前回指摘の修正検証) を skip せずに実行すること」
 - 入力データ (`{previous_findings_table}` / `{incremental_diff}` / `{change_intelligence_summary}`): Phase 1.2.4 で取得済みのものを再供給
 - **結果 merge 戦略**: retry 結果は元 reviewer の output を **置き換える** (append ではない)。元 output は破棄し、retry output のみを Phase 5.1 結果集合に使用する
+  - **Note**: retry prompt は full + verification 両 template を concat して再送している (上記 `prompt` 内容参照) ため、retry output は元 output の全指摘 (verification mode 由来 + full mode 由来) を**包含する**。元 output 内の非 verification finding が retry 置き換えで消失することはない。
 - retry 実行後、`verification_post_condition_retry_count[{reviewer_type}]` を +1 し、もう一度判定条件を評価する。retry 後も欠落していれば `error` に昇格する
 
 **Phase 4.4 retry classification との関係** (#358 Phase B で明示化):
