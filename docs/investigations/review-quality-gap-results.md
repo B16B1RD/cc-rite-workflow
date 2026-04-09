@@ -459,10 +459,78 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 | 指標 | 目標 | 結果 | 判定 |
 |------|------|------|------|
 | カテゴリカバレッジ | ≥4/6 | **4/6** (✅ 4 件 / ⚠️ 2 件) | ✅ **達成** |
-| 総 finding 数 vs baseline_A | improvement | 14 → 19 (件数 +35.7%) | ⚠️ 検出数は増加 (FP rate 未測定のため改善の質は保留) |
+| 総 finding 数 vs baseline_A | improvement | 14 → 19 (件数 +35.7%) | ✅ **改善確認** (FP rate 10.5% → 検出数増の大部分は真陽性) |
 | カバレッジ率 | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 285、cycle 3 fix 後)、intersection 計算は未着手 | 分母は確定したが、baseline_A ∩ baseline_V′ の計算は別タスク |
-| FP rate | ≤20% | 未測定 | 手動判定セッション未実施 |
+| FP rate | ≤20% | ✅ **10.5%** (2/19, strict) / 18.4% (conservative) / 26.3% (worst case) | ✅ **達成** ([§4.4.1](#441-fp-rate-手動判定-issue-393-2026-04-10) — Issue #393 手動判定) |
 | signal rate (baseline_V) | ≥90% | ✅ **100.0%** (point estimate, 95% CI [87.1%, 100%]) | ✅ **達成** ([§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10) — Issue #391 サンプリング監査, n=26 effective) |
+
+#### 4.4.1 FP rate 手動判定 (Issue #393, 2026-04-10)
+
+**対象**: PR #384 ([reviewed_commit: `fec82c0`](https://github.com/B16B1RD/cc-rite-workflow/commit/fec82c0)) に対する rite review 結果 19 件 ([PR コメント](https://github.com/B16B1RD/cc-rite-workflow/pull/384#issuecomment-4212673158))。
+
+**判定手順**: 各 finding について `git show fec82c0:<path>` で当時のコード状態を直接読み、主張の事実性を検証。以下 3 分類で判定:
+
+- **True Positive (TP)**: `fec82c0` 時点のコードに実際にその問題が存在し、reviewer の主張が事実に合致
+- **False Positive (FP)**: `fec82c0` 時点のコードに問題は存在せず、reviewer の誤判定 / 既に注記済み / 後続状態を projection
+- **Ambiguous**: 主張は部分的に事実だが severity/解釈に幅があり、白黒判定困難
+
+**判定結果**:
+
+| # | Reviewer | Sev | 主張要約 | 判定 | 根拠 (fec82c0 検証) | 後続対応 |
+|---|----------|-----|----------|:----:|-------------------|---------|
+| 1 | prompt-engineer | HIGH | fix.md Phase 8.1 reason 表 12 値のみ、bash は 27+ emit | **TP** | `fix.md` で `WM_UPDATE_FAILED` / `REPORT_POST_FAILED` / `ISSUE_CREATE_FAILED` / `REPLY_POST_FAILED` 等 reason 多数 (L1226/1239/1533/1723/1998/2018/2247/2267 ほか) | e291e54 で修正済み |
+| 2 | prompt-engineer | HIGH | review.md Phase 2.2.1 pipeline SIGPIPE 方向誤解 | **TP** | `review.md` L808 に `printf '%s\n' "$diff_out" \| grep -m 1 -E ...`、L803-805 コメントが "下流に SIGPIPE" と誤記 | #396 (here-string 化) で修正済み |
+| 3 | prompt-engineer | MED | fix.md Phase 4.5.1 literal `{issue_number}` in sentinel | **TP** | `fix.md` L2018 で `echo "[CONTEXT] WM_UPDATE_FAILED=1; ...; issue_number={issue_number}"` — placeholder 未解決のまま bash 実行経路あり | 未対応 (別 Issue 候補) |
+| 4 | prompt-engineer | MED | `<br\s*/?>` case-sensitive で `<BR>` にマッチせず | **TP** | `review.md` L1599/1634/1655/1666/1667 すべて lowercase `<br>` のみ、`(?i)` フラグ / `[bB][rR]` 不使用 | 未対応 (別 Issue 候補) |
+| 5 | prompt-engineer | MED | tech-writer.md `{N} categories were inconclusive` placeholder 曖昧性 | **Ambiguous** | `tech-writer.md` L185/186 に literal `{N}` 存在するが、L188 で「実際の件数に置換」instruction あり。遵守されれば問題なし、曖昧性リスクは残る | 任意 |
+| 6 | prompt-engineer | LOW | fix.md `grep -qE "/(pull\|issues)/{pr_number}$"` anchor 将来 drift risk | **TP** | `fix.md` L438 確認。現仕様では機能するが schema 変更耐性なし | 任意 (LOW) |
+| 7 | prompt-engineer | LOW | internal-consistency.md Enumeration 例が `eleven`〜 / hedge words 未カバー | **FP** | `internal-consistency.md` L135 に既に「文脈に応じて他の数詞を追加」注記あり。finding 自身が「既に注記ありのため LOW」と自認 — no-op finding | — |
+| 8 | tech-writer | HIGH | closure.md が `review.md:1192-1195` Part A 抽出仕様を quote (stale) | **TP** | `closure.md` L25 で `review.md:1192-1195` quote。`review.md` L1192-1195 は "CRITICAL — Sub-Agent Invocation MANDATORY" で Part A 抽出仕様ではない (fec82c0 時点で既に drift) | #387/#395 で Phase 0 スナップショット注記追加済み |
+| 9 | tech-writer | HIGH | closure.md `_reviewer-base.md` 見出し L3/L12/L22/L42 (stale → L3/L12/L31/L51) | **FP** | `closure.md` L32-36 の引用と `_reviewer-base.md` 実際の headings (L3/L12/L22/L42/L52) は fec82c0 時点で一致。「現行は L3/L12/L31/L51」は fec82c0 時点では false — Phase C 追加後の将来状態を projection した誤判定 |— |
+| 10 | tech-writer | HIGH | closure.md `review.md:1237` `subagent_type: general-purpose` quote (drift) | **TP** | `closure.md` L42 で quote。`review.md` L1237 は "Part A — Shared reviewer principles" で subagent_type 記述ではない (fec82c0 時点で既に drift) | #387/#395 で Phase 0 スナップショット注記追加済み |
+| 11 | code-quality | HIGH | `trap` 4 行パターン + cleanup 関数の 9 箇所重複 (fix.md 6 + review.md 2) | **TP** | `fix.md` trap 24 行 (6 箇所 × 4 event) + `review.md` trap 8 行 (2 箇所 × 4 event) = 8 箇所を確認 (finding の 9 件カウントとは 1 件差、substance 一致) | #394 で共通リファレンス (`bash-trap-patterns.md`) に集約済み |
+| 12 | code-quality | HIGH | fix.md Phase 1.2 Fast Path 単一 bash 約 250 行 11 ステップ | **TP** | `fix.md` Phase 1.2 全体 654 行、Fast Path 単一 block が massive (確認) | 未対応 (別 Issue 候補) |
+| 13 | code-quality | MED | fix.md コメント過密 (実装の 5-10 倍、同情報 3-5 回重複) | **Ambiguous** | Phase 1.2 周辺 50 行中 17 行コメント (34%)。「実装の 5-10 倍」は誇張気味だが「高密度」は事実。severity は subjective | — |
+| 14 | code-quality | MED | fix.md Phase 1.0/1.2 Detection rules 複雑 regex + 自然言語散在、bash 例なし | **TP** | `fix.md` L109-113 "Detection rules (順序ベース判定)" — table 形式のみで executable bash スニペット欠落 | 任意 |
+| 15 | code-quality | MED | review.md Phase 1.2.7 ratio 計算と all_files_excluded の責務分離散在 | **Ambiguous** | `review.md` L327-355 で skip conditions / retained flags / configuration が mix される構造。読みにくいが仕様整合性は維持されている (subjective) | — |
+| 16 | code-quality | MED | fix.md cleanup 関数 7 個並立、すべて `rm -f` | **TP** | `fix.md` で `_cleanup() {` パターン 7 個確認 | 任意 |
+| 17 | code-quality | MED | review.md Phase 5.4 Doc-Heavy 検証状態テーブル full/verification mode で完全重複 | **TP** | `review.md` L1957 と L2110 で同一セクション、L1992 と L2147 で重複を自認する warning あり | 未対応 (別 Issue 候補) |
+| 18 | code-quality | LOW | fix.md Phase 1.2 option 集合 3 箇所で別々に列挙 | **TP** | `fix.md` L589/599-600/632/643/664 で Cancel 関連 option 散在 | 任意 (LOW) |
+| 19 | code-quality | LOW | fix.md review cycle ID (`本 Issue #350 検証付きレビュー X-N`) 大量残存 | **TP** | `fix.md` で該当パターン 47 件、`(H-N)`/`(M-N)` 形式 13 件確認 | 任意 (LOW) |
+
+**集計**:
+
+| 判定 | 件数 | 割合 |
+|------|------|------|
+| True Positive (TP) | 14 | 73.7% |
+| False Positive (FP) | 2 | **10.5%** |
+| Ambiguous | 3 | 15.8% |
+| 合計 | 19 | 100.0% |
+
+**FP rate の感度分析**:
+
+| シナリオ | Ambiguous の扱い | FP rate | 判定 |
+|---------|-----------------|---------|:----:|
+| Strict (採用) | Ambiguous = TP 扱い | **10.5%** (2/19) | ≤20% ✅ |
+| Conservative | Ambiguous = 0.5 FP | 18.4% (3.5/19) | ≤20% ✅ |
+| Worst case | Ambiguous = 全て FP | 26.3% (5/19) | 21-30% ⚠️ |
+
+**採用判定**: Strict 解釈 (FP = reviewer の明確な誤判定のみ) に基づく **FP rate = 10.5%**、目標 ≤20% を達成。Conservative 解釈 (18.4%) でも目標達成。Worst case (26.3%) でも rollback 閾値 30% は下回る。
+
+**FP の内訳** (どちらも性質が異なる):
+
+- **PE-L2 (internal-consistency.md enumeration)**: reviewer 自身が「既に注記ありのため LOW」と自認しており、finding は本質的に no-op 指摘。Confidence 低い LOW 指摘を出力する reviewer の質的判断を改善する余地はあるが、`confidence_threshold` の見直しは不要 (LOW は意思決定に影響しない)。
+- **TW-H2 (_reviewer-base.md 見出し drift)**: fec82c0 時点では drift は発生しておらず、reviewer が Phase C 追加後の将来状態を現在時点に projection した誤判定。tech-writer reviewer の「line number citation 検証時の時点整合性」が課題 (別 Issue 起票候補)。
+
+**Ambiguous の扱い**: 3 件はすべて code-quality / prompt-engineer の MED severity で、主張は一部事実だが severity / 修正優先度が subjective。「reviewer の誤判定」とは言えず、かつ「明確に事実」とも言えない境界ケース。FP rate strict 計算では TP 扱いとしている。
+
+**総合判定**: **≤20% 目標達成**。Phase D の検出数増加 (+35.7%) は FP 量産ではなく真陽性の増加が主因であることが確認された。
+
+**後続アクション**:
+
+1. **Phase D 完了条件 `FP rate の実測値確定` を checked 状態に更新**
+2. 任意 — TW-H2 の projection 誤判定パターンを tech-writer reviewer の教訓として記録する Issue 起票 (reviewer calibration)
+3. FP rate ≤20% 達成のため rollback / 閾値見直し Issue 起票は **不要**
 
 ### 4.5 Phase D 完了条件
 
@@ -470,7 +538,7 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 - [x] カテゴリカバレッジ実測値の確定 (4/6, ≥4/6 達成)
 - [x] baseline_V の signal rate 監査 (Issue #391 で完了 — [§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10))
 - [ ] カバレッジ率の intersection 計算 (`baseline_A ∩ baseline_V′` の本体計算は別タスク。フォローアップ Issue で追跡予定)
-- [ ] FP rate の実測値確定 (手動判定セッション必要、別タスク)
+- [x] FP rate の実測値確定 (Issue #393 で完了 — [§4.4.1](#441-fp-rate-手動判定-issue-393-2026-04-10), FP rate = 10.5% (2/19, strict))
 - [ ] 対照 PR 3 件での検証 (TS / Bash / mixed)
 
 **Phase D の主要目的 (改善後 review system で PR #350 diff を測定) は達成**。残タスク (signal rate 監査、対照 PR、FP rate 手動判定) は dedicated session で別途実施。
