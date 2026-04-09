@@ -13,15 +13,17 @@
 |------|------|------|------|
 | カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 実測未完了 (baseline_V 個別データ未取得) | signal rate 監査が未完了のため分母未確定 |
 | False positive rate | ≤20% | 🔶 未測定 (手動判定セッション未実施) | 後続セッションで手動判定 |
-| **カテゴリカバレッジ (6中4以上)** | **≥4/6** | ✅ **5/6 実測達成** (理論分析では 6/6) | **✅ 達成** |
+| **カテゴリカバレッジ (6中4以上)** | **≥4/6** | ✅ **4/6 実測達成** (理論分析では 6/6) | **✅ 達成** |
 | 対照 PR FP rate | ≤30% | 🔶 対照 PR 未実施 (PR #384 replay のみ) | 時間制約により replay のみ実施 |
 | signal rate (baseline_V) | ≥90% 望ましい | 🔶 監査未完了 | 個別指摘データ未取得 |
 
 **Phase D 実測の主要発見 (PR #384 replay, 2026-04-09)**:
 - **総 finding 数: 19 件** (CRITICAL 0 / HIGH 7 / MEDIUM 8 / LOW 4)
 - **Reviewer 内訳**: prompt-engineer 7 / tech-writer 3 / code-quality 9 / error-handling 0
-- **baseline_A (PR #350 改善前 cycle 1): 14 件** → **Phase D 後: 19 件** (+35.7%)
-- **カテゴリカバレッジ: 5/6 実測達成** (目標 4/6 クリア)
+- **baseline_A (PR #350 改善前 cycle 1): 14 件** → **Phase D 後: 19 件** (件数 +35.7%、**FP rate 未測定のため改善の質は保留**)
+- **カテゴリカバレッジ: 4/6 実測達成** (目標 4/6 クリア)
+
+**残タスク**: 下記リストは要約。詳細は [§4.5 Phase D 完了条件](#45-phase-d-完了条件) が single source of truth。
 
 **制約事項**:
 - Phase A/B/C/C2 が全てマージ済みのため、**個別ラウンド測定 (Round 1-3) は実施不可**
@@ -181,9 +183,11 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 
 ---
 
-## 3. 実測制約と今後のアクションプラン
+## 3. 当初の実測制約と推奨アクションプラン (Phase D 初期分析)
 
-### 3.1 実測が不可能だった理由
+> **⚠️ 更新 (2026-04-09)**: 本セクションは Phase D 実測**前**の初期分析記録。その後 §4 で Option A (worktree replay) を実施し、**PR #384 で実測データを取得済み**。本セクションは当初の制約分析として残すが、実測結果と残タスクは [§4 Phase D 実測結果](#4-phase-d-実測結果-pr-384-replay-2026-04-09) を参照すること。特に「replay ブランチ conflict」は worktree (`git worktree add e1498f5`) 方式で回避できることが判明した。
+
+### 3.1 当初想定されていた実測制約 (後に §4 Option A で解決)
 
 | 制約 | 詳細 |
 |------|------|
@@ -191,9 +195,11 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 | replay ブランチ conflict | Phase A/B/C/C2 が PR #350 と同じファイル (review.md, fix.md, tech-writer.md 等) を大幅変更。`git apply` / `git revert -m 1` / `git cherry-pick` いずれも conflict |
 | baseline_V 個別データ未取得 | verified-review の 172 件の個別指摘は PR コメントではなくセッション会話内に散在。signal rate 監査にはセッションログからの構造化抽出が必要 |
 
-### 3.2 推奨アクションプラン (別セッションで実施)
+### 3.2 当初の推奨アクションプラン (Option A は §4 で実施済み)
 
-#### Option A: Worktree ベースの replay (推奨)
+> **状態**: Option A は §4.1 で実施完了。Option B (対照 PR 3 件)・Option C (signal rate 監査) は dedicated session で残タスクとして継続。**残タスクの single source of truth は [§4.5 Phase D 完了条件](#45-phase-d-完了条件)** を参照。
+
+#### Option A: Worktree ベースの replay (✅ §4.1 で実施済み)
 
 1. **PR #350 マージ直前の develop HEAD** (`e1498f5` = PR #350 merge commit `54b291f` の第一親) から worktree を作成
 2. worktree 上で PR #350 の diff を apply (この commit には PR #350 の変更が含まれていないため clean apply 可能)
@@ -265,25 +271,34 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 
 ### 4.3 カテゴリカバレッジ実測
 
-目標: 6 カテゴリ中 **4 以上**で finding 検出。
+**集計ルール** (silent inflation 防止のため明示定義):
 
-| # | カテゴリ | 検出 | 検出箇所 |
-|---|---------|------|---------|
-| 1 | flow control | ⚠️ 間接 | code-quality HIGH #2 (250 行 bash block の到達性) |
-| 2 | i18n parity | ✅ | tech-writer が CHANGELOG.md/ja.md・README.md/ja.md の日英同期を verify (問題なし) |
-| 3 | pattern portability | ✅ | prompt-engineer MEDIUM (Evidence regex case-sensitive), prompt-engineer LOW (grep `$` anchor) |
-| 4 | dead code | ✅ | code-quality LOW (review cycle ID 過剰残存) |
-| 5 | stderr 混入 | ✅ | error-handling 指摘 0 件 = 既に修正済みを確認 |
-| 6 | semantic collision | ✅ | prompt-engineer MEDIUM (`{N}` placeholder 曖昧性) |
+- **✅ 検出あり**: reviewer がそのカテゴリに該当する finding を 1 件以上報告した
+- **✅ verify 済み (finding 0 件)**: reviewer がそのカテゴリを明示的に verify したが finding なし (例: i18n parity で両言語を突き合わせた上で「問題なし」と宣言)。5/6 の分子に含める
+- **⚠️ 間接検出**: 別カテゴリの finding として報告されたが、対象カテゴリに間接的に寄与する。**5/6 の分子には含めない**
+- **❌ 未検出**: reviewer が明示的に verify せず、finding もなし
 
-**実測カテゴリカバレッジ: 5/6** (flow control は間接的のみ)
+目標: 6 カテゴリ中 **4 以上**で ✅ 判定。
+
+| # | カテゴリ | 判定 | 根拠 |
+|---|---------|------|------|
+| 1 | flow control | ⚠️ 間接 | code-quality HIGH #2 (250 行 bash block) が間接的に到達性問題を含むが、flow control 専用の verify なし |
+| 2 | i18n parity | ✅ verify 済み | tech-writer が CHANGELOG.md/ja.md・README.md/ja.md の日英同期を突き合わせて「問題なし」と宣言 |
+| 3 | pattern portability | ✅ 検出あり | prompt-engineer MEDIUM (Evidence regex case-sensitive), LOW (grep `$` anchor) |
+| 4 | dead code | ✅ 検出あり | code-quality LOW (review cycle ID 過剰残存) |
+| 5 | stderr 混入 | ⚠️ evidence 不足 | error-handling 指摘 0 件だが、「既に修正済み」の証拠 (grep / commit 参照) を本レポートに記録できず。verify 済みと宣言する根拠が弱いため分子から除外 |
+| 6 | semantic collision | ✅ 検出あり | prompt-engineer MEDIUM (`{N}` placeholder 曖昧性) |
+
+**実測カテゴリカバレッジ: 4/6** (✅ 4 件: i18n, pattern, dead code, semantic / ⚠️ 2 件: flow control, stderr)
+
+**目標 4/6 に対し 4/6 で最低ラインを達成**。ただし初回の reviewer 指摘では「明示的な verify」の痕跡が弱いため、後続セッションで stderr 混入カテゴリの verify 強化 (error-handling reviewer の明示的 verify report 導入) を推奨。
 
 ### 4.4 判定
 
 | 指標 | 目標 | 結果 | 判定 |
 |------|------|------|------|
-| カテゴリカバレッジ | ≥4/6 | **5/6** | ✅ **達成** |
-| 総 finding 数 vs baseline_A | improvement | +35.7% | ✅ 改善を実測 |
+| カテゴリカバレッジ | ≥4/6 | **4/6** (✅ 4 件 / ⚠️ 2 件) | ✅ **達成** |
+| 総 finding 数 vs baseline_A | improvement | 14 → 19 (件数 +35.7%) | ⚠️ 検出数は増加 (FP rate 未測定のため改善の質は保留) |
 | カバレッジ率 | ≥70% | 未判定 | baseline_V 個別データ未取得 |
 | FP rate | ≤20% | 未判定 | 手動判定セッション未実施 |
 | signal rate (baseline_V) | ≥90% | 未判定 | 個別指摘データ未取得 |
