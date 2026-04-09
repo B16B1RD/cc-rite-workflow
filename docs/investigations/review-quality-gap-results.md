@@ -25,10 +25,10 @@
 
 **残タスク**: 下記リストは要約。詳細は [§4.5 Phase D 完了条件](#45-phase-d-完了条件) が single source of truth。
 
-**制約事項**:
+**制約事項** (詳細は [§4.5 Phase D 完了条件](#45-phase-d-完了条件)):
 - Phase A/B/C/C2 が全てマージ済みのため、**個別ラウンド測定 (Round 1-3) は実施不可**
-- baseline_V (verified-review 172件) の個別指摘データは PR コメントに存在せず、セッションログからの完全抽出には dedicated session が必要
-- 対照 PR 3 件 (TS code / Bash script / mixed) は時間制約で未実施 — Phase D 目的の "改善後 review system で PR #350 diff を測定" は達成
+- baseline_V 個別指摘データ未取得 (詳細は [§1.2](#12-baseline_v-verified-review))
+- 対照 PR 3 件 (TS code / Bash script / mixed) は時間制約で未実施 — Phase D 主目的 "改善後 review system で PR #350 diff を測定" は達成
 
 ---
 
@@ -299,9 +299,9 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 |------|------|------|------|
 | カテゴリカバレッジ | ≥4/6 | **4/6** (✅ 4 件 / ⚠️ 2 件) | ✅ **達成** |
 | 総 finding 数 vs baseline_A | improvement | 14 → 19 (件数 +35.7%) | ⚠️ 検出数は増加 (FP rate 未測定のため改善の質は保留) |
-| カバレッジ率 | ≥70% | 未判定 | baseline_V 個別データ未取得 |
-| FP rate | ≤20% | 未判定 | 手動判定セッション未実施 |
-| signal rate (baseline_V) | ≥90% | 未判定 | 個別指摘データ未取得 |
+| カバレッジ率 | ≥70% | 未測定 | baseline_V 個別データ未取得 |
+| FP rate | ≤20% | 未測定 | 手動判定セッション未実施 |
+| signal rate (baseline_V) | ≥90% | 未測定 | 個別指摘データ未取得 |
 
 ### 4.5 Phase D 完了条件
 
