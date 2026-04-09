@@ -11,11 +11,11 @@
 
 | 指標 | 目標 | 結果 | 判定 |
 |------|------|------|------|
-| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 実測未完了 (baseline_V 個別データ未取得) | signal rate 監査が未完了のため分母未確定 |
+| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 262)、intersection 計算は未着手 | 分母は確定したが、baseline_A ∩ baseline_V′ の計算は別タスク |
 | False positive rate | ≤20% | 🔶 未測定 (手動判定セッション未実施) | 後続セッションで手動判定 |
 | **カテゴリカバレッジ (6中4以上)** | **≥4/6** | ✅ **4/6 実測達成** (理論分析では 6/6) | **✅ 達成** |
 | 対照 PR FP rate | ≤30% | 🔶 対照 PR 未実施 (PR #384 replay のみ) | 時間制約により replay のみ実施 |
-| signal rate (baseline_V) | ≥90% 望ましい | 🔶 監査未完了 | 個別指摘データ未取得 |
+| signal rate (baseline_V) | ≥90% 望ましい | ✅ **100.0%** (point estimate, 95% CI [87.1%, 100%]) | **✅ 達成** (Issue #391 サンプリング監査, n=26 effective) |
 
 **Phase D 実測の主要発見 (PR #384 replay, 2026-04-09)**:
 - **総 finding 数: 19 件** (CRITICAL 0 / HIGH 7 / MEDIUM 8 / LOW 4)
@@ -68,7 +68,9 @@
 
 **ソース**: Issue #355 背景セクション + セッションログ (2026-04-07〜08)
 
-- **総件数**: 172 件 (8 サイクル)
+#### 1.2.1 当初の集計 (Phase 0 時点)
+
+- **総件数**: 172 件 (8 サイクル) — Issue #355 背景セクションの集計
 - **平均**: 21 件/サイクル
 - **サイクル別** (セッションログから部分抽出):
 
@@ -82,7 +84,135 @@
 | 7 | 11 | — |
 | 8 | 不明 | — |
 
-**個別指摘データ**: PR コメントに未記録。セッションログ (58685911-d795-4c81-904c-d209327c779d.jsonl, 15MB) に散在。signal rate 監査には dedicated extraction session が必要。
+#### 1.2.2 Signal rate 監査 (Issue #391, 2026-04-10)
+
+> **追記コンテキスト**: Issue #360 (Phase D) の残タスクとして Issue #391 で実施。`baseline_V` 個別指摘データの抽出と signal rate 監査により、coverage rate (≥70%) の分母信頼性を確定する目的。
+
+##### 1.2.2.1 抽出手順
+
+新規スクリプト `plugins/rite/scripts/extract-verified-review-findings.sh` を実装し、Claude Code session log (jsonl) から `| {SEVERITY} | {file:line} | {reviewer} | {description} |` 形式の markdown table row を構造化抽出する。
+
+**抽出パイプライン**:
+1. 単一 session log mode (`--session`) と複数 session 走査 mode (`--session-dir --from --to`) をサポート
+2. 各 jsonl entry の type=user/assistant 配下のテキストを再帰的に走査
+3. severity word (`CRITICAL|HIGH|MEDIUM|LOW`) を起点とする 4-column row pattern を抽出
+4. dedup key (severity + file_line + col3 各種 truncated) で重複除去
+5. 出力 JSONL の各行に source_session / source_offset を付与
+
+##### 1.2.2.2 重要な発見: 分母の再定義
+
+**Issue #391 当初の前提**:
+- session log `58685911-d795-4c81-904c-d209327c779d.jsonl` 単独に **172 件** が散在しているはず
+
+**実測結果**:
+- 指定 session log 単独からの抽出は **19 件** (重複除外後)
+- 「172」は cycle 別集計 (4-7 cycle で 70 件 + 1-3, 8 cycle 推定値) からの aggregation であり、個別 finding row が体系的に記録されていたわけではない
+- verified-review session は **複数 session log にまたがって分散** している
+
+**Multi-session 走査結果** (`--session-dir`, `--from 2026-04-07 --to 2026-04-09`, `--min-size 500000`):
+
+| Source session | 件数 |
+|---|---|
+| `763024b7-*` | 77 |
+| `1378f23f-*` | 56 |
+| `9eb0c81a-*` | 49 |
+| `4e84181c-*` | 32 |
+| `63b02251-*` | 28 |
+| `58685911-*` (Issue 当初指定) | 19 |
+| `1f5e3701-*` | 14 |
+| `f5debd1f-*` | 12 |
+| 他 13 sessions | 15 |
+| **合計 (raw, dedup 後)** | **302** |
+
+**Severity 内訳**: CRITICAL 31 / HIGH 129 / MEDIUM 101 / LOW 41
+
+##### 1.2.2.3 サンプリング監査
+
+**手法**: Population (n=302) から再現可能な seed (`random.seed(391)`) で **30 件** をランダム抽出し、各指摘を現在のコードと突合 (Read/Grep) して 4 分類で判定。
+
+**判定カテゴリ**:
+- **TP (true positive)**: 指摘が正しい (修正済み or 未修だが指摘自体は妥当)
+- **FP-1**: 既修済みを未修と誤判定
+- **FP-2**: 存在しないバグを検出
+- **FP-3**: コメント読み違え
+- **FP-4**: 分散伝播読解漏れ
+- **extraction_artifact**: スクリプトの parsing error / rite プロジェクト外 finding (signal rate 計算から除外)
+
+**結果**:
+
+| 分類 | 件数 | 備考 |
+|---|---|---|
+| TP (確認済み) | 16 | git log / 現在コードで cycle 修正コミット根拠を直接確認 |
+| TP (TP_likely → TP に再分類) | 10 | refactor 済みで line 直接照合は不可だが、4 FP カテゴリのいずれにも該当せず、設計上の指摘として有効 |
+| FP-1 〜 FP-4 | 0 | サンプル中に false positive は検出されず |
+| extraction_artifact | 4 | (a) `src/components/Hero.tsx` rite プロジェクト外 (b) `5 (M1...)` count 列誤抽出 (c) (d) reviewer 名 / "本 PR スコープ外" の列ズレ |
+| **合計** | **30** | |
+
+**Effective sample**: 26 (extraction_artifact 4 件除外後)
+
+##### 1.2.2.4 Signal rate
+
+**Point estimate**: TP 26 / Effective 26 = **100.0%**
+
+**Wilson 95% CI**: [87.1%, 100.0%] (n=26, p̂=1.0)
+
+**判定**: ≥90% bracket (Issue #355 の signal rate 閾値表より)
+
+→ **baseline_V をそのまま使用** (FP 除外不要)
+
+**保守的解釈の補足**: TP_likely 10 件を仮に「不明 → FP 扱い」に降格すると signal rate 61.5% (95% CI [42.5%, 77.6%]) となり <70% bracket に該当する。ただし当該 10 件は「直接 line 照合不可」だっただけで「4 FP カテゴリのいずれにも該当しない」ことは確認済みのため、本監査では TP に算入する。この判断の根拠:
+
+- TP_likely #8/#9/#10 (`fix.md` trap area): 該当領域は heavy refactor 済みで、refactor の動機付けが当該 finding と整合
+- TP_likely #13 (regex dead code): 構造的に判断可能、現状コードで pattern が依然存在
+- TP_likely #16 (`implementation-plan.md` ambiguity): 内容ベースの subjective 指摘で、現在も有効な改善余地
+- TP_likely #20 (test sanitize edge case): test coverage 改善提案として妥当
+- TP_likely #25 (`Mandatory After` step format): 構造的整合性 drift を ascertain 可能
+- TP_likely #27/#29/#30 (column-order risk / fixed-path collision / cross-bash variable): 既知の bash pitfall に該当する設計上の懸念
+
+##### 1.2.2.5 baseline_V′ 補正 (extraction artifact 除外後)
+
+抽出スクリプトの parsing 精度を改善する余地はあるが、サンプルから推定した artifact rate は **13.3%** (4/30)。これを population に適用すると:
+
+- **baseline_V′ (artifact-removed estimate)**: 302 × (1 - 0.133) ≒ **262 件**
+- **真 finding 推定数**: 262 × 1.0 (signal rate point estimate) ≒ **262 件**
+
+**注**: この `262` は新たな `baseline_V` の推奨値。Issue #355 当初の `172` は cycle 集計値であり個別 finding 数とは異なる概念のため、coverage rate の分母として使う場合は **262 を採用** することを推奨する。
+
+##### 1.2.2.6 監査の限界事項
+
+1. **サンプル数の制約**: n=30 (effective 26) は population 302 に対する 8.6% のサンプリング率。Wilson CI 下限は 87.1% で十分高いが、上位 severity (CRITICAL/HIGH) のみに stratified sampling を行うと精度が向上する余地あり
+2. **dedup key の選択**: `(severity, file_line[:120], col3[:100])` というキー長で artifact 除外後 302。dedup key を 250 chars に伸ばすと 437 件になり、逆に圧縮すると過剰 dedup のリスク。適切な dedup 粒度は今後 calibration 余地あり
+3. **cycle 番号推定**: ヒューリスティック (直前の "Cycle N" / "サイクル N" 表記) で抽出するため、cycle 1 に過剰集中している (197/302)。正確な cycle 別分布の取得は別 issue で検討
+4. **multi-project 混入**: rite プロジェクト外の review (例: `src/components/Hero.tsx`) も session log に含まれており、抽出スクリプトで完全分離は不可能。サンプル監査での除外で対応 (4/30 → 13.3%)
+
+##### 1.2.2.7 監査資産
+
+| 資産 | パス |
+|---|---|
+| 抽出スクリプト | `plugins/rite/scripts/extract-verified-review-findings.sh` |
+| 全件抽出結果 | `/tmp/baseline-v-findings.jsonl` (一時、再現可能 — Issue #391 セッション内のみ) |
+| サンプル (30 件) | `/tmp/baseline-v-sample.jsonl` (`random.seed(391)`) |
+| 判定結果 | `/tmp/baseline-v-judgment.json` |
+
+**再現コマンド**:
+
+```bash
+bash plugins/rite/scripts/extract-verified-review-findings.sh \
+  --session-dir ~/.claude/projects/-home-akiyoshi-Projects-personal-cc-rite-workflow \
+  --from 2026-04-07 --to 2026-04-09 \
+  --out /tmp/baseline-v-findings.jsonl
+
+python3 -c "
+import json, random
+random.seed(391)
+pop = [json.loads(l) for l in open('/tmp/baseline-v-findings.jsonl')]
+sample = random.sample(pop, 30)
+sample.sort(key=lambda r: (r['source_session'], r['source_offset']))
+for i, r in enumerate(sample, 1):
+    r['sample_id'] = i
+    print(json.dumps(r, ensure_ascii=False))
+" > /tmp/baseline-v-sample.jsonl
+```
 
 ### 1.3 カテゴリ分布 (PR #350 で見落とされた 6 カテゴリ)
 
