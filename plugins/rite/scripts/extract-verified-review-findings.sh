@@ -150,6 +150,11 @@ if [ -n "$TO_DATE" ] && ! [[ "$TO_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
   echo "ERROR: --to must be ISO 8601 date (YYYY-MM-DD): '$TO_DATE'" >&2
   exit 1
 fi
+# --min-size の数値検証 (cycle 2 review M-1 fix: --from/--to と同じ pre-validation 方針を適用、対称性確保)
+if ! [[ "$MIN_SIZE" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: --min-size must be a non-negative integer: '$MIN_SIZE'" >&2
+  exit 1
+fi
 
 # Python 側に値を引き渡す。MIN_SIZE は bash 側を一元的なソース (DRY)
 python3 - "$SESSION" "$SESSION_DIR" "$FROM_DATE" "$TO_DATE" "$MIN_SIZE" "$OUT" <<'PY'
@@ -178,16 +183,29 @@ ROW_RE = re.compile(
 CYCLE_RE = re.compile(r'(?:Cycle|サイクル|cycle)\s*(\d+)', re.IGNORECASE)
 # Documentation example heuristic: tech-writer.md / internal-consistency.md 等で
 # 教材として使われる generic file path を除外
+#
+# 重要 — 限定原則 (cycle 2 review HIGH-2 fix):
+# `src/auth.ts` のような汎用ファイル名は real PR で実際に変更される可能性があるため除外しない。
+# 除外対象は明らかに教材専用 (実プロジェクトで存在しない命名) のものに限定する:
+# - docs/foo.md / docs/example.md: doc 内の汎用 placeholder
+# - src/foo.ts: doc 内の汎用 TypeScript placeholder
+# - src/components/Hero.tsx: cc-rite-workflow 自体には存在しないため安全に除外できる教材
 DOC_EXAMPLE_PATHS = (
     'docs/foo.md',
     'src/foo.ts',
     'docs/example.md',
-    'src/auth.ts',  # generic 例 (内部 doc で使われる頻度高)
     'src/components/Hero.tsx',
 )
 # Reviewer 名 allow-list (rite agents/ 配下の reviewer suffix と
 # pr-review-toolkit / verified-review 等の外部 reviewer)
 # 新しい reviewer を追加する場合は本セットを更新すること
+#
+# 重要 — 限定原則 (cycle 2 review HIGH-1 fix):
+# bare alias (`tech-writer`, `code-quality`, `silent-failure`) を含めると description 内の
+# 自然語 (例: `"code-quality improvement needed"`, `"tech-writer review"`) が word-boundary
+# 判定で True になり reviewer 列と誤マッチする。これは cycle 1 の `engineer` 排除と非対称な
+# false positive の再導入。reviewer suffix (`-reviewer` / `-hunter` / `-analyzer`) を持つ
+# canonical 形式のみを allow-list に含める。
 REVIEWER_NAMES = {
     'silent-failure-hunter',
     'code-reviewer',
@@ -206,12 +224,8 @@ REVIEWER_NAMES = {
     'error-handling-reviewer',
     'type-design-reviewer',
 }
-# 別名 (Title Case や略号)
-REVIEWER_HINT_TOKENS = REVIEWER_NAMES | {
-    'tech-writer',
-    'code-quality',
-    'silent-failure',
-}
+# REVIEWER_HINT_TOKENS は REVIEWER_NAMES と同一 (bare alias は意図的に含めない)
+REVIEWER_HINT_TOKENS = REVIEWER_NAMES
 
 def collect_text(node):
     """Recursively collect all string fields from JSON node."""
