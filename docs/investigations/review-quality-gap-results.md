@@ -11,7 +11,7 @@
 
 | 指標 | 目標 | 結果 | 判定 |
 |------|------|------|------|
-| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 262)、intersection 計算は未着手 | 分母は確定したが、baseline_A ∩ baseline_V′ の計算は別タスク |
+| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 273)、intersection 計算は未着手 | 分母は確定したが、`baseline_A ∩ baseline_V′` の本体計算はフォローアップ Issue で追跡予定 (詳細は §4.5 Phase D 完了条件) |
 | False positive rate | ≤20% | 🔶 未測定 (手動判定セッション未実施) | 後続セッションで手動判定 |
 | **カテゴリカバレッジ (6中4以上)** | **≥4/6** | ✅ **4/6 実測達成** (理論分析では 6/6) | **✅ 達成** |
 | 対照 PR FP rate | ≤30% | 🔶 対照 PR 未実施 (PR #384 replay のみ) | 時間制約により replay のみ実施 |
@@ -27,7 +27,7 @@
 
 **制約事項** (詳細は [§4.5 Phase D 完了条件](#45-phase-d-完了条件)):
 - Phase A/B/C/C2 が全てマージ済みのため、**個別ラウンド測定 (Round 1-3) は実施不可**
-- baseline_V 個別指摘データ未取得 (詳細は [§1.2](#12-baseline_v-verified-review))
+- baseline_V 個別指摘データ抽出済み (詳細は [§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10)、baseline_V′ ≒ 273)
 - 対照 PR 3 件 (TS code / Bash script / mixed) は時間制約で未実施 — Phase D 主目的 "改善後 review system で PR #350 diff を測定" は達成
 
 ---
@@ -113,22 +113,26 @@
 
 | Source session | 件数 |
 |---|---|
-| `763024b7-*` | 77 |
-| `1378f23f-*` | 56 |
-| `9eb0c81a-*` | 49 |
-| `4e84181c-*` | 32 |
-| `63b02251-*` | 28 |
-| `58685911-*` (Issue 当初指定) | 19 |
-| `1f5e3701-*` | 14 |
+| `763024b7-*` | 80 |
+| `1378f23f-*` | 58 |
+| `9eb0c81a-*` | 51 |
+| `4e84181c-*` | 33 |
+| `63b02251-*` | 29 |
+| `58685911-*` (Issue 当初指定) | 17 |
+| `1f5e3701-*` | 15 |
 | `f5debd1f-*` | 12 |
-| 他 13 sessions | 15 |
-| **合計 (raw, dedup 後)** | **302** |
+| 他 13 sessions | 20 |
+| **合計 (raw, dedup 後)** | **315** |
 
-**Severity 内訳**: CRITICAL 31 / HIGH 129 / MEDIUM 101 / LOW 41
+> **Note**: 「他 13 sessions」は scratch / 別 Issue 作業中の rite 関連セッションで、各 1〜3 件程度の散発的な finding を含む。verified-review が主要に実行された session は上記 8 session (合計 295 件) で全体の ~94% を占める。
+
+**Severity 内訳**: CRITICAL 35 / HIGH 140 / MEDIUM 100 / LOW 40
+
+> **Note (PR #400 cycle 1 review fix 後の再抽出)**: 当初実装の dedup key `(severity, file_line[:120], col3[:100])` を `(severity, file_line[:120], col3[:100], cycle)` に変更し再発 finding を保持するように改修した結果、population は 302 → 315 に再計上された (cycle key の追加で同一 file:line 異 cycle の再発が dedup されなくなったため)。signal rate 監査結果 (100%) は変わらないため、本セクションの結論には影響しない。
 
 ##### 1.2.2.3 サンプリング監査
 
-**手法**: Population (n=302) から再現可能な seed (`random.seed(391)`) で **30 件** をランダム抽出し、各指摘を現在のコードと突合 (Read/Grep) して 4 分類で判定。
+**手法**: Population (n=302、当初実装時の値。改修後の population 315 でも結論不変) から再現可能な seed (`random.seed(391)`) で **30 件** をランダム抽出し、各指摘を現在のコードと突合 (Read/Grep) して 4 分類で判定。
 
 **判定カテゴリ**:
 - **TP (true positive)**: 指摘が正しい (修正済み or 未修だが指摘自体は妥当)
@@ -160,7 +164,11 @@
 
 → **baseline_V をそのまま使用** (FP 除外不要)
 
-**保守的解釈の補足**: TP_likely 10 件を仮に「不明 → FP 扱い」に降格すると signal rate 61.5% (95% CI [42.5%, 77.6%]) となり <70% bracket に該当する。ただし当該 10 件は「直接 line 照合不可」だっただけで「4 FP カテゴリのいずれにも該当しない」ことは確認済みのため、本監査では TP に算入する。この判断の根拠:
+**保守的解釈の補足**: TP_likely 10 件を仮に「不明 → FP 扱い」に降格すると signal rate 61.5% (95% CI [42.5%, 77.6%]) となり <70% bracket に該当する。ただし当該 10 件は「直接 line 照合不可」だっただけで「4 FP カテゴリのいずれにも該当しない」ことは確認済みのため、本監査では TP に算入する。
+
+> **Sample ID の出典**: 以下の `#N` は `/tmp/baseline-v-sample.jsonl` の `sample_id` フィールド (Issue #391 セッション内に保存。再現方法は §1.2.2.7 参照)。
+
+判断の根拠:
 
 - TP_likely #8/#9/#10 (`fix.md` trap area): 該当領域は heavy refactor 済みで、refactor の動機付けが当該 finding と整合
 - TP_likely #13 (regex dead code): 構造的に判断可能、現状コードで pattern が依然存在
@@ -171,19 +179,19 @@
 
 ##### 1.2.2.5 baseline_V′ 補正 (extraction artifact 除外後)
 
-抽出スクリプトの parsing 精度を改善する余地はあるが、サンプルから推定した artifact rate は **13.3%** (4/30)。これを population に適用すると:
+抽出スクリプトの parsing 精度を改善する余地はあるが、サンプルから推定した artifact rate は **13.3%** (4/30)。これを改修後 population (315) に適用すると:
 
-- **baseline_V′ (artifact-removed estimate)**: 302 × (1 - 0.133) ≒ **262 件**
-- **真 finding 推定数**: 262 × 1.0 (signal rate point estimate) ≒ **262 件**
+- **baseline_V′ (artifact-removed estimate)**: 315 × (1 - 0.133) ≒ **273 件**
+- **真 finding 推定数**: 273 × 1.0 (signal rate point estimate) ≒ **273 件**
 
-**注**: この `262` は新たな `baseline_V` の推奨値。Issue #355 当初の `172` は cycle 集計値であり個別 finding 数とは異なる概念のため、coverage rate の分母として使う場合は **262 を採用** することを推奨する。
+**注**: この `273` は新たな `baseline_V` の推奨値。Issue #355 当初の `172` は cycle 集計値であり個別 finding 数とは異なる概念のため、coverage rate の分母として使う場合は **273 を採用** することを推奨する。当初実装の population 302 ベースでは baseline_V′ ≒ 262 だったが、PR #400 cycle 1 review fix で dedup key に cycle を含めるよう改修し再発 finding を保持した結果 273 に再計上された (改修の根拠は §1.2.2.2 末尾の Note を参照)。
 
 ##### 1.2.2.6 監査の限界事項
 
-1. **サンプル数の制約**: n=30 (effective 26) は population 302 に対する 8.6% のサンプリング率。Wilson CI 下限は 87.1% で十分高いが、上位 severity (CRITICAL/HIGH) のみに stratified sampling を行うと精度が向上する余地あり
-2. **dedup key の選択**: `(severity, file_line[:120], col3[:100])` というキー長で artifact 除外後 302。dedup key を 250 chars に伸ばすと 437 件になり、逆に圧縮すると過剰 dedup のリスク。適切な dedup 粒度は今後 calibration 余地あり
-3. **cycle 番号推定**: ヒューリスティック (直前の "Cycle N" / "サイクル N" 表記) で抽出するため、cycle 1 に過剰集中している (197/302)。正確な cycle 別分布の取得は別 issue で検討
-4. **multi-project 混入**: rite プロジェクト外の review (例: `src/components/Hero.tsx`) も session log に含まれており、抽出スクリプトで完全分離は不可能。サンプル監査での除外で対応 (4/30 → 13.3%)
+1. **サンプル数の制約**: n=30 (effective 26) は population 315 に対する 8.3% のサンプリング率。Wilson CI 下限は 87.1% で十分高いが、上位 severity (CRITICAL/HIGH) のみに stratified sampling を行うと精度が向上する余地あり
+2. **dedup key の選択**: `(severity, file_line[:120], col3[:100], cycle)` というキー長で artifact 除外前 315 (改修後)、改修前 302。dedup key を 250 chars に伸ばすと 437 件になり、逆に圧縮すると過剰 dedup のリスク。適切な dedup 粒度は今後 calibration 余地あり
+3. **cycle 番号推定**: ヒューリスティック (直前の "Cycle N" / "サイクル N" 表記) で抽出するため、cycle 1 に過剰集中している (199/315)。正確な cycle 別分布の取得は別 issue で検討
+4. **multi-project 混入**: rite プロジェクト外の review (例: `src/components/Hero.tsx`) も session log に含まれており、抽出スクリプトで完全分離は不可能。サンプル監査での除外で対応 (4/30 → 13.3%)。スクリプト側でも `src/components/Hero.tsx` 等を `DOC_EXAMPLE_PATHS` に追加して除外済み (PR #400 cycle 1 review fix)
 
 ##### 1.2.2.7 監査資産
 
@@ -196,9 +204,16 @@
 
 **再現コマンド**:
 
+> **`<session-dir>` の特定方法**: Claude Code の session log 配置場所はマシンごとに異なる (`~/.claude/projects/<encoded-project-path>/`)。当該プロジェクトの encoded path は以下のコマンドで確認できる:
+> ```bash
+> ls ~/.claude/projects/ | grep cc-rite-workflow
+> ```
+> 結果を `~/.claude/projects/<encoded-name>` の形で `--session-dir` に渡す。
+
 ```bash
+# <session-dir> をマシン固有のパスに置換すること (上記 grep 結果)
 bash plugins/rite/scripts/extract-verified-review-findings.sh \
-  --session-dir ~/.claude/projects/-home-akiyoshi-Projects-personal-cc-rite-workflow \
+  --session-dir <session-dir> \
   --from 2026-04-07 --to 2026-04-09 \
   --out /tmp/baseline-v-findings.jsonl
 
@@ -323,7 +338,7 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 |------|------|
 | PR #350 merged | `/rite:pr:review` は OPEN/DRAFT PR のみ対象。MERGED PR にはレビュー実行不可 |
 | replay ブランチ conflict | Phase A/B/C/C2 が PR #350 と同じファイル (review.md, fix.md, tech-writer.md 等) を大幅変更。`git apply` / `git revert -m 1` / `git cherry-pick` いずれも conflict |
-| baseline_V 個別データ未取得 | verified-review の 172 件の個別指摘は PR コメントではなくセッション会話内に散在。signal rate 監査にはセッションログからの構造化抽出が必要 |
+| baseline_V 個別データ未取得 | verified-review の個別指摘は PR コメントではなくセッション会話内に散在。signal rate 監査にはセッションログからの構造化抽出が必要 (Issue #391 で解決済み — [§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10) 参照。「172」は cycle 集計値であり個別 finding 数ではないことが判明) |
 
 ### 3.2 当初の推奨アクションプラン (Option A は §4 で実施済み)
 
@@ -429,16 +444,17 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 |------|------|------|------|
 | カテゴリカバレッジ | ≥4/6 | **4/6** (✅ 4 件 / ⚠️ 2 件) | ✅ **達成** |
 | 総 finding 数 vs baseline_A | improvement | 14 → 19 (件数 +35.7%) | ⚠️ 検出数は増加 (FP rate 未測定のため改善の質は保留) |
-| カバレッジ率 | ≥70% | 未測定 | baseline_V 個別データ未取得 |
+| カバレッジ率 | ≥70% | 🔶 分母確定 (baseline_V′ ≒ 273)、intersection 計算は未着手 | 分母は確定したが、baseline_A ∩ baseline_V′ の計算は別タスク |
 | FP rate | ≤20% | 未測定 | 手動判定セッション未実施 |
-| signal rate (baseline_V) | ≥90% | 未測定 | 個別指摘データ未取得 |
+| signal rate (baseline_V) | ≥90% | ✅ **100.0%** (point estimate, 95% CI [87.1%, 100%]) | ✅ **達成** ([§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10) — Issue #391 サンプリング監査, n=26 effective) |
 
 ### 4.5 Phase D 完了条件
 
 - [x] Option A (worktree replay) による PR #350 の実測データ取得
 - [x] カテゴリカバレッジ実測値の確定 (4/6, ≥4/6 達成)
-- [ ] baseline_V の signal rate 監査 (Option C, dedicated extraction session 必要)
-- [ ] カバレッジ率・FP rate の実測値確定 (signal rate 監査後に実施)
+- [x] baseline_V の signal rate 監査 (Issue #391 で完了 — [§1.2.2](#122-signal-rate-監査-issue-391-2026-04-10))
+- [ ] カバレッジ率の intersection 計算 (`baseline_A ∩ baseline_V′` の本体計算は別タスク。フォローアップ Issue で追跡予定)
+- [ ] FP rate の実測値確定 (手動判定セッション必要、別タスク)
 - [ ] 対照 PR 3 件での検証 (TS / Bash / mixed)
 
 **Phase D の主要目的 (改善後 review system で PR #350 diff を測定) は達成**。残タスク (signal rate 監査、対照 PR、FP rate 手動判定) は dedicated session で別途実施。
