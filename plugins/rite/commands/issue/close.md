@@ -389,6 +389,138 @@ Status: Done
 関連 PR: #{pr_number} (Merged)
 ```
 
+Proceed to Phase 4.5.
+
+---
+
+## Phase 4.5: Parent Issue Body Update
+
+When a child Issue is closed, automatically update the parent Issue's body to reflect the child's completion status.
+
+### 4.5.1 Detect Parent Issue
+
+Extract the parent Issue number from the closing Issue's body. The `## 親 Issue` section is added by `/rite:issue:create-decompose` when creating child Issues.
+
+**Detection pattern**: Search the Issue body (retrieved in Phase 1.1) for the `## 親 Issue` section header, then extract the Issue number from the line below it:
+
+```
+## 親 Issue
+
+#{parent_number} - {parent_title}
+```
+
+**Extraction**:
+
+```bash
+parent_number=$(echo "$issue_body" | grep -A1 '^## 親 Issue' | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+echo "parent_number=${parent_number:-none}"
+```
+
+**When no parent Issue is found** (`parent_number` is empty):
+
+```
+親 Issue の参照が見つかりませんでした。親 Issue 更新をスキップします。
+```
+
+Skip the rest of Phase 4.5 and proceed to Phase 5. This is normal behavior (AC-3), not an error.
+
+### 4.5.2 Retrieve Parent Issue Body
+
+```bash
+parent_body=$(gh issue view {parent_number} --json body --jq '.body')
+if [ -z "$parent_body" ]; then
+  echo "警告: 親 Issue #{parent_number} の本文を取得できませんでした" >&2
+fi
+echo "parent_body_length=${#parent_body}"
+```
+
+**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4).
+
+### 4.5.3 Update Sub-Issues Checkbox
+
+Update the checkbox for the closing Issue in the parent Issue's `## Sub-Issues` section.
+
+**Pattern**: `- [ ] #{issue_number}` → `- [x] #{issue_number}` (only the matching Issue number line)
+
+Use Python for safe replacement (avoid `sed` special character issues per gh-cli-patterns.md):
+
+```bash
+tmpfile_parent=$(mktemp)
+trap 'rm -f "$tmpfile_parent"' EXIT
+
+gh issue view {parent_number} --json body --jq '.body' > "$tmpfile_parent"
+
+python3 -c "
+import re, sys
+
+with open('$tmpfile_parent', 'r') as f:
+    body = f.read()
+
+# Only replace the specific Issue number's checkbox
+# Matches: - [ ] #{issue_number} (followed by space, dash, or end of line)
+body = re.sub(
+    r'^(- \[) (\] #' + str({issue_number}) + r'(?:\s|$))',
+    r'\g<1>x\g<2>',
+    body,
+    flags=re.MULTILINE
+)
+
+with open('$tmpfile_parent', 'w') as f:
+    f.write(body)
+"
+```
+
+### 4.5.4 Update Implementation Phase Status
+
+Update the status of the row corresponding to the closing Issue in the parent Issue's `## 実装フェーズ` section.
+
+**Pattern**: In the 実装フェーズ table, find the row whose `内容` column contains `#{issue_number}` or `Sub-Issue {n}` referencing this Issue, and replace `[ ] 未着手` with `[x] 完了` in that row.
+
+```bash
+python3 -c "
+import re, sys
+
+with open('$tmpfile_parent', 'r') as f:
+    body = f.read()
+
+# Find rows in the 実装フェーズ table that reference this Issue number
+# The table format is: | フェーズ | 内容 | 状態 |
+# Match lines containing #{issue_number} and replace [ ] 未着手 with [x] 完了
+lines = body.split('\n')
+updated_lines = []
+for line in lines:
+    if '#${issue_number}' in line or '#{issue_number}' in line:
+        line = line.replace('[ ] 未着手', '[x] 完了')
+    updated_lines.append(line)
+
+body = '\n'.join(updated_lines)
+
+with open('$tmpfile_parent', 'w') as f:
+    f.write(body)
+"
+```
+
+**Note**: Only rows containing a reference to `#{issue_number}` are modified. Other rows and sections remain untouched (R7).
+
+### 4.5.5 Apply Parent Issue Update
+
+Apply the updated body to the parent Issue:
+
+```bash
+if [ ! -s "$tmpfile_parent" ]; then
+  echo "警告: 更新後の親 Issue 本文が空です。更新をスキップします。" >&2
+else
+  gh issue edit {parent_number} --body-file "$tmpfile_parent"
+  if [ $? -eq 0 ]; then
+    echo "親 Issue #{parent_number} の本文を更新しました（Sub-Issues / 実装フェーズ）"
+  else
+    echo "警告: 親 Issue #{parent_number} の本文更新に失敗しました" >&2
+  fi
+fi
+```
+
+**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The Issue close itself (Phase 4.1) has already succeeded at this point.
+
 Proceed to Phase 5.
 
 ---
