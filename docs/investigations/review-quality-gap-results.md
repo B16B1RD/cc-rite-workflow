@@ -11,16 +11,24 @@
 
 | 指標 | 目標 | 結果 | 判定 |
 |------|------|------|------|
-| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 実測未完了 | 後続セッションで実施 |
-| False positive rate | ≤20% | 🔶 実測未完了 | 後続セッションで実施 |
-| カテゴリカバレッジ (6中4以上) | ≥4/6 | ✅ 理論分析で 6/6 カバー確認 | 実測で確認必要 |
-| 対照 PR FP rate | ≤30% | 🔶 実測未完了 | 後続セッションで実施 |
+| カバレッジ率 (signal rate 調整後) | ≥70% | 🔶 実測未完了 (baseline_V 個別データ未取得) | signal rate 監査が未完了のため分母未確定 |
+| False positive rate | ≤20% | 🔶 未測定 (手動判定セッション未実施) | 後続セッションで手動判定 |
+| **カテゴリカバレッジ (6中4以上)** | **≥4/6** | ✅ **4/6 実測達成** (理論分析では 6/6) | **✅ 達成** |
+| 対照 PR FP rate | ≤30% | 🔶 対照 PR 未実施 (PR #384 replay のみ) | 時間制約により replay のみ実施 |
 | signal rate (baseline_V) | ≥90% 望ましい | 🔶 監査未完了 | 個別指摘データ未取得 |
 
-**制約事項**:
+**Phase D 実測の主要発見 (PR #384 replay, 2026-04-09)**:
+- **総 finding 数: 19 件** (CRITICAL 0 / HIGH 7 / MEDIUM 8 / LOW 4)
+- **Reviewer 内訳**: prompt-engineer 7 / tech-writer 3 / code-quality 9 / error-handling 0
+- **baseline_A (PR #350 改善前 cycle 1): 14 件** → **Phase D 後: 19 件** (件数 +35.7%、**FP rate 未測定のため改善の質は保留**)
+- **カテゴリカバレッジ: 4/6 実測達成** (目標 4/6 クリア)
+
+**残タスク**: 下記リストは要約。詳細は [§4.5 Phase D 完了条件](#45-phase-d-完了条件) が single source of truth。
+
+**制約事項** (詳細は [§4.5 Phase D 完了条件](#45-phase-d-完了条件)):
 - Phase A/B/C/C2 が全てマージ済みのため、**個別ラウンド測定 (Round 1-3) は実施不可**
-- PR #350 は MERGED 状態かつ diff が現在の develop に clean apply/revert 不可のため、**replay PR 方式での実測が不可能**
-- baseline_V (verified-review 172件) の個別指摘データは PR コメントに存在せず、セッションログからの完全抽出には dedicated session が必要
+- baseline_V 個別指摘データ未取得 (詳細は [§1.2](#12-baseline_v-verified-review))
+- 対照 PR 3 件 (TS code / Bash script / mixed) は時間制約で未実施 — Phase D 主目的 "改善後 review system で PR #350 diff を測定" は達成
 
 ---
 
@@ -175,9 +183,11 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 
 ---
 
-## 3. 実測制約と今後のアクションプラン
+## 3. 当初の実測制約と推奨アクションプラン (Phase D 初期分析)
 
-### 3.1 実測が不可能だった理由
+> **⚠️ 更新 (2026-04-09)**: 本セクションは Phase D 実測**前**の初期分析記録。その後 §4 で Option A (worktree replay) を実施し、**PR #384 で実測データを取得済み**。本セクションは当初の制約分析として残すが、実測結果と残タスクは [§4 Phase D 実測結果](#4-phase-d-実測結果-pr-384-replay-2026-04-09) を参照すること。特に「replay ブランチ conflict」は worktree (`git worktree add e1498f5`) 方式で回避できることが判明した。
+
+### 3.1 当初想定されていた実測制約 (後に §4 Option A で解決)
 
 | 制約 | 詳細 |
 |------|------|
@@ -185,9 +195,11 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 | replay ブランチ conflict | Phase A/B/C/C2 が PR #350 と同じファイル (review.md, fix.md, tech-writer.md 等) を大幅変更。`git apply` / `git revert -m 1` / `git cherry-pick` いずれも conflict |
 | baseline_V 個別データ未取得 | verified-review の 172 件の個別指摘は PR コメントではなくセッション会話内に散在。signal rate 監査にはセッションログからの構造化抽出が必要 |
 
-### 3.2 推奨アクションプラン (別セッションで実施)
+### 3.2 当初の推奨アクションプラン (Option A は §4 で実施済み)
 
-#### Option A: Worktree ベースの replay (推奨)
+> **状態**: Option A は §4.1 で実施完了。Option B (対照 PR 3 件)・Option C (signal rate 監査) は dedicated session で残タスクとして継続。**残タスクの single source of truth は [§4.5 Phase D 完了条件](#45-phase-d-完了条件)** を参照。
+
+#### Option A: Worktree ベースの replay (✅ §4.1 で実施済み)
 
 1. **PR #350 マージ直前の develop HEAD** (`e1498f5` = PR #350 merge commit `54b291f` の第一親) から worktree を作成
 2. worktree 上で PR #350 の diff を apply (この commit には PR #350 の変更が含まれていないため clean apply 可能)
@@ -227,25 +239,91 @@ PR #350 の replay が困難な場合、以下の代替 PR で測定:
 
 ---
 
-## 4. 結論と判定
+## 4. Phase D 実測結果 (PR #384 replay, 2026-04-09)
 
-### 4.1 現時点での判定
+### 4.1 実測手順
 
-| 指標 | 判定 | 根拠 |
-|------|------|------|
-| カテゴリカバレッジ | ✅ 理論上 6/6 達成 | Phase A-C2 の全改善が 6 カテゴリそれぞれに対応 |
-| カバレッジ率 | 🔶 未判定 | 実測データなし |
-| FP rate | 🔶 未判定 | 実測データなし |
-| signal rate | 🔶 未判定 | baseline_V 個別データ未取得 |
+1. **Worktree 作成**: `e1498f5` (PR #350 マージ直前の develop HEAD) から worktree を `/tmp/phase-d-investigation` に作成
+2. **Replay ブランチ**: `investigation/phase-d-pr350` ブランチで PR #350 の diff を `git apply`
+3. **Investigation PR**: draft PR #384 を作成 (12 files, +3373/-98)
+4. **改善後 review system で実測**: 現在のプラグイン (Phase A/B/C/C2 適用後) で `/rite:pr:review` を実行
 
-### 4.2 Phase D 完了条件
+### 4.2 実測 finding 数
 
-Phase D の完了には以下が必要 (本レポートの理論分析に加えて):
+**総計: 19 件** (CRITICAL 0 / HIGH 7 / MEDIUM 8 / LOW 4)
 
-- [ ] Option A (worktree replay) または Option B (新規 PR) による実測データ取得
-- [ ] baseline_V の signal rate 監査 (Option C)
-- [ ] 3 指標 (カバレッジ率 / FP rate / カテゴリカバレッジ) の実測値確定
-- [ ] 未達項目があれば追加対応 Issue 起票
+| Reviewer | 評価 | CRITICAL | HIGH | MEDIUM | LOW | 合計 |
+|----------|------|----------|------|--------|-----|------|
+| prompt-engineer | 条件付き | 0 | 2 | 3 | 2 | 7 |
+| tech-writer | 条件付き | 0 | 3 | 0 | 0 | 3 |
+| code-quality | 条件付き | 0 | 2 | 5 | 2 | 9 |
+| error-handling | 可 | 0 | 0 | 0 | 0 | 0 |
+
+**baseline_A (改善前) との比較**:
+
+| 項目 | baseline_A (PR #350 cycle 1) | Phase D 後 (PR #384 replay) | 差分 |
+|------|------------------------------|----------------------------|------|
+| 総 finding 数 | 14 | 19 | **+35.7%** |
+| CRITICAL | 2 | 0 | -2 |
+| HIGH | 4 | 7 | +3 |
+| MEDIUM | 6 | 8 | +2 |
+| LOW | 2 | 4 | +2 |
+
+### 4.3 カテゴリカバレッジ実測
+
+**集計ルール** (silent inflation 防止のため明示定義):
+
+- **✅ 検出あり**: reviewer がそのカテゴリに該当する finding を 1 件以上報告した
+- **✅ verify 済み (finding 0 件)**: reviewer がそのカテゴリを明示的に verify したが finding なし (例: i18n parity で両言語を突き合わせた上で「問題なし」と宣言)。カバレッジ判定の分子 (分母 6) に含める
+- **⚠️ 間接検出**: 別カテゴリの finding として報告されたが、対象カテゴリに間接的に寄与する。**カバレッジ判定の分子 (分母 6) には含めない**
+- **❌ 未検出**: reviewer が明示的に verify せず、finding もなし
+
+目標: 6 カテゴリ中 **4 以上**で ✅ 判定。
+
+| # | カテゴリ | 判定 | 根拠 |
+|---|---------|------|------|
+| 1 | flow control | ⚠️ 間接 | code-quality HIGH #2 (250 行 bash block) が間接的に到達性問題を含むが、flow control 専用の verify なし |
+| 2 | i18n parity | ✅ verify 済み | tech-writer が CHANGELOG.md/ja.md・README.md/ja.md の日英同期を突き合わせて「問題なし」と宣言 |
+| 3 | pattern portability | ✅ 検出あり | prompt-engineer MEDIUM (Evidence regex case-sensitive), LOW (grep `$` anchor) |
+| 4 | dead code | ✅ 検出あり | code-quality LOW (review cycle ID 過剰残存) |
+| 5 | stderr 混入 | ⚠️ evidence 不足 | error-handling 指摘 0 件だが、「既に修正済み」の証拠 (grep / commit 参照) を本レポートに記録できず。verify 済みと宣言する根拠が弱いため分子から除外 |
+| 6 | semantic collision | ✅ 検出あり | prompt-engineer MEDIUM (`{N}` placeholder 曖昧性) |
+
+**実測カテゴリカバレッジ: 4/6** (✅ 4 件: i18n, pattern, dead code, semantic / ⚠️ 2 件: flow control, stderr)
+
+**目標 4/6 に対し 4/6 で最低ラインを達成**。ただし初回の reviewer 指摘では「明示的な verify」の痕跡が弱いため、後続セッションで stderr 混入カテゴリの verify 強化 (error-handling reviewer の明示的 verify report 導入) を推奨。
+
+### 4.4 判定
+
+| 指標 | 目標 | 結果 | 判定 |
+|------|------|------|------|
+| カテゴリカバレッジ | ≥4/6 | **4/6** (✅ 4 件 / ⚠️ 2 件) | ✅ **達成** |
+| 総 finding 数 vs baseline_A | improvement | 14 → 19 (件数 +35.7%) | ⚠️ 検出数は増加 (FP rate 未測定のため改善の質は保留) |
+| カバレッジ率 | ≥70% | 未測定 | baseline_V 個別データ未取得 |
+| FP rate | ≤20% | 未測定 | 手動判定セッション未実施 |
+| signal rate (baseline_V) | ≥90% | 未測定 | 個別指摘データ未取得 |
+
+### 4.5 Phase D 完了条件
+
+- [x] Option A (worktree replay) による PR #350 の実測データ取得
+- [x] カテゴリカバレッジ実測値の確定 (4/6, ≥4/6 達成)
+- [ ] baseline_V の signal rate 監査 (Option C, dedicated extraction session 必要)
+- [ ] カバレッジ率・FP rate の実測値確定 (signal rate 監査後に実施)
+- [ ] 対照 PR 3 件での検証 (TS / Bash / mixed)
+
+**Phase D の主要目的 (改善後 review system で PR #350 diff を測定) は達成**。残タスク (signal rate 監査、対照 PR、FP rate 手動判定) は dedicated session で別途実施。
+
+### 4.6 実測で発見された主要 finding (Phase D 成果物)
+
+Phase D の副産物として、**改善後の review system が新規に検出した問題** (PR #350 マージ時には見逃されていた):
+
+1. **prompt-engineer HIGH**: fix.md Phase 8.1 reason 表の enumeration 不足 (12 値記載 vs 27+ emit)
+2. **prompt-engineer HIGH**: review.md Phase 2.2.1 pipeline SIGPIPE 方向誤解 (`printf` 上流 → `grep -m 1` 下流)
+3. **tech-writer HIGH×3**: docs/designs/review-quality-gap-closure.md の行番号参照 3 箇所が Phase A/B/C で修正済み箇所を指す drift
+4. **code-quality HIGH**: bash trap+cleanup パターンが 9 箇所で完全重複 (drift リスク)
+5. **code-quality HIGH**: Fast Path bash block が 250 行で 11 ステップ詰め込み
+
+これらは Phase D フォローアップとして別 Issue 起票推奨。
 
 ---
 
