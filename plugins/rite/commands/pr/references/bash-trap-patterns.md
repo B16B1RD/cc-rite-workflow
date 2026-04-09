@@ -4,9 +4,21 @@
 **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 
 各 bash block の冒頭では、本ファイルの該当セクションへの anchor 参照を pointer コメントとして置き、
-verbose な説明は本ファイルに一元化する。将来 signal semantics を変更する際
-(例: HUP を無視する仕様に切り替え、新しい signal を追加) は、本ファイル **1 箇所のみ**を
-更新することで意図を一貫して伝達する。
+verbose な **rationale / 説明コメント**は本ファイルに一元化する。本リファクタリングで 1 箇所に
+集約されるのは **rationale / 説明文の層** のみである。
+
+> **⚠️ 重要 — コード層との境界**: 各 site の cleanup 関数本体と 4 行 trap (`EXIT`/`INT`/`TERM`/`HUP`)
+> は依然として fix.md / review.md の 9 箇所にコードとして存在する。したがって **signal 動作そのもの**
+> を変更する場合 (例: HUP を無視する仕様に切り替え、新しい signal を追加、TERM の exit code を変更)
+> は、本ファイルの rationale 更新後に **fix.md + review.md の全 9 site で 4 行 trap のコード自体を
+> 同時更新する必要がある**。本ファイル 1 箇所の更新で自動的に反映されるわけではない。
+>
+> **rationale 層で集約されること**: 説明文 / 意図 / regression history / checklist の更新は本ファイル
+> 1 箇所で完結する。保守者は「なぜこの 4 行構造なのか」を 1 箇所読むだけで把握できる。
+>
+> **コード層で集約されないこと**: 実際の bash コード (trap 行、cleanup 関数の骨格) は markdown 内の
+> 独立した bash block として 9 箇所に残っているため、コード変更は依然 9 箇所同時更新が必要。
+> drift 検出 lint の追加は Issue #353 で追跡中。
 
 ---
 
@@ -160,4 +172,7 @@ SIGTERM/SIGINT/SIGHUP が到達した場合に作成済み tmp ファイルが o
 # (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
 ```
 
-この pointer により、**9 箇所の同時更新が 1 箇所 (本ファイル) の更新に集約される**。
+この pointer により、**rationale / 説明コメントの更新は本ファイル 1 箇所に集約される** (冒頭の
+「重要 — コード層との境界」で述べた通り、4 行 trap のコード自体はこれとは別に各 site に残っている)。
+signal 動作そのものを変更する場合 (例: HUP 追加、TERM の exit code 変更) は、本ファイルの rationale
+更新後に fix.md + review.md の全 9 site の 4 行 trap を Instantiation Checklist に従って同時更新すること。
