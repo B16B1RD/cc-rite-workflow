@@ -14,16 +14,17 @@
 
 | 指標 | 結果 | 判定 |
 |------|------|------|
-| 総 finding 数 | 25 件 (CRITICAL 1 / HIGH 10 / MEDIUM 9 / LOW 5) | — |
-| FP rate (strict) | **0.0%** (0/25) | ✅ ≤20% 目標 |
-| FP rate (conservative) | **6.0%** (1.5/25, Ambiguous=0.5FP) | ✅ ≤20% |
-| FP rate (worst case) | **12.0%** (3/25, Ambiguous=全FP) | ✅ ≤30% rollback 閾値 |
-| Phase D 6 カテゴリ直接重複 | 1/6 (≈17%) | — (代わりに code-heavy 固有カテゴリを多数検出) |
+| 総 finding 数 (reviewer 出力 raw) | 25 件 (CRITICAL 1 / HIGH 10 / MEDIUM 9 / LOW 5) | — |
+| 重複除外後の unique finding 数 | 24 件 (PERF-8 は EH-3 と同一問題、重複として集計対象外) | — |
+| FP rate (strict) | **0.0%** (0/24) | ✅ ≤20% 目標 |
+| FP rate (conservative) | **4.2%** (1.0/24、Ambiguous 2×0.5=1.0) | ✅ ≤20% |
+| FP rate (worst case) | **8.3%** (2/24、Ambiguous=全FP) | ✅ ≤30% rollback 閾値 |
+| Phase D 6 カテゴリ直接重複 | **0/6** (0%) | — (code-heavy は異なる問題表面を持つため、当然の結果) |
 | Rollback 判定 | **不要** (FP rate 全方式で閾値内) | ✅ |
 
 **主要結論**:
 1. **過剰適応の証拠なし**: FP rate が doc-heavy #350 replay (strict 10.5%) よりも低い (strict 0.0%) 結果となり、改善後 review system は code-heavy PR でも高品質な指摘を生成することが確認された。
-2. **finding プロファイルの多様性**: Phase D 6 カテゴリ (doc-heavy 由来) との重複は 1/6 のみで、code-heavy では独自カテゴリ (silent failure / test coverage / algorithmic performance / convention consistency) が detect されている。これは review system が **入力の性質に応じて適切なカテゴリを自律的に発見している** ことを示す。
+2. **finding プロファイルの完全な差異**: Phase D 6 カテゴリ (baseline_A (rite) が見落とし baseline_V (verified-review) が検出した doc-heavy 由来カテゴリ) と code-heavy #373 finding の重複は 0/6 である。これは当然の結果で、doc-heavy PR で顕在化する問題群 (flow control / i18n parity / pattern portability / dead code / stderr 混入 / semantic collision) は code-heavy (新規 bash 実装 + テスト) の問題表面と本質的に異なる。一方 code-heavy では独自カテゴリ (silent failure / race・signal handling / test coverage / algorithmic performance / convention consistency / minor design critique) が 24 件検出されており、review system が **入力の性質に応じて適切なカテゴリを自律的に発見している** ことを示す。
 3. **Rollback 候補の Phase なし**: FP rate はすべての算出方式で rollback 閾値 (30%) を下回り、Phase A/B/C/C2 のいずれも rollback 候補ではない。
 
 ## 1. 実測条件
@@ -81,7 +82,16 @@ gh pr create --draft --base develop --head investigate/pr373-replay --title "inv
 
 ## 2. Finding 一覧と FP 判定
 
-### 2.1 重要度別集計
+### 2.0 集計ルール (用語統一)
+
+本レポートは以下の集計ルールに従う:
+
+- **raw finding 数**: reviewer が出力した finding の生件数 (重複を含む) = **25 件**
+- **unique finding 数**: 同一問題を指す重複 finding を 1 件にマージ後の件数 = **24 件** (PERF-8 は EH-3 の重複として 1 件に合算)
+- **判定対象**: 以下の §2.3 / §3 の計算はすべて **unique finding 数 (24)** を分母とする。PERF-8 は §2.2.4 表で "Duplicate (EH-3)" と記録しつつ、集計上は EH-3 に合算する
+- **1 finding = 1 判定**: 各 unique finding は TP / FP / Ambiguous のいずれか 1 つのカテゴリにのみ分類される (「partial Ambiguous」のような二重状態は使わない)
+
+### 2.1 重要度別集計 (raw 件数、reviewer 出力ベース)
 
 | Severity | code-quality | error-handling | test | performance | 合計 |
 |----------|:-:|:-:|:-:|:-:|:-:|
@@ -89,7 +99,9 @@ gh pr create --draft --base develop --head investigate/pr373-replay --title "inv
 | HIGH | 1 | 3 | 3 | 3 | **10** |
 | MEDIUM | 1 | 3 | 2 | 3 | **9** |
 | LOW | 0 | 2 | 1 | 2 | **5** |
-| **合計** | **2** | **8** | **7** | **8** | **25** |
+| **合計 (raw)** | **2** | **8** | **7** | **8** | **25** |
+| 重複 (Duplicate) | 0 | 0 | 0 | 1 (PERF-8→EH-3) | **1** |
+| **合計 (unique)** | **2** | **8** | **7** | **7** | **24** |
 
 ### 2.2 Finding 一覧 (TP/FP/Ambiguous 手動判定付き)
 
@@ -97,12 +109,13 @@ gh pr create --draft --base develop --head investigate/pr373-replay --title "inv
 - **TP** (True Positive): 指摘は factually 正しく、実 diff で確認可能な問題を指している
 - **FP** (False Positive): 指摘は事実誤認、存在しない問題、または実装を誤読している
 - **Ambiguous**: 環境・解釈依存 (例: bash バージョン依存、設計判断の違い)
+- **Duplicate**: 他 reviewer の finding と同一問題を指す重複報告 (集計では重複先に合算)
 
 #### 2.2.1 code-quality (2 件)
 
 | # | Severity | 対象 | 指摘要約 | 判定 | 理由 |
 |---|----------|------|---------|:---:|------|
-| CQ-1 | HIGH | test file (全体) | テストファイルが既存ハーネス (`hooks/tests/run-tests.sh` / `scripts/tests/run-all.sh`) の `*.test.sh` glob から孤立 | **TP** | 両ハーネスの glob パターンと新規 test の命名規約・配置ディレクトリを diff + 既存ファイルで確認可能 |
+| CQ-1 | HIGH | test file (全体) | テストファイルが既存ハーネス (`hooks/tests/run-tests.sh` / `scripts/tests/run-all.sh`) の `*.test.sh` glob から孤立 (新規は `test-*.sh` prefix 命名、ディレクトリも別) | **TP** | 両ハーネスの glob パターンと新規 test の命名規約・配置ディレクトリを diff + 既存ファイルで確認可能 |
 | CQ-2 | MEDIUM | main:1,29 | shebang + `set` flag が既存 30+ 本の `#!/bin/bash` + `set -euo pipefail` 規約から逸脱 | **TP** | 既存 script 群との比較で客観的に確認可能 |
 
 #### 2.2.2 error-handling (8 件)
@@ -110,8 +123,8 @@ gh pr create --draft --base develop --head investigate/pr373-replay --title "inv
 | # | Severity | 対象 | 指摘要約 | 判定 | 理由 |
 |---|----------|------|---------|:---:|------|
 | EH-1 | HIGH | test:10 | `git rev-parse` に失敗ガードなし、非 git 環境で REPO_ROOT 空 → 誤メッセージ sliding failure | **TP** | main script の line 72-75 は防御済みという非対称を diff で確認可能 |
-| EH-2 | HIGH | main:87-88 | mktemp→trap 順序の signal race + INT/TERM/HUP trap 欠落 | **TP (partial Ambiguous)** | missing signal trap は客観的 TP。mktemp-trap 間の race は理論上存在するが実際の再現確率は極小 |
-| EH-3 | HIGH | test:54 | `${TMPFILES[@]}` 展開が `set -u` 下で空配列時 unbound | **Ambiguous** | bash 4.4+ では非発火、古い bash (macOS 3.2 等) では TP。環境依存 |
+| EH-2 | HIGH | main:87-88 | mktemp→trap 順序の signal race + INT/TERM/HUP trap 欠落 + リポジトリ既存パターンとの不整合 | **TP** | missing signal trap は客観的 TP。mktemp-trap 間の micro race は実用上非再現だが、`review.md` / `fix.md` の標準パターンとの不整合は客観的 |
+| EH-3 | HIGH | test:54 | `${TMPFILES[@]}` 展開が `set -u` 下で空配列時 unbound | **Ambiguous** | bash 4.4+ では非発火、古い bash (macOS 3.2 等) では TP。環境依存のため単一判定に decidable ではない |
 | EH-4 | MEDIUM | main:137,198 | `awk \| while read` pipeline 失敗が `set -e` 未使用で silent に捨てられる (P1/P3 偽陰性) | **TP** | pipefail の仕様と set -e 有無の相互作用は客観的 |
 | EH-5 | MEDIUM | main:219-220 | Pattern 4 の `{ grep \|\| true; }` が grep exit 2 (IO error) と exit 1 (no match) を区別せず | **TP** | `\|\| true` の semantics は明確、IO error 握り潰しは客観的事実 |
 | EH-6 | MEDIUM | main:148,156,255,258 | `table_reasons=$(...)` の command substitution 失敗が silent skip (P2/P5 偽陰性) | **Ambiguous** | "pipeline crash" と "正常に no-match" を静的解析で判別困難。設計として silent skip を許容する方針もありうる |
@@ -125,12 +138,12 @@ gh pr create --draft --base develop --head investigate/pr373-replay --title "inv
 | TEST-1 | **CRITICAL** | test:71-80 | Test 3 は P2/P3 の件数しか assertion せず、P1/P4/P5 は個別検証なし → regression 防止不完全 | **TP** | diff を直接読んで確認可能、5 patterns 契約のカバレッジ gap は明確 |
 | TEST-2 | HIGH | test:86-97 | clean file test が prose のみで各 pattern の **negative case** (正しい構造を clean と判定することの保証) 未検証 | **TP** | 客観的な test design gap |
 | TEST-3 | HIGH | test:44-50 | 非存在ファイル `--target` 時の silent exit 0 挙動が未検証 (false-green の発生源) | **TP** | main script の `[ -f "$file" ] \|\| return 0` を diff で確認可能 |
-| TEST-4 | HIGH | test:71 | `assert_ge >= 5` は下限のみ、exact count (74) での regression 保護なし | **TP** | 下限 assertion の弱さは客観的 (cec0140 の実測値は script の test 自体を動かさないと正確値は不明だが、design 指摘は有効) |
+| TEST-4 | HIGH | test:71 | `assert_ge >= 5` は下限のみ、exact count での regression 保護なし | **TP** | 下限 assertion の弱さは客観的な test design critique |
 | TEST-5 | MEDIUM | test (全体) | `--pattern N` / `--quiet` / `--all` / `--repo-root` / 未知 flag 等 invocation option が未検証 | **TP** | diff 内にそれらを test するコードなし |
 | TEST-6 | MEDIUM | test:45,49 | `--help` は exit code のみ検証、stdout (Usage / Options キー) 未検証 | **TP** | diff で確認可能 |
-| TEST-7 | LOW | test:54 | `TMPFILES=()` init と trap 配置が Test 1/2 の後 (将来の cleanup 漏れリスク) | **TP** | minor だが design critique として有効 |
+| TEST-7 | LOW | test:54 | `TMPFILES=()` init と trap 配置が Test 1/2 の後 (将来の cleanup 漏れリスク) | **TP** | minor design critique |
 
-#### 2.2.4 performance (8 件)
+#### 2.2.4 performance (8 件、うち 1 件 Duplicate)
 
 | # | Severity | 対象 | 指摘要約 | 判定 | 理由 |
 |---|----------|------|---------|:---:|------|
@@ -141,32 +154,31 @@ gh pr create --draft --base develop --head investigate/pr373-replay --title "inv
 | PERF-5 | MEDIUM | main:154-171,261-271 | Pattern 2/5 で同一ファイルの `grep -oE 'reason=...'` を 2 回呼び出し | **TP** | diff で確認可能 |
 | PERF-6 | MEDIUM | main:212-216 | `github_anchor` が tr + sed で 2 fork/呼び出し、heading 数分発火 | **TP** | bash 内蔵展開で代替可能 |
 | PERF-7 | LOW | main:225-227 | 3-stage grep/grep/sed を 1 stage に統合可能 | **TP (refactor)** | 代替 regex の妥当性は確認可能 |
-| PERF-8 | LOW | test:54 | TMPFILES 空配列時の unbound 安全化 (performance 枠からの堅牢性指摘) | **Duplicate (EH-3)** | EH-3 と同一行同一問題。performance reviewer 自身も「performance ではなく堅牢性」と認めている |
+| PERF-8 | LOW | test:54 | TMPFILES 空配列時の unbound 安全化 (performance 枠からの堅牢性指摘) | **Duplicate (EH-3)** | EH-3 と同一 file:line 同一問題。performance reviewer 自身も「performance ではなく堅牢性」と認めている。**集計上は EH-3 に合算し、unique finding としてはカウントしない** |
 
-### 2.3 判定集計
+### 2.3 判定集計 (unique finding 24 件ベース)
 
-| 判定 | 件数 | 割合 |
-|------|------|------|
-| **TP (True Positive)** | 22 | 88.0% |
-| **Ambiguous** | 3 | 12.0% |
-| **FP (False Positive)** | 0 | 0.0% |
+| 判定 | 件数 | 割合 | 内訳 |
+|------|------|------|------|
+| **TP (True Positive)** | 22 | 91.7% | CQ-1, CQ-2, EH-1, EH-2, EH-4, EH-5, EH-7, EH-8, TEST-1, TEST-2, TEST-3, TEST-4, TEST-5, TEST-6, TEST-7, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, PERF-6, PERF-7 |
+| **Ambiguous** | 2 | 8.3% | EH-3 (bash バージョン依存), EH-6 (silent skip 設計判断依存) |
+| **FP (False Positive)** | 0 | 0.0% | — |
+| Duplicate (集計外) | 1 | — | PERF-8 → EH-3 に合算済 |
+| **合計 (unique)** | **24** | **100%** | — |
 
 **Ambiguous の内訳**:
-1. EH-2 (mktemp-trap race 部分): 理論上存在するが実用上非再現。missing signal trap 部分は完全 TP
-2. EH-3 / PERF-8 (TMPFILES unbound): bash バージョン依存 (< 4.4 で TP、>= 4.4 で非発火)
-3. EH-6 (table_reasons silent skip): "pipeline crash" と "正常 no-match" の判別困難、設計判断に依存
-
-**注**: PERF-8 は EH-3 の重複報告なので、Ambiguous としてカウントするのは EH-3 側 1 件のみ。しかし reviewer 集計上は 25 件として維持 (鉛筆事項テーブル上は両方出現している)。
+1. EH-3 (TMPFILES unbound): bash バージョン依存 (< 4.4 で TP、>= 4.4 で非発火)。PERF-8 は同じ問題の重複報告として EH-3 に合算
+2. EH-6 (table_reasons silent skip): "pipeline crash" と "正常 no-match" の判別困難、設計判断に依存
 
 ## 3. FP rate 計算 (3 方式)
 
-PR #401 precedent に準拠して 3 つの算出方式で FP rate を計算。
+PR #401 precedent に準拠して 3 つの算出方式で FP rate を計算する。分母は **unique finding 数 24** を使用する (raw 件数 25 ではない)。
 
 ### 3.1 Strict (FP / total)
 
 ```
-FP rate = FP 件数 / 総件数
-        = 0 / 25
+FP rate = FP 件数 / unique 総件数
+        = 0 / 24
         = 0.0%
 ```
 
@@ -175,71 +187,87 @@ FP rate = FP 件数 / 総件数
 ### 3.2 Conservative (Ambiguous = 0.5 FP)
 
 ```
-FP rate = (FP 件数 + 0.5 × Ambiguous 件数) / 総件数
-        = (0 + 0.5 × 3) / 25
-        = 1.5 / 25
-        = 6.0%
+FP rate = (FP 件数 + 0.5 × Ambiguous 件数) / unique 総件数
+        = (0 + 0.5 × 2) / 24
+        = 1.0 / 24
+        = 4.2%
 ```
 
-✅ **Conservative FP rate 6.0%** も ≤20% 目標を満たす。
+✅ **Conservative FP rate 4.2%** も ≤20% 目標を満たす。Ambiguous は EH-3 / EH-6 の 2 件。
 
 ### 3.3 Worst case (Ambiguous = 全 FP)
 
 ```
-FP rate = (FP 件数 + Ambiguous 件数) / 総件数
-        = (0 + 3) / 25
-        = 12.0%
+FP rate = (FP 件数 + Ambiguous 件数) / unique 総件数
+        = (0 + 2) / 24
+        = 8.3%
 ```
 
-✅ **Worst case FP rate 12.0%** でも rollback 閾値 30% を大きく下回る。
+✅ **Worst case FP rate 8.3%** でも rollback 閾値 30% を大きく下回る。
 
 ### 3.4 doc-heavy PR #350 replay (PR #385) との比較
 
 | 指標 | doc-heavy #350 (PR #384/#401) | code-heavy #373 (本レポート) |
 |------|:---:|:---:|
-| 総 finding 数 | 19 件 | 25 件 |
-| Severity 分布 | 0 C / 7 H / 8 M / 4 L | 1 C / 10 H / 9 M / 5 L |
-| FP rate (strict) | 10.5% (2/19) | **0.0%** (0/25) |
-| FP rate (conservative) | 18.4% | **6.0%** |
-| FP rate (worst case) | 26.3% | **12.0%** |
-| TP 件数 | 14 (73.7%) | **22 (88.0%)** |
-| Ambiguous 件数 | 3 (15.8%) | 3 (12.0%) |
+| raw finding 数 | 19 件 | 25 件 |
+| unique finding 数 | 19 件 (重複なし) | **24 件** (PERF-8 は EH-3 の重複) |
+| Severity 分布 (raw) | 0 C / 7 H / 8 M / 4 L | 1 C / 10 H / 9 M / 5 L |
+| FP rate (strict) | 10.5% (2/19) | **0.0%** (0/24) |
+| FP rate (conservative) | 18.4% | **4.2%** |
+| FP rate (worst case) | 26.3% | **8.3%** |
+| TP 件数 | 14 (73.7%) | **22 (91.7%)** |
+| Ambiguous 件数 | 3 (15.8%) | 2 (8.3%) |
 
 **主要観察**:
-1. code-heavy は総 finding 数が **多い** (19 → 25、+31.6%) 一方で FP rate は **doc-heavy より低い**。これは「doc-heavy に過剰適応している」仮説の **反証** となる。
+1. code-heavy は unique finding 数が **多い** (19 → 24、+26.3%) 一方で FP rate は **doc-heavy より低い** (strict 0.0% vs 10.5%、worst 8.3% vs 26.3%)。これは「doc-heavy に過剰適応している」仮説の **反証** となる。
 2. CRITICAL finding が code-heavy で 1 件 (TEST-1) 出現。doc-heavy では CRITICAL 0 件だったため、code-heavy は **より重大な問題を発見する力** がある。
-3. Ambiguous 率は両者ほぼ同等 (15.8% vs 12.0%)、FP 判定の困難さが PR 性質に依存しないことを示唆。
+3. TP 率は code-heavy 91.7% > doc-heavy 73.7% で、code-heavy の方が指摘の質が高い傾向。
 
 ## 4. カテゴリカバレッジ分析 (Phase D 6 カテゴリ比較)
 
-### 4.1 Phase D 6 カテゴリ (doc-heavy #350 由来、PR #385 で定義)
+### 4.1 Phase D 6 カテゴリ (Issue #355 で特定、results.md §1.3 で集約)
 
-| # | カテゴリ | 由来 | code-heavy #373 で直接検出 |
+本レポートの比較対象となる Phase D 6 カテゴリは、`docs/investigations/review-quality-gap-results.md` §1.3 で定義されている「baseline_A (rite 改善前) が見落とし baseline_V (verified-review) が検出した 6 カテゴリ」である:
+
+| # | カテゴリ | 説明 | code-heavy #373 で検出 |
 |---|---------|------|:---:|
-| 1 | Enumeration / reason-table drift | fix.md Phase 8.1 reason 表の 12 値 vs 27+ emit | — |
-| 2 | Pipeline SIGPIPE 方向誤解 | review.md Phase 2.2.1 pipeline direction 誤認 | — (ただし関連カテゴリ: pipefail error 伝播 EH-4 を検出) |
-| 3 | Anchor / 行番号 drift | review-quality-gap-closure.md の行番号参照 drift | — |
-| 4 | Bash trap+cleanup パターン重複 | 9 箇所の完全重複 | ✅ EH-2 (trap 標準パターン不整合を指摘) |
-| 5 | Fast Path bash block 複雑度 | 250 行 11 ステップ詰め込み | — |
-| 6 | Frontmatter drift | (Phase A の由来) | — |
+| 1 | flow control | 到達不能コード、unreachable 経路 | — |
+| 2 | i18n parity | i18n key の整合性 | — (i18n ファイル非変更) |
+| 3 | pattern portability | regex の locale 依存、BSD/GNU 互換 | — |
+| 4 | dead code | 未使用変数、不要な import | — |
+| 5 | stderr 混入 | デバッグ出力の残存 | — |
+| 6 | semantic collision | 変数名・関数名の意味的衝突 | — |
 
-**直接重複**: 6 カテゴリ中 **1 カテゴリ** (≈17%)
+**直接重複**: 6 カテゴリ中 **0 カテゴリ** (**0/6 = 0.0%**)
 
-### 4.2 code-heavy 固有カテゴリ (新規発見)
+**この結果の解釈**:
+- Phase D 6 カテゴリは **doc-heavy PR (#350) で rite が見落としていた** 問題群を表す。これらは「散文ドキュメント内の距離の離れた箇所同士の不整合」「多言語ドキュメントの key 対応」「regex 文献上の portability 考察」等、**doc-heavy PR 固有の問題表面** を反映している。
+- code-heavy #373 (新規 bash 実装 + テスト) には、そもそも i18n ファイル変更・dead code・semantic collision・pattern portability の問題表面がほぼ存在しない。flow control (unreachable code) や stderr 混入は理論的には発生しうるが、#373 の 392 行の小さな新規追加内には顕在化しなかった。
+- 0/6 = 0% という直接重複の低さは、**review system の欠陥ではなく** 「doc-heavy と code-heavy では問題表面が本質的に異なる」という当然の事実を示している。
+
+### 4.2 code-heavy 固有カテゴリ (unique 24 件の分類)
+
+code-heavy PR #373 の 24 件の unique finding を 6 カテゴリに分類する (全 24 件を漏れなく分類):
 
 | カテゴリ | 件数 | 代表 finding |
 |---------|:---:|------|
-| Silent failure / error propagation (pipefail 相互作用、silent exit、IO error vs no-match) | 7 | EH-1, 3, 4, 5, 6, 7, 8 |
-| Test coverage gaps (個別 assertion 欠落、negative case 未検証、option coverage 欠落) | 6 | TEST-1..6 |
-| Algorithmic performance (O(N) / fork 増幅 / tempfile 往復) | 7 | PERF-1..7 |
-| Convention consistency (shebang 規約、harness 発見性) | 2 | CQ-1, 2 |
+| Silent failure / error propagation (pipefail 相互作用、silent exit、IO error vs no-match) | 7 | EH-1, EH-3, EH-4, EH-5, EH-6, EH-7, EH-8 |
+| Race conditions / signal handling (mktemp-trap ordering、signal 別 trap) | 1 | EH-2 |
+| Test coverage gaps (個別 assertion 欠落、negative case 未検証、option coverage 欠落) | 6 | TEST-1, TEST-2, TEST-3, TEST-4, TEST-5, TEST-6 |
+| Algorithmic performance (O(N) / fork 増幅 / tempfile 往復) | 7 | PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, PERF-6, PERF-7 |
+| Convention consistency (shebang 規約、harness 発見性) | 2 | CQ-1, CQ-2 |
+| Minor design critique (TMPFILES 配置フラジリティ等) | 1 | TEST-7 |
+| **合計** | **24** | — |
+
+**集計検証**: 7+1+6+7+2+1 = 24 ✅ (§2.1 の unique finding 数と一致、漏れなし)
+
+**注**: PERF-8 は本表には現れない (EH-3 の Duplicate として §2 で集計外扱い)。PERF-8 を独立 finding として扱う場合は Silent failure カテゴリに分類される。
 
 ### 4.3 カテゴリ多様性の含意
 
-- doc-heavy (#350) と code-heavy (#373) の finding カテゴリは **大きく異なる**。
-- しかし両者とも **共通の "bash trap+cleanup パターン重複" カテゴリ** を検出 (EH-2)。
-- code-heavy では doc-heavy 特有のカテゴリ (enumeration drift / anchor drift / fast path 複雑度) を検出しない代わりに、**code 特有のカテゴリ** (silent failure / test coverage / performance) を自律的に発見している。
-- この **カテゴリの入力適応性** は、改善後 review system が特定 PR 型に overfit しているのではなく、**reviewer プロンプトと shared principles が汎用的に機能している** ことを示す強い証拠である。
+- doc-heavy (#350) と code-heavy (#373) の finding カテゴリは **完全に異なる** (直接重複 0/6)。
+- doc-heavy 特有のカテゴリ (`flow control` / `i18n parity` / `pattern portability` / `dead code` / `stderr 混入` / `semantic collision`) は code-heavy では検出されない代わりに、**code 特有のカテゴリ** (silent failure / race/signal handling / test coverage / algorithmic performance / convention consistency / minor design critique) を review system が自律的に発見している。
+- この **カテゴリの入力適応性** は、改善後 review system が特定 PR 型に overfit しているのではなく、**reviewer プロンプトと shared principles が汎用的に機能している** ことを示す強い証拠である。仮に review system が doc-heavy に過剰適応していたなら、code-heavy では 0 件 finding や全 FP で pattern matching failure を起こすはずだが、実際には 24 件 (TP 91.7%) の高品質な code-heavy 固有指摘を生成している。
 
 ## 5. Rollback 判定
 
@@ -248,18 +276,12 @@ FP rate = (FP 件数 + Ambiguous 件数) / 総件数
 | 方式 | FP rate | 30% 閾値判定 |
 |------|--------|:-:|
 | Strict | 0.0% | ✅ (大きく下回る) |
-| Conservative | 6.0% | ✅ |
-| Worst case | 12.0% | ✅ (余裕あり) |
+| Conservative | 4.2% | ✅ |
+| Worst case | 8.3% | ✅ (余裕あり) |
 
 **結論**: **code-heavy PR 対照実測では、いずれの Phase (A/B/C/C2) も rollback 対象にならない**。
 
-改善後 review system は code-heavy PR に対して:
-1. doc-heavy を下回る低 FP rate (strict 0.0%)
-2. doc-heavy を上回る total finding 数 (19 → 25)
-3. 入力性質に適応した多様なカテゴリ
-4. CRITICAL レベルの実質的問題を発見する能力
-
-を示しており、**doc-heavy 特殊化の兆候はない**。
+詳細は §0 サマリーの主要結論 1-3 を参照 (冗長回避のためここでは繰り返さない)。
 
 ## 6. 親 Issue #392 への引き継ぎ情報
 
@@ -280,11 +302,12 @@ FP rate = (FP 件数 + Ambiguous 件数) / 総件数
 - Issue #402 (本 Issue)
 - `docs/issue-402-pr373-replay-code-heavy` ブランチ (本レポート含む)
 - PR #405 (replay draft PR、review コメント付き)
+- PR #406 (本 Issue の findings レポート PR、本ファイルを追加)
 
 ### 7.2 親 Issue と参考資料
 - 親 Issue #392
 - doc-heavy replay: PR #384 (実測) / PR #385 (レポート) / PR #401 (FP 判定)
-- Phase D レポート: [`review-quality-gap-results.md`](./review-quality-gap-results.md)
+- Phase D レポート: [`review-quality-gap-results.md`](./review-quality-gap-results.md) (§1.3 で Phase D 6 カテゴリを定義)
 - 設計書: [`../designs/review-quality-gap-closure.md`](../designs/review-quality-gap-closure.md)
 
 ### 7.3 PR #373 オリジナル
