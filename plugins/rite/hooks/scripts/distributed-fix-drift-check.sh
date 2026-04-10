@@ -221,11 +221,11 @@ check_pattern_3() {
 
 # ----- Pattern 4: anchor drift -----------------------------------------------
 # Extract [text](path#anchor) and verify the anchor exists in path's headings,
-# using GitHub's anchor conversion: lowercase, spaces->-, drop most punctuation.
+# using GitHub's anchor conversion (github-slugger compatible):
+# lowercase, strip non-word/non-space/non-hyphen, spaces->hyphens, collapse hyphens.
 github_anchor() {
   printf '%s\n' "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/[^a-z0-9 _-]//g' -e 's/ /-/g'
+    | perl -CSD -Mutf8 -pe 'chomp; $_ = lc($_); s/[^\w\s-]//g; s/\s+/-/g; s/-{2,}/-/g; s/^-|-$//g; $_ .= "\n"'
 }
 
 check_pattern_4() {
@@ -253,7 +253,7 @@ check_pattern_4() {
         local headings
         headings=$(grep -E '^#{1,6}[[:space:]]' "$abs_path" 2>/dev/null \
           | sed -E 's/^#+[[:space:]]+//' \
-          | while IFS= read -r h; do github_anchor "$h"; done)
+          | perl -CSD -Mutf8 -pe 'chomp; $_ = lc($_); s/[^\w\s-]//g; s/\s+/-/g; s/-{2,}/-/g; s/^-|-$//g; $_ .= "\n"')
         # Skip files with no markdown headings (e.g. pure code files) to avoid
         # false positives where every anchor would be reported as unresolved.
         [ -z "$headings" ] && continue
