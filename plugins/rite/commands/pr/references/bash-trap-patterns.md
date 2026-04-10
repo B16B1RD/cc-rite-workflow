@@ -175,4 +175,4 @@ SIGTERM/SIGINT/SIGHUP が到達した場合に作成済み tmp ファイルが o
 この pointer により、**rationale / 説明コメントの更新は本ファイル 1 箇所に集約される** (冒頭の
 「重要 — コード層との境界」で述べた通り、4 行 trap のコード自体はこれとは別に各 site に残っている)。
 signal 動作そのものを変更する場合 (例: HUP 追加、TERM の exit code 変更) は、本ファイルの rationale
-更新後に fix.md + review.md の全 9 site の 4 行 trap を Instantiation Checklist に従って同時更新すること。
+更新後に fix.md + review.md + start.md の全 site の 4 行 trap を Instantiation Checklist に従って同時更新すること。
