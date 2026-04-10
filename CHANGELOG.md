@@ -27,16 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Passes `{doc_heavy_pr=true}` flag to tech-writer to activate the 5-category verification protocol defined in `internal-consistency.md` (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence), makes the `Evidence:` line mandatory on each finding, and triggers the Phase 5.1.3 Doc-Heavy post-condition check in `review.md` (#349)
 - **`/rite:pr:fix` accepts PR URL / comment URL directly** — `/rite:pr:fix` now accepts PR URL or comment URL arguments in addition to PR number, allowing findings from external review tools (e.g. `/verified-review`) to be parsed directly into the fix loop. Accepted URL formats include trailing paths (`/files`), query strings (`?tab=files`), and fragment identifiers (`#diff-...`) — all are normalized in Phase 1.0. Comments must contain a markdown table with at least 4 columns (with optional 5th `confidence` column). See `plugins/rite/commands/pr/fix.md` Phase 1.0 / Phase 1.2 best-effort parse sections for the full argument spec, header detection keywords, and severity alias mapping (#349)
 - **`[fix:pushed-wm-stale]` output pattern** — `/rite:pr:fix` now emits `[fix:pushed-wm-stale]` when Phase 4.5 work memory update soft-failed. Firing conditions map 1:1 to the reason table in `commands/pr/fix.md` Phase 8.1 — each natural-language phrase below annotates its corresponding `reason` label. See the reason table for the complete list of `reason` values:
-    - `current_body` empty → `current_body_empty`
-    - `issue_number` not found → `issue_number_not_found`
-    - PATCH 4xx/5xx → `patch_failed`
-    - `pr_body` grep IO error → `pr_body_grep_io_error` (+ `mktemp_failed_pr_body_grep_err` for its stderr tempfile)
-    - branch grep IO error → `branch_grep_io_error` (+ `mktemp_failed_branch_grep_err`)
-    - `gh api comments` fetch failure → `gh_api_comments_fetch_failed` (+ `mktemp_failed_gh_api_err`)
-    - Python script unexpected exit (generic) → `python_unexpected_exit_$py_exit`
-    - `git diff` failure (Python sentinel detection) → `python_sentinel_detected` (reserved exclusively for `GIT_DIFF_FAILED_SENTINEL` match via `sys.exit(2)`)
-    - work memory body corruption detected → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
-    - mktemp failure → `mktemp_failed_*` family (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, etc.)
+  - `current_body` empty → `current_body_empty`
+  - `issue_number` not found → `issue_number_not_found`
+  - PATCH 4xx/5xx → `patch_failed`
+  - `pr_body` grep IO error → `pr_body_grep_io_error` (+ `mktemp_failed_pr_body_grep_err` for its stderr tempfile)
+  - branch grep IO error → `branch_grep_io_error` (+ `mktemp_failed_branch_grep_err`)
+  - `gh api comments` fetch failure → `gh_api_comments_fetch_failed` (+ `mktemp_failed_gh_api_err`)
+  - Python script unexpected exit (generic) → `python_unexpected_exit_$py_exit`
+  - `git diff` failure (Python sentinel detection) → `python_sentinel_detected` (reserved exclusively for `GIT_DIFF_FAILED_SENTINEL` match via `sys.exit(2)`)
+  - work memory body corruption detected → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
+  - mktemp failure → `mktemp_failed_*` family (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, etc.)
 
   The `git diff` failure path also routes through `WM_UPDATE_FAILED=1; reason=python_sentinel_detected` (via Python `sys.exit(2)` and bash `exit 1`). The bash `exit 1` only kills the current bash invocation, but the retained `WM_UPDATE_FAILED=1` flag survives in the conversation context — Phase 8.1 still runs, detects the flag via row 2 of the evaluation-order table, and emits `[fix:pushed-wm-stale]` (NOT `[fix:error]`). The hard fail-fast design ensures the PATCH is silently rejected, but the `[fix:pushed-wm-stale]` output pattern is the correct caller-facing signal (see `commands/pr/fix.md` Phase 8.1 evaluation order and `reason` table for the authoritative flow). Callers (`/rite:issue:start` review-fix loop) **must not** silently treat `[fix:pushed-wm-stale]` as `[fix:pushed]`; instead, they must surface a warning via `AskUserQuestion` and let the user decide whether to continue with stale work memory or pause for manual recovery. See `commands/pr/fix.md` Phase 8.1 caller semantics for the full contract (#349)
 
