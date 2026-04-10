@@ -427,6 +427,41 @@ When skipped, no output needed (silent skip).
 - `test_error_count`: Number of failed tests (0 if success)
 - `test_output`: Test command output (truncated if >500 lines)
 
+### 3.5 Plugin-specific Checks (Distributed Fix Drift Detection)
+
+Execute the distributed fix drift check script to detect documentation drift patterns in rite-workflow procedural markdown files.
+
+**Condition**: Always execute when `{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh` exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -x "{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh" ]; then
+  drift_output=$(bash "{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh" --all 2>&1) || true
+  drift_exit_code=$?
+else
+  drift_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `drift_status` | Action |
+|-----------|----------------|--------|
+| 0 | `success` | No drift detected — continue to Phase 4 |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). Display drift findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Drift detection results are treated as **warnings**, not errors. A drift finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). This design choice reflects that drift findings are documentation consistency issues, not code quality blockers.
+
+**Record drift results** for Phase 4 reporting:
+- `drift_status`: `success` / `warning` / `error` / `skipped`
+- `drift_finding_count`: Number of drift findings (0 if success/skipped)
+- `drift_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -493,6 +528,15 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 ```
 [lint:success] — lint passed ({target_file_count} files)
 ```
+
+**Drift check warning appendix** (both standalone and E2E): When `drift_status` is `warning`, append drift findings after the lint result output:
+
+```
+⚠️ Drift check: {drift_finding_count} findings detected (warning, non-blocking)
+{drift_output}
+```
+
+This appendix does NOT change the result pattern — `[lint:success]` remains the pattern even with drift warnings.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -563,6 +607,7 @@ Analyze the error content and present fix suggestions when possible:
 | {i18n:lint_errors} | {error_count} |
 | {i18n:lint_warnings} | {warning_count} |
 | {i18n:lint_test} | {test_status} ({test_error_count} failures) |
+| Drift check | {drift_status} ({drift_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
@@ -573,7 +618,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift check` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 
