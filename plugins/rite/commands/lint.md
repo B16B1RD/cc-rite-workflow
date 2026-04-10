@@ -439,7 +439,7 @@ Execute the distributed fix drift check script to detect documentation drift pat
 
 ```bash
 if [ -x "{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh" ]; then
-  drift_output=$(bash "{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh" --all 2>&1) || true
+  drift_output=$(bash "{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh" --all 2>&1)
   drift_exit_code=$?
 else
   drift_exit_code=-1  # script not found
@@ -459,7 +459,7 @@ fi
 
 **Record drift results** for Phase 4 reporting:
 - `drift_status`: `success` / `warning` / `error` / `skipped`
-- `drift_finding_count`: Number of drift findings (0 if success/skipped)
+- `drift_finding_count`: Extract from `drift_output` by matching the line `==> Total drift findings: N` (regex: `/Total drift findings: (\d+)/`). If no match found, default to 0
 - `drift_output`: Script output (truncated if >50 lines)
 
 ---
