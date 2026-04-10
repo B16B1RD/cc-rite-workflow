@@ -751,12 +751,14 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    # diff 全体に fenced code block の追加が含まれるかをスキャン
    # `^+` で始まる行 (追加行) のうち ```{lang} で始まる行を grep
    #
-   # 重要 — pipefail 必須 (silent failure 防止):
-   # `set -o pipefail` がないと `git diff | grep | head` のうち git diff が exit != 0 で
-   # 失敗しても、後段の grep / head が exit 0 + 空文字列を返してしまうため、
-   # `has_added_fenced_block=""` → 「fenced block なし」と silent に誤判定し
-   # code-quality co-reviewer 追加が skip される (Doc-Heavy PR mode の根本目的を破壊する
-   # silent failure 経路。本 Issue #350 検証付きレビューで指摘済み)。
+   # 歴史的背景 — pipefail の経緯:
+   # 旧実装では `git diff | grep | head` の pipeline を使用しており、`set -o pipefail`
+   # がないと git diff が exit != 0 で失敗しても後段の grep / head が exit 0 + 空文字列を
+   # 返し、silent failure が発生していた (Issue #350 検証付きレビューで指摘)。
+   # 現行実装 (PR #396) では pipeline を廃止し、`diff_out=$(git diff ...)` で独立実行 +
+   # exit code 明示 check (line 789) → `grep ... <<< "$diff_out"` の here-string 構成に
+   # 移行したため、pipefail が直接必要な pipeline は存在しない。ただし将来の pipeline
+   # 追加時の防御として `set -o pipefail` を維持している。
    #
    # 加えて {base_branch} placeholder が未展開だった場合の guard も入れる (Claude が
    # スクリプト生成時に置換を忘れた場合の早期検出)。
