@@ -823,6 +823,7 @@ messages:
   lint_install_methods: "インストール方法"
   lint_running_tests: "テストを実行しています..."
   lint_test: "テスト"
+  lint_drift_check: "Drift チェック"
 
   # Sprint コマンド (追加キー)
   sprint_plan_ask_target: "どのスプリントを計画しますか？"

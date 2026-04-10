@@ -438,8 +438,8 @@ Execute the distributed fix drift check script to detect documentation drift pat
 **Execution:**
 
 ```bash
-if [ -x "{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh" ]; then
-  drift_output=$(bash "{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh" --all 2>&1)
+if [ -f {plugin_root}/hooks/scripts/distributed-fix-drift-check.sh ]; then
+  drift_output=$(bash {plugin_root}/hooks/scripts/distributed-fix-drift-check.sh --all 2>&1)
   drift_exit_code=$?
 else
   drift_exit_code=-1  # script not found
@@ -607,7 +607,7 @@ Analyze the error content and present fix suggestions when possible:
 | {i18n:lint_errors} | {error_count} |
 | {i18n:lint_warnings} | {warning_count} |
 | {i18n:lint_test} | {test_status} ({test_error_count} failures) |
-| Drift check | {drift_status} ({drift_finding_count} findings) |
+| {i18n:lint_drift_check} | {drift_status} ({drift_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
