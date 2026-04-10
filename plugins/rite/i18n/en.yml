@@ -823,6 +823,7 @@ messages:
   lint_install_methods: "Installation methods"
   lint_running_tests: "Running tests..."
   lint_test: "Tests"
+  lint_drift_check: "Drift check"
 
   # Sprint commands (additional keys)
   sprint_plan_ask_target: "Which sprint do you want to plan?"
