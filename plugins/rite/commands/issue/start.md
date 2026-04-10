@@ -575,7 +575,7 @@ echo "workflow_incident_enabled=$workflow_incident_enabled"
 
 Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads this value and skips its entire processing if `false`.
 
-> **Note on `non_blocking` / `dedupe_per_session`** (cycle 1 review H10 / tech-writer): Currently only `enabled` is read by the orchestrator. The `workflow_incident.non_blocking` and `workflow_incident.dedupe_per_session` keys in `rite-config.yml` are **reserved for future use** — the current implementation always behaves as if both are `true` (non-blocking error handling, session-local dedupe). See `docs/SPEC.md` "Workflow Incident Detection > Configuration" for details.
+> **Note on non-blocking / dedupe behavior**: The implementation always behaves as non-blocking (registration failure does not halt the workflow) and deduplicates incidents per session (same type is only prompted once). Only `enabled` is a configurable key.
 
 ### 5.1 Implementation
 
