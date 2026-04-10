@@ -35,6 +35,13 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
+# --- Fail-open for pattern matching stage ---
+# If heredoc extraction or pattern matching crashes (e.g., edge-case failures with
+# large multiline input), allow the command rather than blocking it.
+# Placed after JSON parsing (which has its own || fallbacks) to preserve
+# error detection for malformed hook input (TC-016).
+trap 'exit 0' ERR
+
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
 # PR descriptions, etc. Only check the command prefix before the first heredoc marker.

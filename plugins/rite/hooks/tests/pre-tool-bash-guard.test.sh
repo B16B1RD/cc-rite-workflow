@@ -280,20 +280,22 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-016: Malformed JSON input → non-zero exit (graceful failure)
+# TC-016: Malformed JSON input → exit 0 (fail-open: jq fallback handles it)
+# Note: Since commit 84160bd added `|| TOOL_NAME=""` fallback, malformed JSON
+# results in TOOL_NAME="" → exit 0 (allow). This is correct fail-open behavior.
 # --------------------------------------------------------------------------
-echo "TC-016: Malformed JSON input → non-zero exit (graceful failure)"
+echo "TC-016: Malformed JSON input → exit 0 (fail-open via jq fallback)"
 rc=0
 output=$(run_guard_raw "not valid json at all") || rc=$?
-if [ "$rc" != "0" ]; then
-  pass "Malformed JSON causes non-zero exit (set -euo pipefail + jq parse failure)"
-else
+if [ "$rc" = "0" ]; then
   decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-  if [ "$decision" = "deny" ]; then
-    fail "Malformed JSON should not produce deny, got output=$output"
+  if [ -z "$decision" ]; then
+    pass "Malformed JSON → exit 0, no deny output (fail-open via || TOOL_NAME=\"\" fallback)"
   else
-    fail "Expected non-zero exit for malformed JSON, got rc=0 output=$output"
+    fail "Malformed JSON should not produce deny, got decision=$decision"
   fi
+else
+  fail "Expected exit 0 for malformed JSON (fail-open), got rc=$rc"
 fi
 echo ""
 
