@@ -809,7 +809,7 @@ fi
 # 通常のコメント（PR コメント欄）を一括取得して保存（Phase 1.2.1 で再利用）
 if ! pr_comments=$(gh pr view {pr_number} --json comments --jq '.comments' 2>"$gh_api_err"); then
   echo "エラー: PR コメントの取得に失敗しました (gh pr view --json comments)" >&2
-  echo "詳細 (gh api stderr 先頭 5 行):" >&2
+  echo "詳細 (gh pr view stderr 先頭 5 行):" >&2
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
   exit 1
 fi
