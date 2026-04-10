@@ -43,11 +43,13 @@ assert_ge() {
 
 # --- Test 1: usage / help works ----------------------------------------------
 "$SCRIPT" --help >/dev/null 2>&1
-assert "--help exits 0" "0" "$?"
+rc=$?
+assert "--help exits 0" "0" "$rc"
 
 # --- Test 2: missing args returns error code 2 -------------------------------
 "$SCRIPT" >/dev/null 2>&1
-assert "no args exits 2" "2" "$?"
+rc=$?
+assert "no args exits 2" "2" "$rc"
 
 # Accumulating tempfile manager (trap is set once, list grows as tests add files)
 TMPFILES=()
@@ -94,7 +96,8 @@ This file contains no drift patterns.
 Some prose explaining behavior.
 EOF
 "$SCRIPT" --target "$CLEAN" >/dev/null 2>&1
-assert "synthetic clean file exits 0" "0" "$?"
+rc=$?
+assert "synthetic clean file exits 0" "0" "$rc"
 
 # --- Summary -----------------------------------------------------------------
 echo
