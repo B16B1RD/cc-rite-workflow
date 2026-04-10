@@ -20,23 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **internal-consistency.md reference** — New reference file that complements `fact-check.md` (external specs) with an internal-facts verification protocol. Defines 5 Verification Protocol categories, Confidence 80+ gate, severity mapping, and a Cross-Reference section linking it to `tech-writer.md`, `review.md`, and related agent files (#349)
 - **Doc-Heavy PR Detection (Phase 1.2.7)** — Automatic detection of documentation-centric PRs (formula: `(doc_lines / total_diff_lines >= 0.6)` OR `(doc_files_count / total_files_count >= 0.7 AND total_diff_lines < 2000)`). Excludes rite plugin's own `commands/`, `skills/`, `agents/` `.md` files **and `.md` / `.mdx` translation documentation under `plugins/rite/i18n/**`** (prompt-engineer territory / dogfooding artifacts; non-Markdown translation resources such as `.yml` / `.json` / `.po` under `plugins/rite/i18n/` are not part of the `doc_file_patterns` numerator in the first place, so the exclusion is a no-op for them). Added optional schema `review.doc_heavy.*` (keys: `enabled`, `lines_ratio_threshold`, `count_ratio_threshold`, `max_diff_lines_for_count`) to `rite-config.yml` (#349)
 - **Doc-Heavy Reviewer Override (Phase 2.2.1)** — When `{doc_heavy_pr == true}`, promote tech-writer from recommended to mandatory and add code-quality as co-reviewer through one of three independent paths so the final state always has ≥2 reviewers:
-    - **Normal path**: Add code-quality when fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.) are detected in the diff. Pure-prose PRs do **not** trigger this path.
-    - **Fail-safe path**: When the diff scan itself fails (`git diff` IO error, grep IO error, etc.), code-quality is added regardless of whether fenced blocks were detected, to preserve verification strength when the detection signal is unavailable.
-    - **Fallback path**: When no fenced blocks are detected and Phase 2.2.1 produced no addition, the Phase 2.3 sole-reviewer guard adds code-quality as a fallback in the next phase.
+  - **Normal path**: Add code-quality when fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.) are detected in the diff. Pure-prose PRs do **not** trigger this path.
+  - **Fail-safe path**: When the diff scan itself fails (`git diff` IO error, grep IO error, etc.), code-quality is added regardless of whether fenced blocks were detected, to preserve verification strength when the detection signal is unavailable.
+  - **Fallback path**: When no fenced blocks are detected and Phase 2.2.1 produced no addition, the Phase 2.3 sole-reviewer guard adds code-quality as a fallback in the next phase.
 
   Passes `{doc_heavy_pr=true}` flag to tech-writer to activate the 5-category verification protocol defined in `internal-consistency.md` (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence), makes the `Evidence:` line mandatory on each finding, and triggers the Phase 5.1.3 Doc-Heavy post-condition check in `review.md` (#349)
 - **`/rite:pr:fix` accepts PR URL / comment URL directly** — `/rite:pr:fix` now accepts PR URL or comment URL arguments in addition to PR number, allowing findings from external review tools (e.g. `/verified-review`) to be parsed directly into the fix loop. Accepted URL formats include trailing paths (`/files`), query strings (`?tab=files`), and fragment identifiers (`#diff-...`) — all are normalized in Phase 1.0. Comments must contain a markdown table with at least 4 columns (with optional 5th `confidence` column). See `plugins/rite/commands/pr/fix.md` Phase 1.0 / Phase 1.2 best-effort parse sections for the full argument spec, header detection keywords, and severity alias mapping (#349)
 - **`[fix:pushed-wm-stale]` output pattern** — `/rite:pr:fix` now emits `[fix:pushed-wm-stale]` when Phase 4.5 work memory update soft-failed. Firing conditions map 1:1 to the reason table in `commands/pr/fix.md` Phase 8.1 — each natural-language phrase below annotates its corresponding `reason` label. See the reason table for the complete list of `reason` values:
-    - `current_body` empty → `current_body_empty`
-    - `issue_number` not found → `issue_number_not_found`
-    - PATCH 4xx/5xx → `patch_failed`
-    - `pr_body` grep IO error → `pr_body_grep_io_error` (+ `mktemp_failed_pr_body_grep_err` for its stderr tempfile)
-    - branch grep IO error → `branch_grep_io_error` (+ `mktemp_failed_branch_grep_err`)
-    - `gh api comments` fetch failure → `gh_api_comments_fetch_failed` (+ `mktemp_failed_gh_api_err`)
-    - Python script unexpected exit (generic) → `python_unexpected_exit_$py_exit`
-    - `git diff` failure (Python sentinel detection) → `python_sentinel_detected` (reserved exclusively for `GIT_DIFF_FAILED_SENTINEL` match via `sys.exit(2)`)
-    - work memory body corruption detected → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
-    - mktemp failure → `mktemp_failed_*` family (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, etc.)
+  - `current_body` empty → `current_body_empty`
+  - `issue_number` not found → `issue_number_not_found`
+  - PATCH 4xx/5xx → `patch_failed`
+  - `pr_body` grep IO error → `pr_body_grep_io_error` (+ `mktemp_failed_pr_body_grep_err` for its stderr tempfile)
+  - branch grep IO error → `branch_grep_io_error` (+ `mktemp_failed_branch_grep_err`)
+  - `gh api comments` fetch failure → `gh_api_comments_fetch_failed` (+ `mktemp_failed_gh_api_err`)
+  - Python script unexpected exit (generic) → `python_unexpected_exit_$py_exit`
+  - `git diff` failure (Python sentinel detection) → `python_sentinel_detected` (reserved exclusively for `GIT_DIFF_FAILED_SENTINEL` match via `sys.exit(2)`)
+  - work memory body corruption detected → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
+  - mktemp failure → `mktemp_failed_*` family (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, etc.)
 
   The `git diff` failure path also routes through `WM_UPDATE_FAILED=1; reason=python_sentinel_detected` (via Python `sys.exit(2)` and bash `exit 1`). The bash `exit 1` only kills the current bash invocation, but the retained `WM_UPDATE_FAILED=1` flag survives in the conversation context — Phase 8.1 still runs, detects the flag via row 2 of the evaluation-order table, and emits `[fix:pushed-wm-stale]` (NOT `[fix:error]`). The hard fail-fast design ensures the PATCH is silently rejected, but the `[fix:pushed-wm-stale]` output pattern is the correct caller-facing signal (see `commands/pr/fix.md` Phase 8.1 evaluation order and `reason` table for the authoritative flow). Callers (`/rite:issue:start` review-fix loop) **must not** silently treat `[fix:pushed-wm-stale]` as `[fix:pushed]`; instead, they must surface a warning via `AskUserQuestion` and let the user decide whether to continue with stale work memory or pause for manual recovery. See `commands/pr/fix.md` Phase 8.1 caller semantics for the full contract (#349)
 
@@ -365,11 +365,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.4...v0.3.5
-[0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.3.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3

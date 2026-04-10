@@ -20,23 +20,23 @@ Rite Workflow の主要な変更を記録します。
 - **internal-consistency.md reference 新設** — `fact-check.md` (外部仕様) と対の内部事実検証プロトコル。5 項目の Verification Protocol、Confidence 80+ ゲート、severity マッピング、および `tech-writer.md` / `review.md` / 関連 agent ファイルを参照する Cross-Reference セクションを定義 (#349)
 - **Doc-Heavy PR Detection (Phase 1.2.7)** — ドキュメント中心 PR を自動判定 (判定式: `(doc_lines / total_diff_lines >= 0.6)` または `(doc_files_count / total_files_count >= 0.7 かつ total_diff_lines < 2000)`)。rite plugin 自身の `commands/`, `skills/`, `agents/` 配下の `.md` **および `plugins/rite/i18n/**` 配下の `.md` / `.mdx` 翻訳ドキュメント**は除外 (prompt-engineer 専管 / dogfooding artifact。`plugins/rite/i18n/` 配下の `.yml` / `.json` / `.po` など非 Markdown の翻訳リソースはそもそも `doc_file_patterns` の分子候補に含まれないため除外処理は no-op)。`rite-config.yml` に optional schema `review.doc_heavy.*` (キー: `enabled`, `lines_ratio_threshold`, `count_ratio_threshold`, `max_diff_lines_for_count`) を追加 (#349)
 - **Doc-Heavy Reviewer Override (Phase 2.2.1)** — `{doc_heavy_pr == true}` のとき tech-writer を recommended → mandatory に昇格、code-quality を co-reviewer 追加。追加経路は以下の 3 つで構成され、最終状態は常に ≥2 reviewers が保たれる:
-    - **Normal path**: diff 内に fenced code block (` ```bash ` / ` ```yaml ` / ` ```python ` 等) が検出された場合に追加。純粋散文 PR ではこの経路は発火しない
-    - **Fail-safe path**: diff スキャン自体が失敗した場合 (`git diff` IO エラー / grep IO エラー等)、fenced block 検出有無に関係なく追加 (検出シグナル不在時の検証強度維持)
-    - **Fallback path**: fenced block が検出されず Phase 2.2.1 で追加されなかった場合、Phase 2.3 sole-reviewer guard が後段で fallback として追加する
+  - **Normal path**: diff 内に fenced code block (` ```bash ` / ` ```yaml ` / ` ```python ` 等) が検出された場合に追加。純粋散文 PR ではこの経路は発火しない
+  - **Fail-safe path**: diff スキャン自体が失敗した場合 (`git diff` IO エラー / grep IO エラー等)、fenced block 検出有無に関係なく追加 (検出シグナル不在時の検証強度維持)
+  - **Fallback path**: fenced block が検出されず Phase 2.2.1 で追加されなかった場合、Phase 2.3 sole-reviewer guard が後段で fallback として追加する
 
   tech-writer に `{doc_heavy_pr=true}` フラグを伝達し、`internal-consistency.md` の 5 カテゴリ verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を mandatory 化、各 finding に `Evidence:` 行を必須化、`review.md` の Phase 5.1.3 Doc-Heavy post-condition check で検証 (#349)
 - **`/rite:pr:fix` に PR URL / comment URL 直渡しサポート** — `/rite:pr:fix` が PR 番号に加え PR URL / コメント URL 引数を受け付け、`/verified-review` など外部レビューツールのコメントから直接 findings をパースして fix ループに投入可能に。受理可能な URL 形式は trailing path (`/files`)、query string (`?tab=files`)、fragment (`#diff-...`) を含み、すべて Phase 1.0 で正規化される。対象コメントには最低 4 カラム (optional 5 列目 confidence) の markdown テーブルが必要。詳細な引数仕様・ヘッダー検出キーワード・severity 別名マッピングは `plugins/rite/commands/pr/fix.md` Phase 1.0 / Phase 1.2 best-effort parse セクションを参照 (#349)
 - **`[fix:pushed-wm-stale]` 出力パターン** — `/rite:pr:fix` が Phase 4.5 work memory 更新で soft failure を検出した場合に新規出力する。発火条件は `commands/pr/fix.md` Phase 8.1 の reason 表と 1:1 対応しており、以下に自然言語表現と `reason` ラベルの mapping を示す。完全な一覧は reason 表参照:
-    - `current_body` 空 → `current_body_empty`
-    - `issue_number` 抽出失敗 → `issue_number_not_found`
-    - PATCH 4xx/5xx → `patch_failed`
-    - `pr_body` grep IO エラー → `pr_body_grep_io_error` (stderr tempfile mktemp 失敗は `mktemp_failed_pr_body_grep_err`)
-    - branch grep IO エラー → `branch_grep_io_error` (同上 `mktemp_failed_branch_grep_err`)
-    - `gh api comments` 取得失敗 → `gh_api_comments_fetch_failed` (同上 `mktemp_failed_gh_api_err`)
-    - Python script 異常終了 (汎用) → `python_unexpected_exit_$py_exit`
-    - `git diff` 失敗 (Python sentinel 検出) → `python_sentinel_detected` (`GIT_DIFF_FAILED_SENTINEL` マッチ時の `sys.exit(2)` に予約された専用ラベル)
-    - work memory body 破損検出 → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
-    - mktemp 失敗 → `mktemp_failed_*` 系統 (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, 他)
+  - `current_body` 空 → `current_body_empty`
+  - `issue_number` 抽出失敗 → `issue_number_not_found`
+  - PATCH 4xx/5xx → `patch_failed`
+  - `pr_body` grep IO エラー → `pr_body_grep_io_error` (stderr tempfile mktemp 失敗は `mktemp_failed_pr_body_grep_err`)
+  - branch grep IO エラー → `branch_grep_io_error` (同上 `mktemp_failed_branch_grep_err`)
+  - `gh api comments` 取得失敗 → `gh_api_comments_fetch_failed` (同上 `mktemp_failed_gh_api_err`)
+  - Python script 異常終了 (汎用) → `python_unexpected_exit_$py_exit`
+  - `git diff` 失敗 (Python sentinel 検出) → `python_sentinel_detected` (`GIT_DIFF_FAILED_SENTINEL` マッチ時の `sys.exit(2)` に予約された専用ラベル)
+  - work memory body 破損検出 → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
+  - mktemp 失敗 → `mktemp_failed_*` 系統 (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, 他)
 
   `git diff` 失敗経路も `WM_UPDATE_FAILED=1; reason=python_sentinel_detected` (Python `sys.exit(2)` + bash `exit 1`) を経由する。bash `exit 1` は bash invocation のみを kill するが、retained `WM_UPDATE_FAILED=1` flag は conversation context に残り、Phase 8.1 が評価順テーブル行 2 でこの flag を検出して `[fix:pushed-wm-stale]` を emit する (`[fix:error]` **ではない**)。hard fail-fast 設計は PATCH の silent 拒否を保証するが、caller 側へのシグナルは `[fix:pushed-wm-stale]` が正しい (詳細は `commands/pr/fix.md` Phase 8.1 の評価順テーブルと reason 表を参照)。caller (`/rite:issue:start` review-fix loop) は `[fix:pushed-wm-stale]` を **silent に `[fix:pushed]` 扱いしてはならず**、必ず `AskUserQuestion` で警告を提示してユーザーに「stale work memory のまま継続するか、手動修復のため中断するか」を選択させる義務を負う。詳細な caller セマンティクスは `commands/pr/fix.md` Phase 8.1 を参照 (#349)
 
@@ -365,11 +365,11 @@ Rite Workflow の主要な変更を記録します。
 [0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.4...v0.3.5
-[0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.3.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3
