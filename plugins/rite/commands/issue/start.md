@@ -553,17 +553,21 @@ fi
 
 **Step 6**: Read `workflow_incident.enabled` from `rite-config.yml` and cache for the rest of Phase 5 (used by Phase 5.4.4.1). Default to `true` when the section is absent (#366).
 
-> **Parser correctness** (cycle 1 review C1 / devops 既存問題): The previous 1-liner used `awk -F:` which split on **any** colon — including the one inside trailing comments like `# true で incident 検出機構を有効化（デフォルト: true）` — producing garbage strings such as `true#trueでincident...`. This broke `enabled: false` opt-out (AC-8) detection. The corrected implementation strips comments first via `sed 's/#.*//'`, then extracts the value. Use `[[:space:]]` instead of `\s` for portability across BSD/GNU grep.
+> **Parser correctness** (cycle 1 review C1 / devops 既存問題 → #411 で再修正): The previous `grep -A3` implementation only read 3 lines after `workflow_incident:`, so adding comments, extra keys, or reordering `enabled:` below line 3 caused silent fallback to default-on — breaking `enabled: false` opt-out (AC-8). The corrected implementation uses `sed -n` section range extraction (`/^workflow_incident:/,/^[a-zA-Z]/p`) to capture the entire section regardless of line count. Additionally, `case` now normalizes the value via `tr '[:upper:]' '[:lower:]'` and accepts common boolean variants (`yes`/`no`/`1`/`0`) to prevent `enabled: FALSE` from silently falling through to default-on. Use `[[:space:]]` instead of `\s` for portability across BSD/GNU grep.
 
 ```bash
-# 1) workflow_incident: section の enabled 行を取得 (BSD/GNU 互換 grep)
-# 2) コメント除去 (sed 's/#.*//') を先行して trailing comment の : で誤 split を防ぐ
-# 3) `enabled:` の右辺を抽出して空白除去
-workflow_incident_enabled=$(grep -A3 '^workflow_incident:' rite-config.yml 2>/dev/null \
+# 1) workflow_incident: section 全体を sed -n で範囲抽出（grep -A3 の固定行数制限を排除）
+# 2) section 内の enabled: 行を取得
+# 3) コメント除去 (sed 's/#.*//') を先行して trailing comment の : で誤 split を防ぐ
+# 4) `enabled:` の右辺を抽出して空白除去
+# 5) 大文字→小文字正規化で True/FALSE/Yes/No/1/0 等の variant を受容
+workflow_incident_enabled=$(sed -n '/^workflow_incident:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
+workflow_incident_enabled=$(echo "$workflow_incident_enabled" | tr '[:upper:]' '[:lower:]')
 case "$workflow_incident_enabled" in
-  true|false) ;;  # 正常値
+  true|yes|1)  workflow_incident_enabled="true" ;;
+  false|no|0)  workflow_incident_enabled="false" ;;
   *) workflow_incident_enabled="true" ;;  # 不明値 / 空 → default-on (AC-7)
 esac
 echo "workflow_incident_enabled=$workflow_incident_enabled"
