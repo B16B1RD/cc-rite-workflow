@@ -13,6 +13,11 @@
 #   stdout JSON with permissionDecision: "deny" — block
 set -euo pipefail
 
+# Fail-open: if the guard script crashes for any reason, allow the command.
+# A crashed guard must never block legitimate Bash tool calls (e.g., fix.md
+# commands with large multiline input that trigger edge-case failures).
+trap 'exit 0' ERR
+
 # Double-execution guard (hooks.json + settings.local.json migration)
 [ -z "${_RITE_HOOK_RUNNING_PRETOOL:-}" ] || exit 0
 export _RITE_HOOK_RUNNING_PRETOOL=1
