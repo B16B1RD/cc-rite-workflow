@@ -69,16 +69,16 @@ if ! git cat-file -e "${BASELINE_COMMIT}^{commit}" 2>/dev/null; then
 elif git show "${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" > "$TMP_FIX" 2>/dev/null; then
   out=$("$SCRIPT" --target "$TMP_FIX" 2>&1)
   rc=$?
-  count=$(grep -c '^\[drift\]' <<< "$out" || true)
+  count=$(grep -c '^\[drift\]' <<< "$out")
   assert_ge "cec0140 fix.md detects drift findings" 5 "$count"
   assert "cec0140 fix.md exits 1 (drift detected)" "1" "$rc"
 
   # Pattern-3: at least one if-wrap drift in cec0140 fix.md
-  p3_count=$(grep -c '^\[drift\]\[P3\]' <<< "$out" || true)
+  p3_count=$(grep -c '^\[drift\]\[P3\]' <<< "$out")
   assert_ge "cec0140 fix.md Pattern-3 (if-wrap drift) detects >=1" 1 "$p3_count"
 
   # Pattern-2: reason-table drift detected
-  p2_count=$(grep -c '^\[drift\]\[P2\]' <<< "$out" || true)
+  p2_count=$(grep -c '^\[drift\]\[P2\]' <<< "$out")
   assert_ge "cec0140 fix.md Pattern-2 (reason-table drift) detects >=1" 1 "$p2_count"
 else
   echo "FAIL: git show failed for ${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" >&2
