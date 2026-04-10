@@ -771,7 +771,7 @@ When the standard flow is active (no `target_comment_id`), retrieve PR review co
   echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
 
 # Broad Retrieval 経路の exit code check (#354):
-# Fast Path の `if ! ...` exit code check pattern を適用し、
+# Fast Path の if-bang exit code check pattern を適用し、
 # HTTP error / network failure / auth error 時に fail-fast する。
 # stderr を独立ファイルに退避し、失敗時に詳細を表示する。
 # trap は Fast Path と同じ canonical 4 行パターン (EXIT/INT/TERM/HUP) で統一。

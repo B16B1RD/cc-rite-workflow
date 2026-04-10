@@ -13,11 +13,6 @@
 #   stdout JSON with permissionDecision: "deny" — block
 set -euo pipefail
 
-# Fail-open: if the guard script crashes for any reason, allow the command.
-# A crashed guard must never block legitimate Bash tool calls (e.g., fix.md
-# commands with large multiline input that trigger edge-case failures).
-trap 'exit 0' ERR
-
 # Double-execution guard (hooks.json + settings.local.json migration)
 [ -z "${_RITE_HOOK_RUNNING_PRETOOL:-}" ] || exit 0
 export _RITE_HOOK_RUNNING_PRETOOL=1
@@ -39,6 +34,13 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || C
 if [ -z "$COMMAND" ]; then
   exit 0
 fi
+
+# --- Fail-open for pattern matching stage ---
+# If heredoc extraction or pattern matching crashes (e.g., edge-case failures with
+# large multiline input), allow the command rather than blocking it.
+# Placed after JSON parsing (which has its own || fallbacks) to preserve
+# error detection for malformed hook input (TC-016).
+trap 'exit 0' ERR
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
