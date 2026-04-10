@@ -7,7 +7,7 @@
 # Phase-aware graduated response (#80):
 # - YELLOW: Warning + output minimization hint
 # - ORANGE: Strong warning + optimization mode activation
-# - RED: Critical warning + /compact recommendation
+# - RED: Critical warning + flow split recommendation
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -21,7 +21,7 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 
 # Resolve state root (git root or CWD)
