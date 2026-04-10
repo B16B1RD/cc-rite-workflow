@@ -2736,6 +2736,38 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 
 ---
 
+## Workflow Incident Emit Helper (#366)
+
+When this skill encounters internal failures that fall back to manual intervention (e.g., file modification error, commit failure, work memory PATCH failure), emit a workflow incident sentinel so the orchestrator (`/rite:issue:start` Phase 5.4.4.1) can detect it and auto-register an Issue.
+
+**When to emit**:
+
+| Failure Path | Sentinel Type | Details |
+|--------------|---------------|---------|
+| File modification error in Phase 2 (Edit/Write tool returns error and fix is skipped) | `hook_abnormal_exit` | `rite:pr:fix file modification skipped: {file_path}` |
+| Work memory PATCH retry exhausted in Phase 4.5 | `hook_abnormal_exit` | `rite:pr:fix work memory PATCH failed after retries` |
+| Commit failure that cannot be auto-resolved in Phase 3.3 | `hook_abnormal_exit` | `rite:pr:fix commit failure` |
+
+**How to emit** (call this immediately before falling back to manual flow or returning a soft-failure pattern):
+
+```bash
+# Step 1: emit sentinel via hook script (silent capture, non-blocking via || true)
+sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+  --type hook_abnormal_exit \
+  --details "{specific failure description}" \
+  --root-cause-hint "{optional hypothesis}" \
+  --pr-number {pr_number} 2>/dev/null) || true
+
+# Step 2: also echo to stderr for human-visible debugging
+[ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
+```
+
+**Step 3 — Sentinel Visibility (LLM responsibility, cycle 1 review C2 fix)**: Because `fix.md` runs in `context: fork`, the bash subprocess stdout is NOT visible to the orchestrator. **The fix.md LLM MUST include the captured `sentinel_line` value verbatim in its final response message text** so Phase 5.4.4.1 in `/rite:issue:start` can detect it via context grep. Without this step, AC-5 (hook abnormal exit detection) is silently broken.
+
+`|| true` ensures non-blocking behavior — emission failure does not abort the fix flow. See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full specification.
+
+> **Note**: Sentinel emission is bounded by `workflow_incident.enabled` in `rite-config.yml`. If disabled, the orchestrator simply ignores the sentinel.
+
 ## Error Handling
 
 See [Common Error Handling](../../references/common-error-handling.md) for shared patterns (Not Found, Permission, Network errors).
@@ -2744,8 +2776,8 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 |-------|----------|
 | When PR is Not Found | See [common patterns](../../references/common-error-handling.md) |
 | When Comment Retrieval Fails | ネットワーク接続を確認; `gh auth status` で認証状態を確認 |
-| Error During File Modification | この指摘をスキップして続行 / 手動で修正 |
-| Commit Failure | `git status` で状態を確認; 問題を解決してから再度コミット |
+| Error During File Modification | この指摘をスキップして続行 / 手動で修正 (sentinel emit via Workflow Incident Emit Helper above) |
+| Commit Failure | `git status` で状態を確認; 問題を解決してから再度コミット (sentinel emit via Workflow Incident Emit Helper above) |
 
 ## Phase 8: End-to-End Flow Continuation (Output Pattern)
 

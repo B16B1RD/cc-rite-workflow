@@ -37,12 +37,13 @@ The command prefix `rite` was chosen for:
 9. [Notification Integration](#notification-integration)
 10. [Build/Test/Lint Auto-Detection](#buildtestlint-auto-detection)
 11. [Dynamic Reviewer Generation](#dynamic-reviewer-generation)
-12. [Error Handling](#error-handling)
-13. [Migration](#migration)
-14. [Internationalization](#internationalization)
-15. [Dependencies](#dependencies)
-16. [Distribution](#distribution)
-17. [Project Types](#project-types)
+12. [Workflow Incident Detection](#workflow-incident-detection)
+13. [Error Handling](#error-handling)
+14. [Migration](#migration)
+15. [Internationalization](#internationalization)
+16. [Dependencies](#dependencies)
+17. [Distribution](#distribution)
+18. [Project Types](#project-types)
 
 ---
 
@@ -472,6 +473,15 @@ notifications:
   teams:
     enabled: false
     webhook_url: null
+
+# Workflow incident auto-registration (#366)
+# Detects workflow blockers (Skill load failure / hook abnormal exit / manual fallback adoption)
+# and auto-registers them as Issues to prevent silent loss.
+# See "Workflow Incident Detection" section for details.
+workflow_incident:
+  enabled: true              # default-on; set false to opt out (AC-8)
+  non_blocking: true         # reserved for future use; current behavior is always non-blocking
+  dedupe_per_session: true   # reserved for future use; current behavior is always session-local dedupe
 
 # Language setting (auto for auto-detection)
 language: auto  # auto | ja | en
@@ -1497,6 +1507,83 @@ LLM analyzes diff content to determine:
 ```
 
 ---
+
+## Workflow Incident Detection
+
+### Overview (#366)
+
+The rite workflow auto-detects **workflow blockers** during `/rite:issue:start` end-to-end execution and registers them as Issues to prevent silent loss. This was implemented after PR #363 demonstrated that Skill loader bugs (#365) could be silently bypassed via manual Edit-tool fallback, leaving incidents undocumented.
+
+### Detection Scope
+
+| Type | Trigger | Source |
+|------|---------|--------|
+| `skill_load_failure` | Skill tool fails to load (e.g., Markdown parser bash interpretation error) | Orchestrator post-condition check (expected result pattern missing) |
+| `hook_abnormal_exit` | A hook script returns non-zero exit code or stderr ERROR message | Skill internal failure paths (file modification error, work memory PATCH failure, etc.) |
+| `manual_fallback_adopted` | User selects "manual Edit fallback" option in any orchestrator `AskUserQuestion` | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
+
+### Sentinel Format
+
+The `root_cause_hint` field is **optional** and entirely omitted from the sentinel line when empty:
+
+```
+[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | enum | yes | One of `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` |
+| `details` | string | yes | One-line incident description (semicolons replaced by commas, newlines stripped) |
+| `root_cause_hint` | string | no | Optional cause hypothesis (omitted from sentinel if empty) |
+| `iteration_id` | string | yes | `{pr_number}-{epoch_seconds}` for traceability |
+
+Sentinels are emitted by `plugins/rite/hooks/workflow-incident-emit.sh`. Detection happens in `/rite:issue:start` Phase 5.4.4.1 via context grep.
+
+### Detection Logic
+
+1. **Sentinel detection**: Phase 5.4.4.1 grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines after each Skill invocation in Phase 5.
+2. **Parse fields**: Extract `type`, `details`, `root_cause_hint`, `iteration_id`.
+3. **Duplicate suppression**: A context-local `workflow_incident_processed_types` set tracks types already handled in the current session. Re-occurrences of the same type are silently logged but not re-prompted.
+4. **User confirmation**: `AskUserQuestion` presents the incident details with options "register as Issue (recommended) / skip".
+5. **Issue creation**: On user approval, calls `plugins/rite/scripts/create-issue-with-projects.sh` with `Status: Todo / Priority: High / Complexity: S / source: workflow_incident`.
+6. **Non-blocking error handling**: Failure to create Issue does not abort the workflow. The incident is retained in `workflow_incident_skipped` for Phase 5.6 reporting.
+
+### Configuration
+
+```yaml
+workflow_incident:
+  enabled: true              # default-on; set false to opt out entirely
+  non_blocking: true         # reserved for future use (current behavior: always non-blocking)
+  dedupe_per_session: true   # reserved for future use (current behavior: always session-local dedupe)
+```
+
+When the `workflow_incident:` section is absent, defaults are used (effective `enabled: true`).
+
+> **Implementation note** (cycle 1 review H10): Currently only `enabled` is read by the orchestrator (`/rite:issue:start` Phase 5.0 Step 6). The `non_blocking` and `dedupe_per_session` keys are **reserved for future use** — the current implementation always behaves as if both are `true`. If a user sets `non_blocking: false`, the behavior does not change. These keys exist in the schema to document intent and provide forward compatibility.
+
+### Acceptance Criteria Mapping
+
+| AC | Behavior | Implementation |
+|----|----------|---------------|
+| AC-1 | Skill load failure detection | `start.md` Phase 5.4.4.1 context grep + skill internal sentinel emit |
+| AC-2 | User-approved Issue creation | `create-issue-with-projects.sh` call with `Priority: High / Complexity: S` |
+| AC-3 | Skip path retention | `workflow_incident_skipped` list + Phase 5.6 reporting section |
+| AC-4 | Same-type dedupe | `workflow_incident_processed_types` context-local set |
+| AC-5 | Hook abnormal exit detection | `workflow-incident-emit.sh --type hook_abnormal_exit` from skill failure paths |
+| AC-6 | Manual fallback detection | Orchestrator fallback prompt options emit `--type manual_fallback_adopted` |
+| AC-7 | Default-on | Phase 5.0 Step 6 reads config with default `true` when absent |
+| AC-8 | Opt-out | `workflow_incident.enabled: false` skips Phase 5.4.4.1 entirely |
+| AC-9 | Phase 7 non-interference | Independent codepath; only `create-issue-with-projects.sh` shared |
+| AC-10 | Non-blocking on registration failure | `non_blocking_projects: true` + warning to stderr + workflow continues |
+
+### Phase 7 Relationship
+
+Phase 7 (Automatic Issue Creation from review recommendations) and Phase 5.4.4.1 (Workflow Incident Detection) are **independent codepaths** that share only `create-issue-with-projects.sh` as a common helper. Both may run in the same `/rite:issue:start` flow and create separate Issues. There is no logic merging.
+
+| Phase | Purpose | Source field |
+|-------|---------|--------------|
+| Phase 7 | Issues from reviewer "別 Issue として作成" recommendations | `pr_review` |
+| Phase 5.4.4.1 | Issues from workflow blockers (sentinel-detected) | `workflow_incident` |
 
 ## Error Handling
 
