@@ -151,8 +151,6 @@ investigate:
 # auto-registers them as Issues to prevent silent loss. See docs/SPEC.md for details.
 workflow_incident:
   enabled: true              # true で incident 検出機構を有効化（デフォルト: true）
-  non_blocking: true         # true で create-issue 失敗時も workflow を中断しない（デフォルト: true）
-  dedupe_per_session: true   # true で同 session 内の同 type incident を 1 件に集約（デフォルト: true）
 
 # Language setting
 language: ja
