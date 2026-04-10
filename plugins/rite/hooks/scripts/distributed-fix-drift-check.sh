@@ -223,7 +223,7 @@ check_pattern_3() {
 # Extract [text](path#anchor) and verify the anchor exists in path's headings,
 # using GitHub's anchor conversion: lowercase, spaces->-, drop most punctuation.
 github_anchor() {
-  printf '%s' "$1" \
+  printf '%s\n' "$1" \
     | tr '[:upper:]' '[:lower:]' \
     | sed -e 's/[^a-z0-9 _-]//g' -e 's/ /-/g'
 }

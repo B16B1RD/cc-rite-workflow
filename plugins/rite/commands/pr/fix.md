@@ -337,6 +337,7 @@ trap '_rite_fix_fastpath_cleanup; exit 129' HUP
 # 添付できる。Fast Path の jq_err と対称な実装にする。
 gh_api_err=$(mktemp /tmp/rite-fix-gh-api-err-XXXXXX) || {
   echo "エラー: gh_api_err 一時ファイルの作成に失敗しました" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_gh_api_err" >&2
   exit 1
 }
 
@@ -345,6 +346,7 @@ if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_commen
   echo "詳細 (gh api stderr 先頭 5 行):" >&2
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
   echo "対処: コメント URL が正しいか、削除されていないか、認証 (gh auth status) を確認してください" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=gh_api_comments_fetch_failed" >&2
   exit 1
 fi
 
@@ -352,6 +354,7 @@ fi
 if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
   echo "エラー: コメント #{target_comment_id} の取得結果が空です (gh api exit 0 だが本文なし)" >&2
   echo "対処: コメント ID と権限を確認してください" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=empty_stdout" >&2
   exit 1
 fi
 
@@ -360,6 +363,7 @@ fi
 # stdout に混入して $target_body を汚染することを防ぐ。失敗時のみ stderr ファイルを表示する。
 jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
   echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_jq_late_err" >&2
   exit 1
 }
 
@@ -367,10 +371,12 @@ if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>"$jq
   echo "エラー: gh api レスポンスの JSON パースに失敗しました (.body 抽出)" >&2
   echo "詳細: $(cat "$jq_err")" >&2
   echo "対処: jq バージョン (jq --version) と gh api の生レスポンスを確認してください" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=jq_current_body_extract_failed" >&2
   exit 1
 fi
 if [ -z "$target_body" ]; then
   echo "エラー: コメント #{target_comment_id} の body が空です" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=current_body_empty" >&2
   exit 1
 fi
 
@@ -386,11 +392,13 @@ fi
 if ! comment_issue_url=$(printf '%s' "$target_comment" | jq -r '.issue_url // empty' 2>"$jq_err"); then
   echo "エラー: gh api レスポンスから .issue_url の抽出に失敗しました" >&2
   echo "詳細: $(cat "$jq_err")" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=jq_comment_id_extract_failed" >&2
   exit 1
 fi
 if [ -z "$comment_issue_url" ]; then
   echo "エラー: コメント #{target_comment_id} のレスポンスに .issue_url フィールドがありません" >&2
   echo "対処: gh api の生レスポンスを確認してください (GitHub API のスキーマ変更の可能性)" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=missing_issue_url" >&2
   exit 1
 fi
 # /pull/{pr_number} または /issues/{pr_number} を末尾に含むことを確認
@@ -403,6 +411,7 @@ fi
 if ! printf '%s' "{pr_number}" | grep -qE '^[0-9]+$'; then
   echo "エラー: pr_number が数字以外を含んでいます: '{pr_number}'" >&2
   echo "  Phase 1.0 で正規化された pr_number は数字のみのはずですが、何らかの経路で異常値が混入しました" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=issue_number_not_found" >&2
   exit 1
 fi
 if ! printf '%s' "$comment_issue_url" | grep -qE "/(pull|issues)/{pr_number}$"; then
@@ -411,6 +420,7 @@ if ! printf '%s' "$comment_issue_url" | grep -qE "/(pull|issues)/{pr_number}$"; 
   echo "  期待値: /pull/{pr_number} または /issues/{pr_number} で終わる URL" >&2
   echo "  対処: comment URL の pull/{N} 部分と #issuecomment-{ID} の整合性を確認してください。" >&2
   echo "         GitHub UI で comment URL を再コピーすることを推奨します。" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=pr_number_mismatch" >&2
   exit 1
 fi
 
@@ -452,14 +462,17 @@ if ! printf '%s' "$target_body" > "$body_file"; then
   echo "エラー: target_body の一時ファイル書き出しに失敗しました: $body_file" >&2
   echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
   # exit 時に統合 trap が handoff_committed=0 のまま発火 → 書き出し済み body_file (もしあれば) も削除される
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=paste_io_error" >&2
   exit 1
 fi
 if ! printf '%s' "$target_author" > "$author_file"; then
   echo "エラー: target_author の一時ファイル書き出しに失敗しました: $author_file" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=paste_io_error" >&2
   exit 1
 fi
 if ! printf '%s' "$target_author_mention_skip" > "$skip_file"; then
   echo "エラー: target_author_mention_skip の一時ファイル書き出しに失敗しました: $skip_file" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=paste_io_error" >&2
   exit 1
 fi
 
@@ -468,14 +481,17 @@ fi
 # target_author_mention_skip は必ず "true" or "false" の文字列なので必ず non-empty
 if [ ! -s "$body_file" ]; then
   echo "エラー: body_file の post-condition check に失敗: $body_file が空または存在しません" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=pr_body_tmp_empty_or_missing" >&2
   exit 1
 fi
 if [ ! -f "$author_file" ]; then
   echo "エラー: author_file の post-condition check に失敗: $author_file が存在しません" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=pr_body_tmp_empty_or_missing" >&2
   exit 1
 fi
 if [ ! -s "$skip_file" ]; then
   echo "エラー: skip_file の post-condition check に失敗: $skip_file が空または存在しません" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=pr_body_tmp_empty_or_missing" >&2
   exit 1
 fi
 
@@ -671,8 +687,8 @@ handoff_committed=1
 
 | Flag | 型 | 初期値 | 永続化先 |
 |------|---|--------|---------|
-| `confidence_override_count` | int | `0` | `wc -l < /tmp/rite-fix-confidence-override-{pr_number}.txt` の出力 (空ファイル → `0`) |
-| `confidence_override_findings` | list[str] (`"file:line"` の配列) | `[]` | `/tmp/rite-fix-confidence-override-{pr_number}.txt` の各行 (1 行 1 finding) |
+| **`confidence_override_count`** | int | `0` | `wc -l < /tmp/rite-fix-confidence-override-{pr_number}.txt` の出力 (空ファイル → `0`) |
+| **`confidence_override_findings`** | list[str] (`"file:line"` の配列) | `[]` | `/tmp/rite-fix-confidence-override-{pr_number}.txt` の各行 (1 行 1 finding) |
 
 **Tempfile lifecycle** (specific path 必須、wildcard glob 禁止):
 
@@ -786,6 +802,7 @@ trap '_rite_fix_broad_retrieval_cleanup; exit 129' HUP
 
 gh_api_err=$(mktemp /tmp/rite-fix-broad-retrieval-err-XXXXXX) || {
   echo "エラー: Broad Retrieval stderr 一時ファイルの作成に失敗しました" >&2
+  echo "[CONTEXT] COMMENT_FETCH_FAILED=1; reason=mktemp_failed_gh_api_err" >&2
   exit 1
 }
 
@@ -795,6 +812,7 @@ if ! gh api repos/{owner}/{repo}/pulls/{pr_number}/comments --jq '.[] | {id, nod
   echo "エラー: レビューコメントの取得に失敗しました (gh api pulls/{pr_number}/comments)" >&2
   echo "詳細 (gh api stderr 先頭 5 行):" >&2
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  echo "[CONTEXT] COMMENT_FETCH_FAILED=1; reason=gh_api_comments_fetch_failed" >&2
   exit 1
 fi
 
@@ -803,6 +821,7 @@ if ! gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews --jq '.[] | {id, node
   echo "エラー: PR レビューの取得に失敗しました (gh api pulls/{pr_number}/reviews)" >&2
   echo "詳細 (gh api stderr 先頭 5 行):" >&2
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  echo "[CONTEXT] COMMENT_FETCH_FAILED=1; reason=gh_api_comments_fetch_failed" >&2
   exit 1
 fi
 
@@ -811,6 +830,7 @@ if ! pr_comments=$(gh pr view {pr_number} --json comments --jq '.comments' 2>"$g
   echo "エラー: PR コメントの取得に失敗しました (gh pr view --json comments)" >&2
   echo "詳細 (gh pr view stderr 先頭 5 行):" >&2
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  echo "[CONTEXT] COMMENT_FETCH_FAILED=1; reason=gh_api_comments_fetch_failed" >&2
   exit 1
 fi
 echo "$pr_comments" | jq '.[] | {id: .id, body: .body, author: .author.login, createdAt: .createdAt}'
@@ -860,6 +880,7 @@ query($owner: String!, $repo: String!, $pr: Int!) {
   echo "エラー: reviewThreads の取得に失敗しました (gh api graphql)" >&2
   echo "詳細 (gh api stderr 先頭 5 行):" >&2
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  echo "[CONTEXT] COMMENT_FETCH_FAILED=1; reason=gh_api_comments_fetch_failed" >&2
   exit 1
 fi
 ```
@@ -1315,9 +1336,9 @@ Before generating the commit message, check the `language` field in `rite-config
 
 | Setting | Behavior |
 |---------|----------|
-| `auto` | Detect the user's input language and generate in the same language |
-| `ja` | Generate commit message in Japanese |
-| `en` | Generate commit message in English |
+| **`auto`** | Detect the user's input language and generate in the same language |
+| **`ja`** | Generate commit message in Japanese |
+| **`en`** | Generate commit message in English |
 
 **Language determination logic for `auto` setting:**
 
@@ -1335,8 +1356,8 @@ Before generating the commit message, check the `language` field in `rite-config
 
 | Language setting | Commit message example |
 |-----------------|----------------------|
-| `en` or `auto` (English input) | `fix(review): address review feedback` |
-| `ja` or `auto` (Japanese input) | `fix(review): レビュー指摘に対応` |
+| **`en`** or `auto` (English input) | `fix(review): address review feedback` |
+| **`ja`** or `auto` (Japanese input) | `fix(review): レビュー指摘に対応` |
 
 **Commit body:**
 
@@ -1356,7 +1377,7 @@ Generate structured action lines in the commit body following the Contextual Com
 1. **Read review findings**: Extract from the review findings being addressed — the review指摘 and chosen対応方針 are the primary source for `decision` (Priority 1 — highest reliability for review-fix commits)
 2. **Read work memory**: Extract from `決定事項・メモ`, `計画逸脱ログ`, `要確認事項` sections (Priority 2)
 3. **Infer from diff**: When the diff shows clear technical choices, infer `decision` (Priority 3 — use only when evident)
-4. **Apply review-fix mapping table**: Map each extracted item to action types using the [Review-Fix Commit Mapping](../../skills/rite-workflow/references/contextual-commits.md#review-fix-commit-mapping-prfixmd) table:
+4. **Apply review-fix mapping table**: Map each extracted item to action types using the [Review-Fix Commit Mapping](../../skills/rite-workflow/references/contextual-commits.md) table:
    - レビュー指摘の対応方針 → `decision(scope)`
    - 対応しなかった指摘とその理由 → `rejected(scope)`
    - 対応中に発見した制約 → `constraint(scope)`
@@ -1548,6 +1569,7 @@ if ! cat <<'REPORT_EOF' > "$tmpfile"
 REPORT_EOF
 then
   echo "ERROR: report body の tmpfile 書き込みに失敗しました: $tmpfile" >&2
+  echo "[CONTEXT] REPORT_POST_FAILED=1; reason=cat_redirection_failed" >&2
   exit 1
 fi
 
@@ -1672,7 +1694,7 @@ Generate the Issue title in the following format:
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
 | `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
 | `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
-| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md) | `/home/user/.claude/plugins/rite` |
 
 **⚠️ Projects 登録失敗時の警告表示（必須）**: スクリプト実行後、`project_registration` の値を必ず確認し、`"partial"` または `"failed"` の場合は以下を表示すること:
 
@@ -1722,7 +1744,7 @@ tmpfile=$(mktemp) || {
 }
 
 # L-7 修正 (本 Issue #350 検証付きレビュー L-7): cat redirection の exit code を明示 check
-# 旧実装は `cat <<'EOF' > "$tmpfile"` 単独で exit code を check していなかった。
+# 旧実装は cat heredoc redirection 単独で exit code を check していなかった。
 # 直後の `[ ! -s "$tmpfile" ]` は size 0 のみ検出するが、disk full mid-write で
 # truncated body が書き込まれた場合 (size > 0 だが body 不完全) を検出できない。
 # `if ! ...` で wrap し、cat 自体の exit code を check する。
@@ -1764,11 +1786,13 @@ BODY_EOF
 then
   echo "ERROR: Issue 本文の cat redirection に失敗 (disk full / write permission denied / IO error の可能性)" >&2
   echo "  対処: /tmp の inode 枯渇 / read-only filesystem / disk space を確認してください" >&2
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=cat_redirection_failed" >&2
   exit 1
 fi
 
 if [ ! -s "$tmpfile" ]; then
   echo "ERROR: Issue 本文の生成に失敗 (cat 成功だが tmpfile が空)" >&2
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=pr_body_tmp_empty_or_missing" >&2
   exit 1
 fi
 
@@ -1853,6 +1877,7 @@ issue_created=1
 # 完全に silent drop する経路を防ぐ (本 Issue #350 検証付きレビュー M-2 で指摘)。
 project_reg_jq_err=$(mktemp /tmp/rite-fix-project-reg-jq-err-XXXXXX) || {
   echo "ERROR: project_reg_jq_err 一時ファイルの作成に失敗" >&2
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=mktemp_failed_issue_body_tmpfile" >&2
   exit 1
 }
 # M-4 修正 (本 Issue #350 検証付きレビュー M-4): project_reg_jq_err は統合 trap でも保護される (上記 cleanup 関数参照)。
@@ -1943,7 +1968,7 @@ After Phase 4.3 is complete, proceed to Phase 4.5 (work memory update).
 
 ### 4.5 Automatic Work Memory Update
 
-> Update work memory per `work-memory-format.md` (at `{plugin_root}/skills/rite-workflow/references/work-memory-format.md`). Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script).
+> Update work memory per `work-memory-format.md` (at `{plugin_root}/skills/rite-workflow/references/work-memory-format.md`). Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md).
 
 > **⚠️ Caution**: Work memory is published as a comment on the Issue. In public repositories, it is viewable by third parties. Do not record confidential information (credentials, personal information, internal URLs, etc.) in work memory.
 
@@ -2782,7 +2807,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 **Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
 
-Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details and marketplace install notes.
+Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md) for details and marketplace install notes.
 
 ```bash
 # L-5 修正 (本 Issue #350 検証付きレビュー L-5): hook stderr を退避して lock failure と他 failure を区別する
@@ -2892,6 +2917,21 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 | `wm_header_missing` | Phase 4.5.2 | 更新後 work memory body に `📜 rite 作業メモリ` header が欠落 |
 | `wm_body_too_small` | Phase 4.5.2 | 更新後 work memory body が元サイズの 50% 未満で棄却 (大量削除検出) |
 | `patch_failed` | Phase 4.5.2 | `jq \| gh api PATCH` pipeline が失敗 |
+| `cat_redirection_failed` | Phase 2.4 / 4.2 / 4.3.4 | cat heredoc redirection の exit code が非ゼロ (disk full / write permission denied / IO error) |
+| `empty_stdout` | Phase 1.2 / 4.3.4 | gh api が exit 0 だが stdout が空または null |
+| `missing_issue_url` | Phase 1.2 / 4.3.4 | レスポンスに `.issue_url` フィールドが存在しない |
+| `mktemp_failed_issue_body_tmpfile` | Phase 4.3.4 | Issue body 用 tempfile の mktemp が失敗 |
+| `mktemp_failed_override_err` | Phase 1.3 | confidence override stderr 退避用 tempfile の mktemp が失敗 |
+| `mktemp_failed_reply_tmpfile` | Phase 2.4 | reply body 用 tempfile の mktemp が失敗 |
+| `mktemp_failed_report_tmpfile` | Phase 4.2 | report body 用 tempfile の mktemp が失敗 |
+| `paste_io_error` | Phase 1.2 / 1.3 | printf / ファイル書き出しが IO エラーで失敗 |
+| `pr_number_mismatch` | Phase 1.2 | コメントの所属 PR と指定 pr_number が一致しない (silent misclassification) |
+| `python_unexpected_exit_` | Phase 4.5.2 | Python スクリプトが非ゼロ exit code で異常終了 (suffix は実測 exit code) |
+| `reply_tmpfile_empty` | Phase 2.4 | reply body の tmpfile が cat 成功だが空 |
+| `script_exit_` | Phase 4.3.4 | Issue 作成スクリプトが非ゼロ exit code で終了 (suffix は実測 exit code) |
+| `wc_io_error` | Phase 1.3 | `wc -l` が IO エラーで失敗 |
+
+> **全 reason 値の完全列挙** (drift-check P5 用): (`base_branch_grep_io_error` / `branch_grep_io_error` / `cat_redirection_failed` / `current_body_empty` / `empty_stdout` / `gh_api_comments_fetch_failed` / `issue_number_not_found` / `jq_comment_id_extract_failed` / `jq_current_body_extract_failed` / `missing_issue_url` / `mktemp_failed_base_branch_grep_err` / `mktemp_failed_body_tmp` / `mktemp_failed_branch_grep_err` / `mktemp_failed_diff_stderr_tmp` / `mktemp_failed_files_tmp` / `mktemp_failed_gh_api_err` / `mktemp_failed_history_tmp` / `mktemp_failed_issue_body_tmpfile` / `mktemp_failed_jq_late_err` / `mktemp_failed_override_err` / `mktemp_failed_pr_body_grep_err` / `mktemp_failed_pr_body_tmp` / `mktemp_failed_reply_tmpfile` / `mktemp_failed_report_tmpfile` / `mktemp_failed_sed_err` / `mktemp_failed_tmpfile` / `paste_io_error` / `patch_failed` / `pr_body_grep_io_error` / `pr_body_tmp_empty_or_missing` / `pr_number_mismatch` / `python_sentinel_detected` / `python_unexpected_exit_` / `reply_tmpfile_empty` / `script_exit_` / `sed_extract_base_branch_failed` / `wc_io_error` / `wm_body_empty_or_too_short` / `wm_body_too_small` / `wm_header_missing`)
 
 **`[fix:pushed-wm-stale]` の caller 側 semantics**: `/rite:issue:start` review-fix loop は本 pattern を受け取った場合、push 自体は完了しているが work memory が stale であることを認識し、次のいずれかを実行する: (a) 手動介入を促す (推奨)、(b) 警告ログを出した上で次の iteration に進む (loop 継続)。silent に `[fix:pushed]` 扱いしてはならない。
 
