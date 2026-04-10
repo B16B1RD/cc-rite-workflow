@@ -47,6 +47,11 @@ Options:
   --quiet            Suppress per-finding output (still exit non-zero on drift)
   -h, --help         Show this help
 
+Combining --all and --target:
+  --all and --target can be used together. When both are specified, the
+  default target set is merged with explicitly specified targets.
+  Duplicate entries are automatically deduplicated.
+
 Exit codes:
   0  No drift detected
   1  Drift detected
@@ -76,6 +81,20 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
 if [ "$USE_ALL" -eq 1 ]; then
   TARGETS+=("${DEFAULT_ALL_TARGETS[@]}")
+fi
+
+# Deduplicate TARGETS (preserving order)
+if [ "${#TARGETS[@]}" -gt 0 ]; then
+  declare -A _seen=()
+  declare -a _unique=()
+  for _t in "${TARGETS[@]}"; do
+    if [ -z "${_seen[$_t]+x}" ]; then
+      _seen[$_t]=1
+      _unique+=("$_t")
+    fi
+  done
+  TARGETS=("${_unique[@]}")
+  unset _seen _unique _t
 fi
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
