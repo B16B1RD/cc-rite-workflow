@@ -132,7 +132,7 @@ See [link3](target.md#simple-ascii-heading) for ASCII.
 EOF
 
 out=$("$SCRIPT" --target "$CJK_REF" 2>&1)
-p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out" || true)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
 assert "CJK anchors resolve correctly (0 P4 drift)" "0" "$p4_count"
 
 # --- Test 6: broken CJK anchor detected (Pattern 4 negative case) -----------
@@ -145,7 +145,7 @@ See [link](target.md#nonexistent-集計-heading) for details.
 EOF
 
 out=$("$SCRIPT" --target "$CJK_BROKEN" 2>&1)
-p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out" || true)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
 assert_ge "broken CJK anchor detected as drift" 1 "$p4_count"
 
 # --- Summary -----------------------------------------------------------------

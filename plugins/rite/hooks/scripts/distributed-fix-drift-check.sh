@@ -223,10 +223,7 @@ check_pattern_3() {
 # Extract [text](path#anchor) and verify the anchor exists in path's headings,
 # using GitHub's anchor conversion (github-slugger compatible):
 # lowercase, strip non-word/non-space/non-hyphen, spaces->hyphens, collapse hyphens.
-github_anchor() {
-  printf '%s\n' "$1" \
-    | perl -CSD -Mutf8 -pe 'chomp; $_ = lc($_); s/[^\w\s-]//g; s/\s+/-/g; s/-{2,}/-/g; s/^-|-$//g; $_ .= "\n"'
-}
+# Implemented as inline perl in check_pattern_4 for batch processing efficiency.
 
 check_pattern_4() {
   local file="$1"
