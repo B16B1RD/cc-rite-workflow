@@ -618,7 +618,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift check` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 
