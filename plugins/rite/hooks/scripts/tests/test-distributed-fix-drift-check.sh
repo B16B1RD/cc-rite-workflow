@@ -53,7 +53,7 @@ assert "no args exits 2" "2" "$rc"
 
 # Accumulating tempfile manager (trap is set once, list grows as tests add files)
 TMPFILES=()
-trap 'rm -f "${TMPFILES[@]}"' EXIT
+trap 'rm -rf "${TMPFILES[@]}"' EXIT
 
 # --- Test 3: cec0140 fix.md baseline detects drift ---------------------------
 TMP_FIX=$(mktemp)
@@ -98,6 +98,55 @@ EOF
 "$SCRIPT" --target "$CLEAN" >/dev/null 2>&1
 rc=$?
 assert "synthetic clean file exits 0" "0" "$rc"
+
+# --- Test 5: CJK anchors resolve correctly (Pattern 4 end-to-end) ------------
+# Use a temp directory so reference files can use relative paths for Pattern 4.
+CJK_DIR=$(mktemp -d)
+TMPFILES+=("$CJK_DIR")
+CJK_TARGET="$CJK_DIR/target.md"
+CJK_REF="$CJK_DIR/ref.md"
+
+cat > "$CJK_TARGET" <<'EOF'
+# Top heading
+
+## Inconclusive 集計 と META 行への反映
+
+Some content.
+
+## 3 つの failure mode
+
+More content.
+
+## Simple ASCII heading
+
+Even more content.
+EOF
+
+# References with correct CJK anchors using relative path (should produce 0 P4 drift)
+cat > "$CJK_REF" <<'EOF'
+# Referencing file
+
+See [link1](target.md#inconclusive-集計-と-meta-行への反映) for details.
+See [link2](target.md#3-つの-failure-mode) for modes.
+See [link3](target.md#simple-ascii-heading) for ASCII.
+EOF
+
+out=$("$SCRIPT" --target "$CJK_REF" 2>&1)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
+assert "CJK anchors resolve correctly (0 P4 drift)" "0" "$p4_count"
+
+# --- Test 6: broken CJK anchor detected (Pattern 4 negative case) -----------
+CJK_BROKEN="$CJK_DIR/broken.md"
+
+cat > "$CJK_BROKEN" <<'EOF'
+# File with broken anchor
+
+See [link](target.md#nonexistent-集計-heading) for details.
+EOF
+
+out=$("$SCRIPT" --target "$CJK_BROKEN" 2>&1)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
+assert_ge "broken CJK anchor detected as drift" 1 "$p4_count"
 
 # --- Summary -----------------------------------------------------------------
 echo
