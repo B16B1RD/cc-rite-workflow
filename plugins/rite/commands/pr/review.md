@@ -756,7 +756,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    # がないと git diff が exit != 0 で失敗しても後段の grep / head が exit 0 + 空文字列を
    # 返し、silent failure が発生していた (Issue #350 検証付きレビューで指摘)。
    # 現行実装 (PR #396) では pipeline を廃止し、`diff_out=$(git diff ...)` で独立実行 +
-   # exit code 明示 check (line 789) → `grep ... <<< "$diff_out"` の here-string 構成に
+   # exit code 明示 check (下記 `if ! diff_out=` 行) → `grep ... <<< "$diff_out"` の here-string 構成に
    # 移行したため、pipefail が直接必要な pipeline は存在しない。ただし将来の pipeline
    # 追加時の防御として `set -o pipefail` を維持している。
    #
