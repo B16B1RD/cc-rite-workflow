@@ -1166,7 +1166,7 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
 
    ```bash
    # trap + cleanup パターンの canonical 説明は commands/pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照
-   # (rationale: 「パス先行宣言 → trap 先行設定 → mktemp」の順序、signal 別 exit code 130/143/129、${var:-} safety)
+   # (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
 
    # 1. パス先行宣言 (mktemp 前に空文字列で初期化)
    tmpfile=""
