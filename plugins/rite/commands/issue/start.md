@@ -1165,10 +1165,30 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
    > **Reference**: Apply the same [Issue Creation pattern](#5201-out-of-scope-warnings) as Phase 5.2.0.1 (out-of-scope warnings).
 
    ```bash
-   # cycle 2 review H-N2 fix: trap 上書き対策 — tmpfile と jq_err を統合 trap で管理
-   tmpfile=$(mktemp)
-   jq_err=""  # 後段で mktemp 後に値を入れる; 統合 trap で `${var:-}` で安全 cleanup
-   trap 'rm -f "$tmpfile" "${jq_err:-}"' EXIT
+   # trap + cleanup パターンの canonical 説明は commands/pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照
+   # (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
+
+   # 1. パス先行宣言 (mktemp 前に空文字列で初期化)
+   tmpfile=""
+   jq_err=""
+
+   # 2. cleanup 関数定義
+   _rite_start_wi_cleanup() {
+     rm -f "${tmpfile:-}" "${jq_err:-}"
+   }
+
+   # 3. signal 別 trap (4 行): EXIT は元 exit code を保持、INT/TERM/HUP は明示的 exit code を返す
+   trap 'rc=$?; _rite_start_wi_cleanup; exit $rc' EXIT
+   trap '_rite_start_wi_cleanup; exit 130' INT
+   trap '_rite_start_wi_cleanup; exit 143' TERM
+   trap '_rite_start_wi_cleanup; exit 129' HUP
+
+   # 4. mktemp 実行 (trap 武装後)
+   tmpfile=$(mktemp /tmp/rite-start-wi-body-XXXXXX) || {
+     echo "WARNING: mktemp failed for tmpfile. Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
+     # workflow_incident_skipped に {type, details, root_cause_hint, iteration_id} を追加
+     exit 0  # non-blocking guarantee (AC-10)
+   }
 
    cat <<'BODY_EOF' > "$tmpfile"
    ## Workflow Incident (auto-registered)
@@ -1200,7 +1220,11 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
      # jq -n を別変数に切り出して exit code をチェック (cycle 1 review H6 / error-handling 指摘)
      # 旧実装は jq parse error を silent に握りつぶしていた
      # cycle 2 review H-N2 fix: trap は冒頭の統合 trap で既に設定済み (上書きしない)
-     jq_err=$(mktemp)
+     # #414 fix: mktemp 失敗チェック追加 (jq_err は先行宣言済み、統合 trap で cleanup 対象)
+     jq_err=$(mktemp /tmp/rite-start-wi-jqerr-XXXXXX) || {
+       echo "WARNING: mktemp failed for jq_err. Proceeding without jq stderr capture." >&2
+       jq_err=""
+     }
      if json_args=$(jq -n \
        --arg title "incident: {type} - {details_truncated_60chars}" \
        --arg body_file "$tmpfile" \
@@ -1221,7 +1245,7 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
            iteration: { mode: "none" }
          },
          options: { source: "workflow_incident", non_blocking_projects: true }
-       }' 2>"$jq_err"); then
+       }' 2>"${jq_err:-/dev/null}"); then
        # cycle 2 review M-N3 fix: || result="" で AC-10 non-blocking 保証
        # 旧実装は `result=$(bash ...)` のみで、create-issue-with-projects.sh の非ゼロ exit が
        # set -e 環境下で bash プロセス自体を kill する経路があった
