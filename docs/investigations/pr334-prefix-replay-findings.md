@@ -38,7 +38,7 @@
 
 ### 1.1 対象 PR
 
-- **PR #334**: `fix(hooks): context-pressure.sh の堅牢性改善 — silent abort 防止 + コメント精度修正` (#332)
+- **PR #334**: `fix(hooks): context-pressure.sh の堅牢性改善 — silent abort 防止 + コメント精度修正` (#323)
 - **ファイル数**: 2 (両方とも MODIFIED)
   - `plugins/rite/hooks/context-pressure.sh` (+2 / -2)
   - `plugins/rite/templates/config/rite-config.yml` (+1 / -0)

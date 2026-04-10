@@ -737,7 +737,7 @@ mixed #370 replay で初めて観察された知見:
 
 - **(a) ~~Pre-fix replay の追加~~** → ✅ **実施済み (Issue #416 / PR #417)**: PR #334 の inverse diff を develop に適用する手法で Phase C2 の検出感度を測定。結果: 検出率 100%、FP rate 0%。詳細: [pr334-prefix-replay-findings.md](./pr334-prefix-replay-findings.md)
 - **(b) DummyHookPR の人工実装**: 既知の silent abort / stderr mixing パターンを意図的に含む人工 PR を作成し reviewer に投入する手法 (§3.2 で言及されていた Option B)。
-- **(c) 本 replay データの限定的解釈の明示**: 「修正後コードを誤検出しない正確性」は確認済み、「pre-fix code の検出感度」は未検証として明示記録 — 本セクションで実施済み。
+- **(c) ~~本 replay データの限定的解釈の明示~~** → ✅ **解決済み (Issue #416)**: 元々「pre-fix code の検出感度は未検証」として限定的解釈を記録していたが、Issue #416 の pre-fix replay により検出感度が検証され (検出率 100%、FP rate 0%)、限定条件は解消。なお Phase C (#359 プロンプト改善) の pre-fix 検出感度は本検証のスコープ外であり、別途検証が必要。
 
 ---
 
