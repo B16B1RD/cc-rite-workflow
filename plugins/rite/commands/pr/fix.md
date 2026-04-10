@@ -770,22 +770,49 @@ When the standard flow is active (no `target_comment_id`), retrieve PR review co
 : > "/tmp/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
   echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
 
-# TODO(#354): Broad Retrieval 経路の以下 4 つの gh api 呼び出しは exit code を check しておらず、
-# HTTP error / network failure / auth error 時に silent に空配列を返して downstream で
-# 「コメントなし」と誤認する。Issue #354 で fail-fast or retained flag emit のいずれかに修正予定。
-# - レビューコメント (`gh api .../pulls/{pr_number}/comments`)
-# - PR レビュー本体 (`gh api .../pulls/{pr_number}/reviews`)
-# - 通常コメント (`gh pr view --json comments`)
-# - スレッド情報 (`gh api graphql`)
+# Broad Retrieval 経路の exit code check (#354):
+# Fast Path の `if !` exit code check pattern を適用し、
+# HTTP error / network failure / auth error 時に fail-fast する。
+# stderr を独立ファイルに退避し、失敗時に詳細を表示する。
+# trap は Fast Path と同じ canonical 4 行パターン (EXIT/INT/TERM/HUP) で統一。
+gh_api_err=""
+_rite_fix_broad_retrieval_cleanup() {
+  rm -f "${gh_api_err:-}"
+}
+trap 'rc=$?; _rite_fix_broad_retrieval_cleanup; exit $rc' EXIT
+trap '_rite_fix_broad_retrieval_cleanup; exit 130' INT
+trap '_rite_fix_broad_retrieval_cleanup; exit 143' TERM
+trap '_rite_fix_broad_retrieval_cleanup; exit 129' HUP
+
+gh_api_err=$(mktemp /tmp/rite-fix-broad-retrieval-err-XXXXXX) || {
+  echo "エラー: Broad Retrieval stderr 一時ファイルの作成に失敗しました" >&2
+  exit 1
+}
+
 # レビューコメント（PR レビューに紐づくコメント）
 # node_id はスレッド解決時の GraphQL mutation で必要
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments --jq '.[] | {id, node_id, path, line, original_line, body, user: .user.login, created_at, in_reply_to_id, pull_request_review_id}'
+if ! gh api repos/{owner}/{repo}/pulls/{pr_number}/comments --jq '.[] | {id, node_id, path, line, original_line, body, user: .user.login, created_at, in_reply_to_id, pull_request_review_id}' 2>"$gh_api_err"; then
+  echo "エラー: レビューコメントの取得に失敗しました (gh api pulls/{pr_number}/comments)" >&2
+  echo "詳細 (gh api stderr 先頭 5 行):" >&2
+  head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  exit 1
+fi
 
 # PR レビュー自体のコメント
-gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews --jq '.[] | {id, node_id, state, body, user: .user.login, submitted_at}'
+if ! gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews --jq '.[] | {id, node_id, state, body, user: .user.login, submitted_at}' 2>"$gh_api_err"; then
+  echo "エラー: PR レビューの取得に失敗しました (gh api pulls/{pr_number}/reviews)" >&2
+  echo "詳細 (gh api stderr 先頭 5 行):" >&2
+  head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  exit 1
+fi
 
 # 通常のコメント（PR コメント欄）を一括取得して保存（Phase 1.2.1 で再利用）
-pr_comments=$(gh pr view {pr_number} --json comments --jq '.comments')
+if ! pr_comments=$(gh pr view {pr_number} --json comments --jq '.comments' 2>"$gh_api_err"); then
+  echo "エラー: PR コメントの取得に失敗しました (gh pr view --json comments)" >&2
+  echo "詳細 (gh pr view stderr 先頭 5 行):" >&2
+  head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  exit 1
+fi
 echo "$pr_comments" | jq '.[] | {id: .id, body: .body, author: .author.login, createdAt: .createdAt}'
 ```
 
@@ -794,7 +821,21 @@ echo "$pr_comments" | jq '.[] | {id: .id, body: .body, author: .author.login, cr
 ```bash
 # スレッド情報と解決状態を取得（GraphQL）
 # 注: first: 100 の制限があるため、100件を超える大規模 PR では取得漏れの可能性あり
-gh api graphql -f query='
+gh_api_err=""
+_rite_fix_broad_graphql_cleanup() {
+  rm -f "${gh_api_err:-}"
+}
+trap 'rc=$?; _rite_fix_broad_graphql_cleanup; exit $rc' EXIT
+trap '_rite_fix_broad_graphql_cleanup; exit 130' INT
+trap '_rite_fix_broad_graphql_cleanup; exit 143' TERM
+trap '_rite_fix_broad_graphql_cleanup; exit 129' HUP
+
+gh_api_err=$(mktemp /tmp/rite-fix-broad-retrieval-err-XXXXXX) || {
+  echo "エラー: Broad Retrieval stderr 一時ファイルの作成に失敗しました" >&2
+  exit 1
+}
+
+if ! gh api graphql -f query='
 query($owner: String!, $repo: String!, $pr: Int!) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
@@ -815,7 +856,12 @@ query($owner: String!, $repo: String!, $pr: Int!) {
       }
     }
   }
-}' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number}
+}' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number} 2>"$gh_api_err"; then
+  echo "エラー: reviewThreads の取得に失敗しました (gh api graphql)" >&2
+  echo "詳細 (gh api stderr 先頭 5 行):" >&2
+  head -5 "$gh_api_err" | sed 's/^/  /' >&2
+  exit 1
+fi
 ```
 
 ### 1.2.1 Retrieve rite Review Results
