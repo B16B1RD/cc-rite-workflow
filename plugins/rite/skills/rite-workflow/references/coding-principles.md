@@ -399,6 +399,35 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 ---
 
+## Markdown Authoring Conventions
+
+These conventions apply to authoring Markdown files loaded by the Claude Code Skill loader (`plugins/rite/skills/`, `plugins/rite/commands/`, and files referenced from them). Certain inline-code patterns can silently trigger the loader's bash interpretation path, causing prose to be executed as shell commands.
+
+### bash negation operator inline code convention
+
+**Summary**: When referencing the bash negation operator in Markdown inline code, never let `!` sit immediately before the closing backtick. Always include a command, argument, or ellipsis token after `!`.
+
+**Failure Pattern**: A Markdown inline-code span that ends with a `!` character placed directly next to the closing backtick (bang-backtick adjacency, no intervening whitespace or token) triggers the Skill loader's history-expansion path, silently executing surrounding prose as bash. This was observed in Issue #365: `commands/pr/fix.md` contained 5 occurrences of this pattern, and the Skill loader mis-executed documentation text as shell commands at runtime — a silent failure that was only caught through careful diffing.
+
+**Rules**:
+1. Do not write bang-backtick adjacency in Markdown prose (outside fenced code blocks) in any file loaded by the Skill loader.
+2. Always include a trailing token: use `if ! cmd` (specific command) or `if ! ...` (ellipsis placeholder) instead.
+3. When the NG pattern must itself be quoted for documentation, enclose it in a fenced code block tagged `text`. Fenced blocks are not subject to inline-code parsing by the loader.
+
+**OK Examples** (safe in prose):
+
+- `if ! cmd`
+- `if ! ...`
+- `if ! command -v foo`
+
+**Reference**: Issue #365 (bug), PR #367 (fix) — full incident report and the 5-site replacement.
+
+**Where to Apply**:
+- All Markdown files loaded by the Skill loader: `plugins/rite/skills/**/*.md`, `plugins/rite/commands/**/*.md`, and any file they reference.
+- Applies retroactively: when editing existing files, replace any bang-backtick adjacency encountered in prose with the safe `! cmd` / `! ...` form.
+
+---
+
 ## Phase Checklists
 
 ### All Phases (Common)
