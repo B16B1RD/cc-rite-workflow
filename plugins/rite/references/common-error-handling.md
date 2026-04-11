@@ -120,3 +120,34 @@ or (
 ```
 
 Failure reason: `finding_id_format_or_uniqueness_violation`
+
+## Hook Lock-Contention Classification (canonical)
+
+<a id="hook-lock-contention-classification-canonical"></a>
+
+`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` Phase 6.2 / 6.4 と `fix.md` Phase 4.5 / 8.1 の 4 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
+
+**Canonical pattern** (grep 式):
+
+```bash
+grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
+```
+
+**Usage sites** (drift 防止のため新規箇所追加時は本リストに登録すること):
+
+| Site | Purpose |
+|------|---------|
+| `review.md` Phase 6.2 Step 2 (`issue-comment-wm-sync`) | Phase 遷移時の backup sync |
+| `review.md` Phase 6.4 (`_rite_review_p64_run_sync` helper) | Phase 6.4 の 3 step 全てで本 helper が参照 |
+| `fix.md` Phase 4.5 (`local-wm-update.sh`) | 修正後の local work memory 更新 |
+| `fix.md` Phase 8.1 (`local-wm-update.sh` post-fix sync) | E2E flow 経路の post-fix work memory 更新 |
+
+**Rationale for exact phrase match**: 旧 loose pattern `grep -qiE 'lock|contention|busy'` は以下の silent suppression 問題を抱えていた:
+
+- `permission denied` を含むメッセージは match しないが、hook が `"device busy"` / `"resource busy"` / `"file is busy"` を emit するとすべて silent に「lock contention best-effort skip」に落ちていた
+- NFS timeout のメッセージに `"busy"` が含まれる経路
+- 将来 hook の error message が翻訳や refactor で `"locked directory"` 等に変わった場合の false-positive 拡大 (単語単位 substring match は脆い)
+
+これらを防ぐため、exact phrase match の厳格化された regex に統一する (cycle 10 S-1 で `review.md` の Step 2 以外には適用されたが、本 cycle 12 H-1 で 4 箇所全てに波及)。
+
+**Non-lock failure (本 pattern が match しない) 時の責務**: WARNING + hook stderr 先頭 5 行の表示 (`head -5 "$err_file" | sed 's/^/  /' >&2`)、および「対処: hook の存在 / 実行権限 / 内容を確認してください」の案内を追加する。詳細は各 Usage site の実装例を参照。

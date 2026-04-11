@@ -450,7 +450,7 @@ On fallback, output the following:
 
 #### 1.2.5 Commit SHA Tracking
 
-Record the current commit SHA at the start of the review. This SHA is embedded in the review result comment in Phase 6.1 and used in the verification mode of the next cycle.
+Record the current commit SHA at the start of the review. This SHA is embedded in the review result (local JSON file always in Phase 6.1.a, and additionally in the PR comment when `post_comment_mode=true` via Phase 6.1.b) and used in the verification mode of the next cycle.
 
 ```bash
 git rev-parse HEAD
@@ -2583,16 +2583,18 @@ Phase 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-req
 | `mktemp_failure_mv_err` | Phase 6.1.a の mv stderr 退避用 tempfile の mktemp が失敗 (I-3 対応、**WARNING only**、mv 失敗時の stderr 詳細が失われるため explicit に通知) |
 | `timestamp_injection_mv_failure` | Phase 6.1.a の timestamp 注入後 inner mv (`mv "$json_ts_injected" "$json_tmp"`) が失敗 (verified-review cycle 9 C-1 対応、**WARNING only**、sentinel 残留 JSON を final path に書かないため後続処理を skip) |
 | `pr_number_placeholder_residue` | Phase 6.1.a 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cycle 10 I-B 対応、**WARNING only**、cleanup.md Phase 2.5 の numeric gate と対称化し永久 orphan 化を防ぐ) |
+| `collision_resolution_exhausted` | Phase 6.1.a の同一秒衝突回避 `~<4桁hex>` suffix を付与しても再衝突を検出 (cycle 12 M-2 対応、**WARNING only**、同秒 3 回目以上の連続実行 / `$RANDOM` fallback `0` / parallel race の兆候で発火、後続の mv を skip して silent overwrite を防ぐ) |
+| `p61c_file_timestamp_unknown_without_failure` | Phase 6.1.c で `file_timestamp='unknown'` だが `local_save_failed != '1'` (整合性違反、cycle 12 I-3 対応、ケース 1 での `.../unknown.json` 誤提示を遮断) |
 
 **Non-blocking contract**: `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` / `timestamp_injection_mv_failure` / `pr_number_placeholder_residue` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**:
 
-- **Phase 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 11 種のいずれか (cycle 10 I-B 修正で `pr_number_placeholder_residue` 追加、cycle 9 C-1 修正で `timestamp_injection_mv_failure` 追加、I-3 修正で `mktemp_failure_mv_err` 追加、cycle 8 H-7 修正で `finding_id_format_or_uniqueness_violation` 追加): `pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `mktemp_failure_mv_err` / `mv_failure`。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
+- **Phase 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 12 種のいずれか (cycle 12 M-2 修正で `collision_resolution_exhausted` 追加、cycle 10 I-B 修正で `pr_number_placeholder_residue` 追加、cycle 9 C-1 修正で `timestamp_injection_mv_failure` 追加、I-3 修正で `mktemp_failure_mv_err` 追加、cycle 8 H-7 修正で `finding_id_format_or_uniqueness_violation` 追加): `pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
 - **Phase 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` のいずれか (cycle 8 H-5 修正で `json_saved_from_p61a_unset` 追加)。この flag は PR コメント投稿経路の失敗を示し、hard error として Phase 6 を fail させる (Phase 6.1.a の非ブロッキング契約とは対照的)。
 - **Phase 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable` を emit し、Phase 6 全体を `exit 2` で fail させる (cycle 10 C-1 対応、silent data loss 防止)。
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `mktemp_failure_mv_err` / `mv_failure`) — 11 件、bash block 内の実 emit 順 (cycle 10 I-D 対応で列挙順序を実装順に揃え、`timestamp_injection_mv_failure` 漏れを修正、cycle 10 I-B 対応で `pr_number_placeholder_residue` を追加); Phase 6.1.b emit = (`tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`); Phase 6.1.c emit = (`p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`).
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 12 件、bash block 内の実 emit 順 (cycle 10 I-D 対応で列挙順序を実装順に揃え、`timestamp_injection_mv_failure` 漏れを修正、cycle 10 I-B 対応で `pr_number_placeholder_residue` を追加、cycle 12 M-2 対応で `collision_resolution_exhausted` を追加); Phase 6.1.b emit = (`tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`); Phase 6.1.c emit = (`p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`).
 
 #### 6.1.a Local JSON File Save (Always Executed — #443) <!-- AC-1 / D-01 / D-02 / D-04 -->
 
@@ -2608,10 +2610,10 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 - Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding の必須フィールドは以下の通り — 完全なスキーマは [review-result-schema.md](../../references/review-result-schema.md#json-schema) を真実の源として参照すること:
   - `id`: **`F-NN` 形式、最小 2 桁ゼロパディング可変長連番** (正規表現 `^F-[0-9]{2,}$`)。99 件以下は `F-01`〜`F-99`、100 件以上は `F-100` 等に成長する。
   - `reviewer`: レビュアーエージェント名 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。実在する agent 名は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く) と一致させる。
-  - `category`: 指摘カテゴリ (例: `code-quality`, `error-handling`, `documentation`)
+  - `category`: 指摘カテゴリ (例: `code_quality`, `error_handling`, `security`, `performance`)。アンダースコア区切りで統一する (schema.md の `category` フィールド定義を SoT として参照)
   - `severity`: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` のいずれか。reviewer が `Critical`/`Important`/`Minor`/`Nit` 等の別表記で返した場合は、write 前に本 enum へ正規化する (別名マッピングは review-result-schema.md の `severity` フィールド定義を参照)。正規化漏れの JSON は read 側 (`fix.md` Phase 1.2.0) で MEDIUM fallback と WARNING emit が発生する。
   - `file`: 対象ファイルの相対パス
-  - `line`: 行番号 (整数)
+  - `line`: 正の整数 (>= 1) または `null` (行非依存指摘の sentinel)。schema.md の `line` フィールド定義 (cycle 10 S-4 で `null` 許容、`0` は legacy sentinel として後方互換) が SoT。
   - `description`: 指摘内容
   - `suggestion`: 推奨対応
   - `status`: 現行実装では常に `open` を出力する。`fixed` / `replied` / `deferred` は enum として予約されているが、`/rite:pr:fix` 側の書き戻しは未実装 (schema は slot を持つのみ、review-result-schema.md の `status` フィールド定義を参照)。
@@ -2620,13 +2622,13 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 
 `{review_result_json_heredoc_body}` 内の `timestamp` フィールドは Phase 6.1.a の bash block 内で算出される `$iso_timestamp` (TZ=Asia/Tokyo の ISO 8601 文字列) と **必ず一致** させる必要がある。
 
-**Approach — bash-internal jq injection**: Claude は JSON heredoc body の `timestamp` フィールドに literal sentinel (`"__RITE_TIMESTAMP_PLACEHOLDER__"`) を書き込む。bash block 内で `cat` heredoc 直後に `jq '.timestamp = $ts' --arg ts "$iso_timestamp"` を実行して sentinel を bash 計算値で上書きする。これにより JSON body / ファイル名 / `[CONTEXT]` emit の 3 値が bash 内で完全に同期する (秒跨ぎズレなし)。sentinel が残っていれば jq 置換前の jq 呼び出しが失敗し `json_invalid` reason で non-blocking 失敗する。
+**Approach — bash-internal jq injection**: Claude は JSON heredoc body の `timestamp` フィールドに literal sentinel (`"__RITE_TS_PLACEHOLDER_7f3a9b2c__"`) を書き込む。bash block 内で `cat` heredoc 直後に `jq '.timestamp = $ts' --arg ts "$iso_timestamp"` を実行して sentinel を bash 計算値で上書きする。これにより JSON body / ファイル名 / `[CONTEXT]` emit の 3 値が bash 内で完全に同期する (秒跨ぎズレなし)。sentinel が残っていれば jq 置換前の jq 呼び出しが失敗し `json_invalid` reason で non-blocking 失敗する。
 
 **採用しない代替案**: (a) heredoc 内で `$iso_timestamp` を bash 変数として直接参照する方式は `<<'RITE_JSON_EOF'` の single-quoted delimiter が shell expansion を抑制するため動作せず、unquoted delimiter に変更すると JSON 内の `$` 含有文字列が誤展開される副作用があり禁止。(b) JSON 生成を別 phase に分離する方式は trap / cleanup の複雑度が上がるため採用しない。
 
 **Approach C の具体的手順**: Claude は以下の 2 ステップで Phase 6.1.a を実行する:
 
-1. **JSON body 生成**: `{review_result_json_heredoc_body}` の `"timestamp"` フィールドに literal sentinel `"__RITE_TIMESTAMP_PLACEHOLDER__"` を書き込む (`TZ=...date` は bash block 内で実行されるため Claude は値を知る必要がない)
+1. **JSON body 生成**: `{review_result_json_heredoc_body}` の `"timestamp"` フィールドに literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込む (`TZ=...date` は bash block 内で実行されるため Claude は値を知る必要がない)
 2. **本番 invocation**: Phase 6.1.a の bash block を実行。bash block 内では (a) `iso_timestamp` を算出、(b) heredoc で sentinel を含む JSON を tmpfile に書き出し、(c) jq で sentinel を `$iso_timestamp` に置換、(d) schema validation、(e) atomic mv
 
 この方式なら準備 invocation 不要で、Claude は bash block を 1 回実行するだけで済む。JSON body / ファイル名 / [CONTEXT] emit の 3 値は全て bash 内で算出された同一 `$iso_timestamp` / `$file_timestamp` に由来するため完全同期する。
@@ -2745,7 +2747,7 @@ RITE_JSON_EOF
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
     else
       # verified-review (cycle 8) M-6 対応: Approach C bash-internal jq injection
-      # Claude が `"timestamp": "__RITE_TIMESTAMP_PLACEHOLDER__"` を literal に書き込み、
+      # Claude が `"timestamp": "__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を literal に書き込み、
       # bash 内で jq --arg ts "$iso_timestamp" で正しい値に置換する。これにより
       # JSON body / ファイル名 / [CONTEXT] emit の 3 値が bash 内で完全同期する (秒跨ぎズレ消失)。
       # 失敗時は write_failure reason emit + json_tmp="" で後続処理を skip (non-blocking 失敗)。
@@ -2757,7 +2759,7 @@ RITE_JSON_EOF
       elif jq --arg ts "$iso_timestamp" '.timestamp = $ts' "$json_tmp" > "$json_ts_injected" 2>/dev/null; then
         # C-1 対応 (verified-review cycle 9): inner mv の exit code を明示 check する。
         # 未 check だと mv 失敗 (cross-fs / TOCTOU / permission / disk full) 時に $json_tmp は
-        # sentinel "__RITE_TIMESTAMP_PLACEHOLDER__" のまま残留し、sentinel は valid JSON string の
+        # sentinel "__RITE_TS_PLACEHOLDER_7f3a9b2c__" のまま残留し、sentinel は valid JSON string の
         # ため後続の jq empty / schema_required_fields / finding id 検証を全て通過して最終 mv で
         # 永続ファイルに sentinel 混入 → JSON_SAVED=true emit → pr:fix Priority 2 で読取 (commit_sha
         # stale detection は通るため検知不能) という silent corruption になる。外側 mv と対称化する。
@@ -2843,7 +2845,26 @@ RITE_JSON_EOF
       # な新しい方が先頭に来る。cleanup glob `${pr_number}-*.json` は引き続き両形式に match する
       # (prefix が `${pr_number}-` で始まるため)。
       if [ -e "$json_path" ]; then
+        # M-2 対応: 2 段目 check を追加。旧実装は collision 検出時に `~$RANDOM` suffix を 1 度だけ
+        # 付与し、再衝突 (同秒 3 回目以降 / `$RANDOM` が fallback `0` に落ちたケース) を silent に
+        # 上書きする経路があった (履歴保持契約違反 — schema.md L15 の best-effort tradeoff 注記は
+        # 「完全保証ではない」としつつも silent overwrite は想定外)。再衝突を明示検出し、
+        # `collision_resolution_exhausted` reason で LOCAL_SAVE_FAILED を emit して skip する。
+        # 参考: bash manual の `RANDOM` 仕様 — special 変数は unset 可能で、unset すると special 性を
+        # 失うため `${RANDOM:-0}` fallback 経路は reviewer 想定より発火しやすい
+        # ([Bash Variables](https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html))。
         json_path_alt="${review_results_dir}/${pr_number}-${file_timestamp}~$(printf '%04x' "${RANDOM:-0}").json"
+        if [ -e "$json_path_alt" ]; then
+          echo "WARNING: collision suffix 付与後も再衝突を検出しました ($json_path_alt)。保存を skip します" >&2
+          echo "  原因候補: 同秒 3 回目以降の連続実行 / \$RANDOM が fallback '0' に落ちた / parallel race" >&2
+          echo "  対処: 1 秒待機してから /rite:pr:review を再実行してください" >&2
+          echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=collision_resolution_exhausted; original=$json_path; resolved_attempt=$json_path_alt" >&2
+          json_saved="false"
+          # Phase 6.1.a は non-blocking contract のため exit 0 で return する (trap cleanup が
+          # json_tmp 等を削除する)。Phase 6.1.c は LOCAL_SAVE_FAILED=1 を retained flag で検出し
+          # post_comment_mode=false のとき case 2 (hard fail `exit 2`) に入る (cycle 10 C-1 と整合)。
+          exit 0
+        fi
         echo "WARNING: 同一秒衝突を検出しました ($json_path)。collision suffix を追加します: $json_path_alt" >&2
         echo "[CONTEXT] LOCAL_SAVE_COLLISION=1; original=$json_path; resolved=$json_path_alt" >&2
         json_path="$json_path_alt"
@@ -2905,17 +2926,22 @@ Execute this sub-phase **only when** `{post_comment_mode}=true` from Phase 1.0. 
 
 **Claude substitution requirements**:
 - `{review_result_content_heredoc_body}`: Phase 5.4 で生成した integrated report 全体 (Markdown)。改行・バッククォート・シングルクォート・`$` を含んでもよい。
-- `{review_result_json_heredoc_body}`: Phase 6.1.a と構造的に**同一**の JSON 本文 (Raw JSON セクション埋込用)。**⚠️ 重要** (cycle 10 I-A 対応): Phase 6.1.a で使用する sentinel `"__RITE_TIMESTAMP_PLACEHOLDER__"` を Phase 6.1.b でも literal に書き込み、**本 bash block 内で jq 注入ステップを再実行** して bash 算出の `$iso_timestamp_from_p61a` に置換する。これは Phase 6.1.a と 6.1.b がそれぞれ独立した bash invocation のため、bash 変数 `$iso_timestamp` が継承されないためである。旧実装 (cycle 9 以前) は「Phase 6.1.a と同一の JSON 本文」を literal に再利用する設計だったが、sentinel が Raw JSON セクションに残留し Phase 1.2.0 Priority 3 が sentinel 付き timestamp で findings を解釈する silent regression を持っていた。
+- `{review_result_json_heredoc_body}`: Phase 6.1.a と構造的に**同一**の JSON 本文 (Raw JSON セクション埋込用)。**⚠️ 重要** (cycle 10 I-A 対応): Phase 6.1.a で使用する sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を Phase 6.1.b でも literal に書き込み、**本 bash block 内で jq 注入ステップを再実行** して bash 算出の `$iso_timestamp_from_p61a` に置換する。これは Phase 6.1.a と 6.1.b がそれぞれ独立した bash invocation のため、bash 変数 `$iso_timestamp` が継承されないためである。旧実装 (cycle 9 以前) は「Phase 6.1.a と同一の JSON 本文」を literal に再利用する設計だったが、sentinel が Raw JSON セクションに残留し Phase 1.2.0 Priority 3 が sentinel 付き timestamp で findings を解釈する silent regression を持っていた。
 - `{iso_timestamp_from_p61a}`: Phase 6.1.a の `[CONTEXT] ISO_TIMESTAMP=` の emit 値を Claude が会話コンテキストから読み取り、literal 置換する。sentinel 残留は下記 bash block 内の `case` gate で fail-fast する。
 - `{pr_number}`: Phase 1.0 の値。
 
 ````bash
 # Phase 6.1.b: PR コメント投稿 (signal-specific trap 保護)
-# Rationale: gh_err tempfile も cleanup 対象に含める (canonical signal-specific trap pattern 準拠)
+# Rationale: gh_err + tmpfile_patched (sentinel 置換用中間ファイル) も cleanup 対象に含める
+# (canonical signal-specific trap pattern 準拠)。M-1 対応: tmpfile_patched は mktemp (L2979)〜
+# mv 成功 (L3002) の区間で SIGINT/SIGTERM/SIGHUP を受けると trap 未登録だと /tmp に orphan
+# 残留していた (本 PR の他 tempfile は全て trap 登録されており非対称だった)。mv 成功後に
+# tmpfile_patched="" で空文字 reset して二重 rm を回避する (canonical pattern)。
 tmpfile=""
 gh_err=""
+tmpfile_patched=""
 _rite_review_p61b_cleanup() {
-  rm -f "${tmpfile:-}" "${gh_err:-}"
+  rm -f "${tmpfile:-}" "${gh_err:-}" "${tmpfile_patched:-}"
 }
 trap 'rc=$?; _rite_review_p61b_cleanup; exit $rc' EXIT
 trap '_rite_review_p61b_cleanup; exit 130' INT
@@ -2931,11 +2957,11 @@ tmpfile=$(mktemp /tmp/rite-review-p61b-comment-XXXXXX.md) || {
 # cycle 10 I-A 対応: iso_timestamp_from_p61a sentinel fail-fast gate
 # Phase 6.1.a の [CONTEXT] ISO_TIMESTAMP=... を Claude が読み取って literal substitute する責務を機械的に強制。
 # 旧実装 (cycle 9 以前) は Phase 6.1.a と同一 JSON body を literal に再利用する設計だったため、
-# sentinel "__RITE_TIMESTAMP_PLACEHOLDER__" が Raw JSON セクションに残留し、Phase 1.2.0 Priority 3 が
+# sentinel "__RITE_TS_PLACEHOLDER_7f3a9b2c__" が Raw JSON セクションに残留し、Phase 1.2.0 Priority 3 が
 # sentinel 付き timestamp で findings を解釈する silent regression を持っていた。
 iso_timestamp_from_p61a="{iso_timestamp_from_p61a}"
 case "$iso_timestamp_from_p61a" in
-  "{"*|*"}"|""|"__RITE_TIMESTAMP_PLACEHOLDER__")
+  "{"*|*"}"|""|"__RITE_TS_PLACEHOLDER_7f3a9b2c__")
     echo "ERROR: Phase 6.1.b の iso_timestamp_from_p61a が literal substitute されていません (値: '$iso_timestamp_from_p61a')" >&2
     echo "  Claude は Phase 6.1.a の [CONTEXT] ISO_TIMESTAMP=... emit 値を会話コンテキストから読み取り、" >&2
     echo "  この bash block 冒頭の iso_timestamp_from_p61a=... 行を ISO 8601 文字列 (例: 2026-04-11T12:34:56+09:00) で置換する必要があります" >&2
@@ -2985,14 +3011,23 @@ tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
 # (b) それ以外の行は元のまま通過。ただしファイル全体を 1 pass で処理するのは複雑なため、
 # シンプルに sed で sentinel 1 箇所を置換する実装に留める (Phase 6.1.a が生成する JSON は
 # timestamp フィールドを必ず 1 箇所のみ持つという invariant に依存)。
-if ! sed -E "s|\"__RITE_TIMESTAMP_PLACEHOLDER__\"|\"${iso_timestamp_from_p61a}\"|" "$tmpfile" > "$tmpfile_patched"; then
+#
+# Sentinel 選定 (dogfooding hard fail 防止): sentinel は 16 進ランダム suffix 付き
+# `__RITE_TS_PLACEHOLDER_7f3a9b2c__` を採用。旧 `__RITE_TIMESTAMP_PLACEHOLDER__` は finding の
+# description / suggestion 列に literal として出現しうる一般的な名前 (本 PR 自身のレビュー結果が反例)
+# で、sed 置換 + 後段 grep post-condition による dogfooding hard fail を生む。
+# 16 進 suffix 付きは人間が finding 内に literal を記載しない限り衝突しないため、defense-in-depth で
+# Markdown 部分に sentinel が混入する経路を静的に遮断する。POSIX sed が g フラグなしで行内最初の 1 ヒット
+# のみ置換する仕様 ([sed(1p)](https://www.unix.com/man_page/posix/1p/sed/)) の invariant を維持しつつ、
+# Markdown side への波及を排除する。
+if ! sed -E "s|\"__RITE_TS_PLACEHOLDER_7f3a9b2c__\"|\"${iso_timestamp_from_p61a}\"|" "$tmpfile" > "$tmpfile_patched"; then
   echo "ERROR: Raw JSON 内 sentinel の sed 置換に失敗しました" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=raw_json_timestamp_injection_failed" >&2
   rm -f "$tmpfile_patched"
   exit 1
 fi
 # 置換後 sentinel が残留していないことを post-condition 確認 (defense-in-depth)
-if grep -q '__RITE_TIMESTAMP_PLACEHOLDER__' "$tmpfile_patched"; then
+if grep -q '__RITE_TS_PLACEHOLDER_7f3a9b2c__' "$tmpfile_patched"; then
   echo "ERROR: sed 置換後も sentinel が残留しています (Raw JSON に複数の sentinel が存在する / sed 失敗の可能性)" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=raw_json_timestamp_injection_failed" >&2
   rm -f "$tmpfile_patched"
@@ -3005,6 +3040,9 @@ if ! mv "$tmpfile_patched" "$tmpfile"; then
   rm -f "$tmpfile_patched"
   exit 1
 fi
+# mv 成功後に tmpfile_patched を trap cleanup 対象から外す (二重 rm 回避)。
+# Phase 6.1.a の json_ts_injected → json_tmp="" と同じ canonical 2-state commit pattern。
+tmpfile_patched=""
 
 # gh pr comment の exit code を明示捕捉 (silent failure 防止)
 # `if ! cmd; then rc=$?` パターンは bash 仕様上 $? が
@@ -3117,6 +3155,22 @@ case "$file_timestamp" in
     echo "  Claude は Phase 6.1.a の [CONTEXT] FILE_TIMESTAMP=... を読み取って substitute する必要があります" >&2
     echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_file_timestamp_unset" >&2
     exit 1
+    ;;
+  "unknown")
+    # I-3 対応: Phase 6.1.a の trap handler は date 失敗時に `[CONTEXT] FILE_TIMESTAMP=unknown` を
+    # emit する (L2674 付近)。その経路では LOCAL_SAVE_FAILED=1 も併設される設計だが、万一
+    # 片方だけが set された不整合状態 (観測値混線 / race) では、ケース 1 に流れると
+    # `.rite/review-results/${pr_number}-unknown.json` という実在しないファイルパスをユーザーに
+    # 誤提示する UX regression が起きる。整合性違反として明示的に ERROR 化する。
+    if [ "$local_save_failed" != "1" ]; then
+      echo "ERROR: Phase 6.1.c の file_timestamp='unknown' だが local_save_failed が '1' ではありません (整合性違反)" >&2
+      echo "  Phase 6.1.a の trap handler は date 失敗時に FILE_TIMESTAMP=unknown と LOCAL_SAVE_FAILED=1 を同時に emit するはずです" >&2
+      echo "  単独 emit 経路は観測値混線 / race の兆候であり、ユーザーに誤ったファイルパスを提示する経路を遮断します" >&2
+      echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_file_timestamp_unknown_without_failure" >&2
+      exit 1
+    fi
+    # local_save_failed=1 が併設されている場合は legitimate な失敗経路のため、下流のケース 2 分岐
+    # (LOCAL_SAVE_FAILED=1 hard fail) に流す。case 文は何もせず pass する。
     ;;
 esac
 case "$local_save_failed" in
@@ -3241,7 +3295,10 @@ if [ -n "$sync_err" ]; then
     :
   else
     sync_rc=$?
-    if grep -qiE 'lock|contention|busy' "$sync_err"; then
+    # H-1 対応: cycle 10 S-1 の exact phrase pattern に統一 (旧 `lock|contention|busy` は
+    # permission denied / device busy / resource busy 等を silent suppress する欠陥パターン。
+    # canonical helper を common-error-handling.md#hook-lock-contention-classification-canonical で定義)
+    if grep -qiE '(file is locked|lock contention|resource busy)' "$sync_err"; then
       echo "WARNING: issue-comment-wm-sync lock contention (best-effort skip, rc=$sync_rc)" >&2
     else
       echo "WARNING: issue-comment-wm-sync failed (non-lock failure, rc=$sync_rc):" >&2
@@ -3273,11 +3330,20 @@ Skip if `metrics.enabled: false` in rite-config.yml. Otherwise, record review me
 | MEDIUM findings count | Count from integrated report |
 | LOW findings count | Count from integrated report |
 
-**Step 2**: Include review metrics in the Phase 6.1 PR comment.
+**Step 2**: Record review metrics depending on `{post_comment_mode}`.
 
-Append the metrics section (format defined in [Execution Metrics](../../references/execution-metrics.md#review-metrics)) to `{review_result_content}` **before** posting the PR comment in Phase 6.1. This avoids a separate API call — the metrics are included in the same comment as the review results.
+The target of metrics recording branches on `{post_comment_mode}` determined in Phase 1.0. This avoids silent metrics loss in the default path (`post_comment_mode=false`).
 
-**Note**: This step records raw data only. Threshold evaluation is performed by `/rite:issue:start` Phase 5.5.2 at workflow completion.
+| Mode | Recording target | Rationale |
+|------|------------------|-----------|
+| **opt-in** (`post_comment_mode=true`) | Append metrics section to `{review_result_content}` **before** posting the PR comment in Phase 6.1.b. The metrics are included in the same comment as the review results, avoiding a separate API call | 旧実装 (cycle 11 以前) はこの経路を想定した記述のみを持っていた |
+| **default** (`post_comment_mode=false`) | Emit metrics as observability log only via `[CONTEXT] REVIEW_METRICS=critical={n};high={n};medium={n};low={n}` to stderr in Phase 6.1.a or 6.1.c | default 経路で metrics の出力先を失わないための明示分岐 (verified-review cycle 12 C-1 対応)。PR コメントには投稿せず、`[CONTEXT]` 経由で caller (`/rite:issue:start` Phase 5.5.2) が読み取れる形式にする |
+
+**⚠️ Default 経路 (`post_comment_mode=false`) で metrics を JSON ファイルに埋め込まない理由**: review-result-schema.md の現行 schema には `metrics` top-level field が存在しない。schema 拡張は別 PR で実施する (本 PR は record target の明示化のみに留め、schema 変更は out-of-scope)。それまでは `[CONTEXT]` stderr emit が唯一の default 経路記録手段となる。
+
+**`post_comment_mode=true` 時の append 実行タイミング**: metrics section は Phase 6.1.b の PR コメント投稿 **前** に `{review_result_content_heredoc_body}` の末尾 (Raw JSON セクション直前) に Claude が literal substitute する。Phase 6.1.a の JSON 本文 (`{review_result_json_heredoc_body}`) には含めない (schema 変更 out-of-scope のため)。
+
+**Note**: This step records raw data only. Threshold evaluation is performed by `/rite:issue:start` Phase 5.5.2 at workflow completion, which reads `[CONTEXT] REVIEW_METRICS=...` from stderr in `post_comment_mode=false` path, or parses the metrics section from the PR comment in `post_comment_mode=true` path.
 
 ### 6.4 Update Issue Work Memory
 
@@ -3307,7 +3373,9 @@ _rite_review_p64_run_sync() {
       :
     else
       local rc=$?
-      if grep -qiE 'lock|contention|busy' "$err_file"; then
+      # H-1 対応: cycle 10 S-1 の exact phrase pattern に統一 (canonical helper を
+      # common-error-handling.md#hook-lock-contention-classification-canonical で定義)
+      if grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"; then
         echo "WARNING: ${label} lock contention (best-effort skip, rc=$rc)" >&2
       else
         echo "WARNING: ${label} failed (non-lock failure, rc=$rc):" >&2

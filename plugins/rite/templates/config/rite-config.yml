@@ -136,8 +136,9 @@ language: auto  # auto | ja | en
 # デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
 # ローカルファイル (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
 # /rite:pr:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
-# pr_review:
-#   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false）
+# `--post-comment` フラグまたは下記 `post_comment: true` で PR コメント記録を有効化できる。
+pr_review:
+  post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false）
 
 # Parallel implementation settings
 # parallel:

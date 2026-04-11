@@ -4260,7 +4260,10 @@ if [ -n "$hook_err" ]; then
     : # success
   else
     hook_rc=$?
-    if grep -qiE 'lock|contention|busy' "$hook_err"; then
+    # H-1 対応: cycle 10 S-1 の exact phrase pattern に統一 (旧 `lock|contention|busy` は
+    # permission denied / device busy / resource busy 等を silent suppress する欠陥パターン。
+    # canonical helper を common-error-handling.md#hook-lock-contention-classification-canonical で定義)
+    if grep -qiE '(file is locked|lock contention|resource busy)' "$hook_err"; then
       # lock failure (best-effort skip 該当): WARNING のみで継続
       echo "WARNING: local work memory lock contention (best-effort skip, rc=$hook_rc)" >&2
     else
@@ -4295,7 +4298,7 @@ else
 fi
 ```
 
-**On lock failure**: Log a warning and continue — local work memory update is best-effort. **Non-lock failure** (script 不在 / permission denied / bash syntax error / 内部致命的エラー) は WARNING + stderr 5 行を表示してから継続する (E2E flow を block しない)。両者は L-5 修正で stderr の `lock|contention|busy` パターンマッチで分岐される。
+**On lock failure**: Log a warning and continue — local work memory update is best-effort. **Non-lock failure** (script 不在 / permission denied / bash syntax error / 内部致命的エラー) は WARNING + stderr 5 行を表示してから継続する (E2E flow を block しない)。両者は stderr の exact phrase pattern `(file is locked|lock contention|resource busy)` で分岐される (H-1 で canonical helper に集約、詳細は [common-error-handling.md#hook-lock-contention-classification-canonical](../../references/common-error-handling.md#hook-lock-contention-classification-canonical) 参照)。
 
 Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILED context flag**, output the corresponding machine-readable pattern:
 
