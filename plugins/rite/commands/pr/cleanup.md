@@ -1156,7 +1156,10 @@ fi
 # fix.md Phase 1.2.0.1 Interactive Fallback の retry hard gate state file は
 # PR がマージされた時点で不要になるため、Phase 2.5 で同時に削除する。
 state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
-if [ -f "$state_file" ]; then
+# M-3 対応: 旧実装 `[ -f "$state_file" ]` は permission denied で stat 不能な場合に false に
+# なり、rm すら試みない silent pass があった。`rm -f` は非存在ファイルに対して exit 0 を返すため、
+# unconditional に rm を実行し、失敗時だけ WARNING を emit する方が対称的で安全。
+if [ -e "$state_file" ] || [ -L "$state_file" ]; then
   if rm -f "$state_file"; then
     echo "✅ fix retry state file を削除しました: $state_file" >&2
   else

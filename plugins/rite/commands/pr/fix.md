@@ -323,7 +323,7 @@ Terminate processing.
 
 > **⚠️ MANDATORY**: This sub-phase runs **first** in Phase 1.2, before any of the existing Fast Path / Broad Retrieval branches below. It implements the "会話 > ローカルファイル > PR コメント" priority chain defined in [review-result-schema.md](../../references/review-result-schema.md#読取優先順位-prfix) and sets `{review_source}` to indicate which path was selected. Subsequent sub-sections execute conditionally based on `{review_source}`.
 
-> **Acceptance Criteria anchor**: AC-3 (Priority 1: 同一セッション内の会話コンテキストを最優先で使用)。AC-4 (Priority 2: 会話になければ最新 timestamp のローカルファイルを使用)。AC-5 (Priority 3: 既存 PR コメントの `📜 rite レビュー結果` を後方互換 fallback として読取)。D-01 (会話 > ファイル > PR コメントのハイブリッド方式を採用した理由: セッション横断作業と即時連携の両立)。
+> **Acceptance Criteria anchor**: AC-3 (Priority 1: 同一セッション内の会話コンテキストを最優先で使用)。AC-4 (Priority 2: 会話になければ最新 timestamp のローカルファイルを使用)。AC-5 (Priority 3: 既存 PR コメントの `📜 rite レビュー結果` を後方互換 fallback として読取)。D-01 (会話 > ローカルファイル > PR コメントのハイブリッド方式を採用した理由: セッション横断作業と即時連携の両立)。
 
 **Priority chain**:
 
@@ -415,8 +415,19 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
         # stale file を検出する。ユーザーが明示的に指定した --review-file は意図尊重のため
         # 直接 fallback に route せず、WARNING + continue する (H-3 design rationale と整合)。
         # ただし [CONTEXT] REVIEW_SOURCE_STALE=1 を emit して observability は維持する。
-        # commit_sha 抽出失敗 (legacy schema) は警告のみで continue する (後方互換)。
-        json_commit_sha=$(jq -r '.commit_sha // empty' "$review_file_path" 2>/dev/null || echo "")
+        # I-4 対応: jq バイナリ異常 / I/O エラーと「.commit_sha フィールド不在 (legacy schema)」を区別する。
+        # 旧実装 `2>/dev/null || echo ""` はこの 2 ケースを silent に融合させ、stale detection を silent 無効化していた。
+        json_commit_sha_err=$(mktemp /tmp/rite-fix-p0-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
+        if json_commit_sha=$(jq -r '.commit_sha // empty' "$review_file_path" 2>"${json_commit_sha_err:-/dev/null}"); then
+          : # jq 成功 (空 or 非空)
+        else
+          jq_rc=$?
+          echo "WARNING: --review-file の commit_sha 抽出で jq が失敗 (rc=$jq_rc)" >&2
+          [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
+          echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=0" >&2
+          json_commit_sha=""
+        fi
+        [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
         head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
         if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
           echo "⚠️ WARNING: --review-file の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です" >&2
@@ -459,11 +470,28 @@ if [ -z "$review_source" ]; then
   retry_state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
   retry_current=0
   if [ -f "$retry_state_file" ]; then
-    retry_raw=$(cat "$retry_state_file" 2>/dev/null || echo 0)
-    case "$retry_raw" in
-      ''|*[!0-9]*) retry_current=0 ;;
-      *) retry_current=$retry_raw ;;
-    esac
+    # I-1 対応: cat の IO エラー (permission denied / inode 破損 / NFS timeout) を
+    # silent に counter=0 にフォールバックさせない。
+    # 真の IO エラーは「未知の状態」として safe side に倒し、retry_current を 999 にして
+    # hard gate を強制発火させる (machine-enforced hard gate 原則)。
+    cat_err=$(mktemp /tmp/rite-fix-retry-cat-err-XXXXXX 2>/dev/null) || cat_err=""
+    if retry_raw=$(cat "$retry_state_file" 2>"${cat_err:-/dev/null}"); then
+      case "$retry_raw" in
+        ''|*[!0-9]*) retry_current=0 ;;
+        *) retry_current=$retry_raw ;;
+      esac
+    else
+      cat_rc=$?
+      echo "WARNING: retry state file の読取に失敗 (rc=$cat_rc, path=$retry_state_file)" >&2
+      if [ -n "$cat_err" ] && [ -s "$cat_err" ]; then
+        head -3 "$cat_err" | sed 's/^/  /' >&2
+      fi
+      echo "  対処: $retry_state_file の permission / filesystem 健全性を確認してください" >&2
+      echo "[CONTEXT] FIX_FALLBACK_RETRY_READ_FAILED=1; reason=state_file_read_io_error" >&2
+      # IO エラーは「未知の状態」として safe side に倒す: hard gate を確実に発火させる
+      retry_current=999
+    fi
+    [ -n "$cat_err" ] && rm -f "$cat_err"
   fi
   if [ "$retry_current" -ge 1 ]; then
     echo "[CONTEXT] P1_SCAN_SKIPPED=1; reason=retry_re_entry; retry_count=$retry_current" >&2
@@ -548,7 +576,14 @@ if [ -z "$review_source" ]; then
     # dir 不在 = 正常経路。Priority 3 へ silent fall-through。
     :
   else
-    find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX) || find_err=""
+    # C-5 対応: mktemp 失敗時も WARNING を emit (cleanup.md Phase 2.5 / Phase 6.1.a と対称化)。
+    # 旧実装は `|| find_err=""` で silent fallback し、find の IO エラー詳細を失う経路があった。
+    if ! find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX); then
+      echo "WARNING: find stderr 退避用 tempfile の mktemp に失敗しました。find の IO エラー詳細は失われます" >&2
+      echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+      echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=mktemp_failure_find_err" >&2
+      find_err=""
+    fi
 
     # mapfile + process substitution で SIGPIPE 経路を断ち、pipefail 下でも安全に動作する
     files_arr=()
@@ -573,6 +608,12 @@ if [ -z "$review_source" ]; then
       find_err=""
     fi
 
+    # M-4 対応: find で見つかった latest_file が -f check で脱落した経路を silent にしない。
+    # permission denied / symlink 破壊 / TOCTOU で stat 不能な場合、ユーザーは Priority 3 routing 理由を debug できない。
+    if [ -n "$latest_file" ] && [ ! -f "$latest_file" ]; then
+      echo "WARNING: find で発見した latest_file が -f check で失敗 ($latest_file)。permission / symlink 破壊の可能性" >&2
+      echo "[CONTEXT] REVIEW_SOURCE_STAT_FAILED=1; reason=latest_file_stat_failure" >&2
+    fi
     if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
       # jq empty は terminal value を pass するため、
       # required fields (schema_version / pr_number / findings[]) を明示検証する
@@ -625,8 +666,19 @@ if [ -z "$review_source" ]; then
             # Priority 2 は lexicographic 最新ファイルを機械的に選ぶため、古い commit に対する
             # review 結果を silent に使用するリスクがある。現 HEAD と比較し、mismatch 時は Priority 3
             # (PR コメント) に routing する (Priority 2 の他の失敗経路と同じ扱い)。
-            # 古い local file には fallback しない (Priority 2 schema doc L152 の設計判断と整合)。
-            json_commit_sha=$(jq -r '.commit_sha // empty' "$latest_file" 2>/dev/null || echo "")
+            # 古い local file には fallback しない (Priority 2 schema doc の設計判断と整合)。
+            # I-4 対応: jq IO エラーを silent 化しない。
+            json_commit_sha_err=$(mktemp /tmp/rite-fix-p2-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
+            if json_commit_sha=$(jq -r '.commit_sha // empty' "$latest_file" 2>"${json_commit_sha_err:-/dev/null}"); then
+              :
+            else
+              jq_rc=$?
+              echo "WARNING: $latest_file の commit_sha 抽出で jq が失敗 (rc=$jq_rc)" >&2
+              [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
+              echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=2" >&2
+              json_commit_sha=""
+            fi
+            [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
             head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
             if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
               echo "WARNING: $latest_file の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です (stale)" >&2
@@ -669,7 +721,17 @@ fi
 # (count==3 で永久 block される経路を防ぐ)。fallback 経路 (review_source="fallback") では
 # Phase 1.2.0.1 の retry カウンタ動作を妨げないため rm を skip する。
 if [ -n "$review_source" ] && [ "$review_source" != "fallback" ]; then
-  rm -f ".rite/state/fix-fallback-retry-${pr_number}.count" 2>/dev/null || true
+  # I-2 対応: 旧実装 `2>/dev/null || true` は rm 失敗を silent 握り潰していた。
+  # cleanup.md Phase 2.5 と非対称で、失敗時に stale counter が残り次回 fallback で
+  # retry が誤動作する silent regression の原因になる。
+  state_path=".rite/state/fix-fallback-retry-${pr_number}.count"
+  if [ -f "$state_path" ]; then
+    if ! rm -f "$state_path"; then
+      echo "WARNING: happy path の retry state file 削除に失敗 ($state_path)" >&2
+      echo "  対処: 次回 fallback 経路で stale counter により AskUserQuestion が誤動作する可能性があります。手動削除してください" >&2
+      echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=happy_path_rm_failure" >&2
+    fi
+  fi
 fi
 
 set +o pipefail
@@ -710,8 +772,11 @@ fi
 ```bash
 # pr_review_comment_body を tempfile から読み出す
 # (旧 literal substitute hand-off 方式を廃止。Phase 1.2 Broad Retrieval bash block が
-# /tmp/rite-fix-pr-comment-{pr_number}.txt に書き出している前提)
-pr_comment_body_file="/tmp/rite-fix-pr-comment-{pr_number}.txt"
+# /tmp/rite-fix-pr-comment-${pr_number}.txt に書き出している前提)
+# M-7 対応: 他の fix.md bash block (L323 / L863 / L913 等) と同じ「block 冒頭で pr_number を
+# literal substitute してから ${pr_number} で参照」方式に統一し、path 内 placeholder 直埋めを排除
+pr_number="{pr_number}"
+pr_comment_body_file="/tmp/rite-fix-pr-comment-${pr_number}.txt"
 if [ -f "$pr_comment_body_file" ]; then
   if [ ! -s "$pr_comment_body_file" ]; then
     # tempfile は存在するが空 = Broad Retrieval が書き出そうとしたが本文取得が空だった
@@ -800,7 +865,18 @@ else
       # Priority 3 Raw JSON も Priority 0/2 と同じ guard を適用する。
       # mismatch 時は WARNING のみで continue する (PR コメントは最新の push 後に投稿される
       # 可能性が高く、legacy Markdown parser への fallthrough はむしろ情報損失になるため)。
-      json_commit_sha=$(printf '%s' "$raw_json" | jq -r '.commit_sha // empty' 2>/dev/null || echo "")
+      # I-4 対応: jq IO エラーを silent 化しない。
+      json_commit_sha_err=$(mktemp /tmp/rite-fix-p3-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
+      if json_commit_sha=$(printf '%s' "$raw_json" | jq -r '.commit_sha // empty' 2>"${json_commit_sha_err:-/dev/null}"); then
+        :
+      else
+        jq_rc=$?
+        echo "WARNING: PR コメント内 Raw JSON の commit_sha 抽出で jq が失敗 (rc=$jq_rc)" >&2
+        [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
+        echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=3" >&2
+        json_commit_sha=""
+      fi
+      [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
       head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
       if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
         echo "⚠️ WARNING: PR コメント内 Raw JSON の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です (stale)" >&2
@@ -974,15 +1050,25 @@ exit 1
 | `state_dir_mkdir_failed` | retry hard gate state directory `.rite/state/` の作成失敗 (permission denied / read-only filesystem) |
 | `state_file_write_failed` | retry hard gate state file への書き込み失敗 (disk full / permission denied) |
 | `review_file_path_empty_value` | Phase 1.0.1 で値を持たない `--review-file` が指定された。Pattern 1 (equals style: `--review-file=`) と Pattern 2 (space style: `--review-file <末尾>`) の両方で検出される。`flag_style=equals` / `flag_style=space` として retained flag に付記される |
-| `comment_body_tempfile_empty` | Phase 1.2.0 Priority 3 で `/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空)
-| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン)
+| `comment_body_tempfile_empty` | Phase 1.2.0 Priority 3 で `/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空) |
+| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
 | `priority1_decision_unset` | Phase 1.2.0 Priority 1 で `conversation_review_decision` が literal substitute されていない (silent fallthrough 防止) |
 | `priority1_decision_invalid` | Phase 1.2.0 Priority 1 で `conversation_review_decision` に許容値 (`use` / `none`) 以外が指定された |
 | `priority1_receipt_missing` | Phase 1.2.0 Priority 1 で decision=use だが machine-readable receipt (`p1_scan_turns`) が literal substitute されていない (verified-review H-3 対応) |
 | `priority1_receipt_invalid` | Phase 1.2.0 Priority 1 で `p1_scan_turns` が数値ではない (verified-review H-3 対応) |
 | `priority1_receipt_inconsistent` | Phase 1.2.0 Priority 1 で decision=use だが `p1_scan_found != "true"` (receipt 整合性違反、verified-review H-3 対応) |
+| `explicit_file_commit_sha_mismatch` | Priority 0 で指定された file の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
+| `local_file_commit_sha_mismatch` | Priority 2 で選ばれた最新 local file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 3 へ routing) |
+| `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
+| `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
+| `local_file_find_io_error` | Priority 2 の `find .rite/review-results/` が IO エラーで failed (L-3 対応) |
+| `mktemp_failure_find_err` | Priority 2 の find stderr 退避用 tempfile の mktemp が失敗 (C-5 対応、cleanup.md Phase 2.5 と対称) |
+| `latest_file_stat_failure` | Priority 2 で find が見つけた `latest_file` が `-f` check で脱落 (M-4 対応、permission denied / symlink 破壊) |
+| `state_file_read_io_error` | Phase 1.2.0 Priority 1 の retry state file `cat` が IO エラーで失敗 (I-1 対応、hard gate を safe side に倒すため `retry_current=999`) |
+| `happy_path_rm_failure` | Phase 1.2.0 happy path の retry state file 削除が失敗 (I-2 対応、cleanup.md Phase 2.5 と対称) |
+| `retry_re_entry` | Phase 1.2.0 Priority 1 が retry counter >= 1 のため強制 skip された (verified-review H-3 / M-2 対応、stale conversation source の silent route を防ぐ。`P1_SCAN_SKIPPED` flag 専用の reason で fix loop を中断しない) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_tempfile_empty`)
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry`)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -3834,7 +3920,7 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
-| 1 (最優先) | Phase 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は Phase 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない
+| 1 (最優先) | Phase 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は Phase 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (Phase 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定が 3 回連続で失敗した状態のため caller は手動介入を促す) |
 | 2 | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |

@@ -153,11 +153,41 @@ Determine the invocation source from the conversation context:
 
 2. **Conflict check** (AC-8): If `flag_post == "true"` AND `flag_no_post == "true"`, **immediately terminate** with the following error and do NOT execute Phase 1.1 or later.
 
-   Step 1 / Step 3 と同粒度の bash block を提供し、retained flag emit 規約と
-   `[review:error]` exit を明示する。Step 1 で set された `flag_post` / `flag_no_post` を直接参照する。
+   **⚠️ Claude substitution required** (bash state is not inherited across Bash tool invocations):
+
+   Step 1 の bash block は別 Bash tool invocation で実行されているため、ここでの `$flag_post` / `$flag_no_post` はシェル変数としては空になる。Claude は Step 1 の stderr に emit された `[CONTEXT] FLAG_POST=...` / `[CONTEXT] FLAG_NO_POST=...` の値を会話コンテキストから読み取り、下記 bash block 冒頭の `flag_post="{flag_post_from_step1}"` / `flag_no_post="{flag_no_post_from_step1}"` を実際の値 (`"true"` or `"false"`) で literal substitute すること。これを忘れると AC-8 の conflict check が常に false となり silent regression を起こす (fix.md Phase 1.2.0 Priority 1 の `conversation_review_decision` substitute パターンと同設計)。
+
+   substitute 漏れを機械的に検出するため、sentinel を含む値の場合は fail-fast する。
 
    ```bash
    # Phase 1.0 Step 2: Conflict check (AC-8)
+   # ⚠️ Claude は以下 2 行を Step 1 の [CONTEXT] FLAG_POST=... / FLAG_NO_POST=... 値で
+   # literal substitute すること (例: flag_post="true" / flag_no_post="false")
+   flag_post="{flag_post_from_step1}"
+   flag_no_post="{flag_no_post_from_step1}"
+
+   # Sentinel 検出 (substitute 漏れの fail-fast)
+   case "$flag_post" in
+     true|false) ;;
+     *)
+       echo "ERROR: Phase 1.0 Step 2 の flag_post が literal substitute されていません (値: '$flag_post')" >&2
+       echo "  Claude は Step 1 の [CONTEXT] FLAG_POST=... 値を読み取って substitute する必要があります" >&2
+       echo "[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=step2_flag_post_unset" >&2
+       echo "[review:error]"
+       exit 1
+       ;;
+   esac
+   case "$flag_no_post" in
+     true|false) ;;
+     *)
+       echo "ERROR: Phase 1.0 Step 2 の flag_no_post が literal substitute されていません (値: '$flag_no_post')" >&2
+       echo "  Claude は Step 1 の [CONTEXT] FLAG_NO_POST=... 値を読み取って substitute する必要があります" >&2
+       echo "[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=step2_flag_no_post_unset" >&2
+       echo "[review:error]"
+       exit 1
+       ;;
+   esac
+
    if [ "$flag_post" = "true" ] && [ "$flag_no_post" = "true" ]; then
      echo "エラー: --post-comment と --no-post-comment を同時に指定することはできません" >&2
      echo "  受信した引数: $ARGUMENTS" >&2
@@ -186,7 +216,10 @@ Determine the invocation source from the conversation context:
    # pipefail スコープ note: 本 block は単一 Bash tool invocation 内で閉じる前提で設計されており、
    # 末尾で `set +o pipefail` に戻す。Bash tool 呼び出し間でシェル state は継承されないため、
    # block 外への伝播はない。
-   _rite_review_p10_prev_pipefail=$(set +o | grep pipefail)
+   # M-1 対応: bash default で pipefail は無効 ([GNU bash manual — The Set Builtin](https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html))。
+   # 状態保存 save/restore は over-engineering で、`set +o | grep pipefail` 自体が pipefail 有効下で
+   # grep の no-match 時に silent 空文字列化する穴があった。本 block の末尾で `set +o pipefail` を
+   # unconditional に実行すれば idempotent に default 状態へ戻せる。
    set -o pipefail
 
    repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
@@ -224,8 +257,7 @@ Determine the invocation source from the conversation context:
          ;;
      esac
    fi
-   eval "$_rite_review_p10_prev_pipefail"
-   unset _rite_review_p10_prev_pipefail
+   set +o pipefail
    ```
 
 4. **Final decision**: Compute `{post_comment_mode}` per the following precedence:
@@ -241,14 +273,16 @@ Determine the invocation source from the conversation context:
 
 **Note on PR number parsing**: Phase 1.1 の `{pr_number}` 抽出は本サブフェーズで生成した `remaining_args` を入力として使うこと。`$ARGUMENTS` 全体を直接参照してはならない (フラグトークンを PR 番号と誤認するリスク)。
 
-**Phase 1.0 failure reasons**: (`bash_version_incompatible` / `post_and_no_post_conflict`)
+**Phase 1.0 failure reasons**: (`bash_version_incompatible` / `post_and_no_post_conflict` / `step2_flag_post_unset` / `step2_flag_no_post_unset`)
 
 | reason | Description |
 |--------|-------------|
-| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン)
+| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
 | `post_and_no_post_conflict` | `--post-comment` と `--no-post-comment` が同時指定された (Phase 1.0 Step 2、AC-8 違反、`REVIEW_ARG_PARSE_FAILED=1` retained flag を emit して `[review:error]` で exit 1) |
+| `step2_flag_post_unset` | Phase 1.0 Step 2 で `flag_post` が literal substitute されていない (Claude が Step 1 の `[CONTEXT] FLAG_POST=...` を読み取れなかった silent fallthrough 防止) |
+| `step2_flag_no_post_unset` | Phase 1.0 Step 2 で `flag_no_post` が literal substitute されていない (同上) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 1.0 emit sequence = (`bash_version_incompatible` / `post_and_no_post_conflict`)
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 1.0 emit sequence = (`bash_version_incompatible` / `post_and_no_post_conflict` / `step2_flag_post_unset` / `step2_flag_no_post_unset`)
 
 ### 1.1 Identify the PR
 
@@ -2541,16 +2575,20 @@ Phase 6 failure reasons:
 | `json_invalid` | JSON tmpfile written but `jq empty` post-condition check failed (Phase 6.1.a, literal `{review_result_json_heredoc_body}` substitute 漏れの可能性、**WARNING only**) |
 | `schema_required_fields_missing` | JSON は parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Phase 6.1.a、**WARNING only**) |
 | `mv_failure` | Atomic move of JSON tmpfile to final path failed (Phase 6.1.a, **WARNING only**) |
+| `mktemp_failure_mv_err` | Phase 6.1.a の mv stderr 退避用 tempfile の mktemp が失敗 (I-3 対応、**WARNING only**、mv 失敗時の stderr 詳細が失われるため explicit に通知) |
 
 **Non-blocking contract**: `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
-**Retained flag mapping**: Phase 6.1.a は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は上記 7 種 (`mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure`) のいずれか。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
+**Retained flag mapping**:
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure` / `gh_comment_post_failure`).
+- **Phase 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 8 種のいずれか (I-3 修正で `mktemp_failure_mv_err` 追加): `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `mktemp_failure_mv_err` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure`。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
+- **Phase 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として Phase 6 を fail させる (Phase 6.1.a の非ブロッキング契約とは対照的)。
+
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `date_command_failure` / `mktemp_failure` / `mktemp_failure_mv_err` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure` / `gh_comment_post_failure`).
 
 #### 6.1.a Local JSON File Save (Always Executed — #443) <!-- AC-1 / D-01 / D-02 / D-04 -->
 
-> **Acceptance Criteria anchor**: AC-1 (`pr_review.post_comment` 未設定時にデフォルトで PR コメント投稿せず、`.rite/review-results/{pr}-{ts}.json` のみ作成)。D-01 (ハイブリッド方式: 会話 > ファイル > PR コメント)。D-02 (同一 PR の履歴を timestamp 付きで保持、best-effort、同秒衝突は `-$RANDOM` suffix で回避)。D-04 (非ブロッキング契約: ローカル保存失敗は WARNING のみで続行、`common-error-handling.md` の Non-blocking Contract 準拠 — ただし `post_comment=false` ∧ `LOCAL_SAVE_FAILED=1` 組み合わせは Phase 6.1.c でケース 2 の ⚠️ WARNING に昇格する)。
+> **Acceptance Criteria anchor**: AC-1 (`pr_review.post_comment` 未設定時にデフォルトで PR コメント投稿せず、`.rite/review-results/{pr}-{ts}.json` のみ作成)。D-01 (ハイブリッド方式: 会話 > ローカルファイル > PR コメント)。D-02 (同一 PR の履歴を timestamp 付きで保持、best-effort、同秒衝突は `-$RANDOM` suffix で回避)。D-04 (非ブロッキング契約: ローカル保存失敗は WARNING のみで続行、`common-error-handling.md` の Non-blocking Contract 準拠 — ただし `post_comment=false` ∧ `LOCAL_SAVE_FAILED=1` 組み合わせは Phase 6.1.c でケース 2 の ⚠️ WARNING に昇格する)。
 
 > **Phase 6.1 分岐ロジック**: Phase 6.1 は `{post_comment_mode}` の値に応じて以下のいずれかに分岐する: (a) `true` → 6.1.a (ローカル保存) → 6.1.b (PR コメント投稿) → 6.1.c (skip notification 出力)、(b) `false` → 6.1.a (ローカル保存) → 6.1.c (skip notification 出力、6.1.b スキップ)。6.1.a は常に実行され、6.1.b のみが `{post_comment_mode}` で条件分岐する。6.1.c は両経路で必ず実行される (出力内容のみ分岐)。
 
@@ -2559,7 +2597,16 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 **Claude substitution requirements**:
 - `{review_result_json_heredoc_body}`: Claude が review-result-schema.md に従って JSON 本文を生成し、下記 `RITE_JSON_EOF` heredoc に literal substitute する。**⚠️ Heredoc quoting note**: `<<'RITE_JSON_EOF'` は single-quoted delimiter のため shell expansion (変数展開・command substitution) は完全抑制される。`{review_result_json_heredoc_body}` placeholder は **bash 実行時の動的展開ではなく Claude が bash block 生成時に literal 文字列として置換**する必要がある。literal 置換忘れは bash 実行時に literal `{review_result_json_heredoc_body}` がそのまま JSON ファイルに書き込まれ、Phase 6.1.a 内の `jq empty` post-condition check で fail-fast 検出される (defense-in-depth)。
 - `{pr_number}`: Phase 1.0 で正規化済み。bash block 冒頭で `pr_number="{pr_number}"` の literal substitution を行い、以後は bash 変数 `${pr_number}` として参照する (Claude placeholder と bash 変数展開の混在を避ける)。
-- Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding: `id` (**`F-NN` 形式、最小 2 桁ゼロパディング可変長連番**。99 件以下は `F-01`〜`F-99` 固定、100 件以上は `F-100` 等に成長
+- Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding の必須フィールドは以下の通り — 完全なスキーマは [review-result-schema.md](../../references/review-result-schema.md#json-schema) を真実の源として参照すること:
+  - `id`: **`F-NN` 形式、最小 2 桁ゼロパディング可変長連番**。99 件以下は `F-01`〜`F-99` 固定、100 件以上は `F-100` 等に成長する。
+  - `reviewer`: レビュアーエージェント名 (例: `code-reviewer`, `silent-failure-hunter`, `comment-analyzer`)
+  - `category`: 指摘カテゴリ (例: `code-quality`, `error-handling`, `documentation`)
+  - `severity`: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` のいずれか
+  - `file`: 対象ファイルの相対パス
+  - `line`: 行番号 (整数)
+  - `description`: 指摘内容
+  - `suggestion`: 推奨対応
+  - `status`: 初期値は `open` (fix 完了時に `resolved` に更新)
 
 **`iso_timestamp` Claude substitution handshake**:
 
@@ -2647,7 +2694,12 @@ if ! mkdir -p "$review_results_dir" 2>/dev/null; then
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mkdir_failure" >&2
 else
   # mktemp の stderr を tempfile に退避して、失敗時に原因 (disk full / permission / readonly) を可視化
-  mktemp_err=$(mktemp /tmp/rite-review-p61a-mktemp-err-XXXXXX 2>/dev/null) || mktemp_err=""
+  # M-2 対応: mktemp の stderr 退避 tempfile を作る mktemp 自体の失敗経路でも WARNING を emit
+  # (cleanup.md Phase 2.5 と Phase 6.1.a C-5 修正と対称化、meta silent 化を防ぐ)
+  if ! mktemp_err=$(mktemp /tmp/rite-review-p61a-mktemp-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: mktemp stderr 退避用 tempfile の mktemp に失敗しました (meta エラー)。json_tmp 失敗時の stderr 詳細は失われます" >&2
+    mktemp_err=""
+  fi
 
   if ! json_tmp=$(mktemp /tmp/rite-review-p61a-json-XXXXXX.json 2>"${mktemp_err:-/dev/null}"); then
     echo "WARNING: JSON 一時ファイルの作成に失敗しました" >&2
@@ -2717,7 +2769,14 @@ RITE_JSON_EOF
       # verified-review H-4 対応: mv stderr を tempfile に退避して失敗時に原因を可視化する。
       # 旧実装 `mv ... 2>/dev/null` は cross-FS / perm / TOCTOU / path-too-long のどれか区別できず
       # debug 不能だった。Phase 6.1.b の gh pr comment 失敗 branch と同じパターンに揃える。
-      mv_err=$(mktemp /tmp/rite-review-p61a-mv-err-XXXXXX 2>/dev/null) || mv_err=""
+      # I-3 対応: mv_err の mktemp 失敗を silent 化しない。
+      # 旧実装は `2>/dev/null || mv_err=""` で二重 silent 化し、mktemp 失敗時に mv の stderr も
+      # 失われていた。mktemp 失敗時は WARNING を出し retained flag も emit する。
+      if ! mv_err=$(mktemp /tmp/rite-review-p61a-mv-err-XXXXXX); then
+        echo "WARNING: mv stderr 退避用 tempfile の mktemp に失敗しました。mv 失敗時の stderr は失われます" >&2
+        echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mktemp_failure_mv_err" >&2
+        mv_err=""
+      fi
       if mv "$json_tmp" "$json_path" 2>"${mv_err:-/dev/null}"; then
         # 成功メッセージも stderr に統一する。
         # 本 bash block の他の WARNING / [CONTEXT] emit はすべて `>&2` で stderr に出力されており、

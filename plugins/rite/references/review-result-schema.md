@@ -141,7 +141,7 @@
 |----------|-------|---------|-------------|
 | 0 | **明示的ファイル指定** | `--review-file <path>` 指定時 | 指定パスを読取。**パス不在 / JSON 不正 / schema_version 不明** のいずれでも Priority 1-3 にフォールスルーせず直接 Priority 4 (対話式 fallback) へ遷移 (ユーザーの明示意図を尊重) |
 | 1 | **会話コンテキスト** | 同一セッション内で `/rite:pr:review` が直前に実行されていれば、その結果を直接利用。**採用時は `[CONTEXT] REVIEW_SOURCE=conversation; pr_number={pr_number}` を stderr に emit する義務がある** (observability 義務、後段の provenance log に必要) | Claude が会話履歴に rite review 結果を見つけられなかった場合は次の Priority へ |
-| 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | schema_version 不明時は WARNING を出して **Priority 3 (PR コメント) に直接 routing** |
+| 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | **3 種の失敗モードいずれも** WARNING を出して **Priority 3 (PR コメント) に直接 routing** する: (a) `local_file_json_parse_failure` (`jq empty` で JSON syntax invalid)、(b) `local_file_schema_required_fields_missing` (parse 可能だが `schema_version` 非空文字列 / `pr_number` 数値型 / `findings[]` 配列型のいずれかが欠落)、(c) `local_file_schema_version_unknown` (schema_version 未知)。古い timestamp ファイルには fallback しない |
 | 3 | **PR コメント (後方互換)** | PR コメントの `## 📜 rite レビュー結果` セクション (新形式: `### 📄 Raw JSON` 付き → awk で Raw JSON section-scoped 抽出。旧形式: Markdown テーブル → 既存パースロジック) | 次の Priority へ |
 | 4 | **対話式 fallback** | 上記すべて欠落時 | `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示 (ファイルパス指定 retry 上限 3 回、state file による hard gate で強制終了) |
 
@@ -157,7 +157,7 @@
 
 ## エラーハンドリング
 
-> **Priority 別の routing ルールは上記「読取優先順位 (pr:fix)」表が Single Source of Truth**。本セクションは write 側 (`/rite:pr:review`) と引数整合性のエラーのみを扱う。read 側 (`/rite:pr:fix`) の失敗経路は Priority 別に大きく挙動が異なるため、本表では要約せず Priority 表 + L150 (Priority 0 non-trivial) / L152 (Priority 2 schema_version) の注記を参照のこと。特に `--review-file` (Priority 0) の失敗は Priority 1-3 にフォールスルーせず直接 Priority 4 に遷移する点、およびローカルファイル (Priority 2) の parse/schema 失敗は古い timestamp ファイルではなく Priority 3 に直接 routing する点は、旧版の「次の優先順位のソースを試行」要約と異なる。
+> **Priority 別の routing ルールは上記「読取優先順位 (pr:fix)」表が Single Source of Truth**。本セクションは write 側 (`/rite:pr:review`) と引数整合性のエラーのみを扱う。read 側 (`/rite:pr:fix`) の失敗経路は Priority 別に大きく挙動が異なるため、本表では要約せず Priority 表と直下の「Priority 0 の non-trivial 挙動」「Priority 2 schema_version 不明時の挙動」の注記を参照のこと。特に `--review-file` (Priority 0) の失敗は Priority 1-3 にフォールスルーせず直接 Priority 4 に遷移する点、およびローカルファイル (Priority 2) の parse/schema 失敗は古い timestamp ファイルではなく Priority 3 に直接 routing する点は、旧版の「次の優先順位のソースを試行」要約と異なる。
 
 ### Write 側 (`/rite:pr:review`) のエラー
 
