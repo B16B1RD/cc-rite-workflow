@@ -13,6 +13,7 @@
 - `{pr_number}`: PR 番号（整数）
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
 - 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内で 2 回 `/rite:pr:review` を実行すると file path が衝突し古い方は上書きされる。review.md Phase 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない点に注意 (M-2 tradeoff)。separator に `~` (0x7E) を使う理由は `.` (0x2E) より ASCII 大で `sort -r` 時に collision-resolved 版が非 collision 版より先頭に並ぶため — cycle 8 M-2 で `-` (0x2D) から変更済み (旧 `-` 版は `-` (0x2D) < `.` (0x2E) で `sort -r` 時に古い非 collision 版が先に選ばれる silent regression を持っていた)
+- **並列実行は未サポート**: 同一 PR に対する `/rite:pr:review` の同時並列実行 (複数ターミナル / sprint team-execute / CI 並列 job 等) は未サポート。`mv` の atomicity と `[ -e ]` check の TOCTOU race window により、後勝ちでファイル上書きが発生する可能性がある。`mv -n` による no-clobber 保護は採用していない — POSIX `mv` の標準オプションは `-f`/`-i` のみで、`-n` は GNU coreutils / BSD 拡張であり、bash-compat-guard.md の portable 前提 (bash 3.2 + POSIX utilities) と矛盾するため (cycle 10 external spec 検証、[mv(1p) POSIX](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html) 参照)。並列実行する場合はユーザー自身が時系列をずらす責務を持つ
 - `.rite/review-results/` は `.gitignore` で除外される
 
 ## Schema Version (Single Source of Truth)
@@ -23,14 +24,21 @@
 
 **受理される値**: `"1.0.0"` (canonical) および legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ)。両者は semantic 差なく完全等価で、legacy `"1.0"` は v2.0 まで受理される (新規生成は禁止: `/rite:pr:review` Phase 6.1.a は `"1.0.0"` のみ出力)。詳細経緯は CHANGELOG を参照。
 
-**検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化):
+**検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示):
 
-- `review.md` Phase 6.1.a (write 側、post-condition jq validation)
+**読取側 (legacy エイリアス `"1.0"` 受理義務、3 箇所で完全同期)**:
+
 - `fix.md` Phase 1.2.0 Priority 0 (`--review-file` case 文)
 - `fix.md` Phase 1.2.0 Priority 2 (local file case 文)
 - `fix.md` Phase 1.2.0 Priority 3 (PR comment Raw JSON case 文)
 
-これら 4 箇所のすべてで `"1.0.0"` と `"1.0"` の 2 パターンを同期的に更新する必要がある。本セクションが Single Source of Truth であり、将来のスキーマ更新時 (`"1.1.0"` 追加 / legacy エイリアス削除等) は上記 4 箇所すべてに一致する変更を加えること。
+上記 3 箇所の `case "$schema_version" in "1.0.0"|"1.0")` は常に同じ accept list を持つ。将来 `"1.1.0"` 追加 / legacy `"1.0"` 廃止時は 3 箇所を同時更新すること。
+
+**書込側 (canonical 値のみ出力、同期義務なし)**:
+
+- `review.md` Phase 6.1.a — canonical `"1.0.0"` のみを出力する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
+
+本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つことを drift-check が enforce する。
 
 **失敗時の遷移** (Priority 別):
 
@@ -53,7 +61,7 @@
   "overall_assessment": "fix-needed",
   "findings": [
     {
-      "id": "F-01",
+      "id": "F-001",
       "reviewer": "code-quality-reviewer",
       "category": "code_quality",
       "severity": "HIGH",
@@ -61,6 +69,17 @@
       "line": 42,
       "description": "エラーハンドリングが不足",
       "suggestion": "try-catch を追加",
+      "status": "open"
+    },
+    {
+      "id": "F-002",
+      "reviewer": "security-reviewer",
+      "category": "security",
+      "severity": "MEDIUM",
+      "file": "path/to/config.ts",
+      "line": null,
+      "description": "ファイル全体への指摘 (行非依存)",
+      "suggestion": "設定ファイルヘッダにコンテキスト説明を追加",
       "status": "open"
     }
   ]
@@ -74,25 +93,33 @@
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
 | `schema_version` | string | ✅ | スキーマバージョン (semver `MAJOR.MINOR.PATCH`)。詳細は [Schema Version](#schema-version-sot) セクション参照 (受理値と legacy エイリアスの SoT) |
-| `pr_number` | integer | ✅ | PR 番号 |
+| `pr_number` | integer | ✅ | PR 番号 (>= 1) |
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA (verification mode 用) |
-| `overall_assessment` | string | ✅ | 総合評価 (`mergeable` / `fix-needed`) |
+| `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、legacy parser 経路に fallthrough する |
 | `findings` | array | ✅ | 指摘事項の配列 (0 件でも空配列として存在) |
 
 ### `findings[]` 要素
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、**最小 2 桁ゼロパディングの可変長連番**。99 件以下: `F-01`〜`F-99` (常に 2 桁固定)。100 件以上の場合: `F-100`, `F-101`, ... のように 3 桁以上に成長する。zero-padding は 2 桁を最小として保持。レビュー内ユニーク。**設計指針**: 99 件超のレビューは finding 過多のため通常は分割レビュー推奨だが、schema は数値的上限を設けない。fix.md Phase 1.2.1 legacy best-effort parser および Phase 1.2.0 `severity_map` 構築はいずれも文字列キー比較なので桁数差は問題にならない) |
-| `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`) |
+| `id` | string | ✅ | 指摘 ID (`F-NNN` 形式、**3 桁固定ゼロパディング**、正規表現 `^F-[0-9]{3,}$`)。例: `F-001`, `F-042`, `F-999`, `F-1000`。レビュー内ユニーク。**設計理由**: cycle 10 S-8 対応で旧「最小 2 桁可変長」から 3 桁固定に変更。lexicographic sort で `F-100 < F-11 < F-99` となる natural sort 問題を予防 (99 件以下でも桁数固定により sort が時系列と一致)。**後方互換**: 読取側 (`fix.md`) は正規表現 `^F-[0-9]{2,}$` で 2 桁以上を許容し続けるため、既存の `F-01`〜`F-99` を持つ JSON は引き続き読取可能。新規生成 (write 側 review.md Phase 6.1.a) のみ 3 桁固定に切り替える |
+| `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`)。**参照整合性**: 値は `plugins/rite/skills/reviewers/*/SKILL.md` の basename と一致する。新 reviewer を追加する際は本ドキュメントに追記すること (drift-check 対象) |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
-| `severity` | string | ✅ | 重要度 (`CRITICAL` / `HIGH` / `MEDIUM` / `LOW`) |
-| `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス |
-| `line` | integer | ✅ | 対象行番号 (行非依存指摘は `0`) |
+| `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW"` の 4 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。Phase 2.1 best-effort parser の別名マッピング (`Critical`/`Important`/絵文字等) は read 側で正規化してから本 enum に落とす |
+| `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
+| `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md Phase 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
-| `status` | string | ✅ | 対応状態。現行実装では `"open"` 固定で `/rite:pr:review` によってセットされる。**設計意図**: 将来の state machine 拡張 (`"fixed"` / `"replied"` / `"deferred"`) のために必須フィールドとして slot を予約している。現行の `/rite:pr:fix` 読取側はこの値を参照しないが、schema を後方互換に保つため必須化している (将来の遷移ロジック追加時に optional → required の breaking change を避ける) |
+| `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` の 4 値。現行実装では `/rite:pr:review` Phase 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:pr:fix` 完了時に `"fixed"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
+
+### Cross-field invariants (型レベルで表現しきれない制約)
+
+以下の制約は単一フィールドの型では表現できないため、write 側 (`review.md` Phase 6.1.a) が生成時に守る義務があり、read 側 (`fix.md` Phase 1.2.0) は post-condition jq として検証する:
+
+1. **ファイル名 ↔ JSON `pr_number` 同期**: `.rite/review-results/{pr_number}-{timestamp}.json` の `{pr_number}` prefix と JSON 内 `.pr_number` の値は必ず一致する。不一致時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_number_mismatch` を emit して legacy parser fallthrough。手動でファイルを rename した場合のみ発火しうる。
+2. **`overall_assessment == "mergeable"` ∧ CRITICAL/HIGH open finding 存在禁止**: `overall_assessment` が `"mergeable"` のとき、`findings[]` に `severity ∈ {"CRITICAL", "HIGH"}` かつ `status == "open"` の要素が含まれてはならない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers` を emit して legacy parser fallthrough (手書き JSON で fix ループを silent に 0 件脱出させる bypass を防ぐ)。
+3. **ファイル名 timestamp ↔ JSON `timestamp` 同期**: `{timestamp}` prefix (JST `YYYYMMDDHHMMSS`) と JSON 内 `.timestamp` (ISO 8601) は同一瞬間を指す。ただし本不変条件は read 側で検証せず (ファイル rename 時にしか破綻しえないため)、write 側が Phase 6.1.a で一度に生成することで担保する。
 
 ## PR コメント形式 (opt-in)
 

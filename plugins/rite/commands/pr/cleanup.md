@@ -973,7 +973,7 @@ Aggregate the following at the point when Phase 1.7.3 processing is complete:
 2.2 Pull Latest Default Branch
 2.3 Delete Local Branch
 2.4 Check and Delete Remote Branch
-2.5 Delete Review Result Local Files (#443)
+2.5 Delete Review Result Local Files and Fix State Files (#443, #450)
 ```
 
 ### 2.1 Switch to Default Branch
@@ -1062,10 +1062,11 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 
 > **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除し、併せて fix retry state file `.rite/state/fix-fallback-retry-{pr_number}.count` も specific path で削除する。他 PR ファイルを誤削除しない)。verified-review cycle 9 I-9 対応で AC-7 定義を state file 削除まで拡張 (旧定義は review result files のみに限定されており、実装スコープ (`(#443, #450)` ヘッダ) との drift があった)。
 
-Delete two categories of PR-specific local artifacts associated with the merged PR:
+Delete three categories of PR-specific local artifacts associated with the merged PR:
 
 1. **Review result files**: `.rite/review-results/{pr_number}-*.json` (Issue #443 で導入された opt-in PR コメント記録機能の補完 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract)
-2. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count`
+2. **Corrupted review result files**: `.rite/review-results/{pr_number}-*.json.corrupt-*` (cycle 10 I-C 対応、fix.md Phase 1.2.0 Priority 2 が corrupt 検出時に `.corrupt-{epoch}` suffix で rename したファイル。長期運用で累積する `.gitignore` 対象 orphan を防ぐ)
+3. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count`
 
 > **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で設計されており、trap は block 外に伝播しない。block 末尾で trap を restore する必要はない。
 
@@ -1117,8 +1118,14 @@ esac
 review_results_dir=".rite/review-results"
 if [ -d "$review_results_dir" ]; then
   # 削除前にマッチ数をカウント (bash glob は no-match でリテラル文字列を返すため、明示的 nullglob 相当の処理)
+  # cycle 10 I-C 対応: 通常の `*.json` に加えて、fix.md Priority 2 が corrupt 検出時に rename した
+  # `*.json.corrupt-*` ファイルも同じ pr_number prefix に限定して削除対象に含める。
+  # glob パターン 2 種 (`{pr_number}-*.json` と `{pr_number}-*.json.corrupt-*`) を順次展開。
   matched_files=()
   for f in "$review_results_dir"/"${pr_number}"-*.json; do
+    [ -e "$f" ] && matched_files+=("$f")
+  done
+  for f in "$review_results_dir"/"${pr_number}"-*.json.corrupt-*; do
     [ -e "$f" ] && matched_files+=("$f")
   done
   if [ ${#matched_files[@]} -gt 0 ]; then
