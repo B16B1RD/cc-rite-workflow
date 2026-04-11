@@ -55,7 +55,10 @@ Options:
   --all              Scan plugins/rite/commands/**/*.md and plugins/rite/skills/**/*.md
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
-  --quiet            Suppress per-finding output (still exit non-zero on detection)
+  --quiet            Suppress progress/summary log lines on stderr (per-finding
+                     output on stdout is preserved; still exits non-zero on
+                     detection). Use for CI log noise reduction while keeping
+                     findings machine-readable.
   -h, --help         Show this help
 
 Exit codes:
