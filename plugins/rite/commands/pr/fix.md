@@ -347,6 +347,16 @@ When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid
 
 **Retry cap for ファイルパス指定**: 3 attempts total (initial + 2 retries). After 3 failures, terminate with `[fix:error]` and log `[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries`.
 
+**Phase 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
+
+| reason | Description |
+|--------|-------------|
+| `explicit_file_not_found` | `--review-file` で指定されたパスが存在しない (Priority 0, triggers fallback) |
+| `explicit_file_parse` | `--review-file` で指定されたファイルが valid JSON ではない (Priority 0, triggers fallback) |
+| `user_file_path_retries` | Interactive fallback の「ファイルパス指定」が 3 回連続で失敗 (terminate with `[fix:error]`) |
+
+**Eval-order enumeration** (for Pattern-5 drift check): emit reasons sequence = (`explicit_file_not_found` / `explicit_file_parse` / `user_file_path_retries`)
+
 #### 1.2 Legacy Branching (PR Comment Path Only)
 
 > **Execution condition**: The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) execute **only** when `{review_source}=pr_comment`. When `{review_source}` is `local_file`, `explicit_file`, or `conversation`, skip directly to Phase 1.3.

@@ -2435,8 +2435,15 @@ Phase 6 failure reasons:
 
 | reason | Description |
 |--------|-------------|
-| `tmpfile_write_failure` | Review result heredoc write to tmpfile failed |
-| `local_save_failure` | `.rite/review-results/*.json` save failed — **WARNING only, do NOT fail Phase 6** (per 4.4 MUST NOT: "ローカルファイル保存失敗時に pr:review 全体を失敗扱いにしない") |
+| `tmpfile_write_failure` | Review result heredoc write to tmpfile failed (Phase 6.1.b PR comment post) |
+| `mkdir_failure` | `.rite/review-results/` directory creation failed (Phase 6.1.a, **WARNING only, do NOT fail Phase 6**) |
+| `mktemp_failure` | JSON tmpfile allocation failed (Phase 6.1.a, **WARNING only**) |
+| `write_failure` | JSON content write to tmpfile failed (Phase 6.1.a, **WARNING only**) |
+| `mv_failure` | Atomic move of JSON tmpfile to final path failed (Phase 6.1.a, **WARNING only**) |
+
+**Non-blocking contract** (per 4.4 MUST NOT: "ローカルファイル保存失敗時に pr:review 全体を失敗扱いにしない"): `mkdir_failure` / `mktemp_failure` / `write_failure` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error.
+
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `mktemp_failure` / `write_failure` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure`).
 
 #### 6.1.a Local JSON File Save (Always Executed — #443)
 
