@@ -268,78 +268,84 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 >
 > この方式は `trap -p` 出力のパースに依存しないため quote エスケープ問題を回避できる。
 
+> **Issue #390: 3-block split** — 旧実装 (#350 で追加) は 11 ステップを単一 bash block (約 230 行) に詰め込んでいた。破綻時の再実行コスト・保守性・レビュー性を改善するため、以下 3 ブロックに分割する:
+>
+> - **Block A**: 統合 trap + API fetch + jq `.body`/`.user.login` 抽出 → `raw_json` + intermediate 3 ファイル (`intermediate_body` + `intermediate_author` + `intermediate_skip`、合計 4 ファイル) に永続化
+> - **Block B**: `raw_json` を再読込して jq `.issue_url` 抽出 → pr_number regex + URL suffix validate (silent misclassification 防止)
+> - **Block C**: intermediate → final handoff 3 ファイル (`body_file`/`author_file`/`skip_file`) 書き出し → post-condition check → 常に `raw_json`/intermediate を削除
+>
+> ブロック間は **一時ファイル経由のみ** で値を引き継ぐ (シェル変数は bash 呼び出しを跨ぐと失われる)。各ブロックは独立した signal 別 trap を持ち、各ブロック scope での 2-state commit pattern (Block A の `blockA_committed`、Block C の `handoff_committed`) で orphan を防ぐ。Block B は新規 output がないため commit flag を持たず、validation 失敗時は upstream (raw_json + intermediate) を明示的に rm で invalidate する。加えて Block B の EXIT trap は **rc=$?** で非 0 exit を捕捉し、syntax error / subshell OOM / SIGPIPE / 将来の `set -e` 導入などの非期待終了経路でも upstream を invalidate することで、Block C の「raw_json 未検査で pass してしまう silent misclassification」を二重に防ぐ (PR #449 review HIGH 修正)。
+>
+> **命名ポリシー** (`blockA_committed` vs `handoff_committed` の非対称について): Block A の flag は **block scope 名** (`blockA_committed`) で、Block A 内部の intermediate artifact をまだ後続 phase が参照しない段階の protection を表現する。Block C の flag は **artifact semantic 名** (`handoff_committed`) で、下流 phase (Parsing rule, Phase 2.1 以降) から参照される handoff contract の commitment を表現するため敢えて semantic name を維持する。Block B は新規 output を持たないため flag なし。命名を対称化するなら `intermediate_committed` / `handoff_committed` または `blockA_committed` / `blockC_committed` のどちらかに統一できるが、`handoff_committed` の「handoff 完了」という semantic 情報を下流参照時に失う不利益を避けるため現状の非対称を採用する。
+
+**Block A — trap セットアップ + API fetch + jq 抽出 + intermediate 書き出し**
+
 ```bash
-# Fast Path 統合 trap セットアップ (本 Issue #350 検証付きレビュー H-3 で指摘):
-# 旧実装は gh_api_err の mktemp が trap セットアップの 80 行以上前に位置し、その間に
-# SIGTERM/SIGINT が到達すると orphan ファイルが残る race window があった。さらに
-# `_rite_fix_fastpath_cleanup` 関数が gh_api_err を cleanup 対象に含めておらず、
-# コメント (line 290) の宣言「後続の trap セットアップで gh_api_err も cleanup 対象に追加する」と
-# 実装が不整合だった。
+# Block A (Issue #390): trap + gh api + jq .body / .user.login 抽出 + raw_json + intermediate 3 ファイル (合計 4 ファイル) 書き出し
 #
-# 本修正では:
-# 1. 全パスを先行宣言 (gh_api_err / jq_err / body_file / author_file / skip_file)
-# 2. cleanup 関数で全 5 ファイルを `${var:-}` 安全化
-# 3. signal 別 trap 4 行を mktemp の前に設定
-# 4. その後で mktemp / gh api を実行
+# 設計: パス先行宣言 → trap 先行設定 → mktemp → gh api の順序で orphan race window を排除する。
 # Phase 4.5.1 / Phase 4.5.2 / Fast Path で同型の「パス先行宣言 → trap 先行設定 → mktemp」パターンに統一。
 #
-# H-1 修正 (本 Issue #350 検証付きレビュー H-1): confidence_override tempfile の orphan 防止
+# H-1 継承 (#350 検証付きレビュー H-1): confidence_override tempfile の orphan 防止 truncate。
 # Phase 1.2 進入時に **無条件 truncate** を実行し、SIGINT/SIGTERM/SIGHUP で前セッションの
 # /tmp/rite-fix-confidence-override-{pr_number}.txt が orphan として残った場合でも、
-# 次回起動時の混入を決定論的に防ぐ。これは「Phase 1.2 best-effort parse の最初の override 候補
-# 出現時に truncate する」既存ロジック (line 705) を **より上流に前進化** させる修正。
-# specific path 必須 (並列セッション破壊防止) — wildcard glob は絶対に使わない。
-# truncate 失敗 (read-only / permission denied) は warning のみで継続する: 失敗時の影響は
-# 「override count が前回値と混ざる可能性」のみで fix loop 全体の破綻ではないため。
+# 次回起動時の混入を決定論的に防ぐ。specific path 必須 (並列セッション破壊防止)。
+# truncate 失敗 (read-only / permission denied) は warning のみで継続する。
+#
+# 注: 本 truncate は Block A の統合 trap setup (下記の _rite_fix_blockA_cleanup + trap EXIT/INT/TERM/HUP)
+# **より前**に実行される。これは意図的な配置で、confidence_override tempfile は fix ループ全体で
+# 参照される orphan-by-design なファイルであり (前セッションの残留を許容する設計)、
+# truncate 自体が失敗しても fix loop 全体の破綻ではないため trap 保護は不要。
+# 対照的に Block A の raw_json / intermediate は本 session 内限定の artifact であり、trap 保護が必須。
 : > "/tmp/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
   echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
 
+# Block A outputs (後続 Block B/C が一時ファイル経由で読み出す):
+#   - raw_json:            gh api レスポンス全体 (Block B が .issue_url を再抽出、Block C は不使用)
+#   - intermediate_body:   jq .body の抽出結果 (Block C が final body_file にコピー)
+#   - intermediate_author: jq .user.login の抽出結果 (Block C が final author_file にコピー)
+#   - intermediate_skip:   target_author_mention_skip の計算結果 (Block C が final skip_file にコピー)
+raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
+intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
+intermediate_author="/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
+intermediate_skip="/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
+
 gh_api_err=""
 jq_err=""
-# Fast Path ハンドオフ一時ファイルのパスを先に定義し、trap 対象に含める
-# (書き出し前に変数を declare しておくことで、trap が早期 exit でも cleanup できる)
-body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
-author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
-skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 
 # trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
 # (rationale: signal 別 exit code 130/143/129、race window 回避、rc=$? capture、${var:-} safety、関数契約)
 #
-# 本 site 固有: 2-state commit pattern (handoff_committed)
-# - handoff_committed=0 (初期値): 書き出し前/書き出し中の exit → ハンドオフ 3 ファイル全削除 (orphan 防止)
-# - handoff_committed=1 (全書き出し成功+post-condition pass 後): ハンドオフ 3 ファイルは保護、jq_err のみ削除
-# Phase 1.5 で明示的に cleanup を実行 (Fast Path 完了経路の正常 cleanup 経路)
-#
-# H-3: gh_api_err も cleanup 対象に含める (trap 未保護による silent orphan regression を防止)
-handoff_committed=0
-_rite_fix_fastpath_cleanup() {
+# Block A scope の 2-state commit pattern (blockA_committed):
+# - blockA_committed=0 (初期値): 書き出し前/書き出し中の exit → raw_json + intermediate 3 ファイル全削除 (orphan 防止)
+# - blockA_committed=1 (全書き出し成功後): raw_json と intermediate は保護、err files のみ削除
+# 用語統一: 本 Block で「intermediate」と呼ぶのは body/author/skip の 3 ファイルを指す。
+# raw_json (gh api レスポンス永続化ファイル) は intermediate とは別カテゴリとして扱い、
+# 常に「raw_json + intermediate 3 ファイル」という表現で合計 4 ファイルを指す (drift 防止)。
+blockA_committed=0
+_rite_fix_blockA_cleanup() {
   rm -f "${gh_api_err:-}" "${jq_err:-}"
-  if [ "$handoff_committed" = "0" ]; then
-    rm -f "${body_file:-}" "${author_file:-}" "${skip_file:-}"
+  if [ "$blockA_committed" = "0" ]; then
+    rm -f "${raw_json:-}" "${intermediate_body:-}" "${intermediate_author:-}" "${intermediate_skip:-}"
   fi
 }
-trap 'rc=$?; _rite_fix_fastpath_cleanup; exit $rc' EXIT
-trap '_rite_fix_fastpath_cleanup; exit 130' INT
-trap '_rite_fix_fastpath_cleanup; exit 143' TERM
-trap '_rite_fix_fastpath_cleanup; exit 129' HUP
+trap 'rc=$?; _rite_fix_blockA_cleanup; exit $rc' EXIT
+trap '_rite_fix_blockA_cleanup; exit 130' INT
+trap '_rite_fix_blockA_cleanup; exit 143' TERM
+trap '_rite_fix_blockA_cleanup; exit 129' HUP
 
-# 対象コメントを直接取得 (trap セットアップ後に gh_api_err と gh api 呼び出しを実行)
-# gh api は 404 や認証エラー時に exit != 0 を返すため、exit code を直接チェックする
-# (空文字列チェックではエラーを見逃す可能性がある)
-#
+# mktemp で gh_api_err を作成 (trap セットアップ後)
 # 注: stderr は gh api から専用一時ファイルに退避する (2>&1 で stdout に混入させない)。
-#     もし 2>&1 を付けると、成功時に gh が stderr に警告を出した場合
-#     $target_comment が invalid JSON となり直後の jq が失敗する (過去の deprecation warning 事案の教訓)
-#
-# stderr を独立ファイルに分離することで、404 / 403 / 5xx などの
-# gh api 詳細メッセージ (HTTP status, request ID, rate limit info, auth hint 等) を失敗時に
-# 添付できる。Fast Path の jq_err と対称な実装にする。
+#     もし 2>&1 を付けると、成功時に gh が stderr に警告を出した場合 $target_comment が invalid JSON となり
+#     直後の jq が失敗する (過去の deprecation warning 事案の教訓)。stderr を独立ファイルに分離することで、
+#     404 / 403 / 5xx などの gh api 詳細メッセージを失敗時に添付できる。
 gh_api_err=$(mktemp /tmp/rite-fix-gh-api-err-XXXXXX) || {
   echo "エラー: gh_api_err 一時ファイルの作成に失敗しました" >&2
   echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_gh_api_err" >&2
   exit 1
 }
 
+# 対象コメントを直接取得 (gh api は 404 や認証エラー時に exit != 0 を返すため exit code を直接チェックする)
 if ! target_comment=$(gh api repos/{owner}/{repo}/issues/comments/{target_comment_id} 2>"$gh_api_err"); then
   echo "エラー: コメント #{target_comment_id} の取得に失敗しました" >&2
   echo "詳細 (gh api stderr 先頭 5 行):" >&2
@@ -357,15 +363,22 @@ if [ -z "$target_comment" ] || [ "$target_comment" = "null" ]; then
   exit 1
 fi
 
-# jq 実行を明示的にエラーチェック (parse error, jq バイナリ不在等を捕捉)
-# stderr を mktemp 経由の一時ファイルに逃がすことで、成功時の警告 (deprecation 等) が
-# stdout に混入して $target_body を汚染することを防ぐ。失敗時のみ stderr ファイルを表示する。
+# raw JSON を Block B 用に永続化 (Block B が .issue_url を jq で再抽出するため)
+if ! printf '%s' "$target_comment" > "$raw_json"; then
+  echo "エラー: raw JSON 一時ファイルの書き出しに失敗しました: $raw_json" >&2
+  echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=raw_json_write_failed" >&2
+  exit 1
+fi
+
+# jq_err mktemp (jq stderr 退避用)
 jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
   echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
   echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_jq_late_err" >&2
   exit 1
 }
 
+# jq .body 抽出 (parse error, jq バイナリ不在等を捕捉)
 if ! target_body=$(printf '%s' "$target_comment" | jq -r '.body // empty' 2>"$jq_err"); then
   echo "エラー: gh api レスポンスの JSON パースに失敗しました (.body 抽出)" >&2
   echo "詳細: $(cat "$jq_err")" >&2
@@ -379,70 +392,19 @@ if [ -z "$target_body" ]; then
   exit 1
 fi
 
-# Post-condition: comment ID と pr_number の所属一致を検証 (silent misclassification 防止)
-#
-# 背景: GitHub REST API `/repos/{owner}/{repo}/issues/comments/{id}` は PR/Issue を区別しない
-# 単一エンドポイント (GitHub REST API ドキュメント: "Every pull request is an issue, but not
-# every issue is a pull request"). PR と Issue の issue comment は同じ ID space を共有するため、
-# ユーザーが `pull/123#issuecomment-456` を渡したつもりが 456 が**別 PR/Issue のコメント**だった
-# 場合、gh api は exit 0 で別の comment body を返してしまう (silent failure)。
-# これを防ぐため、レスポンスの .issue_url フィールドを抽出して /pull/{pr_number} または
-# /issues/{pr_number} を含むかを post-condition で検証する。
-if ! comment_issue_url=$(printf '%s' "$target_comment" | jq -r '.issue_url // empty' 2>"$jq_err"); then
-  echo "エラー: gh api レスポンスから .issue_url の抽出に失敗しました" >&2
-  echo "詳細: $(cat "$jq_err")" >&2
-  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=jq_comment_id_extract_failed" >&2
-  exit 1
-fi
-if [ -z "$comment_issue_url" ]; then
-  echo "エラー: コメント #{target_comment_id} のレスポンスに .issue_url フィールドがありません" >&2
-  echo "対処: gh api の生レスポンスを確認してください (GitHub API のスキーマ変更の可能性)" >&2
-  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=missing_issue_url" >&2
-  exit 1
-fi
-# /pull/{pr_number} または /issues/{pr_number} を末尾に含むことを確認
-# (GitHub では PR は内部的に Issue でもあるため、/issues/{N} と /pull/{N} のいずれかが返る)
-#
-# pr_number を grep regex に直接埋め込む際の defense-in-depth:
-# (1) literal `/pull/` / `/issues/` を直書きして括弧グループ内のバリエーションを減らす
-# (2) pr_number 自体が数字のみであることを事前に validate (Phase 1.0 で normalize 済みだが defense-in-depth)
-# これにより将来 pr_number に他の文字が混入する拡張がなされた場合の silent false positive を防ぐ
-# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
-if ! grep -qE '^[0-9]+$' <<< "{pr_number}"; then
-  echo "エラー: pr_number が数字以外を含んでいます: '{pr_number}'" >&2
-  echo "  Phase 1.0 で正規化された pr_number は数字のみのはずですが、何らかの経路で異常値が混入しました" >&2
-  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=issue_number_not_found" >&2
-  exit 1
-fi
-# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
-if ! grep -qE "/(pull|issues)/{pr_number}$" <<< "$comment_issue_url"; then
-  echo "エラー: コメント #{target_comment_id} は PR #{pr_number} に属していません (silent misclassification 検出)" >&2
-  echo "  実際の所属: $comment_issue_url" >&2
-  echo "  期待値: /pull/{pr_number} または /issues/{pr_number} で終わる URL" >&2
-  echo "  対処: comment URL の pull/{N} 部分と #issuecomment-{ID} の整合性を確認してください。" >&2
-  echo "         GitHub UI で comment URL を再コピーすることを推奨します。" >&2
-  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=pr_number_mismatch" >&2
-  exit 1
-fi
-
-# author も同じ pattern で抽出 (fail-fast: .body が成功した状況で .user.login が失敗するのは
+# jq .user.login 抽出 (fail-fast: .body が成功した状況で .user.login が失敗するのは
 # jq バイナリ異常または破損した JSON レスポンスの兆候なので、警告して exit するほうが安全)
 if ! target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty' 2>"$jq_err"); then
   echo "エラー: コメント #{target_comment_id} の author 抽出に失敗しました" >&2
   echo "詳細: $(cat "$jq_err")" >&2
   echo "対処: jq バージョン (jq --version) と gh api の生レスポンスを確認してください" >&2
-  # L-1 修正 (本 Issue #350 検証付きレビュー L-1): 明示 rm の意図を文書化
-  # 本箇所の `rm -f $jq_err` は明示的な早期削除で、`_rite_fix_fastpath_cleanup` 関数が
-  # EXIT trap で同時に発火するため二重防御 (redundant cleanup)。defense-in-depth として残し、
-  # 他の `exit 1` パス (trap 任せ) との設計の違いは「fail-fast パスでの即時 cleanup の重要度」が
-  # 高いという判断 (jq バイナリ異常は process pool 全体で再現する可能性があり tempfile を即時削除する)。
-  rm -f "$jq_err"
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=jq_author_extract_failed" >&2
   exit 1
 fi
 
 # .user.login が empty (GitHub Apps bot / 削除済みユーザー等のコーナーケース) の場合、
-# 空文字を保持して下流に mention 省略フラグとして伝達する (sentinel "unknown" は誤 mention の原因)
-# 下流 phase では `{target_author_mention_skip} == "true"` を参照して mention を生成しない
+# 空文字を保持して下流に mention 省略フラグとして伝達する (sentinel "unknown" は誤 mention の原因)。
+# 下流 phase では `{target_author_mention_skip} == "true"` を参照して mention を生成しない。
 target_author_mention_skip="false"
 if [ -z "$target_author" ]; then
   target_author=""
@@ -451,35 +413,210 @@ if [ -z "$target_author" ]; then
   echo "  下流 phase の mention 生成は target_author_mention_skip=true を参照して省略されます。" >&2
 fi
 
-# Parsing rule / 下流 phase へのハンドオフ (シェル変数は bash 呼び出しを抜けると失われるため、
-# Claude 可読な一時ファイルに永続化する。後続 phase は Read tool でこれらを読み戻す)
-#
-# 重要 — 書き出しエラーは fail-fast で exit 1:
-# disk full / /tmp read-only (Docker RO volume, SELinux/AppArmor deny) / inode 枯渇のケースで
-# silent に空ファイルを残すと、後続 phase が空の target_body を Read して 0 件 finding で
-# silent pass する事故になる。各 printf の exit code を明示的に check し、失敗時は詳細を stderr に出力する。
-# 注: body_file / author_file / skip_file は trap セットアップ時に既に定義済み (trap 対象)
-if ! printf '%s' "$target_body" > "$body_file"; then
-  echo "エラー: target_body の一時ファイル書き出しに失敗しました: $body_file" >&2
+# intermediate body/author/skip の 3 ファイルに書き出し (raw_json は既に上で書き出し済み)。
+# シェル変数は Block A 終了で失われるため、Block C が読み出せるよう永続化する。
+# disk full / /tmp read-only (Docker RO volume, SELinux/AppArmor deny) / inode 枯渇 / permission denied の
+# コーナーケースで silent に空ファイルを残さないよう、各 printf の exit code を明示的に check し fail-fast する。
+if ! printf '%s' "$target_body" > "$intermediate_body"; then
+  echo "エラー: Block A: intermediate_body の一時ファイル書き出しに失敗しました: $intermediate_body" >&2
   echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
-  # exit 時に統合 trap が handoff_committed=0 のまま発火 → 書き出し済み body_file (もしあれば) も削除される
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=intermediate_write_failed" >&2
+  exit 1
+fi
+if ! printf '%s' "$target_author" > "$intermediate_author"; then
+  echo "エラー: Block A: intermediate_author の一時ファイル書き出しに失敗しました: $intermediate_author" >&2
+  echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=intermediate_write_failed" >&2
+  exit 1
+fi
+if ! printf '%s' "$target_author_mention_skip" > "$intermediate_skip"; then
+  echo "エラー: Block A: intermediate_skip の一時ファイル書き出しに失敗しました: $intermediate_skip" >&2
+  echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=intermediate_write_failed" >&2
+  exit 1
+fi
+
+# Block A 完了: raw_json + intermediate 3 ファイルを trap cleanup の対象から外す (blockA_committed=1)
+# これ以降、Block A 末尾に到達しても trap は err files のみ削除する。
+blockA_committed=1
+```
+
+**Block B — post-condition 検証 (`.issue_url` 所属 check + `pr_number` validate)**
+
+```bash
+# Block B (Issue #390): raw JSON 再読込 + .issue_url 抽出 + pr_number / URL suffix validate
+#
+# 背景 (silent misclassification 防止): GitHub REST API `/repos/{owner}/{repo}/issues/comments/{id}` は
+# PR/Issue を区別しない単一エンドポイント (PR は内部的に Issue でもある)。PR と Issue の issue comment は
+# 同じ ID space を共有するため、ユーザーが `pull/123#issuecomment-456` を渡したつもりが 456 が
+# **別 PR/Issue のコメント**だった場合、gh api は exit 0 で別の comment body を返してしまう (silent failure)。
+# これを防ぐため、レスポンスの .issue_url フィールドを抽出して /pull/{pr_number} または
+# /issues/{pr_number} を含むかを post-condition で検証する。
+#
+# Block B は新規 output を持たないため commit flag を持たない。validation 失敗時は upstream
+# (raw_json + intermediate 3 ファイル) を _rite_fix_blockB_invalidate_upstream で明示的に rm する。
+
+raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
+intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
+intermediate_author="/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
+intermediate_skip="/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
+
+jq_err=""
+
+_rite_fix_blockB_cleanup() {
+  rm -f "${jq_err:-}"
+}
+_rite_fix_blockB_invalidate_upstream() {
+  rm -f "${raw_json:-}" "${intermediate_body:-}" "${intermediate_author:-}" "${intermediate_skip:-}"
+}
+# signal 別 trap:
+# - 正常 exit (rc=0) では upstream (Block C が使う intermediate) を保持する
+# - 非 0 exit (rc != 0) では upstream を明示 invalidate する — syntax error / subshell OOM / SIGPIPE /
+#   将来の `set -e` 導入 / その他 shell-level 非期待終了で validation を skip した状態で intermediate が
+#   残留し、Block C が raw_json を検査せず pass してしまう silent misclassification を防ぐ (PR #449 review HIGH 指摘)
+# - signal 強制終了 (INT/TERM/HUP) でも invalidate する
+trap 'rc=$?; _rite_fix_blockB_cleanup; if [ "$rc" -ne 0 ]; then _rite_fix_blockB_invalidate_upstream; fi; exit $rc' EXIT
+trap '_rite_fix_blockB_cleanup; _rite_fix_blockB_invalidate_upstream; exit 130' INT
+trap '_rite_fix_blockB_cleanup; _rite_fix_blockB_invalidate_upstream; exit 143' TERM
+trap '_rite_fix_blockB_cleanup; _rite_fix_blockB_invalidate_upstream; exit 129' HUP
+
+# Block A の outputs が存在することを確認 (Block A がスキップされたケースの fail-fast)
+if [ ! -s "$raw_json" ]; then
+  echo "エラー: Block A の raw JSON 一時ファイルが存在しないか空です: $raw_json" >&2
+  echo "  Block A が失敗しているか、並列実行で削除された可能性があります" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=raw_json_missing_at_block_b" >&2
+  _rite_fix_blockB_invalidate_upstream
+  exit 1
+fi
+
+jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
+  echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_jq_block_b" >&2
+  _rite_fix_blockB_invalidate_upstream
+  exit 1
+}
+
+# raw JSON から .issue_url を再抽出 (jq -r でファイル入力を直接読む; pipe 不要)
+if ! comment_issue_url=$(jq -r '.issue_url // empty' "$raw_json" 2>"$jq_err"); then
+  echo "エラー: gh api レスポンスから .issue_url の抽出に失敗しました" >&2
+  echo "詳細: $(cat "$jq_err")" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=jq_comment_id_extract_failed" >&2
+  _rite_fix_blockB_invalidate_upstream
+  exit 1
+fi
+if [ -z "$comment_issue_url" ]; then
+  echo "エラー: コメント #{target_comment_id} のレスポンスに .issue_url フィールドがありません" >&2
+  echo "対処: gh api の生レスポンスを確認してください (GitHub API のスキーマ変更の可能性)" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=missing_issue_url" >&2
+  _rite_fix_blockB_invalidate_upstream
+  exit 1
+fi
+
+# pr_number を grep regex に直接埋め込む際の defense-in-depth:
+# (1) literal `/pull/` / `/issues/` を直書きして括弧グループ内のバリエーションを減らす
+# (2) pr_number 自体が数字のみであることを事前に validate (Phase 1.0 で normalize 済みだが defense-in-depth)
+# これにより将来 pr_number に他の文字が混入する拡張がなされた場合の silent false positive を防ぐ。
+# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
+if ! grep -qE '^[0-9]+$' <<< "{pr_number}"; then
+  echo "エラー: pr_number が数字以外を含んでいます: '{pr_number}'" >&2
+  echo "  Phase 1.0 で正規化された pr_number は数字のみのはずですが、何らかの経路で異常値が混入しました" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=issue_number_not_found" >&2
+  _rite_fix_blockB_invalidate_upstream
+  exit 1
+fi
+
+# /pull/{pr_number} または /issues/{pr_number} を末尾に含むことを確認
+# (GitHub では PR は内部的に Issue でもあるため、/issues/{N} と /pull/{N} のいずれかが返る)
+if ! grep -qE "/(pull|issues)/{pr_number}$" <<< "$comment_issue_url"; then
+  echo "エラー: コメント #{target_comment_id} は PR #{pr_number} に属していません (silent misclassification 検出)" >&2
+  echo "  実際の所属: $comment_issue_url" >&2
+  echo "  期待値: /pull/{pr_number} または /issues/{pr_number} で終わる URL" >&2
+  echo "  対処: comment URL の pull/{N} 部分と #issuecomment-{ID} の整合性を確認してください。" >&2
+  echo "         GitHub UI で comment URL を再コピーすることを推奨します。" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=pr_number_mismatch" >&2
+  _rite_fix_blockB_invalidate_upstream
+  exit 1
+fi
+```
+
+**Block C — intermediate → final handoff 書き出し + post-condition + raw/intermediate cleanup**
+
+```bash
+# Block C (Issue #390): intermediate → final handoff 3 ファイル書き出し + post-condition + raw/intermediate 削除
+#
+# Block A が生成した intermediate 3 ファイル (body/author/skip) を読み出し、
+# final handoff 3 ファイル (body_file/author_file/skip_file) に書き出す。
+# raw_json は Block A が生成し Block B が jq の入力として使用する。Block C は Block A/B 成功確認の
+# ための存在 check (下記 fail-fast check の defense-in-depth) のみ参照し、内容を consume することは
+# ないが、trap cleanup の対象には含めて常に削除する。
+# post-condition で handoff 3 ファイルの存在と非空を確認し、成功時は handoff_committed=1 を立てる。
+# trap は常に raw_json と intermediate 3 ファイルを削除する (後続 phase では不要)。
+# handoff_committed=0 (mid-write / post-condition fail) の場合は handoff 3 ファイルも削除する。
+
+raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
+intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
+intermediate_author="/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
+intermediate_skip="/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
+
+body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
+author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
+skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+
+# Block C scope の 2-state commit pattern (handoff_committed):
+# - handoff_committed=0 (初期値): 書き出し前/書き出し中の exit → handoff 3 ファイルも削除 (orphan 防止)
+# - handoff_committed=1 (全書き出し+post-condition pass 後): handoff 3 ファイルは保護される
+# raw_json + intermediate 3 ファイル (合計 4 ファイル) は成功/失敗問わず常に削除する (後続 phase では使わない)。
+handoff_committed=0
+_rite_fix_blockC_cleanup() {
+  if [ "$handoff_committed" = "0" ]; then
+    rm -f "${body_file:-}" "${author_file:-}" "${skip_file:-}"
+  fi
+  rm -f "${raw_json:-}" "${intermediate_body:-}" "${intermediate_author:-}" "${intermediate_skip:-}"
+}
+trap 'rc=$?; _rite_fix_blockC_cleanup; exit $rc' EXIT
+trap '_rite_fix_blockC_cleanup; exit 130' INT
+trap '_rite_fix_blockC_cleanup; exit 143' TERM
+trap '_rite_fix_blockC_cleanup; exit 129' HUP
+
+# intermediate + raw_json 存在確認 (Block A/B がスキップされた / 失敗したケースの fail-fast)
+# intermediate_author は空文字列でも許容 (target_author_mention_skip=true の sentinel として使う) のため -f のみ検査
+# raw_json は Block B validation 失敗経路で invalidate される対象のため、Block C 進入時に存在していれば
+# Block A/B が正常完了したことの defense-in-depth な確認になる (Block B EXIT trap 非 0 exit 経路との二重防御)
+if [ ! -s "$intermediate_body" ] || [ ! -f "$intermediate_author" ] || [ ! -s "$intermediate_skip" ] || [ ! -s "$raw_json" ]; then
+  echo "エラー: Block A/B の intermediate ファイルが存在しないか空です" >&2
+  echo "  body=$intermediate_body ($([ -s "$intermediate_body" ] && echo ok || echo empty_or_missing))" >&2
+  echo "  author=$intermediate_author ($([ -f "$intermediate_author" ] && echo ok || echo missing))" >&2
+  echo "  skip=$intermediate_skip ($([ -s "$intermediate_skip" ] && echo ok || echo empty_or_missing))" >&2
+  echo "  raw_json=$raw_json ($([ -s "$raw_json" ] && echo ok || echo empty_or_missing))" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=intermediate_missing_at_block_c" >&2
+  exit 1
+fi
+
+# intermediate → final handoff コピー。cat の exit code を check することで disk full / read-only / inode 枯渇
+# / permission 拒否のコーナーケースを捕捉し、silent に空ファイルを残さない。
+# Block 識別子 (Block C) をエラーメッセージに含めることで、Block A の intermediate 書き出し失敗と区別する。
+if ! cat "$intermediate_body" > "$body_file"; then
+  echo "エラー: Block C: handoff コピーに失敗しました (intermediate_body → body_file): $body_file" >&2
+  echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
   echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=paste_io_error" >&2
   exit 1
 fi
-if ! printf '%s' "$target_author" > "$author_file"; then
-  echo "エラー: target_author の一時ファイル書き出しに失敗しました: $author_file" >&2
+if ! cat "$intermediate_author" > "$author_file"; then
+  echo "エラー: Block C: handoff コピーに失敗しました (intermediate_author → author_file): $author_file" >&2
+  echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
   echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=paste_io_error" >&2
   exit 1
 fi
-if ! printf '%s' "$target_author_mention_skip" > "$skip_file"; then
-  echo "エラー: target_author_mention_skip の一時ファイル書き出しに失敗しました: $skip_file" >&2
+if ! cat "$intermediate_skip" > "$skip_file"; then
+  echo "エラー: Block C: handoff コピーに失敗しました (intermediate_skip → skip_file): $skip_file" >&2
+  echo "対処: disk full / /tmp が read-only / inode 枯渇 / permission 拒否のいずれかを確認してください" >&2
   echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=paste_io_error" >&2
   exit 1
 fi
 
 # 書き出し後の post-condition check (non-empty かつ存在することを確認)
-# target_author は空文字列でも許容 (target_author_mention_skip=true の sentinel として使う)
-# target_author_mention_skip は必ず "true" or "false" の文字列なので必ず non-empty
+# body_file / skip_file は必ず non-empty (intermediate_body / intermediate_skip が non-empty だったため)
+# author_file は空文字列でも許容 (target_author_mention_skip=true の sentinel として使う)
 if [ ! -s "$body_file" ]; then
   echo "エラー: body_file の post-condition check に失敗: $body_file が空または存在しません" >&2
   echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=pr_body_tmp_empty_or_missing" >&2
@@ -487,18 +624,19 @@ if [ ! -s "$body_file" ]; then
 fi
 if [ ! -f "$author_file" ]; then
   echo "エラー: author_file の post-condition check に失敗: $author_file が存在しません" >&2
-  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=pr_body_tmp_empty_or_missing" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=author_file_missing_at_post_condition" >&2
   exit 1
 fi
 if [ ! -s "$skip_file" ]; then
   echo "エラー: skip_file の post-condition check に失敗: $skip_file が空または存在しません" >&2
-  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=pr_body_tmp_empty_or_missing" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=skip_file_empty_at_post_condition" >&2
   exit 1
 fi
 
-# Fast Path 完了: ハンドオフ 3 ファイルを trap の cleanup 対象から外す (handoff_committed=1)
-# これ以降、bash block 末尾に到達するか後続 phase でエラーが起きても、ハンドオフファイルは保護される
-# 後続 phase の cleanup (Phase 1.5 / Fast Path Cancel exit / Step C error exit) で明示的に削除する
+# Block C 完了: handoff 3 ファイルを trap の cleanup 対象から外す (handoff_committed=1)
+# trap は raw_json + intermediate 3 ファイル (合計 4 ファイル) を常に削除する (後続 phase では使わない)。
+# これ以降、bash block 末尾に到達するか後続 phase でエラーが起きても、handoff 3 ファイルは保護される。
+# 後続 phase の cleanup (Phase 1.5 / Fast Path Cancel exit / Step C error exit) で明示的に削除する。
 handoff_committed=1
 ```
 
@@ -513,7 +651,7 @@ handoff_committed=1
 > - 日本語出力: `(不明なレビュアー)` (コメント投稿者が特定できないため mention を省略)
 > - 英語出力: `(unknown reviewer)` (mention omitted because the comment author could not be resolved)
 >
-> これにより GitHub 上に存在しない `@unknown` user への誤 mention を防ぐ。`jq_err` の cleanup は EXIT trap + 末尾の明示的 `rm -f` で二重防御されているため、異常終了・正常終了のいずれでも確実に削除される。ハンドオフ 3 ファイル (`body`, `author`, `author-skip`) は **Phase 1.4 末尾の明示的 cleanup bash block** (specific path 指定、wildcard glob は使用禁止) で削除する — 詳細は上記 Implementation note の手順 3 を参照。並列 fix 実行時の他セッション破壊を防ぐため `rm -f /tmp/rite-fix-target-body-*.txt` のような glob は絶対に使わない。
+> これにより GitHub 上に存在しない `@unknown` user への誤 mention を防ぐ。`jq_err` の cleanup は `jq_err` を作成する Block A / Block B の EXIT/INT/TERM/HUP trap が呼び出す `_rite_fix_blockA_cleanup` / `_rite_fix_blockB_cleanup` 関数で保証され、異常終了・正常終了のいずれでも確実に削除される (Block C は `jq_err` tempfile を作成しないため該当なし。旧実装の末尾明示 `rm -f` は refactor で trap 経路に一元化された。Issue #390 / PR #449)。ハンドオフ 3 ファイル (`body`, `author`, `author-skip`) は **Phase 1.4 末尾の明示的 cleanup bash block** (specific path 指定、wildcard glob は使用禁止) で削除する — 詳細は上記 Implementation note の手順 3 を参照。並列 fix 実行時の他セッション破壊を防ぐため `rm -f /tmp/rite-fix-target-body-*.txt` のような glob は絶対に使わない。
 
 **Parsing rule**:
 
@@ -588,17 +726,24 @@ handoff_committed=1
 
    **Cancel/Re-run 経路でのハンドオフ cleanup 義務** (silent orphan ファイル防止):
 
-   `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / Phase 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した 3 ファイル **および confidence_override tempfile** を **明示的に削除する** bash 呼び出しを必ず実行する。これは Phase 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、Phase 1.4 末尾の Phase 1.5 cleanup から到達しない経路をカバーする:
+   `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / Phase 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3 + confidence_override、合計 8 本) を **明示的に削除する** bash 呼び出しを必ず実行する。これは Phase 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、Phase 1.4 末尾の Phase 1.5 cleanup から到達しない経路をカバーする:
 
    ```bash
-   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 ファイル + confidence_override tempfile を削除してから exit する
+   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 + raw_json + intermediate 3 + confidence_override tempfile (合計 8 本) を削除してから exit する
    # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
    # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
    # confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
+   # Issue #390: Block A/B/C 分割で raw_json + intermediate 3 ファイル (合計 4 ファイル) も cleanup 対象に追加
+   # (Block C の trap が常に削除するが、Block A 成功後 orchestrator が異常終了して Block B/C 未到達の経路でも
+   #  orphan を残さないための defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
    rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
          "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
          "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-confidence-override-{pr_number}.txt"
+         "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
+         "/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
+         "/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
+         "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
+         "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
    ```
 
    この cleanup を実行する 3 つの経路:
@@ -652,7 +797,7 @@ handoff_committed=1
 
       次回も解釈不能な応答の場合、処理を中止します。
       ```
-   2. **再質問の応答も解釈不能の場合**: 上記「Cancel/Re-run 経路でのハンドオフ cleanup 義務」の bash block を実行して Fast Path 一時ファイル 3 本を削除してから、`[fix:error]` を出力して exit 1 (**parse 0 件のまま Phase 2 進入は禁止**)。エラーメッセージに「解釈不能な応答が 2 回続いたため処理を中止しました。fix loop を手動で再実行してください」を含める
+   2. **再質問の応答も解釈不能の場合**: 上記「Cancel/Re-run 経路でのハンドオフ cleanup 義務」の bash block を実行して Fast Path の全一時ファイル (合計 8 本) を削除してから、`[fix:error]` を出力して exit 1 (**parse 0 件のまま Phase 2 進入は禁止**)。エラーメッセージに「解釈不能な応答が 2 回続いたため処理を中止しました。fix loop を手動で再実行してください」を含める
 
    > **「無応答」について**: Claude Code の対話モデルでは「無応答」状態は通常発生しない (応答を待つ間ブロックされる) ため、上記から削除した。タイムアウト等で無応答が発生した場合は AskUserQuestion 自体のエラーとして扱われ、本ループには到達しない。
 
@@ -1051,7 +1196,7 @@ PR #{number} のレビューコメント
 
 **「キャンセル」選択時の Behavior** (silent orphan ファイル防止):
 
-`/rite:pr:fix` 実行時に Fast Path (Phase 1.2 Target Comment Fast Path) を経由してハンドオフ一時ファイル 3 本を作成した状態で「キャンセル」が選択された場合、Phase 1.5 cleanup を経由しないため、**Phase 1.4 末尾でも明示的にハンドオフファイルを削除する**。これは Phase 1.2 best-effort parse の「Cancel/Re-run 経路でのハンドオフ cleanup 義務」段落と同じ defense-in-depth 原則に従う。
+`/rite:pr:fix` 実行時に Fast Path (Phase 1.2 Target Comment Fast Path) を経由して Fast Path 一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を作成した状態で「キャンセル」が選択された場合、Phase 1.5 cleanup を経由しないため、**Phase 1.4 末尾でも明示的に Fast Path の全一時ファイル + confidence_override (合計 8 本) を削除する**。これは Phase 1.2 best-effort parse の「Cancel/Re-run 経路でのハンドオフ cleanup 義務」段落と同じ defense-in-depth 原則に従う。
 
 ```bash
 # Phase 1.4 「キャンセル」選択時の cleanup (silent orphan ファイル防止)
@@ -1059,10 +1204,17 @@ PR #{number} のレビューコメント
 # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
 # Broad Comment Retrieval 経路ではこれらのファイルが存在しないため rm -f は silent no-op となる
 # confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
+# Issue #390 (PR #449 review MEDIUM 指摘): Block A/B/C 分割で raw_json + intermediate 3 ファイル
+# (合計 4 ファイル) も cleanup 対象に追加 (Block C の trap が常に削除するが、Block A/B 成功後に本
+# cancel 経路に到達した場合の defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
 rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-confidence-override-{pr_number}.txt"
+      "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
+      "/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
+      "/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
 
 # cleanup 後に exit
 echo "[fix:cancelled-by-user]"
@@ -1091,7 +1243,7 @@ Terminate processing.
 
 **Execution condition**: Fast Path 経由で一時ファイル (`/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成し、かつ Phase 1.4 を「キャンセル以外」(= 「すべての指摘に対応」「CRITICAL/HIGH のみ対応」「特定の指摘を選択」のいずれか) で完走した場合のみ実行する。Broad Comment Retrieval 経路 (Fast Path 未経由) や Phase 1.4 「キャンセル」経路ではこれらのファイルは存在しないか別経路 (Phase 1.4 「キャンセル」Behavior block) で削除済みのため、`rm -f` は silent no-op となる。
 
-**Purpose**: Phase 1.2 Fast Path で作成したハンドオフ一時ファイル 3 本を明示的に削除する。**Phase 1.5 として独立に実行する** (Phase 1 の最終サブフェーズ、Phase 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
+**Purpose**: Phase 1.2 Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を明示的に削除する。**Phase 1.5 として独立に実行する** (Phase 1 の最終サブフェーズ、Phase 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
 
 **Important — specific path 必須** (並列 fix 実行の他セッション破壊防止):
 - wildcard glob (`/tmp/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / sprint team-execute / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
@@ -1104,9 +1256,16 @@ Terminate processing.
 # {pr_number} / {target_comment_id} は Claude が Phase 1.0 の parse 結果で事前置換済み
 # 注: confidence_override tempfile は Phase 1.5 では削除しない。fix ループ全体で参照されるため、
 # Phase 8.1 (E2E flow) または Phase 4.6 後 (Standalone flow) で削除する (H-2 対応)。
+# Issue #390: Block A/B/C 分割で raw_json + intermediate 3 ファイル (合計 4 ファイル) も cleanup 対象に追加
+# (Block C の trap が常に削除するが、Block A/B 成功後に orchestrator が異常終了して Block C 未到達の経路でも
+#  orphan を残さないための defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
 rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
+      "/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
+      "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
 ```
 
 **Idempotency**: `rm -f` は対象ファイルが存在しない場合でも exit 0 で成功するため、Broad Retrieval 経路でも安全に実行できる。また再実行時 (同一 pr_number + target_comment_id で再度 /rite:pr:fix を実行) でも古いファイルが確実に削除される。
@@ -2931,8 +3090,16 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 | `reply_tmpfile_empty` | Phase 2.4 | reply body の tmpfile が cat 成功だが空 |
 | `script_exit_` | Phase 4.3.4 | Issue 作成スクリプトが非ゼロ exit code で終了 (suffix は実測 exit code) |
 | `wc_io_error` | Phase 1.3 | `wc -l` が IO エラーで失敗 |
+| `raw_json_write_failed` | Phase 1.2 Fast Path Block A | Block A の raw JSON 中間ファイル (`/tmp/rite-fix-raw-{pr}-{cid}.json`) への printf 書き出しが IO エラーで失敗 (Issue #390) |
+| `jq_author_extract_failed` | Phase 1.2 Fast Path Block A | Block A の `jq -r '.user.login // empty'` が exit != 0 で失敗 (jq バイナリ異常 / OOM / parse error) |
+| `raw_json_missing_at_block_b` | Phase 1.2 Fast Path Block B | Block B 進入時に Block A の raw JSON 中間ファイルが存在しない or 空 (Block A 失敗 / 並列実行で削除 / orchestrator 異常終了で Block B 未到達) |
+| `mktemp_failed_jq_block_b` | Phase 1.2 Fast Path Block B | Block B の jq stderr 退避用 tempfile の mktemp が失敗 |
+| `intermediate_missing_at_block_c` | Phase 1.2 Fast Path Block C | Block C 進入時に Block A/B が作成したはずの intermediate ファイル (body/author/skip) または raw_json が存在しない or 空 |
+| `intermediate_write_failed` | Phase 1.2 Fast Path Block A | Block A の intermediate 3 ファイル (body/author/skip) への printf 書き出しが IO エラーで失敗 (disk full / read-only / inode 枯渇 / permission denied) |
+| `author_file_missing_at_post_condition` | Phase 1.2 Fast Path Block C | Block C の post-condition check で author_file が存在しない (`[ -f ]` 失敗、empty は許容) |
+| `skip_file_empty_at_post_condition` | Phase 1.2 Fast Path Block C | Block C の post-condition check で skip_file が空または存在しない (`[ -s ]` 失敗) |
 
-> **全 reason 値の完全列挙** (drift-check P5 用): (`base_branch_grep_io_error` / `branch_grep_io_error` / `cat_redirection_failed` / `current_body_empty` / `empty_stdout` / `gh_api_comments_fetch_failed` / `issue_number_not_found` / `jq_comment_id_extract_failed` / `jq_current_body_extract_failed` / `missing_issue_url` / `mktemp_failed_base_branch_grep_err` / `mktemp_failed_body_tmp` / `mktemp_failed_branch_grep_err` / `mktemp_failed_diff_stderr_tmp` / `mktemp_failed_files_tmp` / `mktemp_failed_gh_api_err` / `mktemp_failed_history_tmp` / `mktemp_failed_issue_body_tmpfile` / `mktemp_failed_jq_late_err` / `mktemp_failed_override_err` / `mktemp_failed_pr_body_grep_err` / `mktemp_failed_pr_body_tmp` / `mktemp_failed_reply_tmpfile` / `mktemp_failed_report_tmpfile` / `mktemp_failed_sed_err` / `mktemp_failed_tmpfile` / `paste_io_error` / `patch_failed` / `pr_body_grep_io_error` / `pr_body_tmp_empty_or_missing` / `pr_number_mismatch` / `python_sentinel_detected` / `python_unexpected_exit_` / `reply_tmpfile_empty` / `script_exit_` / `sed_extract_base_branch_failed` / `wc_io_error` / `wm_body_empty_or_too_short` / `wm_body_too_small` / `wm_header_missing`)
+> **全 reason 値の完全列挙** (drift-check P5 用): (`author_file_missing_at_post_condition` / `base_branch_grep_io_error` / `branch_grep_io_error` / `cat_redirection_failed` / `current_body_empty` / `empty_stdout` / `gh_api_comments_fetch_failed` / `intermediate_missing_at_block_c` / `intermediate_write_failed` / `issue_number_not_found` / `jq_author_extract_failed` / `jq_comment_id_extract_failed` / `jq_current_body_extract_failed` / `missing_issue_url` / `mktemp_failed_base_branch_grep_err` / `mktemp_failed_body_tmp` / `mktemp_failed_branch_grep_err` / `mktemp_failed_diff_stderr_tmp` / `mktemp_failed_files_tmp` / `mktemp_failed_gh_api_err` / `mktemp_failed_history_tmp` / `mktemp_failed_issue_body_tmpfile` / `mktemp_failed_jq_block_b` / `mktemp_failed_jq_late_err` / `mktemp_failed_override_err` / `mktemp_failed_pr_body_grep_err` / `mktemp_failed_pr_body_tmp` / `mktemp_failed_reply_tmpfile` / `mktemp_failed_report_tmpfile` / `mktemp_failed_sed_err` / `mktemp_failed_tmpfile` / `paste_io_error` / `patch_failed` / `pr_body_grep_io_error` / `pr_body_tmp_empty_or_missing` / `pr_number_mismatch` / `python_sentinel_detected` / `python_unexpected_exit_` / `raw_json_missing_at_block_b` / `raw_json_write_failed` / `reply_tmpfile_empty` / `script_exit_` / `sed_extract_base_branch_failed` / `skip_file_empty_at_post_condition` / `wc_io_error` / `wm_body_empty_or_too_short` / `wm_body_too_small` / `wm_header_missing`)
 
 **`[fix:pushed-wm-stale]` の caller 側 semantics**: `/rite:issue:start` review-fix loop は本 pattern を受け取った場合、push 自体は完了しているが work memory が stale であることを認識し、次のいずれかを実行する: (a) 手動介入を促す (推奨)、(b) 警告ログを出した上で次の iteration に進む (loop 継続)。silent に `[fix:pushed]` 扱いしてはならない。
 
