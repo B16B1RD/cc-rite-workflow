@@ -68,7 +68,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `id` | string | ✅ | 指摘 ID (`F-01` 形式、レビュー内ユニーク) |
+| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、ゼロパディング 2 桁、レビュー内ユニークの連番。例: `F-01`, `F-02`, ..., `F-10`, `F-99`) |
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`) |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | string | ✅ | 重要度 (`CRITICAL` / `HIGH` / `MEDIUM` / `LOW`) |
@@ -76,7 +76,7 @@
 | `line` | integer | ✅ | 対象行番号 (行非依存指摘は `0`) |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
-| `status` | string | ✅ | 対応状態。現行実装では `"open"` のみが `/rite:pr:review` によってセットされる。`"fixed"` / `"replied"` / `"deferred"` は将来予約 (現行の `/rite:pr:fix` 読取側では無視される)。state machine 遷移ロジックは未実装 |
+| `status` | string | ✅ | 対応状態。現行実装では `"open"` 固定で `/rite:pr:review` によってセットされる。**設計意図**: 将来の state machine 拡張 (`"fixed"` / `"replied"` / `"deferred"`) のために必須フィールドとして slot を予約している。現行の `/rite:pr:fix` 読取側はこの値を参照しないが、schema を後方互換に保つため必須化している (将来の遷移ロジック追加時に optional → required の breaking change を避ける) |
 
 ## PR コメント形式 (opt-in)
 
@@ -154,6 +154,6 @@
 
 - `plugins/rite/commands/pr/review.md` Phase 6.1: JSON 生成と保存ロジック
 - `plugins/rite/commands/pr/fix.md` Phase 1.2: ハイブリッド読取ロジック
-- `plugins/rite/commands/pr/cleanup.md` Phase 2: 自動削除ロジック
+- `plugins/rite/commands/pr/cleanup.md` Phase 2.5: 自動削除ロジック
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
 - `.gitignore`: `.rite/review-results/` 除外設定

@@ -1066,7 +1066,7 @@ Delete `.rite/review-results/{pr_number}-*.json` files associated with the merge
 
 - **PR 番号 prefix 固定**: wildcard は必ず `{pr_number}-` で始まるパターンのみを許容する。`*.json` 単独や `.rite/review-results/*` など、他 PR のファイルを巻き込む形式は**絶対に使わない**
 - **Non-blocking**: ファイルが存在しない場合は warning なしで continue。`rm` 失敗 (permission denied / IO error) は WARNING + `[CONTEXT]` 表示して可視化 (silent 抑制しない)
-- **Idempotent**: すでに削除済み / 存在しない場合でも警告を出さずに続行する
+- **Idempotent**: すでに削除済み / 存在しない場合は WARNING / ERROR なしで続行する (情報用 INFO メッセージ `ℹ️  削除対象のレビュー結果ファイルはありません` は dir 存在 + マッチ 0 件経路で出力される場合がある。dir 不在経路では完全 silent)
 
 **Phase 2.5 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
 

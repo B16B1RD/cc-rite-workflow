@@ -105,6 +105,13 @@ Extract the following information from work memory and retain in context:
 
 > **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。Phase 1.0 内部の実行順序と flag pre-stripping の詳細は下記「Flag pre-stripping for Detection rules」注記に集約されている (drift 防止のため 2 箇所で重複記述しない)。
 
+> **⚠️ Phase 1.0 の 2 段構成 (Stage A → Stage B)** (verified-review LOW-7 修正): 番号体系の自然順 (`1.0` → `1.0.1`) と実行順 (`1.0.1` → `1.0` 本体の Detection rules) が逆行して読みづらかったため、以下の **Stage A / Stage B** ラベルで実行順を明示する:
+>
+> - **Stage A — Phase 1.0.1 Flag Parsing**: `--review-file <path>` 等のフラグトークンを `$ARGUMENTS` から pre-strip し、`remaining_args` に PR 番号候補だけを残す
+> - **Stage B — Phase 1.0 本体の Detection rules**: 上記 `remaining_args` に対して順序 1 / 2 / 3 / 4 の regex を適用して `{pr_number}` と `{target_comment_id}` を抽出
+>
+> Stage A → Stage B の順で実行する。「Phase 1.0.1 が Phase 1.0 のサブフェーズなのだから Detection rules の後に実行される」という直感的読み方は **誤り** である (番号体系は階層、実行順は逆)。
+
 **Always run this sub-phase**. Phase 1.1 が `gh pr view` を実行する前に、引数形式を正規化して `{pr_number}` と（該当時のみ）`{target_comment_id}` を抽出する。bare integer (`^[0-9]+$`) や引数なしの場合でも本サブフェーズを実行し、Detection rules table の順序 1 / 順序 4 で pr_number を抽出した上で **`{target_comment_id} = null` を explicit set** する (undefined 参照防止)。
 
 > **Why this ordering matters**: If you pass a PR URL or comment URL directly to `gh pr view {pr_number}`, the command will fail and Phase 1.1 will terminate with "PR not found". The Fast Path in Phase 1.2 cannot be reached. Always normalize first.
@@ -174,7 +181,7 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
 
 `/rite:pr:fix --review-file <path>` を受け付けるため、以下の手順で `{review_file_path}` を抽出する。Phase 1.2 のハイブリッド読取ロジック (Priority 0: 明示指定) で参照される。
 
-**⚠️ このサブフェーズは Phase 1.0 Detection rules よりも先に実行される** (Phase 1.0 冒頭の internal execution order を参照)。
+**⚠️ このサブフェーズは Stage A として、Phase 1.0 本体の Detection rules (Stage B) よりも先に実行される** (Phase 1.0 冒頭の Stage A/B 説明を参照)。
 
 **抽出手順** (bash 実装):
 
@@ -197,9 +204,13 @@ if [[ "$remaining_args" =~ (^|[[:space:]])--review-file=([^[:space:]]*) ]]; then
   review_file_path="${BASH_REMATCH[2]}"
   remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file=[^[:space:]]*//')
 # Pattern 2: --review-file <path> (POSIX style with space/tab)
-elif [[ "$remaining_args" =~ (^|[[:space:]])--review-file[[:space:]]+([^[:space:]]+) ]]; then
-  review_file_path="${BASH_REMATCH[2]}"
-  remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file[[:space:]]+[^[:space:]]+//')
+# verified-review LOW-3 修正: Pattern 1 と対称に、`--review-file` 単独 (末尾空) も match させる。
+# 旧実装 `[^[:space:]]+` (1+) では `/rite:pr:fix 123 --review-file` のような末尾空指定が
+# regex non-match で silent fallthrough する問題があった。`[^[:space:]]*` (0+) に変更し、
+# 末尾フラグ単独の場合は空文字列を capture して下流の `review_file_path_empty_value` 検出に流す。
+elif [[ "$remaining_args" =~ (^|[[:space:]])--review-file([[:space:]]+([^[:space:]]*))? ]]; then
+  review_file_path="${BASH_REMATCH[3]:-}"
+  remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file([[:space:]]+[^[:space:]]*)?//')
 fi
 
 # remaining_args の前後 whitespace を trim
@@ -339,6 +350,13 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "null" ]; then
     echo "エラー: --review-file で指定されたファイルが有効な JSON ではありません: $review_file_path" >&2
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_parse" >&2
     review_source="fallback"
+  elif ! jq -e '.schema_version and .pr_number and (.findings | type == "array")' "$review_file_path" >/dev/null 2>&1; then
+    # verified-review HIGH-1 修正: jq empty は terminal value (`{}`, `null`, `42` 等) を pass する
+    # ため schema validation として不十分。required fields の存在 + findings[] が array 型であることを
+    # 明示的に検証する。実証: `echo '{}' | jq empty` → exit 0、`echo 'null' | jq empty` → exit 0
+    echo "エラー: --review-file の必須フィールド (schema_version / pr_number / findings[]) が欠落: $review_file_path" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_required_fields_missing" >&2
+    review_source="fallback"
   else
     # Priority 0: schema_version も Priority 2 と同じく検証するが、失敗時は直接 fallback へ
     # (ユーザーの明示意図を尊重 — Priority 1-3 に silent fall-through しない)
@@ -361,14 +379,39 @@ fi
 # ⚠️ Claude への指示: Priority 0 が未発火 (review_source="") の状態で、
 # 同一 session 内の直前 assistant turn に `## 📜 rite レビュー結果` セクションを含む
 # /rite:pr:review の出力が残っている場合、下記 bash block を実行する前に会話コンテキストから
-# findings を読み取り、`review_source="conversation"` を literal substitute すること。
-# Priority 1 が採用された場合は必ず下記 emit を行う (observability 義務):
+# findings を読み取り、`conversation_review_decision="use"` を literal substitute すること。
+# 会話コンテキストに review 結果がない場合は `conversation_review_decision="none"` を substitute する。
+#
+# verified-review MEDIUM-3 修正: 旧実装は noop `:` のみで、Claude が「使う」と判断したのに
+# substitute を忘れた場合と「使わない」と判断した場合が区別できず silent fallthrough する穴があった。
+# Priority 0/3 と対称な defensive check を追加し、literal placeholder のままなら fail-fast する。
 if [ -z "$review_source" ]; then
-  # Claude が conversation context 内の review 結果を使うと判断した場合:
-  #   review_source="conversation"
-  #   echo "[CONTEXT] REVIEW_SOURCE=conversation; pr_number={pr_number}" >&2
-  # この literal substitution が行われなかった場合は Priority 2 以降にフォールスルーする。
-  :
+  # ⚠️ Claude は以下の literal を Phase 1.2 進入時の判断に基づいて substitute すること
+  #   - 会話に最新の /rite:pr:review 結果あり → `conversation_review_decision="use"`
+  #   - 会話に該当 review 結果なし → `conversation_review_decision="none"`
+  conversation_review_decision="{conversation_review_decision_or_none}"
+  case "$conversation_review_decision" in
+    use)
+      review_source="conversation"
+      echo "[CONTEXT] REVIEW_SOURCE=conversation; pr_number=${pr_number}" >&2
+      ;;
+    none)
+      :  # Priority 2 以降に fallthrough
+      ;;
+    "{conversation_review_decision_or_none}")
+      # literal placeholder のまま → Claude が substitute を忘れた
+      echo "ERROR: Priority 1 conversation_review_decision が literal substitute されていません" >&2
+      echo "  Claude は会話コンテキストの review 結果有無を判断し、'use' または 'none' を substitute する必要があります" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_unset" >&2
+      exit 1
+      ;;
+    *)
+      echo "ERROR: Priority 1 conversation_review_decision に未知の値: '$conversation_review_decision'" >&2
+      echo "  許容値: use / none" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_invalid" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 # Priority 2: Local file — lexicographic sort で最新 timestamp を選択
@@ -400,7 +443,14 @@ if [ -z "$review_source" ]; then
     [ -n "$find_err" ] && rm -f "$find_err" && find_err=""
 
     if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
-      if jq empty "$latest_file" 2>/dev/null; then
+      # verified-review HIGH-1 修正: jq empty は terminal value を pass するため、
+      # required fields (schema_version / pr_number / findings[]) を明示検証する
+      if ! jq empty "$latest_file" 2>/dev/null; then
+        echo "WARNING: $latest_file は有効な JSON ではありません。次の優先度のソースを試行します。" >&2
+      elif ! jq -e '.schema_version and .pr_number and (.findings | type == "array")' "$latest_file" >/dev/null 2>&1; then
+        echo "WARNING: $latest_file の必須フィールド (schema_version / pr_number / findings[]) が欠落。次の優先度のソースを試行します。" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" >&2
+      else
         # schema_version 検証 (Priority 2 success 内で実施)
         schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file")
         case "$schema_version" in
@@ -419,8 +469,6 @@ if [ -z "$review_source" ]; then
             review_source_path=""
             ;;
         esac
-      else
-        echo "WARNING: $latest_file は有効な JSON ではありません。次の優先度のソースを試行します。" >&2
       fi
     fi
   fi
@@ -486,14 +534,25 @@ fi
 # sample JSON fences in findings' suggestion columns).
 # Rationale: here-string `<<<` を使う理由 — `printf | awk` 形式は awk の `exit` による
 # stdin 早期終了で printf が SIGPIPE を受ける経路がある (bash-defensive-patterns.md Pattern 5)。
+#
+# verified-review MEDIUM-2 修正: findings の description / suggestion 列内に
+# 「### 📄 Raw JSON」リテラル文字列が含まれる場合 (本 PR 自体がまさにそういう文字列を生成する)、
+# 旧実装は finding 内の literal を `### 📄 Raw JSON` 行頭マッチとして誤検出して in_section を
+# 早期に立ててしまい、誤った JSON 抽出を招く。Phase 6.1.b の Raw JSON section は必ず
+# `---\n\n### 📄 Raw JSON\n\n```json` の構造を持つため、`---` separator の後に出現する
+# 最後の `### 📄 Raw JSON` のみを採用する。`past_separator` flag で明示的に scope を限定する。
 raw_json=$(awk '
-  /^### 📄 Raw JSON/   { in_section=1; next }
+  /^---$/              { past_separator=1; next }
+  past_separator && /^### 📄 Raw JSON/ { in_section=1; next }
   in_section && /^```json$/ { flag=1; next }
   flag && /^```$/      { flag=0; exit }
   flag                 { print }
 ' <<< "$pr_review_comment_body")
-if [ -n "$raw_json" ] && printf '%s' "$raw_json" | jq empty 2>/dev/null; then
-  # New format: use JSON directly (still verify schema_version)
+if [ -n "$raw_json" ] \
+   && printf '%s' "$raw_json" | jq empty 2>/dev/null \
+   && printf '%s' "$raw_json" | jq -e '.schema_version and .pr_number and (.findings | type == "array")' >/dev/null 2>&1; then
+  # verified-review HIGH-1 修正: jq empty 単独では terminal value (`{}`, `null`, `42` 等) を pass する。
+  # required fields (schema_version / pr_number / findings[] 配列型) を明示検証してから New format を採用する
   schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"')
   case "$schema_version" in
     "1.0.0"|"1.0")
@@ -546,7 +605,9 @@ When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid
 
 Claude の自然言語判断 / 会話履歴 grep に依存すると、長 context での history truncation / hallucination で無限ループ化するリスクがある。本仕様では retry counter を **ローカル state file** に persistent 保存し、bash レベルで hard gate を強制する。
 
-**State file path**: `.rite/state/fix-fallback-retry-{pr_number}.count` ({pr_number} は Phase 1.0 で正規化済み)
+**State file path**: `.rite/state/fix-fallback-retry-{pr_number}-$$.count` ({pr_number} は Phase 1.0 で正規化済み、`$$` は bash の現プロセス PID)
+
+> **verified-review LOW-4 修正**: 旧実装は `{pr_number}` 固定で並列 fix 実行 (sprint team-execute / 複数 terminal) 時に同一 PR の retry counter が race し、3 回上限が誤動作する経路があった。`$$` (bash プロセス PID) を path suffix に含めることで、同一 PR でも別プロセスは独立した state file を持つ。**注意**: `$$` は bash 仕様上 subshell に継承される (`( ... )` 内でも親の PID) ため、`/rite:pr:fix` 1 回の起動内では一貫した値となる。
 
 **State file lifecycle**:
 
@@ -561,7 +622,8 @@ Claude の自然言語判断 / 会話履歴 grep に依存すると、長 contex
 # Retry hard gate: state file による machine-enforced 強制
 # state file は specific path ({pr_number} suffix 必須、wildcard glob 禁止)
 state_dir=".rite/state"
-state_file="${state_dir}/fix-fallback-retry-{pr_number}.count"
+# verified-review LOW-4 修正: $$ (bash PID) を suffix に含めて並列 fix セッションの race を回避
+state_file="${state_dir}/fix-fallback-retry-{pr_number}-$$.count"
 mkdir -p "$state_dir" 2>/dev/null || {
   echo "ERROR: $state_dir の作成に失敗しました (permission denied / read-only filesystem)" >&2
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=state_dir_mkdir_failed" >&2
@@ -599,7 +661,7 @@ echo "[CONTEXT] FIX_FALLBACK_RETRY=$new_count/3" >&2
 **3. State file cleanup on success**: 「ファイルパス指定」が成功 (= valid JSON file が見つかり Phase 1.2.0 Priority 0 が成功) した時点で:
 
 ```bash
-rm -f ".rite/state/fix-fallback-retry-{pr_number}.count" 2>/dev/null
+rm -f ".rite/state/fix-fallback-retry-{pr_number}-$$.count" 2>/dev/null
 ```
 
 これにより次回の Interactive Fallback 起動時に counter が clean state から始まる。
@@ -609,7 +671,7 @@ rm -f ".rite/state/fix-fallback-retry-{pr_number}.count" 2>/dev/null
 ```bash
 echo "ユーザーが Interactive Fallback で「中止」を選択しました" >&2
 echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_cancelled" >&2
-rm -f ".rite/state/fix-fallback-retry-{pr_number}.count" 2>/dev/null
+rm -f ".rite/state/fix-fallback-retry-{pr_number}-$$.count" 2>/dev/null
 echo "[fix:error]"
 exit 1
 ```
@@ -620,7 +682,9 @@ exit 1
 |--------|-------------|
 | `explicit_file_not_found` | `--review-file` で指定されたパスが存在しない (Priority 0, triggers fallback) |
 | `explicit_file_parse` | `--review-file` で指定されたファイルが valid JSON ではない (Priority 0, triggers fallback) |
+| `explicit_file_schema_required_fields_missing` | `--review-file` で指定されたファイルが parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Priority 0, triggers fallback、verified-review HIGH-1 対応) |
 | `explicit_file_schema_version_unknown` | `--review-file` で指定されたファイルの schema_version が未知 (Priority 0, triggers fallback) |
+| `local_file_schema_required_fields_missing` | Priority 2 で選ばれた最新 local file が parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Priority 3 pr_comment へ routing、verified-review HIGH-1 対応) |
 | `local_file_schema_version_unknown` | Priority 2 で選ばれた最新 local file の schema_version が未知 (Priority 3 pr_comment へ routing) |
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
 | `user_file_path_retries` | Interactive fallback の「ファイルパス指定」が 3 回連続で失敗 (terminate with `[fix:error]`) |
@@ -629,8 +693,10 @@ exit 1
 | `state_file_write_failed` | retry hard gate state file への書き込み失敗 (disk full / permission denied) |
 | `review_file_path_empty_value` | Phase 1.0.1 で `--review-file=` (空値) が指定された (Pattern 1 regex で空 group capture) |
 | `comment_body_unset` | Phase 1.2.0 Priority 3 で `pr_review_comment_body` が literal substitute されていない (silent regression 防止の defensive check) |
+| `priority1_decision_unset` | Phase 1.2.0 Priority 1 で `conversation_review_decision` が literal substitute されていない (verified-review MEDIUM-3 対応、silent fallthrough 防止) |
+| `priority1_decision_invalid` | Phase 1.2.0 Priority 1 で `conversation_review_decision` に許容値 (`use` / `none`) 以外が指定された |
 
-**Eval-order enumeration** (for Pattern-5 drift check): emit reasons sequence = (`explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_version_unknown` / `local_file_schema_version_unknown` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_unset`)
+**Eval-order enumeration** (for Pattern-5 drift check): emit reasons sequence = (`explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_unset`)
 
 #### 1.2 Legacy Branching (PR Comment Path Only)
 
@@ -2374,8 +2440,13 @@ fi
 # しかし script が exit 1 で早期終了しつつ stdout に partial JSON を出力した場合、
 # (a) `result` は非空、(b) jq で `.issue_url` が抽出可能、(c) `.project_registration` が null
 # となり、後続の `jq '.warnings[]' 2>/dev/null` が stderr suppress により jq parse error も
-# 隠蔽し silent に「warnings 0 件」と誤認する。これを防ぐため `if ! ...` 形式で exit code を捕捉する。
-if ! result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# 隠蔽し silent に「warnings 0 件」と誤認する。これを防ぐため exit code を捕捉する。
+#
+# verified-review fix: 旧 `if ! result=$(cmd); then script_exit=$?` パターンは bash 仕様上
+# `$?` が常に 0 を返す (`!` 否定の結果が then 節に伝播)。command substitution + 明示的 rc 捕捉
+# (`result=$(cmd); script_exit=$?`) に変更し、cmd 自身の exit code を正しく取得する。
+# 実証: `bash -c 'if ! result=$(exit 42); then echo $?; fi'` → `0`
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
   --arg title "{type}: {summary}" \
   --arg body_file "$tmpfile" \
   --argjson projects_enabled {projects_enabled} \
@@ -2397,8 +2468,9 @@ if ! result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n 
     },
     options: { source: "pr_fix", non_blocking_projects: true }
   }'
-)"); then
-  script_exit=$?
+)")
+script_exit=$?
+if [ "$script_exit" -ne 0 ]; then
   echo "ERROR: create-issue-with-projects.sh exit=$script_exit" >&2
   echo "  Partial result (preserved for debug, not parsed): $result" >&2
   echo "  対処: scripts/create-issue-with-projects.sh のログを確認し、根本原因を解決してから再実行してください。" >&2
@@ -2923,8 +2995,11 @@ if [[ -n "$comment_id" ]]; then
         echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_base_branch_grep_err; issue_number={issue_number}"
         exit 1
       }
-      if ! base_branch_raw=$(grep -E '^\s*base:' rite-config.yml 2>"$base_branch_grep_err"); then
-        base_branch_grep_rc=$?
+      # verified-review fix: 旧 `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返すため、
+      # command substitution + 明示的 rc 捕捉に変更して grep 自身の exit code を正しく取得する。
+      base_branch_raw=$(grep -E '^\s*base:' rite-config.yml 2>"$base_branch_grep_err")
+      base_branch_grep_rc=$?
+      if [ "$base_branch_grep_rc" -ne 0 ]; then
         if [ "$base_branch_grep_rc" = "1" ]; then
           # exit 1: rite-config.yml に `base:` キーがない
           echo "WARNING: rite-config.yml に 'base:' キーが存在しないため base_branch を 'develop' に fallback します" >&2
@@ -2955,8 +3030,10 @@ if [[ -n "$comment_id" ]]; then
           exit 1
         }
         base_branch_first_line=$(printf '%s' "$base_branch_raw" | head -1)
-        if ! base_branch_extracted=$(printf '%s' "$base_branch_first_line" | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' 2>"$sed_err"); then
-          sed_rc=$?
+        # verified-review fix: 同上の `if ! cmd; then rc=$?` パターン bash バグ修正
+        base_branch_extracted=$(printf '%s' "$base_branch_first_line" | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' 2>"$sed_err")
+        sed_rc=$?
+        if [ "$sed_rc" -ne 0 ]; then
           echo "ERROR: base_branch の sed 抽出が IO/binary エラーで失敗しました (rc=$sed_rc)" >&2
           echo "  詳細: $(cat "$sed_err")" >&2
           echo "  対処: 環境の sed バイナリと権限を確認後、再実行してください" >&2
@@ -3391,13 +3468,17 @@ hook_err=$(mktemp /tmp/rite-fix-hook-err-XXXXXX) || {
   hook_err=""
 }
 if [ -n "$hook_err" ]; then
-  if ! WM_SOURCE="fix" \
+  # verified-review fix: 旧 `if ! cmd; then hook_rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返す。
+  # `if cmd; then :; else rc=$?; fi` の else 節形式に切り替えて hook 自身の exit code を正しく取得する。
+  if WM_SOURCE="fix" \
       WM_PHASE="phase5_post_fix" \
       WM_PHASE_DETAIL="レビュー修正後処理" \
       WM_NEXT_ACTION="re-review or completion" \
       WM_BODY_TEXT="Post-fix sync." \
       WM_ISSUE_NUMBER="{issue_number}" \
       bash {plugin_root}/hooks/local-wm-update.sh 2>"$hook_err"; then
+    : # success
+  else
     hook_rc=$?
     if grep -qiE 'lock|contention|busy' "$hook_err"; then
       # lock failure (best-effort skip 該当): WARNING のみで継続

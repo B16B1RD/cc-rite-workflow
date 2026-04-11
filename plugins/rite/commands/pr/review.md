@@ -147,15 +147,22 @@ Determine the invocation source from the conversation context:
 
    **Phase 1.1 への hand-off**: Phase 1.1 の `{pr_number}` 抽出は **必ず `remaining_args` に対して行う** こと。`$ARGUMENTS` を直接参照すると未除去のフラグトークンを PR 番号候補と誤認するリスクがある。
 
-2. **Conflict check** (AC-8): If `flag_post == "true"` AND `flag_no_post == "true"`, **immediately terminate** with the following error and do NOT execute Phase 1.1 or later:
+2. **Conflict check** (AC-8): If `flag_post == "true"` AND `flag_no_post == "true"`, **immediately terminate** with the following error and do NOT execute Phase 1.1 or later.
 
-   ```
-   エラー: --post-comment と --no-post-comment を同時に指定することはできません
-   
-   どちらか一方のみを指定してください。
-   ```
+   verified-review LOW-1 修正: Step 1 / Step 3 と同粒度の bash block を提供し、retained flag emit 規約と
+   `[review:error]` exit を明示する。Step 1 で set された `flag_post` / `flag_no_post` を直接参照する。
 
-   Output result pattern `[review:error]` and exit.
+   ```bash
+   # Phase 1.0 Step 2: Conflict check (AC-8)
+   if [ "$flag_post" = "true" ] && [ "$flag_no_post" = "true" ]; then
+     echo "エラー: --post-comment と --no-post-comment を同時に指定することはできません" >&2
+     echo "" >&2
+     echo "どちらか一方のみを指定してください。" >&2
+     echo "[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=post_and_no_post_conflict" >&2
+     echo "[review:error]"
+     exit 1
+   fi
+   ```
 
 3. **Config read**: Read `pr_review.post_comment` from `rite-config.yml` (default: `false` if section absent or key missing). cwd 仮定の可視化と SIGPIPE 罠の回避を含む:
 
@@ -172,10 +179,18 @@ Determine the invocation source from the conversation context:
        | awk '/^[[:space:]]+post_comment:/{print; exit}' \
        | sed 's/#.*//' | sed 's/.*post_comment:[[:space:]]*//' \
        | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+     # verified-review LOW-2 修正: 不正値 (typo: `ture`, 全角文字等) は silent に false へ畳み込まず
+     # WARNING を表示する。空文字 (key 未設定) は legitimate fallback として silent OK。
      case "$config_post_comment" in
        true|yes|1)  config_post_comment="true" ;;
        false|no|0)  config_post_comment="false" ;;
-       *) config_post_comment="false" ;;  # Default: OFF
+       "")          config_post_comment="false" ;;  # key 未設定 (legitimate default)
+       *)
+         echo "WARNING: rite-config.yml の pr_review.post_comment に不正な値: '$config_post_comment'" >&2
+         echo "  認識可能: true / yes / 1 / false / no / 0 (大文字小文字無視)" >&2
+         echo "  default の false を使用します" >&2
+         config_post_comment="false"
+         ;;
      esac
    fi
    ```
@@ -192,6 +207,14 @@ Determine the invocation source from the conversation context:
 5. **Retain in context**: Store `{post_comment_mode}` for Phase 6.1 consumption. This value is the Single Source of Truth for "should this review post a PR comment".
 
 **Note on PR number parsing**: Phase 1.1 の `{pr_number}` 抽出は本サブフェーズで生成した `remaining_args` を入力として使うこと。`$ARGUMENTS` 全体を直接参照してはならない (フラグトークンを PR 番号と誤認するリスク)。
+
+**Phase 1.0 failure reasons** (verified-review LOW-1 対応): (`post_and_no_post_conflict`)
+
+| reason | Description |
+|--------|-------------|
+| `post_and_no_post_conflict` | `--post-comment` と `--no-post-comment` が同時指定された (Phase 1.0 Step 2、AC-8 違反、`REVIEW_ARG_PARSE_FAILED=1` retained flag を emit して `[review:error]` で exit 1) |
+
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 1.0 emit sequence = (`post_and_no_post_conflict`)
 
 ### 1.1 Identify the PR
 
@@ -2476,16 +2499,18 @@ Phase 6 failure reasons:
 | `tmpfile_write_failure` | Review result heredoc write to tmpfile failed (Phase 6.1.b PR comment post) |
 | `gh_comment_post_failure` | `gh pr comment` 投稿が exit != 0 で失敗 (Phase 6.1.b、network / auth / rate-limit / permission) |
 | `mkdir_failure` | `.rite/review-results/` directory creation failed (Phase 6.1.a, **WARNING only, do NOT fail Phase 6**) |
+| `date_command_failure` | `TZ='Asia/Tokyo' date` の実行が失敗 (Phase 6.1.a、verified-review MEDIUM-1 対応、**WARNING only**、空 timestamp による file 上書きを防止) |
 | `mktemp_failure` | JSON tmpfile allocation failed (Phase 6.1.a, **WARNING only**) |
 | `write_failure` | JSON content write to tmpfile failed (Phase 6.1.a, **WARNING only**) |
 | `json_invalid` | JSON tmpfile written but `jq empty` post-condition check failed (Phase 6.1.a, literal `{review_result_json_heredoc_body}` substitute 漏れの可能性、**WARNING only**) |
+| `schema_required_fields_missing` | JSON は parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Phase 6.1.a、verified-review HIGH-1 対応、**WARNING only**) |
 | `mv_failure` | Atomic move of JSON tmpfile to final path failed (Phase 6.1.a, **WARNING only**) |
 
-**Non-blocking contract** (per 4.4 MUST NOT: "ローカルファイル保存失敗時に pr:review 全体を失敗扱いにしない"): `mkdir_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error.
+**Non-blocking contract** (per 4.4 MUST NOT: "ローカルファイル保存失敗時に pr:review 全体を失敗扱いにしない"): `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error.
 
-**Retained flag mapping**: Phase 6.1.a は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は上記 5 種 (`mkdir_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `mv_failure`) のいずれか。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
+**Retained flag mapping**: Phase 6.1.a は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は上記 7 種 (`mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure`) のいずれか。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure` / `gh_comment_post_failure`).
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure` / `gh_comment_post_failure`).
 
 #### 6.1.a Local JSON File Save (Always Executed — #443)
 
@@ -2494,7 +2519,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 **Claude substitution requirements**:
 - `{review_result_json_heredoc_body}`: Claude が review-result-schema.md に従って JSON 本文を生成し、下記 `RITE_JSON_EOF` heredoc に literal substitute する。**⚠️ Heredoc quoting note**: `<<'RITE_JSON_EOF'` は single-quoted delimiter のため shell expansion (変数展開・command substitution) は完全抑制される。`{review_result_json_heredoc_body}` placeholder は **bash 実行時の動的展開ではなく Claude が bash block 生成時に literal 文字列として置換**する必要がある。literal 置換忘れは bash 実行時に literal `{review_result_json_heredoc_body}` がそのまま JSON ファイルに書き込まれ、Phase 6.1.a 内の `jq empty` post-condition check で fail-fast 検出される (defense-in-depth)。
 - `{pr_number}`: Phase 1.0 で正規化済み。bash block 冒頭で `pr_number="{pr_number}"` の literal substitution を行い、以後は bash 変数 `${pr_number}` として参照する (Claude placeholder と bash 変数展開の混在を避ける)。
-- Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding: `id`, `reviewer`, `category`, `severity`, `file`, `line`, `description`, `suggestion`, `status: "open"`.
+- Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding: `id` (**`F-NN` 形式、ゼロパディング 2 桁、レビュー内連番** — 例: `F-01`, `F-02`, ..., `F-99`。10 件以上の場合は zero-padding を維持し `F-10` 形式とする)、`reviewer`, `category`, `severity`, `file`, `line`, `description`, `suggestion`, `status: "open"`.
 
 ```bash
 # Phase 6.1.a: ローカル JSON 保存 (非ブロッキング、signal-specific trap 保護)
@@ -2504,15 +2529,13 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 # (Claude placeholder と bash 変数展開の混在を避けて substitute 忘れによる literal ファイル名生成を防ぐ)
 pr_number="{pr_number}"
 
-# Generate ISO 8601 timestamp (TZ=Asia/Tokyo で BSD/GNU date 両対応、JST 固定)
-# `date -Iseconds` は GNU 拡張で macOS/BSD では未サポートのため、portable な明示フォーマットを使用
-# Source: https://www.jbmurphy.com/2011/02/17/gnu-date-vs-bsd-date/
-iso_timestamp=$(TZ='Asia/Tokyo' date +'%Y-%m-%dT%H:%M:%S+09:00')
-file_timestamp=$(TZ='Asia/Tokyo' date +'%Y%m%d%H%M%S')
-
 # json_tmp / mktemp_err は trap 保護対象 (orphan 防止)
+# verified-review MEDIUM-1 修正: date 計算は trap setup 後に移動 (失敗時に trap EXIT が
+# `[CONTEXT] FILE_TIMESTAMP=unknown` を emit できるようにするため)
 json_tmp=""
 mktemp_err=""
+iso_timestamp=""
+file_timestamp=""
 file_timestamp_emitted="false"
 _rite_review_p61a_cleanup() {
   rm -f "${json_tmp:-}" "${mktemp_err:-}"
@@ -2529,6 +2552,26 @@ trap 'rc=$?; _rite_review_p61a_cleanup; exit $rc' EXIT
 trap '_rite_review_p61a_cleanup; exit 130' INT
 trap '_rite_review_p61a_cleanup; exit 143' TERM
 trap '_rite_review_p61a_cleanup; exit 129' HUP
+
+# Generate ISO 8601 timestamp (TZ=Asia/Tokyo で BSD/GNU date 両対応、JST 固定)
+# `date -Iseconds` は GNU 拡張で macOS/BSD では未サポートのため、portable な明示フォーマットを使用
+# Source: https://www.jbmurphy.com/2011/02/17/gnu-date-vs-bsd-date/
+#
+# verified-review MEDIUM-1 修正: date 失敗時に file_timestamp が空文字となり
+# json_path が `.rite/review-results/123-.json` 形式で生成され同一 PR の過去レビューを
+# 上書きする silent regression を防ぐ。trap setup 後に date を実行することで、失敗時も
+# `_rite_review_p61a_cleanup` が `[CONTEXT] FILE_TIMESTAMP=unknown` を emit できる。
+iso_timestamp=$(TZ='Asia/Tokyo' date +'%Y-%m-%dT%H:%M:%S+09:00') || iso_timestamp=""
+file_timestamp=$(TZ='Asia/Tokyo' date +'%Y%m%d%H%M%S') || file_timestamp=""
+
+if [ -z "$iso_timestamp" ] || [ -z "$file_timestamp" ]; then
+  echo "WARNING: date コマンドの実行に失敗しました。ローカル保存をスキップします" >&2
+  echo "  対処: TZ=Asia/Tokyo / date バイナリの存在を確認してください" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=date_command_failure" >&2
+  # 非ブロッキング契約 (4.4 MUST NOT): Phase 6 全体を失敗扱いにせず exit 0 で early return
+  # trap EXIT が `[CONTEXT] FILE_TIMESTAMP=unknown` を emit する (Phase 6.1.c が emit 前提で動作)
+  exit 0
+fi
 
 review_results_dir=".rite/review-results"
 json_path="${review_results_dir}/${pr_number}-${file_timestamp}.json"
@@ -2572,6 +2615,14 @@ RITE_JSON_EOF
       echo "WARNING: JSON 一時ファイルが syntactically invalid です (literal substitute 漏れの可能性)" >&2
       echo "  対処: review-result-schema.md に従った正しい JSON が Claude によって生成されているか確認してください" >&2
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=json_invalid" >&2
+    elif ! jq -e '.schema_version and .pr_number and (.findings | type == "array")' "$json_tmp" >/dev/null 2>&1; then
+      # verified-review HIGH-1 修正: jq empty は terminal value (`{}`, `null`, `42`) を pass する。
+      # 必須フィールド (schema_version / pr_number / findings[] 配列型) を明示検証しないと、
+      # `{}` や `{"schema_version": "1.0.0"}` のような不完全な JSON を「保存成功」として扱い、
+      # 後段の /rite:pr:fix が「指摘 0 件で正常終了」する silent regression を起こす。
+      echo "WARNING: JSON が必須フィールド (schema_version / pr_number / findings[]) を欠いています" >&2
+      echo "  対処: Claude が review-result-schema.md に従った完全な JSON を生成しているか確認してください" >&2
+      echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing" >&2
     else
       if mv "$json_tmp" "$json_path" 2>/dev/null; then
         echo "✅ レビュー結果を保存しました: $json_path"
@@ -2648,8 +2699,14 @@ then
 fi
 
 # gh pr comment の exit code を明示捕捉 (silent failure 防止)
+# CRITICAL-1 修正 (verified-review): `if ! cmd; then rc=$?` パターンは bash 仕様上 $? が
+# 常に 0 になる (`!` パイプライン否定の結果が then 節に伝播)。`if cmd; then :; else rc=$?` の
+# else 節形式に切り替えることで gh pr comment 自身の exit code を正しく捕捉する。
+# 実証: `bash -c 'if ! (exit 42); then echo $?; fi'` → `0`
 gh_err=$(mktemp /tmp/rite-review-p61b-gh-err-XXXXXX) || gh_err=""
-if ! gh pr comment {pr_number} --body-file "$tmpfile" 2>"${gh_err:-/dev/null}"; then
+if gh pr comment {pr_number} --body-file "$tmpfile" 2>"${gh_err:-/dev/null}"; then
+  : # success
+else
   gh_rc=$?
   echo "ERROR: PR コメント投稿に失敗しました (gh rc=$gh_rc)" >&2
   if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
@@ -2659,7 +2716,7 @@ if ! gh pr comment {pr_number} --body-file "$tmpfile" 2>"${gh_err:-/dev/null}"; 
   echo "  対処: gh auth status / network 接続 / PR #{pr_number} の権限を確認してください" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=gh_comment_post_failure; rc=$gh_rc" >&2
   [ -n "$gh_err" ] && rm -f "$gh_err"
-  exit $gh_rc
+  exit "${gh_rc:-1}"
 fi
 [ -n "$gh_err" ] && rm -f "$gh_err"
 ````
