@@ -496,6 +496,41 @@ fi
 - `bang_backtick_finding_count`: Extract from `bang_backtick_output` by matching the line `==> Total bang-backtick findings: N` (regex: `/Total bang-backtick findings: (\d+)/`). If no match found, default to 0
 - `bang_backtick_output`: Script output (truncated if >50 lines)
 
+### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
+
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 3 files that MUST stay in sync: `plugins/rite/skills/reviewers/tech-writer.md` (Activation section), `plugins/rite/commands/pr/review.md` (Phase 1.2.7 `doc_file_patterns` pseudo-code block), and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/doc-heavy-patterns-drift-check.sh ]; then
+  doc_heavy_drift_output=$(bash {plugin_root}/hooks/scripts/doc-heavy-patterns-drift-check.sh --all 2>&1)
+  doc_heavy_drift_exit_code=$?
+else
+  doc_heavy_drift_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `doc_heavy_drift_status` | Action |
+|-----------|--------------------------|--------|
+| 0 | `success` | No drift across the 3 files — continue to Phase 4 |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Drift detection results are treated as **warnings**, not errors — same policy as Phase 3.5 drift check and Phase 3.6 bang-backtick check. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Reason: existing checks stay non-blocking during staged rollout, and the 3-file invariant should be fixed promptly by the author of the diverging change but not gate CI until coverage is validated across the rite plugin's self-hosting workflow.
+
+**Record drift results** for Phase 4 reporting:
+- `doc_heavy_drift_status`: `success` / `warning` / `error` / `skipped`
+- `doc_heavy_drift_finding_count`: Extract from `doc_heavy_drift_output` by matching the line `==> Total doc-heavy-patterns-drift findings: N` (regex: `/Total doc-heavy-patterns-drift findings: (\d+)/`). If no match found, default to 0
+- `doc_heavy_drift_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -577,7 +612,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {bang_backtick_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift or bang-backtick warnings/invocation errors.
+**Doc-heavy patterns drift appendix** (both standalone and E2E): When `doc_heavy_drift_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Both statuses use the same appendix so that invocation failures (exit code 2) are never silently dropped — same policy as the bang-backtick appendix:
+
+```
+⚠️ Doc-heavy patterns drift check: {doc_heavy_drift_finding_count} findings detected ({doc_heavy_drift_status}, non-blocking)
+{doc_heavy_drift_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, or doc-heavy-patterns-drift warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 

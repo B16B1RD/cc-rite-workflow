@@ -361,6 +361,8 @@ tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合
 
 > **Note — 本ファイル (`internal-consistency.md`) の位置付け**: 本ファイルは `doc_file_patterns` を**保持しない**(参照される検証プロトコルの定義書)。したがって本系統の drift 監視対象は上記 3 ファイル限定であり、本ファイルは invariant の対象外。
 
+> **自動検出 (Issue #353 系統 1)**: 本系統の drift は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` で自動検出される (`/rite:lint` Phase 3.7 から呼び出し、warning/non-blocking)。各ファイルの該当セクションから glob token 集合を抽出し pairwise set difference を報告する。系統 2 / 系統 3 は本検証の対象外 (将来 Issue で追跡)。
+
 #### 系統 2: canonical category name の 3 ファイル literal 一致
 
 5 verification categories の canonical name (`Implementation Coverage` / `Enumeration Completeness` / `UX Flow Accuracy` / `Order-Emphasis Consistency` / `Screenshot Presence`) は以下 **3 ファイル**で **literal substring match に耐えうる完全同一文字列** で書かれる必要がある (review.md Phase 5.1.3 Step 2 が literal substring match で検査するため):
@@ -369,9 +371,9 @@ tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合
 2. `plugins/rite/skills/reviewers/tech-writer.md` Critical Checklist と Doc-Heavy PR Mode セクション
 3. `plugins/rite/commands/pr/review.md` Phase 5.1.3 Step 2 META check の literal substring 一覧
 
-> **Note — `SKILL.md` は本系統の対象外**: SKILL.md は `doc_file_patterns` (Reviewers テーブルの tech-writer 行) のみを保持し、canonical category name は一切登場しない。Issue #353 の drift 検出 lint を実装する際は、本系統 1 と系統 2 の **2 種類の 3 ファイル集合** を区別して検査する必要がある (集合は重複するが完全同一ではない: 系統 1 は SKILL.md を含み internal-consistency.md を含まない / 系統 2 は internal-consistency.md を含み SKILL.md を含まない)。
+> **Note — `SKILL.md` は本系統の対象外**: SKILL.md は `doc_file_patterns` (Reviewers テーブルの tech-writer 行) のみを保持し、canonical category name は一切登場しない。Issue #353 系統 1 の drift 検出 lint は本系統 2 をカバーしない (系統 1 は `doc_file_patterns` の 3 ファイル集合を扱い、系統 2 は canonical category name の別の 3 ファイル集合を扱う。集合は重複するが完全同一ではない: 系統 1 は SKILL.md を含み internal-consistency.md を含まない / 系統 2 は internal-consistency.md を含み SKILL.md を含まない)。系統 2 の自動検出は将来 Issue で追跡。
 
-#### 系統 3: Phase 5.4 Doc-Heavy 報告セクションの 2 箇所重複 (drift 種 — Issue #353 拡張対象)
+#### 系統 3: Phase 5.4 Doc-Heavy 報告セクションの 2 箇所重複 (drift 種 — 将来 Issue で追跡)
 
 本 Issue #350 検証付きレビュー L-2 で発見された drift リスク:
 
@@ -379,13 +381,13 @@ tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合
 
 **現状 (本 Issue #350 検証付きレビュー C-3 対応後)**: 2 箇所のセクション本文 (placeholder ルール / 表構造 / 影響説明) は、本 Issue #350 検証付きレビュー C-3 対応で literal 一致を **取り戻している**。verification mode template 側に固有の「verification mode + Doc-Heavy 組み合わせでも post-condition check は実行される」という追記が 1 行あるが、これは責務上正当な差分。重複構造そのものは残っており、将来の更新時に再 drift する手動依存リスクは健在。
 
-**TODO(#353)**: Issue #353 の drift 検出 lint の対象範囲に、本系統 3 (review.md 内 Phase 5.4 Doc-Heavy セクションの 2 箇所重複) も含めること。具体的な検査方法:
+**将来 Issue**: 本系統 3 の自動検出は Issue #353 のスコープ外 (Issue #353 は系統 1 のみを対象とする)。将来対応の具体的な検査方法:
 
 - `review.md` 内で「Doc-Heavy PR Mode の検証状態」を示す同一見出しパターン (例: `#### Doc-Heavy PR Mode 検証状態` / `#### Doc-Heavy verification state` 等) が **2 回以上** 出現するかを検査
 - 出現した場合は、両方のセクション本文を diff して literal 一致を確認 (verification mode 固有の追記 1 行を許可リストに登録した上で、それ以外の差分があれば lint エラー)
 - 将来的には full mode template 側のみを source of truth とし、verification mode template 側は参照 1 行に置き換える (または独立 reference ファイルに切り出す) リファクタリングを優先検討する
 
-drift 検出の自動 lint は Issue #353 で追跡中 (系統 1 / 系統 2 / 系統 3 の 3 集合すべてをカバーする)。
+**現状サマリー**: 系統 1 の自動 lint は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として Issue #353 で実装済み (`/rite:lint` Phase 3.7 から warning/non-blocking で呼び出し)。系統 2 と系統 3 は将来 Issue で追跡。
 
 **関連ファイル** (本ファイルからの相対パスを明示):
 
