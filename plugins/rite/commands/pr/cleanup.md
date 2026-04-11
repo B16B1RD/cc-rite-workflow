@@ -289,7 +289,12 @@ Detect unchecked checkboxes (`- [ ]`) in the "Progress" section of the work memo
 # sed: 「### 進捗」から次の「### 」までの範囲を抽出
 # grep: 未完了チェックボックス（- [ ]）を検出
 # head -10: 表示量を制限（大量のタスクがある場合の可読性確保）
-incomplete_tasks=$(echo "$comment_body" | sed -n '/### 進捗/,/### /p' | grep -E '^\s*- \[ \]' | head -10)
+#
+# SIGPIPE 防止 (#398): `echo "$comment_body" | sed | grep | head -10` の pipeline では
+# comment_body が pipe buffer (64KB) を超えると head -10 の早期終了で echo に SIGPIPE が届く。
+# here-string `<<<` で echo subprocess を排除し、sed が一時ファイルから読むため SIGPIPE 経路がない。
+progress_section=$(sed -n '/### 進捗/,/### /p' <<< "$comment_body")
+incomplete_tasks=$(grep -E '^\s*- \[ \]' <<< "$progress_section" | head -10)
 ```
 
 **Note**: `sed -n '/### 進捗/,/### /p'` works correctly even when the progress section is at the end of the file (no subsequent `### ` section). In that case, the range from `### 進捗` to EOF is extracted.
