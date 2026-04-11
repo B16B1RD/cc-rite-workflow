@@ -270,7 +270,7 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 
 > **Issue #390: 3-block split** — 旧実装 (#350 で追加) は 11 ステップを単一 bash block (約 230 行) に詰め込んでいた。破綻時の再実行コスト・保守性・レビュー性を改善するため、以下 3 ブロックに分割する:
 >
-> - **Block A**: 統合 trap + API fetch + jq `.body`/`.user.login` 抽出 → 4 intermediate ファイル (`raw_json` + `intermediate_body` + `intermediate_author` + `intermediate_skip`) に永続化
+> - **Block A**: 統合 trap + API fetch + jq `.body`/`.user.login` 抽出 → `raw_json` + intermediate 3 ファイル (`intermediate_body` + `intermediate_author` + `intermediate_skip`、合計 4 ファイル) に永続化
 > - **Block B**: `raw_json` を再読込して jq `.issue_url` 抽出 → pr_number regex + URL suffix validate (silent misclassification 防止)
 > - **Block C**: intermediate → final handoff 3 ファイル (`body_file`/`author_file`/`skip_file`) 書き出し → post-condition check → 常に `raw_json`/intermediate を削除
 >
@@ -281,7 +281,7 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 **Block A — trap セットアップ + API fetch + jq 抽出 + intermediate 書き出し**
 
 ```bash
-# Block A (Issue #390): trap + gh api + jq .body / .user.login 抽出 + intermediate 4 ファイル書き出し
+# Block A (Issue #390): trap + gh api + jq .body / .user.login 抽出 + raw_json + intermediate 3 ファイル (合計 4 ファイル) 書き出し
 #
 # 設計: パス先行宣言 → trap 先行設定 → mktemp → gh api の順序で orphan race window を排除する。
 # Phase 4.5.1 / Phase 4.5.2 / Fast Path で同型の「パス先行宣言 → trap 先行設定 → mktemp」パターンに統一。
@@ -563,7 +563,7 @@ skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 # Block C scope の 2-state commit pattern (handoff_committed):
 # - handoff_committed=0 (初期値): 書き出し前/書き出し中の exit → handoff 3 ファイルも削除 (orphan 防止)
 # - handoff_committed=1 (全書き出し+post-condition pass 後): handoff 3 ファイルは保護される
-# raw_json/intermediate 4 ファイルは成功/失敗問わず常に削除する (後続 phase では使わない)。
+# raw_json + intermediate 3 ファイル (合計 4 ファイル) は成功/失敗問わず常に削除する (後続 phase では使わない)。
 handoff_committed=0
 _rite_fix_blockC_cleanup() {
   if [ "$handoff_committed" = "0" ]; then
@@ -632,7 +632,7 @@ if [ ! -s "$skip_file" ]; then
 fi
 
 # Block C 完了: handoff 3 ファイルを trap の cleanup 対象から外す (handoff_committed=1)
-# trap は raw_json と intermediate 4 ファイルを常に削除する (後続 phase では使わない)。
+# trap は raw_json + intermediate 3 ファイル (合計 4 ファイル) を常に削除する (後続 phase では使わない)。
 # これ以降、bash block 末尾に到達するか後続 phase でエラーが起きても、handoff 3 ファイルは保護される。
 # 後続 phase の cleanup (Phase 1.5 / Fast Path Cancel exit / Step C error exit) で明示的に削除する。
 handoff_committed=1
@@ -649,7 +649,7 @@ handoff_committed=1
 > - 日本語出力: `(不明なレビュアー)` (コメント投稿者が特定できないため mention を省略)
 > - 英語出力: `(unknown reviewer)` (mention omitted because the comment author could not be resolved)
 >
-> これにより GitHub 上に存在しない `@unknown` user への誤 mention を防ぐ。`jq_err` の cleanup は各 Block の EXIT/INT/TERM/HUP trap が呼び出す `_rite_fix_blockA_cleanup` / `_rite_fix_blockB_cleanup` / `_rite_fix_blockC_cleanup` 関数で保証され、異常終了・正常終了のいずれでも確実に削除される (旧実装の末尾明示 `rm -f` は refactor で trap 経路に一元化された。Issue #390 / PR #449)。ハンドオフ 3 ファイル (`body`, `author`, `author-skip`) は **Phase 1.4 末尾の明示的 cleanup bash block** (specific path 指定、wildcard glob は使用禁止) で削除する — 詳細は上記 Implementation note の手順 3 を参照。並列 fix 実行時の他セッション破壊を防ぐため `rm -f /tmp/rite-fix-target-body-*.txt` のような glob は絶対に使わない。
+> これにより GitHub 上に存在しない `@unknown` user への誤 mention を防ぐ。`jq_err` の cleanup は `jq_err` を作成する Block A / Block B の EXIT/INT/TERM/HUP trap が呼び出す `_rite_fix_blockA_cleanup` / `_rite_fix_blockB_cleanup` 関数で保証され、異常終了・正常終了のいずれでも確実に削除される (Block C は `jq_err` tempfile を作成しないため該当なし。旧実装の末尾明示 `rm -f` は refactor で trap 経路に一元化された。Issue #390 / PR #449)。ハンドオフ 3 ファイル (`body`, `author`, `author-skip`) は **Phase 1.4 末尾の明示的 cleanup bash block** (specific path 指定、wildcard glob は使用禁止) で削除する — 詳細は上記 Implementation note の手順 3 を参照。並列 fix 実行時の他セッション破壊を防ぐため `rm -f /tmp/rite-fix-target-body-*.txt` のような glob は絶対に使わない。
 
 **Parsing rule**:
 
@@ -731,7 +731,7 @@ handoff_committed=1
    # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
    # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
    # confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
-   # Issue #390: Block A/B/C 分割で raw_json + intermediate 4 ファイルも cleanup 対象に追加
+   # Issue #390: Block A/B/C 分割で raw_json + intermediate 3 ファイル (合計 4 ファイル) も cleanup 対象に追加
    # (Block C の trap が常に削除するが、Block A 成功後 orchestrator が異常終了して Block B/C 未到達の経路でも
    #  orphan を残さないための defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
    rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
@@ -1202,9 +1202,9 @@ PR #{number} のレビューコメント
 # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
 # Broad Comment Retrieval 経路ではこれらのファイルが存在しないため rm -f は silent no-op となる
 # confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
-# Issue #390 (PR #449 review MEDIUM 指摘): Block A/B/C 分割で raw_json + intermediate 4 ファイルも
-# cleanup 対象に追加 (Block C の trap が常に削除するが、Block A/B 成功後に本 cancel 経路に到達した
-# 場合の defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
+# Issue #390 (PR #449 review MEDIUM 指摘): Block A/B/C 分割で raw_json + intermediate 3 ファイル
+# (合計 4 ファイル) も cleanup 対象に追加 (Block C の trap が常に削除するが、Block A/B 成功後に本
+# cancel 経路に到達した場合の defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
 rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
@@ -1254,7 +1254,7 @@ Terminate processing.
 # {pr_number} / {target_comment_id} は Claude が Phase 1.0 の parse 結果で事前置換済み
 # 注: confidence_override tempfile は Phase 1.5 では削除しない。fix ループ全体で参照されるため、
 # Phase 8.1 (E2E flow) または Phase 4.6 後 (Standalone flow) で削除する (H-2 対応)。
-# Issue #390: Block A/B/C 分割で raw_json + intermediate 4 ファイルも cleanup 対象に追加
+# Issue #390: Block A/B/C 分割で raw_json + intermediate 3 ファイル (合計 4 ファイル) も cleanup 対象に追加
 # (Block C の trap が常に削除するが、Block A/B 成功後に orchestrator が異常終了して Block C 未到達の経路でも
 #  orphan を残さないための defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
 rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
