@@ -99,6 +99,67 @@ EOF
 rc=$?
 assert "synthetic clean file exits 0" "0" "$rc"
 
+# --- Test 4b: clean fixture WITH reason-table validates P2/P5 comparison ----
+# Test 4 above uses prose-only content. Without a reason-table or eval-table
+# parenthesized list, Pattern-2/5 detectors hit their early-return guards
+# (`[ -z "$table_reasons" ] && return 0` at distributed-fix-drift-check.sh:179
+# and `[ -z "$table_words" ] && return 0` at line 279). The exit-0 assertion
+# in Test 4 therefore proves only "no detector ran on the comparison branch" —
+# a false negative for the actual comm-based comparison logic.
+#
+# This test adds a fixture that DOES contain a reason-table and a Pattern-5
+# parenthesized list, with `reason=...` emits matching the table 1:1.  The
+# detectors must execute their comm comparisons and emit zero findings.
+CLEAN_TABLE=$(mktemp)
+TMPFILES+=("$CLEAN_TABLE")
+cat > "$CLEAN_TABLE" <<'EOF'
+# Clean fixture with reason-table
+
+## Reason table (Pattern-2)
+
+| reason | description |
+|--------|-------------|
+| `reason_alpha` | first reason |
+| `reason_beta`  | second reason |
+| `reason_gamma` | third reason |
+
+## Narrative emits (matches table 1:1)
+
+The following emits exercise the comparison logic without producing drift:
+
+- We emit reason=reason_alpha for case A.
+- We emit reason=reason_beta  for case B.
+- We emit reason=reason_gamma for case C.
+
+## Eval-table parenthesized list (Pattern-5)
+
+Order: ( `reason_alpha` / `reason_beta` / `reason_gamma` ) — all entries
+match the same set of emits above, so Pattern-5's comm comparison must
+return empty.
+EOF
+
+# Full run: assert exit 0 AND zero P2/P5 findings on the comparison-active path.
+out=$("$SCRIPT" --target "$CLEAN_TABLE" 2>&1)
+rc=$?
+assert "clean fixture with reason-table exits 0" "0" "$rc"
+
+p2_clean=$(grep -c '^\[drift\]\[P2\]' <<< "$out")
+assert "clean fixture with reason-table: 0 P2 drift" "0" "$p2_clean"
+
+p5_clean=$(grep -c '^\[drift\]\[P5\]' <<< "$out")
+assert "clean fixture with reason-table: 0 P5 drift" "0" "$p5_clean"
+
+# Per-pattern run: discriminator that the comparison ran rather than
+# early-returning. The fixture above guarantees both `table_reasons` and
+# `table_words` are non-empty, so neither detector can short-circuit.
+"$SCRIPT" --pattern 2 --target "$CLEAN_TABLE" >/dev/null 2>&1
+rc=$?
+assert "clean fixture --pattern 2 exits 0 (P2 comparison active)" "0" "$rc"
+
+"$SCRIPT" --pattern 5 --target "$CLEAN_TABLE" >/dev/null 2>&1
+rc=$?
+assert "clean fixture --pattern 5 exits 0 (P5 comparison active)" "0" "$rc"
+
 # --- Test 5: CJK anchors resolve correctly (Pattern 4 end-to-end) ------------
 # Use a temp directory so reference files can use relative paths for Pattern 4.
 CJK_DIR=$(mktemp -d)
