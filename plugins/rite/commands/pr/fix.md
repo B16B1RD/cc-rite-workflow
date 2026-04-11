@@ -544,9 +544,11 @@ fi
 ```bash
 # Block C (Issue #390): intermediate → final handoff 3 ファイル書き出し + post-condition + raw/intermediate 削除
 #
-# Block A/B が生成した intermediate 3 ファイル (body/author/skip) を読み出し、
+# Block A が生成した intermediate 3 ファイル (body/author/skip) を読み出し、
 # final handoff 3 ファイル (body_file/author_file/skip_file) に書き出す。
-# raw_json は Block B 専用で Block C は参照しないが、trap cleanup の対象には含めて常に削除する。
+# raw_json は Block A が生成し Block B が jq の入力として使用する。Block C は Block A/B 成功確認の
+# ための存在 check (下記 fail-fast check の defense-in-depth) のみ参照し、内容を consume することは
+# ないが、trap cleanup の対象には含めて常に削除する。
 # post-condition で handoff 3 ファイルの存在と非空を確認し、成功時は handoff_committed=1 を立てる。
 # trap は常に raw_json と intermediate 3 ファイルを削除する (後続 phase では不要)。
 # handoff_committed=0 (mid-write / post-condition fail) の場合は handoff 3 ファイルも削除する。
@@ -724,10 +726,10 @@ handoff_committed=1
 
    **Cancel/Re-run 経路でのハンドオフ cleanup 義務** (silent orphan ファイル防止):
 
-   `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / Phase 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した 3 ファイル **および confidence_override tempfile** を **明示的に削除する** bash 呼び出しを必ず実行する。これは Phase 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、Phase 1.4 末尾の Phase 1.5 cleanup から到達しない経路をカバーする:
+   `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / Phase 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3 + confidence_override、合計 8 本) を **明示的に削除する** bash 呼び出しを必ず実行する。これは Phase 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、Phase 1.4 末尾の Phase 1.5 cleanup から到達しない経路をカバーする:
 
    ```bash
-   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 ファイル + confidence_override tempfile を削除してから exit する
+   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 + raw_json + intermediate 3 + confidence_override tempfile (合計 8 本) を削除してから exit する
    # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
    # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
    # confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
@@ -795,7 +797,7 @@ handoff_committed=1
 
       次回も解釈不能な応答の場合、処理を中止します。
       ```
-   2. **再質問の応答も解釈不能の場合**: 上記「Cancel/Re-run 経路でのハンドオフ cleanup 義務」の bash block を実行して Fast Path 一時ファイル 3 本を削除してから、`[fix:error]` を出力して exit 1 (**parse 0 件のまま Phase 2 進入は禁止**)。エラーメッセージに「解釈不能な応答が 2 回続いたため処理を中止しました。fix loop を手動で再実行してください」を含める
+   2. **再質問の応答も解釈不能の場合**: 上記「Cancel/Re-run 経路でのハンドオフ cleanup 義務」の bash block を実行して Fast Path の全一時ファイル (合計 8 本) を削除してから、`[fix:error]` を出力して exit 1 (**parse 0 件のまま Phase 2 進入は禁止**)。エラーメッセージに「解釈不能な応答が 2 回続いたため処理を中止しました。fix loop を手動で再実行してください」を含める
 
    > **「無応答」について**: Claude Code の対話モデルでは「無応答」状態は通常発生しない (応答を待つ間ブロックされる) ため、上記から削除した。タイムアウト等で無応答が発生した場合は AskUserQuestion 自体のエラーとして扱われ、本ループには到達しない。
 
@@ -1194,7 +1196,7 @@ PR #{number} のレビューコメント
 
 **「キャンセル」選択時の Behavior** (silent orphan ファイル防止):
 
-`/rite:pr:fix` 実行時に Fast Path (Phase 1.2 Target Comment Fast Path) を経由してハンドオフ一時ファイル 3 本を作成した状態で「キャンセル」が選択された場合、Phase 1.5 cleanup を経由しないため、**Phase 1.4 末尾でも明示的にハンドオフファイルを削除する**。これは Phase 1.2 best-effort parse の「Cancel/Re-run 経路でのハンドオフ cleanup 義務」段落と同じ defense-in-depth 原則に従う。
+`/rite:pr:fix` 実行時に Fast Path (Phase 1.2 Target Comment Fast Path) を経由して Fast Path 一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を作成した状態で「キャンセル」が選択された場合、Phase 1.5 cleanup を経由しないため、**Phase 1.4 末尾でも明示的に Fast Path の全一時ファイル + confidence_override (合計 8 本) を削除する**。これは Phase 1.2 best-effort parse の「Cancel/Re-run 経路でのハンドオフ cleanup 義務」段落と同じ defense-in-depth 原則に従う。
 
 ```bash
 # Phase 1.4 「キャンセル」選択時の cleanup (silent orphan ファイル防止)
@@ -1241,7 +1243,7 @@ Terminate processing.
 
 **Execution condition**: Fast Path 経由で一時ファイル (`/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成し、かつ Phase 1.4 を「キャンセル以外」(= 「すべての指摘に対応」「CRITICAL/HIGH のみ対応」「特定の指摘を選択」のいずれか) で完走した場合のみ実行する。Broad Comment Retrieval 経路 (Fast Path 未経由) や Phase 1.4 「キャンセル」経路ではこれらのファイルは存在しないか別経路 (Phase 1.4 「キャンセル」Behavior block) で削除済みのため、`rm -f` は silent no-op となる。
 
-**Purpose**: Phase 1.2 Fast Path で作成したハンドオフ一時ファイル 3 本を明示的に削除する。**Phase 1.5 として独立に実行する** (Phase 1 の最終サブフェーズ、Phase 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
+**Purpose**: Phase 1.2 Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を明示的に削除する。**Phase 1.5 として独立に実行する** (Phase 1 の最終サブフェーズ、Phase 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
 
 **Important — specific path 必須** (並列 fix 実行の他セッション破壊防止):
 - wildcard glob (`/tmp/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / sprint team-execute / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
