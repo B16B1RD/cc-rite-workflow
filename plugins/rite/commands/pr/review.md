@@ -2436,6 +2436,7 @@ Phase 6 failure reasons:
 | reason | Description |
 |--------|-------------|
 | `tmpfile_write_failure` | Review result heredoc write to tmpfile failed (Phase 6.1.b PR comment post) |
+| `gh_comment_post_failure` | `gh pr comment` 投稿が exit != 0 で失敗 (Phase 6.1.b、network / auth / rate-limit / permission) |
 | `mkdir_failure` | `.rite/review-results/` directory creation failed (Phase 6.1.a, **WARNING only, do NOT fail Phase 6**) |
 | `mktemp_failure` | JSON tmpfile allocation failed (Phase 6.1.a, **WARNING only**) |
 | `write_failure` | JSON content write to tmpfile failed (Phase 6.1.a, **WARNING only**) |
@@ -2443,7 +2444,7 @@ Phase 6 failure reasons:
 
 **Non-blocking contract** (per 4.4 MUST NOT: "ローカルファイル保存失敗時に pr:review 全体を失敗扱いにしない"): `mkdir_failure` / `mktemp_failure` / `write_failure` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error.
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `mktemp_failure` / `write_failure` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure`).
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `mktemp_failure` / `write_failure` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure` / `gh_comment_post_failure`).
 
 #### 6.1.a Local JSON File Save (Always Executed — #443)
 
@@ -2467,7 +2468,7 @@ trap '_rite_review_p61a_cleanup; exit 143' TERM
 trap '_rite_review_p61a_cleanup; exit 129' HUP
 
 # Generate timestamp (TZ=Asia/Tokyo で BSD/GNU date 両対応、JST 固定)
-iso_timestamp=$(TZ='Asia/Tokyo' date +'%Y-%m-%dT%H:%M:%S+09:00')
+# iso_timestamp は emit せず、Claude が JSON body 生成時に独立計算する (dead code 削除 — cycle 2 LOW fix)
 file_timestamp=$(TZ='Asia/Tokyo' date +'%Y%m%d%H%M%S')
 review_results_dir=".rite/review-results"
 json_path="${review_results_dir}/{pr_number}-${file_timestamp}.json"
@@ -2510,15 +2511,16 @@ RITE_JSON_EOF
   fi
 fi
 
-# file_timestamp と json_saved を Phase 6.1.c / Phase 6.1.b の Claude 参照用に stdout 出力
-echo "[CONTEXT] FILE_TIMESTAMP=$file_timestamp"
-echo "[CONTEXT] JSON_SAVED=$json_saved"
+# file_timestamp と json_saved を Phase 6.1.c / Phase 6.1.b の Claude 参照用に stderr 出力
+# (他の [CONTEXT] emit と規約統一 — cycle 2 MEDIUM fix)
+echo "[CONTEXT] FILE_TIMESTAMP=$file_timestamp" >&2
+echo "[CONTEXT] JSON_SAVED=$json_saved" >&2
 ```
 
 **Non-blocking contract** (4.4 MUST NOT / AC-1 compliance): If local save fails for any reason, `/rite:pr:review` MUST NOT fail — it logs a WARNING and proceeds. The review results remain available via conversation context for immediate `/rite:pr:fix` invocation.
 
 **Placeholder data flow**:
-- `file_timestamp` は Phase 6.1.a bash block の stdout で `[CONTEXT] FILE_TIMESTAMP=...` として emit される。Phase 6.1.c の Claude はこの値を会話コンテキストから読み取って skip notification に埋め込む。
+- `file_timestamp` は Phase 6.1.a bash block の **stderr** で `[CONTEXT] FILE_TIMESTAMP=...` として emit される (他の `[CONTEXT]` emit と規約統一)。Phase 6.1.c の Claude はこの値を会話コンテキストから読み取って skip notification に埋め込む。Bash tool 経由では stdout/stderr 両方が Claude のコンテキストに取り込まれるため、stderr でも読取に支障はない。
 - `json_saved` は同様に `[CONTEXT] JSON_SAVED=true/false` として emit され、Phase 6.1.c は参照できるが必須ではない。
 
 #### 6.1.b PR Comment Post (Conditional on `{post_comment_mode}` — #443)
@@ -2572,7 +2574,21 @@ then
   exit 1
 fi
 
-gh pr comment {pr_number} --body-file "$tmpfile"
+# gh pr comment の exit code を明示捕捉 (cycle 2 HIGH fix — silent failure 防止)
+gh_err=$(mktemp /tmp/rite-review-p61b-gh-err-XXXXXX) || gh_err=""
+if ! gh pr comment {pr_number} --body-file "$tmpfile" 2>"${gh_err:-/dev/null}"; then
+  gh_rc=$?
+  echo "ERROR: PR コメント投稿に失敗しました (gh rc=$gh_rc)" >&2
+  if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
+    echo "  詳細 (gh stderr 先頭 5 行):" >&2
+    head -5 "$gh_err" | sed 's/^/  /' >&2
+  fi
+  echo "  対処: gh auth status / network 接続 / PR #{pr_number} の権限を確認してください" >&2
+  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=gh_comment_post_failure; rc=$gh_rc" >&2
+  [ -n "$gh_err" ] && rm -f "$gh_err"
+  exit $gh_rc
+fi
+[ -n "$gh_err" ] && rm -f "$gh_err"
 ````
 
 **Note**: Using `--body-file` with a temp file eliminates escaping issues and avoids shell variable expansion risks. The outer 4-backtick fence in this doc (` ```` `) contains the inner 3-backtick `` ```json `` / `` ``` `` inside the heredoc without breaking Markdown rendering.

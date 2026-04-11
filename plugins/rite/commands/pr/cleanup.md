@@ -1069,6 +1069,17 @@ Delete `.rite/review-results/{pr_number}-*.json` files associated with the merge
 - **Idempotent**: すでに削除済み / 存在しない場合でも警告を出さずに続行する
 
 ```bash
+# signal-specific trap (rm_err tempfile の orphan 防止 — cycle 2 LOW fix)
+# canonical trap pattern は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+rm_err=""
+_rite_cleanup_p25_cleanup() {
+  rm -f "${rm_err:-}"
+}
+trap 'rc=$?; _rite_cleanup_p25_cleanup; exit $rc' EXIT
+trap '_rite_cleanup_p25_cleanup; exit 130' INT
+trap '_rite_cleanup_p25_cleanup; exit 143' TERM
+trap '_rite_cleanup_p25_cleanup; exit 129' HUP
+
 pr_number="{pr_number}"
 review_results_dir=".rite/review-results"
 if [ -d "$review_results_dir" ]; then
@@ -1091,7 +1102,8 @@ if [ -d "$review_results_dir" ]; then
       echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=rm_failure; pr=${pr_number}" >&2
       echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
     fi
-    [ -n "$rm_err" ] && rm -f "$rm_err"
+    # trap による cleanup が signal 時の保護を担当するが、正常経路でも即時 rm で tempfile lifetime を短縮
+    [ -n "$rm_err" ] && rm -f "$rm_err" && rm_err=""
   else
     echo "ℹ️  削除対象のレビュー結果ファイルはありません (PR #${pr_number})"
   fi

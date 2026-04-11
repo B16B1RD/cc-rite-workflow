@@ -194,13 +194,14 @@ review_file_path="null"  # explicit set (undefined 参照防止)
 remaining_args="$original_args"
 
 # Pattern 1: --review-file=<path> (GNU-long-option style)
+# sed regex は `[[:space:]]` を使い tab 区切りも処理する (cycle 2 MEDIUM 指摘)
 if [[ "$remaining_args" =~ (^|[[:space:]])--review-file=([^[:space:]]+) ]]; then
   review_file_path="${BASH_REMATCH[2]}"
-  remaining_args=$(echo "$remaining_args" | sed -E 's/(^| )--review-file=[^[:space:]]+//')
-# Pattern 2: --review-file <path> (POSIX style with space)
+  remaining_args=$(echo "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file=[^[:space:]]+//')
+# Pattern 2: --review-file <path> (POSIX style with space/tab)
 elif [[ "$remaining_args" =~ (^|[[:space:]])--review-file[[:space:]]+([^[:space:]]+) ]]; then
   review_file_path="${BASH_REMATCH[2]}"
-  remaining_args=$(echo "$remaining_args" | sed -E 's/(^| )--review-file[[:space:]]+[^[:space:]]+//')
+  remaining_args=$(echo "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file[[:space:]]+[^[:space:]]+//')
 fi
 
 # remaining_args の前後 whitespace を trim
@@ -283,11 +284,25 @@ Terminate processing.
 | 3 | PR comment (backward-compat) | PR has `## 📜 rite レビュー結果` comment | Extract Raw JSON from code fence if present; else parse Markdown table (legacy) |
 | 4 | Interactive fallback | None of the above available | `AskUserQuestion` — prompt user for action (Phase 1.2.0.1) |
 
+**⚠️ Selection logic — Claude substitution required** (cycle 2 CRITICAL 指摘修正):
+
+下記 bash block は Phase 1.0.1 の別 Bash tool invocation で emit された `[CONTEXT] REVIEW_FILE_PATH=...` 値を参照する必要がある。シェル変数は Bash tool 呼び出し間で継承されないため、Claude は下記 bash block を生成する前に **会話コンテキストから `[CONTEXT] REVIEW_FILE_PATH=...` の値を読み取り、`review_file_path="<実値>"` の literal 代入文として bash 冒頭に埋め込む** こと。もし Phase 1.0.1 で `review_file_path="null"` だった場合は `review_file_path="null"` を literal に埋め込む。
+
 **Selection logic**:
 
 ```bash
+# ⚠️ Claude は以下の literal 代入を Phase 1.0.1 の [CONTEXT] REVIEW_FILE_PATH=... 値に基づいて substitute すること
+# 例: [CONTEXT] REVIEW_FILE_PATH=null → `review_file_path="null"`
+# 例: [CONTEXT] REVIEW_FILE_PATH=./foo.json → `review_file_path="./foo.json"`
+review_file_path="{review_file_path_from_phase_1_0_1}"
+review_source=""
+review_source_path=""
+
+# pipefail を有効化して pipeline 末尾以外のコマンド失敗も捕捉する
+set -o pipefail
+
 # Priority 0: Explicit --review-file (from Phase 1.0.1)
-if [ -n "${review_file_path:-}" ] && [ "${review_file_path}" != "null" ]; then
+if [ -n "$review_file_path" ] && [ "$review_file_path" != "null" ]; then
   if [ ! -f "$review_file_path" ]; then
     echo "エラー: --review-file で指定されたパスが存在しません: $review_file_path" >&2
     echo "[CONTEXT] REVIEW_SOURCE_MISSING=1; reason=explicit_file_not_found" >&2
@@ -297,27 +312,49 @@ if [ -n "${review_file_path:-}" ] && [ "${review_file_path}" != "null" ]; then
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_parse" >&2
     review_source="fallback"
   else
-    review_source="explicit_file"
-    review_source_path="$review_file_path"
+    # Priority 0: schema_version も Priority 2 と同じく検証するが、失敗時は直接 fallback へ
+    # (ユーザーの明示意図を尊重 — Priority 1-3 に silent fall-through しない)
+    schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path")
+    case "$schema_version" in
+      "1.0.0"|"1.0")
+        review_source="explicit_file"
+        review_source_path="$review_file_path"
+        ;;
+      *)
+        echo "エラー: --review-file で指定されたファイルの schema_version が未知です: $schema_version" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=explicit_file_schema_version_unknown" >&2
+        review_source="fallback"
+        ;;
+    esac
   fi
 fi
 
-# Priority 1: Conversation context (determined by Claude from conversation history — no bash check needed)
-# If conversation context already contains findings from a recent /rite:pr:review invocation
-# in this session, set review_source="conversation" and skip file/API access.
-# Claude determines this from the conversation context itself (presence of 📜 rite レビュー結果 content).
+# Priority 1: Conversation context (Claude が判断)
+# ⚠️ Claude への指示: Priority 0 が未発火 (review_source="") の状態で、
+# 同一 session 内の直前 assistant turn に `## 📜 rite レビュー結果` セクションを含む
+# /rite:pr:review の出力が残っている場合、下記 bash block を実行する前に会話コンテキストから
+# findings を読み取り、`review_source="conversation"` を literal substitute すること。
+# Priority 1 が採用された場合は必ず下記 emit を行う (observability 義務):
+if [ -z "$review_source" ]; then
+  # Claude が conversation context 内の review 結果を使うと判断した場合:
+  #   review_source="conversation"
+  #   echo "[CONTEXT] REVIEW_SOURCE=conversation; pr_number={pr_number}" >&2
+  # この literal substitution が行われなかった場合は Priority 2 以降にフォールスルーする。
+  :
+fi
 
-# Priority 2: Local file — find latest timestamp
-# find + printf '%T@ %p\n' | sort -rn で mtime 降順ソート (ls -1t parse anti-pattern を回避)
-if [ -z "${review_source:-}" ]; then
+# Priority 2: Local file — lexicographic sort で最新 timestamp を選択
+# ファイル名は {pr_number}-YYYYMMDDHHMMSS.json 形式で timestamp が zero-padded のため
+# 文字列 sort = 時系列 sort が成立する。BSD find 非互換の -printf を回避し portable に。
+if [ -z "$review_source" ]; then
   find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX) || find_err=""
-  if latest_line=$(find .rite/review-results -maxdepth 1 -type f -name "{pr_number}-*.json" -printf '%T@ %p\n' 2>"${find_err:-/dev/null}" | sort -rn | head -1); then
-    latest_file=$(echo "$latest_line" | cut -d' ' -f2-)
+  # pipefail 有効化済みのため pipe 全体の rc が捕捉される (find / sort / head のいずれか失敗で非ゼロ)
+  if latest_file=$(find .rite/review-results -maxdepth 1 -type f -name "{pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r | head -1); then
+    :  # latest_file 取得成功 (空文字列の可能性あり → 後段の `[ -n ]` で判定)
   else
-    find_rc=$?
     latest_file=""
     if [ -n "$find_err" ] && [ -s "$find_err" ]; then
-      echo "WARNING: .rite/review-results/ 検索時にエラー発生 (rc=$find_rc):" >&2
+      echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
       head -3 "$find_err" | sed 's/^/  /' >&2
     fi
   fi
@@ -325,9 +362,24 @@ if [ -z "${review_source:-}" ]; then
 
   if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
     if jq empty "$latest_file" 2>/dev/null; then
-      review_source="local_file"
-      review_source_path="$latest_file"
-      echo "✅ ローカルファイルからレビュー結果を読み込みます: $latest_file"
+      # schema_version 検証 (Priority 2 success 内で実施)
+      schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file")
+      case "$schema_version" in
+        "1.0.0"|"1.0")
+          review_source="local_file"
+          review_source_path="$latest_file"
+          echo "✅ ローカルファイルからレビュー結果を読み込みます: $latest_file"
+          ;;
+        *)
+          echo "WARNING: 未知の schema_version: $schema_version ($latest_file)" >&2
+          echo "  対処: schema 定義は plugins/rite/references/review-result-schema.md を参照" >&2
+          echo "  本ファイルをスキップし、次の優先順位のソース (Priority 3) を試行します。" >&2
+          echo "[CONTEXT] REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=local_file_schema_version_unknown" >&2
+          # 明示的に Priority 3 (pr_comment) に routing する (dead state 防止)
+          review_source="pr_comment"
+          review_source_path=""
+          ;;
+      esac
     else
       echo "WARNING: $latest_file は有効な JSON ではありません。次の優先度のソースを試行します。" >&2
     fi
@@ -335,46 +387,49 @@ if [ -z "${review_source:-}" ]; then
 fi
 
 # Priority 3: PR comment (fall through to existing Broad Retrieval path if still unresolved)
-if [ -z "${review_source:-}" ]; then
+if [ -z "$review_source" ]; then
   review_source="pr_comment"  # Existing Phase 1.2 Broad Retrieval / Fast Path handles this
 fi
+
+set +o pipefail
 ```
 
-**On Priority 0 failure** (explicit file missing/invalid): `review_source="fallback"` triggers Phase 1.2.0.1 interactive fallback. Do NOT fall through to Priority 1-3 silently when `--review-file` was explicitly requested but unusable — the user's intent was to use that specific file.
+**On Priority 0 failure** (explicit file missing/invalid/schema_unknown): `review_source="fallback"` triggers Phase 1.2.0.1 interactive fallback. Do NOT fall through to Priority 1-3 silently when `--review-file` was explicitly requested but unusable — the user's intent was to use that specific file.
 
-**On Priority 2 success — schema_version check + severity_map construction**:
-
-Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. Parse the JSON file per [review-result-schema.md](../../references/review-result-schema.md#json-schema). Before constructing `severity_map`, verify `schema_version` is a known value (currently `"1.0.0"`). Unknown versions trigger a WARNING and fall through to the next priority source:
+**On Priority 2 success**: Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. Parse the JSON file per [review-result-schema.md](../../references/review-result-schema.md#json-schema) and construct `severity_map` directly from `findings[]`:
 
 ```bash
-# schema_version verification
-schema_version=$(jq -r '.schema_version // "unknown"' "$review_source_path")
-case "$schema_version" in
-  "1.0.0"|"1.0")  # 1.0 は legacy 互換 (future: 1.0 を deprecate する)
-    ;;
-  *)
-    echo "WARNING: 未知の schema_version: $schema_version ($review_source_path)" >&2
-    echo "  対処: schema 定義は plugins/rite/references/review-result-schema.md を参照" >&2
-    echo "  本ファイルをスキップし、次の優先順位のソースを試行します。" >&2
-    review_source=""
-    review_source_path=""
-    ;;
-esac
-
-# Build severity_map from JSON findings array (schema_version 検証後)
-if [ -n "${review_source_path:-}" ]; then
+# Build severity_map from JSON findings array (schema_version 検証は Selection logic 内で既に完了済み)
+if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]; then
   severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries' "$review_source_path")
 fi
 ```
 
-**On Priority 3 (PR comment, backward-compat)**: After the existing Broad Retrieval retrieves the comment body, check for a `### 📄 Raw JSON` section with code fence. If present, extract and parse the JSON preferentially over Markdown table parsing:
+**On Priority 3 (PR comment, backward-compat)**: After the existing Broad Retrieval retrieves the comment body, check for a `### 📄 Raw JSON` section with code fence. Scope the awk parser to after the `### 📄 Raw JSON` section marker so that sample JSON blocks in findings' suggestion columns (which appear earlier in the comment) are not mistakenly captured:
 
 ```bash
-# Extract JSON from code fence inside the rite review comment
-raw_json=$(printf '%s' "$pr_review_comment_body" | awk '/^```json$/{flag=1; next} /^```$/{flag=0} flag')
+# Extract JSON from the Raw JSON section (scoped by section marker to avoid capturing
+# sample JSON fences in findings' suggestion columns — cycle 2 MEDIUM fix)
+raw_json=$(printf '%s' "$pr_review_comment_body" | awk '
+  /^### 📄 Raw JSON/   { in_section=1; next }
+  in_section && /^```json$/ { flag=1; next }
+  flag && /^```$/      { flag=0; exit }
+  flag                 { print }
+')
 if [ -n "$raw_json" ] && printf '%s' "$raw_json" | jq empty 2>/dev/null; then
-  # New format: use JSON directly
-  severity_map_json=$(printf '%s' "$raw_json" | jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries')
+  # New format: use JSON directly (still verify schema_version)
+  schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"')
+  case "$schema_version" in
+    "1.0.0"|"1.0")
+      severity_map_json=$(printf '%s' "$raw_json" | jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries')
+      ;;
+    *)
+      echo "WARNING: PR コメント内の Raw JSON schema_version が未知: $schema_version" >&2
+      echo "  legacy Markdown table parsing に fallthrough します。" >&2
+      echo "[CONTEXT] REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=pr_comment_schema_version_unknown" >&2
+      # Legacy Markdown table parser (Phase 1.2.1) に fallthrough
+      ;;
+  esac
 else
   # Legacy format: fall through to existing Markdown table parsing (Phase 1.2.1)
   :
@@ -411,28 +466,46 @@ When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid
 
 **Retry cap for ファイルパス指定**: 3 attempts total (initial + 2 retries). After 3 failures, terminate with `[fix:error]` and log `[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries`.
 
-**Retry counter bash state 実装例** (Claude が無限ループを避けるための state 管理テンプレート):
+**⚠️ Retry counter hard gate — 機械的強制ルール** (cycle 2 HIGH 指摘修正):
 
-Claude は `AskUserQuestion` を呼び出すたびに conversation context で retry count を追跡する。以下の擬似コードは intent を明示するためのもので、bash block として実行するものではない (Claude 自身の state 管理のため):
+Claude の自然言語判断のみに依存すると長 context / hallucination で無限ループ化するリスクがあるため、以下の **機械的 gate** を厳守する:
 
-```
-# Claude の state 管理 (pseudo-code, conversation-context based)
-user_file_path_retry_count = 0
-while user_file_path_retry_count < 3:
-    user_file_path_retry_count += 1
-    user_input = AskUserQuestion("JSON ファイルパスを入力してください")
-    if os.path.exists(user_input) and is_valid_json(user_input):
-        review_file_path = user_input
-        break  # 正常経路へ
-    # invalid: 次の retry へ
+1. **AskUserQuestion 呼び出し前の必須 emit**: Phase 1.2.0.1 の「ファイルパス指定」retry を実行する際、`AskUserQuestion` を呼び出す**直前**に必ず以下の bash を実行して retry count を emit する:
 
-if user_file_path_retry_count >= 3 and review_file_path is None:
-    print("[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries", file=sys.stderr)
-    print("[fix:error]")
-    exit(1)  # Claude は以降の Phase を実行せず終了する
-```
+   ```bash
+   # retry count は conversation context で追跡される (Claude は同一 session 内で発行した
+   # [CONTEXT] FIX_FALLBACK_RETRY=*/3 行の最大数字を現在の count として扱う)
+   retry_count={N}  # Claude は初回=1、2 回目=2、3 回目=3 を literal substitute する
+   echo "[CONTEXT] FIX_FALLBACK_RETRY=$retry_count/3" >&2
+   ```
 
-**Claude の実装責任**: conversation context で `user_file_path_retry_count` を追跡し、3 回目失敗時に必ず `[fix:error]` を emit して Phase 2+ への進入を阻止する。自然言語判断のみに依存せず、明示的に `retry_count >= 3` の gate を評価すること。
+2. **Hard gate check**: 上記 emit の実行前に、Claude は会話コンテキスト内の既存 `[CONTEXT] FIX_FALLBACK_RETRY=*/3` 行の最大数字を読み取り、**`>= 3` の場合は新たな AskUserQuestion を呼び出さず即座に以下を実行する**:
+
+   ```bash
+   echo "エラー: ファイルパス指定のリトライが 3 回続けて失敗しました" >&2
+   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_retries" >&2
+   echo "[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries" >&2
+   echo "[fix:error]"
+   exit 1
+   ```
+
+3. **Phase 2+ 進入禁止**: retry_count >= 3 で `[fix:error]` が emit された時点で Claude は **以降の Phase (Phase 2 Categorization, Phase 3 Commit, Phase 4 Report) への bash tool 呼び出しを一切行ってはならない**。これは機械的強制ルールであり、自然言語判断による例外を認めない。
+
+4. **実装例 (pseudo-code、Claude の state 管理の意図説明)**:
+
+   ```python
+   # Claude の処理フロー (Python-style pseudo-code for clarity)
+   current_retry_count = max([0] + [int(m) for m in re.findall(r'FIX_FALLBACK_RETRY=(\d+)/3', conversation_history)])
+   if current_retry_count >= 3:
+       emit("[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries", stream=stderr)
+       emit("[fix:error]", stream=stdout)
+       abort_all_subsequent_phases()
+   else:
+       new_count = current_retry_count + 1
+       emit(f"[CONTEXT] FIX_FALLBACK_RETRY={new_count}/3", stream=stderr)
+       user_input = AskUserQuestion("JSON ファイルパスを入力してください")
+       # ... validate and either break loop or iterate
+   ```
 
 **Phase 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
 
@@ -440,9 +513,12 @@ if user_file_path_retry_count >= 3 and review_file_path is None:
 |--------|-------------|
 | `explicit_file_not_found` | `--review-file` で指定されたパスが存在しない (Priority 0, triggers fallback) |
 | `explicit_file_parse` | `--review-file` で指定されたファイルが valid JSON ではない (Priority 0, triggers fallback) |
+| `explicit_file_schema_version_unknown` | `--review-file` で指定されたファイルの schema_version が未知 (Priority 0, triggers fallback) |
+| `local_file_schema_version_unknown` | Priority 2 で選ばれた最新 local file の schema_version が未知 (Priority 3 pr_comment へ routing) |
+| `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
 | `user_file_path_retries` | Interactive fallback の「ファイルパス指定」が 3 回連続で失敗 (terminate with `[fix:error]`) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): emit reasons sequence = (`explicit_file_not_found` / `explicit_file_parse` / `user_file_path_retries`)
+**Eval-order enumeration** (for Pattern-5 drift check): emit reasons sequence = (`explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_version_unknown` / `local_file_schema_version_unknown` / `pr_comment_schema_version_unknown` / `user_file_path_retries`)
 
 #### 1.2 Legacy Branching (PR Comment Path Only)
 
