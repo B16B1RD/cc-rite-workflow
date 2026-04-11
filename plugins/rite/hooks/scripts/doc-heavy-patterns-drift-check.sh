@@ -116,8 +116,22 @@ for f in "$TW_FILE" "$REVIEW_FILE" "$SKILL_FILE"; do
   fi
 done
 
+# Canonical signal-specific trap pattern (repo convention — see
+# commands/pr/references/bash-trap-patterns.md): declare path before mktemp,
+# set trap before mktemp, and guard the cleanup with ${var:-} so an early
+# signal (between path declaration and mktemp completion) cannot dereference
+# an unset variable. Signals return conventional exit codes (INT=130,
+# TERM=143, HUP=129) so callers can distinguish the cause.
+WORK_DIR=""
+_cleanup() {
+  [ -n "${WORK_DIR:-}" ] && rm -rf "$WORK_DIR"
+}
+trap 'rc=$?; _cleanup; exit $rc' EXIT
+trap '_cleanup; exit 130' INT
+trap '_cleanup; exit 143' TERM
+trap '_cleanup; exit 129' HUP
+
 WORK_DIR="$(mktemp -d)" || { echo "ERROR: mktemp -d failed" >&2; exit 2; }
-trap 'rm -rf "$WORK_DIR"' EXIT
 
 # --- Section extractors ------------------------------------------------------
 
@@ -178,10 +192,33 @@ normalize_set() {
 }
 
 # --- Run extractors ----------------------------------------------------------
+#
+# Each pipeline is guarded by an explicit exit-code check so an IO error,
+# grep/awk failure, or redirect write failure surfaces with the actual cause
+# instead of falling through to the `< 10` token guard below. Without the
+# check a partial/empty set file would reach the guard, which would then
+# misreport the failure as "section markers changed" and misdirect debugging.
 
-extract_tw     | extract_tokens | normalize_set > "$WORK_DIR/tw.set"
-extract_review | extract_tokens | normalize_set > "$WORK_DIR/review.set"
-extract_skill  | extract_tokens | normalize_set > "$WORK_DIR/skill.set"
+set -o pipefail
+if ! extract_tw | extract_tokens | normalize_set > "$WORK_DIR/tw.set"; then
+  echo "ERROR: tech-writer.md extractor pipeline failed (grep/awk IO error or write failure)" >&2
+  echo "  Likely cause: read permission on $TW_FILE, or /tmp write failure" >&2
+  echo "  Recovery: inspect the file and re-run; do not confuse this with a section-marker change" >&2
+  exit 2
+fi
+if ! extract_review | extract_tokens | normalize_set > "$WORK_DIR/review.set"; then
+  echo "ERROR: review.md extractor pipeline failed (grep/awk IO error or write failure)" >&2
+  echo "  Likely cause: read permission on $REVIEW_FILE, or /tmp write failure" >&2
+  echo "  Recovery: inspect the file and re-run; do not confuse this with a section-marker change" >&2
+  exit 2
+fi
+if ! extract_skill | extract_tokens | normalize_set > "$WORK_DIR/skill.set"; then
+  echo "ERROR: SKILL.md extractor pipeline failed (grep/awk IO error or write failure)" >&2
+  echo "  Likely cause: read permission on $SKILL_FILE, or /tmp write failure" >&2
+  echo "  Recovery: inspect the file and re-run; do not confuse this with a section-marker change" >&2
+  exit 2
+fi
+set +o pipefail
 
 tw_count=$(wc -l < "$WORK_DIR/tw.set")
 review_count=$(wc -l < "$WORK_DIR/review.set")
