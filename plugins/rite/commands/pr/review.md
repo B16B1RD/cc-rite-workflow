@@ -2449,96 +2449,151 @@ Phase 6 failure reasons:
 
 Save review results as a timestamped JSON file per [review-result-schema.md](../../references/review-result-schema.md). This is executed **regardless** of `{post_comment_mode}` so that `/rite:pr:fix` can read results via the local-file path.
 
+**Claude substitution requirements**:
+- `{review_result_json_heredoc_body}`: Claude generates the JSON body (conforming to review-result-schema.md) and substitutes it directly into the `RITE_JSON_EOF` heredoc below. The heredoc uses a single-quoted delimiter so shell expansion is suppressed — JSON may contain `'`, `"`, `$`, `` ` `` without escaping.
+- `{pr_number}`: Already resolved from Phase 1.0.
+- Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (ISO 8601 JST), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding: `id`, `reviewer`, `category`, `severity`, `file`, `line`, `description`, `suggestion`, `status: "open"`.
+
 ```bash
-# Generate timestamp in JST (ISO 8601 for JSON body; compact form for filename)
-iso_timestamp=$(date -u -d '+9 hours' +'%Y-%m-%dT%H:%M:%S+09:00' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%S%z')
-file_timestamp=$(date -u -d '+9 hours' +'%Y%m%d%H%M%S' 2>/dev/null || date +'%Y%m%d%H%M%S')
+# Phase 6.1.a: ローカル JSON 保存 (非ブロッキング、signal-specific trap 保護)
+# canonical trap pattern は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+json_tmp=""
+_rite_review_p61a_cleanup() {
+  rm -f "${json_tmp:-}"
+}
+trap 'rc=$?; _rite_review_p61a_cleanup; exit $rc' EXIT
+trap '_rite_review_p61a_cleanup; exit 130' INT
+trap '_rite_review_p61a_cleanup; exit 143' TERM
+trap '_rite_review_p61a_cleanup; exit 129' HUP
+
+# Generate timestamp (TZ=Asia/Tokyo で BSD/GNU date 両対応、JST 固定)
+iso_timestamp=$(TZ='Asia/Tokyo' date +'%Y-%m-%dT%H:%M:%S+09:00')
+file_timestamp=$(TZ='Asia/Tokyo' date +'%Y%m%d%H%M%S')
 review_results_dir=".rite/review-results"
 json_path="${review_results_dir}/{pr_number}-${file_timestamp}.json"
+
+# json_saved 変数の冒頭初期化 (成功時のみ true に更新する)
+json_saved="false"
 
 # Create directory (MUST NOT fail Phase 6 if creation fails)
 if ! mkdir -p "$review_results_dir" 2>/dev/null; then
   echo "WARNING: .rite/review-results/ ディレクトリの作成に失敗しました。会話コンテキストのみで続行します。" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mkdir_failure" >&2
-  json_saved="false"
 else
-  # Write JSON file atomically via tmpfile + mv
-  json_tmp=$(mktemp /tmp/rite-review-json-XXXXXX.json) || {
+  # Write JSON file atomically via tmpfile + mv (heredoc で single-quote collision 回避)
+  if ! json_tmp=$(mktemp /tmp/rite-review-p61a-json-XXXXXX.json); then
     echo "WARNING: JSON 一時ファイルの作成に失敗しました" >&2
     echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mktemp_failure" >&2
-    json_saved="false"
-  }
+    json_tmp=""
+  fi
+
   if [ -n "$json_tmp" ]; then
-    if printf '%s' '{review_result_json}' > "$json_tmp" 2>/dev/null && [ -s "$json_tmp" ]; then
+    if ! cat > "$json_tmp" <<'RITE_JSON_EOF'
+{review_result_json_heredoc_body}
+RITE_JSON_EOF
+    then
+      echo "WARNING: JSON 一時ファイルへの書き込みに失敗しました" >&2
+      echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
+    elif [ ! -s "$json_tmp" ]; then
+      echo "WARNING: JSON 一時ファイルが空です (cat 成功だが post-condition 違反)" >&2
+      echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
+    else
       if mv "$json_tmp" "$json_path" 2>/dev/null; then
         echo "✅ レビュー結果を保存しました: $json_path"
         json_saved="true"
+        json_tmp=""  # mv 成功後は trap による削除対象から外す
       else
         echo "WARNING: JSON ファイルの配置に失敗しました ($json_path)" >&2
-        rm -f "$json_tmp"
         echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mv_failure" >&2
-        json_saved="false"
       fi
-    else
-      echo "WARNING: JSON 一時ファイルへの書き込みに失敗しました" >&2
-      rm -f "$json_tmp"
-      echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
-      json_saved="false"
     fi
   fi
 fi
+
+# file_timestamp と json_saved を Phase 6.1.c / Phase 6.1.b の Claude 参照用に stdout 出力
+echo "[CONTEXT] FILE_TIMESTAMP=$file_timestamp"
+echo "[CONTEXT] JSON_SAVED=$json_saved"
 ```
 
-**Placeholder**: `{review_result_json}` is the JSON-serialized review result conforming to [review-result-schema.md](../../references/review-result-schema.md). Claude must construct this from Phase 5 integrated results with the following required fields: `schema_version: "1.0"`, `pr_number`, `timestamp` (ISO 8601 JST), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding must have `id`, `reviewer`, `category`, `severity`, `file`, `line`, `description`, `suggestion`, `status: "open"`.
-
 **Non-blocking contract** (4.4 MUST NOT / AC-1 compliance): If local save fails for any reason, `/rite:pr:review` MUST NOT fail — it logs a WARNING and proceeds. The review results remain available via conversation context for immediate `/rite:pr:fix` invocation.
+
+**Placeholder data flow**:
+- `file_timestamp` は Phase 6.1.a bash block の stdout で `[CONTEXT] FILE_TIMESTAMP=...` として emit される。Phase 6.1.c の Claude はこの値を会話コンテキストから読み取って skip notification に埋め込む。
+- `json_saved` は同様に `[CONTEXT] JSON_SAVED=true/false` として emit され、Phase 6.1.c は参照できるが必須ではない。
 
 #### 6.1.b PR Comment Post (Conditional on `{post_comment_mode}` — #443)
 
 Execute this sub-phase **only when** `{post_comment_mode}=true` from Phase 1.0. When `{post_comment_mode}=false`, skip this entire sub-phase.
 
-```bash
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-if ! cat <<'EOF' > "$tmpfile"
+**Nested code fence 対策**: 投稿する PR コメント本文は Markdown テーブル + code fence JSON を含む。外側 bash fenced code block (本ドキュメント中) を **4-backtick** で包むことで、内側 3-backtick の code fence を透過的に含められる。
+
+**Claude substitution requirements**:
+- `{review_result_content_heredoc_body}`: Phase 5.4 で生成した integrated report 全体 (Markdown)。改行・バッククォート・シングルクォート・`$` を含んでもよい。
+- `{review_result_json_heredoc_body}`: Phase 6.1.a と同一の JSON 本文 (Raw JSON セクション埋込用)。
+- `{pr_number}`: Phase 1.0 の値。
+
+````bash
+# Phase 6.1.b: PR コメント投稿 (signal-specific trap 保護)
+tmpfile=""
+_rite_review_p61b_cleanup() {
+  rm -f "${tmpfile:-}"
+}
+trap 'rc=$?; _rite_review_p61b_cleanup; exit $rc' EXIT
+trap '_rite_review_p61b_cleanup; exit 130' INT
+trap '_rite_review_p61b_cleanup; exit 143' TERM
+trap '_rite_review_p61b_cleanup; exit 129' HUP
+
+tmpfile=$(mktemp /tmp/rite-review-p61b-comment-XXXXXX.md) || {
+  echo "ERROR: tmpfile 作成失敗" >&2
+  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=tmpfile_write_failure" >&2
+  exit 1
+}
+
+# RITE_COMMENT_EOF_7f3a9b2c: 衝突可能性の極めて低い sentinel
+if ! cat > "$tmpfile" <<'RITE_COMMENT_EOF_7f3a9b2c'
 ## 📜 rite レビュー結果
 
-{review_result_content}
+{review_result_content_heredoc_body}
 
 ---
 
 ### 📄 Raw JSON
 
 ```json
-{review_result_json}
+{review_result_json_heredoc_body}
 ```
 
 ---
 🤖 Generated by `/rite:pr:review`
-EOF
+RITE_COMMENT_EOF_7f3a9b2c
 then
   echo "ERROR: レビュー結果の一時ファイル書き込みに失敗" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=tmpfile_write_failure" >&2
   exit 1
 fi
+
 gh pr comment {pr_number} --body-file "$tmpfile"
-```
+````
 
-**Note**: Using `--body-file` with a temp file eliminates escaping issues and avoids shell variable expansion risks.
+**Note**: Using `--body-file` with a temp file eliminates escaping issues and avoids shell variable expansion risks. The outer 4-backtick fence in this doc (` ```` `) contains the inner 3-backtick `` ```json `` / `` ``` `` inside the heredoc without breaking Markdown rendering.
 
-**Note**: `{review_result_content}` uses the integrated report generated in Phase 5.4 (template based on `review_mode`). The `📎 reviewed_commit: {current_commit_sha}` at the end of the report is used in the verification mode of the next cycle, so it must always be included.
+**Note**: `{review_result_content_heredoc_body}` uses the integrated report generated in Phase 5.4 (template based on `review_mode`). The `📎 reviewed_commit: {current_commit_sha}` at the end of the report is used in the verification mode of the next cycle, so it must always be included.
 
-**Note on Raw JSON section** (#443): The `### 📄 Raw JSON` section embeds the same JSON as saved to the local file (Phase 6.1.a). This enables `/rite:pr:fix` to extract the JSON via regex `` ```json\n([\s\S]+?)\n``` `` for the PR comment fallback path (Priority 3 in [review-result-schema.md](../../references/review-result-schema.md#読取優先順位-prfix)). The existing Markdown table format is preserved above the Raw JSON section for human readability and backward compatibility with older fix-loop parsing logic.
+**Note on Raw JSON section** (#443): The `### 📄 Raw JSON` section embeds the same JSON as saved to the local file (Phase 6.1.a). This enables `/rite:pr:fix` to extract the JSON via a parse over the `` ```json `` fence (awk line-state parsing in `fix.md` Phase 1.2.0 Priority 3). The Markdown table format above the Raw JSON section is preserved for human readability and backward compatibility with older fix-loop parsing logic.
 
 #### 6.1.c Skip Notification (when `{post_comment_mode}=false`)
 
-When `{post_comment_mode}=false`, inform the user that PR comment posting was skipped (for observability — this is not an error):
+When `{post_comment_mode}=false`, inform the user that PR comment posting was skipped (for observability — this is not an error).
+
+Claude は Phase 6.1.a の stdout から `[CONTEXT] FILE_TIMESTAMP=...` を会話コンテキストで読み取り、以下のメッセージに埋め込んで出力する:
 
 ```
 ℹ️  PR コメント記録はスキップされました (pr_review.post_comment=false)
   ローカルファイル: .rite/review-results/{pr_number}-{file_timestamp}.json
   コメント記録を有効化するには --post-comment フラグまたは rite-config.yml で pr_review.post_comment: true を設定してください
 ```
+
+ここで `{file_timestamp}` は Phase 6.1.a で emit された `[CONTEXT] FILE_TIMESTAMP=...` 行の値に置換する。Phase 6.1.a が `LOCAL_SAVE_FAILED=1` を emit している場合は「ローカルファイル」行を省略し、代わりに「ローカル保存も失敗しました。会話コンテキストのみで続行します」と表示する。
 
 ### 6.1.1 Update Work Memory Phase
 

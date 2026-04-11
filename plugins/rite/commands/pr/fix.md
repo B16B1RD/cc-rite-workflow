@@ -105,6 +105,13 @@ Extract the following information from work memory and retain in context:
 
 > **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。
 
+> **⚠️ Internal execution order (#443 fix)**: Phase 1.0 内では以下の順序で処理する:
+>
+> 1. **Phase 1.0.1 を先に実行** (`--review-file <path>` / `--post-comment` 等のフラグトークンを `$ARGUMENTS` から抽出して `remaining_args` に除去済みの文字列を残す)
+> 2. **その後に下記 Detection rules table を `remaining_args` に対して適用**して `{pr_number}` / `{target_comment_id}` を抽出
+>
+> これにより `/rite:pr:fix 123 --review-file foo.json` のように PR 番号とフラグが混在しても、Detection rules は `123` だけを評価すれば済み、flag トークンで parsing failure に落ちることがない (Issue #443 で指摘された critical bug の修正)。
+
 **Always run this sub-phase**. Phase 1.1 が `gh pr view` を実行する前に、引数形式を正規化して `{pr_number}` と（該当時のみ）`{target_comment_id}` を抽出する。bare integer (`^[0-9]+$`) や引数なしの場合でも本サブフェーズを実行し、Detection rules table の順序 1 / 順序 4 で pr_number を抽出した上で **`{target_comment_id} = null` を explicit set** する (undefined 参照防止)。
 
 > **Why this ordering matters**: If you pass a PR URL or comment URL directly to `gh pr view {pr_number}`, the command will fail and Phase 1.1 will terminate with "PR not found". The Fast Path in Phase 1.2 cannot be reached. Always normalize first.
@@ -168,20 +175,46 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
 
 **Compatibility**: 既存の `pr_number` 単体挙動および引数なし挙動は一切変更されない。本 Phase は引数形式の判定のみを行い、Phase 1.1/1.2 の既存ロジックにはフラグ (`{target_comment_id}` の有無) を渡すだけである。
 
-#### 1.0.1 `--review-file <path>` Flag Parsing (#443)
+> **⚠️ Flag pre-stripping for Detection rules**: 上記 Detection rules table は `$ARGUMENTS` ではなく **Phase 1.0.1 で flag トークンを除去した `remaining_args`** に対して適用すること。これにより `/rite:pr:fix 123 --review-file foo.json` のように PR 番号とフラグが混在しても `123` だけが残り、order 1 regex にマッチする。
+
+#### 1.0.1 Flag Parsing — `--review-file` and pre-stripping (#443)
 
 `/rite:pr:fix --review-file <path>` を受け付けるため、以下の手順で `{review_file_path}` を抽出する。Phase 1.2 のハイブリッド読取ロジック (Priority 0: 明示指定) で参照される。
 
-**抽出手順**:
+**⚠️ このサブフェーズは Phase 1.0 Detection rules よりも先に実行される** (Phase 1.0 冒頭の internal execution order を参照)。
 
-1. `$ARGUMENTS` から `--review-file` トークンを検索する
-2. 見つかった場合、直後のトークンを `{review_file_path}` として抽出する (POSIX スタイル: `--review-file path/to/file.json`)
-3. `--review-file=path/to/file.json` 形式 (GNU-long-option style) も受け付ける (`=` で split)
-4. 見つからなかった場合、`{review_file_path} = null` を **explicit set** する (undefined 参照防止)
+**抽出手順** (bash 実装):
+
+```bash
+# Phase 1.0.1: flag トークンを $ARGUMENTS から pre-strip
+# {review_file_path} と remaining_args (pr_number / pr_url / comment_url) を分離する
+
+original_args="$ARGUMENTS"
+review_file_path="null"  # explicit set (undefined 参照防止)
+remaining_args="$original_args"
+
+# Pattern 1: --review-file=<path> (GNU-long-option style)
+if [[ "$remaining_args" =~ (^|[[:space:]])--review-file=([^[:space:]]+) ]]; then
+  review_file_path="${BASH_REMATCH[2]}"
+  remaining_args=$(echo "$remaining_args" | sed -E 's/(^| )--review-file=[^[:space:]]+//')
+# Pattern 2: --review-file <path> (POSIX style with space)
+elif [[ "$remaining_args" =~ (^|[[:space:]])--review-file[[:space:]]+([^[:space:]]+) ]]; then
+  review_file_path="${BASH_REMATCH[2]}"
+  remaining_args=$(echo "$remaining_args" | sed -E 's/(^| )--review-file[[:space:]]+[^[:space:]]+//')
+fi
+
+# remaining_args の前後 whitespace を trim
+remaining_args=$(echo "$remaining_args" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+
+echo "[CONTEXT] REVIEW_FILE_PATH=$review_file_path"
+echo "[CONTEXT] REMAINING_ARGS=$remaining_args"
+```
 
 **Validation**: この Phase では **パスの存在確認は行わない**。存在確認は Phase 1.2 のハイブリッド読取ロジック Priority 0 で実施し、失敗時は対話式 fallback に誘導する (AC-6 の Error Handling に従う、[review-result-schema.md](../../references/review-result-schema.md#エラーハンドリング) 参照)。
 
-**Compatibility**: `--review-file` を使わない既存呼び出し (`/rite:pr:fix 123` 等) は一切挙動変更なし。本フラグは Phase 1.2 冒頭の読取優先順位決定にのみ影響する。
+**Claude data flow**: Claude は上記 bash block の stdout から `[CONTEXT] REVIEW_FILE_PATH=...` と `[CONTEXT] REMAINING_ARGS=...` を会話コンテキストで読み取り、以後 Phase 1.0 Detection rules を `remaining_args` に対して適用する。Detection rules 側の regex は **必ず** `$ARGUMENTS` ではなく `remaining_args` を入力とすること。
+
+**Compatibility**: `--review-file` を使わない既存呼び出し (`/rite:pr:fix 123` 等) は一切挙動変更なし — `remaining_args = original_args` となり既存ロジックと等価。本フラグは Phase 1.2 冒頭の読取優先順位決定にのみ影響する。
 
 ### 1.1 Identify the PR
 
@@ -275,8 +308,21 @@ fi
 # Claude determines this from the conversation context itself (presence of 📜 rite レビュー結果 content).
 
 # Priority 2: Local file — find latest timestamp
-if [ "${review_source:-}" = "" ]; then
-  latest_file=$(ls -1t .rite/review-results/{pr_number}-*.json 2>/dev/null | head -1)
+# find + printf '%T@ %p\n' | sort -rn で mtime 降順ソート (ls -1t parse anti-pattern を回避)
+if [ -z "${review_source:-}" ]; then
+  find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX) || find_err=""
+  if latest_line=$(find .rite/review-results -maxdepth 1 -type f -name "{pr_number}-*.json" -printf '%T@ %p\n' 2>"${find_err:-/dev/null}" | sort -rn | head -1); then
+    latest_file=$(echo "$latest_line" | cut -d' ' -f2-)
+  else
+    find_rc=$?
+    latest_file=""
+    if [ -n "$find_err" ] && [ -s "$find_err" ]; then
+      echo "WARNING: .rite/review-results/ 検索時にエラー発生 (rc=$find_rc):" >&2
+      head -3 "$find_err" | sed 's/^/  /' >&2
+    fi
+  fi
+  [ -n "$find_err" ] && rm -f "$find_err"
+
   if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
     if jq empty "$latest_file" 2>/dev/null; then
       review_source="local_file"
@@ -289,18 +335,36 @@ if [ "${review_source:-}" = "" ]; then
 fi
 
 # Priority 3: PR comment (fall through to existing Broad Retrieval path if still unresolved)
-if [ "${review_source:-}" = "" ]; then
+if [ -z "${review_source:-}" ]; then
   review_source="pr_comment"  # Existing Phase 1.2 Broad Retrieval / Fast Path handles this
 fi
 ```
 
 **On Priority 0 failure** (explicit file missing/invalid): `review_source="fallback"` triggers Phase 1.2.0.1 interactive fallback. Do NOT fall through to Priority 1-3 silently when `--review-file` was explicitly requested but unusable — the user's intent was to use that specific file.
 
-**On Priority 2 success**: Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. Instead, parse the JSON file per [review-result-schema.md](../../references/review-result-schema.md#json-schema) and construct `severity_map` directly from `findings[]`:
+**On Priority 2 success — schema_version check + severity_map construction**:
+
+Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. Parse the JSON file per [review-result-schema.md](../../references/review-result-schema.md#json-schema). Before constructing `severity_map`, verify `schema_version` is a known value (currently `"1.0.0"`). Unknown versions trigger a WARNING and fall through to the next priority source:
 
 ```bash
-# Build severity_map from JSON findings array
-severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries' "$review_source_path")
+# schema_version verification
+schema_version=$(jq -r '.schema_version // "unknown"' "$review_source_path")
+case "$schema_version" in
+  "1.0.0"|"1.0")  # 1.0 は legacy 互換 (future: 1.0 を deprecate する)
+    ;;
+  *)
+    echo "WARNING: 未知の schema_version: $schema_version ($review_source_path)" >&2
+    echo "  対処: schema 定義は plugins/rite/references/review-result-schema.md を参照" >&2
+    echo "  本ファイルをスキップし、次の優先順位のソースを試行します。" >&2
+    review_source=""
+    review_source_path=""
+    ;;
+esac
+
+# Build severity_map from JSON findings array (schema_version 検証後)
+if [ -n "${review_source_path:-}" ]; then
+  severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries' "$review_source_path")
+fi
 ```
 
 **On Priority 3 (PR comment, backward-compat)**: After the existing Broad Retrieval retrieves the comment body, check for a `### 📄 Raw JSON` section with code fence. If present, extract and parse the JSON preferentially over Markdown table parsing:
@@ -346,6 +410,29 @@ When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid
 | **中止** | Output `[fix:error]` result pattern and terminate. Do NOT invoke any Phase 2+ logic |
 
 **Retry cap for ファイルパス指定**: 3 attempts total (initial + 2 retries). After 3 failures, terminate with `[fix:error]` and log `[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries`.
+
+**Retry counter bash state 実装例** (Claude が無限ループを避けるための state 管理テンプレート):
+
+Claude は `AskUserQuestion` を呼び出すたびに conversation context で retry count を追跡する。以下の擬似コードは intent を明示するためのもので、bash block として実行するものではない (Claude 自身の state 管理のため):
+
+```
+# Claude の state 管理 (pseudo-code, conversation-context based)
+user_file_path_retry_count = 0
+while user_file_path_retry_count < 3:
+    user_file_path_retry_count += 1
+    user_input = AskUserQuestion("JSON ファイルパスを入力してください")
+    if os.path.exists(user_input) and is_valid_json(user_input):
+        review_file_path = user_input
+        break  # 正常経路へ
+    # invalid: 次の retry へ
+
+if user_file_path_retry_count >= 3 and review_file_path is None:
+    print("[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries", file=sys.stderr)
+    print("[fix:error]")
+    exit(1)  # Claude は以降の Phase を実行せず終了する
+```
+
+**Claude の実装責任**: conversation context で `user_file_path_retry_count` を追跡し、3 回目失敗時に必ず `[fix:error]` を emit して Phase 2+ への進入を阻止する。自然言語判断のみに依存せず、明示的に `retry_count >= 3` の gate を評価すること。
 
 **Phase 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
 

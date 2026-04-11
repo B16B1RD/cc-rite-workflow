@@ -1060,27 +1060,40 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 
 ### 2.5 Delete Review Result Local Files (#443)
 
-Delete `.rite/review-results/{pr_number}-*.json` files associated with the merged PR. This complements the opt-in PR comment recording feature introduced in Issue #443 — see [review-result-schema.md](../references/review-result-schema.md#クリーンアップ) for the contract.
+Delete `.rite/review-results/{pr_number}-*.json` files associated with the merged PR. This complements the opt-in PR comment recording feature introduced in Issue #443 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract.
 
 **Safety constraints**:
 
 - **PR 番号 prefix 固定**: wildcard は必ず `{pr_number}-` で始まるパターンのみを許容する。`*.json` 単独や `.rite/review-results/*` など、他 PR のファイルを巻き込む形式は**絶対に使わない**
-- **Non-blocking**: ファイルが存在しない / `rm` が失敗しても cleanup 全体を失敗扱いにしない (`|| true` で吸収)
+- **Non-blocking**: ファイルが存在しない場合は warning なしで continue。`rm` 失敗 (permission denied / IO error) は WARNING + `[CONTEXT]` 表示して可視化 (silent 抑制しない)
 - **Idempotent**: すでに削除済み / 存在しない場合でも警告を出さずに続行する
 
 ```bash
+pr_number="{pr_number}"
 review_results_dir=".rite/review-results"
 if [ -d "$review_results_dir" ]; then
-  # 削除前にマッチ数をカウント (bash glob は no-match でリテラル文字列を返すため、shopt nullglob 相当の処理を明示的に実施)
+  # 削除前にマッチ数をカウント (bash glob は no-match でリテラル文字列を返すため、明示的 nullglob 相当の処理)
   matched_files=()
-  for f in "$review_results_dir"/{pr_number}-*.json; do
+  for f in "$review_results_dir"/"${pr_number}"-*.json; do
     [ -e "$f" ] && matched_files+=("$f")
   done
   if [ ${#matched_files[@]} -gt 0 ]; then
-    rm -f "${matched_files[@]}" 2>/dev/null || true
-    echo "✅ レビュー結果ファイルを削除しました: ${#matched_files[@]} 件 (PR #{pr_number})"
+    # rm の stderr を tempfile に退避し、失敗時に可視化する (silent failure 禁止)
+    rm_err=$(mktemp /tmp/rite-cleanup-rm-err-XXXXXX) || rm_err=""
+    if rm -f "${matched_files[@]}" 2>"${rm_err:-/dev/null}"; then
+      echo "✅ レビュー結果ファイルを削除しました: ${#matched_files[@]} 件 (PR #${pr_number})"
+    else
+      rm_rc=$?
+      echo "WARNING: 一部のレビュー結果ファイル削除に失敗 (PR #${pr_number}, rc=$rm_rc)" >&2
+      if [ -n "$rm_err" ] && [ -s "$rm_err" ]; then
+        head -5 "$rm_err" | sed 's/^/  /' >&2
+      fi
+      echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=rm_failure; pr=${pr_number}" >&2
+      echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
+    fi
+    [ -n "$rm_err" ] && rm -f "$rm_err"
   else
-    echo "ℹ️  削除対象のレビュー結果ファイルはありません (PR #{pr_number})"
+    echo "ℹ️  削除対象のレビュー結果ファイルはありません (PR #${pr_number})"
   fi
 else
   # Directory absent → nothing to clean up; silent no-op
