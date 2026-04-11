@@ -4,7 +4,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 
 > **CRITICAL: All Bash code in command templates MUST use the defensive patterns defined in this document.**
 >
-> These patterns prevent the 4 most common runtime errors observed in rite workflow execution.
+> These patterns prevent the 5 most common runtime errors observed in rite workflow execution.
 >
 > **Applies to**: All command templates under `commands/` that contain Bash code blocks
 
@@ -17,6 +17,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 - [Pattern 2: grep Variable Expansion](#pattern-2-grep-variable-expansion)
 - [Pattern 3: Python Inline Scripts with Japanese](#pattern-3-python-inline-scripts-with-japanese)
 - [Pattern 4: Directory Pre-creation](#pattern-4-directory-pre-creation)
+- [Pattern 5: SIGPIPE Prevention in Pipelines](#pattern-5-sigpipe-prevention-in-pipelines)
 - [Quick Checklist for Template Authors](#quick-checklist-for-template-authors)
 
 ---
@@ -29,6 +30,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 | 2 | `grep: 無効なオプション -- ' '` | Unquoted variable passed to grep | `grep -- "$pattern"` + `|| true` |
 | 3 | `SyntaxError: unterminated string literal` | Japanese strings in inline Python script (`python3 -c`) | File-based argument passing |
 | 4 | `そのようなファイルやディレクトリはありません` | Missing directory before file write | `mkdir -p` before write |
+| 5 | SIGPIPE / exit code 141 | `echo`/`printf` pipe to early-terminating `head`/`grep -m`/`grep -q` under `pipefail` | Here-string `<<<` instead of pipe |
 
 ---
 
