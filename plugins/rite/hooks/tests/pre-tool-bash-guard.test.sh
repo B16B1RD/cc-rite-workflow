@@ -465,10 +465,11 @@ echo "TC-026: reviewer subagent + 'git reset' → deny"
 rc=0
 output=$(run_guard_with_transcript "Bash" "git reset --hard HEAD" "$SUBAGENT_TRANSCRIPT") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "reviewer subagent git reset blocked"
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "reviewer subagent git reset blocked with correct pattern name"
 else
-  fail "Expected deny for reviewer git reset, got decision=$decision"
+  fail "Expected deny with reviewer-state-mutating-git for git reset, got decision=$decision reason=$reason"
 fi
 echo ""
 
@@ -479,10 +480,11 @@ echo "TC-027: reviewer subagent + 'git stash push' → deny"
 rc=0
 output=$(run_guard_with_transcript "Bash" "git stash push -m 'wip'" "$SUBAGENT_TRANSCRIPT") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "reviewer subagent git stash blocked"
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "reviewer subagent git stash push blocked with correct pattern name"
 else
-  fail "Expected deny for reviewer git stash, got decision=$decision"
+  fail "Expected deny with reviewer-state-mutating-git for git stash push, got decision=$decision reason=$reason"
 fi
 echo ""
 
@@ -546,10 +548,11 @@ echo "TC-032: reviewer subagent + 'git worktree remove' → deny"
 rc=0
 output=$(run_guard_with_transcript "Bash" "git worktree remove /tmp/rite-review-wt" "$SUBAGENT_TRANSCRIPT") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "reviewer subagent git worktree remove blocked"
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "reviewer subagent git worktree remove blocked with correct pattern name"
 else
-  fail "Expected deny for reviewer git worktree remove, got decision=$decision"
+  fail "Expected deny with reviewer-state-mutating-git for git worktree remove, got decision=$decision reason=$reason"
 fi
 echo ""
 
@@ -568,6 +571,197 @@ else
   fail "Expected allow for heredoc text, got rc=$rc output=$output"
 fi
 echo ""
+
+# --------------------------------------------------------------------------
+# Pattern 4 Cycle 2 additions (Issue #442 cycle 2 fixes)
+#
+# Coverage expansion: every always-deny verb, bypass path, and read-only
+# sub-command that stays allowed.
+# --------------------------------------------------------------------------
+
+# --- Helper: deny assertion with stderr/reason validation ---
+assert_subagent_deny() {
+  local label="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
+  local decision
+  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  local reason
+  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+    pass "$label"
+  else
+    fail "$label — expected deny (reviewer-state-mutating-git), got decision=$decision reason=$reason"
+  fi
+}
+
+# --- Helper: allow assertion (subagent) ---
+assert_subagent_allow() {
+  local label="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "$label"
+  else
+    fail "$label — expected allow, got rc=$rc output=$output"
+  fi
+}
+
+# --- Helper: allow assertion (main session) ---
+assert_main_allow() {
+  local label="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(run_guard_with_transcript "Bash" "$cmd" "$MAIN_TRANSCRIPT") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "$label"
+  else
+    fail "$label — expected allow, got rc=$rc output=$output"
+  fi
+}
+
+# --------------------------------------------------------------------------
+# TC-034〜042: Always-deny verbs coverage (denylist 主要カテゴリを網羅)
+# --------------------------------------------------------------------------
+echo "TC-034: subagent + git add → deny"
+assert_subagent_deny "subagent git add . blocked" "git add ."
+
+echo "TC-035: subagent + git commit → deny"
+assert_subagent_deny "subagent git commit blocked" "git commit -am 'wip'"
+
+echo "TC-036: subagent + git push → deny"
+assert_subagent_deny "subagent git push blocked" "git push origin feat/foo"
+
+echo "TC-037: subagent + git merge → deny"
+assert_subagent_deny "subagent git merge blocked" "git merge develop"
+
+echo "TC-038: subagent + git rebase → deny"
+assert_subagent_deny "subagent git rebase blocked" "git rebase -i HEAD~3"
+
+echo "TC-039: subagent + git cherry-pick → deny"
+assert_subagent_deny "subagent git cherry-pick blocked" "git cherry-pick abc1234"
+
+echo "TC-040: subagent + git revert → deny"
+assert_subagent_deny "subagent git revert blocked" "git revert abc1234"
+
+echo "TC-041: subagent + git restore → deny"
+assert_subagent_deny "subagent git restore blocked" "git restore --source=HEAD file.md"
+
+echo "TC-042: subagent + git update-ref → deny"
+assert_subagent_deny "subagent git update-ref blocked" "git update-ref refs/heads/foo abc1234"
+
+# --------------------------------------------------------------------------
+# TC-043〜047: Shell meta-char boundary bypass prevention
+# --------------------------------------------------------------------------
+echo "TC-043: subagent + semicolon-chained 'true;git reset' → deny"
+assert_subagent_deny "shell boundary ;git reset blocked" "true;git reset --hard HEAD"
+
+echo "TC-044: subagent + AND-chained '&&git checkout' → deny"
+assert_subagent_deny "shell boundary &&git checkout blocked" "cd /tmp&&git checkout develop -- file"
+
+echo "TC-045: subagent + command-substitution '\$(git commit)' → deny"
+assert_subagent_deny "shell boundary \$(git commit) blocked" "result=\$(git commit -am wip)"
+
+echo "TC-046: subagent + subshell '(git reset)' → deny"
+assert_subagent_deny "shell boundary (git reset) blocked" "(git reset --hard HEAD)"
+
+echo "TC-047: subagent + backtick \`git push\` → deny"
+assert_subagent_deny "shell boundary backtick git push blocked" "echo \`git push origin feat/foo\`"
+
+# --------------------------------------------------------------------------
+# TC-048〜053: Read-only sub-command false positive prevention
+# (git tag -l / git stash list / git reflog / git worktree list / git branch --list)
+# --------------------------------------------------------------------------
+echo "TC-048: subagent + 'git tag -l v1.*' → allow (read-only list)"
+assert_subagent_allow "subagent git tag -l allowed" "git tag -l 'v1.*'"
+
+echo "TC-049: subagent + 'git tag --list' → allow"
+assert_subagent_allow "subagent git tag --list allowed" "git tag --list"
+
+echo "TC-050: subagent + 'git stash list' → allow (read-only)"
+assert_subagent_allow "subagent git stash list allowed" "git stash list"
+
+echo "TC-051: subagent + 'git stash show stash@{0}' → allow (read-only)"
+assert_subagent_allow "subagent git stash show allowed" "git stash show stash@{0}"
+
+echo "TC-052: subagent + 'git reflog' (bare) → allow (read-only display)"
+assert_subagent_allow "subagent bare git reflog allowed" "git reflog"
+
+echo "TC-053: subagent + 'git worktree list' → allow (read-only)"
+assert_subagent_allow "subagent git worktree list allowed" "git worktree list"
+
+# --------------------------------------------------------------------------
+# TC-054〜057: git branch coverage (display allowed, mutations denied)
+# --------------------------------------------------------------------------
+echo "TC-054: subagent + bare 'git branch' → allow (list display)"
+assert_subagent_allow "subagent bare git branch allowed" "git branch"
+
+echo "TC-055: subagent + 'git branch --list' → allow"
+assert_subagent_allow "subagent git branch --list allowed" "git branch --list"
+
+echo "TC-056: subagent + 'git branch -a' → allow (display all)"
+assert_subagent_allow "subagent git branch -a allowed" "git branch -a"
+
+echo "TC-057a: subagent + 'git branch feature/foo' (bare new branch) → deny"
+assert_subagent_deny "subagent bare new branch creation blocked" "git branch feature/foo"
+
+echo "TC-057b: subagent + 'git branch --delete feature/foo' (long-form) → deny"
+assert_subagent_deny "subagent git branch --delete blocked" "git branch --delete feature/foo"
+
+echo "TC-057c: subagent + 'git branch --force feat' → deny"
+assert_subagent_deny "subagent git branch --force blocked" "git branch --force feat"
+
+# --------------------------------------------------------------------------
+# TC-058: git fetch (bare) allowed, --prune denied
+# --------------------------------------------------------------------------
+echo "TC-058a: subagent + 'git fetch origin' (bare) → allow"
+assert_subagent_allow "subagent bare git fetch allowed" "git fetch origin"
+
+echo "TC-058b: subagent + 'git fetch --prune' → deny"
+assert_subagent_deny "subagent git fetch --prune blocked" "git fetch --prune origin"
+
+# --------------------------------------------------------------------------
+# TC-059: Reviewer subagent + git reflog expire → deny
+# --------------------------------------------------------------------------
+echo "TC-059: subagent + 'git reflog expire --all' → deny"
+assert_subagent_deny "subagent git reflog expire blocked" "git reflog expire --all --expire=now"
+
+# --------------------------------------------------------------------------
+# TC-060: Reviewer subagent + git tag -a (annotated tag creation) → deny
+# --------------------------------------------------------------------------
+echo "TC-060: subagent + 'git tag -a v1.0 -m msg' → deny"
+assert_subagent_deny "subagent git tag -a blocked" "git tag -a v1.0 -m 'release'"
+
+# --------------------------------------------------------------------------
+# TC-061: False positive guard — quoted string containing 'git checkout'
+# --------------------------------------------------------------------------
+# The quote character `"` before `git` breaks the word boundary expected by
+# the case-glob `*" git checkout "*`, so echoed strings containing the
+# denylist verbs are correctly allowed. This TC locks in that behavior as a
+# non-regression guarantee.
+echo "TC-061: subagent + 'echo \"git checkout develop -- f\"' → allow (false positive guard)"
+assert_subagent_allow "echoed 'git checkout' string allowed (quote boundary)" 'echo "git checkout develop -- f"'
+
+# TC-061b: grep pattern argument containing 'git reset'
+echo "TC-061b: subagent + 'grep \"git reset\" log.txt' → allow"
+assert_subagent_allow "grep arg 'git reset' allowed (quote boundary)" 'grep "git reset" log.txt'
+
+# --------------------------------------------------------------------------
+# TC-062〜064: Main session non-regression for additional verbs
+# --------------------------------------------------------------------------
+echo "TC-062: main session + 'git add .' → allow"
+assert_main_allow "main session git add allowed" "git add ."
+
+echo "TC-063: main session + 'git commit -am msg' → allow"
+assert_main_allow "main session git commit allowed" "git commit -am 'fix: msg'"
+
+echo "TC-064: main session + 'git push origin' → allow"
+assert_main_allow "main session git push allowed" "git push origin feat/foo"
 
 # --------------------------------------------------------------------------
 # Summary

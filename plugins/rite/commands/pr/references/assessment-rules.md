@@ -83,6 +83,6 @@ The following decisions MUST NOT be made by `/rite:pr:review`:
 
 Prohibited actions: Exception handling by severity (e.g., "Only LOWs, so minor"), overriding assessment (e.g., "Effectively merge-OK"), inserting user confirmation.
 
-> **[READ-ONLY RULE]**: 評価結果に基づいてコードを直接修正することは禁止されています。`Edit`/`Write` ツールでプロジェクトのソースファイルを変更してはなりません。ブロック指摘が存在する場合は `[review:fix-needed:{n}]` パターンを出力し、修正は `/rite:pr:fix` に委譲してください。`Bash` ツールは workflow 操作（`gh` CLI、hook scripts、`.rite-flow-state` 更新）のみ許可されます。
+> **[READ-ONLY RULE]**: 評価結果に基づいてコードを直接修正することは禁止されています。`Edit`/`Write` ツールでプロジェクトのソースファイルを変更してはなりません。ブロック指摘が存在する場合は `[review:fix-needed:{n}]` パターンを出力し、修正は `/rite:pr:fix` に委譲してください。`Bash` ツールは workflow 操作（`gh` CLI、hook scripts、`.rite-flow-state` 更新）と **read-only な git コマンド**（`git diff` / `git log` / `git show` / `git blame` / `git status` / `git ls-files` / `git rev-parse` / `git cat-file` / `git worktree add`）のみ許可されます。`git checkout` / `git reset` / `git add` / `git stash` / `git restore` / `git rebase` / `git commit` / `git push` など working tree・index・ref を変更するコマンドは **禁止** です。詳細は `plugins/rite/agents/_reviewer-base.md` の READ-ONLY Enforcement セクションを参照してください。
 
 **Principle:** Assessment logic result = final decision. AI's role = reporting + mechanical transition to the next phase only.

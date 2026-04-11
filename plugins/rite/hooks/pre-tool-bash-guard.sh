@@ -104,30 +104,53 @@ fi
 # Main-session git operations (branch switch, commit, etc. performed by
 # /rite:issue:start Phase 5.1) are NOT affected because IS_SUBAGENT=0 there.
 #
-# Allowed read-only git commands (not matched below): git diff, git log,
-# git show, git blame, git status, git ls-files, git ls-remote, git rev-parse,
-# git cat-file, git worktree add, git fetch (without --prune).
+# Allowed read-only git commands (NOT matched below):
+#   - git diff / git log / git show / git blame / git status / git ls-files /
+#     git ls-remote / git rev-parse / git cat-file
+#   - git worktree add / git worktree list
+#   - git fetch (bare — must NOT include --prune or --force)
+#   - git branch with display-only flags: --list / --show-current / -a / -r / -v
+#   - git tag -l / git tag --list
+#   - git stash list / git stash show
+#   - git reflog (bare list, no expire/delete)
 #
-# Denylist below targets state-mutating forms only. Pattern uses strict word
-# boundaries to avoid matching unrelated tokens (e.g. "git-checkout" in a
-# file name embedded in a grep command).
+# Denylist design:
+#   (1) Shell meta-character boundary recognition: `;`, `&`, `|`, `(`, backtick,
+#       `$` are also treated as word boundaries — prevents bypass via
+#       `true;git reset` / `$(git commit)` / `(git checkout ...)` forms.
+#   (2) Sub-action precision: `git tag -l` / `git stash list` / `git reflog` (bare)
+#       / `git worktree list` must stay allowed. The denylist targets only
+#       state-mutating sub-actions of these verbs.
+#   (3) Bare new-branch creation: `git branch <name>` (without any flag) creates
+#       a new ref and is therefore blocked. `git branch` and `git branch -a`
+#       (display) remain allowed.
+#   (4) Long-form flag coverage: `git branch --delete/--force/--move/--copy`
+#       are treated the same as the short forms `-d/-f/-m/-c/-C`.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
-  # Normalize whitespace sequences into a single space for robust matching.
-  # Use Bash built-in parameter expansion instead of external sed.
+  # Normalize whitespace AND shell meta-characters into a single space so that
+  # `;git reset` / `(git checkout ...)` / `$(git commit)` are recognized as
+  # `git <verb>` with proper word boundaries.
   CMD_NORMALIZED="${CMD_CHECK//$'\t'/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//;/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//&/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//|/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//(/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//)/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//\`/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//\$/ }"
+  # Collapse multiple spaces into one.
   while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
     CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
   done
 
-  # Each element matches `git <verb>` preceded by line start or whitespace
-  # and followed by whitespace/end. The wrapping space ensures word boundaries.
   PADDED=" $CMD_NORMALIZED "
+
+  # --- (A) Always-deny verbs (no read-only sub-action exists) ---
   case "$PADDED" in
     *" git checkout "*|\
     *" git reset "*|\
     *" git add "*|\
     *" git rm "*|\
-    *" git stash "*|\
     *" git restore "*|\
     *" git commit "*|\
     *" git push "*|\
@@ -136,24 +159,136 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     *" git rebase "*|\
     *" git cherry-pick "*|\
     *" git revert "*|\
-    *" git tag "*|\
     *" git clean "*|\
     *" git gc "*|\
-    *" git reflog "*|\
-    *" git worktree remove "*|\
-    *" git worktree prune "*|\
-    *" git branch -D "*|\
-    *" git branch -d "*|\
-    *" git branch -f "*|\
-    *" git branch -m "*|\
-    *" git branch -M "*|\
+    *" git prune "*|\
     *" git update-ref "*|\
-    *" git symbolic-ref "*)
+    *" git symbolic-ref "*|\
+    *" git am "*|\
+    *" git apply "*|\
+    *" git mv "*|\
+    *" git notes "*|\
+    *" git config "*|\
+    *" git remote "*|\
+    *" git bisect "*|\
+    *" git filter-branch "*|\
+    *" git filter-repo "*|\
+    *" git replace "*)
       BLOCKED_PATTERN="reviewer-state-mutating-git"
-      BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash/restore/commit/push/merge/rebase/cherry-pick/revert/tag/clean/branch -D/update-ref/etc.) are forbidden inside reviewer contexts."
-      BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, or 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list."
       ;;
   esac
+
+  # --- (B) Sub-action precision: git stash push/pop/drop/apply/clear only ---
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    case "$PADDED" in
+      *" git stash push"*|\
+      *" git stash pop"*|\
+      *" git stash drop"*|\
+      *" git stash apply"*|\
+      *" git stash clear"*|\
+      *" git stash save"*|\
+      *" git stash create"*|\
+      *" git stash store"*|\
+      *" git stash branch"*)
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+        ;;
+    esac
+  fi
+
+  # --- (C) Sub-action precision: git tag (creation/deletion only) ---
+  # Allowed: `git tag -l`, `git tag --list`, `git tag` (bare list)
+  # Denied:  `git tag <name>`, `git tag -a`, `git tag -d`, `git tag --delete`,
+  #          `git tag -f`, `git tag --force`
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    case "$PADDED" in
+      *" git tag -a"*|\
+      *" git tag --annotate"*|\
+      *" git tag -d"*|\
+      *" git tag --delete"*|\
+      *" git tag -f"*|\
+      *" git tag --force"*|\
+      *" git tag -s"*|\
+      *" git tag -u"*|\
+      *" git tag -m"*)
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+        ;;
+    esac
+  fi
+
+  # --- (D) Sub-action precision: git reflog (only expire/delete block) ---
+  # Allowed: `git reflog`, `git reflog show`
+  # Denied:  `git reflog expire`, `git reflog delete`
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    case "$PADDED" in
+      *" git reflog expire"*|\
+      *" git reflog delete"*)
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+        ;;
+    esac
+  fi
+
+  # --- (E) Sub-action precision: git worktree remove/prune only ---
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    case "$PADDED" in
+      *" git worktree remove"*|\
+      *" git worktree prune"*)
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+        ;;
+    esac
+  fi
+
+  # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    case "$PADDED" in
+      *" git fetch "*--prune*|\
+      *" git fetch "*-p*|\
+      *" git fetch "*--force*|\
+      *" git fetch "*-f*)
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+        ;;
+    esac
+  fi
+
+  # --- (G) git branch: display-only flags allowed, everything else denied ---
+  # Display-only flags: --list / --show-current / -a / --all / -r / --remotes /
+  #                     -v / -vv / --verbose / -q / --quiet
+  # Denied: -D / -d / -f / -m / -M / -c / -C / --delete / --force / --move /
+  #         --copy, bare `git branch <name>` (new ref creation)
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    # Short/long-form deletion and move flags
+    case "$PADDED" in
+      *" git branch -D "*|\
+      *" git branch -d "*|\
+      *" git branch -f "*|\
+      *" git branch -m "*|\
+      *" git branch -M "*|\
+      *" git branch -c "*|\
+      *" git branch -C "*|\
+      *" git branch --delete"*|\
+      *" git branch --force"*|\
+      *" git branch --move"*|\
+      *" git branch --copy"*|\
+      *" git branch --set-upstream"*|\
+      *" git branch --unset-upstream"*|\
+      *" git branch --edit-description"*)
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+        ;;
+    esac
+  fi
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    # Bare new-branch creation: `git branch <non-flag-token>` after the verb.
+    # Use a bash regex to detect `git branch` followed by a token that does NOT
+    # start with `-` (which would indicate a flag). Bare `git branch`
+    # (no argument) and `git branch -<flag>` stay in the regex's non-match path.
+    if [[ "$PADDED" =~ " git branch "[[:space:]]*[^[:space:]-] ]]; then
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+    fi
+  fi
+
+  if [ -n "$BLOCKED_PATTERN" ]; then
+    BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash push/restore/commit/push/merge/rebase/cherry-pick/revert/tag -a -d -f/clean/gc/branch -D --delete/update-ref/symbolic-ref/am/apply/mv/notes/config/remote/bisect/filter-branch/replace/reflog expire/worktree remove/fetch --prune/etc.) are forbidden inside reviewer contexts."
+    BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory, 'git tag -l' / 'git stash list' / 'git reflog' / 'git branch --list' for display-only queries, or bare 'git fetch' (without --prune/--force) for ref sync. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list."
+  fi
 fi
 
 # --- Result ---
