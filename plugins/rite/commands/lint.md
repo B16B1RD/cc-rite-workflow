@@ -461,6 +461,41 @@ fi
 - `drift_finding_count`: Extract from `drift_output` by matching the line `==> Total drift findings: N` (regex: `/Total drift findings: (\d+)/`). If no match found, default to 0
 - `drift_output`: Script output (truncated if >50 lines)
 
+### 3.6 Plugin-specific Checks (Bang-Backtick Adjacency Detection)
+
+Execute the bang-backtick check script to detect Skill loader triggering patterns (backtick + bang adjacency) in `commands/**/*.md` and `skills/**/*.md`. This is the static lint counterpart to Issue #365 / PR #367 where inline-code bang adjacency broke Skill loading via bash history expansion. See the script header comment at `plugins/rite/hooks/scripts/bang-backtick-check.sh` for concrete detection patterns.
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/bang-backtick-check.sh ]; then
+  bang_backtick_output=$(bash {plugin_root}/hooks/scripts/bang-backtick-check.sh --all 2>&1)
+  bang_backtick_exit_code=$?
+else
+  bang_backtick_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `bang_backtick_status` | Action |
+|-----------|------------------------|--------|
+| 0 | `success` | No bang-backtick adjacency — continue to Phase 4 |
+| 1 | `warning` | Pattern detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Bang-backtick detection results are treated as **warnings**, not errors — same policy as Phase 3.5 drift check. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Reason: existing checks stay non-blocking during staged rollout, and Skill loader triggering is a correctness issue that should be fixed promptly but not gate CI until coverage is validated.
+
+**Record bang-backtick results** for Phase 4 reporting:
+- `bang_backtick_status`: `success` / `warning` / `error` / `skipped`
+- `bang_backtick_finding_count`: Extract from `bang_backtick_output` by matching the line `==> Total bang-backtick findings: N` (regex: `/Total bang-backtick findings: (\d+)/`). If no match found, default to 0
+- `bang_backtick_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -535,7 +570,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {drift_output}
 ```
 
-This appendix does NOT change the result pattern — `[lint:success]` remains the pattern even with drift warnings.
+**Bang-backtick warning appendix** (both standalone and E2E): When `bang_backtick_status` is `warning`, append findings after the lint result output:
+
+```
+⚠️ Bang-backtick check: {bang_backtick_finding_count} findings detected (warning, non-blocking)
+{bang_backtick_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift or bang-backtick warnings.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -607,6 +649,7 @@ Analyze the error content and present fix suggestions when possible:
 | {i18n:lint_warnings} | {warning_count} |
 | {i18n:lint_test} | {test_status} ({test_error_count} failures) |
 | {i18n:lint_drift_check} | {drift_status} ({drift_finding_count} findings) |
+| Bang-backtick check | {bang_backtick_status} ({bang_backtick_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
@@ -617,7 +660,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 
