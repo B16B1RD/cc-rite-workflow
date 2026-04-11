@@ -15,20 +15,32 @@
 - 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内で 2 回 `/rite:pr:review` を実行すると file path が衝突し古い方は上書きされる。review.md Phase 6.1.a は collision 検出時に `-$RANDOM` suffix で衝突回避を試みるが、完全な一意性保証ではない点に注意 (M-2 tradeoff)
 - `.rite/review-results/` は `.gitignore` で除外される
 
-## Schema Version
+## Schema Version (Single Source of Truth)
+
+<a id="schema-version-sot"></a>
 
 現行スキーマバージョン: **1.0.0**
 
-スキーマ変更時は `schema_version` を semver (`MAJOR.MINOR.PATCH`) でインクリメントする。`/rite:pr:fix` Phase 1.2.0 の **Priority 0 および Priority 2** は読取時に `jq -r '.schema_version'` でバージョンを確認し、`"1.0.0"` または legacy `"1.0"` 以外の場合、遷移先が Priority に応じて異なる:
+**受理される値**: `"1.0.0"` (canonical) および legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ)。両者は semantic 差なく完全等価で、legacy `"1.0"` は v2.0 まで受理される (新規生成は禁止: `/rite:pr:review` Phase 6.1.a は `"1.0.0"` のみ出力)。詳細経緯は CHANGELOG を参照。
+
+**検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化):
+
+- `review.md` Phase 6.1.a (write 側、post-condition jq validation)
+- `fix.md` Phase 1.2.0 Priority 0 (`--review-file` case 文)
+- `fix.md` Phase 1.2.0 Priority 2 (local file case 文)
+- `fix.md` Phase 1.2.0 Priority 3 (PR comment Raw JSON case 文)
+
+これら 4 箇所のすべてで `"1.0.0"` と `"1.0"` の 2 パターンを同期的に更新する必要がある。本セクションが Single Source of Truth であり、将来のスキーマ更新時 (`"1.1.0"` 追加 / legacy エイリアス削除等) は上記 4 箇所すべてに一致する変更を加えること。
+
+**失敗時の遷移** (Priority 別):
 
 - **Priority 0 (`--review-file`)** 失敗時: 直接 **Priority 4 (対話式 fallback)** へ遷移 (ユーザーの明示意図を尊重、Priority 1-3 には fallthrough しない)
 - **Priority 2 (ローカルファイル)** 失敗時: WARNING を出して **Priority 3 (PR コメント)** へ routing (古い timestamp ファイルには fallback しない)
+- **Priority 3 (PR コメント Raw JSON)** 失敗時: legacy Markdown parser へ fallthrough (後方互換経路)
 
-詳細は fix.md Phase 1.2.0 Hybrid Review Source Resolution の Priority 0 / Priority 2 selection logic bash block を参照。
+詳細は fix.md Phase 1.2.0 Hybrid Review Source Resolution の Priority 0 / Priority 2 / Priority 3 selection logic bash block を参照。
 
-### Legacy `"1.0"` エイリアス
-
-旧形式 `"1.0"` (semver `MAJOR.MINOR` のみ) は legacy エイリアスとして v2.0 まで受理される。`"1.0.0"` と完全に等価で semantic 差は無い。受理箇所は fix.md Phase 1.2.0 Priority 0 / Priority 2 / Priority 3 の 3 case 文で同期削除が必要。新規生成は禁止 (`/rite:pr:review` Phase 6.1.a は `"1.0.0"` のみ出力)。詳細経緯は CHANGELOG を参照。
+> **Note**: verified-review cycle 8 以前は legacy `"1.0"` に関する記述が本文中 4 箇所 (L22 / L31 / L64 / L141) に分散しており、真実源が不明瞭だった。本 SoT セクションに統合し、他の参照箇所は「詳細は [Schema Version](#schema-version-sot) セクション参照」にリンクする。
 
 ## JSON Schema
 
@@ -61,7 +73,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `schema_version` | string | ✅ | スキーマバージョン (semver `MAJOR.MINOR.PATCH`)。現行: `"1.0.0"` (legacy `"1.0"` も `/rite:pr:fix` で受理される) |
+| `schema_version` | string | ✅ | スキーマバージョン (semver `MAJOR.MINOR.PATCH`)。詳細は [Schema Version](#schema-version-sot) セクション参照 (受理値と legacy エイリアスの SoT) |
 | `pr_number` | integer | ✅ | PR 番号 |
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA (verification mode 用) |

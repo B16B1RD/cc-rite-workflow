@@ -81,3 +81,42 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 - 将来追加される sub-phase で「失敗しても upstream を kill しない」契約が必要なものは本セクションを参照すること
 
 **Soft failure との違い**: `/rite:pr:fix` Phase 4.5 で使用される「soft failure」は **致命的だが exit 1 で fix loop を kill せず retained flag で caller に通知する**パターンで、本 Non-blocking Contract と類似する。両者の違いは: Non-blocking Contract は「sub-phase 失敗 = upstream 続行」で **本来非致命的な処理** (ローカル保存、削除) に適用、soft failure は「致命的だが loop 終了させない」で **コミット済み変更を保護したい** ケースに適用する。
+
+## Review Result JSON Schema Validation (canonical snippet)
+
+<a id="jq-required-fields-snippet-canonical"></a>
+
+`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。Phase 6.1.a (review.md) と Phase 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
+
+**Canonical snippet** (jq 式):
+
+```jq
+(.schema_version | type == "string" and length > 0)
+and (.pr_number | type == "number")
+and (.findings | type == "array")
+```
+
+**Usage sites** (drift 防止のため新規箇所追加時は本リストに登録すること):
+
+| Site | Purpose | Failure Reason |
+|------|---------|----------------|
+| `review.md` Phase 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
+| `fix.md` Phase 1.2.0 Priority 0 (`--review-file`) | ユーザー明示ファイルの必須フィールド検証 | `explicit_file_schema_required_fields_missing` |
+| `fix.md` Phase 1.2.0 Priority 2 (local file) | 最新 timestamp ファイルの必須フィールド検証 | `local_file_schema_required_fields_missing` |
+| `fix.md` Phase 1.2.0 Priority 3 (PR comment Raw JSON) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
+
+**Rationale for type-explicit validation**: jq の and / truthiness 仕様 (`false` / `null` のみが falsy、空文字列 `""` / `0` / `[]` / `{}` はすべて truthy) のため、旧実装の `.schema_version and .pr_number` は `schema_version: ""` や `pr_number: "123"` (文字列型) を silent pass させる抜け穴があった。明示的に `type == "string" and length > 0` / `type == "number"` / `type == "array"` を要求することで、型違反と空文字列のすべてを reject する。
+
+**Source検証**: [jq Manual](https://jqlang.org/manual/) — "false and null are considered 'false values', and anything else is a 'true value'. Everything else is 'true', even the number zero and the empty string, array and object." (`jq --help` or interactive `jq .` で確認可能)
+
+**Finding ID validation (Phase 6.1.a のみ追加検証)**: 本 canonical snippet に加えて Phase 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
+
+```jq
+(.findings | length == 0)
+or (
+  (.findings | all(.id? // "" | test("^F-[0-9]{2,}$")))
+  and ([.findings[].id] | unique | length == (.findings | length))
+)
+```
+
+Failure reason: `finding_id_format_or_uniqueness_violation`

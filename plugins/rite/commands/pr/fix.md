@@ -12,7 +12,7 @@ Retrieve and organize PR review comments to efficiently assist with addressing r
 
 ## Prerequisites
 
-**bash 4.0+ 必須**: 本コマンドは複数の bash block で `mapfile -t < <(...)` builtin を使用する (Phase 1.2.0 Priority 2 の `find ... | sort -r` 結果取得、Phase 4.5 doc-heavy 検証等)。エントリポイントの最初の Bash tool 呼び出しで [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を実行する (`{CONTEXT_FLAG}=FIX_FALLBACK_FAILED`, `{OUTPUT_PATTERN}=[fix:error]` で置換)。失敗時は `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible` を emit して `[fix:error]` で exit する。
+**bash 4.0+ 必須**: 本コマンドは複数の bash block で `mapfile -t < <(...)` builtin を使用する (Phase 1.2.0 Priority 2 の `find ... | sort -r` 結果取得、Phase 4.5 doc-heavy 検証等)。Phase 1.0.1 の bash block 冒頭 (Step 0) に [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を **inline embed 済み** (C-3 対応)。prose 参照ではなく実行可能な bash コードとして配置されており、Claude は Phase 1.0.1 bash block を実行するだけで guard が発火する。失敗時は `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible` を emit して `[fix:error]` で exit する。
 
 ## E2E Output Minimization
 
@@ -197,6 +197,22 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
 # - sed regex は `[[:space:]]` を使い tab 区切りも処理する
 # - printf '%s' を使用する理由: echo は -n/-e/-E で始まるトークンを option として誤解釈するため
 
+# --- Step 0: bash 4+ compat guard (C-3: inlined from references/bash-compat-guard.md) ---
+# mapfile builtin は bash 4.0 で導入されたため、bash 3.2 (macOS default) では
+# Phase 1.2.0 Priority 2 の `mapfile -t files_arr < <(find ...)` が silent 失敗し
+# silent に Priority 3 へ routing する regression を起こす。本 guard で fail-fast させる。
+# prose 参照ではなく inline 実行可能コードとして配置 (C-3 対応)。
+# Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
+if ! command -v mapfile >/dev/null 2>&1; then
+  bash_version=$("$BASH" --version 2>/dev/null | head -1)
+  echo "ERROR: bash 4.0+ が必要ですが、現在のシェルは mapfile builtin を持っていません" >&2
+  echo "  検出: $bash_version" >&2
+  echo "  対処: macOS では brew install bash で 4+ をインストールし、PATH の先頭に追加してください" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+
 original_args="$ARGUMENTS"
 # sentinel を `null` から `__RITE_UNSET__` に変更
 # (旧実装は `--review-file null` を渡したユーザーが「`null` という名前のファイル」を意図した場合と
@@ -358,15 +374,39 @@ review_file_path="{review_file_path_from_phase_1_0_1}"
 review_source=""
 review_source_path=""
 
+# verified-review M-7 対応: review_file_path placeholder 残留の fail-fast。
+# Claude が literal substitute を忘れて `{review_file_path_from_phase_1_0_1}` のまま残ると、
+# `-f "{review_file_path_from_phase_1_0_1}"` 試行 → ENOENT → `explicit_file_not_found` で
+# fallback に流れる誤診断を起こす (真因は substitution 忘れ)。`{` `}` を含む文字列は
+# legitimate path として現実には存在しない (POSIX filesystem で portable な file name
+# characters ではない) ため、detection に false positive はない。
+case "$review_file_path" in
+  "{"*|*"}")
+    echo "ERROR: review_file_path placeholder が literal substitute されていません: '$review_file_path'" >&2
+    echo "  Claude は Phase 1.0.1 の [CONTEXT] REVIEW_FILE_PATH=... 値を会話コンテキストから" >&2
+    echo "  読み取り、この bash block 冒頭の review_file_path=... 行を実際の値で置換する必要があります。" >&2
+    echo "  substitute 値の例: __RITE_UNSET__ (default) / ./foo.json / /abs/path/bar.json" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_file_path_placeholder_residue" >&2
+    echo "[fix:error]"
+    exit 1
+    ;;
+esac
+
 # signal-specific trap を block 冒頭で設置する (find_err tempfile の orphan 防止)。
 # canonical pattern: references/bash-trap-patterns.md#signal-specific-trap-template を参照。
 # Block 全体の scope を cover するため Priority 2 のネスト内ではなく block 冒頭に配置する。
-# cleanup 関数冒頭で $? を保存し、rm 失敗による exit code 上書きを防ぐ (silent cleanup 失敗の回避)。
+#
+# verified-review H-4 対応: 旧実装の `local _saved_rc=$?; rm -f ...; return $_saved_rc` は
+# 意図と実挙動が乖離していた。trap handler が `'rc=$?; _rite_fix_p120_cleanup; exit $rc'` 形式で
+# 関数を呼ぶとき、関数入場時の `$?` は trap handler 内の直前 assignment `rc=$?` の exit code
+# (= 0) であり、真のエラーコードは既に trap handler 側の `rc` 変数に捕捉されている。したがって
+# 関数内で `$?` を保存しても常に 0 となり、`return $_saved_rc` は常に 0 を返していた (コメントと
+# 実挙動の乖離)。trap handler が最終 `exit $rc` で outer rc を使うため運用上は無害だが、将来
+# 関数を直接呼び出す拡張で silent regression する罠を残していた。簡素化して trap handler の
+# rc 捕捉に一本化する。
 find_err=""
 _rite_fix_p120_cleanup() {
-  local _saved_rc=$?
   rm -f "${find_err:-}" 2>/dev/null || true
-  return $_saved_rc
 }
 trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
 trap '_rite_fix_p120_cleanup; exit 130' INT
@@ -752,14 +792,43 @@ set +o pipefail
 # 重複が検出された場合は WARNING を emit して可視化し、後段で人間が判断できるようにする。
 # Source: jq manual (https://jqlang.github.io/jq/manual/) — from_entries duplicate key behavior
 if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]; then
-  duplicate_keys=$(jq -r '[.findings[] | (.file + ":" + (.line | tostring))] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$review_source_path")
-  if [ -n "$duplicate_keys" ]; then
-    echo "WARNING: 重複 file:line を持つ finding を検出しました (severity 上書きの可能性):" >&2
-    printf '%s\n' "$duplicate_keys" | sed 's/^/  - /' >&2
-    echo "  jq from_entries は同一 key を後勝ちで畳み込みます。重複行に対する severity は最後の finding の値が採用されます。" >&2
-    echo "  対処: review-result JSON 内の重複 file:line を手動確認してください。" >&2
+  # verified-review H-1/H-2 対応: jq の exit code を明示捕捉する。
+  # 旧実装 `duplicate_keys=$(jq ...)` / `severity_map_json=$(jq -c ...)` は exit code を一切
+  # check せず、jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で
+  # silent に空文字になっていた。重複警告が silent skip し、severity_map 構築が無音で空にな
+  # る regression を防ぐため、if-else で exit code を独立 capture する。
+  jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+
+  if duplicate_keys=$(jq -r '[.findings[] | (.file + ":" + (.line | tostring))] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
+    if [ -n "$duplicate_keys" ]; then
+      echo "WARNING: 重複 file:line を持つ finding を検出しました (severity 上書きの可能性):" >&2
+      printf '%s\n' "$duplicate_keys" | sed 's/^/  - /' >&2
+      echo "  jq from_entries は同一 key を後勝ちで畳み込みます。重複行に対する severity は最後の finding の値が採用されます。" >&2
+      echo "  対処: review-result JSON 内の重複 file:line を手動確認してください。" >&2
+    fi
+  else
+    jq_dup_rc=$?
+    echo "WARNING: 重複 file:line 検出用 jq が失敗しました (rc=$jq_dup_rc) — silent data loss 検出を skip します" >&2
+    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    echo "  影響: 同一 file:line の重複 severity 警告が出ないため、後段で最後勝ち畳み込みが silent に発生する可能性があります" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=jq_duplicate_check_failed; rc=$jq_dup_rc" >&2
+    # severity_map 構築は続行する (重複警告の喪失は non-blocking 失敗として扱う)
   fi
-  severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries' "$review_source_path")
+
+  if severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    jq_smap_rc=$?
+    echo "ERROR: severity_map 構築用 jq が失敗しました (rc=$jq_smap_rc)" >&2
+    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    echo "  対処: review-result JSON ($review_source_path) の内容と jq バイナリを確認してください" >&2
+    echo "  影響: severity_map が空のまま後段に流れ、指摘 0 件と誤認される silent regression を防ぐため fail-fast します" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=severity_map_build_failed; rc=$jq_smap_rc" >&2
+    [ -n "$jq_err" ] && rm -f "$jq_err"
+    echo "[fix:error]"
+    exit 1
+  fi
+  [ -n "$jq_err" ] && rm -f "$jq_err"
 fi
 ```
 
@@ -790,15 +859,38 @@ if [ -f "$pr_comment_body_file" ]; then
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=comment_body_tempfile_empty" >&2
     exit 1
   fi
-  pr_review_comment_body=$(cat "$pr_comment_body_file")
+  # verified-review M-3 対応: cat の exit code を明示捕捉する。
+  # 旧実装 `pr_review_comment_body=$(cat "$pr_comment_body_file")` は cat の exit code を
+  # 一切 check せず、permission 変更 / NFS timeout / TOCTOU truncate で silent に空文字列
+  # になっていた。後段の awk parser は no-match → raw_json="" → legacy fallthrough に
+  # silent 合流する。if-else で cat の exit code を独立 capture する。
+  cat_err=$(mktemp /tmp/rite-fix-cat-err-XXXXXX 2>/dev/null) || cat_err=""
+  if pr_review_comment_body=$(cat "$pr_comment_body_file" 2>"${cat_err:-/dev/null}"); then
+    :
+  else
+    cat_rc=$?
+    echo "WARNING: pr_comment_body_file の cat が失敗しました (rc=$cat_rc): $pr_comment_body_file" >&2
+    [ -n "$cat_err" ] && [ -s "$cat_err" ] && head -3 "$cat_err" | sed 's/^/  /' >&2
+    echo "  原因候補: permission 変更 / NFS timeout / TOCTOU truncate" >&2
+    echo "  legacy Markdown parser に fallthrough します" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_tempfile_read_io_error; rc=$cat_rc" >&2
+    pr_review_comment_body=""
+  fi
+  [ -n "$cat_err" ] && rm -f "$cat_err"
 else
-  # tempfile 不在 = Broad Retrieval が `📜 rite レビュー結果` コメントを発見せず tempfile を
-  # 作成しなかった legitimate な経路 (新規 PR / rite:pr:review 未実行 / 既に削除済み等)。
-  # この場合 raw_json="" として legacy fallthrough 経路に進む (Priority 3 → Phase 1.2.1 legacy parser)。
-  # 注: Broad Retrieval が真に呼ばれていない (Claude が Priority 3 進入時に Broad Retrieval を
-  # skip した) 経路はこの branch に来てしまい silent fallthrough になりうるが、その経路は
-  # Phase 1.2 仕様書の前提条件違反であり、Claude は Priority 3 進入前に Broad Retrieval を
-  # 必ず呼ぶ責務がある (本 bash block 直前の "前提" 段落参照)。
+  # verified-review M-4 対応: tempfile 不在時に [INFO] emit を追加し、以下 2 ケースを可視化する:
+  #   (a) Broad Retrieval が `📜 rite レビュー結果` コメントを発見せず tempfile を作成しなかった
+  #       legitimate な経路 (新規 PR / rite:pr:review 未実行 / 既に削除済み等)
+  #   (b) Claude が Priority 3 進入時に Broad Retrieval bash block を skip した前提条件違反経路
+  # 旧実装は (b) を検出する guard が無く silent fallthrough に落ちていた。本 [INFO] emit により、
+  # Phase 1.2 Broad Retrieval が本当に実行されたかを後から trace できるようにする。
+  # 機械的 enforcement (Broad Retrieval 呼出フラグの参照) は複雑で scope 外のため、
+  # 最低限 observability を確保する対症療法として [INFO] を stderr に emit する。
+  echo "[INFO] pr_comment_body_file 不在 → legacy Markdown parser に fallthrough ($pr_comment_body_file)" >&2
+  echo "       legitimate な経路: 新規 PR / /rite:pr:review 未実行 / コメント削除済み" >&2
+  echo "       もし /rite:pr:review 実行直後にこのメッセージが出た場合、Claude が Priority 3 進入前に" >&2
+  echo "       Phase 1.2 Broad Retrieval bash block を呼び出し忘れた可能性があります (前提条件違反)" >&2
+  echo "[CONTEXT] BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT=1" >&2
   pr_review_comment_body=""
 fi
 
@@ -884,7 +976,23 @@ else
         echo "  対処: /rite:pr:review を再実行して PR コメントを更新してください。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=pr_comment_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
       fi
-      severity_map_json=$(printf '%s' "$raw_json" | jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries')
+      # verified-review H-3 対応: jq exit code を明示捕捉する。
+      # 旧実装は `severity_map_json=$(printf | jq -c ...)` で jq の exit code を一切 check せず、
+      # 失敗時は severity_map_json="" のまま後段に流れ「0 件で正常終了」に見える silent regression
+      # を起こしていた。if-else で exit code を独立 capture し、失敗時は明示 fallthrough する
+      # (legacy Markdown parser に flow を移す — review_source は pr_comment のまま維持)。
+      p3_jq_err=$(mktemp /tmp/rite-fix-p3-smap-err-XXXXXX 2>/dev/null) || p3_jq_err=""
+      if severity_map_json=$(printf '%s' "$raw_json" | jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries' 2>"${p3_jq_err:-/dev/null}"); then
+        :
+      else
+        p3_jq_rc=$?
+        echo "WARNING: PR コメント内 Raw JSON からの severity_map 構築 jq が失敗しました (rc=$p3_jq_rc)" >&2
+        [ -n "$p3_jq_err" ] && [ -s "$p3_jq_err" ] && head -3 "$p3_jq_err" | sed 's/^/  /' >&2
+        echo "  legacy Markdown table parser に fallthrough します (review_source は pr_comment のまま)" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_severity_map_build_failed; rc=$p3_jq_rc" >&2
+        severity_map_json=""  # 明示的に空文字にして後段 legacy parser が起動する
+      fi
+      [ -n "$p3_jq_err" ] && rm -f "$p3_jq_err"
       ;;
     *)
       echo "WARNING: PR コメント内の Raw JSON schema_version が未知: $schema_version" >&2
@@ -1067,8 +1175,13 @@ exit 1
 | `state_file_read_io_error` | Phase 1.2.0 Priority 1 の retry state file `cat` が IO エラーで失敗 (I-1 対応、hard gate を safe side に倒すため `retry_current=999`) |
 | `happy_path_rm_failure` | Phase 1.2.0 happy path の retry state file 削除が失敗 (I-2 対応、cleanup.md Phase 2.5 と対称) |
 | `retry_re_entry` | Phase 1.2.0 Priority 1 が retry counter >= 1 のため強制 skip された (verified-review H-3 / M-2 対応、stale conversation source の silent route を防ぐ。`P1_SCAN_SKIPPED` flag 専用の reason で fix loop を中断しない) |
+| `jq_duplicate_check_failed` | Priority 0/2 で重複 file:line 検出用 jq が失敗 (cycle 8 H-1 対応、silent data loss 検出を skip、非ブロッキング) |
+| `severity_map_build_failed` | Priority 0/2 で severity_map 構築用 jq が失敗 (cycle 8 H-2 対応、0 件で正常終了する silent regression 防止、`[fix:error]` 昇格) |
+| `pr_comment_severity_map_build_failed` | Priority 3 で PR コメント Raw JSON からの severity_map 構築用 jq が失敗 (cycle 8 H-3 対応、legacy Markdown parser へ fallthrough) |
+| `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (cycle 8 M-3 対応、permission 変更 / NFS timeout / TOCTOU truncate) |
+| `review_file_path_placeholder_residue` | Priority 0 で `review_file_path="{review_file_path_from_phase_1_0_1}"` placeholder が literal substitute されていない (cycle 8 M-7 対応、fail-fast) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry`)
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue`)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -1130,6 +1243,14 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 > ブロック間は **一時ファイル経由のみ** で値を引き継ぐ (シェル変数は bash 呼び出しを跨ぐと失われる)。各ブロックは独立した signal 別 trap を持ち、各ブロック scope での 2-state commit pattern (Block A の `blockA_committed`、Block C の `handoff_committed`) で orphan を防ぐ。Block B は新規 output がないため commit flag を持たず、validation 失敗時は upstream (raw_json + intermediate) を明示的に rm で invalidate する。加えて Block B の EXIT trap は **rc=$?** で非 0 exit を捕捉し、syntax error / subshell OOM / SIGPIPE / 将来の `set -e` 導入などの非期待終了経路でも upstream を invalidate することで、Block C の「raw_json 未検査で pass してしまう silent misclassification」を二重に防ぐ。
 >
 > **命名ポリシー** (`blockA_committed` vs `handoff_committed` の非対称について): Block A の flag は **block scope 名** (`blockA_committed`) で、Block A 内部の intermediate artifact をまだ後続 phase が参照しない段階の protection を表現する。Block C の flag は **artifact semantic 名** (`handoff_committed`) で、下流 phase (Parsing rule, Phase 2.1 以降) から参照される handoff contract の commitment を表現するため敢えて semantic name を維持する。Block B は新規 output を持たないため flag なし。命名を対称化するなら `intermediate_committed` / `handoff_committed` または `blockA_committed` / `blockC_committed` のどちらかに統一できるが、`handoff_committed` の「handoff 完了」という semantic 情報を下流参照時に失う不利益を避けるため現状の非対称を採用する。
+>
+> **⚠️ verified-review (cycle 8) H-8 対応 — Single-Bash-tool-call contract**: 各 Block は **必ず 1 つの Bash tool invocation で完結** させる (複数 Block を 1 回の bash 呼び出しに merge してはならない)。理由:
+>
+> 1. **Trap 上書き**: 各 Block は独立した `trap ... EXIT` を設定する。Block A+B を同一 bash block に merge すると Block A の trap が Block B の trap 定義で上書きされ、Block A の artifacts が trap cleanup から外れる経路がある (現状の commit flag 設計で多くはカバーされるが、設計上の fragility は残る)
+> 2. **エラー境界**: Block A 失敗 (gh api 404 等) で exit した場合、merge 状態では Block B/C の trap handler 準備コードも実行されずに tempfile が orphan する経路が発生しうる
+> 3. **再実行コスト**: 単一の巨大 block が失敗すると全 step やり直しになり、3-block 分割の目的 (破綻時の再実行コスト削減) が失われる
+>
+> **Block 境界 sentinel** (observability 用、cycle 8 H-8 で追加): 各 Block 末尾で `[CONTEXT] BLOCK_<NAME>_COMPLETE=1` を emit する。これは machine-enforced gate ではなく debugging trail 用の marker であり、Claude が後続 Block 実行前に会話履歴を grep することで「前の Block が正常完了したか」を確認できる。tempfile 存在 check (現行の防御) と併用し、Block 失敗の root cause を早期に特定できるようにする。
 
 **Block A — trap セットアップ + API fetch + jq 抽出 + intermediate 書き出し**
 
@@ -1292,6 +1413,10 @@ fi
 # Block A 完了: raw_json + intermediate 3 ファイルを trap cleanup の対象から外す (blockA_committed=1)
 # これ以降、Block A 末尾に到達しても trap は err files のみ削除する。
 blockA_committed=1
+
+# verified-review (cycle 8) H-8: Block 境界 sentinel emit (observability / debugging trail)
+# Block B 進入前に Claude がこの [CONTEXT] を grep することで Block A 正常完了を確認できる
+echo "[CONTEXT] BLOCK_A_COMPLETE=1; pr_number={pr_number}; target_comment_id={target_comment_id}" >&2
 ```
 
 **Block B — post-condition 検証 (`.issue_url` 所属 check + `pr_number` validate)**
@@ -1390,6 +1515,9 @@ if ! grep -qE "/(pull|issues)/{pr_number}$" <<< "$comment_issue_url"; then
   _rite_fix_blockB_invalidate_upstream
   exit 1
 fi
+
+# verified-review (cycle 8) H-8: Block 境界 sentinel emit (observability / debugging trail)
+echo "[CONTEXT] BLOCK_B_COMPLETE=1; pr_number={pr_number}; target_comment_id={target_comment_id}" >&2
 ```
 
 **Block C — intermediate → final handoff 書き出し + post-condition + raw/intermediate cleanup**
@@ -1491,6 +1619,9 @@ fi
 # これ以降、bash block 末尾に到達するか後続 phase でエラーが起きても、handoff 3 ファイルは保護される。
 # 後続 phase の cleanup (Phase 1.5 / Fast Path Cancel exit / Step C error exit) で明示的に削除する。
 handoff_committed=1
+
+# verified-review (cycle 8) H-8: Block 境界 sentinel emit (observability / debugging trail)
+echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={target_comment_id}" >&2
 ```
 
 > **Note — 下流 phase でのハンドオフ参照**: Fast Path 完了後、Claude は以下 **3 つ**の一時ファイルを Read tool で読み戻してコンテキストに再注入する:
@@ -3903,14 +4034,25 @@ if [ -n "$hook_err" ]; then
   fi
   rm -f "$hook_err"
 else
-  # hook_err mktemp に失敗した場合は best-effort で hook を実行 (旧実装と同じ silent skip)
-  WM_SOURCE="fix" \
-    WM_PHASE="phase5_post_fix" \
-    WM_PHASE_DETAIL="レビュー修正後処理" \
-    WM_NEXT_ACTION="re-review or completion" \
-    WM_BODY_TEXT="Post-fix sync." \
-    WM_ISSUE_NUMBER="{issue_number}" \
-    bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
+  # hook_err mktemp に失敗した場合は stderr を単一行退避経路に切り替えて WARNING を可視化する。
+  # verified-review (cycle 8) M-5 対応: 旧実装 `2>/dev/null || true` は L-5 修正の意図と矛盾し、
+  # mktemp 失敗時に silent skip に戻る非対称な経路だった。stderr を一時的に 2>&1 経由で stdout 統合し、
+  # head -5 で上位 5 行のみ保持する簡易 fallback に変更する。
+  echo "WARNING: hook_err mktemp 失敗により local-wm-update.sh の stderr 詳細が取得できません" >&2
+  if hook_combined=$(WM_SOURCE="fix" \
+        WM_PHASE="phase5_post_fix" \
+        WM_PHASE_DETAIL="レビュー修正後処理" \
+        WM_NEXT_ACTION="re-review or completion" \
+        WM_BODY_TEXT="Post-fix sync." \
+        WM_ISSUE_NUMBER="{issue_number}" \
+        bash {plugin_root}/hooks/local-wm-update.sh 2>&1); then
+    : # success
+  else
+    hook_fallback_rc=$?
+    echo "WARNING: local-wm-update.sh failed (fallback no-tempfile path, rc=$hook_fallback_rc):" >&2
+    printf '%s\n' "$hook_combined" | head -5 | sed 's/^/  /' >&2
+    echo "  対処: /tmp の空き容量と hooks/local-wm-update.sh の状態を確認してください" >&2
+  fi
 fi
 ```
 

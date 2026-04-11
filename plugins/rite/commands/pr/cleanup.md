@@ -1159,15 +1159,35 @@ state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
 # M-3 対応: 旧実装 `[ -f "$state_file" ]` は permission denied で stat 不能な場合に false に
 # なり、rm すら試みない silent pass があった。`rm -f` は非存在ファイルに対して exit 0 を返すため、
 # unconditional に rm を実行し、失敗時だけ WARNING を emit する方が対称的で安全。
+#
+# verified-review (cycle 8) H-6 対応: stderr 退避 tempfile を使い、matched_files rm と対称化する。
+# 旧実装は `rm -f "$state_file"` 単独で stderr を捕捉せず、rc のみしか取れなかった。
+# common-error-handling.md#non-blocking-contract-canonical-定義 L74 の「rm/mkdir/mv 等の真の IO
+# 失敗は WARNING + stderr 5 行以上で必ず可視化」契約に対し state file rm が非対称だったため、
+# 上記 matched_files rm と同じ rm_err tempfile pattern を適用する。rm_err tempfile は既に
+# matched_files rm 経路で mktemp 済みの可能性があるが、matched_files が 0 件の経路 (上記 else
+# branch) では rm_err が未定義のため、ここで必要なら mktemp し直す。
 if [ -e "$state_file" ] || [ -L "$state_file" ]; then
-  if rm -f "$state_file"; then
+  # rm_err が matched_files 経路で確保済みで非空ならそれを再利用、未定義/空なら新規 mktemp
+  if [ -z "${rm_err:-}" ]; then
+    if ! rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX); then
+      echo "WARNING: state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+      rm_err=""
+    fi
+  fi
+  if rm -f "$state_file" 2>"${rm_err:-/dev/null}"; then
     echo "✅ fix retry state file を削除しました: $state_file" >&2
   else
     rm_state_rc=$?
     echo "WARNING: fix retry state file の削除に失敗 (PR #${pr_number}, rc=$rm_state_rc): $state_file" >&2
+    if [ -n "$rm_err" ] && [ -s "$rm_err" ]; then
+      head -5 "$rm_err" | sed 's/^/  /' >&2
+    fi
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_file_rm_failure; pr=${pr_number}" >&2
     echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
   fi
+  [ -n "$rm_err" ] && rm -f "$rm_err"
+  rm_err=""
 fi
 
 # trap を明示リセット (block scope の defense-in-depth)。本 Bash tool 呼び出し境界で
