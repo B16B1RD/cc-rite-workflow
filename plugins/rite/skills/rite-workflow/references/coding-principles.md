@@ -399,6 +399,49 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 ---
 
+## Markdown Authoring Conventions
+
+> **Note**: このセクションは Markdown 記述規約であり、上記の `## Principle List` テーブルに登録されているコード規約 (AI Coding Principles) とは別軸のため、独立セクションとして配置している。`## Related` からも参照される。
+
+These conventions apply to authoring Markdown files loaded by the Claude Code Skill loader. Certain inline-code patterns may interact with the loader's bash interpretation path and cause prose to be executed as shell commands.
+
+**Applicable file paths** (Skill loader 経路にある全カテゴリ):
+
+- `plugins/rite/skills/**/*.md`
+- `plugins/rite/commands/**/*.md`
+- `plugins/rite/agents/**/*.md`
+- `plugins/rite/references/**/*.md`
+- `plugins/rite/templates/**/*.md`
+
+### bash negation operator inline code convention
+
+**Summary**: When referencing the bash negation operator in Markdown inline code, never let a bare bang character (U+0021) sit immediately before the closing backtick of an inline code span. Always include a command, argument, or ellipsis token after the bang.
+
+**Failure pattern** (observed incident): In Issue #365, the file `commands/pr/fix.md` contained 5 occurrences of bang-backtick adjacency (a bang character placed directly next to the closing backtick of an inline code span, with no intervening whitespace or token). The Skill loader mis-executed surrounding documentation text as shell commands at runtime — a silent failure that was only caught through careful diffing. Replacing each occurrence with the trailing-token form (`if ! cmd` / `if ! ...`) resolved the failure.
+
+> **Note on mechanism**: The exact trigger (bash history expansion vs. the Skill loader's internal quoting/parsing processing) is **not fully characterized**. Empirically, bang-backtick adjacency is known to trigger failures in some files and contexts but long-standing occurrences exist in other files (e.g., `plugins/rite/references/gh-cli-patterns.md`) without reported Skill-load failures. See the `gh-cli-patterns.md` "Shell Escaping Notes" section for related unresolved areas. Treat this rule as a **defensive convention grounded in the Issue #365 incident**, not as a statement of a fully understood mechanism.
+
+**NG / OK examples** (the NG example is inside a fenced `text` block per Rule 3 below so it does not itself violate the convention):
+
+```text
+NG pattern (demonstration — do not write this in prose):
+  backtick + bang + closing backtick (bang-backtick adjacency, no trailing token)
+
+OK patterns:
+  `if ! cmd`
+  `if ! ...`
+  `if ! command -v foo`
+```
+
+**Rules**:
+1. Do not write bang-backtick adjacency in Markdown prose (outside fenced code blocks) in any file loaded by the Skill loader.
+2. Always include a trailing token: use `if ! cmd` (specific command) or `if ! ...` (ellipsis placeholder) instead.
+3. When the NG pattern must itself be quoted for documentation, enclose it in a fenced code block tagged `text`. Fenced blocks are not subject to inline-code parsing by the loader.
+
+**Application scope** (silent retroactive sweep 回避): 本 convention は**新規編集時に目視で発見したもののみ**を対象とする。既存ファイルへの retroactive 一括書き換えは行わない — 長期間存在する既存箇所で Skill ロード失敗が観測されておらず、真のトリガ条件が未だ empirically 特定されていないため、一括書き換えは不要な変更を広範に生むリスクがある。真のトリガ条件の dry-run 実証調査は別 Issue で追跡する。
+
+---
+
 ## Phase Checklists
 
 ### All Phases (Common)
@@ -445,3 +488,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 - [Issue Start Workflow](../../../commands/issue/start.md) - start.md
 - [PR Create Command](../../../commands/pr/create.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [PR Review](../../../commands/pr/review.md) - review.md
+- [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention)
+- [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
+- [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)
+- [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md) - Related bang character handling error catalog (Category 6)
