@@ -198,27 +198,29 @@ normalize_set() {
 # instead of falling through to the `< 10` token guard below. Without the
 # check a partial/empty set file would reach the guard, which would then
 # misreport the failure as "section markers changed" and misdirect debugging.
-
-set -o pipefail
+#
+# `pipefail` is already active globally (line 56 `set -uo pipefail`), so the
+# `if !` guard below catches mid-pipeline failures. Do NOT toggle pipefail
+# locally — doing so either duplicates the global setting or silently
+# disables it for the remainder of the script, breaking future pipe guards.
 if ! extract_tw | extract_tokens | normalize_set > "$WORK_DIR/tw.set"; then
-  echo "ERROR: tech-writer.md extractor pipeline failed (grep/awk IO error or write failure)" >&2
-  echo "  Likely cause: read permission on $TW_FILE, or /tmp write failure" >&2
+  echo "ERROR: ${TW_FILE} extractor pipeline failed (grep/awk IO error or write failure)" >&2
+  echo "  Likely cause: read permission on ${TW_FILE}, or /tmp write failure" >&2
   echo "  Recovery: inspect the file and re-run; do not confuse this with a section-marker change" >&2
   exit 2
 fi
 if ! extract_review | extract_tokens | normalize_set > "$WORK_DIR/review.set"; then
-  echo "ERROR: review.md extractor pipeline failed (grep/awk IO error or write failure)" >&2
-  echo "  Likely cause: read permission on $REVIEW_FILE, or /tmp write failure" >&2
+  echo "ERROR: ${REVIEW_FILE} extractor pipeline failed (grep/awk IO error or write failure)" >&2
+  echo "  Likely cause: read permission on ${REVIEW_FILE}, or /tmp write failure" >&2
   echo "  Recovery: inspect the file and re-run; do not confuse this with a section-marker change" >&2
   exit 2
 fi
 if ! extract_skill | extract_tokens | normalize_set > "$WORK_DIR/skill.set"; then
-  echo "ERROR: SKILL.md extractor pipeline failed (grep/awk IO error or write failure)" >&2
-  echo "  Likely cause: read permission on $SKILL_FILE, or /tmp write failure" >&2
+  echo "ERROR: ${SKILL_FILE} extractor pipeline failed (grep/awk IO error or write failure)" >&2
+  echo "  Likely cause: read permission on ${SKILL_FILE}, or /tmp write failure" >&2
   echo "  Recovery: inspect the file and re-run; do not confuse this with a section-marker change" >&2
   exit 2
 fi
-set +o pipefail
 
 tw_count=$(wc -l < "$WORK_DIR/tw.set")
 review_count=$(wc -l < "$WORK_DIR/review.set")

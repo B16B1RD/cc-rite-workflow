@@ -10,25 +10,26 @@
 # on macOS. The `awk` pattern is identical on GNU and BSD and matches the
 # sibling `test-bang-backtick-check.sh` portability convention.
 #
-# Validates:
+# Validates (numbered per in-file `--- Test N: ---` sections):
 #   1. --help exits 0
 #   2. No --all exits 2 (invocation error)
 #   3. Unknown argument exits 2
 #   4. Repo-wide --all is clean on the real 3 files (AC: no false positives)
-#   5. Drift by removal: tokens removed from tech-writer.md are reported as
-#      "only in review.md" AND "only in SKILL.md", and NOT "only in
-#      tech-writer.md" (direction-symmetry regression guard)
-#   6. Drift by addition: a token added to review.md is reported as
-#      "only in review.md" AND NOT "only in tech-writer.md" / "only in SKILL.md"
-#   7. Header-token locality: the removed tokens appear under the correct
-#      section header (label/token pairing regression guard)
-#   8. Missing-file fixture: --repo-root pointing to a tree without the
+#   5. Drift by removal — covers four sub-assertions:
+#      (a) tokens removed from tech-writer.md are reported as "only in
+#          review.md" AND "only in SKILL.md"
+#      (b) the removed side is NOT reported as a source (direction-symmetry
+#          regression guard)
+#      (c) the tokens appear strictly under the correct section header
+#          (label/token pairing pin via assert_contains_near)
+#      (d) the fixture injection is non-trivial (sanity check that
+#          remove_rst_adoc_line actually removed the target line)
+#   6. Drift by addition — same four sub-assertions as Test 5 in the
+#      opposite direction (token added to review.md)
+#   7. Missing-file fixture: --repo-root pointing to a tree without the
 #      required files exits 2 with a clear diagnostic
-#   9. Broken-section fixture: empty Activation section trips the
+#   8. Broken-section fixture: empty Activation section trips the
 #      "expected >= 10" guard and exits 2
-#  10. Drift-by-removal fixture injection is non-trivial (sed/awk sanity
-#      check): the removed line must actually be absent from the mutated file
-#      so the test cannot silently no-op on future format changes
 
 set -uo pipefail
 
@@ -71,18 +72,32 @@ assert_contains() {
   fi
 }
 
-# Assert that `needle` appears within `window` lines after `header` in
-# `haystack`. This pins label/token pairing so a future change to
-# `report_diff` that swaps section labels cannot silently pass the test.
+# Assert that `needle` appears under the `header` section of `haystack`,
+# where a "section" is defined as the lines strictly between the header line
+# and the next `[doc-heavy-patterns-drift]` block header (or end of output).
+# This pins label/token pairing so a future change to `report_diff` that
+# swaps section labels cannot silently pass the test.
+#
+# The earlier implementation used `grep -F -A <N>` with a fixed line window,
+# but the window could span into the neighbouring section and let a token
+# leak across headers — the pairing was not actually pinned. This awk
+# pattern slices exclusively between the matched header and the next block
+# header, so a token that migrates to another section triggers a failure.
+# The `window` parameter is preserved in the call signature for compatibility
+# but is no longer used (the slice is bounded by structural markers instead).
 assert_contains_near() {
-  local desc="$1" header="$2" needle="$3" window="$4" haystack="$5"
+  local desc="$1" header="$2" needle="$3" _window_unused="$4" haystack="$5"
   local slice
-  slice=$(printf '%s' "$haystack" | grep -F -A "$window" -- "$header" || true)
+  slice=$(printf '%s\n' "$haystack" | awk -v h="$header" '
+    index($0, h) > 0 { in_sec = 1; next }
+    in_sec && /^\[doc-heavy-patterns-drift\]/ { in_sec = 0 }
+    in_sec { print }
+  ')
   if printf '%s' "$slice" | grep -qF -- "$needle"; then
     echo "PASS: $desc"
     PASS=$((PASS + 1))
   else
-    echo "FAIL: $desc — expected '$needle' within $window lines after '$header'" >&2
+    echo "FAIL: $desc — expected '$needle' inside '$header' section" >&2
     echo "  slice: $slice" >&2
     FAIL=$((FAIL + 1))
   fi
@@ -98,17 +113,22 @@ cleanup() {
 trap cleanup EXIT
 
 # Build a minimal repo-root layout containing all 3 required files, copied
-# from the real source tree. Callers then mutate one of the copies to inject
-# drift and invoke the script with --repo-root pointing at the fake tree.
-build_fake_tree() {
-  local dest
-  # Fail fast on mktemp error so callers cannot silently continue with an
-  # empty `dest` (which would cause mkdir/cp to error out in confusing ways).
-  dest=$(mktemp -d) || {
-    echo "FAIL: build_fake_tree mktemp -d failed" >&2
-    exit 2
-  }
-  TMPDIRS+=("$dest")
+# from the real source tree. Callers own the temp directory — they `mktemp
+# -d` in the parent shell (so the TMPDIRS array actually receives the path
+# and the EXIT trap can clean it up), then pass the directory as `$1`.
+#
+# This shape avoids two subshell traps from the previous version:
+#   1. `dest=$(build_fake_tree)` called the function inside a command
+#      substitution subshell, so an internal `exit 2` on mktemp failure
+#      only killed the subshell — the parent script continued with an
+#      empty `$dest`.
+#   2. `TMPDIRS+=("$dest")` inside the function ran in the same subshell
+#      and never propagated to the parent array, so build_fake_tree temp
+#      directories were leaked into `/tmp` every test run.
+# With this refactor, both the mktemp and the TMPDIRS push happen in the
+# parent shell, and the function only performs `mkdir`/`cp`.
+build_fake_tree_at() {
+  local dest="$1"
   mkdir -p \
     "$dest/plugins/rite/skills/reviewers" \
     "$dest/plugins/rite/commands/pr"
@@ -118,8 +138,18 @@ build_fake_tree() {
      "$dest/plugins/rite/skills/reviewers/SKILL.md"
   cp "$REPO_ROOT/plugins/rite/commands/pr/review.md" \
      "$dest/plugins/rite/commands/pr/review.md"
-  printf '%s' "$dest"
 }
+
+# Tests allocate fake trees with the following 3-line pattern (all in the
+# parent shell so the TMPDIRS mutation and `exit 2` on failure both affect
+# the caller, not a subshell):
+#
+#   FAKE=$(mktemp -d) || { echo "FAIL: mktemp -d failed" >&2; exit 2; }
+#   TMPDIRS+=("$FAKE")
+#   build_fake_tree_at "$FAKE"
+#
+# Do not wrap the pattern in a helper function — any helper that returns
+# the path via `$(helper)` would re-introduce the subshell trap.
 
 # Delete the Activation list item for `*.rst` / `*.adoc` from tech-writer.md.
 # Uses awk (GNU/BSD-portable) rather than `sed -i` which requires a mandatory
@@ -150,7 +180,7 @@ append_bogus_pattern() {
 
 # Blank out the entire Activation body (drop every line between
 # `## Activation` and `### Conditional Activation`, exclusive). Used by
-# Test 9 (broken-section guard). Replaces the earlier python3 heredoc so the
+# Test 8 (broken-section guard). Replaces the earlier python3 heredoc so the
 # test has no python3 preflight requirement.
 blank_activation_body() {
   local file="$1"
@@ -190,7 +220,9 @@ assert "repo-wide --all exits 0 on real 3 files (no false positives)" "0" "$rc"
 # The removed tokens should be reported as "only in review.md" AND
 # "only in SKILL.md", and NOT reported as "only in tech-writer.md"
 # (direction-symmetry regression guard).
-FAKE_REMOVED=$(build_fake_tree)
+FAKE_REMOVED=$(mktemp -d) || { echo "FAIL: Test 5 mktemp -d failed" >&2; exit 2; }
+TMPDIRS+=("$FAKE_REMOVED")
+build_fake_tree_at "$FAKE_REMOVED"
 TW_FIXTURE="$FAKE_REMOVED/plugins/rite/skills/reviewers/tech-writer.md"
 remove_rst_adoc_line "$TW_FIXTURE"
 
@@ -245,7 +277,9 @@ assert_contains_near \
 # Insert an extra glob token into review.md's doc_file_patterns block. The
 # new token should be reported as "only in review.md" AND NOT as
 # "only in tech-writer.md" / "only in SKILL.md" (direction-symmetry).
-FAKE_ADDED=$(build_fake_tree)
+FAKE_ADDED=$(mktemp -d) || { echo "FAIL: Test 6 mktemp -d failed" >&2; exit 2; }
+TMPDIRS+=("$FAKE_ADDED")
+build_fake_tree_at "$FAKE_ADDED"
 REVIEW_FIXTURE="$FAKE_ADDED/plugins/rite/commands/pr/review.md"
 append_bogus_pattern "$REVIEW_FIXTURE"
 
@@ -297,7 +331,9 @@ assert_contains "missing-file fixture names the missing file" \
 # Blank out tech-writer.md's Activation body. The extractor should find zero
 # list items, fall through the >= 10 guard, and exit 2 with a diagnostic
 # rather than falsely reporting drift.
-FAKE_BROKEN=$(build_fake_tree)
+FAKE_BROKEN=$(mktemp -d) || { echo "FAIL: Test 8 mktemp -d failed" >&2; exit 2; }
+TMPDIRS+=("$FAKE_BROKEN")
+build_fake_tree_at "$FAKE_BROKEN"
 blank_activation_body "$FAKE_BROKEN/plugins/rite/skills/reviewers/tech-writer.md"
 
 out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_BROKEN" 2>&1)
