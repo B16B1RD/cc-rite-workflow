@@ -126,8 +126,10 @@ case "$_phase" in
     _impl_status="✅ 完了"
     _test_status="⬜ 未着手"
     _doc_status="⬜ 未着手"
-    echo "$_diff_files" | grep -qE '\.(test|spec)\.|test_|tests/' 2>/dev/null && _test_status="✅ 完了"
-    echo "$_diff_files" | grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' 2>/dev/null && _doc_status="✅ 完了"
+    # SIGPIPE 防止 (#398): echo | grep -qE パターンを here-string に置換。
+    # _diff_files が大きい場合、grep -q の早期終了で echo に SIGPIPE が届く経路を排除。
+    grep -qE '\.(test|spec)\.|test_|tests/' <<< "$_diff_files" 2>/dev/null && _test_status="✅ 完了"
+    grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' <<< "$_diff_files" 2>/dev/null && _doc_status="✅ 完了"
 
     "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
       --issue "$issue_number" \

@@ -4,7 +4,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 
 > **CRITICAL: All Bash code in command templates MUST use the defensive patterns defined in this document.**
 >
-> These patterns prevent the 4 most common runtime errors observed in rite workflow execution.
+> These patterns prevent the 5 most common runtime errors observed in rite workflow execution.
 >
 > **Applies to**: All command templates under `commands/` that contain Bash code blocks
 
@@ -17,6 +17,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 - [Pattern 2: grep Variable Expansion](#pattern-2-grep-variable-expansion)
 - [Pattern 3: Python Inline Scripts with Japanese](#pattern-3-python-inline-scripts-with-japanese)
 - [Pattern 4: Directory Pre-creation](#pattern-4-directory-pre-creation)
+- [Pattern 5: SIGPIPE Prevention in Pipelines](#pattern-5-sigpipe-prevention-in-pipelines)
 - [Quick Checklist for Template Authors](#quick-checklist-for-template-authors)
 
 ---
@@ -29,6 +30,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 | 2 | `grep: 無効なオプション -- ' '` | Unquoted variable passed to grep | `grep -- "$pattern"` + `|| true` |
 | 3 | `SyntaxError: unterminated string literal` | Japanese strings in inline Python script (`python3 -c`) | File-based argument passing |
 | 4 | `そのようなファイルやディレクトリはありません` | Missing directory before file write | `mkdir -p` before write |
+| 5 | SIGPIPE / exit code 141 | `echo`/`printf` pipe to early-terminating `head`/`grep -m`/`grep -q` under `pipefail` | Here-string `<<<` instead of pipe |
 
 ---
 
@@ -209,6 +211,56 @@ printf '%s' "$backup" > /tmp/rite-backups/wm-backup.md
 
 ---
 
+## Pattern 5: SIGPIPE Prevention in Pipelines
+
+### Vulnerable Pattern
+
+```bash
+# echo/printf が upstream (writer)、grep/head が downstream (reader) の pipeline
+incomplete_tasks=$(echo "$comment_body" | sed -n '/### 進捗/,/### /p' | grep -E '^\s*- \[ \]' | head -10)
+parent_number=$(echo "$issue_body" | grep -A2 '^## 親 Issue' | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_URL" | grep -oE '[0-9]+$' || true)
+```
+
+**Failure mode**: `pipefail` 有効時、`head -N` / `grep -m 1` / `grep -q` が早期終了すると downstream の reader が閉じる。upstream の `echo` / `printf` がまだ書き込み中の場合（変数の内容が pipe buffer 64KB を超えるとき）、SIGPIPE (rc=141) が upstream に届き、pipeline 全体の exit code が 141 になる。`|| true` で吸収しても SIGPIPE と「マッチなし」が区別できない。
+
+### Defensive Pattern
+
+```bash
+# here-string `<<<` で echo/printf subprocess を排除
+# bash は here-string を一時ファイル経由で grep に渡すため、
+# grep の早期終了で SIGPIPE を受ける書き込みプロセスが存在しない
+progress_section=$(sed -n '/### 進捗/,/### /p' <<< "$comment_body")
+incomplete_tasks=$(grep -E '^\s*- \[ \]' <<< "$progress_section" | head -10)
+
+parent_number=$(grep -A2 '^## 親 Issue' <<< "$issue_body" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+
+ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
+```
+
+**Key changes**:
+1. `echo "$var" | cmd` → `cmd <<< "$var"` — echo subprocess を排除し SIGPIPE 経路を断つ
+2. 複合 pipeline (`sed | grep | head`) は段階分割: まず `sed <<< "$var"` で範囲抽出、次に `grep <<< "$section"` でフィルタ
+3. `grep -q` / `grep -m 1` のような早期終了 flag と組み合わせる場合は特に重要
+
+### When NOT to Convert
+
+以下のパターンは SIGPIPE リスクがないため変換不要:
+
+| パターン | 理由 |
+|---------|------|
+| `echo "$var" \| grep -c` | `grep -c` は全入力を消費（早期終了しない） |
+| `echo "$var" \| sort -u \| grep -v` | `sort` が全入力をバッファリング |
+| `echo "$small_var" \| grep` (`$small_var` < 64KB 確定) | pipe buffer 内で echo が完了 |
+| テストコード内の `echo "$output" \| grep -q` | テスト出力は通常小さい |
+
+### Reference
+
+- PR #396 / Issue #389: 初回修正（`review.md` の `printf | grep -m 1` → `<<<`）
+- Issue #398: 横断調査による残存パターンの一括修正
+
+---
+
 ## Quick Checklist for Template Authors
 
 Before adding Bash code to a command template, verify:
@@ -219,3 +271,4 @@ Before adding Bash code to a command template, verify:
 - [ ] Python inline scripts use file-based argument passing (no shell variable embedding)
 - [ ] All file writes are preceded by `mkdir -p` for the target directory
 - [ ] All variables in `[ ]` or `[[ ]]` are double-quoted
+- [ ] Pipelines with early-termination (`head`, `grep -m`, `grep -q`) use here-string `<<<` instead of `echo`/`printf` pipe

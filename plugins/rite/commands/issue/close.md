@@ -413,7 +413,9 @@ Extract the parent Issue number from the closing Issue's body. The `## 親 Issue
 
 ```bash
 issue_body=$(gh issue view {issue_number} --json body --jq '.body')
-parent_number=$(echo "$issue_body" | grep -A2 '^## 親 Issue' | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+# SIGPIPE 防止 (#398): issue_body が大きい場合、echo | grep | head -1 で
+# head の早期終了により echo に SIGPIPE が届く。here-string で subprocess を排除。
+parent_number=$(grep -A2 '^## 親 Issue' <<< "$issue_body" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
 echo "parent_number=${parent_number:-none}"
 ```
 

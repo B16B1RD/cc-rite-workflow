@@ -156,7 +156,9 @@ ISSUE_URL=$(gh "${GH_ARGS[@]}" 2>"$GH_ERR_FILE") || {
   exit 1
 }
 
-ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_URL" | grep -oE '[0-9]+$' || true)
+# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
+# ISSUE_URL は短い文字列だが、pipefail 下での一貫性のため統一。
+ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 
 if [ -z "$ISSUE_NUMBER" ]; then
   add_warning "Could not extract issue number from URL"

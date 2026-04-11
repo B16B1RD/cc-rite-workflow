@@ -407,13 +407,15 @@ fi
 # (1) literal `/pull/` / `/issues/` を直書きして括弧グループ内のバリエーションを減らす
 # (2) pr_number 自体が数字のみであることを事前に validate (Phase 1.0 で normalize 済みだが defense-in-depth)
 # これにより将来 pr_number に他の文字が混入する拡張がなされた場合の silent false positive を防ぐ
-if ! printf '%s' "{pr_number}" | grep -qE '^[0-9]+$'; then
+# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
+if ! grep -qE '^[0-9]+$' <<< "{pr_number}"; then
   echo "エラー: pr_number が数字以外を含んでいます: '{pr_number}'" >&2
   echo "  Phase 1.0 で正規化された pr_number は数字のみのはずですが、何らかの経路で異常値が混入しました" >&2
   echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=issue_number_not_found" >&2
   exit 1
 fi
-if ! printf '%s' "$comment_issue_url" | grep -qE "/(pull|issues)/{pr_number}$"; then
+# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
+if ! grep -qE "/(pull|issues)/{pr_number}$" <<< "$comment_issue_url"; then
   echo "エラー: コメント #{target_comment_id} は PR #{pr_number} に属していません (silent misclassification 検出)" >&2
   echo "  実際の所属: $comment_issue_url" >&2
   echo "  期待値: /pull/{pr_number} または /issues/{pr_number} で終わる URL" >&2
