@@ -65,8 +65,8 @@ Commands that display information without state changes use `context: fork`:
 | Analysis | `/rite:skill:suggest`, `/rite:investigate` | ✅ Applied | Independent analysis |
 | Read-only Display | `/rite:workflow` | ✅ Applied | Information display only |
 | Interactive | `/rite:issue:create`, `/rite:issue:start` | ❌ Not Applied | User interaction required |
-| State-changing | `/rite:pr:create`, `/rite:pr:cleanup`, `/rite:pr:ready` | ❌ Not Applied | Modifies repository state |
-| Interactive + State-changing | `/rite:pr:review`, `/rite:pr:fix`, `/rite:lint` | ❌ Not Applied | `AskUserQuestion` required in e2e flow (#436) |
+| State-changing | `/rite:pr:cleanup`, `/rite:pr:ready` | ❌ Not Applied | Modifies repository state |
+| Interactive + State-changing | `/rite:pr:review`, `/rite:pr:fix`, `/rite:lint`, `/rite:pr:create` | ❌ Not Applied | `AskUserQuestion` required in e2e flow (#436) |
 
 > **Note**: `context: fork` と `AskUserQuestion` は非互換です。`context: fork` 環境では `AskUserQuestion` がユーザーとの対話を完了できず、skill が accumulated output を返して終了します（#436）。Interactive なコマンドには `context: fork` を適用しないでください。
 
