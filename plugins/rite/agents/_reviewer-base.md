@@ -1,5 +1,47 @@
 # Reviewer Agent Base Template
 
+## READ-ONLY Enforcement
+
+All reviewers run in a **strictly read-only context**. Reviewers must not mutate the working tree, the Git index, the repository refs, or any remote state. This rule applies to **every tool**, not just `Edit`/`Write`.
+
+### Prohibited Bash/Git commands
+
+Any Bash invocation that matches the following patterns is forbidden inside a reviewer subagent. A reviewer that needs to inspect historical content or a different ref must use the read-only alternative in the rightmost column.
+
+| 禁止コマンド | 理由 | 代替手段 |
+|---------|------|----------|
+| `git checkout <ref> -- <file>` | index + working tree 書き換え | `git show <ref>:<file>` (stdout 出力のみ) |
+| `git checkout <branch>` | HEAD 切り替え | `git worktree add <path> <ref>` で別ディレクトリに展開 |
+| `git reset` (あらゆる形式) | index / HEAD 変更 | 代替なし — reviewer は実行禁止 |
+| `git add` / `git rm` | index 変更 | 代替なし — reviewer は実行禁止 |
+| `git stash` (push/pop/apply/drop/clear) | working tree 退避・復元 | 代替なし — reviewer は実行禁止 |
+| `git restore` | working tree / index 復元 | 代替なし — reviewer は実行禁止 |
+| `git commit` / `git push` / `git pull` / `git fetch --prune` / `git fetch --force` | ref / remote 操作 | bare `git fetch` (flag なし) は読み取り許可、`--prune`/`--force` は remote tracking ref を削除するため禁止 |
+| `git merge` / `git rebase` / `git cherry-pick` / `git revert` | ref 操作 | 代替なし — reviewer は実行禁止 |
+| `git tag` (作成/削除) | ref 操作 | 代替なし — reviewer は実行禁止 |
+| `git clean` / `git gc` / `git reflog expire` | working tree / ref 操作 | 代替なし — reviewer は実行禁止 |
+| `git worktree remove` / `git worktree prune` | worktree 削除 | 代替なし — reviewer は実行禁止 |
+| `git branch -D` / `-d` / `-f` / `-m` / `-M` / `--delete` / `--force` / `--move` / `--copy` | ブランチ ref の削除/強制移動 | 代替なし — reviewer は実行禁止。`git branch --list` / `--show-current` / `-a` は read-only として許可 |
+| `git branch <new-branch>` (flag なしでの新規ブランチ作成) | 新規 ref 作成 | `git worktree add <path> <ref>` を使って隔離ディレクトリで検証する |
+| `git update-ref` / `git symbolic-ref` | 低レベル ref 操作 | 代替なし — reviewer は実行禁止 |
+| `git reflog expire` / `git reflog delete` | reflog 改変 | 代替なし — reviewer は実行禁止。`git reflog` の単純な display は read-only として許可 |
+| `git am` / `git apply` | patch 適用 (index 書き換え) | `git show <ref>` で patch 内容のみを参照する |
+| `git mv` / `git notes add/edit/append/remove` / `git config` / `git remote add/remove/set-url` | tracked file rename / notes 書き換え / local config / remote 編集 | 代替なし — reviewer は実行禁止 |
+
+### Allowed Bash/Git commands
+
+Reviewer subagents **may** use the following read-only commands for evidence gathering:
+
+- **History / blob access**: `git diff`, `git log`, `git show`, `git blame`, `git cat-file`, `git rev-parse`, `git ls-files`, `git ls-remote`
+- **Status (display only)**: `git status`
+- **Branch display (read-only)**: `git branch --list`, `git branch --show-current`, `git branch -a`, `git branch -r`, `git branch -v` (list/display sub-commands only — `-D/-d/-f/-m/-M` and flag-less new-branch creation are forbidden per the table above)
+- **Tag / stash / reflog (display only)**: `git tag -l`, `git tag --list`, `git stash list`, `git stash show`, `git reflog` (bare list), `git worktree list` (display-only sub-commands — `git tag -d/-a/--delete/--force`, `git stash push/pop/drop/apply/clear`, `git reflog expire/delete`, and `git worktree remove/prune` remain forbidden)
+- **Remote sync (bare fetch only)**: `git fetch` (bare form only — **`git fetch --prune` / `--force` は禁止**。reviewer コンテキストでは local tracking ref を削除する可能性があるため)
+- **Isolated worktree creation**: `git worktree add` (reads from refs, writes only to a fresh directory the reviewer owns)
+- **Workflow helpers**: `gh` CLI for reading PR/Issue metadata, plugin hook scripts, test runners (`bash <test>`, `pytest`, `npm test`, etc.)
+
+**Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead. 同様に、`git stash` は「undo すれば戻る」ように見えるが、stash entry の作成自体が parent session の working tree をクリアし、並列レビュアー間で race を起こす。`git add` / `git reset` も index を汚染し、後続の `/rite:pr:fix` が diff を誤認する根本原因になる。`git fetch --prune` は remote-tracking branch を削除するため、後続の `git diff origin/<branch>` が「unknown revision」で壊れる silent regression を引き起こす。
+
 ## Reviewer Mindset
 
 All reviewers MUST adopt these principles:
