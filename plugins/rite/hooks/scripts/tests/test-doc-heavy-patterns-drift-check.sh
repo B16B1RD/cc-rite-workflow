@@ -258,8 +258,11 @@ assert "drift-by-removal does NOT falsely report tech-writer.md as source" "0" "
 
 # Header-token locality: the removed tokens must appear under the correct
 # section header (not elsewhere in the output). `assert_contains_near`
-# greps `-A 5` after the header label and confirms the token is present in
-# that window, pinning the label/token pairing.
+# slices the output from the matched header line to the next
+# `[doc-heavy-patterns-drift]` block header (awk-based exclusive slice),
+# pinning the label/token pairing across section boundaries. The window
+# argument is retained as a placeholder for call-site stability but is
+# ignored by the new awk implementation.
 assert_contains_near \
   "drift-by-removal pins *.rst under 'only in review.md' header" \
   "only in review.md" \
