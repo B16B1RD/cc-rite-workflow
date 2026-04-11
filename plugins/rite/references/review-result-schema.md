@@ -19,7 +19,12 @@
 
 現行スキーマバージョン: **1.0.0**
 
-スキーマ変更時は `schema_version` を semver (`MAJOR.MINOR.PATCH`) でインクリメントする。`/rite:pr:fix` Phase 1.2.0 Priority 2 は読取時に `jq -r '.schema_version'` でバージョンを確認し、`"1.0.0"` または legacy `"1.0"` 以外の場合は WARNING を出して次の優先順位のソースにフォールスルーする (fix.md Phase 1.2.0 の schema_version verification ブロック参照)。
+スキーマ変更時は `schema_version` を semver (`MAJOR.MINOR.PATCH`) でインクリメントする。`/rite:pr:fix` Phase 1.2.0 の **Priority 0 および Priority 2** は読取時に `jq -r '.schema_version'` でバージョンを確認し、`"1.0.0"` または legacy `"1.0"` 以外の場合、遷移先が Priority に応じて異なる:
+
+- **Priority 0 (`--review-file`)** 失敗時: 直接 **Priority 4 (対話式 fallback)** へ遷移 (ユーザーの明示意図を尊重、Priority 1-3 には fallthrough しない)
+- **Priority 2 (ローカルファイル)** 失敗時: WARNING を出して **Priority 3 (PR コメント)** へ routing (古い timestamp ファイルには fallback しない)
+
+詳細は fix.md Phase 1.2.0 Hybrid Review Source Resolution の Priority 0 / Priority 2 selection logic bash block を参照。
 
 ## JSON Schema
 
@@ -107,7 +112,7 @@
 
 - 既存の Markdown テーブル形式は保持 (後方互換、人間可読性)
 - 末尾に `### 📄 Raw JSON` セクションを追加し、code fence で JSON を埋め込む
-- `/rite:pr:fix` Phase 1.2.0 Priority 3 は code fence 内の JSON を `awk '/^```json$/{flag=1; next} /^```$/{flag=0} flag'` の line-state parsing で抽出する (regex 直接抽出ではなく awk state machine)
+- `/rite:pr:fix` Phase 1.2.0 Priority 3 は code fence 内の JSON を **section-scoped awk line-state parsing** で抽出する (findings suggestion 列内のサンプル JSON fence 誤捕捉を防ぐため、`### 📄 Raw JSON` marker 以降に scope を限定する): `awk '/^### 📄 Raw JSON/{in_section=1; next} in_section && /^```json$/{flag=1; next} flag && /^```$/{flag=0; exit} flag{print}'`
 
 ## 読取優先順位 (pr:fix)
 

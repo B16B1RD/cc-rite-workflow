@@ -195,17 +195,18 @@ remaining_args="$original_args"
 
 # Pattern 1: --review-file=<path> (GNU-long-option style)
 # sed regex は `[[:space:]]` を使い tab 区切りも処理する (cycle 2 MEDIUM 指摘)
+# echo → printf '%s' に置換 (cycle 3 LOW fix: -n/-e/-E prefix 先頭トークン誤解釈防止)
 if [[ "$remaining_args" =~ (^|[[:space:]])--review-file=([^[:space:]]+) ]]; then
   review_file_path="${BASH_REMATCH[2]}"
-  remaining_args=$(echo "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file=[^[:space:]]+//')
+  remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file=[^[:space:]]+//')
 # Pattern 2: --review-file <path> (POSIX style with space/tab)
 elif [[ "$remaining_args" =~ (^|[[:space:]])--review-file[[:space:]]+([^[:space:]]+) ]]; then
   review_file_path="${BASH_REMATCH[2]}"
-  remaining_args=$(echo "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file[[:space:]]+[^[:space:]]+//')
+  remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file[[:space:]]+[^[:space:]]+//')
 fi
 
 # remaining_args の前後 whitespace を trim
-remaining_args=$(echo "$remaining_args" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
 
 echo "[CONTEXT] REVIEW_FILE_PATH=$review_file_path"
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args"
@@ -346,19 +347,34 @@ fi
 # Priority 2: Local file — lexicographic sort で最新 timestamp を選択
 # ファイル名は {pr_number}-YYYYMMDDHHMMSS.json 形式で timestamp が zero-padded のため
 # 文字列 sort = 時系列 sort が成立する。BSD find 非互換の -printf を回避し portable に。
+#
+# ⚠️ SIGPIPE 対策 (cycle 3 CRITICAL fix): `find | sort -r | head -1` は pipefail 有効下で
+# `head -1` 早期終了により `sort` が SIGPIPE (rc=141) を受け pipeline 失敗扱いとなる
+# (bash-defensive-patterns.md Pattern 5 / Issue #398 で禁止された anti-pattern)。
+# mapfile + process substitution で pipeline を分離し、配列経由で先頭要素を取得する。
 if [ -z "$review_source" ]; then
+  # signal-specific trap (cycle 3 HIGH fix: find_err tempfile を orphan から保護)
+  find_err=""
+  _rite_fix_p120_cleanup() {
+    rm -f "${find_err:-}"
+  }
+  trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
+  trap '_rite_fix_p120_cleanup; exit 130' INT
+  trap '_rite_fix_p120_cleanup; exit 143' TERM
+  trap '_rite_fix_p120_cleanup; exit 129' HUP
+
   find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX) || find_err=""
-  # pipefail 有効化済みのため pipe 全体の rc が捕捉される (find / sort / head のいずれか失敗で非ゼロ)
-  if latest_file=$(find .rite/review-results -maxdepth 1 -type f -name "{pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r | head -1); then
-    :  # latest_file 取得成功 (空文字列の可能性あり → 後段の `[ -n ]` で判定)
-  else
-    latest_file=""
-    if [ -n "$find_err" ] && [ -s "$find_err" ]; then
-      echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
-      head -3 "$find_err" | sed 's/^/  /' >&2
-    fi
+
+  # mapfile + process substitution で SIGPIPE 経路を断ち、pipefail 下でも安全に動作する
+  files_arr=()
+  mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "{pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r)
+  latest_file="${files_arr[0]:-}"
+
+  if [ -n "$find_err" ] && [ -s "$find_err" ]; then
+    echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
+    head -3 "$find_err" | sed 's/^/  /' >&2
   fi
-  [ -n "$find_err" ] && rm -f "$find_err"
+  [ -n "$find_err" ] && rm -f "$find_err" && find_err=""
 
   if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
     if jq empty "$latest_file" 2>/dev/null; then
@@ -410,12 +426,14 @@ fi
 ```bash
 # Extract JSON from the Raw JSON section (scoped by section marker to avoid capturing
 # sample JSON fences in findings' suggestion columns — cycle 2 MEDIUM fix)
-raw_json=$(printf '%s' "$pr_review_comment_body" | awk '
+# cycle 3 MEDIUM fix: `printf | awk` から here-string `<<<` に変更。awk の `exit` による
+# stdin 早期終了で printf が SIGPIPE を受ける経路を排除 (bash-defensive-patterns.md Pattern 5)
+raw_json=$(awk '
   /^### 📄 Raw JSON/   { in_section=1; next }
   in_section && /^```json$/ { flag=1; next }
   flag && /^```$/      { flag=0; exit }
   flag                 { print }
-')
+' <<< "$pr_review_comment_body")
 if [ -n "$raw_json" ] && printf '%s' "$raw_json" | jq empty 2>/dev/null; then
   # New format: use JSON directly (still verify schema_version)
   schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"')
@@ -3320,12 +3338,13 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
-| 1 (最優先) | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した (本 Issue #350 検証付きレビュー H-2 / H-3 / H-4) | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
-| 2 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
-| 3 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
-| 4 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
-| 5 | All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
-| 6 | Unexpected state / error | `[fix:error]` |
+| 1 (最優先) | Phase 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_retries` を context に set した (cycle 3 HIGH fix) | `[fix:error]` (fallback retry 上限到達により fix 処理を継続できない。Claude は以降の Phase への bash tool 呼び出しを一切行わない) |
+| 2 | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した (本 Issue #350 検証付きレビュー H-2 / H-3 / H-4) | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
+| 3 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
+| 4 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
+| 5 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
+| 6 | All findings replied (no push, no separate Issues) | `[fix:replied-only]` |
+| 7 | Unexpected state / error | `[fix:error]` |
 
 **評価順序の重要性**: 上から順に評価し、最初にマッチした条件の output pattern を採用する。`WM_UPDATE_FAILED=1` の検出は最優先 (silent regression 防止のため `[fix:pushed]` よりも先に判定する)。
 

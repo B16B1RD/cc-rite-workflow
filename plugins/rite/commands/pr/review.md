@@ -2536,9 +2536,11 @@ Execute this sub-phase **only when** `{post_comment_mode}=true` from Phase 1.0. 
 
 ````bash
 # Phase 6.1.b: PR コメント投稿 (signal-specific trap 保護)
+# cycle 3 HIGH fix: gh_err tempfile も cleanup 対象に含める (canonical pattern 準拠)
 tmpfile=""
+gh_err=""
 _rite_review_p61b_cleanup() {
-  rm -f "${tmpfile:-}"
+  rm -f "${tmpfile:-}" "${gh_err:-}"
 }
 trap 'rc=$?; _rite_review_p61b_cleanup; exit $rc' EXIT
 trap '_rite_review_p61b_cleanup; exit 130' INT
@@ -2595,13 +2597,13 @@ fi
 
 **Note**: `{review_result_content_heredoc_body}` uses the integrated report generated in Phase 5.4 (template based on `review_mode`). The `📎 reviewed_commit: {current_commit_sha}` at the end of the report is used in the verification mode of the next cycle, so it must always be included.
 
-**Note on Raw JSON section** (#443): The `### 📄 Raw JSON` section embeds the same JSON as saved to the local file (Phase 6.1.a). This enables `/rite:pr:fix` to extract the JSON via a parse over the `` ```json `` fence (awk line-state parsing in `fix.md` Phase 1.2.0 Priority 3). The Markdown table format above the Raw JSON section is preserved for human readability and backward compatibility with older fix-loop parsing logic.
+**Note on Raw JSON section** (#443): The `### 📄 Raw JSON` section embeds the same JSON as saved to the local file (Phase 6.1.a). This enables `/rite:pr:fix` to extract the JSON via a parse over the `` ```json `` fence using **section-scoped awk line-state parsing** in `fix.md` Phase 1.2.0 Priority 3 (the parser uses the `### 📄 Raw JSON` heading as a scope marker to avoid capturing sample JSON fences from findings' suggestion columns earlier in the comment). The Markdown table format above the Raw JSON section is preserved for human readability and backward compatibility with older fix-loop parsing logic.
 
 #### 6.1.c Skip Notification (when `{post_comment_mode}=false`)
 
 When `{post_comment_mode}=false`, inform the user that PR comment posting was skipped (for observability — this is not an error).
 
-Claude は Phase 6.1.a の stdout から `[CONTEXT] FILE_TIMESTAMP=...` を会話コンテキストで読み取り、以下のメッセージに埋め込んで出力する:
+Claude は Phase 6.1.a の **stderr** から `[CONTEXT] FILE_TIMESTAMP=...` を会話コンテキストで読み取り (cycle 2 で stdout から stderr に統一済)、以下のメッセージに埋め込んで出力する:
 
 ```
 ℹ️  PR コメント記録はスキップされました (pr_review.post_comment=false)
