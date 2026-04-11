@@ -16,7 +16,7 @@ Any Bash invocation that matches the following patterns is forbidden inside a re
 | `git add` / `git rm` | index 変更 | 代替なし — reviewer は実行禁止 |
 | `git stash` (push/pop/apply/drop/clear) | working tree 退避・復元 | 代替なし — reviewer は実行禁止 |
 | `git restore` | working tree / index 復元 | 代替なし — reviewer は実行禁止 |
-| `git commit` / `git push` / `git pull` / `git fetch --prune` | ref / remote 操作 | 代替なし — reviewer は実行禁止 |
+| `git commit` / `git push` / `git pull` / `git fetch --prune` / `git fetch --force` | ref / remote 操作 | bare `git fetch` (flag なし) は読み取り許可、`--prune`/`--force` は remote tracking ref を削除するため禁止 |
 | `git merge` / `git rebase` / `git cherry-pick` / `git revert` | ref 操作 | 代替なし — reviewer は実行禁止 |
 | `git tag` (作成/削除) | ref 操作 | 代替なし — reviewer は実行禁止 |
 | `git clean` / `git gc` / `git reflog expire` | working tree / ref 操作 | 代替なし — reviewer は実行禁止 |

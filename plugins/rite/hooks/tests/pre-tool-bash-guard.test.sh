@@ -764,6 +764,105 @@ echo "TC-064: main session + 'git push origin' → allow"
 assert_main_allow "main session git push allowed" "git push origin feat/foo"
 
 # --------------------------------------------------------------------------
+# Pattern 4 Cycle 3 additions (Issue #442 cycle 2 review fixes)
+# --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
+# TC-065〜066: Newline (`\n`) bypass closure — cycle 2 HIGH regression
+# cycle 2 で確認された「CMD_NORMALIZED に \n/\r が未正規化」経路を lock
+# --------------------------------------------------------------------------
+echo "TC-065: subagent + newline-separated 'true\\ngit reset' → deny"
+assert_subagent_deny "newline boundary \\ngit reset blocked" $'true\ngit reset --hard HEAD'
+
+echo "TC-066: subagent + 3-line script with 'git commit' → deny"
+assert_subagent_deny "multi-line script git commit blocked" $'echo a\ngit commit -am wip\necho b'
+
+echo "TC-066b: subagent + carriage-return '\\rgit checkout' → deny"
+assert_subagent_deny "CR boundary \\rgit checkout blocked" $'true\rgit checkout develop'
+
+# --------------------------------------------------------------------------
+# TC-067〜074: Always-deny coverage expansion (cycle 2 MEDIUM - 46% → ~90%)
+# 未カバー verb を array-driven loop で網羅
+# --------------------------------------------------------------------------
+echo "TC-067: subagent + always-deny verb coverage loop"
+for verb_cmd in \
+  "git pull origin main" \
+  "git rm README.md" \
+  "git clean -fd" \
+  "git gc --aggressive" \
+  "git prune --dry-run" \
+  "git symbolic-ref HEAD refs/heads/foo" \
+  "git am < /tmp/patch" \
+  "git apply --index /tmp/patch" \
+  "git mv old.md new.md" \
+  "git notes add -m msg HEAD" \
+  "git config user.email a@b.c" \
+  "git remote add upstream https://github.com/foo/bar" \
+  "git bisect start" \
+  "git filter-branch --tree-filter 'rm -f foo' HEAD" \
+  "git filter-repo --path foo --invert-paths" \
+  "git replace old new"; do
+  assert_subagent_deny "subagent '$verb_cmd' blocked" "$verb_cmd"
+done
+
+# --------------------------------------------------------------------------
+# TC-068〜075: git stash sub-action coverage (8 mutating sub-actions)
+# --------------------------------------------------------------------------
+echo "TC-068: subagent + git stash sub-action coverage"
+for stash_cmd in \
+  "git stash pop" \
+  "git stash drop stash@{0}" \
+  "git stash apply stash@{1}" \
+  "git stash clear" \
+  "git stash save 'wip'" \
+  "git stash create" \
+  "git stash store abc123" \
+  "git stash branch foo stash@{0}"; do
+  assert_subagent_deny "subagent '$stash_cmd' blocked" "$stash_cmd"
+done
+
+# --------------------------------------------------------------------------
+# TC-076〜080: git fetch regression guard — cycle 2 HIGH
+# branch / remote 名に -p/-f を substring として含む bare fetch が
+# allow されることを lock (cycle 1 で導入した Pattern 4(F) regression を閉塞)
+# --------------------------------------------------------------------------
+echo "TC-076: subagent + 'git fetch origin hot-fix' → allow (branch name contains -f)"
+assert_subagent_allow "bare fetch hot-fix branch allowed" "git fetch origin hot-fix"
+
+echo "TC-077: subagent + 'git fetch origin feature-patch' → allow (branch contains -p)"
+assert_subagent_allow "bare fetch feature-patch branch allowed" "git fetch origin feature-patch"
+
+echo "TC-078: subagent + 'git fetch origin release-focus' → allow"
+assert_subagent_allow "bare fetch release-focus branch allowed" "git fetch origin release-focus"
+
+echo "TC-079: subagent + 'git fetch origin v1.0-rc-final' → allow"
+assert_subagent_allow "bare fetch v1.0-rc-final branch allowed" "git fetch origin v1.0-rc-final"
+
+echo "TC-080: subagent + 'git fetch upstream main-pipeline' → allow"
+assert_subagent_allow "bare fetch main-pipeline branch allowed" "git fetch upstream main-pipeline"
+
+# --------------------------------------------------------------------------
+# TC-081〜082: git fetch short-flag still denied (regression guard for fix)
+# --------------------------------------------------------------------------
+echo "TC-081: subagent + 'git fetch -p origin' → deny (short -p flag)"
+assert_subagent_deny "short -p flag blocked" "git fetch -p origin"
+
+echo "TC-082: subagent + 'git fetch -f origin' → deny (short -f flag)"
+assert_subagent_deny "short -f flag blocked" "git fetch -f origin"
+
+echo "TC-082b: subagent + 'git fetch --force upstream' → deny (long --force flag)"
+assert_subagent_deny "long --force flag blocked" "git fetch --force upstream"
+
+# --------------------------------------------------------------------------
+# TC-083〜084: Brace/pipe/space-less bypass non-regression
+# --------------------------------------------------------------------------
+echo "TC-083: subagent + 'echo x|git reset' → deny (pipe boundary)"
+assert_subagent_deny "pipe |git reset blocked" "echo x|git reset --hard HEAD"
+
+echo "TC-084: subagent + '{git reset --hard HEAD;}' → deny (brace boundary)"
+assert_subagent_deny "brace group git reset blocked" "{git reset --hard HEAD;}"
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

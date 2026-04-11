@@ -128,14 +128,18 @@ fi
 #       are treated the same as the short forms `-d/-f/-m/-c/-C`.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # Normalize whitespace AND shell meta-characters into a single space so that
-  # `;git reset` / `(git checkout ...)` / `$(git commit)` are recognized as
-  # `git <verb>` with proper word boundaries.
+  # `;git reset` / `(git checkout ...)` / `$(git commit)` / multi-line commands
+  # are recognized as `git <verb>` with proper word boundaries.
   CMD_NORMALIZED="${CMD_CHECK//$'\t'/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//$'\n'/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//$'\r'/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//;/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//&/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//|/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//(/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//)/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//\{/ }"
+  CMD_NORMALIZED="${CMD_NORMALIZED//\}/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\`/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\$/ }"
   # Collapse multiple spaces into one.
@@ -238,15 +242,21 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   fi
 
   # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---
+  # CRITICAL: `-p` / `-f` must be matched as **standalone flag tokens**, not as
+  # substrings inside branch names like `hot-fix` / `release-patch` /
+  # `v1.0-rc-final` / `main-pipeline` (cycle 2 HIGH regression).
+  #
+  # Use a single bash regex with an optional "leading args" group:
+  #   ([^[:space:]]+[[:space:]]+)*
+  # This matches zero or more "non-space token + trailing spaces" — allowing
+  # the flag to appear either directly after `git fetch ` or after any number
+  # of positional args. The flag group `(--prune|--force|-p|-f)` requires an
+  # exact token match, so branch names containing `-p`/`-f` as substrings are
+  # NOT matched.
   if [ -z "$BLOCKED_PATTERN" ]; then
-    case "$PADDED" in
-      *" git fetch "*--prune*|\
-      *" git fetch "*-p*|\
-      *" git fetch "*--force*|\
-      *" git fetch "*-f*)
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-        ;;
-    esac
+    if [[ "$PADDED" =~ " git fetch "([^[:space:]]+[[:space:]]+)*(--prune|--force|-p|-f)([[:space:]=]|$) ]]; then
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+    fi
   fi
 
   # --- (G) git branch: display-only flags allowed, everything else denied ---
@@ -286,7 +296,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   fi
 
   if [ -n "$BLOCKED_PATTERN" ]; then
-    BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash push/restore/commit/push/merge/rebase/cherry-pick/revert/tag -a -d -f/clean/gc/branch -D --delete/update-ref/symbolic-ref/am/apply/mv/notes/config/remote/bisect/filter-branch/replace/reflog expire/worktree remove/fetch --prune/etc.) are forbidden inside reviewer contexts."
+    BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash push/restore/commit/push/merge/rebase/cherry-pick/revert/tag -a -d -f/clean/gc/branch -D --delete/update-ref/symbolic-ref/am/apply/mv/notes/config/remote/bisect/filter-branch/replace/reflog expire/worktree remove/fetch --prune/--force/etc.) are forbidden inside reviewer contexts."
     BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory, 'git tag -l' / 'git stash list' / 'git reflog' / 'git branch --list' for display-only queries, or bare 'git fetch' (without --prune/--force) for ref sync. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list."
   fi
 fi
