@@ -1,6 +1,5 @@
 ---
 description: マルチレビュアー PR レビューを実行
-context: fork
 ---
 
 # /rite:pr:review

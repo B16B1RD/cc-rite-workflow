@@ -30,15 +30,15 @@ sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
 | `{optional hypothesis}` | Optional root cause hint (may be empty) |
 | `{pr_number}` | Current PR number, or `0` if no PR exists yet |
 
-## Sentinel Visibility Rule (LLM Responsibility)
+## Sentinel Visibility Rule (LLM Responsibility — Defensive Practice)
 
-Skills declared with `context: fork` execute Bash tool calls in an **isolated subprocess context**. The orchestrator (`/rite:issue:start`) does NOT see subprocess `stdout` directly — it only sees the **final response message** that the sub-skill LLM returns.
+Sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`) execute inline within the orchestrator's conversation context. Bash tool call stdout is directly visible to the orchestrator, so sentinel lines emitted via the bash snippet above are automatically part of the conversation context.
 
-**Therefore**: When a sub-skill emits a workflow incident sentinel via the bash snippet above, the sub-skill LLM **MUST also include the captured `sentinel_line` value verbatim in its final visible response text** (not only as bash stdout). Otherwise the orchestrator's context grep in Phase 5.4.4.1 will never see the sentinel and AC-5 (hook abnormal exit detection) becomes silently broken.
+As a **defensive practice**, sub-skills SHOULD still include the captured `sentinel_line` value verbatim in their final visible response text. This ensures sentinel detection remains robust even if execution context changes in the future.
 
 **Concrete pattern**:
 
-After executing Step 1 and Step 2, the LLM must include the `sentinel_line` value in its response. Example:
+After executing Step 1 and Step 2, the LLM should include the `sentinel_line` value in its response as a defense-in-depth measure. Example:
 
 ```
 [lint:error] — 3 errors detected

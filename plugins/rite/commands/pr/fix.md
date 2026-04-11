@@ -1,6 +1,5 @@
 ---
 description: レビュー指摘への対応を支援
-context: fork
 ---
 
 # /rite:pr:fix

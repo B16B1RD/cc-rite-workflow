@@ -1,6 +1,5 @@
 ---
 description: ドラフト Pull Request を作成
-context: fork
 ---
 
 # /rite:pr:create
