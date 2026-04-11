@@ -1058,7 +1058,9 @@ git push origin --delete {branch_name}
 **Note**: If GitHub is configured to automatically delete branches on PR merge, the branch may already be deleted.
 Ignore remote branch deletion errors and proceed to Phase 2.5.
 
-### 2.5 Delete Review Result Local Files and Fix State Files (#443, #450)
+### 2.5 Delete Review Result Local Files and Fix State Files (#443, #450) <!-- AC-7 -->
+
+> **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除。他 PR ファイルを誤削除しない)。
 
 Delete two categories of PR-specific local artifacts associated with the merged PR:
 
@@ -1077,11 +1079,12 @@ Delete two categories of PR-specific local artifacts associated with the merged 
 
 | reason | Description |
 |--------|-------------|
+| `invalid_pr_number` | Phase 2.5 進入時の `pr_number` が空 or 非数値 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は non-blocking exit 0 で終了、cleanup 全体は失敗扱いにしない) |
 | `rm_failure` | review result `rm -f` コマンドが permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
 | `state_file_rm_failure` | fix retry state file の `rm -f` が permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
 | `mktemp_failure_rm_err` | `rm` の stderr 退避用 tempfile の mktemp が失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`mktemp_failure_rm_err` / `rm_failure` / `state_file_rm_failure`)
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `state_file_rm_failure`)
 
 ```bash
 # signal-specific trap (rm_err tempfile の orphan 防止)
@@ -1096,6 +1099,20 @@ trap '_rite_cleanup_p25_cleanup; exit 143' TERM
 trap '_rite_cleanup_p25_cleanup; exit 129' HUP
 
 pr_number="{pr_number}"
+
+# verified-review M-4 (M8) 対応: pr_number の早期 guard (silent misclassification 防止)
+# pr_number が空 or 非数値の場合、glob path が変性して他 PR のファイルを誤削除する経路がある
+# (現状は `-*.json` として no-match 挙動になるため被害は限定的だが、将来の path 合成変更で
+#  regression する可能性がある)。ここで早期検証して non-blocking で exit する。
+case "$pr_number" in
+  ''|*[!0-9]*)
+    echo "ERROR: Phase 2.5 invoked with invalid pr_number: '$pr_number' (expected: numeric only, non-empty)" >&2
+    echo "  対処: 呼び出し元 (cleanup.md Phase 1 で抽出される pr_number) を確認してください" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=invalid_pr_number" >&2
+    exit 0  # non-blocking (cleanup 全体を失敗させない)
+    ;;
+esac
+
 review_results_dir=".rite/review-results"
 if [ -d "$review_results_dir" ]; then
   # 削除前にマッチ数をカウント (bash glob は no-match でリテラル文字列を返すため、明示的 nullglob 相当の処理)

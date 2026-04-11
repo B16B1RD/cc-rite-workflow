@@ -12,7 +12,7 @@
 
 - `{pr_number}`: PR 番号（整数）
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
-- 同一 PR の過去レビューは上書きせず履歴として保持する
+- 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内で 2 回 `/rite:pr:review` を実行すると file path が衝突し古い方は上書きされる。review.md Phase 6.1.a は collision 検出時に `-$RANDOM` suffix で衝突回避を試みるが、完全な一意性保証ではない点に注意 (M-2 tradeoff)
 - `.rite/review-results/` は `.gitignore` で除外される
 
 ## Schema Version
@@ -72,7 +72,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、**最小 2 桁ゼロパディングの可変長連番**。99 件以下: `F-01`〜`F-99` (常に 2 桁固定)。100 件以上の場合: `F-100`, `F-101`, ... のように 3 桁以上に成長する。zero-padding は 2 桁を最小として保持。レビュー内ユニーク。**設計指針**: 99 件超のレビューは finding 過多のため通常は分割レビュー推奨だが、schema は数値的上限を設けない。fix.md Phase 1.2 best-effort parser や severity_map は文字列キー比較なので桁数差は問題にならない) |
+| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、**最小 2 桁ゼロパディングの可変長連番**。99 件以下: `F-01`〜`F-99` (常に 2 桁固定)。100 件以上の場合: `F-100`, `F-101`, ... のように 3 桁以上に成長する。zero-padding は 2 桁を最小として保持。レビュー内ユニーク。**設計指針**: 99 件超のレビューは finding 過多のため通常は分割レビュー推奨だが、schema は数値的上限を設けない。fix.md Phase 1.2.1 legacy best-effort parser および Phase 1.2.0 `severity_map` 構築はいずれも文字列キー比較なので桁数差は問題にならない) |
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`) |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | string | ✅ | 重要度 (`CRITICAL` / `HIGH` / `MEDIUM` / `LOW`) |
@@ -157,13 +157,21 @@
 
 ## エラーハンドリング
 
+> **Priority 別の routing ルールは上記「読取優先順位 (pr:fix)」表が Single Source of Truth**。本セクションは write 側 (`/rite:pr:review`) と引数整合性のエラーのみを扱う。read 側 (`/rite:pr:fix`) の失敗経路は Priority 別に大きく挙動が異なるため、本表では要約せず Priority 表 + L150 (Priority 0 non-trivial) / L152 (Priority 2 schema_version) の注記を参照のこと。特に `--review-file` (Priority 0) の失敗は Priority 1-3 にフォールスルーせず直接 Priority 4 に遷移する点、およびローカルファイル (Priority 2) の parse/schema 失敗は古い timestamp ファイルではなく Priority 3 に直接 routing する点は、旧版の「次の優先順位のソースを試行」要約と異なる。
+
+### Write 側 (`/rite:pr:review`) のエラー
+
 | 条件 | 挙動 |
 |------|------|
-| `.rite/review-results/` ディレクトリ作成不可 | 警告表示し、会話コンテキストのみで続行 (`/rite:pr:review` 全体は失敗扱いにしない) |
-| JSON 書き込み失敗 | 警告表示し、PR コメント投稿または会話コンテキスト経由で続行 |
-| `/rite:pr:fix` 読取時の JSON パース失敗 | 該当ソースをスキップし、次の優先順位のソースを試行 |
-| 複数の timestamp ファイル存在 | 最新 timestamp のファイルのみ読取、古いファイルは無視 |
-| `--post-comment` と `--no-post-comment` 同時指定 | エラーメッセージを表示して終了 (レビューもコメント投稿も実行しない) |
+| `.rite/review-results/` ディレクトリ作成不可 | 警告表示し、会話コンテキストのみで続行 (`/rite:pr:review` 全体は失敗扱いにしない — D-04 non-blocking contract) |
+| JSON 書き込み失敗 | 警告表示し、PR コメント投稿または会話コンテキスト経由で続行 (D-04 non-blocking contract、ただし `post_comment=false` ∧ save 失敗時は H-1 で WARNING に昇格し復旧手順を提示) |
+| 同一秒連続実行での file path 衝突 | collision 検出時に `-$RANDOM` suffix で回避を試みる (best-effort、完全保証ではない — M-2 tradeoff) |
+
+### 引数整合性のエラー
+
+| 条件 | 挙動 |
+|------|------|
+| `--post-comment` と `--no-post-comment` 同時指定 | エラーメッセージを表示して終了 (レビューもコメント投稿も実行しない — AC-8) |
 
 ## クリーンアップ
 
@@ -171,8 +179,8 @@
 
 ## 関連ファイル
 
-- `plugins/rite/commands/pr/review.md` Phase 6.1: JSON 生成と保存ロジック
-- `plugins/rite/commands/pr/fix.md` Phase 1.2: ハイブリッド読取ロジック
-- `plugins/rite/commands/pr/cleanup.md` Phase 2.5: 自動削除ロジック
+- `plugins/rite/commands/pr/review.md` Phase 6.1: JSON 生成と保存ロジック (AC-1 default stop / AC-2 opt-in posting / D-04 non-blocking contract)
+- `plugins/rite/commands/pr/fix.md` Phase 1.2.0: ハイブリッド読取ロジック (AC-3/4 会話/ファイル優先 / AC-5 後方互換 / AC-6 対話式 fallback)
+- `plugins/rite/commands/pr/cleanup.md` Phase 2.5: 自動削除ロジック (AC-7)
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
 - `.gitignore`: `.rite/review-results/` 除外設定

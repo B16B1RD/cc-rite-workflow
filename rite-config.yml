@@ -103,8 +103,8 @@ review:
 # 本 `pr_review:` セクションは PR レビュー**出力**設定 (post_comment) という責務分離。
 # 出力設定はトップレベルに分離することで、将来 PR コメント以外の出力先 (Slack 通知等) を
 # 追加した際に review: の child key を持ち上げる breaking change を避ける。
-# デフォルトではレビュー結果を PR コメントには記録せず、ローカル一時ファイル
-# (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
+# デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
+# ローカルファイル (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
 # /rite:pr:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
 pr_review:
   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false）
