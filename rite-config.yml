@@ -99,6 +99,10 @@ review:
     max_diff_lines_for_count: 2000  # ファイル数比率判定を有効にする最大 diff 行数（デフォルト: 2000）
 
 # PR review result recording (#443)
+# 上の `review:` セクションは PR レビュー**実行**設定 (reviewer 選定、debate、fact_check 等)、
+# 本 `pr_review:` セクションは PR レビュー**出力**設定 (post_comment) という責務分離。
+# 出力設定はトップレベルに分離することで、将来 PR コメント以外の出力先 (Slack 通知等) を
+# 追加した際に review: の child key を持ち上げる breaking change を避ける。
 # デフォルトではレビュー結果を PR コメントには記録せず、ローカル一時ファイル
 # (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
 # /rite:pr:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。

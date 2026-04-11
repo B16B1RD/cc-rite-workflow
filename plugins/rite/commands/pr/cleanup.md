@@ -1063,14 +1063,14 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 Delete two categories of PR-specific local artifacts associated with the merged PR:
 
 1. **Review result files**: `.rite/review-results/{pr_number}-*.json` (Issue #443 で導入された opt-in PR コメント記録機能の補完 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract)
-2. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count` (PR #450 verified-review C-2 で追加 — fix.md Phase 1.2.0.1 Interactive Fallback の retry hard gate state file。PR がマージされた時点でその PR 用の retry counter は不要になる)
+2. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count`
 
-> **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で設計されており、trap は block 外に伝播しない。block 末尾で trap を restore する必要はない (PR #450 verified-review M-14 対応)。
+> **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で設計されており、trap は block 外に伝播しない。block 末尾で trap を restore する必要はない。
 
 **Safety constraints**:
 
 - **PR 番号 prefix 固定**: wildcard は必ず `{pr_number}-` で始まるパターンのみを許容する。`*.json` 単独や `.rite/review-results/*`、`.rite/state/*` など、他 PR のファイルを巻き込む形式は**絶対に使わない**。state file は specific path (`{pr_number}.count` 完全一致) で削除する
-- **Non-blocking**: ファイルが存在しない場合は warning なしで continue。`rm` 失敗 (permission denied / IO error) は WARNING + `[CONTEXT]` 表示して可視化 (silent 抑制しない)
+- **Non-blocking**: ファイルが存在しない場合は warning なしで continue。`rm` 失敗 (permission denied / IO error) は WARNING + `[CONTEXT]` 表示して可視化 (silent 抑制しない)。canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照
 - **Idempotent**: すでに削除済み / 存在しない場合は WARNING / ERROR なしで続行する (情報用 INFO メッセージ `ℹ️  削除対象のレビュー結果ファイルはありません` は dir 存在 + マッチ 0 件経路で出力される場合がある。dir 不在経路では完全 silent)
 
 **Phase 2.5 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
@@ -1105,7 +1105,7 @@ if [ -d "$review_results_dir" ]; then
   done
   if [ ${#matched_files[@]} -gt 0 ]; then
     # rm の stderr を tempfile に退避し、失敗時に可視化する (silent failure 禁止)
-    # PR #450 verified-review M-6 対応: mktemp 失敗を silent 抑制せず WARNING で可視化する
+    # mktemp 失敗を silent 抑制せず WARNING で可視化する
     if ! rm_err=$(mktemp /tmp/rite-cleanup-rm-err-XXXXXX); then
       echo "WARNING: rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
       echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err; pr=${pr_number}" >&2
@@ -1134,7 +1134,7 @@ else
   :
 fi
 
-# PR #450 verified-review C-2 対応: fix retry state file の削除
+# fix retry state file の削除
 # specific path 必須 ({pr_number} 完全一致、wildcard glob 禁止)。
 # fix.md Phase 1.2.0.1 Interactive Fallback の retry hard gate state file は
 # PR がマージされた時点で不要になるため、Phase 2.5 で同時に削除する。
@@ -1149,6 +1149,12 @@ if [ -f "$state_file" ]; then
     echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
   fi
 fi
+
+# trap を明示リセット (block scope の defense-in-depth)。本 Bash tool 呼び出し境界で
+# bash プロセスが終了するため block 外への伝播は本来ないが、Phase 2 全体が誤って 1 つの
+# Bash tool 呼び出しに統合された場合に Phase 2.5 の trap が後続 phase に影響する経路を
+# 防ぐため、block 末尾で signal 全種をリセットする。
+trap - EXIT INT TERM HUP
 ```
 
 **Placeholder**: `{pr_number}` はマージされた PR の番号。Phase 1.2 で取得済みの値を再利用する。

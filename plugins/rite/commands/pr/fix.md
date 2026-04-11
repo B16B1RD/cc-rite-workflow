@@ -10,31 +10,9 @@ description: レビュー指摘への対応を支援
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
 
-## Prerequisites (PR #450 verified-review V-3 対応)
+## Prerequisites
 
-**bash 4.0+ 必須**: 本コマンドは複数の bash block で `mapfile -t < <(...)` builtin を使用する (Phase 1.2.0 Priority 2 の `find ... | sort -r` 結果取得、Phase 4.5 doc-heavy 検証等)。`mapfile` builtin は **bash 4.0 で導入** されたため、bash 3.2 (macOS デフォルト) では動作しない。
-
-**互換性ガード** (任意だが強く推奨): 各 bash block 冒頭、または fix.md エントリポイントの最初の Bash tool 呼び出しで以下を実行する。失敗時は `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible` を emit して `[fix:error]` に進む:
-
-```bash
-# bash 4+ 互換性チェック (mapfile builtin の存在で判定)
-# Source: https://www.gnu.org/software/bash/manual/bash.html#Bash-Builtins (mapfile は bash 4.0 で導入)
-if ! command -v mapfile >/dev/null 2>&1; then
-  bash_version=$("$BASH" --version 2>/dev/null | head -1)
-  echo "ERROR: bash 4.0+ が必要ですが、現在のシェルは mapfile builtin を持っていません" >&2
-  echo "  検出: $bash_version" >&2
-  echo "  対処: macOS では brew install bash で 4+ をインストールし、PATH の先頭に追加してください" >&2
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible" >&2
-  echo "[fix:error]"
-  exit 1
-fi
-```
-
-**rationale**: 旧実装は bash 4+ 要件を仕様書で明示しておらず、macOS デフォルトの bash 3.2 環境で `mapfile -t < <(...)` が `mapfile: command not found` で silent fail し、後段の `latest_file=""` 経路で「local file 不在」と誤判定される silent regression のリスクがあった。本ガードにより環境不整合を fail-fast で検出する。
-
-**Source verification**:
-- [Bash Manual: Builtins](https://www.gnu.org/software/bash/manual/bash.html#Bash-Builtins) — `mapfile` builtin は bash 4.0 で導入
-- [Bash mapfile - linuxconcept](https://linuxconcept.com/commands/mapfile) — "The mapfile command was introduced in Bash version 4.0"
+**bash 4.0+ 必須**: 本コマンドは複数の bash block で `mapfile -t < <(...)` builtin を使用する (Phase 1.2.0 Priority 2 の `find ... | sort -r` 結果取得、Phase 4.5 doc-heavy 検証等)。エントリポイントの最初の Bash tool 呼び出しで [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を実行する (`{CONTEXT_FLAG}=FIX_FALLBACK_FAILED`, `{OUTPUT_PATTERN}=[fix:error]` で置換)。失敗時は `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible` を emit して `[fix:error]` で exit する。
 
 ## E2E Output Minimization
 
@@ -63,7 +41,7 @@ This command is automatically invoked within the review-fix loop of `/rite:issue
 
 ## Arguments
 
-以下の **4 種類のうち 1 つ** (`pr_number` / `pr_url` / `comment_url` の 3 つは mutually exclusive、引数なしも許容)。本 Issue #350 検証付きレビュー L-15 での文言訂正後、現在は引数なしを含めて 4 種類すべてを 1 つの選択肢一覧として明示している:
+以下の **4 種類のうち 1 つ** (`pr_number` / `pr_url` / `comment_url` の 3 つは mutually exclusive、引数なしも許容)。現在は引数なしを含めて 4 種類すべてを 1 つの選択肢一覧として明示している:
 
 | Argument (one of) | Description |
 |-------------------|-------------|
@@ -131,7 +109,7 @@ Extract the following information from work memory and retain in context:
 
 > **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。Phase 1.0 内部の実行順序と flag pre-stripping の詳細は下記「Flag pre-stripping for Detection rules」注記に集約されている (drift 防止のため 2 箇所で重複記述しない)。
 
-> **⚠️ Phase 1.0 の 2 段構成 (Stage A → Stage B)** (verified-review LOW-7 修正): 番号体系の自然順 (`1.0` → `1.0.1`) と実行順 (`1.0.1` → `1.0` 本体の Detection rules) が逆行して読みづらかったため、以下の **Stage A / Stage B** ラベルで実行順を明示する:
+> **⚠️ Phase 1.0 の 2 段構成 (Stage A → Stage B)** : 番号体系の自然順 (`1.0` → `1.0.1`) と実行順 (`1.0.1` → `1.0` 本体の Detection rules) が逆行して読みづらかったため、以下の **Stage A / Stage B** ラベルで実行順を明示する:
 >
 > - **Stage A — Phase 1.0.1 Flag Parsing**: `--review-file <path>` 等のフラグトークンを `$ARGUMENTS` から pre-strip し、`remaining_args` に PR 番号候補だけを残す
 > - **Stage B — Phase 1.0 本体の Detection rules**: 上記 `remaining_args` に対して順序 1 / 2 / 3 / 4 の regex を適用して `{pr_number}` と `{target_comment_id}` を抽出
@@ -220,12 +198,12 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
 # - printf '%s' を使用する理由: echo は -n/-e/-E で始まるトークンを option として誤解釈するため
 
 original_args="$ARGUMENTS"
-# PR #450 verified-review M-7 対応: sentinel を `null` から `__RITE_UNSET__` に変更
+# sentinel を `null` から `__RITE_UNSET__` に変更
 # (旧実装は `--review-file null` を渡したユーザーが「`null` という名前のファイル」を意図した場合と
 # 衝突する。`__RITE_UNSET__` は legitimate な file path として現実に存在しないため衝突しない)
 review_file_path="__RITE_UNSET__"  # explicit set (undefined 参照防止、衝突安全な sentinel)
 remaining_args="$original_args"
-# PR #450 verified-review M-10 対応: flag style を別変数に保持してエラーメッセージで区別する
+# flag style を別変数に保持してエラーメッセージで区別する
 # (Pattern 1 = `--review-file=` 等号スタイル、Pattern 2 = `--review-file <space>` POSIX スタイル)
 review_file_flag_style="none"
 
@@ -237,7 +215,7 @@ if [[ "$remaining_args" =~ (^|[[:space:]])--review-file=([^[:space:]]*) ]]; then
   review_file_flag_style="equals"
   remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/(^|[[:space:]])--review-file=[^[:space:]]*//')
 # Pattern 2: --review-file <path> (POSIX style with space/tab)
-# verified-review LOW-3 修正: Pattern 1 と対称に、`--review-file` 単独 (末尾空) も match させる。
+# Pattern 1 と対称に、`--review-file` 単独 (末尾空) も match させる。
 # 旧実装 `[^[:space:]]+` (1+) では `/rite:pr:fix 123 --review-file` のような末尾空指定が
 # regex non-match で silent fallthrough する問題があった。`[^[:space:]]*` (0+) に変更し、
 # 末尾フラグ単独の場合は空文字列を capture して下流の `review_file_path_empty_value` 検出に流す。
@@ -351,15 +329,19 @@ Terminate processing.
 
 **⚠️ Selection logic — Claude substitution required**:
 
-下記 bash block は Phase 1.0.1 の別 Bash tool invocation で stderr に emit された `[CONTEXT] REVIEW_FILE_PATH=...` 値を参照する必要がある。シェル変数は Bash tool 呼び出し間で継承されないため、Claude は下記 bash block を生成する前に **会話コンテキストから `[CONTEXT] REVIEW_FILE_PATH=...` の値を読み取り、`review_file_path="<実値>"` の literal 代入文として bash 冒頭に埋め込む** こと。もし Phase 1.0.1 で `review_file_path="__RITE_UNSET__"` (PR #450 verified-review M-7 対応で `null` から変更された衝突安全 sentinel) だった場合は `review_file_path="__RITE_UNSET__"` を literal に埋め込む。
+下記 bash block は Phase 1.0.1 の別 Bash tool invocation で stderr に emit された `[CONTEXT] REVIEW_FILE_PATH=...` 値を参照する必要がある。シェル変数は Bash tool 呼び出し間で継承されないため、Claude は下記 bash block を生成する前に **会話コンテキストから `[CONTEXT] REVIEW_FILE_PATH=...` の値を読み取り、`review_file_path="<実値>"` の literal 代入文として bash 冒頭に埋め込む** こと。もし Phase 1.0.1 で `review_file_path="__RITE_UNSET__"` だった場合は `review_file_path="__RITE_UNSET__"` を literal に埋め込む。
 
 **Selection logic**:
 
 > **pipefail scope note**: 下記 bash block は **単一 Bash tool invocation 内で閉じる前提**で設計されており、冒頭で `set -o pipefail` を有効化し、末尾で `set +o pipefail` に戻す。Bash tool 呼び出し間でシェル state は継承されないため、block 外への伝播はない。`set +o pipefail` の目的は「次の処理から pipefail を解除する」ではなく「block 内後続コマンドが pipefail を避けたい箇所に備える」ことである。signal trap による強制終了 (EXIT/INT/TERM/HUP) ではシェルプロセス自体が終わるため pipefail restore は不要。
 
 ```bash
-# ⚠️ Claude は以下の literal 代入を Phase 1.0.1 の [CONTEXT] REVIEW_FILE_PATH=... 値に基づいて substitute すること
-# PR #450 verified-review M-7 対応: sentinel が `null` から `__RITE_UNSET__` に変更された
+# ⚠️ Claude は以下の literal 代入を Phase 1.0 / 1.0.1 の値に基づいて substitute すること
+# pr_number は本 block 内で `find -name "${pr_number}-*.json"` 等で参照されるため、placeholder の
+# まま substitute 漏れすると find が literal `{pr_number}-*.json` を探して常に 0 件を返す
+# silent fallthrough を起こす。block 冒頭で明示的に literal substitute する。
+pr_number="{pr_number}"
+# sentinel が `null` から `__RITE_UNSET__` に変更された
 # (`null` という名前のファイルを literal に渡された場合の衝突を回避するため)
 # 例: [CONTEXT] REVIEW_FILE_PATH=__RITE_UNSET__ → `review_file_path="__RITE_UNSET__"`
 # 例: [CONTEXT] REVIEW_FILE_PATH=./foo.json → `review_file_path="./foo.json"`
@@ -387,7 +369,7 @@ trap '_rite_fix_p120_cleanup; exit 129' HUP
 set -o pipefail
 
 # Priority 0: Explicit --review-file (from Phase 1.0.1)
-# PR #450 verified-review M-7 対応: sentinel `__RITE_UNSET__` (旧 `null` から変更) 以外で
+# sentinel `__RITE_UNSET__` (旧 `null` から変更) 以外で
 # かつ非空の場合に Priority 0 を発火させる。`null` という literal 文字列を持つファイル名
 # (`./null` ではない `null` 単独) も legitimate な path として処理される。
 if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; then
@@ -404,11 +386,11 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     and (.pr_number | type == "number")
     and (.findings | type == "array")
   ' "$review_file_path" >/dev/null 2>&1; then
-    # verified-review HIGH-1 修正: jq empty は terminal value (`{}`, `null`, `42` 等) を pass する
+    # jq empty は terminal value (`{}`, `null`, `42` 等) を pass する
     # ため schema validation として不十分。required fields の存在 + findings[] が array 型であることを
     # 明示的に検証する。実証: `echo '{}' | jq empty` → exit 0、`echo 'null' | jq empty` → exit 0
     #
-    # PR #450 verified-review V-4 対応: jq の and / truthiness 仕様により `.schema_version and .pr_number`
+    # jq の and / truthiness 仕様により `.schema_version and .pr_number`
     # は `schema_version: ""` や `pr_number: "abc"` (文字列型) を silent pass させる抜け穴がある。
     # 型と非空性を明示要求する。
     echo "エラー: --review-file の必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落: $review_file_path" >&2
@@ -439,14 +421,16 @@ fi
 # findings を読み取り、`conversation_review_decision="use"` を literal substitute すること。
 # 会話コンテキストに review 結果がない場合は `conversation_review_decision="none"` を substitute する。
 #
-# verified-review MEDIUM-3 修正: 旧実装は noop `:` のみで、Claude が「使う」と判断したのに
+# 旧実装は noop `:` のみで、Claude が「使う」と判断したのに
 # substitute を忘れた場合と「使わない」と判断した場合が区別できず silent fallthrough する穴があった。
 # Priority 0/3 と対称な defensive check を追加し、literal placeholder のままなら fail-fast する。
 if [ -z "$review_source" ]; then
   # ⚠️ Claude は以下の literal を Phase 1.2 進入時の判断に基づいて substitute すること
   #   - 会話に最新の /rite:pr:review 結果あり → `conversation_review_decision="use"`
   #   - 会話に該当 review 結果なし → `conversation_review_decision="none"`
-  conversation_review_decision="{conversation_review_decision_or_none}"
+  # sentinel は `[A-Z_]` のみで構成し、bash case pattern matching の glob 特殊文字
+  # (`{`, `}`, `*`, `?`, `[]`) を含まない形式とする (review_file_path sentinel と同方針)
+  conversation_review_decision="__RITE_CONVERSATION_DECISION_UNSET__"
   case "$conversation_review_decision" in
     use)
       review_source="conversation"
@@ -455,8 +439,8 @@ if [ -z "$review_source" ]; then
     none)
       :  # Priority 2 以降に fallthrough
       ;;
-    "{conversation_review_decision_or_none}")
-      # literal placeholder のまま → Claude が substitute を忘れた
+    __RITE_CONVERSATION_DECISION_UNSET__)
+      # sentinel のまま → Claude が substitute を忘れた
       echo "ERROR: Priority 1 conversation_review_decision が literal substitute されていません" >&2
       echo "  Claude は会話コンテキストの review 結果有無を判断し、'use' または 'none' を substitute する必要があります" >&2
       echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_unset" >&2
@@ -490,14 +474,14 @@ if [ -z "$review_source" ]; then
 
     # mapfile + process substitution で SIGPIPE 経路を断ち、pipefail 下でも安全に動作する
     files_arr=()
-    mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "{pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r)
+    mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "${pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r)
     latest_file="${files_arr[0]:-}"
 
     if [ -n "$find_err" ] && [ -s "$find_err" ]; then
       echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
       head -3 "$find_err" | sed 's/^/  /' >&2
     fi
-    # PR #450 verified-review M-8 対応: 旧 `[ -n "$find_err" ] && rm -f && find_err=""` の short-circuit は
+    # 旧 `[ -n "$find_err" ] && rm -f && find_err=""` の short-circuit は
     # rm 失敗時に find_err="" 代入に到達せず、後続の trap cleanup が同じ rm を再実行する重複処理になっていた
     # (実害は軽微だが、rm 失敗が silent 抑制される問題は本 PR 全体の指摘事項と矛盾する)。
     # 改行 + rm 失敗時 WARNING + find_err="" を独立 statement で実行する。
@@ -509,10 +493,10 @@ if [ -z "$review_source" ]; then
     fi
 
     if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
-      # verified-review HIGH-1 修正: jq empty は terminal value を pass するため、
+      # jq empty は terminal value を pass するため、
       # required fields (schema_version / pr_number / findings[]) を明示検証する
       #
-      # PR #450 verified-review I-1 対応: 旧実装は jq empty 失敗 / schema fields 欠落の 2 経路で
+      # 旧実装は jq empty 失敗 / schema fields 欠落の 2 経路で
       # WARNING のみ emit し review_source を set しないまま Priority 3 へ silent fallthrough していた。
       # `local_file_schema_version_unknown` だけが明示 routing しており対称性が崩れていた。
       # 両ブランチに `review_source="pr_comment"; review_source_path=""` を明示追加し、
@@ -527,7 +511,7 @@ if [ -z "$review_source" ]; then
         and (.pr_number | type == "number")
         and (.findings | type == "array")
       ' "$latest_file" >/dev/null 2>&1; then
-        # PR #450 verified-review V-4 対応: jq の and / truthiness 仕様 (false / null のみ falsy、
+        # jq の and / truthiness 仕様 (false / null のみ falsy、
         # 空文字列・0・[]・{} は全て truthy) のため、`.schema_version and .pr_number` 単独では
         # `schema_version: ""` や `pr_number: "123"` (文字列型) を silent pass させる抜け穴がある。
         # 型と非空性を明示要求する。
@@ -542,7 +526,7 @@ if [ -z "$review_source" ]; then
           "1.0.0"|"1.0")
             review_source="local_file"
             review_source_path="$latest_file"
-            # PR #450 verified-review I-2 対応: 成功メッセージも stderr に統一する
+            # 成功メッセージも stderr に統一する
             # ([CONTEXT] emit と stdout/stderr 規約を揃え、observability ログ専用ストリームを stderr に集約)
             echo "✅ ローカルファイルからレビュー結果を読み込みます: $latest_file" >&2
             ;;
@@ -597,14 +581,12 @@ fi
 
 **On Priority 3 (PR comment, backward-compat)**: After the existing Broad Retrieval retrieves the comment body, check for a `### 📄 Raw JSON` section with code fence. Scope the awk parser to after the `### 📄 Raw JSON` section marker so that sample JSON blocks in findings' suggestion columns (which appear earlier in the comment) are not mistakenly captured.
 
-> **⚠️ Tempfile-based hand-off** (PR #450 verified-review M-2 対応 — 旧 literal substitute hand-off 廃止): 下記 bash block は Phase 1.2 Broad Retrieval bash block が `/tmp/rite-fix-pr-comment-{pr_number}.txt` に書き出した PR コメント本文を `cat` で直接読み出す。旧実装は Claude が HEREDOC literal にコメント本文全体を埋め込む方式で、large multi-line text + 特殊文字 (シングルクォート / バッククォート / `$()` 等) の escape 漏れ・truncate リスクが大きかった。tempfile 経由化により Claude は path 文字列だけを literal 埋め込みすればよくなり、本文の整合性は `gh pr view --json comments | jq -r` の出力にそのまま依存する。
+> **⚠️ Tempfile-based hand-off**: 下記 bash block は Phase 1.2 Broad Retrieval bash block が `/tmp/rite-fix-pr-comment-{pr_number}.txt` に書き出した PR コメント本文を `cat` で直接読み出す。旧実装は Claude が HEREDOC literal にコメント本文全体を埋め込む方式で、large multi-line text + 特殊文字 (シングルクォート / バッククォート / `$()` 等) の escape 漏れ・truncate リスクが大きかった。tempfile 経由化により Claude は path 文字列だけを literal 埋め込みすればよくなり、本文の整合性は `gh pr view --json comments | jq -r` の出力にそのまま依存する。
 >
-> **前提**: Phase 1.2.0 Priority 3 に到達するためには Phase 1.2 Broad Retrieval bash block が **必ず先に実行されている** こと。Claude は Priority 3 経路に進む前に Broad Retrieval bash block を呼び出し、`/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在することを確認する責務がある。tempfile 不在は fail-fast (`comment_body_tempfile_missing`)、空ファイルも fail-fast (`comment_body_tempfile_empty`)。
->
-> **rite review コメントが存在しない経路**: Broad Retrieval bash block は「`📜 rite レビュー結果` を含むコメントが PR に存在しない場合」tempfile を作成しない (上記 Broad Retrieval 末尾の jq filter で `.body // empty` が空文字を返すため)。この場合 Priority 3 は legacy fallthrough (raw_json="" 経路) として動作させる必要があるため、tempfile 不在は **fail-fast ではなく empty body として処理する** (下記 bash block 内で分岐)。
+> **前提**: Phase 1.2.0 Priority 3 に到達するためには Phase 1.2 Broad Retrieval bash block が **必ず先に実行されている** こと。Claude は Priority 3 経路に進む前に Broad Retrieval bash block を呼び出す責務がある。ただし tempfile 不在は必ずしも異常ではなく、Broad Retrieval が `📜 rite レビュー結果` コメントを発見しなかった legitimate な経路 (新規 PR / `/rite:pr:review` 未実行 / コメント削除済み) も含む。下記 bash block は **tempfile 不在 = empty body (legacy fallthrough)**、**tempfile 空 = fail-fast (`comment_body_tempfile_empty`)** という非対称な扱いをする (空ファイルが作成された場合は Broad Retrieval が異常終了したか本文取得が空である異常経路のため)。
 
 ```bash
-# PR #450 verified-review M-2 対応: pr_review_comment_body を tempfile から読み出す
+# pr_review_comment_body を tempfile から読み出す
 # (旧 literal substitute hand-off 方式を廃止。Phase 1.2 Broad Retrieval bash block が
 # /tmp/rite-fix-pr-comment-{pr_number}.txt に書き出している前提)
 pr_comment_body_file="/tmp/rite-fix-pr-comment-{pr_number}.txt"
@@ -634,14 +616,14 @@ fi
 # Rationale: here-string `<<<` を使う理由 — `printf | awk` 形式は awk の `exit` による
 # stdin 早期終了で printf が SIGPIPE を受ける経路がある (bash-defensive-patterns.md Pattern 5)。
 #
-# verified-review MEDIUM-2 修正: findings の description / suggestion 列内に
+# findings の description / suggestion 列内に
 # 「### 📄 Raw JSON」リテラル文字列が含まれる場合 (本 PR 自体がまさにそういう文字列を生成する)、
 # 旧実装は finding 内の literal を `### 📄 Raw JSON` 行頭マッチとして誤検出して in_section を
 # 早期に立ててしまい、誤った JSON 抽出を招く。Phase 6.1.b の Raw JSON section は必ず
 # `---\n\n### 📄 Raw JSON\n\n```json` の構造を持つため、`---` separator の後に出現する
 # **最後** の `### 📄 Raw JSON` のみを採用する。
 #
-# PR #450 verified-review I-5 対応: 旧実装は「`---` 後の最初の `### 📄 Raw JSON`」で `in_section` を
+# 旧実装は「`---` 後の最初の `### 📄 Raw JSON`」で `in_section` を
 # 立てる構造で、コメントと実装が乖離していた (本 PR の review.md / fix.md 自体が finding 列に
 # `### 📄 Raw JSON` literal を含むため、本来の Raw JSON section より早く誤検出される反例)。
 # 1-pass で末尾の section start を tracking し、END 内で逆方向スキャンして「最後」を確実に採用する。
@@ -662,7 +644,7 @@ raw_json=$(awk '
   }
 ' <<< "$pr_review_comment_body")
 
-# PR #450 verified-review I-4 対応: 旧実装は「raw_json なし」「raw_json あるが jq empty 失敗」
+# 旧実装は「raw_json なし」「raw_json あるが jq empty 失敗」
 # 「raw_json あるが必須 fields 欠落」の 3 ケースをまとめて else の no-op に流していた。
 # raw_json="" だけが legitimate な legacy fallthrough であり、それ以外は壊れた新形式 JSON を
 # 検出して WARNING + reason emit してから legacy parser に流すべき (silent regression 防止)。
@@ -678,12 +660,12 @@ elif ! printf '%s' "$raw_json" | jq -e '
   and (.pr_number | type == "number")
   and (.findings | type == "array")
 ' >/dev/null 2>&1; then
-  # PR #450 verified-review V-4 対応: jq の and / truthiness 仕様 (false / null のみ falsy) のため
+  # jq の and / truthiness 仕様 (false / null のみ falsy) のため
   # 空文字列 schema_version や型違反の pr_number を silent pass させない明示型ガード
   echo "WARNING: PR コメント内の Raw JSON が必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を欠いています。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_required_fields_missing" >&2
 else
-  # verified-review HIGH-1 修正: jq empty 単独では terminal value (`{}`, `null`, `42` 等) を pass する。
+  # jq empty 単独では terminal value (`{}`, `null`, `42` 等) を pass する。
   # required fields (schema_version / pr_number / findings[] 配列型) を明示検証してから New format を採用する
   schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"')
   case "$schema_version" in
@@ -728,7 +710,7 @@ When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid
 | **ファイルパス指定** | Re-run Phase 1.2.0 Priority 0 with the user-provided path. If invalid, re-prompt (max 3 attempts, hard gate enforced via state file) |
 | **中止** | Emit `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_cancelled`, then output `[fix:error]` result pattern and terminate. Do NOT invoke any Phase 2+ logic |
 
-**Retry cap for ファイルパス指定** (PR #450 verified-review M-1 対応で発火回数ベースの表現に統一): **最大 3 回まで AskUserQuestion が発火する** (1 回目, 2 回目, 3 回目)。3 回目の応答も invalid だった場合、4 回目の AskUserQuestion は発火せず、`[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_retries` を emit して `[fix:error]` で terminate する。retry counter は **state file** (`/.rite/state/fix-fallback-retry-{pr_number}.count`) で管理し、Claude の自然言語判断に依存しない machine-enforced hard gate として動作する。
+**Retry cap for ファイルパス指定**: **最大 3 回まで AskUserQuestion が発火する** (1 回目, 2 回目, 3 回目)。3 回目の応答も invalid だった場合、4 回目の AskUserQuestion は発火せず、`[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_retries` を emit して `[fix:error]` で terminate する。retry counter は **state file** (`/.rite/state/fix-fallback-retry-{pr_number}.count`) で管理し、Claude の自然言語判断に依存しない machine-enforced hard gate として動作する。
 
 > **数え方の正規化**: bash gate (下記) は `current >= 3` で fail する。AskUserQuestion 発火直前に `current` を increment するため、increment 後の値が「これから発火する回数」を表す。`current=0` → increment → `current=1` → 1 回目発火 → `current=1` → increment → `current=2` → 2 回目発火 → `current=2` → increment → `current=3` → 3 回目発火 → `current=3` で 4 回目の gate check が fail。すなわち AskUserQuestion 発火は最大 3 回まで。
 
@@ -738,7 +720,9 @@ Claude の自然言語判断 / 会話履歴 grep に依存すると、長 contex
 
 **State file path**: `.rite/state/fix-fallback-retry-{pr_number}.count` ({pr_number} は Phase 1.0 で正規化済み)
 
-> **PR #450 verified-review C-1 対応 — `$$` suffix を削除して固定 path に戻した**: 旧実装は verified-review LOW-4 cycle で「並列 fix race 回避」のため `$$` (bash PID) を suffix に追加していたが、これは Claude Code Bash tool の動作モデルと矛盾する設計だった。Claude Code の Bash tool は **各呼び出しで別の bash プロセスを起動する** (実証: `echo $$` を 3 回連続呼出 → PID が毎回異なる)。したがって `$$` を含む state file path は retry 毎に別ファイルを参照し、counter は永遠に 1 止まりで 3 回上限の hard gate が機能していなかった。並列 race については本来発生しない: (a) Claude Code 単一 session 内では Bash tool 呼び出しは逐次実行されるため race は起きない、(b) sprint team-execute 等で別 Claude session が同一 PR を同時 fix するケースは設計上想定されていない (同一 issue を 2 セッションで並列実装することはない)。万一の race 懸念は別 Issue で `mkdir` ロック等の defense-in-depth で対応する。
+> **State file path は固定** (`fix-fallback-retry-${pr_number}.count`、PID suffix なし)。
+>
+> **背景**: 過去の cycle では「並列 fix race 回避」のため `$$` (bash PID) を suffix に追加していたが、Claude Code Bash tool は各呼び出しで別の bash プロセスを起動する (実証: `echo $$` を 3 回連続呼出 → PID が毎回異なる)。`$$` を含む path では retry 毎に別ファイルを参照し counter が永遠に 1 止まりで hard gate が機能しなかった。並列 race については単一 session 内では Bash tool 呼び出しが逐次実行されるため発生しない (sprint team-execute でも同一 issue を 2 セッションで並列実装することはない)。万一の race 懸念は別 Issue で `mkdir` ロック等の defense-in-depth で対応する。
 
 **State file lifecycle**:
 
@@ -751,12 +735,16 @@ Claude の自然言語判断 / 会話履歴 grep に依存すると、長 contex
 
 ```bash
 # Retry hard gate: state file による machine-enforced 強制
-# state file は specific path ({pr_number} suffix 必須、wildcard glob 禁止)
+# state file は specific path (pr_number suffix 必須、wildcard glob 禁止)
+# pr_number は Claude が Phase 1.0 の値で literal substitute する。block 冒頭で束縛することで、
+# 後続の参照が `${pr_number}` 形式に統一され、placeholder 残留 silent bug を防ぐ。
+pr_number="{pr_number}"
 state_dir=".rite/state"
-# PR #450 verified-review C-1 対応: $$ (bash PID) suffix を削除し固定 path に戻した。
-# 理由は本 phase 冒頭の「PR #450 verified-review C-1 対応」段落参照
-# (Claude Code Bash tool は各呼び出しで別 bash プロセスを起動するため $$ は retry 毎に異なる)
-state_file="${state_dir}/fix-fallback-retry-{pr_number}.count"
+# state_file の path は固定 (PID suffix なし)。Claude Code Bash tool は各呼び出しで別 bash
+# プロセスを起動するため、PID suffix を入れると retry 毎に別ファイルを参照し counter が
+# 永遠に 1 止まりで hard gate が機能しない。並列 race については単一 session 内では Bash
+# tool 呼び出しが逐次実行されるため発生しない。
+state_file="${state_dir}/fix-fallback-retry-${pr_number}.count"
 mkdir -p "$state_dir" 2>/dev/null || {
   echo "ERROR: $state_dir の作成に失敗しました (permission denied / read-only filesystem)" >&2
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=state_dir_mkdir_failed" >&2
@@ -794,7 +782,8 @@ echo "[CONTEXT] FIX_FALLBACK_RETRY=$new_count/3" >&2
 **3. State file cleanup on success**: 「ファイルパス指定」が成功 (= valid JSON file が見つかり Phase 1.2.0 Priority 0 が成功) した時点で:
 
 ```bash
-rm -f ".rite/state/fix-fallback-retry-{pr_number}.count"
+pr_number="{pr_number}"
+rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"
 ```
 
 これにより次回の Interactive Fallback 起動時に counter が clean state から始まる。
@@ -802,9 +791,10 @@ rm -f ".rite/state/fix-fallback-retry-{pr_number}.count"
 **「中止」option の bash 実装**: 「中止」が選択された場合は以下を実行する (silent regression 防止 — Phase 8.1 評価順 1 で `[fix:error]` に昇格させる):
 
 ```bash
+pr_number="{pr_number}"
 echo "ユーザーが Interactive Fallback で「中止」を選択しました" >&2
 echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_cancelled" >&2
-rm -f ".rite/state/fix-fallback-retry-{pr_number}.count"
+rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"
 echo "[fix:error]"
 exit 1
 ```
@@ -815,31 +805,31 @@ exit 1
 |--------|-------------|
 | `explicit_file_not_found` | `--review-file` で指定されたパスが存在しない (Priority 0, triggers fallback) |
 | `explicit_file_parse` | `--review-file` で指定されたファイルが valid JSON ではない (Priority 0, triggers fallback) |
-| `explicit_file_schema_required_fields_missing` | `--review-file` で指定されたファイルが parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Priority 0, triggers fallback、verified-review HIGH-1 対応) |
+| `explicit_file_schema_required_fields_missing` | `--review-file` で指定されたファイルが parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Priority 0, triggers fallback) |
 | `explicit_file_schema_version_unknown` | `--review-file` で指定されたファイルの schema_version が未知 (Priority 0, triggers fallback) |
-| `local_file_json_parse_failure` | Priority 2 で選ばれた最新 local file が `jq empty` で syntax invalid (Priority 3 pr_comment へ routing、PR #450 verified-review I-1 対応) |
-| `local_file_schema_required_fields_missing` | Priority 2 で選ばれた最新 local file が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (Priority 3 pr_comment へ routing、verified-review HIGH-1 / PR #450 verified-review I-1 + V-4 対応) |
+| `local_file_json_parse_failure` | Priority 2 で選ばれた最新 local file が `jq empty` で syntax invalid (Priority 3 pr_comment へ routing) |
+| `local_file_schema_required_fields_missing` | Priority 2 で選ばれた最新 local file が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (Priority 3 pr_comment へ routing) |
 | `local_file_schema_version_unknown` | Priority 2 で選ばれた最新 local file の schema_version が未知 (Priority 3 pr_comment へ routing) |
-| `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough、PR #450 verified-review I-4 対応) |
-| `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough、PR #450 verified-review I-4 + V-4 対応) |
+| `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
+| `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
 | `user_file_path_retries` | Interactive fallback の「ファイルパス指定」が 3 回連続で失敗 (terminate with `[fix:error]`) |
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (Phase 8.1 評価順 1 で `[fix:error]` に昇格) |
 | `state_dir_mkdir_failed` | retry hard gate state directory `.rite/state/` の作成失敗 (permission denied / read-only filesystem) |
 | `state_file_write_failed` | retry hard gate state file への書き込み失敗 (disk full / permission denied) |
 | `review_file_path_empty_value` | Phase 1.0.1 で `--review-file=` (空値) が指定された (Pattern 1 regex で空 group capture) |
-| `comment_body_tempfile_empty` | Phase 1.2.0 Priority 3 で `/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空) — PR #450 verified-review M-2 対応 (旧 `comment_body_unset` reason は M-2 で literal substitute 廃止により発火経路が消滅したため reason 表から削除済み) |
-| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) — PR #450 verified-review V-3 対応。fix.md エントリポイントの最初の Bash tool 呼び出しで発火する |
-| `priority1_decision_unset` | Phase 1.2.0 Priority 1 で `conversation_review_decision` が literal substitute されていない (verified-review MEDIUM-3 対応、silent fallthrough 防止) |
+| `comment_body_tempfile_empty` | Phase 1.2.0 Priority 3 で `/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空)
+| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン)
+| `priority1_decision_unset` | Phase 1.2.0 Priority 1 で `conversation_review_decision` が literal substitute されていない (silent fallthrough 防止) |
 | `priority1_decision_invalid` | Phase 1.2.0 Priority 1 で `conversation_review_decision` に許容値 (`use` / `none`) 以外が指定された |
 
-**Eval-order enumeration** (for Pattern-5 drift check): emit reasons sequence = (`bash_version_incompatible` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_tempfile_empty`)
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `review_file_path_empty_value` / `comment_body_tempfile_empty`)
 
-#### 1.2 Legacy Branching (PR Comment Path Only)
+#### Legacy Branching (PR Comment Path Only)
 
 > **Execution condition**: The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) execute **only** when `{review_source}=pr_comment`. When `{review_source}` is `local_file`, `explicit_file`, or `conversation`, skip directly to Phase 1.3.
 
-**Branch by `{target_comment_id}`** (set in Phase 1.0): Phase 1.2 has two execution paths depending on whether a comment URL was passed. The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) are **h4-level branches within Phase 1.2** and are independent execution paths — they are **not** numbered sub-phases of Phase 1.2.1. The existing `### 1.2.1 Retrieve rite Review Results` is a separate, h3-level sub-phase that runs only when the Broad Comment Retrieval path is taken (i.e. when `{target_comment_id}` is NOT set).
+**Branch by `{target_comment_id}`** (set in Phase 1.0): the Legacy Branching (PR Comment Path Only) section has two execution paths depending on whether a comment URL was passed. The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) are **h4-level branches within the Legacy Branching section** and are independent execution paths — they are **not** numbered sub-phases of Phase 1.2.1. The existing `### 1.2.1 Retrieve rite Review Results` is a separate, h3-level sub-phase that runs only when the Broad Comment Retrieval path is taken (i.e. when `{target_comment_id}` is NOT set).
 
 #### Target Comment Fast Path — when `{target_comment_id}` is set
 
@@ -868,7 +858,7 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 >
 > **trap の上書きリスクに注意**: 本ブロックの `trap 'rm -f "$jq_err"' EXIT` は bash 仕様上 1 signal につき 1 trap しか持てないため、**後続の bash block (Phase 2.4 reply、Phase 4.2 report、Phase 4.3.4 Issue 作成、Phase 4.5.1 work memory 更新) が同一 bash 呼び出しに含まれる場合、それらの `trap ... EXIT` に上書きされて `$jq_err` のリークが起きる**。これは本ブロックを後続 phase と結合しないことで回避するほか、ブロック末尾で明示的に `rm -f "$jq_err"` を実行することで二重防御している (trap が動かなくても cleanup は完了する)。
 >
-> **将来 `trap` を連携する必要が出た場合**: bash の `trap -p` 出力は POSIX 仕様上「shell に reinput 可能なフォーマット (proper quoting 込み)」を保証しており ([POSIX `trap`](https://pubs.opengroup.org/onlinepubs/009604599/utilities/trap.html), [`trap(1p)`](https://man7.org/linux/man-pages/man1/trap.1p.html))、reinput には `eval "$(trap -p EXIT)"` を使うのが正規イディオム。**sed で trap action を抽出する idiom (`sed -n "s/.*'\(.*\)'.*/\1/p"` 等) は trap action 内のシングルクォート `'\''` 埋め込みを誤抽出するため使ってはならない** (silent-failure-hunter MED-9 で指摘)。代替として bash 配列で trap 登録を管理するパターンを使う:
+> **将来 `trap` を連携する必要が出た場合**: bash の `trap -p` 出力は POSIX 仕様上「shell に reinput 可能なフォーマット (proper quoting 込み)」を保証しており ([POSIX `trap`](https://pubs.opengroup.org/onlinepubs/009604599/utilities/trap.html), [`trap(1p)`](https://man7.org/linux/man-pages/man1/trap.1p.html))、reinput には `eval "$(trap -p EXIT)"` を使うのが正規イディオム。**sed で trap action を抽出する idiom (`sed -n "s/.*'\(.*\)'.*/\1/p"` 等) は trap action 内のシングルクォート `'\''` 埋め込みを誤抽出するため使ってはならない**。代替として bash 配列で trap 登録を管理するパターンを使う:
 >
 > ```bash
 > # 配列で trap action を蓄積し、EXIT 時にループ実行
@@ -892,7 +882,7 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 > - **Block B**: `raw_json` を再読込して jq `.issue_url` 抽出 → pr_number regex + URL suffix validate (silent misclassification 防止)
 > - **Block C**: intermediate → final handoff 3 ファイル (`body_file`/`author_file`/`skip_file`) 書き出し → post-condition check → 常に `raw_json`/intermediate を削除
 >
-> ブロック間は **一時ファイル経由のみ** で値を引き継ぐ (シェル変数は bash 呼び出しを跨ぐと失われる)。各ブロックは独立した signal 別 trap を持ち、各ブロック scope での 2-state commit pattern (Block A の `blockA_committed`、Block C の `handoff_committed`) で orphan を防ぐ。Block B は新規 output がないため commit flag を持たず、validation 失敗時は upstream (raw_json + intermediate) を明示的に rm で invalidate する。加えて Block B の EXIT trap は **rc=$?** で非 0 exit を捕捉し、syntax error / subshell OOM / SIGPIPE / 将来の `set -e` 導入などの非期待終了経路でも upstream を invalidate することで、Block C の「raw_json 未検査で pass してしまう silent misclassification」を二重に防ぐ (PR #449 review HIGH 修正)。
+> ブロック間は **一時ファイル経由のみ** で値を引き継ぐ (シェル変数は bash 呼び出しを跨ぐと失われる)。各ブロックは独立した signal 別 trap を持ち、各ブロック scope での 2-state commit pattern (Block A の `blockA_committed`、Block C の `handoff_committed`) で orphan を防ぐ。Block B は新規 output がないため commit flag を持たず、validation 失敗時は upstream (raw_json + intermediate) を明示的に rm で invalidate する。加えて Block B の EXIT trap は **rc=$?** で非 0 exit を捕捉し、syntax error / subshell OOM / SIGPIPE / 将来の `set -e` 導入などの非期待終了経路でも upstream を invalidate することで、Block C の「raw_json 未検査で pass してしまう silent misclassification」を二重に防ぐ。
 >
 > **命名ポリシー** (`blockA_committed` vs `handoff_committed` の非対称について): Block A の flag は **block scope 名** (`blockA_committed`) で、Block A 内部の intermediate artifact をまだ後続 phase が参照しない段階の protection を表現する。Block C の flag は **artifact semantic 名** (`handoff_committed`) で、下流 phase (Parsing rule, Phase 2.1 以降) から参照される handoff contract の commitment を表現するため敢えて semantic name を維持する。Block B は新規 output を持たないため flag なし。命名を対称化するなら `intermediate_committed` / `handoff_committed` または `blockA_committed` / `blockC_committed` のどちらかに統一できるが、`handoff_committed` の「handoff 完了」という semantic 情報を下流参照時に失う不利益を避けるため現状の非対称を採用する。
 
@@ -1091,7 +1081,7 @@ _rite_fix_blockB_invalidate_upstream() {
 # - 正常 exit (rc=0) では upstream (Block C が使う intermediate) を保持する
 # - 非 0 exit (rc != 0) では upstream を明示 invalidate する — syntax error / subshell OOM / SIGPIPE /
 #   将来の `set -e` 導入 / その他 shell-level 非期待終了で validation を skip した状態で intermediate が
-#   残留し、Block C が raw_json を検査せず pass してしまう silent misclassification を防ぐ (PR #449 review HIGH 指摘)
+#   残留し、Block C が raw_json を検査せず pass してしまう silent misclassification を防ぐ
 # - signal 強制終了 (INT/TERM/HUP) でも invalidate する
 trap 'rc=$?; _rite_fix_blockB_cleanup; if [ "$rc" -ne 0 ]; then _rite_fix_blockB_invalidate_upstream; fi; exit $rc' EXIT
 trap '_rite_fix_blockB_cleanup; _rite_fix_blockB_invalidate_upstream; exit 130' INT
@@ -1350,9 +1340,9 @@ handoff_committed=1
    # Cancel / Re-run / Step C error 共通: ハンドオフ 3 + raw_json + intermediate 3 + confidence_override + pr-comment tempfile (合計 9 本) を削除してから exit する
    # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
    # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
-   # confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
+   # confidence_override tempfile の lifecycle 管理
    # Issue #390: Block A/B/C 分割で raw_json + intermediate 3 ファイル (合計 4 ファイル) も cleanup 対象に追加
-   # PR #450 verified-review M-2 対応: pr-comment tempfile も cleanup 対象に追加 (Broad Retrieval が
+   # pr-comment tempfile も cleanup 対象に追加 (Broad Retrieval が
    # 書き出した /tmp/rite-fix-pr-comment-{pr_number}.txt を Fast Path 経路でも defense-in-depth で削除)
    # (Block C の trap が常に削除するが、Block A 成功後 orchestrator が異常終了して Block B/C 未到達の経路でも
    #  orphan を残さないための defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
@@ -1450,7 +1440,7 @@ handoff_committed=1
 
 **Retained context flags + tempfile-based persistence** (Phase 4.5.3 / 4.6 / 4.3.4 の placeholder 展開時に参照する変数):
 
-> **本 Issue #350 検証付きレビュー M-7 で指摘**: 旧仕様は会話履歴の `[CONTEXT]` 行を Claude が grep する方式だったが、長い conversation history で `[CONTEXT]` 行が複数あると順序依存 / 重複参照のリスクがあり silent drop の原因になっていた。本仕様では **specific path の一時ファイルへの append** に切り替え、bash で件数取得と本文取得を一貫化する。
+> 旧仕様は会話履歴の `[CONTEXT]` 行を Claude が grep する方式だったが、長い conversation history で `[CONTEXT]` 行が複数あると順序依存 / 重複参照のリスクがあり silent drop の原因になっていた。本仕様では **specific path の一時ファイルへの append** に切り替え、bash で件数取得と本文取得を一貫化する。
 
 | Flag | 型 | 初期値 | 永続化先 |
 |------|---|--------|---------|
@@ -1460,7 +1450,7 @@ handoff_committed=1
 **Tempfile lifecycle** (specific path 必須、wildcard glob 禁止):
 
 - **Path**: `/tmp/rite-fix-confidence-override-{pr_number}.txt` ({pr_number} は Phase 1.0 で正規化済み)
-- **作成タイミング**: Phase 1.2 best-effort parse で最初の override 候補が出現した時点で **truncate 付きで作成** (`: > {path}` または `printf '' > {path}`)。旧仕様の `touch` は POSIX 仕様上既存ファイルを truncate しない ([POSIX touch(1p)](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/touch.html) — 既存ファイルには `utimensat()` のみで content は変更されない) ため、前セッションの stale データに追記してしまう silent regression の原因になる。必ず `: > {path}` で truncate すること (本 Issue #350 検証付きレビュー H-2 で指摘)。
+- **作成タイミング**: Phase 1.2 best-effort parse で最初の override 候補が出現した時点で **truncate 付きで作成** (`: > {path}` または `printf '' > {path}`)。旧仕様の `touch` は POSIX 仕様上既存ファイルを truncate しない ([POSIX touch(1p)](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/touch.html) — 既存ファイルには `utimensat()` のみで content は変更されない) ため、前セッションの stale データに追記してしまう silent regression の原因になる。必ず `: > {path}` で truncate すること。
 - **追記タイミング**: AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに `printf '%s\n' "{file}:{line}" >> {path}`
 - **読み出しタイミング**: Phase 4.6 / 4.5.3 / 4.3.4 で `wc -l < {path}` (件数) / `cat {path}` (本文) で取得
 - **削除タイミング**: 以下の **すべての終了経路** で明示的に削除する (orphan 防止、specific path 必須):
@@ -1472,13 +1462,13 @@ handoff_committed=1
 
 **Claude による retain と再注入の手順** (data flow の具体化、ファイル永続化版):
 
-1. **H-1 修正 (本 Issue #350 検証付きレビュー H-1)**: Phase 1.2 進入時 (Fast Path / Broad Retrieval bash block 冒頭の両方) で `: > /tmp/rite-fix-confidence-override-{pr_number}.txt` を **無条件 truncate** する。これにより、SIGINT/SIGTERM/SIGHUP で前セッションの override file が orphan として残った場合でも、次回起動時の混入を決定論的に防ぐ。また、Phase 1.2 best-effort parse で最初の override 候補が出現した時点でも追加で truncate してよい (defense-in-depth、害なし)
+1. **H-1 修正**: Phase 1.2 進入時 (Fast Path / Broad Retrieval bash block 冒頭の両方) で `: > /tmp/rite-fix-confidence-override-{pr_number}.txt` を **無条件 truncate** する。これにより、SIGINT/SIGTERM/SIGHUP で前セッションの override file が orphan として残った場合でも、次回起動時の混入を決定論的に防ぐ。また、Phase 1.2 best-effort parse で最初の override 候補が出現した時点でも追加で truncate してよい (defense-in-depth、害なし)
 2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、bash block 内で `printf '%s\n' "{file}:{line}" >> /tmp/rite-fix-confidence-override-{pr_number}.txt` を実行 (追記、`>>` で append)
 3. Phase 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、bash block で以下を実行して値を取得 (会話履歴 grep に依存しない、`2>/dev/null` の silent IO suppression も撤廃):
    ```bash
    override_path="/tmp/rite-fix-confidence-override-{pr_number}.txt"
    if [ -f "$override_path" ]; then
-     # wc -l の stderr を独立退避ファイルに分離 (本 Issue #350 検証付きレビュー H-3 で指摘):
+     # wc -l の stderr を独立退避ファイルに分離:
      # 旧実装 `wc -l < "$override_path" 2>/dev/null` は read permission 拒否 / inode 破損 /
      # ファイル内容破壊などの IO エラーで silent に空文字列 → count=0 に落ちて
      # policy override の監査トレースが完成報告から silent drop する。
@@ -1545,7 +1535,7 @@ handoff_committed=1
 When the standard flow is active (no `target_comment_id`), retrieve PR review comments as before:
 
 ```bash
-# H-1 修正 (本 Issue #350 検証付きレビュー H-1): confidence_override tempfile の orphan 防止
+# H-1 修正: confidence_override tempfile の orphan 防止
 # Fast Path 経路と同様に、Broad Retrieval 経路でも Phase 1.2 進入時に **無条件 truncate** を実行する。
 # SIGINT/SIGTERM/SIGHUP で前セッションの /tmp/rite-fix-confidence-override-{pr_number}.txt が orphan
 # として残った場合でも、次回起動時の混入を決定論的に防ぐ。
@@ -1602,7 +1592,7 @@ if ! pr_comments=$(gh pr view {pr_number} --json comments --jq '.comments' 2>"$g
 fi
 echo "$pr_comments" | jq '.[] | {id: .id, body: .body, author: .author.login, createdAt: .createdAt}'
 
-# PR #450 verified-review M-2 対応: pr_review_comment_body の literal substitute hand-off を tempfile 経由化
+# pr_review_comment_body の literal substitute hand-off を tempfile 経由化
 # (大きい multi-line PR コメント本文を Claude が HEREDOC literal に埋め込む際の escape 漏れ・truncate
 # リスクを排除する。Phase 1.2.0 Priority 3 bash block が specific path から直接読み出す)
 #
@@ -1853,8 +1843,8 @@ PR #{number} のレビューコメント
 # Fast Path bash block 外なので body_file / author_file / skip_file 変数は失われている
 # → specific path で直接削除する (wildcard glob は並列セッション破壊のため絶対禁止)
 # Broad Comment Retrieval 経路ではこれらのファイルが存在しないため rm -f は silent no-op となる
-# confidence_override tempfile は本 Issue #350 検証付きレビュー H-2 で追加 (lifecycle 漏れ修正)
-# Issue #390 (PR #449 review MEDIUM 指摘): Block A/B/C 分割で raw_json + intermediate 3 ファイル
+# confidence_override tempfile の lifecycle 管理
+# Issue #390: Block A/B/C 分割で raw_json + intermediate 3 ファイル
 # (合計 4 ファイル) も cleanup 対象に追加 (Block C の trap が常に削除するが、Block A/B 成功後に本
 # cancel 経路に到達した場合の defense-in-depth。rm -f は idempotent なので二重削除でも副作用なし)
 rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
@@ -1866,7 +1856,7 @@ rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-pr-comment-{pr_number}.txt"
-# PR #450 verified-review M-2 対応: pr-comment tempfile も cleanup 対象に追加
+# pr-comment tempfile も cleanup 対象に追加
 
 # cleanup 後に exit
 echo "[fix:cancelled-by-user]"
@@ -1919,7 +1909,7 @@ rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-pr-comment-{pr_number}.txt"
-# PR #450 verified-review M-2 対応: pr-comment tempfile も cleanup 対象に追加
+# pr-comment tempfile も cleanup 対象に追加
 # (Broad Retrieval 経路で書き出された場合の正常時 cleanup。Fast Path 経路では存在しないため
 # rm -f は silent no-op となる)
 ```
@@ -2069,14 +2059,14 @@ trap '_rite_fix_phase24_cleanup; exit 129' HUP
 
 tmpfile=$(mktemp) || {
   echo "ERROR: tmpfile mktemp 失敗 (/tmp が read-only / inode 枯渇 / permission 拒否)" >&2
-  # 本 Issue #350 検証付きレビュー H1 修正: mktemp 失敗経路にも retained flag を emit
+  # mktemp 失敗経路にも retained flag を emit
   # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPLY_POST_FAILED を検出しないと
   # silent に [fix:replied-only] / [fix:pushed] と判定される。Phase 4.2 / 4.3.4 と対称にする)
   echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=mktemp_failed_reply_tmpfile"
   exit 1
 }
 
-# 本 Issue #350 検証付きレビュー C3 修正: cat HEREDOC の exit code を捕捉
+# cat HEREDOC の exit code を捕捉
 # (Phase 4.2 / 4.3.4 の L-7 修正パターンと統一)
 # disk full / permission 拒否で HEREDOC 書き込みが中断した場合、jq --rawfile は truncated な
 # tmpfile を silent に成功扱いし、空/truncated な reply body が POST される regression を防ぐ
@@ -2372,7 +2362,7 @@ trap '_rite_fix_phase42_cleanup; exit 129' HUP
 
 tmpfile=$(mktemp) || {
   echo "ERROR: report tmpfile mktemp に失敗しました" >&2
-  # 本 Issue #350 検証付きレビュー H2 修正: mktemp 失敗経路にも retained flag を emit
+  # mktemp 失敗経路にも retained flag を emit
   # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPORT_POST_FAILED を検出
   # しないと silent に [fix:pushed] と判定される。成功経路の L-7 修正と対称にする)
   echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}; reason=mktemp_failed_report_tmpfile"
@@ -2550,14 +2540,14 @@ trap '_rite_fix_issue_create_cleanup; exit 129' HUP
 
 tmpfile=$(mktemp) || {
   echo "ERROR: tmpfile mktemp 失敗 (/tmp が read-only / inode 枯渇 / permission 拒否)" >&2
-  # 本 Issue #350 検証付きレビュー H3 修正: mktemp 失敗経路にも retained flag を emit
+  # mktemp 失敗経路にも retained flag を emit
   # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が ISSUE_CREATE_FAILED を検出
   # しないと silent に issues-created:0 と判定され scope 外 finding の追跡が失われる)
   echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=mktemp_failed_issue_body_tmpfile"
   exit 1
 }
 
-# L-7 修正 (本 Issue #350 検証付きレビュー L-7): cat redirection の exit code を明示 check
+# L-7 修正: cat redirection の exit code を明示 check
 # 旧実装は cat heredoc redirection 単独で exit code を check していなかった。
 # 直後の `[ ! -s "$tmpfile" ]` は size 0 のみ検出するが、disk full mid-write で
 # truncated body が書き込まれた場合 (size > 0 だが body 不完全) を検出できない。
@@ -2617,7 +2607,7 @@ fi
 # となり、後続の `jq '.warnings[]' 2>/dev/null` が stderr suppress により jq parse error も
 # 隠蔽し silent に「warnings 0 件」と誤認する。これを防ぐため exit code を捕捉する。
 #
-# verified-review fix: 旧 `if ! result=$(cmd); then script_exit=$?` パターンは bash 仕様上
+# 旧 `if ! result=$(cmd); then script_exit=$?` パターンは bash 仕様上
 # `$?` が常に 0 を返す (`!` 否定の結果が then 節に伝播)。command substitution + 明示的 rc 捕捉
 # (`result=$(cmd); script_exit=$?`) に変更し、cmd 自身の exit code を正しく取得する。
 # 実証: `bash -c 'if ! result=$(exit 42); then echo $?; fi'` → `0`
@@ -2663,7 +2653,7 @@ if [ -z "$result" ]; then
   echo "  Debug: Issue 本文 tmpfile が debug 用に preserved されています (issue_created=0 のため)" >&2
   echo "    tmpfile path: $tmpfile" >&2
   echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
-  # H-4 修正 (本 Issue #350 検証付きレビュー H-4): retained flag emit (空 stdout 経路)
+  # H-4 修正: retained flag emit (空 stdout 経路)
   echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=empty_stdout"
   exit 1
 fi
@@ -2675,7 +2665,7 @@ if [ -z "$created_issue_url" ]; then
   echo "  Debug: Issue 本文 tmpfile が debug 用に preserved されています (issue_created=0 のため)" >&2
   echo "    tmpfile path: $tmpfile" >&2
   echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
-  # H-4 修正 (本 Issue #350 検証付きレビュー H-4): retained flag emit (.issue_url 抽出失敗経路)
+  # H-4 修正: retained flag emit (.issue_url 抽出失敗経路)
   echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=missing_issue_url"
   exit 1
 fi
@@ -2693,13 +2683,13 @@ issue_created=1
 # .project_registration の jq 抽出 + partial / failed 警告 (silent drop 防止):
 # `.warnings[]` 経由の警告とは独立に、`.project_registration` 自体の値も検査する。
 # `.warnings` が空で `.project_registration == "failed"` のスキーマ差分ケースで、Projects 登録失敗が
-# 完全に silent drop する経路を防ぐ (本 Issue #350 検証付きレビュー M-2 で指摘)。
+# 完全に silent drop する経路を防ぐ。
 project_reg_jq_err=$(mktemp /tmp/rite-fix-project-reg-jq-err-XXXXXX) || {
   echo "ERROR: project_reg_jq_err 一時ファイルの作成に失敗" >&2
   echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=mktemp_failed_issue_body_tmpfile" >&2
   exit 1
 }
-# M-4 修正 (本 Issue #350 検証付きレビュー M-4): project_reg_jq_err は統合 trap でも保護される (上記 cleanup 関数参照)。
+# M-4 修正: project_reg_jq_err は統合 trap でも保護される (上記 cleanup 関数参照)。
 # 本 if-else 直後の明示 rm は通常経路の早期削除 (tempfile lifetime 短縮) で、trap は SIGINT/SIGTERM/SIGHUP 到達時の defense-in-depth。
 if ! project_reg=$(printf '%s' "$result" | jq -r '.project_registration // empty' 2>"$project_reg_jq_err"); then
   echo "WARNING: .project_registration の jq 抽出に失敗 (schema 破損の可能性)" >&2
@@ -2732,7 +2722,7 @@ esac
 # 重要: warnings_jq_err は bash block 冒頭で定義した統合 cleanup 関数
 # `_rite_fix_issue_create_cleanup` の `rm -f` 対象に既に含まれている (`${warnings_jq_err:-}`)。
 # ここで trap を再定義すると前段の `$tmpfile` cleanup を上書きで失い silent orphan を引き起こす
-# (本 Issue #350 検証付きレビューで指摘済み)。trap 再定義は禁止 — 統合 trap がカバーする。
+#。trap 再定義は禁止 — 統合 trap がカバーする。
 warnings_jq_err=$(mktemp /tmp/rite-fix-warnings-jq-err-XXXXXX) || {
   echo "ERROR: warnings_jq_err 一時ファイルの作成に失敗" >&2
   exit 1
@@ -2740,7 +2730,7 @@ warnings_jq_err=$(mktemp /tmp/rite-fix-warnings-jq-err-XXXXXX) || {
 
 if warnings_output=$(printf '%s' "$result" | jq -r '.warnings[]?' 2>"$warnings_jq_err"); then
   if [ -n "$warnings_output" ]; then
-    # M-5 修正 (本 Issue #350 検証付きレビュー M-5): warnings 出力を stderr に統一
+    # M-5 修正: warnings 出力を stderr に統一
     # 旧実装は stdout に出力していたが、Phase 8.1 が stdout の `[fix:` pattern を機械パースする
     # ため、warnings の `⚠️` prefix が将来 grep の regression を生むリスクがあった。
     # 他の WARNING はすべて stderr (`>&2`) で出力されているのに対し、本箇所のみ非対称だった。
@@ -2848,7 +2838,7 @@ if [ ! -s "$pr_body_tmp" ]; then
   echo "ERROR: pr_body_tmp が空または存在しません: $pr_body_tmp" >&2
   echo "対処: PR body 自体が空であった可能性があります (gh pr view --json body の出力を確認)" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  # 本 Issue #350 検証付きレビュー H5 修正: 他の WM_UPDATE_FAILED emit と一貫性を保つため
+  # 他の WM_UPDATE_FAILED emit と一貫性を保つため
   # issue_number suffix を追加 (この経路では {issue_number} 抽出が完了前だが、上流 Phase 0.1
   # の作業メモリ由来値が placeholder 置換で入る。literal `{issue_number}` が残る場合でも
   # reason 表との invariant 維持の方を優先する)
@@ -2861,7 +2851,7 @@ fi
 #   exit 1: マッチなし (期待動作、no-op として fallback に進む)
 #   exit 2: IO/権限/構文エラー (真のエラー、silent に握りつぶしてはならない)
 #
-# 重要 — 2 段 pipeline → 1 段独立 capture に変更 (本 Issue #350 検証付きレビュー C-2 で指摘):
+# 重要 — 2 段 pipeline → 1 段独立 capture に変更:
 # 旧実装 `grep -oE '...' "$pr_body_tmp" 2>"$err" | head -1 | grep -oE '[0-9]+'` は pipefail 下でも
 # 先頭 grep の rc=2 (IO エラー) を捕捉できなかった。bash pipefail は **rightmost non-zero** を返すため、
 # 末尾 grep が空入力に対し rc=1 (no match) を返すと pipeline 全体の rc は **1** になり、
@@ -2893,7 +2883,7 @@ else
       :
       ;;
     *)
-      # IO/権限/構文エラー: H-2 で fail-fast から soft failure に統一 (本 Issue #350 検証付きレビュー H-2 で指摘):
+      # IO/権限/構文エラー: H-2 で fail-fast から soft failure に統一:
       # 旧実装は `exit 1` で fix.md 全体を異常終了させる意図だったが、bash の `exit 1` は Bash tool の
       # exit code に変換されるだけで Claude のフロー制御にはならない (line 1868 に明記)。Claude は次の Phase
       # に進み、Phase 8.1 が会話履歴で `[CONTEXT] WM_UPDATE_FAILED=1` を検出して `[fix:pushed-wm-stale]` を
@@ -2921,7 +2911,7 @@ fi
 # 2. PR 本文で見つからない場合、ブランチ名から抽出
 # 同様に IO error と「マッチなし」を融合させない。
 #
-# C-2 修正 (本 Issue #350 検証付きレビュー C-2): 旧実装は
+# C-2 修正: 旧実装は
 # `git branch --show-current 2>"$err" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'`
 # の 3 段 pipeline で、`git branch` の rc を末尾 grep の rc=1 (空入力) が隠蔽する
 # pipefail 罠を持っていた。git branch の終了コードを直接 if-else で捕捉し、
@@ -2958,7 +2948,7 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
     issue_number=""  # 下流 block は wm_emit_done guard で skip されるため stale WM 経路へ流れる
   fi
 fi
-# 注: set -o pipefail / set +o pipefail のペアは C-2 修正で削除済み (本 Issue #350 検証付きレビュー C-2)。
+# 注: set -o pipefail / set +o pipefail のペアは C-2 修正で削除済み。
 # pipefail 仕様 (rightmost non-zero) による IO error 隠蔽を回避するため、grep / git branch を独立 if-else
 # で実行し終了コードを直接捕捉する設計に切り替えた。pipefail 依存は不要。
 ```
@@ -2991,7 +2981,7 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
   echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=issue_number_not_found"
   wm_emit_done=1
 fi
-# 注: set -o pipefail は C-2 修正 (本 Issue #350 検証付きレビュー C-2) で削除済み。
+# 注: set -o pipefail は C-2 修正 で削除済み。
 # pipefail rightmost non-zero 仕様により 2 段 grep pipeline の IO error が末尾 grep の rc=1 に
 # 隠蔽される罠を避けるため、grep / git branch の終了コードを独立 if-else で直接捕捉する設計に
 # 切り替えた。pipefail 依存は不要になったため arming/disarm のペアごと撤廃した。
@@ -3056,7 +3046,7 @@ gh_api_err=$(mktemp /tmp/rite-fix-gh-api-comments-err-XXXXXX) || {
   exit 1
 }
 
-# gh api 呼び出しに exit code check を追加 (本 Issue #350 検証付きレビュー H-1 で指摘):
+# gh api 呼び出しに exit code check を追加:
 # 旧実装 `comment_data=$(gh api ...)` は exit code を一切 check せず、
 # 401/403/404/timeout/5xx で failure すると `$comment_data` が空 → `$comment_id` も空 →
 # 外側の `if [[ -n "$comment_id" ]]` が false → else 分岐を持たないため全処理が silent no-op となり、
@@ -3078,7 +3068,7 @@ if ! comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   comment_data=""  # 後続の jq 抽出を空文字 fallback で安全に通す
 fi
 
-# M-1/L-4 修正 (本 Issue #350 検証付きレビュー M-1 / L-4):
+# M-1/L-4 修正:
 # (a) jq の exit code を独立 if-else で捕捉する (旧実装は exit code 未 check で jq バイナリ異常を
 #     `comment_id=""` の silent 空文字化として隠蔽していた)
 # (b) `echo "$comment_data"` を `printf '%s'` に統一する (echo は -e/-n prefixed 値で
@@ -3148,7 +3138,7 @@ if [[ -n "$comment_id" ]]; then
     # 文言を変更する場合、bash 側と Python 側 (後の python3 -c 内) を必ず同時に変更すること
     GIT_DIFF_FAILED_SENTINEL="__RITE_FIX_CHANGED_FILES_GIT_DIFF_FAILED__"
 
-    # base_branch の解決 (silent fallback 防止 — 本 Issue #350 検証付きレビュー M-3 で指摘):
+    # base_branch の解決 (silent fallback 防止):
     # 旧実装 `grep -E ... 2>/dev/null | head -1 | sed ... || echo "develop"` は以下を silent 化:
     #   - rite-config.yml 不在 (2>/dev/null で suppress)
     #   - permission denied / IO error (2>/dev/null で suppress)
@@ -3170,7 +3160,7 @@ if [[ -n "$comment_id" ]]; then
         echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_base_branch_grep_err; issue_number={issue_number}"
         exit 1
       }
-      # verified-review fix: 旧 `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返すため、
+      # 旧 `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返すため、
       # command substitution + 明示的 rc 捕捉に変更して grep 自身の exit code を正しく取得する。
       base_branch_raw=$(grep -E '^\s*base:' rite-config.yml 2>"$base_branch_grep_err")
       base_branch_grep_rc=$?
@@ -3192,7 +3182,7 @@ if [[ -n "$comment_id" ]]; then
         fi
       else
         # grep 成功 — sed で値を抽出
-        # M-3 修正 (本 Issue #350 検証付きレビュー M-3): sed の exit code を独立 capture
+        # M-3 修正: sed の exit code を独立 capture
         # 旧実装は `base_branch=$(... | sed ...)` で sed 失敗を「値が空」fallback に隠蔽していた。
         # sed バイナリ異常 / pipe write error / signal 中断などの IO 系失敗を「キー値空」と区別するため、
         # sed のみを独立変数に capture し、`if ! ...` で exit code を判定する。
@@ -3205,7 +3195,7 @@ if [[ -n "$comment_id" ]]; then
           exit 1
         }
         base_branch_first_line=$(printf '%s' "$base_branch_raw" | head -1)
-        # verified-review fix: 同上の `if ! cmd; then rc=$?` パターン bash バグ修正
+        # 同上の `if ! cmd; then rc=$?` パターン bash バグ修正
         base_branch_extracted=$(printf '%s' "$base_branch_first_line" | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' 2>"$sed_err")
         sed_rc=$?
         if [ "$sed_rc" -ne 0 ]; then
@@ -3366,7 +3356,7 @@ with open(out_path, "w") as f:
     f.write(body)
 ' "$body_tmp" "$tmpfile" "{impl_status}" "{test_status}" "{doc_status}" "$files_tmp" "$history_tmp" "$GIT_DIFF_FAILED_SENTINEL"
     py_exit=$?
-    # L-6 修正 (本 Issue #350 検証付きレビュー L-6): Python script の exit code semantics
+    # L-6 修正: Python script の exit code semantics
     #
     # | py_exit | 意味 | bash 側の対応 |
     # |---------|------|---------------|
@@ -3443,7 +3433,7 @@ with open(out_path, "w") as f:
     # gh api が空 body を受信して 422 等を返したかどうかが silent に握りつぶされる経路がある。
     # pipefail を有効化して pipe 全体の rc を捕捉する (block 終了時に元の状態へ戻す)。
     #
-    # L-3 修正 (本 Issue #350 検証付きレビュー L-3): pipefail スコープの明文化
+    # L-3 修正: pipefail スコープの明文化
     # 本箇所の pipefail は **PATCH pipeline (jq | gh api PATCH) 周辺のみに限定** する設計選択である。
     # 他の `gh api` 呼び出し (Phase 4.5.2 line 2163 の `gh api .../comments` 等) は `if ! ...` で gh api 自体の
     # exit code を捕捉済みで、`--jq` filter は gh の内部処理により exit code が伝播するため独立 pipeline
@@ -3597,7 +3587,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 
 > **This phase is executed only within the end-to-end flow (within the review-fix loop of `/rite:issue:start`). Skip for standalone execution.**
 
-**用語定義** (本 Issue #350 検証付きレビュー L-14 で追加):
+**用語定義**:
 
 本 fix.md 内では以下の用語を厳密に区別して使う:
 
@@ -3634,7 +3624,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md) for details and marketplace install notes.
 
 ```bash
-# L-5 修正 (本 Issue #350 検証付きレビュー L-5): hook stderr を退避して lock failure と他 failure を区別する
+# L-5 修正: hook stderr を退避して lock failure と他 failure を区別する
 # 旧実装 `2>/dev/null || true` は hook の lock contention だけでなく
 # permission denied / script 不在 / bash syntax error / 内部致命的エラー もすべて silent suppress していた。
 # stderr を tempfile に退避し、失敗時に lock 系メッセージを含むかを check して 2 ケースに分岐する。
@@ -3643,7 +3633,7 @@ hook_err=$(mktemp /tmp/rite-fix-hook-err-XXXXXX) || {
   hook_err=""
 }
 if [ -n "$hook_err" ]; then
-  # verified-review fix: 旧 `if ! cmd; then hook_rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返す。
+  # 旧 `if ! cmd; then hook_rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返す。
   # `if cmd; then :; else rc=$?; fi` の else 節形式に切り替えて hook 自身の exit code を正しく取得する。
   if WM_SOURCE="fix" \
       WM_PHASE="phase5_post_fix" \
@@ -3685,8 +3675,8 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
-| 1 (最優先) | Phase 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は Phase 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない — PR #450 verified-review C-3 対応) | `[fix:error]` (引数 parse 失敗 / Priority 1 conversation_review_decision 不正 / fallback retry 上限到達 / ユーザー中止 / state file 失敗 / pr_review_comment_body literal substitute 漏れ等により fix 処理を継続できない。Claude は以降の Phase への bash tool 呼び出しを一切行わない) |
-| 2 | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した (本 Issue #350 検証付きレビュー H-2 / H-3 / H-4) | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
+| 1 (最優先) | Phase 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は Phase 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない
+| 2 | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
 | 5 | Separate Issues created (N >= 1) | `[fix:issues-created:{count}]` |
@@ -3777,7 +3767,7 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 - Return control to the caller (`/rite:issue:start`)
 - The caller determines the next action based on this output pattern
 
-**Confidence override tempfile cleanup** (silent orphan 防止、本 Issue #350 検証付きレビュー H-2 で追加):
+**Confidence override tempfile cleanup** (silent orphan 防止:
 
 Phase 8.1 の output pattern emit 直後に、fix ループ全体で使用していた confidence_override tempfile を明示的に削除する。specific path 必須 (並列セッション破壊防止)。
 
@@ -3786,14 +3776,14 @@ Phase 8.1 の output pattern emit 直後に、fix ループ全体で使用して
 # fix ループ全体で append されてきたファイルを終了時に削除する。
 # 削除しないと次回実行時の truncate (`: >`) に依存するが、truncate 忘れの経路があった場合に
 # 前セッションの stale データが混入する silent regression のリスクがあるため defense-in-depth で削除する。
-# PR #450 verified-review M-2 対応: pr-comment tempfile も追加 (Broad Retrieval が書き出した
+# pr-comment tempfile も追加 (Broad Retrieval が書き出した
 # /tmp/rite-fix-pr-comment-{pr_number}.txt の正常時 cleanup)。Fast Path 経路では存在しないため
 # silent no-op となる。
 rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
       "/tmp/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
-**Work memory backup_file cleanup** (累積汚染防止、本 Issue #350 検証付きレビュー L-8 で追加 / C1 で恒久 no-op 修正):
+**Work memory backup_file cleanup** (累積汚染防止 / C1 で恒久 no-op 修正):
 
 Phase 4.5.2 で `current_body` を `/tmp/rite-wm-backup-{issue_number}-{epoch}.md` に backup している (failed PATCH 時の debug 用)。Phase 8.1 で output pattern が `[fix:pushed]` または `[fix:issues-created:N]` (= 成功経路) の場合、backup_file は debug に不要なため明示削除する。失敗経路 (`[fix:pushed-wm-stale]` / `[fix:error]`) では debug 用に preserve する。
 
@@ -3834,7 +3824,7 @@ PR #123 のレビュー指摘対応を完了しました
 
 For standalone execution, Phase 8 is not executed. The completion report from Phase 4.6 will guide the user.
 
-**Confidence override tempfile cleanup** (Standalone 経路の orphan 防止、本 Issue #350 検証付きレビュー H-2 で追加):
+**Confidence override tempfile cleanup** (Standalone 経路の orphan 防止:
 
 Standalone 実行では Phase 8 が skip されるため、Phase 4.6 の completion report 出力**直後**に明示的な cleanup bash block を実行して confidence_override tempfile を削除する。これを忘れると `/tmp/rite-fix-confidence-override-{pr_number}.txt` が orphan として永続残留し、次回同 PR 実行時に `touch` ではなく `: >` truncate を入れていても、何らかの経路で truncate 呼び出しが skip された場合に stale データが混入するリスクがある (defense-in-depth)。
 
@@ -3842,7 +3832,7 @@ Standalone 実行では Phase 8 が skip されるため、Phase 4.6 の complet
 # Phase 8.2 Standalone 経路: confidence_override + pr-comment tempfile の明示的 cleanup
 # 実行タイミング: Phase 4.6 の completion report を表示した直後
 # {pr_number} は Claude が Phase 1.0 の parse 結果で事前置換済み
-# PR #450 verified-review M-2 対応: pr-comment tempfile も追加
+# pr-comment tempfile も追加
 rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
       "/tmp/rite-fix-pr-comment-{pr_number}.txt"
 ```

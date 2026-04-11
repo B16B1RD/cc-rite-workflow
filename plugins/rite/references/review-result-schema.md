@@ -26,15 +26,9 @@
 
 詳細は fix.md Phase 1.2.0 Hybrid Review Source Resolution の Priority 0 / Priority 2 selection logic bash block を参照。
 
-### Legacy `"1.0"` の deprecation path (PR #450 verified-review M-12 対応)
+### Legacy `"1.0"` エイリアス
 
-旧形式 `"1.0"` (semver `MAJOR.MINOR` のみ) は以下の経緯で legacy エイリアスとして受理されている:
-
-- **背景**: Issue #443 初期実装で `"1.0"` を採用し、その直後の PR で `"1.0.0"` (semver `MAJOR.MINOR.PATCH`) に変更した。既に `.rite/review-results/` 下に書かれていた `"1.0"` ファイルとの互換性のため両方受理する経過措置を入れた。
-- **Drop 予定**: rite plugin の **次の major release (v2.0)** で `"1.0"` 受理を削除する。それまでの間は `"1.0.0"` と完全に等価として扱う (両形式の semantic 差は無い)。
-- **新規生成は禁止**: `/rite:pr:review` Phase 6.1.a の JSON heredoc body は **必ず `"1.0.0"`** で出力する。`"1.0"` を新規に書き込むコードは実装上存在しない (Claude の literal substitute ミスがあれば fix.md Phase 1.2.0 の Priority 0/2 で `case` 文末に流れて検出される)。
-- **読み取り箇所の同期**: `"1.0"` を受理する箇所は fix.md Phase 1.2.0 Priority 0 / Priority 2 / Priority 3 の 3 case 文。これらすべてで同時に削除する必要があるため、削除時は `grep -n '"1.0"|"1.0"' plugins/rite/commands/pr/fix.md` で全箇所を確認する。
-- **削除後の挙動**: `"1.0"` を読もうとした場合、`*) ` 分岐に流れて `local_file_schema_version_unknown` / `pr_comment_schema_version_unknown` / `explicit_file_schema_version_unknown` のいずれかが emit される。これにより silent regression なく経路が変わる。
+旧形式 `"1.0"` (semver `MAJOR.MINOR` のみ) は legacy エイリアスとして v2.0 まで受理される。`"1.0.0"` と完全に等価で semantic 差は無い。受理箇所は fix.md Phase 1.2.0 Priority 0 / Priority 2 / Priority 3 の 3 case 文で同期削除が必要。新規生成は禁止 (`/rite:pr:review` Phase 6.1.a は `"1.0.0"` のみ出力)。詳細経緯は CHANGELOG を参照。
 
 ## JSON Schema
 
@@ -78,7 +72,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、**最小 2 桁ゼロパディングの可変長連番**。99 件以下: `F-01`〜`F-99` (常に 2 桁固定)。100 件以上の場合: `F-100`, `F-101`, ... のように 3 桁以上に成長する。zero-padding は 2 桁を最小として保持。レビュー内ユニーク。**設計指針** (PR #450 verified-review M-11 対応): 99 件超のレビューは finding 過多のため通常は分割レビュー推奨だが、schema は数値的上限を設けない。fix.md Phase 1.2 best-effort parser や severity_map は文字列キー比較なので桁数差は問題にならない) |
+| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、**最小 2 桁ゼロパディングの可変長連番**。99 件以下: `F-01`〜`F-99` (常に 2 桁固定)。100 件以上の場合: `F-100`, `F-101`, ... のように 3 桁以上に成長する。zero-padding は 2 桁を最小として保持。レビュー内ユニーク。**設計指針**: 99 件超のレビューは finding 過多のため通常は分割レビュー推奨だが、schema は数値的上限を設けない。fix.md Phase 1.2 best-effort parser や severity_map は文字列キー比較なので桁数差は問題にならない) |
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`) |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | string | ✅ | 重要度 (`CRITICAL` / `HIGH` / `MEDIUM` / `LOW`) |
@@ -115,14 +109,29 @@
 {
   "schema_version": "1.0.0",
   "pr_number": 123,
-  ...
+  "timestamp": "2026-04-11T12:34:56+09:00",
+  "commit_sha": "abc1234",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "code-quality-reviewer",
+      "category": "code_quality",
+      "severity": "HIGH",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "description": "エラーハンドリングが不足",
+      "suggestion": "try-catch を追加",
+      "status": "open"
+    }
+  ]
 }
 ```
 ````
 
 - 既存の Markdown テーブル形式は保持 (後方互換、人間可読性)
 - 末尾に `### 📄 Raw JSON` セクションを追加し、code fence で JSON を埋め込む
-- `/rite:pr:fix` Phase 1.2.0 Priority 3 は code fence 内の JSON を **section-scoped awk line-state parsing** で抽出する (findings suggestion 列内のサンプル JSON fence 誤捕捉を防ぐため、`### 📄 Raw JSON` marker 以降に scope を限定する): `awk '/^### 📄 Raw JSON/{in_section=1; next} in_section && /^```json$/{flag=1; next} flag && /^```$/{flag=0; exit} flag{print}'`
+- `/rite:pr:fix` Phase 1.2.0 Priority 3 は code fence 内の JSON を `---` separator 以降の **最後** の `### 📄 Raw JSON` section に scope 限定して抽出する (findings suggestion 列内のサンプル JSON fence 誤捕捉と、本 SoT 文書自体が `### 📄 Raw JSON` literal を含むことによる誤検出の両方を防ぐ)。POSIX awk のみで動作する 1-pass + END 逆方向スキャン実装は fix.md Phase 1.2.0 の bash block を参照
 
 ## 読取優先順位 (pr:fix)
 

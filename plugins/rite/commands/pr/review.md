@@ -12,26 +12,9 @@ Analyze PR changes and dynamically load expert skills to perform a multi-reviewe
 
 > **[READ-ONLY RULE]**: このコマンドはレビュー専用です。`Edit`/`Write` ツールでプロジェクトのソースファイルを修正してはなりません。コードの問題を検出した場合は、`[review:fix-needed:{n}]` パターンを出力し、修正は `/rite:pr:fix` に委譲してください。`Bash` ツールは workflow 操作（`gh` CLI、hook scripts、`.rite-flow-state` 更新）と **read-only な git コマンド**（`git diff` / `git log` / `git show` / `git worktree add` などを含む — 完全な許可・禁止一覧は [`_reviewer-base.md#read-only-enforcement`](../../agents/_reviewer-base.md#read-only-enforcement) を single source of truth として参照）のみ許可されます。working tree / index / ref を変更する git コマンド（`git checkout` / `git reset` / `git add` / `git stash` / `git restore` / `git rebase` / `git commit` / `git push` 等）は **禁止** です。
 
-## Prerequisites (PR #450 verified-review V-3 対応)
+## Prerequisites
 
-**bash 4.0+ 必須**: 本コマンドは Phase 4.5 doc-heavy 検証等で `mapfile -t` builtin を使用する。`mapfile` builtin は **bash 4.0 で導入** されたため、bash 3.2 (macOS デフォルト) では動作しない。
-
-**互換性ガード**: review.md の最初の Bash tool 呼び出し (Phase 1.0 Step 1) で以下を実行する。失敗時は `[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=bash_version_incompatible` を emit して `[review:error]` で exit:
-
-```bash
-# bash 4+ 互換性チェック (mapfile builtin の存在で判定)
-if ! command -v mapfile >/dev/null 2>&1; then
-  bash_version=$("$BASH" --version 2>/dev/null | head -1)
-  echo "ERROR: bash 4.0+ が必要ですが、現在のシェルは mapfile builtin を持っていません" >&2
-  echo "  検出: $bash_version" >&2
-  echo "  対処: macOS では brew install bash で 4+ をインストールし、PATH の先頭に追加してください" >&2
-  echo "[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=bash_version_incompatible" >&2
-  echo "[review:error]"
-  exit 1
-fi
-```
-
-**Source**: [Bash Manual: Builtins](https://www.gnu.org/software/bash/manual/bash.html#Bash-Builtins) — `mapfile` builtin は bash 4.0 で導入。
+**bash 4.0+ 必須**: 本コマンドは Phase 4.5 doc-heavy 検証等で `mapfile -t` builtin を使用する。Phase 1.0 Step 1 の最初の Bash tool 呼び出しで [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を実行する (`{CONTEXT_FLAG}=REVIEW_ARG_PARSE_FAILED`, `{OUTPUT_PATTERN}=[review:error]` で置換)。失敗時は `[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=bash_version_incompatible` を emit して `[review:error]` で exit する。
 
 ## E2E Output Minimization
 
@@ -170,7 +153,7 @@ Determine the invocation source from the conversation context:
 
 2. **Conflict check** (AC-8): If `flag_post == "true"` AND `flag_no_post == "true"`, **immediately terminate** with the following error and do NOT execute Phase 1.1 or later.
 
-   verified-review LOW-1 修正: Step 1 / Step 3 と同粒度の bash block を提供し、retained flag emit 規約と
+   Step 1 / Step 3 と同粒度の bash block を提供し、retained flag emit 規約と
    `[review:error]` exit を明示する。Step 1 で set された `flag_post` / `flag_no_post` を直接参照する。
 
    ```bash
@@ -188,10 +171,10 @@ Determine the invocation source from the conversation context:
 3. **Config read**: Read `pr_review.post_comment` from `rite-config.yml` (default: `false` if section absent or key missing). repository root を `git rev-parse --show-toplevel` で解決して cwd 依存を排除し、パイプライン失敗を pipefail で捕捉する:
 
    ```bash
-   # PR #450 verified-review I-6 対応: 旧実装は `[ ! -f rite-config.yml ]` で cwd 依存
+   # 旧実装は `[ ! -f rite-config.yml ]` で cwd 依存
    # (サブディレクトリから /rite:pr:review を呼ぶと rite-config.yml 不在で silent false fallback)。
    # `git rev-parse --show-toplevel` で repository root を解決し、絶対パスで参照する。
-   # PR #450 verified-review M-9 対応: パイプラインの中間段失敗が silent に空文字を経て
+   # パイプラインの中間段失敗が silent に空文字を経て
    # default false に畳み込まれる経路を防ぐため、本 block 内のみ pipefail を一時有効化する。
    #
    # pipefail スコープ note: 本 block は単一 Bash tool invocation 内で閉じる前提で設計されており、
@@ -221,7 +204,7 @@ Determine the invocation source from the conversation context:
        echo "  default の false を使用します" >&2
        config_post_comment="false"
      fi
-     # verified-review LOW-2 修正: 不正値 (typo: `ture`, 全角文字等) は silent に false へ畳み込まず
+     # 不正値 (typo: `ture`, 全角文字等) は silent に false へ畳み込まず
      # WARNING を表示する。空文字 (key 未設定) は legitimate fallback として silent OK。
      case "$config_post_comment" in
        true|yes|1)  config_post_comment="true" ;;
@@ -252,18 +235,18 @@ Determine the invocation source from the conversation context:
 
 **Note on PR number parsing**: Phase 1.1 の `{pr_number}` 抽出は本サブフェーズで生成した `remaining_args` を入力として使うこと。`$ARGUMENTS` 全体を直接参照してはならない (フラグトークンを PR 番号と誤認するリスク)。
 
-**Phase 1.0 failure reasons** (verified-review LOW-1 + PR #450 verified-review V-3 対応): (`bash_version_incompatible` / `post_and_no_post_conflict`)
+**Phase 1.0 failure reasons**: (`bash_version_incompatible` / `post_and_no_post_conflict`)
 
 | reason | Description |
 |--------|-------------|
-| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) — PR #450 verified-review V-3 対応。review.md の最初の Bash tool 呼び出しで発火する |
+| `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン)
 | `post_and_no_post_conflict` | `--post-comment` と `--no-post-comment` が同時指定された (Phase 1.0 Step 2、AC-8 違反、`REVIEW_ARG_PARSE_FAILED=1` retained flag を emit して `[review:error]` で exit 1) |
 
 **Eval-order enumeration** (for Pattern-5 drift check): Phase 1.0 emit sequence = (`bash_version_incompatible` / `post_and_no_post_conflict`)
 
 ### 1.1 Identify the PR
 
-**Input** (PR #450 verified-review M-5 対応): `$remaining_args` を Phase 1.0 Step 1 から引き継いだ値として参照する。**`$ARGUMENTS` を直接参照してはならない** — `$ARGUMENTS` は `--post-comment` / `--no-post-comment` 等のフラグトークンを含むため、PR 番号と誤認するリスクがある。Phase 1.0 Step 1 で生成された `remaining_args` は flag tokens を除去済みで、PR 番号 / PR URL / 引数なし のいずれかが入る (Phase 1.0 Step 1 末尾の note 参照)。
+**Input**: `$remaining_args` を Phase 1.0 Step 1 から引き継いだ値として参照する。**`$ARGUMENTS` を直接参照してはならない** — `$ARGUMENTS` は `--post-comment` / `--no-post-comment` 等のフラグトークンを含むため、PR 番号と誤認するリスクがある。Phase 1.0 Step 1 で生成された `remaining_args` は flag tokens を除去済みで、PR 番号 / PR URL / 引数なし のいずれかが入る (Phase 1.0 Step 1 末尾の note 参照)。
 
 **PR number retrieval (priority order)**: 以下の順序で `{pr_number}` を解決する。各 priority は `$remaining_args` を入力源として参照する:
 
@@ -698,7 +681,7 @@ fi
 # 空配列 guard: gh pr view が exit 0 で空 stdout を返したコーナーケース (PR が完全に空など)
 # exit code が成功しているため fatal error ではないが、Phase 1.1 の `files` 配列とこの再呼び出し
 # 結果が不整合 (前者 > 0 / 後者 == 0) になる race の兆候のため、3 retained flag を **explicit set**
-# して early exit する (本 Issue #350 検証付きレビュー M-5 で指摘)。
+# して early exit する。
 #
 # Phase 1.1 と Phase 1.2.7 の files 配列の不整合 race (PR が削除される / PR が空になる /
 # files 配列が shrink) のエッジケースで、retained flag が undefined のまま Determination block へ
@@ -757,7 +740,7 @@ fi
 - **2 情報源の責務分離 (path 抽出のみ再呼び出し)**: 上記 Calculation 表に従い、ratio 計算 (`doc_lines` / `doc_files_count` 等) は **Phase 1.1 の `files` 配列** を再利用し、`gh pr view --json files` の再呼び出しは **`all_files_excluded` 判定で必要な「path の bash 配列」抽出専用** とする。Phase 1.2.6 Note の「separate API call は不要」原則は ratio 計算に対する宣言であり、本 bash impl の path 専用再呼び出しと矛盾しない。再呼び出しの正当化はコンテキスト変数を bash 配列に再 hydration する仕組みが fragile なため (改行/特殊文字エスケープ + Claude context 変数が bash session に直接渡らない構造)
 - **Path 正規化と rite-plugin scope check**: `if [[ "$f" == plugins/rite/* ]]; then ... fi` で rite plugin 配下か判定したうえで `f_rel="${f#plugins/rite/}"` を実行する。**この check がないと非 rite-plugin repo の `commands/foo.md` 等が誤 exclusion される silent misclassification が発生**するため必須
 - **`case` パターンの glob**: bash の **filename expansion ではなく case statement の pattern matching** で評価される。POSIX shell pattern matching 仕様では `case` 文の `*` は **`/` を含む任意文字列にマッチ**するため (filename glob の挙動とは異なる)、`commands/*.md` 1 行で `commands/foo.md` も `commands/sub/foo.md` も `commands/a/b/c/foo.md` もすべてカバーする (実機検証: `case "skills/sub/sub2/foo.md" in skills/*.md) MATCH ;; esac` → MATCH)
-- **`doc_file_patterns` 疑似コード (`i18n/**/*.md, i18n/**/*.mdx`) と bash impl `case` (`i18n/*`) の意図的範囲差** (本 Issue #350 検証付きレビュー L-2 で指摘): 両者は **目的が異なるため意図的に範囲が違う**。drift ではない:
+- **`doc_file_patterns` 疑似コード (`i18n/**/*.md, i18n/**/*.mdx`) と bash impl `case` (`i18n/*`) の意図的範囲差**: 両者は **目的が異なるため意図的に範囲が違う**。drift ではない:
   - **`doc_file_patterns` 疑似コード** (上記 Calculation で使用): tech-writer Activation patterns との等価性を表現するため `.md` / `.mdx` 拡張子に限定する (3 ファイル等価性の系統 1 — internal-consistency.md の Cross-Reference 参照)
   - **bash impl `case` 文** (`all_files_excluded` 判定で使用): rite plugin self-only 判定が目的のため、翻訳ファイル (`i18n/ja.yml`, `i18n/en.json`, `i18n/messages.po` 等) も含めた**全拡張子**を excluded に含める。`i18n/*` パターンは POSIX shell pattern matching の仕様により `i18n/sub/foo.yml` 等の任意階層・任意拡張子をすべてカバーする
   - **整合性の検証**: ratio 計算 (`doc_lines` / `doc_files_count`) は前者の `doc_file_patterns` を、`all_files_excluded` 判定 (rite plugin self-only 判定) は後者の bash case を使うため、両者は別の計算経路で使われており drift しない
@@ -806,7 +789,7 @@ doc_heavy_pr_decision_summary = <1 行要約文字列>
 
 Retain `{doc_heavy_pr}`, `{doc_heavy_pr_value}`, `{doc_heavy_pr_decision_summary}` in the conversation context for use in Phase 2.2.1, Phase 5.1.3, and Phase 5.4 template expansion. All 3 flags are **explicitly set** in every reachable path (including `total_diff_lines == 0` / `total_files_count == 0` early exits above, where `doc_heavy_pr = false` / `doc_heavy_pr_value = false` / `doc_heavy_pr_decision_summary = "empty diff (no changed files)"` must be set before `skip to Phase 1.3`).
 
-**Mandatory `[CONTEXT]` emission for symmetry** (本 Issue #350 検証付きレビュー M-6 で追加):
+**Mandatory `[CONTEXT]` emission for symmetry**:
 
 Determination block の計算が完了した直後 (上記 3 flag を explicit set した直後)、**正常経路でも skip 経路と対称に必ず以下の `[CONTEXT]` 行を bash block の stdout に echo する**。これは Phase 2.2.1 / Phase 5.1.3 / Phase 5.4 で会話履歴 grep により `{doc_heavy_pr}` 等を読み戻す際の決定論性を保証するための非対称性解消修正である:
 
@@ -1008,7 +991,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    # の形式で 3 状態を stdout に出力することで、後続 phase が context から値を読み戻して
    # candidate list 操作 (selection_type 昇格 / 新規追加 / no-op) を実行できる。
    #
-   # M-7 修正 (本 Issue #350 検証付きレビュー M-7): iteration_id を付与
+   # M-7 修正: iteration_id を付与
    # 同一 session 内で同じ review が複数回実行されると、`[CONTEXT] code_quality_coreviewer_add_reason=`
    # 行が会話履歴に複数残り、後続 phase の Claude が「最新値」を決定論的に判別できない問題があった。
    # iteration_id (`pr_number-{epoch_seconds}` 形式) を suffix に付与することで、後続 phase は
@@ -1031,7 +1014,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    set +o pipefail
    ```
 
-   **後続 phase での読み取り**: Claude は本 bash block 終了後、stdout から `[CONTEXT] code_quality_coreviewer_add_reason=` 行を会話履歴で検索して値を取得し、以下のいずれかの操作を実行する。**M-7 修正 (本 Issue #350 検証付きレビュー M-7)**: 同一 session 内で複数行マッチした場合は **`iteration_id=` suffix の値が最大のもの (`pr_number-{epoch_seconds}` 形式の epoch_seconds が最大のもの) を最新値として採用** すること。後段の grep regex 例: `\[CONTEXT\] code_quality_coreviewer_add_reason=([^;]+); iteration_id=([0-9]+-[0-9]+)$`。
+   **後続 phase での読み取り**: Claude は本 bash block 終了後、stdout から `[CONTEXT] code_quality_coreviewer_add_reason=` 行を会話履歴で検索して値を取得し、以下のいずれかの操作を実行する。**M-7 修正**: 同一 session 内で複数行マッチした場合は **`iteration_id=` suffix の値が最大のもの (`pr_number-{epoch_seconds}` 形式の epoch_seconds が最大のもの) を最新値として採用** すること。後段の grep regex 例: `\[CONTEXT\] code_quality_coreviewer_add_reason=([^;]+); iteration_id=([0-9]+-[0-9]+)$`。
 
    | reason 値 | 操作 |
    |-----------|------|
@@ -1891,7 +1874,7 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 - **variant (c)**: 「`META: Cross-Reference partially skipped`」を literal substring match で検査する。
 - **variant (b + inconclusive)**: variant (b) のトークン + 「`but {N} categories were inconclusive`」「`Inconclusive: [...]`」を literal substring match で検査する (`{N}` 部分は数字 1 文字以上を許容)。
 
-**重要**: literal substring match は「カテゴリ名の空白/記号の差異を厳格に検出する」設計選択であり、reviewer が `internal-consistency.md` / `tech-writer.md` の canonical form (`Order-Emphasis Consistency`) から逸脱した瞬間に発火する。これは「文書-実装整合性 mode の自己整合性」を Phase 5.1.3 自身が監視するための仕組みである (本 Issue #350 の C-1 指摘の根本対応)。
+**重要**: literal substring match は「カテゴリ名の空白/記号の差異を厳格に検出する」設計選択であり、reviewer が `internal-consistency.md` / `tech-writer.md` の canonical form (`Order-Emphasis Consistency`) から逸脱した瞬間に発火する。これは「文書-実装整合性 mode の自己整合性」を Phase 5.1.3 自身が監視するための仕組みである。
 
 tech-writer の出力に以下のいずれかの META 行が含まれているかを検証する。**正規表現は必ず multiline mode (`(?m)`) で実行**: `(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:` を行頭 anchor として検索する。`(?m)` を明示する理由は、tech-writer が META 行をテーブルセル内ではなくテーブル直後の段落 `- META: ...` 形式で書いた場合、行頭 `^` が multiline mode 無効ではファイル先頭のみを指して検出漏れになるため。Step 4 の正規表現も同じ理由で `(?m)` を明示している (drift 防止):
 - (a) `META: All 5 verification categories executed, 0 inconsistencies found. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` (finding_count == 0 の場合)
@@ -2533,8 +2516,6 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
 ### 6.1 Output Review Result (Local Save + Conditional PR Comment)
 
-> **PR #450 verified-review M-3 対応**: 旧見出し `Post PR Comment` は、Issue #443 で本 phase の責務が「常時ローカル保存 + 条件付き PR コメント投稿」に拡張されたことを表現しきれていなかった。読者が見出しのみで責務を誤解しないよう、現責務を反映した名称に変更した。
-
 Output the review results via two independent paths. Use `mktemp` + `--body-file` to safely handle markdown content for the PR comment path.
 
 **Issue #443 changes**: This phase now performs **two independent outputs**:
@@ -2548,14 +2529,14 @@ Phase 6 failure reasons:
 | `tmpfile_write_failure` | Review result heredoc write to tmpfile failed (Phase 6.1.b PR comment post) |
 | `gh_comment_post_failure` | `gh pr comment` 投稿が exit != 0 で失敗 (Phase 6.1.b、network / auth / rate-limit / permission) |
 | `mkdir_failure` | `.rite/review-results/` directory creation failed (Phase 6.1.a, **WARNING only, do NOT fail Phase 6**) |
-| `date_command_failure` | `TZ='Asia/Tokyo' date` の実行が失敗 (Phase 6.1.a、verified-review MEDIUM-1 対応、**WARNING only**、空 timestamp による file 上書きを防止) |
+| `date_command_failure` | `TZ='Asia/Tokyo' date` の実行が失敗 (Phase 6.1.a、**WARNING only**、空 timestamp による file 上書きを防止) |
 | `mktemp_failure` | JSON tmpfile allocation failed (Phase 6.1.a, **WARNING only**) |
 | `write_failure` | JSON content write to tmpfile failed (Phase 6.1.a, **WARNING only**) |
 | `json_invalid` | JSON tmpfile written but `jq empty` post-condition check failed (Phase 6.1.a, literal `{review_result_json_heredoc_body}` substitute 漏れの可能性、**WARNING only**) |
-| `schema_required_fields_missing` | JSON は parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Phase 6.1.a、verified-review HIGH-1 対応、**WARNING only**) |
+| `schema_required_fields_missing` | JSON は parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Phase 6.1.a、**WARNING only**) |
 | `mv_failure` | Atomic move of JSON tmpfile to final path failed (Phase 6.1.a, **WARNING only**) |
 
-**Non-blocking contract** (per Phase 6.1.a Non-blocking Contract / AC-1 compliance: "ローカルファイル保存失敗時に pr:review 全体を失敗扱いにしない" — PR #450 verified-review C-4 対応で旧 `4.4 MUST NOT` という存在しないセクション参照から修正): `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error.
+**Non-blocking contract**: `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**: Phase 6.1.a は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は上記 7 種 (`mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure`) のいずれか。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
 
@@ -2563,20 +2544,22 @@ Phase 6 failure reasons:
 
 #### 6.1.a Local JSON File Save (Always Executed — #443)
 
+> **Phase 6.1 分岐ロジック**: Phase 6.1 は `{post_comment_mode}` の値に応じて以下のいずれかに分岐する: (a) `true` → 6.1.a (ローカル保存) → 6.1.b (PR コメント投稿) → 6.1.c (skip notification 出力)、(b) `false` → 6.1.a (ローカル保存) → 6.1.c (skip notification 出力、6.1.b スキップ)。6.1.a は常に実行され、6.1.b のみが `{post_comment_mode}` で条件分岐する。6.1.c は両経路で必ず実行される (出力内容のみ分岐)。
+
 Save review results as a timestamped JSON file per [review-result-schema.md](../../references/review-result-schema.md). This is executed **regardless** of `{post_comment_mode}` so that `/rite:pr:fix` can read results via the local-file path.
 
 **Claude substitution requirements**:
 - `{review_result_json_heredoc_body}`: Claude が review-result-schema.md に従って JSON 本文を生成し、下記 `RITE_JSON_EOF` heredoc に literal substitute する。**⚠️ Heredoc quoting note**: `<<'RITE_JSON_EOF'` は single-quoted delimiter のため shell expansion (変数展開・command substitution) は完全抑制される。`{review_result_json_heredoc_body}` placeholder は **bash 実行時の動的展開ではなく Claude が bash block 生成時に literal 文字列として置換**する必要がある。literal 置換忘れは bash 実行時に literal `{review_result_json_heredoc_body}` がそのまま JSON ファイルに書き込まれ、Phase 6.1.a 内の `jq empty` post-condition check で fail-fast 検出される (defense-in-depth)。
 - `{pr_number}`: Phase 1.0 で正規化済み。bash block 冒頭で `pr_number="{pr_number}"` の literal substitution を行い、以後は bash 変数 `${pr_number}` として参照する (Claude placeholder と bash 変数展開の混在を避ける)。
-- Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding: `id` (**`F-NN` 形式、最小 2 桁ゼロパディング可変長連番**。99 件以下は `F-01`〜`F-99` 固定、100 件以上は `F-100` 等に成長 — PR #450 verified-review M-11 対応で schema.md と統一。詳細は [review-result-schema.md `findings[]` 要素](../../references/review-result-schema.md#findings-要素))、`reviewer`, `category`, `severity`, `file`, `line`, `description`, `suggestion`, `status: "open"`.
+- Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding: `id` (**`F-NN` 形式、最小 2 桁ゼロパディング可変長連番**。99 件以下は `F-01`〜`F-99` 固定、100 件以上は `F-100` 等に成長
 
-**`iso_timestamp` Claude substitution handshake** (PR #450 verified-review M-13 対応):
+**`iso_timestamp` Claude substitution handshake**:
 
 `{review_result_json_heredoc_body}` 内の `timestamp` フィールドは Phase 6.1.a の bash block 内で算出される `$iso_timestamp` (TZ=Asia/Tokyo の ISO 8601 文字列) と **必ず一致** させる必要がある。`$iso_timestamp` は bash 変数のため、Claude が JSON heredoc body を生成する時点では値が決まっていない。以下のいずれかの handshake で同期する:
 
 | Approach | 手順 | 推奨度 |
 |----------|------|-------|
-| **A. Phase 6.1.a 内で2 段 substitution** (推奨) | (1) bash block で `iso_timestamp` を計算し `[CONTEXT] ISO_TIMESTAMP=...` を stderr に emit、(2) Claude が会話履歴から値を読み取り、(3) 同 bash block 内の `{review_result_json_heredoc_body}` placeholder に literal で埋め込む。本 phase の bash block は単一 invocation で完結するため、(1)(2)(3) を 1 つの bash 呼び出しに含めるには Claude が事前計算する必要がある — bash 内で `date` を実行してから別の bash で JSON 生成、という 2 invocation hand-off が必要。 | ★★★ |
+| **A. 2 段 substitution (2 Bash tool invocations: 準備 → 本番)** (推奨) | (1) 準備 invocation: 別の Bash tool 呼び出しで `date` を実行し stdout から ISO 8601 文字列を取得、(2) Claude が stdout から値を読み取り `{review_result_json_heredoc_body}` placeholder に literal substitute、(3) 本番 invocation: Phase 6.1.a の bash block を実行 (bash block 内では別途 `iso_timestamp` を独立計算し `[CONTEXT] ISO_TIMESTAMP=...` emit / ファイル名生成に使う)。準備値と本番値で最大 1 秒のズレが許容される (詳細は下記「秒跨ぎ許容」段落参照)。 | ★★★ |
 | **B. heredoc 内で `$iso_timestamp` を bash 変数として参照** (NG) | `<<'RITE_JSON_EOF'` (single-quoted delimiter) は shell expansion を抑制するため使えない。`<<RITE_JSON_EOF` (unquoted) に変更すると expansion は効くが、JSON 内の `$` 含有文字列 (例: regex pattern) が誤展開される副作用があり禁止。 | ✗ |
 | **C. JSON 生成を別 phase に分離** | 手数が増え trap / cleanup の複雑度が上がる。 | △ |
 
@@ -2584,18 +2567,11 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 
 1. **準備 invocation**: 別の Bash tool 呼び出しで `TZ='Asia/Tokyo' date +'%Y-%m-%dT%H:%M:%S+09:00'` を実行し、stdout から ISO 8601 文字列を取得する
 2. **JSON 生成**: 取得した値を `{review_result_json_heredoc_body}` の `"timestamp": "..."` フィールドに literal substitute する
-3. **本番 invocation**: Phase 6.1.a の bash block を実行する。bash block 内でも同じ `iso_timestamp` を再計算するが、JSON 内の値と数秒ズレる可能性を避けるため、Claude は **準備 invocation で取得した値を JSON 内に固定** し、本番 invocation の `$iso_timestamp` は `[CONTEXT] ISO_TIMESTAMP=...` emit 専用として使う
+3. **本番 invocation**: Phase 6.1.a の bash block を実行する。bash block 内では `iso_timestamp` / `file_timestamp` を独立に再計算し、ファイル名生成と `[CONTEXT] ISO_TIMESTAMP=...` emit に使う
 
-> **秒跨ぎリスク**: 準備 invocation と本番 invocation の間に秒が変わると `iso_timestamp` (JSON) と `$iso_timestamp` (bash, [CONTEXT] emit) が 1 秒ズレる可能性がある。これは観測可能性のための context emit で、JSON 本文の `timestamp` が真実として扱われるため、ズレが発生しても downstream の `/rite:pr:fix` は JSON 内の値を信頼する。秒跨ぎは無視可能 (1 秒以内のズレは fix loop の意味論に影響しない)。
+**bash block 内で再計算する理由**: bash block の `iso_timestamp` / `file_timestamp` は本 phase の bash block 単独で完結するためで、JSON body に literal 埋め込みされた値と secondary に同期する必要はない (両者は別経路の真実源として独立に運用される)。JSON body は downstream の `/rite:pr:fix` が信頼する一次真実源、bash 内の値は本 phase の trap emit / ファイル名生成のための内部値という責務分離。
 
-> **ファイル名 timestamp との一貫性**: 同様に `file_timestamp` (`YYYYMMDDHHMMSS`) も準備 invocation で取得し、bash block 内では `$file_timestamp` を JSON path に使う。準備 invocation で `iso_timestamp` と `file_timestamp` を同じ `date` 呼び出しから派生させれば、両者の整合性は保証される (`date` は副作用のない pure 関数)。準備 invocation 例:
->
-> ```bash
-> # 準備 invocation: iso_timestamp と file_timestamp を一発で取得
-> TZ='Asia/Tokyo' date +'iso_timestamp=%Y-%m-%dT%H:%M:%S+09:00 file_timestamp=%Y%m%d%H%M%S'
-> ```
->
-> Claude は stdout を parse して両方の値を取得し、JSON heredoc body と bash block 内の literal 代入の両方に埋め込む。
+> **秒跨ぎ許容**: 準備 invocation と本番 invocation の間に秒が変わると、JSON body の `timestamp` フィールド (準備値) / ファイル名の `${file_timestamp}` (本番値) / `[CONTEXT] ISO_TIMESTAMP=` emit 値 (本番値) の 3 者で最大 1 秒ズレる可能性がある。これは仕様上許容される: (a) JSON 本文の `timestamp` を `/rite:pr:fix` が一次真実源として読む、(b) ファイル名はソート順安定性のためだけに使う、(c) `[CONTEXT]` emit は observability 用。fix loop の意味論には 1 秒のズレは影響しない。
 
 ```bash
 # Phase 6.1.a: ローカル JSON 保存 (非ブロッキング、signal-specific trap 保護)
@@ -2606,9 +2582,9 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 pr_number="{pr_number}"
 
 # json_tmp / mktemp_err は trap 保護対象 (orphan 防止)
-# verified-review MEDIUM-1 修正: date 計算は trap setup 後に移動 (失敗時に trap EXIT が
+# date 計算は trap setup 後に移動 (失敗時に trap EXIT が
 # `[CONTEXT] FILE_TIMESTAMP=unknown` を emit できるようにするため)
-# PR #450 verified-review I-3 対応: json_saved も trap handler が `${json_saved:-false}` で
+# json_saved も trap handler が `${json_saved:-false}` で
 # 参照するため、他の変数と同じく冒頭ブロックで初期化する。旧実装は L2580 (mkdir 直前) で
 # 初期化していたが、それより前で signal が届くと `${json_saved:-false}` の `:- ` 展開 fallback に
 # 偶然頼っており、`set -u` 導入で破綻するリスクがあった。
@@ -2638,7 +2614,7 @@ trap '_rite_review_p61a_cleanup; exit 129' HUP
 # `date -Iseconds` は GNU 拡張で macOS/BSD では未サポートのため、portable な明示フォーマットを使用
 # Source: https://www.jbmurphy.com/2011/02/17/gnu-date-vs-bsd-date/
 #
-# verified-review MEDIUM-1 修正: date 失敗時に file_timestamp が空文字となり
+# date 失敗時に file_timestamp が空文字となり
 # json_path が `.rite/review-results/123-.json` 形式で生成され同一 PR の過去レビューを
 # 上書きする silent regression を防ぐ。trap setup 後に date を実行することで、失敗時も
 # `_rite_review_p61a_cleanup` が `[CONTEXT] FILE_TIMESTAMP=unknown` を emit できる。
@@ -2658,7 +2634,7 @@ review_results_dir=".rite/review-results"
 json_path="${review_results_dir}/${pr_number}-${file_timestamp}.json"
 
 # 注: json_saved の初期化は本 bash block 冒頭の変数宣言ブロックに移動済み
-# (PR #450 verified-review I-3 対応 — `set -u` race window 解消のため)
+#
 
 # Create directory (MUST NOT fail Phase 6 if creation fails)
 if ! mkdir -p "$review_results_dir" 2>/dev/null; then
@@ -2701,12 +2677,12 @@ RITE_JSON_EOF
       and (.pr_number | type == "number")
       and (.findings | type == "array")
     ' "$json_tmp" >/dev/null 2>&1; then
-      # verified-review HIGH-1 修正: jq empty は terminal value (`{}`, `null`, `42`) を pass する。
+      # jq empty は terminal value (`{}`, `null`, `42`) を pass する。
       # 必須フィールド (schema_version / pr_number / findings[] 配列型) を明示検証しないと、
       # `{}` や `{"schema_version": "1.0.0"}` のような不完全な JSON を「保存成功」として扱い、
       # 後段の /rite:pr:fix が「指摘 0 件で正常終了」する silent regression を起こす。
       #
-      # PR #450 verified-review V-4 対応: jq の and / truthiness 仕様 (false / null のみが falsy、
+      # jq の and / truthiness 仕様 (false / null のみが falsy、
       # 空文字列 "" / 0 / [] / {} は全て truthy) のため、旧実装 `.schema_version and .pr_number`
       # は `schema_version: ""` を silent に pass させる抜け穴があった。明示的に
       # `type == "string" and length > 0` で「非空文字列」を要求することで、空文字列・null・
@@ -2720,7 +2696,7 @@ RITE_JSON_EOF
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing" >&2
     else
       if mv "$json_tmp" "$json_path" 2>/dev/null; then
-        # PR #450 verified-review I-2 対応: 成功メッセージも stderr に統一する。
+        # 成功メッセージも stderr に統一する。
         # 本 bash block の他の WARNING / [CONTEXT] emit はすべて `>&2` で stderr に出力されており、
         # 「[CONTEXT] emit は stderr 統一」原則を打ち出している。成功メッセージだけ stdout という
         # 非対称は、将来 Claude が bash 出力を parse する際に observability ログとデータの境界を曖昧化させ、
@@ -2739,7 +2715,7 @@ fi
 # (L-4 対応: abnormal exit 経路でも必ず emit されるよう trap handler に移動)
 ```
 
-**Non-blocking contract** (Phase 6.1.a Non-blocking Contract / AC-1 compliance — PR #450 verified-review C-4 対応で旧 `4.4 MUST NOT` という存在しないセクション参照から修正): If local save fails for any reason, `/rite:pr:review` MUST NOT fail — it logs a WARNING and proceeds. The review results remain available via conversation context for immediate `/rite:pr:fix` invocation.
+**Non-blocking contract** (Phase 6.1.a Non-blocking Contract / AC-1 compliance— it logs a WARNING and proceeds. The review results remain available via conversation context for immediate `/rite:pr:fix` invocation.
 
 **Placeholder data flow**:
 - `file_timestamp` / `iso_timestamp` / `json_saved` は **EXIT trap handler 内**で `[CONTEXT]` として stderr に emit される (normal/abnormal 両方の経路で確実に emit される)。Phase 6.1.c の Claude はこれらの値を会話コンテキストから読み取って skip notification に埋め込む。
@@ -2799,7 +2775,7 @@ then
 fi
 
 # gh pr comment の exit code を明示捕捉 (silent failure 防止)
-# CRITICAL-1 修正 (verified-review): `if ! cmd; then rc=$?` パターンは bash 仕様上 $? が
+# `if ! cmd; then rc=$?` パターンは bash 仕様上 $? が
 # 常に 0 になる (`!` パイプライン否定の結果が then 節に伝播)。`if cmd; then :; else rc=$?` の
 # else 節形式に切り替えることで gh pr comment 自身の exit code を正しく捕捉する。
 # 実証: `bash -c 'if ! (exit 42); then echo $?; fi'` → `0`
