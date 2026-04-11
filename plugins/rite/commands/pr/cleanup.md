@@ -1068,8 +1068,16 @@ Delete `.rite/review-results/{pr_number}-*.json` files associated with the merge
 - **Non-blocking**: ファイルが存在しない場合は warning なしで continue。`rm` 失敗 (permission denied / IO error) は WARNING + `[CONTEXT]` 表示して可視化 (silent 抑制しない)
 - **Idempotent**: すでに削除済み / 存在しない場合でも警告を出さずに続行する
 
+**Phase 2.5 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
+
+| reason | Description |
+|--------|-------------|
+| `rm_failure` | `rm -f` コマンドが permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
+
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`rm_failure`)
+
 ```bash
-# signal-specific trap (rm_err tempfile の orphan 防止 — cycle 2 LOW fix)
+# signal-specific trap (rm_err tempfile の orphan 防止)
 # canonical trap pattern は references/bash-trap-patterns.md#signal-specific-trap-template 参照
 rm_err=""
 _rite_cleanup_p25_cleanup() {
