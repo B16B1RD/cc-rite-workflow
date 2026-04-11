@@ -130,7 +130,14 @@ trap 'rm -f "$FINDINGS_FILE"' EXIT
 # to FINDINGS_FILE so the outer loop can count and print at the end.
 check_file() {
   local file="$1"
-  [ -f "$file" ] || return 0
+  # Non-existent targets must be reported as diagnostics — a silent `return 0` gives
+  # users false confidence when a typo'd `--target` path is passed (Issue #369 code-quality
+  # cycle 2 L-NEW1). The `--all` path is unaffected because find(1) never produces
+  # missing entries.
+  if [ ! -f "$file" ]; then
+    echo "WARNING: target not found: $file" >&2
+    return 0
+  fi
   awk -v F="$file" '
     {
       line = $0

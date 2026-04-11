@@ -570,7 +570,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {drift_output}
 ```
 
-**Bang-backtick warning appendix** (both standalone and E2E): When `bang_backtick_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Both statuses use the same appendix so that invocation failures (exit code 2) are never silently dropped — addressing the observability gap that the same appendix rule fixes in Phase 3.5 drift check (Issue #369 prompt-engineer L-2):
+**Bang-backtick warning appendix** (both standalone and E2E): When `bang_backtick_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Both statuses use the same appendix so that invocation failures (exit code 2) are never silently dropped. **Note**: Phase 3.5 drift check has the same observability gap (appendix fires only on `warning`, not `error`), but fixing drift check is **out of scope for this PR** — it is tracked as a follow-up item. The asymmetry here is intentional for this PR's narrow scope:
 
 ```
 ⚠️ Bang-backtick check: {bang_backtick_finding_count} findings detected ({bang_backtick_status}, non-blocking)
@@ -660,7 +660,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

@@ -111,9 +111,12 @@ EOF
 out=$("$SCRIPT" --target "$FIXTURE_P1" 2>&1)
 rc=$?
 assert "P1 fixture exits 1 (detected)" "1" "$rc"
-p1_count=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out" || true)
+# grep -c exits 1 when zero matches; under `set -uo pipefail` (no `-e`) that never
+# aborts the script, so the previous `|| true` was pure noise. Remove it throughout
+# to keep the test body signal-to-noise high (Issue #369 code-quality cycle 2 L-NEW2).
+p1_count=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
 assert_ge "P1 fixture detects >=2 P1 findings" 2 "$p1_count"
-p2_in_p1=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out" || true)
+p2_in_p1=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out")
 assert "P1 fixture does NOT bleed into P2 (p2_count == 0)" "0" "$p2_in_p1"
 
 # --- Test 5: P1 multi-trigger on a single line (H-1 regression guard) --------
@@ -128,8 +131,15 @@ EOF
 out=$("$SCRIPT" --target "$FIXTURE_P1_MULTI" 2>&1)
 rc=$?
 assert "P1 multi-trigger fixture exits 1" "1" "$rc"
-p1_multi=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out" || true)
-assert_ge "P1 multi-trigger reports all 3 hits (not undercounted)" 3 "$p1_multi"
+p1_multi=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
+# Strict equality (not `-ge 3`) so over-counting regressions — e.g. a scanner rewrite
+# that accidentally double-emits the same match, or widens P1 to fire on overlapping
+# substrings — are caught as well (Issue #369 test cycle 2 L-NEW3).
+assert "P1 multi-trigger reports exactly 3 hits" "3" "$p1_multi"
+# Bleed-check: P2 must not fire on P1-only input, even on multi-trigger lines.
+# This pins the regex's class isolation against future widening (L-NEW4).
+p2_in_p1_multi=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out")
+assert "P1 multi-trigger does NOT bleed into P2" "0" "$p2_in_p1_multi"
 
 # --- Test 6: P2 fixture triggers P2 only (bleed-check) ----------------------
 FIXTURE_P2=$(mktemp_md)
@@ -144,9 +154,9 @@ EOF
 out=$("$SCRIPT" --target "$FIXTURE_P2" 2>&1)
 rc=$?
 assert "P2 fixture exits 1 (detected)" "1" "$rc"
-p2_count=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out" || true)
+p2_count=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out")
 assert_ge "P2 fixture detects >=2 P2 findings" 2 "$p2_count"
-p1_in_p2=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out" || true)
+p1_in_p2=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
 assert "P2 fixture does NOT bleed into P1 (p1_count == 0)" "0" "$p1_in_p2"
 
 # --- Test 7: P2 multi-trigger on a single line (H-1 regression guard) --------
@@ -161,8 +171,10 @@ EOF
 out=$("$SCRIPT" --target "$FIXTURE_P2_MULTI" 2>&1)
 rc=$?
 assert "P2 multi-trigger fixture exits 1" "1" "$rc"
-p2_multi=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out" || true)
-assert_ge "P2 multi-trigger reports all 3 hits (not undercounted)" 3 "$p2_multi"
+p2_multi=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out")
+assert "P2 multi-trigger reports exactly 3 hits" "3" "$p2_multi"
+p1_in_p2_multi=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
+assert "P2 multi-trigger does NOT bleed into P1" "0" "$p1_in_p2_multi"
 
 # --- Test 8: tab+! is NOT matched (pins the "space-only" semantics) ----------
 # Pinning this intentionally excluded boundary prevents future regex widening
