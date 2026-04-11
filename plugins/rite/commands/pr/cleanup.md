@@ -1060,12 +1060,12 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 
 ### 2.5 Delete Review Result Local Files and Fix State Files (#443, #450) <!-- AC-7 -->
 
-> **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除し、併せて fix retry state file `.rite/state/fix-fallback-retry-{pr_number}.count` も specific path で削除する。他 PR ファイルを誤削除しない)。verified-review cycle 9 I-9 対応で AC-7 定義を state file 削除まで拡張 (旧定義は review result files のみに限定されており、実装スコープ (`(#443, #450)` ヘッダ) との drift があった)。
+> **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除し、併せて fix retry state file `.rite/state/fix-fallback-retry-{pr_number}.count` も specific path で削除する。他 PR ファイルを誤削除しない)。
 
 Delete three categories of PR-specific local artifacts associated with the merged PR:
 
 1. **Review result files**: `.rite/review-results/{pr_number}-*.json` (Issue #443 で導入された opt-in PR コメント記録機能の補完 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract)
-2. **Corrupted review result files**: `.rite/review-results/{pr_number}-*.json.corrupt-*` (cycle 10 I-C 対応、fix.md Phase 1.2.0 Priority 2 が corrupt 検出時に `.corrupt-{epoch}` suffix で rename したファイル。長期運用で累積する `.gitignore` 対象 orphan を防ぐ)
+2. **Corrupted review result files**: `.rite/review-results/{pr_number}-*.json.corrupt-*` (fix.md Phase 1.2.0 Priority 2 が corrupt 検出時に `.corrupt-{epoch}` suffix で rename したファイル。長期運用で累積する `.gitignore` 対象 orphan を防ぐ)
 3. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count`
 
 > **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で設計されており、trap は block 外に伝播しない。block 末尾で trap を restore する必要はない。
@@ -1089,11 +1089,12 @@ Delete three categories of PR-specific local artifacts associated with the merge
 **Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure`)
 
 ```bash
-# signal-specific trap (rm_err tempfile の orphan 防止)
-# canonical trap pattern は references/bash-trap-patterns.md#signal-specific-trap-template 参照
-rm_err=""
+# signal-specific trap: matched_files rm と state_file rm のそれぞれに独立した stderr 退避 tempfile
+# を持たせ、非対称な再利用によるコード/コメント乖離と詳細ログ喪失を防ぐ。
+matched_files_rm_err=""
+state_file_rm_err=""
 _rite_cleanup_p25_cleanup() {
-  rm -f "${rm_err:-}"
+  rm -f "${matched_files_rm_err:-}" "${state_file_rm_err:-}"
 }
 trap 'rc=$?; _rite_cleanup_p25_cleanup; exit $rc' EXIT
 trap '_rite_cleanup_p25_cleanup; exit 130' INT
@@ -1102,8 +1103,8 @@ trap '_rite_cleanup_p25_cleanup; exit 129' HUP
 
 pr_number="{pr_number}"
 
-# verified-review M-4 (M8) 対応: pr_number の早期 guard (silent misclassification 防止)
-# pr_number が空 or 非数値の場合、glob path が変性して他 PR のファイルを誤削除する経路がある
+# pr_number の早期 guard (silent misclassification 防止)。
+# 空 or 非数値の場合、glob path が変性して他 PR のファイルを誤削除する経路がある
 # (現状は `-*.json` として no-match 挙動になるため被害は限定的だが、将来の path 合成変更で
 #  regression する可能性がある)。ここで早期検証して non-blocking で exit する。
 case "$pr_number" in
@@ -1117,40 +1118,36 @@ esac
 
 review_results_dir=".rite/review-results"
 if [ -d "$review_results_dir" ]; then
-  # 削除前にマッチ数をカウント (bash glob は no-match でリテラル文字列を返すため、明示的 nullglob 相当の処理)
-  # cycle 10 I-C 対応: 通常の `*.json` に加えて、fix.md Priority 2 が corrupt 検出時に rename した
-  # `*.json.corrupt-*` ファイルも同じ pr_number prefix に限定して削除対象に含める。
-  # glob パターン 2 種 (`{pr_number}-*.json` と `{pr_number}-*.json.corrupt-*`) を順次展開。
+  # 削除前にマッチ数をカウント (bash glob は no-match でリテラル文字列を返すため、明示的 nullglob 相当の処理)。
+  # 通常の `*.json` に加えて、fix.md Priority 2 が corrupt 検出時に rename した `*.json.corrupt-*`
+  # ファイルも同じ pr_number prefix に限定して削除対象に含める。
+  # broken symlink も削除対象に含めるため、`[ -e ]` (dereferenced) に加えて `[ -L ]` (lstat) を併用する。
   matched_files=()
   for f in "$review_results_dir"/"${pr_number}"-*.json; do
-    [ -e "$f" ] && matched_files+=("$f")
+    { [ -e "$f" ] || [ -L "$f" ]; } && matched_files+=("$f")
   done
   for f in "$review_results_dir"/"${pr_number}"-*.json.corrupt-*; do
-    [ -e "$f" ] && matched_files+=("$f")
+    { [ -e "$f" ] || [ -L "$f" ]; } && matched_files+=("$f")
   done
   if [ ${#matched_files[@]} -gt 0 ]; then
-    # rm の stderr を tempfile に退避し、失敗時に可視化する (silent failure 禁止)
-    # mktemp 失敗を silent 抑制せず WARNING で可視化する
-    if ! rm_err=$(mktemp /tmp/rite-cleanup-rm-err-XXXXXX); then
-      echo "WARNING: rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+    # rm の stderr を独立 tempfile に退避し、失敗時に可視化する (silent failure 禁止)
+    if ! matched_files_rm_err=$(mktemp /tmp/rite-cleanup-matched-rm-err-XXXXXX); then
+      echo "WARNING: matched_files rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
       echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err; pr=${pr_number}" >&2
       echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
-      rm_err=""
+      matched_files_rm_err=""
     fi
-    if rm -f "${matched_files[@]}" 2>"${rm_err:-/dev/null}"; then
+    if rm -f "${matched_files[@]}" 2>"${matched_files_rm_err:-/dev/null}"; then
       echo "✅ レビュー結果ファイルを削除しました: ${#matched_files[@]} 件 (PR #${pr_number})" >&2
     else
       rm_rc=$?
       echo "WARNING: 一部のレビュー結果ファイル削除に失敗 (PR #${pr_number}, rc=$rm_rc)" >&2
-      if [ -n "$rm_err" ] && [ -s "$rm_err" ]; then
-        head -5 "$rm_err" | sed 's/^/  /' >&2
+      if [ -n "$matched_files_rm_err" ] && [ -s "$matched_files_rm_err" ]; then
+        head -5 "$matched_files_rm_err" | sed 's/^/  /' >&2
       fi
       echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=rm_failure; pr=${pr_number}" >&2
       echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
     fi
-    # trap による cleanup が signal 時の保護を担当するが、正常経路でも即時 rm で tempfile lifetime を短縮
-    [ -n "$rm_err" ] && rm -f "$rm_err"
-    rm_err=""
   else
     echo "ℹ️  削除対象のレビュー結果ファイルはありません (PR #${pr_number})" >&2
   fi
@@ -1164,60 +1161,32 @@ fi
 # fix.md Phase 1.2.0.1 Interactive Fallback の retry hard gate state file は
 # PR がマージされた時点で不要になるため、Phase 2.5 で同時に削除する。
 state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
-# verified-review cycle 9 I-2 対応: 旧実装 `[ -e "$state_file" ] || [ -L "$state_file" ]` stat gate
-# は、この直前のコメントが「permission denied で stat 不能な場合に false になり silent pass する
-# ため gate を removed した」と宣言していたのに、実装では gate が残存しておりコード/コメント
-# 乖離を起こしていた (コメントが批判した silent skip が再現)。`rm -f` は非存在ファイルに対して
-# exit 0 を返すため、unconditional に rm を実行し、失敗時だけ WARNING を emit する方が対称的で
-# 安全である。
-#
-# verified-review (cycle 8) H-6 対応: stderr 退避 tempfile を使い、matched_files rm と対称化する。
-# 旧実装は `rm -f "$state_file"` 単独で stderr を捕捉せず、rc のみしか取れなかった。
-# common-error-handling.md#non-blocking-contract-canonical-定義 L74 の「rm/mkdir/mv 等の真の IO
-# 失敗は WARNING + stderr 5 行以上で必ず可視化」契約に対し state file rm が非対称だったため、
-# 上記 matched_files rm と同じ rm_err tempfile pattern を適用する。rm_err tempfile は既に
-# matched_files rm 経路で mktemp 済みの可能性があるが、matched_files が 0 件の経路 (上記 else
-# branch) では rm_err が未定義のため、ここで必要なら mktemp し直す。
-#
-# rm_err が matched_files 経路で確保済みで非空ならそれを再利用、未定義/空なら新規 mktemp
-if [ -z "${rm_err:-}" ]; then
-  if ! rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX); then
-    # verified-review cycle 9 I-3 対応: state-file 側 meta-mktemp 失敗でも
-    # retained flag を必ず emit する (matched_files 側 L1128 と対称化)。
-    # 旧実装は WARNING のみで retained flag emit を省略しており、上流の pr:cleanup 呼び出し元が
-    # REVIEW_CLEANUP_PARTIAL_FAILURE を見て分岐できない非対称があった。また
-    # Eval-order enumeration に `mktemp_failure_rm_err_state_file` が出現せず Pattern-5 drift check
-    # 対象から漏れていた。
-    echo "WARNING: state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
-    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_state_file; pr=${pr_number}" >&2
-    echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
-    rm_err=""
-  fi
+# state_file rm は独立した stderr 退避 tempfile を持つ。matched_files rm 側と変数を分離することで、
+# 両経路の失敗詳細が二重障害時にも混線せず個別に保全される。
+if ! state_file_rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX); then
+  echo "WARNING: state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_state_file; pr=${pr_number}" >&2
+  echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+  state_file_rm_err=""
 fi
-# unconditional rm: stat gate を削除 (I-2)。rm -f は非存在ファイルに対して exit 0 を返す。
-if rm -f "$state_file" 2>"${rm_err:-/dev/null}"; then
-  # 存在していたかどうかを事後的に区別するために lstat で再確認する — と思いきや rm 成功後は
-  # ファイルが確実に不在のため区別不能。`state_file_existed_before_rm` を unconditional rm 前に
-  # 記録すると invariant (stat gate 撤廃) を損なうため、success メッセージは「削除対象: $state_file」
-  # のように中立表現に留める (非存在 → no-op 成功 / 存在 → 削除成功 の両経路を同一メッセージで扱う)。
+# unconditional rm: stat gate なし。rm -f は非存在ファイルに対して exit 0 を返す。
+if rm -f "$state_file" 2>"${state_file_rm_err:-/dev/null}"; then
+  # 非存在 → no-op 成功 / 存在 → 削除成功 の両経路を同一メッセージで扱う (中立表現)
   echo "✅ fix retry state file を削除しました (存在していれば削除、不在なら no-op): $state_file" >&2
 else
   rm_state_rc=$?
   echo "WARNING: fix retry state file の削除に失敗 (PR #${pr_number}, rc=$rm_state_rc): $state_file" >&2
-  if [ -n "$rm_err" ] && [ -s "$rm_err" ]; then
-    head -5 "$rm_err" | sed 's/^/  /' >&2
+  if [ -n "$state_file_rm_err" ] && [ -s "$state_file_rm_err" ]; then
+    head -5 "$state_file_rm_err" | sed 's/^/  /' >&2
   fi
   echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_file_rm_failure; pr=${pr_number}" >&2
   echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
 fi
-[ -n "$rm_err" ] && rm -f "$rm_err"
-rm_err=""
 
-# trap を明示リセット (block scope の defense-in-depth)。本 Bash tool 呼び出し境界で
-# bash プロセスが終了するため block 外への伝播は本来ないが、Phase 2 全体が誤って 1 つの
-# Bash tool 呼び出しに統合された場合に Phase 2.5 の trap が後続 phase に影響する経路を
-# 防ぐため、block 末尾で signal 全種をリセットする。
+# trap cleanup 関数が EXIT で matched_files_rm_err / state_file_rm_err を削除する。block 末尾で
+# trap を明示リセットして block 外への伝播を遮断する (defense-in-depth)。
 trap - EXIT INT TERM HUP
+_rite_cleanup_p25_cleanup
 ```
 
 **Placeholder**: `{pr_number}` はマージされた PR の番号。Phase 1.2 で取得済みの値を再利用する。

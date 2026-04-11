@@ -207,17 +207,20 @@ else
   # 単一 awk でファイルを直接読み、pr_review セクション内の post_comment 値を抽出する。
   # - `/^pr_review:/` でセクション start を検出
   # - `in_section && /^[a-zA-Z]/` で次の top-level key に到達したら exit
-  # - `post_comment:` マッチ行で値を抽出し、`#` コメント削除 + whitespace 削除 + 小文字化して print + exit
+  # - `post_comment[[:space:]]*:` マッチ行で値を抽出 (prefix 拡張 `post_comment_mode:` 等との衝突防止)
+  # - YAML inline comment は「空白 + #」で始まるため `[[:space:]]#` をコメント boundary とする
+  #   (YAML 仕様: `#` が inline comment になるのはスペースまたはタブの直後のみ)
   # awk 終了コードは file IO / binary error 以外で 0 を返すため、`if ! ...` で捕捉可能。
   awk_err=$(mktemp /tmp/rite-review-awk-err-XXXXXX 2>/dev/null) || awk_err=""
   if raw=$(awk '
     /^pr_review:/ { in_section=1; next }
     in_section && /^[a-zA-Z]/ { exit }
-    in_section && /^[[:space:]]+post_comment:/ {
+    in_section && /^[[:space:]]+post_comment[[:space:]]*:/ {
       line=$0
-      sub(/#.*/, "", line)
-      sub(/.*post_comment:[[:space:]]*/, "", line)
+      sub(/[[:space:]]#.*/, "", line)
+      sub(/.*post_comment[[:space:]]*:[[:space:]]*/, "", line)
       gsub(/[[:space:]]/, "", line)
+      gsub(/"/, "", line)
       print tolower(line)
       exit
     }
@@ -1028,7 +1031,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
    # の形式で 3 状態を stdout に出力することで、後続 phase が context から値を読み戻して
    # candidate list 操作 (selection_type 昇格 / 新規追加 / no-op) を実行できる。
    #
-   # M-7 修正: iteration_id を付与
+   # iteration_id を付与
    # 同一 session 内で同じ review が複数回実行されると、`[CONTEXT] code_quality_coreviewer_add_reason=`
    # 行が会話履歴に複数残り、後続 phase の Claude が「最新値」を決定論的に判別できない問題があった。
    # iteration_id (`pr_number-{epoch_seconds}` 形式) を suffix に付与することで、後続 phase は
@@ -2641,11 +2644,10 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 # (Claude placeholder と bash 変数展開の混在を避けて substitute 忘れによる literal ファイル名生成を防ぐ)
 pr_number="{pr_number}"
 
-# cycle 10 I-B 対応: pr_number の数値 fail-fast gate
-# cleanup.md Phase 2.5 L1108 と対称化。Claude が literal substitute を忘れた場合、
-# json_path が `.rite/review-results/{pr_number}-20260411120000.json` (literal) となり、
-# cleanup.md Phase 2.5 の numeric glob (`${pr_number}-*.json`) と不一致で永久 orphan 化する。
-# 数値以外 (空文字 / placeholder 残留 / 異常値) を early-exit で reject。
+# pr_number の数値 fail-fast gate。cleanup.md Phase 2.5 の pr_number guard と対称化。
+# Claude が literal substitute を忘れた場合、json_path が `.rite/review-results/{pr_number}-...json`
+# (literal) となり、cleanup.md Phase 2.5 の numeric glob (`${pr_number}-*.json`) と不一致で
+# 永久 orphan 化する。数値以外 (空文字 / placeholder 残留 / 異常値) を early-exit で reject。
 case "$pr_number" in
   ''|*[!0-9]*)
     echo "ERROR: Phase 6.1.a の pr_number が literal substitute されていません (値: '$pr_number', 期待: 数値のみ非空)" >&2
@@ -2655,13 +2657,10 @@ case "$pr_number" in
     ;;
 esac
 
-# json_tmp / mktemp_err は trap 保護対象 (orphan 防止)
-# date 計算は trap setup 後に移動 (失敗時に trap EXIT が
-# `[CONTEXT] FILE_TIMESTAMP=unknown` を emit できるようにするため)
-# json_saved も trap handler が `${json_saved:-false}` で
-# 参照するため、他の変数と同じく冒頭ブロックで初期化する。旧実装は L2580 (mkdir 直前) で
-# 初期化していたが、それより前で signal が届くと `${json_saved:-false}` の `:- ` 展開 fallback に
-# 偶然頼っており、`set -u` 導入で破綻するリスクがあった。
+# json_tmp / mktemp_err は trap 保護対象 (orphan 防止)。
+# date 計算は trap setup 後に実行する (失敗時に trap EXIT が `[CONTEXT] FILE_TIMESTAMP=unknown` を
+# emit できるようにするため)。json_saved も trap handler が `${json_saved:-false}` で参照するため、
+# 他の変数と同じく冒頭ブロックで初期化する (`set -u` 導入時の `${var:-default}` 偶然依存を排除)。
 json_tmp=""
 mktemp_err=""
 iso_timestamp=""
@@ -2670,7 +2669,7 @@ file_timestamp_emitted="false"
 json_saved="false"
 _rite_review_p61a_cleanup() {
   rm -f "${json_tmp:-}" "${mktemp_err:-}"
-  # L-4 対応: file_timestamp / json_saved emit を trap EXIT handler 内に移動し、
+  # file_timestamp / json_saved emit を trap EXIT handler 内に移動し、
   # normal/abnormal 両方で必ず emit されるようにする (Phase 6.1.c が emit 前提で動くため)
   if [ "$file_timestamp_emitted" = "false" ]; then
     echo "[CONTEXT] FILE_TIMESTAMP=${file_timestamp:-unknown}" >&2
@@ -2717,7 +2716,7 @@ if ! mkdir -p "$review_results_dir" 2>/dev/null; then
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mkdir_failure" >&2
 else
   # mktemp の stderr を tempfile に退避して、失敗時に原因 (disk full / permission / readonly) を可視化
-  # M-2 対応: mktemp の stderr 退避 tempfile を作る mktemp 自体の失敗経路でも WARNING を emit
+  # mktemp の stderr 退避 tempfile を作る mktemp 自体の失敗経路でも WARNING を emit
   # (cleanup.md Phase 2.5 と Phase 6.1.a C-5 修正と対称化、meta silent 化を防ぐ)
   if ! mktemp_err=$(mktemp /tmp/rite-review-p61a-mktemp-err-XXXXXX 2>/dev/null); then
     echo "WARNING: mktemp stderr 退避用 tempfile の mktemp に失敗しました (meta エラー)。json_tmp 失敗時の stderr 詳細は失われます" >&2
@@ -2746,7 +2745,7 @@ RITE_JSON_EOF
       echo "WARNING: JSON 一時ファイルが空です (cat 成功だが post-condition 違反)" >&2
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
     else
-      # verified-review (cycle 8) M-6 対応: Approach C bash-internal jq injection
+      # Approach C bash-internal jq injection
       # Claude が `"timestamp": "__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を literal に書き込み、
       # bash 内で jq --arg ts "$iso_timestamp" で正しい値に置換する。これにより
       # JSON body / ファイル名 / [CONTEXT] emit の 3 値が bash 内で完全同期する (秒跨ぎズレ消失)。
@@ -2782,10 +2781,10 @@ RITE_JSON_EOF
       # Injection 失敗または tmpfile empty → 上流で既に LOCAL_SAVE_FAILED emit 済み、後続 validation/mv skip
       :
     elif ! jq empty "$json_tmp" 2>/dev/null; then
-      # L-2 対応: cat 成功 + non-empty でも JSON syntactically invalid (Claude substitute ミス) を検出
+      # cat 成功 + non-empty でも JSON syntactically invalid (Claude substitute ミス) を検出
       # literal `{review_result_json_heredoc_body}` がそのまま書き込まれた場合もここで catch される
       echo "WARNING: JSON 一時ファイルが syntactically invalid です (literal substitute 漏れの可能性)" >&2
-      # verified-review L-2 対応: 不正 JSON の先頭 5 行を表示して debug を可能にする
+      # 不正 JSON の先頭 5 行を表示して debug を可能にする
       # trap EXIT が $json_tmp を削除する前に内容を surface する
       echo "  内容 preview (先頭 5 行):" >&2
       head -5 "$json_tmp" 2>/dev/null | sed 's/^/    /' >&2
@@ -2831,13 +2830,13 @@ RITE_JSON_EOF
       echo "  対処: review-result-schema.md の findings[] id 仕様を確認してください" >&2
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation" >&2
     else
-      # verified-review M-2 対応: 同一秒連続 review 実行時の file path 衝突を回避する。
+      # 同一秒連続 review 実行時の file path 衝突を回避する。
       # Phase 6.1.a は JST 1 秒解像度で file_timestamp を生成するため、同一 PR に対し
       # 同一秒以内に 2 回 /rite:pr:review が呼ばれると既存ファイルを silent 上書きする (schema doc
       # L15 の「履歴保持」契約違反)。collision 検出時は `~$RANDOM` suffix を追加して衝突回避する。
       # best-effort (完全保証ではない — schema doc M-2 tradeoff 注記と整合)。
       #
-      # verified-review (cycle 8) M-2 対応: separator を `-` から `~` に変更。
+      # separator を `-` から `~` に変更。
       # ASCII 上 `-` (0x2D) < `.` (0x2E) のため、旧 `${ts}-${rand}.json` は `sort -r` で
       # `${ts}.json` より **後ろ** に並び、Priority 2 fallback が古い非 collision 版を
       # 先に選んでしまう silent regression を抱えていた。`~` (0x7E) > `.` (0x2E) を使うことで、
@@ -2845,7 +2844,7 @@ RITE_JSON_EOF
       # な新しい方が先頭に来る。cleanup glob `${pr_number}-*.json` は引き続き両形式に match する
       # (prefix が `${pr_number}-` で始まるため)。
       if [ -e "$json_path" ]; then
-        # M-2 対応: 2 段目 check を追加。旧実装は collision 検出時に `~$RANDOM` suffix を 1 度だけ
+        # 2 段目 check を追加。旧実装は collision 検出時に `~$RANDOM` suffix を 1 度だけ
         # 付与し、再衝突 (同秒 3 回目以降 / `$RANDOM` が fallback `0` に落ちたケース) を silent に
         # 上書きする経路があった (履歴保持契約違反 — schema.md L15 の best-effort tradeoff 注記は
         # 「完全保証ではない」としつつも silent overwrite は想定外)。再衝突を明示検出し、
@@ -2869,10 +2868,10 @@ RITE_JSON_EOF
         echo "[CONTEXT] LOCAL_SAVE_COLLISION=1; original=$json_path; resolved=$json_path_alt" >&2
         json_path="$json_path_alt"
       fi
-      # verified-review H-4 対応: mv stderr を tempfile に退避して失敗時に原因を可視化する。
+      # mv stderr を tempfile に退避して失敗時に原因を可視化する。
       # 旧実装 `mv ... 2>/dev/null` は cross-FS / perm / TOCTOU / path-too-long のどれか区別できず
       # debug 不能だった。Phase 6.1.b の gh pr comment 失敗 branch と同じパターンに揃える。
-      # I-3 対応: mv_err の mktemp 失敗を silent 化しない。
+      # mv_err の mktemp 失敗を silent 化しない。
       # 旧実装は `2>/dev/null || mv_err=""` で二重 silent 化し、mktemp 失敗時に mv の stderr も
       # 失われていた。mktemp 失敗時は WARNING を出し retained flag も emit する。
       if ! mv_err=$(mktemp /tmp/rite-review-p61a-mv-err-XXXXXX); then
@@ -2931,12 +2930,11 @@ Execute this sub-phase **only when** `{post_comment_mode}=true` from Phase 1.0. 
 - `{pr_number}`: Phase 1.0 の値。
 
 ````bash
-# Phase 6.1.b: PR コメント投稿 (signal-specific trap 保護)
-# Rationale: gh_err + tmpfile_patched (sentinel 置換用中間ファイル) も cleanup 対象に含める
-# (canonical signal-specific trap pattern 準拠)。M-1 対応: tmpfile_patched は mktemp (L2979)〜
-# mv 成功 (L3002) の区間で SIGINT/SIGTERM/SIGHUP を受けると trap 未登録だと /tmp に orphan
-# 残留していた (本 PR の他 tempfile は全て trap 登録されており非対称だった)。mv 成功後に
-# tmpfile_patched="" で空文字 reset して二重 rm を回避する (canonical pattern)。
+# Phase 6.1.b: PR コメント投稿 (signal-specific trap 保護)。
+# tmpfile / gh_err / tmpfile_patched (sentinel 置換用中間ファイル) を trap cleanup 対象に含める
+# (canonical signal-specific trap pattern 準拠)。tmpfile_patched は mktemp から mv 成功までの区間で
+# signal を受けても orphan にならないよう trap 登録し、mv 成功後に tmpfile_patched="" で空文字 reset
+# して trap による二重 rm を回避する。
 tmpfile=""
 gh_err=""
 tmpfile_patched=""
@@ -2995,40 +2993,70 @@ then
   exit 1
 fi
 
-# cycle 10 I-A 対応: Raw JSON セクション内の sentinel を $iso_timestamp_from_p61a に置換
-# Phase 6.1.a の jq 注入 (L2740 付近) と対称化。Raw JSON code fence 内の JSON を jq で抽出して timestamp を上書きし、
-# 結果を tmpfile に書き戻す。sed による文字列置換ではなく jq を使う理由:
-# (1) JSON syntactic invariant を保証できる (改行やエスケープの破壊を回避)
-# (2) Phase 6.1.a と同じ置換 semantics を再利用できる (drift 防止)
-# ただし本 tmpfile は Markdown 全体で Raw JSON はその一部のため、awk で Raw JSON セクションを切り出して
-# jq に渡し、残りは元の tmpfile から再結合する。
+# Raw JSON セクション内の sentinel を $iso_timestamp_from_p61a に置換する。
+#
+# Scope 限定の必要性: tmpfile は Markdown 本文 + Raw JSON section を含み、reviewer が finding の
+# description / suggestion 列に literal `__RITE_TS_PLACEHOLDER_7f3a9b2c__` を書いた場合 (本 PR 自身が
+# dogfooding で該当する)、ファイル全体に対する sed 置換は Markdown 側の literal も silent に書き換える
+# overreach を起こす。awk で「`### 📄 Raw JSON` 見出し以降の ```json ~ ``` コードフェンス内」のみを
+# scope として置換することで、Markdown 本文の literal sentinel には一切触れない。
+#
+# invariant: Phase 6.1.a が生成する Raw JSON は timestamp フィールドを 1 箇所だけ持つ。置換後の
+# post-condition check で (a) Raw JSON section 内に sentinel が残留しないこと、(b) Markdown 本文内の
+# literal sentinel は保存されていることの 2 点を検証する。
 tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
   echo "ERROR: timestamp 置換用 tmpfile 作成失敗" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=tmpfile_write_failure" >&2
   exit 1
 }
-# awk で以下を実行: (a) Raw JSON section 内の ```json ~ ``` を抽出して jq で置換 → stdout へ
-# (b) それ以外の行は元のまま通過。ただしファイル全体を 1 pass で処理するのは複雑なため、
-# シンプルに sed で sentinel 1 箇所を置換する実装に留める (Phase 6.1.a が生成する JSON は
-# timestamp フィールドを必ず 1 箇所のみ持つという invariant に依存)。
-#
-# Sentinel 選定 (dogfooding hard fail 防止): sentinel は 16 進ランダム suffix 付き
-# `__RITE_TS_PLACEHOLDER_7f3a9b2c__` を採用。旧 `__RITE_TIMESTAMP_PLACEHOLDER__` は finding の
-# description / suggestion 列に literal として出現しうる一般的な名前 (本 PR 自身のレビュー結果が反例)
-# で、sed 置換 + 後段 grep post-condition による dogfooding hard fail を生む。
-# 16 進 suffix 付きは人間が finding 内に literal を記載しない限り衝突しないため、defense-in-depth で
-# Markdown 部分に sentinel が混入する経路を静的に遮断する。POSIX sed が g フラグなしで行内最初の 1 ヒット
-# のみ置換する仕様 ([sed(1p)](https://www.unix.com/man_page/posix/1p/sed/)) の invariant を維持しつつ、
-# Markdown side への波及を排除する。
-if ! sed -E "s|\"__RITE_TS_PLACEHOLDER_7f3a9b2c__\"|\"${iso_timestamp_from_p61a}\"|" "$tmpfile" > "$tmpfile_patched"; then
-  echo "ERROR: Raw JSON 内 sentinel の sed 置換に失敗しました" >&2
+# awk で Raw JSON section 内の sentinel のみを置換する。
+# State machine:
+#   - past_raw_json_heading=0 → `### 📄 Raw JSON` 見出し以前 (Markdown 本文)、sentinel 置換しない
+#   - past_raw_json_heading=1, in_fence=0 → 見出し後だがコードフェンス外、sentinel 置換しない
+#   - past_raw_json_heading=1, in_fence=1 → Raw JSON コードフェンス内、sentinel を置換対象にする
+awk -v ts="$iso_timestamp_from_p61a" '
+  /^### 📄 Raw JSON/ { past_raw_json_heading=1; print; next }
+  past_raw_json_heading == 1 && /^```json$/ { in_fence=1; print; next }
+  past_raw_json_heading == 1 && in_fence == 1 && /^```$/ { in_fence=0; print; next }
+  in_fence == 1 {
+    gsub(/"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/, "\"" ts "\"")
+    print
+    next
+  }
+  { print }
+' "$tmpfile" > "$tmpfile_patched"
+awk_rc=$?
+if [ "$awk_rc" -ne 0 ]; then
+  echo "ERROR: Raw JSON 内 sentinel の awk 置換に失敗しました (rc=$awk_rc)" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=raw_json_timestamp_injection_failed" >&2
   rm -f "$tmpfile_patched"
   exit 1
 fi
-# 置換後 sentinel が残留していないことを post-condition 確認 (defense-in-depth)
-if grep -q '__RITE_TS_PLACEHOLDER_7f3a9b2c__' "$tmpfile_patched"; then
-  echo "ERROR: sed 置換後も sentinel が残留しています (Raw JSON に複数の sentinel が存在する / sed 失敗の可能性)" >&2
+
+# Post-condition (a): Raw JSON section 内に sentinel が残留していないこと。
+# awk で同じ state machine を走らせて Raw JSON section 内のみを抽出し、sentinel を検索する。
+remaining_in_raw_json=$(awk '
+  /^### 📄 Raw JSON/ { past=1; next }
+  past == 1 && /^```json$/ { in_fence=1; next }
+  past == 1 && in_fence == 1 && /^```$/ { in_fence=0; next }
+  in_fence == 1 && /"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/ { print }
+' "$tmpfile_patched")
+if [ -n "$remaining_in_raw_json" ]; then
+  echo "ERROR: 置換後も Raw JSON section 内に sentinel が残留しています" >&2
+  echo "  Phase 6.1.a が生成する JSON は timestamp フィールドを 1 箇所のみ持つ invariant が破られた可能性" >&2
+  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=raw_json_timestamp_injection_failed" >&2
+  rm -f "$tmpfile_patched"
+  exit 1
+fi
+
+# Post-condition (b): Markdown 本文 (Raw JSON section 外) の literal sentinel が保存されていること。
+# 元の tmpfile と patched tmpfile の Markdown section (Raw JSON section を除く) を比較し、
+# 違いがないことを確認する。scope 外の副作用を静的に遮断する defense-in-depth。
+original_markdown=$(awk '/^### 📄 Raw JSON/ { exit } { print }' "$tmpfile")
+patched_markdown=$(awk '/^### 📄 Raw JSON/ { exit } { print }' "$tmpfile_patched")
+if [ "$original_markdown" != "$patched_markdown" ]; then
+  echo "ERROR: sentinel 置換が Markdown 本文 (Raw JSON section 外) まで波及しました" >&2
+  echo "  scope 限定 awk が Raw JSON section を正しく特定できなかった可能性" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=raw_json_timestamp_injection_failed" >&2
   rm -f "$tmpfile_patched"
   exit 1
@@ -3060,13 +3088,13 @@ else
     head -5 "$gh_err" | sed 's/^/  /' >&2
   fi
   echo "  対処: gh auth status / network 接続 / PR #{pr_number} の権限を確認してください" >&2
-  # verified-review H-2 対応: Phase 6.1.a が JSON_SAVED=true で local save に成功していれば
+  # Phase 6.1.a が JSON_SAVED=true で local save に成功していれば
   # 「レビュー結果はローカルに保存済み」を明示して、ユーザーが重複 /rite:pr:review を走らせる
   # 無駄を防ぐ。Claude は Phase 6.1.a の [CONTEXT] JSON_SAVED= retained flag を会話コンテキストで
   # 読み取り、`${json_saved_from_p61a}` を `"true"` または `"false"` に literal substitute する。
   # (p61b bash block は独立 bash invocation のため p61a シェル変数は継承されない)
   #
-  # verified-review (cycle 8) H-5 対応: sentinel fail-fast を追加し、Claude が literal substitute を
+  # sentinel fail-fast を追加し、Claude が literal substitute を
   # 忘れた場合に silent に「ℹ️ ローカル保存済み」メッセージが失われるのを防ぐ。fix.md Phase 1.0.1
   # の flag_style sentinel や fix.md Phase 1.2.0 Priority 1 の conversation_review_decision sentinel
   # と同パターン。許容値は `true` / `false` のみで、substitute 漏れ (placeholder 残留) は fail-fast する。
@@ -3090,7 +3118,7 @@ else
     echo "    [CONTEXT] FILE_TIMESTAMP / JSON_SAVED 参照: Phase 6.1.a の emit 値" >&2
     echo "    そのまま /rite:pr:fix を実行できます (Priority 2 で自動読取)" >&2
   fi
-  # verified-review cycle 9 M-2 対応: SIGPIPE 等の signal 終了を retained flag に併記する
+  # SIGPIPE 等の signal 終了を retained flag に併記する
   # (`gh pr comment` が rc >= 128 で死んだ場合、rc - 128 が signal number を示す。
   # signal 終了 (data 破損なし) と通常の write error を retained flag レベルで区別できるようにする)。
   # caller 側の意味論単純化のため `exit 1` に正規化 (実 rc は retained flag の `rc=` で retain 済み)
@@ -3134,16 +3162,27 @@ pr_number="{pr_number}"
 file_timestamp="{file_timestamp_from_p61a}"
 local_save_failed="{local_save_failed_from_p61a}"
 
-# cycle 10 I-B 対応: pr_number の数値 fail-fast gate (Phase 6.1.a L2637 と対称化)
-# Claude が substitute を忘れると、ケース 1 の ローカルファイル path が
+# pr_number の数値 fail-fast gate (Phase 6.1.a の pr_number guard と対称化)。
+# Claude が substitute を忘れると、ケース 1 のローカルファイル path が
 # `.rite/review-results/{pr_number}-...json` (literal) となり、ユーザー向けメッセージに placeholder
 # がそのまま出力される silent UX regression を防ぐ。file_timestamp / local_save_failed は下記の
-# sentinel check で既に保護されているが、pr_number は cycle 9 で漏れていた。
+# sentinel check で保護される。
+#
+# reason drift 対策: Phase 6.1.a が pr_number 不正を検出した場合は `LOCAL_SAVE_FAILED=1;
+# reason=pr_number_placeholder_residue` を emit して exit 0 (non-blocking) するが、Phase 6.1.c
+# は別 bash invocation のため Phase 6.1.a の retained flag を参照できない。pr_number が不正なまま
+# Phase 6.1.c まで到達した場合、真因は Phase 6.1.a の Claude substitution 忘れなので、エラー
+# メッセージで 6.1.a の再実行を明示的に促す (真因が 6.1.c の bug ではないことを root cause
+# 伝達する)。
 case "$pr_number" in
   ''|*[!0-9]*)
     echo "ERROR: Phase 6.1.c の pr_number が literal substitute されていません (値: '$pr_number', 期待: 数値のみ非空)" >&2
-    echo "  Claude は Phase 1.0 で正規化された pr_number を本 bash block 冒頭で literal substitute する必要があります" >&2
-    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_pr_number_invalid" >&2
+    echo "  真因: Phase 6.1.a の bash block で Claude が pr_number を literal substitute せず、同じ placeholder が" >&2
+    echo "        本 block まで連鎖している可能性が高いです。" >&2
+    echo "  対処: Phase 1.0 で正規化された pr_number を Phase 6.1.a の bash block 冒頭で literal substitute" >&2
+    echo "        してから再実行してください (Phase 6.1.a が exit 0 non-blocking で完了すると Phase 6.1.c に" >&2
+    echo "        substitution 忘れが連鎖します)" >&2
+    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_pr_number_invalid; upstream_hint=phase_6_1_a_substitution_missing" >&2
     exit 1
     ;;
 esac
@@ -3157,9 +3196,9 @@ case "$file_timestamp" in
     exit 1
     ;;
   "unknown")
-    # I-3 対応: Phase 6.1.a の trap handler は date 失敗時に `[CONTEXT] FILE_TIMESTAMP=unknown` を
-    # emit する (L2674 付近)。その経路では LOCAL_SAVE_FAILED=1 も併設される設計だが、万一
-    # 片方だけが set された不整合状態 (観測値混線 / race) では、ケース 1 に流れると
+    # Phase 6.1.a の trap handler は date 失敗時に `[CONTEXT] FILE_TIMESTAMP=unknown` を emit する。
+    # その経路では LOCAL_SAVE_FAILED=1 も併設される設計だが、万一片方だけが set された不整合状態
+    # (観測値混線 / race) では、ケース 1 に流れると
     # `.rite/review-results/${pr_number}-unknown.json` という実在しないファイルパスをユーザーに
     # 誤提示する UX regression が起きる。整合性違反として明示的に ERROR 化する。
     if [ "$local_save_failed" != "1" ]; then
@@ -3238,7 +3277,7 @@ fi
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details.
 
 ```bash
-# verified-review (cycle 8) M-5 対応: hook stderr 退避 + lock/non-lock 分岐パターンを
+# hook stderr 退避 + lock/non-lock 分岐パターンを
 # fix.md Phase 4.5 (L-5 修正) と対称化。旧 `2>/dev/null || true` は hook の lock contention
 # だけでなく permission denied / script 不在 / bash syntax error / 内部致命的エラーまで
 # silent suppress していた。stderr を tempfile に退避し失敗時に分岐する。
@@ -3254,7 +3293,7 @@ if [ -n "$hook_err" ]; then
     : # success
   else
     hook_rc=$?
-    # cycle 10 S-1 対応: 旧 `lock|contention|busy` は permission denied / resource busy (EBUSY) 等も
+    # 旧 `lock|contention|busy` は permission denied / resource busy (EBUSY) 等も
     # silent suppress していた。lock contention を明示する exact phrase のみにマッチする正規表現に変更。
     # 厳密化: (a) "file is locked" / "lock contention" / "resource busy" の 3 句を exact に match、
     # (b) それ以外の "busy" / "lock" 単独 (permission / directory locked 等) は non-lock failure 経路に流す
@@ -3284,7 +3323,7 @@ fi
 **Step 2: Sync to Issue comment (backup)** at phase transition (per C3 backup sync rule).
 
 ```bash
-# verified-review (cycle 8) M-5 対応: 上記 Step 1 と同じ L-5 パターンを適用
+# 上記 Step 1 と同じ L-5 パターンを適用
 sync_err=$(mktemp /tmp/rite-review-p62-sync-err-XXXXXX) || sync_err=""
 if [ -n "$sync_err" ]; then
   if bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
@@ -3295,7 +3334,7 @@ if [ -n "$sync_err" ]; then
     :
   else
     sync_rc=$?
-    # H-1 対応: cycle 10 S-1 の exact phrase pattern に統一 (旧 `lock|contention|busy` は
+    # cycle 10 S-1 の exact phrase pattern に統一 (旧 `lock|contention|busy` は
     # permission denied / device busy / resource busy 等を silent suppress する欠陥パターン。
     # canonical helper を common-error-handling.md#hook-lock-contention-classification-canonical で定義)
     if grep -qiE '(file is locked|lock contention|resource busy)' "$sync_err"; then
@@ -3360,7 +3399,7 @@ All steps use `issue-comment-wm-sync.sh` for API operations. No direct `gh api` 
 3. **Update next steps**: Set the next command based on the review assessment.
 
 ```bash
-# verified-review (cycle 8) M-5 対応: Phase 6.4 全 hook 呼び出しに L-5 stderr 退避 + lock/non-lock
+# Phase 6.4 全 hook 呼び出しに L-5 stderr 退避 + lock/non-lock
 # 分岐パターンを適用 (fix.md Phase 4.5 と対称化)。
 # helper function として定義し、3 step に統一適用する (drift 防止)。
 _rite_review_p64_run_sync() {
@@ -3373,7 +3412,7 @@ _rite_review_p64_run_sync() {
       :
     else
       local rc=$?
-      # H-1 対応: cycle 10 S-1 の exact phrase pattern に統一 (canonical helper を
+      # cycle 10 S-1 の exact phrase pattern に統一 (canonical helper を
       # common-error-handling.md#hook-lock-contention-classification-canonical で定義)
       if grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"; then
         echo "WARNING: ${label} lock contention (best-effort skip, rc=$rc)" >&2

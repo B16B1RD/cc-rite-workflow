@@ -82,6 +82,8 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 **Soft failure との違い**: `/rite:pr:fix` Phase 4.5 で使用される「soft failure」は **致命的だが exit 1 で fix loop を kill せず retained flag で caller に通知する**パターンで、本 Non-blocking Contract と類似する。両者の違いは: Non-blocking Contract は「sub-phase 失敗 = upstream 続行」で **本来非致命的な処理** (ローカル保存、削除) に適用、soft failure は「致命的だが loop 終了させない」で **コミット済み変更を保護したい** ケースに適用する。
 
+**例外: Phase 内の retained flag 集計による hard fail 昇格**: Non-blocking Contract に従う sub-phase が複数存在し、それらの retained flag を Phase 内の後段 sub-phase (例: `/rite:pr:review` Phase 6.1.c) が集計して `exit 2` 等の hard fail に昇格させることは許容される。この場合、個々の sub-phase は `exit 0` (Non-blocking) を守るが、**Phase 全体として** retained flag の組み合わせにより hard fail するケースが発生しうる。これは Non-blocking Contract の違反ではなく、「sub-phase 単独の失敗」と「Phase 全体の判定」が別レイヤであるという設計上の意図的な区別である。
+
 ## Review Result JSON Schema Validation (canonical snippet)
 
 <a id="jq-required-fields-snippet-canonical"></a>
