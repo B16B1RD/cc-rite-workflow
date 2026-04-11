@@ -1772,8 +1772,9 @@ if ! jq -n --rawfile body "$tmpfile" --argjson in_reply_to "$comment_id" \
   echo "  影響: レビュアーへの返信が PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
   # H-2 修正 (本 Issue #350 検証付きレビュー H-2): retained flag emit
   # bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPLY_POST_FAILED を検出しないと
-  # silent に [fix:replied-only] / [fix:pushed] と判定される。Phase 8.1 評価順テーブルに mapping を追加
-  # ([fix:error] へ昇格) するため、retained flag を context に明示宣言する。
+  # silent に [fix:replied-only] / [fix:pushed] と判定される。Phase 8.1 評価順 2 で detect され
+  # [fix:error] へ昇格するよう retained flag を context に明示宣言する (cycle 3 で row 1 に
+  # FIX_FALLBACK_FAILED が追加されたため、REPLY_POST_FAILED は row 2 で検出される)。
   echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id"
   set +o pipefail
   exit 1
@@ -2061,7 +2062,7 @@ if ! gh pr comment {pr_number} --body-file "$tmpfile"; then
   echo "  対処: gh auth status / network 接続 / PR #{pr_number} の存在 を確認してください" >&2
   echo "  影響: 対応完了報告コメントが PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
   # H-3 修正 (本 Issue #350 検証付きレビュー H-3): retained flag emit
-  # Phase 8.1 評価順 1 (最優先) で REPORT_POST_FAILED=1 を検出し [fix:error] へ昇格させる。
+  # Phase 8.1 評価順 2 で REPORT_POST_FAILED=1 を検出し [fix:error] へ昇格させる (cycle 3 で row 1 に FIX_FALLBACK_FAILED が追加されたため row 2 に降格)。
   # 旧実装は exit 1 のみで Claude のフロー制御にならず、silent に [fix:pushed] 等として完了判定された。
   echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}"
   exit 1
@@ -2313,7 +2314,7 @@ if ! result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n 
   echo "  本 finding は別 Issue 化されず、手動対応が必要です。" >&2
   echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
   # H-4 修正 (本 Issue #350 検証付きレビュー H-4): retained flag emit
-  # Phase 8.1 評価順 1 (最優先) で ISSUE_CREATE_FAILED=1 を検出し [fix:error] へ昇格させる。
+  # Phase 8.1 評価順 2 で ISSUE_CREATE_FAILED=1 を検出し [fix:error] へ昇格させる (cycle 3 で row 1 に FIX_FALLBACK_FAILED が追加されたため row 2 に降格)。
   # 旧実装は exit 1 のみで Claude のフロー制御にならず、silent に [fix:pushed] / [fix:replied-only]
   # として完了判定され、scope 外 finding の追跡が失われていた。
   echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=script_exit_$script_exit"
@@ -3260,7 +3261,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 
 | 用語 | 定義 | 対応する fix.md の挙動 |
 |------|------|----------------------|
-| **soft failure** | 致命的だが exit 1 で fix loop を kill せず、retained flag (`[CONTEXT] WM_UPDATE_FAILED=1` 等) を emit してから caller に判断を委ねる失敗 | Phase 4.5 の grep IO エラー / current_body 空 / PATCH 失敗 / Issue create 失敗 等。Phase 8.1 評価順 1 / 2 で `[fix:error]` または `[fix:pushed-wm-stale]` に昇格 |
+| **soft failure** | 致命的だが exit 1 で fix loop を kill せず、retained flag (`[CONTEXT] WM_UPDATE_FAILED=1` 等) を emit してから caller に判断を委ねる失敗 | Phase 4.5 の grep IO エラー / current_body 空 / PATCH 失敗 / Issue create 失敗 等。Phase 8.1 評価順 2 / 3 で `[fix:error]` または `[fix:pushed-wm-stale]` に昇格 (cycle 3 で row 1 に FIX_FALLBACK_FAILED が追加されたため各 row が 1 つずつ繰り下がった) |
 | **silent regression** | soft failure を caller が silent に handle した結果 (例: `[fix:pushed]` と誤判定して次の iteration に進む)。本 PR で防止対象とする root cause | 本 PR 全体の防止対象。retained flag 機構と Phase 8.1 評価順により caller に必ず通知される |
 | **stale (work memory stale)** | work memory comment が最新の fix 内容を反映していない状態 | `[fix:pushed-wm-stale]` 出力時の semantics。caller は AskUserQuestion で続行/中断を選択 |
 | **hard fail-fast** | 即座に exit 1 で fix loop を kill し、コミット済み fix も含めて全停止する失敗 | Phase 1.0 引数 parse 失敗 / mktemp 失敗 / git diff 失敗 (Python sentinel 経路) 等。bash の `exit 1` だけでは Claude flow control にならないため retained flag も併用する |
