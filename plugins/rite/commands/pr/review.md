@@ -155,13 +155,16 @@ original_args="$ARGUMENTS"
 flag_post="false"
 flag_no_post="false"
 
-# フラグ検出 (順序問わず)
-case " $original_args " in
-  *" --no-post-comment "*) flag_no_post="true" ;;
-esac
-case " $original_args " in
-  *" --post-comment "*) flag_post="true" ;;
-esac
+# フラグ検出 (順序問わず、space/tab 両対応)
+# bash の extended pattern matching ではなく regex match を使用して `[[:space:]]` 文字クラスを
+# 適用し、space / tab の両方で区切られたフラグトークンを検出する。sed 側除去処理 (下記) と
+# 文字クラスを揃えることで非対称を解消する。
+if [[ " $original_args " =~ [[:space:]]--no-post-comment[[:space:]] ]]; then
+  flag_no_post="true"
+fi
+if [[ " $original_args " =~ [[:space:]]--post-comment[[:space:]] ]]; then
+  flag_post="true"
+fi
 
 # フラグトークンを remaining_args から除去 (sed -E で `(^|space)--flag(space|$)` を空文字置換)
 remaining_args=$(printf '%s' "$original_args" \
@@ -2603,29 +2606,23 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 - `{review_result_json_heredoc_body}`: Claude が review-result-schema.md に従って JSON 本文を生成し、下記 `RITE_JSON_EOF` heredoc に literal substitute する。**⚠️ Heredoc quoting note**: `<<'RITE_JSON_EOF'` は single-quoted delimiter のため shell expansion (変数展開・command substitution) は完全抑制される。`{review_result_json_heredoc_body}` placeholder は **bash 実行時の動的展開ではなく Claude が bash block 生成時に literal 文字列として置換**する必要がある。literal 置換忘れは bash 実行時に literal `{review_result_json_heredoc_body}` がそのまま JSON ファイルに書き込まれ、Phase 6.1.a 内の `jq empty` post-condition check で fail-fast 検出される (defense-in-depth)。
 - `{pr_number}`: Phase 1.0 で正規化済み。bash block 冒頭で `pr_number="{pr_number}"` の literal substitution を行い、以後は bash 変数 `${pr_number}` として参照する (Claude placeholder と bash 変数展開の混在を避ける)。
 - Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding の必須フィールドは以下の通り — 完全なスキーマは [review-result-schema.md](../../references/review-result-schema.md#json-schema) を真実の源として参照すること:
-  - `id`: **`F-NN` 形式、最小 2 桁ゼロパディング可変長連番**。99 件以下は `F-01`〜`F-99` 固定、100 件以上は `F-100` 等に成長する。
-  - `reviewer`: レビュアーエージェント名 (例: `code-reviewer`, `silent-failure-hunter`, `comment-analyzer`)
+  - `id`: **`F-NN` 形式、最小 2 桁ゼロパディング可変長連番** (正規表現 `^F-[0-9]{2,}$`)。99 件以下は `F-01`〜`F-99`、100 件以上は `F-100` 等に成長する。
+  - `reviewer`: レビュアーエージェント名 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。実在する agent 名は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く) と一致させる。
   - `category`: 指摘カテゴリ (例: `code-quality`, `error-handling`, `documentation`)
-  - `severity`: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` のいずれか
+  - `severity`: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` のいずれか。reviewer が `Critical`/`Important`/`Minor`/`Nit` 等の別表記で返した場合は、write 前に本 enum へ正規化する (別名マッピングは review-result-schema.md の `severity` フィールド定義を参照)。正規化漏れの JSON は read 側 (`fix.md` Phase 1.2.0) で MEDIUM fallback と WARNING emit が発生する。
   - `file`: 対象ファイルの相対パス
   - `line`: 行番号 (整数)
   - `description`: 指摘内容
   - `suggestion`: 推奨対応
-  - `status`: 初期値は `open` (fix 完了時に `resolved` に更新)
+  - `status`: 現行実装では常に `open` を出力する。`fixed` / `replied` / `deferred` は enum として予約されているが、`/rite:pr:fix` 側の書き戻しは未実装 (schema は slot を持つのみ、review-result-schema.md の `status` フィールド定義を参照)。
 
 **`iso_timestamp` Claude substitution handshake**:
 
 `{review_result_json_heredoc_body}` 内の `timestamp` フィールドは Phase 6.1.a の bash block 内で算出される `$iso_timestamp` (TZ=Asia/Tokyo の ISO 8601 文字列) と **必ず一致** させる必要がある。
 
-> **verified-review (cycle 8) M-6 対応**: 旧実装は **Approach A (2-invocation hand-off)** を採用していた — 別 Bash tool invocation で `date` を実行 → Claude が stdout を placeholder に literal substitute → 本番 invocation で bash 内再計算。これは準備 invocation と本番 invocation の間で秒が変わると 3 値 (JSON body / ファイル名 / [CONTEXT] emit) 間で最大 1 秒のズレを生み、かつ Claude が準備 invocation を skip した場合に silent regression する経路があった。
->
-> 本 cycle で **Approach C (bash-internal jq injection)** に切り替える: Claude は JSON heredoc body の `timestamp` フィールドに literal sentinel (`"__RITE_TIMESTAMP_PLACEHOLDER__"`) を書き込むだけでよい。bash 内で cat heredoc の直後に `jq '.timestamp = $ts' --arg ts "$iso_timestamp"` を実行して sentinel を bash 計算値で上書きする。これにより:
->
-> - 準備 invocation 不要 (Claude のフロー単純化)
-> - 3 値 (JSON body / ファイル名 / [CONTEXT] emit) が bash 内で完全に同期 (秒跨ぎズレ消失)
-> - sentinel が残っていれば jq が置換前に失敗 → `json_invalid` reason で non-blocking 失敗
+**Approach — bash-internal jq injection**: Claude は JSON heredoc body の `timestamp` フィールドに literal sentinel (`"__RITE_TIMESTAMP_PLACEHOLDER__"`) を書き込む。bash block 内で `cat` heredoc 直後に `jq '.timestamp = $ts' --arg ts "$iso_timestamp"` を実行して sentinel を bash 計算値で上書きする。これにより JSON body / ファイル名 / `[CONTEXT]` emit の 3 値が bash 内で完全に同期する (秒跨ぎズレなし)。sentinel が残っていれば jq 置換前の jq 呼び出しが失敗し `json_invalid` reason で non-blocking 失敗する。
 
-**拒絶された代替案** (記録のみ、実装への影響なし): (a) heredoc 内で `$iso_timestamp` を bash 変数として直接参照する方式は `<<'RITE_JSON_EOF'` の single-quoted delimiter が shell expansion を抑制するため使えず、unquoted delimiter に変更すると JSON 内の `$` 含有文字列が誤展開される副作用があり禁止。(b) JSON 生成を別 phase に分離する方式は trap / cleanup の複雑度が上がるため採用せず。
+**採用しない代替案**: (a) heredoc 内で `$iso_timestamp` を bash 変数として直接参照する方式は `<<'RITE_JSON_EOF'` の single-quoted delimiter が shell expansion を抑制するため動作せず、unquoted delimiter に変更すると JSON 内の `$` 含有文字列が誤展開される副作用があり禁止。(b) JSON 生成を別 phase に分離する方式は trap / cleanup の複雑度が上がるため採用しない。
 
 **Approach C の具体的手順**: Claude は以下の 2 ステップで Phase 6.1.a を実行する:
 
@@ -2821,16 +2818,15 @@ RITE_JSON_EOF
         and ([.findings[].id] | unique | length == (.findings | length))
       )
     ' "$json_tmp" >/dev/null 2>&1; then
-      # verified-review (cycle 8) H-7 対応: finding id 書式と一意性の machine-enforced validation。
-      # review-result-schema.md L75 は「F-NN 最小 2 桁 zero-padding 可変長連番」を規定するが、
-      # 旧実装は Claude の生成物を丸信頼しており、`F-1` (非 padded) や `F-01, F-01, F-02` (重複)
-      # のような regression が silent に pass していた。jq の test() で正規表現 check し、
-      # unique の長さで重複を検出する。findings が 0 件の場合は validation を skip する
-      # (空配列 all() は true を返すが明示的に短絡する)。非ブロッキング契約 (D-04) に従い、
-      # 違反時は WARNING + retained flag emit のみで Phase 6 全体は fail させない。
+      # finding id の書式と一意性の machine-enforced validation。
+      # review-result-schema.md の findings[] id 仕様 (`^F-[0-9]{2,}$`、一意性) に従う。
+      # jq の test() で正規表現 check し、unique の長さで重複を検出する。findings が 0 件の
+      # 場合は validation を skip する (空配列 all() は true を返すが明示的に短絡する)。
+      # 非ブロッキング契約 (D-04) に従い、違反時は WARNING + retained flag emit のみで
+      # Phase 6 全体は fail させない。
       echo "WARNING: JSON の findings[].id が書式 (F-NN) または一意性の要件を満たしていません" >&2
       echo "  期待: 全 finding が ^F-[0-9]{2,}\$ に match し、かつ全 id が一意" >&2
-      echo "  対処: review-result-schema.md の id 仕様 (F-01〜F-99 固定 2 桁、100 件以上は F-100 等) を確認してください" >&2
+      echo "  対処: review-result-schema.md の findings[] id 仕様を確認してください" >&2
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation" >&2
     else
       # verified-review M-2 対応: 同一秒連続 review 実行時の file path 衝突を回避する。
