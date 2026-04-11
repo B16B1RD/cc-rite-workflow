@@ -5,28 +5,37 @@ Rite Workflow の主要な変更を記録します。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
 [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に従います。
 
+<!--
+Phase 番号取扱方針: エントリは機能名レベルで変更を記述し、`review.md` /
+`fix.md` / `start.md` 等の内部 `Phase X.Y.Z` 識別子には依存しません。Phase
+番号はリファクタで採番し直される可能性があるため、CHANGELOG のエントリは
+それらの変更に対して安定でなければなりません。位置情報が必要な場合は
+内部 Phase 番号ではなくファイル名 (例: `review.md`) を参照してください。
+背景は Issue #352、慣行は Keep a Changelog 1.1.0 "Guiding Principles" 参照。
+-->
+
 ## [Unreleased]
 
 ### 変更
 
-- **`/rite:pr:review` の reviewer 呼び出しを named subagent 化** — **BREAKING CHANGE**。`plugins/rite/commands/pr/review.md` Phase 4.3.1 で reviewer を `subagent_type: general-purpose` から `subagent_type: "rite:{reviewer_type}-reviewer"` (スコープ付き named subagent) に切り替え。named subagent 呼び出しでは各 reviewer の agent file body (`plugins/rite/agents/{reviewer_type}-reviewer.md`) が sub-agent の **system prompt** として自動注入され、YAML frontmatter (`model`, `tools`) が runtime に反映される。これにより reviewer の役割定義が system prompt レベルで強制され (user prompt 注入では agent body の優先度が低く希釈される問題を解消)、reviewer ごとの model pin (9 reviewer が `model: opus` 固定) が実効化される。Phase 4.3.1 に 13 reviewer の `reviewer_type` → `subagent_type` 対応表を追加。Phase 0 Item 2 (Issue #356) で `rite:` プレフィックスが必須であることを実機検証済み (bare 形式 `{reviewer_type}-reviewer` は `Agent type not found` エラーで解決失敗)。**ユーザー影響**: これまで sonnet で reviews を実行していたユーザーは 9 reviewer が強制 opus upgrade となりコスト増加する (個別 agent frontmatter から `model: opus` 行を削除することで opt-out 可能)。詳細な migration guide、opus 推奨の背景、3 つの rollback シナリオ (全 reviewer 解決失敗 / tech-writer Bash 権限喪失 / verification mode 出力形式破綻) は [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) を参照 (#358)
-- **`{agent_identity}` プレースホルダを `{shared_reviewer_principles}` にリネーム** — **BREAKING CHANGE** (rite plugin 開発者向け、`review.md` テンプレート編集時に影響)。Phase 4.3 step 3 は `_reviewer-base.md` から共通原則 (Reviewer Mindset / Cross-File Impact Check / Confidence Scoring) のみを抽出するよう変更。Part B (agent-specific identity) の抽出ロジックは削除 (named subagent の system prompt が agent 固有の discipline を直接配信するため不要)。これは **hybrid approach** で、agent body → system prompt (named subagent 経由)、共通原則 → user prompt (`{shared_reviewer_principles}` 経由) の 2 経路に分離する。代替案 (13 agent file に共通原則を inline) は `_reviewer-base.md` を単一ソースとして維持するため却下。Phase 4.5 / Phase 4.5.1 template の `## あなたのアイデンティティと検出プロセス` セクションは `## 共通レビュー原則` にリネームしてスコープを反映。Phase A (#357) の Part A bug fix (Cross-File Impact Check の reviewer 到達) を維持する (#358)
-- **Phase 4.4 retry classification に `subagent resolution failure` 行を追加** — Task ツールが scoped subagent 名を解決できない場合 (例: `Agent type 'rite:code-quality-reviewer' not found. Available agents: ...`) の新規 retry classification エントリ。Retry: **No**。Action: 即 fail、使用した scoped 名とエラーメッセージを表示する。Phase B の品質改善効果を損なうため、`general-purpose` への silent fallback は禁止。全 reviewer がこのエラーになる場合は orchestrator が `AskUserQuestion` で対応を確認 (retry / `general-purpose` への一時 rollback / レビュー中止)。判定パターン: Task ツール応答に `Agent type '{scoped_name}' not found` が含まれる (#358)
+- **`/rite:pr:review` の reviewer 呼び出しを named subagent 化** — **BREAKING CHANGE**。`plugins/rite/commands/pr/review.md` で reviewer を `subagent_type: general-purpose` から `subagent_type: "rite:{reviewer_type}-reviewer"` (スコープ付き named subagent) に切り替え。named subagent 呼び出しでは各 reviewer の agent file body (`plugins/rite/agents/{reviewer_type}-reviewer.md`) が sub-agent の **system prompt** として自動注入され、YAML frontmatter (`model`, `tools`) が runtime に反映される。これにより reviewer の役割定義が system prompt レベルで強制され (user prompt 注入では agent body の優先度が低く希釈される問題を解消)、reviewer ごとの model pin (9 reviewer が `model: opus` 固定) が実効化される。13 reviewer の `reviewer_type` → `subagent_type` 対応表を `review.md` に追加。Issue #356 で `rite:` プレフィックスが必須であることを実機検証済み (bare 形式 `{reviewer_type}-reviewer` は `Agent type not found` エラーで解決失敗)。**ユーザー影響**: これまで sonnet で reviews を実行していたユーザーは 9 reviewer が強制 opus upgrade となりコスト増加する (個別 agent frontmatter から `model: opus` 行を削除することで opt-out 可能)。詳細な migration guide、opus 推奨の背景、3 つの rollback シナリオ (全 reviewer 解決失敗 / tech-writer Bash 権限喪失 / verification mode 出力形式破綻) は [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) を参照 (#358)
+- **`{agent_identity}` プレースホルダを `{shared_reviewer_principles}` にリネーム** — **BREAKING CHANGE** (rite plugin 開発者向け、`review.md` テンプレート編集時に影響)。`review.md` は `_reviewer-base.md` から共通原則 (Reviewer Mindset / Cross-File Impact Check / Confidence Scoring) のみを抽出するよう変更。Part B (agent-specific identity) の抽出ロジックは削除 (named subagent の system prompt が agent 固有の discipline を直接配信するため不要)。これは **hybrid approach** で、agent body → system prompt (named subagent 経由)、共通原則 → user prompt (`{shared_reviewer_principles}` 経由) の 2 経路に分離する。代替案 (13 agent file に共通原則を inline) は `_reviewer-base.md` を単一ソースとして維持するため却下。レビューテンプレートの `## あなたのアイデンティティと検出プロセス` セクションは `## 共通レビュー原則` にリネームしてスコープを反映。#357 の Part A bug fix (Cross-File Impact Check の reviewer 到達) を維持する (#358)
+- **Retry classification に `subagent resolution failure` 行を追加** (`review.md`) — Task ツールが scoped subagent 名を解決できない場合 (例: `Agent type 'rite:code-quality-reviewer' not found. Available agents: ...`) の新規 retry classification エントリ。Retry: **No**。Action: 即 fail、使用した scoped 名とエラーメッセージを表示する。named subagent 化による品質改善効果を損なうため、`general-purpose` への silent fallback は禁止。全 reviewer がこのエラーになる場合は orchestrator が `AskUserQuestion` で対応を確認 (retry / `general-purpose` への一時 rollback / レビュー中止)。判定パターン: Task ツール応答に `Agent type '{scoped_name}' not found` が含まれる (#358)
 
 ### 追加
 
-- **workflow incident 自動 Issue 登録機構** — `/rite:issue:start` が実行中に発生する workflow blocker (Skill ロード失敗 / hook 異常終了 / 手動 fallback 採用) を自動検出し、Issue として登録することで silent loss を防止する機構を追加。新規 `plugins/rite/hooks/workflow-incident-emit.sh` が sentinel パターン (`[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...; iteration_id=...`) を skill 内部 failure path および orchestrator fallback prompt から emit。`start.md` の新規 Phase 5.4.4.1 が context grep で sentinel を検出し、`AskUserQuestion` で確認した上で既存の `create-issue-with-projects.sh` を `Status: Todo / Priority: High / Complexity: S / source: workflow_incident` で呼び出す。同 session 内の同 type incident は重複排除。登録失敗は non-blocking。新規 `workflow_incident:` 設定セクションでデフォルト有効 (`enabled: false` で opt-out)。`plugins/rite/hooks/tests/workflow-incident-emit.test.sh` に 11 件の単体テストを追加。#366 の AC-1 ~ AC-10 を全て実装 (Skill ロード失敗 / hook 異常終了 / 手動 fallback 検出、重複制御、default-on、opt-out、Phase 7 非干渉、non-blocking エラーハンドリング)。PR #363 cycle 1 で発覚した meta-incident (Skill loader bug #365 が Edit ツール手動 fallback で silent に bypass された問題) が直接の動機 (#366)
+- **workflow incident 自動 Issue 登録機構** — `/rite:issue:start` が実行中に発生する workflow blocker (Skill ロード失敗 / hook 異常終了 / 手動 fallback 採用) を自動検出し、Issue として登録することで silent loss を防止する機構を追加。新規 `plugins/rite/hooks/workflow-incident-emit.sh` が sentinel パターン (`[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...; iteration_id=...`) を skill 内部 failure path および orchestrator fallback prompt から emit。`start.md` の新規 workflow incident 検出ロジックが context grep で sentinel を検出し、`AskUserQuestion` で確認した上で既存の `create-issue-with-projects.sh` を `Status: Todo / Priority: High / Complexity: S / source: workflow_incident` で呼び出す。同 session 内の同 type incident は重複排除。登録失敗は non-blocking。新規 `workflow_incident:` 設定セクションでデフォルト有効 (`enabled: false` で opt-out)。`plugins/rite/hooks/tests/workflow-incident-emit.test.sh` に 11 件の単体テストを追加。#366 の AC-1 ~ AC-10 を全て実装 (Skill ロード失敗 / hook 異常終了 / 手動 fallback 検出、重複制御、default-on、opt-out、recommendation flow 非干渉、non-blocking エラーハンドリング)。PR #363 cycle 1 で発覚した meta-incident (Skill loader bug #365 が Edit ツール手動 fallback で silent に bypass された問題) が直接の動機 (#366)
 - **tech-writer Critical Checklist 具体化** — 文書-実装整合性 5 項目を追加: `Implementation Coverage`, `Enumeration Completeness`, `UX Flow Accuracy`, `Order-Emphasis Consistency`, `Screenshot Presence`。各項目に Grep/Read/Glob での検証手段を併記し、内部のドキュメント中心 PR 事例 (private repository, organization name redacted) を出典とする Prohibited vs Required Findings テーブルにサンプル行 3 件を追加 (#349)
 - **internal-consistency.md reference 新設** — `fact-check.md` (外部仕様) と対の内部事実検証プロトコル。5 項目の Verification Protocol、Confidence 80+ ゲート、severity マッピング、および `tech-writer.md` / `review.md` / 関連 agent ファイルを参照する Cross-Reference セクションを定義 (#349)
-- **Doc-Heavy PR Detection (Phase 1.2.7)** — ドキュメント中心 PR を自動判定 (判定式: `(doc_lines / total_diff_lines >= 0.6)` または `(doc_files_count / total_files_count >= 0.7 かつ total_diff_lines < 2000)`)。rite plugin 自身の `commands/`, `skills/`, `agents/` 配下の `.md` **および `plugins/rite/i18n/**` 配下の `.md` / `.mdx` 翻訳ドキュメント**は除外 (prompt-engineer 専管 / dogfooding artifact。`plugins/rite/i18n/` 配下の `.yml` / `.json` / `.po` など非 Markdown の翻訳リソースはそもそも `doc_file_patterns` の分子候補に含まれないため除外処理は no-op)。`rite-config.yml` に optional schema `review.doc_heavy.*` (キー: `enabled`, `lines_ratio_threshold`, `count_ratio_threshold`, `max_diff_lines_for_count`) を追加 (#349)
-- **Doc-Heavy Reviewer Override (Phase 2.2.1)** — `{doc_heavy_pr == true}` のとき tech-writer を recommended → mandatory に昇格、code-quality を co-reviewer 追加。追加経路は以下の 3 つで構成され、最終状態は常に ≥2 reviewers が保たれる:
+- **Doc-Heavy PR Detection** — `review.md` でドキュメント中心 PR を自動判定 (判定式: `(doc_lines / total_diff_lines >= 0.6)` または `(doc_files_count / total_files_count >= 0.7 かつ total_diff_lines < 2000)`)。rite plugin 自身の `commands/`, `skills/`, `agents/` 配下の `.md` **および `plugins/rite/i18n/**` 配下の `.md` / `.mdx` 翻訳ドキュメント**は除外 (prompt-engineer 専管 / dogfooding artifact。`plugins/rite/i18n/` 配下の `.yml` / `.json` / `.po` など非 Markdown の翻訳リソースはそもそも `doc_file_patterns` の分子候補に含まれないため除外処理は no-op)。`rite-config.yml` に optional schema `review.doc_heavy.*` (キー: `enabled`, `lines_ratio_threshold`, `count_ratio_threshold`, `max_diff_lines_for_count`) を追加 (#349)
+- **Doc-Heavy Reviewer Override** — `{doc_heavy_pr == true}` のとき tech-writer を recommended → mandatory に昇格、code-quality を co-reviewer 追加。追加経路は以下の 3 つで構成され、最終状態は常に ≥2 reviewers が保たれる:
   - **Normal path**: diff 内に fenced code block (` ```bash ` / ` ```yaml ` / ` ```python ` 等) が検出された場合に追加。純粋散文 PR ではこの経路は発火しない
   - **Fail-safe path**: diff スキャン自体が失敗した場合 (`git diff` IO エラー / grep IO エラー等)、fenced block 検出有無に関係なく追加 (検出シグナル不在時の検証強度維持)
-  - **Fallback path**: fenced block が検出されず Phase 2.2.1 で追加されなかった場合、Phase 2.3 sole-reviewer guard が後段で fallback として追加する
+  - **Fallback path**: fenced block が検出されず Doc-Heavy override で追加されなかった場合、sole-reviewer guard が後段で fallback として追加する
 
-  tech-writer に `{doc_heavy_pr=true}` フラグを伝達し、`internal-consistency.md` の 5 カテゴリ verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を mandatory 化、各 finding に `Evidence:` 行を必須化、`review.md` の Phase 5.1.3 Doc-Heavy post-condition check で検証 (#349)
-- **`/rite:pr:fix` に PR URL / comment URL 直渡しサポート** — `/rite:pr:fix` が PR 番号に加え PR URL / コメント URL 引数を受け付け、`/verified-review` など外部レビューツールのコメントから直接 findings をパースして fix ループに投入可能に。受理可能な URL 形式は trailing path (`/files`)、query string (`?tab=files`)、fragment (`#diff-...`) を含み、すべて Phase 1.0 で正規化される。対象コメントには最低 4 カラム (optional 5 列目 confidence) の markdown テーブルが必要。詳細な引数仕様・ヘッダー検出キーワード・severity 別名マッピングは `plugins/rite/commands/pr/fix.md` Phase 1.0 / Phase 1.2 best-effort parse セクションを参照 (#349)
-- **`[fix:pushed-wm-stale]` 出力パターン** — `/rite:pr:fix` が Phase 4.5 work memory 更新で soft failure を検出した場合に新規出力する。発火条件は `commands/pr/fix.md` Phase 8.1 の reason 表と 1:1 対応しており、以下に自然言語表現と `reason` ラベルの mapping を示す。完全な一覧は reason 表参照:
+  tech-writer に `{doc_heavy_pr=true}` フラグを伝達し、`internal-consistency.md` の 5 カテゴリ verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を mandatory 化、各 finding に `Evidence:` 行を必須化、`review.md` の Doc-Heavy post-condition check で検証 (#349)
+- **`/rite:pr:fix` に PR URL / comment URL 直渡しサポート** — `/rite:pr:fix` が PR 番号に加え PR URL / コメント URL 引数を受け付け、`/verified-review` など外部レビューツールのコメントから直接 findings をパースして fix ループに投入可能に。受理可能な URL 形式は trailing path (`/files`)、query string (`?tab=files`)、fragment (`#diff-...`) を含み、すべて引数 ingest 時に正規化される。対象コメントには最低 4 カラム (optional 5 列目 confidence) の markdown テーブルが必要。詳細な引数仕様・ヘッダー検出キーワード・severity 別名マッピングは `plugins/rite/commands/pr/fix.md` の引数パース関連セクションを参照 (#349)
+- **`[fix:pushed-wm-stale]` 出力パターン** — `/rite:pr:fix` が work memory 更新で soft failure を検出した場合に新規出力する。発火条件は `commands/pr/fix.md` の reason 表と 1:1 対応しており、以下に自然言語表現と `reason` ラベルの mapping を示す。完全な一覧は reason 表参照:
   - `current_body` 空 → `current_body_empty`
   - `issue_number` 抽出失敗 → `issue_number_not_found`
   - PATCH 4xx/5xx → `patch_failed`
@@ -38,14 +47,14 @@ Rite Workflow の主要な変更を記録します。
   - work memory body 破損検出 → `wm_body_empty_or_too_short` / `wm_header_missing` / `wm_body_too_small`
   - mktemp 失敗 → `mktemp_failed_*` 系統 (`mktemp_failed_pr_body_tmp`, `mktemp_failed_body_tmp`, `mktemp_failed_tmpfile`, `mktemp_failed_files_tmp`, `mktemp_failed_history_tmp`, `mktemp_failed_diff_stderr_tmp`, 他)
 
-  `git diff` 失敗経路も `WM_UPDATE_FAILED=1; reason=python_sentinel_detected` (Python `sys.exit(2)` + bash `exit 1`) を経由する。bash `exit 1` は bash invocation のみを kill するが、retained `WM_UPDATE_FAILED=1` flag は conversation context に残り、Phase 8.1 が評価順テーブル行 2 でこの flag を検出して `[fix:pushed-wm-stale]` を emit する (`[fix:error]` **ではない**)。hard fail-fast 設計は PATCH の silent 拒否を保証するが、caller 側へのシグナルは `[fix:pushed-wm-stale]` が正しい (詳細は `commands/pr/fix.md` Phase 8.1 の評価順テーブルと reason 表を参照)。caller (`/rite:issue:start` review-fix loop) は `[fix:pushed-wm-stale]` を **silent に `[fix:pushed]` 扱いしてはならず**、必ず `AskUserQuestion` で警告を提示してユーザーに「stale work memory のまま継続するか、手動修復のため中断するか」を選択させる義務を負う。詳細な caller セマンティクスは `commands/pr/fix.md` Phase 8.1 を参照 (#349)
+  `git diff` 失敗経路も `WM_UPDATE_FAILED=1; reason=python_sentinel_detected` (Python `sys.exit(2)` + bash `exit 1`) を経由する。bash `exit 1` は bash invocation のみを kill するが、retained `WM_UPDATE_FAILED=1` flag は conversation context に残り、soft-failure 評価ロジックが評価順テーブル行 2 でこの flag を検出して `[fix:pushed-wm-stale]` を emit する (`[fix:error]` **ではない**)。hard fail-fast 設計は PATCH の silent 拒否を保証するが、caller 側へのシグナルは `[fix:pushed-wm-stale]` が正しい (詳細は `commands/pr/fix.md` の評価順テーブルと reason 表を参照)。caller (`/rite:issue:start` review-fix loop) は `[fix:pushed-wm-stale]` を **silent に `[fix:pushed]` 扱いしてはならず**、必ず `AskUserQuestion` で警告を提示してユーザーに「stale work memory のまま継続するか、手動修復のため中断するか」を選択させる義務を負う。詳細な caller セマンティクスは `commands/pr/fix.md` を参照 (#349)
 
 ### 修正
 
-- **`review.md` の Part A 抽出バグ修正** — Phase 4.3 での `_reviewer-base.md` の Part A 抽出が `## Cross-File Impact Check`（`## Reviewer Mindset` と `## Confidence Scoring` の間にあるセクション）を完全にドロップしていた不具合を修正。抽出範囲を「document 先頭 ~ `## Input` heading (exclusive)」に変更し、5 つの必須 cross-file consistency check（削除/リネーム済み export、変更された config key、変更された interface contract、i18n key consistency、keyword list consistency）が **初めて** reviewer agent に届くようになった (#357)
-- **reviewer agent の tools/model frontmatter drift cleanup** — 全 13 reviewer agent (`api`, `code-quality`, `database`, `dependencies`, `devops`, `error-handling`, `frontend`, `performance`, `prompt-engineer`, `security`, `tech-writer`, `test`, `type-design`) から `tools:` frontmatter を削除、4 reviewer (`code-quality`, `error-handling`, `performance`, `type-design`) から `model: sonnet` を削除。現状は `subagent_type: general-purpose` 経由のため runtime で ignore されているが、Phase B で named subagent 化した瞬間に副作用 (tech-writer が Bash を失い Doc-Heavy PR Mode 全 blocking 化 / 4 reviewer が opus ユーザーに対して sonnet 固定で品質劣化) を引き起こすリスクがあったため、先行 cleanup で副作用ゼロに保つ。残り 9 reviewer は `model: opus` を明示 pin として意図的に維持 (opus が runtime 上の実効 model だったため、pin を削除すると session default に regress して sonnet になる可能性を避けるため)。あわせて `docs/SPEC.md` / `docs/SPEC.ja.md` の Agent File Format セクションで `tools` を `Yes` (required) から `No (inherit)` に変更し、Current Agents 表の 4 reviewer を `inherit` に更新した (#357)
-- **Phase 5.1.1.1 post-condition check 追加** — `review.md` に Phase 5.1.1.1 (Phase 5.1.1 Verification Mode Findings Collection の子セクション) を追加し、verification mode 時に各 reviewer が `### 修正検証結果` テーブルを出力しているかを post-condition で検証する。欠落時は Phase 4.3.1 Task tool 経由で per-reviewer retry を 1 回まで実行 (strict verification テンプレート再送)、retry 後も欠落の場合は `verification_post_condition: error` を set、overall assessment を `修正必要` (Phase 5.1.3 / Phase 5.4 の escalation chain の昇格ラベルと統一。`要修正` は reviewer 個別評価用 label で overall 昇格には使用しない) に昇格し、該当 reviewer の指摘を全件 blocking 扱い。classification vocabulary は `passed` / `warning` / `error` (Phase 5.1.3 `doc_heavy_post_condition` と統一)。Retained flags `verification_post_condition` / `verification_post_condition_retry_count` (per-reviewer dict) を Phase 5.1.3 retained flags list に登録し、Phase 5.4 verification mode template に表示する。reviewer が検証出力を silent skip して `finding_count == 0` 誤判定で silent pass する経路を閉塞する (#357)
-- **`commands/pr/fix.md` Phase 8.1 reason 表 drift 修正** — Phase 4.5.1 / 4.5.2 で実際に emit される 28 件の `WM_UPDATE_FAILED` reason を全て reason 表に登録 (従来は 12 件のみ登録、16 件未登録で drift)。評価順テーブル行 2 の括弧内固定列挙を撤廃し「reason 表のいずれか」に置換、二重 drift を解消。DoD 検証 (手動実行): `comm -3 <(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' plugins/rite/commands/pr/fix.md | sed 's/.*reason=//' | sort -u) <(awk '/^\*\*`reason` フィールド/{in_table=1;next} in_table && /^\*\*/{in_table=0} in_table && /^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*[^`]*`/); print substr($0, RSTART+1, RLENGTH-2)}' plugins/rite/commands/pr/fix.md | sed 's/\$.*//' | sort -u)` の出力が空 (emit 集合 28 件と Phase 8.1 reason 表 28 件が完全一致)。awk パターンは `**\`reason\` フィールド` セクションに範囲を絞っており、`fix.md` 内の他テーブルからの false positive を防ぐ (#357, PR #350 C2 吸収)
+- **`review.md` の Part A 抽出バグ修正** — `_reviewer-base.md` の Part A 抽出が `## Cross-File Impact Check`（`## Reviewer Mindset` と `## Confidence Scoring` の間にあるセクション）を完全にドロップしていた不具合を修正。抽出範囲を「document 先頭 ~ `## Input` heading (exclusive)」に変更し、5 つの必須 cross-file consistency check（削除/リネーム済み export、変更された config key、変更された interface contract、i18n key consistency、keyword list consistency）が **初めて** reviewer agent に届くようになった (#357)
+- **reviewer agent の tools/model frontmatter drift cleanup** — 全 13 reviewer agent (`api`, `code-quality`, `database`, `dependencies`, `devops`, `error-handling`, `frontend`, `performance`, `prompt-engineer`, `security`, `tech-writer`, `test`, `type-design`) から `tools:` frontmatter を削除、4 reviewer (`code-quality`, `error-handling`, `performance`, `type-design`) から `model: sonnet` を削除。現状は `subagent_type: general-purpose` 経由のため runtime で ignore されているが、named subagent 化した瞬間に副作用 (tech-writer が Bash を失い Doc-Heavy PR Mode 全 blocking 化 / 4 reviewer が opus ユーザーに対して sonnet 固定で品質劣化) を引き起こすリスクがあったため、先行 cleanup で副作用ゼロに保つ。残り 9 reviewer は `model: opus` を明示 pin として意図的に維持 (opus が runtime 上の実効 model だったため、pin を削除すると session default に regress して sonnet になる可能性を避けるため)。あわせて `docs/SPEC.md` / `docs/SPEC.ja.md` の Agent File Format セクションで `tools` を `Yes` (required) から `No (inherit)` に変更し、Current Agents 表の 4 reviewer を `inherit` に更新した (#357)
+- **Verification-mode post-condition check 追加** — `review.md` に post-condition check (Verification Mode Findings Collection ロジックの子セクション) を追加し、verification mode 時に各 reviewer が `### 修正検証結果` テーブルを出力しているかを検証する。欠落時は reviewer 呼び出し Task tool 経由で per-reviewer retry を 1 回まで実行 (strict verification テンプレート再送)、retry 後も欠落の場合は `verification_post_condition: error` を set、overall assessment を `修正必要` (escalation chain の昇格ラベルと統一。`要修正` は reviewer 個別評価用 label で overall 昇格には使用しない) に昇格し、該当 reviewer の指摘を全件 blocking 扱い。classification vocabulary は `passed` / `warning` / `error` (`doc_heavy_post_condition` と統一)。Retained flags `verification_post_condition` / `verification_post_condition_retry_count` (per-reviewer dict) を retained flags list に登録し、verification mode template に表示する。reviewer が検証出力を silent skip して `finding_count == 0` 誤判定で silent pass する経路を閉塞する (#357)
+- **`commands/pr/fix.md` reason 表 drift 修正** — work memory 更新パスで実際に emit される 28 件の `WM_UPDATE_FAILED` reason を全て reason 表に登録 (従来は 12 件のみ登録、16 件未登録で drift)。評価順テーブル行 2 の括弧内固定列挙を撤廃し「reason 表のいずれか」に置換、二重 drift を解消。DoD 検証 (手動実行): `comm -3 <(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' plugins/rite/commands/pr/fix.md | sed 's/.*reason=//' | sort -u) <(awk '/^\*\*`reason` フィールド/{in_table=1;next} in_table && /^\*\*/{in_table=0} in_table && /^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*[^`]*`/); print substr($0, RSTART+1, RLENGTH-2)}' plugins/rite/commands/pr/fix.md | sed 's/\$.*//' | sort -u)` の出力が空 (emit 集合 28 件と reason 表 28 件が完全一致)。awk パターンは `**\`reason\` フィールド` セクションに範囲を絞っており、`fix.md` 内の他テーブルからの false positive を防ぐ (#357, PR #350 C2 吸収)
 
 ## [0.3.10] - 2026-04-04
 
@@ -63,7 +72,7 @@ Rite Workflow の主要な変更を記録します。
 ### 修正
 
 - フックスクリプトの jq 抽出堅牢性改善 — CWD フォールバック追加、pre-tool-bash-guard フォールバック追加、context-pressure.sh の silent abort 防止 (#334, #338, #342)
-- レビュー品質改善 — Confidence Calibration 降順修正、E2E auto-create フロー改善、Phase 7 Source C 整合性修正、コメント精度改善 (#313, #315, #317, #337)
+- レビュー品質改善 — Confidence Calibration 降順修正、E2E auto-create フロー改善、recommendation flow Source C 整合性修正、コメント精度改善 (#313, #315, #317, #337)
 
 ## [0.3.9] - 2026-04-03
 
@@ -160,14 +169,14 @@ Rite Workflow の主要な変更を記録します。
 - flow-state deactivation で patch 方式を使用 (#195)
 - レビューテンプレート出力例の blocking/non-blocking 残存表記を修正
 - パス解決不整合を修正し `--if-exists` パターンに統一
-- Phase 1-3 サブスキルに Defense-in-Depth flow-state 更新を追加
+- 初期フェーズのサブスキルに Defense-in-Depth flow-state 更新を追加
 
 ### 変更
 
 - `loop_count`/`max_iterations`/`loop-limit` パラメータを廃止 (#210)
 - `flow-state-update.sh` から `--loop` パラメータを完全削除 (#211)
 - `hooks/hooks.json` ネイティブ方式を追加し二重実行ガードを設置 (#194)
-- Phase 4.5 レビューテンプレートに品質3ルールを追加 (#209)
+- レビューテンプレートに品質3ルールを追加 (#209)
 - `session-start.sh` の trap 廃止とデバッグログ改善
 
 ### ドキュメント
@@ -187,7 +196,7 @@ Rite Workflow の主要な変更を記録します。
 
 ### 修正
 
-- Phase 5.2.1 チェックリスト確認に自動チェック処理を追加 (#170)
+- `start.md` のチェックリスト確認に自動チェック処理を追加 (#170)
 - ブランチ存在チェックで exit code ではなく出力文字列で判定するよう修正 (#172)
 - Issue create 完了時の出力順序を改善し次のステップを末尾に移動 (#168)
 - PostToolUse hook で Issue コメント作業メモリを phase 変化時に自動同期 (#167)
@@ -274,7 +283,7 @@ Rite Workflow の主要な変更を記録します。
 - 進捗サマリー・変更ファイル更新セクションをチェックリスト更新から独立化 (#104)
 - `flow-state-update.sh` の patch モードで `--active` フラグをサポート (#109)
 - `flow-state-update.sh` の patch モードで jq フィルター前に `--` セパレータを追加 (#109)
-- `fix.md` Phase 4.5.2 の trap に `$pr_body_tmp` を追加 (#94)
+- `fix.md` work memory 更新の trap に `$pr_body_tmp` を追加 (#94)
 - review/fix ループ中に進捗サマリー・変更ファイルが更新されるよう修正 (#90)
 
 ### 変更
@@ -282,7 +291,7 @@ Rite Workflow の主要な変更を記録します。
 - 進捗サマリー正規表現を堅牢化 (#92)
 - `lint.md` の不正確な参照修正と `start.md` の具体例追加 (#87)
 - `resume.md` カウンター復元スニペットを正式サブセクションに構造化 (#88)
-- `review.md` Phase 6.2 セッション情報更新の defense-in-depth 意図を明文化 (#93)
+- `review.md` のセッション情報更新の defense-in-depth 意図を明文化 (#93)
 
 ## [0.2.0] - 2026-03-05
 
@@ -316,7 +325,7 @@ Rite Workflow の主要な変更を記録します。
 - `stop-guard.sh` の trap に EXIT シグナルを追加 (#39, #41)
 - `stop-guard.sh` の compact_state 停止ブロック失敗を修正 (#22)
 - `session-start.sh` の jq エラーハンドリング問題を修正 (#18, #20)
-- `/rite:issue:start` の完了レポート（Phase 5.6）が実行されない問題を修正 (#17)
+- `/rite:issue:start` の完了レポートが実行されない問題を修正 (#17)
 - 親 Issue の Projects ステータスが Todo から In Progress に更新されない問題を修正 (#15)
 - `/rite:issue:start` 実行時の Bash コマンドエラーを修正 (#13)
 - find クリーンアップパターンを mktemp サフィックス長非依存に修正 (#44)
