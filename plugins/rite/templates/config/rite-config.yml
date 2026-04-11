@@ -132,6 +132,13 @@ language: auto  # auto | ja | en
 #   run_baseline: true       # Run baseline test before skeleton generation
 #   max_skeletons: 20        # Maximum number of skeletons to generate per Issue
 
+# PR review result recording (#443)
+# デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
+# ローカルファイル (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
+# /rite:pr:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
+# pr_review:
+#   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false）
+
 # Parallel implementation settings
 # parallel:
 #   enabled: true   # Enable parallel implementation (default: true)

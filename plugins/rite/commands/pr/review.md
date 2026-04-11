@@ -2574,12 +2574,13 @@ Phase 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-req
 | `finding_id_format_or_uniqueness_violation` | findings[].id が `^F-[0-9]{2,}$` 書式違反または重複 (Phase 6.1.a、**WARNING only**、verified-review cycle 8 H-7 対応) |
 | `mv_failure` | Atomic move of JSON tmpfile to final path failed (Phase 6.1.a, **WARNING only**) |
 | `mktemp_failure_mv_err` | Phase 6.1.a の mv stderr 退避用 tempfile の mktemp が失敗 (I-3 対応、**WARNING only**、mv 失敗時の stderr 詳細が失われるため explicit に通知) |
+| `timestamp_injection_mv_failure` | Phase 6.1.a の timestamp 注入後 inner mv (`mv "$json_ts_injected" "$json_tmp"`) が失敗 (verified-review cycle 9 C-1 対応、**WARNING only**、sentinel 残留 JSON を final path に書かないため後続処理を skip) |
 
-**Non-blocking contract**: `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
+**Non-blocking contract**: `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` / `timestamp_injection_mv_failure` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**:
 
-- **Phase 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 9 種のいずれか (I-3 修正で `mktemp_failure_mv_err` 追加、cycle 8 H-7 修正で `finding_id_format_or_uniqueness_violation` 追加): `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `mktemp_failure_mv_err` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `mv_failure`。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
+- **Phase 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 10 種のいずれか (verified-review cycle 9 C-1 修正で `timestamp_injection_mv_failure` 追加、I-3 修正で `mktemp_failure_mv_err` 追加、cycle 8 H-7 修正で `finding_id_format_or_uniqueness_violation` 追加): `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `mktemp_failure_mv_err` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `timestamp_injection_mv_failure` / `mv_failure`。この flag は Phase 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。Phase 6 全体の exit code には影響しない (非ブロッキング契約)。
 - **Phase 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` のいずれか (cycle 8 H-5 修正で `json_saved_from_p61a_unset` 追加)。この flag は PR コメント投稿経路の失敗を示し、hard error として Phase 6 を fail させる (Phase 6.1.a の非ブロッキング契約とは対照的)。
 
 **Eval-order enumeration** (for Pattern-5 drift check): Phase 6.1.a emit sequence = (`mkdir_failure` / `date_command_failure` / `mktemp_failure` / `mktemp_failure_mv_err` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `mv_failure`); Phase 6.1.b emit = (`tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`); Phase 6.1.c emit = (`p61c_file_timestamp_unset` / `p61c_local_save_failed_invalid`).
@@ -2737,7 +2738,18 @@ RITE_JSON_EOF
         echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
         json_tmp=""  # 後続処理を skip
       elif jq --arg ts "$iso_timestamp" '.timestamp = $ts' "$json_tmp" > "$json_ts_injected" 2>/dev/null; then
-        mv "$json_ts_injected" "$json_tmp"
+        # C-1 対応 (verified-review cycle 9): inner mv の exit code を明示 check する。
+        # 未 check だと mv 失敗 (cross-fs / TOCTOU / permission / disk full) 時に $json_tmp は
+        # sentinel "__RITE_TIMESTAMP_PLACEHOLDER__" のまま残留し、sentinel は valid JSON string の
+        # ため後続の jq empty / schema_required_fields / finding id 検証を全て通過して最終 mv で
+        # 永続ファイルに sentinel 混入 → JSON_SAVED=true emit → pr:fix Priority 2 で読取 (commit_sha
+        # stale detection は通るため検知不能) という silent corruption になる。外側 mv と対称化する。
+        if ! mv "$json_ts_injected" "$json_tmp" 2>/dev/null; then
+          echo "WARNING: timestamp 注入済み tmpfile の mv に失敗しました (cross-fs / permission / TOCTOU)" >&2
+          echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=timestamp_injection_mv_failure" >&2
+          rm -f "$json_ts_injected"
+          json_tmp=""  # 後続の schema validation / final mv を skip (sentinel 残留を final path に書かない)
+        fi
       else
         echo "WARNING: jq による timestamp 注入に失敗しました (sentinel 置換不可)" >&2
         echo "  対処: review_result_json_heredoc_body が valid JSON で、.timestamp フィールドを持つか確認してください" >&2
@@ -2968,9 +2980,18 @@ else
     echo "    [CONTEXT] FILE_TIMESTAMP / JSON_SAVED 参照: Phase 6.1.a の emit 値" >&2
     echo "    そのまま /rite:pr:fix を実行できます (Priority 2 で自動読取)" >&2
   fi
-  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=gh_comment_post_failure; rc=$gh_rc; json_saved=$json_saved_from_p61a" >&2
+  # verified-review cycle 9 M-2 対応: SIGPIPE 等の signal 終了を retained flag に併記する
+  # (`gh pr comment` が rc >= 128 で死んだ場合、rc - 128 が signal number を示す。
+  # signal 終了 (data 破損なし) と通常の write error を retained flag レベルで区別できるようにする)。
+  # caller 側の意味論単純化のため `exit 1` に正規化 (実 rc は retained flag の `rc=` で retain 済み)
+  if [ "${gh_rc:-1}" -ge 128 ]; then
+    gh_signal=$((gh_rc - 128))
+    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=gh_comment_post_failure; rc=$gh_rc; signal=$gh_signal; json_saved=$json_saved_from_p61a" >&2
+  else
+    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=gh_comment_post_failure; rc=$gh_rc; json_saved=$json_saved_from_p61a" >&2
+  fi
   [ -n "$gh_err" ] && rm -f "$gh_err"
-  exit "${gh_rc:-1}"
+  exit 1
 fi
 [ -n "$gh_err" ] && rm -f "$gh_err"
 ````

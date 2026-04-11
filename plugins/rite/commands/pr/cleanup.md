@@ -1060,7 +1060,7 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 
 ### 2.5 Delete Review Result Local Files and Fix State Files (#443, #450) <!-- AC-7 -->
 
-> **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除。他 PR ファイルを誤削除しない)。
+> **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除し、併せて fix retry state file `.rite/state/fix-fallback-retry-{pr_number}.count` も specific path で削除する。他 PR ファイルを誤削除しない)。verified-review cycle 9 I-9 対応で AC-7 定義を state file 削除まで拡張 (旧定義は review result files のみに限定されており、実装スコープ (`(#443, #450)` ヘッダ) との drift があった)。
 
 Delete two categories of PR-specific local artifacts associated with the merged PR:
 
@@ -1082,9 +1082,10 @@ Delete two categories of PR-specific local artifacts associated with the merged 
 | `invalid_pr_number` | Phase 2.5 進入時の `pr_number` が空 or 非数値 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は non-blocking exit 0 で終了、cleanup 全体は失敗扱いにしない) |
 | `rm_failure` | review result `rm -f` コマンドが permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
 | `state_file_rm_failure` | fix retry state file の `rm -f` が permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
-| `mktemp_failure_rm_err` | `rm` の stderr 退避用 tempfile の mktemp が失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行) |
+| `mktemp_failure_rm_err` | matched_files 側 (`rm` の stderr 退避用 tempfile) の mktemp が失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行) |
+| `mktemp_failure_rm_err_state_file` | state_file 側 (`rm` の stderr 退避用 tempfile) の mktemp が失敗 (verified-review cycle 9 I-3 対応、`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行。matched_files 側 `mktemp_failure_rm_err` との対称化) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `state_file_rm_failure`)
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure`)
 
 ```bash
 # signal-specific trap (rm_err tempfile の orphan 防止)
@@ -1156,9 +1157,12 @@ fi
 # fix.md Phase 1.2.0.1 Interactive Fallback の retry hard gate state file は
 # PR がマージされた時点で不要になるため、Phase 2.5 で同時に削除する。
 state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
-# M-3 対応: 旧実装 `[ -f "$state_file" ]` は permission denied で stat 不能な場合に false に
-# なり、rm すら試みない silent pass があった。`rm -f` は非存在ファイルに対して exit 0 を返すため、
-# unconditional に rm を実行し、失敗時だけ WARNING を emit する方が対称的で安全。
+# verified-review cycle 9 I-2 対応: 旧実装 `[ -e "$state_file" ] || [ -L "$state_file" ]` stat gate
+# は、この直前のコメントが「permission denied で stat 不能な場合に false になり silent pass する
+# ため gate を removed した」と宣言していたのに、実装では gate が残存しておりコード/コメント
+# 乖離を起こしていた (コメントが批判した silent skip が再現)。`rm -f` は非存在ファイルに対して
+# exit 0 を返すため、unconditional に rm を実行し、失敗時だけ WARNING を emit する方が対称的で
+# 安全である。
 #
 # verified-review (cycle 8) H-6 対応: stderr 退避 tempfile を使い、matched_files rm と対称化する。
 # 旧実装は `rm -f "$state_file"` 単独で stderr を捕捉せず、rc のみしか取れなかった。
@@ -1167,28 +1171,40 @@ state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
 # 上記 matched_files rm と同じ rm_err tempfile pattern を適用する。rm_err tempfile は既に
 # matched_files rm 経路で mktemp 済みの可能性があるが、matched_files が 0 件の経路 (上記 else
 # branch) では rm_err が未定義のため、ここで必要なら mktemp し直す。
-if [ -e "$state_file" ] || [ -L "$state_file" ]; then
-  # rm_err が matched_files 経路で確保済みで非空ならそれを再利用、未定義/空なら新規 mktemp
-  if [ -z "${rm_err:-}" ]; then
-    if ! rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX); then
-      echo "WARNING: state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
-      rm_err=""
-    fi
+#
+# rm_err が matched_files 経路で確保済みで非空ならそれを再利用、未定義/空なら新規 mktemp
+if [ -z "${rm_err:-}" ]; then
+  if ! rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX); then
+    # verified-review cycle 9 I-3 対応: state-file 側 meta-mktemp 失敗でも
+    # retained flag を必ず emit する (matched_files 側 L1128 と対称化)。
+    # 旧実装は WARNING のみで retained flag emit を省略しており、上流の pr:cleanup 呼び出し元が
+    # REVIEW_CLEANUP_PARTIAL_FAILURE を見て分岐できない非対称があった。また
+    # Eval-order enumeration に `mktemp_failure_rm_err_state_file` が出現せず Pattern-5 drift check
+    # 対象から漏れていた。
+    echo "WARNING: state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_state_file; pr=${pr_number}" >&2
+    echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+    rm_err=""
   fi
-  if rm -f "$state_file" 2>"${rm_err:-/dev/null}"; then
-    echo "✅ fix retry state file を削除しました: $state_file" >&2
-  else
-    rm_state_rc=$?
-    echo "WARNING: fix retry state file の削除に失敗 (PR #${pr_number}, rc=$rm_state_rc): $state_file" >&2
-    if [ -n "$rm_err" ] && [ -s "$rm_err" ]; then
-      head -5 "$rm_err" | sed 's/^/  /' >&2
-    fi
-    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_file_rm_failure; pr=${pr_number}" >&2
-    echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
-  fi
-  [ -n "$rm_err" ] && rm -f "$rm_err"
-  rm_err=""
 fi
+# unconditional rm: stat gate を削除 (I-2)。rm -f は非存在ファイルに対して exit 0 を返す。
+if rm -f "$state_file" 2>"${rm_err:-/dev/null}"; then
+  # 存在していたかどうかを事後的に区別するために lstat で再確認する — と思いきや rm 成功後は
+  # ファイルが確実に不在のため区別不能。`state_file_existed_before_rm` を unconditional rm 前に
+  # 記録すると invariant (stat gate 撤廃) を損なうため、success メッセージは「削除対象: $state_file」
+  # のように中立表現に留める (非存在 → no-op 成功 / 存在 → 削除成功 の両経路を同一メッセージで扱う)。
+  echo "✅ fix retry state file を削除しました (存在していれば削除、不在なら no-op): $state_file" >&2
+else
+  rm_state_rc=$?
+  echo "WARNING: fix retry state file の削除に失敗 (PR #${pr_number}, rc=$rm_state_rc): $state_file" >&2
+  if [ -n "$rm_err" ] && [ -s "$rm_err" ]; then
+    head -5 "$rm_err" | sed 's/^/  /' >&2
+  fi
+  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_file_rm_failure; pr=${pr_number}" >&2
+  echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
+fi
+[ -n "$rm_err" ] && rm -f "$rm_err"
+rm_err=""
 
 # trap を明示リセット (block scope の defense-in-depth)。本 Bash tool 呼び出し境界で
 # bash プロセスが終了するため block 外への伝播は本来ないが、Phase 2 全体が誤って 1 つの

@@ -12,7 +12,7 @@
 
 - `{pr_number}`: PR 番号（整数）
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
-- 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内で 2 回 `/rite:pr:review` を実行すると file path が衝突し古い方は上書きされる。review.md Phase 6.1.a は collision 検出時に `-$RANDOM` suffix で衝突回避を試みるが、完全な一意性保証ではない点に注意 (M-2 tradeoff)
+- 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内で 2 回 `/rite:pr:review` を実行すると file path が衝突し古い方は上書きされる。review.md Phase 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない点に注意 (M-2 tradeoff)。separator に `~` (0x7E) を使う理由は `.` (0x2E) より ASCII 大で `sort -r` 時に collision-resolved 版が非 collision 版より先頭に並ぶため — cycle 8 M-2 で `-` (0x2D) から変更済み (旧 `-` 版は `-` (0x2D) < `.` (0x2E) で `sort -r` 時に古い非 collision 版が先に選ばれる silent regression を持っていた)
 - `.rite/review-results/` は `.gitignore` で除外される
 
 ## Schema Version (Single Source of Truth)
@@ -177,7 +177,7 @@
 |------|------|
 | `.rite/review-results/` ディレクトリ作成不可 | 警告表示し、会話コンテキストのみで続行 (`/rite:pr:review` 全体は失敗扱いにしない — D-04 non-blocking contract) |
 | JSON 書き込み失敗 | 警告表示し、PR コメント投稿または会話コンテキスト経由で続行 (D-04 non-blocking contract、ただし `post_comment=false` ∧ save 失敗時は H-1 で WARNING に昇格し復旧手順を提示) |
-| 同一秒連続実行での file path 衝突 | collision 検出時に `-$RANDOM` suffix で回避を試みる (best-effort、完全保証ではない — M-2 tradeoff) |
+| 同一秒連続実行での file path 衝突 | collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で回避を試みる (best-effort、完全保証ではない — M-2 tradeoff)。separator は `~` (0x7E) を使用。`.` (0x2E) より ASCII 大で `sort -r` 時に collision-resolved 版が非 collision 版より先頭に並ぶ (cycle 8 M-2 で `-` から変更済み) |
 
 ### 引数整合性のエラー
 
@@ -187,12 +187,17 @@
 
 ## クリーンアップ
 
-`/rite:pr:cleanup` は PR マージ後のブランチ削除時に、該当 PR 番号の `.rite/review-results/{pr_number}-*.json` を削除する。wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って削除しないよう保証する。
+`/rite:pr:cleanup` は PR マージ後のブランチ削除時に、該当 PR 番号の以下 2 種類のローカル artifact を削除する (verified-review cycle 9 I-9 対応で AC-7 スコープに state file を明示追加):
+
+1. **レビュー結果ファイル**: `.rite/review-results/{pr_number}-*.json` (Issue #443 で導入された opt-in PR コメント記録機能の補完)
+2. **fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count` (Issue #450 で導入された Interactive Fallback retry hard gate の state file)
+
+wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って削除しないよう保証する。state file は specific path (`{pr_number}.count` 完全一致) で削除する。
 
 ## 関連ファイル
 
 - `plugins/rite/commands/pr/review.md` Phase 6.1: JSON 生成と保存ロジック (AC-1 default stop / AC-2 opt-in posting / D-04 non-blocking contract)
 - `plugins/rite/commands/pr/fix.md` Phase 1.2.0: ハイブリッド読取ロジック (AC-3/4 会話/ファイル優先 / AC-5 後方互換 / AC-6 対話式 fallback)
-- `plugins/rite/commands/pr/cleanup.md` Phase 2.5: 自動削除ロジック (AC-7)
+- `plugins/rite/commands/pr/cleanup.md` Phase 2.5: 自動削除ロジック (AC-7: review result files + fix retry state file の両方を削除)
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
 - `.gitignore`: `.rite/review-results/` 除外設定
