@@ -168,6 +168,21 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
 
 **Compatibility**: 既存の `pr_number` 単体挙動および引数なし挙動は一切変更されない。本 Phase は引数形式の判定のみを行い、Phase 1.1/1.2 の既存ロジックにはフラグ (`{target_comment_id}` の有無) を渡すだけである。
 
+#### 1.0.1 `--review-file <path>` Flag Parsing (#443)
+
+`/rite:pr:fix --review-file <path>` を受け付けるため、以下の手順で `{review_file_path}` を抽出する。Phase 1.2 のハイブリッド読取ロジック (Priority 0: 明示指定) で参照される。
+
+**抽出手順**:
+
+1. `$ARGUMENTS` から `--review-file` トークンを検索する
+2. 見つかった場合、直後のトークンを `{review_file_path}` として抽出する (POSIX スタイル: `--review-file path/to/file.json`)
+3. `--review-file=path/to/file.json` 形式 (GNU-long-option style) も受け付ける (`=` で split)
+4. 見つからなかった場合、`{review_file_path} = null` を **explicit set** する (undefined 参照防止)
+
+**Validation**: この Phase では **パスの存在確認は行わない**。存在確認は Phase 1.2 のハイブリッド読取ロジック Priority 0 で実施し、失敗時は対話式 fallback に誘導する (AC-6 の Error Handling に従う、[review-result-schema.md](../../references/review-result-schema.md#エラーハンドリング) 参照)。
+
+**Compatibility**: `--review-file` を使わない既存呼び出し (`/rite:pr:fix 123` 等) は一切挙動変更なし。本フラグは Phase 1.2 冒頭の読取優先順位決定にのみ影響する。
+
 ### 1.1 Identify the PR
 
 After Phase 1.0 has extracted `{pr_number}` (and optionally `{target_comment_id}`), retrieve repository information:
@@ -220,6 +235,121 @@ Terminate processing.
 Terminate processing.
 
 ### 1.2 Retrieve Review Comments
+
+#### 1.2.0 Hybrid Review Source Resolution (#443)
+
+> **⚠️ MANDATORY**: This sub-phase runs **first** in Phase 1.2, before any of the existing Fast Path / Broad Retrieval branches below. It implements the "会話 > ローカルファイル > PR コメント" priority chain defined in [review-result-schema.md](../../references/review-result-schema.md#読取優先順位-prfix) and sets `{review_source}` to indicate which path was selected. Subsequent sub-sections execute conditionally based on `{review_source}`.
+
+**Priority chain**:
+
+| Priority | Source | Condition | Action |
+|----------|--------|-----------|--------|
+| 0 | `--review-file <path>` (explicit) | `{review_file_path}` set in Phase 1.0.1 | Read and parse the specified file. On failure, go directly to Priority 4 (fallback) |
+| 1 | Conversation context | Same session has a recent `/rite:pr:review` result in context | Use conversation-context findings directly; skip API/file access |
+| 2 | Local JSON file | `.rite/review-results/{pr_number}-*.json` exists | Read latest timestamp file; parse per schema |
+| 3 | PR comment (backward-compat) | PR has `## 📜 rite レビュー結果` comment | Extract Raw JSON from code fence if present; else parse Markdown table (legacy) |
+| 4 | Interactive fallback | None of the above available | `AskUserQuestion` — prompt user for action (Phase 1.2.0.1) |
+
+**Selection logic**:
+
+```bash
+# Priority 0: Explicit --review-file (from Phase 1.0.1)
+if [ -n "${review_file_path:-}" ] && [ "${review_file_path}" != "null" ]; then
+  if [ ! -f "$review_file_path" ]; then
+    echo "エラー: --review-file で指定されたパスが存在しません: $review_file_path" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_MISSING=1; reason=explicit_file_not_found" >&2
+    review_source="fallback"
+  elif ! jq empty "$review_file_path" 2>/dev/null; then
+    echo "エラー: --review-file で指定されたファイルが有効な JSON ではありません: $review_file_path" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_parse" >&2
+    review_source="fallback"
+  else
+    review_source="explicit_file"
+    review_source_path="$review_file_path"
+  fi
+fi
+
+# Priority 1: Conversation context (determined by Claude from conversation history — no bash check needed)
+# If conversation context already contains findings from a recent /rite:pr:review invocation
+# in this session, set review_source="conversation" and skip file/API access.
+# Claude determines this from the conversation context itself (presence of 📜 rite レビュー結果 content).
+
+# Priority 2: Local file — find latest timestamp
+if [ "${review_source:-}" = "" ]; then
+  latest_file=$(ls -1t .rite/review-results/{pr_number}-*.json 2>/dev/null | head -1)
+  if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
+    if jq empty "$latest_file" 2>/dev/null; then
+      review_source="local_file"
+      review_source_path="$latest_file"
+      echo "✅ ローカルファイルからレビュー結果を読み込みます: $latest_file"
+    else
+      echo "WARNING: $latest_file は有効な JSON ではありません。次の優先度のソースを試行します。" >&2
+    fi
+  fi
+fi
+
+# Priority 3: PR comment (fall through to existing Broad Retrieval path if still unresolved)
+if [ "${review_source:-}" = "" ]; then
+  review_source="pr_comment"  # Existing Phase 1.2 Broad Retrieval / Fast Path handles this
+fi
+```
+
+**On Priority 0 failure** (explicit file missing/invalid): `review_source="fallback"` triggers Phase 1.2.0.1 interactive fallback. Do NOT fall through to Priority 1-3 silently when `--review-file` was explicitly requested but unusable — the user's intent was to use that specific file.
+
+**On Priority 2 success**: Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. Instead, parse the JSON file per [review-result-schema.md](../../references/review-result-schema.md#json-schema) and construct `severity_map` directly from `findings[]`:
+
+```bash
+# Build severity_map from JSON findings array
+severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries' "$review_source_path")
+```
+
+**On Priority 3 (PR comment, backward-compat)**: After the existing Broad Retrieval retrieves the comment body, check for a `### 📄 Raw JSON` section with code fence. If present, extract and parse the JSON preferentially over Markdown table parsing:
+
+```bash
+# Extract JSON from code fence inside the rite review comment
+raw_json=$(printf '%s' "$pr_review_comment_body" | awk '/^```json$/{flag=1; next} /^```$/{flag=0} flag')
+if [ -n "$raw_json" ] && printf '%s' "$raw_json" | jq empty 2>/dev/null; then
+  # New format: use JSON directly
+  severity_map_json=$(printf '%s' "$raw_json" | jq -c '[.findings[] | {key: (.file + ":" + (.line | tostring)), value: .severity}] | from_entries')
+else
+  # Legacy format: fall through to existing Markdown table parsing (Phase 1.2.1)
+  :
+fi
+```
+
+**Retain in context**: `{review_source}` (`explicit_file` / `conversation` / `local_file` / `pr_comment` / `fallback`) is used by later phases to log provenance in the fix commit message and work memory.
+
+#### 1.2.0.1 Interactive Fallback (when all sources missing — #443)
+
+When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid), present a 3-option interactive prompt via `AskUserQuestion`:
+
+```
+レビュー結果が見つかりませんでした
+  会話コンテキスト: なし
+  ローカルファイル: .rite/review-results/{pr_number}-*.json なし
+  PR コメント: 該当なし
+
+どうしますか？
+
+オプション:
+- レビュー実行: /rite:pr:review を起動してレビュー結果を生成する
+- ファイルパス指定: 既存の JSON ファイルパスを入力する (Other で自由入力)
+- 中止: /rite:pr:fix の処理を終了する
+```
+
+**Per-option behavior**:
+
+| User Choice | Action |
+|-------------|--------|
+| **レビュー実行** (Recommended) | Invoke `skill: "rite:pr:review", args: "{pr_number}"`, then re-enter Phase 1.2 from the top (priority chain will now find conversation context or newly-created local file) |
+| **ファイルパス指定** | Re-run Phase 1.2.0 Priority 0 with the user-provided path. If invalid, re-prompt (max 3 attempts) |
+| **中止** | Output `[fix:error]` result pattern and terminate. Do NOT invoke any Phase 2+ logic |
+
+**Retry cap for ファイルパス指定**: 3 attempts total (initial + 2 retries). After 3 failures, terminate with `[fix:error]` and log `[CONTEXT] FALLBACK_EXHAUSTED=1; reason=user_file_path_retries`.
+
+#### 1.2 Legacy Branching (PR Comment Path Only)
+
+> **Execution condition**: The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) execute **only** when `{review_source}=pr_comment`. When `{review_source}` is `local_file`, `explicit_file`, or `conversation`, skip directly to Phase 1.3.
 
 **Branch by `{target_comment_id}`** (set in Phase 1.0): Phase 1.2 has two execution paths depending on whether a comment URL was passed. The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) are **h4-level branches within Phase 1.2** and are independent execution paths — they are **not** numbered sub-phases of Phase 1.2.1. The existing `### 1.2.1 Retrieve rite Review Results` is a separate, h3-level sub-phase that runs only when the Broad Comment Retrieval path is taken (i.e. when `{target_comment_id}` is NOT set).
 

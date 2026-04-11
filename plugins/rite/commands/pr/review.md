@@ -94,9 +94,66 @@ Determine the invocation source from the conversation context:
 **Placeholder legend:**
 - `{pr_number}`: PR number (obtained from argument or `gh pr view` result)
 - `{owner}`, `{repo}`: Repository information (obtained via `gh repo view --json owner,name`)
+- `{post_comment_mode}`: Final decision whether to post PR comment (`true`/`false`), computed in Phase 1.0 from flags + config
 - Other `{variable}` formats: Values obtained from command execution results or previous phases
 
 **Note**: All placeholders in this document use `{variable}` format. Unlike Bash shell variable format `${var}`, these are conceptual markers that Claude substitutes with values.
+
+### 1.0 Argument Parsing (Pre-flight) — #443
+
+> **⚠️ MANDATORY**: This sub-phase runs **before** Phase 1.1 `gh pr view` invocation. It parses the command-line flags `--post-comment` / `--no-post-comment` and determines the final `{post_comment_mode}` value that Phase 6.1 will consume. Silent fallthrough is prohibited.
+
+> **Schema reference**: See [review-result-schema.md](../../references/review-result-schema.md) for the full JSON schema and PR comment format contract that Phase 6.1 will produce.
+
+**Supported arguments**:
+
+| Argument | Effect |
+|----------|--------|
+| `<pr_number>` (integer) | PR number (same as existing behavior) |
+| `--post-comment` | Force PR comment posting (overrides config) |
+| `--no-post-comment` | Force skip PR comment posting (overrides config) |
+| (no flag) | Use `rite-config.yml` `pr_review.post_comment` value (default: `false`) |
+
+**Parsing procedure**:
+
+1. **Flag extraction**: Scan `$ARGUMENTS` for `--post-comment` and `--no-post-comment` tokens. Set two boolean flags: `flag_post`, `flag_no_post`.
+
+2. **Conflict check** (AC-8): If `flag_post` AND `flag_no_post` are both `true`, **immediately terminate** with the following error and do NOT execute Phase 1.1 or later:
+
+   ```
+   エラー: --post-comment と --no-post-comment を同時に指定することはできません
+   
+   どちらか一方のみを指定してください。
+   ```
+
+   Output result pattern `[review:error]` and exit.
+
+3. **Config read**: Read `pr_review.post_comment` from `rite-config.yml` (default: `false` if section absent or key missing):
+
+   ```bash
+   # Use sed -n section range extraction to avoid grep -A3 fixed-line limitation (same pattern as start.md Phase 5.0 Step 6)
+   config_post_comment=$(sed -n '/^pr_review:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+     | grep -E '^[[:space:]]+post_comment:' | head -1 | sed 's/#.*//' \
+     | sed 's/.*post_comment:[[:space:]]*//' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+   case "$config_post_comment" in
+     true|yes|1)  config_post_comment="true" ;;
+     false|no|0)  config_post_comment="false" ;;
+     *) config_post_comment="false" ;;  # Default: OFF
+   esac
+   ```
+
+4. **Final decision**: Compute `{post_comment_mode}` per the following precedence:
+
+   | Priority | Condition | `{post_comment_mode}` |
+   |----------|-----------|----------------------|
+   | 1 | `--no-post-comment` specified | `false` (highest priority — overrides config) |
+   | 2 | `--post-comment` specified | `true` |
+   | 3 | `pr_review.post_comment: true` in config | `true` |
+   | 4 | Default | `false` |
+
+5. **Retain in context**: Store `{post_comment_mode}` for Phase 6.1 consumption. This value is the Single Source of Truth for "should this review post a PR comment".
+
+**Note on PR number parsing**: Keep existing Phase 1.1 logic for `{pr_number}` extraction. This sub-phase only adds flag parsing — it does not modify PR number detection.
 
 ### 1.1 Identify the PR
 
@@ -2370,11 +2427,68 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
 Post the review results as a PR comment. Use `mktemp` + `--body-file` to safely handle markdown content.
 
-Phase 6 failure reasons: (`tmpfile_write_failure`)
+**Issue #443 changes**: This phase now performs **two independent outputs**:
+1. **Local JSON file save** (always, even when `{post_comment_mode}=false`)
+2. **PR comment post** (only when `{post_comment_mode}=true` from Phase 1.0)
+
+Phase 6 failure reasons:
 
 | reason | Description |
 |--------|-------------|
 | `tmpfile_write_failure` | Review result heredoc write to tmpfile failed |
+| `local_save_failure` | `.rite/review-results/*.json` save failed — **WARNING only, do NOT fail Phase 6** (per 4.4 MUST NOT: "ローカルファイル保存失敗時に pr:review 全体を失敗扱いにしない") |
+
+#### 6.1.a Local JSON File Save (Always Executed — #443)
+
+Save review results as a timestamped JSON file per [review-result-schema.md](../../references/review-result-schema.md). This is executed **regardless** of `{post_comment_mode}` so that `/rite:pr:fix` can read results via the local-file path.
+
+```bash
+# Generate timestamp in JST (ISO 8601 for JSON body; compact form for filename)
+iso_timestamp=$(date -u -d '+9 hours' +'%Y-%m-%dT%H:%M:%S+09:00' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%S%z')
+file_timestamp=$(date -u -d '+9 hours' +'%Y%m%d%H%M%S' 2>/dev/null || date +'%Y%m%d%H%M%S')
+review_results_dir=".rite/review-results"
+json_path="${review_results_dir}/{pr_number}-${file_timestamp}.json"
+
+# Create directory (MUST NOT fail Phase 6 if creation fails)
+if ! mkdir -p "$review_results_dir" 2>/dev/null; then
+  echo "WARNING: .rite/review-results/ ディレクトリの作成に失敗しました。会話コンテキストのみで続行します。" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mkdir_failure" >&2
+  json_saved="false"
+else
+  # Write JSON file atomically via tmpfile + mv
+  json_tmp=$(mktemp /tmp/rite-review-json-XXXXXX.json) || {
+    echo "WARNING: JSON 一時ファイルの作成に失敗しました" >&2
+    echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mktemp_failure" >&2
+    json_saved="false"
+  }
+  if [ -n "$json_tmp" ]; then
+    if printf '%s' '{review_result_json}' > "$json_tmp" 2>/dev/null && [ -s "$json_tmp" ]; then
+      if mv "$json_tmp" "$json_path" 2>/dev/null; then
+        echo "✅ レビュー結果を保存しました: $json_path"
+        json_saved="true"
+      else
+        echo "WARNING: JSON ファイルの配置に失敗しました ($json_path)" >&2
+        rm -f "$json_tmp"
+        echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mv_failure" >&2
+        json_saved="false"
+      fi
+    else
+      echo "WARNING: JSON 一時ファイルへの書き込みに失敗しました" >&2
+      rm -f "$json_tmp"
+      echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
+      json_saved="false"
+    fi
+  fi
+fi
+```
+
+**Placeholder**: `{review_result_json}` is the JSON-serialized review result conforming to [review-result-schema.md](../../references/review-result-schema.md). Claude must construct this from Phase 5 integrated results with the following required fields: `schema_version: "1.0"`, `pr_number`, `timestamp` (ISO 8601 JST), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding must have `id`, `reviewer`, `category`, `severity`, `file`, `line`, `description`, `suggestion`, `status: "open"`.
+
+**Non-blocking contract** (4.4 MUST NOT / AC-1 compliance): If local save fails for any reason, `/rite:pr:review` MUST NOT fail — it logs a WARNING and proceeds. The review results remain available via conversation context for immediate `/rite:pr:fix` invocation.
+
+#### 6.1.b PR Comment Post (Conditional on `{post_comment_mode}` — #443)
+
+Execute this sub-phase **only when** `{post_comment_mode}=true` from Phase 1.0. When `{post_comment_mode}=false`, skip this entire sub-phase.
 
 ```bash
 tmpfile=$(mktemp)
@@ -2383,6 +2497,14 @@ if ! cat <<'EOF' > "$tmpfile"
 ## 📜 rite レビュー結果
 
 {review_result_content}
+
+---
+
+### 📄 Raw JSON
+
+```json
+{review_result_json}
+```
 
 ---
 🤖 Generated by `/rite:pr:review`
@@ -2398,6 +2520,18 @@ gh pr comment {pr_number} --body-file "$tmpfile"
 **Note**: Using `--body-file` with a temp file eliminates escaping issues and avoids shell variable expansion risks.
 
 **Note**: `{review_result_content}` uses the integrated report generated in Phase 5.4 (template based on `review_mode`). The `📎 reviewed_commit: {current_commit_sha}` at the end of the report is used in the verification mode of the next cycle, so it must always be included.
+
+**Note on Raw JSON section** (#443): The `### 📄 Raw JSON` section embeds the same JSON as saved to the local file (Phase 6.1.a). This enables `/rite:pr:fix` to extract the JSON via regex `` ```json\n([\s\S]+?)\n``` `` for the PR comment fallback path (Priority 3 in [review-result-schema.md](../../references/review-result-schema.md#読取優先順位-prfix)). The existing Markdown table format is preserved above the Raw JSON section for human readability and backward compatibility with older fix-loop parsing logic.
+
+#### 6.1.c Skip Notification (when `{post_comment_mode}=false`)
+
+When `{post_comment_mode}=false`, inform the user that PR comment posting was skipped (for observability — this is not an error):
+
+```
+ℹ️  PR コメント記録はスキップされました (pr_review.post_comment=false)
+  ローカルファイル: .rite/review-results/{pr_number}-{file_timestamp}.json
+  コメント記録を有効化するには --post-comment フラグまたは rite-config.yml で pr_review.post_comment: true を設定してください
+```
 
 ### 6.1.1 Update Work Memory Phase
 

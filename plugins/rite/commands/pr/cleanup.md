@@ -973,6 +973,7 @@ Aggregate the following at the point when Phase 1.7.3 processing is complete:
 2.2 Pull Latest Default Branch
 2.3 Delete Local Branch
 2.4 Check and Delete Remote Branch
+2.5 Delete Review Result Local Files (#443)
 ```
 
 ### 2.1 Switch to Default Branch
@@ -1055,7 +1056,41 @@ git push origin --delete {branch_name}
 ```
 
 **Note**: If GitHub is configured to automatically delete branches on PR merge, the branch may already be deleted.
-Ignore remote branch deletion errors and proceed to Phase 3.
+Ignore remote branch deletion errors and proceed to Phase 2.5.
+
+### 2.5 Delete Review Result Local Files (#443)
+
+Delete `.rite/review-results/{pr_number}-*.json` files associated with the merged PR. This complements the opt-in PR comment recording feature introduced in Issue #443 — see [review-result-schema.md](../references/review-result-schema.md#クリーンアップ) for the contract.
+
+**Safety constraints**:
+
+- **PR 番号 prefix 固定**: wildcard は必ず `{pr_number}-` で始まるパターンのみを許容する。`*.json` 単独や `.rite/review-results/*` など、他 PR のファイルを巻き込む形式は**絶対に使わない**
+- **Non-blocking**: ファイルが存在しない / `rm` が失敗しても cleanup 全体を失敗扱いにしない (`|| true` で吸収)
+- **Idempotent**: すでに削除済み / 存在しない場合でも警告を出さずに続行する
+
+```bash
+review_results_dir=".rite/review-results"
+if [ -d "$review_results_dir" ]; then
+  # 削除前にマッチ数をカウント (bash glob は no-match でリテラル文字列を返すため、shopt nullglob 相当の処理を明示的に実施)
+  matched_files=()
+  for f in "$review_results_dir"/{pr_number}-*.json; do
+    [ -e "$f" ] && matched_files+=("$f")
+  done
+  if [ ${#matched_files[@]} -gt 0 ]; then
+    rm -f "${matched_files[@]}" 2>/dev/null || true
+    echo "✅ レビュー結果ファイルを削除しました: ${#matched_files[@]} 件 (PR #{pr_number})"
+  else
+    echo "ℹ️  削除対象のレビュー結果ファイルはありません (PR #{pr_number})"
+  fi
+else
+  # Directory absent → nothing to clean up; silent no-op
+  :
+fi
+```
+
+**Placeholder**: `{pr_number}` はマージされた PR の番号。Phase 1.2 で取得済みの値を再利用する。
+
+**Why this is Phase 2.5 and not Phase 3**: ローカルファイル削除はブランチ削除と同じ「ローカル artifact のクリーンアップ」カテゴリに属するため、Phase 2 (Cleanup Execution) の一部として配置する。Phase 3 (Projects Status Update) はリモート状態の更新であり責務が異なる。
 
 ---
 
