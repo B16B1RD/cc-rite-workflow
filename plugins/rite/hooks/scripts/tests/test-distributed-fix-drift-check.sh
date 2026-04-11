@@ -174,7 +174,9 @@ EOF
 
 out=$("$SCRIPT" --pattern 2 --target "$P2_FIXTURE" 2>&1)
 p2_only_count=$(grep -c '^\[drift\]\[P2\]' <<< "$out")
-non_p2_count=$(grep -E '^\[drift\]\[P[^2]\]' <<< "$out" | wc -l)
+# Use grep -cE for consistency with the other 7 grep -c sites in this file
+# (avoids `grep | wc -l` pipe and matches the established pattern).
+non_p2_count=$(grep -cE '^\[drift\]\[P[^2]\]' <<< "$out")
 assert_ge "--pattern 2 outputs >=1 P2 finding" 1 "$p2_only_count"
 assert "--pattern 2 outputs no non-P2 findings" "0" "$non_p2_count"
 
@@ -199,7 +201,18 @@ out=$("$SCRIPT" --repo-root "$ALL_DIR" --all 2>&1)
 rc=$?
 assert "--all + --repo-root exits 1 (drift detected in default target)" "1" "$rc"
 all_p3_count=$(grep -c '^\[drift\]\[P3\]' <<< "$out")
-assert_ge "--all expansion + --repo-root chdir detect P3 drift" 1 "$all_p3_count"
+# Discriminator: synthetic fix.md contains EXACTLY 1 P3 trigger (the heredoc
+# fixture above). The real `plugins/rite/commands/pr/fix.md` has multiple P3
+# findings, so an `assert_ge ... 1` would still PASS even if `--repo-root`
+# silently no-op'd and the script ran against the real file. Asserting "exactly
+# 1" lets the test fail when chdir regression occurs.
+assert "--all + --repo-root: exactly 1 P3 from synthetic target (chdir guard)" "1" "$all_p3_count"
+# Path discriminator: the [drift] line should reference fix.md as a relative
+# path (the script chdirs to --repo-root before checking). Both synthetic and
+# real targets share the same relative path, so this asserts the broad shape
+# rather than the absolute location.
+all_p3_path_count=$(grep -c '^\[drift\]\[P3\] plugins/rite/commands/pr/fix.md:' <<< "$out")
+assert_ge "--all + --repo-root: drift line references fix.md by relative path" 1 "$all_p3_path_count"
 
 # --- Summary -----------------------------------------------------------------
 echo
