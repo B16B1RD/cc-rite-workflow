@@ -387,6 +387,7 @@ if ! target_author=$(printf '%s' "$target_comment" | jq -r '.user.login // empty
   echo "エラー: コメント #{target_comment_id} の author 抽出に失敗しました" >&2
   echo "詳細: $(cat "$jq_err")" >&2
   echo "対処: jq バージョン (jq --version) と gh api の生レスポンスを確認してください" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=jq_author_extract_failed" >&2
   exit 1
 fi
 
@@ -464,14 +465,14 @@ trap '_rite_fix_blockB_cleanup; _rite_fix_blockB_invalidate_upstream; exit 129' 
 if [ ! -s "$raw_json" ]; then
   echo "エラー: Block A の raw JSON 一時ファイルが存在しないか空です: $raw_json" >&2
   echo "  Block A が失敗しているか、並列実行で削除された可能性があります" >&2
-  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=raw_json_missing_at_blockB" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=raw_json_missing_at_block_b" >&2
   _rite_fix_blockB_invalidate_upstream
   exit 1
 fi
 
 jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
   echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
-  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_jq_blockB" >&2
+  echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_jq_block_b" >&2
   _rite_fix_blockB_invalidate_upstream
   exit 1
 }
@@ -561,7 +562,7 @@ if [ ! -s "$intermediate_body" ] || [ ! -f "$intermediate_author" ] || [ ! -s "$
   echo "  body=$intermediate_body ($([ -s "$intermediate_body" ] && echo ok || echo empty_or_missing))" >&2
   echo "  author=$intermediate_author ($([ -f "$intermediate_author" ] && echo ok || echo missing))" >&2
   echo "  skip=$intermediate_skip ($([ -s "$intermediate_skip" ] && echo ok || echo empty_or_missing))" >&2
-  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=intermediate_missing_at_blockC" >&2
+  echo "[CONTEXT] FASTPATH_HANDOFF_FAILED=1; reason=intermediate_missing_at_block_c" >&2
   exit 1
 fi
 
@@ -3053,8 +3054,13 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 | `reply_tmpfile_empty` | Phase 2.4 | reply body の tmpfile が cat 成功だが空 |
 | `script_exit_` | Phase 4.3.4 | Issue 作成スクリプトが非ゼロ exit code で終了 (suffix は実測 exit code) |
 | `wc_io_error` | Phase 1.3 | `wc -l` が IO エラーで失敗 |
+| `raw_json_write_failed` | Phase 1.2 Fast Path Block A | Block A の raw JSON 中間ファイル (`/tmp/rite-fix-raw-{pr}-{cid}.json`) への printf 書き出しが IO エラーで失敗 (Issue #390) |
+| `jq_author_extract_failed` | Phase 1.2 Fast Path Block A | Block A の `jq -r '.user.login // empty'` が exit != 0 で失敗 (jq バイナリ異常 / OOM / parse error) |
+| `raw_json_missing_at_block_b` | Phase 1.2 Fast Path Block B | Block B 進入時に Block A の raw JSON 中間ファイルが存在しない or 空 (Block A 失敗 / 並列実行で削除 / orchestrator 異常終了で Block B 未到達) |
+| `mktemp_failed_jq_block_b` | Phase 1.2 Fast Path Block B | Block B の jq stderr 退避用 tempfile の mktemp が失敗 |
+| `intermediate_missing_at_block_c` | Phase 1.2 Fast Path Block C | Block C 進入時に Block A/B が作成したはずの intermediate ファイル (body/author/skip) が存在しない or 空 |
 
-> **全 reason 値の完全列挙** (drift-check P5 用): (`base_branch_grep_io_error` / `branch_grep_io_error` / `cat_redirection_failed` / `current_body_empty` / `empty_stdout` / `gh_api_comments_fetch_failed` / `issue_number_not_found` / `jq_comment_id_extract_failed` / `jq_current_body_extract_failed` / `missing_issue_url` / `mktemp_failed_base_branch_grep_err` / `mktemp_failed_body_tmp` / `mktemp_failed_branch_grep_err` / `mktemp_failed_diff_stderr_tmp` / `mktemp_failed_files_tmp` / `mktemp_failed_gh_api_err` / `mktemp_failed_history_tmp` / `mktemp_failed_issue_body_tmpfile` / `mktemp_failed_jq_late_err` / `mktemp_failed_override_err` / `mktemp_failed_pr_body_grep_err` / `mktemp_failed_pr_body_tmp` / `mktemp_failed_reply_tmpfile` / `mktemp_failed_report_tmpfile` / `mktemp_failed_sed_err` / `mktemp_failed_tmpfile` / `paste_io_error` / `patch_failed` / `pr_body_grep_io_error` / `pr_body_tmp_empty_or_missing` / `pr_number_mismatch` / `python_sentinel_detected` / `python_unexpected_exit_` / `reply_tmpfile_empty` / `script_exit_` / `sed_extract_base_branch_failed` / `wc_io_error` / `wm_body_empty_or_too_short` / `wm_body_too_small` / `wm_header_missing`)
+> **全 reason 値の完全列挙** (drift-check P5 用): (`base_branch_grep_io_error` / `branch_grep_io_error` / `cat_redirection_failed` / `current_body_empty` / `empty_stdout` / `gh_api_comments_fetch_failed` / `intermediate_missing_at_block_c` / `issue_number_not_found` / `jq_author_extract_failed` / `jq_comment_id_extract_failed` / `jq_current_body_extract_failed` / `missing_issue_url` / `mktemp_failed_base_branch_grep_err` / `mktemp_failed_body_tmp` / `mktemp_failed_branch_grep_err` / `mktemp_failed_diff_stderr_tmp` / `mktemp_failed_files_tmp` / `mktemp_failed_gh_api_err` / `mktemp_failed_history_tmp` / `mktemp_failed_issue_body_tmpfile` / `mktemp_failed_jq_block_b` / `mktemp_failed_jq_late_err` / `mktemp_failed_override_err` / `mktemp_failed_pr_body_grep_err` / `mktemp_failed_pr_body_tmp` / `mktemp_failed_reply_tmpfile` / `mktemp_failed_report_tmpfile` / `mktemp_failed_sed_err` / `mktemp_failed_tmpfile` / `paste_io_error` / `patch_failed` / `pr_body_grep_io_error` / `pr_body_tmp_empty_or_missing` / `pr_number_mismatch` / `python_sentinel_detected` / `python_unexpected_exit_` / `raw_json_missing_at_block_b` / `raw_json_write_failed` / `reply_tmpfile_empty` / `script_exit_` / `sed_extract_base_branch_failed` / `wc_io_error` / `wm_body_empty_or_too_short` / `wm_body_too_small` / `wm_header_missing`)
 
 **`[fix:pushed-wm-stale]` の caller 側 semantics**: `/rite:issue:start` review-fix loop は本 pattern を受け取った場合、push 自体は完了しているが work memory が stale であることを認識し、次のいずれかを実行する: (a) 手動介入を促す (推奨)、(b) 警告ログを出した上で次の iteration に進む (loop 継続)。silent に `[fix:pushed]` 扱いしてはならない。
 
