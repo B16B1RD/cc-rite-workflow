@@ -378,7 +378,9 @@ YAML パーサーの仕様により `count_ratio_threshold: "0.7"` (quoted strin
 # Doc file patterns — kept in sync across 3 files (tech-writer.md Activation / this file Phase 1.2.7 /
 # SKILL.md Reviewers table tech-writer row). 等価性の **invariant 定義と drift 検出ルール**は
 # `commands/pr/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
-# (3 ファイル等価性)」に集約されている。drift 検出 lint は Issue #353 で追跡中。
+# (3 ファイル等価性)」に集約されている。drift 検出 lint は
+# `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として実装済み
+# (Issue #353 系統 1; /rite:lint Phase 3.7 から呼び出される)。
 # Do not duplicate the invariant rules here — update internal-consistency.md instead.
 doc_file_patterns = [
   **/*.md   (excluding commands/**/*.md, skills/**/*.md, agents/**/*.md),
@@ -741,7 +743,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
 
 1. **tech-writer 必須昇格**: Phase 2.2 で tech-writer が候補に含まれている場合、その selection_type を現在値 (`detected` / `recommended` のいずれか) から `mandatory` に昇格する (昇格パスは Phase 3.2 selection_type と同じ語彙: `detected → recommended → mandatory`)。含まれていない場合は mandatory として新規追加する
    - **到達可能性 note**: doc_heavy_pr = true でかつ tech-writer が候補にないケースは、tech-writer.md Activation と review.md `doc_file_patterns` の集合等価性が保たれている限り発生しない。しかし将来両者が drift する可能性に備え、新規追加経路を残す (防御的フォールバック)
-   - **TODO(#353)**: 両ファイルの Activation patterns 等価性を CI/lint で自動検証する test は未整備。drift 検出 lint の追加は Issue #353 で追跡中 (過去に SKILL.md と review.md / tech-writer.md の drift が発生した実例に基づく)
+   - **自動検証 (Issue #353 系統 1)**: 両ファイルの Activation patterns 等価性は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` で自動検証される (/rite:lint Phase 3.7 から呼び出し)。SKILL.md Reviewers テーブルの tech-writer 行も同検証対象に含まれる (3 ファイル集合等価性)。過去に SKILL.md と review.md / tech-writer.md の drift が発生した実例に基づき実装
 2. **code-quality co-reviewer 条件付き追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。**ただし純粋散文 (README 文言修正のみ等) PR で空所見の reviewer がトリガーされノイズ化することを防ぐため、Phase 2.3 「Code block detection in `.md` files」と同じスキャンロジックを再利用し、diff 内に fenced code block (` ```bash `, ` ```yaml `, ` ```python ` 等) が検出された場合のみ追加する**。
 
    **scan ロジック** (Phase 2.3 と **同じ fenced code block 検出正規表現** (`^\+[[:space:]]*` + tagged fence `` ``` `` + 言語 tag) を使う。ただし **scope は異なる** — Phase 2.2.1 は Doc-Heavy PR の性質上 `*.md` 全体を scan 対象とするのに対し、Phase 2.3 の Code block detection は Prompt Engineer の Activation patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) のみを scan 対象とする。さらに Phase 2.3 が untyped fence ` ``` ` も検出するのに対し、本 Phase 2.2.1 では tagged fence のみに限定する。理由は本 phase が code-quality 追加判定の先取りであり、untyped fence は Phase 2.3 で同じ目的を達成するため。CHANGELOG の "fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.)" 文言とも一致):
@@ -899,7 +901,8 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
       ```
       ERROR: tech-writer.md の `## Doc-Heavy PR Mode (Conditional)` セクションから {doc_heavy_mode_instructions} を抽出しましたが、必須キーワード {missing_keywords} が含まれていません。
       tech-writer.md の章立てが過去のバージョンから drift しているため、Phase 5.1.3 Step 2 (件数非依存 META check) が silent fail する恐れがあります。
-      Action: tech-writer.md の `## Doc-Heavy PR Mode (Conditional)` セクション全体を確認し、必須サブセクションが含まれているか検証してください。drift 検出 lint は Issue #353 で追跡中。
+      Action: tech-writer.md の `## Doc-Heavy PR Mode (Conditional)` セクション全体を確認し、必須サブセクションが含まれているか検証してください。
+      Note: 本 drift は Issue #353 系統 2 (canonical category name literal match) に分類される。Issue #353 系統 1 (doc_file_patterns 集合等価性) の drift lint `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` はこの章立て drift は検出しない。章立て drift の自動検出は将来 Issue で追跡。
       ```
    2. **Retained flag set**: `doc_heavy_post_condition = "error"` を context に明示保持。Phase 5.4 表示でこの値を `error: tech-writer.md の章立て drift により protocol 未伝達 (missing: {missing_keywords})` として表示する
    3. **Overall assessment 強制昇格**: Phase 5 で計算される overall assessment を `修正必要` に強制 set する (本来 `マージ可` だった場合でも override する)。これにより e2e flow の review-fix loop が必ず再実行される
