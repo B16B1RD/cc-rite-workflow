@@ -1058,13 +1058,18 @@ git push origin --delete {branch_name}
 **Note**: If GitHub is configured to automatically delete branches on PR merge, the branch may already be deleted.
 Ignore remote branch deletion errors and proceed to Phase 2.5.
 
-### 2.5 Delete Review Result Local Files (#443)
+### 2.5 Delete Review Result Local Files and Fix State Files (#443, #450)
 
-Delete `.rite/review-results/{pr_number}-*.json` files associated with the merged PR. This complements the opt-in PR comment recording feature introduced in Issue #443 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract.
+Delete two categories of PR-specific local artifacts associated with the merged PR:
+
+1. **Review result files**: `.rite/review-results/{pr_number}-*.json` (Issue #443 で導入された opt-in PR コメント記録機能の補完 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract)
+2. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count` (PR #450 verified-review C-2 で追加 — fix.md Phase 1.2.0.1 Interactive Fallback の retry hard gate state file。PR がマージされた時点でその PR 用の retry counter は不要になる)
+
+> **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で設計されており、trap は block 外に伝播しない。block 末尾で trap を restore する必要はない (PR #450 verified-review M-14 対応)。
 
 **Safety constraints**:
 
-- **PR 番号 prefix 固定**: wildcard は必ず `{pr_number}-` で始まるパターンのみを許容する。`*.json` 単独や `.rite/review-results/*` など、他 PR のファイルを巻き込む形式は**絶対に使わない**
+- **PR 番号 prefix 固定**: wildcard は必ず `{pr_number}-` で始まるパターンのみを許容する。`*.json` 単独や `.rite/review-results/*`、`.rite/state/*` など、他 PR のファイルを巻き込む形式は**絶対に使わない**。state file は specific path (`{pr_number}.count` 完全一致) で削除する
 - **Non-blocking**: ファイルが存在しない場合は warning なしで continue。`rm` 失敗 (permission denied / IO error) は WARNING + `[CONTEXT]` 表示して可視化 (silent 抑制しない)
 - **Idempotent**: すでに削除済み / 存在しない場合は WARNING / ERROR なしで続行する (情報用 INFO メッセージ `ℹ️  削除対象のレビュー結果ファイルはありません` は dir 存在 + マッチ 0 件経路で出力される場合がある。dir 不在経路では完全 silent)
 
@@ -1072,9 +1077,11 @@ Delete `.rite/review-results/{pr_number}-*.json` files associated with the merge
 
 | reason | Description |
 |--------|-------------|
-| `rm_failure` | `rm -f` コマンドが permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
+| `rm_failure` | review result `rm -f` コマンドが permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
+| `state_file_rm_failure` | fix retry state file の `rm -f` が permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
+| `mktemp_failure_rm_err` | `rm` の stderr 退避用 tempfile の mktemp が失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`rm_failure`)
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`mktemp_failure_rm_err` / `rm_failure` / `state_file_rm_failure`)
 
 ```bash
 # signal-specific trap (rm_err tempfile の orphan 防止)
@@ -1098,9 +1105,15 @@ if [ -d "$review_results_dir" ]; then
   done
   if [ ${#matched_files[@]} -gt 0 ]; then
     # rm の stderr を tempfile に退避し、失敗時に可視化する (silent failure 禁止)
-    rm_err=$(mktemp /tmp/rite-cleanup-rm-err-XXXXXX) || rm_err=""
+    # PR #450 verified-review M-6 対応: mktemp 失敗を silent 抑制せず WARNING で可視化する
+    if ! rm_err=$(mktemp /tmp/rite-cleanup-rm-err-XXXXXX); then
+      echo "WARNING: rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+      echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err; pr=${pr_number}" >&2
+      echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+      rm_err=""
+    fi
     if rm -f "${matched_files[@]}" 2>"${rm_err:-/dev/null}"; then
-      echo "✅ レビュー結果ファイルを削除しました: ${#matched_files[@]} 件 (PR #${pr_number})"
+      echo "✅ レビュー結果ファイルを削除しました: ${#matched_files[@]} 件 (PR #${pr_number})" >&2
     else
       rm_rc=$?
       echo "WARNING: 一部のレビュー結果ファイル削除に失敗 (PR #${pr_number}, rc=$rm_rc)" >&2
@@ -1111,13 +1124,30 @@ if [ -d "$review_results_dir" ]; then
       echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
     fi
     # trap による cleanup が signal 時の保護を担当するが、正常経路でも即時 rm で tempfile lifetime を短縮
-    [ -n "$rm_err" ] && rm -f "$rm_err" && rm_err=""
+    [ -n "$rm_err" ] && rm -f "$rm_err"
+    rm_err=""
   else
-    echo "ℹ️  削除対象のレビュー結果ファイルはありません (PR #${pr_number})"
+    echo "ℹ️  削除対象のレビュー結果ファイルはありません (PR #${pr_number})" >&2
   fi
 else
   # Directory absent → nothing to clean up; silent no-op
   :
+fi
+
+# PR #450 verified-review C-2 対応: fix retry state file の削除
+# specific path 必須 ({pr_number} 完全一致、wildcard glob 禁止)。
+# fix.md Phase 1.2.0.1 Interactive Fallback の retry hard gate state file は
+# PR がマージされた時点で不要になるため、Phase 2.5 で同時に削除する。
+state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
+if [ -f "$state_file" ]; then
+  if rm -f "$state_file"; then
+    echo "✅ fix retry state file を削除しました: $state_file" >&2
+  else
+    rm_state_rc=$?
+    echo "WARNING: fix retry state file の削除に失敗 (PR #${pr_number}, rc=$rm_state_rc): $state_file" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_file_rm_failure; pr=${pr_number}" >&2
+    echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
+  fi
 fi
 ```
 

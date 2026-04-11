@@ -26,6 +26,16 @@
 
 詳細は fix.md Phase 1.2.0 Hybrid Review Source Resolution の Priority 0 / Priority 2 selection logic bash block を参照。
 
+### Legacy `"1.0"` の deprecation path (PR #450 verified-review M-12 対応)
+
+旧形式 `"1.0"` (semver `MAJOR.MINOR` のみ) は以下の経緯で legacy エイリアスとして受理されている:
+
+- **背景**: Issue #443 初期実装で `"1.0"` を採用し、その直後の PR で `"1.0.0"` (semver `MAJOR.MINOR.PATCH`) に変更した。既に `.rite/review-results/` 下に書かれていた `"1.0"` ファイルとの互換性のため両方受理する経過措置を入れた。
+- **Drop 予定**: rite plugin の **次の major release (v2.0)** で `"1.0"` 受理を削除する。それまでの間は `"1.0.0"` と完全に等価として扱う (両形式の semantic 差は無い)。
+- **新規生成は禁止**: `/rite:pr:review` Phase 6.1.a の JSON heredoc body は **必ず `"1.0.0"`** で出力する。`"1.0"` を新規に書き込むコードは実装上存在しない (Claude の literal substitute ミスがあれば fix.md Phase 1.2.0 の Priority 0/2 で `case` 文末に流れて検出される)。
+- **読み取り箇所の同期**: `"1.0"` を受理する箇所は fix.md Phase 1.2.0 Priority 0 / Priority 2 / Priority 3 の 3 case 文。これらすべてで同時に削除する必要があるため、削除時は `grep -n '"1.0"|"1.0"' plugins/rite/commands/pr/fix.md` で全箇所を確認する。
+- **削除後の挙動**: `"1.0"` を読もうとした場合、`*) ` 分岐に流れて `local_file_schema_version_unknown` / `pr_comment_schema_version_unknown` / `explicit_file_schema_version_unknown` のいずれかが emit される。これにより silent regression なく経路が変わる。
+
 ## JSON Schema
 
 ```json
@@ -68,7 +78,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、ゼロパディング 2 桁、レビュー内ユニークの連番。例: `F-01`, `F-02`, ..., `F-10`, `F-99`) |
+| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、**最小 2 桁ゼロパディングの可変長連番**。99 件以下: `F-01`〜`F-99` (常に 2 桁固定)。100 件以上の場合: `F-100`, `F-101`, ... のように 3 桁以上に成長する。zero-padding は 2 桁を最小として保持。レビュー内ユニーク。**設計指針** (PR #450 verified-review M-11 対応): 99 件超のレビューは finding 過多のため通常は分割レビュー推奨だが、schema は数値的上限を設けない。fix.md Phase 1.2 best-effort parser や severity_map は文字列キー比較なので桁数差は問題にならない) |
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`) |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | string | ✅ | 重要度 (`CRITICAL` / `HIGH` / `MEDIUM` / `LOW`) |
