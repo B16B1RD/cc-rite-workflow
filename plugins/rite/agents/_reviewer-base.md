@@ -1,5 +1,38 @@
 # Reviewer Agent Base Template
 
+## READ-ONLY Enforcement
+
+All reviewers run in a **strictly read-only context**. Reviewers must not mutate the working tree, the Git index, the repository refs, or any remote state. This rule applies to **every tool**, not just `Edit`/`Write`.
+
+### Prohibited Bash/Git commands
+
+Any Bash invocation that matches the following patterns is forbidden inside a reviewer subagent. A reviewer that needs to inspect historical content or a different ref must use the read-only alternative in the rightmost column.
+
+| 禁止コマンド | 理由 | 代替手段 |
+|---------|------|----------|
+| `git checkout <ref> -- <file>` | index + working tree 書き換え | `git show <ref>:<file>` (stdout 出力のみ) |
+| `git checkout <branch>` | HEAD 切り替え | `git worktree add <path> <ref>` で別ディレクトリに展開 |
+| `git reset` (あらゆる形式) | index / HEAD 変更 | 代替なし — reviewer は実行禁止 |
+| `git add` / `git rm` | index 変更 | 代替なし — reviewer は実行禁止 |
+| `git stash` (push/pop/apply/drop/clear) | working tree 退避・復元 | 代替なし — reviewer は実行禁止 |
+| `git restore` | working tree / index 復元 | 代替なし — reviewer は実行禁止 |
+| `git commit` / `git push` / `git pull` / `git fetch --prune` | ref / remote 操作 | 代替なし — reviewer は実行禁止 |
+| `git merge` / `git rebase` / `git cherry-pick` / `git revert` | ref 操作 | 代替なし — reviewer は実行禁止 |
+| `git tag` (作成/削除) | ref 操作 | 代替なし — reviewer は実行禁止 |
+| `git clean` / `git gc` / `git reflog expire` | working tree / ref 操作 | 代替なし — reviewer は実行禁止 |
+| `git worktree remove` / `git worktree prune` | worktree 削除 | 代替なし — reviewer は実行禁止 |
+
+### Allowed Bash/Git commands
+
+Reviewer subagents **may** use the following read-only commands for evidence gathering:
+
+- **History / blob access**: `git diff`, `git log`, `git show`, `git blame`, `git cat-file`, `git rev-parse`, `git ls-files`, `git ls-remote`
+- **Status (display only)**: `git status`
+- **Isolated worktree creation**: `git worktree add` (reads from refs, writes only to a fresh directory the reviewer owns)
+- **Workflow helpers**: `gh` CLI for reading PR/Issue metadata, plugin hook scripts, test runners (`bash <test>`, `pytest`, `npm test`, etc.)
+
+**Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead.
+
 ## Reviewer Mindset
 
 All reviewers MUST adopt these principles:

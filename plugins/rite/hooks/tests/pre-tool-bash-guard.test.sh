@@ -54,6 +54,21 @@ run_guard_raw() {
   return $rc
 }
 
+# Helper: run hook with an explicit transcript_path (reviewer subagent tests)
+# Issue #442: Pattern 4 only activates when transcript_path contains "/subagents/".
+run_guard_with_transcript() {
+  local tool_name="$1"
+  local cmd="$2"
+  local transcript="$3"
+  local rc=0
+  local output
+  output=$(jq -n --arg tn "$tool_name" --arg cmd "$cmd" --arg tp "$transcript" \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+
 echo "=== pre-tool-bash-guard.sh tests ==="
 echo ""
 
@@ -368,6 +383,189 @@ if [ "$decision" = "deny" ]; then
   pass "Multiline: glob * matches across newlines"
 else
   fail "Expected deny for multiline command, got decision=$decision"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# Pattern 4: Reviewer subagent state-mutating git denylist (Issue #442)
+#
+# Scope: Only when transcript_path contains "/subagents/".
+# Main session git operations must continue to work.
+# --------------------------------------------------------------------------
+
+SUBAGENT_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/subagents/agent-abc123.jsonl"
+MAIN_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/main.jsonl"
+
+# --------------------------------------------------------------------------
+# TC-022: Reviewer subagent + git checkout <ref> -- <file> → deny
+# --------------------------------------------------------------------------
+echo "TC-022: reviewer subagent + 'git checkout develop -- file' → deny"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git checkout develop -- plugins/rite/hooks/pre-tool-bash-guard.sh" "$SUBAGENT_TRANSCRIPT") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "reviewer subagent 'git checkout -- file' blocked"
+else
+  fail "Expected deny with reviewer-state-mutating-git, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "stderr log recorded reviewer-state-mutating-git pattern name"
+else
+  fail "Expected reviewer-state-mutating-git in stderr, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-023: Main session + git checkout <branch> → allow (non-regression)
+# Phase 5.1 implement flow MUST NOT be blocked.
+# --------------------------------------------------------------------------
+echo "TC-023: main session + 'git checkout develop' → allow (non-regression)"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git checkout develop" "$MAIN_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "main session git checkout allowed (not a subagent)"
+else
+  fail "Expected allow for main session git checkout, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-024: Reviewer subagent + git diff → allow (read-only)
+# --------------------------------------------------------------------------
+echo "TC-024: reviewer subagent + 'git diff' → allow (read-only)"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git diff develop..HEAD -- plugins/rite/agents/_reviewer-base.md" "$SUBAGENT_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer subagent git diff allowed"
+else
+  fail "Expected allow for reviewer git diff, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-025: Reviewer subagent + git show <ref>:<file> → allow (read-only)
+# This is the documented alternative to 'git checkout <ref> -- <file>'.
+# --------------------------------------------------------------------------
+echo "TC-025: reviewer subagent + 'git show <ref>:<file>' → allow"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git show develop:plugins/rite/agents/_reviewer-base.md" "$SUBAGENT_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer subagent git show allowed (read-only alternative)"
+else
+  fail "Expected allow for reviewer git show, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-026: Reviewer subagent + git reset → deny
+# --------------------------------------------------------------------------
+echo "TC-026: reviewer subagent + 'git reset' → deny"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git reset --hard HEAD" "$SUBAGENT_TRANSCRIPT") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "reviewer subagent git reset blocked"
+else
+  fail "Expected deny for reviewer git reset, got decision=$decision"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-027: Reviewer subagent + git stash → deny
+# --------------------------------------------------------------------------
+echo "TC-027: reviewer subagent + 'git stash push' → deny"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git stash push -m 'wip'" "$SUBAGENT_TRANSCRIPT") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "reviewer subagent git stash blocked"
+else
+  fail "Expected deny for reviewer git stash, got decision=$decision"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-028: Main session + git reset → allow (non-regression)
+# The /rite:pr:fix flow in the main session may use git reset legitimately.
+# --------------------------------------------------------------------------
+echo "TC-028: main session + 'git reset' → allow (non-regression)"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git reset HEAD~1" "$MAIN_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "main session git reset allowed"
+else
+  fail "Expected allow for main session git reset, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-029: Reviewer subagent + gh pr diff → allow (workflow operation)
+# --------------------------------------------------------------------------
+echo "TC-029: reviewer subagent + 'gh pr diff 123' → allow"
+rc=0
+output=$(run_guard_with_transcript "Bash" "gh pr diff 123" "$SUBAGENT_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer subagent gh pr diff allowed"
+else
+  fail "Expected allow for reviewer gh pr diff, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-030: Reviewer subagent + bash test runner → allow (workflow operation)
+# --------------------------------------------------------------------------
+echo "TC-030: reviewer subagent + 'bash test.sh' → allow"
+rc=0
+output=$(run_guard_with_transcript "Bash" "bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh" "$SUBAGENT_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer subagent bash test allowed"
+else
+  fail "Expected allow for reviewer bash test, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-031: Reviewer subagent + git worktree add → allow (isolated inspection)
+# --------------------------------------------------------------------------
+echo "TC-031: reviewer subagent + 'git worktree add' → allow"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git worktree add /tmp/rite-review-wt develop" "$SUBAGENT_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer subagent git worktree add allowed"
+else
+  fail "Expected allow for reviewer git worktree add, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-032: Reviewer subagent + git worktree remove → deny
+# --------------------------------------------------------------------------
+echo "TC-032: reviewer subagent + 'git worktree remove' → deny"
+rc=0
+output=$(run_guard_with_transcript "Bash" "git worktree remove /tmp/rite-review-wt" "$SUBAGENT_TRANSCRIPT") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "reviewer subagent git worktree remove blocked"
+else
+  fail "Expected deny for reviewer git worktree remove, got decision=$decision"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-033: Reviewer subagent + heredoc containing 'git checkout' → allow (false positive guard)
+# --------------------------------------------------------------------------
+echo "TC-033: reviewer subagent + heredoc text containing 'git checkout' → allow"
+rc=0
+HEREDOC_CMD3='cat <<'"'"'EOF'"'"'
+git checkout develop -- file.md
+EOF'
+output=$(run_guard_with_transcript "Bash" "$HEREDOC_CMD3" "$SUBAGENT_TRANSCRIPT") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "heredoc text 'git checkout' allowed (no false positive)"
+else
+  fail "Expected allow for heredoc text, got rc=$rc output=$output"
 fi
 echo ""
 

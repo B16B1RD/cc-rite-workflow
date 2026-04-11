@@ -3,10 +3,12 @@
 # Blocks known-bad Bash command patterns before execution.
 # Uses only Bash built-ins for pattern matching (no external processes).
 #
-# Denylist patterns (top 3 by session frequency):
+# Denylist patterns:
 #   1. gh pr diff --stat  (unsupported flag)
 #   2. gh pr diff -- <path>  (unsupported file filter)
 #   3. != null in jq/awk  (history expansion breaks !)
+#   4. Reviewer subagent running state-mutating git commands (Issue #442)
+#      Enforced only when transcript_path contains "/subagents/".
 #
 # Exit behavior:
 #   exit 0 — allow (no output)
@@ -34,6 +36,18 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || C
 if [ -z "$COMMAND" ]; then
   exit 0
 fi
+
+# Reviewer subagent detection (Issue #442).
+# Claude Code routes subagent sessions to jsonl files under a "subagents/"
+# directory inside the project transcript root; the main session does not.
+# When the PreToolUse hook runs inside a subagent, transcript_path therefore
+# contains the "/subagents/" path component. Pattern 4 below uses this as a
+# heuristic to scope state-mutating git denylist checks to reviewer contexts.
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null) || TRANSCRIPT_PATH=""
+IS_SUBAGENT=0
+case "$TRANSCRIPT_PATH" in
+  */subagents/*) IS_SUBAGENT=1 ;;
+esac
 
 # --- Fail-open for pattern matching stage ---
 # If heredoc extraction or pattern matching crashes (e.g., edge-case failures with
@@ -81,6 +95,63 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       BLOCKED_PATTERN="jq-not-equal-null"
       BLOCKED_REASON="!= null causes bash history expansion errors. The ! character is interpreted by bash before reaching jq."
       BLOCKED_ALTERNATIVE="Use: select(.field) for truthiness check, or select(.field == null | not) for explicit null exclusion"
+      ;;
+  esac
+fi
+
+# Pattern 4: Reviewer subagent running state-mutating git commands (Issue #442).
+# Scope: only when IS_SUBAGENT=1 (transcript_path contains "/subagents/").
+# Main-session git operations (branch switch, commit, etc. performed by
+# /rite:issue:start Phase 5.1) are NOT affected because IS_SUBAGENT=0 there.
+#
+# Allowed read-only git commands (not matched below): git diff, git log,
+# git show, git blame, git status, git ls-files, git ls-remote, git rev-parse,
+# git cat-file, git worktree add, git fetch (without --prune).
+#
+# Denylist below targets state-mutating forms only. Pattern uses strict word
+# boundaries to avoid matching unrelated tokens (e.g. "git-checkout" in a
+# file name embedded in a grep command).
+if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
+  # Normalize whitespace sequences into a single space for robust matching.
+  # Use Bash built-in parameter expansion instead of external sed.
+  CMD_NORMALIZED="${CMD_CHECK//$'\t'/ }"
+  while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
+    CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
+  done
+
+  # Each element matches `git <verb>` preceded by line start or whitespace
+  # and followed by whitespace/end. The wrapping space ensures word boundaries.
+  PADDED=" $CMD_NORMALIZED "
+  case "$PADDED" in
+    *" git checkout "*|\
+    *" git reset "*|\
+    *" git add "*|\
+    *" git rm "*|\
+    *" git stash "*|\
+    *" git restore "*|\
+    *" git commit "*|\
+    *" git push "*|\
+    *" git pull "*|\
+    *" git merge "*|\
+    *" git rebase "*|\
+    *" git cherry-pick "*|\
+    *" git revert "*|\
+    *" git tag "*|\
+    *" git clean "*|\
+    *" git gc "*|\
+    *" git reflog "*|\
+    *" git worktree remove "*|\
+    *" git worktree prune "*|\
+    *" git branch -D "*|\
+    *" git branch -d "*|\
+    *" git branch -f "*|\
+    *" git branch -m "*|\
+    *" git branch -M "*|\
+    *" git update-ref "*|\
+    *" git symbolic-ref "*)
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+      BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash/restore/commit/push/merge/rebase/cherry-pick/revert/tag/clean/branch -D/update-ref/etc.) are forbidden inside reviewer contexts."
+      BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, or 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list."
       ;;
   esac
 fi
