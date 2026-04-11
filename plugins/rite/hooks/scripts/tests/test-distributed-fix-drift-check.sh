@@ -148,6 +148,59 @@ out=$("$SCRIPT" --target "$CJK_BROKEN" 2>&1)
 p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
 assert_ge "broken CJK anchor detected as drift" 1 "$p4_count"
 
+# --- Test 7: --pattern 2 filter outputs only P2 ------------------------------
+# Build a fixture that triggers BOTH Pattern-2 (reason-table drift) and
+# Pattern-3 (if-wrap drift). Without --pattern, the script would emit both
+# findings; with --pattern 2, only P2 lines must appear.
+P2_FIXTURE=$(mktemp)
+TMPFILES+=("$P2_FIXTURE")
+cat > "$P2_FIXTURE" <<'EOF'
+# Pattern-2 + Pattern-3 mixed fixture
+
+## Reason table
+
+| reason | description |
+|--------|-------------|
+| `table_only_reason` | listed in table but never emitted |
+
+Some narrative referencing reason=emit_only_reason for the P2 emit-side detector.
+
+## Code block (Pattern-3 candidate)
+
+cat <<'INNER_EOF' > "$tmpfile"
+content
+INNER_EOF
+EOF
+
+out=$("$SCRIPT" --pattern 2 --target "$P2_FIXTURE" 2>&1)
+p2_only_count=$(grep -c '^\[drift\]\[P2\]' <<< "$out")
+non_p2_count=$(grep -E '^\[drift\]\[P[^2]\]' <<< "$out" | wc -l)
+assert_ge "--pattern 2 outputs >=1 P2 finding" 1 "$p2_only_count"
+assert "--pattern 2 outputs no non-P2 findings" "0" "$non_p2_count"
+
+# --- Test 8: --all + --repo-root smoke ---------------------------------------
+# Build a synthetic repo root containing one of the default --all targets
+# (plugins/rite/commands/pr/fix.md) seeded with a Pattern-3 drift. The other
+# default targets are absent and silently skipped by the per-pattern
+# `[ -f "$file" ] || return 0` guard, so this single-file fixture exercises
+# both --all expansion AND --repo-root chdir in one assertion.
+ALL_DIR=$(mktemp -d)
+TMPFILES+=("$ALL_DIR")
+mkdir -p "$ALL_DIR/plugins/rite/commands/pr"
+cat > "$ALL_DIR/plugins/rite/commands/pr/fix.md" <<'EOF'
+# Synthetic fix.md for --all + --repo-root smoke test
+
+cat <<'INNER_EOF' > "$tmpfile"
+content
+INNER_EOF
+EOF
+
+out=$("$SCRIPT" --repo-root "$ALL_DIR" --all 2>&1)
+rc=$?
+assert "--all + --repo-root exits 1 (drift detected in default target)" "1" "$rc"
+all_p3_count=$(grep -c '^\[drift\]\[P3\]' <<< "$out")
+assert_ge "--all expansion + --repo-root chdir detect P3 drift" 1 "$all_p3_count"
+
 # --- Summary -----------------------------------------------------------------
 echo
 echo "Results: PASS=$PASS FAIL=$FAIL"
