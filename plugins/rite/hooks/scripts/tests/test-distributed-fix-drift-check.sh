@@ -174,9 +174,10 @@ EOF
 
 out=$("$SCRIPT" --pattern 2 --target "$P2_FIXTURE" 2>&1)
 p2_only_count=$(grep -c '^\[drift\]\[P2\]' <<< "$out")
-# Use grep -cE for consistency with the other 7 grep -c sites in this file
-# (avoids `grep | wc -l` pipe and matches the established pattern).
-non_p2_count=$(grep -cE '^\[drift\]\[P[^2]\]' <<< "$out")
+# Use the same `grep -c PATTERN <<< "$out"` shape as every other count site in
+# this file (avoids the `grep | wc -l` pipe). The `[^2]` character class is
+# valid in BRE so plain `grep -c` is sufficient — no `-E` needed.
+non_p2_count=$(grep -c '^\[drift\]\[P[^2]\]' <<< "$out")
 assert_ge "--pattern 2 outputs >=1 P2 finding" 1 "$p2_only_count"
 assert "--pattern 2 outputs no non-P2 findings" "0" "$non_p2_count"
 
@@ -201,11 +202,14 @@ out=$("$SCRIPT" --repo-root "$ALL_DIR" --all 2>&1)
 rc=$?
 assert "--all + --repo-root exits 1 (drift detected in default target)" "1" "$rc"
 all_p3_count=$(grep -c '^\[drift\]\[P3\]' <<< "$out")
-# Discriminator: synthetic fix.md contains EXACTLY 1 P3 trigger (the heredoc
-# fixture above). The real `plugins/rite/commands/pr/fix.md` has multiple P3
-# findings, so an `assert_ge ... 1` would still PASS even if `--repo-root`
-# silently no-op'd and the script ran against the real file. Asserting "exactly
-# 1" lets the test fail when chdir regression occurs.
+# Discriminator: the synthetic fix.md contains EXACTLY 1 P3 trigger (the
+# heredoc fixture above). If `--repo-root` silently no-op'd, the script would
+# fall back to the real repo cwd and scan the real
+# `plugins/rite/commands/pr/fix.md`, which would yield a different P3 count
+# (currently 0 — a clean codebase — but this assertion is robust regardless of
+# whether the real file has 0 or many P3 findings, because the count would
+# almost certainly not be exactly 1). Asserting "exactly 1" therefore catches
+# chdir regression in either direction.
 assert "--all + --repo-root: exactly 1 P3 from synthetic target (chdir guard)" "1" "$all_p3_count"
 # Path discriminator: the [drift] line should reference fix.md as a relative
 # path (the script chdirs to --repo-root before checking). Both synthetic and
