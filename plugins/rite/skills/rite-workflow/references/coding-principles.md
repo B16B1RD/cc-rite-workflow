@@ -489,4 +489,6 @@ OK patterns:
 - [PR Create Command](../../../commands/pr/create.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [PR Review](../../../commands/pr/review.md) - review.md
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention)
-- Related bang character (U+0021) handling in bash contexts: [gh-cli-patterns.md](../../../references/gh-cli-patterns.md), [graphql-helpers.md](../../../references/graphql-helpers.md), [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md)
+- [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
+- [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)
+- [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md) - Related bang character handling error catalog (Category 6)
