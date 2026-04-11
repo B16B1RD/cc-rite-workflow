@@ -1065,13 +1065,11 @@ Invoke `skill: "rite:pr:fix"`.
 
 > **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) for the full specification.
 
-**Workflow Incident Sentinel Visibility Rule** (cycle 1 review C2 fix; cycle 2 review M-NEW1 fix — pr/create.md 追加):
+**Workflow Incident Sentinel Visibility Rule** (cycle 1 review C2 fix; cycle 2 review M-NEW1 fix — pr/create.md 追加; #436 fix — inline 実行に移行):
 
-Sub-skills declared with `context: fork` (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`) execute Bash tool calls in an **isolated subprocess context**. The orchestrator (`/rite:issue:start`, this file) does NOT see those subprocess `stdout` directly — it only sees the **final response message** that the sub-skill LLM returns.
+Sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`) execute inline within the orchestrator's conversation context (previously these used forked execution which caused `AskUserQuestion` to fail in e2e flow — see #436). Bash tool call stdout from these sub-skills is directly visible in the orchestrator's conversation context.
 
-Note: `pr/create.md` does not currently emit workflow incident sentinels internally, but is listed here for completeness — if a Workflow Incident Emit Helper section is added to `pr/create.md` in the future, the same Visibility Rule applies.
-
-Therefore, when a sub-skill emits a workflow incident sentinel via `bash workflow-incident-emit.sh`, the sub-skill **MUST also include the emitted sentinel line as part of its final visible response text** (not only as bash stdout). Otherwise the orchestrator's context grep in this phase will never see the sentinel and AC-5 (hook abnormal exit detection) becomes silently broken.
+As a **defensive practice**, sub-skills SHOULD still include emitted sentinel lines in their final visible response text. This ensures sentinel detection remains robust even if execution context changes in the future.
 
 **Concrete pattern for sub-skills** (used in `fix.md` / `review.md` / `lint.md` Workflow Incident Emit Helper sections):
 
@@ -1086,16 +1084,16 @@ sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
 [ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
 ```
 
-**Step 3 (LLM responsibility)**: The sub-skill LLM must then include the captured `sentinel_line` value (if non-empty) **verbatim in its final response message text**, e.g.:
+**Step 3 (LLM responsibility — defensive practice)**: The sub-skill LLM should include the captured `sentinel_line` value (if non-empty) **verbatim in its final response message text** as a defensive measure, e.g.:
 
 ```
 [lint:error] — 3 errors detected
 [CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=rite:lint tool not found: ruff; iteration_id=0-1775650793
 ```
 
-This way, when control returns to `/rite:issue:start`, the sentinel becomes part of the conversation context and Phase 5.4.4.1's grep can find it.
+Since sub-skills now execute inline, the sentinel is already part of the orchestrator's conversation context via bash stdout. The explicit inclusion in response text is a defense-in-depth measure.
 
-**Orchestrator-direct emit** (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error): The orchestrator runs the bash command itself (not inside a fork), so the sentinel stdout is already part of the orchestrator's conversation context. Still, the orchestrator MUST include the sentinel line in its response text for clarity and for self-detection in subsequent context grep iterations.
+**Orchestrator-direct emit** (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error): The orchestrator runs the bash command itself, so the sentinel stdout is already part of the orchestrator's conversation context. Still, the orchestrator MUST include the sentinel line in its response text for clarity and for self-detection in subsequent context grep iterations.
 
 ---
 

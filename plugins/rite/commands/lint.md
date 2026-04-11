@@ -1,6 +1,5 @@
 ---
 description: 品質チェックを実行
-context: fork
 ---
 
 # /rite:lint
