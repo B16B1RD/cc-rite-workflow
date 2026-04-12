@@ -684,6 +684,100 @@ else
 fi
 echo ""
 
+# ==========================================================================
+# Phase: オプション値なし末尾テスト (TC-037 〜 TC-039)
+# cycle 8 F-06 fix: $# -ge 2 ガードの検証
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# TC-037: --type without value at end → exit 1 + "requires a value"
+# --------------------------------------------------------------------------
+echo "TC-037: --type without value at end → exit 1"
+output=$(bash "$HOOK" --type 2>&1) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && echo "$output" | grep -q "requires a value"; then
+  pass "--type without value exits 1 with requires a value"
+else
+  fail "Expected exit 1 + 'requires a value', got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-038: --source-ref without value at end → exit 1 + "requires a value"
+# --------------------------------------------------------------------------
+echo "TC-038: --source-ref without value at end → exit 1"
+output=$(bash "$HOOK" --source-ref 2>&1) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && echo "$output" | grep -q "requires a value"; then
+  pass "--source-ref without value exits 1 with requires a value"
+else
+  fail "Expected exit 1 + 'requires a value', got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-039: --content-file without value at end → exit 1 + "requires a value"
+# --------------------------------------------------------------------------
+echo "TC-039: --content-file without value at end → exit 1"
+output=$(bash "$HOOK" --content-file 2>&1) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && echo "$output" | grep -q "requires a value"; then
+  pass "--content-file without value exits 1 with requires a value"
+else
+  fail "Expected exit 1 + 'requires a value', got rc=$rc output=$output"
+fi
+echo ""
+
+# ==========================================================================
+# Phase: filesystem write failure テスト (TC-040 〜 TC-041)
+# cycle 8 F-07 fix: exit 3 パスの検証
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# TC-040: mkdir -p failure (read-only directory) → exit 3
+# --------------------------------------------------------------------------
+echo "TC-040: mkdir failure (read-only .rite/wiki/raw) → exit 3"
+dir40="$TEST_DIR/tc040"
+mkdir -p "$dir40"
+git -C "$dir40" init -q
+echo "body content" > "$dir40/body.md"
+cat > "$dir40/rite-config.yml" << 'EOF'
+wiki:
+  enabled: true
+EOF
+# Create .rite but make it read-only so mkdir -p for raw/reviews fails
+mkdir -p "$dir40/.rite"
+chmod 444 "$dir40/.rite"
+( cd "$dir40" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+chmod 755 "$dir40/.rite"  # restore for cleanup
+if [ $rc -eq 3 ]; then
+  pass "Read-only .rite directory → exit 3"
+else
+  fail "Expected exit 3 for mkdir failure, got rc=$rc, stderr=$(cat "$dir40/err.log" 2>/dev/null)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-041: cat write failure (read-only target dir) → exit 3
+# --------------------------------------------------------------------------
+echo "TC-041: cat write failure (read-only target dir) → exit 3"
+dir41="$TEST_DIR/tc041"
+mkdir -p "$dir41"
+git -C "$dir41" init -q
+echo "body content" > "$dir41/body.md"
+cat > "$dir41/rite-config.yml" << 'EOF'
+wiki:
+  enabled: true
+EOF
+# Create the target directory but make it read-only
+mkdir -p "$dir41/.rite/wiki/raw/reviews"
+chmod 444 "$dir41/.rite/wiki/raw/reviews"
+( cd "$dir41" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+chmod 755 "$dir41/.rite/wiki/raw/reviews"  # restore for cleanup
+if [ $rc -eq 3 ]; then
+  pass "Read-only target dir → exit 3 (cat write failure)"
+else
+  fail "Expected exit 3 for cat write failure, got rc=$rc, stderr=$(cat "$dir41/err.log" 2>/dev/null)"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

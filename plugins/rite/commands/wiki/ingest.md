@@ -60,8 +60,7 @@ if [[ -n "$wiki_enabled_line" ]]; then
 fi
 case "$wiki_enabled" in
   true|yes|1) wiki_enabled="true" ;;
-  false|no|0) wiki_enabled="false" ;;
-  "") wiki_enabled="false" ;;
+  false|no|0|"") wiki_enabled="false" ;;
   *) wiki_enabled="false" ;;
 esac
 
@@ -253,7 +252,7 @@ case "$candidate" in
   wiki:*)
     actual_path="${candidate#wiki:}"
     # F-09 fix: stderr を stdout に混合しない (git 警告テキストが file_body に混入する)
-    git_show_err=$(mktemp /tmp/rite-wiki-ingest-show-err-XXXXXX 2>/dev/null) || git_show_err=""
+    git_show_err=$(mktemp /tmp/rite-wiki-ingest-show-err-XXXXXX 2>/dev/null) || { echo "WARNING: mktemp failed for git_show_err, stderr capture disabled" >&2; git_show_err=""; }
     if ! file_body=$(git show "${wiki_branch}:${actual_path}" 2>"${git_show_err:-/dev/null}"); then
       echo "WARNING: failed to read ${actual_path} from wiki branch" >&2
       [ -n "$git_show_err" ] && [ -s "$git_show_err" ] && head -3 "$git_show_err" | sed 's/^/  /' >&2
@@ -266,7 +265,7 @@ case "$candidate" in
   *)
     actual_path="$candidate"
     # F-13/F-07 fix: cat 失敗時のエラーハンドリング + stderr 捕捉 (git show パスと対称化)
-    cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX 2>/dev/null) || cat_err=""
+    cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX 2>/dev/null) || { echo "WARNING: mktemp failed for cat_err, stderr capture disabled" >&2; cat_err=""; }
     if ! file_body=$(cat "$actual_path" 2>"${cat_err:-/dev/null}"); then
       echo "WARNING: failed to read ${actual_path}" >&2
       [ -n "$cat_err" ] && [ -s "$cat_err" ] && head -3 "$cat_err" | sed 's/^/  /' >&2
@@ -459,7 +458,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   stash_err=""
   _rite_wiki_ingest_cleanup() {
     if [ -n "$current_branch" ]; then
-      checkout_err=$(mktemp /tmp/rite-wiki-ingest-checkout-err-XXXXXX 2>/dev/null) || checkout_err=""
+      checkout_err=$(mktemp /tmp/rite-wiki-ingest-checkout-err-XXXXXX 2>/dev/null) || { echo "WARNING: mktemp failed for checkout_err, stderr capture disabled" >&2; checkout_err=""; }
       # cycle 2 H6 fix: stderr を保持して原因を可視化 (2>/dev/null は禁止)
       if ! git checkout "$current_branch" 2>"${checkout_err:-/dev/null}"; then
         echo "WARNING: cleanup の git checkout '$current_branch' に失敗。手動で元ブランチに戻ってください" >&2
@@ -468,7 +467,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
       [ -n "${checkout_err:-}" ] && rm -f "$checkout_err"
     fi
     if [ "${stash_needed:-false}" = true ]; then
-      stash_err=$(mktemp /tmp/rite-wiki-ingest-stash-err-XXXXXX 2>/dev/null) || stash_err=""
+      stash_err=$(mktemp /tmp/rite-wiki-ingest-stash-err-XXXXXX 2>/dev/null) || { echo "WARNING: mktemp failed for stash_err, stderr capture disabled" >&2; stash_err=""; }
       if ! git stash pop 2>"${stash_err:-/dev/null}"; then
         echo "WARNING: cleanup の git stash pop に失敗。手動回復が必要: git stash list" >&2
         [ -n "$stash_err" ] && [ -s "$stash_err" ] && head -3 "$stash_err" | sed 's/^/  /' >&2
@@ -495,17 +494,23 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   # `!` 否定は rc=1 と rc>=2 を区別できず、`2>/dev/null` で stderr も消えるため、
   # broken repo / empty repo / index.lock 競合が暗黙に stash trigger される問題を防ぐ。
   has_changes=false
-  git diff --quiet HEAD 2>/dev/null; _diff_rc=$?
+  # cycle 8 F-07 fix: git diff の stderr を tempfile に捕捉 (trigger.sh の stderr tempfile パターンと統一)
+  _diff_err=$(mktemp /tmp/rite-wiki-ingest-diff-err-XXXXXX 2>/dev/null) || { echo "WARNING: mktemp failed for _diff_err, stderr capture disabled" >&2; _diff_err=""; }
+  git diff --quiet HEAD 2>"${_diff_err:-/dev/null}"; _diff_rc=$?
   if [ "$_diff_rc" -ge 2 ]; then
     echo "ERROR: git diff --quiet HEAD がエラーを返しました (rc=$_diff_rc)" >&2
+    [ -n "$_diff_err" ] && [ -s "$_diff_err" ] && head -3 "$_diff_err" | sed 's/^/  /' >&2
     echo "  対処: git status / git repo の整合性を確認してください" >&2
+    [ -n "$_diff_err" ] && rm -f "$_diff_err"
     exit 1
   elif [ "$_diff_rc" -eq 1 ]; then
     has_changes=true
   fi
-  git diff --cached --quiet HEAD 2>/dev/null; _cached_rc=$?
+  git diff --cached --quiet HEAD 2>"${_diff_err:-/dev/null}"; _cached_rc=$?
   if [ "$_cached_rc" -ge 2 ]; then
     echo "ERROR: git diff --cached --quiet HEAD がエラーを返しました (rc=$_cached_rc)" >&2
+    [ -n "$_diff_err" ] && [ -s "$_diff_err" ] && head -3 "$_diff_err" | sed 's/^/  /' >&2
+    [ -n "$_diff_err" ] && rm -f "$_diff_err"
     exit 1
   elif [ "$_cached_rc" -eq 1 ]; then
     has_changes=true
@@ -513,6 +518,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   if [ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]; then
     has_changes=true
   fi
+  [ -n "$_diff_err" ] && rm -f "$_diff_err"
   if [ "$has_changes" = "true" ]; then
     git stash push -u -m "rite-wiki-ingest-stash" || {
       echo "ERROR: git stash push -u に失敗しました" >&2
@@ -525,7 +531,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 
   # Block A 成功: trap を解除して cleanup が発火しないようにする。
   # これにより後続の LLM Write/Edit phase と Block B は wiki ブランチ上で正しく動作する。
-  # Phase 3 (L271) の trap 解除パターンと整合。
+  # Phase 3 の trap 解除パターンと整合。
   trap - EXIT INT TERM HUP
 
   # current_branch / stash_needed / wiki_branch の値を Block B に渡すため stdout に明示出力
@@ -615,13 +621,18 @@ git checkout "$current_branch" || {
 }
 
 # F-11 fix: git stash pop の失敗 (merge conflict 等) を必ず検出して fail-fast
+# cycle 8 F-03 fix: stash pop 成功後に stash_needed=false を設定し、EXIT trap での二重 pop を防止
 if [ "$stash_needed" = "true" ]; then
   if ! git stash pop; then
     echo "ERROR: git stash pop に失敗しました — stash が残っています" >&2
     echo "  対処: 'git stash list' で確認し、競合を手動で解消してください" >&2
     exit 1
   fi
+  stash_needed=false
 fi
+
+# main body の checkout/stash pop が完了したため trap を解除 (二重実行防止)
+trap - EXIT INT TERM HUP
 
 # F-04 fix: 削除対象を processed_files[] のみに限定し、find -delete 二重サイレンサーを廃止
 # cycle 2 C1 fix: processed_files[] が上記で bash 配列として明示宣言されているため silent no-op しない
@@ -799,7 +810,7 @@ Wiki Ingest が完了しました。
 | ブランチ切り替え失敗 | cleanup trap で元ブランチに復帰、cleanup 失敗時は WARNING を出して手動回復を促す |
 | `git stash pop` 失敗 (merge conflict) | F-11 fix: 即座に exit 1 し、`git stash list` で確認するよう案内 |
 | `git push` 失敗 | F-12 fix: エラー出力に手動回復手順を含める。`git checkout {wiki_branch} && git log origin/{wiki_branch}..HEAD` で未 push コミットを確認後、`git push origin {wiki_branch}` でリトライ |
-| `branch_strategy` が未知の値 | F-06 fix: Phase 5.1/5.2 の bash block 末尾の `else` 分岐で fail-fast 検出 (rite-config.yml の `wiki.branch_strategy` を確認するよう案内) |
+| `branch_strategy` が未知の値 | F-06 fix: Phase 5.1 (Block A) の bash block 末尾の `else` 分岐で fail-fast 検出 (rite-config.yml の `wiki.branch_strategy` を確認するよう案内) |
 | LLM が経験則を抽出できない | 該当 Raw Source は `ingest:skip` として log.md に記録、`ingested: true` に変更、`n_skipped` を +1 |
 
 ---
