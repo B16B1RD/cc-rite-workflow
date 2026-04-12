@@ -35,8 +35,8 @@ This command orchestrates the Issue creation flow by delegating to specialized s
 ```
 create.md (orchestrator)
 ├── create-interview.md   ← Phase 0.4.1 + 0.5 (Adaptive Interview)
-├── create-decompose.md   ← Phase 0.7 + 0.8 + 0.9 (Spec + Decompose + Bulk Create)
-└── create-register.md    ← Phase 1 + 2 + 3 (Classify + Confirm + Create Single Issue)
+├── create-decompose.md   ← Phase 0.7 + 0.8 + 0.9 + 1.0 (Spec + Decompose + Bulk Create + Terminal Completion)
+└── create-register.md    ← Phase 1 + 2 + 3 + 4 (Classify + Confirm + Create Single Issue + Terminal Completion)
 ```
 
 ---
