@@ -2756,6 +2756,52 @@ Present the proposed fix and apply with Edit tool after confirmation:
 - スキップ
 ```
 
+### 2.3.1 Propagation Scan (#453 Component B)
+
+After applying a fix (Phase 2.3), perform a mandatory scan for similar patterns to prevent distributed propagation failures (Pattern-1 from `fix-cycle-pattern-analysis.md`).
+
+Check if `review.loop.auto_propagation_scan` is enabled in `rite-config.yml` (default: `true`). If disabled, skip to Phase 2.4.
+
+**Step 1: Identify the fix pattern**
+
+Characterize what was changed in Phase 2.3:
+
+| Fix Type | Description | Example |
+|----------|-------------|---------|
+| **Structural pattern** | Added error handling, retained flag emit, if-wrap, trap handler | `exit 1` の前に `[CONTEXT] *_FAILED=1` emit を追加 |
+| **Content fix** | Corrected a value, updated a reference, renamed identifier | reason table のエントリを追加・修正 |
+| **Configuration** | Changed config key, constant, or threshold | schema version 更新 |
+
+**Step 2: Search for similar patterns**
+
+Based on the fix type, determine the search scope and search:
+
+| Fix Type | Search Scope | Method |
+|----------|-------------|--------|
+| Structural pattern (same file) | All code blocks in the same file | `Grep` for the unfixed version of the pattern in the same file |
+| Structural pattern (cross-file) | Files in the same directory + files that reference the fixed file | `Grep` in related files |
+| Content fix / Configuration | Files referencing the same key, table, or identifier | `Grep` across the codebase for the old/new value |
+
+**Step 3: Apply propagation fixes**
+
+For each similar location found where the fix has NOT been applied:
+1. Apply the same fix pattern using the Edit tool
+2. Log: `伝播修正: {file}:{line} — {pattern_description}`
+
+**Step 4: Output propagation summary**
+
+```
+伝播スキャン結果:
+- 修正パターン: {pattern_description}
+- スキャン対象: {scope} ({file_count} files)
+- 伝播適用: {propagated_count} 箇所
+- 既に適用済み: {already_applied_count} 箇所
+```
+
+If `propagated_count == 0` and `already_applied_count == 0`, output a single line: `伝播スキャン: 類似パターンなし`
+
+> **Scope limitation**: To avoid excessive scanning, limit the search to the same file + files in the same directory. For cross-directory searches, only follow explicit references (e.g., `reference:` links in Markdown, `source` imports in code).
+
 ### 2.4 Create Reply (Optional)
 
 After completing the fix, propose a reply to the reviewer:
