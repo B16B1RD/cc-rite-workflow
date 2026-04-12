@@ -2215,6 +2215,70 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
 > See [references/assessment-rules.md](./references/assessment-rules.md) for the full assessment rules (5.3.1-5.3.7): assessment logic, output format, return values, and prohibition of independent judgment. All findings are blocking regardless of severity or loop count.
 
+### 5.3.1 Fix-Introduced Finding Attribution (#453 Component F)
+
+When this is a **re-review after a fix** (verification mode or `loop_count >= 1`), attribute each finding to one of three categories to enable convergence monitoring.
+
+**Step 1**: Determine if attribution is applicable:
+
+```bash
+loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
+if [ "$loop_count" -lt 1 ]; then
+  echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, loop_count=$loop_count)"
+  exit 0
+fi
+```
+
+**Step 2**: Identify files changed by the last fix commit vs original PR files:
+
+```bash
+pr_number="{pr_number}"
+base_branch="{base_branch}"
+
+# Files in the original PR (before any fixes)
+# Use the first commit on the PR branch
+first_commit=$(git log --reverse --format="%H" "${base_branch}..HEAD" 2>/dev/null | head -1)
+if [ -n "$first_commit" ]; then
+  original_files=$(git diff --name-only "${base_branch}...${first_commit}" 2>/dev/null || echo "")
+else
+  original_files=$(git diff --name-only "${base_branch}...HEAD" 2>/dev/null || echo "")
+fi
+
+# Files changed by the last fix commit
+fix_files=$(git diff --name-only HEAD~1..HEAD 2>/dev/null || echo "")
+
+printf '[CONTEXT] ATTRIBUTION original_files=%d fix_files=%d\n' \
+  "$(echo "$original_files" | grep -c . 2>/dev/null || echo 0)" \
+  "$(echo "$fix_files" | grep -c . 2>/dev/null || echo 0)"
+```
+
+**Step 3**: For each finding in the consolidated findings table, classify:
+
+| Category | Criteria | Label |
+|----------|----------|-------|
+| **Original** | Finding is in a file that is in `original_files` AND the finding's code existed before the fix | `[original]` |
+| **Fix-introduced** | Finding is in a file that is in `fix_files` AND the finding's code was added by the fix commit | `[fix-introduced]` |
+| **Propagation-missed** | Finding matches a pattern that was already fixed in another location (same error pattern, different file/line) | `[propagation-missed]` |
+
+> **Note**: Attribution is best-effort. When it's ambiguous whether code existed before the fix, default to `[original]`. The primary purpose is diagnostic, not blocking.
+
+**Step 4**: Write attribution summary to fix-cycle-state:
+
+```bash
+pr_number="{pr_number}"
+state_file=".rite/fix-cycle-state/${pr_number}.json"
+if [ -f "$state_file" ]; then
+  jq --argjson total "{total_findings}" \
+     --argjson fix_introduced "{fix_introduced_count}" \
+     --argjson severity '{"CRITICAL":{c},"HIGH":{h},"MEDIUM":{m},"LOW":{l}}' \
+     '.cycles[-1].findings_total = $total | .cycles[-1].findings_new_from_fix = $fix_introduced | .cycles[-1].findings_by_severity = $severity' \
+     "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+  printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\n' "$total_findings" "$fix_introduced_count"
+fi
+```
+
+> **Convergence monitor feedback**: If `fix_introduced_count / total_findings > 0.5`, the convergence monitor (start.md Phase 5.4.1.0) will consider this a signal for severity gating or scope lock in the next cycle.
+
 ### 5.4 Integrated Report Generation
 
 **Emoji usage**: Follow the emoji policy in `skills/reviewers/SKILL.md`; use emojis only in the integrated report header (`📜 rite レビュー結果`) and important warnings. Do not use emojis in each reviewer's findings.
