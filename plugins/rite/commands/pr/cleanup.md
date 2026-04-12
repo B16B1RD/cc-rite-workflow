@@ -1192,14 +1192,27 @@ fi
 
 # fix-cycle state file の削除 (#453 収束エンジン)
 # specific path 必須 ({pr_number}.json 完全一致、wildcard glob 禁止)。
+# 既存の state_file 削除パターン (stderr tempfile + 詳細ログ) に合わせた error handling。
 cycle_state_file=".rite/fix-cycle-state/${pr_number}.json"
+cycle_state_rm_err=""
 if [ -f "$cycle_state_file" ]; then
-  if rm -f "$cycle_state_file" 2>/dev/null; then
+  cycle_state_rm_err=$(mktemp /tmp/rite-cleanup-cycle-state-rm-err-XXXXXX 2>/dev/null) || {
+    echo "WARNING: cycle state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_cycle_state; pr=${pr_number}" >&2
+    cycle_state_rm_err=""
+  }
+  if rm -f "$cycle_state_file" 2>"${cycle_state_rm_err:-/dev/null}"; then
     echo "✅ fix-cycle state file を削除しました: $cycle_state_file" >&2
   else
-    echo "WARNING: fix-cycle state file の削除に失敗 (PR #${pr_number}): $cycle_state_file" >&2
+    rm_cycle_rc=$?
+    echo "WARNING: fix-cycle state file の削除に失敗 (PR #${pr_number}, rc=$rm_cycle_rc): $cycle_state_file" >&2
+    if [ -n "$cycle_state_rm_err" ] && [ -s "$cycle_state_rm_err" ]; then
+      head -5 "$cycle_state_rm_err" | sed 's/^/  /' >&2
+    fi
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=cycle_state_file_rm_failure; pr=${pr_number}" >&2
+    echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
   fi
+  [ -n "$cycle_state_rm_err" ] && rm -f "$cycle_state_rm_err"
 fi
 
 # trap cleanup 関数が EXIT で matched_files_rm_err / state_file_rm_err を削除する。block 末尾で

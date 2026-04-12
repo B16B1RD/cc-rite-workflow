@@ -115,7 +115,7 @@ Extract the following information from work memory and retain in context:
 
 ## Phase 1: Retrieve and Organize Review Comments
 
-### 0.1 Convergence Strategy Load (#453 Component E)
+### 0.4 Convergence Strategy Load (#453 Component E)
 
 When invoked from the `/rite:issue:start` end-to-end flow, check if the convergence monitor has set a strategy in `.rite-flow-state`:
 
@@ -2955,7 +2955,8 @@ if [ -n "$changed_files" ]; then
 else
   drift_exit=0
 fi
-printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d changed_targets=%d\n' "$drift_exit" "$(echo "$changed_files" | grep -c . || echo 0)"
+changed_target_count=$(echo "$changed_files" | grep -c . 2>/dev/null || true)
+printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d changed_targets=%d\n' "$drift_exit" "${changed_target_count:-0}"
 ```
 
 3. Handle the exit code:

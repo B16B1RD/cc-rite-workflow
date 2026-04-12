@@ -975,11 +975,20 @@ printf '[CONTEXT] CONVERGENCE_TRAJECTORY loop=%d values=[%s]\n' "$loop_count" "$
 | **Diverging** | Last 2 values increasing (e.g., 13→20) | **Severity gating** (if `loop_count >= severity_gating_cycle_threshold`): Instruct next `/rite:pr:fix` to fix only CRITICAL/HIGH, defer MEDIUM/LOW to separate Issues |
 | **Oscillating** | Last 4 values alternate up/down (e.g., 20→12→18→10) | **Scope lock** (if `loop_count >= scope_lock_cycle_threshold`): Instruct next `/rite:pr:fix` to only fix findings in files from the ORIGINAL PR diff, not in fix-introduced code |
 
-**Step 3**: Apply strategy.
+**Step 3**: Apply strategy based on pattern and cycle-specific thresholds.
 
-- **Converging**: No action needed. Output `[CONTEXT] CONVERGENCE_PATTERN=converging` and proceed.
-- **Stalled/Diverging/Oscillating at cycle < 5**: Output `[CONTEXT] CONVERGENCE_PATTERN={pattern}` as information only. Do NOT auto-switch strategy.
-- **Stalled/Diverging/Oscillating at cycle >= 5**: Present via `AskUserQuestion`:
+Read thresholds from `rite-config.yml`:
+- `severity_gating_cycle_threshold` (default: 5) — used for Stalled and Diverging patterns
+- `scope_lock_cycle_threshold` (default: 7) — used for Oscillating pattern
+
+| Pattern | Threshold | Action when `loop_count < threshold` | Action when `loop_count >= threshold` |
+|---------|-----------|--------------------------------------|--------------------------------------|
+| **Converging** | — | Output `[CONTEXT] CONVERGENCE_PATTERN=converging` and proceed to review | Same |
+| **Stalled** | `severity_gating_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=stalled` as information only | Present `AskUserQuestion` (see below) |
+| **Diverging** | `severity_gating_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=diverging` as information only | Present `AskUserQuestion` (see below) |
+| **Oscillating** | `scope_lock_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=oscillating` as information only | Present `AskUserQuestion` (see below) |
+
+When threshold is reached, present via `AskUserQuestion`:
 
 ```
 収束モニター: review-fix ループが「{pattern}」状態を検出しました。
@@ -991,8 +1000,16 @@ printf '[CONTEXT] CONVERGENCE_TRAJECTORY loop=%d values=[%s]\n' "$loop_count" "$
 | Option | Description |
 |--------|-------------|
 | {recommended_strategy}（推奨） | {strategy_description} |
-| 戦略変更なしで続行 | 現在のまま review-fix を継続 |
-| 手動レビューへエスカレーション | ループを終了し Ready for Review に進む |
+| 戦略変更なしで続行 | 現在のまま review-fix を継続。**→ 以下の review invocation に進行** |
+| 手動レビューへエスカレーション | ループを終了し Ready for Review に進む。**→ Phase 5.5 に直行（以下の review invocation をスキップ）** |
+
+**Branching after user selection**:
+
+| Selection | Next Action |
+|-----------|-------------|
+| Strategy selected (batched/severity_gating/scope_lock) | Write strategy to `.rite-flow-state` (see below), then **proceed to review invocation** |
+| 戦略変更なしで続行 | **Proceed to review invocation** |
+| 手動レビューへエスカレーション | **→ Phase 5.5 (Ready for Review) に直行。以下の review invocation をスキップする** |
 
 If the user selects a strategy, write it to `.rite-flow-state` via:
 
@@ -1000,7 +1017,7 @@ If the user selects a strategy, write it to `.rite-flow-state` via:
 jq --arg strategy "{selected_strategy}" '.convergence_strategy = $strategy' .rite-flow-state > .rite-flow-state.tmp && mv .rite-flow-state.tmp .rite-flow-state
 ```
 
-The `convergence_strategy` value is read by `/rite:pr:fix` Phase 1.0 to adjust fix behavior:
+The `convergence_strategy` value is read by `/rite:pr:fix` Phase 0.4 to adjust fix behavior:
 - `"severity_gating"`: Phase 2 only processes CRITICAL/HIGH findings. MEDIUM/LOW are auto-created as separate Issues.
 - `"batched"`: Phase 2 groups findings by pattern category before fixing.
 - `"scope_lock"`: Phase 2 only fixes findings in files from the original PR diff (`git diff {base_branch}...{first_fix_commit}~1 --name-only`).
@@ -1407,12 +1424,18 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
 ```
 
-2. Read `safety.max_review_fix_loops` from `rite-config.yml` (default: 7):
+2. Read `safety.max_review_fix_loops` from `.rite-flow-state` override (if present) or `rite-config.yml` (default: 7):
 
 ```bash
-max_loops=$(awk '/^safety:/{found=1} found && /max_review_fix_loops:/{print $2; exit}' rite-config.yml 2>/dev/null) || max_loops=7
-[ -z "$max_loops" ] && max_loops=7
-printf '[CONTEXT] LOOP_CHECK loop_count=%s max_loops=%s\n' "$loop_count" "$max_loops"
+# Check for override in .rite-flow-state first (set by "上限延長" option)
+override=$(jq -r '.max_review_fix_loops_override // empty' .rite-flow-state 2>/dev/null) || override=""
+if [ -n "$override" ]; then
+  max_loops="$override"
+else
+  max_loops=$(awk '/^safety:/{found=1} found && /max_review_fix_loops:/{print $2; exit}' rite-config.yml 2>/dev/null) || max_loops=7
+  [ -z "$max_loops" ] && max_loops=7
+fi
+printf '[CONTEXT] LOOP_CHECK loop_count=%s max_loops=%s override=%s\n' "$loop_count" "$max_loops" "${override:-none}"
 ```
 
 3. If `loop_count >= max_loops` **AND** the fix result pattern routes to re-review (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created]`), **halt the loop** and present options via `AskUserQuestion`:
@@ -1426,7 +1449,7 @@ review-fix ループが上限（{max_loops} サイクル）に達しました。
 
 | Option | Description | Action |
 |--------|-------------|--------|
-| 上限延長（+5） | ループ上限を一時的に +5 拡張して続行 | `max_loops` を in-memory で +5 に更新し、Step 4 のディスパッチテーブルへ進行 |
+| 上限延長（+5） | ループ上限を一時的に +5 拡張して続行 | `.rite-flow-state` に `"max_review_fix_loops_override": (max_loops + 5)` を書き込み、Step 4 へ進行。次回 Step 3.5 で override を優先読み取り |
 | 重大度ゲーティング | CRITICAL/HIGH のみ修正、MEDIUM/LOW は別 Issue 化 | `.rite-flow-state` に `"convergence_strategy": "severity_gating"` を書き込み、Step 4 へ進行。次の `/rite:pr:fix` 呼び出し時に severity gating モードが適用される |
 | 手動レビューへエスカレーション | ループを終了し、Ready for Review に進む | **→ Phase 5.5** (Ready for Review) に直行 |
 

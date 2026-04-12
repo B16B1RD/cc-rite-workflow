@@ -2215,7 +2215,7 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 
 > See [references/assessment-rules.md](./references/assessment-rules.md) for the full assessment rules (5.3.1-5.3.7): assessment logic, output format, return values, and prohibition of independent judgment. All findings are blocking regardless of severity or loop count.
 
-### 5.3.1 Fix-Introduced Finding Attribution (#453 Component F)
+### 5.3.8 Fix-Introduced Finding Attribution (#453 Component F)
 
 When this is a **re-review after a fix** (verification mode or `loop_count >= 1`), attribute each finding to one of three categories to enable convergence monitoring.
 
@@ -2247,9 +2247,10 @@ fi
 # Files changed by the last fix commit
 fix_files=$(git diff --name-only HEAD~1..HEAD 2>/dev/null || echo "")
 
+original_files_count=$(echo "$original_files" | grep -c . 2>/dev/null || true)
+fix_files_count=$(echo "$fix_files" | grep -c . 2>/dev/null || true)
 printf '[CONTEXT] ATTRIBUTION original_files=%d fix_files=%d\n' \
-  "$(echo "$original_files" | grep -c . 2>/dev/null || echo 0)" \
-  "$(echo "$fix_files" | grep -c . 2>/dev/null || echo 0)"
+  "${original_files_count:-0}" "${fix_files_count:-0}"
 ```
 
 **Step 3**: For each finding in the consolidated findings table, classify:
@@ -2264,20 +2265,31 @@ printf '[CONTEXT] ATTRIBUTION original_files=%d fix_files=%d\n' \
 
 **Step 4**: Write attribution summary to fix-cycle-state:
 
+Claude substitutes `{total_findings}`, `{fix_introduced_count}`, `{critical_count}`, `{high_count}`, `{medium_count}`, `{low_count}` with the actual integer values from Step 3 classification results before generating the bash block.
+
 ```bash
 pr_number="{pr_number}"
 state_file=".rite/fix-cycle-state/${pr_number}.json"
+total_findings="{total_findings}"
+fix_introduced_count="{fix_introduced_count}"
+critical_count="{critical_count}"
+high_count="{high_count}"
+medium_count="{medium_count}"
+low_count="{low_count}"
+
 if [ -f "$state_file" ]; then
-  jq --argjson total "{total_findings}" \
-     --argjson fix_introduced "{fix_introduced_count}" \
-     --argjson severity '{"CRITICAL":{c},"HIGH":{h},"MEDIUM":{m},"LOW":{l}}' \
+  jq --argjson total "$total_findings" \
+     --argjson fix_introduced "$fix_introduced_count" \
+     --argjson severity "{\"CRITICAL\":$critical_count,\"HIGH\":$high_count,\"MEDIUM\":$medium_count,\"LOW\":$low_count}" \
      '.cycles[-1].findings_total = $total | .cycles[-1].findings_new_from_fix = $fix_introduced | .cycles[-1].findings_by_severity = $severity' \
      "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
   printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\n' "$total_findings" "$fix_introduced_count"
 fi
 ```
 
-> **Convergence monitor feedback**: If `fix_introduced_count / total_findings > 0.5`, the convergence monitor (start.md Phase 5.4.1.0) will consider this a signal for severity gating or scope lock in the next cycle.
+> **Placeholder resolution**: `{total_findings}` is the count of all findings from the current review. `{fix_introduced_count}` is the count of findings classified as `[fix-introduced]` in Step 3. `{critical_count}` / `{high_count}` / `{medium_count}` / `{low_count}` are the severity breakdown from the current review results. All values are integers.
+>
+> **Timing note**: Phase 5.3.8 writes `findings_total` to the **previous** cycle entry (`.cycles[-1]`), which was created by the previous fix's Phase 3.3.1. The convergence monitor (start.md Phase 5.4.1.0) reads `.cycles[-2:]` completed data (entries where `findings_total` has been populated by a completed review). The **latest** cycle entry created by the most recent fix may not yet have `findings_total` if the current review hasn't completed Phase 5.3.8 yet — the convergence monitor accounts for this by reading only entries with non-null `findings_total`.
 
 ### 5.4 Integrated Report Generation
 
