@@ -1062,11 +1062,12 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 
 > **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除し、併せて fix retry state file `.rite/state/fix-fallback-retry-{pr_number}.count` も specific path で削除する。他 PR ファイルを誤削除しない)。
 
-Delete three categories of PR-specific local artifacts associated with the merged PR:
+Delete four categories of PR-specific local artifacts associated with the merged PR:
 
 1. **Review result files**: `.rite/review-results/{pr_number}-*.json` (Issue #443 で導入された opt-in PR コメント記録機能の補完 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract)
 2. **Corrupted review result files**: `.rite/review-results/{pr_number}-*.json.corrupt-*` (fix.md Phase 1.2.0 Priority 2 が corrupt 検出時に `.corrupt-{epoch}` suffix で rename したファイル。長期運用で累積する `.gitignore` 対象 orphan を防ぐ)
 3. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count`
+4. **Fix-cycle state file**: `.rite/fix-cycle-state/{pr_number}.json` (Issue #453 収束エンジンが fix サイクルごとに記録する状態ファイル。specific path で削除、wildcard 禁止)
 
 > **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で設計されており、trap は block 外に伝播しない。block 末尾で trap を restore する必要はない。
 
@@ -1085,8 +1086,9 @@ Delete three categories of PR-specific local artifacts associated with the merge
 | `state_file_rm_failure` | fix retry state file の `rm -f` が permission denied / read-only filesystem / disk I/O エラー等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
 | `mktemp_failure_rm_err` | matched_files 側 (`rm` の stderr 退避用 tempfile) の mktemp が失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行) |
 | `mktemp_failure_rm_err_state_file` | state_file 側 (`rm` の stderr 退避用 tempfile) の mktemp が失敗 (verified-review cycle 9 I-3 対応、`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行。matched_files 側 `mktemp_failure_rm_err` との対称化) |
+| `cycle_state_file_rm_failure` | fix-cycle state file (`#453`) の `rm -f` が permission denied 等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure`)
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure` / `cycle_state_file_rm_failure`)
 
 ```bash
 # signal-specific trap: matched_files rm と state_file rm のそれぞれに独立した stderr 退避 tempfile
@@ -1186,6 +1188,18 @@ else
   fi
   echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_file_rm_failure; pr=${pr_number}" >&2
   echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
+fi
+
+# fix-cycle state file の削除 (#453 収束エンジン)
+# specific path 必須 ({pr_number}.json 完全一致、wildcard glob 禁止)。
+cycle_state_file=".rite/fix-cycle-state/${pr_number}.json"
+if [ -f "$cycle_state_file" ]; then
+  if rm -f "$cycle_state_file" 2>/dev/null; then
+    echo "✅ fix-cycle state file を削除しました: $cycle_state_file" >&2
+  else
+    echo "WARNING: fix-cycle state file の削除に失敗 (PR #${pr_number}): $cycle_state_file" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=cycle_state_file_rm_failure; pr=${pr_number}" >&2
+  fi
 fi
 
 # trap cleanup 関数が EXIT で matched_files_rm_err / state_file_rm_err を削除する。block 末尾で

@@ -3067,6 +3067,60 @@ EOF
 )"
 ```
 
+### 3.3.1 Fix-Cycle State Persistence (#453 Component D)
+
+After committing, record the current fix cycle's data to `.rite/fix-cycle-state/{pr_number}.json` for convergence monitoring and cross-session context preservation.
+
+```bash
+# Ensure directory exists
+mkdir -p .rite/fix-cycle-state
+
+pr_number="{pr_number}"
+state_file=".rite/fix-cycle-state/${pr_number}.json"
+commit_sha_after=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+commit_sha_before=$(git rev-parse HEAD~1 2>/dev/null || echo "unknown")
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
+files_changed=$(git diff --name-only HEAD~1..HEAD 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')
+
+# Read existing state or initialize
+if [ -f "$state_file" ]; then
+  existing=$(cat "$state_file")
+else
+  existing='{"pr_number":'"$pr_number"',"cycles":[]}'
+fi
+
+# Append new cycle entry (propagation_applied is set by Phase 2.3.1 context)
+new_cycle=$(jq -n \
+  --arg ts "$timestamp" \
+  --arg before "$commit_sha_before" \
+  --arg after "$commit_sha_after" \
+  --argjson fixed "{findings_fixed_count}" \
+  --argjson propagated "{propagation_applied_count}" \
+  --argjson files "$files_changed" \
+  '{
+    "cycle": 0,
+    "timestamp": $ts,
+    "commit_sha_before": $before,
+    "commit_sha_after": $after,
+    "findings_fixed": $fixed,
+    "findings_new_from_fix": 0,
+    "files_changed_by_fix": $files,
+    "propagation_applied": $propagated
+  }')
+
+# Append and assign cycle number, enforce ring buffer (max 20 entries)
+echo "$existing" | jq --argjson entry "$new_cycle" '
+  .cycles += [$entry | .cycle = (.cycles | length) + 1] |
+  if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
+' > "$state_file"
+
+printf '[CONTEXT] FIX_CYCLE_STATE_WRITTEN file=%s cycle=%d\n' "$state_file" "$(jq '.cycles | length' "$state_file")"
+```
+
+> **Placeholder resolution**: `{findings_fixed_count}` is the number of findings addressed in Phase 2 (count of fix iterations). `{propagation_applied_count}` is from Phase 2.3.1 propagation summary. If Phase 2.3.1 was skipped, use `0`. `{pr_number}` is from Phase 1.0 argument parsing.
+>
+> **Ring buffer**: The state file is capped at 20 cycle entries. Older entries beyond the cap are silently dropped. This prevents unbounded growth for long-running PRs.
+
 ### 3.4 Confirm Push
 
 ```
