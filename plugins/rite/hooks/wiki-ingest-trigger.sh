@@ -85,12 +85,12 @@ fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help|-h)       usage; exit 0 ;;
-    --type)          TYPE="${2:-}"; shift 2 ;;
-    --source-ref)    SOURCE_REF="${2:-}"; shift 2 ;;
-    --content-file)  CONTENT_FILE="${2:-}"; shift 2 ;;
-    --pr-number)     PR_NUMBER="${2:-}"; shift 2 ;;
-    --issue-number)  ISSUE_NUMBER="${2:-}"; shift 2 ;;
-    --title)         TITLE="${2:-}"; shift 2 ;;
+    --type)          [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 1; }; TYPE="$2"; shift 2 ;;
+    --source-ref)    [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 1; }; SOURCE_REF="$2"; shift 2 ;;
+    --content-file)  [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 1; }; CONTENT_FILE="$2"; shift 2 ;;
+    --pr-number)     [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 1; }; PR_NUMBER="$2"; shift 2 ;;
+    --issue-number)  [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 1; }; ISSUE_NUMBER="$2"; shift 2 ;;
+    --title)         [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 1; }; TITLE="$2"; shift 2 ;;
     *) echo "ERROR: Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
@@ -202,6 +202,12 @@ fi
 # When `wiki:` section or `enabled:` key is missing, grep returns exit 1, which
 # under pipefail aborts the entire script. We split the pipeline into stages and
 # explicitly tolerate empty results so missing keys lenient-fall-through to "not false".
+#
+# Note — YAML パースロジック同期: 本ブロックの YAML パースは commands/wiki/ingest.md Phase 1.1
+# にも同型のロジックが存在する (F-23 修正版: awk + YAML コメント除去 + クォート除去)。
+# 本スクリプトは lenient 設計 (false/no/0 のみ reject、それ以外は通過) であり、
+# ingest.md の strict 4 分岐とはセマンティクスが意図的に異なる。パース方式を変更する場合は
+# 両ファイルの同期を確認すること。wiki-patterns.md の reference パターンも参照先。
 if [[ -f "rite-config.yml" ]]; then
   wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
   wiki_enabled_line=""
@@ -287,7 +293,10 @@ fi
   printf 'ingested: false\n'
   printf -- '---\n\n'
   # F-02 fix: cat 失敗を明示検査 (set -e は || の LHS で抑制されるため silent swallow を防ぐ)
-  cat "$CONTENT_FILE" || { echo "ERROR: cat failed for '$CONTENT_FILE'" >&2; exit 3; }
+  # cycle 6 fix: TOCTOU 緩和 — realpath 解決済みパス ($resolved_content) を cat に使用する。
+  # symlink check (-L) と realpath 解決の間にファイルが symlink に差し替えられた場合でも、
+  # realpath が解決した実パスから読み込むことで path containment bypass を緩和する。
+  cat "$resolved_content" || { echo "ERROR: cat failed for '$resolved_content' (resolved from '$CONTENT_FILE')" >&2; exit 3; }
   # Ensure trailing newline
   printf '\n'
 } > "$target_file" || {

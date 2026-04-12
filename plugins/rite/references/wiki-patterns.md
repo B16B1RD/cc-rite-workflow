@@ -220,6 +220,8 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 | `{related_page_path}` | 関連ページの相対パス（Ingest 時） |
 | `{source_description}` | ソースの説明文（Ingest 時） |
 
+> **confidence フィールド**: page-template.md の `confidence: medium` はリテラル値であり `{confidence}` プレースホルダーではない。Write 後に Edit で Phase 4 の判定値 (`high` / `medium` / `low`) に置換する。
+
 ## Wiki 有効判定パターン
 
 Wiki 操作の前に必ず有効判定を行います:

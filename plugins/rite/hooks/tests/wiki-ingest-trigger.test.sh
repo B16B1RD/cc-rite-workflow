@@ -28,6 +28,10 @@ fail() {
 echo "=== wiki-ingest-trigger.sh tests ==="
 echo ""
 
+# ==========================================================================
+# Phase: 引数バリデーション (TC-001 〜 TC-008)
+# ==========================================================================
+
 # --------------------------------------------------------------------------
 # TC-001: --help → exit 0 with usage text
 # --------------------------------------------------------------------------
@@ -130,6 +134,10 @@ else
 fi
 echo ""
 
+# ==========================================================================
+# Phase: Wiki 有効/無効判定 (TC-009, TC-020 〜 TC-025, TC-029 〜 TC-036)
+# ==========================================================================
+
 # --------------------------------------------------------------------------
 # TC-009: wiki.enabled: false in rite-config.yml → exit 2
 # --------------------------------------------------------------------------
@@ -148,6 +156,10 @@ else
   fail "Expected exit 2 with 'wiki.enabled is false', got rc=$rc, stderr=$(cat "$dir9/err.log")"
 fi
 echo ""
+
+# ==========================================================================
+# Phase: Happy path + ファイル生成検証 (TC-010 〜 TC-014)
+# ==========================================================================
 
 # --------------------------------------------------------------------------
 # TC-010: Happy path — reviews type, file created with correct frontmatter
@@ -184,6 +196,10 @@ else
   fail "Expected file creation, got rc=$rc, target='$target_path', stderr=$(cat "$dir10/err.log" 2>/dev/null)"
 fi
 echo ""
+
+# ==========================================================================
+# Phase: セキュリティ (TC-015 〜 TC-019, TC-026)
+# ==========================================================================
 
 # --------------------------------------------------------------------------
 # TC-015: Empty slug after sanitization → exit 1 (F-23)
@@ -328,7 +344,13 @@ EOF
   if [ $rc -ne 0 ]; then
     fail "wiki.enabled=$variant should be accepted, got rc=$rc, stderr=$(cat "$d/err.log")"
   else
-    pass "wiki.enabled: $variant accepted"
+    # cycle 6 fix: exit code だけでなくファイル存在も検証 (false positive 防止)
+    target_path=$(cat "$d/out.log" | tr -d '[:space:]')
+    if [ -n "$target_path" ] && [ -f "$d/$target_path" ]; then
+      pass "wiki.enabled: $variant accepted + file exists"
+    else
+      fail "wiki.enabled=$variant rc=0 but output file not found (path='$target_path')"
+    fi
   fi
 done
 echo ""
@@ -382,11 +404,14 @@ echo "Fix details" > "$dir11/body.md"
   --type fixes \
   --source-ref pr-456 \
   --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
-target_path="$(cat "$dir11/out.log" 2>/dev/null || true)"
-if [ $rc -eq 0 ] && echo "$target_path" | grep -q '^\.rite/wiki/raw/fixes/'; then
-  pass "type=fixes → file written to .rite/wiki/raw/fixes/"
+target_path="$(cat "$dir11/out.log" 2>/dev/null | tr -d '[:space:]' || true)"
+if [ $rc -eq 0 ] && echo "$target_path" | grep -q '^\.rite/wiki/raw/fixes/' && \
+   [ -f "$dir11/$target_path" ] && \
+   grep -q '^type: fixes$' "$dir11/$target_path" && \
+   grep -q 'Fix details' "$dir11/$target_path"; then
+  pass "type=fixes → file written to .rite/wiki/raw/fixes/ + frontmatter + body verified"
 else
-  fail "Expected path under raw/fixes/, got '$target_path' (rc=$rc)"
+  fail "Expected path under raw/fixes/ with type: fixes frontmatter and body, got '$target_path' (rc=$rc)"
 fi
 echo ""
 
@@ -565,10 +590,12 @@ wiki:
 EOF
 printf 'Body content here\n' > "$dir28/body.md"
 ( cd "$dir28" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 0 ]; then
-  pass "Valid file (body present) → exit 0 (integrity check passed)"
+# cycle 6 fix: exit code だけでなくファイル存在も検証 (integrity check 専用テストの深度改善)
+target_path28=$(cat "$dir28/out.log" 2>/dev/null | tr -d '[:space:]' || true)
+if [ $rc -eq 0 ] && [ -n "$target_path28" ] && [ -f "$dir28/$target_path28" ]; then
+  pass "Valid file (body present) → exit 0 + file exists (integrity check passed)"
 else
-  fail "Expected exit 0, got rc=$rc, stderr=$(cat "$dir28/err.log")"
+  fail "Expected exit 0 + file exists, got rc=$rc, path='$target_path28', stderr=$(cat "$dir28/err.log")"
 fi
 echo ""
 
