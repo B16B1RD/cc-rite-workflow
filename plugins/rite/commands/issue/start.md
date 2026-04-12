@@ -945,6 +945,66 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 > **Data Handoff**: When invoking `rite:pr:review`, the PR number is passed as an argument. Issue information from Phase 0.1 is available in work memory (loaded by `rite:pr:review` Phase 0), avoiding additional `gh issue view` calls.
 
+##### 5.4.1.0 Convergence Monitor (#453 Component E)
+
+When `review.loop.convergence_monitoring` is enabled (default: `true`) **and** `loop_count >= 3`, analyze the fix-cycle state to detect non-convergence patterns and adjust strategy before the next review.
+
+**Step 1**: Read fix-cycle state and loop count:
+
+```bash
+pr_number="{pr_number}"
+state_file=".rite/fix-cycle-state/${pr_number}.json"
+loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
+
+if [ "$loop_count" -lt 3 ] || [ ! -f "$state_file" ]; then
+  echo "[CONTEXT] CONVERGENCE_CHECK skip (loop_count=$loop_count, state_file_exists=$([ -f "$state_file" ] && echo true || echo false))"
+  exit 0
+fi
+
+# Extract last 4 cycles' findings_total for pattern analysis
+trajectory=$(jq -r '[.cycles[-4:][].findings_total // 0] | @csv' "$state_file" 2>/dev/null) || trajectory=""
+printf '[CONTEXT] CONVERGENCE_TRAJECTORY loop=%d values=[%s]\n' "$loop_count" "$trajectory"
+```
+
+**Step 2**: Analyze convergence pattern from the trajectory. Claude reads the `[CONTEXT] CONVERGENCE_TRAJECTORY` output and classifies:
+
+| Pattern | Detection Criteria | Strategy |
+|---------|-------------------|----------|
+| **Converging** | Last 3 values strictly decreasing (e.g., 20→14→8) | Continue normally |
+| **Stalled** | Last 3 values within ±2 of each other (e.g., 14→15→13) | **Batched fix mode**: Instruct next `/rite:pr:fix` to group findings by category and fix all instances of the same pattern together |
+| **Diverging** | Last 2 values increasing (e.g., 13→20) | **Severity gating** (if `loop_count >= severity_gating_cycle_threshold`): Instruct next `/rite:pr:fix` to fix only CRITICAL/HIGH, defer MEDIUM/LOW to separate Issues |
+| **Oscillating** | Last 4 values alternate up/down (e.g., 20→12→18→10) | **Scope lock** (if `loop_count >= scope_lock_cycle_threshold`): Instruct next `/rite:pr:fix` to only fix findings in files from the ORIGINAL PR diff, not in fix-introduced code |
+
+**Step 3**: Apply strategy.
+
+- **Converging**: No action needed. Output `[CONTEXT] CONVERGENCE_PATTERN=converging` and proceed.
+- **Stalled/Diverging/Oscillating at cycle < 5**: Output `[CONTEXT] CONVERGENCE_PATTERN={pattern}` as information only. Do NOT auto-switch strategy.
+- **Stalled/Diverging/Oscillating at cycle >= 5**: Present via `AskUserQuestion`:
+
+```
+収束モニター: review-fix ループが「{pattern}」状態を検出しました。
+サイクル: {loop_count} / 指摘数推移: {trajectory}
+
+推奨戦略:
+```
+
+| Option | Description |
+|--------|-------------|
+| {recommended_strategy}（推奨） | {strategy_description} |
+| 戦略変更なしで続行 | 現在のまま review-fix を継続 |
+| 手動レビューへエスカレーション | ループを終了し Ready for Review に進む |
+
+If the user selects a strategy, write it to `.rite-flow-state` via:
+
+```bash
+jq --arg strategy "{selected_strategy}" '.convergence_strategy = $strategy' .rite-flow-state > .rite-flow-state.tmp && mv .rite-flow-state.tmp .rite-flow-state
+```
+
+The `convergence_strategy` value is read by `/rite:pr:fix` Phase 1.0 to adjust fix behavior:
+- `"severity_gating"`: Phase 2 only processes CRITICAL/HIGH findings. MEDIUM/LOW are auto-created as separate Issues.
+- `"batched"`: Phase 2 groups findings by pattern category before fixing.
+- `"scope_lock"`: Phase 2 only fixes findings in files from the original PR diff (`git diff {base_branch}...{first_fix_commit}~1 --name-only`).
+
 Invoke `skill: "rite:pr:review"`.
 
 **🚨 Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 🚨 After Review below. The review sub-skill has already updated `.rite-flow-state` to `phase5_post_review` via Phase 8.0 (defense-in-depth, #719); execute the 5.4.3 steps without delay.

@@ -115,6 +115,26 @@ Extract the following information from work memory and retain in context:
 
 ## Phase 1: Retrieve and Organize Review Comments
 
+### 0.1 Convergence Strategy Load (#453 Component E)
+
+When invoked from the `/rite:issue:start` end-to-end flow, check if the convergence monitor has set a strategy in `.rite-flow-state`:
+
+```bash
+convergence_strategy=$(jq -r '.convergence_strategy // "none"' .rite-flow-state 2>/dev/null) || convergence_strategy="none"
+printf '[CONTEXT] CONVERGENCE_STRATEGY=%s\n' "$convergence_strategy"
+```
+
+If `convergence_strategy` is not `"none"`, adjust Phase 2 behavior accordingly:
+
+| Strategy | Phase 2 Behavior |
+|----------|-----------------|
+| `"severity_gating"` | Only process CRITICAL and HIGH findings. MEDIUM/LOW findings are listed but skipped with a note: `⏭️ {finding_id}: severity gating により defer (別 Issue 化予定)`. After Phase 3 commit, auto-create Issues for deferred findings. |
+| `"batched"` | Group findings by pattern category (e.g., all "retained flag missing" findings together, all "reason table drift" together). Fix each category as a batch before moving to the next. |
+| `"scope_lock"` | Only fix findings in files that are part of the original PR diff. Determine original files via context or work memory. Findings in fix-introduced files are listed but skipped with a note: `⏭️ {finding_id}: scope lock により defer (fix 起因ファイル)`. |
+| `"none"` | Normal behavior (all findings, one by one). |
+
+> **Standalone invocation**: When invoked standalone (not from `/rite:issue:start`), `.rite-flow-state` may not exist or may not have `convergence_strategy`. Default to `"none"`.
+
 ### 1.0 Argument Parsing (Pre-flight)
 
 > **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。Phase 1.0 内部の実行順序と flag pre-stripping の詳細は下記「Flag pre-stripping for Detection rules」注記に集約されている (drift 防止のため 2 箇所で重複記述しない)。
