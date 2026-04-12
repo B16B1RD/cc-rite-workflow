@@ -1337,7 +1337,40 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   2>/dev/null || true
 ```
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
+**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.5 regardless of detection result.
+
+**Step 3.5 (Review-Fix Loop Hard Limit Check)** (#453 Component A): Before dispatching to the next action, check if the review-fix loop count has exceeded the configured hard limit.
+
+1. Read `loop_count` from `.rite-flow-state`:
+
+```bash
+loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
+```
+
+2. Read `safety.max_review_fix_loops` from `rite-config.yml` (default: 7):
+
+```bash
+max_loops=$(awk '/^safety:/{found=1} found && /max_review_fix_loops:/{print $2; exit}' rite-config.yml 2>/dev/null) || max_loops=7
+[ -z "$max_loops" ] && max_loops=7
+printf '[CONTEXT] LOOP_CHECK loop_count=%s max_loops=%s\n' "$loop_count" "$max_loops"
+```
+
+3. If `loop_count >= max_loops` **AND** the fix result pattern routes to re-review (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created]`), **halt the loop** and present options via `AskUserQuestion`:
+
+```
+review-fix ループが上限（{max_loops} サイクル）に達しました。
+現在のループ回数: {loop_count}
+
+指摘数推移を確認した上で、次のアクションを選択してください。
+```
+
+| Option | Description | Action |
+|--------|-------------|--------|
+| 上限延長（+5） | ループ上限を一時的に +5 拡張して続行 | `max_loops` を in-memory で +5 に更新し、Step 4 のディスパッチテーブルへ進行 |
+| 重大度ゲーティング | CRITICAL/HIGH のみ修正、MEDIUM/LOW は別 Issue 化 | `.rite-flow-state` に `"convergence_strategy": "severity_gating"` を書き込み、Step 4 へ進行。次の `/rite:pr:fix` 呼び出し時に severity gating モードが適用される |
+| 手動レビューへエスカレーション | ループを終了し、Ready for Review に進む | **→ Phase 5.5** (Ready for Review) に直行 |
+
+4. If `loop_count < max_loops`, proceed to Step 4 normally.
 
 **Step 4**: Based on the fix result pattern from `rite:pr:fix` **and** the preceding review result pattern, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
 
