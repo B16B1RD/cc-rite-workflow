@@ -79,7 +79,7 @@ Wiki は既に初期化されています。
 ```
 
 「再初期化」選択時のバックアップ方法は `branch_strategy` に応じて分岐:
-- `separate_branch`: `ts=$(date +%s) && mkdir -p .rite/wiki.bak.$ts && git archive "$wiki_branch" -- .rite/wiki/ | tar -x -C .rite/wiki.bak.$ts && git branch -D "$wiki_branch" && git push origin --delete "$wiki_branch" 2>/dev/null || true` で wiki ブランチからデータを取得後、既存ブランチを削除（`git checkout --orphan` が同名ブランチ存在時に失敗するため）
+- `separate_branch`: `ts=$(date +%s) && mkdir -p .rite/wiki.bak.$ts && git archive "$wiki_branch" -- .rite/wiki/ | tar -x -C .rite/wiki.bak.$ts && git branch -D "$wiki_branch" && { git push origin --delete "$wiki_branch" 2>/dev/null || true; }` で wiki ブランチからデータを取得後、既存ブランチを削除（`|| true` は `git push origin --delete` のみに適用。`git checkout --orphan` が同名ブランチ存在時に失敗するため削除が必要）
 - `same_branch`: `cp -r .rite/wiki .rite/wiki.bak.$(date +%s)` で working tree から直接コピー
 
 ### 1.3 ブランチ戦略の読み取り
