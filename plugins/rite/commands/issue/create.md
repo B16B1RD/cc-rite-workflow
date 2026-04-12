@@ -56,9 +56,11 @@ When this command is executed, follow the phases below in order.
 
 > **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the full protocol. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section.
 
-**Self-check**: After every sub-skill returns, ask yourself: "Has the Issue been created and the completion report output?" If not, you are NOT done — keep going.
+**Self-check**: After every sub-skill returns, ask yourself: "Has `[create:completed:{N}]` been output?" If not, you are NOT done — keep going.
 
-**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`, `create-decompose.md`) updates `.rite-flow-state` to a `post_*` phase before returning. This ensures the stop-guard blocks any premature stop attempt, even if the orchestrator's 🚨 Mandatory After instructions are not executed immediately.
+**Completion marker convention** (Issue #444): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`. Terminal sub-skills (`create-register.md`, `create-decompose.md`) output this marker as their absolute last line after handling flow-state deactivation and next-step display internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
+
+**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`, `create-decompose.md`) updates `.rite-flow-state` to a `post_*` phase before returning. Terminal sub-skills additionally deactivate the flow state (`active: false`) and output the completion marker. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return.
 
 ## Arguments
 
@@ -567,19 +569,19 @@ Invoke `skill: "rite:issue:create-register"`.
 | Tentative slug | Phase 0.1.3 | Always available |
 | `phases_skipped` flag | Phase 0.1.5 | Set to `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition. Set to `null` otherwise |
 
-**🚨 Immediate after delegation returns**: When the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs a result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Delegation below. The sub-skill has already updated `.rite-flow-state` to `create_post_delegation` via its Defense-in-Depth section; execute the 🚨 Mandatory After Delegation steps without delay.
+**🚨 Immediate after delegation returns**: When the sub-skill outputs a result pattern (`[create:completed:{N}]`) and returns control, verify that the workflow completed successfully.
 
-### 🚨 Mandatory After Delegation
+> **Note on result patterns** (Issue #444): Terminal sub-skills (`create-register`, `create-decompose`) now output `[create:completed:{N}]` as the unified completion marker. The sub-skill handles flow-state deactivation, next-step output, and completion marker internally (Terminal Completion pattern). The legacy patterns `[register:created:{N}]` and `[decompose:completed:{N}]` are still output before the completion marker for backward compatibility.
+
+### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
 > See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
 
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-register` or `rite:issue:create-decompose` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually.
+> **Defense-in-depth only** (Issue #444): Terminal sub-skills now handle flow-state deactivation and next-step output internally via their Terminal Completion phase. This 🚨 Mandatory After section is retained as a **safety net** — it re-executes the same steps idempotently. If the sub-skill's Terminal Completion executed correctly, these steps are no-ops.
 
-**Verify**: Result pattern confirmed (e.g., `[register:created:{N}]` or `[decompose:completed:{N}]`). The Issue(s) have been created.
+**Self-check**: Has `[create:completed:{N}]` been output? If yes, the sub-skill's Terminal Completion succeeded — execute Steps 1-3 as defense-in-depth (idempotent). If no (sub-skill returned without the completion marker), these steps are **critical** and must execute.
 
-Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state deactivation) is still pending — this is a required step to prevent the stop-guard from blocking future sessions.
-
-**Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic). The sub-skill has already written `create_post_delegation` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes correctly:
+**Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -587,7 +589,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "Sub-skill completed. Deactivate flow state and output next steps. Do NOT stop."
 ```
 
-**Step 2**: Deactivate flow state:
+**Step 2**: Deactivate flow state (idempotent — safe to re-execute if already deactivated by sub-skill):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -595,7 +597,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "none" --active false
 ```
 
-**Step 3**: Output the next steps as the final message. This ensures "次のステップ" appears after all internal processing (flow-state deactivation) is complete:
+**Step 3**: Output the next steps (idempotent — if already output by sub-skill, this is a duplicate that the user can safely ignore):
 
 ```
 次のステップ:
@@ -603,7 +605,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 2. 作業完了後 `/rite:pr:create` で PR 作成
 ```
 
-Where `{number}` is the Issue number extracted from the sub-skill's result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`).
+Where `{number}` is the Issue number extracted from the sub-skill's result pattern.
 
 **Step 4**: The workflow is now complete. Stop is allowed after cleanup.
 

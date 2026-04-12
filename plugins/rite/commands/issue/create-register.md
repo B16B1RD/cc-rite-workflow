@@ -563,34 +563,55 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 ---
 
-## Defense-in-Depth: Flow State Update (Before Return)
+## Phase 4: Terminal Completion
 
-> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+> **Design decision** (Issue #444, D-01): This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
 
-Before returning control to the caller, update `.rite-flow-state` to the post-delegation phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+### 4.1 Flow State Deactivation
+
+After Phase 3 (Completion Report), deactivate the flow state:
 
 ```bash
 if [ -f ".rite-flow-state" ]; then
   bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_delegation" \
-    --next "rite:issue:create-register completed. Issue created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_post_delegation" --issue 0 --branch "" --pr 0 \
-    --next "rite:issue:create-register completed. Issue created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
+    --phase "create_completed" \
+    --next "none" --active false
 fi
 ```
 
-## Result Pattern Output
+### 4.2 Next Steps Output
 
-Output the result pattern after the completion report:
+Output the next steps as the final user-facing message before the completion marker:
 
-- **Issue created**: `[register:created:{number}]` (where `{number}` is the `$issue_number` from Phase 2.2 — the actual GitHub Issue number returned by `gh issue create`)
+```
+次のステップ:
+1. `/rite:issue:start {issue_number}` で作業を開始
+2. 作業完了後 `/rite:pr:create` で PR 作成
+```
 
-This pattern is consumed by the orchestrator (`create.md`) to confirm Issue creation and trigger post-completion cleanup.
+Where `{issue_number}` is the Issue number from Phase 2.2.
+
+### 4.3 Completion Marker
+
+Output the completion marker as the **absolute last line**:
+
+- **Issue created**: `[create:completed:{issue_number}]`
+
+This marker signals to both the orchestrator (`create.md`) and the user that the workflow is fully complete (Issue created, Projects registered, flow-state deactivated, next steps displayed).
+
+**Output rules**:
+1. `[create:completed:{N}]` MUST be the last line of output — no text after it
+2. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
+3. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
 
 ---
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (Phase 3 completion report output), the Issue creation workflow is **complete**. The Issue has been created and registered to GitHub Projects. Control returns to the caller (`create.md`), which handles any remaining cleanup (e.g., `.rite-flow-state` deactivation).
+When this sub-skill completes (Phase 4 terminal completion), the Issue creation workflow is **fully complete**:
+- Issue created and registered to GitHub Projects ✅
+- `.rite-flow-state` deactivated (`active: false`) ✅
+- Next steps displayed to user ✅
+- Completion marker `[create:completed:{N}]` output ✅
+
+The caller (`create.md`) MAY execute its 🚨 Mandatory After Delegation section as defense-in-depth (idempotent — re-deactivating an already-deactivated flow state and re-outputting next steps is harmless).
