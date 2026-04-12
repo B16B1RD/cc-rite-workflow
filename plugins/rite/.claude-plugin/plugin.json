@@ -6,6 +6,7 @@
   "license": "MIT",
   "skills": [
     "./skills/rite-workflow/",
-    "./skills/reviewers/"
+    "./skills/reviewers/",
+    "./skills/wiki/"
   ]
 }
