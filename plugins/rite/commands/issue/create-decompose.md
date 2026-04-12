@@ -612,37 +612,42 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 
 ---
 
-## Defense-in-Depth: Flow State Update (Before Return)
+## Phase 1.0: Terminal Completion (Normal Path Only)
 
-> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+> **Design decision** (Issue #444, D-01): This sub-skill handles flow-state deactivation, next-step output, and completion marker internally on the **Normal path** (sub-Issues created via Phase 0.9). On the **Delegation path** (cancelled and delegated to `create-register`), `create-register.md` handles its own Terminal Completion — do NOT execute this section.
 
-Before returning control to the caller, update `.rite-flow-state` to the post-delegation phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+**Condition**: Execute only on the **Normal path**.
 
-**Condition**: Execute only on the **Normal path** (sub-Issues created via Phase 0.9). On the **Delegation path** (cancelled and delegated to `create-register`), `create-register.md` handles its own Defense-in-Depth — do NOT execute this section.
+### 1.0.1 Flow State Deactivation
+
+After Phase 0.9.6 (Completion Report), deactivate the flow state:
 
 ```bash
 if [ -f ".rite-flow-state" ]; then
   bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_delegation" \
-    --next "rite:issue:create-decompose completed. Sub-Issues created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_post_delegation" --issue 0 --branch "" --pr 0 \
-    --next "rite:issue:create-decompose completed. Sub-Issues created. Caller should execute post-completion cleanup (flow-state deactivation). Do NOT stop."
+    --phase "create_completed" \
+    --next "none" --active false
 fi
 ```
 
-After the flow-state update above, output the appropriate result pattern:
+### 1.0.2 Completion Marker
 
-- **Decomposition completed**: `[decompose:completed:{count}]` (where `{count}` is the number of sub-Issues created)
+Output the completion marker as the **absolute last line**:
 
-This pattern is consumed by the orchestrator (`create.md`) to confirm sub-Issue creation and trigger post-completion cleanup.
+- **Decomposition completed**: `[create:completed:{first_sub_issue_number}]`
+
+Where `{first_sub_issue_number}` is the first sub-Issue number (the recommended starting point from Phase 0.9.6's 次のステップ).
+
+**Output rules**:
+1. `[create:completed:{N}]` MUST be the last line of output — no text after it
+2. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
+3. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
 
 ---
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes, the caller (`create.md`) should NOT take any additional action beyond flow-state deactivation. Completion occurs via one of the following paths:
+Completion occurs via one of the following paths:
 
-- **Normal path** (sub-Issues created via Phase 0.9): The completion report has already been output by this sub-skill. The Defense-in-Depth section above has updated `.rite-flow-state` to `create_post_delegation`.
-- **Delegation path** (cancelled and delegated to `create-register`): The completion report will be output by `create-register`. This sub-skill is NOT terminal in this path — `create-register` takes over and completes the workflow (including its own Defense-in-Depth).
+- **Normal path** (sub-Issues created via Phase 0.9): This sub-skill is terminal. Issue creation workflow is **fully complete** — flow-state deactivated, next steps displayed, completion marker output. The caller (`create.md`) MAY execute its 🚨 Mandatory After Delegation as defense-in-depth (idempotent).
+- **Delegation path** (cancelled and delegated to `create-register`): `create-register.md` is the terminal sub-skill. It handles its own Terminal Completion (Phase 4) including flow-state deactivation and `[create:completed:{N}]` marker.

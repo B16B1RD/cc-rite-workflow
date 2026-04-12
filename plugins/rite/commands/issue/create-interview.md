@@ -522,12 +522,11 @@ This pattern is consumed by the orchestrator (`create.md`) to determine the next
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller (`create.md`) **MUST immediately** execute its 🚨 Mandatory After Interview section:
+When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller **MUST immediately** execute its 🚨 Mandatory After Interview section — proceeding to Phase 0.6 (Task Decomposition Decision) in the **same response turn**.
 
-1. Proceed to Phase 0.6 (Task Decomposition Decision)
+**WARNING**: **No GitHub Issue has been created yet.** Stopping here abandons the workflow with no deliverable.
 
-**WARNING**: **No GitHub Issue has been created yet.** No GitHub Issue exists at this point. The interview only collected information — creation happens in `create-register.md` or `create-decompose.md`. Stopping here would completely abandon the workflow with no Issue created.
-
-**Concrete next action for caller**: Evaluate decomposition triggers (Phase 0.6.1), then delegate to `rite:issue:create-register` (single Issue) or `rite:issue:create-decompose` (sub-Issue decomposition).
-
-**→ Return to `create.md` and proceed to Phase 0.6 now. Do NOT stop.**
+**Output rules**:
+1. Output the result pattern (`[interview:completed]` or `[interview:skipped]`) as the **last line** of this sub-skill's output
+2. Do **NOT** output any narrative text (e.g., `→ Return to create.md`) after the result pattern — it creates a natural stopping point for the LLM
+3. The caller reads the result pattern and immediately continues to Phase 0.6
