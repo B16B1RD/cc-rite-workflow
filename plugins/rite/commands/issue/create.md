@@ -60,7 +60,7 @@ When this command is executed, follow the phases below in order.
 
 **Completion marker convention** (Issue #444): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`. Terminal sub-skills (`create-register.md`, `create-decompose.md`) output this marker as their absolute last line after handling flow-state deactivation and next-step display internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
 
-**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`, `create-decompose.md`) updates `.rite-flow-state` to a `post_*` phase before returning. Terminal sub-skills additionally deactivate the flow state (`active: false`) and output the completion marker. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return.
+**Defense-in-depth**: `create-interview.md` updates `.rite-flow-state` to a `post_*` phase (`create_post_interview`) before returning. Terminal sub-skills (`create-register.md`, `create-decompose.md`) set `create_completed` with `active: false` and output the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return.
 
 ## Arguments
 
@@ -571,7 +571,7 @@ Invoke `skill: "rite:issue:create-register"`.
 
 **🚨 Immediate after delegation returns**: When the sub-skill outputs a result pattern (`[create:completed:{N}]`) and returns control, verify that the workflow completed successfully.
 
-> **Note on result patterns** (Issue #444): Terminal sub-skills (`create-register`, `create-decompose`) now output `[create:completed:{N}]` as the unified completion marker. The sub-skill handles flow-state deactivation, next-step output, and completion marker internally (Terminal Completion pattern). The legacy patterns `[register:created:{N}]` and `[decompose:completed:{N}]` are still output before the completion marker for backward compatibility.
+> **Note on result patterns** (Issue #444): Terminal sub-skills (`create-register`, `create-decompose`) now output `[create:completed:{N}]` as the unified completion marker. The sub-skill handles flow-state deactivation, next-step output, and completion marker internally (Terminal Completion pattern). The legacy patterns `[register:created:{N}]` and `[decompose:completed:{N}]` have been replaced and are no longer output.
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
