@@ -1184,9 +1184,10 @@ else
 fi
 
 # trap cleanup 関数が EXIT で matched_files_rm_err / state_file_rm_err を削除する。block 末尾で
-# trap を明示リセットして block 外への伝播を遮断する (defense-in-depth)。
-trap - EXIT INT TERM HUP
+# cleanup を先に実行し、その後 trap をリセットして block 外への伝播を遮断する (defense-in-depth)。
+# 順序が重要: trap 解除→cleanup だと解除〜cleanup 間のシグナルでクリーンアップ未実行になる。
 _rite_cleanup_p25_cleanup
+trap - EXIT INT TERM HUP
 ```
 
 **Placeholder**: `{pr_number}` はマージされた PR の番号。Phase 1.2 で取得済みの値を再利用する。

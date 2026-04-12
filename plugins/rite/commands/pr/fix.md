@@ -359,7 +359,7 @@ Terminate processing.
 
 **Selection logic**:
 
-> **pipefail scope note**: 下記 bash block は **単一 Bash tool invocation 内で閉じる前提**で設計されており、冒頭で `set -o pipefail` を有効化し、末尾で `set +o pipefail` に戻す。Bash tool 呼び出し間でシェル state は継承されないため、block 外への伝播はない。`set +o pipefail` の目的は「次の処理から pipefail を解除する」ではなく「block 内後続コマンドが pipefail を避けたい箇所に備える」ことである。signal trap による強制終了 (EXIT/INT/TERM/HUP) ではシェルプロセス自体が終わるため pipefail restore は不要。
+> **pipefail scope note**: 下記 bash block は **単一 Bash tool invocation 内で閉じる前提**で設計されており、冒頭で `set -o pipefail` を有効化する。Bash tool 呼び出し間でシェル state は継承されないため、block 外への伝播はない。末尾の `set +o pipefail` は block 内後続コマンドが pipefail を避けたい箇所に備えるための restore だが、早期 exit パス (`exit 1` 等) では restore を経由せず直接終了する。これは Bash tool 隔離により問題にならない (各 Bash tool invocation は独立したシェルプロセスで実行されるため、exit 時の pipefail state は次回呼び出しに継承されない)。
 
 ```bash
 # ⚠️ Claude は以下の literal 代入を Phase 1.0 / 1.0.1 の値に基づいて substitute すること
@@ -423,7 +423,7 @@ esac
 # rc 捕捉に一本化する。
 find_err=""
 _rite_fix_p120_cleanup() {
-  rm -f "${find_err:-}" 2>/dev/null || true
+  rm -f "${find_err:-}"
 }
 trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
 trap '_rite_fix_p120_cleanup; exit 130' INT
@@ -495,7 +495,11 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
           json_commit_sha=""
         fi
         [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
-        head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+        if ! head_sha=$(git rev-parse HEAD 2>/dev/null); then
+          echo "WARNING: git rev-parse HEAD に失敗しました。commit_sha stale detection を skip します" >&2
+          echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=git_rev_parse_head_failed" >&2
+          head_sha=""
+        fi
         if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
           # stale file 検出時は fallback 経路に route する。旧実装は `RITE_FIX_ACKNOWLEDGE_STALE=1` 環境変数による
           # opt-in 続行経路を持っていたが、Claude Code Bash tool は呼び出し境界で env var を継承しないため
@@ -742,10 +746,10 @@ if [ -z "$review_source" ]; then
         # 次回の lexicographic sort で選ばれないようにする。旧実装は WARNING を出すだけで
         # corrupted file を残していたため、次回呼び出し時も同じファイルが最新 timestamp として
         # 選ばれ、同一 WARNING が繰り返される無限 ring を起こしていた。
-        # mv の stderr を tempfile に退避し、失敗時に原因を
-        # 可視化する (旧 `mv ... 2>/dev/null` は permission / cross-fs / target exists 原因を
-        # 完全 silent 化していた)。canonical mv_err tempfile pattern (Phase 6.1.a) と対称化。
-        # `date +%s` 失敗時は同時刻衝突を避けるため `printf '%s-%04x'` で 16bit random を付加。
+        # ⚠️ corrupt file rename ロジック (Instance 1/2 — jq parse failure path)
+        # 同一ロジックが下の schema_required_fields_missing path (Instance 2/2) にも複製されている。
+        # 変更時は両方を同時に更新すること (ドリフト防止)。
+        # mv の stderr を tempfile に退避し、失敗時に原因を可視化する。
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
         mv_err=$(mktemp /tmp/rite-fix-corrupt-mv-err-XXXXXX 2>/dev/null) || mv_err=""
@@ -780,8 +784,9 @@ if [ -z "$review_source" ]; then
         # silent に 0 件脱出させる bypass を防ぐため、最終 and 節として invariant check を追加する。
         echo "WARNING: $latest_file の必須フィールドまたは cross-field invariant が違反。Priority 3 (PR コメント) に routing します。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" >&2
-        # verified-review M-6 (M10) 対応: 上記 jq empty 失敗と同じ理由で corrupted file を rename する
-        # 同上 (mv_err tempfile 化)
+        # ⚠️ corrupt file rename ロジック (Instance 2/2 — schema required fields missing path)
+        # 同一ロジックが上の jq parse failure path (Instance 1/2) にも複製されている。
+        # 変更時は両方を同時に更新すること (ドリフト防止)。
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
         mv_err=$(mktemp /tmp/rite-fix-corrupt-mv-err-XXXXXX 2>/dev/null) || mv_err=""
@@ -819,7 +824,11 @@ if [ -z "$review_source" ]; then
               json_commit_sha=""
             fi
             [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
-            head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+            if ! head_sha=$(git rev-parse HEAD 2>/dev/null); then
+              echo "WARNING: git rev-parse HEAD に失敗しました。commit_sha stale detection を skip します" >&2
+              echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=git_rev_parse_head_failed" >&2
+              head_sha=""
+            fi
             if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
               echo "WARNING: $latest_file の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です (stale)" >&2
               echo "  本ファイルは古い commit に対して生成されました。Priority 3 (PR コメント) に routing します。" >&2
@@ -1115,7 +1124,11 @@ else
         json_commit_sha=""
       fi
       [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
-      head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+      if ! head_sha=$(git rev-parse HEAD 2>/dev/null); then
+        echo "WARNING: git rev-parse HEAD に失敗しました。commit_sha stale detection を skip します" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=git_rev_parse_head_failed" >&2
+        head_sha=""
+      fi
       if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
         echo "⚠️ WARNING: PR コメント内 Raw JSON の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です (stale)" >&2
         echo "  本 Raw JSON は古い commit に対して生成されました。既修正項目を再指摘する可能性があります。" >&2
@@ -1187,7 +1200,10 @@ When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid
 # 「レビュー実行」option 選択時: state file を明示削除してから Phase 1.2 を再入する。
 # これにより next Phase 1.2 bash block の retry_current が 0 になり、Priority 1 scan が発火する。
 pr_number="{pr_number}"
-rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"
+if ! rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"; then
+  echo "WARNING: retry counter state file の削除に失敗: .rite/state/fix-fallback-retry-${pr_number}.count" >&2
+  echo "  影響: Priority 1 scan が強制 skip される可能性があります" >&2
+fi
 echo "ℹ️  retry counter state file を削除しました。/rite:pr:review を起動して新しいレビューを生成します" >&2
 # この後 Claude は `skill: "rite:pr:review", args: "{pr_number}"` を invoke し、
 # 完了後に Phase 1.2 を最初から再入する (Priority 1 で新鮮な conversation review を採用)。
