@@ -1218,6 +1218,7 @@ Status: {projects_status_result}
 - [x] 最新のデフォルトブランチを pull
 - [x] ローカルブランチ {branch_name} を削除
 - [x] リモートブランチを削除
+- [{review_cleanup_check}] レビュー結果ファイル・fix state ファイルを削除
 - [x] .rite-flow-state をリセット
 - [{projects_check}] Projects Status を Done に更新
 - [x] 作業メモリを最終更新
@@ -1225,6 +1226,20 @@ Status: {projects_status_result}
 - [x] 親 Issue の Tasklist チェックボックスを更新（該当する場合）
 - [x] 親 Issue の自動クローズ（該当する場合）
 - [x] ローカル作業メモリを削除（該当する場合）
+```
+
+**Review cleanup result display rules:**
+
+| `REVIEW_CLEANUP_PARTIAL_FAILURE` | `{review_cleanup_check}` |
+|----------------------------------|--------------------------|
+| not set (正常) | `x` |
+| `1` (部分失敗) | ` ` (space) + 下記の警告を表示 |
+
+When `REVIEW_CLEANUP_PARTIAL_FAILURE` is `1`, append the following after the checklist:
+
+```
+⚠️ レビュー結果ファイルの削除が完了しませんでした (reason: {reason})。
+手動で確認してください: ls -la .rite/review-results/{pr_number}-* .rite/state/fix-fallback-retry-{pr_number}.count
 ```
 
 **Projects Status update result display rules:**

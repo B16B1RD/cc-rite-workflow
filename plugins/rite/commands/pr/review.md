@@ -2571,6 +2571,7 @@ Phase 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-req
 | `json_saved_from_p61a_unset` | Phase 6.1.b で `json_saved_from_p61a` が literal substitute されていない (cycle 8 H-5 対応) |
 | `iso_timestamp_from_p61a_unset` | Phase 6.1.b で `iso_timestamp_from_p61a` が literal substitute されていない (cycle 10 I-A 対応、sentinel 残留 / 空文字 / placeholder 形式で発火) |
 | `raw_json_timestamp_injection_failed` | Phase 6.1.b で Raw JSON セクション内 sentinel の sed 置換または mv が失敗 (cycle 10 I-A 対応) |
+| `p61b_pr_number_invalid` | Phase 6.1.b の `pr_number` が literal substitute されていない / 数値以外 (cycle 10 I-B 対応、`p61c_pr_number_invalid` と対称) |
 | `p61c_pr_number_invalid` | Phase 6.1.c の `pr_number` が literal substitute されていない / 数値以外 (cycle 10 I-B 対応) |
 | `p61c_persistence_unrecoverable` | Phase 6.1.c ケース 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1`) で silent data loss 防止のため Phase 6 全体を `exit 2` で fail させる (cycle 10 C-1 対応) |
 | `p61c_file_timestamp_unset` | Phase 6.1.c で `file_timestamp` placeholder が literal substitute されていない (cycle 8 M-9 対応) |
@@ -2589,7 +2590,7 @@ Phase 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-req
 | `collision_resolution_exhausted` | Phase 6.1.a の同一秒衝突回避 `~<4桁hex>` suffix を付与しても再衝突を検出 (cycle 12 M-2 対応、**WARNING only**、同秒 3 回目以上の連続実行 / `$RANDOM` fallback `0` / parallel race の兆候で発火、後続の mv を skip して silent overwrite を防ぐ) |
 | `p61c_file_timestamp_unknown_without_failure` | Phase 6.1.c で `file_timestamp='unknown'` だが `local_save_failed != '1'` (整合性違反、cycle 12 I-3 対応、ケース 1 での `.../unknown.json` 誤提示を遮断) |
 
-**Non-blocking contract**: `mkdir_failure` / `date_command_failure` / `mktemp_failure` / `write_failure` / `json_invalid` / `schema_required_fields_missing` / `mv_failure` / `timestamp_injection_mv_failure` / `pr_number_placeholder_residue` are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
+**Non-blocking contract**: Phase 6.1.a の全 12 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`) are all logged as WARNING and MUST NOT cause Phase 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**:
 
@@ -2810,20 +2811,7 @@ RITE_JSON_EOF
       and (.pr_number | type == "number")
       and (.findings | type == "array")
     ' "$json_tmp" >/dev/null 2>&1; then
-      # jq empty は terminal value (`{}`, `null`, `42`) を pass する。
-      # 必須フィールド (schema_version / pr_number / findings[] 配列型) を明示検証しないと、
-      # `{}` や `{"schema_version": "1.0.0"}` のような不完全な JSON を「保存成功」として扱い、
-      # 後段の /rite:pr:fix が「指摘 0 件で正常終了」する silent regression を起こす。
-      #
-      # jq の and / truthiness 仕様 (false / null のみが falsy、
-      # 空文字列 "" / 0 / [] / {} は全て truthy) のため、旧実装 `.schema_version and .pr_number`
-      # は `schema_version: ""` を silent に pass させる抜け穴があった。明示的に
-      # `type == "string" and length > 0` で「非空文字列」を要求することで、空文字列・null・
-      # 異なる型 (数値や配列) のすべてを reject する。pr_number も同様に number 型を明示要求し、
-      # `"123"` (文字列) のような型違反を silent pass させない。
-      # Source: jq Manual https://jqlang.org/manual/ — "false and null are considered 'false values',
-      # and anything else is a 'true value'. Everything else is 'true', even the number zero and
-      # the empty string, array and object."
+      # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
       echo "WARNING: JSON が必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を欠いています" >&2
       echo "  対処: Claude が review-result-schema.md に従った完全な JSON を生成しているか確認してください" >&2
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing" >&2

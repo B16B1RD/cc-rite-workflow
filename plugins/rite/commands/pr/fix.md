@@ -451,13 +451,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     and (.pr_number | type == "number")
     and (.findings | type == "array")
   ' "$review_file_path" >/dev/null 2>&1; then
-    # jq empty は terminal value (`{}`, `null`, `42` 等) を pass する
-    # ため schema validation として不十分。required fields の存在 + findings[] が array 型であることを
-    # 明示的に検証する。実証: `echo '{}' | jq empty` → exit 0、`echo 'null' | jq empty` → exit 0
-    #
-    # jq の and / truthiness 仕様により `.schema_version and .pr_number`
-    # は `schema_version: ""` や `pr_number: "abc"` (文字列型) を silent pass させる抜け穴がある。
-    # 型と非空性を明示要求する。
+    # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
     echo "エラー: --review-file の必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落: $review_file_path" >&2
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_required_fields_missing" >&2
     review_source="fallback"
@@ -474,8 +468,12 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
   else
     # Priority 0: schema_version も Priority 2 と同じく検証するが、失敗時は直接 fallback へ
     # (ユーザーの明示意図を尊重 — Priority 1-3 に silent fall-through しない)
-    # jq exit code を明示捕捉 (commit_sha 抽出と対称化、verified-review cycle 15 F-2 対応)
-    if ! schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path" 2>/dev/null); then
+    # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
+    # `if ! var=$(cmd); then rc=$?` は bash 仕様上 $? が常に 0 になる (`!` 否定の結果が伝播)。
+    # `if cmd; then :; else rc=$?` 形式で cmd 自身の exit code を正しく取得する。
+    if schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path" 2>/dev/null); then
+      : # jq 成功
+    else
       jq_sv_rc=$?
       echo "WARNING: --review-file の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
       echo "  原因候補: jq バイナリ異常 / OOM / ファイル IO エラー" >&2
@@ -703,19 +701,25 @@ if [ -z "$review_source" ]; then
     fi
 
     # mapfile + process substitution で SIGPIPE 経路を断ち、pipefail 下でも安全に動作する
-    # NOTE (verified-review cycle 15 F-10): mapfile 自体の exit code は未監視。process substitution
-    # 内の find stderr は find_err tempfile で捕捉済みだが、sort 失敗は未監視。実害は限定的:
-    # files_arr が空 → latest_file="" → Priority 3 へ正常 fallthrough する。
+    # sort の stderr も find_err に append して捕捉する (sort OOM / /tmp full を検出)。
     files_arr=()
-    mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "${pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r)
+    mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "${pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r 2>>"${find_err:-/dev/null}")
     latest_file="${files_arr[0]:-}"
 
     if [ -n "$find_err" ] && [ -s "$find_err" ]; then
       echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
       head -3 "$find_err" | sed 's/^/  /' >&2
-      # observability のため retained flag を emit する。
-      # 他の REVIEW_SOURCE_* flag と対称にし、Phase 8.1 の reason 表から追跡可能にする。
       echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=local_file_find_io_error" >&2
+    fi
+    # process substitution では内部コマンドの exit code が親に伝播しない。
+    # ファイルが存在するのに配列が空の場合は sort/find failure を疑い WARNING を emit する。
+    if [ ${#files_arr[@]} -eq 0 ] && [ -d .rite/review-results ]; then
+      _p2_glob_check=(.rite/review-results/"${pr_number}"-*.json)
+      if [ -e "${_p2_glob_check[0]:-}" ]; then
+        echo "WARNING: .rite/review-results/ にマッチするファイルが存在しますが mapfile 結果が空です (sort/find failure の可能性)" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=sort_or_mapfile_failure" >&2
+      fi
+      unset _p2_glob_check
     fi
     # 旧 `[ -n "$find_err" ] && rm -f && find_err=""` の short-circuit は
     # rm 失敗時に find_err="" 代入に到達せず、後続の trap cleanup が同じ rm を再実行する重複処理になっていた
@@ -741,14 +745,7 @@ if [ -z "$review_source" ]; then
       review_source_path=""
     fi
     if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
-      # jq empty は terminal value を pass するため、
-      # required fields (schema_version / pr_number / findings[]) を明示検証する
-      #
-      # 旧実装は jq empty 失敗 / schema fields 欠落の 2 経路で
-      # WARNING のみ emit し review_source を set しないまま Priority 3 へ silent fallthrough していた。
-      # `local_file_schema_version_unknown` だけが明示 routing しており対称性が崩れていた。
-      # 両ブランチに `review_source="pr_comment"; review_source_path=""` を明示追加し、
-      # `local_file_json_parse_failure` reason を新設する。
+      # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
       if ! jq empty "$latest_file" 2>/dev/null; then
         echo "WARNING: $latest_file は有効な JSON ではありません。Priority 3 (PR コメント) に routing します。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_json_parse_failure" >&2
@@ -782,21 +779,10 @@ if [ -z "$review_source" ]; then
         (.schema_version | type == "string" and length > 0)
         and (.pr_number | type == "number")
         and (.findings | type == "array")
-        and ((.overall_assessment != "mergeable")
-             or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open"))))
       ' "$latest_file" >/dev/null 2>&1; then
-        # jq の and / truthiness 仕様 (false / null のみ falsy、
-        # 空文字列・0・[]・{} は全て truthy) のため、`.schema_version and .pr_number` 単独では
-        # `schema_version: ""` や `pr_number: "123"` (文字列型) を silent pass させる抜け穴がある。
-        # 型と非空性を明示要求する。
-        # Cross-field invariant (review-result-schema.md): overall_assessment=="mergeable" のときは
-        # CRITICAL/HIGH かつ status==open の finding が存在してはならない。手書き JSON で fix ループを
-        # silent に 0 件脱出させる bypass を防ぐため、最終 and 節として invariant check を追加する。
-        echo "WARNING: $latest_file の必須フィールドまたは cross-field invariant が違反。Priority 3 (PR コメント) に routing します。" >&2
+        # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
+        echo "WARNING: $latest_file の必須フィールドが欠落。Priority 3 (PR コメント) に routing します。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" >&2
-        # ⚠️ corrupt file rename ロジック (Instance 2/2 — schema required fields missing path)
-        # 同一ロジックが上の jq parse failure path (Instance 1/2) にも複製されている。
-        # 変更時は両方を同時に更新すること (ドリフト防止)。
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
         mv_err=$(mktemp /tmp/rite-fix-corrupt-mv-err-XXXXXX 2>/dev/null) || mv_err=""
@@ -812,10 +798,25 @@ if [ -z "$review_source" ]; then
         [ -n "$mv_err" ] && rm -f "$mv_err"
         review_source="pr_comment"
         review_source_path=""
+      elif ! jq -e '
+        (.overall_assessment != "mergeable")
+        or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
+      ' "$latest_file" >/dev/null 2>&1; then
+        # Cross-field invariant (review-result-schema.md): overall_assessment=="mergeable" のときは
+        # CRITICAL/HIGH かつ status==open の finding が存在してはならない。
+        # corrupt rename はしない (データは構造的に valid、ビジネスルール違反のみ)。
+        echo "WARNING: $latest_file の cross-field invariant 違反 (mergeable だが open の CRITICAL/HIGH finding あり)。Priority 3 に routing します。" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_cross_field_invariant_violated" >&2
+        review_source="pr_comment"
+        review_source_path=""
       else
         # schema_version 検証 (Priority 2 success 内で実施)
-        # jq exit code を明示捕捉 (commit_sha 抽出と対称化、verified-review cycle 15 F-3 対応)
-        if ! schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file" 2>/dev/null); then
+        # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
+        # `if ! var=$(cmd); then rc=$?` は bash 仕様上 $? が常に 0 になるため
+        # `if cmd; then :; else rc=$?` 形式で正しく取得する。
+        if schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file" 2>/dev/null); then
+          : # jq 成功
+        else
           jq_sv_rc=$?
           echo "WARNING: $latest_file の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
           echo "  原因候補: jq バイナリ異常 / OOM / ファイル IO エラー" >&2
@@ -1140,10 +1141,13 @@ elif ! printf '%s' "$raw_json" | jq -e '
   echo "WARNING: PR コメント内の Raw JSON が必須フィールドまたは cross-field invariant を欠いています。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_required_fields_missing" >&2
 else
-  # jq empty 単独では terminal value (`{}`, `null`, `42` 等) を pass する。
-  # required fields (schema_version / pr_number / findings[] 配列型) を明示検証してから New format を採用する
-  # jq exit code を明示捕捉 (Priority 0/2 の commit_sha 抽出と対称化、verified-review cycle 15 F-4 対応)
-  if ! schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"' 2>/dev/null); then
+  # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
+  # jq exit code を明示捕捉 (Priority 0/2 の commit_sha 抽出と対称化)
+  # `if ! var=$(cmd); then rc=$?` は bash 仕様上 $? が常に 0 になるため
+  # `if cmd; then :; else rc=$?` 形式で正しく取得する。
+  if schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"' 2>/dev/null); then
+    : # jq 成功
+  else
     jq_sv_rc=$?
     echo "WARNING: PR コメント内 Raw JSON の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
     echo "  原因候補: jq バイナリ異常 / OOM / pipe write error" >&2
@@ -1307,12 +1311,19 @@ state_dir=".rite/state"
 # 永遠に 1 止まりで hard gate が機能しない。並列 race については単一 session 内では Bash
 # tool 呼び出しが逐次実行されるため発生しない。
 state_file="${state_dir}/fix-fallback-retry-${pr_number}.count"
-mkdir -p "$state_dir" 2>/dev/null || {
-  echo "ERROR: $state_dir の作成に失敗しました (permission denied / read-only filesystem)" >&2
+mkdir_err=$(mktemp /tmp/rite-fix-p1201-mkdir-err-XXXXXX 2>/dev/null) || mkdir_err=""
+if ! mkdir -p "$state_dir" 2>"${mkdir_err:-/dev/null}"; then
+  echo "ERROR: $state_dir の作成に失敗しました" >&2
+  if [ -n "$mkdir_err" ] && [ -s "$mkdir_err" ]; then
+    head -3 "$mkdir_err" | sed 's/^/  /' >&2
+  fi
+  echo "  対処: permission denied / read-only filesystem / .rite が通常ファイルでないか確認してください" >&2
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=state_dir_mkdir_failed" >&2
+  [ -n "$mkdir_err" ] && rm -f "$mkdir_err"
   echo "[fix:error]"
   exit 1
-}
+fi
+[ -n "$mkdir_err" ] && rm -f "$mkdir_err"
 
 # cat の exit code を明示 check することで、IO エラー (permission denied / NFS timeout / inode 破損 等)
 # を silent に `current=0` に倒す silent regression を防ぐ。Phase 1.2.0 Priority 1 の retry_state_file
@@ -1442,7 +1453,7 @@ exit 1
 | `priority1_receipt_missing` | Phase 1.2.0 Priority 1 で decision=use だが machine-readable receipt (`p1_scan_turns`) が literal substitute されていない (verified-review H-3 対応) |
 | `priority1_receipt_invalid` | Phase 1.2.0 Priority 1 で `p1_scan_turns` が数値ではない (verified-review H-3 対応) |
 | `priority1_receipt_inconsistent` | Phase 1.2.0 Priority 1 で decision=use だが `p1_scan_found != "true"` (receipt 整合性違反、verified-review H-3 対応) |
-| `explicit_file_commit_sha_mismatch` | Priority 0 で指定された file の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
+| `explicit_file_commit_sha_mismatch` | Priority 0 で指定された file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 4 Interactive Fallback へ routing。`RITE_FIX_ACKNOWLEDGE_STALE=1` で opt-in 続行可) |
 | `local_file_commit_sha_mismatch` | Priority 2 で選ばれた最新 local file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 3 へ routing) |
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |

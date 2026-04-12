@@ -194,7 +194,7 @@
 | 0 | **明示的ファイル指定** | `--review-file <path>` 指定時 | 指定パスを読取。**4 種の失敗モード** (パス不在 / JSON 不正 / schema_version 不明 / `explicit_file_commit_sha_mismatch` (json commit_sha が HEAD と不一致、stale file protection)) のいずれでも Priority 1-3 にフォールスルーせず直接 Priority 4 (対話式 fallback) へ遷移 (ユーザーの明示意図を尊重) |
 | 1 | **会話コンテキスト** | 同一セッション内で `/rite:pr:review` が直前に実行されていれば、その結果を直接利用。**採用時は `[CONTEXT] REVIEW_SOURCE=conversation; pr_number={pr_number}` を stderr に emit する義務がある** (observability 義務、後段の provenance log に必要) | Claude が会話履歴に rite review 結果を見つけられなかった場合は次の Priority へ |
 | 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | **4 種の失敗モードいずれも** WARNING を出して **Priority 3 (PR コメント) に直接 routing** する: (a) `local_file_json_parse_failure` (`jq empty` で JSON syntax invalid)、(b) `local_file_schema_required_fields_missing` (parse 可能だが `schema_version` 非空文字列 / `pr_number` 数値型 / `findings[]` 配列型のいずれかが欠落)、(c) `local_file_schema_version_unknown` (schema_version 未知)、(d) `local_file_commit_sha_mismatch` (json commit_sha が現 HEAD と不一致、stale file protection)。古い timestamp ファイルには fallback しない |
-| 3 | **PR コメント (後方互換)** | PR コメントの `## 📜 rite レビュー結果` セクション (新形式: `### 📄 Raw JSON` 付き → awk で Raw JSON section-scoped 抽出。旧形式: Markdown テーブル → 既存パースロジック) | 4 種の失敗モード: (a) `pr_comment_raw_json_parse_failure`、(b) `pr_comment_schema_required_fields_missing`、(c) `pr_comment_schema_version_unknown`、(d) `pr_comment_commit_sha_mismatch` (json commit_sha が現 HEAD と不一致、stale file protection)。いずれも legacy Markdown parser へ fallthrough |
+| 3 | **PR コメント (後方互換)** | PR コメントの `## 📜 rite レビュー結果` セクション (新形式: `### 📄 Raw JSON` 付き → awk で Raw JSON section-scoped 抽出。旧形式: Markdown テーブル → 既存パースロジック) | 失敗モード: (a) `pr_comment_raw_json_parse_failure`、(b) `pr_comment_schema_required_fields_missing`、(c) `pr_comment_schema_version_unknown` は legacy Markdown parser へ fallthrough。(d) `pr_comment_commit_sha_mismatch` は **WARNING のみで continue** (Raw JSON の severity_map 構築を続行。PR コメントは最新 push 後に投稿される可能性が高く、legacy parser への fallthrough はむしろ情報損失になるため) |
 | 4 | **対話式 fallback** | 上記すべて欠落時 | `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示 (ファイルパス指定 retry 上限 3 回、state file による hard gate で強制終了) |
 
 **Priority 1 emit 義務の理由**: Priority 1 は Claude の自然言語判断に依存する経路で bash の if-else では捕捉できない。後段の Phase 4.5.3 / 4.6 で `{review_source}` を log に出すため、conversation 経由で取り込んだ場合も他の Priority と同様に provenance を残す必要がある。emit 忘れは silent provenance loss となり、fix 後のトラブルシュートが困難になる。
@@ -207,9 +207,9 @@
 
 - Priority 0 mismatch → Priority 1-3 にフォールスルーせず **Priority 4 (対話式 fallback)** へ直接遷移 (ユーザー意図尊重)
 - Priority 2 mismatch → **Priority 3 (PR コメント)** へ routing
-- Priority 3 mismatch → **legacy Markdown parser** へ fallthrough
+- Priority 3 mismatch → **WARNING のみで continue** (Raw JSON の severity_map 構築を続行、legacy Markdown parser への fallthrough はしない)
 
-retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_file|pr_comment}_commit_sha_mismatch` を stderr に emit。これは「review した時点の commit と現 HEAD が異なる場合、findings は既に修正済み / 意味を失っている可能性がある」という invariant を守るための defense-in-depth。`fix.md` Phase 1.2.0 の bash block (Priority 0 L496-509, Priority 2 L794-830, Priority 3 L1110-1120) が実装を保持する。
+retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_file|pr_comment}_commit_sha_mismatch` を stderr に emit。これは「review した時点の commit と現 HEAD が異なる場合、findings は既に修正済み / 意味を失っている可能性がある」という invariant を守るための defense-in-depth。`fix.md` Phase 1.2.0 の bash block 内の各 Priority success 経路にある `commit_sha stale detection` コメントアンカーを参照。
 
 ## 明示的ファイル指定
 
