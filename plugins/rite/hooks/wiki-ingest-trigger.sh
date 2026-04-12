@@ -286,7 +286,8 @@ fi
   fi
   printf 'ingested: false\n'
   printf -- '---\n\n'
-  cat "$CONTENT_FILE"
+  # F-02 fix: cat 失敗を明示検査 (set -e は || の LHS で抑制されるため silent swallow を防ぐ)
+  cat "$CONTENT_FILE" || { echo "ERROR: cat failed for '$CONTENT_FILE'" >&2; exit 3; }
   # Ensure trailing newline
   printf '\n'
 } > "$target_file" || {

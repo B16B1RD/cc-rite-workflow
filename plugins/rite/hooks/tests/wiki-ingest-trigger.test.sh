@@ -25,16 +25,6 @@ fail() {
   echo "  ❌ FAIL: $1"
 }
 
-# Helper: run trigger in isolated tmp dir, capture stdout + stderr separately
-run_trigger() {
-  local subdir="$1"
-  shift
-  local target="$TEST_DIR/$subdir"
-  mkdir -p "$target"
-  cd "$target"
-  bash "$HOOK" "$@" 2>"$target/stderr.log"
-}
-
 echo "=== wiki-ingest-trigger.sh tests ==="
 echo ""
 
@@ -636,6 +626,22 @@ if [ $rc -eq 1 ] && grep -q 'control characters' "$dir35/err.log"; then
   pass "Control character in source-ref → exit 1"
 else
   fail "Expected exit 1 with 'control characters', got rc=$rc, stderr=$(cat "$dir35/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036: No rite-config.yml → lenient pass (F-04 config absent test)
+# --------------------------------------------------------------------------
+echo "TC-036: No rite-config.yml → lenient pass (rc=0)"
+dir36="$TEST_DIR/tc36"
+mkdir -p "$dir36"
+echo "body" > "$dir36/body.md"
+# Deliberately do NOT create rite-config.yml
+( cd "$dir36" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "No rite-config.yml → lenient pass (rc=0, no silent abort)"
+else
+  fail "Expected rc=0 (lenient), got rc=$rc, stderr=$(cat "$dir36/err.log")"
 fi
 echo ""
 
