@@ -34,6 +34,8 @@ temp/
 .rite-plugin-root
 .rite-initialized-version
 .rite-settings-hooks-cleaned
+.rite/review-results/
+.rite/state/
 
 # Git worktrees for parallel agents
 .worktrees/
