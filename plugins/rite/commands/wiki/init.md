@@ -152,7 +152,7 @@ Phase 1.2 で取得した `branch_strategy` と `wiki_branch` の値をリテラ
 > **Reference**: [separate_branch 戦略のブランチ操作](../../references/wiki-patterns.md#separate_branch-戦略のブランチ操作)
 
 ```bash
-# Phase 1.3 の値をリテラルで埋め込む（例: branch_strategy="separate_branch", wiki_branch="wiki"）
+# Phase 1.2 の値をリテラルで埋め込む（例: branch_strategy="separate_branch", wiki_branch="wiki"）
 branch_strategy="{branch_strategy}"
 wiki_branch="{wiki_branch}"
 
@@ -224,12 +224,18 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   echo "✅ Wiki ブランチ '$wiki_branch' を作成しました"
 
 elif [ "$branch_strategy" = "same_branch" ]; then
-  git add .rite/wiki/
+  git add .rite/wiki/ || {
+    echo "ERROR: git add .rite/wiki/ failed" >&2
+    exit 1
+  }
   git commit -m "feat(wiki): initialize Wiki structure
 
 - 3-layer structure: Raw Sources / Wiki Pages / Schema
 - Templates: SCHEMA.md, index.md, log.md
-- Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}"
+- Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}" || {
+    echo "ERROR: git commit failed" >&2
+    exit 1
+  }
 
   echo "✅ Wiki を現在のブランチに初期化しました"
 

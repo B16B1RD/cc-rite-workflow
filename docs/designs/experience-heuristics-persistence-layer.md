@@ -165,14 +165,14 @@ plugins/rite/
 | `plugins/rite/commands/wiki/` | ✅ init.md / 📋 ingest.md, query.md, lint.md |
 | `plugins/rite/skills/` | 📋 wiki スキル定義（SKILL.md — init.md は commands/ 配下の自動検出で動作するため初期構築では不要） |
 | `plugins/rite/hooks/` | 📋 wiki-ingest-trigger.sh, wiki-query-inject.sh |
-| `plugins/rite/templates/wiki/` | 新規: ページテンプレート、Schema テンプレート |
-| `plugins/rite/references/` | 新規: wiki-patterns.md |
-| `plugins/rite/commands/pr/review.md` | 修正: Ingest トリガー + Query 注入の統合 |
-| `plugins/rite/commands/issue/start.md` | 修正: Query 注入の統合 |
-| `plugins/rite/commands/issue/close.md` | 修正: Ingest トリガーの統合 |
-| `plugins/rite/commands/pr/fix.md` | 修正: Ingest トリガー + Query 注入の統合 |
-| `rite-config.yml` | 修正: Wiki 設定セクションの追加 |
-| `.gitignore` | 修正: `.rite/wiki/` の管理方針（別ブランチの場合は不要） |
+| `plugins/rite/templates/wiki/` | ✅ ページテンプレート、Schema テンプレート |
+| `plugins/rite/references/` | ✅ wiki-patterns.md |
+| `plugins/rite/commands/pr/review.md` | 📋 Ingest トリガー + Query 注入の統合 |
+| `plugins/rite/commands/issue/start.md` | 📋 Query 注入の統合 |
+| `plugins/rite/commands/issue/close.md` | 📋 Ingest トリガーの統合 |
+| `plugins/rite/commands/pr/fix.md` | 📋 Ingest トリガー + Query 注入の統合 |
+| `rite-config.yml` | ✅ Wiki 設定セクションの追加 |
+| `.gitignore` | 📋 `.rite/wiki/` の管理方針（別ブランチの場合は不要） |
 
 <!-- Section ID: SPEC-IMPL-CONSIDERATIONS -->
 ### 考慮事項

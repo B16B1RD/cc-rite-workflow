@@ -81,8 +81,8 @@ fi
 git checkout --orphan "$wiki_branch" || { echo "ERROR: git checkout --orphan failed" >&2; exit 1; }
 git rm -rf . 2>/dev/null || true
 # Wiki ファイルを配置してコミット
-git add .rite/wiki/
-git commit -m "feat(wiki): initialize Wiki structure"
+git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
+git commit -m "feat(wiki): initialize Wiki structure" || { echo "ERROR: git commit failed" >&2; exit 1; }
 git push -u origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る（git checkout - は --orphan 後に動作しないため明示的に指定）
@@ -133,8 +133,8 @@ git checkout "$wiki_branch" || { echo "ERROR: git checkout '$wiki_branch' failed
 # Wiki ファイルの変更を適用
 # ... (ingest/update operations)
 
-git add .rite/wiki/
-git commit -m "docs(wiki): {action} - {description}"
+git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
+git commit -m "docs(wiki): {action} - {description}" || { echo "ERROR: git commit failed" >&2; exit 1; }
 git push origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る
