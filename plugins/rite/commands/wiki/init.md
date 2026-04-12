@@ -39,17 +39,45 @@ Wiki 機能が無効です（wiki.enabled: false）。
 
 ### 1.2 既存 Wiki の確認
 
-> **Reference**: [Wiki 初期化判定パターン](../../references/wiki-patterns.md#wiki-初期化判定パターン)
+Wiki が既に初期化済みかを判定します。以下の bash コードをインラインで実行してください:
 
-Wiki が既に初期化済みかを確認します。初期化済みの場合は `AskUserQuestion`:
+```bash
+wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+wiki_branch="${wiki_branch:-wiki}"
+
+branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+
+if [ "$branch_strategy" = "separate_branch" ]; then
+  if git rev-parse --verify "origin/${wiki_branch}" >/dev/null 2>&1 || \
+     git rev-parse --verify "${wiki_branch}" >/dev/null 2>&1; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+else
+  if [ -f ".rite/wiki/SCHEMA.md" ]; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+fi
+```
+
+初期化済みの場合は `AskUserQuestion`:
 
 ```
 Wiki は既に初期化されています。
 
 オプション:
-- 再初期化（既存データをバックアップして上書き）
+- 再初期化（既存データをバックアップして上書き）: cp -r .rite/wiki .rite/wiki.bak.$(date +%s) でバックアップ後に上書き
 - キャンセル
 ```
+
+「再初期化」選択時は `cp -r .rite/wiki .rite/wiki.bak.$(date +%s)` でバックアップを作成してから続行。
 
 ### 1.3 ブランチ戦略の読み取り
 
@@ -68,20 +96,24 @@ echo "branch_strategy=$branch_strategy"
 echo "wiki_branch=$wiki_branch"
 ```
 
+**変数保持指示**: Phase 1.3 で出力された `branch_strategy` と `wiki_branch` の値を保持し、Phase 2 および Phase 3 以降のすべての Bash ブロックで**リテラル値として埋め込んで**使用すること。Claude Code の Bash ツール間でシェル変数は保持されないため、各 Bash ブロックの冒頭で値をリテラルに再定義する必要がある。
+
 ## Phase 2: ディレクトリ構造の作成
 
 ### 2.1 Plugin Root の解決
 
-> **Reference**: [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script)
+> **Reference**: [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)
 
 ```bash
 plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
-  echo "ERROR: plugin_root resolution failed" >&2
+  echo "ERROR: plugin_root resolution failed (resolved: '${plugin_root:-<empty>}')" >&2
   exit 1
 fi
 echo "plugin_root=$plugin_root"
 ```
+
+**変数保持指示**: Phase 2.1 で出力された `plugin_root` の値を保持し、以降の Bash ブロックでは**リテラル値として埋め込んで**使用すること。
 
 ### 2.2 ディレクトリ作成
 
@@ -96,14 +128,13 @@ mkdir -p .rite/wiki/pages/anti-patterns
 
 ### 2.3 テンプレート展開
 
-タイムスタンプを生成し、テンプレートのプレースホルダーを置換して展開:
+タイムスタンプを生成し、テンプレートのプレースホルダーを置換して展開。Phase 2.1 で取得した `plugin_root` をリテラル値として埋め込むこと:
 
 ```bash
 initialized_at=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 
-# SCHEMA.md
-sed "s/{initialized_at}/$initialized_at/g" \
-  "${plugin_root}/templates/wiki/schema-template.md" > .rite/wiki/SCHEMA.md
+# SCHEMA.md（{initialized_at} プレースホルダーを含まないため単純コピー）
+cp "${plugin_root}/templates/wiki/schema-template.md" .rite/wiki/SCHEMA.md
 
 # index.md
 sed "s/{initialized_at}/$initialized_at/g" \
@@ -116,13 +147,28 @@ sed "s/{initialized_at}/$initialized_at/g" \
 
 ## Phase 3: Git ブランチ設定
 
+Phase 1.3 で取得した `branch_strategy` と `wiki_branch` の値をリテラルに埋め込んで実行すること。
+
 ### 3.1 separate_branch 戦略の場合
 
 > **Reference**: [separate_branch 戦略のブランチ操作](../../references/wiki-patterns.md#separate_branch-戦略のブランチ操作)
 
 ```bash
+# Phase 1.3 の値をリテラルで埋め込む（例: branch_strategy="separate_branch", wiki_branch="wiki"）
+branch_strategy="{branch_strategy}"
+wiki_branch="{wiki_branch}"
+
 if [ "$branch_strategy" = "separate_branch" ]; then
   current_branch=$(git branch --show-current)
+
+  # dirty tree チェック（未コミットの変更を保護）
+  if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
+    echo "WARNING: 未コミットの変更があります。git stash で退避します。"
+    git stash push -m "rite-wiki-init-stash"
+    stash_needed=true
+  else
+    stash_needed=false
+  fi
 
   # orphan ブランチを作成
   git checkout --orphan "$wiki_branch"
@@ -142,14 +188,14 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   # 元のブランチに戻る
   git checkout "$current_branch"
 
+  # stash した場合のみ pop
+  if [ "$stash_needed" = true ]; then
+    git stash pop
+  fi
+
   echo "✅ Wiki ブランチ '$wiki_branch' を作成しました"
-fi
-```
 
-### 3.2 same_branch 戦略の場合
-
-```bash
-if [ "$branch_strategy" = "same_branch" ]; then
+elif [ "$branch_strategy" = "same_branch" ]; then
   git add .rite/wiki/
   git commit -m "feat(wiki): initialize Wiki structure
 
@@ -158,16 +204,24 @@ if [ "$branch_strategy" = "same_branch" ]; then
 - Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}"
 
   echo "✅ Wiki を現在のブランチに初期化しました"
+
+else
+  echo "ERROR: 未知の branch_strategy: '$branch_strategy'" >&2
+  echo "  受け付け可能な値: separate_branch / same_branch" >&2
+  echo "  対処: rite-config.yml の wiki.branch_strategy を確認してください" >&2
+  exit 1
 fi
 ```
 
 ## Phase 4: 完了レポート
 
+Phase 1.3 で取得した `branch_strategy` と `wiki_branch` の値を以下のテンプレートに埋め込んで表示すること:
+
 ```
 Wiki の初期化が完了しました。
 
-ブランチ戦略: {branch_strategy}
-{wiki_branch 情報（separate_branch の場合のみ）}
+ブランチ戦略: {branch_strategy の値}
+{separate_branch の場合: Wiki ブランチ: {wiki_branch の値}}
 
 作成されたファイル:
 - .rite/wiki/SCHEMA.md (蓄積規約)
