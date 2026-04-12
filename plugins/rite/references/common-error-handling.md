@@ -141,8 +141,7 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 |------|---------|
 | `review.md` Phase 6.2 Step 2 (`issue-comment-wm-sync`) | Phase 遷移時の backup sync |
 | `review.md` Phase 6.4 (`_rite_review_p64_run_sync` helper) | Phase 6.4 の 3 step 全てで本 helper が参照 |
-| `fix.md` Phase 4.5 (`local-wm-update.sh`) | 修正後の local work memory 更新 |
-| `fix.md` Phase 8.1 (`local-wm-update.sh` post-fix sync) | E2E flow 経路の post-fix work memory 更新 |
+| `fix.md` Phase 8.1 (`local-wm-update.sh`) | E2E flow 経路の post-fix local work memory 更新 |
 
 **Rationale for exact phrase match**: 旧 loose pattern `grep -qiE 'lock|contention|busy'` は以下の silent suppression 問題を抱えていた:
 

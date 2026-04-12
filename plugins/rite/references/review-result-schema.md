@@ -94,7 +94,7 @@
 | `pr_number` | integer | ✅ | PR 番号 (>= 1) |
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー (後述の「読取優先順位 (pr:fix)」表 failure mode 列 `*_commit_sha_mismatch` を参照)。read 側 (`fix.md` Phase 1.2.0) は各 Priority success 経路で `json_commit_sha` vs 現 HEAD を比較し、mismatch 時は WARNING + `[CONTEXT] REVIEW_SOURCE_STALE=1; reason=*_commit_sha_mismatch` emit + 次 Priority への routing を実行する (stale file protection) |
-| `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、legacy parser 経路に fallthrough する |
+| `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
 | `findings` | array | ✅ | 指摘事項の配列 (0 件でも空配列として存在) |
 
 ### `findings[]` 要素
@@ -106,7 +106,7 @@
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW"` の 4 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
-| `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md Phase 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
+| `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md Phase 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` の 4 値。現行実装では `/rite:pr:review` Phase 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:pr:fix` 完了時に `"fixed"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
@@ -207,7 +207,7 @@
 
 - Priority 0 mismatch → Priority 1-3 にフォールスルーせず **Priority 4 (対話式 fallback)** へ直接遷移 (ユーザー意図尊重)
 - Priority 2 mismatch → **Priority 3 (PR コメント)** へ routing
-- Priority 3 mismatch → **WARNING のみで continue** (Raw JSON の severity_map 構築を続行、legacy Markdown parser への fallthrough はしない)
+- Priority 3 mismatch → **WARNING のみで continue** (Raw JSON の severity_map 構築を続行、legacy Markdown parser への fallthrough はしない)。**注意: Priority 2 も stale で Priority 3 に routing された場合、Priority 3 の stale データが WARNING のみで消費されるカスケードが発生しうる** (WARNING には P2 stale 経由であることを明示する文言を含む)
 
 retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_file|pr_comment}_commit_sha_mismatch` を stderr に emit。これは「review した時点の commit と現 HEAD が異なる場合、findings は既に修正済み / 意味を失っている可能性がある」という invariant を守るための defense-in-depth。`fix.md` Phase 1.2.0 の bash block 内の各 Priority success 経路にある `commit_sha stale detection` コメントアンカーを参照。
 

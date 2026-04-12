@@ -2617,7 +2617,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
   - `category`: 指摘カテゴリ (例: `code_quality`, `error_handling`, `security`, `performance`)。アンダースコア区切りで統一する (schema.md の `category` フィールド定義を SoT として参照)
   - `severity`: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` のいずれか。reviewer が `Critical`/`Important`/`Minor`/`Nit` 等の別表記で返した場合は、write 前に本 enum へ正規化する (別名マッピングは review-result-schema.md の `severity` フィールド定義を参照)。正規化漏れの JSON は read 側 (`fix.md` Phase 1.2.0) で MEDIUM fallback と WARNING emit が発生する。
   - `file`: 対象ファイルの相対パス
-  - `line`: 正の整数 (>= 1) または `null` (行非依存指摘の sentinel)。schema.md の `line` フィールド定義 (cycle 10 S-4 で `null` 許容、`0` は legacy sentinel として後方互換) が SoT。
+  - `line`: 正の整数 (>= 1) または `null` (行非依存指摘の sentinel)。schema.md の `line` フィールド定義が SoT。新規出力では `null` を使用し、`0` は生成しないこと (`0` は legacy sentinel として read 側で `null` と同等に扱われるが、write 側で新たに生成すべきではない)。
   - `description`: 指摘内容
   - `suggestion`: 推奨対応
   - `status`: 現行実装では常に `open` を出力する。`fixed` / `replied` / `deferred` は enum として予約されているが、`/rite:pr:fix` 側の書き戻しは未実装 (schema は slot を持つのみ、review-result-schema.md の `status` フィールド定義を参照)。
@@ -2668,8 +2668,9 @@ iso_timestamp=""
 file_timestamp=""
 file_timestamp_emitted="false"
 json_saved="false"
+jq_val_err_r=""
 _rite_review_p61a_cleanup() {
-  rm -f "${json_tmp:-}" "${mktemp_err:-}"
+  rm -f "${json_tmp:-}" "${mktemp_err:-}" "${jq_val_err_r:-}"
   # file_timestamp / json_saved emit を trap EXIT handler 内に移動し、
   # normal/abnormal 両方で必ず emit されるようにする (Phase 6.1.c が emit 前提で動くため)
   if [ "$file_timestamp_emitted" = "false" ]; then
@@ -2796,16 +2797,18 @@ RITE_JSON_EOF
     if [ -z "$json_tmp" ] || [ ! -s "$json_tmp" ]; then
       # Injection 失敗または tmpfile empty → 上流で既に LOCAL_SAVE_FAILED emit 済み、後続 validation/mv skip
       :
-    elif ! jq empty "$json_tmp" 2>/dev/null; then
+    elif jq_val_err_r=$(mktemp /tmp/rite-jq-val-err-r-XXXXXX 2>/dev/null) || true; ! jq empty "$json_tmp" 2>"${jq_val_err_r:-/dev/null}"; then
       # cat 成功 + non-empty でも JSON syntactically invalid (Claude substitute ミス) を検出
       # literal `{review_result_json_heredoc_body}` がそのまま書き込まれた場合もここで catch される
       echo "WARNING: JSON 一時ファイルが syntactically invalid です (literal substitute 漏れの可能性)" >&2
+      [ -n "${jq_val_err_r:-}" ] && [ -s "$jq_val_err_r" ] && head -3 "$jq_val_err_r" | sed 's/^/  jq: /' >&2
       # 不正 JSON の先頭 5 行を表示して debug を可能にする
       # trap EXIT が $json_tmp を削除する前に内容を surface する
       echo "  内容 preview (先頭 5 行):" >&2
       head -5 "$json_tmp" 2>/dev/null | sed 's/^/    /' >&2
       echo "  対処: review-result-schema.md に従った正しい JSON が Claude によって生成されているか確認してください" >&2
       echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=json_invalid" >&2
+      rm -f "${jq_val_err_r:-}"
     elif ! jq -e '
       (.schema_version | type == "string" and length > 0)
       and (.pr_number | type == "number")
@@ -3042,27 +3045,31 @@ tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
   exit 1
 }
 # awk で Raw JSON section 内の sentinel のみを置換する。
-# State machine:
-#   - past_raw_json_heading=0 → `### 📄 Raw JSON` 見出し以前 (Markdown 本文)、sentinel 置換しない
-#   - past_raw_json_heading=1, in_fence=0 → 見出し後だがコードフェンス外、sentinel 置換しない
-#   - past_raw_json_heading=1, in_fence=1 → Raw JSON コードフェンス内、sentinel を置換対象にする
+# State machine (END block 内で last_heading 以降を処理):
+#   - past=0 (未設定) → 最後の `### 📄 Raw JSON` 見出し以前、sentinel 置換しない
+#   - past=1, in_fence=0 → 最後の見出し後だがコードフェンス外、sentinel 置換しない
+#   - past=1, in_fence=1 → Raw JSON コードフェンス内、sentinel を置換対象にする
 #
-# NOTE (verified-review cycle 15 F-9): 本 awk は「最初の `### 📄 Raw JSON`」に反応する設計で、
-# fix.md の Priority 3 awk が「最後の」同見出しを採用する設計と非対称である。
-# Phase 6.1.b の PR コメント構造では `### 📄 Raw JSON` が常に末尾に 1 回のみ出現し、
-# かつ column-0 anchor (`^###`) によりテーブル cell 内の literal は不一致となるため、
-# 実害はない。fix.md 側は finding 列に `### 📄 Raw JSON` literal を含む反例があるため
-# 「最後」方式が必須だが、review.md (コメント生成側) では構造が保証されている。
+# NOTE (verified-review cycle 18 F-3 対応): fix.md Priority 3 awk の「最後の `### 📄 Raw JSON`」
+# 方式に統一する。Phase 6.1.b の PR コメント構造では同見出しが 1 回のみ出現するため
+# first/last の差異は実害ないが、defense-in-depth として fix.md と同じ「last」パターンに
+# 合わせることで、finding 列に literal `### 📄 Raw JSON` が含まれる将来の反例に備える。
+# 実装: 1-pass で全行を buffer に蓄え、END block で最後の heading 位置以降の fence 内のみ置換。
 awk -v ts="$iso_timestamp_from_p61a" '
-  /^### 📄 Raw JSON/ { past_raw_json_heading=1; print; next }
-  past_raw_json_heading == 1 && /^```json$/ { in_fence=1; print; next }
-  past_raw_json_heading == 1 && in_fence == 1 && /^```$/ { in_fence=0; print; next }
-  in_fence == 1 {
-    gsub(/"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/, "\"" ts "\"")
-    print
-    next
+  { lines[NR] = $0 }
+  /^### 📄 Raw JSON/ { last_heading = NR }
+  END {
+    in_fence = 0
+    for (i = 1; i <= NR; i++) {
+      if (i == last_heading) { past = 1; print lines[i]; continue }
+      if (past && lines[i] ~ /^```json$/) { in_fence = 1; print lines[i]; continue }
+      if (past && in_fence && lines[i] ~ /^```$/) { in_fence = 0; print lines[i]; continue }
+      if (in_fence) {
+        gsub(/"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/, "\"" ts "\"", lines[i])
+      }
+      print lines[i]
+    }
   }
-  { print }
 ' "$tmpfile" > "$tmpfile_patched"
 awk_rc=$?
 if [ "$awk_rc" -ne 0 ]; then
@@ -3073,12 +3080,19 @@ if [ "$awk_rc" -ne 0 ]; then
 fi
 
 # Post-condition (a): Raw JSON section 内に sentinel が残留していないこと。
-# awk で同じ state machine を走らせて Raw JSON section 内のみを抽出し、sentinel を検索する。
+# main awk と同じ「last heading」パターンで Raw JSON section 内のみを抽出し、sentinel を検索する。
 remaining_in_raw_json=$(awk '
-  /^### 📄 Raw JSON/ { past=1; next }
-  past == 1 && /^```json$/ { in_fence=1; next }
-  past == 1 && in_fence == 1 && /^```$/ { in_fence=0; next }
-  in_fence == 1 && /"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/ { print }
+  { lines[NR] = $0 }
+  /^### 📄 Raw JSON/ { last_heading = NR }
+  END {
+    in_fence = 0
+    for (i = 1; i <= NR; i++) {
+      if (i == last_heading) { past = 1; continue }
+      if (past && lines[i] ~ /^```json$/) { in_fence = 1; continue }
+      if (past && in_fence && lines[i] ~ /^```$/) { in_fence = 0; continue }
+      if (in_fence && lines[i] ~ /"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/) { print lines[i] }
+    }
+  }
 ' "$tmpfile_patched")
 if [ -n "$remaining_in_raw_json" ]; then
   echo "ERROR: 置換後も Raw JSON section 内に sentinel が残留しています" >&2
@@ -3089,10 +3103,19 @@ if [ -n "$remaining_in_raw_json" ]; then
 fi
 
 # Post-condition (b): Markdown 本文 (Raw JSON section 外) の literal sentinel が保存されていること。
-# 元の tmpfile と patched tmpfile の Markdown section (Raw JSON section を除く) を比較し、
+# 元の tmpfile と patched tmpfile の Markdown section (最後の Raw JSON heading より前) を比較し、
 # 違いがないことを確認する。scope 外の副作用を静的に遮断する defense-in-depth。
-original_markdown=$(awk '/^### 📄 Raw JSON/ { exit } { print }' "$tmpfile")
-patched_markdown=$(awk '/^### 📄 Raw JSON/ { exit } { print }' "$tmpfile_patched")
+# main awk と同じ「last heading」パターンで、最後の heading 直前までを抽出する。
+original_markdown=$(awk '
+  /^### 📄 Raw JSON/ { last_heading = NR }
+  { lines[NR] = $0 }
+  END { for (i = 1; i < (last_heading ? last_heading : NR+1); i++) print lines[i] }
+' "$tmpfile")
+patched_markdown=$(awk '
+  /^### 📄 Raw JSON/ { last_heading = NR }
+  { lines[NR] = $0 }
+  END { for (i = 1; i < (last_heading ? last_heading : NR+1); i++) print lines[i] }
+' "$tmpfile_patched")
 if [ "$original_markdown" != "$patched_markdown" ]; then
   echo "ERROR: sentinel 置換が Markdown 本文 (Raw JSON section 外) まで波及しました" >&2
   echo "  scope 限定 awk が Raw JSON section を正しく特定できなかった可能性" >&2
@@ -3118,7 +3141,12 @@ tmpfile_patched=""
 # 実証: `bash -c 'if ! (exit 42); then echo $?; fi'` → `0`
 gh_err=$(mktemp /tmp/rite-review-p61b-gh-err-XXXXXX) || gh_err=""
 if gh pr comment "$pr_number" --body-file "$tmpfile" 2>"${gh_err:-/dev/null}"; then
-  : # success
+  # PR コメント投稿成功。ローカルファイル保存が失敗していた場合はユーザーに通知する。
+  # json_saved_from_p61a は bash block 冒頭の case guard (line ~2975) で "true"|"false" に検証済み
+  if [ "$json_saved_from_p61a" = "false" ]; then
+    echo "ℹ️  ローカルファイル保存は失敗しましたが、PR コメントへの投稿は成功しました。" >&2
+    echo "    次回 /rite:pr:fix は Priority 3 (PR コメント) から読取ります" >&2
+  fi
 else
   gh_rc=$?
   echo "ERROR: PR コメント投稿に失敗しました (gh rc=$gh_rc)" >&2

@@ -1122,6 +1122,8 @@ if [ -d "$review_results_dir" ]; then
   # 通常の `*.json` に加えて、fix.md Priority 2 が corrupt 検出時に rename した `*.json.corrupt-*`
   # ファイルも同じ pr_number prefix に限定して削除対象に含める。
   # broken symlink も削除対象に含めるため、`[ -e ]` (dereferenced) に加えて `[ -L ]` (lstat) を併用する。
+  # Known limitation: glob → rm 間に TOCTOU window があるが、pr_number prefix 固定 + .gitignore
+  # 対象 + single-session 運用のため実害リスクは極小。削除件数メッセージが不正確になる可能性のみ。
   matched_files=()
   for f in "$review_results_dir"/"${pr_number}"-*.json; do
     { [ -e "$f" ] || [ -L "$f" ]; } && matched_files+=("$f")

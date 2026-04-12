@@ -10,6 +10,16 @@ description: レビュー指摘への対応を支援
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
 
+## Inline Annotation Convention
+
+本ファイル内の `verified-review` 注釈は `/verified-review` コマンドによるレビュー指摘の対応追跡に使用される。命名規則:
+
+- `verified-review cycle N` — N 回目のレビュー・修正サイクル
+- `H-N` / `M-N` / `L-N` / `S-N` / `I-N` / `C-N` — 重要度プレフィックス (High/Medium/Low/Suggestion/Important/Critical) + サイクル内通番
+- 括弧内 `(M10)` 等 — サイクル横断の統合追跡 ID
+
+これらの注釈は git history でも追跡可能だが、コード内で変更理由の文脈を保持するために残している。
+
 ## Prerequisites
 
 **bash 4.0+ 必須**: 本コマンドは複数の bash block で `mapfile -t < <(...)` builtin を使用する (Phase 1.2.0 Priority 2 の `find ... | sort -r` 結果取得、Phase 4.5 doc-heavy 検証等)。Phase 1.0.1 の bash block 冒頭 (Step 0) に [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を **inline embed 済み** (C-3 対応)。prose 参照ではなく実行可能な bash コードとして配置されており、Claude は Phase 1.0.1 bash block を実行するだけで guard が発火する。失敗時は `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible` を emit して `[fix:error]` で exit する。
@@ -109,12 +119,12 @@ Extract the following information from work memory and retain in context:
 
 > **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。Phase 1.0 内部の実行順序と flag pre-stripping の詳細は下記「Flag pre-stripping for Detection rules」注記に集約されている (drift 防止のため 2 箇所で重複記述しない)。
 
-> **⚠️ Phase 1.0 の 2 段構成 (Stage A → Stage B)** : 番号体系の自然順 (`1.0` → `1.0.1`) と実行順 (`1.0.1` → `1.0` 本体の Detection rules) が逆行して読みづらかったため、以下の **Stage A / Stage B** ラベルで実行順を明示する:
+> **⚠️ Phase 1.0 の 2 段構成 (Phase 1.0.A → Phase 1.0.B)** : 実行順を番号順に一致させるため、以下のラベルで明示する:
 >
-> - **Stage A — Phase 1.0.1 Flag Parsing**: `--review-file <path>` 等のフラグトークンを `$ARGUMENTS` から pre-strip し、`remaining_args` に PR 番号候補だけを残す
-> - **Stage B — Phase 1.0 本体の Detection rules**: 上記 `remaining_args` に対して順序 1 / 2 / 3 / 4 の regex を適用して `{pr_number}` と `{target_comment_id}` を抽出
+> - **Phase 1.0.A — Flag Parsing** (実装は後述の Phase 1.0.1 セクション): `--review-file <path>` 等のフラグトークンを `$ARGUMENTS` から pre-strip し、`remaining_args` に PR 番号候補だけを残す
+> - **Phase 1.0.B — Detection rules** (本セクション直下): 上記 `remaining_args` に対して順序 1 / 2 / 3 / 4 の regex を適用して `{pr_number}` と `{target_comment_id}` を抽出
 >
-> Stage A → Stage B の順で実行する。「Phase 1.0.1 が Phase 1.0 のサブフェーズなのだから Detection rules の後に実行される」という直感的読み方は **誤り** である (番号体系は階層、実行順は逆)。
+> Phase 1.0.A → Phase 1.0.B の順で実行する。Phase 1.0.1 セクションが Detection rules table より後に記述されているが、**実行は先に行う** (A before B — flags before detection)。
 
 **Always run this sub-phase**. Phase 1.1 が `gh pr view` を実行する前に、引数形式を正規化して `{pr_number}` と（該当時のみ）`{target_comment_id}` を抽出する。bare integer (`^[0-9]+$`) や引数なしの場合でも本サブフェーズを実行し、Detection rules table の順序 1 / 順序 4 で pr_number を抽出した上で **`{target_comment_id} = null` を explicit set** する (undefined 参照防止)。
 
@@ -185,7 +195,7 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
 
 `/rite:pr:fix --review-file <path>` を受け付けるため、以下の手順で `{review_file_path}` を抽出する。Phase 1.2 のハイブリッド読取ロジック (Priority 0: 明示指定) で参照される。
 
-**実行順**: Phase 1.0 冒頭の Stage A/B 説明を参照 (本サブフェーズは Stage A = Detection rules よりも先に実行される)。
+**実行順**: Phase 1.0 冒頭の Phase 1.0.A/1.0.B 説明を参照 (本サブフェーズは Phase 1.0.A = Detection rules (Phase 1.0.B) よりも先に実行される)。
 
 **抽出手順** (bash 実装):
 
@@ -422,8 +432,10 @@ esac
 # 関数を直接呼び出す拡張で silent regression する罠を残していた。簡素化して trap handler の
 # rc 捕捉に一本化する。
 find_err=""
+jq_val_err_p0=""
+jq_val_err_p2=""
 _rite_fix_p120_cleanup() {
-  rm -f "${find_err:-}"
+  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}"
 }
 trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
 trap '_rite_fix_p120_cleanup; exit 130' INT
@@ -442,10 +454,14 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     echo "エラー: --review-file で指定されたパスが存在しません: $review_file_path" >&2
     echo "[CONTEXT] REVIEW_SOURCE_MISSING=1; reason=explicit_file_not_found" >&2
     review_source="fallback"
-  elif ! jq empty "$review_file_path" 2>/dev/null; then
+    review_source_path=""
+  elif jq_val_err_p0=$(mktemp /tmp/rite-jq-val-err-p0-XXXXXX 2>/dev/null) || true; ! jq empty "$review_file_path" 2>"${jq_val_err_p0:-/dev/null}"; then
     echo "エラー: --review-file で指定されたファイルが有効な JSON ではありません: $review_file_path" >&2
+    [ -n "${jq_val_err_p0:-}" ] && [ -s "$jq_val_err_p0" ] && head -3 "$jq_val_err_p0" | sed 's/^/  /' >&2
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_parse" >&2
+    rm -f "${jq_val_err_p0:-}"
     review_source="fallback"
+    review_source_path=""
   elif ! jq -e '
     (.schema_version | type == "string" and length > 0)
     and (.pr_number | type == "number")
@@ -455,6 +471,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     echo "エラー: --review-file の必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落: $review_file_path" >&2
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_required_fields_missing" >&2
     review_source="fallback"
+    review_source_path=""
   elif ! jq -e '
     (.overall_assessment != "mergeable")
     or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
@@ -465,12 +482,20 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     echo "エラー: --review-file の cross-field invariant 違反: overall_assessment=\"mergeable\" だが CRITICAL/HIGH で status=\"open\" の finding が存在します" >&2
     echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers" >&2
     review_source="fallback"
+    review_source_path=""
+  elif ! jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' "$review_file_path" >/dev/null 2>&1; then
+    # overall_assessment enum validation (review-result-schema.md)
+    oa_val=$(jq -r '.overall_assessment // "(null)"' "$review_file_path" 2>/dev/null)
+    echo "WARNING: --review-file の overall_assessment が未知値です: $oa_val (受理値: mergeable / fix-needed)" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value; value=$oa_val" >&2
+    review_source="fallback"
+    review_source_path=""
   else
     # Priority 0: schema_version も Priority 2 と同じく検証するが、失敗時は直接 fallback へ
     # (ユーザーの明示意図を尊重 — Priority 1-3 に silent fall-through しない)
     # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
-    # `if ! var=$(cmd); then rc=$?` は bash 仕様上 $? が常に 0 になる (`!` 否定の結果が伝播)。
-    # `if cmd; then :; else rc=$?` 形式で cmd 自身の exit code を正しく取得する。
+    # `if ! var=$(cmd); then rc=$?` では `!` 演算子が cmd の exit code を反転するため、
+    # then ブランチ内の `$?` は `!` の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
     if schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path" 2>/dev/null); then
       : # jq 成功
     else
@@ -520,6 +545,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
           echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=explicit_file_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
           echo "  fallback 経路に route します (Priority 4 Interactive fallback)" >&2
           review_source="fallback"
+          review_source_path=""
         else
           review_source="explicit_file"
           review_source_path="$review_file_path"
@@ -529,6 +555,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
         echo "エラー: --review-file で指定されたファイルの schema_version が未知です: $schema_version" >&2
         echo "[CONTEXT] REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=explicit_file_schema_version_unknown" >&2
         review_source="fallback"
+        review_source_path=""
         ;;
     esac
   fi
@@ -749,8 +776,10 @@ if [ -z "$review_source" ]; then
     fi
     if [ -z "$review_source" ] && [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
       # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
-      if ! jq empty "$latest_file" 2>/dev/null; then
+      jq_val_err_p2=$(mktemp /tmp/rite-jq-val-err-p2-XXXXXX 2>/dev/null) || jq_val_err_p2=""
+      if ! jq empty "$latest_file" 2>"${jq_val_err_p2:-/dev/null}"; then
         echo "WARNING: $latest_file は有効な JSON ではありません。Priority 3 (PR コメント) に routing します。" >&2
+        [ -n "${jq_val_err_p2:-}" ] && [ -s "$jq_val_err_p2" ] && head -3 "$jq_val_err_p2" | sed 's/^/  /' >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_json_parse_failure" >&2
         # verified-review M-6 (M10) 対応: corrupted file を .corrupt-{epoch} にリネームし、
         # 次回の lexicographic sort で選ばれないようにする。旧実装は WARNING を出すだけで
@@ -774,6 +803,7 @@ if [ -z "$review_source" ]; then
             head -3 "$mv_err" | sed 's/^/      /' >&2
           fi
           echo "    対処: permission denied / read-only filesystem / cross-filesystem / target exists のいずれかを確認" >&2
+          echo "    手動削除: rm \"$latest_file\"" >&2
         fi
         [ -n "$mv_err" ] && rm -f "$mv_err"
         review_source="pr_comment"
@@ -793,10 +823,11 @@ if [ -z "$review_source" ]; then
           echo "  schema-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
         else
           mv_rc=$?
-          echo "  WARNING: schema-invalid file の rename に失敗 (rc=$mv_rc)" >&2
+          echo "  WARNING: schema-invalid file の rename に失敗 (rc=$mv_rc)。次回 fix で同じ WARNING が再発します" >&2
           if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
             head -3 "$mv_err" | sed 's/^/    /' >&2
           fi
+          echo "    手動削除: rm \"$latest_file\"" >&2
         fi
         [ -n "$mv_err" ] && rm -f "$mv_err"
         review_source="pr_comment"
@@ -812,11 +843,18 @@ if [ -z "$review_source" ]; then
         echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_cross_field_invariant_violated" >&2
         review_source="pr_comment"
         review_source_path=""
+      elif ! jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' "$latest_file" >/dev/null 2>&1; then
+        # overall_assessment enum validation (review-result-schema.md)
+        oa_val=$(jq -r '.overall_assessment // "(null)"' "$latest_file" 2>/dev/null)
+        echo "WARNING: $latest_file の overall_assessment が未知値です: $oa_val (受理値: mergeable / fix-needed)。Priority 3 に routing します。" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value; value=$oa_val" >&2
+        review_source="pr_comment"
+        review_source_path=""
       else
         # schema_version 検証 (Priority 2 success 内で実施)
         # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
-        # `if ! var=$(cmd); then rc=$?` は bash 仕様上 $? が常に 0 になるため
-        # `if cmd; then :; else rc=$?` 形式で正しく取得する。
+        # `if ! var=$(cmd); then rc=$?` では `!` 演算子が cmd の exit code を反転するため、
+        # then ブランチ内の `$?` は `!` の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
         if schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file" 2>/dev/null); then
           : # jq 成功
         else
@@ -1134,20 +1172,31 @@ elif ! printf '%s' "$raw_json" | jq -e '
   (.schema_version | type == "string" and length > 0)
   and (.pr_number | type == "number")
   and (.findings | type == "array")
-  and ((.overall_assessment != "mergeable")
-       or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open"))))
 ' >/dev/null 2>&1; then
   # jq の and / truthiness 仕様 (false / null のみ falsy) のため
   # 空文字列 schema_version や型違反の pr_number を silent pass させない明示型ガード。
+  echo "WARNING: PR コメント内の Raw JSON が必須フィールドを欠いています。legacy parser に fallthrough します。" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_required_fields_missing" >&2
+elif ! printf '%s' "$raw_json" | jq -e '
+  (.overall_assessment != "mergeable")
+  or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
+' >/dev/null 2>&1; then
   # Cross-field invariant (review-result-schema.md): overall_assessment=="mergeable" のときは
   # CRITICAL/HIGH かつ status==open の finding が存在してはならない (手書き JSON bypass 防止)。
-  echo "WARNING: PR コメント内の Raw JSON が必須フィールドまたは cross-field invariant を欠いています。legacy parser に fallthrough します。" >&2
-  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_required_fields_missing" >&2
+  # Priority 0/2 と対称に独立 elif で分離し、reason code を区別する。
+  echo "WARNING: PR コメント内の Raw JSON が cross-field invariant に違反しています (mergeable だが open な CRITICAL/HIGH finding あり)。legacy parser に fallthrough します。" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_comment_cross_field_invariant_violated" >&2
+elif ! printf '%s' "$raw_json" | jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' >/dev/null 2>&1; then
+  # overall_assessment enum validation (review-result-schema.md)
+  oa_val=$(printf '%s' "$raw_json" | jq -r '.overall_assessment // "(null)"' 2>/dev/null)
+  echo "WARNING: PR コメント内の Raw JSON の overall_assessment が未知値です: $oa_val (受理値: mergeable / fix-needed)。legacy parser に fallthrough します。" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value; value=$oa_val" >&2
 else
   # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
   # jq exit code を明示捕捉 (Priority 0/2 の commit_sha 抽出と対称化)
-  # `if ! var=$(cmd); then rc=$?` は bash 仕様上 $? が常に 0 になるため
-  # `if cmd; then :; else rc=$?` 形式で正しく取得する。
+  # `if ! var=$(cmd); then rc=$?` では `!` 演算子が cmd の exit code を反転するため、
+  # then ブランチ内の `$?` は `!` の結果 (= 0) を返す。cmd 自身の非 0 exit code を
+  # 取得するには `if cmd; then :; else rc=$?; fi` 形式を使う。
   if schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"' 2>/dev/null); then
     : # jq 成功
   else
@@ -1183,6 +1232,7 @@ else
       if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
         echo "⚠️ WARNING: PR コメント内 Raw JSON の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です (stale)" >&2
         echo "  本 Raw JSON は古い commit に対して生成されました。既修正項目を再指摘する可能性があります。" >&2
+        echo "  注意: Priority 2 (ローカルファイル) も stale だった場合、本 Priority 3 が stale のまま消費されます。" >&2
         echo "  対処: /rite:pr:review を再実行して PR コメントを更新してください。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=pr_comment_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
       fi
@@ -1373,7 +1423,8 @@ if [ "$current" -ge 3 ]; then
   # Non-blocking Contract 準拠: rm 失敗でも `[fix:error]` は既に emit 済みなので hard exit は継続。
   if ! rm -f "$state_file"; then
     echo "WARNING: hard gate 発火後の state file 削除に失敗: $state_file" >&2
-    echo "  対処: 次回 fix 起動時に stale counter=3 が残留し Priority 1 skip が発動し続ける可能性があります" >&2
+    echo "  影響: 次回 fix 起動時に stale counter=3 が残留し Priority 1 skip が発動し続ける可能性があります" >&2
+    echo "  手動削除: rm \"$state_file\"" >&2
     echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=hard_gate_rm_failure" >&2
   fi
   echo "[fix:error]"
@@ -1401,7 +1452,8 @@ pr_number="{pr_number}"
 # 誤発動する経路があった。
 if ! rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"; then
   echo "WARNING: 成功時 cleanup の state file 削除に失敗: .rite/state/fix-fallback-retry-${pr_number}.count" >&2
-  echo "  対処: 次回 fix 起動時に stale state が残留する可能性があります" >&2
+  echo "  影響: 次回 fix 起動時に stale counter が残留し Priority 1 skip が誤発動する可能性があります" >&2
+  echo "  手動削除: rm \".rite/state/fix-fallback-retry-${pr_number}.count\"" >&2
   echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=success_cleanup_rm_failure" >&2
 fi
 ```
@@ -1423,19 +1475,25 @@ echo "[fix:error]"
 exit 1
 ```
 
-**Phase 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
+**Phase 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
 
 | reason | Description |
 |--------|-------------|
 | `explicit_file_not_found` | `--review-file` で指定されたパスが存在しない (Priority 0, triggers fallback) |
 | `explicit_file_parse` | `--review-file` で指定されたファイルが valid JSON ではない (Priority 0, triggers fallback) |
 | `explicit_file_schema_required_fields_missing` | `--review-file` で指定されたファイルが parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Priority 0, triggers fallback) |
+| `mergeable_has_open_blockers` | Priority 0 で指定されたファイルの cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (Priority 0, `REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag, triggers fallback) |
+| `overall_assessment_unknown_value` | Priority 0/2/3 で `overall_assessment` が受理値 (`mergeable` / `fix-needed`) 以外 (review-result-schema.md enum 違反、`REVIEW_SOURCE_ENUM_UNKNOWN` flag。P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough) |
 | `explicit_file_schema_version_unknown` | `--review-file` で指定されたファイルの schema_version が未知 (Priority 0, triggers fallback) |
 | `local_file_json_parse_failure` | Priority 2 で選ばれた最新 local file が `jq empty` で syntax invalid (Priority 3 pr_comment へ routing) |
 | `local_file_schema_required_fields_missing` | Priority 2 で選ばれた最新 local file が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (Priority 3 pr_comment へ routing) |
+| `local_file_cross_field_invariant_violated` | Priority 2 で選ばれた最新 local file の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (Priority 3 pr_comment へ routing、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
+| `sort_or_mapfile_failure` | Priority 2 の `find ... | sort -r` pipeline が process substitution 内で失敗 (OOM / IO エラー、`REVIEW_SOURCE_FIND_FAILED` flag) |
 | `local_file_schema_version_unknown` | Priority 2 で選ばれた最新 local file の schema_version が未知 (Priority 3 pr_comment へ routing) |
 | `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
+| `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 awk が失敗 (rc 非 0、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough) |
 | `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
+| `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
 | `user_file_path_retries` | Interactive fallback の「ファイルパス指定」が 3 回連続で失敗 (terminate with `[fix:error]`) |
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (Phase 8.1 評価順 1 で `[fix:error]` に昇格) |
@@ -1473,7 +1531,7 @@ exit 1
 | `review_file_path_placeholder_residue` | Priority 0 で `review_file_path="{review_file_path_from_phase_1_0_1}"` placeholder が literal substitute されていない (cycle 8 M-7 対応、fail-fast) |
 | `pr_number_placeholder_residue` | Phase 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cycle 10 I-B 対応、cleanup.md Phase 2.5 / review.md Phase 6.1.a と対称化、`[fix:error]` 昇格) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_schema_version_unknown` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `state_file_read_io_error_gate` / `review_source_unset_post_chain` / `review_source_invalid_post_chain` / `invalid_pr_number_at_happy_cleanup` / `hard_gate_rm_failure` / `success_cleanup_rm_failure` / `user_cancel_rm_failure` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue`)
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `mergeable_has_open_blockers` / `overall_assessment_unknown_value` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `sort_or_mapfile_failure` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_cross_field_invariant_violated` / `local_file_schema_version_unknown` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `state_file_read_io_error_gate` / `review_source_unset_post_chain` / `review_source_invalid_post_chain` / `invalid_pr_number_at_happy_cleanup` / `hard_gate_rm_failure` / `success_cleanup_rm_failure` / `user_cancel_rm_failure` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue`)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -2740,7 +2798,7 @@ tmpfile=$(mktemp) || {
   # mktemp 失敗経路にも retained flag を emit
   # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPLY_POST_FAILED を検出しないと
   # silent に [fix:replied-only] / [fix:pushed] と判定される。Phase 4.2 / 4.3.4 と対称にする)
-  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=mktemp_failed_reply_tmpfile"
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=mktemp_failed_reply_tmpfile" >&2
   exit 1
 }
 
@@ -2753,14 +2811,14 @@ if ! cat <<'REPLYEOF' > "$tmpfile"
 REPLYEOF
 then
   echo "ERROR: reply body の HEREDOC 書き込みに失敗 (/tmp full / permission 拒否 / inode 枯渇)" >&2
-  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=cat_redirection_failed"
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=cat_redirection_failed" >&2
   exit 1
 fi
 
 # 追加 post-condition: HEREDOC 成功扱いだが空ファイル (seek race / quota 等) も捕捉
 if [ ! -s "$tmpfile" ]; then
   echo "ERROR: reply body tmpfile が空です (HEREDOC 書き込み後 post-condition 違反)" >&2
-  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=reply_tmpfile_empty"
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id; reason=reply_tmpfile_empty" >&2
   exit 1
 fi
 
@@ -2776,7 +2834,7 @@ if ! jq -n --rawfile body "$tmpfile" --argjson in_reply_to "$comment_id" \
   # Rationale: bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPLY_POST_FAILED を
   # 検出しないと silent に [fix:replied-only] / [fix:pushed] と判定される。retained flag を
   # context に明示宣言することで Phase 8.1 評価順テーブルで detect され [fix:error] へ昇格する。
-  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id"
+  echo "[CONTEXT] REPLY_POST_FAILED=1; comment_id=$comment_id" >&2
   set +o pipefail
   exit 1
 fi
@@ -3044,7 +3102,7 @@ tmpfile=$(mktemp) || {
   # mktemp 失敗経路にも retained flag を emit
   # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が REPORT_POST_FAILED を検出
   # しないと silent に [fix:pushed] と判定される。成功経路の L-7 修正と対称にする)
-  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}; reason=mktemp_failed_report_tmpfile"
+  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}; reason=mktemp_failed_report_tmpfile" >&2
   exit 1
 }
 
@@ -3065,7 +3123,7 @@ if ! gh pr comment {pr_number} --body-file "$tmpfile"; then
   echo "  影響: 対応完了報告コメントが PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
   # Rationale: Phase 8.1 で REPORT_POST_FAILED=1 を検出し [fix:error] へ昇格させる。
   # bash の `exit 1` だけでは Claude のフロー制御にならないため、retained flag を併用する。
-  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}"
+  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}" >&2
   exit 1
 fi
 ```
@@ -3222,7 +3280,7 @@ tmpfile=$(mktemp) || {
   # mktemp 失敗経路にも retained flag を emit
   # (bash の `exit 1` は Claude のフロー制御にならず、Phase 8.1 が ISSUE_CREATE_FAILED を検出
   # しないと silent に issues-created:0 と判定され scope 外 finding の追跡が失われる)
-  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=mktemp_failed_issue_body_tmpfile"
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=mktemp_failed_issue_body_tmpfile" >&2
   exit 1
 }
 
@@ -3323,7 +3381,7 @@ if [ "$script_exit" -ne 0 ]; then
   # Rationale: Phase 8.1 で ISSUE_CREATE_FAILED=1 を検出し [fix:error] へ昇格させる。
   # bash の `exit 1` だけでは Claude のフロー制御にならず、silent に [fix:pushed] / [fix:replied-only]
   # として完了判定され、scope 外 finding の追跡が失われる。retained flag を併用する。
-  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=script_exit_$script_exit"
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=script_exit_$script_exit" >&2
   exit 1
 fi
 
@@ -3333,7 +3391,7 @@ if [ -z "$result" ]; then
   echo "    tmpfile path: $tmpfile" >&2
   echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
   # retained flag emit (空 stdout 経路)
-  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=empty_stdout"
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=empty_stdout" >&2
   exit 1
 fi
 # .issue_url が空文字や null でないことも検証 (script が成功したのに JSON schema が壊れているケース)
@@ -3345,7 +3403,7 @@ if [ -z "$created_issue_url" ]; then
   echo "    tmpfile path: $tmpfile" >&2
   echo "  影響: scope 外 finding の追跡が完全に失われる silent regression のリスク" >&2
   # retained flag emit (.issue_url 抽出失敗経路)
-  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=missing_issue_url"
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; finding={file}:{line}; reason=missing_issue_url" >&2
   exit 1
 fi
 
@@ -3401,7 +3459,7 @@ esac
 # 重要: warnings_jq_err は bash block 冒頭で定義した統合 cleanup 関数
 # `_rite_fix_issue_create_cleanup` の `rm -f` 対象に既に含まれている (`${warnings_jq_err:-}`)。
 # ここで trap を再定義すると前段の `$tmpfile` cleanup を上書きで失い silent orphan を引き起こす
-#。trap 再定義は禁止 — 統合 trap がカバーする。
+# trap 再定義は禁止 — 統合 trap がカバーする。
 warnings_jq_err=$(mktemp /tmp/rite-fix-warnings-jq-err-XXXXXX) || {
   echo "ERROR: warnings_jq_err 一時ファイルの作成に失敗" >&2
   exit 1
@@ -3501,7 +3559,7 @@ pr_body_tmp=$(mktemp) || {
   echo "ERROR: pr_body_tmp の mktemp に失敗しました" >&2
   echo "対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_tmp"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_tmp" >&2
   exit 1
 }
 # HEREDOC 経由で pr_body を書き出す (single-quoted delimiter で shell expansion を完全抑制)。
@@ -3521,7 +3579,7 @@ if [ ! -s "$pr_body_tmp" ]; then
   # issue_number suffix を追加 (この経路では {issue_number} 抽出が完了前だが、上流 Phase 0.1
   # の作業メモリ由来値が placeholder 置換で入る。literal `{issue_number}` が残る場合でも
   # reason 表との invariant 維持の方を優先する)
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_tmp_empty_or_missing; issue_number={issue_number}"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_tmp_empty_or_missing; issue_number={issue_number}" >&2
   exit 1
 fi
 
@@ -3542,7 +3600,7 @@ fi
 pr_body_grep_err=$(mktemp /tmp/rite-fix-pr-body-grep-err-XXXXXX) || {
   echo "ERROR: pr_body_grep_err 一時ファイルの作成に失敗" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_grep_err"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_grep_err" >&2
   exit 1
 }
 issue_number=""
@@ -3576,7 +3634,7 @@ else
       head -5 "$pr_body_grep_err" | sed 's/^/  /' >&2
       echo "  対処: 環境の grep バイナリと権限を確認後、再実行してください" >&2
       echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$pr_body_grep_rc"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$pr_body_grep_rc" >&2
       # exit 1 を削除: soft failure として retained flag のみ emit、Phase 8.1 が [fix:pushed-wm-stale] を出力する
       # wm_emit_done=1 にすることで (M-5 対応):
       #   - 下流の branch fallback if 文が skip され、IO error 後に branch grep が誤起動しない
@@ -3603,7 +3661,7 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
   branch_grep_err=$(mktemp /tmp/rite-fix-branch-grep-err-XXXXXX) || {
     echo "ERROR: branch_grep_err 一時ファイルの作成に失敗" >&2
     echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_branch_grep_err"
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_branch_grep_err" >&2
     exit 1
   }
   if branch_name=$(git branch --show-current 2>"$branch_grep_err"); then
@@ -3620,7 +3678,7 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
     head -5 "$branch_grep_err" | sed 's/^/  /' >&2
     echo "  対処: 環境の git バイナリと権限、cwd が git repo であることを確認後、再実行してください" >&2
     echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_rc"
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_rc" >&2
     # exit 1 を削除: soft failure として retained flag のみ emit
     # wm_emit_done=1 により下流の retained flag block が skip される (M-4 対応: 2 回 emit 防止)
     wm_emit_done=1
@@ -3657,10 +3715,10 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
   echo "  PR 本文に Closes/Fixes/Resolves #XX が含まれていないか、ブランチ名に issue-{number} パターンがありません。" >&2
   echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
   echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=issue_number_not_found"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=issue_number_not_found" >&2
   wm_emit_done=1
 fi
-# 注: set -o pipefail は C-2 修正 で削除済み。
+# 注: set -o pipefail は C-2 修正で削除済み。
 # pipefail rightmost non-zero 仕様により 2 段 grep pipeline の IO error が末尾 grep の rc=1 に
 # 隠蔽される罠を避けるため、grep / git branch の終了コードを独立 if-else で直接捕捉する設計に
 # 切り替えた。pipefail 依存は不要になったため arming/disarm のペアごと撤廃した。
@@ -3721,7 +3779,7 @@ trap '_rite_fix_phase452_cleanup; exit 129' HUP
 gh_api_err=$(mktemp /tmp/rite-fix-gh-api-comments-err-XXXXXX) || {
   echo "ERROR: gh_api_err 一時ファイルの作成に失敗" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_gh_api_err; issue_number={issue_number}"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_gh_api_err; issue_number={issue_number}" >&2
   exit 1
 }
 
@@ -3742,7 +3800,7 @@ if ! comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
   echo "  対処: gh auth status / network / Issue #{issue_number} の存在を確認後、再実行してください" >&2
   echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=gh_api_comments_fetch_failed; issue_number={issue_number}"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=gh_api_comments_fetch_failed; issue_number={issue_number}" >&2
   gh_api_failed=1
   comment_data=""  # 後続の jq 抽出を空文字 fallback で安全に通す
 fi
@@ -3755,14 +3813,14 @@ fi
 # gh_api_failed=1 経路では comment_data="" のため jq は exit 0 で empty を返す (legitimate no-op)
 jq_late_err=$(mktemp /tmp/rite-fix-jq-late-err-XXXXXX) || {
   echo "ERROR: jq_late_err mktemp 失敗" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_jq_late_err; issue_number={issue_number}"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_jq_late_err; issue_number={issue_number}" >&2
   exit 1
 }
 if ! comment_id=$(printf '%s' "$comment_data" | jq -r '.id // empty' 2>"$jq_late_err"); then
   echo "ERROR: jq による .id 抽出に失敗: $(cat "$jq_late_err")" >&2
   echo "  対処: jq バージョン (jq --version) と gh api の生レスポンスを確認してください" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=jq_comment_id_extract_failed; issue_number={issue_number}"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=jq_comment_id_extract_failed; issue_number={issue_number}" >&2
   rm -f "$jq_late_err"
   exit 1
 fi
@@ -3770,7 +3828,7 @@ if ! current_body=$(printf '%s' "$comment_data" | jq -r '.body // empty' 2>"$jq_
   echo "ERROR: jq による .body 抽出に失敗: $(cat "$jq_late_err")" >&2
   echo "  対処: jq バージョン (jq --version) と gh api の生レスポンスを確認してください" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=jq_current_body_extract_failed; issue_number={issue_number}"
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=jq_current_body_extract_failed; issue_number={issue_number}" >&2
   rm -f "$jq_late_err"
   exit 1
 fi
@@ -3802,7 +3860,7 @@ if [[ -n "$comment_id" ]]; then
     echo "  原因: gh api comments の応答に body フィールドが欠落、または jq 抽出失敗の可能性" >&2
     echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
     echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=current_body_empty; comment_id=$comment_id"
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=current_body_empty; comment_id=$comment_id" >&2
   else
     backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
     printf '%s' "$current_body" > "$backup_file"
@@ -3836,7 +3894,7 @@ if [[ -n "$comment_id" ]]; then
       base_branch_grep_err=$(mktemp /tmp/rite-fix-base-grep-err-XXXXXX) || {
         echo "ERROR: base_branch_grep_err 一時ファイルの作成に失敗" >&2
         echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-        echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_base_branch_grep_err; issue_number={issue_number}"
+        echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_base_branch_grep_err; issue_number={issue_number}" >&2
         exit 1
       }
       # 旧 `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返すため、
@@ -3855,7 +3913,7 @@ if [[ -n "$comment_id" ]]; then
           echo "  詳細: $(cat "$base_branch_grep_err")" >&2
           echo "  対処: rite-config.yml の権限を確認後、再実行してください" >&2
           echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=base_branch_grep_io_error; rc=$base_branch_grep_rc; issue_number={issue_number}"
+          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=base_branch_grep_io_error; rc=$base_branch_grep_rc; issue_number={issue_number}" >&2
           rm -f "$base_branch_grep_err"
           exit 1
         fi
@@ -3869,7 +3927,7 @@ if [[ -n "$comment_id" ]]; then
         sed_err=$(mktemp /tmp/rite-fix-base-sed-err-XXXXXX) || {
           echo "ERROR: sed_err 一時ファイルの作成に失敗" >&2
           echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_sed_err; issue_number={issue_number}"
+          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_sed_err; issue_number={issue_number}" >&2
           rm -f "$base_branch_grep_err"
           exit 1
         }
@@ -3882,7 +3940,7 @@ if [[ -n "$comment_id" ]]; then
           echo "  詳細: $(cat "$sed_err")" >&2
           echo "  対処: 環境の sed バイナリと権限を確認後、再実行してください" >&2
           echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=sed_extract_base_branch_failed; rc=$sed_rc; issue_number={issue_number}"
+          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=sed_extract_base_branch_failed; rc=$sed_rc; issue_number={issue_number}" >&2
           rm -f "$sed_err" "$base_branch_grep_err"
           exit 1
         fi
@@ -3901,7 +3959,7 @@ if [[ -n "$comment_id" ]]; then
     diff_stderr_tmp=$(mktemp /tmp/rite-fix-git-diff-err-XXXXXX) || {
       echo "ERROR: git diff stderr 一時ファイルの作成に失敗" >&2
       echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_diff_stderr_tmp; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_diff_stderr_tmp; issue_number={issue_number}" >&2
       exit 1
     }
     if ! changed_files_raw=$(git diff --name-status "origin/${base_branch}...HEAD" 2>"$diff_stderr_tmp"); then
@@ -3937,22 +3995,22 @@ if [[ -n "$comment_id" ]]; then
     # mktemp 失敗経路も retained flag 必須 (silent [fix:pushed] 防止):
     body_tmp=$(mktemp) || {
       echo "ERROR: body_tmp mktemp 失敗" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_body_tmp; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_body_tmp; issue_number={issue_number}" >&2
       exit 1
     }
     tmpfile=$(mktemp) || {
       echo "ERROR: tmpfile mktemp 失敗" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_tmpfile; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_tmpfile; issue_number={issue_number}" >&2
       exit 1
     }
     files_tmp=$(mktemp) || {
       echo "ERROR: files_tmp mktemp 失敗" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_files_tmp; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_files_tmp; issue_number={issue_number}" >&2
       exit 1
     }
     history_tmp=$(mktemp) || {
       echo "ERROR: history_tmp mktemp 失敗" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_history_tmp; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_history_tmp; issue_number={issue_number}" >&2
       exit 1
     }
     printf '%s' "$current_body" > "$body_tmp"
@@ -4071,12 +4129,12 @@ with open(out_path, "w") as f:
       echo "  Backup of original work memory: $backup_file" >&2
       echo "  Action: git diff の失敗原因を解決後、再実行してください (上記 stderr の git diff WARNING を参照)" >&2
       echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=python_sentinel_detected; backup=$backup_file; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=python_sentinel_detected; backup=$backup_file; issue_number={issue_number}" >&2
       exit 1
     elif [ "$py_exit" -ne 0 ]; then
       echo "ERROR: Python script failed with unexpected exit code $py_exit. Backup: $backup_file" >&2
       echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=python_unexpected_exit_$py_exit; backup=$backup_file; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=python_unexpected_exit_$py_exit; backup=$backup_file; issue_number={issue_number}" >&2
       exit 1
     fi
 
@@ -4086,18 +4144,18 @@ with open(out_path, "w") as f:
     # work memory が stale のまま fix loop が完走する。retained flag で Phase 8.1 に通知する。
     if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
       echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_body_empty_or_too_short; backup=$backup_file; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_body_empty_or_too_short; backup=$backup_file; issue_number={issue_number}" >&2
       exit 1
     fi
     if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
       echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_header_missing; backup=$backup_file; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_header_missing; backup=$backup_file; issue_number={issue_number}" >&2
       exit 1
     fi
     updated_length=$(wc -c < "$tmpfile")
     if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
       echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_body_too_small; updated=${updated_length}; original=${original_length}; backup=$backup_file; issue_number={issue_number}"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_body_too_small; updated=${updated_length}; original=${original_length}; backup=$backup_file; issue_number={issue_number}" >&2
       exit 1
     fi
 
@@ -4127,7 +4185,7 @@ with open(out_path, "w") as f:
       echo "  Backup: $backup_file" >&2
       echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
       echo "  対処: Phase 8.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=patch_failed; comment_id=$comment_id; backup=$backup_file"
+      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=patch_failed; comment_id=$comment_id; backup=$backup_file" >&2
       # PATCH 失敗は致命的だが exit 1 はしない: caller (Phase 8.1) が WM_UPDATE_FAILED フラグを
       # 検出して [fix:pushed-wm-stale] を出力すれば、review-fix loop は stale 状態を認識した上で
       # AskUserQuestion 経由で続行/中断を判断できる。bash exit 1 で fix.md 全体を kill すると
@@ -4383,7 +4441,7 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
-| 1 (最優先) | Phase 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は Phase 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (Phase 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定が 3 回連続で失敗した状態のため caller は手動介入を促す) |
+| 1 (最優先) | Phase 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は Phase 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (Phase 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定が 3 回連続で失敗した状態のため caller は手動介入を促す) |
 | 2 | Phase 2.4 / 4.2 / 4.3.4 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` / `[CONTEXT] ISSUE_CREATE_FAILED=1` のいずれかを context に set した | `[fix:error]` (reply post / report post / Issue 化のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告 / 別 Issue 追跡の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | Phase 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (Phase 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
@@ -4475,7 +4533,7 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 - Return control to the caller (`/rite:issue:start`)
 - The caller determines the next action based on this output pattern
 
-**Confidence override tempfile cleanup** (silent orphan 防止:
+**Confidence override tempfile cleanup** (silent orphan 防止):
 
 Phase 8.1 の output pattern emit 直後に、fix ループ全体で使用していた confidence_override tempfile を明示的に削除する。specific path 必須 (並列セッション破壊防止)。
 
@@ -4532,7 +4590,7 @@ PR #123 のレビュー指摘対応を完了しました
 
 For standalone execution, Phase 8 is not executed. The completion report from Phase 4.6 will guide the user.
 
-**Confidence override tempfile cleanup** (Standalone 経路の orphan 防止:
+**Confidence override tempfile cleanup** (Standalone 経路の orphan 防止):
 
 Standalone 実行では Phase 8 が skip されるため、Phase 4.6 の completion report 出力**直後**に明示的な cleanup bash block を実行して confidence_override tempfile を削除する。これを忘れると `/tmp/rite-fix-confidence-override-{pr_number}.txt` が orphan として永続残留し、次回同 PR 実行時に `touch` ではなく `: >` truncate を入れていても、何らかの経路で truncate 呼び出しが skip された場合に stale データが混入するリスクがある (defense-in-depth)。
 
