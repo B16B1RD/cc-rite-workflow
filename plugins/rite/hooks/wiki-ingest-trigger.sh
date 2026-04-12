@@ -160,9 +160,32 @@ if [[ -z "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file is required" >&2
   exit 1
 fi
+# cycle 3 fix (F-16): path containment + symlink 拒否。
+# LLM 駆動フローからの prompt injection で /etc/passwd 等を渡され、
+# 後続 /rite:wiki:ingest が wiki ブランチへ commit & push する exfiltration 経路を防ぐ。
+if [[ -L "$CONTENT_FILE" ]]; then
+  echo "ERROR: --content-file '$CONTENT_FILE' is a symlink (rejected for security)" >&2
+  echo "  hint: provide the actual file, not a symlink" >&2
+  exit 1
+fi
 if [[ ! -f "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file '$CONTENT_FILE' does not exist or is not a regular file" >&2
   exit 1
+fi
+# Path containment: $PWD 配下または /tmp/rite-* のみ許可
+resolved_content=$(realpath -- "$CONTENT_FILE" 2>/dev/null) || resolved_content=""
+if [[ -n "$resolved_content" ]]; then
+  case "$resolved_content" in
+    "$PWD"/*|/tmp/*)
+      : # allowed ($PWD 配下 or /tmp 配下)
+      ;;
+    *)
+      echo "ERROR: --content-file must be under \$PWD or /tmp/" >&2
+      echo "  resolved path: $resolved_content" >&2
+      echo "  hint: copy the file into the project directory first" >&2
+      exit 1
+      ;;
+  esac
 fi
 if [[ ! -s "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file '$CONTENT_FILE' is empty" >&2
@@ -187,7 +210,9 @@ if [[ -f "rite-config.yml" ]]; then
   fi
   wiki_enabled=""
   if [[ -n "$wiki_enabled_line" ]]; then
-    wiki_enabled=$(printf '%s' "$wiki_enabled_line" | sed 's/#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
+    # cycle 3 fix (F-23): YAML 仕様上 inline コメントの直前にスペースが必須。
+    # `true#comment` (スペースなし) は値の一部であり、`sed 's/#.*//'` は誤動作する。
+    wiki_enabled=$(printf '%s' "$wiki_enabled_line" | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
   fi
   case "$wiki_enabled" in
     false|no|0)
@@ -203,7 +228,8 @@ slugify() {
   printf '%s' "$1" \
     | tr '[:upper:]' '[:lower:]' \
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
-    | cut -c1-60
+    | cut -c1-60 \
+    | sed -E 's/-+$//'  # cycle 3 fix (F-07): cut 境界の末尾ハイフンを再 strip
 }
 slug=$(slugify "$SOURCE_REF")
 if [[ -z "$slug" ]]; then
@@ -241,7 +267,12 @@ fi
 {
   printf -- '---\n'
   printf 'type: %s\n' "$TYPE"
-  printf 'source_ref: %s\n' "$SOURCE_REF"
+  # cycle 3 fix (F-15): SOURCE_REF を double-quoted YAML scalar にして YAML 構造文字
+  # (#, [, {, &, !, *) が plain scalar として誤解釈される injection を防ぐ。
+  # TITLE と対称のエスケープ処理を適用する。
+  escaped_source_ref=${SOURCE_REF//\\/\\\\}
+  escaped_source_ref=${escaped_source_ref//\"/\\\"}
+  printf 'source_ref: "%s"\n' "$escaped_source_ref"
   printf 'captured_at: "%s"\n' "$timestamp_iso"
   if [[ -n "$PR_NUMBER" ]]; then
     printf 'pr_number: %s\n' "$PR_NUMBER"

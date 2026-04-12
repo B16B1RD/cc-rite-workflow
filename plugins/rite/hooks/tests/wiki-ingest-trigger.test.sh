@@ -178,7 +178,7 @@ echo "Review body content here" > "$dir10/body.md"
 target_path="$(cat "$dir10/out.log" 2>/dev/null || true)"
 if [ $rc -eq 0 ] && [ -n "$target_path" ] && [ -f "$dir10/$target_path" ]; then
   if grep -q '^type: reviews$' "$dir10/$target_path" && \
-     grep -q '^source_ref: pr-123$' "$dir10/$target_path" && \
+     grep -q '^source_ref: "pr-123"$' "$dir10/$target_path" && \
      grep -q '^pr_number: 123$' "$dir10/$target_path" && \
      grep -q '^ingested: false$' "$dir10/$target_path" && \
      grep -q '^title: "Code review for PR #123"$' "$dir10/$target_path" && \
@@ -321,7 +321,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-023: wiki.enabled: yes → accepted as enabled
+# TC-023: wiki.enabled: yes / 1 → accepted as enabled
 # --------------------------------------------------------------------------
 echo "TC-023: wiki.enabled: yes / 1 → accepted"
 for variant in yes 1; do
@@ -335,9 +335,10 @@ EOF
   ( cd "$d" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
   if [ $rc -ne 0 ]; then
     fail "wiki.enabled=$variant should be accepted, got rc=$rc, stderr=$(cat "$d/err.log")"
+  else
+    pass "wiki.enabled: $variant accepted"
   fi
 done
-pass "wiki.enabled: yes / 1 both accepted"
 echo ""
 
 # --------------------------------------------------------------------------
@@ -470,12 +471,81 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-029: Non-numeric --issue-number → exit 1 (cycle 3 F-09)
+# --------------------------------------------------------------------------
+echo "TC-029: Non-numeric --issue-number → exit 1"
+dir29="$TEST_DIR/tc29"
+mkdir -p "$dir29"
+echo "x" > "$dir29/body.md"
+( cd "$dir29" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --issue-number "1abc" >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir29/err.log"; then
+  pass "Non-numeric issue-number → exit 1"
+else
+  fail "Expected exit 1, got rc=$rc, stderr=$(cat "$dir29/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-030: --issue-number with newline injection → exit 1 (cycle 3 F-09)
+# --------------------------------------------------------------------------
+echo "TC-030: --issue-number with embedded newline → exit 1"
+dir30="$TEST_DIR/tc30"
+mkdir -p "$dir30"
+echo "x" > "$dir30/body.md"
+( cd "$dir30" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --issue-number $'1\ningested: true' >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir30/err.log"; then
+  pass "Newline in issue-number → exit 1 (injection blocked)"
+else
+  fail "Expected exit 1, got rc=$rc, stderr=$(cat "$dir30/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-031: wiki.enabled: 0 → exit 2 (cycle 3 F-10)
+# --------------------------------------------------------------------------
+echo "TC-031: wiki.enabled: 0 → exit 2"
+dir31="$TEST_DIR/tc31"
+mkdir -p "$dir31"
+cat > "$dir31/rite-config.yml" <<'EOF'
+wiki:
+  enabled: 0
+EOF
+echo "x" > "$dir31/body.md"
+( cd "$dir31" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'wiki.enabled is false' "$dir31/err.log"; then
+  pass "wiki.enabled: 0 → exit 2"
+else
+  fail "Expected exit 2, got rc=$rc, stderr=$(cat "$dir31/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-032: wiki.enabled: "false" (quoted) → exit 2 (cycle 3 F-11)
+# --------------------------------------------------------------------------
+echo "TC-032: wiki.enabled: \"false\" (quoted) → exit 2"
+dir32="$TEST_DIR/tc32"
+mkdir -p "$dir32"
+cat > "$dir32/rite-config.yml" <<'EOF'
+wiki:
+  enabled: "false"
+EOF
+echo "x" > "$dir32/body.md"
+( cd "$dir32" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'wiki.enabled is false' "$dir32/err.log"; then
+  pass "wiki.enabled: \"false\" (quoted) → exit 2"
+else
+  fail "Expected exit 2, got rc=$rc, stderr=$(cat "$dir32/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-027: Truncated file (frontmatter only, body missing) → integrity check exit 3 (cycle 2 H4)
 # --------------------------------------------------------------------------
 echo "TC-027: Truncated file (frontmatter only) → integrity check fails with exit 3"
-# Direct invocation of the integrity check awk against a hand-crafted truncated file
-# (we cannot easily make the trigger.sh write a truncated file, so we test the awk logic directly
-# by creating a frontmatter-only file and running the same awk that the script uses)
+# ⚠️ Known limitation (cycle 3 F-08): This test duplicates the awk logic from trigger.sh
+# rather than testing via the script itself. If the awk in trigger.sh changes, this test
+# may still pass (false positive). A future improvement should extract the awk to a shared
+# file or test via a fault-injection mechanism through the script.
 dir27="$TEST_DIR/tc27"
 mkdir -p "$dir27"
 truncated="$dir27/truncated.md"
