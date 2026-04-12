@@ -2867,6 +2867,41 @@ git diff
 対応した指摘: {count}件
 ```
 
+### 3.1.1 Pre-Commit Drift Lint Gate (#453 Component C)
+
+Before committing, run the distributed fix drift check to catch known propagation failure patterns (Pattern 1-5) mechanically. This prevents drift from entering the review cycle, saving an entire review-fix round trip.
+
+1. Check if `review.loop.pre_commit_drift_check` is enabled in `rite-config.yml` (default: `true`). If disabled, skip to Phase 3.2.
+
+2. Run the drift check on files changed by the current fix:
+
+```bash
+# Get changed files that are in the default target set
+changed_files=$(git diff --name-only HEAD 2>/dev/null | grep -E '^plugins/rite/commands/pr/(fix|review)\.md$|^plugins/rite/agents/tech-writer\.md$' || true)
+
+if [ -n "$changed_files" ]; then
+  target_args=""
+  while IFS= read -r f; do
+    target_args="$target_args --target $f"
+  done <<< "$changed_files"
+  bash {plugin_root}/hooks/scripts/distributed-fix-drift-check.sh $target_args --quiet
+  drift_exit=$?
+else
+  drift_exit=0
+fi
+printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d changed_targets=%d\n' "$drift_exit" "$(echo "$changed_files" | grep -c . || echo 0)"
+```
+
+3. Handle the exit code:
+
+| Exit Code | Action |
+|-----------|--------|
+| `0` (clean) | Proceed to Phase 3.2. |
+| `1` (drift detected) | Re-run **without** `--quiet` to display findings. Return to Phase 2 to fix the detected drifts. This is an **automated self-correction** — NOT a new review cycle. Do not increment `loop_count`. |
+| `2` (invocation error) | Emit `[CONTEXT] PRE_COMMIT_DRIFT_CHECK_ERROR=1` as WARNING and proceed to Phase 3.2. Do not block the commit. |
+
+> **Note**: If drift is detected, the fix loop is expected to self-correct within 1-2 iterations of this inner gate. If the same drift is detected 3 times consecutively, skip the gate and proceed to Phase 3.2 to avoid an inner infinite loop.
+
 ### 3.2 Generate Commit Message
 
 Generate a commit message based on the addressed findings.
