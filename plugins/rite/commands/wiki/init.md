@@ -210,7 +210,10 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   }
 
   # 元のブランチに戻る
-  git checkout "$current_branch"
+  git checkout "$current_branch" || {
+    echo "ERROR: git checkout '$current_branch' failed — wiki ブランチ上に残っている可能性があります" >&2
+    exit 1
+  }
 
   # stash した場合のみ pop
   if [ "$stash_needed" = true ]; then

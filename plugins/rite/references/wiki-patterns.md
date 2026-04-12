@@ -86,7 +86,10 @@ git commit -m "feat(wiki): initialize Wiki structure" || { echo "ERROR: git comm
 git push -u origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る（git checkout - は --orphan 後に動作しないため明示的に指定）
-git checkout "$current_branch"
+git checkout "$current_branch" || {
+  echo "ERROR: git checkout '$current_branch' failed — wiki ブランチ上に残っている可能性があります" >&2
+  exit 1
+}
 
 # stash した場合のみ pop
 if [ "$stash_needed" = true ]; then
@@ -138,7 +141,10 @@ git commit -m "docs(wiki): {action} - {description}" || { echo "ERROR: git commi
 git push origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る
-git checkout "$current_branch"
+git checkout "$current_branch" || {
+  echo "ERROR: git checkout '$current_branch' failed — wiki ブランチ上に残っている可能性があります" >&2
+  exit 1
+}
 
 # stash した場合のみ pop
 if [ "$stash_needed" = true ]; then
@@ -176,8 +182,8 @@ fi
 ```bash
 # 直接ファイル操作（ブランチ切り替え不要）
 # .rite/wiki/ 配下のファイルを Read/Write ツールで操作
-git add .rite/wiki/
-git commit -m "docs(wiki): {action} - {description}"
+git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
+git commit -m "docs(wiki): {action} - {description}" || { echo "ERROR: git commit failed" >&2; exit 1; }
 ```
 
 ## テンプレート展開パターン

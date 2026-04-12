@@ -360,7 +360,7 @@ Compare current config against the template and classify each key:
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
 | **Missing section** (review.debate, review.fact_check, verification, etc.) | **Add** — insert from template with default values |
-| **Advanced section** (tdd, parallel, team, metrics, context_optimization, safety, investigate) | **Add as comments** — insert commented-out with default values |
+| **Advanced section** (tdd, parallel, team, metrics, context_optimization, safety, wiki, investigate) | **Add as comments** — insert commented-out with default values |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Step 5: Preview and confirm**
