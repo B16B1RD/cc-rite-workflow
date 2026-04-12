@@ -4524,7 +4524,7 @@ Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (d
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_fix" \
-  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->Phase 5.4.1 with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->Phase 5.4.1 (FULL re-review). [fix:replied-only]->Phase 5.5. Do NOT stop." \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->Phase 5.4.1 (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->Phase 5.4.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:replied-only]->Phase 5.5. Do NOT stop." \
   --if-exists
 ```
 
@@ -4691,7 +4691,7 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 - Do **NOT** invoke `rite:pr:review` via the Skill tool
 - Return control to the caller (`/rite:issue:start`)
 - The caller determines the next action based on this output pattern
-- **re-review は必ずフルレビューで実行すること**: caller が `[fix:pushed]` / `[fix:issues-created]` を受けて re-review を実行する際、スコープ縮退（「前回指摘の修正確認のみ」「コンテキスト効率のため範囲限定」等）は一切禁止。`/rite:pr:review` と完全に同等のフルレビューを実行し、全レビュアーをサブエージェントで並列起動すること
+- **re-review は必ずフルレビューで実行すること**: caller が `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:issues-created]` を受けて re-review を実行する際、スコープ縮退（「前回指摘の修正確認のみ」「コンテキスト効率のため範囲限定」等）は一切禁止。`/rite:pr:review` と完全に同等のフルレビューを実行し、全レビュアーをサブエージェントで並列起動すること
 
 **Confidence override tempfile cleanup** (silent orphan 防止):
 
