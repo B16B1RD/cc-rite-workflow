@@ -570,19 +570,24 @@ set -euo pipefail  # cycle 2 M5 fix: strict mode 有効化
 # 失敗した場合、stash 未回復のままユーザーが wiki ブランチに取り残される。
 # Block A の cleanup_err 分離パターン (checkout_err / stash_err) と同型。
 _rite_wiki_ingest_blockB_cleanup() {
-  local _bb_err
-  _bb_err=$(mktemp /tmp/rite-wiki-ingest-bb-err-XXXXXX 2>/dev/null) || _bb_err=""
-  if ! git checkout "$current_branch" 2>"${_bb_err:-/dev/null}" 2>/dev/null; then
+  local _bb_checkout_err _bb_stash_err
+  _bb_checkout_err=$(mktemp /tmp/rite-wiki-ingest-bb-checkout-err-XXXXXX 2>/dev/null) || _bb_checkout_err=""
+  # cycle 7 fix: 二重 stderr redirect (2>tempfile 2>/dev/null) を修正。Block A (L464) と同型にする。
+  if ! git checkout "$current_branch" 2>"${_bb_checkout_err:-/dev/null}"; then
     echo "WARNING: Block B cleanup の git checkout '$current_branch' に失敗" >&2
-    [ -n "$_bb_err" ] && [ -s "$_bb_err" ] && head -3 "$_bb_err" | sed 's/^/  /' >&2
+    [ -n "$_bb_checkout_err" ] && [ -s "$_bb_checkout_err" ] && head -3 "$_bb_checkout_err" | sed 's/^/  /' >&2
     echo "  対処: 手動で git checkout $current_branch を実行してください" >&2
   fi
+  [ -n "${_bb_checkout_err:-}" ] && rm -f "$_bb_checkout_err"
   if [ "$stash_needed" = "true" ]; then
-    if ! git stash pop 2>/dev/null; then
+    # cycle 7 fix: stash pop の stderr も Block A (L471-476) と同型に tempfile 捕捉する。
+    _bb_stash_err=$(mktemp /tmp/rite-wiki-ingest-bb-stash-err-XXXXXX 2>/dev/null) || _bb_stash_err=""
+    if ! git stash pop 2>"${_bb_stash_err:-/dev/null}"; then
       echo "WARNING: Block B cleanup の git stash pop に失敗。手動回復が必要: git stash list" >&2
+      [ -n "$_bb_stash_err" ] && [ -s "$_bb_stash_err" ] && head -3 "$_bb_stash_err" | sed 's/^/  /' >&2
     fi
+    [ -n "${_bb_stash_err:-}" ] && rm -f "$_bb_stash_err"
   fi
-  [ -n "${_bb_err:-}" ] && rm -f "$_bb_err"
 }
 trap 'rc=$?; _rite_wiki_ingest_blockB_cleanup; exit $rc' EXIT
 trap '_rite_wiki_ingest_blockB_cleanup; exit 130' INT

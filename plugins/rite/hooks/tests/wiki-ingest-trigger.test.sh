@@ -387,7 +387,13 @@ EOF
 echo "x" > "$d/body.md"
 ( cd "$d" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 0 ]; then
-  pass "Missing wiki: section → lenient pass (rc=0, no silent abort from pipefail × grep)"
+  # cycle 7 fix: exit code だけでなくファイル存在も検証 (TC-023/TC-028 と同パターン)
+  target_path25=$(cat "$d/out.log" | tr -d '[:space:]')
+  if [ -n "$target_path25" ] && [ -f "$d/$target_path25" ]; then
+    pass "Missing wiki: section → lenient pass (rc=0 + file exists)"
+  else
+    fail "Missing wiki: section → rc=0 but output file not found (path='$target_path25')"
+  fi
 else
   fail "Expected rc=0 (lenient), got rc=$rc, stderr=$(cat "$d/err.log")"
 fi
@@ -666,7 +672,13 @@ echo "body" > "$dir36/body.md"
 # Deliberately do NOT create rite-config.yml
 ( cd "$dir36" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 0 ]; then
-  pass "No rite-config.yml → lenient pass (rc=0, no silent abort)"
+  # cycle 7 fix: exit code だけでなくファイル存在も検証 (TC-023/TC-025/TC-028 と同パターン)
+  target_path36=$(cat "$dir36/out.log" | tr -d '[:space:]')
+  if [ -n "$target_path36" ] && [ -f "$dir36/$target_path36" ]; then
+    pass "No rite-config.yml → lenient pass (rc=0 + file exists)"
+  else
+    fail "No rite-config.yml → rc=0 but output file not found (path='$target_path36')"
+  fi
 else
   fail "Expected rc=0 (lenient), got rc=$rc, stderr=$(cat "$dir36/err.log")"
 fi
