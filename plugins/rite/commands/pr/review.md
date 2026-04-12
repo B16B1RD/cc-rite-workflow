@@ -3265,6 +3265,7 @@ if [ "$local_save_failed" = "1" ]; then
     4. LOCAL_SAVE_FAILED の reason を解決してから /rite:pr:review を再実行する
 EOF
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable; local_save_failed=1; post_comment_mode=false" >&2
+  echo "[review:error]"
   exit 2
 else
   # ケース 1: local save 成功 (通常経路)

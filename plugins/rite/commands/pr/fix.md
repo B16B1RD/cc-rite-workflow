@@ -747,7 +747,7 @@ if [ -z "$review_source" ]; then
       review_source="pr_comment"
       review_source_path=""
     fi
-    if [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
+    if [ -z "$review_source" ] && [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
       # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
       if ! jq empty "$latest_file" 2>/dev/null; then
         echo "WARNING: $latest_file は有効な JSON ではありません。Priority 3 (PR コメント) に routing します。" >&2
@@ -2142,12 +2142,12 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
      # policy override の監査トレースが完成報告から silent drop する。
      override_err=$(mktemp /tmp/rite-fix-confidence-override-err-XXXXXX) || {
        echo "ERROR: override_err mktemp 失敗" >&2
-       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=mktemp_failed_override_err"
+       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=mktemp_failed_override_err" >&2
        exit 1
      }
      if ! confidence_override_count_raw=$(wc -l < "$override_path" 2>"$override_err"); then
        echo "ERROR: wc -l による override_path 読み出し失敗: $(cat "$override_err")" >&2
-       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=wc_io_error; path=$override_path"
+       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=wc_io_error; path=$override_path" >&2
        rm -f "$override_err"
        exit 1
      fi
@@ -2155,7 +2155,7 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
      # findings 一覧 (1 行 1 finding) は paste で "; " 区切りに変換
      if ! confidence_override_findings_raw=$(paste -sd ';' "$override_path" 2>"$override_err"); then
        echo "ERROR: paste による override_path 読み出し失敗: $(cat "$override_err")" >&2
-       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=paste_io_error; path=$override_path"
+       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=paste_io_error; path=$override_path" >&2
        rm -f "$override_err"
        exit 1
      fi
