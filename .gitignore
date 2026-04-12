@@ -35,6 +35,7 @@ temp/
 .rite-initialized-version
 .rite-settings-hooks-cleaned
 .rite/review-results/
+.rite/fix-cycle-state/
 .rite/state/
 
 # Git worktrees for parallel agents

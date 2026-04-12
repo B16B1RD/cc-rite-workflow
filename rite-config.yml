@@ -81,6 +81,12 @@ review:
   loop:
     verification_mode: false    # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: false）
     allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
+    # Convergence engine settings (#453)
+    convergence_monitoring: true          # サイクル 3+ で収束分析を実行（デフォルト: true）
+    severity_gating_cycle_threshold: 5    # 重大度ゲーティングが利用可能になるサイクル数（デフォルト: 5）
+    scope_lock_cycle_threshold: 7         # スコープロックが利用可能になるサイクル数（デフォルト: 7）
+    auto_propagation_scan: true           # Fix 後に類似パターンの伝播スキャンを実行（デフォルト: true）
+    pre_commit_drift_check: true          # コミット前に distributed-fix-drift-check を実行（デフォルト: true）
   security_reviewer:
     mandatory: false                          # 全 PR で必須選定するか（デフォルト: false）
     recommended_for_code_changes: true        # 実行可能コード変更時は推奨（デフォルト: true）
@@ -148,6 +154,7 @@ context_optimization:
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue
+  max_review_fix_loops: 7          # review-fix loop hard limit per PR (convergence engine #453)
   time_budget_minutes: 120         # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop

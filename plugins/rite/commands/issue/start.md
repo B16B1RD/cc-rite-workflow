@@ -945,6 +945,83 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 > **Data Handoff**: When invoking `rite:pr:review`, the PR number is passed as an argument. Issue information from Phase 0.1 is available in work memory (loaded by `rite:pr:review` Phase 0), avoiding additional `gh issue view` calls.
 
+##### 5.4.1.0 Convergence Monitor (#453 Component E)
+
+When `review.loop.convergence_monitoring` is enabled (default: `true`) **and** `loop_count >= 3`, analyze the fix-cycle state to detect non-convergence patterns and adjust strategy before the next review.
+
+**Step 1**: Read fix-cycle state and loop count:
+
+```bash
+pr_number="{pr_number}"
+state_file=".rite/fix-cycle-state/${pr_number}.json"
+loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
+
+if [ "$loop_count" -lt 3 ] || [ ! -f "$state_file" ]; then
+  echo "[CONTEXT] CONVERGENCE_CHECK skip (loop_count=$loop_count, state_file_exists=$([ -f "$state_file" ] && echo true || echo false))"
+  exit 0
+fi
+
+# Extract last 4 cycles' findings_total for pattern analysis
+trajectory=$(jq -r '[.cycles[-4:][].findings_total // 0] | @csv' "$state_file" 2>/dev/null) || trajectory=""
+printf '[CONTEXT] CONVERGENCE_TRAJECTORY loop=%d values=[%s]\n' "$loop_count" "$trajectory"
+```
+
+**Step 2**: Analyze convergence pattern from the trajectory. Claude reads the `[CONTEXT] CONVERGENCE_TRAJECTORY` output and classifies:
+
+| Pattern | Detection Criteria | Strategy |
+|---------|-------------------|----------|
+| **Converging** | Last 3 values strictly decreasing (e.g., 20→14→8) | Continue normally |
+| **Stalled** | Last 3 values within ±2 of each other (e.g., 14→15→13) | **Batched fix mode**: Instruct next `/rite:pr:fix` to group findings by category and fix all instances of the same pattern together |
+| **Diverging** | Last 2 values increasing (e.g., 13→20) | **Severity gating** (if `loop_count >= severity_gating_cycle_threshold`): Instruct next `/rite:pr:fix` to fix only CRITICAL/HIGH, defer MEDIUM/LOW to separate Issues |
+| **Oscillating** | Last 4 values alternate up/down (e.g., 20→12→18→10) | **Scope lock** (if `loop_count >= scope_lock_cycle_threshold`): Instruct next `/rite:pr:fix` to only fix findings in files from the ORIGINAL PR diff, not in fix-introduced code |
+
+**Step 3**: Apply strategy based on pattern and cycle-specific thresholds.
+
+Read thresholds from `rite-config.yml`:
+- `severity_gating_cycle_threshold` (default: 5) — used for Stalled and Diverging patterns
+- `scope_lock_cycle_threshold` (default: 7) — used for Oscillating pattern
+
+| Pattern | Threshold | Action when `loop_count < threshold` | Action when `loop_count >= threshold` |
+|---------|-----------|--------------------------------------|--------------------------------------|
+| **Converging** | — | Output `[CONTEXT] CONVERGENCE_PATTERN=converging` and proceed to review | Same |
+| **Stalled** | `severity_gating_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=stalled` as information only | Present `AskUserQuestion` (see below) |
+| **Diverging** | `severity_gating_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=diverging` as information only | Present `AskUserQuestion` (see below) |
+| **Oscillating** | `scope_lock_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=oscillating` as information only | Present `AskUserQuestion` (see below) |
+
+When threshold is reached, present via `AskUserQuestion`:
+
+```
+収束モニター: review-fix ループが「{pattern}」状態を検出しました。
+サイクル: {loop_count} / 指摘数推移: {trajectory}
+
+推奨戦略:
+```
+
+| Option | Description |
+|--------|-------------|
+| {recommended_strategy}（推奨） | {strategy_description} |
+| 戦略変更なしで続行 | 現在のまま review-fix を継続。**→ 以下の review invocation に進行** |
+| 手動レビューへエスカレーション | ループを終了し Ready for Review に進む。**→ Phase 5.5 に直行（以下の review invocation をスキップ）** |
+
+**Branching after user selection**:
+
+| Selection | Next Action |
+|-----------|-------------|
+| Strategy selected (batched/severity_gating/scope_lock) | Write strategy to `.rite-flow-state` (see below), then **proceed to review invocation** |
+| 戦略変更なしで続行 | **Proceed to review invocation** |
+| 手動レビューへエスカレーション | **→ Phase 5.5 (Ready for Review) に直行。以下の review invocation をスキップする** |
+
+If the user selects a strategy, write it to `.rite-flow-state` via:
+
+```bash
+jq --arg strategy "{selected_strategy}" '.convergence_strategy = $strategy' .rite-flow-state > .rite-flow-state.tmp && mv .rite-flow-state.tmp .rite-flow-state
+```
+
+The `convergence_strategy` value is read by `/rite:pr:fix` Phase 0.4 to adjust fix behavior:
+- `"severity_gating"`: Phase 2 only processes CRITICAL/HIGH findings. MEDIUM/LOW are auto-created as separate Issues.
+- `"batched"`: Phase 2 groups findings by pattern category before fixing.
+- `"scope_lock"`: Phase 2 only fixes findings in files from the original PR diff (`git diff {base_branch}...{first_fix_commit}~1 --name-only`).
+
 Invoke `skill: "rite:pr:review"`.
 
 **🚨 Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 🚨 After Review below. The review sub-skill has already updated `.rite-flow-state` to `phase5_post_review` via Phase 8.0 (defense-in-depth, #719); execute the 5.4.3 steps without delay.
@@ -1337,7 +1414,46 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   2>/dev/null || true
 ```
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
+**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.5 regardless of detection result.
+
+**Step 3.5 (Review-Fix Loop Hard Limit Check)** (#453 Component A): Before dispatching to the next action, check if the review-fix loop count has exceeded the configured hard limit.
+
+1. Read `loop_count` from `.rite-flow-state`:
+
+```bash
+loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
+```
+
+2. Read `safety.max_review_fix_loops` from `.rite-flow-state` override (if present) or `rite-config.yml` (default: 7):
+
+```bash
+# Check for override in .rite-flow-state first (set by "上限延長" option)
+override=$(jq -r '.max_review_fix_loops_override // empty' .rite-flow-state 2>/dev/null) || override=""
+if [ -n "$override" ]; then
+  max_loops="$override"
+else
+  max_loops=$(awk '/^safety:/{found=1} found && /max_review_fix_loops:/{print $2; exit}' rite-config.yml 2>/dev/null) || max_loops=7
+  [ -z "$max_loops" ] && max_loops=7
+fi
+printf '[CONTEXT] LOOP_CHECK loop_count=%s max_loops=%s override=%s\n' "$loop_count" "$max_loops" "${override:-none}"
+```
+
+3. If `loop_count >= max_loops` **AND** the fix result pattern routes to re-review (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created]`), **halt the loop** and present options via `AskUserQuestion`:
+
+```
+review-fix ループが上限（{max_loops} サイクル）に達しました。
+現在のループ回数: {loop_count}
+
+指摘数推移を確認した上で、次のアクションを選択してください。
+```
+
+| Option | Description | Action |
+|--------|-------------|--------|
+| 上限延長（+5） | ループ上限を一時的に +5 拡張して続行 | `.rite-flow-state` に `"max_review_fix_loops_override": (max_loops + 5)` を書き込み、Step 4 へ進行。次回 Step 3.5 で override を優先読み取り |
+| 重大度ゲーティング | CRITICAL/HIGH のみ修正、MEDIUM/LOW は別 Issue 化 | `.rite-flow-state` に `"convergence_strategy": "severity_gating"` を書き込み、Step 4 へ進行。次の `/rite:pr:fix` 呼び出し時に severity gating モードが適用される |
+| 手動レビューへエスカレーション | ループを終了し、Ready for Review に進む | **→ Phase 5.5** (Ready for Review) に直行 |
+
+4. If `loop_count < max_loops`, proceed to Step 4 normally.
 
 **Step 4**: Based on the fix result pattern from `rite:pr:fix` **and** the preceding review result pattern, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
 

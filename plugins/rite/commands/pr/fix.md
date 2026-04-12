@@ -115,6 +115,26 @@ Extract the following information from work memory and retain in context:
 
 ## Phase 1: Retrieve and Organize Review Comments
 
+### 0.4 Convergence Strategy Load (#453 Component E)
+
+When invoked from the `/rite:issue:start` end-to-end flow, check if the convergence monitor has set a strategy in `.rite-flow-state`:
+
+```bash
+convergence_strategy=$(jq -r '.convergence_strategy // "none"' .rite-flow-state 2>/dev/null) || convergence_strategy="none"
+printf '[CONTEXT] CONVERGENCE_STRATEGY=%s\n' "$convergence_strategy"
+```
+
+If `convergence_strategy` is not `"none"`, adjust Phase 2 behavior accordingly:
+
+| Strategy | Phase 2 Behavior |
+|----------|-----------------|
+| `"severity_gating"` | Only process CRITICAL and HIGH findings. MEDIUM/LOW findings are listed but skipped with a note: `⏭️ {finding_id}: severity gating により defer (別 Issue 化予定)`. After Phase 3 commit, auto-create Issues for deferred findings. |
+| `"batched"` | Group findings by pattern category (e.g., all "retained flag missing" findings together, all "reason table drift" together). Fix each category as a batch before moving to the next. |
+| `"scope_lock"` | Only fix findings in files that are part of the original PR diff. Determine original files via context or work memory. Findings in fix-introduced files are listed but skipped with a note: `⏭️ {finding_id}: scope lock により defer (fix 起因ファイル)`. |
+| `"none"` | Normal behavior (all findings, one by one). |
+
+> **Standalone invocation**: When invoked standalone (not from `/rite:issue:start`), `.rite-flow-state` may not exist or may not have `convergence_strategy`. Default to `"none"`.
+
 ### 1.0 Argument Parsing (Pre-flight)
 
 > **Execution order**: 本サブフェーズは Phase 1.1 の `gh pr view` 呼び出しよりも**必ず先に**実行される pre-flight サブフェーズ。番号 `1.0` は「Phase 1 内の 0 番目 (Phase 1.1 より前)」の意で、自然順で読み進める AI/人間どちらも順序通りに実行できる。Phase 1.0 内部の実行順序と flag pre-stripping の詳細は下記「Flag pre-stripping for Detection rules」注記に集約されている (drift 防止のため 2 箇所で重複記述しない)。
@@ -2756,6 +2776,52 @@ Present the proposed fix and apply with Edit tool after confirmation:
 - スキップ
 ```
 
+### 2.3.1 Propagation Scan (#453 Component B)
+
+After applying a fix (Phase 2.3), perform a mandatory scan for similar patterns to prevent distributed propagation failures (Pattern-1 from `fix-cycle-pattern-analysis.md`).
+
+Check if `review.loop.auto_propagation_scan` is enabled in `rite-config.yml` (default: `true`). If disabled, skip to Phase 2.4.
+
+**Step 1: Identify the fix pattern**
+
+Characterize what was changed in Phase 2.3:
+
+| Fix Type | Description | Example |
+|----------|-------------|---------|
+| **Structural pattern** | Added error handling, retained flag emit, if-wrap, trap handler | `exit 1` の前に `[CONTEXT] *_FAILED=1` emit を追加 |
+| **Content fix** | Corrected a value, updated a reference, renamed identifier | reason table のエントリを追加・修正 |
+| **Configuration** | Changed config key, constant, or threshold | schema version 更新 |
+
+**Step 2: Search for similar patterns**
+
+Based on the fix type, determine the search scope and search:
+
+| Fix Type | Search Scope | Method |
+|----------|-------------|--------|
+| Structural pattern (same file) | All code blocks in the same file | `Grep` for the unfixed version of the pattern in the same file |
+| Structural pattern (cross-file) | Files in the same directory + files that reference the fixed file | `Grep` in related files |
+| Content fix / Configuration | Files referencing the same key, table, or identifier | `Grep` across the codebase for the old/new value |
+
+**Step 3: Apply propagation fixes**
+
+For each similar location found where the fix has NOT been applied:
+1. Apply the same fix pattern using the Edit tool
+2. Log: `伝播修正: {file}:{line} — {pattern_description}`
+
+**Step 4: Output propagation summary**
+
+```
+伝播スキャン結果:
+- 修正パターン: {pattern_description}
+- スキャン対象: {scope} ({file_count} files)
+- 伝播適用: {propagated_count} 箇所
+- 既に適用済み: {already_applied_count} 箇所
+```
+
+If `propagated_count == 0` and `already_applied_count == 0`, output a single line: `伝播スキャン: 類似パターンなし`
+
+> **Scope limitation**: To avoid excessive scanning, limit the search to the same file + files in the same directory. For cross-directory searches, only follow explicit references (e.g., `reference:` links in Markdown, `source` imports in code).
+
 ### 2.4 Create Reply (Optional)
 
 After completing the fix, propose a reply to the reviewer:
@@ -2866,6 +2932,42 @@ git diff
 
 対応した指摘: {count}件
 ```
+
+### 3.1.1 Pre-Commit Drift Lint Gate (#453 Component C)
+
+Before committing, run the distributed fix drift check to catch known propagation failure patterns (Pattern 1-5) mechanically. This prevents drift from entering the review cycle, saving an entire review-fix round trip.
+
+1. Check if `review.loop.pre_commit_drift_check` is enabled in `rite-config.yml` (default: `true`). If disabled, skip to Phase 3.2.
+
+2. Run the drift check on files changed by the current fix:
+
+```bash
+# Get changed files that are in the default target set
+changed_files=$(git diff --name-only HEAD 2>/dev/null | grep -E '^plugins/rite/commands/pr/(fix|review)\.md$|^plugins/rite/agents/tech-writer\.md$' || true)
+
+if [ -n "$changed_files" ]; then
+  target_args=""
+  while IFS= read -r f; do
+    target_args="$target_args --target $f"
+  done <<< "$changed_files"
+  bash {plugin_root}/hooks/scripts/distributed-fix-drift-check.sh $target_args --quiet
+  drift_exit=$?
+else
+  drift_exit=0
+fi
+changed_target_count=$(echo "$changed_files" | grep -c . 2>/dev/null || true)
+printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d changed_targets=%d\n' "$drift_exit" "${changed_target_count:-0}"
+```
+
+3. Handle the exit code:
+
+| Exit Code | Action |
+|-----------|--------|
+| `0` (clean) | Proceed to Phase 3.2. |
+| `1` (drift detected) | Re-run **without** `--quiet` to display findings. Return to Phase 2 to fix the detected drifts. This is an **automated self-correction** — NOT a new review cycle. Do not increment `loop_count`. |
+| `2` (invocation error) | Emit `[CONTEXT] PRE_COMMIT_DRIFT_CHECK_ERROR=1` as WARNING and proceed to Phase 3.2. Do not block the commit. |
+
+> **Note**: If drift is detected, the fix loop is expected to self-correct within 1-2 iterations of this inner gate. If the same drift is detected 3 times consecutively, skip the gate and proceed to Phase 3.2 to avoid an inner infinite loop.
 
 ### 3.2 Generate Commit Message
 
@@ -2985,6 +3087,61 @@ git commit -m "$(cat <<'EOF'
 EOF
 )"
 ```
+
+### 3.3.1 Fix-Cycle State Persistence (#453 Component D)
+
+After committing, record the current fix cycle's data to `.rite/fix-cycle-state/{pr_number}.json` for convergence monitoring and cross-session context preservation.
+
+```bash
+# Ensure directory exists
+mkdir -p .rite/fix-cycle-state
+
+pr_number="{pr_number}"
+state_file=".rite/fix-cycle-state/${pr_number}.json"
+commit_sha_after=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+commit_sha_before=$(git rev-parse HEAD~1 2>/dev/null || echo "unknown")
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
+files_changed=$(git diff --name-only HEAD~1..HEAD 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')
+
+# Read existing state or initialize
+if [ -f "$state_file" ]; then
+  existing=$(cat "$state_file")
+else
+  existing='{"pr_number":'"$pr_number"',"cycles":[]}'
+fi
+
+# Append new cycle entry (propagation_applied is set by Phase 2.3.1 context)
+new_cycle=$(jq -n \
+  --arg ts "$timestamp" \
+  --arg before "$commit_sha_before" \
+  --arg after "$commit_sha_after" \
+  --argjson fixed "{findings_fixed_count}" \
+  --argjson propagated "{propagation_applied_count}" \
+  --argjson files "$files_changed" \
+  '{
+    "cycle": 0,
+    "timestamp": $ts,
+    "commit_sha_before": $before,
+    "commit_sha_after": $after,
+    "findings_fixed": $fixed,
+    "findings_new_from_fix": 0,
+    "files_changed_by_fix": $files,
+    "propagation_applied": $propagated
+  }')
+
+# Append and assign cycle number, enforce ring buffer (max 20 entries)
+echo "$existing" | jq --argjson entry "$new_cycle" '
+  (.cycles | length) as $len |
+  .cycles += [$entry | .cycle = ($len + 1)] |
+  if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
+' > "$state_file"
+
+printf '[CONTEXT] FIX_CYCLE_STATE_WRITTEN file=%s cycle=%d\n' "$state_file" "$(jq '.cycles | length' "$state_file")"
+```
+
+> **Placeholder resolution**: `{findings_fixed_count}` is the number of findings addressed in Phase 2 (count of fix iterations). `{propagation_applied_count}` is from Phase 2.3.1 propagation summary. If Phase 2.3.1 was skipped, use `0`. `{pr_number}` is from Phase 1.0 argument parsing.
+>
+> **Ring buffer**: The state file is capped at 20 cycle entries. Older entries beyond the cap are silently dropped. This prevents unbounded growth for long-running PRs.
 
 ### 3.4 Confirm Push
 
