@@ -201,7 +201,11 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   # stash した場合のみ pop
   if [ "$stash_needed" = true ]; then
     git stash pop
+    stash_needed=false  # EXIT trap での二重 pop を防止
   fi
+
+  # cleanup trap を解除（正常完了時は不要）
+  trap - EXIT INT TERM HUP
 
   echo "✅ Wiki ブランチ '$wiki_branch' を作成しました"
 
