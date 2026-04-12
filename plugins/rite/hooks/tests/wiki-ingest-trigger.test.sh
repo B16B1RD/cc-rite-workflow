@@ -129,12 +129,14 @@ echo ""
 # TC-008: Empty content file → exit 1
 # --------------------------------------------------------------------------
 echo "TC-008: Empty --content-file → exit 1"
-: > "$TEST_DIR/empty.md"
-bash "$HOOK" --type reviews --source-ref pr-1 --content-file "$TEST_DIR/empty.md" >/dev/null 2>"$TEST_DIR/err8.log" && rc=0 || rc=$?
-if [ $rc -eq 1 ] && grep -q 'is empty' "$TEST_DIR/err8.log"; then
+dir8="$TEST_DIR/tc8"
+mkdir -p "$dir8"
+: > "$dir8/empty.md"
+( cd "$dir8" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file empty.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'is empty' "$dir8/err.log"; then
   pass "Empty content file → exit 1"
 else
-  fail "Expected exit 1, got rc=$rc, stderr=$(cat "$TEST_DIR/err8.log")"
+  fail "Expected exit 1, got rc=$rc, stderr=$(cat "$dir8/err.log")"
 fi
 echo ""
 
@@ -236,10 +238,10 @@ dir17="$TEST_DIR/tc17"
 mkdir -p "$dir17"
 echo "x" > "$dir17/body.md"
 ( cd "$dir17" && bash "$HOOK" --type reviews --source-ref $'pr-1\n---\n# Malicious' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 1 ] && grep -q 'must not contain newlines' "$dir17/err.log"; then
+if [ $rc -eq 1 ] && grep -q 'control characters' "$dir17/err.log"; then
   pass "Newline in source-ref → exit 1 (YAML injection blocked)"
 else
-  fail "Expected exit 1 'must not contain newlines', got rc=$rc, stderr=$(cat "$dir17/err.log")"
+  fail "Expected exit 1 'control characters', got rc=$rc, stderr=$(cat "$dir17/err.log")"
 fi
 echo ""
 
@@ -251,7 +253,7 @@ dir18="$TEST_DIR/tc18"
 mkdir -p "$dir18"
 echo "x" > "$dir18/body.md"
 ( cd "$dir18" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title $'foo\nbar' >/dev/null 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 1 ] && grep -q 'must not contain newlines' "$dir18/err.log"; then
+if [ $rc -eq 1 ] && grep -q 'control characters' "$dir18/err.log"; then
   pass "Newline in title → exit 1"
 else
   fail "Expected exit 1, got rc=$rc, stderr=$(cat "$dir18/err.log")"
@@ -539,52 +541,101 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-027: Truncated file (frontmatter only, body missing) → integrity check exit 3 (cycle 2 H4)
+# TC-027: Truncated file (frontmatter only, body missing) → integrity check exit 3
+# F-10 fix: スクリプト経由テストに変更 (awk ロジック複製を廃止)
 # --------------------------------------------------------------------------
-echo "TC-027: Truncated file (frontmatter only) → integrity check fails with exit 3"
-# ⚠️ Known limitation (cycle 3 F-08): This test duplicates the awk logic from trigger.sh
-# rather than testing via the script itself. If the awk in trigger.sh changes, this test
-# may still pass (false positive). A future improvement should extract the awk to a shared
-# file or test via a fault-injection mechanism through the script.
+echo "TC-027: Whitespace-only body → exit 3 via script (integrity check detects no body)"
 dir27="$TEST_DIR/tc27"
 mkdir -p "$dir27"
-truncated="$dir27/truncated.md"
-printf -- '---\ntype: reviews\nsource_ref: pr-1\ningested: false\n---\n' > "$truncated"
-status=$(awk '
-  BEGIN { in_fm = 0 }
-  /^---$/ {
-    if (in_fm < 2) { in_fm++; next }
-  }
-  in_fm == 2 && NF > 0 { body_seen = 1; exit }
-  END { exit !(in_fm == 2 && body_seen) }
-' "$truncated" && echo "ok" || echo "incomplete")
-if [ "$status" = "incomplete" ]; then
-  pass "Truncated file (frontmatter only) → integrity check returns 'incomplete'"
+cat > "$dir27/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+# Whitespace-only content: trigger.sh の -s check は通るが、
+# 書き込み後の awk integrity check では NF>0 の行がないため body_seen=0 → exit 3
+printf '\n \n\n' > "$dir27/whitespace-only.md"
+( cd "$dir27" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file whitespace-only.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 3 ] && grep -q 'integrity check failed' "$dir27/err.log"; then
+  pass "Whitespace-only body → exit 3 via script integrity check"
 else
-  fail "Expected 'incomplete', got '$status'"
+  fail "Expected exit 3 with 'integrity check failed', got rc=$rc, stderr=$(cat "$dir27/err.log")"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-028: Valid file (frontmatter + body) → integrity check ok (cycle 2 H5 — happy path)
+# TC-028: Valid file with body → exit 0 (integrity check passes via script)
+# F-10 fix: スクリプト経由テストに変更
 # --------------------------------------------------------------------------
-echo "TC-028: Valid file → integrity check ok"
+echo "TC-028: Valid file → exit 0 via script (integrity check passes)"
 dir28="$TEST_DIR/tc28"
 mkdir -p "$dir28"
-valid="$dir28/valid.md"
-printf -- '---\ntype: reviews\nsource_ref: pr-1\ningested: false\n---\n\nBody content here\n' > "$valid"
-status=$(awk '
-  BEGIN { in_fm = 0 }
-  /^---$/ {
-    if (in_fm < 2) { in_fm++; next }
-  }
-  in_fm == 2 && NF > 0 { body_seen = 1; exit }
-  END { exit !(in_fm == 2 && body_seen) }
-' "$valid" && echo "ok" || echo "incomplete")
-if [ "$status" = "ok" ]; then
-  pass "Valid file (body present) → integrity check returns 'ok'"
+cat > "$dir28/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+printf 'Body content here\n' > "$dir28/body.md"
+( cd "$dir28" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "Valid file (body present) → exit 0 (integrity check passed)"
 else
-  fail "Expected 'ok', got '$status'"
+  fail "Expected exit 0, got rc=$rc, stderr=$(cat "$dir28/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-033: Symlink content-file → exit 1 (F-07/F-16 security)
+# --------------------------------------------------------------------------
+echo "TC-033: Symlink --content-file → exit 1"
+dir33="$TEST_DIR/tc33"
+mkdir -p "$dir33"
+cat > "$dir33/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+echo "real content" > "$dir33/real.md"
+ln -s "$dir33/real.md" "$dir33/link.md"
+( cd "$dir33" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file link.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'is a symlink' "$dir33/err.log"; then
+  pass "Symlink content-file → exit 1 (rejected for security)"
+else
+  fail "Expected exit 1 with 'is a symlink', got rc=$rc, stderr=$(cat "$dir33/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-034: Content-file outside $PWD → exit 1 (F-08/F-16 path containment)
+# --------------------------------------------------------------------------
+echo "TC-034: Content-file outside \$PWD → exit 1"
+dir34="$TEST_DIR/tc34"
+mkdir -p "$dir34"
+cat > "$dir34/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+# Create a file outside $PWD (in a sibling temp dir)
+outside_dir=$(mktemp -d)
+echo "outside content" > "$outside_dir/outside.md"
+( cd "$dir34" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file "$outside_dir/outside.md" >/dev/null 2>err.log ) && rc=0 || rc=$?
+rm -rf "$outside_dir"
+if [ $rc -eq 1 ] && grep -qE 'must be under.*rite' "$dir34/err.log"; then
+  pass "Content-file outside \$PWD → exit 1 (path containment enforced)"
+else
+  fail "Expected exit 1 with 'must be under', got rc=$rc, stderr=$(cat "$dir34/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-035: Control character in --source-ref → exit 1 (F-14)
+# --------------------------------------------------------------------------
+echo "TC-035: Control character in --source-ref → exit 1"
+dir35="$TEST_DIR/tc35"
+mkdir -p "$dir35"
+echo "x" > "$dir35/body.md"
+( cd "$dir35" && bash "$HOOK" --type reviews --source-ref $'pr-1\x01injected' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'control characters' "$dir35/err.log"; then
+  pass "Control character in source-ref → exit 1"
+else
+  fail "Expected exit 1 with 'control characters', got rc=$rc, stderr=$(cat "$dir35/err.log")"
 fi
 echo ""
 

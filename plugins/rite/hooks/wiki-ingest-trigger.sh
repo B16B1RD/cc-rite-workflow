@@ -112,14 +112,13 @@ if [[ -z "$SOURCE_REF" ]]; then
   echo "ERROR: --source-ref is required" >&2
   exit 1
 fi
-# F-07 fix: reject newlines / control chars to prevent YAML frontmatter injection
-case "$SOURCE_REF" in
-  *$'\n'*|*$'\r'*|*$'\t'*)
-    echo "ERROR: --source-ref must not contain newlines, carriage returns, or tabs" >&2
-    echo "  reason: such characters can break YAML frontmatter (early --- close, key injection)" >&2
-    exit 1
-    ;;
-esac
+# F-07 fix + F-14 fix: reject all ASCII control chars to prevent YAML frontmatter injection
+# F-14: 改行/CR/タブ以外の制御文字 (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, 0x7F) もフィルタ
+if [[ "$SOURCE_REF" =~ [[:cntrl:]] ]]; then
+  echo "ERROR: --source-ref must not contain control characters (newlines, tabs, or other ASCII control chars)" >&2
+  echo "  reason: control characters can break YAML frontmatter (early --- close, key injection, escape sequences)" >&2
+  exit 1
+fi
 
 # F-09 fix: validate PR_NUMBER / ISSUE_NUMBER as positive integers BEFORE write
 if [[ -n "$PR_NUMBER" ]]; then
@@ -139,14 +138,12 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   esac
 fi
 
-# F-08 fix: reject newlines / CR / tab in TITLE to prevent YAML scalar break
+# F-08 fix + F-14 fix: reject all ASCII control chars in TITLE (SOURCE_REF と対称)
 if [[ -n "$TITLE" ]]; then
-  case "$TITLE" in
-    *$'\n'*|*$'\r'*|*$'\t'*)
-      echo "ERROR: --title must not contain newlines, carriage returns, or tabs" >&2
-      exit 1
-      ;;
-  esac
+  if [[ "$TITLE" =~ [[:cntrl:]] ]]; then
+    echo "ERROR: --title must not contain control characters (newlines, tabs, or other ASCII control chars)" >&2
+    exit 1
+  fi
   # reject odd trailing backslashes (escape ambiguity)
   trailing=${TITLE##*[^\\]}
   trailing_len=${#trailing}
@@ -173,20 +170,24 @@ if [[ ! -f "$CONTENT_FILE" ]]; then
   exit 1
 fi
 # Path containment: $PWD 配下または /tmp/rite-* のみ許可
-resolved_content=$(realpath -- "$CONTENT_FILE" 2>/dev/null) || resolved_content=""
-if [[ -n "$resolved_content" ]]; then
-  case "$resolved_content" in
-    "$PWD"/*|/tmp/*)
-      : # allowed ($PWD 配下 or /tmp 配下)
-      ;;
-    *)
-      echo "ERROR: --content-file must be under \$PWD or /tmp/" >&2
-      echo "  resolved path: $resolved_content" >&2
-      echo "  hint: copy the file into the project directory first" >&2
-      exit 1
-      ;;
-  esac
-fi
+# F-01 fix: realpath 失敗時を fail-fast にする (silent bypass 防止)
+resolved_content=$(realpath -- "$CONTENT_FILE") || {
+  echo "ERROR: realpath failed for '$CONTENT_FILE' — cannot verify path containment" >&2
+  echo "  hint: ensure the file exists and realpath is available (coreutils)" >&2
+  exit 1
+}
+# F-02 fix: /tmp/* → /tmp/rite-* に制限 (exfiltration 経路の縮小)
+case "$resolved_content" in
+  "$PWD"/*|/tmp/rite-*)
+    : # allowed ($PWD 配下 or /tmp/rite-* 配下)
+    ;;
+  *)
+    echo "ERROR: --content-file must be under \$PWD or /tmp/rite-*" >&2
+    echo "  resolved path: $resolved_content" >&2
+    echo "  hint: copy the file into the project directory first" >&2
+    exit 1
+    ;;
+esac
 if [[ ! -s "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file '$CONTENT_FILE' is empty" >&2
   exit 1
