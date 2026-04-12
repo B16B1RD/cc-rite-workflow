@@ -51,14 +51,14 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-002: No arguments → exit 1
+# TC-002: No arguments → exit 1 + Usage shown on stderr (F-22)
 # --------------------------------------------------------------------------
-echo "TC-002: No arguments → exit 1"
-bash "$HOOK" >/dev/null 2>&1 && rc=0 || rc=$?
-if [ $rc -eq 1 ]; then
-  pass "No args → exit 1"
+echo "TC-002: No arguments → exit 1 + Usage on stderr"
+bash "$HOOK" >/dev/null 2>"$TEST_DIR/err2.log" && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q '^Usage: wiki-ingest-trigger.sh' "$TEST_DIR/err2.log"; then
+  pass "No args → exit 1 + Usage printed on stderr"
 else
-  fail "Expected exit 1 with no args, got rc=$rc"
+  fail "Expected exit 1 with Usage on stderr, got rc=$rc, stderr=$(cat "$TEST_DIR/err2.log")"
 fi
 echo ""
 
@@ -182,13 +182,199 @@ if [ $rc -eq 0 ] && [ -n "$target_path" ] && [ -f "$dir10/$target_path" ]; then
      grep -q '^pr_number: 123$' "$dir10/$target_path" && \
      grep -q '^ingested: false$' "$dir10/$target_path" && \
      grep -q '^title: "Code review for PR #123"$' "$dir10/$target_path" && \
+     grep -qE '^captured_at: "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00"$' "$dir10/$target_path" && \
      grep -q 'Review body content here' "$dir10/$target_path"; then
-    pass "Happy path: file created with correct frontmatter and body"
+    pass "Happy path: file created with correct frontmatter (incl. captured_at ISO8601) and body"
   else
     fail "File created but frontmatter/body incorrect. File: $(cat "$dir10/$target_path")"
   fi
 else
   fail "Expected file creation, got rc=$rc, target='$target_path', stderr=$(cat "$dir10/err.log" 2>/dev/null)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-015: Empty slug after sanitization → exit 1 (F-23)
+# --------------------------------------------------------------------------
+echo "TC-015: Special-chars-only --source-ref → exit 1 (empty slug)"
+dir15="$TEST_DIR/tc15"
+mkdir -p "$dir15"
+echo "x" > "$dir15/body.md"
+( cd "$dir15" && bash "$HOOK" --type reviews --source-ref "///@@@" --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'produced an empty slug' "$dir15/err.log"; then
+  pass "Special-chars-only source-ref → exit 1 with 'empty slug' message"
+else
+  fail "Expected exit 1 with 'empty slug', got rc=$rc, stderr=$(cat "$dir15/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-016: Long source-ref → slug truncated to 60 chars (F-24)
+# --------------------------------------------------------------------------
+echo "TC-016: 70-char source-ref → slug truncated to 60 chars"
+dir16="$TEST_DIR/tc16"
+mkdir -p "$dir16"
+echo "x" > "$dir16/body.md"
+long_ref="aaaaaaaaaa-bbbbbbbbbb-cccccccccc-dddddddddd-eeeeeeeeee-ffffffffff-gggggg"
+( cd "$dir16" && bash "$HOOK" --type reviews --source-ref "$long_ref" --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+target_path="$(cat "$dir16/out.log" 2>/dev/null || true)"
+filename="$(basename "$target_path" 2>/dev/null || true)"
+slug_part="${filename#*-}"
+slug_part="${slug_part%.md}"
+if [ $rc -eq 0 ] && [ "${#slug_part}" -eq 60 ]; then
+  pass "Slug truncated to exactly 60 chars (got: ${#slug_part})"
+else
+  fail "Expected slug length 60, got '${#slug_part}' (slug='$slug_part', filename='$filename')"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-017: Newline in --source-ref → exit 1 (F-07 YAML injection)
+# --------------------------------------------------------------------------
+echo "TC-017: Newline in --source-ref → exit 1"
+dir17="$TEST_DIR/tc17"
+mkdir -p "$dir17"
+echo "x" > "$dir17/body.md"
+( cd "$dir17" && bash "$HOOK" --type reviews --source-ref $'pr-1\n---\n# Malicious' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must not contain newlines' "$dir17/err.log"; then
+  pass "Newline in source-ref → exit 1 (YAML injection blocked)"
+else
+  fail "Expected exit 1 'must not contain newlines', got rc=$rc, stderr=$(cat "$dir17/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-018: Newline in --title → exit 1 (F-08 YAML injection)
+# --------------------------------------------------------------------------
+echo "TC-018: Newline in --title → exit 1"
+dir18="$TEST_DIR/tc18"
+mkdir -p "$dir18"
+echo "x" > "$dir18/body.md"
+( cd "$dir18" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title $'foo\nbar' >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must not contain newlines' "$dir18/err.log"; then
+  pass "Newline in title → exit 1"
+else
+  fail "Expected exit 1, got rc=$rc, stderr=$(cat "$dir18/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-019: Title with embedded double quote → properly escaped (F-08)
+# --------------------------------------------------------------------------
+echo "TC-019: Title with embedded double quote → escaped to \\\""
+dir19="$TEST_DIR/tc19"
+mkdir -p "$dir19"
+echo "x" > "$dir19/body.md"
+( cd "$dir19" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title 'He said "hi"' > out.log 2>err.log ) && rc=0 || rc=$?
+target_path="$(cat "$dir19/out.log" 2>/dev/null || true)"
+if [ $rc -eq 0 ] && [ -f "$dir19/$target_path" ] && \
+   grep -q '^title: "He said \\"hi\\""$' "$dir19/$target_path"; then
+  pass "Double-quote in title → escaped as \\\" in YAML"
+else
+  fail "Expected escaped quote, got rc=$rc, file content: $(cat "$dir19/$target_path" 2>/dev/null)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-020: Title ending with odd backslashes → exit 1 (F-08)
+# --------------------------------------------------------------------------
+echo "TC-020: Title ending with single backslash → exit 1"
+dir20="$TEST_DIR/tc20"
+mkdir -p "$dir20"
+echo "x" > "$dir20/body.md"
+( cd "$dir20" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title 'foo\' >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'odd number of backslashes' "$dir20/err.log"; then
+  pass "Odd trailing backslash in title → exit 1"
+else
+  fail "Expected exit 1 'odd number of backslashes', got rc=$rc, stderr=$(cat "$dir20/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-021: Non-numeric --pr-number → exit 1 (F-09)
+# --------------------------------------------------------------------------
+echo "TC-021: Non-numeric --pr-number → exit 1"
+dir21="$TEST_DIR/tc21"
+mkdir -p "$dir21"
+echo "x" > "$dir21/body.md"
+( cd "$dir21" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --pr-number "1abc" >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir21/err.log"; then
+  pass "Non-numeric pr-number → exit 1"
+else
+  fail "Expected exit 1, got rc=$rc, stderr=$(cat "$dir21/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-022: --pr-number with newline injection → exit 1 (F-09)
+# --------------------------------------------------------------------------
+echo "TC-022: --pr-number with embedded newline → exit 1"
+dir22="$TEST_DIR/tc22"
+mkdir -p "$dir22"
+echo "x" > "$dir22/body.md"
+( cd "$dir22" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --pr-number $'1\ningested: true' >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir22/err.log"; then
+  pass "Newline in pr-number → exit 1 (injection blocked)"
+else
+  fail "Expected exit 1, got rc=$rc, stderr=$(cat "$dir22/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-023: wiki.enabled: yes → accepted as enabled
+# --------------------------------------------------------------------------
+echo "TC-023: wiki.enabled: yes / 1 → accepted"
+for variant in yes 1; do
+  d="$TEST_DIR/tc23_$variant"
+  mkdir -p "$d"
+  cat > "$d/rite-config.yml" <<EOF
+wiki:
+  enabled: $variant
+EOF
+  echo "x" > "$d/body.md"
+  ( cd "$d" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+  if [ $rc -ne 0 ]; then
+    fail "wiki.enabled=$variant should be accepted, got rc=$rc, stderr=$(cat "$d/err.log")"
+  fi
+done
+pass "wiki.enabled: yes / 1 both accepted"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-024: wiki.enabled: no → exit 2 (F-01 lenient parser variant)
+# --------------------------------------------------------------------------
+echo "TC-024: wiki.enabled: no → exit 2"
+d="$TEST_DIR/tc24"
+mkdir -p "$d"
+cat > "$d/rite-config.yml" <<'EOF'
+wiki:
+  enabled: no
+EOF
+echo "x" > "$d/body.md"
+( cd "$d" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'wiki.enabled is false' "$d/err.log"; then
+  pass "wiki.enabled: no → exit 2"
+else
+  fail "Expected exit 2, got rc=$rc, stderr=$(cat "$d/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-025: rite-config.yml without wiki: section → lenient pass (F-01)
+# --------------------------------------------------------------------------
+echo "TC-025: rite-config.yml without wiki: section → lenient pass (no abort)"
+d="$TEST_DIR/tc25"
+mkdir -p "$d"
+cat > "$d/rite-config.yml" <<'EOF'
+project:
+  type: generic
+EOF
+echo "x" > "$d/body.md"
+( cd "$d" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "Missing wiki: section → lenient pass (rc=0, no silent abort from pipefail × grep)"
+else
+  fail "Expected rc=0 (lenient), got rc=$rc, stderr=$(cat "$d/err.log")"
 fi
 echo ""
 

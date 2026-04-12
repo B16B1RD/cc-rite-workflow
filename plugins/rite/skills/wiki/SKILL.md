@@ -3,9 +3,10 @@ name: wiki
 description: |
   rite Wiki layer — project-specific experiential knowledge persistence based on the
   LLM Wiki pattern (Karpathy). Use when the user asks to ingest review/fix/issue
-  outcomes into Wiki pages, query past heuristics, or initialize the Wiki structure.
+  outcomes into Wiki pages or initialize the Wiki structure.
   Activates on "wiki", "ingest", "経験則", "知識ページ", "Wiki 蓄積", "経験則を残す",
-  "wiki:init", "wiki:ingest", "Wiki 参照", "/rite:wiki:".
+  "wiki:init", "wiki:ingest", "/rite:wiki:".
+  Note: query / lint commands are tracked in follow-up Issues and not yet implemented.
 ---
 
 # Wiki Skill
@@ -15,9 +16,10 @@ description: |
 ## Auto-Activation Keywords
 
 - wiki, Wiki, 経験則, 知識ページ
-- ingest, query, lint
-- 経験則を残す, 経験則を参照, 蓄積
+- ingest, 蓄積, 経験則を残す
 - `/rite:wiki:init`, `/rite:wiki:ingest`
+
+> **Note**: `query` / `lint` キーワードは現時点で未実装です。`/rite:wiki:query` および `/rite:wiki:lint` は後続 Issue で実装予定のため、本 SKILL の auto-activation キーワードからは意図的に除外しています。
 
 ## アーキテクチャ概要
 

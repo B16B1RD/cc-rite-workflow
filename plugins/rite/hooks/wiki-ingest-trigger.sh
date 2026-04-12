@@ -112,6 +112,49 @@ if [[ -z "$SOURCE_REF" ]]; then
   echo "ERROR: --source-ref is required" >&2
   exit 1
 fi
+# F-07 fix: reject newlines / control chars to prevent YAML frontmatter injection
+case "$SOURCE_REF" in
+  *$'\n'*|*$'\r'*|*$'\t'*)
+    echo "ERROR: --source-ref must not contain newlines, carriage returns, or tabs" >&2
+    echo "  reason: such characters can break YAML frontmatter (early --- close, key injection)" >&2
+    exit 1
+    ;;
+esac
+
+# F-09 fix: validate PR_NUMBER / ISSUE_NUMBER as positive integers BEFORE write
+if [[ -n "$PR_NUMBER" ]]; then
+  case "$PR_NUMBER" in
+    ''|*[!0-9]*)
+      echo "ERROR: --pr-number must be a positive integer (got: '$PR_NUMBER')" >&2
+      exit 1
+      ;;
+  esac
+fi
+if [[ -n "$ISSUE_NUMBER" ]]; then
+  case "$ISSUE_NUMBER" in
+    ''|*[!0-9]*)
+      echo "ERROR: --issue-number must be a positive integer (got: '$ISSUE_NUMBER')" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+# F-08 fix: reject newlines / CR / tab in TITLE to prevent YAML scalar break
+if [[ -n "$TITLE" ]]; then
+  case "$TITLE" in
+    *$'\n'*|*$'\r'*|*$'\t'*)
+      echo "ERROR: --title must not contain newlines, carriage returns, or tabs" >&2
+      exit 1
+      ;;
+  esac
+  # reject odd trailing backslashes (escape ambiguity)
+  trailing=${TITLE##*[^\\]}
+  trailing_len=${#trailing}
+  if (( trailing_len % 2 == 1 )); then
+    echo "ERROR: --title must not end with an odd number of backslashes (escape ambiguity)" >&2
+    exit 1
+  fi
+fi
 
 if [[ -z "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file is required" >&2
@@ -130,10 +173,22 @@ fi
 # This guard is intentionally lenient: when rite-config.yml is absent, we
 # proceed and let /rite:wiki:ingest handle the strict validation later. The
 # trigger only refuses when wiki.enabled is explicitly false.
+#
+# F-01 fix: avoid `set -euo pipefail` × `grep no-match` silent abort.
+# When `wiki:` section or `enabled:` key is missing, grep returns exit 1, which
+# under pipefail aborts the entire script. We split the pipeline into stages and
+# explicitly tolerate empty results so missing keys lenient-fall-through to "not false".
 if [[ -f "rite-config.yml" ]]; then
-  wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
-    | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
-    | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+  wiki_enabled_line=""
+  if [[ -n "$wiki_section" ]]; then
+    # awk -- skip non-matches gracefully (exit 0 even with no output)
+    wiki_enabled_line=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }') || wiki_enabled_line=""
+  fi
+  wiki_enabled=""
+  if [[ -n "$wiki_enabled_line" ]]; then
+    wiki_enabled=$(printf '%s' "$wiki_enabled_line" | sed 's/#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
+  fi
   case "$wiki_enabled" in
     false|no|0)
       echo "ERROR: wiki.enabled is false in rite-config.yml — refusing to stage Raw Source" >&2
@@ -165,9 +220,21 @@ target_file="${target_dir}/${timestamp_compact}-${slug}.md"
 # Ensure directory exists (for separate_branch strategy this only takes effect
 # when /rite:wiki:ingest is later run from the wiki branch; on the dev branch
 # the directory may not exist yet, so we create it on demand).
-if ! mkdir -p "$target_dir" 2>/dev/null; then
+#
+# F-13 fix: do NOT silently suppress mkdir stderr. Surface root cause
+# (permission denied / read-only filesystem / ancestor not a directory).
+if ! mkdir -p "$target_dir"; then
   echo "ERROR: failed to create directory '$target_dir'" >&2
+  echo "  hint: check filesystem permissions and ancestor path types" >&2
   exit 3
+fi
+
+# F-08 fix: properly escape backslash before double-quote in TITLE
+#   - escape backslash first (otherwise the next escape doubles them)
+#   - then escape double quote
+if [[ -n "$TITLE" ]]; then
+  escaped_title=${TITLE//\\/\\\\}
+  escaped_title=${escaped_title//\"/\\\"}
 fi
 
 # --- Write Raw Source with YAML frontmatter ---
@@ -183,8 +250,6 @@ fi
     printf 'issue_number: %s\n' "$ISSUE_NUMBER"
   fi
   if [[ -n "$TITLE" ]]; then
-    # Escape double quotes in title
-    escaped_title=${TITLE//\"/\\\"}
     printf 'title: "%s"\n' "$escaped_title"
   fi
   printf 'ingested: false\n'
@@ -199,6 +264,17 @@ fi
 
 if [[ ! -s "$target_file" ]]; then
   echo "ERROR: '$target_file' was created but is empty" >&2
+  exit 3
+fi
+
+# F-21 fix: integrity verification — partial-write 検出
+# (frontmatter のみが書き込まれて body 部分が欠落する truncated 書き込みを catch)
+#   1. frontmatter の closing `---` の **後** に少なくとも 1 つの非空行が存在することを確認
+#   2. 末尾の trailing newline (printf '\n') が書き込まれていることを確認
+expected_min_lines=$(awk 'BEGIN { fm_close=0 } /^---$/ { fm_close++; next } fm_close == 2 && NF > 0 { body_seen=1; exit } END { exit !(fm_close == 2 && body_seen) }' "$target_file" && echo "ok" || echo "incomplete")
+if [ "$expected_min_lines" = "incomplete" ]; then
+  echo "ERROR: '$target_file' integrity check failed (frontmatter present but body missing/truncated)" >&2
+  echo "  対処: ファイルを削除して再実行してください: rm '$target_file'" >&2
   exit 3
 fi
 
