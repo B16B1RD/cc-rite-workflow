@@ -3131,7 +3131,8 @@ new_cycle=$(jq -n \
 
 # Append and assign cycle number, enforce ring buffer (max 20 entries)
 echo "$existing" | jq --argjson entry "$new_cycle" '
-  .cycles += [$entry | .cycle = (.cycles | length) + 1] |
+  (.cycles | length) as $len |
+  .cycles += [$entry | .cycle = ($len + 1)] |
   if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
 ' > "$state_file"
 
