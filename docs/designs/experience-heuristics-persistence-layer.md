@@ -158,7 +158,7 @@ plugins/rite/
 
 | 領域 | 変更内容 |
 |------|---------|
-| `plugins/rite/commands/wiki/` | 新規: ingest.md, query.md, lint.md |
+| `plugins/rite/commands/wiki/` | 新規: init.md, ingest.md, query.md, lint.md |
 | `plugins/rite/skills/` | 新規: wiki スキル定義（SKILL.md） |
 | `plugins/rite/hooks/` | 新規: wiki-ingest-trigger.sh, wiki-query-inject.sh |
 | `plugins/rite/templates/wiki/` | 新規: ページテンプレート、Schema テンプレート |

@@ -57,6 +57,13 @@ wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
 wiki_branch="${wiki_branch:-wiki}"
 current_branch=$(git branch --show-current)
 
+# dirty tree チェック: stash が必要な場合のみ実行
+stash_needed=false
+if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
+  git stash push -m "rite-wiki-init-stash"
+  stash_needed=true
+fi
+
 # orphan ブランチとして作成（開発履歴を含まない）
 git checkout --orphan "$wiki_branch"
 git rm -rf . 2>/dev/null || true
@@ -67,6 +74,11 @@ git push -u origin "$wiki_branch"
 
 # 元のブランチに戻る（git checkout - は --orphan 後に動作しないため明示的に指定）
 git checkout "$current_branch"
+
+# stash した場合のみ pop
+if [ "$stash_needed" = true ]; then
+  git stash pop
+fi
 ```
 
 #### Wiki ブランチへの書き込み（Ingest 時）
@@ -194,6 +206,7 @@ wiki_branch="${wiki_branch:-wiki}"
 branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+branch_strategy="${branch_strategy:-separate_branch}"
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   # separate_branch: Wiki ブランチの存在で判定

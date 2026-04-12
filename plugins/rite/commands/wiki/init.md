@@ -50,6 +50,7 @@ wiki_branch="${wiki_branch:-wiki}"
 branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+branch_strategy="${branch_strategy:-separate_branch}"
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   if git rev-parse --verify "origin/${wiki_branch}" >/dev/null 2>&1 || \
@@ -73,11 +74,13 @@ fi
 Wiki は既に初期化されています。
 
 オプション:
-- 再初期化（既存データをバックアップして上書き）: cp -r .rite/wiki .rite/wiki.bak.$(date +%s) でバックアップ後に上書き
+- 再初期化（既存データをバックアップして上書き）
 - キャンセル
 ```
 
-「再初期化」選択時は `cp -r .rite/wiki .rite/wiki.bak.$(date +%s)` でバックアップを作成してから続行。
+「再初期化」選択時のバックアップ方法は `branch_strategy` に応じて分岐:
+- `separate_branch`: `mkdir -p .rite/wiki.bak.$(date +%s) && git archive "$wiki_branch" -- .rite/wiki/ | tar -x -C .rite/wiki.bak.$(date +%s)` で wiki ブランチからデータを取得
+- `same_branch`: `cp -r .rite/wiki .rite/wiki.bak.$(date +%s)` で working tree から直接コピー
 
 ### 1.3 ブランチ戦略の読み取り
 
@@ -160,6 +163,13 @@ wiki_branch="{wiki_branch}"
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   current_branch=$(git branch --show-current)
+
+  # cleanup trap: 異常終了時に元のブランチに復帰を保証
+  _rite_wiki_init_cleanup() {
+    git checkout "$current_branch" 2>/dev/null || true
+    [ "${stash_needed:-false}" = true ] && git stash pop 2>/dev/null || true
+  }
+  trap '_rite_wiki_init_cleanup' EXIT INT TERM HUP
 
   # dirty tree チェック（未コミットの変更を保護）
   if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
