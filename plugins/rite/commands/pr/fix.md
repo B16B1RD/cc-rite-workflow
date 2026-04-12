@@ -4463,9 +4463,11 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | Phase 1.2.0 Priority chain で決定された `review_source` 値 (verified-review cycle 9 I-1 対応、schema.md Priority 1 emit 義務の provenance 契約を Phase 4.6 で履行)。展開ルールは Phase 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
 
 **Note**: The review-fix loop of `/rite:issue:start` checks the content of this completion report to determine the next action:
-- `プッシュ: 完了` -> Execute re-review (verify fix content)
-- `別 Issue 作成: N件` (N >= 1) -> Execute re-review (confirm skipped findings are managed)
+- `プッシュ: 完了` -> Execute full re-review (`/rite:pr:review` と同等のフルレビュー — スコープ縮退禁止)
+- `別 Issue 作成: N件` (N >= 1) -> Execute full re-review (`/rite:pr:review` と同等のフルレビュー — スコープ縮退禁止)
 - `プッシュ: 未実行` and `別 Issue 作成: 0件` and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
+
+> **⚠️ re-review 時のスコープ縮退禁止**: caller (`/rite:issue:start`) が re-review を実行する際、「前回指摘の修正確認に絞る」「コンテキスト効率のためスコープを限定する」等の理由でレビュー範囲を縮退させてはならない。re-review は常に初回 `/rite:pr:review` と完全に同等のフルレビューとして実行し、全レビュアーをサブエージェントで並列起動すること。
 
 ---
 
@@ -4522,7 +4524,7 @@ Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (d
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_fix" \
-  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (re-review). [fix:pushed-wm-stale]->Phase 5.4.1 with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop." \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->Phase 5.4.1 (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->Phase 5.4.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:replied-only]->Phase 5.5. Do NOT stop." \
   --if-exists
 ```
 
@@ -4689,6 +4691,7 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 - Do **NOT** invoke `rite:pr:review` via the Skill tool
 - Return control to the caller (`/rite:issue:start`)
 - The caller determines the next action based on this output pattern
+- **re-review は必ずフルレビューで実行すること**: caller が `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:issues-created]` を受けて re-review を実行する際、スコープ縮退（「前回指摘の修正確認のみ」「コンテキスト効率のため範囲限定」等）は一切禁止。`/rite:pr:review` と完全に同等のフルレビューを実行し、全レビュアーをサブエージェントで並列起動すること
 
 **Confidence override tempfile cleanup** (silent orphan 防止):
 
