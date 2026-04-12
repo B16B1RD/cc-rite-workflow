@@ -101,20 +101,22 @@ rite ワークフロー実行時に関連経験則を自動参照し、コンテ
 <!-- Section ID: SPEC-ARCH-COMPONENTS -->
 ### コンポーネント構成
 
+> **実装状態**: 本図は目標アーキテクチャの全体像を示す。#468 (本 Issue) では `init.md`、`wiki-patterns.md`、`templates/wiki/` のみ実装。その他のファイル（ingest.md, query.md, lint.md, hooks, skills）は後続 Issue で実装予定。
+
 ```
 plugins/rite/
 ├── commands/wiki/           # Wiki 操作コマンド
-│   ├── init.md              #   Wiki 初期化
-│   ├── ingest.md            #   経験則の蓄積
-│   ├── query.md             #   経験則の参照
-│   └── lint.md              #   Wiki の品質チェック
-├── skills/rite-workflow/     # 既存スキル（Wiki 参照フックを追加）
-├── hooks/                    # 既存フック（Ingest トリガーを追加）
-│   ├── wiki-ingest-trigger.sh  # Ingest トリガーフック
-│   └── wiki-query-inject.sh    # Query 注入フック
+│   ├── init.md              #   Wiki 初期化 ✅ (#468)
+│   ├── ingest.md            #   経験則の蓄積 (後続 Issue)
+│   ├── query.md             #   経験則の参照 (後続 Issue)
+│   └── lint.md              #   Wiki の品質チェック (後続 Issue)
+├── skills/rite-workflow/     # 既存スキル（Wiki 参照フックを追加、後続 Issue）
+├── hooks/                    # 既存フック（Ingest トリガーを追加、後続 Issue）
+│   ├── wiki-ingest-trigger.sh  # Ingest トリガーフック (後続 Issue)
+│   └── wiki-query-inject.sh    # Query 注入フック (後続 Issue)
 ├── references/
-│   └── wiki-patterns.md      # Wiki 操作の共通パターン
-└── templates/wiki/           # Wiki ページテンプレート
+│   └── wiki-patterns.md      # Wiki 操作の共通パターン ✅ (#468)
+└── templates/wiki/           # Wiki ページテンプレート ✅ (#468)
     ├── page-template.md      #   知識ページのテンプレート
     ├── schema-template.md    #   Schema の初期テンプレート
     ├── index-template.md     #   インデックス初期テンプレート
@@ -156,11 +158,13 @@ plugins/rite/
 <!-- Section ID: SPEC-IMPL-FILES -->
 ### 変更が必要なファイル/領域
 
+> **凡例**: ✅ = #468 で実装済み、📋 = 後続 Issue で実装予定
+
 | 領域 | 変更内容 |
 |------|---------|
-| `plugins/rite/commands/wiki/` | 新規: init.md, ingest.md, query.md, lint.md |
-| `plugins/rite/skills/` | 新規: wiki スキル定義（SKILL.md） |
-| `plugins/rite/hooks/` | 新規: wiki-ingest-trigger.sh, wiki-query-inject.sh |
+| `plugins/rite/commands/wiki/` | ✅ init.md / 📋 ingest.md, query.md, lint.md |
+| `plugins/rite/skills/` | 📋 wiki スキル定義（SKILL.md — init.md は commands/ 配下の自動検出で動作するため初期構築では不要） |
+| `plugins/rite/hooks/` | 📋 wiki-ingest-trigger.sh, wiki-query-inject.sh |
 | `plugins/rite/templates/wiki/` | 新規: ページテンプレート、Schema テンプレート |
 | `plugins/rite/references/` | 新規: wiki-patterns.md |
 | `plugins/rite/commands/pr/review.md` | 修正: Ingest トリガー + Query 注入の統合 |

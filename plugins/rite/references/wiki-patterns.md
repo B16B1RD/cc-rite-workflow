@@ -57,6 +57,19 @@ wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
 wiki_branch="${wiki_branch:-wiki}"
 current_branch=$(git branch --show-current)
 
+# cleanup trap: 異常終了時に元のブランチに復帰を保証
+# canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
+_rite_wiki_init_cleanup() {
+  git checkout "$current_branch" 2>/dev/null || true
+  if [ "${stash_needed:-false}" = true ]; then
+    git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+  fi
+}
+trap 'rc=$?; _rite_wiki_init_cleanup; exit $rc' EXIT
+trap '_rite_wiki_init_cleanup; exit 130' INT
+trap '_rite_wiki_init_cleanup; exit 143' TERM
+trap '_rite_wiki_init_cleanup; exit 129' HUP
+
 # dirty tree チェック: stash が必要な場合のみ実行
 stash_needed=false
 if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
@@ -65,12 +78,12 @@ if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/de
 fi
 
 # orphan ブランチとして作成（開発履歴を含まない）
-git checkout --orphan "$wiki_branch"
+git checkout --orphan "$wiki_branch" || { echo "ERROR: git checkout --orphan failed" >&2; exit 1; }
 git rm -rf . 2>/dev/null || true
 # Wiki ファイルを配置してコミット
 git add .rite/wiki/
 git commit -m "feat(wiki): initialize Wiki structure"
-git push -u origin "$wiki_branch"
+git push -u origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る（git checkout - は --orphan 後に動作しないため明示的に指定）
 git checkout "$current_branch"
@@ -78,7 +91,11 @@ git checkout "$current_branch"
 # stash した場合のみ pop
 if [ "$stash_needed" = true ]; then
   git stash pop
+  stash_needed=false  # EXIT trap での二重 pop を防止
 fi
+
+# cleanup trap を解除（正常完了時は不要）
+trap - EXIT INT TERM HUP
 ```
 
 #### Wiki ブランチへの書き込み（Ingest 時）
@@ -90,6 +107,19 @@ wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
 wiki_branch="${wiki_branch:-wiki}"
 current_branch=$(git branch --show-current)
 
+# cleanup trap: 異常終了時に元のブランチに復帰を保証
+# canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
+_rite_wiki_ingest_cleanup() {
+  git checkout "$current_branch" 2>/dev/null || true
+  if [ "${stash_needed:-false}" = true ]; then
+    git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+  fi
+}
+trap 'rc=$?; _rite_wiki_ingest_cleanup; exit $rc' EXIT
+trap '_rite_wiki_ingest_cleanup; exit 130' INT
+trap '_rite_wiki_ingest_cleanup; exit 143' TERM
+trap '_rite_wiki_ingest_cleanup; exit 129' HUP
+
 # dirty tree チェック: stash が必要な場合のみ実行
 stash_needed=false
 if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
@@ -98,14 +128,14 @@ if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/de
 fi
 
 # Wiki ブランチに切り替え
-git checkout "$wiki_branch"
+git checkout "$wiki_branch" || { echo "ERROR: git checkout '$wiki_branch' failed" >&2; exit 1; }
 
 # Wiki ファイルの変更を適用
 # ... (ingest/update operations)
 
 git add .rite/wiki/
 git commit -m "docs(wiki): {action} - {description}"
-git push origin "$wiki_branch"
+git push origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る
 git checkout "$current_branch"
@@ -113,7 +143,11 @@ git checkout "$current_branch"
 # stash した場合のみ pop
 if [ "$stash_needed" = true ]; then
   git stash pop
+  stash_needed=false  # EXIT trap での二重 pop を防止
 fi
+
+# cleanup trap を解除（正常完了時は不要）
+trap - EXIT INT TERM HUP
 ```
 
 #### Wiki ブランチからの読み込み（Query 時）
@@ -125,8 +159,14 @@ wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
 wiki_branch="${wiki_branch:-wiki}"
 
 # ブランチ切り替えなしで Wiki ファイルを読み取り
-git show "${wiki_branch}:.rite/wiki/index.md" 2>/dev/null
-git show "${wiki_branch}:.rite/wiki/pages/{page_path}" 2>/dev/null
+if ! git show "${wiki_branch}:.rite/wiki/index.md" 2>/dev/null; then
+  echo "ERROR: Wiki index not found on branch '${wiki_branch}'" >&2
+  echo "  対処: Wiki が初期化済みか確認してください (/rite:wiki:init)" >&2
+  exit 1
+fi
+if ! git show "${wiki_branch}:.rite/wiki/pages/{page_path}" 2>/dev/null; then
+  echo "WARNING: Wiki page not found: .rite/wiki/pages/{page_path} on branch '${wiki_branch}'" >&2
+fi
 ```
 
 ### same_branch 戦略

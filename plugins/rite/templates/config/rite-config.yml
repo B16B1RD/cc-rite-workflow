@@ -177,6 +177,7 @@ pr_review:
 #   repeated_failure_threshold: 3
 
 # Wiki settings (LLM Wiki pattern for experience heuristics)
+# See docs/designs/experience-heuristics-persistence-layer.md for full specification.
 # wiki:
 #   enabled: false              # true to enable Wiki features (default: false)
 #   branch_strategy: "separate_branch"  # "separate_branch" (recommended) or "same_branch"
