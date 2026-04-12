@@ -474,7 +474,14 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
   else
     # Priority 0: schema_version も Priority 2 と同じく検証するが、失敗時は直接 fallback へ
     # (ユーザーの明示意図を尊重 — Priority 1-3 に silent fall-through しない)
-    schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path")
+    # jq exit code を明示捕捉 (commit_sha 抽出と対称化、verified-review cycle 15 F-2 対応)
+    if ! schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path" 2>/dev/null); then
+      jq_sv_rc=$?
+      echo "WARNING: --review-file の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
+      echo "  原因候補: jq バイナリ異常 / OOM / ファイル IO エラー" >&2
+      echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_version_jq_failed; rc=$jq_sv_rc" >&2
+      schema_version="unknown"
+    fi
     case "$schema_version" in
       "1.0.0"|"1.0")
         # commit_sha stale detection (verified-review silent-failure C-1)
@@ -696,6 +703,9 @@ if [ -z "$review_source" ]; then
     fi
 
     # mapfile + process substitution で SIGPIPE 経路を断ち、pipefail 下でも安全に動作する
+    # NOTE (verified-review cycle 15 F-10): mapfile 自体の exit code は未監視。process substitution
+    # 内の find stderr は find_err tempfile で捕捉済みだが、sort 失敗は未監視。実害は限定的:
+    # files_arr が空 → latest_file="" → Priority 3 へ正常 fallthrough する。
     files_arr=()
     mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "${pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r)
     latest_file="${files_arr[0]:-}"
@@ -804,7 +814,14 @@ if [ -z "$review_source" ]; then
         review_source_path=""
       else
         # schema_version 検証 (Priority 2 success 内で実施)
-        schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file")
+        # jq exit code を明示捕捉 (commit_sha 抽出と対称化、verified-review cycle 15 F-3 対応)
+        if ! schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file" 2>/dev/null); then
+          jq_sv_rc=$?
+          echo "WARNING: $latest_file の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
+          echo "  原因候補: jq バイナリ異常 / OOM / ファイル IO エラー" >&2
+          echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_version_jq_failed; rc=$jq_sv_rc" >&2
+          schema_version="unknown"
+        fi
         case "$schema_version" in
           "1.0.0"|"1.0")
             # commit_sha stale detection (verified-review silent-failure C-1)
@@ -995,8 +1012,18 @@ fi
 # /tmp/rite-fix-pr-comment-${pr_number}.txt に書き出している前提)
 # Phase 1.2.0 全体の canonical pattern に統一: block 冒頭で pr_number を literal substitute してから
 # ${pr_number} で参照する (path 内 placeholder 直埋めを排除、Claude の置換忘れを fail-fast で検出)
+# verified-review cycle 15 F-6 対応: pr_comment_body_file を trap 保護する。
+# Phase 1.2 Broad Retrieval が書き出した tempfile を Priority 3 block で消費するが、
+# Phase 8.1 までの間に異常終了すると orphan 化する。trap で cleanup を保証する。
 pr_number="{pr_number}"
 pr_comment_body_file="/tmp/rite-fix-pr-comment-${pr_number}.txt"
+_rite_fix_p3_cleanup() {
+  rm -f "${pr_comment_body_file:-}"
+}
+trap 'rc=$?; _rite_fix_p3_cleanup; exit $rc' EXIT
+trap '_rite_fix_p3_cleanup; exit 130' INT
+trap '_rite_fix_p3_cleanup; exit 143' TERM
+trap '_rite_fix_p3_cleanup; exit 129' HUP
 if [ -f "$pr_comment_body_file" ]; then
   if [ ! -s "$pr_comment_body_file" ]; then
     # tempfile は存在するが空 = Broad Retrieval が書き出そうとしたが本文取得が空だった
@@ -1077,6 +1104,16 @@ raw_json=$(awk '
     }
   }
 ' <<< "$pr_review_comment_body")
+awk_rc=$?
+# verified-review cycle 15 F-5 対応: awk exit code を明示検査。
+# awk OOM / binary 異常で空出力が「Raw JSON section なし (legacy format)」と区別不能になり、
+# legacy parser が新形式コメントを garble する silent regression を防ぐ。
+if [ "$awk_rc" -ne 0 ]; then
+  echo "WARNING: PR コメントからの Raw JSON 抽出 awk が失敗 (rc=$awk_rc)" >&2
+  echo "  原因候補: awk バイナリ異常 / OOM (lines[] 配列が大きすぎ) / SIGPIPE" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_raw_json_awk_failed; rc=$awk_rc" >&2
+  raw_json=""
+fi
 
 # 旧実装は「raw_json なし」「raw_json あるが jq empty 失敗」
 # 「raw_json あるが必須 fields 欠落」の 3 ケースをまとめて else の no-op に流していた。
@@ -1105,7 +1142,14 @@ elif ! printf '%s' "$raw_json" | jq -e '
 else
   # jq empty 単独では terminal value (`{}`, `null`, `42` 等) を pass する。
   # required fields (schema_version / pr_number / findings[] 配列型) を明示検証してから New format を採用する
-  schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"')
+  # jq exit code を明示捕捉 (Priority 0/2 の commit_sha 抽出と対称化、verified-review cycle 15 F-4 対応)
+  if ! schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"' 2>/dev/null); then
+    jq_sv_rc=$?
+    echo "WARNING: PR コメント内 Raw JSON の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
+    echo "  原因候補: jq バイナリ異常 / OOM / pipe write error" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_version_jq_failed; rc=$jq_sv_rc" >&2
+    schema_version="unknown"
+  fi
   case "$schema_version" in
     "1.0.0"|"1.0")
       # commit_sha stale detection (verified-review silent-failure C-1)
@@ -2228,7 +2272,11 @@ if rite_review_body=$(printf '%s' "$pr_comments" | jq -r '
     :
   fi
 else
-  echo "WARNING: pr_comments から rite review コメント抽出 jq が失敗しました" >&2
+  jq_extract_rc=$?
+  echo "WARNING: pr_comments から rite review コメント抽出 jq が失敗しました (rc=$jq_extract_rc)" >&2
+  echo "  原因候補: jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損" >&2
+  echo "  影響: Phase 1.2.0 Priority 3 が tempfile 不在として BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT に routing される" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=broad_retrieval_jq_extraction_failed; rc=$jq_extract_rc" >&2
 fi
 ```
 

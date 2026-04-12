@@ -2691,8 +2691,12 @@ trap '_rite_review_p61a_cleanup; exit 129' HUP
 # json_path が `.rite/review-results/123-.json` 形式で生成され同一 PR の過去レビューを
 # 上書きする silent regression を防ぐ。trap setup 後に date を実行することで、失敗時も
 # `_rite_review_p61a_cleanup` が `[CONTEXT] FILE_TIMESTAMP=unknown` を emit できる。
-iso_timestamp=$(TZ='Asia/Tokyo' date +'%Y-%m-%dT%H:%M:%S+09:00') || iso_timestamp=""
-file_timestamp=$(TZ='Asia/Tokyo' date +'%Y%m%d%H%M%S') || file_timestamp=""
+# verified-review cycle 15 F-8 対応: 単一 date 呼出から両 timestamp を導出する。
+# 旧実装は 2 回の date 呼出で秒跨ぎ時に iso_timestamp と file_timestamp が 1 秒ズレる可能性があった。
+# Approach C の「秒跨ぎズレ消失」コメントと実装の乖離を解消する。
+_ts_raw=$(TZ='Asia/Tokyo' date +'%Y-%m-%dT%H:%M:%S+09:00|%Y%m%d%H%M%S') || _ts_raw=""
+iso_timestamp="${_ts_raw%%|*}"
+file_timestamp="${_ts_raw##*|}"
 
 if [ -z "$iso_timestamp" ] || [ -z "$file_timestamp" ]; then
   echo "WARNING: date コマンドの実行に失敗しました。ローカル保存をスキップします" >&2
@@ -3037,6 +3041,13 @@ tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
 #   - past_raw_json_heading=0 → `### 📄 Raw JSON` 見出し以前 (Markdown 本文)、sentinel 置換しない
 #   - past_raw_json_heading=1, in_fence=0 → 見出し後だがコードフェンス外、sentinel 置換しない
 #   - past_raw_json_heading=1, in_fence=1 → Raw JSON コードフェンス内、sentinel を置換対象にする
+#
+# NOTE (verified-review cycle 15 F-9): 本 awk は「最初の `### 📄 Raw JSON`」に反応する設計で、
+# fix.md の Priority 3 awk が「最後の」同見出しを採用する設計と非対称である。
+# Phase 6.1.b の PR コメント構造では `### 📄 Raw JSON` が常に末尾に 1 回のみ出現し、
+# かつ column-0 anchor (`^###`) によりテーブル cell 内の literal は不一致となるため、
+# 実害はない。fix.md 側は finding 列に `### 📄 Raw JSON` literal を含む反例があるため
+# 「最後」方式が必須だが、review.md (コメント生成側) では構造が保証されている。
 awk -v ts="$iso_timestamp_from_p61a" '
   /^### 📄 Raw JSON/ { past_raw_json_heading=1; print; next }
   past_raw_json_heading == 1 && /^```json$/ { in_fence=1; print; next }
@@ -3460,7 +3471,16 @@ _rite_review_p64_run_sync() {
     fi
     rm -f "$err_file"
   else
-    "$@" 2>/dev/null || true
+    # verified-review cycle 15 F-7 対応: mktemp 失敗時の `2>/dev/null || true` anti-pattern を修正。
+    # Phase 6.2 / fix.md Phase 5 と同じ `2>&1` + `head -5` display fallback に統一する。
+    # 旧実装は permission denied / script not found / bash syntax error も silent suppress していた。
+    if hook_combined=$("$@" 2>&1); then
+      :
+    else
+      local fallback_rc=$?
+      echo "WARNING: ${label} failed (mktemp-unavailable fallback path, rc=$fallback_rc):" >&2
+      printf '%s\n' "$hook_combined" | head -5 | sed 's/^/  /' >&2
+    fi
   fi
 }
 
