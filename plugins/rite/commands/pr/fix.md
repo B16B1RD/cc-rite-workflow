@@ -4612,7 +4612,7 @@ Then, based on the Phase 4.6 completion report content **and the WM_UPDATE_FAILE
 
 **`[CONTEXT] WM_UPDATE_FAILED=1` の検出方法** (Claude による retain と再注入):
 
-Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UPDATE_FAILED=1; reason=...; ...` を出力した場合、Claude は会話履歴からこの行を検索し、検出された場合は本 phase の Output Pattern 評価で `[fix:pushed-wm-stale]` を採用する。検出されなかった場合は通常の評価順序 (条件 2 以降) に従う。
+Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UPDATE_FAILED=1; reason=...; ...` を出力した場合、Claude は会話履歴からこの行を検索し、検出された場合は本 phase の Output Pattern 評価で `[fix:pushed-wm-stale]` を採用する。検出されなかった場合は通常の評価順序 (WM_UPDATE_FAILED 以降の条件) に従う。
 
 **`reason` フィールドの取りうる値** (Phase 4.5.1 / 4.5.2 で発火する経路の網羅):
 
