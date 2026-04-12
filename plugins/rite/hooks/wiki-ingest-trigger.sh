@@ -269,10 +269,23 @@ fi
 
 # F-21 fix: integrity verification — partial-write 検出
 # (frontmatter のみが書き込まれて body 部分が欠落する truncated 書き込みを catch)
-#   1. frontmatter の closing `---` の **後** に少なくとも 1 つの非空行が存在することを確認
-#   2. 末尾の trailing newline (printf '\n') が書き込まれていることを確認
-expected_min_lines=$(awk 'BEGIN { fm_close=0 } /^---$/ { fm_close++; next } fm_close == 2 && NF > 0 { body_seen=1; exit } END { exit !(fm_close == 2 && body_seen) }' "$target_file" && echo "ok" || echo "incomplete")
-if [ "$expected_min_lines" = "incomplete" ]; then
+#
+# cycle 2 H1 fix: body に `---` (markdown 水平線 / 別 YAML マーカー) を含む Raw Source を
+# 誤検出していた問題を修正する。state machine を 3 値化し、frontmatter が closed (in_fm == 2)
+# した後は `^---$` パターンを fm_close カウンタに反映しない。
+#   - in_fm == 0: frontmatter 開始前 (1 つ目の `---` を待つ)
+#   - in_fm == 1: frontmatter 内 (2 つ目の `---` を待つ)
+#   - in_fm == 2: frontmatter 終了後 (body 領域 — `---` は通常テキストとして扱う)
+expected_status=$(awk '
+  BEGIN { in_fm = 0 }
+  /^---$/ {
+    if (in_fm < 2) { in_fm++; next }
+    # in_fm == 2: body 内の `---` は水平線等の通常テキストとして扱う
+  }
+  in_fm == 2 && NF > 0 { body_seen = 1; exit }
+  END { exit !(in_fm == 2 && body_seen) }
+' "$target_file" && echo "ok" || echo "incomplete")
+if [ "$expected_status" = "incomplete" ]; then
   echo "ERROR: '$target_file' integrity check failed (frontmatter present but body missing/truncated)" >&2
   echo "  対処: ファイルを削除して再実行してください: rm '$target_file'" >&2
   exit 3

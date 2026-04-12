@@ -454,6 +454,71 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-026: Body containing markdown horizontal rule (---) → integrity check passes (cycle 2 H1)
+# --------------------------------------------------------------------------
+echo "TC-026: Body with markdown horizontal rule → integrity check passes"
+dir26="$TEST_DIR/tc26"
+mkdir -p "$dir26"
+printf '%s\n' '## Section A' '' '---' '' '## Section B' > "$dir26/body.md"
+( cd "$dir26" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+target_path="$(cat "$dir26/out.log" 2>/dev/null || true)"
+if [ $rc -eq 0 ] && [ -n "$target_path" ] && [ -f "$dir26/$target_path" ]; then
+  pass "Body containing '---' horizontal rule → file created (no false-positive integrity error)"
+else
+  fail "Expected file creation, got rc=$rc, stderr=$(cat "$dir26/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-027: Truncated file (frontmatter only, body missing) → integrity check exit 3 (cycle 2 H4)
+# --------------------------------------------------------------------------
+echo "TC-027: Truncated file (frontmatter only) → integrity check fails with exit 3"
+# Direct invocation of the integrity check awk against a hand-crafted truncated file
+# (we cannot easily make the trigger.sh write a truncated file, so we test the awk logic directly
+# by creating a frontmatter-only file and running the same awk that the script uses)
+dir27="$TEST_DIR/tc27"
+mkdir -p "$dir27"
+truncated="$dir27/truncated.md"
+printf -- '---\ntype: reviews\nsource_ref: pr-1\ningested: false\n---\n' > "$truncated"
+status=$(awk '
+  BEGIN { in_fm = 0 }
+  /^---$/ {
+    if (in_fm < 2) { in_fm++; next }
+  }
+  in_fm == 2 && NF > 0 { body_seen = 1; exit }
+  END { exit !(in_fm == 2 && body_seen) }
+' "$truncated" && echo "ok" || echo "incomplete")
+if [ "$status" = "incomplete" ]; then
+  pass "Truncated file (frontmatter only) → integrity check returns 'incomplete'"
+else
+  fail "Expected 'incomplete', got '$status'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-028: Valid file (frontmatter + body) → integrity check ok (cycle 2 H5 — happy path)
+# --------------------------------------------------------------------------
+echo "TC-028: Valid file → integrity check ok"
+dir28="$TEST_DIR/tc28"
+mkdir -p "$dir28"
+valid="$dir28/valid.md"
+printf -- '---\ntype: reviews\nsource_ref: pr-1\ningested: false\n---\n\nBody content here\n' > "$valid"
+status=$(awk '
+  BEGIN { in_fm = 0 }
+  /^---$/ {
+    if (in_fm < 2) { in_fm++; next }
+  }
+  in_fm == 2 && NF > 0 { body_seen = 1; exit }
+  END { exit !(in_fm == 2 && body_seen) }
+' "$valid" && echo "ok" || echo "incomplete")
+if [ "$status" = "ok" ]; then
+  pass "Valid file (body present) → integrity check returns 'ok'"
+else
+  fail "Expected 'ok', got '$status'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
