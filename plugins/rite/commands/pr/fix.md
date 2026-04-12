@@ -484,9 +484,9 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
       "1.0.0"|"1.0")
         # commit_sha stale detection (verified-review silent-failure C-1)
         # schema で `commit_sha` が required field として記録されているため、現 HEAD との比較で
-        # stale file を検出する。ユーザーが明示的に指定した --review-file は意図尊重のため
-        # 直接 fallback に route せず、WARNING + continue する (H-3 design rationale と整合)。
-        # ただし [CONTEXT] REVIEW_SOURCE_STALE=1 を emit して observability は維持する。
+        # stale file を検出する。mismatch 時は Priority 4 Interactive Fallback へ routing する
+        # (ユーザーは「レビュー実行 / 別ファイル指定 / 中止」を選択可能)。
+        # [CONTEXT] REVIEW_SOURCE_STALE=1 を emit して observability は維持する。
         # jq バイナリ異常 / I/O エラーと「.commit_sha フィールド不在 (legacy schema)」を区別する。
         # 旧実装 `2>/dev/null || echo ""` はこの 2 ケースを silent に融合させ、stale detection を silent 無効化していた。
         json_commit_sha_err=$(mktemp /tmp/rite-fix-p0-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
@@ -709,7 +709,10 @@ if [ -z "$review_source" ]; then
     if [ -n "$find_err" ] && [ -s "$find_err" ]; then
       echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
       head -3 "$find_err" | sed 's/^/  /' >&2
+      echo "  Priority 2 を IO エラーにより skip し、Priority 3 (PR コメント) に明示 routing します" >&2
       echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=local_file_find_io_error" >&2
+      review_source="pr_comment"
+      review_source_path=""
     fi
     # process substitution では内部コマンドの exit code が親に伝播しない。
     # ファイルが存在するのに配列が空の場合は sort/find failure を疑い WARNING を emit する。
@@ -1453,7 +1456,7 @@ exit 1
 | `priority1_receipt_missing` | Phase 1.2.0 Priority 1 で decision=use だが machine-readable receipt (`p1_scan_turns`) が literal substitute されていない (verified-review H-3 対応) |
 | `priority1_receipt_invalid` | Phase 1.2.0 Priority 1 で `p1_scan_turns` が数値ではない (verified-review H-3 対応) |
 | `priority1_receipt_inconsistent` | Phase 1.2.0 Priority 1 で decision=use だが `p1_scan_found != "true"` (receipt 整合性違反、verified-review H-3 対応) |
-| `explicit_file_commit_sha_mismatch` | Priority 0 で指定された file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 4 Interactive Fallback へ routing。`RITE_FIX_ACKNOWLEDGE_STALE=1` で opt-in 続行可) |
+| `explicit_file_commit_sha_mismatch` | Priority 0 で指定された file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 4 Interactive Fallback へ routing) |
 | `local_file_commit_sha_mismatch` | Priority 2 で選ばれた最新 local file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 3 へ routing) |
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
@@ -2265,10 +2268,11 @@ echo "$pr_comments" | jq '.[] | {id: .id, body: .body, author: .author.login, cr
 # 書き出し失敗時は WARNING を出して continue する (literal substitute fallback 経路は廃止されたため、
 # tempfile が無ければ Phase 1.2.0 Priority 3 が fail-fast する)。
 pr_comment_body_file="/tmp/rite-fix-pr-comment-{pr_number}.txt"
+jq_broad_err=$(mktemp /tmp/rite-fix-broad-jq-err-XXXXXX 2>/dev/null) || jq_broad_err=""
 if rite_review_body=$(printf '%s' "$pr_comments" | jq -r '
   [.[] | select(.body | contains("## 📜 rite レビュー結果"))]
   | sort_by(.createdAt) | last | .body // empty
-' 2>/dev/null); then
+' 2>"${jq_broad_err:-/dev/null}"); then
   if [ -n "$rite_review_body" ]; then
     if ! printf '%s' "$rite_review_body" > "$pr_comment_body_file"; then
       echo "WARNING: pr_review_comment_body tempfile への書き出しに失敗: $pr_comment_body_file" >&2
@@ -2285,10 +2289,15 @@ if rite_review_body=$(printf '%s' "$pr_comments" | jq -r '
 else
   jq_extract_rc=$?
   echo "WARNING: pr_comments から rite review コメント抽出 jq が失敗しました (rc=$jq_extract_rc)" >&2
+  if [ -n "$jq_broad_err" ] && [ -s "$jq_broad_err" ]; then
+    echo "  jq stderr (先頭 3 行):" >&2
+    head -3 "$jq_broad_err" | sed 's/^/    /' >&2
+  fi
   echo "  原因候補: jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損" >&2
   echo "  影響: Phase 1.2.0 Priority 3 が tempfile 不在として BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT に routing される" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=broad_retrieval_jq_extraction_failed; rc=$jq_extract_rc" >&2
 fi
+[ -n "$jq_broad_err" ] && rm -f "$jq_broad_err"
 ```
 
 **Implementation note for Claude**: `$pr_comments` はシェル変数ではなく、**会話コンテキスト内で保持するデータ**として扱うこと。Claude Code が各 bash コードブロックを個別の Bash ツール呼び出しで実行する場合、シェル変数はブロック間で引き継がれない。Phase 1.2.1 では、この値をコンテキストから読み直すか、Phase 1.2 のコードブロックと Phase 1.2.1 のコードブロックを単一の Bash ツール呼び出しとして結合して実行すること。

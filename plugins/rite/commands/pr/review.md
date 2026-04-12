@@ -2950,6 +2950,23 @@ case "$pr_number" in
     ;;
 esac
 
+# json_saved_from_p61a sentinel check を bash block 冒頭で実行する (success/failure 両経路で検証)。
+# Claude は Phase 6.1.a の [CONTEXT] JSON_SAVED=true|false emit 値を会話コンテキストから読み取り、
+# `"true"` または `"false"` に literal substitute する。placeholder 残留は fail-fast。
+json_saved_from_p61a="{json_saved_from_p61a}"
+case "$json_saved_from_p61a" in
+  true|false)
+    ;;
+  *)
+    echo "ERROR: Phase 6.1.b の json_saved_from_p61a が literal substitute されていません (値: '$json_saved_from_p61a')" >&2
+    echo "  Claude は Phase 6.1.a の [CONTEXT] JSON_SAVED=true|false emit 値を会話コンテキストから読み取り、" >&2
+    echo "  この bash block 冒頭の json_saved_from_p61a=... 行を実際の値で置換する必要があります。" >&2
+    echo "  許容値: true / false" >&2
+    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=json_saved_from_p61a_unset" >&2
+    exit 1
+    ;;
+esac
+
 tmpfile=""
 gh_err=""
 tmpfile_patched=""
@@ -3110,31 +3127,7 @@ else
     head -5 "$gh_err" | sed 's/^/  /' >&2
   fi
   echo "  対処: gh auth status / network 接続 / PR #${pr_number} の権限を確認してください" >&2
-  # Phase 6.1.a が JSON_SAVED=true で local save に成功していれば
-  # 「レビュー結果はローカルに保存済み」を明示して、ユーザーが重複 /rite:pr:review を走らせる
-  # 無駄を防ぐ。Claude は Phase 6.1.a の [CONTEXT] JSON_SAVED= retained flag を会話コンテキストで
-  # 読み取り、`${json_saved_from_p61a}` を `"true"` または `"false"` に literal substitute する。
-  # (p61b bash block は独立 bash invocation のため p61a シェル変数は継承されない)
-  #
-  # sentinel fail-fast を追加し、Claude が literal substitute を
-  # 忘れた場合に silent に「ℹ️ ローカル保存済み」メッセージが失われるのを防ぐ。fix.md Phase 1.0.1
-  # の flag_style sentinel や fix.md Phase 1.2.0 Priority 1 の conversation_review_decision sentinel
-  # と同パターン。許容値は `true` / `false` のみで、substitute 漏れ (placeholder 残留) は fail-fast する。
-  json_saved_from_p61a="{json_saved_from_p61a}"
-  case "$json_saved_from_p61a" in
-    true|false)
-      ;;
-    *)
-      echo "ERROR: Phase 6.1.b の json_saved_from_p61a が literal substitute されていません (値: '$json_saved_from_p61a')" >&2
-      echo "  Claude は Phase 6.1.a の [CONTEXT] JSON_SAVED=true|false emit 値を会話コンテキストから読み取り、" >&2
-      echo "  この bash block 冒頭の json_saved_from_p61a=... 行を実際の値で置換する必要があります。" >&2
-      echo "  許容値: true / false" >&2
-      echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=json_saved_from_p61a_unset" >&2
-      [ -n "$gh_err" ] && rm -f "$gh_err"
-      exit 1
-      ;;
-  esac
-
+  # json_saved_from_p61a は bash block 冒頭で検証済み (success/failure 両経路で sentinel check 実行)
   if [ "$json_saved_from_p61a" = "true" ]; then
     echo "ℹ️  ただし、レビュー結果はローカルファイルに保存済みです" >&2
     echo "    [CONTEXT] FILE_TIMESTAMP / JSON_SAVED 参照: Phase 6.1.a の emit 値" >&2
@@ -3488,7 +3481,13 @@ next_tmp=$(mktemp) || {
   echo "WARNING: next_tmp mktemp 失敗。次のステップの Issue コメント更新を skip します" >&2
   next_tmp=""
 }
-trap 'rm -f "${review_tmp:-}" "${next_tmp:-}"' EXIT
+_rite_review_p64_cleanup() {
+  rm -f "${review_tmp:-}" "${next_tmp:-}"
+}
+trap 'rc=$?; _rite_review_p64_cleanup; exit $rc' EXIT
+trap '_rite_review_p64_cleanup; exit 130' INT
+trap '_rite_review_p64_cleanup; exit 143' TERM
+trap '_rite_review_p64_cleanup; exit 129' HUP
 if [ -n "$review_tmp" ]; then
   cat > "$review_tmp" << 'REVIEW_EOF'
 {review_history_content}

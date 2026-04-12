@@ -1169,10 +1169,13 @@ if ! state_file_rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX); then
   echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
   state_file_rm_err=""
 fi
-# unconditional rm: stat gate なし。rm -f は非存在ファイルに対して exit 0 を返す。
+# state file の存在を事前チェックし、実削除と no-op でメッセージを分岐する
+state_file_existed=0
+[ -f "$state_file" ] && state_file_existed=1
 if rm -f "$state_file" 2>"${state_file_rm_err:-/dev/null}"; then
-  # 非存在 → no-op 成功 / 存在 → 削除成功 の両経路を同一メッセージで扱う (中立表現)
-  echo "✅ fix retry state file を削除しました (存在していれば削除、不在なら no-op): $state_file" >&2
+  if [ "$state_file_existed" = "1" ]; then
+    echo "✅ fix retry state file を削除しました: $state_file" >&2
+  fi
 else
   rm_state_rc=$?
   echo "WARNING: fix retry state file の削除に失敗 (PR #${pr_number}, rc=$rm_state_rc): $state_file" >&2
