@@ -119,7 +119,7 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 
 ## AI Coding Principles (Summary)
 
-Avoid common AI coding failure patterns: surface assumptions, manage confusion, push back when warranted, enforce simplicity, maintain scope discipline, clean dead code, plan inline, and address all discovered issues.
+Avoid common AI coding failure patterns: surface assumptions, manage confusion, push back when warranted, enforce simplicity, maintain scope discipline, clean dead code, plan inline, address all discovered issues, and keep documentation in sync with specification changes (`documentation_consistency`) — when the implementation changes user-visible behavior, update related README / docs / CLAUDE.md / plugin .md files in the same PR rather than deferring to a follow-up Issue.
 
 See [references/coding-principles.md](./references/coding-principles.md) for the full principle list and details.
 
