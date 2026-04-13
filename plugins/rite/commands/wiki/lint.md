@@ -63,9 +63,9 @@ if [[ -n "$wiki_enabled_line" ]]; then
   wiki_enabled=$(printf '%s' "$wiki_enabled_line" | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
 fi
 case "$wiki_enabled" in
+  false|no|0) wiki_enabled="false" ;;
   true|yes|1) wiki_enabled="true" ;;
-  false|no|0|"") wiki_enabled="false" ;;
-  *) wiki_enabled="false" ;;
+  *) wiki_enabled="true" ;;  # #483: opt-out default — 空文字 / 不明値は section/key 未指定とみなして有効化
 esac
 
 # --- wiki_branch の抽出 ---

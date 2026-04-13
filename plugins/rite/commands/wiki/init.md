@@ -24,11 +24,16 @@ case "$wiki_enabled" in
   false|no|0) wiki_enabled="false" ;;
   true|yes|1) wiki_enabled="true" ;;
   *)
-    # opt-out default: 未指定時は有効として扱う
+    # opt-out default: 未指定 / 不明値は有効として扱う
+    _wiki_raw="$wiki_enabled"  # 上書き前に保存 (typo 検出用)
     wiki_enabled="true"
     if [ -z "$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
       echo "INFO: wiki.enabled キーが rite-config.yml に見つかりません。デフォルト値 'true' (opt-out) を使用します" >&2
+    elif [ -n "$_wiki_raw" ]; then
+      # enabled キーは存在するが値が認識不能 (typo: ture / yse 等)
+      echo "WARNING: wiki.enabled の値 '$_wiki_raw' を解釈できません。デフォルト 'true' (opt-out) を使用します。値は true/false/yes/no/1/0 のいずれかを指定してください" >&2
     fi
+    unset _wiki_raw
     ;;
 esac
 echo "wiki_enabled=$wiki_enabled"

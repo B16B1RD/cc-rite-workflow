@@ -1387,7 +1387,7 @@ if [[ -n "$wiki_section" ]]; then
   auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
-case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # #483: opt-out default
 case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
@@ -3723,7 +3723,7 @@ if [[ -n "$wiki_section" ]]; then
   auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
-case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # #483: opt-out default
 case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
 echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
 ```

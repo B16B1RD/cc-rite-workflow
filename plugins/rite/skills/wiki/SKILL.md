@@ -55,7 +55,7 @@ description: |
 
 `rite-config.yml` の `wiki` セクションで制御:
 
-> **opt-out**: `wiki:` セクション自体を省略してもデフォルト有効として扱われます。明示的に無効化したい場合のみ `enabled: false` を設定してください。
+> **opt-out ポリシー**: `wiki:` セクション自体を省略しても、Wiki 機能はデフォルトで有効として扱われます (`wiki.enabled: true` 相当)。明示的に無効化したい場合のみ `enabled: false` を設定してください。本ポリシーは `wiki.enabled` のみに適用され、`auto_query` / `auto_ingest` 等の他のキーは省略時に各キー個別のデフォルト (下記参照) が適用されます。
 
 ```yaml
 wiki:
