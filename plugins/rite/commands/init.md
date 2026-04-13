@@ -322,29 +322,7 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
 
-**Step 5**: Append an active `wiki:` section to the generated `rite-config.yml` (required for Phase 4.7 Wiki auto-initialization — #491). This step is the **sole owner** of wiki section generation in both new-install and `--upgrade` paths; Phase 4.1.3 Step 3/4 MUST NOT add or modify the wiki section.
-
-**Append procedure using the Edit tool** (avoids tail-newline ambiguity of the Write tool):
-
-1. Read `rite-config.yml` with the Read tool to obtain the exact last non-empty line (e.g., `language: auto`)
-2. Call the Edit tool with:
-   - `old_string`: the last line exactly as read (preserving any trailing whitespace)
-   - `new_string`: the same last line, followed by `\n`, followed by the active wiki block below
-
-```yaml
-
-# Wiki settings (LLM Wiki pattern for experience heuristics)
-# See docs/designs/experience-heuristics-persistence-layer.md for full specification.
-# Wiki is opt-out: default is enabled. Set `enabled: false` to disable.
-wiki:
-  enabled: true               # true to enable Wiki features (default: true, opt-out)
-  branch_strategy: "separate_branch"  # "separate_branch" (recommended) or "same_branch"
-  branch_name: "wiki"         # Branch name for Wiki data (when branch_strategy is "separate_branch")
-  auto_ingest: true           # Auto-ingest on review/fix/close (default: true)
-  auto_query: true            # Auto-query on start/review/fix/implement (default: true)
-```
-
-Display `{i18n:init_wiki_config_added}`.
+> **Note on wiki section (#491)**: `templates/config/rite-config.yml` declares the `wiki:` section **above** the `# --- Advanced ---` boundary as an active (non-commented) block. Step 2 (extract content up to the Advanced boundary) therefore includes the active `wiki:` section automatically in the generated `rite-config.yml`. No additional append step is required for new-generation path. The Advanced boundary is the single source of truth for what gets emitted vs commented-out.
 
 #### 4.1.3 Upgrade Existing Configuration
 
@@ -370,9 +348,20 @@ Read both files with the Read tool:
 | Condition | Action |
 |-----------|--------|
 | `current < latest` | 通常の upgrade path を実行 (Step 3 Backup → Step 4 Identify → Step 5 Preview → Step 6 Apply → Step 7 Phase 4.7) |
-| `current >= latest` | **Step 3-6 をスキップして Step 7 (Phase 4.7) に直行**。Step 7 内の Phase 4.7.1 (wiki セクション未存在 → Phase 4.1.3 Step 5 相当の active 追加を実行) + Phase 4.7.2 (既存 Wiki 検知) + Phase 4.7.3/4 (未初期化なら Skill 呼び出し) により、Wiki 追従のみが実行される。schema 変更は行わず backup も作成しない |
+| `current >= latest` | **Step 3 (Backup) → Step 2.1 (Wiki section append if missing) → Step 7 (Phase 4.7)** の短縮経路を実行。Step 4-6 (classification / preview / apply) はスキップする。Backup は Step 2.1 が config を変更するため必須 |
 
-schema 同等 + Wiki 既に初期化済みの場合、Phase 4.7.2 が `wiki_status=already initialized` を set して Skill 呼び出しは skip される (冪等)。この経路でのみ表示するメッセージ: `{i18n:init_upgrade_up_to_date}` (ただし exit せず Phase 4.7 に進む)。
+schema 同等 + Wiki 既に初期化済みの場合、Step 2.1 は「既に `^wiki:` active section が存在する」ことを検出して no-op となり、Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。この経路では `{i18n:init_upgrade_up_to_date}` をあわせて表示する (ただし exit せず Phase 4.7 に進む)。
+
+**Step 2.1 (Wiki Section Append — conditional)**: `current >= latest` 経路でのみ実行する。Step 6 item 5 と同一の append ロジックを独立 step として抜き出したもの:
+
+1. `rite-config.yml` を Grep で `^wiki:` にマッチするかチェック (コメント行 `# wiki:` は除外)
+2. マッチあり (active wiki section 既存) → no-op、Step 7 へ進む
+3. マッチなし → Step 3 で既に backup を作成したうえで、Phase 4.1.3 Step 6 item 5 で定義する wiki section append block を Edit tool で挿入する:
+   - **Anchor**: ファイル末尾 (tail) ではなく、既存の `language:` 行 (または存在すればその直後の空行) を anchor として指定する。これにより `old_string` の一意性が保証される。`language:` 行が存在しない場合は `.gitignore` 以外の最後の top-level key の末尾を anchor にする
+   - **Action**: `old_string` = anchor 行そのまま、`new_string` = anchor 行 + `\n\n` + [Phase 4.1.3 Step 6 item 5 で定義する wiki block]
+4. Display `{i18n:init_wiki_config_added}`
+
+Step 2.1 が config を変更した場合、Step 7 (Phase 4.7) へ進む前の状態は「schema version は同一、wiki セクションのみ新規追加」となる。
 
 **Step 3: Create backup**
 
@@ -392,7 +381,7 @@ Compare current config against the template and classify each key:
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
 | **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki**) | **Add** — insert from template with default values |
 | **Advanced section** (tdd, parallel, team, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
-| **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 5 (新規生成) および Phase 4.1.3 Step 5 (本 Upgrade path) の専権** であり、active な block として append する。template からのコメント形式コピーは行わない (重複追加防止) |
+| **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 2.1 / Step 6 item 5 (Upgrade path: 未存在時に active block として append) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Step 5: Preview and confirm**
@@ -425,7 +414,22 @@ If the user confirms:
 2. Remove deprecated keys using the Edit tool. Display "{i18n:init_upgrade_deprecated_removed}".
 3. Add missing sections from the template using the Edit tool. Display "{i18n:init_upgrade_sections_added}".
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
-5. **If `wiki:` section is absent** (#491): append an active `wiki:` section (same block as Phase 4.1.2 Step 5) so Phase 4.7 can auto-initialize Wiki. Display `{i18n:init_wiki_config_added}`.
+5. **If `wiki:` section is absent** (#491): append the active `wiki:` block defined below so Phase 4.7 can auto-initialize Wiki. Use the Edit tool with an `old_string` anchored to the `language:` line (or, if missing, the last top-level non-Advanced key) — NOT tail-based — to ensure `old_string` uniqueness. `new_string` = anchor line + `\n\n` + wiki block:
+
+   ```yaml
+
+   # Wiki settings (LLM Wiki pattern for experience heuristics)
+   # See docs/designs/experience-heuristics-persistence-layer.md for full specification.
+   # Wiki is opt-out: default is enabled. Set `enabled: false` to disable.
+   wiki:
+     enabled: true               # true to enable Wiki features (default: true, opt-out)
+     branch_strategy: "separate_branch"  # "separate_branch" (recommended) or "same_branch"
+     branch_name: "wiki"         # Branch name for Wiki data (when branch_strategy is "separate_branch")
+     auto_ingest: true           # Auto-ingest on review/fix/close (default: true)
+     auto_query: true            # Auto-query on start/review/fix/implement (default: true)
+   ```
+
+   Before inserting, Grep `^wiki:` in `rite-config.yml` to detect an existing active section and skip the Edit if present (idempotency guard — prevents double-append on retry). Display `{i18n:init_wiki_config_added}` only when the Edit actually ran.
 6. Preserve all user-customized values
 
 Display "{i18n:init_upgrade_applied}".
@@ -434,7 +438,7 @@ Display "{i18n:init_upgrade_applied}".
 
 On the `--upgrade` path, after applying config changes, execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization-491) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
 
-After Phase 4.7 completes (or is skipped), display a brief status line (`{i18n:init_summary_wiki_<status>}`) and exit. (`--upgrade` skips Phases 1-3 and Phase 5 full report, so only the Wiki status is reported.)
+After Phase 4.7 completes (or is skipped), display a brief Wiki status line corresponding to the `wiki_status` value in LLM context (one of `{i18n:init_summary_wiki_initialized}` / `{i18n:init_summary_wiki_already}` / `{i18n:init_summary_wiki_skipped_disabled}` / `{i18n:init_summary_wiki_failed}` per the same mapping as Phase 5). Do NOT use dynamic placeholder syntax like `{i18n:init_summary_wiki_<status>}`. After displaying the status line, exit. (`--upgrade` skips Phases 1-3 and Phase 5 full report, so only the Wiki status is reported — there is no Phase 5 merge conflict because `--upgrade` does not enter the new-install path.)
 
 If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
 
@@ -1014,7 +1018,7 @@ Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki
 
 **Retain `wiki_status` as LLM conversational state (NOT a shell variable)**. Claude Code's Bash tool invocations are independent subshells — shell variables do NOT persist across tool calls. Each status set point below instructs the LLM to **remember the value directly in conversation context** and carry it forward to Phase 5. Do NOT attempt `echo $wiki_status` in a subsequent Bash call.
 
-The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so the Phase 5 placeholder mapping is a simple literal lookup without quoting concerns.
+The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so that each value can be used as an LLM conversational token without quoting. The Phase 5 mapping from value to i18n suffix is **explicitly enumerated in the table above** — note that `already_initialized` maps to the shortened suffix `already`, not a trivial string concatenation. See the Phase 5 explicit if/else mapping for the full literal key list.
 
 ### 4.7.1 Wiki Enabled Check
 
@@ -1046,7 +1050,7 @@ echo "wiki_enabled=$wiki_enabled"
 **When `wiki_enabled=false`**:
 - Display `{i18n:init_wiki_disabled}`
 - Set `wiki_status=skipped_disabled` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to Phase 5
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7 status-line-only exit)
 
 **When `wiki_enabled=true`**: Display `{i18n:init_wiki_start}` and proceed to 4.7.2.
 
@@ -1087,7 +1091,7 @@ fi
 **When `WIKI_INITIALIZED=true`**:
 - Display `{i18n:init_wiki_already_initialized}` (substitute `{detection}` with the matched branch name or file path)
 - Set `wiki_status=already_initialized` (remember in LLM context)
-- **Skip to Phase 5** (do NOT invoke Skill — preserves existing Wiki content per AC-2)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 / `--upgrade`: Phase 4.1.3 Step 7 status-line-only exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
 
 **When `WIKI_INITIALIZED=false`**: Proceed to 4.7.3.
 
@@ -1108,9 +1112,11 @@ After the Skill returns, re-run **only the detection portion** of 4.7.2 (the `if
 **Detection-only re-run** (embed literal values from 4.7.2):
 
 ```bash
-# branch_strategy と wiki_branch を 4.7.2 で取得したリテラル値で埋め込む
-branch_strategy="{4.7.2 で取得した値}"
-wiki_branch="{4.7.2 で取得した値}"
+# LLM: 4.7.2 の bash block 出力から observed した branch_strategy / wiki_branch 値を
+#      以下の 2 行に literal に置き換えてから実行すること。プレースホルダー表記のまま
+#      実行してはならない (例: branch_strategy="separate_branch"; wiki_branch="wiki")。
+branch_strategy="{4.7.2 で取得した値 — literal に置換}"
+wiki_branch="{4.7.2 で取得した値 — literal に置換}"
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   if git rev-parse --verify "origin/${wiki_branch}" >/dev/null 2>&1 || \
@@ -1138,7 +1144,7 @@ Then:
 - Display `{i18n:init_wiki_failed_nonblocking}` (warning only — do NOT exit)
 - Set `wiki_status=failed` (remember in LLM context)
 
-**→ Proceed to Phase 5 (non-blocking regardless of outcome)**.
+**→ Proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7 status-line-only exit). Non-blocking regardless of outcome.**
 
 ---
 
