@@ -475,7 +475,7 @@ fi
 
 `raw_list` のパスは Phase 2.2 で `.rite/wiki/` プレフィックス付き（例: `.rite/wiki/raw/reviews/20260410T...md`）で取得されているため、Phase 5.2 と同じ prefix 正規化を適用してから `sources[].ref` と比較します。`sources[].ref` は `raw/reviews/...` 形式（template.md の `{source_ref}` 規約参照）のため、両辺から `.rite/wiki/` を除去して突合します:
 
-1. `indexed_pages` の各 Wiki ページの frontmatter `sources[].ref` を抽出
+1. `pages_list` の各 Wiki ページ本文を `git show` / `cat` で取得し、frontmatter `sources[].ref` を抽出
 2. `raw_list` の各 Raw Source について `.rite/wiki/` プレフィックスを除去した相対パス（`raw/reviews/...`）を計算
 3. 上記が `indexed_pages` の `sources[].ref` のいずれにも含まれないなら「欠落概念」候補
 4. さらに LLM が Raw Source 本文を読み、経験則として価値がある内容かを判定（単なるエラーログや空コメントは除外）
@@ -642,11 +642,7 @@ git push origin "$wiki_branch" 2>/dev/null || {
 
 1. 上記 block の step 1-2 まで実行（stash + checkout）
 2. Edit ツールで `.rite/wiki/log.md` に Phase 8.1 のエントリを append
-3. 残りの step 4-6 を実行（commit + push + cleanup）
-5. Edit ツールで log.md に append
-6. `git add .rite/wiki/log.md && git commit` で commit
-7. `git push origin {wiki_branch}` で push
-8. trap handler が `git checkout {current_branch}` と `git stash pop`（`stash_applied=1` のとき）を実行して元状態に復帰
+3. 残りの step 4-6 を実行（commit + push + trap による元ブランチ復帰 + stash pop）
 
 **`append-only` の原則**: log.md の既存行を変更してはいけません。必ず末尾に新規行を追加します。
 

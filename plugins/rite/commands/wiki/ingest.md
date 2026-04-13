@@ -937,8 +937,8 @@ Wiki Ingest が完了しました。
 - {path2} ({action2})
 
 次のステップ:
-- /rite:wiki:query で経験則を参照（後続 Issue で実装予定）
-- /rite:wiki:lint で Wiki の品質チェック（後続 Issue で実装予定）
+- /rite:wiki:query で経験則を参照
+- 詳細な品質チェックは /rite:wiki:lint で確認してください（Phase 8 で自動実行済み）
 ```
 
 ---
