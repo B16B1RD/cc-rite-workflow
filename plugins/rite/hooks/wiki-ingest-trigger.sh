@@ -209,12 +209,31 @@ fi
 # ingest.md の strict 4 分岐とはセマンティクスが意図的に異なる。パース方式を変更する場合は
 # 両ファイルの同期を確認すること。wiki-patterns.md の reference パターンも参照先。
 if [[ -f "rite-config.yml" ]]; then
-  wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+  # cycle 9 MEDIUM fix: sed/awk の stderr を tempfile に捕捉 (silent swallow 禁止)。
+  # 旧実装 `2>/dev/null || wiki_section=""` は grep no-match だけでなく sed/awk の構文エラー /
+  # binary 破損 / IO エラーも silent に空扱いし、Wiki enable check が誤動作する経路を持っていた。
+  _yaml_err=$(mktemp /tmp/rite-wiki-trigger-yaml-err-XXXXXX 2>/dev/null) || _yaml_err=""
+  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>"${_yaml_err:-/dev/null}"); then
+    :  # success (sed no-match は exit 0 なので legitimate)
+  else
+    _sed_rc=$?
+    echo "WARNING: sed による rite-config.yml wiki セクション抽出が失敗 (rc=$_sed_rc)" >&2
+    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
+    echo "  lenient fallback: wiki セクションを空として扱い、enable check を継続します" >&2
+    wiki_section=""
+  fi
   wiki_enabled_line=""
   if [[ -n "$wiki_section" ]]; then
     # awk -- skip non-matches gracefully (exit 0 even with no output)
-    wiki_enabled_line=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }') || wiki_enabled_line=""
+    if ! wiki_enabled_line=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' 2>"${_yaml_err:-/dev/null}"); then
+      _awk_rc=$?
+      echo "WARNING: awk による wiki.enabled 行抽出が失敗 (rc=$_awk_rc)" >&2
+      [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
+      echo "  lenient fallback: wiki.enabled を未設定として扱います" >&2
+      wiki_enabled_line=""
+    fi
   fi
+  [ -n "$_yaml_err" ] && rm -f "$_yaml_err"
   wiki_enabled=""
   if [[ -n "$wiki_enabled_line" ]]; then
     # cycle 3 fix (F-23): YAML 仕様上 inline コメントの直前にスペースが必須。
@@ -269,6 +288,24 @@ if [[ -n "$TITLE" ]]; then
   escaped_title=${TITLE//\\/\\\\}
   escaped_title=${escaped_title//\"/\\\"}
 fi
+
+# cycle 9 CRITICAL fix: partial-write rollback trap.
+# 旧実装は integrity check 失敗 / cat mid-write failure で exit 3 する経路で $target_file を
+# 残したままユーザーに手動削除を指示していた。stderr を見逃した / hook 経由実行時に次の
+# /rite:wiki:ingest が truncated Raw Source を `ingested: false` として読み込み、LLM が不完全な
+# 内容を Wiki ページに統合した後 `ingested: true` で永久封印する silent data degradation 経路があった。
+# trap を武装して非 0 exit 経路で target_file を自動削除し、正常経路の直前で trap を解除する。
+_rite_trigger_target_rollback() {
+  local _rc=$1
+  if [ -n "${target_file:-}" ] && [ -f "$target_file" ]; then
+    rm -f "$target_file"
+    echo "INFO: partial-write rollback により '$target_file' を自動削除しました (exit $_rc)" >&2
+  fi
+}
+trap 'rc=$?; [ "$rc" -ne 0 ] && _rite_trigger_target_rollback "$rc"; exit $rc' EXIT
+trap 'trap - EXIT; _rite_trigger_target_rollback 130; exit 130' INT
+trap 'trap - EXIT; _rite_trigger_target_rollback 143; exit 143' TERM
+trap 'trap - EXIT; _rite_trigger_target_rollback 129; exit 129' HUP
 
 # --- Write Raw Source with YAML frontmatter ---
 {
@@ -332,6 +369,10 @@ if [ "$expected_status" = "incomplete" ]; then
   echo "  対処: ファイルを削除して再実行してください: rm '$target_file'" >&2
   exit 3
 fi
+
+# cycle 9 CRITICAL fix: integrity check も含めてすべての post-condition を通過したため、
+# partial-write rollback trap を解除する (正常経路で target_file を保護)。
+trap - EXIT INT TERM HUP
 
 # Print the relative path so callers (e.g. /rite:wiki:ingest) can pick it up
 printf '%s\n' "$target_file"
