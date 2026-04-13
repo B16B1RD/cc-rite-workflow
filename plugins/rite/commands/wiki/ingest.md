@@ -752,11 +752,14 @@ if [ "$branch_strategy" = "same_branch" ]; then
     # の tempfile stderr パターンと統一する。primary error は既に出力済みのため best-effort だが、
     # git reset 失敗の根本原因 (permission / repo 破損) を可視化する。
     _reset_err=$(mktemp /tmp/rite-wiki-ingest-reset-err-XXXXXX 2>/dev/null) || _reset_err=""
+    # cycle 12 LOW fix: `${_reset_err:-}` defensive form で Block B (L633, L648) と対称化
+    # 現状の制御フローでは _reset_err は必ず定義されるが、将来 early-return を挟むリファクタでの
+    # `set -u` トリップを予防する (hypothetical guard)。
     if ! git reset HEAD .rite/wiki/ 2>"${_reset_err:-/dev/null}"; then
       echo "  WARNING: git reset HEAD .rite/wiki/ に失敗。手動で unstage してください: git reset HEAD .rite/wiki/" >&2
-      [ -n "$_reset_err" ] && [ -s "$_reset_err" ] && head -3 "$_reset_err" | sed 's/^/    /' >&2
+      [ -n "${_reset_err:-}" ] && [ -s "${_reset_err:-}" ] && head -3 "$_reset_err" | sed 's/^/    /' >&2
     fi
-    [ -n "$_reset_err" ] && rm -f "$_reset_err"
+    [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"
     echo "  注意: LLM が事前に Edit した ingested:true 化と index.md / log.md 変更はワークツリーに残っています" >&2
     echo "  対処: git status で変更内容を確認後、手動で commit するか git checkout で破棄してください" >&2
     exit 1
