@@ -850,27 +850,27 @@ esac
 echo "auto_lint=$auto_lint"
 ```
 
-**`auto_lint: false` の場合**: Phase 8 全体をスキップし Phase 9 へ進みます。
+**`auto_lint: false` の場合**: Phase 8.2-8.5 をスキップし Phase 9 へ進みます。Phase 9 完了レポートの Lint カウンタ（`n_contradictions` / `n_stale` / `n_orphans` / `n_missing` / `n_broken_refs`）は Phase 8.3 でのみ初期化されるため、`auto_lint: false` 時は Phase 9 レポートの「Wiki 品質警告」行を「Wiki 品質警告: スキップ (auto_lint disabled)」と表示します。
 
 ### 8.2 Lint エンジンの呼び出し
 
-> **ブランチ状態の前提**: 本 Phase は Phase 5 の wiki ブランチ切替の**内側**で呼ばれることを前提とします。具体的には Phase 5 Block A で wiki ブランチに切替済み、Block B の dev ブランチ復帰は Phase 8 完了後に実行します。lint.md Phase 8.2 は `git branch --show-current` で state-gated 判定を行うため、本 Phase の呼び出し時点で wiki ブランチにチェックアウト済みであれば `write_mode=direct_edit` 経路で log.md に追記されます。
+> **ブランチ状態の前提**: 本 Phase は Phase 5 Block B が dev ブランチに復帰した**後**に呼ばれます。したがって Lint 呼び出し時点での CWD は dev ブランチです。lint.md Phase 8.2 は `git branch --show-current` で state-gated 判定を行い、`current_branch != wiki_branch` を検出して `write_mode=stash_checkout` 経路で wiki ブランチに一時切替 → log.md 追記 → dev ブランチ復帰を実行します。
 
 LLM は `skill: "rite:wiki:lint", args: "--auto"` 形式で `/rite:wiki:lint` を `--auto` モードで呼び出します。`--auto` モードでは:
 
 - 出力が最小化される（`Lint: contradictions={n}, stale={n}, orphans={n}, missing={n}, broken_refs={n}` 形式の 1 行）
 - 検出件数が全て 0 の場合は stdout が空
-- log.md への追記は現在のブランチコンテキスト（wiki ブランチ）に対して行われる
-- exit code は常に 0（非ブロッキング）
+- log.md への追記は lint.md Phase 8.2 が自律的にブランチ状態を判定し実行する
+- lint.md は常に exit 0（非ブロッキング）
 
 ### 8.3 Lint 実行結果の取得とパース
 
-LLM は Lint Skill の呼び出し結果（stdout + exit code）を会話コンテキストに保持し、以下の手順でパースします:
+LLM は Lint Skill 呼び出し後の会話コンテキストから結果をパースします。Skill ツール経由の呼び出しはシェル exit code を返さないため、**stdout テキストの内容**で成否を判定します:
 
-1. **exit code の確認**: Lint Skill 呼び出しの exit code が 0 以外の場合、警告として扱い `n_warnings += 1` を加算して以降のパースは skip します:
+1. **エラー出力の確認**: Lint Skill の応答テキストに `ERROR:` や `WARNING: ... 実行失敗` が含まれる場合、失敗として扱い `n_warnings += 1` を加算して以降のパースは skip します:
 
    ```
-   WARNING: /rite:wiki:lint --auto が非ゼロ exit で終了しました (rc=$lint_rc)。
+   WARNING: /rite:wiki:lint --auto がエラーを返しました。
      Ingest 完了レポートには「Lint 結果: 実行失敗」と表示します。
    ```
 
