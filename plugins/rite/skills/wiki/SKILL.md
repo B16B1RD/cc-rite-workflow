@@ -55,9 +55,11 @@ description: |
 
 `rite-config.yml` の `wiki` セクションで制御:
 
+> **opt-out ポリシー**: `wiki:` セクション自体を省略しても、Wiki 機能はデフォルトで有効として扱われます (`wiki.enabled: true` 相当)。明示的に無効化したい場合のみ `enabled: false` を設定してください。本ポリシーは `wiki.enabled` のみに適用され、`auto_query` / `auto_ingest` 等の他のキーは省略時に各キー個別のデフォルト (下記参照) が適用されます。
+
 ```yaml
 wiki:
-  enabled: false                       # opt-in (default false)
+  enabled: true                        # opt-out (default true、セクション未指定時も有効扱い)
   branch_strategy: "separate_branch"   # separate_branch (推奨) or same_branch
   branch_name: "wiki"                  # separate_branch 時のブランチ名
   auto_ingest: true                    # Auto-ingest on review/fix/close

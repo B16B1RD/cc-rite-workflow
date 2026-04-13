@@ -224,20 +224,22 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 ## Wiki 有効判定パターン
 
-Wiki 操作の前に必ず有効判定を行います:
+Wiki 操作の前に必ず有効判定を行います。**#483 以降 opt-out**: `wiki:` セクション自体や `enabled` キーが未指定の場合は default-on (有効) として扱います。明示的に `false|no|0` が指定された場合のみ無効化されます:
 
 ```bash
+# #483: Wiki は opt-out — section/key 未指定時のデフォルトは true
 wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
 wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
 case "$wiki_enabled" in
+  false|no|0) wiki_enabled="false" ;;
   true|yes|1) wiki_enabled="true" ;;
-  *) wiki_enabled="false" ;;
+  *)          wiki_enabled="true" ;;  # opt-out default
 esac
 
 if [ "$wiki_enabled" != "true" ]; then
-  echo "Wiki is disabled. Enable with wiki.enabled: true in rite-config.yml"
+  echo "Wiki is explicitly disabled (wiki.enabled: false in rite-config.yml)"
   exit 0
 fi
 ```
