@@ -5,27 +5,35 @@ Claude Code Rite Workflow - Claude Code 用 Issue ドリブン開発ワークフ
 ## アーキテクチャ
 
 ```
-.claude-plugin/       # プラグインメタデータ（marketplace.json）
+.claude-plugin/                    # マーケットプレイスメタデータ（marketplace.json）
+plugins/rite/.claude-plugin/       # プラグイン固有メタデータ（plugin.json）
 plugins/rite/
 ├── commands/         # スキルから呼び出される実行手順書（Markdown）
-│   ├── issue/        #   Issue 操作（start, create, list, edit, close, update）
+│   ├── issue/        #   Issue 操作（start, create, list, edit, close, update, implement など）
 │   ├── pr/           #   PR 操作（create, review, fix, ready, cleanup）
-│   ├── sprint/       #   Sprint 操作（plan, list, current）
+│   ├── sprint/       #   Sprint 操作（plan, list, current, execute, team-execute）
+│   ├── wiki/         #   Experience Wiki 操作（init, query, ingest, lint）
 │   ├── skill/        #   スキル操作（suggest）
 │   ├── template/     #   テンプレート操作（reset）
 │   ├── init.md       #   初回セットアップ
+│   ├── getting-started.md  # オンボーディングガイド
+│   ├── investigate.md  # 構造化コード調査
 │   ├── lint.md       #   品質チェック
 │   ├── resume.md     #   作業再開
 │   └── workflow.md   #   ワークフローガイド表示
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）
 │   ├── rite-workflow/  #   メインスキル + references/（コーディング原則、コンテキスト管理等）
-│   └── reviewers/     #   レビュアースキル + 各レビュー基準
+│   ├── reviewers/      #   レビュアースキル + 各レビュー基準
+│   ├── investigate/    #   コード調査スキル
+│   └── wiki/           #   Experience Wiki スキル
 ├── agents/           # PR レビュー用サブエージェント定義
 ├── templates/        # 完了報告・Issue・PR テンプレート
 ├── references/       # gh CLI パターン、GraphQL ヘルパー
-├── hooks/            # セッション開始/終了、通知、pre-compact、stop-guard
+├── scripts/          # ユーティリティスクリプト（Projects 統合 Issue 作成等）
+├── hooks/            # セッション開始/終了、通知、pre/post-compact、stop-guard、
+│                     # work memory 同期、wiki ingest/query トリガ、workflow incident 検出
 └── i18n/             # 多言語対応（ja.yml, en.yml）
-rite-config.yml        # プロジェクト固有設定（ブランチ戦略、Projects連携等）
+rite-config.yml        # プロジェクト固有設定（ブランチ戦略、Projects連携、Wiki、review loop 等）
 ```
 
 **コンポーネント間の関係**: スキル（`skills/`）がエントリポイント → コマンド（`commands/`）を Skill ツール経由で実行 → コマンド内からエージェント（`agents/`）やリファレンス（`references/`）を参照

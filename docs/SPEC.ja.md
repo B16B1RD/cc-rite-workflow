@@ -52,7 +52,9 @@
 | コマンド | 説明 | 引数 |
 |---------|------|------|
 | `/rite:init` | 初回セットアップウィザード | なし |
+| `/rite:getting-started` | 対話型オンボーディングガイド | なし |
 | `/rite:workflow` | ワークフロー全体の案内 | なし |
+| `/rite:investigate` | 構造化コード調査 | `<トピックまたは質問>` |
 | `/rite:issue:list` | Issue 一覧表示 | `[フィルタ条件]` |
 | `/rite:issue:create` | 新規 Issue 作成 | `<タイトルまたは説明>` |
 | `/rite:issue:start` | 作業開始（一気通貫: ブランチ → 実装 → PR） | `<Issue 番号>` |
@@ -71,6 +73,10 @@
 | `/rite:sprint:plan` | スプリント計画実行 | `[current\|next\|"Sprint名"]` |
 | `/rite:sprint:execute` | Sprint 内の Todo Issue を連続実行 | `[Sprint名]` |
 | `/rite:sprint:team-execute` | Sprint 内の Todo Issue を並列チーム実行 | `[Sprint名]` |
+| `/rite:wiki:init` | Experience Wiki の初期化（ブランチ・ディレクトリ・テンプレート） | なし |
+| `/rite:wiki:query` | キーワードで Wiki ページを検索し経験則をコンテキストに注入 | `<キーワード>` |
+| `/rite:wiki:ingest` | Raw Source から経験則を抽出し Wiki ページを更新 | `[source]` |
+| `/rite:wiki:lint` | Wiki ページの矛盾・陳腐化・孤児・壊れた相互参照をチェック | `[--auto] [--stale-days <N>]` |
 | `/rite:resume` | 中断した作業を再開 | `[issue番号]` |
 | `/rite:skill:suggest` | コンテキストを分析して適用可能なスキルを提案 | `[--verbose\|--filter]` |
 
@@ -1723,6 +1729,48 @@ Phase 7 (review recommendation からの自動 Issue 作成) と Phase 5.4.4.1 (
 |-------|------|------------------|
 | Phase 7 | reviewer の「別 Issue として作成」推奨から Issue 作成 | `pr_review` |
 | Phase 5.4.4.1 | workflow blocker から Issue 作成 (sentinel 検出) | `workflow_incident` |
+
+## Experience Wiki
+
+### 概要
+
+Experience Wiki は LLM 駆動のプロジェクト経験則ナレッジベースで、通常はレビュアーの頭の中や Issue/PR コメントに散在する「痛い目に合って学んだこと」を永続化します。LLM Wiki パターン（Karpathy 提唱）に基づきます。設計の全体像は `docs/designs/experience-heuristics-persistence-layer.md` を参照してください。
+
+Wiki はデフォルトで **opt-out**（`wiki.enabled: true`）です。設定は `rite-config.yml` の `wiki:` セクションで行います — 詳細は [設定リファレンス → wiki](CONFIGURATION.md#wiki) を参照。
+
+### アーキテクチャ
+
+Wiki データは専用ブランチ（デフォルト: `wiki`）または作業ブランチ上にインラインで保存され、`wiki.branch_strategy` で制御されます。各 Wiki ページはトピック別の Markdown ファイル（例: `review-quality.md`, `fix-cycle-convergence.md`）で、Raw Source（レビューコメント、修正結果、Issue ディスカッション）から差分で構築されます。重複や類似経験則は ingest パイプライン内で統合されます。
+
+### コマンド
+
+| コマンド | 目的 |
+|---------|------|
+| `/rite:wiki:init` | 初回セットアップ: Wiki ブランチ作成（`branch_strategy: "separate_branch"` 時）、ディレクトリ構造生成、ページテンプレート展開 |
+| `/rite:wiki:ingest` | Raw Source（レビュー結果、修正結果、クローズ済み Issue）を解析し Wiki ページを更新または新規作成。手動呼び出しまたは `wiki-ingest-trigger.sh` フックから自動起動 |
+| `/rite:wiki:query` | キーワードで Wiki ページを検索し、マッチした経験則をコンテキストに注入。手動呼び出しまたは Issue 着手・レビュー・修正・実装フェーズで `wiki-query-inject.sh` フックから自動起動 |
+| `/rite:wiki:lint` | Wiki ページの矛盾、陳腐化、孤児（相互参照が無いページ）、欠落した相互参照、壊れたリンクをチェック。CI 用の `--auto` モードをサポート |
+
+### 自動フック連携
+
+`wiki.auto_ingest` / `wiki.auto_query` / `wiki.auto_lint` が有効な場合、以下のフックがユーザー操作なしで発火します。
+
+| フック | トリガ | アクション |
+|--------|-------|-----------|
+| `wiki-query-inject.sh` | Phase 2.6（work memory 初期化）、Phase 5.1（実装）、Phase 5.4.1（レビュー）、Phase 5.4.4（修正） | 現在の Issue タイトル/本文に対して `/rite:wiki:query` を実行し、マッチした経験則を注入 |
+| `wiki-ingest-trigger.sh` | Phase 5.4.3（レビュー後）、Phase 5.4.6（修正後）、Issue クローズ時 | 新しい Raw Source に対して `/rite:wiki:ingest` を実行 |
+| `wiki-ingest-trigger.sh` → `/rite:wiki:lint --auto` | ingest 成功直後（`auto_lint: true` 時） | Wiki の整合性を検証し、警告を非ブロッキングで表示 |
+
+### Workflow Incident Detection との関係
+
+両機能とも運用上の学びを永続化しますが、対象スコープが異なります。
+
+| 対象 | 永続化先 |
+|------|---------|
+| **反復する品質・プロセス経験則**（例: 「review-fix ループで LOW 指摘をスキップしてはならない」「dotenv でなく dotenvx を使う」） | `/rite:wiki:ingest` による Wiki ページ |
+| **一回きりのプラットフォーム欠陥**（例: 「イテレーション Y で hook X が異常終了した」） | `workflow_incident` 自動登録による Issue (#366) |
+
+両者はコードパスを共有しません。
 
 ## エラーハンドリング
 

@@ -32,6 +32,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Preflight Check**: Unified pre-execution verification across all commands
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications
+- **Experience Wiki**: LLM-driven project knowledge base. Auto-ingests review/fix outcomes into topical pages and injects relevant heuristics at the start of each Issue (opt-out)
 
 ## Installation
 
@@ -68,6 +69,7 @@ This will:
 | Command | Description |
 |---------|-------------|
 | `/rite:init` | Initial setup wizard |
+| `/rite:getting-started` | Interactive onboarding guide |
 | `/rite:workflow` | Show workflow guide |
 | `/rite:issue:list` | List Issues |
 | `/rite:issue:create` | Create new Issue |
@@ -88,6 +90,10 @@ This will:
 | `/rite:sprint:plan` | Sprint planning (optional) |
 | `/rite:sprint:execute` | Execute sprint Issues sequentially (optional) |
 | `/rite:sprint:team-execute` | Execute sprint Issues in parallel with worktree-based teams (optional) |
+| `/rite:wiki:init` | Initialize Experience Wiki branch and directory layout |
+| `/rite:wiki:query` | Query Wiki pages for heuristics matching keywords |
+| `/rite:wiki:ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
+| `/rite:wiki:lint` | Lint Wiki pages for contradictions, staleness, and broken cross-refs |
 | `/rite:resume` | Resume interrupted work |
 | `/rite:skill:suggest` | Analyze context and suggest applicable skills |
 
