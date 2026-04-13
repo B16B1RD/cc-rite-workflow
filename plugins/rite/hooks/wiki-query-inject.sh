@@ -49,10 +49,12 @@ set -uo pipefail
 # commands/pr/review.md Phase 2.2.1 and commands/pr/fix.md Phase 4.5.2 so that
 # SIGINT/SIGTERM/SIGHUP cannot leave orphan files in /tmp.
 _yaml_err=""
+_index_err=""
 _git_show_err=""
+_git_show_err_failed=0
 _awk_err=""
 _rite_wiki_query_cleanup() {
-  rm -f "${_yaml_err:-}" "${_git_show_err:-}" "${_awk_err:-}"
+  rm -f "${_yaml_err:-}" "${_index_err:-}" "${_git_show_err:-}" "${_awk_err:-}"
 }
 trap 'rc=$?; _rite_wiki_query_cleanup; exit $rc' EXIT
 trap '_rite_wiki_query_cleanup; exit 130' INT
@@ -250,10 +252,20 @@ if [[ "$branch_strategy" == "separate_branch" ]]; then
     echo "WARNING: wiki branch '$wiki_branch' not found — Wiki not initialized" >&2
     exit 0
   fi
-  index_content=$(git show "${wiki_branch}:.rite/wiki/index.md" 2>/dev/null) || {
-    echo "WARNING: cannot read index.md from branch '$wiki_branch'" >&2
+  # index.md is the gating resource for the whole query path. Capture stderr
+  # to a tempfile so legitimate IO errors (permission denied / object corrupt
+  # / submodule drift) surface as a WARNING with diagnostic detail, matching
+  # the F-22 "silent-swallow to surface" policy applied elsewhere.
+  if ! _index_err=$(mktemp /tmp/rite-wiki-query-index-err-XXXXXX); then
+    echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
+    _index_err=""
+  fi
+  if ! index_content=$(git show "${wiki_branch}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+    _index_rc=$?
+    echo "WARNING: cannot read index.md from branch '$wiki_branch' (git show rc=$_index_rc)" >&2
+    [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | sed 's/^/  /' >&2
     exit 0
-  }
+  fi
 else
   if [[ ! -f ".rite/wiki/index.md" ]]; then
     echo "WARNING: .rite/wiki/index.md not found — Wiki not initialized" >&2
@@ -398,15 +410,22 @@ while IFS=$'\t' read -r score title path domain summary updated confidence; do
     if [[ "$branch_strategy" == "separate_branch" ]]; then
       # Capture git show stderr — an index.md referencing a missing/corrupt
       # page file indicates an index↔page drift that the caller should know
-      # about. Silent fall-through would hide the drift entirely. The tempfile
-      # is allocated once outside the loop and truncated per iteration so that
-      # SIGINT mid-loop cannot leave multiple orphans behind.
-      if [ -z "${_git_show_err:-}" ]; then
+      # about. Silent fall-through would hide the drift entirely.
+      #
+      # Lifecycle: the tempfile is lazily allocated on the first loop
+      # iteration that enters this branch, then truncated (`: > $f`) on every
+      # subsequent iteration. At most one tempfile exists per script
+      # invocation and the EXIT trap cleans it up. If the first mktemp fails
+      # the `_git_show_err_failed` flag suppresses re-tries so the user gets
+      # exactly one WARNING instead of one per loop iteration under /tmp
+      # pressure.
+      if [ -z "${_git_show_err:-}" ] && [ "${_git_show_err_failed:-0}" -eq 0 ]; then
         if ! _git_show_err=$(mktemp /tmp/rite-wiki-query-gitshow-err-XXXXXX); then
-          echo "WARNING: mktemp failed for git show stderr capture; falling back to /dev/null" >&2
+          echo "WARNING: mktemp failed for git show stderr capture; falling back to /dev/null for the rest of this run" >&2
           _git_show_err=""
+          _git_show_err_failed=1
         fi
-      else
+      elif [ -n "${_git_show_err:-}" ]; then
         : > "$_git_show_err"  # truncate between iterations
       fi
       if page_body=$(git show "${wiki_branch}:.rite/wiki/${path}" 2>"${_git_show_err:-/dev/null}"); then
