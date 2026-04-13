@@ -5,7 +5,8 @@ Claude Code Rite Workflow - Claude Code 用 Issue ドリブン開発ワークフ
 ## アーキテクチャ
 
 ```
-.claude-plugin/       # プラグインメタデータ（marketplace.json, plugin.json）
+.claude-plugin/                    # マーケットプレイスメタデータ（marketplace.json）
+plugins/rite/.claude-plugin/       # プラグイン固有メタデータ（plugin.json）
 plugins/rite/
 ├── commands/         # スキルから呼び出される実行手順書（Markdown）
 │   ├── issue/        #   Issue 操作（start, create, list, edit, close, update, implement など）

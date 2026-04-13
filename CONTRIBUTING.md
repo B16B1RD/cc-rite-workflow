@@ -59,7 +59,12 @@ plugins/rite/
 │   ├── wiki/         #   Experience Wiki operations (init, query, ingest, lint)
 │   ├── skill/        #   Skill operations (suggest)
 │   ├── template/     #   Template operations (reset)
-│   └── ...           #   Other commands (init, lint, resume, workflow, getting-started, investigate)
+│   ├── init.md       #   Initial setup wizard
+│   ├── getting-started.md  # Interactive onboarding guide
+│   ├── investigate.md      # Structured code investigation
+│   ├── lint.md       #   Quality checks
+│   ├── resume.md     #   Resume interrupted work
+│   └── workflow.md   #   Display workflow guide
 ├── skills/           # Skill definitions auto-detected by Claude Code (SKILL.md)
 │   ├── rite-workflow/ #   Main skill + references (coding principles, context management)
 │   ├── reviewers/    #   Reviewer skills + review criteria
@@ -76,7 +81,7 @@ plugins/rite/
 
 ## Hook Development Guide
 
-Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered in `.claude/settings.local.json` and executed automatically.
+Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered via `plugins/rite/hooks/hooks.json` (native plugin hook management) and executed automatically by Claude Code. For legacy setups without `hooks.json`, `/rite:init` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json` — see the Hook Events and Registration section below.
 
 ### Hook Directory Structure
 
@@ -97,6 +102,7 @@ plugins/rite/hooks/
 ├── work-memory-update.sh     # Shared helper for local work memory atomic writes
 ├── work-memory-lock.sh       # mkdir-based lock/unlock for issue-level work memory access
 ├── issue-comment-wm-sync.sh  # Sync local work memory to Issue comment backup
+├── issue-comment-wm-update.py # Python helper for Issue comment work memory updates
 ├── state-path-resolve.sh     # Resolves root directory for rite state files
 ├── cleanup-work-memory.sh    # Deterministic cleanup of local work memory files
 ├── flow-state-update.sh      # Atomic .rite-flow-state create/patch/increment operations
@@ -106,6 +112,7 @@ plugins/rite/hooks/
 ├── workflow-incident-emit.sh # Emit workflow incident sentinel for auto Issue registration (#366)
 ├── work-memory-parse.py      # YAML frontmatter parser for work memory files
 ├── hooks.json                # Native plugin hook registration (managed by Claude Code plugin system)
+├── scripts/                  # Internal helper scripts (drift-check, bang-backtick-check, etc.)
 └── tests/                    # Test scripts
 ```
 
@@ -177,7 +184,7 @@ fi
 - Always use `set -euo pipefail` at the top
 - Read JSON input from stdin using `INPUT=$(cat)` and parse with `jq`
 - Use `state-path-resolve.sh` to resolve the state root directory
-- For guard hooks (e.g., `stop-guard.sh`, `post-compact-guard.sh`): exit code `0` means "allow", non-zero means "block"
+- For guard hooks (e.g., `stop-guard.sh`, `pre-tool-bash-guard.sh`): exit code `0` means "allow", non-zero means "block"
 - For non-guard hooks (e.g., `session-start.sh`, `notification.sh`): exit code `0` indicates successful execution
 - Use `mktemp` for temporary files with `trap 'rm -f "$tmpfile"' EXIT` for cleanup
 - Keep hooks fast — they run on every matching event

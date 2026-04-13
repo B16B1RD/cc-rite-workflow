@@ -76,7 +76,7 @@
 | `/rite:wiki:init` | Experience Wiki の初期化（ブランチ・ディレクトリ・テンプレート） | なし |
 | `/rite:wiki:query` | キーワードで Wiki ページを検索し経験則をコンテキストに注入 | `<キーワード>` |
 | `/rite:wiki:ingest` | Raw Source から経験則を抽出し Wiki ページを更新 | `[source]` |
-| `/rite:wiki:lint` | Wiki ページの矛盾・陳腐化・孤児・壊れた相互参照をチェック | `[--auto]` |
+| `/rite:wiki:lint` | Wiki ページの矛盾・陳腐化・孤児・壊れた相互参照をチェック | `[--auto] [--stale-days <N>]` |
 | `/rite:resume` | 中断した作業を再開 | `[issue番号]` |
 | `/rite:skill:suggest` | コンテキストを分析して適用可能なスキルを提案 | `[--verbose\|--filter]` |
 

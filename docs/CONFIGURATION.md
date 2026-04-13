@@ -178,8 +178,7 @@ safety:
 workflow_incident:
   enabled: true              # Enable incident detection mechanism (default: true, opt-out)
 
-# Experience Wiki (LLM Wiki pattern for project-specific heuristics)
-# See docs/designs/experience-heuristics-persistence-layer.md for the full specification.
+# Experience Wiki (opt-out, see wiki section below for full description)
 wiki:
   enabled: true                        # Enable Wiki features (default: true, opt-out)
   branch_strategy: "separate_branch"   # "separate_branch" (recommended) or "same_branch"
