@@ -159,16 +159,6 @@ pr_review:
 #   enabled: true
 #   baseline_issues: 3
 
-# Context optimization settings
-# context_optimization:
-#   agent_delegation: false
-#   agent_delegation_threshold: 80
-#   pressure_thresholds:
-#     # All thresholds are phase-aware: impl/lint +10, review/fix +30, default ±0
-#     yellow: 60
-#     orange: 90
-#     red: 120
-
 # Safety settings (fail-closed thresholds)
 # safety:
 #   max_implementation_rounds: 20

@@ -77,61 +77,7 @@ _cleanup_stale_compact() {
   fi
 }
 
-# Reset context pressure counter on startup/clear (#889)
-if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ]; then
-  rm -f "$STATE_ROOT/.rite-context-counter" 2>/dev/null || true
-fi
-
-# --- Context budget estimation on startup (#889) ---
-# System prompt can approach 200K token API limit when many plugins/MCP servers are loaded.
-# Warn early so users can reduce loaded components before hitting the limit mid-session.
 if [ "$SOURCE" = "startup" ]; then
-  _budget_warnings=0
-
-  # Check MEMORY.md size (auto-memory contributes to system prompt)
-  _memory_dir="$HOME/.claude/projects"
-  # Find the project-specific memory file by matching the CWD path
-  _cwd_encoded=$(echo "$CWD" | sed 's|/|-|g')
-  _memory_file="${_memory_dir}/${_cwd_encoded}/memory/MEMORY.md"
-  if [ -f "$_memory_file" ]; then
-    _mem_size=$(wc -c < "$_memory_file" 2>/dev/null) || _mem_size=0
-    if [ "$_mem_size" -gt 8000 ]; then
-      _budget_warnings=$((_budget_warnings + 1))
-    fi
-  fi
-
-  # Check number of enabled plugins (each adds skill descriptions to system prompt)
-  _settings_file="$HOME/.claude/settings.json"
-  if [ -f "$_settings_file" ]; then
-    _plugin_count=$(jq '[.enabledPlugins // {} | to_entries[] | select(.value == true)] | length' "$_settings_file" 2>/dev/null) || _plugin_count=0
-    if [ "$_plugin_count" -gt 3 ]; then
-      _budget_warnings=$((_budget_warnings + 1))
-    fi
-  fi
-
-  # Check for MCP servers (each adds tool definitions to system prompt)
-  _mcp_count=0
-  if [ -f "$_settings_file" ]; then
-    _mcp_count=$(jq '.mcpServers // {} | length' "$_settings_file" 2>/dev/null) || _mcp_count=0
-  fi
-  # Also check project-level MCP config
-  for _mcp_file in "$CWD/.mcp.json" "$CWD/.mcp/config.json"; do
-    if [ -f "$_mcp_file" ]; then
-      _proj_mcp=$(jq '.mcpServers // {} | length' "$_mcp_file" 2>/dev/null) || _proj_mcp=0
-      _mcp_count=$((_mcp_count + _proj_mcp))
-    fi
-  done
-  if [ "$_mcp_count" -gt 0 ]; then
-    _budget_warnings=$((_budget_warnings + 1))
-  fi
-
-  # Warn if multiple risk factors detected
-  if [ "$_budget_warnings" -ge 2 ]; then
-    echo "[rite] ⚠️ コンテキストバジェット警告: プラグイン${_plugin_count}個 + MCP${_mcp_count}個が検出されました。" >&2
-    echo "[rite] 長時間ワークフローでは auto-compact 後に API 上限 (200K tokens) を超える可能性があります。" >&2
-    echo "[rite] 対策: 不要なプラグイン/MCP サーバーを無効化するか、定期的に /compact を実行してください。" >&2
-  fi
-
   # --- Schema version check (#284) ---
   _rite_config="$STATE_ROOT/rite-config.yml"
   if [ -f "$_rite_config" ]; then
