@@ -372,7 +372,7 @@ Display "{i18n:init_upgrade_backup_created}".
 
 1. Grep `rite-config.yml` for `^wiki:` (excluding lines starting with `#`) to detect an existing active wiki section.
 2. **If an active `^wiki:` match is found** (Wiki section already present): no-op. Display `{i18n:init_upgrade_up_to_date}` and proceed to Step 7 (Phase 4.7). Phase 4.7.2 will subsequently detect the initialized Wiki and set `wiki_status=already_initialized`.
-3. **If no active `^wiki:` match**: invoke the same append procedure as [Step 6 item 5](#step-6-apply-changes) (single source of truth for the wiki block literal and anchor selection). After the append completes, display `{i18n:init_wiki_config_added}` and proceed to Step 7.
+3. **If no active `^wiki:` match**: invoke the same append procedure defined in Step 6 item 5 below (single source of truth for the wiki block literal source and anchor selection). After the append completes, display `{i18n:init_wiki_config_added}` and proceed to Step 7.
 
 **Anchor/append handoff**: Step 3.5 does NOT duplicate the wiki block literal or anchor-selection logic. Both are defined in Step 6 item 5 below; Step 3.5 simply invokes that same procedure. This keeps the wiki block definition in a single location within `init.md` and prevents drift between the two paths.
 
@@ -387,9 +387,9 @@ Compare current config against the template and classify each key:
 | **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki**) | **Add** — insert from template with default values |
 | **Advanced section** (tdd, parallel, team, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
 | **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 3.5 / Step 6 item 5 (Upgrade path: 未存在時に active block として append) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
+| **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
-| **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Step 5: Preview and confirm**
 
