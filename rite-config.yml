@@ -178,6 +178,7 @@ wiki:
   branch_name: "wiki"                  # Branch name for Wiki data (when branch_strategy is "separate_branch")
   auto_ingest: true                    # Auto-ingest on review/fix/close (default: true)
   auto_query: true                     # Auto-query on start/review/fix/implement (default: true)
+  auto_lint: true                      # Auto-run /rite:wiki:lint --auto after ingest (default: true)
 
 # Language setting
 language: ja

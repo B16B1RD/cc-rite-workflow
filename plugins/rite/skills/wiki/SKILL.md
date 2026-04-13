@@ -4,11 +4,12 @@ description: |
   rite Wiki layer — project-specific experiential knowledge persistence based on the
   LLM Wiki pattern (Karpathy). Use when the user asks to ingest review/fix/issue
   outcomes into Wiki pages, query accumulated experiential knowledge by keyword,
-  or initialize the Wiki structure.
-  Activates on "wiki", "ingest", "query", "経験則", "知識ページ", "Wiki 蓄積",
-  "経験則を残す", "経験則を参照", "Wiki 検索", "wiki:init", "wiki:ingest",
-  "wiki:query", "/rite:wiki:".
-  Note: lint command is tracked in a follow-up Issue and not yet implemented.
+  lint the Wiki for contradictions/stale pages/orphans, or initialize the Wiki
+  structure.
+  Activates on "wiki", "ingest", "query", "lint", "経験則", "知識ページ",
+  "Wiki 蓄積", "経験則を残す", "経験則を参照", "Wiki 検索", "Wiki Lint",
+  "Wiki 品質", "wiki:init", "wiki:ingest", "wiki:query", "wiki:lint",
+  "/rite:wiki:".
 ---
 
 # Wiki Skill
@@ -20,9 +21,8 @@ description: |
 - wiki, Wiki, 経験則, 知識ページ
 - ingest, 蓄積, 経験則を残す
 - query, 経験則を参照, Wiki 検索
-- `/rite:wiki:init`, `/rite:wiki:ingest`, `/rite:wiki:query`
-
-> **Note**: `lint` キーワードは現時点で未実装です。`/rite:wiki:lint` は後続 Issue で実装予定のため、本 SKILL の auto-activation キーワードからは意図的に除外しています。
+- lint, Wiki Lint, Wiki 品質, 矛盾チェック, 陳腐化, 孤児ページ
+- `/rite:wiki:init`, `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`
 
 ## アーキテクチャ概要
 
@@ -43,7 +43,7 @@ description: |
 | `/rite:wiki:init` | Wiki 初期化（ディレクトリ・テンプレート・ブランチ） | 実装済み (#468) |
 | `/rite:wiki:ingest` | Raw Source から経験則を抽出・統合 | 実装済み (#469) |
 | `/rite:wiki:query` | 経験則の参照・コンテキスト注入 | 実装済み (#470) |
-| `/rite:wiki:lint` | Wiki の品質チェック（矛盾・陳腐化・孤児） | 後続 Issue |
+| `/rite:wiki:lint` | Wiki の品質チェック（矛盾・陳腐化・孤児・欠落・壊れた相互参照） | 実装済み (#471) |
 
 ## 関連ファイル
 
