@@ -565,6 +565,84 @@ The section extends from the matched heading to the next `##` heading or end of 
 
 **Note**: This check is advisory — it helps catch missed requirements but does not block the flow when the user chooses to proceed.
 
+#### 5.1.0.7 Documentation Impact Investigation
+
+> **Reference**: Apply `documentation_consistency` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
+
+Before committing, investigate whether the implementation introduces any user-facing specification change that requires updating related documentation (README, `docs/`, `CLAUDE.md`, `plugins/rite/**/*.md`, etc.). When stale documentation is detected, fix it immediately within the same branch — do NOT defer to a separate Issue, do NOT ask the user via `AskUserQuestion`.
+
+This step is the implementer's responsibility and complements (does not replace) the tech-writer reviewer at PR review time. Catching documentation drift before commit avoids a review round-trip.
+
+##### Skip Conditions
+
+Skip this entire section (proceed directly to 5.1.1) when **any** of the following holds:
+
+| Skip condition | Determination |
+|---------------|---------------|
+| No specification change | The diff only touches internals (private functions, refactor, code style, comment-only edits) with no observable change to commands, configuration keys, file layout, public API, workflow phases, or user-visible behavior |
+| Documentation-only change | The diff itself only modifies `*.md` / `docs/` files (i.e., this Issue is a documentation update — there is nothing further to sync) |
+| Test-only change | The diff only touches test files (`*.test.*`, `*.spec.*`, `tests/**`) |
+
+The decision is made by the LLM based on the actual diff (`git diff --name-status origin/{base_branch}...HEAD` plus the work memory's "決定事項・メモ") — there is no explicit trigger pattern. When in doubt, do **NOT** skip.
+
+##### Investigation Procedure
+
+**Step 1: Extract specification keywords**
+
+From the implementation just completed, extract user-facing identifiers that may appear in documentation. Sources:
+
+| Source | Examples |
+|--------|---------|
+| Renamed / added / removed commands | `/rite:issue:start`, slash-command names |
+| Renamed / added / removed config keys | `rite-config.yml` keys (`branch.base`, `wiki.enabled`) |
+| Renamed / added / removed file paths | Section file paths a user copies into their project |
+| Renamed / added / removed phase / workflow names | `Phase 5.4`, `review-fix loop` |
+| Renamed / added / removed public function / hook names | hook script names, exported helpers |
+
+Use the work memory's `決定事項・メモ` and the diff itself as the source. Skip identifiers that are clearly internal.
+
+**Step 2: Project-wide search**
+
+For each keyword, search the **entire repository** for documentation references using the Grep tool. The search scope is fixed to project-wide and is not configurable — this matches the Issue's "Out of Scope: rite-config.yml で探索パスを設定可能にすること" constraint.
+
+```
+Grep ツール:
+  pattern: "{keyword}"
+  glob: "*.md"
+  output_mode: "files_with_matches"
+```
+
+In addition to `*.md`, also search `CLAUDE.md` at any depth and `README*` files. Skip the file currently being modified by the implementation if it is itself the source of the keyword.
+
+**Step 3: Read and judge**
+
+For each candidate file returned by the search, use the Read tool to inspect the matched lines and judge whether the documentation is now stale:
+
+| Judgment | Action |
+|---------|--------|
+| Stale (documentation describes the old behavior / old name / removed feature) | Edit immediately with the Edit tool |
+| Still accurate (the keyword appears but the surrounding text is still correct) | Leave as-is |
+| Uncertain | Treat as stale and update; over-updating documentation is cheaper than leaving drift |
+
+**Step 4: Edit and stage**
+
+Apply the necessary edits with the Edit tool. Do **not** prompt the user via `AskUserQuestion` — the auto-fix is mandatory per Issue #485 MUST NOT constraints. Stage the edited documentation files together with the implementation changes.
+
+##### Result Handling
+
+| Result | Action |
+|--------|--------|
+| 0 hits across all keywords | Proceed silently to 5.1.1 (no warning, no extra commit) |
+| Stale docs detected and auto-fixed | Proceed to 5.1.1 — the documentation edits are committed in the **same** commit as the implementation when staged together. If the implementation has already been committed before this step ran, create an additional `docs(scope): sync documentation with {feature}` commit on the same branch in 5.1.1 |
+| Search command failed (Grep tool error, etc.) | Display warning `WARNING: ドキュメント影響調査でエラー: {error}. ステップをスキップして実装フェーズを継続します` and proceed to 5.1.1 — do NOT block the flow |
+
+##### Constraints
+
+- **MUST NOT** invoke `AskUserQuestion` from this step
+- **MUST NOT** defer detected drift to a separate Issue (this contradicts `issue_accountability` and the Issue #485 MUST NOT constraints)
+- **MUST NOT** modify files outside documentation (no code changes triggered by this step)
+- **MUST NOT** modify `plugins/rite/skills/reviewers/**`, `plugins/rite/hooks/**`, or `rite-config.yml` from this step — those are out of scope for documentation impact investigation
+
 ### 5.1.1 Commit and Push Changes
 
 After implementation is complete, push changes to remote:

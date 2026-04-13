@@ -18,6 +18,7 @@ Structured for rite workflow based on Andrej Karpathy's "Issues with AI Coding".
 | `no_unnecessary_fallback` | No Unnecessary Fallback | Phase 5.1, PR Review |
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
+| `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
 
 ---
 
@@ -388,6 +389,50 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 ---
 
+### documentation_consistency (Sync Documentation with Specification Changes)
+
+**Summary**: When an implementation changes user-visible specification (commands, config keys, file paths, public API, workflow phases, hook names, etc.), update related documentation in the same PR. Detect drift before commit, not at PR review time.
+
+**Failure Patterns**:
+- Renaming a command or config key in code without updating README / docs / CLAUDE.md
+- Adding a new workflow phase to `commands/issue/start.md` without updating the corresponding skill / reference docs
+- Removing a feature from code while marketing copy in README still describes it
+- Deferring documentation drift to a separate "follow-up" Issue that never gets done
+- Relying on the tech-writer reviewer at PR review time to catch drift, causing avoidable review round-trips
+
+**Rules**:
+1. Before committing, identify user-facing identifiers introduced/changed/removed by the diff
+2. Search the entire repository (`*.md`, `README*`, `CLAUDE.md`, `docs/`, `plugins/rite/**/*.md`) for those identifiers
+3. Update stale documentation in the **same branch** as the implementation — never defer
+4. Do **not** ask the user for permission via `AskUserQuestion`; documentation sync is mandatory when drift is detected
+5. Do **not** create a separate Issue for the drift (this contradicts the same-PR rule and `issue_accountability` for in-scope work)
+6. Skip when the diff is internals-only, documentation-only, or test-only
+
+**Where to Apply**:
+- Phase 5.1 (Implementation): Run as the dedicated `5.1.0.7 Documentation Impact Investigation` step before `5.1.1` commit
+- This complements (does not replace) the tech-writer reviewer at PR review time
+
+**Example**:
+
+```text
+実装で /rite:issue:resume コマンドを /rite:resume にリネームした
+
+ドキュメント影響調査:
+- Grep "/rite:issue:resume" → README.md L142, docs/getting-started.md L88, plugins/rite/commands/init.md L23
+- 全 3 ファイルを Edit ツールで /rite:resume に更新
+- 同じブランチでステージし、実装と同じコミットに含める
+```
+
+**Anti-pattern**:
+
+```text
+❌ 「ドキュメント追従は別 Issue として後で対応します」
+❌ 「README の記述が古いですが、レビュアーが指摘してくれるはずです」
+❌ AskUserQuestion: 「README を更新しますか？」
+```
+
+---
+
 ### question_self_check (Self-Check Before Asking)
 
 **Summary**: Self-check whether the question is truly necessary before asking.
@@ -463,6 +508,7 @@ OK patterns:
 - [ ] `dead_code_hygiene`: Is dead code being left behind?
 - [ ] `no_unnecessary_fallback`: Are there fallbacks that hide failure causes?
 - [ ] `issue_accountability`: Are any discovered problems being ignored?
+- [ ] `documentation_consistency`: Has related documentation been updated for any user-visible spec changes?
 
 ### PR Review
 
