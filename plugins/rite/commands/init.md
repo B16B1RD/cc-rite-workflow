@@ -322,6 +322,23 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
 
+**Step 5**: Append an active `wiki:` section to the generated `rite-config.yml` (required for Phase 4.7 Wiki auto-initialization — #491). Use the Edit tool to append the following block at the end of the file:
+
+```yaml
+
+# Experience Wiki settings
+# See docs/designs/experience-heuristics-persistence-layer.md for full specification.
+# Wiki is opt-out: default is enabled. Set `enabled: false` to disable.
+wiki:
+  enabled: true               # true to enable Wiki features (default: true, opt-out)
+  branch_strategy: "separate_branch"  # "separate_branch" (recommended) or "same_branch"
+  branch_name: "wiki"         # Branch name for Wiki data (when branch_strategy is "separate_branch")
+  auto_ingest: true           # Auto-ingest on review/fix/close (default: true)
+  auto_query: true            # Auto-query on start/review/fix/implement (default: true)
+```
+
+Display `{i18n:init_wiki_config_added}`.
+
 #### 4.1.3 Upgrade Existing Configuration
 
 > This phase is executed when `--upgrade` is specified. It upgrades an existing `rite-config.yml` to the latest schema version while preserving user-customized values.
@@ -359,8 +376,8 @@ Compare current config against the template and classify each key:
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** (review.debate, review.fact_check, verification, etc.) | **Add** — insert from template with default values |
-| **Advanced section** (tdd, parallel, team, metrics, safety, wiki, investigate) | **Add as comments** — insert commented-out with default values |
+| **Missing section** (review.debate, review.fact_check, verification, wiki, etc.) | **Add** — insert from template with default values |
+| **Advanced section** (tdd, parallel, team, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Step 5: Preview and confirm**
@@ -393,9 +410,16 @@ If the user confirms:
 2. Remove deprecated keys using the Edit tool. Display "{i18n:init_upgrade_deprecated_removed}".
 3. Add missing sections from the template using the Edit tool. Display "{i18n:init_upgrade_sections_added}".
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
-5. Preserve all user-customized values
+5. **If `wiki:` section is absent** (#491): append an active `wiki:` section (same block as Phase 4.1.2 Step 5) so Phase 4.7 can auto-initialize Wiki. Display `{i18n:init_wiki_config_added}`.
+6. Preserve all user-customized values
 
-Display "{i18n:init_upgrade_applied}" and exit. (`--upgrade` skips Phases 1-3, so Phase 4.2+ context is unavailable.)
+Display "{i18n:init_upgrade_applied}".
+
+**Step 7: Run Phase 4.7 (#491)**
+
+On the `--upgrade` path, after applying config changes, execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization-491) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
+
+After Phase 4.7 completes (or is skipped), display a brief status line (`{i18n:init_summary_wiki_<status>}`) and exit. (`--upgrade` skips Phases 1-3 and Phase 5 full report, so only the Wiki status is reported.)
 
 If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
 
@@ -958,6 +982,116 @@ Display: `✅ Work memory directory initialized (.rite-work-memory/)`
 
 ---
 
+## Phase 4.7: Wiki Initialization (#491)
+
+Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki:init` manually. Executed after Phase 4.6 (new install) and after the Phase 4.1.3 Apply step (`--upgrade` path).
+
+> **Non-blocking contract**: Phase 4.7 failure (including Skill invocation failure) MUST NOT abort `/rite:init`. On failure, display a warning and continue to Phase 5. The flow always reports Wiki status via the completion report (Phase 5).
+
+> **Status enum** (consumed by Phase 5):
+>
+> | Status | Meaning |
+> |--------|---------|
+> | `initialized` | Newly initialized in this `/rite:init` invocation |
+> | `already initialized` | Pre-existing Wiki detected and skipped |
+> | `skipped (disabled)` | `wiki.enabled: false` detected |
+> | `failed` | Post-check after Skill invocation found Wiki still uninitialized |
+
+Retain the resolved status in a context-local variable `wiki_status` for Phase 5.
+
+### 4.7.1 Wiki Enabled Check
+
+Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `commands/wiki/init.md` Phase 1.1 logic.
+
+```bash
+wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
+wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
+case "$wiki_enabled" in
+  false|no|0) wiki_enabled="false" ;;
+  true|yes|1) wiki_enabled="true" ;;
+  *) wiki_enabled="true" ;;  # opt-out default
+esac
+echo "wiki_enabled=$wiki_enabled"
+```
+
+**When `wiki_enabled=false`**:
+- Display `{i18n:init_wiki_disabled}`
+- Set `wiki_status=skipped (disabled)`
+- **Skip the rest of Phase 4.7** and proceed to Phase 5
+
+**When `wiki_enabled=true`**: Display `{i18n:init_wiki_start}` and proceed to 4.7.2.
+
+### 4.7.2 Pre-check: Existing Wiki Detection
+
+Determine if Wiki is already initialized. The detection logic depends on `branch_strategy` from `rite-config.yml`:
+
+- `separate_branch` (default): check for `wiki` branch (local or remote)
+- `same_branch`: check for `.rite/wiki/SCHEMA.md`
+
+```bash
+wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+wiki_branch="${wiki_branch:-wiki}"
+
+branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+branch_strategy="${branch_strategy:-separate_branch}"
+
+if [ "$branch_strategy" = "separate_branch" ]; then
+  if git rev-parse --verify "origin/${wiki_branch}" >/dev/null 2>&1 || \
+     git rev-parse --verify "${wiki_branch}" >/dev/null 2>&1; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+else
+  if [ -f ".rite/wiki/SCHEMA.md" ]; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+fi
+```
+
+**When `WIKI_INITIALIZED=true`**:
+- Display `{i18n:init_wiki_already_initialized}` (substitute `{detection}` with the matched branch name or file path)
+- Set `wiki_status=already initialized`
+- **Skip to Phase 5** (do NOT invoke Skill — preserves existing Wiki content per AC-2)
+
+**When `WIKI_INITIALIZED=false`**: Proceed to 4.7.3.
+
+### 4.7.3 Invoke rite:wiki:init Skill
+
+Display `{i18n:init_wiki_invoking}`, then invoke the Skill tool:
+
+```
+skill: "rite:wiki:init"
+```
+
+> **Rationale**: Claude Code's Skill tool does not surface a return value, so failure detection is done via post-check (4.7.4). Do NOT re-implement Wiki initialization logic here — always delegate to the Skill.
+
+### 4.7.4 Post-check: Confirm Initialization
+
+After the Skill returns, re-run the 4.7.2 detection logic to confirm the Wiki was actually created. This is the canonical success/failure determination.
+
+Re-execute the exact same bash block as 4.7.2. Then:
+
+**When `WIKI_INITIALIZED=true`**:
+- Display `{i18n:init_wiki_success}`
+- Set `wiki_status=initialized`
+
+**When `WIKI_INITIALIZED=false`** (Skill invocation failed or did not complete):
+- Display `{i18n:init_wiki_failed_nonblocking}` (warning only — do NOT exit)
+- Set `wiki_status=failed`
+
+**→ Proceed to Phase 5 (non-blocking regardless of outcome)**.
+
+---
+
 ## Phase 5: Completion Report
 
 ### Display Configuration Summary
@@ -974,6 +1108,12 @@ Display: `✅ Work memory directory initialized (.rite-work-memory/)`
 - {i18n:init_summary_hooks}
 <!-- If hooks were skipped due to NOT_FOUND in Phase 4.5.0: -->
 - {i18n:init_summary_hooks_skipped}
+<!-- Wiki status from Phase 4.7 (#491). Map wiki_status to i18n key:
+     initialized         -> init_summary_wiki_initialized
+     already initialized -> init_summary_wiki_already
+     skipped (disabled)  -> init_summary_wiki_skipped_disabled
+     failed              -> init_summary_wiki_failed -->
+- {i18n:init_summary_wiki_<status>}
 
 ## {i18n:init_summary_next_steps}
 1. {i18n:init_summary_step1}
