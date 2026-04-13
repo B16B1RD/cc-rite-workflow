@@ -4,8 +4,8 @@ description: |
   rite Wiki layer — project-specific experiential knowledge persistence based on the
   LLM Wiki pattern (Karpathy). Use when the user asks to ingest review/fix/issue
   outcomes into Wiki pages, query accumulated experiential knowledge by keyword,
-  lint the Wiki for contradictions/stale pages/orphans, or initialize the Wiki
-  structure.
+  lint the Wiki for contradictions, stale pages, orphans, missing concepts, and
+  broken references, or initialize the Wiki structure.
   Activates on "wiki", "ingest", "query", "lint", "経験則", "知識ページ",
   "Wiki 蓄積", "経験則を残す", "経験則を参照", "Wiki 検索", "Wiki Lint",
   "Wiki 品質", "wiki:init", "wiki:ingest", "wiki:query", "wiki:lint",
@@ -60,8 +60,9 @@ wiki:
   enabled: false                       # opt-in (default false)
   branch_strategy: "separate_branch"   # separate_branch (推奨) or same_branch
   branch_name: "wiki"                  # separate_branch 時のブランチ名
-  auto_ingest: true                    # 後続 Issue で実装予定
-  auto_query: true                     # 後続 Issue で実装予定
+  auto_ingest: true                    # Auto-ingest on review/fix/close
+  auto_query: true                     # Auto-query on start/review/fix/implement
+  auto_lint: true                      # Ingest 完了時の自動品質チェック (default true)
 ```
 
 ## トリガースクリプト

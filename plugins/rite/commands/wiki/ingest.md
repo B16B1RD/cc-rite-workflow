@@ -164,7 +164,7 @@ LLM は本 Phase で以下のカウンター変数を会話コンテキストに
 | `n_pages_created` | `0` | Phase 4 で「新規ページ作成」を決定するごとに +1 |
 | `n_pages_updated` | `0` | Phase 4 で「既存ページ更新」を決定するごとに +1 |
 | `n_skipped` | `0` | Phase 4 で「スキップ」を決定するごとに +1 |
-| `n_warnings` | `0` | Phase 8 で矛盾検出するごとに +1 |
+| `n_warnings` | `0` | Phase 8 で Lint の全検出件数合計（矛盾・陳腐化・孤児・欠落・壊れた相互参照）を加算する。`n_warnings += n_contradictions + n_stale + n_orphans + n_missing + n_broken_refs` |
 | `processed_files[]` | `[]` (空配列) | Phase 5.0 step 7 で Write/Edit 処理後に append (詳細・プレフィックス規約は Phase 5.0 step 7 参照) |
 
 これらの値は Phase 5 の `git commit -m` 実行時にリテラル整数として **必ず置換** すること (placeholder のまま commit してはならない)。
@@ -854,26 +854,57 @@ echo "auto_lint=$auto_lint"
 
 ### 8.2 Lint エンジンの呼び出し
 
+> **ブランチ状態の前提**: 本 Phase は Phase 5 の wiki ブランチ切替の**内側**で呼ばれることを前提とします。具体的には Phase 5 Block A で wiki ブランチに切替済み、Block B の dev ブランチ復帰は Phase 8 完了後に実行します。lint.md Phase 8.2 は `git branch --show-current` で state-gated 判定を行うため、本 Phase の呼び出し時点で wiki ブランチにチェックアウト済みであれば `write_mode=direct_edit` 経路で log.md に追記されます。
+
 LLM は `skill: "rite:wiki:lint", args: "--auto"` 形式で `/rite:wiki:lint` を `--auto` モードで呼び出します。`--auto` モードでは:
 
 - 出力が最小化される（`Lint: contradictions={n}, stale={n}, orphans={n}, missing={n}, broken_refs={n}` 形式の 1 行）
 - 検出件数が全て 0 の場合は stdout が空
-- log.md への追記は現在のブランチコンテキスト（= Ingest 時点の wiki ブランチ or 同一ブランチ）に対して行われる
+- log.md への追記は現在のブランチコンテキスト（wiki ブランチ）に対して行われる
 - exit code は常に 0（非ブロッキング）
 
-Ingest の trap/cleanup の内側で呼び出すため、Lint 側で追加のブランチ切替は発生しません。
+### 8.3 Lint 実行結果の取得とパース
 
-### 8.3 検出結果の Ingest 完了レポートへの統合
+LLM は Lint Skill の呼び出し結果（stdout + exit code）を会話コンテキストに保持し、以下の手順でパースします:
 
-`/rite:wiki:lint --auto` の出力を会話コンテキストに保持し、Phase 9 の完了レポートに以下のように埋め込みます:
+1. **exit code の確認**: Lint Skill 呼び出しの exit code が 0 以外の場合、警告として扱い `n_warnings += 1` を加算して以降のパースは skip します:
+
+   ```
+   WARNING: /rite:wiki:lint --auto が非ゼロ exit で終了しました (rc=$lint_rc)。
+     Ingest 完了レポートには「Lint 結果: 実行失敗」と表示します。
+   ```
+
+2. **stdout のパース**: exit 0 の場合、stdout の 1 行目を正規表現 `^Lint: contradictions=([0-9]+), stale=([0-9]+), orphans=([0-9]+), missing=([0-9]+), broken_refs=([0-9]+)$` で抽出し、5 つの変数を会話コンテキストに保持します:
+
+   | 変数 | 正規表現 group |
+   |------|---------------|
+   | `n_contradictions` | group 1 |
+   | `n_stale` | group 2 |
+   | `n_orphans` | group 3 |
+   | `n_missing` | group 4 |
+   | `n_broken_refs` | group 5 |
+
+3. **stdout が空の場合**: Lint は検出 0 件で終了したとみなし、5 変数すべて `0` に設定します。
+
+4. **1 行目が正規表現にマッチしない場合**: Lint 側のフォーマット変更を検出した警告として扱い、以下を stderr に出力してから全変数を `0` に設定します（silent に 0 件と誤認することを防ぐ）:
+
+   ```
+   WARNING: /rite:wiki:lint --auto の出力形式が期待と異なります。
+     実際の出力: {first_line}
+     期待される形式: Lint: contradictions=N, stale=N, orphans=N, missing=N, broken_refs=N
+   ```
+
+### 8.4 Ingest 完了レポートへの統合
+
+Phase 9 の完了レポートに以下のように埋め込みます:
 
 ```
-Lint 結果: 矛盾 {n} 件 / 陳腐化 {n} 件 / 孤児 {n} 件 / 欠落 {n} 件 / 壊れた相互参照 {n} 件
+Lint 結果: 矛盾 {n_contradictions} 件 / 陳腐化 {n_stale} 件 / 孤児 {n_orphans} 件 / 欠落 {n_missing} 件 / 壊れた相互参照 {n_broken_refs} 件
 ```
 
-**矛盾以外の検出が 0 件の場合**: 「Lint 結果: 問題なし」とのみ表示します。
+**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示します。**矛盾以外の 1 件以上が検出された場合は必ず全カテゴリを表示**します（旧「矛盾以外の検出が 0 件の場合」条件は論理エラーのため削除）。
 
-### 8.4 `n_warnings` カウンタへの加算
+### 8.5 `n_warnings` カウンタへの加算
 
 Phase 2.1 で初期化した `n_warnings` に、Lint の全検出件数の合計を加算します:
 
@@ -881,7 +912,7 @@ Phase 2.1 で初期化した `n_warnings` に、Lint の全検出件数の合計
 n_warnings += n_contradictions + n_stale + n_orphans + n_missing + n_broken_refs
 ```
 
-これにより Phase 9 の完了レポートの「矛盾警告: {n_warnings} 件」欄に Lint 検出件数が反映されます。
+これにより Phase 9 の完了レポートの「Wiki 品質警告」欄に Lint 検出件数が反映されます。
 
 **詳細な修正対応**: 検出結果の詳細確認と対応は、Ingest 完了後に `/rite:wiki:lint`（`--auto` なし）で再実行して取得してください。
 
@@ -899,7 +930,7 @@ Wiki Ingest が完了しました。
 - 新規作成したページ: {n_pages_created} 件
 - 更新したページ: {n_pages_updated} 件
 - スキップした Raw Source: {n_skipped} 件
-- 矛盾警告: {n_warnings} 件
+- Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing} / 壊れた相互参照 {n_broken_refs}）
 
 新規/更新ページ:
 - {path1} ({action1})
