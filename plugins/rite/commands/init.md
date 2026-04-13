@@ -767,7 +767,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 
 **Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 8):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |
