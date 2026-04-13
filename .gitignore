@@ -28,7 +28,6 @@ temp/
 .rite-compact-state.lockdir/
 .rite-compact-state.tmp.*
 .rite-work-memory/
-.rite-context-counter
 .rite-session-id
 .rite-guidance-shown
 .rite-plugin-root

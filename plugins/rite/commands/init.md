@@ -360,7 +360,7 @@ Compare current config against the template and classify each key:
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
 | **Missing section** (review.debate, review.fact_check, verification, etc.) | **Add** — insert from template with default values |
-| **Advanced section** (tdd, parallel, team, metrics, context_optimization, safety, wiki, investigate) | **Add as comments** — insert commented-out with default values |
+| **Advanced section** (tdd, parallel, team, metrics, safety, wiki, investigate) | **Add as comments** — insert commented-out with default values |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Step 5: Preview and confirm**
@@ -758,7 +758,6 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
 | PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM |
-| PostToolUse | `context-pressure.sh` | `""` | Context pressure monitoring (#889) |
 
 **Check procedure**:
 
@@ -768,7 +767,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 
 **Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 8):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |
@@ -796,7 +795,6 @@ Add the following hooks to `.claude/settings.local.json`:
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
 | PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM |
-| PostToolUse | `bash {hooks_dir}/context-pressure.sh` | Context pressure monitoring (#889) |
 
 **Hook registration format** (merge into existing settings without overwriting other entries):
 
@@ -878,15 +876,6 @@ Add the following hooks to `.claude/settings.local.json`:
             "command": "bash {hooks_dir}/post-tool-wm-sync.sh"
           }
         ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash {hooks_dir}/context-pressure.sh"
-          }
-        ]
       }
     ]
   }
@@ -897,8 +886,8 @@ Add the following hooks to `.claude/settings.local.json`:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks that do NOT contain `rite/hooks/` in their command, preserve them as-is. Do not overwrite or remove user-defined hooks.
 - **rite hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
 - **Missing rite hooks**: If any of the required rite hooks (Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them.
-- **Obsolete hooks**: If `post-compact-guard.sh` exists in PreToolUse, **remove** it (replaced by PostCompact `post-compact.sh` in #133).
-- **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `context-pressure.sh` uses `"matcher": ""` to fire on all tool calls. All other hooks use `"matcher": ""`. When multiple PreToolUse or PostToolUse entries exist (different matchers), they are separate array elements.
+- **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は #133 で `post-compact.sh` に置き換え済み。`context-pressure.sh` は #481 で廃止済み。
+- **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. All other hooks use `"matcher": ""`.
 - **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
 
 ### 4.5.3 Make Scripts Executable
@@ -906,7 +895,7 @@ Add the following hooks to `.claude/settings.local.json`:
 Attempt to set executable permissions regardless of source type (LOCAL or MARKETPLACE):
 
 ```bash
-chmod +x {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
+chmod +x {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
 ```
 
 If `chmod` fails (e.g., permission denied, read-only filesystem), display a warning and continue:
@@ -920,7 +909,7 @@ If hooks fail to run, manually run: chmod +x {hooks_dir}/*.sh
 Verify the hook scripts exist and are executable:
 
 ```bash
-ls -la {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
+ls -la {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
 ```
 
 If any file is missing or lacks execute permission, display a warning and continue to Phase 5:

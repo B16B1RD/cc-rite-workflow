@@ -446,30 +446,6 @@ The e2e flow must minimize context consumption to complete within a single sessi
 | `rite:pr:fix` | `[fix:{result}]` + change summary | 2 |
 | `rite:pr:ready` | `[ready:completed]` | 1 | <!-- ready.md の出力は元々1行程度のため E2E Output Minimization セクション不要 -->
 
-### Context Management
-
-> **Reference**: [Review Context Optimization](../pr/references/review-context-optimization.md)
-
-**Pressure detection (heuristics)** (counted via `.rite-context-counter` file, managed by `context-pressure.sh` PostToolUse hook; thresholds are configurable via `rite-config.yml` `context_optimization.pressure_thresholds`):
-- Tool calls >= YELLOW threshold (default: 60) → diff optimization + output minimization hint
-- Tool calls >= ORANGE threshold (default: 90) → output minimization mode (skip optional displays)
-- Tool calls >= RED threshold (default: 120) → context optimization (per-file diffs, history summarization, /compact recommendation)
-- Read >5000 lines or >10 files → omit unnecessary info
-- diff >2000 → file splitting in review
-- Previous review comment exists → verification mode (if `review.loop.verification_mode: true`; default: `false` — full review every cycle)
-
-Count: Tool results in history (parallel=1). Read=sum max line numbers. Changed=additions+deletions.
-
-**Optimizations**: Per-file diff, omit error details, summarize loops ("Cycle N: X→fix"), incremental retrieval. Display "⚠️ Context optimization mode".
-
-**Context pressure guard for review-fix loop**: During review/fix phases (`phase5_review`, `phase5_fix`, `phase5_post_review`, `phase5_post_fix`), `context-pressure.sh` adjusts thresholds by +30 and outputs ORANGE/RED messages that prohibit loop interruption. This prevents context optimization from compromising review quality.
-
-**Split/termination**:
-- >50 files → new session recommended
-- Multiple features → split Issue
-
-Resume via work memory (`/rite:resume` or `/rite:issue:start`).
-
 ### Flow
 
 ```
@@ -530,14 +506,13 @@ If stop-guard.sh is NOT registered (missing or stale path), register all rite ho
 | SessionEnd | `bash {plugin_root}/hooks/session-end.sh` | `""` |
 | PreToolUse | `bash {plugin_root}/hooks/pre-tool-bash-guard.sh` | `"Bash"` |
 | PostToolUse | `bash {plugin_root}/hooks/post-tool-wm-sync.sh` | `"Bash"` |
-| PostToolUse | `bash {plugin_root}/hooks/context-pressure.sh` | `""` |
 
 Each hook entry uses the format: `{"matcher": "", "hooks": [{"type": "command", "command": "bash {plugin_root}/hooks/{script}"}]}`. For hooks with `"Bash"` matcher, use `{"matcher": "Bash", ...}`. See [init.md Phase 4.5.2](../init.md) for full reference.
 
 **Step 4**: Ensure scripts are executable:
 
 ```bash
-chmod +x {plugin_root}/hooks/stop-guard.sh {plugin_root}/hooks/pre-compact.sh {plugin_root}/hooks/post-compact.sh {plugin_root}/hooks/session-start.sh {plugin_root}/hooks/session-end.sh {plugin_root}/hooks/pre-tool-bash-guard.sh {plugin_root}/hooks/post-tool-wm-sync.sh {plugin_root}/hooks/context-pressure.sh 2>/dev/null || true
+chmod +x {plugin_root}/hooks/stop-guard.sh {plugin_root}/hooks/pre-compact.sh {plugin_root}/hooks/post-compact.sh {plugin_root}/hooks/session-start.sh {plugin_root}/hooks/session-end.sh {plugin_root}/hooks/pre-tool-bash-guard.sh {plugin_root}/hooks/post-tool-wm-sync.sh 2>/dev/null || true
 ```
 
 If `chmod` fails, display `⚠️ Hook scripts may not be executable. Flow may require manual continuation after sub-skill returns.` If hook registration fails (e.g., file permission error), display the same warning and continue — 🚨 Mandatory After instructions provide textual fallback.
@@ -863,70 +838,6 @@ bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopte
 **Local work memory sync rule**: At each phase transition within the review-fix loop (5.4.1, 5.4.3, 5.4.4, 5.4.6), after updating `.rite-flow-state`, also sync phase to the local work memory file (`.rite-work-memory/issue-{n}.md`). Use the self-resolving wrapper `local-wm-update.sh` with appropriate `WM_*` env vars. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for the recommended pattern.
 
 **Issue comment backup sync rule**: After each review cycle completes (at 5.4.3 and 5.4.6), sync local work memory to the Issue comment as a backup. Use the existing `gh api` PATCH pattern from `fix.md` Phase 4.5.2. This ensures the Issue comment reflects the latest phase for recovery after context compaction.
-
-#### 5.4.0 Agent Delegation Option (Context Pressure Mitigation)
-
-When context pressure is detected (tool call count > `context_optimization.agent_delegation_threshold` from rite-config.yml, default: 80), the review-fix loop can be delegated to an Agent to isolate its context consumption from the main flow.
-
-**Note**: `agent_delegation_threshold` is independent from `pressure_thresholds` (YELLOW/ORANGE/RED). Pressure thresholds control graduated warnings via the `context-pressure.sh` hook, while `agent_delegation_threshold` controls whether the review-fix loop is offloaded to a sub-agent. Both use the same `.rite-context-counter` value but serve different purposes.
-
-**Condition**: Check `.rite-context-counter` value. If above threshold AND `context_optimization.agent_delegation: true` in rite-config.yml (default: false):
-
-```
-⚠️ コンテキスト圧迫を検出しました（{count} tool calls）。
-レビュー・修正ループをエージェントに委譲して、メインコンテキストを保護します。
-```
-
-**Agent delegation flow**:
-1. Save current state to `.rite-flow-state` and local work memory
-2. Spawn a general-purpose Agent with the following prompt:
-   ```
-   Execute the review-fix loop for PR #{pr_number} (Issue #{issue_number}).
-
-   Use the Skill tool to invoke each skill. The exact invocation format is:
-
-   - Review: `skill: "rite:pr:review", args: "{pr_number}"`
-   - Fix: `skill: "rite:pr:fix"`
-
-   Steps:
-   1. Invoke `skill: "rite:pr:review", args: "{pr_number}"`
-   2. Based on the result pattern:
-      - [review:mergeable] → return "AGENT_RESULT: [review:mergeable]"
-      - [review:fix-needed:{n}] → invoke `skill: "rite:pr:fix"`, then re-review (loop until 0 findings)
-   3. Return final result: "AGENT_RESULT: [review:{final_result}] findings={total}"
-   ```
-3. Parse `AGENT_RESULT` from agent output. If the agent output does not contain a valid `AGENT_RESULT:` pattern (agent error, timeout, or unexpected output):
-
-   **Fallback handling**:
-   ```
-   ⚠️ エージェント委譲の結果を取得できませんでした。
-   エージェント出力に AGENT_RESULT パターンが見つかりません。
-   ```
-
-   Present options via `AskUserQuestion`:
-   - **inline 実行にフォールバック（推奨）**: Execute 5.4.1-5.4.6 inline as normal (proceed to 5.4.1)
-   - **完了報告に遷移**: Skip review-fix loop and proceed to Phase 5.6 (completion report with review skipped)
-   - **手動介入**: Terminate and let the user handle manually
-
-   Update `.rite-flow-state` based on the chosen option:
-
-   | Option | `--phase` | `--next` |
-   |--------|-----------|----------|
-   | inline フォールバック | `phase5_review` | `Agent delegation failed. Executing 5.4.1-5.4.6 inline. Proceed to Phase 5.4.1 (review). Do NOT stop.` |
-   | 完了報告に遷移 | `phase5_aborted` | `Agent delegation failed. User chose to skip review. Proceed to Phase 5.6 (completion report). Do NOT stop.` |
-   | 手動介入 | `phase5_manual` | `Agent delegation failed. User chose manual intervention. Terminate.` |
-
-   ```bash
-   bash plugins/rite/hooks/flow-state-update.sh create \
-     --phase "{phase_value}" --issue {issue_number} --branch "{branch_name}" \
-     --pr {pr_number} \
-     --next "{next_action_value}"
-   ```
-
-4. Update `.rite-flow-state` with agent results (pr_number)
-5. Continue to Phase 5.5 (Ready) based on the result
-
-**When agent delegation is disabled or threshold not reached**: Execute 5.4.1-5.4.6 inline as before.
 
 #### 5.4.1 Review
 

@@ -100,9 +100,6 @@ if acquire_wm_lock "$LOCKDIR"; then
   release_wm_lock "$LOCKDIR"
 fi
 
-# --- Reset context counter for fresh count after compact ---
-rm -f "$STATE_ROOT/.rite-context-counter" 2>/dev/null || true
-
 # --- stderr: user-facing notification ---
 echo "[rite] compact 後の自動復帰を実行中 (Issue #${ISSUE}, Phase: ${PHASE})" >&2
 
