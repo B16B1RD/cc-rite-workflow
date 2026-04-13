@@ -389,6 +389,68 @@ Status: Done
 関連 PR: #{pr_number} (Merged)
 ```
 
+Proceed to Phase 4.4.W.
+
+### 4.4.W Wiki Ingest Trigger (Conditional)
+
+> **Reference**: [Wiki Ingest](../wiki/ingest.md) — `wiki-ingest-trigger.sh` API
+
+After completing the Issue close actions, trigger Wiki Ingest to capture retrospective knowledge from this Issue.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Skip silently otherwise.
+
+**Step 1**: Check Wiki configuration:
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_ingest=""
+if [[ -n "$wiki_section" ]]; then
+  auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
+```
+
+If `wiki_enabled=false` or `auto_ingest=false`, skip this section and proceed to Phase 4.5.
+
+**Step 2**: Generate a retrospective Raw Source from the Issue context:
+
+The retrospective content includes: Issue title, key decisions made during implementation, unexpected difficulties encountered, and effective approaches used.
+
+```bash
+# {plugin_root} はリテラル値で埋め込む
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+cat <<'RETRO_EOF' > "$tmpfile"
+## Issue Close Retrospective
+
+- **Issue**: #{issue_number} — {title}
+- **Type**: retrospective
+- **Closed at**: {timestamp}
+
+### Summary
+{retrospective_summary — Issue の作業中に学んだこと、予想外の困難、有効だったアプローチを LLM が Issue body + work memory から要約して埋め込む}
+RETRO_EOF
+
+bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
+  --type retrospectives \
+  --source-ref "issue-{issue_number}" \
+  --content-file "$tmpfile" \
+  --issue-number {issue_number} \
+  --title "Issue #{issue_number} close retrospective" \
+  2>/dev/null || true
+```
+
+**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are silenced by `|| true`. Ingest failure does not block the close workflow.
+
 Proceed to Phase 4.5.
 
 ---

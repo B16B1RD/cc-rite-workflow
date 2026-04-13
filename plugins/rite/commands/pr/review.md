@@ -1365,6 +1365,52 @@ The behavior depends on the Security Expert's selection type:
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before reading plugin files.
 
+### 4.0.W Wiki Query Injection (Conditional)
+
+> **Reference**: [Wiki Query](../wiki/query.md) — `wiki-query-inject.sh` API
+
+Before loading reviewer skills, inject relevant experiential knowledge from the Wiki to enrich reviewer context.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_query: true` in `rite-config.yml`. Skip silently otherwise.
+
+**Step 1**: Check Wiki configuration:
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_query=""
+if [[ -n "$wiki_section" ]]; then
+  auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
+```
+
+If `wiki_enabled=false` or `auto_query=false`, skip this section and set `{wiki_context}` to empty string in Phase 4.5.
+
+**Step 2**: Generate keywords from the PR context and invoke the query:
+
+Keywords are derived from: changed file paths (from Phase 1.2) and file type categories (e.g., `hooks`, `commands`, `review`, `security`).
+
+```bash
+# {plugin_root} はリテラル値で埋め込む
+# {keywords} は変更ファイルパス + ファイル種別をカンマ区切りで生成
+wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
+  --keywords "{keywords}" \
+  --format compact 2>/dev/null) || wiki_context=""
+if [ -n "$wiki_context" ]; then
+  echo "$wiki_context"
+fi
+```
+
+**Step 3**: If `wiki_context` is non-empty, retain it for injection into the review instruction template (Phase 4.5) via the `{wiki_context}` placeholder. If empty, set `{wiki_context}` to empty string (the placeholder section will be omitted).
+
 ### 4.1 Dynamic Loading of Expert Skills
 
 Load each selected reviewer's skill file using the Read tool.
@@ -1589,6 +1635,7 @@ Generate instructions for each reviewer.
 | `{change_summary}` | Scale information from Phase 1.2.1 | Used only for large diffs. Change summary table |
 | `{doc_heavy_pr}` | Phase 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `skills/reviewers/tech-writer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
+| `{wiki_context}` | Phase 4.0.W Wiki Query result | Non-empty when Wiki is enabled and related experiential knowledge was found. Empty string when Wiki is disabled, `auto_query` is false, or no matches found |
 
 **`{diff_content}` by scale:** Small: entire diff | Medium: files matching `{relevant_files}` | Large: `{change_summary}` + matching files + Read tool instruction
 
@@ -1631,6 +1678,10 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 ## Doc-Heavy PR Mode (Conditional — 適用時のみ非空)
 <!-- reviewer_type == tech-writer かつ doc_heavy_pr == true のときのみ内容が入る。それ以外は空文字列。 -->
 {doc_heavy_mode_instructions}
+
+## プロジェクト経験則（Wiki — 該当時のみ非空）
+<!-- wiki.enabled && wiki.auto_query のとき、Phase 4.0.W で取得した経験則。空の場合はこのセクション自体を省略 -->
+{wiki_context}
 
 ## 出力フォーマット
 以下の形式で評価を出力してください:
@@ -3649,6 +3700,54 @@ PR #{number} のレビューを完了しました
 詳細はPRコメントを確認してください:
 {pr_url}
 ```
+
+#### 6.5.W Wiki Ingest Trigger (Conditional)
+
+> **Reference**: [Wiki Ingest](../wiki/ingest.md) — `wiki-ingest-trigger.sh` API
+
+After outputting the completion report, trigger Wiki Ingest to capture review finding patterns as experiential knowledge.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Skip silently otherwise.
+
+**Step 1**: Check Wiki configuration (same pattern as Phase 4.0.W Step 1). If `wiki_enabled=false` or `auto_ingest=false`, skip this section.
+
+**Step 2**: Generate a review Raw Source from the review results:
+
+The review content includes: PR number, reviewer types, finding categories, severity distribution, and key patterns detected.
+
+```bash
+# {plugin_root} はリテラル値で埋め込む
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+cat <<'REVIEW_EOF' > "$tmpfile"
+## Review Results
+
+- **PR**: #{pr_number} — {title}
+- **Type**: review
+- **Reviewed at**: {timestamp}
+- **Reviewers**: {reviewer_list}
+
+### Finding Patterns
+{finding_summary — レビュー結果の指摘パターン、頻出エラー、プロジェクト固有の癖を LLM がレビュー結果から要約して埋め込む}
+
+### Severity Distribution
+- CRITICAL: {count}
+- HIGH: {count}
+- MEDIUM: {count}
+- LOW: {count}
+REVIEW_EOF
+
+bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
+  --type reviews \
+  --source-ref "pr-{pr_number}" \
+  --content-file "$tmpfile" \
+  --pr-number {pr_number} \
+  --title "PR #{pr_number} review results" \
+  2>/dev/null || true
+```
+
+**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are silenced by `|| true`. Ingest failure does not block the review workflow.
 
 #### 6.5.1 Next Step Branching by Invocation Source
 
