@@ -779,6 +779,38 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-042: Partial-write rollback verification (cycle 10 CRITICAL-3 fix)
+# Verifies that after integrity check exit 3, target_file is auto-removed
+# by the rollback trap (no orphan truncated file left for next ingest cycle).
+# --------------------------------------------------------------------------
+echo "TC-042: Partial-write rollback trap auto-removes target_file on exit 3"
+dir42="$TEST_DIR/tc42"
+mkdir -p "$dir42"
+cat > "$dir42/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+# Reuse TC-027 trigger: whitespace-only body fires integrity check exit 3 after
+# target_file has been created (body truncated). Without rollback the file persists.
+printf '\n \n\n' > "$dir42/whitespace-only.md"
+( cd "$dir42" && bash "$HOOK" --type reviews --source-ref pr-rollback --content-file whitespace-only.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+# Assert exit 3 (integrity check failure path)
+if [ $rc -ne 3 ]; then
+  fail "Expected exit 3 (integrity check), got rc=$rc, stderr=$(cat "$dir42/err.log")"
+else
+  # Post-condition: target_file must be removed by rollback trap
+  remaining_count=$(find "$dir42/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${remaining_count:-0}" -ne 0 ]; then
+    fail "Rollback trap did not remove target_file: found $remaining_count residual .md file(s) in raw/reviews/"
+  elif ! grep -q 'partial-write rollback' "$dir42/err.log"; then
+    fail "Rollback trap fired but INFO message 'partial-write rollback により' is missing from stderr"
+  else
+    pass "exit 3 + rollback removed target_file + INFO message emitted"
+  fi
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
