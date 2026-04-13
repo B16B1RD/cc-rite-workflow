@@ -4527,7 +4527,26 @@ After outputting the completion report, trigger Wiki Ingest to capture fix patte
 
 **Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Skip silently otherwise.
 
-**Step 1**: Check Wiki configuration (same pattern as Phase 0.5.W Step 1). If `wiki_enabled=false` or `auto_ingest=false`, skip this section.
+**Step 1**: Check Wiki configuration (same pattern as Phase 0.5.W Step 1, replacing `auto_query` with `auto_ingest`):
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_ingest=""
+if [[ -n "$wiki_section" ]]; then
+  auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
+```
+
+If `wiki_enabled=false` or `auto_ingest=false`, skip this section.
 
 **Step 2**: Generate a fix Raw Source from the fix results:
 
