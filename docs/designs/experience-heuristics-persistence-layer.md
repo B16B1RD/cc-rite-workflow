@@ -183,7 +183,7 @@ plugins/rite/
 | **Wiki の肥大化** | Schema による蓄積規約が不明確だと低品質な経験則が蓄積される。Lint サイクルで定期的に品質を維持する |
 | **Git ブランチ管理** | Wiki ブランチと開発ブランチの同期タイミング、コンフリクト解決戦略が必要 |
 | **初期状態** | 新規プロジェクトや Wiki 未初期化時のフォールバック動作を定義する |
-| **後方互換性** | Wiki 機能は opt-in。`rite-config.yml` の `wiki.enabled: false`（デフォルト）で既存動作に影響しない |
+| **後方互換性** | Wiki 機能は opt-out（デフォルト有効）。Wiki 未初期化時は hook が非ブロッキングに exit 0 するため既存動作に影響しない。明示的に `wiki.enabled: false` を設定すれば従来通り無効化可能 |
 
 <!-- Section ID: SPEC-OUT-OF-SCOPE -->
 ## スコープ外

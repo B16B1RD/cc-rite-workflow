@@ -57,7 +57,7 @@ description: |
 
 ```yaml
 wiki:
-  enabled: false                       # opt-in (default false)
+  enabled: true                        # opt-out (default true)
   branch_strategy: "separate_branch"   # separate_branch (推奨) or same_branch
   branch_name: "wiki"                  # separate_branch 時のブランチ名
   auto_ingest: true                    # Auto-ingest on review/fix/close

@@ -138,38 +138,45 @@ case "$FORMAT" in
   *) echo "ERROR: --format must be 'full' or 'compact'" >&2; exit 1 ;;
 esac
 
-# --- Read wiki config (lenient; silent exit on disabled / missing) ---
+# --- Read wiki config (lenient; opt-out: default-on when key absent) ---
 # Same YAML parse pattern as wiki-ingest-trigger.sh (F-23 compliant):
 # awk + section range + inline-comment strip + quote strip.
 #
+# Default policy (#483): Wiki is opt-out. When `wiki:` section is absent
+# or `wiki.enabled` key is not specified, treat as enabled. The downstream
+# index.md fetch step exits silently with empty stdout when Wiki is not
+# initialized, so opt-out remains non-blocking for fresh repositories.
+#
 # stderr capture rationale: silent-swallowing sed/awk failures (permission
-# denied, binary corruption, IO error) causes wiki_enabled to default to
-# false indistinguishably from the legitimate "wiki section absent" path,
-# masking real failures. We mirror the sibling trigger script's pattern:
-# capture stderr to a tempfile, continue on grep no-match (exit 0), but
-# surface legitimate IO errors as a WARNING before falling through.
-if [[ ! -f "rite-config.yml" ]]; then
-  exit 0
+# denied, binary corruption, IO error) must surface as WARNING rather than
+# being conflated with the "key absent" default-on path. We mirror the
+# sibling trigger script's pattern: capture stderr to a tempfile, continue
+# on grep no-match (exit 0), but surface legitimate IO errors as a WARNING
+# before falling through.
+wiki_section=""
+if [[ -f "rite-config.yml" ]]; then
+  if ! _yaml_err=$(mktemp /tmp/rite-wiki-query-yaml-err-XXXXXX); then
+    echo "WARNING: mktemp failed for YAML stderr capture; falling back to /dev/null" >&2
+    echo "  対処: /tmp の permission / read-only / inode 枯渇を確認してください" >&2
+    _yaml_err=""
+  fi
+  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>"${_yaml_err:-/dev/null}"); then
+    :  # success (sed no-match still returns 0)
+  else
+    _sed_rc=$?
+    echo "WARNING: failed to read wiki section from rite-config.yml (sed rc=$_sed_rc)" >&2
+    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
+    echo "  lenient fallback: treating wiki as disabled and exiting silently" >&2
+    exit 0
+  fi
 fi
 
-if ! _yaml_err=$(mktemp /tmp/rite-wiki-query-yaml-err-XXXXXX); then
-  echo "WARNING: mktemp failed for YAML stderr capture; falling back to /dev/null" >&2
-  echo "  対処: /tmp の permission / read-only / inode 枯渇を確認してください" >&2
-  _yaml_err=""
-fi
-if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>"${_yaml_err:-/dev/null}"); then
-  :  # success (sed no-match still returns 0)
-else
-  _sed_rc=$?
-  echo "WARNING: failed to read wiki section from rite-config.yml (sed rc=$_sed_rc)" >&2
-  [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
-  echo "  lenient fallback: treating wiki as disabled and exiting silently" >&2
-  exit 0
-fi
-
-if [[ -z "$wiki_section" ]]; then
-  exit 0
-fi
+# Note (#483): wiki_section may legitimately be empty when:
+#   1. rite-config.yml does not exist
+#   2. rite-config.yml has no `wiki:` section
+# In both cases, opt-out policy treats wiki as enabled. The downstream
+# index.md fetch step exits silently with empty stdout if the Wiki is not
+# initialized, preserving non-blocking behavior for fresh repositories.
 
 _extract_yaml_value() {
   local key="$1"
@@ -191,8 +198,9 @@ _extract_yaml_value() {
 }
 
 # Detect whether the wiki section actually contained an `enabled:` line so we
-# can distinguish "key absent" (legitimate default-off) from "key present but
-# parse failed" (should surface a WARNING rather than silently falling back).
+# can distinguish "key absent" (legitimate default-on, opt-out per #483) from
+# "key present but parse failed" (should surface a WARNING rather than silently
+# falling back).
 #
 # We need to distinguish THREE awk outcomes:
 #   - exit 0: enabled line found (intentional success)
@@ -231,8 +239,9 @@ if [[ "$wiki_enabled_line_present" == "true" ]] && [[ -z "$wiki_enabled" ]]; the
 fi
 
 case "$wiki_enabled" in
+  false|no|0) wiki_enabled="false" ;;
   true|yes|1) wiki_enabled="true" ;;
-  *)          wiki_enabled="false" ;;
+  *)          wiki_enabled="true" ;;  # #483: opt-out default — key absent or unparseable variant
 esac
 
 if [[ "$wiki_enabled" != "true" ]]; then

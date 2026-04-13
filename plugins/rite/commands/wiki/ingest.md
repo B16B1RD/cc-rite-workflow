@@ -965,4 +965,4 @@ Wiki Ingest が完了しました。
 - **冪等性**: 同じ Raw Source を再 Ingest しても結果が同じ（`ingested: true` フラグで重複防止）
 - **append-only な log**: 活動ログは履歴として残し、追加のみ
 - **PR diff からの分離**: `separate_branch` 戦略では Wiki 変更は wiki ブランチに閉じる。開発ブランチには Raw Source の一時ファイルすら残さない
-- **opt-in**: `wiki.enabled: false` がデフォルト。既存ワークフローへの影響なし
+- **opt-out**: `wiki.enabled: true` がデフォルト。`wiki:` セクション未指定でも有効扱い。明示的に `wiki.enabled: false` を設定すれば従来通り無効化可能

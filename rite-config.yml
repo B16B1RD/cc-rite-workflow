@@ -163,7 +163,7 @@ workflow_incident:
 # Wiki settings (LLM Wiki pattern for experience heuristics)
 # See docs/designs/experience-heuristics-persistence-layer.md for full specification.
 wiki:
-  enabled: false                       # true to enable Wiki features (default: false)
+  enabled: true                        # true to enable Wiki features (default: true, opt-out)
   branch_strategy: "separate_branch"   # "separate_branch" (recommended) or "same_branch"
   branch_name: "wiki"                  # Branch name for Wiki data (when branch_strategy is "separate_branch")
   auto_ingest: true                    # Auto-ingest on review/fix/close (default: true)
