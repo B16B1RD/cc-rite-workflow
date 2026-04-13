@@ -164,7 +164,7 @@ LLM は本 Phase で以下のカウンター変数を会話コンテキストに
 | `n_pages_created` | `0` | Phase 4 で「新規ページ作成」を決定するごとに +1 |
 | `n_pages_updated` | `0` | Phase 4 で「既存ページ更新」を決定するごとに +1 |
 | `n_skipped` | `0` | Phase 4 で「スキップ」を決定するごとに +1 |
-| `n_warnings` | `0` | Phase 8 で矛盾検出するごとに +1 |
+| `n_warnings` | `0` | Phase 8 で Lint の全検出件数合計（矛盾・陳腐化・孤児・欠落・壊れた相互参照）を加算する。`n_warnings += n_contradictions + n_stale + n_orphans + n_missing + n_broken_refs` |
 | `processed_files[]` | `[]` (空配列) | Phase 5.0 step 7 で Write/Edit 処理後に append (詳細・プレフィックス規約は Phase 5.0 step 7 参照) |
 
 これらの値は Phase 5 の `git commit -m` 実行時にリテラル整数として **必ず置換** すること (placeholder のまま commit してはならない)。
@@ -823,31 +823,98 @@ fi
 
 ---
 
-## Phase 8: 矛盾チェック
+## Phase 8: 自動 Lint
 
-Ingest 直後、新規作成/更新したページと既存ページの間に明らかな矛盾がないか LLM が確認します。
+Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki:lint --auto` として実行します。矛盾・陳腐化・孤児ページ・欠落概念・壊れた相互参照の 5 観点で検査します。
 
-**チェック観点**:
+### 8.1 auto_lint 設定の確認
 
-| 観点 | 検出方法 |
-|------|---------|
-| **タイトル衝突** | 新規ページのタイトルが既存ページと完全一致または高類似 |
-| **方針逆転** | 既存ページが「X が推奨」、新規ページが「X は避けるべき」のような直接的対立 |
-| **重複情報** | 既存ページに同じ情報がすでに記載されている |
+`rite-config.yml` の `wiki.auto_lint` を Phase 1.1 と同じ F-23 パーサーで読み取ります:
 
-**矛盾検出時の動作**:
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+auto_lint_line=""
+if [[ -n "$wiki_section" ]]; then
+  auto_lint_line=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_lint:/ { print; exit }') || auto_lint_line=""
+fi
+auto_lint=""
+if [[ -n "$auto_lint_line" ]]; then
+  auto_lint=$(printf '%s' "$auto_lint_line" | sed 's/[[:space:]]#.*//' | sed 's/.*auto_lint:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
+fi
+case "$auto_lint" in
+  true|yes|1) auto_lint="true" ;;
+  false|no|0) auto_lint="false" ;;
+  "") auto_lint="true" ;;  # default: true
+  *) auto_lint="true" ;;
+esac
+echo "auto_lint=$auto_lint"
+```
 
-矛盾を検出した場合、log.md に `ingest:warning` エントリを追記し、ユーザーに表示します:
+**`auto_lint: false` の場合**: Phase 8.2-8.5 をスキップし Phase 9 へ進みます。Phase 9 完了レポートの Lint カウンタ（`n_contradictions` / `n_stale` / `n_orphans` / `n_missing` / `n_broken_refs`）は Phase 8.3 でのみ初期化されるため、`auto_lint: false` 時は Phase 9 レポートの「Wiki 品質警告」行を「Wiki 品質警告: スキップ (auto_lint disabled)」と表示します。
+
+### 8.2 Lint エンジンの呼び出し
+
+> **ブランチ状態の前提**: 本 Phase は Phase 5 Block B が dev ブランチに復帰した**後**に呼ばれます。したがって Lint 呼び出し時点での CWD は dev ブランチです。lint.md Phase 8.2 は `git branch --show-current` で state-gated 判定を行い、`current_branch != wiki_branch` を検出して `write_mode=stash_checkout` 経路で wiki ブランチに一時切替 → log.md 追記 → dev ブランチ復帰を実行します。
+
+LLM は `skill: "rite:wiki:lint", args: "--auto"` 形式で `/rite:wiki:lint` を `--auto` モードで呼び出します。`--auto` モードでは:
+
+- 出力が最小化される（`Lint: contradictions={n}, stale={n}, orphans={n}, missing={n}, broken_refs={n}` 形式の 1 行）
+- 検出件数が全て 0 の場合は stdout が空
+- log.md への追記は lint.md Phase 8.2 が自律的にブランチ状態を判定し実行する
+- lint.md は常に exit 0（非ブロッキング）
+
+### 8.3 Lint 実行結果の取得とパース
+
+LLM は Lint Skill 呼び出し後の会話コンテキストから結果をパースします。Skill ツール経由の呼び出しはシェル exit code を返さないため、**stdout テキストの内容**で成否を判定します:
+
+1. **エラー出力の確認**: Lint Skill の応答テキストに `ERROR:` や `WARNING: ... 実行失敗` が含まれる場合、失敗として扱い `n_warnings += 1` を加算して以降のパースは skip します:
+
+   ```
+   WARNING: /rite:wiki:lint --auto がエラーを返しました。
+     Ingest 完了レポートには「Lint 結果: 実行失敗」と表示します。
+   ```
+
+2. **stdout のパース**: exit 0 の場合、stdout の 1 行目を正規表現 `^Lint: contradictions=([0-9]+), stale=([0-9]+), orphans=([0-9]+), missing=([0-9]+), broken_refs=([0-9]+)$` で抽出し、5 つの変数を会話コンテキストに保持します:
+
+   | 変数 | 正規表現 group |
+   |------|---------------|
+   | `n_contradictions` | group 1 |
+   | `n_stale` | group 2 |
+   | `n_orphans` | group 3 |
+   | `n_missing` | group 4 |
+   | `n_broken_refs` | group 5 |
+
+3. **stdout が空の場合**: Lint は検出 0 件で終了したとみなし、5 変数すべて `0` に設定します。
+
+4. **1 行目が正規表現にマッチしない場合**: Lint 側のフォーマット変更を検出した警告として扱い、以下を stderr に出力してから全変数を `0` に設定します（silent に 0 件と誤認することを防ぐ）:
+
+   ```
+   WARNING: /rite:wiki:lint --auto の出力形式が期待と異なります。
+     実際の出力: {first_line}
+     期待される形式: Lint: contradictions=N, stale=N, orphans=N, missing=N, broken_refs=N
+   ```
+
+### 8.4 Ingest 完了レポートへの統合
+
+Phase 9 の完了レポートに以下のように埋め込みます:
 
 ```
-⚠️ 矛盾の可能性を検出しました:
-- {新規ページ}: {観点}
-- 既存ページ: {既存ページ}
-
-詳細レビューは /rite:wiki:lint で実施できます（後続 Issue で実装予定）。
+Lint 結果: 矛盾 {n_contradictions} 件 / 陳腐化 {n_stale} 件 / 孤児 {n_orphans} 件 / 欠落 {n_missing} 件 / 壊れた相互参照 {n_broken_refs} 件
 ```
 
-**注意**: 本 Phase はあくまで **基本的な** チェックです。深い意味解析は将来の `/rite:wiki:lint` コマンドで実装されます（設計ドキュメント F4 参照）。
+**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示します。**矛盾以外の 1 件以上が検出された場合は必ず全カテゴリを表示**します（旧「矛盾以外の検出が 0 件の場合」条件は論理エラーのため削除）。
+
+### 8.5 `n_warnings` カウンタへの加算
+
+Phase 2.1 で初期化した `n_warnings` に、Lint の全検出件数の合計を加算します:
+
+```
+n_warnings += n_contradictions + n_stale + n_orphans + n_missing + n_broken_refs
+```
+
+これにより Phase 9 の完了レポートの「Wiki 品質警告」欄に Lint 検出件数が反映されます。
+
+**詳細な修正対応**: 検出結果の詳細確認と対応は、Ingest 完了後に `/rite:wiki:lint`（`--auto` なし）で再実行して取得してください。
 
 ---
 
@@ -863,15 +930,15 @@ Wiki Ingest が完了しました。
 - 新規作成したページ: {n_pages_created} 件
 - 更新したページ: {n_pages_updated} 件
 - スキップした Raw Source: {n_skipped} 件
-- 矛盾警告: {n_warnings} 件
+- Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing} / 壊れた相互参照 {n_broken_refs}）
 
 新規/更新ページ:
 - {path1} ({action1})
 - {path2} ({action2})
 
 次のステップ:
-- /rite:wiki:query で経験則を参照（後続 Issue で実装予定）
-- /rite:wiki:lint で Wiki の品質チェック（後続 Issue で実装予定）
+- /rite:wiki:query で経験則を参照
+- 詳細な品質チェックは /rite:wiki:lint で確認してください（Phase 8 で自動実行済み）
 ```
 
 ---
