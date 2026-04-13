@@ -99,6 +99,17 @@ review:
   loop:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
+    # Convergence engine settings (#453)
+    convergence_monitoring: true          # Run convergence analysis at cycle 3+ (default: true)
+    severity_gating_cycle_threshold: 5    # Cycle count at which severity gating becomes available (default: 5)
+    scope_lock_cycle_threshold: 7         # Cycle count at which scope lock becomes available (default: 7)
+    auto_propagation_scan: true           # Run similar-pattern propagation scan after fix (default: true)
+    pre_commit_drift_check: true          # Run distributed-fix-drift-check before commit (default: true)
+  doc_heavy:
+    enabled: true                   # Enable Doc-Heavy PR detection and override (default: true)
+    lines_ratio_threshold: 0.6      # doc_lines / total_diff_lines threshold (default: 0.6)
+    count_ratio_threshold: 0.7      # doc_files / total_files threshold (default: 0.7)
+    max_diff_lines_for_count: 2000  # Max diff lines where count ratio is used (default: 2000)
   security_reviewer:
     mandatory: false                          # Require security reviewer for all PRs (default: false)
     recommended_for_code_changes: true        # Recommend for executable code changes (default: true)
@@ -144,12 +155,38 @@ team:
   teammate_model: "sonnet"   # Model for teammate agents (default: "sonnet")
   auto_review: true          # Auto-run /rite:pr:review after all PRs created (default: true)
 
+# PR review result recording (#443)
+# The `review:` section above configures PR review **execution** (reviewer selection, debate,
+# fact_check, etc.), while this `pr_review:` section configures PR review **output** (post_comment).
+# By default, review results are saved to timestamped local files
+# (`.rite/review-results/{pr_number}-{timestamp}.json`) instead of being posted to PR comments.
+# `/rite:pr:fix` auto-reads results in the priority order: conversation > local file > PR comment.
+pr_review:
+  post_comment: false   # true to enable PR comment recording (equivalent to --post-comment, default: false)
+
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
+  max_review_fix_loops: 7          # review-fix loop hard limit per PR (convergence engine #453, default: 7)
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
+
+# Workflow incident auto-registration (#366)
+# Detects workflow blockers (Skill load failure, hook abnormal exit, manual fallback adoption)
+# and auto-registers them as Issues to prevent silent loss.
+workflow_incident:
+  enabled: true              # Enable incident detection mechanism (default: true, opt-out)
+
+# Experience Wiki (LLM Wiki pattern for project-specific heuristics)
+# See docs/designs/experience-heuristics-persistence-layer.md for the full specification.
+wiki:
+  enabled: true                        # Enable Wiki features (default: true, opt-out)
+  branch_strategy: "separate_branch"   # "separate_branch" (recommended) or "same_branch"
+  branch_name: "wiki"                  # Branch name for Wiki data (when branch_strategy is "separate_branch")
+  auto_ingest: true                    # Auto-ingest on review/fix/close (default: true)
+  auto_query: true                     # Auto-query on start/review/fix/implement (default: true)
+  auto_lint: true                      # Auto-run /rite:wiki:lint --auto after ingest (default: true)
 
 # Metrics settings
 metrics:
@@ -411,6 +448,15 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
+| `loop.convergence_monitoring` | boolean | `true` | Enable convergence analysis at cycle 3+. Detects stalled / diverging / oscillating fix-cycle patterns and applies adaptive strategies (batched fix, severity gating, scope lock) (#453) |
+| `loop.severity_gating_cycle_threshold` | integer | `5` | Cycle count at which severity gating strategy becomes available (CRITICAL/HIGH fixes in-band, MEDIUM/LOW deferred to separate Issues) |
+| `loop.scope_lock_cycle_threshold` | integer | `7` | Cycle count at which scope lock strategy becomes available (restrict fixes to files from the original PR diff) |
+| `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
+| `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
+| `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
+| `doc_heavy.lines_ratio_threshold` | float | `0.6` | Threshold for `doc_lines / total_diff_lines` that marks a PR as doc-heavy |
+| `doc_heavy.count_ratio_threshold` | float | `0.7` | Threshold for `doc_files / total_files` (used as fallback for small diffs) |
+| `doc_heavy.max_diff_lines_for_count` | integer | `2000` | Maximum diff line count below which `count_ratio_threshold` is consulted |
 | `security_reviewer.mandatory` | boolean | `false` | Require security reviewer for all PRs regardless of file types |
 | `security_reviewer.recommended_for_code_changes` | boolean | `true` | Include security reviewer when executable code files are changed |
 | `debate.enabled` | boolean | `true` | Enable inter-reviewer debate phase |
@@ -422,7 +468,20 @@ issue:
 
 **Review-fix loop convergence:**
 
-The review-fix loop exits only when all findings are resolved (zero blocking findings). There is no iteration limit or progressive relaxation — every finding must be addressed.
+The review-fix loop exits only when all findings are resolved (zero blocking findings). A hard limit is enforced via `safety.max_review_fix_loops` (default: 7). When the limit is reached, the orchestrator presents options: extend the limit (+5), enable severity gating, or escalate to manual review (skip to Ready-for-review).
+
+**Convergence monitoring** (`loop.convergence_monitoring: true` by default): From cycle 3 onward, the orchestrator analyzes the `findings_total` trajectory over the last 4 cycles and classifies the pattern:
+
+| Pattern | Detection | Adaptive strategy |
+|---------|-----------|-------------------|
+| **Converging** | Strictly decreasing | Continue normally |
+| **Stalled** | Values within ±2 of each other | Batched fix mode (group findings by category) |
+| **Diverging** | Values increasing over the last 2 cycles | Severity gating (CRITICAL/HIGH only, defer MEDIUM/LOW) — requires `loop_count >= severity_gating_cycle_threshold` |
+| **Oscillating** | Alternating up/down | Scope lock (restrict fixes to original PR diff files) — requires `loop_count >= scope_lock_cycle_threshold` |
+
+When a strategy is adopted, the selected mode is written to `.rite-flow-state` and read by `/rite:pr:fix` to adjust fix behavior for the next cycle.
+
+**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
 
 **Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, from cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). The default `false` performs full review only every cycle, maximizing review quality.
 
@@ -621,6 +680,7 @@ Fail-closed safety thresholds to prevent runaway workflows.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `max_implementation_rounds` | integer | `20` | Hard limit for implementation rounds per Issue (re-entries from checklist failures) |
+| `max_review_fix_loops` | integer | `7` | Hard limit for review-fix loop cycles per PR. When reached, the orchestrator offers options: extend (+5), severity gating, or escalate to manual review (#453) |
 | `time_budget_minutes` | integer | `120` | Advisory time budget per Issue in minutes (not enforced by timer) |
 | `auto_stop_on_repeated_failure` | boolean | `true` | Stop workflow when the same failure class repeats consecutively |
 | `repeated_failure_threshold` | integer | `3` | Number of consecutive same-class failures before triggering auto-stop |
@@ -630,6 +690,7 @@ Fail-closed safety thresholds to prevent runaway workflows.
 ```yaml
 safety:
   max_implementation_rounds: 20
+  max_review_fix_loops: 7
   time_budget_minutes: 120
   auto_stop_on_repeated_failure: true
   repeated_failure_threshold: 3
@@ -667,6 +728,65 @@ metrics:
 2. **Post-baseline**: Metrics are evaluated against per-Issue thresholds and moving average (MA5) thresholds
 3. **Failure classification**: When thresholds are exceeded, failures are classified (e.g., scope creep, quality regression) and corrective actions are suggested
 4. **Repeated failure detection**: If `safety.auto_stop_on_repeated_failure` is enabled, consecutive same-class failures trigger auto-stop
+
+### pr_review
+
+Settings for PR review **output** recording. This section is intentionally separated from the `review:` section (which configures review **execution**) so that future output destinations (Slack notifications, etc.) can be added without a breaking change to `review:` child keys.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), results are saved to `.rite/review-results/{pr_number}-{timestamp}.json` only |
+
+`/rite:pr:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself. See #443 for rationale.
+
+### workflow_incident
+
+Settings for workflow incident auto-registration. When a workflow blocker is detected (Skill load failure, hook abnormal exit, or user adoption of a manual fallback), the orchestrator emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh`. Detected incidents are auto-registered as Issues to prevent silent loss of actionable platform defects.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable the incident detection mechanism. Set `false` to opt out entirely |
+
+**Non-blocking and dedupe behavior** (not configurable):
+
+- Registration failure (network error, API error) never halts the workflow — the incident is retained in a context-local list and reported in the Phase 5.6 completion report.
+- Within a single session, the same incident `type` is prompted only once (subsequent occurrences are suppressed to avoid `AskUserQuestion` spam).
+- When absent from `rite-config.yml`, the section is treated as `enabled: true` (opt-out). Only the literal value `false` opts out.
+
+See `docs/SPEC.md` "Workflow Incident Detection" (#366) for the full specification.
+
+### wiki
+
+Settings for the Experience Wiki — an LLM-driven project knowledge base that persists experiential heuristics extracted from review/fix/Issue outcomes. Based on the LLM Wiki pattern (Karpathy). See `docs/designs/experience-heuristics-persistence-layer.md` for the full design.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable Wiki features (opt-out). Set `false` to skip all Wiki hooks and commands |
+| `branch_strategy` | string | `"separate_branch"` | Where Wiki data lives: `"separate_branch"` (dedicated orphan-like branch, recommended) or `"same_branch"` (Wiki files committed alongside code on the working branch) |
+| `branch_name` | string | `"wiki"` | Name of the Wiki branch (used only when `branch_strategy` is `"separate_branch"`) |
+| `auto_ingest` | boolean | `true` | Automatically run `/rite:wiki:ingest` on review/fix/close events to extract heuristics from raw sources |
+| `auto_query` | boolean | `true` | Automatically run `/rite:wiki:query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
+| `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing cross-refs, and broken links |
+
+**Example (opt out completely):**
+
+```yaml
+wiki:
+  enabled: false
+```
+
+**Example (same-branch Wiki without auto-lint):**
+
+```yaml
+wiki:
+  enabled: true
+  branch_strategy: "same_branch"
+  auto_ingest: true
+  auto_query: true
+  auto_lint: false
+```
+
+**Related commands:** `/rite:wiki:init` (one-time setup), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
 
 ### notifications
 

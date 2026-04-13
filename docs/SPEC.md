@@ -52,7 +52,9 @@ The command prefix `rite` was chosen for:
 | Command | Description | Arguments |
 |---------|-------------|-----------|
 | `/rite:init` | Initial setup wizard | None |
+| `/rite:getting-started` | Interactive onboarding guide | None |
 | `/rite:workflow` | Show workflow guide | None |
+| `/rite:investigate` | Structured code investigation | `<topic or question>` |
 | `/rite:issue:list` | List Issues | `[filter]` |
 | `/rite:issue:create` | Create new Issue | `<title or description>` |
 | `/rite:issue:start` | Start work (end-to-end: branch → implementation → PR) | `<Issue number>` |
@@ -71,6 +73,10 @@ The command prefix `rite` was chosen for:
 | `/rite:sprint:plan` | Execute sprint planning | `[current\|next\|"Sprint name"]` |
 | `/rite:sprint:execute` | Sequentially execute Todo Issues in Sprint | `[Sprint name]` |
 | `/rite:sprint:team-execute` | Parallel team execution of Todo Issues in Sprint | `[Sprint name]` |
+| `/rite:wiki:init` | Initialize Experience Wiki (branch, directories, templates) | None |
+| `/rite:wiki:query` | Search Wiki pages for heuristics by keyword and inject into context | `<keywords>` |
+| `/rite:wiki:ingest` | Extract heuristics from raw sources and update Wiki pages | `[source]` |
+| `/rite:wiki:lint` | Lint Wiki pages for contradictions, staleness, orphans, broken refs | `[--auto]` |
 | `/rite:resume` | Resume interrupted work | `[issue_number]` |
 | `/rite:skill:suggest` | Analyze context and suggest applicable skills | `[--verbose\|--filter]` |
 
@@ -1579,6 +1585,48 @@ Phase 7 (Automatic Issue Creation from review recommendations) and Phase 5.4.4.1
 |-------|---------|--------------|
 | Phase 7 | Issues from reviewer "別 Issue として作成" recommendations | `pr_review` |
 | Phase 5.4.4.1 | Issues from workflow blockers (sentinel-detected) | `workflow_incident` |
+
+## Experience Wiki
+
+### Overview
+
+The Experience Wiki is an LLM-driven project knowledge base that persists **experiential heuristics** — the "what we learned the hard way" lessons that usually live only in reviewer heads or scattered across Issue/PR comments. It is based on the LLM Wiki pattern (Karpathy). The full design rationale lives in `docs/designs/experience-heuristics-persistence-layer.md`.
+
+Wiki is **opt-out** by default (`wiki.enabled: true`). Configuration lives under the `wiki:` section of `rite-config.yml` — see [Configuration Reference → wiki](CONFIGURATION.md#wiki).
+
+### Architecture
+
+Wiki data is stored in a dedicated branch (default: `wiki`) or inline on the working branch, controlled by `wiki.branch_strategy`. Each Wiki page is a Markdown file keyed by topic (e.g., `review-quality.md`, `fix-cycle-convergence.md`). Pages are built up incrementally from raw sources (review comments, fix outcomes, Issue discussions) through an ingest pipeline that deduplicates and merges overlapping heuristics.
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/rite:wiki:init` | One-time setup: create the Wiki branch (if `branch_strategy: "separate_branch"`), scaffold directory structure, and install page templates |
+| `/rite:wiki:ingest` | Parse raw sources (review results, fix outcomes, closed Issues) and update or create Wiki pages. Invoked manually or automatically by the `wiki-ingest-trigger.sh` hook |
+| `/rite:wiki:query` | Search Wiki pages by keyword and inject matching heuristics into the conversation context. Invoked manually or automatically by the `wiki-query-inject.sh` hook at Issue start / review / fix / implement phases |
+| `/rite:wiki:lint` | Check Wiki pages for contradictions, staleness, orphans (pages with no cross-refs), missing cross-refs, and broken links. Supports `--auto` mode for CI-style batch runs |
+
+### Automatic Hook Integration
+
+When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the following hooks fire without user action:
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| `wiki-query-inject.sh` | Phase 2.6 (work memory init), Phase 5.1 (implement), Phase 5.4.1 (review), Phase 5.4.4 (fix) | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
+| `wiki-ingest-trigger.sh` | Phase 5.4.3 (after review), Phase 5.4.6 (after fix), Issue close | Run `/rite:wiki:ingest` on the new raw source |
+| `wiki-ingest-trigger.sh` → `/rite:wiki:lint --auto` | After each successful ingest (when `auto_lint: true`) | Validate Wiki consistency; surface warnings without blocking the workflow |
+
+### Relationship to Workflow Incident Detection
+
+Both features persist operational learnings, but their scopes are distinct:
+
+| Concern | Destination |
+|---------|-------------|
+| **Recurring quality/process heuristics** (e.g., "review-fix loops should not skip LOW findings", "use dotenvx not dotenv") | Wiki pages via `/rite:wiki:ingest` |
+| **One-time platform defects** (e.g., "hook X exited abnormally in iteration Y") | Issues via `workflow_incident` auto-registration (#366) |
+
+They share no code paths.
 
 ## Error Handling
 
