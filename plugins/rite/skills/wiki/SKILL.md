@@ -84,9 +84,9 @@ bash plugins/rite/hooks/wiki-ingest-trigger.sh \
 `/rite:wiki:query` の検索ロジック本体。他コマンドから直接呼び出して経験則をコンテキストに注入できます:
 
 ```bash
+# --max-pages / --min-score はデフォルト値と同一の場合は省略可 (下記は最小呼び出し例)
 bash plugins/rite/hooks/wiki-query-inject.sh \
   --keywords "database,migration" \
-  --max-pages 5 \
   --format compact
 ```
 

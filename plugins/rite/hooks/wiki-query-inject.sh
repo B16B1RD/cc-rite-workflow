@@ -44,6 +44,21 @@
 #     + summary, weighted by confidence (high=1.5, medium=1.0, low=0.5).
 set -uo pipefail
 
+# Tempfile paths declared up front, trap set up before any mktemp, cleanup on
+# both normal exit and signal termination. Mirrors the repo convention used in
+# commands/pr/review.md Phase 2.2.1 and commands/pr/fix.md Phase 4.5.2 so that
+# SIGINT/SIGTERM/SIGHUP cannot leave orphan files in /tmp.
+_yaml_err=""
+_git_show_err=""
+_awk_err=""
+_rite_wiki_query_cleanup() {
+  rm -f "${_yaml_err:-}" "${_git_show_err:-}" "${_awk_err:-}"
+}
+trap 'rc=$?; _rite_wiki_query_cleanup; exit $rc' EXIT
+trap '_rite_wiki_query_cleanup; exit 130' INT
+trap '_rite_wiki_query_cleanup; exit 143' TERM
+trap '_rite_wiki_query_cleanup; exit 129' HUP
+
 KEYWORDS=""
 MAX_PAGES=5
 MIN_SCORE=1
@@ -77,12 +92,22 @@ if [[ $# -eq 0 ]]; then
   exit 1
 fi
 
+# Explicit empty-value check for each option. `${2:-<default>}` silently falls
+# back on empty strings, so `--max-pages ""` would be indistinguishable from
+# omitting the flag. Reject empty values so the user gets a real error.
+_require_option_value() {
+  if [[ -z "${2:-}" ]]; then
+    echo "ERROR: $1 requires a value" >&2
+    exit 1
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --keywords)   KEYWORDS="${2:-}"; shift 2 ;;
-    --max-pages)  MAX_PAGES="${2:-5}"; shift 2 ;;
-    --min-score)  MIN_SCORE="${2:-1}"; shift 2 ;;
-    --format)     FORMAT="${2:-compact}"; shift 2 ;;
+    --keywords)   _require_option_value "$1" "${2:-}"; KEYWORDS="$2"; shift 2 ;;
+    --max-pages)  _require_option_value "$1" "${2:-}"; MAX_PAGES="$2"; shift 2 ;;
+    --min-score)  _require_option_value "$1" "${2:-}"; MIN_SCORE="$2"; shift 2 ;;
+    --format)     _require_option_value "$1" "${2:-}"; FORMAT="$2"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *)            echo "ERROR: unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -93,9 +118,16 @@ if [[ -z "$KEYWORDS" ]]; then
   exit 1
 fi
 
+# --max-pages / --min-score are both positive-integer semantics. `case` guards
+# alone would accept `0`, which would cause `head -n 0` to emit nothing and the
+# script would silently exit 0 with no output — worse UX than an explicit error.
 case "$MAX_PAGES" in
-  ''|*[!0-9]*) echo "ERROR: --max-pages must be a non-negative integer" >&2; exit 1 ;;
+  ''|*[!0-9]*) echo "ERROR: --max-pages must be a positive integer" >&2; exit 1 ;;
 esac
+if [ "$MAX_PAGES" -lt 1 ]; then
+  echo "ERROR: --max-pages must be >= 1 (got: $MAX_PAGES)" >&2
+  exit 1
+fi
 case "$MIN_SCORE" in
   ''|*[!0-9]*) echo "ERROR: --min-score must be a non-negative integer" >&2; exit 1 ;;
 esac
@@ -118,7 +150,11 @@ if [[ ! -f "rite-config.yml" ]]; then
   exit 0
 fi
 
-_yaml_err=$(mktemp /tmp/rite-wiki-query-yaml-err-XXXXXX 2>/dev/null) || _yaml_err=""
+if ! _yaml_err=$(mktemp /tmp/rite-wiki-query-yaml-err-XXXXXX); then
+  echo "WARNING: mktemp failed for YAML stderr capture; falling back to /dev/null" >&2
+  echo "  対処: /tmp の permission / read-only / inode 枯渇を確認してください" >&2
+  _yaml_err=""
+fi
 if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>"${_yaml_err:-/dev/null}"); then
   :  # success (sed no-match still returns 0)
 else
@@ -126,10 +162,8 @@ else
   echo "WARNING: failed to read wiki section from rite-config.yml (sed rc=$_sed_rc)" >&2
   [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
   echo "  lenient fallback: treating wiki as disabled and exiting silently" >&2
-  [ -n "$_yaml_err" ] && rm -f "$_yaml_err"
   exit 0
 fi
-[ -n "$_yaml_err" ] && rm -f "$_yaml_err"
 
 if [[ -z "$wiki_section" ]]; then
   exit 0
@@ -157,9 +191,30 @@ _extract_yaml_value() {
 # Detect whether the wiki section actually contained an `enabled:` line so we
 # can distinguish "key absent" (legitimate default-off) from "key present but
 # parse failed" (should surface a WARNING rather than silently falling back).
+#
+# We need to distinguish THREE awk outcomes:
+#   - exit 0: enabled line found (intentional success)
+#   - exit 1: enabled line not found (intentional, via END block)
+#   - exit >=2: awk runtime error (EPIPE / OOM / binary corruption) — must NOT
+#     be silently conflated with "not found", otherwise a real parse failure
+#     would degrade to the same silent-swallow pattern F-02 was meant to fix.
+if ! _awk_err=$(mktemp /tmp/rite-wiki-query-awk-err-XXXXXX); then
+  echo "WARNING: mktemp failed for awk stderr capture; falling back to /dev/null" >&2
+  _awk_err=""
+fi
 wiki_enabled_line_present="false"
-if printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { found=1 } END { exit found ? 0 : 1 }'; then
+if printf '%s\n' "$wiki_section" \
+    | awk '/^[[:space:]]+enabled:/ { found=1 } END { exit found ? 0 : 1 }' \
+    2>"${_awk_err:-/dev/null}"; then
   wiki_enabled_line_present="true"
+else
+  _awk_rc=$?
+  if [ "$_awk_rc" -ne 1 ]; then
+    echo "WARNING: awk failed unexpectedly while detecting wiki.enabled line (rc=$_awk_rc)" >&2
+    [ -n "$_awk_err" ] && [ -s "$_awk_err" ] && head -3 "$_awk_err" | sed 's/^/  /' >&2
+    echo "  lenient fallback: treating wiki.enabled as absent" >&2
+  fi
+  # rc == 1 is the intentional "not found" path — no warning.
 fi
 
 wiki_enabled_raw=$(_extract_yaml_value "enabled")
@@ -285,6 +340,9 @@ while IFS=$'\t' read -r title path domain summary updated confidence; do
       }
       END { print n }
     ')
+    # Defensive default: an awk failure returns empty under `set -u` without
+    # `-e`, and the following arithmetic would break. Normalize empty to 0.
+    count=${count:-0}
     raw_score=$((raw_score + count))
   done
 
@@ -332,13 +390,25 @@ while IFS=$'\t' read -r score title path domain summary updated confidence; do
   printf '%s\n' "- **ドメイン**: ${domain} / **確信度**: ${confidence} / **更新日**: ${updated}"
   printf '%s\n' "- **サマリー**: ${summary}"
 
+  # Non-blocking: page body read failures below are WARNING-only and always
+  # fall through with page_body="". `--format compact` does not enter this
+  # branch at all — the compact output contains only the tabular row data.
   if [[ "$FORMAT" == "full" ]]; then
     page_body=""
     if [[ "$branch_strategy" == "separate_branch" ]]; then
       # Capture git show stderr — an index.md referencing a missing/corrupt
       # page file indicates an index↔page drift that the caller should know
-      # about. Silent fall-through would hide the drift entirely.
-      _git_show_err=$(mktemp /tmp/rite-wiki-query-gitshow-err-XXXXXX 2>/dev/null) || _git_show_err=""
+      # about. Silent fall-through would hide the drift entirely. The tempfile
+      # is allocated once outside the loop and truncated per iteration so that
+      # SIGINT mid-loop cannot leave multiple orphans behind.
+      if [ -z "${_git_show_err:-}" ]; then
+        if ! _git_show_err=$(mktemp /tmp/rite-wiki-query-gitshow-err-XXXXXX); then
+          echo "WARNING: mktemp failed for git show stderr capture; falling back to /dev/null" >&2
+          _git_show_err=""
+        fi
+      else
+        : > "$_git_show_err"  # truncate between iterations
+      fi
       if page_body=$(git show "${wiki_branch}:.rite/wiki/${path}" 2>"${_git_show_err:-/dev/null}"); then
         :
       else
@@ -347,7 +417,6 @@ while IFS=$'\t' read -r score title path domain summary updated confidence; do
         [ -n "$_git_show_err" ] && [ -s "$_git_show_err" ] && head -3 "$_git_show_err" | sed 's/^/  /' >&2
         page_body=""
       fi
-      [ -n "$_git_show_err" ] && rm -f "$_git_show_err"
     else
       if [[ -f ".rite/wiki/${path}" ]]; then
         if ! page_body=$(cat ".rite/wiki/${path}"); then
@@ -356,6 +425,7 @@ while IFS=$'\t' read -r score title path domain summary updated confidence; do
         fi
       else
         echo "WARNING: .rite/wiki/${path} not found — index.md may be stale" >&2
+        page_body=""  # explicit reset mirrors the separate_branch branch above
       fi
     fi
     if [[ -n "$page_body" ]]; then
