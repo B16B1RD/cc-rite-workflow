@@ -96,7 +96,6 @@ plugins/rite/hooks/
 ├── cleanup-work-memory.sh  # Deterministic cleanup of local work memory files
 ├── flow-state-update.sh    # Atomic .rite-flow-state create/patch/increment operations
 ├── issue-body-safe-update.sh  # Safe Issue body fetch/apply with backup and validation
-├── context-pressure.sh     # Context pressure detection and optimization hints
 └── tests/                  # Test scripts
 ```
 

@@ -204,7 +204,6 @@ rite-workflow/
 │   ├── state-path-resolve.sh
 │   ├── flow-state-update.sh
 │   ├── issue-body-safe-update.sh
-│   ├── context-pressure.sh
 │   └── notification.sh
 ├── templates/
 │   ├── completion-report.md  # 完了報告フォーマット定義

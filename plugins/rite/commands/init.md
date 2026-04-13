@@ -886,7 +886,7 @@ Add the following hooks to `.claude/settings.local.json`:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks that do NOT contain `rite/hooks/` in their command, preserve them as-is. Do not overwrite or remove user-defined hooks.
 - **rite hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
 - **Missing rite hooks**: If any of the required rite hooks (Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them.
-- **Obsolete hooks**: If `post-compact-guard.sh` exists in PreToolUse, **remove** it (replaced by PostCompact `post-compact.sh` in #133).
+- **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は #133 で `post-compact.sh` に置き換え済み。`context-pressure.sh` は #481 で廃止済み。
 - **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. All other hooks use `"matcher": ""`.
 - **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
 
