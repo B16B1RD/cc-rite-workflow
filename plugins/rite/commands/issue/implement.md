@@ -15,6 +15,54 @@ Perform actual implementation work following the implementation plan approved in
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
 
+### 5.0.W Wiki Query Injection (Conditional)
+
+> **Reference**: [Wiki Query](../wiki/query.md) — `wiki-query-inject.sh` API
+
+Before starting implementation, inject relevant experiential knowledge from the Wiki to inform the implementation approach.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_query: true` in `rite-config.yml`. Skip silently otherwise.
+
+**Step 1**: Check Wiki configuration:
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_query=""
+if [[ -n "$wiki_section" ]]; then
+  auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
+```
+
+If `wiki_enabled=false` or `auto_query=false`, skip this section and proceed to implementation.
+
+**Step 2**: Generate keywords from the implementation plan and invoke the query:
+
+Keywords are derived from: implementation plan step descriptions, target file paths, and relevant domain terms from the plan.
+
+```bash
+# {plugin_root} はリテラル値で埋め込む
+# {keywords} は実装計画のキーワード（ファイルパス、ドメイン用語等）をカンマ区切りで生成
+wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
+  --keywords "{keywords}" \
+  --format compact 2>/dev/null) || wiki_context=""
+if [ -n "$wiki_context" ]; then
+  echo "$wiki_context"
+else
+  echo "(Wiki から関連経験則は見つかりませんでした)"
+fi
+```
+
+**Step 3**: If `wiki_context` is non-empty, retain it in conversation context and reference it during implementation. The injected experiential knowledge may inform: common implementation patterns, known pitfalls, and effective approaches for similar changes.
+
 **Basic implementation flow:**
 
 1. Check current file content with Read tool

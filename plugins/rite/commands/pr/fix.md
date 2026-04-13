@@ -113,6 +113,56 @@ Extract the following information from work memory and retain in context:
 
 ---
 
+### 0.5.W Wiki Query Injection (Conditional)
+
+> **Reference**: [Wiki Query](../wiki/query.md) — `wiki-query-inject.sh` API
+
+Before retrieving review comments, inject relevant experiential knowledge from the Wiki to inform the fix approach.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_query: true` in `rite-config.yml`. Skip silently otherwise.
+
+**Step 1**: Check Wiki configuration:
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_query=""
+if [[ -n "$wiki_section" ]]; then
+  auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
+```
+
+If `wiki_enabled=false` or `auto_query=false`, skip this section and proceed to Phase 1.
+
+**Step 2**: Generate keywords from the review context and invoke the query:
+
+Keywords are derived from: review finding categories (from conversation context if available), target file paths, and finding types (e.g., `security`, `performance`, `error-handling`).
+
+```bash
+# {plugin_root} はリテラル値で埋め込む
+# {keywords} はレビュー指摘のカテゴリ + 対象ファイルパスをカンマ区切りで生成
+wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
+  --keywords "{keywords}" \
+  --format compact 2>/dev/null) || wiki_context=""
+if [ -n "$wiki_context" ]; then
+  echo "$wiki_context"
+else
+  echo "(Wiki から関連経験則は見つかりませんでした)"
+fi
+```
+
+**Step 3**: If `wiki_context` is non-empty, retain it in conversation context and reference it during fix application (Phase 2). The injected experiential knowledge may inform: effective fix strategies for similar findings, common overcorrection patterns to avoid, and proven fix approaches.
+
+---
+
 ## Phase 1: Retrieve and Organize Review Comments
 
 ### 0.4 Convergence Strategy Load (#453 Component E)
@@ -4468,6 +4518,72 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 - `プッシュ: 未実行` and `別 Issue 作成: 0件` and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
 
 > **⚠️ re-review 時のスコープ縮退禁止**: caller (`/rite:issue:start`) が re-review を実行する際、「前回指摘の修正確認に絞る」「コンテキスト効率のためスコープを限定する」等の理由でレビュー範囲を縮退させてはならない。re-review は常に初回 `/rite:pr:review` と完全に同等のフルレビューとして実行し、全レビュアーをサブエージェントで並列起動すること。
+
+### 4.6.W Wiki Ingest Trigger (Conditional)
+
+> **Reference**: [Wiki Ingest](../wiki/ingest.md) — `wiki-ingest-trigger.sh` API
+
+After outputting the completion report, trigger Wiki Ingest to capture fix patterns as experiential knowledge.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Skip silently otherwise.
+
+**Step 1**: Check Wiki configuration (same pattern as Phase 0.5.W Step 1, replacing `auto_query` with `auto_ingest`):
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_ingest=""
+if [[ -n "$wiki_section" ]]; then
+  auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="false" ;; esac
+case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
+```
+
+If `wiki_enabled=false` or `auto_ingest=false`, skip this section.
+
+**Step 2**: Generate a fix Raw Source from the fix results:
+
+The fix content includes: PR number, findings addressed, fix strategies used, and patterns of overcorrection or effective approaches.
+
+```bash
+# {plugin_root} はリテラル値で埋め込む
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+cat <<'FIX_EOF' > "$tmpfile"
+## Fix Results
+
+- **PR**: #{pr_number}
+- **Type**: fix
+- **Fixed at**: {timestamp}
+
+### Fix Patterns
+{fix_summary — 修正パターン、過剰反応の傾向、効果的な修正戦略を LLM が修正結果から要約して埋め込む}
+
+### Statistics
+- Total findings: {total_count}
+- Fixed: {fix_count}
+- Replied: {reply_count}
+- Skipped (separate Issue): {skip_count}
+FIX_EOF
+
+bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
+  --type fixes \
+  --source-ref "pr-{pr_number}" \
+  --content-file "$tmpfile" \
+  --pr-number {pr_number} \
+  --title "PR #{pr_number} fix results" \
+  2>/dev/null || true
+```
+
+**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are silenced by `|| true`. Ingest failure does not block the fix workflow.
 
 ---
 
