@@ -4585,10 +4585,34 @@ bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
   --content-file "$tmpfile" \
   --pr-number {pr_number} \
   --title "PR #{pr_number} fix results" \
-  2>/dev/null || true
+  2>/dev/null
+trigger_exit=$?
+echo "trigger_exit=$trigger_exit"
 ```
 
-**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are silenced by `|| true`. Ingest failure does not block the fix workflow.
+**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 4.6.W.2 when it is non-zero. Ingest failure does not block the fix workflow.
+
+### 4.6.W.2 Wiki Ingest Invocation (Conditional)
+
+After the trigger completes, invoke `/rite:wiki:ingest` via the Skill tool so that the Raw Source written by the trigger is committed and pushed to the `wiki` branch. Without this step, the Raw Source is abandoned in the working tree and the `wiki` branch never grows (Issue #515 root cause).
+
+**Condition**: Execute only when **all** of the following are true (read from prior Phase 4.6.W stdout):
+
+- `wiki_enabled=true`
+- `auto_ingest=true`
+- `trigger_exit=0` (the trigger ran successfully — non-zero means Wiki disabled/uninitialized, so there is nothing to ingest)
+
+**When the condition is not satisfied**, skip this section silently.
+
+**When the condition is satisfied**:
+
+1. Invoke the Skill tool: `skill: "rite:wiki:ingest"` with no arguments. The ingest command auto-scans `.rite/wiki/raw/` and performs stash/checkout/commit/push to the `wiki` branch via its existing Phase 5.1 Block B implementation.
+2. **Non-blocking**: Any error returned by the Skill invocation (push failure, authentication error, LLM error, etc.) is swallowed — continue regardless. The Raw Source remains under `.rite/wiki/raw/{type}/` and will be picked up by the next successful ingest.
+3. Do **not** pass PR/Issue number as arguments. `rite:wiki:ingest` is self-contained and discovers raw sources independently.
+
+**Position rationale**: Phase 4.6.W (and therefore 4.6.W.2) runs after the review-fix loop has exited. Raw Sources written mid-loop would reflect unsettled fix state, so the placement is intentional.
+
+**Responsibility boundary**: `wiki-ingest-trigger.sh` is a pure file-writing utility (see its L40-44 doc comment) and does not perform git operations. Only `rite:wiki:ingest` has the stash/checkout/commit/push sequence that persists data to the `wiki` branch.
 
 ---
 
