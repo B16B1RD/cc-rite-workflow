@@ -195,10 +195,11 @@ What `/rite:init --upgrade` does:
     add (including commented-out Advanced sections), and values that will be
     preserved (e.g., `project_number`, `owner`, `branch.base`, `language`)
   ✓ Asks for confirmation via AskUserQuestion before applying any schema
-    changes (the wiki-section append below is included in the same
-    preview/confirmation flow when the schema is also out of date; it is
-    applied without an additional prompt only when the schema is already up
-    to date and the `wiki:` section happens to be missing)
+    changes (this single apply/cancel prompt also gates the wiki-section
+    append below when both are pending, though the `wiki:` section may not
+    be itemized separately in the preview list; when the schema is already
+    up to date and only the `wiki:` section happens to be missing, the
+    append is applied without an additional prompt)
   ✓ Appends the `wiki:` section if it is absent, so the Wiki
     auto-initialization step of `/rite:init` can run for existing projects
   ✓ Updates `schema_version` to the latest value on success
@@ -206,9 +207,10 @@ What `/rite:init --upgrade` does:
 The upgrade is non-destructive: user-customized values are preserved, and a
 backup is created before any edits are made. If your configuration is already
 up to date and Wiki is already initialized, the command makes no changes to
-`rite-config.yml` itself — it still creates a timestamped backup and runs the
-Wiki auto-initialization idempotency check of `/rite:init`, then reports
-"configuration is up to date" and exits.
+`rite-config.yml` itself — it still creates a timestamped backup, reports
+"configuration is up to date", then runs the Wiki auto-initialization
+idempotency check of `/rite:init` and displays a final Wiki status line
+before exiting.
 
 Check if `rite-config.yml` exists:
 
