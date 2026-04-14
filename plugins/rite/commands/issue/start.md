@@ -406,7 +406,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Phase 2.4 completed. Proceed to Phase 2.5 (Iteration) if iteration.enabled, else Phase 2.6 (Work Memory). Do NOT stop."
 ```
 
-**Step 2**: **→ Proceed to Phase 2.5 now** (or Phase 2.6 if iteration is disabled).
+**Step 2**: **→ Proceed to Phase 2.5 now**. Phase 2.5 handles its own skip conditions internally (iteration disabled / projects disabled) — do NOT skip Phase 2.5 at this level (prompt-engineer cycle-2 MEDIUM #3). The Phase 2.5 Pre-write + Mandatory After blocks always run so `phase2_post_iteration` is recorded even when the assignment body is skipped.
 
 ### 2.5 Iteration Assignment
 
@@ -1854,9 +1854,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **Step 2**: **→ Proceed to Phase 5.6 now**.
 
-> **Note on workflow termination**: The `phase="completed", active: false` patch and `.rite-compact-state` cleanup were previously placed here, between Mandatory After 5.5.2 and Phase 5.6. That placement caused a **state flap** — the Phase 5.6 Pre-write (`create --phase phase5_completion`) re-activated the workflow and recorded `previous_phase="completed"`, which stop-guard then rejected as an invalid transition (prompt-engineer + devops CRITICAL). The terminal state update now runs at the end of Phase 5.7 (or immediately after Phase 5.6 when no parent exists) — see the "Workflow Termination" block there.
-
 ### 5.6 Completion Report
+
+> **Historical note (informational only — no action required)**: The `phase="completed", active: false` patch and `.rite-compact-state` cleanup were previously placed between Mandatory After 5.5.2 and this heading. That placement caused a **state flap** — the Phase 5.6 Pre-write (`create --phase phase5_completion`) re-activated the workflow and recorded `previous_phase="completed"`, which stop-guard then rejected as an invalid transition (prompt-engineer + devops CRITICAL, fixed in cycle 1). The terminal state update now runs at the end of Phase 5.7 or, when no parent is identified, immediately after this Phase 5.6 — see the "Workflow Termination" block below. This note is purely historical context for future maintainers and contains no executable instructions.
 
 **Pre-condition check** (#490 AC-5): Verify that both Phase 5.5.1 (Status) and 5.5.2 (Metrics) completed. Previous phase must be `phase5_post_metrics` — the earlier `phase5_post_status_in_review` alternative was removed because it let Metrics silently skip (AC-5 violation, prompt-engineer + code-quality CRITICAL).
 
@@ -1872,7 +1872,7 @@ if [ "$prev" != "phase5_post_metrics" ]; then
 fi
 ```
 
-> **Enforcement note** (prompt-engineer HIGH): bash `exit 1` does NOT stop the LLM from proceeding to the Pre-write block below. On ERROR, the LLM MUST recognise the failure text in stderr and return to the missing phase. Do NOT silently continue. The stop-guard whitelist will also reject `phase5_post_status_in_review → phase5_completion` as a defense-in-depth layer.
+> **Enforcement note** (prompt-engineer HIGH): bash `exit 1` does NOT stop the LLM from proceeding to the Pre-write block below. On ERROR, the LLM MUST recognise the failure text in stderr and return to the missing phase. Do NOT silently continue. The stop-guard whitelist (`["phase5_post_metrics"]="phase5_completion"`) will also reject any other source (e.g., `phase5_post_ready`, `phase5_post_status_in_review`) as a defense-in-depth layer.
 
 **Pre-write**:
 
@@ -2003,12 +2003,11 @@ Display remaining children, guide `/rite:issue:start`. No auto-start.
 
 #### 🚨 Mandatory After 5.7
 
-**Step 1**: Update `.rite-flow-state` to post-parent-completion phase:
+**Step 1**: Update `.rite-flow-state` to post-parent-completion phase. Use **patch mode** — patch preserves `previous_phase` automatically from the outgoing `.phase` field, whereas `create` mode would overwrite the entire state and risk tripping the session-ownership check (prompt-engineer cycle-2 MEDIUM #5):
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_parent_completion" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} --active false \
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase5_post_parent_completion" --active false \
   --next "Phase 5.7 completed. Workflow finished. Do NOT stop before the completion handoff is displayed to the user."
 ```
 

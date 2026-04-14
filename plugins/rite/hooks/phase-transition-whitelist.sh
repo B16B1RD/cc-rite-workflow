@@ -68,7 +68,10 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["phase5_post_lint"]="phase5_pr phase5_lint"
 
   # Phase 5.3: PR create
-  ["phase5_pr"]="phase5_post_pr"
+  # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review
+  # (no intermediate phase5_post_pr write). Allow both the direct path and the legacy
+  # post_pr marker for backward compat (devops cycle-2 CRITICAL).
+  ["phase5_pr"]="phase5_post_pr phase5_review"
   ["phase5_post_pr"]="phase5_review"
 
   # Phase 5.4: review-fix loop
@@ -90,7 +93,10 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["phase5_status_in_review"]="phase5_post_status_in_review"
   ["phase5_post_status_in_review"]="phase5_metrics"
   ["phase5_metrics"]="phase5_post_metrics"
-  ["phase5_post_metrics"]="phase5_completion completed"
+  # phase5_post_metrics → phase5_completion is the single valid path. The legacy
+  # "completed" direct edge was removed after the Post-completion block moved to
+  # Workflow Termination (prompt-engineer cycle-2 MEDIUM #1).
+  ["phase5_post_metrics"]="phase5_completion"
 
   # Phase 5.6 / 5.7: completion + parent completion
   # "completed" is a terminal state reachable from multiple phases (post_metrics, completion,
@@ -162,6 +168,10 @@ _rite_load_whitelist_overrides() {
       head -3 "$awk_err" | sed 's/^/  /' >&2
     fi
     echo "  対処: rite-config.yml の権限 / awk バイナリを確認してください" >&2
+    [ -n "$awk_err" ] && rm -f "$awk_err"
+    # Return non-zero so the caller's `|| log_diag ...` handler records the
+    # failure in the diagnostic log (devops cycle-2 LOW #2).
+    return 1
   fi
   [ -n "$awk_err" ] && rm -f "$awk_err"
 
