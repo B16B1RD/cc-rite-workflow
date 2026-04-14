@@ -3152,7 +3152,7 @@ case "$post_comment_mode" in
     echo "ERROR: Phase 6.1.b の post_comment_mode が literal substitute されていません (値: '$post_comment_mode', 期待: true/false)" >&2
     echo "  Claude は Phase 1.0 の [CONTEXT] POST_COMMENT_MODE=true|false emit 値を会話コンテキストから読み取り、" >&2
     echo "  この bash block 冒頭の post_comment_mode=... 行を実際の値で置換する必要があります。" >&2
-    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61b_post_comment_mode_invalid" >&2
+    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61b_post_comment_mode_invalid; value=$post_comment_mode" >&2
     echo "[review:error]"
     exit 1
     ;;
@@ -3418,10 +3418,12 @@ When `{post_comment_mode}=false`, inform the user that PR comment posting was sk
 #   - pr_number: {pr_number}
 #   - file_timestamp: Phase 6.1.a の [CONTEXT] FILE_TIMESTAMP= の値 (成功時: YYYYMMDDHHMMSS、失敗時: "unknown")
 #   - local_save_failed: Phase 6.1.a の [CONTEXT] LOCAL_SAVE_FAILED= の値 ("1" または未 emit=空)
+#
+# 変数宣言順序: 「1 変数 1 gate」原則で fail-fast の局所性を最大化する (6.1.b と対称化)。
+# post_comment_mode を先行宣言 → gate 通過後に残り 3 変数を宣言することで、gate 失敗時の
+# 観測値混線リスクを最小化する (gate で exit 1 する経路では pr_number / file_timestamp /
+# local_save_failed は参照されないため、未宣言で問題ない)。
 post_comment_mode="{post_comment_mode}"
-pr_number="{pr_number}"
-file_timestamp="{file_timestamp_from_p61a}"
-local_save_failed="{local_save_failed_from_p61a}"
 
 # post_comment_mode machine-enforced gate (Issue #510 対応、6.1.b と対称)。
 # 6.1.c は post_comment_mode=false 経路専用。true 経路で誤呼出された場合、本来 6.1.b で
@@ -3446,6 +3448,11 @@ case "$post_comment_mode" in
     exit 1
     ;;
 esac
+
+# gate 通過後、残り 3 変数を宣言 (legitimate false 経路でのみ評価される)
+pr_number="{pr_number}"
+file_timestamp="{file_timestamp_from_p61a}"
+local_save_failed="{local_save_failed_from_p61a}"
 
 # pr_number の数値 fail-fast gate (Phase 6.1.a の pr_number guard と対称化)。
 # Claude が substitute を忘れると、ケース 1 のローカルファイル path が
