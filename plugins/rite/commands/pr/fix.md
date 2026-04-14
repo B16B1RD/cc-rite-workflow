@@ -182,7 +182,7 @@ If `convergence_strategy` is not `"none"`, adjust Phase 2 behavior accordingly:
 | `"scope_lock"` | Only fix findings in files that are part of the original PR diff. Determine original files via context or work memory. Findings in fix-introduced files are listed but skipped with a note: `⏭️ {finding_id}: scope lock により defer (fix 起因ファイル)`. |
 | `"none"` | Normal behavior (all findings, one by one). |
 
-> **`"severity_gating"` strategy は廃止されました** (#506): 本 PR 起因 findings は severity 問わず本 PR 内で修正する方針に変更されました。`rite-config.yml` の `fix.severity_gating.enabled` は後方互換のため残置されていますが `false` 固定扱いで参照されません。非収束時は Phase 5.4.4 Step 3.5 の AskUserQuestion ルートで `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` の 3 択に統合されています。
+> **`"severity_gating"` strategy は廃止されました** (#506): 本 PR 起因 findings は severity 問わず本 PR 内で修正する方針に変更されました。`rite-config.yml` の `fix.severity_gating.enabled` は後方互換のため残置されていますが `false` 固定扱いで参照されません。非収束時は `start.md` の Phase 5.4.6 Step 3.5 の AskUserQuestion ルート、および本ファイル Phase 4.3.3 の AskUserQuestion で `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` の 3 択に統合されています。
 
 > **Standalone invocation**: When invoked standalone (not from `/rite:issue:start`), `.rite-flow-state` may not exist or may not have `convergence_strategy`. Default to `"none"`.
 
@@ -3042,6 +3042,8 @@ printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d changed_targets=%d\n' "$drift_e
 ### 3.2 Generate Commit Message
 
 Generate a commit message based on the addressed findings.
+
+**Fail-Fast Response Principle linkage (#506)**: If the fix adopted a **fallback** path (rather than throw/raise propagation) after passing the Phase 2 Fail-Fast Response checklist, the commit message MUST include a `decision(scope): fallback を採択した理由 — ...` / `decision(scope): adopted fallback — reason ...` action line in the commit body (via the Contextual Commits action-line mapping below). LLM: when you detect that any finding's fix introduced defensive code (null check / try-catch wrap / optional chaining / default return), add an explicit `decision(scope)` line naming the skill exception clause or requirement that justified the fallback. Unannotated fallbacks will be re-flagged in Phase 5 re-review.
 
 **Commit message language:**
 

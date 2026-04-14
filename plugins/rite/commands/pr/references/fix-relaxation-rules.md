@@ -22,7 +22,7 @@ All findings (CRITICAL/HIGH/MEDIUM/LOW) are always fix targets. There is no auto
 | Condition | Result |
 |-----------|--------|
 | 0 findings remaining | Loop exits with `[review:mergeable]` |
-| `loop_count >= safety.max_review_fix_loops` | Loop halted by hard limit (#453). User chooses: extend / severity gate / escalate |
+| `loop_count >= safety.max_review_fix_loops` | Loop halted by hard limit (#453). User chooses: extend (+5) / retry in current PR / escalate (the severity gating option was removed in #506) |
 
 The primary exit condition is zero findings. The hard limit (`safety.max_review_fix_loops`, default: 7) provides a safety net against infinite loops.
 
@@ -43,7 +43,9 @@ When the convergence monitor (start.md Phase 5.4.1.0) detects non-convergence an
 
 ## Caller Detection
 
-Automatic target selection is applied only when `/rite:pr:fix` is called from within the `/rite:issue:start` loop:
+**Scope**: このセクションは **fix target 選択**（Phase 2.1、どの findings を修正対象とするか）の caller-based 自動化のみを扱います。**separate issue creation**（Phase 4.3.3、skip findings の別 Issue 化可否の確認）は #506 以降、caller に関係なく **常に `AskUserQuestion` で確認** されるため、本 Caller Detection の対象外です。
+
+Automatic fix target selection (Phase 2.1) is applied only when `/rite:pr:fix` is called from within the `/rite:issue:start` loop:
 
 | Condition | Determination |
 |-----------|---------------|
@@ -51,4 +53,4 @@ Automatic target selection is applied only when `/rite:pr:fix` is called from wi
 | Conversation history has a record of `rite:pr:fix` being called via `Skill tool` (recent message) | Within loop → Apply automatic selection (all findings) |
 | Otherwise (user directly entered `/rite:pr:fix`) | Manual execution → Display option selection |
 
-For manual execution, users select targets via interactive options.
+For manual execution, users select targets via interactive options. **Note**: Regardless of caller, separate-issue creation for skipped findings (Phase 4.3.3) always presents `AskUserQuestion` with options `retry in current PR / create separate issue / withdraw` as of #506.

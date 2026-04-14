@@ -1517,7 +1517,7 @@ review-fix ループが上限（{max_loops} サイクル）に達しました。
 | Option | Description | Action |
 |--------|-------------|--------|
 | 上限延長（+5） | ループ上限を一時的に +5 拡張して続行 | `.rite-flow-state` に `"max_review_fix_loops_override": (max_loops + 5)` を書き込み、Step 4 へ進行。次回 Step 3.5 で override を優先読み取り |
-| 本 PR 内で再試行 | Phase 5.4.4 の fix.md Phase 4.3.3 AskUserQuestion ルートに統合されたため、本選択は Step 4 へ進行し次サイクルの fix で再試行される | `.rite-flow-state` は変更せず Step 4 へ進行 |
+| 本 PR 内で再試行 | ループ上限は延長せず、そのまま次サイクルへ進行する。次サイクルで `rite:pr:fix` が通常の Phase 2 処理（Fail-Fast Response Principle 優先 + 必要なら Phase 4.3.3 の AskUserQuestion 発火）に再突入し、findings の処理を継続する | `.rite-flow-state` は変更せず Step 4 へ進行 |
 | 手動レビューへエスカレーション | ループを終了し、Ready for Review に進む | **→ Phase 5.5** (Ready for Review) に直行 |
 
 > **Note**: `"重大度ゲーティング"` オプションは #506 で廃止されました。非収束時の選択肢は `/rite:pr:fix` Phase 4.3.3 の AskUserQuestion（本 PR 内で再試行 / 別 Issue 化 / 取り下げ）に統合されています。
