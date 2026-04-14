@@ -21,6 +21,18 @@ This skill is activated when reviewing files matching:
 - `**/*.sql`, `**/queries/**`
 - `prisma/**`, `drizzle/**`, `typeorm/**`
 
+## Hypothetical Exception Category (migration)
+
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories), but **only for migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths). Migration findings MAY retain CRITICAL / HIGH severity even when the Observed Likelihood is **Hypothetical**.
+
+**Rationale**: A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. "Wait until we observe data loss in production" is not an acceptable risk model.
+
+**Scope of the exception**: The exception applies to migration / schema mutation findings only. Query optimization, N+1 detection, and other non-migration database findings still follow the standard Impact × Likelihood Matrix and are subject to Hypothetical downgrade.
+
+**Reporting requirement**: When using this exception, the reviewer MUST record `Likelihood: Hypothetical (例外カテゴリ: database migration)` in the `内容` column.
+
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) still apply.
+
 ## Expertise Areas
 
 - Schema design and normalization

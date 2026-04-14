@@ -23,6 +23,18 @@ This skill is activated when reviewing files matching:
 - `Cargo.toml`, `Cargo.lock`
 - `composer.json`, `composer.lock`
 
+## Hypothetical Exception Category (CVE / supply chain)
+
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories). Known-CVE, supply-chain, and license findings MAY retain CRITICAL / HIGH severity even when the Observed Likelihood is **Hypothetical**.
+
+**Rationale**: Known CVEs, supply-chain compromise, and license violations are inherently "could happen any time" risks. Whether a vulnerable function is reachable from the application code today is irrelevant — the exploit window opens the moment the dependency is published, and waiting for observed exploitation is wrong by definition.
+
+**Scope of the exception**: The exception applies to CVE findings, malicious / typosquatting package detection, license incompatibility, and integrity / lock-file tampering findings. Bundle-size optimization, dev-dependency hygiene, and other non-security dependency findings still follow the standard Impact × Likelihood Matrix.
+
+**Reporting requirement**: When using this exception, the reviewer MUST record `Likelihood: Hypothetical (例外カテゴリ: dependencies)` in the `内容` column and include the CVE ID or advisory link in the `推奨対応` column.
+
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) still apply.
+
 ## Expertise Areas
 
 - Dependency versioning
