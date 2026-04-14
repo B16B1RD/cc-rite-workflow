@@ -719,6 +719,84 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-475-A: create_post_interview phase (active=true, fresh) → exit 2 (block)
+# #475 AC-4: stop-guard must block stop when lifecycle is mid-delegation
+# --------------------------------------------------------------------------
+echo "TC-475-A: create_post_interview active → exit 2 (block)"
+dir475a="$GUARD_TEST_DIR/tc475a"
+mkdir -p "$dir475a"
+fresh_ts=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir475a" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-475a\"}"
+stderr_file475a="$(mktemp "$GUARD_TEST_DIR/stderr475a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475a\", \"session_id\": \"sid-475a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file475a") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q "create_post_interview" "$stderr_file475a"; then
+  pass "create_post_interview active → blocked with phase in stderr"
+else
+  fail "expected exit 2 with create_post_interview in stderr, got rc=$rc stderr='$(cat "$stderr_file475a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-475-B: create_interview → create_post_interview transition is whitelist-valid
+# --------------------------------------------------------------------------
+echo "TC-475-B: create_interview → create_post_interview whitelist-valid"
+dir475b="$GUARD_TEST_DIR/tc475b"
+mkdir -p "$dir475b"
+create_state_file "$dir475b" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-475b\"}"
+stderr_file475b="$(mktemp "$GUARD_TEST_DIR/stderr475b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475b\", \"session_id\": \"sid-475b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file475b") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file475b"; then
+  pass "create_interview→create_post_interview accepted by whitelist (no invalid_transition)"
+else
+  fail "expected exit 2 without invalid_transition, got rc=$rc stderr='$(cat "$stderr_file475b")'"
+fi
+
+# TC-475-B2: invalid transition create_interview → create_delegation (bypassing post_interview)
+echo "TC-475-B2: invalid transition create_interview → create_delegation → blocked with invalid_transition"
+dir475b2="$GUARD_TEST_DIR/tc475b2"
+mkdir -p "$dir475b2"
+create_state_file "$dir475b2" "{\"active\": true, \"phase\": \"create_delegation\", \"previous_phase\": \"create_interview\", \"next_action\": \"skipped interview post-step\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-475b2\"}"
+stderr_file475b2="$(mktemp "$GUARD_TEST_DIR/stderr475b2.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475b2\", \"session_id\": \"sid-475b2\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file475b2") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q "Invalid phase transition" "$stderr_file475b2"; then
+  pass "invalid transition create_interview→create_delegation detected"
+else
+  fail "expected exit 2 with invalid_transition, got rc=$rc stderr='$(cat "$stderr_file475b2")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-475-C: session_id mismatch → exit 0 (stop allowed, AC-5)
+# --------------------------------------------------------------------------
+echo "TC-475-C: session_id mismatch during create_post_interview → exit 0"
+dir475c="$GUARD_TEST_DIR/tc475c"
+mkdir -p "$dir475c"
+create_state_file "$dir475c" "{\"active\": true, \"phase\": \"create_post_interview\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"session_id\": \"sid-other\"}"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475c\", \"session_id\": \"sid-mine\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "session_id mismatch → stop allowed (AC-5)"
+else
+  fail "expected exit 0, got $rc"
+fi
+
+# --------------------------------------------------------------------------
+# TC-475-D: create_completed is terminal — no block
+# --------------------------------------------------------------------------
+echo "TC-475-D: create_completed + active=false → exit 0 (terminal)"
+dir475d="$GUARD_TEST_DIR/tc475d"
+mkdir -p "$dir475d"
+create_state_file "$dir475d" "{\"active\": false, \"phase\": \"create_completed\", \"next_action\": \"none\", \"updated_at\": \"$fresh_ts\", \"session_id\": \"sid-475d\"}"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475d\", \"session_id\": \"sid-475d\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "create_completed terminal allows stop"
+else
+  fail "expected exit 0, got $rc"
+fi
+
+# --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ $FAIL -gt 0 ]; then

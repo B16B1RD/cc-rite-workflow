@@ -863,6 +863,280 @@ echo "TC-084: subagent + '{git reset --hard HEAD;}' → deny (brace boundary)"
 assert_subagent_deny "brace group git reset blocked" "{git reset --hard HEAD;}"
 
 # --------------------------------------------------------------------------
+# TC-090〜098: Pattern 5 — gh issue create during create lifecycle (#475 Mode B)
+# --------------------------------------------------------------------------
+echo ""
+echo "=== TC-090+: Pattern 5 gh issue create lifecycle blocking (#475) ==="
+
+# Helper: run hook with explicit cwd + pre-populated .rite-flow-state
+# Args: $1=cwd_dir, $2=command, $3..=extra jq-n args (unused now)
+run_guard_with_cwd() {
+  local cwd_dir="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(jq -n --arg tn "Bash" --arg cmd "$cmd" --arg cwd "$cwd_dir" \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: $cwd}' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+
+# Helper: create a tmp cwd with a .rite-flow-state file having the given phase/active.
+make_cwd_with_state() {
+  local phase="$1"
+  local active="$2"
+  local dir
+  dir=$(mktemp -d "/tmp/rite-test-475.XXXXXX")
+  cat > "$dir/.rite-flow-state" <<STATE_EOF
+{
+  "schema_version": 1,
+  "phase": "$phase",
+  "active": $active,
+  "issue_number": 0,
+  "branch": "",
+  "pr_number": 0,
+  "next_action": "test",
+  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")",
+  "session_id": "test-session"
+}
+STATE_EOF
+  echo "$dir"
+}
+
+# TC-090: gh issue create during phase=create_interview (active=true) → deny
+echo "TC-090: gh issue create + create_interview active → deny"
+tmpdir=$(make_cwd_with_state "create_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x' --body 'y'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"create-lifecycle-direct-gh-issue"* ]]; then
+  pass "TC-090 gh issue create blocked during create_interview"
+else
+  fail "TC-090 expected deny (create-lifecycle-direct-gh-issue), got decision=$decision reason=$reason"
+fi
+rm -rf "$tmpdir"
+
+# TC-091: gh issue create during phase=create_post_interview (active=true) → deny
+echo "TC-091: gh issue create + create_post_interview active → deny"
+tmpdir=$(make_cwd_with_state "create_post_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-091 blocked during create_post_interview"
+else
+  fail "TC-091 expected deny, got decision=$decision"
+fi
+rm -rf "$tmpdir"
+
+# TC-092: gh issue create during phase=create_delegation (active=true) → deny
+echo "TC-092: gh issue create + create_delegation active → deny"
+tmpdir=$(make_cwd_with_state "create_delegation" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-092 blocked during create_delegation"
+else
+  fail "TC-092 expected deny, got decision=$decision"
+fi
+rm -rf "$tmpdir"
+
+# TC-092b: gh issue create during phase=create_post_delegation (active=true) → deny
+# (fills coverage gap identified in #501 test-reviewer MEDIUM)
+echo "TC-092b: gh issue create + create_post_delegation active → deny"
+tmpdir=$(make_cwd_with_state "create_post_delegation" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-092b blocked during create_post_delegation"
+else
+  fail "TC-092b expected deny, got decision=$decision"
+fi
+rm -rf "$tmpdir"
+
+# TC-093: gh issue create with phase=create_completed → allow (lifecycle finished)
+echo "TC-093: gh issue create + create_completed → allow"
+tmpdir=$(make_cwd_with_state "create_completed" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-093 allowed after create_completed"
+else
+  fail "TC-093 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-094: gh issue create with active=false → allow
+echo "TC-094: gh issue create + active=false → allow"
+tmpdir=$(make_cwd_with_state "create_interview" "false")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-094 allowed when active=false"
+else
+  fail "TC-094 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-095: gh issue create with phase=phase2_branch (different workflow) → allow
+echo "TC-095: gh issue create + phase2_branch → allow (different workflow)"
+tmpdir=$(make_cwd_with_state "phase2_branch" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-095 allowed during non-create workflow"
+else
+  fail "TC-095 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-096: gh issue create with no .rite-flow-state → allow
+echo "TC-096: gh issue create + no .rite-flow-state → allow"
+tmpdir=$(mktemp -d "/tmp/rite-test-475.XXXXXX")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-096 allowed without state file"
+else
+  fail "TC-096 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-097: gh issue list (not create) during create_interview → allow
+echo "TC-097: gh issue list + create_interview → allow (not 'create')"
+tmpdir=$(make_cwd_with_state "create_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue list --state open") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-097 gh issue list allowed"
+else
+  fail "TC-097 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-098: gh issue view (not create) during create_interview → allow
+echo "TC-098: gh issue view + create_interview → allow (not 'create')"
+tmpdir=$(make_cwd_with_state "create_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue view 123 --json body") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-098 gh issue view allowed"
+else
+  fail "TC-098 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# --------------------------------------------------------------------------
+# TC-099-108: Pattern 5 bypass vector regression tests (#501 security review)
+# --------------------------------------------------------------------------
+echo ""
+echo "=== TC-099+: Pattern 5 bypass vector blocking (#501) ==="
+
+# Helper: assert deny (for bypass tests during create_interview)
+assert_p5_deny() {
+  local label="$1"
+  local cmd="$2"
+  local tmpdir
+  tmpdir=$(make_cwd_with_state "create_interview" "true")
+  local rc=0
+  local out
+  out=$(run_guard_with_cwd "$tmpdir" "$cmd") || rc=$?
+  local decision
+  decision=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  if [ "$decision" = "deny" ]; then
+    pass "$label"
+  else
+    fail "$label (cmd='$cmd', got decision=$decision)"
+  fi
+  rm -rf "$tmpdir"
+}
+
+# Helper: assert allow (for false-positive regression).
+# Checks that permissionDecision is not "deny" (rather than rc=0 && empty output), so future
+# hook changes that emit informational stdout on allow paths don't false-fail this assertion.
+assert_p5_allow() {
+  local label="$1"
+  local cmd="$2"
+  local tmpdir
+  tmpdir=$(make_cwd_with_state "create_interview" "true")
+  local rc=0
+  local out
+  out=$(run_guard_with_cwd "$tmpdir" "$cmd") || rc=$?
+  local decision
+  decision=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  if [ "$decision" != "deny" ]; then
+    pass "$label"
+  else
+    fail "$label (cmd='$cmd', decision=$decision out=$out)"
+  fi
+  rm -rf "$tmpdir"
+}
+
+# TC-099: semicolon boundary → deny
+assert_p5_deny "TC-099 'gh issue create;echo x' blocked (semicolon)" "gh issue create --title x;echo done"
+
+# TC-100: pipe boundary → deny
+assert_p5_deny "TC-100 'gh issue create | tee' blocked (pipe)" "gh issue create --title x|tee out"
+
+# TC-101: ampersand boundary → deny
+assert_p5_deny "TC-101 'gh issue create &' blocked (ampersand)" "gh issue create --title x &"
+
+# TC-102: prefix shortcut 'gh issue c' → allow (ambiguous in gh CLI itself, not a real bypass)
+# gh CLI resolves `c` as ambiguous (close/comment/create) and errors out.
+# Since it never actually invokes `gh issue create`, Pattern 5 does not need to match it.
+# Note: if gh CLI ever resolves `c` to a single subcommand, TC-102 must flip to deny.
+assert_p5_allow "TC-102 'gh issue c' allowed (ambiguous in gh CLI, not a real bypass)" "gh issue c --title x"
+
+# TC-102b: 2-char prefix 'gh issue cr' → deny
+# Among `gh issue` subcommands, only `create` starts with `cr`, so gh CLI resolves
+# `gh issue cr` unambiguously to `create`. This is a real bypass vector.
+assert_p5_deny "TC-102b 'gh issue cr' blocked (2-char unambiguous prefix)" "gh issue cr --title x"
+
+# TC-103: prefix shortcut 'gh issue cre' → deny
+assert_p5_deny "TC-103 'gh issue cre' blocked (prefix shortcut)" "gh issue cre --title x"
+
+# TC-104: brace group → deny (Pattern 4 normalization)
+assert_p5_deny "TC-104 '{gh issue create;}' blocked (brace group)" "{gh issue create --title x;}"
+
+# TC-105: subshell → deny
+assert_p5_deny "TC-105 '(gh issue create)' blocked (subshell)" "(gh issue create --title x)"
+
+# TC-106: env prefix → deny (not a bypass, just verify)
+assert_p5_deny "TC-106 'FOO=bar gh issue create' blocked" "FOO=bar gh issue create --title x"
+
+# TC-107: 'gh issue close' prefix 'c' ambiguity → MUST still deny because 'c' matches both
+# NOTE: This is intentional — we err on the side of blocking. 'gh issue c' is ambiguous
+# in gh CLI itself (returns "ambiguous" error), so users should not rely on it.
+# For 'gh issue close' (full spelling), the pattern does NOT match and it's allowed:
+assert_p5_allow "TC-107 'gh issue close' allowed (full spelling, not 'create' prefix)" "gh issue close 123"
+
+# TC-108: 'gh issue comment' allowed (full spelling)
+assert_p5_allow "TC-108 'gh issue comment' allowed" "gh issue comment 123 --body x"
+
+# TC-109: heredoc-body bypass → deny (Pattern 5 uses $COMMAND directly, not $CMD_CHECK)
+# `cat <<EOF ... gh issue create ... EOF | sh` hides the command in a heredoc body.
+# Pattern 1-4 strip the heredoc via CMD_CHECK="${COMMAND%%<<*}" but Pattern 5 bypasses that
+# by operating on $COMMAND directly (#501 security review HIGH).
+assert_p5_deny "TC-109 heredoc body bypass blocked" "cat <<EOF | sh
+gh issue create --title x
+EOF"
+
+# TC-110: eval with double-quoted body → deny (quote normalization)
+assert_p5_deny "TC-110 eval \"gh issue create\" blocked (quote normalization)" 'eval "gh issue create --title x"'
+
+# TC-111: eval with single-quoted body → deny
+assert_p5_deny "TC-111 eval 'gh issue create' blocked (quote normalization)" "eval 'gh issue create --title x'"
+
+# TC-112: backslash line continuation → deny
+# `gh \<newline>  issue \<newline>  create` normalized via \n→space and \→space
+# Using $'...' ANSI-C quoting to preserve literal backslash-newline in the test input.
+assert_p5_deny "TC-112 backslash line continuation blocked" $'gh \\\n  issue \\\n  create --title x'
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

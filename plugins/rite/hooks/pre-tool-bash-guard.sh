@@ -22,6 +22,9 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+# Single source of truth for create_* lifecycle phase names (#501 HIGH).
+# Provides rite_phase_is_create_lifecycle_in_progress() used by Pattern 5.
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
@@ -97,6 +100,102 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       BLOCKED_ALTERNATIVE="Use: select(.field) for truthiness check, or select(.field == null | not) for explicit null exclusion"
       ;;
   esac
+fi
+
+# Pattern 5: gh issue create direct invocation during /rite:issue:create lifecycle (#475 Mode B).
+# The orchestrator (create.md) must delegate Issue creation to rite:issue:create-register or
+# rite:issue:create-decompose sub-skills. A direct `gh issue create` call bypasses the entire
+# sub-skill delegation protocol, flow-state tracking, and Projects integration.
+#
+# Detection: .rite-flow-state must exist AND be active AND the phase must be create_interview /
+# create_post_interview / create_delegation / create_post_delegation (i.e., create lifecycle is
+# in progress but not yet terminated by create_completed).
+#
+# Bypass prevention — Pattern 5 normalization:
+#   Pattern 5 normalizes shell meta-characters (;, &, |, parens, braces, backticks, $, quotes) to
+#   spaces so that `true; gh issue create` / `echo x | gh issue create` / `{gh issue create;}` /
+#   `eval "gh issue create"` all match the same `gh issue create` pattern. Backslash line
+#   continuations (`gh \\\n  issue \\\n create`) are also normalized because `\n` and `\` are both
+#   replaced with space.
+#
+# ⚠️ IMPORTANT — Pattern 5 uses $COMMAND (full input) not $CMD_CHECK:
+#   Patterns 1-4 operate on $CMD_CHECK which is $COMMAND with content after the first `<<`
+#   heredoc marker stripped (to avoid false positives from heredoc body content). Pattern 5
+#   MUST NOT use CMD_CHECK because of a legitimate Mode B bypass: `cat <<EOF | sh ... gh issue
+#   create ... EOF` would be stripped to `cat ` and Pattern 5 would silently miss it. Using
+#   $COMMAND directly means heredoc bodies ARE scanned — the false positive risk (PR/Issue
+#   body text containing the literal `gh issue create`) is acceptable because (a) such text
+#   is rare in practice, and (b) the create lifecycle scope filter below limits exposure.
+#
+# Scope exclusions (allow):
+#   - no .rite-flow-state (manual gh invocation outside any workflow)
+#   - .rite-flow-state exists but active=false or phase=create_completed (lifecycle finished)
+#   - .rite-flow-state phase is not create_* (different workflow like /rite:issue:start)
+#   - gh issue subcommands other than `cr` prefix (close/comment/delete/edit/list/view/etc. allowed)
+#     — gh CLI resolves `cr` unambiguously to `create` (the only `gh issue` subcommand starting
+#     with `cr`), so `cr` is the minimum unambiguous prefix and must be caught. `c` alone is
+#     ambiguous and gh CLI itself rejects it, so we do not block it here.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  # Normalize $COMMAND directly (NOT $CMD_CHECK) to catch heredoc-body bypass (#501 HIGH).
+  CMD_P5="${COMMAND//$'\t'/ }"
+  CMD_P5="${CMD_P5//$'\n'/ }"
+  CMD_P5="${CMD_P5//$'\r'/ }"
+  CMD_P5="${CMD_P5//\\/ }"
+  CMD_P5="${CMD_P5//;/ }"
+  CMD_P5="${CMD_P5//&/ }"
+  CMD_P5="${CMD_P5//|/ }"
+  CMD_P5="${CMD_P5//(/ }"
+  CMD_P5="${CMD_P5//)/ }"
+  CMD_P5="${CMD_P5//\{/ }"
+  CMD_P5="${CMD_P5//\}/ }"
+  CMD_P5="${CMD_P5//\`/ }"
+  CMD_P5="${CMD_P5//\$/ }"
+  CMD_P5="${CMD_P5//\"/ }"
+  CMD_P5="${CMD_P5//\'/ }"
+  while [[ "$CMD_P5" == *"  "* ]]; do
+    CMD_P5="${CMD_P5//  / }"
+  done
+  PADDED_P5=" $CMD_P5 "
+
+  # gh subcommand prefix match: gh supports prefix shortcuts when unambiguous.
+  # Among `gh issue` subcommands (close / comment / create / delete / develop / edit / list /
+  # lock / pin / reopen / status / transfer / unlock / unpin / view), only `create` starts with
+  # `cr`, so `cr` is the minimum unambiguous prefix for `create`. `c` alone is ambiguous
+  # (matches close / comment / create) and gh CLI itself rejects it, so we don't block it.
+  # Match `cr` through `create` as trailing tokens, leaving `close` / `comment` / etc. untouched.
+  if [[ "$PADDED_P5" =~ " gh issue "(create|creat|crea|cre|cr)([[:space:]]|$) ]]; then
+    CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
+    STATE_ROOT_PATH=""
+    if [ -n "$CWD" ] && [ -d "$CWD" ]; then
+      STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT_PATH="$CWD"
+    fi
+    # State file lookup: if $STATE_ROOT_PATH is empty (e.g., CWD outside git repo and
+    # state-path-resolve.sh failed), skip the check entirely — no state file means no
+    # create lifecycle to enforce, which is the documented "allow" path.
+    if [ -n "$STATE_ROOT_PATH" ]; then
+      STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
+      if [ -f "$STATE_FILE_PATH" ]; then
+        STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
+        STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"
+        # Use query function from phase-transition-whitelist.sh as the single source of truth
+        # for create_* lifecycle phase names. Fall back to inline glob check when the helper
+        # is unavailable (e.g., bash < 4.2 where phase-transition-whitelist.sh exits early).
+        if [ "$STATE_ACTIVE" = "true" ]; then
+          if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
+            if rite_phase_is_create_lifecycle_in_progress "$STATE_PHASE"; then
+              BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
+            fi
+          elif [[ "$STATE_PHASE" == create_* ]] && [ "$STATE_PHASE" != "create_completed" ]; then
+            BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
+          fi
+          if [ "$BLOCKED_PATTERN" = "create-lifecycle-direct-gh-issue" ]; then
+            BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B)."
+            BLOCKED_ALTERNATIVE="rite:issue:create-register を呼ぶべき場面です。Phase 0.6 の Delegation Routing に従い skill: \"rite:issue:create-register\" または skill: \"rite:issue:create-decompose\" を invoke してください。"
+          fi
+        fi
+      fi
+    fi
+  fi
 fi
 
 # Pattern 4: Reviewer subagent running state-mutating git commands (Issue #442).
