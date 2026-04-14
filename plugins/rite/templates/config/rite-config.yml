@@ -102,8 +102,9 @@ review:
   confidence_threshold: 80   # Minimum confidence score for findings table (default: 80)
   fact_check:
     enabled: true
-    max_claims: 10
-    use_context7: false
+    max_claims: 20                    # External claim のみに適用（Internal Likelihood は枠外）
+    use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
+    verify_internal_likelihood: true  # Phase 5.2: Internal Likelihood Claim の Grep ベース検証を有効化
 
 # Notification settings
 notifications:
