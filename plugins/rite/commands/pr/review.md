@@ -3882,7 +3882,7 @@ echo "trigger_exit=$trigger_exit"
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 6.5.W.2 when it is non-zero. Ingest failure does not block the review workflow.
 
-### 6.5.W.2 Wiki Ingest Invocation (Conditional)
+#### 6.5.W.2 Wiki Ingest Invocation (Conditional)
 
 After the trigger completes, invoke `/rite:wiki:ingest` via the Skill tool so that the Raw Source written by the trigger is committed and pushed to the `wiki` branch. Without this step, the Raw Source is abandoned in the working tree and the `wiki` branch never grows (Issue #515 root cause).
 
