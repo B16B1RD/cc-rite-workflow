@@ -104,7 +104,7 @@ review:
     enabled: true
     max_claims: 20                    # External claim のみに適用（Internal Likelihood は枠外）
     use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
-    verify_internal_likelihood: true  # Phase 5.2: Internal Likelihood Claim の Grep ベース検証を有効化
+    verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/commands/pr/references/fact-check.md
 
 # Notification settings
 notifications:
