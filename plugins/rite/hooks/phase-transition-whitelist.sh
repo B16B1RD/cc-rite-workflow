@@ -24,6 +24,15 @@
 [ -n "${_RITE_PHASE_TRANSITION_LOADED:-}" ] && return 0
 _RITE_PHASE_TRANSITION_LOADED=1
 
+# Bash 4.2+ required for `declare -gA`. Older bash (e.g., macOS default 3.2)
+# would abort with a syntax error on the associative-array literal below, and the
+# stop-guard source would silently fail-open. Bail out gracefully so that
+# stop-guard can detect the missing `rite_phase_transition_allowed` function and
+# log a diagnostic instead of silently disabling the whitelist.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2))); then
+  return 0
+fi
+
 # Baked-in whitelist. Each entry maps a phase to the phases it may transition to.
 # Empty string ("") is accepted as a synthetic "workflow start" predecessor for
 # any phase, since /rite:issue:start begins with no prior state.
@@ -45,8 +54,10 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["phase2_post_work_memory"]="phase3_plan"
 
   # Phase 3: implementation plan
+  # Phase 5.0 (Stop Hook Verification) is mandatory — transition MUST go through phase5_stop_hook.
+  # Do NOT allow direct phase3_post_plan → phase5_lint (would silently skip Stop Hook verification).
   ["phase3_plan"]="phase3_post_plan"
-  ["phase3_post_plan"]="phase5_stop_hook phase5_lint"
+  ["phase3_post_plan"]="phase5_stop_hook"
 
   # Phase 5.0: stop-hook verification
   ["phase5_stop_hook"]="phase5_post_stop_hook"
@@ -61,23 +72,40 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["phase5_post_pr"]="phase5_review"
 
   # Phase 5.4: review-fix loop
+  # `rite:pr:ready` defense-in-depth directly writes phase5_post_ready from phase5_post_review /
+  # phase5_post_fix, bypassing phase5_ready. Allow that transition to avoid invalid-transition
+  # blocks on the mergeable path (devops-reviewer CRITICAL #1).
   ["phase5_review"]="phase5_post_review"
-  ["phase5_post_review"]="phase5_fix phase5_ready"
+  ["phase5_post_review"]="phase5_fix phase5_ready phase5_post_ready phase5_ready_error"
   ["phase5_fix"]="phase5_post_fix"
-  ["phase5_post_fix"]="phase5_review phase5_ready"
+  ["phase5_post_fix"]="phase5_review phase5_ready phase5_post_ready phase5_ready_error"
 
   # Phase 5.5: ready → status → metrics → completion
-  ["phase5_ready"]="phase5_post_ready"
+  # phase5_ready_error is a terminal error state emitted by ready.md Phase 4.5 when skill errors
+  # (devops-reviewer HIGH #5). Allow error → post_ready and error → completed transitions so the
+  # workflow can recover via user choice (retry / manual / terminate).
+  ["phase5_ready"]="phase5_post_ready phase5_ready_error"
+  ["phase5_ready_error"]="phase5_post_ready completed"
   ["phase5_post_ready"]="phase5_status_in_review"
   ["phase5_status_in_review"]="phase5_post_status_in_review"
   ["phase5_post_status_in_review"]="phase5_metrics"
   ["phase5_metrics"]="phase5_post_metrics"
-  ["phase5_post_metrics"]="phase5_completion"
+  ["phase5_post_metrics"]="phase5_completion completed"
 
   # Phase 5.6 / 5.7: completion + parent completion
+  # "completed" is a terminal state reachable from multiple phases (post_metrics, completion,
+  # parent_completion, post_parent_completion). The Post-completion block historically patched
+  # phase="completed" directly after phase5_post_metrics, so we accept the direct transition
+  # (prompt-engineer + devops CRITICAL #2).
   ["phase5_completion"]="phase5_parent_completion completed"
   ["phase5_parent_completion"]="phase5_post_parent_completion"
   ["phase5_post_parent_completion"]="completed"
+
+  # Terminal: "completed" MAY re-enter phase5_completion only in /rite:resume scenarios.
+  # Under normal flow, transitions out of "completed" are rejected by rite_phase_transition_allowed
+  # (terminal state). The empty-value listing below keeps the name known as a source for
+  # rite_phase_is_known().
+  ["completed"]=""
 )
 
 # Load override map from rite-config.yml if present.
@@ -96,13 +124,22 @@ _rite_load_whitelist_overrides() {
   #         phase_a:
   #           - phase_b
   #           - phase_c
-  local block
+  #
+  # Trailing `# comment` and `#` column-0 comments are both tolerated
+  # (regex ends with optional `#.*` to match full-line or inline comments).
+  #
+  # Error visibility: awk errors (permission denied, disk I/O, malformed invocation)
+  # are sent to stderr. Previously suppressed with `2>/dev/null`, which silently
+  # hid override misconfiguration from users — the opposite of #490's intent
+  # (error-handling-reviewer CRITICAL).
+  local block awk_err
+  awk_err=$(mktemp /tmp/rite-phase-transition-awk-err-XXXXXX 2>/dev/null) || awk_err=""
   block=$(awk '
     BEGIN { in_hooks=0; in_sg=0; in_pt=0; pt_indent=-1 }
-    /^hooks:[[:space:]]*$/ { in_hooks=1; next }
+    /^hooks:[[:space:]]*(#.*)?$/ { in_hooks=1; next }
     in_hooks && /^[a-zA-Z]/ { in_hooks=0; in_sg=0; in_pt=0 }
-    in_hooks && /^[[:space:]]+stop_guard:[[:space:]]*$/ { in_sg=1; next }
-    in_sg && /^[[:space:]]+phase_transitions:[[:space:]]*$/ {
+    in_hooks && /^[[:space:]]+stop_guard:[[:space:]]*(#.*)?$/ { in_sg=1; next }
+    in_sg && /^[[:space:]]+phase_transitions:[[:space:]]*(#.*)?$/ {
       in_pt=1
       match($0, /^[[:space:]]+/)
       pt_indent=RLENGTH
@@ -116,7 +153,17 @@ _rite_load_whitelist_overrides() {
       if (line_indent <= pt_indent) { in_pt=0; next }
       print
     }
-  ' "$config_file" 2>/dev/null)
+  ' "$config_file" 2>"${awk_err:-/dev/null}")
+  local awk_rc=$?
+
+  if [ "$awk_rc" -ne 0 ]; then
+    echo "WARNING: rite-config.yml override parse (awk) failed (rc=$awk_rc): $config_file" >&2
+    if [ -n "$awk_err" ] && [ -s "$awk_err" ]; then
+      head -3 "$awk_err" | sed 's/^/  /' >&2
+    fi
+    echo "  対処: rite-config.yml の権限 / awk バイナリを確認してください" >&2
+  fi
+  [ -n "$awk_err" ] && rm -f "$awk_err"
 
   [ -z "$block" ] && return 0
 
@@ -131,9 +178,14 @@ _rite_load_whitelist_overrides() {
     local trimmed="${line#"${line%%[![:space:]]*}"}"
     [ -z "$trimmed" ] && continue
 
-    if [[ "$trimmed" =~ ^-\  ]]; then
-      # Block list entry: "- value"
-      local val="${trimmed#- }"
+    # Ignore pure comment lines
+    [[ "$trimmed" =~ ^# ]] && continue
+
+    # Block list entry: "- value" — use [[:space:]]+ to tolerate tab and multiple spaces
+    # (prompt-engineer IMPORTANT R #2).
+    if [[ "$trimmed" =~ ^-[[:space:]]+ ]]; then
+      local val="${trimmed#-}"
+      val="${val#"${val%%[![:space:]]*}"}"
       val="${val%%#*}"
       val="${val//[[:space:]]/}"
       [ -n "$val" ] && current_targets="${current_targets:+$current_targets }$val"
@@ -147,19 +199,31 @@ _rite_load_whitelist_overrides() {
       rhs="${rhs#"${rhs%%[![:space:]]*}"}"
       current_targets=""
       # Handle inline list form:  [a, b, c]
-      if [[ "$rhs" =~ ^\[(.*)\]$ ]]; then
-        local list_body="${BASH_REMATCH[1]}"
-        list_body="${list_body//,/ }"
-        for val in $list_body; do
-          val="${val//\"/}"
-          val="${val//\'/}"
-          val="${val//[[:space:]]/}"
-          [ -n "$val" ] && current_targets="${current_targets:+$current_targets }$val"
-        done
-        _rite_merge_override_entry "$current_key" "$current_targets"
-        current_key=""
-        current_targets=""
+      # Require balanced brackets — unclosed `[a, b` silently dropped the entry
+      # and leaked into the next key (IMPORTANT R #3).
+      if [[ "$rhs" =~ ^\[ ]]; then
+        if [[ "$rhs" =~ ^\[(.*)\]$ ]]; then
+          local list_body="${BASH_REMATCH[1]}"
+          list_body="${list_body//,/ }"
+          for val in $list_body; do
+            val="${val//\"/}"
+            val="${val//\'/}"
+            val="${val//[[:space:]]/}"
+            [ -n "$val" ] && current_targets="${current_targets:+$current_targets }$val"
+          done
+          _rite_merge_override_entry "$current_key" "$current_targets"
+          current_key=""
+          current_targets=""
+        else
+          echo "WARNING: rite-config.yml override parse: unclosed inline list on '$current_key': $rhs" >&2
+          current_key=""
+          current_targets=""
+        fi
       fi
+    else
+      # Unrecognized line — emit a debug trace so users can diagnose silent drops
+      # (error-handling IMPORTANT).
+      [ -n "${RITE_DEBUG:-}" ] && echo "[rite debug] override parse skipped line: $trimmed" >&2
     fi
   done <<< "$block"
 

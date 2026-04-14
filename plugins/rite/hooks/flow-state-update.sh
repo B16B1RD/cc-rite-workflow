@@ -143,11 +143,32 @@ case "$MODE" in
       fi
     fi
     # Capture previous phase for whitelist-based transition verification (#490).
-    # When the existing state file is absent or malformed, previous_phase is "" —
-    # stop-guard treats empty previous_phase as "workflow start" (always valid).
+    # When the state file is absent, previous_phase is "" (legitimate cold start).
+    # When the file exists but is corrupt, fail-fast — silently treating corruption
+    # as a cold start would erase the prior phase and effectively bypass the
+    # whitelist for the next transition (error-handling CRITICAL #2).
     PREV_PHASE=""
     if [[ -f "$FLOW_STATE" ]]; then
-      PREV_PHASE=$(jq -r '.phase // ""' "$FLOW_STATE" 2>/dev/null) || PREV_PHASE=""
+      if [[ ! -s "$FLOW_STATE" ]]; then
+        echo "ERROR: .rite-flow-state exists but is empty ($FLOW_STATE)" >&2
+        echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
+        echo "  対処: .rite-flow-state を /rite:resume で復旧するか、既存ファイルを削除してから再度 /rite:issue:start を実行" >&2
+        exit 1
+      fi
+      # Validate JSON parse; distinguish "missing .phase" (acceptable → "") from
+      # "jq parse error" (corrupt state, must not silently fall back).
+      _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+      if PREV_PHASE=$(jq -r '.phase // ""' "$FLOW_STATE" 2>"${_jq_err:-/dev/null}"); then
+        : # jq ok
+      else
+        echo "ERROR: .rite-flow-state parse failed ($FLOW_STATE)" >&2
+        [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+        echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
+        echo "  対処: 既存の .rite-flow-state を確認し、必要なら /rite:resume で復旧してください" >&2
+        [ -n "$_jq_err" ] && rm -f "$_jq_err"
+        exit 1
+      fi
+      [ -n "$_jq_err" ] && rm -f "$_jq_err"
     fi
     if jq -n \
       --argjson active "$ACTIVE" \
