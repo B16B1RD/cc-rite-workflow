@@ -2,15 +2,46 @@
 
 > **Source**: Extracted from `review.md` Phase 5.3.1-5.3.7. This file is the source of truth for assessment rules.
 
+## 5.3.0 Observed Likelihood Gate (Pre-Assessment Demotion)
+
+Before 5.3.1 Red blocking rule, apply the following **mechanical** demotion. This is a deterministic rule — AI judgment is NOT involved and is explicitly prohibited (see 5.3.7).
+
+```
+For each finding in 全指摘事項:
+  if reviewer_type in ["security", "database", "devops", "dependencies"]:
+    skip (severity 維持)
+  else:
+    if finding lacks evidence of triggering call site:
+      demote severity by one level  (CRITICAL→HIGH→MEDIUM→LOW→removed)
+      if already LOW after demotion: remove from 全指摘事項
+```
+
+**"Evidence of triggering call site"** means the finding's description explicitly cites a `file:line` where the problematic input/flow is observed in the current codebase (not hypothetical). When absent, the finding is demoted mechanically.
+
+**Excluded reviewer types** (demotion skipped): `security`, `database`, `devops`, `dependencies`. These reviewers routinely evaluate attack surfaces, destructive operations, infrastructure risk, and supply-chain concerns where hypothetical scenarios are legitimate scope.
+
+**Relation to 5.3.7 (AI independent judgment prohibition)**: The mechanical demotion in 5.3.0 is **explicitly permitted** because it follows a deterministic algorithm with no AI discretion. In contrast, 5.3.7 prohibits AI from applying severity exceptions based on its own judgment (e.g., "this CRITICAL is actually minor"). Mechanical rule = allowed; AI judgment = forbidden.
+
+**Recording demoted findings**: Record each demoted finding in an `### Observed Likelihood 降格結果` section of the integrated report (Phase 5.4) so the demotion is auditable:
+
+```markdown
+### Observed Likelihood 降格結果
+
+| 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
+|---------|-------|------------|------|---------|
+| HIGH | MEDIUM | {file:line} | {description} | triggering call site 未提示 |
+| LOW | （削除） | {file:line} | {description} | LOW → removed |
+```
+
 ## 5.3.1 Assessment Rules
 
-**Red blocking rule: If even 1 finding exists, it MUST NOT be assessed as "Merge OK"**
+**Red blocking rule: If even 1 finding exists (after 5.3.0 demotion), it MUST NOT be assessed as "Merge OK"**
 
-All findings (CRITICAL/HIGH/MEDIUM/LOW) are always blocking regardless of loop count. There is no gradual relaxation — every finding must be resolved before merge.
+All findings (CRITICAL/HIGH/MEDIUM/LOW) remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining finding must be resolved before merge.
 
 **Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
 
-**Pre-existing issue exclusion**: Items in the "既存問題（PR 対象ファイル）" section are NOT included in `全指摘事項` and are NOT counted in `total_findings`. Pre-existing issues are problems that existed before the current PR's changes (confirmed via revert test). They are reported in a separate section for visibility and automatic Issue creation (Phase 7 Source C), but they do not affect the assessment or merge decision. This ensures the review-fix loop terminates correctly — only issues introduced by the current PR block merge.
+**Pre-existing issue handling**: Pre-existing issues (problems that existed before the current PR's changes, confirmed via revert test) are excluded from findings entirely by the reviewer's scope judgment rule. They are NOT collected as a separate report section and NOT auto-Issue-ified. If a reviewer wants to surface a pre-existing concern, it goes into the "調査推奨" section of the integrated report (Phase 5) — the user may optionally run `/rite:investigate {file}` separately (non-blocking, not counted in `total_findings`).
 
 When executed standalone (outside a loop), the same rule applies: all findings are blocking.
 
