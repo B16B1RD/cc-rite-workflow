@@ -1038,7 +1038,7 @@ printf '[CONTEXT] CONVERGENCE_TRAJECTORY loop=%d values=[%s]\n' "$loop_count" "$
 |---------|-------------------|----------|
 | **Converging** | Last 3 values strictly decreasing (e.g., 20→14→8) | Continue normally |
 | **Stalled** | Last 3 values within ±2 of each other (e.g., 14→15→13) | **Batched fix mode**: Instruct next `/rite:pr:fix` to group findings by category and fix all instances of the same pattern together |
-| **Diverging** | Last 2 values increasing (e.g., 13→20) | **Severity gating** (if `loop_count >= severity_gating_cycle_threshold`): Instruct next `/rite:pr:fix` to fix only CRITICAL/HIGH, defer MEDIUM/LOW to separate Issues |
+| **Diverging** | Last 2 values increasing (e.g., 13→20) | **AskUserQuestion escalation** (if `loop_count >= severity_gating_cycle_threshold`): Present `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` 3 択で findings を closed に収束させる。severity_gating strategy は廃止されました (#506) — 本 PR 起因 findings は severity 問わず本 PR 内で対応する方針 |
 | **Oscillating** | Last 4 values alternate up/down (e.g., 20→12→18→10) | **Scope lock** (if `loop_count >= scope_lock_cycle_threshold`): Instruct next `/rite:pr:fix` to only fix findings in files from the ORIGINAL PR diff, not in fix-introduced code |
 
 **Step 3**: Apply strategy based on pattern and cycle-specific thresholds.
@@ -1073,7 +1073,7 @@ When threshold is reached, present via `AskUserQuestion`:
 
 | Selection | Next Action |
 |-----------|-------------|
-| Strategy selected (batched/severity_gating/scope_lock) | Write strategy to `.rite-flow-state` (see below), then **proceed to review invocation** |
+| Strategy selected (batched/scope_lock) | Write strategy to `.rite-flow-state` (see below), then **proceed to review invocation** |
 | 戦略変更なしで続行 | **Proceed to review invocation** |
 | 手動レビューへエスカレーション | **→ Phase 5.5 (Ready for Review) に直行。以下の review invocation をスキップする** |
 
@@ -1084,9 +1084,10 @@ jq --arg strategy "{selected_strategy}" '.convergence_strategy = $strategy' .rit
 ```
 
 The `convergence_strategy` value is read by `/rite:pr:fix` Phase 0.4 to adjust fix behavior:
-- `"severity_gating"`: Phase 2 only processes CRITICAL/HIGH findings. MEDIUM/LOW are auto-created as separate Issues.
 - `"batched"`: Phase 2 groups findings by pattern category before fixing.
 - `"scope_lock"`: Phase 2 only fixes findings in files from the original PR diff (`git diff {base_branch}...{first_fix_commit}~1 --name-only`).
+
+> **Note**: `"severity_gating"` strategy was removed in #506 (Fail-Fast First / 本 PR 完結原則). When Diverging pattern is detected, the AskUserQuestion escalation presents `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` instead of automatic severity-based deferral.
 
 Invoke `skill: "rite:pr:review"`.
 
@@ -1516,8 +1517,10 @@ review-fix ループが上限（{max_loops} サイクル）に達しました。
 | Option | Description | Action |
 |--------|-------------|--------|
 | 上限延長（+5） | ループ上限を一時的に +5 拡張して続行 | `.rite-flow-state` に `"max_review_fix_loops_override": (max_loops + 5)` を書き込み、Step 4 へ進行。次回 Step 3.5 で override を優先読み取り |
-| 重大度ゲーティング | CRITICAL/HIGH のみ修正、MEDIUM/LOW は別 Issue 化 | `.rite-flow-state` に `"convergence_strategy": "severity_gating"` を書き込み、Step 4 へ進行。次の `/rite:pr:fix` 呼び出し時に severity gating モードが適用される |
+| 本 PR 内で再試行 | ループ上限は延長せず、そのまま次サイクルへ進行する。次サイクルで `rite:pr:fix` が通常の Phase 2 処理（Fail-Fast Response Principle 優先 + 必要なら Phase 4.3.3 の AskUserQuestion 発火）に再突入し、findings の処理を継続する | `.rite-flow-state` は変更せず Step 4 へ進行 |
 | 手動レビューへエスカレーション | ループを終了し、Ready for Review に進む | **→ Phase 5.5** (Ready for Review) に直行 |
+
+> **Note**: `"重大度ゲーティング"` オプションは #506 で廃止されました。非収束時の選択肢は `/rite:pr:fix` Phase 4.3.3 の AskUserQuestion（本 PR 内で再試行 / 別 Issue 化 / 取り下げ）に統合されています。
 
 4. If `loop_count < max_loops`, proceed to Step 4 normally.
 

@@ -105,6 +105,44 @@ review:
     max_claims: 20                    # External claim のみに適用（Internal Likelihood は枠外）
     use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
     verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/commands/pr/references/fact-check.md
+  # NOTE (#506 known limitation): 以下の 3 セクション (observed_likelihood_gate / fail_fast_first /
+  # separate_issue_creation) と下記 fix.fail_fast_response は config scaffolding (宣言のみ) です。
+  # 現時点では prompt 側 (fix.md / review.md / _reviewer-base.md) がハードコードで挙動を強制しており、
+  # これらのキーを false にしても挙動は変わりません (opt-out は動作しません)。
+  # runtime wiring は follow-up Issue で追跡されます。
+  #
+  # Observed Likelihood Gate (#506): 指摘の必要条件に「実発生の立証」を追加
+  # 詳細: plugins/rite/references/severity-levels.md, plugins/rite/agents/_reviewer-base.md
+  observed_likelihood_gate:
+    enabled: true                     # true で Observed Likelihood Gate を有効化（default: true）
+    security_exception: true          # security reviewer は Hypothetical でも severity 維持
+    hypothetical_exception_reviewers: # Hypothetical 例外カテゴリ reviewer
+      - security
+      - database
+      - devops
+      - dependencies
+    minimum: "demonstrable"           # demonstrable 未満は非例外 reviewer で報告禁止
+  # Fail-Fast First (#506): reviewer/fix 共に「まず throw/raise で伝播」を必須検討
+  # 詳細: plugins/rite/agents/_reviewer-base.md, plugins/rite/commands/pr/fix.md Phase 2
+  fail_fast_first:
+    enabled: true                     # true で Fail-Fast First 原則を有効化（default: true）
+    allow_skill_exceptions: true      # skill 側に明示された fallback 許容条件を尊重
+    wiki_query_required: true         # fallback 推奨前に Wiki で project-specific 許容パターンを確認必須
+  # Separate Issue Creation (#506): 別 Issue 化は人間判定必須、Source C（既存問題）報告廃止
+  # 詳細: plugins/rite/commands/pr/fix.md Phase 4.3.3
+  separate_issue_creation:
+    require_user_confirmation: true   # true で E2E でも AskUserQuestion をスキップせず常に確認（default: true）
+    report_pre_existing_issues: false # false で Source C (既存問題) の reviewer 報告を抑止（default: false）
+
+# Fix settings (#506)
+fix:
+  # Fail-Fast Response Principle: throw/raise 優先の修正方針を必須化
+  # 詳細: plugins/rite/commands/pr/fix.md Phase 2 Fail-Fast Response Principle
+  fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
+  # severity_gating strategy は #506 で廃止されました（後方互換のためキーは残置）。
+  # 非収束時は fix.md Phase 4.3.3 の AskUserQuestion に統合されています。
+  severity_gating:
+    enabled: false                    # DEPRECATED (#506): 常に false 固定扱い
 
 # Notification settings
 notifications:

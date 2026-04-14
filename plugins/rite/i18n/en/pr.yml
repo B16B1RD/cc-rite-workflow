@@ -277,3 +277,9 @@ messages:
   pr_create_ask_create_without_issue: "Create PR without Issue?"
   pr_create_option_specify_other: "Specify different Issue"
 
+  # Fail-Fast First / Observed Likelihood / Separate Issue Creation (#506)
+  review_fail_fast_first_warning: "⚠️ Fail-Fast First principle: Before recommending a fallback, first consider propagating via throw/raise. Check the skill's documented fallback allowances and confirm project-specific patterns via Wiki (/rite:wiki:query) before making a recommendation."
+  review_observed_likelihood_demotion_notice: "🔽 Observed Likelihood Gate: Finding {finding_id} was demoted from {from_severity} to {to_severity} due to insufficient evidence of actual occurrence (reason: {reason}). Consider re-reporting if you can grep the triggering call site."
+  review_separate_issue_user_confirmation_question: "Separate issue creation is prone to misuse as an escape hatch for findings that should be addressed in the current PR. User confirmation is always required — even in E2E flow. Please choose an action for the following skipped findings: {count} item(s)"
+  fix_fail_fast_response_checklist_prompt: "Fail-Fast Response Principle: Before deciding on a fix approach, verify the following — (1) Did you consider propagating via throw/raise to the caller? (2) Isn't it more natural to reach an existing error boundary instead of adding a new try/catch? (3) Does the null check / optional chaining you're adding actually fix the problem or merely hide it? (4) Would fixing the test be more correct than working around its constraints? If adopting a fallback, state the reason in the commit message."
+
