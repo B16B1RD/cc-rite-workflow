@@ -602,14 +602,63 @@ Proceed to Phase 4.6.
 
 **Three-level nesting guard (AC / MUST NOT)**: This phase processes only the direct parent. It does NOT recurse into the parent's parent (grandparent). Three-level nesting is explicitly out of scope (see Issue #513 Section 2 Out of Scope).
 
-### 4.6.1 Enumerate Parent's Child Issues
+### 4.6.0 Idempotency Check (AC-6)
 
-Retrieve the parent's child Issues via **two methods (OR combination)**. The methods mirror the parent-detection strategy for consistency.
-
-**Method A: Sub-Issues API (preferred)**
+Before enumerating children, check whether the parent Issue is already closed. If so, this is a no-op invocation (the parent was previously closed — manually, by a prior auto-close run, or externally) and we must not re-prompt the user.
 
 ```bash
-children_json=$(gh api graphql -H "GraphQL-Features: sub_issues" -f query='
+parent_state=$(gh issue view {parent_number} --json state --jq '.state')
+echo "parent_state=$parent_state"
+if [ "$parent_state" = "CLOSED" ]; then
+  echo "[DEBUG] parent #{parent_number} already closed — skipping Phase 4.6 (AC-6 idempotent no-op)"
+fi
+```
+
+**When `parent_state == "CLOSED"`**: Skip the rest of Phase 4.6 (4.6.1–4.6.5) and proceed to Phase 5. This satisfies AC-6 (idempotency: re-running close on a child whose parent is already closed is a safe no-op).
+
+**When retrieval fails** (`parent_state` empty): Display warning and skip Phase 4.6 (non-blocking):
+
+```
+警告: 親 Issue #{parent_number} の state 取得に失敗しました。親の自動クローズ判定をスキップします。
+```
+
+Proceed to Phase 5.
+
+**When `parent_state != "CLOSED"`**: Proceed to 4.6.1.
+
+### 4.6.1 Enumerate Parent's Child Issues and Determine all_closed
+
+Retrieve the parent's child Issues via **two methods (OR combination, Method A → Method B fallback)**, then determine whether every child is closed. All of this is done in a **single Bash tool invocation** to avoid shell state loss between calls.
+
+**Design notes** (Issue #517 review fixes):
+
+- **Method A stderr is NOT suppressed**: Previous `2>/dev/null` silently downgraded auth / network / permission errors to "empty result", which is exactly the silent-skip anti-pattern Issue #513 aims to eliminate. Instead, stderr is captured to a tempfile and surfaced in debug logs when Method A fails.
+- **Method A → Method B fallback is explicit bash conditional**: Previous version relied on prose instructions and would silently overwrite Method A's result when Method B ran unconditionally. The unified bash block below branches on `jq length` of Method A's result.
+- **Method B uses a per-child loop, not an LLM-generated alias query**: Previous `{alias_query_generated_by_llm}` placeholder had no concrete example and risked unexecutable GraphQL. The deterministic per-child `gh issue view --json state` loop is simpler, fully auditable, and costs O(N) API calls for small N (parents rarely have >20 children in practice).
+
+```bash
+# ============================================================================
+# Phase 4.6.1: Enumerate children + determine all_closed (single bash block)
+# ============================================================================
+parent_number="{parent_number}"
+owner="{owner}"
+repo="{repo}"
+
+children_json=""
+method_a_err=""
+_rite_close_p461_cleanup() {
+  rm -f "${method_a_err:-}"
+}
+trap 'rc=$?; _rite_close_p461_cleanup; exit $rc' EXIT
+trap '_rite_close_p461_cleanup; exit 130' INT
+trap '_rite_close_p461_cleanup; exit 143' TERM
+trap '_rite_close_p461_cleanup; exit 129' HUP
+
+# --- Method A: Sub-Issues API (preferred) ---
+# stderr is captured to tempfile (NOT suppressed) so auth / network / GraphQL errors surface.
+method_a_err=$(mktemp /tmp/rite-close-p461-method-a-err-XXXXXX) || method_a_err=""
+method_a_rc=0
+if method_a_raw=$(gh api graphql -H "GraphQL-Features: sub_issues" -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
@@ -618,69 +667,93 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
     }
   }
-}' -f owner="{owner}" -f repo="{repo}" -F number={parent_number} 2>/dev/null \
-  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number: .number, state: .state}]')
-echo "method_a_children=${children_json:-[]}"
-```
+}' -f owner="$owner" -f repo="$repo" -F number="$parent_number" \
+  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number: .number, state: .state}]' \
+  2>"${method_a_err:-/dev/null}"); then
+  children_json="$method_a_raw"
+  method_a_count=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
+  echo "[DEBUG] method_a succeeded: ${method_a_count} children via Sub-Issues API"
+else
+  method_a_rc=$?
+  echo "[DEBUG] method_a failed (rc=$method_a_rc) — likely sub_issues feature not available, will try Method B"
+  if [ -n "$method_a_err" ] && [ -s "$method_a_err" ]; then
+    head -3 "$method_a_err" | sed 's/^/  method_a stderr: /' >&2
+  fi
+  children_json=""
+fi
+[ -n "$method_a_err" ] && rm -f "$method_a_err"
 
-**Method B: Parent body `## Sub-Issues` tasklist (fallback)**
+# --- Method B: Parent body Sub-Issues tasklist (fallback) ---
+# Explicit bash conditional: only run Method B when Method A yielded empty or failed.
+method_a_length=$(printf '%s' "${children_json:-[]}" | jq 'length' 2>/dev/null || echo 0)
+if [ -z "$children_json" ] || [ "$method_a_length" -eq 0 ]; then
+  echo "[DEBUG] falling back to Method B (parent body tasklist parse)"
+  parent_body=$(gh issue view "$parent_number" --json body --jq '.body' 2>/dev/null || echo "")
+  if [ -z "$parent_body" ]; then
+    echo "[DEBUG] method_b: failed to fetch parent body"
+    children_json="[]"
+  else
+    # Extract child numbers from `- [ ] #N` / `- [x] #N` lines under `## Sub-Issues` section
+    child_numbers=$(awk '/^## Sub-Issues/{flag=1;next} /^## /{flag=0} flag && /^- \[[ xX]\] #[0-9]+/{print}' <<< "$parent_body" | grep -oE '#[0-9]+' | tr -d '#')
+    echo "[DEBUG] method_b child_numbers=${child_numbers:-none}"
 
-If Method A returns `[]` (sub-issues feature not in use in this repo), parse the parent body's Sub-Issues tasklist and resolve each referenced Issue's state:
+    if [ -z "$child_numbers" ]; then
+      children_json="[]"
+    else
+      # Deterministic per-child loop (O(N) API calls, N typically small).
+      # Build JSON array by iterating and appending state per child.
+      children_json="["
+      first=1
+      for n in $child_numbers; do
+        child_state=$(gh issue view "$n" --json state --jq '.state' 2>/dev/null || echo "")
+        if [ -z "$child_state" ]; then
+          echo "[DEBUG] method_b: failed to fetch state for #$n (will treat as OPEN to block auto-close)" >&2
+          child_state="OPEN"
+        fi
+        if [ "$first" -eq 1 ]; then
+          first=0
+        else
+          children_json+=","
+        fi
+        children_json+="{\"number\":$n,\"state\":\"$child_state\"}"
+      done
+      children_json+="]"
+    fi
+  fi
+fi
 
-```bash
-parent_body=$(gh issue view {parent_number} --json body --jq '.body')
-# Extract child numbers from `- [ ] #N` / `- [x] #N` lines under `## Sub-Issues` section
-child_numbers=$(awk '/^## Sub-Issues/{flag=1;next} /^## /{flag=0} flag && /^- \[[ xX]\] #[0-9]+/{print}' <<< "$parent_body" | grep -oE '#[0-9]+' | tr -d '#')
-echo "method_b_child_numbers=${child_numbers:-none}"
+# --- all_closed determination ---
+# Empty array is treated as "cannot auto-close" (safe default — no children detected).
+final_length=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
+if [ "$final_length" -eq 0 ]; then
+  all_closed="false"
+  open_count="0"
+  echo "[DEBUG] children_json is empty after both methods — cannot determine all_closed (skipping auto-close)"
+else
+  all_closed=$(printf '%s' "$children_json" | jq -r 'all(.[]; .state == "CLOSED") | tostring' 2>/dev/null || echo "false")
+  open_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length' 2>/dev/null || echo "0")
+fi
+echo "all_closed=$all_closed open_count=$open_count children_total=$final_length"
 
-# Resolve each child's state in one batch GraphQL query (if any were found)
-if [ -n "$child_numbers" ]; then
-  # Build alias query dynamically (LLM generates this based on child_numbers list)
-  # Each child: issueN: issue(number: N) { number state }
-  children_json=$(gh api graphql -f query='
-query($owner: String!, $repo: String!) {
-  repository(owner: $owner, name: $repo) {
-    {alias_query_generated_by_llm}
-  }
-}' -f owner="{owner}" -f repo="{repo}" --jq '[.data.repository | to_entries[] | .value | {number: .number, state: .state}]')
+# --- Branch decision sentinel for LLM routing ---
+if [ "$final_length" -eq 0 ]; then
+  echo "[CONTEXT] P461_DECISION=skip_empty_children"
+elif [ "$all_closed" = "true" ]; then
+  echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
+else
+  echo "[CONTEXT] P461_DECISION=skip_open_children; open_count=$open_count"
 fi
 ```
 
-**When both methods return empty or fail**: Display warning and skip Phase 4.6 (non-blocking, AC-5 spirit applied to close side):
+**LLM routing rule** (Claude reads the `[CONTEXT] P461_DECISION=` sentinel from the bash block's stdout):
 
-```
-警告: 親 Issue #{parent_number} の子 Issue 一覧の取得に失敗しました。親の自動クローズをスキップします。
-```
+| `P461_DECISION` value | Next action |
+|----------------------|-------------|
+| `skip_empty_children` | Display warning `親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。親の自動クローズをスキップします。` and proceed to Phase 5 (non-blocking, AC-5 spirit) |
+| `skip_open_children` | Display `親 Issue #{parent_number} にはまだ {open_count} 件の未完了子 Issue があります。親の自動クローズはスキップします。` and proceed to Phase 5 |
+| `proceed_to_confirmation` | Proceed to 4.6.2 (User Confirmation) |
 
-Proceed to Phase 5.
-
-### 4.6.2 All-Children-Closed Check
-
-Parse `children_json` and determine whether **every** child has `state: "CLOSED"`.
-
-```bash
-all_closed=$(echo "$children_json" | jq -r 'if length == 0 then "false" else (all(.state == "CLOSED")) | tostring end')
-open_count=$(echo "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length')
-echo "all_closed=$all_closed open_count=$open_count"
-```
-
-**When `all_closed != "true"` (some children still open)**:
-
-```bash
-echo "[DEBUG] parent #{parent_number} has ${open_count} open child(ren) — skipping auto-close"
-```
-
-Display:
-
-```
-親 Issue #{parent_number} にはまだ {open_count} 件の未完了子 Issue があります。親の自動クローズはスキップします。
-```
-
-Proceed to Phase 5.
-
-**When `all_closed == "true"`**: Proceed to 4.6.3.
-
-### 4.6.3 User Confirmation
+### 4.6.2 User Confirmation
 
 Confirm via `AskUserQuestion`:
 
@@ -694,17 +767,36 @@ Confirm via `AskUserQuestion`:
 
 | Selection | Action |
 |-----------|--------|
-| クローズする | Proceed to 4.6.4 |
+| クローズする | Proceed to 4.6.3 |
 | 開いたまま終了 | `echo "[DEBUG] user declined parent auto-close for #{parent_number}"`. Proceed to Phase 5 |
 
-### 4.6.4 Update Parent Projects Status to "Done"
+### 4.6.3 Update Parent Projects Status to "Done" and Close
 
-Skip this sub-step if `github.projects.enabled: false` in `rite-config.yml`.
+Skip the Status update if `github.projects.enabled: false` in `rite-config.yml`; still execute the Issue close in Step 4.
 
-**Step 1**: Retrieve parent's project item ID and project ID:
+All 4 steps run in a **single bash block** to preserve intermediate state and to guarantee the final state-inconsistency summary (Step 5) is always emitted.
 
 ```bash
-gh api graphql -f query='
+# ============================================================================
+# Phase 4.6.3: Parent Projects Status → Done + Issue close (unified block)
+# ============================================================================
+parent_number="{parent_number}"
+owner="{owner}"
+repo="{repo}"
+projects_enabled="{projects_enabled}"  # "true" or "false" from rite-config.yml
+project_number="{project_number}"      # integer from rite-config.yml
+issue_number="{issue_number}"          # the child Issue that triggered this close
+
+status_update_result="skipped"
+issue_close_result="pending"
+parent_item_id=""
+parent_project_id=""
+status_field_id=""
+done_option_id=""
+
+# --- Step 1: Retrieve parent's project item ID and project GraphQL id ---
+if [ "$projects_enabled" = "true" ]; then
+  project_items_json=$(gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
@@ -713,54 +805,87 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
     }
   }
-}' -f owner="{owner}" -f repo="{repo}" -F number={parent_number}
+}' -f owner="$owner" -f repo="$repo" -F number="$parent_number" 2>/dev/null) || project_items_json=""
+
+  if [ -n "$project_items_json" ]; then
+    # Extract the node whose project.number matches {project_number}
+    parent_item_id=$(printf '%s' "$project_items_json" \
+      | jq -r --argjson pn "$project_number" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .id' 2>/dev/null)
+    parent_project_id=$(printf '%s' "$project_items_json" \
+      | jq -r --argjson pn "$project_number" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .project.id' 2>/dev/null)
+  fi
+
+  if [ -z "$parent_item_id" ] || [ -z "$parent_project_id" ]; then
+    echo "警告: 親 Issue #${parent_number} は Project #${project_number} に登録されていません。Status 更新をスキップします。" >&2
+    status_update_result="not_registered"
+  else
+    # --- Step 2: Retrieve Status field id and "Done" option id via --jq ---
+    field_list_json=$(gh project field-list "$project_number" --owner "$owner" --format json 2>/dev/null) || field_list_json=""
+    if [ -n "$field_list_json" ]; then
+      status_field_id=$(printf '%s' "$field_list_json" \
+        | jq -r '.fields[] | select(.name == "Status") | .id' 2>/dev/null)
+      done_option_id=$(printf '%s' "$field_list_json" \
+        | jq -r '.fields[] | select(.name == "Status") | .options[] | select(.name == "Done") | .id' 2>/dev/null)
+    fi
+
+    if [ -z "$status_field_id" ] || [ -z "$done_option_id" ]; then
+      echo "警告: Status フィールドまたは 'Done' オプションの取得に失敗しました (field_id='$status_field_id' done_option_id='$done_option_id')" >&2
+      status_update_result="field_lookup_failed"
+    else
+      # --- Step 3: Update the Status ---
+      if gh project item-edit --project-id "$parent_project_id" --id "$parent_item_id" --field-id "$status_field_id" --single-select-option-id "$done_option_id" >/dev/null 2>&1; then
+        status_update_result="success"
+        echo "親 Issue #${parent_number} の Status を 'Done' に更新しました"
+      else
+        status_update_result="update_failed"
+        echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
+      fi
+    fi
+  fi
+else
+  status_update_result="projects_disabled"
+fi
+
+# --- Step 4: Close the parent Issue ---
+if gh issue close "$parent_number" --comment "子 Issue がすべて完了したため、自動クローズします。(/rite:issue:close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>&1; then
+  issue_close_result="success"
+  echo "親 Issue #${parent_number} を自動クローズしました"
+else
+  issue_close_result="failed"
+  echo "警告: 親 Issue #${parent_number} のクローズに失敗しました。手動でクローズしてください: gh issue close ${parent_number}" >&2
+fi
+
+# --- Step 5: State inconsistency summary (MUST always emit — Issue #517 review fix) ---
+# Parent Issue と Projects Status が別エンティティのため、片方成功 / 片方失敗の state 不整合を
+# 必ずユーザーに可視化する (silent data corruption 防止)。
+echo ""
+echo "=== 親 Issue #${parent_number} 処理結果 ==="
+echo "  Issue close:   $issue_close_result"
+echo "  Status update: $status_update_result"
+
+case "${issue_close_result}:${status_update_result}" in
+  "success:success"|"success:projects_disabled"|"success:not_registered")
+    echo "  状態: 整合性 OK"
+    ;;
+  "success:update_failed"|"success:field_lookup_failed")
+    echo ""
+    echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
+    echo "    復旧コマンド: gh project item-edit --project-id '$parent_project_id' --id '$parent_item_id' --field-id '$status_field_id' --single-select-option-id '$done_option_id'"
+    echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
+    ;;
+  "failed:success")
+    echo ""
+    echo "⚠️  state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"
+    echo "    復旧コマンド: gh issue close ${parent_number}" >&2
+    ;;
+  "failed:"*)
+    echo ""
+    echo "⚠️  親 Issue の処理が失敗しました (Issue close / Status update 両方)。手動での対応が必要です: gh issue close ${parent_number}" >&2
+    ;;
+esac
 ```
 
-Find the node where `project.number` matches `{project_number}`. Extract `{parent_item_id}` and `{parent_project_id}`. If `projectItems.nodes` is empty, display warning and proceed to 4.6.5 (non-blocking, AC-5):
-
-```
-警告: 親 Issue #{parent_number} は Project に登録されていません。Status 更新をスキップします。
-```
-
-**Step 2**: Retrieve Status field and "Done" option ID:
-
-```bash
-gh project field-list {project_number} --owner {owner} --format json
-```
-
-From the result, find the `name: "Status"` field. Extract `{status_field_id}` (or use `github.projects.field_ids.status` from `rite-config.yml` if configured) and `{done_option_id}` (the option whose `name` is `"Done"`).
-
-**Step 3**: Update the Status:
-
-```bash
-gh project item-edit --project-id {parent_project_id} --id {parent_item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
-```
-
-On failure, display warning and proceed to 4.6.5 (non-blocking):
-
-```
-警告: 親 Issue #{parent_number} の Status 更新に失敗しました。
-```
-
-### 4.6.5 Close the Parent Issue
-
-```bash
-gh issue close {parent_number} --comment "子 Issue がすべて完了したため、自動クローズします。（/rite:issue:close 経由、Issue #{issue_number} の close をトリガー）"
-```
-
-On failure, display warning and proceed to Phase 5:
-
-```
-警告: 親 Issue #{parent_number} のクローズに失敗しました。手動でクローズしてください。
-```
-
-On success:
-
-```
-親 Issue #{parent_number} を自動クローズしました（Status: Done）。
-```
-
-Proceed to Phase 5.
+Proceed to Phase 5 regardless of the outcome (non-blocking, AC-5 applied to close side — the inconsistency summary above makes silent failure impossible).
 
 ---
 

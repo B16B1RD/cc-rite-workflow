@@ -120,7 +120,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue:create-decompose` (which writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
 
-> **Consistency requirement (Issue #513)**: The same 3-method OR detection MUST be used in `close.md` Phase 4.5.1. If the detection methods diverge between start and close, silent-skip regressions (e.g., the #115/#381/#15 incidents) reappear.
+> **Consistency requirement (Issue #513)**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. If the detection method ordering or OR semantics diverge between start and close, silent-skip regressions (e.g., the #115/#381/#15 incidents) reappear.
 
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
@@ -150,17 +150,13 @@ gh api graphql -H "GraphQL-Features: sub_issues" -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
-      parent {
-        number
-        title
-        state
-      }
+      parent { number }
     }
   }
 }' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
 ```
 
-If `parent` is not null, extract `parent.number` as `{parent_issue_number}` and proceed to 2.4.7.2.
+If `parent` is not null, extract `parent.number` as `{parent_issue_number}` and proceed to 2.4.7.2. (Only `number` is requested because 2.4.7.2 re-queries the parent by number for project data, so `title`/`state` are unused here and would only create drift with `close.md` Phase 4.5.1 Method 2.)
 
 **Method 3: Tasklist search (last resort)**
 
@@ -174,7 +170,7 @@ gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x
 
 If results are non-empty, use the first result's `number` as `{parent_issue_number}` and proceed to 2.4.7.2.
 
-**When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the project rule (see `feedback_review_zero_findings.md` / Issue #513 MUST requirement):
+**When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by Issue #513's MUST requirement ("同期失敗時は silent skip せず、明示的にログまたは warning を出力する") and the preceding incidents #115 / #381 / #15 which all stemmed from silent skips in parent-child sync:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"

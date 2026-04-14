@@ -23,7 +23,9 @@ assert_file_contains() {
   local file="$1"
   local pattern="$2"
   local description="$3"
-  if grep -qE "$pattern" "$file"; then
+  # Use `-e` explicitly so patterns that start with `-` (e.g. `--jq...`) are not
+  # interpreted as grep flags. `-E` must precede `-e` for extended regex.
+  if grep -qE -e "$pattern" "$file"; then
     PASS=$((PASS + 1))
     echo "  ✓ $description"
   else
@@ -37,7 +39,7 @@ assert_file_not_contains() {
   local file="$1"
   local pattern="$2"
   local description="$3"
-  if grep -qE "$pattern" "$file"; then
+  if grep -qE -e "$pattern" "$file"; then
     FAIL=$((FAIL + 1))
     FAILURES+=("$description (file: $(basename "$file"), forbidden pattern found: $pattern)")
     echo "  ✗ $description" >&2
@@ -61,9 +63,11 @@ echo ""
 echo "[Group 1] projects-integration.md 2.4.7.1: 3-method OR detection"
 assert_file_contains "$PROJECTS_INTEGRATION" '## 親 Issue' \
   "Method 1 (body meta '## 親 Issue') is present"
-assert_file_contains "$PROJECTS_INTEGRATION" 'parent \{' \
+assert_file_contains "$PROJECTS_INTEGRATION" 'parent[[:space:]]*\{[[:space:]]*number' \
   "Method 2 (Sub-Issues API 'parent { number }') is present"
-assert_file_contains "$PROJECTS_INTEGRATION" 'gh issue list --state open --search.*in:body' \
+# --state filter is intentionally context-dependent (open=start side / all=close side);
+# check for --state presence without fixing the value, plus `in:body` tasklist search marker.
+assert_file_contains "$PROJECTS_INTEGRATION" 'gh issue list[[:space:]]+--state[[:space:]]+[a-z]+[[:space:]]+--search.*in:body' \
   "Method 3 (tasklist search) is present"
 assert_file_contains "$PROJECTS_INTEGRATION" '\[DEBUG\] parent not detected' \
   "Silent-skip guard: explicit debug log on no-parent case (AC-4)"
@@ -72,25 +76,43 @@ echo ""
 echo "[Group 2] close.md Phase 4.5.1: 3-method OR detection (consistency with start)"
 assert_file_contains "$CLOSE_MD" '## 親 Issue' \
   "Method 1 (body meta '## 親 Issue') is present"
-assert_file_contains "$CLOSE_MD" 'parent \{ number \}' \
+assert_file_contains "$CLOSE_MD" 'parent[[:space:]]*\{[[:space:]]*number[[:space:]]*\}' \
   "Method 2 (Sub-Issues API 'parent { number }') is present"
-assert_file_contains "$CLOSE_MD" 'gh issue list .*--search.*in:body' \
+assert_file_contains "$CLOSE_MD" 'gh issue list[[:space:]]+--state[[:space:]]+[a-z]+.*--search.*in:body' \
   "Method 3 (tasklist search) is present"
 assert_file_contains "$CLOSE_MD" '\[DEBUG\] parent not detected' \
   "Silent-skip guard: explicit debug log on no-parent case (AC-4)"
 
 echo ""
-echo "[Group 3] close.md Phase 4.6: Parent Auto-Close logic (AC-2)"
-assert_file_contains "$CLOSE_MD" '^## Phase 4\.6: Parent Auto-Close' \
+echo "[Group 3] close.md Phase 4.6: Parent Auto-Close logic (AC-2 + AC-6)"
+assert_file_contains "$CLOSE_MD" '^##[[:space:]]+Phase[[:space:]]+4\.6' \
   "Phase 4.6 heading is present"
-assert_file_contains "$CLOSE_MD" 'all_closed=.*all\(\.state == "CLOSED"\)' \
+# AC-6 idempotency guard: parent_state == CLOSED short-circuit
+assert_file_contains "$CLOSE_MD" 'parent_state[[:space:]]*=.*gh issue view.*parent_number.*--jq.*\.state' \
+  "AC-6 idempotency guard: parent_state check exists"
+assert_file_contains "$CLOSE_MD" 'already closed.*AC-6 idempotent' \
+  "AC-6 idempotency guard: idempotent no-op skip path exists"
+# all-children-closed check — match the jq all(.[]; ...) form with flexible whitespace
+assert_file_contains "$CLOSE_MD" 'all_closed=.*all\([[:space:]]*\.\[\][[:space:]]*;[[:space:]]*\.state[[:space:]]*==[[:space:]]*"CLOSED"' \
   "All-children-closed check logic is present"
-assert_file_contains "$CLOSE_MD" 'gh issue close \{parent_number\}' \
+assert_file_contains "$CLOSE_MD" 'gh issue close.*parent_number' \
   "Parent close command is present"
 assert_file_contains "$CLOSE_MD" 'done_option_id' \
   "Projects Status -> Done update logic is present"
+# CRITICAL fix: explicit jq extraction for project item / status field / done option (determinism)
+assert_file_contains "$CLOSE_MD" 'jq -r .*projectItems\.nodes\[\].*select.*\.project\.number' \
+  "Phase 4.6.3 Step 1: deterministic jq extraction for parent_item_id exists"
+assert_file_contains "$CLOSE_MD" 'jq -r .*fields\[\].*select.*name.*==.*"Status".*options\[\].*select.*name.*==.*"Done"' \
+  "Phase 4.6.3 Step 2: deterministic jq extraction for done_option_id exists"
+# state-inconsistency summary (MEDIUM fix)
+assert_file_contains "$CLOSE_MD" 'state 不整合' \
+  "Phase 4.6.3 Step 5: state inconsistency summary is emitted"
 assert_file_contains "$CLOSE_MD" 'AskUserQuestion' \
   "User confirmation via AskUserQuestion (AC-2: not silent auto-close)"
+# HIGH fix: no Method A 2>/dev/null silent stderr suppression in Phase 4.6.1
+# (presence of method_a_err tempfile capture signals the fix)
+assert_file_contains "$CLOSE_MD" 'method_a_err=.*mktemp' \
+  "Phase 4.6.1 Method A stderr capture (no silent suppression)"
 
 echo ""
 echo "[Group 4] start.md: no inline trackedInIssues simplification (Issue #513 root cause)"
