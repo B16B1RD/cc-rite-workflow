@@ -156,6 +156,16 @@ Projects を使用するには /rite:init を実行してください。
 
 ## Phase 0: Input Analysis and Completion
 
+> **🚫 MUST NOT — Bypass prohibition (Mode B defense, #475)** — **applies throughout all of Phase 0**.
+>
+> From this point until `[create:completed:{N}]` is output by the terminal sub-skill, the orchestrator MUST NOT:
+>
+> 1. Execute `gh issue create` via the Bash tool (blocked by `pre-tool-bash-guard.sh` hook)
+> 2. Skip the `rite:issue:create-interview` Skill invocation based on a judgment that "information is clear enough already"
+> 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a synthetic "create Issue" step
+>
+> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path is: Phase 0.1 → Phase 0.3 → Phase 0.4 → Delegation to Interview → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill. This same MUST NOT block is repeated before the Delegation to Interview section as a reminder — both occurrences have identical wording.
+
 ### 0.1 Extract Information from User Input
 
 #### EDGE-4: Short Input Handling
@@ -401,14 +411,14 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmation questions are skipped, this means **ONLY** that the user-facing confirmation dialog is skipped. It does **NOT** mean any of the following are skipped:
 
-| MUST execute even when Phase 0.4 confirmation is skipped |
-|---|
-| Phase 0.4.1 goal classification (infer task type from Phase 0.1) |
-| The "Delegation to Interview" section below (Pre-write + `rite:issue:create-interview` Skill invocation) |
-| 🚨 Mandatory After Interview |
-| Phase 0.6 (Task Decomposition Decision) |
-| Delegation Routing (Pre-write + `rite:issue:create-register` or `rite:issue:create-decompose` Skill invocation) |
-| 🚨 Mandatory After Delegation |
+| MUST execute even when Phase 0.4 confirmation is skipped | Why (enforcement layer) |
+|---|---|
+| Phase 0.4.1 goal classification (infer task type from Phase 0.1) | Required by Phase 0.5 interview scope determination |
+| Delegation to Interview section (Pre-write + `rite:issue:create-interview` Skill) | Without the `create_interview` flow-state write, stop-guard has no hook to enforce delegation |
+| 🚨 Mandatory After Interview | Updates `.rite-flow-state.phase=create_post_interview`; stop-guard keeps blocking until `create_delegation` is written below |
+| Phase 0.6 (Task Decomposition Decision) | Chooses between `create-register` (single Issue) and `create-decompose` (sub-Issues) |
+| Delegation Routing (Pre-write + terminal sub-skill Skill invocation) | Writes `create_delegation`, advancing the whitelist past `create_post_interview` |
+| 🚨 Mandatory After Delegation | Defense-in-depth for the terminal `create_completed` state |
 
 **The only legitimate way to create a GitHub Issue from this command is by invoking `rite:issue:create-register` or `rite:issue:create-decompose` as a Skill.** Calling `gh issue create` directly from the orchestrator bypasses flow-state tracking, Projects integration, and every enforcement layer — and is **blocked by `pre-tool-bash-guard.sh`** when `.rite-flow-state.phase = create_*`.
 
@@ -449,7 +459,7 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 ### 🚨 Mandatory After Interview
 
-> **Enforcement**: `.rite-flow-state.phase = create_post_interview` is registered in `phase-transition-whitelist.sh`. A stop attempt at this point is blocked by `stop-guard.sh` with `invalid_transition` unless this section's Step 1 + Step 2 have been executed. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
+> **Enforcement**: `.rite-flow-state.phase` is `create_post_interview` at this point (the sub-skill wrote this via its Defense-in-Depth section). Stop-guard blocks any stop attempt while the flow-state is active — it will not unblock until `.rite-flow-state.phase` advances to `create_delegation` (via the Delegation Routing Pre-write below) or reaches `create_completed` (via the terminal sub-skill). Step 1 below refreshes the state timestamp but does NOT advance the phase on its own — the only legitimate path to a stoppable state is to continue through Phase 0.6 → Delegation Routing → terminal sub-skill. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
 No GitHub Issue has been created yet. The interview only collects information.
 
@@ -598,9 +608,13 @@ Invoke `skill: "rite:issue:create-register"`.
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
-> **Enforcement**: Terminal sub-skills (`create-register.md`, `create-decompose.md`) write `create_completed` + `active: false` and output `[create:completed:{N}]` internally (Issue #444 Terminal Completion pattern). Steps 1-3 below are idempotent safety nets — if the sub-skill ran correctly they are no-ops. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
+> **Enforcement**: Terminal sub-skills (`create-register.md`, `create-decompose.md`) write `create_completed` + `active: false` and output `[create:completed:{N}]` internally (Issue #444 Terminal Completion pattern). See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
-**Self-check**: Has `[create:completed:{N}]` been output? If no, Steps 1-3 are **critical** — the sub-skill failed to complete its Terminal Completion phase.
+**Self-check and branching**:
+
+1. **Has `[create:completed:{N}]` been output?**
+   - **Yes** — terminal state reached. `.rite-flow-state.phase` is already `create_completed` and `active: false`. Steps 1-3 below are **no-ops** and MUST be skipped (executing Step 1 would write `create_post_delegation` which is a retrograde transition from the terminal state).
+   - **No** — the sub-skill failed to complete its Terminal Completion phase. Steps 1-3 below are **critical** and must execute to force the workflow into the terminal state.
 
 **Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic):
 

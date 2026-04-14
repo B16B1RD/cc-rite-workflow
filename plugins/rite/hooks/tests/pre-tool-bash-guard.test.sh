@@ -944,6 +944,20 @@ else
 fi
 rm -rf "$tmpdir"
 
+# TC-092b: gh issue create during phase=create_post_delegation (active=true) → deny
+# (fills coverage gap identified in #501 test-reviewer MEDIUM)
+echo "TC-092b: gh issue create + create_post_delegation active → deny"
+tmpdir=$(make_cwd_with_state "create_post_delegation" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-092b blocked during create_post_delegation"
+else
+  fail "TC-092b expected deny, got decision=$decision"
+fi
+rm -rf "$tmpdir"
+
 # TC-093: gh issue create with phase=create_completed → allow (lifecycle finished)
 echo "TC-093: gh issue create + create_completed → allow"
 tmpdir=$(make_cwd_with_state "create_completed" "true")
@@ -1015,6 +1029,84 @@ else
   fail "TC-098 expected allow, got rc=$rc output=$output"
 fi
 rm -rf "$tmpdir"
+
+# --------------------------------------------------------------------------
+# TC-099-108: Pattern 5 bypass vector regression tests (#501 security review)
+# --------------------------------------------------------------------------
+echo ""
+echo "=== TC-099+: Pattern 5 bypass vector blocking (#501) ==="
+
+# Helper: assert deny (for bypass tests during create_interview)
+assert_p5_deny() {
+  local label="$1"
+  local cmd="$2"
+  local tmpdir
+  tmpdir=$(make_cwd_with_state "create_interview" "true")
+  local rc=0
+  local out
+  out=$(run_guard_with_cwd "$tmpdir" "$cmd") || rc=$?
+  local decision
+  decision=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  if [ "$decision" = "deny" ]; then
+    pass "$label"
+  else
+    fail "$label (cmd='$cmd', got decision=$decision)"
+  fi
+  rm -rf "$tmpdir"
+}
+
+# Helper: assert allow (for false-positive regression)
+assert_p5_allow() {
+  local label="$1"
+  local cmd="$2"
+  local tmpdir
+  tmpdir=$(make_cwd_with_state "create_interview" "true")
+  local rc=0
+  local out
+  out=$(run_guard_with_cwd "$tmpdir" "$cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$out" ]; then
+    pass "$label"
+  else
+    fail "$label (cmd='$cmd', rc=$rc out=$out)"
+  fi
+  rm -rf "$tmpdir"
+}
+
+# TC-099: semicolon boundary → deny
+assert_p5_deny "TC-099 'gh issue create;echo x' blocked (semicolon)" "gh issue create --title x;echo done"
+
+# TC-100: pipe boundary → deny
+assert_p5_deny "TC-100 'gh issue create | tee' blocked (pipe)" "gh issue create --title x|tee out"
+
+# TC-101: ampersand boundary → deny
+assert_p5_deny "TC-101 'gh issue create &' blocked (ampersand)" "gh issue create --title x &"
+
+# TC-102: prefix shortcut 'gh issue c' → allow (ambiguous in gh CLI itself, not a real bypass)
+# gh CLI resolves `c` as ambiguous (close/comment/create) and errors out.
+# Since it never actually invokes `gh issue create`, Pattern 5 does not need to match it.
+# We start from `cre` which is unambiguous (only `create` starts with `cre` among gh issue subcommands).
+assert_p5_allow "TC-102 'gh issue c' allowed (ambiguous in gh CLI, not a real bypass)" "gh issue c --title x"
+
+# TC-103: prefix shortcut 'gh issue cre' → deny
+assert_p5_deny "TC-103 'gh issue cre' blocked (prefix shortcut)" "gh issue cre --title x"
+
+# TC-104: brace group → deny (Pattern 4 normalization)
+assert_p5_deny "TC-104 '{gh issue create;}' blocked (brace group)" "{gh issue create --title x;}"
+
+# TC-105: subshell → deny
+assert_p5_deny "TC-105 '(gh issue create)' blocked (subshell)" "(gh issue create --title x)"
+
+# TC-106: env prefix → deny (not a bypass, just verify)
+assert_p5_deny "TC-106 'FOO=bar gh issue create' blocked" "FOO=bar gh issue create --title x"
+
+# TC-107: 'gh issue close' prefix 'c' ambiguity → MUST still deny because 'c' matches both
+# NOTE: This is intentional — we err on the side of blocking. 'gh issue c' is ambiguous
+# in gh CLI itself (returns "ambiguous" error), so users should not rely on it.
+# For 'gh issue close' (full spelling), the pattern does NOT match and it's allowed:
+assert_p5_allow "TC-107 'gh issue close' allowed (full spelling, not 'create' prefix)" "gh issue close 123"
+
+# TC-108: 'gh issue comment' allowed (full spelling)
+assert_p5_allow "TC-108 'gh issue comment' allowed" "gh issue comment 123 --body x"
 
 # --------------------------------------------------------------------------
 # Summary

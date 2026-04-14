@@ -22,6 +22,9 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+# Single source of truth for create_* lifecycle phase names (#501 HIGH).
+# Provides rite_phase_is_create_lifecycle_in_progress() used by Pattern 5.
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
@@ -108,26 +111,78 @@ fi
 # create_post_interview / create_delegation / create_post_delegation (i.e., create lifecycle is
 # in progress but not yet terminated by create_completed).
 #
+# Bypass prevention — CMD_CHECK normalization:
+#   Pattern 4 normalizes shell meta-characters (;, &, |, parens, backticks, $) to spaces so that
+#   `true; gh issue create` / `echo x | gh issue create` / `{gh issue create;}` all match the
+#   same `gh issue create` pattern. Pattern 5 reuses this normalization via $PADDED_ALL so that
+#   shell meta-char bypass vectors (`gh issue create;echo x`, `gh issue create|tee`,
+#   `gh issue create&`) are all caught. Backslash line continuations (`gh \\\n  issue \\\n create`)
+#   are also normalized because `\n` is replaced with space and `\` is stripped in the continuation
+#   handling below.
+#
 # Scope exclusions (allow):
 #   - no .rite-flow-state (manual gh invocation outside any workflow)
 #   - .rite-flow-state exists but active=false or phase=create_completed (lifecycle finished)
 #   - .rite-flow-state phase is not create_* (different workflow like /rite:issue:start)
-#   - gh issue subcommands other than `create` (list/view/edit/close/comment/etc.)
+#   - gh issue subcommands other than `create` / `cre` / `crea` / `creat` prefixes
+#     (list/view/edit/close/comment/delete/pin/reopen/transfer/unpin/unlock/lock are allowed)
 if [ -z "$BLOCKED_PATTERN" ]; then
-  if [[ "$CMD_CHECK" =~ gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
+  # Normalize CMD_CHECK: shell meta-chars → space, backslash-newline continuations → space,
+  # then collapse multiple spaces. This reuses Pattern 4's normalization approach.
+  CMD_P5="${CMD_CHECK//$'\t'/ }"
+  CMD_P5="${CMD_P5//$'\n'/ }"
+  CMD_P5="${CMD_P5//$'\r'/ }"
+  CMD_P5="${CMD_P5//\\/ }"
+  CMD_P5="${CMD_P5//;/ }"
+  CMD_P5="${CMD_P5//&/ }"
+  CMD_P5="${CMD_P5//|/ }"
+  CMD_P5="${CMD_P5//(/ }"
+  CMD_P5="${CMD_P5//)/ }"
+  CMD_P5="${CMD_P5//\{/ }"
+  CMD_P5="${CMD_P5//\}/ }"
+  CMD_P5="${CMD_P5//\`/ }"
+  CMD_P5="${CMD_P5//\$/ }"
+  while [[ "$CMD_P5" == *"  "* ]]; do
+    CMD_P5="${CMD_P5//  / }"
+  done
+  PADDED_P5=" $CMD_P5 "
+
+  # gh subcommand prefix match: gh supports prefix shortcuts like `gh issue c` → create.
+  # However `c` alone is ambiguous (matches close/comment too), and `gh` itself resolves
+  # prefixes only when unambiguous. `create` is unambiguous from `cre` onwards (no other
+  # `issue` subcommand starts with `cre`). Match `create` / `creat` / `crea` / `cre` as
+  # trailing tokens to catch prefix shortcuts while leaving `close` / `comment` / other
+  # subcommands untouched.
+  if [[ "$PADDED_P5" =~ " gh issue "(create|creat|crea|cre)([[:space:]]|$) ]]; then
     CWD_FROM_INPUT=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD_FROM_INPUT=""
     STATE_ROOT_PATH=""
     if [ -n "$CWD_FROM_INPUT" ] && [ -d "$CWD_FROM_INPUT" ]; then
       STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD_FROM_INPUT" 2>/dev/null) || STATE_ROOT_PATH="$CWD_FROM_INPUT"
     fi
-    STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
-    if [ -n "$STATE_ROOT_PATH" ] && [ -f "$STATE_FILE_PATH" ]; then
-      STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
-      STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"
-      if [ "$STATE_ACTIVE" = "true" ] && [[ "$STATE_PHASE" == create_* ]] && [ "$STATE_PHASE" != "create_completed" ]; then
-        BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
-        BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B)."
-        BLOCKED_ALTERNATIVE="rite:issue:create-register を呼ぶべき場面です。Phase 0.6 の Delegation Routing に従い skill: \"rite:issue:create-register\" または skill: \"rite:issue:create-decompose\" を invoke してください。"
+    # State file lookup: if $STATE_ROOT_PATH is empty (e.g., CWD outside git repo and
+    # state-path-resolve.sh failed), skip the check entirely — no state file means no
+    # create lifecycle to enforce, which is the documented "allow" path.
+    if [ -n "$STATE_ROOT_PATH" ]; then
+      STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
+      if [ -f "$STATE_FILE_PATH" ]; then
+        STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
+        STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"
+        # Use query function from phase-transition-whitelist.sh as the single source of truth
+        # for create_* lifecycle phase names. Fall back to inline glob check when the helper
+        # is unavailable (e.g., bash < 4.2 where phase-transition-whitelist.sh exits early).
+        if [ "$STATE_ACTIVE" = "true" ]; then
+          if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
+            if rite_phase_is_create_lifecycle_in_progress "$STATE_PHASE"; then
+              BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
+            fi
+          elif [[ "$STATE_PHASE" == create_* ]] && [ "$STATE_PHASE" != "create_completed" ]; then
+            BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
+          fi
+          if [ "$BLOCKED_PATTERN" = "create-lifecycle-direct-gh-issue" ]; then
+            BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B)."
+            BLOCKED_ALTERNATIVE="rite:issue:create-register を呼ぶべき場面です。Phase 0.6 の Delegation Routing に従い skill: \"rite:issue:create-register\" または skill: \"rite:issue:create-decompose\" を invoke してください。"
+          fi
+        fi
       fi
     fi
   fi

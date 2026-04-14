@@ -331,6 +331,27 @@ rite_phase_is_known() {
   return 1
 }
 
+# Return 0 if the given phase is an in-progress phase of /rite:issue:create
+# lifecycle (i.e., create_interview / create_post_interview / create_delegation /
+# create_post_delegation — NOT create_completed which is terminal).
+#
+# Single source of truth for "is the create workflow mid-delegation?" queries
+# used by pre-tool-bash-guard.sh (Pattern 5) and session-end.sh (lifecycle
+# unfinished warning). Centralizing the phase name list here prevents silent
+# drift when new create_* phases are added to _RITE_PHASE_TRANSITIONS (#501
+# code-quality review HIGH).
+rite_phase_is_create_lifecycle_in_progress() {
+  local phase="$1"
+  case "$phase" in
+    create_interview|create_post_interview|create_delegation|create_post_delegation)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 # Optional: auto-load overrides when RITE_CONFIG env var points to a config file.
 if [ -n "${RITE_CONFIG:-}" ]; then
   _rite_load_whitelist_overrides "$RITE_CONFIG"

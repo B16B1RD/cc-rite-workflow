@@ -11,6 +11,8 @@ export _RITE_HOOK_RUNNING_SESSIONEND=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# Single source of truth for create_* lifecycle phase names (#501 HIGH).
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -53,9 +55,21 @@ if [ -f "$STATE_FILE" ]; then
     # but not create_completed), emit a warning so the user knows the Issue was NOT
     # created and can re-run /rite:issue:create or use /rite:resume. This is
     # informational only — session-end always proceeds with deactivation.
+    # Uses rite_phase_is_create_lifecycle_in_progress() from phase-transition-whitelist.sh
+    # as the single source of truth for create_* phase names (#501 HIGH).
     _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null) || _state_phase=""
     _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || _state_active="false"
-    if [ "$_state_active" = "true" ] && [[ "$_state_phase" == create_* ]] && [ "$_state_phase" != "create_completed" ]; then
+    _lifecycle_unfinished=0
+    if [ "$_state_active" = "true" ]; then
+        if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
+            if rite_phase_is_create_lifecycle_in_progress "$_state_phase"; then
+                _lifecycle_unfinished=1
+            fi
+        elif [[ "$_state_phase" == create_* ]] && [ "$_state_phase" != "create_completed" ]; then
+            _lifecycle_unfinished=1
+        fi
+    fi
+    if [ "$_lifecycle_unfinished" = "1" ]; then
         cat >&2 <<WARN_MSG
 ⚠️  rite: /rite:issue:create lifecycle was not completed (phase=$_state_phase).
     No GitHub Issue was created. The sub-skill delegation flow
