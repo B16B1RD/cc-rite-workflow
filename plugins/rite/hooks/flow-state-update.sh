@@ -142,16 +142,24 @@ case "$MODE" in
         fi
       fi
     fi
+    # Capture previous phase for whitelist-based transition verification (#490).
+    # When the existing state file is absent or malformed, previous_phase is "" —
+    # stop-guard treats empty previous_phase as "workflow start" (always valid).
+    PREV_PHASE=""
+    if [[ -f "$FLOW_STATE" ]]; then
+      PREV_PHASE=$(jq -r '.phase // ""' "$FLOW_STATE" 2>/dev/null) || PREV_PHASE=""
+    fi
     if jq -n \
       --argjson active "$ACTIVE" \
       --argjson issue "$ISSUE" \
       --arg branch "$BRANCH" \
       --arg phase "$PHASE" \
+      --arg prev_phase "$PREV_PHASE" \
       --argjson pr "$PR" \
       --arg next "$NEXT" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
       --arg sid "$SESSION" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
+      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else
@@ -161,8 +169,10 @@ case "$MODE" in
     fi
     ;;
   patch)
-    # Build jq filter: always update phase, timestamp, next_action; conditionally update active
-    JQ_FILTER='.phase = $phase | .updated_at = $ts | .next_action = $next | .error_count = 0'
+    # Build jq filter: always update phase, timestamp, next_action; conditionally update active.
+    # Also capture the outgoing phase into previous_phase so stop-guard can verify the
+    # transition whitelist (#490). Use the pre-update .phase value as previous_phase.
+    JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next | .error_count = 0'
     JQ_ARGS=(--arg phase "$PHASE" --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" --arg next "$NEXT")
     if [[ -n "$ACTIVE" ]]; then
       JQ_FILTER="$JQ_FILTER | .active = (\$active_val == \"true\")"
