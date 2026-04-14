@@ -2512,13 +2512,16 @@ fi
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
 
 ### 調査推奨（該当がある場合のみ）
-<!-- Phase 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略 -->
+<!-- Phase 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。
+     両 template (full mode / verification mode) で同一内容で同期すること (drift 防止)。
+     column 構成は Phase 4.5 reviewer template の「調査推奨」3 列 (ファイル / 気になる点 / 補足) に
+     レビュアー列を追加した 4 列で、reviewer の notes が silent drop しないように揃えてある -->
 
 > 以下のファイルで、本 PR の diff とは無関係な気になる既存パターンを検出しました。必要に応じて `/rite:investigate {file}` で別途調査してください（blocking ではありません）。
 
-| ファイル | 気になる点 | レビュアー |
-|---------|-----------|-----------|
-| {file} | {concern_description} | {reviewer_type} |
+| ファイル | 気になる点 | 補足 | レビュアー |
+|---------|-----------|------|-----------|
+| {file} | {concern_description} | {notes} | {reviewer_type} |
 
 ---
 
@@ -2688,13 +2691,16 @@ fi
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
 
 ### 調査推奨（該当がある場合のみ）
-<!-- Phase 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略 -->
+<!-- Phase 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。
+     両 template (full mode / verification mode) で同一内容で同期すること (drift 防止)。
+     column 構成は Phase 4.5 reviewer template の「調査推奨」3 列 (ファイル / 気になる点 / 補足) に
+     レビュアー列を追加した 4 列で、reviewer の notes が silent drop しないように揃えてある -->
 
 > 以下のファイルで、本 PR の diff とは無関係な気になる既存パターンを検出しました。必要に応じて `/rite:investigate {file}` で別途調査してください（blocking ではありません）。
 
-| ファイル | 気になる点 | レビュアー |
-|---------|-----------|-----------|
-| {file} | {concern_description} | {reviewer_type} |
+| ファイル | 気になる点 | 補足 | レビュアー |
+|---------|-----------|------|-----------|
+| {file} | {concern_description} | {notes} | {reviewer_type} |
 
 ### Stability Concerns ({count} 件)
 <!-- 未変更コードに対する新規 MEDIUM/LOW 指摘。AI の非決定性による可能性あり。 -->

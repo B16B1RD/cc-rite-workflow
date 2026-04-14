@@ -29,7 +29,20 @@ For each finding in 全指摘事項:
         (matrix rule: CRITICAL/HIGH/MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
 ```
 
-**"Missing `Likelihood-Evidence:` anchor"** means the finding's `内容` column does NOT contain a line matching the regex `^[-[:space:]]*Likelihood-Evidence:[[:space:]]*(existing_call_site|new_call_site|entrypoint_connection|runtime_observation)` (per `_reviewer-base.md` "Demonstrable: proof of burden"). Absence of this anchor is the reviewer-side contract violation that Phase 5.3.0 corrects as safety net.
+**"Missing `Likelihood-Evidence:` anchor"** means the finding's `内容` column does NOT contain a match for the following regex (per `_reviewer-base.md` "Demonstrable: proof of burden"):
+
+```
+(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Likelihood-Evidence:[[:space:]]*(existing_call_site|new_call_site|entrypoint_connection|runtime_observation)
+```
+
+**Anchor boundary semantics** (drift prevention vs `_reviewer-base.md` L127 placement rules):
+
+- `(?m)` — multiline mode is **required**. Without it, `^` matches only at string start and the regex misses anchors placed after the WHAT/WHY narrative (which is the common case in `内容` columns).
+- `(?:^|<br\s*/?>|[\s|>(])` — accepts four boundary variants: (a) physical line start `^`, (b) HTML `<br>` / `<br/>` / `<br />` separator (per `_reviewer-base.md` L127 "For Markdown table cells where physical newlines are not supported, use `<br>` as the separator"), (c) whitespace/tab (same-line continuation after WHAT+WHY narrative per `_reviewer-base.md` L127), (d) Markdown table cell boundary `|` / `>` / `(` (defense-in-depth).
+
+This boundary set matches the canonical pattern used in `review.md` Phase 5.1.1.1 (`(?m)^### 修正検証結果\s*$`) and Phase 5.1.3 Step 2 (`(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:`). Updates to `_reviewer-base.md` L127 placement rules MUST be synchronized with this regex — the two are the single source of truth for anchor placement (authoring) and anchor detection (safety net).
+
+Absence of any of these matches is the reviewer-side contract violation that Phase 5.3.0 corrects as safety net.
 
 **Excluded reviewer types** (demotion skipped, severity preserved):
 
