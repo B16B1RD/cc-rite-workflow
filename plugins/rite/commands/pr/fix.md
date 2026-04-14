@@ -178,10 +178,11 @@ If `convergence_strategy` is not `"none"`, adjust Phase 2 behavior accordingly:
 
 | Strategy | Phase 2 Behavior |
 |----------|-----------------|
-| `"severity_gating"` | Only process CRITICAL and HIGH findings. MEDIUM/LOW findings are listed but skipped with a note: `⏭️ {finding_id}: severity gating により defer (別 Issue 化予定)`. After Phase 3 commit, auto-create Issues for deferred findings. |
 | `"batched"` | Group findings by pattern category (e.g., all "retained flag missing" findings together, all "reason table drift" together). Fix each category as a batch before moving to the next. |
 | `"scope_lock"` | Only fix findings in files that are part of the original PR diff. Determine original files via context or work memory. Findings in fix-introduced files are listed but skipped with a note: `⏭️ {finding_id}: scope lock により defer (fix 起因ファイル)`. |
 | `"none"` | Normal behavior (all findings, one by one). |
+
+> **`"severity_gating"` strategy は廃止されました** (#506): 本 PR 起因 findings は severity 問わず本 PR 内で修正する方針に変更されました。`rite-config.yml` の `fix.severity_gating.enabled` は後方互換のため残置されていますが `false` 固定扱いで参照されません。非収束時は Phase 5.4.4 Step 3.5 の AskUserQuestion ルートで `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` の 3 択に統合されています。
 
 > **Standalone invocation**: When invoked standalone (not from `/rite:issue:start`), `.rite-flow-state` may not exist or may not have `convergence_strategy`. Default to `"none"`.
 
@@ -2726,6 +2727,25 @@ rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
 
 ## Phase 2: Assist with Fixes
 
+### Fail-Fast Response Principle
+
+指摘に対する修正を決定する前に、以下のチェックリストを必ず通過させること:
+
+- [ ] throw/raise で呼び出し元に伝播する選択肢を検討したか
+- [ ] 既存の try/catch を新設するのではなく、既存のエラー境界に到達させる方が自然ではないか
+- [ ] 追加しようとしている null チェック / optional chaining は、問題を修正するのではなく "隠蔽" していないか
+- [ ] テストが throw を許さない形で書かれている場合、テスト側を修正する方が正しくないか
+
+**fallback を追加する場合**、commit message に「なぜ throw ではなく fallback を選んだか」を明示すること。無思考な防御コード追加は Phase 5 の re-review で再指摘される。
+
+**fallback 推奨が正当化されるケース**:
+
+- skill 側に明示された「fallback 許容条件」がある（例: UI の graceful degradation）
+- 外部 API 呼び出しで、stale cache を返すことが requirement に明示されている
+- ユーザー向けエラー表示で、技術的詳細を隠蔽する必要がある
+
+これらに該当しない修正を採用する場合、Wiki (`/rite:wiki:query`) で project-specific な許容パターンを事前確認すること。`rite-config.yml` の `fix.fail_fast_response: true`（default）で本原則が有効化される。
+
 ### 2.1 Confirm Fix Approach
 
 Confirm the fix approach for each finding:
@@ -3357,53 +3377,36 @@ If the collection result is 0 items (all findings addressed), skip this step and
 
 #### 4.3.3 Confirm Separate Issue Creation
 
-When there are 1 or more candidates, behavior differs based on the caller:
+When there are 1 or more candidates, **always** confirm with `AskUserQuestion` — regardless of whether the caller is `/rite:issue:start` (E2E loop) or a direct `/rite:pr:fix` invocation. E2E でも AskUserQuestion をスキップしない方針に変更されました (#506)。
 
-| Condition | Determination |
-|-----------|---------------|
-| Conversation history contains context from `/rite:issue:start` Phase 5 "review-fix loop" | Within loop -> Skip confirmation and auto-create Issues |
-| Conversation history has a record of `rite:pr:fix` being called via `Skill tool` | Within loop -> Skip confirmation and auto-create Issues |
-| Otherwise (user directly entered `/rite:pr:fix`) | Manual execution -> Confirm with `AskUserQuestion` |
+**Reason** (#506 Fail-Fast First / 別 Issue 化は人間判定必須): 別 Issue 化は「問題の先延ばし装置」として誤用されやすく、本 PR 起因 findings が severity を問わず本 PR 外に逃げる抜け穴になっていた。`rite-config.yml` の `review.separate_issue_creation.require_user_confirmation: true`（default）で本挙動が強制される。
 
----
-
-**When called from within the `/rite:issue:start` loop:**
-
-Automatically create Issues for all skipped findings without confirmation.
+**All callers — confirm with `AskUserQuestion`:**
 
 ```
-スキップされた指摘を別 Issue として自動作成します
+スキップされた指摘の対応方針を選択してください
 
-{count} 件の指摘が別 Issue として作成されます:
-
-| # | ファイル | 内容 | 重要度 | スキップ理由 |
-|---|----------|------|--------|-------------|
-| 1 | {file_line} | {content_preview} | {severity} | {skip_reason} |
-
-Issue を作成中...
-```
-
-**Reason**: In the review-fix loop, the loop continues until all findings are "addressed" (fixed, replied to, or converted to Issues). If skipped findings are not converted to Issues, the loop termination condition cannot be met.
-
----
-
-**When `/rite:pr:fix` is executed manually:**
-
-Confirm with `AskUserQuestion`:
-
-```
-スキップされた指摘を別 Issue として管理します
-
-{count} 件の指摘が別 Issue として作成されます:
+{count} 件の指摘:
 
 | # | ファイル | 内容 | 重要度 | スキップ理由 |
 |---|----------|------|--------|-------------|
 | 1 | {file_line} | {content_preview} | {severity} | {skip_reason} |
 
 オプション:
-- すべて Issue 化する（推奨）: すべての指摘を別 Issue として作成
-- キャンセル: Issue 作成を中止
+- 本 PR 内で再試行（推奨）: Phase 2 に戻って改めて対応方針を検討する
+- 別 Issue 化: すべての指摘を別 Issue として作成し、本 PR では対応しない
+- 取り下げ: skip 扱いのまま findings から除外する（reviewer が誤検知と判断した場合）
 ```
+
+**Option ごとの後続処理**:
+
+| Option | 後続処理 |
+|--------|---------|
+| 本 PR 内で再試行 | Phase 2.1 に戻り、当該 findings について修正方針を再選択する。review-fix ループの終了条件 `findings == 0` に到達するため、修正 / 返信のみ / 取り下げ のいずれかに収束させる |
+| 別 Issue 化 | 4.3.4 の Issue 作成処理を実行し、findings を closed として扱う |
+| 取り下げ | Issue を作成せず、findings を closed として扱う（reviewer の誤検知と判断した場合。再レビューで再度指摘された場合は別途対応） |
+
+> **E2E flow での収束保証**: `/rite:issue:start` の review-fix ループは `findings == 0` で終了する。本 AskUserQuestion の 3 択はいずれも findings を closed 状態に遷移させるため、AskUserQuestion 経由でも収束する。停止することはない (feedback `e2e-no-stop-before-review` との整合)。
 
 #### 4.3.4 Create Issues
 

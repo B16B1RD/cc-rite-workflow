@@ -33,11 +33,11 @@ When the convergence monitor (start.md Phase 5.4.1.0) detects non-convergence an
 | Strategy | CRITICAL | HIGH | MEDIUM | LOW |
 |----------|----------|------|--------|-----|
 | `"none"` (default) | Blocking | Blocking | Blocking | Blocking |
-| `"severity_gating"` | Blocking | Blocking | **Deferred** (auto-create Issue) | **Deferred** (auto-create Issue) |
+| ~~`"severity_gating"`~~ (DEPRECATED #506) | ~~Blocking~~ | ~~Blocking~~ | ~~**Deferred**~~ | ~~**Deferred**~~ |
 | `"batched"` | Blocking (batch) | Blocking (batch) | Blocking (batch) | Blocking (batch) |
 | `"scope_lock"` | Blocking (original files only) | Blocking (original files only) | Blocking (original files only) | Blocking (original files only) |
 
-**Severity gating details**: Deferred findings are NOT silently dropped. They are auto-created as separate GitHub Issues with the label `review-deferred` and linked to the current PR. The review loop continues with only CRITICAL/HIGH findings remaining, which converges faster by breaking the surface area expansion feedback loop.
+> **DEPRECATED (#506)**: `"severity_gating"` strategy は #506 で廃止されました。本 PR 起因 findings は severity 問わず本 PR 内で対応する方針（本 PR 完結原則）に変更され、非収束時は fix.md Phase 4.3.3 の AskUserQuestion（`本 PR 内で再試行 / 別 Issue 化 / 取り下げ`）に統合されています。`rite-config.yml` の `fix.severity_gating.enabled` は後方互換のため残置されていますが `false` 固定扱いで参照されません。新規の非収束対応は `"batched"` または `"scope_lock"` strategy を使用してください。
 
 **Scope lock details**: Findings in files that were added or modified by fix commits (not in the original PR diff) are deferred. This prevents the positive feedback loop where "fix adds defensive code → review finds issues in defensive code → fix adds more defensive code".
 

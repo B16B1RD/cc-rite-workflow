@@ -122,6 +122,35 @@ review:
     max_claims: 20                     # Maximum number of External claims to verify per review (default: 20). Internal Likelihood claims are Grep-based and counted outside this cap
     use_context7: true                 # Use context7 MCP tool for verification (default: true). Auto-falls back to WebSearch when context7 is unavailable
     verify_internal_likelihood: true   # Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep (default: true)
+  # Observed Likelihood Gate (#506): Require evidence of actual occurrence for findings.
+  # See `plugins/rite/references/severity-levels.md` for the Observed / Demonstrable / Hypothetical axis.
+  observed_likelihood_gate:
+    enabled: true                      # Enable Observed Likelihood Gate (default: true)
+    security_exception: true           # Security reviewer keeps severity even for Hypothetical findings (default: true)
+    hypothetical_exception_reviewers:  # Reviewer categories allowed to report Hypothetical findings
+      - security
+      - database
+      - devops
+      - dependencies
+    minimum: "demonstrable"            # Minimum likelihood for non-exception reviewers (default: "demonstrable")
+  # Fail-Fast First (#506): Require throw/raise propagation to be considered before recommending fallback.
+  fail_fast_first:
+    enabled: true                      # Enable Fail-Fast First principle for reviewer recommendations (default: true)
+    allow_skill_exceptions: true       # Respect skill-level fallback allowances (default: true)
+    wiki_query_required: true          # Require Wiki check for project-specific fallback patterns before recommendation (default: true)
+  # Separate Issue Creation (#506): Always require user confirmation for separate-issue creation.
+  separate_issue_creation:
+    require_user_confirmation: true    # Require AskUserQuestion even in E2E flow (default: true). Strongly recommended.
+    report_pre_existing_issues: false  # Suppress Source C (pre-existing issue) reporting in reviewer output (default: false)
+
+# Fix settings (#506)
+fix:
+  fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
+  # DEPRECATED (#506): severity_gating convergence strategy has been removed.
+  # The key is retained for backward compatibility only; it is always treated as false.
+  # Non-convergence is now handled via fix.md Phase 4.3.3 AskUserQuestion (retry / separate issue / withdraw).
+  severity_gating:
+    enabled: false                     # DEPRECATED (#506): Pinned to false; not referenced by any code path
 
 # Iteration/Sprint settings (optional)
 iteration:
@@ -448,8 +477,8 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | Enable convergence analysis at cycle 3+. Detects stalled / diverging / oscillating fix-cycle patterns and applies adaptive strategies (batched fix, severity gating, scope lock) (#453) |
-| `loop.severity_gating_cycle_threshold` | integer | `5` | Cycle count at which severity gating strategy becomes available (CRITICAL/HIGH fixes in-band, MEDIUM/LOW deferred to separate Issues) |
+| `loop.convergence_monitoring` | boolean | `true` | Enable convergence analysis at cycle 3+. Detects stalled / diverging / oscillating fix-cycle patterns and applies adaptive strategies (batched fix, scope lock). **Note (#506)**: the `severity_gating` strategy was removed; non-convergence is now handled via the `AskUserQuestion` route at fix.md Phase 4.3.3 |
+| `loop.severity_gating_cycle_threshold` | integer | `5` | Cycle count at which the AskUserQuestion escalation becomes available for Stalled/Diverging patterns. **Name retained for backward compatibility** — the underlying severity-based gating was removed in #506 |
 | `loop.scope_lock_cycle_threshold` | integer | `7` | Cycle count at which scope lock strategy becomes available (restrict fixes to files from the original PR diff) |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
@@ -466,10 +495,19 @@ issue:
 | `fact_check.max_claims` | integer | `20` | Maximum number of **External** claims to verify per review (Sub-Phase A). Internal Likelihood claims are Grep-based and counted outside this cap |
 | `fact_check.use_context7` | boolean | `true` | Use context7 MCP tool for verification. Auto-falls back to WebSearch when context7 is unavailable |
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep-based call site / entry point checks |
+| `observed_likelihood_gate.enabled` | boolean | `true` | Enable Observed Likelihood Gate (#506). Requires reviewers to evidence actual occurrence (Observed / Demonstrable) before reporting, reducing hypothetical-only findings |
+| `observed_likelihood_gate.security_exception` | boolean | `true` | Security reviewer retains severity for Hypothetical findings (adversarial-input threat modeling is its job) |
+| `observed_likelihood_gate.hypothetical_exception_reviewers` | array | `[security, database, devops, dependencies]` | Reviewer categories allowed to report Hypothetical findings — database migrations / infra / CVE are fatal on first occurrence |
+| `observed_likelihood_gate.minimum` | string | `"demonstrable"` | Minimum likelihood required for non-exception reviewers (`observed` / `demonstrable` / `hypothetical`) |
+| `fail_fast_first.enabled` | boolean | `true` | Enable Fail-Fast First principle (#506). Reviewers must consider throw/raise propagation before recommending fallback code |
+| `fail_fast_first.allow_skill_exceptions` | boolean | `true` | Respect skill-level explicit fallback allowances (e.g., UI graceful degradation, stale-cache requirement) |
+| `fail_fast_first.wiki_query_required` | boolean | `true` | Require Wiki query (`/rite:wiki:query`) for project-specific fallback patterns before recommendation |
+| `separate_issue_creation.require_user_confirmation` | boolean | `true` | Require `AskUserQuestion` confirmation for separate-issue creation **even in E2E flow** (#506). Strongly recommended to prevent the "escape hatch" misuse of separate issues |
+| `separate_issue_creation.report_pre_existing_issues` | boolean | `false` | Suppress Source C (pre-existing issue) reporting in reviewer output. Use `/rite:investigate` for pre-existing concerns instead |
 
 **Review-fix loop convergence:**
 
-The review-fix loop exits only when all findings are resolved (zero blocking findings). A hard limit is enforced via `safety.max_review_fix_loops` (default: 7). When the limit is reached, the orchestrator presents options: extend the limit (+5), enable severity gating, or escalate to manual review (skip to Ready-for-review).
+The review-fix loop exits only when all findings are resolved (zero blocking findings). A hard limit is enforced via `safety.max_review_fix_loops` (default: 7). When the limit is reached, the orchestrator presents options: extend the limit (+5), retry in current PR, or escalate to manual review (skip to Ready-for-review). **Note (#506)**: The `severity gating` option was removed; non-convergence is now handled via the unified `AskUserQuestion` route in `fix.md` Phase 4.3.3 (`retry in current PR / create separate issue / withdraw`), all of which converge to `findings == 0`.
 
 **Convergence monitoring** (`loop.convergence_monitoring: true` by default): From cycle 3 onward, the orchestrator analyzes the `findings_total` trajectory over the last 4 cycles and classifies the pattern:
 
@@ -477,10 +515,17 @@ The review-fix loop exits only when all findings are resolved (zero blocking fin
 |---------|-----------|-------------------|
 | **Converging** | Strictly decreasing | Continue normally |
 | **Stalled** | Values within ±2 of each other | Batched fix mode (group findings by category) |
-| **Diverging** | Values increasing over the last 2 cycles | Severity gating (CRITICAL/HIGH only, defer MEDIUM/LOW) — requires `loop_count >= severity_gating_cycle_threshold` |
+| **Diverging** | Values increasing over the last 2 cycles | **AskUserQuestion escalation** (#506) — presents `retry in current PR / create separate issue / withdraw`, requires `loop_count >= severity_gating_cycle_threshold`. The prior "severity gating" auto-defer behavior was removed |
 | **Oscillating** | Alternating up/down | Scope lock (restrict fixes to original PR diff files) — requires `loop_count >= scope_lock_cycle_threshold` |
 
 When a strategy is adopted, the selected mode is written to `.rite-flow-state` and read by `/rite:pr:fix` to adjust fix behavior for the next cycle.
+
+**Fix settings (#506):**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification |
+| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506)**. Retained for backward compatibility only; pinned to `false` and not referenced by any code path. Use `"batched"` or `"scope_lock"` strategy for non-convergence mitigation |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
 
