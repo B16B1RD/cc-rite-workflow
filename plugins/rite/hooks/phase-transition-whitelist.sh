@@ -119,6 +119,18 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # (terminal state). The empty-value listing below keeps the name known as a source for
   # rite_phase_is_known().
   ["completed"]=""
+
+  # /rite:issue:create lifecycle (#475).
+  # Orchestrator (create.md) writes create_interview → create_post_interview → create_delegation,
+  # and terminal sub-skills (create-register/create-decompose) write create_completed.
+  # Registering these in the whitelist enables stop-guard invalid-transition detection
+  # when the orchestrator silently skips sub-skill delegation (Mode B) or misroutes flow.
+  # create_completed is already treated as a universal terminal in rite_phase_transition_allowed().
+  ["create_interview"]="create_post_interview"
+  ["create_post_interview"]="create_delegation create_interview"
+  ["create_delegation"]="create_post_delegation create_completed"
+  ["create_post_delegation"]="create_completed"
+  ["create_completed"]=""
 )
 
 # Load override map from rite-config.yml if present.

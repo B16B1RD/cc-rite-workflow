@@ -99,6 +99,40 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   esac
 fi
 
+# Pattern 5: gh issue create direct invocation during /rite:issue:create lifecycle (#475 Mode B).
+# The orchestrator (create.md) must delegate Issue creation to rite:issue:create-register or
+# rite:issue:create-decompose sub-skills. A direct `gh issue create` call bypasses the entire
+# sub-skill delegation protocol, flow-state tracking, and Projects integration.
+#
+# Detection: .rite-flow-state must exist AND be active AND the phase must be create_interview /
+# create_post_interview / create_delegation / create_post_delegation (i.e., create lifecycle is
+# in progress but not yet terminated by create_completed).
+#
+# Scope exclusions (allow):
+#   - no .rite-flow-state (manual gh invocation outside any workflow)
+#   - .rite-flow-state exists but active=false or phase=create_completed (lifecycle finished)
+#   - .rite-flow-state phase is not create_* (different workflow like /rite:issue:start)
+#   - gh issue subcommands other than `create` (list/view/edit/close/comment/etc.)
+if [ -z "$BLOCKED_PATTERN" ]; then
+  if [[ "$CMD_CHECK" =~ gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
+    CWD_FROM_INPUT=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD_FROM_INPUT=""
+    STATE_ROOT_PATH=""
+    if [ -n "$CWD_FROM_INPUT" ] && [ -d "$CWD_FROM_INPUT" ]; then
+      STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD_FROM_INPUT" 2>/dev/null) || STATE_ROOT_PATH="$CWD_FROM_INPUT"
+    fi
+    STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
+    if [ -n "$STATE_ROOT_PATH" ] && [ -f "$STATE_FILE_PATH" ]; then
+      STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
+      STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"
+      if [ "$STATE_ACTIVE" = "true" ] && [[ "$STATE_PHASE" == create_* ]] && [ "$STATE_PHASE" != "create_completed" ]; then
+        BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
+        BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B)."
+        BLOCKED_ALTERNATIVE="rite:issue:create-register を呼ぶべき場面です。Phase 0.6 の Delegation Routing に従い skill: \"rite:issue:create-register\" または skill: \"rite:issue:create-decompose\" を invoke してください。"
+      fi
+    fi
+  fi
+fi
+
 # Pattern 4: Reviewer subagent running state-mutating git commands (Issue #442).
 # Scope: only when IS_SUBAGENT=1 (transcript_path contains "/subagents/").
 # Main-session git operations (branch switch, commit, etc. performed by

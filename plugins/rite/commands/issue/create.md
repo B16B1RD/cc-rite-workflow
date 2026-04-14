@@ -395,9 +395,36 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 **Completion criteria for Phase 0.4**: See [Termination Logic > Phase 0.4 Completion Criteria](#phase-04-completion-criteria).
 
+### 0.4.2 Skip Semantics (Critical — Mode B Defense)
+
+> **⚠️ READ THIS EVERY TIME Phase 0.4 is skipped.**
+
+When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmation questions are skipped, this means **ONLY** that the user-facing confirmation dialog is skipped. It does **NOT** mean any of the following are skipped:
+
+| MUST execute even when Phase 0.4 confirmation is skipped |
+|---|
+| Phase 0.4.1 goal classification (infer task type from Phase 0.1) |
+| The "Delegation to Interview" section below (Pre-write + `rite:issue:create-interview` Skill invocation) |
+| 🚨 Mandatory After Interview |
+| Phase 0.6 (Task Decomposition Decision) |
+| Delegation Routing (Pre-write + `rite:issue:create-register` or `rite:issue:create-decompose` Skill invocation) |
+| 🚨 Mandatory After Delegation |
+
+**The only legitimate way to create a GitHub Issue from this command is by invoking `rite:issue:create-register` or `rite:issue:create-decompose` as a Skill.** Calling `gh issue create` directly from the orchestrator bypasses flow-state tracking, Projects integration, and every enforcement layer — and is **blocked by `pre-tool-bash-guard.sh`** when `.rite-flow-state.phase = create_*`.
+
 ---
 
 ## Delegation to Interview
+
+> **🚫 MUST NOT — Bypass prohibition (Mode B defense, #475)**
+>
+> Between this point and `[create:completed:{N}]`, the orchestrator MUST NOT:
+>
+> 1. Execute `gh issue create` via the Bash tool (blocked by `pre-tool-bash-guard.sh` hook)
+> 2. Skip from here directly to output without invoking `rite:issue:create-interview`
+> 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a single synthetic "create Issue" step
+>
+> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
 
@@ -422,15 +449,11 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 ### 🚨 Mandatory After Interview
 
-> See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
+> **Enforcement**: `.rite-flow-state.phase = create_post_interview` is registered in `phase-transition-whitelist.sh`. A stop attempt at this point is blocked by `stop-guard.sh` with `invalid_transition` unless this section's Step 1 + Step 2 have been executed. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-interview` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually. See also the delegation section below for the same pattern.
+No GitHub Issue has been created yet. The interview only collects information.
 
-**Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** proceed to the next phase.
-
-Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
-
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes to the correct next phase:
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -575,11 +598,9 @@ Invoke `skill: "rite:issue:create-register"`.
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
-> See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
+> **Enforcement**: Terminal sub-skills (`create-register.md`, `create-decompose.md`) write `create_completed` + `active: false` and output `[create:completed:{N}]` internally (Issue #444 Terminal Completion pattern). Steps 1-3 below are idempotent safety nets — if the sub-skill ran correctly they are no-ops. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
-> **Defense-in-depth only** (Issue #444): Terminal sub-skills now handle flow-state deactivation and next-step output internally via their Terminal Completion phase. This 🚨 Mandatory After section is retained as a **safety net** — it re-executes the same steps idempotently. If the sub-skill's Terminal Completion executed correctly, these steps are no-ops.
-
-**Self-check**: Has `[create:completed:{N}]` been output? If yes, the sub-skill's Terminal Completion succeeded — execute Steps 1-3 as defense-in-depth (idempotent). If no (sub-skill returned without the completion marker), these steps are **critical** and must execute.
+**Self-check**: Has `[create:completed:{N}]` been output? If no, Steps 1-3 are **critical** — the sub-skill failed to complete its Terminal Completion phase.
 
 **Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic):
 

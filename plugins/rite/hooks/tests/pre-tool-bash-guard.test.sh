@@ -863,6 +863,160 @@ echo "TC-084: subagent + '{git reset --hard HEAD;}' → deny (brace boundary)"
 assert_subagent_deny "brace group git reset blocked" "{git reset --hard HEAD;}"
 
 # --------------------------------------------------------------------------
+# TC-090〜098: Pattern 5 — gh issue create during create lifecycle (#475 Mode B)
+# --------------------------------------------------------------------------
+echo ""
+echo "=== TC-090+: Pattern 5 gh issue create lifecycle blocking (#475) ==="
+
+# Helper: run hook with explicit cwd + pre-populated .rite-flow-state
+# Args: $1=cwd_dir, $2=command, $3..=extra jq-n args (unused now)
+run_guard_with_cwd() {
+  local cwd_dir="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(jq -n --arg tn "Bash" --arg cmd "$cmd" --arg cwd "$cwd_dir" \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: $cwd}' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+
+# Helper: create a tmp cwd with a .rite-flow-state file having the given phase/active.
+make_cwd_with_state() {
+  local phase="$1"
+  local active="$2"
+  local dir
+  dir=$(mktemp -d "/tmp/rite-test-475.XXXXXX")
+  cat > "$dir/.rite-flow-state" <<STATE_EOF
+{
+  "schema_version": 1,
+  "phase": "$phase",
+  "active": $active,
+  "issue_number": 0,
+  "branch": "",
+  "pr_number": 0,
+  "next_action": "test",
+  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")",
+  "session_id": "test-session"
+}
+STATE_EOF
+  echo "$dir"
+}
+
+# TC-090: gh issue create during phase=create_interview (active=true) → deny
+echo "TC-090: gh issue create + create_interview active → deny"
+tmpdir=$(make_cwd_with_state "create_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x' --body 'y'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"create-lifecycle-direct-gh-issue"* ]]; then
+  pass "TC-090 gh issue create blocked during create_interview"
+else
+  fail "TC-090 expected deny (create-lifecycle-direct-gh-issue), got decision=$decision reason=$reason"
+fi
+rm -rf "$tmpdir"
+
+# TC-091: gh issue create during phase=create_post_interview (active=true) → deny
+echo "TC-091: gh issue create + create_post_interview active → deny"
+tmpdir=$(make_cwd_with_state "create_post_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-091 blocked during create_post_interview"
+else
+  fail "TC-091 expected deny, got decision=$decision"
+fi
+rm -rf "$tmpdir"
+
+# TC-092: gh issue create during phase=create_delegation (active=true) → deny
+echo "TC-092: gh issue create + create_delegation active → deny"
+tmpdir=$(make_cwd_with_state "create_delegation" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-092 blocked during create_delegation"
+else
+  fail "TC-092 expected deny, got decision=$decision"
+fi
+rm -rf "$tmpdir"
+
+# TC-093: gh issue create with phase=create_completed → allow (lifecycle finished)
+echo "TC-093: gh issue create + create_completed → allow"
+tmpdir=$(make_cwd_with_state "create_completed" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-093 allowed after create_completed"
+else
+  fail "TC-093 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-094: gh issue create with active=false → allow
+echo "TC-094: gh issue create + active=false → allow"
+tmpdir=$(make_cwd_with_state "create_interview" "false")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-094 allowed when active=false"
+else
+  fail "TC-094 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-095: gh issue create with phase=phase2_branch (different workflow) → allow
+echo "TC-095: gh issue create + phase2_branch → allow (different workflow)"
+tmpdir=$(make_cwd_with_state "phase2_branch" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-095 allowed during non-create workflow"
+else
+  fail "TC-095 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-096: gh issue create with no .rite-flow-state → allow
+echo "TC-096: gh issue create + no .rite-flow-state → allow"
+tmpdir=$(mktemp -d "/tmp/rite-test-475.XXXXXX")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-096 allowed without state file"
+else
+  fail "TC-096 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-097: gh issue list (not create) during create_interview → allow
+echo "TC-097: gh issue list + create_interview → allow (not 'create')"
+tmpdir=$(make_cwd_with_state "create_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue list --state open") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-097 gh issue list allowed"
+else
+  fail "TC-097 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# TC-098: gh issue view (not create) during create_interview → allow
+echo "TC-098: gh issue view + create_interview → allow (not 'create')"
+tmpdir=$(make_cwd_with_state "create_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue view 123 --json body") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-098 gh issue view allowed"
+else
+  fail "TC-098 expected allow, got rc=$rc output=$output"
+fi
+rm -rf "$tmpdir"
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

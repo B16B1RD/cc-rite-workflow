@@ -260,6 +260,60 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-475-WARN-A: create_interview lifecycle unfinished → stderr warning (#475 AC-9)
+# --------------------------------------------------------------------------
+echo "TC-475-WARN-A: create_interview active → lifecycle warning in stderr"
+dir475wa="$TEST_DIR/tc475wa"
+mkdir -p "$dir475wa"
+create_state_file "$dir475wa" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
+run_hook "$dir475wa" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE"; then
+  pass "create_interview unfinished → warning emitted"
+else
+  fail "expected lifecycle warning in stderr, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
+# TC-475-WARN-B: create_post_interview also emits warning
+echo "TC-475-WARN-B: create_post_interview active → lifecycle warning"
+dir475wb="$TEST_DIR/tc475wb"
+mkdir -p "$dir475wb"
+create_state_file "$dir475wb" '{"active": true, "phase": "create_post_interview", "issue_number": 0, "branch": ""}'
+run_hook "$dir475wb" >/dev/null || true
+if grep -q "lifecycle was not completed" "${LAST_STDERR_FILE:-/dev/null}"; then
+  pass "create_post_interview unfinished → warning emitted"
+else
+  fail "expected lifecycle warning in stderr"
+fi
+echo ""
+
+# TC-475-WARN-C: create_completed → NO warning (lifecycle finished)
+echo "TC-475-WARN-C: create_completed → no warning"
+dir475wc="$TEST_DIR/tc475wc"
+mkdir -p "$dir475wc"
+create_state_file "$dir475wc" '{"active": true, "phase": "create_completed", "issue_number": 0, "branch": ""}'
+run_hook "$dir475wc" >/dev/null || true
+if grep -q "lifecycle was not completed" "${LAST_STDERR_FILE:-/dev/null}"; then
+  fail "unexpected warning for create_completed"
+else
+  pass "create_completed → no warning (lifecycle finished)"
+fi
+echo ""
+
+# TC-475-WARN-D: phase5_lint (different workflow) → NO warning
+echo "TC-475-WARN-D: phase5_lint → no warning (not create lifecycle)"
+dir475wd="$TEST_DIR/tc475wd"
+mkdir -p "$dir475wd"
+create_state_file "$dir475wd" '{"active": true, "phase": "phase5_lint", "issue_number": 475, "branch": ""}'
+run_hook "$dir475wd" >/dev/null || true
+if grep -q "lifecycle was not completed" "${LAST_STDERR_FILE:-/dev/null}"; then
+  fail "unexpected warning for non-create phase"
+else
+  pass "phase5_lint → no warning"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

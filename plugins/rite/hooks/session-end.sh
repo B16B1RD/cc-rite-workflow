@@ -48,6 +48,22 @@ if [ -f "$STATE_FILE" ]; then
         exit 0
     fi
 
+    # /rite:issue:create lifecycle unfinished warning (#475 AC-9).
+    # If the session is ending while the create flow is mid-delegation (phase=create_*
+    # but not create_completed), emit a warning so the user knows the Issue was NOT
+    # created and can re-run /rite:issue:create or use /rite:resume. This is
+    # informational only — session-end always proceeds with deactivation.
+    _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null) || _state_phase=""
+    _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || _state_active="false"
+    if [ "$_state_active" = "true" ] && [[ "$_state_phase" == create_* ]] && [ "$_state_phase" != "create_completed" ]; then
+        cat >&2 <<WARN_MSG
+⚠️  rite: /rite:issue:create lifecycle was not completed (phase=$_state_phase).
+    No GitHub Issue was created. The sub-skill delegation flow
+    (create-interview → 0.6 → create-register/create-decompose) did not reach completion.
+    Re-run /rite:issue:create or use /rite:resume to recover.
+WARN_MSG
+    fi
+
     # mktemp with PID-based fallback (consistent with stop-guard.sh)
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
     # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
