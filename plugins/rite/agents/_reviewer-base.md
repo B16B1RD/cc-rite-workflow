@@ -116,24 +116,30 @@ A finding that fails any of these three gates is downgraded to **推奨事項** 
 
 ### Demonstrable: proof of burden
 
-The `内容` column of every **指摘事項** MUST explicitly state which evidence type was used to clear the Likelihood gate. Use the standardized `Evidence:` prefix at the end of the `内容` column (after the WHAT + WHY narrative, separated by a newline within the cell):
+The `内容` column of every **指摘事項** MUST explicitly state which evidence type was used to clear the Likelihood gate. Use the standardized `Likelihood-Evidence:` prefix (the `Likelihood-` qualifier disambiguates from the `Evidence: tool=...` prefix used by tech-writer's Doc-Heavy Mode 5-category verification protocol — the two serve different purposes and must not collide).
 
 **Machine-readable format** (required):
 
 ```
-Evidence: <evidence_type> <location_or_observation>
+Likelihood-Evidence: <evidence_type> <location_or_observation>
 ```
+
+Place this line at the end of the `内容` column. For Markdown table cells where physical newlines are not supported, use `<br>` as the separator, or append the line as a continuation after the WHAT + WHY narrative on the same logical row.
 
 Where `<evidence_type>` is one of the following literal labels:
 
 | `<evidence_type>` label | Example complete line |
 |---|---|
-| `existing_call_site` | `Evidence: existing_call_site src/api/handlers.ts:45` |
-| `new_call_site` | `Evidence: new_call_site src/new-feature/init.ts:12 (本 PR で追加)` |
-| `entrypoint_connection` | `Evidence: entrypoint_connection commands/foo.md → hooks/foo.sh L23` |
-| `runtime_observation` | `Evidence: runtime_observation pytest -k test_bar で AssertionError` |
+| `existing_call_site` | `Likelihood-Evidence: existing_call_site src/api/handlers.ts:45` |
+| `new_call_site` | `Likelihood-Evidence: new_call_site src/new-feature/init.ts:12 (本 PR で追加)` |
+| `entrypoint_connection` | `Likelihood-Evidence: entrypoint_connection commands/foo.md → hooks/foo.sh L23` |
+| `runtime_observation` | `Likelihood-Evidence: runtime_observation pytest -k test_bar で AssertionError` |
 
-The `Evidence:` prefix is the required anchor for downstream mechanical detection (Phase 5 fact-check, dedup, Layer 2 assessment-rules). Findings that do not contain an `Evidence: <label> ...` line in the `内容` column are assumed to be Hypothetical and will be downgraded per the Impact × Likelihood Matrix — no exceptions regardless of how strong the narrative in the `内容` column sounds.
+The `Likelihood-Evidence:` prefix is the required anchor for downstream mechanical detection of the Observed Likelihood Gate (Phase 5 fact-check, dedup, Layer 2 assessment-rules). Findings that do not contain a `Likelihood-Evidence: <label> ...` line in the `内容` column are treated as Hypothetical and downgraded per the Impact × Likelihood Matrix.
+
+**Relationship with tech-writer Doc-Heavy Mode `Evidence:`**: Doc-Heavy Mode findings MUST still include the separate `Evidence: tool=<Grep|Read|Glob|WebFetch>, path=..., line=...` line for the 5-category verification protocol (see `skills/reviewers/tech-writer.md`). Both prefixes may coexist in the same `内容` cell — they are orthogonal checks (Observed Likelihood Gate vs. Doc-Heavy verification execution). Phase 5.1.3 post-condition only requires the tech-writer `Evidence: tool=...` form; the Observed Likelihood Gate check detects `Likelihood-Evidence:` separately.
+
+**Hypothetical Exception Category interaction**: Reviewers in the Hypothetical Exception Categories (security / database migration / devops infra / dependencies) MAY omit the `Likelihood-Evidence:` line when the finding is explicitly Hypothetical — in that case the required marker instead is `Likelihood: Hypothetical (例外カテゴリ: <name>)` in the `内容` column, as specified in each of those reviewer skill files. This is the single exception to the mandatory `Likelihood-Evidence:` rule.
 
 ### Hypothetical downgrade patterns
 

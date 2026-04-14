@@ -34,7 +34,7 @@ Acceptable evidence for Demonstrable status (any one of the following is suffici
 3. **Entrypoint connection**: The buggy code is reachable from a CLI command, HTTP route, webhook, cron, framework convention (controller / handler / hook), test runner, or other registered entrypoint — even if `Grep` for the function name returns no results because dispatch is dynamic (reflection, decorator, plugin registry, hook system, configuration-driven routing).
 4. **Runtime observation**: The reviewer has actually run the diff-applied code and observed the failure.
 
-The reviewer must record which evidence type was used in the finding's `内容` column (e.g., "既存呼び出し元 `src/api.ts:45`", "新規呼び出し元 `src/new-module.ts:12`", "エントリポイント接続: `commands/foo.md` から `hooks/foo.sh` 経由").
+The reviewer must record which evidence type was used in the finding's `内容` column using the standardized machine-readable prefix `Likelihood-Evidence: <label> <location>` defined in [`agents/_reviewer-base.md` "Demonstrable: proof of burden"](../agents/_reviewer-base.md#demonstrable-proof-of-burden). Examples: `Likelihood-Evidence: existing_call_site src/api.ts:45`, `Likelihood-Evidence: new_call_site src/new-module.ts:12`, `Likelihood-Evidence: entrypoint_connection commands/foo.md → hooks/foo.sh L23`. See `_reviewer-base.md` for the full label list and the machine-detection contract.
 
 ### Grep failure ≠ Hypothetical
 
@@ -59,7 +59,7 @@ The final severity reported in the findings table is determined by combining the
 
 ## Hypothetical Exception Categories
 
-Four reviewer categories MAY retain CRITICAL / HIGH severity for Hypothetical findings, because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
+Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
 
 | Category | Reviewer | Rationale |
 |---|---|---|
@@ -71,6 +71,8 @@ Four reviewer categories MAY retain CRITICAL / HIGH severity for Hypothetical fi
 Reviewers in these categories MUST still record the Likelihood classification in the finding's `内容` column (e.g., "Likelihood: Hypothetical (例外カテゴリ: security)") so the reader knows the severity was not auto-downgraded.
 
 All other reviewers MUST apply the matrix above and downgrade Hypothetical findings.
+
+> **Note — 3 ゲート運用への forward-pointer**: 指摘事項化の必要条件は impact + likelihood の 2 軸に加えて **revert test を含む 3 ゲート** を同時充足することが求められます。revert test の運用手順は [`agents/_reviewer-base.md` "Necessary conditions for inclusion in 指摘事項"](../agents/_reviewer-base.md#necessary-conditions-for-inclusion-in-指摘事項) を参照してください。本ファイル (severity-levels.md) は impact + likelihood の 2 軸定義に特化しており、revert test の定義は意図的に `_reviewer-base.md` に集約されています。
 
 ## Evaluation Criteria
 

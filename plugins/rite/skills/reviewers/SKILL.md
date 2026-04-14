@@ -70,7 +70,7 @@ All reviewers must follow these quality standards when reporting findings. These
 
 - 指摘事項化の必要条件は (1) Confidence ≥ 80 + (2) Likelihood ≥ Demonstrable + (3) revert test pass の **3 ゲート同時充足**
 - Demonstrable の立証範囲は **diff 適用後のコードベース全体**（既存 + 本 PR 追加）
-- 立証手段は「既存呼び出し元」「新規呼び出し元」「エントリポイント接続」「実観測」のいずれか。`内容` 列に明示
+- 立証手段は 4 種 (`existing_call_site` / `new_call_site` / `entrypoint_connection` / `runtime_observation`) のいずれか。`内容` 列に `Likelihood-Evidence: <label> <location>` の literal prefix を必ず記載（詳細は `agents/_reviewer-base.md` の "Demonstrable: proof of burden" 節）
 - Hypothetical は降格（**例外カテゴリ**: security / database (migration) / devops (infra) / dependencies の 4 reviewer のみ Hypothetical でも severity 維持可能）
 - Grep 失敗だけで Hypothetical 扱いにしない。dynamic dispatch / hook / framework convention / 設定駆動ルーティングはエントリポイント接続で Demonstrable 立証可
 

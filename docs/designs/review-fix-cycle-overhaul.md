@@ -100,6 +100,9 @@ Reviewer (subagent)
   ├─ Confidence Gate (≥80, 既存)
   ├─ Observed Likelihood Gate (新規)
   │    └─ Demonstrable 立証 (Grep call site / entrypoint 接続)
+  ├─ Revert Test Gate (新規、3 ゲート目)
+  │    └─ diff-line inspection / git show comparison / git worktree add で
+  │       diff 起因か pre-existing かを判別
   └─ Fail-Fast First Review (fallback 推奨前に throw 検討)
        ↓ findings
 review.md Phase 5 (Critic Pipeline)
