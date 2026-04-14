@@ -118,40 +118,65 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 #### 2.4.7.1 Parent Issue Detection
 
-Detect the parent Issue of the current (child) Issue. Try methods in order; use the first successful result.
+Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue:create-decompose` (which writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
 
-**Method 1: Sub-Issues API (preferred)**
+> **Consistency requirement (Issue #513)**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. If the detection method ordering or OR semantics diverge between start and close, silent-skip regressions (e.g., the #115/#381/#15 incidents) reappear.
+
+**Method 1: `## 親 Issue` body meta (PRIMARY)**
+
+Read the current (child) Issue body and search for the `## 親 Issue` section. This section is written by `/rite:issue:create-decompose` when child Issues are created from a parent. Format:
+
+```
+## 親 Issue
+
+#{parent_number} - {parent_title}
+```
+
+```bash
+child_body=$(gh issue view {issue_number} --json body --jq '.body')
+# SIGPIPE 防止 (#398 参照): here-string で subprocess を排除
+parent_number=$(grep -A2 '^## 親 Issue' <<< "$child_body" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+echo "method1_parent=${parent_number:-none}"
+```
+
+If `parent_number` is non-empty, extract it as `{parent_issue_number}` and proceed to 2.4.7.2.
+
+**Method 2: Sub-Issues API (secondary)**
+
+If Method 1 found no parent, query GitHub's native Sub-Issues feature:
 
 ```bash
 gh api graphql -H "GraphQL-Features: sub_issues" -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
-      parent {
-        number
-        title
-        state
-      }
+      parent { number }
     }
   }
 }' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
 ```
 
-If `parent` is not null, extract `parent.number` as `{parent_issue_number}`. Proceed to 2.4.7.2.
+If `parent` is not null, extract `parent.number` as `{parent_issue_number}` and proceed to 2.4.7.2. (Only `number` is requested because 2.4.7.2 re-queries the parent by number for project data, so `title`/`state` are unused here and would only create drift with `close.md` Phase 4.5.1 Method 2.)
 
-**Method 2: Tasklist search (fallback)**
+**Method 3: Tasklist search (last resort)**
 
-If Method 1 fails (API error or `parent` is null):
+If Methods 1 and 2 both failed:
 
 ```bash
 gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number,title,state --limit 5
 ```
 
-**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub normalizes uppercase `[X]` to lowercase `[x]` in rendered markdown, so matching `[x]` alone is sufficient for the search API.
+**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub code search with `[`/`]` characters is known to be unreliable, which is why this method is the last resort.
 
-If results are non-empty, use the first result's `number` as `{parent_issue_number}`. Proceed to 2.4.7.2.
+If results are non-empty, use the first result's `number` as `{parent_issue_number}` and proceed to 2.4.7.2.
 
-**When no parent found**: Process as a standalone Issue. Display no warning (this is normal). Skip 2.4.7.2–2.4.7.4.
+**When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by Issue #513's MUST requirement ("同期失敗時は silent skip せず、明示的にログまたは warning を出力する") and the preceding incidents #115 / #381 / #15 which all stemmed from silent skips in parent-child sync:
+
+```bash
+echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"
+```
+
+Then skip 2.4.7.2–2.4.7.4.
 
 #### 2.4.7.2 Retrieve Parent Issue Project Item and Current Status
 

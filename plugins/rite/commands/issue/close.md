@@ -483,9 +483,11 @@ When a child Issue is closed, automatically update the parent Issue's body to re
 
 ### 4.5.1 Detect Parent Issue
 
-Extract the parent Issue number from the closing Issue's body. The `## 親 Issue` section is added by `/rite:issue:create-decompose` when creating child Issues.
+Detect the parent Issue via **three methods tried in order (OR combination)**. This mirrors the 3-method detection in [`projects-integration.md` 2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) — the two sites MUST stay consistent to prevent silent-skip regressions (see Issue #513 / past incidents #115, #381, #15).
 
-**Detection pattern**: Search the Issue body for the `## 親 Issue` section header, then extract the Issue number from the line below it:
+**Method 1: `## 親 Issue` body meta (PRIMARY)**
+
+Read the closing Issue body and search for the `## 親 Issue` section written by `/rite:issue:create-decompose`.
 
 ```
 ## 親 Issue
@@ -493,23 +495,58 @@ Extract the parent Issue number from the closing Issue's body. The `## 親 Issue
 #{parent_number} - {parent_title}
 ```
 
-**Extraction**: Retrieve the Issue body and extract the parent Issue number in a single bash block:
-
 ```bash
 issue_body=$(gh issue view {issue_number} --json body --jq '.body')
-# SIGPIPE 防止 (#398): issue_body が大きい場合、echo | grep | head -1 で
-# head の早期終了により echo に SIGPIPE が届く。here-string で subprocess を排除。
+# SIGPIPE 防止 (#398): here-string で subprocess を排除
 parent_number=$(grep -A2 '^## 親 Issue' <<< "$issue_body" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
-echo "parent_number=${parent_number:-none}"
+echo "method1_parent=${parent_number:-none}"
 ```
 
-**When no parent Issue is found** (`parent_number` is empty):
+If `parent_number` is non-empty, proceed to 4.5.2.
+
+**Method 2: Sub-Issues API (secondary)**
+
+If Method 1 returned empty, query GitHub's native Sub-Issues feature:
+
+```bash
+parent_number=$(gh api graphql -H "GraphQL-Features: sub_issues" -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      parent { number }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} \
+  --jq '.data.repository.issue.parent.number // empty')
+echo "method2_parent=${parent_number:-none}"
+```
+
+If non-empty, proceed to 4.5.2.
+
+**Method 3: Tasklist search (last resort)**
+
+If both methods failed:
+
+```bash
+parent_number=$(gh issue list --state all --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 1 --jq '.[0].number // empty')
+echo "method3_parent=${parent_number:-none}"
+```
+
+GitHub code search with `[`/`]` is unreliable, which is why this is the last resort. `--state all` (not `--state open`) because the closing Issue's parent may already be closed if someone closed it manually.
+
+**When all three methods failed (`parent_number` empty)**:
+
+```bash
+echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"
+```
+
+Display:
 
 ```
 親 Issue の参照が見つかりませんでした。親 Issue 更新をスキップします。
 ```
 
-Skip the rest of Phase 4.5 and proceed to Phase 5. This is normal behavior (AC-3), not an error.
+Skip the rest of Phase 4.5 and Phase 4.6 and proceed to Phase 5. This is normal behavior (AC-4), not an error — but the debug log above makes the skip visible so silent-skip regressions are detectable.
 
 ### 4.5.2 Update Parent Issue Body
 
@@ -551,9 +588,470 @@ bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
 
 If the script exits with 0, the update succeeded (or was skipped by `--diff-check` if no changes were needed). If non-zero, display a warning and proceed to Phase 5.
 
-**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The `--parent` flag is passed for future differentiation but currently all errors are treated as warnings by the script. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
+**On failure**: Display warning and proceed to Phase 4.6 (non-blocking, AC-4). The `--parent` flag is passed for future differentiation but currently all errors are treated as warnings by the script. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
 
-Proceed to Phase 5.
+Proceed to Phase 4.6.
+
+---
+
+## Phase 4.6: Parent Auto-Close (All Children Completed)
+
+> **Issue #513 AC-2**: When all child Issues of the detected parent are now closed (including the just-closed one), offer to auto-close the parent. This closes the "child close → parent stays Open" silent-skip hole.
+
+**Execution condition**: Only execute when `{parent_number}` was detected in Phase 4.5.1 (any of the three methods succeeded). If no parent was detected, skip Phase 4.6 entirely and proceed to Phase 5.
+
+**Three-level nesting guard (AC / MUST NOT)**: This phase processes only the direct parent. It does NOT recurse into the parent's parent (grandparent). Three-level nesting is explicitly out of scope (see Issue #513 Section 2 Out of Scope).
+
+### 4.6.0 Idempotency Check (parent-already-closed no-op)
+
+Before enumerating children, check whether the parent Issue is already closed. If so, this is a no-op invocation (the parent was previously closed — manually, by a prior auto-close run, or externally) and we must not re-prompt the user.
+
+> **Note on AC-6**: Issue #513's AC-6 as written addresses the **start** side ("parent already In Progress → no-op"). This Phase 4.6.0 applies the **same idempotency principle** to the close side (parent already CLOSED → no-op). AC-6 is not literally covering the close-side case, so we avoid citing AC-6 directly and instead describe this as "close-side idempotency, extending the AC-6 principle to the symmetric close path."
+
+Design principle (Issue #517 cycle 2 review fix): this bash block follows the same silent-failure avoidance pattern as Phase 4.6.1 — stderr is captured to a tempfile and surfaced on failure, explicit sentinels (`[CONTEXT] P460_DECISION=...`) drive LLM routing, and the retrieval-failure branch is implemented in bash (not prose only).
+
+```bash
+# ============================================================================
+# Phase 4.6.0: Idempotency check (parent already closed → no-op)
+# ============================================================================
+set -uo pipefail  # strict mode (fail on undefined vars + preserve pipeline failure code)
+
+parent_number="{parent_number}"
+
+# --- Placeholder substitution sanity guard ---
+# Phase 4.6 is only reachable when Phase 4.5.1 detected a parent. If the LLM
+# routed into Phase 4.6 without substituting `{parent_number}` (e.g., skip-logic
+# bug or placeholder left literal), subsequent `gh issue view "{parent_number}"`
+# would fail with an "invalid issue number" error on stderr, and the Phase 4.6.0
+# else branch would classify it as "retrieval failed" — which is technically
+# correct but masks the true root cause (routing bug, not API failure).
+# This case statement surfaces the routing bug explicitly instead of silently
+# degrading into the retrieval-failure path.
+case "$parent_number" in
+  ''|'{parent_number}')
+    echo "[DEBUG] p460: parent_number is empty or unsubstituted literal ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6 (caller routing bug)." >&2
+    echo "[CONTEXT] P460_DECISION=skip_routing_bug"
+    exit 0
+    ;;
+  *[!0-9]*)
+    echo "[DEBUG] p460: parent_number is not numeric ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6." >&2
+    echo "[CONTEXT] P460_DECISION=skip_routing_bug"
+    exit 0
+    ;;
+esac
+
+parent_state=""
+p460_err=""
+_rite_close_p460_cleanup() {
+  rm -f "${p460_err:-}"
+}
+trap 'rc=$?; _rite_close_p460_cleanup; exit $rc' EXIT
+trap '_rite_close_p460_cleanup; exit 130' INT
+trap '_rite_close_p460_cleanup; exit 143' TERM
+trap '_rite_close_p460_cleanup; exit 129' HUP
+
+# Capture stderr to tempfile (not /dev/null) so auth / network failures surface.
+# `mktemp` with no arguments respects $TMPDIR (honoring macOS /var/folders, CI overrides, etc.)
+if ! p460_err=$(mktemp 2>/dev/null); then
+  echo "[DEBUG] p460: mktemp failed — stderr from gh issue view will not be captured" >&2
+  p460_err=""
+fi
+
+if parent_state=$(gh issue view "$parent_number" --json state --jq '.state' 2>"${p460_err:-/dev/null}"); then
+  echo "parent_state=$parent_state"
+else
+  p460_rc=$?
+  parent_state=""
+  echo "[DEBUG] p460: gh issue view failed (rc=$p460_rc)" >&2
+  if [ -n "$p460_err" ] && [ -s "$p460_err" ]; then
+    head -3 "$p460_err" | sed 's/^/  p460 stderr: /' >&2
+  fi
+fi
+
+if [ -n "$p460_err" ]; then
+  rm -f "$p460_err"
+  p460_err=""
+fi
+
+# Emit branch decision sentinel (machine-readable) for LLM routing.
+if [ -z "$parent_state" ]; then
+  echo "警告: 親 Issue #${parent_number} の state 取得に失敗しました。親の自動クローズ判定をスキップします。" >&2
+  echo "[CONTEXT] P460_DECISION=skip_retrieval_failed"
+elif [ "$parent_state" = "CLOSED" ]; then
+  echo "[DEBUG] parent #${parent_number} already closed — skipping Phase 4.6 (close-side idempotency, extends AC-6 principle)"
+  echo "[CONTEXT] P460_DECISION=skip_already_closed"
+else
+  echo "[CONTEXT] P460_DECISION=proceed_to_enumeration"
+fi
+```
+
+**LLM routing rule** (Claude reads the `[CONTEXT] P460_DECISION=` sentinel from the bash block's stdout):
+
+| `P460_DECISION` value | Next action |
+|----------------------|-------------|
+| `skip_routing_bug` | Sanity guard fired: `parent_number` is empty, literal, or non-numeric — Phase 4.6 was entered via a routing bug. Warning emitted to stderr. Skip the rest of Phase 4.6 and proceed to Phase 5. |
+| `skip_retrieval_failed` | Warning already emitted to stderr. Skip the rest of Phase 4.6 (4.6.1–4.6.3) and proceed to Phase 5 (non-blocking). |
+| `skip_already_closed` | Parent is already closed — skip the rest of Phase 4.6 (4.6.1–4.6.3) and proceed to Phase 5. This is the close-side idempotency no-op. |
+| `proceed_to_enumeration` | Parent is open → proceed to 4.6.1. |
+
+### 4.6.1 Enumerate Parent's Child Issues and Determine all_closed
+
+Retrieve the parent's child Issues via **two methods (OR combination, Method A → Method B fallback)**, then determine whether every child is closed. All of this is done in a **single Bash tool invocation** to avoid shell state loss between calls.
+
+**Design notes** (Issue #517 review fixes — cycles 1 + 2):
+
+- **Method A uses the `trackedIssues` field (Tasklists API), NOT the Sub-Issues API**: `trackedIssues` resolves the parent→children relationship via GitHub's Tasklists feature (which parses the body `- [ ] #N` section) — this is intentional because the repo uses `/rite:issue:create-decompose` to write body tasklists. The newer GitHub Sub-Issues API uses a separate `subIssues` field and requires the `GraphQL-Features: sub_issues` header. This block does not call `subIssues` — the header is omitted to avoid misleading the reader. See `epic-detection.md` for the `trackedIssues` vs `subIssues` distinction.
+- **Method A stderr is captured, not suppressed**: Previous `2>/dev/null` silently downgraded auth / network / permission errors to "empty result", which is the silent-skip anti-pattern Issue #513 aims to eliminate. Instead, stderr is captured to a tempfile and surfaced in debug logs on failure.
+- **Method A → Method B fallback is an explicit bash conditional**: branches on `jq length` of Method A's result rather than relying on prose.
+- **Method B uses a per-child loop, not an LLM-generated alias query**: deterministic, fully auditable, O(N) API calls for small N.
+- **`set -uo pipefail` is enabled at the block top**: strict mode (fail on undefined vars + propagate pipeline failures) adds a defense layer against silent failures introduced by future edits. `-e` is omitted to allow explicit `|| fallback` paths without unintended aborts.
+- **`mktemp` respects `$TMPDIR`**: using bare `mktemp` (no hardcoded `/tmp` path) honors macOS `/var/folders`, CI `$TMPDIR` overrides, and read-only-/tmp environments.
+
+```bash
+# ============================================================================
+# Phase 4.6.1: Enumerate children + determine all_closed (single bash block)
+# ============================================================================
+set -uo pipefail
+
+parent_number="{parent_number}"
+owner="{owner}"
+repo="{repo}"
+
+children_json=""
+method_a_err=""
+_rite_close_p461_cleanup() {
+  rm -f "${method_a_err:-}"
+}
+trap 'rc=$?; _rite_close_p461_cleanup; exit $rc' EXIT
+trap '_rite_close_p461_cleanup; exit 130' INT
+trap '_rite_close_p461_cleanup; exit 143' TERM
+trap '_rite_close_p461_cleanup; exit 129' HUP
+
+# --- Method A: Tasklists (trackedIssues) — parent→children via body tasklist ---
+# stderr is captured to tempfile (NOT suppressed) so auth / network / GraphQL errors surface.
+# Note: trackedIssues is the Tasklists feature (the body `- [ ] #N` parser); the `GraphQL-Features: sub_issues`
+# header is NOT used here because it targets the separate `subIssues` field. See epic-detection.md.
+if ! method_a_err=$(mktemp 2>/dev/null); then
+  echo "[DEBUG] p461: mktemp failed for method_a_err — method_a stderr will not be captured" >&2
+  method_a_err=""
+fi
+
+method_a_rc=0
+if method_a_raw=$(gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      trackedIssues(first: 100) {
+        nodes { number state }
+      }
+    }
+  }
+}' -f owner="$owner" -f repo="$repo" -F number="$parent_number" \
+  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number: .number, state: .state}]' \
+  2>"${method_a_err:-/dev/null}"); then
+  children_json="$method_a_raw"
+  method_a_count=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
+  echo "[DEBUG] method_a succeeded: ${method_a_count} children via trackedIssues (Tasklists API)"
+else
+  method_a_rc=$?
+  echo "[DEBUG] method_a failed (rc=$method_a_rc) — Tasklists API unavailable, will try Method B"
+  if [ -n "$method_a_err" ] && [ -s "$method_a_err" ]; then
+    head -3 "$method_a_err" | sed 's/^/  method_a stderr: /' >&2
+  fi
+  children_json=""
+fi
+if [ -n "$method_a_err" ]; then
+  rm -f "$method_a_err"
+  method_a_err=""
+fi
+
+# --- Method B: Parent body `## Sub-Issues` section parse (fallback) ---
+# Note: "Sub-Issues" here is the literal heading text that /rite:issue:create-decompose writes
+# into parent bodies. It is not the GitHub Sub-Issues feature. Method B only parses body markdown.
+method_a_length=$(printf '%s' "${children_json:-[]}" | jq 'length' 2>/dev/null || echo 0)
+if [ -z "$children_json" ] || [ "$method_a_length" -eq 0 ]; then
+  echo "[DEBUG] falling back to Method B (parent body '## Sub-Issues' section parse)"
+  parent_body=$(gh issue view "$parent_number" --json body --jq '.body' 2>/dev/null || echo "")
+  if [ -z "$parent_body" ]; then
+    echo "[DEBUG] method_b: failed to fetch parent body"
+    children_json="[]"
+  else
+    # Extract child numbers from `- [ ] #N` / `- [x] #N` lines under a `## Sub-Issues` (exact) heading.
+    # The `/^## Sub-Issues$/` anchor prevents false matches against headings like `## Sub-Issues-Extended`.
+    child_numbers=$(awk '/^## Sub-Issues$/{flag=1;next} /^## /{flag=0} flag && /^- \[[ xX]\] #[0-9]+/{print}' <<< "$parent_body" | grep -oE '#[0-9]+' | tr -d '#')
+    echo "[DEBUG] method_b child_numbers=${child_numbers:-none}"
+
+    if [ -z "$child_numbers" ]; then
+      children_json="[]"
+    else
+      # Deterministic per-child loop (O(N) API calls, N typically small).
+      # Build JSON array by iterating and appending state per child.
+      children_json="["
+      first=1
+      for n in $child_numbers; do
+        child_state=$(gh issue view "$n" --json state --jq '.state' 2>/dev/null || echo "")
+        if [ -z "$child_state" ]; then
+          echo "[DEBUG] method_b: failed to fetch state for #$n (treating as OPEN to block auto-close — fail-closed)" >&2
+          child_state="OPEN"
+        fi
+        if [ "$first" -eq 1 ]; then
+          first=0
+        else
+          children_json+=","
+        fi
+        children_json+="{\"number\":$n,\"state\":\"$child_state\"}"
+      done
+      children_json+="]"
+    fi
+  fi
+fi
+
+# --- all_closed determination ---
+# Empty array is treated as "cannot auto-close" (safe default — no children detected).
+final_length=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
+if [ "$final_length" -eq 0 ]; then
+  all_closed="false"
+  open_count="0"
+  echo "[DEBUG] children_json is empty after both methods — cannot determine all_closed (skipping auto-close)"
+else
+  if ! all_closed=$(printf '%s' "$children_json" | jq -r 'all(.[]; .state == "CLOSED") | tostring' 2>/dev/null); then
+    echo "[DEBUG] jq all_closed evaluation failed — treating as false (fail-closed)" >&2
+    all_closed="false"
+  fi
+  if ! open_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length' 2>/dev/null); then
+    echo "[DEBUG] jq open_count evaluation failed — defaulting to 0" >&2
+    open_count="0"
+  fi
+fi
+echo "all_closed=$all_closed open_count=$open_count children_total=$final_length"
+
+# --- Branch decision sentinel for LLM routing ---
+if [ "$final_length" -eq 0 ]; then
+  echo "[CONTEXT] P461_DECISION=skip_empty_children"
+elif [ "$all_closed" = "true" ]; then
+  echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
+else
+  echo "[CONTEXT] P461_DECISION=skip_open_children; open_count=$open_count"
+fi
+```
+
+**LLM routing rule** (Claude reads the `[CONTEXT] P461_DECISION=` sentinel from the bash block's stdout). Match by **prefix** (`skip_open_children` is emitted as `skip_open_children; open_count=N` — the `N` value is extracted from the payload and used to fill the `{open_count}` placeholder in the displayed message):
+
+| `P461_DECISION` prefix | Payload | Next action |
+|----------------------|---------|-------------|
+| `skip_empty_children` | (none) | Display warning `親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。親の自動クローズをスキップします。` and proceed to Phase 5 (non-blocking, AC-5 spirit) |
+| `skip_open_children` | `; open_count=N` | Display `親 Issue #{parent_number} にはまだ {open_count} 件の未完了子 Issue があります。親の自動クローズはスキップします。` (substitute `N` for `{open_count}`) and proceed to Phase 5 |
+| `proceed_to_confirmation` | (none) | Proceed to 4.6.2 (User Confirmation) |
+
+### 4.6.2 User Confirmation
+
+Confirm via `AskUserQuestion`:
+
+```
+親 Issue #{parent_number} のすべての子 Issue が完了しました。親 Issue もクローズしますか？
+
+オプション:
+- 親 Issue をクローズする（推奨）
+- 親 Issue を開いたまま終了
+```
+
+| Selection | Action |
+|-----------|--------|
+| クローズする | Proceed to 4.6.3 |
+| 開いたまま終了 | `echo "[DEBUG] user declined parent auto-close for #{parent_number}"`. Proceed to Phase 5 |
+
+### 4.6.3 Update Parent Projects Status to "Done" and Close
+
+Skip the Status update if `github.projects.enabled: false` in `rite-config.yml`; still execute the Issue close in Step 4.
+
+All 4 steps run in a **single bash block** to preserve intermediate state and to guarantee the final state-inconsistency summary (Step 5) is always emitted.
+
+**Design notes** (Issue #517 review fixes — cycles 1 + 2):
+
+- **All `gh` calls capture stderr to a tempfile (not `2>/dev/null`)**: every `gh api graphql` / `gh project field-list` / `gh project item-edit` / `gh issue close` failure surfaces its first 5 stderr lines via `head -5 | sed` so the user can diagnose auth / network / permission / rate-limit / field-id mismatch root causes. This is the same pattern Phase 4.6.1 Method A uses and the pattern Phase 4.6.0 was extended to match.
+- **`set -uo pipefail`** enables strict mode against undefined variables and pipeline failure propagation. `-e` is omitted so explicit `|| fallback` handling remains intentional.
+- **`mktemp` respects `$TMPDIR`** (no `/tmp` hardcode).
+- **State inconsistency summary emits targeted recovery commands per case**: `success:field_lookup_failed` prints a `gh project field-list ...` diagnostic command (not a broken `--field-id ''` one-liner), `success:update_failed` prints the executable recovery one-liner with the actually-populated IDs, and `failed:projects_disabled` / `failed:not_registered` are classified as "Issue close failed, Status update not applicable" instead of being lumped into the catch-all "両方失敗" bucket.
+- **Placeholder source assumption**: `{projects_enabled}`, `{project_number}`, `{owner}` are substituted by the LLM from `rite-config.yml` before executing this block. `{parent_number}` and `{issue_number}` are substituted from Phase 4.5.1 and Phase 0 respectively. If any placeholder is missing, the LLM must read `rite-config.yml` before substituting.
+
+```bash
+# ============================================================================
+# Phase 4.6.3: Parent Projects Status → Done + Issue close (unified block)
+# ============================================================================
+set -uo pipefail
+
+parent_number="{parent_number}"
+owner="{owner}"
+repo="{repo}"
+projects_enabled="{projects_enabled}"  # "true" or "false" from rite-config.yml
+project_number="{project_number}"      # integer from rite-config.yml
+issue_number="{issue_number}"          # the child Issue that triggered this close
+
+status_update_result="skipped"
+issue_close_result="pending"
+parent_item_id=""
+parent_project_id=""
+status_field_id=""
+done_option_id=""
+
+# --- stderr capture tempfiles (one per gh call) ---
+p463_err_s1=""
+p463_err_s2=""
+p463_err_s3=""
+p463_err_s4=""
+_rite_close_p463_cleanup() {
+  rm -f "${p463_err_s1:-}" "${p463_err_s2:-}" "${p463_err_s3:-}" "${p463_err_s4:-}"
+}
+trap 'rc=$?; _rite_close_p463_cleanup; exit $rc' EXIT
+trap '_rite_close_p463_cleanup; exit 130' INT
+trap '_rite_close_p463_cleanup; exit 143' TERM
+trap '_rite_close_p463_cleanup; exit 129' HUP
+
+_mktemp_or_warn() {
+  local label="$1"
+  local tmp
+  if tmp=$(mktemp 2>/dev/null); then
+    printf '%s' "$tmp"
+  else
+    echo "[DEBUG] p463 ${label}: mktemp failed — stderr from gh call will not be captured" >&2
+    printf ''
+  fi
+}
+
+# --- Step 1: Retrieve parent's project item ID and project GraphQL id ---
+if [ "$projects_enabled" = "true" ]; then
+  p463_err_s1=$(_mktemp_or_warn "Step 1")
+  if project_items_json=$(gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes { id project { id number } }
+      }
+    }
+  }
+}' -f owner="$owner" -f repo="$repo" -F number="$parent_number" 2>"${p463_err_s1:-/dev/null}"); then
+    :
+  else
+    p463_s1_rc=$?
+    echo "[DEBUG] p463 Step 1: gh api graphql failed (rc=$p463_s1_rc)" >&2
+    if [ -n "$p463_err_s1" ] && [ -s "$p463_err_s1" ]; then
+      head -5 "$p463_err_s1" | sed 's/^/  p463 Step 1 stderr: /' >&2
+    fi
+    project_items_json=""
+  fi
+
+  if [ -n "$project_items_json" ]; then
+    # Extract the node whose project.number matches {project_number}
+    parent_item_id=$(printf '%s' "$project_items_json" \
+      | jq -r --argjson pn "$project_number" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .id' 2>/dev/null || echo "")
+    parent_project_id=$(printf '%s' "$project_items_json" \
+      | jq -r --argjson pn "$project_number" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .project.id' 2>/dev/null || echo "")
+  fi
+
+  if [ -z "$parent_item_id" ] || [ -z "$parent_project_id" ]; then
+    echo "警告: 親 Issue #${parent_number} は Project #${project_number} に登録されていません (または GraphQL 取得失敗)。Status 更新をスキップします。" >&2
+    status_update_result="not_registered"
+  else
+    # --- Step 2: Retrieve Status field id and "Done" option id ---
+    p463_err_s2=$(_mktemp_or_warn "Step 2")
+    if field_list_json=$(gh project field-list "$project_number" --owner "$owner" --format json 2>"${p463_err_s2:-/dev/null}"); then
+      :
+    else
+      p463_s2_rc=$?
+      echo "[DEBUG] p463 Step 2: gh project field-list failed (rc=$p463_s2_rc)" >&2
+      if [ -n "$p463_err_s2" ] && [ -s "$p463_err_s2" ]; then
+        head -5 "$p463_err_s2" | sed 's/^/  p463 Step 2 stderr: /' >&2
+      fi
+      field_list_json=""
+    fi
+
+    if [ -n "$field_list_json" ]; then
+      status_field_id=$(printf '%s' "$field_list_json" \
+        | jq -r '.fields[] | select(.name == "Status") | .id' 2>/dev/null || echo "")
+      done_option_id=$(printf '%s' "$field_list_json" \
+        | jq -r '.fields[] | select(.name == "Status") | .options[] | select(.name == "Done") | .id' 2>/dev/null || echo "")
+    fi
+
+    if [ -z "$status_field_id" ] || [ -z "$done_option_id" ]; then
+      echo "警告: Status フィールドまたは 'Done' オプションの取得に失敗しました (field_id='$status_field_id' done_option_id='$done_option_id')" >&2
+      status_update_result="field_lookup_failed"
+    else
+      # --- Step 3: Update the Status ---
+      p463_err_s3=$(_mktemp_or_warn "Step 3")
+      if gh project item-edit --project-id "$parent_project_id" --id "$parent_item_id" --field-id "$status_field_id" --single-select-option-id "$done_option_id" >/dev/null 2>"${p463_err_s3:-/dev/null}"; then
+        status_update_result="success"
+        echo "親 Issue #${parent_number} の Status を 'Done' に更新しました"
+      else
+        p463_s3_rc=$?
+        status_update_result="update_failed"
+        echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました (rc=$p463_s3_rc)。後続の gh issue close は続行します。" >&2
+        if [ -n "$p463_err_s3" ] && [ -s "$p463_err_s3" ]; then
+          head -5 "$p463_err_s3" | sed 's/^/  p463 Step 3 stderr: /' >&2
+        fi
+      fi
+    fi
+  fi
+else
+  status_update_result="projects_disabled"
+fi
+
+# --- Step 4: Close the parent Issue ---
+p463_err_s4=$(_mktemp_or_warn "Step 4")
+if gh issue close "$parent_number" --comment "子 Issue がすべて完了したため、自動クローズします。(/rite:issue:close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>"${p463_err_s4:-/dev/null}"; then
+  issue_close_result="success"
+  echo "親 Issue #${parent_number} を自動クローズしました"
+else
+  p463_s4_rc=$?
+  issue_close_result="failed"
+  echo "警告: 親 Issue #${parent_number} のクローズに失敗しました (rc=$p463_s4_rc)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+  if [ -n "$p463_err_s4" ] && [ -s "$p463_err_s4" ]; then
+    head -5 "$p463_err_s4" | sed 's/^/  p463 Step 4 stderr: /' >&2
+  fi
+fi
+
+# --- Step 5: State inconsistency summary (MUST always emit — silent data corruption prevention) ---
+# Parent Issue と Projects Status が別エンティティのため、片方成功 / 片方失敗の不整合を
+# 必ずユーザーに可視化する。case 分類は 4 象限 + not_applicable の 5 クラスに細分化している。
+echo ""
+echo "=== 親 Issue #${parent_number} 処理結果 ==="
+echo "  Issue close:   $issue_close_result"
+echo "  Status update: $status_update_result"
+
+case "${issue_close_result}:${status_update_result}" in
+  "success:success"|"success:projects_disabled"|"success:not_registered")
+    echo "  状態: 整合性 OK"
+    ;;
+  "success:update_failed")
+    echo ""
+    echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
+    echo "    復旧コマンド: gh project item-edit --project-id '$parent_project_id' --id '$parent_item_id' --field-id '$status_field_id' --single-select-option-id '$done_option_id'"
+    echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
+    ;;
+  "success:field_lookup_failed")
+    echo ""
+    echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Project の Status フィールド / 'Done' オプション ID の解決に失敗したため Status は未更新です。"
+    echo "    診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json"
+    echo "    (出力から 'Status' field の id と 'Done' option の id を確認し、gh project item-edit に渡してください)"
+    echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
+    ;;
+  "failed:success")
+    echo ""
+    echo "⚠️  state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"
+    echo "    復旧コマンド: gh issue close ${parent_number}" >&2
+    ;;
+  "failed:projects_disabled"|"failed:not_registered")
+    echo ""
+    echo "⚠️  親 Issue のクローズに失敗しました (Status 更新は対象外)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+    ;;
+  "failed:"*)
+    echo ""
+    echo "⚠️  親 Issue の処理が両方失敗しました (Issue close / Status update)。手動対応が必要です: gh issue close ${parent_number}" >&2
+    ;;
+esac
+```
+
+Proceed to Phase 5 regardless of the outcome (non-blocking, AC-5 applied to close side — the inconsistency summary above makes silent failure impossible).
 
 ---
 
