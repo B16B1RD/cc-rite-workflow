@@ -44,7 +44,9 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 > Stopping between phases leaves the workflow in an inconsistent state (e.g., branch created but no PR), requiring manual recovery via `/rite:resume`.
 > **CRITICAL**: After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop, do NOT re-invoke the completed skill.
 >
-> This table lists phases with sub-skill invocations or key decision points. Phases not listed (2.4 Projects Status, 2.5 Iteration, 5.0 Stop Hook, 5.5.1 Status Update, 5.5.2 Metrics, 5.7 Parent Completion) execute inline without stopping.
+> Every phase that writes to `.rite-flow-state` is subject to the Pre-write + Mandatory After scaffolding contract (#490). Phases that only read state (0.x Detection, 1 Quality, 2.1/2.2 Branch-pattern detection, 4 User Guidance, 5.6.1 Incident Reporting, etc.) do not write markers and are therefore excluded from whitelist verification — they run inline and their transitions are verified indirectly by the surrounding write-phases. Every state-writing transition is tracked via `.rite-flow-state` and verified by the stop-guard phase-transition whitelist (`plugins/rite/hooks/phase-transition-whitelist.sh`).
+>
+> The "Stop Allowed?" column marks whether the **user** may cancel at that phase (e.g., Phase 4 Guidance where the user chooses to work later, Phase 5.6/5.7 where the workflow naturally terminates after the completion handoff is displayed). Even for "Yes" rows, the scaffolding contract still applies — the user's stop action must be explicit, not a silent skip by the LLM.
 
 | Phase | Sub-skill Invoked | Next Phase | Stop Allowed? |
 |-------|-------------------|------------|---------------|
@@ -53,16 +55,22 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 | 1.5 (Parent Routing) | `rite:issue:parent-routing` | 1.6 or 2 | **No** |
 | 1.6 (Child Selection) | `rite:issue:child-issue-selection` | 2 | **No** |
 | 2.3 (Branch) | `rite:issue:branch-setup` | 2.4 | **No** |
+| 2.4 (Projects Status) | — | 2.5 or 2.6 | **No** |
+| 2.5 (Iteration) | — | 2.6 | **No** |
 | 2.6 (Work Memory) | `rite:issue:work-memory-init` | 3 | **No** |
 | 3 (Plan) | `rite:issue:implementation-plan` | 4 | **No** |
 | 4 (Guidance) | — | 5 or terminate | Yes (user choice) |
+| 5.0 (Stop Hook) | — | 5.1 | **No** |
 | 5.1 (Implement) | — | 5.2 (lint) | **No** |
 | 5.2 (Lint) | `rite:lint` | 5.2.1 | **No** |
 | 5.3 (PR) | `rite:pr:create` | 5.4 | **No** |
 | 5.4.1 (Review) | `rite:pr:review` | 5.4.3→5.4.4 or 5.5 | **No** |
 | 5.4.4 (Fix) | `rite:pr:fix` | 5.4.6→5.4.1 or 5.5 | **No** |
 | 5.5 (Ready) | `rite:pr:ready` | 5.5.0.1→5.5.1 | **No** |
-| 5.6 (Report) | — | 5.7 or end | Yes |
+| 5.5.1 (Status In Review) | — | 5.5.2 | **No** |
+| 5.5.2 (Metrics) | — | 5.6 | **No** |
+| 5.6 (Report) | — | 5.7 or Workflow Termination | Yes (only after completion handoff is displayed) |
+| 5.7 (Parent Completion) | — | Workflow Termination | Yes (only after completion handoff is displayed) |
 
 ---
 
@@ -107,6 +115,7 @@ This protocol applies to **every** sub-skill invocation in this document. Each �
 | `{status_field_id}` | `github.projects.field_ids.status` in `rite-config.yml`, or `gh project field-list` |
 | `{in_review_option_id}` | `gh project field-list` ("In Review" option) |
 | `{done_option_id}` | `gh project field-list` ("Done" option) |
+| `{parent_issue_number}` | Phase 1.6 (child-issue-selection) or Phase 2.4 Step 5 (parent lookup) result; retained in conversation context. Used only in Phase 5.7 and Workflow Termination routing |
 
 ---
 
@@ -315,17 +324,124 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ### 2.4 GitHub Projects Status Update
 
+**Pre-write** (before executing Projects Status update): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase2_projects" --issue {issue_number} --branch "{branch_name}" \
+  --pr 0 \
+  --next "Execute Phase 2.4 (Projects Status → In Progress). Skipping to Phase 2.5/2.6/3 without running Projects update is PROHIBITED. Do NOT stop."
+```
+
 > **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update)
 
-Skip if `projects.enabled: false` in rite-config.yml. Otherwise: get item ID, update Status to "In Progress", auto-add if not registered. Execute sub-phases in order: config (2.4.1), registration check (2.4.2), auto-add (2.4.3), Status field with field_ids optimization (2.4.4), Status update (2.4.5).
+Execute the following inline procedure (extracted from the Module for determinism — do NOT silently skip).
 
-**After 2.4.5 completes, always execute 2.4.7** (Parent Issue Status Update). 2.4.7.1 performs parent detection — if no parent is found, it skips silently. Do NOT skip 2.4.7 even if the current Issue was not identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents).
+**Step 1** — Read config and emit a skip marker on stdout (the LLM reads the marker, not a bash variable; shell state does not persist across Bash tool invocations):
+
+```bash
+projects_enabled=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
+project_number=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
+project_owner=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    owner:/{gsub(/"/,"",$2); print $2; exit}' rite-config.yml 2>/dev/null)
+if [ "$projects_enabled" != "true" ]; then
+  echo "[CONTEXT] PHASE_2_4_STATE=skip; reason=projects_disabled"
+else
+  echo "[CONTEXT] PHASE_2_4_STATE=execute; project_number=$project_number owner=$project_owner"
+fi
+```
+
+**LLM routing rule** (prompt-engineer CRITICAL — Bash tool shell state does not persist): the LLM reads the `[CONTEXT] PHASE_2_4_STATE=` marker from the bash block's stdout in the conversation context:
+
+| `PHASE_2_4_STATE` value | LLM action |
+|------------------------|-----------|
+| `skip` | Skip Steps 2-5 below. Go directly to Mandatory After 2.4. The post-projects marker is still written so the two whitelist transitions (`phase2_post_branch → phase2_projects` and `phase2_projects → phase2_post_projects`) stay valid (the skip is recorded, not silent). |
+| `execute` | Proceed to Step 2-5 using the emitted `project_number` / `owner` values. |
+
+Do NOT rely on a bash variable (`SKIP_2_4=1`) that persists only within a single Bash tool call — each `echo`/`gh api` in the following steps is a separate invocation and the variable is lost. The `[CONTEXT]` marker travels via the conversation context and is authoritative.
+
+**Step 2** — Retrieve Issue's project item ID and project GraphQL id:
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) { nodes { id project { id number } } }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
+```
+
+Find the node whose `project.number` matches `{project_number}`. Extract `{item_id}` and `{project_id}`. If `projectItems.nodes` is empty, auto-add the Issue to the Project via `gh project item-add {project_number} --owner {owner} --url <issue_url>` and re-query.
+
+**Step 3** — Retrieve Status field + "In Progress" option id:
+
+```bash
+gh project field-list {project_number} --owner {owner} --format json
+```
+
+Find field `name == "Status"`. Extract `{status_field_id}` (field `id`) and `{in_progress_option_id}` (option with `name == "In Progress"`). If `github.projects.field_ids.status` is set in rite-config.yml, prefer that value.
+
+**Step 4** — Update Status:
+
+```bash
+gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {in_progress_option_id}
+```
+
+On failure, display warning and continue (non-blocking). The scaffolding-failure itself is recorded by stop-guard via the whitelist on the next transition attempt.
+
+**Step 5** — Parent Issue Status Update (2.4.7): **always execute** this substep regardless of whether the current Issue was identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents). Query trackedInIssues for the current Issue, and if a parent is found, update the parent's Status to "In Progress" using the same Step 2-4 logic against the parent issue number. If no parent is found, skip silently.
+
+### 🚨 Mandatory After 2.4
+
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+Do **NOT** stop after the Projects Status update. Phase 2.5 (Iteration) and 2.6 (Work Memory) are still pending.
+
+**Step 1**: Update `.rite-flow-state` to post-projects phase:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase2_post_projects" --issue {issue_number} --branch "{branch_name}" \
+  --pr 0 \
+  --next "Phase 2.4 completed. Proceed to Phase 2.5 (Iteration) if iteration.enabled, else Phase 2.6 (Work Memory). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 2.5 now**. Phase 2.5 handles its own skip conditions internally (iteration disabled / projects disabled) — do NOT skip Phase 2.5 at this level (prompt-engineer cycle-2 MEDIUM #3). The Phase 2.5 Pre-write + Mandatory After blocks always run so `phase2_post_iteration` is recorded even when the assignment body is skipped.
 
 ### 2.5 Iteration Assignment
 
+**Pre-write** (before executing Iteration assignment):
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase2_iteration" --issue {issue_number} --branch "{branch_name}" \
+  --pr 0 \
+  --next "Execute Phase 2.5 (Iteration assignment). Skipping to Phase 2.6/3 without running Iteration assignment is PROHIBITED when iteration.enabled. Do NOT stop."
+```
+
 > **Module**: [Projects Integration](../../references/projects-integration.md#25-iteration-assignment-optional)
 
-Execute only if `iteration.enabled: true` and `iteration.auto_assign: true` in rite-config.yml. Skip if `projects.enabled: false`. Handles: field info (2.5.1), current determination (2.5.2), assignment (2.5.3), result/warning (2.5.4).
+**Skip conditions** — if any of the following are true, skip the Module procedure and go directly to Mandatory After 2.5:
+
+- `projects.enabled: false` in rite-config.yml
+- `iteration.enabled: false` in rite-config.yml
+- `iteration.auto_assign: false` in rite-config.yml
+
+Otherwise, execute the Module procedure: field info (2.5.1), current iteration determination (2.5.2), assignment (2.5.3), result/warning (2.5.4). On any failure, display warning and continue (non-blocking).
+
+### 🚨 Mandatory After 2.5
+
+**Step 1**: Update `.rite-flow-state` to post-iteration phase:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase2_post_iteration" --issue {issue_number} --branch "{branch_name}" \
+  --pr 0 \
+  --next "Phase 2.5 completed (or skipped). Proceed to Phase 2.6 (Work Memory initialization). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 2.6 now**.
 
 ### 2.6 Work Memory Initialization
 
@@ -372,6 +488,23 @@ fi
 **Step 3**: Do **NOT** stop after `rite:issue:work-memory-init` returns. **→ Proceed to Phase 3 now**.
 
 ## Phase 3: Implementation Plan
+
+**Pre-condition check** (#490 AC-5): Verify that Phase 2 completed in full. If the current `.phase` in `.rite-flow-state` is not `phase2_post_work_memory`, the workflow has silently skipped one of Phase 2.4/2.5/2.6 — **abort with an ERROR** and return to the missing phase. `phase3_post_plan` is additionally accepted only for `/rite:resume` re-entry after Phase 3 already completed (not for normal first-entry).
+
+> **⚠️ Why `.phase`, not `.previous_phase`**: `flow-state-update.sh` `create` mode assigns the outgoing `.phase` value to `.previous_phase` (see `hooks/flow-state-update.sh` create branch). Therefore the **expected post-phase marker** appears in `.phase`, and `.previous_phase` holds the *predecessor*. Checking `.previous_phase` here would always compare against the phase *one step behind* the expected marker and would ERROR on every normal entry (prompt-engineer cycle-3 CRITICAL).
+
+```bash
+curr=$(jq -r '.phase // ""' .rite-flow-state 2>/dev/null)
+# Accept phase3_post_plan only for /rite:resume re-entry (plan already completed in a prior session).
+if [ "$curr" != "phase2_post_work_memory" ] && [ "$curr" != "phase3_post_plan" ]; then
+  echo "ERROR: Phase 3 pre-condition failed. .phase=$curr (expected: phase2_post_work_memory)" >&2
+  echo "ACTION: Return to the missing Phase 2 step (2.4 Projects / 2.5 Iteration / 2.6 Work Memory) and execute its Pre-write + main procedure + Mandatory After before entering Phase 3." >&2
+  echo "⚠️ LLM MUST NOT proceed to Phase 3 Pre-write below. Re-invoke the missing phase first." >&2
+  exit 1
+fi
+```
+
+> **Enforcement note**: bash `exit 1` does NOT halt the LLM from proceeding. On ERROR output, the LLM MUST recognise the failure text and return to the named phase. Do NOT silently continue to the Pre-write below.
 
 **Pre-write** (before invoking `rite:issue:implementation-plan`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
@@ -482,6 +615,15 @@ Invocation: `skill: "rite:lint"` or `skill: "rite:pr:review", args: "67"`
 
 ### 5.0 Stop Hook Verification
 
+**Pre-write** (before executing stop-hook verification):
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_stop_hook" --issue {issue_number} --branch "{branch_name}" \
+  --pr 0 \
+  --next "Execute Phase 5.0 (Stop Hook Verification). Skipping to Phase 5.1/5.2 without verifying the stop-guard hook is PROHIBITED. Do NOT stop."
+```
+
 Before entering the end-to-end flow, verify that the stop-guard hook is active to prevent flow interruptions when sub-skills return.
 
 **Step 1**: Resolve `{plugin_root}` (if not already resolved in Phase 4.1) per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script).
@@ -551,6 +693,19 @@ echo "workflow_incident_enabled=$workflow_incident_enabled"
 Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads this value and skips its entire processing if `false`.
 
 > **Note on non-blocking / dedupe behavior**: The implementation always behaves as non-blocking (registration failure does not halt the workflow) and deduplicates incidents per session (same type is only prompted once). Only `enabled` is a configurable key.
+
+### 🚨 Mandatory After 5.0
+
+**Step 1**: Update `.rite-flow-state` to post-stop-hook phase:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_post_stop_hook" --issue {issue_number} --branch "{branch_name}" \
+  --pr 0 \
+  --next "Phase 5.0 completed (stop-guard verified, workflow_incident_enabled cached). Proceed to Phase 5.1 (Implementation). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 5.1 now**.
 
 ### 5.1 Implementation
 
@@ -1445,6 +1600,29 @@ WM_SOURCE="ready" \
 
 #### 5.5.1 Update Issue Status to "In Review"
 
+**Pre-condition check** (#490 AC-5): Verify that Phase 5.5 (Ready) completed. The current `.phase` in `.rite-flow-state` must be `phase5_post_ready` (the Mandatory After 5.5 marker). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above.
+
+```bash
+curr=$(jq -r '.phase // ""' .rite-flow-state 2>/dev/null)
+if [ "$curr" != "phase5_post_ready" ]; then
+  echo "ERROR: Phase 5.5.1 pre-condition failed. .phase=$curr (expected: phase5_post_ready)" >&2
+  echo "ACTION: Return to Phase 5.5 (Ready for Review) and execute its Pre-write + rite:pr:ready invocation + Mandatory After 5.5 before entering Phase 5.5.1." >&2
+  echo "⚠️ LLM MUST NOT proceed to Phase 5.5.1 Pre-write below. Re-invoke Phase 5.5 first." >&2
+  exit 1
+fi
+```
+
+> **Enforcement note**: bash `exit 1` does NOT halt the LLM. On ERROR, the LLM MUST recognise the failure and return to Phase 5.5 rather than proceeding.
+
+**Pre-write**:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_status_in_review" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "Execute Phase 5.5.1 (Issue Status → In Review). Skipping to Phase 5.5.2/5.6 without running the Status update is PROHIBITED. Do NOT stop."
+```
+
 **Owner**: `/rite:issue:start` (defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow).
 
 **Note**: Uses `gh project field-list` CLI (consistent with [Projects Integration](../../references/projects-integration.md)). This differs from `ready.md` Phase 4 which uses GraphQL — an intentional design choice documented there.
@@ -1498,15 +1676,37 @@ If `github.projects.field_ids.status` is set in rite-config.yml, use that value 
 gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {in_review_option_id}
 ```
 
-On failure, display warning and continue to 5.6 (non-blocking).
+On failure, display warning and continue to Mandatory After 5.5.1 (non-blocking).
 
-**→ Proceed to 5.5.2**.
+### 🚨 Mandatory After 5.5.1
+
+**Step 1**: Update `.rite-flow-state` to post-status-in-review phase:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_post_status_in_review" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "Phase 5.5.1 completed (Issue Status → In Review). Proceed to Phase 5.5.2 (Metrics Recording). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to Phase 5.5.2 now**.
 
 ### 5.5.2 Metrics Recording
 
+**Pre-write**:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_metrics" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "Execute Phase 5.5.2 (Metrics Recording). Skipping to Phase 5.6 without running metrics is PROHIBITED. Do NOT stop."
+```
+
 > **Reference**: [Execution Metrics](../../references/execution-metrics.md)
 
-Skip if `metrics.enabled: false` in rite-config.yml. Otherwise:
+**Skip Steps note** (referenced by Phase 5.6 pre-condition): When `metrics.enabled: false` in rite-config.yml, skip Steps 1-5 below **but unconditionally execute Mandatory After 5.5.2**. The `phase5_post_metrics` marker is required for Phase 5.6 pre-condition to pass. Skipping the Mandatory After would leave `.phase = phase5_post_status_in_review` and trip the Phase 5.6 ERROR gate (prompt-engineer cycle-4 HIGH / code-quality cycle-4 MEDIUM).
+
+Otherwise:
 
 **Step 1**: Collect metrics from the current workflow execution:
 
@@ -1646,26 +1846,47 @@ Present options via `AskUserQuestion`:
 - 中止（作業メモリに状態保存）→ Phase 5.6
 - 手動介入（ユーザーが直接対応）→ terminate
 
-**→ Proceed to 5.6**.
+### 🚨 Mandatory After 5.5.2
 
-**Post-completion**: Update `.rite-flow-state` `active: false` (atomic):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "completed" \
-  --next "none" --active false
-```
-
-**After flow state update (regardless of success/failure)**: Clean up `.rite-compact-state` to prevent stale blocked state from affecting the next session (#756):
+**Step 1**: Update `.rite-flow-state` to post-metrics phase:
 
 ```bash
-rm -f .rite-compact-state 2>/dev/null || true
-rm -rf .rite-compact-state.lockdir 2>/dev/null || true
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_post_metrics" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "Phase 5.5.2 completed (metrics recorded). Proceed to Phase 5.6 (Completion Report). Do NOT stop."
 ```
 
-**Note**: This cleanup is non-blocking. Failure to delete is silently ignored.
+**Step 2**: **→ Proceed to Phase 5.6 now**.
 
 ### 5.6 Completion Report
+
+> **Historical note (informational only — no action required)**: The `phase="completed", active: false` patch and `.rite-compact-state` cleanup were previously placed between Mandatory After 5.5.2 and this heading. That placement caused a **state flap** — the Phase 5.6 Pre-write (`create --phase phase5_completion`) re-activated the workflow and recorded `previous_phase="completed"`, which stop-guard then rejected as an invalid transition (prompt-engineer + devops CRITICAL, fixed in cycle 1). The terminal state update now runs at the end of Phase 5.7 or, when no parent is identified, immediately after this Phase 5.6 — see the "Workflow Termination" block below. This note is purely historical context for future maintainers and contains no executable instructions.
+
+**Pre-condition check** (#490 AC-5): Verify that both Phase 5.5.1 (Status) and 5.5.2 (Metrics) completed. The current `.phase` in `.rite-flow-state` must be `phase5_post_metrics` — the earlier `phase5_post_status_in_review` alternative was removed because it let Metrics silently skip (AC-5 violation, prompt-engineer + code-quality CRITICAL). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above.
+
+If `metrics.enabled: false` in rite-config.yml, Phase 5.5.2 must still write the `phase5_post_metrics` marker (the phase body may short-circuit Steps 1-5 below, but the Mandatory After block must run unconditionally — see Phase 5.5.2 Skip Steps note).
+
+```bash
+curr=$(jq -r '.phase // ""' .rite-flow-state 2>/dev/null)
+if [ "$curr" != "phase5_post_metrics" ]; then
+  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics)" >&2
+  echo "ACTION: Return to the missing phase (5.5.1 Status Update → 5.5.2 Metrics) and execute each Pre-write + main procedure + Mandatory After before entering Phase 5.6." >&2
+  echo "⚠️ LLM MUST NOT proceed to Phase 5.6 Pre-write below. Re-invoke the missing phase first." >&2
+  exit 1
+fi
+```
+
+> **Enforcement note** (prompt-engineer HIGH): bash `exit 1` does NOT stop the LLM from proceeding to the Pre-write block below. On ERROR, the LLM MUST recognise the failure text in stderr and return to the missing phase. Do NOT silently continue. The stop-guard whitelist (`["phase5_post_metrics"]="phase5_completion"`) will also reject any other source (e.g., `phase5_post_ready`, `phase5_post_status_in_review`) as a defense-in-depth layer.
+
+**Pre-write**:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_completion" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "Execute Phase 5.6 (Completion Report). If parent_issue_number was retained in conversation context (from Phase 1.6 / 2.4.7), proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
+```
 
 > See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
 
@@ -1702,6 +1923,15 @@ After the standard completion report sections, append a "未処理 incident" sec
 ### 5.7 Parent Issue Completion
 
 **Condition**: Parent identified in Phase 1.6/2.4.7. Execute after 5.6.
+
+**Pre-write** (only when a parent was identified — otherwise skip directly to terminate):
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_parent_completion" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "Execute Phase 5.7 (Parent Issue Completion). Ending the workflow without processing the parent is PROHIBITED when a parent was identified. Do NOT stop."
+```
 
 #### 5.7.1 Child Check
 
@@ -1776,11 +2006,46 @@ gh issue close {parent_issue_number}
 
 Display remaining children, guide `/rite:issue:start`. No auto-start.
 
+### 🚨 Mandatory After 5.7
+
+**Step 1**: Update `.rite-flow-state` to post-parent-completion phase. Use **patch mode** — patch preserves `previous_phase` automatically from the outgoing `.phase` field, whereas `create` mode would overwrite the entire state and risk tripping the session-ownership check (prompt-engineer cycle-2 MEDIUM #5):
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "phase5_post_parent_completion" --active false \
+  --next "Phase 5.7 completed. Workflow finished. Do NOT stop before the completion handoff is displayed to the user."
+```
+
+**Step 2**: Workflow terminates normally. Proceed to the "Workflow Termination" block below.
+
+### Workflow Termination
+
+> **Placement**: This block runs **after** Phase 5.7 completes **or after Phase 5.6** when no parent Issue was identified in Phase 1.6 / 2.4.7 (the Phase 5.7 skip branch). Both paths converge here so the terminal `phase="completed", active: false` state is set exactly once, with `previous_phase` pointing at a whitelist-valid source (`phase5_post_parent_completion` or `phase5_completion`).
+
+**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When no parent Issue was identified, Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
+
+**Step 1**: Update `.rite-flow-state` to the terminal state (patch mode, preserves `previous_phase`):
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "completed" \
+  --next "none" --active false
+```
+
+**Step 2**: Clean up `.rite-compact-state` to prevent stale blocked state from affecting the next session (#756):
+
+```bash
+rm -f .rite-compact-state 2>/dev/null || true
+rm -rf .rite-compact-state.lockdir 2>/dev/null || true
+```
+
+**Note**: This cleanup is non-blocking. Failure to delete is silently ignored.
+
 ## Interruption/Resumption
 
 **Retention**: Branch (Git), work memory (Issue comment), Status (Projects), plan (work memory).
 
-**Resume** via `/rite:issue:start {number}`: Phase 2.2 detects branch. "Switch"→skip 2.3/2.4/2.6→Phase 3 (show plan)→continue from work memory.
+**Resume** via `/rite:issue:start {number}`: Phase 2.2 detects branch. "Switch"→skip 2.3/2.4/2.5/2.6→Phase 3 (show plan)→continue from work memory. On resume, the Phase 3 pre-condition accepts `.phase=phase3_post_plan` (already-completed plan) in addition to `phase2_post_work_memory` — the `phase3_post_plan → phase3_plan` whitelist entry covers the retry edge.
 
 **If PR exists**: After 2.2, check `gh pr list --head {branch_name}`. OPEN→`rite:pr:review`, MERGED→`rite:pr:cleanup`, CLOSED→confirm (reopen/new/cancel).
 

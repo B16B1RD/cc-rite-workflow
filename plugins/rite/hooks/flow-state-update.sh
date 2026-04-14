@@ -142,16 +142,45 @@ case "$MODE" in
         fi
       fi
     fi
+    # Capture previous phase for whitelist-based transition verification (#490).
+    # When the state file is absent, previous_phase is "" (legitimate cold start).
+    # When the file exists but is corrupt, fail-fast — silently treating corruption
+    # as a cold start would erase the prior phase and effectively bypass the
+    # whitelist for the next transition (error-handling CRITICAL #2).
+    PREV_PHASE=""
+    if [[ -f "$FLOW_STATE" ]]; then
+      if [[ ! -s "$FLOW_STATE" ]]; then
+        echo "ERROR: .rite-flow-state exists but is empty ($FLOW_STATE)" >&2
+        echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
+        echo "  対処: .rite-flow-state を /rite:resume で復旧するか、既存ファイルを削除してから再度 /rite:issue:start を実行" >&2
+        exit 1
+      fi
+      # Validate JSON parse; distinguish "missing .phase" (acceptable → "") from
+      # "jq parse error" (corrupt state, must not silently fall back).
+      _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+      if PREV_PHASE=$(jq -r '.phase // ""' "$FLOW_STATE" 2>"${_jq_err:-/dev/null}"); then
+        : # jq ok
+      else
+        echo "ERROR: .rite-flow-state parse failed ($FLOW_STATE)" >&2
+        [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+        echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
+        echo "  対処: 既存の .rite-flow-state を確認し、必要なら /rite:resume で復旧してください" >&2
+        [ -n "$_jq_err" ] && rm -f "$_jq_err"
+        exit 1
+      fi
+      [ -n "$_jq_err" ] && rm -f "$_jq_err"
+    fi
     if jq -n \
       --argjson active "$ACTIVE" \
       --argjson issue "$ISSUE" \
       --arg branch "$BRANCH" \
       --arg phase "$PHASE" \
+      --arg prev_phase "$PREV_PHASE" \
       --argjson pr "$PR" \
       --arg next "$NEXT" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
       --arg sid "$SESSION" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
+      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else
@@ -161,8 +190,10 @@ case "$MODE" in
     fi
     ;;
   patch)
-    # Build jq filter: always update phase, timestamp, next_action; conditionally update active
-    JQ_FILTER='.phase = $phase | .updated_at = $ts | .next_action = $next | .error_count = 0'
+    # Build jq filter: always update phase, timestamp, next_action; conditionally update active.
+    # Also capture the outgoing phase into previous_phase so stop-guard can verify the
+    # transition whitelist (#490). Use the pre-update .phase value as previous_phase.
+    JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next | .error_count = 0'
     JQ_ARGS=(--arg phase "$PHASE" --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" --arg next "$NEXT")
     if [[ -n "$ACTIVE" ]]; then
       JQ_FILTER="$JQ_FILTER | .active = (\$active_val == \"true\")"

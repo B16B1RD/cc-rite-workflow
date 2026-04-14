@@ -11,6 +11,7 @@ export _RITE_HOOK_RUNNING_STOP=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -145,13 +146,43 @@ fi
 # error_count is incremented on each blocked stop; it resets to 0 on each patch-mode
 # phase transition (flow-state-update.sh, since #294), at the start of the next workflow
 # (when /rite:issue:start regenerates .rite-flow-state), or when manually reset.
-IFS=$'\t' read -r PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase // "unknown"), (.next_action // "unknown"), (.issue_number // 0 | tostring), (.pr_number // 0 | tostring), (.error_count // 0 | tostring)] | @tsv' "$STATE_FILE" 2>/dev/null) || {
+IFS=$'\t' read -r PHASE PREV_PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase // "unknown"), (.previous_phase // ""), (.next_action // "unknown"), (.issue_number // 0 | tostring), (.pr_number // 0 | tostring), (.error_count // 0 | tostring)] | @tsv' "$STATE_FILE" 2>/dev/null) || {
   PHASE="unknown"
+  PREV_PHASE=""
   NEXT="Read .rite-flow-state and continue the active workflow. Do NOT stop."
   ISSUE="0"
   PR="0"
   ERROR_COUNT="0"
 }
+
+# Phase transition whitelist verification (#490).
+# Load overrides from rite-config.yml if the helper was sourced.
+# Do NOT suppress stderr/exit — failure to load overrides must be visible so
+# users can diagnose why their rite-config.yml override silently did not apply
+# (error-handling HIGH — stop-guard.sh:161 2>/dev/null || true).
+if type _rite_load_whitelist_overrides >/dev/null 2>&1 && [ -f "$STATE_ROOT/rite-config.yml" ]; then
+  _rite_load_whitelist_overrides "$STATE_ROOT/rite-config.yml" || \
+    log_diag "override_load_failed rc=$? session_id=${SESSION_ID:-unknown}"
+fi
+# Detect cases where the whitelist helper was NOT loaded (bash < 4.2, sourcing failure,
+# etc.). Record via diag log so the silent-disabled state is recoverable
+# (devops HIGH — declare -gA incompat, error-handling HIGH — forward-compat bypass).
+if ! type rite_phase_transition_allowed >/dev/null 2>&1; then
+  log_diag "whitelist_helper_unavailable — phase transition verification disabled session_id=${SESSION_ID:-unknown}"
+fi
+INVALID_TRANSITION=""
+if type rite_phase_transition_allowed >/dev/null 2>&1; then
+  if ! rite_phase_transition_allowed "$PREV_PHASE" "$PHASE"; then
+    EXPECTED=$(rite_phase_expected_next "$PREV_PHASE" 2>/dev/null || true)
+    INVALID_TRANSITION="prev=$PREV_PHASE curr=$PHASE expected_next=${EXPECTED:-unknown}"
+  elif [ -n "$PREV_PHASE" ] && type rite_phase_is_known >/dev/null 2>&1 && \
+       ! rite_phase_is_known "$PREV_PHASE"; then
+    # Forward-compat path was taken (prev phase not in whitelist).
+    # Record for diagnosis so typos like `phase2_post_workmemory` don't silently bypass
+    # the whitelist (error-handling HIGH — forward-compat typo silent bypass).
+    log_diag "forward_compat_accepted prev=$PREV_PHASE curr=$PHASE session_id=${SESSION_ID:-unknown}"
+  fi
+fi
 
 # Read error threshold from rite-config.yml (safety.repeated_failure_threshold, default: 3)
 THRESHOLD=3
@@ -167,16 +198,30 @@ fi
 # (threshold=0 would fire immediately and never block any stops).
 [ "$THRESHOLD" -lt 1 ] && THRESHOLD=3
 
-# Allow stop when error_count has reached the threshold — the workflow is stuck in an error loop
+# Allow stop when error_count has reached the threshold — the workflow is stuck in an error loop.
+# If the underlying cause was an invalid phase transition, surface it in the message so the
+# diagnostic trail is preserved (error-handling HIGH — threshold path erases invalid_transition).
 if [ "$ERROR_COUNT" -ge "$THRESHOLD" ]; then
   log_debug "error_count=$ERROR_COUNT >= threshold=$THRESHOLD, allowing stop"
-  log_diag "EXIT:0 reason=error_threshold error_count=$ERROR_COUNT threshold=$THRESHOLD session_id=${SESSION_ID:-unknown}"
-  cat >&2 <<STOP_MSG
+  log_diag "EXIT:0 reason=error_threshold error_count=$ERROR_COUNT threshold=$THRESHOLD invalid_transition=${INVALID_TRANSITION:-none} session_id=${SESSION_ID:-unknown}"
+  if [ -n "$INVALID_TRANSITION" ]; then
+    cat >&2 <<STOP_MSG
+[rite] Error threshold reached (${ERROR_COUNT} consecutive blocked stops, threshold: ${THRESHOLD}) — stop allowed.
+Phase: $PHASE | Previous: $PREV_PHASE | Issue: #$ISSUE | PR: #$PR
+ROOT CAUSE: invalid phase transition ($INVALID_TRANSITION).
+The whitelist detected the transition as invalid on every retry, but error_count exhausted the
+threshold. The workflow is now unblocked, but the underlying phase-skip bug remains.
+Action: correct the phase marker in the failing Pre-write block, then reset
+.rite-flow-state.error_count to 0 (or re-run /rite:resume).
+STOP_MSG
+  else
+    cat >&2 <<STOP_MSG
 [rite] Error threshold reached (${ERROR_COUNT} consecutive blocked stops, threshold: ${THRESHOLD}) — stop allowed.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
 The workflow appears stuck in an error loop. Stopping to prevent infinite repetition.
 Reset .rite-flow-state error_count to 0 or set active to false to restore normal stop-guard behavior.
 STOP_MSG
+  fi
   exit 0
 fi
 
@@ -193,6 +238,24 @@ fi
 # Block the stop (exit 2 + stderr = Claude Code stops the end_turn and feeds stderr to assistant)
 log_debug "blocking stop (phase=$PHASE, next=$NEXT, error_count=$((ERROR_COUNT + 1))/$THRESHOLD)"
 log_diag "EXIT:2 reason=blocking phase=$PHASE issue=#$ISSUE error_count=$((ERROR_COUNT + 1))/$THRESHOLD session_id=${SESSION_ID:-unknown}"
+
+if [ -n "$INVALID_TRANSITION" ]; then
+  # Invalid phase transition detected via whitelist (#490). Surface the mismatch
+  # so the LLM re-enters the missing intermediate phase rather than pressing on.
+  log_diag "EXIT:2 reason=invalid_transition $INVALID_TRANSITION session_id=${SESSION_ID:-unknown}"
+  EXPECTED_LIST=$(rite_phase_expected_next "$PREV_PHASE" 2>/dev/null || echo "")
+  cat >&2 <<STOP_MSG
+[rite] Invalid phase transition detected — stop prevented.
+Phase: $PHASE | Previous: $PREV_PHASE | Issue: #$ISSUE | PR: #$PR
+PROBLEM: Transition $PREV_PHASE → $PHASE is not in the whitelist.
+EXPECTED NEXT FROM $PREV_PHASE: ${EXPECTED_LIST:-(unknown)}
+ACTION: Do NOT proceed with $PHASE. Return to the expected next phase above
+and execute its Pre-write + main procedure + Mandatory After block as
+defined in plugins/rite/commands/issue/start.md. Do NOT stop.
+STOP_MSG
+  exit 2
+fi
+
 cat >&2 <<STOP_MSG
 [rite] Normal operation — stop prevented.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
