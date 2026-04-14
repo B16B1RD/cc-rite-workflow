@@ -44,10 +44,15 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["phase1_6_post_child"]="phase2_branch"
 
   # Phase 2: branch → projects → iteration → work memory → plan
+  # Since cycle-3 MEDIUM #3 fix, every 2.x phase always writes its post-marker
+  # (skip is signalled via the `[CONTEXT] PHASE_2_4_STATE=skip` marker and is recorded
+  # as a whitelist-valid transition). Direct phase2_post_branch → phase2_work_memory
+  # and phase2_post_projects → phase2_work_memory paths were removed because they
+  # bypass the iteration-phase chain (prompt-engineer cycle-3 MEDIUM).
   ["phase2_branch"]="phase2_post_branch"
-  ["phase2_post_branch"]="phase2_projects phase2_work_memory"
+  ["phase2_post_branch"]="phase2_projects"
   ["phase2_projects"]="phase2_post_projects"
-  ["phase2_post_projects"]="phase2_iteration phase2_work_memory"
+  ["phase2_post_projects"]="phase2_iteration"
   ["phase2_iteration"]="phase2_post_iteration"
   ["phase2_post_iteration"]="phase2_work_memory"
   ["phase2_work_memory"]="phase2_post_work_memory"
@@ -56,8 +61,10 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # Phase 3: implementation plan
   # Phase 5.0 (Stop Hook Verification) is mandatory — transition MUST go through phase5_stop_hook.
   # Do NOT allow direct phase3_post_plan → phase5_lint (would silently skip Stop Hook verification).
+  # phase3_post_plan → phase3_plan is accepted for /rite:resume retry after plan was already
+  # completed in a prior session (code-quality cycle-3 MEDIUM).
   ["phase3_plan"]="phase3_post_plan"
-  ["phase3_post_plan"]="phase5_stop_hook"
+  ["phase3_post_plan"]="phase5_stop_hook phase3_plan"
 
   # Phase 5.0: stop-hook verification
   ["phase5_stop_hook"]="phase5_post_stop_hook"
@@ -272,11 +279,13 @@ rite_phase_transition_allowed() {
   local prev="$1"
   local next="$2"
 
-  # Terminal / cold-start cases
+  # Terminal / cold-start cases.
+  # "completed" is the /rite:issue:start terminal state. "create_completed" is written by
+  # /rite:issue:create at its end. "phase_done" was a speculative reserved name with no
+  # producer — removed per code-quality cycle-3 LOW (premature abstraction).
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
   [ "$next" = "completed" ] && return 0
-  [ "$next" = "phase_done" ] && return 0
   [ "$next" = "create_completed" ] && return 0
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
