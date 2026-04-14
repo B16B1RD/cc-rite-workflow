@@ -118,9 +118,10 @@ review:
     max_rounds: 1            # Maximum debate rounds for cost control (default: 1)
   confidence_threshold: 80   # Minimum confidence score for findings table (default: 80)
   fact_check:
-    enabled: true            # Enable fact-check phase for review findings (default: true)
-    max_claims: 10           # Maximum number of claims to verify per review (default: 10)
-    use_context7: false      # Use context7 MCP tool for verification (default: false)
+    enabled: true                      # Enable fact-check phase for review findings (default: true)
+    max_claims: 20                     # Maximum number of External claims to verify per review (default: 20). Internal Likelihood claims are Grep-based and counted outside this cap
+    use_context7: true                 # Use context7 MCP tool for verification (default: true). Auto-falls back to WebSearch when context7 is unavailable
+    verify_internal_likelihood: true   # Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep (default: true)
 
 # Iteration/Sprint settings (optional)
 iteration:
@@ -462,8 +463,9 @@ issue:
 | `debate.max_rounds` | integer | `1` | Maximum debate rounds (cost control) |
 | `confidence_threshold` | integer | `80` | Minimum confidence score for findings to be included in findings table |
 | `fact_check.enabled` | boolean | `true` | Enable fact-check phase for review findings |
-| `fact_check.max_claims` | integer | `10` | Maximum number of claims to verify per review |
-| `fact_check.use_context7` | boolean | `false` | Use context7 MCP tool for verification |
+| `fact_check.max_claims` | integer | `20` | Maximum number of **External** claims to verify per review (Sub-Phase A). Internal Likelihood claims are Grep-based and counted outside this cap |
+| `fact_check.use_context7` | boolean | `true` | Use context7 MCP tool for verification. Auto-falls back to WebSearch when context7 is unavailable |
+| `fact_check.verify_internal_likelihood` | boolean | `true` | Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep-based call site / entry point checks |
 
 **Review-fix loop convergence:**
 
