@@ -69,6 +69,7 @@ This will:
 | Command | Description |
 |---------|-------------|
 | `/rite:init` | Initial setup wizard |
+| `/rite:init --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
 | `/rite:getting-started` | Interactive onboarding guide |
 | `/rite:workflow` | Show workflow guide |
 | `/rite:issue:list` | List Issues |

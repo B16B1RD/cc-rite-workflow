@@ -51,7 +51,7 @@ The command prefix `rite` was chosen for:
 
 | Command | Description | Arguments |
 |---------|-------------|-----------|
-| `/rite:init` | Initial setup wizard | None |
+| `/rite:init` | Initial setup wizard | `[--upgrade]` (upgrade existing `rite-config.yml` schema to the latest version) |
 | `/rite:getting-started` | Interactive onboarding guide | None |
 | `/rite:workflow` | Show workflow guide | None |
 | `/rite:investigate` | Structured code investigation | `<topic or question>` |
@@ -498,6 +498,13 @@ language: auto  # auto | ja | en
 
 **Description:** Initial setup of rite workflow for a project
 
+**Arguments:** `[--upgrade]` (optional)
+
+| Argument | Description |
+|----------|-------------|
+| (none) | Run fresh setup (executes Phases 1–5 sequentially) |
+| `--upgrade` | Upgrade the schema of an existing `rite-config.yml` to the latest version (skips Phases 1–3 and 5; runs only Phase 4.1.3) |
+
 **Process Flow:**
 
 #### Phase 1: Environment Check
@@ -526,10 +533,64 @@ language: auto  # auto | ja | en
    - Recognize if exists
    - Auto-generate if not
 2. Generate `rite-config.yml`
+3. If an existing `rite-config.yml` is present, check its `schema_version`; if out of date, display guidance to run `/rite:init --upgrade`
 
 #### Phase 5: Completion Report
 1. Display settings summary
 2. Guide next steps
+
+---
+
+#### --upgrade Option (Existing Configuration Schema Upgrade)
+
+**Purpose:** Bring an existing project's `rite-config.yml` up to the latest schema while preserving user-customized values (`project_number`, `owner`, `branch.base`, `language`, and so on). The upgrade applies the additions (new sections), removals (deprecated keys), and `schema_version` bump in a single confirmed batch.
+
+**When to use:**
+
+- When a warning such as `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。` appears after upgrading the rite workflow plugin and running commands like `/rite:init` or `/rite:issue:start`
+- When a new configuration section (e.g., `wiki:`, `review.debate:`) is announced in `CHANGELOG.md` or the migration-guides
+- When the `schema_version` in your `rite-config.yml` diverges from the `schema_version` in the bundled template (`plugins/rite/templates/config/rite-config.yml`)
+
+**Example:**
+
+```bash
+/rite:init --upgrade
+```
+
+**Phase 4.1.3 Behavior (runs only with `--upgrade`):**
+
+1. **Read current config and compare versions**
+   Read `schema_version` from both the existing `rite-config.yml` and the bundled template. Missing values are treated as v1.
+2. **Create a backup**
+   Copy the existing file to `rite-config.yml.bak.YYYYMMDD-HHMMSS` for rollback.
+3. **Branching**
+   - `current < latest`: Run Step 4–6 (identify changes → preview → apply after approval), then Step 7 (Phase 4.7 Wiki initialization).
+   - `current == latest` and `wiki:` section absent: After backup, append the `wiki:` block from the template and run Phase 4.7.
+   - `current == latest` and `wiki:` section present: No-op; display "configuration is up to date" and run Phase 4.7 (idempotent — no-op if Wiki is already initialized).
+4. **Identify and classify changes** (Step 4, only on the `current < latest` path)
+   Each key is classified as one of:
+   - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.
+   - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`
+   - **Missing section** (add with template defaults): `review.debate`, `review.fact_check`, `verification`, etc.
+   - **Advanced section** (add as commented-out block): `tdd`, `parallel`, `team`, `metrics`, `safety`, `investigate`
+   - **Unknown key** (preserve with warning): user-added keys not present in the template
+5. **Preview and confirm** (Step 5)
+   Display deprecated keys to be removed, sections to be added, and preserved existing settings; ask via `AskUserQuestion` to either apply or cancel.
+6. **Apply** (Step 6)
+   On approval, update `schema_version` to the latest value, remove deprecated keys, add missing sections (including commented-out Advanced sections), and append the `wiki:` section if it was absent. All user-customized values are preserved.
+7. **Run Phase 4.7 (Wiki initialization)** (Step 7)
+   Invoke Phase 4.7 to bring existing users up to the Wiki-initialized state. If Wiki is already initialized, the phase is an idempotent no-op. Phase 4.7 is non-blocking: its failure does not affect `--upgrade` success. A final Wiki status line is displayed before the command exits.
+
+**Relationship with `schema_version`:**
+
+- The `schema_version` key at the top of `rite-config.yml` is an integer that identifies the configuration schema version (e.g., `schema_version: 2`). It is incremented whenever the rite workflow introduces a backward-incompatible schema change.
+- `--upgrade` compares the `schema_version` in the current file against the one in the bundled template and runs the Phase 4.1.3 flow above when the current file is behind.
+- Configuration files without a `schema_version` key are implicitly treated as v1 and can be brought up to date via `--upgrade`.
+
+**Relationship with Phase 5 (new-install completion report):**
+
+- `--upgrade` skips Phases 1–3 and the Phase 5 new-install completion report; only the Wiki status line is displayed at the end.
+- It does not merge with the fresh-install completion report (`--upgrade` is a dedicated path for updating existing configurations).
 
 ---
 
