@@ -21,6 +21,18 @@ This skill is activated when reviewing files matching:
 - `**/middleware/auth*`
 **Note**: The above is file pattern-based matching. Files containing authentication, authorization, or encryption logic are additionally identified via content analysis (keyword detection) in Phase 2.3.
 
+## Hypothetical Exception Category
+
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories). Security findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
+
+**Rationale**: Adversarial input is the security reviewer's job. A SQL injection vector, XSS sink, IDOR path, or weak crypto primitive that has no observed exploit today is still a CRITICAL risk because the attacker — not the reviewer — chooses when to demonstrate it. Waiting for "the bug must be reachable in the diff-applied codebase" before flagging would invert the security mindset (assume hostile input).
+
+**Reporting requirement**: When using this exception, the reviewer MUST still record the Likelihood classification in the finding's `内容` column (e.g., `Likelihood: Hypothetical (例外カテゴリ: security)`) so the reader knows the severity was retained intentionally rather than auto-downgraded.
+
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) still apply — only the Likelihood gate is relaxed.
+
+**Scope of the exception**: All security findings (no sub-scope limitation — the entire security domain qualifies as adversarial territory, unlike `database.md` / `devops.md` / `dependencies.md` which limit the exception to migration / deployment / CVE findings only).
+
 ## Expertise Areas
 
 - OWASP Top 10 vulnerabilities

@@ -62,6 +62,26 @@ All reviewers must follow these quality standards when reporting findings. These
 
 > **Reference**: See [Finding Examples](./references/finding-examples.md) for concrete Few-shot examples of good findings, findings that should NOT be reported, and borderline judgment cases.
 
+### Observed Likelihood Gate + Fail-Fast First (全 reviewer 共通)
+
+> **Reference**: [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) の "Observed Likelihood Gate" / "Fail-Fast First" 節と [`references/severity-levels.md`](../../references/severity-levels.md#impact--observed-likelihood-matrix) の Impact × Likelihood Matrix を必ず参照すること。
+
+**Observed Likelihood Gate**:
+
+- 指摘事項化の必要条件は (1) Confidence ≥ 80 + (2) Likelihood ≥ Demonstrable + (3) revert test pass の **3 ゲート同時充足**
+- Demonstrable の立証範囲は **diff 適用後のコードベース全体**（既存 + 本 PR 追加）
+- 立証手段は 4 種 (`existing_call_site` / `new_call_site` / `entrypoint_connection` / `runtime_observation`) のいずれか。`内容` 列に `Likelihood-Evidence: <label> <location>` の literal prefix を必ず記載（詳細は `agents/_reviewer-base.md` の "Demonstrable: proof of burden" 節）。**例外**: Hypothetical Exception Category reviewer (security / database (migration) / devops (infra) / dependencies) が Hypothetical finding を retain する場合は `Likelihood-Evidence:` を省略し、代わりに `Likelihood: Hypothetical (例外カテゴリ: <name>)` を `内容` 列に記載する (canonical 定義は `_reviewer-base.md` の "Hypothetical Exception Category interaction" 節)
+- Hypothetical は降格（**例外カテゴリ**: security / database (migration) / devops (infra) / dependencies の 4 reviewer のみ Hypothetical でも severity 維持可能）
+- Grep 失敗だけで Hypothetical 扱いにしない。dynamic dispatch / hook / framework convention / 設定駆動ルーティングはエントリポイント接続で Demonstrable 立証可
+
+**Fail-Fast First**:
+
+- fallback (null 返却 / default 値 / catch swallow / retry-and-give-up) を推奨する **前に** `throw` / `raise` / 再 throw を必ず検討
+- 既存の error boundary に到達できる経路があれば throw を選ぶ
+- skill 側 (各 reviewer の `.md`) に「fallback 許容条件」が明示されている場合のみ fallback 推奨可
+- project convention と衝突する可能性がある場合は `/rite:wiki:query <keyword>` で Wiki を必須参照し、Wiki に許容パターンが記録されていればそれを尊重
+- reviewer 自身が fallback 追加を推奨することは silent failure の **共犯行為** とみなされる
+
 ### Skeptical Tone Calibration
 
 Before starting your review, adopt the following investigative mindset:

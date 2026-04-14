@@ -90,6 +90,108 @@ Before including a finding in the issues table, assign an internal confidence sc
 
 The default confidence threshold is 80. This value is also recorded in `review.confidence_threshold` in `rite-config.yml` for reference.
 
+## Observed Likelihood Gate
+
+**Confidence and Likelihood are orthogonal independent gates.** A finding may be 100% certain in principle (high Confidence) and still be Hypothetical in practice (the triggering call site cannot be demonstrated in the diff-applied codebase). **All three gates** (Confidence ≥ 80, Observed Likelihood ≥ Demonstrable, and revert test) must be passed before a finding is included in the **指摘事項** table — see "Necessary conditions for inclusion in 指摘事項" below.
+
+> **Reference**: See [Severity Levels: Observed Likelihood Axis](../references/severity-levels.md#observed-likelihood-axis) for the full axis definition, the Impact × Likelihood Matrix, and the Hypothetical Exception Categories.
+
+### Necessary conditions for inclusion in 指摘事項
+
+A finding may be reported as a **指摘事項** (mandatory fix) only when **all three** of the following are satisfied:
+
+1. **Confidence ≥ 80** — the reviewer can cite the exact impact and has verified the issue with Grep/Read.
+2. **Observed Likelihood ≥ Demonstrable** — the reviewer can cite a call site or entrypoint connection in the diff-applied codebase (existing code + new code introduced by this PR). Hypothetical findings are downgraded per the Impact × Likelihood Matrix unless the reviewer is in a Hypothetical Exception Category.
+3. **Revert test passes** — the reviewer has verified that reverting the diff would change the buggy behavior. If reverting the diff has no effect on the bug, the finding is a pre-existing issue and belongs in `/rite:investigate`, not in this PR review.
+
+   **How to perform the revert test** (in order of preference):
+
+   - **Diff-line inspection** (default, always applicable): Examine the `-` and `+` lines in the diff. If the buggy behavior depends on a line that appears only as `+` (introduced by this PR) or on a `-` → `+` replacement that changed semantics, the revert test passes. If the buggy behavior depends only on unchanged context lines (no leading `+`/`-`), the bug is pre-existing and the test fails.
+   - **Git show comparison** (when the diff alone is ambiguous): `git show {base_branch}:path/to/file.ts` retrieves the pre-PR version of the file. Compare with the post-PR version to confirm whether the buggy behavior is present before the PR. This is a read-only operation and respects the [READ-ONLY RULE](#read-only-enforcement) (`git show` is explicitly allowed).
+   - **Runtime reproduction on the base branch** (rarely needed): `git worktree add ../base-check {base_branch}` creates an isolated worktree for running the code on the base branch. This is a read-only worktree operation and respects the [READ-ONLY RULE](#read-only-enforcement).
+
+   "Mental" revert (judging solely from memory of the diff without inspecting the diff hunks or the pre-PR file) is NOT sufficient and MUST NOT be recorded as a passed revert test.
+
+A finding that fails any of these three gates is downgraded to **推奨事項** (Confidence 60-79) or dropped entirely (Confidence < 60, or Likelihood = Hypothetical outside an exception category).
+
+### Demonstrable: proof of burden
+
+The `内容` column of every **指摘事項** MUST explicitly state which evidence type was used to clear the Likelihood gate. Use the standardized `Likelihood-Evidence:` prefix (the `Likelihood-` qualifier disambiguates from the `Evidence: tool=...` prefix used by tech-writer's Doc-Heavy Mode 5-category verification protocol — the two serve different purposes and must not collide).
+
+**Machine-readable format** (required):
+
+```
+Likelihood-Evidence: <evidence_type> <location_or_observation>
+```
+
+Place this line at the end of the `内容` column. For Markdown table cells where physical newlines are not supported, use `<br>` as the separator, or append the line as a continuation after the WHAT + WHY narrative on the same logical row.
+
+Where `<evidence_type>` is one of the following literal labels:
+
+| `<evidence_type>` label | Example complete line |
+|---|---|
+| `existing_call_site` | `Likelihood-Evidence: existing_call_site src/api/handlers.ts:45` |
+| `new_call_site` | `Likelihood-Evidence: new_call_site src/new-feature/init.ts:12 (本 PR で追加)` |
+| `entrypoint_connection` | `Likelihood-Evidence: entrypoint_connection commands/foo.md → hooks/foo.sh L23` |
+| `runtime_observation` | `Likelihood-Evidence: runtime_observation pytest -k test_bar で AssertionError` |
+
+The `Likelihood-Evidence:` prefix is the required anchor for downstream mechanical detection of the Observed Likelihood Gate (Phase 5 fact-check, dedup, Layer 2 assessment-rules). Findings that do not contain a `Likelihood-Evidence: <label> ...` line in the `内容` column are treated as Hypothetical and downgraded per the Impact × Likelihood Matrix.
+
+**Relationship with tech-writer Doc-Heavy Mode `Evidence:`**: Doc-Heavy Mode findings MUST still include the separate `Evidence: tool=<Grep|Read|Glob|WebFetch>, path=..., line=...` line for the 5-category verification protocol (see `skills/reviewers/tech-writer.md`). Both prefixes may coexist in the same `内容` cell — they are orthogonal checks (Observed Likelihood Gate vs. Doc-Heavy verification execution). Phase 5.1.3 post-condition only requires the tech-writer `Evidence: tool=...` form; the Observed Likelihood Gate check detects `Likelihood-Evidence:` separately.
+
+**Hypothetical Exception Category interaction**: Reviewers in the Hypothetical Exception Categories (security / database migration / devops infra / dependencies) MAY omit the `Likelihood-Evidence:` line when the finding is explicitly Hypothetical — in that case the required marker instead is `Likelihood: Hypothetical (例外カテゴリ: <name>)` in the `内容` column, as specified in each of those reviewer skill files. This is the single exception to the mandatory `Likelihood-Evidence:` rule.
+
+### Hypothetical downgrade patterns
+
+The following patterns are typical Hypothetical claims that MUST be downgraded (unless the reviewer is in an Exception Category):
+
+- "もし null が渡されたら crash するかもしれない" — without showing a call site that can pass null
+- "race condition の可能性がある" — without showing two concurrent paths that actually reach the shared state
+- "メモリリークするかもしれない" — without showing a long-running entrypoint that exercises the leak
+- "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security.md` is the reviewer)
+
+## Fail-Fast First
+
+Before recommending a fallback (`||` default, `try/catch` swallowing, null guard, default value substitution, retry-and-give-up), reviewers MUST first consider whether the correct fix is to **fail fast** — `throw` / `raise` / re-throw to the caller and let the existing error boundary handle it.
+
+### Why Fail-Fast is the default
+
+Fallbacks hide failures. A `catch (e) { return null }` recommendation that the reviewer treats as a "safety improvement" is, in fact, the same silent-failure pattern that error-handling reviewers flag as CRITICAL. Adding a fallback without justification turns the reviewer into a co-conspirator in silent failure.
+
+The default response to a missing error path is therefore:
+
+1. Can the operation `throw` / `raise` and propagate to the caller? → **Yes: recommend throw, not fallback.**
+2. Does the project already have an error boundary that would catch this throw and report it? → **Yes: recommend throw + verify boundary logs the error.**
+3. Is there a test that asserts the throw does NOT happen? → **Then the test is wrong: fix the test, not the code.**
+
+### When a fallback IS justified (skill-side exceptions)
+
+A fallback recommendation is acceptable only when the **reviewer's own skill file** explicitly lists the case as an allowed fallback. Examples:
+
+- `error-handling.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
+- `frontend.md` may list "default avatar image when user upload fails" as an allowed fallback.
+
+If the reviewer's skill file does NOT list the case, the reviewer MUST recommend `throw` / `raise` and document the recommendation in the `推奨対応` column with explicit reasoning (e.g., "throw して呼び出し元の error boundary に伝播。fallback は silent failure を生むため非推奨").
+
+### Project convention: Wiki must be consulted
+
+Some projects intentionally use fallback as a standard pattern for legitimate reasons (legacy migration paths, multi-tenant degradation, etc.). Before recommending `throw` over an existing fallback, the reviewer MUST consult the project's experiential knowledge wiki:
+
+```
+/rite:wiki:query <relevant keyword>
+```
+
+If the Wiki documents a project-specific allowance for the fallback pattern in question, the reviewer respects it and does NOT recommend changing the existing fallback. The Wiki query result MUST be cited in the `推奨対応` column when it influenced the recommendation (e.g., "Wiki entry `feedback_legacy_fallback.md` により本パターンは許容").
+
+### NG / OK examples (reviewer recommendations)
+
+| Pattern | NG (silent failure complicit) | OK (fail-fast respecting) |
+|---|---|---|
+| Null return | "`catch (e) { return null }` でハンドリングを推奨" | "`throw` で呼び出し元へ伝播。`null` 返却は呼び出し元の null check 漏れを誘発" |
+| Default value | "`?? 0` で default 0 を返すべき" | "`throw new ValueError('config key X is required')`。default 0 は設定漏れを silent に隠す" |
+| Try/catch swallow | "`try { ... } catch {}` で安全化" | "catch ブロックを削除し、上位の error boundary に到達させる。silent swallow は CRITICAL anti-pattern" |
+| Retry + give-up | "3 回 retry 後 default を返す" | "3 回 retry 後 throw。caller が retry 戦略を決定すべき" |
+
 ## Input
 
 This agent receives the following input via Task tool's `prompt` parameter:

@@ -38,6 +38,18 @@ YAML files where none of the above keywords are detected are excluded from DevOp
 - `terraform/**`, `*.tf`
 - `kubernetes/**`, `k8s/**`, `*.k8s.yml`
 
+## Hypothetical Exception Category (deployment / rollback / IaC)
+
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories) for **deployment, rollback, and infrastructure-as-code** findings. These MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
+
+**Rationale**: Deployment and rollback paths are exercised rarely but failure leaves production in a broken state with no rollback. A misconfigured IaC change runs once and the resulting drift may persist invisibly. "Wait until we observe a failed rollout" is not an acceptable risk model.
+
+**Scope of the exception**: The exception applies to deployment workflow steps, rollback scripts, IaC (Terraform/CloudFormation/k8s manifests) changes, secrets handling, and CI/CD pipeline mutations that affect production releases. Build optimization, lint passes, and other non-deployment DevOps findings still follow the standard Impact × Likelihood Matrix.
+
+**Reporting requirement**: When using this exception, the reviewer MUST record `Likelihood: Hypothetical (例外カテゴリ: devops infra)` in the `内容` column.
+
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) still apply.
+
 ## Expertise Areas
 
 - CI/CD pipeline design
