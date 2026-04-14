@@ -390,7 +390,9 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 On failure, display warning and continue (non-blocking). The scaffolding-failure itself is recorded by stop-guard via the whitelist on the next transition attempt.
 
-**Step 5** — Parent Issue Status Update (2.4.7): **always execute** this substep regardless of whether the current Issue was identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents). Query trackedInIssues for the current Issue, and if a parent is found, update the parent's Status to "In Progress" using the same Step 2-4 logic against the parent issue number. If no parent is found, skip silently.
+**Step 5** — Parent Issue Status Update (2.4.7): **always execute** this substep regardless of whether the current Issue was identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents). **Execute the full 3-method detection and Status update procedure from [projects-integration.md §2.4.7](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues)** (Method 1: `## 親 Issue` body meta PRIMARY → Method 2: Sub-Issues API → Method 3: tasklist search → 2.4.7.2 Retrieve → 2.4.7.3 Status Condition → 2.4.7.4 Update). When all three methods fail, the referenced procedure emits a debug log and skips silently — this is the normal path for standalone Issues (AC-4).
+
+> **Issue #513 regression guard**: Do NOT replace this delegation with an inline simplification (e.g., querying only `trackedInIssues` or only one detection method). Past incident: a `trackedInIssues`-only inline version in this file caused AC-1 failure in repositories that manage parent-child links via body tasklist and `## 親 Issue` meta rather than GitHub's native Sub-Issues feature.
 
 ### 🚨 Mandatory After 2.4
 

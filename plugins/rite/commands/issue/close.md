@@ -483,9 +483,11 @@ When a child Issue is closed, automatically update the parent Issue's body to re
 
 ### 4.5.1 Detect Parent Issue
 
-Extract the parent Issue number from the closing Issue's body. The `## 親 Issue` section is added by `/rite:issue:create-decompose` when creating child Issues.
+Detect the parent Issue via **three methods tried in order (OR combination)**. This mirrors the 3-method detection in [`projects-integration.md` 2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) — the two sites MUST stay consistent to prevent silent-skip regressions (see Issue #513 / past incidents #115, #381, #15).
 
-**Detection pattern**: Search the Issue body for the `## 親 Issue` section header, then extract the Issue number from the line below it:
+**Method 1: `## 親 Issue` body meta (PRIMARY)**
+
+Read the closing Issue body and search for the `## 親 Issue` section written by `/rite:issue:create-decompose`.
 
 ```
 ## 親 Issue
@@ -493,23 +495,58 @@ Extract the parent Issue number from the closing Issue's body. The `## 親 Issue
 #{parent_number} - {parent_title}
 ```
 
-**Extraction**: Retrieve the Issue body and extract the parent Issue number in a single bash block:
-
 ```bash
 issue_body=$(gh issue view {issue_number} --json body --jq '.body')
-# SIGPIPE 防止 (#398): issue_body が大きい場合、echo | grep | head -1 で
-# head の早期終了により echo に SIGPIPE が届く。here-string で subprocess を排除。
+# SIGPIPE 防止 (#398): here-string で subprocess を排除
 parent_number=$(grep -A2 '^## 親 Issue' <<< "$issue_body" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
-echo "parent_number=${parent_number:-none}"
+echo "method1_parent=${parent_number:-none}"
 ```
 
-**When no parent Issue is found** (`parent_number` is empty):
+If `parent_number` is non-empty, proceed to 4.5.2.
+
+**Method 2: Sub-Issues API (secondary)**
+
+If Method 1 returned empty, query GitHub's native Sub-Issues feature:
+
+```bash
+parent_number=$(gh api graphql -H "GraphQL-Features: sub_issues" -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      parent { number }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} \
+  --jq '.data.repository.issue.parent.number // empty')
+echo "method2_parent=${parent_number:-none}"
+```
+
+If non-empty, proceed to 4.5.2.
+
+**Method 3: Tasklist search (last resort)**
+
+If both methods failed:
+
+```bash
+parent_number=$(gh issue list --state all --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 1 --jq '.[0].number // empty')
+echo "method3_parent=${parent_number:-none}"
+```
+
+GitHub code search with `[`/`]` is unreliable, which is why this is the last resort. `--state all` (not `--state open`) because the closing Issue's parent may already be closed if someone closed it manually.
+
+**When all three methods failed (`parent_number` empty)**:
+
+```bash
+echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"
+```
+
+Display:
 
 ```
 親 Issue の参照が見つかりませんでした。親 Issue 更新をスキップします。
 ```
 
-Skip the rest of Phase 4.5 and proceed to Phase 5. This is normal behavior (AC-3), not an error.
+Skip the rest of Phase 4.5 and Phase 4.6 and proceed to Phase 5. This is normal behavior (AC-4), not an error — but the debug log above makes the skip visible so silent-skip regressions are detectable.
 
 ### 4.5.2 Update Parent Issue Body
 
@@ -551,7 +588,177 @@ bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
 
 If the script exits with 0, the update succeeded (or was skipped by `--diff-check` if no changes were needed). If non-zero, display a warning and proceed to Phase 5.
 
-**On failure**: Display warning and proceed to Phase 5 (non-blocking, AC-4). The `--parent` flag is passed for future differentiation but currently all errors are treated as warnings by the script. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
+**On failure**: Display warning and proceed to Phase 4.6 (non-blocking, AC-4). The `--parent` flag is passed for future differentiation but currently all errors are treated as warnings by the script. The `--diff-check` flag skips the apply if no actual changes were made (idempotency). The Issue close itself (Phase 4.1) has already succeeded at this point.
+
+Proceed to Phase 4.6.
+
+---
+
+## Phase 4.6: Parent Auto-Close (All Children Completed)
+
+> **Issue #513 AC-2**: When all child Issues of the detected parent are now closed (including the just-closed one), offer to auto-close the parent. This closes the "child close → parent stays Open" silent-skip hole.
+
+**Execution condition**: Only execute when `{parent_number}` was detected in Phase 4.5.1 (any of the three methods succeeded). If no parent was detected, skip Phase 4.6 entirely and proceed to Phase 5.
+
+**Three-level nesting guard (AC / MUST NOT)**: This phase processes only the direct parent. It does NOT recurse into the parent's parent (grandparent). Three-level nesting is explicitly out of scope (see Issue #513 Section 2 Out of Scope).
+
+### 4.6.1 Enumerate Parent's Child Issues
+
+Retrieve the parent's child Issues via **two methods (OR combination)**. The methods mirror the parent-detection strategy for consistency.
+
+**Method A: Sub-Issues API (preferred)**
+
+```bash
+children_json=$(gh api graphql -H "GraphQL-Features: sub_issues" -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      trackedIssues(first: 100) {
+        nodes { number state }
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={parent_number} 2>/dev/null \
+  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number: .number, state: .state}]')
+echo "method_a_children=${children_json:-[]}"
+```
+
+**Method B: Parent body `## Sub-Issues` tasklist (fallback)**
+
+If Method A returns `[]` (sub-issues feature not in use in this repo), parse the parent body's Sub-Issues tasklist and resolve each referenced Issue's state:
+
+```bash
+parent_body=$(gh issue view {parent_number} --json body --jq '.body')
+# Extract child numbers from `- [ ] #N` / `- [x] #N` lines under `## Sub-Issues` section
+child_numbers=$(awk '/^## Sub-Issues/{flag=1;next} /^## /{flag=0} flag && /^- \[[ xX]\] #[0-9]+/{print}' <<< "$parent_body" | grep -oE '#[0-9]+' | tr -d '#')
+echo "method_b_child_numbers=${child_numbers:-none}"
+
+# Resolve each child's state in one batch GraphQL query (if any were found)
+if [ -n "$child_numbers" ]; then
+  # Build alias query dynamically (LLM generates this based on child_numbers list)
+  # Each child: issueN: issue(number: N) { number state }
+  children_json=$(gh api graphql -f query='
+query($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    {alias_query_generated_by_llm}
+  }
+}' -f owner="{owner}" -f repo="{repo}" --jq '[.data.repository | to_entries[] | .value | {number: .number, state: .state}]')
+fi
+```
+
+**When both methods return empty or fail**: Display warning and skip Phase 4.6 (non-blocking, AC-5 spirit applied to close side):
+
+```
+警告: 親 Issue #{parent_number} の子 Issue 一覧の取得に失敗しました。親の自動クローズをスキップします。
+```
+
+Proceed to Phase 5.
+
+### 4.6.2 All-Children-Closed Check
+
+Parse `children_json` and determine whether **every** child has `state: "CLOSED"`.
+
+```bash
+all_closed=$(echo "$children_json" | jq -r 'if length == 0 then "false" else (all(.state == "CLOSED")) | tostring end')
+open_count=$(echo "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length')
+echo "all_closed=$all_closed open_count=$open_count"
+```
+
+**When `all_closed != "true"` (some children still open)**:
+
+```bash
+echo "[DEBUG] parent #{parent_number} has ${open_count} open child(ren) — skipping auto-close"
+```
+
+Display:
+
+```
+親 Issue #{parent_number} にはまだ {open_count} 件の未完了子 Issue があります。親の自動クローズはスキップします。
+```
+
+Proceed to Phase 5.
+
+**When `all_closed == "true"`**: Proceed to 4.6.3.
+
+### 4.6.3 User Confirmation
+
+Confirm via `AskUserQuestion`:
+
+```
+親 Issue #{parent_number} のすべての子 Issue が完了しました。親 Issue もクローズしますか？
+
+オプション:
+- 親 Issue をクローズする（推奨）
+- 親 Issue を開いたまま終了
+```
+
+| Selection | Action |
+|-----------|--------|
+| クローズする | Proceed to 4.6.4 |
+| 開いたまま終了 | `echo "[DEBUG] user declined parent auto-close for #{parent_number}"`. Proceed to Phase 5 |
+
+### 4.6.4 Update Parent Projects Status to "Done"
+
+Skip this sub-step if `github.projects.enabled: false` in `rite-config.yml`.
+
+**Step 1**: Retrieve parent's project item ID and project ID:
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes { id project { id number } }
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={parent_number}
+```
+
+Find the node where `project.number` matches `{project_number}`. Extract `{parent_item_id}` and `{parent_project_id}`. If `projectItems.nodes` is empty, display warning and proceed to 4.6.5 (non-blocking, AC-5):
+
+```
+警告: 親 Issue #{parent_number} は Project に登録されていません。Status 更新をスキップします。
+```
+
+**Step 2**: Retrieve Status field and "Done" option ID:
+
+```bash
+gh project field-list {project_number} --owner {owner} --format json
+```
+
+From the result, find the `name: "Status"` field. Extract `{status_field_id}` (or use `github.projects.field_ids.status` from `rite-config.yml` if configured) and `{done_option_id}` (the option whose `name` is `"Done"`).
+
+**Step 3**: Update the Status:
+
+```bash
+gh project item-edit --project-id {parent_project_id} --id {parent_item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
+```
+
+On failure, display warning and proceed to 4.6.5 (non-blocking):
+
+```
+警告: 親 Issue #{parent_number} の Status 更新に失敗しました。
+```
+
+### 4.6.5 Close the Parent Issue
+
+```bash
+gh issue close {parent_number} --comment "子 Issue がすべて完了したため、自動クローズします。（/rite:issue:close 経由、Issue #{issue_number} の close をトリガー）"
+```
+
+On failure, display warning and proceed to Phase 5:
+
+```
+警告: 親 Issue #{parent_number} のクローズに失敗しました。手動でクローズしてください。
+```
+
+On success:
+
+```
+親 Issue #{parent_number} を自動クローズしました（Status: Done）。
+```
 
 Proceed to Phase 5.
 
