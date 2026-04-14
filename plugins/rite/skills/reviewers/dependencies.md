@@ -25,7 +25,7 @@ This skill is activated when reviewing files matching:
 
 ## Hypothetical Exception Category (CVE / supply chain)
 
-This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories). Known-CVE, supply-chain, and license findings MAY retain CRITICAL / HIGH severity even when the Observed Likelihood is **Hypothetical**.
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories). Known-CVE, supply-chain, and license findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
 
 **Rationale**: Known CVEs, supply-chain compromise, and license violations are inherently "could happen any time" risks. Whether a vulnerable function is reachable from the application code today is irrelevant — the exploit window opens the moment the dependency is published, and waiting for observed exploitation is wrong by definition.
 

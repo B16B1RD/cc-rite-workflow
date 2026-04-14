@@ -23,7 +23,7 @@ This skill is activated when reviewing files matching:
 
 ## Hypothetical Exception Category
 
-This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories). Security findings MAY retain CRITICAL / HIGH severity even when the Observed Likelihood is **Hypothetical**.
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories). Security findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
 
 **Rationale**: Adversarial input is the security reviewer's job. A SQL injection vector, XSS sink, IDOR path, or weak crypto primitive that has no observed exploit today is still a CRITICAL risk because the attacker — not the reviewer — chooses when to demonstrate it. Waiting for "the bug must be reachable in the diff-applied codebase" before flagging would invert the security mindset (assume hostile input).
 

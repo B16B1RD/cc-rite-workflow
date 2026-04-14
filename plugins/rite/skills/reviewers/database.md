@@ -23,7 +23,7 @@ This skill is activated when reviewing files matching:
 
 ## Hypothetical Exception Category (migration)
 
-This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories), but **only for migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths). Migration findings MAY retain CRITICAL / HIGH severity even when the Observed Likelihood is **Hypothetical**.
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories), but **only for migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths). Migration findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
 
 **Rationale**: A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. "Wait until we observe data loss in production" is not an acceptable risk model.
 
