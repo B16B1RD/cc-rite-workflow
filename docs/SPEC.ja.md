@@ -51,7 +51,7 @@
 
 | コマンド | 説明 | 引数 |
 |---------|------|------|
-| `/rite:init` | 初回セットアップウィザード | なし |
+| `/rite:init` | 初回セットアップウィザード | `[--upgrade]`（既存 `rite-config.yml` のスキーマを最新版へ更新） |
 | `/rite:getting-started` | 対話型オンボーディングガイド | なし |
 | `/rite:workflow` | ワークフロー全体の案内 | なし |
 | `/rite:investigate` | 構造化コード調査 | `<トピックまたは質問>` |
@@ -498,6 +498,13 @@ language: auto  # auto | ja | en
 
 **説明:** プロジェクトへの rite ワークフロー初回セットアップ
 
+**引数:** `[--upgrade]`（省略可）
+
+| 引数 | 説明 |
+|------|------|
+| なし | 新規セットアップを実行（Phase 1〜5 を順次実行） |
+| `--upgrade` | 既存 `rite-config.yml` のスキーマを最新版へアップグレード（Phase 1〜3 と 5 をスキップし、Phase 4.1.3 を実行。Phase 4.1.3 は Step 7 で Phase 4.7 (Wiki 初期化) を呼び出すため、結果として Phase 4.1.3 + Phase 4.7 が実行される） |
+
 **処理フロー:**
 
 #### Phase 1: 環境チェック
@@ -526,10 +533,64 @@ language: auto  # auto | ja | en
    - 既存があれば認識
    - なければ自動生成
 2. `rite-config.yml` の生成
+3. 既存 `rite-config.yml` がある場合は `schema_version` を確認し、古ければ `/rite:init --upgrade` の案内を表示
 
 #### Phase 5: 完了報告
 1. 設定サマリーの表示
 2. 次のステップの案内
+
+---
+
+#### --upgrade オプション（既存設定のスキーマ更新）
+
+**目的:** 既存プロジェクトの `rite-config.yml` を最新スキーマに追従させる。ユーザーがカスタマイズした値（`project_number`、`owner`、`branch.base`、`language` 等）は保持したまま、新しい設定セクションの追加・廃止キーの削除・`schema_version` の更新を一括適用する。
+
+**使用タイミング:**
+
+- rite workflow のバージョンアップ後、`/rite:init` 実行時や session 開始時に「rite-config.yml のスキーマが古くなっています (v{current} → v{latest})」旨の警告（末尾の行動喚起文言は呼び出し元により「`/rite:init --upgrade` でアップグレードできます」または「`/rite:init --upgrade` を実行してください」のいずれか）が表示されたとき
+- `CHANGELOG.md` や release notes から参照される migration notes（存在する場合は `docs/migration-guides/` 等）で新しい設定項目（例: `wiki:`、`review.debate:` 等）が追加されたことが告知されたとき
+- 既存 `rite-config.yml` の `schema_version` と、プラグイン同梱テンプレート (`plugins/rite/templates/config/rite-config.yml`) の `schema_version` が乖離しているとき
+
+**実行例:**
+
+```bash
+/rite:init --upgrade
+```
+
+**Phase 4.1.3 の処理内容（`--upgrade` 時のみ実行）:**
+
+1. **現行設定の読み込みとバージョン比較**
+   既存 `rite-config.yml` とテンプレートの `schema_version` を読み取る。両方が存在しない場合は v1 とみなす。
+2. **バックアップ作成**
+   `rite-config.yml.bak.YYYYMMDD-HHMMSS` として既存ファイルを保全する（ロールバック用）。
+3. **分岐判定**
+   - `current < latest` の場合: Step 4〜6（差分特定 → プレビュー → 承認後適用）を実施し、その後 Step 7（Phase 4.7 Wiki 初期化）へ。
+   - `current == latest` かつ `wiki:` セクション未存在の場合: バックアップ後に `wiki:` セクションをテンプレートから append し、Phase 4.7 を実行する。
+   - `current == latest` かつ `wiki:` セクション存在の場合: no-op として「設定は最新です」を表示し、Phase 4.7 に進む（既に初期化済みであれば冪等に no-op）。
+4. **差分の特定と分類**（Step 4、`current < latest` 経路のみ）
+   各キーを以下のいずれかに分類する。
+   - **User-customized value**（保持）: `project_number`、`owner`、`iteration` 系設定、`branch.base`、`language` など
+   - **Deprecated key**（削除）: `project.name`、`commit.style`、`commit.enforce`、`branch.release`、`branch.types`、`version` など
+   - **Missing section**（テンプレートからデフォルト値で追加）: `review.debate`、`review.fact_check`、`verification` など
+   - **Advanced section**（コメントアウト状態で追加）: `tdd`、`parallel`、`team`、`metrics`、`safety`、`investigate`
+   - **Unknown key**（警告付き保持）: ユーザーが独自追加したテンプレート外のキー
+5. **プレビューとユーザー承認**（Step 5）
+   廃止キー・追加セクション・保持される既存設定の一覧を提示し、`AskUserQuestion` で「適用する／キャンセル」を確認する。
+6. **適用**（Step 6）
+   承認後、`schema_version` を最新値に更新し、廃止キー削除・セクション追加（コメントアウト含む）・`wiki:` セクションの append（未存在時）を順次実行する。既存のユーザーカスタマイズ値はすべて保持される。
+7. **Phase 4.7（Wiki 初期化）の実行**（Step 7）
+   Phase 4.7 を呼び出し、既存ユーザーも Wiki 初期化済みの状態に揃える。Wiki が既に初期化済みの場合は冪等に no-op。非ブロッキングで、Phase 4.7 の失敗は `--upgrade` 全体の成否には影響しない。最後に Wiki 初期化ステータスを表示して終了する。
+
+**`schema_version` との関係:**
+
+- `rite-config.yml` 先頭の `schema_version` キーは、設定ファイルのスキーマバージョンを示す整数値（例: `schema_version: 2`）。rite workflow が後方非互換なスキーマ変更を行うたびにインクリメントされる。
+- `--upgrade` は「現行ファイルの `schema_version`」と「プラグイン同梱テンプレートの `schema_version`」を比較し、古い場合に上記の Phase 4.1.3 を実行する。
+- `schema_version` キーが存在しない古い設定ファイルは暗黙的に v1 として扱われ、`--upgrade` 経由で最新版に更新される。
+
+**Phase 5（新規セットアップの完了報告）との関係:**
+
+- `--upgrade` は Phase 1〜3 および Phase 5 の新規セットアップ完了報告をスキップする。Wiki 初期化ステータス行のみが終了時に表示される。
+- 新規プロジェクトで `/rite:init` を実行した場合の完了報告とは合流しない（`--upgrade` は既存設定の更新専用パス）。
 
 ---
 

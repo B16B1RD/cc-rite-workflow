@@ -161,6 +161,57 @@ What /rite:init configures:
 This is a one-time setup. You can reconfigure later by running /rite:init again.
 ```
 
+**Upgrading an existing project (`/rite:init --upgrade`)**
+
+If you have been using rite workflow on this project for a while, the bundled
+configuration schema may have moved ahead of your local `rite-config.yml`. In
+that case, run the upgrade variant instead of a fresh `/rite:init`:
+
+```
+/rite:init --upgrade
+```
+
+When to run it:
+
+- After updating the rite workflow plugin and seeing a warning that
+  `rite-config.yml` schema is outdated. The exact wording differs slightly
+  by emitter: `/rite:init` emits `rite-config.yml のスキーマが古くなっています
+  (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
+  and the session-start hook emits a variant ending in
+  `/rite:init --upgrade を実行してください。` Both signal the same situation
+- When release notes (`CHANGELOG.md`, or migration notes referenced from the
+  release notes — e.g., `docs/migration-guides/` when present) announce new
+  configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from
+  your local `rite-config.yml`
+- When the `schema_version` value at the top of your `rite-config.yml` diverges
+  from the bundled template in
+  `plugins/rite/templates/config/rite-config.yml`
+
+What `/rite:init --upgrade` does:
+
+  ✓ Creates a timestamped backup (`rite-config.yml.bak.YYYYMMDD-HHMMSS`)
+  ✓ Compares your current `schema_version` against the latest template version
+  ✓ Shows a preview of changes: deprecated keys to remove, new sections to
+    add (including commented-out Advanced sections), and values that will be
+    preserved (e.g., `project_number`, `owner`, `branch.base`, `language`)
+  ✓ Asks for confirmation via AskUserQuestion before applying any schema
+    changes (this single apply/cancel prompt also gates the wiki-section
+    append below when both are pending, though the `wiki:` section may not
+    be itemized separately in the preview list; when the schema is already
+    up to date and only the `wiki:` section happens to be missing, the
+    append is applied without an additional prompt)
+  ✓ Appends the `wiki:` section if it is absent, so the Wiki
+    auto-initialization step of `/rite:init` can run for existing projects
+  ✓ Updates `schema_version` to the latest value on success
+
+The upgrade is non-destructive: user-customized values are preserved, and a
+backup is created before any edits are made. If your configuration is already
+up to date and Wiki is already initialized, the command makes no changes to
+`rite-config.yml` itself — it still creates a timestamped backup, reports
+"configuration is up to date", then runs the Wiki auto-initialization
+idempotency check of `/rite:init` and displays a final Wiki status line
+before exiting.
+
 Check if `rite-config.yml` exists:
 
 ```bash
@@ -173,6 +224,13 @@ ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
 ✅ Already initialized (rite-config.yml found)
 
 You can skip Step 1 and proceed to Step 2.
+
+⚠ Schema may be out of date — if you see the schema-outdated warning
+described in the "Upgrading an existing project" section above, or the
+top-level `schema_version` in your `rite-config.yml` differs from the
+bundled template in `plugins/rite/templates/config/rite-config.yml`, run
+`/rite:init --upgrade` before proceeding to Step 2 to bring the configuration
+up to date.
 ```
 
 **If it does not exist:**
