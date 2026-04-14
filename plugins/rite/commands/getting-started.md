@@ -197,8 +197,10 @@ What `/rite:init --upgrade` does:
 
 The upgrade is non-destructive: user-customized values are preserved, and a
 backup is created before any edits are made. If your configuration is already
-up to date and Wiki is already initialized, the command is an idempotent no-op
-that reports "configuration is up to date" and exits.
+up to date and Wiki is already initialized, the command makes no changes to
+`rite-config.yml` itself — it still creates a timestamped backup and runs the
+Wiki auto-initialization idempotency check (Phase 4.7), then reports
+"configuration is up to date" and exits.
 
 Check if `rite-config.yml` exists:
 
@@ -212,6 +214,14 @@ ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
 ✅ Already initialized (rite-config.yml found)
 
 You can skip Step 1 and proceed to Step 2.
+
+⚠ Schema may be out of date — if you see a warning such as
+  "rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。
+   /rite:init --upgrade でアップグレードできます。"
+or the top-level `schema_version` in your `rite-config.yml` differs from the
+bundled template in `plugins/rite/templates/config/rite-config.yml`, run
+`/rite:init --upgrade` before proceeding to Step 2 to bring the configuration
+up to date. See the "Upgrading an existing project" section above for details.
 ```
 
 **If it does not exist:**
