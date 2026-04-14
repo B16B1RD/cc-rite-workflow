@@ -503,7 +503,7 @@ language: auto  # auto | ja | en
 | Argument | Description |
 |----------|-------------|
 | (none) | Run fresh setup (executes Phases 1–5 sequentially) |
-| `--upgrade` | Upgrade the schema of an existing `rite-config.yml` to the latest version (skips Phases 1–3 and 5; runs only Phase 4.1.3) |
+| `--upgrade` | Upgrade the schema of an existing `rite-config.yml` to the latest version (skips Phases 1–3 and 5, and executes Phase 4.1.3; Phase 4.1.3 invokes Phase 4.7 (Wiki initialization) at its Step 7, so the effective execution is Phase 4.1.3 + Phase 4.7) |
 
 **Process Flow:**
 
@@ -547,9 +547,9 @@ language: auto  # auto | ja | en
 
 **When to use:**
 
-- When a warning such as `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。` appears after upgrading the rite workflow plugin and running commands like `/rite:init` or `/rite:issue:start`
-- When a new configuration section (e.g., `wiki:`, `review.debate:`) is announced in `CHANGELOG.md` or the migration-guides
-- When the `schema_version` in your `rite-config.yml` diverges from the `schema_version` in the bundled template (`plugins/rite/templates/config/rite-config.yml`)
+- When a warning that `rite-config.yml` schema is outdated appears after upgrading the rite workflow plugin and running `/rite:init` or starting a session. The exact Japanese message emitted by `/rite:init` is: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。` The session-start hook emits a slightly different variant ending in `/rite:init --upgrade を実行してください。` ("run `/rite:init --upgrade`")
+- When release notes (`CHANGELOG.md`, or migration notes referenced from the release notes — e.g., `docs/migration-guides/` when present) announce new configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from your local `rite-config.yml`
+- When the `schema_version` at the top of your `rite-config.yml` diverges from the `schema_version` in the bundled template (`plugins/rite/templates/config/rite-config.yml`)
 
 **Example:**
 

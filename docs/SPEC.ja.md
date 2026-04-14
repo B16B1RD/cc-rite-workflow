@@ -503,7 +503,7 @@ language: auto  # auto | ja | en
 | 引数 | 説明 |
 |------|------|
 | なし | 新規セットアップを実行（Phase 1〜5 を順次実行） |
-| `--upgrade` | 既存 `rite-config.yml` のスキーマを最新版へアップグレード（Phase 1〜3、5 をスキップし Phase 4.1.3 のみ実行） |
+| `--upgrade` | 既存 `rite-config.yml` のスキーマを最新版へアップグレード（Phase 1〜3 と 5 をスキップし、Phase 4.1.3 を実行。Phase 4.1.3 は Step 7 で Phase 4.7 (Wiki 初期化) を呼び出すため、結果として Phase 4.1.3 + Phase 4.7 が実行される） |
 
 **処理フロー:**
 
@@ -547,8 +547,8 @@ language: auto  # auto | ja | en
 
 **使用タイミング:**
 
-- rite workflow のバージョンアップ後、`/rite:init` または `/rite:issue:start` などの実行時に `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。` という警告が表示されたとき
-- `CHANGELOG.md` や migration-guides で新しい設定項目（例: `wiki:`、`review.debate:` 等）が追加されたことが告知されたとき
+- rite workflow のバージョンアップ後、`/rite:init` 実行時や session 開始時に「rite-config.yml のスキーマが古くなっています (v{current} → v{latest})」旨の警告（末尾の行動喚起文言は呼び出し元により「`/rite:init --upgrade` でアップグレードできます」または「`/rite:init --upgrade` を実行してください」のいずれか）が表示されたとき
+- `CHANGELOG.md` や release notes から参照される migration notes（存在する場合は `docs/migration-guides/` 等）で新しい設定項目（例: `wiki:`、`review.debate:` 等）が追加されたことが告知されたとき
 - 既存 `rite-config.yml` の `schema_version` と、プラグイン同梱テンプレート (`plugins/rite/templates/config/rite-config.yml`) の `schema_version` が乖離しているとき
 
 **実行例:**
