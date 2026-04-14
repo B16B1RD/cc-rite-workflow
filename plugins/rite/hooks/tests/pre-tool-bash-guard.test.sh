@@ -1055,7 +1055,9 @@ assert_p5_deny() {
   rm -rf "$tmpdir"
 }
 
-# Helper: assert allow (for false-positive regression)
+# Helper: assert allow (for false-positive regression).
+# Checks that permissionDecision is not "deny" (rather than rc=0 && empty output), so future
+# hook changes that emit informational stdout on allow paths don't false-fail this assertion.
 assert_p5_allow() {
   local label="$1"
   local cmd="$2"
@@ -1064,10 +1066,12 @@ assert_p5_allow() {
   local rc=0
   local out
   out=$(run_guard_with_cwd "$tmpdir" "$cmd") || rc=$?
-  if [ "$rc" = "0" ] && [ -z "$out" ]; then
+  local decision
+  decision=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  if [ "$decision" != "deny" ]; then
     pass "$label"
   else
-    fail "$label (cmd='$cmd', rc=$rc out=$out)"
+    fail "$label (cmd='$cmd', decision=$decision out=$out)"
   fi
   rm -rf "$tmpdir"
 }
@@ -1084,8 +1088,13 @@ assert_p5_deny "TC-101 'gh issue create &' blocked (ampersand)" "gh issue create
 # TC-102: prefix shortcut 'gh issue c' → allow (ambiguous in gh CLI itself, not a real bypass)
 # gh CLI resolves `c` as ambiguous (close/comment/create) and errors out.
 # Since it never actually invokes `gh issue create`, Pattern 5 does not need to match it.
-# We start from `cre` which is unambiguous (only `create` starts with `cre` among gh issue subcommands).
+# Note: if gh CLI ever resolves `c` to a single subcommand, TC-102 must flip to deny.
 assert_p5_allow "TC-102 'gh issue c' allowed (ambiguous in gh CLI, not a real bypass)" "gh issue c --title x"
+
+# TC-102b: 2-char prefix 'gh issue cr' → deny
+# Among `gh issue` subcommands, only `create` starts with `cr`, so gh CLI resolves
+# `gh issue cr` unambiguously to `create`. This is a real bypass vector.
+assert_p5_deny "TC-102b 'gh issue cr' blocked (2-char unambiguous prefix)" "gh issue cr --title x"
 
 # TC-103: prefix shortcut 'gh issue cre' → deny
 assert_p5_deny "TC-103 'gh issue cre' blocked (prefix shortcut)" "gh issue cre --title x"
@@ -1107,6 +1116,25 @@ assert_p5_allow "TC-107 'gh issue close' allowed (full spelling, not 'create' pr
 
 # TC-108: 'gh issue comment' allowed (full spelling)
 assert_p5_allow "TC-108 'gh issue comment' allowed" "gh issue comment 123 --body x"
+
+# TC-109: heredoc-body bypass → deny (Pattern 5 uses $COMMAND directly, not $CMD_CHECK)
+# `cat <<EOF ... gh issue create ... EOF | sh` hides the command in a heredoc body.
+# Pattern 1-4 strip the heredoc via CMD_CHECK="${COMMAND%%<<*}" but Pattern 5 bypasses that
+# by operating on $COMMAND directly (#501 security review HIGH).
+assert_p5_deny "TC-109 heredoc body bypass blocked" "cat <<EOF | sh
+gh issue create --title x
+EOF"
+
+# TC-110: eval with double-quoted body → deny (quote normalization)
+assert_p5_deny "TC-110 eval \"gh issue create\" blocked (quote normalization)" 'eval "gh issue create --title x"'
+
+# TC-111: eval with single-quoted body → deny
+assert_p5_deny "TC-111 eval 'gh issue create' blocked (quote normalization)" "eval 'gh issue create --title x'"
+
+# TC-112: backslash line continuation → deny
+# `gh \<newline>  issue \<newline>  create` normalized via \n→space and \→space
+# Using $'...' ANSI-C quoting to preserve literal backslash-newline in the test input.
+assert_p5_deny "TC-112 backslash line continuation blocked" $'gh \\\n  issue \\\n  create --title x'
 
 # --------------------------------------------------------------------------
 # Summary

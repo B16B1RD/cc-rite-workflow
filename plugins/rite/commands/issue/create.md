@@ -156,15 +156,17 @@ Projects を使用するには /rite:init を実行してください。
 
 ## Phase 0: Input Analysis and Completion
 
-> **🚫 MUST NOT — Bypass prohibition (Mode B defense, #475)** — **applies throughout all of Phase 0**.
+> **🚫 MUST NOT — Bypass prohibition (Mode B defense, #475)**
 >
-> From this point until `[create:completed:{N}]` is output by the terminal sub-skill, the orchestrator MUST NOT:
+> Between this point and `[create:completed:{N}]`, the orchestrator MUST NOT:
 >
 > 1. Execute `gh issue create` via the Bash tool (blocked by `pre-tool-bash-guard.sh` hook)
-> 2. Skip the `rite:issue:create-interview` Skill invocation based on a judgment that "information is clear enough already"
-> 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a synthetic "create Issue" step
+> 2. Skip from here directly to output without invoking `rite:issue:create-interview`
+> 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a single synthetic "create Issue" step
 >
-> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path is: Phase 0.1 → Phase 0.3 → Phase 0.4 → Delegation to Interview → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill. This same MUST NOT block is repeated before the Delegation to Interview section as a reminder — both occurrences have identical wording.
+> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
+>
+> **⚠️ Drift guard**: This same block is repeated verbatim before the `## Delegation to Interview` section below. **Both occurrences MUST stay identical** — if you update one, update both. A grep-based check is the only drift detector.
 
 ### 0.1 Extract Information from User Input
 
@@ -435,6 +437,8 @@ When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmati
 > 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a single synthetic "create Issue" step
 >
 > Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
+>
+> **⚠️ Drift guard**: This same block is repeated verbatim at the start of Phase 0 above. **Both occurrences MUST stay identical** — if you update one, update both. A grep-based check is the only drift detector.
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
 

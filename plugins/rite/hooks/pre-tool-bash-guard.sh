@@ -111,25 +111,33 @@ fi
 # create_post_interview / create_delegation / create_post_delegation (i.e., create lifecycle is
 # in progress but not yet terminated by create_completed).
 #
-# Bypass prevention — CMD_CHECK normalization:
-#   Pattern 4 normalizes shell meta-characters (;, &, |, parens, backticks, $) to spaces so that
-#   `true; gh issue create` / `echo x | gh issue create` / `{gh issue create;}` all match the
-#   same `gh issue create` pattern. Pattern 5 reuses this normalization via $PADDED_ALL so that
-#   shell meta-char bypass vectors (`gh issue create;echo x`, `gh issue create|tee`,
-#   `gh issue create&`) are all caught. Backslash line continuations (`gh \\\n  issue \\\n create`)
-#   are also normalized because `\n` is replaced with space and `\` is stripped in the continuation
-#   handling below.
+# Bypass prevention — Pattern 5 normalization:
+#   Pattern 5 normalizes shell meta-characters (;, &, |, parens, braces, backticks, $, quotes) to
+#   spaces so that `true; gh issue create` / `echo x | gh issue create` / `{gh issue create;}` /
+#   `eval "gh issue create"` all match the same `gh issue create` pattern. Backslash line
+#   continuations (`gh \\\n  issue \\\n create`) are also normalized because `\n` and `\` are both
+#   replaced with space.
+#
+# ⚠️ IMPORTANT — Pattern 5 uses $COMMAND (full input) not $CMD_CHECK:
+#   Patterns 1-4 operate on $CMD_CHECK which is $COMMAND with content after the first `<<`
+#   heredoc marker stripped (to avoid false positives from heredoc body content). Pattern 5
+#   MUST NOT use CMD_CHECK because of a legitimate Mode B bypass: `cat <<EOF | sh ... gh issue
+#   create ... EOF` would be stripped to `cat ` and Pattern 5 would silently miss it. Using
+#   $COMMAND directly means heredoc bodies ARE scanned — the false positive risk (PR/Issue
+#   body text containing the literal `gh issue create`) is acceptable because (a) such text
+#   is rare in practice, and (b) the create lifecycle scope filter below limits exposure.
 #
 # Scope exclusions (allow):
 #   - no .rite-flow-state (manual gh invocation outside any workflow)
 #   - .rite-flow-state exists but active=false or phase=create_completed (lifecycle finished)
 #   - .rite-flow-state phase is not create_* (different workflow like /rite:issue:start)
-#   - gh issue subcommands other than `create` / `cre` / `crea` / `creat` prefixes
-#     (list/view/edit/close/comment/delete/pin/reopen/transfer/unpin/unlock/lock are allowed)
+#   - gh issue subcommands other than `cr` prefix (close/comment/delete/edit/list/view/etc. allowed)
+#     — gh CLI resolves `cr` unambiguously to `create` (the only `gh issue` subcommand starting
+#     with `cr`), so `cr` is the minimum unambiguous prefix and must be caught. `c` alone is
+#     ambiguous and gh CLI itself rejects it, so we do not block it here.
 if [ -z "$BLOCKED_PATTERN" ]; then
-  # Normalize CMD_CHECK: shell meta-chars → space, backslash-newline continuations → space,
-  # then collapse multiple spaces. This reuses Pattern 4's normalization approach.
-  CMD_P5="${CMD_CHECK//$'\t'/ }"
+  # Normalize $COMMAND directly (NOT $CMD_CHECK) to catch heredoc-body bypass (#501 HIGH).
+  CMD_P5="${COMMAND//$'\t'/ }"
   CMD_P5="${CMD_P5//$'\n'/ }"
   CMD_P5="${CMD_P5//$'\r'/ }"
   CMD_P5="${CMD_P5//\\/ }"
@@ -142,22 +150,24 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   CMD_P5="${CMD_P5//\}/ }"
   CMD_P5="${CMD_P5//\`/ }"
   CMD_P5="${CMD_P5//\$/ }"
+  CMD_P5="${CMD_P5//\"/ }"
+  CMD_P5="${CMD_P5//\'/ }"
   while [[ "$CMD_P5" == *"  "* ]]; do
     CMD_P5="${CMD_P5//  / }"
   done
   PADDED_P5=" $CMD_P5 "
 
-  # gh subcommand prefix match: gh supports prefix shortcuts like `gh issue c` → create.
-  # However `c` alone is ambiguous (matches close/comment too), and `gh` itself resolves
-  # prefixes only when unambiguous. `create` is unambiguous from `cre` onwards (no other
-  # `issue` subcommand starts with `cre`). Match `create` / `creat` / `crea` / `cre` as
-  # trailing tokens to catch prefix shortcuts while leaving `close` / `comment` / other
-  # subcommands untouched.
-  if [[ "$PADDED_P5" =~ " gh issue "(create|creat|crea|cre)([[:space:]]|$) ]]; then
-    CWD_FROM_INPUT=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD_FROM_INPUT=""
+  # gh subcommand prefix match: gh supports prefix shortcuts when unambiguous.
+  # Among `gh issue` subcommands (close / comment / create / delete / develop / edit / list /
+  # lock / pin / reopen / status / transfer / unlock / unpin / view), only `create` starts with
+  # `cr`, so `cr` is the minimum unambiguous prefix for `create`. `c` alone is ambiguous
+  # (matches close / comment / create) and gh CLI itself rejects it, so we don't block it.
+  # Match `cr` through `create` as trailing tokens, leaving `close` / `comment` / etc. untouched.
+  if [[ "$PADDED_P5" =~ " gh issue "(create|creat|crea|cre|cr)([[:space:]]|$) ]]; then
+    CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
     STATE_ROOT_PATH=""
-    if [ -n "$CWD_FROM_INPUT" ] && [ -d "$CWD_FROM_INPUT" ]; then
-      STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD_FROM_INPUT" 2>/dev/null) || STATE_ROOT_PATH="$CWD_FROM_INPUT"
+    if [ -n "$CWD" ] && [ -d "$CWD" ]; then
+      STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT_PATH="$CWD"
     fi
     # State file lookup: if $STATE_ROOT_PATH is empty (e.g., CWD outside git repo and
     # state-path-resolve.sh failed), skip the check entirely — no state file means no
