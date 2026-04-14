@@ -29,7 +29,9 @@ This reviewer is in the **Hypothetical Exception Category** defined in [`referen
 
 **Reporting requirement**: When using this exception, the reviewer MUST still record the Likelihood classification in the finding's `内容` column (e.g., `Likelihood: Hypothetical (例外カテゴリ: security)`) so the reader knows the severity was retained intentionally rather than auto-downgraded.
 
-The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) still apply — only the Likelihood gate is relaxed.
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) still apply — only the Likelihood gate is relaxed.
+
+**Scope of the exception**: All security findings (no sub-scope limitation — the entire security domain qualifies as adversarial territory, unlike `database.md` / `devops.md` / `dependencies.md` which limit the exception to migration / deployment / CVE findings only).
 
 ## Expertise Areas
 

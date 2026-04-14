@@ -33,7 +33,7 @@ This reviewer is in the **Hypothetical Exception Category** defined in [`referen
 
 **Reporting requirement**: When using this exception, the reviewer MUST record `Likelihood: Hypothetical (例外カテゴリ: dependencies)` in the `内容` column and include the CVE ID or advisory link in the `推奨対応` column.
 
-The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) still apply.
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) still apply.
 
 ## Expertise Areas
 

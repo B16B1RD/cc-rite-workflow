@@ -31,7 +31,7 @@ This reviewer is in the **Hypothetical Exception Category** defined in [`referen
 
 **Reporting requirement**: When using this exception, the reviewer MUST record `Likelihood: Hypothetical (例外カテゴリ: database migration)` in the `内容` column.
 
-The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) still apply.
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) still apply.
 
 ## Expertise Areas
 

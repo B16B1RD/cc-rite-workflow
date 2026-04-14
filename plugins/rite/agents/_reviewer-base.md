@@ -92,7 +92,7 @@ The default confidence threshold is 80. This value is also recorded in `review.c
 
 ## Observed Likelihood Gate
 
-**Confidence and Likelihood are orthogonal independent gates.** A finding may be 100% certain in principle (high Confidence) and still be Hypothetical in practice (the triggering call site cannot be demonstrated in the diff-applied codebase). Both gates must be passed before a finding is included in the **指摘事項** table.
+**Confidence and Likelihood are orthogonal independent gates.** A finding may be 100% certain in principle (high Confidence) and still be Hypothetical in practice (the triggering call site cannot be demonstrated in the diff-applied codebase). **All three gates** (Confidence ≥ 80, Observed Likelihood ≥ Demonstrable, and revert test) must be passed before a finding is included in the **指摘事項** table — see "Necessary conditions for inclusion in 指摘事項" below.
 
 > **Reference**: See [Severity Levels: Observed Likelihood Axis](../references/severity-levels.md#observed-likelihood-axis) for the full axis definition, the Impact × Likelihood Matrix, and the Hypothetical Exception Categories.
 
@@ -102,22 +102,38 @@ A finding may be reported as a **指摘事項** (mandatory fix) only when **all 
 
 1. **Confidence ≥ 80** — the reviewer can cite the exact impact and has verified the issue with Grep/Read.
 2. **Observed Likelihood ≥ Demonstrable** — the reviewer can cite a call site or entrypoint connection in the diff-applied codebase (existing code + new code introduced by this PR). Hypothetical findings are downgraded per the Impact × Likelihood Matrix unless the reviewer is in a Hypothetical Exception Category.
-3. **Revert test passes** — the reviewer has mentally (or, when feasible, actually) verified that reverting the diff would change the buggy behavior. If reverting the diff has no effect on the bug, the finding is a pre-existing issue and belongs in `/rite:investigate`, not in this PR review.
+3. **Revert test passes** — the reviewer has verified that reverting the diff would change the buggy behavior. If reverting the diff has no effect on the bug, the finding is a pre-existing issue and belongs in `/rite:investigate`, not in this PR review.
+
+   **How to perform the revert test** (in order of preference):
+
+   - **Diff-line inspection** (default, always applicable): Examine the `-` and `+` lines in the diff. If the buggy behavior depends on a line that appears only as `+` (introduced by this PR) or on a `-` → `+` replacement that changed semantics, the revert test passes. If the buggy behavior depends only on unchanged context lines (no leading `+`/`-`), the bug is pre-existing and the test fails.
+   - **Git show comparison** (when the diff alone is ambiguous): `git show {base_branch}:path/to/file.ts` retrieves the pre-PR version of the file. Compare with the post-PR version to confirm whether the buggy behavior is present before the PR. This is a read-only operation and respects the [READ-ONLY RULE](#read-only-enforcement) (`git show` is explicitly allowed).
+   - **Runtime reproduction on the base branch** (rarely needed): `git worktree add ../base-check {base_branch}` creates an isolated worktree for running the code on the base branch. This is a read-only worktree operation and respects the [READ-ONLY RULE](#read-only-enforcement).
+
+   "Mental" revert (judging solely from memory of the diff without inspecting the diff hunks or the pre-PR file) is NOT sufficient and MUST NOT be recorded as a passed revert test.
 
 A finding that fails any of these three gates is downgraded to **推奨事項** (Confidence 60-79) or dropped entirely (Confidence < 60, or Likelihood = Hypothetical outside an exception category).
 
 ### Demonstrable: proof of burden
 
-The `内容` column of every **指摘事項** MUST explicitly state which evidence type was used to clear the Likelihood gate. Pick one of:
+The `内容` column of every **指摘事項** MUST explicitly state which evidence type was used to clear the Likelihood gate. Use the standardized `Evidence:` prefix at the end of the `内容` column (after the WHAT + WHY narrative, separated by a newline within the cell):
 
-| Evidence type | Example phrasing in `内容` column |
+**Machine-readable format** (required):
+
+```
+Evidence: <evidence_type> <location_or_observation>
+```
+
+Where `<evidence_type>` is one of the following literal labels:
+
+| `<evidence_type>` label | Example complete line |
 |---|---|
-| Existing call site | `既存呼び出し元 src/api/handlers.ts:45` |
-| New call site (introduced by this PR) | `新規呼び出し元 src/new-feature/init.ts:12 (本 PR で追加)` |
-| Entrypoint connection | `エントリポイント接続: commands/foo.md → hooks/foo.sh L23` |
-| Runtime observation | `実観測: pytest -k test_bar で AssertionError` |
+| `existing_call_site` | `Evidence: existing_call_site src/api/handlers.ts:45` |
+| `new_call_site` | `Evidence: new_call_site src/new-feature/init.ts:12 (本 PR で追加)` |
+| `entrypoint_connection` | `Evidence: entrypoint_connection commands/foo.md → hooks/foo.sh L23` |
+| `runtime_observation` | `Evidence: runtime_observation pytest -k test_bar で AssertionError` |
 
-Findings that do not record an evidence type are assumed to be Hypothetical and will be downgraded.
+The `Evidence:` prefix is the required anchor for downstream mechanical detection (Phase 5 fact-check, dedup, Layer 2 assessment-rules). Findings that do not contain an `Evidence: <label> ...` line in the `内容` column are assumed to be Hypothetical and will be downgraded per the Impact × Likelihood Matrix — no exceptions regardless of how strong the narrative in the `内容` column sounds.
 
 ### Hypothetical downgrade patterns
 

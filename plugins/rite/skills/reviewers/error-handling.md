@@ -47,7 +47,7 @@ This skill is activated when reviewing files matching:
 
 ### Inverse Pattern Prohibition: reviewer 自身の fallback 推奨禁止
 
-> **Reference**: [`agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) "Fail-Fast First" 節を必ず参照すること。
+> **Reference**: [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) "Fail-Fast First" 節を必ず参照すること。
 
 silent swallow を CRITICAL として検出するのと **同じ理由** で、reviewer 自身が「null 返却を追加せよ」「catch して default を返せ」「`?? 0` で安全化せよ」と推奨することも **silent failure の共犯行為** であり、本 reviewer の禁止事項である。
 
@@ -61,7 +61,7 @@ silent swallow を CRITICAL として検出するのと **同じ理由** で、r
 **fallback 推奨が許容されるケース** (本 skill の例外リスト):
 
 - **Graceful degradation in non-critical UI render paths**: ユーザーへの致命的エラー表示よりも degraded UI のほうが許容されるレンダリング経路（例: avatar 表示失敗時のデフォルト画像）。critical path（payment / auth / data write）は対象外。
-- **Idempotent retry boundaries**: べき等な操作で retry 後も失敗した場合に warning ログ + null を返すパターン（呼び出し元が null を明示的に check することが前提）。
+- **Idempotent retry boundaries**: べき等な操作で retry 後も失敗した場合に warning ログ + null を返すパターン（呼び出し元が null を明示的に check することが前提）。**Rationale**: 全面 `throw` は中間リトライ層 (exponential backoff / circuit breaker 等) で unwrap すべきでない例外連鎖を生むため、明示的な null sentinel + caller 側 null-check の方が contract が局所化される。ただし本例外は **retry 境界のみ** に限定 — 通常の呼び出し経路で null 返却を推奨するのは silent-failure 共犯行為なので禁止。呼び出し元が null を check していない既存コードでこのパターンを推奨してはならない (まず呼び出し元の null-check 追加を指摘する)。
 
 上記いずれにも該当しない場合、fallback の推奨は **CRITICAL** 違反として扱う。
 

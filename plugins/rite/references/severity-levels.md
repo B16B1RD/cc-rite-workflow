@@ -52,10 +52,10 @@ The final severity reported in the findings table is determined by combining the
 |---|---|---|---|
 | **CRITICAL** | CRITICAL | CRITICAL | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **HIGH** | HIGH | HIGH | **降格 → 推奨事項** (例外カテゴリを除く) |
-| **MEDIUM** | MEDIUM | MEDIUM | **降格 → LOW or 推奨事項** (例外カテゴリを除く) |
+| **MEDIUM** | MEDIUM | MEDIUM | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **LOW** | LOW | LOW | 報告禁止 |
 
-**Rule**: Hypothetical findings are downgraded one or more levels — typically out of the blocking range (CRITICAL/HIGH) entirely — and surface as **推奨事項** rather than **指摘事項**. The only exceptions are reviewers in the Hypothetical Exception Categories below.
+**Rule**: Hypothetical findings in the CRITICAL / HIGH / MEDIUM rows are all downgraded to **推奨事項** (a single, mechanical destination — no reviewer-side judgment required). LOW × Hypothetical is **報告禁止** because both axes are already at the lowest tier and further downgrade would produce zero-information findings. The only exceptions are reviewers in the Hypothetical Exception Categories below.
 
 ## Hypothetical Exception Categories
 
