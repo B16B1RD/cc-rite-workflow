@@ -618,6 +618,28 @@ set -uo pipefail  # strict mode (fail on undefined vars + preserve pipeline fail
 
 parent_number="{parent_number}"
 
+# --- Placeholder substitution sanity guard ---
+# Phase 4.6 is only reachable when Phase 4.5.1 detected a parent. If the LLM
+# routed into Phase 4.6 without substituting `{parent_number}` (e.g., skip-logic
+# bug or placeholder left literal), subsequent `gh issue view "{parent_number}"`
+# would fail with an "invalid issue number" error on stderr, and the Phase 4.6.0
+# else branch would classify it as "retrieval failed" — which is technically
+# correct but masks the true root cause (routing bug, not API failure).
+# This case statement surfaces the routing bug explicitly instead of silently
+# degrading into the retrieval-failure path.
+case "$parent_number" in
+  ''|'{parent_number}')
+    echo "[DEBUG] p460: parent_number is empty or unsubstituted literal ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6 (caller routing bug)." >&2
+    echo "[CONTEXT] P460_DECISION=skip_routing_bug"
+    exit 0
+    ;;
+  *[!0-9]*)
+    echo "[DEBUG] p460: parent_number is not numeric ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6." >&2
+    echo "[CONTEXT] P460_DECISION=skip_routing_bug"
+    exit 0
+    ;;
+esac
+
 parent_state=""
 p460_err=""
 _rite_close_p460_cleanup() {
@@ -667,6 +689,7 @@ fi
 
 | `P460_DECISION` value | Next action |
 |----------------------|-------------|
+| `skip_routing_bug` | Sanity guard fired: `parent_number` is empty, literal, or non-numeric — Phase 4.6 was entered via a routing bug. Warning emitted to stderr. Skip the rest of Phase 4.6 and proceed to Phase 5. |
 | `skip_retrieval_failed` | Warning already emitted to stderr. Skip the rest of Phase 4.6 (4.6.1–4.6.3) and proceed to Phase 5 (non-blocking). |
 | `skip_already_closed` | Parent is already closed — skip the rest of Phase 4.6 (4.6.1–4.6.3) and proceed to Phase 5. This is the close-side idempotency no-op. |
 | `proceed_to_enumeration` | Parent is open → proceed to 4.6.1. |
@@ -812,13 +835,13 @@ else
 fi
 ```
 
-**LLM routing rule** (Claude reads the `[CONTEXT] P461_DECISION=` sentinel from the bash block's stdout):
+**LLM routing rule** (Claude reads the `[CONTEXT] P461_DECISION=` sentinel from the bash block's stdout). Match by **prefix** (`skip_open_children` is emitted as `skip_open_children; open_count=N` — the `N` value is extracted from the payload and used to fill the `{open_count}` placeholder in the displayed message):
 
-| `P461_DECISION` value | Next action |
-|----------------------|-------------|
-| `skip_empty_children` | Display warning `親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。親の自動クローズをスキップします。` and proceed to Phase 5 (non-blocking, AC-5 spirit) |
-| `skip_open_children` | Display `親 Issue #{parent_number} にはまだ {open_count} 件の未完了子 Issue があります。親の自動クローズはスキップします。` and proceed to Phase 5 |
-| `proceed_to_confirmation` | Proceed to 4.6.2 (User Confirmation) |
+| `P461_DECISION` prefix | Payload | Next action |
+|----------------------|---------|-------------|
+| `skip_empty_children` | (none) | Display warning `親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。親の自動クローズをスキップします。` and proceed to Phase 5 (non-blocking, AC-5 spirit) |
+| `skip_open_children` | `; open_count=N` | Display `親 Issue #{parent_number} にはまだ {open_count} 件の未完了子 Issue があります。親の自動クローズはスキップします。` (substitute `N` for `{open_count}`) and proceed to Phase 5 |
+| `proceed_to_confirmation` | (none) | Proceed to 4.6.2 (User Confirmation) |
 
 ### 4.6.2 User Confirmation
 
@@ -885,8 +908,7 @@ trap '_rite_close_p463_cleanup; exit 143' TERM
 trap '_rite_close_p463_cleanup; exit 129' HUP
 
 _mktemp_or_warn() {
-  local var_name="$1"
-  local label="$2"
+  local label="$1"
   local tmp
   if tmp=$(mktemp 2>/dev/null); then
     printf '%s' "$tmp"
@@ -898,7 +920,7 @@ _mktemp_or_warn() {
 
 # --- Step 1: Retrieve parent's project item ID and project GraphQL id ---
 if [ "$projects_enabled" = "true" ]; then
-  p463_err_s1=$(_mktemp_or_warn "p463_err_s1" "Step 1")
+  p463_err_s1=$(_mktemp_or_warn "Step 1")
   if project_items_json=$(gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -932,7 +954,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     status_update_result="not_registered"
   else
     # --- Step 2: Retrieve Status field id and "Done" option id ---
-    p463_err_s2=$(_mktemp_or_warn "p463_err_s2" "Step 2")
+    p463_err_s2=$(_mktemp_or_warn "Step 2")
     if field_list_json=$(gh project field-list "$project_number" --owner "$owner" --format json 2>"${p463_err_s2:-/dev/null}"); then
       :
     else
@@ -956,7 +978,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       status_update_result="field_lookup_failed"
     else
       # --- Step 3: Update the Status ---
-      p463_err_s3=$(_mktemp_or_warn "p463_err_s3" "Step 3")
+      p463_err_s3=$(_mktemp_or_warn "Step 3")
       if gh project item-edit --project-id "$parent_project_id" --id "$parent_item_id" --field-id "$status_field_id" --single-select-option-id "$done_option_id" >/dev/null 2>"${p463_err_s3:-/dev/null}"; then
         status_update_result="success"
         echo "親 Issue #${parent_number} の Status を 'Done' に更新しました"
@@ -975,7 +997,7 @@ else
 fi
 
 # --- Step 4: Close the parent Issue ---
-p463_err_s4=$(_mktemp_or_warn "p463_err_s4" "Step 4")
+p463_err_s4=$(_mktemp_or_warn "Step 4")
 if gh issue close "$parent_number" --comment "子 Issue がすべて完了したため、自動クローズします。(/rite:issue:close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>"${p463_err_s4:-/dev/null}"; then
   issue_close_result="success"
   echo "親 Issue #${parent_number} を自動クローズしました"

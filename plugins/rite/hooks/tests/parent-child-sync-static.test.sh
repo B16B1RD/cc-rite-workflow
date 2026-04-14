@@ -117,7 +117,7 @@ assert_file_contains "$CLOSE_MD" '"success:field_lookup_failed"\)' \
 assert_file_contains "$CLOSE_MD" '診断コマンド: gh project field-list' \
   "Phase 4.6.3 Step 5: field_lookup_failed case prints diagnostic command (not broken one-liner)"
 # Cycle 2 LOW fix: failed:projects_disabled / failed:not_registered are classified separately
-assert_file_contains "$CLOSE_MD" '"failed:projects_disabled"\|"failed:not_registered"\)' \
+assert_file_contains "$CLOSE_MD" '"failed:projects_disabled"[|]"failed:not_registered"\)' \
   "Phase 4.6.3 Step 5: failed:projects_disabled/not_registered case is separated from catch-all"
 assert_file_contains "$CLOSE_MD" 'AskUserQuestion' \
   "User confirmation via AskUserQuestion (AC-2: not silent auto-close)"
@@ -147,6 +147,18 @@ assert_file_not_contains "$CLOSE_MD" '4\.6\.1–4\.6\.5' \
 # Cycle 2 MEDIUM fix: AC-6 citation is clarified as close-side extension, not literal AC-6
 assert_file_contains "$CLOSE_MD" 'close-side idempotency' \
   "Phase 4.6.0 clarifies close-side idempotency (AC-6 applies to start side, not close side)"
+# Cycle 3 LOW fix: Phase 4.6.0 placeholder sanity guard (unsubstituted / non-numeric parent_number)
+assert_file_contains "$CLOSE_MD" 'P460_DECISION=skip_routing_bug' \
+  "Phase 4.6.0 placeholder sanity guard: skip_routing_bug sentinel exists"
+assert_file_contains "$CLOSE_MD" "''[|]'\\{parent_number\\}'" \
+  "Phase 4.6.0 placeholder sanity guard: empty-or-literal placeholder case pattern exists"
+# Cycle 3 LOW fix: _mktemp_or_warn helper takes exactly 1 arg (label), no dead var_name parameter
+assert_file_contains "$CLOSE_MD" '_mktemp_or_warn\(\) \{' \
+  "Helper _mktemp_or_warn is defined"
+assert_file_not_contains "$CLOSE_MD" 'local var_name=' \
+  "Regression guard: _mktemp_or_warn no longer takes dead var_name parameter"
+assert_file_not_contains "$CLOSE_MD" '_mktemp_or_warn "p463_err_s' \
+  "Regression guard: callers no longer pass dead var_name first arg"
 
 echo ""
 echo "[Group 4] start.md: no inline trackedInIssues simplification (Issue #513 root cause)"
