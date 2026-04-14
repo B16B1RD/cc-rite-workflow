@@ -2,36 +2,60 @@
 
 > **Source**: Extracted from `review.md` Phase 5.3.1-5.3.7. This file is the source of truth for assessment rules.
 
-## 5.3.0 Observed Likelihood Gate (Pre-Assessment Demotion)
+## 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net)
 
-Before 5.3.1 Red blocking rule, apply the following **mechanical** demotion. This is a deterministic rule — AI judgment is NOT involved and is explicitly prohibited (see 5.3.7).
+Before 5.3.1 Red blocking rule, apply the following **mechanical** demotion as a **safety net** for findings that escaped the reviewer-side Observed Likelihood Gate defined in [`_reviewer-base.md`](../../../agents/_reviewer-base.md#observed-likelihood-gate). This is a deterministic rule — AI judgment is NOT involved and is explicitly prohibited (see 5.3.7).
+
+**Position in the gate chain**:
+
+1. **Reviewer-side Gate** (primary): Each reviewer applies the [Impact × Observed Likelihood Matrix](../../../references/severity-levels.md#impact--observed-likelihood-matrix) at finding-emission time. Hypothetical findings are moved to the **推奨事項** section (not the 指摘事項 table) with a single, mechanical destination, and the reviewer records a `Likelihood-Evidence:` marker for every Demonstrable/Observed finding.
+2. **Phase 5.3.0 safety net** (secondary): If a finding slipped into `全指摘事項` without a `Likelihood-Evidence:` marker (reviewer-side Gate was skipped or the reviewer forgot the marker), this Phase demotes the finding to **推奨事項** to match the matrix destination.
+
+**Mechanical detection + demotion**:
 
 ```
 For each finding in 全指摘事項:
-  if reviewer_type in ["security", "database", "devops", "dependencies"]:
-    skip (severity 維持)
+  if reviewer_type in Hypothetical Exception Categories
+     (= {security, database, devops, dependencies}; see severity-levels.md#hypothetical-exception-categories):
+    skip (severity 維持、例外カテゴリ)
   else:
-    if finding lacks evidence of triggering call site:
-      demote severity by one level  (CRITICAL→HIGH→MEDIUM→LOW→removed)
-      if already LOW after demotion: remove from 全指摘事項
+    if finding's 内容 column lacks a `Likelihood-Evidence:` prefix line
+       (machine-detectable anchor defined in _reviewer-base.md):
+      if severity == LOW:
+        remove from 全指摘事項
+        (matrix rule: LOW × Hypothetical は報告禁止)
+      else:
+        move to 推奨事項 section
+        (matrix rule: CRITICAL/HIGH/MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
 ```
 
-**"Evidence of triggering call site"** means the finding's description explicitly cites a `file:line` where the problematic input/flow is observed in the current codebase (not hypothetical). When absent, the finding is demoted mechanically.
+**"Missing `Likelihood-Evidence:` anchor"** means the finding's `内容` column does NOT contain a line matching the regex `^[-[:space:]]*Likelihood-Evidence:[[:space:]]*(existing_call_site|new_call_site|entrypoint_connection|runtime_observation)` (per `_reviewer-base.md` "Demonstrable: proof of burden"). Absence of this anchor is the reviewer-side contract violation that Phase 5.3.0 corrects as safety net.
 
-**Excluded reviewer types** (demotion skipped): `security`, `database`, `devops`, `dependencies`. These reviewers routinely evaluate attack surfaces, destructive operations, infrastructure risk, and supply-chain concerns where hypothetical scenarios are legitimate scope.
+**Excluded reviewer types** (demotion skipped, severity preserved):
 
-**Relation to 5.3.7 (AI independent judgment prohibition)**: The mechanical demotion in 5.3.0 is **explicitly permitted** because it follows a deterministic algorithm with no AI discretion. In contrast, 5.3.7 prohibits AI from applying severity exceptions based on its own judgment (e.g., "this CRITICAL is actually minor"). Mechanical rule = allowed; AI judgment = forbidden.
+| Reviewer | Rationale |
+|----------|-----------|
+| `security` | Attack surface must be evaluated pre-exploitation; waiting for observed exploit is wrong |
+| `database` | Destructive DDL/DML cannot be "wait and see" |
+| `devops` | Infra rollback/deploy paths failure leaves production broken |
+| `dependencies` | Known CVEs and supply-chain risks are inherently "could happen any time" |
 
-**Recording demoted findings**: Record each demoted finding in an `### Observed Likelihood 降格結果` section of the integrated report (Phase 5.4) so the demotion is auditable:
+These 4 categories match [Hypothetical Exception Categories](../../../references/severity-levels.md#hypothetical-exception-categories) exactly. Updates to the exception list MUST be synchronized across `severity-levels.md`, `_reviewer-base.md`, and this section.
+
+**Relation to 5.3.7 (AI independent judgment prohibition)**: The mechanical demotion in 5.3.0 is **explicitly permitted** because it follows a deterministic algorithm (regex match on `Likelihood-Evidence:` anchor + destination fixed by matrix) with no AI discretion. In contrast, 5.3.7 prohibits AI from applying severity exceptions based on its own judgment (e.g., "this CRITICAL is actually minor"). Mechanical rule = allowed; AI judgment = forbidden.
+
+**Recording demoted findings**: Record each demoted finding in an `### Observed Likelihood 降格結果` section of the integrated report (Phase 5.4) so the demotion is auditable. The full table schema is defined by the Phase 5.4 template in `review.md`; this section only specifies the columns:
 
 ```markdown
 ### Observed Likelihood 降格結果
 
 | 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
 |---------|-------|------------|------|---------|
-| HIGH | MEDIUM | {file:line} | {description} | triggering call site 未提示 |
-| LOW | （削除） | {file:line} | {description} | LOW → removed |
+| HIGH | 推奨事項 | {file:line} | {description} | Likelihood-Evidence marker 未提示 (reviewer-side Gate skip) |
+| LOW | （削除） | {file:line} | {description} | LOW × Hypothetical は報告禁止 |
 ```
+
+**Expected firing frequency**: When reviewers correctly apply the reviewer-side Gate, Phase 5.3.0 SHOULD fire zero times (all findings carry `Likelihood-Evidence:` markers). Non-zero firings indicate reviewer-side contract violations that warrant investigation via Wiki Ingest or reviewer training.
 
 ## 5.3.1 Assessment Rules
 
