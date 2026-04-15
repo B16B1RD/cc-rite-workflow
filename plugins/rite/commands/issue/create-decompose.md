@@ -361,7 +361,13 @@ XL（{count} 件の Sub-Issue に分解）
 
 Execute the following script block **once per Sub-Issue** from the Phase 0.8 decomposition list, substituting `{sub_issue_title}`, `{sub_issue_body}`, and `{estimated_complexity}` for each entry. Collect each `sub_issue_url`, `sub_issue_number`, and `sub_project_reg` into lists for use in Phase 0.9.3 and 0.9.6.
 
+> **⚠️ MANDATORY (AC-1 enforcement)**: Before entering the per-Sub-Issue loop, declare the accumulator arrays exactly as shown below. After each successful create, append `sub_issue_number` to `SUB_ISSUE_NUMBERS` and `sub_issue_url` to `SUB_ISSUE_URLS`. Phase 0.9.4 (Sub-issues API linkage) iterates `SUB_ISSUE_NUMBERS`; if the array is empty, linkage is silently skipped and AC-1 is violated. This is the single most common silent-skip risk in this command — do not omit the array bookkeeping under any circumstance.
+
 ```bash
+# === Loop pre-amble (実行前に1回だけ宣言) ===
+SUB_ISSUE_NUMBERS=()
+SUB_ISSUE_URLS=()
+
 # 各 Sub-Issue について（ループ内で実行）
 # Generate body content from Phase 0.8 decomposition and the structure defined below (see "Sub-Issue body structure")
 # Note: Empty check is required because {sub_issue_body} is dynamically generated.
@@ -411,6 +417,15 @@ sub_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
 sub_project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
 # project_id/item_id は XL 分解パスでは後続フェーズで使用しないため省略
 printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
+
+# === MANDATORY: 配列に蓄積（Phase 0.9.4 が参照） ===
+# 数値であることを検証してから追加（"null" や空文字を弾く）
+if [[ "$sub_issue_number" =~ ^[0-9]+$ ]]; then
+  SUB_ISSUE_NUMBERS+=("$sub_issue_number")
+  SUB_ISSUE_URLS+=("$sub_issue_url")
+else
+  echo "⚠️ Sub-Issue '{sub_issue_title}' の番号が不正のため linkage 配列に追加しません: '$sub_issue_number'" >&2
+fi
 ```
 
 **Placeholder descriptions:**
@@ -503,6 +518,16 @@ After bulk Sub-Issue creation in Phase 0.9.2, **always** establish the parent-ch
 ```bash
 # 各 Sub-Issue について Sub-issues API で親に紐付ける
 # SUB_ISSUE_NUMBERS は Phase 0.9.2 で収集した sub_issue_number の配列
+
+# === MANDATORY guard: 配列が空の場合は ERROR で停止 ===
+# 0.9.2 で配列蓄積を忘れると ${SUB_ISSUE_NUMBERS[@]} が空になり、
+# linkage がサイレント no-op となる (AC-1 違反)。
+# feedback_e2e_no_stop_before_review に従い、このケースは silent skip ではなく fail-fast。
+if [ "${#SUB_ISSUE_NUMBERS[@]}" -eq 0 ]; then
+  echo "ERROR: SUB_ISSUE_NUMBERS が空です。Phase 0.9.2 のループ内で 'SUB_ISSUE_NUMBERS+=(\"\$sub_issue_number\")' が抜けている可能性があります。Sub-issues API linkage を実行できません (AC-1 違反)。" >&2
+  exit 1
+fi
+
 link_failures=0
 for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
   link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
@@ -517,6 +542,11 @@ for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
       printf '%s' "$link_result" | jq -r '.warnings[]' \
         | while read -r w; do echo "⚠️ $w" >&2; done
       echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
       link_failures=$((link_failures + 1))
       ;;
   esac

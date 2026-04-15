@@ -218,7 +218,8 @@ project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
 printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
 
 # Sub-issues API linkage (mandatory but non-blocking) — see references/graphql-helpers.md#addsubissue-helper
-if [ -n "$sub_issue_number" ] && [ "$sub_issue_number" != "0" ]; then
+# Note: jq -r で field 欠落時は "null" 文字列が返るため、正規表現で数値であることを確認する
+if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
   link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
     "{owner}" "{repo}" "{parent_issue_number}" "$sub_issue_number")
   link_status=$(printf '%s' "$link_result" | jq -r '.status')
@@ -232,7 +233,13 @@ if [ -n "$sub_issue_number" ] && [ "$sub_issue_number" != "0" ]; then
         | while read -r w; do echo "⚠️ $w" >&2; done
       echo "⚠️ Sub-issues API linkage failed for #$sub_issue_number; body meta fallback in place" >&2
       ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_issue_number (msg: $link_msg)" >&2
+      ;;
   esac
+else
+  echo "⚠️ sub_issue_number が不正のため Sub-issues API linkage をスキップします: '$sub_issue_number'" >&2
 fi
 ```
 

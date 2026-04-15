@@ -520,7 +520,7 @@ esac
 }
 ```
 
-**Exit code policy**: The helper exits `0` for `ok`, `already-linked`, **and** `failed`. Callers MUST inspect the `status` field to determine success. `1` is reserved for fatal argument errors.
+**Exit code policy**: The helper exits `0` for `ok`, `already-linked`, **and** `failed`. Callers MUST inspect the `status` field to determine success. Exit code `1` is reserved exclusively for fatal argument errors (missing/non-numeric arguments, self-reference). All other failure modes — including network errors, permission denials, GraphQL errors, and exhausted retries — are surfaced via `status: failed` with exit `0` and warnings populated in the JSON output. Callers can therefore safely use the helper in pipelines without worrying about non-fatal failures aborting `set -e` scripts.
 
 ### Underlying GraphQL
 

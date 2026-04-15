@@ -52,11 +52,21 @@ else
   # Search open Issues whose body contains the Parent Issue meta marker.
   # Note: the search API does not parse arbitrary body patterns reliably,
   # so we list open Issues and inspect bodies locally.
+  # Limit raised to 1000 (from 200) to cover larger backlogs. Override via
+  # BACKFILL_LIMIT env var if needed.
+  DISCOVER_LIMIT="${BACKFILL_LIMIT:-1000}"
   mapfile -t TARGET_CHILDREN < <(
-    gh issue list --repo "$OWNER/$REPO" --state open --limit 200 \
+    gh issue list --repo "$OWNER/$REPO" --state open --limit "$DISCOVER_LIMIT" \
       --json number,body \
       --jq '.[] | select(.body != null and (.body | test("Parent Issue:\\s*#[0-9]+"))) | .number'
   )
+  # Detect potential truncation: if hit count meets the cap, the discovery
+  # may be incomplete. Warn explicitly so silent under-coverage is impossible.
+  if [ "${#TARGET_CHILDREN[@]}" -ge "$DISCOVER_LIMIT" ]; then
+    echo "⚠️ ヒット件数が discovery limit (${DISCOVER_LIMIT}) に達しました。" >&2
+    echo "   未補修の Issue が残っている可能性があります。BACKFILL_LIMIT 環境変数で上限を" >&2
+    echo "   引き上げるか、対象を個別指定して再実行してください。" >&2
+  fi
 fi
 
 if [ "${#TARGET_CHILDREN[@]}" -eq 0 ]; then
@@ -130,6 +140,13 @@ for child in "${TARGET_CHILDREN[@]}"; do
       printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null \
         | while read -r w; do echo "   ⚠️ $w" >&2; done
       echo "❌ #$child: linkage failed (parent #$parent)"
+      failed_count=$((failed_count + 1))
+      ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      # JSON parse 失敗や link-sub-issue.sh の将来拡張で空文字/未知値が
+      # 返った場合、サイレントロスを起こさず failed として計上する。
+      echo "❌ #$child: unexpected link status '$status' (msg: $message)" >&2
       failed_count=$((failed_count + 1))
       ;;
   esac

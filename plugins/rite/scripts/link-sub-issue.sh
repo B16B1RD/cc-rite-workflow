@@ -104,22 +104,53 @@ if ! gh api graphql \
   -F child="$CHILD_NUMBER" \
   > "$GH_OUT_FILE" 2>"$GH_ERR_FILE"; then
   err=$(cat "$GH_ERR_FILE")
-  add_warning "Failed to resolve issue node IDs: ${err:0:200}"
-  output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "node id resolution failed"
+  err_lc=$(printf '%s' "$err" | tr '[:upper:]' '[:lower:]')
+  # Distinguish permission/auth failures from generic resolution errors
+  # so operators can disambiguate "token scope" vs "wrong issue number".
+  case "$err_lc" in
+    *"unauthorized"*|*"forbidden"*|*"http 401"*|*"http 403"*|*"requires authentication"*|*"resource not accessible"*)
+      add_warning "Permission denied resolving issue node IDs (check 'gh auth status' / token scopes): ${err:0:200}"
+      output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "node id resolution failed (permission denied)"
+      ;;
+    *)
+      add_warning "Failed to resolve issue node IDs: ${err:0:200}"
+      output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "node id resolution failed"
+      ;;
+  esac
   exit 0
 fi
 
 PARENT_ID=$(jq -r '.data.repository.parent.id // empty' "$GH_OUT_FILE")
 CHILD_ID=$(jq -r '.data.repository.child.id // empty' "$GH_OUT_FILE")
 
+# Surface GraphQL-level errors from a successful HTTP response (e.g. partial
+# data + errors[]), to disambiguate "not found" from "permission denied".
+NODE_ERRORS=$(jq -r '.errors // [] | map(.type + ": " + .message) | join("; ")' "$GH_OUT_FILE" 2>/dev/null || echo "")
+
 if [ -z "$PARENT_ID" ]; then
-  add_warning "Parent Issue #$PARENT_NUMBER not found or inaccessible"
-  output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "parent not found"
+  case "$(printf '%s' "$NODE_ERRORS" | tr '[:upper:]' '[:lower:]')" in
+    *"forbidden"*|*"unauthorized"*)
+      add_warning "Parent Issue #$PARENT_NUMBER inaccessible (permission denied): $NODE_ERRORS"
+      output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "parent inaccessible (permission denied)"
+      ;;
+    *)
+      add_warning "Parent Issue #$PARENT_NUMBER not found${NODE_ERRORS:+ ($NODE_ERRORS)}"
+      output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "parent not found"
+      ;;
+  esac
   exit 0
 fi
 if [ -z "$CHILD_ID" ]; then
-  add_warning "Child Issue #$CHILD_NUMBER not found or inaccessible"
-  output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "child not found"
+  case "$(printf '%s' "$NODE_ERRORS" | tr '[:upper:]' '[:lower:]')" in
+    *"forbidden"*|*"unauthorized"*)
+      add_warning "Child Issue #$CHILD_NUMBER inaccessible (permission denied): $NODE_ERRORS"
+      output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "child inaccessible (permission denied)"
+      ;;
+    *)
+      add_warning "Child Issue #$CHILD_NUMBER not found${NODE_ERRORS:+ ($NODE_ERRORS)}"
+      output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "child not found"
+      ;;
+  esac
   exit 0
 fi
 
@@ -147,11 +178,19 @@ is_idempotent_error() {
 
 is_retryable_error() {
   # 5xx server errors and transient network failures are retryable.
-  local err="$1"
-  case "$err" in
-    *"HTTP 50"*|*"HTTP 502"*|*"HTTP 503"*|*"HTTP 504"*) return 0 ;;
-    *"timeout"*|*"Timeout"*|*"timed out"*) return 0 ;;
+  # Pattern set:
+  #   - HTTP 5xx: any "HTTP 5XX" where XX is two digits (covers 500-599)
+  #   - Timeouts: connection timeouts, request deadlines
+  #   - Connection-level: reset / refused / unreachable network
+  #   - DNS: temporary failure in name resolution
+  local err_lc
+  err_lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  case "$err_lc" in
+    *"http 5"[0-9][0-9]*) return 0 ;;
+    *"timeout"*|*"timed out"*) return 0 ;;
     *"connection reset"*|*"connection refused"*) return 0 ;;
+    *"network is unreachable"*|*"no route to host"*) return 0 ;;
+    *"temporary failure in name resolution"*) return 0 ;;
   esac
   return 1
 }
@@ -168,9 +207,12 @@ while [ "$attempt" -lt "$MAX_RETRIES" ]; do
     -f parentId="$PARENT_ID" \
     -f childId="$CHILD_ID" \
     > "$GH_OUT_FILE" 2>"$GH_ERR_FILE"; then
-    # Check for GraphQL-level errors in the response body
+    # Check for GraphQL-level errors in the response body.
+    # `jq -r 'map(.message) | join(...)'` always yields a plain string
+    # (empty when errors[] is absent), so a non-empty check is sufficient —
+    # no separate "null" comparison needed.
     gql_errors=$(jq -r '.errors // [] | map(.message) | join("; ")' "$GH_OUT_FILE" 2>/dev/null || echo "")
-    if [ -n "$gql_errors" ] && [ "$gql_errors" != "null" ]; then
+    if [ -n "$gql_errors" ]; then
       if is_idempotent_error "$gql_errors"; then
         output_result "already-linked" "$PARENT_NUMBER" "$CHILD_NUMBER" "linked #$CHILD_NUMBER as sub-issue of #$PARENT_NUMBER (already linked)"
         exit 0
