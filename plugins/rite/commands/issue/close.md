@@ -560,7 +560,19 @@ commit_err=""
 emit_err=""
 trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 
-commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null) || commit_err="/dev/null"
+# verified-review cycle 4 HIGH #3: mktemp failure must NOT silently swallow
+# wiki-ingest-commit.sh stderr. See pr/review.md Phase 6.5.W.2 for the
+# detailed rationale; this block is kept symmetric across review / fix /
+# close to preserve the single-source principle for the wiki commit path.
+if ! commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture — script stderr will be suppressed" >&2
+  echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
+  fallback_iter="{issue_number}-$(date +%s)"
+  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in issue/close.md Phase 4.4.W.2; iteration_id=$fallback_iter"
+  echo "$fallback_sentinel"
+  echo "$fallback_sentinel" >&2
+  commit_err="/dev/null"
+fi
 commit_rc=0
 # LOW #9 / #10 — issue/close.md では PR 番号が scope に存在しないため、
 # workflow-incident-emit.sh の --pr-number には literal 0 を渡す。
@@ -576,6 +588,8 @@ else
     head -5 "$commit_err" | sed 's/^/  /' >&2
   fi
   # MEDIUM #5 — exit 2 は legitimate skip (wiki disabled / wiki branch missing).
+  # verified-review cycle 4 CRITICAL #1 — exit 4 = commit landed locally
+  # but origin push failed; emit dedicated wiki_ingest_push_failed sentinel.
   case "$commit_rc" in
     2)
       echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
@@ -595,6 +609,30 @@ else
         echo "$fallback_sentinel"
         echo "$fallback_sentinel" >&2
         echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+      fi
+      ;;
+    4)
+      # CRITICAL #1: commit landed locally, push failed. Emit dedicated sentinel.
+      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
+      if [ -n "${commit_out:-}" ]; then
+        echo "$commit_out"
+      fi
+      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type wiki_ingest_push_failed \
+          --details "wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during issue/close.md Phase 4.4.W.2" \
+          --pr-number 0 2>"${emit_err:-/dev/null}"); then
+        if [ -n "$sentinel_line" ]; then
+          echo "$sentinel_line"
+          echo "$sentinel_line" >&2
+        fi
+      else
+        fallback_iter="{issue_number}-$(date +%s)"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed commit_rc=4; iteration_id=$fallback_iter"
+        echo "$fallback_sentinel"
+        echo "$fallback_sentinel" >&2
+        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
         [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
       fi
       ;;

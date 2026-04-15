@@ -1218,10 +1218,13 @@ Invoke `skill: "rite:pr:fix"`.
 | `skill_load_failure` | Orchestrator post-condition check (#366) | AskUserQuestion → register Issue / skip |
 | `hook_abnormal_exit` | Skill internal failure paths (#366) | AskUserQuestion → register Issue / skip |
 | `manual_fallback_adopted` | Orchestrator fallback prompts (#366) | AskUserQuestion → register Issue / skip |
-| `wiki_ingest_skipped` | review/fix/close Phase X.X.W when `wiki.enabled=false` or `wiki.auto_ingest=false` (#524) | AskUserQuestion → register Issue / skip — typically the user will skip these because configuration disable is intentional, but the prompt makes the state visible |
-| `wiki_ingest_failed` | review/fix/close Phase X.X.W when `wiki-ingest-trigger.sh` exits with a non-zero / non-2 code (#524) | AskUserQuestion → register Issue / skip — recommended to register because the trigger is supposed to be reliable |
+| `wiki_ingest_skipped` | review/fix/close Phase X.X.W when `wiki.enabled=false` / `wiki.auto_ingest=false` (#524), **OR** `wiki-ingest-commit.sh` exits 2 (wiki branch missing locally — fresh clone, #528 PR #529) | AskUserQuestion → register Issue / skip. Two sub-cases: (a) **configuration disable** (`wiki.enabled=false` / `auto_ingest=false`) is intentional — user typically skips; (b) **`commit_branch_missing`** is an operational state on fresh clones — recommended action is to run `git fetch origin wiki:wiki` or `/rite:wiki:init` and re-run the enclosing phase, rather than creating a tracking Issue |
+| `wiki_ingest_failed` | review/fix/close Phase X.X.W when `wiki-ingest-trigger.sh` exits non-zero / non-2 (#524), **OR** `wiki-ingest-commit.sh` exits non-0/2/4 (git stash/checkout/commit failure, #528 PR #529) | AskUserQuestion → register Issue / skip — recommended to register because both trigger and commit paths are supposed to be reliable |
+| `wiki_ingest_push_failed` | review/fix/close Phase X.X.W when `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed (#528 PR #529, addresses the silent-success regression) | AskUserQuestion → register Issue / skip — recommended to **register** because the local commit is preserved but origin diverges from local. Manual recovery: `git push origin wiki` on the enclosing dev branch once connectivity / auth is restored |
 
-The processing flow below applies uniformly to all five types — there is no per-type branching beyond the table above.
+The processing flow below applies uniformly to all six types — there is no per-type branching beyond the table above.
+
+**Sub-case routing note for `wiki_ingest_skipped` with `reason=commit_branch_missing`**: when the sentinel `details` field or the accompanying `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` status line indicates the operational fresh-clone sub-case, the AskUserQuestion offered here defaults to **"skip"** (no tracking Issue) and shows the recovery hint as the primary option: run `git fetch origin wiki:wiki` on the current working tree, then re-run the enclosing phase. Creating a tracking Issue for `commit_branch_missing` would be an anti-pattern because the state is transient and user-resolvable within seconds. The configuration-disable sub-case retains the existing behaviour (the prompt makes the state visible but user typically skips).
 
 **Workflow Incident Sentinel Visibility Rule** (cycle 1 review C2 fix; cycle 2 review M-NEW1 fix — pr/create.md 追加; #436 fix — inline 実行に移行):
 
@@ -1957,7 +1960,8 @@ Scan the recent conversation context for these patterns (the same context the Ph
 | `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=disabled` | `skipped_disabled_count` |
 | `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `skipped_auto_off_count` |
 | `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` | `skipped_commit_branch_missing_count` (layer 0 / PR #529: `wiki-ingest-commit.sh` exited 2 because the wiki branch does not exist locally — treated as a legitimate skip separate from `wiki.enabled=false`/`auto_ingest=false`) |
-| `[CONTEXT] WIKI_INGEST_FAILED=1; reason=...` | `failed_count` |
+| `[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_*` or `reason=trigger_exit_*` | `failed_count` (all `commit_rc_*` values fold into `failed_count` — `commit_rc_3` = git stash/checkout/commit failure, `commit_rc_5+` = future exit codes. Only `commit_rc_4` is segregated into `push_failed_count` below because it represents the commit-landed-push-failed sub-case) |
+| `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` | `push_failed_count` (PR #529 CRITICAL fix: `wiki-ingest-commit.sh` exited 4 — commit landed on local wiki branch but origin push failed. Local branch diverges from origin. Manual recovery: `git push origin wiki`) |
 
 Also retrieve the current wiki branch state (best-effort — never block on this):
 
@@ -1986,7 +1990,8 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 | ⚠️ SKIPPED (disabled) | {skipped_disabled_count} |
 | ⚠️ SKIPPED (auto_ingest_off) | {skipped_auto_off_count} |
 | ⚠️ SKIPPED (commit_branch_missing) | {skipped_commit_branch_missing_count} |
-| ❌ FAILED (trigger エラー) | {failed_count} |
+| ❌ FAILED (trigger / commit エラー) | {failed_count} |
+| ❌ PUSH_FAILED (commit は成功、push が失敗) | {push_failed_count} |
 
 - **wiki branch 最終 commit**: {last_wiki_commit or "(wiki branch 未作成)"}
 ```

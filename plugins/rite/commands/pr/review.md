@@ -3988,7 +3988,24 @@ commit_err=""
 emit_err=""
 trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 
-commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null) || commit_err="/dev/null"
+# verified-review cycle 4 HIGH #3: mktemp failure must NOT silently swallow
+# wiki-ingest-commit.sh stderr. The previous `|| commit_err="/dev/null"`
+# fallback made the `[ -s "$commit_err" ]` guard no-op and routed every
+# git/shell failure from the script to /dev/null. On a /tmp-broken host
+# the caller would see an exit code but no diagnostic. Emit an explicit
+# sentinel via workflow-incident-emit.sh so Phase 5.4.4.1 treats mktemp
+# failure itself as a workflow incident.
+if ! commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture — script stderr will be suppressed" >&2
+  echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
+  # Emit a hook_abnormal_exit sentinel directly (workflow-incident-emit.sh
+  # may itself be unable to create tempfiles, so fall back to inline).
+  fallback_iter="{pr_number}-$(date +%s)"
+  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in pr/review.md Phase 6.5.W.2; iteration_id=$fallback_iter"
+  echo "$fallback_sentinel"
+  echo "$fallback_sentinel" >&2
+  commit_err="/dev/null"
+fi
 commit_rc=0
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
   # Success — the script prints exactly one status line to stdout, e.g.
@@ -4027,6 +4044,40 @@ else
         echo "$fallback_sentinel"
         echo "$fallback_sentinel" >&2
         echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+      fi
+      ;;
+    4)
+      # verified-review cycle 4 CRITICAL #1: exit 4 = commit landed locally
+      # but origin push failed. The previous design was exit 0 with only a
+      # stdout `push=failed` marker, which was never parsed by this caller,
+      # so flaky remote / auth expiry / rate limit drove all push failures
+      # through the success branch silently. Now wiki-ingest-commit.sh
+      # exits 4 specifically for this case, and we emit a dedicated
+      # `wiki_ingest_push_failed` sentinel so Phase 5.4.4.1 can register
+      # the incident. The commit itself is preserved on the local wiki
+      # branch; the caller should be aware that push retry is needed.
+      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
+      # Preserve the stdout status line from the script so the caller sees
+      # `committed=N; head=<sha>; push=failed` and can trace the local commit.
+      if [ -n "${commit_out:-}" ]; then
+        echo "$commit_out"
+      fi
+      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type wiki_ingest_push_failed \
+          --details "wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during pr/review.md Phase 6.5.W.2" \
+          --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+        if [ -n "$sentinel_line" ]; then
+          echo "$sentinel_line"
+          echo "$sentinel_line" >&2
+        fi
+      else
+        fallback_iter="{pr_number}-$(date +%s)"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed commit_rc=4; iteration_id=$fallback_iter"
+        echo "$fallback_sentinel"
+        echo "$fallback_sentinel" >&2
+        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
         [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
       fi
       ;;

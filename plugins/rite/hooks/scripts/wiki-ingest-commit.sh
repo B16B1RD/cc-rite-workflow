@@ -11,8 +11,11 @@
 # committer that moves those files onto the wiki branch. Grep for
 # `wiki-ingest-trigger.sh` when auditing the wiki capture / commit path.
 # The two scripts form a tightly-coupled pair despite living in different
-# directories (the placement asymmetry is a transitional state tracked
-# for future cleanup — both should eventually live in hooks/scripts/).
+# directories. The placement asymmetry is transitional — both should
+# eventually live in hooks/scripts/. No dedicated tracking Issue exists
+# yet for the consolidation; grep this file for "placement asymmetry"
+# when the cleanup Issue is filed so the matching comment in
+# wiki-ingest-trigger.sh (if any) can be updated together.
 #
 # This script is the shell-only counterpart of commands/wiki/ingest.md
 # Phase 5.1 Block A + Block B. It exists because the markdown-based Phase
@@ -50,15 +53,22 @@
 #   0  success (pending raw sources were committed, OR there were none)
 #   1  argument / environment error (not a git repo, detached HEAD, etc.)
 #   2  wiki feature disabled or wiki branch missing (treated as skip)
-#   3  git operation failure (stash / checkout / commit / push)
+#   3  git operation failure (stash / checkout / commit — push NOT included)
+#   4  push failed after successful local commit (commit landed locally,
+#      but origin push failed — caller MUST emit wiki_ingest_push_failed
+#      sentinel so the incident layer can observe the silent regression
+#      that occurred in pre-PR-529 designs where push=failed was silent).
 #
 # Notes:
 #   - Designed to be idempotent: when called with no pending raw sources,
 #     it exits 0 without touching git state.
 #   - Preserves any unrelated uncommitted work in the current branch via
 #     full `git stash push -u`, and pops the stash afterwards.
-#   - The current branch is always restored before exit, via cleanup trap,
-#     even on signal (INT/TERM/HUP) or error.
+#   - The current branch is restored before exit on the happy path. On
+#     cleanup failure (checkout-back failing or stash pop failing), a
+#     manual-recovery hint is printed to stderr and the staging directory
+#     is preserved so the user can recover by hand. This is best-effort,
+#     not absolute — see the cleanup_body function for the exact semantics.
 #   - Emits a structured status line to stdout on success so the caller
 #     (review.md / fix.md / close.md Phase X.X.W) can observe the result:
 #       [wiki-ingest-commit] committed=<N>; branch=<wiki>; head=<sha>
@@ -67,6 +77,13 @@
 # --- END HEADER ---
 
 set -euo pipefail
+
+# verified-review cycle 4 LOW (devops): suppress credential prompts.
+# In CI / hook contexts this script runs non-interactively; a git push
+# requiring auth prompts would otherwise hang the hook forever. Force
+# git to fail fast on missing credentials instead of prompting.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 
 # -----------------------------------------------------------------------
 # Option parsing
@@ -99,6 +116,29 @@ fi
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
+# verified-review cycle 4 MEDIUM (devops): advisory lock for parallel safety.
+# Multiple concurrent invocations (e.g. sprint team-execute running fix /
+# review / close on different issues in parallel terminals) share the same
+# working tree and cannot safely run git checkout/stash/commit concurrently.
+# Acquire a non-blocking advisory lock; on contention, exit 0 with an
+# explicit skip marker so the caller treats it as a best-effort no-op and
+# the next cycle picks up the raw sources. Lock file under repo_root so a
+# stale /tmp lock from a crashed process still points back to the project.
+#
+# flock may not be available (macOS without util-linux, minimal containers).
+# When absent we skip the lock acquisition entirely and accept the race —
+# this matches the pre-fix behaviour, so parallel callers are no worse off
+# than they were before this guard was added.
+if command -v flock >/dev/null 2>&1; then
+  mkdir -p .rite/state 2>/dev/null || true
+  exec 9>.rite/state/wiki-ingest-commit.lock
+  if ! flock -n 9; then
+    echo "[wiki-ingest-commit] skipped; reason=concurrent-invocation" >&2
+    echo "[wiki-ingest-commit] committed=0; branch=unknown; reason=concurrent-invocation"
+    exit 0
+  fi
+fi
+
 if [[ ! -f "rite-config.yml" ]]; then
   echo "ERROR: rite-config.yml not found at $repo_root" >&2
   echo "  hint: run /rite:init first" >&2
@@ -113,6 +153,14 @@ fi
 # -----------------------------------------------------------------------
 parse_wiki_scalar() {
   # $1 = key name (e.g. "enabled" / "branch_name" / "branch_strategy")
+  #
+  # verified-review cycle 4 LOW (security/defence-in-depth): key value
+  # extraction uses awk -v rather than sed with interpolated $key. Current
+  # callers pass hardcoded literal keys only, so there is no injection
+  # path today, but sed "s/.*${key}:[[:space:]]*//" would treat sed
+  # metacharacters in $key as pattern metacharacters if a future caller
+  # ever passed user-controlled input. awk -v k=... keeps $key in a
+  # variable binding that is never re-parsed as a regex.
   local key="$1"
   local section line val
   section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null || true)
@@ -124,7 +172,10 @@ parse_wiki_scalar() {
   [[ -z "$line" ]] && return 0
   val=$(printf '%s' "$line" \
     | sed 's/[[:space:]]#.*//' \
-    | sed "s/.*${key}:[[:space:]]*//" \
+    | awk -v k="$key" '{
+        sub("^[[:space:]]*" k ":[[:space:]]*", "")
+        print
+      }' \
     | tr -d '[:space:]"'"'")
   printf '%s' "$val"
 }
@@ -174,6 +225,15 @@ esac
 # -----------------------------------------------------------------------
 pending_files=()
 if [[ -d ".rite/wiki/raw" ]]; then
+  # verified-review cycle 4 MEDIUM (error-handling): surface awk stderr
+  # instead of swallowing it entirely. awk IO errors / binary exec failure
+  # / malformed / truncated frontmatter used to fall through to the `*)`
+  # case as pending, which is a fail-open default but silenced the reason.
+  # Capture stderr to a tempfile and, if non-empty, emit a WARNING so the
+  # operator understands why the file was treated as pending.
+  fm_err=""
+  trap 'rm -f "${fm_err:-}"' EXIT INT TERM HUP
+  fm_err=$(mktemp /tmp/rite-wic-fm-err-XXXXXX 2>/dev/null || echo "")
   while IFS= read -r -d '' f; do
     # extract `ingested` value from YAML frontmatter
     ingested_val=$(awk '
@@ -185,13 +245,20 @@ if [[ -d ".rite/wiki/raw" ]]; then
         print
         exit
       }
-    ' "$f" 2>/dev/null || true)
+    ' "$f" 2>"${fm_err:-/dev/null}" || true)
+    if [[ -n "$fm_err" ]] && [[ -s "$fm_err" ]]; then
+      echo "WARNING: frontmatter parse produced stderr for '$f' — treating as pending" >&2
+      head -n 3 "$fm_err" | sed 's/^/  awk: /' >&2
+      : > "$fm_err" 2>/dev/null || true
+    fi
     ingested_norm=$(printf '%s' "$ingested_val" | tr -d '"'"'" | tr '[:upper:]' '[:lower:]')
     case "$ingested_norm" in
       true|yes|1) ;;  # already ingested → skip
       *) pending_files+=("$f") ;;
     esac
   done < <(find .rite/wiki/raw -type f -name '*.md' -print0 2>/dev/null || true)
+  [[ -n "$fm_err" ]] && rm -f "$fm_err"
+  trap - EXIT INT TERM HUP
 fi
 
 if [[ "${#pending_files[@]}" -eq 0 ]]; then
@@ -276,7 +343,12 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
   if [[ -n "$ref_err" ]] && [[ -s "$ref_err" ]]; then
     sed 's/^/  git: /' "$ref_err" >&2
   fi
-  echo "  hint: run /rite:wiki:init first, or fetch the branch from origin" >&2
+  echo "  hint (run one of these, in order of preference):" >&2
+  echo "    1) git fetch origin ${wiki_branch}:${wiki_branch}  # fresh clone: create local branch from origin/${wiki_branch}" >&2
+  echo "    2) /rite:wiki:init                                  # uninitialized repo: initialize Wiki structure" >&2
+  echo "  NOTE: Issue #528 trade-off — this exit 2 silently defers raw source commit" >&2
+  echo "         until the wiki branch exists locally. On a fresh clone the caller" >&2
+  echo "         emits wiki_ingest_skipped with reason=commit_branch_missing." >&2
   # Explicit cleanup + disarm the mini-trap so the main cleanup_body trap
   # (installed later at line ~380) can take over without double-remove.
   [[ -n "$ref_err" ]] && rm -f "$ref_err"
@@ -291,7 +363,26 @@ if [[ -z "$current_branch" ]]; then
   exit 1
 fi
 
-stage_dir=$(mktemp -d /tmp/rite-wiki-stage-XXXXXX)
+# verified-review cycle 4 HIGH #2: scope-limited mini-trap for stage_dir.
+# Same class of bug as the ref_err leak fixed in cycle 3 LOW #3 (lines
+# 269-270, 282-283). stage_dir is created at this line but the main
+# cleanup_body trap is not installed until line ~400. A signal arriving
+# between mktemp and trap install would orphan /tmp/rite-wiki-stage-XXXXXX.
+# Install a scope-limited mini-trap immediately after mktemp and disarm it
+# right before the main trap is installed, so the orphan race window is
+# closed without double-cleanup with cleanup_body.
+#
+# Also add explicit error handling for mktemp -d failure (cycle 4 devops LOW).
+# set -euo pipefail would abort but the user would see only the mktemp
+# message with no context — emit an explicit ERROR first.
+stage_dir=""
+trap 'rm -rf "${stage_dir:-}" 2>/dev/null || true' EXIT INT TERM HUP
+if ! stage_dir=$(mktemp -d /tmp/rite-wiki-stage-XXXXXX 2>/dev/null); then
+  echo "ERROR: failed to create staging directory under /tmp" >&2
+  echo "  hint: check /tmp permission / disk space / inode exhaustion / read-only filesystem" >&2
+  trap - EXIT INT TERM HUP
+  exit 3
+fi
 stash_pushed=false
 checked_out_wiki=false
 
@@ -345,7 +436,9 @@ cleanup_body() {
       stash_pushed=false
     else
       echo "WARNING: cleanup failed to pop stash" >&2
-      echo "  manual recovery: git stash list" >&2
+      echo "  manual recovery:" >&2
+      echo "    git stash list | grep rite-wiki-ingest-commit-stash" >&2
+      echo "    git stash pop  # resolve conflicts if any" >&2
     fi
   fi
   # Restore staged raw sources whenever we did not complete successfully,
@@ -365,9 +458,14 @@ cleanup_body() {
       while IFS= read -r -d '' staged; do
         rel="${staged#$stage_dir/}"
         target=".rite/wiki/raw/${rel}"
-        mkdir -p "$(dirname "$target")" 2>/dev/null || true
+        if ! mkdir -p "$(dirname "$target")" 2>/dev/null; then
+          echo "WARNING: cleanup failed to recreate target directory for '$target'" >&2
+          continue
+        fi
         if cp -f "$staged" "$target" 2>/dev/null; then
           restored=$((restored + 1))
+        else
+          echo "WARNING: cleanup failed to copy '$staged' -> '$target'" >&2
         fi
       done < <(find "$stage_dir" -type f -print0 2>/dev/null || true)
       echo "INFO: restored ${restored}/${#pending_files[@]} raw source(s) back to the dev branch working tree after failure (rc=$rc)" >&2
@@ -390,6 +488,11 @@ cleanup_body() {
   # exits (INT/TERM/HUP) do not leak /tmp/rite-wic-git-err-*.
   [[ -n "${git_err:-}" ]] && rm -f "$git_err" 2>/dev/null || true
 }
+# Disarm the stage_dir mini-trap before installing cleanup_body traps, so
+# the main cleanup_body is the single authority for stage_dir removal /
+# staging restore (avoiding double-cleanup race).
+trap - EXIT INT TERM HUP
+
 # Signal-specific handlers pass explicit exit codes so cleanup_body sees
 # the real termination reason rather than a stale `$?` from the last
 # happy-path echo. EXIT handler preserves the normal `$?` capture.
@@ -407,18 +510,40 @@ for f in "${pending_files[@]}"; do
 done
 
 # Step 2: remove the pending raw files from the dev branch working tree
-# so they are not captured by the stash in Step 3. We only remove files
-# that are untracked — tracked files are left alone as a safety net
-# against accidental deletion of reviewed content.
+# so they are not captured by the stash in Step 3.
+#
+# verified-review cycle 4 MEDIUM (error-handling): tracked raw file must
+# be an invariant violation, not a silent continue. Raw source capture
+# contract (wiki-ingest-trigger.sh) should only produce untracked files on
+# the dev branch; a tracked raw file indicates either a stray accidental
+# commit on the dev branch or someone running the script in an unexpected
+# workflow. Silent continue lets that state persist and forms a double
+# state (tracked on dev + committed on wiki) that corrupts subsequent fix
+# cycles. Fail fast instead so the user resolves the invariant violation.
 for f in "${pending_files[@]}"; do
   if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-    echo "WARNING: '$f' is tracked on '$current_branch' — leaving in place" >&2
-    echo "  (raw source capture should only produce untracked files on the dev branch)" >&2
-    continue
+    echo "ERROR: '$f' is tracked on '$current_branch' — invariant violation" >&2
+    echo "  raw source capture should only produce untracked files on the dev branch" >&2
+    echo "  hint: this usually means an accidental commit of the raw source on the dev branch" >&2
+    echo "  manual recovery:" >&2
+    echo "    1) git rm --cached '$f'" >&2
+    echo "    2) commit the removal on the dev branch" >&2
+    echo "    3) re-run wiki-ingest-commit.sh" >&2
+    exit 3
   fi
-  rm -f "$f"
+  # verified-review cycle 4 MEDIUM (error-handling): rm -f stderr was
+  # previously suppressed entirely. Propagate failures so the operator can
+  # see which file could not be removed (EACCES / EIO / race).
+  if ! rm -f "$f" 2>"${git_err:-/dev/null}"; then
+    echo "ERROR: failed to remove untracked raw source '$f' from '$current_branch'" >&2
+    dump_git_err "rm -f $f"
+    exit 3
+  fi
 done
 # Remove now-empty raw subdirectories so git status stays clean.
+# verified-review cycle 4 LOW: intentionally cosmetic; failures are
+# silently ignored because the commit / push path below does not depend
+# on empty directory cleanup and the next fix cycle will re-run this.
 find .rite/wiki/raw -type d -empty -delete 2>/dev/null || true
 
 # MEDIUM #7 — capture git stderr on critical-path commands so the real
@@ -438,7 +563,21 @@ find .rite/wiki/raw -type d -empty -delete 2>/dev/null || true
 # git_err cleanup is delegated to `cleanup_body` (see the EXIT/INT/TERM/HUP
 # traps below). A separate trap would overwrite cleanup_body's and break
 # the HIGH #1/#2 rollback-safety rewrites from cycle 1.
-git_err=$(mktemp /tmp/rite-wic-git-err-XXXXXX 2>/dev/null || echo "")
+#
+# verified-review cycle 4 HIGH #4: mktemp failure must NOT silently swallow
+# all git stderr. The previous `|| echo ""` fallback made dump_git_err and
+# surface_git_warnings no-op (guarded on `[[ -n "$git_err" ]]`) while the
+# stderr redirect `2>"${git_err:-/dev/null}"` kept routing git errors to
+# /dev/null. Net effect: every real git failure on a /tmp-broken host was
+# diagnosable only by re-running the script without this wrapper. Emit an
+# explicit WARNING so the operator understands why git stderr disappears,
+# and set git_err="" so the no-op path is obvious from the warning trail.
+if ! git_err=$(mktemp /tmp/rite-wic-git-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp failed for git stderr capture — git error details will be suppressed" >&2
+  echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
+  echo "  impact: dump_git_err and surface_git_warnings will be no-op for this run" >&2
+  git_err=""
+fi
 
 # dump_git_err <label>: print captured git stderr with a label prefix,
 # then truncate. Call only on failure paths. No-op when git_err absent.
@@ -560,7 +699,11 @@ while IFS= read -r -d '' staged; do
 done < <(find "$stage_dir" -type f -print0)
 
 # Step 6: git add / commit / push.
-if ! git add .rite/wiki/raw >/dev/null 2>"${git_err:-/dev/null}"; then
+# verified-review cycle 4 LOW (security): use `--` separator to prevent
+# git option interpretation of the path argument. Even though .rite/wiki/raw
+# is hardcoded here, use the same defence-in-depth pattern as the
+# same_branch path above (line 216) for consistency.
+if ! git add -- .rite/wiki/raw >/dev/null 2>"${git_err:-/dev/null}"; then
   echo "ERROR: git add .rite/wiki/raw failed on '$wiki_branch'" >&2
   dump_git_err "add .rite/wiki/raw"
   exit 3
@@ -602,14 +745,28 @@ fi
 surface_git_warnings "commit"
 committed_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
-# Push is best-effort: we do NOT exit 3 on push failure, because the
-# commit has already landed on the local wiki branch and the caller may
-# not have network access (or origin may be gone in tests). We report the
-# push result so the caller can decide. Use --quiet to suppress progress
-# updates (they go to stderr) so only real errors appear in git_err.
+# Push is best-effort vs incident-observable:
+# (verified-review cycle 4 CRITICAL #1) Push failure MUST be observable by the
+# incident layer. Previous design exited 0 on push failure with only a stdout
+# `push=failed` marker, which the callers (review.md / fix.md / close.md Phase
+# X.X.W.2) did not parse — so flaky remote / auth expiry / rate limit drove
+# all push failures through the success branch and silently emitted
+# WIKI_INGEST_DONE=1 without any wiki_ingest_push_failed sentinel.
+#
+# Fix: exit 4 on push failure so the caller's bash `if commit_out=$(...)`
+# takes the failure branch and emits a dedicated `wiki_ingest_push_failed`
+# sentinel via workflow-incident-emit.sh. The commit itself has already
+# landed on the local wiki branch, so the stdout status line still reports
+# `committed=N; head=<sha>; push=failed` — callers classify exit 4 as
+# "commit landed but push needs retry" rather than a full rollback.
+#
+# Use --quiet to suppress progress updates (they go to stderr) so only
+# real errors appear in git_err.
 push_status="ok"
+push_failed=false
 if ! git push --quiet origin "$wiki_branch" 2>"${git_err:-/dev/null}"; then
   push_status="failed"
+  push_failed=true
   echo "WARNING: git push origin '$wiki_branch' failed — commit is local only" >&2
   dump_git_err "push origin $wiki_branch"
   echo "  manual recovery: git push origin $wiki_branch" >&2
@@ -620,4 +777,9 @@ surface_git_warnings "push origin $wiki_branch"
 echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${committed_sha}; push=${push_status}"
 
 # cleanup trap handles checkout-back + stash pop + /tmp rm.
+# Exit 4 signals "commit landed, push failed" so the caller emits a
+# dedicated wiki_ingest_push_failed sentinel (CRITICAL #1 fix).
+if [[ "$push_failed" == "true" ]]; then
+  exit 4
+fi
 exit 0
