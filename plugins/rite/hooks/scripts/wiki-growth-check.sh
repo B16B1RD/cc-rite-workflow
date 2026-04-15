@@ -171,6 +171,9 @@ wiki_branch=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+branch_name:/ {
 # 失敗を「branch not found」と誤報告する経路を排除する
 last_wiki=""
 git_log_err=$(mktemp /tmp/rite-wiki-growth-git-err-XXXXXX 2>/dev/null) || git_log_err=""
+if [ -z "$git_log_err" ]; then
+  echo "WARNING: mktemp が失敗しました — git log 失敗時の stderr 詳細が surface できません" >&2
+fi
 git_log_target=""
 if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
   git_log_target="$wiki_branch"
@@ -216,10 +219,18 @@ if ! command -v gh >/dev/null 2>&1; then
   echo "==> Total wiki-growth-check findings: 0"
   exit 0
 fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "WARNING: jq not found — wiki-growth-check skipped" >&2
+  echo "==> Total wiki-growth-check findings: 0"
+  exit 0
+fi
 
 # `merged:>YYYY-MM-DD` — gh search interprets full ISO 8601 timestamps too
 # gh pr list の stderr を tempfile に退避し、auth error / network error / rate limit を可視化する
 gh_pr_list_err=$(mktemp /tmp/rite-wiki-growth-gh-err-XXXXXX 2>/dev/null) || gh_pr_list_err=""
+if [ -z "$gh_pr_list_err" ]; then
+  echo "WARNING: mktemp が失敗しました — gh pr list 失敗時の stderr 詳細が surface できません" >&2
+fi
 gh_json_out=""
 if gh_json_out=$(gh pr list \
     --state merged \
@@ -241,15 +252,23 @@ fi
 [ -n "$gh_pr_list_err" ] && rm -f "$gh_pr_list_err"
 gh_pr_list_err=""
 
-# jq が空入力で空文字列を返すケース (gh が空 JSON を返す等) は merged_count=0 として扱う
-merged_count=$(printf '%s' "$gh_json_out" | jq 'length' 2>/dev/null)
+# jq stderr を tempfile に退避し、parse error 等を surface する
+jq_err=$(mktemp /tmp/rite-wiki-growth-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+if [ -z "$jq_err" ]; then
+  echo "WARNING: mktemp が失敗しました — jq 失敗時の stderr 詳細が surface できません" >&2
+fi
+merged_count=$(printf '%s' "$gh_json_out" | jq 'length' 2>"${jq_err:-/dev/null}")
+jq_rc=$?
 
 if [ -z "$merged_count" ] || ! [[ "$merged_count" =~ ^[0-9]+$ ]]; then
-  echo "WARNING: gh pr list の JSON 解析に失敗しました — wiki-growth-check skipped" >&2
+  echo "WARNING: gh pr list の JSON 解析に失敗しました (jq rc=$jq_rc) — wiki-growth-check skipped" >&2
+  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  jq: /' >&2
   echo "  raw stdout (先頭 200 文字): $(printf '%s' "$gh_json_out" | head -c 200)" >&2
+  [ -n "$jq_err" ] && rm -f "$jq_err"
   echo "==> Total wiki-growth-check findings: 0"
   exit 0
 fi
+[ -n "$jq_err" ] && rm -f "$jq_err"
 
 # --- Decision ---
 if [ "$merged_count" -ge "$threshold" ]; then

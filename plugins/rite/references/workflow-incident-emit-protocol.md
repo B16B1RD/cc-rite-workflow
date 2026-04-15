@@ -25,7 +25,7 @@ sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
 | Placeholder | Source |
 |-------------|--------|
 | `{plugin_root}` | [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script) |
-| `{sentinel_type}` | From the skill's failure paths table (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`) |
+| `{sentinel_type}` | From the skill's failure paths table (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped` (#524), `wiki_ingest_failed` (#524)) |
 | `{specific failure description}` | From the skill's failure paths table |
 | `{optional hypothesis}` | Optional root cause hint (may be empty) |
 | `{pr_number}` | Current PR number, or `0` if no PR exists yet |
@@ -48,6 +48,36 @@ After executing Step 1 and Step 2, the LLM should include the `sentinel_line` va
 ## Non-Blocking Guarantee
 
 `|| true` ensures non-blocking behavior — emission failure does not abort the skill flow. The workflow MUST NOT halt because sentinel emission failed.
+
+## Extended Pattern: Wiki Ingest Sentinel Emit (#524)
+
+The `pr/review.md` Phase 6.5.W, `pr/fix.md` Phase 4.6.W, `issue/close.md` Phase 4.4.W use an **extended pattern** that adds (a) stderr capture for emit-script failures, (b) trap-based tempfile cleanup, (c) canonical-format fallback emit (`hook_abnormal_exit`) when `workflow-incident-emit.sh` itself fails. This prevents both silent drop and orphan-format sentinels.
+
+**Pattern shape** (see `pr/review.md` for the canonical full text — 6 invocation sites total across 3 files):
+
+```bash
+emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
+if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type wiki_ingest_{skipped|failed} ... 2>"${emit_err:-/dev/null}"); then
+  if [ -n "$sentinel_line" ]; then
+    echo "$sentinel_line"          # canonical: stdout (orchestrator context)
+    echo "$sentinel_line" >&2      # defense-in-depth: stderr (human debug)
+  fi
+else
+  # workflow-incident-emit.sh failed → emit canonical fallback so Phase 5.4.4.1 still detects
+  fallback_iter="{pr_number}-$(date +%s)"
+  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=...; iteration_id=$fallback_iter"
+  echo "$fallback_sentinel"
+  echo "$fallback_sentinel" >&2
+  echo "WARNING: ..." >&2
+  [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+fi
+[ -n "$emit_err" ] && rm -f "$emit_err"
+trap - EXIT INT TERM HUP
+```
+
+**Future consolidation**: When 4+ skill files adopt the extended pattern, extract into a helper script `hooks/scripts/wiki-sentinel-emit.sh` and reduce each invocation to a 1-line call. Currently kept inline (3 files × 2 sites) to avoid premature abstraction. Drift between sites is monitored manually until the helper is justified.
 
 ## Configuration Boundary
 

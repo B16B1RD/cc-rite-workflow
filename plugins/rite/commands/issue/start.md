@@ -1941,7 +1941,9 @@ After the standard completion report sections, append a "未処理 incident" sec
 
 > **Source of truth**: `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` lines emitted by `pr/review.md` Phase 6.5.W.2, `pr/fix.md` Phase 4.6.W.2, and `issue/close.md` Phase 4.4.W.2 throughout this `/rite:issue:start` invocation. These lines flow into the orchestrator's conversation context the same way Phase 5.4.4.1 sentinels do.
 
-After the workflow incident sections (5.6.1), append a "Wiki ingest 状況" section so the user can confirm at a glance whether the Experience Wiki growth path actually executed during this Issue. This addresses Issue #524 AC-5 — the regression where Phase X.X.W was silently skipped and the user had no visibility into the missing growth.
+> **Output ordering** (must match `completion-report.md` Step 3.5): This section is appended **immediately after the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ)** of the completion report, **before** the workflow incident sections (5.6.1). Both 5.6.2 and 5.6.1 then together form the trailing report sections. The `completion-report.md` Step 4 self-verification checklist confirms the presence of the `### 📚 Wiki ingest 状況` heading.
+
+Append a "Wiki ingest 状況" section so the user can confirm at a glance whether the Experience Wiki growth path actually executed during this Issue. This addresses Issue #524 AC-5 — the regression where Phase X.X.W was silently skipped and the user had no visibility into the missing growth.
 
 **Step 1 — Aggregate signals from conversation context**:
 
