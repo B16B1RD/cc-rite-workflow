@@ -127,7 +127,12 @@ if [ -z "$STATUS_NAME" ]; then
   exit 1
 fi
 
-# Helper: emit non-blocking failure and exit according to NON_BLOCKING mode.
+# Helper: emit a terminal failure result and exit.
+# NOTE: fail_nb ALWAYS exits — it never returns to the caller. This is intentional:
+# all failure paths should emit exactly one JSON result and terminate. Callers rely
+# on this behavior (they are not wrapped in `if fail_nb ...; then` guards).
+# When NON_BLOCKING=true, exit code is 0 so orchestrators can continue the workflow
+# and inspect `.result` in the stdout JSON. When false, exit code is 1 for fail-fast.
 fail_nb() {
   local result="$1"
   local item_id="${2:-}"
@@ -139,6 +144,15 @@ fail_nb() {
     exit 0
   fi
   exit 1
+}
+
+# Helper: read gh stderr file into a warning, handling the empty/missing case.
+gh_err_msg() {
+  if [ -s "$GH_ERR_FILE" ]; then
+    cat "$GH_ERR_FILE"
+  else
+    printf '(no stderr captured — gh may have exited before writing)'
+  fi
 }
 
 # --- Step A: Retrieve Issue's project item ID and project GraphQL id ---
@@ -163,7 +177,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 
 GQL_RESULT=$(query_project_items) || {
-  add_warning "GraphQL projectItems query failed: $(cat "$GH_ERR_FILE")"
+  add_warning "GraphQL projectItems query failed: $(gh_err_msg)"
   fail_nb "failed"
 }
 
@@ -177,7 +191,7 @@ fi
 # Find node whose project.number matches PROJECT_NUMBER.
 find_matching_node() {
   printf '%s\n' "$GQL_RESULT" | jq -r --argjson pn "$PROJECT_NUMBER" \
-    '.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | "\(.id)|\(.project.id)"' | head -1
+    '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn)][0] | if . == null then "" else "\(.id)|\(.project.id)" end'
 }
 
 NODE_LINE=$(find_matching_node)
@@ -195,14 +209,18 @@ if [ -z "$NODE_LINE" ]; then
     fail_nb "failed"
   fi
 
-  if ! gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL" --format json >"$TMPDIR_WORK/add_out" 2>"$GH_ERR_FILE"; then
-    add_warning "gh project item-add failed: $(cat "$GH_ERR_FILE")"
+  # We discard item-add stdout here because the following re-query is required
+  # anyway to obtain project.id (item-add --format json returns only the item id,
+  # not the parent project id). See create-issue-with-projects.sh for a variant
+  # that captures item-add stdout as a fallback.
+  if ! gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL" --format json >/dev/null 2>"$GH_ERR_FILE"; then
+    add_warning "gh project item-add failed: $(gh_err_msg)"
     fail_nb "failed"
   fi
 
-  # Re-query to obtain project.id (item-add --format json returns only item id, not project id).
+  # Re-query to obtain project.id.
   GQL_RESULT=$(query_project_items) || {
-    add_warning "GraphQL re-query after auto-add failed: $(cat "$GH_ERR_FILE")"
+    add_warning "GraphQL re-query after auto-add failed: $(gh_err_msg)"
     fail_nb "failed"
   }
   NODE_LINE=$(find_matching_node)
@@ -223,12 +241,12 @@ fi
 # If status_field_id_hint is provided, we still need to fetch options (field_ids
 # optimization only skips field ID extraction, not option ID).
 FIELD_LIST_JSON=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json 2>"$GH_ERR_FILE") || {
-  add_warning "gh project field-list failed: $(cat "$GH_ERR_FILE")"
+  add_warning "gh project field-list failed: $(gh_err_msg)"
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
 }
 
 # `gh project field-list` returns {fields: [...]} — find the Status field.
-STATUS_NODE=$(printf '%s\n' "$FIELD_LIST_JSON" | jq -c '.fields[] | select(.name == "Status")' | head -1)
+STATUS_NODE=$(printf '%s\n' "$FIELD_LIST_JSON" | jq -c '[.fields[] | select(.name == "Status")][0] // empty')
 if [ -z "$STATUS_NODE" ]; then
   add_warning "Status field not found in project #$PROJECT_NUMBER"
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
@@ -244,7 +262,7 @@ if [ -z "$STATUS_FIELD_ID" ]; then
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
 fi
 
-OPTION_ID=$(printf '%s\n' "$STATUS_NODE" | jq -r --arg sn "$STATUS_NAME" '.options[] | select(.name == $sn) | .id' | head -1)
+OPTION_ID=$(printf '%s\n' "$STATUS_NODE" | jq -r --arg sn "$STATUS_NAME" '[.options[] | select(.name == $sn)][0].id // empty')
 if [ -z "$OPTION_ID" ]; then
   add_warning "Status option '$STATUS_NAME' not found in Status field"
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID"
@@ -256,7 +274,7 @@ if ! gh project item-edit \
     --id "$ITEM_ID" \
     --field-id "$STATUS_FIELD_ID" \
     --single-select-option-id "$OPTION_ID" >/dev/null 2>"$GH_ERR_FILE"; then
-  add_warning "gh project item-edit failed: $(cat "$GH_ERR_FILE")"
+  add_warning "gh project item-edit failed: $(gh_err_msg)"
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID" "$OPTION_ID"
 fi
 

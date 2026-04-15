@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mock gh CLI for testing create-issue-with-projects.sh
+# Mock gh CLI for testing create-issue-with-projects.sh AND projects-status-update.sh
 # This script intercepts gh commands and returns predefined responses.
 #
 # Usage:
@@ -7,7 +7,7 @@
 #   The test harness prepends the directory containing this script to PATH
 #   so that `gh` resolves here instead of the real binary.
 #
-# Scenarios:
+# Scenarios (create-issue-with-projects.sh):
 #   "success"              - All commands succeed (default)
 #   "issue_create_fail"    - gh issue create fails
 #   "project_add_fail"     - gh project item-add fails
@@ -20,6 +20,23 @@
 #   "no_current_iteration" - GraphQL includes iteration field but only future iterations
 #   "no_project_id"        - GraphQL returns null project ID
 #   "url_parse_fail"       - gh issue create returns non-URL string (no trailing number)
+#
+# Scenarios (projects-status-update.sh):
+#   "psu_success"              - Issue in project, Status updated
+#   "psu_issue_not_found"      - repository.issue returns null
+#   "psu_not_in_project"       - projectItems.nodes is empty (no auto_add)
+#   "psu_auto_add_then_ok"     - First query empty, item-add succeeds, re-query finds item
+#   "psu_auto_add_fail"        - item-add fails
+#   "psu_auto_add_requery_empty" - item-add succeeds but re-query still empty
+#   "psu_field_list_fail"      - gh project field-list fails
+#   "psu_no_status_field"      - field-list returns no Status field
+#   "psu_no_status_option"     - Status field exists but requested option name missing
+#   "psu_item_edit_fail"       - gh project item-edit fails
+#
+# The projects-status-update.sh script uses a different GraphQL shape
+# (`data.repository.issue.projectItems`) than create-issue-with-projects.sh
+# (`data.{user|organization}.projectV2`), so this mock detects the query shape
+# via the `repository(owner:` token in the query string and branches accordingly.
 set -euo pipefail
 
 SCENARIO="${MOCK_GH_SCENARIO:-success}"
@@ -56,8 +73,40 @@ case "$1" in
 
   project)
     case "$2" in
+      field-list)
+        # New: `gh project field-list PROJECT_NUMBER --owner OWNER --format json`
+        # Used by projects-status-update.sh to resolve Status field + option ids.
+        if [ "$SCENARIO" = "psu_field_list_fail" ]; then
+          echo "error: failed to list project fields" >&2
+          exit 1
+        fi
+        if [ "$SCENARIO" = "psu_no_status_field" ]; then
+          cat <<'FLJSON'
+{"fields": [{"id": "FIELD_PRIORITY", "name": "Priority", "options": [{"id": "OPT_P_HIGH", "name": "High"}]}]}
+FLJSON
+          exit 0
+        fi
+        if [ "$SCENARIO" = "psu_no_status_option" ]; then
+          cat <<'FLJSON'
+{"fields": [{"id": "FIELD_STATUS", "name": "Status", "options": [{"id": "OPT_TODO", "name": "Todo"}]}]}
+FLJSON
+          exit 0
+        fi
+        cat <<'FLJSON'
+{
+  "fields": [
+    {"id": "FIELD_STATUS", "name": "Status", "options": [
+      {"id": "OPT_TODO", "name": "Todo"},
+      {"id": "OPT_INPROGRESS", "name": "In Progress"},
+      {"id": "OPT_INREVIEW", "name": "In Review"},
+      {"id": "OPT_DONE", "name": "Done"}
+    ]}
+  ]
+}
+FLJSON
+        ;;
       item-add)
-        if [ "$SCENARIO" = "project_add_fail" ]; then
+        if [ "$SCENARIO" = "project_add_fail" ] || [ "$SCENARIO" = "psu_auto_add_fail" ]; then
           echo "error: failed to add item to project" >&2
           exit 1
         fi
@@ -82,7 +131,7 @@ ITEMJSON
         fi
         ;;
       item-edit)
-        if [ "$SCENARIO" = "field_edit_fail" ]; then
+        if [ "$SCENARIO" = "field_edit_fail" ] || [ "$SCENARIO" = "psu_item_edit_fail" ]; then
           echo "error: failed to edit project item" >&2
           exit 1
         fi
@@ -134,12 +183,18 @@ ITEMJSON
           exit 1
         fi
 
-        # Detect mutation vs query (for iteration assignment)
-        # Note: query arg may have leading newline (e.g., query=\nmutation...)
+        # Detect query shape: projects-status-update.sh queries `repository(owner:`
+        # while create-issue-with-projects.sh queries `user|organization(login:`.
+        is_repository_query=false
         is_mutation=false
         for arg in "$@"; do
-          if [[ "$arg" == query=* ]] && [[ "$arg" == *mutation* ]]; then
-            is_mutation=true
+          if [[ "$arg" == query=* ]]; then
+            if [[ "$arg" == *"repository(owner:"* ]]; then
+              is_repository_query=true
+            fi
+            if [[ "$arg" == *mutation* ]]; then
+              is_mutation=true
+            fi
             break
           fi
         done
@@ -147,6 +202,47 @@ ITEMJSON
         if [ "$is_mutation" = true ]; then
           # No stdout output for mutations (only exit code matters to caller)
           exit 0
+        fi
+
+        # --- projects-status-update.sh path ---
+        if [ "$is_repository_query" = true ]; then
+          # Determine scenario-dependent response shape.
+          case "$SCENARIO" in
+            psu_issue_not_found)
+              printf '{"data":{"repository":{"issue":null}}}\n'
+              exit 0
+              ;;
+            psu_not_in_project|psu_auto_add_requery_empty|psu_auto_add_fail)
+              # All scenarios where the initial query returns no project items.
+              # - psu_not_in_project: auto_add=false, script stops
+              # - psu_auto_add_fail: auto_add=true, script tries item-add which then fails
+              # - psu_auto_add_requery_empty: auto_add=true, item-add succeeds, re-query empty
+              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[]}}}}}\n' "$MOCK_ISSUE_NUMBER"
+              exit 0
+              ;;
+            psu_auto_add_then_ok)
+              # State machine: first call returns empty, subsequent calls return item.
+              # Use a fixed-name file in MOCK_GH_STATE_DIR (do NOT include $$ —
+              # mock-gh.sh's own PID differs between the two gh invocations).
+              state_dir="${MOCK_GH_STATE_DIR:-/tmp}"
+              state_file="$state_dir/psu_autoadd_count"
+              if [ -f "$state_file" ]; then
+                printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[{"id":"%s","project":{"id":"%s","number":6}}]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+              else
+                echo "1" > "$state_file"
+                printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[]}}}}}\n' "$MOCK_ISSUE_NUMBER"
+              fi
+              exit 0
+              ;;
+            psu_success|psu_field_list_fail|psu_no_status_field|psu_no_status_option|psu_item_edit_fail)
+              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[{"id":"%s","project":{"id":"%s","number":6}}]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+              exit 0
+              ;;
+            *)
+              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[{"id":"%s","project":{"id":"%s","number":6}}]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+              exit 0
+              ;;
+          esac
         fi
 
         # Determine GQL root based on owner type
