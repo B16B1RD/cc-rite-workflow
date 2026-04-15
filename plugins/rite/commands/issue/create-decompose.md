@@ -567,20 +567,12 @@ if [ "${#SUB_ISSUE_NUMBERS[@]}" -eq 0 ]; then
   exit 1
 fi
 
-# === MANDATORY guard: literal placeholder 検出 ===
-# Claude が bash 実行前に {owner}/{repo}/{parent_issue_number} を実値で置換するのが前提。
-# 置換漏れがあると link-sub-issue.sh が必ず失敗し、後続の "all-failures" 警告が発火する。
-# その時点では既に N 回の API 呼び出しが無駄になっているため、ここで早期検出して fail-fast する。
-# (AC-4/AC-5 は「API レベルの失敗」を非ブロッキングと定めるが、本ガードは「Claude の置換漏れ」
-#  というプロンプト実装ミスを検出するため別レイヤとして扱う)
-for ph in "{owner}" "{repo}" "{parent_issue_number}"; do
-  if printf '%s' "$ph" | grep -qE '^\{[a-z_]+\}$'; then
-    echo "ERROR: Placeholder '$ph' が substitute されていません。" >&2
-    echo "  Claude は bash 実行前に rite-config.yml / gh repo view / 親 Issue 番号から実値で置換する必要があります。" >&2
-    echo "  参照: 本セクションの 'Placeholder descriptions' 表" >&2
-    exit 1
-  fi
-done
+# Note on placeholder substitution:
+# {owner}/{repo}/{parent_issue_number} は Claude が bash 実行前に必ず実値で置換すること。
+# 置換漏れの早期検出は link-sub-issue.sh 側の引数 validation で担保される
+# (helper の OWNER/REPO 引数が `{` で始まる場合 fail-fast し warning を返す)。
+# このコマンド側で同等のガードを書くと、Claude が指示通り置換する以上 dead code になる
+# (Issue #520 で指摘・修正済み)。
 
 link_failures=0
 for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do

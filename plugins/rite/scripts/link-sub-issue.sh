@@ -81,6 +81,23 @@ if ! [[ "$PARENT_NUMBER" =~ ^[0-9]+$ ]] || ! [[ "$CHILD_NUMBER" =~ ^[0-9]+$ ]]; 
   exit 1
 fi
 
+# Reject unsubstituted Markdown placeholders (e.g. literal "{owner}" / "{repo}" /
+# "{parent_issue_number}"). Caller commands such as create-decompose.md and
+# parent-routing.md are documented as Markdown templates whose `{name}` tokens
+# Claude must substitute with real values before running bash. Without this
+# guard, a forgotten substitution would surface much later as an opaque
+# "Could not resolve to a Repository" GraphQL error after every parent/child
+# resolution attempt fails. Fail-fast here so the issue is unambiguous.
+#
+# Note: GitHub owners/repos can legitimately contain hyphens, dots, and digits
+# but never the `{` character — making `{`-prefix detection a safe
+# false-positive-free signal for "unsubstituted placeholder".
+if [[ "$OWNER" == \{* ]] || [[ "$REPO" == \{* ]]; then
+  add_warning "owner/repo argument looks like an unsubstituted placeholder (owner='$OWNER', repo='$REPO'). Caller must substitute Markdown {name} tokens before invoking this script."
+  output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "unsubstituted placeholder in owner/repo argument"
+  exit 1
+fi
+
 if [ "$PARENT_NUMBER" = "$CHILD_NUMBER" ]; then
   add_warning "parent and child must differ (#$PARENT_NUMBER == #$CHILD_NUMBER)"
   output_result "failed" "$PARENT_NUMBER" "$CHILD_NUMBER" "self-reference"
