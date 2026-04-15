@@ -426,8 +426,12 @@ The retrospective content includes: Issue title, key decisions made during imple
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+# ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下 または /tmp/rite-* prefix のみを受容する
+# (Issue #518 根本原因)。mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
+tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
+trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
+# rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)
+trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
 
 cat <<'RETRO_EOF' > "$tmpfile"
 ## Issue Close Retrospective
@@ -446,9 +450,19 @@ bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
   --content-file "$tmpfile" \
   --issue-number {issue_number} \
   --title "Issue #{issue_number} close retrospective" \
-  2>/dev/null
+  2>"$trigger_stderr"
 trigger_exit=$?
 echo "trigger_exit=$trigger_exit"
+if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
+  # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
+  # (F-09 対応) iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
+  if command -v iconv >/dev/null 2>&1; then
+    _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
+  else
+    _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176')
+  fi
+  echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
+fi
 ```
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 4.4.W.2 when it is non-zero. Ingest failure does not block the close workflow.

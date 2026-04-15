@@ -685,6 +685,90 @@ fi
 echo ""
 
 # ==========================================================================
+# Phase: Issue #518 regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
+# ==========================================================================
+
+# /tmp 外ファイルの明示 cleanup (review F-04: TEST_DIR 外は main cleanup() の対象外)
+# TC-036a/b は wiki-ingest-trigger.sh のパス検証が /tmp/rite-* prefix と mktemp デフォルトを
+# 正しく区別することを test するため、$TEST_DIR 内ではなく /tmp 直下にファイルを作る必要がある。
+# main trap cleanup は $TEST_DIR しか掃除しないため、個別 trap で追跡する。
+_rite_issue518_tmps=()
+_rite_issue518_cleanup() {
+  if [ ${#_rite_issue518_tmps[@]} -gt 0 ]; then
+    rm -f "${_rite_issue518_tmps[@]}"
+  fi
+}
+# main cleanup に chain する (既存 trap は cleanup() を呼ぶので、本 trap は issue518 専用ファイルのみ削除)
+trap '_rite_issue518_cleanup; cleanup' EXIT
+
+# --------------------------------------------------------------------------
+# TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (Issue #518 正常系 / PR #519 fix)
+# --------------------------------------------------------------------------
+# Issue #518: pr/review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
+# 呼ぶときに tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX) でファイル生成する必要がある。
+# この TC は /tmp/rite-* prefix でのファイルが正常に受容され、PR #519 fix が正しく動作することを保証する。
+echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (Issue #518 regression)"
+dir36a="$TEST_DIR/tc36a"
+mkdir -p "$dir36a"
+cat > "$dir36a/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+# Create content-file using /tmp/rite-* prefix (review.md / fix.md / close.md と同パターン)
+tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
+_rite_issue518_tmps+=("$tmp_in_rite")
+echo "review body" > "$tmp_in_rite"
+( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
+  target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
+  if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
+    pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
+  else
+    fail "/tmp/rite-* prefix → rc=0 but output file not found (path='$target_path36a')"
+  fi
+else
+  fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036b: Content-file from mktemp default → exit 1 (Issue #518 pitfall lock)
+# --------------------------------------------------------------------------
+# Issue #518 根本原因の再現テスト: `mktemp` をデフォルト引数で呼ぶと /tmp/tmp.XXXXXXX が
+# 生成され、wiki-ingest-trigger.sh のパス検証 ($PWD 配下 or /tmp/rite-* prefix) で拒否される。
+# 本 TC は、将来 commands/*.md が mktemp デフォルトに戻った場合に fix ループの回帰テストとして
+# exit code で pitfall を検出する。
+#
+# review F-03: 旧実装は `grep -qE 'must be under.*rite'` でエラー文言の literal に依存していたため、
+# 文言を i18n / reword した瞬間に silent fail する設計欠陥があった。assertion を 2 段階にし、
+# exit code (1) を必須 pass 条件とし、文言 grep は OR パターンで緩和する (defense-in-depth)。
+echo "TC-036b: Content-file from mktemp default → exit 1 (Issue #518 pitfall)"
+dir36b="$TEST_DIR/tc36b"
+mkdir -p "$dir36b"
+cat > "$dir36b/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+tmp_default=$(mktemp)
+_rite_issue518_tmps+=("$tmp_default")
+echo "x" > "$tmp_default"
+( cd "$dir36b" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_default" >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ]; then
+  # 補助 grep は dead assertion を避けるため、else 分岐を fail にする (F-08 対応)。
+  # OR pattern は rite-ingest-trigger.sh の実エラー文言 (`--content-file must be under $PWD or /tmp/rite-*`)
+  # に固有な substring のみに絞る (F-10 対応: 旧 `rite` 単独 token は path 混入で誤 match しやすい)。
+  if grep -qiE 'must be under|/tmp/rite-' "$dir36b/err.log"; then
+    pass "mktemp default (/tmp/tmp.*) → exit 1 + pitfall エラー文言検出"
+  else
+    fail "exit 1 は正しいが pitfall 拒否文言が stderr にない: $(cat "$dir36b/err.log")"
+  fi
+else
+  fail "Expected exit 1 for mktemp default, got rc=$rc, stderr=$(cat "$dir36b/err.log")"
+fi
+echo ""
+
+# ==========================================================================
 # Phase: オプション値なし末尾テスト (TC-037 〜 TC-039)
 # cycle 8 F-06 fix: $# -ge 2 ガードの検証
 # ==========================================================================

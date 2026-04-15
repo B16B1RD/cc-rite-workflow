@@ -177,12 +177,15 @@ resolved_content=$(realpath -- "$CONTENT_FILE") || {
   exit 1
 }
 # F-02 fix: /tmp/* → /tmp/rite-* に制限 (exfiltration 経路の縮小)
+# F-11 fix: macOS では /tmp → /private/tmp の symlink があり、realpath 解決後は
+#   /private/tmp/rite-* が返る。同じ信頼境界 (owner-managed /tmp/rite- namespace) として
+#   allowlist に追加する。exfiltration リスク増加なし (どちらも owner-writable /tmp 直下の rite prefix)
 case "$resolved_content" in
-  "$PWD"/*|/tmp/rite-*)
-    : # allowed ($PWD 配下 or /tmp/rite-* 配下)
+  "$PWD"/*|/tmp/rite-*|/private/tmp/rite-*)
+    : # allowed ($PWD 配下 / /tmp/rite-* / /private/tmp/rite-* — 後者は macOS realpath 解決後)
     ;;
   *)
-    echo "ERROR: --content-file must be under \$PWD or /tmp/rite-*" >&2
+    echo "ERROR: --content-file must be under \$PWD or /tmp/rite-* (macOS: /private/tmp/rite-*)" >&2
     echo "  resolved path: $resolved_content" >&2
     echo "  hint: copy the file into the project directory first" >&2
     exit 1
