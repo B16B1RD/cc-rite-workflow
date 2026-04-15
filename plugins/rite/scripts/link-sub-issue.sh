@@ -177,12 +177,25 @@ is_idempotent_error() {
 }
 
 is_retryable_error() {
-  # 5xx server errors and transient network failures are retryable.
-  # Pattern set:
-  #   - HTTP 5xx: any "HTTP 5XX" where XX is two digits (covers 500-599)
-  #   - Timeouts: connection timeouts, request deadlines
-  #   - Connection-level: reset / refused / unreachable network
-  #   - DNS: temporary failure in name resolution
+  # Transient failures that justify retry. Two classes:
+  #
+  # 1. Transport-layer failures (only appear via HTTP/network error strings,
+  #    i.e. the gh CLI failure branch — `gh api graphql` exits non-zero):
+  #      - HTTP 5xx: any "HTTP 5XX" where XX is two digits (covers 500-599)
+  #      - Timeouts: connection timeouts, request deadlines
+  #      - Connection-level: reset / refused / unreachable network
+  #      - DNS: temporary failure in name resolution
+  #
+  # 2. GraphQL application-layer transient errors (appear in HTTP 200
+  #    responses with `errors[]` populated, i.e. the success branch):
+  #      - Rate limit / secondary rate limit (GitHub abuse detection)
+  #      - "was submitted too quickly" (rate-limit phrasing variant)
+  #      - "server error" / "internal error" surfaced as a GraphQL message
+  #
+  # Without class 2, the retry loop in the success branch (L220-227) would
+  # be effectively dead code — application-layer failures like "validation
+  # failed" or "sub-issue limit exceeded" are NOT retryable and break out
+  # immediately, which is correct.
   local err_lc
   err_lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
   case "$err_lc" in
@@ -191,6 +204,9 @@ is_retryable_error() {
     *"connection reset"*|*"connection refused"*) return 0 ;;
     *"network is unreachable"*|*"no route to host"*) return 0 ;;
     *"temporary failure in name resolution"*) return 0 ;;
+    *"rate limit"*|*"secondary rate limit"*) return 0 ;;
+    *"submitted too quickly"*) return 0 ;;
+    *"server error"*|*"internal error"*) return 0 ;;
   esac
   return 1
 }

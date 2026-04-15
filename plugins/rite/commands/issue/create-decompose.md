@@ -431,6 +431,9 @@ fi
 **Placeholder descriptions:**
 - `{estimated_complexity}`: Complexity estimated during Phase 0.8 decomposition (XS/S/M/L/XL per Sub-Issue)
 - `{priority}`: Inherited from parent Issue priority
+- `{owner}`: Repository owner (from `github.projects.owner` in `rite-config.yml`, or `gh repo view --json owner --jq '.owner.login'`)
+- `{repo}`: Repository name (from `gh repo view --json name --jq '.name'`). Required by Phase 0.9.4's `link-sub-issue.sh` invocation; if omitted, the GraphQL `repository(owner:..., name:"{repo}")` lookup will always fail with "Could not resolve to a Repository", and AC-1 will be silently violated (per-call failures are non-blocking).
+- `{parent_issue_number}`: The parent Issue number created in Phase 0.9.1 (the one whose Sub-Issues are being created)
 
 **Error handling for partial failures:**
 - If a Sub-Issue creation fails mid-loop, log the error and continue with remaining Sub-Issues
@@ -552,8 +555,15 @@ for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
   esac
 done
 
-if [ "$link_failures" -gt 0 ]; then
-  echo "⚠️ $link_failures 件の Sub-Issue で API 紐付けに失敗しました（body メタは維持されます）" >&2
+if [ "$link_failures" -eq "${#SUB_ISSUE_NUMBERS[@]}" ]; then
+  # 全 Sub-Issue で linkage 失敗 = 設定不備 ({repo} 未解決 / 権限不足 / API 未開放等) の可能性が高い。
+  # 個別の warning だけだと「動いているように見える」silent-success に陥るため、ここで fail-fast する。
+  echo "ERROR: 全 Sub-Issue (${#SUB_ISSUE_NUMBERS[@]} 件) で Sub-issues API linkage が失敗しました。" >&2
+  echo "  考えられる原因: {owner}/{repo}/{parent_issue_number} プレースホルダーの未解決、token scope 不足、Sub-issues API が無効など (AC-1 違反)。" >&2
+  echo "  body メタ (Tasklist + Parent Issue: #N) は残っていますが、API レベルの紐付けは確立されていません。" >&2
+  exit 1
+elif [ "$link_failures" -gt 0 ]; then
+  echo "⚠️ $link_failures/${#SUB_ISSUE_NUMBERS[@]} 件の Sub-Issue で API 紐付けに失敗しました（body メタは維持されます）" >&2
 fi
 ```
 

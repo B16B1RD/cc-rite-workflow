@@ -95,18 +95,43 @@ extract_parent_number() {
 }
 
 is_already_subissue() {
+  # Pre-flight check to skip already-linked children and avoid an
+  # unnecessary `link-sub-issue.sh` invocation.
+  #
+  # Limitation: only the first 100 sub-issues are inspected. If the parent
+  # has more than 100 sub-issues and the target child sits beyond the
+  # window, this returns "not linked" (false negative). That is safe
+  # because the subsequent `link-sub-issue.sh` call is idempotent — it will
+  # detect the existing relation via GitHub's "already" error message and
+  # report `already-linked`, so the final result remains correct. The only
+  # cost is one extra API round-trip per false negative.
+  #
+  # If `pageInfo.hasNextPage` is true, emit a one-line warning so operators
+  # are aware that the local short-circuit was not authoritative.
   local parent_num="$1"
   local child_num="$2"
-  gh api graphql -f query='
+  local resp
+  resp=$(gh api graphql -f query='
     query($owner: String!, $repo: String!, $parent: Int!) {
       repository(owner: $owner, name: $repo) {
         issue(number: $parent) {
-          subIssues(first: 100) { nodes { number } }
+          subIssues(first: 100) {
+            nodes { number }
+            pageInfo { hasNextPage }
+          }
         }
       }
     }' \
-    -f owner="$OWNER" -f repo="$REPO" -F parent="$parent_num" \
-    --jq ".data.repository.issue.subIssues.nodes[] | select(.number == $child_num) | .number" 2>/dev/null \
+    -f owner="$OWNER" -f repo="$REPO" -F parent="$parent_num" 2>/dev/null) || return 1
+
+  local has_next
+  has_next=$(printf '%s' "$resp" | jq -r '.data.repository.issue.subIssues.pageInfo.hasNextPage // false' 2>/dev/null)
+  if [ "$has_next" = "true" ]; then
+    echo "   ℹ️  #$parent_num has >100 sub-issues; pre-flight check is non-authoritative (will rely on link-sub-issue.sh idempotency)" >&2
+  fi
+
+  printf '%s' "$resp" \
+    | jq -r ".data.repository.issue.subIssues.nodes[]?.number" 2>/dev/null \
     | grep -q "^${child_num}$"
 }
 
