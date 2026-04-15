@@ -206,13 +206,15 @@ fi
 # under pipefail aborts the entire script. We split the pipeline into stages and
 # explicitly tolerate empty results so missing keys lenient-fall-through to "not false".
 #
-# Note — YAML パースロジック同期: 本ブロックの YAML パースは以下の 3 箇所に同型のロジックが存在する
+# Note — YAML パースロジック同期: 本ブロックの YAML パースは以下の 4 箇所に同型のロジックが存在する
 # (F-23 修正版: awk + YAML コメント除去 + クォート除去):
 #   1. 本スクリプト (wiki-ingest-trigger.sh) — lenient (false/no/0 のみ reject)
 #   2. hooks/scripts/wiki-ingest-commit.sh — `parse_wiki_scalar` helper、lenient だが stderr 退避は
 #      簡素化されている (shell deterministic commit path 用、MEDIUM #8 in PR #529 で sync 範囲に追加)
-#   3. commands/wiki/ingest.md Phase 1.1 — strict 4 分岐 (page integration 用)
-# パース方式を変更する場合は 3 箇所全てを同期すること。wiki-patterns.md の reference パターンも参照先。
+#   3. hooks/scripts/wiki-growth-check.sh — lenient (layer 3 growth stall 検出用。wiki.enabled /
+#      wiki.branch_name / wiki.growth_check.threshold_prs を参照。PR #529 cycle 2 MEDIUM で sync 範囲に追加)
+#   4. commands/wiki/ingest.md Phase 1.1 — strict 4 分岐 (page integration 用)
+# パース方式を変更する場合は 4 箇所全てを同期すること。wiki-patterns.md の reference パターンも参照先。
 if [[ -f "rite-config.yml" ]]; then
   # cycle 9 MEDIUM fix: sed/awk の stderr を tempfile に捕捉 (silent swallow 禁止)。
   # 旧実装 `2>/dev/null || wiki_section=""` は grep no-match だけでなく sed/awk の構文エラー /

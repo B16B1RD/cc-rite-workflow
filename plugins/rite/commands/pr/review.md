@@ -3964,7 +3964,7 @@ fi
 
 #### 6.5.W.2 Wiki Raw Commit (Shell — deterministic path)
 
-> **Design rationale (supersedes the previous Skill-based design)**: Earlier revisions of this phase invoked `/rite:wiki:ingest` via the Skill tool, which in turn required Claude to correctly chain `ingest.md` Phase 5.1 Block A (stash/checkout) → LLM Write/Edit phase → Block B (add/commit/push) across multiple Bash tool boundaries and a sub-skill auto-continuation step. That contract was structurally fragile under E2E output minimization and auto-continuation failures (Issue #525), producing the observed regression where the `wiki` branch never grew in practice despite four rounds of silent-skip defence layers (Issues #515, #518, #524). This phase now delegates the raw-source commit to a **single shell script**, `wiki-ingest-commit.sh`, which completes the stash→checkout→add→commit→push→checkout-back→stash-pop cycle in one process with no dependency on Claude multi-step orchestration.
+> **Design rationale (supersedes the previous Skill-based design)**: Earlier revisions of this phase invoked `/rite:wiki:ingest` via the Skill tool, which in turn required Claude to correctly chain `ingest.md` Phase 5.1 Block A (stash/checkout) → LLM Write/Edit phase → Block B (add/commit/push) across multiple Bash tool boundaries and a sub-skill auto-continuation step. That contract was structurally fragile under E2E output minimization and auto-continuation failures (Issue #525), producing the observed regression where the `wiki` branch never grew in practice despite multiple rounds of silent-skip defence layers (Issues #515, #518, #524). This phase now delegates the raw-source commit to a **single shell script**, `wiki-ingest-commit.sh`, which completes the stash→checkout→add→commit→push→checkout-back→stash-pop cycle in one process with no dependency on Claude multi-step orchestration.
 
 **Responsibility scope**: this block commits **raw sources only**. LLM-driven Wiki **page** integration (reading raw sources, deciding create/update/skip, writing `.rite/wiki/pages/*`) is **deferred** to `/rite:wiki:ingest`, which is idempotent over accumulated raw sources and can be invoked later — manually, or automatically in a separate session. The split guarantees that raw sources are never lost even when page integration is skipped or fails.
 
@@ -3982,10 +3982,11 @@ When the condition is not satisfied, skip this block and proceed to Phase 6.5.1.
 # HIGH #4 — commit_err / emit_err の signal trap 登録を block 冒頭で行う。
 # trigger 側 (Phase 6.5.W Step 3) の emit_err と対称。SIGINT/SIGTERM/SIGHUP で中断
 # された場合でも /tmp の一時ファイルが orphan として残らない。
+# (cycle 2 MEDIUM: `emit_err_for_fallback` dead variable は削除済み。
+#  fix.md / close.md と同一の 2 変数 trap に統一。)
 commit_err=""
 emit_err=""
-emit_err_for_fallback=""
-trap 'rm -f "${commit_err:-}" "${emit_err:-}" "${emit_err_for_fallback:-}"' EXIT INT TERM HUP
+trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 
 commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null) || commit_err="/dev/null"
 commit_rc=0
@@ -4052,7 +4053,6 @@ else
       ;;
   esac
 fi
-# 明示的な cleanup を維持 (trap が発火しない通常経路での早期削除)。
 [ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
 commit_err=""
 [ -n "$emit_err" ] && rm -f "$emit_err"

@@ -339,19 +339,40 @@ cleanup_body() {
     fi
   fi
   # Restore staged raw sources whenever we did not complete successfully,
-  # including signal-forced exits. This guarantees the user never silently
-  # loses the raw source body captured by wiki-ingest-trigger.sh.
+  # including signal-forced exits. Cycle 2 MEDIUM: only attempt the
+  # restore when we are back on the original branch — otherwise the
+  # `cp -f` targets would land on the wiki branch working tree and the
+  # message below would misreport the destination. When checkout-back
+  # failed, the staging dir is preserved so the user can recover raw
+  # sources manually after resolving the branch state.
   if [[ "$rc" -ne 0 ]] && [[ -d "$stage_dir" ]]; then
-    local staged rel target
-    while IFS= read -r -d '' staged; do
-      rel="${staged#$stage_dir/}"
-      target=".rite/wiki/raw/${rel}"
-      mkdir -p "$(dirname "$target")" 2>/dev/null || true
-      cp -f "$staged" "$target" 2>/dev/null || true
-    done < <(find "$stage_dir" -type f -print0 2>/dev/null || true)
-    echo "INFO: restored ${#pending_files[@]} raw source(s) back to the dev branch working tree after failure (rc=$rc)" >&2
+    if [[ "$checked_out_wiki" == "false" ]]; then
+      local staged rel target
+      while IFS= read -r -d '' staged; do
+        rel="${staged#$stage_dir/}"
+        target=".rite/wiki/raw/${rel}"
+        mkdir -p "$(dirname "$target")" 2>/dev/null || true
+        cp -f "$staged" "$target" 2>/dev/null || true
+      done < <(find "$stage_dir" -type f -print0 2>/dev/null || true)
+      echo "INFO: restored ${#pending_files[@]} raw source(s) back to the dev branch working tree after failure (rc=$rc)" >&2
+      rm -rf "$stage_dir" 2>/dev/null || true
+    else
+      # We are still on the wiki branch (checkout-back failed). Do NOT
+      # copy raw sources here — they would land on the wrong branch.
+      # Preserve the staging dir so the user can recover by hand.
+      echo "WARNING: staging directory preserved at $stage_dir (raw sources not restored)" >&2
+      echo "  (checkout-back to '$current_branch' failed earlier; copying now would write onto the wiki branch)" >&2
+      echo "  manual recovery:" >&2
+      echo "    1) resolve the branch state: git checkout $current_branch" >&2
+      echo "    2) copy staged raw sources back: cp -r $stage_dir/. .rite/wiki/raw/" >&2
+      echo "    3) clean up: rm -rf $stage_dir" >&2
+    fi
+  else
+    rm -rf "$stage_dir" 2>/dev/null || true
   fi
-  rm -rf "$stage_dir" 2>/dev/null || true
+  # Cycle 2 MEDIUM: cleanup the git stderr capture file here so signal
+  # exits (INT/TERM/HUP) do not leak /tmp/rite-wic-git-err-*.
+  [[ -n "${git_err:-}" ]] && rm -f "$git_err" 2>/dev/null || true
 }
 # Signal-specific handlers pass explicit exit codes so cleanup_body sees
 # the real termination reason rather than a stale `$?` from the last
@@ -386,52 +407,69 @@ find .rite/wiki/raw -type d -empty -delete 2>/dev/null || true
 
 # MEDIUM #7 — capture git stderr on critical-path commands so the real
 # cause ("would overwrite untracked files", "not a valid object name",
-# network auth failures, etc.) surfaces to the user. Suppressing stderr
-# with `2>/dev/null` on the old implementation made git failures opaque
-# and required the user to re-run by hand to see the actual reason.
+# network auth failures, etc.) surfaces to the user on **failure**.
+# Suppressing stderr with `2>/dev/null` on the old implementation made
+# git failures opaque and required the user to re-run by hand to see
+# the actual reason.
+#
+# Cycle 2 MEDIUM (noise reduction): only dump stderr on failure paths.
+# Previous design called `dump_git_err` after **every** git command,
+# including successful ones, which surfaced git informational messages
+# like `Switched to branch 'wiki'` on stderr — noise that drowned out
+# real error signals. The helper is now failure-only; success paths
+# call `clear_git_err` to truncate the buffer for the next command.
+#
+# git_err cleanup is delegated to `cleanup_body` (see the EXIT/INT/TERM/HUP
+# traps below). A separate trap would overwrite cleanup_body's and break
+# the HIGH #1/#2 rollback-safety rewrites from cycle 1.
 git_err=$(mktemp /tmp/rite-wic-git-err-XXXXXX 2>/dev/null || echo "")
 
-# dump_git_err <label>: print up to 10 lines of captured git stderr with
-# a label prefix, then truncate the file so the next command starts
-# clean. No-op when git_err allocation failed.
+# dump_git_err <label>: print captured git stderr with a label prefix,
+# then truncate. Call only on failure paths. No-op when git_err absent.
 dump_git_err() {
   local label="$1"
   if [[ -n "$git_err" ]] && [[ -s "$git_err" ]]; then
-    sed 's/^/  git ('"$label"'): /' "$git_err" >&2
+    head -n 10 "$git_err" | sed 's/^/  git ('"$label"'): /' >&2
     : > "$git_err"
   fi
+}
+
+# clear_git_err: truncate captured stderr so the next command starts
+# with a clean buffer. Used on success paths instead of dump_git_err
+# to avoid surfacing git informational messages as noise.
+clear_git_err() {
+  [[ -n "$git_err" ]] && [[ -f "$git_err" ]] && : > "$git_err"
 }
 
 # Step 3: stash any remaining uncommitted work so checkout is safe.
 # We use `git stash push -u` with a specific message for traceability.
 has_changes=false
 if ! git diff --quiet HEAD 2>"${git_err:-/dev/null}"; then has_changes=true; fi
-dump_git_err "diff"
+clear_git_err
 if ! git diff --cached --quiet HEAD 2>"${git_err:-/dev/null}"; then has_changes=true; fi
-dump_git_err "diff --cached"
+clear_git_err
 if [[ -n "$(git ls-files --others --exclude-standard 2>"${git_err:-/dev/null}")" ]]; then
   has_changes=true
 fi
-dump_git_err "ls-files --others"
+clear_git_err
 if [[ "$has_changes" == "true" ]]; then
   if ! git stash push -u -m "rite-wiki-ingest-commit-stash" >/dev/null 2>"${git_err:-/dev/null}"; then
     echo "ERROR: git stash push failed" >&2
     dump_git_err "stash push"
-    [[ -n "$git_err" ]] && rm -f "$git_err"
     exit 3
   fi
-  dump_git_err "stash push"
+  clear_git_err
   stash_pushed=true
 fi
 
-# Step 4: checkout the wiki branch.
-if ! git checkout "$wiki_branch" >/dev/null 2>"${git_err:-/dev/null}"; then
+# Step 4: checkout the wiki branch. Use -q to suppress the "Switched to
+# branch" informational message so only true errors land in git_err.
+if ! git checkout -q "$wiki_branch" 2>"${git_err:-/dev/null}"; then
   echo "ERROR: git checkout '$wiki_branch' failed" >&2
   dump_git_err "checkout $wiki_branch"
-  [[ -n "$git_err" ]] && rm -f "$git_err"
   exit 3
 fi
-dump_git_err "checkout $wiki_branch"
+clear_git_err
 checked_out_wiki=true
 
 # Step 5: replay staged raw files into the wiki branch working tree.
@@ -446,42 +484,41 @@ done < <(find "$stage_dir" -type f -print0)
 if ! git add .rite/wiki/raw >/dev/null 2>"${git_err:-/dev/null}"; then
   echo "ERROR: git add .rite/wiki/raw failed on '$wiki_branch'" >&2
   dump_git_err "add .rite/wiki/raw"
-  [[ -n "$git_err" ]] && rm -f "$git_err"
   exit 3
 fi
-dump_git_err "add .rite/wiki/raw"
+clear_git_err
 if git diff --cached --quiet 2>"${git_err:-/dev/null}"; then
   # Nothing new to commit — the raw files already existed verbatim on the
   # wiki branch. Treat as a no-op success (still return to original branch
   # via cleanup trap).
-  dump_git_err "diff --cached"
+  clear_git_err
   echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
-  [[ -n "$git_err" ]] && rm -f "$git_err"
   exit 0
 fi
-dump_git_err "diff --cached"
+clear_git_err
 commit_msg="chore(wiki): ingest ${#pending_files[@]} raw source(s) from ${current_branch}"
 if ! git commit -m "$commit_msg" >/dev/null 2>"${git_err:-/dev/null}"; then
   echo "ERROR: git commit failed on '$wiki_branch'" >&2
   dump_git_err "commit"
-  [[ -n "$git_err" ]] && rm -f "$git_err"
   exit 3
 fi
-dump_git_err "commit"
+clear_git_err
 committed_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
 # Push is best-effort: we do NOT exit 3 on push failure, because the
 # commit has already landed on the local wiki branch and the caller may
 # not have network access (or origin may be gone in tests). We report the
-# push result so the caller can decide.
+# push result so the caller can decide. Use --quiet to suppress progress
+# updates (they go to stderr) so only real errors appear in git_err.
 push_status="ok"
-if ! git push origin "$wiki_branch" >/dev/null 2>"${git_err:-/dev/null}"; then
+if ! git push --quiet origin "$wiki_branch" 2>"${git_err:-/dev/null}"; then
   push_status="failed"
   echo "WARNING: git push origin '$wiki_branch' failed — commit is local only" >&2
   dump_git_err "push origin $wiki_branch"
   echo "  manual recovery: git push origin $wiki_branch" >&2
 fi
-[[ -n "$git_err" ]] && rm -f "$git_err"
+clear_git_err
+# git_err cleanup is handled by the EXIT trap installed above.
 
 echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${committed_sha}; push=${push_status}"
 

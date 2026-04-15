@@ -434,19 +434,20 @@ if [ -n "$reason" ]; then
   echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
   emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
   trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
-  # close.md は通常 PR が確定していないため "${pr_number:-0}" で 0 にフォールバック。
-  # PR 番号が shell 変数として set されている場合のみその値を採用する (template substitution は使わない)
-  emit_pr_number="${pr_number:-0}"
+  # close.md は PR が scope に存在しないため、workflow-incident-emit.sh には
+  # literal `0` を渡す (Phase 4.4.W.2 と同じ pattern で対称性を維持)。
+  # 旧実装 `emit_pr_number="${pr_number:-0}"` は Bash tool 呼出境界で `$pr_number` が
+  # unset のため常に 0 に resolve される dead code だった (PR #529 cycle 2 HIGH #2)。
   if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
       --type wiki_ingest_skipped \
       --details "close Phase 4.4.W skipped: $reason" \
-      --pr-number "$emit_pr_number" 2>"${emit_err:-/dev/null}"); then
+      --pr-number 0 2>"${emit_err:-/dev/null}"); then
     if [ -n "$sentinel_line" ]; then
       echo "$sentinel_line"
       echo "$sentinel_line" >&2
     fi
   else
-    fallback_iter="${emit_pr_number}-$(date +%s)"
+    fallback_iter="{issue_number}-$(date +%s)"
     fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped reason=$reason; iteration_id=$fallback_iter"
     echo "$fallback_sentinel"
     echo "$fallback_sentinel" >&2
@@ -514,17 +515,17 @@ if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
   echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
   emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
   trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
-  emit_pr_number="${pr_number:-0}"
+  # literal `--pr-number 0` (close.md は PR が scope 外、Phase 4.4.W.2 / Step 1 と対称)
   if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
       --type wiki_ingest_failed \
       --details "wiki-ingest-trigger.sh exited $trigger_exit during issue/close.md Phase 4.4.W" \
-      --pr-number "$emit_pr_number" 2>"${emit_err:-/dev/null}"); then
+      --pr-number 0 2>"${emit_err:-/dev/null}"); then
     if [ -n "$sentinel_line" ]; then
       echo "$sentinel_line"
       echo "$sentinel_line" >&2
     fi
   else
-    fallback_iter="${emit_pr_number}-$(date +%s)"
+    fallback_iter="{issue_number}-$(date +%s)"
     fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed trigger_exit=$trigger_exit; iteration_id=$fallback_iter"
     echo "$fallback_sentinel"
     echo "$fallback_sentinel" >&2
@@ -538,7 +539,7 @@ fi
 
 ### 4.4.W.2 Wiki Raw Commit (Shell — deterministic path)
 
-> **Design rationale (supersedes the previous Skill-based design)**: Earlier revisions of this phase invoked `/rite:wiki:ingest` via the Skill tool, which in turn required Claude to correctly chain `ingest.md` Phase 5.1 Block A → LLM Write/Edit phase → Block B across multiple Bash tool boundaries and a sub-skill auto-continuation step. That contract was structurally fragile under E2E output minimization and auto-continuation failures (Issue #525), producing the observed regression where the `wiki` branch never grew in practice despite four rounds of silent-skip defence layers (Issues #515, #518, #524). This phase now delegates the raw-source commit to a **single shell script**, `wiki-ingest-commit.sh`, which completes the stash→checkout→add→commit→push→checkout-back→stash-pop cycle in one process with no dependency on Claude multi-step orchestration.
+> **Design rationale (supersedes the previous Skill-based design)**: Earlier revisions of this phase invoked `/rite:wiki:ingest` via the Skill tool, which in turn required Claude to correctly chain `ingest.md` Phase 5.1 Block A → LLM Write/Edit phase → Block B across multiple Bash tool boundaries and a sub-skill auto-continuation step. That contract was structurally fragile under E2E output minimization and auto-continuation failures (Issue #525), producing the observed regression where the `wiki` branch never grew in practice despite multiple rounds of silent-skip defence layers (Issues #515, #518, #524). This phase now delegates the raw-source commit to a **single shell script**, `wiki-ingest-commit.sh`, which completes the stash→checkout→add→commit→push→checkout-back→stash-pop cycle in one process with no dependency on Claude multi-step orchestration.
 
 **Responsibility scope**: this block commits **raw sources only**. LLM-driven Wiki **page** integration is deferred to `/rite:wiki:ingest`, which is idempotent over accumulated raw sources and can be invoked later. The split guarantees raw sources are never lost even when page integration is skipped or fails.
 

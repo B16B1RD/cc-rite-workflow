@@ -1956,6 +1956,7 @@ Scan the recent conversation context for these patterns (the same context the Ph
 | `[CONTEXT] WIKI_INGEST_DONE=1; ...` | `done_count` (number of successful trigger + ingest cycles in this Issue) |
 | `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=disabled` | `skipped_disabled_count` |
 | `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `skipped_auto_off_count` |
+| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` | `skipped_commit_branch_missing_count` (layer 0 / PR #529: `wiki-ingest-commit.sh` exited 2 because the wiki branch does not exist locally — treated as a legitimate skip separate from `wiki.enabled=false`/`auto_ingest=false`) |
 | `[CONTEXT] WIKI_INGEST_FAILED=1; reason=...` | `failed_count` |
 
 Also retrieve the current wiki branch state (best-effort — never block on this):
@@ -1984,6 +1985,7 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 | ✅ DONE (trigger + ingest 完了) | {done_count} |
 | ⚠️ SKIPPED (disabled) | {skipped_disabled_count} |
 | ⚠️ SKIPPED (auto_ingest_off) | {skipped_auto_off_count} |
+| ⚠️ SKIPPED (commit_branch_missing) | {skipped_commit_branch_missing_count} |
 | ❌ FAILED (trigger エラー) | {failed_count} |
 
 - **wiki branch 最終 commit**: {last_wiki_commit or "(wiki branch 未作成)"}
@@ -1993,10 +1995,11 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 
 | Condition | Warning to append |
 |-----------|------------------|
-| `done_count == 0` AND `skipped_disabled_count == 0` AND `skipped_auto_off_count == 0` AND `failed_count == 0` | `> ⚠️ Phase X.X.W が一度も実行されていません。silent skip の可能性があります。/rite:wiki:ingest を手動実行するか、Phase 5.4.4.1 の sentinel を確認してください。` |
+| `done_count == 0` AND `skipped_disabled_count == 0` AND `skipped_auto_off_count == 0` AND `skipped_commit_branch_missing_count == 0` AND `failed_count == 0` | `> ⚠️ Phase X.X.W が一度も実行されていません。silent skip の可能性があります。/rite:wiki:ingest を手動実行するか、Phase 5.4.4.1 の sentinel を確認してください。` |
 | `failed_count >= 1` | `> ❌ Wiki ingest trigger が {failed_count} 回失敗しました。Phase 5.4.4.1 で workflow incident として登録されているか確認してください。` |
 | `skipped_disabled_count >= 1` | `> ℹ️ wiki.enabled=false により Wiki 機能全体が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
 | `skipped_auto_off_count >= 1` | `> ℹ️ wiki.auto_ingest が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
+| `skipped_commit_branch_missing_count >= 1` | `> ℹ️ wiki-ingest-commit.sh が wiki ブランチ未作成により skip されました（{skipped_commit_branch_missing_count} 件）。/rite:wiki:init を実行するか、git fetch origin wiki を実行してください。` |
 | `done_count >= 1` AND no failures | `> ✅ Wiki branch が成長しました（{done_count} cycle 分の raw source が ingest されました）。` |
 
 > **Skip condition**: This section is **NEVER** skipped. AC-5 requires it to always be present in the completion report so the user has a definitive answer about whether the Wiki grew during this Issue.
