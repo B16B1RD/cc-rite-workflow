@@ -81,11 +81,30 @@ ok_count=0
 already_count=0
 failed_count=0
 skipped_count=0
+api_error_count=0
 
+# extract_parent_number: child Issue から `Parent Issue: #N` メタを抽出する。
+#
+# Return codes (silent skip 禁止のため、API 失敗と良性 "メタなし" を厳密に区別する):
+#   0  - body 取得成功 + meta 抽出成功 (stdout に親番号を出力)
+#   1  - body 取得成功 + meta なし (legitimate "no parent meta")
+#   2  - gh issue view が失敗 (API エラー / auth / network / rate limit / 5xx 等)
+#
+# stderr suppression (`2>/dev/null`) は使用せず、エラー出力を一時ファイルに捕捉して
+# 呼び出し元に warning + 詳細メッセージを surface する。これにより MUST「silent skip 禁止」
+# (Issue #514) と CLAUDE.md feedback `feedback_e2e_no_stop_before_review` の精神を遵守する。
 extract_parent_number() {
   local child_num="$1"
-  local body
-  body=$(gh issue view "$child_num" --repo "$OWNER/$REPO" --json body --jq '.body' 2>/dev/null || echo "")
+  local body err_file
+  err_file=$(mktemp)
+  if ! body=$(gh issue view "$child_num" --repo "$OWNER/$REPO" --json body --jq '.body' 2>"$err_file"); then
+    local err_msg
+    err_msg=$(cat "$err_file")
+    rm -f "$err_file"
+    echo "⚠️ #$child_num: gh issue view に失敗しました: ${err_msg:-(no stderr output)}" >&2
+    return 2
+  fi
+  rm -f "$err_file"
   if [ -z "$body" ]; then
     return 1
   fi
@@ -136,7 +155,19 @@ is_already_subissue() {
 }
 
 for child in "${TARGET_CHILDREN[@]}"; do
-  parent=$(extract_parent_number "$child" || true)
+  # extract_parent_number の return code を区別:
+  #   0 → parent 番号取得成功
+  #   1 → メタなし (良性スキップ)
+  #   2 → API 失敗 (api_error_count に計上、silent skip しない)
+  set +e
+  parent=$(extract_parent_number "$child")
+  ext_rc=$?
+  set -e
+  if [ "$ext_rc" -eq 2 ]; then
+    echo "❌ #$child: parent 番号の抽出に失敗 (API エラー) — 後続 linkage をスキップ" >&2
+    api_error_count=$((api_error_count + 1))
+    continue
+  fi
   if [ -z "$parent" ]; then
     echo "⏭️  #$child: parent meta なし — スキップ"
     skipped_count=$((skipped_count + 1))
@@ -179,8 +210,14 @@ done
 
 echo
 echo "=== Backfill サマリー ==="
-echo "新規紐付け成功: $ok_count"
-echo "既に登録済み:   $already_count"
-echo "失敗:           $failed_count"
-echo "スキップ:       $skipped_count"
-echo "合計:           ${#TARGET_CHILDREN[@]}"
+echo "新規紐付け成功:        $ok_count"
+echo "既に登録済み:          $already_count"
+echo "失敗 (linkage):        $failed_count"
+echo "失敗 (API エラー):     $api_error_count"
+echo "スキップ (meta なし):  $skipped_count"
+echo "合計:                  ${#TARGET_CHILDREN[@]}"
+if [ "$api_error_count" -gt 0 ]; then
+  echo
+  echo "⚠️ $api_error_count 件で gh issue view が失敗しました。" >&2
+  echo "   auth (gh auth status) / network / rate limit / API 5xx を確認してください。" >&2
+fi

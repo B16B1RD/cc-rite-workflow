@@ -531,6 +531,21 @@ if [ "${#SUB_ISSUE_NUMBERS[@]}" -eq 0 ]; then
   exit 1
 fi
 
+# === MANDATORY guard: literal placeholder 検出 ===
+# Claude が bash 実行前に {owner}/{repo}/{parent_issue_number} を実値で置換するのが前提。
+# 置換漏れがあると link-sub-issue.sh が必ず失敗し、後続の "all-failures" 警告が発火する。
+# その時点では既に N 回の API 呼び出しが無駄になっているため、ここで早期検出して fail-fast する。
+# (AC-4/AC-5 は「API レベルの失敗」を非ブロッキングと定めるが、本ガードは「Claude の置換漏れ」
+#  というプロンプト実装ミスを検出するため別レイヤとして扱う)
+for ph in "{owner}" "{repo}" "{parent_issue_number}"; do
+  if printf '%s' "$ph" | grep -qE '^\{[a-z_]+\}$'; then
+    echo "ERROR: Placeholder '$ph' が substitute されていません。" >&2
+    echo "  Claude は bash 実行前に rite-config.yml / gh repo view / 親 Issue 番号から実値で置換する必要があります。" >&2
+    echo "  参照: 本セクションの 'Placeholder descriptions' 表" >&2
+    exit 1
+  fi
+done
+
 link_failures=0
 for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
   link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
@@ -557,11 +572,16 @@ done
 
 if [ "$link_failures" -eq "${#SUB_ISSUE_NUMBERS[@]}" ]; then
   # 全 Sub-Issue で linkage 失敗 = 設定不備 ({repo} 未解決 / 権限不足 / API 未開放等) の可能性が高い。
-  # 個別の warning だけだと「動いているように見える」silent-success に陥るため、ここで fail-fast する。
+  # ただし AC-4/AC-5 (本コマンドは Sub-issues API の失敗で全体処理を中断しない) を遵守するため
+  # ERROR 級の警告を stderr に出して継続する。Tasklist + body meta が fallback として残るため、
+  # 後続の Phase 0.9.5 (Projects 検証) と Phase 0.9.6 (完了報告) は実行されなければならない。
+  # placeholder 未解決のような構成不備の早期検出は、bash ブロック冒頭の literal-token guard で
+  # 別レイヤとして担保する (本ブロックの責務ではない)。
   echo "ERROR: 全 Sub-Issue (${#SUB_ISSUE_NUMBERS[@]} 件) で Sub-issues API linkage が失敗しました。" >&2
-  echo "  考えられる原因: {owner}/{repo}/{parent_issue_number} プレースホルダーの未解決、token scope 不足、Sub-issues API が無効など (AC-1 違反)。" >&2
-  echo "  body メタ (Tasklist + Parent Issue: #N) は残っていますが、API レベルの紐付けは確立されていません。" >&2
-  exit 1
+  echo "  考えられる原因: {owner}/{repo}/{parent_issue_number} プレースホルダーの未解決、token scope 不足、Sub-issues API が無効など。" >&2
+  echo "  body メタ (Tasklist + Parent Issue: #N) は残っているため parent-child の追跡は可能ですが、" >&2
+  echo "  GitHub UI の Sub-issues セクションには表示されません。本実行は AC-4/AC-5 に従い継続します。" >&2
+  echo "  (継続: parent-routing.md と挙動を統一)" >&2
 elif [ "$link_failures" -gt 0 ]; then
   echo "⚠️ $link_failures/${#SUB_ISSUE_NUMBERS[@]} 件の Sub-Issue で API 紐付けに失敗しました（body メタは維持されます）" >&2
 fi
