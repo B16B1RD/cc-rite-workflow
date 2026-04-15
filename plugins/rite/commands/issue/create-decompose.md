@@ -494,57 +494,57 @@ gh issue edit {parent_issue_number} --body-file "$tmpfile"
 ...
 ```
 
-### 0.9.4 Use GitHub Sub-Issues API (Optional)
+### 0.9.4 Sub-Issues API Linkage (Mandatory)
 
-If GitHub Sub-Issues (beta) is available, set up parent-child relationships:
+After bulk Sub-Issue creation in Phase 0.9.2, **always** establish the parent-child relationship at the API level using the [`link-sub-issue.sh` helper](../../references/graphql-helpers.md#addsubissue-helper). This ensures the GitHub `subIssues` relation is the single source of truth, while the body Tasklist (Phase 0.9.3) and `Parent Issue: #N` body meta serve as human-readable backups.
 
-```bash
-# Sub-Issues API の利用可能性を確認
-gh api graphql -f query='
-query {
-  __type(name: "AddSubIssueInput") {
-    name
-  }
-}'
-```
-
-If available:
+**Execution**: For each `sub_issue_number` collected during Phase 0.9.2 (the list referenced for Tasklist update in 0.9.3), execute the helper after the bulk-create loop completes. Substitute `SUB_ISSUE_NUMBERS` with the actual list of sub-Issue numbers gathered in Phase 0.9.2:
 
 ```bash
-# 親子関係を設定
-gh api graphql -f query='
-mutation($parentId: ID!, $childId: ID!) {
-  addSubIssue(input: {
-    issueId: $parentId
-    subIssueId: $childId
-  }) {
-    issue {
-      id
-    }
-  }
-}' -f parentId="{parent_issue_node_id}" -f childId="{child_issue_node_id}"
+# 各 Sub-Issue について Sub-issues API で親に紐付ける
+# SUB_ISSUE_NUMBERS は Phase 0.9.2 で収集した sub_issue_number の配列
+link_failures=0
+for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
+  link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
+    "{owner}" "{repo}" "{parent_issue_number}" "$sub_number")
+  link_status=$(printf '%s' "$link_result" | jq -r '.status')
+  link_msg=$(printf '%s' "$link_result" | jq -r '.message')
+  case "$link_status" in
+    ok|already-linked)
+      echo "✅ $link_msg"
+      ;;
+    failed)
+      printf '%s' "$link_result" | jq -r '.warnings[]' \
+        | while read -r w; do echo "⚠️ $w" >&2; done
+      echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+  esac
+done
+
+if [ "$link_failures" -gt 0 ]; then
+  echo "⚠️ $link_failures 件の Sub-Issue で API 紐付けに失敗しました（body メタは維持されます）" >&2
+fi
 ```
 
-**API availability evaluation and processing flow**:
+**Behavioral guarantees**:
 
-```
-1. `__type` クエリを実行
-   ↓
-2. 結果を確認
-   ├─ `__type.name` が "AddSubIssueInput" → API 利用可能、親子関係を設定
-   └─ `__type` が null または エラー → API 利用不可、スキップ
-```
+- **Mandatory but non-blocking**: The helper is invoked for every Sub-Issue, but linkage failure does NOT abort `create-decompose`. The Tasklist (Phase 0.9.3) and `Parent Issue: #N` body meta act as fallback identification.
+- **Idempotent**: Re-invoking the helper for an already-linked relation is a no-op (`status=already-linked`).
+- **Retried automatically**: 5xx server errors are retried up to 3 times with exponential backoff inside the helper; callers see only the final outcome.
+- **Visible failures**: Failures emit `⚠️ Sub-issues API linkage failed: #C -> #P` to stderr (no silent skip), preserving CLAUDE.md feedback `feedback_e2e_no_stop_before_review` for hook-style steps.
 
-**Error handling**:
+**Error handling matrix**:
 
-| Error Type | Detection Method | Response |
-|-----------|-----------------|----------|
-| API not supported | `__type` is `null` | Parent-child relationship already expressed via Tasklist in Phase 0.9.3 (fallback in place) |
-| GraphQL error | `errors` field exists | Display warning and continue with Tasklist only |
-| Timeout | No response | Retry once, then continue with Tasklist only |
-| Permission error | `FORBIDDEN` or `UNAUTHORIZED` | Display warning and continue with Tasklist only |
+| Helper Status | Detection | Response |
+|---------------|-----------|----------|
+| `ok` | Mutation succeeded | Display success, continue |
+| `already-linked` | GitHub returned an `already`/`sub-issue exists` error message | Treat as success, continue |
+| `failed` (4xx) | Permission denied / Sub-issues API not enabled | Surface warning to stderr, fall back to body meta, continue |
+| `failed` (5xx after retries) | Persistent server error | Surface warning to stderr, fall back to body meta, continue |
+| `failed` (parent/child not found) | Node ID resolution failed | Surface warning, skip this Sub-Issue's linkage only |
 
-**Note**: Even if the Sub-Issues API is unavailable, the parent-child relationship is visually represented via the Tasklist format set up in Phase 0.9.3.
+**Note**: The Tasklist created in Phase 0.9.3 and the `Parent Issue:` body meta in Sub-Issue bodies remain in place even when linkage succeeds, providing both API-level and human-readable backup for parent-child traceability. See [graphql-helpers.md addSubIssue Helper](../../references/graphql-helpers.md#addsubissue-helper) for the full helper contract.
 
 ### 0.9.5 Projects Registration
 
