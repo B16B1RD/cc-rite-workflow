@@ -57,12 +57,14 @@ For **Case A** (PR created):
 - [ ] 項目テーブル with exactly **7** data rows
 - [ ] `### フェーズ進捗` heading with exactly 6 data rows
 - [ ] `### 次のステップ` heading with exactly 3 numbered items
+- [ ] `### 📚 Wiki ingest 状況` heading with signal table (from Step 3.5, Issue #524 AC-5 — never skipped)
 
 For **Case B** (PR not created):
 - [ ] `## 完了報告` heading
 - [ ] 項目テーブル with exactly **5** data rows
 - [ ] `### フェーズ進捗` heading with exactly 6 data rows (with ⏳ for incomplete phases)
 - [ ] `### 次のステップ` heading with exactly 3 numbered items
+- [ ] `### 📚 Wiki ingest 状況` heading with signal table (from Step 3.5, Issue #524 AC-5 — never skipped)
 
 If any check fails, re-read the template and regenerate.
 

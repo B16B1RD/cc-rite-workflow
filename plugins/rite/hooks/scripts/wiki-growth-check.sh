@@ -32,6 +32,20 @@
 #
 set -uo pipefail
 
+# Signal-specific trap (canonical signal-specific trap pattern from references/bash-trap-patterns.md):
+# - EXIT preserves the original exit code via `rc=$?`
+# - INT/TERM/HUP exit with explicit POSIX-conventional codes (130/143/129)
+# - Tempfiles registered via `_rite_wiki_growth_cleanup` are cleaned in all paths
+gh_pr_list_err=""
+git_log_err=""
+_rite_wiki_growth_cleanup() {
+  rm -f "${gh_pr_list_err:-}" "${git_log_err:-}"
+}
+trap 'rc=$?; _rite_wiki_growth_cleanup; exit $rc' EXIT
+trap '_rite_wiki_growth_cleanup; exit 130' INT
+trap '_rite_wiki_growth_cleanup; exit 143' TERM
+trap '_rite_wiki_growth_cleanup; exit 129' HUP
+
 REPO_ROOT=""
 QUIET=0
 THRESHOLD_OVERRIDE=""
@@ -92,12 +106,18 @@ fi
 
 # wiki.enabled (opt-out default true)
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$config_file" 2>/dev/null) || wiki_section=""
-wiki_enabled=""
-if [ -n "$wiki_section" ]; then
-  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' \
-    | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+
+# wiki section が空 (rite-config.yml に wiki: セクション自体がない) なら早期 exit
+# (L-4 修正: 後続の branch_name 抽出等を無駄に試みない)
+if [ -z "$wiki_section" ]; then
+  log_info "wiki-growth-check: wiki section absent in rite-config.yml — skipping (exit 0)"
+  echo "==> Total wiki-growth-check findings: 0"
+  exit 0
 fi
+
+wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' \
+  | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 case "$wiki_enabled" in
   false|no|0) wiki_enabled="false" ;;
   true|yes|1) wiki_enabled="true" ;;
@@ -115,11 +135,24 @@ if [ -n "$THRESHOLD_OVERRIDE" ]; then
   threshold="$THRESHOLD_OVERRIDE"
 else
   # Look for `growth_check:` section nested under `wiki:` and pick `threshold_prs:`
+  # Section の終了は indent レベル (2 スペース) で判定する。
+  # `growth_check:` 配下に `threshold_prs:` 以外の sibling key (例: `enabled:`,
+  # `base_branch_override:`) が先に追加されると section を抜けたと誤判定して silent fail
+  # する欠陥があった。section 終了は「同 indent (4 スペース) 以外の non-empty 行」、
+  # かつ「より浅い indent (2 スペース wiki: 直下の sibling)」で判定する。
   threshold=$(printf '%s\n' "$wiki_section" \
     | awk '
-      /^[[:space:]]+growth_check:/ { in_gc=1; next }
-      in_gc && /^[[:space:]]+threshold_prs:/ { print; exit }
-      in_gc && /^[[:space:]]+[a-z_]+:/ && !/^[[:space:]]+threshold_prs:/ { in_gc=0 }
+      /^[[:space:]]+growth_check:/ { in_gc=1; gc_indent=match($0, /[^[:space:]]/); next }
+      in_gc {
+        # 空行は section 内とみなす (YAML の慣習)
+        if ($0 ~ /^[[:space:]]*$/) next
+        # 現在行の indent を取得
+        cur_indent=match($0, /[^[:space:]]/)
+        # growth_check: と同じか浅い indent の non-empty key 行が出たら section 終了
+        if (cur_indent <= gc_indent) { in_gc=0; next }
+        # section 内かつ threshold_prs: 行ならマッチ
+        if ($0 ~ /^[[:space:]]+threshold_prs:/) { print; exit }
+      }
     ' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*threshold_prs:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 fi
@@ -134,12 +167,33 @@ wiki_branch=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+branch_name:/ {
 [ -z "$wiki_branch" ] && wiki_branch="wiki"
 
 # Try local branch first, then remote tracking branch
+# git log の stderr を tempfile に退避し、permission/repo corruption 等の
+# 失敗を「branch not found」と誤報告する経路を排除する
 last_wiki=""
+git_log_err=$(mktemp /tmp/rite-wiki-growth-git-err-XXXXXX 2>/dev/null) || git_log_err=""
+git_log_target=""
 if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
-  last_wiki=$(git log -1 --format=%aI "$wiki_branch" 2>/dev/null)
+  git_log_target="$wiki_branch"
 elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
-  last_wiki=$(git log -1 --format=%aI "origin/$wiki_branch" 2>/dev/null)
+  git_log_target="origin/$wiki_branch"
 fi
+
+if [ -n "$git_log_target" ]; then
+  if last_wiki=$(git log -1 --format=%aI "$git_log_target" 2>"${git_log_err:-/dev/null}"); then
+    : # success
+  else
+    git_log_rc=$?
+    echo "WARNING: git log on '$git_log_target' failed (rc=$git_log_rc) — wiki-growth-check skipped" >&2
+    [ -n "$git_log_err" ] && [ -s "$git_log_err" ] && head -3 "$git_log_err" | sed 's/^/  /' >&2
+    echo "  対処: repository の整合性 (.git permission / corrupt object) を確認してください" >&2
+    [ -n "$git_log_err" ] && rm -f "$git_log_err"
+    git_log_err=""
+    echo "==> Total wiki-growth-check findings: 0"
+    exit 0
+  fi
+fi
+[ -n "$git_log_err" ] && rm -f "$git_log_err"
+git_log_err=""
 
 if [ -z "$last_wiki" ]; then
   log_info "wiki-growth-check: wiki branch '$wiki_branch' not found locally or on origin — skipping (exit 0)"
@@ -164,15 +218,35 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 # `merged:>YYYY-MM-DD` — gh search interprets full ISO 8601 timestamps too
-merged_count=$(gh pr list \
-  --state merged \
-  --base "$base_branch" \
-  --search "merged:>$last_wiki" \
-  --json number \
-  --limit 200 2>/dev/null | jq 'length' 2>/dev/null)
+# gh pr list の stderr を tempfile に退避し、auth error / network error / rate limit を可視化する
+gh_pr_list_err=$(mktemp /tmp/rite-wiki-growth-gh-err-XXXXXX 2>/dev/null) || gh_pr_list_err=""
+gh_json_out=""
+if gh_json_out=$(gh pr list \
+    --state merged \
+    --base "$base_branch" \
+    --search "merged:>$last_wiki" \
+    --json number \
+    --limit 200 2>"${gh_pr_list_err:-/dev/null}"); then
+  : # success
+else
+  gh_rc=$?
+  echo "WARNING: gh pr list failed (rc=$gh_rc) — wiki-growth-check skipped" >&2
+  [ -n "$gh_pr_list_err" ] && [ -s "$gh_pr_list_err" ] && head -5 "$gh_pr_list_err" | sed 's/^/  /' >&2
+  echo "  対処: gh auth status (auth error) / network 接続 / rate limit を確認してください" >&2
+  [ -n "$gh_pr_list_err" ] && rm -f "$gh_pr_list_err"
+  gh_pr_list_err=""
+  echo "==> Total wiki-growth-check findings: 0"
+  exit 0
+fi
+[ -n "$gh_pr_list_err" ] && rm -f "$gh_pr_list_err"
+gh_pr_list_err=""
+
+# jq が空入力で空文字列を返すケース (gh が空 JSON を返す等) は merged_count=0 として扱う
+merged_count=$(printf '%s' "$gh_json_out" | jq 'length' 2>/dev/null)
 
 if [ -z "$merged_count" ] || ! [[ "$merged_count" =~ ^[0-9]+$ ]]; then
-  echo "WARNING: gh pr list returned unexpected output — wiki-growth-check skipped" >&2
+  echo "WARNING: gh pr list の JSON 解析に失敗しました — wiki-growth-check skipped" >&2
+  echo "  raw stdout (先頭 200 文字): $(printf '%s' "$gh_json_out" | head -c 200)" >&2
   echo "==> Total wiki-growth-check findings: 0"
   exit 0
 fi
@@ -180,7 +254,7 @@ fi
 # --- Decision ---
 if [ "$merged_count" -ge "$threshold" ]; then
   echo "==> Wiki growth stall detected: $merged_count merged PRs on '$base_branch' since last '$wiki_branch' commit ($last_wiki) — no raw sources ingested (threshold: $threshold)"
-  echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may be silently skipped in review/fix/close. Check WIKI_INGEST_DONE / WIKI_INGEST_SKIPPED context lines."
+  echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may be silently skipped in review/fix/close. Check WIKI_INGEST_DONE / WIKI_INGEST_SKIPPED / WIKI_INGEST_FAILED context lines."
   echo "==> Total wiki-growth-check findings: 1"
   exit 1
 fi

@@ -1966,7 +1966,8 @@ if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
 elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
   last_wiki_commit=$(git log -1 --format='%aI' "origin/$wiki_branch" 2>/dev/null)
 fi
-echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-(wiki branch not found)}"
+# 空文字列で emit (Step 2 template の `{last_wiki_commit or "(wiki branch 未作成)"}` で日本語 fallback を render する)
+echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 ```
 
 **Step 2 — Output format** (always render, even when all counters are 0 — the absence is itself a signal worth reporting per AC-5):

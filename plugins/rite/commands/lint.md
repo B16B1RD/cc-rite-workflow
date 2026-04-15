@@ -537,7 +537,7 @@ Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" re
 
 **Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
 
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory) OR `wiki.enabled: false` in `rite-config.yml` (the script handles this internally and returns exit 0).
+**Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.8. All other no-op cases (wiki disabled / wiki branch absent / `gh` CLI missing / `rite-config.yml` absent) are handled **inside** `wiki-growth-check.sh`, which still returns exit 0 → `wiki_growth_status=success` (with `findings_count=0`). lint.md does NOT need to detect these cases — the script's exit-0 contract takes care of them and the Phase 4 summary row will simply show `success (0 findings)` for any of these legitimate no-op states.
 
 **Execution:**
 
@@ -554,10 +554,10 @@ fi
 
 | Exit Code | `wiki_growth_status` | Action |
 |-----------|----------------------|--------|
-| 0 | `success` | Wiki growing healthily (or wiki disabled / wiki branch absent) — continue to Phase 4 |
+| 0 | `success` | Wiki growing healthily, OR a legitimate no-op (wiki disabled / wiki branch absent / `gh` CLI missing / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
 | 1 | `warning` | Growth threshold exceeded — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
-| 2 | `error` | Invocation error — record as warning, display error message |
-| -1 | `skipped` | Script not found — skip silently |
+| 2 | `error` | Invocation error (bad args, not in git repo) — record as warning, display error message |
+| -1 | `skipped` | Script not found (marketplace install without `hooks/scripts/`) — skip silently |
 
 **Important**: Wiki growth check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #524 AC-4 explicitly mandates this contract — the check exists to surface awareness, not to block CI.
 

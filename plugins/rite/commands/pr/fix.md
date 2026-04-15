@@ -4565,12 +4565,18 @@ else
 fi
 if [ -n "$reason" ]; then
   echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
-  sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-    --type wiki_ingest_skipped \
-    --details "fix Phase 4.6.W skipped: $reason" \
-    --pr-number {pr_number} 2>/dev/null) || true
-  [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
-  # Caller: include the sentinel line verbatim in your final response so Phase 5.4.4.1 grep can detect it.
+  emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type wiki_ingest_skipped \
+      --details "fix Phase 4.6.W skipped: $reason" \
+      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+    [ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
+  else
+    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — Phase 5.4.4.1 が sentinel を検出できない可能性があります" >&2
+    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+    echo "[CONTEXT] WIKI_SENTINEL_EMIT_FAILED=1; type=wiki_ingest_skipped; reason=$reason" >&2
+  fi
+  [ -n "$emit_err" ] && rm -f "$emit_err"
 fi
 ```
 
@@ -4633,13 +4639,19 @@ fi
 
 ```bash
 if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
-  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit"
-  sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-    --type wiki_ingest_failed \
-    --details "wiki-ingest-trigger.sh exited $trigger_exit during pr/fix.md Phase 4.6.W" \
-    --pr-number {pr_number} 2>/dev/null) || true
-  [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
-  # Caller: include the sentinel line verbatim in your final response so Phase 5.4.4.1 grep can detect it.
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
+  emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type wiki_ingest_failed \
+      --details "wiki-ingest-trigger.sh exited $trigger_exit during pr/fix.md Phase 4.6.W" \
+      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+    [ -n "$sentinel_line" ] && echo "$sentinel_line" >&2
+  else
+    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — Phase 5.4.4.1 が sentinel を検出できない可能性があります" >&2
+    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+    echo "[CONTEXT] WIKI_SENTINEL_EMIT_FAILED=1; type=wiki_ingest_failed; reason=trigger_exit_$trigger_exit" >&2
+  fi
+  [ -n "$emit_err" ] && rm -f "$emit_err"
 fi
 ```
 

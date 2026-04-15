@@ -1586,7 +1586,7 @@ The rite workflow auto-detects **workflow blockers** during `/rite:issue:start` 
 | `hook_abnormal_exit` | A hook script returns non-zero exit code or stderr ERROR message | Skill internal failure paths (file modification error, work memory PATCH failure, etc.) |
 | `manual_fallback_adopted` | User selects "manual Edit fallback" option in any orchestrator `AskUserQuestion` | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
 | `wiki_ingest_skipped` (#524) | `wiki.enabled=false` or `wiki.auto_ingest=false` causes Phase X.X.W (`pr/review.md` 6.5.W / `pr/fix.md` 4.6.W / `issue/close.md` 4.4.W) to skip the Wiki ingest pipeline | Sub-skill emits sentinel from Phase X.X.W Step 1 along with `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` status line |
-| `wiki_ingest_failed` (#524) | `wiki-ingest-trigger.sh` exits with a non-zero / non-2 code during Phase X.X.W | Sub-skill emits sentinel from Phase X.X.W Step 3 along with `[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_{n}` status line |
+| `wiki_ingest_failed` (#524) | `wiki-ingest-trigger.sh` exits with a non-zero code other than 2 (exit 2 = Wiki disabled/uninitialized = legitimate skip) during Phase X.X.W | Sub-skill emits sentinel from Phase X.X.W Step 3 along with `[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_{n}` status line |
 
 ### Sentinel Format
 
