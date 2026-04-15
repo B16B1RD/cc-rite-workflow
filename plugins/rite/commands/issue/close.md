@@ -426,7 +426,9 @@ The retrospective content includes: Issue title, key decisions made during imple
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
-tmpfile=$(mktemp)
+# ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下 または /tmp/rite-* prefix のみを受容する
+# (Issue #518 根本原因)。mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
+tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trap 'rm -f "$tmpfile"' EXIT
 
 cat <<'RETRO_EOF' > "$tmpfile"
@@ -440,15 +442,20 @@ cat <<'RETRO_EOF' > "$tmpfile"
 {retrospective_summary — Issue の作業中に学んだこと、予想外の困難、有効だったアプローチを LLM が Issue body + work memory から要約して埋め込む}
 RETRO_EOF
 
+trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX)
 bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
   --type retrospectives \
   --source-ref "issue-{issue_number}" \
   --content-file "$tmpfile" \
   --issue-number {issue_number} \
   --title "Issue #{issue_number} close retrospective" \
-  2>/dev/null
+  2>"$trigger_stderr"
 trigger_exit=$?
 echo "trigger_exit=$trigger_exit"
+if [ "$trigger_exit" -ne 0 ] && [ -s "$trigger_stderr" ]; then
+  echo "[CONTEXT] WIKI_TRIGGER_STDERR=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500)" >&2
+fi
+rm -f "$trigger_stderr"
 ```
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 4.4.W.2 when it is non-zero. Ingest failure does not block the close workflow.

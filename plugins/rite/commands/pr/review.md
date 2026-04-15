@@ -3848,7 +3848,9 @@ The review content includes: PR number, reviewer types, finding categories, seve
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
-tmpfile=$(mktemp)
+# ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下 または /tmp/rite-* prefix のみを受容する
+# (Issue #518 根本原因)。mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
+tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trap 'rm -f "$tmpfile"' EXIT
 
 cat <<'REVIEW_EOF' > "$tmpfile"
@@ -3869,15 +3871,20 @@ cat <<'REVIEW_EOF' > "$tmpfile"
 - LOW: {count}
 REVIEW_EOF
 
+trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX)
 bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
   --type reviews \
   --source-ref "pr-{pr_number}" \
   --content-file "$tmpfile" \
   --pr-number {pr_number} \
   --title "PR #{pr_number} review results" \
-  2>/dev/null
+  2>"$trigger_stderr"
 trigger_exit=$?
 echo "trigger_exit=$trigger_exit"
+if [ "$trigger_exit" -ne 0 ] && [ -s "$trigger_stderr" ]; then
+  echo "[CONTEXT] WIKI_TRIGGER_STDERR=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500)" >&2
+fi
+rm -f "$trigger_stderr"
 ```
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 6.5.W.2 when it is non-zero. Ingest failure does not block the review workflow.
