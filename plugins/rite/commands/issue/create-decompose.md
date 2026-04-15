@@ -359,10 +359,34 @@ XL（{count} 件の Sub-Issue に分解）
 
 ### 0.9.2 Bulk Creation of Sub-Issues
 
-Execute the following script block **once per Sub-Issue** from the Phase 0.8 decomposition list, substituting `{sub_issue_title}`, `{sub_issue_body}`, and `{estimated_complexity}` for each entry. Collect each `sub_issue_url`, `sub_issue_number`, and `sub_project_reg` into lists for use in Phase 0.9.3 and 0.9.6.
+Phase 0.9.2 consists of **two parts** that MUST be executed in **a single Bash tool invocation** so that shell state (the accumulator arrays) is preserved across all Sub-Issue iterations:
+
+1. **Pre-amble** (executed exactly **once** at the top): declare the accumulator arrays.
+2. **Per-Sub-Issue body** (repeated **N times**, one iteration per entry in the Phase 0.8 decomposition list): create the Sub-Issue and append its number/URL to the accumulators.
+
+> **⚠️ CRITICAL (AC-1 enforcement — single-Bash-invocation requirement)**:
+> - Concatenate the Pre-amble and **all N copies of the Per-Sub-Issue body** into **one single Bash tool call**. Each copy of the body MUST have `{sub_issue_title}`, `{sub_issue_body}`, and `{estimated_complexity}` substituted with that iteration's actual values **before** execution.
+> - Do **NOT** split the iterations across multiple Bash tool invocations. Bash variables (including `SUB_ISSUE_NUMBERS`/`SUB_ISSUE_URLS`) do not persist across separate Bash tool calls. If split, the arrays will be empty when Phase 0.9.4 runs, and the AC-1 empty-array guard will fail-fast with `exit 1`.
+> - The Pre-amble appears **exactly once** at the top of the combined script. Do not re-declare the arrays inside each per-Sub-Issue body — that would reset accumulated state.
+> - After every successful create, the per-Sub-Issue body appends `sub_issue_number` to `SUB_ISSUE_NUMBERS` and `sub_issue_url` to `SUB_ISSUE_URLS`. This bookkeeping is what allows Phase 0.9.4 (Sub-issues API linkage) to iterate over all created Sub-Issues. Phase 0.9.4 is the AC-1 enforcement boundary: if the array is empty, linkage is silently skipped and AC-1 is violated.
+> - This is the single most common silent-skip risk in this command — do not omit the bookkeeping or split the script under any circumstance.
+
+#### Pre-amble (execute exactly once, at the top of the combined script)
 
 ```bash
-# 各 Sub-Issue について（ループ内で実行）
+# === Loop pre-amble (このブロックは結合スクリプトの先頭で1回だけ実行) ===
+# SUB_ISSUE_NUMBERS / SUB_ISSUE_URLS は Per-Sub-Issue body の全反復で蓄積され、
+# 同一 Bash ツール呼び出し内の Phase 0.9.4 から参照される。
+SUB_ISSUE_NUMBERS=()
+SUB_ISSUE_URLS=()
+```
+
+#### Per-Sub-Issue body (paste once per entry in the decomposition list, in the same Bash invocation)
+
+For each Sub-Issue in the Phase 0.8 decomposition list, append a copy of the following block to the combined script — substituting `{sub_issue_title}`, `{sub_issue_body}`, and `{estimated_complexity}` with that iteration's actual values. All copies share the accumulator arrays declared in the Pre-amble above.
+
+```bash
+# === Per-Sub-Issue body (N 回複製して連結。各複製ごとに placeholder を実値で置換) ===
 # Generate body content from Phase 0.8 decomposition and the structure defined below (see "Sub-Issue body structure")
 # Note: Empty check is required because {sub_issue_body} is dynamically generated.
 tmpfile=$(mktemp)
@@ -373,49 +397,66 @@ cat <<'BODY_EOF' > "$tmpfile"
 BODY_EOF
 
 if [ ! -s "$tmpfile" ]; then
-  echo "ERROR: Issue body is empty" >&2
-  exit 1
-fi
+  echo "ERROR: Issue body is empty for Sub-Issue '{sub_issue_title}'" >&2
+else
+  result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+    --arg title "{sub_issue_title}" \
+    --arg body_file "$tmpfile" \
+    --argjson projects_enabled {projects_enabled} \
+    --argjson project_number {project_number} \
+    --arg owner "{owner}" \
+    --arg priority "{priority}" \
+    --arg complexity "{estimated_complexity}" \
+    --arg iter_mode "none" \
+    '{
+      issue: { title: $title, body_file: $body_file },
+      projects: {
+        enabled: $projects_enabled,
+        project_number: $project_number,
+        owner: $owner,
+        status: "Todo",
+        priority: $priority,
+        complexity: $complexity,
+        iteration: { mode: $iter_mode }
+      },
+      options: { source: "xl_decomposition", non_blocking_projects: true }
+    }'
+  )")
 
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-  --arg title "{sub_issue_title}" \
-  --arg body_file "$tmpfile" \
-  --argjson projects_enabled {projects_enabled} \
-  --argjson project_number {project_number} \
-  --arg owner "{owner}" \
-  --arg priority "{priority}" \
-  --arg complexity "{estimated_complexity}" \
-  --arg iter_mode "none" \
-  '{
-    issue: { title: $title, body_file: $body_file },
-    projects: {
-      enabled: $projects_enabled,
-      project_number: $project_number,
-      owner: $owner,
-      status: "Todo",
-      priority: $priority,
-      complexity: $complexity,
-      iteration: { mode: $iter_mode }
-    },
-    options: { source: "xl_decomposition", non_blocking_projects: true }
-  }'
-)")
+  if [ -z "$result" ]; then
+    echo "ERROR: create-issue-with-projects.sh returned empty result for Sub-Issue '{sub_issue_title}'" >&2
+    # Skip accumulation for this Sub-Issue but continue to the next iteration block.
+    # NOTE: We intentionally do NOT use `continue` here because each per-Sub-Issue body
+    # is concatenated as a flat sequence (not wrapped in a for/while loop), and `continue`
+    # outside a loop is a bash syntax error. The else-branch below handles the skip.
+  else
+    sub_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
+    sub_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
+    sub_project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
+    # project_id/item_id は XL 分解パスでは後続フェーズで使用しないため省略
+    printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
 
-if [ -z "$result" ]; then
-  echo "ERROR: create-issue-with-projects.sh returned empty result for Sub-Issue '{sub_issue_title}'" >&2
-  # Continue with remaining Sub-Issues instead of exiting
-  continue
+    # === MANDATORY: 配列に蓄積（Phase 0.9.4 が参照） ===
+    # 数値であることを検証してから追加（"null" や空文字を弾く）
+    if [[ "$sub_issue_number" =~ ^[0-9]+$ ]]; then
+      SUB_ISSUE_NUMBERS+=("$sub_issue_number")
+      SUB_ISSUE_URLS+=("$sub_issue_url")
+    else
+      echo "⚠️ Sub-Issue '{sub_issue_title}' の番号が不正のため linkage 配列に追加しません: '$sub_issue_number'" >&2
+    fi
+  fi
 fi
-sub_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
-sub_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
-sub_project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
-# project_id/item_id は XL 分解パスでは後続フェーズで使用しないため省略
-printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
+# === Per-Sub-Issue body 終了。次の Sub-Issue があれば、ここに次の複製を連結する ===
 ```
+
+> **Alternative (advanced)**: If you prefer an explicit loop structure, you may instead wrap the per-Sub-Issue body in `for sub_entry in ...; do ... done` after expanding the decomposition list as bash array entries. In that case `continue` (instead of the else-branch skip) becomes syntactically valid. Either approach is acceptable as long as the Pre-amble runs once and all iterations execute in the same Bash tool invocation.
 
 **Placeholder descriptions:**
 - `{estimated_complexity}`: Complexity estimated during Phase 0.8 decomposition (XS/S/M/L/XL per Sub-Issue)
 - `{priority}`: Inherited from parent Issue priority
+- `{owner}`: Repository owner (from `github.projects.owner` in `rite-config.yml`, or `gh repo view --json owner --jq '.owner.login'`)
+- `{repo}`: Repository name (from `gh repo view --json name --jq '.name'`). Required by Phase 0.9.4's `link-sub-issue.sh` invocation; if omitted, the GraphQL `repository(owner:..., name:"{repo}")` lookup will always fail with "Could not resolve to a Repository", and AC-1 will be silently violated (per-call failures are non-blocking).
+- `{parent_issue_number}`: The parent Issue number created in Phase 0.9.1 (the one whose Sub-Issues are being created)
 
 **Error handling for partial failures:**
 - If a Sub-Issue creation fails mid-loop, log the error and continue with remaining Sub-Issues
@@ -494,57 +535,104 @@ gh issue edit {parent_issue_number} --body-file "$tmpfile"
 ...
 ```
 
-### 0.9.4 Use GitHub Sub-Issues API (Optional)
+### 0.9.4 Sub-Issues API Linkage (Mandatory)
 
-If GitHub Sub-Issues (beta) is available, set up parent-child relationships:
+After bulk Sub-Issue creation in Phase 0.9.2, **always** establish the parent-child relationship at the API level using the [`link-sub-issue.sh` helper](../../references/graphql-helpers.md#addsubissue-helper). This ensures the GitHub `subIssues` relation is the single source of truth, while the body Tasklist (Phase 0.9.3) and `Parent Issue: #N` body meta serve as human-readable backups.
+
+**Execution**: For each `sub_issue_number` collected during Phase 0.9.2 (the list referenced for Tasklist update in 0.9.3), execute the helper after the bulk-create loop completes.
+
+> **⚠️ MANDATORY (single-Bash-invocation continuation of Phase 0.9.2)**: This block reads the `SUB_ISSUE_NUMBERS` bash array populated by the Phase 0.9.2 Per-Sub-Issue body. Bash variables do **not** persist across separate Bash tool invocations. Therefore this block MUST be appended to **the same single Bash tool call** that contains the Phase 0.9.2 Pre-amble + all Per-Sub-Issue body copies. Concretely, the structure of the combined script is:
+>
+> ```
+> [Phase 0.9.2 Pre-amble (once)]
+> [Phase 0.9.2 Per-Sub-Issue body (Sub-Issue #1)]
+> [Phase 0.9.2 Per-Sub-Issue body (Sub-Issue #2)]
+> ...
+> [Phase 0.9.2 Per-Sub-Issue body (Sub-Issue #N)]
+> [Phase 0.9.4 linkage block (once, below)]
+> ```
+>
+> Do **not** issue a separate Bash tool call for Phase 0.9.4 — the AC-1 empty-array guard (`exit 1` when `SUB_ISSUE_NUMBERS` is empty) will trip immediately because the array exists only in the previous shell process. (Phase 0.9.3 — the Tasklist update — can run as a separate Bash invocation either before or after this combined script, since it only needs the `sub_issue_number` / title pairs which Claude already has from the Phase 0.9.2 results displayed in stdout.)
 
 ```bash
-# Sub-Issues API の利用可能性を確認
-gh api graphql -f query='
-query {
-  __type(name: "AddSubIssueInput") {
-    name
-  }
-}'
+# 各 Sub-Issue について Sub-issues API で親に紐付ける
+# SUB_ISSUE_NUMBERS は Phase 0.9.2 で収集した sub_issue_number の配列
+
+# === MANDATORY guard: 配列が空の場合は ERROR で停止 ===
+# 0.9.2 で配列蓄積を忘れると ${SUB_ISSUE_NUMBERS[@]} が空になり、
+# linkage がサイレント no-op となる (AC-1 違反)。
+# feedback_e2e_no_stop_before_review に従い、このケースは silent skip ではなく fail-fast。
+if [ "${#SUB_ISSUE_NUMBERS[@]}" -eq 0 ]; then
+  echo "ERROR: SUB_ISSUE_NUMBERS が空です。Phase 0.9.2 のループ内で 'SUB_ISSUE_NUMBERS+=(\"\$sub_issue_number\")' が抜けている可能性があります。Sub-issues API linkage を実行できません (AC-1 違反)。" >&2
+  exit 1
+fi
+
+# Note on placeholder substitution:
+# {owner}/{repo}/{parent_issue_number} は Claude が bash 実行前に必ず実値で置換すること。
+# 置換漏れの早期検出は link-sub-issue.sh 側の引数 validation で担保される
+# (helper の OWNER/REPO 引数が `{` で始まる場合 fail-fast し warning を返す)。
+# このコマンド側で同等のガードを書くと、Claude が指示通り置換する以上 dead code になる
+# (Issue #520 で指摘・修正済み)。
+
+link_failures=0
+for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
+  link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
+    "{owner}" "{repo}" "{parent_issue_number}" "$sub_number")
+  link_status=$(printf '%s' "$link_result" | jq -r '.status')
+  link_msg=$(printf '%s' "$link_result" | jq -r '.message')
+  case "$link_status" in
+    ok|already-linked)
+      echo "✅ $link_msg"
+      ;;
+    failed)
+      printf '%s' "$link_result" | jq -r '.warnings[]' \
+        | while read -r w; do echo "⚠️ $w" >&2; done
+      echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+  esac
+done
+
+if [ "$link_failures" -eq "${#SUB_ISSUE_NUMBERS[@]}" ]; then
+  # 全 Sub-Issue で linkage 失敗 = 設定不備 ({repo} 未解決 / 権限不足 / API 未開放等) の可能性が高い。
+  # ただし AC-4/AC-5 (本コマンドは Sub-issues API の失敗で全体処理を中断しない) を遵守するため
+  # ERROR 級の警告を stderr に出して継続する。Tasklist + body meta が fallback として残るため、
+  # 後続の Phase 0.9.5 (Projects 検証) と Phase 0.9.6 (完了報告) は実行されなければならない。
+  # placeholder 未解決のような構成不備の早期検出は、bash ブロック冒頭の literal-token guard で
+  # 別レイヤとして担保する (本ブロックの責務ではない)。
+  echo "ERROR: 全 Sub-Issue (${#SUB_ISSUE_NUMBERS[@]} 件) で Sub-issues API linkage が失敗しました。" >&2
+  echo "  考えられる原因: {owner}/{repo}/{parent_issue_number} プレースホルダーの未解決、token scope 不足、Sub-issues API が無効など。" >&2
+  echo "  body メタ (Tasklist + Parent Issue: #N) は残っているため parent-child の追跡は可能ですが、" >&2
+  echo "  GitHub UI の Sub-issues セクションには表示されません。本実行は AC-4/AC-5 に従い継続します。" >&2
+  echo "  (継続: parent-routing.md と挙動を統一)" >&2
+elif [ "$link_failures" -gt 0 ]; then
+  echo "⚠️ $link_failures/${#SUB_ISSUE_NUMBERS[@]} 件の Sub-Issue で API 紐付けに失敗しました（body メタは維持されます）" >&2
+fi
 ```
 
-If available:
+**Behavioral guarantees**:
 
-```bash
-# 親子関係を設定
-gh api graphql -f query='
-mutation($parentId: ID!, $childId: ID!) {
-  addSubIssue(input: {
-    issueId: $parentId
-    subIssueId: $childId
-  }) {
-    issue {
-      id
-    }
-  }
-}' -f parentId="{parent_issue_node_id}" -f childId="{child_issue_node_id}"
-```
+- **Mandatory but non-blocking**: The helper is invoked for every Sub-Issue, but linkage failure does NOT abort `create-decompose`. The Tasklist (Phase 0.9.3) and `Parent Issue: #N` body meta act as fallback identification.
+- **Idempotent**: Re-invoking the helper for an already-linked relation is a no-op (`status=already-linked`).
+- **Retried automatically**: 5xx server errors are retried up to 3 times with exponential backoff inside the helper; callers see only the final outcome.
+- **Visible failures**: Failures emit `⚠️ Sub-issues API linkage failed: #C -> #P` to stderr (no silent skip), preserving CLAUDE.md feedback `feedback_e2e_no_stop_before_review` for hook-style steps.
 
-**API availability evaluation and processing flow**:
+**Error handling matrix**:
 
-```
-1. `__type` クエリを実行
-   ↓
-2. 結果を確認
-   ├─ `__type.name` が "AddSubIssueInput" → API 利用可能、親子関係を設定
-   └─ `__type` が null または エラー → API 利用不可、スキップ
-```
+| Helper Status | Detection | Response |
+|---------------|-----------|----------|
+| `ok` | Mutation succeeded | Display success, continue |
+| `already-linked` | GitHub returned an `already`/`sub-issue exists` error message | Treat as success, continue |
+| `failed` (4xx) | Permission denied / Sub-issues API not enabled | Surface warning to stderr, fall back to body meta, continue |
+| `failed` (5xx after retries) | Persistent server error | Surface warning to stderr, fall back to body meta, continue |
+| `failed` (parent/child not found) | Node ID resolution failed | Surface warning, skip this Sub-Issue's linkage only |
 
-**Error handling**:
-
-| Error Type | Detection Method | Response |
-|-----------|-----------------|----------|
-| API not supported | `__type` is `null` | Parent-child relationship already expressed via Tasklist in Phase 0.9.3 (fallback in place) |
-| GraphQL error | `errors` field exists | Display warning and continue with Tasklist only |
-| Timeout | No response | Retry once, then continue with Tasklist only |
-| Permission error | `FORBIDDEN` or `UNAUTHORIZED` | Display warning and continue with Tasklist only |
-
-**Note**: Even if the Sub-Issues API is unavailable, the parent-child relationship is visually represented via the Tasklist format set up in Phase 0.9.3.
+**Note**: The Tasklist created in Phase 0.9.3 and the `Parent Issue:` body meta in Sub-Issue bodies remain in place even when linkage succeeds, providing both API-level and human-readable backup for parent-child traceability. See [graphql-helpers.md addSubIssue Helper](../../references/graphql-helpers.md#addsubissue-helper) for the full helper contract.
 
 ### 0.9.5 Projects Registration
 
