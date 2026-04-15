@@ -328,9 +328,8 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Execute Phase 2.4 (Projects Status → In Progress). Skipping to Phase 2.5/2.6/3 without running Projects update is PROHIBITED. Do NOT stop."
 ```
 
-> **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update). Runtime execution delegates to `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates across Phase 2.4, 5.5.1, and 5.7.2.
-<!-- Refactor origin: Issue #496 / PR #531 — do not re-inline Step 2-3 below. -->
-<!-- projects-integration.md §2.4 documents the underlying API calls for reference. -->
+> **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update). Runtime execution delegates to `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates across Phase 2.4, 5.5.1, and 5.7.2. `projects-integration.md` §2.4 documents the underlying API calls for reference and debugging, but callers MUST NOT re-inline those bash blocks here — always delegate to the script.
+<!-- Refactor origin: Issue #496 / PR #531. Do not re-inline Step 2-3. -->
 
 
 

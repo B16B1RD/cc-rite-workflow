@@ -2,8 +2,9 @@
 # rite workflow - Projects Status Update
 # Common core script for updating a GitHub Issue's Status field in GitHub Projects.
 #
-# Extracted from:
-#   - commands/issue/start.md Phase 2.4 Step 2-4 (Status -> In Progress)
+# Extracted from (Issue #496 / PR #531):
+#   - commands/issue/start.md Phase 2.4 Step 2 (Status -> In Progress;
+#     the post-refactor Step 2 consolidates the pre-refactor Step 2-4 triple)
 #   - commands/issue/start.md Phase 5.5.1 (Status -> In Review)
 #   - commands/issue/start.md Phase 5.7.2 (parent Issue Status -> Done)
 #   - references/projects-integration.md §2.4.2-2.4.5

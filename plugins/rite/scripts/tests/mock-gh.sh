@@ -208,8 +208,17 @@ ITEMJSON
         if [ "$is_repository_query" = true ]; then
           # Determine scenario-dependent response shape.
           case "$SCENARIO" in
+            psu_graphql_fail)
+              echo "error: GraphQL projectItems query failed" >&2
+              exit 1
+              ;;
             psu_issue_not_found)
               printf '{"data":{"repository":{"issue":null}}}\n'
+              exit 0
+              ;;
+            psu_issue_url_null)
+              # projectItems empty AND url is null → auto_add branch cannot proceed
+              printf '{"data":{"repository":{"issue":{"url":null,"projectItems":{"nodes":[]}}}}}\n'
               exit 0
               ;;
             psu_not_in_project|psu_auto_add_requery_empty|psu_auto_add_fail)

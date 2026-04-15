@@ -30,6 +30,8 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 # Helper: run the target script with mock gh and given JSON args.
 # Each call uses a fresh MOCK_GH_STATE_DIR so state-machine scenarios
 # (e.g., psu_auto_add_then_ok) do not leak between test cases.
+# stderr is redirected to a separate file (NOT merged into stdout) so JSON
+# parsing assertions on $LAST_OUTPUT are not corrupted by incidental warnings.
 run_script() {
   local json_args="$1"
   local scenario="${2:-psu_success}"
@@ -45,6 +47,19 @@ run_script() {
     PATH="$MOCK_BIN_DIR:$PATH" \
     bash "$TARGET" "$json_args" 2>"$TEST_DIR/last_stderr"
   ) || rc=$?
+  LAST_OUTPUT="$output"
+  LAST_RC=$rc
+  return 0
+}
+
+# Validation helper: run script with no scenario / mock setup (validation
+# branch exits before any `gh` call). stderr is isolated to avoid polluting
+# the JSON stdout capture.
+run_validation() {
+  local args=("$@")
+  local rc=0
+  local output
+  output=$(PATH="$MOCK_BIN_DIR:$PATH" bash "$TARGET" "${args[@]}" 2>"$TEST_DIR/last_stderr") || rc=$?
   LAST_OUTPUT="$output"
   LAST_RC=$rc
   return 0
@@ -79,36 +94,60 @@ echo ""
 # TC-001: No arguments → exit 1
 # --------------------------------------------------------------------------
 echo "TC-001: No arguments → exit 1"
-rc=0
-output=$(PATH="$MOCK_BIN_DIR:$PATH" bash "$TARGET" 2>&1) || rc=$?
-if [ "$rc" = "1" ] && printf '%s\n' "$output" | jq -e '.result == "failed"' >/dev/null; then
+run_validation
+if [ "$LAST_RC" = "1" ] && printf '%s\n' "$LAST_OUTPUT" | jq -e '.result == "failed"' >/dev/null; then
   pass "No args → exit 1 with failed result"
 else
-  fail "Expected exit 1 with failed result, got rc=$rc output=$output"
+  fail "Expected exit 1 with failed result, got rc=$LAST_RC output=$LAST_OUTPUT"
 fi
 
 # --------------------------------------------------------------------------
 # TC-002: Invalid JSON → exit 1
 # --------------------------------------------------------------------------
 echo "TC-002: Invalid JSON → exit 1"
-rc=0
-output=$(PATH="$MOCK_BIN_DIR:$PATH" bash "$TARGET" "not-json" 2>&1) || rc=$?
-if [ "$rc" = "1" ] && printf '%s\n' "$output" | jq -e '.warnings | map(select(. == "Invalid JSON argument")) | length == 1' >/dev/null; then
+run_validation "not-json"
+if [ "$LAST_RC" = "1" ] && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. == "Invalid JSON argument")) | length == 1' >/dev/null; then
   pass "Invalid JSON → exit 1"
 else
-  fail "Expected exit 1 with 'Invalid JSON argument' warning, got rc=$rc output=$output"
+  fail "Expected exit 1 with 'Invalid JSON argument' warning, got rc=$LAST_RC output=$LAST_OUTPUT"
 fi
 
 # --------------------------------------------------------------------------
 # TC-003: Missing required field (owner) → exit 1
 # --------------------------------------------------------------------------
 echo "TC-003: Missing owner → exit 1"
-rc=0
-output=$(PATH="$MOCK_BIN_DIR:$PATH" bash "$TARGET" '{"issue_number": 42, "repo": "test-repo", "project_number": 6, "status_name": "Todo"}' 2>&1) || rc=$?
-if [ "$rc" = "1" ] && printf '%s\n' "$output" | jq -e '.warnings | map(select(. == "owner is required")) | length == 1' >/dev/null; then
+run_validation '{"issue_number": 42, "repo": "test-repo", "project_number": 6, "status_name": "Todo"}'
+if [ "$LAST_RC" = "1" ] && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. == "owner is required")) | length == 1' >/dev/null; then
   pass "Missing owner → exit 1"
 else
-  fail "Expected exit 1 with 'owner is required', got rc=$rc output=$output"
+  fail "Expected exit 1 with 'owner is required', got rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-003a/b/c: Missing remaining required fields → exit 1
+# --------------------------------------------------------------------------
+echo "TC-003a: Missing repo → exit 1"
+run_validation '{"issue_number": 42, "owner": "x", "project_number": 6, "status_name": "Todo"}'
+if [ "$LAST_RC" = "1" ] && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. == "repo is required")) | length == 1' >/dev/null; then
+  pass "Missing repo → exit 1"
+else
+  fail "TC-003a unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+echo "TC-003b: Missing project_number → exit 1"
+run_validation '{"issue_number": 42, "owner": "x", "repo": "y", "status_name": "Todo"}'
+if [ "$LAST_RC" = "1" ] && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. == "project_number is required")) | length == 1' >/dev/null; then
+  pass "Missing project_number → exit 1"
+else
+  fail "TC-003b unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+echo "TC-003c: Missing status_name → exit 1"
+run_validation '{"issue_number": 42, "owner": "x", "repo": "y", "project_number": 6}'
+if [ "$LAST_RC" = "1" ] && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. == "status_name is required")) | length == 1' >/dev/null; then
+  pass "Missing status_name → exit 1"
+else
+  fail "TC-003c unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
 fi
 
 # --------------------------------------------------------------------------
@@ -241,30 +280,56 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-015a: auto-add succeeds but re-query still empty → failed
+# TC-015: Missing issue_number → exit 1
+# --------------------------------------------------------------------------
+echo "TC-015: Missing issue_number → exit 1"
+run_validation '{"owner": "x", "repo": "y", "project_number": 1, "status_name": "Todo"}'
+if [ "$LAST_RC" = "1" ] && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. == "issue_number is required")) | length == 1' >/dev/null; then
+  pass "Missing issue_number → exit 1"
+else
+  fail "TC-015 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-016: Initial GraphQL projectItems query fails → failed
+# --------------------------------------------------------------------------
+echo "TC-016: GraphQL query failure → failed"
+run_script "$(build_json 42 'Todo')" psu_graphql_fail
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("projectItems query failed"))) | length >= 1' >/dev/null; then
+  pass "GraphQL query failure captured"
+else
+  fail "TC-016 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-017: auto-add succeeds but re-query still empty → failed
 # (guards the scripts/projects-status-update.sh "Auto-add succeeded but project
 # item not found in re-query" branch from regression)
 # --------------------------------------------------------------------------
-echo "TC-015a: auto-add + re-query empty → failed"
+echo "TC-017: auto-add + re-query empty → failed"
 run_script "$(build_json 42 'In Progress' true)" psu_auto_add_requery_empty
 if [ "$LAST_RC" = "0" ] \
    && [ "$(json_field '.result')" = "failed" ] \
    && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("Auto-add succeeded but project item not found in re-query"))) | length >= 1' >/dev/null; then
   pass "auto-add re-query empty captured"
 else
-  fail "TC-015a unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+  fail "TC-017 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
 fi
 
 # --------------------------------------------------------------------------
-# TC-015: Missing issue_number → exit 1
+# TC-018: Issue URL is null when auto_add=true → failed
+# (guards the "Could not determine issue URL for auto-add" branch)
 # --------------------------------------------------------------------------
-echo "TC-015: Missing issue_number → exit 1"
-rc=0
-output=$(PATH="$MOCK_BIN_DIR:$PATH" bash "$TARGET" '{"owner": "x", "repo": "y", "project_number": 1, "status_name": "Todo"}' 2>&1) || rc=$?
-if [ "$rc" = "1" ] && printf '%s\n' "$output" | jq -e '.warnings | map(select(. == "issue_number is required")) | length == 1' >/dev/null; then
-  pass "Missing issue_number → exit 1"
+echo "TC-018: auto_add=true + issue.url=null → failed"
+run_script "$(build_json 42 'Todo' true)" psu_issue_url_null
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("Could not determine issue URL"))) | length >= 1' >/dev/null; then
+  pass "issue URL null captured"
 else
-  fail "TC-015 unexpected: rc=$rc output=$output"
+  fail "TC-018 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
 fi
 
 echo ""
