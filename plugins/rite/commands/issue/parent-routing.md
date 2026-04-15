@@ -218,21 +218,32 @@ project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
 printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
 
 # Sub-issues API linkage (mandatory but non-blocking) — see references/graphql-helpers.md#addsubissue-helper
-# link_status ハンドラは [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) の
-# **Variant A (basic — カウンタなし)** を使用する。本パスは単一 child を1件ずつ処理し、
-# 全件失敗の集計を行わないため Variant A 必須。
-# 同ファイルの「設計上の不変条件」(Issue #514 unknown status guard 等) を保持すること。
+# Canonical SoT: [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) Variant A (basic — カウンタなし)
+# 本パスは単一 child を 1 件ずつ処理し、全件失敗の集計を行わないため Variant A 必須。
+# ⚠️ DRIFT 警告: 下記 case ブロックを修正する際は、必ず以下 2 ファイルも同期すること:
+#   1. references/sub-issue-link-handler.md (Variant A 定義)
+#   2. commands/issue/create-decompose.md (Variant B 利用箇所、link_failures 増分のみ差分)
+# Issue #514 MUST NOT (unknown status silent 通過禁止) は `*)` ブランチで保持されている。
 # Note: jq -r で field 欠落時は "null" 文字列が返るため、正規表現で数値であることを確認する
 if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
-  # ループ変数名を sub-issue-link-handler.md の規約 ($sub_number) に合わせる
-  sub_number="$sub_issue_number"
   link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
-    "{owner}" "{repo}" "{parent_issue_number}" "$sub_number")
+    "{owner}" "{repo}" "{parent_issue_number}" "$sub_issue_number")
   link_status=$(printf '%s' "$link_result" | jq -r '.status')
   link_msg=$(printf '%s' "$link_result" | jq -r '.message')
-  # >>> sub-issue-link-handler.md Variant A をここに展開 <<<
-  # (LLM は bash 実行前に references/sub-issue-link-handler.md Variant A の case ブロックを
-  #  この位置に literal 展開すること。link_failures 増分は不要 (basic variant)。)
+  case "$link_status" in
+    ok|already-linked)
+      echo "✅ $link_msg"
+      ;;
+    failed)
+      printf '%s' "$link_result" | jq -r '.warnings[]' \
+        | while read -r w; do echo "⚠️ $w" >&2; done
+      echo "⚠️ Sub-issues API linkage failed for #$sub_issue_number; body meta fallback in place" >&2
+      ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_issue_number (msg: $link_msg)" >&2
+      ;;
+  esac
 else
   echo "⚠️ sub_issue_number が不正のため Sub-issues API linkage をスキップします: '$sub_issue_number'" >&2
 fi

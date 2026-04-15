@@ -70,8 +70,36 @@ esac
 呼び出し元が variant を選ぶ際も、以下の制約は必ず保持すること。Variant を増やす場合もここを書き換えないこと。
 
 - **Issue #514 MUST NOT — unknown status silent 通過禁止**: `*` ブランチで stderr 警告を必ず出すこと。`case` の `*)` を省略したり、無視したり、ログレベルを落としたりしてはならない。Sub-issues API が将来新しい status 値を追加した場合の早期検出に依存している制約である。
-- **Non-blocking**: 本ハンドラーは `exit 1` / `return 1` を行わない。AC-4 / AC-5 に従い、Sub-issues API linkage の失敗は警告出力のみで後続処理を継続する（`Parent Issue: #N` body meta と Tasklist が fallback として残る）。全件失敗時の ERROR 級警告は呼び出し元の集計ロジック (`link_failures` aggregate) 側で扱う責務で、本ハンドラーの責務ではない。
+- **Non-blocking**: 本ハンドラーは `exit 1` / `return 1` を行わない。AC-4 / AC-5 に従い、Sub-issues API linkage の失敗は警告出力のみで後続処理を継続する（`Parent Issue: #N` body meta と Tasklist が fallback として残る）。全件失敗時の ERROR 級警告は **Variant B 呼び出し元** の集計ロジック (`link_failures` aggregate) 側で扱う責務で、本ハンドラーの責務ではない。**Variant A 呼び出し元** は全件失敗集計を行わず、個別 failure の stderr 警告のみに依存する（`parent-routing.md` の child creation path は単一 child を 1 件ずつ処理するため）。
 - **Stdout vs stderr**: 成功メッセージは stdout (`echo "✅ ..."`)、警告は stderr (`... >&2`) に出力する。パイプで後段処理を行う呼び出し元が警告を通常出力と混同しないためのルール。
+
+## Caller Responsibility
+
+呼び出し元 (command ファイル側) は以下の責務を負う。新規 caller を追加する際もこれらを必ず守ること。
+
+### 1. Inline 展開規約
+
+本 reference は **canonical 定義** であり、command ファイル側は **対応する variant の case ブロックを inline で完全記述** する。「`# expand here` のような placeholder コメントを残して LLM 実行時に展開させる」アプローチは **採用しない**。理由:
+
+- bash インタプリタは `#` コメントを no-op として消費するため、placeholder のまま実行されると `link_status` が一切評価されず、`failed` / 未知 status が silent 通過する Issue #514 MUST NOT 違反になる
+- LLM 動作の冗長性に依存する設計は、コンテキスト圧迫 / placeholder 見落とし / hallucination のいずれでも silent regression を起こす
+- 本リポジトリの他 reference (`references/gh-cli-patterns.md`, `references/graphql-helpers.md`) も「caller 側で inline 完全記述 + reference link を補助情報として付随」形式を採る
+
+### 2. Drift 防止
+
+inline 展開のため、本 reference を修正する際は以下 **すべての caller** を同時に更新する責務がある:
+
+- `commands/issue/create-decompose.md` Phase 0.9.4 (Variant B 利用)
+- `commands/issue/parent-routing.md` child creation path (Variant A 利用)
+
+各 command ファイル内には「⚠️ DRIFT 警告」コメントが配置されており、修正時に同期すべきファイル一覧を明示している。新規 caller を追加する際は本セクションと当該コメント両方を更新すること。
+
+### 3. Variant 選択ロジック
+
+| 状況 | 採用 variant | 理由 |
+|------|------------|------|
+| 単発処理 / 全件失敗集計なし | Variant A (basic) | カウンタ初期化と aggregate check が不要 |
+| ループ処理 / 全件失敗を別レイヤで検出 | Variant B (counting) | `link_failures` 集計を呼び出し元の ERROR レイヤと連携 |
 
 ## Related Documents
 

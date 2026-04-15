@@ -574,10 +574,12 @@ fi
 # このコマンド側で同等のガードを書くと、Claude が指示通り置換する以上 dead code になる
 # (Issue #520 で指摘・修正済み)。
 
-## link_status ハンドラは [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) の
-## **Variant B (counting — link_failures カウンタあり)** を使用する。
-## 本 loop は全件失敗時の ERROR レイヤ (下の if) に依存しているため Variant B 必須。
-## 同ファイルの「設計上の不変条件」(Issue #514 unknown status guard 等) を保持すること。
+# Canonical SoT: [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) Variant B (counting — link_failures カウンタあり)
+# 本 loop は全件失敗時の ERROR レイヤ (下の if) に依存しているため Variant B 必須。
+# ⚠️ DRIFT 警告: 下記 case ブロックを修正する際は、必ず以下 2 ファイルも同期すること:
+#   1. references/sub-issue-link-handler.md (Variant B 定義)
+#   2. commands/issue/parent-routing.md (Variant A 利用箇所)
+# Issue #514 MUST NOT (unknown status silent 通過禁止) は `*)` ブランチで保持されている。
 
 link_failures=0
 for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
@@ -585,9 +587,22 @@ for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
     "{owner}" "{repo}" "{parent_issue_number}" "$sub_number")
   link_status=$(printf '%s' "$link_result" | jq -r '.status')
   link_msg=$(printf '%s' "$link_result" | jq -r '.message')
-  # >>> sub-issue-link-handler.md Variant B をここに展開 <<<
-  # (LLM は bash 実行前に references/sub-issue-link-handler.md Variant B の case ブロックを
-  #  この位置に literal 展開すること。差分は failed/* ブランチでの link_failures 増分のみ。)
+  case "$link_status" in
+    ok|already-linked)
+      echo "✅ $link_msg"
+      ;;
+    failed)
+      printf '%s' "$link_result" | jq -r '.warnings[]' \
+        | while read -r w; do echo "⚠️ $w" >&2; done
+      echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+  esac
 done
 
 if [ "$link_failures" -eq "${#SUB_ISSUE_NUMBERS[@]}" ]; then
