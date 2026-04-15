@@ -11,6 +11,8 @@ This module handles GitHub Projects integration including Status updates and Ite
 Retrieve the Project item ID and update Status to "In Progress".
 **Automatically add the Issue to the Project if it is not registered.**
 
+> **Runtime execution**: Callers (`commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2) invoke `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates. The bash examples in §2.4.2 – §2.4.5 below document the underlying API calls for reference and debugging. Do NOT reproduce them inline in new commands — delegate to the script instead (see Issue #496 for the refactor rationale).
+
 ### 2.4.1 Configuration Retrieval
 
 Retrieve Projects configuration from `rite-config.yml`:

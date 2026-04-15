@@ -109,13 +109,8 @@ This protocol applies to **every** sub-skill invocation in this document. Each �
 | `{fallback_branch}` | Phase 2.3.2.3 only (`main` preferred, else default branch) |
 | `{default_branch}` | `gh repo view --json defaultBranchRef` (Phase 2.3.2.3 only) |
 | `{project_number}` | `github.projects.project_number` in `rite-config.yml` |
-| `{project_id}` | GraphQL query result (`projectV2.id`). Obtained once, reused |
-| `{item_id}` | GraphQL query result (node matching child Issue number) |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) |
-| `{status_field_id}` | `github.projects.field_ids.status` in `rite-config.yml`, or `gh project field-list` |
-| `{in_review_option_id}` | `gh project field-list` ("In Review" option) |
-| `{done_option_id}` | `gh project field-list` ("Done" option) |
-| `{parent_issue_number}` | Phase 1.6 (child-issue-selection) or Phase 2.4 Step 5 (parent lookup) result; retained in conversation context. Used only in Phase 5.7 and Workflow Termination routing |
+| `{parent_issue_number}` | Phase 1.6 (child-issue-selection) or Phase 2.4 Step 3 (parent lookup via 2.4.7) result; retained in conversation context. Used only in Phase 5.7 and Workflow Termination routing |
 
 ---
 
@@ -333,9 +328,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Execute Phase 2.4 (Projects Status → In Progress). Skipping to Phase 2.5/2.6/3 without running Projects update is PROHIBITED. Do NOT stop."
 ```
 
-> **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update)
-
-Execute the following inline procedure (extracted from the Module for determinism — do NOT silently skip).
+> **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update). Runtime execution delegates to `plugins/rite/scripts/projects-status-update.sh` — see Issue #496 for the refactor rationale.
 
 **Step 1** — Read config and emit a skip marker on stdout (the LLM reads the marker, not a bash variable; shell state does not persist across Bash tool invocations):
 
@@ -354,43 +347,33 @@ fi
 
 | `PHASE_2_4_STATE` value | LLM action |
 |------------------------|-----------|
-| `skip` | Skip Steps 2-5 below. Go directly to Mandatory After 2.4. The post-projects marker is still written so the two whitelist transitions (`phase2_post_branch → phase2_projects` and `phase2_projects → phase2_post_projects`) stay valid (the skip is recorded, not silent). |
-| `execute` | Proceed to Step 2-5 using the emitted `project_number` / `owner` values. |
+| `skip` | Skip Step 2 and Step 3 below. Go directly to Mandatory After 2.4. The post-projects marker is still written so the two whitelist transitions (`phase2_post_branch → phase2_projects` and `phase2_projects → phase2_post_projects`) stay valid (the skip is recorded, not silent). |
+| `execute` | Proceed to Step 2-3 using the emitted `project_number` / `owner` values. |
 
 Do NOT rely on a bash variable (`SKIP_2_4=1`) that persists only within a single Bash tool call — each `echo`/`gh api` in the following steps is a separate invocation and the variable is lost. The `[CONTEXT]` marker travels via the conversation context and is authoritative.
 
-**Step 2** — Retrieve Issue's project item ID and project GraphQL id:
+**Step 2** — Update Issue Status to "In Progress" via the shared script:
 
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) { nodes { id project { id number } } }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "In Progress" \
+  --argjson auto_add true \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-Find the node whose `project.number` matches `{project_number}`. Extract `{item_id}` and `{project_id}`. If `projectItems.nodes` is empty, auto-add the Issue to the Project via `gh project item-add {project_number} --owner {owner} --url <issue_url>` and re-query.
+The script executes: GraphQL `projectItems` query → auto-add if not registered → `field-list` retrieval → Status `item-edit`. Inspect its stdout JSON:
 
-**Step 3** — Retrieve Status field + "In Progress" option id:
+- `.result == "updated"` → success.
+- `.result == "skipped_not_in_project"` or `"failed"` → display `.warnings[]` and continue (non-blocking). The scaffolding-failure itself is recorded by stop-guard via the whitelist on the next transition attempt.
 
-```bash
-gh project field-list {project_number} --owner {owner} --format json
-```
+The script is the single source of truth for Projects Status updates. See [projects-integration.md §2.4.2-2.4.5](../../references/projects-integration.md#242-check-issue-project-registration-status) for API-level documentation.
 
-Find field `name == "Status"`. Extract `{status_field_id}` (field `id`) and `{in_progress_option_id}` (option with `name == "In Progress"`). If `github.projects.field_ids.status` is set in rite-config.yml, prefer that value.
-
-**Step 4** — Update Status:
-
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {in_progress_option_id}
-```
-
-On failure, display warning and continue (non-blocking). The scaffolding-failure itself is recorded by stop-guard via the whitelist on the next transition attempt.
-
-**Step 5** — Parent Issue Status Update (2.4.7): **always execute** this substep regardless of whether the current Issue was identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents). **Execute the full 3-method detection and Status update procedure from [projects-integration.md §2.4.7](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues)** (Method 1: `## 親 Issue` body meta PRIMARY → Method 2: Sub-Issues API → Method 3: tasklist search → 2.4.7.2 Retrieve → 2.4.7.3 Status Condition → 2.4.7.4 Update). When all three methods fail, the referenced procedure emits a debug log and skips silently — this is the normal path for standalone Issues (AC-4).
+**Step 3** — Parent Issue Status Update (2.4.7): **always execute** this substep regardless of whether the current Issue was identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents). **Execute the full 3-method detection and Status update procedure from [projects-integration.md §2.4.7](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues)** (Method 1: `## 親 Issue` body meta PRIMARY → Method 2: Sub-Issues API → Method 3: tasklist search → 2.4.7.2 Retrieve → 2.4.7.3 Status Condition → 2.4.7.4 Update). When all three methods fail, the referenced procedure emits a debug log and skips silently — this is the normal path for standalone Issues (AC-4).
 
 > **Issue #513 regression guard**: Do NOT replace this delegation with an inline simplification (e.g., querying only `trackedInIssues` or only one detection method). Past incident: a `trackedInIssues`-only inline version in this file caused AC-1 failure in repositories that manage parent-child links via body tasklist and `## 親 Issue` meta rather than GitHub's native Sub-Issues feature.
 
@@ -1645,58 +1628,31 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **Owner**: `/rite:issue:start` (defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow).
 
-**Note**: Uses `gh project field-list` CLI (consistent with [Projects Integration](../../references/projects-integration.md)). This differs from `ready.md` Phase 4 which uses GraphQL — an intentional design choice documented there.
+**Note**: Delegates to `plugins/rite/scripts/projects-status-update.sh`. This differs from `ready.md` Phase 4 which uses a direct GraphQL mutation — an intentional design choice documented there.
 
-Skip if `projects.enabled: false` in rite-config.yml. Otherwise:
-
-**Step 1**: Retrieve Issue's project item ID. `{owner}` and `{repo}` are obtained before Phase 0.1 (see Placeholder Legend). Reuse `{project_number}` from rite-config.yml:
+Skip if `projects.enabled: false` in rite-config.yml. Otherwise invoke the shared script to transition the Issue Status to **In Review**:
 
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project { id, number }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "In Review" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-Find the node where `project.number` matches `{project_number}`. Extract `{item_id}` (node `id`) and `{project_id}` (node `project.id`).
+`auto_add: false` because at this point the Issue is already registered in the Project (Phase 2.4 auto-added it if missing).
 
-**When `projectItems.nodes` is empty** (Issue not registered in Project):
+Inspect the script's stdout JSON:
 
-```
-警告: Issue #{issue_number} は Project に登録されていません
-Status 更新をスキップします
-```
+- `.result == "updated"` → success.
+- `.result == "skipped_not_in_project"` → display `警告: Issue #{issue_number} は Project に登録されていません` and continue (non-blocking).
+- `.result == "failed"` → display `.warnings[]` and continue (non-blocking).
 
-Display warning and proceed to 5.6 (non-blocking).
-
-**Step 2**: Retrieve Status field "In Review" option ID:
-
-```bash
-gh project field-list {project_number} --owner {owner} --format json
-```
-
-From the result, find the field with `name` "Status". Extract:
-- `{status_field_id}`: the field's `id`
-- `{in_review_option_id}`: the `id` of the option with `name` "In Review"
-
-If `github.projects.field_ids.status` is set in rite-config.yml, use that value as `{status_field_id}` instead.
-
-**Step 3**: Update Status:
-
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {in_review_option_id}
-```
-
-On failure, display warning and continue to Mandatory After 5.5.1 (non-blocking).
+See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the underlying API calls.
 
 ### 🚨 Mandatory After 5.5.1
 
@@ -2031,60 +1987,29 @@ Use [Basic Query](../../references/epic-detection.md#basic-query). All `CLOSED`�
 
 Confirm via `AskUserQuestion`. If "No", display message and proceed to 5.7.3 (no auto-close). If yes, update Projects Status to "Done" and then close the Issue.
 
-Skip Steps 1-3 if `projects.enabled: false` in rite-config.yml. Otherwise:
+Skip Step 1 if `projects.enabled: false` in rite-config.yml. Otherwise:
 
-**Step 1**: Retrieve parent Issue's project item ID. `{owner}` and `{repo}` are obtained before Phase 0.1 (see Placeholder Legend). Reuse `{project_number}` from rite-config.yml:
-
-```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project { id, number }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={parent_issue_number}
-```
-
-Find the node where `project.number` matches `{project_number}`. Extract `{item_id}` (node `id`) and `{project_id}` (node `project.id`).
-
-**When `projectItems.nodes` is empty** (parent Issue not registered in Project):
-
-```
-警告: Issue #{parent_issue_number} は Project に登録されていません
-Status 更新をスキップします
-```
-
-Display warning and proceed to Step 4 (non-blocking).
-
-**Step 2**: Retrieve Status field "Done" option ID:
+**Step 1**: Update parent Issue Status to "Done" via the shared script:
 
 ```bash
-gh project field-list {project_number} --owner {owner} --format json
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {parent_issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-From the result, find the field with `name` "Status". Extract:
-- `{status_field_id}`: the field's `id`
-- `{done_option_id}`: the `id` of the option with `name` "Done"
+Inspect the script's stdout JSON:
 
-If `github.projects.field_ids.status` is set in rite-config.yml, use that value as `{status_field_id}` instead.
+- `.result == "updated"` → success.
+- `.result == "skipped_not_in_project"` → display `警告: Issue #{parent_issue_number} は Project に登録されていません` and proceed to Step 2 (non-blocking).
+- `.result == "failed"` → display `.warnings[]` and proceed to Step 2 (non-blocking).
 
-**When "Done" option is not found**: Display warning and proceed to Step 4 (non-blocking).
-
-**Step 3**: Update Status:
-
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
-```
-
-On failure, display warning and continue to Step 4 (non-blocking).
-
-**Step 4**: Close the parent Issue:
+**Step 2**: Close the parent Issue:
 
 ```bash
 gh issue close {parent_issue_number}
