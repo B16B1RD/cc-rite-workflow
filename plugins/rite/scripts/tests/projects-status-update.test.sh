@@ -241,6 +241,21 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-015a: auto-add succeeds but re-query still empty → failed
+# (guards the scripts/projects-status-update.sh "Auto-add succeeded but project
+# item not found in re-query" branch from regression)
+# --------------------------------------------------------------------------
+echo "TC-015a: auto-add + re-query empty → failed"
+run_script "$(build_json 42 'In Progress' true)" psu_auto_add_requery_empty
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("Auto-add succeeded but project item not found in re-query"))) | length >= 1' >/dev/null; then
+  pass "auto-add re-query empty captured"
+else
+  fail "TC-015a unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
 # TC-015: Missing issue_number → exit 1
 # --------------------------------------------------------------------------
 echo "TC-015: Missing issue_number → exit 1"
