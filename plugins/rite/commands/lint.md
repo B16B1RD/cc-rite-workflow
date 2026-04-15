@@ -531,6 +531,41 @@ fi
 - `doc_heavy_drift_finding_count`: Extract from `doc_heavy_drift_output` by matching the line `==> Total doc-heavy-patterns-drift findings: N` (regex: `/Total doc-heavy-patterns-drift findings: (\d+)/`). If no match found, default to 0
 - `doc_heavy_drift_output`: Script output (truncated if >50 lines)
 
+### 3.8 Plugin-specific Checks (Wiki Growth Check) — Issue #524 layer 3
+
+Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` Phase 6.5.W / `pr/fix.md` Phase 4.6.W / `issue/close.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.8. All other no-op cases (wiki disabled / wiki branch absent / `gh` CLI missing / `rite-config.yml` absent) are handled **inside** `wiki-growth-check.sh`, which still returns exit 0 → `wiki_growth_status=success` (with `findings_count=0`). lint.md does NOT need to detect these cases — the script's exit-0 contract takes care of them and the Phase 4 summary row will simply show `success (0 findings)` for any of these legitimate no-op states.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/wiki-growth-check.sh ]; then
+  wiki_growth_output=$(bash {plugin_root}/hooks/scripts/wiki-growth-check.sh --quiet 2>&1)
+  wiki_growth_exit_code=$?
+else
+  wiki_growth_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `wiki_growth_status` | Action |
+|-----------|----------------------|--------|
+| 0 | `success` | Wiki growing healthily, OR a legitimate no-op (wiki disabled / wiki branch absent / `gh` CLI missing / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
+| 1 | `warning` | Growth threshold exceeded — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (bad args, not in git repo) — record as warning, display error message |
+| -1 | `skipped` | Script not found (marketplace install without `hooks/scripts/`) — skip silently |
+
+**Important**: Wiki growth check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #524 AC-4 explicitly mandates this contract — the check exists to surface awareness, not to block CI.
+
+**Record growth check results** for Phase 4 reporting:
+- `wiki_growth_status`: `success` / `warning` / `error` / `skipped`
+- `wiki_growth_finding_count`: Extract from `wiki_growth_output` by matching the line `==> Total wiki-growth-check findings: N` (regex: `/Total wiki-growth-check findings: (\d+)/`). If no match found, default to 0
+- `wiki_growth_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -619,7 +654,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {doc_heavy_drift_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, or doc-heavy-patterns-drift warnings/invocation errors.
+**Wiki growth check appendix (Issue #524 layer 3)** (both standalone and E2E): When `wiki_growth_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy:
+
+```
+⚠️ Wiki growth check: {wiki_growth_finding_count} findings detected ({wiki_growth_status}, non-blocking)
+{wiki_growth_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, or wiki-growth warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -693,6 +735,7 @@ Analyze the error content and present fix suggestions when possible:
 | {i18n:lint_drift_check} | {drift_status} ({drift_finding_count} findings) |
 | Bang-backtick check | {bang_backtick_status} ({bang_backtick_finding_count} findings) |
 | Doc-heavy patterns drift check | {doc_heavy_drift_status} ({doc_heavy_drift_finding_count} findings) |
+| Wiki growth check (#524) | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
@@ -703,7 +746,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) was added with the fixed appendix + summary-row pattern from the start, so it matches Phase 3.6 rather than Phase 3.5.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) and Phase 3.8 (`Wiki growth check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

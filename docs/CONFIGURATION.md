@@ -813,6 +813,7 @@ Settings for the Experience Wiki — an LLM-driven project knowledge base that p
 | `auto_ingest` | boolean | `true` | Automatically run `/rite:wiki:ingest` on review/fix/close events to extract heuristics from raw sources |
 | `auto_query` | boolean | `true` | Automatically run `/rite:wiki:query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
 | `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing cross-refs, and broken links |
+| `growth_check.threshold_prs` | integer | `5` | Issue #524 layer 3 (lint growth check) — `/rite:lint` Phase 3.8 emits a non-blocking warning when this many merged PRs accumulate on the development base branch since the last commit on `branch_name` (signalling that Phase X.X.W may be silently skipped). Increase to relax the check; setting it to a very large number effectively disables the lint warning while preserving layers 1-2 |
 
 **Example (opt out completely):**
 
@@ -830,6 +831,15 @@ wiki:
   auto_ingest: true
   auto_query: true
   auto_lint: false
+```
+
+**Example (loose growth-check threshold for slow-moving repos):**
+
+```yaml
+wiki:
+  enabled: true
+  growth_check:
+    threshold_prs: 20   # warn only after 20 PRs have accumulated since the last wiki commit
 ```
 
 **Related commands:** `/rite:wiki:init` (one-time setup), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.

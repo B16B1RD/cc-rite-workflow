@@ -1207,9 +1207,21 @@ Invoke `skill: "rite:pr:fix"`.
 
 **🚨 Immediate after fix returns**: When `rite:pr:fix` outputs a result pattern (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created:{N}]`, `[fix:replied-only]`, or `[fix:error]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.6 🚨 After Fix below. The fix sub-skill has already updated `.rite-flow-state` to `phase5_post_fix` via its defense-in-depth mechanism (fixes #709); execute the 5.4.6 steps without delay.
 
-#### 5.4.4.1 Workflow Incident Detection (#366)
+#### 5.4.4.1 Workflow Incident Detection (#366, expanded by #524)
 
-> **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) for the full specification.
+> **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption, **Wiki ingest skip / failure**) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) for the full specification.
+
+**Detection scope** — recognised sentinel `type` values:
+
+| Type | Source | Default action when detected |
+|------|--------|------------------------------|
+| `skill_load_failure` | Orchestrator post-condition check (#366) | AskUserQuestion → register Issue / skip |
+| `hook_abnormal_exit` | Skill internal failure paths (#366) | AskUserQuestion → register Issue / skip |
+| `manual_fallback_adopted` | Orchestrator fallback prompts (#366) | AskUserQuestion → register Issue / skip |
+| `wiki_ingest_skipped` | review/fix/close Phase X.X.W when `wiki.enabled=false` or `wiki.auto_ingest=false` (#524) | AskUserQuestion → register Issue / skip — typically the user will skip these because configuration disable is intentional, but the prompt makes the state visible |
+| `wiki_ingest_failed` | review/fix/close Phase X.X.W when `wiki-ingest-trigger.sh` exits with a non-zero / non-2 code (#524) | AskUserQuestion → register Issue / skip — recommended to register because the trigger is supposed to be reliable |
+
+The processing flow below applies uniformly to all five types — there is no per-type branching beyond the table above.
 
 **Workflow Incident Sentinel Visibility Rule** (cycle 1 review C2 fix; cycle 2 review M-NEW1 fix — pr/create.md 追加; #436 fix — inline 実行に移行):
 
@@ -1897,7 +1909,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 #### 5.6.1 Workflow Incident Reporting (#366)
 
-After the standard completion report sections, append a "未処理 incident" section listing any workflow incidents that were skipped (user chose "skip" in Phase 5.4.4.1) or whose Issue creation failed (`create-issue-with-projects.sh` returned empty).
+> **Output ordering** (must match `completion-report.md` Step 3.5): Phase 5.6.1 is appended **after Phase 5.6.2 (Wiki Ingest Status Reporting)**, not directly after the standard completion report sections. The runtime sequence is: standard completion sections → Phase 5.6.2 (Wiki ingest 状況) → Phase 5.6.1 (workflow incidents). The section numbers (5.6.1 / 5.6.2) reflect introduction order (#366 first, #524 second) and are intentionally NOT in execution order — see Phase 5.6.2 ordering note for the canonical execution order.
+
+After Phase 5.6.2 (Wiki Ingest Status Reporting) is appended, append a "未処理 incident" section listing any workflow incidents that were skipped (user chose "skip" in Phase 5.4.4.1) or whose Issue creation failed (`create-issue-with-projects.sh` returned empty).
 
 **Source**: The context-local `workflow_incident_skipped` list maintained by Phase 5.4.4.1. Each entry is `{type, details, root_cause_hint, iteration_id}`.
 
@@ -1924,6 +1938,68 @@ After the standard completion report sections, append a "未処理 incident" sec
 |---|-------|------|---------|
 | 1 | #{new_issue_number} | {type} | {details} |
 ```
+
+#### 5.6.2 Wiki Ingest Status Reporting (#524)
+
+> **Source of truth**: `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` lines emitted by `pr/review.md` Phase 6.5.W.2, `pr/fix.md` Phase 4.6.W.2, and `issue/close.md` Phase 4.4.W.2 throughout this `/rite:issue:start` invocation. These lines flow into the orchestrator's conversation context the same way Phase 5.4.4.1 sentinels do.
+
+> **Output ordering** (must match `completion-report.md` Step 3.5): This section is appended **immediately after the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ)** of the completion report, **before** the workflow incident sections (5.6.1). Both 5.6.2 and 5.6.1 then together form the trailing report sections. The `completion-report.md` Step 4 self-verification checklist confirms the presence of the `### 📚 Wiki ingest 状況` heading.
+
+Append a "Wiki ingest 状況" section so the user can confirm at a glance whether the Experience Wiki growth path actually executed during this Issue. This addresses Issue #524 AC-5 — the regression where Phase X.X.W was silently skipped and the user had no visibility into the missing growth.
+
+**Step 1 — Aggregate signals from conversation context**:
+
+Scan the recent conversation context for these patterns (the same context the Phase 5.4.4.1 grep operates on):
+
+| Pattern | Counter |
+|---------|---------|
+| `[CONTEXT] WIKI_INGEST_DONE=1; ...` | `done_count` (number of successful trigger + ingest cycles in this Issue) |
+| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=disabled` | `skipped_disabled_count` |
+| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `skipped_auto_off_count` |
+| `[CONTEXT] WIKI_INGEST_FAILED=1; reason=...` | `failed_count` |
+
+Also retrieve the current wiki branch state (best-effort — never block on this):
+
+```bash
+wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exit}' rite-config.yml 2>/dev/null \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+[ -z "$wiki_branch" ] && wiki_branch="wiki"
+last_wiki_commit=""
+if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
+  last_wiki_commit=$(git log -1 --format='%aI' "$wiki_branch" 2>/dev/null)
+elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
+  last_wiki_commit=$(git log -1 --format='%aI' "origin/$wiki_branch" 2>/dev/null)
+fi
+# 空文字列で emit (Step 2 template の `{last_wiki_commit or "(wiki branch 未作成)"}` で日本語 fallback を render する)
+echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
+```
+
+**Step 2 — Output format** (always render, even when all counters are 0 — the absence is itself a signal worth reporting per AC-5):
+
+```markdown
+### 📚 Wiki ingest 状況
+
+| シグナル | 件数 |
+|----------|------|
+| ✅ DONE (trigger + ingest 完了) | {done_count} |
+| ⚠️ SKIPPED (disabled) | {skipped_disabled_count} |
+| ⚠️ SKIPPED (auto_ingest_off) | {skipped_auto_off_count} |
+| ❌ FAILED (trigger エラー) | {failed_count} |
+
+- **wiki branch 最終 commit**: {last_wiki_commit or "(wiki branch 未作成)"}
+```
+
+**Step 3 — Conditional warnings** (append below the table only when applicable):
+
+| Condition | Warning to append |
+|-----------|------------------|
+| `done_count == 0` AND `skipped_disabled_count == 0` AND `skipped_auto_off_count == 0` AND `failed_count == 0` | `> ⚠️ Phase X.X.W が一度も実行されていません。silent skip の可能性があります。/rite:wiki:ingest を手動実行するか、Phase 5.4.4.1 の sentinel を確認してください。` |
+| `failed_count >= 1` | `> ❌ Wiki ingest trigger が {failed_count} 回失敗しました。Phase 5.4.4.1 で workflow incident として登録されているか確認してください。` |
+| `skipped_disabled_count >= 1` | `> ℹ️ wiki.enabled=false により Wiki 機能全体が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
+| `skipped_auto_off_count >= 1` | `> ℹ️ wiki.auto_ingest が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
+| `done_count >= 1` AND no failures | `> ✅ Wiki branch が成長しました（{done_count} cycle 分の raw source が ingest されました）。` |
+
+> **Skip condition**: This section is **NEVER** skipped. AC-5 requires it to always be present in the completion report so the user has a definitive answer about whether the Wiki grew during this Issue.
 
 ### 5.7 Parent Issue Completion
 

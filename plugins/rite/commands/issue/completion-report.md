@@ -42,6 +42,14 @@ Output the substituted template as your response. First determine which case app
 2. **フェーズ進捗テーブル** (6 rows: completed phases ✅, incomplete phases ⏳)
 3. **次のステップ** (3 items, using the content from the template read in Step 1)
 
+**Step 3.5 — Append Wiki ingest 状況 section (Issue #524 AC-5)**:
+
+**Output ordering** (must match `start.md` Phase 5.6.2 ordering note): After outputting the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ), **always** append the "Wiki ingest 状況" table **before** the Phase 5.6.1 (Workflow Incident Reporting) section. The runtime sequence is: standard completion sections → Phase 5.6.2 (Wiki ingest 状況, this Step 3.5) → Phase 5.6.1 (workflow incidents). The section numbers in `start.md` reflect introduction order (#366 first, #524 second) and are intentionally NOT in execution order.
+
+The "Wiki ingest 状況" table is generated per `start.md` Phase 5.6.2 by aggregating `[CONTEXT] WIKI_INGEST_DONE/SKIPPED/FAILED=1` lines from the conversation context. This section is mandatory in both Case A and Case B and is **never** skipped — the absence of any signal is itself a reportable state (silent-skip detection).
+
+See `start.md` Phase 5.6.2 for the full procedure (signal aggregation, output table format, conditional warnings).
+
 **Step 4 — Self-verification**:
 
 After outputting, verify your output matches the case determined in Step 3:
@@ -51,12 +59,14 @@ For **Case A** (PR created):
 - [ ] 項目テーブル with exactly **7** data rows
 - [ ] `### フェーズ進捗` heading with exactly 6 data rows
 - [ ] `### 次のステップ` heading with exactly 3 numbered items
+- [ ] `### 📚 Wiki ingest 状況` heading with signal table (from Step 3.5, Issue #524 AC-5 — never skipped)
 
 For **Case B** (PR not created):
 - [ ] `## 完了報告` heading
 - [ ] 項目テーブル with exactly **5** data rows
 - [ ] `### フェーズ進捗` heading with exactly 6 data rows (with ⏳ for incomplete phases)
 - [ ] `### 次のステップ` heading with exactly 3 numbered items
+- [ ] `### 📚 Wiki ingest 状況` heading with signal table (from Step 3.5, Issue #524 AC-5 — never skipped)
 
 If any check fails, re-read the template and regenerate.
 
