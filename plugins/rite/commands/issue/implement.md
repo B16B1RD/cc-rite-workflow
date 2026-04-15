@@ -207,7 +207,7 @@ Analyze the "files to change" from the implementation plan (Phase 3) and determi
 
 ```
 parallel.enabled を確認
-├─ false → 通常の順次実装（5.1.0 をスキップ、5.1.1 へ）
+├─ false → 5.1.0.1-5.1.0.4 parallel implementation はスキップ、5.1.0.5 Adaptive Re-evaluation / 5.1.0.6 Test Verification Gate / 5.1.0.6.1 Acceptance Criteria Check / 5.1.0.7 Documentation Impact Investigation を経て 5.1.1 へ
 └─ true → 複雑度を確認
     ├─ XS/S → 通常の順次実装
     └─ M 以上 → 独立タスクを分析
