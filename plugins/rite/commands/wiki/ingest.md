@@ -6,6 +6,10 @@ description: Wiki Ingest — Raw Source から経験則を抽出・統合し Wik
 
 Wiki Ingest エンジン。`.rite/wiki/raw/` に蓄積された Raw Source を読解し、`.rite/wiki/pages/` 配下に経験則を統合します。新規ページの作成、既存ページの更新、`index.md` の自動更新、`log.md` への活動記録、基本的な矛盾チェックを行います。
 
+> **責務スコープ (重要 — 設計変更履歴あり)**: 本コマンドは **Wiki page 統合の LLM 責務のみ**を担います。Raw Source を **wiki branch に commit する責務**は `plugins/rite/hooks/scripts/wiki-ingest-commit.sh` に移譲されており、`pr/review.md` Phase 6.5.W.2 / `pr/fix.md` Phase 4.6.W.2 / `issue/close.md` Phase 4.4.W.2 から各 review-fix-close サイクル終了時に直接呼ばれます。これにより raw source の wiki branch 着地は Claude orchestrator の多段実行に依存しない single-process 契約で保証され、本コマンドの LLM 責務（page 統合）とは独立に完了します。
+>
+> 本コマンドが実行される時点では、raw source は既に wiki branch 側に commit 済みであることが期待されます。単独実行 (`/rite:wiki:ingest`) の場合は、開発ブランチ側に未 commit の raw source があれば Phase 5.1 Block A/B で wiki branch に書き戻しますが、これは通常パスではなく例外回復パスです。設計的には「raw 蓄積の確実性」（shell script が担当）と「page 統合品質」（本コマンドが担当）を責務分離することで、page 統合が skip/失敗しても raw は絶対に失われない状態を維持します。
+
 > **Reference**: [Wiki Patterns](../../references/wiki-patterns.md) — ディレクトリ構造、ブランチ管理、テンプレート展開の共通パターン
 > **Reference**: [Plugin Path Resolution](../../references/plugin-path-resolution.md) — `{plugin_root}` の解決手順
 

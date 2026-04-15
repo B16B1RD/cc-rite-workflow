@@ -9,6 +9,10 @@
 #
 # Issue #524 (Wiki ingest silent skip 3層防御) — layer 3 (lint growth check).
 # Companion to:
+#   - layer 0: hooks/scripts/wiki-ingest-commit.sh — deterministic single-process
+#              raw-source commit path invoked from review.md / fix.md / close.md
+#              Phase X.X.W.2. This is the foundation that makes layer 3 a genuine
+#              regression signal rather than a symptom of fragile LLM orchestration.
 #   - layer 1: review.md / fix.md / close.md Phase X.X.W skip 不可化
 #   - layer 2: workflow-incident-emit.sh の wiki_ingest_skipped / wiki_ingest_failed sentinel
 #
