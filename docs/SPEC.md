@@ -38,12 +38,13 @@ The command prefix `rite` was chosen for:
 10. [Build/Test/Lint Auto-Detection](#buildtestlint-auto-detection)
 11. [Dynamic Reviewer Generation](#dynamic-reviewer-generation)
 12. [Workflow Incident Detection](#workflow-incident-detection)
-13. [Error Handling](#error-handling)
-14. [Migration](#migration)
-15. [Internationalization](#internationalization)
-16. [Dependencies](#dependencies)
-17. [Distribution](#distribution)
-18. [Project Types](#project-types)
+13. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
+14. [Error Handling](#error-handling)
+15. [Migration](#migration)
+16. [Internationalization](#internationalization)
+17. [Dependencies](#dependencies)
+18. [Distribution](#distribution)
+19. [Project Types](#project-types)
 
 ---
 
@@ -1704,6 +1705,82 @@ Both features persist operational learnings, but their scopes are distinct:
 | **One-time platform defects** (e.g., "hook X exited abnormally in iteration Y") | Issues via `workflow_incident` auto-registration (#366) |
 
 They share no code paths.
+
+## Sub-skill Return Auto-Continuation Contract
+
+### Overview (#525)
+
+When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[interview:skipped]`, `[review:mergeable]`, `[create:completed:{N}]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary.
+
+Violating this contract leaves the workflow partially executed: no Issue created, `.rite-flow-state` stuck in `active: true`, stale timestamps, and the user forced to type `continue` manually to recover. Issue #525 was filed after multiple instances of this failure in `/rite:issue:create` with the Bug Fix preset.
+
+### The three defense-in-depth layers
+
+| Layer | Mechanism | Enforced by |
+|-------|-----------|------------|
+| **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases in orchestrator documentation | `commands/issue/start.md` Sub-skill Return Protocol (Global), `commands/issue/create.md` Sub-skill Return Protocol, `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` |
+| **2. Flow state** | Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocks every stop attempt until the orchestrator reaches the terminal phase (`create_completed` with `active: false` for `/rite:issue:create`) | `hooks/flow-state-update.sh`, `hooks/stop-guard.sh` |
+| **3. Caller-continuation hints** | HTML comment `<!-- caller: read .rite-flow-state and continue with Phase X.Y in the SAME response turn. DO NOT stop. -->` immediately before the sub-skill's result pattern | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md` |
+
+All three layers must be present for the contract to hold. If any layer is weakened (e.g., the HTML comment is removed, or the `same response turn` phrase is dropped from the prompt), the LLM may revert to its default "task-complete → end turn" behavior on the next failure path.
+
+### Contract specification
+
+For every Skill tool invocation within an orchestrator:
+
+1. When the sub-skill returns control (outputs its result pattern), the orchestrator LLM **MUST NOT** end its response.
+2. The orchestrator **MUST NOT** re-invoke the completed sub-skill.
+3. The orchestrator **MUST** execute its 🚨 Mandatory After section for the current phase, beginning with the `.rite-flow-state` update, then proceeding to the next phase — all in the same response turn.
+4. If `stop-guard.sh` blocks a stop attempt (exit 2), the orchestrator **MUST** follow the `ACTION:` instructions in the hook's stderr message, not retry the stop.
+
+The contract ends only when the orchestrator's terminal completion marker has been output:
+
+| Orchestrator | Terminal marker |
+|-------------|----------------|
+| `/rite:issue:start` | Phase 5.6 completion report + Workflow Termination block |
+| `/rite:issue:create` | `[create:completed:{N}]` as the absolute last line |
+
+### Phase-aware stop-guard hints (#525)
+
+When `stop-guard.sh` blocks a stop attempt with an active `.rite-flow-state`, the blocking message now includes phase-specific continuation hints for `/rite:issue:create` paths:
+
+| Active phase | Hint content |
+|-------------|-------------|
+| `create_post_interview` | "Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 → Delegation Routing Pre-write → invoke rite:issue:create-register in the SAME response turn." |
+| `create_delegation` | "Delegation sub-skill is in-flight. When it returns `[create:completed:{N}]`, run Mandatory After Delegation self-check in the SAME response turn. DO NOT stop before the completion marker is output." |
+
+These hints are **best-effort**: they only fire when a stop attempt is actually blocked, so they act as a backstop for the prompt contract rather than a primary enforcement mechanism. The primary path is the prompt contract (Layer 1).
+
+### Optional sentinel: `auto_continuation_failed` (MAY)
+
+When the contract is violated in practice — i.e., the user types `continue` to recover — the orchestrator **MAY** emit the `auto_continuation_failed` sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` so the incident is auto-registered as an Issue via Phase 5.4.4.1 (Workflow Incident Detection).
+
+This sentinel is classified as **MAY** rather than **MUST** because:
+
+1. The detection heuristic (recognising a `continue`-recovery as a contract violation) has false-positive risk — users may type `continue` for reasons unrelated to auto-continuation (e.g., resuming after a legitimate user-initiated pause).
+2. Implementation is scoped to a follow-up PR (#525 Decision Log D-02) to avoid bloating the main fix.
+
+Sentinel format (when implemented):
+
+```
+[CONTEXT] WORKFLOW_INCIDENT=1; type=auto_continuation_failed; details=<details>; iteration_id=<pr>-<epoch>
+```
+
+The sentinel integrates with the existing Phase 5.4.4.1 detection flow (same as `skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`) — no new dispatch code is required in the orchestrator.
+
+### Acceptance criteria
+
+| AC | Description |
+|----|-------------|
+| AC-1 | bug fix preset で `/rite:issue:create` が end-to-end で `[create:completed:{N}]` まで自動完了する（利用者の `continue` 介入なし） |
+| AC-2 | M complexity 以上で interview 完了後に同 turn 内で `create-register` が発火する |
+| AC-3 | `create.md` の Sub-skill Return Protocol セクションに "anti-pattern" / "correct-pattern" / "same response turn" / "DO NOT stop" の 4 phrase が全て含まれる |
+| AC-4 | `auto_continuation_failed` sentinel 実装時、Phase 5.4.4.1 detection で観測可能（MAY — 本 Issue スコープ外） |
+| AC-5 | Terminal Completion pattern (`[create:completed:{N}]` + `.rite-flow-state active: false`) が引き続き動作する (non-regression) |
+
+### Relationship to Workflow Incident Detection
+
+Phase 5.4.4.1 (Workflow Incident Detection) treats contract violations as one sentinel type among six (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`, and the optional `auto_continuation_failed`). All six share the same detection → AskUserQuestion → Issue registration flow via `create-issue-with-projects.sh`.
 
 ## Error Handling
 

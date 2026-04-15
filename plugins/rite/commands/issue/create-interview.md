@@ -511,12 +511,16 @@ else
 fi
 ```
 
-After the flow-state update above, output the appropriate result pattern:
+After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation comment **immediately before** the result pattern so it appears in the orchestrator's conversation context:
+
+```
+<!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+```
 
 - **Interview completed**: `[interview:completed]`
 - **Interview skipped** (XS, Bug Fix, Chore): `[interview:skipped]`
 
-This pattern is consumed by the orchestrator (`create.md`) to determine the next action.
+This pattern is consumed by the orchestrator (`create.md`) to determine the next action. The HTML comment is a hint for the caller LLM (does not render in Markdown output).
 
 ---
 
