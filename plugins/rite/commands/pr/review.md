@@ -3851,7 +3851,8 @@ The review content includes: PR number, reviewer types, finding categories, seve
 # ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下 または /tmp/rite-* prefix のみを受容する
 # (Issue #518 根本原因)。mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
 tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
-trap 'rm -f "$tmpfile"' EXIT
+trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
+trap 'rm -f "$tmpfile" "$trigger_stderr"' EXIT
 
 cat <<'REVIEW_EOF' > "$tmpfile"
 ## Review Results
@@ -3871,7 +3872,6 @@ cat <<'REVIEW_EOF' > "$tmpfile"
 - LOW: {count}
 REVIEW_EOF
 
-trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX)
 bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
   --type reviews \
   --source-ref "pr-{pr_number}" \
@@ -3881,10 +3881,10 @@ bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
   2>"$trigger_stderr"
 trigger_exit=$?
 echo "trigger_exit=$trigger_exit"
-if [ "$trigger_exit" -ne 0 ] && [ -s "$trigger_stderr" ]; then
-  echo "[CONTEXT] WIKI_TRIGGER_STDERR=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500)" >&2
+if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
+  # iconv -c で UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
+  echo "[CONTEXT] WIKI_TRIGGER_STDERR=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)" >&2
 fi
-rm -f "$trigger_stderr"
 ```
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 6.5.W.2 when it is non-zero. Ingest failure does not block the review workflow.

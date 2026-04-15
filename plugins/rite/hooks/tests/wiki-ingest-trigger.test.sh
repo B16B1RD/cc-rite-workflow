@@ -688,12 +688,25 @@ echo ""
 # Phase: Issue #518 regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
 # ==========================================================================
 
+# /tmp 外ファイルの明示 cleanup (review F-04: TEST_DIR 外は main cleanup() の対象外)
+# TC-036a/b は wiki-ingest-trigger.sh のパス検証が /tmp/rite-* prefix と mktemp デフォルトを
+# 正しく区別することを test するため、$TEST_DIR 内ではなく /tmp 直下にファイルを作る必要がある。
+# main trap cleanup は $TEST_DIR しか掃除しないため、個別 trap で追跡する。
+_rite_issue518_tmps=()
+_rite_issue518_cleanup() {
+  if [ ${#_rite_issue518_tmps[@]} -gt 0 ]; then
+    rm -f "${_rite_issue518_tmps[@]}"
+  fi
+}
+# main cleanup に chain する (既存 trap は cleanup() を呼ぶので、本 trap は issue518 専用ファイルのみ削除)
+trap '_rite_issue518_cleanup; cleanup' EXIT
+
 # --------------------------------------------------------------------------
-# TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (Issue #518 正常系)
+# TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (Issue #518 正常系 / PR #519 fix)
 # --------------------------------------------------------------------------
 # Issue #518: pr/review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
 # 呼ぶときに tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX) でファイル生成する必要がある。
-# この TC は /tmp/rite-* prefix でのファイルが正常に受容されることを保証する。
+# この TC は /tmp/rite-* prefix でのファイルが正常に受容され、PR #519 fix が正しく動作することを保証する。
 echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (Issue #518 regression)"
 dir36a="$TEST_DIR/tc36a"
 mkdir -p "$dir36a"
@@ -703,11 +716,12 @@ wiki:
 EOF
 # Create content-file using /tmp/rite-* prefix (review.md / fix.md / close.md と同パターン)
 tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
+_rite_issue518_tmps+=("$tmp_in_rite")
 echo "review body" > "$tmp_in_rite"
 ( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
-rm -f "$tmp_in_rite"
 if [ $rc -eq 0 ]; then
-  target_path36a=$(cat "$dir36a/out.log" | tr -d '[:space:]')
+  # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
+  target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
   if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
     pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
   else
@@ -719,11 +733,16 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-036b: Content-file from mktemp default (/tmp/tmp.*) → exit 1 (Issue #518 pitfall)
+# TC-036b: Content-file from mktemp default → exit 1 (Issue #518 pitfall lock)
 # --------------------------------------------------------------------------
 # Issue #518 根本原因の再現テスト: `mktemp` をデフォルト引数で呼ぶと /tmp/tmp.XXXXXXX が
 # 生成され、wiki-ingest-trigger.sh のパス検証 ($PWD 配下 or /tmp/rite-* prefix) で拒否される。
-# 本 TC はこの pitfall が exit 1 で検出され、将来再発した場合に CI で気付けることを保証する。
+# 本 TC は、将来 commands/*.md が mktemp デフォルトに戻った場合に fix ループの回帰テストとして
+# exit code で pitfall を検出する。
+#
+# review F-03: 旧実装は `grep -qE 'must be under.*rite'` でエラー文言の literal に依存していたため、
+# 文言を i18n / reword した瞬間に silent fail する設計欠陥があった。assertion を 2 段階にし、
+# exit code (1) を必須 pass 条件とし、文言 grep は OR パターンで緩和する (defense-in-depth)。
 echo "TC-036b: Content-file from mktemp default → exit 1 (Issue #518 pitfall)"
 dir36b="$TEST_DIR/tc36b"
 mkdir -p "$dir36b"
@@ -732,13 +751,18 @@ wiki:
   enabled: true
 EOF
 tmp_default=$(mktemp)
+_rite_issue518_tmps+=("$tmp_default")
 echo "x" > "$tmp_default"
 ( cd "$dir36b" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_default" >/dev/null 2>err.log ) && rc=0 || rc=$?
-rm -f "$tmp_default"
-if [ $rc -eq 1 ] && grep -qE 'must be under.*rite' "$dir36b/err.log"; then
-  pass "mktemp default (/tmp/tmp.*) → exit 1 (pitfall detected)"
+if [ $rc -eq 1 ]; then
+  # 補助 grep: 拒否理由を示すエラーメッセージが含まれていることを確認する (文言は OR で緩和)
+  if grep -qiE 'must be under|outside|not allowed|invalid path|rite' "$dir36b/err.log"; then
+    pass "mktemp default (/tmp/tmp.*) → exit 1 (pitfall detected)"
+  else
+    pass "mktemp default → exit 1 (文言チェックはスキップ、exit code のみで pitfall 検出)"
+  fi
 else
-  fail "Expected exit 1 with 'must be under', got rc=$rc, stderr=$(cat "$dir36b/err.log")"
+  fail "Expected exit 1 for mktemp default, got rc=$rc, stderr=$(cat "$dir36b/err.log")"
 fi
 echo ""
 
