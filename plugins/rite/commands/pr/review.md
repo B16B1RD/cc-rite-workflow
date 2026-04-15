@@ -3978,6 +3978,15 @@ When the condition is not satisfied, skip this block and proceed to Phase 6.5.1.
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
+#
+# HIGH #4 — commit_err / emit_err の signal trap 登録を block 冒頭で行う。
+# trigger 側 (Phase 6.5.W Step 3) の emit_err と対称。SIGINT/SIGTERM/SIGHUP で中断
+# された場合でも /tmp の一時ファイルが orphan として残らない。
+commit_err=""
+emit_err=""
+emit_err_for_fallback=""
+trap 'rm -f "${commit_err:-}" "${emit_err:-}" "${emit_err_for_fallback:-}"' EXIT INT TERM HUP
+
 commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null) || commit_err="/dev/null"
 commit_rc=0
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
@@ -3988,24 +3997,67 @@ if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${comm
   echo "[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=reviews"
 else
   commit_rc=$?
-  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$commit_rc; exit_code=$commit_rc"
+  # MEDIUM #5 — exit 2 (wiki disabled / wiki branch missing) は `wiki-ingest-commit.sh`
+  # 自身が「意図的 skip」として定義している exit code。caller 側で failure sentinel
+  # として emit すると、fresh clone 等の legitimate 経路で false-positive incident を
+  # Phase 5.4.4.1 AskUserQuestion に流してしまう。skip / failure を分岐する。
   if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
     head -5 "$commit_err" | sed 's/^/  /' >&2
   fi
-  # Emit wiki_ingest_failed sentinel so Phase 5.4.4.1 can detect the incident.
-  emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-      --type wiki_ingest_failed \
-      --details "wiki-ingest-commit.sh exited $commit_rc during pr/review.md Phase 6.5.W.2" \
-      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
-    if [ -n "$sentinel_line" ]; then
-      echo "$sentinel_line"
-      echo "$sentinel_line" >&2
-    fi
-  fi
-  [ -n "$emit_err" ] && rm -f "$emit_err"
+  case "$commit_rc" in
+    2)
+      echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
+      # Emit wiki_ingest_skipped sentinel (not failed) for Phase 5.4.4.1 parity.
+      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type wiki_ingest_skipped \
+          --details "wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during pr/review.md Phase 6.5.W.2" \
+          --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+        if [ -n "$sentinel_line" ]; then
+          echo "$sentinel_line"
+          echo "$sentinel_line" >&2
+        fi
+      else
+        # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称)。workflow-incident-emit.sh
+        # 自体が失敗しても hook_abnormal_exit sentinel を fallback として出すことで、
+        # incident 検出の silent failure を防ぐ。
+        fallback_iter="{pr_number}-$(date +%s)"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped commit_rc=2; iteration_id=$fallback_iter"
+        echo "$fallback_sentinel"
+        echo "$fallback_sentinel" >&2
+        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+      fi
+      ;;
+    *)
+      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$commit_rc; exit_code=$commit_rc"
+      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type wiki_ingest_failed \
+          --details "wiki-ingest-commit.sh exited $commit_rc during pr/review.md Phase 6.5.W.2" \
+          --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+        if [ -n "$sentinel_line" ]; then
+          echo "$sentinel_line"
+          echo "$sentinel_line" >&2
+        fi
+      else
+        # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称)。
+        fallback_iter="{pr_number}-$(date +%s)"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed commit_rc=$commit_rc; iteration_id=$fallback_iter"
+        echo "$fallback_sentinel"
+        echo "$fallback_sentinel" >&2
+        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+      fi
+      ;;
+  esac
 fi
+# 明示的な cleanup を維持 (trap が発火しない通常経路での早期削除)。
 [ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
+commit_err=""
+[ -n "$emit_err" ] && rm -f "$emit_err"
+emit_err=""
+trap - EXIT INT TERM HUP
 ```
 
 **Non-blocking**: failures of this block do not halt the review workflow. `wiki-ingest-commit.sh` restores raw source files to the dev branch working tree on failure via its cleanup trap, so the next invocation can retry them.
