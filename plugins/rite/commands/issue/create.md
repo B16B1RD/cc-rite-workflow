@@ -54,9 +54,48 @@ When this command is executed, follow the phases below in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the full protocol. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section.
+> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) and the global reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` for the full contract. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section in the **same response turn**.
 
 **Self-check**: After every sub-skill returns, ask yourself: "Has `[create:completed:{N}]` been output?" If not, you are NOT done — keep going.
+
+### Anti-pattern (what NOT to do)
+
+When `rite:issue:create-interview` returns `[interview:skipped]` or `[interview:completed]`:
+
+```
+[WRONG]
+<Skill rite:issue:create-interview returns>
+<LLM output: "[interview:skipped]">
+<LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
+```
+
+This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off signal. Ending the turn here abandons the workflow mid-flight with no Issue created.
+
+### Correct-pattern (what to do)
+
+```
+[CORRECT]
+<Skill rite:issue:create-interview returns>
+<LLM output: "[interview:skipped]">
+<In the same response turn, LLM IMMEDIATELY:>
+  1. Runs the Pre-write bash for Phase 0.6 / Delegation Routing
+  2. Evaluates Phase 0.6 triggers
+  3. Runs the Delegation Routing Pre-write bash
+  4. Invokes skill: "rite:issue:create-register" (or create-decompose)
+  5. Waits for [create:completed:{N}]
+  6. Runs Mandatory After Delegation self-check
+```
+
+**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not as stopping points. Both terminal sub-skills (`create-register`, `create-decompose`) output `[create:completed:{N}]` as the unified completion marker. The **only** valid stop in this workflow is after the next-steps text has been displayed AND `[create:completed:{N}]` is output as the absolute last line (the terminal sub-skill emits them in this order — see `create-register.md` Phase 4.2/4.3 and `create-decompose.md` Phase 1.0.2).
+
+> **Contract phrases (AC-3, Issue #525)**: The anti-pattern / correct-pattern contract above uses these exact phrases: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`. These phrases are grep-verified as part of the AC-3 static check — do not rewrite them away. Manual verification command:
+>
+> ```bash
+> for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do
+>   grep -c "$p" plugins/rite/commands/issue/create.md
+> done
+> # Expected: all 4 counts >= 1
+> ```
 
 **Completion marker convention** (Issue #444): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`. Terminal sub-skills (`create-register.md`, `create-decompose.md`) output this marker as their absolute last line after handling flow-state deactivation and next-step display internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
 
@@ -463,6 +502,8 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 ### 🚨 Mandatory After Interview
 
+> **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: `rite:issue:create-interview` の return 直後、**応答を終了せずに** 以下の Step 1-2 を即座に実行する。`[interview:*]` return tag は turn 境界ではなく継続トリガである。turn を閉じた場合、ユーザーの `continue` 介入なしに workflow が停止し、Issue は作成されない (本 Issue #525 の再発条件)。
+
 > **Enforcement**: `.rite-flow-state.phase` is `create_post_interview` at this point (the sub-skill wrote this via its Defense-in-Depth section). Stop-guard blocks any stop attempt while the flow-state is active — it will not unblock until `.rite-flow-state.phase` advances to `create_delegation` (via the Delegation Routing Pre-write below) or reaches `create_completed` (via the terminal sub-skill). Step 1 below refreshes the state timestamp but does NOT advance the phase on its own — the only legitimate path to a stoppable state is to continue through Phase 0.6 → Delegation Routing → terminal sub-skill. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
 No GitHub Issue has been created yet. The interview only collects information.
@@ -611,6 +652,8 @@ Invoke `skill: "rite:issue:create-register"`.
 > **Note on result patterns** (Issue #444): Terminal sub-skills (`create-register`, `create-decompose`) now output `[create:completed:{N}]` as the unified completion marker. The sub-skill handles flow-state deactivation, next-step output, and completion marker internally (Terminal Completion pattern). The legacy patterns `[register:created:{N}]` and `[decompose:completed:{N}]` have been replaced and are no longer output.
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
+
+> **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: delegation sub-skill の return 直後、**応答を終了せずに** 以下の self-check と Step 1-3 を即座に実行する。Terminal sub-skill は通常 `[create:completed:{N}]` を出力して完了するが、万一出力が欠落した場合は本セクションが唯一のリカバリ経路である。
 
 > **Enforcement**: Terminal sub-skills (`create-register.md`, `create-decompose.md`) write `create_completed` + `active: false` and output `[create:completed:{N}]` internally (Issue #444 Terminal Completion pattern). See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 

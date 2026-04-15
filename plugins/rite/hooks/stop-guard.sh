@@ -256,10 +256,38 @@ STOP_MSG
   exit 2
 fi
 
-cat >&2 <<STOP_MSG
+# Best-effort hint for /rite:issue:create sub-skill return phases (#525).
+# When the LLM stops implicitly after a sub-skill return (e.g., right after
+# [interview:skipped] / [interview:completed] / [create:completed:{N}]),
+# surface a phase-specific continuation hint so the next prompt re-entry
+# makes the correct continuation obvious.
+CREATE_HINT=""
+case "$PHASE" in
+  create_post_interview)
+    CREATE_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. No GitHub Issue has been created yet."
+    ;;
+  create_delegation)
+    CREATE_HINT="HINT: Delegation sub-skill is in-flight. When it returns [create:completed:{N}], run Mandatory After Delegation self-check (Step 1/2 are no-ops if marker present) in the SAME response turn. DO NOT stop before the completion marker is output."
+    ;;
+  create_post_delegation)
+    CREATE_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
+    ;;
+esac
+
+if [ -n "$CREATE_HINT" ]; then
+  cat >&2 <<STOP_MSG
+[rite] Normal operation — stop prevented.
+Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
+ACTION: $NEXT
+$CREATE_HINT
+Do NOT re-invoke any completed skill. Do NOT stop.
+STOP_MSG
+else
+  cat >&2 <<STOP_MSG
 [rite] Normal operation — stop prevented.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
 ACTION: $NEXT
 Do NOT re-invoke any completed skill. Do NOT stop.
 STOP_MSG
+fi
 exit 2

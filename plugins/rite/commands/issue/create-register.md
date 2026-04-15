@@ -565,6 +565,8 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 ## Phase 4: Terminal Completion
 
+<!-- caller: this sub-skill is terminal. Phase 4 outputs [create:completed:{N}] as the absolute last line and deactivates .rite-flow-state. The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
+
 > **Design decision** (Issue #444, D-01): This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
 
 ### 4.1 Flow State Deactivation
