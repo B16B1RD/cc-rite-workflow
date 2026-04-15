@@ -261,6 +261,13 @@ fi
 # fully-qualified ref and refuses option-like strings outright.
 if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
   # stderr is captured separately for MEDIUM #7 (surface real cause).
+  #
+  # Cycle 3 LOW #3 — ref_err is created here, *before* the main cleanup_body
+  # trap is installed at line 380. A signal arriving between mktemp and the
+  # manual `rm -f "$ref_err"` on exit would orphan the tempfile. Guard with a
+  # scope-limited mini-trap so SIGINT / SIGTERM / SIGHUP all remove ref_err.
+  ref_err=""
+  trap 'rm -f "${ref_err:-}"' EXIT INT TERM HUP
   ref_err=$(mktemp /tmp/rite-wic-ref-err-XXXXXX 2>/dev/null || echo "")
   if [[ -n "$ref_err" ]]; then
     git show-ref --verify "refs/heads/${wiki_branch}" >/dev/null 2>"$ref_err" || true
@@ -270,7 +277,10 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
     sed 's/^/  git: /' "$ref_err" >&2
   fi
   echo "  hint: run /rite:wiki:init first, or fetch the branch from origin" >&2
+  # Explicit cleanup + disarm the mini-trap so the main cleanup_body trap
+  # (installed later at line ~380) can take over without double-remove.
   [[ -n "$ref_err" ]] && rm -f "$ref_err"
+  trap - EXIT INT TERM HUP
   exit 2
 fi
 
@@ -347,14 +357,20 @@ cleanup_body() {
   # sources manually after resolving the branch state.
   if [[ "$rc" -ne 0 ]] && [[ -d "$stage_dir" ]]; then
     if [[ "$checked_out_wiki" == "false" ]]; then
-      local staged rel target
+      # Cycle 3 LOW #4 — count the files that actually made it back rather
+      # than reporting the full pending_files length. On a mid-Step-1 signal
+      # the staging dir may hold fewer files than pending_files[], and the
+      # old message ("restored N raw source(s)") over-reported the count.
+      local staged rel target restored=0
       while IFS= read -r -d '' staged; do
         rel="${staged#$stage_dir/}"
         target=".rite/wiki/raw/${rel}"
         mkdir -p "$(dirname "$target")" 2>/dev/null || true
-        cp -f "$staged" "$target" 2>/dev/null || true
+        if cp -f "$staged" "$target" 2>/dev/null; then
+          restored=$((restored + 1))
+        fi
       done < <(find "$stage_dir" -type f -print0 2>/dev/null || true)
-      echo "INFO: restored ${#pending_files[@]} raw source(s) back to the dev branch working tree after failure (rc=$rc)" >&2
+      echo "INFO: restored ${restored}/${#pending_files[@]} raw source(s) back to the dev branch working tree after failure (rc=$rc)" >&2
       rm -rf "$stage_dir" 2>/dev/null || true
     else
       # We are still on the wiki branch (checkout-back failed). Do NOT
@@ -430,35 +446,98 @@ dump_git_err() {
   local label="$1"
   if [[ -n "$git_err" ]] && [[ -s "$git_err" ]]; then
     head -n 10 "$git_err" | sed 's/^/  git ('"$label"'): /' >&2
-    : > "$git_err"
+    : > "$git_err" 2>/dev/null || true
   fi
 }
 
-# clear_git_err: truncate captured stderr so the next command starts
-# with a clean buffer. Used on success paths instead of dump_git_err
-# to avoid surfacing git informational messages as noise.
-clear_git_err() {
-  [[ -n "$git_err" ]] && [[ -f "$git_err" ]] && : > "$git_err"
+# surface_git_warnings <label>: called on success paths. Instead of silently
+# truncating the captured git stderr (which previously dropped legitimate
+# warnings like "unable to rmdir 'foo': Directory not empty" or remote-side
+# hook advice), selectively surface lines that look like warnings / hints,
+# then truncate. This preserves operator visibility without re-introducing
+# informational noise like "Switched to branch 'wiki'" (which git emits
+# without a "warning:" / "hint:" prefix and which `-q` already suppresses).
+#
+# Cycle 3 MEDIUM #1 fix — replaces the old unconditional `clear_git_err`
+# truncation on success paths, which silently dropped warnings.
+#
+# LOW #5 — all writes to git_err in this helper are `|| true` guarded so an
+# ENOSPC / EACCES truncate failure does not abort the script under set -e.
+surface_git_warnings() {
+  local label="$1"
+  if [[ -n "$git_err" ]] && [[ -s "$git_err" ]]; then
+    local warnings
+    warnings=$(head -n 10 "$git_err" | grep -iE '^(warning|hint|error):' || true)
+    if [[ -n "$warnings" ]]; then
+      printf '%s\n' "$warnings" | sed 's/^/  git ('"$label"'): /' >&2
+    fi
+    : > "$git_err" 2>/dev/null || true
+  fi
+  return 0
 }
 
 # Step 3: stash any remaining uncommitted work so checkout is safe.
 # We use `git stash push -u` with a specific message for traceability.
+#
+# Cycle 3 MEDIUM #2 fix — explicitly classify `git diff --quiet` exit codes.
+# The old `if ! git diff --quiet; then has_changes=true; fi` pattern folded
+# rc=1 (has-diff, expected) and rc>1 (real IO/index error) into the same
+# `has_changes=true` branch, silently routing real failures into the stash
+# path. Use a case statement to distinguish 0 (clean) / 1 (has-diff) /
+# anything else (real error → fail-fast with dump_git_err).
 has_changes=false
-if ! git diff --quiet HEAD 2>"${git_err:-/dev/null}"; then has_changes=true; fi
-clear_git_err
-if ! git diff --cached --quiet HEAD 2>"${git_err:-/dev/null}"; then has_changes=true; fi
-clear_git_err
-if [[ -n "$(git ls-files --others --exclude-standard 2>"${git_err:-/dev/null}")" ]]; then
+
+set +e
+git diff --quiet HEAD 2>"${git_err:-/dev/null}"
+diff_rc=$?
+set -e
+case "$diff_rc" in
+  0) ;;
+  1) has_changes=true ;;
+  *)
+    echo "ERROR: git diff --quiet HEAD failed with rc=$diff_rc" >&2
+    dump_git_err "diff HEAD"
+    exit 3
+    ;;
+esac
+surface_git_warnings "diff HEAD"
+
+set +e
+git diff --cached --quiet HEAD 2>"${git_err:-/dev/null}"
+diff_cached_rc=$?
+set -e
+case "$diff_cached_rc" in
+  0) ;;
+  1) has_changes=true ;;
+  *)
+    echo "ERROR: git diff --cached --quiet HEAD failed with rc=$diff_cached_rc" >&2
+    dump_git_err "diff --cached HEAD"
+    exit 3
+    ;;
+esac
+surface_git_warnings "diff --cached HEAD"
+
+set +e
+untracked=$(git ls-files --others --exclude-standard 2>"${git_err:-/dev/null}")
+ls_files_rc=$?
+set -e
+if [[ "$ls_files_rc" -ne 0 ]]; then
+  echo "ERROR: git ls-files --others --exclude-standard failed with rc=$ls_files_rc" >&2
+  dump_git_err "ls-files --others"
+  exit 3
+fi
+if [[ -n "$untracked" ]]; then
   has_changes=true
 fi
-clear_git_err
+surface_git_warnings "ls-files --others"
+
 if [[ "$has_changes" == "true" ]]; then
   if ! git stash push -u -m "rite-wiki-ingest-commit-stash" >/dev/null 2>"${git_err:-/dev/null}"; then
     echo "ERROR: git stash push failed" >&2
     dump_git_err "stash push"
     exit 3
   fi
-  clear_git_err
+  surface_git_warnings "stash push"
   stash_pushed=true
 fi
 
@@ -469,7 +548,7 @@ if ! git checkout -q "$wiki_branch" 2>"${git_err:-/dev/null}"; then
   dump_git_err "checkout $wiki_branch"
   exit 3
 fi
-clear_git_err
+surface_git_warnings "checkout $wiki_branch"
 checked_out_wiki=true
 
 # Step 5: replay staged raw files into the wiki branch working tree.
@@ -486,23 +565,41 @@ if ! git add .rite/wiki/raw >/dev/null 2>"${git_err:-/dev/null}"; then
   dump_git_err "add .rite/wiki/raw"
   exit 3
 fi
-clear_git_err
-if git diff --cached --quiet 2>"${git_err:-/dev/null}"; then
-  # Nothing new to commit — the raw files already existed verbatim on the
-  # wiki branch. Treat as a no-op success (still return to original branch
-  # via cleanup trap).
-  clear_git_err
-  echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
-  exit 0
-fi
-clear_git_err
+surface_git_warnings "add .rite/wiki/raw"
+#
+# Cycle 3 MEDIUM #2 fix — same case-based classification for this second
+# `git diff --cached --quiet` probe: rc=0 (no staged diff, early-exit
+# success) / rc=1 (staged diff present, continue) / rc>1 (real error).
+set +e
+git diff --cached --quiet 2>"${git_err:-/dev/null}"
+cached_check_rc=$?
+set -e
+case "$cached_check_rc" in
+  0)
+    # Nothing new to commit — the raw files already existed verbatim on
+    # the wiki branch. Treat as a no-op success (still return to original
+    # branch via cleanup trap).
+    surface_git_warnings "diff --cached (no-staged)"
+    echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
+    exit 0
+    ;;
+  1)
+    # Staged diff present — proceed to commit.
+    surface_git_warnings "diff --cached"
+    ;;
+  *)
+    echo "ERROR: git diff --cached --quiet failed with rc=$cached_check_rc" >&2
+    dump_git_err "diff --cached"
+    exit 3
+    ;;
+esac
 commit_msg="chore(wiki): ingest ${#pending_files[@]} raw source(s) from ${current_branch}"
 if ! git commit -m "$commit_msg" >/dev/null 2>"${git_err:-/dev/null}"; then
   echo "ERROR: git commit failed on '$wiki_branch'" >&2
   dump_git_err "commit"
   exit 3
 fi
-clear_git_err
+surface_git_warnings "commit"
 committed_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
 # Push is best-effort: we do NOT exit 3 on push failure, because the
@@ -517,7 +614,7 @@ if ! git push --quiet origin "$wiki_branch" 2>"${git_err:-/dev/null}"; then
   dump_git_err "push origin $wiki_branch"
   echo "  manual recovery: git push origin $wiki_branch" >&2
 fi
-clear_git_err
+surface_git_warnings "push origin $wiki_branch"
 # git_err cleanup is handled by the EXIT trap installed above.
 
 echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${committed_sha}; push=${push_status}"
