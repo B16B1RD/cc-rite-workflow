@@ -397,7 +397,9 @@ Proceed to Phase 4.4.W.
 
 After completing the Issue close actions, trigger Wiki Ingest to capture retrospective knowledge from this Issue.
 
-**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Skip silently otherwise.
+> **⚠️ E2E Mandatory (Issue #524 — silent-skip 防止層 1)**: Phase 4.4.W and 4.4.W.2 are **NEVER** skipped under any output-minimization rule. Even when called from `/rite:issue:start` Phase 5.7 (parent close) or downstream automation, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently is the regression that Issue #524 explicitly fixes.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Configuration-based skip is the **only** legitimate skip path — it MUST emit a `WIKI_INGEST_SKIPPED=1` status line and `wiki_ingest_skipped` sentinel so the caller can detect and report (see Phase 4.4.W.3 below).
 
 **Step 1**: Check Wiki configuration:
 
@@ -418,7 +420,28 @@ case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" 
 echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
 ```
 
-If `wiki_enabled=false` or `auto_ingest=false`, skip this section and proceed to Phase 4.5.
+If `wiki_enabled=false` or `auto_ingest=false`, **emit a skip status line + sentinel and proceed to Phase 4.5** (do not silently skip — the caller relies on this signal for Phase 5.6 reporting):
+
+```bash
+if [ "$wiki_enabled" = "false" ]; then
+  reason="disabled"
+elif [ "$auto_ingest" = "false" ]; then
+  reason="auto_ingest_off"
+else
+  reason=""
+fi
+if [ -n "$reason" ]; then
+  echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
+  sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type wiki_ingest_skipped \
+    --details "close Phase 4.4.W skipped: $reason" \
+    --pr-number 0 2>/dev/null) || true
+  [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
+  # Caller: include the sentinel line verbatim in your final response so Phase 5.4.4.1 grep can detect it.
+fi
+```
+
+If `reason` is non-empty, skip Steps 2 and Phase 4.4.W.2 and proceed directly to Phase 4.5. Otherwise continue to Step 2.
 
 **Step 2**: Generate a retrospective Raw Source from the Issue context:
 
@@ -467,6 +490,20 @@ fi
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 4.4.W.2 when it is non-zero. Ingest failure does not block the close workflow.
 
+**Step 3 — Failure sentinel emit (Issue #524)**: When `trigger_exit != 0` AND `trigger_exit != 2` (exit 2 = Wiki disabled/uninitialized = legitimate skip already covered by Step 1), emit the `wiki_ingest_failed` sentinel so Phase 5.4.4.1 can register the incident:
+
+```bash
+if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit"
+  sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type wiki_ingest_failed \
+    --details "wiki-ingest-trigger.sh exited $trigger_exit during issue/close.md Phase 4.4.W" \
+    --pr-number 0 2>/dev/null) || true
+  [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
+  # Caller: include the sentinel line verbatim in your final response so Phase 5.4.4.1 grep can detect it.
+fi
+```
+
 ### 4.4.W.2 Wiki Ingest Invocation (Conditional)
 
 After the trigger completes, invoke `/rite:wiki:ingest` via the Skill tool so that the Raw Source written by the trigger is committed and pushed to the `wiki` branch. Without this step, the Raw Source is abandoned in the working tree and the `wiki` branch never grows (Issue #515 root cause).
@@ -484,6 +521,10 @@ After the trigger completes, invoke `/rite:wiki:ingest` via the Skill tool so th
 1. Invoke the Skill tool: `skill: "rite:wiki:ingest"` with no arguments. The ingest command auto-scans `.rite/wiki/raw/` and performs stash/checkout/commit/push to the `wiki` branch via its existing Phase 5.1 Block B implementation.
 2. **Non-blocking**: Any error returned by the Skill invocation (push failure, authentication error, LLM error, etc.) is swallowed — continue to Phase 4.5 regardless. The Raw Source remains under `.rite/wiki/raw/{type}/` and will be picked up by the next successful ingest.
 3. Do **not** pass PR/Issue number as arguments. `rite:wiki:ingest` is self-contained and discovers raw sources independently.
+4. **Done status emit (Issue #524)**: After `rite:wiki:ingest` returns (regardless of its internal success/failure — see step 2 swallow rule), emit a `WIKI_INGEST_DONE=1` status line so the caller can populate the Phase 5.6 "Wiki ingest 状況" section:
+   ```bash
+   echo "[CONTEXT] WIKI_INGEST_DONE=1; issue={issue_number}; type=retrospectives"
+   ```
 
 **Rationale**: `wiki-ingest-trigger.sh` is a pure file-writing utility (see its L40-44 doc comment) and does not perform git operations. Only `rite:wiki:ingest` has the stash/checkout/commit/push sequence that persists data to the `wiki` branch. This two-step pattern preserves the responsibility boundary (trigger writes, ingest commits) while restoring the Wiki growth path.
 

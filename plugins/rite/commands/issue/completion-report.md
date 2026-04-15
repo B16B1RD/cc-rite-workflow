@@ -42,6 +42,12 @@ Output the substituted template as your response. First determine which case app
 2. **フェーズ進捗テーブル** (6 rows: completed phases ✅, incomplete phases ⏳)
 3. **次のステップ** (3 items, using the content from the template read in Step 1)
 
+**Step 3.5 — Append Wiki ingest 状況 section (Issue #524 AC-5)**:
+
+After outputting the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ), **always** append the "Wiki ingest 状況" table per `start.md` Phase 5.6.2 by aggregating `[CONTEXT] WIKI_INGEST_DONE/SKIPPED/FAILED=1` lines from the conversation context. This section is mandatory in both Case A and Case B and is **never** skipped — the absence of any signal is itself a reportable state (silent-skip detection).
+
+See `start.md` Phase 5.6.2 for the full procedure (signal aggregation, output table format, conditional warnings).
+
 **Step 4 — Self-verification**:
 
 After outputting, verify your output matches the case determined in Step 3:

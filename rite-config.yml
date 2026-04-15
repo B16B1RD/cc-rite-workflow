@@ -169,6 +169,10 @@ wiki:
   auto_ingest: true                    # Auto-ingest on review/fix/close (default: true)
   auto_query: true                     # Auto-query on start/review/fix/implement (default: true)
   auto_lint: true                      # Auto-run /rite:wiki:lint --auto after ingest (default: true)
+  growth_check:
+    threshold_prs: 5                   # Issue #524: lint warns when this many merged PRs accumulate
+                                       # since the last commit on `branch_name` with no raw-source ingest
+                                       # in between (warning only — does not change [lint:success])
 
 # Language setting
 language: ja

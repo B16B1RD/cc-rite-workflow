@@ -1585,6 +1585,8 @@ The rite workflow auto-detects **workflow blockers** during `/rite:issue:start` 
 | `skill_load_failure` | Skill tool fails to load (e.g., Markdown parser bash interpretation error) | Orchestrator post-condition check (expected result pattern missing) |
 | `hook_abnormal_exit` | A hook script returns non-zero exit code or stderr ERROR message | Skill internal failure paths (file modification error, work memory PATCH failure, etc.) |
 | `manual_fallback_adopted` | User selects "manual Edit fallback" option in any orchestrator `AskUserQuestion` | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
+| `wiki_ingest_skipped` (#524) | `wiki.enabled=false` or `wiki.auto_ingest=false` causes Phase X.X.W (`pr/review.md` 6.5.W / `pr/fix.md` 4.6.W / `issue/close.md` 4.4.W) to skip the Wiki ingest pipeline | Sub-skill emits sentinel from Phase X.X.W Step 1 along with `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` status line |
+| `wiki_ingest_failed` (#524) | `wiki-ingest-trigger.sh` exits with a non-zero / non-2 code during Phase X.X.W | Sub-skill emits sentinel from Phase X.X.W Step 3 along with `[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_{n}` status line |
 
 ### Sentinel Format
 
@@ -1596,7 +1598,7 @@ The `root_cause_hint` field is **optional** and entirely omitted from the sentin
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | enum | yes | One of `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` |
+| `type` | enum | yes | One of `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` / `wiki_ingest_failed` (the last two added in #524) |
 | `details` | string | yes | One-line incident description (semicolons replaced by commas, newlines stripped) |
 | `root_cause_hint` | string | no | Optional cause hypothesis (omitted from sentinel if empty) |
 | `iteration_id` | string | yes | `{pr_number}-{epoch_seconds}` for traceability |
@@ -1677,6 +1679,20 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 | `wiki-query-inject.sh` | Phase 2.6 (work memory init), Phase 5.1 (implement), Phase 5.4.1 (review), Phase 5.4.4 (fix) | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
 | `wiki-ingest-trigger.sh` | Phase 5.4.3 (after review), Phase 5.4.6 (after fix), Issue close | Run `/rite:wiki:ingest` on the new raw source |
 | `wiki-ingest-trigger.sh` → `/rite:wiki:lint --auto` | After each successful ingest (when `auto_lint: true`) | Validate Wiki consistency; surface warnings without blocking the workflow |
+
+### Phase X.X.W Mandatory Execution (#524)
+
+`pr/review.md` Phase 6.5.W / 6.5.W.2, `pr/fix.md` Phase 4.6.W / 4.6.W.2, and `issue/close.md` Phase 4.4.W / 4.4.W.2 collectively form the **Wiki growth path**. Issue #524 hardens this path against silent skip with a 3-layer defense:
+
+| Layer | Mechanism | Files |
+|-------|-----------|-------|
+| **1. Mandatory execution** | Each Phase X.X.W explicitly states "**NEVER** skipped under E2E Output Minimization" and emits an observable `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` line at completion (success / config-skip / trigger-failure) | `pr/review.md`, `pr/fix.md`, `issue/close.md` |
+| **2. Sentinel-based observability** | Both legitimate skip (`wiki_ingest_skipped`) and trigger failure (`wiki_ingest_failed`) emit workflow-incident sentinels via `workflow-incident-emit.sh`, which `start.md` Phase 5.4.4.1 detects via context grep and surfaces to the user via `AskUserQuestion` | `workflow-incident-emit.sh`, `start.md` Phase 5.4.4.1 |
+| **3. Lint growth check** | `lint.md` Phase 3.8 runs `wiki-growth-check.sh` which warns (non-blocking, `[lint:success]` retained) when `wiki.growth_check.threshold_prs` consecutive merged PRs land without a corresponding wiki branch commit | `wiki-growth-check.sh`, `lint.md` Phase 3.8 |
+
+Layer 3's threshold is configurable via `wiki.growth_check.threshold_prs` (default: 5). Setting it to a very large number effectively disables the lint check while preserving layers 1-2.
+
+The completion report (`start.md` Phase 5.6.2) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each `/rite:issue:start` invocation. AC-5 of #524 explicitly requires this section to render even when all counters are zero (the absence is itself the regression signal).
 
 ### Relationship to Workflow Incident Detection
 
