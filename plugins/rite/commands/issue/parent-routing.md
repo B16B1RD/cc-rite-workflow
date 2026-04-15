@@ -221,13 +221,18 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 # Canonical SoT: [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) Variant A (basic — カウンタなし)
 # 本パスは単一 child を 1 件ずつ処理し、全件失敗の集計を行わないため Variant A 必須。
 # ⚠️ DRIFT 警告: 下記 case ブロックを修正する際は、必ず以下 2 ファイルも同期すること:
-#   1. references/sub-issue-link-handler.md (Variant A 定義)
+#   1. references/sub-issue-link-handler.md (Variant A 定義、link_failures 増分を除いた部分が共通)
 #   2. commands/issue/create-decompose.md (Variant B 利用箇所、link_failures 増分のみ差分)
 # Issue #514 MUST NOT (unknown status silent 通過禁止) は `*)` ブランチで保持されている。
 # Note: jq -r で field 欠落時は "null" 文字列が返るため、正規表現で数値であることを確認する
 if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
+  # canonical reference (sub-issue-link-handler.md「前提」テーブル) は呼び出し元が
+  # `$sub_number` を設定済みであることを契約とする。本パスでは `$sub_issue_number` を
+  # ループ外で取得しているため、ここで alias を追加して reference の前提を満たす
+  # (これにより Variant A の case ブロックが byte-level で reference と一致する)。
+  sub_number="$sub_issue_number"
   link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
-    "{owner}" "{repo}" "{parent_issue_number}" "$sub_issue_number")
+    "{owner}" "{repo}" "{parent_issue_number}" "$sub_number")
   link_status=$(printf '%s' "$link_result" | jq -r '.status')
   link_msg=$(printf '%s' "$link_result" | jq -r '.message')
   case "$link_status" in
@@ -237,11 +242,11 @@ if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
     failed)
       printf '%s' "$link_result" | jq -r '.warnings[]' \
         | while read -r w; do echo "⚠️ $w" >&2; done
-      echo "⚠️ Sub-issues API linkage failed for #$sub_issue_number; body meta fallback in place" >&2
+      echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
       ;;
     *)
       # 未知 status を silent 通過させない (Issue #514 MUST NOT)
-      echo "⚠️ Unexpected link status '$link_status' for #$sub_issue_number (msg: $link_msg)" >&2
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
       ;;
   esac
 else

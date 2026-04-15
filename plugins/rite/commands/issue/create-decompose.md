@@ -577,8 +577,8 @@ fi
 # Canonical SoT: [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) Variant B (counting — link_failures カウンタあり)
 # 本 loop は全件失敗時の ERROR レイヤ (下の if) に依存しているため Variant B 必須。
 # ⚠️ DRIFT 警告: 下記 case ブロックを修正する際は、必ず以下 2 ファイルも同期すること:
-#   1. references/sub-issue-link-handler.md (Variant B 定義)
-#   2. commands/issue/parent-routing.md (Variant A 利用箇所)
+#   1. references/sub-issue-link-handler.md (Variant B 定義、link_failures 増分を含む全文)
+#   2. commands/issue/parent-routing.md (Variant A 利用箇所、link_failures 増分を除いた部分が共通)
 # Issue #514 MUST NOT (unknown status silent 通過禁止) は `*)` ブランチで保持されている。
 
 link_failures=0

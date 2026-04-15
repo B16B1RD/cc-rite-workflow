@@ -70,7 +70,7 @@ esac
 呼び出し元が variant を選ぶ際も、以下の制約は必ず保持すること。Variant を増やす場合もここを書き換えないこと。
 
 - **Issue #514 MUST NOT — unknown status silent 通過禁止**: `*` ブランチで stderr 警告を必ず出すこと。`case` の `*)` を省略したり、無視したり、ログレベルを落としたりしてはならない。Sub-issues API が将来新しい status 値を追加した場合の早期検出に依存している制約である。
-- **Non-blocking**: 本ハンドラーは `exit 1` / `return 1` を行わない。AC-4 / AC-5 に従い、Sub-issues API linkage の失敗は警告出力のみで後続処理を継続する（`Parent Issue: #N` body meta と Tasklist が fallback として残る）。全件失敗時の ERROR 級警告は **Variant B 呼び出し元** の集計ロジック (`link_failures` aggregate) 側で扱う責務で、本ハンドラーの責務ではない。**Variant A 呼び出し元** は全件失敗集計を行わず、個別 failure の stderr 警告のみに依存する（`parent-routing.md` の child creation path は単一 child を 1 件ずつ処理するため）。
+- **Non-blocking**: 本ハンドラーは `exit 1` / `return 1` を行わない。AC-4 / AC-5 に従い、Sub-issues API linkage の失敗は警告出力のみで後続処理を継続する（`Parent Issue: #N` body meta と Tasklist が fallback として残る）。全件失敗時の ERROR 級警告は **Variant B 呼び出し元** の集計ロジック (`link_failures` aggregate) 側で扱う責務で、本ハンドラーの責務ではない。**Variant A 呼び出し元** は全件失敗集計を行わない（個別 failure の stderr 警告のみに依存する）。例: `parent-routing.md` の child creation path は単一 child を 1 件ずつ処理するため本 variant を採用する。
 - **Stdout vs stderr**: 成功メッセージは stdout (`echo "✅ ..."`)、警告は stderr (`... >&2`) に出力する。パイプで後段処理を行う呼び出し元が警告を通常出力と混同しないためのルール。
 
 ## Caller Responsibility
