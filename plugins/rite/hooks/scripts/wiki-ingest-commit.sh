@@ -130,15 +130,6 @@ cd "$repo_root"
 # this matches the pre-fix behaviour, so parallel callers are no worse off
 # than they were before this guard was added.
 # verified-review cycle 5 MEDIUM (F-03): `mkdir -p .rite/state 2>/dev/null || true`
-# followed by an unchecked `exec 9>.rite/state/wiki-ingest-commit.lock` aborts
-# under `set -euo pipefail` with a cryptic "No such file or directory" when the
-# mkdir actually fails (permission denied / `.rite` exists as a regular file /
-# read-only filesystem). Split the two steps so mkdir failure produces an
-# explicit WARNING and the lock acquisition is skipped (best-effort, matching
-# the `flock` not available branch) instead of terminating the script with a
-# native bash error.
-#
-# verified-review cycle 5 MEDIUM (F-03): `mkdir -p .rite/state 2>/dev/null || true`
 # followed by an unchecked `exec 9>.rite/state/wiki-ingest-commit.lock` aborted
 # under `set -euo pipefail` with a cryptic "No such file or directory" when the
 # mkdir actually failed (permission denied / `.rite` exists as a regular file /
@@ -534,15 +525,17 @@ done
 # -----------------------------------------------------------------------
 # Git stderr capture + helpers (git_err / dump_git_err / surface_git_warnings)
 #
-# verified-review cycle 5 CRITICAL (F-01): これらの初期化ブロック (以前は line ~575)
-# と関数定義 (以前は line ~584) は Step 3 以降でのみ必要と想定されていたが、Step 2
-# の `rm -f "$f" 2>"${git_err:-/dev/null}"` と直後の `dump_git_err "rm -f $f"`
+# verified-review cycle 5 CRITICAL (F-01): この初期化ブロックと関数定義は以前
+# **Step 3 冒頭 (stash push の直前)** に配置されており (before commit 5212573)、
+# Step 3 以降でのみ必要と想定されていた。しかし Step 2 の
+# `rm -f "$f" 2>"${git_err:-/dev/null}"` と直後の `dump_git_err "rm -f $f"`
 # 呼び出しが前方参照していた。rm 失敗時に (1) stderr が常に /dev/null に routing
 # され rm の OS エラーが失われ、(2) `dump_git_err` は `command not found` で set -e
 # 配下で rc=127 abort し `exit 3` に到達しない — cycle 4 で cherry-pick した「rm
-# stderr を propagate する」修正が構造的に無効化されていた。Step 2 ループより前に
-# helper block を移動することで、Step 2 の rm 失敗経路が正しく診断情報を出せるよう
-# にし、cycle 4 の error-handling contract を再び有効にする。
+# stderr を propagate する」修正が構造的に無効化されていた。Step 1 は git_err を
+# 参照しないため Step 1/Step 2 の境界に helper block を配置することで、Step 2 の
+# rm 失敗経路が正しく診断情報を出せるようにし、cycle 4 の error-handling contract
+# を再び有効にする。
 #
 # Cycle 2 MEDIUM (noise reduction): only dump stderr on failure paths.
 # Previous design called `dump_git_err` after **every** git command, including
