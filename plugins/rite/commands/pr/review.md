@@ -3854,6 +3854,7 @@ else
 fi
 if [ -n "$reason" ]; then
   echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
+  # See references/workflow-incident-emit-protocol.md "Extended Pattern: Wiki Ingest Sentinel Emit" for rationale (stdout+stderr emit / canonical fallback / trap cleanup)
   emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
   trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
   if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
@@ -3861,16 +3862,10 @@ if [ -n "$reason" ]; then
       --details "review Phase 6.5.W skipped: $reason" \
       --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
     if [ -n "$sentinel_line" ]; then
-      # canonical Sentinel Visibility Rule (start.md Phase 5.4.4.1):
-      # stdout が orchestrator conversation context への canonical 経路。
-      # stderr は人間向け debug 用の追加 echo (defense-in-depth)。
       echo "$sentinel_line"
       echo "$sentinel_line" >&2
     fi
   else
-    # workflow-incident-emit.sh 失敗 (caller bug の可能性)。
-    # canonical workflow_incident format で fallback emit し、Phase 5.4.4.1 が hook_abnormal_exit として
-    # 検知できるようにする (孤児 sentinel format による silent drop を防止)。
     fallback_iter="{pr_number}-$(date +%s)"
     fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped reason=$reason; iteration_id=$fallback_iter"
     echo "$fallback_sentinel"

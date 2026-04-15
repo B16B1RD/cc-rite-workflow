@@ -1909,7 +1909,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 #### 5.6.1 Workflow Incident Reporting (#366)
 
-After the standard completion report sections, append a "未処理 incident" section listing any workflow incidents that were skipped (user chose "skip" in Phase 5.4.4.1) or whose Issue creation failed (`create-issue-with-projects.sh` returned empty).
+> **Output ordering** (must match `completion-report.md` Step 3.5): Phase 5.6.1 is appended **after Phase 5.6.2 (Wiki Ingest Status Reporting)**, not directly after the standard completion report sections. The runtime sequence is: standard completion sections → Phase 5.6.2 (Wiki ingest 状況) → Phase 5.6.1 (workflow incidents). The section numbers (5.6.1 / 5.6.2) reflect introduction order (#366 first, #524 second) and are intentionally NOT in execution order — see Phase 5.6.2 ordering note for the canonical execution order.
+
+After Phase 5.6.2 (Wiki Ingest Status Reporting) is appended, append a "未処理 incident" section listing any workflow incidents that were skipped (user chose "skip" in Phase 5.4.4.1) or whose Issue creation failed (`create-issue-with-projects.sh` returned empty).
 
 **Source**: The context-local `workflow_incident_skipped` list maintained by Phase 5.4.4.1. Each entry is `{type, details, root_cause_hint, iteration_id}`.
 
@@ -1993,6 +1995,7 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 |-----------|------------------|
 | `done_count == 0` AND `skipped_disabled_count == 0` AND `skipped_auto_off_count == 0` AND `failed_count == 0` | `> ⚠️ Phase X.X.W が一度も実行されていません。silent skip の可能性があります。/rite:wiki:ingest を手動実行するか、Phase 5.4.4.1 の sentinel を確認してください。` |
 | `failed_count >= 1` | `> ❌ Wiki ingest trigger が {failed_count} 回失敗しました。Phase 5.4.4.1 で workflow incident として登録されているか確認してください。` |
+| `skipped_disabled_count >= 1` | `> ℹ️ wiki.enabled=false により Wiki 機能全体が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
 | `skipped_auto_off_count >= 1` | `> ℹ️ wiki.auto_ingest が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
 | `done_count >= 1` AND no failures | `> ✅ Wiki branch が成長しました（{done_count} cycle 分の raw source が ingest されました）。` |
 

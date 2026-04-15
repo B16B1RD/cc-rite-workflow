@@ -38,8 +38,9 @@ set -uo pipefail
 # - Tempfiles registered via `_rite_wiki_growth_cleanup` are cleaned in all paths
 gh_pr_list_err=""
 git_log_err=""
+jq_err=""
 _rite_wiki_growth_cleanup() {
-  rm -f "${gh_pr_list_err:-}" "${git_log_err:-}"
+  rm -f "${gh_pr_list_err:-}" "${git_log_err:-}" "${jq_err:-}"
 }
 trap 'rc=$?; _rite_wiki_growth_cleanup; exit $rc' EXIT
 trap '_rite_wiki_growth_cleanup; exit 130' INT
