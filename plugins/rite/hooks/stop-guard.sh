@@ -269,6 +269,9 @@ case "$PHASE" in
   create_delegation)
     CREATE_HINT="HINT: Delegation sub-skill is in-flight. When it returns [create:completed:{N}], run Mandatory After Delegation self-check (Step 1/2 are no-ops if marker present) in the SAME response turn. DO NOT stop before the completion marker is output."
     ;;
+  create_post_delegation)
+    CREATE_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
+    ;;
 esac
 
 if [ -n "$CREATE_HINT" ]; then

@@ -6,6 +6,8 @@
 
 When Claude Code invokes a Skill tool and the sub-skill outputs its result pattern (e.g., `[interview:skipped]`, `[review:mergeable]`, `[fix:pushed]`), control returns to the orchestrator LLM in the same response turn. The orchestrator's natural inclination — trained by general assistant behavior — is to treat the sub-skill's completion as a task boundary and end the turn.
 
+> **Scope note**: The example patterns above are drawn from `/rite:issue:create` and `/rite:pr:*` orchestrators. This contract applies to **all** sub-skill returns, but Issue #525 specifically addresses the `/rite:issue:create` failure mode (`[interview:skipped]` turn-end bug). Other orchestrators that already survive the failure mode in practice inherit the same contract as a safety invariant.
+
 **This is a bug.** The sub-skill return is a hand-off signal, not a turn boundary. Ending the turn at this point forces the user to type `continue` manually, which:
 
 1. Breaks the "single-command end-to-end" experience that orchestrator commands promise
@@ -33,6 +35,8 @@ Ask yourself: **"Has the orchestrator's terminal completion marker been output y
 | Other `/rite:*` commands | Check the command's "Output" / "Terminal Completion" section | Match the explicit contract there |
 
 If the marker has **not** been output, you are NOT done — keep going in the same turn.
+
+> **⚠️ Duplication note**: The anti-pattern / correct-pattern blocks below are **intentionally duplicated** with `commands/issue/create.md` Sub-skill Return Protocol section. The canonical source is `docs/SPEC.md` "Sub-skill Return Auto-Continuation Contract". When modifying either copy, **always update both files and SPEC.md together** to prevent drift. A future refactor may consolidate via @include.
 
 ## Anti-pattern (what NOT to do)
 
@@ -67,15 +71,15 @@ The contract is enforced at three layers. Violating any one layer is a bug:
 
 | Layer | Mechanism | File |
 |-------|-----------|------|
-| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings | `commands/**/*.md` orchestrator sections |
+| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol), this reference |
 | 2. Flow state | Sub-skills write `*_post_*` phases + `active: true` before return; stop-guard blocks stop attempts until terminal state | `hooks/flow-state-update.sh` + `hooks/stop-guard.sh` |
-| 3. Caller-continuation hints | HTML comment `<!-- caller: ... -->` immediately before the sub-skill's result pattern | Defense-in-Depth sections in sub-skill `.md` files |
+| 3. Caller-continuation hints | HTML comment `<!-- caller: ... -->` immediately before the sub-skill's result pattern | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` |
 
 When all three layers are present, the LLM receives the continuation signal from three independent sources: the prompt itself, the stop-guard's blocking message, and the inline HTML comment in the sub-skill output.
 
 ## Relationship to Workflow Incident Detection
 
-When the contract is violated in practice — the user types `continue` to recover — the orchestrator MAY emit the `auto_continuation_failed` sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` so the incident is auto-registered as an Issue via Phase 5.4.4.1. This is an **optional** (MAY) enforcement: the detection heuristic has false-positive risk and is out of scope for Issue #525 MUST requirements. See `docs/SPEC.md` "Sub-skill Return Auto-Continuation Contract" section for the full specification.
+When the contract is violated in practice — the user types `continue` to recover — the orchestrator MAY emit the `auto_continuation_failed` sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` so the incident is auto-registered as an Issue via Phase 5.4.4.1. This is an **optional observability sentinel** (MAY) — it does not enforce the contract but records violations for later diagnosis. The detection heuristic has false-positive risk and is out of scope for Issue #525 MUST requirements. The 3 layers above are the actual enforcement; the sentinel is observability. See `docs/SPEC.md` "Sub-skill Return Auto-Continuation Contract" section for the full specification.
 
 ## References
 
@@ -84,4 +88,5 @@ When the contract is violated in practice — the user types `continue` to recov
 - `commands/issue/create.md` — Sub-skill Return Protocol + anti/correct-pattern examples
 - `commands/issue/create-interview.md` — Defense-in-Depth + caller continuation comment
 - `commands/issue/create-register.md` — Terminal Completion + caller continuation comment
-- `hooks/stop-guard.sh` — Phase-aware continuation hints for `create_post_interview` / `create_delegation`
+- `commands/issue/create-decompose.md` — Terminal Completion (Normal path) + caller continuation comment
+- `hooks/stop-guard.sh` — Phase-aware continuation hints for `create_post_interview` / `create_delegation` / `create_post_delegation`

@@ -1720,7 +1720,7 @@ Violating this contract leaves the workflow partially executed: no Issue created
 |-------|-----------|------------|
 | **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases in orchestrator documentation | `commands/issue/start.md` Sub-skill Return Protocol (Global), `commands/issue/create.md` Sub-skill Return Protocol, `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` |
 | **2. Flow state** | Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocks every stop attempt until the orchestrator reaches the terminal phase (`create_completed` with `active: false` for `/rite:issue:create`) | `hooks/flow-state-update.sh`, `hooks/stop-guard.sh` |
-| **3. Caller-continuation hints** | HTML comment `<!-- caller: read .rite-flow-state and continue with Phase X.Y in the SAME response turn. DO NOT stop. -->` immediately before the sub-skill's result pattern | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md` |
+| **3. Caller-continuation hints** | HTML comment `<!-- caller: read .rite-flow-state and continue with Phase X.Y in the SAME response turn. DO NOT stop. -->` immediately before the sub-skill's result pattern. The HTML comment is visible to the LLM via conversation context but does NOT render in Markdown output. | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` |
 
 All three layers must be present for the contract to hold. If any layer is weakened (e.g., the HTML comment is removed, or the `same response turn` phrase is dropped from the prompt), the LLM may revert to its default "task-complete → end turn" behavior on the next failure path.
 
@@ -1746,8 +1746,9 @@ When `stop-guard.sh` blocks a stop attempt with an active `.rite-flow-state`, th
 
 | Active phase | Hint content |
 |-------------|-------------|
-| `create_post_interview` | "Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 → Delegation Routing Pre-write → invoke rite:issue:create-register in the SAME response turn." |
+| `create_post_interview` | "Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn." |
 | `create_delegation` | "Delegation sub-skill is in-flight. When it returns `[create:completed:{N}]`, run Mandatory After Delegation self-check in the SAME response turn. DO NOT stop before the completion marker is output." |
+| `create_post_delegation` | "Terminal sub-skill returned without `[create:completed:{N}]` (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state." |
 
 These hints are **best-effort**: they only fire when a stop attempt is actually blocked, so they act as a backstop for the prompt contract rather than a primary enforcement mechanism. The primary path is the prompt contract (Layer 1).
 
@@ -1766,7 +1767,7 @@ Sentinel format (when implemented):
 [CONTEXT] WORKFLOW_INCIDENT=1; type=auto_continuation_failed; details=<details>; iteration_id=<pr>-<epoch>
 ```
 
-The sentinel integrates with the existing Phase 5.4.4.1 detection flow (same as `skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`) — no new dispatch code is required in the orchestrator.
+The sentinel would integrate with the existing Phase 5.4.4.1 detection flow (same as the existing five sentinel types: `skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`) — no new dispatch code is required in the orchestrator. Note: the `type` enum in the "Workflow Incident Detection" section above remains five-valued until `auto_continuation_failed` is implemented.
 
 ### Acceptance criteria
 
@@ -1780,7 +1781,7 @@ The sentinel integrates with the existing Phase 5.4.4.1 detection flow (same as 
 
 ### Relationship to Workflow Incident Detection
 
-Phase 5.4.4.1 (Workflow Incident Detection) treats contract violations as one sentinel type among six (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`, and the optional `auto_continuation_failed`). All six share the same detection → AskUserQuestion → Issue registration flow via `create-issue-with-projects.sh`.
+Phase 5.4.4.1 (Workflow Incident Detection) currently treats five sentinel types as contract violations (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`). The optional `auto_continuation_failed` sentinel (MAY, scoped to a follow-up PR — see Decision Log D-02 in Issue #525) would integrate via the same flow when implemented; until then, the `type` enum remains five-valued. All sentinel types share the same detection → AskUserQuestion → Issue registration flow via `create-issue-with-projects.sh`.
 
 ## Error Handling
 

@@ -77,7 +77,7 @@ This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off si
 [CORRECT]
 <Skill rite:issue:create-interview returns>
 <LLM output: "[interview:skipped]">
-<In the SAME response turn, LLM IMMEDIATELY:>
+<In the same response turn, LLM IMMEDIATELY:>
   1. Runs the Pre-write bash for Phase 0.6 / Delegation Routing
   2. Evaluates Phase 0.6 triggers
   3. Runs the Delegation Routing Pre-write bash
@@ -86,9 +86,16 @@ This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off si
   6. Runs Mandatory After Delegation self-check
 ```
 
-**Rule**: Treat `[interview:skipped]` / `[interview:completed]` / `[decompose:*]` as **continuation triggers**, not as stopping points. The **only** valid stop in this workflow is after `[create:completed:{N}]` is output AND the next-steps text has been displayed.
+**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not as stopping points. Both terminal sub-skills (`create-register`, `create-decompose`) output `[create:completed:{N}]` as the unified completion marker. The **only** valid stop in this workflow is after the next-steps text has been displayed AND `[create:completed:{N}]` is output as the absolute last line (the terminal sub-skill emits them in this order — see `create-register.md` Phase 4.2/4.3 and `create-decompose.md` Phase 1.0.2).
 
-> **Contract phrases (AC-3, Issue #525)**: The anti-pattern / correct-pattern contract above uses these exact phrases: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`. These phrases are grep-verified as part of the AC-3 static check — do not rewrite them away.
+> **Contract phrases (AC-3, Issue #525)**: The anti-pattern / correct-pattern contract above uses these exact phrases: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`. These phrases are grep-verified as part of the AC-3 static check — do not rewrite them away. Manual verification command:
+>
+> ```bash
+> for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do
+>   grep -c "$p" plugins/rite/commands/issue/create.md
+> done
+> # Expected: all 4 counts >= 1
+> ```
 
 **Completion marker convention** (Issue #444): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`. Terminal sub-skills (`create-register.md`, `create-decompose.md`) output this marker as their absolute last line after handling flow-state deactivation and next-step display internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
 

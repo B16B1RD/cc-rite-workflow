@@ -709,6 +709,8 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 
 ## Phase 1.0: Terminal Completion (Normal Path Only)
 
+<!-- caller: this sub-skill is terminal on the Normal path. Phase 1.0.2 outputs [create:completed:{N}] as the absolute last line and deactivates .rite-flow-state. The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
+
 > **Design decision** (Issue #444, D-01): This sub-skill handles flow-state deactivation, next-step output, and completion marker internally on the **Normal path** (sub-Issues created via Phase 0.9). On the **Delegation path** (cancelled and delegated to `create-register`), `create-register.md` handles its own Terminal Completion — do NOT execute this section.
 
 **Condition**: Execute only on the **Normal path**.
