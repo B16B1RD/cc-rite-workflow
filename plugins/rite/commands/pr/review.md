@@ -3962,31 +3962,160 @@ if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
 fi
 ```
 
-#### 6.5.W.2 Wiki Ingest Invocation (Conditional)
+#### 6.5.W.2 Wiki Raw Commit (Shell — deterministic path)
 
-After the trigger completes, invoke `/rite:wiki:ingest` via the Skill tool so that the Raw Source written by the trigger is committed and pushed to the `wiki` branch. Without this step, the Raw Source is abandoned in the working tree and the `wiki` branch never grows (Issue #515 root cause).
+> **Design rationale (supersedes the previous Skill-based design)**: Earlier revisions of this phase invoked `/rite:wiki:ingest` via the Skill tool, which in turn required Claude to correctly chain `ingest.md` Phase 5.1 Block A (stash/checkout) → LLM Write/Edit phase → Block B (add/commit/push) across multiple Bash tool boundaries and a sub-skill auto-continuation step. That contract was structurally fragile under E2E output minimization and auto-continuation failures (Issue #525), producing the observed regression where the `wiki` branch never grew in practice despite multiple rounds of silent-skip defence layers (Issues #515, #518, #524). This phase now delegates the raw-source commit to a **single shell script**, `wiki-ingest-commit.sh`, which completes the stash→checkout→add→commit→push→checkout-back→stash-pop cycle in one process with no dependency on Claude multi-step orchestration.
+
+**Responsibility scope**: this block commits **raw sources only**. LLM-driven Wiki **page** integration (reading raw sources, deciding create/update/skip, writing `.rite/wiki/pages/*`) is **deferred** to `/rite:wiki:ingest`, which is idempotent over accumulated raw sources and can be invoked later — manually, or automatically in a separate session. The split guarantees that raw sources are never lost even when page integration is skipped or fails.
 
 **Condition**: Execute only when **all** of the following are true (read from prior Phase 6.5.W stdout):
 
 - `wiki_enabled=true`
 - `auto_ingest=true`
-- `trigger_exit=0` (the trigger ran successfully — non-zero means Wiki disabled/uninitialized, so there is nothing to ingest)
+- `trigger_exit=0` (the trigger ran successfully — non-zero means Wiki disabled/uninitialized, so there is nothing to commit)
 
-**When the condition is not satisfied**, skip this section silently and proceed to Phase 6.5.1.
+When the condition is not satisfied, skip this block and proceed to Phase 6.5.1.
 
-**When the condition is satisfied**:
+```bash
+# {plugin_root} はリテラル値で埋め込む
+#
+# HIGH #4 — commit_err / emit_err の signal trap 登録を block 冒頭で行う。
+# trigger 側 (Phase 6.5.W Step 3) の emit_err と対称。SIGINT/SIGTERM/SIGHUP で中断
+# された場合でも /tmp の一時ファイルが orphan として残らない。
+# (cycle 2 MEDIUM: `emit_err_for_fallback` dead variable は削除済み。
+#  fix.md / close.md と同一の 2 変数 trap に統一。)
+commit_err=""
+emit_err=""
+trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 
-1. Invoke the Skill tool: `skill: "rite:wiki:ingest"` with no arguments. The ingest command auto-scans `.rite/wiki/raw/` and performs stash/checkout/commit/push to the `wiki` branch via its existing Phase 5.1 Block B implementation.
-2. **Non-blocking**: Any error returned by the Skill invocation (push failure, authentication error, LLM error, etc.) is swallowed — continue to Phase 6.5.1 regardless. The Raw Source remains under `.rite/wiki/raw/{type}/` and will be picked up by the next successful ingest.
-3. Do **not** pass PR/Issue number as arguments. `rite:wiki:ingest` is self-contained and discovers raw sources independently.
-4. **Done status emit (Issue #524)**: After `rite:wiki:ingest` returns (regardless of its internal success/failure — see step 2 swallow rule), emit a `WIKI_INGEST_DONE=1` status line so the caller can populate the Phase 5.6 "Wiki ingest 状況" section:
-   ```bash
-   echo "[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=reviews"
-   ```
+# verified-review cycle 4 HIGH #3: mktemp failure must NOT silently swallow
+# wiki-ingest-commit.sh stderr. The previous `|| commit_err="/dev/null"`
+# fallback made the `[ -s "$commit_err" ]` guard no-op and routed every
+# git/shell failure from the script to /dev/null. On a /tmp-broken host
+# the caller would see an exit code but no diagnostic. Emit an explicit
+# sentinel via workflow-incident-emit.sh so Phase 5.4.4.1 treats mktemp
+# failure itself as a workflow incident.
+if ! commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture — script stderr will be suppressed" >&2
+  echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
+  # Emit a hook_abnormal_exit sentinel directly (workflow-incident-emit.sh
+  # may itself be unable to create tempfiles, so fall back to inline).
+  fallback_iter="{pr_number}-$(date +%s)"
+  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in pr/review.md Phase 6.5.W.2; iteration_id=$fallback_iter"
+  echo "$fallback_sentinel"
+  echo "$fallback_sentinel" >&2
+  commit_err="/dev/null"
+fi
+commit_rc=0
+if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
+  # Success — the script prints exactly one status line to stdout, e.g.
+  #   [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok
+  #   [wiki-ingest-commit] committed=0; branch=wiki; reason=no-pending
+  echo "$commit_out"
+  echo "[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=reviews"
+else
+  commit_rc=$?
+  # MEDIUM #5 — exit 2 (wiki disabled / wiki branch missing) は `wiki-ingest-commit.sh`
+  # 自身が「意図的 skip」として定義している exit code。caller 側で failure sentinel
+  # として emit すると、fresh clone 等の legitimate 経路で false-positive incident を
+  # Phase 5.4.4.1 AskUserQuestion に流してしまう。skip / failure を分岐する。
+  if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
+    head -5 "$commit_err" | sed 's/^/  /' >&2
+  fi
+  case "$commit_rc" in
+    2)
+      echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
+      # Emit wiki_ingest_skipped sentinel (not failed) for Phase 5.4.4.1 parity.
+      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type wiki_ingest_skipped \
+          --details "wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during pr/review.md Phase 6.5.W.2" \
+          --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+        if [ -n "$sentinel_line" ]; then
+          echo "$sentinel_line"
+          echo "$sentinel_line" >&2
+        fi
+      else
+        # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称)。workflow-incident-emit.sh
+        # 自体が失敗しても hook_abnormal_exit sentinel を fallback として出すことで、
+        # incident 検出の silent failure を防ぐ。
+        fallback_iter="{pr_number}-$(date +%s)"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped commit_rc=2; iteration_id=$fallback_iter"
+        echo "$fallback_sentinel"
+        echo "$fallback_sentinel" >&2
+        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+      fi
+      ;;
+    4)
+      # verified-review cycle 4 CRITICAL #1: exit 4 = commit landed locally
+      # but origin push failed. The previous design was exit 0 with only a
+      # stdout `push=failed` marker, which was never parsed by this caller,
+      # so flaky remote / auth expiry / rate limit drove all push failures
+      # through the success branch silently. Now wiki-ingest-commit.sh
+      # exits 4 specifically for this case, and we emit a dedicated
+      # `wiki_ingest_push_failed` sentinel so Phase 5.4.4.1 can register
+      # the incident. The commit itself is preserved on the local wiki
+      # branch; the caller should be aware that push retry is needed.
+      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
+      # Preserve the stdout status line from the script so the caller sees
+      # `committed=N; head=<sha>; push=failed` and can trace the local commit.
+      if [ -n "${commit_out:-}" ]; then
+        echo "$commit_out"
+      fi
+      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type wiki_ingest_push_failed \
+          --details "wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during pr/review.md Phase 6.5.W.2" \
+          --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+        if [ -n "$sentinel_line" ]; then
+          echo "$sentinel_line"
+          echo "$sentinel_line" >&2
+        fi
+      else
+        fallback_iter="{pr_number}-$(date +%s)"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed commit_rc=4; iteration_id=$fallback_iter"
+        echo "$fallback_sentinel"
+        echo "$fallback_sentinel" >&2
+        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+      fi
+      ;;
+    *)
+      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$commit_rc; exit_code=$commit_rc"
+      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type wiki_ingest_failed \
+          --details "wiki-ingest-commit.sh exited $commit_rc during pr/review.md Phase 6.5.W.2" \
+          --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+        if [ -n "$sentinel_line" ]; then
+          echo "$sentinel_line"
+          echo "$sentinel_line" >&2
+        fi
+      else
+        # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称)。
+        fallback_iter="{pr_number}-$(date +%s)"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed commit_rc=$commit_rc; iteration_id=$fallback_iter"
+        echo "$fallback_sentinel"
+        echo "$fallback_sentinel" >&2
+        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+      fi
+      ;;
+  esac
+fi
+[ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
+commit_err=""
+[ -n "$emit_err" ] && rm -f "$emit_err"
+emit_err=""
+trap - EXIT INT TERM HUP
+```
 
-**Position rationale**: This block sits after the review-fix loop has exited (the caller `/rite:issue:start` only enters Phase 6.5.W on `[review:mergeable]` or standalone execution). Raw Sources written mid-loop would reflect unsettled review state, so the placement is intentional.
+**Non-blocking**: failures of this block do not halt the review workflow. `wiki-ingest-commit.sh` restores raw source files to the dev branch working tree on failure via its cleanup trap, so the next invocation can retry them.
 
-**Responsibility boundary**: `wiki-ingest-trigger.sh` is a pure file-writing utility (see its L40-44 doc comment) and does not perform git operations. Only `rite:wiki:ingest` has the stash/checkout/commit/push sequence that persists data to the `wiki` branch.
+**Position rationale**: this block sits after the review-fix loop has exited (the caller `/rite:issue:start` only enters Phase 6.5.W on `[review:mergeable]` or standalone execution). Raw sources written mid-loop would reflect unsettled review state, so the placement is intentional.
+
+**Responsibility boundary**: `wiki-ingest-trigger.sh` writes a raw source file into the dev branch working tree; `wiki-ingest-commit.sh` moves that file onto the `wiki` branch and commits it. Neither involves LLM work. The subsequent LLM-driven page integration is the exclusive responsibility of `/rite:wiki:ingest`, invoked at a later, independent time.
 
 #### 6.5.1 Next Step Branching by Invocation Source
 
