@@ -229,7 +229,8 @@ if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
   # canonical reference (sub-issue-link-handler.md「前提」テーブル) は呼び出し元が
   # `$sub_number` を設定済みであることを契約とする。本パスでは `$sub_issue_number` を
   # ループ外で取得しているため、ここで alias を追加して reference の前提を満たす
-  # (これにより Variant A の case ブロックが byte-level で reference と一致する)。
+  # (これにより Variant A の case ブロックが変数名 contract レベルで reference と一致する。
+  #  enclosing if 内の 2-space indent を除いた case 本体は reference Variant A と semantic 一致)。
   sub_number="$sub_issue_number"
   link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
     "{owner}" "{repo}" "{parent_issue_number}" "$sub_number")
