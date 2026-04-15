@@ -2000,8 +2000,9 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 
 | Condition | Warning to append |
 |-----------|------------------|
-| `done_count == 0` AND `skipped_disabled_count == 0` AND `skipped_auto_off_count == 0` AND `skipped_commit_branch_missing_count == 0` AND `failed_count == 0` | `> ⚠️ Phase X.X.W が一度も実行されていません。silent skip の可能性があります。/rite:wiki:ingest を手動実行するか、Phase 5.4.4.1 の sentinel を確認してください。` |
+| `done_count == 0` AND `skipped_disabled_count == 0` AND `skipped_auto_off_count == 0` AND `skipped_commit_branch_missing_count == 0` AND `failed_count == 0` AND `push_failed_count == 0` | `> ⚠️ Phase X.X.W が一度も実行されていません。silent skip の可能性があります。/rite:wiki:ingest を手動実行するか、Phase 5.4.4.1 の sentinel を確認してください。` |
 | `failed_count >= 1` | `> ❌ Wiki ingest trigger が {failed_count} 回失敗しました。Phase 5.4.4.1 で workflow incident として登録されているか確認してください。` |
+| `push_failed_count >= 1` | `> ❌ wiki-ingest-commit.sh が commit 成功後の push に {push_failed_count} 回失敗しました。local wiki branch に commit は保持されています。手動 recovery: \`git push origin wiki\` を実行してください。` |
 | `skipped_disabled_count >= 1` | `> ℹ️ wiki.enabled=false により Wiki 機能全体が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
 | `skipped_auto_off_count >= 1` | `> ℹ️ wiki.auto_ingest が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
 | `skipped_commit_branch_missing_count >= 1` | `> ℹ️ wiki-ingest-commit.sh が wiki ブランチ未作成により skip されました（{skipped_commit_branch_missing_count} 件）。/rite:wiki:init を実行するか、git fetch origin wiki を実行してください。` |

@@ -129,13 +129,35 @@ cd "$repo_root"
 # When absent we skip the lock acquisition entirely and accept the race —
 # this matches the pre-fix behaviour, so parallel callers are no worse off
 # than they were before this guard was added.
+# verified-review cycle 5 MEDIUM (F-03): `mkdir -p .rite/state 2>/dev/null || true`
+# followed by an unchecked `exec 9>.rite/state/wiki-ingest-commit.lock` aborts
+# under `set -euo pipefail` with a cryptic "No such file or directory" when the
+# mkdir actually fails (permission denied / `.rite` exists as a regular file /
+# read-only filesystem). Split the two steps so mkdir failure produces an
+# explicit WARNING and the lock acquisition is skipped (best-effort, matching
+# the `flock` not available branch) instead of terminating the script with a
+# native bash error.
+#
+# verified-review cycle 5 MEDIUM (F-03): `mkdir -p .rite/state 2>/dev/null || true`
+# followed by an unchecked `exec 9>.rite/state/wiki-ingest-commit.lock` aborted
+# under `set -euo pipefail` with a cryptic "No such file or directory" when the
+# mkdir actually failed (permission denied / `.rite` exists as a regular file /
+# read-only filesystem). Split the two steps so mkdir failure produces an
+# explicit WARNING and the lock acquisition is skipped (best-effort, matching
+# the `flock` not available branch) instead of terminating the script with a
+# native bash error.
 if command -v flock >/dev/null 2>&1; then
-  mkdir -p .rite/state 2>/dev/null || true
-  exec 9>.rite/state/wiki-ingest-commit.lock
-  if ! flock -n 9; then
-    echo "[wiki-ingest-commit] skipped; reason=concurrent-invocation" >&2
-    echo "[wiki-ingest-commit] committed=0; branch=unknown; reason=concurrent-invocation"
-    exit 0
+  if mkdir -p .rite/state 2>/dev/null; then
+    exec 9>.rite/state/wiki-ingest-commit.lock
+    if ! flock -n 9; then
+      echo "[wiki-ingest-commit] skipped; reason=concurrent-invocation" >&2
+      echo "[wiki-ingest-commit] committed=0; branch=unknown; reason=concurrent-invocation"
+      exit 0
+    fi
+  else
+    echo "WARNING: .rite/state の作成に失敗しました。advisory lock をスキップします" >&2
+    echo "  原因候補: permission denied / .rite が通常ファイル / read-only filesystem" >&2
+    echo "  影響: 並列実行時の race を検出できません (best-effort 降格、機能自体は継続)" >&2
   fi
 fi
 
@@ -509,60 +531,29 @@ for f in "${pending_files[@]}"; do
   cp -f "$f" "$dst"
 done
 
-# Step 2: remove the pending raw files from the dev branch working tree
-# so they are not captured by the stash in Step 3.
+# -----------------------------------------------------------------------
+# Git stderr capture + helpers (git_err / dump_git_err / surface_git_warnings)
 #
-# verified-review cycle 4 MEDIUM (error-handling): tracked raw file must
-# be an invariant violation, not a silent continue. Raw source capture
-# contract (wiki-ingest-trigger.sh) should only produce untracked files on
-# the dev branch; a tracked raw file indicates either a stray accidental
-# commit on the dev branch or someone running the script in an unexpected
-# workflow. Silent continue lets that state persist and forms a double
-# state (tracked on dev + committed on wiki) that corrupts subsequent fix
-# cycles. Fail fast instead so the user resolves the invariant violation.
-for f in "${pending_files[@]}"; do
-  if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-    echo "ERROR: '$f' is tracked on '$current_branch' — invariant violation" >&2
-    echo "  raw source capture should only produce untracked files on the dev branch" >&2
-    echo "  hint: this usually means an accidental commit of the raw source on the dev branch" >&2
-    echo "  manual recovery:" >&2
-    echo "    1) git rm --cached '$f'" >&2
-    echo "    2) commit the removal on the dev branch" >&2
-    echo "    3) re-run wiki-ingest-commit.sh" >&2
-    exit 3
-  fi
-  # verified-review cycle 4 MEDIUM (error-handling): rm -f stderr was
-  # previously suppressed entirely. Propagate failures so the operator can
-  # see which file could not be removed (EACCES / EIO / race).
-  if ! rm -f "$f" 2>"${git_err:-/dev/null}"; then
-    echo "ERROR: failed to remove untracked raw source '$f' from '$current_branch'" >&2
-    dump_git_err "rm -f $f"
-    exit 3
-  fi
-done
-# Remove now-empty raw subdirectories so git status stays clean.
-# verified-review cycle 4 LOW: intentionally cosmetic; failures are
-# silently ignored because the commit / push path below does not depend
-# on empty directory cleanup and the next fix cycle will re-run this.
-find .rite/wiki/raw -type d -empty -delete 2>/dev/null || true
-
-# MEDIUM #7 — capture git stderr on critical-path commands so the real
-# cause ("would overwrite untracked files", "not a valid object name",
-# network auth failures, etc.) surfaces to the user on **failure**.
-# Suppressing stderr with `2>/dev/null` on the old implementation made
-# git failures opaque and required the user to re-run by hand to see
-# the actual reason.
+# verified-review cycle 5 CRITICAL (F-01): これらの初期化ブロック (以前は line ~575)
+# と関数定義 (以前は line ~584) は Step 3 以降でのみ必要と想定されていたが、Step 2
+# の `rm -f "$f" 2>"${git_err:-/dev/null}"` と直後の `dump_git_err "rm -f $f"`
+# 呼び出しが前方参照していた。rm 失敗時に (1) stderr が常に /dev/null に routing
+# され rm の OS エラーが失われ、(2) `dump_git_err` は `command not found` で set -e
+# 配下で rc=127 abort し `exit 3` に到達しない — cycle 4 で cherry-pick した「rm
+# stderr を propagate する」修正が構造的に無効化されていた。Step 2 ループより前に
+# helper block を移動することで、Step 2 の rm 失敗経路が正しく診断情報を出せるよう
+# にし、cycle 4 の error-handling contract を再び有効にする。
 #
 # Cycle 2 MEDIUM (noise reduction): only dump stderr on failure paths.
-# Previous design called `dump_git_err` after **every** git command,
-# including successful ones, which surfaced git informational messages
-# like `Switched to branch 'wiki'` on stderr — noise that drowned out
-# real error signals. The helper is now failure-only; success paths
-# call `clear_git_err` to truncate the buffer for the next command.
+# Previous design called `dump_git_err` after **every** git command, including
+# successful ones, which surfaced git informational messages like `Switched to
+# branch 'wiki'` on stderr — noise that drowned out real error signals. The
+# helper is now failure-only; success paths call `surface_git_warnings` which
+# only prints lines matching `^(warning|hint|error):`.
 #
 # git_err cleanup is delegated to `cleanup_body` (see the EXIT/INT/TERM/HUP
-# traps below). A separate trap would overwrite cleanup_body's and break
-# the HIGH #1/#2 rollback-safety rewrites from cycle 1.
+# traps below). A separate trap would overwrite cleanup_body's and break the
+# HIGH #1/#2 rollback-safety rewrites from cycle 1.
 #
 # verified-review cycle 4 HIGH #4: mktemp failure must NOT silently swallow
 # all git stderr. The previous `|| echo ""` fallback made dump_git_err and
@@ -614,6 +605,43 @@ surface_git_warnings() {
   fi
   return 0
 }
+
+# Step 2: remove the pending raw files from the dev branch working tree
+# so they are not captured by the stash in Step 3.
+#
+# verified-review cycle 4 MEDIUM (error-handling): tracked raw file must
+# be an invariant violation, not a silent continue. Raw source capture
+# contract (wiki-ingest-trigger.sh) should only produce untracked files on
+# the dev branch; a tracked raw file indicates either a stray accidental
+# commit on the dev branch or someone running the script in an unexpected
+# workflow. Silent continue lets that state persist and forms a double
+# state (tracked on dev + committed on wiki) that corrupts subsequent fix
+# cycles. Fail fast instead so the user resolves the invariant violation.
+for f in "${pending_files[@]}"; do
+  if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+    echo "ERROR: '$f' is tracked on '$current_branch' — invariant violation" >&2
+    echo "  raw source capture should only produce untracked files on the dev branch" >&2
+    echo "  hint: this usually means an accidental commit of the raw source on the dev branch" >&2
+    echo "  manual recovery:" >&2
+    echo "    1) git rm --cached '$f'" >&2
+    echo "    2) commit the removal on the dev branch" >&2
+    echo "    3) re-run wiki-ingest-commit.sh" >&2
+    exit 3
+  fi
+  # verified-review cycle 4 MEDIUM (error-handling): rm -f stderr was
+  # previously suppressed entirely. Propagate failures so the operator can
+  # see which file could not be removed (EACCES / EIO / race).
+  if ! rm -f "$f" 2>"${git_err:-/dev/null}"; then
+    echo "ERROR: failed to remove untracked raw source '$f' from '$current_branch'" >&2
+    dump_git_err "rm -f $f"
+    exit 3
+  fi
+done
+# Remove now-empty raw subdirectories so git status stays clean.
+# verified-review cycle 4 LOW: intentionally cosmetic; failures are
+# silently ignored because the commit / push path below does not depend
+# on empty directory cleanup and the next fix cycle will re-run this.
+find .rite/wiki/raw -type d -empty -delete 2>/dev/null || true
 
 # Step 3: stash any remaining uncommitted work so checkout is safe.
 # We use `git stash push -u` with a specific message for traceability.
