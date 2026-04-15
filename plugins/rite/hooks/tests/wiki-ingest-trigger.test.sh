@@ -755,11 +755,13 @@ _rite_issue518_tmps+=("$tmp_default")
 echo "x" > "$tmp_default"
 ( cd "$dir36b" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_default" >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
-  # 補助 grep: 拒否理由を示すエラーメッセージが含まれていることを確認する (文言は OR で緩和)
-  if grep -qiE 'must be under|outside|not allowed|invalid path|rite' "$dir36b/err.log"; then
-    pass "mktemp default (/tmp/tmp.*) → exit 1 (pitfall detected)"
+  # 補助 grep は dead assertion を避けるため、else 分岐を fail にする (F-08 対応)。
+  # OR pattern は rite-ingest-trigger.sh の実エラー文言 (`--content-file must be under $PWD or /tmp/rite-*`)
+  # に固有な substring のみに絞る (F-10 対応: 旧 `rite` 単独 token は path 混入で誤 match しやすい)。
+  if grep -qiE 'must be under|/tmp/rite-' "$dir36b/err.log"; then
+    pass "mktemp default (/tmp/tmp.*) → exit 1 + pitfall エラー文言検出"
   else
-    pass "mktemp default → exit 1 (文言チェックはスキップ、exit code のみで pitfall 検出)"
+    fail "exit 1 は正しいが pitfall 拒否文言が stderr にない: $(cat "$dir36b/err.log")"
   fi
 else
   fail "Expected exit 1 for mktemp default, got rc=$rc, stderr=$(cat "$dir36b/err.log")"
