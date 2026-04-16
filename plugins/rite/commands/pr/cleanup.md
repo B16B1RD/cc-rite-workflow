@@ -1236,6 +1236,150 @@ trap - EXIT INT TERM HUP
 
 ---
 
+## Phase 4.W: Wiki Auto-Ingest (Conditional)
+
+> **Reference**: [Wiki Ingest](../wiki/ingest.md) — `/rite:wiki:ingest` Skill API
+>
+> **Responsibility scope**: This phase invokes `/rite:wiki:ingest` (LLM-driven page integration) to process pending raw sources accumulated on the wiki branch during the PR lifecycle. Raw source **accumulation** is handled by `wiki-ingest-trigger.sh` + `wiki-ingest-commit.sh` in `review.md` Phase 6.5.W.2 / `fix.md` Phase 4.6.W.2 / `close.md` Phase 4.4.W.2. This phase is the **page integration** counterpart.
+>
+> **Loss-safe guarantee (FR-5, NFR-2)**: Ingest failure does NOT affect cleanup success. Raw sources remain on the wiki branch and can be processed by a subsequent `/rite:wiki:ingest` invocation.
+
+### 4.W.1 Pre-condition Check
+
+**Step 1**: Check Wiki configuration:
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_ingest=""
+if [[ -n "$wiki_section" ]]; then
+  auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # #483: opt-out default
+case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
+```
+
+If `wiki_enabled=false` or `auto_ingest=false`, **emit a skip status line + sentinel and skip to Phase 5** (do not silently skip — the completion report relies on this signal):
+
+```bash
+if [ "$wiki_enabled" = "false" ]; then
+  reason="disabled"
+elif [ "$auto_ingest" = "false" ]; then
+  reason="auto_ingest_off"
+else
+  reason=""
+fi
+if [ -n "$reason" ]; then
+  echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
+  emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+  trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
+  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type wiki_ingest_skipped \
+      --details "cleanup Phase 4.W skipped: $reason" \
+      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+    [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
+  else
+    fallback_iter="{pr_number}-$(date +%s)"
+    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped reason=$reason; iteration_id=$fallback_iter"
+    echo "$fallback_sentinel"
+    echo "$fallback_sentinel" >&2
+  fi
+  [ -n "$emit_err" ] && rm -f "$emit_err"
+  trap - EXIT INT TERM HUP
+fi
+```
+
+If `reason` is non-empty, skip Steps 2-3 and Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwise continue to Step 2.
+
+**Step 2**: Check for pending raw sources on the wiki branch:
+
+```bash
+wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exit}' rite-config.yml 2>/dev/null \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+[ -z "$wiki_branch" ] && wiki_branch="wiki"
+
+# Check if wiki branch exists (local or remote)
+pending_count=0
+if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
+  # Count raw source files with ingested: false
+  pending_count=$(git show "$wiki_branch":.rite/wiki/raw/ 2>/dev/null \
+    | while read -r f; do
+        content=$(git show "$wiki_branch":.rite/wiki/raw/"$f" 2>/dev/null)
+        if echo "$content" | grep -q 'ingested: false'; then
+          echo "$f"
+        fi
+      done | wc -l)
+elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
+  pending_count=$(git show "origin/$wiki_branch":.rite/wiki/raw/ 2>/dev/null \
+    | while read -r f; do
+        content=$(git show "origin/$wiki_branch":.rite/wiki/raw/"$f" 2>/dev/null)
+        if echo "$content" | grep -q 'ingested: false'; then
+          echo "$f"
+        fi
+      done | wc -l)
+fi
+echo "pending_count=$pending_count wiki_branch=$wiki_branch"
+```
+
+If `pending_count == 0`, display `ℹ️ pending raw source はありません。Wiki ingest をスキップします。` and proceed to Phase 5. Otherwise continue to Phase 4.W.2.
+
+### 4.W.2 Invoke Wiki Ingest
+
+Invoke the `/rite:wiki:ingest` Skill to process pending raw sources into Wiki pages:
+
+```
+Skill: rite:wiki:ingest
+```
+
+> **⚠️ NFR-3 (Issue #525 再発防止)**: `/rite:wiki:ingest` は同セッション内で Skill ツール経由で invoke される。ingest.md の結果パターン（成功/失敗）を確認し、Phase 4.W.3 に進むこと。ingest の成功/失敗に関わらず cleanup は続行する（loss-safe continuation）。
+
+### 4.W.3 Result Handling
+
+**On success** (ingest completed):
+
+```
+✅ Wiki ingest 完了: {pages_created} ページ生成、{raw_processed} raw source 統合済み
+[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=cleanup_ingest
+```
+
+**On failure** (ingest error or partial failure):
+
+Emit failure sentinel and continue to Phase 5 (loss-safe continuation):
+
+```bash
+echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error; phase=cleanup_4W"
+emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
+if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type wiki_ingest_failed \
+    --details "rite:wiki:ingest failed during cleanup Phase 4.W" \
+    --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+  [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
+else
+  fallback_iter="{pr_number}-$(date +%s)"
+  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed; iteration_id=$fallback_iter"
+  echo "$fallback_sentinel"
+  echo "$fallback_sentinel" >&2
+fi
+[ -n "$emit_err" ] && rm -f "$emit_err"
+trap - EXIT INT TERM HUP
+```
+
+```
+⚠️ Wiki ingest が失敗しました。raw source は wiki branch に保持されています。
+手動で `/rite:wiki:ingest` を実行してページ統合を再試行できます。
+```
+
+**Non-blocking guarantee**: Regardless of success or failure, proceed to Phase 5 (Completion Report).
+
+---
+
 ## Phase 5: Completion Report
 
 ### 5.1 Cleanup Result Summary
@@ -1255,6 +1399,7 @@ Status: {projects_status_result}
 - [{review_cleanup_check}] レビュー結果ファイル・fix state ファイルを削除
 - [x] .rite-flow-state をリセット
 - [{projects_check}] Projects Status を Done に更新
+- [{wiki_ingest_check}] Wiki ingest（pending raw source のページ統合）
 - [x] 作業メモリを最終更新
 - [x] 関連 Issue をクローズ
 - [x] 親 Issue の Tasklist チェックボックスを更新（該当する場合）
@@ -1288,6 +1433,22 @@ When `projects_status_updated` is `false`, append the following after the checkl
 ```
 ⚠️ Projects Status の更新に失敗しました。手動で更新してください:
 GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更
+```
+
+**Wiki ingest result display rules:**
+
+| Phase 4.W result | `{wiki_ingest_check}` |
+|------------------|----------------------|
+| Success (`WIKI_INGEST_DONE`) | `x` |
+| Skipped (disabled / no pending) | `x` + `ℹ️ Wiki ingest スキップ ({reason})` |
+| Failed (`WIKI_INGEST_FAILED`) | ` ` (space) + 下記の警告を表示 |
+| Phase 4.W not executed (wiki.enabled=false) | `x` + `ℹ️ Wiki 無効` |
+
+When `WIKI_INGEST_FAILED` is detected, append the following after the checklist:
+
+```
+⚠️ Wiki ingest が失敗しました。raw source は wiki branch に保持されています。
+手動で `/rite:wiki:ingest` を実行してページ統合を再試行できます。
 ```
 
 **Parent Issue close result (displayed only when Phase 3.7 was executed):**
