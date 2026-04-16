@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-04-17T00:00:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -18,7 +18,9 @@ sources:
     ref: "raw/reviews/20260416T181357Z-pr-548.md"
   - type: "reviews"
     ref: "raw/reviews/20260416T182704Z-pr-548-cycle6.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation"]
+  - type: "fixes"
+    ref: "raw/fixes/20260416T214823Z-pr-550.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling"]
 confidence: high
 ---
 
@@ -70,9 +72,13 @@ grep -rn "Phase {old_number}" --include='*.md' .
 
 同一箇所を 2 人以上の reviewer が独立検出した場合は自動的に severity を boost（triple cross-validation で HIGH に昇格）。reviewer 単独検出より信頼性が高い。
 
+### Symmetric error handling への一般化 (PR #550 での evidence)
+
+PR #550 cycle 3 では `wiki-ingest-commit.sh` 内で同種の `rm -f` operation が rc=0/4 経路では WARNING surface を実装していたのに対し、rc=5 経路では silent にしていた asymmetric silent-fallback を指摘された。**同一ファイル内で同種の operation (特に rm / mktemp / rev-parse 等の失敗経路) が複数分岐にある場合、全分岐で同一の WARNING/sentinel 方針に揃えるのが canonical**。分岐ごとに方針が異なると、障害発生時に部分的な診断情報しか手に入らず root cause 特定が遅れる。
+
 ## 関連ページ
 
-- （関連ページなし）
+- [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
 
 ## ソース
 
@@ -83,3 +89,4 @@ grep -rn "Phase {old_number}" --include='*.md' .
 - [PR #548 cycle 4 review results](raw/reviews/20260416T180001Z-pr-548.md)
 - [PR #548 cycle 5 review](raw/reviews/20260416T181357Z-pr-548.md)
 - [PR #548 cycle 6 mergeable (final lesson)](raw/reviews/20260416T182704Z-pr-548-cycle6.md)
+- [PR #550 cycle 3 fix (symmetric error handling 一般化)](raw/fixes/20260416T214823Z-pr-550.md)

@@ -2,14 +2,18 @@
 title: "mktemp 失敗は silent 握り潰さず WARNING を可視化する"
 domain: "patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-04-17T00:00:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T165559Z-pr-548.md"
   - type: "reviews"
     ref: "raw/reviews/20260416T171008Z-pr-548.md"
-tags: ["bash", "mktemp", "disk-full", "inode-exhaustion", "observability"]
-confidence: medium
+  - type: "fixes"
+    ref: "raw/fixes/20260416T202213Z-pr-550.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260416T214823Z-pr-550.md"
+tags: ["bash", "mktemp", "disk-full", "inode-exhaustion", "observability", "silent-fallback"]
+confidence: high
 ---
 
 # mktemp 失敗は silent 握り潰さず WARNING を可視化する
@@ -69,6 +73,16 @@ fi
 grep -nE 'mktemp[^|]*\|\|[[:space:]]*[a-z_]+=""' --include='*.sh' -r .
 ```
 
+### 一般化: silent fallback 全般に適用される原則 (PR #550 で拡張)
+
+本 pattern は `mktemp` に限らず、**「成功経路と見分けがつかなくなる silent fallback」全般**に適用される:
+
+- `git rev-parse --abbrev-ref HEAD || echo HEAD` — detached HEAD / corrupt worktree を "HEAD" literal に塗り替え、push target 誤診の温床になる
+- `git rev-parse HEAD || echo unknown` — corrupt 状態を `head=unknown; push=ok` として success 同等に見せる
+- `rm -f` の非対称握り潰し — 同一ファイル内で rc=0 path では rm 失敗を surface するが rc=5 path で silent にすると、asymmetric silent fallback で障害箇所が部分的にしか見えない
+
+いずれも **「低頻度だが起きたとき成功経路と区別不能」** という共通構造を持ち、`if ! ...; then WARNING; [CONTEXT]; var=""; fi` 形式で可視化する。PR #550 では `worktree_commit_push()` の head SHA capture と `wiki-ingest-commit.sh` の rm failure surfacing で同じ pattern を適用した (asymmetric 発火経路も同一方針で揃えるのが要点 — [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) 参照)。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](patterns/trap-register-before-mktemp.md)
@@ -78,3 +92,5 @@ grep -nE 'mktemp[^|]*\|\|[[:space:]]*[a-z_]+=""' --include='*.sh' -r .
 
 - [PR #548 cycle 1 fix (mktemp 失敗の silent 握り潰し禁止)](raw/fixes/20260416T165559Z-pr-548.md)
 - [PR #548 cycle 2 review (stderr suppression pattern の網羅検出)](raw/reviews/20260416T171008Z-pr-548.md)
+- [PR #550 cycle 1 fix (silent fallback 一般化: rev-parse / push target 誤診回避)](raw/fixes/20260416T202213Z-pr-550.md)
+- [PR #550 cycle 3 fix (asymmetric silent fallback の対称化)](raw/fixes/20260416T214823Z-pr-550.md)

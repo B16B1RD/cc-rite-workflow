@@ -33,3 +33,8 @@
 | 2026-04-16T19:37:16+00:00 | ingest:skip | raw/reviews/20260416T124118Z-pr-545.md | 収束確認のみ |
 | 2026-04-16T19:37:16+00:00 | ingest:skip | raw/reviews/20260416T131535Z-pr-546.md | 0 findings whitelist 追加 PR |
 | 2026-04-16T19:45:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=13 (全て log に ingest:skip 記録済み), broken_refs=0 |
+| 2026-04-17T00:00:00+00:00 | ingest:create | pages/patterns/script-dir-canonicalize-before-cd.md | PR #550 cycle 1 review findings #2 / cycle 2 finding #5 / fix #2 統合 (_SCRIPT_DIR canonicalize pattern) |
+| 2026-04-17T00:00:00+00:00 | ingest:create | pages/patterns/bash-lib-helper-contract-rigour.md | PR #550 cycle 1 finding #1 / fix #1 / cycle 3 fix #3 統合 (lib contract docstring rigour) |
+| 2026-04-17T00:00:00+00:00 | ingest:update | pages/patterns/mktemp-failure-surface-warning.md | PR #550 fix cycle 1/3 で silent fallback 一般化のエビデンス追加 |
+| 2026-04-17T00:00:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #550 cycle 3 fix で symmetric error handling 一般化のエビデンス追加 |
+| 2026-04-17T00:00:00+00:00 | ingest:update | pages/heuristics/stderr-selective-surface-over-truncate.md | PR #550 fix cycle 1 で per-step tempfile 分離のエビデンス追加 |

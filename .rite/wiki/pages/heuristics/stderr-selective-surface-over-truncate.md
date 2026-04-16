@@ -2,7 +2,7 @@
 title: "stderr ノイズ削減: truncate ではなく selective surface で解く"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-04-17T00:00:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
@@ -10,7 +10,9 @@ sources:
     ref: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
   - type: "reviews"
     ref: "raw/reviews/20260415T121203Z-pr-529-cycle-3.md"
-tags: ["bash", "stderr", "observability", "noise-reduction"]
+  - type: "fixes"
+    ref: "raw/fixes/20260416T202213Z-pr-550.md"
+tags: ["bash", "stderr", "observability", "noise-reduction", "per-step-diagnostic"]
 confidence: high
 ---
 
@@ -72,12 +74,33 @@ stderr に出力される情報を以下の 2 責務に分ける:
 - `|| true`: grep no-match (rc=1) で script 全体を abort させない
 - `>&2`: stdout への混入防止（parser 依存パイプラインを保護）
 
+### Per-step tempfile 分離 (PR #550 での拡張)
+
+multi-step 処理 (`git add` → `git diff --cached` → `git commit` → `git push` の 4 段) で 1 つの stderr tempfile を流用すると、**後段 step 失敗時に前段の warning が混在表示**されて root cause 診断が困難になる。step ごとに dedicated tempfile を確保し、trap cleanup で全 tempfile を纏めて削除するのが canonical:
+
+```bash
+# ✅ OK: per-step 分離
+local add_err="" diff_err="" commit_err="" push_err=""
+trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"' EXIT INT TERM HUP
+
+add_err=$(mktemp /tmp/rite-add-err-XXXXXX) || add_err=""
+diff_err=$(mktemp /tmp/rite-diff-err-XXXXXX) || diff_err=""
+# ... (commit_err, push_err も同様)
+
+git add -- "$@" 2>"${add_err:-/dev/null}" || { dump_err "$add_err" "add"; return 3; }
+git diff --cached --quiet 2>"${diff_err:-/dev/null}"
+# diff_err failure 時に add_err の warning が混ざらない
+```
+
+PR #550 (Issue #549) の `worktree_commit_push()` で実装。step-specific な診断情報を保つことで、`git push` が corrupt worktree で失敗したとき `rev-parse --abbrev-ref HEAD` の step に由来する warning と混ざらずに push 自体の失敗原因が特定できる。
+
 ## 関連ページ
 
-- [`if ! cmd; then rc=$?` は常に 0 を捕捉する](anti-patterns/bash-if-bang-rc-capture.md)
+- [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
 
 ## ソース
 
 - [PR #529 fix cycle 1 (git stderr tempfile 退避の副作用)](raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
 - [PR #529 cycle 3 fix (success path で selective surface 導入)](raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
 - [PR #529 cycle 3 review (全 truncate の silent regression 検出)](raw/reviews/20260415T121203Z-pr-529-cycle-3.md)
+- [PR #550 cycle 1 fix (per-step tempfile 分離の一般化)](raw/fixes/20260416T202213Z-pr-550.md)
