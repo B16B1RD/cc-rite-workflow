@@ -1233,7 +1233,7 @@ trap - EXIT INT TERM HUP
 **Issue #547 の設計原則**: `.rite/wiki-worktree/` は **永続化された worktree** であり、`/rite:pr:cleanup` では削除しません。理由:
 
 - `wiki-worktree-setup.sh` は冪等で、既存 worktree は no-op として扱われるため再作成コストが極めて高い (clone 相当の I/O)
-- 各 PR cycle で `wiki-ingest-trigger.sh` → `wiki-ingest-commit.sh` (review/fix/close Phase X.X.W.2) および `wiki-worktree-commit.sh` (ingest.md Phase 5.1 page 統合 / init.md Phase 3.5 .gitkeep migration / lint.md Phase 8.3 log.md 追記) がここを経由して wiki branch に raw source / page を landing させるため、cycle を跨いで保持される必要がある
+- 各 PR cycle で `wiki-ingest-trigger.sh` → `wiki-ingest-commit.sh` (review/fix/close Phase X.X.W.2) および `wiki-worktree-commit.sh` (ingest.md Phase 5.1 page 統合 / init.md Phase 3.5.1 .gitkeep migration / lint.md Phase 8.3 log.md 追記) がここを経由して wiki branch に raw source / page を landing させるため、cycle を跨いで保持される必要がある
 - 通常の `git branch -d` は worktree が checkout している branch を削除できないため、wiki branch 自体への副作用もない
 
 **手動削除が必要な場合** (リポジトリ移動 / 構造変更 / debug):

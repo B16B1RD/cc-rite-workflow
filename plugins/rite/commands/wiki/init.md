@@ -275,8 +275,14 @@ plugin_root="{plugin_root}"
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   # wiki-worktree-setup.sh は冪等 (既存なら no-op) で安全に呼べる
-  if ! bash "$plugin_root/hooks/scripts/wiki-worktree-setup.sh"; then
-    setup_rc=$?
+  # 注意: `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に `!` の終了 status (= 0) を
+  # 返すため、setup.sh の真の rc (1=env error / 2=disabled / 3=worktree add 失敗) を捕捉できない。
+  # `set +e; cmd; rc=$?; set -e` で明示的に capture する (ingest.md Phase 1.3 と対称)。
+  set +e
+  bash "$plugin_root/hooks/scripts/wiki-worktree-setup.sh"
+  setup_rc=$?
+  set -e
+  if [ "$setup_rc" -ne 0 ]; then
     echo "WARNING: wiki-worktree-setup.sh failed (rc=$setup_rc)" >&2
     echo "  影響: /rite:wiki:ingest 実行前に手動で worktree を作成する必要があります" >&2
     echo "  手動回復: bash $plugin_root/hooks/scripts/wiki-worktree-setup.sh" >&2
