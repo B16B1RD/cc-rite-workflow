@@ -2012,13 +2012,41 @@ Inspect the script's stdout JSON:
 - `.result == "skipped_not_in_project"` → display `警告: Issue #{parent_issue_number} は Project に登録されていません` and proceed to Step 2 (non-blocking).
 - `.result == "failed"` → display `.warnings[]` and proceed to Step 2 (non-blocking).
 
-**Step 2**: Close the parent Issue:
+**Step 2**: Close the parent Issue via `/rite:issue:close` Skill invocation.
+
+> **Why Skill invoke (not `gh issue close`)**: `close.md` Phase 4.4.W.2 で Wiki raw source の蓄積（`wiki-ingest-commit.sh`）が発火する。直接 `gh issue close` を実行すると close.md を経由しないため、Wiki 経路が 100% silent skip になる（Issue #532 / #534 で修正）。
+
+**Pre-write** (before invoking `rite:issue:close`): Update `.rite-flow-state` so stop-guard can resume flow if interrupted:
 
 ```bash
-gh issue close {parent_issue_number}
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_parent_close" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "After rite:issue:close returns: proceed to 🚨 Mandatory After 5.7.2, then 5.7.3 (Next Child). Do NOT stop."
 ```
 
-**→ Proceed to 5.7.3** (display remaining children if any).
+Invoke `skill: "rite:issue:close", args: "{parent_issue_number}"`.
+
+> **Note**: `close.md` receives `{parent_issue_number}` as its `{issue_number}` argument. Phase 4.1 executes `gh issue close`, Phase 4.4.W triggers Wiki ingest. The close.md `AskUserQuestion` (Phase 3) will present options to the user — since the user already confirmed "Close parent Issue" in Phase 5.7.2's own `AskUserQuestion`, they should select the manual close option when prompted by close.md.
+
+> **Note**: `close.md` does NOT output a machine-readable result pattern (unlike `[review:mergeable]` etc.). When it returns control, immediately proceed to 🚨 Mandatory After 5.7.2.
+
+### 🚨 Mandatory After 5.7.2
+
+> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+
+Do **NOT** stop after `rite:issue:close` returns. Phase 5.7.3 (Next Child) and Workflow Termination are still pending.
+
+**Step 1**: Update `.rite-flow-state` to post-parent-close phase:
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_post_parent_close" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "rite:issue:close completed. Proceed to 5.7.3 (Next Child display). Do NOT stop."
+```
+
+**Step 2**: **→ Proceed to 5.7.3** (display remaining children if any).
 
 #### 5.7.3 Next Child
 
