@@ -330,16 +330,26 @@ fi
 # stash/checkout path below handles the case (backward compat).
 # -----------------------------------------------------------------------
 worktree_path=".rite/wiki-worktree"
-worktree_used=false
 if [ -d "$worktree_path" ]; then
-  # Confirm the worktree is on the configured wiki branch (otherwise the
-  # add/commit/push would land on a wrong branch — fail-safe to legacy path).
+  # Confirm the worktree is on the configured wiki branch. A misaligned worktree
+  # (e.g. user ran `git -C .rite/wiki-worktree checkout develop` by hand) would
+  # otherwise silently fall through to the legacy path below, which fails with
+  # "fatal: '<wiki>' is already used by worktree at '...'" — masking the true
+  # cause (worktree misalignment) behind a cryptic checkout error.
+  # wiki-worktree-commit.sh L231-235 uses the same fail-fast policy; keep symmetric.
   wt_head=""
-  if wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null); then
-    : # ok
+  if ! wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null); then
+    echo "ERROR: git -C '$worktree_path' rev-parse --abbrev-ref HEAD failed" >&2
+    echo "  原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
+    echo "  対処: git worktree remove '$worktree_path' && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
+    exit 1
   fi
-  if [ "$wt_head" = "$wiki_branch" ]; then
-    worktree_used=true
+  if [ "$wt_head" != "$wiki_branch" ]; then
+    echo "ERROR: worktree at '$worktree_path' is on branch '$wt_head', expected '$wiki_branch'" >&2
+    echo "  hint: git -C '$worktree_path' checkout '$wiki_branch'" >&2
+    echo "  silent fall-through to legacy path would fail with 'already used by worktree'" >&2
+    exit 1
+  fi
     # Pre-flight: validate wiki branch name (Phase 1.1 already validates but
     # defense-in-depth here since `git -C ... add -- "$path"` would silently
     # accept option-like paths if the validation were bypassed).
@@ -365,10 +375,17 @@ if [ -d "$worktree_path" ]; then
     done
 
     # Step W2: git add / commit / push within the worktree.
+    # cycle 4 F-01 fix: path declare → trap install → mktemp の順に並べて、
+    # mktemp 成功直後に SIGINT/SIGTERM/SIGHUP が届いた場合の orphan tmpfile を防ぐ。
+    # 同ファイル L251-252 (fm_err), L481-482 (ref_err), L523 (stage_dir) と同じ
+    # canonical pattern に統一 (asymmetric fix transcription の解消)。
+    wt_add_err=""
+    wt_commit_err=""
+    wt_push_err=""
+    trap 'rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"' EXIT INT TERM HUP
     wt_add_err=$(mktemp /tmp/rite-wic-wt-add-err-XXXXXX 2>/dev/null) || wt_add_err=""
     wt_commit_err=$(mktemp /tmp/rite-wic-wt-commit-err-XXXXXX 2>/dev/null) || wt_commit_err=""
     wt_push_err=$(mktemp /tmp/rite-wic-wt-push-err-XXXXXX 2>/dev/null) || wt_push_err=""
-    trap 'rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"' EXIT INT TERM HUP
 
     if ! git -C "$worktree_path" add -- "${wt_pending_paths[@]}" 2>"${wt_add_err:-/dev/null}"; then
       echo "ERROR: git -C $worktree_path add failed for raw sources" >&2
@@ -434,7 +451,6 @@ if [ -d "$worktree_path" ]; then
       exit 4
     fi
     exit 0
-  fi
 fi
 
 # -----------------------------------------------------------------------

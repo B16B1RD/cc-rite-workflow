@@ -210,8 +210,9 @@ fi
 # would otherwise route wiki commits onto the wrong branch.
 # stderr を tempfile に分離して、worktree corrupt / detached HEAD / branch 不在 を
 # ERROR メッセージで区別可能にする (cycle 2 MEDIUM F-13 fix)。
-rev_parse_err=$(mktemp /tmp/rite-wwc-revparse-err-XXXXXX 2>/dev/null) || rev_parse_err=""
+rev_parse_err=""
 trap 'rm -f "${rev_parse_err:-}"' EXIT INT TERM HUP
+rev_parse_err=$(mktemp /tmp/rite-wwc-revparse-err-XXXXXX 2>/dev/null) || rev_parse_err=""
 set +e
 wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>"${rev_parse_err:-/dev/null}")
 wt_head_rc=$?
@@ -262,8 +263,9 @@ esac
 # の場合は WARNING + exit 3 で fail-fast する (cycle 2 MEDIUM F-12 fix)。
 # 旧実装は `untracked=""` → `has_untracked=false` で本来検出すべき untracked を
 # silent miss し、`reason=no-pending` で skip してしまう経路があった。
-lsf_err=$(mktemp /tmp/rite-wwc-lsf-err-XXXXXX 2>/dev/null) || lsf_err=""
+lsf_err=""
 trap 'rm -f "${lsf_err:-}"' EXIT INT TERM HUP
+lsf_err=$(mktemp /tmp/rite-wwc-lsf-err-XXXXXX 2>/dev/null) || lsf_err=""
 set +e
 untracked=$(git -C "$worktree_path" ls-files --others --exclude-standard -- "$wiki_rel" 2>"${lsf_err:-/dev/null}")
 lsf_rc=$?

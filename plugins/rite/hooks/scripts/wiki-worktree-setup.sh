@@ -171,8 +171,9 @@ abs_target="${repo_root}/${target_path}"
 # `git worktree list` の stderr を tempfile に capture して、corrupt
 # `.git/worktrees/` / permission denied / git binary 異常を silent に
 # 握り潰さない (cycle 2 MEDIUM F-11 fix)。
-wt_list_err=$(mktemp /tmp/rite-wts-list-err-XXXXXX 2>/dev/null) || wt_list_err=""
+wt_list_err=""
 trap 'rm -f "${wt_list_err:-}"' EXIT INT TERM HUP
+wt_list_err=$(mktemp /tmp/rite-wts-list-err-XXXXXX 2>/dev/null) || wt_list_err=""
 
 existing_line=""
 existing_branch=""
