@@ -77,6 +77,97 @@
 #       * COMMIT_MSG has been checked for newline/CR injection
 #       * BRANCH matches the expected wiki.branch_name
 
+# -----------------------------------------------------------------------
+# verify_worktree_branch: confirm a worktree's HEAD is on an expected branch.
+#
+# Responsibility (cycle 3 C3-M1 fix): eliminate the duplicated rev-parse
+# --abbrev-ref HEAD verification block that previously lived in both
+# wiki-worktree-commit.sh and wiki-ingest-commit.sh. Both callers ran
+# essentially the same sequence (mktemp stderr tempfile + scope-limited
+# trap + `set +e` / `set -e` fence + rev-parse + ERROR + `head -3` + rm -f
+# + branch compare) with only the tempfile prefix differing. This helper
+# centralizes that logic so fixes propagate to both callers automatically.
+#
+# Usage:
+#   verify_worktree_branch "$worktree_path" "$wiki_branch" "wwc" "$extra_hint"
+#   # returns 0 if worktree HEAD == expected_branch
+#   # returns non-zero after emitting ERROR to stderr (caller should exit 1)
+#
+# Arguments:
+#   WORKTREE          worktree path (caller has already confirmed existence)
+#   EXPECTED_BRANCH   branch name the worktree must be on
+#   TEMPFILE_TAG      short tag (4-8 chars) for the mktemp prefix, so
+#                     concurrent runs from different callers produce
+#                     distinguishable tempfile names. Example: "wwc",
+#                     "wic-wt".
+#   EXTRA_HINT        optional extra stderr line to emit when the branch
+#                     mismatch is detected (used by ingest-commit.sh to
+#                     clarify that silent fall-through would be even more
+#                     confusing). Pass empty string to omit.
+#
+# Exit codes:
+#   0  worktree is on expected branch
+#   2  rev-parse failed (worktree corrupt / permission / git binary issue)
+#   3  worktree is on a different branch
+verify_worktree_branch() {
+  local worktree="$1"
+  local expected_branch="$2"
+  local tempfile_tag="${3:-vwb}"
+  local extra_hint="${4:-}"
+
+  local rev_parse_err=""
+  # Save caller's outer trap to avoid clobbering it.
+  local _vwb_outer_exit _vwb_outer_int _vwb_outer_term _vwb_outer_hup
+  _vwb_outer_exit=$(trap -p EXIT)
+  _vwb_outer_int=$(trap -p INT)
+  _vwb_outer_term=$(trap -p TERM)
+  _vwb_outer_hup=$(trap -p HUP)
+
+  trap 'rm -f "${rev_parse_err:-}"' EXIT INT TERM HUP
+  rev_parse_err=$(mktemp "/tmp/rite-${tempfile_tag}-revparse-err-XXXXXX" 2>/dev/null) || rev_parse_err=""
+
+  # Save caller's errexit so we can restore exactly.
+  local _vwb_errexit=0
+  case $- in *e*) _vwb_errexit=1 ;; esac
+  set +e
+  local wt_head wt_head_rc
+  wt_head=$(git -C "$worktree" rev-parse --abbrev-ref HEAD 2>"${rev_parse_err:-/dev/null}")
+  wt_head_rc=$?
+  if [[ $_vwb_errexit -eq 1 ]]; then set -e; fi
+
+  _vwb_restore_traps() {
+    if [[ -n "$_vwb_outer_exit" ]]; then eval "$_vwb_outer_exit"; else trap - EXIT; fi
+    if [[ -n "$_vwb_outer_int"  ]]; then eval "$_vwb_outer_int";  else trap - INT;  fi
+    if [[ -n "$_vwb_outer_term" ]]; then eval "$_vwb_outer_term"; else trap - TERM; fi
+    if [[ -n "$_vwb_outer_hup"  ]]; then eval "$_vwb_outer_hup";  else trap - HUP;  fi
+  }
+
+  if [ "$wt_head_rc" -ne 0 ]; then
+    echo "ERROR: git -C '$worktree' rev-parse --abbrev-ref HEAD が失敗しました (rc=$wt_head_rc)" >&2
+    if [ -n "$rev_parse_err" ] && [ -s "$rev_parse_err" ]; then
+      head -3 "$rev_parse_err" | sed 's/^/  git: /' >&2
+    fi
+    echo "  原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
+    echo "  対処: git worktree remove '$worktree' && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
+    [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
+    _vwb_restore_traps
+    return 2
+  fi
+  [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
+  _vwb_restore_traps
+
+  if [ "$wt_head" != "$expected_branch" ]; then
+    echo "ERROR: worktree at '$worktree' is on branch '$wt_head', expected '$expected_branch'" >&2
+    echo "  hint: git -C '$worktree' checkout '$expected_branch'" >&2
+    if [ -n "$extra_hint" ]; then
+      echo "  $extra_hint" >&2
+    fi
+    return 3
+  fi
+
+  return 0
+}
+
 worktree_commit_push() {
   local worktree="$1"
   local branch="$2"
@@ -195,6 +286,10 @@ worktree_commit_push() {
   # status line — otherwise the caller sees `head=unknown; push=ok` and
   # treats it as a successful commit.
   local head_sha head_err=""
+  # cycle 3 C3-L1 fix: extend internal trap to cover head_err so SIGINT /
+  # SIGTERM / SIGHUP during the post-commit rev-parse does not leak the
+  # tempfile. Must be set BEFORE mktemp.
+  trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}" "${head_err:-}"' EXIT INT TERM HUP
   head_err=$(mktemp /tmp/rite-wtgit-head-err-XXXXXX 2>/dev/null) || head_err=""
   if head_sha=$(git -C "$worktree" rev-parse HEAD 2>"${head_err:-/dev/null}"); then
     :
@@ -221,7 +316,7 @@ worktree_commit_push() {
 
   echo "head=${head_sha}; push=${push_status}"
 
-  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}" "${head_err:-}"
   _wtgp_restore_caller_state
 
   if [[ "$push_status" == "failed" ]]; then

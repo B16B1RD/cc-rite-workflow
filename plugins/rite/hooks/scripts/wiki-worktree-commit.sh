@@ -185,32 +185,9 @@ fi
 # Confirm the worktree HEAD points to wiki_branch. A misaligned worktree
 # (e.g. user ran `git -C .rite/wiki-worktree checkout develop` by hand)
 # would otherwise route wiki commits onto the wrong branch.
-# stderr を tempfile に分離して、worktree corrupt / detached HEAD / branch 不在 を
-# ERROR メッセージで区別可能にする (cycle 2 MEDIUM F-13 fix)。
-rev_parse_err=""
-trap 'rm -f "${rev_parse_err:-}"' EXIT INT TERM HUP
-rev_parse_err=$(mktemp /tmp/rite-wwc-revparse-err-XXXXXX 2>/dev/null) || rev_parse_err=""
-set +e
-wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>"${rev_parse_err:-/dev/null}")
-wt_head_rc=$?
-set -e
-if [ "$wt_head_rc" -ne 0 ]; then
-  echo "ERROR: git -C '$worktree_path' rev-parse --abbrev-ref HEAD が失敗しました (rc=$wt_head_rc)" >&2
-  if [ -n "$rev_parse_err" ] && [ -s "$rev_parse_err" ]; then
-    head -3 "$rev_parse_err" | sed 's/^/  git: /' >&2
-  fi
-  echo "  原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
-  echo "  対処: git worktree remove '$worktree_path' && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
-  [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
-  exit 1
-fi
-[ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
-trap - EXIT INT TERM HUP
-if [[ "$wt_head" != "$wiki_branch" ]]; then
-  echo "ERROR: worktree at '$worktree_path' is on branch '$wt_head', expected '$wiki_branch'" >&2
-  echo "  hint: git -C '$worktree_path' checkout '$wiki_branch'" >&2
-  exit 1
-fi
+# cycle 3 C3-M1 fix: rev-parse + stderr capture + branch compare は
+# lib/worktree-git.sh の verify_worktree_branch() に統合済み。
+verify_worktree_branch "$worktree_path" "$wiki_branch" "wwc" "" || exit 1
 
 # -----------------------------------------------------------------------
 # Detect pending changes within the worktree's .rite/wiki tree.

@@ -303,35 +303,12 @@ if [ -d "$worktree_path" ]; then
   # otherwise silently fall through to the legacy path below, which fails with
   # "fatal: '<wiki>' is already used by worktree at '...'" — masking the true
   # cause (worktree misalignment) behind a cryptic checkout error.
-  # wiki-worktree-commit.sh L213-234 uses the same capture/surface pattern; keep symmetric.
-  # cycle 5 F-01 fix: rev-parse stderr を silent 破棄せず tempfile に capture し、
-  # 失敗時に head -3 で本文を surface する (wiki-worktree-commit.sh L213-234 と対称化)。
-  wt_head=""
-  rev_parse_err=""
-  trap 'rm -f "${rev_parse_err:-}"' EXIT INT TERM HUP
-  rev_parse_err=$(mktemp /tmp/rite-wic-wt-revparse-err-XXXXXX 2>/dev/null) || rev_parse_err=""
-  set +e
-  wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>"${rev_parse_err:-/dev/null}")
-  wt_head_rc=$?
-  set -e
-  if [ "$wt_head_rc" -ne 0 ]; then
-    echo "ERROR: git -C '$worktree_path' rev-parse --abbrev-ref HEAD が失敗しました (rc=$wt_head_rc)" >&2
-    if [ -n "$rev_parse_err" ] && [ -s "$rev_parse_err" ]; then
-      head -3 "$rev_parse_err" | sed 's/^/  git: /' >&2
-    fi
-    echo "  原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
-    echo "  対処: git worktree remove '$worktree_path' && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
-    [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
-    exit 1
-  fi
-  [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
-  trap - EXIT INT TERM HUP
-  if [ "$wt_head" != "$wiki_branch" ]; then
-    echo "ERROR: worktree at '$worktree_path' is on branch '$wt_head', expected '$wiki_branch'" >&2
-    echo "  hint: git -C '$worktree_path' checkout '$wiki_branch'" >&2
-    echo "  silent fall-through to legacy path would fail with 'already used by worktree'" >&2
-    exit 1
-  fi
+  # cycle 3 C3-M1 fix: rev-parse + stderr capture + branch compare は
+  # lib/worktree-git.sh の verify_worktree_branch() に統合済み。4th arg の extra_hint
+  # で「silent fall-through to legacy path」警告を追加して元の挙動を保持する。
+  verify_worktree_branch "$worktree_path" "$wiki_branch" "wic-wt" \
+    "silent fall-through to legacy path would fail with 'already used by worktree'" \
+    || exit 1
   # Pre-flight: validate wiki branch name (Phase 1.1 already validates but
   # defense-in-depth here since `git -C ... add -- "$path"` would silently
   # accept option-like paths if the validation were bypassed).
