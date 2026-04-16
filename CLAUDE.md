@@ -52,6 +52,10 @@ rite-config.yml        # プロジェクト固有設定（ブランチ戦略、P
 - `/rite:pr:review` でセルフレビュー（マルチレビュアー方式）
 - 手動: スキル・コマンドの変更は次回呼び出し時に反映されるため、実際に実行して動作確認
 
+## メモリ機能
+
+このプロジェクトでは Claude Code のメモリ機能（`~/.claude/projects/*/memory/`）を使用しない。ワークフローの方針は `rite-config.yml`、`commands/`、`skills/` で表現すること。メモリファイルの新規作成・更新は行わないこと。
+
 ## ドッグフーディング注意事項
 
 このリポジトリは Rite Workflow 自体を Rite Workflow で開発している。
