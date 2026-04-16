@@ -59,12 +59,23 @@ cd "$repo_root"
 # pattern). `git worktree add` is not safe to race against itself: two
 # parallel invocations can both pass the idempotency check (line 140-149)
 # and then conflict on the actual `git worktree add` call.
+#
+# `exec 8>...` は set -euo pipefail 配下で permission denied / disk full /
+# read-only filesystem 等の I/O エラーで script 全体を hard fail させる。
+# lock 機能自体が best-effort であるため、flock 不在経路 (legacy 互換) と
+# 挙動を揃えるため、サブシェル経由で `exec` の失敗を捕捉し、失敗時は
+# WARNING のみで継続する (wiki-worktree-commit.sh L113-138 と同型のパターン)。
 if command -v flock >/dev/null 2>&1; then
   if mkdir -p .rite/state 2>/dev/null; then
-    exec 8>.rite/state/wiki-worktree-setup.lock
-    if ! flock -n 8; then
-      echo "[wiki-worktree-setup] status=skipped; path=-; branch=-; reason=concurrent-invocation"
-      exit 0
+    if ( exec 8>.rite/state/wiki-worktree-setup.lock ) 2>/dev/null; then
+      exec 8>.rite/state/wiki-worktree-setup.lock
+      if ! flock -n 8; then
+        echo "[wiki-worktree-setup] status=skipped; path=-; branch=-; reason=concurrent-invocation"
+        exit 0
+      fi
+    else
+      echo "WARNING: .rite/state/wiki-worktree-setup.lock を open できませんでした (permission / read-only fs)" >&2
+      echo "  影響: 並列 setup 時の race を検出できません (best-effort 降格、機能自体は継続)" >&2
     fi
   else
     echo "WARNING: .rite/state の作成に失敗しました。advisory lock をスキップします" >&2
@@ -149,23 +160,66 @@ abs_target="${repo_root}/${target_path}"
 #   worktree /abs/path
 #   HEAD <sha>
 #   branch refs/heads/<name>
+#   prunable gitdir file points to non-existent location  ← optional
 # separated by blank lines. We match on the `worktree ` line for an
 # absolute-path exact match, then on the subsequent `branch ` line to
-# confirm the checked-out branch matches `wiki_branch`.
-# -----------------------------------------------------------------------
+# confirm the checked-out branch matches `wiki_branch`. Additionally
+# detect `prunable` markers so that phantom worktrees (when the user
+# `rm -rf .rite/wiki-worktree/` per cleanup.md Phase 2.6 manual step)
+# are not silently treated as healthy (cycle 2 MEDIUM F-10 fix).
+#
+# `git worktree list` の stderr を tempfile に capture して、corrupt
+# `.git/worktrees/` / permission denied / git binary 異常を silent に
+# 握り潰さない (cycle 2 MEDIUM F-11 fix)。
+wt_list_err=$(mktemp /tmp/rite-wts-list-err-XXXXXX 2>/dev/null) || wt_list_err=""
+trap 'rm -f "${wt_list_err:-}"' EXIT INT TERM HUP
+
 existing_line=""
 existing_branch=""
-if wt_list=$(git worktree list --porcelain 2>/dev/null); then
+existing_prunable=false
+if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
   existing_line=$(printf '%s\n' "$wt_list" | awk -v p="$abs_target" '
     $1 == "worktree" && $2 == p { found = 1; next }
-    found && $1 == "branch" { print $2; exit }
+    found && $1 == "branch" { print $2; next }
+    found && $1 == "prunable" { print "PRUNABLE"; exit }
     found && /^$/ { exit }
   ')
-  existing_branch="${existing_line#refs/heads/}"
+  if [[ "$existing_line" == *"PRUNABLE"* ]]; then
+    existing_prunable=true
+    # Strip the PRUNABLE marker to get the actual branch (if listed before)
+    existing_branch=$(printf '%s\n' "$existing_line" | grep -v '^PRUNABLE$' | head -1)
+    existing_branch="${existing_branch#refs/heads/}"
+  else
+    existing_branch="${existing_line#refs/heads/}"
+  fi
+else
+  wt_list_rc=$?
+  echo "WARNING: git worktree list --porcelain が失敗しました (rc=$wt_list_rc)" >&2
+  if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
+    head -3 "$wt_list_err" | sed 's/^/  git: /' >&2
+  fi
+  echo "  原因候補: corrupt .git/worktrees/ / permission denied / git binary 異常" >&2
+  echo "  影響: idempotency check が空結果として進み、後段の git worktree add で初めて顕在化する可能性" >&2
 fi
 
-if [[ -n "$existing_branch" ]]; then
+if [[ "$existing_prunable" == "true" ]]; then
+  # phantom worktree (rm -rf でディレクトリ削除済み、metadata は dangling)
+  echo "WARNING: phantom worktree を検出しました ('$abs_target' の git metadata は残存、ディレクトリは不在)" >&2
+  echo "  自動回復: git worktree prune で metadata を整理してから worktree を再作成します" >&2
+  if ! git worktree prune 2>"${wt_list_err:-/dev/null}"; then
+    echo "ERROR: git worktree prune に失敗しました" >&2
+    if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
+      head -3 "$wt_list_err" | sed 's/^/  git: /' >&2
+    fi
+    echo "  手動回復: git worktree prune を直接実行してから本 script を再実行してください" >&2
+    exit 3
+  fi
+  # prune 後は worktree が存在しないとみなして新規作成パスへ進む
+  existing_branch=""
+elif [[ -n "$existing_branch" ]]; then
   if [[ "$existing_branch" == "$wiki_branch" ]]; then
+    [ -n "$wt_list_err" ] && rm -f "$wt_list_err"
+    trap - EXIT INT TERM HUP
     echo "[wiki-worktree-setup] status=already; path=${abs_target}; branch=${wiki_branch}"
     exit 0
   fi
@@ -174,6 +228,8 @@ if [[ -n "$existing_branch" ]]; then
   echo "  manual recovery: git worktree remove '$target_path' && re-run this script" >&2
   exit 3
 fi
+[ -n "$wt_list_err" ] && rm -f "$wt_list_err"
+trap - EXIT INT TERM HUP
 
 # -----------------------------------------------------------------------
 # Create the worktree. Parent directory may already exist (e.g. because

@@ -189,6 +189,7 @@ if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
    [[ "$wiki_branch" == *//* ]] || \
    [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
   echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
+  echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
   exit 1
 fi
 
@@ -207,7 +208,26 @@ fi
 # Confirm the worktree HEAD points to wiki_branch. A misaligned worktree
 # (e.g. user ran `git -C .rite/wiki-worktree checkout develop` by hand)
 # would otherwise route wiki commits onto the wrong branch.
-wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+# stderr を tempfile に分離して、worktree corrupt / detached HEAD / branch 不在 を
+# ERROR メッセージで区別可能にする (cycle 2 MEDIUM F-13 fix)。
+rev_parse_err=$(mktemp /tmp/rite-wwc-revparse-err-XXXXXX 2>/dev/null) || rev_parse_err=""
+trap 'rm -f "${rev_parse_err:-}"' EXIT INT TERM HUP
+set +e
+wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>"${rev_parse_err:-/dev/null}")
+wt_head_rc=$?
+set -e
+if [ "$wt_head_rc" -ne 0 ]; then
+  echo "ERROR: git -C '$worktree_path' rev-parse --abbrev-ref HEAD が失敗しました (rc=$wt_head_rc)" >&2
+  if [ -n "$rev_parse_err" ] && [ -s "$rev_parse_err" ]; then
+    head -3 "$rev_parse_err" | sed 's/^/  git: /' >&2
+  fi
+  echo "  原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
+  echo "  対処: git worktree remove '$worktree_path' && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
+  [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
+  exit 1
+fi
+[ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
+trap - EXIT INT TERM HUP
 if [[ "$wt_head" != "$wiki_branch" ]]; then
   echo "ERROR: worktree at '$worktree_path' is on branch '$wt_head', expected '$wiki_branch'" >&2
   echo "  hint: git -C '$worktree_path' checkout '$wiki_branch'" >&2
@@ -238,7 +258,28 @@ case "$diff_rc" in
     ;;
 esac
 
-untracked=$(git -C "$worktree_path" ls-files --others --exclude-standard -- "$wiki_rel" 2>/dev/null || true)
+# `|| true` で silent に握り潰さず、IO error / permission denied / broken worktree
+# の場合は WARNING + exit 3 で fail-fast する (cycle 2 MEDIUM F-12 fix)。
+# 旧実装は `untracked=""` → `has_untracked=false` で本来検出すべき untracked を
+# silent miss し、`reason=no-pending` で skip してしまう経路があった。
+lsf_err=$(mktemp /tmp/rite-wwc-lsf-err-XXXXXX 2>/dev/null) || lsf_err=""
+trap 'rm -f "${lsf_err:-}"' EXIT INT TERM HUP
+set +e
+untracked=$(git -C "$worktree_path" ls-files --others --exclude-standard -- "$wiki_rel" 2>"${lsf_err:-/dev/null}")
+lsf_rc=$?
+set -e
+if [ "$lsf_rc" -ne 0 ]; then
+  echo "ERROR: git -C '$worktree_path' ls-files --others が失敗しました (rc=$lsf_rc)" >&2
+  if [ -n "$lsf_err" ] && [ -s "$lsf_err" ]; then
+    head -3 "$lsf_err" | sed 's/^/  git: /' >&2
+  fi
+  echo "  原因候補: broken worktree (.git file 破損) / permission denied / git binary 異常" >&2
+  echo "  影響: untracked file 検出が skip されると pending change を誤って 'なし' と判定する経路があるため fail-fast" >&2
+  [ -n "$lsf_err" ] && rm -f "$lsf_err"
+  exit 3
+fi
+[ -n "$lsf_err" ] && rm -f "$lsf_err"
+trap - EXIT INT TERM HUP
 if [[ -n "$untracked" ]]; then
   has_untracked=true
 fi

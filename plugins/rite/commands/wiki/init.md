@@ -306,12 +306,17 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
 
   if [ "$migration_needed" = "true" ]; then
     commit_msg="chore(wiki): migrate pages/ directories with .gitkeep (Issue #547)"
-    commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg" 2>&1)
+    # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
+    commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
     commit_rc=$?
     echo "$commit_out"
     case "$commit_rc" in
       0) echo "✅ pages/ migration committed to wiki branch" ;;
-      4) echo "WARNING: migration commit landed locally but push failed" >&2 ;;
+      3)
+        echo "WARNING: migration commit 内部で git 操作失敗 (rc=3)" >&2
+        echo "  対処: git -C .rite/wiki-worktree status で状態を確認してください" >&2
+        ;;
+      4) echo "WARNING: migration commit landed locally but push failed (rc=4)" >&2 ;;
       *)
         echo "WARNING: pages/ migration commit failed (rc=$commit_rc). /rite:wiki:ingest 側でも .gitkeep が作成されないと Write 失敗する可能性あり" >&2
         ;;
@@ -336,10 +341,11 @@ Wiki の初期化が完了しました。
 - .rite/wiki/SCHEMA.md (蓄積規約)
 - .rite/wiki/index.md (ページカタログ)
 - .rite/wiki/log.md (活動ログ)
+- .rite/wiki/pages/{patterns, heuristics, anti-patterns}/.gitkeep (空ディレクトリ git 追跡用、Issue #547)
 
 作成されたディレクトリ:
 - .rite/wiki/raw/{reviews, retrospectives, fixes}
-- .rite/wiki/pages/{patterns, heuristics, anti-patterns}/.gitkeep
+- .rite/wiki/pages/{patterns, heuristics, anti-patterns}
 
 {separate_branch の場合: worktree: .rite/wiki-worktree (→ wiki ブランチ)}
 

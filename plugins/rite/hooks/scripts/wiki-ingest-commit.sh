@@ -219,7 +219,6 @@ if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
    [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
   echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
   echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
-  echo "  allowed: [A-Za-z0-9._/-]+ and must not start with '-'" >&2
   exit 1
 fi
 
@@ -315,7 +314,135 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# separate_branch strategy: the main path this script exists for.
+# separate_branch strategy — Worktree fast path (Issue #547 / cycle 2 fix).
+#
+# When `.rite/wiki-worktree/` exists and is checked out to wiki_branch,
+# the legacy `git checkout wiki` path below would FAIL with
+# "fatal: '<wiki>' is already used by worktree at '...'", because git
+# refuses to checkout a branch that is occupied by a linked worktree.
+# This is a hard 100% regression triggered by every PR cycle once
+# `/rite:wiki:init` has set up the worktree. The fix detects the worktree
+# and routes through `git -C .rite/wiki-worktree add/commit/push` instead,
+# which avoids the checkout entirely.
+#
+# Fall-through condition: when the worktree does NOT exist (fresh clone /
+# pre-init state), this block is skipped silently and the legacy
+# stash/checkout path below handles the case (backward compat).
+# -----------------------------------------------------------------------
+worktree_path=".rite/wiki-worktree"
+worktree_used=false
+if [ -d "$worktree_path" ]; then
+  # Confirm the worktree is on the configured wiki branch (otherwise the
+  # add/commit/push would land on a wrong branch — fail-safe to legacy path).
+  wt_head=""
+  if wt_head=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null); then
+    : # ok
+  fi
+  if [ "$wt_head" = "$wiki_branch" ]; then
+    worktree_used=true
+    # Pre-flight: validate wiki branch name (Phase 1.1 already validates but
+    # defense-in-depth here since `git -C ... add -- "$path"` would silently
+    # accept option-like paths if the validation were bypassed).
+    if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]]; then
+      echo "ERROR: invalid wiki_branch '$wiki_branch' for worktree path" >&2
+      exit 1
+    fi
+
+    # Step W1: copy pending raw files into worktree at the same relative paths.
+    # The dev tree files remain in place — we'll remove them in Step W3 only after
+    # the commit succeeds, so a mid-flight failure leaves the dev tree intact.
+    wt_pending_paths=()
+    for f in "${pending_files[@]}"; do
+      rel="${f#.rite/wiki/raw/}"
+      dst="$worktree_path/.rite/wiki/raw/${rel}"
+      mkdir -p "$(dirname "$dst")"
+      if ! cp -f "$f" "$dst"; then
+        echo "ERROR: failed to copy $f to $dst" >&2
+        echo "  対処: worktree filesystem permission / disk space を確認してください" >&2
+        exit 3
+      fi
+      wt_pending_paths+=(".rite/wiki/raw/${rel}")
+    done
+
+    # Step W2: git add / commit / push within the worktree.
+    wt_add_err=$(mktemp /tmp/rite-wic-wt-add-err-XXXXXX 2>/dev/null) || wt_add_err=""
+    wt_commit_err=$(mktemp /tmp/rite-wic-wt-commit-err-XXXXXX 2>/dev/null) || wt_commit_err=""
+    wt_push_err=$(mktemp /tmp/rite-wic-wt-push-err-XXXXXX 2>/dev/null) || wt_push_err=""
+    trap 'rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"' EXIT INT TERM HUP
+
+    if ! git -C "$worktree_path" add -- "${wt_pending_paths[@]}" 2>"${wt_add_err:-/dev/null}"; then
+      echo "ERROR: git -C $worktree_path add failed for raw sources" >&2
+      [ -n "$wt_add_err" ] && [ -s "$wt_add_err" ] && head -5 "$wt_add_err" | sed 's/^/  git: /' >&2
+      exit 3
+    fi
+
+    # Confirm staged diff is non-empty (no-op early exit if files already match).
+    set +e
+    git -C "$worktree_path" diff --cached --quiet 2>"${wt_add_err:-/dev/null}"
+    wt_cached_rc=$?
+    set -e
+    case "$wt_cached_rc" in
+      0)
+        echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff (worktree path)"
+        # Clean up the dev-tree raw files since they're now redundant duplicates of
+        # the worktree files (and the existing drift WARNING in ingest.md would flag
+        # them on next /rite:wiki:ingest run).
+        for f in "${pending_files[@]}"; do rm -f "$f"; done
+        rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"
+        trap - EXIT INT TERM HUP
+        exit 0
+        ;;
+      1) ;;  # staged diff present, proceed
+      *)
+        echo "ERROR: git -C $worktree_path diff --cached --quiet failed (rc=$wt_cached_rc)" >&2
+        [ -n "$wt_add_err" ] && [ -s "$wt_add_err" ] && head -5 "$wt_add_err" | sed 's/^/  git: /' >&2
+        exit 3
+        ;;
+    esac
+
+    if ! git -C "$worktree_path" commit -m "chore(wiki): ingest ${#pending_files[@]} raw source(s) (worktree path)" 2>"${wt_commit_err:-/dev/null}"; then
+      echo "ERROR: git -C $worktree_path commit failed" >&2
+      [ -n "$wt_commit_err" ] && [ -s "$wt_commit_err" ] && head -5 "$wt_commit_err" | sed 's/^/  git: /' >&2
+      echo "  hint: pre-commit hook / gpg sign / author config / permission のいずれかを確認" >&2
+      exit 3
+    fi
+
+    head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null || echo unknown)
+
+    push_status="ok"
+    push_failed=false
+    if ! git -C "$worktree_path" push --quiet origin "$wiki_branch" 2>"${wt_push_err:-/dev/null}"; then
+      push_status="failed"
+      push_failed=true
+      echo "WARNING: git -C $worktree_path push origin '$wiki_branch' failed — commit is local only" >&2
+      [ -n "$wt_push_err" ] && [ -s "$wt_push_err" ] && head -5 "$wt_push_err" | sed 's/^/  git: /' >&2
+      echo "  manual recovery: git -C '$worktree_path' push origin '$wiki_branch'" >&2
+    fi
+
+    # Step W3: remove pending raw files from dev tree (commit succeeded).
+    for f in "${pending_files[@]}"; do
+      if ! rm -f "$f"; then
+        echo "WARNING: failed to remove staged raw file from dev tree: $f" >&2
+      fi
+    done
+
+    rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"
+    trap - EXIT INT TERM HUP
+
+    echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${head_sha}; push=${push_status}; via=worktree"
+    if [ "$push_failed" = "true" ]; then
+      exit 4
+    fi
+    exit 0
+  fi
+fi
+
+# -----------------------------------------------------------------------
+# separate_branch strategy — Legacy stash/checkout path.
+#
+# Reached only when the wiki worktree does not exist (fresh clone /
+# pre-init state) OR the worktree is checked out to a different branch.
+# Preserves backward compat with pre-Issue-#547 setups.
 #
 # Design:
 #   1. Copy each pending raw file into /tmp/rite-wiki-stage-$$ (preserving

@@ -578,7 +578,7 @@ echo "log_path=$log_path"
 
 ### 8.3 書き込み手順
 
-1. Edit ツールで `$log_path` に Phase 8.1 の log.md 追記行を **append-only** で追加する
+1. Edit ツールで `{log_path}` (Phase 8.2 の bash で出力された `log_path` 値をリテラル substitute) に Phase 8.1 の log.md 追記行を **append-only** で追加する。**注意**: シェル変数 `$log_path` は Bash ツール呼び出し境界を超えると失われ、Edit ツールはシェル変数を解釈しない。Phase 8.2 の `echo "log_path=..."` 出力を会話文脈から拾って literal value で置換すること
 2. 以下の bash ブロックで commit + push する
 
 ```bash
@@ -597,20 +597,42 @@ commit_msg="docs(wiki): lint report — ${log_entry}"
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   # worktree 経由で commit + push
-  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg" 2>&1)
+  # 2>&1 は付けない: wiki-worktree-commit.sh は構造化 status 行 (`[wiki-worktree-commit] committed=...`)
+  # を stdout、WARNING / ERROR を stderr で出力する責務分離設計。2>&1 で mix すると将来の parser
+  # regression を生む。stderr は端末に直接流して観測性を保つ。
+  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
   commit_rc=$?
   echo "$commit_out"
   if [ "$commit_rc" -ne 0 ] && [ "$commit_rc" -ne 4 ]; then
     echo "WARNING: wiki-worktree-commit.sh が失敗しました (rc=$commit_rc)。log.md 追記は非ブロッキングのため継続します" >&2
   fi
 elif [ "$branch_strategy" = "same_branch" ]; then
-  git add .rite/wiki/log.md 2>/dev/null || {
+  # git add / commit の stderr を tempfile に捕捉 (silent failure 防止):
+  # pre-commit hook / gpg sign / author config / permission / index lock 等の根本原因を可視化する
+  add_err=$(mktemp /tmp/rite-lint-add-err-XXXXXX 2>/dev/null) || add_err=""
+  commit_err=$(mktemp /tmp/rite-lint-commit-err-XXXXXX 2>/dev/null) || commit_err=""
+  trap 'rm -f "${add_err:-}" "${commit_err:-}"' EXIT INT TERM HUP
+
+  if ! git add .rite/wiki/log.md 2>"${add_err:-/dev/null}"; then
     echo "WARNING: git add .rite/wiki/log.md に失敗しました" >&2
+    if [ -n "$add_err" ] && [ -s "$add_err" ]; then
+      head -3 "$add_err" | sed 's/^/  /' >&2
+    fi
+    echo "  対処: index lock / permission denied / path error のいずれかを確認してください" >&2
     exit 0
-  }
-  git commit -m "$commit_msg" 2>/dev/null || {
+  fi
+
+  if ! git commit -m "$commit_msg" 2>"${commit_err:-/dev/null}"; then
     echo "WARNING: log.md のコミットに失敗しました" >&2
-  }
+    if [ -n "$commit_err" ] && [ -s "$commit_err" ]; then
+      head -3 "$commit_err" | sed 's/^/  /' >&2
+    fi
+    echo "  対処: pre-commit hook / gpg sign / author config / permission のいずれかを確認してください" >&2
+  fi
+
+  [ -n "$add_err" ] && rm -f "$add_err"
+  [ -n "$commit_err" ] && rm -f "$commit_err"
+  trap - EXIT INT TERM HUP
 fi
 # 非ブロッキング契約: 失敗しても exit 0 で継続
 ```
