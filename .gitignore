@@ -36,6 +36,7 @@ temp/
 .rite/review-results/
 .rite/fix-cycle-state/
 .rite/state/
+.rite/wiki-worktree/
 
 # Git worktrees for parallel agents
 .worktrees/

@@ -118,7 +118,9 @@ echo "plugin_root=$plugin_root"
 
 **変数保持指示**: Phase 2.1 で出力された `plugin_root` の値を保持し、以降の Bash ブロックでは**リテラル値として埋め込んで**使用すること。
 
-### 2.2 ディレクトリ作成
+### 2.2 ディレクトリ作成と `.gitkeep` 配置
+
+Issue #547 で追加: `pages/{patterns,heuristics,anti-patterns}/` は初期状態ではファイルを持たないため、`.gitkeep` を配置して git tree に保持する。これがないと `/rite:wiki:ingest` が page を書き込もうとした際に親ディレクトリ不在で Write が失敗する。
 
 ```bash
 mkdir -p .rite/wiki/raw/reviews
@@ -127,6 +129,11 @@ mkdir -p .rite/wiki/raw/fixes
 mkdir -p .rite/wiki/pages/patterns
 mkdir -p .rite/wiki/pages/heuristics
 mkdir -p .rite/wiki/pages/anti-patterns
+
+# .gitkeep で空ディレクトリを tracked に保持 (Issue #547)
+touch .rite/wiki/pages/patterns/.gitkeep
+touch .rite/wiki/pages/heuristics/.gitkeep
+touch .rite/wiki/pages/anti-patterns/.gitkeep
 ```
 
 ### 2.3 テンプレート展開
@@ -258,6 +265,63 @@ else
 fi
 ```
 
+## Phase 3.5: Wiki Worktree セットアップ (Issue #547)
+
+`separate_branch` 戦略の場合、Phase 3.1 で wiki ブランチを作成した直後に `.rite/wiki-worktree/` worktree を作成します。これにより `/rite:wiki:ingest` は dev ブランチを離脱することなく wiki ブランチのツリーに Write/Edit できるようになります。
+
+```bash
+branch_strategy="{branch_strategy}"
+plugin_root="{plugin_root}"
+
+if [ "$branch_strategy" = "separate_branch" ]; then
+  # wiki-worktree-setup.sh は冪等 (既存なら no-op) で安全に呼べる
+  if ! bash "$plugin_root/hooks/scripts/wiki-worktree-setup.sh"; then
+    setup_rc=$?
+    echo "WARNING: wiki-worktree-setup.sh failed (rc=$setup_rc)" >&2
+    echo "  影響: /rite:wiki:ingest 実行前に手動で worktree を作成する必要があります" >&2
+    echo "  手動回復: bash $plugin_root/hooks/scripts/wiki-worktree-setup.sh" >&2
+    # 非ブロッキング: worktree 作成失敗は init 全体を失敗させない
+  fi
+fi
+```
+
+### 3.5.1 既存 wiki ブランチへの `.gitkeep` 補完 migration
+
+Issue #547 以前に init した wiki ブランチは `pages/{patterns,heuristics,anti-patterns}/.gitkeep` を持たないため、`/rite:wiki:ingest` の Write が親ディレクトリ不在で失敗します。この migration は冪等に既存 wiki ブランチに `.gitkeep` を補完します。worktree 経由で commit するため dev ブランチの HEAD は移動しません:
+
+```bash
+branch_strategy="{branch_strategy}"
+plugin_root="{plugin_root}"
+
+if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/wiki/pages ]; then
+  wt_pages=".rite/wiki-worktree/.rite/wiki/pages"
+  migration_needed=false
+  for domain in patterns heuristics anti-patterns; do
+    mkdir -p "$wt_pages/$domain"
+    if [ ! -f "$wt_pages/$domain/.gitkeep" ]; then
+      touch "$wt_pages/$domain/.gitkeep"
+      migration_needed=true
+    fi
+  done
+
+  if [ "$migration_needed" = "true" ]; then
+    commit_msg="chore(wiki): migrate pages/ directories with .gitkeep (Issue #547)"
+    commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg" 2>&1)
+    commit_rc=$?
+    echo "$commit_out"
+    case "$commit_rc" in
+      0) echo "✅ pages/ migration committed to wiki branch" ;;
+      4) echo "WARNING: migration commit landed locally but push failed" >&2 ;;
+      *)
+        echo "WARNING: pages/ migration commit failed (rc=$commit_rc). /rite:wiki:ingest 側でも .gitkeep が作成されないと Write 失敗する可能性あり" >&2
+        ;;
+    esac
+  else
+    echo "✅ pages/.gitkeep はすべて存在します (migration 不要)"
+  fi
+fi
+```
+
 ## Phase 4: 完了レポート
 
 Phase 1.2 で取得した `branch_strategy` と `wiki_branch` の値を以下のテンプレートに埋め込んで表示すること:
@@ -275,7 +339,9 @@ Wiki の初期化が完了しました。
 
 作成されたディレクトリ:
 - .rite/wiki/raw/{reviews, retrospectives, fixes}
-- .rite/wiki/pages/{patterns, heuristics, anti-patterns}
+- .rite/wiki/pages/{patterns, heuristics, anti-patterns}/.gitkeep
+
+{separate_branch の場合: worktree: .rite/wiki-worktree (→ wiki ブランチ)}
 
 次のステップ:
 - /rite:wiki:ingest で経験則の蓄積を開始
