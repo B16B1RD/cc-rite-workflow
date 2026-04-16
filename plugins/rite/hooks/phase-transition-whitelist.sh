@@ -39,9 +39,9 @@ fi
 declare -gA _RITE_PHASE_TRANSITIONS=(
   # Phase 1 → Phase 1.5/1.6/2
   ["phase1_5_parent"]="phase1_5_post_parent"
-  ["phase1_5_post_parent"]="phase1_6_child phase2_branch"
+  ["phase1_5_post_parent"]="phase1_6_child phase2_branch phase3_plan"
   ["phase1_6_child"]="phase1_6_post_child"
-  ["phase1_6_post_child"]="phase2_branch"
+  ["phase1_6_post_child"]="phase2_branch phase3_plan"
 
   # Phase 2: branch → projects → iteration → work memory → plan
   # Since cycle-3 MEDIUM #3 fix, every 2.x phase always writes its post-marker
@@ -49,13 +49,21 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # as a whitelist-valid transition). Direct phase2_post_branch → phase2_work_memory
   # and phase2_post_projects → phase2_work_memory paths were removed because they
   # bypass the iteration-phase chain (prompt-engineer cycle-3 MEDIUM).
-  ["phase2_branch"]="phase2_post_branch"
-  ["phase2_post_branch"]="phase2_projects"
-  ["phase2_projects"]="phase2_post_projects"
-  ["phase2_post_projects"]="phase2_iteration"
-  ["phase2_iteration"]="phase2_post_iteration"
-  ["phase2_post_iteration"]="phase2_work_memory"
-  ["phase2_work_memory"]="phase2_post_work_memory"
+  #
+  # Resume/Recognized-Patterns skip edges (#498):
+  # When /rite:resume detects an existing branch (Phase 2.2) or Phase 2.2.1
+  # Recognized Patterns selects a non-Issue-numbered branch, Phases 2.3-2.6
+  # are skipped entirely. The workflow jumps directly to Phase 3 (plan), so
+  # every Phase 2 intermediate state must be allowed to transition to phase3_plan.
+  # Similarly, Phase 1.5/1.6 post-markers must reach phase3_plan when
+  # Recognized Patterns triggers before Phase 2.3.
+  ["phase2_branch"]="phase2_post_branch phase3_plan"
+  ["phase2_post_branch"]="phase2_projects phase3_plan"
+  ["phase2_projects"]="phase2_post_projects phase3_plan"
+  ["phase2_post_projects"]="phase2_iteration phase3_plan"
+  ["phase2_iteration"]="phase2_post_iteration phase3_plan"
+  ["phase2_post_iteration"]="phase2_work_memory phase3_plan"
+  ["phase2_work_memory"]="phase2_post_work_memory phase3_plan"
   ["phase2_post_work_memory"]="phase3_plan"
 
   # Phase 3: implementation plan
