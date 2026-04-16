@@ -29,7 +29,7 @@ rite workflow の Wiki 機能（経験則の自動蓄積）が、実際のワー
 
 | # | ファイル | 症状 |
 |---|---|---|
-| 1 | `plugins/rite/commands/issue/start.md` Phase 5.7.2 | `gh issue close` を直接実行し、`/rite:issue:close` skill を Skill ツールで invoke していない。結果、close.md の Phase 4.4.W.2（raw 蓄積経路）が **100% silent skip** |
+| 1 | `plugins/rite/commands/issue/start.md` Phase 5.7.2 | **親 Issue** のクローズ時に `gh issue close {parent_issue_number}` を直接実行し、`/rite:issue:close` skill を Skill ツールで invoke していない。結果、close.md の Phase 4.4.W.2（raw 蓄積経路）が **100% silent skip**。注: Phase 5.7.2 は親 Issue のクローズであるため、`/rite:issue:close` に置換する際は close.md に渡る `{issue_number}` が親 Issue を指す点を考慮する必要がある |
 | 2 | `plugins/rite/commands/pr/review.md` Phase 6.5.W.2 | Phase 実装自体は存在するが、`[review:mergeable]` 系 early return 経路で Phase 6.5.W.2 まで制御が到達していない疑い |
 | 3 | `plugins/rite/commands/pr/fix.md` Phase 4.6.W.2 | 同じく `[fix:pushed]` 系 early return 経路で Phase 4.6.W.2 まで到達していない疑い |
 
@@ -51,7 +51,7 @@ rite workflow の Wiki 機能（経験則の自動蓄積）が、実際のワー
 
 | FR | 説明 |
 |---|---|
-| FR-1 | 実ワークフローで `/rite:issue:close` skill が invoke されること（`start.md` Phase 5.7.2 から Skill ツール経由で呼ぶ）|
+| FR-1 | 親 Issue クローズ経路（`start.md` Phase 5.7.2）で `/rite:issue:close` skill が Skill ツール経由で invoke されること。注: close.md に渡る `{issue_number}` は `{parent_issue_number}` になるため、Phase 4.4.W.2 の raw source 生成が親 Issue コンテキストで実行される点を設計に組み込むこと |
 | FR-2 | `/rite:pr:review` 通常実行で Phase 6.5.W.2（raw 蓄積）まで制御が到達すること |
 | FR-3 | `/rite:pr:fix` 通常実行で Phase 4.6.W.2（raw 蓄積）まで制御が到達すること |
 | FR-4 | `/rite:pr:cleanup` 完了時に pending raw source を `/rite:wiki:ingest` で統合すること（Skill 経由） |
@@ -127,7 +127,7 @@ rite workflow の Wiki 機能（経験則の自動蓄積）が、実際のワー
 ### 考慮事項
 
 - **Phase 0 (trace) の必須性**: Phase 1-B の具体的修正手法は trace 結果なしでは確定できない。trace を飛ばして修正すると盲目的な修正になり、再び regression を生む危険がある。
-- **start.md の `gh issue close` 置換の安全性**: close.md 側で確実に close されることを事前精査してから置換する。置換後は手動 E2E で issue が実際に closed 状態になることを確認する。
+- **start.md の `gh issue close` 置換の安全性**: close.md 側で確実に close されることを事前精査してから置換する。置換後は手動 E2E で issue が実際に closed 状態になることを確認する。特に Phase 5.7.2 から `/rite:issue:close` を呼ぶ場合、close.md に渡る `{issue_number}` は `{parent_issue_number}` になるため、Phase 4.4.W.2 の raw source 生成が親 Issue コンテキストで実行される影響（raw source の意味論変化）を事前に検証すること。
 - **cleanup の重量化**: ingest には LLM 解析が含まれ時間がかかる。ユーザーは了承済みだが、進捗表示やキャンセル可能性を考慮する。
 - **sentinel 契約**: ingest 失敗時は必ず sentinel を書き出し、次回の `wiki-growth-check.sh` で検出可能にする。silent skip は絶対に許さない。
 - **wiki 無効プロジェクトでの副作用**: 新 Phase は `rite-config.yml` の `wiki.enabled` を先制チェックし、無効なら silent skip（警告なしで通過）する。
