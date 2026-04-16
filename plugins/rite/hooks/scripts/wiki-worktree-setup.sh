@@ -90,27 +90,10 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# rite-config.yml parser (lenient, matches wiki-ingest-commit.sh)
+# rite-config.yml parser + branch name validator (shared lib, Issue #549)
 # -----------------------------------------------------------------------
-parse_wiki_scalar() {
-  local key="$1"
-  local section line val
-  section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null || true)
-  [[ -z "$section" ]] && return 0
-  line=$(printf '%s\n' "$section" | awk -v k="$key" '
-    BEGIN { pat = "^[[:space:]]+" k ":" }
-    $0 ~ pat { print; exit }
-  ' 2>/dev/null || true)
-  [[ -z "$line" ]] && return 0
-  val=$(printf '%s' "$line" \
-    | sed 's/[[:space:]]#.*//' \
-    | awk -v k="$key" '{
-        sub("^[[:space:]]*" k ":[[:space:]]*", "")
-        print
-      }' \
-    | tr -d '[:space:]"'"'")
-  printf '%s' "$val"
-}
+# shellcheck source=lib/wiki-config.sh
+source "$(dirname "$0")/lib/wiki-config.sh"
 
 wiki_enabled_raw=$(parse_wiki_scalar enabled)
 wiki_enabled_norm=$(printf '%s' "$wiki_enabled_raw" | tr '[:upper:]' '[:lower:]')
@@ -124,20 +107,7 @@ esac
 wiki_branch=$(parse_wiki_scalar branch_name)
 wiki_branch="${wiki_branch:-wiki}"
 
-# Reject unsafe branch names (mirrors wiki-ingest-commit.sh MEDIUM #6 fix).
-# git check-ref-format 準拠のサブセットとして以下も明示拒否する:
-#   - 先頭が `.` (hidden ref と紛れる)
-#   - `..` を含む (path traversal リスク)
-#   - `//` を含む (refs/heads// で空セグメント)
-if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
-   [[ "$wiki_branch" == .* ]] || \
-   [[ "$wiki_branch" == *..* ]] || \
-   [[ "$wiki_branch" == *//* ]] || \
-   [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-  echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
-  echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
-  exit 1
-fi
+validate_wiki_branch_name "$wiki_branch" || exit 1
 
 # -----------------------------------------------------------------------
 # Verify the wiki branch exists locally. Remote-only existence is a skip.

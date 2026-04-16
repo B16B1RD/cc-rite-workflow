@@ -159,39 +159,16 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# rite-config.yml: wiki.enabled / wiki.branch_name / wiki.branch_strategy
-#
-# Same lenient YAML parsing approach as wiki-ingest-trigger.sh and
-# ingest.md Phase 1.1 (awk + inline-comment strip + quote strip).
+# Shared lib (Issue #549): parse_wiki_scalar / validate_wiki_branch_name /
+# worktree_commit_push. Extracted to lib/ so wiki-worktree-setup.sh /
+# wiki-worktree-commit.sh / wiki-ingest-commit.sh share a single source
+# of truth for the `wiki.branch_name` parsing contract and the worktree-
+# scoped add/commit/push flow.
 # -----------------------------------------------------------------------
-parse_wiki_scalar() {
-  # $1 = key name (e.g. "enabled" / "branch_name" / "branch_strategy")
-  #
-  # verified-review cycle 4 LOW (security/defence-in-depth): key value
-  # extraction uses awk -v rather than sed with interpolated $key. Current
-  # callers pass hardcoded literal keys only, so there is no injection
-  # path today, but sed "s/.*${key}:[[:space:]]*//" would treat sed
-  # metacharacters in $key as pattern metacharacters if a future caller
-  # ever passed user-controlled input. awk -v k=... keeps $key in a
-  # variable binding that is never re-parsed as a regex.
-  local key="$1"
-  local section line val
-  section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null || true)
-  [[ -z "$section" ]] && return 0
-  line=$(printf '%s\n' "$section" | awk -v k="$key" '
-    BEGIN { pat = "^[[:space:]]+" k ":" }
-    $0 ~ pat { print; exit }
-  ' 2>/dev/null || true)
-  [[ -z "$line" ]] && return 0
-  val=$(printf '%s' "$line" \
-    | sed 's/[[:space:]]#.*//' \
-    | awk -v k="$key" '{
-        sub("^[[:space:]]*" k ":[[:space:]]*", "")
-        print
-      }' \
-    | tr -d '[:space:]"'"'")
-  printf '%s' "$val"
-}
+# shellcheck source=lib/wiki-config.sh
+source "$(dirname "$0")/lib/wiki-config.sh"
+# shellcheck source=lib/worktree-git.sh
+source "$(dirname "$0")/lib/worktree-git.sh"
 
 wiki_enabled_raw=$(parse_wiki_scalar enabled)
 wiki_enabled_norm=$(printf '%s' "$wiki_enabled_raw" | tr '[:upper:]' '[:lower:]')
@@ -205,22 +182,7 @@ esac
 wiki_branch=$(parse_wiki_scalar branch_name)
 wiki_branch="${wiki_branch:-wiki}"
 
-# MEDIUM #6 (git option injection via branch_name): validate that the
-# configured branch name is a safe git ref. Without this guard, a
-# rite-config.yml entry like `branch_name: "--upload-pack=foo"` would be
-# interpreted by subsequent `git` commands as an option flag rather than
-# a ref. We restrict to the common ref-name alphabet and forbid leading
-# dashes explicitly. Combined with the per-command `git show-ref --verify
-# refs/heads/...` style below, this is defence-in-depth.
-if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
-   [[ "$wiki_branch" == .* ]] || \
-   [[ "$wiki_branch" == *..* ]] || \
-   [[ "$wiki_branch" == *//* ]] || \
-   [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-  echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
-  echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
-  exit 1
-fi
+validate_wiki_branch_name "$wiki_branch" || exit 1
 
 branch_strategy=$(parse_wiki_scalar branch_strategy)
 branch_strategy="${branch_strategy:-separate_branch}"
@@ -389,84 +351,47 @@ if [ -d "$worktree_path" ]; then
     wt_pending_paths+=(".rite/wiki/raw/${rel}")
   done
 
-  # Step W2: git add / commit / push within the worktree.
-  # cycle 4 F-01 fix: path declare → trap install → mktemp の順に並べて、
-  # mktemp 成功直後に SIGINT/SIGTERM/SIGHUP が届いた場合の orphan tmpfile を防ぐ。
-  # 同ファイルの fm_err (git fetch-merge stderr) / ref_err (git show-ref stderr) /
-  # stage_dir (legacy path の raw files staging dir) 退避用 tempfile 作成箇所と同じ
-  # canonical pattern に統一 (asymmetric fix transcription の解消)。
-  wt_add_err=""
-  wt_commit_err=""
-  wt_push_err=""
-  trap 'rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"' EXIT INT TERM HUP
-  wt_add_err=$(mktemp /tmp/rite-wic-wt-add-err-XXXXXX 2>/dev/null) || wt_add_err=""
-  wt_commit_err=$(mktemp /tmp/rite-wic-wt-commit-err-XXXXXX 2>/dev/null) || wt_commit_err=""
-  wt_push_err=$(mktemp /tmp/rite-wic-wt-push-err-XXXXXX 2>/dev/null) || wt_push_err=""
-
-  if ! git -C "$worktree_path" add -- "${wt_pending_paths[@]}" 2>"${wt_add_err:-/dev/null}"; then
-    echo "ERROR: git -C $worktree_path add failed for raw sources" >&2
-    [ -n "$wt_add_err" ] && [ -s "$wt_add_err" ] && head -5 "$wt_add_err" | sed 's/^/  git: /' >&2
-    exit 3
-  fi
-
-  # Confirm staged diff is non-empty (no-op early exit if files already match).
+  # Step W2: delegate the git -C "$worktree_path" add/commit/push flow to
+  # the shared helper (lib/worktree-git.sh). The helper owns stderr
+  # tempfile capture + head -n 10 extraction + exit code semantics so any
+  # future enhancement (e.g. push retry with exponential backoff) lands
+  # in one place.
   set +e
-  git -C "$worktree_path" diff --cached --quiet 2>"${wt_add_err:-/dev/null}"
-  wt_cached_rc=$?
+  wtcp_out=$(worktree_commit_push \
+    "$worktree_path" \
+    "chore(wiki): ingest ${#pending_files[@]} raw source(s) (worktree path)" \
+    "${wt_pending_paths[@]}")
+  wtcp_rc=$?
   set -e
-  case "$wt_cached_rc" in
-    0)
-      echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff (worktree path)"
-      # Clean up the dev-tree raw files since they're now redundant duplicates of
-      # the worktree files (and the existing drift WARNING in ingest.md would flag
-      # them on next /rite:wiki:ingest run).
-      for f in "${pending_files[@]}"; do rm -f "$f"; done
-      rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"
-      trap - EXIT INT TERM HUP
+
+  case "$wtcp_rc" in
+    0|4)
+      # Success or push-failed. wtcp_out = "head=<sha>; push=<ok|failed>"
+      # Step W3: remove pending raw files from dev tree (commit succeeded).
+      for f in "${pending_files[@]}"; do
+        if ! rm -f "$f"; then
+          echo "WARNING: failed to remove staged raw file from dev tree: $f" >&2
+        fi
+      done
+      echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; ${wtcp_out}; via=worktree"
+      if [ "$wtcp_rc" = "4" ]; then
+        exit 4
+      fi
       exit 0
       ;;
-    1) ;;  # staged diff present, proceed
+    5)
+      # No staged diff — files already match wiki branch. Clean up dev-tree
+      # duplicates so the existing drift WARNING in ingest.md does not
+      # re-flag them on the next /rite:wiki:ingest run.
+      echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff (worktree path)"
+      for f in "${pending_files[@]}"; do rm -f "$f"; done
+      exit 0
+      ;;
     *)
-      echo "ERROR: git -C $worktree_path diff --cached --quiet failed (rc=$wt_cached_rc)" >&2
-      [ -n "$wt_add_err" ] && [ -s "$wt_add_err" ] && head -5 "$wt_add_err" | sed 's/^/  git: /' >&2
+      # 3 (add/commit failure) or anything unexpected — error already on stderr
       exit 3
       ;;
   esac
-
-  if ! git -C "$worktree_path" commit -m "chore(wiki): ingest ${#pending_files[@]} raw source(s) (worktree path)" 2>"${wt_commit_err:-/dev/null}"; then
-    echo "ERROR: git -C $worktree_path commit failed" >&2
-    [ -n "$wt_commit_err" ] && [ -s "$wt_commit_err" ] && head -5 "$wt_commit_err" | sed 's/^/  git: /' >&2
-    echo "  hint: pre-commit hook / gpg sign / author config / permission のいずれかを確認" >&2
-    exit 3
-  fi
-
-  head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null || echo unknown)
-
-  push_status="ok"
-  push_failed=false
-  if ! git -C "$worktree_path" push --quiet origin "$wiki_branch" 2>"${wt_push_err:-/dev/null}"; then
-    push_status="failed"
-    push_failed=true
-    echo "WARNING: git -C $worktree_path push origin '$wiki_branch' failed — commit is local only" >&2
-    [ -n "$wt_push_err" ] && [ -s "$wt_push_err" ] && head -5 "$wt_push_err" | sed 's/^/  git: /' >&2
-    echo "  manual recovery: git -C '$worktree_path' push origin '$wiki_branch'" >&2
-  fi
-
-  # Step W3: remove pending raw files from dev tree (commit succeeded).
-  for f in "${pending_files[@]}"; do
-    if ! rm -f "$f"; then
-      echo "WARNING: failed to remove staged raw file from dev tree: $f" >&2
-    fi
-  done
-
-  rm -f "${wt_add_err:-}" "${wt_commit_err:-}" "${wt_push_err:-}"
-  trap - EXIT INT TERM HUP
-
-  echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${head_sha}; push=${push_status}; via=worktree"
-  if [ "$push_failed" = "true" ]; then
-    exit 4
-  fi
-  exit 0
 fi
 
 # -----------------------------------------------------------------------

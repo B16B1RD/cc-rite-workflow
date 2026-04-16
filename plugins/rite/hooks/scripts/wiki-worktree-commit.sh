@@ -144,27 +144,12 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# rite-config.yml parser (lenient, matches wiki-ingest-commit.sh)
+# Shared lib (Issue #549): parser/validator + worktree add/commit/push helper.
 # -----------------------------------------------------------------------
-parse_wiki_scalar() {
-  local key="$1"
-  local section line val
-  section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null || true)
-  [[ -z "$section" ]] && return 0
-  line=$(printf '%s\n' "$section" | awk -v k="$key" '
-    BEGIN { pat = "^[[:space:]]+" k ":" }
-    $0 ~ pat { print; exit }
-  ' 2>/dev/null || true)
-  [[ -z "$line" ]] && return 0
-  val=$(printf '%s' "$line" \
-    | sed 's/[[:space:]]#.*//' \
-    | awk -v k="$key" '{
-        sub("^[[:space:]]*" k ":[[:space:]]*", "")
-        print
-      }' \
-    | tr -d '[:space:]"'"'")
-  printf '%s' "$val"
-}
+# shellcheck source=lib/wiki-config.sh
+source "$(dirname "$0")/lib/wiki-config.sh"
+# shellcheck source=lib/worktree-git.sh
+source "$(dirname "$0")/lib/worktree-git.sh"
 
 wiki_enabled_raw=$(parse_wiki_scalar enabled)
 wiki_enabled_norm=$(printf '%s' "$wiki_enabled_raw" | tr '[:upper:]' '[:lower:]')
@@ -178,20 +163,7 @@ esac
 wiki_branch=$(parse_wiki_scalar branch_name)
 wiki_branch="${wiki_branch:-wiki}"
 
-# Reject unsafe branch names (mirrors wiki-ingest-commit.sh MEDIUM #6 fix).
-# git check-ref-format 準拠のサブセット拒否 (setup.sh と対称):
-#   - 先頭が `.` (hidden ref)
-#   - `..` を含む (path traversal)
-#   - `//` を含む (refs/heads// で空セグメント)
-if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
-   [[ "$wiki_branch" == .* ]] || \
-   [[ "$wiki_branch" == *..* ]] || \
-   [[ "$wiki_branch" == *//* ]] || \
-   [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-  echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
-  echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
-  exit 1
-fi
+validate_wiki_branch_name "$wiki_branch" || exit 1
 
 # -----------------------------------------------------------------------
 # Verify the worktree exists at the expected path and is on wiki_branch.
@@ -329,100 +301,33 @@ if [[ "$DRY_RUN" == "true" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# Stage all changes under .rite/wiki and commit.
+# Stage all changes under .rite/wiki, commit, and push via shared helper.
+# worktree_commit_push (lib/worktree-git.sh) handles the stderr capture +
+# head -n 10 extraction pattern that was previously inlined here. Exit
+# codes: 3 = add/commit failure, 4 = commit ok / push failed, 5 = no
+# staged diff after add (no-op).
 # -----------------------------------------------------------------------
-add_idx_err=""
-trap 'rm -f "${add_idx_err:-}"' EXIT INT TERM HUP
-if ! add_idx_err=$(mktemp /tmp/rite-wwc-add-err-XXXXXX 2>/dev/null); then
-  echo "WARNING: mktemp for add_idx_err failed — git add stderr will not be captured for diagnostics" >&2
-  add_idx_err=""
-fi
-if ! git -C "$worktree_path" add -- "$wiki_rel" >/dev/null 2>"${add_idx_err:-/dev/null}"; then
-  echo "ERROR: git add '$wiki_rel' failed in worktree" >&2
-  if [[ -n "$add_idx_err" ]] && [[ -s "$add_idx_err" ]]; then
-    head -n 10 "$add_idx_err" | sed 's/^/  git: /' >&2
-  fi
-  echo "  hint: index lock / path error / permission denied のいずれかを確認してください" >&2
-  exit 3
-fi
-[[ -n "$add_idx_err" ]] && rm -f "$add_idx_err"
-add_idx_err=""
-trap - EXIT INT TERM HUP
-
-# Re-check staged diff (the `add` may have staged zero files if everything
-# was already in the working index but matched .gitignore — defensive).
 set +e
-git -C "$worktree_path" diff --cached --quiet
-post_add_rc=$?
+wtcp_out=$(worktree_commit_push "$worktree_path" "$COMMIT_MSG" "$wiki_rel")
+wtcp_rc=$?
 set -e
-case "$post_add_rc" in
+
+case "$wtcp_rc" in
   0)
+    # "head=<sha>; push=ok"
+    echo "[wiki-worktree-commit] committed=1; branch=${wiki_branch}; ${wtcp_out}"
+    exit 0
+    ;;
+  4)
+    echo "[wiki-worktree-commit] committed=1; branch=${wiki_branch}; ${wtcp_out}"
+    exit 4
+    ;;
+  5)
     echo "[wiki-worktree-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
     exit 0
     ;;
-  1) ;; # staged diff present, proceed
   *)
-    echo "ERROR: git diff --cached after add failed (rc=$post_add_rc)" >&2
+    # 3 (add/commit failed) or anything unexpected — error already on stderr
     exit 3
     ;;
 esac
-
-commit_err=""
-trap 'rm -f "${commit_err:-}"' EXIT INT TERM HUP
-if ! commit_err=$(mktemp /tmp/rite-wwc-commit-err-XXXXXX 2>/dev/null); then
-  echo "WARNING: mktemp for commit_err failed — git commit stderr will not be captured for diagnostics" >&2
-  commit_err=""
-fi
-if ! git -C "$worktree_path" commit --quiet -m "$COMMIT_MSG" 2>"${commit_err:-/dev/null}"; then
-  echo "ERROR: git commit failed in worktree" >&2
-  if [[ -n "$commit_err" ]] && [[ -s "$commit_err" ]]; then
-    head -n 10 "$commit_err" | sed 's/^/  git: /' >&2
-  fi
-  echo "  hint: pre-commit hook 失敗 / gpg sign 失敗 / author config 不在 のいずれかを確認してください" >&2
-  exit 3
-fi
-[[ -n "$commit_err" ]] && rm -f "$commit_err"
-commit_err=""
-trap - EXIT INT TERM HUP
-
-committed_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null || echo unknown)
-
-# -----------------------------------------------------------------------
-# Push with incident-observable failure semantics (exit 4).
-# Mirrors wiki-ingest-commit.sh CRITICAL #1 fix.
-# -----------------------------------------------------------------------
-push_status="ok"
-push_failed=false
-
-push_err=""
-trap 'rm -f "${push_err:-}"' EXIT INT TERM HUP
-# mktemp 失敗 (read-only /tmp / inode 枯渇 / permission denied) を silent に握り潰さず
-# WARNING で可視化する (wiki-ingest-commit.sh:559-564 の対称パターン)。
-if ! push_err=$(mktemp /tmp/rite-wwc-push-err-XXXXXX 2>/dev/null); then
-  echo "WARNING: mktemp for push_err failed — push stderr will not be captured for diagnostics" >&2
-  echo "  hint: /tmp permission / disk space / inode exhaustion を確認してください" >&2
-  push_err=""
-fi
-
-if ! git -C "$worktree_path" push --quiet origin "$wiki_branch" 2>"${push_err:-/dev/null}"; then
-  push_status="failed"
-  push_failed=true
-  echo "WARNING: git push origin '$wiki_branch' failed — commit is local only" >&2
-  if [[ -n "$push_err" ]] && [[ -s "$push_err" ]]; then
-    head -n 10 "$push_err" | sed 's/^/  git: /' >&2
-  fi
-  echo "  manual recovery: git -C '$worktree_path' push origin '$wiki_branch'" >&2
-fi
-
-# trap action を本 push 用 push_err 削除のみに絞ってリセットすることで、将来別 trap が
-# 追加された場合に他 cleanup を巻き込まないようにする (cycle review MEDIUM #4 対応)。
-[[ -n "$push_err" ]] && rm -f "$push_err"
-push_err=""
-trap - EXIT INT TERM HUP
-
-echo "[wiki-worktree-commit] committed=1; branch=${wiki_branch}; head=${committed_sha}; push=${push_status}"
-
-if [[ "$push_failed" == "true" ]]; then
-  exit 4
-fi
-exit 0
