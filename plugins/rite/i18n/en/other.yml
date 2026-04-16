@@ -344,6 +344,7 @@ messages:
   resume_phase_label: "Phase"
   resume_phase_detail_label: "Phase detail"
   resume_last_updated_label: "Last updated"
+  resume_parent_issue_label: "Parent Issue"
   resume_confirm_resume: "Do you want to resume this work?"
   resume_uncommitted_changes_warning: "Warning: There are uncommitted changes on the current branch"
   resume_current_branch: "Current branch"

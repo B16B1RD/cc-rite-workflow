@@ -262,7 +262,7 @@ Issue: #{issue_number} - {issue_title}
 {i18n:resume_phase_label}: {phase}
 {i18n:resume_phase_detail_label}: {phase_detail}
 {i18n:resume_last_updated_label}: {timestamp}
-親 Issue: {parent_issue_display}
+{i18n:resume_parent_issue_label}: {parent_issue_display}
 
 {i18n:resume_confirm_resume}
 ```
