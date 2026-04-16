@@ -814,6 +814,7 @@ Settings for the Experience Wiki — an LLM-driven project knowledge base that p
 | `auto_query` | boolean | `true` | Automatically run `/rite:wiki:query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
 | `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing cross-refs, and broken links |
 | `growth_check.threshold_prs` | integer | `5` | Issue #524 layer 3 (lint growth check) — `/rite:lint` Phase 3.8 emits a non-blocking warning when this many merged PRs accumulate on the development base branch since the last commit on `branch_name` (signalling that Phase X.X.W may be silently skipped). Increase to relax the check; setting it to a very large number effectively disables the lint warning while preserving layers 1-2 |
+| `growth_check.pr_raw_threshold` | integer | `3` | Issue #536 — warn when this many of the last `threshold_prs` merged PRs have no corresponding raw source on the wiki branch. Detects regressions where PRs are merged but Phase X.X.W never fires. Override at runtime with `--pr-raw-threshold N` |
 
 **Example (opt out completely):**
 
@@ -840,6 +841,7 @@ wiki:
   enabled: true
   growth_check:
     threshold_prs: 20   # warn only after 20 PRs have accumulated since the last wiki commit
+    pr_raw_threshold: 5  # warn if 5+ of last 20 PRs have no raw source (Issue #536)
 ```
 
 **Related commands:** `/rite:wiki:init` (one-time setup), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
