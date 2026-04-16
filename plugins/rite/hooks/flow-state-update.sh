@@ -172,6 +172,16 @@ case "$MODE" in
         exit 1
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"
+      # Preserve parent_issue_number from existing state when --parent-issue is not
+      # explicitly specified (#497). Without this, every create call that omits
+      # --parent-issue would reset parent_issue_number to 0, erasing the value
+      # persisted by Phase 2.4 Mandatory After.
+      if [[ "$PARENT_ISSUE" -eq 0 ]]; then
+        _existing_parent=$(jq -r '.parent_issue_number // 0' "$FLOW_STATE" 2>/dev/null) || _existing_parent=0
+        if [[ "$_existing_parent" =~ ^[0-9]+$ ]] && [[ "$_existing_parent" -ne 0 ]]; then
+          PARENT_ISSUE="$_existing_parent"
+        fi
+      fi
     fi
     if jq -n \
       --argjson active "$ACTIVE" \
