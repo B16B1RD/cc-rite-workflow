@@ -38,3 +38,4 @@
 | 2026-04-17T00:00:00+00:00 | ingest:update | pages/patterns/mktemp-failure-surface-warning.md | PR #550 fix cycle 1/3 で silent fallback 一般化のエビデンス追加 |
 | 2026-04-17T00:00:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #550 cycle 3 fix で symmetric error handling 一般化のエビデンス追加 |
 | 2026-04-17T00:00:00+00:00 | ingest:update | pages/heuristics/stderr-selective-surface-over-truncate.md | PR #550 fix cycle 1 で per-step tempfile 分離のエビデンス追加 |
+| 2026-04-17T00:05:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=13 (全て log に ingest:skip 記録済み), broken_refs=0 |
