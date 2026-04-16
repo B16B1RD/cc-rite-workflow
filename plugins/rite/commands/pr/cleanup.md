@@ -1289,6 +1289,8 @@ if [ -n "$reason" ]; then
     fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped reason=$reason; iteration_id=$fallback_iter"
     echo "$fallback_sentinel"
     echo "$fallback_sentinel" >&2
+    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
   fi
   [ -n "$emit_err" ] && rm -f "$emit_err"
   trap - EXIT INT TERM HUP
@@ -1305,29 +1307,39 @@ wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exi
 [ -z "$wiki_branch" ] && wiki_branch="wiki"
 
 # Check if wiki branch exists (local or remote)
+# Use git ls-tree -r for flat file listing (avoids git show directory header/subdirectory issues)
 pending_count=0
+ref=""
 if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
-  # Count raw source files with ingested: false
-  pending_count=$(git show "$wiki_branch":.rite/wiki/raw/ 2>/dev/null \
-    | while read -r f; do
-        content=$(git show "$wiki_branch":.rite/wiki/raw/"$f" 2>/dev/null)
-        if echo "$content" | grep -q 'ingested: false'; then
-          echo "$f"
-        fi
-      done | wc -l)
+  ref="$wiki_branch"
 elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
-  pending_count=$(git show "origin/$wiki_branch":.rite/wiki/raw/ 2>/dev/null \
-    | while read -r f; do
-        content=$(git show "origin/$wiki_branch":.rite/wiki/raw/"$f" 2>/dev/null)
+  ref="origin/$wiki_branch"
+fi
+
+if [ -n "$ref" ]; then
+  # git ls-tree -r --name-only lists all files recursively under .rite/wiki/raw/
+  # (e.g., .rite/wiki/raw/reviews/20260416T075144Z-pr-542.md)
+  pending_count=$(git ls-tree -r --name-only "$ref" .rite/wiki/raw/ 2>/dev/null \
+    | while read -r filepath; do
+        content=$(git show "$ref":"$filepath" 2>/dev/null)
         if echo "$content" | grep -q 'ingested: false'; then
-          echo "$f"
+          echo "$filepath"
         fi
       done | wc -l)
 fi
-echo "pending_count=$pending_count wiki_branch=$wiki_branch"
+echo "pending_count=$pending_count wiki_branch=$wiki_branch ref=$ref"
 ```
 
-If `pending_count == 0`, display `ℹ️ pending raw source はありません。Wiki ingest をスキップします。` and proceed to Phase 5. Otherwise continue to Phase 4.W.2.
+If `pending_count == 0`, **emit a skip sentinel and display message**, then proceed to Phase 5:
+
+```bash
+if [ "$pending_count" -eq 0 ]; then
+  echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=no_pending"
+  echo "ℹ️ pending raw source はありません。Wiki ingest をスキップします。"
+fi
+```
+
+If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwise continue to Phase 4.W.2.
 
 ### 4.W.2 Invoke Wiki Ingest
 
@@ -1366,6 +1378,8 @@ else
   fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed; iteration_id=$fallback_iter"
   echo "$fallback_sentinel"
   echo "$fallback_sentinel" >&2
+  echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+  [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
 fi
 [ -n "$emit_err" ] && rm -f "$emit_err"
 trap - EXIT INT TERM HUP
@@ -1437,12 +1451,14 @@ GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更
 
 **Wiki ingest result display rules:**
 
-| Phase 4.W result | `{wiki_ingest_check}` |
-|------------------|----------------------|
-| Success (`WIKI_INGEST_DONE`) | `x` |
-| Skipped (disabled / no pending) | `x` + `ℹ️ Wiki ingest スキップ ({reason})` |
-| Failed (`WIKI_INGEST_FAILED`) | ` ` (space) + 下記の警告を表示 |
-| Phase 4.W not executed (wiki.enabled=false) | `x` + `ℹ️ Wiki 無効` |
+| Sentinel | `{wiki_ingest_check}` | 表示内容 |
+|----------|----------------------|----------|
+| `WIKI_INGEST_DONE=1` | `x` | (追加表示なし) |
+| `WIKI_INGEST_SKIPPED=1; reason=disabled` | `x` | `ℹ️ Wiki ingest スキップ (wiki.enabled=false)` |
+| `WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `x` | `ℹ️ Wiki ingest スキップ (wiki.auto_ingest=false)` |
+| `WIKI_INGEST_SKIPPED=1; reason=no_pending` | `x` | `ℹ️ Wiki ingest スキップ (pending raw source なし)` |
+| `WIKI_INGEST_FAILED=1` | ` ` (space) | 下記の警告を表示 |
+| sentinel なし (Phase 4.W 未実行) | ` ` (space) | `⚠️ Wiki ingest Phase が実行されませんでした` |
 
 When `WIKI_INGEST_FAILED` is detected, append the following after the checklist:
 
