@@ -32,3 +32,4 @@
 | 2026-04-16T19:37:16+00:00 | ingest:skip | raw/reviews/20260416T123322Z-pr-545.md | i18n ハードコード (本 repo 固有 doc scope) |
 | 2026-04-16T19:37:16+00:00 | ingest:skip | raw/reviews/20260416T124118Z-pr-545.md | 収束確認のみ |
 | 2026-04-16T19:37:16+00:00 | ingest:skip | raw/reviews/20260416T131535Z-pr-546.md | 0 findings whitelist 追加 PR |
+| 2026-04-16T19:45:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=13 (全て log に ingest:skip 記録済み), broken_refs=0 |
