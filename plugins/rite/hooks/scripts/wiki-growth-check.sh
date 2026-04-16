@@ -17,13 +17,15 @@
 #   - layer 2: workflow-incident-emit.sh の wiki_ingest_skipped / wiki_ingest_failed sentinel
 #
 # Usage:
-#   wiki-growth-check.sh [--repo-root DIR] [--quiet] [--threshold N] [-h|--help]
+#   wiki-growth-check.sh [--repo-root DIR] [--quiet] [--threshold N]
+#                        [--pr-raw-threshold N] [-h|--help]
 #
 # Options:
-#   --repo-root DIR   Repository root (default: git rev-parse --show-toplevel)
-#   --quiet           Suppress informational output (still emits findings line)
-#   --threshold N     Override threshold from rite-config.yml (testing/dry-run)
-#   -h, --help        Show this help
+#   --repo-root DIR        Repository root (default: git rev-parse --show-toplevel)
+#   --quiet                Suppress informational output (still emits findings line)
+#   --threshold N          Override growth-stall threshold from rite-config.yml
+#   --pr-raw-threshold N   Override PR↔raw correspondence threshold (Issue #536)
+#   -h, --help             Show this help
 #
 # Exit codes (drift-check と同一の非ブロッキング契約):
 #   0  Wiki growth healthy (or wiki branch absent / wiki disabled — skip silently)
@@ -286,6 +288,8 @@ if [ "$merged_count" -ge "$threshold" ]; then
   echo "==> Wiki growth stall detected: $merged_count merged PRs on '$base_branch' since last '$wiki_branch' commit ($last_wiki) — no raw sources ingested (threshold: $threshold)"
   echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may be silently skipped in review/fix/close. Check WIKI_INGEST_DONE / WIKI_INGEST_SKIPPED / WIKI_INGEST_FAILED context lines."
   findings=$((findings + 1))
+else
+  log_info "wiki-growth-check: growth-stall: healthy ($merged_count merged PRs since last '$wiki_branch' commit, threshold: $threshold)"
 fi
 
 # --- PR ↔ raw source correspondence check (Issue #536) ---
@@ -318,18 +322,29 @@ check_pr_raw_correspondence() {
 
   # Get the last `threshold` merged PRs (reuse existing threshold for the window size)
   local recent_prs_json recent_pr_numbers
+  local gh_pr_err
+  gh_pr_err=$(mktemp /tmp/rite-wiki-growth-pr-err-XXXXXX 2>/dev/null) || gh_pr_err=""
   recent_prs_json=$(gh pr list \
     --state merged \
     --base "$base_branch" \
     --json number \
-    --limit "$threshold" 2>/dev/null) || {
-    log_info "wiki-growth-check: pr-raw-correspondence: gh pr list failed, skipping"
+    --limit "$threshold" 2>"${gh_pr_err:-/dev/null}") || {
+    echo "WARNING: wiki-growth-check: pr-raw-correspondence: gh pr list failed, skipping" >&2
+    [ -n "$gh_pr_err" ] && [ -s "$gh_pr_err" ] && head -3 "$gh_pr_err" | sed 's/^/  /' >&2
+    [ -n "$gh_pr_err" ] && rm -f "$gh_pr_err"
     return 0
   }
-  recent_pr_numbers=$(printf '%s' "$recent_prs_json" | jq -r '.[].number' 2>/dev/null) || {
-    log_info "wiki-growth-check: pr-raw-correspondence: jq parse failed, skipping"
+  [ -n "$gh_pr_err" ] && rm -f "$gh_pr_err"
+
+  local jq_pr_err
+  jq_pr_err=$(mktemp /tmp/rite-wiki-growth-jq-err-XXXXXX 2>/dev/null) || jq_pr_err=""
+  recent_pr_numbers=$(printf '%s' "$recent_prs_json" | jq -r '.[].number' 2>"${jq_pr_err:-/dev/null}") || {
+    echo "WARNING: wiki-growth-check: pr-raw-correspondence: jq parse failed, skipping" >&2
+    [ -n "$jq_pr_err" ] && [ -s "$jq_pr_err" ] && head -3 "$jq_pr_err" | sed 's/^/  /' >&2
+    [ -n "$jq_pr_err" ] && rm -f "$jq_pr_err"
     return 0
   }
+  [ -n "$jq_pr_err" ] && rm -f "$jq_pr_err"
 
   if [ -z "$recent_pr_numbers" ]; then
     log_info "wiki-growth-check: pr-raw-correspondence: no recent merged PRs found"
