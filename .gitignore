@@ -36,6 +36,10 @@ temp/
 .rite/review-results/
 .rite/fix-cycle-state/
 .rite/state/
+# Wiki branch を checkout した永続 git worktree (Issue #547 で導入)。
+# wiki-worktree-setup.sh が冪等に作成し、cleanup.md Phase 2.6 で意図的に
+# 残置する設計。ここを ignore しないと dev branch 側 diff に worktree 内の
+# wiki page が漏出する。
 .rite/wiki-worktree/
 
 # Git worktrees for parallel agents

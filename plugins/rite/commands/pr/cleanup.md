@@ -1228,6 +1228,25 @@ trap - EXIT INT TERM HUP
 
 **Why this is Phase 2.5 and not Phase 3**: ローカルファイル削除はブランチ削除と同じ「ローカル artifact のクリーンアップ」カテゴリに属するため、Phase 2 (Cleanup Execution) の一部として配置する。Phase 3 (Projects Status Update) はリモート状態の更新であり責務が異なる。
 
+### 2.6 Wiki Worktree Lifecycle (設計原則 — 削除しない)
+
+**Issue #547 の設計原則**: `.rite/wiki-worktree/` は **永続化された worktree** であり、`/rite:pr:cleanup` では削除しません。理由:
+
+- `wiki-worktree-setup.sh` は冪等で、既存 worktree は no-op として扱われるため再作成コストが極めて高い (clone 相当の I/O)
+- 各 PR cycle で `wiki-ingest-trigger.sh` → `wiki-worktree-commit.sh` がここに raw source を書き出すため、cycle を跨いで保持される必要がある
+- 通常の `git branch -d` は worktree が checkout している branch を削除できないため、wiki branch 自体への副作用もない
+
+**手動削除が必要な場合** (リポジトリ移動 / 構造変更 / debug):
+
+```bash
+# 1. worktree を解除（git の internal 管理から外す）
+git worktree remove .rite/wiki-worktree
+# 2. dangling な worktree metadata を整理
+git worktree prune
+```
+
+`git worktree remove` が `worktree contains modified or untracked files` で失敗する場合、`--force` を付けるか、worktree 内で先に commit / push を完了させてから再試行してください。
+
 ---
 
 ## Phase 3: Projects Status Update

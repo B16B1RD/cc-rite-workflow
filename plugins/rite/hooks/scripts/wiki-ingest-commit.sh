@@ -213,8 +213,12 @@ wiki_branch="${wiki_branch:-wiki}"
 # dashes explicitly. Combined with the per-command `git show-ref --verify
 # refs/heads/...` style below, this is defence-in-depth.
 if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
+   [[ "$wiki_branch" == .* ]] || \
+   [[ "$wiki_branch" == *..* ]] || \
+   [[ "$wiki_branch" == *//* ]] || \
    [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
   echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
+  echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
   echo "  allowed: [A-Za-z0-9._/-]+ and must not start with '-'" >&2
   exit 1
 fi

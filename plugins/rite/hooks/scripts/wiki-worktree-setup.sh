@@ -40,6 +40,8 @@
 set -euo pipefail
 
 export GIT_TERMINAL_PROMPT=0
+# Mirror wiki-worktree-commit.sh: avoid hangs on hosts without an ssh agent.
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 
 # -----------------------------------------------------------------------
 # Environment sanity
@@ -51,6 +53,24 @@ fi
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
+
+# Advisory lock to serialise concurrent setup invocations against the
+# same repository (mirrors wiki-worktree-commit.sh / wiki-ingest-commit.sh
+# pattern). `git worktree add` is not safe to race against itself: two
+# parallel invocations can both pass the idempotency check (line 140-149)
+# and then conflict on the actual `git worktree add` call.
+if command -v flock >/dev/null 2>&1; then
+  if mkdir -p .rite/state 2>/dev/null; then
+    exec 8>.rite/state/wiki-worktree-setup.lock
+    if ! flock -n 8; then
+      echo "[wiki-worktree-setup] status=skipped; path=-; branch=-; reason=concurrent-invocation"
+      exit 0
+    fi
+  else
+    echo "WARNING: .rite/state の作成に失敗しました。advisory lock をスキップします" >&2
+    echo "  影響: 並列 setup 時の race を検出できません (best-effort 降格、機能自体は継続)" >&2
+  fi
+fi
 
 if [[ ! -f "rite-config.yml" ]]; then
   echo "ERROR: rite-config.yml not found at $repo_root" >&2
@@ -94,10 +114,17 @@ wiki_branch=$(parse_wiki_scalar branch_name)
 wiki_branch="${wiki_branch:-wiki}"
 
 # Reject unsafe branch names (mirrors wiki-ingest-commit.sh MEDIUM #6 fix).
+# git check-ref-format 準拠のサブセットとして以下も明示拒否する:
+#   - 先頭が `.` (hidden ref と紛れる)
+#   - `..` を含む (path traversal リスク)
+#   - `//` を含む (refs/heads// で空セグメント)
 if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
+   [[ "$wiki_branch" == .* ]] || \
+   [[ "$wiki_branch" == *..* ]] || \
+   [[ "$wiki_branch" == *//* ]] || \
    [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
   echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
-  echo "  allowed: [A-Za-z0-9._/-]+ and must not start with '-'" >&2
+  echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
   exit 1
 fi
 
@@ -158,7 +185,13 @@ mkdir -p "$(dirname "$target_path")"
 # Capture stderr so add failures report a meaningful reason.
 add_err=""
 trap 'rm -f "${add_err:-}"' EXIT INT TERM HUP
-add_err=$(mktemp /tmp/rite-wts-err-XXXXXX 2>/dev/null || echo "")
+# mktemp 失敗 (read-only /tmp / inode 枯渇 / permission denied) を silent に握り潰さず
+# WARNING で可視化する (wiki-ingest-commit.sh:559-564 の対称パターン)。
+if ! add_err=$(mktemp /tmp/rite-wts-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp for add_err failed — git worktree add stderr will not be captured for diagnostics" >&2
+  echo "  hint: /tmp permission / disk space / inode exhaustion を確認してください" >&2
+  add_err=""
+fi
 
 if ! git worktree add --quiet "$target_path" "$wiki_branch" 2>"${add_err:-/dev/null}"; then
   echo "ERROR: git worktree add '$target_path' '$wiki_branch' failed" >&2
@@ -169,7 +202,10 @@ if ! git worktree add --quiet "$target_path" "$wiki_branch" 2>"${add_err:-/dev/n
   exit 3
 fi
 
+# trap action を本 add 用 add_err 削除のみに絞ってリセットすることで、将来別 trap が
+# 追加された場合に他 cleanup を巻き込まないようにする。
 [[ -n "$add_err" ]] && rm -f "$add_err"
+add_err=""
 trap - EXIT INT TERM HUP
 
 echo "[wiki-worktree-setup] status=created; path=${abs_target}; branch=${wiki_branch}"

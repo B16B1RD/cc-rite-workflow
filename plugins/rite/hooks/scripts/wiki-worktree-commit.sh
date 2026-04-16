@@ -110,12 +110,27 @@ cd "$repo_root"
 # Advisory lock (same pattern as wiki-ingest-commit.sh). flock may be
 # absent on minimal containers / macOS without util-linux; in that case
 # we skip the lock and accept the race (matching legacy behaviour).
+#
+# `exec 9>...` は set -euo pipefail 配下で permission denied / disk full /
+# read-only filesystem 等の I/O エラー発生時に script 全体を hard fail
+# させる。lock 機能自体が best-effort であるため、ここで hard fail させて
+# しまうと flock 不在経路 (legacy 互換) との挙動が大きく食い違う。
+# サブシェル経由で `exec` の失敗を捕捉し、失敗時は WARNING のみで継続する。
 if command -v flock >/dev/null 2>&1; then
   if mkdir -p .rite/state 2>/dev/null; then
-    exec 9>.rite/state/wiki-worktree-commit.lock
-    if ! flock -n 9; then
-      echo "[wiki-worktree-commit] committed=0; branch=unknown; reason=concurrent-invocation"
-      exit 0
+    if ( exec 9>.rite/state/wiki-worktree-commit.lock ) 2>/dev/null; then
+      exec 9>.rite/state/wiki-worktree-commit.lock
+      if ! flock -n 9; then
+        # branch=unknown は意図的: lock 取得前に rite-config.yml をパースしておらず
+        # wiki_branch が未確定のため、既存の concurrent-invocation 終了経路と
+        # 整合させる目的で固定値 unknown を出力する (機械パース側は branch 値
+        # ではなく reason=concurrent-invocation で routing する)。
+        echo "[wiki-worktree-commit] committed=0; branch=unknown; reason=concurrent-invocation"
+        exit 0
+      fi
+    else
+      echo "WARNING: .rite/state/wiki-worktree-commit.lock を open できませんでした (permission / read-only fs)" >&2
+      echo "  影響: 並列実行時の race を検出できません (best-effort 降格、機能自体は継続)" >&2
     fi
   else
     echo "WARNING: .rite/state の作成に失敗しました。advisory lock をスキップします" >&2
@@ -164,7 +179,14 @@ wiki_branch=$(parse_wiki_scalar branch_name)
 wiki_branch="${wiki_branch:-wiki}"
 
 # Reject unsafe branch names (mirrors wiki-ingest-commit.sh MEDIUM #6 fix).
+# git check-ref-format 準拠のサブセット拒否 (setup.sh と対称):
+#   - 先頭が `.` (hidden ref)
+#   - `..` を含む (path traversal)
+#   - `//` を含む (refs/heads// で空セグメント)
 if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
+   [[ "$wiki_branch" == .* ]] || \
+   [[ "$wiki_branch" == *..* ]] || \
+   [[ "$wiki_branch" == *//* ]] || \
    [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
   echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
   exit 1
@@ -237,7 +259,17 @@ case "$cached_rc" in
     ;;
 esac
 
-if [[ "$has_unstaged" == "false" ]] && [[ "$has_untracked" == "false" ]] && [[ "$has_staged" == "false" ]]; then
+# Collapse the 3 detection booleans into a single `has_changes` for the
+# early-exit decision (matches wiki-ingest-commit.sh `has_changes` pattern).
+# We keep the granular booleans for the DRY_RUN diagnostic block below
+# because their per-category visibility is genuinely useful when an
+# operator inspects what would be committed.
+has_changes=false
+if [[ "$has_unstaged" == "true" ]] || [[ "$has_untracked" == "true" ]] || [[ "$has_staged" == "true" ]]; then
+  has_changes=true
+fi
+
+if [[ "$has_changes" == "false" ]]; then
   echo "[wiki-worktree-commit] committed=0; branch=${wiki_branch}; reason=no-pending"
   exit 0
 fi
@@ -256,10 +288,23 @@ fi
 # -----------------------------------------------------------------------
 # Stage all changes under .rite/wiki and commit.
 # -----------------------------------------------------------------------
-if ! git -C "$worktree_path" add -- "$wiki_rel" >/dev/null 2>&1; then
+add_idx_err=""
+trap 'rm -f "${add_idx_err:-}"' EXIT INT TERM HUP
+if ! add_idx_err=$(mktemp /tmp/rite-wwc-add-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp for add_idx_err failed — git add stderr will not be captured for diagnostics" >&2
+  add_idx_err=""
+fi
+if ! git -C "$worktree_path" add -- "$wiki_rel" >/dev/null 2>"${add_idx_err:-/dev/null}"; then
   echo "ERROR: git add '$wiki_rel' failed in worktree" >&2
+  if [[ -n "$add_idx_err" ]] && [[ -s "$add_idx_err" ]]; then
+    head -n 10 "$add_idx_err" | sed 's/^/  git: /' >&2
+  fi
+  echo "  hint: index lock / path error / permission denied のいずれかを確認してください" >&2
   exit 3
 fi
+[[ -n "$add_idx_err" ]] && rm -f "$add_idx_err"
+add_idx_err=""
+trap - EXIT INT TERM HUP
 
 # Re-check staged diff (the `add` may have staged zero files if everything
 # was already in the working index but matched .gitignore — defensive).
@@ -279,10 +324,23 @@ case "$post_add_rc" in
     ;;
 esac
 
-if ! git -C "$worktree_path" commit --quiet -m "$COMMIT_MSG" 2>/dev/null; then
+commit_err=""
+trap 'rm -f "${commit_err:-}"' EXIT INT TERM HUP
+if ! commit_err=$(mktemp /tmp/rite-wwc-commit-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp for commit_err failed — git commit stderr will not be captured for diagnostics" >&2
+  commit_err=""
+fi
+if ! git -C "$worktree_path" commit --quiet -m "$COMMIT_MSG" 2>"${commit_err:-/dev/null}"; then
   echo "ERROR: git commit failed in worktree" >&2
+  if [[ -n "$commit_err" ]] && [[ -s "$commit_err" ]]; then
+    head -n 10 "$commit_err" | sed 's/^/  git: /' >&2
+  fi
+  echo "  hint: pre-commit hook 失敗 / gpg sign 失敗 / author config 不在 のいずれかを確認してください" >&2
   exit 3
 fi
+[[ -n "$commit_err" ]] && rm -f "$commit_err"
+commit_err=""
+trap - EXIT INT TERM HUP
 
 committed_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null || echo unknown)
 
@@ -295,7 +353,13 @@ push_failed=false
 
 push_err=""
 trap 'rm -f "${push_err:-}"' EXIT INT TERM HUP
-push_err=$(mktemp /tmp/rite-wwc-push-err-XXXXXX 2>/dev/null || echo "")
+# mktemp 失敗 (read-only /tmp / inode 枯渇 / permission denied) を silent に握り潰さず
+# WARNING で可視化する (wiki-ingest-commit.sh:559-564 の対称パターン)。
+if ! push_err=$(mktemp /tmp/rite-wwc-push-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: mktemp for push_err failed — push stderr will not be captured for diagnostics" >&2
+  echo "  hint: /tmp permission / disk space / inode exhaustion を確認してください" >&2
+  push_err=""
+fi
 
 if ! git -C "$worktree_path" push --quiet origin "$wiki_branch" 2>"${push_err:-/dev/null}"; then
   push_status="failed"
@@ -307,7 +371,10 @@ if ! git -C "$worktree_path" push --quiet origin "$wiki_branch" 2>"${push_err:-/
   echo "  manual recovery: git -C '$worktree_path' push origin '$wiki_branch'" >&2
 fi
 
+# trap action を本 push 用 push_err 削除のみに絞ってリセットすることで、将来別 trap が
+# 追加された場合に他 cleanup を巻き込まないようにする (cycle review MEDIUM #4 対応)。
 [[ -n "$push_err" ]] && rm -f "$push_err"
+push_err=""
 trap - EXIT INT TERM HUP
 
 echo "[wiki-worktree-commit] committed=1; branch=${wiki_branch}; head=${committed_sha}; push=${push_status}"

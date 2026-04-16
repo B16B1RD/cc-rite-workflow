@@ -583,8 +583,14 @@ echo "log_path=$log_path"
 
 ```bash
 # Phase 8.3: log.md 追記後の commit
+# plugin_root の inline 解決 (lint.md には専用解決 Phase が存在しないため)
+# Reference: ../../references/plugin-path-resolution.md#inline-one-liner-for-command-files
 branch_strategy="{branch_strategy}"
-plugin_root="{plugin_root}"
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
+  echo "WARNING: plugin_root resolution failed (resolved: '${plugin_root:-<empty>}'). log.md 追記の commit を skip します (非ブロッキング契約)" >&2
+  exit 0
+fi
 log_entry="{log_entry}"  # Phase 8.1 で生成した log.md 追記行
 
 commit_msg="docs(wiki): lint report — ${log_entry}"
