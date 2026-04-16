@@ -4412,6 +4412,39 @@ Replace `{next_action_value}` with the value from the table above based on the r
 
 **Note on `error_count`**: `flow-state-update.sh` patch mode preserves all existing fields not explicitly set — only `phase`, `updated_at`, and `next_action` are changed (consistent with `lint.md` Phase 4.0 and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
 
+### 8.0.1 W Phase Completion Gate (Defense-in-Depth, #535)
+
+> **Purpose**: Prevent the LLM from outputting a result pattern (`[review:mergeable]` / `[review:fix-needed:{n}]`) without having executed Phase 6.5.W (Wiki Ingest). If Phase 6.5.W was executed, at least one `[CONTEXT] WIKI_INGEST_` sentinel MUST be present in the conversation context (emitted by Phase 6.5.W Step 1 skip path, Step 3 failure path, or Phase 6.5.W.2 success/failure paths). The complete absence of any sentinel indicates the LLM skipped Phase 6.5.W entirely.
+
+**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow) AND `wiki.enabled: true` in `rite-config.yml`. When wiki is disabled, W Phase is legitimately skipped (no sentinel expected) — pass the gate unconditionally.
+
+**Check**: Search the conversation context for any of the following sentinel patterns:
+
+- `[CONTEXT] WIKI_INGEST_DONE=1`
+- `[CONTEXT] WIKI_INGEST_SKIPPED=1`
+- `[CONTEXT] WIKI_INGEST_FAILED=1`
+- `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1`
+
+**Routing**:
+
+| Condition | Action |
+|-----------|--------|
+| At least one `WIKI_INGEST_` sentinel found | Gate passes — proceed to Phase 8.1 |
+| No sentinel found AND `wiki.enabled: true` | **ERROR**: W Phase was skipped. Execute the ACTION below |
+| No sentinel found AND `wiki.enabled: false` | Gate passes — wiki disabled, no sentinel expected |
+
+**On ERROR** (no sentinel found, wiki enabled):
+
+```
+ERROR: Phase 8.0.1 W Phase completion gate failed.
+No [CONTEXT] WIKI_INGEST_* sentinel found in conversation context.
+This means Phase 6.5.W (Wiki Ingest Trigger) was NOT executed.
+ACTION: Return to Phase 6.5.W and execute the Wiki Ingest Trigger before outputting the result pattern. Do NOT proceed to Phase 8.1 without a WIKI_INGEST_* sentinel.
+⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until Phase 6.5.W has been executed.
+```
+
+> **Enforcement note**: This gate is a prose instruction — `exit 1` in bash does NOT halt the LLM. The LLM MUST recognise the ERROR text and return to Phase 6.5.W. The stop-guard whitelist provides a defense-in-depth layer by rejecting the `phase5_post_review` transition if W Phase markers are absent from the expected flow.
+
 ### 8.1 Output Pattern (Return Control to Caller)
 
 Based on the Phase 6 review results, output the corresponding machine-readable pattern:
