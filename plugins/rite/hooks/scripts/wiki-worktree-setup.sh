@@ -51,6 +51,16 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 1
 fi
 
+# Resolve the canonical lib path BEFORE `cd`. Using `$(dirname "$0")`
+# after `cd "$repo_root"` silently fails when the script is invoked via
+# a relative path (e.g. `bash ./scripts/wiki-worktree-setup.sh` from a
+# subdirectory), because `$0` stays relative and `dirname` resolves it
+# relative to the new cwd. `BASH_SOURCE[0]` + `cd -P` anchors the path
+# to the script's own file location regardless of the caller's cwd,
+# mirroring the convention used across the other hook scripts
+# (session-start.sh / stop-guard.sh / work-memory-update.sh etc.).
+_SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
@@ -93,7 +103,7 @@ fi
 # rite-config.yml parser + branch name validator (shared lib, Issue #549)
 # -----------------------------------------------------------------------
 # shellcheck source=lib/wiki-config.sh
-source "$(dirname "$0")/lib/wiki-config.sh"
+source "$_SCRIPT_DIR/lib/wiki-config.sh"
 
 wiki_enabled_raw=$(parse_wiki_scalar enabled)
 wiki_enabled_norm=$(printf '%s' "$wiki_enabled_raw" | tr '[:upper:]' '[:lower:]')

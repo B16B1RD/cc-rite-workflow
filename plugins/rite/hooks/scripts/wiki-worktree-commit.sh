@@ -104,6 +104,11 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 1
 fi
 
+# Resolve the canonical lib path BEFORE `cd`. See wiki-worktree-setup.sh
+# for rationale — `$(dirname "$0")` after `cd` breaks under relative
+# invocation paths.
+_SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
@@ -147,9 +152,9 @@ fi
 # Shared lib (Issue #549): parser/validator + worktree add/commit/push helper.
 # -----------------------------------------------------------------------
 # shellcheck source=lib/wiki-config.sh
-source "$(dirname "$0")/lib/wiki-config.sh"
+source "$_SCRIPT_DIR/lib/wiki-config.sh"
 # shellcheck source=lib/worktree-git.sh
-source "$(dirname "$0")/lib/worktree-git.sh"
+source "$_SCRIPT_DIR/lib/worktree-git.sh"
 
 wiki_enabled_raw=$(parse_wiki_scalar enabled)
 wiki_enabled_norm=$(printf '%s' "$wiki_enabled_raw" | tr '[:upper:]' '[:lower:]')
@@ -308,7 +313,7 @@ fi
 # staged diff after add (no-op).
 # -----------------------------------------------------------------------
 set +e
-wtcp_out=$(worktree_commit_push "$worktree_path" "$COMMIT_MSG" "$wiki_rel")
+wtcp_out=$(worktree_commit_push "$worktree_path" "$wiki_branch" "$COMMIT_MSG" "$wiki_rel")
 wtcp_rc=$?
 set -e
 

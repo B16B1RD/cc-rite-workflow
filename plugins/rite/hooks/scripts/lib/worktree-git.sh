@@ -8,31 +8,35 @@
 #
 # Design rationale (Issue #549): PR #548 cycle 4 F-06 identified that the
 # add/commit/push block + error handling (stderr tempfile -> head -n 10
-# -> sed prefix) was structurally identical across the two scripts. Any
-# future enhancement (e.g. push retry with exponential backoff) would
-# require synchronous edits across both. A shared helper eliminates that
-# drift vector.
+# -> sed prefix) was structurally identical across the two scripts. A
+# shared helper removes that drift vector. PR #550 review further
+# tightened the contract so the lib does not silently toggle caller
+# shell options or clobber caller traps.
 #
 # Usage:
-#   source "$(dirname "$0")/lib/worktree-git.sh"
-#   worktree_commit_push WORKTREE COMMIT_MSG PATH1 [PATH2 ...]
+#   source "$_SCRIPT_DIR/lib/worktree-git.sh"
+#   worktree_commit_push "$worktree_path" "$wiki_branch" "$commit_msg" "$wiki_rel"
 #   rc=$?
 #   case "$rc" in
 #     0) ;;  # committed and pushed
 #     3) exit 3 ;;  # add/commit failed — error already surfaced to stderr
 #     4) push_failed=true ;;  # commit landed, push failed
-#     5) ;;  # no staged diff — caller decides policy
+#     5) ;;  # no staged diff — caller decides policy (stdout is silent)
 #   esac
 #
 # Arguments:
 #   WORKTREE      path to the worktree (caller must have validated it)
+#   BRANCH        expected branch name for the push (caller-validated;
+#                 lib does NOT re-derive via `rev-parse --abbrev-ref`
+#                 because a detached HEAD would silently fall back to
+#                 the literal "HEAD" and misclassify push failures).
 #   COMMIT_MSG    commit message (must not contain newline / CR — callers
 #                 that read from user input should validate first)
 #   PATH1...      pathspecs to `git add --`. At least one is required.
 #
 # Exit codes:
 #   0  success — committed and pushed
-#   2  argument error (missing worktree / commit message / pathspec)
+#   2  argument error (missing worktree / branch / commit message / pathspec)
 #   3  git add or commit failed (error details already on stderr)
 #   4  commit OK, push failed (caller should emit wiki_ingest_push_failed
 #      sentinel and decide whether to exit 4 or continue)
@@ -40,95 +44,156 @@
 #
 # stdout:
 #   On exit 0 or 4: "head=<sha>; push=<ok|failed>"
-#   On exit 5:      "no-staged-diff"
+#   On exit 5:      (empty — caller emits its own reason=no-staged-diff)
 #   Otherwise:      empty (errors are on stderr)
 #
 # Contract:
-#   - Does NOT set `set -euo pipefail`. Caller owns shell options.
-#   - Uses a local trap for stderr tempfile cleanup; caller's outer trap
-#     is restored via `trap - EXIT INT TERM HUP` before return.
+#   - Does NOT toggle `set -e` / `set -u` / `set -o pipefail`. The
+#     function saves the caller's `errexit` state before any `set +e`
+#     probe and restores it before return, so the caller's shell-option
+#     environment is preserved in every exit path.
+#   - Does NOT install EXIT / INT / TERM / HUP traps that persist past
+#     return. Any trap installed for internal tempfile cleanup is
+#     restored to the caller's previous trap via `trap -p` / `eval`
+#     before every return path, so the caller may install its own
+#     outer trap without surprise clobbering.
 #   - Caller must have ALREADY verified:
 #       * worktree exists at WORKTREE path
-#       * worktree HEAD is on the expected branch
+#       * worktree HEAD is on BRANCH
 #       * COMMIT_MSG has been checked for newline/CR injection
+#       * BRANCH matches the expected wiki.branch_name
 
 worktree_commit_push() {
   local worktree="$1"
-  local commit_msg="$2"
-  shift 2 2>/dev/null || true
+  local branch="$2"
+  local commit_msg="$3"
+  shift 3 || true
 
-  if [[ -z "$worktree" ]] || [[ -z "$commit_msg" ]] || [[ $# -eq 0 ]]; then
-    echo "ERROR: worktree_commit_push: WORKTREE / COMMIT_MSG / PATH... required" >&2
+  if [[ -z "$worktree" ]] || [[ -z "$branch" ]] || [[ -z "$commit_msg" ]] || [[ $# -eq 0 ]]; then
+    echo "ERROR: worktree_commit_push: WORKTREE / BRANCH / COMMIT_MSG / PATH... required" >&2
     return 2
   fi
 
-  local add_err="" commit_err="" push_err=""
-  trap 'rm -f "${add_err:-}" "${commit_err:-}" "${push_err:-}"' EXIT INT TERM HUP
-  add_err=$(mktemp /tmp/rite-wtgit-add-err-XXXXXX 2>/dev/null) || add_err=""
-  commit_err=$(mktemp /tmp/rite-wtgit-commit-err-XXXXXX 2>/dev/null) || commit_err=""
-  push_err=$(mktemp /tmp/rite-wtgit-push-err-XXXXXX 2>/dev/null) || push_err=""
+  # Save caller's errexit state so we can restore it instead of force-
+  # setting `set -e` on return (contract: caller owns shell options).
+  local _wtgp_errexit=0
+  case $- in *e*) _wtgp_errexit=1 ;; esac
 
-  # Step 1: stage paths
+  # Save caller's outer traps (EXIT / INT / TERM / HUP) so we can restore
+  # them instead of clearing via `trap -`. `trap -p` output is POSIX-safe
+  # for `eval` reinput, including traps with quoted strings.
+  local _wtgp_outer_exit _wtgp_outer_int _wtgp_outer_term _wtgp_outer_hup
+  _wtgp_outer_exit=$(trap -p EXIT)
+  _wtgp_outer_int=$(trap -p INT)
+  _wtgp_outer_term=$(trap -p TERM)
+  _wtgp_outer_hup=$(trap -p HUP)
+
+  # Restore caller's errexit + outer traps; caller expects none of
+  # these to differ from their pre-call state.
+  _wtgp_restore_caller_state() {
+    # Restore traps: empty output from `trap -p` means no trap was set.
+    if [[ -n "$_wtgp_outer_exit" ]]; then eval "$_wtgp_outer_exit"; else trap - EXIT; fi
+    if [[ -n "$_wtgp_outer_int"  ]]; then eval "$_wtgp_outer_int";  else trap - INT;  fi
+    if [[ -n "$_wtgp_outer_term" ]]; then eval "$_wtgp_outer_term"; else trap - TERM; fi
+    if [[ -n "$_wtgp_outer_hup"  ]]; then eval "$_wtgp_outer_hup";  else trap - HUP;  fi
+    # Restore errexit.
+    if [[ $_wtgp_errexit -eq 1 ]]; then set -e; else set +e; fi
+  }
+
+  local add_err="" diff_err="" commit_err="" push_err=""
+  # Internal cleanup trap (EXIT only — caller's signal traps are
+  # re-applied below on any non-signal return path).
+  trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"' EXIT INT TERM HUP
+
+  # mktemp failures are surfaced to stderr (not silently swallowed) so
+  # operators can see when stderr capture is degraded to /dev/null.
+  if ! add_err=$(mktemp /tmp/rite-wtgit-add-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: mktemp for worktree_commit_push add stderr capture failed — diagnostics will be lost" >&2
+    add_err=""
+  fi
+  if ! diff_err=$(mktemp /tmp/rite-wtgit-diff-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: mktemp for worktree_commit_push diff stderr capture failed — diagnostics will be lost" >&2
+    diff_err=""
+  fi
+  if ! commit_err=$(mktemp /tmp/rite-wtgit-commit-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: mktemp for worktree_commit_push commit stderr capture failed — diagnostics will be lost" >&2
+    commit_err=""
+  fi
+  if ! push_err=$(mktemp /tmp/rite-wtgit-push-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: mktemp for worktree_commit_push push stderr capture failed — diagnostics will be lost" >&2
+    push_err=""
+  fi
+
+  # Step 1: stage paths. Quote the first pathspec in the error message
+  # to mirror the pre-refactor wiki-worktree-commit.sh format, so log
+  # greppers that anchor on `'<path>'` keep working.
+  local _first_path="$1"
   if ! git -C "$worktree" add -- "$@" 2>"${add_err:-/dev/null}"; then
-    echo "ERROR: git -C '$worktree' add failed" >&2
+    echo "ERROR: git add '$_first_path' failed in worktree '$worktree'" >&2
     [ -n "$add_err" ] && [ -s "$add_err" ] && head -n 10 "$add_err" | sed 's/^/  git: /' >&2
     echo "  hint: index lock / path error / permission denied のいずれかを確認してください" >&2
-    rm -f "${add_err:-}" "${commit_err:-}" "${push_err:-}"
-    trap - EXIT INT TERM HUP
+    rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+    _wtgp_restore_caller_state
     return 3
   fi
 
-  # Step 2: verify staged diff is non-empty
+  # Step 2: verify staged diff is non-empty. Use a dedicated diff_err
+  # tempfile so the add-step warnings are not mixed with diff-step
+  # errors on rc>1 — otherwise `head -n 10 "$add_err"` in the error
+  # branch would display add warnings alongside the diff failure and
+  # obscure the true root cause.
   set +e
-  git -C "$worktree" diff --cached --quiet 2>"${add_err:-/dev/null}"
+  git -C "$worktree" diff --cached --quiet 2>"${diff_err:-/dev/null}"
   local cached_rc=$?
-  set -e
+  if [[ $_wtgp_errexit -eq 1 ]]; then set -e; fi
   case "$cached_rc" in
     0)
-      echo "no-staged-diff"
-      rm -f "${add_err:-}" "${commit_err:-}" "${push_err:-}"
-      trap - EXIT INT TERM HUP
+      # Silent on stdout: callers emit their own `reason=no-staged-diff`
+      # status line (wiki-worktree-commit.sh / wiki-ingest-commit.sh
+      # both do this). Returning 5 is the sole signal.
+      rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+      _wtgp_restore_caller_state
       return 5
       ;;
     1) ;;  # staged diff present, proceed
     *)
-      echo "ERROR: git -C '$worktree' diff --cached --quiet failed (rc=$cached_rc)" >&2
-      [ -n "$add_err" ] && [ -s "$add_err" ] && head -n 10 "$add_err" | sed 's/^/  git: /' >&2
-      rm -f "${add_err:-}" "${commit_err:-}" "${push_err:-}"
-      trap - EXIT INT TERM HUP
+      echo "ERROR: git diff --cached failed in worktree '$worktree' (rc=$cached_rc)" >&2
+      [ -n "$diff_err" ] && [ -s "$diff_err" ] && head -n 10 "$diff_err" | sed 's/^/  git: /' >&2
+      rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+      _wtgp_restore_caller_state
       return 3
       ;;
   esac
 
   # Step 3: commit
   if ! git -C "$worktree" commit --quiet -m "$commit_msg" 2>"${commit_err:-/dev/null}"; then
-    echo "ERROR: git -C '$worktree' commit failed" >&2
+    echo "ERROR: git commit failed in worktree '$worktree'" >&2
     [ -n "$commit_err" ] && [ -s "$commit_err" ] && head -n 10 "$commit_err" | sed 's/^/  git: /' >&2
     echo "  hint: pre-commit hook / gpg sign / author config / permission のいずれかを確認" >&2
-    rm -f "${add_err:-}" "${commit_err:-}" "${push_err:-}"
-    trap - EXIT INT TERM HUP
+    rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+    _wtgp_restore_caller_state
     return 3
   fi
 
   local head_sha
   head_sha=$(git -C "$worktree" rev-parse HEAD 2>/dev/null || echo unknown)
 
-  # Step 4: push. Failure here is incident-observable (return 4) but caller
-  # owns the policy decision (continue workflow vs. hard fail).
+  # Step 4: push using the caller-supplied branch (no silent
+  # `rev-parse --abbrev-ref HEAD` fallback to literal "HEAD"). Push
+  # failure is incident-observable (return 4) but the caller owns the
+  # policy decision (continue workflow vs. hard fail).
   local push_status="ok"
-  local branch
-  branch=$(git -C "$worktree" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
   if ! git -C "$worktree" push --quiet origin "$branch" 2>"${push_err:-/dev/null}"; then
     push_status="failed"
-    echo "WARNING: git -C '$worktree' push origin '$branch' failed — commit is local only" >&2
+    echo "WARNING: git push origin '$branch' failed in worktree '$worktree' — commit is local only" >&2
     [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | sed 's/^/  git: /' >&2
     echo "  manual recovery: git -C '$worktree' push origin '$branch'" >&2
   fi
 
   echo "head=${head_sha}; push=${push_status}"
 
-  rm -f "${add_err:-}" "${commit_err:-}" "${push_err:-}"
-  trap - EXIT INT TERM HUP
+  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+  _wtgp_restore_caller_state
 
   if [[ "$push_status" == "failed" ]]; then
     return 4
