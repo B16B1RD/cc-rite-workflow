@@ -393,36 +393,24 @@ if ! check_pr_raw_correspondence; then
 fi
 
 # --- Comprehensive health check: raw count, page count, pending count, page stall (Issue #538) ---
+# DRY: git ls-tree for .rite/wiki/raw/ is called once in check_page_stall and
+# passed to helper functions to avoid 3x duplication of the same git ls-tree call.
 
-# Count raw source files on the wiki branch
-count_raw_sources() {
-  local raw_files raw_count
-  raw_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/raw/ 2>/dev/null) || raw_files=""
-  if [ -z "$raw_files" ]; then
-    raw_count=0
+# Count files from a pre-fetched file list (passed as $1)
+# Usage: _count_lines "$file_list"
+_count_lines() {
+  local file_list="$1"
+  if [ -z "$file_list" ]; then
+    echo 0
   else
-    raw_count=$(printf '%s\n' "$raw_files" | grep -c '.' || true)
+    printf '%s\n' "$file_list" | grep -c '.' || true
   fi
-  echo "$raw_count"
 }
 
-# Count wiki page files on the wiki branch
-count_wiki_pages() {
-  local page_files page_count
-  page_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/pages/ 2>/dev/null) || page_files=""
-  if [ -z "$page_files" ]; then
-    page_count=0
-  else
-    page_count=$(printf '%s\n' "$page_files" | grep -c '.' || true)
-  fi
-  echo "$page_count"
-}
-
-# Count raw sources with ingested: false (pending ingest)
+# Count raw sources with ingested: false from a pre-fetched raw file list (passed as $1)
 # Checks YAML frontmatter of each raw source file via git show
-count_pending_raw() {
-  local raw_files pending_count file_path file_content
-  raw_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/raw/ 2>/dev/null) || raw_files=""
+_count_pending_from_list() {
+  local raw_files="$1" pending_count file_path file_content
   pending_count=0
   if [ -n "$raw_files" ]; then
     while IFS= read -r file_path; do
@@ -441,10 +429,14 @@ count_pending_raw() {
 # This catches the blind spot where Phase X.X.W fires (raw commit works)
 # but /rite:wiki:ingest never runs (pages never generated)
 check_page_stall() {
-  local raw_count page_count pending_count
-  raw_count=$(count_raw_sources)
-  page_count=$(count_wiki_pages)
-  pending_count=$(count_pending_raw)
+  # Fetch raw and page file lists once (DRY — single git ls-tree per path)
+  local raw_files page_files raw_count page_count pending_count
+  raw_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/raw/ 2>/dev/null) || raw_files=""
+  page_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/pages/ 2>/dev/null) || page_files=""
+
+  raw_count=$(_count_lines "$raw_files")
+  page_count=$(_count_lines "$page_files")
+  pending_count=$(_count_pending_from_list "$raw_files")
 
   log_info "wiki-growth-check: health-summary: raw_sources=$raw_count pages=$page_count pending=$pending_count"
 
