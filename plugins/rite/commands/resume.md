@@ -68,6 +68,7 @@ Stop here.
 - `{issue_number}`: Issue number (from argument or branch name extraction in Phase 1.1)
 - `{owner}`, `{repo}`: Repository information (obtain via `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`)
 - `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script))
+- `{parent_issue_display}`: Read from `.rite-flow-state` via `jq -r '.parent_issue_number // 0'`. Display `#{N}` if non-zero, `なし` if zero or absent
 
 #### 1.2.1 Local Work Memory Check
 
@@ -261,6 +262,7 @@ Issue: #{issue_number} - {issue_title}
 {i18n:resume_phase_label}: {phase}
 {i18n:resume_phase_detail_label}: {phase_detail}
 {i18n:resume_last_updated_label}: {timestamp}
+{i18n:resume_parent_issue_label}: {parent_issue_display}
 
 {i18n:resume_confirm_resume}
 ```

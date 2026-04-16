@@ -22,6 +22,7 @@
 #   --issue          Issue number (create mode, default: 0)
 #   --branch         Branch name (create mode, default: "")
 #   --pr             PR number (create mode, default: 0)
+#   --parent-issue   Parent Issue number (create mode, default: 0; patch mode: update only if specified)
 #   --next           next_action text (required for create/patch)
 #   --active         Active flag (create mode: default true; patch mode: update only if specified)
 #   --field          Field name to increment (increment mode)
@@ -50,6 +51,7 @@ PHASE=""
 ISSUE=0
 BRANCH=""
 PR=0
+PARENT_ISSUE=0
 NEXT=""
 ACTIVE=""
 IF_EXISTS=false
@@ -62,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --issue)    ISSUE="$2"; shift 2 ;;
     --branch)   BRANCH="$2"; shift 2 ;;
     --pr)       PR="$2"; shift 2 ;;
+    --parent-issue) PARENT_ISSUE="$2"; shift 2 ;;
     --next)     NEXT="$2"; shift 2 ;;
     --active)   ACTIVE="$2"; shift 2 ;;
     --if-exists) IF_EXISTS=true; shift ;;
@@ -169,6 +172,16 @@ case "$MODE" in
         exit 1
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"
+      # Preserve parent_issue_number from existing state when --parent-issue is not
+      # explicitly specified (#497). Without this, every create call that omits
+      # --parent-issue would reset parent_issue_number to 0, erasing the value
+      # persisted by Phase 2.4 Mandatory After.
+      if [[ "$PARENT_ISSUE" -eq 0 ]]; then
+        _existing_parent=$(jq -r '.parent_issue_number // 0' "$FLOW_STATE" 2>/dev/null) || _existing_parent=0
+        if [[ "$_existing_parent" =~ ^[0-9]+$ ]] && [[ "$_existing_parent" -ne 0 ]]; then
+          PARENT_ISSUE="$_existing_parent"
+        fi
+      fi
     fi
     if jq -n \
       --argjson active "$ACTIVE" \
@@ -177,10 +190,11 @@ case "$MODE" in
       --arg phase "$PHASE" \
       --arg prev_phase "$PREV_PHASE" \
       --argjson pr "$PR" \
+      --argjson parent_issue "$PARENT_ISSUE" \
       --arg next "$NEXT" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
       --arg sid "$SESSION" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
+      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"
     else
@@ -198,6 +212,10 @@ case "$MODE" in
     if [[ -n "$ACTIVE" ]]; then
       JQ_FILTER="$JQ_FILTER | .active = (\$active_val == \"true\")"
       JQ_ARGS+=(--arg active_val "$ACTIVE")
+    fi
+    if [[ "$PARENT_ISSUE" -ne 0 ]]; then
+      JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
+      JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
     if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
       mv "$TMP_STATE" "$FLOW_STATE"

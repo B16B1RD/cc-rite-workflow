@@ -344,6 +344,7 @@ messages:
   resume_phase_label: "フェーズ"
   resume_phase_detail_label: "フェーズ詳細"
   resume_last_updated_label: "最終更新"
+  resume_parent_issue_label: "親 Issue"
   resume_confirm_resume: "この作業を再開しますか？"
   resume_uncommitted_changes_warning: "警告: 現在のブランチにコミットされていない変更があります"
   resume_current_branch: "現在のブランチ"

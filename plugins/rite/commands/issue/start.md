@@ -110,7 +110,7 @@ This protocol applies to **every** sub-skill invocation in this document. Each �
 | `{default_branch}` | `gh repo view --json defaultBranchRef` (Phase 2.3.2.3 only) |
 | `{project_number}` | `github.projects.project_number` in `rite-config.yml` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) |
-| `{parent_issue_number}` | Phase 1.6 (child-issue-selection) or Phase 2.4 Step 3 (parent lookup via 2.4.7) result; retained in conversation context. Used only in Phase 5.7 and Workflow Termination routing |
+| `{parent_issue_number}` | Phase 1.6 (child-issue-selection) or Phase 2.4 Step 3 (parent lookup via 2.4.7) result; persisted in `.rite-flow-state` via `--parent-issue` option. Read via `jq -r '.parent_issue_number // 0' .rite-flow-state`. Used in Phase 5.1.2, 5.7, and Workflow Termination routing |
 
 ---
 
@@ -386,14 +386,16 @@ The script is the single source of truth for Projects Status updates. See [proje
 
 Do **NOT** stop after the Projects Status update. Phase 2.5 (Iteration) and 2.6 (Work Memory) are still pending.
 
-**Step 1**: Update `.rite-flow-state` to post-projects phase:
+**Step 1**: Update `.rite-flow-state` to post-projects phase. If Phase 2.4.7 detected a parent Issue (`{parent_issue_number}` is non-empty and non-zero), persist it via `--parent-issue` so it survives context compaction and session restarts (#497):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase2_post_projects" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
+  --pr 0 --parent-issue {parent_issue_number} \
   --next "Phase 2.4 completed. Proceed to Phase 2.5 (Iteration) if iteration.enabled, else Phase 2.6 (Work Memory). Do NOT stop."
 ```
+
+> **Note**: When Phase 2.4.7 detected no parent (standalone Issue), `{parent_issue_number}` is `0` (the default). The `--parent-issue 0` is harmless and explicitly records that no parent was found.
 
 **Step 2**: **→ Proceed to Phase 2.5 now**. Phase 2.5 handles its own skip conditions internally (iteration disabled / projects disabled) — do NOT skip Phase 2.5 at this level (prompt-engineer cycle-2 MEDIUM #3). The Phase 2.5 Pre-write + Mandatory After blocks always run so `phase2_post_iteration` is recorded even when the assignment body is skipped.
 
@@ -1864,7 +1866,7 @@ fi
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_completion" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "Execute Phase 5.6 (Completion Report). If parent_issue_number was retained in conversation context (from Phase 1.6 / 2.4.7), proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
+  --next "Execute Phase 5.6 (Completion Report). Read parent_issue_number from .rite-flow-state; if non-zero, proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
 ```
 
 > See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
@@ -1971,7 +1973,18 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 
 ### 5.7 Parent Issue Completion
 
-**Condition**: Parent identified in Phase 1.6/2.4.7. Execute after 5.6.
+**Condition**: `parent_issue_number` is non-zero in `.rite-flow-state`. Read deterministically via:
+
+```bash
+parent_issue_number=$(jq -r '.parent_issue_number // 0' .rite-flow-state 2>/dev/null) || parent_issue_number=0
+if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
+  echo "[CONTEXT] PARENT_ISSUE=none — skip Phase 5.7, proceed to Workflow Termination"
+else
+  echo "[CONTEXT] PARENT_ISSUE=$parent_issue_number — execute Phase 5.7"
+fi
+```
+
+Execute after 5.6. When `PARENT_ISSUE=none`, skip directly to Workflow Termination block.
 
 **Pre-write** (only when a parent was identified — otherwise skip directly to terminate):
 
@@ -2068,7 +2081,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 > **Placement**: This block runs **after** Phase 5.7 completes **or after Phase 5.6** when no parent Issue was identified in Phase 1.6 / 2.4.7 (the Phase 5.7 skip branch). Both paths converge here so the terminal `phase="completed", active: false` state is set exactly once, with `previous_phase` pointing at a whitelist-valid source (`phase5_post_parent_completion` or `phase5_completion`).
 
-**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When no parent Issue was identified, Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
+**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When `parent_issue_number` is `0` in `.rite-flow-state` (read via `jq -r '.parent_issue_number // 0' .rite-flow-state`), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
 
 **Step 1**: Update `.rite-flow-state` to the terminal state (patch mode, preserves `previous_phase`):
 
