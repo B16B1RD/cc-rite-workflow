@@ -173,6 +173,9 @@ wiki:
     threshold_prs: 5                   # Issue #524: lint warns when this many merged PRs accumulate
                                        # since the last commit on `branch_name` with no raw-source ingest
                                        # in between (warning only — does not change [lint:success])
+    pr_raw_threshold: 3                # Issue #536: warn when this many of the last `threshold_prs`
+                                       # merged PRs have no corresponding raw source on wiki branch
+                                       # (e.g., 3 means "warn if 3+ of last 5 PRs have no raw")
 
 # Language setting
 language: ja
