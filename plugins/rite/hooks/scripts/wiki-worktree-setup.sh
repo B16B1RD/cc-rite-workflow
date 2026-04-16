@@ -51,6 +51,22 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 1
 fi
 
+# Resolve the canonical lib path BEFORE `cd`. Using `$(dirname "$0")`
+# after `cd "$repo_root"` silently fails when the script is invoked via
+# a relative path (e.g. `bash ./scripts/wiki-worktree-setup.sh` from a
+# subdirectory), because `$0` stays relative and `dirname` resolves it
+# relative to the new cwd. `BASH_SOURCE[0]` + `cd -P` anchors the path
+# to the script's own file location regardless of the caller's cwd.
+#
+# Naming convention note: sibling hook scripts (session-start.sh,
+# stop-guard.sh, work-memory-update.sh, etc.) use `SCRIPT_DIR` without
+# the underscore prefix and `cd` without `-P`. The underscore prefix
+# here marks this as a private lib-source helper (not exported for
+# external use), and `cd -P` is a defensive addition that resolves
+# symlinks to the script's physical location — both are supersets of
+# the sibling convention rather than drifts away from it.
+_SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
@@ -90,27 +106,10 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# rite-config.yml parser (lenient, matches wiki-ingest-commit.sh)
+# rite-config.yml parser + branch name validator (shared lib, Issue #549)
 # -----------------------------------------------------------------------
-parse_wiki_scalar() {
-  local key="$1"
-  local section line val
-  section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null || true)
-  [[ -z "$section" ]] && return 0
-  line=$(printf '%s\n' "$section" | awk -v k="$key" '
-    BEGIN { pat = "^[[:space:]]+" k ":" }
-    $0 ~ pat { print; exit }
-  ' 2>/dev/null || true)
-  [[ -z "$line" ]] && return 0
-  val=$(printf '%s' "$line" \
-    | sed 's/[[:space:]]#.*//' \
-    | awk -v k="$key" '{
-        sub("^[[:space:]]*" k ":[[:space:]]*", "")
-        print
-      }' \
-    | tr -d '[:space:]"'"'")
-  printf '%s' "$val"
-}
+# shellcheck source=lib/wiki-config.sh
+source "$_SCRIPT_DIR/lib/wiki-config.sh"
 
 wiki_enabled_raw=$(parse_wiki_scalar enabled)
 wiki_enabled_norm=$(printf '%s' "$wiki_enabled_raw" | tr '[:upper:]' '[:lower:]')
@@ -124,20 +123,7 @@ esac
 wiki_branch=$(parse_wiki_scalar branch_name)
 wiki_branch="${wiki_branch:-wiki}"
 
-# Reject unsafe branch names (mirrors wiki-ingest-commit.sh MEDIUM #6 fix).
-# git check-ref-format 準拠のサブセットとして以下も明示拒否する:
-#   - 先頭が `.` (hidden ref と紛れる)
-#   - `..` を含む (path traversal リスク)
-#   - `//` を含む (refs/heads// で空セグメント)
-if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]] || \
-   [[ "$wiki_branch" == .* ]] || \
-   [[ "$wiki_branch" == *..* ]] || \
-   [[ "$wiki_branch" == *//* ]] || \
-   [[ ! "$wiki_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-  echo "ERROR: invalid wiki.branch_name '${wiki_branch}' in rite-config.yml" >&2
-  echo "  allowed: [A-Za-z0-9._/-]+, must not start with '-' / '.', must not contain '..' or '//'" >&2
-  exit 1
-fi
+validate_wiki_branch_name "$wiki_branch" || exit 1
 
 # -----------------------------------------------------------------------
 # Verify the wiki branch exists locally. Remote-only existence is a skip.
