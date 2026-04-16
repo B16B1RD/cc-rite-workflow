@@ -57,6 +57,20 @@
 #     restored to the caller's previous trap via `trap -p` / `eval`
 #     before every return path, so the caller may install its own
 #     outer trap without surprise clobbering.
+#   - Signal-handling limitation: while this helper is executing, its
+#     internal trap OVERRIDES the caller's signal traps for EXIT / INT
+#     / TERM / HUP. Signals delivered during the helper body (e.g.
+#     user Ctrl-C while `git push` is in flight) clean up the helper's
+#     internal tempfiles only — the caller's signal-driven cleanup
+#     (e.g. stash pop on SIGINT) is NOT invoked until after the helper
+#     returns and the caller's trap is restored. Callers that need
+#     signal-safe rollback during helper execution must either wrap
+#     the helper in their own subshell or accept best-effort cleanup.
+#   - Nested function `_wtgp_restore_caller_state` leaks into the
+#     caller's global scope (bash dynamic scoping). The underscore
+#     prefix marks it as a private helper: callers MUST NOT invoke it
+#     directly from outside `worktree_commit_push`, and MUST NOT
+#     redefine a function with the same name.
 #   - Caller must have ALREADY verified:
 #       * worktree exists at WORKTREE path
 #       * worktree HEAD is on BRANCH
@@ -175,8 +189,23 @@ worktree_commit_push() {
     return 3
   fi
 
-  local head_sha
-  head_sha=$(git -C "$worktree" rev-parse HEAD 2>/dev/null || echo unknown)
+  # head_sha capture: post-commit rev-parse should normally succeed. If it
+  # fails (corrupt worktree between commit and rev-parse, extremely rare),
+  # surface a WARNING rather than silently embedding "unknown" in the
+  # status line — otherwise the caller sees `head=unknown; push=ok` and
+  # treats it as a successful commit.
+  local head_sha head_err=""
+  head_err=$(mktemp /tmp/rite-wtgit-head-err-XXXXXX 2>/dev/null) || head_err=""
+  if head_sha=$(git -C "$worktree" rev-parse HEAD 2>"${head_err:-/dev/null}"); then
+    :
+  else
+    local head_rc=$?
+    echo "WARNING: git -C '$worktree' rev-parse HEAD failed post-commit (rc=$head_rc)" >&2
+    [ -n "$head_err" ] && [ -s "$head_err" ] && head -n 5 "$head_err" | sed 's/^/  git: /' >&2
+    echo "  head SHA will be reported as 'unknown' — the commit itself succeeded but the worktree may be corrupt" >&2
+    head_sha="unknown"
+  fi
+  [ -n "$head_err" ] && rm -f "$head_err"
 
   # Step 4: push using the caller-supplied branch (no silent
   # `rev-parse --abbrev-ref HEAD` fallback to literal "HEAD"). Push

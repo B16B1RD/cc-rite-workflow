@@ -56,9 +56,15 @@ fi
 # a relative path (e.g. `bash ./scripts/wiki-worktree-setup.sh` from a
 # subdirectory), because `$0` stays relative and `dirname` resolves it
 # relative to the new cwd. `BASH_SOURCE[0]` + `cd -P` anchors the path
-# to the script's own file location regardless of the caller's cwd,
-# mirroring the convention used across the other hook scripts
-# (session-start.sh / stop-guard.sh / work-memory-update.sh etc.).
+# to the script's own file location regardless of the caller's cwd.
+#
+# Naming convention note: sibling hook scripts (session-start.sh,
+# stop-guard.sh, work-memory-update.sh, etc.) use `SCRIPT_DIR` without
+# the underscore prefix and `cd` without `-P`. The underscore prefix
+# here marks this as a private lib-source helper (not exported for
+# external use), and `cd -P` is a defensive addition that resolves
+# symlinks to the script's physical location — both are supersets of
+# the sibling convention rather than drifts away from it.
 _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 repo_root=$(git rev-parse --show-toplevel)

@@ -389,8 +389,15 @@ if [ -d "$worktree_path" ]; then
       # No staged diff — files already match wiki branch. Clean up dev-tree
       # duplicates so the existing drift WARNING in ingest.md does not
       # re-flag them on the next /rite:wiki:ingest run.
+      # Symmetric with the rc=0/4 branch above: rm failures are surfaced so
+      # operators can diagnose read-only FS / permission denied. Otherwise
+      # stale raw files silently re-appear as pending on the next run.
       echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff (worktree path)"
-      for f in "${pending_files[@]}"; do rm -f "$f"; done
+      for f in "${pending_files[@]}"; do
+        if ! rm -f "$f"; then
+          echo "WARNING: failed to remove staged raw file from dev tree: $f (no-staged-diff path)" >&2
+        fi
+      done
       exit 0
       ;;
     *)
