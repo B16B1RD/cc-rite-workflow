@@ -858,7 +858,18 @@ WM_SOURCE="implement" \
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when working on a child Issue selected in Phase 1.6.
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically from `.rite-flow-state` (#497 — survives context compaction):
+
+```bash
+parent_issue_number=$(jq -r '.parent_issue_number // 0' .rite-flow-state 2>/dev/null) || parent_issue_number=0
+if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
+  echo "[CONTEXT] PARENT_ISSUE=none — skip 5.1.2"
+else
+  echo "[CONTEXT] PARENT_ISSUE=$parent_issue_number — execute 5.1.2"
+fi
+```
+
+Skip this section when `PARENT_ISSUE=none`.
 
 **5.1.2.1 Tasklist Update**
 
