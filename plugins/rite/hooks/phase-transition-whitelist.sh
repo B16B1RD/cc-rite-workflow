@@ -105,13 +105,17 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # Workflow Termination (prompt-engineer cycle-2 MEDIUM #1).
   ["phase5_post_metrics"]="phase5_completion"
 
-  # Phase 5.6 / 5.7: completion + parent completion
+  # Phase 5.6 / 5.7: completion + parent completion + parent close (via rite:issue:close)
   # "completed" is a terminal state reachable from multiple phases (post_metrics, completion,
   # parent_completion, post_parent_completion). The Post-completion block historically patched
   # phase="completed" directly after phase5_post_metrics, so we accept the direct transition
   # (prompt-engineer + devops CRITICAL #2).
+  # Phase 5.7.2 now invokes rite:issue:close as a sub-skill (Issue #534), adding
+  # phase5_parent_close / phase5_post_parent_close to the transition chain.
   ["phase5_completion"]="phase5_parent_completion completed"
-  ["phase5_parent_completion"]="phase5_post_parent_completion"
+  ["phase5_parent_completion"]="phase5_parent_close phase5_post_parent_completion"
+  ["phase5_parent_close"]="phase5_post_parent_close"
+  ["phase5_post_parent_close"]="phase5_post_parent_completion"
   ["phase5_post_parent_completion"]="completed"
 
   # Terminal: "completed" MAY re-enter phase5_completion only in /rite:resume scenarios.
