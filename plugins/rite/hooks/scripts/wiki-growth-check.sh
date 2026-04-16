@@ -392,6 +392,89 @@ if ! check_pr_raw_correspondence; then
   findings=$((findings + 1))
 fi
 
+# --- Comprehensive health check: raw count, page count, pending count, page stall (Issue #538) ---
+
+# Count raw source files on the wiki branch
+count_raw_sources() {
+  local raw_files raw_count
+  raw_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/raw/ 2>/dev/null) || raw_files=""
+  if [ -z "$raw_files" ]; then
+    raw_count=0
+  else
+    raw_count=$(printf '%s\n' "$raw_files" | grep -c '.' || true)
+  fi
+  echo "$raw_count"
+}
+
+# Count wiki page files on the wiki branch
+count_wiki_pages() {
+  local page_files page_count
+  page_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/pages/ 2>/dev/null) || page_files=""
+  if [ -z "$page_files" ]; then
+    page_count=0
+  else
+    page_count=$(printf '%s\n' "$page_files" | grep -c '.' || true)
+  fi
+  echo "$page_count"
+}
+
+# Count raw sources with ingested: false (pending ingest)
+# Checks YAML frontmatter of each raw source file via git show
+count_pending_raw() {
+  local raw_files pending_count file_path file_content
+  raw_files=$(git ls-tree --name-only -r "$git_log_target" -- .rite/wiki/raw/ 2>/dev/null) || raw_files=""
+  pending_count=0
+  if [ -n "$raw_files" ]; then
+    while IFS= read -r file_path; do
+      [ -z "$file_path" ] && continue
+      file_content=$(git show "${git_log_target}:${file_path}" 2>/dev/null) || continue
+      # Check YAML frontmatter for ingested: false
+      if printf '%s\n' "$file_content" | head -20 | grep -qE '^ingested:[[:space:]]*(false|no)'; then
+        pending_count=$((pending_count + 1))
+      fi
+    done <<< "$raw_files"
+  fi
+  echo "$pending_count"
+}
+
+# Detect page stall: raw sources are accumulating but pages are not growing
+# This catches the blind spot where Phase X.X.W fires (raw commit works)
+# but /rite:wiki:ingest never runs (pages never generated)
+check_page_stall() {
+  local raw_count page_count pending_count
+  raw_count=$(count_raw_sources)
+  page_count=$(count_wiki_pages)
+  pending_count=$(count_pending_raw)
+
+  log_info "wiki-growth-check: health-summary: raw_sources=$raw_count pages=$page_count pending=$pending_count"
+
+  # Page stall detection: raw sources exist but zero pages
+  if [ "$raw_count" -gt 0 ] && [ "$page_count" -eq 0 ]; then
+    echo "==> Page stall detected: $raw_count raw sources on '$wiki_branch' but 0 wiki pages generated"
+    echo "==> Pending raw sources (ingested: false): $pending_count"
+    echo "==> Hint: /rite:wiki:ingest may never have run, or ingest.md failed silently. Run /rite:wiki:ingest manually to trigger page generation."
+    return 1
+  fi
+
+  # Page stall detection: many pending raw sources relative to total
+  # Threshold: if pending > 50% of total raw AND pending >= 3, flag as stall
+  if [ "$raw_count" -gt 0 ] && [ "$pending_count" -ge 3 ]; then
+    local half_raw=$(( raw_count / 2 ))
+    if [ "$pending_count" -gt "$half_raw" ]; then
+      echo "==> Page stall detected: $pending_count of $raw_count raw sources are pending (ingested: false), only $page_count pages exist"
+      echo "==> Hint: raw sources are accumulating but pages are stagnating. Run /rite:wiki:ingest to process pending raw sources."
+      return 1
+    fi
+  fi
+
+  log_info "wiki-growth-check: page-stall: healthy (raw=$raw_count, pages=$page_count, pending=$pending_count)"
+  return 0
+}
+
+if ! check_page_stall; then
+  findings=$((findings + 1))
+fi
+
 # --- Final result ---
 echo "==> Total wiki-growth-check findings: $findings"
 if [ "$findings" -gt 0 ]; then
