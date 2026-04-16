@@ -4852,6 +4852,39 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 | 2 | Work memory contains `コマンド: /rite:issue:start` AND (`フェーズ: 実装作業中` OR `フェーズ: 品質検証`) | Within loop → Execute Phase 8 |
 | 3 | Otherwise (user directly input `/rite:pr:fix`) | Standalone execution → Skip Phase 8 |
 
+### 8.0 W Phase Completion Gate (Defense-in-Depth, #535)
+
+> **Purpose**: Prevent the LLM from outputting a result pattern (`[fix:pushed]` / `[fix:replied-only]` / etc.) without having executed Phase 4.6.W (Wiki Ingest). If Phase 4.6.W was executed, at least one `[CONTEXT] WIKI_INGEST_` sentinel MUST be present in the conversation context (emitted by Phase 4.6.W Step 1 skip path, Step 3 failure path, or Phase 4.6.W.2 success/failure paths). The complete absence of any sentinel indicates the LLM skipped Phase 4.6.W entirely.
+
+**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow) AND `wiki.enabled: true` in `rite-config.yml`. When wiki is disabled, W Phase is legitimately skipped (no sentinel expected) — pass the gate unconditionally.
+
+**Check**: Search the conversation context for any of the following sentinel patterns:
+
+- `[CONTEXT] WIKI_INGEST_DONE=1`
+- `[CONTEXT] WIKI_INGEST_SKIPPED=1`
+- `[CONTEXT] WIKI_INGEST_FAILED=1`
+- `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1`
+
+**Routing**:
+
+| Condition | Action |
+|-----------|--------|
+| At least one `WIKI_INGEST_` sentinel found | Gate passes — proceed to Phase 8.1 |
+| No sentinel found AND `wiki.enabled: true` | **ERROR**: W Phase was skipped. Execute the ACTION below |
+| No sentinel found AND `wiki.enabled: false` | Gate passes — wiki disabled, no sentinel expected |
+
+**On ERROR** (no sentinel found, wiki enabled):
+
+```
+ERROR: Phase 8.0 W Phase completion gate failed.
+No [CONTEXT] WIKI_INGEST_* sentinel found in conversation context.
+This means Phase 4.6.W (Wiki Ingest Trigger) was NOT executed.
+ACTION: Return to Phase 4.6.W and execute the Wiki Ingest Trigger before outputting the result pattern. Do NOT proceed to Phase 8.1 without a WIKI_INGEST_* sentinel.
+⚠️ LLM MUST NOT output [fix:pushed] or any other result pattern until Phase 4.6.W has been executed.
+```
+
+> **Enforcement note**: This gate is a prose instruction — `exit 1` in bash does NOT halt the LLM. The LLM MUST recognise the ERROR text and return to Phase 4.6.W. Note that the stop-guard whitelist (`phase-transition-whitelist.sh`) validates phase name transitions only and does NOT check for W Phase sentinel presence. This gate is therefore the **sole** defense layer against W Phase skip.
+
 ### 8.1 Output Pattern (Return Control to Caller)
 
 Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (defense-in-depth, fixes #709). This prevents stop-guard `error_count` from accumulating when the flow continues after this skill returns:
