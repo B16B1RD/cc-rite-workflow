@@ -671,10 +671,10 @@ fi
 
 `raw_list` のパスは Phase 2.2 で `.rite/wiki/` プレフィックス付き（例: `.rite/wiki/raw/reviews/20260410T...md`）で取得されているため、Phase 5.2 と同じ prefix 正規化を適用してから `sources[].ref` および Phase 6.0 の `skipped_refs` と比較します。`sources[].ref` は `raw/reviews/...` 形式（template.md の `{source_ref}` 規約参照）のため、両辺から `.rite/wiki/` を除去して突合します:
 
-1. `pages_list` の各 Wiki ページ本文を `git show` / `cat` で取得し、frontmatter `sources[].ref` を抽出
+1. `pages_list` の各 Wiki ページ本文を `git show` / `cat` で取得し、frontmatter `sources[].ref` を抽出して全ページ分を集約し `all_source_refs` として保持する（この集合は step 3(a) で参照される。**重要**: 本集合は `indexed_pages` とは別物。`indexed_pages` は Phase 5.2 で `index.md` の「ページ一覧」テーブルから抽出したページパス集合であり `sources[].ref` を含まない）
 2. `raw_list` の各 Raw Source について `.rite/wiki/` プレフィックスを除去した相対パス（`raw/reviews/...`）を計算
 3. 相対パスを以下の優先順で 3 分岐に振り分ける:
-   - **(a) 登録済み**: `indexed_pages` の `sources[].ref` のいずれかに含まれる → 何もしない（健全）
+   - **(a) 登録済み**: step 1 の `all_source_refs` のいずれかに含まれる → 何もしない（健全）
    - **(b) 未登録だが skip 記録あり**: Phase 6.0 の `skipped_refs` 集合に含まれる → Phase 6.3 の `unregistered_raw` として記録
    - **(c) 真の欠落**: 上記いずれにも該当しない → LLM が Raw Source 本文を読み経験則として価値がある内容か判定した上で Phase 6.3 の `missing_concept` として記録（単なるエラーログや空コメントは除外）
 
