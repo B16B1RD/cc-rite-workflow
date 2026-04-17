@@ -483,15 +483,27 @@ if [ -n "$log_content" ]; then
     | LC_ALL=C sort -u)
 fi
 
-# stdout 可視化（Phase 6.2 では会話文脈から値を参照する）
+# 集合本体を stdout に出力する（Phase 6.2 の (b) 分岐で LLM が会話コンテキストに保持する）。
+# bash 変数は Bash tool 呼び出し境界を超えると失われるため count だけでは不十分。
+# delimiter 付きで本体を出力し、LLM が `---skipped_refs_begin---` と `---skipped_refs_end---`
+# 間の行を集合として保持して Phase 6.2 の membership check に使う契約にする。
 if [ -n "$skipped_refs" ]; then
-  echo "skipped_refs_count=$(printf '%s\n' "$skipped_refs" | grep -c . || true)"
+  # awk での件数カウントは grep -c の IO error 吸収問題を回避する
+  count=$(printf '%s\n' "$skipped_refs" | awk 'NF>0 {n++} END {print n+0}')
+  echo "skipped_refs_count=$count"
+  echo "---skipped_refs_begin---"
+  printf '%s\n' "$skipped_refs"
+  echo "---skipped_refs_end---"
 else
   echo "skipped_refs_count=0"
+  echo "---skipped_refs_begin---"
+  echo "---skipped_refs_end---"
 fi
 ```
 
-**非ブロッキング契約**: `log.md` 読み出し失敗時は `skipped_refs=""` のまま継続し、全件 `missing_concept` として計上されます（旧動作との下位互換）。
+**非ブロッキング契約**: `log.md` 読み出し失敗時は `skipped_refs=""` のまま継続し、全件 `missing_concept` として計上されます（旧動作との下位互換）。ただし**読出失敗は silent にせず stderr に WARNING を出して可視化** する（後続ブロックで実装）。
+
+**LLM による集合保持の契約**: 上記 bash block の stdout に `---skipped_refs_begin---` / `---skipped_refs_end---` で挟まれた行を LLM が会話コンテキストに保持し、Phase 6.2 の (b) 分岐判定材料とする。行数が 0 件でも begin/end marker は必ず出力される（集合構築ステップが実行されたことの positive confirmation）。
 
 ### 6.1 Ingest 済み Raw Source の列挙
 
@@ -523,6 +535,8 @@ fi
    - **(a) 登録済み**: `indexed_pages` の `sources[].ref` のいずれかに含まれる → 何もしない（健全）
    - **(b) 未登録だが skip 記録あり**: Phase 6.0 の `skipped_refs` 集合に含まれる → Phase 6.3 の `unregistered_raw` として記録
    - **(c) 真の欠落**: 上記いずれにも該当しない → LLM が Raw Source 本文を読み経験則として価値がある内容か判定した上で Phase 6.3 の `missing_concept` として記録（単なるエラーログや空コメントは除外）
+
+**`skipped_refs` 集合の参照方法**: Phase 6.0 の bash block 終了後、LLM は stdout から `---skipped_refs_begin---` と `---skipped_refs_end---` で囲まれた行を抽出して会話コンテキストに集合として保持する。ファイルパスの比較は両辺を `raw/{type}/{filename}` 形式に正規化してから完全一致で判定する（`.rite/wiki/` プレフィックスを両辺から除去、log.md 記録時のプレフィックス有無の暗黙的 drift を吸収）。
 
 ### 6.3 検出結果の記録
 
