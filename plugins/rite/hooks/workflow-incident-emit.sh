@@ -17,7 +17,7 @@
 # Options:
 #   --type             incident type. Required. One of:
 #                        skill_load_failure | hook_abnormal_exit | manual_fallback_adopted
-#                        | wiki_ingest_skipped | wiki_ingest_failed
+#                        | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed
 #   --details          one-line incident description (required)
 #   --root-cause-hint  optional cause hypothesis (omitted from output if empty)
 #   --pr-number        PR number for iteration_id (defaults to 0 when not yet created)
@@ -66,9 +66,9 @@ fi
 
 case "$TYPE" in
   skill_load_failure|hook_abnormal_exit|manual_fallback_adopted) ;;
-  wiki_ingest_skipped|wiki_ingest_failed) ;;
+  wiki_ingest_skipped|wiki_ingest_failed|wiki_ingest_push_failed) ;;
   *)
-    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed)" >&2
+    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed)" >&2
     exit 1
     ;;
 esac

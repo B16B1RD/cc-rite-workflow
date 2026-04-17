@@ -25,7 +25,7 @@ sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
 | Placeholder | Source |
 |-------------|--------|
 | `{plugin_root}` | [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script) |
-| `{sentinel_type}` | From the skill's failure paths table (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped` (#524), `wiki_ingest_failed` (#524)) |
+| `{sentinel_type}` | From the skill's failure paths table (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped` (#524), `wiki_ingest_failed` (#524), `wiki_ingest_push_failed` (#555)) |
 | `{specific failure description}` | From the skill's failure paths table |
 | `{optional hypothesis}` | Optional root cause hint (may be empty) |
 | `{pr_number}` | Current PR number, or `0` if no PR exists yet |

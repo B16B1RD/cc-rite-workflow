@@ -255,9 +255,19 @@ wiki_branch="${wiki_branch:-wiki}"
 
 # --- Fetch index.md content ---
 index_content=""
+# Issue #555 fix: select a readable ref (local wiki branch > origin/wiki).
+# On fresh clones / separate worktrees, the local wiki branch may not exist
+# even when origin/wiki is available. Reading content via the bare branch
+# name (`git show wiki:...`) fails in that case with "fatal: invalid object
+# name 'wiki'". Mirror the ref-selection pattern used by cleanup.md Phase
+# 4.W.1 Step 2 and wiki-growth-check.sh to fall back to origin.
+ref=""
 if [[ "$branch_strategy" == "separate_branch" ]]; then
-  if ! git rev-parse --verify "$wiki_branch" >/dev/null 2>&1 \
-     && ! git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
+  if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
+    ref="$wiki_branch"
+  elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
+    ref="origin/$wiki_branch"
+  else
     echo "WARNING: wiki branch '$wiki_branch' not found — Wiki not initialized" >&2
     exit 0
   fi
@@ -269,9 +279,9 @@ if [[ "$branch_strategy" == "separate_branch" ]]; then
     echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
     _index_err=""
   fi
-  if ! index_content=$(git show "${wiki_branch}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+  if ! index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
     _index_rc=$?
-    echo "WARNING: cannot read index.md from branch '$wiki_branch' (git show rc=$_index_rc)" >&2
+    echo "WARNING: cannot read index.md from ref '$ref' (git show rc=$_index_rc)" >&2
     [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | sed 's/^/  /' >&2
     exit 0
   fi
@@ -437,11 +447,13 @@ while IFS=$'\t' read -r score title path domain summary updated confidence; do
       elif [ -n "${_git_show_err:-}" ]; then
         : > "$_git_show_err"  # truncate between iterations
       fi
-      if page_body=$(git show "${wiki_branch}:.rite/wiki/${path}" 2>"${_git_show_err:-/dev/null}"); then
+      # Issue #555 fix: use the `ref` selected above so origin/wiki fallback
+      # stays consistent between index.md (line 282) and per-page reads.
+      if page_body=$(git show "${ref}:.rite/wiki/${path}" 2>"${_git_show_err:-/dev/null}"); then
         :
       else
         _git_show_rc=$?
-        echo "WARNING: cannot read ${path} from wiki branch '${wiki_branch}' — index.md may be stale (git show rc=${_git_show_rc})" >&2
+        echo "WARNING: cannot read ${path} from ref '${ref}' — index.md may be stale (git show rc=${_git_show_rc})" >&2
         [ -n "$_git_show_err" ] && [ -s "$_git_show_err" ] && head -3 "$_git_show_err" | sed 's/^/  /' >&2
         page_body=""
       fi

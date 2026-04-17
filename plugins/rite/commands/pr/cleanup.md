@@ -1421,6 +1421,51 @@ Skill: rite:wiki:ingest
 [CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=cleanup_ingest
 ```
 
+**Push failure detection** (Issue #555): after the `rite:wiki:ingest` Skill invocation returns, inspect the ingest Skill's stdout lines emitted in this conversation context for the marker `push=failed` (written by `wiki-worktree-commit.sh` via ingest.md Phase 5.1 when `wiki-worktree-commit.sh` returns rc=4). When detected, the commit has landed on the local wiki branch but the origin push failed — AC-3 requires an observable sentinel so cleanup continues (loss-safe) while the incident layer can register the divergence.
+
+**LLM detection and substitution rule**: Claude must inspect the ingest Skill's output (which appears in the conversation context between Phase 4.W.2 invocation and this block) for a line matching the `push=failed` pattern. Typical positive match: `[wiki-worktree-commit] committed=1; branch=wiki; head=<sha>; push=failed`. Typical negatives: `push=ok`, `reason=no-pending`, or no `[wiki-worktree-commit]` status line at all (ingest skipped). Based on the detection result, substitute `{wiki_push_failed}` with either `"true"` (detected) or `"false"` (not detected). Do NOT rely on shell env vars — Claude Code's Bash tool does not persist state across tool calls.
+
+```bash
+# Claude substitutes {wiki_push_failed} with "true" or "false" based on ingest output inspection.
+# {pr_number} is substituted with the PR number from Phase 1. {plugin_root} is substituted per
+# plugin-path-resolution.md.
+wiki_push_failed="{wiki_push_failed}"
+
+# Resolve wiki_branch from rite-config.yml (this bash block is a separate invocation from
+# Phase 4.W.1 Step 2, so the shell variable from that step is out of scope). Same parser as
+# Phase 4.W.1 Step 2.
+wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exit}' rite-config.yml 2>/dev/null \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+[ -z "$wiki_branch" ] && wiki_branch="wiki"
+
+if [ "$wiki_push_failed" = "true" ]; then
+  # reason=commit_rc_4 で start.md Phase 5.6.2 の aggregation pattern と統一する (cleanup 固有情報は
+  # source= key で併記)。旧 `reason=commit_ok_push_failed` は aggregation table と drift していた
+  echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; source=cleanup_4W"
+  emit_err=$(mktemp /tmp/rite-wiki-pushfail-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+  trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
+  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type wiki_ingest_push_failed \
+      --details "wiki-worktree-commit.sh exited 4 (commit landed, push failed) during cleanup Phase 4.W" \
+      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+    [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
+  else
+    fallback_iter="{pr_number}-$(date +%s)"
+    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed; iteration_id=$fallback_iter"
+    echo "$fallback_sentinel"
+    echo "$fallback_sentinel" >&2
+    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+  fi
+  [ -n "$emit_err" ] && rm -f "$emit_err"
+  trap - EXIT INT TERM HUP
+  # ユーザー可視の push 失敗警告は Phase 5.1 Completion Report display rules に一元化した。
+  # ここでは sentinel emit のみを行い、重複メッセージを避ける (review.md / fix.md / close.md と同じ pattern)。
+fi
+```
+
+**Non-blocking guarantee**: push failure does NOT fail cleanup; the commit is preserved on the local wiki branch. The next cleanup / manual push retry can recover the origin state.
+
 **On failure** (ingest error or partial failure):
 
 Emit failure sentinel and continue to Phase 5 (loss-safe continuation):
@@ -1514,14 +1559,27 @@ GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更
 
 | Sentinel | `{wiki_ingest_check}` | 表示内容 |
 |----------|----------------------|----------|
-| `WIKI_INGEST_DONE=1` | `x` | (追加表示なし) |
+| `WIKI_INGEST_DONE=1` 単独 | `x` | (追加表示なし) |
+| `WIKI_INGEST_DONE=1` + `WIKI_INGEST_PUSH_FAILED=1` 併存 | ` ` (space) | **PUSH_FAILED 優先**: 下記の push 失敗警告を表示 (AC-3: commit は local wiki branch に保持、origin 側のみ divergence) |
+| `WIKI_INGEST_PUSH_FAILED=1` 単独 (DONE なし) | ` ` (space) | 下記の push 失敗警告を表示 |
 | `WIKI_INGEST_SKIPPED=1; reason=disabled` | `x` | `ℹ️ Wiki ingest スキップ (wiki.enabled=false)` |
 | `WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `x` | `ℹ️ Wiki ingest スキップ (wiki.auto_ingest=false)` |
 | `WIKI_INGEST_SKIPPED=1; reason=no_pending` | `x` | `ℹ️ Wiki ingest スキップ (pending raw source なし)` |
-| `WIKI_INGEST_FAILED=1` | ` ` (space) | 下記の警告を表示 |
+| `WIKI_INGEST_FAILED=1` | ` ` (space) | 下記の ingest 失敗警告を表示 |
 | sentinel なし (Phase 4.W 未実行) | ` ` (space) | `⚠️ Wiki ingest Phase が実行されませんでした` |
 
-When `WIKI_INGEST_FAILED` is detected, append the following after the checklist:
+**Sentinel 評価優先順位** (silent misclassification 防止): Phase 4.W.3 の push failure detection は ingest 自身の成功 (`WIKI_INGEST_DONE=1`) と併存可能な経路のため、両 sentinel が同時に emit された場合は `WIKI_INGEST_PUSH_FAILED=1` 行を優先して評価し push 失敗警告を表示する。上記テーブルは上から順に評価し最初にマッチした行を採用すること。
+
+`{wiki_branch}` の解決: 下記 `WIKI_INGEST_PUSH_FAILED` メッセージの `{wiki_branch}` は、Phase 4.W.1 Step 2 と同じ parser (`awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exit}' rite-config.yml ...`) で `rite-config.yml` の `wiki.branch_name` を解決する。未設定時のデフォルトは `wiki`。
+
+`WIKI_INGEST_PUSH_FAILED` が検出された場合 (`WIKI_INGEST_DONE` との併存有無を問わず)、チェックリストの後に以下を付記する:
+
+```
+⚠️ Wiki ingest: commit は local wiki branch に landed しましたが origin への push に失敗しました。
+  手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
+```
+
+`WIKI_INGEST_FAILED` が検出された場合、チェックリストの後に以下を付記する:
 
 ```
 ⚠️ Wiki ingest が失敗しました。raw source は wiki branch に保持されています。
