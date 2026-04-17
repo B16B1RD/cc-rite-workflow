@@ -43,3 +43,5 @@
 | 2026-04-17T00:49:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #553 cycle 1/2 で mktemp pattern 統一事例 (Phase 内対称化) のエビデンス追加 |
 | 2026-04-17T00:49:00+00:00 | ingest:skip | raw/reviews/20260417T003737Z-pr-553-cycle-3.md | cycle 3 final 0 findings 確認のみ、主要知見は cycle 1/2 と drift-check page で統合済み |
 | 2026-04-17T00:50:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=13 (全て log に ingest:skip 記録済み), broken_refs=0 |
+| 2026-04-17T04:30:00+00:00 | ingest:create | pages/anti-patterns/prose-design-without-backing-implementation.md | PR #559 review の 8 findings のうち 4 件 (shell 変数未定義 / gate 書式規約忘れ / sentinel consumer 不在 / prose-only safeguard) を集約した anti-pattern |
+| 2026-04-17T04:30:00+00:00 | ingest:create | pages/patterns/bash-portable-command-fallback.md | PR #559 review finding (sha1sum macOS 非可搬) を一般化した cross-platform bash コマンド fallback chain pattern |

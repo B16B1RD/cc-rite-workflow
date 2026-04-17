@@ -21,9 +21,11 @@
 | [_SCRIPT_DIR canonicalize: cd 前に BASH_SOURCE を絶対 path 化する](pages/patterns/script-dir-canonicalize-before-cd.md) | patterns | `cd "$repo_root"` 後の `$(dirname "$0")` は相対 path invocation で壊れ、sibling lib の source が `./scripts/lib/...` として解釈される。`_SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` を cd 前に実行して絶対 path 化するのが canonical convention。 | 2026-04-17T00:00:00+00:00 | high |
 | [Bash lib helper の contract は実装と同じ rigour で保証する](pages/patterns/bash-lib-helper-contract-rigour.md) | patterns | docstring で「caller owns shell options / outer trap preserved」と宣言するなら、実装側で `set -e` 強制 / `trap -` 消去をしてはいけない。`$-` + `trap -p`/`eval` で errexit と outer trap を保存復元する。signal override / nested function leak 等 subtle な挙動も Contract 節に明示化する。 | 2026-04-17T00:00:00+00:00 | high |
 | [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) | patterns | AC anchor / reasons table / Eval-order enumeration / bash 実装の emit 順は 3 重契約であり、`distributed-fix-drift-check.sh` Pattern-2/5 で機械検証する。PR #553 で 7 reasons + 2 fallbacks = 9 経路の drift 検出が実証され、カテゴリ非対称 (5 artifacts ↔ 4 mktemp blocks) の合流ケースも category 単位表記で対応。 | 2026-04-17T00:49:00+00:00 | high |
+| [散文で宣言した設計は対応する実装契約がなければ機能しない](pages/anti-patterns/prose-design-without-backing-implementation.md) | anti-patterns | 設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。PR #559 で 3 CRITICAL + 5 HIGH のうち 4 件が同じ根 (shell 変数未定義 / gate 書式規約忘れ / sentinel consumer 不在 / prose-only safeguard) に由来。実装レビュー時の trace 手順で検出する。 | 2026-04-17T04:30:00+00:00 | high |
+| [cross-platform bash コマンドは fallback chain で portable 化する](pages/patterns/bash-portable-command-fallback.md) | patterns | Linux coreutils と macOS BSD userland でコマンド可用性が異なる bash ユーティリティ (sha1sum / readlink -f / date -Iseconds 等) は `command -v` による存在確認を連鎖させた fallback chain で portable 化する。単一コマンド直書きは silent "command not found" regression の発生源。 | 2026-04-17T04:30:00+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 14
-- ドメイン別: patterns=7, heuristics=5, anti-patterns=2
-- 最終更新: 2026-04-17T00:49:00+00:00
+- 総ページ数: 16
+- ドメイン別: patterns=8, heuristics=5, anti-patterns=3
+- 最終更新: 2026-04-17T04:30:00+00:00
