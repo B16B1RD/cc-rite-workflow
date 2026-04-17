@@ -1421,6 +1421,40 @@ Skill: rite:wiki:ingest
 [CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=cleanup_ingest
 ```
 
+**Push failure detection** (Issue #555): after reading the success message above, inspect the ingest Skill's stdout lines emitted in this conversation context for `push=failed` (written by `wiki-worktree-commit.sh` via ingest.md Phase 5.1 when `wiki-worktree-commit.sh` returns rc=4). When detected, the commit has landed on the local wiki branch but the origin push failed — AC-3 requires an observable sentinel so cleanup continues (loss-safe) while the incident layer can register the divergence:
+
+```bash
+# LLM action: set WIKI_WORKTREE_PUSH_FAILED=1 in the environment IFF the ingest
+# skill output above contained a line matching `push=failed` (typical pattern:
+# `[wiki-worktree-commit] committed=1; branch=wiki; head=<sha>; push=failed`).
+# Leave WIKI_WORKTREE_PUSH_FAILED unset/empty otherwise so the sentinel block
+# below short-circuits.
+if [ "${WIKI_WORKTREE_PUSH_FAILED:-0}" = "1" ]; then
+  echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_ok_push_failed; phase=cleanup_4W"
+  emit_err=$(mktemp /tmp/rite-wiki-pushfail-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+  trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
+  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type wiki_ingest_push_failed \
+      --details "wiki-worktree-commit.sh exited 4 (commit landed, push failed) during cleanup Phase 4.W" \
+      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
+    [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
+  else
+    fallback_iter="{pr_number}-$(date +%s)"
+    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed; iteration_id=$fallback_iter"
+    echo "$fallback_sentinel"
+    echo "$fallback_sentinel" >&2
+    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
+  fi
+  [ -n "$emit_err" ] && rm -f "$emit_err"
+  trap - EXIT INT TERM HUP
+  echo "⚠️ Wiki ingest: commit は landed しましたが origin への push に失敗しました。"
+  echo "  手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}"
+fi
+```
+
+**Non-blocking guarantee**: push failure does NOT fail cleanup; the commit is preserved on the local wiki branch. The next cleanup / manual push retry can recover the origin state.
+
 **On failure** (ingest error or partial failure):
 
 Emit failure sentinel and continue to Phase 5 (loss-safe continuation):
