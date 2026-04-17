@@ -5,9 +5,11 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v1.0.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## ⚠️ Breaking Change (Unreleased)
+## ⚠️ 破壊的変更 (v1.0.0)
 
-`/rite:pr:review` の reviewer 呼び出しを `general-purpose` から **named subagent** (`rite:{reviewer_type}-reviewer`) 形式に切り替えました。これにより reviewer の役割定義が system prompt レベルで強制され、各 reviewer の `model` / `tools` frontmatter が実効化されます。最も顕著な影響: 9 個の reviewer agent が `model: opus` に pin されているため、これまで sonnet で `/rite:pr:review` を実行していたユーザーは強制 opus upgrade となりコストが増加します。詳細な背景、ロールバック手順、opt-out 方法は [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) を参照してください。トラッキング: [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358)。
+**v1.0.0 — サイクル数ベースの review-fix 縮退を全廃 (#557)**: `review.loop.severity_gating_cycle_threshold`、`review.loop.scope_lock_cycle_threshold`、`safety.max_review_fix_loops` の 3 つの設定キーは無効化されました。review-fix ループの終了条件は **0 findings** または **4 つの品質シグナル** (fingerprint 循環 / root-cause 不明 fix / cross-validation 不一致 / reviewer self-degraded) のいずれかの発火のみとなりました。既存ユーザーは `rite-config.yml` から該当 3 キーを削除してください（`/rite:lint` が削除されるまで警告します）。詳細な移行ガイドは [CHANGELOG](CHANGELOG.ja.md#100---2026-04-17) を参照。
+
+**v0.3 — Named subagent 形式の reviewer 呼び出し (#358)**: `/rite:pr:review` の reviewer 呼び出しを `general-purpose` から **named subagent** (`rite:{reviewer_type}-reviewer`) 形式に切り替えました。これにより reviewer の役割定義が system prompt レベルで強制され、各 reviewer の `model` / `tools` frontmatter が実効化されます。最も顕著な影響: 9 個の reviewer agent が `model: opus` に pin されているため、これまで sonnet で `/rite:pr:review` を実行していたユーザーは強制 opus upgrade となりコストが増加します。詳細な背景、ロールバック手順、opt-out 方法は [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) を参照してください。トラッキング: [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358)。
 
 ## なぜ "Rite" なのか
 

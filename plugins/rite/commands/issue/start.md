@@ -1011,8 +1011,17 @@ When `review.loop.convergence_monitoring` is enabled (default: `true`) and a pri
 
 ```bash
 pr_number="{pr_number}"
-comments=$(gh api repos/{owner}/{repo}/issues/${pr_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | .[-2:]' 2>/dev/null)
+gh_err=$(mktemp /tmp/rite-fp-gh-err-XXXXXX 2>/dev/null) || gh_err=""
+if ! comments=$(gh api --paginate repos/{owner}/{repo}/issues/${pr_number}/comments \
+    --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | .[-2:]' 2>"${gh_err:-/dev/null}"); then
+  echo "WARNING: gh api による PR コメント取得に失敗。fingerprint check を skip します (fail-open)" >&2
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | sed 's/^/  /' >&2
+  [ -n "$gh_err" ] && rm -f "$gh_err"
+  echo "[CONTEXT] FINGERPRINT_CHECK skip (gh api failure)"
+  exit 0
+fi
+[ -n "$gh_err" ] && rm -f "$gh_err"
+
 count=$(printf '%s' "$comments" | jq 'length' 2>/dev/null || echo 0)
 if [ "${count:-0}" -lt 2 ]; then
   echo "[CONTEXT] FINGERPRINT_CHECK skip (only ${count:-0} review comment(s) on PR)"
@@ -1036,10 +1045,20 @@ Similarity matching (when fingerprints do not exactly match):
 
 - Same file path **AND** same category **AND** Jaccard token-similarity of normalised messages > 0.7 → treat as the same fingerprint.
 
-Because this is semantic work, the LLM extracts findings from the Markdown body of each `📜 rite レビュー結果` comment (the table / per-reviewer sections) and computes fingerprints in-context. A short helper may be used to SHA-1 a string via bash:
+Because this is semantic work, the LLM extracts findings from the Markdown body of each `📜 rite レビュー結果` comment (the table / per-reviewer sections) and computes fingerprints in-context. A short helper may be used to SHA-1 a string via bash (portable across macOS BSD / Linux coreutils):
 
 ```bash
-printf '%s' "{file_path}:{category}:{normalized_message}" | sha1sum | awk '{print $1}'
+# sha1sum は Linux coreutils、shasum は macOS/BSD (Perl script 付属)。どちらも利用不可な場合は python3 fallback。
+sha1_portable() {
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha1sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 1 | awk '{print $1}'
+  else
+    printf '%s' "$1" | python3 -c 'import hashlib,sys; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())'
+  fi
+}
+sha1_portable "{file_path}:{category}:{normalized_message}"
 ```
 
 **Step 3**: Compare the two fingerprint sets.
@@ -1065,14 +1084,66 @@ Output a context marker so the next step can act:
 
 | Option | Action |
 |--------|--------|
-| 本 PR 内で再試行（推奨） | Proceed to review invocation. The cycling fingerprint(s) are retained for the next check — two more occurrences (= three cycles total with the same fingerprint) will re-fire this prompt |
-| 別 Issue として切り出す | Invoke `create-issue-with-projects.sh` with the persistent finding body; note the split in work memory; proceed to review |
-| PR を取り下げる | Close the PR as "not landing"; terminate the workflow via 5.6 |
-| 手動レビューへエスカレーション | Exit the loop and skip to Phase 5.5 (Ready for Review) so a human takes over |
+| 本 PR 内で再試行（推奨） | Proceed to review invocation (Step 5). Fingerprint 循環は次サイクルで同じ fingerprint が再検出されればまた escalate される (3 サイクル目の再出現) |
+| 別 Issue として切り出す | Execute the `create-issue-with-projects.sh` call shown below to file the persistent finding as a tracking Issue; note the split in work memory; then proceed to review invocation (Step 5) |
+| PR を取り下げる | Close the PR as "not landing" (`gh pr close {pr_number}`); skip Step 5; terminate the workflow via Phase 5.6 |
+| 手動レビューへエスカレーション | Skip Step 5; exit the review-fix loop and proceed to Phase 5.5 (Ready for Review) so a human takes over |
 
-> **Absolute safety limit (#557 D-02)**: If the loop somehow fails to fire Signals 1-4 for more than **100 iterations**, the orchestrator force-exits to Phase 5.6 with a `workflow_incident` sentinel. This limit is deliberately non-configurable and not surfaced in user-facing prompts — it exists solely to guard against a logic bug in the 4-signal mechanism.
+**Branching after user selection**:
 
-**Step 5**: Proceed to review invocation.
+| Selection | Next |
+|-----------|------|
+| 本 PR 内で再試行 | Step 5 (invoke `rite:pr:review`) |
+| 別 Issue として切り出す | Execute the bash below, then Step 5 |
+| PR を取り下げる | `gh pr close {pr_number}` → go directly to Phase 5.6 (skip Step 5) |
+| 手動レビューへエスカレーション | Go directly to Phase 5.5 (skip Step 5) |
+
+**Bash for "別 Issue として切り出す"**:
+
+```bash
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+cat <<'BODY_EOF' > "$tmpfile"
+## 概要
+
+レビューサイクル中に持続した finding を別 Issue として切り出しました (Quality Signal 1 発火)。
+
+## 元の finding
+{persistent_finding_body}
+
+## 関連
+
+- 元の PR: #{pr_number}
+BODY_EOF
+
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+  --arg title "review-split: {short_summary}" \
+  --arg body_file "$tmpfile" \
+  --argjson projects_enabled {projects_enabled} \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg priority "Medium" \
+  --arg complexity "S" \
+  '{
+    issue: { title: $title, body_file: $body_file },
+    projects: {
+      enabled: $projects_enabled,
+      project_number: $project_number,
+      owner: $owner,
+      status: "Todo",
+      priority: $priority,
+      complexity: $complexity,
+      iteration: { mode: "none" }
+    },
+    options: { source: "fingerprint_split", non_blocking_projects: true }
+  }'
+)")
+new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
+echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issue_number') として切り出しました: $new_issue_url"
+```
+
+**Step 5** (executed only when Step 4 routing is "本 PR 内で再試行" or "別 Issue として切り出す" after the split bash): Proceed to review invocation.
 
 Invoke `skill: "rite:pr:review"`.
 
@@ -1162,7 +1233,32 @@ After the review result is received, verify that the review was properly execute
 
 4. **When `reviewer_sections >= 1`**: Review quality verified. Proceed to Step 3.
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the review.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
+**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the review.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.1 regardless of detection result.
+
+**Step 3.1 (Quality Signal 3 & 4 Detection — #557)**: After review returns, grep the latest `📜 rite レビュー結果` PR comment AND conversation context for the following signal markers, then route accordingly:
+
+| Marker | Source | Signal |
+|--------|--------|--------|
+| `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement` | review.md Phase 5.2 (cross-validation disagreement + debate fails) | Signal 3 — cross-validation disagreement |
+| `### Reviewer self-assessment` section with `Status: degraded (quality-gate failure)` line inside the review body | Any reviewer's output (per `_reviewer-base.md` Finding Quality Guardrail) | Signal 4 — reviewer self-degraded |
+
+**Detection bash** (grep the latest review comment for Signal 4 section):
+
+```bash
+latest_review=$(gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | last | .body' 2>/dev/null) || latest_review=""
+signal4_hit=0
+if printf '%s' "$latest_review" | grep -qE '^### Reviewer self-assessment'; then
+  if printf '%s' "$latest_review" | grep -qE '^Status: degraded'; then
+    signal4_hit=1
+  fi
+fi
+echo "[CONTEXT] SIGNAL_4_HIT=$signal4_hit"
+```
+
+For Signal 3, grep the conversation context (already present from review.md stderr emit).
+
+**Routing** (when Signal 3 or Signal 4 fires): Present the **same 4-option `AskUserQuestion`** used by Phase 5.4.1.0 Step 4 (`本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション`). Apply the same branching table (see Phase 5.4.1.0 Step 4 "Branching after user selection"). When neither signal fires, proceed directly to Step 4.
 
 **Step 4**: Based on the review result pattern from `rite:pr:review`, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
 
@@ -1488,7 +1584,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 > 2. Root-cause-missing fix → `fix.md` Phase 3.2.1 (before every commit)
 > 3. Cross-validation disagreement → `review.md` Phase 5.2 + debate (during every review)
 > 4. Finding quality gate failure → `_reviewer-base.md` Finding Quality Guardrail (during every reviewer run)
-> A non-user-visible absolute safety limit of 100 iterations guards against logic bugs in the signal mechanism.
+> **Design intent (#557 D-02)**: There is intentionally no cycle-count safety limit. The 4 quality signals are the sole termination mechanism; if they fire correctly, convergence on 0 findings is reached, and if they don't, the user is escalated via `AskUserQuestion` and chooses manually. Hardening this with an additional iteration counter would reintroduce the cycle-count-based degradation that #557 explicitly removed.
 
 **Step 4**: Based on the fix result pattern from `rite:pr:fix` **and** the preceding review result pattern, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
 

@@ -522,14 +522,14 @@ The review-fix loop has two exit paths and no cycle-count-based hard limit:
 | 3 | Cross-validation disagreement | `review.md` Phase 5.2 + debate phase |
 | 4 | Reviewer self-degraded | `_reviewer-base.md` Finding Quality Guardrail |
 
-Non-configurable 100-iteration absolute safety limit exists as defense-in-depth for logic bugs.
+There is intentionally no cycle-count safety limit: the 4 quality signals are the sole termination mechanism. When they fire, the user chooses the next action via `AskUserQuestion`.
 
 **Fix settings (#506):**
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
-| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506)**. Retained for backward compatibility only; pinned to `false` and not referenced by any code path. Use `"batched"` or `"scope_lock"` strategy for non-convergence mitigation |
+| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506 / #557)**. Retained for backward compatibility only; pinned to `false` and not referenced by any code path. Non-convergence mitigation is now handled automatically by the 4 quality signals (#557) — no strategy configuration is needed |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
 

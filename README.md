@@ -7,9 +7,11 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v1.0.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## ⚠️ Breaking Change (Unreleased)
+## ⚠️ Breaking Changes (v1.0.0)
 
-`/rite:pr:review` now invokes reviewer agents as **named subagents** (`rite:{reviewer_type}-reviewer`) instead of `general-purpose`. This gives reviewer discipline stronger system-prompt-level enforcement and activates per-reviewer `model` / `tools` frontmatter. Most noticeable effect: 9 reviewers are pinned to `model: opus`, so users previously running reviews on sonnet will see forced opus upgrade and a cost increase. See [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) for rationale, rollback scenarios, and opt-out instructions. Tracked in [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358).
+**v1.0.0 — Cycle-count-based review-fix degradation removed (#557)**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored. The review-fix loop now terminates only on 0 findings or when one of four **quality signals** fires (fingerprint cycling / root-cause-missing fix / cross-validation disagreement / reviewer self-degraded). Existing users should remove the three keys from `rite-config.yml`; `/rite:lint` will warn until they are removed. See [CHANGELOG](CHANGELOG.md#100---2026-04-17) for the migration guide.
+
+**v0.3 — Named subagent reviewer invocation (#358)**: `/rite:pr:review` invokes reviewer agents as **named subagents** (`rite:{reviewer_type}-reviewer`) instead of `general-purpose`. This gives reviewer discipline stronger system-prompt-level enforcement and activates per-reviewer `model` / `tools` frontmatter. Most noticeable effect: 9 reviewers are pinned to `model: opus`, so users previously running reviews on sonnet will see forced opus upgrade and a cost increase. See [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) for rationale, rollback scenarios, and opt-out instructions. Tracked in [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358).
 
 ## Why "Rite"?
 

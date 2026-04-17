@@ -132,7 +132,8 @@ Before running lint, scan `rite-config.yml` for deprecated review-fix loop confi
 ```bash
 deprecated_found=""
 for key in severity_gating_cycle_threshold scope_lock_cycle_threshold max_review_fix_loops; do
-  if grep -qE "^[[:space:]]+${key}[[:space:]]*:" rite-config.yml 2>/dev/null; then
+  # 先頭 `#` で始まるコメント行は誤検出しないが、top-level (インデント 0) の key も検出対象に含める
+  if grep -qE "^[[:space:]]*${key}[[:space:]]*:" rite-config.yml 2>/dev/null; then
     deprecated_found="${deprecated_found}${key} "
   fi
 done

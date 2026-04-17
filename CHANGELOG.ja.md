@@ -21,7 +21,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 ### 破壊的変更
 
 - **サイクル数ベースの review-fix 縮退を全廃し、品質シグナル 4 要素に刷新** — **BREAKING CHANGE** (#557)
-  - **削除された設定キー** (root `rite-config.yml` および `plugins/rite/templates/config/rite-config.yml` の両方で):
+  - **削除された設定キー** (`rite-config.yml` から 3 キー削除。これらのキーは `plugins/rite/templates/config/rite-config.yml` には元々存在していなかった):
     - `review.loop.severity_gating_cycle_threshold`
     - `review.loop.scope_lock_cycle_threshold`
     - `safety.max_review_fix_loops`
@@ -33,13 +33,13 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
   - **新しい挙動**: review-fix ループは 2 つの出口しか持たなくなった — (a) 0 findings → `[review:mergeable]` / (b) 4 品質シグナルのいずれか発火 → `AskUserQuestion` escalate (`本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション`)。サイクル数による hard limit は完全に存在しない。
   - **4 つの品質シグナル**:
     1. 同一 finding 循環 — `start.md` Phase 5.4.1.0 で `file + category + normalize(message)` の SHA-1 fingerprint により検出。1 回の再出現で escalate。
-    2. root-cause 不明 fix — `fix.md` Phase 3.2.1 で commit body に `Root cause:` / `根本原因:` セクションがあるかを検査。欠落時は AskUserQuestion で追記 / 通過 / abort を選択。
+    2. root-cause 不明 fix — `fix.md` Phase 3.2.1 で commit body に `root-cause(scope):` action line または `decision(scope):` で root cause を明示した行があるかを LLM が意味的に判定。欠落時は AskUserQuestion で「Root cause を追記して再コミット（推奨）/ 意図的な補足コミットとして通過 / Abort」の 3 択。
     3. cross-validation 不一致 — `review.md` Phase 5.2 で 2 人以上の reviewer が同一 `file:line` に severity 2 段階以上の差異で指摘し、debate でも解消しない場合に escalate。
-    4. finding quality gate 不通過 — `_reviewer-base.md` に新規追加された `Finding Quality Guardrail` が bikeshedding / 防衛コード / hypothetical findings を output 前にフィルタ。survivor が 0 件になった reviewer は "degraded" を明示的に self-report。
+    4. finding quality gate 不通過 — `_reviewer-base.md` に新規追加された `Finding Quality Guardrail` が bikeshedding / 防衛コード / hypothetical / style-only findings を output 前にフィルタ。survivor が 0 件になった reviewer は `### Reviewer self-assessment` セクションで "degraded" を明示的に self-report し escalate する。
   - **finding fingerprint 仕様**: `sha1(normalize(file_path) + ":" + category + ":" + normalize(message))`。identifier マスキングと Jaccard token 類似度 > 0.7 による near-match 検出を含む。完全仕様は `start.md` Phase 5.4.1.0 を参照。
   - **major version bump**: 0.3.10 → 1.0.0 (6 version files 同期)。
   - **deprecation warning**: `/rite:lint` (Phase 0.5) が `rite-config.yml` に削除済み 3 キーが残存するかをスキャンし、検出時は stderr と最終レポートに警告を出力。値は runtime で silent に無視される。
-  - **absolute safety limit**: 100 iteration の非公開・非設定ガードが 4 シグナル機構のロジックバグに対する defense-in-depth として内蔵 (ユーザーには露出しない)。
+  - **サイクル数の安全上限は設けない (意図的)**: 非公開ガードを含めて cycle-count ベースの上限は一切存在しない。4 品質シグナルが唯一の終了メカニズムとして設計されており、隠し iteration counter の導入は本リリースのコア目的 (サイクル数縮退の全廃) と矛盾するため採用しない。
 
 ### 移行ガイド
 
@@ -57,7 +57,7 @@ safety:
 
 v1.0.0 では値は silent に無視されますが、`/rite:lint` は削除されるまで警告を出し続けます。機能的な代替はありません — 非収束は 4 つの品質シグナルが自動検出するため、サイクル数の閾値設定は不要になりました。
 
-これまで `max_review_fix_loops` の hard limit で暴走ループから脱出していた場合、同等の安全性は Quality Signal 1 (fingerprint 循環検知) が提供します。**2 回目**の同一 finding 出現で発火するため、サイクル数による抑制より早く escalate します。100 iteration の absolute safety limit は 4 シグナル機構自体のロジックバグに対する最終防衛線です。
+これまで `max_review_fix_loops` の hard limit で暴走ループから脱出していた場合、同等の安全性は Quality Signal 1 (fingerprint 循環検知) が提供します。**2 回目**の同一 finding 出現で発火するため、cycle-count による抑制よりも早く escalate します。
 
 ### 変更
 

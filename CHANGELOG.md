@@ -22,7 +22,7 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 ### BREAKING CHANGE
 
 - **Cycle-count-based review-fix degradation fully abolished; replaced by 4 quality signals** — **BREAKING CHANGE** (#557)
-  - **Removed configuration keys** (three keys, both in root `rite-config.yml` and `plugins/rite/templates/config/rite-config.yml`):
+  - **Removed configuration keys** (three keys from `rite-config.yml`; these keys were never present in `plugins/rite/templates/config/rite-config.yml`):
     - `review.loop.severity_gating_cycle_threshold`
     - `review.loop.scope_lock_cycle_threshold`
     - `safety.max_review_fix_loops`
@@ -34,13 +34,13 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
   - **New behavior**: the review-fix loop now has exactly two exit paths — (a) 0 findings → `[review:mergeable]`, or (b) any of the **four quality signals** fires → `AskUserQuestion` escalation (`本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション`).
   - **Four quality signals**:
     1. Same-finding cycling — detected in `start.md` Phase 5.4.1.0 via SHA-1 fingerprints of `file + category + normalized message`. One re-occurrence escalates.
-    2. Root-cause-missing fix — detected in `fix.md` Phase 3.2.1 by inspecting the commit body for `Root cause:` / `根本原因:` section before committing.
+    2. Root-cause-missing fix — detected in `fix.md` Phase 3.2.1 by an LLM-semantic check of the commit body for a `root-cause(scope):` action line (new Contextual Commits action type), a `decision(scope):` line that explicitly names the root cause, or a free-form `Root cause:` / `根本原因:` paragraph. Missing → `AskUserQuestion` 3-option prompt.
     3. Cross-validation disagreement — detected in `review.md` Phase 5.2 when two reviewers report the same `file:line` with severity gap ≥ 2 and debate fails to resolve.
-    4. Finding quality gate failure — new `Finding Quality Guardrail` in `_reviewer-base.md` filters bikeshedding / defensive / hypothetical findings before output; if nothing remains, reviewer self-reports as "degraded" and escalates.
+    4. Finding quality gate failure — new `Finding Quality Guardrail` in `_reviewer-base.md` filters bikeshedding / defensive / hypothetical / style-only findings before output; if nothing remains, reviewer self-reports as "degraded" via a `### Reviewer self-assessment` section and escalates.
   - **Finding fingerprint specification**: `sha1(normalize(file_path) + ":" + category + ":" + normalize(message))` with identifier masking and Jaccard token similarity > 0.7 for near-match detection. See `start.md` Phase 5.4.1.0 for the full spec.
   - **Major version bump**: 0.3.10 → 1.0.0 (6 version files synchronized).
   - **Deprecation warning**: `/rite:lint` (Phase 0.5) scans `rite-config.yml` for the three removed keys and emits a warning to stderr + final report when any are found. Keys are silently ignored at runtime.
-  - **Absolute safety limit**: 100-iteration non-configurable guard exists as defense-in-depth for logic bugs in the signal mechanism (not user-surfaced).
+  - **No cycle-count safety limit (by design)**: There is intentionally no hidden iteration guard. The 4 quality signals are the sole termination mechanism. Reintroducing an iteration counter would contradict the core goal of this release (removing cycle-count-based degradation).
 
 ### Migration guide
 
@@ -58,7 +58,7 @@ safety:
 
 The keys are silently ignored at runtime in v1.0.0 but `/rite:lint` will warn until they are removed. There is no functional replacement — non-convergence is now detected automatically by the four quality signals and no cycle-count threshold needs to be configured.
 
-If you previously relied on `max_review_fix_loops` hitting a hard limit to escape runaway loops, the same safety is now provided by Quality Signal 1 (fingerprint cycling) which fires on the **second** occurrence of any finding. The absolute safety limit of 100 iterations catches logic bugs in the signal mechanism.
+If you previously relied on `max_review_fix_loops` hitting a hard limit to escape runaway loops, the same safety is now provided by Quality Signal 1 (fingerprint cycling) which fires on the **second** occurrence of any finding — typically faster than any cycle-count threshold would have tripped.
 
 ### Changed
 

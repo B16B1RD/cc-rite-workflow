@@ -3135,28 +3135,36 @@ fix(review): {description}
 
 Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) from `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`.
 
-**Step 1**: Inspect the generated commit body for a root-cause section. Match either a Japanese or English header, case-insensitive, and permit trailing whitespace / colon variants:
+**Step 1 — Semantic LLM check (no shell variable dependency)**: The LLM examines the commit body it generated in Phase 3.2 and determines whether a root-cause explanation is present. Because shell variables do not persist across Bash tool invocations, this gate is intentionally LLM-semantic rather than bash-automated.
+
+A commit body passes the gate when **any** of the following is true:
+
+- It contains a `root-cause(scope): ...` action line (see `contextual-commits.md` Review-Fix Commit Mapping — new action type added for this gate)
+- It contains a `decision(scope): ...` action line whose text explicitly names the root cause (not just the symptom fixed)
+- A free-form body with a `Root cause:` / `根本原因:` prefix paragraph is present
+
+Emit one of the two context markers so downstream logic can route:
 
 ```bash
-# $commit_body は Phase 3.2 で生成した message text（trailer 含む全体）
-if printf '%s' "$commit_body" | grep -iE '^[[:space:]]*(Root cause|根本原因)[[:space:]]*[:：]' >/dev/null 2>&1; then
-  echo "[CONTEXT] ROOT_CAUSE_GATE=ok"
-else
-  echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
-fi
+# LLM-side determination: examine the commit body generated in Phase 3.2 and emit one of:
+echo "[CONTEXT] ROOT_CAUSE_GATE=ok"
+# or
+echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 ```
 
 **Step 2**: When `ROOT_CAUSE_GATE=missing`, warn the user via `AskUserQuestion` with exactly three options:
 
 | Option | Action |
 |--------|--------|
-| Root cause を追記して再コミット（推奨） | Prompt user for a short root-cause paragraph; prepend `Root cause: {paragraph}` to the commit body; re-invoke Step 1 (maximum one retry — further attempts fall through to the second option to avoid an infinite prompt loop) |
-| 意図的な補足コミットとして通過 | Keep the commit body as-is; record that the gate was intentionally bypassed in work memory `決定事項・メモ` |
+| Root cause を追記して再コミット（推奨） | Ask the user for a short root-cause paragraph; prepend `root-cause: {paragraph}` (or `decision(scope): ...` naming the root cause) to the commit body; re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 意図的な補足コミットとして通過 | Keep the commit body as-is; record `decision(scope): root-cause gate を意図的に bypass — {理由}` in the commit body AND in work memory `決定事項・メモ` so the rationale is machine-traceable |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
-**Step 3**: Defensive-commit / bikeshedding-style fixes that do not identify a root cause are expected to be rare. When a fix is purely cosmetic (e.g., typo in a docstring with no functional change), the user should select the second option and explicitly record the rationale.
+**Step 3**: Purely cosmetic fixes (typo in a docstring with no functional change) may legitimately select option 2. The bypass MUST be recorded so a later auditor can distinguish "no root cause needed" from "author forgot to identify root cause".
 
 > **Rationale (#557)**: Symptom-only fixes are a leading indicator of positive feedback loops in the review-fix cycle (fix introduces defensive code → reviewer finds issues in defensive code → fix adds more defensive code). Requiring a root cause at commit time is the earliest point where this pattern can be detected and halted.
+>
+> **Why LLM-semantic (not shell-automated)**: The commit body generated in Phase 3.2 is a template the LLM renders — it is not exported as a shell variable, and Bash tool invocations do not share state. A grep-based gate would either (a) always see an empty string and fire on every commit, or (b) require a brittle tempfile hand-off. Semantic LLM check is more robust.
 
 ### 3.3 Execute the Commit
 

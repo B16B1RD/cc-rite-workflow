@@ -99,9 +99,12 @@ fix(typo): correct variable name in auth handler
 | Source | → Action Type |
 |--------|---------------|
 | レビュー指摘の対応方針 | `decision(scope)` |
+| 指摘の根本原因（symptom ではなく root cause） | `root-cause(scope)` |
 | 対応しなかった指摘とその理由 | `rejected(scope)` |
 | 対応中に発見した制約 | `constraint(scope)` |
 | 対応中の発見事項 | `learned(scope)` |
+
+**`root-cause(scope)` action type (v1.0.0 #557)**: Quality Signal 2 (root-cause-missing fix detection) を満たすため、レビュー指摘の修正で **なぜその問題が起きたか** を明示する action line。`decision(scope)` が「何を選択したか」を表すのに対し、`root-cause(scope)` は「なぜ修正が必要になったか」を表す。commit body に `root-cause(scope): ...` 行が 1 行含まれていれば fix.md Phase 3.2.1 Root Cause Gate を通過する。`decision(scope)` のテキスト中で root cause を明示している場合も通過する (両方書く必要はない)。対症 fix (symptom-only、例: null check 追加) は `root-cause` を書けないため、このゲートで自然に検出される。
 
 ## Scope Derivation Rules
 
