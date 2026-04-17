@@ -77,7 +77,7 @@ The command prefix `rite` was chosen for:
 | `/rite:wiki:init` | Initialize Experience Wiki (branch, directories, templates) | None |
 | `/rite:wiki:query` | Search Wiki pages for heuristics by keyword and inject into context | `<keywords>` |
 | `/rite:wiki:ingest` | Extract heuristics from raw sources and update Wiki pages | `[source]` |
-| `/rite:wiki:lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), broken cross-refs | `[--auto] [--stale-days <N>]` |
+| `/rite:wiki:lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs | `[--auto] [--stale-days <N>]` |
 | `/rite:resume` | Resume interrupted work | `[issue_number]` |
 | `/rite:skill:suggest` | Analyze context and suggest applicable skills | `[--verbose\|--filter]` |
 

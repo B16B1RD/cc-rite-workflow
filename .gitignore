@@ -45,7 +45,7 @@ temp/
 # 最終防御線として develop の PR diff への混入を抑止する。
 #
 # ⚠️ same_branch 戦略 (rite-config.yml の wiki.branch_strategy: "same_branch") ユーザーへ:
-# 本 .gitignore 変更を pull すると、以下の `git add .rite/wiki/...` 系呼び出し (最低 4 箇所) が
+# 本 .gitignore 変更を pull すると、以下の `git add .rite/wiki/...` 系呼び出しが
 # "paths are ignored" で exit 1 → hard fail します。実装は配列展開 (`git add -- "${arr[@]}"`)
 # の場合もあるため、行番号ハードコードは drift しやすいので Phase / 役割単位のアンカーで案内します:
 #   - plugins/rite/hooks/scripts/wiki-ingest-commit.sh 内
@@ -54,6 +54,8 @@ temp/
 #   - plugins/rite/commands/wiki/ingest.md 内の raw 書き出し phase (/rite:wiki:ingest)
 #   - plugins/rite/commands/wiki/lint.md の Phase 8.2 `log_path` 書き込みロジック
 #     (separate_branch は wiki-worktree-commit.sh 経由、same_branch は git add .rite/wiki/log.md 直接呼出)
+#   - plugins/rite/references/wiki-patterns.md の same_branch 向け `git add .rite/wiki/` サンプル
+#     (複数箇所、同ドキュメントを参考実装として流用する際は同じく negation が必要)
 # **本 .gitignore を pull する前に** 必ず以下の negation エントリを追加してください:
 #   # 必須 (parent directory 除外を解除。これがないと配下ファイルを再包含できません):
 #   !.rite/wiki/
