@@ -518,7 +518,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 **Output format example (interview skipped)**:
 
 ```
-⚠️ caller (create.md): この return tag は turn 境界ではなく継続トリガです。SAME response turn 内で Phase 0.6 (Task Decomposition Decision) → Delegation Routing → terminal sub-skill に進行してください。Issue は未作成のため、ここで停止すると workflow が中断します。DO NOT stop.
+> ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 [interview:skipped]
 ```
@@ -526,10 +526,12 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 **Output format example (interview completed)**:
 
 ```
-⚠️ caller (create.md): この return tag は turn 境界ではなく継続トリガです。SAME response turn 内で Phase 0.6 (Task Decomposition Decision) → Delegation Routing → terminal sub-skill に進行してください。Issue は未作成のため、ここで停止すると workflow が中断します。DO NOT stop.
+> ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 [interview:completed]
 ```
+
+> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。
 
 Result patterns:
 

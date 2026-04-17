@@ -56,20 +56,32 @@ When this command is executed, follow the phases below in order.
 
 > **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) and the global reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` for the full contract. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section in the **same response turn**.
 
-**Self-check**: After every sub-skill returns, ask yourself: "Has `[create:completed:{N}]` been output?" If not, you are NOT done — keep going.
-
 ### Pre-check list (Issue #552 — mandatory before ending any response turn)
 
-Before ending the current response turn for **any** reason (including after observing a sub-skill's return tag), run this 4-item checklist in order. Ending the turn while any item is `NO` is a **protocol violation**.
+**Enforcement coupling**: protocol violation 時は `stop-guard.sh` が block し、`manual_fallback_adopted` workflow_incident sentinel が stderr に echo されて Phase 5.4.4.1 で post-hoc 検出される (AC-7)。つまり「turn を閉じたつもりが stop-guard に止められる」という体験で強制される。
+
+**Evaluation context** (2 場面で同じチェックリストを使う):
+
+| 場面 (a): sub-skill return 直後 | 場面 (b): turn 終了直前 |
+|---|---|
+| まだワークフロー中途。`NO` は「次の継続ステップを実行すべき」を意味する | 終端到達確認。`NO` は **protocol violation** (工程を飛ばして停止しようとしている) |
+
+場面 (a) では Item 1-3 が `NO` でも正常 (まだ Issue 未作成段階)。場面 (b) では 4 項目すべて `YES` が turn 終了の必要条件。
+
+**Procedure**: 下記 4 項目を上から順に評価。最初にマッチした `If NO` 列のアクションを実行。Item 4 (直前の sub-skill tag) を先に確認することで Item 1 の曖昧さ (どの sub-skill を呼ぶか) を事前に解消する。
 
 | # | Check | If NO, do |
 |---|-------|-----------|
-| 1 | Has `[create:completed:{N}]` been output as the absolute last line? | Continue — run the next Pre-write + sub-skill invocation. |
-| 2 | Has the user-facing `✅ Issue #{N} を作成しました` message been displayed? | Continue — the terminal sub-skill (create-register Phase 4.2 / create-decompose Phase 1.0.2) has not completed. |
-| 3 | Has the `.rite-flow-state` been deactivated (`active: false`, `phase: create_completed`)? | Continue — run the terminal sub-skill or Mandatory After Delegation Step 2. |
-| 4 | Was the last sub-skill tag one of `[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]`? | If `[interview:*]`: this is a **continuation trigger** (not a stop). Immediately run 🚨 Mandatory After Interview. If `[create:completed:{N}]`: run Mandatory After Delegation self-check (Step 1/2 no-ops, Step 3 idempotent). |
+| 0 | 直前の sub-skill return tag (routing trigger) | If `[interview:skipped]` / `[interview:completed]`: **continuation trigger** — immediately run 🚨 Mandatory After Interview (Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]`: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。 |
+| 1 | `[create:completed:{N}]` が最終行として出力済みか? | 場面 (a) では `NO` でも legitimate — 次の Pre-write + sub-skill invocation に進む。場面 (b) では `NO` は terminal sub-skill が未完了 — Mandatory After Delegation Step 3 (defense-in-depth として完了メッセージ + 次のステップを出力) を実行。 |
+| 2 | ユーザー向け完了メッセージ (register 形式 `✅ Issue #{N} を作成しました: {url}` / decompose 形式 `✅ Issue #{N} を分解して {count} 件の Sub-Issue を作成しました: {url}` / orchestrator Step 3 形式 `✅ Issue #{N} を作成しました` のいずれか) が表示済みか? | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal sub-skill の完了メッセージが欠落 — Mandatory After Delegation Step 3 を実行 (idempotent)。**literal pattern**: いずれか 1 形式を含んでいれば YES 判定。decompose 形式は「を作成しました」が末尾に来るため `Issue #{N} を作成しました` substring は含まない (完全 literal マッチは不要)。 |
+| 3 | `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: create_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — terminal sub-skill を呼ぶか Mandatory After Delegation Step 2 を実行。 |
 
-**Rule**: All four items MUST be `YES` before the turn ends. A single `NO` means the workflow is mid-flight and stopping abandons the deliverable. This checklist supplements — does not replace — the existing Anti-pattern / Correct-pattern sections below.
+**Rule**: 4 項目すべて `YES` が turn 終了の必要条件 **ただし場面 (b) においてのみ**。場面 (a) では `NO` は「次のステップに進め」を意味する正常シグナル。全 `YES` は terminal state (Issue 作成完了 + sentinel 出力 + flow-state deactivate) を保証する。
+
+**Responsibility split**: 本 Pre-check list は turn 終了直前の手続的検証、Anti-pattern / Correct-pattern sections は sub-skill return 直後の推奨/禁止パターン (重複ではなく補完関係)。Pre-check list の各項目が `NO` の場合は Anti-pattern のルール (「turn を閉じない」) に従い即時継続すること。
+
+**Self-check alias** (後方互換): `Has [create:completed:{N}] been output?` = Pre-check Item 1。下流の Mandatory After sections から本 Pre-check list を参照する際は Item 1-3 の終端条件をまとめて評価する。
 
 ### Anti-pattern (what NOT to do)
 
@@ -696,21 +708,33 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "none" --active false
 ```
 
-**Step 3**: Output the user-facing completion message and next steps (idempotent — if already output by the terminal sub-skill, this duplication is harmless):
+**Step 3 (conditional defense-in-depth)**: Output user-facing completion message and next steps **only if the terminal sub-skill did NOT emit them**. In the Normal path the terminal sub-skill (`create-register` Phase 4.2 / `create-decompose` Phase 1.0.2) already outputs the completion message with URL, so this Step 3 is typically a **no-op**. Execute only when the self-check detected missing output:
 
-```
-✅ Issue #{number} を作成しました
+- **Register 経路** (single Issue created via `create-register`): if the sub-skill's completion message `✅ Issue #{N} を作成しました: {url}` is missing, output the fallback form:
+  ```
+  ✅ Issue #{number} を作成しました
 
-次のステップ:
-1. `/rite:issue:start {number}` で作業を開始
-2. 作業完了後 `/rite:pr:create` で PR 作成
-```
+  次のステップ:
+  1. `/rite:issue:start {number}` で作業を開始
+  2. 作業完了後 `/rite:pr:create` で PR 作成
+  ```
+- **Decompose 経路** (parent + sub-Issues via `create-decompose`): if the sub-skill's completion message `✅ Issue #{parent} を分解して {count} 件の Sub-Issue を作成しました: {url}` is missing, output the fallback form:
+  ```
+  ✅ Issue #{parent_number} を分解して {count} 件の Sub-Issue を作成しました
 
-Where `{number}` is the Issue number extracted from the sub-skill's result pattern.
+  次のステップ:
+  1. `/rite:issue:start #{first_sub_issue}` で最初の Sub-Issue から作業開始
+  2. `/rite:issue:list` で Sub-Issue 一覧を確認
+  ```
 
-> **Issue #552 reminder**: The completion message `✅ Issue #{N} を作成しました` is the user-facing "done" signal. The `[create:completed:{N}]` sentinel marker is for hooks/scripts and remains the absolute last line. Both are required — missing either is a protocol violation.
+Where `{number}` / `{parent_number}` / `{first_sub_issue}` / `{count}` are extracted from the sub-skill's result pattern and work memory.
 
-**Step 4**: The workflow is now complete. Run the Pre-check list (top of this document) one final time — all four items MUST be `YES`. Stop is allowed only after cleanup.
+> **Issue #552 reminder**: `[create:completed:{N}]` sentinel marker is for hooks/scripts and **always** remains the absolute last line. The user-facing `✅` completion message precedes it. Terminal sub-skills emit both in the correct order — this Step 3 only fires as defense-in-depth when that output path failed.
+
+**Step 4 (terminal gate)**: Run the Pre-check list (top of this document) one final time in **場面 (b) mode** — all four items MUST be `YES`. Termination conditions:
+
+- 場面 (b) Item 2 が `NO` のまま Step 3 を実行しても still `NO` → loop 防止のため **manual 停止** し、stop-guard 経由で `workflow_incident` を emit させる (sub-skill / orchestrator 双方で完了メッセージ出力が失敗した異常経路)
+- それ以外 (全 `YES`) → Stop is allowed after cleanup.
 
 ---
 
