@@ -1,0 +1,204 @@
+# Bash Cross-Boundary State Transfer Patterns
+
+このドキュメントは `plugins/rite/commands/wiki/*.md` (特に `lint.md` / `ingest.md`) で採用されている
+**Bash tool 呼び出し境界を跨いで状態を LLM に伝達する契約パターン**を canonical 定義として集約する。
+
+Skill tool / Bash tool 呼び出しは独立 subprocess として動作するため、シェル変数は呼び出し境界を越えて
+保持されない。LLM が後続 Phase で参照する必要がある値は **stdout 経由で明示的に emit** し、LLM が
+会話コンテキストから読み取る契約にする必要がある。本ドキュメントはその共通 pattern を文書化する。
+
+---
+
+## Pattern 1: Multi-Value Enum via `key=value` Stdout
+
+<a id="pattern-1-multi-value-enum-via-key-value-stdout"></a>
+
+### 問題
+
+Bash block 内で分岐処理した結果 (成功 / 複数の失敗カテゴリ) を、後続の別 Bash block や LLM 完了レポート
+Phase で参照する必要がある。シェル変数 (`$log_read_ok` 等) は Bash tool 呼び出し境界を越えて保持されない。
+
+典型例: 「log.md 読み出し成功 / legitimate absence / 真の IO error / branch_strategy fail-fast」の 4 状態を
+区別したい。単純な boolean (`ok/not-ok`) では legitimate absence と IO error を混同し、false positive を
+生む (skip 済み raw を欠落概念としてカウントする等)。
+
+### 解決
+
+値を **enum (固定値集合)** として定義し、bash block 末尾で stdout に `key=value` 形式で出力する:
+
+```bash
+# 4 値 enum を変数として保持 (初期値 "unknown" は fail-fast 経路でのみ残る、後段未到達)
+log_read_ok="unknown"
+
+case "$branch_strategy" in
+  separate_branch)
+    if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"$log_err"); then
+      log_read_ok="true"
+    else
+      if [ -s "$log_err" ] && grep -qE "does not exist|fatal: invalid object name" "$log_err"; then
+        log_read_ok="absent"   # legitimate absence (fresh branch / ENOENT)
+      else
+        log_read_ok="io_error" # 真の IO error (permission / 破損 / race)
+      fi
+    fi
+    ;;
+  # ...
+esac
+
+# 境界を跨ぐため stdout に emit
+echo "log_read_ok=$log_read_ok"
+```
+
+LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続 Phase (完了レポート、次 Phase の分岐) で参照する。
+
+### 設計原則
+
+| 原則 | 理由 |
+|------|------|
+| **enum 値は固定有限集合** | 自由文字列だと LLM 解釈にブレが生じ、後続分岐が非決定論的になる |
+| **初期値は "unknown" 等の "未到達" sentinel** | fail-fast exit 経路で enum が set されなかったことを明示する |
+| **値は lowercase の snake_case** | shell/awk/regex でのマッチングを単純化 |
+| **stderr ではなく stdout に emit** | stderr は WARNING / ERROR 専用とし、状態 emit と diagnostic を分離 |
+| **`[CONTEXT]` prefix を使う選択肢もある** | 人間と LLM の両方から識別しやすくしたい場合 (`[CONTEXT] log_read_ok=absent`) |
+
+### 参照実装 (2026-04 時点)
+
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `log_read_ok` 4 値 enum (unknown / true / absent / io_error)
+- 同 Phase 2.2 — `index_read_ok` (true / false) の 2 値 enum
+- `plugins/rite/commands/pr/review.md` Phase 6.1.a — `JSON_SAVED=true|false`、`FILE_TIMESTAMP=<ts>` の
+  `[CONTEXT]` prefix 版。prefix を付けることで Phase 6.1.c が grep 可能になる
+
+---
+
+## Pattern 2: Marker-Delimited Multi-Value Block
+
+<a id="pattern-2-marker-delimited-multi-value-block"></a>
+
+### 問題
+
+列挙値 (集合・リスト) を境界越えで伝達する必要があるが、リスト要素数が不定で `key=value,value,value` の
+CSV 形式では要素内の `,` エスケープで複雑化する。また 0 件のとき空文字列で silent に「値未定義」と
+区別できず、legitimate な 0 件 (true zero) と read 失敗を混同するリスクがある。
+
+### 解決
+
+**begin/end marker** で囲んだ block を stdout に出力する。0 件時も marker 自体は必ず出力することで
+positive confirmation になる:
+
+```bash
+# 0 件時も marker は必ず出力する (silent 未定義と区別するため)
+echo "---skipped_refs_begin---"
+printf '%s\n' "$skipped_refs" | sort -u
+echo "---skipped_refs_end---"
+
+# skipped_refs が空でも begin/end marker 自体は出力されるため、LLM は
+# 「marker はあるが中身 0 行」を「legitimate 0 件」と明示的に判定できる。
+# marker 自体が無い場合は「bash block が途中で異常終了した」と判定する。
+```
+
+LLM 側は会話コンテキストから 2 つの marker に挟まれた範囲を正規表現で抽出:
+
+```
+^---skipped_refs_begin---$\n((?:.*\n)*?)^---skipped_refs_end---$
+```
+
+### 設計原則
+
+| 原則 | 理由 |
+|------|------|
+| **marker 文字列は 3 連ハイフン囲み** | Markdown の水平線 (`---`) と衝突しにくい `---xxx_begin---` 形式 |
+| **block 内は 1 行 1 要素** | CSV より扱いやすく、マルチバイト・特殊文字のエスケープ不要 |
+| **空 block でも marker 自体は出力** | silent 未定義 (= bash 途中 crash) と legitimate 0 件を区別する positive confirmation |
+| **block 内で `sort -u` 等の正規化**を行う | 重複要素・順序非決定性による LLM parse 結果の揺れを抑える |
+
+### 参照実装 (2026-04 時点)
+
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `---skipped_refs_begin---` / `---skipped_refs_end---` で
+  `ingest:skip` 済み raw の集合を伝達
+
+---
+
+## Pattern 3: Legitimate Absence vs IO Error Classification
+
+<a id="pattern-3-legitimate-absence-vs-io-error-classification"></a>
+
+### 問題
+
+「ファイルが無い」には 2 種類ある:
+
+1. **Legitimate absence**: fresh branch で log.md が未作成 / blob not found — これは正常状態で 0 件扱いが妥当
+2. **真の IO error**: permission denied / blob 破損 / wiki_branch 消失 race — これは false positive 警告を
+   表示する必要がある
+
+単純に `cmd || fallback_to_empty` で扱うと両方を同じ「空集合」として処理してしまい、IO error 時に
+silent に「0 件」と誤認する。
+
+### 解決
+
+stderr を tempfile に退避し、**stderr pattern matching** で legitimate absence / io_error を区別する:
+
+```bash
+log_err=$(mktemp /tmp/rite-XXXXXX)
+
+if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"$log_err"); then
+  log_read_ok="true"
+else
+  # 2 primary pattern + 2 safety pattern = 4 pattern 網羅
+  if [ -s "$log_err" ] && grep -qE "does not exist|path '.+' exists on disk, but not in|Not a valid object name|fatal: invalid object name '[^']*:\\.rite/wiki/log\\.md'" "$log_err"; then
+    log_read_ok="absent"    # legitimate absence — skipped_refs="" は妥当
+  else
+    log_read_ok="io_error"  # 真の IO error — WARNING 表示して false positive リスクを可視化
+    echo "WARNING: ..." >&2
+    head -3 "$log_err" | sed 's/^/  /' >&2
+  fi
+fi
+
+rm -f "$log_err"
+```
+
+### 設計原則
+
+| 原則 | 理由 |
+|------|------|
+| **stderr 退避** | 標準的な `2>/dev/null` では失敗原因が区別できない |
+| **primary pattern + safety pattern の併用** | 現行ツール (git 2.x 等) の exact wording + 旧バージョン / 将来 wording 変更への safety margin |
+| **pattern 不一致は io_error 扱い** | 知らないエラーを silent に absence と誤認するより、WARNING で可視化 |
+| **sub-path (stderr 退避自体も失敗) にも WARNING を出す** | primary 経路との diagnostic 対称性、rc 値を silent に失わない |
+
+### 参照実装 (2026-04 時点)
+
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `log_read_ok` enum の absent / io_error 判別
+- `plugins/rite/commands/wiki/lint.md` Phase 2.3 — `index_read_ok` の同型判別 (より簡易な 2 値 enum)
+
+---
+
+## Instantiation Checklist
+
+新規 Bash tool block で本 pattern 群を利用する際の確認項目:
+
+- [ ] 境界越えで必要な値はすべて stdout (または `[CONTEXT]` prefix 付き stdout) に emit している
+- [ ] enum 値は固定有限集合 (snake_case) で、`unknown` 等の "未到達" sentinel を初期値にしている
+- [ ] 列挙値を伝達する場合は begin/end marker を使い、0 件でも marker 自体は出力する
+- [ ] ファイル読み出しの absence と io_error を区別する場合、stderr pattern matching を使っている
+- [ ] pattern 不一致 (未知エラー) は io_error 扱いで WARNING を出している
+- [ ] stderr 退避自体が失敗する sub-path にも WARNING がある (primary 経路との対称性)
+- [ ] `[CONTEXT]` prefix を使う場合、LLM / caller が grep する形式 (`[CONTEXT] KEY=value;...`) で統一
+
+---
+
+## Regression History
+
+本 pattern 群は複数回の regression を経て現在の形に収束した:
+
+- **PR #547 / #556 (Wiki worktree 化 / origin/wiki fallback)**: Wiki branch / raw source の読み出しで
+  legitimate absence と IO error を混同し、fresh branch で「絶大な missing=N 件」を誤報する regression が
+  発生。Phase 3 (classification) を追加して解消。
+- **PR #564 (Issue #563 lint 2 カテゴリ分離)**: 本 pattern 群を集約。`log_read_ok` 4 値 enum の導入に
+  あわせて、pattern 1-3 を独立ドキュメントとして切り出した。
+
+---
+
+## Related References
+
+- `plugins/rite/commands/pr/references/bash-trap-patterns.md` — signal-specific trap + cleanup の canonical
+  定義。本 pattern 群と併用する際の組み合わせ方を示す

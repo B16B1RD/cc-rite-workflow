@@ -111,6 +111,31 @@ cleanup 関数の責務は **rm -f などの cleanup 操作のみ**であり、e
 `rm -f "${var:-}"` は `var` が未定義/空文字列のときに `rm -f ""` の silent no-op となる。
 これにより、cleanup 関数が mktemp 失敗経路や早期 exit 経路で呼ばれても安全に動作する (defense-in-depth)。
 
+### BSD/macOS rm の `rm -f ""` 対応 (空引数ガード variant)
+
+`rm -f "${var:-}"` は GNU rm では空引数を silent no-op として扱うが、一部の BSD/macOS rm
+実装 (coreutils 非採用環境) では stderr に `cannot remove ''` を出力する場合がある。
+portable に保ちたい場合は、代わりに以下の明示的な空引数ガードを使う:
+
+```bash
+_rite_<phase>_cleanup() {
+  [ -n "${var1:-}" ] && rm -f "$var1"
+  [ -n "${var2:-}" ] && rm -f "$var2"
+}
+```
+
+この variant は特に以下の条件を両方満たす site で推奨する:
+
+- cleanup 関数が mktemp 失敗経路を通る可能性がある (= 変数に空文字列が入ったまま cleanup に到達する)
+- BSD/macOS ユーザーが本プラグインを実行する可能性がある (`plugins/rite/` は multi-OS target)
+
+本 variant を採用している参照実装 (2026-04 時点):
+
+- `plugins/rite/commands/wiki/lint.md` Phase 2.2 (`_rite_wiki_lint_phase2_cleanup`)
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_p60_cleanup`)
+
+GNU rm のみをターゲットとする site (Linux-only CI 等) では `rm -f "${var:-}"` のままで問題ない。
+
 ### パス先行宣言 → trap 先行設定 → mktemp の順序
 
 mktemp を先に実行して trap を後追いで設定すると、**mktemp 成功〜trap 設定間の race window**で
