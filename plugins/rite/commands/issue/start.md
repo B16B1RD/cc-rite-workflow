@@ -1010,17 +1010,24 @@ When `review.loop.convergence_monitoring` is enabled (default: `true`) and a pri
 **Step 1**: Fetch the two most recent `📜 rite レビュー結果` PR comments (this cycle's + previous cycle's). If fewer than 2 exist, skip (nothing to compare yet):
 
 ```bash
+# ⚠️ gh api --paginate + --jq は各ページ独立適用のため併用できない
+# (gh の仕様: --paginate は複数ページを stdout に stream 出力し、--jq は各ページに独立適用される)。
+# 代わりに --paginate --slurp で全ページを単一 JSON array に統合し、外側の jq で filter する。
+# pipefail を有効化して pipeline 途中の失敗も捕捉する。
+set -o pipefail
 pr_number="{pr_number}"
 gh_err=$(mktemp /tmp/rite-fp-gh-err-XXXXXX 2>/dev/null) || gh_err=""
-if ! comments=$(gh api --paginate repos/{owner}/{repo}/issues/${pr_number}/comments \
-    --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | .[-2:]' 2>"${gh_err:-/dev/null}"); then
-  echo "WARNING: gh api による PR コメント取得に失敗。fingerprint check を skip します (fail-open)" >&2
+if ! comments=$(gh api --paginate --slurp repos/{owner}/{repo}/issues/${pr_number}/comments 2>"${gh_err:-/dev/null}" \
+    | jq 'add | [.[] | select(.body | contains("📜 rite レビュー結果"))] | .[-2:]'); then
+  echo "WARNING: gh api による PR コメント取得または jq filter に失敗。fingerprint check を skip します (fail-open)" >&2
   [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | sed 's/^/  /' >&2
   [ -n "$gh_err" ] && rm -f "$gh_err"
-  echo "[CONTEXT] FINGERPRINT_CHECK skip (gh api failure)"
+  set +o pipefail
+  echo "[CONTEXT] FINGERPRINT_CHECK skip (gh api or jq failure)"
   exit 0
 fi
 [ -n "$gh_err" ] && rm -f "$gh_err"
+set +o pipefail
 
 count=$(printf '%s' "$comments" | jq 'length' 2>/dev/null || echo 0)
 if [ "${count:-0}" -lt 2 ]; then

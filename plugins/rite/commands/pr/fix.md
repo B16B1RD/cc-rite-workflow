@@ -3157,7 +3157,7 @@ echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 | Option | Action |
 |--------|--------|
 | Root cause を追記して再コミット（推奨） | Ask the user for a short root-cause paragraph; prepend `root-cause: {paragraph}` (or `decision(scope): ...` naming the root cause) to the commit body; re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
-| 意図的な補足コミットとして通過 | Keep the commit body as-is; record `decision(scope): root-cause gate を意図的に bypass — {理由}` in the commit body AND in work memory `決定事項・メモ` so the rationale is machine-traceable |
+| 意図的な補足コミットとして通過 | Prepend `decision(scope): root-cause gate を意図的に bypass — {理由}` to the commit body (this is the bypass rationale recorded alongside the commit for machine-traceability) AND append the same rationale to work memory `決定事項・メモ`. The "bypass" is still recorded — just via `decision(scope)` instead of `root-cause(scope)` |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
 **Step 3**: Purely cosmetic fixes (typo in a docstring with no functional change) may legitimately select option 2. The bypass MUST be recorded so a later auditor can distinguish "no root cause needed" from "author forgot to identify root cause".
