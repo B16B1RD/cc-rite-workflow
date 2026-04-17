@@ -52,3 +52,4 @@
 | 2026-04-17T08:55:00+00:00 | ingest:skip | raw/reviews/20260417T084700Z-pr-562.md | cycle 5 final mergeable 確認のみ、独自知見なし |
 | 2026-04-17T08:55:00+00:00 | ingest:skip | raw/fixes/20260417T082346Z-pr-562.md | cycle 1 fix 主要知見は identity-reference-documentation-unification.md に統合済み |
 | 2026-04-17T08:55:00+00:00 | ingest:skip | raw/fixes/20260417T084423Z-pr-562.md | cycle 5 recommendation-driven fix 主要知見は identity-reference-documentation-unification.md に統合済み |
+| 2026-04-17T08:55:30+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=50 (大半は ingest:skip 済み raw で sources.ref 未登録状態、log.md に skip 記録あり), broken_refs=0 |
