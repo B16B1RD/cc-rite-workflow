@@ -1141,12 +1141,14 @@ if [ -d "$review_results_dir" ]; then
   done
   if [ ${#matched_files[@]} -gt 0 ]; then
     # rm の stderr を独立 tempfile に退避し、失敗時に可視化する (silent failure 禁止)
-    if ! matched_files_rm_err=$(mktemp /tmp/rite-cleanup-matched-rm-err-XXXXXX); then
+    # mktemp 構文は Phase 2.5 内 4 ブロック (matched_files / state_file / cycle_state / legacy) で
+    # `mktemp ... 2>/dev/null) || { ... }` 構文に統一 (PR #553 review feedback、Issue #551)
+    matched_files_rm_err=$(mktemp /tmp/rite-cleanup-matched-rm-err-XXXXXX 2>/dev/null) || {
       echo "WARNING: matched_files rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
       echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err; pr=${pr_number}" >&2
       echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
       matched_files_rm_err=""
-    fi
+    }
     if rm -f "${matched_files[@]}" 2>"${matched_files_rm_err:-/dev/null}"; then
       echo "✅ レビュー結果ファイルを削除しました: ${#matched_files[@]} 件 (PR #${pr_number})" >&2
     else
@@ -1173,12 +1175,13 @@ fi
 state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
 # state_file rm は独立した stderr 退避 tempfile を持つ。matched_files rm 側と変数を分離することで、
 # 両経路の失敗詳細が二重障害時にも混線せず個別に保全される。
-if ! state_file_rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX); then
+# mktemp 構文は Phase 2.5 内 4 ブロックで `mktemp ... 2>/dev/null) || { ... }` 構文に統一 (PR #553 review feedback)
+state_file_rm_err=$(mktemp /tmp/rite-cleanup-state-rm-err-XXXXXX 2>/dev/null) || {
   echo "WARNING: state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
   echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_state_file; pr=${pr_number}" >&2
   echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
   state_file_rm_err=""
-fi
+}
 # state file の存在を事前チェックし、実削除と no-op でメッセージを分岐する
 state_file_existed=0
 [ -f "$state_file" ] && state_file_existed=1
@@ -1228,6 +1231,13 @@ fi
 # 対称化された error handling (mktemp + stderr 退避 + non-blocking warning)。
 legacy_cycle_state_file=".rite/fix-cycle-state.json"
 if [ -f "$legacy_cycle_state_file" ]; then
+  # incident response 用に mtime を捕捉してログ出力 (生成元トレース手段、PR #553 review feedback)
+  # GNU stat (Linux) と BSD stat (macOS) の両対応。失敗時は "unknown" を出力して non-blocking に続行
+  legacy_cycle_mtime=$(stat -c '%y' "$legacy_cycle_state_file" 2>/dev/null \
+    || stat -f '%Sm' "$legacy_cycle_state_file" 2>/dev/null \
+    || echo "unknown")
+  echo "ℹ️  legacy fix-cycle state file の mtime: $legacy_cycle_mtime ($legacy_cycle_state_file)" >&2
+  echo "[CONTEXT] LEGACY_CYCLE_STATE_MTIME=$legacy_cycle_mtime; pr=${pr_number}" >&2
   legacy_cycle_state_rm_err=$(mktemp /tmp/rite-cleanup-legacy-cycle-rm-err-XXXXXX 2>/dev/null) || {
     echo "WARNING: legacy cycle state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_legacy_cycle; pr=${pr_number}" >&2
