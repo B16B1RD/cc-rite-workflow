@@ -1404,6 +1404,14 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 
 ### 4.W.2 Invoke Wiki Ingest
 
+**MUST**: `/rite:wiki:ingest` の invoke は本 step の必須処理であり、**時間的制約・context 残量・セッション経過を理由にした skip は禁止**。skip が許される唯一の条件は Phase 4.W.1 で判定済みの「設定値による disable」「pending raw source が 0 件」などの機械的 Skip condition のみ。LLM の自己判断による省略は identity 違反である。
+
+> **Anti-pattern**: 「cleanup がすでに長いので wiki ingest は次回にしよう」「context が圧迫しているので wiki 起動を飛ばそう」と判断すること。これらは品質を犠牲にした expediency であり、Wiki 経路が silent skip される主要な原因である（Issue #560）。
+>
+> **Correct pattern**: Phase 4.W.1 で `pending_count >= 1` が確定したら、例外なく下記の Skill invocation を実行する。継続困難な場合は `/clear` + `/rite:resume` をユーザーに案内してセッションを継続させる。
+>
+> **Identity reference**: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `clear_resume_is_canonical` / `quality_over_expediency` principle を参照。
+
 Invoke the `/rite:wiki:ingest` Skill to process pending raw sources into Wiki pages:
 
 ```

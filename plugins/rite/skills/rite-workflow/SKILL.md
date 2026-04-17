@@ -51,6 +51,18 @@ When activated, this skill provides:
    - Reduce excessive AskUserQuestion usage
    - See [references/common-principles.md](./references/common-principles.md) for details
 
+## Workflow Identity (品質 > 時間/context)
+
+rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
+
+| 禁止事項 | 正規経路 |
+|---------|---------|
+| 「時間が足りないので X を省略します」 | 手順どおり実行 |
+| 「context が圧迫しているので要約します」 | 手順どおり実行 |
+| 「残量が不安なので review を切り上げます」 | `/clear` + `/rite:resume` をユーザーに案内 |
+
+詳細と Anti-pattern / Correct Pattern は [references/workflow-identity.md](./references/workflow-identity.md) を参照。各 command (start / review / fix / ready / lint / cleanup / create / resume 等) からも同 reference を引いている。
+
 ## Workflow State Detection
 
 Detect current state from:

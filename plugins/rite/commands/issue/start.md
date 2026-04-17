@@ -552,6 +552,10 @@ Start→Phase 5 (end-to-end). Later→terminate, resume via Phase 2.2.
 
 The e2e flow must minimize context consumption to complete within a single session. Each sub-skill has an **E2E Output Minimization** section that reduces output when called from this flow.
 
+> **⚠️ Output minimization ≠ step omission**: "minimize output" とは中間テキストの冗長な説明を削減することであり、**phase / step / MUST 処理を skip することではない**。時間・context を理由にワークフロー step を省略する誘惑は強いが、それは identity 違反である。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` であり、LLM が自己判断で step を短縮・省略する経路は存在しない。
+>
+> **Identity reference**: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `quality_over_expediency` principle を参照。
+
 **Orchestrator rules** (apply throughout Phase 5):
 
 1. **Minimize intermediate text output**: Between tool calls, output only essential status updates (1-2 lines max). Skip explanations, summaries, and guidance text that the user doesn't need during automated flow.

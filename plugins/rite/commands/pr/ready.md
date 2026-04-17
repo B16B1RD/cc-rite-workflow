@@ -156,7 +156,7 @@ End processing.
 
 ### 2.1 Confirm with User
 
-> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review.
+> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review. Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` principle 参照。
 
 Confirm using `AskUserQuestion`:
 

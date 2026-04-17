@@ -20,6 +20,8 @@ Analyze PR changes and dynamically load expert skills to perform a multi-reviewe
 
 When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent execution) runs in **full** — only Phase 5-7 **output** is minimized to reduce context window consumption:
 
+> **⚠️ "Output minimization" は処理短縮ではない**: minimize されるのは Phase 5-7 の **人間向け表示** のみで、Phase 4 の sub-agent parallel execution、Phase 6 の PR コメント投稿、Phase 7 の recommendations AskUserQuestion 等の処理本体は standalone と同等に実行する。時間・context を理由にした sub-agent 省略 / parallel の直列化 / AskUserQuestion 省略は identity 違反である。Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)。
+
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Phase 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
@@ -45,12 +47,12 @@ When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent exe
 > **⚠️ Scope limitation**: This command does NOT check or report hooks registration status (`.claude/settings.local.json`). Hooks registration is exclusively handled by `/rite:issue:start` Phase 5.0. Do NOT independently check hooks state, do NOT output messages about hooks being unregistered, and do NOT mention hooks registration in any output to the user.
 
 > **⚠️ Anti-Degradation Guardrail — レビュー品質縮退の絶対禁止**:
-> このコマンドは、呼び出し回数・コンテキスト残量・前回レビュー結果の有無に**一切関係なく**、常にフルレビューを実行しなければならない。以下の行為は明示的に禁止する:
+> このコマンドは、呼び出し回数・context 残量・前回レビュー結果の有無に**一切関係なく**、常にフルレビューを実行しなければならない。以下の行為は明示的に禁止する:
 >
-> - **スコープ縮退の禁止**: 「コンテキスト効率のため前回指摘の修正確認に絞る」「差分が小さいため確認のみ」等の理由でレビュー範囲を狭めること
+> - **スコープ縮退の禁止**: 「context 効率のため前回指摘の修正確認に絞る」「差分が小さいため確認のみ」等の理由でレビュー範囲を狭めること
 > - **レビュアー数の削減禁止**: 「2回目以降だから1人で十分」等の理由で選定済みレビュアーを減らすこと
 > - **Verification mode への暗黙フォールバック禁止**: `verification_mode: false`（デフォルト）のとき、verification mode 相当の動作（前回指摘の修正確認 + リグレッションチェックのみ）を行うこと
-> - **品質とコンテキスト効率のトレードオフ禁止**: レビュー品質はコンテキスト最適化より**常に**優先される。コンテキスト圧迫を理由にレビュー品質を犠牲にすることは本末転倒であり、許容しない
+> - **品質と context 効率のトレードオフ禁止**: レビュー品質は context 最適化より**常に**優先される。context 圧迫を理由にレビュー品質を犠牲にすることは本末転倒であり、許容しない
 >
 > re-review（fix 後の再レビュー）は初回レビューと**完全に同等**の品質で実行すること。全レビュアーをサブエージェントで並列起動し、PR 全体の差分を対象にフルレビューを行う。
 
