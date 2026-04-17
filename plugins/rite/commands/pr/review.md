@@ -47,7 +47,7 @@ When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent exe
 > **⚠️ Scope limitation**: This command does NOT check or report hooks registration status (`.claude/settings.local.json`). Hooks registration is exclusively handled by `/rite:issue:start` Phase 5.0. Do NOT independently check hooks state, do NOT output messages about hooks being unregistered, and do NOT mention hooks registration in any output to the user.
 
 > **⚠️ Anti-Degradation Guardrail — レビュー品質縮退の絶対禁止**:
-> このコマンドは、呼び出し回数・コンテキスト残量・前回レビュー結果の有無に**一切関係なく**、常にフルレビューを実行しなければならない。以下の行為は明示的に禁止する:
+> このコマンドは、呼び出し回数・context 残量・前回レビュー結果の有無に**一切関係なく**、常にフルレビューを実行しなければならない。以下の行為は明示的に禁止する:
 >
 > - **スコープ縮退の禁止**: 「コンテキスト効率のため前回指摘の修正確認に絞る」「差分が小さいため確認のみ」等の理由でレビュー範囲を狭めること
 > - **レビュアー数の削減禁止**: 「2回目以降だから1人で十分」等の理由で選定済みレビュアーを減らすこと

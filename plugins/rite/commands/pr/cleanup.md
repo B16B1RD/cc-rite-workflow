@@ -1404,7 +1404,7 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 
 ### 4.W.2 Invoke Wiki Ingest
 
-**MUST**: `/rite:wiki:ingest` の invoke は本 step の必須処理であり、**時間的制約・コンテキスト残量・セッション経過を理由にした skip は禁止**。skip が許される唯一の条件は Phase 4.W.1 で判定済みの「設定値による disable」「pending raw source が 0 件」などの機械的 Skip condition のみ。LLM の自己判断による省略は identity 違反である。
+**MUST**: `/rite:wiki:ingest` の invoke は本 step の必須処理であり、**時間的制約・context 残量・セッション経過を理由にした skip は禁止**。skip が許される唯一の条件は Phase 4.W.1 で判定済みの「設定値による disable」「pending raw source が 0 件」などの機械的 Skip condition のみ。LLM の自己判断による省略は identity 違反である。
 
 > **Anti-pattern**: 「cleanup がすでに長いので wiki ingest は次回にしよう」「context が圧迫しているので wiki 起動を飛ばそう」と判断すること。これらは品質を犠牲にした expediency であり、Wiki 経路が silent skip される主要な原因である（Issue #560）。
 >
