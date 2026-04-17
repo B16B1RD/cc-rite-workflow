@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-17T00:49:00+00:00"
+updated: "2026-04-17T08:55:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -24,6 +24,10 @@ sources:
     ref: "raw/reviews/20260417T002317Z-pr-553.md"
   - type: "reviews"
     ref: "raw/reviews/20260417T003119Z-pr-553-cycle-2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260417T083042Z-pr-562.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260417T083649Z-pr-562.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling"]
 confidence: high
 ---
@@ -84,10 +88,21 @@ PR #550 cycle 3 では `wiki-ingest-commit.sh` 内で同種の `rm -f` operation
 
 PR #553 cycle 1 レビューで、`cleanup.md` Phase 2.5 内の mktemp 構文が `if ! var=$(mktemp ...); then` 系 (matched_files / state_file) と `var=$(mktemp ... 2>/dev/null) || { ... }` 系 (cycle_state / legacy) で混在している点を複数 reviewer が独立指摘。cycle 2 で統一実装が適用された。**隣接 reference との対称化 (cycle_state 系に揃える)** が優先されるケースでは、Phase 全体での統一を次 PR に分離するのが scope 管理上望ましいが、同一 Phase 内では canonical pattern に揃えるのがレビュー収束コストを下げる。mktemp は `${var:-fallback}` パターンと組み合わせるため、後者 (`2>/dev/null) || { ... }` 形式) の方が signal-specific trap 統合と整合する。
 
+### 用語統一スコープへの拡張 (PR #562 cycle 1-3 での evidence)
+
+PR #562 (workflow identity reference 新規追加) で asymmetric fix transcription が **ファイル内コード分岐**から **同一 blockquote 内の類義語群** に拡張して観測された:
+
+- cycle 1: `workflow-identity.md` で `コンテキスト残量` → `context 残量` 統一。`SKILL.md` / `commands/pr/cleanup.md` / `commands/pr/review.md` の同一表現が drift として残留
+- cycle 2: 上記 3 ファイルで `コンテキスト残量` を統一。同一 blockquote 内の類義語 (`コンテキスト効率` / `コンテキスト最適化` / `コンテキスト圧迫`) は手付かず
+- cycle 3: 同一 blockquote 内の類義語を統一して収束
+
+**学習**: 本 anti-pattern は「対称位置のコード分岐」だけでなく「**対称位置の用語・類義語**」にも適用される。cycle 1 で単一コミット内に文脈類義語群を列挙・一括統一していれば cycle 2-3 が不要だった。詳細な用語統一スコープ設計は [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md) 参照。
+
 ## 関連ページ
 
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](../patterns/drift-check-anchor-prose-code-sync.md)
+- [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md)
 
 ## ソース
 
@@ -101,3 +116,5 @@ PR #553 cycle 1 レビューで、`cleanup.md` Phase 2.5 内の mktemp 構文が
 - [PR #550 cycle 3 fix (symmetric error handling 一般化)](raw/fixes/20260416T214823Z-pr-550.md)
 - [PR #553 cycle 1 review (mktemp pattern 混在指摘)](raw/reviews/20260417T002317Z-pr-553.md)
 - [PR #553 cycle 2 review (mktemp 統一後)](raw/reviews/20260417T003119Z-pr-553-cycle-2.md)
+- [PR #562 cycle 2 fix (統一範囲の波及漏れ解消)](raw/fixes/20260417T083042Z-pr-562.md)
+- [PR #562 cycle 3 fix (同一 blockquote 内類義語統一)](raw/fixes/20260417T083649Z-pr-562.md)

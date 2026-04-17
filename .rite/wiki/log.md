@@ -45,3 +45,10 @@
 | 2026-04-17T00:50:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=13 (全て log に ingest:skip 記録済み), broken_refs=0 |
 | 2026-04-17T04:30:00+00:00 | ingest:create | pages/anti-patterns/prose-design-without-backing-implementation.md | PR #559 review の 8 findings のうち 4 件 (shell 変数未定義 / gate 書式規約忘れ / sentinel consumer 不在 / prose-only safeguard) を集約した anti-pattern |
 | 2026-04-17T04:30:00+00:00 | ingest:create | pages/patterns/bash-portable-command-fallback.md | PR #559 review finding (sha1sum macOS 非可搬) を一般化した cross-platform bash コマンド fallback chain pattern |
+| 2026-04-17T08:55:00+00:00 | ingest:create | pages/heuristics/identity-reference-documentation-unification.md | PR #562 cycle 1-5 で識別した identity / reference document 用語統一の 5 sub-heuristics 統合ページ (scope drift / self-description / 表記揺れ / bullet 粒度 / enumeration drift / AC metadata) |
+| 2026-04-17T08:55:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #562 cycle 2-3 の用語類義語群スコープへの一般化 (文脈類義語群も asymmetric transcription 対象) |
+| 2026-04-17T08:55:00+00:00 | ingest:skip | raw/reviews/20260417T082023Z-pr-562.md | cycle 1 review 主要知見は identity-reference-documentation-unification.md に統合済み |
+| 2026-04-17T08:55:00+00:00 | ingest:skip | raw/reviews/20260417T084133Z-pr-562.md | cycle 4 mergeable convergence 確認のみ、独自知見なし |
+| 2026-04-17T08:55:00+00:00 | ingest:skip | raw/reviews/20260417T084700Z-pr-562.md | cycle 5 final mergeable 確認のみ、独自知見なし |
+| 2026-04-17T08:55:00+00:00 | ingest:skip | raw/fixes/20260417T082346Z-pr-562.md | cycle 1 fix 主要知見は identity-reference-documentation-unification.md に統合済み |
+| 2026-04-17T08:55:00+00:00 | ingest:skip | raw/fixes/20260417T084423Z-pr-562.md | cycle 5 recommendation-driven fix 主要知見は identity-reference-documentation-unification.md に統合済み |

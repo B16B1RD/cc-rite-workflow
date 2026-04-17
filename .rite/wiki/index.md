@@ -7,7 +7,7 @@
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
 | [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) | heuristics | 修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。 | 2026-04-17T00:15:00+00:00 | high |
-| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる failure mode。PR #548 で 6 cycle の review-fix ループ (21→17→2→7→3→0) の dominant pattern として実測。PR #550 で symmetric error handling、PR #553 で Phase 内 mktemp pattern 統一へ一般化。 | 2026-04-17T00:49:00+00:00 | high |
+| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる failure mode。PR #548 で 6 cycle の review-fix ループ (21→17→2→7→3→0) の dominant pattern として実測。PR #550 で symmetric error handling、PR #553 で Phase 内 mktemp pattern 統一、PR #562 で用語・類義語群スコープへ一般化。 | 2026-04-17T08:55:00+00:00 | high |
 | [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) | anti-patterns | bash の `!` 演算子は rc を binary 反転するため `if ! cmd; then rc=$?` の `$?` は常に 0 を捕捉する。`set +e; cmd; rc=$?; set -e; case` による明示 3 値分離が canonical。 | 2026-04-16T19:37:16Z | high |
 | [stderr ノイズ削減: truncate ではなく selective surface で解く](pages/heuristics/stderr-selective-surface-over-truncate.md) | heuristics | success path の stderr ノイズを `2>/dev/null` や全 truncate で消すと legitimate warning も silent drop する。git の `-q` で informational 抑制 + grep filter で warning/hint/error 行のみ selective surface する責務分離が正解。PR #550 で multi-step 処理の per-step tempfile 分離に拡張。 | 2026-04-17T00:00:00+00:00 | high |
 | [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) | patterns | `mktemp → trap` 順では signal が届く窓で orphan が残る。「空文字変数宣言 → signal-specific trap → mktemp」の canonical 順序 + POSIX exit code (130/143/129) 明示渡しで signal 経路も堅牢化する。 | 2026-04-16T19:37:16Z | high |
@@ -23,9 +23,10 @@
 | [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) | patterns | AC anchor / reasons table / Eval-order enumeration / bash 実装の emit 順は 3 重契約であり、`distributed-fix-drift-check.sh` Pattern-2/5 で機械検証する。PR #553 で 7 reasons + 2 fallbacks = 9 経路の drift 検出が実証され、カテゴリ非対称 (5 artifacts ↔ 4 mktemp blocks) の合流ケースも category 単位表記で対応。 | 2026-04-17T00:49:00+00:00 | high |
 | [散文で宣言した設計は対応する実装契約がなければ機能しない](pages/anti-patterns/prose-design-without-backing-implementation.md) | anti-patterns | 設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。PR #559 で 3 CRITICAL + 5 HIGH のうち 4 件が同じ根 (shell 変数未定義 / gate 書式規約忘れ / sentinel consumer 不在 / prose-only safeguard) に由来。実装レビュー時の trace 手順で検出する。 | 2026-04-17T04:30:00+00:00 | high |
 | [cross-platform bash コマンドは fallback chain で portable 化する](pages/patterns/bash-portable-command-fallback.md) | patterns | Linux coreutils と macOS BSD userland でコマンド可用性が異なる bash ユーティリティ (sha1sum / readlink -f / date -Iseconds 等) は `command -v` による存在確認を連鎖させた fallback chain で portable 化する。単一コマンド直書きは silent "command not found" regression の発生源。 | 2026-04-17T04:30:00+00:00 | high |
+| [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](pages/heuristics/identity-reference-documentation-unification.md) | heuristics | reference document の用語統一を「単語 X 単独」スコープで行うと、同一段落内の類義語群 (効率・最適化・圧迫 等) が統一漏れとして残り cycle 2-3 ループを発生させる。PR #562 で 3 cycle の drift 波及漏れを実測。最初の統一処理で repo 全体 grep + 文脈類義語マッピングを作る canonical pattern。5 sub-heuristics (reference self-description drift / 表記揺れ / bullet 粒度 / enumeration drift / PR body metadata 更新責務) を含む。 | 2026-04-17T08:55:00+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 16
-- ドメイン別: patterns=8, heuristics=5, anti-patterns=3
-- 最終更新: 2026-04-17T04:30:00+00:00
+- 総ページ数: 17
+- ドメイン別: patterns=8, heuristics=6, anti-patterns=3
+- 最終更新: 2026-04-17T08:55:00+00:00
