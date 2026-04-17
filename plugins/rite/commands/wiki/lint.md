@@ -37,7 +37,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` 配下の Wiki ページと `.rite/
 
 ## 設計原則（全 Phase 共通）
 
-- **非ブロッキング契約**: 検出件数・事前チェック失敗・ブランチ読取失敗にかかわらず、本コマンドは **常に exit 0** で終了する。例外は `{branch_strategy}` が未知の値だった場合の fail-fast（Phase 2.2 / Phase 6.0 / Phase 8.2 の 3 箇所で同型）で、これは設定ミスを silent に通過させないための設計判断である
+- **非ブロッキング契約**: 検出件数・事前チェック失敗・ブランチ読取失敗にかかわらず、本コマンドは **原則 exit 0** で終了する。例外は (a) `{branch_strategy}` が未知の値だった場合の fail-fast（Phase 2.2 / Phase 6.0 / Phase 8.2 の 3 箇所で同型）、および (b) Phase 1.1 / Phase 1.3 の `{mode}` placeholder 残留検知 fail-fast（2 箇所で同型、Claude substitute 忘れを silent 通過させない）で、いずれも設定ミス / 実装ミスを silent に通過させないための設計判断である
 - **読み取り専用**: `log.md` への追記を除き、Wiki データ・Raw Source は一切変更しない
 - **LLM セマンティック依存**: 矛盾検出（Phase 3）・欠落概念検出（Phase 6）は LLM の読解能力に依存する。単純な文字列一致では検出できないため本文を実際に読む
 - **GNU date 前提**: Phase 4 の陳腐化検出は GNU date (`date -d`) に依存する。Phase 1.2 で事前検査を行い、macOS/BSD 環境では警告のうえ Phase 4 を skip する
@@ -102,17 +102,19 @@ echo "wiki_branch=$wiki_branch"
 # --auto モードでは 6 フィールドの 1 行を必ず出力する (stdout 空は ingest 側 Phase 8.3 step 3 で
 # 「Lint 実行失敗」として扱われる unreachable 経路のため)。
 # mode は Phase 1.4 で解析されるが、本経路は Phase 1.1 直後の早期 return のため引数文字列を直接 scan する。
-# Claude placeholder {mode} 残留 fail-fast gate (silent fallthrough 防止):
-# LLM が {mode} を literal substitute し損ねた場合、grep は literal '{mode}' を --auto にマッチさせないため
-# else 分岐に silent fallthrough して ingest 側で false positive Lint 実行失敗を引き起こす。
-case "{mode}" in
-  "{mode}")
+# Claude placeholder {mode} 残留 fail-fast gate (canonical pattern、fix.md/review.md と対称化):
+# 変数代入 mode="{mode}" のみを substitute 対象とし、case pattern `"{"*"}"` で placeholder 残留形状を検出する。
+# 正常時: mode="--auto" → "--auto" は "{"*"}" にマッチしない → gate 通過
+# 未置換時: mode="{mode}" → "{mode}" は "{"*"}" にマッチ → exit 1
+mode="{mode}"
+case "$mode" in
+  "{"*"}")
     echo "ERROR: Phase 1.1 早期 return の {mode} placeholder が literal substitute されていません" >&2
     echo "  Claude は lint skill 呼び出し時の args 文字列 (--auto / 空) を literal で置換する必要があります" >&2
     exit 1
     ;;
 esac
-if printf '%s' "{mode}" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
 else
   echo "Wiki 機能が無効です（wiki.enabled: false）。" >&2
@@ -169,15 +171,16 @@ fi
 ```bash
 # --auto モードでは 6 フィールドの 1 行を必ず出力する (Phase 1.1 と対称、ingest 側 Phase 8.3 step 3 で
 # stdout 空を「Lint 実行失敗」として扱う silent false positive を防ぐ)。
-# Claude placeholder {mode} 残留 fail-fast gate (Phase 1.1 と対称):
-case "{mode}" in
-  "{mode}")
+# Claude placeholder {mode} 残留 fail-fast gate (canonical pattern、Phase 1.1 と対称):
+mode="{mode}"
+case "$mode" in
+  "{"*"}")
     echo "ERROR: Phase 1.3 早期 return の {mode} placeholder が literal substitute されていません" >&2
     echo "  Claude は lint skill 呼び出し時の args 文字列 (--auto / 空) を literal で置換する必要があります" >&2
     exit 1
     ;;
 esac
-if printf '%s' "{mode}" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
 else
   echo "Wiki が初期化されていません。先に /rite:wiki:init を実行してください。" >&2
@@ -792,7 +795,10 @@ for page in $pages_list; do
     # awk は in_sources フラグを ON にした回数と extract した ref 数を stderr に emit して
     # 「sources: 節は検出したが ref が 0 件」という frontmatter 破損 (改行混入 / quote 不整合) を可視化する (F-14 対応)
     awk_diag=$(mktemp /tmp/rite-lint-p62-awk-diag-XXXXXX 2>/dev/null) || awk_diag=""
-    [ -z "$awk_diag" ] && awk_diag_mktemp_failed=1  # once-per-loop flag (後段 for 終了後に 1 回だけ WARNING emit)
+    # set -e 互換のため if 文化 (set -e 環境下で `[ ] && ...` は rc=1 → script exit の罠)
+    if [ -z "$awk_diag" ]; then
+      awk_diag_mktemp_failed=1  # loop-wide once flag (for ループ終了後に 1 回だけ WARNING emit)
+    fi
     page_refs=$(printf '%s\n' "$page_content" | awk -v diag="${awk_diag:-/dev/null}" '
       /^sources:/ { in_sources=1; sources_seen++; next }
       in_sources && /^[a-zA-Z]/ { in_sources=0 }
@@ -815,6 +821,7 @@ for page in $pages_list; do
       echo "  影響: 本ページが参照する raw source が all_source_refs 集合から欠落し、登録済み raw が missing_concept に誤分類される可能性" >&2
     fi
     [ -n "$awk_diag" ] && rm -f "$awk_diag"
+    awk_diag=""  # Phase 6.0 R-07 パターンと対称化: 次 iteration の trap cleanup で stale path を二重 rm しないため明示 reset
     if [ -n "$page_refs" ]; then
       all_source_refs=$(printf '%s\n%s' "$all_source_refs" "$page_refs")
     fi
@@ -833,6 +840,7 @@ for page in $pages_list; do
     fi
   fi
   [ -n "$page_err" ] && rm -f "$page_err"
+  page_err=""  # Phase 6.0 R-07 パターンと対称化: 次 iteration の trap cleanup で stale path を二重 rm しないため明示 reset
 done
 
 # awk_diag mktemp 失敗の集約 WARNING (Phase 6.0 awk_sort_err と対称に loud fallback、per-iteration spam 回避のため for ループ後に 1 回のみ emit)
@@ -855,8 +863,9 @@ if [ -n "$all_source_refs" ]; then
   set -o pipefail
   sort_err=$(mktemp /tmp/rite-lint-p62-sort-err-XXXXXX 2>/dev/null) || sort_err=""
   # pipefail 下で末尾 `grep -v '^$'` が no-match (rc=1) を返すと pipeline 全体が失敗扱いになり
-  # all_source_refs が改行のみの edge case で io_error に誤降格する。Phase 6.0 は awk 'NF>0' で
-  # pipefail-safe 実装済み (L661-663 のコメント参照) なのと対称化する。
+  # all_source_refs が改行のみの edge case で io_error に誤降格する。Phase 6.0 の
+  # `awk 'NF>0 {n++} END {print n+0}'` が「grep -c の no-match rc=1 問題」を回避する同型パターンを
+  # 採用しており、それと対称化する (行番号は drift するため pattern 名で参照)。
   normalized=$(printf '%s\n' "$all_source_refs" | LC_ALL=C sort -u 2>"${sort_err:-/dev/null}" | awk 'NF>0')
   sort_rc=$?
   if [ "$sort_rc" -ne 0 ]; then
@@ -871,6 +880,7 @@ if [ -n "$all_source_refs" ]; then
     all_source_refs="$normalized"
   fi
   [ -n "$sort_err" ] && rm -f "$sort_err"
+  sort_err=""  # Phase 6.0 R-07 パターンと対称化: trap cleanup で stale path を二重 rm しないため明示 reset
   set +o pipefail
 fi
 
@@ -1204,8 +1214,10 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 
 ### 9.3 exit code
 
-- **常に exit 0**: 検出件数・事前チェック失敗・ブランチ読取失敗のいずれも非ブロッキング
-- **例外 (`exit 1` fail-fast)**: Phase 2.2 / Phase 6.0 / Phase 8.2 の `branch_strategy` 未知値 (3 箇所で同型、設定ミスの silent 通過防止)
+- **原則 exit 0**: 検出件数・事前チェック失敗・ブランチ読取失敗のいずれも非ブロッキング
+- **例外 (`exit 1` fail-fast)**:
+  - Phase 2.2 / Phase 6.0 / Phase 8.2 の `branch_strategy` 未知値 (3 箇所で同型、設定ミスの silent 通過防止)
+  - Phase 1.1 / Phase 1.3 の `{mode}` placeholder 残留検知 (2 箇所で同型、Claude substitute 忘れの silent 通過防止)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
 
 ---
@@ -1214,9 +1226,10 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 
 | エラー | 対処 | Phase |
 |--------|------|-------|
-| `wiki.enabled: false` | 早期 return（exit 0 + 警告） | Phase 1.1 |
+| `wiki.enabled: false` | 早期 return (`--auto` モード時は 6 フィールド 0 件 1 行を出力後 exit 0、それ以外は警告のみ exit 0) | Phase 1.1 |
 | GNU date 非互換環境 | Phase 4 skip（exit 0 + WARNING） | Phase 1.2 |
-| Wiki 未初期化 | `/rite:wiki:init` を案内（exit 0 + 警告） | Phase 1.3 |
+| Wiki 未初期化 | `/rite:wiki:init` を案内 (`--auto` モード時は 6 フィールド 0 件 1 行を出力後 exit 0) | Phase 1.3 |
+| `{mode}` placeholder 残留 (Phase 1.1 / Phase 1.3 の 2 箇所) | **exit 1 で fail-fast**（Claude substitute 忘れの silent 通過防止、2 箇所で同型） | Phase 1.1 / Phase 1.3 |
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | Phase 2.2 |
 | `branch_strategy` が未知の値 (Phase 2.2 / Phase 6.0 / Phase 8.2 の 3 箇所) | **exit 1 で fail-fast**（設定ミスの silent 通過防止、3 箇所で同型） | Phase 2.2 / Phase 6.0 / Phase 8.2 |
 | `index.md` 読出失敗 | WARNING + Phase 5 skip（exit 0） | Phase 2.3 |
