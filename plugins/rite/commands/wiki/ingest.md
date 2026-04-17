@@ -204,8 +204,16 @@ LLM は本 Phase で以下のカウンター変数を会話コンテキストに
 | `n_skipped` | `0` | Phase 4 で「スキップ」を決定するごとに +1 |
 | `n_warnings` | `0` | Phase 8 で Lint の全検出件数合計（矛盾・陳腐化・孤児・欠落概念・壊れた相互参照）を加算する。`n_warnings += n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs`。**`n_unregistered_raw` は informational 指標のため加算しない**（ingest:skip 済み raw は意図的に経験則化しなかった件数であり警告ではない） |
 | `n_lint_anomaly` | `0` | Phase 8.3 step 1 (ERROR 文字列検出) / step 3 (stdout 空) / step 4 (regex mismatch) で Lint 実行異常を検出するごとに +1。**`n_warnings` と同時に加算** する (`n_warnings += 1` と `n_lint_anomaly += 1` を並行実行)。Phase 9 完了レポート内訳で「Lint 異常経路」として表示され、`n_warnings` の内訳不整合を防ぐ指標 |
+| `n_contradictions` | `0` | Phase 8.3 step 2 で group 1 として Lint stdout から抽出。**`auto_lint: false` 経路で Phase 8.3 が skip されても `0` が維持されるため Phase 9 L702 / L704 で placeholder 残留しない** |
+| `n_stale` | `0` | Phase 8.3 step 2 で group 2 として抽出（同上） |
+| `n_orphans` | `0` | Phase 8.3 step 2 で group 3 として抽出（同上） |
+| `n_missing_concept` | `0` | Phase 8.3 step 2 で group 4 として抽出（同上） |
+| `n_unregistered_raw` | `0` | Phase 8.3 step 2 で group 5 として抽出。**`auto_lint: false` 経路で Phase 8.3 が skip されても `0` が維持されるため Phase 9 L704「未登録 raw」行で placeholder 残留しない** (PR #564 cycle 4 HIGH 対応) |
+| `n_broken_refs` | `0` | Phase 8.3 step 2 で group 6 として抽出（同上） |
 
 これらの値は Phase 5 の commit message 生成時にリテラル整数として **必ず置換** すること (placeholder のまま commit してはならない)。
+
+> **`auto_lint: false` 経路での Lint カウンタ扱い** (PR #564 cycle 4 HIGH 対応): Phase 8.1 で `auto_lint=false` を検出した場合、Phase 8.2-8.5 は skip されるが、Lint カウンタ 6 種 (`n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs`) は本 Phase 2.1 で `0` に初期化済みのため、Phase 9 完了レポート L702 / L704 の placeholder はすべて `0` として展開される (literal `{n_unregistered_raw}` 残留は発生しない)。Phase 9 の「Wiki 品質警告」行は L603 の指示により「スキップ (auto_lint disabled)」に置換されるが、L704「未登録 raw」行は本初期化により `0` が展開される (詳細は Phase 8.1 の auto_lint: false 扱い参照)。
 
 ### 2.2 候補 Raw Source の列挙 (worktree ベース)
 
@@ -600,7 +608,7 @@ esac
 echo "auto_lint=$auto_lint"
 ```
 
-**`auto_lint: false` の場合**: Phase 8.2-8.5 をスキップし Phase 9 へ進みます。Phase 9 完了レポートの Lint カウンタ（`n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs`）は Phase 8.3 でのみ初期化されるため、`auto_lint: false` 時は Phase 9 レポートの「Wiki 品質警告」行を「Wiki 品質警告: スキップ (auto_lint disabled)」と表示します。
+**`auto_lint: false` の場合**: Phase 8.2-8.5 をスキップし Phase 9 へ進みます。Phase 9 完了レポートの Lint カウンタ 6 種（`n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs`）は **Phase 2.1 の初期化表で `0` に初期化済み** (PR #564 cycle 4 HIGH 対応) のため、Phase 9 L702 / L704 の placeholder はすべて `0` として展開される。ただし「Wiki 品質警告」行 (L702) は Lint 未実行を明示するため「Wiki 品質警告: スキップ (auto_lint disabled)」と表示し、「未登録 raw」行 (L704) は `0` 件として表示する (placeholder 残留は発生しない)。
 
 ### 8.2 Lint エンジンの呼び出し
 
