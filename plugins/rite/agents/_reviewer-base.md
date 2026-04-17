@@ -192,6 +192,49 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 | Try/catch swallow | "`try { ... } catch {}` で安全化" | "catch ブロックを削除し、上位の error boundary に到達させる。silent swallow は CRITICAL anti-pattern" |
 | Retry + give-up | "3 回 retry 後 default を返す" | "3 回 retry 後 throw。caller が retry 戦略を決定すべき" |
 
+## Finding Quality Guardrail (#557)
+
+Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
+
+This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`). It exists because low-signal findings are the dominant root cause of non-converging review-fix loops: each low-signal finding triggers a defensive fix, which in turn attracts more low-signal findings in the defensive code.
+
+### Filter categories
+
+| # | Category | Examples | Filter rule |
+|---|----------|----------|-------------|
+| 1 | **Bikeshedding** | "変数名 `x` をより記述的にすべき", "マジックナンバー `7` を定数化すべき", "`let` より `const` を優先", フォーマッタで機械的に決まる事項 | Filter **unless** the reviewer can cite a project convention (Wiki entry / CLAUDE.md / linter rule) that the finding violates. Pure preference without cited convention → filter |
+| 2 | **Defensive code suggestion** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加" | Filter **unless** the reviewer identifies a concrete call site that can reach the undefended branch. Suggestions based on "just in case" without a demonstrable call path → filter |
+| 3 | **Hypothetical without entry point** | "もし悪意あるユーザーが ... できたら", "もし race condition が起きたら" | Already governed by Observed Likelihood Gate; here this guardrail adds a belt-and-suspenders filter. If the finding has no `Likelihood-Evidence:` line and the reviewer is not in an Exception Category → filter |
+| 4 | **Style-only without rule** | "コメント文体を揃える", "ファイル末尾改行", "import 並び替え" unless enforced by a configured linter | Filter |
+
+### Why these are filtered
+
+Each category represents a finding that the reviewer **cannot confidently defend** under adversarial questioning. If asked "how did you verify this would actually fail?" the reviewer would have no evidence. Presenting these as blocking findings poisons the review-fix loop: fix cycle N addresses the symptom, fix cycle N+1 generates new bikeshedding on the added code, and the loop cannot converge on 0 findings.
+
+Filtered findings are **NOT discarded** — reviewers SHOULD list them in a separate `監査ログ` section (optional, off by default) so a human can audit what was filtered. This preserves auditability without impacting the loop.
+
+### Reviewer self-degradation → Signal 4
+
+If the reviewer determines that, after applying this guardrail, it has **zero confident findings** but there are clear structural concerns it cannot articulate with evidence, the reviewer MUST explicitly self-report as "degraded" by writing:
+
+```
+### Reviewer self-assessment
+
+Status: degraded (quality-gate failure)
+Reason: {short description of what the reviewer could not verify}
+```
+
+The orchestrator interprets this as Signal 4 of the four quality signals and escalates. Silent filtering of all findings without the self-degradation statement is **prohibited** — it creates a false-positive "0 findings" exit.
+
+### Relationship with other gates
+
+| Gate | Runs at | Purpose |
+|------|---------|---------|
+| Observed Likelihood Gate | Per-finding evaluation | Require evidence of real occurrence |
+| Fail-Fast First | Per-fallback recommendation | Prefer throw over fallback |
+| **Finding Quality Guardrail** | After per-finding evaluation, before output | **Filter bikeshedding / defensive / style-only**, degrade reviewer if nothing remains |
+| Confidence Scoring | Final output | Assign 0-100 confidence to surviving findings |
+
 ## Input
 
 This agent receives the following input via Task tool's `prompt` parameter:

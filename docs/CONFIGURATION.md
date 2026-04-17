@@ -99,10 +99,11 @@ review:
   loop:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
-    # Convergence engine settings (#453)
-    convergence_monitoring: true          # Run convergence analysis at cycle 3+ (default: true)
-    severity_gating_cycle_threshold: 5    # Cycle count at which the AskUserQuestion escalation becomes available for Stalled/Diverging patterns (name retained for backward compatibility, #506)
-    scope_lock_cycle_threshold: 7         # Cycle count at which scope lock becomes available (default: 7)
+    # Review-fix quality signals (#557)
+    # Cycle-count-based degradation was fully removed in v1.0.0. Normal exit is 0 findings only;
+    # abnormal exit is one of 4 quality signals (fingerprint cycling / root-cause missing /
+    # cross-validation disagreement / reviewer self-degraded).
+    convergence_monitoring: true          # Enable fingerprint-based cycling detection (default: true)
     auto_propagation_scan: true           # Run similar-pattern propagation scan after fix (default: true)
     pre_commit_drift_check: true          # Run distributed-fix-drift-check before commit (default: true)
   doc_heavy:
@@ -197,7 +198,7 @@ pr_review:
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
-  max_review_fix_loops: 7          # review-fix loop hard limit per PR (convergence engine #453, default: 7)
+  # max_review_fix_loops was removed in v1.0.0 (#557). Loop exits on 0 findings or 4-signal escalation.
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
@@ -477,9 +478,7 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | Enable convergence analysis at cycle 3+. Detects stalled / diverging / oscillating fix-cycle patterns and applies adaptive strategies (batched fix, scope lock). **Note (#506)**: the `severity_gating` strategy was removed; non-convergence is now handled via the `AskUserQuestion` route at fix.md Phase 4.3.3 |
-| `loop.severity_gating_cycle_threshold` | integer | `5` | Cycle count at which the AskUserQuestion escalation becomes available for Stalled/Diverging patterns. **Name retained for backward compatibility** — the underlying severity-based gating was removed in #506 |
-| `loop.scope_lock_cycle_threshold` | integer | `7` | Cycle count at which scope lock strategy becomes available (restrict fixes to files from the original PR diff) |
+| `loop.convergence_monitoring` | boolean | `true` | Enable fingerprint-based cycling detection (#557). When a finding fingerprint persists across two or more review cycles, the orchestrator fires Quality Signal 1 and escalates via `AskUserQuestion`. Replaces the prior cycle-count-based convergence strategy |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
@@ -505,27 +504,32 @@ issue:
 | `separate_issue_creation.require_user_confirmation` | boolean | `true` | Require `AskUserQuestion` confirmation for separate-issue creation **even in E2E flow** (#506). **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The "always confirm" behavior is hardcoded in `fix.md` Phase 4.3.3; setting this to `false` currently has no effect. Strongly recommended anyway once wired, to prevent the "escape hatch" misuse of separate issues |
 | `separate_issue_creation.report_pre_existing_issues` | boolean | `false` | Suppress Source C (pre-existing issue) reporting in reviewer output. Use `/rite:investigate` for pre-existing concerns instead |
 
-**Review-fix loop convergence:**
+**Review-fix loop exit (v1.0.0 #557):**
 
-The review-fix loop exits only when all findings are resolved (zero blocking findings). A hard limit is enforced via `safety.max_review_fix_loops` (default: 7). When the limit is reached, the orchestrator presents options: extend the limit (+5), retry in current PR, or escalate to manual review (skip to Ready-for-review). **Note (#506)**: The `severity gating` option was removed; non-convergence is now handled via the unified `AskUserQuestion` route in `fix.md` Phase 4.3.3 (`retry in current PR / create separate issue / withdraw`), all of which converge to `findings == 0`.
+The review-fix loop has two exit paths and no cycle-count-based hard limit:
 
-**Convergence monitoring** (`loop.convergence_monitoring: true` by default): From cycle 3 onward, the orchestrator analyzes the `findings_total` trajectory over the last 4 cycles and classifies the pattern:
+| Exit | Trigger |
+|------|---------|
+| Normal | 0 findings remaining → `[review:mergeable]` |
+| Escalate | Any of the 4 quality signals fires → `AskUserQuestion` with `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` |
 
-| Pattern | Detection | Adaptive strategy |
-|---------|-----------|-------------------|
-| **Converging** | Strictly decreasing | Continue normally |
-| **Stalled** | Values within ±2 of each other | Batched fix mode (group findings by category) |
-| **Diverging** | Values increasing over the last 2 cycles | **AskUserQuestion escalation** (#506) — presents `retry in current PR / create separate issue / withdraw`, requires `loop_count >= severity_gating_cycle_threshold`. The prior "severity gating" auto-defer behavior was removed |
-| **Oscillating** | Alternating up/down | Scope lock (restrict fixes to original PR diff files) — requires `loop_count >= scope_lock_cycle_threshold` |
+**Four quality signals** (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation` for full specification):
 
-When a strategy is adopted, the selected mode is written to `.rite-flow-state` and read by `/rite:pr:fix` to adjust fix behavior for the next cycle.
+| # | Signal | Detection point |
+|---|--------|-----------------|
+| 1 | Same-finding cycling | `start.md` Phase 5.4.1.0 fingerprint check before every re-review |
+| 2 | Root-cause-missing fix | `fix.md` Phase 3.2.1 commit body gate |
+| 3 | Cross-validation disagreement | `review.md` Phase 5.2 + debate phase |
+| 4 | Reviewer self-degraded | `_reviewer-base.md` Finding Quality Guardrail |
+
+There is intentionally no cycle-count safety limit: the 4 quality signals are the sole termination mechanism. When they fire, the user chooses the next action via `AskUserQuestion`.
 
 **Fix settings (#506):**
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
-| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506)**. Retained for backward compatibility only; pinned to `false` and not referenced by any code path. Use `"batched"` or `"scope_lock"` strategy for non-convergence mitigation |
+| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506 / #557)**. Retained for backward compatibility only; pinned to `false` and not referenced by any code path. Non-convergence mitigation is now handled automatically by the 4 quality signals (#557) — no strategy configuration is needed |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
 
@@ -726,7 +730,6 @@ Fail-closed safety thresholds to prevent runaway workflows.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `max_implementation_rounds` | integer | `20` | Hard limit for implementation rounds per Issue (re-entries from checklist failures) |
-| `max_review_fix_loops` | integer | `7` | Hard limit for review-fix loop cycles per PR. When reached, the orchestrator offers options: extend (+5), retry in current PR, or escalate to manual review. **Note (#506)**: the `severity gating` option was removed; non-convergence now routes through the unified `AskUserQuestion` in `fix.md` Phase 4.3.3 (#453) |
 | `time_budget_minutes` | integer | `120` | Advisory time budget per Issue in minutes (not enforced by timer) |
 | `auto_stop_on_repeated_failure` | boolean | `true` | Stop workflow when the same failure class repeats consecutively |
 | `repeated_failure_threshold` | integer | `3` | Number of consecutive same-class failures before triggering auto-stop |
@@ -736,7 +739,6 @@ Fail-closed safety thresholds to prevent runaway workflows.
 ```yaml
 safety:
   max_implementation_rounds: 20
-  max_review_fix_loops: 7
   time_budget_minutes: 120
   auto_stop_on_repeated_failure: true
   repeated_failure_threshold: 3

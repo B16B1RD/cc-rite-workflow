@@ -1001,83 +1001,156 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 > **Data Handoff**: When invoking `rite:pr:review`, the PR number is passed as an argument. Issue information from Phase 0.1 is available in work memory (loaded by `rite:pr:review` Phase 0), avoiding additional `gh issue view` calls.
 
-##### 5.4.1.0 Convergence Monitor (#453 Component E)
+##### 5.4.1.0 Fingerprint Cycling Detection (#557)
 
-When `review.loop.convergence_monitoring` is enabled (default: `true`) **and** `loop_count >= 3`, analyze the fix-cycle state to detect non-convergence patterns and adjust strategy before the next review.
+When `review.loop.convergence_monitoring` is enabled (default: `true`) and a prior `📜 rite レビュー結果` comment exists on the PR, compute finding fingerprints and detect the "same-finding cycling" quality signal (Signal 1 of 4).
 
-**Step 1**: Read fix-cycle state and loop count:
+> **Design (#557)**: This replaces the former cycle-count-based convergence monitor. The new monitor does not count cycles at all. Instead, it identifies findings that persist across reviews by their semantic fingerprint. One re-occurrence (same fingerprint seen in two different cycles) is sufficient to escalate.
+
+**Step 1**: Fetch the two most recent `📜 rite レビュー結果` PR comments (this cycle's + previous cycle's). If fewer than 2 exist, skip (nothing to compare yet):
 
 ```bash
+# ⚠️ gh api --paginate + --jq は各ページ独立適用のため併用できない
+# (gh の仕様: --paginate は複数ページを stdout に stream 出力し、--jq は各ページに独立適用される)。
+# 代わりに --paginate --slurp で全ページを単一 JSON array に統合し、外側の jq で filter する。
+# pipefail を有効化して pipeline 途中の失敗も捕捉する。
+set -o pipefail
 pr_number="{pr_number}"
-state_file=".rite/fix-cycle-state/${pr_number}.json"
-loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
-
-if [ "$loop_count" -lt 3 ] || [ ! -f "$state_file" ]; then
-  echo "[CONTEXT] CONVERGENCE_CHECK skip (loop_count=$loop_count, state_file_exists=$([ -f "$state_file" ] && echo true || echo false))"
+gh_err=$(mktemp /tmp/rite-fp-gh-err-XXXXXX 2>/dev/null) || gh_err=""
+if ! comments=$(gh api --paginate --slurp repos/{owner}/{repo}/issues/${pr_number}/comments 2>"${gh_err:-/dev/null}" \
+    | jq 'add | [.[] | select(.body | contains("📜 rite レビュー結果"))] | .[-2:]'); then
+  echo "WARNING: gh api による PR コメント取得または jq filter に失敗。fingerprint check を skip します (fail-open)" >&2
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | sed 's/^/  /' >&2
+  [ -n "$gh_err" ] && rm -f "$gh_err"
+  set +o pipefail
+  echo "[CONTEXT] FINGERPRINT_CHECK skip (gh api or jq failure)"
   exit 0
 fi
+[ -n "$gh_err" ] && rm -f "$gh_err"
+set +o pipefail
 
-# Extract last 4 cycles' findings_total for pattern analysis
-trajectory=$(jq -r '[.cycles[-4:][].findings_total // 0] | @csv' "$state_file" 2>/dev/null) || trajectory=""
-printf '[CONTEXT] CONVERGENCE_TRAJECTORY loop=%d values=[%s]\n' "$loop_count" "$trajectory"
+count=$(printf '%s' "$comments" | jq 'length' 2>/dev/null || echo 0)
+if [ "${count:-0}" -lt 2 ]; then
+  echo "[CONTEXT] FINGERPRINT_CHECK skip (only ${count:-0} review comment(s) on PR)"
+  exit 0
+fi
 ```
 
-**Step 2**: Analyze convergence pattern from the trajectory. Claude reads the `[CONTEXT] CONVERGENCE_TRAJECTORY` output and classifies:
+**Step 2**: Extract findings from each of the two comments and compute fingerprints.
 
-| Pattern | Detection Criteria | Strategy |
-|---------|-------------------|----------|
-| **Converging** | Last 3 values strictly decreasing (e.g., 20→14→8) | Continue normally |
-| **Stalled** | Last 3 values within ±2 of each other (e.g., 14→15→13) | **Batched fix mode**: Instruct next `/rite:pr:fix` to group findings by category and fix all instances of the same pattern together |
-| **Diverging** | Last 2 values increasing (e.g., 13→20) | **AskUserQuestion escalation** (if `loop_count >= severity_gating_cycle_threshold`): Present `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` 3 択で findings を closed に収束させる。severity_gating strategy は廃止されました (#506) — 本 PR 起因 findings は severity 問わず本 PR 内で対応する方針 |
-| **Oscillating** | Last 4 values alternate up/down (e.g., 20→12→18→10) | **Scope lock** (if `loop_count >= scope_lock_cycle_threshold`): Instruct next `/rite:pr:fix` to only fix findings in files from the ORIGINAL PR diff, not in fix-introduced code |
-
-**Step 3**: Apply strategy based on pattern and cycle-specific thresholds.
-
-Read thresholds from `rite-config.yml`:
-- `severity_gating_cycle_threshold` (default: 5) — used for Stalled and Diverging patterns
-- `scope_lock_cycle_threshold` (default: 7) — used for Oscillating pattern
-
-| Pattern | Threshold | Action when `loop_count < threshold` | Action when `loop_count >= threshold` |
-|---------|-----------|--------------------------------------|--------------------------------------|
-| **Converging** | — | Output `[CONTEXT] CONVERGENCE_PATTERN=converging` and proceed to review | Same |
-| **Stalled** | `severity_gating_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=stalled` as information only | Present `AskUserQuestion` (see below) |
-| **Diverging** | `severity_gating_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=diverging` as information only | Present `AskUserQuestion` (see below) |
-| **Oscillating** | `scope_lock_cycle_threshold` | Output `[CONTEXT] CONVERGENCE_PATTERN=oscillating` as information only | Present `AskUserQuestion` (see below) |
-
-When threshold is reached, present via `AskUserQuestion`:
+Fingerprint specification:
 
 ```
-収束モニター: review-fix ループが「{pattern}」状態を検出しました。
-サイクル: {loop_count} / 指摘数推移: {trajectory}
-
-推奨戦略:
+fingerprint = sha1( normalize(file_path) + ":" + category + ":" + normalize(message) )
 ```
 
-| Option | Description |
-|--------|-------------|
-| {recommended_strategy}（推奨） | {strategy_description} |
-| 戦略変更なしで続行 | 現在のまま review-fix を継続。**→ 以下の review invocation に進行** |
-| 手動レビューへエスカレーション | ループを終了し Ready for Review に進む。**→ Phase 5.5 に直行（以下の review invocation をスキップ）** |
+- `normalize(file_path)`: strip repository-root prefix if absolute; collapse `./` sequences.
+- `category`: reviewer identity + severity (e.g. `security-reviewer:HIGH`).
+- `normalize(message)`: remove line numbers (`:NNN:` → `:`), mask identifiers with `<ident>` placeholder, lowercase, collapse whitespace.
+
+Similarity matching (when fingerprints do not exactly match):
+
+- Same file path **AND** same category **AND** Jaccard token-similarity of normalised messages > 0.7 → treat as the same fingerprint.
+
+Because this is semantic work, the LLM extracts findings from the Markdown body of each `📜 rite レビュー結果` comment (the table / per-reviewer sections) and computes fingerprints in-context. A short helper may be used to SHA-1 a string via bash (portable across macOS BSD / Linux coreutils):
+
+```bash
+# sha1sum は Linux coreutils、shasum は macOS/BSD (Perl script 付属)。どちらも利用不可な場合は python3 fallback。
+sha1_portable() {
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha1sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 1 | awk '{print $1}'
+  else
+    printf '%s' "$1" | python3 -c 'import hashlib,sys; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())'
+  fi
+}
+sha1_portable "{file_path}:{category}:{normalized_message}"
+```
+
+**Step 3**: Compare the two fingerprint sets.
+
+| Condition | Signal |
+|-----------|--------|
+| Intersection size == 0 | **Healthy progress** — no finding persisted across cycles; continue review normally |
+| Intersection size ≥ 1 | **Signal 1 fired (same-finding cycling)** — escalate |
+
+Output a context marker so the next step can act:
+
+```
+[CONTEXT] FINGERPRINT_CYCLING hits={n} total_current={m} total_previous={p}
+```
+
+**Step 4**: When `hits >= 1`, escalate via `AskUserQuestion`:
+
+```
+品質シグナル発火: 同一 finding が 2 サイクル以上残存しています（{n} 件）。
+
+継続サイクル数ではなく、指摘そのものの循環を検出しています。
+```
+
+| Option | Action |
+|--------|--------|
+| 本 PR 内で再試行（推奨） | Proceed to review invocation (Step 5). Fingerprint 循環は次サイクルで同じ fingerprint が再検出されればまた escalate される (3 サイクル目の再出現) |
+| 別 Issue として切り出す | Execute the `create-issue-with-projects.sh` call shown below to file the persistent finding as a tracking Issue; note the split in work memory; then proceed to review invocation (Step 5) |
+| PR を取り下げる | Close the PR as "not landing" (`gh pr close {pr_number}`); skip Step 5; terminate the workflow via Phase 5.6 |
+| 手動レビューへエスカレーション | Skip Step 5; exit the review-fix loop and proceed to Phase 5.5 (Ready for Review) so a human takes over |
 
 **Branching after user selection**:
 
-| Selection | Next Action |
-|-----------|-------------|
-| Strategy selected (batched/scope_lock) | Write strategy to `.rite-flow-state` (see below), then **proceed to review invocation** |
-| 戦略変更なしで続行 | **Proceed to review invocation** |
-| 手動レビューへエスカレーション | **→ Phase 5.5 (Ready for Review) に直行。以下の review invocation をスキップする** |
+| Selection | Next |
+|-----------|------|
+| 本 PR 内で再試行 | Step 5 (invoke `rite:pr:review`) |
+| 別 Issue として切り出す | Execute the bash below, then Step 5 |
+| PR を取り下げる | `gh pr close {pr_number}` → go directly to Phase 5.6 (skip Step 5) |
+| 手動レビューへエスカレーション | Go directly to Phase 5.5 (skip Step 5) |
 
-If the user selects a strategy, write it to `.rite-flow-state` via:
+**Bash for "別 Issue として切り出す"**:
 
 ```bash
-jq --arg strategy "{selected_strategy}" '.convergence_strategy = $strategy' .rite-flow-state > .rite-flow-state.tmp && mv .rite-flow-state.tmp .rite-flow-state
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+cat <<'BODY_EOF' > "$tmpfile"
+## 概要
+
+レビューサイクル中に持続した finding を別 Issue として切り出しました (Quality Signal 1 発火)。
+
+## 元の finding
+{persistent_finding_body}
+
+## 関連
+
+- 元の PR: #{pr_number}
+BODY_EOF
+
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+  --arg title "review-split: {short_summary}" \
+  --arg body_file "$tmpfile" \
+  --argjson projects_enabled {projects_enabled} \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg priority "Medium" \
+  --arg complexity "S" \
+  '{
+    issue: { title: $title, body_file: $body_file },
+    projects: {
+      enabled: $projects_enabled,
+      project_number: $project_number,
+      owner: $owner,
+      status: "Todo",
+      priority: $priority,
+      complexity: $complexity,
+      iteration: { mode: "none" }
+    },
+    options: { source: "fingerprint_split", non_blocking_projects: true }
+  }'
+)")
+new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
+echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issue_number') として切り出しました: $new_issue_url"
 ```
 
-The `convergence_strategy` value is read by `/rite:pr:fix` Phase 0.4 to adjust fix behavior:
-- `"batched"`: Phase 2 groups findings by pattern category before fixing.
-- `"scope_lock"`: Phase 2 only fixes findings in files from the original PR diff (`git diff {base_branch}...{first_fix_commit}~1 --name-only`).
-
-> **Note**: `"severity_gating"` strategy was removed in #506 (Fail-Fast First / 本 PR 完結原則). When Diverging pattern is detected, the AskUserQuestion escalation presents `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` instead of automatic severity-based deferral.
+**Step 5** (executed only when Step 4 routing is "本 PR 内で再試行" or "別 Issue として切り出す" after the split bash): Proceed to review invocation.
 
 Invoke `skill: "rite:pr:review"`.
 
@@ -1167,7 +1240,32 @@ After the review result is received, verify that the review was properly execute
 
 4. **When `reviewer_sections >= 1`**: Review quality verified. Proceed to Step 3.
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the review.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
+**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the review.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.1 regardless of detection result.
+
+**Step 3.1 (Quality Signal 3 & 4 Detection — #557)**: After review returns, grep the latest `📜 rite レビュー結果` PR comment AND conversation context for the following signal markers, then route accordingly:
+
+| Marker | Source | Signal |
+|--------|--------|--------|
+| `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement` | review.md Phase 5.2 (cross-validation disagreement + debate fails) | Signal 3 — cross-validation disagreement |
+| `### Reviewer self-assessment` section with `Status: degraded (quality-gate failure)` line inside the review body | Any reviewer's output (per `_reviewer-base.md` Finding Quality Guardrail) | Signal 4 — reviewer self-degraded |
+
+**Detection bash** (grep the latest review comment for Signal 4 section):
+
+```bash
+latest_review=$(gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
+  --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | last | .body' 2>/dev/null) || latest_review=""
+signal4_hit=0
+if printf '%s' "$latest_review" | grep -qE '^### Reviewer self-assessment'; then
+  if printf '%s' "$latest_review" | grep -qE '^Status: degraded'; then
+    signal4_hit=1
+  fi
+fi
+echo "[CONTEXT] SIGNAL_4_HIT=$signal4_hit"
+```
+
+For Signal 3, grep the conversation context (already present from review.md stderr emit).
+
+**Routing** (when Signal 3 or Signal 4 fires): Present the **same 4-option `AskUserQuestion`** used by Phase 5.4.1.0 Step 4 (`本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション`). Apply the same branching table (see Phase 5.4.1.0 Step 4 "Branching after user selection"). When neither signal fires, proceed directly to Step 4.
 
 **Step 4**: Based on the review result pattern from `rite:pr:review`, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
 
@@ -1486,48 +1584,14 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   2>/dev/null || true
 ```
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.5 regardless of detection result.
+**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
 
-**Step 3.5 (Review-Fix Loop Hard Limit Check)** (#453 Component A): Before dispatching to the next action, check if the review-fix loop count has exceeded the configured hard limit.
-
-1. Read `loop_count` from `.rite-flow-state`:
-
-```bash
-loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
-```
-
-2. Read `safety.max_review_fix_loops` from `.rite-flow-state` override (if present) or `rite-config.yml` (default: 7):
-
-```bash
-# Check for override in .rite-flow-state first (set by "上限延長" option)
-override=$(jq -r '.max_review_fix_loops_override // empty' .rite-flow-state 2>/dev/null) || override=""
-if [ -n "$override" ]; then
-  max_loops="$override"
-else
-  max_loops=$(awk '/^safety:/{found=1} found && /max_review_fix_loops:/{print $2; exit}' rite-config.yml 2>/dev/null) || max_loops=7
-  [ -z "$max_loops" ] && max_loops=7
-fi
-printf '[CONTEXT] LOOP_CHECK loop_count=%s max_loops=%s override=%s\n' "$loop_count" "$max_loops" "${override:-none}"
-```
-
-3. If `loop_count >= max_loops` **AND** the fix result pattern routes to re-review (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created]`), **halt the loop** and present options via `AskUserQuestion`:
-
-```
-review-fix ループが上限（{max_loops} サイクル）に達しました。
-現在のループ回数: {loop_count}
-
-指摘数推移を確認した上で、次のアクションを選択してください。
-```
-
-| Option | Description | Action |
-|--------|-------------|--------|
-| 上限延長（+5） | ループ上限を一時的に +5 拡張して続行 | `.rite-flow-state` に `"max_review_fix_loops_override": (max_loops + 5)` を書き込み、Step 4 へ進行。次回 Step 3.5 で override を優先読み取り |
-| 本 PR 内で再試行 | ループ上限は延長せず、そのまま次サイクルへ進行する。次サイクルで `rite:pr:fix` が通常の Phase 2 処理（Fail-Fast Response Principle 優先 + 必要なら Phase 4.3.3 の AskUserQuestion 発火）に再突入し、findings の処理を継続する | `.rite-flow-state` は変更せず Step 4 へ進行 |
-| 手動レビューへエスカレーション | ループを終了し、Ready for Review に進む | **→ Phase 5.5** (Ready for Review) に直行 |
-
-> **Note**: `"重大度ゲーティング"` オプションは #506 で廃止されました。非収束時の選択肢は `/rite:pr:fix` Phase 4.3.3 の AskUserQuestion（本 PR 内で再試行 / 別 Issue 化 / 取り下げ）に統合されています。
-
-4. If `loop_count < max_loops`, proceed to Step 4 normally.
+> **Note (v1.0.0 #557)**: The former Step 3.5 (Review-Fix Loop Hard Limit Check) was removed. The review-fix loop no longer has a cycle-count-based hard limit. Non-convergence is now detected exclusively via the four quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`):
+> 1. Fingerprint cycling → Phase 5.4.1.0 (before every re-review)
+> 2. Root-cause-missing fix → `fix.md` Phase 3.2.1 (before every commit)
+> 3. Cross-validation disagreement → `review.md` Phase 5.2 + debate (during every review)
+> 4. Finding quality gate failure → `_reviewer-base.md` Finding Quality Guardrail (during every reviewer run)
+> **Design intent (#557 D-02)**: There is intentionally no cycle-count safety limit. The 4 quality signals are the sole termination mechanism; if they fire correctly, convergence on 0 findings is reached, and if they don't, the user is escalated via `AskUserQuestion` and chooses manually. Hardening this with an additional iteration counter would reintroduce the cycle-count-based degradation that #557 explicitly removed.
 
 **Step 4**: Based on the fix result pattern from `rite:pr:fix` **and** the preceding review result pattern, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
 

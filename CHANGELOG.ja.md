@@ -16,6 +16,49 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-17
+
+### 破壊的変更
+
+- **サイクル数ベースの review-fix 縮退を全廃し、品質シグナル 4 要素に刷新** — **BREAKING CHANGE** (#557)
+  - **削除された設定キー** (`rite-config.yml` から 3 キー削除。これらのキーは `plugins/rite/templates/config/rite-config.yml` には元々存在していなかった):
+    - `review.loop.severity_gating_cycle_threshold`
+    - `review.loop.scope_lock_cycle_threshold`
+    - `safety.max_review_fix_loops`
+  - **削除されたロジック**:
+    - `plugins/rite/commands/pr/references/fix-relaxation-rules.md` の convergence strategy override テーブル (`severity_gating` / `scope_lock` / `batched` を strategy として扱う表) と Loop Termination の hard limit 行。
+    - `plugins/rite/commands/pr/fix.md` Phase 0.4 Convergence Strategy Load (`.rite-flow-state` から `convergence_strategy` を読み込むブロック全体)。
+    - `plugins/rite/commands/issue/start.md` Phase 5.4.6 Step 3.5 Review-Fix Loop Hard Limit Check (`上限延長 (+5) / 本 PR 内で再試行 / escalate` の 3 択ダイアログ)。
+    - `plugins/rite/commands/issue/start.md` Phase 5.4.1.0 のサイクル trajectory パターン分析 (Converging / Stalled / Diverging / Oscillating) と `convergence_strategy` の `.rite-flow-state` 書き込み。
+  - **新しい挙動**: review-fix ループは 2 つの出口しか持たなくなった — (a) 0 findings → `[review:mergeable]` / (b) 4 品質シグナルのいずれか発火 → `AskUserQuestion` escalate (`本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション`)。サイクル数による hard limit は完全に存在しない。
+  - **4 つの品質シグナル**:
+    1. 同一 finding 循環 — `start.md` Phase 5.4.1.0 で `file + category + normalize(message)` の SHA-1 fingerprint により検出。1 回の再出現で escalate。
+    2. root-cause 不明 fix — `fix.md` Phase 3.2.1 で commit body に `root-cause(scope):` action line または `decision(scope):` で root cause を明示した行があるかを LLM が意味的に判定。欠落時は AskUserQuestion で「Root cause を追記して再コミット（推奨）/ 意図的な補足コミットとして通過 / Abort」の 3 択。
+    3. cross-validation 不一致 — `review.md` Phase 5.2 で 2 人以上の reviewer が同一 `file:line` に severity 2 段階以上の差異で指摘し、debate でも解消しない場合に escalate。
+    4. finding quality gate 不通過 — `_reviewer-base.md` に新規追加された `Finding Quality Guardrail` が bikeshedding / 防衛コード / hypothetical / style-only findings を output 前にフィルタ。survivor が 0 件になった reviewer は `### Reviewer self-assessment` セクションで "degraded" を明示的に self-report し escalate する。
+  - **finding fingerprint 仕様**: `sha1(normalize(file_path) + ":" + category + ":" + normalize(message))`。identifier マスキングと Jaccard token 類似度 > 0.7 による near-match 検出を含む。完全仕様は `start.md` Phase 5.4.1.0 を参照。
+  - **major version bump**: 0.3.10 → 1.0.0 (6 version files 同期)。
+  - **deprecation warning**: `/rite:lint` (Phase 0.5) が `rite-config.yml` に削除済み 3 キーが残存するかをスキャンし、検出時は stderr と最終レポートに警告を出力。値は runtime で silent に無視される。
+  - **サイクル数の安全上限は設けない (意図的)**: 非公開ガードを含めて cycle-count ベースの上限は一切存在しない。4 品質シグナルが唯一の終了メカニズムとして設計されており、隠し iteration counter の導入は本リリースのコア目的 (サイクル数縮退の全廃) と矛盾するため採用しない。
+
+### 移行ガイド
+
+`rite-config.yml` に以下のいずれかが残っている既存ユーザーは該当行を削除してください:
+
+```yaml
+# 以下 3 キーをすべて削除:
+review:
+  loop:
+    severity_gating_cycle_threshold: 5
+    scope_lock_cycle_threshold: 7
+safety:
+  max_review_fix_loops: 7
+```
+
+v1.0.0 では値は silent に無視されますが、`/rite:lint` は削除されるまで警告を出し続けます。機能的な代替はありません — 非収束は 4 つの品質シグナルが自動検出するため、サイクル数の閾値設定は不要になりました。
+
+これまで `max_review_fix_loops` の hard limit で暴走ループから脱出していた場合、同等の安全性は Quality Signal 1 (fingerprint 循環検知) が提供します。**2 回目**の同一 finding 出現で発火するため、cycle-count による抑制よりも早く escalate します。
+
 ### 変更
 
 - **レビュー修正サイクル 根本見直し (Fail-Fast Response + 別 Issue 化ユーザー確認必須化 + 設定層)** — **BREAKING CHANGE** (#502 ロールアウトの最終層。#507 原則ドキュメント層・#508/#504 reviewer 出口層・#509 Fact-Check 拡張層に続く 4 PR 目)。`fix` 応答層と設定層を先行 3 層に接続し、review-fix サイクルの根本見直しを完成させる。
@@ -377,6 +420,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[1.0.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.10...v1.0.0
 [0.3.10]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8

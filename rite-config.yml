@@ -81,10 +81,11 @@ review:
   loop:
     verification_mode: false    # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: false）
     allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
-    # Convergence engine settings (#453)
-    convergence_monitoring: true          # サイクル 3+ で収束分析を実行（デフォルト: true）
-    severity_gating_cycle_threshold: 5    # 重大度ゲーティングが利用可能になるサイクル数（デフォルト: 5）
-    scope_lock_cycle_threshold: 7         # スコープロックが利用可能になるサイクル数（デフォルト: 7）
+    # Review-fix quality signals (#557)
+    # サイクル数ベースの縮退ロジックは v1.0.0 で全廃。正常出口は 0 findings のみ。
+    # 4 品質シグナル（同一 finding 循環 / root-cause 不明 fix / cross-validation
+    # 不一致 / finding quality gate 不通過）のいずれかで escalate する。
+    convergence_monitoring: true          # fingerprint ベースの循環検知を有効化（デフォルト: true）
     auto_propagation_scan: true           # Fix 後に類似パターンの伝播スキャンを実行（デフォルト: true）
     pre_commit_drift_check: true          # コミット前に distributed-fix-drift-check を実行（デフォルト: true）
   security_reviewer:
@@ -144,7 +145,8 @@ metrics:
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue
-  max_review_fix_loops: 7          # review-fix loop hard limit per PR (convergence engine #453)
+  # review-fix ループの hard limit キーは v1.0.0 で廃止（#557）。正常出口は 0 findings のみ、
+  # 異常出口は 4 品質シグナル escalate のみ（サイクル数による打切り廃止）。
   time_budget_minutes: 120         # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop

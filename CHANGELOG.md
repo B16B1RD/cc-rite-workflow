@@ -17,6 +17,49 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-17
+
+### BREAKING CHANGE
+
+- **Cycle-count-based review-fix degradation fully abolished; replaced by 4 quality signals** — **BREAKING CHANGE** (#557)
+  - **Removed configuration keys** (three keys from `rite-config.yml`; these keys were never present in `plugins/rite/templates/config/rite-config.yml`):
+    - `review.loop.severity_gating_cycle_threshold`
+    - `review.loop.scope_lock_cycle_threshold`
+    - `safety.max_review_fix_loops`
+  - **Removed logic**:
+    - `plugins/rite/commands/pr/references/fix-relaxation-rules.md` convergence strategy override table (`severity_gating` / `scope_lock` / `batched` as strategies) and Loop Termination hard-limit row.
+    - `plugins/rite/commands/pr/fix.md` Phase 0.4 Convergence Strategy Load (the full block loading `convergence_strategy` from `.rite-flow-state`).
+    - `plugins/rite/commands/issue/start.md` Phase 5.4.6 Step 3.5 Review-Fix Loop Hard Limit Check (the `extend (+5) / retry / escalate` 3-choice dialog).
+    - `plugins/rite/commands/issue/start.md` Phase 5.4.1.0 cycle-trajectory pattern analysis (Converging / Stalled / Diverging / Oscillating) and the `convergence_strategy` write to `.rite-flow-state`.
+  - **New behavior**: the review-fix loop now has exactly two exit paths — (a) 0 findings → `[review:mergeable]`, or (b) any of the **four quality signals** fires → `AskUserQuestion` escalation (`本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション`).
+  - **Four quality signals**:
+    1. Same-finding cycling — detected in `start.md` Phase 5.4.1.0 via SHA-1 fingerprints of `file + category + normalized message`. One re-occurrence escalates.
+    2. Root-cause-missing fix — detected in `fix.md` Phase 3.2.1 by an LLM-semantic check of the commit body for a `root-cause(scope):` action line (new Contextual Commits action type), a `decision(scope):` line that explicitly names the root cause, or a free-form `Root cause:` / `根本原因:` paragraph. Missing → `AskUserQuestion` 3-option prompt.
+    3. Cross-validation disagreement — detected in `review.md` Phase 5.2 when two reviewers report the same `file:line` with severity gap ≥ 2 and debate fails to resolve.
+    4. Finding quality gate failure — new `Finding Quality Guardrail` in `_reviewer-base.md` filters bikeshedding / defensive / hypothetical / style-only findings before output; if nothing remains, reviewer self-reports as "degraded" via a `### Reviewer self-assessment` section and escalates.
+  - **Finding fingerprint specification**: `sha1(normalize(file_path) + ":" + category + ":" + normalize(message))` with identifier masking and Jaccard token similarity > 0.7 for near-match detection. See `start.md` Phase 5.4.1.0 for the full spec.
+  - **Major version bump**: 0.3.10 → 1.0.0 (6 version files synchronized).
+  - **Deprecation warning**: `/rite:lint` (Phase 0.5) scans `rite-config.yml` for the three removed keys and emits a warning to stderr + final report when any are found. Keys are silently ignored at runtime.
+  - **No cycle-count safety limit (by design)**: There is intentionally no hidden iteration guard. The 4 quality signals are the sole termination mechanism. Reintroducing an iteration counter would contradict the core goal of this release (removing cycle-count-based degradation).
+
+### Migration guide
+
+Existing users with any of the following in `rite-config.yml` should remove those lines:
+
+```yaml
+# Remove all three:
+review:
+  loop:
+    severity_gating_cycle_threshold: 5
+    scope_lock_cycle_threshold: 7
+safety:
+  max_review_fix_loops: 7
+```
+
+The keys are silently ignored at runtime in v1.0.0 but `/rite:lint` will warn until they are removed. There is no functional replacement — non-convergence is now detected automatically by the four quality signals and no cycle-count threshold needs to be configured.
+
+If you previously relied on `max_review_fix_loops` hitting a hard limit to escape runaway loops, the same safety is now provided by Quality Signal 1 (fingerprint cycling) which fires on the **second** occurrence of any finding — typically faster than any cycle-count threshold would have tripped.
+
 ### Changed
 
 - **Review-Fix Cycle Overhaul (Fail-Fast Response + Separate Issue user confirmation + configuration layer)** — **BREAKING CHANGE** (finalizes the #502 rollout, which began with #507 principles doc layer, #508/#504 reviewer exit layer, and #509 Fact-Check layer). Wires the `fix` response layer and configuration layer to the previously-merged principle/exit/fact-check layers.
@@ -378,6 +421,7 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[1.0.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.10...v1.0.0
 [0.3.10]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8

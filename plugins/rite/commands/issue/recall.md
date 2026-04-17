@@ -59,7 +59,7 @@ Parse the user-provided argument to determine the search mode:
   → mode = "action_scope"
   → action = マッチした action type
   → scope = マッチした scope
-  → Validate action ∈ {intent, decision, rejected, constraint, learned}
+  → Validate action ∈ {intent, decision, root-cause, rejected, constraint, learned}
   → Invalid action → display "{i18n:issue_recall_invalid_action}" and terminate
 
 入力: その他の文字列 (例: "auth")
@@ -137,11 +137,11 @@ Split the git log output by `---COMMIT_END---` delimiter. For each commit block,
 From each commit body, extract lines matching the action line pattern:
 
 ```
-Pattern: /^(intent|decision|rejected|constraint|learned)\([^)]+\): .+$/gm
+Pattern: /^(intent|decision|root-cause|rejected|constraint|learned)\([^)]+\): .+$/gm
 ```
 
 For each matched line, parse:
-- `action`: action type (intent/decision/rejected/constraint/learned)
+- `action`: action type (intent/decision/root-cause/rejected/constraint/learned)
 - `scope`: scope value within parentheses
 - `description`: description after `: `
 
@@ -199,6 +199,7 @@ After the grouped results, display a summary:
 |-------------|-------|
 | intent | {count} |
 | decision | {count} |
+| root-cause | {count} |
 | rejected | {count} |
 | constraint | {count} |
 | learned | {count} |
