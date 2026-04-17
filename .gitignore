@@ -45,13 +45,22 @@ temp/
 # 最終防御線として develop の PR diff への混入を抑止する。
 #
 # ⚠️ same_branch 戦略 (rite-config.yml の wiki.branch_strategy: "same_branch") ユーザーへ:
-# 本 .gitignore 変更を pull すると、`wiki-ingest-commit.sh` L266 の `git add -- <raw files>` が
-# "paths are ignored" で exit 1 → commit-script exit 3 となり /rite:wiki:ingest が hard fail します。
-# **本 .gitignore を pull する前に** 必ず以下の negation エントリ 2 行を追加してください
-# (防御的に 2 行とも推奨):
+# 本 .gitignore 変更を pull すると、以下 4 箇所の `git add .rite/wiki/...` が
+# "paths are ignored" で exit 1 → hard fail します:
+#   - plugins/rite/hooks/scripts/wiki-ingest-commit.sh L266 (/rite:wiki:ingest の commit 処理)
+#   - plugins/rite/commands/wiki/init.md L207 / L245       (/rite:wiki:init の初回セットアップ)
+#   - plugins/rite/commands/wiki/ingest.md L501            (/rite:wiki:ingest の raw 書き出し)
+#   - plugins/rite/commands/wiki/lint.md L869              (/rite:wiki:lint の log.md 追記)
+# **本 .gitignore を pull する前に** 必ず以下の negation エントリを追加してください:
+#   # 必須 (parent directory 除外を解除。これがないと配下ファイルを再包含できません):
 #   !.rite/wiki/
+#   # 追加の防御 (glob 明示。単独では機能しない — parent directory exclusion が残るため):
 #   !.rite/wiki/**
-# 動作確認: git check-ignore -v .rite/wiki/raw/foo.md (trigger.sh が実際に書き出すパス)
+# 動作確認 (negation が効いていることを確認):
+#   git add --dry-run .rite/wiki/raw/foo.md  (rc=0 かつ "add" 行が出れば OK)
+#   git status --ignored -- .rite/wiki       (Ignored files セクションに含まれないこと)
+# 注: `git check-ignore -v` は negation ルール適用時も rc=0 を返すため sanity check として
+# 不向きです (出力行頭が `!` で始まる場合のみ再包含。上記の --dry-run 方式を推奨)。
 # separate_branch 戦略 (デフォルト) ユーザーは本 .gitignore でそのまま動作します。
 .rite/wiki/
 # Wiki branch を checkout した永続 git worktree (Issue #547 で導入)。

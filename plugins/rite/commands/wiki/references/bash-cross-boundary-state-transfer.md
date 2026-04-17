@@ -58,8 +58,8 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続 Ph
 | **enum 値は固定有限集合** | 自由文字列だと LLM 解釈にブレが生じ、後続分岐が非決定論的になる |
 | **初期値は "unknown" 等の "未到達" sentinel** | fail-fast exit 経路で enum が set されなかったことを明示する |
 | **値は lowercase の snake_case** | shell/awk/regex でのマッチングを単純化 |
-| **stderr ではなく stdout に emit** | stderr は WARNING / ERROR 専用とし、状態 emit と diagnostic を分離 |
-| **`[CONTEXT]` prefix を使う選択肢もある** | 人間と LLM の両方から識別しやすくしたい場合 (`[CONTEXT] log_read_ok=absent`) |
+| **原則 stdout に emit、ただし `[CONTEXT]` prefix 付きなら stderr も許容** | stderr は WARNING / ERROR 専用だが、`[CONTEXT] key=value` 形式で machine-readable prefix を付けた状態 emit は grep 可能性が確保されるため stderr でも OK。Bash tool の stdout/stderr はいずれも会話コンテキストに取り込まれる。例: `review.md` Phase 6.1.a の `[CONTEXT] JSON_SAVED=...` は `>&2` で emit されるが、Phase 6.1.c が `[CONTEXT] JSON_SAVED=` で grep して受け取る。単純な `log_read_ok=absent` のような prefix なし状態 emit は stdout に留める |
+| **`[CONTEXT]` prefix を使う選択肢もある** | 人間と LLM の両方から識別しやすくしたい場合 (`[CONTEXT] log_read_ok=absent`)。stderr に出す場合は特に本 prefix を付けて「状態 emit vs diagnostic」を区別する |
 
 ### 参照実装 (2026-04 時点)
 
@@ -138,8 +138,16 @@ silent に「0 件」と誤認する。
 stderr を tempfile に退避し、**stderr pattern matching** で legitimate absence / io_error を区別する:
 
 ```bash
-# mktemp 失敗時は log_err="" にする (lint.md 実装と同じ defense-in-depth)
-log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null) || log_err=""
+# mktemp 失敗時は WARNING を emit してから log_err="" で続行する
+# (lint.md:508-511 実装と同じ defense-in-depth — silent fallback 禁止)。
+# 知らないエラー (mktemp 失敗で stderr 取得不能) を silent に absence と誤認するより、
+# WARNING で可視化して io_error 経路に流す方が正しい。
+if ! log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null); then
+  echo "WARNING: log_err の stderr 退避用 tempfile の mktemp に失敗しました" >&2
+  echo "  対処: /tmp の空き容量 / permission / inode 枯渇を確認してください" >&2
+  echo "  影響: stderr pattern match が実行不能になり、legitimate absence / io_error の区別が付かなくなるため io_error 側に倒します" >&2
+  log_err=""
+fi
 
 if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
   log_read_ok="true"

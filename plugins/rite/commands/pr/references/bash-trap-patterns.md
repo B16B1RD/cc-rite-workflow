@@ -132,7 +132,9 @@ _rite_<phase>_cleanup() {
 本 variant を採用している参照実装 (2026-04 時点):
 
 - `plugins/rite/commands/wiki/lint.md` Phase 2.2 (`_rite_wiki_lint_phase2_cleanup`)
-- `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_p60_cleanup`)
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_phase60_cleanup`)
+
+命名規約: `_rite_wiki_lint_phase{N}_cleanup` 形式で統一する (`phase` prefix を維持、短縮形 `p{NN}` は PR #564 レビュー LOW #2 対応で廃止)。将来 Phase 6.1 / 6.3 等で cleanup 関数を追加する場合も同形式を採用すること。
 
 GNU rm のみをターゲットとする site (Linux-only CI 等) では `rm -f "${var:-}"` のままで問題ない。
 
