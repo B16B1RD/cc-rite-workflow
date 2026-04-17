@@ -165,26 +165,7 @@ fi
 
 ## Phase 1: Retrieve and Organize Review Comments
 
-### 0.4 Convergence Strategy Load (#453 Component E)
-
-When invoked from the `/rite:issue:start` end-to-end flow, check if the convergence monitor has set a strategy in `.rite-flow-state`:
-
-```bash
-convergence_strategy=$(jq -r '.convergence_strategy // "none"' .rite-flow-state 2>/dev/null) || convergence_strategy="none"
-printf '[CONTEXT] CONVERGENCE_STRATEGY=%s\n' "$convergence_strategy"
-```
-
-If `convergence_strategy` is not `"none"`, adjust Phase 2 behavior accordingly:
-
-| Strategy | Phase 2 Behavior |
-|----------|-----------------|
-| `"batched"` | Group findings by pattern category (e.g., all "retained flag missing" findings together, all "reason table drift" together). Fix each category as a batch before moving to the next. |
-| `"scope_lock"` | Only fix findings in files that are part of the original PR diff. Determine original files via context or work memory. Findings in fix-introduced files are listed but skipped with a note: `⏭️ {finding_id}: scope lock により defer (fix 起因ファイル)`. |
-| `"none"` | Normal behavior (all findings, one by one). |
-
-> **`"severity_gating"` strategy は廃止されました** (#506): 本 PR 起因 findings は severity 問わず本 PR 内で修正する方針に変更されました。`rite-config.yml` の `fix.severity_gating.enabled` は後方互換のため残置されていますが `false` 固定扱いで参照されません。非収束時は `start.md` の Phase 5.4.6 Step 3.5 の AskUserQuestion ルート、および本ファイル Phase 4.3.3 の AskUserQuestion で `本 PR 内で再試行 / 別 Issue 化 / 取り下げ` の 3 択に統合されています。
-
-> **Standalone invocation**: When invoked standalone (not from `/rite:issue:start`), `.rite-flow-state` may not exist or may not have `convergence_strategy`. Default to `"none"`.
+> **Note (v1.0.0 #557)**: The cycle-count-based convergence strategy loader (formerly Phase 0.4) was fully removed. The review-fix loop now exits only when findings == 0; non-convergence is detected via 4 quality signals (see `commands/issue/start.md` Phase 5.4 and `commands/pr/references/fix-relaxation-rules.md`). All findings are treated uniformly regardless of severity.
 
 ### 1.0 Argument Parsing (Pre-flight)
 
@@ -3149,6 +3130,33 @@ fix(review): {description}
 - メッセージを編集
 - 個別にコミット（複数コミットに分割）
 ```
+
+### 3.2.1 Root Cause Gate (#557)
+
+Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) from `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`.
+
+**Step 1**: Inspect the generated commit body for a root-cause section. Match either a Japanese or English header, case-insensitive, and permit trailing whitespace / colon variants:
+
+```bash
+# $commit_body は Phase 3.2 で生成した message text（trailer 含む全体）
+if printf '%s' "$commit_body" | grep -iE '^[[:space:]]*(Root cause|根本原因)[[:space:]]*[:：]' >/dev/null 2>&1; then
+  echo "[CONTEXT] ROOT_CAUSE_GATE=ok"
+else
+  echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
+fi
+```
+
+**Step 2**: When `ROOT_CAUSE_GATE=missing`, warn the user via `AskUserQuestion` with exactly three options:
+
+| Option | Action |
+|--------|--------|
+| Root cause を追記して再コミット（推奨） | Prompt user for a short root-cause paragraph; prepend `Root cause: {paragraph}` to the commit body; re-invoke Step 1 (maximum one retry — further attempts fall through to the second option to avoid an infinite prompt loop) |
+| 意図的な補足コミットとして通過 | Keep the commit body as-is; record that the gate was intentionally bypassed in work memory `決定事項・メモ` |
+| Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
+
+**Step 3**: Defensive-commit / bikeshedding-style fixes that do not identify a root cause are expected to be rare. When a fix is purely cosmetic (e.g., typo in a docstring with no functional change), the user should select the second option and explicitly record the rationale.
+
+> **Rationale (#557)**: Symptom-only fixes are a leading indicator of positive feedback loops in the review-fix cycle (fix introduces defensive code → reviewer finds issues in defensive code → fix adds more defensive code). Requiring a root cause at commit time is the earliest point where this pattern can be detected and halted.
 
 ### 3.3 Execute the Commit
 

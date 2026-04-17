@@ -115,6 +115,48 @@ If the Issue number cannot be obtained or the work memory comment does not exist
 
 ---
 
+## Phase 0.5: Config Deprecation Scan (v1.0.0 #557)
+
+Before running lint, scan `rite-config.yml` for deprecated review-fix loop configuration keys and emit warnings. Legacy keys are **silently ignored** at runtime (they have no effect), but leaving them in the config file creates confusion, so warn the user to remove them.
+
+**Deprecated keys** (removed in v1.0.0 by #557):
+
+| Key | Path | Replaced by |
+|-----|------|-------------|
+| `severity_gating_cycle_threshold` | `review.loop.*` | Quality Signal 1 (fingerprint cycling) — no configuration needed |
+| `scope_lock_cycle_threshold` | `review.loop.*` | Quality Signal 1 (fingerprint cycling) — no configuration needed |
+| `max_review_fix_loops` | `safety.*` | Fully removed — loop now exits on 0 findings or on any of the 4 quality signals |
+
+**Step 1**: Scan `rite-config.yml` for each deprecated key name and record which are present:
+
+```bash
+deprecated_found=""
+for key in severity_gating_cycle_threshold scope_lock_cycle_threshold max_review_fix_loops; do
+  if grep -qE "^[[:space:]]+${key}[[:space:]]*:" rite-config.yml 2>/dev/null; then
+    deprecated_found="${deprecated_found}${key} "
+  fi
+done
+if [ -n "$deprecated_found" ]; then
+  echo "⚠️ rite-config.yml に廃止済みキーが残存しています: ${deprecated_found}" >&2
+  echo "⚠️ これらのキーは v1.0.0 (#557) で廃止され、値は無視されます。rite-config.yml から削除してください。" >&2
+  echo "[CONTEXT] DEPRECATED_KEYS=${deprecated_found}"
+else
+  echo "[CONTEXT] DEPRECATED_KEYS=none"
+fi
+```
+
+**Step 2**: Continue to Phase 1 regardless of whether deprecated keys were found. The warning is informational and does not change the lint exit code.
+
+**Step 3**: When deprecated keys are detected, include a short line in the final lint report so it is visible alongside normal lint output:
+
+```
+⚠️ Deprecated config keys detected: {keys}. See CHANGELOG v1.0.0 migration guide.
+```
+
+This is appended to the report produced by Phase 4 irrespective of lint success/error.
+
+---
+
 ## Phase 1: Lint Command Detection
 
 ### 1.1 Check Explicit Configuration
