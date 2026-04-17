@@ -836,7 +836,7 @@ wiki:
   auto_lint: false
 ```
 
-> **Note for `same_branch` users**: The project's `.gitignore` ships with `.rite/wiki/` excluded as a silent-leak defense line for the default `separate_branch` strategy. If you switch to `same_branch`, you MUST add negation entries so that Wiki files are not ignored. See the `.gitignore` comment block near the `.rite/wiki/` line for the exact negation entries (`!.rite/wiki/` and `!.rite/wiki/**`) and the `git check-ignore -v` verification step.
+> **Note for `same_branch` users**: The project's `.gitignore` ships with `.rite/wiki/` excluded as a silent-leak defense line for the default `separate_branch` strategy. If you switch to `same_branch`, you MUST add negation entries so that Wiki files are not ignored. See the `.gitignore` comment block near the `.rite/wiki/` line for the exact negation entries (`!.rite/wiki/` and `!.rite/wiki/**`) and the recommended `git add --dry-run .rite/wiki/raw/foo.md` / `git status --ignored -- .rite/wiki` verification steps (note: `git check-ignore -v` is **not** suitable for negation sanity checks — it returns rc=0 for re-included paths).
 
 **Example (loose growth-check threshold for slow-moving repos):**
 
