@@ -462,25 +462,105 @@ Phase 6 は検出結果を 2 カテゴリに分けます:
 Phase 6.2 の突合で参照する `skipped_refs` 集合を `log.md` から抽出します。`branch_strategy` に応じて読み出し元を切り替え、非ブロッキング契約として読み出し失敗時は空集合で継続します:
 
 ```bash
+# 設計原則: Phase 2.3 の selective surface pattern と対称にし、stderr を
+# 廃棄せず tempfile に退避して失敗時に可視化する。legitimate absence
+# (fresh branch / log.md 未存在) と IO error (permission / blob 破損) を
+# 区別する。branch_strategy 未知値は Phase 2.2 と対称に fail-fast する。
+
+# signal-specific trap で tempfile orphan を防ぐ
+log_err=""
+awk_sort_err=""
+_rite_wiki_lint_p60_cleanup() {
+  rm -f "${log_err:-}" "${awk_sort_err:-}"
+}
+trap 'rc=$?; _rite_wiki_lint_p60_cleanup; exit $rc' EXIT
+trap '_rite_wiki_lint_p60_cleanup; exit 130' INT
+trap '_rite_wiki_lint_p60_cleanup; exit 143' TERM
+trap '_rite_wiki_lint_p60_cleanup; exit 129' HUP
+
+log_err=$(mktemp /tmp/rite-wiki-lint-p60-err-XXXXXX 2>/dev/null) || log_err=""
+
 branch_strategy="{branch_strategy}"
 wiki_branch="{wiki_branch}"
 
 skipped_refs=""
-if [ "$branch_strategy" = "separate_branch" ]; then
-  log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>/dev/null || true)
-elif [ "$branch_strategy" = "same_branch" ]; then
-  log_content=$(cat .rite/wiki/log.md 2>/dev/null || true)
-fi
+log_content=""
+log_read_ok="false"  # Phase 6.2 で false positive 警告に使う flag
 
-# log.md の「| <日時> | ingest:skip | <raw相対パス> | <理由> |」形式から 4 番目の
-# field (raw 相対パス、例: raw/reviews/20260417T...md) を抽出して sort -u
+# branch_strategy を case で検証 (Phase 2.2 と対称に未知値は fail-fast)
+case "$branch_strategy" in
+  separate_branch)
+    if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
+      log_read_ok="true"
+    else
+      rc=$?
+      # blob not found / invalid object name は legitimate な fresh branch 経路として WARNING 抑制
+      # それ以外 (permission denied / blob 破損 等) は selective surface pattern で可視化
+      if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "(does not exist|path '.+' exists on disk, but not in|fatal: invalid object name|Not a valid object name)" "$log_err"; then
+        : # legitimate absence
+      elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
+        echo "WARNING: .rite/wiki/log.md の git show に失敗しました (rc=$rc)" >&2
+        head -3 "$log_err" | sed 's/^/  /' >&2
+        echo "  影響: skipped_refs を空として継続するため、skip 済み raw が誤って missing_concept に計上される可能性あり" >&2
+        echo "  対処: wiki branch の integrity / 権限を確認してください" >&2
+      fi
+      log_content=""
+    fi
+    ;;
+  same_branch)
+    if log_content=$(cat .rite/wiki/log.md 2>"${log_err:-/dev/null}"); then
+      log_read_ok="true"
+    else
+      rc=$?
+      # ファイル不在 (ENOENT) は legitimate、それ以外は selective surface
+      if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "No such file or directory|cannot open" "$log_err"; then
+        : # legitimate absence
+      elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
+        echo "WARNING: .rite/wiki/log.md の cat に失敗しました (rc=$rc)" >&2
+        head -3 "$log_err" | sed 's/^/  /' >&2
+        echo "  影響: skipped_refs を空として継続するため、skip 済み raw が誤って missing_concept に計上される可能性あり" >&2
+        echo "  対処: .rite/wiki/log.md の存在 / 権限を確認してください" >&2
+      fi
+      log_content=""
+    fi
+    ;;
+  *)
+    # Phase 2.2 と対称: 未知値は fail-fast (silent な same_branch 扱いを防ぐ)
+    echo "ERROR: 未知の branch_strategy: '$branch_strategy' (Phase 6.0、許容値: separate_branch / same_branch)" >&2
+    exit 1
+    ;;
+esac
+
+# log.md の「| <日時> | ingest:skip | <raw相対パス> | <理由> |」形式から抽出。
+# field 3 (action 列) を厳密一致で判定することで、詳細列に偶発的に
+# `| ingest:skip |` 文字列が含まれても false positive を起こさない。
+# field 4 (対象列) から .rite/wiki/ prefix を除去して raw/{type}/{filename} 形式に
+# 正規化する (log.md 記録時の prefix 有無の暗黙的 drift を吸収)。
+# set -o pipefail + 独立 tempfile で awk/sort の exit code を明示 capture する。
 if [ -n "$log_content" ]; then
-  skipped_refs=$(printf '%s\n' "$log_content" \
-    | awk -F'|' '/\| ingest:skip \|/ {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4)
-        if (length($4) > 0) print $4
-      }' \
-    | LC_ALL=C sort -u)
+  set -o pipefail
+  awk_sort_err=$(mktemp /tmp/rite-wiki-lint-p60-awk-err-XXXXXX 2>/dev/null) || awk_sort_err=""
+  if ! skipped_refs=$(printf '%s\n' "$log_content" \
+    | awk -F'|' 'NF >= 4 {
+        action=$3
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", action)
+        if (action == "ingest:skip") {
+          target=$4
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", target)
+          sub(/^\.rite\/wiki\//, "", target)
+          if (length(target) > 0) print target
+        }
+      }' 2>"${awk_sort_err:-/dev/null}" \
+    | LC_ALL=C sort -u 2>>"${awk_sort_err:-/dev/null}"); then
+    rc=$?
+    echo "WARNING: Phase 6.0 の awk/sort pipeline が失敗しました (rc=$rc)" >&2
+    if [ -n "$awk_sort_err" ] && [ -s "$awk_sort_err" ]; then
+      head -3 "$awk_sort_err" | sed 's/^/  /' >&2
+    fi
+    echo "  対処: awk / sort バイナリと /tmp の容量を確認してください" >&2
+    skipped_refs=""
+  fi
+  set +o pipefail
 fi
 
 # 集合本体を stdout に出力する（Phase 6.2 の (b) 分岐で LLM が会話コンテキストに保持する）。
@@ -501,7 +581,7 @@ else
 fi
 ```
 
-**非ブロッキング契約**: `log.md` 読み出し失敗時は `skipped_refs=""` のまま継続し、全件 `missing_concept` として計上されます（旧動作との下位互換）。ただし**読出失敗は silent にせず stderr に WARNING を出して可視化** する（後続ブロックで実装）。
+**非ブロッキング契約**: `log.md` 読み出し失敗時は `skipped_refs=""` のまま継続し、全件 `missing_concept` として計上されます（旧動作との下位互換）。ただし上記実装の通り **legitimate absence (fresh branch / 初回 lint / ENOENT) は WARNING 抑制、真の IO error (permission denied / blob 破損 等) は selective surface pattern で stderr に可視化** する。legitimate / IO error の判別は stderr 内容の pattern matching で行い、silent な同視を防ぐ。`log_read_ok` フラグで後段が success/failure を区別できる（Phase 6.2 および完了レポートで `false positive で missing_concept が膨張している可能性` を note 表示する際の根拠に利用）。
 
 **LLM による集合保持の契約**: 上記 bash block の stdout に `---skipped_refs_begin---` / `---skipped_refs_end---` で挟まれた行を LLM が会話コンテキストに保持し、Phase 6.2 の (b) 分岐判定材料とする。行数が 0 件でも begin/end marker は必ず出力される（集合構築ステップが実行されたことの positive confirmation）。
 
