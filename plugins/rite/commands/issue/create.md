@@ -475,6 +475,8 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 > **⚠️ READ THIS EVERY TIME Phase 0.4 is skipped.**
 
+> **Identity reference**: 本 skip semantics は [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` principle の具体化である。「時間的制約」「context 残量」を理由にした step 省略は禁止。user-facing 確認 dialog の skip は 0.4.1 / 0.4.2 / Interview delegation / Phase 0.6 / Routing の MUST step 省略を許可するものではない。
+
 When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmation questions are skipped, this means **ONLY** that the user-facing confirmation dialog is skipped. It does **NOT** mean any of the following are skipped:
 
 | MUST execute even when Phase 0.4 confirmation is skipped | Why (enforcement layer) |
