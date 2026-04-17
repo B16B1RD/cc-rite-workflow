@@ -10,6 +10,7 @@ Resume an interrupted rite command from where it left off after a crash or inter
 - Resuming work after a Claude Code crash
 - Resuming work after a session disconnection
 - Resuming manually interrupted work
+- **Context window 枯渇時の継続**: セッションの context が実際に逼迫した場合は、`/clear` で会話履歴をリセットしてから `/rite:resume` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** であり、LLM が自己判断で step を省略してワークフローを短縮する経路は存在しない（詳細: [workflow-identity.md](../skills/rite-workflow/references/workflow-identity.md)）。`/rite:resume` は `.rite-flow-state` と work memory を読み直して中断点から再開する。
 
 ---
 

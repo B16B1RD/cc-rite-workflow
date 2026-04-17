@@ -20,6 +20,8 @@ Analyze PR changes and dynamically load expert skills to perform a multi-reviewe
 
 When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent execution) runs in **full** — only Phase 5-7 **output** is minimized to reduce context window consumption:
 
+> **⚠️ "Output minimization" は処理短縮ではない**: minimize されるのは Phase 5-7 の **人間向け表示** のみで、Phase 4 の sub-agent parallel execution、Phase 6 の PR コメント投稿、Phase 7 の recommendations AskUserQuestion 等の処理本体は standalone と同等に実行する。時間・context を理由にした sub-agent 省略 / parallel の直列化 / AskUserQuestion 省略は identity 違反である。Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)。
+
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Phase 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |

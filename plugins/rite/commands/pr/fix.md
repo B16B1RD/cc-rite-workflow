@@ -28,6 +28,8 @@ Retrieve and organize PR review comments to efficiently assist with addressing r
 
 When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
 
+> **⚠️ minimize されるのは出力のみ**: fix implementation、commit/push、work memory 更新等の処理本体は standalone と同等に実行する。時間・context を理由にした修正内容の省略・commit 分割の省略は identity 違反。Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)。
+
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Fix implementation | Full output | Full output (needed for code changes) |

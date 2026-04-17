@@ -22,6 +22,8 @@ When called from the `/rite:issue:start` end-to-end flow, minimize output to red
 | Phase 4.3 (Summary) | Full table | **Skip entirely** |
 | Phase 4.4 (Work Memory) | Full update | Full update (no change) |
 
+> **⚠️ "Skip entirely" は出力の話**: Phase 4.3 の "Skip entirely" は **人間向けサマリー表示を省く** ことを意味するのみで、Phase 3 の lint 実行や Phase 4.4 の work memory 更新など処理本体は常に実行する。時間・context を理由にした lint 処理そのものの省略は禁止。Identity: [workflow-identity.md](../skills/rite-workflow/references/workflow-identity.md)。
+
 **Detection**: See [Caller Context and End-to-End Flow](#caller-context-and-end-to-end-flow) determination method below.
 
 ---
