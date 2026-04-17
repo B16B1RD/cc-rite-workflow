@@ -37,7 +37,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` 配下の Wiki ページと `.rite/
 
 ## 設計原則（全 Phase 共通）
 
-- **非ブロッキング契約**: 検出件数・事前チェック失敗・ブランチ読取失敗にかかわらず、本コマンドは **常に exit 0** で終了する。唯一の例外は `{branch_strategy}` が未知の値だった場合の fail-fast（Phase 2.2）で、これは設定ミスを silent に通過させないための設計判断である
+- **非ブロッキング契約**: 検出件数・事前チェック失敗・ブランチ読取失敗にかかわらず、本コマンドは **常に exit 0** で終了する。例外は `{branch_strategy}` が未知の値だった場合の fail-fast（Phase 2.2 および Phase 6.0 の 2 箇所）で、これは設定ミスを silent に通過させないための設計判断である
 - **読み取り専用**: `log.md` への追記を除き、Wiki データ・Raw Source は一切変更しない
 - **LLM セマンティック依存**: 矛盾検出（Phase 3）・欠落概念検出（Phase 6）は LLM の読解能力に依存する。単純な文字列一致では検出できないため本文を実際に読む
 - **GNU date 前提**: Phase 4 の陳腐化検出は GNU date (`date -d`) に依存する。Phase 1.2 で事前検査を行い、macOS/BSD 環境では警告のうえ Phase 4 を skip する
@@ -858,9 +858,11 @@ Wiki Lint が完了しました。
 - 矛盾: {n_contradictions} 件
 - 陳腐化: {n_stale} 件
 - 孤児ページ: {n_orphans} 件
-- 欠落概念: {n_missing_concept} 件
+- 欠落概念: {n_missing_concept} 件{log_read_ok_note}
 - 未登録 raw（skip 済）: {n_unregistered_raw} 件（informational、`n_warnings` 不加算）
 - 壊れた相互参照: {n_broken_refs} 件
+
+{log_read_ok_warning}
 
 検出詳細:
 {issues_list_formatted}
@@ -873,6 +875,19 @@ Wiki Lint が完了しました。
 - 未登録 raw（skip 済）は意図的な `ingest:skip` なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki:ingest で再処理してください
 - 壊れた相互参照は該当ページを手動で修正してください
 ```
+
+**`{log_read_ok_note}` / `{log_read_ok_warning}` 展開ルール** (R-01 対応、log_read_ok 4 値 enum に基づく):
+
+LLM は Phase 6.0 bash block の stdout から `log_read_ok={value}` を読み取り、値に応じて以下を展開する:
+
+| `log_read_ok` 値 | `{log_read_ok_note}` | `{log_read_ok_warning}` |
+|-----------------|----------------------|--------------------------|
+| `true` | 空文字列 | 空文字列 |
+| `absent` | 空文字列 | 空文字列 |
+| `io_error` | ` ⚠️ (log.md 読出失敗により false positive を含む可能性あり)` | `⚠️ log.md 読出失敗: 真の欠落 (missing_concept) 件数が正確でない可能性があります。wiki branch の integrity / 権限を確認して /rite:wiki:lint を再実行してください。`<br>**空行を 1 行挿入してから表示** |
+| `unknown` | (この状態では Phase 9.1 に到達しない、branch_strategy fail-fast で exit 1 済み) | 空文字列 |
+
+`{log_read_ok_warning}` が空文字列のときは直前の空行もまとめて省略する (余分な空行を残さない)。
 
 `{issues_list_formatted}` は `issues[]` の各要素をカテゴリ別にグループ化し、以下の形式で表示します:
 
@@ -910,7 +925,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 ### 9.3 exit code
 
 - **常に exit 0**: 検出件数・事前チェック失敗・ブランチ読取失敗のいずれも非ブロッキング
-- **唯一の例外**: Phase 2.2 の `branch_strategy` 未知値 fail-fast（`exit 1`）
+- **例外 (`exit 1` fail-fast)**: Phase 2.2 および Phase 6.0 の `branch_strategy` 未知値 (2 箇所で同型、設定ミスの silent 通過防止)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
 
 ---
@@ -923,8 +938,11 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | GNU date 非互換環境 | Phase 4 skip（exit 0 + WARNING） | Phase 1.2 |
 | Wiki 未初期化 | `/rite:wiki:init` を案内（exit 0 + 警告） | Phase 1.3 |
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | Phase 2.2 |
-| `branch_strategy` が未知の値 | **exit 1 で fail-fast**（設定ミスの silent 通過防止、唯一の例外） | Phase 2.2 |
+| `branch_strategy` が未知の値 (Phase 2.2 / Phase 6.0 両方) | **exit 1 で fail-fast**（設定ミスの silent 通過防止、2 箇所で同型） | Phase 2.2 / Phase 6.0 |
 | `index.md` 読出失敗 | WARNING + Phase 5 skip（exit 0） | Phase 2.3 |
+| `log.md` 読出失敗 (legitimate absence: fresh branch / ENOENT / blob not found) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | Phase 6.0 |
+| `log.md` 読出失敗 (真の IO error: permission / 破損 / wiki_branch race) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + Phase 9.1 完了レポートで false positive note 表示（exit 0） | Phase 6.0 |
+| awk/sort pipeline 失敗 | WARNING + `skipped_refs=""` で継続（exit 0） | Phase 6.0 |
 | `date -d` パース失敗 | 該当ページを skip し WARNING を stderr に出力（`n_stale` 非加算） | Phase 4.2 |
 | `grep` no-match（indexed_pages 空） | WARNING + Phase 5 skip（全ページ orphan 誤検出防止） | Phase 5.2 |
 | 処理対象 0 件 | Phase 3-7 を skip し Phase 9 で「検査対象なし」表示 | Phase 2.2 末尾 |
