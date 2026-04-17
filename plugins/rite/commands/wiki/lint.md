@@ -1,18 +1,19 @@
 ---
-description: Wiki Lint — Wiki の品質チェック（矛盾・陳腐化・孤児・欠落・壊れた相互参照）
+description: Wiki Lint — Wiki の品質チェック（矛盾・陳腐化・孤児・欠落概念・未登録 raw・壊れた相互参照）
 ---
 
 # /rite:wiki:lint
 
-Wiki Lint エンジン。`.rite/wiki/pages/` 配下の Wiki ページと `.rite/wiki/raw/` の Raw Source、`.rite/wiki/index.md` の整合性を検査し、以下の 5 観点で品質問題を検出します:
+Wiki Lint エンジン。`.rite/wiki/pages/` 配下の Wiki ページと `.rite/wiki/raw/` の Raw Source、`.rite/wiki/index.md` の整合性を検査し、以下の **5 ブロッキング観点 + 1 informational 指標**で品質問題を検出します:
 
-| 観点 | 検出対象 |
-|------|---------|
-| **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） |
-| **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ |
-| **孤児ページ** | `pages/` 配下に存在するが `index.md` の「ページ一覧」テーブルに登録されていないページ |
-| **欠落概念** | `raw/` に `ingested: true` の Raw Source があるが、対応する Wiki ページが生成されていないトピック |
-| **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない |
+| 観点 | 検出対象 | ブロッキング |
+|------|---------|--------------|
+| **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
+| **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
+| **孤児ページ** | `pages/` 配下に存在するが `index.md` の「ページ一覧」テーブルに登録されていないページ | Yes |
+| **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest:skip` 記録も存在しない真の欠落 | Yes |
+| **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、`log.md` に `ingest:skip` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
+| **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 
 > **Reference**: [Wiki Patterns](../../references/wiki-patterns.md) — ディレクトリ構造、ブランチ管理、テンプレート展開の共通パターン
 > **Reference**: [Plugin Path Resolution](../../references/plugin-path-resolution.md) — `{plugin_root}` の解決手順
@@ -169,7 +170,7 @@ exit 0 で終了。
 | `n_contradictions` | `0` | Phase 3 で矛盾検出するごとに +1 |
 | `n_stale` | `0` | Phase 4 で陳腐化検出するごとに +1 |
 | `n_orphans` | `0` | Phase 5 で孤児ページ検出するごとに +1 |
-| `n_missing_concept` | `0` | Phase 6.2 で真の欠落（`ingest:skip` 記録も `sources.ref` 登録も無い）を検出するごとに +1。`n_warnings` に加算される（ブロッキング相当） |
+| `n_missing_concept` | `0` | Phase 6.2 で真の欠落（`ingest:skip` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 Phase 8.5 で `n_warnings` に加算される（ブロッキング相当。lint 単独実行時は `n_warnings` 変数は lint 内には存在せず、加算は ingest 側の責務） |
 | `n_unregistered_raw` | `0` | Phase 6.2 で `ingest:skip` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で、`n_warnings` に加算しない |
 | `n_broken_refs` | `0` | Phase 7 で壊れた相互参照検出するごとに +1 |
 | `issues[]` | `[]` | 各検出結果を `{category, page, detail}` として append |
@@ -858,7 +859,7 @@ Ingest 完了直後に呼ばれる場合、出力は最小化されます:
 Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, missing_concept={n_missing_concept}, unregistered_raw={n_unregistered_raw}, broken_refs={n_broken_refs}
 ```
 
-検出件数が全て 0 の場合は stdout を空にして exit 0。`unregistered_raw` は `n_warnings` に加算されないため、`n_unregistered_raw > 0` だけなら `missing_concept` と他 4 カテゴリが 0 でもこの 1 行を出力する（ingest 側が parse できるように常に 6 フィールドを揃える）。
+「検出件数が全て 0」とは **6 フィールド全部** の合計が 0 であること、すなわち `n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0` を意味する。この場合のみ stdout を空にして exit 0。それ以外（いずれか 1 フィールドでも非 0）は 1 行を出力する。`unregistered_raw` は `n_warnings` に加算されないため、`n_unregistered_raw > 0` だけで `missing_concept` と他 4 カテゴリが 0 の場合も「0 ではない」と判定され、この 1 行を出力する（ingest 側が parse できるように常に 6 フィールドを揃える）。
 
 ### 9.3 exit code
 

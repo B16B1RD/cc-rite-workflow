@@ -574,7 +574,7 @@ fi
 
 ## Phase 8: 自動 Lint
 
-Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki:lint --auto` として実行します。矛盾・陳腐化・孤児ページ・欠落概念・壊れた相互参照の 5 観点で検査します。
+Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki:lint --auto` として実行します。矛盾・陳腐化・孤児ページ・欠落概念・壊れた相互参照の **5 ブロッキング観点**に加え、未登録 raw（`ingest:skip` 済み）を **1 informational 指標**として計上する合計 6 フィールドで検査します。
 
 ### 8.1 auto_lint 設定の確認
 
