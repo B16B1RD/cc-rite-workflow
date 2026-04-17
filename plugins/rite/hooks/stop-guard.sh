@@ -256,12 +256,20 @@ STOP_MSG
   exit 2
 fi
 
-# Best-effort hint for /rite:issue:create sub-skill return phases (#525).
+# Best-effort hint for /rite:issue:create sub-skill return phases (#525, #552).
 # When the LLM stops implicitly after a sub-skill return (e.g., right after
 # [interview:skipped] / [interview:completed] / [create:completed:{N}]),
 # surface a phase-specific continuation hint so the next prompt re-entry
 # makes the correct continuation obvious.
+#
+# Additionally (#552), capture the helper's sentinel line and echo it to
+# stderr (the same channel as STOP_MSG). In Claude Code, stop-hook stderr is
+# fed back to the assistant via the exit-2 contract, so emitting the sentinel
+# to stderr guarantees Phase 5.4.4.1 sees it in the next context cycle.
+# This is best-effort — helper missing / failure is recorded to diag log but
+# does NOT change the block decision below.
 CREATE_HINT=""
+CREATE_INCIDENT_TYPE=""
 case "$PHASE" in
   create_post_interview)
     CREATE_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. No GitHub Issue has been created yet."
@@ -273,6 +281,80 @@ case "$PHASE" in
     CREATE_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
     ;;
 esac
+
+# Consolidate CREATE_INCIDENT_TYPE setting: all create_* phases use the same
+# sentinel type. If a future phase needs a different type, switch to case-based
+# assignment (see F-17 resolution).
+if [ -n "$CREATE_HINT" ]; then
+  CREATE_INCIDENT_TYPE="manual_fallback_adopted"
+else
+  CREATE_INCIDENT_TYPE=""
+fi
+
+# #552: Emit workflow_incident sentinel when stop-guard blocks a create_* phase.
+# The sentinel is captured from the helper's stdout, then echoed to stderr so
+# it reaches the assistant via the exit-2 feedback contract (same channel as
+# STOP_MSG below). Phase 5.4.4.1 grep-detects it in the next context cycle.
+# Non-blocking per #552 design: helper failure is recorded to diag log but does
+# not alter the stop-block decision.
+if [ -n "$CREATE_INCIDENT_TYPE" ]; then
+  INCIDENT_HELPER="$SCRIPT_DIR/workflow-incident-emit.sh"
+  if [ -f "$INCIDENT_HELPER" ]; then
+    if [ ! -x "$INCIDENT_HELPER" ]; then
+      log_diag "incident_helper_not_executable path=$INCIDENT_HELPER session_id=${SESSION_ID:-unknown}"
+    fi
+    # capture stdout (sentinel line) and stderr (validation errors) separately.
+    # mktemp failure is recorded to diag log (not silent fallback — #552 cycle 2 F-04).
+    _emit_stderr=""
+    if _emit_stderr=$(mktemp 2>/dev/null); then
+      # register tempfile for trap cleanup (trap scope: EXIT/INT/TERM, appended to existing TMP_STATE trap)
+      trap 'rm -f "$TMP_STATE" "${_emit_stderr:-}" 2>/dev/null' EXIT TERM INT
+    else
+      log_diag "incident_emit_stderr_mktemp_failed session_id=${SESSION_ID:-unknown}"
+      # _emit_stderr stays empty; stderr will be redirected to /dev/null below
+    fi
+    # CRITICAL (#552 cycle 2 F-01): capture exit code via `if` form, NOT `|| true`.
+    # `cmd || true` causes $? to always be 0 (true's exit), making helper failure detection dead.
+    # Using `if ! cmd; then rc=$?; else rc=0` correctly captures the helper's own exit code.
+    _emit_rc=0
+    if [ -n "$_emit_stderr" ]; then
+      if ! _sentinel_line=$(bash "$INCIDENT_HELPER" \
+          --type "$CREATE_INCIDENT_TYPE" \
+          --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
+          --pr-number "${PR:-0}" 2>"$_emit_stderr"); then
+        _emit_rc=$?
+      fi
+    else
+      # stderr unavailable (mktemp failure) — discard helper stderr but still capture rc
+      if ! _sentinel_line=$(bash "$INCIDENT_HELPER" \
+          --type "$CREATE_INCIDENT_TYPE" \
+          --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
+          --pr-number "${PR:-0}" 2>/dev/null); then
+        _emit_rc=$?
+      fi
+    fi
+    if [ -n "$_sentinel_line" ]; then
+      # echo to stderr so Claude Code feeds it back via exit-2 contract
+      echo "$_sentinel_line" >&2
+    fi
+    log_diag "incident_emit type=$CREATE_INCIDENT_TYPE rc=$_emit_rc sentinel_captured=$([ -n "$_sentinel_line" ] && echo 1 || echo 0) phase=$PHASE session_id=${SESSION_ID:-unknown}"
+    # helper validation errors: record stderr whenever non-empty (decoupled from rc check
+    # per #552 cycle 2 F-05 — empty-stdout-with-rc=0 is also anomalous and deserves surfacing).
+    if [ -n "$_emit_stderr" ] && [ -s "$_emit_stderr" ]; then
+      log_diag "incident_emit_stderr rc=$_emit_rc first_line=$(head -1 "$_emit_stderr" | tr -d '\n' | head -c 200)"
+    fi
+    # anomalous empty-stdout path: helper exited 0 but produced no sentinel.
+    if [ "$_emit_rc" -eq 0 ] && [ -z "$_sentinel_line" ]; then
+      log_diag "incident_emit_empty_stdout type=$CREATE_INCIDENT_TYPE phase=$PHASE session_id=${SESSION_ID:-unknown}"
+    fi
+    if [ -n "$_emit_stderr" ]; then
+      rm -f "$_emit_stderr" 2>/dev/null
+      _emit_stderr=""  # clear before trap fires to avoid double-rm warning
+    fi
+  else
+    log_diag "incident_helper_not_found path=$INCIDENT_HELPER session_id=${SESSION_ID:-unknown}"
+  fi
+fi
 
 if [ -n "$CREATE_HINT" ]; then
   cat >&2 <<STOP_MSG

@@ -581,9 +581,21 @@ if [ -f ".rite-flow-state" ]; then
 fi
 ```
 
-### 4.2 Next Steps Output
+### 4.2 Completion Message (User-facing, Issue #552)
 
-Output the next steps as the final user-facing message before the completion marker:
+> **Design decision** (Issue #552 Bug2): The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified by AC-4). To give the user an unambiguous visual "done" signal, emit an explicit completion message **immediately before** the Next Steps block. The sentinel marker retains its position as the absolute last line (AC-4 backward compatibility).
+
+Output the user-facing completion message as the first deliverable line of Phase 4's output:
+
+```
+✅ Issue #{issue_number} を作成しました: {issue_url}
+```
+
+Where `{issue_number}` and `{issue_url}` are from the Phase 2.2 script result.
+
+### 4.3 Next Steps Output
+
+Output the next steps after the completion message:
 
 ```
 次のステップ:
@@ -593,7 +605,7 @@ Output the next steps as the final user-facing message before the completion mar
 
 Where `{issue_number}` is the Issue number from Phase 2.2.
 
-### 4.3 Completion Marker
+### 4.4 Completion Marker
 
 Output the completion marker as the **absolute last line**:
 
