@@ -68,16 +68,16 @@ When this command is executed, follow the phases below in order.
 
 場面 (a) では Item 1-3 が `NO` でも正常 (まだ Issue 未作成段階)。場面 (b) では 4 項目すべて `YES` が turn 終了の必要条件。
 
-**Procedure**: 下記 4 項目を上から順に評価。最初にマッチした `If NO` 列のアクションを実行。Item 4 (直前の sub-skill tag) を先に確認することで Item 1 の曖昧さ (どの sub-skill を呼ぶか) を事前に解消する。
+**Procedure**: Item 0 は **routing dispatcher** (YES/NO ではなく tag に応じて経路を選ぶ前段処理)。Item 0 を最優先で evaluate し、該当する経路に進んだ後、場面 (b) では **Item 1-3 が YES/NO で評価される状態チェック**。turn 終了の可否は Item 1-3 のみを集計する。
 
-| # | Check | If NO, do |
-|---|-------|-----------|
-| 0 | 直前の sub-skill return tag (routing trigger) | If `[interview:skipped]` / `[interview:completed]`: **continuation trigger** — immediately run 🚨 Mandatory After Interview (Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]`: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。 |
-| 1 | `[create:completed:{N}]` が最終行として出力済みか? | 場面 (a) では `NO` でも legitimate — 次の Pre-write + sub-skill invocation に進む。場面 (b) では `NO` は terminal sub-skill が未完了 — Mandatory After Delegation Step 3 (defense-in-depth として完了メッセージ + 次のステップを出力) を実行。 |
-| 2 | ユーザー向け完了メッセージ (register 形式 `✅ Issue #{N} を作成しました: {url}` / decompose 形式 `✅ Issue #{N} を分解して {count} 件の Sub-Issue を作成しました: {url}` / orchestrator Step 3 形式 `✅ Issue #{N} を作成しました` のいずれか) が表示済みか? | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal sub-skill の完了メッセージが欠落 — Mandatory After Delegation Step 3 を実行 (idempotent)。**literal pattern**: いずれか 1 形式を含んでいれば YES 判定。decompose 形式は「を作成しました」が末尾に来るため `Issue #{N} を作成しました` substring は含まない (完全 literal マッチは不要)。 |
-| 3 | `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: create_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — terminal sub-skill を呼ぶか Mandatory After Delegation Step 2 を実行。 |
+| # | Check (種別) | If YES/NO / routing, do |
+|---|-------------|------------------------|
+| 0 | **Routing dispatcher** (状態質問ではない): 直前の sub-skill return tag は何か? | If `[interview:skipped]` / `[interview:completed]`: **continuation trigger** — immediately run 🚨 Mandatory After Interview (Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]`: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。**本 Item は YES/NO 集計から除外** — ルーティング前段として機能する。 |
+| 1 | **State check**: `[create:completed:{N}]` が最終行として出力済みか? | 場面 (a) では `NO` でも legitimate — 次の Pre-write + sub-skill invocation に進む。場面 (b) では `NO` は terminal sub-skill が未完了 — Mandatory After Delegation Step 3 (defense-in-depth として完了メッセージ + 次のステップを出力) を実行。 |
+| 2 | **State check**: ユーザー向け完了メッセージが表示済みか? (3 形式のいずれか 1 つを含めば YES) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal sub-skill の完了メッセージが欠落 — Mandatory After Delegation Step 3 を実行 (idempotent)。**識別 substring**: 3 形式は以下の排他的な substring で識別可能 — register: `を作成しました:` (コロン付き URL), decompose: `を分解して` (中間句), orchestrator fallback: `を作成しました` かつ `:` を含まない。いずれか 1 形式の識別 substring を含めば YES 判定。 |
+| 3 | **State check**: `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: create_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — terminal sub-skill を呼ぶか Mandatory After Delegation Step 2 を実行。 |
 
-**Rule**: 4 項目すべて `YES` が turn 終了の必要条件 **ただし場面 (b) においてのみ**。場面 (a) では `NO` は「次のステップに進め」を意味する正常シグナル。全 `YES` は terminal state (Issue 作成完了 + sentinel 出力 + flow-state deactivate) を保証する。
+**Rule**: **Item 1-3 すべて `YES`** が turn 終了の必要条件 **ただし場面 (b) においてのみ**。Item 0 は routing dispatcher で YES/NO 集計には含まれない (経路選択が完了すれば Item 1-3 の evaluation に進む)。場面 (a) では Item 1-3 の `NO` は「次のステップに進め」を意味する正常シグナル。Item 1-3 全 `YES` は terminal state (Issue 作成完了 + sentinel 出力 + flow-state deactivate) を保証する。
 
 **Responsibility split**: 本 Pre-check list は turn 終了直前の手続的検証、Anti-pattern / Correct-pattern sections は sub-skill return 直後の推奨/禁止パターン (重複ではなく補完関係)。Pre-check list の各項目が `NO` の場合は Anti-pattern のルール (「turn を閉じない」) に従い即時継続すること。
 
@@ -731,10 +731,10 @@ Where `{number}` / `{parent_number}` / `{first_sub_issue}` / `{count}` are extra
 
 > **Issue #552 reminder**: `[create:completed:{N}]` sentinel marker is for hooks/scripts and **always** remains the absolute last line. The user-facing `✅` completion message precedes it. Terminal sub-skills emit both in the correct order — this Step 3 only fires as defense-in-depth when that output path failed.
 
-**Step 4 (terminal gate)**: Run the Pre-check list (top of this document) one final time in **場面 (b) mode** — all four items MUST be `YES`. Termination conditions:
+**Step 4 (terminal gate)**: Run the Pre-check list (top of this document) one final time in **場面 (b) mode** — **Item 1-3 すべて MUST be `YES`** (Item 0 は routing dispatcher で集計対象外)。Termination conditions:
 
 - 場面 (b) Item 2 が `NO` のまま Step 3 を実行しても still `NO` → loop 防止のため **manual 停止** し、stop-guard 経由で `workflow_incident` を emit させる (sub-skill / orchestrator 双方で完了メッセージ出力が失敗した異常経路)
-- それ以外 (全 `YES`) → Stop is allowed after cleanup.
+- それ以外 (Item 1-3 全 `YES`) → Stop is allowed after cleanup.
 
 ---
 

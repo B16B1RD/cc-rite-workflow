@@ -303,22 +303,54 @@ if [ -n "$CREATE_INCIDENT_TYPE" ]; then
     if [ ! -x "$INCIDENT_HELPER" ]; then
       log_diag "incident_helper_not_executable path=$INCIDENT_HELPER session_id=${SESSION_ID:-unknown}"
     fi
-    # capture stdout (sentinel line) and stderr (validation errors) separately
-    _emit_stderr=$(mktemp 2>/dev/null) || _emit_stderr="/tmp/rite-emit-err-$$"
-    _sentinel_line=$(bash "$INCIDENT_HELPER" \
-      --type "$CREATE_INCIDENT_TYPE" \
-      --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
-      --pr-number "${PR:-0}" 2>"$_emit_stderr") || true
-    _emit_rc=$?
+    # capture stdout (sentinel line) and stderr (validation errors) separately.
+    # mktemp failure is recorded to diag log (not silent fallback — #552 cycle 2 F-04).
+    _emit_stderr=""
+    if _emit_stderr=$(mktemp 2>/dev/null); then
+      # register tempfile for trap cleanup (trap scope: EXIT/INT/TERM, appended to existing TMP_STATE trap)
+      trap 'rm -f "$TMP_STATE" "${_emit_stderr:-}" 2>/dev/null' EXIT TERM INT
+    else
+      log_diag "incident_emit_stderr_mktemp_failed session_id=${SESSION_ID:-unknown}"
+      # _emit_stderr stays empty; stderr will be redirected to /dev/null below
+    fi
+    # CRITICAL (#552 cycle 2 F-01): capture exit code via `if` form, NOT `|| true`.
+    # `cmd || true` causes $? to always be 0 (true's exit), making helper failure detection dead.
+    # Using `if ! cmd; then rc=$?; else rc=0` correctly captures the helper's own exit code.
+    _emit_rc=0
+    if [ -n "$_emit_stderr" ]; then
+      if ! _sentinel_line=$(bash "$INCIDENT_HELPER" \
+          --type "$CREATE_INCIDENT_TYPE" \
+          --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
+          --pr-number "${PR:-0}" 2>"$_emit_stderr"); then
+        _emit_rc=$?
+      fi
+    else
+      # stderr unavailable (mktemp failure) — discard helper stderr but still capture rc
+      if ! _sentinel_line=$(bash "$INCIDENT_HELPER" \
+          --type "$CREATE_INCIDENT_TYPE" \
+          --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
+          --pr-number "${PR:-0}" 2>/dev/null); then
+        _emit_rc=$?
+      fi
+    fi
     if [ -n "$_sentinel_line" ]; then
       # echo to stderr so Claude Code feeds it back via exit-2 contract
       echo "$_sentinel_line" >&2
     fi
-    log_diag "incident_emit type=$CREATE_INCIDENT_TYPE rc=${_emit_rc:-0} sentinel_captured=$([ -n "$_sentinel_line" ] && echo 1 || echo 0) phase=$PHASE session_id=${SESSION_ID:-unknown}"
-    if [ "${_emit_rc:-0}" -ne 0 ] && [ -s "$_emit_stderr" ]; then
+    log_diag "incident_emit type=$CREATE_INCIDENT_TYPE rc=$_emit_rc sentinel_captured=$([ -n "$_sentinel_line" ] && echo 1 || echo 0) phase=$PHASE session_id=${SESSION_ID:-unknown}"
+    # helper validation errors: record stderr whenever non-empty (decoupled from rc check
+    # per #552 cycle 2 F-05 — empty-stdout-with-rc=0 is also anomalous and deserves surfacing).
+    if [ -n "$_emit_stderr" ] && [ -s "$_emit_stderr" ]; then
       log_diag "incident_emit_stderr rc=$_emit_rc first_line=$(head -1 "$_emit_stderr" | tr -d '\n' | head -c 200)"
     fi
-    rm -f "$_emit_stderr" 2>/dev/null || true
+    # anomalous empty-stdout path: helper exited 0 but produced no sentinel.
+    if [ "$_emit_rc" -eq 0 ] && [ -z "$_sentinel_line" ]; then
+      log_diag "incident_emit_empty_stdout type=$CREATE_INCIDENT_TYPE phase=$PHASE session_id=${SESSION_ID:-unknown}"
+    fi
+    if [ -n "$_emit_stderr" ]; then
+      rm -f "$_emit_stderr" 2>/dev/null
+      _emit_stderr=""  # clear before trap fires to avoid double-rm warning
+    fi
   else
     log_diag "incident_helper_not_found path=$INCIDENT_HELPER session_id=${SESSION_ID:-unknown}"
   fi
