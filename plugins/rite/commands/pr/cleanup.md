@@ -1557,12 +1557,23 @@ GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更
 
 | Sentinel | `{wiki_ingest_check}` | 表示内容 |
 |----------|----------------------|----------|
-| `WIKI_INGEST_DONE=1` | `x` | (追加表示なし) |
+| `WIKI_INGEST_DONE=1` 単独 | `x` | (追加表示なし) |
+| `WIKI_INGEST_DONE=1` + `WIKI_INGEST_PUSH_FAILED=1` 併存 | ` ` (space) | **PUSH_FAILED 優先**: 下記の push 失敗警告を表示 (AC-3: commit は local wiki branch に保持、origin 側のみ divergence) |
+| `WIKI_INGEST_PUSH_FAILED=1` 単独 (DONE なし) | ` ` (space) | 下記の push 失敗警告を表示 |
 | `WIKI_INGEST_SKIPPED=1; reason=disabled` | `x` | `ℹ️ Wiki ingest スキップ (wiki.enabled=false)` |
 | `WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `x` | `ℹ️ Wiki ingest スキップ (wiki.auto_ingest=false)` |
 | `WIKI_INGEST_SKIPPED=1; reason=no_pending` | `x` | `ℹ️ Wiki ingest スキップ (pending raw source なし)` |
-| `WIKI_INGEST_FAILED=1` | ` ` (space) | 下記の警告を表示 |
+| `WIKI_INGEST_FAILED=1` | ` ` (space) | 下記の ingest 失敗警告を表示 |
 | sentinel なし (Phase 4.W 未実行) | ` ` (space) | `⚠️ Wiki ingest Phase が実行されませんでした` |
+
+**Sentinel 評価優先順位** (silent misclassification 防止): Phase 4.W.3 の push failure detection は ingest 自身の成功 (`WIKI_INGEST_DONE=1`) と併存可能な経路のため、両 sentinel が同時に emit された場合は `WIKI_INGEST_PUSH_FAILED=1` 行を優先して評価し push 失敗警告を表示する。上記テーブルは上から順に評価し最初にマッチした行を採用すること。
+
+When `WIKI_INGEST_PUSH_FAILED` is detected (with or without `WIKI_INGEST_DONE`), append the following after the checklist:
+
+```
+⚠️ Wiki ingest: commit は local wiki branch に landed しましたが origin への push に失敗しました。
+  手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
+```
 
 When `WIKI_INGEST_FAILED` is detected, append the following after the checklist:
 
