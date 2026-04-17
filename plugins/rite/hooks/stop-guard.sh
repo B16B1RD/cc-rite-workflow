@@ -256,23 +256,46 @@ STOP_MSG
   exit 2
 fi
 
-# Best-effort hint for /rite:issue:create sub-skill return phases (#525).
+# Best-effort hint for /rite:issue:create sub-skill return phases (#525, #552).
 # When the LLM stops implicitly after a sub-skill return (e.g., right after
 # [interview:skipped] / [interview:completed] / [create:completed:{N}]),
 # surface a phase-specific continuation hint so the next prompt re-entry
 # makes the correct continuation obvious.
+#
+# Additionally (#552), emit a workflow_incident sentinel via
+# workflow-incident-emit.sh so the incident is captured in the Phase 5.4.4.1
+# sentinel detection pathway. This is best-effort — if the helper is missing
+# or fails, the block continues silently (non-blocking per AC-10).
 CREATE_HINT=""
+CREATE_INCIDENT_TYPE=""
 case "$PHASE" in
   create_post_interview)
     CREATE_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. No GitHub Issue has been created yet."
+    CREATE_INCIDENT_TYPE="manual_fallback_adopted"
     ;;
   create_delegation)
     CREATE_HINT="HINT: Delegation sub-skill is in-flight. When it returns [create:completed:{N}], run Mandatory After Delegation self-check (Step 1/2 are no-ops if marker present) in the SAME response turn. DO NOT stop before the completion marker is output."
+    CREATE_INCIDENT_TYPE="manual_fallback_adopted"
     ;;
   create_post_delegation)
     CREATE_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
+    CREATE_INCIDENT_TYPE="manual_fallback_adopted"
     ;;
 esac
+
+# #552: Emit workflow_incident sentinel when stop-guard blocks a create_* phase.
+# This is best-effort — helper missing / non-zero exit does NOT change the block
+# decision below. The sentinel is captured by Phase 5.4.4.1 in the next context
+# cycle, providing post-hoc visibility into implicit stop attempts.
+if [ -n "$CREATE_INCIDENT_TYPE" ]; then
+  INCIDENT_HELPER="$SCRIPT_DIR/workflow-incident-emit.sh"
+  if [ -x "$INCIDENT_HELPER" ]; then
+    bash "$INCIDENT_HELPER" \
+      --type "$CREATE_INCIDENT_TYPE" \
+      --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
+      --pr-number "${PR:-0}" >/dev/null 2>&1 || true
+  fi
+fi
 
 if [ -n "$CREATE_HINT" ]; then
   cat >&2 <<STOP_MSG

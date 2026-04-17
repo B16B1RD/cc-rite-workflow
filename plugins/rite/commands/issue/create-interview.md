@@ -511,11 +511,14 @@ else
 fi
 ```
 
-After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation comment **immediately before** the result pattern. The comment and the result pattern MUST be the last two non-empty lines of this sub-skill's output, in this order:
+After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. Both the plain-text reminder and the HTML comment precede the result pattern — all three MUST be the last visible lines of this sub-skill's output, in the order below:
+
+> **Issue #552 enhancement**: The caller continuation hint is emitted as **both** a plain-text line (visible in rendered Markdown) **and** an HTML comment (visible only in the LLM's raw context). The dual form ensures the reminder is robust against rendering modes where HTML comments are stripped before the LLM sees them. Rewriting this to HTML-comment-only is a regression.
 
 **Output format example (interview skipped)**:
 
 ```
+⚠️ caller (create.md): この return tag は turn 境界ではなく継続トリガです。SAME response turn 内で Phase 0.6 (Task Decomposition Decision) → Delegation Routing → terminal sub-skill に進行してください。Issue は未作成のため、ここで停止すると workflow が中断します。DO NOT stop.
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 [interview:skipped]
 ```
@@ -523,6 +526,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 **Output format example (interview completed)**:
 
 ```
+⚠️ caller (create.md): この return tag は turn 境界ではなく継続トリガです。SAME response turn 内で Phase 0.6 (Task Decomposition Decision) → Delegation Routing → terminal sub-skill に進行してください。Issue は未作成のため、ここで停止すると workflow が中断します。DO NOT stop.
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 [interview:completed]
 ```
@@ -532,7 +536,7 @@ Result patterns:
 - **Interview completed**: `[interview:completed]`
 - **Interview skipped** (XS, Bug Fix, Chore): `[interview:skipped]`
 
-This pattern is consumed by the orchestrator (`create.md`) to determine the next action. The HTML comment is a hint for the caller LLM (does not render in Markdown output but is visible in the conversation context that the caller LLM reads).
+This pattern is consumed by the orchestrator (`create.md`) to determine the next action. The plain-text reminder is visible to both the LLM and the human user; the HTML comment is a backup hint for the caller LLM that survives rendering modes that hide comments.
 
 ---
 

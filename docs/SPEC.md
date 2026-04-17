@@ -1719,15 +1719,18 @@ When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) i
 
 Violating this contract leaves the workflow partially executed: no Issue created, `.rite-flow-state` stuck in `active: true`, stale timestamps, and the user forced to type `continue` manually to recover. Issue #525 was filed after multiple instances of this failure in `/rite:issue:create` with the Bug Fix preset.
 
-### The three defense-in-depth layers
+### The defense-in-depth layers
 
 | Layer | Mechanism | Enforced by |
 |-------|-----------|------------|
 | **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases in orchestrator documentation | `commands/issue/start.md` Sub-skill Return Protocol (Global), `commands/issue/create.md` Sub-skill Return Protocol, `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` |
 | **2. Flow state** | Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocks every stop attempt until the orchestrator reaches the terminal phase (`create_completed` with `active: false` for `/rite:issue:create`) | `hooks/flow-state-update.sh`, `hooks/stop-guard.sh` |
-| **3. Caller-continuation hints** | HTML comment `<!-- caller: read .rite-flow-state and continue with Phase X.Y in the SAME response turn. DO NOT stop. -->` immediately before the sub-skill's result pattern. The HTML comment is visible to the LLM via conversation context but does NOT render in Markdown output. | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` |
+| **3. Caller-continuation hints** | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments (#552). | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` |
+| **4. Pre-check list (#552)** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:completed:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. | `commands/issue/create.md` "Pre-check list" section |
+| **5. Completion message (#552)** | Terminal sub-skills emit an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `[create:completed:{N}]` sentinel. The sentinel remains the absolute last line for grep-based tooling (AC-4 backward compat). | `commands/issue/create-register.md` Phase 4.2, `commands/issue/create-decompose.md` Phase 1.0.2 |
+| **6. stop-guard incident emit (#552)** | When `stop-guard.sh` blocks an implicit stop during `create_post_interview` / `create_delegation` / `create_post_delegation`, it emits a `manual_fallback_adopted` workflow_incident sentinel via `workflow-incident-emit.sh`. Phase 5.4.4.1 picks this up in the next context cycle for post-hoc visibility. | `hooks/stop-guard.sh` (best-effort, non-blocking per AC-10) |
 
-All three layers must be present for the contract to hold. If any layer is weakened (e.g., the HTML comment is removed, or the `same response turn` phrase is dropped from the prompt), the LLM may revert to its default "task-complete → end turn" behavior on the next failure path.
+All six layers are complementary. Removing any one weakens the contract — e.g., weakening Layer 1 (prompt) without adding Layer 4 (Pre-check list) re-opens the original #525 failure mode. #552 added Layers 4-6 after re-occurrence under dogfooding (Bug Fix preset with Phase 0.5 skipped).
 
 ### Contract specification
 
@@ -1783,6 +1786,9 @@ The sentinel would integrate with the existing Phase 5.4.4.1 detection flow (sam
 | AC-3 | `create.md` の Sub-skill Return Protocol セクションに "anti-pattern" / "correct-pattern" / "same response turn" / "DO NOT stop" の 4 phrase が全て含まれる |
 | AC-4 | `auto_continuation_failed` sentinel 実装時、Phase 5.4.4.1 detection で観測可能（MAY — 本 Issue スコープ外） |
 | AC-5 | Terminal Completion pattern (`[create:completed:{N}]` + `.rite-flow-state active: false`) が引き続き動作する (non-regression) |
+| AC-6 (#552) | Terminal sub-skill の最終出力に `✅ Issue #{N} を作成しました` ユーザー向け完了メッセージが含まれ、`[create:completed:{N}]` は最終行として維持される |
+| AC-7 (#552) | `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` workflow_incident sentinel が best-effort で emit される |
+| AC-8 (#552) | `create.md` に "Pre-check list" セクションが存在し、4 項目全て `YES` が turn 終了の必要条件として文書化されている |
 
 ### Relationship to Workflow Incident Detection
 

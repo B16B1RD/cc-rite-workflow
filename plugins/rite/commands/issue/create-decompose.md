@@ -727,7 +727,19 @@ if [ -f ".rite-flow-state" ]; then
 fi
 ```
 
-### 1.0.2 Completion Marker
+### 1.0.2 Completion Message (User-facing, Issue #552)
+
+> **Design decision** (Issue #552 Bug2): The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified by AC-4). To give the user an unambiguous visual "done" signal, emit an explicit completion message **immediately before** the completion marker. The sentinel marker retains its position as the absolute last line (AC-4 backward compatibility).
+
+Output the user-facing completion message after the Phase 0.9.6 Completion Report and before the completion marker:
+
+```
+✅ Issue #{parent_issue_number} を分解して {count} 件の Sub-Issue を作成しました: {parent_issue_url}
+```
+
+Where `{parent_issue_number}` / `{parent_issue_url}` / `{count}` are from Phase 0.9.1 / 0.9.2 results.
+
+### 1.0.3 Completion Marker
 
 Output the completion marker as the **absolute last line**:
 

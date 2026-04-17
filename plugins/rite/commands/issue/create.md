@@ -58,6 +58,19 @@ When this command is executed, follow the phases below in order.
 
 **Self-check**: After every sub-skill returns, ask yourself: "Has `[create:completed:{N}]` been output?" If not, you are NOT done — keep going.
 
+### Pre-check list (Issue #552 — mandatory before ending any response turn)
+
+Before ending the current response turn for **any** reason (including after observing a sub-skill's return tag), run this 4-item checklist in order. Ending the turn while any item is `NO` is a **protocol violation**.
+
+| # | Check | If NO, do |
+|---|-------|-----------|
+| 1 | Has `[create:completed:{N}]` been output as the absolute last line? | Continue — run the next Pre-write + sub-skill invocation. |
+| 2 | Has the user-facing `✅ Issue #{N} を作成しました` message been displayed? | Continue — the terminal sub-skill (create-register Phase 4.2 / create-decompose Phase 1.0.2) has not completed. |
+| 3 | Has the `.rite-flow-state` been deactivated (`active: false`, `phase: create_completed`)? | Continue — run the terminal sub-skill or Mandatory After Delegation Step 2. |
+| 4 | Was the last sub-skill tag one of `[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]`? | If `[interview:*]`: this is a **continuation trigger** (not a stop). Immediately run 🚨 Mandatory After Interview. If `[create:completed:{N}]`: run Mandatory After Delegation self-check (Step 1/2 no-ops, Step 3 idempotent). |
+
+**Rule**: All four items MUST be `YES` before the turn ends. A single `NO` means the workflow is mid-flight and stopping abandons the deliverable. This checklist supplements — does not replace — the existing Anti-pattern / Correct-pattern sections below.
+
 ### Anti-pattern (what NOT to do)
 
 When `rite:issue:create-interview` returns `[interview:skipped]` or `[interview:completed]`:
@@ -516,7 +529,11 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 ```
 
-**Step 2**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
+**Step 2 (Issue #552 — mandatory continuation step)**: Run the Pre-check list at the top of this document (section "Pre-check list"). If any item is `NO`, do NOT end the turn — continue to Phase 0.6 evaluation.
+
+**Step 3**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
+
+> **Issue #552 reminder**: The return tag `[interview:skipped]` / `[interview:completed]` is a **continuation trigger**, not a turn boundary. Ending the turn here is a **protocol violation** — the stop-guard hook will emit a workflow incident (`type=manual_fallback_adopted` or equivalent) if implicit stop is detected.
 
 ---
 
@@ -679,9 +696,11 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "none" --active false
 ```
 
-**Step 3**: Output the next steps (idempotent — if already output by sub-skill, this is a duplicate that the user can safely ignore):
+**Step 3**: Output the user-facing completion message and next steps (idempotent — if already output by the terminal sub-skill, this duplication is harmless):
 
 ```
+✅ Issue #{number} を作成しました
+
 次のステップ:
 1. `/rite:issue:start {number}` で作業を開始
 2. 作業完了後 `/rite:pr:create` で PR 作成
@@ -689,7 +708,9 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 Where `{number}` is the Issue number extracted from the sub-skill's result pattern.
 
-**Step 4**: The workflow is now complete. Stop is allowed after cleanup.
+> **Issue #552 reminder**: The completion message `✅ Issue #{N} を作成しました` is the user-facing "done" signal. The `[create:completed:{N}]` sentinel marker is for hooks/scripts and remains the absolute last line. Both are required — missing either is a protocol violation.
+
+**Step 4**: The workflow is now complete. Run the Pre-check list (top of this document) one final time — all four items MUST be `YES`. Stop is allowed only after cleanup.
 
 ---
 
