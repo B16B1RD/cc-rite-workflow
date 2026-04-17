@@ -145,7 +145,8 @@ stderr を tempfile に退避し、**stderr pattern matching** で legitimate ab
 
 ```bash
 # mktemp 失敗時は WARNING を emit してから log_err="" で続行する
-# (lint.md:508-511 実装と同じ defense-in-depth — silent fallback 禁止)。
+# (lint.md Phase 6.0 の log_err mktemp 失敗 WARNING 部と同じ defense-in-depth — silent fallback 禁止。
+# 行番号は drift するため Phase 番号 + 機能名で参照する。PR #564 レビュー MEDIUM 対応)。
 # 知らないエラー (mktemp 失敗で stderr 取得不能) を silent に absence と誤認するより、
 # WARNING で可視化して io_error 経路に流す方が正しい。
 if ! log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null); then

@@ -1,6 +1,6 @@
 # Bash Trap + Cleanup Patterns
 
-このファイルは `plugins/rite/commands/pr/fix.md`、`review.md`、および `issue/start.md` の bash block で繰り返し使用される
+このファイルは `plugins/rite/commands/pr/fix.md`、`review.md`、`issue/start.md`、および `plugins/rite/commands/wiki/lint.md` の bash block で繰り返し使用される
 **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 
 各 bash block の冒頭では、本ファイルの該当セクションへの anchor 参照を pointer コメントとして置き、
@@ -118,7 +118,7 @@ cleanup 関数の責務は **rm -f などの cleanup 操作のみ**であり、e
 portable に保ちたい場合は、代わりに以下の明示的な空引数ガードを使う:
 
 ```bash
-_rite_<phase>_cleanup() {
+_rite_<scope>_<phase>_cleanup() {
   [ -n "${var1:-}" ] && rm -f "$var1"
   [ -n "${var2:-}" ] && rm -f "$var2"
 }
@@ -135,7 +135,18 @@ _rite_<phase>_cleanup() {
 - `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_phase60_cleanup`)
 - `plugins/rite/commands/wiki/lint.md` Phase 6.2 (`_rite_wiki_lint_phase62_cleanup`) — PR #564 で追加、page_err / awk_diag / sort_err の 3 tempfile を保護
 
-命名規約: `_rite_wiki_lint_phase{N}_cleanup` 形式で統一する (`phase` prefix を維持、短縮形 `p{NN}` は PR #564 レビュー LOW #2 対応で廃止)。将来 Phase 6.1 / 6.3 等で cleanup 関数を追加する場合も同形式を採用すること。
+命名規約:
+
+- 形式: `_rite_<scope>_<phase>_cleanup`
+- `<scope>`: site を識別する接頭辞。例: `wiki_lint` (wiki/lint.md), `fix` (pr/fix.md), `review` (pr/review.md), `start` (issue/start.md)
+- `<phase>`: Phase 番号。**小数点を除いた連結形式**を使う (drift 防止)
+  - `Phase 2.2` → `phase2`
+  - `Phase 6.0` → `phase60`
+  - `Phase 6.2` → `phase62`
+  - `Phase 2` (小数なし) → `phase2`
+  - 複数 Block を持つ Phase (Fast Path Block A/B/C 等) は `phaseXY_blockA` のように suffix を追加可
+- 将来 Phase 6.1 / 6.3 等で cleanup 関数を追加する場合も同形式を採用すること。
+- PR #564 レビュー LOW #2 対応で短縮形 `_rite_p{NN}_cleanup` は廃止、scope prefix 付きの 2 階層命名に統一 (scope 不在だと `_rite_phase2_cleanup` が複数 site で衝突するため)。
 
 GNU rm のみをターゲットとする site (Linux-only CI 等) では `rm -f "${var:-}"` のままで問題ない。
 

@@ -102,10 +102,17 @@ echo "wiki_branch=$wiki_branch"
 # --auto モードでは 6 フィールドの 1 行を必ず出力する (stdout 空は ingest 側 Phase 8.3 step 3 で
 # 「Lint 実行失敗」として扱われる unreachable 経路のため)。
 # mode は Phase 1.4 で解析されるが、本経路は Phase 1.1 直後の早期 return のため引数文字列を直接 scan する。
-# Claude placeholder {mode} 残留 fail-fast gate (canonical pattern、fix.md/review.md と対称化):
+# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版。fix.md / review.md の
+# placeholder 残留 gate は exact-string match (`case "$review_file_path" in "{review_file_path_from_phase_1_0_1}"...)`)
+# を採用しているが、本 site では glob pattern `"{"*"}"` を採用している。両者の approach は異なるが
+# 検出目的 (「literal 残留」= Claude が substitute し忘れて `{...}` のままの状態) は共通):
 # 変数代入 mode="{mode}" のみを substitute 対象とし、case pattern `"{"*"}"` で placeholder 残留形状を検出する。
 # 正常時: mode="--auto" → "--auto" は "{"*"}" にマッチしない → gate 通過
 # 未置換時: mode="{mode}" → "{mode}" は "{"*"}" にマッチ → exit 1
+# trade-off: glob 版は `{foo}` を legitimate 値とする edge case (Template 系プロジェクトで `{var}` 含みの
+# 引数を lint mode として渡した場合 — 現状 /rite:wiki:lint の args 仕様としてはあり得ない) で false positive
+# 発火リスクがあるが、mode の値域が `--auto` のみなので本 site では許容する。将来 mode 値域が拡張される
+# 場合は fix.md / review.md 型の exact-string match に揃えること。
 mode="{mode}"
 case "$mode" in
   "{"*"}")
