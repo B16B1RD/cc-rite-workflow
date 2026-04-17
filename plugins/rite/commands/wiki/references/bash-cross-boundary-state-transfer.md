@@ -64,7 +64,7 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続 Ph
 ### 参照実装 (2026-04 時点)
 
 - `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `log_read_ok` 4 値 enum (unknown / true / absent / io_error)
-- 同 Phase 2.2 — `index_read_ok` (true / false) の 2 値 enum
+- 同 Phase 2.3 — `index_read_ok` (true / false) の 2 値 enum (簡易版、absent / io_error の区別なし)
 - `plugins/rite/commands/pr/review.md` Phase 6.1.a — `JSON_SAVED=true|false`、`FILE_TIMESTAMP=<ts>` の
   `[CONTEXT]` prefix 版。prefix を付けることで Phase 6.1.c が grep 可能になる
 
@@ -138,22 +138,26 @@ silent に「0 件」と誤認する。
 stderr を tempfile に退避し、**stderr pattern matching** で legitimate absence / io_error を区別する:
 
 ```bash
-log_err=$(mktemp /tmp/rite-XXXXXX)
+# mktemp 失敗時は log_err="" にする (lint.md 実装と同じ defense-in-depth)
+log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null) || log_err=""
 
-if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"$log_err"); then
+if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
   log_read_ok="true"
 else
   # 2 primary pattern + 2 safety pattern = 4 pattern 網羅
-  if [ -s "$log_err" ] && grep -qE "does not exist|path '.+' exists on disk, but not in|Not a valid object name|fatal: invalid object name '[^']*:\\.rite/wiki/log\\.md'" "$log_err"; then
+  # [ -n "$log_err" ] && [ -s "$log_err" ] の 2 段ガード: mktemp 失敗経路 (log_err="")
+  # では [ -s "" ] が false でも silent に io_error に流れるが、[ -n ] ガードで
+  # 「そもそも stderr 退避を試みたか」を明示する
+  if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "does not exist|path '.+' exists on disk, but not in|Not a valid object name|fatal: invalid object name '[^']*:\\.rite/wiki/log\\.md'" "$log_err"; then
     log_read_ok="absent"    # legitimate absence — skipped_refs="" は妥当
   else
-    log_read_ok="io_error"  # 真の IO error — WARNING 表示して false positive リスクを可視化
+    log_read_ok="io_error"  # 真の IO error (or mktemp 失敗で原因区別不能) — WARNING 表示
     echo "WARNING: ..." >&2
-    head -3 "$log_err" | sed 's/^/  /' >&2
+    [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | sed 's/^/  /' >&2
   fi
 fi
 
-rm -f "$log_err"
+[ -n "$log_err" ] && rm -f "$log_err"
 ```
 
 ### 設計原則
@@ -167,8 +171,9 @@ rm -f "$log_err"
 
 ### 参照実装 (2026-04 時点)
 
-- `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `log_read_ok` enum の absent / io_error 判別
-- `plugins/rite/commands/wiki/lint.md` Phase 2.3 — `index_read_ok` の同型判別 (より簡易な 2 値 enum)
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `log_read_ok` enum の absent / io_error 判別 (現在唯一の完全実装)
+
+> **Note**: `lint.md` Phase 2.3 の `index_read_ok` は 2 値 enum (true / false) で absent と io_error を区別していないため、Pattern 3 (absence vs IO error classification) の参照実装には当てはまらない。Pattern 3 を新規採用する site は本項の Phase 6.0 のみを reference として使うこと。
 
 ---
 
@@ -192,7 +197,8 @@ rm -f "$log_err"
 
 - **PR #547 / #556 (Wiki worktree 化 / origin/wiki fallback)**: Wiki branch / raw source の読み出しで
   legitimate absence と IO error を混同し、fresh branch で「絶大な missing=N 件」を誤報する regression が
-  発生。Phase 3 (classification) を追加して解消。
+  発生。legitimate absence と io_error を区別する classification step (現行 `lint.md` Phase 6.0 に相当)
+  を追加して解消。
 - **PR #564 (Issue #563 lint 2 カテゴリ分離)**: 本 pattern 群を集約。`log_read_ok` 4 値 enum の導入に
   あわせて、pattern 1-3 を独立ドキュメントとして切り出した。
 
