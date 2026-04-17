@@ -1421,15 +1421,24 @@ Skill: rite:wiki:ingest
 [CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=cleanup_ingest
 ```
 
-**Push failure detection** (Issue #555): after reading the success message above, inspect the ingest Skill's stdout lines emitted in this conversation context for `push=failed` (written by `wiki-worktree-commit.sh` via ingest.md Phase 5.1 when `wiki-worktree-commit.sh` returns rc=4). When detected, the commit has landed on the local wiki branch but the origin push failed — AC-3 requires an observable sentinel so cleanup continues (loss-safe) while the incident layer can register the divergence:
+**Push failure detection** (Issue #555): after the `rite:wiki:ingest` Skill invocation returns, inspect the ingest Skill's stdout lines emitted in this conversation context for the marker `push=failed` (written by `wiki-worktree-commit.sh` via ingest.md Phase 5.1 when `wiki-worktree-commit.sh` returns rc=4). When detected, the commit has landed on the local wiki branch but the origin push failed — AC-3 requires an observable sentinel so cleanup continues (loss-safe) while the incident layer can register the divergence.
+
+**LLM detection and substitution rule**: Claude must inspect the ingest Skill's output (which appears in the conversation context between Phase 4.W.2 invocation and this block) for a line matching the `push=failed` pattern. Typical positive match: `[wiki-worktree-commit] committed=1; branch=wiki; head=<sha>; push=failed`. Typical negatives: `push=ok`, `reason=no-pending`, or no `[wiki-worktree-commit]` status line at all (ingest skipped). Based on the detection result, substitute `{wiki_push_failed}` with either `"true"` (detected) or `"false"` (not detected). Do NOT rely on shell env vars — Claude Code's Bash tool does not persist state across tool calls.
 
 ```bash
-# LLM action: set WIKI_WORKTREE_PUSH_FAILED=1 in the environment IFF the ingest
-# skill output above contained a line matching `push=failed` (typical pattern:
-# `[wiki-worktree-commit] committed=1; branch=wiki; head=<sha>; push=failed`).
-# Leave WIKI_WORKTREE_PUSH_FAILED unset/empty otherwise so the sentinel block
-# below short-circuits.
-if [ "${WIKI_WORKTREE_PUSH_FAILED:-0}" = "1" ]; then
+# Claude substitutes {wiki_push_failed} with "true" or "false" based on ingest output inspection.
+# {pr_number} is substituted with the PR number from Phase 1. {plugin_root} is substituted per
+# plugin-path-resolution.md.
+wiki_push_failed="{wiki_push_failed}"
+
+# Resolve wiki_branch from rite-config.yml (this bash block is a separate invocation from
+# Phase 4.W.1 Step 2, so the shell variable from that step is out of scope). Same parser as
+# Phase 4.W.1 Step 2.
+wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exit}' rite-config.yml 2>/dev/null \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+[ -z "$wiki_branch" ] && wiki_branch="wiki"
+
+if [ "$wiki_push_failed" = "true" ]; then
   echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_ok_push_failed; phase=cleanup_4W"
   emit_err=$(mktemp /tmp/rite-wiki-pushfail-emit-err-XXXXXX 2>/dev/null) || emit_err=""
   trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
@@ -1449,7 +1458,7 @@ if [ "${WIKI_WORKTREE_PUSH_FAILED:-0}" = "1" ]; then
   [ -n "$emit_err" ] && rm -f "$emit_err"
   trap - EXIT INT TERM HUP
   echo "⚠️ Wiki ingest: commit は landed しましたが origin への push に失敗しました。"
-  echo "  手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}"
+  echo "  手動回復: git -C .rite/wiki-worktree push origin ${wiki_branch}"
 fi
 ```
 
