@@ -1439,7 +1439,9 @@ wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exi
 [ -z "$wiki_branch" ] && wiki_branch="wiki"
 
 if [ "$wiki_push_failed" = "true" ]; then
-  echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_ok_push_failed; phase=cleanup_4W"
+  # reason=commit_rc_4 で start.md Phase 5.6.2 の aggregation pattern と統一する (cleanup 固有情報は
+  # source= key で併記)。旧 `reason=commit_ok_push_failed` は aggregation table と drift していた
+  echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; source=cleanup_4W"
   emit_err=$(mktemp /tmp/rite-wiki-pushfail-emit-err-XXXXXX 2>/dev/null) || emit_err=""
   trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
   if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
@@ -1457,8 +1459,8 @@ if [ "$wiki_push_failed" = "true" ]; then
   fi
   [ -n "$emit_err" ] && rm -f "$emit_err"
   trap - EXIT INT TERM HUP
-  echo "⚠️ Wiki ingest: commit は landed しましたが origin への push に失敗しました。"
-  echo "  手動回復: git -C .rite/wiki-worktree push origin ${wiki_branch}"
+  # ユーザー可視の push 失敗警告は Phase 5.1 Completion Report display rules に一元化した。
+  # ここでは sentinel emit のみを行い、重複メッセージを避ける (review.md / fix.md / close.md と同じ pattern)。
 fi
 ```
 
@@ -1568,14 +1570,16 @@ GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更
 
 **Sentinel 評価優先順位** (silent misclassification 防止): Phase 4.W.3 の push failure detection は ingest 自身の成功 (`WIKI_INGEST_DONE=1`) と併存可能な経路のため、両 sentinel が同時に emit された場合は `WIKI_INGEST_PUSH_FAILED=1` 行を優先して評価し push 失敗警告を表示する。上記テーブルは上から順に評価し最初にマッチした行を採用すること。
 
-When `WIKI_INGEST_PUSH_FAILED` is detected (with or without `WIKI_INGEST_DONE`), append the following after the checklist:
+`{wiki_branch}` の解決: 下記 `WIKI_INGEST_PUSH_FAILED` メッセージの `{wiki_branch}` は、Phase 4.W.1 Step 2 と同じ parser (`awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exit}' rite-config.yml ...`) で `rite-config.yml` の `wiki.branch_name` を解決する。未設定時のデフォルトは `wiki`。
+
+`WIKI_INGEST_PUSH_FAILED` が検出された場合 (`WIKI_INGEST_DONE` との併存有無を問わず)、チェックリストの後に以下を付記する:
 
 ```
 ⚠️ Wiki ingest: commit は local wiki branch に landed しましたが origin への push に失敗しました。
   手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
 ```
 
-When `WIKI_INGEST_FAILED` is detected, append the following after the checklist:
+`WIKI_INGEST_FAILED` が検出された場合、チェックリストの後に以下を付記する:
 
 ```
 ⚠️ Wiki ingest が失敗しました。raw source は wiki branch に保持されています。
