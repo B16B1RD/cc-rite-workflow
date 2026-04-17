@@ -1060,7 +1060,7 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 
 ### 2.5 Delete Review Result Local Files and Fix State Files (#443, #450) <!-- AC-7 -->
 
-> **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除し、併せて fix retry state file `.rite/state/fix-fallback-retry-{pr_number}.count` も specific path で削除する。他 PR ファイルを誤削除しない)。
+> **Acceptance Criteria anchor**: AC-7 (PR マージ時に以下 5 カテゴリの PR-specific local artifacts を削除する: (1) `.rite/review-results/{pr_number}-*.json` wildcard 固定 prefix、(2) `.rite/review-results/{pr_number}-*.json.corrupt-*` corrupt 検出 rename ファイル、(3) `.rite/state/fix-fallback-retry-{pr_number}.count` specific path、(4) `.rite/fix-cycle-state/{pr_number}.json` specific path (Issue #453)、(5) `.rite/fix-cycle-state.json` legacy 単一ファイル specific path (Issue #551)。他 PR ファイルを誤削除しない)。
 
 Delete five categories of PR-specific local artifacts associated with the merged PR:
 
@@ -1095,8 +1095,9 @@ Delete five categories of PR-specific local artifacts associated with the merged
 **Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure` / `mktemp_failure_rm_err_cycle_state` / `cycle_state_file_rm_failure` / `mktemp_failure_rm_err_legacy_cycle` / `legacy_cycle_state_file_rm_failure`)
 
 ```bash
-# signal-specific trap: matched_files rm と state_file rm のそれぞれに独立した stderr 退避 tempfile
-# を持たせ、非対称な再利用によるコード/コメント乖離と詳細ログ喪失を防ぐ。
+# signal-specific trap: 4 ブロック (matched_files rm / state_file rm / cycle_state rm /
+# legacy_cycle_state rm) のそれぞれに独立した stderr 退避 tempfile を持たせ、非対称な再利用に
+# よるコード/コメント乖離と詳細ログ喪失を防ぐ。
 matched_files_rm_err=""
 state_file_rm_err=""
 cycle_state_rm_err=""
