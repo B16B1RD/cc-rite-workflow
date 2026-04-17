@@ -698,7 +698,8 @@ Wiki Ingest が完了しました。
 - 新規作成したページ: {n_pages_created} 件
 - 更新したページ: {n_pages_updated} 件
 - スキップした Raw Source: {n_skipped} 件
-- Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs}）
+- Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly}）
+  - 注: `{n_lint_anomaly}` は Phase 8.3 step 1/3/4 (`ERROR 文字列検出` / `stdout 空` / `regex mismatch`) で加算された Lint 実行異常の件数。5 カテゴリ合計と加算すると `n_warnings` の値に一致する。`n_lint_anomaly` は Phase 2.1 のカウンタに追加、step 1/3/4 で `n_warnings += 1` と同時に `n_lint_anomaly += 1` も加算すること
 - 未登録 raw（skip 済、warnings 不加算）: {n_unregistered_raw} 件
 
 新規/更新ページ:
