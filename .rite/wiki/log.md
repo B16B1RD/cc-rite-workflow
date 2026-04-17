@@ -39,3 +39,6 @@
 | 2026-04-17T00:00:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #550 cycle 3 fix で symmetric error handling 一般化のエビデンス追加 |
 | 2026-04-17T00:00:00+00:00 | ingest:update | pages/heuristics/stderr-selective-surface-over-truncate.md | PR #550 fix cycle 1 で per-step tempfile 分離のエビデンス追加 |
 | 2026-04-17T00:05:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=13 (全て log に ingest:skip 記録済み), broken_refs=0 |
+| 2026-04-17T00:49:00+00:00 | ingest:create | pages/patterns/drift-check-anchor-prose-code-sync.md | PR #553 cycle 1/2/3 review (AC anchor / reasons table / Eval-order / bash emit 順 3 重契約 + distributed-fix-drift-check.sh Pattern-2/5 実証) |
+| 2026-04-17T00:49:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #553 cycle 1/2 で mktemp pattern 統一事例 (Phase 内対称化) のエビデンス追加 |
+| 2026-04-17T00:49:00+00:00 | ingest:skip | raw/reviews/20260417T003737Z-pr-553-cycle-3.md | cycle 3 final 0 findings 確認のみ、主要知見は cycle 1/2 と drift-check page で統合済み |
