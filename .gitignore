@@ -40,13 +40,19 @@ temp/
 # Wiki データ本体 (Issue #547 worktree 設計で develop ブランチからは完全分離)。
 # Wiki の正規パスは .rite/wiki-worktree/.rite/wiki/ であり、develop 側の
 # .rite/wiki/ にファイルが出現するのは wiki-ingest-trigger.sh の一時書き出しが
-# wiki-ingest-commit.sh の stash/cleanup で回収されずに残留した silent leak 時のみ。
+# wiki-ingest-commit.sh の stash/cleanup で回収されずに残留した silent leak 時のみ
+# (残留した場合、develop の PR diff に raw/*.md が混入する)。
 # 最終防御線として develop の PR diff への混入を抑止する。
-# ※ same_branch 戦略 (rite-config.yml の wiki.branch_strategy) を使う場合は
-# 以下の negation エントリを追加して上書き解除 (防御的に 2 行とも追加推奨):
+#
+# ⚠️ same_branch 戦略 (rite-config.yml の wiki.branch_strategy: "same_branch") ユーザーへ:
+# 本 .gitignore 変更を pull すると、`wiki-ingest-commit.sh` L266 の `git add -- <raw files>` が
+# "paths are ignored" で exit 1 → commit-script exit 3 となり /rite:wiki:ingest が hard fail します。
+# **本 .gitignore を pull する前に** 必ず以下の negation エントリ 2 行を追加してください
+# (防御的に 2 行とも推奨):
 #   !.rite/wiki/
 #   !.rite/wiki/**
-# 動作確認: git check-ignore -v .rite/wiki/pages/foo.md
+# 動作確認: git check-ignore -v .rite/wiki/raw/foo.md (trigger.sh が実際に書き出すパス)
+# separate_branch 戦略 (デフォルト) ユーザーは本 .gitignore でそのまま動作します。
 .rite/wiki/
 # Wiki branch を checkout した永続 git worktree (Issue #547 で導入)。
 # wiki-worktree-setup.sh が冪等に作成し、cleanup.md Phase 2.6 で意図的に
