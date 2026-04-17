@@ -1062,12 +1062,13 @@ Ignore remote branch deletion errors and proceed to Phase 2.5.
 
 > **Acceptance Criteria anchor**: AC-7 (PR マージ時に `.rite/review-results/{pr_number}-*.json` を wildcard 固定 prefix で削除し、併せて fix retry state file `.rite/state/fix-fallback-retry-{pr_number}.count` も specific path で削除する。他 PR ファイルを誤削除しない)。
 
-Delete four categories of PR-specific local artifacts associated with the merged PR:
+Delete five categories of PR-specific local artifacts associated with the merged PR:
 
 1. **Review result files**: `.rite/review-results/{pr_number}-*.json` (Issue #443 で導入された opt-in PR コメント記録機能の補完 — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract)
 2. **Corrupted review result files**: `.rite/review-results/{pr_number}-*.json.corrupt-*` (fix.md Phase 1.2.0 Priority 2 が corrupt 検出時に `.corrupt-{epoch}` suffix で rename したファイル。長期運用で累積する `.gitignore` 対象 orphan を防ぐ)
 3. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count`
 4. **Fix-cycle state file**: `.rite/fix-cycle-state/{pr_number}.json` (Issue #453 収束エンジンが fix サイクルごとに記録する状態ファイル。specific path で削除、wildcard 禁止)
+5. **Legacy fix-cycle state file**: `.rite/fix-cycle-state.json` (旧実装または外因性要因によりワークツリー直下に生成される単一ファイル形式の残骸。Issue #551 で対応。specific path 完全一致で削除、PR 番号に依存しない・wildcard 禁止。`.gitignore` の `.rite/fix-cycle-state.json` エントリと併置で defense-in-depth)
 
 > **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で設計されており、trap は block 外に伝播しない。block 末尾で trap を restore する必要はない。
 
@@ -1088,8 +1089,10 @@ Delete four categories of PR-specific local artifacts associated with the merged
 | `mktemp_failure_rm_err_state_file` | state_file 側 (`rm` の stderr 退避用 tempfile) の mktemp が失敗 (verified-review cycle 9 I-3 対応、`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行。matched_files 側 `mktemp_failure_rm_err` との対称化) |
 | `cycle_state_file_rm_failure` | fix-cycle state file (`#453`) の `rm -f` が permission denied 等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
 | `mktemp_failure_rm_err_cycle_state` | cycle state file 側 (`rm` の stderr 退避用 tempfile) の mktemp が失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行。matched_files 側 `mktemp_failure_rm_err` との対称化) |
+| `legacy_cycle_state_file_rm_failure` | legacy 単一ファイル `.rite/fix-cycle-state.json` (`#551`) の `rm -f` が permission denied 等で失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続) |
+| `mktemp_failure_rm_err_legacy_cycle` | legacy cycle state file 側 (`rm` の stderr 退避用 tempfile) の mktemp が失敗 (`[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1` flag を併設、Phase は WARNING 後に継続して rm を `/dev/null` 経由で実行。cycle_state 側 `mktemp_failure_rm_err_cycle_state` との対称化) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure` / `mktemp_failure_rm_err_cycle_state` / `cycle_state_file_rm_failure`)
+**Eval-order enumeration** (for Pattern-5 drift check): Phase 2.5 emit sequence = (`invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure` / `mktemp_failure_rm_err_cycle_state` / `cycle_state_file_rm_failure` / `mktemp_failure_rm_err_legacy_cycle` / `legacy_cycle_state_file_rm_failure`)
 
 ```bash
 # signal-specific trap: matched_files rm と state_file rm のそれぞれに独立した stderr 退避 tempfile
@@ -1097,8 +1100,9 @@ Delete four categories of PR-specific local artifacts associated with the merged
 matched_files_rm_err=""
 state_file_rm_err=""
 cycle_state_rm_err=""
+legacy_cycle_state_rm_err=""
 _rite_cleanup_p25_cleanup() {
-  rm -f "${matched_files_rm_err:-}" "${state_file_rm_err:-}" "${cycle_state_rm_err:-}"
+  rm -f "${matched_files_rm_err:-}" "${state_file_rm_err:-}" "${cycle_state_rm_err:-}" "${legacy_cycle_state_rm_err:-}"
 }
 trap 'rc=$?; _rite_cleanup_p25_cleanup; exit $rc' EXIT
 trap '_rite_cleanup_p25_cleanup; exit 130' INT
@@ -1217,8 +1221,35 @@ if [ -f "$cycle_state_file" ]; then
   [ -n "$cycle_state_rm_err" ] && rm -f "$cycle_state_rm_err"
 fi
 
-# trap cleanup 関数が EXIT で matched_files_rm_err / state_file_rm_err を削除する。block 末尾で
-# cleanup を先に実行し、その後 trap をリセットして block 外への伝播を遮断する (defense-in-depth)。
+# legacy fix-cycle state file の削除 (#551)
+# specific path 必須 (`.rite/fix-cycle-state.json` 完全一致、PR 番号に依存しない・wildcard 禁止)。
+# 旧実装または外因性要因によりワークツリー直下に生成された単一ファイル形式の残骸を除去する。
+# ファイル未存在時は no-op (silent skip、warning なし)。既存 cycle_state_file 削除パターンと
+# 対称化された error handling (mktemp + stderr 退避 + non-blocking warning)。
+legacy_cycle_state_file=".rite/fix-cycle-state.json"
+if [ -f "$legacy_cycle_state_file" ]; then
+  legacy_cycle_state_rm_err=$(mktemp /tmp/rite-cleanup-legacy-cycle-rm-err-XXXXXX 2>/dev/null) || {
+    echo "WARNING: legacy cycle state file rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_legacy_cycle; pr=${pr_number}" >&2
+    legacy_cycle_state_rm_err=""
+  }
+  if rm -f "$legacy_cycle_state_file" 2>"${legacy_cycle_state_rm_err:-/dev/null}"; then
+    echo "✅ legacy fix-cycle state file を削除しました: $legacy_cycle_state_file" >&2
+  else
+    rm_legacy_rc=$?
+    echo "WARNING: legacy fix-cycle state file の削除に失敗 (PR #${pr_number}, rc=$rm_legacy_rc): $legacy_cycle_state_file" >&2
+    if [ -n "$legacy_cycle_state_rm_err" ] && [ -s "$legacy_cycle_state_rm_err" ]; then
+      head -5 "$legacy_cycle_state_rm_err" | sed 's/^/  /' >&2
+    fi
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=legacy_cycle_state_file_rm_failure; pr=${pr_number}" >&2
+    echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
+  fi
+  [ -n "$legacy_cycle_state_rm_err" ] && rm -f "$legacy_cycle_state_rm_err"
+fi
+
+# trap cleanup 関数が EXIT で matched_files_rm_err / state_file_rm_err / cycle_state_rm_err /
+# legacy_cycle_state_rm_err を削除する。block 末尾で cleanup を先に実行し、その後 trap を
+# リセットして block 外への伝播を遮断する (defense-in-depth)。
 # 順序が重要: trap 解除→cleanup だと解除〜cleanup 間のシグナルでクリーンアップ未実行になる。
 _rite_cleanup_p25_cleanup
 trap - EXIT INT TERM HUP
