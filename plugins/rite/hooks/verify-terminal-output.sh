@@ -24,7 +24,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Color helpers (best-effort; disable when stdout is not a tty)
 if [ -t 1 ]; then
@@ -40,32 +39,68 @@ else
 fi
 
 usage() {
+  local rc="${1:-2}"
   cat >&2 <<'USAGE_EOF'
-Usage: verify-terminal-output.sh [--quiet]
+Usage: verify-terminal-output.sh [--quiet] [--repo-root <path>]
 
 Options:
-  --quiet    Suppress success output (failures still go to stderr)
+  --quiet                Suppress success output (failures still go to stderr)
+  --repo-root <path>     Override repository root (default: auto-detect via
+                         git rev-parse --show-toplevel, fallback to plugin
+                         parent directory for marketplace installs)
+  -h, --help             Show this help (exits 0)
 
 Verifies that Terminal Completion sections in create-register.md /
 create-decompose.md / create-interview.md wrap sentinel markers in HTML
 comments (Issue #561 AC-2 / AC-3 / AC-6).
 
 Exit codes:
-  0  all checks passed
+  0  all checks passed (or --help)
   1  a check failed (see stderr)
   2  usage error
 USAGE_EOF
-  exit 2
+  exit "$rc"
 }
 
 QUIET=0
-for arg in "$@"; do
-  case "$arg" in
-    --quiet) QUIET=1 ;;
-    -h|--help) usage ;;
-    *) echo "ERROR: unknown argument: $arg" >&2; usage ;;
+REPO_ROOT_OVERRIDE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quiet) QUIET=1; shift ;;
+    --repo-root)
+      shift
+      if [ $# -eq 0 ]; then
+        echo "ERROR: --repo-root requires a path argument" >&2
+        usage 2
+      fi
+      REPO_ROOT_OVERRIDE="$1"
+      shift
+      ;;
+    -h|--help) usage 0 ;;
+    *) echo "ERROR: unknown argument: $1" >&2; usage 2 ;;
   esac
 done
+
+# REPO_ROOT resolution (marketplace install 対応、Issue #582 F-05):
+# 1. --repo-root <path> が指定されたらそれを優先 (CI / override 用)
+# 2. git rev-parse --show-toplevel で検出 (developer local checkout)
+# 3. 上記失敗時、SCRIPT_DIR/.. (= plugin root) を使って plugin 内の相対パスで検証対象を参照
+#    (marketplace install: ~/.claude/plugins/cache/rite-marketplace/rite/{ver}/hooks/ から見て
+#     plugin root は {ver}/ なので、そこに commands/issue/*.md, skills/rite-workflow/* が存在)
+if [ -n "$REPO_ROOT_OVERRIDE" ]; then
+  if [ ! -d "$REPO_ROOT_OVERRIDE" ]; then
+    echo "ERROR: --repo-root '$REPO_ROOT_OVERRIDE' is not a directory" >&2
+    exit 2
+  fi
+  REPO_ROOT="$(cd "$REPO_ROOT_OVERRIDE" && pwd)"
+  CHECK_PATHS_PREFIX="plugins/rite"
+elif REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
+  CHECK_PATHS_PREFIX="plugins/rite"
+else
+  # Fallback: marketplace install (not in a git repo, or REPO_ROOT not discoverable)
+  REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+  CHECK_PATHS_PREFIX=""
+fi
 
 FAILED=0
 
@@ -87,7 +122,7 @@ info() {
 # -----------------------------------------------------------------------------
 # Check 1: create-register.md Phase 4 HTML-comment sentinel
 # -----------------------------------------------------------------------------
-CREATE_REGISTER="$REPO_ROOT/plugins/rite/commands/issue/create-register.md"
+CREATE_REGISTER="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-register.md"
 
 if [ ! -f "$CREATE_REGISTER" ]; then
   fail "create-register.md not found at $CREATE_REGISTER"
@@ -123,7 +158,7 @@ fi
 # -----------------------------------------------------------------------------
 # Check 2: create-decompose.md Phase 1.0 HTML-comment sentinel
 # -----------------------------------------------------------------------------
-CREATE_DECOMPOSE="$REPO_ROOT/plugins/rite/commands/issue/create-decompose.md"
+CREATE_DECOMPOSE="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-decompose.md"
 
 if [ ! -f "$CREATE_DECOMPOSE" ]; then
   fail "create-decompose.md not found at $CREATE_DECOMPOSE"
@@ -144,7 +179,7 @@ fi
 # -----------------------------------------------------------------------------
 # Check 3: create-interview.md [interview:*] HTML-comment form
 # -----------------------------------------------------------------------------
-CREATE_INTERVIEW="$REPO_ROOT/plugins/rite/commands/issue/create-interview.md"
+CREATE_INTERVIEW="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-interview.md"
 
 if [ ! -f "$CREATE_INTERVIEW" ]; then
   fail "create-interview.md not found at $CREATE_INTERVIEW"
@@ -168,8 +203,8 @@ fi
 # -----------------------------------------------------------------------------
 # Check 4: SKILL.md / workflow-identity.md identity entries
 # -----------------------------------------------------------------------------
-SKILL_MD="$REPO_ROOT/plugins/rite/skills/rite-workflow/SKILL.md"
-IDENTITY_MD="$REPO_ROOT/plugins/rite/skills/rite-workflow/references/workflow-identity.md"
+SKILL_MD="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/skills/rite-workflow/SKILL.md"
+IDENTITY_MD="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/skills/rite-workflow/references/workflow-identity.md"
 
 if [ ! -f "$SKILL_MD" ]; then
   fail "SKILL.md not found at $SKILL_MD"

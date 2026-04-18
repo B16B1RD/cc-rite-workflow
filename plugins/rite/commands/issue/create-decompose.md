@@ -762,7 +762,7 @@ Where `{first_sub_issue_number}` is the first sub-Issue number (the recommended 
 ✅ Issue #1234 を分解して 3 件の Sub-Issue を作成しました: https://github.com/.../issues/1234
 
 次のステップ:
-1. `/rite:issue:start 1235` で最初の Sub-Issue から作業開始
+1. `/rite:issue:start #1235` で最初の Sub-Issue から作業開始
 2. `/rite:issue:list` で Sub-Issue 一覧を確認
 
 <!-- [create:completed:1235] -->

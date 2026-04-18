@@ -166,22 +166,35 @@ Run the regression guard for `/rite:issue:create` terminal output structure. Thi
 
 **Rationale**: Prior regressions (Issues #525, #552, #561) showed that bare sentinel tokens as the absolute last line coupled the LLM's turn-boundary heuristic with the sentinel, causing premature `continue`-requiring stops. The HTML-comment form (`<!-- [create:completed:{N}] -->`) keeps the sentinel grep-matchable while hiding it from rendered Markdown output.
 
-**Step 1**: Execute the verifier:
+**Condition**: Always execute when the script exists (Phase 3.5-3.8 の plugin-specific check と同 pattern)。
+
+**Execution:**
 
 ```bash
-bash {plugin_root}/hooks/verify-terminal-output.sh --quiet
-verify_rc=$?
+if [ -f {plugin_root}/hooks/verify-terminal-output.sh ]; then
+  verify_terminal_output=$(bash {plugin_root}/hooks/verify-terminal-output.sh --quiet 2>&1)
+  verify_terminal_exit_code=$?
+else
+  verify_terminal_exit_code=-1  # script not found
+fi
 ```
 
-**Step 2**: Report the outcome alongside normal lint output:
+**Result handling:**
 
-| `verify_rc` | Meaning | Lint report line |
-|-------------|---------|------------------|
-| `0` | All terminal output checks passed | (omit — no extra output) |
-| `1` | One or more checks failed | `⚠️ Terminal output regression detected (see Issue #561). Run \`bash {plugin_root}/hooks/verify-terminal-output.sh\` for details.` |
-| `2` | Usage error (should not occur under automatic invocation) | `⚠️ verify-terminal-output.sh invocation error (rc=2). Review lint.md Phase 0.6.` |
+| Exit Code | `verify_terminal_status` | Action |
+|-----------|--------------------------|--------|
+| `0` | `success` | All terminal output checks passed — continue to Phase 1 |
+| `1` | `warning` | Regression detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| `2` | `error` | Invocation error — record as warning, display error message |
+| `-1` | `skipped` | Script not found — skip silently (marketplace install without hooks) |
 
-**Step 3**: `verify_rc != 0` is surfaced as a warning and appended to the Phase 4 report. It does NOT change the lint exit code (non-blocking — the regression guard informs the developer but does not break the e2e flow). If the e2e flow is running and `verify_rc == 1`, the developer should fix the regression before merging the PR.
+**Important**: Terminal output check results are treated as **warnings**, not errors — same policy as Phase 3.5-3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
+
+**Record results** for Phase 4 reporting:
+
+- `verify_terminal_status`: `success` / `warning` / `error` / `skipped`
+- `verify_terminal_finding_count`: Extract from `verify_terminal_output` by counting `FAIL:` lines (regex: `/^FAIL:/`). If no match found, default to `0`
+- `verify_terminal_output`: Script output (truncated if >50 lines)
 
 **Non-blocking rationale**: This phase runs on every lint invocation; blocking would prevent unrelated PRs from merging if a Terminal Completion file has an unintended drift. Making it informational keeps the regression visible (via lint report + potential PR review) without halting the workflow.
 
@@ -733,7 +746,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {wiki_growth_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, or wiki-growth warnings/invocation errors.
+**Terminal output check appendix (Issue #561)** (both standalone and E2E): When `verify_terminal_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth:
+
+```
+⚠️ Terminal output check: {verify_terminal_finding_count} findings detected ({verify_terminal_status}, non-blocking)
+{verify_terminal_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, or terminal-output warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -808,6 +828,7 @@ Analyze the error content and present fix suggestions when possible:
 | Bang-backtick check | {bang_backtick_status} ({bang_backtick_finding_count} findings) |
 | Doc-heavy patterns drift check | {doc_heavy_drift_status} ({doc_heavy_drift_finding_count} findings) |
 | Wiki growth check (#524) | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
+| Terminal output check (#561) | {verify_terminal_status} ({verify_terminal_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
