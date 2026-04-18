@@ -81,3 +81,4 @@
 | 2026-04-18T12:00:00+00:00 | ingest:update | pages/patterns/canonical-reference-sample-code-strict-sync.md | PR #578 cycle 1: ID 採番時の grep 全件検証 (reviewer 推奨値 F-16 → F-21 へ衝突回避) に拡張 |
 | 2026-04-18T12:00:00+00:00 | ingest:create | pages/anti-patterns/fix-comment-self-drift.md | PR #578 cycle 2: fix 修正コメント自体が行番号参照禁止原則を破る self-drift pattern (sources: raw/reviews/20260418T114056Z-pr-578.md + raw/fixes/20260418T114231Z-pr-578.md) |
 | 2026-04-18T12:00:00+00:00 | ingest:skip | raw/reviews/20260418T114731Z-pr-578.md | PR #578 cycle 3 (final): 0 findings の convergence 記録のみ、extractable lesson は cycle 1-2 で抽出済 |
+| 2026-04-18T12:10:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=33, broken_refs=0 |
