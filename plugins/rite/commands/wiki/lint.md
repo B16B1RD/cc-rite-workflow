@@ -286,9 +286,15 @@ esac
 
 [ -n "$ls_err" ] && rm -f "$ls_err"
 
-printf '%s\n' "$pages_list"
+# F-15 対応: 空文字列 guard を追加。
+# 旧実装 `printf '%s\n' ""` は blank line 1 行を emit するため、stdout が `\n---\n\n` となり
+# Phase 6.2 HEREDOC の `{pages_list}` 契約 (「先頭から `---` 行より前の行」) で LLM が
+# blank line 1 行を「pages_list=1 件 (空文字列)」と誤解釈する余地があった。
+# `[ -n ... ] && printf` で空時に何も emit しないよう変更し、後続 phase は「`---` の前後で空集合」を
+# decisive に判別できる。
+[ -n "$pages_list" ] && printf '%s\n' "$pages_list"
 echo "---"
-printf '%s\n' "$raw_list"
+[ -n "$raw_list" ] && printf '%s\n' "$raw_list"
 ```
 
 LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持します。`pages_list` と `raw_list` が両方空なら、Phase 3-7 をスキップし Phase 9 に進みます（検出結果なしの完了レポート）。
@@ -302,7 +308,15 @@ branch_strategy="{branch_strategy}"
 wiki_branch="{wiki_branch}"
 
 index_read_ok="true"
-index_err=$(mktemp /tmp/rite-wiki-lint-index-err-XXXXXX 2>/dev/null) || index_err=""
+# F-05 対応: mktemp 失敗時の loud WARNING (Pattern 3 規範準拠、Phase 6.0 / 6.2 と対称化)。
+# silent fallback では `[ -s "$index_err" ]` check が必ず false になり、index.md の真の IO エラーが
+# silent に握りつぶされて pattern match が常に false → io_error 経路に倒れて lint カウンタが false positive になる。
+index_err=$(mktemp /tmp/rite-wiki-lint-index-err-XXXXXX 2>/dev/null) || {
+  echo "WARNING: stderr 退避 tempfile (index_err) の mktemp に失敗しました。index.md 読出の詳細エラー情報は失われます" >&2
+  echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+  echo "  影響: stderr pattern match が実行不能になり io_error 側に倒します (孤児検出 Phase 5 が skip される可能性)" >&2
+  index_err=""
+}
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   if index_content=$(git show "${wiki_branch}:.rite/wiki/index.md" 2>"${index_err:-/dev/null}"); then
@@ -399,7 +413,20 @@ cutoff_epoch=$((current_epoch - threshold_seconds))
 echo "cutoff_epoch=$cutoff_epoch"
 ```
 
-> **⚠️ 以下のスニペットは LLM が各ページに対して for-loop 内で実行することを前提**とします。`continue` は enclosing loop の次 iteration へ進む制御です。`{cutoff_epoch}` は上の bash block の出力値を LLM が literal substitute してください。ループ骨組み例: `for page_path in <pages_list の各要素>; do page_content=$(git show "${wiki_branch}:$page_path" 2>/dev/null || cat "$page_path" 2>/dev/null); <以下のスニペット>; done`
+> **⚠️ 以下のスニペットは LLM が各ページに対して for-loop 内で実行することを前提**とします。`continue` は enclosing loop の次 iteration へ進む制御です。`{cutoff_epoch}` と `{wiki_branch}` は LLM が Phase 1.1 / 上の bash block の出力値を literal substitute してください (Phase 2.2 / 2.3 / 6.0 / 6.2 / 8.2 と同じ literal substitute 方式)。F-13 word-split 修正 (Phase 6.2) と同型に `while IFS= read -r page_path; do ...` 形式を推奨。ループ骨組み例:
+>
+> ```bash
+> wiki_branch="{wiki_branch}"  # F-03 対応: Phase 1.1 の出力値を LLM が literal substitute する (他 5 Phase と対称化)
+> case "$wiki_branch" in
+>   "{"*"}")
+>     echo "ERROR: Phase 4.2 の {wiki_branch} placeholder が literal substitute されていません" >&2
+>     exit 1 ;;
+> esac
+> while IFS= read -r page_path; do
+>   page_content=$(git show "${wiki_branch}:$page_path" 2>/dev/null || cat "$page_path" 2>/dev/null)
+>   # 以下のスニペット
+> done <<< "$pages_list"
+> ```
 
 ```bash
 updated_str=$(printf '%s' "$page_content" | awk '/^updated:/ { gsub(/^updated:[[:space:]]*"?|"$/, ""); print; exit }')
@@ -409,7 +436,15 @@ if [ -z "$updated_str" ]; then
   continue
 fi
 
-date_err=$(mktemp /tmp/rite-wiki-lint-date-err-XXXXXX 2>/dev/null) || date_err=""
+# F-05 対応: mktemp 失敗時の silent fallback `|| date_err=""` を loud WARNING に置き換え。
+# bash-cross-boundary-state-transfer.md Pattern 3 (L152-157) の canonical 例に準拠 (Phase 6.0 / 6.2 と対称化)。
+# /tmp 枯渇 / inode 枯渇 / readonly filesystem の根本原因が operator から不可視になる経路を遮断する。
+date_err=$(mktemp /tmp/rite-wiki-lint-date-err-XXXXXX 2>/dev/null) || {
+  echo "WARNING: stderr 退避 tempfile (date_err) の mktemp に失敗しました。$page_path の date エラー詳細は失われます" >&2
+  echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+  echo "  影響: stderr pattern match が実行不能になり、日付パース失敗の根本原因が不可視になります" >&2
+  date_err=""
+}
 if updated_epoch=$(date -d "$updated_str" +%s 2>"${date_err:-/dev/null}"); then
   :
 else
@@ -725,13 +760,14 @@ fi
 echo "log_read_ok=$log_read_ok"
 
 # R-07 対応: 明示的 tempfile rm + 変数 reset (Phase 2.2 と対称、trap と冗長だが保守性向上)。
-# 冗長 cleanup の正当化 (PR #564 F-09 対応): trap EXIT は bash block 終了時に発火するが、
-# Claude Code の Bash tool は複数の bash block を連続実行するケースがあり、後続 block が本 block の
-# /tmp/rite-wiki-lint-p60-* tempfile を state probe する race window が存在する。同期的に rm + 変数
-# reset しておくことで、後続 block 開始前に tempfile が確実に消滅していることを保証する。
-# Phase 6.2 / Phase 2.2 の末尾は tempfile を trap のみに委ねるが、それは当該 block 末尾で変数 scope が
-# 閉じ後続 block が probe しない設計のため。本 Phase 6.0 は Phase 9.1 完了レポート生成時に後続 block
-# が `ls /tmp/rite-wiki-lint-p60-*` 等で state 検査する可能性を残しているため冗長 cleanup を保持する。
+# F-19 対応: 冗長 cleanup の正当化を実状に合わせて修正。
+# 旧コメントは「後続 block が `ls /tmp/rite-wiki-lint-p60-*` で state probe する可能性」を理由に挙げていたが、
+# 現行 lint.md には該当 probe が存在しない (`Grep "rite-wiki-lint-p60-"` で probe site なし)。
+# 実際の冗長 cleanup の正当化は以下の 2 点:
+# (a) 後続 bash block が同名 path で再 mktemp する race window を防ぐ defense-in-depth
+# (b) trap EXIT が bash block 終了時に発火するが、明示 rm は trap 発火前 (block 内 mid-flow exit 経路) でも
+#     確実に削除を保証する (例: 後続 set -e 経路で trap が走る前に exit する場合の orphan 防止)
+# 現行 lint.md には probe site なし、将来追加されうる probe のための防御深度として保持する。
 [ -n "$log_err" ] && rm -f "$log_err"
 log_err=""
 [ -n "$awk_sort_err" ] && rm -f "$awk_sort_err"
@@ -842,10 +878,19 @@ trap '_rite_wiki_lint_phase62_cleanup; exit 129' HUP
 all_source_refs_read_ok="unknown"  # 3 値 enum: unknown / true / io_error (Phase 6.0 log_read_ok の 4 値とは異なる — legitimate absence は per-page で吸収されるため absent 値を持たない)
 all_source_refs_read_errors=0
 all_source_refs=""
-awk_diag_mktemp_failed=0  # awk_diag mktemp 失敗を検出する once-per-loop フラグ (Phase 6.0 awk_sort_err の loud WARNING と対称化)
-page_err_mktemp_failed=0  # page_err mktemp 失敗を検出する once-per-loop フラグ (PR #564 F-10 対応、awk_diag と対称化)
+# F-12 対応: counter semantics を accumulator (累積件数) に統一する。
+# 旧実装は awk_diag_mktemp_failed が binary flag (0/1)、page_err_mktemp_failed が累積カウント
+# だったが、両方とも for-loop 内 mktemp 失敗追跡用の parallel counter であり semantics 混在は
+# 将来の保守者を混乱させる。両方を accumulator に統一し、コメントで「accumulator (失敗件数)」を明示。
+awk_diag_mktemp_failed=0  # accumulator (失敗件数): awk_diag mktemp 失敗を検出する累積カウンタ
+page_err_mktemp_failed=0  # accumulator (失敗件数): page_err mktemp 失敗を検出する累積カウンタ
 
-for page in $pages_list; do
+# F-13 対応: `for page in $pages_list` の word-split を `while IFS= read -r page` に変更。
+# Phase 2.2 の grep filter は空白を reject しないため、ページパスに空白が含まれた場合
+# (例: `.rite/wiki/pages/patterns/foo bar.md`) に 3 iterations に誤分割される脆弱性があった。
+# pages_list は改行区切りの文字列のため `<<<` here-string で IFS= read に渡す。
+while IFS= read -r page; do
+  [ -z "$page" ] && continue  # blank line guard (空 pages_list / 末尾空行対応)
   # ページ本文の取得は branch_strategy ごとに 2 経路に分岐する (Phase 2.2 / 2.3 / 6.0 / 8.2 と同型)。
   # - separate_branch: git show "${wiki_branch}:$page" (worktree には存在しない、ref からの読取)
   # - same_branch: cat "$page" (filesystem 上の tracked file を直接読む)
@@ -853,7 +898,7 @@ for page in $pages_list; do
   # 全 ingested raw が missing_concept に誤分類される regression を起こす (PR #564 CRITICAL #1 対応)。
   # stderr pattern matching も 2 経路で異なる legitimate absence を考慮する
   # (separate_branch: blob 不在、same_branch: ENOENT / No such file)。
-  page_err=$(mktemp /tmp/rite-lint-page-err-XXXXXX 2>/dev/null) || { page_err=""; page_err_mktemp_failed=$((page_err_mktemp_failed + 1)); }
+  page_err=$(mktemp /tmp/rite-lint-page-err-XXXXXX 2>/dev/null) || { page_err=""; page_err_mktemp_failed=$((page_err_mktemp_failed + 1)); }  # F-12: accumulator (累積)
   # LC_ALL=C で locale を固定 (PR #564 F-05 対応、Phase 6.0 と対称)。cat / git show の stderr
   # メッセージが gettext 経由で翻訳されると下記 905 の grep regex `No such file or directory|
   # cannot open` と不一致になり、legitimate absence が io_error に誤分類される。
@@ -882,19 +927,37 @@ for page in $pages_list; do
     awk_diag=$(mktemp /tmp/rite-lint-p62-awk-diag-XXXXXX 2>/dev/null) || awk_diag=""
     # set -e 互換のため if 文化 (set -e 環境下で `[ ] && ...` は rc=1 → script exit の罠)
     if [ -z "$awk_diag" ]; then
-      awk_diag_mktemp_failed=1  # loop-wide once flag (for ループ終了後に 1 回だけ集約 WARNING emit)
+      awk_diag_mktemp_failed=$((awk_diag_mktemp_failed + 1))  # F-12: accumulator (累積) に統一
     fi
     # awk に page を -v で渡すことで、awk_diag mktemp 失敗経路でも END block から per-page WARNING を
     # stderr に直接 emit できる (PR #564 cycle 4 MEDIUM 対応、F-14 の per-page 可視化設計を mktemp 失敗
     # 経路でも保つ)。diag=="/dev/null" (mktemp 失敗時の fallback) のときだけ stderr に emit し、
     # 通常経路 (tempfile 経由) では bash 側の per-page WARNING と二重出力にならないよう静かに書き込む。
+    # F-01 対応: page-template.md の canonical YAML は multi-line 形式 (`- type: "..."\n    ref: "..."`)。
+    # 従来の `^[[:space:]]*-[[:space:]]*ref:` (同一行 `- ref:` 限定) は実際の wiki page にマッチせず、
+    # extracted=0 で all_source_refs が空集合となり、登録済み raw が missing_concept に誤分類される
+    # (Issue #563 完了条件 missing_concept=0 が満たせない CRITICAL regression)。
+    # multi-line 形式の `    ref:` (dash なし、インデント付き) も抽出対象に追加することで、
+    # canonical template と legacy 単行形式 (`- ref:`) の両方を support する。
+    # post-condition: page-template.md / wiki branch の実 page の両方で `extracted >= 1` になること。
     page_refs=$(printf '%s\n' "$page_content" | awk -v diag="${awk_diag:-/dev/null}" -v page="$page" '
       /^sources:/ { in_sources=1; sources_seen++; next }
       in_sources && /^[a-zA-Z]/ { in_sources=0 }
-      in_sources && /^[[:space:]]*-[[:space:]]*ref:/ {
+      in_sources && /^[[:space:]]*-[[:space:]]*ref:[[:space:]]/ {
+        # legacy 単行形式: `- ref: "..."` (dash と ref が同一行)
         sub(/^[[:space:]]*-[[:space:]]*ref:[[:space:]]*/, "")
         gsub(/["\x27]/, "")
         sub(/^\.rite\/wiki\//, "")  # prefix 正規化
+        extracted++
+        print
+        next
+      }
+      in_sources && /^[[:space:]]+ref:[[:space:]]/ {
+        # canonical multi-line 形式: `    ref: "..."` (前行が `- type: ...` で dash なしインデント付き)
+        # page-template.md L7 の `  - type: "{source_type}"\n    ref: "{source_ref}"` 形式に対応
+        sub(/^[[:space:]]+ref:[[:space:]]*/, "")
+        gsub(/["\x27]/, "")
+        sub(/^\.rite\/wiki\//, "")
         extracted++
         print
       }
@@ -943,14 +1006,16 @@ for page in $pages_list; do
   fi
   [ -n "$page_err" ] && rm -f "$page_err"
   page_err=""  # Phase 6.0 R-07 パターンと対称化: 次 iteration の trap cleanup で stale path を二重 rm しないため明示 reset
-done
+done <<< "$pages_list"  # F-13 対応: while IFS= read -r で word-split 脆弱性を排除
 
+# F-12 対応: counter semantics を accumulator 統一 (page_err_mktemp_failed と対称化)。
+# 旧 binary flag check `= "1"` を `-gt 0` に変更し、失敗件数を WARNING に付記する。
 # awk_diag mktemp 失敗の集約 WARNING (Phase 6.0 awk_sort_err と対称に loud fallback、per-iteration spam 回避のため for ループ後に 1 回のみ emit)
 # ⚠️ 注: mktemp 失敗経路では awk の END block が /dev/stderr に per-page WARNING (page 名付き) を
 # 直接 emit するため、sources_section_empty 検出の per-page 可視性は保たれる (PR #564 cycle 4 MEDIUM 対応)。
 # 本集約 WARNING は /tmp の容量 / 権限問題の operator 通知を主目的とする sanity 情報として残す。
-if [ "$awk_diag_mktemp_failed" = "1" ]; then
-  echo "WARNING: awk_diag tempfile の mktemp が 1 件以上失敗しました。per-page の sources_section_empty 検出は awk END block から /dev/stderr 経由で emit 済み (page 名付き) のため silent drop は発生していませんが、/tmp 問題の検知として通知します" >&2
+if [ "$awk_diag_mktemp_failed" -gt 0 ]; then
+  echo "WARNING: awk_diag tempfile の mktemp が $awk_diag_mktemp_failed 件失敗しました。per-page の sources_section_empty 検出は awk END block から /dev/stderr 経由で emit 済み (page 名付き) のため silent drop は発生していませんが、/tmp 問題の検知として通知します" >&2
   echo "  対処: /tmp の容量 / 権限 / readonly filesystem を確認してください" >&2
 fi
 
@@ -976,7 +1041,14 @@ fi
 # sort -u で重複排除 (Phase 6.0 の awk/sort pipeline と対称に pipefail + stderr 捕捉で IO error を io_error に降格)
 if [ -n "$all_source_refs" ]; then
   set -o pipefail
-  sort_err=$(mktemp /tmp/rite-lint-p62-sort-err-XXXXXX 2>/dev/null) || sort_err=""
+  # F-05 対応: mktemp 失敗時の loud WARNING (Pattern 3 規範準拠、Phase 6.0 / 6.2 awk_diag と対称化)。
+  # silent fallback では sort_err="" になり、`[ -s "$sort_err" ]` check が false → sort 失敗時の root cause が不可視。
+  sort_err=$(mktemp /tmp/rite-lint-p62-sort-err-XXXXXX 2>/dev/null) || {
+    echo "WARNING: stderr 退避 tempfile (sort_err) の mktemp に失敗しました。sort/awk pipeline の詳細エラー情報は失われます" >&2
+    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+    echo "  影響: pipeline 失敗時の根本原因 (sort バイナリ異常 / OOM 等) が不可視になり、all_source_refs が io_error 降格しても理由が追えません" >&2
+    sort_err=""
+  }
   # pipefail 下で末尾 `grep -v '^$'` が no-match (rc=1) を返すと pipeline 全体が失敗扱いになり
   # all_source_refs が改行のみの edge case で io_error に誤降格する。Phase 6.0 の
   # `awk 'NF>0 {n++} END {print n+0}'` が「grep -c の no-match rc=1 問題」を回避する同型パターンを
@@ -1168,6 +1240,13 @@ echo "log_path=$log_path"
 # (ingest.md Phase 5.1 / 5.2 と対称化)。non-blocking 契約は末尾の明示 exit 0 / skip 経路で担保する。
 # unset variable (`-u`) と pipe 末尾以外の失敗 (`-o pipefail`) を捕捉し、bash -c 内 jq 失敗 /
 # sub-command failure が silent で null に倒れる経路を閉塞する。
+# F-18 対応: lint.md 内の他 phase (Phase 5.2, 6.0, 6.2, 7.1) は `set -o pipefail` のみで `set -e` / `set -u` を
+# 使わない方針 (非ブロッキング契約のため fail-fast は最小限に抑え、stdout 空吐き出し経路を意図的に許容する)。
+# 本 Phase 8.3 は `wiki-worktree-commit.sh` 等の外部スクリプト呼出 + commit msg placeholder gate を持つため、
+# `set -e` が必要。`set +e` を separate_branch 経路の commit_out capture 直前に入れる (F-02 対応) ことで
+# 「外部スクリプト rc capture」と「内部処理 fail-fast」を両立させる。
+# (lint.md 内で唯一 `set -euo pipefail` を使う phase であり、他 phase の mental model から逸脱する点は
+# 本コメントで明示する。読者は phase を切り替える際にエラー伝播 semantics の違いに注意。)
 set -euo pipefail
 
 # plugin_root の inline 解決 (lint.md には専用解決 Phase が存在しないため)
@@ -1194,18 +1273,48 @@ esac
 
 commit_msg="docs(wiki): lint report — ${log_entry}"
 
-if [ "$branch_strategy" = "separate_branch" ]; then
-  # worktree 経由で commit + push
-  # 2>&1 は付けない: wiki-worktree-commit.sh は構造化 status 行 (`[wiki-worktree-commit] committed=...`)
-  # を stdout、WARNING / ERROR を stderr で出力する責務分離設計。2>&1 で mix すると将来の parser
-  # regression を生む。stderr は端末に直接流して観測性を保つ。
-  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
-  commit_rc=$?
-  echo "$commit_out"
-  if [ "$commit_rc" -ne 0 ] && [ "$commit_rc" -ne 4 ]; then
-    echo "WARNING: wiki-worktree-commit.sh が失敗しました (rc=$commit_rc)。log.md 追記は非ブロッキングのため継続します" >&2
-  fi
-elif [ "$branch_strategy" = "same_branch" ]; then
+# F-04 対応: branch_strategy 分岐を case * fail-fast に変更し、4 site (Phase 2.2 / 6.0 / 6.2 / 8.3) で対称化。
+# 旧 if/elif/else なし は未知の値で silent skip する経路があった。
+# F-04 placeholder 残留 gate も追加: literal `{branch_strategy}` のままなら fail-fast。
+case "$branch_strategy" in
+  "{"*"}")
+    echo "ERROR: Phase 8.3 の {branch_strategy} placeholder が literal substitute されていません (値: '$branch_strategy')" >&2
+    echo "  対処: LLM は Phase 1.1 で取得した branch_strategy 値 (separate_branch / same_branch) を本 bash block 冒頭の branch_strategy=... 行で literal substitute する必要があります" >&2
+    exit 1
+    ;;
+  separate_branch)
+    # F-02 対応: `set -euo pipefail` 配下で `commit_out=$(bash ...)` が rc != 0 のとき bash が即時 exit する罠を回避。
+    # ingest.md Phase 5.1 と同型に `set +e; ...; set -e` で囲み、rc capture を保証する。
+    # 2>&1 は付けない: wiki-worktree-commit.sh は構造化 status 行 (`[wiki-worktree-commit] committed=...`)
+    # を stdout、WARNING / ERROR を stderr で出力する責務分離設計。2>&1 で mix すると将来の parser
+    # regression を生む。stderr は端末に直接流して観測性を保つ。
+    set +e
+    commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
+    commit_rc=$?
+    set -e
+    echo "$commit_out"
+    # F-09 対応: rc 5 分岐 case に拡張 (ingest.md Phase 5.1 と同型)。
+    # rc=2 (wiki-disabled / skipped) は INFO 相当、rc=3 (git failure) と rc=4 (push failed) と rc=* (未知) は WARNING。
+    # lint は非ブロッキング契約のため exit 1 はせず、すべて WARNING のみで継続する。
+    case "$commit_rc" in
+      0)
+        : # 正常完了
+        ;;
+      2)
+        echo "[CONTEXT] WIKI_LINT_COMMIT=skipped; reason=wiki-disabled-or-no-pending" >&2
+        ;;
+      3)
+        echo "WARNING: wiki-worktree-commit.sh で git 操作失敗 (rc=3)。log.md 追記は非ブロッキングのため継続します" >&2
+        ;;
+      4)
+        echo "WARNING: wiki-worktree-commit.sh で commit landed but push 失敗 (rc=4)。次回再 push が必要" >&2
+        ;;
+      *)
+        echo "WARNING: wiki-worktree-commit.sh が予期しない rc=$commit_rc で失敗しました。log.md 追記は非ブロッキングのため継続します" >&2
+        ;;
+    esac
+    ;;
+  same_branch)
   # git add / commit の stderr を tempfile に捕捉 (silent failure 防止):
   # pre-commit hook / gpg sign / author config / permission / index lock 等の根本原因を可視化する
   #
@@ -1222,8 +1331,21 @@ elif [ "$branch_strategy" = "same_branch" ]; then
   trap '_rite_wiki_lint_phase83_cleanup; exit 130' INT
   trap '_rite_wiki_lint_phase83_cleanup; exit 143' TERM
   trap '_rite_wiki_lint_phase83_cleanup; exit 129' HUP
-  add_err=$(mktemp /tmp/rite-lint-add-err-XXXXXX 2>/dev/null) || add_err=""
-  commit_err=$(mktemp /tmp/rite-lint-commit-err-XXXXXX 2>/dev/null) || commit_err=""
+  # F-05 対応: mktemp 失敗時の loud WARNING (Pattern 3 規範準拠、Phase 6.0 / 6.2 と対称化)。
+  # silent fallback では add_err="" / commit_err="" になり、`[ -s "$add_err" ]` check が false →
+  # git add / commit 失敗時の根本原因 (pre-commit hook / gpg sign / index lock 等) が不可視になる。
+  add_err=$(mktemp /tmp/rite-lint-add-err-XXXXXX 2>/dev/null) || {
+    echo "WARNING: stderr 退避 tempfile (add_err) の mktemp に失敗しました。git add の詳細エラー情報は失われます" >&2
+    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+    echo "  影響: index lock / permission denied 等の根本原因が不可視になります" >&2
+    add_err=""
+  }
+  commit_err=$(mktemp /tmp/rite-lint-commit-err-XXXXXX 2>/dev/null) || {
+    echo "WARNING: stderr 退避 tempfile (commit_err) の mktemp に失敗しました。git commit の詳細エラー情報は失われます" >&2
+    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+    echo "  影響: pre-commit hook / gpg sign / author config 失敗の根本原因が不可視になります" >&2
+    commit_err=""
+  }
 
   if ! git add .rite/wiki/log.md 2>"${add_err:-/dev/null}"; then
     echo "WARNING: git add .rite/wiki/log.md に失敗しました" >&2
@@ -1244,8 +1366,20 @@ elif [ "$branch_strategy" = "same_branch" ]; then
 
   [ -n "$add_err" ] && rm -f "$add_err"
   [ -n "$commit_err" ] && rm -f "$commit_err"
+  # F-20 対応: trap - EXIT INT TERM HUP の意図は、明示 rm 後に trap を解除して、後続 (`exit 0` で継続)
+  # 行で trap が再発火しないようにすること (R-07 と同型の冗長 cleanup 正当化)。
+  # 同期 cleanup と trap cleanup の役割分離: 上記 2 行が同期 cleanup (通常パス)、trap は signal 経路の defense-in-depth。
   trap - EXIT INT TERM HUP
-fi
+  ;;
+*)
+  # F-04 対応: 未知の branch_strategy 値 (設定ミス、新規モード追加忘れ等) を silent skip させない。
+  # 4 site (Phase 2.2 / 6.0 / 6.2 / 8.3) で同型の fail-fast メッセージに揃える。
+  echo "ERROR: 未知の branch_strategy 値: '$branch_strategy' (Phase 8.3)" >&2
+  echo "  許容値: separate_branch / same_branch" >&2
+  echo "  対処: rite-config.yml の wiki.branch_strategy を確認してください" >&2
+  exit 1
+  ;;
+esac
 # 非ブロッキング契約: 失敗しても exit 0 で継続
 ```
 

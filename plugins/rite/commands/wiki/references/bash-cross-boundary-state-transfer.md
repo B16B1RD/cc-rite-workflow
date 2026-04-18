@@ -144,17 +144,20 @@ silent に「0 件」と誤認する。
 stderr を tempfile に退避し、**stderr pattern matching** で legitimate absence / io_error を区別する:
 
 ```bash
-# mktemp 失敗時は WARNING を emit してから log_err="" で続行する
-# (lint.md Phase 6.0 の log_err mktemp 失敗 WARNING 部と同じ defense-in-depth — silent fallback 禁止。
-# 行番号は drift するため Phase 番号 + 機能名で参照する。PR #564 レビュー MEDIUM 対応)。
+# F-21 対応: 2 文分割形式 (lint.md Phase 6.0 の R-03 推奨形式) に統一する。
+# 旧 `if ! log_err=$(...); then` 形式は bash 既知の罠「`if !` は `$?` が常に 0」と隣接した形で、
+# 規範文書として読者を混乱させる。本 Pattern 3 の説明本文 (R-03 対応) では明示的に「2 文分割形式」を
+# 推奨しているのに、Pattern 3 例自体が `if ! var=$(...); then` 形式を使うのは内部矛盾の見え方だった。
+# F-16 対応: mktemp 失敗時の WARNING + 対処 + 影響 の 3 行 loud emit を canonical とする
+# (lint.md Phase 6.0 の log_err mktemp 失敗 WARNING 部と同じ defense-in-depth — silent fallback 禁止)。
 # 知らないエラー (mktemp 失敗で stderr 取得不能) を silent に absence と誤認するより、
 # WARNING で可視化して io_error 経路に流す方が正しい。
-if ! log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null); then
+log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null) || {
   echo "WARNING: log_err の stderr 退避用 tempfile の mktemp に失敗しました" >&2
   echo "  対処: /tmp の空き容量 / permission / inode 枯渇を確認してください" >&2
   echo "  影響: stderr pattern match が実行不能になり、legitimate absence / io_error の区別が付かなくなるため io_error 側に倒します" >&2
   log_err=""
-fi
+}
 
 if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
   log_read_ok="true"
