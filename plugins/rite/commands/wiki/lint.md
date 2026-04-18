@@ -1030,6 +1030,10 @@ while IFS= read -r page; do
     # post-condition: page-template.md / wiki branch の実 page の両方で `extracted >= 1` になること。
     page_refs=$(printf '%s\n' "$page_content" | awk -v diag="${awk_diag:-/dev/null}" -v page="$page" '
       /^sources:/ { in_sources=1; sources_seen++; next }
+      # Issue #570: frontmatter terminator (`---`) を明示検出。
+      # minimal frontmatter (sources: 直後に `---` で閉じる、tags:/confidence: なし) でも
+      # sources 節が確実に閉じ、body 内 YAML code block の `    ref: "..."` 誤抽出を防ぐ。
+      in_sources && /^---[[:space:]]*$/ { in_sources=0; next }
       in_sources && /^[a-zA-Z]/ { in_sources=0 }
       in_sources && /^[[:space:]]*-[[:space:]]*ref:[[:space:]]/ {
         # legacy 単行形式: `- ref: "..."` (dash と ref が同一行)
