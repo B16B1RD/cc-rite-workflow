@@ -189,9 +189,10 @@ fi
 
 ### 参照実装 (2026-04 時点)
 
-- `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `log_read_ok` enum の absent / io_error 判別 (現在唯一の完全実装)
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 — `log_read_ok` 4 値 enum (unknown / true / absent / io_error) の絶対的 absence / io_error 判別 (完全実装)
+- `plugins/rite/commands/wiki/lint.md` Phase 6.2 — `all_source_refs_read_ok` 3 値 enum (unknown / true / io_error) variant 実装。Phase 6.0 からの派生だが、per-page で legitimate absence を吸収するため集合レベルでは `absent` 値を持たない。Pattern 3 を多対一の集合処理に適用する場合の参照 (PR #564 F-08 対応で追加)
 
-> **Note**: `lint.md` Phase 2.3 の `index_read_ok` は 2 値 enum (true / false) で absent と io_error を区別していないため、Pattern 3 (absence vs IO error classification) の参照実装には当てはまらない。Pattern 3 を新規採用する site は本項の Phase 6.0 のみを reference として使うこと。
+> **Note**: `lint.md` Phase 2.3 の `index_read_ok` は 2 値 enum (true / false) で absent と io_error を区別していないため、Pattern 3 (absence vs IO error classification) の参照実装には当てはまらない。Pattern 3 を新規採用する site は、単一ファイル読取なら Phase 6.0、複数ファイル集合なら Phase 6.2 を reference として使うこと。
 
 ---
 

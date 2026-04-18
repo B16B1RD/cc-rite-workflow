@@ -535,7 +535,9 @@ if [ "$branch_strategy" = "same_branch" ]; then
   # 旧実装は trap 未保護で SIGINT/SIGTERM/SIGHUP が来ると _reset_err tempfile が orphan 化していた。
   _reset_err=""
   _rite_ingest_phase52_cleanup() {
-    rm -f "${_reset_err:-}"
+    # F-06 (PR #564 cycle 8 F-06) 対応: BSD variant に統一 (lint.md Phase 6.0 / 6.2 / 8.3 と対称化)。
+    # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
+    [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"
   }
   trap 'rc=$?; _rite_ingest_phase52_cleanup; exit $rc' EXIT
   trap '_rite_ingest_phase52_cleanup; exit 130' INT
@@ -760,7 +762,9 @@ Lint 結果: 矛盾 {n_contradictions} 件 / 陳腐化 {n_stale} 件 / 孤児 {n
 
 ### 8.5 `n_warnings` カウンタへの加算
 
-Phase 2.1 で初期化した `n_warnings` に、Lint の全検出件数の合計を加算します:
+**⚠️ 発動条件** (F-07 対応、PR #564 cycle 8): 本 Phase は **Phase 8.3 step 2 (6 フィールド regex match 成功) 経路でのみ実行します**。step 1/3/4 (ERROR 文字列検出 / stdout 空 / regex mismatch) 経路では既に Phase 8.3 内で `n_warnings += 1` と `n_lint_anomaly += 1` が加算済み (Phase 2.1 テーブル参照) のため、本 Phase は skip します。現状は Lint カウンタ 6 種が 0 fallback されるため実害はありませんが、将来 fallback 値を変更する際の regression を防ぐため発動条件を明示します。
+
+Phase 2.1 で初期化した `n_warnings` に、Lint の全検出件数の合計を加算します (step 2 経路のみ):
 
 ```
 n_warnings += n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs
@@ -785,7 +789,8 @@ Wiki Ingest が完了しました。
 - 更新したページ: {n_pages_updated} 件
 - スキップした Raw Source: {n_skipped} 件
 - Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly}）
-  - 注: `{n_lint_anomaly}` は Phase 8.3 step 1/3/4 (`ERROR 文字列検出` / `stdout 空` / `regex mismatch`) で加算された Lint 実行異常の件数。5 カテゴリ合計と加算すると `n_warnings` の値に一致する。`n_lint_anomaly` は Phase 2.1 のカウンタに追加、step 1/3/4 で `n_warnings += 1` と同時に `n_lint_anomaly += 1` も加算すること
+  - 注: `{n_lint_anomaly}` は Phase 8.3 step 1/3/4 (`ERROR 文字列検出` / `stdout 空` / `regex mismatch`) で加算された Lint 実行異常の件数。`n_lint_anomaly` は Phase 2.1 のカウンタに追加、step 1/3/4 で `n_warnings += 1` と同時に `n_lint_anomaly += 1` も加算すること。
+    - **等式** (F-11 対応、PR #564 cycle 8): `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0` のため 5 カテゴリ合計が `n_warnings` と一致。step 1/3/4 anomaly 経路では 5 カテゴリはすべて 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1` となる。
 - 未登録 raw（skip 済、warnings 不加算）: {n_unregistered_raw} 件
 
 新規/更新ページ:
