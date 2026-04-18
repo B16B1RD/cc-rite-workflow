@@ -938,7 +938,7 @@ case "$pages_list" in
     ;;
 esac
 
-# F-15 (Issue #572) 対応: pages_list partial pollution 検出 gate (F-01 再発防止の runtime 契約)。
+# F-21 (Issue #572) 対応: pages_list partial pollution 検出 gate (F-01 再発防止の runtime 契約)。
 # 旧 gate (上記 case 文) は literal `{pages_list}` 残留のみを検出する。しかし LLM が Phase 2.2 stdout の
 # `printf '%s\n' "$pages_list" ; echo "---" ; printf '%s\n' "$raw_list"` 3 部構造を
 # 全体 substitute すると `.rite/wiki/raw/...` path が HEREDOC に混入し、下記 while ループで
@@ -952,6 +952,9 @@ esac
 # 検証ロジック: pages_list の各非空行が `.rite/wiki/pages/` prefix を持つことを確認。
 # 違反行を 1 件でも検出すれば fail-fast で exit 1 (既存 literal gate と同じ exit convention、
 # 本 gate が発火する状況は LLM substitute ミスのため継続処理は silent regression を招くだけ)。
+#
+# Iteration 方式: F-13 対応 (L1144 main loop) と同型の `done <<< "$pages_list"` here-string を採用する。
+# 同一 Phase 6.2 内で同じ $pages_list を iterate するループは here-string に統一 (canonical 同期)。
 if [ -n "$pages_list" ]; then
   partial_pollution_line=""
   while IFS= read -r pollution_check_line; do
@@ -963,9 +966,7 @@ if [ -n "$pages_list" ]; then
         break  # 1 件検出したら以降の走査を打ち切り fail-fast
         ;;
     esac
-  done <<PAGES_LIST_POLLUTION_CHECK_EOF
-$pages_list
-PAGES_LIST_POLLUTION_CHECK_EOF
+  done <<< "$pages_list"
   if [ -n "$partial_pollution_line" ]; then
     echo "ERROR: Phase 6.2 の \$pages_list に '.rite/wiki/pages/' prefix を持たない行が含まれています (partial pollution 検出)" >&2
     echo "  違反行: '$partial_pollution_line'" >&2
