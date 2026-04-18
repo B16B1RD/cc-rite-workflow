@@ -68,6 +68,11 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続 Ph
   `absent` を除いた variant (per-page で legitimate absence を吸収するため集合レベルでは absent 状態に
   ならない)
 - 同 Phase 2.3 — `index_read_ok` (true / false) の 2 値 enum (簡易版、absent / io_error の区別なし)
+- 同 Phase 8.1 — `lint_action` 2 値 enum (`lint:clean` / `lint:warning`) の `[CONTEXT]` prefix 版 (Issue #573)。
+  5 ブロッキングカテゴリ (`n_contradictions`, `n_stale`, `n_orphans`, `n_missing_concept`, `n_broken_refs`)
+  が全 0 なら `lint:clean`、1 つ以上 `>0` なら `lint:warning`。`n_unregistered_raw` は informational の
+  ため判定から除外 (Issue #563 準拠)。Phase 8.3 の `{log_entry}` 組み立てが本 emit 値を single source
+  of truth として first-match parse で参照する drift 防止契約になっている
 - `plugins/rite/commands/pr/review.md` Phase 6.1.a — `JSON_SAVED=true|false`、`FILE_TIMESTAMP=<ts>` の
   `[CONTEXT]` prefix 版。prefix を付けることで Phase 6.1.c が grep 可能になる
 
