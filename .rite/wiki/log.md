@@ -53,3 +53,24 @@
 | 2026-04-17T08:55:00+00:00 | ingest:skip | raw/fixes/20260417T082346Z-pr-562.md | cycle 1 fix 主要知見は identity-reference-documentation-unification.md に統合済み |
 | 2026-04-17T08:55:00+00:00 | ingest:skip | raw/fixes/20260417T084423Z-pr-562.md | cycle 5 recommendation-driven fix 主要知見は identity-reference-documentation-unification.md に統合済み |
 | 2026-04-17T08:55:30+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing=50 (大半は ingest:skip 済み raw で sources.ref 未登録状態、log.md に skip 記録あり), broken_refs=0 |
+| 2026-04-18T17:40:00+09:00 | ingest:create | pages/patterns/canonical-reference-sample-code-strict-sync.md | PR #564 11th cycle から canonical reference の sample code 逐語照合原則を抽出 |
+| 2026-04-18T17:40:00+09:00 | ingest:create | pages/patterns/prompt-numbered-list-isomorphic-structure.md | PR #564 F-01 から prompt numbered list の同型構造原則を抽出 |
+| 2026-04-18T17:40:00+09:00 | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #564 F-04 から YAML frontmatter description vs 本文階層 drift を sub-heuristic #6 として追加 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260417T111531Z-pr-564.md | cycle 1 review: 初回指摘 (CRITICAL 3 / HIGH 5 / MEDIUM x) は既存ページ (drift-check-anchor-prose-code-sync / prose-design-without-backing-implementation) でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260417T113421Z-pr-564-rereview.md | cycle 1.5 re-review: fix 後の確認のみ、独自知見なし |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260417T115035Z-pr-564-cycle3.md | cycle 3 review: 対称化修正確認、新規経験則なし |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260417T125050Z-pr-564.md | cycle 4 review: 対称化微調整、既存 asymmetric-fix-transcription.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260417T152650Z-pr-564.md | cycle 5 review: placeholder gate 修正、既存 bash-if-bang-rc-capture.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260417T163247Z-pr-564.md | cycle 6 review: trap cleanup 修正、既存 trap-register-before-mktemp.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260417T230416Z-pr-564.md | cycle 7 review: 継続的対称化、drift-check-anchor-prose-code-sync.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260418T022836Z-pr-564.md | cycle 8 review: mktemp failure 対応、既存 mktemp-failure-surface-warning.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260418T041157Z-pr-564.md | cycle 9 review: stderr selective surface 修正、既存 stderr-selective-surface-over-truncate.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260418T045613Z-pr-564.md | cycle 9.5 re-review: 微調整確認、独自知見なし |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/reviews/20260418T060522Z-pr-564.md | cycle 10 review: commit message drift-check anchor 追加、既存 drift-check-anchor-prose-code-sync.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260417T112318Z-pr-564.md | cycle 1 fix: 初期実装、新規経験則は抽出済みの 2 ページと identity #6 に統合 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260417T114209Z-pr-564-cycle2.md | cycle 2 fix: 対称化適用、asymmetric-fix-transcription.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260417T115546Z-pr-564-cycle4.md | cycle 4 fix: 対称化微調整、独自知見なし |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260417T231720Z-pr-564.md | cycle 7 fix: cross-boundary-state-transfer.md 追加、canonical-reference-sample-code-strict-sync.md にその教訓を格納 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260418T020235Z-pr-564.md | cycle 8 fix: mktemp failure loud WARNING、既存 mktemp-failure-surface-warning.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260418T043007Z-pr-564.md | cycle 9 fix: placeholder-residue gate 対称化、drift-check-anchor-prose-code-sync.md でカバー済 |
+| 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260418T054300Z-pr-564.md | cycle 10 fix: commit message canonical 単一真実源、drift-check-anchor-prose-code-sync.md でカバー済 |

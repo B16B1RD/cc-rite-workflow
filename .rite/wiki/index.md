@@ -23,10 +23,12 @@
 | [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) | patterns | AC anchor / reasons table / Eval-order enumeration / bash 実装の emit 順は 3 重契約であり、`distributed-fix-drift-check.sh` Pattern-2/5 で機械検証する。PR #553 で 7 reasons + 2 fallbacks = 9 経路の drift 検出が実証され、カテゴリ非対称 (5 artifacts ↔ 4 mktemp blocks) の合流ケースも category 単位表記で対応。 | 2026-04-17T00:49:00+00:00 | high |
 | [散文で宣言した設計は対応する実装契約がなければ機能しない](pages/anti-patterns/prose-design-without-backing-implementation.md) | anti-patterns | 設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。PR #559 で 3 CRITICAL + 5 HIGH のうち 4 件が同じ根 (shell 変数未定義 / gate 書式規約忘れ / sentinel consumer 不在 / prose-only safeguard) に由来。実装レビュー時の trace 手順で検出する。 | 2026-04-17T04:30:00+00:00 | high |
 | [cross-platform bash コマンドは fallback chain で portable 化する](pages/patterns/bash-portable-command-fallback.md) | patterns | Linux coreutils と macOS BSD userland でコマンド可用性が異なる bash ユーティリティ (sha1sum / readlink -f / date -Iseconds 等) は `command -v` による存在確認を連鎖させた fallback chain で portable 化する。単一コマンド直書きは silent "command not found" regression の発生源。 | 2026-04-17T04:30:00+00:00 | high |
-| [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](pages/heuristics/identity-reference-documentation-unification.md) | heuristics | reference document の用語統一を「単語 X 単独」スコープで行うと、同一段落内の類義語群 (効率・最適化・圧迫 等) が統一漏れとして残り cycle 2-3 ループを発生させる。PR #562 で 3 cycle の drift 波及漏れを実測。最初の統一処理で repo 全体 grep + 文脈類義語マッピングを作る canonical pattern。5 sub-heuristics (reference self-description drift / 表記揺れ / bullet 粒度 / enumeration drift / PR body metadata 更新責務) を含む。 | 2026-04-17T08:55:00+00:00 | high |
+| [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](pages/heuristics/identity-reference-documentation-unification.md) | heuristics | reference document の用語統一を「単語 X 単独」スコープで行うと、同一段落内の類義語群 (効率・最適化・圧迫 等) が統一漏れとして残り cycle 2-3 ループを発生させる。PR #562 で 3 cycle の drift 波及漏れを実測。最初の統一処理で repo 全体 grep + 文脈類義語マッピングを作る canonical pattern。6 sub-heuristics (reference self-description drift / 表記揺れ / bullet 粒度 / enumeration drift / PR body metadata 更新責務 / YAML frontmatter description vs 本文階層 drift) を含む。 | 2026-04-18T17:40:00+09:00 | high |
+| [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](pages/patterns/canonical-reference-sample-code-strict-sync.md) | patterns | reference 文書 (bash-trap-patterns.md 等) のサンプルコードはコピペ origin として使われるため、canonical 実装と一字一句揃っている必要がある。PR #564 で bash-cross-boundary-state-transfer.md Pattern 3 example の `else rc=$?` 欠落を実測。行コピー + DRIFT-CHECK ANCHOR での機械検証が canonical pattern。 | 2026-04-18T17:40:00+09:00 | high |
+| [prompt 内 numbered list は同型構造で書く（全 step に動作詳細 bullet を対称配置）](pages/patterns/prompt-numbered-list-isomorphic-structure.md) | patterns | LLM が prompt を実装する際、numbered list の一部 step だけ動作詳細 bullet が欠落すると、LLM がその step の動作を推測で埋める経路になり silent drift を発生させる。PR #564 で ingest.md Phase 8.3 step 1 の bullet 欠落を実測。全 step に同粒度の bullet を対称配置するのが canonical pattern。 | 2026-04-18T17:40:00+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 17
-- ドメイン別: patterns=8, heuristics=6, anti-patterns=3
-- 最終更新: 2026-04-17T08:55:00+00:00
+- 総ページ数: 19
+- ドメイン別: patterns=10, heuristics=6, anti-patterns=3
+- 最終更新: 2026-04-18T17:40:00+09:00

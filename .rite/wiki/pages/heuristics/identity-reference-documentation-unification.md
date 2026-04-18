@@ -2,7 +2,7 @@
 title: "Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする"
 domain: "heuristics"
 created: "2026-04-17T08:55:00+00:00"
-updated: "2026-04-17T08:55:00+00:00"
+updated: "2026-04-18T17:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T082023Z-pr-562.md"
@@ -18,7 +18,11 @@ sources:
     ref: "raw/fixes/20260417T083649Z-pr-562.md"
   - type: "fixes"
     ref: "raw/fixes/20260417T084423Z-pr-562.md"
-tags: ["identity", "documentation", "drift-prevention", "terminology", "scope"]
+  - type: "fixes"
+    ref: "raw/fixes/20260418T071459Z-pr-564.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
+tags: ["identity", "documentation", "drift-prevention", "terminology", "scope", "yaml-frontmatter"]
 confidence: high
 ---
 
@@ -75,6 +79,12 @@ SKILL.md / reference document / PR body / 各 commands 内コメント等に cal
 → **Correct**:
 - 短期: drift 検出時は**全箇所を単一コミットで一括同期**する (cycle 2 で create が追加されたら SKILL.md / workflow-identity.md / PR body の全 enumeration を同じコミットで更新)
 - 長期: `grep -l <reference-marker> plugins/rite/commands/**/*.md` ベースで自動抽出する pattern に置き換える (drift-resistant)
+
+#### 6. YAML frontmatter description と本文階層 drift (PR #564 で追加)
+
+本文側で階層構造 (例: 「5 ブロッキング + 1 informational」の 2 層分類) に変更しても、YAML frontmatter `description:` / `SKILL.md` の一覧説明は flat 列挙 (`5 項目`) のまま残存しやすい。description は Skill 一覧で最初に表示される文字列なので、ユーザの期待値ずれを直接生む。
+
+→ **Correct**: 本文階層を変更する PR では、frontmatter `description` と関連する全 SKILL.md description を同期更新する責務を明示する。grep 対象として「`description:` + `SKILL.md` の `description` フィールド」を PR 内で一括検索する。
 
 #### 5. PR body AC metadata の cross-cycle 更新責務
 
