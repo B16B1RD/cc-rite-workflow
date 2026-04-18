@@ -131,7 +131,7 @@ _rite_<scope>_<phase>_cleanup() {
 
 本 variant を採用している参照実装 (2026-04 時点):
 
-- `plugins/rite/commands/wiki/lint.md` Phase 2.2 (`_rite_wiki_lint_phase2_cleanup`)
+- `plugins/rite/commands/wiki/lint.md` Phase 2.2 (`_rite_wiki_lint_phase2_cleanup`) — 旧命名 (`phase22` 規約確立前の実装)。既存名は維持し、同一 site に cleanup を新規追加する場合は `_rite_wiki_lint_phase22_cleanup` を採用すること
 - `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_phase60_cleanup`)
 - `plugins/rite/commands/wiki/lint.md` Phase 6.2 (`_rite_wiki_lint_phase62_cleanup`) — PR #564 で追加、page_err / awk_diag / sort_err の 3 tempfile を保護
 
@@ -149,7 +149,7 @@ _rite_<scope>_<phase>_cleanup() {
 - 将来 Phase 6.1 / 6.3 等で cleanup 関数を追加する場合も同形式を採用すること。
 - PR #564 レビュー LOW #2 対応で短縮形 `_rite_p{NN}_cleanup` は廃止、scope prefix 付きの 2 階層命名に統一 (scope 不在だと `_rite_phase2_cleanup` が複数 site で衝突するため)。
 
-> **Note**: 既存 site で旧命名 (`_rite_wiki_lint_phase2_cleanup` 等) が残っている場合、本 PR では一括リネームを行わない (scope 外)。新規追加される cleanup 関数から本規約を適用すること。旧名を新名に揃えるリネーム作業は別 Issue で追跡する。
+> **Note — 既存命名の扱い** (PR #564 F-05 対応): 既存 site の旧命名 (`_rite_wiki_lint_phase2_cleanup` 等) は維持し、本 PR では一括リネームを行わない (scope 外、旧名→新名のリネーム作業は別 Issue で追跡)。**同一 site に新規 cleanup 関数を追加する場合は必ず規約形式 (`phase22` 等の小数点除去連結形式) を採用すること** — 旧名と規約名が共存しても衝突は起きないが、新規追加時に旧名 (`phase2`) を踏襲すると規約違反となる。迷った場合は規約 (`phase{N}{M}`) を優先する。
 
 GNU rm のみをターゲットとする site (Linux-only CI 等) では `rm -f "${var:-}"` のままで問題ない。
 

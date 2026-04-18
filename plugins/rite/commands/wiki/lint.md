@@ -37,7 +37,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` 配下の Wiki ページと `.rite/
 
 ## 設計原則（全 Phase 共通）
 
-- **非ブロッキング契約**: 検出件数・事前チェック失敗・ブランチ読取失敗にかかわらず、本コマンドは **原則 exit 0** で終了する。例外は (a) `{branch_strategy}` が未知の値だった場合の fail-fast（Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 の 4 箇所で同型）、および (b) Phase 1.1 / Phase 1.3 の `{mode}` placeholder 残留検知 fail-fast（2 箇所で同型、Claude substitute 忘れを silent 通過させない）で、いずれも設定ミス / 実装ミスを silent に通過させないための設計判断である
+- **非ブロッキング契約**: 検出件数・事前チェック失敗・ブランチ読取失敗にかかわらず、本コマンドは **原則 exit 0** で終了する。例外は (a) `{branch_strategy}` が未知の値だった場合の fail-fast（Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 / Phase 8.3 の 5 箇所で同型）、および (b) Phase 1.1 / Phase 1.3 の `{mode}` placeholder 残留検知 fail-fast（2 箇所で同型、Claude substitute 忘れを silent 通過させない）で、いずれも設定ミス / 実装ミスを silent に通過させないための設計判断である
 - **読み取り専用**: `log.md` への追記を除き、Wiki データ・Raw Source は一切変更しない
 - **LLM セマンティック依存**: 矛盾検出（Phase 3）・欠落概念検出（Phase 6）は LLM の読解能力に依存する。単純な文字列一致では検出できないため本文を実際に読む
 - **GNU date 前提**: Phase 4 の陳腐化検出は GNU date (`date -d`) に依存する。Phase 1.2 で事前検査を行い、macOS/BSD 環境では警告のうえ Phase 4 を skip する
@@ -279,7 +279,7 @@ case "$branch_strategy" in
   *)
     echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (Phase 2.2)" >&2
     echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、4 箇所で同型）" >&2
+    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、5 箇所で同型）" >&2
     exit 1
     ;;
 esac
@@ -679,10 +679,10 @@ case "$branch_strategy" in
     ;;
   *)
     # Phase 2.2 と対称: 未知値は fail-fast (log_read_ok は "unknown" のまま、fail-fast で後段未到達)
-    # 3 箇所 (Phase 2.2 / Phase 6.0 / Phase 8.2) で同型診断に統一 (PR #564 レビュー MEDIUM #3 対応)
+    # 5 箇所 (Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 / Phase 8.3) で同型診断に統一 (PR #564 レビュー MEDIUM #3 対応)
     echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (Phase 6.0)" >&2
     echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、4 箇所で同型）" >&2
+    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、5 箇所で同型）" >&2
     exit 1
     ;;
 esac
@@ -914,7 +914,7 @@ while IFS= read -r page; do
     *)
       echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (Phase 6.2)" >&2
       echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-      echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、4 箇所で同型）" >&2
+      echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、5 箇所で同型）" >&2
       [ -n "$page_err" ] && rm -f "$page_err"
       exit 1
       ;;
@@ -1199,7 +1199,7 @@ Issue #547 以降、`separate_branch` 戦略では `.rite/wiki-worktree/` worktr
 ```bash
 branch_strategy="{branch_strategy}"
 
-# 3 箇所 (Phase 2.2 / Phase 6.0 / Phase 8.2) で同型の case 文 + 3 行診断に統一
+# 5 箇所 (Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 / Phase 8.3) で同型の case 文 + 3 行診断に統一
 # (PR #564 レビュー MEDIUM #3 対応、旧 if/elif/else から変更)
 case "$branch_strategy" in
   same_branch)
@@ -1211,7 +1211,7 @@ case "$branch_strategy" in
   *)
     echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (Phase 8.2)" >&2
     echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、4 箇所で同型）" >&2
+    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、5 箇所で同型）" >&2
     exit 1
     ;;
 esac
@@ -1273,7 +1273,7 @@ esac
 
 commit_msg="docs(wiki): lint report — ${log_entry}"
 
-# F-04 対応: branch_strategy 分岐を case * fail-fast に変更し、4 site (Phase 2.2 / 6.0 / 6.2 / 8.3) で対称化。
+# F-04 対応: branch_strategy 分岐を case * fail-fast に変更し、5 site (Phase 2.2 / 6.0 / 6.2 / 8.2 / 8.3) で対称化。
 # 旧 if/elif/else なし は未知の値で silent skip する経路があった。
 # F-04 placeholder 残留 gate も追加: literal `{branch_strategy}` のままなら fail-fast。
 case "$branch_strategy" in
@@ -1319,7 +1319,7 @@ case "$branch_strategy" in
   # pre-commit hook / gpg sign / author config / permission / index lock 等の根本原因を可視化する
   #
   # PR #564 F-13 対応: canonical signal-specific 4 行 trap に変更 (Phase 6.0 / 6.2 と対称化、
-  # references/bash-trap-patterns.md#signal-specific-trap-template 参照)。
+  # ../pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照)。
   # 旧 1 行統合 trap `trap '...' EXIT INT TERM HUP` は SIGINT 等で exit code 130/143/129 を明示返却
   # しないため、上位 orchestrator が rc=0 と誤判定する可能性があった。
   add_err=""
@@ -1373,10 +1373,10 @@ case "$branch_strategy" in
   ;;
 *)
   # F-04 対応: 未知の branch_strategy 値 (設定ミス、新規モード追加忘れ等) を silent skip させない。
-  # 4 site (Phase 2.2 / 6.0 / 6.2 / 8.3) で同型の fail-fast メッセージに揃える。
-  echo "ERROR: 未知の branch_strategy 値: '$branch_strategy' (Phase 8.3)" >&2
-  echo "  許容値: separate_branch / same_branch" >&2
-  echo "  対処: rite-config.yml の wiki.branch_strategy を確認してください" >&2
+  # 5 site (Phase 2.2 / 6.0 / 6.2 / 8.2 / 8.3) で同型の fail-fast メッセージに揃える。
+  echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (Phase 8.3)" >&2
+  echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
+  echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、5 箇所で同型）" >&2
   exit 1
   ;;
 esac
@@ -1434,7 +1434,7 @@ LLM は Phase 6.0 bash block の stdout から `log_read_ok={value}` を、Phase
 |--------|------------------------|--------------------------------|
 | `true` | 空文字列 | 空文字列 |
 | `absent` (log_read_ok のみ) | 空文字列 | 空文字列 |
-| `io_error` (log_read_ok) | ` ⚠️ (log.md 読出失敗により false positive を含む可能性あり)` | `⚠️ log.md 読出失敗: 真の欠落 (missing_concept) 件数が正確でない可能性があります。Wiki ページ格納先 (wiki branch or \`.rite/wiki/pages/\` filesystem) の integrity / 権限を確認して /rite:wiki:lint を再実行してください。` |
+| `io_error` (log_read_ok) | ` ⚠️ (log.md 読出失敗により false positive を含む可能性あり)` | `⚠️ log.md 読出失敗: 真の欠落 (missing_concept) 件数が正確でない可能性があります。separate_branch なら wiki branch の log.md blob integrity、same_branch なら \`.rite/wiki/log.md\` の存在 / 権限を確認して /rite:wiki:lint を再実行してください。` |
 | `io_error` (all_source_refs_read_ok) | ` ⚠️ (ページ frontmatter 読出失敗により sources.ref 集合が不完全、false positive を含む可能性あり)` | `⚠️ ページ frontmatter 読出失敗: 真の欠落 (missing_concept) 件数が正確でない可能性があります。Wiki ページ格納先 (wiki branch or \`.rite/wiki/pages/\` filesystem) の integrity / 権限を確認して /rite:wiki:lint を再実行してください。` |
 | `unknown` (log_read_ok) | (この状態では Phase 9.1 に到達しない、branch_strategy fail-fast で exit 1 済み) | 空文字列 |
 | `unknown` (all_source_refs_read_ok) | 空文字列 (Phase 6.2 block 途中異常終了時の fallback — emit 自体は enum decision 後に行うため通常は届かないが、防御深度として stdout 上に `all_source_refs_read_ok=unknown` が残留した場合の扱いを明示) | 空文字列 |
@@ -1510,7 +1510,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 
 - **原則 exit 0**: 検出件数・事前チェック失敗・ブランチ読取失敗のいずれも非ブロッキング
 - **例外 (`exit 1` fail-fast)**:
-  - Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 の `branch_strategy` 未知値 (4 箇所で同型、設定ミスの silent 通過防止)
+  - Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 / Phase 8.3 の `branch_strategy` 未知値 (5 箇所で同型、設定ミスの silent 通過防止)
   - Phase 1.1 / Phase 1.3 の `{mode}` placeholder 残留検知 (2 箇所で同型、Claude substitute 忘れの silent 通過防止)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
 
@@ -1525,7 +1525,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | Wiki 未初期化 | `/rite:wiki:init` を案内 (`--auto` モード時は 6 フィールド 0 件 1 行を出力後 exit 0) | Phase 1.3 |
 | `{mode}` placeholder 残留 (Phase 1.1 / Phase 1.3 の 2 箇所) | **exit 1 で fail-fast**（Claude substitute 忘れの silent 通過防止、2 箇所で同型） | Phase 1.1 / Phase 1.3 |
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | Phase 2.2 |
-| `branch_strategy` が未知の値 (Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 の 4 箇所) | **exit 1 で fail-fast**（設定ミスの silent 通過防止、4 箇所で同型） | Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 |
+| `branch_strategy` が未知の値 (Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 / Phase 8.3 の 5 箇所) | **exit 1 で fail-fast**（設定ミスの silent 通過防止、5 箇所で同型） | Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 / Phase 8.3 |
 | `index.md` 読出失敗 | WARNING + Phase 5 skip（exit 0） | Phase 2.3 |
 | `log.md` 読出失敗 (legitimate absence: fresh branch / ENOENT / blob not found) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | Phase 6.0 |
 | `log.md` 読出失敗 (真の IO error: permission / 破損 / wiki_branch race) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + Phase 9.1 完了レポートで false positive note 表示（exit 0） | Phase 6.0 |

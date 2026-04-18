@@ -531,7 +531,7 @@ branch_strategy="{branch_strategy}"
 
 if [ "$branch_strategy" = "same_branch" ]; then
   # F-06 対応: canonical signal-specific trap (4 行 EXIT/INT/TERM/HUP) で _reset_err tempfile orphan 防止
-  # (lint.md Phase 8.3 same_branch L1216-1247 と対称化、bash-trap-patterns.md#signal-specific-trap-template 準拠)。
+  # (lint.md Phase 8.3 same_branch block (`_rite_wiki_lint_phase83_cleanup` trap) と対称化、../pr/references/bash-trap-patterns.md#signal-specific-trap-template 準拠)。
   # 旧実装は trap 未保護で SIGINT/SIGTERM/SIGHUP が来ると _reset_err tempfile が orphan 化していた。
   _reset_err=""
   _rite_ingest_phase52_cleanup() {
