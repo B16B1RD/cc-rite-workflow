@@ -1,5 +1,5 @@
 ---
-description: Wiki Lint — Wiki の品質チェック（矛盾・陳腐化・孤児・欠落概念・未登録 raw・壊れた相互参照）
+description: Wiki Lint — Wiki の品質チェック（5 ブロッキング: 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照 + 1 informational: 未登録 raw）
 ---
 
 # /rite:wiki:lint
@@ -727,8 +727,13 @@ esac
 if [ -n "$log_content" ]; then
   set -o pipefail
   # R-05 対応: awk_sort_err mktemp 失敗時も WARNING を可視化 (log_err と対称)。
+  # PR #564 cycle 11 F-02 対応: 3 行 loud emit (WARNING + 対処 + 影響) に拡張し、Phase 6.0 log_err / Phase 6.2
+  # sort_err / page_err 等の他 mktemp 失敗 WARNING および bash-cross-boundary-state-transfer.md Pattern 3
+  # canonical の 3 行規範と対称化する。
   awk_sort_err=$(mktemp /tmp/rite-wiki-lint-p60-awk-err-XXXXXX 2>/dev/null) || {
-    echo "WARNING: awk/sort stderr 退避 tempfile の mktemp に失敗しました。pipeline の詳細エラー情報は失われます" >&2
+    echo "WARNING: awk/sort stderr 退避 tempfile の mktemp に失敗しました" >&2
+    echo "  対処: /tmp の容量 / inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
+    echo "  影響: pipeline 失敗時の詳細エラー情報 (awk syntax error / sort OOM 等) が失われ、根本原因が不可視になります" >&2
     awk_sort_err=""
   }
   skipped_refs=$(printf '%s\n' "$log_content" \
@@ -977,8 +982,14 @@ while IFS= read -r page; do
   # (separate_branch: blob 不在、same_branch: ENOENT / No such file)。
   page_err=$(mktemp /tmp/rite-lint-page-err-XXXXXX 2>/dev/null) || { page_err=""; page_err_mktemp_failed=$((page_err_mktemp_failed + 1)); }  # F-12: accumulator (累積)
   # LC_ALL=C で locale を固定 (PR #564 F-05 対応、Phase 6.0 と対称)。cat / git show の stderr
-  # メッセージが gettext 経由で翻訳されると下記 905 の grep regex `No such file or directory|
-  # cannot open` と不一致になり、legitimate absence が io_error に誤分類される。
+  # メッセージが gettext 経由で翻訳されると下記 Phase 6.2 の grep regex
+  # (`does not exist|path '.+' exists on disk, but not in|Not a valid object name|fatal: invalid object name '[^']*:|No such file or directory|cannot open .* for reading`) と
+  # 不一致になり、legitimate absence が io_error に誤分類される。
+  # PR #564 cycle 11 F-06 対応: 旧コメントの「下記 905 の grep regex」は stale 行番号参照だった
+  # (実際の grep regex は本ファイル下方の Phase 6.2 内、`per-page 読取失敗の WARNING 出力` ブロック
+  # で `[ -n "$page_err" ] && [ -s "$page_err" ] && grep -qE ...` として使用されている)。
+  # 本 PR 内の他コメントは「Phase 番号と semantic 名のみで参照する」原則を明示しているため、
+  # 行番号参照ではなく Phase 番号 + 実際の regex 文字列で参照する形式に修正した。
   case "$branch_strategy" in
     separate_branch)
       page_read_cmd_result=$(LC_ALL=C git show "${wiki_branch}:$page" 2>"${page_err:-/dev/null}")
@@ -1392,75 +1403,80 @@ case "$branch_strategy" in
     esac
     ;;
   same_branch)
-  # git add / commit の stderr を tempfile に捕捉 (silent failure 防止):
-  # pre-commit hook / gpg sign / author config / permission / index lock 等の根本原因を可視化する
-  #
-  # PR #564 F-13 対応: canonical signal-specific 4 行 trap に変更 (Phase 6.0 / 6.2 と対称化、
-  # ../pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照)。
-  # 旧 1 行統合 trap `trap '...' EXIT INT TERM HUP` は SIGINT 等で exit code 130/143/129 を明示返却
-  # しないため、上位 orchestrator が rc=0 と誤判定する可能性があった。
-  add_err=""
-  commit_err=""
-  _rite_wiki_lint_phase83_cleanup() {
-    # F-06 (PR #564 cycle 8 F-06) 対応: BSD variant に統一 (Phase 6.0 / 6.2 cleanup と対称化)。
-    # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
-    # 旧実装 `rm -f "${add_err:-}" "${commit_err:-}"` は GNU rm では空引数 silent no-op だが
-    # BSD/macOS rm では `rm: : No such file or directory` が stderr に出て operator を混乱させる。
-    [ -n "${add_err:-}" ] && rm -f "$add_err"
-    [ -n "${commit_err:-}" ] && rm -f "$commit_err"
-  }
-  trap 'rc=$?; _rite_wiki_lint_phase83_cleanup; exit $rc' EXIT
-  trap '_rite_wiki_lint_phase83_cleanup; exit 130' INT
-  trap '_rite_wiki_lint_phase83_cleanup; exit 143' TERM
-  trap '_rite_wiki_lint_phase83_cleanup; exit 129' HUP
-  # F-05 対応: mktemp 失敗時の loud WARNING (Pattern 3 規範準拠、Phase 6.0 / 6.2 と対称化)。
-  # silent fallback では add_err="" / commit_err="" になり、`[ -s "$add_err" ]` check が false →
-  # git add / commit 失敗時の根本原因 (pre-commit hook / gpg sign / index lock 等) が不可視になる。
-  add_err=$(mktemp /tmp/rite-lint-add-err-XXXXXX 2>/dev/null) || {
-    echo "WARNING: stderr 退避 tempfile (add_err) の mktemp に失敗しました。git add の詳細エラー情報は失われます" >&2
-    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
-    echo "  影響: index lock / permission denied 等の根本原因が不可視になります" >&2
+    # PR #564 cycle 11 F-05 対応: case body indent を 4-space に統一 (separate_branch arm と対称化)。
+    # 旧実装は同 case 文内で separate_branch arm が 4-space、same_branch arm が 2-space、*) arm が
+    # 0-space と 3 種類の indent style 混在で reader に「`*)` は別ブロック?」と誤認させるリスクがあった。
+    # Phase 6.0 / 6.2 / 8.2 の case 文と同じ「pattern 2-space + body 4-space + `;;` 4-space」規範に統一。
+    #
+    # git add / commit の stderr を tempfile に捕捉 (silent failure 防止):
+    # pre-commit hook / gpg sign / author config / permission / index lock 等の根本原因を可視化する
+    #
+    # PR #564 F-13 対応: canonical signal-specific 4 行 trap に変更 (Phase 6.0 / 6.2 と対称化、
+    # ../pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照)。
+    # 旧 1 行統合 trap `trap '...' EXIT INT TERM HUP` は SIGINT 等で exit code 130/143/129 を明示返却
+    # しないため、上位 orchestrator が rc=0 と誤判定する可能性があった。
     add_err=""
-  }
-  commit_err=$(mktemp /tmp/rite-lint-commit-err-XXXXXX 2>/dev/null) || {
-    echo "WARNING: stderr 退避 tempfile (commit_err) の mktemp に失敗しました。git commit の詳細エラー情報は失われます" >&2
-    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
-    echo "  影響: pre-commit hook / gpg sign / author config 失敗の根本原因が不可視になります" >&2
     commit_err=""
-  }
+    _rite_wiki_lint_phase83_cleanup() {
+      # F-06 (PR #564 cycle 8 F-06) 対応: BSD variant に統一 (Phase 6.0 / 6.2 cleanup と対称化)。
+      # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
+      # 旧実装 `rm -f "${add_err:-}" "${commit_err:-}"` は GNU rm では空引数 silent no-op だが
+      # BSD/macOS rm では `rm: : No such file or directory` が stderr に出て operator を混乱させる。
+      [ -n "${add_err:-}" ] && rm -f "$add_err"
+      [ -n "${commit_err:-}" ] && rm -f "$commit_err"
+    }
+    trap 'rc=$?; _rite_wiki_lint_phase83_cleanup; exit $rc' EXIT
+    trap '_rite_wiki_lint_phase83_cleanup; exit 130' INT
+    trap '_rite_wiki_lint_phase83_cleanup; exit 143' TERM
+    trap '_rite_wiki_lint_phase83_cleanup; exit 129' HUP
+    # F-05 対応: mktemp 失敗時の loud WARNING (Pattern 3 規範準拠、Phase 6.0 / 6.2 と対称化)。
+    # silent fallback では add_err="" / commit_err="" になり、`[ -s "$add_err" ]` check が false →
+    # git add / commit 失敗時の根本原因 (pre-commit hook / gpg sign / index lock 等) が不可視になる。
+    add_err=$(mktemp /tmp/rite-lint-add-err-XXXXXX 2>/dev/null) || {
+      echo "WARNING: stderr 退避 tempfile (add_err) の mktemp に失敗しました。git add の詳細エラー情報は失われます" >&2
+      echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+      echo "  影響: index lock / permission denied 等の根本原因が不可視になります" >&2
+      add_err=""
+    }
+    commit_err=$(mktemp /tmp/rite-lint-commit-err-XXXXXX 2>/dev/null) || {
+      echo "WARNING: stderr 退避 tempfile (commit_err) の mktemp に失敗しました。git commit の詳細エラー情報は失われます" >&2
+      echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+      echo "  影響: pre-commit hook / gpg sign / author config 失敗の根本原因が不可視になります" >&2
+      commit_err=""
+    }
 
-  if ! git add .rite/wiki/log.md 2>"${add_err:-/dev/null}"; then
-    echo "WARNING: git add .rite/wiki/log.md に失敗しました" >&2
-    if [ -n "$add_err" ] && [ -s "$add_err" ]; then
-      head -3 "$add_err" | sed 's/^/  /' >&2
+    if ! git add .rite/wiki/log.md 2>"${add_err:-/dev/null}"; then
+      echo "WARNING: git add .rite/wiki/log.md に失敗しました" >&2
+      if [ -n "$add_err" ] && [ -s "$add_err" ]; then
+        head -3 "$add_err" | sed 's/^/  /' >&2
+      fi
+      echo "  対処: index lock / permission denied / path error のいずれかを確認してください" >&2
+      exit 0
     fi
-    echo "  対処: index lock / permission denied / path error のいずれかを確認してください" >&2
-    exit 0
-  fi
 
-  if ! git commit -m "$commit_msg" 2>"${commit_err:-/dev/null}"; then
-    echo "WARNING: log.md のコミットに失敗しました" >&2
-    if [ -n "$commit_err" ] && [ -s "$commit_err" ]; then
-      head -3 "$commit_err" | sed 's/^/  /' >&2
+    if ! git commit -m "$commit_msg" 2>"${commit_err:-/dev/null}"; then
+      echo "WARNING: log.md のコミットに失敗しました" >&2
+      if [ -n "$commit_err" ] && [ -s "$commit_err" ]; then
+        head -3 "$commit_err" | sed 's/^/  /' >&2
+      fi
+      echo "  対処: pre-commit hook / gpg sign / author config / permission のいずれかを確認してください" >&2
     fi
-    echo "  対処: pre-commit hook / gpg sign / author config / permission のいずれかを確認してください" >&2
-  fi
 
-  [ -n "$add_err" ] && rm -f "$add_err"
-  [ -n "$commit_err" ] && rm -f "$commit_err"
-  # F-20 対応: trap - EXIT INT TERM HUP の意図は、明示 rm 後に trap を解除して、後続 (`exit 0` で継続)
-  # 行で trap が再発火しないようにすること (R-07 と同型の冗長 cleanup 正当化)。
-  # 同期 cleanup と trap cleanup の役割分離: 上記 2 行が同期 cleanup (通常パス)、trap は signal 経路の defense-in-depth。
-  trap - EXIT INT TERM HUP
-  ;;
-*)
-  # F-04 対応: 未知の branch_strategy 値 (設定ミス、新規モード追加忘れ等) を silent skip させない。
-  # 5 site (Phase 2.2 / 6.0 / 6.2 / 8.2 / 8.3) で同型の fail-fast メッセージに揃える。
-  echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (Phase 8.3)" >&2
-  echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-  echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、5 箇所で同型）" >&2
-  exit 1
-  ;;
+    [ -n "$add_err" ] && rm -f "$add_err"
+    [ -n "$commit_err" ] && rm -f "$commit_err"
+    # F-20 対応: trap - EXIT INT TERM HUP の意図は、明示 rm 後に trap を解除して、後続 (`exit 0` で継続)
+    # 行で trap が再発火しないようにすること (R-07 と同型の冗長 cleanup 正当化)。
+    # 同期 cleanup と trap cleanup の役割分離: 上記 2 行が同期 cleanup (通常パス)、trap は signal 経路の defense-in-depth。
+    trap - EXIT INT TERM HUP
+    ;;
+  *)
+    # F-04 対応: 未知の branch_strategy 値 (設定ミス、新規モード追加忘れ等) を silent skip させない。
+    # 5 site (Phase 2.2 / 6.0 / 6.2 / 8.2 / 8.3) で同型の fail-fast メッセージに揃える。
+    echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (Phase 8.3)" >&2
+    echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
+    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（非ブロッキング契約の唯一の例外、5 箇所で同型）" >&2
+    exit 1
+    ;;
 esac
 # 非ブロッキング契約: 失敗しても exit 0 で継続
 ```

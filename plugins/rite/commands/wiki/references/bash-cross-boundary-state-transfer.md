@@ -162,6 +162,12 @@ log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null) || {
 if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
   log_read_ok="true"
 else
+  # PR #564 cycle 11 F-07 対応: else 分岐冒頭で `rc=$?` を明示 capture する。
+  # 旧実装は `rc=$?` を欠落させ、後段の `[ -n "..." ] && [ -s "..." ] && grep -qE ...` で `$?` が
+  # grep の rc に上書きされた状態で `echo "...(rc=$rc)..."` が表示され、`rc=` が常に grep の
+  # 0/1/2 を表示する silent failure 例になっていた。本 reference は canonical 教材なので、
+  # lint.md Phase 6.0 (`else rc=$?;` と明示 capture する実装) と一字一句揃える。
+  rc=$?
   # 2 primary pattern + 2 safety pattern = 4 pattern 網羅
   # [ -n "$log_err" ] && [ -s "$log_err" ] の 2 段ガード: mktemp 失敗経路 (log_err="")
   # では [ -s "" ] が false でも silent に io_error に流れるが、[ -n ] ガードで

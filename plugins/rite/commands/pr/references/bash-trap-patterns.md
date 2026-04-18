@@ -134,6 +134,7 @@ _rite_<scope>_<phase>_cleanup() {
 - `plugins/rite/commands/wiki/lint.md` Phase 2.2 (`_rite_wiki_lint_phase2_cleanup`) — 旧命名 (`phase22` 規約確立前の実装)。既存名は維持し、同一 site に cleanup を新規追加する場合は `_rite_wiki_lint_phase22_cleanup` を採用すること
 - `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_phase60_cleanup`)
 - `plugins/rite/commands/wiki/lint.md` Phase 6.2 (`_rite_wiki_lint_phase62_cleanup`) — PR #564 で追加、page_err / awk_diag / sort_err の 3 tempfile を保護
+- `plugins/rite/commands/wiki/lint.md` Phase 8.3 (`_rite_wiki_lint_phase83_cleanup`) — PR #564 cycle 11 F-03 対応で追加、add_err / commit_err の 2 tempfile を保護 (same_branch path のみ)
 - `plugins/rite/commands/wiki/ingest.md` Phase 5.2 (`_rite_wiki_ingest_phase52_cleanup`) — PR #564 F-01 対応で旧名 `_rite_ingest_phase52_cleanup` から `wiki` scope prefix 付きにリネーム (scope 衝突回避、規約準拠)。`_reset_err` tempfile を保護
 
 命名規約:

@@ -760,9 +760,27 @@ step number は **項目の論理的役割の名称** であり、**実行順と
 
 このフローにより、step 2 が成功した場合 step 1 / 3 / 4 は skip される。lint.md Phase 9.2 が必ず 6 フィールド 1 行を emit する契約のため、通常時は step 2 のみで完結する。
 
-1. **ERROR 行の検出** (F-07 対応で narrow scope に縮小): step 2 が match しなかった場合に限り、Skill 応答テキストに以下の行が含まれるかを検査:
+1. **ERROR 行の検出** (F-07 対応で narrow scope に縮小): step 2 が match しなかった場合に限り、Skill 応答テキストに以下の行が含まれるかを検査します:
 
    - `ERROR:` で始まる任意行 (例: `ERROR: 未知の branch_strategy 値を検出しました`)
+
+   **検出時の処理** (step 3 / step 4 と対称、上の判定順序 ascii diagram と一致):
+
+   - `n_warnings` に 1 を加算 + `n_lint_anomaly` に 1 を加算（実行失敗を品質警告 + Lint 異常経路として計上）
+   - 6 変数 (`n_contradictions` 等) はすべて `0` に設定（fallback）
+   - 以下を stderr に出力:
+
+     ```
+     WARNING: /rite:wiki:lint --auto の Skill 応答テキストに ERROR: 行を検出しました（Lint 実行失敗）。
+       検出行: {error_line_first1line}
+       考えられる原因: lint.md 内の `echo "ERROR: ..."` 経由の fail-fast 経路が発火（branch_strategy 不正 / git 操作失敗等）
+       Ingest 完了レポートには「Lint 結果: 実行失敗」と表示します。
+       対処: /rite:wiki:lint を手動実行してエラー内容を確認してください。
+     ```
+
+     `{error_line_first1line}` は `ERROR:` で始まった最初の 1 行を 4 スペース prefix 付きで展開する。
+
+   - Phase 8.4 の完了レポート統合では `Lint 結果: 実行失敗（ERROR: 行検出のため詳細取得不可）` と表示する
 
    **F-07 対応の設計変更**: 旧実装の bullets 2-4 (Phase 6.0 の log.md 読取失敗 / Phase 2.2 主処理失敗 / Phase 6.2 per-page 読取失敗の WARNING regex) は **dead regex** だった。これらの WARNING は lint.md 内部の Bash tool 呼び出しの stderr に出力されるが、Skill 応答テキスト (= lint.md Phase 9.2 の最終 stdout 出力) には通常含まれないため、本 step 1 で検知不能だった。step 2 (6 フィールド format) と step 4 (format mismatch fallback) で同等の検知が可能なため、step 1 は ERROR: 行のみに簡素化した (dead path 排除)。
 
