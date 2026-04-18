@@ -277,6 +277,7 @@ _reset_active_state() {
     _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
   else
     _ownership="unknown"
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] ownership check unavailable (check_session_ownership not sourced)" >&2
   fi
 
   if [ "$_ownership" = "other" ]; then

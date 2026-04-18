@@ -708,6 +708,43 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-T04b (#558 / review M-EH1): check_session_ownership unavailable + RITE_DEBUG=1
+#                                 → debug log "ownership check unavailable" 出力 (AC-04 spec)
+# --------------------------------------------------------------------------
+echo "TC-T04b (#558): helper undefined + RITE_DEBUG=1 → 'ownership check unavailable' debug log"
+dirT04b="$TEST_DIR/tcT04b"
+mkdir -p "$dirT04b/sandbox/hooks"
+sandbox_hook_dir_b="$dirT04b/sandbox/hooks"
+src_hook_dir_b="$(cd "$SCRIPT_DIR/.." && pwd)"
+cp "$src_hook_dir_b/session-start.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
+cat > "$sandbox_hook_dir_b/session-ownership.sh" <<'STUB_EOF'
+#!/bin/bash
+extract_session_id() { echo ""; }
+get_state_session_id() { echo ""; }
+parse_iso8601_to_epoch() { echo 0; }
+STUB_EOF
+ts_t04b=$(iso8601_now 0)
+cat > "$dirT04b/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 204, "branch": "feat/issue-204-debuglog", "phase": "implementing", "session_id": "ses-T04b-state", "updated_at": "$ts_t04b"}
+EOF
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(jq -n --arg cwd "$dirT04b" --arg src "startup" --arg sid "ses-T04b-hook" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | RITE_DEBUG=1 bash "$sandbox_hook_dir_b/session-start.sh" 2>"$LAST_STDERR_FILE") && rc=0 || rc=$?
+stderr_content=$(cat "$LAST_STDERR_FILE")
+ACTIVE_AFTER=$(jq -r '.active' "$dirT04b/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] \
+   && echo "$stderr_content" | grep -q "ownership check unavailable" \
+   && echo "$stderr_content" | grep -q "check_session_ownership not sourced"; then
+  pass "TC-T04b: helper undefined + RITE_DEBUG → debug log 'ownership check unavailable' shown"
+else
+  fail "TC-T04b: expected debug log 'ownership check unavailable'; got rc=$rc, active=$ACTIVE_AFTER, stderr='$stderr_content'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-T05 (#558): static grep — old comment removed (AC-05)
 # --------------------------------------------------------------------------
 echo "TC-T05 (#558): static grep — old comment 'Always proceeds with reset...' removed"
