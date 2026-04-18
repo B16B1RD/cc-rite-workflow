@@ -55,11 +55,15 @@ When activated, this skill provides:
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
 
+**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[interview:completed]` / `[create:completed:{N}]` 等) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。また、ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージで終わる。sentinel marker は hook/grep 契約のため出力は保持するが、HTML コメント化等で user-visible な末端に孤立させない。
+
 | 禁止事項 | 正規経路 |
 |---------|---------|
 | 「時間が足りないので X を省略します」 | 手順どおり実行 |
 | 「context が圧迫しているので要約します」 | 手順どおり実行 |
 | 「残量が不安なので review を切り上げます」 | `/clear` + `/rite:resume` をユーザーに案内 |
+| return tag 直後に turn を閉じる | 同 turn 内で次 phase に継続 (stop-guard + HTML コメント化 sentinel により機械的に enforcement) |
+| sentinel marker `[create:completed:{N}]` を user-visible な最終行として残す | HTML コメント `<!-- [create:completed:{N}] -->` として末尾に配置し、user-visible な最終行は `✅ ...` 完了メッセージにする |
 
 詳細と Anti-pattern / Correct Pattern は [references/workflow-identity.md](./references/workflow-identity.md) を参照。各 command (start / review / fix / ready / lint / cleanup / create / resume 等) からも同 reference を引いている。
 

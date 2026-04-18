@@ -160,6 +160,33 @@ This is appended to the report produced by Phase 4 irrespective of lint success/
 
 ---
 
+## Phase 0.6: Terminal Output Structure Verification (v1.0.0 #561)
+
+Run the regression guard for `/rite:issue:create` terminal output structure. This check ensures that Terminal Completion sections in `create-register.md` / `create-decompose.md` / `create-interview.md` emit the completion sentinel (`[create:completed:{N}]` / `[interview:*]`) as an HTML comment wrapper so the user-visible final line is the `✅` completion message + next steps (Issue #561 AC-2, AC-3, AC-6).
+
+**Rationale**: Prior regressions (Issues #525, #552, #561) showed that bare sentinel tokens as the absolute last line coupled the LLM's turn-boundary heuristic with the sentinel, causing premature `continue`-requiring stops. The HTML-comment form (`<!-- [create:completed:{N}] -->`) keeps the sentinel grep-matchable while hiding it from rendered Markdown output.
+
+**Step 1**: Execute the verifier:
+
+```bash
+bash {plugin_root}/hooks/verify-terminal-output.sh --quiet
+verify_rc=$?
+```
+
+**Step 2**: Report the outcome alongside normal lint output:
+
+| `verify_rc` | Meaning | Lint report line |
+|-------------|---------|------------------|
+| `0` | All terminal output checks passed | (omit — no extra output) |
+| `1` | One or more checks failed | `⚠️ Terminal output regression detected (see Issue #561). Run \`bash {plugin_root}/hooks/verify-terminal-output.sh\` for details.` |
+| `2` | Usage error (should not occur under automatic invocation) | `⚠️ verify-terminal-output.sh invocation error (rc=2). Review lint.md Phase 0.6.` |
+
+**Step 3**: `verify_rc != 0` is surfaced as a warning and appended to the Phase 4 report. It does NOT change the lint exit code (non-blocking — the regression guard informs the developer but does not break the e2e flow). If the e2e flow is running and `verify_rc == 1`, the developer should fix the regression before merging the PR.
+
+**Non-blocking rationale**: This phase runs on every lint invocation; blocking would prevent unrelated PRs from merging if a Terminal Completion file has an unintended drift. Making it informational keeps the regression visible (via lint report + potential PR review) without halting the workflow.
+
+---
+
 ## Phase 1: Lint Command Detection
 
 ### 1.1 Check Explicit Configuration

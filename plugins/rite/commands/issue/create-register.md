@@ -565,9 +565,11 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 ## Phase 4: Terminal Completion
 
-<!-- caller: this sub-skill is terminal. Phase 4 outputs [create:completed:{N}] as the absolute last line and deactivates .rite-flow-state. The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
+<!-- caller: this sub-skill is terminal. Phase 4 deactivates .rite-flow-state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
 
 > **Design decision** (Issue #444, D-01): This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
+>
+> **Design decision** (Issue #561, D-01): The `[create:completed:{N}]` sentinel is now emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) so that the user-visible final line is the `✅` completion message + next steps, not the sentinel token. The string `[create:completed:N]` inside the HTML comment is still grep-matchable (`grep -F` / `grep -E '\[create:completed:[0-9]+\]'`) so existing hook/test contracts (AC-3) remain intact. The HTML comment is invisible in rendered Markdown views, which also weakens the LLM's turn-boundary heuristic that previously treated a bare `[create:completed:N]` line as a natural stopping point (root cause of the #561 regression).
 
 ### 4.1 Flow State Deactivation
 
@@ -581,9 +583,9 @@ if [ -f ".rite-flow-state" ]; then
 fi
 ```
 
-### 4.2 Completion Message (User-facing, Issue #552)
+### 4.2 Completion Message (User-facing, Issue #552 / #561)
 
-> **Design decision** (Issue #552 Bug2): The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified by AC-4). To give the user an unambiguous visual "done" signal, emit an explicit completion message **immediately before** the Next Steps block. The sentinel marker retains its position as the absolute last line (AC-4 backward compatibility).
+> **Design decision** (Issue #552 Bug2 + Issue #561 UX fix): The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified by AC-4 of #552 / AC-3 of #561). Emit an explicit user-visible completion message followed by the next-steps block; place the sentinel as a trailing HTML comment so the user's visible final content is the `✅` message + next steps (AC-2 of #561).
 
 Output the user-facing completion message as the first deliverable line of Phase 4's output:
 
@@ -605,18 +607,32 @@ Output the next steps after the completion message:
 
 Where `{issue_number}` is the Issue number from Phase 2.2.
 
-### 4.4 Completion Marker
+### 4.4 Completion Marker (HTML comment form)
 
-Output the completion marker as the **absolute last line**:
+Output the completion marker as an **HTML comment on the final line** — invisible to the user in rendered views, but matchable by `grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`:
 
-- **Issue created**: `[create:completed:{issue_number}]`
+- **Issue created**: `<!-- [create:completed:{issue_number}] -->`
 
-This marker signals to both the orchestrator (`create.md`) and the user that the workflow is fully complete (Issue created, Projects registered, flow-state deactivated, next steps displayed).
+This marker signals to both the orchestrator (`create.md`) and any hook/grep consumer that the workflow is fully complete (Issue created, Projects registered, flow-state deactivated, next steps displayed). The HTML comment form ensures the user-visible final line is the next-steps block, not the sentinel token.
 
 **Output rules**:
-1. `[create:completed:{N}]` MUST be the last line of output — no text after it
-2. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
-3. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
+1. `<!-- [create:completed:{N}] -->` is the **absolute last line** of Phase 4's output — no plain text after it
+2. The user-visible final content (last non-comment line) MUST be the next-steps block (`次のステップ: ...`) immediately preceded by the `✅` completion message
+3. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
+4. Do **NOT** emit the sentinel as a bare `[create:completed:{N}]` line (without HTML comment wrapping) — the bare form regressed in Issue #561 as the user-visible terminal token
+5. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
+
+**Concrete output example**:
+
+```
+✅ Issue #1234 を作成しました: https://github.com/.../issues/1234
+
+次のステップ:
+1. `/rite:issue:start 1234` で作業を開始
+2. 作業完了後 `/rite:pr:create` で PR 作成
+
+<!-- [create:completed:1234] -->
+```
 
 ---
 
@@ -625,7 +641,7 @@ This marker signals to both the orchestrator (`create.md`) and the user that the
 When this sub-skill completes (Phase 4 terminal completion), the Issue creation workflow is **fully complete**:
 - Issue created and registered to GitHub Projects ✅
 - `.rite-flow-state` deactivated (`active: false`) ✅
-- Next steps displayed to user ✅
-- Completion marker `[create:completed:{N}]` output ✅
+- User-visible completion message + next steps displayed ✅
+- Completion marker emitted as HTML comment (`<!-- [create:completed:{N}] -->`) ✅
 
 The caller (`create.md`) MAY execute its 🚨 Mandatory After Delegation section as defense-in-depth (idempotent — re-deactivating an already-deactivated flow state and re-outputting next steps is harmless).
