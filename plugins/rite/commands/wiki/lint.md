@@ -89,7 +89,33 @@ branch_strategy=""
 if [[ -n "$branch_strategy_line" ]]; then
   branch_strategy=$(printf '%s' "$branch_strategy_line" | sed 's/[[:space:]]#.*//' | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 fi
-branch_strategy="${branch_strategy:-separate_branch}"
+
+# F-09 (PR #564 cycle 8 F-09) 対応: silent default の撤廃と fail-fast 設計への統一。
+# Phase 2.2/6.0/6.2/8.2/8.3 では `case *) fail-fast` で未知値を reject する設計に統一済みだが、
+# Phase 1.1 だけ silent default `${branch_strategy:-separate_branch}` で「separate_branch 扱いで
+# Phase 8.2 へ到達したが実は未設定」という経路を許容していた。fail-fast 設計と対称化する。
+# - 空文字列: rite-config.yml に branch_strategy が未設定 → WARNING + default (legitimate fallback)
+# - "separate_branch" / "same_branch": 正常値 → そのまま採用
+# - その他 (未知値): fail-fast + ERROR (rite-config.yml の typo 等を silent に通さない)
+case "$branch_strategy" in
+  "")
+    # legitimate fallback: rite-config.yml に branch_strategy キーがない (default 運用)
+    echo "WARNING: rite-config.yml に wiki.branch_strategy が未設定のため 'separate_branch' を使用します" >&2
+    echo "  対処: 意図しない場合は rite-config.yml の wiki.branch_strategy を明示的に設定してください" >&2
+    branch_strategy="separate_branch"
+    ;;
+  separate_branch|same_branch)
+    # 正常値、そのまま採用
+    :
+    ;;
+  *)
+    echo "ERROR: rite-config.yml の wiki.branch_strategy に未知の値: '$branch_strategy'" >&2
+    echo "  受理値: 'separate_branch' / 'same_branch'" >&2
+    echo "  対処: rite-config.yml の wiki.branch_strategy を確認してください (typo の可能性)" >&2
+    echo "[CONTEXT] LINT_BRANCH_STRATEGY_UNKNOWN=1; value=$branch_strategy" >&2
+    exit 1
+    ;;
+esac
 
 echo "wiki_enabled=$wiki_enabled"
 echo "branch_strategy=$branch_strategy"
