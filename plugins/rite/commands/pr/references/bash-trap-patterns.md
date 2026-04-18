@@ -140,13 +140,16 @@ _rite_<scope>_<phase>_cleanup() {
 - 形式: `_rite_<scope>_<phase>_cleanup`
 - `<scope>`: site を識別する接頭辞。例: `wiki_lint` (wiki/lint.md), `fix` (pr/fix.md), `review` (pr/review.md), `start` (issue/start.md)
 - `<phase>`: Phase 番号。**小数点を除いた連結形式**を使う (drift 防止)
-  - `Phase 2.2` → `phase2`
+  - `Phase 2.2` → `phase22`
   - `Phase 6.0` → `phase60`
   - `Phase 6.2` → `phase62`
   - `Phase 2` (小数なし) → `phase2`
   - 複数 Block を持つ Phase (Fast Path Block A/B/C 等) は `phaseXY_blockA` のように suffix を追加可
+- **Phase 2 と Phase 2.2 の collision ガード** (PR #564 F-06 対応): 整数 `Phase 2` の命名が `phase2` で、小数 `Phase 2.2` の命名が `phase22` となるため、形式的な衝突は起きない。ただし他 scope で整数 `Phase N` と小数 `Phase N.M` が同一 site に共存する場合、将来 `Phase N` 側が複数 scope に分岐しても追跡できるよう `phase{N}_main` / `phase{N}_{M}` のような suffix を付けると意図が明確になる (必須ではない、読みやすさ優先)。
 - 将来 Phase 6.1 / 6.3 等で cleanup 関数を追加する場合も同形式を採用すること。
 - PR #564 レビュー LOW #2 対応で短縮形 `_rite_p{NN}_cleanup` は廃止、scope prefix 付きの 2 階層命名に統一 (scope 不在だと `_rite_phase2_cleanup` が複数 site で衝突するため)。
+
+> **Note**: 既存 site で旧命名 (`_rite_wiki_lint_phase2_cleanup` 等) が残っている場合、本 PR では一括リネームを行わない (scope 外)。新規追加される cleanup 関数から本規約を適用すること。旧名を新名に揃えるリネーム作業は別 Issue で追跡する。
 
 GNU rm のみをターゲットとする site (Linux-only CI 等) では `rm -f "${var:-}"` のままで問題ない。
 
