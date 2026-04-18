@@ -39,8 +39,7 @@ else
 fi
 
 usage() {
-  local rc="${1:-2}"
-  cat >&2 <<'USAGE_EOF'
+  cat <<'USAGE_EOF'
 Usage: verify-terminal-output.sh [--quiet] [--repo-root <path>]
 
 Options:
@@ -59,7 +58,6 @@ Exit codes:
   1  a check failed (see stderr)
   2  usage error
 USAGE_EOF
-  exit "$rc"
 }
 
 QUIET=0
@@ -71,13 +69,14 @@ while [ $# -gt 0 ]; do
       shift
       if [ $# -eq 0 ]; then
         echo "ERROR: --repo-root requires a path argument" >&2
-        usage 2
+        usage >&2
+        exit 2
       fi
       REPO_ROOT_OVERRIDE="$1"
       shift
       ;;
-    -h|--help) usage 0 ;;
-    *) echo "ERROR: unknown argument: $1" >&2; usage 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 

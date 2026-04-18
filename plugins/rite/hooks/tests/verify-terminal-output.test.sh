@@ -175,11 +175,12 @@ meaningful_terminal_output
 EOF
 # Invoke from inside test7 (non-git directory, so git rev-parse fails, forcing SCRIPT_DIR/.. fallback)
 # Run in sub-shell so our own git detection doesn't leak cwd
-(cd "$TEST_DIR/test7" && bash "$TEST_DIR/test7/hooks/verify-terminal-output.sh" --quiet >/dev/null 2>&1)
-rc=$?
-if [ "$rc" = "0" ]; then
+# IMPORTANT: `if ...; then ... else ...` form to bypass `set -e` abort when subshell exits non-zero
+# (Test 1-6 と同じ形式に揃えることで、回帰発生時も fail カウントが正しく記録される)
+if (cd "$TEST_DIR/test7" && bash "$TEST_DIR/test7/hooks/verify-terminal-output.sh" --quiet >/dev/null 2>&1); then
   pass "marketplace layout passes when fixtures present at plugin root"
 else
+  rc=$?
   fail "expected exit 0 on marketplace layout with valid fixtures, got $rc"
 fi
 
