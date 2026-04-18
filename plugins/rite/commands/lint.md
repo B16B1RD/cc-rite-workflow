@@ -160,6 +160,46 @@ This is appended to the report produced by Phase 4 irrespective of lint success/
 
 ---
 
+## Phase 0.6: Terminal Output Structure Verification (v1.0.0 #561)
+
+Run the regression guard for `/rite:issue:create` terminal output structure. This check ensures that Terminal Completion sections in `create-register.md` / `create-decompose.md` / `create-interview.md` emit the completion sentinel (`[create:completed:{N}]` / `[interview:*]`) as an HTML comment wrapper so the user-visible final line is the `✅` completion message + next steps (Issue #561 AC-2, AC-3, AC-6).
+
+**Rationale**: Prior regressions (Issues #525, #552, #561) showed that bare sentinel tokens as the absolute last line coupled the LLM's turn-boundary heuristic with the sentinel, causing premature `continue`-requiring stops. The HTML-comment form (`<!-- [create:completed:{N}] -->`) keeps the sentinel grep-matchable while hiding it from rendered Markdown output.
+
+**Condition**: Always execute when the script exists (Phase 3.5-3.8 の plugin-specific check と同 pattern)。
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/verify-terminal-output.sh ]; then
+  verify_terminal_output=$(bash {plugin_root}/hooks/verify-terminal-output.sh --quiet 2>&1)
+  verify_terminal_exit_code=$?
+else
+  verify_terminal_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `verify_terminal_status` | Action |
+|-----------|--------------------------|--------|
+| `0` | `success` | All terminal output checks passed — continue to Phase 1 |
+| `1` | `warning` | Regression detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| `2` | `error` | Invocation error — record as warning, display error message |
+| `-1` | `skipped` | Script not found — skip silently (marketplace install without hooks) |
+
+**Important**: Terminal output check results are treated as **warnings**, not errors — same policy as Phase 3.5-3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
+
+**Record results** for Phase 4 reporting:
+
+- `verify_terminal_status`: `success` / `warning` / `error` / `skipped`
+- `verify_terminal_finding_count`: Extract from `verify_terminal_output` by counting `FAIL:` lines (regex: `/^FAIL:/`). If no match found, default to `0`
+- `verify_terminal_output`: Script output (truncated if >50 lines)
+
+**Non-blocking rationale**: This phase runs on every lint invocation; blocking would prevent unrelated PRs from merging if a Terminal Completion file has an unintended drift. Making it informational keeps the regression visible (via lint report + potential PR review) without halting the workflow.
+
+---
+
 ## Phase 1: Lint Command Detection
 
 ### 1.1 Check Explicit Configuration
@@ -706,7 +746,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {wiki_growth_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, or wiki-growth warnings/invocation errors.
+**Terminal output check appendix (Issue #561)** (both standalone and E2E): When `verify_terminal_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth:
+
+```
+⚠️ Terminal output check: {verify_terminal_finding_count} findings detected ({verify_terminal_status}, non-blocking)
+{verify_terminal_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, or terminal-output warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -781,6 +828,7 @@ Analyze the error content and present fix suggestions when possible:
 | Bang-backtick check | {bang_backtick_status} ({bang_backtick_finding_count} findings) |
 | Doc-heavy patterns drift check | {doc_heavy_drift_status} ({doc_heavy_drift_finding_count} findings) |
 | Wiki growth check (#524) | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
+| Terminal output check (#561) | {verify_terminal_status} ({verify_terminal_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
@@ -791,7 +839,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) and Phase 3.8 (`Wiki growth check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) and Phase 3.8 (`Wiki growth check`) and Phase 0.6 (`Terminal output check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

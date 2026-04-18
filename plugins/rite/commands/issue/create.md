@@ -72,8 +72,8 @@ When this command is executed, follow the phases below in order.
 
 | # | Check (種別) | If YES/NO / routing, do |
 |---|-------------|------------------------|
-| 0 | **Routing dispatcher** (状態質問ではない): 直前の sub-skill return tag は何か? | If `[interview:skipped]` / `[interview:completed]`: **continuation trigger** — immediately run 🚨 Mandatory After Interview (Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]`: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。**本 Item は YES/NO 集計から除外** — ルーティング前段として機能する。 |
-| 1 | **State check**: `[create:completed:{N}]` が最終行として出力済みか? | 場面 (a) では `NO` でも legitimate — 次の Pre-write + sub-skill invocation に進む。場面 (b) では `NO` は terminal sub-skill が未完了 — Mandatory After Delegation Step 3 (defense-in-depth として完了メッセージ + 次のステップを出力) を実行。 |
+| 0 | **Routing dispatcher** (状態質問ではない): 直前の sub-skill return tag は何か? | grep the recent output (HTML comments included) for `[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]`. Both the bare bracket form (legacy) and HTML-comment form (`<!-- [...] -->`, Issue #561 current) match. 推奨形式は 2 回の `grep -F` 呼び出し: `grep -F '[create:completed:'` と `grep -F '[interview:'`。ERE を使う場合は `grep -E '\[(interview\|create):[a-z:0-9]+\]'` **ではなく** `grep -E '\[(interview|create):[a-z:0-9]+\]'` (unescaped pipe — ERE では `\|` がリテラル `|` として解釈されるため alternation として機能しない、#582 で検出)。If `[interview:skipped]` / `[interview:completed]` matched: **continuation trigger** — immediately run 🚨 Mandatory After Interview (Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]` matched: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。**本 Item は YES/NO 集計から除外** — ルーティング前段として機能する。 |
+| 1 | **State check**: `[create:completed:{N}]` が HTML コメントまたはベアブラケット形式で最終行 (あるいは末尾近傍) に出力済みか? | 推奨形式: `grep -F '[create:completed:'` (fixed string で HTML コメント内の string も matchable)。ERE 使用時は `grep -E '\[create:completed:[0-9]+\]'` (`-E` flag 必須 — BRE では `[0-9]+` が「1 個の数字 + リテラル `+`」と解釈され sentinel にマッチしない、#582 で検出)。**注意**: bracket-unescaped 形式 `[create:completed:[0-9]+]` は character class として誤解釈されるため使用禁止。場面 (a) では `NO` でも legitimate — 次の Pre-write + sub-skill invocation に進む。場面 (b) では `NO` は terminal sub-skill が未完了 — Mandatory After Delegation Step 3 (defense-in-depth として完了メッセージ + 次のステップ + HTML コメント sentinel を出力) を実行。 |
 | 2 | **State check**: ユーザー向け完了メッセージが表示済みか? (3 形式のいずれか 1 つを含めば YES) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal sub-skill の完了メッセージが欠落 — Mandatory After Delegation Step 3 を実行 (idempotent)。**識別 substring**: 3 形式は以下の排他的な substring で識別可能 — register: `を作成しました:` (コロン付き URL), decompose: `を分解して` (中間句), orchestrator fallback: `を作成しました` かつ `:` を含まない。いずれか 1 形式の識別 substring を含めば YES 判定。 |
 | 3 | **State check**: `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: create_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — terminal sub-skill を呼ぶか Mandatory After Delegation Step 2 を実行。 |
 
@@ -85,33 +85,33 @@ When this command is executed, follow the phases below in order.
 
 ### Anti-pattern (what NOT to do)
 
-When `rite:issue:create-interview` returns `[interview:skipped]` or `[interview:completed]`:
+When `rite:issue:create-interview` returns `<!-- [interview:skipped] -->` or `<!-- [interview:completed] -->` (HTML comment form per Issue #561):
 
 ```
 [WRONG]
 <Skill rite:issue:create-interview returns>
-<LLM output: "[interview:skipped]">
+<LLM output: "<!-- [interview:skipped] -->">
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off signal. Ending the turn here abandons the workflow mid-flight with no Issue created.
+This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off signal. Ending the turn here abandons the workflow mid-flight with no Issue created. Note: even though the sentinel is now wrapped in an HTML comment (#561 UX fix), the LLM's turn-boundary heuristic may still fire if the Mandatory After section is not executed immediately.
 
 ### Correct-pattern (what to do)
 
 ```
 [CORRECT]
 <Skill rite:issue:create-interview returns>
-<LLM output: "[interview:skipped]">
+<LLM output: "<!-- [interview:skipped] -->">
 <In the same response turn, LLM IMMEDIATELY:>
   1. Runs the Pre-write bash for Phase 0.6 / Delegation Routing
   2. Evaluates Phase 0.6 triggers
   3. Runs the Delegation Routing Pre-write bash
   4. Invokes skill: "rite:issue:create-register" (or create-decompose)
-  5. Waits for [create:completed:{N}]
+  5. Waits for <!-- [create:completed:{N}] --> (HTML comment form)
   6. Runs Mandatory After Delegation self-check
 ```
 
-**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not as stopping points. Both terminal sub-skills (`create-register`, `create-decompose`) output `[create:completed:{N}]` as the unified completion marker. The **only** valid stop in this workflow is after the next-steps text has been displayed AND `[create:completed:{N}]` is output as the absolute last line (the terminal sub-skill emits them in this order — see `create-register.md` Phase 4.2/4.3 and `create-decompose.md` Phase 1.0.2).
+**Rule**: Treat `[interview:skipped]` / `[interview:completed]` (both now emitted inside HTML comments per Issue #561) as **continuation triggers**, not as stopping points. Both terminal sub-skills (`create-register`, `create-decompose`) output `<!-- [create:completed:{N}] -->` as the unified completion marker (HTML comment form). The **only** valid stop in this workflow is after the user-visible completion message (`✅ Issue #{N} を作成しました: {url}`) + next-steps block have been displayed AND `<!-- [create:completed:{N}] -->` is output as the absolute last line (the terminal sub-skill emits them in this order — see `create-register.md` Phase 4.2/4.3/4.4 and `create-decompose.md` Phase 1.0.2/1.0.3).
 
 > **Contract phrases (AC-3, Issue #525)**: The anti-pattern / correct-pattern contract above uses these exact phrases: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`. These phrases are grep-verified as part of the AC-3 static check — do not rewrite them away. Manual verification command:
 >
@@ -122,7 +122,7 @@ This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off si
 > # Expected: all 4 counts >= 1
 > ```
 
-**Completion marker convention** (Issue #444): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`. Terminal sub-skills (`create-register.md`, `create-decompose.md`) output this marker as their absolute last line after handling flow-state deactivation and next-step display internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
+**Completion marker convention** (Issue #444 + Issue #561): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`, emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) on the absolute last line of the terminal sub-skill's output. The HTML comment form (Issue #561 D-01) keeps the string grep-matchable (`grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`) while ensuring the user-visible final content is the `✅` completion message + next-steps block (AC-2 / AC-3 of #561). Terminal sub-skills (`create-register.md`, `create-decompose.md`) handle flow-state deactivation, user-visible completion message, next-step display, and the HTML-commented sentinel internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
 
 **Defense-in-depth**: `create-interview.md` updates `.rite-flow-state` to a `post_*` phase (`create_post_interview`) before returning. Terminal sub-skills (`create-register.md`, `create-decompose.md`) set `create_completed` with `active: false` and output the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return.
 
@@ -710,28 +710,32 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "none" --active false
 ```
 
-**Step 3 (conditional defense-in-depth)**: Output user-facing completion message and next steps **only if the terminal sub-skill did NOT emit them**. In the Normal path the terminal sub-skill (`create-register` Phase 4.2 / `create-decompose` Phase 1.0.2) already outputs the completion message with URL, so this Step 3 is typically a **no-op**. Execute only when the self-check detected missing output:
+**Step 3 (conditional defense-in-depth)**: Output user-facing completion message, next steps, and HTML-commented sentinel **only if the terminal sub-skill did NOT emit them**. In the Normal path the terminal sub-skill (`create-register` Phase 4.2-4.4 / `create-decompose` Phase 1.0.2-1.0.3) already outputs the full terminal sequence, so this Step 3 is typically a **no-op**. Execute only when the self-check detected missing output:
 
-- **Register 経路** (single Issue created via `create-register`): if the sub-skill's completion message `✅ Issue #{N} を作成しました: {url}` is missing, output the fallback form:
+- **Register 経路** (single Issue created via `create-register`): if the sub-skill's completion message `✅ Issue #{N} を作成しました: {url}` is missing, output the fallback form (matching `create-register.md` Phase 4 Concrete output example):
   ```
   ✅ Issue #{number} を作成しました
 
   次のステップ:
   1. `/rite:issue:start {number}` で作業を開始
   2. 作業完了後 `/rite:pr:create` で PR 作成
+
+  <!-- [create:completed:{number}] -->
   ```
-- **Decompose 経路** (parent + sub-Issues via `create-decompose`): if the sub-skill's completion message `✅ Issue #{parent} を分解して {count} 件の Sub-Issue を作成しました: {url}` is missing, output the fallback form:
+- **Decompose 経路** (parent + sub-Issues via `create-decompose`): if the sub-skill's completion message `✅ Issue #{parent} を分解して {count} 件の Sub-Issue を作成しました: {url}` is missing, output the fallback form (matching `create-decompose.md` Phase 1.0 Concrete output example):
   ```
   ✅ Issue #{parent_number} を分解して {count} 件の Sub-Issue を作成しました
 
   次のステップ:
   1. `/rite:issue:start #{first_sub_issue}` で最初の Sub-Issue から作業開始
   2. `/rite:issue:list` で Sub-Issue 一覧を確認
+
+  <!-- [create:completed:{first_sub_issue}] -->
   ```
 
 Where `{number}` / `{parent_number}` / `{first_sub_issue}` / `{count}` are extracted from the sub-skill's result pattern and work memory.
 
-> **Issue #552 reminder**: `[create:completed:{N}]` sentinel marker is for hooks/scripts and **always** remains the absolute last line. The user-facing `✅` completion message precedes it. Terminal sub-skills emit both in the correct order — this Step 3 only fires as defense-in-depth when that output path failed.
+> **Issue #552 / #561 reminder**: `[create:completed:{N}]` sentinel marker is for hooks/scripts and **always** remains in the output as the absolute last line wrapped in an HTML comment (`<!-- [create:completed:{N}] -->`). The user-facing `✅` completion message + next-steps block is the last user-visible content; the HTML-commented sentinel appears after it (invisible in rendered views, grep-matchable). Terminal sub-skills emit all three in the correct order — this Step 3 only fires as defense-in-depth when that output path failed.
 
 **Step 4 (terminal gate)**: Run the Pre-check list (top of this document) one final time in **場面 (b) mode** — **Item 1-3 すべて MUST be `YES`** (Item 0 は routing dispatcher で集計対象外)。Termination conditions:
 

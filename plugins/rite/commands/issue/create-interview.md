@@ -511,16 +511,18 @@ else
 fi
 ```
 
-After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. Both the plain-text reminder and the HTML comment precede the result pattern — all three MUST be the last visible lines of this sub-skill's output, in the order below:
+After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. Both the plain-text reminder and the HTML comment precede the result pattern, and the result pattern itself is wrapped in an HTML comment (Issue #561 UX fix) — all three MUST be the last visible lines of this sub-skill's output, in the order below:
 
 > **Issue #552 enhancement**: The caller continuation hint is emitted as **both** a plain-text line (visible in rendered Markdown) **and** an HTML comment (visible only in the LLM's raw context). The dual form ensures the reminder is robust against rendering modes where HTML comments are stripped before the LLM sees them. Rewriting this to HTML-comment-only is a regression.
+>
+> **Issue #561 UX fix**: The result pattern (`[interview:skipped]` / `[interview:completed]`) is now emitted as an HTML comment (`<!-- [interview:skipped] -->`). The string `[interview:skipped]` / `[interview:completed]` inside the HTML comment is still grep-matchable (`grep -F '[interview:'`) so the orchestrator's Pre-check Item 0 (routing dispatcher) and any hook/test contract remain intact (AC-3). The HTML comment form prevents the sentinel token from being the user-visible final line, weakening the LLM's turn-boundary heuristic that previously caused premature `continue`-requiring stops.
 
 **Output format example (interview skipped)**:
 
 ```
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
-[interview:skipped]
+<!-- [interview:skipped] -->
 ```
 
 **Output format example (interview completed)**:
@@ -528,17 +530,17 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
-[interview:completed]
+<!-- [interview:completed] -->
 ```
 
-> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。
+> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。user-visible な最終コンテンツは `⏭ 継続中:` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
 
-Result patterns:
+Result patterns (grep-matchable string inside HTML comment):
 
-- **Interview completed**: `[interview:completed]`
-- **Interview skipped** (XS, Bug Fix, Chore): `[interview:skipped]`
+- **Interview completed**: `<!-- [interview:completed] -->` (matches `grep -F '[interview:completed]'`)
+- **Interview skipped** (XS, Bug Fix, Chore): `<!-- [interview:skipped] -->` (matches `grep -F '[interview:skipped]'`)
 
-This pattern is consumed by the orchestrator (`create.md`) to determine the next action. The plain-text reminder is visible to both the LLM and the human user; the HTML comment is a backup hint for the caller LLM that survives rendering modes that hide comments.
+This pattern is consumed by the orchestrator (`create.md`) to determine the next action. The plain-text reminder is visible to both the LLM and the human user; the HTML comments hide the caller instructions and sentinel token from the user-visible rendered view while keeping them available to LLM-side grep / context inspection.
 
 ---
 
@@ -549,6 +551,7 @@ When this sub-skill completes (interview finished or skipped), control **MUST** 
 **WARNING**: **No GitHub Issue has been created yet.** Stopping here abandons the workflow with no deliverable.
 
 **Output rules**:
-1. Output the result pattern (`[interview:completed]` or `[interview:skipped]`) as the **last line** of this sub-skill's output
-2. Do **NOT** output any narrative text (e.g., `→ Return to create.md`) after the result pattern — it creates a natural stopping point for the LLM
-3. The caller reads the result pattern and immediately continues to Phase 0.6
+1. Output the result pattern as an HTML comment (`<!-- [interview:completed] -->` or `<!-- [interview:skipped] -->`) as the **absolute last line** of this sub-skill's output (Issue #561 UX fix — the sentinel is grep-matchable but not user-visible)
+2. Do **NOT** emit the sentinel as a bare `[interview:*]` line (without HTML comment wrapping) — the bare form regressed in Issue #561 as the user-visible terminal token
+3. Do **NOT** output any narrative text (e.g., `→ Return to create.md`) after the result pattern — it creates a natural stopping point for the LLM
+4. The caller reads the result pattern via grep (the HTML comment contains the matchable string) and immediately continues to Phase 0.6

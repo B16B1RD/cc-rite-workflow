@@ -31,7 +31,7 @@ Ask yourself: **"Has the orchestrator's terminal completion marker been output y
 | Orchestrator | Terminal marker | When contract ends |
 |-------------|----------------|-------------------|
 | `/rite:issue:start` | Phase 5.6 completion report + Workflow Termination block | After the completion report text is displayed |
-| `/rite:issue:create` | `[create:completed:{N}]` + next-steps text | After `[create:completed:{N}]` is the absolute last line |
+| `/rite:issue:create` | `<!-- [create:completed:{N}] -->` (HTML コメント形式、Issue #561 で変更) + user-visible な `✅ + 次のステップ` が末尾手前 | HTML コメント sentinel が出力され、その前に完了メッセージ (`✅ Issue #{N} を作成しました: {url}` 等) + 次のステップが display 済みの状態 |
 | Other `/rite:*` commands | Check the command's "Output" / "Terminal Completion" section | Match the explicit contract there |
 
 If the marker has **not** been output, you are NOT done — keep going in the same turn.
@@ -40,27 +40,29 @@ If the marker has **not** been output, you are NOT done — keep going in the sa
 
 ## Anti-pattern (what NOT to do)
 
+Issue #561 以降、sentinel は HTML コメント形式 (`<!-- [interview:skipped] -->` / `<!-- [create:completed:{N}] -->`) で emit される:
+
 ```
 [WRONG]
 <Skill rite:issue:create-interview returns>
-<LLM output: "[interview:skipped]">
+<LLM output: "<!-- [interview:skipped] -->">
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue`.>
 ```
 
-This abandons the workflow with no Issue created and no flow-state cleanup.
+This abandons the workflow with no Issue created and no flow-state cleanup. HTML コメント化によって sentinel 自体の turn 境界 heuristic triggering は弱まるが、Mandatory After を同 turn 内で実行しなければ本質的な bug は再発する。
 
 ## Correct-pattern (what to do)
 
 ```
 [CORRECT]
 <Skill rite:issue:create-interview returns>
-<LLM output: "[interview:skipped]">
+<LLM output: "<!-- [interview:skipped] -->">
 <In the SAME response turn, LLM IMMEDIATELY:>
   1. Runs Pre-write bash for Phase 0.6
   2. Evaluates Phase 0.6 triggers
   3. Runs Delegation Routing Pre-write bash
   4. Invokes skill: "rite:issue:create-register"
-  5. Waits for [create:completed:{N}]
+  5. Waits for <!-- [create:completed:{N}] --> (HTML コメント形式)
   6. Runs Mandatory After Delegation self-check
 <Orchestrator terminal completion reached. Turn may end.>
 ```

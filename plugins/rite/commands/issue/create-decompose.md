@@ -709,9 +709,11 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 
 ## Phase 1.0: Terminal Completion (Normal Path Only)
 
-<!-- caller: this sub-skill is terminal on the Normal path. Phase 1.0.2 outputs [create:completed:{N}] as the absolute last line and deactivates .rite-flow-state. The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
+<!-- caller: this sub-skill is terminal on the Normal path. Phase 1.0 deactivates .rite-flow-state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
 
 > **Design decision** (Issue #444, D-01): This sub-skill handles flow-state deactivation, next-step output, and completion marker internally on the **Normal path** (sub-Issues created via Phase 0.9). On the **Delegation path** (cancelled and delegated to `create-register`), `create-register.md` handles its own Terminal Completion — do NOT execute this section.
+>
+> **Design decision** (Issue #561, D-01): The `[create:completed:{N}]` sentinel is emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) so that the user-visible final line is the `✅` completion message + next steps, not the sentinel token. The string `[create:completed:N]` inside the HTML comment is still grep-matchable (AC-3 of #561), and the HTML comment form weakens the LLM's turn-boundary heuristic that previously treated a bare sentinel line as a natural stopping point (root cause of the #561 regression). Same policy as `create-register.md` Phase 4.
 
 **Condition**: Execute only on the **Normal path**.
 
@@ -727,9 +729,9 @@ if [ -f ".rite-flow-state" ]; then
 fi
 ```
 
-### 1.0.2 Completion Message (User-facing, Issue #552)
+### 1.0.2 Completion Message (User-facing, Issue #552 / #561)
 
-> **Design decision** (Issue #552 Bug2): The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified by AC-4). To give the user an unambiguous visual "done" signal, emit an explicit completion message **immediately before** the completion marker. The sentinel marker retains its position as the absolute last line (AC-4 backward compatibility).
+> **Design decision** (Issue #552 Bug2 + Issue #561 UX fix): The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified by AC-4 of #552 / AC-3 of #561). Emit an explicit user-visible completion message followed by the next-steps block; place the sentinel as a trailing HTML comment so the user's visible final content is the `✅` message + next steps (AC-2 of #561).
 
 Output the user-facing completion message after the Phase 0.9.6 Completion Report and before the completion marker:
 
@@ -739,18 +741,32 @@ Output the user-facing completion message after the Phase 0.9.6 Completion Repor
 
 Where `{parent_issue_number}` / `{parent_issue_url}` / `{count}` are from Phase 0.9.1 / 0.9.2 results.
 
-### 1.0.3 Completion Marker
+### 1.0.3 Completion Marker (HTML comment form)
 
-Output the completion marker as the **absolute last line**:
+Output the completion marker as an **HTML comment on the final line** — invisible to the user in rendered views, but matchable by `grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`:
 
-- **Decomposition completed**: `[create:completed:{first_sub_issue_number}]`
+- **Decomposition completed**: `<!-- [create:completed:{first_sub_issue_number}] -->`
 
 Where `{first_sub_issue_number}` is the first sub-Issue number (the recommended starting point from Phase 0.9.6's 次のステップ).
 
 **Output rules**:
-1. `[create:completed:{N}]` MUST be the last line of output — no text after it
-2. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
-3. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
+1. `<!-- [create:completed:{N}] -->` is the **absolute last line** of Phase 1.0's output — no plain text after it
+2. The user-visible final content (last non-comment line) MUST be the next-steps block (`次のステップ: ...` from Phase 0.9.6) immediately preceded by the `✅` completion message
+3. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
+4. Do **NOT** emit the sentinel as a bare `[create:completed:{N}]` line (without HTML comment wrapping) — the bare form regressed in Issue #561 as the user-visible terminal token
+5. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
+
+**Concrete output example**:
+
+```
+✅ Issue #1234 を分解して 3 件の Sub-Issue を作成しました: https://github.com/.../issues/1234
+
+次のステップ:
+1. `/rite:issue:start #1235` で最初の Sub-Issue から作業開始
+2. `/rite:issue:list` で Sub-Issue 一覧を確認
+
+<!-- [create:completed:1235] -->
+```
 
 ---
 
