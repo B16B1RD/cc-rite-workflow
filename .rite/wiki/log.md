@@ -10,6 +10,7 @@
 | 2026-04-18T12:50:00+00:00 | ingest:create | pages/patterns/placeholder-residue-gate-bash-fail-fast.md | PR #579 cycle 1 CRITICAL: bash placeholder residue gate を 6 site 目として追加 |
 | 2026-04-18T12:50:00+00:00 | ingest:create | pages/patterns/drift-check-anchor-semantic-name.md | PR #579 cycle 1 HIGH: literal 行番号参照禁止 + semantic name 形式 canonical 化 |
 | 2026-04-18T12:50:00+00:00 | ingest:create | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #579 cycle 2 MEDIUM (F-04/F-05): 同一ファイル内 canonical 一覧の同期義務 + N site counter 宣言の drift 検出アンカー活用 (cycle 3 final heuristic も統合) |
+| 2026-04-18T12:51:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=33, broken_refs=18 |
 | 2026-04-17T00:15:00+00:00 | ingest:create | pages/heuristics/fix-verification-requires-natural-workflow-firing.md | issue-532 retrospective (manual sample ingest for Issue 調査) |
 | 2026-04-16T19:37:16+00:00 | ingest:create | pages/anti-patterns/asymmetric-fix-transcription.md | PR #548 cycle 3-6 の dominant pattern (pr-548 fix/review cycles 3-6) |
 | 2026-04-16T19:37:16+00:00 | ingest:create | pages/anti-patterns/bash-if-bang-rc-capture.md | `if ! cmd; then rc=$?` 常に 0 を捕捉する gotcha (pr-529/548) |
