@@ -693,6 +693,11 @@ case "$branch_strategy" in
     # を防ぐ。git show 側も同じ理由で LC_ALL=C で統一 (本 PR では cat 側のみ影響あるが defense-in-depth)。
     if log_content=$(LC_ALL=C cat .rite/wiki/log.md 2>"${log_err:-/dev/null}"); then
       log_read_ok="true"
+      # selective surface pattern: cat は通常 stderr を成功経路で emit しないが、separate_branch
+      # 成功経路 (直上 git show) と対称化するため同型 surface を配置する (Issue #571)。
+      # BSD cat 等が diagnostic を emit する稀なケースで silent に warning を握りつぶさないための
+      # defense-in-depth であり、LC_ALL=C による locale 固定との併用で対称性を完成させる。
+      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | sed 's/^/  WARNING(cat hint): /' >&2
     else
       rc=$?
       if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "No such file or directory|cannot open" "$log_err"; then
