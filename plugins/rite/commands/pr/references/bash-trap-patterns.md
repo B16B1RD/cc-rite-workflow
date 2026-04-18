@@ -207,6 +207,92 @@ SIGTERM/SIGINT/SIGHUP が到達した場合に作成済み tmp ファイルが o
 
 ---
 
+## Case Statement Indent Convention
+
+<a id="case-statement-indent-convention"></a>
+
+trap / cleanup パターンとセットで使用される `case "$branch_strategy" in ...` 等の case 文の indent 規範を canonical 化する (PR #564 cycle 11 code-quality LOW 推奨対応)。
+
+### Canonical pattern
+
+```bash
+case "$variable" in
+  pattern_a)
+    # body は 4-space indent (case label の 2-space + 2-space)
+    command_1
+    command_2
+    ;;
+  pattern_b)
+    command_3
+    ;;
+  *)
+    # default arm も同型 indent
+    fail_command
+    exit 1
+    ;;
+esac
+```
+
+| 要素 | Indent | 例 |
+|------|--------|-----|
+| `case` / `esac` | 0-space (block 外側に揃える) | `case "$branch_strategy" in` |
+| pattern (case label) | **2-space** | `  separate_branch)` |
+| body (commands) | **4-space** | `    set +e` |
+| `;;` (terminator) | **4-space** | `    ;;` |
+
+### Rationale
+
+- **pattern と body の階層を視覚的に区別**: pattern が 2-space、body が 4-space で 2-space の差をつけることで、「pattern → body の入れ子関係」が一目で読み取れる
+- **`;;` を body と同じ 4-space に揃える**: `;;` は body の終端であり pattern の続きではない。pattern 直下に配置すると「次の pattern が始まる」と誤読される
+- **`*)` (default arm) も同型**: 例外なく同じ indent rule を適用することで、reader が「`*)` だけ別ブロック?」と誤認するリスクを排除する
+
+### 参照実装 (2026-04 時点)
+
+`plugins/rite/commands/wiki/lint.md` 内の 4 site で本 pattern が確立されている:
+
+- Phase 6.0 (line 650-722 周辺) — log.md 抽出 case
+- Phase 6.2 (line 993-1009 周辺) — page 読取 case
+- Phase 8.2 (line 1292-1305 周辺) — log.md 追記 case
+- Phase 8.3 (line 1373-1480 周辺、PR #564 cycle 11 F-05 で 4-space に統一) — same_branch path case
+
+新規 case 文を追加する際は本 pattern を採用すること。
+
+### Anti-patterns
+
+以下は **採用してはならない**:
+
+```bash
+# ❌ NG: pattern と body が同じ indent (階層が読み取れない)
+case "$x" in
+pattern_a)
+command_1
+;;
+esac
+
+# ❌ NG: body と `;;` の indent がずれる (`;;` の所属が曖昧)
+case "$x" in
+  pattern_a)
+    command_1
+  ;;
+esac
+
+# ❌ NG: 同じ case 内でアームごとに indent が異なる (PR #564 cycle 10 F-05 で指摘された anti-pattern)
+case "$x" in
+  pattern_a)
+    command_1   # 4-space
+    ;;
+  pattern_b)
+  command_2     # 2-space (非対称)
+  ;;
+esac
+```
+
+### Drift 検出
+
+本 pattern の drift 検出 lint は **未実装** (Issue #353 系統で将来追跡予定)。手動レビュー時は code-quality reviewer が同一 case 文内の indent 一貫性を確認する。
+
+---
+
 ## Pointer Comment (各 site で使用する anchor 参照)
 
 各 bash block の冒頭では以下の形式で本ファイルを参照する:
