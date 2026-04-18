@@ -37,6 +37,7 @@ temp/
 .rite/fix-cycle-state/
 .rite/fix-cycle-state.json
 .rite/state/
+# >>> gitignore-wiki-section-start (anchor — docs/CONFIGURATION.md L839 からの grep 参照点 / F-09 対応)
 # Wiki データ本体 (Issue #547 worktree 設計で develop ブランチからは完全分離)。
 # Wiki の正規パスは .rite/wiki-worktree/.rite/wiki/ であり、develop 側の
 # .rite/wiki/ にファイルが出現するのは wiki-ingest-trigger.sh の一時書き出しが
@@ -46,8 +47,12 @@ temp/
 #
 # ⚠️ same_branch 戦略 (rite-config.yml の wiki.branch_strategy: "same_branch") ユーザーへ:
 # 本 .gitignore 変更を pull すると、以下の `git add .rite/wiki/...` 系呼び出しが
-# "paths are ignored" で exit 1 → hard fail します。実装は配列展開 (`git add -- "${arr[@]}"`)
-# の場合もあるため、行番号ハードコードは drift しやすいので Phase / 役割単位のアンカーで案内します:
+# "paths are ignored" で exit 1 → hard fail します。
+# (F-08 対応 — 以下の bullet は **same_branch 戦略限定** の影響箇所。separate_branch 戦略は
+#  plugins/rite/hooks/scripts/wiki-ingest-commit.sh が `.rite/wiki-worktree/` 内の worktree で
+#  git add を実行するため、本 .gitignore の `.rite/wiki/` exclusion の影響を受けない):
+# 実装は配列展開 (`git add -- "${arr[@]}"`) の場合もあるため、行番号ハードコードは drift
+# しやすいので Phase / 役割単位のアンカーで案内します:
 #   - plugins/rite/hooks/scripts/wiki-ingest-commit.sh 内
 #     `git add -- "${pending_files[@]}"` 周辺 (pending_files は .rite/wiki/raw/*.md を列挙する配列、/rite:wiki:ingest の commit 処理)
 #   - plugins/rite/commands/wiki/init.md 内の初回セットアップ phase (/rite:wiki:init)
@@ -56,18 +61,74 @@ temp/
 #     (separate_branch は wiki-worktree-commit.sh 経由、same_branch は git add .rite/wiki/log.md 直接呼出)
 #   - plugins/rite/references/wiki-patterns.md の same_branch 向け `git add .rite/wiki/` サンプル
 #     (複数箇所、同ドキュメントを参考実装として流用する際は同じく negation が必要)
-# **本 .gitignore を pull する前に** 必ず以下の negation エントリを追加してください:
-#   # 必須 (parent directory 除外を解除。これがないと配下ファイルを再包含できません):
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# same_branch 戦略ユーザー向け — verification-first セットアップ手順 (F-05 / F-10 対応)
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 1. negation エントリの追加 (本 .gitignore に **追記** する):
+#
+#   # 必須 — parent directory 除外を解除。これがないと配下ファイルを再包含できません:
 #   !.rite/wiki/
-#   # 追加の防御 (glob 明示。単独では機能しない — parent directory exclusion が残るため):
+#
+#   # 推奨 — glob を明示。単独では機能しない (parent exclusion が残るため) が、glob ルール
+#   # のみを持つ gitignore 消費ツール (IDE の VCS integration 等) への defense-in-depth:
 #   !.rite/wiki/**
-# 動作確認 (negation が効いていることを確認):
-#   git add --dry-run .rite/wiki/raw/foo.md  (rc=0 かつ "add" 行が出れば OK)
-#   git status --ignored -- .rite/wiki       (Ignored files セクションに含まれないこと)
-# 注: `git check-ignore -v` は negation ルール適用時も rc=0 を返すため sanity check として
-# 不向きです (出力行頭が `!` で始まる場合のみ再包含。上記の --dry-run 方式を推奨)。
+#
+# Step 2. probe ファイルで verification 前提を用意する (F-10 対応。probe ファイルが **存在しない**
+#         状態で `git add --dry-run` を実行すると git は rc=0 + 出力なしで終わるため、negation が
+#         効いているかどうか判定できない。必ず以下の 2 コマンドで probe を作成する):
+#
+#   mkdir -p .rite/wiki/raw
+#   touch   .rite/wiki/raw/.negation-probe
+#
+# Step 3. **動作確認の正典** (必須 — Step 1 の negation を追加した時点 / rebase した時点 /
+#         .gitignore に関わる変更を review した時点で毎回実行する。F-02 / F-06 対応):
+#
+#   git add --dry-run .rite/wiki/raw/.negation-probe
+#     # 期待: rc=0 かつ stdout に `add '.rite/wiki/raw/.negation-probe'` が出る → negation OK
+#     # 失敗: rc=1 かつ stderr に "paths are ignored" → negation が効いていない (Step 1 再確認)
+#
+# Step 4. 補助確認 (Step 3 が OK なら通常は不要。リポジトリ全体の ignore 状況を俯瞰したい場合のみ):
+#
+#   git status --ignored -- .rite/wiki
+#     # 期待: .rite/wiki/raw/.negation-probe が "Ignored files" セクションに含まれないこと
+#
+# Step 5. probe ファイルの片付け (commit に混入させないため。Step 3 が OK を返した後に実行):
+#
+#   rm -f .rite/wiki/raw/.negation-probe
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# `git check-ignore -v` を sanity check に使わない理由 (F-02 / F-06 対応):
+# ─────────────────────────────────────────────────────────────────────────────
+# `git check-ignore -v` は negation ルール下で以下 2 パターンのいずれも返しうるため、rc と出力
+# のどちらを見ても "negation が効いているか" を決定論的に判別できない:
+#
+#   (a) 最後にマッチしたルールが negation → rc=0 かつ `<source>:<line>:!<pattern>\t<path>`
+#       形式を出力 (pattern フィールドの先頭が `!` 付き)
+#   (b) negation により ignore されない → rc=1 かつ出力なし (no match)
+#
+# rc=0 / rc=1 どちらも "正常に再包含された" ケースとして発生し、さらに (a) の場合は
+# `pattern` フィールドの `!` prefix を手動 parse しないと negation 成立か単純 match か判別不能。
+# **`git add --dry-run` を sanity check の正典** として採用し、check-ignore は参考情報に
+# とどめる (Source: git documentation — git check-ignore(1)、`pattern` column の `!` prefix 仕様)。
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Idempotency 注 (F-07 対応):
+# ─────────────────────────────────────────────────────────────────────────────
+# 既に `.rite/wiki/` 配下にあるファイルが git の tracked 状態になっている場合、本 .gitignore
+# エントリを追加しても **自動では untrack されません** (git の仕様 — .gitignore は tracked
+# file には影響しない)。separate_branch 戦略で worktree 経路に移行する場合、tracked ファイルが
+# develop ブランチの diff に混入し続けるため、以下を **別途** 実行してから commit してください:
+#
+#   git rm -r --cached .rite/wiki/
+#   git commit -m "chore: untrack .rite/wiki/ for wiki-worktree migration"
+#
+# same_branch 戦略のまま運用する場合は tracked のままで問題ありません (Step 1 の negation で
+# `git add .rite/wiki/...` が通り、通常の diff に含めてコミットされる意図的な設計)。
+#
 # separate_branch 戦略 (デフォルト) ユーザーは本 .gitignore でそのまま動作します。
 .rite/wiki/
+# <<< gitignore-wiki-section-end (anchor / F-09 対応)
 # Wiki branch を checkout した永続 git worktree (Issue #547 で導入)。
 # wiki-worktree-setup.sh が冪等に作成し、cleanup.md Phase 2.6 で意図的に
 # 残置する設計。ここを ignore しないと dev branch 側 diff に worktree 内の

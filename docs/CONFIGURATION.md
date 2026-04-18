@@ -836,7 +836,7 @@ wiki:
   auto_lint: false
 ```
 
-> **Note for `same_branch` users**: The project's `.gitignore` ships with `.rite/wiki/` excluded as a silent-leak defense line for the default `separate_branch` strategy. If you switch to `same_branch`, you MUST add negation entries so that Wiki files are not ignored. See the `.gitignore` comment block near the `.rite/wiki/` line for the exact negation entries (`!.rite/wiki/` and `!.rite/wiki/**`) and the recommended `git add --dry-run .rite/wiki/raw/foo.md` / `git status --ignored -- .rite/wiki` verification steps (note: `git check-ignore -v` is **not** suitable for negation sanity checks — it returns rc=0 for re-included paths).
+> **Note for `same_branch` users**: The project's `.gitignore` ships with `.rite/wiki/` excluded as a silent-leak defense line for the default `separate_branch` strategy. If you switch to `same_branch`, you MUST add negation entries so that Wiki files are not ignored. See the `.gitignore` comment block between the `# >>> gitignore-wiki-section-start` and `# <<< gitignore-wiki-section-end` anchor markers (`grep -n 'gitignore-wiki-section-start' .gitignore` to jump there) for the full verification-first setup: required negation entries (`!.rite/wiki/` and `!.rite/wiki/**`), the mandatory `mkdir -p .rite/wiki/raw && touch .rite/wiki/raw/.negation-probe && git add --dry-run .rite/wiki/raw/.negation-probe` sanity check, the idempotency note for already-tracked files, and the rationale for using `git add --dry-run` instead of `git check-ignore -v` as the canonical verification step.
 
 **Example (loose growth-check threshold for slow-moving repos):**
 

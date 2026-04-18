@@ -534,15 +534,15 @@ if [ "$branch_strategy" = "same_branch" ]; then
   # (lint.md Phase 8.3 same_branch block (`_rite_wiki_lint_phase83_cleanup` trap) と対称化、../pr/references/bash-trap-patterns.md#signal-specific-trap-template 準拠)。
   # 旧実装は trap 未保護で SIGINT/SIGTERM/SIGHUP が来ると _reset_err tempfile が orphan 化していた。
   _reset_err=""
-  _rite_ingest_phase52_cleanup() {
+  _rite_wiki_ingest_phase52_cleanup() {
     # F-06 (PR #564 cycle 8 F-06) 対応: BSD variant に統一 (lint.md Phase 6.0 / 6.2 / 8.3 と対称化)。
     # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
     [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"
   }
-  trap 'rc=$?; _rite_ingest_phase52_cleanup; exit $rc' EXIT
-  trap '_rite_ingest_phase52_cleanup; exit 130' INT
-  trap '_rite_ingest_phase52_cleanup; exit 143' TERM
-  trap '_rite_ingest_phase52_cleanup; exit 129' HUP
+  trap 'rc=$?; _rite_wiki_ingest_phase52_cleanup; exit $rc' EXIT
+  trap '_rite_wiki_ingest_phase52_cleanup; exit 130' INT
+  trap '_rite_wiki_ingest_phase52_cleanup; exit 143' TERM
+  trap '_rite_wiki_ingest_phase52_cleanup; exit 129' HUP
 
   # Phase 5.0 step 2 / step 3-6 の Write/Edit はすでに完了している前提
   git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
@@ -711,7 +711,9 @@ step number は **項目の論理的役割の名称** であり、**実行順と
 
    **F-07 対応の設計変更**: 旧実装の bullets 2-4 (Phase 6.0 の log.md 読取失敗 / Phase 2.2 主処理失敗 / Phase 6.2 per-page 読取失敗の WARNING regex) は **dead regex** だった。これらの WARNING は lint.md 内部の Bash tool 呼び出しの stderr に出力されるが、Skill 応答テキスト (= lint.md Phase 9.2 の最終 stdout 出力) には通常含まれないため、本 step 1 で検知不能だった。step 2 (6 フィールド format) と step 4 (format mismatch fallback) で同等の検知が可能なため、step 1 は ERROR: 行のみに簡素化した (dead path 排除)。
 
-2. **stdout のパース** (優先 1、最初に試行): exit 0 の場合、stdout の 1 行目を正規表現 `^Lint: contradictions=([0-9]+), stale=([0-9]+), orphans=([0-9]+), missing_concept=([0-9]+), unregistered_raw=([0-9]+), broken_refs=([0-9]+)$` で抽出し、6 つの変数を会話コンテキストに保持します:
+2. **stdout のパース** (優先 1、最初に試行): exit 0 の場合、stdout の **全行を上から scan し、最初に以下の正規表現にマッチした行から** 6 つの変数を抽出して会話コンテキストに保持します: `^Lint: contradictions=([0-9]+), stale=([0-9]+), orphans=([0-9]+), missing_concept=([0-9]+), unregistered_raw=([0-9]+), broken_refs=([0-9]+)$`
+
+   **F-03 対応 — 全行 scan に変更した理由** (PR #564): 旧仕様は stdout の「1 行目」のみを評価していたが、lint.md Phase 9.2 の契約は「6 フィールド 1 行を stdout に出力する」のみで、`Lint:` 行が **1 行目である保証は明示的に契約化されていなかった**。将来 lint.md が preamble の `echo` を stdout に流す変更を加えた場合 (例: `set -x` debug / observability echo / informational banner)、1 行目固定だと silent に step 4 (format mismatch fallback) に流れ、n_warnings が誤加算される。全行 scan + 最初の match 採用であれば、lint.md 側の intermediate echo が混入しても決定論的に `Lint:` 行を拾える。不具合抑制ではなく **fail-fast の範囲を意図したパターンに限定する** 設計強化。
 
    | 変数 | 正規表現 group |
    |------|---------------|

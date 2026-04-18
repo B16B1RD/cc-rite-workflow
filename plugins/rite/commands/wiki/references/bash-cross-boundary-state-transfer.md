@@ -170,8 +170,15 @@ else
     log_read_ok="absent"    # legitimate absence — skipped_refs="" は妥当
   else
     log_read_ok="io_error"  # 真の IO error (or mktemp 失敗で原因区別不能) — WARNING 表示
-    echo "WARNING: ..." >&2
+    # F-04 対応: lint.md Phase 6.0 の canonical 4 行構造 (WARNING + head -3 surface + impact +
+    # 対処) に合わせる。旧 placeholder `echo "WARNING: ..." >&2` は impact / 対処 が不在で
+    # observability が Phase 6.0 実装と乖離していたため、参照実装 (canonical) と同形に揃える。
+    echo "WARNING: <対象ファイル> の <操作 (cat/git show 等)> に失敗しました (rc=$rc)" >&2
     [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | sed 's/^/  /' >&2
+    echo "  影響: log.md 由来の skipped_refs が取得できず、stale / missing_concept 検知の false positive note を Phase 9.1 で表示します" >&2
+    echo "  対処: wiki branch の integrity / 当該ファイルの存在・権限を確認してください" >&2
+    # ⚠️ 実際の文言は lint.md Phase 6.0 / 6.2 の WARNING を参照 (drift 防止のため単一 source
+    # は lint.md 側に置き、本 example は 4 行構造の shape のみを示す)。
   fi
 fi
 
