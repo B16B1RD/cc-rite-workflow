@@ -74,3 +74,4 @@
 | 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260418T020235Z-pr-564.md | cycle 8 fix: mktemp failure loud WARNING、既存 mktemp-failure-surface-warning.md でカバー済 |
 | 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260418T043007Z-pr-564.md | cycle 9 fix: placeholder-residue gate 対称化、drift-check-anchor-prose-code-sync.md でカバー済 |
 | 2026-04-18T17:40:00+09:00 | ingest:skip | raw/fixes/20260418T054300Z-pr-564.md | cycle 10 fix: commit message canonical 単一真実源、drift-check-anchor-prose-code-sync.md でカバー済 |
+| 2026-04-18T17:45:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=30, broken_refs=0 |
