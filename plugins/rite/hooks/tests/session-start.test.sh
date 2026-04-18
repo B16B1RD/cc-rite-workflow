@@ -70,6 +70,34 @@ run_hook_with_source() {
   return $rc
 }
 
+# Helper: run session-start hook with CWD, source, and explicit session_id (#558)
+# Produces a hook JSON payload containing session_id so check_session_ownership
+# can compare against the state file's session_id.
+run_hook_with_session() {
+  local cwd="$1"
+  local source="$2"
+  local session_id="$3"
+  local rc=0
+  local output
+  LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+  output=$(jq -n --arg cwd "$cwd" --arg src "$source" --arg sid "$session_id" \
+    '{cwd: $cwd, source: $src, session_id: $sid}' \
+    | bash "$HOOK" 2>"$LAST_STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+
+# ISO 8601 timestamp helper for state files (#558)
+# Args: $1 = offset in seconds (negative = past, default 0 = now)
+iso8601_now() {
+  local offset="${1:-0}"
+  if date -u -d "@$(( $(date +%s) + offset ))" +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null; then
+    return 0
+  fi
+  # macOS fallback
+  date -u -r "$(( $(date +%s) + offset ))" +"%Y-%m-%dT%H:%M:%S+00:00"
+}
+
 echo "=== session-start.sh tests ==="
 echo ""
 
@@ -572,6 +600,162 @@ if [ $rc -eq 0 ] && [ -z "$output" ] && [ "$ACTIVE_AFTER" = "false" ]; then
   pass "source=startup + no issue_number → silent reset (no message because ISSUE is empty)"
 else
   fail "Expected exit 0, no output, active=false. Got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-T01 (#558): own-session startup → reset (session_id matches)
+# --------------------------------------------------------------------------
+echo "TC-T01 (#558): own-session startup → reset proceeds"
+dirT01="$TEST_DIR/tcT01"
+mkdir -p "$dirT01"
+sid_t01="ses-T01-$(date +%s)"
+ts_t01=$(iso8601_now 0)
+cat > "$dirT01/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 200, "branch": "feat/issue-200-own", "phase": "implementing", "session_id": "$sid_t01", "updated_at": "$ts_t01"}
+EOF
+
+output=$(run_hook_with_session "$dirT01" "startup" "$sid_t01") && rc=0 || rc=$?
+ACTIVE_AFTER=$(jq -r '.active' "$dirT01/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+  pass "TC-T01: own-session → reset (active=false, message shown)"
+else
+  fail "TC-T01: expected own-session reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-T02 (#558): other-session startup → SKIP reset (file unchanged)
+# --------------------------------------------------------------------------
+echo "TC-T02 (#558): other-session startup → reset skipped (regression guard)"
+dirT02="$TEST_DIR/tcT02"
+mkdir -p "$dirT02"
+sid_state="ses-T02-state-$(date +%s)"
+sid_hook="ses-T02-hook-$(date +%s)"
+ts_t02=$(iso8601_now 0)
+state_t02='{"active": true, "issue_number": 201, "branch": "feat/issue-201-other", "phase": "implementing", "session_id": "'"$sid_state"'", "updated_at": "'"$ts_t02"'"}'
+printf '%s' "$state_t02" > "$dirT02/.rite-flow-state"
+mtime_before=$(stat -c '%Y' "$dirT02/.rite-flow-state" 2>/dev/null || stat -f '%m' "$dirT02/.rite-flow-state")
+content_before=$(cat "$dirT02/.rite-flow-state")
+sleep 1  # ensure mtime resolution can detect a change
+
+output=$(run_hook_with_session "$dirT02" "startup" "$sid_hook") && rc=0 || rc=$?
+mtime_after=$(stat -c '%Y' "$dirT02/.rite-flow-state" 2>/dev/null || stat -f '%m' "$dirT02/.rite-flow-state")
+content_after=$(cat "$dirT02/.rite-flow-state")
+ACTIVE_AFTER=$(jq -r '.active' "$dirT02/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "true" ] && [ -z "$output" ] && [ "$content_before" = "$content_after" ] && [ "$mtime_before" = "$mtime_after" ]; then
+  pass "TC-T02: other-session → file unchanged (active=true, no output, mtime preserved)"
+else
+  fail "TC-T02: expected file unchanged; got rc=$rc, active=$ACTIVE_AFTER, output='$output', mtime_before=$mtime_before mtime_after=$mtime_after, content_diff=$([ "$content_before" = "$content_after" ] && echo no || echo yes)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-T03 (#558): legacy state (no session_id) startup → reset (backward compat)
+# --------------------------------------------------------------------------
+echo "TC-T03 (#558): legacy state (no session_id) startup → reset"
+dirT03="$TEST_DIR/tcT03"
+mkdir -p "$dirT03"
+ts_t03=$(iso8601_now 0)
+cat > "$dirT03/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 202, "branch": "feat/issue-202-legacy", "phase": "implementing", "updated_at": "$ts_t03"}
+EOF
+
+output=$(run_hook_with_session "$dirT03" "startup" "ses-T03-hook") && rc=0 || rc=$?
+ACTIVE_AFTER=$(jq -r '.active' "$dirT03/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+  pass "TC-T03: legacy state → reset (active=false, message shown)"
+else
+  fail "TC-T03: expected legacy state reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-T04 (#558): check_session_ownership unavailable → fail-safe reset
+# Sandbox: copy session-start.sh + dependencies, replace session-ownership.sh
+# with a stub that fails to define the function → command -v false → reset
+# --------------------------------------------------------------------------
+echo "TC-T04 (#558): check_session_ownership unavailable → fail-safe reset"
+dirT04="$TEST_DIR/tcT04"
+mkdir -p "$dirT04/sandbox/hooks"
+sandbox_hook_dir="$dirT04/sandbox/hooks"
+src_hook_dir="$(cd "$SCRIPT_DIR/.." && pwd)"
+cp "$src_hook_dir/session-start.sh" "$sandbox_hook_dir/"
+cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
+cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
+# Stub session-ownership.sh: define helpers that don't break source, but omit check_session_ownership
+cat > "$sandbox_hook_dir/session-ownership.sh" <<'STUB_EOF'
+#!/bin/bash
+# Test stub: check_session_ownership intentionally NOT defined
+extract_session_id() { echo ""; }
+get_state_session_id() { echo ""; }
+parse_iso8601_to_epoch() { echo 0; }
+STUB_EOF
+ts_t04=$(iso8601_now 0)
+cat > "$dirT04/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 203, "branch": "feat/issue-203-failsafe", "phase": "implementing", "session_id": "ses-T04-state", "updated_at": "$ts_t04"}
+EOF
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(jq -n --arg cwd "$dirT04" --arg src "startup" --arg sid "ses-T04-hook" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | bash "$sandbox_hook_dir/session-start.sh" 2>"$LAST_STDERR_FILE") && rc=0 || rc=$?
+ACTIVE_AFTER=$(jq -r '.active' "$dirT04/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+  pass "TC-T04: check_session_ownership undefined → fail-safe reset (active=false)"
+else
+  fail "TC-T04: expected fail-safe reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-T04b (#558 / review M-EH1): check_session_ownership unavailable + RITE_DEBUG=1
+#                                 → debug log "ownership check unavailable" 出力 (AC-04 spec)
+# --------------------------------------------------------------------------
+echo "TC-T04b (#558): helper undefined + RITE_DEBUG=1 → 'ownership check unavailable' debug log"
+dirT04b="$TEST_DIR/tcT04b"
+mkdir -p "$dirT04b/sandbox/hooks"
+sandbox_hook_dir_b="$dirT04b/sandbox/hooks"
+src_hook_dir_b="$(cd "$SCRIPT_DIR/.." && pwd)"
+cp "$src_hook_dir_b/session-start.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
+cat > "$sandbox_hook_dir_b/session-ownership.sh" <<'STUB_EOF'
+#!/bin/bash
+extract_session_id() { echo ""; }
+get_state_session_id() { echo ""; }
+parse_iso8601_to_epoch() { echo 0; }
+STUB_EOF
+ts_t04b=$(iso8601_now 0)
+cat > "$dirT04b/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 204, "branch": "feat/issue-204-debuglog", "phase": "implementing", "session_id": "ses-T04b-state", "updated_at": "$ts_t04b"}
+EOF
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(jq -n --arg cwd "$dirT04b" --arg src "startup" --arg sid "ses-T04b-hook" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | RITE_DEBUG=1 bash "$sandbox_hook_dir_b/session-start.sh" 2>"$LAST_STDERR_FILE") && rc=0 || rc=$?
+stderr_content=$(cat "$LAST_STDERR_FILE")
+ACTIVE_AFTER=$(jq -r '.active' "$dirT04b/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] \
+   && echo "$stderr_content" | grep -q "ownership check unavailable" \
+   && echo "$stderr_content" | grep -q "check_session_ownership not sourced"; then
+  pass "TC-T04b: helper undefined + RITE_DEBUG → debug log 'ownership check unavailable' shown"
+else
+  fail "TC-T04b: expected debug log 'ownership check unavailable'; got rc=$rc, active=$ACTIVE_AFTER, stderr='$stderr_content'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-T05 (#558): static grep — old comment removed (AC-05)
+# --------------------------------------------------------------------------
+echo "TC-T05 (#558): static grep — old comment 'Always proceeds with reset...' removed"
+HOOK_FILE="$SCRIPT_DIR/../session-start.sh"
+# grep -c always prints the count to stdout (0 with exit 1 if no matches), so use || true (not || echo 0) to avoid double-printed "0".
+old_match_count=$(grep -c "Always proceeds with reset regardless of session ownership" "$HOOK_FILE" 2>/dev/null || true)
+old_match_count=${old_match_count:-0}
+if [ "$old_match_count" = "0" ]; then
+  pass "TC-T05: old comment 'Always proceeds with reset regardless of session ownership' removed (0 matches)"
+else
+  fail "TC-T05: old comment still present ($old_match_count matches in $HOOK_FILE)"
 fi
 echo ""
 
