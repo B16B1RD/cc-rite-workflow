@@ -953,8 +953,11 @@ esac
 # 違反行を 1 件でも検出すれば fail-fast で exit 1 (既存 literal gate と同じ exit convention、
 # 本 gate が発火する状況は LLM substitute ミスのため継続処理は silent regression を招くだけ)。
 #
-# Iteration 方式: F-13 対応 (L1144 main loop) と同型の `done <<< "$pages_list"` here-string を採用する。
+# Iteration 方式: F-13 対応 (Phase 6.2 main loop: `while IFS= read -r page; do ... done <<< "$pages_list"`
+# ブロック) と同型の `done <<< "$pages_list"` here-string を採用する。
 # 同一 Phase 6.2 内で同じ $pages_list を iterate するループは here-string に統一 (canonical 同期)。
+# 注: 行番号参照は drift するため semantic 参照のみを使う (PR #564 cycle 11 F-06 で Phase 6.2 per-page loop
+# の branch_strategy case 分岐コメント内で確立された原則、Phase 番号 + 実 regex / semantic 名で参照する)。
 if [ -n "$pages_list" ]; then
   partial_pollution_line=""
   while IFS= read -r pollution_check_line; do
