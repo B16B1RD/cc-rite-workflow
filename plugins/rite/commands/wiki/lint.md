@@ -938,6 +938,44 @@ case "$pages_list" in
     ;;
 esac
 
+# F-15 (Issue #572) 対応: pages_list partial pollution 検出 gate (F-01 再発防止の runtime 契約)。
+# 旧 gate (上記 case 文) は literal `{pages_list}` 残留のみを検出する。しかし LLM が Phase 2.2 stdout の
+# `printf '%s\n' "$pages_list" ; echo "---" ; printf '%s\n' "$raw_list"` 3 部構造を
+# 全体 substitute すると `.rite/wiki/raw/...` path が HEREDOC に混入し、下記 while ループで
+# `git show "${wiki_branch}:.rite/wiki/raw/..."` が legitimate absence (blob not found) として
+# 処理され、all_source_refs_read_ok="true" のまま sources[].ref 抽出が 0 件になる → 全 ingested raw が
+# step 3(c) で missing_concept 誤分類される silent regression を再発させる (PR #564 F-01 と同型)。
+# 対称化されていた 3 gate (branch_strategy / wiki_branch / pages_list literal) は「未 substitute」検出のみで
+# 「誤 substitute (partial pollution)」を検出できず、Wiki 経験則「散文で宣言した設計は対応する実装契約が
+# なければ機能しない」(Prose-only design anti-pattern) に該当していた。本 gate で runtime 契約を追加する。
+#
+# 検証ロジック: pages_list の各非空行が `.rite/wiki/pages/` prefix を持つことを確認。
+# 違反行を 1 件でも検出すれば fail-fast で exit 1 (既存 literal gate と同じ exit convention、
+# 本 gate が発火する状況は LLM substitute ミスのため継続処理は silent regression を招くだけ)。
+if [ -n "$pages_list" ]; then
+  partial_pollution_line=""
+  while IFS= read -r pollution_check_line; do
+    [ -z "$pollution_check_line" ] && continue  # blank line guard (末尾改行 / 空 HEREDOC 対応)
+    case "$pollution_check_line" in
+      .rite/wiki/pages/*) ;;  # OK: 正当な pages_list 行
+      *)
+        partial_pollution_line="$pollution_check_line"
+        break  # 1 件検出したら以降の走査を打ち切り fail-fast
+        ;;
+    esac
+  done <<PAGES_LIST_POLLUTION_CHECK_EOF
+$pages_list
+PAGES_LIST_POLLUTION_CHECK_EOF
+  if [ -n "$partial_pollution_line" ]; then
+    echo "ERROR: Phase 6.2 の \$pages_list に '.rite/wiki/pages/' prefix を持たない行が含まれています (partial pollution 検出)" >&2
+    echo "  違反行: '$partial_pollution_line'" >&2
+    echo "  原因: LLM が Phase 2.2 stdout の separator ('---') より後 (raw_list) を含めて HEREDOC に substitute した可能性があります" >&2
+    echo "  対処: Phase 2.2 stdout から separator より前の '.rite/wiki/pages/...' 行のみを substitute してください" >&2
+    echo "[CONTEXT] LINT_PHASE_6_2_PLACEHOLDER_RESIDUE=1; reason=pages_list_partial_pollution; violation_line=$partial_pollution_line" >&2
+    exit 1
+  fi
+fi
+
 # F-10 (PR #564 cycle 8 F-10) 対応: HEREDOC 空文字列 / blank line の挙動を明示。
 # {pages_list} が空文字列または blank line 1 行のみに substitute された場合 (Wiki 初期化直後 /
 # pages 0 件の legitimate ケース)、while ループは 0 回で終了し、下記 all_source_refs="" および
