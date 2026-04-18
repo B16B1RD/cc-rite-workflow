@@ -2,12 +2,16 @@
 title: "canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する"
 domain: "patterns"
 created: "2026-04-18T17:40:00+09:00"
-updated: "2026-04-18T17:40:00+09:00"
+updated: "2026-04-18T12:00:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
   - type: "fixes"
     ref: "raw/fixes/20260418T071459Z-pr-564.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260418T113250Z-pr-578.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260418T113520Z-pr-578.md"
 tags: []
 confidence: high
 ---
@@ -43,11 +47,24 @@ reference 文書 (bash-trap-patterns.md / bash-cross-boundary-state-transfer.md 
 - **Asymmetric Fix Transcription**: 既存 site への fix を他 site に伝播し忘れるのと同型の失敗モード。本パターンは「reference ↔ canonical site」という異なる書式間での drift に特化した sub-pattern
 - **散文で宣言した設計は対応する実装契約がなければ機能しない**: 「reference 文書は canonical 実装と同期しているはず」という prose-only 宣言だけでは drift 検出には不十分
 
+### ID 採番時の grep 全件検証への拡張 (PR #578 での evidence)
+
+PR #578 cycle 1 で reviewer が F-ID 採番の推奨値 (F-16) を提示したが、既存 F-IDs との衝突を `grep` で検証していなかった。盲信して採用すると既存の F-20 と衝突する潜在リスクがあり、fix 側で全件 `grep -oE 'F-[0-9]+' | sort -u` を経て最大値 +1 (F-21) を選択する pattern に修正された。
+
+**学習**: reference 文書の「コード」同期だけでなく、**既存 ID / 識別子との衝突検証も canonical 同期の一種**である。reviewer 推奨値 × grep 検証の省略は、canonical 実装状態（既存 F-IDs の使用状況）との silent drift を生む。以下を習慣化する:
+
+- 新規 ID / 識別子を採番する際は、ファイル全体を `grep` で走査して既存最大値を確定してから +1 する
+- reviewer 推奨値が evidence anchor（grep コマンド出力 / 既存 IDs の列挙）を伴っていない場合は、Observed Likelihood Gate に準拠して降格扱いし、fix 側で再検証する
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
+- [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](../heuristics/observed-likelihood-gate-with-evidence-anchors.md)
 
 ## ソース
 
 - [PR #564 re-review (11th cycle)](../../raw/reviews/20260418T072254Z-pr-564-rerun.md)
 - [PR #564 fix results (11th cycle)](../../raw/fixes/20260418T071459Z-pr-564.md)
+- [PR #578 cycle 1 review (F-ID 衝突 / iteration 非対称)](../../raw/reviews/20260418T113250Z-pr-578.md)
+- [PR #578 cycle 1 fix (F-ID 全件 grep + 最大値 +1)](../../raw/fixes/20260418T113520Z-pr-578.md)

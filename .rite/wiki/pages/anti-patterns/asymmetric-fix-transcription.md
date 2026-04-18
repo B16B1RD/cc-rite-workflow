@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-17T08:55:00+00:00"
+updated: "2026-04-18T12:00:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -28,6 +28,10 @@ sources:
     ref: "raw/fixes/20260417T083042Z-pr-562.md"
   - type: "fixes"
     ref: "raw/fixes/20260417T083649Z-pr-562.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260418T113250Z-pr-578.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260418T113520Z-pr-578.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling"]
 confidence: high
 ---
@@ -98,11 +102,18 @@ PR #562 (workflow identity reference 新規追加) で asymmetric fix transcript
 
 **学習**: 本 anti-pattern は「対称位置のコード分岐」だけでなく「**対称位置の用語・類義語**」にも適用される。cycle 1 で単一コミット内に文脈類義語群を列挙・一括統一していれば cycle 2-3 が不要だった。詳細な用語統一スコープ設計は [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md) 参照。
 
+### Iteration 方式統一への拡張 (PR #578 cycle 1 での evidence)
+
+PR #578 cycle 1 で、`plugins/rite/commands/wiki/lint.md` Phase 6.2 の partial pollution gate 実装において、**同一 Phase 内で同じ変数を iterate する複数ループが here-string と HEREDOC に分岐**している点が reviewer により独立指摘された。同型 idiom が片方のみ新形式になると、後続実装者は「どちらが canonical か」を判断できず drift が増殖する。fix では here-string 側に統一し canonical 契約を保った。
+
+**学習**: 本 anti-pattern は「エラー処理の対称性」「用語の対称性」に続いて「**iteration 方式の対称性**」にも適用される。同一 Phase / 同一 scope 内の複数ループは、bash 構文 (here-string / HEREDOC / process substitution 等) も揃えるべきで、異なる構文が混在すると「どちらに揃えるべきか」の判断自体が判断逸脱の原因になる。canonical 選択基準は「隣接 reference (lint.md Phase 8.3 等) と同一構文」を優先する。
+
 ## 関連ページ
 
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](../patterns/drift-check-anchor-prose-code-sync.md)
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md)
+- [Fix 修正コメント自身が canonical convention を破る self-drift](./fix-comment-self-drift.md)
 
 ## ソース
 
@@ -118,3 +129,5 @@ PR #562 (workflow identity reference 新規追加) で asymmetric fix transcript
 - [PR #553 cycle 2 review (mktemp 統一後)](raw/reviews/20260417T003119Z-pr-553-cycle-2.md)
 - [PR #562 cycle 2 fix (統一範囲の波及漏れ解消)](raw/fixes/20260417T083042Z-pr-562.md)
 - [PR #562 cycle 3 fix (同一 blockquote 内類義語統一)](raw/fixes/20260417T083649Z-pr-562.md)
+- [PR #578 cycle 1 review (iteration 方式非対称指摘)](raw/reviews/20260418T113250Z-pr-578.md)
+- [PR #578 cycle 1 fix (iteration 方式 here-string 統一)](raw/fixes/20260418T113520Z-pr-578.md)
