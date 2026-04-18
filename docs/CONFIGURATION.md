@@ -814,7 +814,7 @@ Settings for the Experience Wiki — an LLM-driven project knowledge base that p
 | `branch_name` | string | `"wiki"` | Name of the Wiki branch (used only when `branch_strategy` is `"separate_branch"`) |
 | `auto_ingest` | boolean | `true` | Automatically run `/rite:wiki:ingest` on review/fix/close events to extract heuristics from raw sources |
 | `auto_query` | boolean | `true` | Automatically run `/rite:wiki:query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
-| `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing cross-refs, and broken links |
+| `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
 | `growth_check.threshold_prs` | integer | `5` | Issue #524 layer 3 (lint growth check) — `/rite:lint` Phase 3.8 emits a non-blocking warning when this many merged PRs accumulate on the development base branch since the last commit on `branch_name` (signalling that Phase X.X.W may be silently skipped). Increase to relax the check; setting it to a very large number effectively disables the lint warning while preserving layers 1-2 |
 | `growth_check.pr_raw_threshold` | integer | `3` | Issue #536 — warn when this many of the last `threshold_prs` merged PRs have no corresponding raw source on the wiki branch. Detects regressions where PRs are merged but Phase X.X.W never fires. Override at runtime with `--pr-raw-threshold N` |
 
@@ -835,6 +835,8 @@ wiki:
   auto_query: true
   auto_lint: false
 ```
+
+> **Note for `same_branch` users**: The project's `.gitignore` ships with `.rite/wiki/` excluded as a silent-leak defense line for the default `separate_branch` strategy. If you switch to `same_branch`, you MUST add negation entries so that Wiki files are not ignored. See the `.gitignore` comment block between the `# >>> gitignore-wiki-section-start` and `# <<< gitignore-wiki-section-end` anchor markers (`grep -n 'gitignore-wiki-section-start' .gitignore` to jump there) for the full verification-first setup: required negation entries (`!.rite/wiki/` and `!.rite/wiki/**`), the mandatory `mkdir -p .rite/wiki/raw && touch .rite/wiki/raw/.negation-probe && git add --dry-run .rite/wiki/raw/.negation-probe` sanity check, the idempotency note for already-tracked files, and the rationale for using `git add --dry-run` instead of `git check-ignore -v` as the canonical verification step.
 
 **Example (loose growth-check threshold for slow-moving repos):**
 

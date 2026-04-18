@@ -1,6 +1,6 @@
 # Bash Trap + Cleanup Patterns
 
-このファイルは `plugins/rite/commands/pr/fix.md`、`review.md`、および `issue/start.md` の bash block で繰り返し使用される
+このファイルは `plugins/rite/commands/pr/fix.md`、`review.md`、`issue/start.md`、および `plugins/rite/commands/wiki/lint.md` の bash block で繰り返し使用される
 **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 
 各 bash block の冒頭では、本ファイルの該当セクションへの anchor 参照を pointer コメントとして置き、
@@ -111,6 +111,50 @@ cleanup 関数の責務は **rm -f などの cleanup 操作のみ**であり、e
 `rm -f "${var:-}"` は `var` が未定義/空文字列のときに `rm -f ""` の silent no-op となる。
 これにより、cleanup 関数が mktemp 失敗経路や早期 exit 経路で呼ばれても安全に動作する (defense-in-depth)。
 
+### BSD/macOS rm の `rm -f ""` 対応 (空引数ガード variant)
+
+`rm -f "${var:-}"` は GNU rm では空引数を silent no-op として扱うが、一部の BSD/macOS rm
+実装 (coreutils 非採用環境) では stderr に `cannot remove ''` を出力する場合がある。
+portable に保ちたい場合は、代わりに以下の明示的な空引数ガードを使う:
+
+```bash
+_rite_<scope>_<phase>_cleanup() {
+  [ -n "${var1:-}" ] && rm -f "$var1"
+  [ -n "${var2:-}" ] && rm -f "$var2"
+}
+```
+
+この variant は特に以下の条件を両方満たす site で推奨する:
+
+- cleanup 関数が mktemp 失敗経路を通る可能性がある (= 変数に空文字列が入ったまま cleanup に到達する)
+- BSD/macOS ユーザーが本プラグインを実行する可能性がある (`plugins/rite/` は multi-OS target)
+
+本 variant を採用している参照実装 (2026-04 時点):
+
+- `plugins/rite/commands/wiki/lint.md` Phase 2.2 (`_rite_wiki_lint_phase2_cleanup`) — 旧命名 (`phase22` 規約確立前の実装)。既存名は維持し、同一 site に cleanup を新規追加する場合は `_rite_wiki_lint_phase22_cleanup` を採用すること
+- `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_phase60_cleanup`)
+- `plugins/rite/commands/wiki/lint.md` Phase 6.2 (`_rite_wiki_lint_phase62_cleanup`) — PR #564 で追加、page_err / awk_diag / sort_err の 3 tempfile を保護
+- `plugins/rite/commands/wiki/lint.md` Phase 8.3 (`_rite_wiki_lint_phase83_cleanup`) — PR #564 cycle 11 F-03 対応で追加、add_err / commit_err の 2 tempfile を保護 (same_branch path のみ)
+- `plugins/rite/commands/wiki/ingest.md` Phase 5.2 (`_rite_wiki_ingest_phase52_cleanup`) — PR #564 F-01 対応で旧名 `_rite_ingest_phase52_cleanup` から `wiki` scope prefix 付きにリネーム (scope 衝突回避、規約準拠)。`_reset_err` tempfile を保護
+
+命名規約:
+
+- 形式: `_rite_<scope>_<phase>_cleanup`
+- `<scope>`: site を識別する接頭辞。例: `wiki_lint` (wiki/lint.md), `fix` (pr/fix.md), `review` (pr/review.md), `start` (issue/start.md)
+- `<phase>`: Phase 番号。**小数点を除いた連結形式**を使う (drift 防止)
+  - `Phase 2.2` → `phase22`
+  - `Phase 6.0` → `phase60`
+  - `Phase 6.2` → `phase62`
+  - `Phase 2` (小数なし) → `phase2`
+  - 複数 Block を持つ Phase (Fast Path Block A/B/C 等) は `phaseXY_blockA` のように suffix を追加可
+- **Phase 2 と Phase 2.2 の collision ガード** (PR #564 F-06 対応): 整数 `Phase 2` の命名が `phase2` で、小数 `Phase 2.2` の命名が `phase22` となるため、形式的な衝突は起きない。ただし他 scope で整数 `Phase N` と小数 `Phase N.M` が同一 site に共存する場合、将来 `Phase N` 側が複数 scope に分岐しても追跡できるよう `phase{N}_main` / `phase{N}_{M}` のような suffix を付けると意図が明確になる (必須ではない、読みやすさ優先)。
+- 将来 Phase 6.1 / 6.3 等で cleanup 関数を追加する場合も同形式を採用すること。
+- PR #564 レビュー LOW #2 対応で短縮形 `_rite_p{NN}_cleanup` は廃止、scope prefix 付きの 2 階層命名に統一 (scope 不在だと `_rite_phase2_cleanup` が複数 site で衝突するため)。
+
+> **Note — 既存命名の扱い** (PR #564 F-05 対応): 既存 site の旧命名 (`_rite_wiki_lint_phase2_cleanup` 等) は維持し、本 PR では一括リネームを行わない (scope 外、旧名→新名のリネーム作業は別 Issue で追跡)。**同一 site に新規 cleanup 関数を追加する場合は必ず規約形式 (`phase22` 等の小数点除去連結形式) を採用すること** — 旧名と規約名が共存しても衝突は起きないが、新規追加時に旧名 (`phase2`) を踏襲すると規約違反となる。迷った場合は規約 (`phase{N}{M}`) を優先する。
+
+GNU rm のみをターゲットとする site (Linux-only CI 等) では `rm -f "${var:-}"` のままで問題ない。
+
 ### パス先行宣言 → trap 先行設定 → mktemp の順序
 
 mktemp を先に実行して trap を後追いで設定すると、**mktemp 成功〜trap 設定間の race window**で
@@ -160,6 +204,92 @@ SIGTERM/SIGINT/SIGHUP が到達した場合に作成済み tmp ファイルが o
 - [ ] EXIT trap は `rc=$?` で元 exit code を先に capture している
 - [ ] INT/TERM/HUP trap は明示的な `exit 130` / `exit 143` / `exit 129` を含む
 - [ ] trap 設置は mktemp / 主処理の**前**に行っている
+
+---
+
+## Case Statement Indent Convention
+
+<a id="case-statement-indent-convention"></a>
+
+trap / cleanup パターンとセットで使用される `case "$branch_strategy" in ...` 等の case 文の indent 規範を canonical 化する (PR #564 cycle 11 code-quality LOW 推奨対応)。
+
+### Canonical pattern
+
+```bash
+case "$variable" in
+  pattern_a)
+    # body は 4-space indent (case label の 2-space + 2-space)
+    command_1
+    command_2
+    ;;
+  pattern_b)
+    command_3
+    ;;
+  *)
+    # default arm も同型 indent
+    fail_command
+    exit 1
+    ;;
+esac
+```
+
+| 要素 | Indent | 例 |
+|------|--------|-----|
+| `case` / `esac` | 0-space (block 外側に揃える) | `case "$branch_strategy" in` |
+| pattern (case label) | **2-space** | `  separate_branch)` |
+| body (commands) | **4-space** | `    set +e` |
+| `;;` (terminator) | **4-space** | `    ;;` |
+
+### Rationale
+
+- **pattern と body の階層を視覚的に区別**: pattern が 2-space、body が 4-space で 2-space の差をつけることで、「pattern → body の入れ子関係」が一目で読み取れる
+- **`;;` を body と同じ 4-space に揃える**: `;;` は body の終端であり pattern の続きではない。pattern 直下に配置すると「次の pattern が始まる」と誤読される
+- **`*)` (default arm) も同型**: 例外なく同じ indent rule を適用することで、reader が「`*)` だけ別ブロック?」と誤認するリスクを排除する
+
+### 参照実装 (2026-04 時点)
+
+`plugins/rite/commands/wiki/lint.md` 内の 4 site で本 pattern が確立されている:
+
+- Phase 6.0 (line 650-722 周辺) — log.md 抽出 case
+- Phase 6.2 (line 993-1009 周辺) — page 読取 case
+- Phase 8.2 (line 1292-1305 周辺) — log.md 追記 case
+- Phase 8.3 (line 1373-1480 周辺、PR #564 cycle 11 F-05 で 4-space に統一) — same_branch path case
+
+新規 case 文を追加する際は本 pattern を採用すること。
+
+### Anti-patterns
+
+以下は **採用してはならない**:
+
+```bash
+# ❌ NG: pattern と body が同じ indent (階層が読み取れない)
+case "$x" in
+pattern_a)
+command_1
+;;
+esac
+
+# ❌ NG: body と `;;` の indent がずれる (`;;` の所属が曖昧)
+case "$x" in
+  pattern_a)
+    command_1
+  ;;
+esac
+
+# ❌ NG: 同じ case 内でアームごとに indent が異なる (PR #564 cycle 10 F-05 で指摘された anti-pattern)
+case "$x" in
+  pattern_a)
+    command_1   # 4-space
+    ;;
+  pattern_b)
+  command_2     # 2-space (非対称)
+  ;;
+esac
+```
+
+### Drift 検出
+
+本 pattern の drift 検出 lint は **未実装** (Issue #353 系統で将来追跡予定)。手動レビュー時は code-quality reviewer が同一 case 文内の indent 一貫性を確認する。
 
 ---
 
