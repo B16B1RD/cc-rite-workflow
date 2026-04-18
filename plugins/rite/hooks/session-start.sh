@@ -247,23 +247,44 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# --- Defensive reset helper (#761, #173, #206) ---
-# Shared by startup and clear blocks. Resets active=false and shows a soft message.
-# Always proceeds with reset regardless of session ownership (#206).
+# --- Defensive reset helper (#558, #761, #173, #206) ---
+# Shared by startup and clear blocks. Resets active=false on phase != completed.
+#
+# When the state is owned by another active session (check_session_ownership
+# returns "other"), skip the reset — overwriting another session's active state
+# would clobber its in-flight work memory and trip stop-guard whitelist
+# violations on its next phase transition. For "own" / "legacy" / "stale" /
+# fail-safe paths, proceed with reset (crash-recovery and backward-compat take
+# priority over multi-instance protection).
+#
+# Regression note (#558): a prior commit moved the check_session_ownership call
+# inside an RITE_DEBUG block as a "performance" optimization, silently disabling
+# multi-instance protection in normal runs. DO NOT re-enclose check_session_ownership
+# in conditional gates — it must run on every reset path so the "other" branch can fire.
+#
 # Note: This function always terminates via exit 0 — it never returns to the caller.
 # When issue_number is empty (e.g., state file has no issue), exits silently without message.
 _reset_active_state() {
-  local _phase _issue _branch
+  local _phase _issue _branch _ownership
   _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || _phase=""
   _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
   _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
 
-  # Debug log for session ownership diagnostics (#206)
-  if [ -n "${RITE_DEBUG:-}" ]; then
-    local _ownership
+  # Session ownership check runs on the normal execution path (#558), not just RITE_DEBUG.
+  # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
+  # and proceed with reset — crash-recovery takes priority over multi-instance protection.
+  if command -v check_session_ownership >/dev/null 2>&1; then
     _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
-    echo "[rite] Resetting active state (ownership: $_ownership)" >&2
+  else
+    _ownership="unknown"
   fi
+
+  if [ "$_ownership" = "other" ]; then
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Skipping reset (state owned by other session)" >&2
+    exit 0
+  fi
+
+  [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Resetting active state (ownership: $_ownership)" >&2
 
   # Atomic write: jq to temp file, then mv. No trap — explicit cleanup on failure.
   local _tmp
