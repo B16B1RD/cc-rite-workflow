@@ -27,9 +27,12 @@
 | [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](pages/patterns/canonical-reference-sample-code-strict-sync.md) | patterns | reference 文書 (bash-trap-patterns.md 等) のサンプルコードはコピペ origin として使われるため、canonical 実装と一字一句揃っている必要がある。PR #564 で bash-cross-boundary-state-transfer.md Pattern 3 example の `else rc=$?` 欠落を実測。PR #578 で ID 採番時の grep 全件検証にも拡張。行コピー + DRIFT-CHECK ANCHOR での機械検証が canonical pattern。 | 2026-04-18T12:00:00+00:00 | high |
 | [prompt 内 numbered list は同型構造で書く（全 step に動作詳細 bullet を対称配置）](pages/patterns/prompt-numbered-list-isomorphic-structure.md) | patterns | LLM が prompt を実装する際、numbered list の一部 step だけ動作詳細 bullet が欠落すると、LLM がその step の動作を推測で埋める経路になり silent drift を発生させる。PR #564 で ingest.md Phase 8.3 step 1 の bullet 欠落を実測。全 step に同粒度の bullet を対称配置するのが canonical pattern。 | 2026-04-18T17:40:00+09:00 | high |
 | [Fix 修正コメント自身が canonical convention を破る self-drift](pages/anti-patterns/fix-comment-self-drift.md) | anti-patterns | fix サイクルで生成するコメントや説明文自体が canonical convention (行番号参照禁止等) を破る self-drift pattern。PR #578 cycle 2 で F-ID 衝突解消 fix のコメントに literal 行番号が混入した事例を実測。commit 前 grep self-check と reviewer 推奨値の evidence gate で decisive 検出可能。 | 2026-04-18T12:00:00+00:00 | high |
+| [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) | patterns | bash block で `[ "{placeholder}" -gt 0 ]` の形で使われる LLM substitute placeholder は substitute 漏れ時に `integer expression expected` rc=2 で silent `else` 分岐に落ちる。`case "$var" in *"{placeholder}"*) exit 1 ;; esac` 形式の residue gate を同型に配置して fail-fast 化するのが canonical pattern (PR #579 で既存 5 site + 新規 1 site = 6 site 対称化)。 | 2026-04-18T12:50:00+00:00 | high |
+| [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](pages/patterns/drift-check-anchor-semantic-name.md) | patterns | drift 防止用 anchor コメントに literal 行番号 (`(L1331-1332)` 等) を埋め込むと自身が drift 源になる。`# >>> DRIFT-CHECK ANCHOR: <canonical-semantic-name> <<<` 形式 (+ END marker) で semantic name 参照として記述するのが canonical。ingest.md Phase 5.0.c の 4 site が reference implementation。 | 2026-04-18T12:50:00+00:00 | high |
+| [新規 exit 1 経路追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) | heuristics | bash block に新規 `exit 1` fail-fast 経路を追加する PR は、同一ファイル内の `9.3 exit code` 節例外リストと エラーハンドリング表という 2 種の canonical SoT 一覧を必ず同時更新する義務を負う。コメント内の「N site 対称化」「N site で同型」counter 宣言は drift 検出アンカーとして機能し、grep で「counter 宣言 vs 実登録数」の gap を機械検証可能にする。PR #579 cycle 2 で 2 件 MEDIUM sync drift を実測。 | 2026-04-18T12:50:00+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 20
-- ドメイン別: patterns=10, heuristics=6, anti-patterns=4
-- 最終更新: 2026-04-18T12:00:00+00:00
+- 総ページ数: 23
+- ドメイン別: patterns=12, heuristics=7, anti-patterns=4
+- 最終更新: 2026-04-18T12:50:00+00:00
