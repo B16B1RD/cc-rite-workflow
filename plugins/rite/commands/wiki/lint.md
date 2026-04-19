@@ -12,8 +12,8 @@ Wiki Lint エンジン。`.rite/wiki/pages/` 配下の Wiki ページと `.rite/
 | **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
 | **孤児ページ** | `pages/` 配下に存在するが `index.md` の「ページ一覧」テーブルに登録されていないページ | Yes |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest:skip` 記録も存在しない真の欠落 | Yes |
-| **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、`log.md` に `ingest:skip` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
+| **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、`log.md` に `ingest:skip` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 
 > **Reference**: [Wiki Patterns](../../references/wiki-patterns.md) — ディレクトリ構造、ブランチ管理、テンプレート展開の共通パターン
 > **Reference**: [Plugin Path Resolution](../../references/plugin-path-resolution.md) — `{plugin_root}` の解決手順
