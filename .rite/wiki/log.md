@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-19T10:40:43+00:00 | ingest:update | pages/patterns/canonical-reference-sample-code-strict-sync.md | PR #598: 観点 (c) `dry_run_out=""` / `dry_run_rc=0` 事前宣言残留を別 Issue #588 → minimal PR で解消する canonical flow を追補 (raw: pr-598) |
 | 2026-04-19T10:21:29+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=0 |
 | 2026-04-19T09:45:45+00:00 | ingest:update | pages/patterns/canonical-reference-sample-code-strict-sync.md | PR #596: 観点 (b) `-- ` 引数区切り残留を別 Issue #587 → minimal PR で解消する canonical flow を追補 (raw: pr-596) |
 | 2026-04-14T00:02:30+00:00 | init | — | Wiki を初期化しました |
