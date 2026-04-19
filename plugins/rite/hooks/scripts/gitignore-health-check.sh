@@ -267,6 +267,11 @@ case "$branch_strategy" in
       exit 2
     }
 
+    # >>> DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture <<<
+    # Downstream reference: plugins/rite/commands/wiki/init.md Phase 1.3.4 verification
+    # block. Keep the mktemp stderr capture + if-wrapper rc capture structure one-for-one
+    # with init.md's copy — Wiki 経験則 patterns/high「canonical reference 文書のサンプル
+    # コードは canonical 実装と一字一句同期する」.
     add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
     add_dry_out=""
     add_dry_rc=0
@@ -275,7 +280,13 @@ case "$branch_strategy" in
     else
       add_dry_rc=$?
     fi
+    # >>> DRIFT-CHECK ANCHOR END: same_branch add_dry_run rc capture <<<
 
+    # >>> DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check <<<
+    # Downstream reference: plugins/rite/commands/wiki/init.md Phase 1.3.4 verification
+    # block. Keep the `grep -qF "add '${negation_probe}'"` full-path fixed-string match
+    # one-for-one with init.md's copy — simple `grep -q "^add '"` 単純 prefix は
+    # false positive を招く.
     # Healthy negation: rc=0 + stdout like `add '.rite/wiki/raw/.rite-lint-negation-probe'`
     # Broken negation: rc=1 + stderr contains "paths are ignored"
     if [ "$add_dry_rc" -eq 0 ] && printf '%s' "$add_dry_out" | grep -qF "add '${negation_probe}'"; then
@@ -287,6 +298,7 @@ case "$branch_strategy" in
       echo "==> Hint: same_branch strategy requires '!.rite/wiki/' negation entry in .gitignore (see .gitignore L66-75 for setup steps)." >&2
       findings=$((findings + 1))
     fi
+    # >>> DRIFT-CHECK ANCHOR END: same_branch negation grep-qF healthy check <<<
     # probe cleanup handled by trap
     ;;
 esac

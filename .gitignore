@@ -81,6 +81,10 @@ temp/
 #   mkdir -p .rite/wiki/raw
 #   touch   .rite/wiki/raw/.negation-probe
 #
+# >>> DRIFT-CHECK ANCHOR: negation verification canonical <<<
+# Downstream reference: plugins/rite/commands/wiki/init.md Phase 1.3.4. init.md 側は
+# 本節 (Step 3 + check-ignore 回避理由) を semantic anchor 経由で参照する。節内の
+# Step 3 コマンド / 期待出力を変更する際は init.md Phase 1.3.4 bash block と同期.
 # Step 3. **動作確認の正典** (必須 — Step 1 の negation を追加した時点 / rebase した時点 /
 #         .gitignore に関わる変更を review した時点で毎回実行する。F-02 / F-06 対応):
 #
@@ -111,6 +115,7 @@ temp/
 # `pattern` フィールドの `!` prefix を手動 parse しないと negation 成立か単純 match か判別不能。
 # **`git add --dry-run` を sanity check の正典** として採用し、check-ignore は参考情報に
 # とどめる (Source: git documentation — git check-ignore(1)、`pattern` column の `!` prefix 仕様)。
+# >>> DRIFT-CHECK ANCHOR END: negation verification canonical <<<
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # Idempotency 注 (F-07 対応):
