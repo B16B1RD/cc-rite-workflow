@@ -104,3 +104,4 @@
 | 2026-04-19T03:35:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=82 |
 | 2026-04-19T04:45:15Z | ingest:update | pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md | PR #589 review: Hypothetical（将来 Phase 変更依存）を anchor 欠落と orthogonal な降格軸として追加、confidence: medium → high |
 | 2026-04-19T04:47:19Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=16 |
+| 2026-04-19T05:48:50Z | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #590 review: Issue #580 (PR #579 で scope 外分離した drift) を +4 lines / 2 reviewer 0 findings の minimal cycle で解消し、「scope 外 drift → 別 Issue 化 → 後続 PR で解消」フロー正当性を実証 (source: raw/reviews/20260419T050601Z-pr-590.md) |

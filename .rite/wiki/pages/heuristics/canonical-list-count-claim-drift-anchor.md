@@ -2,7 +2,7 @@
 title: "新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する"
 domain: "heuristics"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-19T01:10:00+00:00"
+updated: "2026-04-19T05:48:50Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T123408Z-pr-579.md"
@@ -14,6 +14,8 @@ sources:
     ref: "raw/reviews/20260419T004413Z-pr-585.md"
   - type: "fixes"
     ref: "raw/fixes/20260419T004921Z-pr-585.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T050601Z-pr-590.md"
 tags: []
 confidence: high
 ---
@@ -52,7 +54,11 @@ PR #579 cycle 1 で placeholder residue gate を 6 site 目として追加した
 
 ### scope 外 drift の扱い
 
-cycle 3 final レビューで「両 reviewer が cross-validation で一致指摘した pre-existing drift」が検出された場合、本 PR scope 外として `AskUserQuestion` で別 Issue 化するのが正規経路 (PR #579 で Issue #580 として切り出し済み)。review サイクルで scope 外修正を混ぜ込むと PR diff が膨張し review gate 失敗の原因となる。
+cycle 3 final レビューで「両 reviewer が cross-validation で一致指摘した pre-existing drift」が検出された場合、本 PR scope 外として `AskUserQuestion` で別 Issue 化するのが正規経路 (PR #579 で Issue #580 として切り出し済み、PR #590 で解消)。review サイクルで scope 外修正を混ぜ込むと PR diff が膨張し review gate 失敗の原因となる。
+
+### scope 外 drift の後続 PR による解消ループ (PR #590 で実証)
+
+PR #579 で Issue 化された pre-existing drift (`lint.md` L1371 の「5 site 対称化」宣言と canonical 一覧の登録 3 site の gap) は、PR #590 で 2 canonical 一覧 (9.3 exit code 節 + エラーハンドリング表) への Phase 6.2 / 8.3 placeholder gate 追記 (+4 lines / 1 file) で解消された。+4 lines / 2 reviewer (prompt-engineer + code-quality) 0 findings 承認 / re-review 不要という minimal cycle で完了しており、「scope 外 drift → 別 Issue 化 → 後続 PR で解消」フローが (a) review cycle 膨張の回避、(b) drift 恒久化の防止、両方を同時に達成する canonical 経路であることを実証した。
 
 ### 拡張: sentinel type enum 同期義務 (PR #585 で一般化)
 
@@ -82,3 +88,4 @@ canonical rule の汎化 (本ページの header title も拡張):
 - [PR #579 fix results (cycle 2)](../../raw/fixes/20260418T123555Z-pr-579.md)
 - [PR #585 review results](../../raw/reviews/20260419T004413Z-pr-585.md)
 - [PR #585 fix results](../../raw/fixes/20260419T004921Z-pr-585.md)
+- [PR #590 review results](../../raw/reviews/20260419T050601Z-pr-590.md)
