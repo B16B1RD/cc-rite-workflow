@@ -107,3 +107,4 @@
 | 2026-04-19T05:48:50Z | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #590 review: Issue #580 (PR #579 で scope 外分離した drift) を +4 lines / 2 reviewer 0 findings の minimal cycle で解消し、「scope 外 drift → 別 Issue 化 → 後続 PR で解消」フロー正当性を実証 (source: raw/reviews/20260419T050601Z-pr-590.md) |
 | 2026-04-19T05:50:53Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=16 |
 | 2026-04-19T06:45:00Z | ingest:create | pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md | PR #592 review (0 findings, 4 sibling site 対称化): 極小対称化 PR の sibling site Grep 照合レビュー手順と副次技法 (hardcoded 番号の gh 検証 / scope 外推奨の別 Issue 化) を heuristic 化 (source: raw/reviews/20260419T062330Z-pr-592.md) |
+| 2026-04-19T06:47:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=16 |
