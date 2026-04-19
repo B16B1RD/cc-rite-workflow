@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-19T13:58:41+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=0 |
 | 2026-04-19T13:48:38+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #605: line 番号 literal `L270-277` が実体 L275-L282 と ±3 行 drift する brittleness を実証 + canonical 側 ANCHOR に `# Downstream reference:` を併記する bidirectional backlink sub-pattern を追加 (raw: pr-605) |
 | 2026-04-19T13:13:36Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=0 |
 | 2026-04-19T13:13:36Z | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #601 review: lint.md 冒頭テーブル列挙順 drift fix を canonical SoT 単一化 sub-heuristic の 2 例目 successful application として追記。PR #594 (cross-file SKILL.md ↔ lint.md 同時整列) の延長として intra-file (同一ファイル内 L2 description vs L11-16 body table) スコープへの拡張適用を実証 (raw: pr-601) |
