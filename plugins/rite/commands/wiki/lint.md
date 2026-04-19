@@ -359,7 +359,11 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   fi
 else
   if index_content=$(cat .rite/wiki/index.md 2>"${index_err:-/dev/null}"); then
-    :
+    # selective surface pattern: cat は通常 stderr を成功経路で emit しないが、separate_branch
+    # 成功経路 (直上 git show) と対称化するため同型 surface を配置する (Issue #577)。
+    # BSD cat 等が diagnostic を emit する稀なケースで silent に warning を握りつぶさないための
+    # defense-in-depth として機能する (PR #576 Phase 6.0 で同型対称化を完了済み)。
+    [ -n "$index_err" ] && [ -s "$index_err" ] && head -3 "$index_err" | sed 's/^/  WARNING(cat hint): /' >&2
   else
     echo "WARNING: .rite/wiki/index.md を読み出せません" >&2
     [ -n "$index_err" ] && [ -s "$index_err" ] && head -3 "$index_err" | sed 's/^/  /' >&2
