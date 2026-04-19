@@ -250,7 +250,7 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 
 #### 1.3.4 verification
 
-> **Reference**: `.gitignore` L84-L113 の「動作確認の正典」節。`git add --dry-run` を使用し、`git check-ignore -v` は使わない（rc と出力の両方が negation 成立と単純 match で同じ値を取り得るため決定論的判別不能）。canonical impl は `plugins/rite/hooks/scripts/gitignore-health-check.sh` L281 付近の `grep -qF` パターン参照。
+> **Reference**: `.gitignore` の `DRIFT-CHECK ANCHOR: negation verification canonical` 節（「動作確認の正典」 + `git check-ignore -v` を sanity check に使わない理由）。`git add --dry-run` を使用し、`git check-ignore -v` は使わない（rc と出力の両方が negation 成立と単純 match で同じ値を取り得るため決定論的判別不能）。canonical impl は `plugins/rite/hooks/scripts/gitignore-health-check.sh` の `DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check` 節の `grep -qF` パターン参照。
 
 ```bash
 # signal-specific trap で probe ファイルの残留を防ぐ
@@ -317,7 +317,8 @@ if [ "$probe_created" = "true" ]; then
   #
   # PR #586 F-02 対応: stderr を独立 tempfile に退避し stdout に merge しない。
   # 同一ファイル内 Phase 3.5.1 のプロジェクト規約「2>&1 は付けない: 構造化 stdout と WARNING stderr
-  # の分離を維持する」に準拠する。canonical 参照実装 gitignore-health-check.sh L270-277 の
+  # の分離を維持する」に準拠する。canonical 参照実装 gitignore-health-check.sh の
+  # `DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture` 節の
   # `add_dry_err=$(mktemp ...) ... if add_dry_out=$(...); then add_dry_rc=0; else add_dry_rc=$?; fi`
   # パターンに **rc capture 構造ごと** 揃える (canonical drift 防止)。実害として、success path で
   # git が emit する stderr 警告 (例: `warning: in the working copy of '...', LF will be replaced
