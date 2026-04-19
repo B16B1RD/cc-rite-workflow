@@ -234,6 +234,20 @@ fi
 candidates=()
 # メイン候補: wiki worktree (separate_branch) or dev ツリー (same_branch)
 if [ -d "$wiki_raw_root" ]; then
+  # Issue #566 対応: canonical signal-specific trap (4 行 EXIT/INT/TERM/HUP) で find_err tempfile orphan 防止
+  # (lint.md Phase 6.0 / 6.2 / 8.3 + ingest.md Phase 5.2 と対称化、../pr/references/bash-trap-patterns.md#signal-specific-trap-template 準拠)。
+  # 旧実装は trap 未保護で mktemp 成功直後に SIGINT/SIGTERM/SIGHUP が来ると find_err tempfile が orphan 化していた。
+  find_err=""
+  _rite_wiki_ingest_phase22_cleanup() {
+    # BSD variant に統一 (lint.md Phase 6.0 / 6.2 / 8.3 + ingest.md Phase 5.2 と対称化)。
+    # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
+    [ -n "${find_err:-}" ] && rm -f "$find_err"
+  }
+  trap 'rc=$?; _rite_wiki_ingest_phase22_cleanup; exit $rc' EXIT
+  trap '_rite_wiki_ingest_phase22_cleanup; exit 130' INT
+  trap '_rite_wiki_ingest_phase22_cleanup; exit 143' TERM
+  trap '_rite_wiki_ingest_phase22_cleanup; exit 129' HUP
+
   # F-11 対応: 1 行 WARNING を 3 行 loud WARNING に拡張 (lint.md Phase 6.0 / 6.2 と対称化)。
   # find の stderr が握り潰されると raw source 候補が silent 脱落し、`n_raw_sources` の不正確な
   # initialization を起こすため、対処と影響を明示する。
@@ -312,6 +326,21 @@ esac
 ```bash
 # Issue #547: candidate は常に実ファイルパスなので、prefix の剥がし処理は不要
 actual_path="$candidate"
+
+# Issue #566 対応: canonical signal-specific trap (4 行 EXIT/INT/TERM/HUP) で cat_err tempfile orphan 防止
+# (lint.md Phase 6.0 / 6.2 / 8.3 + ingest.md Phase 5.2 と対称化、../pr/references/bash-trap-patterns.md#signal-specific-trap-template 準拠)。
+# 旧実装は trap 未保護で mktemp 成功直後に SIGINT/SIGTERM/SIGHUP が来ると cat_err tempfile が orphan 化していた。
+# 本スニペットは for candidate ループ内で実行されるため、trap は反復ごとに再設定される (bash 仕様上 idempotent、overwrite 安全)。
+cat_err=""
+_rite_wiki_ingest_phase23_cleanup() {
+  # BSD variant に統一 (lint.md Phase 6.0 / 6.2 / 8.3 + ingest.md Phase 5.2 と対称化)。
+  # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
+  [ -n "${cat_err:-}" ] && rm -f "$cat_err"
+}
+trap 'rc=$?; _rite_wiki_ingest_phase23_cleanup; exit $rc' EXIT
+trap '_rite_wiki_ingest_phase23_cleanup; exit 130' INT
+trap '_rite_wiki_ingest_phase23_cleanup; exit 143' TERM
+trap '_rite_wiki_ingest_phase23_cleanup; exit 129' HUP
 
 cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX 2>/dev/null) || {
   echo "WARNING: stderr 退避 tempfile (cat_err) の mktemp に失敗しました。cat の詳細エラー情報は失われます" >&2
