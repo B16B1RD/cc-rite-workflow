@@ -101,6 +101,134 @@ Wiki は既に初期化されています。
 
 **変数保持指示**: Phase 1.2 で出力された `branch_strategy` と `wiki_branch` の値を保持し、Phase 2 および Phase 3 以降のすべての Bash ブロックで**リテラル値として埋め込んで**使用すること。Claude Code の Bash ツール間でシェル変数は保持されないため、各 Bash ブロックの冒頭で値をリテラルに再定義する必要がある。
 
+### 1.3 same_branch 戦略向け .gitignore negation 自動注入
+
+PR #564 で `.rite/wiki/` が `.gitignore` に追加されたため、`same_branch` 戦略ユーザーは Phase 3.1 の `git add .rite/wiki/` が "paths are ignored" で hard fail します。本 Phase は negation エントリ (`!.rite/wiki/` および `!.rite/wiki/**`) を対話的に追記し、hard fail を未然に防ぎます。
+
+**発動条件** (すべて満たすときのみ):
+
+| # | 条件 |
+|---|------|
+| 1 | Phase 1.2 で取得した `branch_strategy == "same_branch"` |
+| 2 | `.gitignore` が存在する |
+| 3 | `.gitignore` に `^\.rite/wiki/$` に match する行が存在する（PR #564 以降のリポジトリ） |
+
+**Skip 条件** (idempotent):
+
+- `.gitignore` に既に `^!\.rite/wiki/$` に match する行が存在する → 既に注入済みのため silent skip
+
+#### 1.3.1 事前検査
+
+```bash
+# Phase 1.2 の値をリテラル埋め込み（例: branch_strategy="same_branch"）
+branch_strategy="{branch_strategy}"
+
+state="skip"
+reason=""
+
+if [ "$branch_strategy" != "same_branch" ]; then
+  state="skip"
+  reason="not_same_branch"
+elif [ ! -f .gitignore ]; then
+  state="skip"
+  reason="gitignore_absent"
+elif ! grep -qE '^\.rite/wiki/$' .gitignore; then
+  state="skip"
+  reason="rule_absent"
+elif grep -qE '^!\.rite/wiki/$' .gitignore; then
+  state="skip"
+  reason="already_negated"
+else
+  state="prompt"
+  reason="injection_needed"
+fi
+
+echo "GITIGNORE_NEGATION_STATE=$state; reason=$reason"
+```
+
+**LLM 分岐** (Bash ツール間でシェル変数は保持されないため、stdout の marker を読んで分岐する):
+
+| `GITIGNORE_NEGATION_STATE` | 次の処理 |
+|---------------------------|---------|
+| `skip; reason=not_same_branch` | Phase 2 へ（通知不要 — separate_branch 戦略は worktree 経路で .gitignore の影響を受けない） |
+| `skip; reason=gitignore_absent` | Phase 2 へ（通知不要 — `.gitignore` がなければ ignore の影響も無し） |
+| `skip; reason=rule_absent` | Phase 2 へ（通知不要 — PR #564 以前のリポジトリで `.rite/wiki/` が ignore されていない） |
+| `skip; reason=already_negated` | `✅ .gitignore に既に negation エントリが存在します（idempotent skip）` を表示して Phase 2 へ |
+| `prompt; reason=injection_needed` | Phase 1.3.2 へ進む |
+
+#### 1.3.2 ユーザー確認
+
+`AskUserQuestion` で次のように確認:
+
+```
+質問: same_branch 戦略を検出しました。.gitignore に negation エントリ (!.rite/wiki/ と !.rite/wiki/**) を自動追記しますか？
+
+背景: PR #564 で .rite/wiki/ が .gitignore に追加されたため、same_branch 戦略では git add .rite/wiki/ が exit 1 で失敗します。negation を追記するとこの問題が解消されます。
+
+オプション:
+- negation エントリを追記（推奨）: Phase 1.3.3 で自動追記 → Phase 1.3.4 で verification 実行
+- スキップ: 手動で追記するか、separate_branch 戦略に切り替えてください（Phase 3.1 で hard fail する可能性あり）
+- キャンセル: 初期化を中止
+```
+
+**選択肢別処理**:
+
+| 選択肢 | 処理 |
+|--------|------|
+| negation エントリを追記（推奨） | Phase 1.3.3 へ |
+| スキップ | `⚠️ Phase 3.1 の git add で失敗する可能性があります（手動で .gitignore に !.rite/wiki/ と !.rite/wiki/** を追記してください）` を表示して Phase 2 へ |
+| キャンセル | 初期化全体を中止（exit） |
+
+#### 1.3.3 `.gitignore` への追記
+
+Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-end (anchor / F-09 対応)` 行の **直後** に以下のブロックを挿入する（PR #564 で配置された wiki section の直後を指定することで、関連コメントと配置を近接させる）:
+
+```
+# >>> gitignore-wiki-negation-start (Issue #568 — same_branch 戦略用 negation 自動注入)
+# 本プロジェクトは same_branch 戦略のため、.rite/wiki/ 配下を再包含する。
+# verification 手順は本 .gitignore 上部の Step 1-5 コメントを参照。
+!.rite/wiki/
+!.rite/wiki/**
+# <<< gitignore-wiki-negation-end
+```
+
+**Edit ツール呼び出しパラメータ**:
+
+- `file_path`: `.gitignore`
+- `old_string`: `# <<< gitignore-wiki-section-end (anchor / F-09 対応)`（一意にマッチ）
+- `new_string`: 上記 `old_string` + 改行 + 上記 negation ブロック全文
+
+`!.rite/wiki/**` は glob を明示する防御的エントリで、単独では機能しない（parent exclusion が残るため）が、gitignore を消費する一部のツール (IDE の VCS integration 等) への defense-in-depth として推奨される（`.gitignore` 上部 Step 1 コメントと同じ根拠）。
+
+#### 1.3.4 verification
+
+> **Reference**: `.gitignore` L84-L113 の「動作確認の正典」節。`git add --dry-run` を使用し、`git check-ignore -v` は使わない（rc と出力の両方が negation 成立と単純 match で同じ値を取り得るため決定論的判別不能）。
+
+```bash
+mkdir -p .rite/wiki/raw
+touch .rite/wiki/raw/.negation-probe
+
+# verification: rc=0 かつ stdout に "add '" を含めば negation OK
+dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>&1)
+dry_run_rc=$?
+
+if [ "$dry_run_rc" -eq 0 ] && printf '%s' "$dry_run_out" | grep -q "^add '"; then
+  echo "✅ .gitignore negation verification OK: $dry_run_out"
+else
+  echo "WARNING: .gitignore negation verification failed (rc=$dry_run_rc)" >&2
+  echo "  stdout/stderr: $dry_run_out" >&2
+  echo "  対処: .gitignore の .rite/wiki/ 行直後 (gitignore-wiki-section-end anchor 直後) に" >&2
+  echo "        !.rite/wiki/ と !.rite/wiki/** が配置されているか確認してください" >&2
+fi
+
+# probe 削除（commit 混入防止）
+rm -f .rite/wiki/raw/.negation-probe
+```
+
+**成功時**: `✅ .gitignore に negation エントリを追記しました` を追加で表示し Phase 2 へ。
+
+**失敗時 (non-blocking)**: WARNING 表示のみで Phase 2 に進行する。Phase 3.1 の `git add .rite/wiki/` で改めてエラーが出れば、そこでユーザーに手動対応を促す。
+
 ## Phase 2: ディレクトリ構造の作成
 
 ### 2.1 Plugin Root の解決
