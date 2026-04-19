@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-19T12:00:25+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=0 |
 | 2026-04-19T12:00:25+00:00 | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #599 review: sibling entry 間 parallelism suffix (「で同型」) drift の cross-validation 検出事例を追加 (raw: pr-599) |
 | 2026-04-19T12:00:25+00:00 | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #599 re-review: 3 文字 micro-fix による 1 cycle 収束 (1 finding → 0 findings mergeable) の success pattern (raw: pr-599-rereview) |
 | 2026-04-19T12:00:25+00:00 | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #599 fix: canonical 一覧内の parallelism drift に対し本 PR 内 micro-fix (別 Issue 化不要) の判断基準を追加 (raw: pr-599) |
