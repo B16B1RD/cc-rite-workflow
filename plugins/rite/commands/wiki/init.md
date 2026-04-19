@@ -112,6 +112,7 @@ PR #564 で `.rite/wiki/` が `.gitignore` に追加されたため、`same_bran
 | 1 | Phase 1.2 で取得した `branch_strategy == "same_branch"` |
 | 2 | `.gitignore` が存在する |
 | 3 | `.gitignore` に `^\.rite/wiki/[[:space:]]*$` に match する行が存在する（PR #564 以降のリポジトリ。末尾 whitespace 許容で手動編集された `.gitignore` との衝突耐性を確保） |
+| 4 | `.gitignore` に `# <<< gitignore-wiki-section-end` anchor が存在する（Phase 1.3.3 Edit ツールが anchor を `old_string` に hardcode するため、不在の場合 hard fail する。consumer project は本 anchor を持たないため early skip + 手動追記案内へ分岐する） |
 
 **Skip 条件** (idempotent):
 
@@ -138,6 +139,17 @@ elif ! grep -qE '^\.rite/wiki/[[:space:]]*$' .gitignore; then
 elif grep -qE '^!\.rite/wiki/[[:space:]]*$' .gitignore; then
   state="skip"
   reason="already_negated"
+elif ! grep -qF '# <<< gitignore-wiki-section-end' .gitignore; then
+  # PR #586 F-01 対応: Phase 1.3.3 Edit ツールが hardcode する anchor が不在の場合、
+  # Edit が `old_string not found` で hard fail するため、early skip + 手動追記案内に分岐する。
+  # 本 anchor は rite-workflow 自己開発 repo の .gitignore L131 のみに存在し、consumer project には
+  # distribution 経路がない (templates/ に該当 .gitignore template なし、/rite:init Phase 4.6 と
+  # gitignore-health-check.sh どちらも anchor を inject しない)。consumer が手動で `.rite/wiki/` を
+  # 追加した .gitignore は条件 1-3 を満たすが anchor を持たないため、本条件で fall-back する。
+  # grep -qF (fixed-string match) を使うのは anchor コメント文字列に regex メタ文字 (括弧) が
+  # 含まれるため (`(anchor / F-09 対応)`)。
+  state="skip"
+  reason="anchor_absent"
 else
   state="prompt"
   reason="injection_needed"
@@ -159,6 +171,7 @@ echo "GITIGNORE_NEGATION_REASON=$reason"
 | `skip` | `gitignore_absent` | Phase 2 へ（通知不要 — `.gitignore` がなければ ignore の影響も無し） |
 | `skip` | `rule_absent` | Phase 2 へ（通知不要 — PR #564 以前のリポジトリで `.rite/wiki/` が ignore されていない） |
 | `skip` | `already_negated` | `✅ .gitignore に既に negation エントリが存在します（idempotent skip）` を表示して Phase 2 へ |
+| `skip` | `anchor_absent` | `⚠️ .gitignore に '# <<< gitignore-wiki-section-end' anchor が見つかりません。Phase 1.3.3 の自動追記を skip します。手動で .gitignore 末尾に !.rite/wiki/ と !.rite/wiki/** を追記してください` を表示して Phase 2 へ（Phase 3.1 の git add で hard fail するリスクをユーザーに明示） |
 | `prompt` | `injection_needed` | Phase 1.3.2 へ進む |
 
 #### 1.3.2 ユーザー確認
@@ -250,9 +263,10 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 # を参照する経路を閉じる。
 probe_mkdir_err=""
 probe_touch_err=""
+dry_run_err=""
 
 _rite_wiki_init_phase13_cleanup() {
-  rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" .rite/wiki/raw/.negation-probe
+  rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" "${dry_run_err:-}" .rite/wiki/raw/.negation-probe
 }
 trap 'rc=$?; _rite_wiki_init_phase13_cleanup; exit $rc' EXIT
 trap '_rite_wiki_init_phase13_cleanup; exit 130' INT
@@ -292,14 +306,27 @@ if [ "$probe_created" = "true" ]; then
   # false positive になるため、`grep -qF "add '<probe path 全体>'"` で完全パス fixed-string
   # match に統一する (canonical: plugins/rite/hooks/scripts/gitignore-health-check.sh の
   # `grep -qF "add '${negation_probe}'"` パターン)。
-  dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>&1)
+  #
+  # PR #586 F-02 対応: stderr を独立 tempfile に退避し stdout に merge しない。
+  # 同一ファイル内 L555 のプロジェクト規約「2>&1 は付けない: 構造化 stdout と WARNING stderr
+  # の分離を維持する」に準拠する。canonical 参照実装 gitignore-health-check.sh L270-277 の
+  # `add_dry_err=$(mktemp ...) ... 2>"${add_dry_err:-/dev/null}"` パターンと一字一句揃える
+  # (canonical drift 防止)。実害として、success path で git が emit する stderr 警告
+  # (例: `warning: in the working copy of '...', LF will be replaced by CRLF`) が success
+  # メッセージに混入することを防ぎ、`grep -qF "add '...'"` の false positive リスクを排除する。
+  dry_run_err=$(mktemp /tmp/rite-wiki-init-p13-dryrun-err-XXXXXX 2>/dev/null) || dry_run_err=""
+  dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>"${dry_run_err:-/dev/null}")
   dry_run_rc=$?
 
   if [ "$dry_run_rc" -eq 0 ] && printf '%s' "$dry_run_out" | grep -qF "add '.rite/wiki/raw/.negation-probe'"; then
     echo "✅ .gitignore negation verification OK: $dry_run_out"
   else
     echo "WARNING: .gitignore negation verification failed (rc=$dry_run_rc)" >&2
-    echo "  stdout/stderr: $dry_run_out" >&2
+    echo "  stdout: $dry_run_out" >&2
+    if [ -n "$dry_run_err" ] && [ -s "$dry_run_err" ]; then
+      echo "  stderr (先頭 3 行):" >&2
+      head -3 "$dry_run_err" | sed 's/^/    /' >&2
+    fi
     echo "  対処: .gitignore の .rite/wiki/ 行直後 (gitignore-wiki-section-end anchor 直後) に" >&2
     echo "        !.rite/wiki/ と !.rite/wiki/** が配置されているか確認してください" >&2
   fi
@@ -314,7 +341,7 @@ fi
 #     到達できなかった場合の保険として動作する。
 # 明示 rm を trap 解除より前に置くことで、rm〜trap 解除間の micro-race window を排除する。
 # trap 解除後は EXIT trap が発火しないため、script 終了時に冗長 rm が走らない。
-rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" .rite/wiki/raw/.negation-probe
+rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" "${dry_run_err:-}" .rite/wiki/raw/.negation-probe
 trap - EXIT INT TERM HUP
 ```
 
