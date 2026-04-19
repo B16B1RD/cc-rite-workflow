@@ -85,7 +85,7 @@ This is a **bug**. The lint sub-skill return is NOT a turn boundary — it is a 
 <In the same response turn, LLM IMMEDIATELY:>
   1. Parses Lint stdout (Phase 8.3 step 2) and integrates into Phase 8.4
   2. Outputs Phase 9 Completion Report (user-visible message + next-steps block)
-  3. (single execution path, caller embedded) Outputs caller continuation HTML comment
+  3. Outputs caller continuation HTML comment (Phase 9.1 設計判断により実行経路を問わず常に出力)
   4. Outputs <!-- [ingest:completed] --> as the absolute last line
 ```
 
