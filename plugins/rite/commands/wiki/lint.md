@@ -358,11 +358,14 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     index_read_ok="false"
   fi
 else
-  if index_content=$(cat .rite/wiki/index.md 2>"${index_err:-/dev/null}"); then
-    # selective surface pattern: cat は通常 stderr を成功経路で emit しないが、separate_branch
-    # 成功経路 (直上 git show) と対称化するため同型 surface を配置する (Issue #577)。
-    # BSD cat 等が diagnostic を emit する稀なケースで silent に warning を握りつぶさないための
-    # defense-in-depth として機能する (PR #576 Phase 6.0 で同型対称化を完了済み)。
+  if index_content=$(LC_ALL=C cat .rite/wiki/index.md 2>"${index_err:-/dev/null}"); then
+    # selective surface pattern + locale 固定 (LC_ALL=C): cat は通常 stderr を成功経路で emit
+    # しないが、separate_branch 成功経路 (直上 git show) と対称化するため同型 surface を配置する
+    # (Issue #577)。BSD cat 等が diagnostic を emit する稀なケースで silent に warning を握り
+    # つぶさない defense-in-depth として機能し、`LC_ALL=C` で Phase 6.0 same_branch 経路
+    # (`LC_ALL=C cat .rite/wiki/log.md`) との locale 固定も統一済み (Issue #593 — 将来 error path
+    # に stderr pattern match を追加した際、ja_JP.UTF-8 等で localize された diagnostic による
+    # silent regression を予防)。
     [ -n "$index_err" ] && [ -s "$index_err" ] && head -3 "$index_err" | sed 's/^/  WARNING(cat hint): /' >&2
   else
     echo "WARNING: .rite/wiki/index.md を読み出せません" >&2
