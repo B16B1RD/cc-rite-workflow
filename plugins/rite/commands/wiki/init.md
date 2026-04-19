@@ -116,7 +116,7 @@ PR #564 で `.rite/wiki/` が `.gitignore` に追加されたため、`same_bran
 
 **Skip 条件** (idempotent):
 
-- `.gitignore` に既に `^!\.rite/wiki/[[:space:]]*$` に match する行が存在する → 既に注入済みのため silent skip（末尾 whitespace 許容）
+- `.gitignore` に既に `^!\.rite/wiki/[[:space:]]*$` に match する行が存在する → 既に注入済みのため idempotent skip。LLM 分岐テーブル (`already_negated` 行) で `✅ .gitignore に既に negation エントリが存在します（idempotent skip）` メッセージを表示してから Phase 2 へ進む（rebase シナリオで「既に注入済み」をユーザーに通知し信頼性を確保）。末尾 whitespace 許容
 
 #### 1.3.1 事前検査
 
@@ -139,7 +139,7 @@ elif ! grep -qE '^\.rite/wiki/[[:space:]]*$' .gitignore; then
 elif grep -qE '^!\.rite/wiki/[[:space:]]*$' .gitignore; then
   state="skip"
   reason="already_negated"
-elif ! grep -qF '# <<< gitignore-wiki-section-end' .gitignore; then
+elif ! grep -qF '# <<< gitignore-wiki-section-end (anchor / F-09 対応)' .gitignore; then
   # PR #586 F-01 対応: Phase 1.3.3 Edit ツールが hardcode する anchor が不在の場合、
   # Edit が `old_string not found` で hard fail するため、early skip + 手動追記案内に分岐する。
   # 本 anchor は rite-workflow 自己開発 repo の .gitignore L131 のみに存在し、consumer project には
@@ -148,6 +148,14 @@ elif ! grep -qF '# <<< gitignore-wiki-section-end' .gitignore; then
   # 追加した .gitignore は条件 1-3 を満たすが anchor を持たないため、本条件で fall-back する。
   # grep -qF (fixed-string match) を使うのは anchor コメント文字列に regex メタ文字 (括弧) が
   # 含まれるため (`(anchor / F-09 対応)`)。
+  #
+  # PR #586 F-04 (cycle 5) 対応: cycle 4 で grep の検索文字列を anchor の prefix のみ
+  # (`# <<< gitignore-wiki-section-end`) で書いていたが、Phase 1.3.3 Edit ツールの old_string は
+  # suffix 込みの exact 文字列 (`# <<< gitignore-wiki-section-end (anchor / F-09 対応)`) を要求する。
+  # consumer が anchor の suffix を独自編集 (例: `# <<< gitignore-wiki-section-end (custom note)`)
+  # している場合、検出 grep は通過するが Edit が hard fail する strictness 差を残していた。
+  # cycle 6 で grep の検索文字列を Edit と同一の exact 文字列に統一し、検出と Edit の strictness
+  # を完全一致させる (consumer の anchor fork 編集ケースもこの elif で skip される)。
   state="skip"
   reason="anchor_absent"
 else
@@ -308,15 +316,25 @@ if [ "$probe_created" = "true" ]; then
   # `grep -qF "add '${negation_probe}'"` パターン)。
   #
   # PR #586 F-02 対応: stderr を独立 tempfile に退避し stdout に merge しない。
-  # 同一ファイル内 L555 のプロジェクト規約「2>&1 は付けない: 構造化 stdout と WARNING stderr
+  # 同一ファイル内 Phase 3.5.1 のプロジェクト規約「2>&1 は付けない: 構造化 stdout と WARNING stderr
   # の分離を維持する」に準拠する。canonical 参照実装 gitignore-health-check.sh L270-277 の
-  # `add_dry_err=$(mktemp ...) ... 2>"${add_dry_err:-/dev/null}"` パターンと一字一句揃える
-  # (canonical drift 防止)。実害として、success path で git が emit する stderr 警告
-  # (例: `warning: in the working copy of '...', LF will be replaced by CRLF`) が success
-  # メッセージに混入することを防ぎ、`grep -qF "add '...'"` の false positive リスクを排除する。
+  # `add_dry_err=$(mktemp ...) ... if add_dry_out=$(...); then add_dry_rc=0; else add_dry_rc=$?; fi`
+  # パターンに **rc capture 構造ごと** 揃える (canonical drift 防止)。実害として、success path で
+  # git が emit する stderr 警告 (例: `warning: in the working copy of '...', LF will be replaced
+  # by CRLF`) が success メッセージに混入することを防ぎ、`grep -qF "add '...'"` の false positive
+  # リスクを排除する。
+  #
+  # PR #586 F-01 (cycle 5) 対応: cycle 4 で stderr 退避部分のみ canonical に揃え rc capture
+  # 構造を簡略な `var=$(cmd); rc=$?` に留めていたが、コメントは「一字一句揃える」と謳っており
+  # 主張と実装が乖離していた。cycle 6 で if-wrapper 構造に統一して drift を解消する。
+  # `set -e` 不在の bash block 内では機能等価だが、Wiki 経験則「canonical reference 文書の
+  # サンプルコードは canonical 実装と一字一句同期する」(patterns/high) を厳守する。
   dry_run_err=$(mktemp /tmp/rite-wiki-init-p13-dryrun-err-XXXXXX 2>/dev/null) || dry_run_err=""
-  dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>"${dry_run_err:-/dev/null}")
-  dry_run_rc=$?
+  if dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>"${dry_run_err:-/dev/null}"); then
+    dry_run_rc=0
+  else
+    dry_run_rc=$?
+  fi
 
   if [ "$dry_run_rc" -eq 0 ] && printf '%s' "$dry_run_out" | grep -qF "add '.rite/wiki/raw/.negation-probe'"; then
     echo "✅ .gitignore negation verification OK: $dry_run_out"
