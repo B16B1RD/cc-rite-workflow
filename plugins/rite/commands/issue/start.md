@@ -1299,7 +1299,7 @@ Invoke `skill: "rite:pr:fix"`.
 
 #### 5.4.4.1 Workflow Incident Detection (#366, expanded by #524)
 
-> **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption, **Wiki ingest skip / failure**) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) for the full specification.
+> **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption, **Wiki ingest skip / failure**, **Gitignore drift**) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) for the full specification.
 
 **Detection scope** — recognised sentinel `type` values:
 
@@ -1311,8 +1311,9 @@ Invoke `skill: "rite:pr:fix"`.
 | `wiki_ingest_skipped` | review/fix/close Phase X.X.W when `wiki.enabled=false` / `wiki.auto_ingest=false` (#524), **OR** `wiki-ingest-commit.sh` exits 2 (wiki branch missing locally — fresh clone, #528 PR #529) | AskUserQuestion → register Issue / skip. Two sub-cases: (a) **configuration disable** (`wiki.enabled=false` / `auto_ingest=false`) is intentional — user typically skips; (b) **`commit_branch_missing`** is an operational state on fresh clones — recommended action is to run `git fetch origin wiki:wiki` or `/rite:wiki:init` and re-run the enclosing phase, rather than creating a tracking Issue |
 | `wiki_ingest_failed` | review/fix/close Phase X.X.W when `wiki-ingest-trigger.sh` exits non-zero / non-2 (#524), **OR** `wiki-ingest-commit.sh` exits non-0/2/4 (git stash/checkout/commit failure, #528 PR #529) | AskUserQuestion → register Issue / skip — recommended to register because both trigger and commit paths are supposed to be reliable |
 | `wiki_ingest_push_failed` | review/fix/close Phase X.X.W when `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed (#528 PR #529, addresses the silent-success regression) | AskUserQuestion → register Issue / skip — recommended to **register** because the local commit is preserved but origin diverges from local. Manual recovery: `git push origin wiki` on the enclosing dev branch once connectivity / auth is restored |
+| `gitignore_drift` | `/rite:lint` Phase 3.9 when `gitignore-health-check.sh` detects that the `.rite/wiki/` rule (PR #564 last-line-of-defense) is missing from `.gitignore`, OR when `same_branch` strategy lacks the required negation entry (#567) | AskUserQuestion → register Issue / skip — recommended to **register** because a missing `.rite/wiki/` rule allows wiki-ingest-trigger.sh temporary writes to leak into develop branch PR diffs. Manual recovery: restore the `.rite/wiki/` entry (and `!.rite/wiki/` negation for `same_branch`) to `.gitignore` |
 
-The processing flow below applies uniformly to all six types — there is no per-type branching beyond the table above.
+The processing flow below applies uniformly to all seven types — there is no per-type branching beyond the table above.
 
 **Sub-case routing note for `wiki_ingest_skipped` with `reason=commit_branch_missing`**: when the sentinel `details` field or the accompanying `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` status line indicates the operational fresh-clone sub-case, the AskUserQuestion offered here defaults to **"skip"** (no tracking Issue) and shows the recovery hint as the primary option: run `git fetch origin wiki:wiki` on the current working tree, then re-run the enclosing phase. Creating a tracking Issue for `commit_branch_missing` would be an anti-pattern because the state is transient and user-resolvable within seconds. The configuration-disable sub-case retains the existing behaviour (the prompt makes the state visible but user typically skips).
 
