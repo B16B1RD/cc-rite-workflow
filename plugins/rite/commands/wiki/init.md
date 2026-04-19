@@ -204,17 +204,21 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
   ```
   # <<< gitignore-wiki-section-end (anchor / F-09 対応)
   ```
-- `new_string`: **以下の 7 行を literal で指定**する（`old_string` の 1 行 + 改行 + negation ブロック 6 行。**コードフェンス ` ``` ` は含めない**）:
-  ```
-  # <<< gitignore-wiki-section-end (anchor / F-09 対応)
-  # >>> gitignore-wiki-negation-start (Issue #568 — same_branch 戦略用 negation 自動注入)
-  # 本プロジェクトは same_branch 戦略のため、.rite/wiki/ 配下を再包含する。
-  # verification 手順は本 .gitignore 上部の Step 1-5 コメントを参照。
-  !.rite/wiki/
-  !.rite/wiki/**
-  # <<< gitignore-wiki-negation-end
-  ```
-  **注意点**: (1) 末尾改行は Edit ツールが自動付与するため new_string の末尾に付与しない (2) 提示したコードフェンス ` ``` ` は Markdown の表示用で、new_string には含めない (3) old_string と new_string の先頭行は同一文字列で、その後に 6 行の negation ブロックが続く
+- `new_string`: **以下の 7 行を literal で指定する**（`old_string` の 1 行 + 改行 + negation ブロック 6 行）。
+
+以下のコードブロックは Markdown 表示用の参照であり、リスト項目外の top-level fenced block として配置している（リストインデント 2 スペースの混入を避けるため）:
+
+```
+# <<< gitignore-wiki-section-end (anchor / F-09 対応)
+# >>> gitignore-wiki-negation-start (Issue #568 — same_branch 戦略用 negation 自動注入)
+# 本プロジェクトは same_branch 戦略のため、.rite/wiki/ 配下を再包含する。
+# verification 手順は本 .gitignore 上部の Step 1-5 コメントを参照。
+!.rite/wiki/
+!.rite/wiki/**
+# <<< gitignore-wiki-negation-end
+```
+
+**注意点**: (1) 末尾改行は Edit ツールが自動付与するため new_string の末尾に付与しない (2) 提示したコードフェンス ` ``` ` は Markdown の表示用で、new_string には含めない (3) old_string と new_string の先頭行は同一文字列で、その後に 6 行の negation ブロックが続く (4) 上記コードブロックは top-level fenced block として配置しているため各行の**先頭インデントは 0 スペース**。ただし Markdown レンダラや Claude が参照時に余計なインデントを認識した場合は、new_string では**行頭を `#` または `!` から直接開始する**（`  # >>> ...` のような先頭空白は含めない）
 
 `!.rite/wiki/**` は glob を明示する防御的エントリで、単独では機能しない（parent exclusion が残るため）が、gitignore を消費する一部のツール (IDE の VCS integration 等) への defense-in-depth として推奨される（`.gitignore` 上部 Step 1 コメントと同じ根拠）。
 
@@ -223,27 +227,41 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 > **Reference**: `.gitignore` L84-L113 の「動作確認の正典」節。`git add --dry-run` を使用し、`git check-ignore -v` は使わない（rc と出力の両方が negation 成立と単純 match で同じ値を取り得るため決定論的判別不能）。canonical impl は `plugins/rite/hooks/scripts/gitignore-health-check.sh` L281 付近の `grep -qF` パターン参照。
 
 ```bash
-# F-02 対応: signal-specific trap で probe ファイルの残留を防ぐ。
+# F-02 対応 (re-review F-02): signal-specific trap で probe ファイルの残留を防ぐ。
 # SIGINT/SIGTERM/SIGHUP で rm -f がスキップされ、Phase 3.1 の same_branch ブロックの
 # `git add .rite/wiki/` に probe (.negation-probe) が混入する経路を塞ぐ。
-# 既存 Phase 3.1 の _rite_wiki_init_cleanup と同パターン (canonical bash-trap-patterns.md 準拠)。
-_rite_wiki_negation_probe_cleanup() {
-  rm -f .rite/wiki/raw/.negation-probe
+# 関数名は bash-trap-patterns.md L140-L151 の命名規約 `_rite_<scope>_<phase>_cleanup` に準拠。
+# (Phase 3.1 の `_rite_wiki_init_cleanup` は規約確立前の旧命名維持対象 — bash-trap-patterns.md L154
+#  参照。本 Phase 1.3 は新規追加なので規約準拠の `_rite_wiki_init_phase13_cleanup` を採用。)
+_rite_wiki_init_phase13_cleanup() {
+  rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" .rite/wiki/raw/.negation-probe
 }
-trap 'rc=$?; _rite_wiki_negation_probe_cleanup; exit $rc' EXIT
-trap '_rite_wiki_negation_probe_cleanup; exit 130' INT
-trap '_rite_wiki_negation_probe_cleanup; exit 143' TERM
-trap '_rite_wiki_negation_probe_cleanup; exit 129' HUP
+trap 'rc=$?; _rite_wiki_init_phase13_cleanup; exit $rc' EXIT
+trap '_rite_wiki_init_phase13_cleanup; exit 130' INT
+trap '_rite_wiki_init_phase13_cleanup; exit 143' TERM
+trap '_rite_wiki_init_phase13_cleanup; exit 129' HUP
 
-# F-07 対応: mkdir / touch の失敗を明示的にハンドリングする。
+# F-07 + re-review F-04 対応: mkdir / touch の失敗を明示的にハンドリング + stderr を退避。
 # permission/disk full/readonly 等で probe 作成失敗時、verification 自体を skip して
 # WARNING を表示する (non-blocking、Phase 2 へ進行)。silent に `git add --dry-run` を
 # 実行して pathspec mismatch 警告 (rc=128) を「negation 不在」と誤認することを防ぐ。
+# stderr は tempfile に退避し、失敗時に head -3 で先頭行を stderr に流す (canonical lint.md L620-L625)。
+probe_mkdir_err=$(mktemp /tmp/rite-wiki-init-p13-mkdir-err-XXXXXX 2>/dev/null) || probe_mkdir_err=""
+probe_touch_err=$(mktemp /tmp/rite-wiki-init-p13-touch-err-XXXXXX 2>/dev/null) || probe_touch_err=""
 probe_created="false"
-if mkdir -p .rite/wiki/raw 2>/dev/null && touch .rite/wiki/raw/.negation-probe 2>/dev/null; then
+if mkdir -p .rite/wiki/raw 2>"${probe_mkdir_err:-/dev/null}" && \
+   touch .rite/wiki/raw/.negation-probe 2>"${probe_touch_err:-/dev/null}"; then
   probe_created="true"
 else
   echo "WARNING: negation probe の作成に失敗しました (read-only fs / permission / disk full の可能性)" >&2
+  if [ -n "$probe_mkdir_err" ] && [ -s "$probe_mkdir_err" ]; then
+    echo "  mkdir stderr (先頭 3 行):" >&2
+    head -3 "$probe_mkdir_err" | sed 's/^/    /' >&2
+  fi
+  if [ -n "$probe_touch_err" ] && [ -s "$probe_touch_err" ]; then
+    echo "  touch stderr (先頭 3 行):" >&2
+    head -3 "$probe_touch_err" | sed 's/^/    /' >&2
+  fi
   echo "  verification を skip して Phase 2 に進行します (non-blocking)" >&2
   echo "  Phase 3.1 の git add で negation が効いていなければそこで改めてエラーが出ます" >&2
 fi
@@ -266,11 +284,14 @@ if [ "$probe_created" = "true" ]; then
   fi
 fi
 
-# cleanup trap を明示解除 (正常完了時)。trap handler は probe を削除する。
-# trap - で正常完了時の early-rm と signal 中断時の trap-rm が二重にならないよう、
-# cleanup を trap 経由に一本化する。
+# re-review F-01 対応: 明示 rm → trap 解除 の順序に統一 (canonical: lint.md L1586-L1591)。
+# 役割分離:
+#   - 明示 rm (通常パス): 正常完了時の同期 cleanup。通常経路で確実に probe を削除する
+#   - trap cleanup (signal 経路 defense-in-depth): SIGINT/SIGTERM/SIGHUP で rm に到達できなかった
+#     場合の保険。EXIT trap も rc=0 では走らないため、正常経路の一次 cleanup は明示 rm が担う
+# 明示 rm を trap 解除より前に置くことで、rm〜trap 解除間の micro-race window を排除する。
+rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" .rite/wiki/raw/.negation-probe
 trap - EXIT INT TERM HUP
-rm -f .rite/wiki/raw/.negation-probe
 ```
 
 **成功時**: `✅ .gitignore に negation エントリを追記しました` を追加で表示し Phase 2 へ。
