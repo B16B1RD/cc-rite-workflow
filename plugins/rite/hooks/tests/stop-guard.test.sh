@@ -797,6 +797,72 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-608-A: cleanup phase (active=true, fresh) → exit 2 (block)
+# Verifies that the cleanup initial phase added in #608 follow-up surfaces a HINT
+# and blocks premature stop. Uses the direct `bash "$GUARD" 2>"$stderr_file"` pattern
+# (parity with TC-475-A) because run_guard sets LAST_STDERR_FILE inside a subshell.
+# --------------------------------------------------------------------------
+echo "TC-608-A: cleanup active → exit 2 (block)"
+dir608a="$GUARD_TEST_DIR/tc608a"
+mkdir -p "$dir608a"
+create_state_file "$dir608a" "{\"active\": true, \"phase\": \"cleanup\", \"previous_phase\": \"\", \"next_action\": \"Execute cleanup phases. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608a\"}"
+stderr_file608a="$(mktemp "$GUARD_TEST_DIR/stderr608a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608a\", \"session_id\": \"sid-608a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608a") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q "Phase 0" "$stderr_file608a"; then
+  pass "cleanup active → blocked with Phase 0 HINT in stderr"
+else
+  fail "expected exit 2 with Phase 0 HINT, got rc=$rc stderr='$(cat "$stderr_file608a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-B: cleanup → cleanup_pre_ingest transition is whitelist-valid
+# --------------------------------------------------------------------------
+echo "TC-608-B: cleanup → cleanup_pre_ingest whitelist-valid"
+dir608b="$GUARD_TEST_DIR/tc608b"
+mkdir -p "$dir608b"
+create_state_file "$dir608b" "{\"active\": true, \"phase\": \"cleanup_pre_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608b\"}"
+stderr_file608b="$(mktemp "$GUARD_TEST_DIR/stderr608b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608b\", \"session_id\": \"sid-608b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608b") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608b"; then
+  pass "cleanup→cleanup_pre_ingest accepted by whitelist (no invalid_transition)"
+else
+  fail "expected exit 2 without invalid_transition, got rc=$rc stderr='$(cat "$stderr_file608b")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-C: invalid transition cleanup → cleanup_post_ingest (bypassing pre_ingest)
+# --------------------------------------------------------------------------
+echo "TC-608-C: invalid transition cleanup → cleanup_post_ingest → blocked with invalid_transition"
+dir608c="$GUARD_TEST_DIR/tc608c"
+mkdir -p "$dir608c"
+create_state_file "$dir608c" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"skipped pre_ingest\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608c\"}"
+stderr_file608c="$(mktemp "$GUARD_TEST_DIR/stderr608c.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608c\", \"session_id\": \"sid-608c\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608c") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q "Invalid phase transition" "$stderr_file608c"; then
+  pass "invalid transition cleanup→cleanup_post_ingest detected"
+else
+  fail "expected exit 2 with Invalid phase transition, got rc=$rc stderr='$(cat "$stderr_file608c")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-D: cleanup_completed is terminal — no block
+# --------------------------------------------------------------------------
+echo "TC-608-D: cleanup_completed + active=false → exit 0 (terminal)"
+dir608d="$GUARD_TEST_DIR/tc608d"
+mkdir -p "$dir608d"
+create_state_file "$dir608d" "{\"active\": false, \"phase\": \"cleanup_completed\", \"next_action\": \"none\", \"updated_at\": \"$fresh_ts\", \"session_id\": \"sid-608d\"}"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608d\", \"session_id\": \"sid-608d\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "cleanup_completed terminal allows stop"
+else
+  fail "expected exit 0, got $rc"
+fi
+
+# --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ $FAIL -gt 0 ]; then

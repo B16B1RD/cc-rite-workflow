@@ -155,7 +155,7 @@ flow-state は以下のいずれかの方法で正しい schema (`active`, `issu
 
 ### 期待される動作（全 Scenario 共通）
 
-- stop-guard が exit 2 で block し、CREATE_HINT を含むメッセージを stderr に出力
+- stop-guard が exit 2 で block し、WORKFLOW_HINT を含むメッセージを stderr に出力
 - `workflow-incident-emit.sh` から capture した `[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fallback_adopted; ...` sentinel line が stderr に echo される（stop-hook stderr は Claude Code の exit-2 契約で assistant にフィードされる）
 - diag log (`.rite-stop-guard-diag.log`) に `incident_emit type=manual_fallback_adopted rc=0 sentinel_captured=1 phase={phase}` が記録される
 
@@ -176,7 +176,7 @@ tail -10 .rite-stop-guard-diag.log | grep incident_emit
 | 症状 | 確認先 |
 |------|--------|
 | sentinel_captured=0 の log が残る | `plugins/rite/hooks/workflow-incident-emit.sh` の実行権限 / shebang / 構文を確認 |
-| diag log に `incident_emit` 行が全く残らない | `CREATE_INCIDENT_TYPE` が set されていない = `CREATE_HINT` が空 → 該当 phase が case 分岐に含まれているか確認 |
+| diag log に `incident_emit` 行が全く残らない | `WORKFLOW_INCIDENT_TYPE` が set されていない = `WORKFLOW_HINT` が空 → 該当 phase が case 分岐に含まれているか確認 |
 | stderr に sentinel が現れない | stop-guard.sh で stdout ではなく stderr への echo リダイレクトが正しいか確認 (`>&2`) |
 
 ## 回帰検出のトリガー

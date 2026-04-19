@@ -127,7 +127,7 @@ if [ ! -f "$CREATE_REGISTER" ]; then
   fail "create-register.md not found at $CREATE_REGISTER"
 else
   # AC-3 non-regression: the raw sentinel string must still be present somewhere
-  # in the file so hook/grep contracts (stop-guard.sh CREATE_HINT grep etc.)
+  # in the file so hook/grep contracts (stop-guard.sh WORKFLOW_HINT grep etc.)
   # continue to match.
   if grep -qE '\[create:completed:' "$CREATE_REGISTER"; then
     pass "create-register.md: contains [create:completed:...] string (AC-3 non-regression)"

@@ -271,9 +271,8 @@ fi
 # does NOT change the block decision below.
 #
 # WORKFLOW_HINT / WORKFLOW_INCIDENT_TYPE は汎用名 (#604)。
-# 旧 CREATE_HINT / CREATE_INCIDENT_TYPE は create_* 専用だったが、cleanup_* /
-# ingest_* も同型のため一般化した。後方互換のため legacy 名はそのまま参照可能だが、
-# 本実装では generic な変数名のみ使用する。
+# 旧 CREATE_HINT / CREATE_INCIDENT_TYPE は create_* 専用だったが、cleanup_* も
+# 同型のため一般化した (#608 follow-up: ingest_* は廃止済み)。
 WORKFLOW_HINT=""
 WORKFLOW_INCIDENT_TYPE=""
 case "$PHASE" in
@@ -286,18 +285,19 @@ case "$PHASE" in
   create_post_delegation)
     WORKFLOW_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
     ;;
+  cleanup)
+    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 0 was just activated and Phase 1-4 have not completed yet. Continue executing the cleanup phases (state verification → branch operations → wiki ingest decision in Phase 4.W.1) in the SAME response turn. DO NOT stop before reaching at least cleanup_pre_ingest (Phase 4.W.2) or cleanup_completed (Phase 5)."
+    ;;
   cleanup_pre_ingest)
-    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 (rite:wiki:ingest invoke) is about to start or in-flight. When it returns, run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel) in the SAME response turn. DO NOT stop before [cleanup:completed] is output."
+    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state, so the caller phase remains pinned during the entire sub-skill invocation). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned [ingest:completed], run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel) in the SAME response turn. DO NOT stop before [cleanup:completed] is output."
     ;;
   cleanup_post_ingest)
     WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. Immediately output the cleanup completion message + next-steps block + <!-- [cleanup:completed] --> HTML comment sentinel as the absolute last line, then deactivate flow state (cleanup_completed, active: false) in the SAME response turn. DO NOT stop."
     ;;
-  ingest_pre_lint)
-    WORKFLOW_HINT="HINT: /rite:wiki:ingest Phase 8 (auto-lint Skill invoke) is about to start or in-flight. When it returns, run 🚨 Mandatory After Auto-Lint (writes ingest_post_lint) → Phase 9 Completion Report (emits <!-- [ingest:completed] --> sentinel + caller continuation HTML comment) in the SAME response turn. DO NOT stop before [ingest:completed] is output."
-    ;;
-  ingest_post_lint)
-    WORKFLOW_HINT="HINT: rite:wiki:lint returned and ingest_post_lint is recorded. Phase 9 Completion Report has NOT been output yet. Immediately output the ingest completion message + next-steps block + caller continuation HTML comment + <!-- [ingest:completed] --> HTML comment sentinel as the absolute last line in the SAME response turn. DO NOT stop."
-    ;;
+  # NOTE (#608 follow-up): ingest_pre_lint / ingest_post_lint case branches were removed
+  # as YAGNI dead code. ingest.md does not call flow-state-update.sh (Phase 9.1 Step 1
+  # 設計判断), so these phase names are never written and stop-guard never observes them.
+  # See plugins/rite/hooks/phase-transition-whitelist.sh for the matching whitelist removal.
 esac
 
 # Consolidate sentinel type: every active workflow blocked here is treated as a
@@ -326,7 +326,12 @@ if [ -n "$WORKFLOW_INCIDENT_TYPE" ]; then
     # mktemp failure is recorded to diag log (not silent fallback — #552 cycle 2 F-04).
     _emit_stderr=""
     if _emit_stderr=$(mktemp 2>/dev/null); then
-      # register tempfile for trap cleanup (trap scope: EXIT/INT/TERM, appended to existing TMP_STATE trap)
+      # register tempfile for trap cleanup (trap scope: EXIT/INT/TERM).
+      # NOTE: this **replaces** the existing TMP_STATE trap installed at L231 with a new
+      # handler that cleans up BOTH TMP_STATE and _emit_stderr. bash trap cannot append
+      # actions to an existing handler — the new `trap '...'` declaration overwrites the
+      # previous one for the same signal set. The replacement keeps `rm -f "$TMP_STATE"`
+      # explicit so TMP_STATE cleanup still happens.
       trap 'rm -f "$TMP_STATE" "${_emit_stderr:-}" 2>/dev/null' EXIT TERM INT
     else
       log_diag "incident_emit_stderr_mktemp_failed session_id=${SESSION_ID:-unknown}"
