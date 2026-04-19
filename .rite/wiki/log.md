@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-19T12:30:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #600 cycle 1 HIGH: `Phase 6.0 (line 698)` hardcoded line 参照が +2 行差分で stale 化した self-referential drift 検出 (raw: pr-600) |
+| 2026-04-19T12:30:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #600 fix: `(line 698)` を `LC_ALL=C cat .rite/wiki/log.md` semantic code slice 参照に置換し Grep 機械検証可能 + +N 行 drift 耐性を確保 (raw: pr-600) |
+| 2026-04-19T12:30:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #600 cycle 2: code slice 参照の canonical 階層を実証 (Phase 番号 + 特徴的コード片 > Phase 番号 + heading > DRIFT-CHECK ANCHOR > literal 行番号 禁止) (raw: pr-600) |
 | 2026-04-19T12:00:25+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=0 |
 | 2026-04-19T12:00:25+00:00 | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #599 review: sibling entry 間 parallelism suffix (「で同型」) drift の cross-validation 検出事例を追加 (raw: pr-599) |
 | 2026-04-19T12:00:25+00:00 | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #599 re-review: 3 文字 micro-fix による 1 cycle 収束 (1 finding → 0 findings mergeable) の success pattern (raw: pr-599-rereview) |

@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-19T03:30:00+00:00"
+updated: "2026-04-19T12:30:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -10,6 +10,12 @@ sources:
     ref: "raw/fixes/20260418T122707Z-pr-579.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T034237Z-pr-586-cycle5.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T122543Z-pr-600.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260419T122750Z-pr-600.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T123103Z-pr-600.md"
 tags: []
 confidence: high
 ---
@@ -58,6 +64,23 @@ PR #586 cycle 4 fix で Phase 1.3 ブロック (約 235 行) を init.md の Pha
 2. **大量行挿入を伴う PR では最終 commit 後に行番号参照を grep で走査**: `grep -nE 'L[0-9]+' <file>` で全件取り出して目視再確認
 3. **将来的に `/rite:lint` でコメント内行番号参照を検出する lint を追加する候補**: `L[0-9]+` を含むコメントは機械検証できないため、anchor / Phase 番号への置換を促す
 
+### code slice 参照による semantic identifier の canonical 実証 (PR #600 での evidence)
+
+PR #600 cycle 1 では `plugins/rite/commands/wiki/lint.md` のコメント内に `Phase 6.0 (line 698)` という「Phase 番号 + literal 行番号」の混成表現が残っていた。同 PR の +2 行差分で実体は L700 に shift し、コメントが即 stale 化した。cycle 2 fix で `(line 698)` を `LC_ALL=C cat .rite/wiki/log.md` という **対象コードの特徴的コード片による論理参照** に置換することで完全解消。両 reviewer (prompt-engineer / code-quality) が以下を独立して高く評価:
+
+- **Grep で実体存在が機械検証可能**: 将来の読者が `grep 'LC_ALL=C cat .rite/wiki/log.md' lint.md` で target を確実に特定できる
+- **PR の +N 行差分で stale 化しない**: 行番号 anchor のように shift しない
+- **Phase 番号 + code slice の組み合わせ**: Phase 番号が「どの論理階層か」を示し、code slice が「その階層のどの具体行か」を指す 2 段階の semantic identifier として機能
+
+canonical 記法の階層 (drift 耐性が高い順):
+
+1. **Phase 番号 + 特徴的コード片** (最推奨、PR #600 実証): `Phase 6.0 の \`LC_ALL=C cat .rite/wiki/log.md\``
+2. **Phase 番号 + heading / function 名**: `Phase 5.0.c canonical commit message`
+3. **DRIFT-CHECK ANCHOR の semantic name**: `# >>> DRIFT-CHECK ANCHOR: ... <<<`
+4. **literal 行番号** (禁止): `(line 698)` / `L1331-1332`
+
+既存 convention (PR #564 F-06 で確立) を再導入時に違反する self-drift pattern として、commit 前 `grep -nE '\(line [0-9]+\)' <file>` で検出できる。
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
@@ -69,3 +92,6 @@ PR #586 cycle 4 fix で Phase 1.3 ブロック (約 235 行) を init.md の Pha
 - [PR #579 review results (cycle 1)](../../raw/reviews/20260418T122454Z-pr-579.md)
 - [PR #579 fix results (cycle 1)](../../raw/fixes/20260418T122707Z-pr-579.md)
 - [PR #586 cycle 5 review (大量行挿入時のコメント行番号 drift)](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)
+- [PR #600 cycle 1 review (ハードコード行番号参照の self-referential drift 検出)](../../raw/reviews/20260419T122543Z-pr-600.md)
+- [PR #600 fix results (semantic code slice 参照への置換による完全解消)](../../raw/fixes/20260419T122750Z-pr-600.md)
+- [PR #600 cycle 2 review (code slice 参照の canonical 実証)](../../raw/reviews/20260419T123103Z-pr-600.md)
