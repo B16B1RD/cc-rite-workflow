@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-19T12:30:00+00:00"
+updated: "2026-04-19T13:48:38+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -16,6 +16,8 @@ sources:
     ref: "raw/fixes/20260419T122750Z-pr-600.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T123103Z-pr-600.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T134838Z-pr-605.md"
 tags: []
 confidence: high
 ---
@@ -81,6 +83,25 @@ canonical 記法の階層 (drift 耐性が高い順):
 
 既存 convention (PR #564 F-06 で確立) を再導入時に違反する self-drift pattern として、commit 前 `grep -nE '\(line [0-9]+\)' <file>` で検出できる。
 
+### line 番号 literal の brittleness 実証 + bidirectional backlink 拡張 (PR #605 での evidence)
+
+PR #605 で init.md L253 / L320 のコメント内に残存していた `L270-277` / `L84-L113` / `L281 付近` を semantic anchor 参照に置換した際、次の 2 点が実証された:
+
+1. **brittleness 実証**: 旧 `L270-277` は実際の該当コード (L275-L282) と **±3 行ずれ** ていた。参照先 `gitignore-health-check.sh` が minor revision を重ねるうち silent に drift した典型例で、「行番号 literal は書いた時点から陳腐化が始まる」原理を裏付けた。anchor 参照であれば grep で実体を再同定できるため、この drift は発生しない。
+2. **bidirectional backlink sub-pattern (新規)**: canonical 側 ANCHOR コメントに `# Downstream reference: <downstream-file>:<semantic-name>` という **逆方向のリンク** を併記することで、canonical 側から downstream (参照元) を grep 1 発で特定可能になる。片方向リンク (downstream → canonical のみ) では、canonical を編集する開発者が「この ANCHOR が他のどこから参照されているか」を知る手段がなく silent drift を誘発する。code-quality reviewer 推奨の強化策。
+
+canonical 側のテンプレート拡張例:
+
+```bash
+# >>> DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture <<<
+# Downstream reference: plugins/rite/commands/wiki/init.md:Phase 1.3.4
+add_dry_err=$(mktemp ...)
+if ! git add ... 2>"$add_dry_err"; then
+  ...
+fi
+# >>> END DRIFT-CHECK ANCHOR <<<
+```
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
@@ -95,3 +116,4 @@ canonical 記法の階層 (drift 耐性が高い順):
 - [PR #600 cycle 1 review (ハードコード行番号参照の self-referential drift 検出)](../../raw/reviews/20260419T122543Z-pr-600.md)
 - [PR #600 fix results (semantic code slice 参照への置換による完全解消)](../../raw/fixes/20260419T122750Z-pr-600.md)
 - [PR #600 cycle 2 review (code slice 参照の canonical 実証)](../../raw/reviews/20260419T123103Z-pr-600.md)
+- [PR #605 review results (±3 行 drift brittleness 実証 + bidirectional backlink sub-pattern)](../../raw/reviews/20260419T134838Z-pr-605.md)
