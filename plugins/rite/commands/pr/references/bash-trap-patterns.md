@@ -135,6 +135,8 @@ _rite_<scope>_<phase>_cleanup() {
 - `plugins/rite/commands/wiki/lint.md` Phase 6.0 (`_rite_wiki_lint_phase60_cleanup`)
 - `plugins/rite/commands/wiki/lint.md` Phase 6.2 (`_rite_wiki_lint_phase62_cleanup`) — PR #564 で追加、page_err / awk_diag / sort_err の 3 tempfile を保護
 - `plugins/rite/commands/wiki/lint.md` Phase 8.3 (`_rite_wiki_lint_phase83_cleanup`) — PR #564 cycle 11 F-03 対応で追加、add_err / commit_err の 2 tempfile を保護 (same_branch path のみ)
+- `plugins/rite/commands/wiki/ingest.md` Phase 2.2 (`_rite_wiki_ingest_phase22_cleanup`) — Issue #566 対応で追加、`find_err` tempfile を保護 (PR #564 で lint.md 側が canonical 化された後、ingest.md 側で trap 未保護のまま残っていた site を対称化)
+- `plugins/rite/commands/wiki/ingest.md` Phase 2.3 (`_rite_wiki_ingest_phase23_cleanup`) — Issue #566 対応で追加、`cat_err` tempfile を保護。`for candidate` ループ内で trap が反復ごとに再設定されるが bash 仕様上 idempotent
 - `plugins/rite/commands/wiki/ingest.md` Phase 5.2 (`_rite_wiki_ingest_phase52_cleanup`) — PR #564 F-01 対応で旧名 `_rite_ingest_phase52_cleanup` から `wiki` scope prefix 付きにリネーム (scope 衝突回避、規約準拠)。`_reset_err` tempfile を保護
 
 命名規約:
