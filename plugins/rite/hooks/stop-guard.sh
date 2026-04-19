@@ -257,11 +257,19 @@ STOP_MSG
 fi
 
 # Best-effort hint for sub-skill return phases (#525, #552, #604).
-# When the LLM stops implicitly after a sub-skill return (e.g., right after
-# [interview:skipped] / [interview:completed] / [create:completed:{N}] /
-# [cleanup:completed] / [ingest:completed]), surface a phase-specific
+# When the LLM stops implicitly after a sub-skill return, surface a phase-specific
 # continuation hint so the next prompt re-entry makes the correct continuation
 # obvious.
+#
+# Sentinel → observed caller phase mapping:
+#   - Sub-skill return sentinels (caller phase is a pre-transition phase):
+#     * [interview:skipped] / [interview:completed] → caller phase: create_post_interview
+#     * [create:completed:{N}]                        → caller phase: create_delegation / create_post_delegation
+#     * [ingest:completed]                            → caller phase: cleanup_pre_ingest
+#       (ingest_* phases are intentionally absent — ingest.md does not write flow-state,
+#        see YAGNI note below and phase-transition-whitelist.sh)
+#   - Caller-emitted terminal sentinel (caller emits it themselves at terminal phase):
+#     * [cleanup:completed]                           → caller phase: cleanup_post_ingest → cleanup_completed
 #
 # Additionally (#552), capture the helper's sentinel line and echo it to
 # stderr (the same channel as STOP_MSG). In Claude Code, stop-hook stderr is

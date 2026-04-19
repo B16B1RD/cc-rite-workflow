@@ -314,6 +314,53 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-608-WARN-A: cleanup_pre_ingest lifecycle unfinished → stderr warning (#604)
+# Verifies the cleanup lifecycle warning path added in session-end.sh:70-100.
+# --------------------------------------------------------------------------
+echo "TC-608-WARN-A: cleanup_pre_ingest active → /rite:pr:cleanup lifecycle warning"
+dir608wa="$TEST_DIR/tc608wa"
+mkdir -p "$dir608wa"
+create_state_file "$dir608wa" '{"active": true, "phase": "cleanup_pre_ingest", "issue_number": 604, "branch": ""}'
+run_hook "$dir608wa" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] \
+    && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
+    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+  pass "cleanup_pre_ingest unfinished → cleanup-specific warning emitted"
+else
+  fail "expected /rite:pr:cleanup lifecycle warning, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
+# TC-608-WARN-B: cleanup_completed → NO warning (lifecycle finished)
+echo "TC-608-WARN-B: cleanup_completed → no warning"
+dir608wb="$TEST_DIR/tc608wb"
+mkdir -p "$dir608wb"
+create_state_file "$dir608wb" '{"active": true, "phase": "cleanup_completed", "issue_number": 604, "branch": ""}'
+run_hook "$dir608wb" >/dev/null || true
+if grep -q "lifecycle was not completed" "${LAST_STDERR_FILE:-/dev/null}"; then
+  fail "unexpected warning for cleanup_completed"
+else
+  pass "cleanup_completed → no warning (lifecycle finished)"
+fi
+echo ""
+
+# TC-608-WARN-C: create_* phases must NOT be misclassified as cleanup lifecycle
+# (regression guard — ensures the cleanup detection branch doesn't swallow create_*)
+echo "TC-608-WARN-C: create_interview active → create-specific warning (not cleanup)"
+dir608wc="$TEST_DIR/tc608wc"
+mkdir -p "$dir608wc"
+create_state_file "$dir608wc" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
+run_hook "$dir608wc" >/dev/null || true
+# create 側の warning が出て、cleanup 側の warning は出ないこと
+if grep -q "/rite:issue:create lifecycle" "${LAST_STDERR_FILE:-/dev/null}" \
+    && ! grep -q "/rite:pr:cleanup lifecycle" "${LAST_STDERR_FILE:-/dev/null}"; then
+  pass "create_interview → create warning (no cleanup misclassification)"
+else
+  fail "expected create-specific warning without cleanup warning, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

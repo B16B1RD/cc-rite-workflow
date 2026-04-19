@@ -805,16 +805,21 @@ fi
 echo "TC-608-A: cleanup active → exit 2 (block)"
 dir608a="$GUARD_TEST_DIR/tc608a"
 mkdir -p "$dir608a"
-# Defensive: TC-475-A 削除/移動時の cross-TC 依存を排除するため fresh_ts を再代入
+# Defensive: fresh_ts 未定義時のフォールバックで cross-TC 独立性を担保
+# (TC-475-A が定義する fresh_ts を優先し、単独実行時は新規生成する)
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608a" "{\"active\": true, \"phase\": \"cleanup\", \"previous_phase\": \"\", \"next_action\": \"Execute cleanup phases. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608a\"}"
 stderr_file608a="$(mktemp "$GUARD_TEST_DIR/stderr608a.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608a\", \"session_id\": \"sid-608a\"}"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608a") && rc=0 || rc=$?
-if [ $rc -eq 2 ] && grep -q "/rite:pr:cleanup Phase 1.0" "$stderr_file608a"; then
-  pass "cleanup active → blocked with cleanup-specific HINT in stderr"
+# HINT の前半 (Phase 1.0) と後半 (cleanup_pre_ingest) を 2 段で検証し、
+# HINT 文言が改変された場合の regression を確実に検出する
+if [ $rc -eq 2 ] \
+    && grep -q "/rite:pr:cleanup Phase 1.0" "$stderr_file608a" \
+    && grep -q "cleanup_pre_ingest" "$stderr_file608a"; then
+  pass "cleanup active → blocked with cleanup-specific HINT (Phase 1.0 + cleanup_pre_ingest)"
 else
-  fail "expected exit 2 with /rite:pr:cleanup Phase 1.0 HINT, got rc=$rc stderr='$(cat "$stderr_file608a")'"
+  fail "expected exit 2 with HINT containing both 'Phase 1.0' and 'cleanup_pre_ingest', got rc=$rc stderr='$(cat "$stderr_file608a")'"
 fi
 
 # --------------------------------------------------------------------------
@@ -823,16 +828,19 @@ fi
 echo "TC-608-B: cleanup → cleanup_pre_ingest whitelist-valid"
 dir608b="$GUARD_TEST_DIR/tc608b"
 mkdir -p "$dir608b"
-# Defensive: TC-608-A 削除/移動時の cross-TC 依存を排除するため fresh_ts を独立再代入
+# Defensive: fresh_ts 未定義時のフォールバックで cross-TC 独立性を担保
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608b" "{\"active\": true, \"phase\": \"cleanup_pre_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608b\"}"
 stderr_file608b="$(mktemp "$GUARD_TEST_DIR/stderr608b.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608b\", \"session_id\": \"sid-608b\"}"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608b") && rc=0 || rc=$?
-if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608b"; then
-  pass "cleanup→cleanup_pre_ingest accepted by whitelist (no invalid_transition)"
+# HINT 内容も検証 (TC-608-A と parity、cleanup_pre_ingest case L291 の regression を検出)
+if [ $rc -eq 2 ] \
+    && ! grep -q "Invalid phase transition" "$stderr_file608b" \
+    && grep -q "Phase 4.W.2 phase recorded" "$stderr_file608b"; then
+  pass "cleanup→cleanup_pre_ingest whitelist-valid + Phase 4.W.2 HINT"
 else
-  fail "expected exit 2 without invalid_transition, got rc=$rc stderr='$(cat "$stderr_file608b")'"
+  fail "expected exit 2 without invalid_transition with Phase 4.W.2 HINT, got rc=$rc stderr='$(cat "$stderr_file608b")'"
 fi
 
 # --------------------------------------------------------------------------
@@ -841,7 +849,7 @@ fi
 echo "TC-608-C: invalid transition cleanup → cleanup_post_ingest → blocked with invalid_transition"
 dir608c="$GUARD_TEST_DIR/tc608c"
 mkdir -p "$dir608c"
-# Defensive: TC-608-A/B 削除/移動時の cross-TC 依存を排除するため fresh_ts を独立再代入
+# Defensive: fresh_ts 未定義時のフォールバックで cross-TC 独立性を担保
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608c" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"skipped pre_ingest\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608c\"}"
 stderr_file608c="$(mktemp "$GUARD_TEST_DIR/stderr608c.XXXXXX")"
@@ -859,15 +867,76 @@ fi
 echo "TC-608-D: cleanup_completed + active=false → exit 0 (terminal)"
 dir608d="$GUARD_TEST_DIR/tc608d"
 mkdir -p "$dir608d"
-# Defensive: TC-608-A/B/C 削除/移動時の cross-TC 依存を排除するため fresh_ts を独立再代入
+# Defensive: fresh_ts 未定義時のフォールバックで cross-TC 独立性を担保
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608d" "{\"active\": false, \"phase\": \"cleanup_completed\", \"next_action\": \"none\", \"updated_at\": \"$fresh_ts\", \"session_id\": \"sid-608d\"}"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608d\", \"session_id\": \"sid-608d\"}"
 output=$(run_guard "$input") && rc=0 || rc=$?
+# NOTE: active=false で stop-guard.sh:81 early exit するため、whitelist terminal acceptance
+# (phase-transition-whitelist.sh:348) は経由しない。`cleanup_completed` を whitelist から削除
+# しても本 TC は pass する false-positive 構造。Terminal acceptance 経由は TC-608-F で検証する。
 if [ $rc -eq 0 ]; then
-  pass "cleanup_completed terminal allows stop"
+  pass "cleanup_completed + active=false → exit 0 (early exit at active check, whitelist not exercised)"
 else
   fail "expected exit 0, got $rc"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-E: cleanup_pre_ingest → cleanup_post_ingest transition is whitelist-valid (Mandatory After)
+# Covers the core transition that Issue #604 multi-layer defense depends on.
+# --------------------------------------------------------------------------
+echo "TC-608-E: cleanup_pre_ingest → cleanup_post_ingest whitelist-valid"
+dir608e="$GUARD_TEST_DIR/tc608e"
+mkdir -p "$dir608e"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608e" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup_pre_ingest\", \"next_action\": \"emit [cleanup:completed]\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608e\"}"
+stderr_file608e="$(mktemp "$GUARD_TEST_DIR/stderr608e.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608e\", \"session_id\": \"sid-608e\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608e") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608e"; then
+  pass "cleanup_pre_ingest→cleanup_post_ingest accepted by whitelist (no invalid_transition)"
+else
+  fail "expected exit 2 without invalid_transition, got rc=$rc stderr='$(cat "$stderr_file608e")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-F: cleanup_post_ingest → cleanup_completed transition is whitelist-valid (Terminal Completion)
+# Covers the terminal transition that must be accepted for Phase 5 Completion Report.
+# active=true でも whitelist pass を保証する。
+# --------------------------------------------------------------------------
+echo "TC-608-F: cleanup_post_ingest → cleanup_completed whitelist-valid (active=true path)"
+dir608f="$GUARD_TEST_DIR/tc608f"
+mkdir -p "$dir608f"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608f" "{\"active\": true, \"phase\": \"cleanup_completed\", \"previous_phase\": \"cleanup_post_ingest\", \"next_action\": \"terminal\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608f\"}"
+stderr_file608f="$(mktemp "$GUARD_TEST_DIR/stderr608f.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608f\", \"session_id\": \"sid-608f\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608f") && rc=0 || rc=$?
+# whitelist の terminal acceptance path を経由して invalid_transition にならないことを検証
+if ! grep -q "Invalid phase transition" "$stderr_file608f"; then
+  pass "cleanup_post_ingest→cleanup_completed accepted by whitelist terminal acceptance (rc=$rc)"
+else
+  fail "expected no invalid_transition, got rc=$rc stderr='$(cat "$stderr_file608f")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-G: Pin current permissive behavior — cleanup → cleanup_completed (skip pre/post_ingest)
+# whitelist.sh:337-343 NOTE に記載された terminal forward-compat により現状受理される。
+# 将来 tighten された際に TC 追加が必要であることを pin する目的。
+# --------------------------------------------------------------------------
+echo "TC-608-G: cleanup → cleanup_completed direct skip is currently accepted (terminal forward-compat)"
+dir608g="$GUARD_TEST_DIR/tc608g"
+mkdir -p "$dir608g"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608g" "{\"active\": true, \"phase\": \"cleanup_completed\", \"previous_phase\": \"cleanup\", \"next_action\": \"terminal\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608g\"}"
+stderr_file608g="$(mktemp "$GUARD_TEST_DIR/stderr608g.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608g\", \"session_id\": \"sid-608g\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608g") && rc=0 || rc=$?
+# 現状は terminal forward-compat により受理される (whitelist tighten 時に本 TC の更新が必要)
+if ! grep -q "Invalid phase transition" "$stderr_file608g"; then
+  pass "cleanup→cleanup_completed direct skip accepted (terminal forward-compat, NOTE pin)"
+else
+  fail "cleanup→cleanup_completed direct skip was rejected — if whitelist was tightened intentionally, update TC-608-G and phase-transition-whitelist.sh NOTE. stderr='$(cat "$stderr_file608g")'"
 fi
 
 # --------------------------------------------------------------------------
