@@ -836,7 +836,8 @@ create_state_file "$dir608b" "{\"active\": true, \"phase\": \"cleanup_pre_ingest
 stderr_file608b="$(mktemp "$GUARD_TEST_DIR/stderr608b.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608b\", \"session_id\": \"sid-608b\"}"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608b") && rc=0 || rc=$?
-# HINT 内容も検証 (TC-608-A と parity、cleanup_pre_ingest case L291 の regression を検出)
+# HINT 内容も検証 (TC-608-A と parity、stop-guard.sh の 'case "$PHASE" in ... cleanup_pre_ingest)' branch の
+# "Phase 4.W.2 phase recorded" HINT の regression を検出。line-number 参照を避ける理由は cycle 8 F-05 参照)
 if [ $rc -eq 2 ] \
     && ! grep -q "Invalid phase transition" "$stderr_file608b" \
     && grep -q "Phase 4.W.2 phase recorded" "$stderr_file608b"; then
@@ -876,9 +877,11 @@ fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608d" "{\"active\": false, \"phase\": \"cleanup_completed\", \"next_action\": \"none\", \"updated_at\": \"$fresh_ts\", \"session_id\": \"sid-608d\"}"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608d\", \"session_id\": \"sid-608d\"}"
 output=$(run_guard "$input") && rc=0 || rc=$?
-# NOTE: active=false で stop-guard.sh:81 early exit するため、whitelist terminal acceptance
-# (phase-transition-whitelist.sh:348) は経由しない。`cleanup_completed` を whitelist から削除
-# しても本 TC は pass する false-positive 構造。Terminal acceptance 経由は TC-608-F で検証する。
+# NOTE: active=false で stop-guard.sh の `if [ "$ACTIVE" != "true" ]; then exit 0` early exit するため、
+# whitelist の terminal acceptance (`rite_phase_transition_allowed()` の
+# `[ "$next" = "cleanup_completed" ] && return 0` terminal fast-path) は経由しない。
+# `cleanup_completed` を whitelist から削除しても本 TC は pass する false-positive 構造。
+# Terminal acceptance 経由は TC-608-F で検証する。
 if [ $rc -eq 0 ]; then
   pass "cleanup_completed + active=false → exit 0 (early exit at active check, whitelist not exercised)"
 else
@@ -892,6 +895,8 @@ fi
 echo "TC-608-E: cleanup_pre_ingest → cleanup_post_ingest whitelist-valid"
 dir608e="$GUARD_TEST_DIR/tc608e"
 mkdir -p "$dir608e"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608e" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup_pre_ingest\", \"next_action\": \"emit [cleanup:completed]\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608e\"}"
 stderr_file608e="$(mktemp "$GUARD_TEST_DIR/stderr608e.XXXXXX")"
@@ -912,14 +917,22 @@ fi
 echo "TC-608-F: cleanup_post_ingest → cleanup_completed whitelist-valid (active=true path)"
 dir608f="$GUARD_TEST_DIR/tc608f"
 mkdir -p "$dir608f"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608f" "{\"active\": true, \"phase\": \"cleanup_completed\", \"previous_phase\": \"cleanup_post_ingest\", \"next_action\": \"terminal\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608f\"}"
 stderr_file608f="$(mktemp "$GUARD_TEST_DIR/stderr608f.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608f\", \"session_id\": \"sid-608f\"}"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608f") && rc=0 || rc=$?
 # whitelist の terminal acceptance path を経由 + rc=2 (active=true で block 維持) を明示検証
-# NOTE: terminal fast-path (phase-transition-whitelist.sh の terminal forward-compat) と
-# 明示的 edge (cleanup_post_ingest → cleanup_completed) の両方が受理要因となる (どちらが発火しても pass)
+# NOTE (cycle 9 F-04/F-06 明示化): rite_phase_transition_allowed() 内の評価順序上、
+#   terminal fast-path `[ "$next" = "cleanup_completed" ] && return 0` が explicit edge の
+#   for-loop より先に return するため、next=cleanup_completed を input とする本 TC は
+#   **terminal fast-path 経由のみ** が保証される。`["cleanup_post_ingest"]="cleanup_completed"`
+#   の explicit edge entry を削除しても本 TC は依然 pass する false-positive 構造。
+#   explicit edge の regression を検出するには phase-transition-whitelist.sh を source して
+#   rite_phase_transition_allowed() を直接 unit-level で呼び出す別 test file が必要。
+#   (integration test である本ファイルには internal 評価順序まで見えないため本質的限界)
 if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608f"; then
   pass "cleanup_post_ingest→cleanup_completed whitelist pass + rc=2 block maintained"
 else
@@ -936,6 +949,8 @@ fi
 echo "TC-608-G: cleanup → cleanup_completed direct skip is currently accepted (terminal forward-compat)"
 dir608g="$GUARD_TEST_DIR/tc608g"
 mkdir -p "$dir608g"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608g" "{\"active\": true, \"phase\": \"cleanup_completed\", \"previous_phase\": \"cleanup\", \"next_action\": \"terminal\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608g\"}"
 stderr_file608g="$(mktemp "$GUARD_TEST_DIR/stderr608g.XXXXXX")"
@@ -943,6 +958,13 @@ input="{\"stop_hook_active\": false, \"cwd\": \"$dir608g\", \"session_id\": \"si
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608g") && rc=0 || rc=$?
 # 現状は (a) 明示的 edge + (b) terminal forward-compat の両方により受理される
 # rc=2 を明示 assert (active=true で block が維持されることを確認、permissive pin 目的)
+# NOTE (cycle 9 F-04 明示化): rite_phase_transition_allowed() の評価順序上、
+#   terminal fast-path `[ "$next" = "cleanup_completed" ] && return 0` が先に return するため、
+#   next=cleanup_completed を input とする本 TC は **terminal fast-path 経由のみ** が保証される。
+#   (a) 明示的 edge と (b) terminal fast-path は OR 結合で、片方を削除しても本 TC は依然 pass する。
+#   discriminate するには phase-transition-whitelist.sh を source して rite_phase_transition_allowed()
+#   を直接呼び出す unit test が必要 (integration test である本ファイルには internal 評価順序まで見えない)。
+#   tighten 時は (a)(b) 両方を対象に判断する必要があり、その際は本 NOTE を更新すること。
 if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608g"; then
   pass "cleanup→cleanup_completed direct skip accepted + rc=2 block maintained (permissive NOTE pin)"
 else

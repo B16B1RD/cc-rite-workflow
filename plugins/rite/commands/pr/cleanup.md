@@ -88,7 +88,7 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
 
 **Completion marker convention** (Issue #604, mirrors create.md Issue #561 D-01): The unified completion marker for `/rite:pr:cleanup` is `[cleanup:completed]`, emitted as an HTML comment (`<!-- [cleanup:completed] -->`) on the absolute last line of Phase 5's output. The HTML comment form keeps the string grep-matchable (`grep -F '[cleanup:completed]'`) while ensuring the user-visible final content is the `クリーンアップが完了しました` checklist + guidance block. Phase 5 handles flow-state deactivation (`cleanup_completed`, `active: false`) and the HTML-commented sentinel internally (Terminal Completion pattern).
 
-**Defense-in-depth**: Phase 1.0 activates `.rite-flow-state` to `cleanup` (Phase 1-4 区間の保護)。Phase 4.W.2 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then 🚨 Mandatory After Wiki Ingest Step 1 (Phase 4.W sub-section: `### 🚨 Mandatory After Wiki Ingest` at h3, inside `## Phase 4.W`) writes `cleanup_post_ingest` after the sub-skill returns. Phase 5.3 writes `cleanup_completed` with `active: false` and outputs the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 detection.
+**Defense-in-depth**: Phase 1.0 activates `.rite-flow-state` to `cleanup` (Phase 1-4 区間の保護)。Phase 4.W.2 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then 🚨 Mandatory After Wiki Ingest Step 1 (Phase 4.W sub-section: `### 🚨 Mandatory After Wiki Ingest` at h3, inside `## Phase 4.W`) writes `cleanup_post_ingest` after the sub-skill returns. Phase 5.3 writes `cleanup_completed` with `active: false` and outputs the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 (start.md 配下) detection.
 
 ---
 
@@ -117,8 +117,13 @@ Activate `.rite-flow-state` so that `stop-guard.sh` blocks premature `end_turn` 
 
 ```bash
 if [ -f .rite-flow-state ]; then
+  # --active true を明示指定する理由 (#608 cycle 9 F-01 HIGH):
+  # 前回セッション終了時に .rite-flow-state が {phase: cleanup_completed, active: false} で残存
+  # している場合、patch モードは --active 省略時に .active を更新しないため、patch 後も
+  # active=false のままとなる。stop-guard.sh の ACTIVE!=true early exit で cleanup Phase 1-4
+  # の protection が silent 無効化されるのを防ぐため、ここで明示的に re-activate する。
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-      --phase "cleanup" --next "Execute cleanup phases. Do NOT stop."; then
+      --phase "cleanup" --active true --next "Execute cleanup phases. Do NOT stop."; then
     echo "WARNING: flow-state-update.sh patch (cleanup activate) failed — stop-guard will not block premature end_turn during Phase 1-4. Investigate the helper exit reason in stderr above. Cleanup will still proceed, but the user may need to type 'continue' to resume." >&2
   fi
 else
@@ -1601,7 +1606,7 @@ trap - EXIT INT TERM HUP
 
 > **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: `rite:wiki:ingest` の return 直後、**応答を終了せずに** 以下の Step 1-2 を即座に実行する。Phase 5 (Completion Report) は本セクションを経由してのみ実行される唯一の経路である。
 
-> **Enforcement**: `stop-guard.sh` は `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し、`manual_fallback_adopted` workflow_incident sentinel を stderr に echo する。protocol violation は次回 turn の Phase 5.4.4.1 で post-hoc 検出される。
+> **Enforcement**: `stop-guard.sh` は `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し、`manual_fallback_adopted` workflow_incident sentinel を stderr に echo する。protocol violation は次回 turn の Phase 5.4.4.1 (start.md 配下) で post-hoc 検出される。
 
 **Self-check and branching**:
 

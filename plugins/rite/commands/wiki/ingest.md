@@ -1029,7 +1029,6 @@ Wiki Ingest が完了しました。
      Step 番号は **実 output 行** に 1:1 対応させる (Output ordering との対応表を直接なぞる)。
      Step 0 は policy 宣言 (meta-step、非出力)、Step 1/2 が Output ordering #2/#3 に対応する
      (Output ordering #1 は本セクションに入る前の Phase 9 proper で既に出力済み)。 -->
-     
 
 **Step 0 (policy / meta)**: 継続マーカーを **常に出力する** (シンプルさ優先のデフォルト動作)。実行経路を問わず下記 Step 1 の HTML コメントを Step 2 の `<!-- [ingest:completed] -->` の直前に出力する。本 Step は方針宣言のみで実 output 行を持たない (Step 番号と Output ordering を 1:1 対応させるため、output 行である Step 1/2 から分離)。
 

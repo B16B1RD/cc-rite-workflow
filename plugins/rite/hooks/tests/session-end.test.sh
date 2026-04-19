@@ -315,7 +315,9 @@ echo ""
 
 # --------------------------------------------------------------------------
 # TC-608-WARN-A: cleanup_pre_ingest lifecycle unfinished → stderr warning (#604)
-# Verifies the cleanup lifecycle warning path added in session-end.sh:70-100.
+# Verifies the cleanup lifecycle warning path added in session-end.sh "Lifecycle unfinished
+# warnings" section (case "$_lifecycle_unfinished_kind" in cleanup) branch).
+# (line-number 参照を避ける理由は cycle 8 F-05 参照)
 # --------------------------------------------------------------------------
 echo "TC-608-WARN-A: cleanup_pre_ingest active → /rite:pr:cleanup lifecycle warning"
 dir608wa="$TEST_DIR/tc608wa"
@@ -375,6 +377,24 @@ if [ -f "${LAST_STDERR_FILE:-}" ] \
   pass "cleanup_post_ingest unfinished → cleanup-specific warning emitted (branch coverage 完備)"
 else
   fail "expected /rite:pr:cleanup lifecycle warning for cleanup_post_ingest, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
+# TC-608-WARN-E: bare cleanup phase branch coverage (cycle 9 F-11)
+# rite_phase_is_cleanup_lifecycle_in_progress の case arm `cleanup|cleanup_pre_ingest|cleanup_post_ingest)`
+# のうち、bare `cleanup` arm が削除されても WARN-A/B/C/D は全 pass する false-positive 構造を補完。
+# Phase 1.0 Activate Flow State で実際に書かれる phase 名 (stop-guard.sh cleanup case と同一) の regression guard。
+echo "TC-608-WARN-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
+dir608we="$TEST_DIR/tc608we"
+mkdir -p "$dir608we"
+create_state_file "$dir608we" '{"active": true, "phase": "cleanup", "issue_number": 604, "branch": ""}'
+run_hook "$dir608we" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] \
+    && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
+    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+  pass "bare cleanup unfinished → cleanup-specific warning emitted (case arm 全網羅完成)"
+else
+  fail "expected /rite:pr:cleanup lifecycle warning for bare cleanup, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
 fi
 echo ""
 

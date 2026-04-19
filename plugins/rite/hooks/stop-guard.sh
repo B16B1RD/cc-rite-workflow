@@ -159,7 +159,9 @@ IFS=$'\t' read -r PHASE PREV_PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase
 # Load overrides from rite-config.yml if the helper was sourced.
 # Do NOT suppress stderr/exit — failure to load overrides must be visible so
 # users can diagnose why their rite-config.yml override silently did not apply
-# (error-handling HIGH — stop-guard.sh:161 2>/dev/null || true).
+# (error-handling HIGH — 旧実装では `2>/dev/null || true` で stderr + rc を黙殺していたが、
+#  下方の `_rite_load_whitelist_overrides ... || log_diag` に変更済み。
+#  Do NOT re-introduce stderr suppression or `|| true` on this invocation).
 if type _rite_load_whitelist_overrides >/dev/null 2>&1 && [ -f "$STATE_ROOT/rite-config.yml" ]; then
   _rite_load_whitelist_overrides "$STATE_ROOT/rite-config.yml" || \
     log_diag "override_load_failed rc=$? session_id=${SESSION_ID:-unknown}"
@@ -300,7 +302,12 @@ case "$PHASE" in
     WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state, so the caller phase remains pinned during the entire sub-skill invocation). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned [ingest:completed], run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel) in the SAME response turn. DO NOT stop before [cleanup:completed] is output."
     ;;
   cleanup_post_ingest)
-    WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. Immediately output the cleanup completion message + next-steps block + <!-- [cleanup:completed] --> HTML comment sentinel as the absolute last line, then deactivate flow state (cleanup_completed, active: false) in the SAME response turn. DO NOT stop."
+    # cycle 9 F-13: instruction 語順を cleanup.md Phase 5.3 Output ordering (Step 1 deactivate
+    # → Step 2 sentinel) と揃える (旧語順は sentinel → deactivate で逆順、LLM が sentinel を
+    # 先に emit すると bash 後続 output で sentinel が最終行でなくなる bare-sentinel 類似 bug
+    # #561 の再発リスクがあった)。TC-608-H pinned phrase (rite:wiki:ingest returned /
+    # Phase 5 Completion Report has NOT been output) は維持。
+    WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. In the SAME response turn, output the cleanup completion message + next-steps block (user-visible content), THEN deactivate flow state (cleanup_completed, active: false), THEN output <!-- [cleanup:completed] --> HTML comment sentinel as the absolute last line of the response. DO NOT stop."
     ;;
   # NOTE (#608 follow-up): ingest_pre_lint / ingest_post_lint case branches were removed
   # as YAGNI dead code. ingest.md does not call flow-state-update.sh (Phase 9.1 Step 1
@@ -335,11 +342,13 @@ if [ -n "$WORKFLOW_INCIDENT_TYPE" ]; then
     _emit_stderr=""
     if _emit_stderr=$(mktemp 2>/dev/null); then
       # register tempfile for trap cleanup (trap scope: EXIT/INT/TERM).
-      # NOTE: this **replaces** the existing TMP_STATE trap installed at L231 with a new
-      # handler that cleans up BOTH TMP_STATE and _emit_stderr. bash trap cannot append
-      # actions to an existing handler — the new `trap '...'` declaration overwrites the
-      # previous one for the same signal set. The replacement keeps `rm -f "$TMP_STATE"`
-      # explicit so TMP_STATE cleanup still happens.
+      # NOTE: this **replaces** the existing TMP_STATE trap installed immediately after the
+      # `TMP_STATE=$(mktemp ...)` for the error_count increment block (above this block,
+      # `trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT`) with a new handler that cleans
+      # up BOTH TMP_STATE and _emit_stderr. bash trap cannot append actions to an existing
+      # handler — the new `trap '...'` declaration overwrites the previous one for the same
+      # signal set. The replacement keeps `rm -f "$TMP_STATE"` explicit so TMP_STATE cleanup
+      # still happens. (line-number 参照を避ける理由は cycle 8 F-05 参照)
       trap 'rm -f "$TMP_STATE" "${_emit_stderr:-}" 2>/dev/null' EXIT TERM INT
     else
       log_diag "incident_emit_stderr_mktemp_failed session_id=${SESSION_ID:-unknown}"
