@@ -651,6 +651,41 @@ fi
 - `wiki_growth_finding_count`: Extract from `wiki_growth_output` by matching the line `==> Total wiki-growth-check findings: N` (regex: `/Total wiki-growth-check findings: (\d+)/`). If no match found, default to 0
 - `wiki_growth_output`: Script output (truncated if >50 lines)
 
+### 3.9 Plugin-specific Checks (Gitignore Health Check) — Issue #567
+
+Execute the gitignore health check script to detect regressions of the `.rite/wiki/` exclusion rule that PR #564 added as the last line of defense against wiki-ingest-trigger.sh silent leaks on the develop branch. If a future `.gitignore` cleanup PR removes the rule, this check surfaces the drift before the leak reaches production. See `plugins/rite/hooks/scripts/gitignore-health-check.sh` header for the strategy-aware detection contract (separate_branch uses `git check-ignore`; same_branch uses `git add --dry-run` because negation rules make `git check-ignore` non-deterministic per `.gitignore` L101-113 spec).
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.9. All other no-op cases (`wiki.enabled=false`, `rite-config.yml` absent, wiki section absent) are handled **inside** `gitignore-health-check.sh`, which returns exit 0 with `findings: 0`.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/gitignore-health-check.sh ]; then
+  gitignore_health_output=$(bash {plugin_root}/hooks/scripts/gitignore-health-check.sh --quiet 2>&1)
+  gitignore_health_exit_code=$?
+else
+  gitignore_health_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `gitignore_health_status` | Action |
+|-----------|---------------------------|--------|
+| 0 | `success` | `.rite/wiki/` rule healthy (or legitimate no-op: wiki disabled / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel is also emitted on stdout so Phase 5.4.4.1 can auto-register a tracking Issue. Display findings and allow flow to continue |
+| 2 | `error` | Invocation error (not in git repo, `git check-ignore` failure, `same_branch` 戦略で probe file 作成不能 — read-only filesystem / permission denied / disk full 等) — record as warning, display error message |
+| -1 | `skipped` | Script not found (marketplace install without `hooks/scripts/`) — skip silently |
+
+**Important**: Gitignore health check results are treated as **warnings**, not errors — same policy as Phase 0.6 / 3.5 / 3.6 / 3.7 / 3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #567 explicitly mandates this non-blocking contract — the check exists to detect regression immediately while not halting merges.
+
+**Record gitignore health check results** for Phase 4 reporting:
+- `gitignore_health_status`: `success` / `warning` / `error` / `skipped`
+- `gitignore_health_finding_count`: Extract from `gitignore_health_output` by matching the line `==> Total gitignore-health-check findings: N` (regex: `/Total gitignore-health-check findings: (\d+)/`). If no match found, default to 0
+- `gitignore_health_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -753,7 +788,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {verify_terminal_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, or terminal-output warnings/invocation errors.
+**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes both the stderr WARNING and the `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel from stdout (merged via `2>&1` at invocation) so the sentinel reaches the orchestrator's conversation context where Phase 5.4.4.1 grep detects it. When status is `error` (exit 2, invocation failure), the script exits before sentinel emit so the appendix contains only the stderr ERROR diagnostic:
+
+```
+⚠️ Gitignore health check: {gitignore_health_finding_count} findings detected ({gitignore_health_status}, non-blocking)
+{gitignore_health_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, or gitignore-health warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -829,6 +871,7 @@ Analyze the error content and present fix suggestions when possible:
 | Doc-heavy patterns drift check | {doc_heavy_drift_status} ({doc_heavy_drift_finding_count} findings) |
 | Wiki growth check (#524) | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
 | Terminal output check (#561) | {verify_terminal_status} ({verify_terminal_finding_count} findings) |
+| Gitignore health check (#567) | {gitignore_health_status} ({gitignore_health_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
@@ -839,7 +882,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) and Phase 3.8 (`Wiki growth check`) and Phase 0.6 (`Terminal output check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) and Phase 3.8 (`Wiki growth check`) and Phase 0.6 (`Terminal output check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

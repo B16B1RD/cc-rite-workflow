@@ -1588,6 +1588,8 @@ The rite workflow auto-detects **workflow blockers** during `/rite:issue:start` 
 | `manual_fallback_adopted` | User selects "manual Edit fallback" option in any orchestrator `AskUserQuestion` | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
 | `wiki_ingest_skipped` (#524) | `wiki.enabled=false` or `wiki.auto_ingest=false` causes Phase X.X.W (`pr/review.md` 6.5.W / `pr/fix.md` 4.6.W / `issue/close.md` 4.4.W) to skip the Wiki ingest pipeline | Sub-skill emits sentinel from Phase X.X.W Step 1 along with `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` status line |
 | `wiki_ingest_failed` (#524) | `wiki-ingest-trigger.sh` exits with a non-zero code other than 2 (exit 2 = Wiki disabled/uninitialized = legitimate skip) during Phase X.X.W | Sub-skill emits sentinel from Phase X.X.W Step 3 along with `[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_{n}` status line |
+| `wiki_ingest_push_failed` (#555) | `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed during Phase X.X.W.2 | Sub-skill emits sentinel along with `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` status line |
+| `gitignore_drift` (#567) | `/rite:lint` Phase 3.9 detects that the `.rite/wiki/` rule (PR #564 last-line-of-defense) is missing from `.gitignore`, OR `same_branch` strategy lacks the required negation entry | `gitignore-health-check.sh` emits sentinel via `workflow-incident-emit.sh` when drift is detected |
 
 ### Sentinel Format
 
@@ -1599,7 +1601,7 @@ The `root_cause_hint` field is **optional** and entirely omitted from the sentin
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | enum | yes | One of `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` / `wiki_ingest_failed` (the last two added in #524) |
+| `type` | enum | yes | One of `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567) |
 | `details` | string | yes | One-line incident description (semicolons replaced by commas, newlines stripped) |
 | `root_cause_hint` | string | no | Optional cause hypothesis (omitted from sentinel if empty) |
 | `iteration_id` | string | yes | `{pr_number}-{epoch_seconds}` for traceability |

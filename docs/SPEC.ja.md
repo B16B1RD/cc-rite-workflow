@@ -1731,6 +1731,8 @@ rite workflow は `/rite:issue:start` の一気通貫実行中に発生する **
 | `manual_fallback_adopted` | ユーザーが orchestrator の `AskUserQuestion` で「手動 Edit fallback」を選択 | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
 | `wiki_ingest_skipped` (#524) | `wiki.enabled=false` または `wiki.auto_ingest=false` により Phase X.X.W (`pr/review.md` 6.5.W / `pr/fix.md` 4.6.W / `issue/close.md` 4.4.W) が Wiki ingest pipeline を skip した場合 | サブスキルが Phase X.X.W Step 1 から `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` status line と共に sentinel を emit |
 | `wiki_ingest_failed` (#524) | `wiki-ingest-trigger.sh` が Phase X.X.W で 0 / 2 以外の exit code で終了した場合 | サブスキルが Phase X.X.W Step 3 から `[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_{n}` status line と共に sentinel を emit |
+| `wiki_ingest_push_failed` (#555) | `wiki-ingest-commit.sh` が exit 4 で終了 — local wiki branch への commit は成功したが origin push が失敗した場合 (Phase X.X.W.2 で発生) | サブスキルが `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` status line と共に sentinel を emit |
+| `gitignore_drift` (#567) | `/rite:lint` Phase 3.9 で `.gitignore` の `.rite/wiki/` ルール (PR #564 の最終防御線) が欠落、または `same_branch` 戦略で negation エントリが欠落を検出 | `gitignore-health-check.sh` が drift 検出時に `workflow-incident-emit.sh` 経由で sentinel を emit |
 
 ### Sentinel フォーマット
 
@@ -1742,7 +1744,7 @@ rite workflow は `/rite:issue:start` の一気通貫実行中に発生する **
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|-----|------|
-| `type` | enum | 必須 | `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` / `wiki_ingest_failed` のいずれか (最後の 2 種は #524 で追加) |
+| `type` | enum | 必須 | `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567) のいずれか |
 | `details` | string | 必須 | 1 行の incident description (semicolon は comma に置換、改行は除去) |
 | `root_cause_hint` | string | 任意 | 原因仮説 (空の場合は sentinel から省略) |
 | `iteration_id` | string | 必須 | `{pr_number}-{epoch_seconds}` 形式の追跡 ID |
