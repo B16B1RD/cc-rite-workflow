@@ -70,9 +70,9 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
 <LLM output: brief recap (optional)>
 <In the same response turn, LLM IMMEDIATELY:>
   1. Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)
-  2. Outputs Phase 5 Completion Report (user-visible message + next-steps block)
-  3. Deactivates flow state (cleanup_completed, active: false)
-  4. Outputs <!-- [cleanup:completed] --> as the absolute last line
+  2. Outputs Phase 5.1 Cleanup Result Summary + Phase 5.2 Guidance for Next Steps (user-visible)
+  3. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false)
+  4. Phase 5.3 Step 2: Outputs <!-- [cleanup:completed] --> as the absolute last line
 ```
 
 **Rule**: Treat `rite:wiki:ingest` return as a **continuation trigger**, not a stopping point. The **only** valid stop is after the user-visible completion message (`クリーンアップが完了しました`) + next-steps block have been displayed AND `<!-- [cleanup:completed] -->` is output as the absolute last line. The HTML-commented sentinel is invisible in rendered views but grep-matchable for hooks/scripts.
@@ -88,7 +88,7 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
 
 **Completion marker convention** (Issue #604, mirrors create.md Issue #561 D-01): The unified completion marker for `/rite:pr:cleanup` is `[cleanup:completed]`, emitted as an HTML comment (`<!-- [cleanup:completed] -->`) on the absolute last line of Phase 5's output. The HTML comment form keeps the string grep-matchable (`grep -F '[cleanup:completed]'`) while ensuring the user-visible final content is the `クリーンアップが完了しました` checklist + guidance block. Phase 5 handles flow-state deactivation (`cleanup_completed`, `active: false`) and the HTML-commented sentinel internally (Terminal Completion pattern).
 
-**Defense-in-depth**: Phase 1.0 activates `.rite-flow-state` to `cleanup` (Phase 1-4 区間の保護)。Phase 4 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then to `cleanup_post_ingest` after the sub-skill returns. Phase 5 writes `cleanup_completed` with `active: false` and outputs the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 detection.
+**Defense-in-depth**: Phase 1.0 activates `.rite-flow-state` to `cleanup` (Phase 1-4 区間の保護)。Phase 4.W.2 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then 🚨 Mandatory After Wiki Ingest Step 1 (Phase 4 heading 外) writes `cleanup_post_ingest` after the sub-skill returns. Phase 5.3 writes `cleanup_completed` with `active: false` and outputs the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 detection.
 
 ---
 
@@ -110,6 +110,10 @@ echo "plugin_root=$plugin_root"
 Retain the `plugin_root` value output above and use it for all subsequent `{plugin_root}` references in this command.
 
 Activate `.rite-flow-state` so that `stop-guard.sh` blocks premature `end_turn` during cleanup phases.
+
+> **Convention note (#608 follow-up, create.md との非対称)**: 本ファイルの `flow-state-update.sh` 呼び出しは **`if ! ... ; then echo "WARNING..." >&2; fi`** で包み、失敗時にユーザー可視 WARNING を表示する defense-in-depth パターンを採用している。一方 `commands/issue/create.md` 系は bare `bash flow-state-update.sh` のみ (defense-in-depth なし)。本ファイル先行採用した意図的乖離で、stop-guard 保護がない場合のユーザー影響が cleanup (PR merge 直後の長い workflow) で特に大きいため。create.md 側の convention 揃えは別 Issue で追跡予定。
+>
+> **Fail-safe**: hook 失敗時も WARNING のみで続行し cleanup 本体は中断しない。stop-guard 保護が一時的に無効になっても、ユーザーは "continue" を入力することで recovery できる。
 
 ```bash
 if [ -f .rite-flow-state ]; then
@@ -1602,7 +1606,7 @@ trap - EXIT INT TERM HUP
 **Self-check and branching**:
 
 1. **Has `<!-- [cleanup:completed] -->` been output as the absolute last line of the response?**
-   - **Yes** — terminal state reached. `.rite-flow-state.phase` is already `cleanup_completed` and `active: false`. Step 1 below is a **no-op** and MUST be skipped (executing Step 1 would write `cleanup_post_ingest` which is a retrograde transition from the terminal state).
+   - **Yes** — terminal state reached. `.rite-flow-state.phase` is already `cleanup_completed` and `active: false`. Step 1 below MUST be skipped. 理由: `cleanup_completed` は terminal state であり、Step 1 の `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、phase を `cleanup_post_ingest` に巻き戻して flow-state を破壊する。phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定し、prev が terminal でも accept するため whitelist 保護には依存できない — 実行しないことで確実に防ぐ。
    - **No** — Phase 5 has NOT been output yet. Steps 1-2 below are **critical** — execute immediately to force the workflow into the terminal state.
 
 **Step 1**: Update `.rite-flow-state` to post-ingest phase (atomic). The `if !` rc capture is mandatory — silent failure here means the next stop-guard evaluation observes the stale `cleanup_pre_ingest` state and the HINT shown to the LLM no longer matches the actual workflow position (#608 follow-up):
@@ -1772,11 +1776,11 @@ git stash pop
 
 > **⚠️ MUST NOT (#604, mirrors #561)**: 「ユーザー可視最終行 = `[cleanup:completed]` の bare bracket 形式」で turn を終わらせてはならない。bare sentinel は LLM の turn-boundary heuristic を誤発火させ、Mode B 症状 (recap 出力後の implicit stop) を再発させる既知リスク (Issue #561 解消条件)。**HTML コメント形式 (`<!-- [cleanup:completed] -->`) のみ許容**。
 >
-> **Output ordering** (絶対遵守):
-> 1. Phase 5.1 Cleanup Result Summary (ユーザー可視メッセージ + チェックリスト + 警告群)
-> 2. Phase 5.2 Guidance for Next Steps (ユーザー可視 next-steps ブロック)
-> 3. flow-state deactivate (Step 1 below) — bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
-> 4. `<!-- [cleanup:completed] -->` HTML コメント (絶対最終行 — rendered view では不可視、grep 可能)
+> **Output ordering** (絶対遵守 — Phase 5.1 / 5.2 は前段 sub-phase として Phase 5.3 進入前に既に出力済み、下記 Phase 5.3 Step 1/2 の番号と直接対応):
+> 1. Phase 5.1 Cleanup Result Summary — 前段で出力済み (ユーザー可視メッセージ + チェックリスト + 警告群)
+> 2. Phase 5.2 Guidance for Next Steps — 前段で出力済み (ユーザー可視 next-steps ブロック)
+> 3. Phase 5.3 Step 1: flow-state deactivate (下記 Step 1) — bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
+> 4. Phase 5.3 Step 2: `<!-- [cleanup:completed] -->` HTML コメント (下記 Step 2、絶対最終行 — rendered view では不可視、grep 可能)
 
 **Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if !` rc capture is mandatory — silent failure here leaves `.rite-flow-state.active = true`, which causes the **next** session-end / stop-guard evaluation to surface a stale HINT for the already-completed cleanup workflow (#608 follow-up):
 

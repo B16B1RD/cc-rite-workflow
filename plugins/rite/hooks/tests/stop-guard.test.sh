@@ -823,6 +823,8 @@ fi
 echo "TC-608-B: cleanup → cleanup_pre_ingest whitelist-valid"
 dir608b="$GUARD_TEST_DIR/tc608b"
 mkdir -p "$dir608b"
+# Defensive: TC-608-A 削除/移動時の cross-TC 依存を排除するため fresh_ts を独立再代入
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608b" "{\"active\": true, \"phase\": \"cleanup_pre_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608b\"}"
 stderr_file608b="$(mktemp "$GUARD_TEST_DIR/stderr608b.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608b\", \"session_id\": \"sid-608b\"}"
@@ -839,6 +841,8 @@ fi
 echo "TC-608-C: invalid transition cleanup → cleanup_post_ingest → blocked with invalid_transition"
 dir608c="$GUARD_TEST_DIR/tc608c"
 mkdir -p "$dir608c"
+# Defensive: TC-608-A/B 削除/移動時の cross-TC 依存を排除するため fresh_ts を独立再代入
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608c" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"skipped pre_ingest\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608c\"}"
 stderr_file608c="$(mktemp "$GUARD_TEST_DIR/stderr608c.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608c\", \"session_id\": \"sid-608c\"}"
@@ -855,6 +859,8 @@ fi
 echo "TC-608-D: cleanup_completed + active=false → exit 0 (terminal)"
 dir608d="$GUARD_TEST_DIR/tc608d"
 mkdir -p "$dir608d"
+# Defensive: TC-608-A/B/C 削除/移動時の cross-TC 依存を排除するため fresh_ts を独立再代入
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608d" "{\"active\": false, \"phase\": \"cleanup_completed\", \"next_action\": \"none\", \"updated_at\": \"$fresh_ts\", \"session_id\": \"sid-608d\"}"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608d\", \"session_id\": \"sid-608d\"}"
 output=$(run_guard "$input") && rc=0 || rc=$?

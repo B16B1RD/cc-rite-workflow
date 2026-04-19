@@ -72,7 +72,9 @@ if [ -f "$STATE_FILE" ]; then
                 if rite_phase_is_cleanup_lifecycle_in_progress "$_state_phase"; then
                     _lifecycle_unfinished_kind="cleanup"
                 fi
-            elif [[ "$_state_phase" == cleanup* ]] && [ "$_state_phase" != "cleanup_completed" ]; then
+            elif [[ "$_state_phase" == "cleanup" || "$_state_phase" == cleanup_* ]] && [ "$_state_phase" != "cleanup_completed" ]; then
+                # `cleanup*` (underscore なし) は将来 `cleanupXYZ` 等の派生 phase を誤検出するリスクがあるため、
+                # `cleanup` 完全一致 / `cleanup_*` のみを対象に精密化 (create_* 側との対称性、#608 follow-up)
                 _lifecycle_unfinished_kind="cleanup"
             fi
         fi
