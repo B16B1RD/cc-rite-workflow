@@ -102,3 +102,4 @@
 | 2026-04-19T03:30:00+00:00 | ingest:skip | raw/fixes/20260419T021826Z-pr-586.md | PR #586 cycle 2 fix: trap 順序 / 関数命名規約 / mkdir/touch stderr の 4 findings。いずれも既存 page (trap-register-before-mktemp / bash-trap-patterns / mktemp-failure-surface-warning) で cover 済 |
 | 2026-04-19T03:30:00+00:00 | ingest:skip | raw/fixes/20260419T013136Z-pr-586.md | PR #586 initial fix: scope drift / canonical reference / cross-validated HIGH の 3 patterns。いずれも既存 page (canonical-reference-sample-code-strict-sync / observed-likelihood-gate-with-evidence-anchors) で cover 済 |
 | 2026-04-19T03:35:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=82 |
+| 2026-04-19T04:45:15Z | ingest:update | pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md | PR #589 review: Hypothetical（将来 Phase 変更依存）を anchor 欠落と orthogonal な降格軸として追加、confidence: medium → high |
