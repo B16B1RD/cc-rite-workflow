@@ -99,7 +99,7 @@ Wiki は既に初期化されています。
 - `separate_branch`: `set -o pipefail && ts=$(date +%s) && mkdir -p .rite/wiki.bak.$ts && git archive "$wiki_branch" -- .rite/wiki/ | tar -x -C .rite/wiki.bak.$ts && set +o pipefail && git branch -D "$wiki_branch" && { git push origin --delete "$wiki_branch" 2>/dev/null || true; }` で wiki ブランチからデータを取得後、既存ブランチを削除（`set -o pipefail` で `git archive` 失敗時にバックアップなしでブランチ削除に進行することを防止。`|| true` は `git push origin --delete` のみに適用。`git checkout --orphan` が同名ブランチ存在時に失敗するため削除が必要）
 - `same_branch`: `cp -r .rite/wiki .rite/wiki.bak.$(date +%s)` で working tree から直接コピー
 
-**変数保持指示**: Phase 1.2 で出力された `branch_strategy` と `wiki_branch` の値を保持し、Phase 2 および Phase 3 以降のすべての Bash ブロックで**リテラル値として埋め込んで**使用すること。Claude Code の Bash ツール間でシェル変数は保持されないため、各 Bash ブロックの冒頭で値をリテラルに再定義する必要がある。
+**変数保持指示**: Phase 1.2 で出力された `branch_strategy` と `wiki_branch` の値を保持し、**Phase 1.3 以降のすべての Bash ブロック** (Phase 1.3 / 2 / 3 / 3.5 / 3.5.1) で**リテラル値として埋め込んで**使用すること。Claude Code の Bash ツール間でシェル変数は保持されないため、各 Bash ブロックの冒頭で値をリテラルに再定義する必要がある。
 
 ### 1.3 same_branch 戦略向け .gitignore negation 自動注入
 
@@ -111,11 +111,11 @@ PR #564 で `.rite/wiki/` が `.gitignore` に追加されたため、`same_bran
 |---|------|
 | 1 | Phase 1.2 で取得した `branch_strategy == "same_branch"` |
 | 2 | `.gitignore` が存在する |
-| 3 | `.gitignore` に `^\.rite/wiki/$` に match する行が存在する（PR #564 以降のリポジトリ） |
+| 3 | `.gitignore` に `^\.rite/wiki/[[:space:]]*$` に match する行が存在する（PR #564 以降のリポジトリ。末尾 whitespace 許容で手動編集された `.gitignore` との衝突耐性を確保） |
 
 **Skip 条件** (idempotent):
 
-- `.gitignore` に既に `^!\.rite/wiki/$` に match する行が存在する → 既に注入済みのため silent skip
+- `.gitignore` に既に `^!\.rite/wiki/[[:space:]]*$` に match する行が存在する → 既に注入済みのため silent skip（末尾 whitespace 許容）
 
 #### 1.3.1 事前検査
 
@@ -132,10 +132,10 @@ if [ "$branch_strategy" != "same_branch" ]; then
 elif [ ! -f .gitignore ]; then
   state="skip"
   reason="gitignore_absent"
-elif ! grep -qE '^\.rite/wiki/$' .gitignore; then
+elif ! grep -qE '^\.rite/wiki/[[:space:]]*$' .gitignore; then
   state="skip"
   reason="rule_absent"
-elif grep -qE '^!\.rite/wiki/$' .gitignore; then
+elif grep -qE '^!\.rite/wiki/[[:space:]]*$' .gitignore; then
   state="skip"
   reason="already_negated"
 else
@@ -143,18 +143,23 @@ else
   reason="injection_needed"
 fi
 
-echo "GITIGNORE_NEGATION_STATE=$state; reason=$reason"
+# 2 行に分離して emit する (F-04 対応)。
+# 旧実装は `GITIGNORE_NEGATION_STATE=$state; reason=$reason` の 1 行 emit だったが、
+# bash としてはセミコロンが statement 区切りとなり意味論が混乱する。分離することで、
+# LLM の marker grep も後述テーブルの列挙も単一 key=value 行として扱える。
+echo "GITIGNORE_NEGATION_STATE=$state"
+echo "GITIGNORE_NEGATION_REASON=$reason"
 ```
 
-**LLM 分岐** (Bash ツール間でシェル変数は保持されないため、stdout の marker を読んで分岐する):
+**LLM 分岐** (Bash ツール間でシェル変数は保持されないため、上記 2 行の stdout marker を読んで分岐する):
 
-| `GITIGNORE_NEGATION_STATE` | 次の処理 |
-|---------------------------|---------|
-| `skip; reason=not_same_branch` | Phase 2 へ（通知不要 — separate_branch 戦略は worktree 経路で .gitignore の影響を受けない） |
-| `skip; reason=gitignore_absent` | Phase 2 へ（通知不要 — `.gitignore` がなければ ignore の影響も無し） |
-| `skip; reason=rule_absent` | Phase 2 へ（通知不要 — PR #564 以前のリポジトリで `.rite/wiki/` が ignore されていない） |
-| `skip; reason=already_negated` | `✅ .gitignore に既に negation エントリが存在します（idempotent skip）` を表示して Phase 2 へ |
-| `prompt; reason=injection_needed` | Phase 1.3.2 へ進む |
+| `GITIGNORE_NEGATION_STATE` | `GITIGNORE_NEGATION_REASON` | 次の処理 |
+|---------------------------|------------------------------|---------|
+| `skip` | `not_same_branch` | Phase 2 へ（通知不要 — separate_branch 戦略は worktree 経路で .gitignore の影響を受けない） |
+| `skip` | `gitignore_absent` | Phase 2 へ（通知不要 — `.gitignore` がなければ ignore の影響も無し） |
+| `skip` | `rule_absent` | Phase 2 へ（通知不要 — PR #564 以前のリポジトリで `.rite/wiki/` が ignore されていない） |
+| `skip` | `already_negated` | `✅ .gitignore に既に negation エントリが存在します（idempotent skip）` を表示して Phase 2 へ |
+| `prompt` | `injection_needed` | Phase 1.3.2 へ進む |
 
 #### 1.3.2 ユーザー確認
 
@@ -195,33 +200,76 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 **Edit ツール呼び出しパラメータ**:
 
 - `file_path`: `.gitignore`
-- `old_string`: `# <<< gitignore-wiki-section-end (anchor / F-09 対応)`（一意にマッチ）
-- `new_string`: 上記 `old_string` + 改行 + 上記 negation ブロック全文
+- `old_string`: 次の 1 行を exact match する（一意にマッチ）:
+  ```
+  # <<< gitignore-wiki-section-end (anchor / F-09 対応)
+  ```
+- `new_string`: **以下の 7 行を literal で指定**する（`old_string` の 1 行 + 改行 + negation ブロック 6 行。**コードフェンス ` ``` ` は含めない**）:
+  ```
+  # <<< gitignore-wiki-section-end (anchor / F-09 対応)
+  # >>> gitignore-wiki-negation-start (Issue #568 — same_branch 戦略用 negation 自動注入)
+  # 本プロジェクトは same_branch 戦略のため、.rite/wiki/ 配下を再包含する。
+  # verification 手順は本 .gitignore 上部の Step 1-5 コメントを参照。
+  !.rite/wiki/
+  !.rite/wiki/**
+  # <<< gitignore-wiki-negation-end
+  ```
+  **注意点**: (1) 末尾改行は Edit ツールが自動付与するため new_string の末尾に付与しない (2) 提示したコードフェンス ` ``` ` は Markdown の表示用で、new_string には含めない (3) old_string と new_string の先頭行は同一文字列で、その後に 6 行の negation ブロックが続く
 
 `!.rite/wiki/**` は glob を明示する防御的エントリで、単独では機能しない（parent exclusion が残るため）が、gitignore を消費する一部のツール (IDE の VCS integration 等) への defense-in-depth として推奨される（`.gitignore` 上部 Step 1 コメントと同じ根拠）。
 
 #### 1.3.4 verification
 
-> **Reference**: `.gitignore` L84-L113 の「動作確認の正典」節。`git add --dry-run` を使用し、`git check-ignore -v` は使わない（rc と出力の両方が negation 成立と単純 match で同じ値を取り得るため決定論的判別不能）。
+> **Reference**: `.gitignore` L84-L113 の「動作確認の正典」節。`git add --dry-run` を使用し、`git check-ignore -v` は使わない（rc と出力の両方が negation 成立と単純 match で同じ値を取り得るため決定論的判別不能）。canonical impl は `plugins/rite/hooks/scripts/gitignore-health-check.sh` L281 付近の `grep -qF` パターン参照。
 
 ```bash
-mkdir -p .rite/wiki/raw
-touch .rite/wiki/raw/.negation-probe
+# F-02 対応: signal-specific trap で probe ファイルの残留を防ぐ。
+# SIGINT/SIGTERM/SIGHUP で rm -f がスキップされ、Phase 3.1 の same_branch ブロックの
+# `git add .rite/wiki/` に probe (.negation-probe) が混入する経路を塞ぐ。
+# 既存 Phase 3.1 の _rite_wiki_init_cleanup と同パターン (canonical bash-trap-patterns.md 準拠)。
+_rite_wiki_negation_probe_cleanup() {
+  rm -f .rite/wiki/raw/.negation-probe
+}
+trap 'rc=$?; _rite_wiki_negation_probe_cleanup; exit $rc' EXIT
+trap '_rite_wiki_negation_probe_cleanup; exit 130' INT
+trap '_rite_wiki_negation_probe_cleanup; exit 143' TERM
+trap '_rite_wiki_negation_probe_cleanup; exit 129' HUP
 
-# verification: rc=0 かつ stdout に "add '" を含めば negation OK
-dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>&1)
-dry_run_rc=$?
-
-if [ "$dry_run_rc" -eq 0 ] && printf '%s' "$dry_run_out" | grep -q "^add '"; then
-  echo "✅ .gitignore negation verification OK: $dry_run_out"
+# F-07 対応: mkdir / touch の失敗を明示的にハンドリングする。
+# permission/disk full/readonly 等で probe 作成失敗時、verification 自体を skip して
+# WARNING を表示する (non-blocking、Phase 2 へ進行)。silent に `git add --dry-run` を
+# 実行して pathspec mismatch 警告 (rc=128) を「negation 不在」と誤認することを防ぐ。
+probe_created="false"
+if mkdir -p .rite/wiki/raw 2>/dev/null && touch .rite/wiki/raw/.negation-probe 2>/dev/null; then
+  probe_created="true"
 else
-  echo "WARNING: .gitignore negation verification failed (rc=$dry_run_rc)" >&2
-  echo "  stdout/stderr: $dry_run_out" >&2
-  echo "  対処: .gitignore の .rite/wiki/ 行直後 (gitignore-wiki-section-end anchor 直後) に" >&2
-  echo "        !.rite/wiki/ と !.rite/wiki/** が配置されているか確認してください" >&2
+  echo "WARNING: negation probe の作成に失敗しました (read-only fs / permission / disk full の可能性)" >&2
+  echo "  verification を skip して Phase 2 に進行します (non-blocking)" >&2
+  echo "  Phase 3.1 の git add で negation が効いていなければそこで改めてエラーが出ます" >&2
 fi
 
-# probe 削除（commit 混入防止）
+if [ "$probe_created" = "true" ]; then
+  # verification: rc=0 かつ stdout に canonical pattern `add '<path>'` (probe フルパス) を含めば OK
+  # F-03 対応: `grep -q "^add '"` (単純プレフィックス) では偶然 `add '...'` で始まる任意
+  # パスが出ると false positive になる。gitignore-health-check.sh L281 の canonical impl と
+  # 同じく `grep -qF "add '<probe path 全体>'"` で完全パス fixed-string match に統一する。
+  dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>&1)
+  dry_run_rc=$?
+
+  if [ "$dry_run_rc" -eq 0 ] && printf '%s' "$dry_run_out" | grep -qF "add '.rite/wiki/raw/.negation-probe'"; then
+    echo "✅ .gitignore negation verification OK: $dry_run_out"
+  else
+    echo "WARNING: .gitignore negation verification failed (rc=$dry_run_rc)" >&2
+    echo "  stdout/stderr: $dry_run_out" >&2
+    echo "  対処: .gitignore の .rite/wiki/ 行直後 (gitignore-wiki-section-end anchor 直後) に" >&2
+    echo "        !.rite/wiki/ と !.rite/wiki/** が配置されているか確認してください" >&2
+  fi
+fi
+
+# cleanup trap を明示解除 (正常完了時)。trap handler は probe を削除する。
+# trap - で正常完了時の early-rm と signal 中断時の trap-rm が二重にならないよう、
+# cleanup を trap 経由に一本化する。
+trap - EXIT INT TERM HUP
 rm -f .rite/wiki/raw/.negation-probe
 ```
 
