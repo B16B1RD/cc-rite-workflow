@@ -153,7 +153,7 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # /rite:pr:cleanup initial phase (#608 follow-up): cleanup.md Phase 1.0 (Activate
   # Flow State) writes phase=cleanup before any sub-skill invoke. Without this entry,
   # the cleanup → cleanup_pre_ingest transition was unknown, leaving Phase 1.0-4.W.1 unprotected.
-  # (stop-guard.sh:289 HINT の "Phase 1.0 (Activate Flow State)" 文言と一致させる)
+  # (stop-guard.sh の `case "$PHASE" in cleanup)` ブランチの HINT 文言 "Phase 1.0 (Activate Flow State)" と一致させる)
   ["cleanup"]="cleanup_pre_ingest cleanup_completed"
   ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed"
   ["cleanup_post_ingest"]="cleanup_completed"

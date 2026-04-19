@@ -1025,9 +1025,11 @@ Wiki Ingest が完了しました。
 
 > **設計判断 — flow-state ownership**: `ingest.md` は flow-state-update.sh を一切呼ばない (`ingest_completed` という phase 名も使用しない、whitelist + stop-guard からも YAGNI 削除済み — `pr/cleanup.md` Phase 4.W.2 注記参照)。caller (cleanup 等) 経由時は caller の Mandatory After (例: cleanup.md `🚨 Mandatory After Wiki Ingest`) が `cleanup_post_ingest` を patch する責務を持つ。単独実行時は flow-state がそもそも active=false (cleanup 起動前の `completed` phase) のため block 対象にならず、本 skill 終了後そのまま放置する。
 
-# Step 番号は **実 output 行** に 1:1 対応させる (Output ordering との対応表を直接なぞる)。
-# Step 0 は policy 宣言 (meta-step、非出力)、Step 1/2 が Output ordering #2/#3 に対応する
-# (Output ordering #1 は本セクションに入る前の Phase 9 proper で既に出力済み)。
+<!-- 設計メモ (非レンダリング注釈):
+     Step 番号は **実 output 行** に 1:1 対応させる (Output ordering との対応表を直接なぞる)。
+     Step 0 は policy 宣言 (meta-step、非出力)、Step 1/2 が Output ordering #2/#3 に対応する
+     (Output ordering #1 は本セクションに入る前の Phase 9 proper で既に出力済み)。 -->
+     
 
 **Step 0 (policy / meta)**: 継続マーカーを **常に出力する** (シンプルさ優先のデフォルト動作)。実行経路を問わず下記 Step 1 の HTML コメントを Step 2 の `<!-- [ingest:completed] -->` の直前に出力する。本 Step は方針宣言のみで実 output 行を持たない (Step 番号と Output ordering を 1:1 対応させるため、output 行である Step 1/2 から分離)。
 

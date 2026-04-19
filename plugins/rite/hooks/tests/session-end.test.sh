@@ -360,6 +360,24 @@ else
 fi
 echo ""
 
+# TC-608-WARN-D: cleanup_post_ingest phase branch coverage (case branch 全網羅)
+# session-end.sh の cleanup lifecycle check は cleanup / cleanup_pre_ingest / cleanup_post_ingest の
+# 3 phase をカバーする必要がある。TC-608-WARN-A は cleanup_pre_ingest のみで、cleanup_post_ingest
+# の case branch が削除されても WARN-A/B/C は pass し続ける false-positive 構造。本 TC で補完。
+echo "TC-608-WARN-D: cleanup_post_ingest active → /rite:pr:cleanup lifecycle warning"
+dir608wd="$TEST_DIR/tc608wd"
+mkdir -p "$dir608wd"
+create_state_file "$dir608wd" '{"active": true, "phase": "cleanup_post_ingest", "issue_number": 604, "branch": ""}'
+run_hook "$dir608wd" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] \
+    && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
+    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+  pass "cleanup_post_ingest unfinished → cleanup-specific warning emitted (branch coverage 完備)"
+else
+  fail "expected /rite:pr:cleanup lifecycle warning for cleanup_post_ingest, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
