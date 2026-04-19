@@ -1023,21 +1023,19 @@ Wiki Ingest が完了しました。
 > 2. (sub-skill invoke 経由時のみ) Caller 継続 HTML コメント (caller の Mandatory After 起動を grep-able に表現)
 > 3. `<!-- [ingest:completed] -->` HTML コメント (絶対最終行 — rendered view では不可視、grep 可能)
 
-**Step 1**: (Optional, 単独実行時のみ) flow-state を `ingest_completed` に deactivate する。caller (cleanup 等) からの sub-skill invoke 経由時は flow-state が caller phase (`cleanup_pre_ingest` 等) に固定されているため、本 Step は実質 no-op となる (`--if-exists` patch で既存の caller phase を上書きしないように、本 step では flow-state-update.sh を呼ばない)。
+> **設計判断 — flow-state ownership**: `ingest.md` は flow-state-update.sh を一切呼ばない (`ingest_completed` という phase 名も使用しない、whitelist + stop-guard からも YAGNI 削除済み — `pr/cleanup.md` Phase 4.W.2 注記参照)。caller (cleanup 等) 経由時は caller の Mandatory After (例: cleanup.md `🚨 Mandatory After Wiki Ingest`) が `cleanup_post_ingest` を patch する責務を持つ。単独実行時は flow-state がそもそも active=false (cleanup 起動前の `completed` phase) のため block 対象にならず、本 skill 終了後そのまま放置する。
 
-> **設計判断**: ingest.md 自身は flow-state-update.sh を呼ばない。caller 経由時は caller の Mandatory After (例: cleanup.md `🚨 Mandatory After Wiki Ingest`) が `cleanup_post_ingest` を patch する責務を持つ。単独実行時の flow-state 管理は将来 scope (本 Issue では Out of Scope)。
-
-**Step 2**: 継続マーカーを **常に出力する** (シンプルさ優先のデフォルト動作)。実装上は実行経路を問わず Step 3 の HTML コメントを `<!-- [ingest:completed] -->` の直前に出力する。
+**Step 1**: 継続マーカーを **常に出力する** (シンプルさ優先のデフォルト動作)。実装上は実行経路を問わず Step 2 の HTML コメントを `<!-- [ingest:completed] -->` の直前に出力する。
 
 > **Informational — 実 caller の現状**: 現時点で本 skill を Skill ツール経由で invoke する caller は `pr/cleanup.md` Phase 4.W のみ (`cleanup_pre_ingest` / `cleanup_post_ingest` phase で active flow-state を持つ)。`pr/review.md` / `pr/fix.md` / `issue/close.md` の Wiki 関連 Phase は Issue #547 以降 `wiki-ingest-trigger.sh` + `wiki-ingest-commit.sh` の単一プロセス設計に移行済みで、Skill: `rite:wiki:ingest` を invoke しないため `phase5_*` 等の e2e phase で本 sentinel を消費するパスは存在しない。単独実行時に caller 継続コメントを出力しても無害 (該当する caller がいないため grep 結果が利用されないだけ) のため、判定 logic を持たず常に出力する設計を採用する。
 
-**Step 3**: Output the caller continuation HTML comment (Step 2 の policy に従い実行経路を問わず常に出力する):
+**Step 2**: Output the caller continuation HTML comment (Step 1 の policy に従い実行経路を問わず常に出力する):
 
 ```
 <!-- continuation: caller MUST proceed to its own Mandatory After section (e.g. cleanup.md 🚨 Mandatory After Wiki Ingest) and then to its Phase 5/Phase X Completion Report. DO NOT stop. -->
 ```
 
-**Step 4**: Output the HTML-commented sentinel as the **absolute last line** of the response:
+**Step 3**: Output the HTML-commented sentinel as the **absolute last line** of the response:
 
 ```
 <!-- [ingest:completed] -->

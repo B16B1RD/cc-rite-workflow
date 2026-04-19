@@ -72,7 +72,7 @@ if [ -f "$STATE_FILE" ]; then
                 if rite_phase_is_cleanup_lifecycle_in_progress "$_state_phase"; then
                     _lifecycle_unfinished_kind="cleanup"
                 fi
-            elif [ "$_state_phase" = "cleanup" ] || [ "$_state_phase" = "cleanup_pre_ingest" ] || [ "$_state_phase" = "cleanup_post_ingest" ]; then
+            elif [[ "$_state_phase" == cleanup* ]] && [ "$_state_phase" != "cleanup_completed" ]; then
                 _lifecycle_unfinished_kind="cleanup"
             fi
         fi

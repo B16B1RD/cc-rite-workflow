@@ -286,7 +286,7 @@ case "$PHASE" in
     WORKFLOW_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
     ;;
   cleanup)
-    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 0 was just activated and Phase 1-4 have not completed yet. Continue executing the cleanup phases (state verification → branch operations → wiki ingest decision in Phase 4.W.1) in the SAME response turn. DO NOT stop before reaching at least cleanup_pre_ingest (Phase 4.W.2) or cleanup_completed (Phase 5)."
+    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 1.0 (Activate Flow State) just recorded phase=cleanup, and Phase 1-4 have not completed yet. Continue executing the cleanup phases (state verification → branch operations → wiki ingest decision in Phase 4.W.1) in the SAME response turn. DO NOT stop before reaching at least cleanup_pre_ingest (Phase 4.W.2) or cleanup_completed (Phase 5)."
     ;;
   cleanup_pre_ingest)
     WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state, so the caller phase remains pinned during the entire sub-skill invocation). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned [ingest:completed], run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel) in the SAME response turn. DO NOT stop before [cleanup:completed] is output."

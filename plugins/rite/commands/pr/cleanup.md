@@ -88,7 +88,7 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
 
 **Completion marker convention** (Issue #604, mirrors create.md Issue #561 D-01): The unified completion marker for `/rite:pr:cleanup` is `[cleanup:completed]`, emitted as an HTML comment (`<!-- [cleanup:completed] -->`) on the absolute last line of Phase 5's output. The HTML comment form keeps the string grep-matchable (`grep -F '[cleanup:completed]'`) while ensuring the user-visible final content is the `クリーンアップが完了しました` checklist + guidance block. Phase 5 handles flow-state deactivation (`cleanup_completed`, `active: false`) and the HTML-commented sentinel internally (Terminal Completion pattern).
 
-**Defense-in-depth**: Phase 4 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then to `cleanup_post_ingest` after the sub-skill returns. Phase 5 writes `cleanup_completed` with `active: false` and outputs the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 detection.
+**Defense-in-depth**: Phase 1.0 activates `.rite-flow-state` to `cleanup` (Phase 1-4 区間の保護)。Phase 4 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then to `cleanup_post_ingest` after the sub-skill returns. Phase 5 writes `cleanup_completed` with `active: false` and outputs the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 detection.
 
 ---
 
@@ -1495,6 +1495,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --if-exists; then
   echo "WARNING: flow-state-update.sh patch (cleanup_pre_ingest) failed — stop-guard defence-in-depth is disabled for this Phase 4.W.2 invocation. Sub-skill rite:wiki:ingest will still be invoked, but premature end_turn will not be blocked. Investigate the helper exit reason in stderr above before relying on this protection again." >&2
 fi
+```
 
 Invoke the `/rite:wiki:ingest` Skill to process pending raw sources into Wiki pages:
 
@@ -1613,6 +1614,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --if-exists; then
   echo "WARNING: flow-state-update.sh patch (cleanup_post_ingest) failed — flow-state may still report cleanup_pre_ingest. Phase 5 will still execute, but stop-guard HINTs surfaced after this point will reference the pre-ingest phase. Investigate the helper exit reason in stderr above." >&2
 fi
+```
 
 **Step 2**: **→ Proceed to Phase 5 now**. The Phase 5 procedure handles the user-visible completion message, the `<!-- [cleanup:completed] -->` HTML comment sentinel (absolute last line), and the final flow-state deactivate (`cleanup_completed`, `active: false`) in a single contiguous block.
 
@@ -1785,6 +1787,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --if-exists; then
   echo "WARNING: flow-state-update.sh patch (cleanup_completed) failed — .rite-flow-state may still report active=true. Pre-check Item 3 (.phase = cleanup_completed AND .active = false) will then fail. Manually run: bash {plugin_root}/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists" >&2
 fi
+```
 
 **Step 2**: Output the HTML-commented completion sentinel as the **absolute last line** of the response. The sentinel must appear **after** Phase 5.1 + 5.2 user-visible content and the Step 1 bash invocation:
 

@@ -805,14 +805,16 @@ fi
 echo "TC-608-A: cleanup active → exit 2 (block)"
 dir608a="$GUARD_TEST_DIR/tc608a"
 mkdir -p "$dir608a"
+# Defensive: TC-475-A 削除/移動時の cross-TC 依存を排除するため fresh_ts を再代入
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608a" "{\"active\": true, \"phase\": \"cleanup\", \"previous_phase\": \"\", \"next_action\": \"Execute cleanup phases. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608a\"}"
 stderr_file608a="$(mktemp "$GUARD_TEST_DIR/stderr608a.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608a\", \"session_id\": \"sid-608a\"}"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608a") && rc=0 || rc=$?
-if [ $rc -eq 2 ] && grep -q "Phase 0" "$stderr_file608a"; then
-  pass "cleanup active → blocked with Phase 0 HINT in stderr"
+if [ $rc -eq 2 ] && grep -q "/rite:pr:cleanup Phase 1.0" "$stderr_file608a"; then
+  pass "cleanup active → blocked with cleanup-specific HINT in stderr"
 else
-  fail "expected exit 2 with Phase 0 HINT, got rc=$rc stderr='$(cat "$stderr_file608a")'"
+  fail "expected exit 2 with /rite:pr:cleanup Phase 1.0 HINT, got rc=$rc stderr='$(cat "$stderr_file608a")'"
 fi
 
 # --------------------------------------------------------------------------
