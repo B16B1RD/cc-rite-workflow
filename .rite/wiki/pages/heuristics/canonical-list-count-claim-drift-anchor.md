@@ -2,7 +2,7 @@
 title: "新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する"
 domain: "heuristics"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-19T05:48:50Z"
+updated: "2026-04-19T12:00:25+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T123408Z-pr-579.md"
@@ -16,6 +16,12 @@ sources:
     ref: "raw/fixes/20260419T004921Z-pr-585.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T050601Z-pr-590.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T112658Z-pr-599.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T114201Z-pr-599-rereview.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260419T112900Z-pr-599.md"
 tags: []
 confidence: high
 ---
@@ -75,6 +81,16 @@ canonical rule の汎化 (本ページの header title も拡張):
 - enum / 例外リスト / エラーハンドリング表は SoT の二重管理であり、片方だけの更新は silent drift
 - 「N type 同期」「N entry 登録」counter 宣言を同期アンカーとして活用する
 
+### 拡張: parallelism suffix drift (PR #599 で実証)
+
+canonical 一覧の drift は「counter 数」「エントリの有無」だけでなく、**sibling entry 間の parallelism suffix (「N 種で同型」「N counter で同型」等) の書き漏れ**という微細形でも発生する。PR #599 で初版に `9.3 exit code` 節 L1739 Phase 8.3 entry の末尾に「で同型」suffix 3 文字が欠落したまま commit された事例を実測: エラーハンドリング表側 (L1754) は `2 種で同型` で揃っていたが、9.3 節側は `2 種` 止まりで parallel 関係が壊れていた (L1738 Phase 6.2 `3 種で同型` との比較で差分が露呈)。
+
+- **検出経路**: prompt-engineer (LOW finding) と code-quality (推奨事項) が cross-validation で独立に同一箇所を検出。severity 評価は割れたが「drift が存在する」という判定は一致
+- **fix 契約の拡張**: canonical rule が「エントリを同期追加する」だけでは不十分で、sibling entry 間の parallelism suffix (表現の揃え方) まで strict に揃える義務を含む。『5 site 対称化』counter は「数」の同期アンカーだが、parallelism suffix は「**表現の同期アンカー**」であり、両輪で機械検証する
+- **fix の粒度**: 3 文字追加の micro-fix で 1 cycle 収束 (cycle 1: 1 finding → cycle 2: 0 findings mergeable)。本 PR scope に drift 解消が含まれ、かつ fixable な微細 drift は別 Issue 化ではなく本 PR 内で対応するのが loop 効率的 (ユーザー判定で Phase 5.3.0 mechanical demotion を override する価値がある)
+
+教訓: 同一ファイル内で canonical 一覧が複数セクション (9.3 節 + エラーハンドリング表) に分散している場合、片方への追加・変更が他方と自動的に parallel になる保証はない。reviewer は両セクションの **「数」と「表現」の両軸** で parallel check を行う必要がある。機械 lint では「で同型」の有無は意味的に等価として検出困難なため、cross-reviewer cross-validation が canonical な検出経路。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -89,3 +105,6 @@ canonical rule の汎化 (本ページの header title も拡張):
 - [PR #585 review results](../../raw/reviews/20260419T004413Z-pr-585.md)
 - [PR #585 fix results](../../raw/fixes/20260419T004921Z-pr-585.md)
 - [PR #590 review results](../../raw/reviews/20260419T050601Z-pr-590.md)
+- [PR #599 review results](../../raw/reviews/20260419T112658Z-pr-599.md)
+- [PR #599 re-review results](../../raw/reviews/20260419T114201Z-pr-599-rereview.md)
+- [PR #599 fix results](../../raw/fixes/20260419T112900Z-pr-599.md)
