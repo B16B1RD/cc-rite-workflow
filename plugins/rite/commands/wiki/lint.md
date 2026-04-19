@@ -1736,7 +1736,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
   - Phase 2.2 / Phase 6.0 / Phase 6.2 / Phase 8.2 / Phase 8.3 の `branch_strategy` 未知値 (5 箇所で同型、設定ミスの silent 通過防止)
   - Phase 1.1 / Phase 1.3 の `{mode}` placeholder 残留検知 (2 箇所で同型、Claude substitute 忘れの silent 通過防止)
   - Phase 6.2 の placeholder 残留検知 (`{branch_strategy}` / `{wiki_branch}` / `{pages_list}` の 3 種で同型、PR #564 F-01 / F-21、LLM substitute 忘れによる silent `missing_concept` 誤分類防止)
-  - Phase 8.3 の placeholder 残留検知 (`{log_entry}` / `{branch_strategy}` の 2 種、PR #564 F-04 / F-14、LLM substitute 忘れによる literal 残留 commit landed 防止)
+  - Phase 8.3 の placeholder 残留検知 (`{log_entry}` / `{branch_strategy}` の 2 種で同型、PR #564 F-04 / F-14、LLM substitute 忘れによる literal 残留 commit landed 防止)
   - Phase 8.1 の counter placeholder (`n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_broken_refs`) 残留 / 非整数検知 (5 counter で同型、Issue #573、LLM substitute 忘れによる silent `lint:clean` 誤 emit 防止)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
 
