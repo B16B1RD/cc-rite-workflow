@@ -56,17 +56,33 @@
 #
 set -uo pipefail
 
+# Resolve script directory early using POSIX-portable idiom.
+# `readlink -f` is a GNU extension unsupported by macOS BSD readlink — using it
+# would silently fall back to an empty string when coreutils is absent, and the
+# sentinel emit site (`$_SCRIPT_DIR/../workflow-incident-emit.sh`) would resolve
+# to a relative path under CWD (cd'd to REPO_ROOT later), breaking drift
+# detection silently. Peer scripts (wiki-ingest-commit.sh / wiki-worktree-*.sh)
+# all use this same `cd -P "$(dirname "${BASH_SOURCE[0]}")"` pattern.
+_SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Signal-specific trap (canonical pattern from references/bash-trap-patterns.md):
 # - EXIT preserves original exit code via `rc=$?`
 # - INT/TERM/HUP exit with POSIX-conventional codes (130/143/129)
 # - Tempfiles + same_branch probe file are cleaned in all paths
+# - BSD/macOS rm portability: empty-arg guard via `[ -n "${var:-}" ] && rm -f "$var"`
+#   (some BSD rm variants emit "cannot remove ''" on empty args)
 check_ignore_err=""
 add_dry_err=""
 negation_probe=""
 _rite_gitignore_cleanup() {
-  rm -f "${check_ignore_err:-}" "${add_dry_err:-}"
+  [ -n "${check_ignore_err:-}" ] && rm -f "$check_ignore_err"
+  [ -n "${add_dry_err:-}" ] && rm -f "$add_dry_err"
   # same_branch probe file: always remove so lint runs never pollute the tree
   [ -n "${negation_probe:-}" ] && rm -f "${negation_probe}" 2>/dev/null
+  # Also remove the probe parent directories (.rite/wiki/raw/, .rite/wiki/) if this
+  # script created them and they are empty. `rmdir` fails on non-empty directories,
+  # which protects pre-existing raw source files from being unintentionally removed.
+  rmdir .rite/wiki/raw .rite/wiki 2>/dev/null || true
 }
 trap 'rc=$?; _rite_gitignore_cleanup; exit $rc' EXIT
 trap '_rite_gitignore_cleanup; exit 130' INT
@@ -205,9 +221,11 @@ parent_rule_line=""
 if [ "$check_ignore_rc" -eq 0 ]; then
   # `git check-ignore -v` output: `<source>:<line>:<pattern>\t<path>`
   # The pattern field contains `.rite/wiki/` (or a more specific subpath rule)
-  # when the parent exclusion is healthy. For separate_branch, this is the
-  # health check. For same_branch we also need layer 2 (negation verify).
-  if printf '%s' "$check_ignore_out" | grep -qE '(^|[[:space:]:]|!)\.rite/wiki/'; then
+  # when the parent exclusion is healthy. The pattern field is always preceded
+  # by a colon (`:` separator after line number) in this output format, so a
+  # minimal `:<pattern>` match is sufficient and avoids the `.rite/wiki/` path
+  # field (suffix) from producing a false positive.
+  if printf '%s' "$check_ignore_out" | grep -qE ':\.rite/wiki/'; then
     parent_rule_matched=1
     parent_rule_line="$check_ignore_out"
   fi
@@ -231,15 +249,22 @@ case "$branch_strategy" in
     # cannot deterministically verify negation. Use `git add --dry-run` with a real
     # probe file (cleaned up by trap on exit).
     negation_probe=".rite/wiki/raw/.rite-lint-negation-probe"
+    # mkdir/touch failure classified as invocation error (exit 2) so lint.md
+    # Phase 3.9 Result handling routes it to the `error` branch (recorded as
+    # warning with diagnostic message) rather than silent healthy skip (exit 0).
+    # This distinguishes "verify impossible due to env constraint" (exit 2) from
+    # "rule healthy" (exit 0), matching the header L45-L49 exit code contract.
     mkdir -p "$(dirname "$negation_probe")" 2>/dev/null || {
-      echo "WARNING: gitignore-health-check: cannot mkdir $(dirname "$negation_probe") — same_branch negation verify skipped" >&2
+      echo "ERROR: gitignore-health-check: cannot mkdir $(dirname "$negation_probe")" >&2
+      echo "  対処: read-only filesystem / permission / disk full のいずれかを確認してください" >&2
       echo "==> Total gitignore-health-check findings: 0"
-      exit 0
+      exit 2
     }
     touch "$negation_probe" 2>/dev/null || {
-      echo "WARNING: gitignore-health-check: cannot touch $negation_probe — same_branch negation verify skipped" >&2
+      echo "ERROR: gitignore-health-check: cannot touch $negation_probe" >&2
+      echo "  対処: read-only filesystem / permission / disk full のいずれかを確認してください" >&2
       echo "==> Total gitignore-health-check findings: 0"
-      exit 0
+      exit 2
     }
 
     add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
@@ -268,11 +293,10 @@ esac
 
 # --- Emit sentinel on drift ---
 if [ "$findings" -gt 0 ]; then
-  # Delegate sentinel formatting to workflow-incident-emit.sh. Resolve script path
-  # relative to this script so the script still works when invoked via absolute
-  # path from lint.md (with {plugin_root} substitution).
-  script_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
-  emit_script="$script_dir/../workflow-incident-emit.sh"
+  # Delegate sentinel formatting to workflow-incident-emit.sh. `$_SCRIPT_DIR`
+  # was resolved at the top of this script using the POSIX-portable
+  # `cd -P "$(dirname "${BASH_SOURCE[0]}")"` idiom (macOS BSD-compatible).
+  emit_script="$_SCRIPT_DIR/../workflow-incident-emit.sh"
   if [ -f "$emit_script" ]; then
     # Emit to stdout so the sentinel reaches the orchestrator's conversation context.
     # `|| true` preserves non-blocking contract (emit failure must not halt lint).

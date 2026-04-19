@@ -676,10 +676,10 @@ fi
 |-----------|---------------------------|--------|
 | 0 | `success` | `.rite/wiki/` rule healthy (or legitimate no-op: wiki disabled / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
 | 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel is also emitted on stdout so Phase 5.4.4.1 can auto-register a tracking Issue. Display findings and allow flow to continue |
-| 2 | `error` | Invocation error (not in git repo, etc.) — record as warning, display error message |
+| 2 | `error` | Invocation error (not in git repo, `git check-ignore` failure, `same_branch` 戦略で probe file 作成不能 — read-only filesystem / permission denied / disk full 等) — record as warning, display error message |
 | -1 | `skipped` | Script not found (marketplace install without `hooks/scripts/`) — skip silently |
 
-**Important**: Gitignore health check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #567 explicitly mandates this non-blocking contract — the check exists to detect regression immediately while not halting merges.
+**Important**: Gitignore health check results are treated as **warnings**, not errors — same policy as Phase 0.6 / 3.5 / 3.6 / 3.7 / 3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #567 explicitly mandates this non-blocking contract — the check exists to detect regression immediately while not halting merges.
 
 **Record gitignore health check results** for Phase 4 reporting:
 - `gitignore_health_status`: `success` / `warning` / `error` / `skipped`
@@ -788,7 +788,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {verify_terminal_output}
 ```
 
-**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. The appendix output includes both the stderr WARNING and the `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel from stdout (merged via `2>&1` at invocation) so the sentinel reaches the orchestrator's conversation context where Phase 5.4.4.1 grep detects it:
+**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes both the stderr WARNING and the `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel from stdout (merged via `2>&1` at invocation) so the sentinel reaches the orchestrator's conversation context where Phase 5.4.4.1 grep detects it. When status is `error` (exit 2, invocation failure), the script exits before sentinel emit so the appendix contains only the stderr ERROR diagnostic:
 
 ```
 ⚠️ Gitignore health check: {gitignore_health_finding_count} findings detected ({gitignore_health_status}, non-blocking)
