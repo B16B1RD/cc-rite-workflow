@@ -36,9 +36,10 @@
 | [検出 grep と mutation (Edit old_string) は同一の文字列 strictness で実装する](pages/patterns/detection-mutation-strictness-symmetry.md) | patterns | 「存在 check → exact 操作」2 段階処理で検出 grep の prefix loose vs Edit old_string の exact match の strictness 差は「検出 OK → 操作 fail」の中途半端 hard fail を生む。両者で共通 literal を使うか、Edit 失敗時に fallback (末尾追記 / skip) を用意する。PR #586 cycle 5 F-04 で実測。 | 2026-04-19T03:30:00+00:00 | high |
 | [fix コメント / commit message で hallucinated canonical reference を生成する](pages/anti-patterns/hallucinated-canonical-reference.md) | anti-patterns | fix 時に「canonical 参照」として存在しないファイル / 行番号 / anchor を commit message に書くと、LLM が「それっぽい数字」を hallucinate するリスク。anchor / Phase 番号 / heading 文字列で参照し、行番号が必要なら `wc -l` + `sed -n` で実在検証する。PR #586 cycle 3 F-03 で実測 (lint.md L1586-L1591 が非実在)。 | 2026-04-19T03:30:00+00:00 | high |
 | [re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)](pages/heuristics/reviewer-scope-antidegradation.md) | heuristics | re-review / verification mode では reviewer scope が「前回指摘の解消確認」に偏り、初回で verify すべきだった latent design issue (dogfooding bias / 既存 convention 違反) を見落とす経路がある。毎サイクル initial scope を rerun するのが canonical。PR #586 cycle 4 で cycle 1-3 見落としの 2 件が初検出された実測あり。 | 2026-04-19T03:30:00+00:00 | high |
+| [極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる](pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md) | heuristics | 5 行程度の極小 refactor PR (特定 Phase の sibling site 対称化) では、複数の同型箇所を Grep + Read で網羅的に照合し変数名・ラベル以外の構造的差分を洗い出すことで、Confidence 80+ の「指摘事項 0 件 + merge 可」判定を短時間で出せる。PR #592 で 4 sibling site (Phase 2.3/6.0 × separate/same) の照合として実測。副次技法にハードコード番号の `gh pr view` 実在性検証と scope 外推奨の別 Issue 候補化 (複数 reviewer 独立合意による triple cross-validation)。 | 2026-04-19T06:45:00Z | high |
 
 ## 統計
 
-- 総ページ数: 29
-- ドメイン別: patterns=15, heuristics=8, anti-patterns=6
-- 最終更新: 2026-04-19T05:48:50Z
+- 総ページ数: 30
+- ドメイン別: patterns=15, heuristics=9, anti-patterns=6
+- 最終更新: 2026-04-19T06:45:00Z
