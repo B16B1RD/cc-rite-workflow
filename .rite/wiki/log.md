@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-19T09:45:45+00:00 | ingest:update | pages/patterns/canonical-reference-sample-code-strict-sync.md | PR #596: 観点 (b) `-- ` 引数区切り残留を別 Issue #587 → minimal PR で解消する canonical flow を追補 (raw: pr-596) |
 | 2026-04-14T00:02:30+00:00 | init | — | Wiki を初期化しました |
 | 2026-04-18T12:50:00+00:00 | ingest:create | pages/patterns/placeholder-residue-gate-bash-fail-fast.md | PR #579 cycle 1 CRITICAL: bash placeholder residue gate を 6 site 目として追加 |
 | 2026-04-18T12:50:00+00:00 | ingest:create | pages/patterns/drift-check-anchor-semantic-name.md | PR #579 cycle 1 HIGH: literal 行番号参照禁止 + semantic name 形式 canonical 化 |

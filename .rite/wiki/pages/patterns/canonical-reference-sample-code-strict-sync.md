@@ -2,7 +2,7 @@
 title: "canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する"
 domain: "patterns"
 created: "2026-04-18T17:40:00+09:00"
-updated: "2026-04-19T03:30:00+00:00"
+updated: "2026-04-19T09:45:45+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
@@ -14,6 +14,8 @@ sources:
     ref: "raw/fixes/20260418T113520Z-pr-578.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T035346Z-pr-586-cycle7.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T094545Z-pr-596.md"
 tags: []
 confidence: high
 ---
@@ -78,6 +80,18 @@ PR #586 cycle 4 fix で「canonical reference (`gitignore-health-check.sh` L270-
 
 3 観点の**いずれかでも drift していれば「一字一句同期」と主張してはならない**。代替として、「stderr 退避部分のみ揃える」「if-wrapper 構造だけ揃える」とスコープ限定を明示すれば silent over-claim を避けられる。
 
+### scope 外 drift → 別 Issue 化 → 後続 minimal PR で解消する canonical flow (PR #596 での evidence)
+
+PR #586 cycle 7 で残った観点 (b) `-- ` 引数区切りの drift は、PR #586 の scope ではなく**別 Issue #587 として切り出され**、後続 PR #596 で +1/-1 の minimal diff (literal 1 文字 ` -- ` 追加) として解消された。review は 0 findings / 1 サイクルで mergeable 判定。
+
+**学習**: canonical 一字一句同期の 3 観点のうち 1 つだけが残留した場合、同 PR 内で無理に fix を広げるより「現 PR の scope を保ち残り観点を別 Issue 化 → 後続 PR で minimal fix」の flow が以下の理由で優位:
+
+- scope expansion による review-fix サイクルの肥大化を避けられる
+- minimal diff (1-2 行) は sibling site grep 照合と機械検証 (`grep -n` で 1 行一致確認) で short-time / high-confidence レビューが可能
+- Issue 本文の「完了条件」として観点を個別に明文化することで、後続 PR の成否判定が決定的になる
+
+参考フロー: PR #590 (別例、+4 lines) と同型の「極小対称化 PR」パターンの appilcation。`極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる` heuristic (heuristics) と組み合わせて運用するのが canonical。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -91,3 +105,4 @@ PR #586 cycle 4 fix で「canonical reference (`gitignore-health-check.sh` L270-
 - [PR #578 cycle 1 review (F-ID 衝突 / iteration 非対称)](../../raw/reviews/20260418T113250Z-pr-578.md)
 - [PR #578 cycle 1 fix (F-ID 全件 grep + 最大値 +1)](../../raw/fixes/20260418T113520Z-pr-578.md)
 - [PR #586 cycle 7 review (一字一句同期 3 観点の実測)](../../raw/reviews/20260419T035346Z-pr-586-cycle7.md)
+- [PR #596 review (観点 (b) `-- ` 引数区切り残留を別 Issue #587 → minimal PR で解消した成功例)](../../raw/reviews/20260419T094545Z-pr-596.md)
