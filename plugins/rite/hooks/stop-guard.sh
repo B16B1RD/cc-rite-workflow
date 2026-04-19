@@ -256,11 +256,12 @@ STOP_MSG
   exit 2
 fi
 
-# Best-effort hint for /rite:issue:create sub-skill return phases (#525, #552).
+# Best-effort hint for sub-skill return phases (#525, #552, #604).
 # When the LLM stops implicitly after a sub-skill return (e.g., right after
-# [interview:skipped] / [interview:completed] / [create:completed:{N}]),
-# surface a phase-specific continuation hint so the next prompt re-entry
-# makes the correct continuation obvious.
+# [interview:skipped] / [interview:completed] / [create:completed:{N}] /
+# [cleanup:completed] / [ingest:completed]), surface a phase-specific
+# continuation hint so the next prompt re-entry makes the correct continuation
+# obvious.
 #
 # Additionally (#552), capture the helper's sentinel line and echo it to
 # stderr (the same channel as STOP_MSG). In Claude Code, stop-hook stderr is
@@ -268,36 +269,54 @@ fi
 # to stderr guarantees Phase 5.4.4.1 sees it in the next context cycle.
 # This is best-effort — helper missing / failure is recorded to diag log but
 # does NOT change the block decision below.
-CREATE_HINT=""
-CREATE_INCIDENT_TYPE=""
+#
+# WORKFLOW_HINT / WORKFLOW_INCIDENT_TYPE は汎用名 (#604)。
+# 旧 CREATE_HINT / CREATE_INCIDENT_TYPE は create_* 専用だったが、cleanup_* /
+# ingest_* も同型のため一般化した。後方互換のため legacy 名はそのまま参照可能だが、
+# 本実装では generic な変数名のみ使用する。
+WORKFLOW_HINT=""
+WORKFLOW_INCIDENT_TYPE=""
 case "$PHASE" in
   create_post_interview)
-    CREATE_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. No GitHub Issue has been created yet."
+    WORKFLOW_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. No GitHub Issue has been created yet."
     ;;
   create_delegation)
-    CREATE_HINT="HINT: Delegation sub-skill is in-flight. When it returns [create:completed:{N}], run Mandatory After Delegation self-check (Step 1/2 are no-ops if marker present) in the SAME response turn. DO NOT stop before the completion marker is output."
+    WORKFLOW_HINT="HINT: Delegation sub-skill is in-flight. When it returns [create:completed:{N}], run Mandatory After Delegation self-check (Step 1/2 are no-ops if marker present) in the SAME response turn. DO NOT stop before the completion marker is output."
     ;;
   create_post_delegation)
-    CREATE_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
+    WORKFLOW_HINT="HINT: Terminal sub-skill returned without [create:completed:{N}] (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state."
+    ;;
+  cleanup_pre_ingest)
+    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 (rite:wiki:ingest invoke) is about to start or in-flight. When it returns, run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel) in the SAME response turn. DO NOT stop before [cleanup:completed] is output."
+    ;;
+  cleanup_post_ingest)
+    WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. Immediately output the cleanup completion message + next-steps block + <!-- [cleanup:completed] --> HTML comment sentinel as the absolute last line, then deactivate flow state (cleanup_completed, active: false) in the SAME response turn. DO NOT stop."
+    ;;
+  ingest_pre_lint)
+    WORKFLOW_HINT="HINT: /rite:wiki:ingest Phase 8 (auto-lint Skill invoke) is about to start or in-flight. When it returns, run 🚨 Mandatory After Auto-Lint (writes ingest_post_lint) → Phase 9 Completion Report (emits <!-- [ingest:completed] --> sentinel + caller continuation HTML comment) in the SAME response turn. DO NOT stop before [ingest:completed] is output."
+    ;;
+  ingest_post_lint)
+    WORKFLOW_HINT="HINT: rite:wiki:lint returned and ingest_post_lint is recorded. Phase 9 Completion Report has NOT been output yet. Immediately output the ingest completion message + next-steps block + caller continuation HTML comment + <!-- [ingest:completed] --> HTML comment sentinel as the absolute last line in the SAME response turn. DO NOT stop."
     ;;
 esac
 
-# Consolidate CREATE_INCIDENT_TYPE setting: all create_* phases use the same
-# sentinel type. If a future phase needs a different type, switch to case-based
-# assignment (see F-17 resolution).
-if [ -n "$CREATE_HINT" ]; then
-  CREATE_INCIDENT_TYPE="manual_fallback_adopted"
+# Consolidate sentinel type: every active workflow blocked here is treated as a
+# manual fallback candidate. If a future phase needs a different sentinel type,
+# switch to case-based assignment (see F-17 resolution).
+if [ -n "$WORKFLOW_HINT" ]; then
+  WORKFLOW_INCIDENT_TYPE="manual_fallback_adopted"
 else
-  CREATE_INCIDENT_TYPE=""
+  WORKFLOW_INCIDENT_TYPE=""
 fi
 
-# #552: Emit workflow_incident sentinel when stop-guard blocks a create_* phase.
-# The sentinel is captured from the helper's stdout, then echoed to stderr so
-# it reaches the assistant via the exit-2 feedback contract (same channel as
-# STOP_MSG below). Phase 5.4.4.1 grep-detects it in the next context cycle.
+# #552 / #604: Emit workflow_incident sentinel when stop-guard blocks a
+# recognised workflow phase. The sentinel is captured from the helper's stdout,
+# then echoed to stderr so it reaches the assistant via the exit-2 feedback
+# contract (same channel as STOP_MSG below). Phase 5.4.4.1 grep-detects it in
+# the next context cycle.
 # Non-blocking per #552 design: helper failure is recorded to diag log but does
 # not alter the stop-block decision.
-if [ -n "$CREATE_INCIDENT_TYPE" ]; then
+if [ -n "$WORKFLOW_INCIDENT_TYPE" ]; then
   INCIDENT_HELPER="$SCRIPT_DIR/workflow-incident-emit.sh"
   if [ -f "$INCIDENT_HELPER" ]; then
     if [ ! -x "$INCIDENT_HELPER" ]; then
@@ -319,7 +338,7 @@ if [ -n "$CREATE_INCIDENT_TYPE" ]; then
     _emit_rc=0
     if [ -n "$_emit_stderr" ]; then
       if ! _sentinel_line=$(bash "$INCIDENT_HELPER" \
-          --type "$CREATE_INCIDENT_TYPE" \
+          --type "$WORKFLOW_INCIDENT_TYPE" \
           --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
           --pr-number "${PR:-0}" 2>"$_emit_stderr"); then
         _emit_rc=$?
@@ -327,7 +346,7 @@ if [ -n "$CREATE_INCIDENT_TYPE" ]; then
     else
       # stderr unavailable (mktemp failure) — discard helper stderr but still capture rc
       if ! _sentinel_line=$(bash "$INCIDENT_HELPER" \
-          --type "$CREATE_INCIDENT_TYPE" \
+          --type "$WORKFLOW_INCIDENT_TYPE" \
           --details "stop-guard blocked implicit stop in phase=$PHASE (issue=#$ISSUE)" \
           --pr-number "${PR:-0}" 2>/dev/null); then
         _emit_rc=$?
@@ -337,7 +356,7 @@ if [ -n "$CREATE_INCIDENT_TYPE" ]; then
       # echo to stderr so Claude Code feeds it back via exit-2 contract
       echo "$_sentinel_line" >&2
     fi
-    log_diag "incident_emit type=$CREATE_INCIDENT_TYPE rc=$_emit_rc sentinel_captured=$([ -n "$_sentinel_line" ] && echo 1 || echo 0) phase=$PHASE session_id=${SESSION_ID:-unknown}"
+    log_diag "incident_emit type=$WORKFLOW_INCIDENT_TYPE rc=$_emit_rc sentinel_captured=$([ -n "$_sentinel_line" ] && echo 1 || echo 0) phase=$PHASE session_id=${SESSION_ID:-unknown}"
     # helper validation errors: record stderr whenever non-empty (decoupled from rc check
     # per #552 cycle 2 F-05 — empty-stdout-with-rc=0 is also anomalous and deserves surfacing).
     if [ -n "$_emit_stderr" ] && [ -s "$_emit_stderr" ]; then
@@ -345,7 +364,7 @@ if [ -n "$CREATE_INCIDENT_TYPE" ]; then
     fi
     # anomalous empty-stdout path: helper exited 0 but produced no sentinel.
     if [ "$_emit_rc" -eq 0 ] && [ -z "$_sentinel_line" ]; then
-      log_diag "incident_emit_empty_stdout type=$CREATE_INCIDENT_TYPE phase=$PHASE session_id=${SESSION_ID:-unknown}"
+      log_diag "incident_emit_empty_stdout type=$WORKFLOW_INCIDENT_TYPE phase=$PHASE session_id=${SESSION_ID:-unknown}"
     fi
     if [ -n "$_emit_stderr" ]; then
       rm -f "$_emit_stderr" 2>/dev/null
@@ -356,12 +375,12 @@ if [ -n "$CREATE_INCIDENT_TYPE" ]; then
   fi
 fi
 
-if [ -n "$CREATE_HINT" ]; then
+if [ -n "$WORKFLOW_HINT" ]; then
   cat >&2 <<STOP_MSG
 [rite] Normal operation — stop prevented.
 Phase: $PHASE | Issue: #$ISSUE | PR: #$PR
 ACTION: $NEXT
-$CREATE_HINT
+$WORKFLOW_HINT
 Do NOT re-invoke any completed skill. Do NOT stop.
 STOP_MSG
 else

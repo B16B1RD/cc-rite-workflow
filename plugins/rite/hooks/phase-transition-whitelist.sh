@@ -143,6 +143,25 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["create_delegation"]="create_post_delegation create_completed"
   ["create_post_delegation"]="create_completed"
   ["create_completed"]=""
+
+  # /rite:pr:cleanup lifecycle (#604).
+  # cleanup.md Phase 4 (wiki-auto-ingest) → Phase 5 (Completion Report) 多層防御で導入。
+  # cleanup_pre_ingest は Phase 4.W.2 invoke 直前、cleanup_post_ingest は wiki:ingest sub-skill
+  # return 直後 (🚨 Mandatory After Wiki Ingest セクション)、cleanup_completed は Phase 5
+  # Terminal Completion (sentinel + flow-state deactivate)。
+  # cleanup_completed は rite_phase_transition_allowed() の terminal acceptance に追加済み。
+  ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed"
+  ["cleanup_post_ingest"]="cleanup_completed"
+  ["cleanup_completed"]=""
+
+  # /rite:wiki:ingest lifecycle (#604).
+  # ingest.md Phase 8.3 (auto-lint) → Phase 9 (Completion Report) 多層防御で導入。
+  # ingest.md は **flow-state を直接書かない** 設計 (caller の phase 整合性を壊さないため) だが、
+  # 単独実行時のみ Terminal Completion で flow-state を deactivate する fallback 経路がある。
+  # 本 whitelist エントリは将来 ingest.md が flow-state を書くケース (例: 単独実行) のために登録。
+  ["ingest_pre_lint"]="ingest_post_lint ingest_completed"
+  ["ingest_post_lint"]="ingest_completed"
+  ["ingest_completed"]=""
 )
 
 # Load override map from rite-config.yml if present.
@@ -305,12 +324,16 @@ rite_phase_transition_allowed() {
 
   # Terminal / cold-start cases.
   # "completed" is the /rite:issue:start terminal state. "create_completed" is written by
-  # /rite:issue:create at its end. "phase_done" was a speculative reserved name with no
-  # producer — removed per code-quality cycle-3 LOW (premature abstraction).
+  # /rite:issue:create at its end. "cleanup_completed" / "ingest_completed" (#604) are the
+  # terminal states for /rite:pr:cleanup and /rite:wiki:ingest respectively. "phase_done"
+  # was a speculative reserved name with no producer — removed per code-quality cycle-3 LOW
+  # (premature abstraction).
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
   [ "$next" = "completed" ] && return 0
   [ "$next" = "create_completed" ] && return 0
+  [ "$next" = "cleanup_completed" ] && return 0
+  [ "$next" = "ingest_completed" ] && return 0
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
   # Unknown prev phase → accept (forward compat)
