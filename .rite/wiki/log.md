@@ -108,3 +108,4 @@
 | 2026-04-19T05:50:53Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=16 |
 | 2026-04-19T06:45:00Z | ingest:create | pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md | PR #592 review (0 findings, 4 sibling site 対称化): 極小対称化 PR の sibling site Grep 照合レビュー手順と副次技法 (hardcoded 番号の gh 検証 / scope 外推奨の別 Issue 化) を heuristic 化 (source: raw/reviews/20260419T062330Z-pr-592.md) |
 | 2026-04-19T06:47:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=16 |
+| 2026-04-19T08:10:00+00:00 | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #594 review (0 findings, 1 file / +4/-3 minimal drift fix): sub-heuristic #6 (YAML frontmatter vs 本文階層 drift) の successful application 実証、canonical SoT 内部の列挙順序観点差を corollary として追加 (source: raw/reviews/20260419T072121Z-pr-594.md) |
