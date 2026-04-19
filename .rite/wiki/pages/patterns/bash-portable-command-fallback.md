@@ -2,10 +2,14 @@
 title: "cross-platform bash コマンドは fallback chain で portable 化する"
 domain: "patterns"
 created: "2026-04-17T04:30:00+00:00"
-updated: "2026-04-17T04:30:00+00:00"
+updated: "2026-04-19T01:10:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T035556Z-pr-559.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260419T004413Z-pr-585.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260419T004921Z-pr-585.md"
 tags: []
 confidence: high
 ---
@@ -61,10 +65,19 @@ sha1_portable() {
 - プラグイン全体を `grep -rn 'sha1sum\|md5sum\|readlink -f\|date -Iseconds'` で走査し、裸呼び出しを検出
 - CI で macOS runner を最低限 smoke test に含める
 
+### PR #585 の追加事例 (readlink -f の peer-pattern adoption)
+
+PR #585 の `gitignore-health-check.sh` 新規追加で、複数 reviewer が HIGH として `readlink -f "${BASH_SOURCE[0]}"` の BSD 非互換を検出。peer scripts は既に `cd -P "$(dirname "${BASH_SOURCE[0]}")"` idiom (`_SCRIPT_DIR` canonicalize pattern、`script-dir-canonicalize-before-cd.md` を参照) を採用済みだったため、新規 script でも最初から peer と同じ portable idiom を採用することが canonical。
+
+教訓: 新規 bash script 作成時は、同一リポジトリ内の peer script がすでに採用している portable pattern を **grep で先に探してから書き始める**。独自に `readlink -f` を直書きすると本問題の再発源になる。
+
 ## 関連ページ
 
 - [jq -n create mode: 既存値を読み取ってから再構築する](jq-create-mode-preserve-existing.md)
+- [_SCRIPT_DIR canonicalize: cd 前に BASH_SOURCE を絶対 path 化する](script-dir-canonicalize-before-cd.md)
 
 ## ソース
 
 - [PR #559 review results](../../raw/reviews/20260417T035556Z-pr-559.md)
+- [PR #585 review results](../../raw/reviews/20260419T004413Z-pr-585.md)
+- [PR #585 fix results](../../raw/fixes/20260419T004921Z-pr-585.md)

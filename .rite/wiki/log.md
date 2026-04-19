@@ -86,3 +86,7 @@
 | 2026-04-18T12:00:00+00:00 | ingest:create | pages/anti-patterns/fix-comment-self-drift.md | PR #578 cycle 2: fix 修正コメント自体が行番号参照禁止原則を破る self-drift pattern (sources: raw/reviews/20260418T114056Z-pr-578.md + raw/fixes/20260418T114231Z-pr-578.md) |
 | 2026-04-18T12:00:00+00:00 | ingest:skip | raw/reviews/20260418T114731Z-pr-578.md | PR #578 cycle 3 (final): 0 findings の convergence 記録のみ、extractable lesson は cycle 1-2 で抽出済 |
 | 2026-04-18T12:10:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=33, broken_refs=0 |
+| 2026-04-19T01:10:00+00:00 | ingest:create | pages/patterns/mkdir-rmdir-cleanup-symmetry.md | PR #585 review + fix (HIGH x2 cross-validation): mkdir -p した directory の rmdir 対称 cleanup 義務化 |
+| 2026-04-19T01:10:00+00:00 | ingest:update | pages/patterns/bash-portable-command-fallback.md | PR #585 cycle 1: readlink -f BSD 非互換の再発事例、新規 script は peer portable idiom を grep で先に探す canonical 追記 |
+| 2026-04-19T01:10:00+00:00 | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #585: sentinel type enum (SPEC.md / protocol.md) 同期義務へスコープ拡張、title と canonical rule を汎化 |
+| 2026-04-19T01:10:00+00:00 | ingest:skip | raw/reviews/20260419T005358Z-pr-585-cycle2.md | PR #585 cycle 2: 0 findings の mergeable 確認のみ、経験則は cycle 1 + fix で抽出済 |
