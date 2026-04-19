@@ -330,7 +330,7 @@ if [ "$probe_created" = "true" ]; then
   # `set -e` 不在の bash block 内では機能等価だが、Wiki 経験則「canonical reference 文書の
   # サンプルコードは canonical 実装と一字一句同期する」(patterns/high) を厳守する。
   dry_run_err=$(mktemp /tmp/rite-wiki-init-p13-dryrun-err-XXXXXX 2>/dev/null) || dry_run_err=""
-  if dry_run_out=$(git add --dry-run .rite/wiki/raw/.negation-probe 2>"${dry_run_err:-/dev/null}"); then
+  if dry_run_out=$(git add --dry-run -- .rite/wiki/raw/.negation-probe 2>"${dry_run_err:-/dev/null}"); then
     dry_run_rc=0
   else
     dry_run_rc=$?
