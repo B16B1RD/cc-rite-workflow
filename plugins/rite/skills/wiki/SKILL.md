@@ -8,8 +8,9 @@ description: |
   unregistered raw sources, and broken references, or initialize the Wiki structure.
   Activates on "wiki", "ingest", "query", "lint", "経験則", "知識ページ",
   "Wiki 蓄積", "経験則を残す", "経験則を参照", "Wiki 検索", "Wiki Lint",
-  "Wiki 品質", "missing_concept", "欠落概念", "unregistered_raw",
-  "未登録 raw", "broken_refs", "壊れた相互参照",
+  "Wiki 品質", "矛盾チェック", "陳腐化", "孤児ページ",
+  "欠落概念", "missing_concept", "壊れた相互参照", "broken_refs",
+  "未登録 raw", "unregistered_raw",
   "wiki:init", "wiki:ingest", "wiki:query", "wiki:lint",
   "/rite:wiki:".
 ---
@@ -23,7 +24,7 @@ description: |
 - wiki, Wiki, 経験則, 知識ページ
 - ingest, 蓄積, 経験則を残す
 - query, 経験則を参照, Wiki 検索
-- lint, Wiki Lint, Wiki 品質, 矛盾チェック, 陳腐化, 孤児ページ, 欠落概念, missing_concept, 未登録 raw, unregistered_raw, 壊れた相互参照, broken_refs
+- lint, Wiki Lint, Wiki 品質, 矛盾チェック, 陳腐化, 孤児ページ, 欠落概念, missing_concept, 壊れた相互参照, broken_refs, 未登録 raw, unregistered_raw
 - `/rite:wiki:init`, `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`
 
 ## アーキテクチャ概要
