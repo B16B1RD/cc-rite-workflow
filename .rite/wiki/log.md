@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T07:00:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #619: bidirectional backlink sub-pattern を team guideline として既存 5 ANCHOR (ingest.md Phase 5.1/5.2 の 4 site + lint.md Phase 8.1 の 1 site) に一律拡張。sibling sync 契約 prose と backlink 行の allowed redundancy 観察 (役割分離による意図的冗長性 — prose=設計意図、backlink=機械検証ポインタ) を canonical 化 (raw: pr-619) |
 | 2026-04-20T04:55:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T04:50:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #617: ANCHOR 入れ子追加時の outer/inner END 順序 (well-formed nesting vs crossing 構造) を追加。awk depth tracking 検証手順、HEREDOC / Markdown code fence 等対称 delimiter 全般への適用拡張 (raw: pr-617 review/fix1) |
 | 2026-04-20T04:50:00+00:00 | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #617: UI メッセージの多言語混在 style drift を 7 番目の sub-heuristic として追加。i18n/multilingual style policy も同 scope の言語選択全体を canonical SoT として扱う (raw: pr-617 review/fix1) |

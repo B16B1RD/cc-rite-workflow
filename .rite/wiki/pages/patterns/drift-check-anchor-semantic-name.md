@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-20T04:30:00+00:00"
+updated: "2026-04-20T07:00:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -22,6 +22,8 @@ sources:
     ref: "raw/reviews/20260420T042759Z-pr-617.md"
   - type: "fixes"
     ref: "raw/fixes/20260420T043015Z-pr-617-fix1.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260420T052907Z-pr-619.md"
 tags: []
 confidence: high
 ---
@@ -143,6 +145,24 @@ crossing 構造は以下の機械検証経路を破壊する:
 
 本原則は `# >>> DRIFT-CHECK ANCHOR <<<` だけでなく、HEREDOC marker (`<<EOF` / `EOF`) や Markdown code fence (` ``` `) のような **対称 delimiter を持つすべての構造** に適用される。
 
+### bidirectional backlink の team guideline 拡張と allowed redundancy (PR #619 での evidence)
+
+PR #605 で導入された bidirectional backlink sub-pattern (`# Downstream reference: <downstream-file>`) を、PR #619 で **既存 5 ANCHOR (ingest.md Phase 5.1/5.2 の 4 site + lint.md Phase 8.1 の 1 site) に team guideline として一律適用** した。これにより新規 ANCHOR と既存 ANCHOR の表記が統一され、canonical 側を編集する開発者が「downstream をどこから探せばよいか」を全 ANCHOR で grep 1 発で特定できる状態になった (片方向リンク残存による silent drift 経路を排除)。
+
+両 reviewer (prompt-engineer / code-quality) が独立して以下の **allowed redundancy** 観察を確認:
+
+- 既存 sibling sync 契約 prose (例: 「本 commit_msg 文字列と直下の placeholder-residue gate は Phase 5.0.c canonical と Phase 5.1 / Phase 5.2 の同一文字列と 3 箇所 explicit sync を契約。変更時は 3 箇所同時更新必須」) と、新規追加した backlink 行 (例: `Downstream reference: same file Phase 5.2 (DRIFT-CHECK ANCHOR: ...) — sibling sync 契約相手`) は、**同じ対称化相手を異なる文言で 2 度参照する**冗長表現になる
+- これは **意図的に許容される redundancy** であり、撤去対象ではない:
+  - prose は **意図と契約の説明** (なぜ 3 箇所同期が必要か / 変更時の手続き)
+  - backlink 行は **機械検証可能な逆方向ポインタ** (grep 1 発で downstream を特定)
+  - 役割が異なるため一方を削除すると他方の機能が劣化する (prose 削除 → 設計意図喪失、backlink 削除 → drift 検出機能喪失)
+
+**Canonical 適用フロー** (PR #619 で確立):
+
+1. 既存 ANCHOR に backlink を追加する PR では、既存の sibling sync 契約 prose を **撤去・統合せず** 並置する
+2. backlink 行は END marker には付けない (PR #605 慣習: canonical reference は START のみに記載)
+3. team guideline 適用 PR (本 PR のような「複数の既存 ANCHOR への一律拡張」) は scope を絞って 5-15 行程度に収め、Confidence 80+ の blocking 指摘 0 件で短時間 review 可能な極小対称化 PR として運用する
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
@@ -161,3 +181,4 @@ crossing 構造は以下の機械検証経路を破壊する:
 - [PR #605 review results (±3 行 drift brittleness 実証 + bidirectional backlink sub-pattern)](../../raw/reviews/20260419T134838Z-pr-605.md)
 - [PR #617 review (ANCHOR 入れ子の crossing 構造 detection)](../../raw/reviews/20260420T042759Z-pr-617.md)
 - [PR #617 fix (well-formed nesting canonical 適用)](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)
+- [PR #619 review (bidirectional backlink team guideline 5 ANCHOR 拡張 + allowed redundancy)](../../raw/reviews/20260420T052907Z-pr-619.md)
