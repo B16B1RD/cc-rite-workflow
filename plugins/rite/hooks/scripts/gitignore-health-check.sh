@@ -295,7 +295,7 @@ case "$branch_strategy" in
       echo "==> gitignore-health-check: DRIFT DETECTED (same_branch): negation override for '.rite/wiki/' missing or broken" >&2
       echo "==> git add --dry-run $negation_probe returned rc=$add_dry_rc" >&2
       [ -n "$add_dry_err" ] && [ -s "$add_dry_err" ] && head -3 "$add_dry_err" | sed 's/^/  /' >&2
-      echo "==> Hint: same_branch strategy requires '!.rite/wiki/' negation entry in .gitignore (see .gitignore L66-75 for setup steps)." >&2
+      echo "==> Hint: same_branch strategy requires '!.rite/wiki/' negation entry in .gitignore (see '.gitignore' の 'DRIFT-CHECK ANCHOR: same_branch verification-first setup steps' 節 for setup steps)." >&2
       findings=$((findings + 1))
     fi
     # >>> DRIFT-CHECK ANCHOR END: same_branch negation grep-qF healthy check <<<

@@ -65,6 +65,11 @@ temp/
 # ─────────────────────────────────────────────────────────────────────────────
 # same_branch 戦略ユーザー向け — verification-first セットアップ手順 (F-05 / F-10 対応)
 # ─────────────────────────────────────────────────────────────────────────────
+# >>> DRIFT-CHECK ANCHOR: same_branch verification-first setup steps <<<
+# Downstream reference: plugins/rite/hooks/scripts/gitignore-health-check.sh の
+# `same_branch strategy requires '!.rite/wiki/' negation entry` Hint メッセージが
+# 本節 (Step 1-5) を semantic anchor 経由で参照する。Step 1-5 のコマンド / 期待出力を
+# 変更する際は同 Hint メッセージと同期.
 # Step 1. negation エントリの追加 (本 .gitignore に **追記** する):
 #
 #   # 必須 — parent directory 除外を解除。これがないと配下ファイルを再包含できません:
@@ -100,6 +105,8 @@ temp/
 # Step 5. probe ファイルの片付け (commit に混入させないため。Step 3 が OK を返した後に実行):
 #
 #   rm -f .rite/wiki/raw/.negation-probe
+#
+# >>> DRIFT-CHECK ANCHOR END: same_branch verification-first setup steps <<<
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # `git check-ignore -v` を sanity check に使わない理由 (F-02 / F-06 対応):

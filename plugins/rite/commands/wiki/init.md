@@ -142,7 +142,7 @@ elif grep -qE '^!\.rite/wiki/[[:space:]]*$' .gitignore; then
 elif ! grep -qF '# <<< gitignore-wiki-section-end (anchor / F-09 対応)' .gitignore; then
   # PR #586 F-01 対応: Phase 1.3.3 Edit ツールが hardcode する anchor が不在の場合、
   # Edit が `old_string not found` で hard fail するため、early skip + 手動追記案内に分岐する。
-  # 本 anchor は rite-workflow 自己開発 repo の .gitignore L131 のみに存在し、consumer project には
+  # 本 anchor は rite-workflow 自己開発 repo の .gitignore の `# <<< gitignore-wiki-section-end (anchor / F-09 対応)` 行のみに存在し、consumer project には
   # distribution 経路がない (templates/ に該当 .gitignore template なし、/rite:init Phase 4.6 と
   # gitignore-health-check.sh どちらも anchor を inject しない)。consumer が手動で `.rite/wiki/` を
   # 追加した .gitignore は条件 1-3 を満たすが anchor を持たないため、本条件で fall-back する。
