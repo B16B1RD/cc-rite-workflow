@@ -7,7 +7,7 @@
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
 | [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) | heuristics | 修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。 | 2026-04-17T00:15:00+00:00 | high |
-| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる failure mode。PR #548 で 6 cycle の review-fix ループ (21→17→2→7→3→0) の dominant pattern として実測。PR #550 で symmetric error handling、PR #553 で Phase 内 mktemp pattern 統一、PR #562 で用語・類義語群、PR #578 で iteration 方式 (here-string/HEREDOC) 対称性スコープへ一般化。PR #623 で同一 doc 内の複数箇所に散在する同一 invariant (PR/Issue 番号、stale 数値) にも適用されることを確認。 | 2026-04-20T13:30:00+00:00 | high |
+| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる failure mode。PR #548 で 6 cycle の review-fix ループ (21→17→2→7→3→0) の dominant pattern として実測。PR #550 で symmetric error handling、PR #553 で Phase 内 mktemp pattern 統一、PR #562 で用語・類義語群、PR #578 で iteration 方式 (here-string/HEREDOC) 対称性スコープへ一般化。PR #623 で同一 doc 内の複数箇所に散在する同一 invariant (PR/Issue 番号、stale 数値) にも適用されることを確認。PR #629 で「新規契約宣言時に section 内の全 path (normal/early-return/error/disable) が契約を満たすか verify し忘れる」contract-implementation path 対称性へ拡張 (2 reviewer 合意の high-confidence)。 | 2026-04-20T18:15:00+00:00 | high |
 | [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) | anti-patterns | bash の `!` 演算子は rc を binary 反転するため `if ! cmd; then rc=$?` の `$?` は常に 0 を捕捉する。`set +e; cmd; rc=$?; set -e; case` による明示 3 値分離が canonical。 | 2026-04-16T19:37:16Z | high |
 | [stderr ノイズ削減: truncate ではなく selective surface で解く](pages/heuristics/stderr-selective-surface-over-truncate.md) | heuristics | success path の stderr ノイズを `2>/dev/null` や全 truncate で消すと legitimate warning も silent drop する。git の `-q` で informational 抑制 + grep filter で warning/hint/error 行のみ selective surface する責務分離が正解。PR #550 で multi-step 処理の per-step tempfile 分離に拡張。 | 2026-04-17T00:00:00+00:00 | high |
 | [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) | patterns | `mktemp → trap` 順では signal が届く窓で orphan が残る。「空文字変数宣言 → signal-specific trap → mktemp」の canonical 順序 + POSIX exit code (130/143/129) 明示渡しで signal 経路も堅牢化する。 | 2026-04-16T19:37:16Z | high |
@@ -46,4 +46,4 @@
 
 - 総ページ数: 34
 - ドメイン別: patterns=17, heuristics=9, anti-patterns=8
-- 最終更新: 2026-04-20T16:53:38+00:00
+- 最終更新: 2026-04-20T18:15:00+00:00
