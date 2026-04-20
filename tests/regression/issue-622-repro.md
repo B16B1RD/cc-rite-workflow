@@ -79,10 +79,15 @@ tail -30 .rite-stop-guard-diag.log | grep -E 'phase=create_'
 | Caller workflow | `/rite:issue:create` | `/rite:pr:cleanup` |
 | Sub-skill | `rite:issue:create-interview` | `rite:wiki:ingest` |
 | 停止ポイント | `<!-- [interview:skipped] -->` 出力後 | `<!-- [ingest:completed] -->` 出力後 |
-| 共通根本原因 | sub-skill Defense-in-Depth (flow-state write) の Markdown-embedded instruction 構造が LLM skip を許す + stop-guard の case arm 不足 | 同上 (cleanup の場合は `cleanup_pre_ingest` / `cleanup_post_ingest` arm は存在するが、ring 構造により間欠的に fire しない) |
-| 対策パターン | 冒頭 🚨 MANDATORY Pre-flight (create-interview.md) + stop-guard `create_interview` arm (#622) | wiki:ingest 側の類似 Pre-flight 化 (#621 で対応) |
+| Root cause 分類 (Decision Log) | H2 (stop-guard の case arm 不足) が主因 + H1/H3 が副因 | H1 (ingest.md 三点セットが turn-boundary heuristic 強化) + H3 (Pre-check list の self-introspection 依存) の複合 (#621 Decision Log 参照) |
+| 対策パターン | **冒頭 🚨 MANDATORY Pre-flight (create-interview.md)** + **stop-guard `create_interview` case arm 追加** (case arm 不在が主因のため新規追加) | **既存 5 層防御の補強**: (a) cleanup.md Pre-check list Item 0 の機械化 (`[routing-check] ingest=matched\|unmatched` 1 行出力義務化)、(b) ingest.md Phase 9.1 三点セット #2 (caller 継続 HTML コメント) と #3 (sentinel) の間に recap 挿入禁止 MUST NOT 行追加、(c) test-stop-guard-cleanup.sh / docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md 新規 (既存の cleanup_pre_ingest / cleanup_post_ingest arm は存在するため新規追加不要) |
 
-**結論**: 両 Issue とも「sub-skill return 経路での implicit stop」という同型問題を持つが、具体的な caller / sub-skill / phase 名が異なるため、同一ファイル内統合ではなく、同パターン (冒頭 Pre-flight + stop-guard case arm) の個別適用が必要。
+**結論**: 両 Issue は「sub-skill return 経路での implicit stop」という同型問題を持つが、根本原因と既存防御層の状態が異なるため**対策は非対称**となった:
+
+- **#622 は冒頭 Pre-flight + stop-guard case arm 追加**: 既存 stop-guard に `create_interview` arm が不在だったため、新規防御層を追加する必要があった
+- **#621 は既存 5 層防御の補強**: stop-guard arm (`cleanup_pre_ingest` / `cleanup_post_ingest`) は既に存在し、root cause も turn-boundary heuristic 強化と self-introspection 依存の方が主因だったため、Pre-check 機械化と MUST NOT 行の追加で対応
+
+共通根本原因として「sub-skill Defense-in-Depth が Markdown embedded instruction で LLM skip を許す」構造はあるが、既存防御層の欠落箇所が異なるため、同型の fix を両 PR で複製するのではなく、それぞれの workflow の欠落層を個別に補強する設計とした。
 
 ## 6. テスト
 
