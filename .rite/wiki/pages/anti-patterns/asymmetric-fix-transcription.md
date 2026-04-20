@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-20T18:15:00+00:00"
+updated: "2026-04-20T23:00:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -38,7 +38,13 @@ sources:
     ref: "raw/fixes/20260420T124128Z-pr-623.md"
   - type: "reviews"
     ref: "raw/reviews/20260420T180231Z-pr-629.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry"]
+  - type: "reviews"
+    ref: "raw/reviews/20260420T185124Z-pr-631.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260420T225458Z-pr-631.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260420T224940Z-pr-631.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition"]
 confidence: high
 ---
 
@@ -134,6 +140,29 @@ PR #629 (Issue #625) で `lint.md` Phase 9.2 に「`--auto` モードの stdout 
 2. **契約と early-return の scope 明示化**: 契約宣言の prose に「本契約は Phase X 以降の通常経路に限り、Phase 1.1/1.3 の早期 return は例外」のように明示 scope を書くか、早期 return にも同契約を適用する (どちらが canonical かは downstream parser の要求で決める)
 3. **scope-irrelevant finding の follow-up Issue 化**: 本 PR scope (Phase 9.2 対応) で対応しないが contract-implementation path drift が観測された場合、Phase 5.3.0 Observed Likelihood Gate で推奨事項降格 → 別 Issue 作成 (PR #629 では Issue #630) で追跡する canonical flow が 2 reviewer 合意経由で確立
 
+### Pipeline 新規 step 追加時の 4 site 対称更新契約 (PR #631 review/fix での evidence)
+
+PR #631 (`/rite:lint` への backlink-format check 追加) の cycle 1 review で 2 CRITICAL findings が 4 reviewer (prompt-engineer / code-quality / error-handling / security) により独立検出された:
+
+1. **`--quiet` flag 契約 drift**: 新規 `backlink-format-check.sh` の `--quiet` 実装が summary line を suppress する一方、既存 Phase 3.8/3.9 scripts (`wiki-growth-check.sh` / `gitignore-health-check.sh`) の `--quiet` は summary を必ず emit する契約。invocation 側で `--quiet` を付けて呼び出したため、lint.md prompt の regex count 抽出が常に failure → silent 0 表示の silent failure 経路を形成。**「同じパターンで書いた」だけでは契約 drift を発見できない** — peer script の flag 実装を runtime で確認する必要がある
+2. **Phase 4.1 appendix paragraph 増設漏れ**: 既存 6 種 lint check (Drift / Bang-backtick / Doc-heavy / Wiki growth / Terminal output / Gitignore health) は Phase 4.1 に「warning/error 時に findings を appendix で表示する」段落を持つが、新規 Phase 3.10 の追加だけで Phase 4.1 への追記を忘れた。result mapping table と display は **対称的に新設すべき**
+
+cycle 2 re-review では fix commit `2cd475e` (11 lines minimum diff) が 2 reviewer 独立承認で 0 findings 収束。fix 側観察: 最小差分 (`--quiet` 削除) と sibling 6 箇所 appendix paragraph の **word-for-word 整合** により 1 cycle で収束。
+
+**学習**: 本 anti-pattern は「pipeline (lint / review / sprint 等) に **新規 step / check を追加する時の N site 対称更新契約**」に拡張される。lint-pipeline の場合、新規 check 追加 PR は以下 **4 site** を対称的に同期更新しなければならない:
+
+1. **Phase 3.X**: 新 check の手順本体 (condition / skip / execution table / result handling / recording の 5 要素 sub-section)
+2. **Phase 4.1 appendix display**: warning/error 時に findings を visual output に反映する段落
+3. **Phase 4.3 summary table**: 集計表への行追加
+4. **Note 段落 policy 列挙**: 全 check の policy 一覧
+
+canonical 対策:
+
+1. **review checklist mandatory 化**: 新規 lint/pipeline step 追加 PR の review checklist に「(a) Phase 3.X 手順 / (b) Phase 4.1 appendix / (c) Phase 4.3 summary row / (d) Note policy 列挙」の 4 site mechanical verification (grep による同数確認) を必須化
+2. **peer flag 契約の runtime 検証**: 新規 script が既存 peer script と「同じ pattern」を採用する場合、**実際に invocation して stdout/stderr を grep で確認** する (`bash new-check.sh --quiet | grep -c 'Total'` で summary emit 有無を mechanical 検証)。copy-paste 同形性は契約一致を保証しない
+3. **fix は最小差分 + sibling word-for-word 整合が canonical**: 契約違反 fix は「invocation 側最小修正 (`--quiet` 削除)」と「script 側契約整合 (summary emit 保証)」の 2 択のうち reviewer 推奨に従い最小差分を採る。新 appendix paragraph は sibling 6 箇所のテンプレートに word-for-word 整合させる (PR #631 cycle 2 で 11 lines minimum diff + sibling word-for-word consistency が 2 reviewer 独立承認で 0 findings 収束を実測)
+4. **fix 側 lesson の symmetry**: script 側の contract 違反 (`--quiet` で summary suppress) と invocation 側の不整合 (`--quiet` を付けて呼び出し) は双方で起こりうる。どちらを修正するかは scope/最小差分/canonical 整合性で判断する (PR #631 では invocation 側削除を採用)
+
 ## 関連ページ
 
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
@@ -160,3 +189,6 @@ PR #629 (Issue #625) で `lint.md` Phase 9.2 に「`--auto` モードの stdout 
 - [PR #623 cycle 2 review (同一 doc 内 propagation scan miss 指摘)](raw/reviews/20260420T123731Z-pr-623.md)
 - [PR #623 cycle 2 fix (footnote 化 + propagation 完了)](raw/fixes/20260420T124128Z-pr-623.md)
 - [PR #629 review (Phase 9.2 contract vs Phase 1.1/1.3 early-return drift、2 reviewer 合意)](raw/reviews/20260420T180231Z-pr-629.md)
+- [PR #631 cycle 1 review (`--quiet` 契約 drift + Phase 4.1 appendix 欠落、4 reviewer 合意)](raw/reviews/20260420T185124Z-pr-631.md)
+- [PR #631 cycle 2 review (mergeable convergence, 11-line minimum diff fix の word-for-word 整合評価)](raw/reviews/20260420T225458Z-pr-631.md)
+- [PR #631 fix results (invocation 側 `--quiet` 削除 + sibling 6 箇所 appendix word-for-word 整合)](raw/fixes/20260420T224940Z-pr-631.md)

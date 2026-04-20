@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T23:00:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #631 cycle 1 review: `--quiet` flag 契約 drift + Phase 4.1 appendix paragraph 増設漏れの 2 CRITICAL (4 reviewer 独立検出)。Pipeline (lint 等) への新規 step 追加時の 4 site 対称更新契約 (Phase 3.X 手順 / Phase 4.1 appendix / Phase 4.3 summary table / Note policy 列挙) と peer script flag 契約の runtime 検証 (copy-paste 同形性 ≠ 契約一致) を追加 (raw: pr-631 cycle 1 review) |
+| 2026-04-20T23:00:00+00:00 | ingest:skip | raw/reviews/20260420T225458Z-pr-631.md | PR #631 cycle 2 re-review: 11-line minimum diff fix が 2 reviewer 独立承認で 0 findings 収束。既に raw cycle 1 review で抽出した同一経験則の convergence 確認であり独立した新規経験則に該当しないため skip。fix word-for-word 整合観察は asymmetric-fix-transcription.md 更新内の「fix は最小差分 + sibling word-for-word 整合が canonical」項目に反映済み |
+| 2026-04-20T23:00:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #631 fix results: invocation 側 `--quiet` 削除 (最小差分) + sibling 6 箇所 appendix paragraph の word-for-word 整合。fix 側 lesson として「script 側 contract 違反と invocation 側不整合は双方で起こりうる」を asymmetric-fix-transcription.md の canonical 対策 #4 に追加 (raw: pr-631 fix) |
 | 2026-04-20T18:16:22+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T18:15:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #629 Issue #625: Contract-Implementation path 対称性への拡張を追加。lint.md Phase 9.2「常に三点セット出力」契約 vs 同 file 内 Phase 1.1/1.3 早期 return (1 行のみ emit) の drift を prompt-engineer / code-quality の 2 reviewer が独立検出 (lint.md:151, 217)、新規契約宣言時の全 path enumeration mandatory 化 + scope 明示化 + scope-irrelevant finding の別 Issue 化 (Issue #630) を canonical flow として記録 (raw: pr-629 review) |
 | 2026-04-20T16:58:45+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
