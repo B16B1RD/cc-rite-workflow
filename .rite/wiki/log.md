@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T04:55:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T04:50:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #617: ANCHOR 入れ子追加時の outer/inner END 順序 (well-formed nesting vs crossing 構造) を追加。awk depth tracking 検証手順、HEREDOC / Markdown code fence 等対称 delimiter 全般への適用拡張 (raw: pr-617 review/fix1) |
 | 2026-04-20T04:50:00+00:00 | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #617: UI メッセージの多言語混在 style drift を 7 番目の sub-heuristic として追加。i18n/multilingual style policy も同 scope の言語選択全体を canonical SoT として扱う (raw: pr-617 review/fix1) |
 | 2026-04-20T04:50:00+00:00 | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #617: prose 内 line 番号 literal も対象として scope 拡張。fix の commit message / 散文 / 設計メモすべてに grep -nE 'L[0-9]+' self-check を必須化 (raw: pr-617 fix1) |
