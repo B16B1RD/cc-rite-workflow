@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-20T07:00:00+00:00"
+updated: "2026-04-20T15:15:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -24,6 +24,8 @@ sources:
     ref: "raw/fixes/20260420T043015Z-pr-617-fix1.md"
   - type: "reviews"
     ref: "raw/reviews/20260420T052907Z-pr-619.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260420T145943Z-pr-624-cycle2.md"
 tags: []
 confidence: high
 ---
@@ -163,12 +165,32 @@ PR #605 で導入された bidirectional backlink sub-pattern (`# Downstream ref
 2. backlink 行は END marker には付けない (PR #605 慣習: canonical reference は START のみに記載)
 3. team guideline 適用 PR (本 PR のような「複数の既存 ANCHOR への一律拡張」) は scope を絞って 5-15 行程度に収め、Confidence 80+ の blocking 指摘 0 件で短時間 review 可能な極小対称化 PR として運用する
 
+### 直前 merge PR 規約への後続 PR 違反 (PR #624 cycle 2 での evidence)
+
+PR #624 (Issue #618) cycle 2 で、PR #617 merge 直後に作成された本 PR が PR #617 で確立した「line 番号 literal 禁止 / semantic anchor 化」規約を設計メモ記述で破る G4 HIGH が検出された:
+
+- PR #617 merge timestamp: 2026-04-20T04:30 頃
+- PR #624 初回 commit timestamp: 2026-04-20T14:33 頃 (約 10 時間後)
+- 違反箇所: PR #624 Phase 9.1 設計メモの非レンダリング注釈内で Step 番号 ↔ Output ordering の対応を literal 行番号参照で記述
+
+直前 merge PR で確立した規約は、当該 repository の contributors 全員が把握しているとは限らない。特に複数の PR を並行で手掛けている場合、merge 済み PR の PR body から抽出すべき規約の認知に gap が発生し、同規約の violation が 1 日以内に発生する。
+
+**canonical 対策 (PR #624 cycle 2 fix で確立)**:
+
+1. **後続 PR の review 時に直近 merged PR 一覧を参照**: `git log --oneline --merges -10` で直近 10 件の merged PR 一覧を取得し、各 PR の主要規約を PR body の "確立規約" セクション (あれば) から抽出する
+2. **commit 時系列を意識した review**: 「この PR が作成された時点で既に merge 済みの規約 PR」を reviewer が明示的に確認する。review プロンプトに「直近 1 週間の merged PR で確立された規約を list して遵守確認」を含める
+3. **PR body の "確立規約" セクション記述**: 規約を確立する PR では PR body に `## 確立規約` セクションを設け、grep-matchable な形で後続 PR reviewer が検出できるようにする (例: `semantic anchor 規約: DRIFT-CHECK ANCHOR に line 番号 literal を書かない`)
+4. **pre-PR self-check**: PR 作成者自身が commit 前に `grep -nE 'L[0-9]+|\(line [0-9]+\)' <changed_files>` を実行して line 番号 literal 残存を検出する
+
+本原則は semantic anchor 規約に限らず、**最近の PR で確立された任意の規約** (コメント規約、naming convention、test pattern 等) に一般化される。team velocity の高い repository ほど規約 velocity も高く、直前 PR の規約違反が 24 時間以内に発生する risk が上昇する。
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](./canonical-reference-sample-code-strict-sync.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](./drift-check-anchor-prose-code-sync.md)
 - [Markdown code fence の balance は commit 前に awk で機械検証する](./markdown-fence-balance-precommit-check.md)
+- [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
 
 ## ソース
 
@@ -182,3 +204,4 @@ PR #605 で導入された bidirectional backlink sub-pattern (`# Downstream ref
 - [PR #617 review (ANCHOR 入れ子の crossing 構造 detection)](../../raw/reviews/20260420T042759Z-pr-617.md)
 - [PR #617 fix (well-formed nesting canonical 適用)](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)
 - [PR #619 review (bidirectional backlink team guideline 5 ANCHOR 拡張 + allowed redundancy)](../../raw/reviews/20260420T052907Z-pr-619.md)
+- [PR #624 cycle 2 review (直前 merge PR 規約への後続 PR 違反)](../../raw/reviews/20260420T145943Z-pr-624-cycle2.md)
