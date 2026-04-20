@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-18T12:00:00+00:00"
+updated: "2026-04-20T13:30:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -32,6 +32,10 @@ sources:
     ref: "raw/reviews/20260418T113250Z-pr-578.md"
   - type: "fixes"
     ref: "raw/fixes/20260418T113520Z-pr-578.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260420T123731Z-pr-623.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260420T124128Z-pr-623.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling"]
 confidence: high
 ---
@@ -108,6 +112,16 @@ PR #578 cycle 1 で、`plugins/rite/commands/wiki/lint.md` Phase 6.2 の partial
 
 **学習**: 本 anti-pattern は「エラー処理の対称性」「用語の対称性」に続いて「**iteration 方式の対称性**」にも適用される。同一 Phase / 同一 scope 内の複数ループは、bash 構文 (here-string / HEREDOC / process substitution 等) も揃えるべきで、異なる構文が混在すると「どちらに揃えるべきか」の判断自体が判断逸脱の原因になる。canonical 選択基準は「隣接 reference (lint.md Phase 8.3 等) と同一構文」を優先する。
 
+### 同一 doc 内 propagation scan への適用 (PR #623 cycle 2 での evidence)
+
+PR #623 cycle 1 で docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md の「PR #611」→「Issue #611」の番号取り違えを 1 箇所修正したが、同 doc の他 2 箇所に同一 invariant (PR/Issue 番号混同) が残存し、cycle 2 reviewer が独立検出した (F-01)。加えて test fixture の assertion 数が cycle 1 fix で 14→17 に変動したが、anti-pattern doc の「4 tests / 9 assertions」記述が更新されず stale 化 (F-02) も同時に検出された。
+
+**学習**: 本 anti-pattern は「**同一 doc 内の複数箇所に散在する同一 invariant**」にも適用される。cross-file propagation (別 file の対称位置) よりも同一 file 内の別所残存のほうが grep scope が狭く検出されにくい structural blind spot を形成する。canonical 対策:
+
+1. **cycle 1 fix 直後に propagation scan を mandatory 化**: `grep -n 'PR #N' <file>` で同 file 内全ヒットを列挙し、修正対象を atomic に洗い出す
+2. **数値参照 (assertion 数 / test 数 / line count 等) は footnote 化**: 同一値を複数箇所で literal 書きすると drift 不可避。`[^ref]` で単一 source に集約し、参照側は footnote ID のみ書く
+3. **cycle 1 fix の Test Plan に "same-doc propagation scan" を explicit 追加**: reviewer が cycle 2 で独立検出する前に self-check で捕捉
+
 ## 関連ページ
 
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
@@ -131,3 +145,5 @@ PR #578 cycle 1 で、`plugins/rite/commands/wiki/lint.md` Phase 6.2 の partial
 - [PR #562 cycle 3 fix (同一 blockquote 内類義語統一)](raw/fixes/20260417T083649Z-pr-562.md)
 - [PR #578 cycle 1 review (iteration 方式非対称指摘)](raw/reviews/20260418T113250Z-pr-578.md)
 - [PR #578 cycle 1 fix (iteration 方式 here-string 統一)](raw/fixes/20260418T113520Z-pr-578.md)
+- [PR #623 cycle 2 review (同一 doc 内 propagation scan miss 指摘)](raw/reviews/20260420T123731Z-pr-623.md)
+- [PR #623 cycle 2 fix (footnote 化 + propagation 完了)](raw/fixes/20260420T124128Z-pr-623.md)

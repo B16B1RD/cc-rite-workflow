@@ -6,6 +6,10 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T13:40:00+00:00 | ingest:create | pages/patterns/hint-specific-assertion-pin.md | PR #623 Issue #621: HINT-specific 文言 pin で stop-guard case arm 削除 regression を検知する pattern を新規追加。fallback STOP_MSG silent-pass 回避 + sibling fixture 相補関係 + sentinel emission との orthogonal 軸 (raw: pr-623 review cycle 1 / fix cycle 1) |
+| 2026-04-20T13:40:00+00:00 | ingest:create | pages/anti-patterns/same-file-must-not-vs-must-conflict.md | PR #623 Issue #621: 同 file 内 MUST NOT (bare bracket sentinel 禁止) vs MUST (routing-check evidence 義務化) 衝突を新規 anti-pattern として追加。single-reviewer 盲点、prompt-engineer × tech-writer cross-validation で検出、HTML コメント化で根本解決 (raw: pr-623 review cycle 1 / fix cycle 1) |
+| 2026-04-20T13:40:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #623 cycle 2: 同一 doc 内 propagation scan scope への拡張。PR/Issue 番号混同と stale 数値参照が同 doc 内の複数箇所に散在し cycle 1 fix で 1 箇所のみ修正して他を見落とす pattern。対策: cycle 1 fix 直後の grep propagation scan mandatory 化 + 数値参照の footnote 化 (raw: pr-623 review cycle 2 / fix cycle 2) |
+| 2026-04-20T13:40:00+00:00 | ingest:update | pages/anti-patterns/prose-design-without-backing-implementation.md | PR #623 F-03: "機械化"宣言 vs hook 検証不在 を prose-only design の亜種として追加。prompt 側 evidence 義務化 + hook 側検出 logic 不在時の 3 選択肢 (hook 実装追加 / follow-up Issue 化 / prose 書き換え) を canonical flow として記録 (raw: pr-623 review cycle 1 / fix cycle 1) |
 | 2026-04-20T07:03:30+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T07:00:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #619: bidirectional backlink sub-pattern を team guideline として既存 5 ANCHOR (ingest.md Phase 5.1/5.2 の 4 site + lint.md Phase 8.1 の 1 site) に一律拡張。sibling sync 契約 prose と backlink 行の allowed redundancy 観察 (役割分離による意図的冗長性 — prose=設計意図、backlink=機械検証ポインタ) を canonical 化 (raw: pr-619) |
 | 2026-04-20T04:55:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |

@@ -2,11 +2,15 @@
 title: "散文で宣言した設計は対応する実装契約がなければ機能しない"
 domain: "anti-patterns"
 created: "2026-04-17T04:30:00+00:00"
-updated: "2026-04-17T04:30:00+00:00"
+updated: "2026-04-20T13:35:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T035556Z-pr-559.md"
-tags: []
+  - type: "reviews"
+    ref: "raw/reviews/20260420T104328Z-pr-623.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260420T105116Z-pr-623.md"
+tags: ["prose-design", "enforcement-gap", "machine-verification"]
 confidence: high
 ---
 
@@ -52,10 +56,25 @@ Prose-only design を発見した場合の 3 択:
 2. **Prose を削除 or 意図を変更**: 実装しない / できないなら散文から除去して偽装を解く (例: PR #559 の 100-iteration limit は「意図的に cycle-count 上限を設けない」設計意図へ書き換え)
 3. **LLM-semantic check に格上げ**: bash 実装が脆弱な場合、LLM に semantic な判定を委ねる形で明示化 (例: root-cause gate の書式検査を LLM-semantic に移行)
 
+### "機械化" 宣言 vs hook 検証不在 (PR #623 F-03 での拡張)
+
+prompt 側で LLM に evidence 出力 (例: `<!-- [routing-check] ingest=matched -->`) を MUST として義務化しつつ、対応する hook 側検出 logic (例: stop-guard.sh や workflow-incident-emit.sh での pattern 検査) が未実装だと「機械的強制」を謳う prose と実態が乖離する。PR #623 Issue #621 では Item 0 routing dispatcher の evidence 出力を prompt 側で義務化したが、LLM が silent skip した場合の検出 hook は scope 外として follow-up Issue 化された。
+
+**判定 heuristic**: prompt に「機械的」「強制」「義務化」のような文言が出現し、かつ対応する hook/script 層での検出コードが grep で見つからない場合、prose-only design の亜種として分類する。PR scope 分割の選択肢は以下:
+
+1. **fix cycle 内で hook 実装を同時追加** (完全解決、scope 拡大)
+2. **follow-up Issue 化 + 当該 prose に Issue 番号を明記** (scope 管理、次 PR で解消)
+3. **"prompt 側のみ強制" と明示的に prose を書き換え** (機械的強制の誤謬除去)
+
+PR #623 cycle 1 は (2) を選択。prose に follow-up Issue 番号を記載することで読者に「prose 側と hook 側の gap は現時点で意図的」ことを伝える。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
+- [同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾](./same-file-must-not-vs-must-conflict.md)
 
 ## ソース
 
 - [PR #559 review results](../../raw/reviews/20260417T035556Z-pr-559.md)
+- [PR #623 review cycle 1 (機械化宣言 without hook 検出指摘)](../../raw/reviews/20260420T104328Z-pr-623.md)
+- [PR #623 fix cycle 1 (follow-up Issue 化戦略選択)](../../raw/fixes/20260420T105116Z-pr-623.md)
