@@ -58,7 +58,7 @@ HINT phrase pin だけでなく、`[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fa
 
 ## 関連ページ
 
-- [Test が early exit 経路で silent pass する false-positive](test-false-positive-early-exit.md)
+- [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
 
 ## ソース
 
