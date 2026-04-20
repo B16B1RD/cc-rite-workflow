@@ -201,23 +201,24 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-007: State file missing issue_number + source=compact → CRITICAL (fields shifted)
-# Known limitation: when issue_number is missing, jq @tsv produces an empty first
-# field that bash `read` with IFS=$'\t' strips (tab is IFS whitespace), causing
-# field values to shift. The -z "$ISSUE" guard doesn't trigger because ISSUE gets
-# the phase value instead of empty string.
+# TC-007: State file missing issue_number + source=compact → "issue_number is missing" warning
+# cycle 12 HIGH F-02: cycle 11 で IFS=$'\t' → $'\x1f' に変更 (cycle 11 MEDIUM F-04) したため、
+# 旧 buggy field shift 挙動 (ISSUE='test' + CRITICAL) は消滅。unit separator は empty field を
+# preserve するため ISSUE="" になり、session-start.sh の `if [ -z "$ISSUE" ]` guard が正しく
+# 発火して "issue_number is missing. Use /rite:resume to recover" warning を出力する。
+# 旧 TC-007 assertion は buggy 挙動を期待していたため、fixed 挙動に合わせて更新。
 # --------------------------------------------------------------------------
-echo "TC-007: State file missing issue_number + source=compact → CRITICAL (fields shifted)"
+echo "TC-007: State file missing issue_number + source=compact → issue_number missing warning"
 dir007="$TEST_DIR/tc007"
 mkdir -p "$dir007"
 create_state_file "$dir007" '{"active": true, "phase": "test"}'
 
 output=$(run_hook_with_source "$dir007" "compact")
-if echo "$output" | grep -q "CRITICAL: Active rite workflow detected" && \
-   echo "$output" | grep -q "Issue: #test"; then
-  pass "Missing issue_number + compact → CRITICAL message with shifted fields (Issue: #test, known limitation)"
+if echo "$output" | grep -q "issue_number is missing" && \
+   echo "$output" | grep -q "/rite:resume"; then
+  pass "Missing issue_number → empty ISSUE guard fires with recovery hint (IFS=\$'\\x1f' correctly preserves empty field)"
 else
-  fail "Expected CRITICAL message with 'Issue: #test' (field shift), got: $output"
+  fail "Expected 'issue_number is missing' + '/rite:resume' guard (cycle 11 IFS fix should have eliminated field shift), got: $output"
 fi
 echo ""
 
@@ -295,9 +296,12 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-011: Field extraction with process substitution and IFS=$'\t' - source=compact
+# TC-011: Field extraction with process substitution and IFS=$'\x1f' (unit separator) — source=compact
+# cycle 13 HIGH F-01: cycle 11 MEDIUM F-04 で IFS を $'\t' → $'\x1f' に変更したが TC-011 の
+# 文言更新が漏れていた (cycle 12 で TC-007 のみ更新)。spaces / special chars を含むフィールドが
+# unit separator 区切りで正しく抽出されることを verify する目的は不変、文言のみ現行実装に揃える。
 # --------------------------------------------------------------------------
-echo "TC-011: Field extraction with tab-delimited IFS"
+echo "TC-011: Field extraction with unit-separator-delimited IFS"
 dir011="$TEST_DIR/tc011"
 mkdir -p "$dir011"
 create_state_file "$dir011" '{
@@ -313,7 +317,7 @@ if echo "$output" | grep -q "Issue: #77" && \
    echo "$output" | grep -q "Phase: Phase with spaces" && \
    echo "$output" | grep -q "Loop: 5" && \
    echo "$output" | grep -q "Next action: Action: with special chars"; then
-  pass "Tab-delimited field extraction handles spaces and special chars"
+  pass "Unit-separator-delimited field extraction handles spaces and special chars"
 else
   fail "Field extraction failed with spaces/special chars, got: $output"
 fi

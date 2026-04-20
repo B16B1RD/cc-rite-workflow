@@ -107,7 +107,11 @@ echo ""
 echo "TC-004: Branch without issue pattern → no special message"
 git_repo_004="$TEST_DIR/git_tc004"
 mkdir -p "$git_repo_004"
-(cd "$git_repo_004" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -b "main" -q)
+# cycle 11 MEDIUM F-05: `git checkout -b main` は現代 git (init.defaultBranch=main) で
+# 既存 main と衝突し `set -e` で script 全体を abort させる。その結果 cycle 9-10 で追加した
+# TC-608-WARN-A〜E が一度も実行されない regression guard 実質未検証状態になっていた。
+# `-B` (force reset, create if missing) を使用して defaultBranch 設定に依存しない形に修正。
+(cd "$git_repo_004" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -B "main" -q)
 
 output=$(run_hook "$git_repo_004")
 if ! echo "$output" | grep -q "Saving final state for Issue"; then
@@ -310,6 +314,97 @@ if grep -q "lifecycle was not completed" "${LAST_STDERR_FILE:-/dev/null}"; then
   fail "unexpected warning for non-create phase"
 else
   pass "phase5_lint → no warning"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-608-WARN-A: cleanup_pre_ingest lifecycle unfinished → stderr warning (#604)
+# Verifies the cleanup lifecycle warning path added in session-end.sh "Lifecycle unfinished
+# warnings" section (case "$_lifecycle_unfinished_kind" in cleanup) branch).
+# (line-number 参照を避ける理由は cycle 8 F-05 参照)
+# --------------------------------------------------------------------------
+echo "TC-608-WARN-A: cleanup_pre_ingest active → /rite:pr:cleanup lifecycle warning"
+dir608wa="$TEST_DIR/tc608wa"
+mkdir -p "$dir608wa"
+create_state_file "$dir608wa" '{"active": true, "phase": "cleanup_pre_ingest", "issue_number": 604, "branch": ""}'
+run_hook "$dir608wa" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] \
+    && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
+    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+  pass "cleanup_pre_ingest unfinished → cleanup-specific warning emitted"
+else
+  fail "expected /rite:pr:cleanup lifecycle warning, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
+# TC-608-WARN-B: cleanup_completed → NO warning (lifecycle finished)
+echo "TC-608-WARN-B: cleanup_completed → no warning"
+dir608wb="$TEST_DIR/tc608wb"
+mkdir -p "$dir608wb"
+create_state_file "$dir608wb" '{"active": true, "phase": "cleanup_completed", "issue_number": 604, "branch": ""}'
+run_hook "$dir608wb" >/dev/null || true
+if grep -q "lifecycle was not completed" "${LAST_STDERR_FILE:-/dev/null}"; then
+  fail "unexpected warning for cleanup_completed"
+else
+  pass "cleanup_completed → no warning (lifecycle finished)"
+fi
+echo ""
+
+# TC-608-WARN-C: create_* phases must NOT be misclassified as cleanup lifecycle
+# (regression guard — ensures the cleanup detection branch doesn't swallow create_*)
+echo "TC-608-WARN-C: create_interview active → create-specific warning (not cleanup)"
+dir608wc="$TEST_DIR/tc608wc"
+mkdir -p "$dir608wc"
+create_state_file "$dir608wc" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
+run_hook "$dir608wc" >/dev/null || true
+# create 側の warning が出て、cleanup 側の warning は出ないこと
+if grep -q "/rite:issue:create lifecycle" "${LAST_STDERR_FILE:-/dev/null}" \
+    && ! grep -q "/rite:pr:cleanup lifecycle" "${LAST_STDERR_FILE:-/dev/null}"; then
+  pass "create_interview → create warning (no cleanup misclassification)"
+else
+  fail "expected create-specific warning without cleanup warning, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
+# TC-608-WARN-D: cleanup_post_ingest phase branch coverage (case branch 全網羅)
+# session-end.sh の cleanup lifecycle check は cleanup / cleanup_pre_ingest / cleanup_post_ingest の
+# 3 phase をカバーする必要がある。TC-608-WARN-A は cleanup_pre_ingest のみで、cleanup_post_ingest
+# の case branch が削除されても WARN-A/B/C は pass し続ける false-positive 構造。本 TC で補完。
+echo "TC-608-WARN-D: cleanup_post_ingest active → /rite:pr:cleanup lifecycle warning"
+dir608wd="$TEST_DIR/tc608wd"
+mkdir -p "$dir608wd"
+create_state_file "$dir608wd" '{"active": true, "phase": "cleanup_post_ingest", "issue_number": 604, "branch": ""}'
+run_hook "$dir608wd" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] \
+    && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
+    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+  pass "cleanup_post_ingest unfinished → cleanup-specific warning emitted (branch coverage 完備)"
+else
+  fail "expected /rite:pr:cleanup lifecycle warning for cleanup_post_ingest, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+fi
+echo ""
+
+# TC-608-WARN-E: bare cleanup phase branch coverage (cycle 9 F-11)
+# rite_phase_is_cleanup_lifecycle_in_progress の case arm `cleanup|cleanup_pre_ingest|cleanup_post_ingest)`
+# のうち、bare `cleanup` arm が削除されても WARN-A/B/C/D は全 pass する false-positive 構造を補完。
+# Phase 1.0 Activate Flow State で実際に書かれる phase 名 (stop-guard.sh cleanup case と同一) の regression guard。
+#
+# NOTE (cycle 10 F-08): 本 TC は **case arm 改変の検出が scope**。関数定義全体が削除された場合は
+# session-end.sh の ELIF fallback (`elif echo "$phase" | grep -q "^cleanup"`) が発火して同じ warning
+# を出すため silently pass する限界あり (関数欠損時は call site が `rite_phase_is_cleanup_lifecycle_in_progress`
+# 自体を呼べない別エラー経路で検出される想定)。関数欠損の regression guard は別 TC (phase-transition-whitelist
+# unit test) で扱う必要あり (F-09 と合わせて別 Issue で tracking 推奨)。
+echo "TC-608-WARN-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
+dir608we="$TEST_DIR/tc608we"
+mkdir -p "$dir608we"
+create_state_file "$dir608we" '{"active": true, "phase": "cleanup", "issue_number": 604, "branch": ""}'
+run_hook "$dir608we" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] \
+    && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
+    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+  pass "bare cleanup unfinished → cleanup-specific warning emitted (case arm 全網羅完成)"
+else
+  fail "expected /rite:pr:cleanup lifecycle warning for bare cleanup, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
 fi
 echo ""
 

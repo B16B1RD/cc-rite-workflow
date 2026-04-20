@@ -143,6 +143,27 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["create_delegation"]="create_post_delegation create_completed"
   ["create_post_delegation"]="create_completed"
   ["create_completed"]=""
+
+  # /rite:pr:cleanup lifecycle (#604).
+  # cleanup.md Phase 4 (wiki-auto-ingest) → Phase 5 (Completion Report) 多層防御で導入。
+  # cleanup_pre_ingest は Phase 4.W.2 invoke 直前、cleanup_post_ingest は wiki:ingest sub-skill
+  # return 直後 (🚨 Mandatory After Wiki Ingest セクション)、cleanup_completed は Phase 5
+  # Terminal Completion (sentinel + flow-state deactivate)。
+  # cleanup_completed は rite_phase_transition_allowed() の terminal acceptance に追加済み。
+  # /rite:pr:cleanup initial phase (#608 follow-up): cleanup.md Phase 1.0 (Activate
+  # Flow State) writes phase=cleanup before any sub-skill invoke. Without this entry,
+  # the cleanup → cleanup_pre_ingest transition was unknown, leaving Phase 1.0-4.W.1 unprotected.
+  # (stop-guard.sh の `case "$PHASE" in cleanup)` ブランチの HINT 文言 "Phase 1.0 (Activate Flow State)" と一致させる)
+  ["cleanup"]="cleanup_pre_ingest cleanup_completed"
+  ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed"
+  ["cleanup_post_ingest"]="cleanup_completed"
+  ["cleanup_completed"]=""
+
+  # NOTE (#608 follow-up): ingest_pre_lint / ingest_post_lint / ingest_completed entries
+  # were removed as YAGNI dead code. ingest.md does not call flow-state-update.sh
+  # (Phase 9.1 Step 1 設計判断), so these phase names are never written.
+  # If ingest.md gains flow-state writes in the future, re-add the entries together
+  # with the corresponding stop-guard.sh case branches.
 )
 
 # Load override map from rite-config.yml if present.
@@ -305,12 +326,26 @@ rite_phase_transition_allowed() {
 
   # Terminal / cold-start cases.
   # "completed" is the /rite:issue:start terminal state. "create_completed" is written by
-  # /rite:issue:create at its end. "phase_done" was a speculative reserved name with no
-  # producer — removed per code-quality cycle-3 LOW (premature abstraction).
+  # /rite:issue:create at its end. "cleanup_completed" (#604) is the terminal state for
+  # /rite:pr:cleanup. "phase_done" was a speculative reserved name with no producer —
+  # removed per code-quality cycle-3 LOW (premature abstraction). "ingest_completed" was
+  # similarly removed (#608 follow-up) because ingest.md does not write flow-state.
+  #
+  # NOTE (#608 follow-up — forward-compat bypass scope): The three terminal accepts below
+  # currently allow ANY prev → terminal transition unconditionally. This is intentional
+  # forward-compat behaviour today (catches cold-start writes, retry paths, and skill
+  # versions that may add new prev phases without updating this file), but it also masks
+  # genuine protocol violations such as cleanup → cleanup_completed (skipping pre/post
+  # ingest entirely). Tightening this to require specific prev → terminal pairs is a
+  # separate scope (devops LOW) — when revisited, build the constraint from the explicit
+  # _RITE_PHASE_TRANSITIONS entries (e.g. cleanup_completed must come from cleanup_post_ingest
+  # OR cleanup_pre_ingest) and add coverage in stop-guard.test.sh before flipping the
+  # default.
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
   [ "$next" = "completed" ] && return 0
   [ "$next" = "create_completed" ] && return 0
+  [ "$next" = "cleanup_completed" ] && return 0
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
   # Unknown prev phase → accept (forward compat)
@@ -356,6 +391,23 @@ rite_phase_is_create_lifecycle_in_progress() {
   local phase="$1"
   case "$phase" in
     create_interview|create_post_interview|create_delegation|create_post_delegation)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# Returns 0 if `phase` represents a cleanup workflow that has not yet reached its
+# terminal cleanup_completed state (#608 follow-up — parity with the create
+# lifecycle helper above). Used by session-end.sh to surface a WARN_MSG when a
+# session ends mid-cleanup (the wiki ingest never ran, or Phase 5 completion
+# report was never emitted).
+rite_phase_is_cleanup_lifecycle_in_progress() {
+  local phase="$1"
+  case "$phase" in
+    cleanup|cleanup_pre_ingest|cleanup_post_ingest)
       return 0
       ;;
     *)

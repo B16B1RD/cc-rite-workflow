@@ -59,6 +59,9 @@ fi
 source "$SCRIPT_DIR/work-memory-lock.sh"
 
 # --- Read flow state ---
+# cycle 11 CRITICAL F-01: IFS=$'\t' + @tsv は POSIX whitespace collapse により next_action=""
+# のとき全フィールドが左 shift し、PR 欄に branch 名が混入する silent データ汚染を起こす。
+# stop-guard.sh cycle 10 F-01 と同じ修正を適用 — unit separator \x1f で empty field を preserve。
 FLOW_DATA=$(jq -r '[
   (.issue_number // "unknown" | tostring),
   (.phase // "unknown"),
@@ -66,7 +69,7 @@ FLOW_DATA=$(jq -r '[
   (.loop_count // 0 | tostring),
   (.pr_number // 0 | tostring),
   (.branch // "")
-] | @tsv' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
+] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
 
 if [ -z "$FLOW_DATA" ]; then
   # Cannot read flow state — clean up and exit silently
@@ -74,7 +77,7 @@ if [ -z "$FLOW_DATA" ]; then
   exit 0
 fi
 
-IFS=$'\t' read -r ISSUE PHASE NEXT_ACTION LOOP PR BRANCH <<< "$FLOW_DATA"
+IFS=$'\x1f' read -r ISSUE PHASE NEXT_ACTION LOOP PR BRANCH <<< "$FLOW_DATA"
 
 # --- Transition compact_state to normal (inside lock) ---
 TMP_COMPACT=""

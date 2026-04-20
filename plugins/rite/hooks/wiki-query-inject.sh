@@ -308,7 +308,7 @@ fi
 #
 # awk extracts:
 #   title | path | domain | summary | updated | confidence
-# separated by TAB.
+# separated by ASCII unit separator (\x1f). cycle 11 で tab から変更。
 rows=$(printf '%s\n' "$index_content" | awk -F'|' '
   BEGIN { in_table=0 }
   /^\| ページ \| ドメイン/ { in_table=1; next }
@@ -339,7 +339,10 @@ rows=$(printf '%s\n' "$index_content" | awk -F'|' '
     }
 
     if (path == "") next  # skip malformed rows
-    printf "%s\t%s\t%s\t%s\t%s\t%s\n", title, path, domain, summary, updated, confidence
+    # cycle 11 HIGH F-02: unit separator \x1f (\037) を使用。tab では POSIX whitespace collapse
+    # により summary="" 等の empty field で下流の `IFS=$'\t' read` が confidence / updated を
+    # 入れ替える render corruption を起こす (stop-guard.sh cycle 10 F-01 と同型)。
+    printf "%s\037%s\037%s\037%s\037%s\037%s\n", title, path, domain, summary, updated, confidence
   }
   /^## / && in_table == 1 { in_table=0 }
 ')
@@ -353,9 +356,10 @@ fi
 # title + domain + summary for each keyword. Weight by confidence.
 IFS=',' read -r -a kw_array <<< "$KEYWORDS"
 
-# Build scored list: "score<TAB>title<TAB>path<TAB>domain<TAB>summary<TAB>updated<TAB>confidence"
+# cycle 11 HIGH F-02: delimiter を \x1f (unit separator) に統一 (awk printf 出力と整合)。
+# Build scored list: "score<US>title<US>path<US>domain<US>summary<US>updated<US>confidence"
 scored=""
-while IFS=$'\t' read -r title path domain summary updated confidence; do
+while IFS=$'\x1f' read -r title path domain summary updated confidence; do
   [[ -z "$path" ]] && continue
   haystack=$(printf '%s %s %s' "$title" "$domain" "$summary" | tr '[:upper:]' '[:lower:]')
   raw_score=0
@@ -387,8 +391,9 @@ while IFS=$'\t' read -r title path domain summary updated confidence; do
   weighted_score=$((raw_score * weight))
 
   if (( raw_score >= MIN_SCORE )); then
-    scored+="${weighted_score}	${title}	${path}	${domain}	${summary}	${updated}	${confidence}
-"
+    # cycle 11 HIGH F-02: delimiter を \x1f に統一 (awk printf 出力 / IFS read と整合)
+    scored+=$(printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n' \
+      "${weighted_score}" "${title}" "${path}" "${domain}" "${summary}" "${updated}" "${confidence}")$'\n'
   fi
 done <<< "$rows"
 
@@ -398,10 +403,10 @@ fi
 
 # Sort by score descending, take top N.
 # Split `sort` and `head` into independent invocations so that a sort
-# failure (e.g. TAB boundary mismatch, OOM) surfaces as a WARNING instead
+# failure (e.g. unit separator boundary mismatch, OOM) surfaces as a WARNING instead
 # of being masked by the downstream `head` closing the pipe early and
 # returning a benign exit 0 to the caller.
-if ! sorted=$(printf '%s' "$scored" | sort -t$'\t' -k1,1 -nr); then
+if ! sorted=$(printf '%s' "$scored" | sort -t$'\x1f' -k1,1 -nr); then
   echo "WARNING: sort of scored rows failed — skipping output (non-blocking)" >&2
   exit 0
 fi
@@ -415,7 +420,7 @@ printf '\n'
 printf '### 📚 Wiki 経験則（自動参照）\n\n'
 printf 'キーワード: `%s`\n\n' "$KEYWORDS"
 
-while IFS=$'\t' read -r score title path domain summary updated confidence; do
+while IFS=$'\x1f' read -r score title path domain summary updated confidence; do
   [[ -z "$path" ]] && continue
   printf '#### %s\n' "$title"
   printf '%s\n' "- **ドメイン**: ${domain} / **確信度**: ${confidence} / **更新日**: ${updated}"
