@@ -173,6 +173,14 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # end_turn を block し manual_fallback_adopted sentinel を emit する。
   # DRIFT-CHECK ANCHOR (semantic): ingest.md 🚨 Mandatory After Auto-Lint section と
   # stop-guard.sh ingest_* case arm とで 3 site 対称。いずれかを変更する際は 3 site 同時確認。
+  #
+  # Edge rationale (PR #624 cycle 1 F6 対応):
+  # - `ingest_pre_lint → ingest_post_lint`: 正規経路 (lint return 後 Mandatory After Step 1 で patch)
+  # - `ingest_pre_lint → ingest_completed`: **defense-in-depth edge for Step 1 WARNING fallback only**
+  #   正規経路ではない。Mandatory After Step 1 patch が失敗 (WARNING 続行) した場合でも、Phase 9.1
+  #   Step 3 の terminal patch で ingest_completed に直接遷移できるよう許容するための防御 edge。
+  # - `ingest_pre_lint → cleanup_post_ingest`: defense-in-depth edge for Mandatory After Step 1 and
+  #   Phase 9.1 Step 3 both failing — caller Mandatory After が直接 caller phase に書き戻す経路。
   ["ingest_pre_lint"]="ingest_post_lint ingest_completed cleanup_post_ingest"
   ["ingest_post_lint"]="ingest_completed cleanup_post_ingest"
   ["ingest_completed"]="cleanup_post_ingest"
@@ -422,10 +430,18 @@ rite_phase_is_create_lifecycle_in_progress() {
 # lifecycle helper above). Used by session-end.sh to surface a WARN_MSG when a
 # session ends mid-cleanup (the wiki ingest never ran, or Phase 5 completion
 # report was never emitted).
+#
+# Issue #618 (PR #624 cycle 1 F5 observability regression fix): ring 経由時に caller
+# (cleanup) phase が `ingest_pre_lint` / `ingest_post_lint` に一時上書きされる transient 期間中に
+# session が終了すると、本 helper が false を返し WARN_MSG が emit されない observability regression
+# が発生する (cleanup lifecycle 未完了なのに気付けない)。ring の中間 phase も cleanup-in-progress
+# として検出する設計とし、single-session `/rite:wiki:ingest` 実行時は session-end 側で別途
+# flow-state.active=false を参照して誤検出を避ける (flow-state 不在時は helper に到達しない)。
+# Note: `ingest_completed` は含めない — terminal state (active=false) であり「未完了」に該当しない。
 rite_phase_is_cleanup_lifecycle_in_progress() {
   local phase="$1"
   case "$phase" in
-    cleanup|cleanup_pre_ingest|cleanup_post_ingest)
+    cleanup|cleanup_pre_ingest|cleanup_post_ingest|ingest_pre_lint|ingest_post_lint)
       return 0
       ;;
     *)
