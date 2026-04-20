@@ -599,6 +599,9 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   # {n_pages_created} / {n_pages_updated} / {n_raw_sources} / {n_skipped} は Phase 2.1 で
   # 初期化され Phase 4 / 5.0 step 5 で incrementate されたカウンター変数を整数値に substitute する。
   # >>> DRIFT-CHECK ANCHOR: Phase 5.0.c canonical commit message ({n_pages_created}/{n_pages_updated}/{n_raw_sources}/{n_skipped}) <<<
+  # Downstream reference: same file Phase 5.2 (DRIFT-CHECK ANCHOR: Phase 5.0.c canonical commit message)
+  #   — sibling sync 契約相手。Wiki 経験則 patterns/high「DRIFT-CHECK ANCHOR は semantic name 参照で記述する
+  #   （line 番号禁止）」の bidirectional backlink sub-pattern に準拠 (PR #605 / Issue #607)。
   # 本 commit_msg 文字列と直下の placeholder-residue gate は Phase 5.0.c canonical と Phase 5.2 の
   # 同一文字列と 3 箇所 explicit sync を契約。変更時は 3 箇所同時更新必須 (/rite:lint で drift 検出予定)。
   commit_msg="docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})"
@@ -607,6 +610,10 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   # LLM が `{n_pages_created}` 等を literal substitute せずに残した場合、literal `{n_pages_created}` を含む
   # 意味不明な commit が landed する silent regression を防ぐ。
   # >>> DRIFT-CHECK ANCHOR: Phase 5.0.c canonical placeholder-residue gate <<<
+  # Downstream reference: lint.md Phase 8.3 {log_entry} placeholder-residue gate (対称化先 / 同型),
+  #   same file Phase 5.2 (DRIFT-CHECK ANCHOR: Phase 5.0.c canonical placeholder-residue gate) — sibling sync 契約相手。
+  #   Wiki 経験則 patterns/high「DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）」の
+  #   bidirectional backlink sub-pattern に準拠 (PR #605 / Issue #607)。
   case "$commit_msg" in
     *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
       echo "ERROR: Phase 5.1 の commit_msg placeholder が literal substitute されていません (値: '$commit_msg')" >&2
@@ -700,12 +707,19 @@ if [ "$branch_strategy" = "same_branch" ]; then
 
   # {n_pages_created} / {n_pages_updated} / {n_raw_sources} / {n_skipped} は整数値に substitute する。
   # >>> DRIFT-CHECK ANCHOR: Phase 5.0.c canonical commit message ({n_pages_created}/{n_pages_updated}/{n_raw_sources}/{n_skipped}) <<<
+  # Downstream reference: same file Phase 5.1 (DRIFT-CHECK ANCHOR: Phase 5.0.c canonical commit message)
+  #   — sibling sync 契約相手。Wiki 経験則 patterns/high「DRIFT-CHECK ANCHOR は semantic name 参照で記述する
+  #   （line 番号禁止）」の bidirectional backlink sub-pattern に準拠 (PR #605 / Issue #607)。
   # 本 commit_msg 文字列と直下の placeholder-residue gate は Phase 5.0.c canonical と Phase 5.1 の
   # 同一文字列と 3 箇所 explicit sync を契約。変更時は 3 箇所同時更新必須 (/rite:lint で drift 検出予定)。
   commit_msg="docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})"
 
   # F-10 対応: commit_msg placeholder 残留 fail-fast gate (Phase 5.1 と対称化、lint.md Phase 8.3 {log_entry} gate と同型)
   # >>> DRIFT-CHECK ANCHOR: Phase 5.0.c canonical placeholder-residue gate <<<
+  # Downstream reference: lint.md Phase 8.3 {log_entry} placeholder-residue gate (同型),
+  #   same file Phase 5.1 (DRIFT-CHECK ANCHOR: Phase 5.0.c canonical placeholder-residue gate) — sibling sync 契約相手。
+  #   Wiki 経験則 patterns/high「DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）」の
+  #   bidirectional backlink sub-pattern に準拠 (PR #605 / Issue #607)。
   case "$commit_msg" in
     *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
       echo "ERROR: Phase 5.2 の commit_msg placeholder が literal substitute されていません (値: '$commit_msg')" >&2
