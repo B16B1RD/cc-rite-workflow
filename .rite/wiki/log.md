@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T04:55:00Z | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #616 review: SKILL.md EN description canonical alignment を canonical SoT 単一化 sub-heuristic の 3 例目 successful application として追記。PR #594 (cross-file) → PR #601 (intra-file lint.md L2 vs L11-16) → PR #616 (intra-file SKILL.md 3-site EN description/JA Activates/JA Auto-Activation 完結整列) の 3 段 scope 拡張を実証 (raw: pr-616) |
 | 2026-04-20T11:16:30+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=38, broken_refs=0 |
 | 2026-04-20T11:16:13+00:00 | ingest:skip | raw/reviews/20260420T021613Z-pr-614.md | PR #614 (docs-only, 0 findings): self-consistency (documentation が自身の convention を適用) パターンは既存 canonical-reference-sample-code-strict-sync / fix-comment-self-drift で網羅済み。Sole reviewer guard (code-quality) 動作も既存パターンで既知 (raw: pr-614) |
 | 2026-04-20T01:10:00+00:00 | ingest:create | pages/patterns/markdown-fence-balance-precommit-check.md | PR #608 cycle 2 CRITICAL × 3: bash block 末尾 statement 追加時の closing fence 欠落で fence count が奇数化する silent regression を awk 検証で防ぐ canonical (raw: pr-608-cycle2) |
