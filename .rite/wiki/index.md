@@ -37,9 +37,11 @@
 | [fix コメント / commit message で hallucinated canonical reference を生成する](pages/anti-patterns/hallucinated-canonical-reference.md) | anti-patterns | fix 時に「canonical 参照」として存在しないファイル / 行番号 / anchor を commit message に書くと、LLM が「それっぽい数字」を hallucinate するリスク。anchor / Phase 番号 / heading 文字列で参照し、行番号が必要なら `wc -l` + `sed -n` で実在検証する。PR #586 cycle 3 F-03 で実測 (lint.md L1586-L1591 が非実在)。 | 2026-04-19T03:30:00+00:00 | high |
 | [re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)](pages/heuristics/reviewer-scope-antidegradation.md) | heuristics | re-review / verification mode では reviewer scope が「前回指摘の解消確認」に偏り、初回で verify すべきだった latent design issue (dogfooding bias / 既存 convention 違反) を見落とす経路がある。毎サイクル initial scope を rerun するのが canonical。PR #586 cycle 4 で cycle 1-3 見落としの 2 件が初検出された実測あり。 | 2026-04-19T03:30:00+00:00 | high |
 | [極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる](pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md) | heuristics | 5 行程度の極小 refactor PR (特定 Phase の sibling site 対称化) では、複数の同型箇所を Grep + Read で網羅的に照合し変数名・ラベル以外の構造的差分を洗い出すことで、Confidence 80+ の「指摘事項 0 件 + merge 可」判定を短時間で出せる。PR #592 で 4 sibling site (Phase 2.3/6.0 × separate/same) の照合として実測。副次技法にハードコード番号の `gh pr view` 実在性検証と scope 外推奨の別 Issue 候補化 (複数 reviewer 独立合意による triple cross-validation)。 | 2026-04-19T06:45:00Z | high |
+| [Markdown code fence の balance は commit 前に awk で機械検証する](pages/patterns/markdown-fence-balance-precommit-check.md) | patterns | bash block 末尾に新規 statement を追加する際、既存閉じフェンス直前への挿入で closing fence が欠落し fence count が奇数化する silent regression が発生する。後続散文が bash として誤解釈される CRITICAL 構造バグに発展。commit 前に `awk '/^\`\`\`/{c++} END{print c}' file.md` で偶数検証する canonical。PR #608 cycle 2 で CRITICAL × 3 として実測。 | 2026-04-20T01:10:00+00:00 | high |
+| [Test が early exit 経路で silent pass する false-positive](pages/anti-patterns/test-false-positive-early-exit.md) | anti-patterns | `active=false` / phase mismatch guard で fixture が early exit する test は、検証対象ロジックを実行せず rc=0 で silent pass する regression を見逃す。独立 counter assertion + active=true 版 TC 分離 + same-cycle 横展開契約 (同 cycle 過去 fix の self-aware コメント参照) の 3 点セットで防ぐ。PR #608 cycle 5-8 で 4 cycle 連鎖として実測。 | 2026-04-20T01:10:00+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 30
-- ドメイン別: patterns=15, heuristics=9, anti-patterns=6
-- 最終更新: 2026-04-19T13:48:38+00:00
+- 総ページ数: 32
+- ドメイン別: patterns=16, heuristics=9, anti-patterns=7
+- 最終更新: 2026-04-20T01:10:00+00:00
