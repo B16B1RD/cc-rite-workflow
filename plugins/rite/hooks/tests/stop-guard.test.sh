@@ -782,6 +782,54 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-622-A: create_interview phase (active=true, fresh) → exit 2 (block with HINT)
+# Issue #622: stop-guard MUST block implicit stop while the interview sub-skill
+# is mid-execution (or before its 🚨 MANDATORY Pre-flight has run). Prior to #622
+# there was no `create_interview` case arm, so the general-block path fired
+# without a phase-specific WORKFLOW_HINT and workflow_incident sentinel emit
+# was possible but without routing guidance.
+# --------------------------------------------------------------------------
+echo "TC-622-A: create_interview active → exit 2 (block with HINT)"
+dir622a="$GUARD_TEST_DIR/tc622a"
+mkdir -p "$dir622a"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir622a" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"After rite:issue:create-interview returns: proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-622a\"}"
+stderr_file622a="$(mktemp "$GUARD_TEST_DIR/stderr622a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir622a\", \"session_id\": \"sid-622a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file622a") && rc=0 || rc=$?
+# HINT の前半 (Delegation to Interview Pre-write) と後半 (MANDATORY Pre-flight / [create:completed:) を
+# 2 段で検証し、HINT 文言が改変された場合の regression を確実に検出する
+if [ $rc -eq 2 ] \
+    && grep -q "Delegation to Interview Pre-write recorded create_interview" "$stderr_file622a" \
+    && grep -q "MANDATORY Pre-flight" "$stderr_file622a" \
+    && grep -q '\[create:completed:' "$stderr_file622a"; then
+  pass "create_interview active → blocked with #622 HINT"
+else
+  fail "expected exit 2 with #622 HINT (Delegation to Interview + MANDATORY Pre-flight + [create:completed:), got rc=$rc stderr='$(cat "$stderr_file622a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-622-B: create_interview phase emits workflow_incident sentinel to stderr
+# Issue #622: verify the workflow_incident_emit.sh helper is invoked for the
+# create_interview phase (same contract as create_post_interview TC-475-A).
+# The sentinel is echoed to stderr via the exit-2 feedback contract.
+# --------------------------------------------------------------------------
+echo "TC-622-B: create_interview active → workflow_incident sentinel in stderr"
+dir622b="$GUARD_TEST_DIR/tc622b"
+mkdir -p "$dir622b"
+create_state_file "$dir622b" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 622, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-622b\"}"
+stderr_file622b="$(mktemp "$GUARD_TEST_DIR/stderr622b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir622b\", \"session_id\": \"sid-622b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file622b") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "WORKFLOW_INCIDENT=1" "$stderr_file622b" \
+    && grep -q "type=manual_fallback_adopted" "$stderr_file622b"; then
+  pass "create_interview phase emits workflow_incident sentinel to stderr"
+else
+  fail "expected WORKFLOW_INCIDENT sentinel for create_interview, got rc=$rc stderr='$(cat "$stderr_file622b")'"
+fi
+
+# --------------------------------------------------------------------------
 # TC-475-D: create_completed is terminal — no block
 # --------------------------------------------------------------------------
 echo "TC-475-D: create_completed + active=false → exit 0 (terminal)"
