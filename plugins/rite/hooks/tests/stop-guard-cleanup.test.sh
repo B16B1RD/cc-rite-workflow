@@ -90,7 +90,13 @@ run_guard() {
   local input
   input=$(printf '{"cwd":"%s","session_id":"%s"}' "$FIXTURE_DIR" "$SESSION_ID")
   local stderr_file
-  stderr_file=$(mktemp "$FIXTURE_DIR/stderr.XXXXXX")
+  # mktemp failure guard (cycle 3 C3-eh-M3): set -e 無効下で mktemp 失敗を silent 通過させない。
+  # line 43 の `mktemp -d` と同型の fail-fast pattern で diagnostic を明示化し、空 $stderr_file が
+  # 後続 redirect に流れて misleading な assertion FAIL を起こす経路を塞ぐ。
+  stderr_file=$(mktemp "$FIXTURE_DIR/stderr.XXXXXX") || {
+    echo "FAIL: stderr tempfile mktemp failed (FIXTURE_DIR=$FIXTURE_DIR が full / read-only / permission denied)" >&2
+    exit 1
+  }
   # defensive reset: 直後の `STDERR_CONTENT=$(cat ...)` で無条件上書きされるため、
   # 現行 4 tests の制御フローでは stale 混入は発生しない。ただし将来 early-return 経路
   # (cat 前に return する path) が追加された場合に前回の STDERR_CONTENT が残る regression を
@@ -154,6 +160,12 @@ assert_contains "stderr contains cleanup_pre_ingest" "cleanup_pre_ingest" "$STDE
 # HINT-specific phrase pin (F-13): fallback STOP_MSG でも Phase 名は出るが、下記文言は
 # cleanup_pre_ingest case arm 内にのみ存在するため、arm 削除 regression を検知できる。
 assert_contains "stderr contains 'Phase 4.W.2 phase recorded'" "Phase 4.W.2 phase recorded" "$STDERR_CONTENT"
+# Sentinel emission pin (cycle 3 C3-eh-M1): file header が「session log にその痕跡が残ることを verify」と
+# 謳う以上、HINT phrase だけでなく実際の workflow_incident sentinel (stop-guard.sh:389 で stderr へ
+# echo) が emit されることも assert する。WORKFLOW_INCIDENT_TYPE 設定分岐 (stop-guard.sh:332) の
+# silent regression (例: WORKFLOW_HINT 条件の削除) でも検知できる。
+# sentinel format: `[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fallback_adopted; details=...; iteration_id=...`
+assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
 
 # Test 2: cleanup_post_ingest phase should block with exit 2 and emit HINT-specific phrase
 echo "# Test 2: cleanup_post_ingest blocks end_turn + HINT specific pin"
@@ -166,6 +178,8 @@ assert_contains "stderr contains cleanup_post_ingest" "cleanup_post_ingest" "$ST
 # 併せて検査することで、文言 drift / case arm 削除 regression を検知。
 assert_contains "stderr contains 'rite:wiki:ingest returned'" "rite:wiki:ingest returned" "$STDERR_CONTENT"
 assert_contains "stderr contains 'Phase 5 Completion Report has NOT been output'" "Phase 5 Completion Report has NOT been output" "$STDERR_CONTENT"
+# Sentinel emission pin (cycle 3 C3-eh-M1): Test 1 と同じく sentinel stderr emit を verify。
+assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
 
 # Test 3: cleanup phase (Phase 1-4 protection) should also block
 echo "# Test 3: cleanup phase blocks end_turn"
@@ -173,6 +187,11 @@ run_guard "cleanup" ""
 rc=$?
 assert "cleanup exits 2" "2" "$rc"
 assert_contains "stderr contains Phase:" "Phase:" "$STDERR_CONTENT"
+# HINT-specific phrase pin (cycle 3 C3-eh-M2): Test 1/2 と対称に cleanup case arm 固有 HINT を pin。
+# stop-guard.sh:307 の `Phase 1.0 (Activate Flow State) just recorded phase=cleanup` は cleanup case arm
+# 内にのみ存在するため、case arm 削除 regression を fallback STOP_MSG の `Phase:` 出力に紛れて
+# silent pass させない。sibling stop-guard.test.sh TC-608-A とも相補関係 (同じ Phase 1.0 を pin)。
+assert_contains "stderr contains 'Phase 1.0 (Activate Flow State)'" "Phase 1.0 (Activate Flow State)" "$STDERR_CONTENT"
 
 # Test 4: cleanup_completed with active=false should allow stop (exit 0) and NOT emit STOP_MSG
 echo "# Test 4: cleanup_completed + active:false allows stop (negative assertion)"
@@ -192,7 +211,12 @@ cat > "$FIXTURE_DIR/.rite-flow-state" <<EOF
 }
 EOF
 input=$(printf '{"cwd":"%s","session_id":"%s"}' "$FIXTURE_DIR" "$SESSION_ID")
-stderr_file=$(mktemp "$FIXTURE_DIR/stderr.XXXXXX")
+# mktemp failure guard (cycle 3 C3-eh-M3): Test 4 は run_guard() を使わず inline mktemp するため
+# 同等の fail-fast guard を適用する。
+stderr_file=$(mktemp "$FIXTURE_DIR/stderr.XXXXXX") || {
+  echo "FAIL: Test 4 stderr tempfile mktemp failed (FIXTURE_DIR=$FIXTURE_DIR が full / read-only / permission denied)" >&2
+  exit 1
+}
 printf '%s' "$input" | bash "$STOP_GUARD" 2>"$stderr_file"
 rc=$?
 test4_stderr=$(cat "$stderr_file")

@@ -1033,12 +1033,12 @@ Wiki Ingest が完了しました。
 > **⚠️ MUST NOT (#604, mirrors #561)**: 「ユーザー可視最終行 = `[ingest:completed]` の bare bracket 形式」で turn を終わらせてはならない。bare sentinel は LLM の turn-boundary heuristic を誤発火させ、Mode B 症状 (recap 出力後の implicit stop) を再発させる既知リスク (Issue #561 解消条件)。**HTML コメント形式 (`<!-- [ingest:completed] -->`) のみ許容**。
 >
 > **⚠️ MUST NOT (#621 reinforce — H1 primary root cause)**: (前段 1033 行の MUST NOT #604/#561 とは**別層の禁止事項** — あちらは「ユーザー可視最終行 = bare bracket 形式」の禁止で sentinel 形式に関する規約。本規約は「三点セット #2/#3 間への recap 挿入」の禁止で三点セット内部構造に関する規約。両者は同じ Mode B 症状を対策するが禁じる対象の layer が異なる。) 三点セット出力の #2 (caller 継続 HTML コメント) と #3 (sentinel) の間に recap / 「Phase 9 完了しました」等の追加 recap line を挿入してはならない。recap は Phase 9 完了レポート本体 (#1) 内で完結させること。#2 と #3 の間に追加行を挿入すると、LLM の turn-boundary heuristic が `<!-- continuation: ... -->` を見て「明示的な terminator」と誤認し、#3 を absolute last line として出力する前に turn を閉じる regression (Issue #621) を誘発する。caller 継続コメント直後に即 sentinel コメント、その間に空行のみ許容。
-
-<!-- >>> DRIFT-CHECK ANCHOR: Phase 9.1 三点セット #2/#3 間 recap 禁止 (Issue #621) <<<
-     本 anchor と下記「設計メモ (非レンダリング注釈)」の Step 1/2 ↔ Output ordering #2/#3 対応表は
-     semantic 双方向参照: 片方の構造変更 (Step 番号・Output ordering 順序の入れ替え等) は
-     必ず他方にも反映すること。行番号の変動では drift 判定しない (semantic name 参照)。
-     <<< END DRIFT-CHECK ANCHOR: Phase 9.1 三点セット #2/#3 間 recap 禁止 (Issue #621) >>> -->
+>
+> <!-- >>> DRIFT-CHECK ANCHOR: Phase 9.1 三点セット #2/#3 間 recap 禁止 (Issue #621) <<<
+>      本 anchor と下記「設計メモ (非レンダリング注釈)」の Step 1/2 ↔ Output ordering #2/#3 対応表は
+>      semantic 双方向参照: 片方の構造変更 (Step 番号・Output ordering 順序の入れ替え等) は
+>      必ず他方にも反映すること。行番号の変動では drift 判定しない (semantic name 参照)。
+>      <<< END DRIFT-CHECK ANCHOR: Phase 9.1 三点セット #2/#3 間 recap 禁止 (Issue #621) >>> -->
 >
 > **Output ordering** (絶対遵守、三点セット、Phase 9.1 設計判断により実行経路を問わず常に 3 要素すべて出力):
 > 1. Phase 9 完了レポート本体 (ユーザー可視メッセージ + 処理サマリー + 新規/更新ページ + 次のステップ)
