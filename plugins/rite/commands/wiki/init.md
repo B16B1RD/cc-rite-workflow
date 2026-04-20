@@ -244,7 +244,7 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 1. 末尾改行は Edit ツールが自動付与するため new_string の末尾に付与しない
 2. 提示したコードフェンス ` ``` ` は Markdown の表示用で、new_string には含めない
 3. `old_string` と `new_string` の先頭行は同一文字列で、その後に 6 行の negation ブロックが続く
-4. 各行の先頭インデントは 0 スペース。Markdown レンダラや Claude が参照時に余計な先頭空白を認識した場合でも、new_string では**行頭を `#` または `!` から直接開始する**（`  # >>> ...` のような先頭空白は含めない）
+4. 各行の先頭インデントは 0 スペース。Markdown レンダラや Claude が参照時に余計な先頭空白を認識した場合でも、new_string では**行頭を `#` または 「!」 から直接開始する**（`  # >>> ...` のような先頭空白は含めない）
 
 `!.rite/wiki/**` は glob を明示する防御的エントリで、単独では機能しない（parent exclusion が残るため）が、gitignore を消費する一部のツール (IDE の VCS integration 等) への defense-in-depth として推奨される（`.gitignore` 上部 Step 1 コメントと同じ根拠）。
 
@@ -544,7 +544,7 @@ plugin_root="{plugin_root}"
 
 if [ "$branch_strategy" = "separate_branch" ]; then
   # wiki-worktree-setup.sh は冪等 (既存なら no-op) で安全に呼べる
-  # 注意: `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に `!` の終了 status (= 0) を
+  # 注意: `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に 「!」 の終了 status (= 0) を
   # 返すため、setup.sh の真の rc (1=env error / 2=disabled / 3=worktree add 失敗) を捕捉できない。
   # `set +e; cmd; rc=$?; set -e` で明示的に capture する (ingest.md Phase 1.3 と対称)。
   set +e
