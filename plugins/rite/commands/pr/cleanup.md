@@ -1495,7 +1495,7 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 >
 > **Identity reference**: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `clear_resume_is_canonical` / `quality_over_expediency` principle を参照。
 
-**Pre-write** (before invoking `rite:wiki:ingest`, Issue #604): Update `.rite-flow-state` to `cleanup_pre_ingest` so `stop-guard.sh` blocks premature `end_turn` during sub-skill execution and surfaces the phase-specific HINT (sub-skill in-flight, output `<!-- [cleanup:completed] -->` after Phase 5 in the SAME response turn). The `if !` rc capture is mandatory — silent patch failure here disables the stop-guard defence-in-depth that exists specifically to keep this turn from ending mid-sub-skill (#608 follow-up):
+**Pre-write** (before invoking `rite:wiki:ingest`, Issue #604): Update `.rite-flow-state` to `cleanup_pre_ingest` so `stop-guard.sh` blocks premature `end_turn` during sub-skill execution and surfaces the phase-specific HINT (sub-skill in-flight, output `<!-- [cleanup:completed] -->` after Phase 5 in the SAME response turn). The `if ! cmd; then` rc capture is mandatory — silent patch failure here disables the stop-guard defence-in-depth that exists specifically to keep this turn from ending mid-sub-skill (#608 follow-up):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -1619,7 +1619,7 @@ trap - EXIT INT TERM HUP
    - **Yes** — terminal state reached. `.rite-flow-state.phase` is already `cleanup_completed` and `active: false`. **本 Yes 分岐は terminal 到達後の重複呼び出し防止のための例外経路**であり、non-terminal (phase=cleanup_pre_ingest) 時点の Step 1 正規路 (Correct-pattern の Step 1「Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)」) と矛盾しないことに留意する。Step 1 below MUST be skipped. 理由: `cleanup_completed` は terminal state であり、Step 1 の `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、phase を `cleanup_post_ingest` に巻き戻して flow-state を破壊する。phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定し、prev が terminal でも accept するため whitelist 保護には依存できない — 実行しないことで確実に防ぐ。
    - **No** — Phase 5 has NOT been output yet (phase=cleanup_pre_ingest など non-terminal 状態)。Steps 1-2 below are **critical** — execute immediately to force the workflow into the terminal state (Step 1 が正規 handoff パス)。
 
-**Step 1**: Update `.rite-flow-state` to post-ingest phase (atomic). The `if !` rc capture is mandatory — silent failure here means the next stop-guard evaluation observes the stale `cleanup_pre_ingest` state and the HINT shown to the LLM no longer matches the actual workflow position (#608 follow-up):
+**Step 1**: Update `.rite-flow-state` to post-ingest phase (atomic). The `if ! cmd; then` rc capture is mandatory — silent failure here means the next stop-guard evaluation observes the stale `cleanup_pre_ingest` state and the HINT shown to the LLM no longer matches the actual workflow position (#608 follow-up):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -1794,7 +1794,7 @@ git stash pop
 > 3. Phase 5.3 Step 1: flow-state deactivate (下記 Step 1) — bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
 > 4. Phase 5.3 Step 2: `<!-- [cleanup:completed] -->` HTML コメント (下記 Step 2、絶対最終行 — rendered view では不可視、grep 可能)
 
-**Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if !` rc capture is mandatory — silent failure here leaves `.rite-flow-state.active = true`, which causes the **next** session-end / stop-guard evaluation to surface a stale HINT for the already-completed cleanup workflow (#608 follow-up):
+**Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if ! cmd; then` rc capture is mandatory — silent failure here leaves `.rite-flow-state.active = true`, which causes the **next** session-end / stop-guard evaluation to surface a stale HINT for the already-completed cleanup workflow (#608 follow-up):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
