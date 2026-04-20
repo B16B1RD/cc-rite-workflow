@@ -268,7 +268,7 @@ case "$branch_strategy" in
     }
 
     # >>> DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture <<<
-    # Downstream reference: plugins/rite/commands/wiki/init.md Phase 1.3.4 verification
+    # Downstream reference: plugins/rite/commands/wiki/init.md:Phase 1.3.4 verification
     # block. Keep the mktemp stderr capture + if-wrapper rc capture structure one-for-one
     # with init.md's copy — Wiki 経験則 patterns/high「canonical reference 文書のサンプル
     # コードは canonical 実装と一字一句同期する」.
@@ -283,7 +283,7 @@ case "$branch_strategy" in
     # >>> DRIFT-CHECK ANCHOR END: same_branch add_dry_run rc capture <<<
 
     # >>> DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check <<<
-    # Downstream reference: plugins/rite/commands/wiki/init.md Phase 1.3.4 verification
+    # Downstream reference: plugins/rite/commands/wiki/init.md:Phase 1.3.4 verification
     # block. Keep the `grep -qF "add '${negation_probe}'"` full-path fixed-string match
     # one-for-one with init.md's copy — simple `grep -q "^add '"` 単純 prefix は
     # false positive を招く.
