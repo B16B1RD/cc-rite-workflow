@@ -349,7 +349,11 @@ rite_phase_transition_allowed() {
   # /rite:issue:create at its end. "cleanup_completed" (#604) is the terminal state for
   # /rite:pr:cleanup. "phase_done" was a speculative reserved name with no producer —
   # removed per code-quality cycle-3 LOW (premature abstraction). "ingest_completed" was
-  # similarly removed (#608 follow-up) because ingest.md does not write flow-state.
+  # removed in #608 follow-up as YAGNI, then **revived in #618 (PR #624)** when ingest.md
+  # gained flow-state writes (Phase 8.2 Pre-write / 🚨 Mandatory After Step 1 / Phase 9.1
+  # Step 3 terminal patch) — see the revived entries in _RITE_PHASE_TRANSITIONS array
+  # above and plugins/rite/commands/wiki/ingest.md Phase 8.2 / 🚨 Mandatory After /
+  # Phase 9.1 Step 3 for the ring design.
   #
   # NOTE (#608 follow-up — forward-compat bypass scope): The four terminal accepts below
   # currently allow ANY prev → terminal transition unconditionally. This is intentional
