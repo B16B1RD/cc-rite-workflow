@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T11:16:13+00:00 | ingest:skip | raw/reviews/20260420T021613Z-pr-614.md | PR #614 (docs-only, 0 findings): self-consistency (documentation が自身の convention を適用) パターンは既存 canonical-reference-sample-code-strict-sync / fix-comment-self-drift で網羅済み。Sole reviewer guard (code-quality) 動作も既存パターンで既知 (raw: pr-614) |
 | 2026-04-20T01:10:00+00:00 | ingest:create | pages/patterns/markdown-fence-balance-precommit-check.md | PR #608 cycle 2 CRITICAL × 3: bash block 末尾 statement 追加時の closing fence 欠落で fence count が奇数化する silent regression を awk 検証で防ぐ canonical (raw: pr-608-cycle2) |
 | 2026-04-20T01:10:00+00:00 | ingest:create | pages/anti-patterns/test-false-positive-early-exit.md | PR #608 cycle 5-8: `active=false` early exit で silent pass する TC false-positive を独立 counter assertion + active=true TC 分離 + same-cycle 横展開契約の 3 点で防ぐ anti-pattern (raw: pr-608-cycle5/6/7/8) |
 | 2026-04-20T01:10:00+00:00 | ingest:skip | raw/reviews/20260419T170030Z-pr-608.md | 検出パターン (同一ファイル内ポリシー矛盾 / step 番号対応不整合 / hook コメント drift / convention 非対称 / prose misleading) は既存ページ (asymmetric-fix-transcription / prompt-numbered-list-isomorphic-structure / state-machine-dual-location-sync / canonical-list-count-claim-drift-anchor) で網羅済み (raw: pr-608) |
