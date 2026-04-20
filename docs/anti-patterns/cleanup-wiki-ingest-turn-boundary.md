@@ -3,7 +3,7 @@ title: cleanup-wiki-ingest-turn-boundary
 domain: anti-patterns
 confidence: high
 source_issues: [621, 604, 618, 561]
-last_updated: 2026-04-20T00:00:00+00:00
+last_updated: 2026-04-20T19:45:00+09:00
 ---
 
 # `/rite:pr:cleanup` の Wiki ingest sub-skill return 後に implicit stop が発生する regression
@@ -49,7 +49,7 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 
 | Phase | Block 発火数 | 備考 |
 |-------|-------------|------|
-| `cleanup_pre_ingest` | 1（+1 sentinel emit）| PR #611 cleanup, 2026-04-20T01:48:58Z |
+| `cleanup_pre_ingest` | 1（+1 sentinel emit）| Issue #611 cleanup 実行時, 2026-04-20T01:48:58Z (diag log の `issue=#611` タグ由来。cleanup.md が PR/Issue どちらの番号で invoke されても diag log には issue number が記録されるため、本表の #611 は Issue 番号) |
 | `cleanup_post_ingest` | 0 | 本 phase での block 記録なし |
 
 **H1-H4 絞り込み**:
@@ -67,7 +67,7 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 
 1. **cleanup.md Pre-check list Item 0 の機械化**: `[routing-check] ingest=matched|unmatched` / `[routing-check] cleanup=matched|unmatched` の 1 行出力義務化で LLM の silent skip を検出可能にする
 2. **ingest.md Phase 9.1 の三点セット #2/#3 間 recap 挿入禁止**: MUST NOT 行を追加し、caller 継続 HTML コメント直後に即 sentinel を出力する規約を reinforce
-3. **unit test fixture** (`tests/hooks/test-stop-guard-cleanup.sh`): stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` phase で invoke、exit 2 + stderr に Phase 情報が出力されることを assert
+3. **unit test fixture** (`plugins/rite/hooks/tests/stop-guard-cleanup.test.sh`、9 assertions、実行: `bash plugins/rite/hooks/tests/run-tests.sh` で既存 hook test suite と共に自動実行): stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup` phase で invoke、exit 2 + stderr に Phase 情報が出力されることを assert。既存 `stop-guard.test.sh` TC-608-A〜H とは役割分担: 本 fixture は **fixture ベースで独立実行可能** (同テストを異なる環境でスタンドアロン起動する用途)、TC-608-A〜H は **HINT-specific 文言 pin** (regression 検知性能優先)
 
 ## 関連 Issue
 
@@ -78,5 +78,9 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 
 ## 関連参考パターン
 
-- `patterns/state-machine-dual-location-sync.md` — defense-in-depth 設計
-- `anti-patterns/test-false-positive-early-exit.md` — self-check 信頼性
+Wiki 内部ページ (`.rite/wiki/pages/` 配下、`wiki` ブランチ) の経験則ページへの参照:
+
+- `.rite/wiki/pages/patterns/state-machine-dual-location-sync.md` — defense-in-depth 設計
+- `.rite/wiki/pages/anti-patterns/test-false-positive-early-exit.md` — self-check 信頼性
+
+これらのページは `separate_branch` 戦略 (`rite-config.yml` の `wiki.branch_strategy: separate_branch`) により dev ブランチ上では直接閲覧できない。Wiki 内容を参照するには `git worktree add .rite/wiki-worktree wiki` で worktree を展開するか、`/rite:wiki:query --keywords state-machine-dual-location-sync` 等で内容を取り込む。

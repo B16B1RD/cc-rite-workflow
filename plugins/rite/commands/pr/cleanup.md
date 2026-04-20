@@ -42,12 +42,34 @@ When this command is executed, run the following phases in order.
 
 | # | Check (種別) | If YES/NO / routing, do |
 |---|-------------|------------------------|
-| 0 | **Routing dispatcher (MUST execute step-by-step, skip 禁止 — Issue #621)**: 直前の sub-skill return tag は何か? | **手順 (絶対遵守、いずれも省略不可)**: (1) 直前応答の text body に対し `[ingest:completed]` を検索し matched か否かを判定する。LLM は response text に `[routing-check] ingest=<matched\|unmatched>` の 1 行を必ず含めること。skip すると Issue #621 regression (H1+H3 複合症状) を再発させる。(2) 同様に `[cleanup:completed]` を検索し `[routing-check] cleanup=<matched\|unmatched>` の 1 行を必ず含めること。(3) 上記 2 行の判定に従い routing する: `ingest=matched` → **continuation trigger** として即座に 🚨 Mandatory After Wiki Ingest (`cleanup_post_ingest` patch → Phase 5 Completion Report) を同 turn 内で実行。`cleanup=matched` → terminal 到達、場面 (b) Item 1-3 評価へ進む。どちらも unmatched → 通常の Phase 進行中 (場面 (a) 継続、Item 1-3 の `NO` は legitimate)。**本 Item は YES/NO 集計から除外** (routing 前段)。evidence 出力の義務化により LLM の silent skip を検出可能にする。 |
+| 0 | **Routing dispatcher (MUST execute step-by-step, skip 禁止 — Issue #621)**: 直前の sub-skill return tag は何か? | 本 Item は routing dispatcher (YES/NO 集計から除外)。手順 (1)(2)(3) は下記 **Item 0 — Routing dispatcher 手順** サブセクションで定義する。evidence 出力の義務化により LLM の silent skip を検出可能にする。 |
 | 1 | **State check**: `[cleanup:completed]` が HTML コメント形式で最終行 (あるいは末尾近傍) に出力済みか? | 推奨形式: `grep -F '[cleanup:completed]'` (fixed string で HTML コメント内の string も matchable)。場面 (a) では `NO` でも legitimate — 次の Mandatory After Wiki Ingest / Phase 5 出力に進む。場面 (b) では `NO` は terminal sub-skill (Phase 5) が未完了 — Phase 5 完了メッセージ + 次のステップ + HTML コメント sentinel を出力する。 |
 | 2 | **State check**: ユーザー向け完了メッセージ (`クリーンアップが完了しました` 行を含むブロック) が表示済みか? | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は Phase 5 完了レポートが欠落 — Phase 5.1 / 5.2 を実行する。 |
 | 3 | **State check**: `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: cleanup_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — Phase 5 末尾の flow-state deactivate を実行する。 |
 
 **Rule**: **Item 1-3 すべて `YES`** が turn 終了の必要条件 **ただし場面 (b) においてのみ**。Item 0 は routing dispatcher で YES/NO 集計には含まれない。場面 (a) では Item 1-3 の `NO` は「次のステップに進め」を意味する正常シグナル。
+
+#### Item 0 — Routing dispatcher 手順 (MUST execute step-by-step, skip 禁止 — Issue #621)
+
+全 step を同等の粒度で対称配置する (同型性ルール)。どの step も skip すると Issue #621 regression (H1+H3 複合症状) を再発させる。
+
+1. **`[ingest:completed]` を検索して evidence を出力する**:
+   - 直前応答の text body に対し `[ingest:completed]` (bare bracket 文字列) を grep -F で検索する
+   - 判定結果を response text に 1 行含める: **HTML コメント形式のみ許容** (`<!-- [routing-check] ingest=matched -->` または `<!-- [routing-check] ingest=unmatched -->`)。bare bracket 形式 (`[routing-check] ingest=matched`) は禁止 — 同ファイル内の bare sentinel 禁止規約 (#604, mirrors #561) と衝突し、Mode B implicit stop を誘発するため
+   - 本 evidence 行は response の最終行に置いてはならない (最終行は `<!-- [cleanup:completed] -->` sentinel 専用)
+2. **`[cleanup:completed]` を検索して evidence を出力する**:
+   - 直前応答の text body に対し `[cleanup:completed]` を grep -F で検索する
+   - 判定結果を response text に 1 行含める: `<!-- [routing-check] cleanup=matched -->` または `<!-- [routing-check] cleanup=unmatched -->` (HTML コメント形式のみ許容)
+   - 本 evidence 行も response の最終行に置いてはならない (最終行は `<!-- [cleanup:completed] -->` sentinel 専用)
+3. **上記 2 行の判定に従って routing する** (両 tag matched 時の優先順位を明示):
+   - **優先ルール**: 両方 matched が発生しうるのは同一 session 内で過去 cleanup 完了済み後に次 PR cleanup で ingest を呼んだ直後等の混在ケース。このとき **`ingest=matched` を優先採択**し `cleanup=matched` は無視する (直前 sub-skill return は ingest なので continuation trigger が真の意図)
+   - `ingest=matched` → **continuation trigger** として即座に 🚨 Mandatory After Wiki Ingest (`cleanup_post_ingest` patch → Phase 5 Completion Report) を同 turn 内で実行
+   - `cleanup=matched` (かつ `ingest=unmatched`) → terminal 到達、場面 (b) Item 1-3 評価へ進む
+   - どちらも unmatched → 通常の Phase 進行中 (場面 (a) 継続、Item 1-3 の `NO` は legitimate)
+
+> **評価範囲の scope**: 「直前応答」は現在の turn 直前の assistant response 1 件のみを指す (会話履歴全体ではない)。過去の session で残存する sentinel を誤拾いしない。
+
+> **⚠️ 検出 hook の scope** (Issue #621 root cause fix の限界): 本 Item 0 は **prompt 表面での形式義務化のみ** を実装する。evidence の出力を machine-enforced で検査する hook (`stop-guard.sh` / `workflow-incident-emit.sh` への `[routing-check]` パターン検査追加) は**本 PR の scope 外**で、follow-up Issue として追跡する (Issue #621 MUST「機械的強制」の完全達成には hook 側の検証 logic 追加が必要だが、prompt 側の義務化と hook 側の検証を分離して PR ごとにレビューするための意図的な scope 分割)。現状は prompt が evidence 出力を LLM に強制 → LLM が HTML コメント形式で出力 → `cleanup_pre_ingest` / `cleanup_post_ingest` phase の stop-guard block (既存 5 層) が combined で H1+H3 regression を防ぐ構成。
 
 ### Anti-pattern (what NOT to do)
 
