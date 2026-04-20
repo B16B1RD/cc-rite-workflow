@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T18:16:22+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T18:15:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #629 Issue #625: Contract-Implementation path 対称性への拡張を追加。lint.md Phase 9.2「常に三点セット出力」契約 vs 同 file 内 Phase 1.1/1.3 早期 return (1 行のみ emit) の drift を prompt-engineer / code-quality の 2 reviewer が独立検出 (lint.md:151, 217)、新規契約宣言時の全 path enumeration mandatory 化 + scope 明示化 + scope-irrelevant finding の別 Issue 化 (Issue #630) を canonical flow として記録 (raw: pr-629 review) |
 | 2026-04-20T16:58:45+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T16:53:38+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #626 review (PR #620 canonical format 統一 refactor の develop merge): 0 findings / severity 全 0 の healthy landing を cross-validation evidence として追加。dialect unification 9 site 1:1 対応 / semantic 情報保全 / scope 境界の明確性 / wiki branch 別 commit 分離 の 4 観点を multi-reviewer (prompt-engineer / code-quality) が独立確認、極小対称化 PR 運用の追加実証 (raw: pr-626) |
