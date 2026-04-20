@@ -68,8 +68,10 @@ temp/
 # >>> DRIFT-CHECK ANCHOR: same_branch verification-first setup steps <<<
 # Downstream reference: plugins/rite/hooks/scripts/gitignore-health-check.sh の
 # `same_branch strategy requires '!.rite/wiki/' negation entry` Hint メッセージが
-# 本節 (Step 1-5) を semantic anchor 経由で参照する。Step 1-5 のコマンド / 期待出力を
-# 変更する際は同 Hint メッセージと同期.
+# 本節 (Step 1-5 + check-ignore 回避理由) を semantic anchor 経由で参照する。Step 1-5
+# のコマンド / 期待出力を変更する際は同 Hint メッセージと同期.
+# 内側に `DRIFT-CHECK ANCHOR: negation verification canonical` anchor を入れ子で
+# 包含する (Step 3「動作確認の正典」 + 「check-ignore 回避理由」の 2 節)。
 # Step 1. negation エントリの追加 (本 .gitignore に **追記** する):
 #
 #   # 必須 — parent directory 除外を解除。これがないと配下ファイルを再包含できません:
@@ -106,8 +108,6 @@ temp/
 #
 #   rm -f .rite/wiki/raw/.negation-probe
 #
-# >>> DRIFT-CHECK ANCHOR END: same_branch verification-first setup steps <<<
-#
 # ─────────────────────────────────────────────────────────────────────────────
 # `git check-ignore -v` を sanity check に使わない理由 (F-02 / F-06 対応):
 # ─────────────────────────────────────────────────────────────────────────────
@@ -123,6 +123,7 @@ temp/
 # **`git add --dry-run` を sanity check の正典** として採用し、check-ignore は参考情報に
 # とどめる (Source: git documentation — git check-ignore(1)、`pattern` column の `!` prefix 仕様)。
 # >>> DRIFT-CHECK ANCHOR END: negation verification canonical <<<
+# >>> DRIFT-CHECK ANCHOR END: same_branch verification-first setup steps <<<
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # Idempotency 注 (F-07 対応):
