@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-20T15:15:00+00:00"
+updated: "2026-04-21T00:55:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -153,7 +153,7 @@ PR #605 で導入された bidirectional backlink sub-pattern (`# Downstream ref
 
 両 reviewer (prompt-engineer / code-quality) が独立して以下の **allowed redundancy** 観察を確認:
 
-- 既存 sibling sync 契約 prose (例: 「本 commit_msg 文字列と直下の placeholder-residue gate は Phase 5.0.c canonical と Phase 5.1 / Phase 5.2 の同一文字列と 3 箇所 explicit sync を契約。変更時は 3 箇所同時更新必須」) と、新規追加した backlink 行 (例: `Downstream reference: same file Phase 5.2 (DRIFT-CHECK ANCHOR: ...) — sibling sync 契約相手`) は、**同じ対称化相手を異なる文言で 2 度参照する**冗長表現になる
+- 既存 sibling sync 契約 prose (例: 「本 commit_msg 文字列と直下の placeholder-residue gate は Phase 5.0.c canonical と Phase 5.1 / Phase 5.2 の同一文字列と 3 箇所 explicit sync を契約。変更時は 3 箇所同時更新必須」) と、新規追加した backlink 行 (例: `Downstream reference: same file:Phase 5.2 — sibling sync 契約相手`) は、**同じ対称化相手を異なる文言で 2 度参照する**冗長表現になる
 - これは **意図的に許容される redundancy** であり、撤去対象ではない:
   - prose は **意図と契約の説明** (なぜ 3 箇所同期が必要か / 変更時の手続き)
   - backlink 行は **機械検証可能な逆方向ポインタ** (grep 1 発で downstream を特定)
@@ -164,6 +164,44 @@ PR #605 で導入された bidirectional backlink sub-pattern (`# Downstream ref
 1. 既存 ANCHOR に backlink を追加する PR では、既存の sibling sync 契約 prose を **撤去・統合せず** 並置する
 2. backlink 行は END marker には付けない (PR #605 慣習: canonical reference は START のみに記載)
 3. team guideline 適用 PR (本 PR のような「複数の既存 ANCHOR への一律拡張」) は scope を絞って 5-15 行程度に収め、Confidence 80+ の blocking 指摘 0 件で短時間 review 可能な極小対称化 PR として運用する
+
+### bidirectional backlink の canonical format 統一 (PR #620 / Issue #620 での evidence)
+
+PR #605 で bidirectional backlink sub-pattern を導入した時点と PR #619 で team guideline として 5 ANCHOR に一律適用した時点で、以下の 3 つの format dialect が並存していた:
+
+1. **コロン記法 (Wiki canonical)**: `Downstream reference: plugins/rite/commands/wiki/init.md:Phase 1.3.4`
+2. **スペース区切り (PR #605 実装 dialect)**: `Downstream reference: plugins/rite/commands/wiki/init.md Phase 1.3.4 verification`
+3. **括弧記法 (PR #619 実装 dialect)**: `Downstream reference: same file Phase 5.2 (DRIFT-CHECK ANCHOR: Phase 5.0.c canonical commit message) — sibling sync 契約相手`
+
+実害はないが grep ベースの drift 検出 lint を将来実装する際に 3 形式を parse する必要が生じ、機械検証の困難化を招く。PR #620 (Issue #620) で **コロン記法** を canonical format として team 合意・一律適用した。
+
+**Canonical 形式 (PR #620 で統一)**:
+
+```bash
+# 単一 reference
+# Downstream reference: plugins/rite/commands/wiki/init.md:Phase 1.3.4
+
+# 複数 reference (カンマ区切り)
+# Downstream reference: lint.md:Phase 8.3, same file:Phase 5.1 — sibling sync 契約相手
+```
+
+**適用原則**:
+
+1. **`<file>:<Phase X.Y>` の最小形**: ファイルパスと Phase 番号を `:` で連結する
+2. **括弧注記は禁止**: `(DRIFT-CHECK ANCHOR: <name>)` 等の semantic name 補足は書かない。`<file>:<Phase X.Y>` で anchor は unique 特定可能 (各 Phase 内に同名 anchor は高々数個)
+3. **複数 reference はカンマ区切り**: `lint.md:Phase 8.3, same file:Phase 5.2` のように並記する
+4. **契約説明 prose は `—` 以降に保持**: `— sibling sync 契約相手` や `— 本 emit 値 (...) を ... の single source of truth として参照する` 等の契約説明は drift 検出対象外の自由記述として保持してよい
+
+**機械検証の expected pattern**:
+
+```bash
+grep -E 'Downstream reference: [^ ]+:Phase [0-9]+\.[0-9]+' <file>
+```
+
+NG pattern (将来 lint で検出):
+
+- `Downstream reference: <file> Phase X.Y` (スペース区切り) — PR #605 旧 dialect
+- `Downstream reference: <file> Phase X.Y (DRIFT-CHECK ANCHOR: ...)` (括弧記法) — PR #619 旧 dialect
 
 ### 直前 merge PR 規約への後続 PR 違反 (PR #624 cycle 2 での evidence)
 
