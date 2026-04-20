@@ -154,16 +154,28 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # Flow State) writes phase=cleanup before any sub-skill invoke. Without this entry,
   # the cleanup → cleanup_pre_ingest transition was unknown, leaving Phase 1.0-4.W.1 unprotected.
   # (stop-guard.sh の `case "$PHASE" in cleanup)` ブランチの HINT 文言 "Phase 1.0 (Activate Flow State)" と一致させる)
+  # NOTE (#618 reverts the #608 follow-up YAGNI removal): cleanup_pre_ingest can transition to
+  # ingest_pre_lint when ingest.md Phase 8.2 Pre-write overrides the caller phase. On lint return,
+  # ingest.md 🚨 Mandatory After Auto-Lint Step 1 patches ingest_post_lint, then the caller's
+  # Mandatory After Wiki Ingest writes back cleanup_post_ingest. See DRIFT-CHECK ANCHOR in
+  # plugins/rite/commands/wiki/ingest.md 🚨 Mandatory After Auto-Lint section.
   ["cleanup"]="cleanup_pre_ingest cleanup_completed"
-  ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed"
+  ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed ingest_pre_lint"
   ["cleanup_post_ingest"]="cleanup_completed"
   ["cleanup_completed"]=""
 
-  # NOTE (#608 follow-up): ingest_pre_lint / ingest_post_lint / ingest_completed entries
-  # were removed as YAGNI dead code. ingest.md does not call flow-state-update.sh
-  # (Phase 9.1 Step 1 設計判断), so these phase names are never written.
-  # If ingest.md gains flow-state writes in the future, re-add the entries together
-  # with the corresponding stop-guard.sh case branches.
+  # /rite:wiki:ingest lifecycle ring (#618, reverts the #608 follow-up YAGNI removal).
+  # ingest.md Phase 8.2 Pre-write (ingest_pre_lint) → 🚨 Mandatory After Auto-Lint Step 1
+  # (ingest_post_lint) → Phase 9.1 Step 3 terminal patch (ingest_completed, active=false).
+  # Caller 経由時は caller Mandatory After Wiki Ingest が caller phase
+  # (cleanup_post_ingest) に書き戻す ring 構造。単独実行時は --if-exists により flow-state
+  # 不在なら no-op。stop-guard.sh の ingest_pre_lint / ingest_post_lint case arm が
+  # end_turn を block し manual_fallback_adopted sentinel を emit する。
+  # DRIFT-CHECK ANCHOR (semantic): ingest.md 🚨 Mandatory After Auto-Lint section と
+  # stop-guard.sh ingest_* case arm とで 3 site 対称。いずれかを変更する際は 3 site 同時確認。
+  ["ingest_pre_lint"]="ingest_post_lint ingest_completed cleanup_post_ingest"
+  ["ingest_post_lint"]="ingest_completed cleanup_post_ingest"
+  ["ingest_completed"]="cleanup_post_ingest"
 )
 
 # Load override map from rite-config.yml if present.
@@ -331,7 +343,7 @@ rite_phase_transition_allowed() {
   # removed per code-quality cycle-3 LOW (premature abstraction). "ingest_completed" was
   # similarly removed (#608 follow-up) because ingest.md does not write flow-state.
   #
-  # NOTE (#608 follow-up — forward-compat bypass scope): The three terminal accepts below
+  # NOTE (#608 follow-up — forward-compat bypass scope): The four terminal accepts below
   # currently allow ANY prev → terminal transition unconditionally. This is intentional
   # forward-compat behaviour today (catches cold-start writes, retry paths, and skill
   # versions that may add new prev phases without updating this file), but it also masks
@@ -341,11 +353,17 @@ rite_phase_transition_allowed() {
   # _RITE_PHASE_TRANSITIONS entries (e.g. cleanup_completed must come from cleanup_post_ingest
   # OR cleanup_pre_ingest) and add coverage in stop-guard.test.sh before flipping the
   # default.
+  # ingest_completed (#618, reverts the #608 follow-up removal): ingest.md Phase 9.1 Step 3
+  # writes this terminal state when flow-state was actived by a caller. Accept any prev →
+  # ingest_completed in forward-compat mode; the explicit ingest_pre_lint / ingest_post_lint
+  # → ingest_completed transitions are still encoded in _RITE_PHASE_TRANSITIONS above for
+  # semantic clarity.
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
   [ "$next" = "completed" ] && return 0
   [ "$next" = "create_completed" ] && return 0
   [ "$next" = "cleanup_completed" ] && return 0
+  [ "$next" = "ingest_completed" ] && return 0
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
   # Unknown prev phase → accept (forward compat)
