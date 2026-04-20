@@ -32,8 +32,11 @@ FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 
 # cycle 12 HIGH F-01: unit separator \x1f に変更 (POSIX whitespace IFS collapse bug、
 # stop-guard.sh cycle 10 F-01 と同型)。.phase="" かつ .last_synced_phase 非空のとき
-# 全フィールド左 shift で _phase と _last_synced_phase が入れ替わり、L82 spurious sync
-# + L92-96 で last_synced_phase の値が phase として送信される silent データ汚染を起こす。
+# 全フィールド左 shift で _phase と _last_synced_phase が入れ替わり、下方の phase diff
+# 判定 (`[ "$_phase" != "$_last_synced_phase" ]` guard) が誤 true → spurious sync +
+# issue-comment-wm-sync.sh の --transform update-phase 呼び出しで last_synced_phase の
+# 値が phase として送信される silent データ汚染を起こす。
+# (line-number 参照を避ける理由は cycle 8 F-05 参照)
 _flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring)] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || exit 0
 IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0

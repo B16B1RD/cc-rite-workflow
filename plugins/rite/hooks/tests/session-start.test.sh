@@ -296,9 +296,12 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-011: Field extraction with process substitution and IFS=$'\t' - source=compact
+# TC-011: Field extraction with process substitution and IFS=$'\x1f' (unit separator) — source=compact
+# cycle 13 HIGH F-01: cycle 11 MEDIUM F-04 で IFS を $'\t' → $'\x1f' に変更したが TC-011 の
+# 文言更新が漏れていた (cycle 12 で TC-007 のみ更新)。spaces / special chars を含むフィールドが
+# unit separator 区切りで正しく抽出されることを verify する目的は不変、文言のみ現行実装に揃える。
 # --------------------------------------------------------------------------
-echo "TC-011: Field extraction with tab-delimited IFS"
+echo "TC-011: Field extraction with unit-separator-delimited IFS"
 dir011="$TEST_DIR/tc011"
 mkdir -p "$dir011"
 create_state_file "$dir011" '{
@@ -314,7 +317,7 @@ if echo "$output" | grep -q "Issue: #77" && \
    echo "$output" | grep -q "Phase: Phase with spaces" && \
    echo "$output" | grep -q "Loop: 5" && \
    echo "$output" | grep -q "Next action: Action: with special chars"; then
-  pass "Tab-delimited field extraction handles spaces and special chars"
+  pass "Unit-separator-delimited field extraction handles spaces and special chars"
 else
   fail "Field extraction failed with spaces/special chars, got: $output"
 fi
