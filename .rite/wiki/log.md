@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T15:20:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T15:15:00+00:00 | ingest:update | pages/anti-patterns/same-file-must-not-vs-must-conflict.md | PR #624 Issue #618: 新 Step 追加 × 既存 MUST NOT 衝突 (bash tool output と response text の layer 境界明示不足) を追加。Claude Code 実行モデル上 bash tool output は別チャンネルで response text に相当しないため MUST NOT #621 reinforce の対象外であることを prose で明示する canonical 対策 (raw: pr-624 review/fix cycle 1) |
 | 2026-04-20T15:15:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #624 cycle 2: 直前 merge PR 規約への後続 PR 違反を追加 (PR #617 で確立した line 番号 literal 禁止規約を約 10 時間後の PR #624 が破った G4 HIGH)。team velocity の高い repo では 24 時間以内の規約違反 risk 高、後続 PR reviewer が直近 merged PR 一覧 + commit 時系列を明示確認する canonical flow (raw: pr-624-cycle2 review) |
 | 2026-04-20T15:15:00+00:00 | ingest:update | pages/patterns/state-machine-dual-location-sync.md | PR #624 cycle 2: helper case 拡張 × caller WARN_MSG 連動 sub-pattern を追加 (G3 HIGH)。stop-guard.sh の ingest_pre_lint / ingest_post_lint case 追加に session-end.sh lifecycle helper の WARN_MSG が追従せず observability regression 発生。cross-file の state 参照 drift として元 pattern に統合、ring/enum 拡張 PR では observability helper (lifecycle / session-end / monitoring) 連動漏れを review checklist 必須化 (raw: pr-624-cycle2 fix) |
