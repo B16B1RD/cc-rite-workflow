@@ -125,8 +125,11 @@ echo "wiki_branch=$wiki_branch"
 **Wiki が無効の場合**: 早期 return:
 
 ```bash
-# --auto モードでは 6 フィールドの 1 行を必ず出力する (stdout 空は ingest 側 Phase 8.3 step 3 で
-# 「Lint 実行失敗」として扱われる unreachable 経路のため)。
+# --auto モードでは Phase 9.2 の三点セット (6 フィールド 1 行 + caller 継続 blockquote + HTML コメント sentinel)
+# を必ず出力する (Phase 9.2 contract と整合、Issue #630)。
+#   - stdout 空は ingest 側 Phase 8.3 step 3 で「Lint 実行失敗」として扱われる unreachable 経路のため
+#   - plain text 1 行のみで終端すると LLM turn-boundary heuristic を誤発火させ caller の Mandatory After を
+#     未実行のまま閉じる regression (#625 と同型) を誘発するため、HTML コメント sentinel を absolute last line に置く
 # mode は Phase 1.4 で解析されるが、本経路は Phase 1.1 直後の早期 return のため引数文字列を直接 scan する。
 # Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版。fix.md / review.md の
 # placeholder 残留 gate は exact-string match (`case "$review_file_path" in "{review_file_path_from_phase_1_0_1}"...)`)
@@ -148,7 +151,11 @@ case "$mode" in
     ;;
 esac
 if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+  # 三点セット出力 (Phase 9.2 contract、Issue #630)
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
+  echo ""
+  echo "> ⏭ 継続中: caller (rite:wiki:ingest Phase 8.3-8.5 → Phase 9 Completion Report → 三点セット終端) を同 turn 内で完了してください。"
+  echo "<!-- [lint:completed:auto] -->"
 else
   echo "Wiki 機能が無効です（wiki.enabled: false）。" >&2
   echo "有効化するには rite-config.yml の wiki.enabled を true にしてから /rite:wiki:init を実行してください。" >&2
@@ -202,8 +209,11 @@ fi
 **Wiki 未初期化の場合**: 早期 return:
 
 ```bash
-# --auto モードでは 6 フィールドの 1 行を必ず出力する (Phase 1.1 と対称、ingest 側 Phase 8.3 step 3 で
-# stdout 空を「Lint 実行失敗」として扱う silent false positive を防ぐ)。
+# --auto モードでは Phase 9.2 の三点セット (6 フィールド 1 行 + caller 継続 blockquote + HTML コメント sentinel)
+# を必ず出力する (Phase 1.1 と対称、Phase 9.2 contract と整合、Issue #630)。
+#   - stdout 空は ingest 側 Phase 8.3 step 3 で「Lint 実行失敗」として扱う silent false positive を防ぐため
+#   - plain text 1 行のみで終端すると LLM turn-boundary heuristic を誤発火させ caller の Mandatory After を
+#     未実行のまま閉じる regression (#625 と同型) を誘発するため、HTML コメント sentinel を absolute last line に置く
 # Claude placeholder {mode} 残留 fail-fast gate (canonical pattern、Phase 1.1 と対称):
 mode="{mode}"
 case "$mode" in
@@ -214,7 +224,11 @@ case "$mode" in
     ;;
 esac
 if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+  # 三点セット出力 (Phase 9.2 contract、Phase 1.1 と対称、Issue #630)
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
+  echo ""
+  echo "> ⏭ 継続中: caller (rite:wiki:ingest Phase 8.3-8.5 → Phase 9 Completion Report → 三点セット終端) を同 turn 内で完了してください。"
+  echo "<!-- [lint:completed:auto] -->"
 else
   echo "Wiki が初期化されていません。先に /rite:wiki:init を実行してください。" >&2
 fi
@@ -1765,9 +1779,9 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 
 | エラー | 対処 | Phase |
 |--------|------|-------|
-| `wiki.enabled: false` | 早期 return (`--auto` モード時は 6 フィールド 0 件 1 行を出力後 exit 0、それ以外は警告のみ exit 0) | Phase 1.1 |
+| `wiki.enabled: false` | 早期 return (`--auto` モード時は Phase 9.2 三点セット (6 フィールド 0 件 1 行 + caller 継続 blockquote + HTML コメント sentinel) を出力後 exit 0、それ以外は警告のみ exit 0) | Phase 1.1 |
 | GNU date 非互換環境 | Phase 4 skip（exit 0 + WARNING） | Phase 1.2 |
-| Wiki 未初期化 | `/rite:wiki:init` を案内 (`--auto` モード時は 6 フィールド 0 件 1 行を出力後 exit 0) | Phase 1.3 |
+| Wiki 未初期化 | `/rite:wiki:init` を案内 (`--auto` モード時は Phase 9.2 三点セット (6 フィールド 0 件 1 行 + caller 継続 blockquote + HTML コメント sentinel) を出力後 exit 0) | Phase 1.3 |
 | `{mode}` placeholder 残留 (Phase 1.1 / Phase 1.3 の 2 箇所) | **exit 1 で fail-fast**（Claude substitute 忘れの silent 通過防止、2 箇所で同型） | Phase 1.1 / Phase 1.3 |
 | Phase 6.2 の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{pages_list}` の 3 種) | **exit 1 で fail-fast**（PR #564 F-01 / F-21、LLM substitute 忘れによる silent `missing_concept` 誤分類防止、3 種で同型） | Phase 6.2 |
 | Phase 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種) | **exit 1 で fail-fast**（PR #564 F-04 / F-14、LLM substitute 忘れによる literal 残留 commit landed 防止、2 種で同型） | Phase 8.3 |
