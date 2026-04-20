@@ -35,6 +35,45 @@
 # `bang-bracket-alt-paren-url`, regex literal `bang-backslash-bracket`, and
 # bash negation `if-space-bang-space-cmd` are intentionally NOT matched.
 #
+# Safe equivalents (writing convention)
+# -------------------------------------
+# When this check flags a line, the canonical rewrite depends on **what the
+# inline code span refers to**. Two styles have emerged from the #609-#611
+# fix series and MUST be applied consistently:
+#
+#   Style A: full-width corner brackets (「!」)
+#       Use when the span refers to the literal bang character itself as a
+#       standalone token (e.g. "行頭を # または 「!」 から開始する").
+#       Adopted in: commands/wiki/init.md L247, L547.
+#
+#   Style B: expansion form (`if ! cmd; then`)
+#       Use when the span quotes a shell syntax fragment containing `!` as
+#       an operator (e.g. "the `if ! cmd; then` rc capture is mandatory").
+#       Expand the fragment to its full minimal form so `!` is no longer
+#       adjacent to a closing backtick.
+#       Adopted in: commands/pr/cleanup.md, commands/wiki/references/
+#       bash-cross-boundary-state-transfer.md L153.
+#
+# Judgment flow
+# -------------
+#   1. Is the span referring to the `!` character itself (noun)? -> Style A.
+#   2. Is the span quoting shell syntax that uses `!` as an operator (verb)?
+#      -> Style B (expand to a runnable minimal fragment).
+#   3. Ambiguous? Prefer Style B — expansion almost always reads naturally,
+#      whereas Style A only fits when the sentence grammar demands a single
+#      character literal.
+#
+# Both styles avoid the P1/P2 patterns above by construction:
+#   - Style A replaces the backtick-bang adjacency with a non-backtick span
+#     (full-width 「...」 does not interact with bash history expansion).
+#   - Style B moves the 「!」 away from the closing backtick by adding the
+#     command continuation (`cmd; then`), defeating the P1 space-bang-before-
+#     closing-backtick shape.
+#
+# Out of scope: detecting the non-adjacent `if ! ` space-bang-space pattern.
+# That extension is tracked separately (see the --strict mode proposal on
+# Issue #613 Out of scope).
+#
 # Usage:
 #   bang-backtick-check.sh [--all] [--target FILE]... [--repo-root DIR] [--quiet]
 #
