@@ -107,7 +107,11 @@ echo ""
 echo "TC-004: Branch without issue pattern → no special message"
 git_repo_004="$TEST_DIR/git_tc004"
 mkdir -p "$git_repo_004"
-(cd "$git_repo_004" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -b "main" -q)
+# cycle 11 MEDIUM F-05: `git checkout -b main` は現代 git (init.defaultBranch=main) で
+# 既存 main と衝突し `set -e` で script 全体を abort させる。その結果 cycle 9-10 で追加した
+# TC-608-WARN-A〜E が一度も実行されない regression guard 実質未検証状態になっていた。
+# `-B` (force reset, create if missing) を使用して defaultBranch 設定に依存しない形に修正。
+(cd "$git_repo_004" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -B "main" -q)
 
 output=$(run_hook "$git_repo_004")
 if ! echo "$output" | grep -q "Saving final state for Issue"; then

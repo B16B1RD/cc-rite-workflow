@@ -1018,12 +1018,17 @@ create_state_file "$dir608i" "{\"active\": true, \"phase\": \"phase5_implementat
 stderr_file608i="$(mktemp "$GUARD_TEST_DIR/stderr608i.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir608i\", \"session_id\": \"sid-608i\"}"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608i") && rc=0 || rc=$?
-# IFS collapsing bug があると stderr に "整数の式が予期されます" が出現し、rc=0 で許可してしまう。
-# 正しく parse されれば error_count=0 < threshold=3 で block (rc=2) される。
-if [ $rc -eq 2 ] && ! grep -q "整数の式が予期されます" "$stderr_file608i"; then
-  pass "previous_phase='' で ERROR_COUNT が正しく 0 として parse され block 継続 (IFS regression guard)"
+# IFS collapsing bug があると stderr に bash 整数比較エラー (日本語 locale では
+# "整数の式が予期されます"、LC_ALL=C / en_US locale では "integer expression expected") が
+# 出現し rc=0 (threshold-bypass) で許可してしまう。
+# cycle 11 F-03: locale-independent 検証のため、両 phrase を OR で negative grep する。
+# CI 環境 (多くが LC_ALL=C) で false-negative (silent pass) を起こさない設計。
+if [ $rc -eq 2 ] \
+    && ! grep -q "整数の式が予期されます" "$stderr_file608i" \
+    && ! grep -q "integer expression expected" "$stderr_file608i"; then
+  pass "previous_phase='' で ERROR_COUNT が正しく 0 として parse され block 継続 (IFS regression guard、locale-independent)"
 else
-  fail "expected rc=2 without integer parse error, got rc=$rc stderr='$(cat "$stderr_file608i")'"
+  fail "expected rc=2 without integer parse error (either locale), got rc=$rc stderr='$(cat "$stderr_file608i")'"
 fi
 
 # --------------------------------------------------------------------------

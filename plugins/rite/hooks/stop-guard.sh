@@ -150,9 +150,10 @@ fi
 # cycle 10 CRITICAL F-01: delimiter に tab ($'\t') を使うと POSIX whitespace IFS collapse
 # により previous_phase="" のとき隣接 tab が単一区切り扱いになり、全フィールドが 1 つ左 shift
 # して ERROR_COUNT が empty string になる silent corruption を起こす。cycle 1 (#490) 以降
-# 潜伏していた bug で、9 件の "pre-existing test failures" (L206 `[ "" -ge ]` 整数エラー) が
-# 症状として発現していた。unit separator (\x1f / U+001F) は non-whitespace のため
-# adjacent-delimiter を empty field として preserve する POSIX 準拠挙動となる。
+# 潜伏していた bug で、9 件の "pre-existing test failures" (ERROR_COUNT-THRESHOLD 比較の
+# `[ "" -ge "$THRESHOLD" ]` 整数エラー) が症状として発現していた。unit separator (\x1f / U+001F)
+# は non-whitespace のため adjacent-delimiter を empty field として preserve する POSIX 準拠挙動となる。
+# (line-number 参照を避ける理由は cycle 8 F-05 参照)
 IFS=$'\x1f' read -r PHASE PREV_PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase // "unknown"), (.previous_phase // ""), (.next_action // "unknown"), (.issue_number // 0 | tostring), (.pr_number // 0 | tostring), (.error_count // 0 | tostring)] | join("\u001f")' "$STATE_FILE" 2>/dev/null) || {
   PHASE="unknown"
   PREV_PHASE=""

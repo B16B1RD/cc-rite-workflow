@@ -321,9 +321,11 @@ fi
 find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency
-# Use IFS=$'\t' because @tsv outputs tab-delimited fields; default IFS includes
-# spaces which would break values like "After rite:lint, execute Phase 5.2.1...".
-# Defense-in-depth: Line 111's ACTIVE check already catches invalid JSON (jq
+# cycle 11 MEDIUM F-04: unit separator \x1f (\037) を使用する理由。tab は POSIX IFS whitespace
+# で隣接 delimiter を単一区切りに collapse するため、next_action="" 時に LOOP 欄に他フィールドが
+# shift する silent 注入 bug を起こす (stop-guard.sh cycle 10 F-01 と同型)。non-whitespace IFS は
+# adjacent-delimiter を empty field として preserve する POSIX 準拠挙動となる。
+# Defense-in-depth: ACTIVE check (earlier in this script) already catches invalid JSON (jq
 # fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
 # the file becomes corrupt between the two jq reads (e.g., race condition,
 # partial write). It is not reachable by normal unit tests.
@@ -332,11 +334,11 @@ _tsv_output=$(jq -r '[
   (.phase // "unknown"),
   (.next_action // "unknown"),
   (.loop_count // 0 | tostring)
-] | @tsv' "$STATE_FILE" 2>/dev/null) || {
+] | join("\u001f")' "$STATE_FILE" 2>/dev/null) || {
   echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
   exit 0
 }
-IFS=$'\t' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
+IFS=$'\x1f' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
