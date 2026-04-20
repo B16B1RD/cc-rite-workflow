@@ -146,7 +146,14 @@ fi
 # error_count is incremented on each blocked stop; it resets to 0 on each patch-mode
 # phase transition (flow-state-update.sh, since #294), at the start of the next workflow
 # (when /rite:issue:start regenerates .rite-flow-state), or when manually reset.
-IFS=$'\t' read -r PHASE PREV_PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase // "unknown"), (.previous_phase // ""), (.next_action // "unknown"), (.issue_number // 0 | tostring), (.pr_number // 0 | tostring), (.error_count // 0 | tostring)] | @tsv' "$STATE_FILE" 2>/dev/null) || {
+#
+# cycle 10 CRITICAL F-01: delimiter に tab ($'\t') を使うと POSIX whitespace IFS collapse
+# により previous_phase="" のとき隣接 tab が単一区切り扱いになり、全フィールドが 1 つ左 shift
+# して ERROR_COUNT が empty string になる silent corruption を起こす。cycle 1 (#490) 以降
+# 潜伏していた bug で、9 件の "pre-existing test failures" (L206 `[ "" -ge ]` 整数エラー) が
+# 症状として発現していた。unit separator (\x1f / U+001F) は non-whitespace のため
+# adjacent-delimiter を empty field として preserve する POSIX 準拠挙動となる。
+IFS=$'\x1f' read -r PHASE PREV_PHASE NEXT ISSUE PR ERROR_COUNT < <(jq -r '[(.phase // "unknown"), (.previous_phase // ""), (.next_action // "unknown"), (.issue_number // 0 | tostring), (.pr_number // 0 | tostring), (.error_count // 0 | tostring)] | join("\u001f")' "$STATE_FILE" 2>/dev/null) || {
   PHASE="unknown"
   PREV_PHASE=""
   NEXT="Read .rite-flow-state and continue the active workflow. Do NOT stop."
@@ -299,7 +306,9 @@ case "$PHASE" in
     WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 1.0 (Activate Flow State) just recorded phase=cleanup, and Phase 1-4 have not completed yet. Continue executing the cleanup phases (state verification → branch operations → wiki ingest decision in Phase 4.W.1) in the SAME response turn. DO NOT stop before reaching at least cleanup_pre_ingest (Phase 4.W.2) or cleanup_completed (Phase 5)."
     ;;
   cleanup_pre_ingest)
-    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state, so the caller phase remains pinned during the entire sub-skill invocation). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned [ingest:completed], run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel) in the SAME response turn. DO NOT stop before [cleanup:completed] is output."
+    # cycle 10 F-05: 末尾 `[cleanup:completed]` を `<!-- [cleanup:completed] -->` に統一
+    # (cleanup_post_ingest HINT と asymmetry を解消、#561 bare-sentinel 対策を full 達成)
+    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state, so the caller phase remains pinned during the entire sub-skill invocation). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned <!-- [ingest:completed] -->, run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel as absolute last line) in the SAME response turn. DO NOT stop before <!-- [cleanup:completed] --> is output."
     ;;
   cleanup_post_ingest)
     # cycle 9 F-13: instruction 語順を cleanup.md Phase 5.3 Output ordering (Step 1 deactivate

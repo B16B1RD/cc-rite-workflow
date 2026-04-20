@@ -933,6 +933,7 @@ output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608f") && rc=0 || rc=$?
 #   explicit edge の regression を検出するには phase-transition-whitelist.sh を source して
 #   rite_phase_transition_allowed() を直接 unit-level で呼び出す別 test file が必要。
 #   (integration test である本ファイルには internal 評価順序まで見えないため本質的限界)
+#   TODO (cycle 10 F-09): phase-transition-whitelist unit test 新設は別 Issue で tracking 予定。
 if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608f"; then
   pass "cleanup_post_ingest→cleanup_completed whitelist pass + rc=2 block maintained"
 else
@@ -965,6 +966,7 @@ output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608g") && rc=0 || rc=$?
 #   discriminate するには phase-transition-whitelist.sh を source して rite_phase_transition_allowed()
 #   を直接呼び出す unit test が必要 (integration test である本ファイルには internal 評価順序まで見えない)。
 #   tighten 時は (a)(b) 両方を対象に判断する必要があり、その際は本 NOTE を更新すること。
+#   TODO (cycle 10 F-09): phase-transition-whitelist unit test 新設は別 Issue で tracking 予定。
 if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608g"; then
   pass "cleanup→cleanup_completed direct skip accepted + rc=2 block maintained (permissive NOTE pin)"
 else
@@ -980,6 +982,7 @@ echo "TC-608-H: cleanup_post_ingest active → HINT '[Phase 5 Completion Report 
 dir608h="$GUARD_TEST_DIR/tc608h"
 mkdir -p "$dir608h"
 # Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir608h" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup_pre_ingest\", \"next_action\": \"emit Phase 5 completion report\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608h\"}"
 stderr_file608h="$(mktemp "$GUARD_TEST_DIR/stderr608h.XXXXXX")"
@@ -992,6 +995,35 @@ if [ $rc -eq 2 ] \
   pass "cleanup_post_ingest active → blocked with HINT containing 'rite:wiki:ingest returned' and 'Phase 5 Completion Report has NOT been output'"
 else
   fail "expected rc=2 with both HINT phrases present, got rc=$rc stderr='$(cat "$stderr_file608h")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-I: IFS delimiter regression guard (cycle 10 CRITICAL F-01)
+# previous_phase="" (新規 create 直後 / 手動 state file) のとき、旧実装
+# `IFS=$'\t' read ... | @tsv` は POSIX whitespace IFS collapse により全フィールドが
+# 1 つ左 shift し ERROR_COUNT が empty → `[ "" -ge "$THRESHOLD" ]` 整数エラーが発生、
+# error loop の threshold path が永久に発火しない silent corruption を起こしていた。
+# 本 TC は unit separator (\x1f) への修正が正しく適用され、ERROR_COUNT が整数として
+# parse されることを verify する。
+# --------------------------------------------------------------------------
+echo "TC-608-I: IFS regression — previous_phase='' + error_count=0 → threshold path parses correctly"
+dir608i="$GUARD_TEST_DIR/tc608i"
+mkdir -p "$dir608i"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# previous_phase は空文字列 (新規 create 直後の初期状態を模倣)
+# error_count は 0 (threshold 未達)、block が正しく機能することを確認
+create_state_file "$dir608i" "{\"active\": true, \"phase\": \"phase5_implementation\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608i\"}"
+stderr_file608i="$(mktemp "$GUARD_TEST_DIR/stderr608i.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608i\", \"session_id\": \"sid-608i\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608i") && rc=0 || rc=$?
+# IFS collapsing bug があると stderr に "整数の式が予期されます" が出現し、rc=0 で許可してしまう。
+# 正しく parse されれば error_count=0 < threshold=3 で block (rc=2) される。
+if [ $rc -eq 2 ] && ! grep -q "整数の式が予期されます" "$stderr_file608i"; then
+  pass "previous_phase='' で ERROR_COUNT が正しく 0 として parse され block 継続 (IFS regression guard)"
+else
+  fail "expected rc=2 without integer parse error, got rc=$rc stderr='$(cat "$stderr_file608i")'"
 fi
 
 # --------------------------------------------------------------------------

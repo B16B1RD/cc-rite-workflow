@@ -135,7 +135,7 @@ else
 fi
 ```
 
-**Purpose**: After PR merge, `.rite-flow-state` is `active: false, phase: completed`. Without re-activation, `stop-guard.sh` exits immediately (L46) and provides no protection against premature `end_turn`, causing the user to type "continue" multiple times.
+**Purpose**: After PR merge, `.rite-flow-state` is `active: false, phase: completed`. Without re-activation, `stop-guard.sh` exits immediately (`.active != true` 時の early exit branch) and provides no protection against premature `end_turn`, causing the user to type "continue" multiple times. (line-number 参照を避ける理由は cycle 8 F-05 参照)
 
 ---
 
@@ -1499,11 +1499,14 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "cleanup_pre_ingest" \
+    --phase "cleanup_pre_ingest" --active true \
     --next "After rite:wiki:ingest returns: run 🚨 Mandatory After Wiki Ingest (Pre-write cleanup_post_ingest) → Phase 5 Completion Report (cleanup_completed + <!-- [cleanup:completed] --> sentinel) in the SAME response turn. Do NOT stop." \
     --if-exists; then
   echo "WARNING: flow-state-update.sh patch (cleanup_pre_ingest) failed — stop-guard defence-in-depth is disabled for this Phase 4.W.2 invocation. Sub-skill rite:wiki:ingest will still be invoked, but premature end_turn will not be blocked. Investigate the helper exit reason in stderr above before relying on this protection again." >&2
 fi
+# cycle 10 F-03: --active true を明示する理由は Phase 1.0 F-01 と同じ。Phase 1.0 patch が
+# WARNING で続行した fail-safe path を経由した場合、active=false 残存状態のまま Phase 4.W.2 まで
+# 到達する可能性があるため、各 patch で active=true を明示的に pin する (defense-in-depth 完全化)。
 ```
 
 Invoke the `/rite:wiki:ingest` Skill to process pending raw sources into Wiki pages:
@@ -1608,6 +1611,8 @@ trap - EXIT INT TERM HUP
 
 > **Enforcement**: `stop-guard.sh` は `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し、`manual_fallback_adopted` workflow_incident sentinel を stderr に echo する。protocol violation は次回 turn の Phase 5.4.4.1 (start.md 配下) で post-hoc 検出される。
 
+> **⚠️ Known tracking item (cycle 10 F-04 = cycle 9 F-14 defer 継続)**: 下記 Self-check は LLM の自己 introspection に依存しており、silent corruption の risk を trace 可能な形で記録する目的で本注記を残している。誤 Yes 判定で Step 1 skip → stale HINT、誤 No 判定で cleanup_completed phase を cleanup_post_ingest に巻き戻し (Step 1 の spec 参照)、双方向で silent inconsistency が起きうる。多重故障時の safety net は session-end.sh cleanup lifecycle WARN (次セッション起動時に観測可能) であるため単発完全 silent ではないが、Self-check を `.rite-flow-state` 直読の機械判定 (`current_phase=cleanup_completed && current_active=false` なら skip) に置換する refactor を別 Issue で tracking 予定。現状は defense-in-depth として機能している範疇。
+
 **Self-check and branching**:
 
 1. **Has `<!-- [cleanup:completed] -->` been output as the absolute last line of the response?**
@@ -1618,11 +1623,13 @@ trap - EXIT INT TERM HUP
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "cleanup_post_ingest" \
+    --phase "cleanup_post_ingest" --active true \
     --next "rite:wiki:ingest completed/skipped/failed. Proceed to Phase 5 (Completion Report) and emit <!-- [cleanup:completed] --> as absolute last line in the SAME response turn. Do NOT stop." \
     --if-exists; then
   echo "WARNING: flow-state-update.sh patch (cleanup_post_ingest) failed — flow-state may still report cleanup_pre_ingest. Phase 5 will still execute, but stop-guard HINTs surfaced after this point will reference the pre-ingest phase. Investigate the helper exit reason in stderr above." >&2
 fi
+# cycle 10 F-03: --active true 明示 (Phase 1.0 F-01 と同じ理由)。Phase 1.0 patch 失敗時の
+# fail-safe path 経由で到達した場合に備え、defense-in-depth を各 patch 箇所で完全化する。
 ```
 
 **Step 2**: **→ Proceed to Phase 5 now**. The Phase 5 procedure handles the user-visible completion message, the `<!-- [cleanup:completed] -->` HTML comment sentinel (absolute last line), and the final flow-state deactivate (`cleanup_completed`, `active: false`) in a single contiguous block.

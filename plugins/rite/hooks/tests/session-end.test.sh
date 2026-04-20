@@ -384,6 +384,12 @@ echo ""
 # rite_phase_is_cleanup_lifecycle_in_progress の case arm `cleanup|cleanup_pre_ingest|cleanup_post_ingest)`
 # のうち、bare `cleanup` arm が削除されても WARN-A/B/C/D は全 pass する false-positive 構造を補完。
 # Phase 1.0 Activate Flow State で実際に書かれる phase 名 (stop-guard.sh cleanup case と同一) の regression guard。
+#
+# NOTE (cycle 10 F-08): 本 TC は **case arm 改変の検出が scope**。関数定義全体が削除された場合は
+# session-end.sh の ELIF fallback (`elif echo "$phase" | grep -q "^cleanup"`) が発火して同じ warning
+# を出すため silently pass する限界あり (関数欠損時は call site が `rite_phase_is_cleanup_lifecycle_in_progress`
+# 自体を呼べない別エラー経路で検出される想定)。関数欠損の regression guard は別 TC (phase-transition-whitelist
+# unit test) で扱う必要あり (F-09 と合わせて別 Issue で tracking 推奨)。
 echo "TC-608-WARN-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
 dir608we="$TEST_DIR/tc608we"
 mkdir -p "$dir608we"
