@@ -13,6 +13,32 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 
 ---
 
+## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
+
+> **Issue #622 (regression of #552)**: This section was historically placed at the end of the file (titled "Defense-in-Depth: Flow State Update (Before Return)"). In the Bug Fix / Chore preset path (Phase 0.4.1 → skip Phase 0.5), the LLM running this sub-skill sometimes skipped the Defense-in-Depth bash block and jumped directly to the return output. The result: `.rite-flow-state.phase` stayed at `create_interview`, which had no dedicated `stop-guard.sh` case arm in versions prior to #622 fix, so the orchestrator's implicit stop after `<!-- [interview:skipped] -->` was not blocked and the user had to type `continue` manually. Moving the flow-state write to the **absolute beginning** of the sub-skill guarantees it runs regardless of interview scope.
+>
+> **DRIFT-CHECK ANCHOR (semantic)**: This section is mirrored by `stop-guard.sh` `create_interview` case arm (Issue #622) and `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge. The three sites form a 3-site symmetry — when updating any one, update the others.
+
+**MUST run before any interview logic** (Phase 0.4.1 scope evaluation, Phase 0.5 deep-dive, or return-output emission). This bash block is **not optional** and **not conditional on interview scope**. Execute it even when Phase 0.4.1 determines the Bug Fix / Chore preset (interview scope = "skip"):
+
+```bash
+if [ -f ".rite-flow-state" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+else
+  bash {plugin_root}/hooks/flow-state-update.sh create \
+    --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
+    --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+fi
+```
+
+**Why `create_post_interview` (not `create_interview_running`) at Pre-flight time**: The caller (`create.md` Delegation to Interview Pre-write) has already written `create_interview` to signal that delegation is in flight. The Pre-flight advances the phase to `create_post_interview` **before** the interview runs so that, no matter at which point the sub-skill exits (normal completion, early exit via Bug Fix preset, or unexpected stop), the stop-guard routes to the `create_post_interview` WORKFLOW_HINT which correctly tells the orchestrator to run the 🚨 Mandatory After Interview section and proceed to Phase 0.6. This is safe because `create_post_interview → create_delegation` is the only whitelisted forward transition — the orchestrator must still execute Delegation Routing to advance past it.
+
+**Idempotence**: Running this multiple times within a single sub-skill invocation is safe; each call refreshes the timestamp and `next_action` but does not regress the phase (patch mode sets `previous_phase` from the pre-update `.phase`, which stays `create_post_interview` on re-entry).
+
+---
+
 ## Phase 0.4.1: Adaptive Interview Depth
 
 After Phase 0.4 completes, determine the interview scope for Phase 0.5 based on tentative complexity and task type. This avoids excessive questioning for simple Issues.
@@ -493,23 +519,21 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 
 ---
 
-## Defense-in-Depth: Flow State Update (Before Return)
+## Return Output Format (Before Return)
 
-> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0). The flow-state write was moved to the 🚨 MANDATORY Pre-flight section at the top of this file (Issue #622) so the post-interview phase is recorded regardless of interview scope. The idempotent re-patch below is retained as a defense-in-depth second write that refreshes the timestamp and `next_action` immediately before emitting the return output.
 
-Before returning control to the caller, update `.rite-flow-state` to the post-interview phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+Immediately before emitting the three-line return block, re-patch `.rite-flow-state` to refresh the timestamp. This is idempotent with the 🚨 MANDATORY Pre-flight write (same phase, same transition target):
 
 ```bash
 if [ -f ".rite-flow-state" ]; then
   bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_post_interview" \
     --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
-    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 fi
 ```
+
+> **Why patch mode only (no create fallback here)**: The 🚨 MANDATORY Pre-flight section at the top already handles the "file missing" branch (`create` mode). By the time execution reaches the return-output section, `.rite-flow-state` is guaranteed to exist with `.phase = create_post_interview`. A second `create` call here would reset `previous_phase` to an empty string and defeat the whitelist-based transition check in stop-guard — patch mode preserves the transition chain correctly.
 
 After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. Both the plain-text reminder and the HTML comment precede the result pattern, and the result pattern itself is wrapped in an HTML comment (Issue #561 UX fix) — all three MUST be the last visible lines of this sub-skill's output, in the order below:
 

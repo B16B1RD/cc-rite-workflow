@@ -293,6 +293,18 @@ fi
 WORKFLOW_HINT=""
 WORKFLOW_INCIDENT_TYPE=""
 case "$PHASE" in
+  create_interview)
+    # Issue #622: /rite:issue:create Delegation to Interview Pre-write recorded create_interview
+    # but the interview sub-skill Defense-in-Depth patch (create_post_interview) did not fire
+    # yet (either the sub-skill has not been invoked, is mid-execution, or its Pre-flight bash
+    # block was skipped — the Bug Fix / Chore preset path in create-interview.md Phase 0.4.1
+    # is the most likely offender since it skips Phase 0.5 and historically inlined the
+    # Defense-in-Depth bash block at the end of the markdown only). stop-guard must block in
+    # either position so the workflow does not silently end the turn before delegation.
+    # DRIFT-CHECK ANCHOR (semantic): create-interview.md 🚨 MANDATORY Pre-flight section /
+    # phase-transition-whitelist.sh create_interview entry と 3 site 対称。
+    WORKFLOW_HINT="HINT: /rite:issue:create Delegation to Interview Pre-write recorded create_interview. The block may have fired immediately before the rite:issue:create-interview Skill invoke, OR while the interview sub-skill is mid-execution (create-interview.md MUST write create_post_interview via its 🚨 MANDATORY Pre-flight section before returning). In either case, do NOT stop. Continue: if interview has not been invoked yet, invoke it; if interview has returned <!-- [interview:skipped] --> or <!-- [interview:completed] --> but .rite-flow-state.phase is still create_interview, the sub-skill Pre-flight patch was skipped — run 🚨 Mandatory After Interview Step 1 (patch create_post_interview) manually → Phase 0.6 → Delegation Routing → terminal sub-skill in the SAME response turn. DO NOT stop before <!-- [create:completed:{N}] --> is output."
+    ;;
   create_post_interview)
     WORKFLOW_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. No GitHub Issue has been created yet."
     ;;
