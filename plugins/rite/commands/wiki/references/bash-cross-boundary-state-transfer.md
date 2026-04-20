@@ -150,7 +150,7 @@ stderr を tempfile に退避し、**stderr pattern matching** で legitimate ab
 
 ```bash
 # F-21 対応: 2 文分割形式 (lint.md Phase 6.0 の R-03 推奨形式) に統一する。
-# 旧 `if ! log_err=$(...); then` 形式は bash 既知の罠「`if !` は `$?` が常に 0」と隣接した形で、
+# 旧 `if ! log_err=$(...); then` 形式は bash 既知の罠「`if ! cmd; then` は `$?` が常に 0」と隣接した形で、
 # 規範文書として読者を混乱させる。本 Pattern 3 の説明本文 (R-03 対応) では明示的に「2 文分割形式」を
 # 推奨しているのに、Pattern 3 例自体が `if ! var=$(...); then` 形式を使うのは内部矛盾の見え方だった。
 # F-16 対応: mktemp 失敗時の WARNING + 対処 + 影響 の 3 行 loud emit を canonical とする
