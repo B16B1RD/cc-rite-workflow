@@ -275,9 +275,8 @@ fi
 #   - Sub-skill return sentinels (caller phase is a pre-transition phase):
 #     * [interview:skipped] / [interview:completed] → caller phase: create_post_interview
 #     * [create:completed:{N}]                        → caller phase: create_delegation / create_post_delegation
-#     * [ingest:completed]                            → caller phase: cleanup_pre_ingest
-#       (ingest_* phases are intentionally absent — ingest.md does not write flow-state,
-#        see YAGNI note below and phase-transition-whitelist.sh)
+#     * [lint:completed:auto] (auto-lint return)      → caller phase: ingest_pre_lint (#618)
+#     * [ingest:completed]                            → caller phase: cleanup_pre_ingest / ingest_post_lint / ingest_completed
 #   - Caller-emitted terminal sentinel (caller emits it themselves at terminal phase):
 #     * [cleanup:completed]                           → caller phase: cleanup_post_ingest → cleanup_completed
 #
@@ -319,10 +318,24 @@ case "$PHASE" in
     # Phase 5 Completion Report has NOT been output) は維持。
     WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. In the SAME response turn, output the cleanup completion message + next-steps block (user-visible content), THEN deactivate flow state (cleanup_completed, active: false), THEN output <!-- [cleanup:completed] --> HTML comment sentinel as the absolute last line of the response. DO NOT stop."
     ;;
-  # NOTE (#608 follow-up): ingest_pre_lint / ingest_post_lint case branches were removed
-  # as YAGNI dead code. ingest.md does not call flow-state-update.sh (Phase 9.1 Step 1
-  # 設計判断), so these phase names are never written and stop-guard never observes them.
-  # See plugins/rite/hooks/phase-transition-whitelist.sh for the matching whitelist removal.
+  ingest_pre_lint)
+    # Issue #618 (reverts the #608 follow-up YAGNI removal): ingest.md Phase 8.2 Pre-write
+    # patches this phase before invoking `rite:wiki:lint --auto`. If the block fires here,
+    # the LLM tried to end the turn either immediately before the lint Skill invoke or
+    # while the lint sub-skill is mid-execution. The only valid continuation is to run
+    # 🚨 Mandatory After Auto-Lint Step 1 (patch ingest_post_lint) → Phase 8.3 (Lint parse)
+    # → 8.4/8.5 → Phase 9 (Completion Report + caller continuation HTML comment + sentinel).
+    # DRIFT-CHECK ANCHOR (semantic): ingest.md 🚨 Mandatory After Auto-Lint section /
+    # phase-transition-whitelist.sh ingest_pre_lint entry と 3 site 対称。
+    WORKFLOW_HINT="HINT: /rite:wiki:ingest Phase 8.2 Pre-write recorded ingest_pre_lint. The block may have fired immediately before the rite:wiki:lint --auto Skill invoke, OR while the lint sub-skill is mid-execution. Do NOT stop. Continue: if lint has not been invoked yet, invoke it; if lint has returned (check recent output for <!-- [lint:completed:auto] --> HTML comment sentinel or Lint: 6-field line), run 🚨 Mandatory After Auto-Lint Step 1 (patch ingest_post_lint) → Step 2 (Phase 8.3 Lint parse → 8.4/8.5 → Phase 9 Completion Report) → Step 3 (output caller continuation HTML comment + <!-- [ingest:completed] --> sentinel as absolute last line) in the SAME response turn. DO NOT stop before <!-- [ingest:completed] --> is output."
+    ;;
+  ingest_post_lint)
+    # Issue #618: ingest.md 🚨 Mandatory After Auto-Lint Step 1 patched ingest_post_lint
+    # but Phase 8.3-9 have NOT been output yet. TC-618 pinned phrase (rite:wiki:lint --auto
+    # returned / Phase 9 Completion Report has NOT been output) is the semantic analogue of
+    # cleanup_post_ingest TC-608-H pin.
+    WORKFLOW_HINT="HINT: rite:wiki:lint --auto returned and ingest_post_lint is recorded. Phase 9 Completion Report has NOT been output yet. In the SAME response turn, execute Phase 8.3 (Lint result parse) → Phase 8.4 (Ingest 完了レポート統合) → Phase 8.5 (n_warnings 加算) → Phase 9 (user-visible completion message), THEN output caller continuation HTML comment (<!-- continuation: caller MUST proceed ... -->), THEN deactivate flow state (ingest_completed, active:false via Phase 9.1 Step 3 bash block), THEN output <!-- [ingest:completed] --> HTML comment sentinel as the absolute last line of the response. DO NOT stop."
+    ;;
 esac
 
 # Consolidate sentinel type: every active workflow blocked here is treated as a

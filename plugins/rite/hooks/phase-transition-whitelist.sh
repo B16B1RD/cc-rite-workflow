@@ -154,16 +154,36 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # Flow State) writes phase=cleanup before any sub-skill invoke. Without this entry,
   # the cleanup → cleanup_pre_ingest transition was unknown, leaving Phase 1.0-4.W.1 unprotected.
   # (stop-guard.sh の `case "$PHASE" in cleanup)` ブランチの HINT 文言 "Phase 1.0 (Activate Flow State)" と一致させる)
+  # NOTE (#618 reverts the #608 follow-up YAGNI removal): cleanup_pre_ingest can transition to
+  # ingest_pre_lint when ingest.md Phase 8.2 Pre-write overrides the caller phase. On lint return,
+  # ingest.md 🚨 Mandatory After Auto-Lint Step 1 patches ingest_post_lint, then the caller's
+  # Mandatory After Wiki Ingest writes back cleanup_post_ingest. See DRIFT-CHECK ANCHOR in
+  # plugins/rite/commands/wiki/ingest.md 🚨 Mandatory After Auto-Lint section.
   ["cleanup"]="cleanup_pre_ingest cleanup_completed"
-  ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed"
+  ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed ingest_pre_lint"
   ["cleanup_post_ingest"]="cleanup_completed"
   ["cleanup_completed"]=""
 
-  # NOTE (#608 follow-up): ingest_pre_lint / ingest_post_lint / ingest_completed entries
-  # were removed as YAGNI dead code. ingest.md does not call flow-state-update.sh
-  # (Phase 9.1 Step 1 設計判断), so these phase names are never written.
-  # If ingest.md gains flow-state writes in the future, re-add the entries together
-  # with the corresponding stop-guard.sh case branches.
+  # /rite:wiki:ingest lifecycle ring (#618, reverts the #608 follow-up YAGNI removal).
+  # ingest.md Phase 8.2 Pre-write (ingest_pre_lint) → 🚨 Mandatory After Auto-Lint Step 1
+  # (ingest_post_lint) → Phase 9.1 Step 3 terminal patch (ingest_completed, active=false).
+  # Caller 経由時は caller Mandatory After Wiki Ingest が caller phase
+  # (cleanup_post_ingest) に書き戻す ring 構造。単独実行時は --if-exists により flow-state
+  # 不在なら no-op。stop-guard.sh の ingest_pre_lint / ingest_post_lint case arm が
+  # end_turn を block し manual_fallback_adopted sentinel を emit する。
+  # DRIFT-CHECK ANCHOR (semantic): ingest.md 🚨 Mandatory After Auto-Lint section と
+  # stop-guard.sh ingest_* case arm とで 3 site 対称。いずれかを変更する際は 3 site 同時確認。
+  #
+  # Edge rationale (PR #624 cycle 1 F6 対応):
+  # - `ingest_pre_lint → ingest_post_lint`: 正規経路 (lint return 後 Mandatory After Step 1 で patch)
+  # - `ingest_pre_lint → ingest_completed`: **defense-in-depth edge for Step 1 WARNING fallback only**
+  #   正規経路ではない。Mandatory After Step 1 patch が失敗 (WARNING 続行) した場合でも、Phase 9.1
+  #   Step 3 の terminal patch で ingest_completed に直接遷移できるよう許容するための防御 edge。
+  # - `ingest_pre_lint → cleanup_post_ingest`: defense-in-depth edge for Mandatory After Step 1 and
+  #   Phase 9.1 Step 3 both failing — caller Mandatory After が直接 caller phase に書き戻す経路。
+  ["ingest_pre_lint"]="ingest_post_lint ingest_completed cleanup_post_ingest"
+  ["ingest_post_lint"]="ingest_completed cleanup_post_ingest"
+  ["ingest_completed"]="cleanup_post_ingest"
 )
 
 # Load override map from rite-config.yml if present.
@@ -329,9 +349,13 @@ rite_phase_transition_allowed() {
   # /rite:issue:create at its end. "cleanup_completed" (#604) is the terminal state for
   # /rite:pr:cleanup. "phase_done" was a speculative reserved name with no producer —
   # removed per code-quality cycle-3 LOW (premature abstraction). "ingest_completed" was
-  # similarly removed (#608 follow-up) because ingest.md does not write flow-state.
+  # removed in #608 follow-up as YAGNI, then **revived in #618 (PR #624)** when ingest.md
+  # gained flow-state writes (Phase 8.2 Pre-write / 🚨 Mandatory After Step 1 / Phase 9.1
+  # Step 3 terminal patch) — see the revived entries in _RITE_PHASE_TRANSITIONS array
+  # above and plugins/rite/commands/wiki/ingest.md Phase 8.2 / 🚨 Mandatory After /
+  # Phase 9.1 Step 3 for the ring design.
   #
-  # NOTE (#608 follow-up — forward-compat bypass scope): The three terminal accepts below
+  # NOTE (#608 follow-up — forward-compat bypass scope): The four terminal accepts below
   # currently allow ANY prev → terminal transition unconditionally. This is intentional
   # forward-compat behaviour today (catches cold-start writes, retry paths, and skill
   # versions that may add new prev phases without updating this file), but it also masks
@@ -341,11 +365,17 @@ rite_phase_transition_allowed() {
   # _RITE_PHASE_TRANSITIONS entries (e.g. cleanup_completed must come from cleanup_post_ingest
   # OR cleanup_pre_ingest) and add coverage in stop-guard.test.sh before flipping the
   # default.
+  # ingest_completed (#618, reverts the #608 follow-up removal): ingest.md Phase 9.1 Step 3
+  # writes this terminal state when flow-state was actived by a caller. Accept any prev →
+  # ingest_completed in forward-compat mode; the explicit ingest_pre_lint / ingest_post_lint
+  # → ingest_completed transitions are still encoded in _RITE_PHASE_TRANSITIONS above for
+  # semantic clarity.
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
   [ "$next" = "completed" ] && return 0
   [ "$next" = "create_completed" ] && return 0
   [ "$next" = "cleanup_completed" ] && return 0
+  [ "$next" = "ingest_completed" ] && return 0
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
   # Unknown prev phase → accept (forward compat)
@@ -404,10 +434,18 @@ rite_phase_is_create_lifecycle_in_progress() {
 # lifecycle helper above). Used by session-end.sh to surface a WARN_MSG when a
 # session ends mid-cleanup (the wiki ingest never ran, or Phase 5 completion
 # report was never emitted).
+#
+# Issue #618 (PR #624 cycle 1 F5 observability regression fix): ring 経由時に caller
+# (cleanup) phase が `ingest_pre_lint` / `ingest_post_lint` に一時上書きされる transient 期間中に
+# session が終了すると、本 helper が false を返し WARN_MSG が emit されない observability regression
+# が発生する (cleanup lifecycle 未完了なのに気付けない)。ring の中間 phase も cleanup-in-progress
+# として検出する設計とし、single-session `/rite:wiki:ingest` 実行時は session-end 側で別途
+# flow-state.active=false を参照して誤検出を避ける (flow-state 不在時は helper に到達しない)。
+# Note: `ingest_completed` は含めない — terminal state (active=false) であり「未完了」に該当しない。
 rite_phase_is_cleanup_lifecycle_in_progress() {
   local phase="$1"
   case "$phase" in
-    cleanup|cleanup_pre_ingest|cleanup_post_ingest)
+    cleanup|cleanup_pre_ingest|cleanup_post_ingest|ingest_pre_lint|ingest_post_lint)
       return 0
       ;;
     *)
