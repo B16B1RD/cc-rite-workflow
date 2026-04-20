@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T13:45:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T13:40:00+00:00 | ingest:create | pages/patterns/hint-specific-assertion-pin.md | PR #623 Issue #621: HINT-specific 文言 pin で stop-guard case arm 削除 regression を検知する pattern を新規追加。fallback STOP_MSG silent-pass 回避 + sibling fixture 相補関係 + sentinel emission との orthogonal 軸 (raw: pr-623 review cycle 1 / fix cycle 1) |
 | 2026-04-20T13:40:00+00:00 | ingest:create | pages/anti-patterns/same-file-must-not-vs-must-conflict.md | PR #623 Issue #621: 同 file 内 MUST NOT (bare bracket sentinel 禁止) vs MUST (routing-check evidence 義務化) 衝突を新規 anti-pattern として追加。single-reviewer 盲点、prompt-engineer × tech-writer cross-validation で検出、HTML コメント化で根本解決 (raw: pr-623 review cycle 1 / fix cycle 1) |
 | 2026-04-20T13:40:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #623 cycle 2: 同一 doc 内 propagation scan scope への拡張。PR/Issue 番号混同と stale 数値参照が同 doc 内の複数箇所に散在し cycle 1 fix で 1 箇所のみ修正して他を見落とす pattern。対策: cycle 1 fix 直後の grep propagation scan mandatory 化 + 数値参照の footnote 化 (raw: pr-623 review cycle 2 / fix cycle 2) |
