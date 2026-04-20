@@ -308,7 +308,7 @@ fi
 #
 # awk extracts:
 #   title | path | domain | summary | updated | confidence
-# separated by TAB.
+# separated by ASCII unit separator (\x1f). cycle 11 で tab から変更。
 rows=$(printf '%s\n' "$index_content" | awk -F'|' '
   BEGIN { in_table=0 }
   /^\| ページ \| ドメイン/ { in_table=1; next }
@@ -403,7 +403,7 @@ fi
 
 # Sort by score descending, take top N.
 # Split `sort` and `head` into independent invocations so that a sort
-# failure (e.g. TAB boundary mismatch, OOM) surfaces as a WARNING instead
+# failure (e.g. unit separator boundary mismatch, OOM) surfaces as a WARNING instead
 # of being masked by the downstream `head` closing the pipe early and
 # returning a benign exit 0 to the caller.
 if ! sorted=$(printf '%s' "$scored" | sort -t$'\x1f' -k1,1 -nr); then

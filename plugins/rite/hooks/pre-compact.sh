@@ -113,9 +113,12 @@ if acquire_wm_lock "$LOCKDIR"; then
   FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || FLOW_ACTIVE="false"
   if [ "$FLOW_ACTIVE" = "true" ] && [ "$ACTIVE_ISSUE" != "null" ] && [ -f "$FLOW_STATE" ]; then
     # Read phase and next_action from flow state for env vars
-    FLOW_DATA=$(jq -r '[.phase // "unknown", .pr_number // "null", .loop_count // 0, .next_action // ""] | @tsv' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
+    # cycle 12 MEDIUM F-04: unit separator 統一 (stop-guard.sh cycle 10 F-01 と同型の原則準拠)。
+    # next_action が trailing position のため現状 field shift は発生しないが、将来の field 追加で
+    # fragile になるため cycle 11 で確立した「@tsv + IFS=$'\t' 禁止」原則に揃える。
+    FLOW_DATA=$(jq -r '[.phase // "unknown", .pr_number // "null", .loop_count // 0, .next_action // ""] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
     if [ -n "$FLOW_DATA" ]; then
-      IFS=$'\t' read -r PHASE PR_NUM LOOP_CNT NEXT_ACT <<< "$FLOW_DATA"
+      IFS=$'\x1f' read -r PHASE PR_NUM LOOP_CNT NEXT_ACT <<< "$FLOW_DATA"
     else
       PHASE="unknown"
       PR_NUM="null"
