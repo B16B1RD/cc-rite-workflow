@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T23:50:00+00:00 | ingest:skip | raw/reviews/20260420T233740Z-pr-632.md | PR #632 (Issue #630, 0 findings, 2 reviewer 合意 Confidence ≥ 90): Phase 9.2 三点セット契約に Phase 1.1/1.3 早期 return を整合させた典型的対称化 PR。検出パターン (N site 対称化、drift-check anchor、contract-implementation path 対称性、small-symmetric-pr sibling grep review) は既存ページ (asymmetric-fix-transcription / drift-check-anchor-semantic-name / small-symmetric-pr-sibling-site-grep-review) で網羅済み (raw: pr-632) |
 | 2026-04-20T23:05:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=47, broken_refs=0 |
 | 2026-04-20T23:00:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #631 cycle 1 review: `--quiet` flag 契約 drift + Phase 4.1 appendix paragraph 増設漏れの 2 CRITICAL (4 reviewer 独立検出)。Pipeline (lint 等) への新規 step 追加時の 4 site 対称更新契約 (Phase 3.X 手順 / Phase 4.1 appendix / Phase 4.3 summary table / Note policy 列挙) と peer script flag 契約の runtime 検証 (copy-paste 同形性 ≠ 契約一致) を追加 (raw: pr-631 cycle 1 review) |
 | 2026-04-20T23:00:00+00:00 | ingest:skip | raw/reviews/20260420T225458Z-pr-631.md | PR #631 cycle 2 re-review: 11-line minimum diff fix が 2 reviewer 独立承認で 0 findings 収束。既に raw cycle 1 review で抽出した同一経験則の convergence 確認であり独立した新規経験則に該当しないため skip。fix word-for-word 整合観察は asymmetric-fix-transcription.md 更新内の「fix は最小差分 + sibling word-for-word 整合が canonical」項目に反映済み |
