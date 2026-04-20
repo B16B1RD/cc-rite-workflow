@@ -2,12 +2,14 @@
 title: "re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)"
 domain: "heuristics"
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-04-19T03:30:00+00:00"
+updated: "2026-04-20T04:35:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260419T032801Z-pr-586.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T032159Z-pr-586.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260420T043312Z-pr-617-cycle2.md"
 tags: []
 confidence: high
 ---
@@ -48,6 +50,17 @@ PR #586 で以下の 2 つの design issue が cycle 1-3 で見落とされ、cy
 - cycle N で初検出された finding が「cycle 1 で検出可能だった latent issue」に該当する場合、reviewer scope の網羅性を retrospective で見直すシグナルとする
 - 特に structural / design issue (API shape / distribution / 責務分界) は review cycle の early で検出されるのが健全。cycle 4+ で初検出されるケースは scope drift の warning sign
 
+### Verification mode FIXED 判定の evidence gate (PR #617 cycle 2 で追加)
+
+verification mode で「前回指摘 N 件が解消されたか」を判定する際、目視確認や PR description 上の self-claim だけで FIXED と認定する経路は false-positive リスクが高い。`PR #617 cycle 2` で確立された canonical evidence gate は **「実ファイルの grep 確認 + bash -n syntax 検証」** の 2 段:
+
+1. **実ファイル grep 確認**: 前回指摘の対象 anti-pattern (例: `L[0-9]+` literal / `2>&1` 混入 / inner/outer END crossing) を fix 後 commit に対して直接 grep し、count=0 を verify する。reviewer の前回コメントに記載された file:line を信頼せず、現 HEAD でのファイル状態を再 scan する
+2. **bash -n syntax 検証**: bash code block を含む変更ファイル (commands/*.md / hooks/*.sh) は `bash -n {file}` で syntax error がないことを verify する。指摘された修正が新たな syntax error を導入していないかを decisive に検証する
+
+evidence gate を通過した時点で FIXED と判定し、verification mode のサマリーに「(grep verified) / (syntax verified)」を明示する。これにより前回指摘解消の verify が「self-claim ベース」から「machine-checkable evidence ベース」に格上げされ、verification mode の信頼性が上がる。
+
+PR #617 cycle 2 では cycle 1 の HIGH (ANCHOR crossing) と LOW (jp/en mixed) の両方をこの 2 段 evidence gate で FIXED と判定し、0 findings + mergeable で 1 cycle 解消した。verification mode が「scope を狭めるモード」ではなく「より厳格な evidence gate を追加するモード」として正しく機能した実例。
+
 ## 関連ページ
 
 - [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](../anti-patterns/dogfooding-anchor-hardcode.md)
@@ -58,3 +71,4 @@ PR #586 で以下の 2 つの design issue が cycle 1-3 で見落とされ、cy
 
 - [PR #586 initial review (dogfooding bias 検出)](../../raw/reviews/20260419T032159Z-pr-586.md)
 - [PR #586 cycle 4 fix (cycle 1-3 で見落とされた latent issue の修正)](../../raw/fixes/20260419T032801Z-pr-586.md)
+- [PR #617 cycle 2 verification review (grep + bash -n evidence gate canonical 確立)](../../raw/reviews/20260420T043312Z-pr-617-cycle2.md)

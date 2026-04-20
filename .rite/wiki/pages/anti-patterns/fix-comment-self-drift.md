@@ -2,12 +2,14 @@
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
 created: "2026-04-18T12:00:00+00:00"
-updated: "2026-04-18T12:00:00+00:00"
+updated: "2026-04-20T04:30:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T114056Z-pr-578.md"
   - type: "fixes"
     ref: "raw/fixes/20260418T114231Z-pr-578.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260420T043015Z-pr-617-fix1.md"
 tags: ["self-drift", "canonical-convention", "grep-self-check", "review-fix-loop"]
 confidence: high
 ---
@@ -65,6 +67,12 @@ grep -oE 'F-[0-9]+' {target_file} | sort -u
 3. **fix scope の self-review**: fix 適用後、fix 自身が canonical convention を破っていないか逐語 self-review を行う。review の gate を 2 段（reviewer による検出 + self-check）にすることで cycle 2 発散を抑止する
 4. **canonical convention の list 化**: プロジェクトで確立した原則（行番号参照禁止等）は reference 文書に集約し、`grep` 検証が容易な表現（`L[0-9]+` 等）で記述する
 
+### Prose 内行番号 literal も対象 (PR #617 で追加)
+
+PR #617 fix で確認された通り、本 anti-pattern は **fix で追加されるあらゆる散文記述** (commit message / fix コメント / PR description / 設計メモ) 内の line 番号 literal にも適用される。fix 自身が canonical convention「行番号参照禁止」を破る self-drift を防ぐには、`grep -nE 'L[0-9]+' {changed_files}` による全件 scan を fix の必須 self-check として習慣化する。コメント / 散文 / commit message のいずれにも literal `Lxxx-yyy` / `(line N)` / `at L1234` 等が混入していないか確認する。
+
+PR #617 で扱われたケース: 自修正 fix 中に prose 説明文で「Lxxx-yyy」記述を生成する経路を identify。fix 適用前に prose 全体を grep し、line 番号 literal が **新規追加されていないこと** を decisive に確認することで cycle 2 発散を防げる。canonical 違反の検出 grep は fix の **commit 前最終 gate** として固定化する。
+
 ### PR #578 での実測収束軌跡
 
 3 cycle で収束: `1 HIGH + 1 MEDIUM → 1 MEDIUM → 0 findings`
@@ -85,3 +93,4 @@ cycle 2 は cycle 1 fix 中に発生した self-drift であり、commit 前 gre
 
 - [PR #578 cycle 2 review (self-drift detection)](../../raw/reviews/20260418T114056Z-pr-578.md)
 - [PR #578 cycle 2 fix (2 段階修正)](../../raw/fixes/20260418T114231Z-pr-578.md)
+- [PR #617 fix (prose 内行番号 literal scope 拡張)](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)

@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-19T13:48:38+00:00"
+updated: "2026-04-20T04:30:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -18,6 +18,10 @@ sources:
     ref: "raw/reviews/20260419T123103Z-pr-600.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T134838Z-pr-605.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260420T042759Z-pr-617.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260420T043015Z-pr-617-fix1.md"
 tags: []
 confidence: high
 ---
@@ -102,11 +106,49 @@ fi
 # >>> END DRIFT-CHECK ANCHOR <<<
 ```
 
+### 入れ子追加時の outer/inner END 順序による well-formed nesting (PR #617 での evidence)
+
+PR #617 で `.gitignore` 既存 `negation verification canonical` ANCHOR を inner として、それを包む outer ANCHOR `same_branch verification-first setup steps` を追加した際、HIGH finding として **「outer END を inner END より前に配置すると bracket matching が crossing 構造になる」** failure mode が検出された:
+
+```
+[crossing 構造 — 禁止]
+# >>> START outer <<<
+# >>> START inner <<<
+...
+# >>> END outer <<<        ← outer END が inner END より前
+# >>> END inner <<<
+```
+
+```
+[well-formed nesting — canonical]
+# >>> START outer <<<
+# >>> START inner <<<
+...
+# >>> END inner <<<        ← inner END が先
+# >>> END outer <<<        ← outer END は inner END の直後
+```
+
+crossing 構造は以下の機械検証経路を破壊する:
+
+1. **grep-based lint**: `awk '/START.*<<</{depth++} /END.*<<</{depth--}' anchors.md` 形式の depth tracking lint で `depth < 0` を一時的に発生させ、validator が誤検出または異常終了する
+2. **sed range extraction**: `sed -n '/START outer/,/END outer/p' file` で範囲抽出すると inner END が outer END より後にあるため、抽出範囲が意図より狭くなる (inner END の手前で打ち切られる)
+3. **bracket matching IDE 機能**: 多くの editor の bracket pair highlighter は LIFO scan のため crossing で false-positive 警告を出す
+
+**Canonical 適用手順** (PR #617 fix で確立):
+
+1. 既存 inner anchor の包含範囲 (どの節を含むか) を最初に確認する
+2. outer END の位置は **inner END の直後** に配置することを最優先で決める
+3. outer START の位置を inner START より前に配置する
+4. commit 前に `awk` で depth tracking 検証: `awk '/START.*<<</{d++} /END.*<<</{d--; if(d<0){print "DEPTH_NEGATIVE at NR="NR; exit 1}}' file`
+
+本原則は `# >>> DRIFT-CHECK ANCHOR <<<` だけでなく、HEREDOC marker (`<<EOF` / `EOF`) や Markdown code fence (` ``` `) のような **対称 delimiter を持つすべての構造** に適用される。
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](./canonical-reference-sample-code-strict-sync.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](./drift-check-anchor-prose-code-sync.md)
+- [Markdown code fence の balance は commit 前に awk で機械検証する](./markdown-fence-balance-precommit-check.md)
 
 ## ソース
 
@@ -117,3 +159,5 @@ fi
 - [PR #600 fix results (semantic code slice 参照への置換による完全解消)](../../raw/fixes/20260419T122750Z-pr-600.md)
 - [PR #600 cycle 2 review (code slice 参照の canonical 実証)](../../raw/reviews/20260419T123103Z-pr-600.md)
 - [PR #605 review results (±3 行 drift brittleness 実証 + bidirectional backlink sub-pattern)](../../raw/reviews/20260419T134838Z-pr-605.md)
+- [PR #617 review (ANCHOR 入れ子の crossing 構造 detection)](../../raw/reviews/20260420T042759Z-pr-617.md)
+- [PR #617 fix (well-formed nesting canonical 適用)](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)

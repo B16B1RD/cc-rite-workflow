@@ -6,6 +6,10 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T04:50:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #617: ANCHOR 入れ子追加時の outer/inner END 順序 (well-formed nesting vs crossing 構造) を追加。awk depth tracking 検証手順、HEREDOC / Markdown code fence 等対称 delimiter 全般への適用拡張 (raw: pr-617 review/fix1) |
+| 2026-04-20T04:50:00+00:00 | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #617: UI メッセージの多言語混在 style drift を 7 番目の sub-heuristic として追加。i18n/multilingual style policy も同 scope の言語選択全体を canonical SoT として扱う (raw: pr-617 review/fix1) |
+| 2026-04-20T04:50:00+00:00 | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #617: prose 内 line 番号 literal も対象として scope 拡張。fix の commit message / 散文 / 設計メモすべてに grep -nE 'L[0-9]+' self-check を必須化 (raw: pr-617 fix1) |
+| 2026-04-20T04:50:00+00:00 | ingest:update | pages/heuristics/reviewer-scope-antidegradation.md | PR #617 cycle 2: verification mode FIXED 判定の 2 段 evidence gate (実ファイル grep 確認 + bash -n syntax 検証) を canonical として確立 (raw: pr-617-cycle2) |
 | 2026-04-20T04:56:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T04:55:00Z | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #616 review: SKILL.md EN description canonical alignment を canonical SoT 単一化 sub-heuristic の 3 例目 successful application として追記。PR #594 (cross-file) → PR #601 (intra-file lint.md L2 vs L11-16) → PR #616 (intra-file SKILL.md 3-site EN description/JA Activates/JA Auto-Activation 完結整列) の 3 段 scope 拡張を実証 (raw: pr-616) |
 | 2026-04-20T11:16:30+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=38, broken_refs=0 |
