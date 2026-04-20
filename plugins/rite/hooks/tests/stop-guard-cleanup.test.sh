@@ -29,6 +29,13 @@ if [ ! -x "$STOP_GUARD" ]; then
 fi
 
 # Isolated fixture workspace (cleanup() 関数定義 → trap 登録 → mktemp の順で race window 排除)
+#
+# trap signal scope (EXIT INT TERM HUP):
+# sibling hook test fixtures (stop-guard.test.sh 等 14 本) は `trap cleanup EXIT` のみで
+# 統一されているが、本 fixture は defense-in-depth として INT/TERM/HUP も捕捉する。
+# 理由: Ctrl-C / signal 経由で中断された場合も FIXTURE_DIR を確実に削除するため
+# (mktemp -d で生成される /tmp/rite-test-stop-guard-XXXXXX の orphan を防ぐ)。
+# sibling convention からの意図的 drift。test-file layer では許容範囲。
 FIXTURE_DIR=""
 cleanup() { [ -n "${FIXTURE_DIR:-}" ] && rm -rf "$FIXTURE_DIR"; }
 trap cleanup EXIT INT TERM HUP
@@ -42,9 +49,15 @@ SESSION_ID="00000000-0000-0000-0000-000000000001"
 
 # Fabricate .rite-flow-state for the given phase with active=true
 # $1: phase name
-# $2: previous_phase (for whitelist check)
+# $2: previous_phase (optional、省略時は "cleanup" がデフォルト)
+#     明示的に空文字を渡したい場合は "" を指定する (Test 3 がこの用途で使用)
 make_state() {
   local phase="$1"
+  # bash の ${2:-default} は「unset または null (空文字含む)」の両方で default 展開される。
+  # $1 のみ指定 (= $2 unset) → prev="cleanup"
+  # $1 + "" (= $2 set but null) → prev="cleanup" (unset と同じ扱い — bash 仕様)
+  # したがって Test 3 の `run_guard "cleanup" ""` は実際には prev="cleanup" となる。
+  # 旧コメントの「prev="" になる」は bash 仕様誤解に基づく記述だった。
   local prev="${2:-cleanup}"
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
@@ -78,7 +91,11 @@ run_guard() {
   input=$(printf '{"cwd":"%s","session_id":"%s"}' "$FIXTURE_DIR" "$SESSION_ID")
   local stderr_file
   stderr_file=$(mktemp "$FIXTURE_DIR/stderr.XXXXXX")
-  STDERR_CONTENT=""  # stale 混入防止 (明示 reset)
+  # defensive reset: 直後の `STDERR_CONTENT=$(cat ...)` で無条件上書きされるため、
+  # 現行 4 tests の制御フローでは stale 混入は発生しない。ただし将来 early-return 経路
+  # (cat 前に return する path) が追加された場合に前回の STDERR_CONTENT が残る regression を
+  # 未然に防ぐための defense-in-depth。
+  STDERR_CONTENT=""
   printf '%s' "$input" | bash "$STOP_GUARD" 2>"$stderr_file"
   local rc=$?
   STDERR_CONTENT=$(cat "$stderr_file")

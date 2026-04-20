@@ -49,15 +49,17 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 
 | Phase | Block 発火数 | 備考 |
 |-------|-------------|------|
-| `cleanup_pre_ingest` | 1（+1 sentinel emit）| Issue #611 cleanup 実行時, 2026-04-20T01:48:58Z (diag log の `issue=#611` タグ由来。cleanup.md が PR/Issue どちらの番号で invoke されても diag log には issue number が記録されるため、本表の #611 は Issue 番号) |
+| `cleanup_pre_ingest` | 1（+1 sentinel emit）| Issue #611 cleanup 実行時, 2026-04-20T01:48:58Z[^611-ref] |
 | `cleanup_post_ingest` | 0 | 本 phase での block 記録なし |
+
+[^611-ref]: `.rite-stop-guard-diag.log` の `issue=#611` タグ由来。cleanup.md が PR/Issue どちらの番号で invoke されても diag log には Issue number が記録されるため、本表の `#611` は **Issue 番号**（PR ではない）。下記 H2 行の参照も同様に Issue 番号として扱う。
 
 **H1-H4 絞り込み**:
 
 | ID | 仮説 | 結論 |
 |---|---|---|
 | H1 | ingest.md Phase 9.1 の三点セットが turn-boundary heuristic を強化 | **Likely (primary)** |
-| H2 | `stop-guard.sh` の block が発火していない | **部分否定**（PR #611 で block 観測） |
+| H2 | `stop-guard.sh` の block が発火していない | **部分否定**（Issue #611 cleanup 実行時に block 観測[^611-ref]） |
 | H3 | Pre-check list が LLM self-introspection に依存 | **Likely (co-primary)** |
 | H4 | sub-skill stack の depth が深く「最深 = 全体完了」誤認 | **Possibly (H1 複合)** |
 
@@ -67,7 +69,7 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 
 1. **cleanup.md Pre-check list Item 0 の機械化**: `[routing-check] ingest=matched|unmatched` / `[routing-check] cleanup=matched|unmatched` の 1 行出力義務化で LLM の silent skip を検出可能にする
 2. **ingest.md Phase 9.1 の三点セット #2/#3 間 recap 挿入禁止**: MUST NOT 行を追加し、caller 継続 HTML コメント直後に即 sentinel を出力する規約を reinforce
-3. **unit test fixture** (`plugins/rite/hooks/tests/stop-guard-cleanup.test.sh`、9 assertions、実行: `bash plugins/rite/hooks/tests/run-tests.sh` で既存 hook test suite と共に自動実行): stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup` phase で invoke、exit 2 + stderr に Phase 情報が出力されることを assert。既存 `stop-guard.test.sh` TC-608-A〜H とは役割分担: 本 fixture は **fixture ベースで独立実行可能** (同テストを異なる環境でスタンドアロン起動する用途)、TC-608-A〜H は **HINT-specific 文言 pin** (regression 検知性能優先)
+3. **unit test fixture** (`plugins/rite/hooks/tests/stop-guard-cleanup.test.sh`、4 tests / 14 assertions、実行: `bash plugins/rite/hooks/tests/run-tests.sh` で既存 hook test suite と共に自動実行): stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup` phase で invoke、exit 2 + stderr に Phase 情報 + HINT-specific 文言が出力されることを assert (Test 4 は active:false 時の正常終了を negative assertion で検証)。既存 `stop-guard.test.sh` TC-608-A〜H とは役割分担: 本 fixture は **fixture ベースで独立実行可能** (同テストを異なる環境でスタンドアロン起動する用途)、TC-608-A〜H は **HINT-specific 文言 pin** (regression 検知性能優先)。両者は同一 HINT 文言を pin するため相補関係を形成する (片方の regression でもう片方が catch)
 
 ## 関連 Issue
 
