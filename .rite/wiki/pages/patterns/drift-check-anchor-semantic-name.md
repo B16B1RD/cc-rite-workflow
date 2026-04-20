@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-21T00:55:00+00:00"
+updated: "2026-04-20T16:53:38+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -26,6 +26,8 @@ sources:
     ref: "raw/reviews/20260420T052907Z-pr-619.md"
   - type: "reviews"
     ref: "raw/reviews/20260420T145943Z-pr-624-cycle2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260420T160140Z-pr-626.md"
 tags: []
 confidence: high
 ---
@@ -203,6 +205,15 @@ NG pattern (将来 lint で検出):
 - `Downstream reference: <file> Phase X.Y` (スペース区切り) — PR #605 旧 dialect
 - `Downstream reference: <file> Phase X.Y (DRIFT-CHECK ANCHOR: ...)` (括弧記法) — PR #619 旧 dialect
 
+**refactor 着地の cross-validation** (PR #626 review での evidence): PR #620 の canonical format 統一 refactor を develop に merge する PR #626 の multi-reviewer review (prompt-engineer / code-quality) で 0 findings / severity 全 0 の healthy landing を確認。extract された observation は以下の 4 点で、いずれも「format 統一 refactor を scope 外汚染なく着地させる」canonical application として機能した:
+
+- **dialect unification の 9 site 1:1 対応**: 並存していた 3 format (コロン / スペース / 括弧) を全 9 site で canonical コロン記法に変換、unification 完遂
+- **semantic 情報の保全**: 括弧注記 (`(DRIFT-CHECK ANCHOR: <name>)`) を削除しても `<file>:<Phase X.Y>` で anchor unique 特定が維持される (各 Phase 内に同名 anchor は高々数個という前提の再確認)
+- **scope 境界の明確性**: bidirectional backlink sub-pattern 対象の 8 site のみ変更、一般 prose 内の参照 ( `plugins/rite/commands/...` 等) は意図的に scope 外として保持
+- **wiki branch 別 commit 分離**: Wiki canonical page 更新を develop branch PR から分離、dev ブランチ diff に Wiki 変更が混入しない worktree ベース運用を維持
+
+本 cross-validation は「canonical format を team guideline として確立する PR (PR #619)」→「canonical format を一律適用する refactor PR (PR #620 / PR #626)」の 2 段階着地が、極小対称化 PR (PR #592) の運用 heuristic に乗る形で短時間 review 可能であることの追加実証にもなっている (findings 0 件 + merge 可の decisive 判定)。
+
 ### 直前 merge PR 規約への後続 PR 違反 (PR #624 cycle 2 での evidence)
 
 PR #624 (Issue #618) cycle 2 で、PR #617 merge 直後に作成された本 PR が PR #617 で確立した「line 番号 literal 禁止 / semantic anchor 化」規約を設計メモ記述で破る G4 HIGH が検出された:
@@ -243,3 +254,4 @@ PR #624 (Issue #618) cycle 2 で、PR #617 merge 直後に作成された本 PR 
 - [PR #617 fix (well-formed nesting canonical 適用)](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)
 - [PR #619 review (bidirectional backlink team guideline 5 ANCHOR 拡張 + allowed redundancy)](../../raw/reviews/20260420T052907Z-pr-619.md)
 - [PR #624 cycle 2 review (直前 merge PR 規約への後続 PR 違反)](../../raw/reviews/20260420T145943Z-pr-624-cycle2.md)
+- [PR #626 review (bidirectional backlink canonical format 統一 refactor の healthy landing)](../../raw/reviews/20260420T160140Z-pr-626.md)

@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-20T16:53:38+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #626 review (PR #620 canonical format 統一 refactor の develop merge): 0 findings / severity 全 0 の healthy landing を cross-validation evidence として追加。dialect unification 9 site 1:1 対応 / semantic 情報保全 / scope 境界の明確性 / wiki branch 別 commit 分離 の 4 観点を multi-reviewer (prompt-engineer / code-quality) が独立確認、極小対称化 PR 運用の追加実証 (raw: pr-626) |
 | 2026-04-20T15:20:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=46, broken_refs=0 |
 | 2026-04-20T15:15:00+00:00 | ingest:update | pages/anti-patterns/same-file-must-not-vs-must-conflict.md | PR #624 Issue #618: 新 Step 追加 × 既存 MUST NOT 衝突 (bash tool output と response text の layer 境界明示不足) を追加。Claude Code 実行モデル上 bash tool output は別チャンネルで response text に相当しないため MUST NOT #621 reinforce の対象外であることを prose で明示する canonical 対策 (raw: pr-624 review/fix cycle 1) |
 | 2026-04-20T15:15:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #624 cycle 2: 直前 merge PR 規約への後続 PR 違反を追加 (PR #617 で確立した line 番号 literal 禁止規約を約 10 時間後の PR #624 が破った G4 HIGH)。team velocity の高い repo では 24 時間以内の規約違反 risk 高、後続 PR reviewer が直近 merged PR 一覧 + commit 時系列を明示確認する canonical flow (raw: pr-624-cycle2 review) |
