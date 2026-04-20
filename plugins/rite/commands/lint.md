@@ -698,7 +698,7 @@ Execute the backlink format check script to detect bidirectional backlink format
 
 ```bash
 if [ -f {plugin_root}/hooks/scripts/backlink-format-check.sh ]; then
-  backlink_format_output=$(bash {plugin_root}/hooks/scripts/backlink-format-check.sh --all --quiet 2>&1)
+  backlink_format_output=$(bash {plugin_root}/hooks/scripts/backlink-format-check.sh --all 2>&1)
   backlink_format_exit_code=$?
 else
   backlink_format_exit_code=-1  # script not found
@@ -830,7 +830,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {gitignore_health_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, or gitignore-health warnings/invocation errors.
+**Backlink format check appendix (Issue #627)** (both standalone and E2E): When `backlink_format_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output / gitignore-health. When status is `warning` (exit 1, dialect violations detected), the appendix output includes each violation line (`[backlink-format][P1] file:NN: ...`) so reviewers can identify and fix the offending backlink format. When status is `error` (exit 2, invocation failure), the appendix contains the stderr diagnostic:
+
+```
+⚠️ Backlink format check: {backlink_format_finding_count} findings detected ({backlink_format_status}, non-blocking)
+{backlink_format_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, or backlink-format warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
