@@ -141,3 +141,4 @@
 | 2026-04-19T08:10:00+00:00 | ingest:update | pages/heuristics/identity-reference-documentation-unification.md | PR #594 review (0 findings, 1 file / +4/-3 minimal drift fix): sub-heuristic #6 (YAML frontmatter vs 本文階層 drift) の successful application 実証、canonical SoT 内部の列挙順序観点差を corollary として追加 (source: raw/reviews/20260419T072121Z-pr-594.md) |
 | 2026-04-19T08:15:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=16 |
 | 2026-04-20T01:35:00+00:00 | ingest:skip | raw/reviews/20260420T013202Z-pr-612.md | XS mechanical text replacement (3 箇所) で 2 reviewer 0 findings 収束。generalizable heuristic が乏しく、表記 convention の documentation task は follow-up Issue #613 に分離済みのため skip (raw: pr-612) |
+| 2026-04-20T01:40:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=45, broken_refs=0 |
