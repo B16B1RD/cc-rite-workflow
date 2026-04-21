@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-21T01:58:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=48, broken_refs=0 |
 | 2026-04-21T01:55:00+00:00 | ingest:skip | raw/reviews/20260421T012721Z-pr-635.md | PR #635 (Issue #633, 0 findings, prose-only +6/-4): Phase 9.2 三点セット規約の延長として cleanup.md Phase 5.2/5.3 に MUST NOT blockquote と Output ordering 明示を追加した極小 refactor。既存 wiki (same-file-must-not-vs-must-conflict / drift-check-anchor-semantic-name / small-symmetric-pr-sibling-site-grep-review / asymmetric-fix-transcription) で網羅済みの観点であり独立した新規経験則に該当しないため skip |
 | 2026-04-20T23:55:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=47, broken_refs=0 |
 | 2026-04-20T23:50:00+00:00 | ingest:skip | raw/reviews/20260420T233740Z-pr-632.md | PR #632 (Issue #630, 0 findings, 2 reviewer 合意 Confidence ≥ 90): Phase 9.2 三点セット契約に Phase 1.1/1.3 早期 return を整合させた典型的対称化 PR。検出パターン (N site 対称化、drift-check anchor、contract-implementation path 対称性、small-symmetric-pr sibling grep review) は既存ページ (asymmetric-fix-transcription / drift-check-anchor-semantic-name / small-symmetric-pr-sibling-site-grep-review) で網羅済み (raw: pr-632) |
