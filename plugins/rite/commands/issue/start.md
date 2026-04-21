@@ -1591,7 +1591,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 
 **Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
 
-> **Note (v1.0.0 #557)**: The former Step 3.5 (Review-Fix Loop Hard Limit Check) was removed. The review-fix loop no longer has a cycle-count-based hard limit. Non-convergence is now detected exclusively via the four quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`):
+> **Note (v0.4.0 #557)**: The former Step 3.5 (Review-Fix Loop Hard Limit Check) was removed. The review-fix loop no longer has a cycle-count-based hard limit. Non-convergence is now detected exclusively via the four quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`):
 > 1. Fingerprint cycling → Phase 5.4.1.0 (before every re-review)
 > 2. Root-cause-missing fix → `fix.md` Phase 3.2.1 (before every commit)
 > 3. Cross-validation disagreement → `review.md` Phase 5.2 + debate (during every review)

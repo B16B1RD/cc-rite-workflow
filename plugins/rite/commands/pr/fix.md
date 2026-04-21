@@ -167,7 +167,7 @@ fi
 
 ## Phase 1: Retrieve and Organize Review Comments
 
-> **Note (v1.0.0 #557)**: The cycle-count-based convergence strategy loader (formerly Phase 0.4) was fully removed. The review-fix loop now exits only when findings == 0; non-convergence is detected via 4 quality signals (see `commands/issue/start.md` Phase 5.4 and `commands/pr/references/fix-relaxation-rules.md`). All findings are treated uniformly regardless of severity.
+> **Note (v0.4.0 #557)**: The cycle-count-based convergence strategy loader (formerly Phase 0.4) was fully removed. The review-fix loop now exits only when findings == 0; non-convergence is detected via 4 quality signals (see `commands/issue/start.md` Phase 5.4 and `commands/pr/references/fix-relaxation-rules.md`). All findings are treated uniformly regardless of severity.
 
 ### 1.0 Argument Parsing (Pre-flight)
 

@@ -156,7 +156,7 @@ Defined in `rite-config.yml` under the `safety` section. See [Safety Configurati
 
 ```yaml
 safety:
-  # review-fix loop hard limit was removed in v1.0.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
+  # review-fix loop hard limit was removed in v0.4.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
   max_implementation_rounds: 20  # implementation round hard limit
   time_budget_minutes: 120       # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true  # stop on repeated failure
@@ -206,7 +206,7 @@ metrics:
     plan_deviation_improvement: 0.90        # MA5 improvement factor
 
 safety:
-  # review-fix loop hard limit was removed in v1.0.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
+  # review-fix loop hard limit was removed in v0.4.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
   max_implementation_rounds: 20  # implementation round hard limit
   time_budget_minutes: 120       # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true  # stop on repeated failure

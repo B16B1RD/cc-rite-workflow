@@ -17,7 +17,7 @@ All findings (CRITICAL/HIGH/MEDIUM/LOW) are always fix targets. There is no auto
 | MEDIUM | Blocking | Must fix |
 | LOW | Blocking | Must fix |
 
-## Loop Termination (v1.0.0 #557)
+## Loop Termination (v0.4.0 #557)
 
 The review-fix loop exits via exactly two paths:
 
@@ -26,7 +26,7 @@ The review-fix loop exits via exactly two paths:
 | **Normal** | 0 findings remaining | `[review:mergeable]` |
 | **Escalate** | Any of the 4 quality signals fires | Present `AskUserQuestion` → user decides (continue / create separate Issue / withdraw / manual review) |
 
-Cycle-count-based degradation (convergence strategy override / hard limit / severity gating) was fully removed in v1.0.0. See `commands/issue/start.md` Phase 5.4 for the escalate logic.
+Cycle-count-based degradation (convergence strategy override / hard limit / severity gating) was fully removed in v0.4.0. See `commands/issue/start.md` Phase 5.4 for the escalate logic.
 
 ## Four Quality Signals for Escalation
 

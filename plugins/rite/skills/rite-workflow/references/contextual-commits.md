@@ -31,7 +31,7 @@ commit:
 |------|----------|-------------|
 | `intent(scope)` | ユーザーの意図・目的 | 動機が subject line から明らかでない場合。大半の feature/refactor で使用 |
 | `decision(scope)` | 選択した手法と理由 | 代替案が存在し、選択理由がある場合 |
-| `root-cause(scope)` | 指摘の根本原因 (symptom ではない) | レビュー修正コミットで、なぜその問題が発生したかを明示する場合。`fix.md` Phase 3.2.1 Root Cause Gate を満たすため使用 (v1.0.0 #557 で新規追加) |
+| `root-cause(scope)` | 指摘の根本原因 (symptom ではない) | レビュー修正コミットで、なぜその問題が発生したかを明示する場合。`fix.md` Phase 3.2.1 Root Cause Gate を満たすため使用 (v0.4.0 #557 で新規追加) |
 | `rejected(scope)` | 却下した代替案と理由 | 代替案を検討して却下した場合。**必ず理由を含める** |
 | `constraint(scope)` | 実装を制約した条件 | 非自明な制限が実装に影響した場合 |
 | `learned(scope)` | 実装中に発見した知見 | API の癖、ドキュメントにない挙動、パフォーマンス特性など |
@@ -105,7 +105,7 @@ fix(typo): correct variable name in auth handler
 | 対応中に発見した制約 | `constraint(scope)` |
 | 対応中の発見事項 | `learned(scope)` |
 
-**`root-cause(scope)` action type (v1.0.0 #557)**: Quality Signal 2 (root-cause-missing fix detection) を満たすため、レビュー指摘の修正で **なぜその問題が起きたか** を明示する action line。`decision(scope)` が「何を選択したか」を表すのに対し、`root-cause(scope)` は「なぜ修正が必要になったか」を表す。commit body に `root-cause(scope): ...` 行が 1 行含まれていれば fix.md Phase 3.2.1 Root Cause Gate を通過する。`decision(scope)` のテキスト中で root cause を明示している場合も通過する (両方書く必要はない)。対症 fix (symptom-only、例: null check 追加) は `root-cause` を書けないため、このゲートで自然に検出される。
+**`root-cause(scope)` action type (v0.4.0 #557)**: Quality Signal 2 (root-cause-missing fix detection) を満たすため、レビュー指摘の修正で **なぜその問題が起きたか** を明示する action line。`decision(scope)` が「何を選択したか」を表すのに対し、`root-cause(scope)` は「なぜ修正が必要になったか」を表す。commit body に `root-cause(scope): ...` 行が 1 行含まれていれば fix.md Phase 3.2.1 Root Cause Gate を通過する。`decision(scope)` のテキスト中で root cause を明示している場合も通過する (両方書く必要はない)。対症 fix (symptom-only、例: null check 追加) は `root-cause` を書けないため、このゲートで自然に検出される。
 
 ## Scope Derivation Rules
 
