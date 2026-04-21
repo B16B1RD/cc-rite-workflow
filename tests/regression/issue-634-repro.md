@@ -76,7 +76,8 @@ grep -F 'RE-ENTRY DETECTED' plugins/rite/hooks/stop-guard.sh
 
 ```bash
 bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
-# 期待: TC-634-A / TC-634-B / TC-634-C 全て PASS
+# 期待: TC-634-A / TC-634-B / TC-634-C / TC-634-D 全て PASS
+# (cycle 2 で TC-634-D 追加 — create_interview case arm の error_count=1 escalation を TC-634-B と対称に verify)
 ```
 
 ### 2.4 Self-exemplar integration test (AC-3)

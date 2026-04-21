@@ -879,10 +879,11 @@ state_error_count=$(jq -r '.error_count // empty' "$dir634b/.rite-flow-state" 2>
 if [ $rc -eq 2 ] \
     && grep -q "RE-ENTRY DETECTED" "$stderr_file634b" \
     && grep -q "error_count=2" "$stderr_file634b" \
+    && grep -q "execute the following bash block NOW as your next tool call" "$stderr_file634b" \
     && [ "$state_error_count" = "2" ]; then
-  pass "create_post_interview error_count=1 → RE-ENTRY DETECTED escalation + state file error_count=2 (post-increment write verified)"
+  pass "create_post_interview error_count=1 → RE-ENTRY DETECTED escalation + case-arm-specific HINT + state file error_count=2"
 else
-  fail "expected RE-ENTRY DETECTED escalation with error_count=2 in HINT + state file, got rc=$rc, state_error_count='$state_error_count', stderr='$(cat "$stderr_file634b")'"
+  fail "expected RE-ENTRY DETECTED escalation + create_post_interview-specific HINT 'execute the following bash block' + error_count=2 in state, got rc=$rc, state_error_count='$state_error_count', stderr='$(cat "$stderr_file634b")'"
 fi
 
 # --------------------------------------------------------------------------
@@ -928,10 +929,33 @@ state_error_count_d=$(jq -r '.error_count // empty' "$dir634d/.rite-flow-state" 
 if [ $rc -eq 2 ] \
     && grep -q "RE-ENTRY DETECTED" "$stderr_file634d" \
     && grep -q "error_count=2" "$stderr_file634d" \
+    && grep -q "previous block did not advance the phase" "$stderr_file634d" \
     && [ "$state_error_count_d" = "2" ]; then
-  pass "create_interview error_count=1 → RE-ENTRY DETECTED escalation + state file error_count=2 (symmetric with TC-634-B)"
+  pass "create_interview error_count=1 → RE-ENTRY DETECTED escalation + case-arm-specific HINT + state file error_count=2 (symmetric with TC-634-B)"
 else
-  fail "expected create_interview escalation with RE-ENTRY DETECTED + error_count=2 in both HINT and state, got rc=$rc, state_error_count='$state_error_count_d', stderr='$(cat "$stderr_file634d")'"
+  fail "expected create_interview escalation with RE-ENTRY DETECTED + create_interview-specific HINT 'previous block did not advance the phase' + error_count=2 in state, got rc=$rc, state_error_count='$state_error_count_d', stderr='$(cat "$stderr_file634d")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-E: STEP_0_PATCH_FAILED twin site contract verification (verified-review cycle 3 F-04 / #636)
+# Issue #634: stop-guard.sh L325 の HINT が '[CONTEXT] STEP_0_PATCH_FAILED=1' grep 参照を LLM に指示
+# (cycle 2 F-05 consumer wiring として追加)。create.md Step 0 bash block 失敗時の emit 側との
+# twin site contract を verify する。片側の削除/リネームを catch する。
+# --------------------------------------------------------------------------
+echo "TC-634-E: create_post_interview HINT includes STEP_0_PATCH_FAILED grep reference (twin site contract)"
+dir634e="$GUARD_TEST_DIR/tc634e"
+mkdir -p "$dir634e"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634e" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634e\"}"
+stderr_file634e="$(mktemp "$GUARD_TEST_DIR/stderr634e.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634e\", \"session_id\": \"sid-634e\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634e") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "STEP_0_PATCH_FAILED=1" "$stderr_file634e" \
+    && grep -q "Step 0 patch failed" "$stderr_file634e"; then
+  pass "create_post_interview HINT includes [CONTEXT] STEP_0_PATCH_FAILED=1 grep reference (twin site contract preserved)"
+else
+  fail "expected STEP_0_PATCH_FAILED=1 grep hint in HINT for twin site contract, got rc=$rc stderr='$(cat "$stderr_file634e")'"
 fi
 
 # --------------------------------------------------------------------------

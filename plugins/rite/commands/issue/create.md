@@ -549,10 +549,15 @@ No GitHub Issue has been created yet. The interview only collects information.
 # 真の patch 失敗 (disk full / permission denied 等) のみを区別して STEP_0_PATCH_FAILED
 # として emit する。Step 1 は idempotent patch として redundant に実行されるため、
 # Step 0 の失敗自体は非 blocking (defense-in-depth の 2 重化は維持される)。
+# verified-review cycle 3 F-01 / #636: --preserve-error-count は同一 phase への self-patch で
+# stop-guard.sh の RE-ENTRY DETECTED escalation counter を保持するために必須。未指定だと
+# flow-state-update.sh patch mode の JQ_FILTER が `.error_count = 0` でリセットし、
+# error_count >= 1 escalation と THRESHOLD=3 bail-out 層が永久に fire しなくなる (実測確認済み)。
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_post_interview" \
     --next "Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop." \
-    --if-exists; then
+    --if-exists \
+    --preserve-error-count; then
   echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
   # 非 blocking: Step 1 が idempotent patch として再試行する。ここで exit 1 すると
   # 既に進捗している workflow を kill してしまうため、warning のみで continue する。
@@ -563,14 +568,17 @@ fi
 ```
 
 > **Rationale (Issue #634)**: The regression pattern observed in #552/#561/#622/#628 is that the LLM, after seeing the sub-skill's HTML-comment sentinel (`<!-- [interview:skipped] -->` or `<!-- [interview:completed] -->`), perceives the work as "complete" and ends the turn. Step 0 inserts a **concrete bash tool invocation** as the first required action after the sub-skill returns, eliminating the turn-boundary signal. The LLM sees "I need to run this bash first" instead of "I'm done". Step 0 is redundant with Step 1 (patch mode is idempotent) — the redundancy IS the defense.
+>
+> **DRIFT-CHECK ANCHOR (semantic)**: 本 Step 0 bash block は create-interview.md Return Output `[CONTEXT] INTERVIEW_DONE=1` marker (Return Output Format section) と stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT (`bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview ... --preserve-error-count` を含む) と**3 site 対称**。いずれか 1 site を更新する際は他 2 site も同時更新する必要がある。特に bash 引数 (`--phase`, `--next`, `--if-exists`, `--preserve-error-count`) の symmetry が崩れると error_count reset loop (verified-review cycle 3 F-01) が再発する。
 
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`. `--if-exists` を Step 0 と対称に付与することで、Pre-flight 漏れ経路でも defense-in-depth redundancy が一貫して保たれる (verified-review F-11 / #636)。Step 0 と対称に exit code check を入れることで、Step 0 と Step 1 が同時失敗する persistent な障害条件 (disk full / permission denied) でも silent に通過せず `[CONTEXT] STEP_1_PATCH_FAILED=1` を retained flag として残す (cycle 2 F-04 / #636):
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`. `--if-exists` を付与することで、`.rite-flow-state` 不在時 (Pre-flight 漏れ経路) は silent skip し、create-interview.md Pre-flight が create mode で file 生成する先着性を defeat しない。file 存在時は Step 0 と Step 1 が 2 重 patch を行い、同時失敗のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` として retained flag を残す (Pre-flight 漏れ経路は stop-guard の create_interview case arm で間接検出される)。`--preserve-error-count` も Step 0 と対称に付与 — これがないと RE-ENTRY DETECTED escalation + THRESHOLD bail-out が永久に unreachable になる (verified-review cycle 3 F-01 / #636):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_post_interview" \
     --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-    --if-exists; then
+    --if-exists \
+    --preserve-error-count; then
   echo "[CONTEXT] STEP_1_PATCH_FAILED=1" >&2
   # 非 blocking: Step 0 / Step 1 同時失敗の persistent 障害シグナルを LLM が post-hoc で
   # 観察可能にする。create-interview.md Pre-flight 側の patch が primary 防御層として残る。

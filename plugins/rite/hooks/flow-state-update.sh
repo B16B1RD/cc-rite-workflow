@@ -57,6 +57,7 @@ ACTIVE=""
 IF_EXISTS=false
 FIELD=""
 SESSION=""
+PRESERVE_ERROR_COUNT=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --next)     NEXT="$2"; shift 2 ;;
     --active)   ACTIVE="$2"; shift 2 ;;
     --if-exists) IF_EXISTS=true; shift ;;
+    --preserve-error-count) PRESERVE_ERROR_COUNT=true; shift ;;
     --field)    FIELD="$2"; shift 2 ;;
     --session)  SESSION="$2"; shift 2 ;;
     *) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
@@ -207,7 +209,19 @@ case "$MODE" in
     # Build jq filter: always update phase, timestamp, next_action; conditionally update active.
     # Also capture the outgoing phase into previous_phase so stop-guard can verify the
     # transition whitelist (#490). Use the pre-update .phase value as previous_phase.
-    JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next | .error_count = 0'
+    #
+    # --preserve-error-count (verified-review cycle 3 F-01 / #636): patch mode のデフォルトは
+    # `.error_count = 0` でリセットする (phase transition は「進捗した」signal なのでエスカレーション
+    # counter をクリアするのが正しい)。ただし、create.md Step 0 / Step 1 のような **同一 phase への
+    # self-patch** (create_post_interview → create_post_interview) では error_count を保持しないと
+    # stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out が永久に fire しない
+    # silent regression になる (cycle 3 で実測確認済み)。--preserve-error-count flag 指定時は
+    # `.error_count = 0` 条項を omit して既存値を保持する。
+    if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
+      JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
+    else
+      JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next | .error_count = 0'
+    fi
     JQ_ARGS=(--arg phase "$PHASE" --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')" --arg next "$NEXT")
     if [[ -n "$ACTIVE" ]]; then
       JQ_FILTER="$JQ_FILTER | .active = (\$active_val == \"true\")"

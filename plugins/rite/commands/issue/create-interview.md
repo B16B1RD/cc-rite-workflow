@@ -22,14 +22,25 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 **MUST run before any interview logic** (Phase 0.4.1 scope evaluation, Phase 0.5 deep-dive, or return-output emission). This bash block is **not optional** and **not conditional on interview scope**. Execute it even when Phase 0.4.1 determines the Bug Fix / Chore preset (interview scope = "skip"):
 
 ```bash
+# verified-review cycle 3 F-06 / #636: Pre-flight は create.md コメントで「primary 防御層」と
+# 位置付けられており、Step 0/Step 1 と同格の idempotent write。exit-code check を対称に
+# 入れることで persistent な disk full / permission denied 障害下でも silent に通過せず、
+# [CONTEXT] PREFLIGHT_PATCH_FAILED=1 retained flag を残す。layered defense は
+# stop-guard の create_interview case arm が routing する safety net がある。
 if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+      --phase "create_post_interview" \
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+    echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
+    # 非 blocking: create.md Step 0/Step 1 の redundant patch が 2 段目防御として存在し、
+    # stop-guard の create_interview case arm が routing する safety net でも間接検出される。
+  fi
 else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
-    --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh create \
+      --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+    echo "[CONTEXT] PREFLIGHT_CREATE_FAILED=1" >&2
+  fi
 fi
 ```
 
@@ -526,10 +537,15 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 Immediately before emitting the four-line return block, re-patch `.rite-flow-state` to refresh the timestamp. This is idempotent with the 🚨 MANDATORY Pre-flight write (same phase, same transition target):
 
 ```bash
+# verified-review cycle 3 F-06 / #636: Return Output 直前 re-patch も Step 0/Step 1 と対称に
+# exit-code check を追加。primary Pre-flight 防御層の補強として silent failure を surface する。
 if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+      --phase "create_post_interview" \
+      --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+    echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
+    # 非 blocking: create.md Step 0/Step 1 の redundant patch が続行する。
+  fi
 fi
 ```
 

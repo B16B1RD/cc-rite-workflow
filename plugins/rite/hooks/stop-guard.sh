@@ -240,7 +240,14 @@ fi
 TMP_STATE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_STATE="${STATE_FILE}.tmp.$$"
 trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
 if jq --argjson cnt "$((ERROR_COUNT + 1))" '.error_count = $cnt' "$STATE_FILE" > "$TMP_STATE" 2>/dev/null; then
-  mv "$TMP_STATE" "$STATE_FILE" 2>/dev/null || rm -f "$TMP_STATE"
+  # verified-review cycle 3 F-07 / #636: mv 失敗 path も F-08 jq_write_failed と対称に diag log 記録。
+  # jq が tmp に json を書いた後、mv のみ permission denied / disk full / TOCTOU で失敗した場合、
+  # state 実値と HINT 上の error_count 想定値が乖離する結末は jq 失敗時と同一だが、従来は片方だけ
+  # diag log に残り他方は silent だった。対称的に log_diag を追加して silent-failure-hunter 一貫化。
+  if ! mv "$TMP_STATE" "$STATE_FILE" 2>/dev/null; then
+    log_diag "error_count_mv_failed phase=$PHASE error_count=$ERROR_COUNT session_id=${SESSION_ID:-unknown}"
+    rm -f "$TMP_STATE"
+  fi
 else
   # verified-review F-08 / #636: jq write 失敗 (disk full / permission denied / TOCTOU)
   # を silent に握りつぶさず diag log に残す。HINT 上の error_count 想定値と state file
@@ -307,7 +314,7 @@ case "$PHASE" in
     # either position so the workflow does not silently end the turn before delegation.
     # DRIFT-CHECK ANCHOR (semantic): create-interview.md 🚨 MANDATORY Pre-flight section /
     # phase-transition-whitelist.sh create_interview entry と 3 site 対称。
-    WORKFLOW_HINT="HINT: /rite:issue:create Delegation to Interview Pre-write recorded create_interview. The block may have fired immediately before the rite:issue:create-interview Skill invoke, OR while the interview sub-skill is mid-execution (create-interview.md MUST write create_post_interview via its 🚨 MANDATORY Pre-flight section before returning). In either case, do NOT stop. Continue: if interview has not been invoked yet, invoke it; if interview has returned <!-- [interview:skipped] --> or <!-- [interview:completed] --> but .rite-flow-state.phase is still create_interview, the sub-skill Pre-flight patch was skipped — run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists) → Step 1 (idempotent re-patch) → Phase 0.6 → Delegation Routing → terminal sub-skill in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm sub-skill return completed. DO NOT stop before <!-- [create:completed:{N}] --> is output."
+    WORKFLOW_HINT="HINT: /rite:issue:create Delegation to Interview Pre-write recorded create_interview. The block may have fired immediately before the rite:issue:create-interview Skill invoke, OR while the interview sub-skill is mid-execution (create-interview.md MUST write create_post_interview via its 🚨 MANDATORY Pre-flight section before returning). In either case, do NOT stop. Continue: if interview has not been invoked yet, invoke it; if interview has returned <!-- [interview:skipped] --> or <!-- [interview:completed] --> but .rite-flow-state.phase is still create_interview, the sub-skill Pre-flight patch was skipped — run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count) → Step 1 (idempotent re-patch) → Phase 0.6 → Delegation Routing → terminal sub-skill in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm sub-skill return completed. DO NOT stop before <!-- [create:completed:{N}] --> is output."
     # Issue #634 escalation: re-entry detected when error_count >= 1.
     if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
       WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not advance the phase. Execute the above bash block NOW as your next tool call before any narrative output."
@@ -322,13 +329,13 @@ case "$PHASE" in
     # DRIFT-CHECK ANCHOR (semantic): create.md 🚨 Mandatory After Interview Step 0 Immediate
     # Bash Action / create-interview.md Return Output [CONTEXT] INTERVIEW_DONE=1 marker と
     # 3 site 対称。
-    WORKFLOW_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists) → Step 1 (re-patch timestamp) → Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm the sub-skill completed its return output. Also grep for '[CONTEXT] STEP_0_PATCH_FAILED=1' — if present, Step 0 patch failed (disk full / permission denied); Step 1 serves as redundant retry. No GitHub Issue has been created yet."
+    WORKFLOW_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count) → Step 1 (re-patch timestamp) → Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm the sub-skill completed its return output. Also grep for '[CONTEXT] STEP_0_PATCH_FAILED=1' — if present, Step 0 patch failed (disk full / permission denied); Step 1 serves as redundant retry. No GitHub Issue has been created yet."
     # Issue #634 escalation: error_count-based reminder. 2 回目以降の block では
     # LLM が recovery path を取っていない signal とみなして HINT を更に明示化。
     # verified-review F-12 / #636: bash 例の --next 引数を create.md Step 0 canonical と一致させ、
     # HINT 通り実行した際に flow-state の next_action が短縮版で上書きされる drift を防ぐ。
     if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
-      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not result in continuation. If you are reading this HINT, execute the following bash block NOW as your next tool call (before any other text output): \`bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists\`. After the bash block succeeds, proceed to Phase 0.6 in the SAME response turn."
+      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not result in continuation. If you are reading this HINT, execute the following bash block NOW as your next tool call (before any other text output): \`bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count\`. After the bash block succeeds, proceed to Phase 0.6 in the SAME response turn."
     fi
     ;;
   create_delegation)
