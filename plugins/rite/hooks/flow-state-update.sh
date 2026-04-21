@@ -11,22 +11,24 @@
 #
 #   Patch mode (update fields in existing file):
 #     bash plugins/rite/hooks/flow-state-update.sh patch \
-#       --phase phase5_post_lint --next "Proceed to next phase." [--active true] [--if-exists]
+#       --phase phase5_post_lint --next "Proceed to next phase." [--active true] [--if-exists] [--preserve-error-count]
 #
 #   Increment mode (increment a numeric field):
 #     bash plugins/rite/hooks/flow-state-update.sh increment \
 #       --field implementation_round [--if-exists]
 #
 # Options:
-#   --phase          Phase value (required for create/patch)
-#   --issue          Issue number (create mode, default: 0)
-#   --branch         Branch name (create mode, default: "")
-#   --pr             PR number (create mode, default: 0)
-#   --parent-issue   Parent Issue number (create mode, default: 0; patch mode: update only if specified)
-#   --next           next_action text (required for create/patch)
-#   --active         Active flag (create mode: default true; patch mode: update only if specified)
-#   --field          Field name to increment (increment mode)
-#   --if-exists      Only execute if .rite-flow-state exists (patch/increment mode)
+#   --phase                  Phase value (required for create/patch)
+#   --issue                  Issue number (create mode, default: 0)
+#   --branch                 Branch name (create mode, default: "")
+#   --pr                     PR number (create mode, default: 0)
+#   --parent-issue           Parent Issue number (create mode, default: 0; patch mode: update only if specified)
+#   --next                   next_action text (required for create/patch)
+#   --active                 Active flag (create mode: default true; patch mode: update only if specified)
+#   --field                  Field name to increment (increment mode)
+#   --if-exists              Only execute if .rite-flow-state exists (patch/increment mode)
+#   --session                Session UUID override (create mode; defaults to .rite-session-id)
+#   --preserve-error-count   Preserve existing .error_count during patch (same-phase self-patch; patch mode only)
 #
 # Exit codes:
 #   0: Success
@@ -185,6 +187,10 @@ case "$MODE" in
         fi
       fi
     fi
+    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh L247-250 と対称に
+    # 診断メッセージを出す。`set -euo pipefail` 下で mv 失敗は script を非 0 exit させるが、
+    # else branch は jq 失敗のみを surface するため、disk full / permission denied / EXDEV 等の
+    # mv 失敗要因が silent に握りつぶされる (silent failure-hunter 指摘)。patch / increment mode と対称化。
     if jq -n \
       --argjson active "$ACTIVE" \
       --argjson issue "$ISSUE" \
@@ -198,7 +204,11 @@ case "$MODE" in
       --arg sid "$SESSION" \
       '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
-      mv "$TMP_STATE" "$FLOW_STATE"
+      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
+        rm -f "$TMP_STATE"
+        echo "ERROR: mv failed (create mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        exit 1
+      fi
     else
       rm -f "$TMP_STATE"
       echo "ERROR: jq create failed" >&2
@@ -231,8 +241,13 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
       JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
+    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh L247-250 と対称に診断する。
     if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
-      mv "$TMP_STATE" "$FLOW_STATE"
+      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
+        rm -f "$TMP_STATE"
+        echo "ERROR: mv failed (patch mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        exit 1
+      fi
     else
       rm -f "$TMP_STATE"
       echo "ERROR: jq patch failed" >&2
@@ -240,10 +255,15 @@ case "$MODE" in
     fi
     ;;
   increment)
+    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh L247-250 と対称に診断する。
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
        "$FLOW_STATE" > "$TMP_STATE"; then
-      mv "$TMP_STATE" "$FLOW_STATE"
+      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
+        rm -f "$TMP_STATE"
+        echo "ERROR: mv failed (increment mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        exit 1
+      fi
     else
       rm -f "$TMP_STATE"
       echo "ERROR: jq increment failed" >&2

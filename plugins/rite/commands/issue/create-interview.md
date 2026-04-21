@@ -18,6 +18,8 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 > **Issue #622 (regression of #552)**: This section was historically placed at the end of the file (titled "Defense-in-Depth: Flow State Update (Before Return)"). In the Bug Fix / Chore preset path (Phase 0.4.1 → skip Phase 0.5), the LLM running this sub-skill sometimes skipped the Defense-in-Depth bash block and jumped directly to the return output. The result: `.rite-flow-state.phase` stayed at `create_interview`, which had no dedicated `stop-guard.sh` case arm in versions prior to #622 fix, so the orchestrator's implicit stop after `<!-- [interview:skipped] -->` was not blocked and the user had to type `continue` manually. Moving the flow-state write to the **absolute beginning** of the sub-skill guarantees it runs regardless of interview scope.
 >
 > **DRIFT-CHECK ANCHOR (semantic)**: This section is mirrored by `stop-guard.sh` `create_interview` case arm (Issue #622) and `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge. The three sites form a 3-site symmetry — when updating any one, update the others.
+>
+> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — verified-review cycle 4 F-06 / #636: 本 Pre-flight bash block の引数 (`--phase`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--preserve-error-count` を含む) と symmetry を取る必要がある。create.md Step 0/Step 1 の `DRIFT-CHECK ANCHOR` (create.md:572) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
 
 **MUST run before any interview logic** (Phase 0.4.1 scope evaluation, Phase 0.5 deep-dive, or return-output emission). This bash block is **not optional** and **not conditional on interview scope**. Execute it even when Phase 0.4.1 determines the Bug Fix / Chore preset (interview scope = "skip"):
 
@@ -27,10 +29,19 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 # 入れることで persistent な disk full / permission denied 障害下でも silent に通過せず、
 # [CONTEXT] PREFLIGHT_PATCH_FAILED=1 retained flag を残す。layered defense は
 # stop-guard の create_interview case arm が routing する safety net がある。
+#
+# verified-review cycle 4 F-01 / #636: --preserve-error-count を create.md Step 0/Step 1 と
+# 対称に付与。本 Pre-flight bash block は sub-skill 再入時に同一 phase self-patch
+# (create_post_interview → create_post_interview) となるため、flag がないと
+# flow-state-update.sh patch mode の JQ_FILTER が `.error_count = 0` でリセットし、
+# stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out 層が永久に fire しない。
+# create mode (file 不在時の初回書き込み) は phase transition ではないため flag は実質 no-op
+# だが、drift 防止の consistency で対称に付与する。
 if [ -f ".rite-flow-state" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
-      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+      --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
     # 非 blocking: create.md Step 0/Step 1 の redundant patch が 2 段目防御として存在し、
     # stop-guard の create_interview case arm が routing する safety net でも間接検出される。
@@ -38,7 +49,8 @@ if [ -f ".rite-flow-state" ]; then
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
-      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+      --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_CREATE_FAILED=1" >&2
   fi
 fi
@@ -539,10 +551,17 @@ Immediately before emitting the four-line return block, re-patch `.rite-flow-sta
 ```bash
 # verified-review cycle 3 F-06 / #636: Return Output 直前 re-patch も Step 0/Step 1 と対称に
 # exit-code check を追加。primary Pre-flight 防御層の補強として silent failure を surface する。
+#
+# verified-review cycle 4 F-02 / #636: --preserve-error-count を create.md Step 0/Step 1 と
+# 対称に付与。本 re-patch は Pre-flight 後の確定的な同一 phase self-patch であり、
+# flag がないと sub-skill mid-execution で本 re-patch 通過時に error_count が 0 にリセットされ、
+# 直後の orchestrator implicit stop で escalation が再度 ERROR_COUNT=0 から始まり永久に
+# THRESHOLD bail-out 未到達。Pre-flight (F-01) と対称。
 if [ -f ".rite-flow-state" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
-      --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+      --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+      --preserve-error-count; then
     echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
     # 非 blocking: create.md Step 0/Step 1 の redundant patch が続行する。
   fi

@@ -952,10 +952,10 @@ input="{\"stop_hook_active\": false, \"cwd\": \"$dir634e\", \"session_id\": \"si
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634e") && rc=0 || rc=$?
 if [ $rc -eq 2 ] \
     && grep -q "STEP_0_PATCH_FAILED=1" "$stderr_file634e" \
-    && grep -q "Step 0 patch failed" "$stderr_file634e"; then
+    && grep -q "a patch site failed" "$stderr_file634e"; then
   pass "create_post_interview HINT includes [CONTEXT] STEP_0_PATCH_FAILED=1 grep reference (twin site contract preserved)"
 else
-  fail "expected STEP_0_PATCH_FAILED=1 grep hint in HINT for twin site contract, got rc=$rc stderr='$(cat "$stderr_file634e")'"
+  fail "expected STEP_0_PATCH_FAILED=1 grep hint + natural-language explanation ('a patch site failed') in HINT for twin site contract, got rc=$rc stderr='$(cat "$stderr_file634e")'"
 fi
 
 # --------------------------------------------------------------------------
@@ -1206,6 +1206,144 @@ if [ $rc -eq 2 ] \
   pass "previous_phase='' で ERROR_COUNT が正しく 0 として parse され block 継続 (IFS regression guard、locale-independent)"
 else
   fail "expected rc=2 without integer parse error (either locale), got rc=$rc stderr='$(cat "$stderr_file608i")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-F: escalation path STEP_0_PATCH_FAILED grep 指示 coverage
+#   (verified-review cycle 4 F-07 / #636)
+# TC-634-E は error_count=0 fresh state の通常 path のみカバー。本 TC は escalation 分岐
+# (L338 `if [ "${ERROR_COUNT:-0}" -ge 1 ]; then WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED..."` 追記)
+# を経由しても base HINT の STEP_0_PATCH_FAILED=1 grep 指示が保持されることを verify する。
+# --------------------------------------------------------------------------
+echo "TC-634-F: create_post_interview + error_count=1 (escalation) still emits STEP_0_PATCH_FAILED grep reference"
+dir634f="$GUARD_TEST_DIR/tc634f"
+mkdir -p "$dir634f"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634f" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-634f\"}"
+stderr_file634f="$(mktemp "$GUARD_TEST_DIR/stderr634f.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634f\", \"session_id\": \"sid-634f\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634f") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "STEP_0_PATCH_FAILED=1" "$stderr_file634f" \
+    && grep -q "RE-ENTRY DETECTED" "$stderr_file634f"; then
+  pass "create_post_interview escalation path preserves STEP_0_PATCH_FAILED grep reference (twin site contract holds during error_count>=1)"
+else
+  fail "expected STEP_0_PATCH_FAILED=1 grep hint retained in escalation path, got rc=$rc stderr='$(cat "$stderr_file634f")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-G/H/I/J: twin-site contract verification for the 4 additional retained flags
+#   (verified-review cycle 4 F-04 / #636)
+# cycle 3 F-04 で STEP_0_PATCH_FAILED の twin-site contract を TC-634-E で pin したが、cycle 3 で
+# 新規追加された 4 flag (STEP_1_PATCH_FAILED, PREFLIGHT_PATCH_FAILED, PREFLIGHT_CREATE_FAILED,
+# INTERVIEW_RETURN_PATCH_FAILED) は consumer 側 (stop-guard HINT + test) で grep 指示されていな
+# かった (cycle 2 F-05 の dead-marker 回避方針に反する asymmetry)。cycle 4 で HINT に grep 指示
+# を追加したので、本 4 TC でその contract を pin する。片側の削除/リネームを catch する。
+# --------------------------------------------------------------------------
+echo "TC-634-G: create_interview HINT includes PREFLIGHT_PATCH_FAILED grep reference (twin site contract)"
+dir634g="$GUARD_TEST_DIR/tc634g"
+mkdir -p "$dir634g"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634g" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634g\"}"
+stderr_file634g="$(mktemp "$GUARD_TEST_DIR/stderr634g.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634g\", \"session_id\": \"sid-634g\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634g") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "PREFLIGHT_PATCH_FAILED=1" "$stderr_file634g"; then
+  pass "create_interview HINT includes [CONTEXT] PREFLIGHT_PATCH_FAILED=1 grep reference"
+else
+  fail "expected PREFLIGHT_PATCH_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634g")'"
+fi
+
+echo "TC-634-H: create_interview HINT includes PREFLIGHT_CREATE_FAILED grep reference (twin site contract)"
+dir634h="$GUARD_TEST_DIR/tc634h"
+mkdir -p "$dir634h"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634h" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634h\"}"
+stderr_file634h="$(mktemp "$GUARD_TEST_DIR/stderr634h.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634h\", \"session_id\": \"sid-634h\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634h") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "PREFLIGHT_CREATE_FAILED=1" "$stderr_file634h"; then
+  pass "create_interview HINT includes [CONTEXT] PREFLIGHT_CREATE_FAILED=1 grep reference"
+else
+  fail "expected PREFLIGHT_CREATE_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634h")'"
+fi
+
+echo "TC-634-I: create_interview HINT includes INTERVIEW_RETURN_PATCH_FAILED grep reference (twin site contract)"
+dir634i="$GUARD_TEST_DIR/tc634i"
+mkdir -p "$dir634i"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634i" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634i\"}"
+stderr_file634i="$(mktemp "$GUARD_TEST_DIR/stderr634i.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634i\", \"session_id\": \"sid-634i\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634i") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "INTERVIEW_RETURN_PATCH_FAILED=1" "$stderr_file634i"; then
+  pass "create_interview HINT includes [CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1 grep reference"
+else
+  fail "expected INTERVIEW_RETURN_PATCH_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634i")'"
+fi
+
+echo "TC-634-J: create_post_interview HINT includes STEP_1_PATCH_FAILED grep reference (twin site contract)"
+dir634j="$GUARD_TEST_DIR/tc634j"
+mkdir -p "$dir634j"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634j" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634j\"}"
+stderr_file634j="$(mktemp "$GUARD_TEST_DIR/stderr634j.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634j\", \"session_id\": \"sid-634j\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634j") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "STEP_1_PATCH_FAILED=1" "$stderr_file634j"; then
+  pass "create_post_interview HINT includes [CONTEXT] STEP_1_PATCH_FAILED=1 grep reference"
+else
+  fail "expected STEP_1_PATCH_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634j")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-K/L: flow-state-update.sh --preserve-error-count flag behavior pin
+#   (verified-review cycle 4 F-03 / #636)
+# cycle 3 F-01 で patch mode JQ_FILTER 分岐 (--preserve-error-count) を実装したが、既存 TC-634-B/D
+# の error_count=2 観察は stop-guard.sh L242 の直接 `jq --argjson cnt` write 経由で、
+# flow-state-update.sh patch mode の preserve 分岐 (新コード) を exercise しない。本 2 TC で
+# JQ_FILTER 分岐を直接 verify し、将来の refactor で silent regression しないよう pin する。
+# --------------------------------------------------------------------------
+SCRIPT_UPDATER="$SCRIPT_DIR/../flow-state-update.sh"
+
+echo "TC-634-K: flow-state-update.sh patch --preserve-error-count preserves existing error_count"
+dir634k="$GUARD_TEST_DIR/tc634k"
+mkdir -p "$dir634k"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# error_count=2 の state を手動作成
+create_state_file "$dir634k" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 2, \"session_id\": \"sid-634k\"}"
+# --preserve-error-count 付き patch を実行 (同一 phase self-patch)
+(
+  cd "$dir634k"
+  bash "$SCRIPT_UPDATER" patch --phase "create_post_interview" --next "after preserve" --preserve-error-count
+) 2>/dev/null
+state_error_count_k=$(jq -r '.error_count // empty' "$dir634k/.rite-flow-state" 2>/dev/null)
+if [ "$state_error_count_k" = "2" ]; then
+  pass "flow-state-update.sh patch --preserve-error-count keeps error_count=2 intact"
+else
+  fail "expected error_count=2 preserved with --preserve-error-count, got '$state_error_count_k'"
+fi
+
+echo "TC-634-L: flow-state-update.sh patch WITHOUT --preserve-error-count resets error_count to 0"
+dir634l="$GUARD_TEST_DIR/tc634l"
+mkdir -p "$dir634l"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# error_count=2 の state を手動作成
+create_state_file "$dir634l" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 2, \"session_id\": \"sid-634l\"}"
+# flag 無しの patch を実行
+(
+  cd "$dir634l"
+  bash "$SCRIPT_UPDATER" patch --phase "create_delegation" --next "after reset"
+) 2>/dev/null
+state_error_count_l=$(jq -r '.error_count // empty' "$dir634l/.rite-flow-state" 2>/dev/null)
+if [ "$state_error_count_l" = "0" ]; then
+  pass "flow-state-update.sh patch without --preserve-error-count resets error_count=2 → 0 (default behavior)"
+else
+  fail "expected error_count=0 reset without flag, got '$state_error_count_l'"
 fi
 
 # --------------------------------------------------------------------------
