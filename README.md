@@ -80,6 +80,7 @@ This will:
 | `/rite:issue:update` | Update work memory |
 | `/rite:issue:close` | Check Issue completion |
 | `/rite:issue:edit` | Edit existing Issue interactively |
+| `/rite:issue:recall` | Search Contextual Commit history for past decisions |
 | `/rite:pr:create` | Create draft PR |
 | `/rite:pr:ready` | Mark as Ready for review |
 | `/rite:pr:review` | Multi-reviewer review |

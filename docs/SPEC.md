@@ -62,6 +62,7 @@ The command prefix `rite` was chosen for:
 | `/rite:issue:update` | Update work memory | `[memo]` |
 | `/rite:issue:close` | Check Issue completion | `<Issue number>` |
 | `/rite:issue:edit` | Interactively edit existing Issue | `<Issue number>` |
+| `/rite:issue:recall` | Search Contextual Commit history for past decisions | `[{scope}\|{action}({scope})]` |
 | `/rite:pr:create` | Create draft PR | `[PR title]` |
 | `/rite:pr:ready` | Mark as Ready for review | `[PR number]` |
 | `/rite:pr:review` | Multi-reviewer review | `[PR number]` |
@@ -356,7 +357,7 @@ Agent documentation...
 | `model` | No | Model selection (default: inherit from parent session) |
 | `tools` | No | List of available tools (default: inherit all tools from parent; omit to enable all tools) |
 
-**Note on `tools`**: Reviewer agents in the rite plugin are currently invoked via `subagent_type: general-purpose`, which gives them access to all tools from the parent session regardless of the `tools` frontmatter. The `tools` field is therefore optional and is omitted from all reviewer agents to prevent accidental silent tool restrictions when named subagent invocation is introduced in a future phase.
+**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3 (#358). The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. See [`docs/migration-guides/review-named-subagent.md`](migration-guides/review-named-subagent.md) for the full rationale, opus recommendation, and rollback scenarios.
 
 **Current Agents:**
 
