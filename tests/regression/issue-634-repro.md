@@ -76,8 +76,24 @@ grep -F 'RE-ENTRY DETECTED' plugins/rite/hooks/stop-guard.sh
 
 ```bash
 bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
-# 期待: TC-634-A / TC-634-B / TC-634-C / TC-634-D 全て PASS
-# (cycle 2 で TC-634-D 追加 — create_interview case arm の error_count=1 escalation を TC-634-B と対称に verify)
+# 期待: TC-634-A 〜 TC-634-L まで全 12 TC が PASS (FAIL 件数 0)
+#
+# TC グルーピング:
+#   - 主機能 (cycle 1-2): TC-634-A/B/C/D
+#       A: create_post_interview base HINT に Step 0 bash command と INTERVIEW_DONE marker が含まれる
+#       B: create_post_interview + error_count=1 で RE-ENTRY DETECTED escalation が emit される
+#       C: create_interview case arm も Step 0 + INTERVIEW_DONE marker を含む (symmetric)
+#       D: create_interview + error_count=1 escalation (B と対称)
+#   - twin-site contract (cycle 3-4 F-04/F-06): TC-634-E/F/G/H/I/J
+#       E/F: STEP_0_PATCH_FAILED grep 指示の base / escalation path 両方で保持
+#       G/H/I: create_interview HINT に PREFLIGHT_PATCH_FAILED / PREFLIGHT_CREATE_FAILED /
+#              INTERVIEW_RETURN_PATCH_FAILED grep 参照が含まれる
+#       J: create_post_interview HINT に STEP_1_PATCH_FAILED grep 参照が含まれる
+#   - --preserve-error-count flag (cycle 4 F-03): TC-634-K/L
+#       K: flow-state-update.sh patch --preserve-error-count が error_count=2 を保持
+#       L: flag 無しの patch が error_count を 0 にリセット (default behavior)
+#
+# 将来 TC を追加する場合、本 Section も同時に更新すること (列挙 drift による false-negative 回避)。
 ```
 
 ### 2.4 Self-exemplar integration test (AC-3)

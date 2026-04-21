@@ -913,8 +913,9 @@ fi
 
 # --------------------------------------------------------------------------
 # TC-634-D: create_interview case arm error_count escalation (verified-review cycle 2 F-09 / #636)
-# Issue #634: stop-guard.sh L312-314 (`error_count >= 1` で RE-ENTRY DETECTED HINT 追加) の create_interview
-# 側 escalation path は cycle 1 テストでは未カバーだった。TC-634-B (create_post_interview) と対称に
+# Issue #634: stop-guard.sh の create_interview case arm における `error_count >= 1` で
+# RE-ENTRY DETECTED HINT を追加する escalation branch (line-number 参照を避ける理由は cycle 8 F-05 参照)
+# は cycle 1 テストでは未カバーだった。TC-634-B (create_post_interview) と対称に
 # create_interview + error_count=1 での escalation を verify する。
 # --------------------------------------------------------------------------
 echo "TC-634-D: create_interview with error_count=1 emits RE-ENTRY DETECTED escalation (symmetric with TC-634-B)"
@@ -938,7 +939,7 @@ fi
 
 # --------------------------------------------------------------------------
 # TC-634-E: STEP_0_PATCH_FAILED twin site contract verification (verified-review cycle 3 F-04 / #636)
-# Issue #634: stop-guard.sh L325 の HINT が '[CONTEXT] STEP_0_PATCH_FAILED=1' grep 参照を LLM に指示
+# Issue #634: stop-guard.sh の create_post_interview case arm base HINT block (line-number 参照を避ける理由は cycle 8 F-05 参照) が '[CONTEXT] STEP_0_PATCH_FAILED=1' grep 参照を LLM に指示
 # (cycle 2 F-05 consumer wiring として追加)。create.md Step 0 bash block 失敗時の emit 側との
 # twin site contract を verify する。片側の削除/リネームを catch する。
 # --------------------------------------------------------------------------
@@ -1212,7 +1213,8 @@ fi
 # TC-634-F: escalation path STEP_0_PATCH_FAILED grep 指示 coverage
 #   (verified-review cycle 4 F-07 / #636)
 # TC-634-E は error_count=0 fresh state の通常 path のみカバー。本 TC は escalation 分岐
-# (L338 `if [ "${ERROR_COUNT:-0}" -ge 1 ]; then WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED..."` 追記)
+# (`error_count >= 1` で WORKFLOW_HINT に RE-ENTRY DETECTED を append する branch、
+# line-number 参照を避ける理由は cycle 8 F-05 参照)
 # を経由しても base HINT の STEP_0_PATCH_FAILED=1 grep 指示が保持されることを verify する。
 # --------------------------------------------------------------------------
 echo "TC-634-F: create_post_interview + error_count=1 (escalation) still emits STEP_0_PATCH_FAILED grep reference"
@@ -1304,9 +1306,11 @@ fi
 # TC-634-K/L: flow-state-update.sh --preserve-error-count flag behavior pin
 #   (verified-review cycle 4 F-03 / #636)
 # cycle 3 F-01 で patch mode JQ_FILTER 分岐 (--preserve-error-count) を実装したが、既存 TC-634-B/D
-# の error_count=2 観察は stop-guard.sh L242 の直接 `jq --argjson cnt` write 経由で、
-# flow-state-update.sh patch mode の preserve 分岐 (新コード) を exercise しない。本 2 TC で
-# JQ_FILTER 分岐を直接 verify し、将来の refactor で silent regression しないよう pin する。
+# の error_count=2 観察は stop-guard.sh の create_post_interview case arm 内 error_count increment
+# block (直接 `jq --argjson cnt` で state file を atomic write する経路、line-number 参照を避ける理由は
+# cycle 8 F-05 参照) 経由で、flow-state-update.sh patch mode の preserve 分岐 (新コード) を
+# exercise しない。本 2 TC で JQ_FILTER 分岐を直接 verify し、将来の refactor で silent regression
+# しないよう pin する。
 # --------------------------------------------------------------------------
 SCRIPT_UPDATER="$SCRIPT_DIR/../flow-state-update.sh"
 
@@ -1315,36 +1319,121 @@ dir634k="$GUARD_TEST_DIR/tc634k"
 mkdir -p "$dir634k"
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 # error_count=2 の state を手動作成
+# root-cause(test-quality): stderr suppress + exit code 未検査 + next_action 未検査の 3 条件が
+# 揃うと「スクリプトが一切実行されなくても pre-state の error_count=2 がそのまま残って PASS」
+# する silent-false-pass を起こす。本 TC は JQ_FILTER 分岐 silent regression 検出 pin の
+# 役割を果たせないため、exit code + next_action の両方を assertion する。
 create_state_file "$dir634k" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 2, \"session_id\": \"sid-634k\"}"
 # --preserve-error-count 付き patch を実行 (同一 phase self-patch)
+stderr_file634k=$(mktemp /tmp/rite-tc634k-stderr-XXXXXX)
 (
   cd "$dir634k"
   bash "$SCRIPT_UPDATER" patch --phase "create_post_interview" --next "after preserve" --preserve-error-count
-) 2>/dev/null
+) 2>"$stderr_file634k"
+rc634k=$?
 state_error_count_k=$(jq -r '.error_count // empty' "$dir634k/.rite-flow-state" 2>/dev/null)
-if [ "$state_error_count_k" = "2" ]; then
-  pass "flow-state-update.sh patch --preserve-error-count keeps error_count=2 intact"
+state_next_k=$(jq -r '.next_action // empty' "$dir634k/.rite-flow-state" 2>/dev/null)
+if [ "$rc634k" -eq 0 ] && [ "$state_error_count_k" = "2" ] && [ "$state_next_k" = "after preserve" ]; then
+  pass "flow-state-update.sh patch --preserve-error-count keeps error_count=2 intact (rc=0, next_action advanced)"
 else
-  fail "expected error_count=2 preserved with --preserve-error-count, got '$state_error_count_k'"
+  fail "TC-634-K failed: rc=$rc634k, error_count='$state_error_count_k' (expected 2), next_action='$state_next_k' (expected 'after preserve'). stderr=$(cat "$stderr_file634k")"
 fi
+rm -f "$stderr_file634k"
 
 echo "TC-634-L: flow-state-update.sh patch WITHOUT --preserve-error-count resets error_count to 0"
 dir634l="$GUARD_TEST_DIR/tc634l"
 mkdir -p "$dir634l"
 fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 # error_count=2 の state を手動作成
+# root-cause(test-quality): TC-634-K と同じ silent-false-pass 経路を持つため、exit code +
+# next_action 変化 + error_count reset の 3 条件を全て assertion して JQ_FILTER default 分岐
+# (reset-to-zero) の silent regression を検出する。
 create_state_file "$dir634l" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 2, \"session_id\": \"sid-634l\"}"
 # flag 無しの patch を実行
+stderr_file634l=$(mktemp /tmp/rite-tc634l-stderr-XXXXXX)
 (
   cd "$dir634l"
   bash "$SCRIPT_UPDATER" patch --phase "create_delegation" --next "after reset"
-) 2>/dev/null
+) 2>"$stderr_file634l"
+rc634l=$?
 state_error_count_l=$(jq -r '.error_count // empty' "$dir634l/.rite-flow-state" 2>/dev/null)
-if [ "$state_error_count_l" = "0" ]; then
-  pass "flow-state-update.sh patch without --preserve-error-count resets error_count=2 → 0 (default behavior)"
+state_next_l=$(jq -r '.next_action // empty' "$dir634l/.rite-flow-state" 2>/dev/null)
+if [ "$rc634l" -eq 0 ] && [ "$state_error_count_l" = "0" ] && [ "$state_next_l" = "after reset" ]; then
+  pass "flow-state-update.sh patch without --preserve-error-count resets error_count=2 → 0 (rc=0, next_action advanced)"
 else
-  fail "expected error_count=0 reset without flag, got '$state_error_count_l'"
+  fail "TC-634-L failed: rc=$rc634l, error_count='$state_error_count_l' (expected 0), next_action='$state_next_l' (expected 'after reset'). stderr=$(cat "$stderr_file634l")"
 fi
+rm -f "$stderr_file634l"
+
+# --------------------------------------------------------------------------
+# TC-634-M/N: fault injection for mv failure diagnostic paths
+#   (verified-review cycle 5 F-04 / #636)
+# cycle 4 F-05/F-07/F-08 で stop-guard.sh の error_count atomic write 後 mv 失敗 path と
+# flow-state-update.sh の create/patch/increment mode mv 失敗 path に diagnostic message を
+# 追加したが、test が一切存在せず revert しても全 test が PASS する silent-failure 状態だった。
+# fault injection (PATH override で偽の mv を先頭に挿入) で mv 失敗を再現し、diagnostic log が
+# 記録されること / stderr に mv failed が emit されることを verify する。
+# --------------------------------------------------------------------------
+
+echo "TC-634-M: stop-guard.sh mv failure (fault injection) emits error_count_mv_failed diag log"
+dir634m="$GUARD_TEST_DIR/tc634m"
+mkdir -p "$dir634m"
+# PATH override 用の fake mv binary (disk full / permission denied / EXDEV simulation)
+fake_bin634m=$(mktemp -d "$GUARD_TEST_DIR/tc634m-bin-XXXXXX")
+cat > "$fake_bin634m/mv" << 'FAKEMV_EOF'
+#!/bin/sh
+# Fault injection: simulate mv failure (e.g., disk full / permission denied / EXDEV)
+exit 1
+FAKEMV_EOF
+chmod +x "$fake_bin634m/mv"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# active=true + error_count=0 で stop-guard が error_count を increment する path を通す
+create_state_file "$dir634m" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634m\"}"
+input634m="{\"stop_hook_active\": false, \"cwd\": \"$dir634m\"}"
+# fake mv を PATH 先頭に差し込んで stop-guard.sh を起動
+# stderr_file634m は debug 用に握っておく (stop-guard stderr 自体は exit 2 + block message を含む)
+stderr_file634m=$(mktemp "$GUARD_TEST_DIR/tc634m-stderr-XXXXXX")
+(
+  PATH="$fake_bin634m:$PATH" bash "$GUARD" <<< "$input634m"
+) >/dev/null 2>"$stderr_file634m" || true
+# diag log に error_count_mv_failed エントリが記録されていることを verify
+if [ -f "$dir634m/.rite-stop-guard-diag.log" ] \
+    && grep -q "error_count_mv_failed phase=create_post_interview" "$dir634m/.rite-stop-guard-diag.log"; then
+  pass "stop-guard.sh emits error_count_mv_failed diag log when mv fails (fault injection via PATH)"
+else
+  fail "expected 'error_count_mv_failed phase=create_post_interview' in diag log, got: $(cat "$dir634m/.rite-stop-guard-diag.log" 2>/dev/null || echo '(no diag log)'). stderr=$(cat "$stderr_file634m")"
+fi
+rm -f "$stderr_file634m"
+rm -rf "$fake_bin634m"
+
+echo "TC-634-N: flow-state-update.sh mv failure (fault injection) emits 'mv failed (patch mode)' stderr"
+dir634n="$GUARD_TEST_DIR/tc634n"
+mkdir -p "$dir634n"
+fake_bin634n=$(mktemp -d "$GUARD_TEST_DIR/tc634n-bin-XXXXXX")
+cat > "$fake_bin634n/mv" << 'FAKEMV_EOF'
+#!/bin/sh
+# Fault injection: simulate mv failure in flow-state-update.sh patch mode
+exit 1
+FAKEMV_EOF
+chmod +x "$fake_bin634n/mv"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# patch mode の対象 state file を事前作成 (mv 失敗後に元の state が温存されることも暗黙に pin)
+create_state_file "$dir634n" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634n\"}"
+stderr_file634n=$(mktemp "$GUARD_TEST_DIR/tc634n-stderr-XXXXXX")
+rc634n=0
+(
+  cd "$dir634n"
+  PATH="$fake_bin634n:$PATH" bash "$SCRIPT_UPDATER" patch --phase "create_delegation" --next "after patch"
+) >/dev/null 2>"$stderr_file634n" || rc634n=$?
+# flow-state-update.sh は mv 失敗時に `exit 1` するため rc=1 を期待
+# かつ stderr に 'ERROR: mv failed (patch mode)' の diagnostic を期待
+if [ "$rc634n" -ne 0 ] && grep -q "mv failed (patch mode)" "$stderr_file634n"; then
+  pass "flow-state-update.sh emits 'mv failed (patch mode)' stderr and exits non-zero on mv failure"
+else
+  fail "expected rc!=0 and 'mv failed (patch mode)' stderr, got rc=$rc634n, stderr=$(cat "$stderr_file634n")"
+fi
+rm -f "$stderr_file634n"
+rm -rf "$fake_bin634n"
 
 # --------------------------------------------------------------------------
 echo ""

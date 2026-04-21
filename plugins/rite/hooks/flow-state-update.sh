@@ -187,7 +187,7 @@ case "$MODE" in
         fi
       fi
     fi
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh L247-250 と対称に
+    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)
     # 診断メッセージを出す。`set -euo pipefail` 下で mv 失敗は script を非 0 exit させるが、
     # else branch は jq 失敗のみを surface するため、disk full / permission denied / EXDEV 等の
     # mv 失敗要因が silent に握りつぶされる (silent failure-hunter 指摘)。patch / increment mode と対称化。
@@ -241,7 +241,7 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
       JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh L247-250 と対称に診断する。
+    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)診断する。
     if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
         rm -f "$TMP_STATE"
@@ -255,7 +255,7 @@ case "$MODE" in
     fi
     ;;
   increment)
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh L247-250 と対称に診断する。
+    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)診断する。
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
        "$FLOW_STATE" > "$TMP_STATE"; then
