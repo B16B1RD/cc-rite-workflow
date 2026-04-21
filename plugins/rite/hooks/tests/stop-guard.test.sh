@@ -862,16 +862,26 @@ fi
 echo "TC-634-B: create_post_interview with error_count=1 emits RE-ENTRY DETECTED escalation"
 dir634b="$GUARD_TEST_DIR/tc634b"
 mkdir -p "$dir634b"
+# verified-review F-07 / #636: cross-TC 独立性確保のため fresh_ts defensive fallback を
+# TC-634-A 以降の全 TC と同じパターンで初期化する (TC-608-A 以降 12 箇所で統一されている convention)。
+# 旧実装は TC-634-A の fresh_ts 設定が leak して動作していたが、TC-634-A を skip/削除/順序変更すると
+# updated_at が空文字列で AGE check 早期 exit 0 → silent false-pass する経路があった。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir634b" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-634b\"}"
 stderr_file634b="$(mktemp "$GUARD_TEST_DIR/stderr634b.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir634b\", \"session_id\": \"sid-634b\"}"
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634b") && rc=0 || rc=$?
+# verified-review F-13 / #636: HINT 文字列だけでなく state file の .error_count 実値も検証する。
+# L241-246 の jq write 失敗 (silent) が発生しても HINT だけは error_count=2 を emit するため、
+# state 実値検証がないと silent write failure を test で検出できない経路があった。
+state_error_count=$(jq -r '.error_count // empty' "$dir634b/.rite-flow-state" 2>/dev/null)
 if [ $rc -eq 2 ] \
     && grep -q "RE-ENTRY DETECTED" "$stderr_file634b" \
-    && grep -q "error_count=2" "$stderr_file634b"; then
-  pass "create_post_interview error_count=1 → RE-ENTRY DETECTED escalation (error_count=2 in HINT)"
+    && grep -q "error_count=2" "$stderr_file634b" \
+    && [ "$state_error_count" = "2" ]; then
+  pass "create_post_interview error_count=1 → RE-ENTRY DETECTED escalation + state file error_count=2 (post-increment write verified)"
 else
-  fail "expected RE-ENTRY DETECTED escalation with error_count=2 (post-increment), got rc=$rc stderr='$(cat "$stderr_file634b")'"
+  fail "expected RE-ENTRY DETECTED escalation with error_count=2 in HINT + state file, got rc=$rc, state_error_count='$state_error_count', stderr='$(cat "$stderr_file634b")'"
 fi
 
 # --------------------------------------------------------------------------

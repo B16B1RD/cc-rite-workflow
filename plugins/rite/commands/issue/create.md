@@ -525,11 +525,11 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-**🚨 Immediate after interview returns**: When `rite:issue:create-interview` outputs a result pattern (`[interview:completed]` or `[interview:skipped]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below. The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section; execute the 🚨 Mandatory After Interview steps without delay.
+**🚨 Immediate after interview returns**: When `rite:issue:create-interview` outputs a result pattern (`[interview:completed]` / `[interview:skipped]`) or emits the `[CONTEXT] INTERVIEW_DONE=1` marker and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below. The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section; execute the 🚨 Mandatory After Interview steps without delay.
 
 ### 🚨 Mandatory After Interview
 
-> **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: `rite:issue:create-interview` の return 直後、**応答を終了せずに** 以下の Step 1-2 を即座に実行する。`[interview:*]` return tag は turn 境界ではなく継続トリガである。turn を閉じた場合、ユーザーの `continue` 介入なしに workflow が停止し、Issue は作成されない (本 Issue #525 の再発条件)。
+> **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: `rite:issue:create-interview` の return 直後、**応答を終了せずに** 以下の Step 0 から Step 3 を順に即座に実行する。`[interview:*]` return tag は turn 境界ではなく継続トリガである。turn を閉じた場合、ユーザーの `continue` 介入なしに workflow が停止し、Issue は作成されない (本 Issue #525 の再発条件)。
 
 > **Enforcement**: `.rite-flow-state.phase` is `create_post_interview` at this point (the sub-skill wrote this via its Defense-in-Depth section). Stop-guard blocks any stop attempt while the flow-state is active — it will not unblock until `.rite-flow-state.phase` advances to `create_delegation` (via the Delegation Routing Pre-write below) or reaches `create_completed` (via the terminal sub-skill). Step 1 below refreshes the state timestamp but does NOT advance the phase on its own — the only legitimate path to a stoppable state is to continue through Phase 0.6 → Delegation Routing → terminal sub-skill. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
@@ -543,21 +543,31 @@ No GitHub Issue has been created yet. The interview only collects information.
 #  continuation is driven by the Pre-flight flow-state write done by the sub-skill).
 # Re-affirm phase and refresh timestamp (idempotent with Step 1 below, but Step 0 is
 # a concrete tool call that prevents LLM implicit stop).
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "create_post_interview" \
-  --next "Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop." \
-  --if-exists
-echo "[CONTEXT] MANDATORY_AFTER_INTERVIEW_STEP_0=1"
+#
+# Exit code を明示 check して silent failure を防ぐ (verified-review F-03 / #636)。
+# --if-exists は「file 不在 skip」と「patch 成功」を両方 exit 0 で返すため、
+# 真の patch 失敗 (disk full / permission denied 等) のみを区別して STEP_0_PATCH_FAILED
+# として emit する。Step 1 は idempotent patch として redundant に実行されるため、
+# Step 0 の失敗自体は非 blocking (defense-in-depth の 2 重化は維持される)。
+if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --next "Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop." \
+    --if-exists; then
+  echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
+  # 非 blocking: Step 1 が idempotent patch として再試行する。ここで exit 1 すると
+  # 既に進捗している workflow を kill してしまうため、warning のみで continue する。
+fi
 ```
 
 > **Rationale (Issue #634)**: The regression pattern observed in #552/#561/#622/#628 is that the LLM, after seeing the sub-skill's HTML-comment sentinel (`<!-- [interview:skipped] -->` or `<!-- [interview:completed] -->`), perceives the work as "complete" and ends the turn. Step 0 inserts a **concrete bash tool invocation** as the first required action after the sub-skill returns, eliminating the turn-boundary signal. The LLM sees "I need to run this bash first" instead of "I'm done". Step 0 is redundant with Step 1 (patch mode is idempotent) — the redundancy IS the defense.
 
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`:
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`. `--if-exists` を Step 0 と対称に付与することで、Pre-flight 漏れ経路でも defense-in-depth redundancy が一貫して保たれる (verified-review F-11 / #636):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "create_post_interview" \
-  --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+  --if-exists
 ```
 
 **Step 2 (Issue #552 — mandatory continuation step)**: Run the Pre-check list at the top of this document (section "Pre-check list"). If any item is `NO`, do NOT end the turn — continue to Phase 0.6 evaluation.

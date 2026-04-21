@@ -523,7 +523,7 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 
 > **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0). The flow-state write was moved to the 🚨 MANDATORY Pre-flight section at the top of this file (Issue #622) so the post-interview phase is recorded regardless of interview scope. The idempotent re-patch below is retained as a defense-in-depth second write that refreshes the timestamp and `next_action` immediately before emitting the return output.
 
-Immediately before emitting the three-line return block, re-patch `.rite-flow-state` to refresh the timestamp. This is idempotent with the 🚨 MANDATORY Pre-flight write (same phase, same transition target):
+Immediately before emitting the four-line return block, re-patch `.rite-flow-state` to refresh the timestamp. This is idempotent with the 🚨 MANDATORY Pre-flight write (same phase, same transition target):
 
 ```bash
 if [ -f ".rite-flow-state" ]; then

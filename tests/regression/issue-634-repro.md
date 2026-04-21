@@ -12,7 +12,7 @@
 
 ### 1.1 前提条件
 
-- `plugins/rite/hooks/hooks.json` が native plugin hook として登録されている (`Stop` hook = `stop-guard.sh`)
+- `plugins/rite/.claude-plugin/plugin.json` の `hooks` field から `plugins/rite/hooks/hooks.json` が native plugin hook として読み込まれ登録されている (`Stop` hook = `stop-guard.sh`)
 - `jq` がインストールされている
 - `.rite-flow-state` が存在しない (fresh start)
 - #628 までの全累積対策が適用されている HEAD
@@ -56,7 +56,9 @@ step 5 と step 8 が **同 turn 内で連続実行される**。`Crunched for .
 ```bash
 # 新 marker の grep 検証
 grep -F '[CONTEXT] INTERVIEW_DONE=1' plugins/rite/commands/issue/create-interview.md
-# 期待: 2 件以上 (skipped + completed の両 example で emit)
+# 期待: example ブロック内で 2 件 (skipped example + completed example で emit)。
+# 説明文中の言及を含めた合計は 4 件以上になる (Line 538 / 544 等で参照される)。
+# 判定基準: `>= 2` (example での emit を必須とするが、説明文での言及は将来変動しうる)
 
 # Step 0 Immediate Bash Action の grep 検証
 grep -F 'Step 0: Immediate Bash Action' plugins/rite/commands/issue/create.md
@@ -114,7 +116,7 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
 | AC-2 (Happy path, completed) | Feature preset で deep-dive 実施 → continue 不要で完走 | Manual + Integration (Section 2.4) |
 | AC-3 (Self-exemplar) | 3+ 件連続作成で `continue` 介入ゼロ | Section 2.4 の manual scenario |
 | AC-4 (Error / observable) | stop-guard block → `workflow_incident` sentinel stderr emit | TC-622-B (既存) |
-| AC-5 (Non-regression contract phrases) | create.md に `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` の各 count >= 1 | `bash tests/regression/verify-634-structure.sh` (合わせて手動 grep、下記 Section 5) |
+| AC-5 (Non-regression contract phrases) | create.md に `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` の各 count >= 1 | Section 5 の手動 grep スニペット (下記) — `verify-634-structure.sh` は未実装のため inline grep 手順のみを規範とする |
 | AC-6 (Non-regression structure) | HTML コメント sentinel + case arm + whitelist + Pre-flight 4 点保持 | 下記 Section 5 |
 
 ## 5. 構造的 non-regression grep 検証
