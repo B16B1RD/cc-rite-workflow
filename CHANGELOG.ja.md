@@ -16,6 +16,30 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 
 ## [Unreleased]
 
+### 追加
+
+- **`/rite:lint` に bidirectional backlink format 機械検証を追加** — Wiki ページがコロン記法の canonical な bidirectional backlink 参照を維持しているかを `/rite:lint` が機械的に検証する。Phase 3.x で非ブロッキングの構造 drift チェックとして実行され、不整合は最終レポートに表示される (#627)。
+
+### 変更
+
+- **docs: develop 実装を SPEC / README / CLAUDE.md / CHANGELOG に反映** — v0.4.0 後の複数 PR によるドキュメント整合化スイープ:
+  - Commands 表 + Agent File Format Note — README / README.ja / SPEC / SPEC.ja の Commands 表に `/rite:issue:recall` を追加、README.ja に `/rite:init --upgrade` 行を追加、`subagent_type: general-purpose` の Note を named-subagent 記述に差し替え (#637 / #638)
+  - SPEC の Plugin Structure ツリーを v0.4.0+ 実装に合わせて全面書換 (commands/issue のサブスキル、commands/pr/references、commands/wiki、agents/_reviewer-base、skills/{investigate,wiki}、hooks/{scripts,tests}、templates/{config,review,wiki}、scripts 拡充、references 拡充)、Configuration セクションを `docs/CONFIGURATION.md` ポインタに圧縮、Hook Specification に post-compact / phase-transition-whitelist / verify-terminal-output / session-ownership / issue-comment-wm-sync / wiki-ingest-trigger + wiki-query-inject / workflow-incident-emit / hook-preamble / helper-scripts のサブセクションを追加 (#639 / #640)
+  - CLAUDE.md アーキテクチャ図を刷新、`docs/BEST_PRACTICES_ALIGNMENT.md` を v0.1–v0.3 期の歴史文書として `docs/archive/` 配下に退避 (#641 / #642)
+  - CHANGELOG Unreleased を v0.4.0 後の develop 活動で整備 (本 PR, #643)
+  - repo 全体の version rename 1.0.0 → 0.4.0 (次期リリースは v1.0.0 ではなく v0.4.0 として出す方針)。version ファイル、README バッジ、CHANGELOG [1.0.0] エントリ → [0.4.0]、内部の `v1.0.0 (#557)` 参照を更新 (#645)
+- **`commands/` 全体で bidirectional backlink format をコロン記法に統一** — `refactor(commands)` によるプロジェクト全体の Wiki 相互参照スタイル整列 (#620 / #626) および `wiki/ingest.md` / `wiki/lint.md` の既存 DRIFT-CHECK ANCHOR ブロックに bidirectional backlink エントリを追加 (#607 / #619)。
+- **semantic anchor 移行** — `commands/init.md:145` と `hooks/scripts/gitignore-health-check.sh:298` に残存していた line 番号 literal を将来の編集に耐性のある semantic anchor に置換 (#617)。
+- **`/rite:wiki:lint` `--auto` 早期 return の整列** — Phase 1.1 / 1.3 の早期 return 経路を Phase 9.2 三点セット規約に整合させ、sentinel / status-line / continuation-hint の出力を統一 (#630 / #632)。
+- **Wiki スキル整備** — `skills/wiki/SKILL.md` EN description を canonical と整列 (#603 / #616)、`wiki/lint.md` 完了レポート UX 出力順を canonical frontmatter 順に整列 (#615)。
+
+### 修正
+
+- **サブスキル return 後の implicit stop 多層防御** — 累積対策 (#534 / #628 / #618 / #621 / #604 / #634) により、サブスキル return → orchestrator 継続経路が Bash heuristic 起因の implicit stop に対して強固になる。`create-interview`、`wiki/ingest.md` Phase 8 auto-lint、`pr/cleanup` wiki-ingest return、`pr/cleanup` wiki-auto-ingest Phase 5 境界をカバー。`INTERVIEW_DONE=1` plain-text marker (#634 / #636) と `stop-guard.sh` case-arm `WORKFLOW_HINT` の Step 0 Immediate Bash Action による拡張を含む。
+- **`wiki/lint.md` Phase 9.2 `--auto` continuation sentinel** — `--auto` 出力が明示的な continuation sentinel を emit するようになり、警告付き完了と silent-skip の区別が caller 側で可能になった (#625 / #629)。
+- **`pr/cleanup` 完了メッセージの末尾空行** — 「次のステップ」見出し後の不要な末尾空行を削除し、ターミナル表示をクリーンに (#633 / #635)。
+- **`wiki/` と `pr/cleanup` の preprocessor-safe 表記への移行** — スラッシュコマンドのプリプロセッサが bash で eval してしまう (結果として `slash command not found`) `!`+backtick 表現を、`#613` で文書化された規約に従って `if ! cmd; then` 形式へ移行 (#609 / #610, #611 / #612, #614)。
+
 ## [0.4.0] - 2026-04-17
 
 ### 破壊的変更

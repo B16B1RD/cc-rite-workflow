@@ -17,6 +17,30 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+### Added
+
+- **Bidirectional backlink format verification in `/rite:lint`** — `/rite:lint` now mechanically verifies that Wiki pages maintain bidirectional backlink references in the canonical colon-delimited form. Runs as a non-blocking structural drift check in Phase 3.x and surfaces mismatches in the final report (#627).
+
+### Changed
+
+- **docs: reflect v0.4.0+ implementation across SPEC / README / CLAUDE.md / CHANGELOG** — Multi-PR documentation alignment sweep after v0.4.0:
+  - Commands table + Agent File Format Note — added `/rite:issue:recall` to README / README.ja / SPEC / SPEC.ja Commands tables, added `/rite:init --upgrade` to README.ja, replaced the `subagent_type: general-purpose` note with the named-subagent description (#637 / #638)
+  - SPEC Plugin Structure tree refreshed to match v0.4.0+ file layout (commands/issue sub-skills, commands/pr/references, commands/wiki, agents/_reviewer-base, skills/{investigate,wiki}, hooks/{scripts,tests}, templates/{config,review,wiki}, scripts expansion, references expansion); Configuration section compressed to a pointer to `docs/CONFIGURATION.md`; Hook Specification extended with post-compact / phase-transition-whitelist / verify-terminal-output / session-ownership / issue-comment-wm-sync / wiki-ingest-trigger + wiki-query-inject / workflow-incident-emit / hook-preamble / helper-scripts sub-sections (#639 / #640)
+  - CLAUDE.md architecture diagram refreshed; `docs/BEST_PRACTICES_ALIGNMENT.md` archived under `docs/archive/` as historical v0.1–v0.3 reference (#641 / #642)
+  - CHANGELOG Unreleased populated with post-v0.4.0 develop activity (this PR, #643)
+  - Repo-wide version rename 1.0.0 → 0.4.0 (next release planned as v0.4.0 not v1.0.0); version files, README badges, CHANGELOG [1.0.0] entry → [0.4.0], and internal `v1.0.0 (#557)` references updated (#645)
+- **Bidirectional backlink format unified to colon notation** across `commands/` — `refactor(commands)` aligning Wiki cross-reference style project-wide (#620 / #626), and extending existing DRIFT-CHECK ANCHOR blocks in `wiki/ingest.md` / `wiki/lint.md` with bidirectional backlink entries (#607 / #619).
+- **Semantic anchor migration** — replaced residual hard-coded line-number literals in `commands/init.md:145` and `hooks/scripts/gitignore-health-check.sh:298` with semantic anchors resilient to future edits (#617).
+- **`/rite:wiki:lint` `--auto` early-return alignment** — Phase 1.1 / 1.3 early-return paths aligned with the Phase 9.2 three-piece convention so sentinel / status-line / continuation-hint emission is uniform (#630 / #632).
+- **Wiki skill polish** — `skills/wiki/SKILL.md` EN description aligned with its canonical form (#603 / #616); `wiki/lint.md` completion-report UX output order aligned with the canonical frontmatter order (#615).
+
+### Fixed
+
+- **Sub-skill return implicit-stop multi-layer defense** — Accumulated fixes (#534 / #628 / #618 / #621 / #604 / #634) hardening the sub-skill return → orchestrator continuation path against Bash heuristic-induced implicit stops. Covers `create-interview`, `wiki/ingest.md` Phase 8 auto-lint, `pr/cleanup` wiki-ingest return, and `pr/cleanup` wiki-auto-ingest Phase 5 boundaries. Includes `INTERVIEW_DONE=1` plain-text marker (#634 / #636) and `stop-guard.sh` case-arm `WORKFLOW_HINT` expansion with Step 0 Immediate Bash Action.
+- **`wiki/lint.md` Phase 9.2 `--auto` continuation sentinel** — `--auto` output now emits an explicit continuation sentinel so callers can distinguish completed-with-warnings from silent-skip (#625 / #629).
+- **`pr/cleanup` completion message trailing blank line** — Removed the spurious trailing blank line after the "次のステップ" heading for cleaner terminal rendering (#633 / #635).
+- **Preprocessor-safe syntax migration in `wiki/` and `pr/cleanup`** — Residual `!`+backtick expressions that the slash-command preprocessor evaluated via bash (causing `slash command not found` failures) were migrated to the `if ! cmd; then` form per the convention documented in #613 (#609 / #610, #611 / #612, #614).
+
 ## [0.4.0] - 2026-04-17
 
 ### BREAKING CHANGE
