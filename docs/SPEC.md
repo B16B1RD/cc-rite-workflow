@@ -300,7 +300,7 @@ Plugin metadata file format:
 ```json
 {
   "name": "rite",
-  "version": "1.0.0",
+  "version": "0.4.0",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "B16B1RD" },
   "license": "MIT"
@@ -453,7 +453,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `notifications.{slack,discord,teams}` | External notifications |
 | `language` | `auto` / `ja` / `en` |
 
-**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades, and `/rite:lint` emits deprecation warnings for removed keys — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v1.0.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
+**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades, and `/rite:lint` emits deprecation warnings for removed keys — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
 
 ---
 
