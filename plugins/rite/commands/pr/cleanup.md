@@ -1806,15 +1806,17 @@ git stash pop
 2. `/rite:issue:start <issue_number>` で新しい作業を開始
 ```
 
+> **⚠️ MUST NOT (#633, Phase 9.2 三点セット規約整合)**: 「次のステップ:」ブロック最終項目 (`2. /rite:issue:start ...`) の直後に余計な空行を出力してはならない。Phase 5.3 Step 1 bash 実行は最終項目直後に連続して行い、Phase 5.3 Step 2 HTML コメント sentinel は bash 実行直後に連続して出力する (下記 Phase 5.3 Output ordering 参照)。末尾空行は LLM turn-boundary heuristic を誤発火させうる fragile 要因であり、Phase 9.2 三点セット規約 (完了メッセージ → 次のステップ → HTML コメント sentinel の連続出力、`wiki/lint.md` Phase 9.2 canonical pattern 参照) と整合させること。
+
 ### 5.3 Terminal Completion (Issue #604)
 
 > **⚠️ MUST NOT (#604, mirrors #561)**: 「ユーザー可視最終行 = `[cleanup:completed]` の bare bracket 形式」で turn を終わらせてはならない。bare sentinel は LLM の turn-boundary heuristic を誤発火させ、Mode B 症状 (recap 出力後の implicit stop) を再発させる既知リスク (Issue #561 解消条件)。**HTML コメント形式 (`<!-- [cleanup:completed] -->`) のみ許容**。
 >
-> **Output ordering** (絶対遵守 — Phase 5.1 / 5.2 は前段 sub-phase として Phase 5.3 進入前に既に出力済み、下記 Phase 5.3 Step 1/2 の番号と直接対応):
+> **Output ordering** (絶対遵守 — **各ブロック間に余計な空行を挿入しない** (#633)。Phase 5.1 / 5.2 は前段 sub-phase として Phase 5.3 進入前に既に出力済み、下記 Phase 5.3 Step 1/2 の番号と直接対応):
 > 1. Phase 5.1 Cleanup Result Summary — 前段で出力済み (ユーザー可視メッセージ + チェックリスト + 警告群)
-> 2. Phase 5.2 Guidance for Next Steps — 前段で出力済み (ユーザー可視 next-steps ブロック)
-> 3. Phase 5.3 Step 1: flow-state deactivate (下記 Step 1) — bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
-> 4. Phase 5.3 Step 2: `<!-- [cleanup:completed] -->` HTML コメント (下記 Step 2、絶対最終行 — rendered view では不可視、grep 可能)
+> 2. Phase 5.2 Guidance for Next Steps — 前段で出力済み (ユーザー可視 next-steps ブロック、**最終項目 (`2. /rite:issue:start ...`) の直後に余計な空行を入れない** — Phase 9.2 三点セット規約整合、#633)
+> 3. Phase 5.3 Step 1: flow-state deactivate (下記 Step 1) — Phase 5.2 最終項目直後に連続実行する (中間に空行を挟まない、#633)。bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
+> 4. Phase 5.3 Step 2: `<!-- [cleanup:completed] -->` HTML コメント (下記 Step 2、Step 1 bash 実行直後に連続出力、絶対最終行 — rendered view では不可視、grep 可能)
 
 **Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if ! cmd; then` rc capture is mandatory — silent failure here leaves `.rite-flow-state.active = true`, which causes the **next** session-end / stop-guard evaluation to surface a stale HINT for the already-completed cleanup workflow (#608 follow-up):
 
