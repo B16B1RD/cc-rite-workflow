@@ -137,116 +137,159 @@ Todo → In Progress → In Review → Done
 rite-workflow/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin metadata
-├── commands/
-│   ├── init.md              # /rite:init
+├── commands/                # Skill-invoked command files (Markdown)
+│   ├── init.md              # /rite:init (+ --upgrade)
 │   ├── getting-started.md   # /rite:getting-started
 │   ├── workflow.md          # /rite:workflow
+│   ├── investigate.md       # /rite:investigate
+│   ├── lint.md              # /rite:lint
+│   ├── resume.md            # /rite:resume
 │   ├── issue/
 │   │   ├── list.md          # /rite:issue:list
 │   │   ├── create.md        # /rite:issue:create
-│   │   ├── start.md         # /rite:issue:start
+│   │   ├── create-interview.md       # Sub-skill: interview phase
+│   │   ├── create-decompose.md       # Sub-skill: Issue decomposition
+│   │   ├── create-register.md        # Sub-skill: single-Issue registration
+│   │   ├── start.md         # /rite:issue:start (end-to-end)
 │   │   ├── update.md        # /rite:issue:update
 │   │   ├── close.md         # /rite:issue:close
-│   │   └── completion-report.md  # Completion report format
+│   │   ├── edit.md          # /rite:issue:edit
+│   │   ├── recall.md        # /rite:issue:recall
+│   │   ├── implement.md              # Sub-skill: implementation phase
+│   │   ├── implementation-plan.md    # Sub-skill: plan generation
+│   │   ├── completion-report.md      # Sub-skill: completion report format
+│   │   ├── branch-setup.md           # Sub-skill: branch creation
+│   │   ├── child-issue-selection.md  # Sub-skill: parent-child routing
+│   │   ├── parent-routing.md         # Sub-skill: parent Issue detection
+│   │   └── work-memory-init.md       # Sub-skill: work memory initialization
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready
 │   │   ├── review.md        # /rite:pr:review
 │   │   ├── fix.md           # /rite:pr:fix
 │   │   ├── cleanup.md       # /rite:pr:cleanup
-│   │   └── references/
-│   │       ├── assessment-rules.md        # Review assessment rules
-│   │       ├── archive-procedures.md      # Archive procedures
+│   │   └── references/      # Protocol documents referenced by pr/ commands
+│   │       ├── assessment-rules.md         # Review assessment rules
+│   │       ├── archive-procedures.md       # Archive procedures
+│   │       ├── bash-trap-patterns.md       # Bash trap patterns for review/fix
+│   │       ├── change-intelligence.md      # Change intelligence
+│   │       ├── fact-check.md               # External fact-checking protocol
+│   │       ├── fix-relaxation-rules.md     # Fix relaxation / 4 quality signals
+│   │       ├── internal-consistency.md     # Doc-implementation consistency protocol
 │   │       ├── review-context-optimization.md  # Review context optimization
-│   │       ├── reviewer-fallbacks.md      # Reviewer fallback profiles
-│   │       ├── change-intelligence.md     # Change intelligence
-│   │       └── fix-relaxation-rules.md    # Fix relaxation rules
-│   ├── lint.md              # /rite:lint
-│   ├── resume.md            # /rite:resume
-│   ├── skill/
-│   │   └── suggest.md       # /rite:skill:suggest
+│   │       └── reviewer-fallbacks.md       # Reviewer fallback profiles
 │   ├── sprint/
 │   │   ├── list.md          # /rite:sprint:list
 │   │   ├── current.md       # /rite:sprint:current
 │   │   ├── plan.md          # /rite:sprint:plan
 │   │   ├── execute.md       # /rite:sprint:execute
 │   │   └── team-execute.md  # /rite:sprint:team-execute
+│   ├── wiki/
+│   │   ├── init.md          # /rite:wiki:init
+│   │   ├── query.md         # /rite:wiki:query
+│   │   ├── ingest.md        # /rite:wiki:ingest
+│   │   ├── lint.md          # /rite:wiki:lint
+│   │   └── references/
+│   │       └── bash-cross-boundary-state-transfer.md
+│   ├── skill/
+│   │   └── suggest.md       # /rite:skill:suggest
 │   └── template/
 │       └── reset.md         # /rite:template:reset
-├── agents/
-│   ├── security-reviewer.md        # Security vulnerability detection
-│   ├── performance-reviewer.md     # Performance issue detection
-│   ├── code-quality-reviewer.md    # Code quality review
-│   ├── api-reviewer.md             # API design review
-│   ├── database-reviewer.md        # Database schema/query review
-│   ├── devops-reviewer.md          # Infrastructure/CI-CD review
-│   ├── frontend-reviewer.md        # UI/accessibility review
-│   ├── test-reviewer.md            # Test quality review
-│   ├── dependencies-reviewer.md    # Dependency security review
-│   ├── prompt-engineer-reviewer.md # Skill/command/agent definition review
-│   ├── tech-writer-reviewer.md     # Documentation review
-│   ├── error-handling-reviewer.md  # Error handling review
-│   ├── type-design-reviewer.md     # Type design review
-│   └── sprint-teammate.md          # Sprint team member
-├── skills/
+├── agents/                  # Subagent definitions for /rite:pr:review
+│   ├── _reviewer-base.md             # Shared reviewer principles (not a subagent)
+│   ├── security-reviewer.md
+│   ├── performance-reviewer.md
+│   ├── code-quality-reviewer.md
+│   ├── api-reviewer.md
+│   ├── database-reviewer.md
+│   ├── devops-reviewer.md
+│   ├── frontend-reviewer.md
+│   ├── test-reviewer.md
+│   ├── dependencies-reviewer.md
+│   ├── prompt-engineer-reviewer.md
+│   ├── tech-writer-reviewer.md
+│   ├── error-handling-reviewer.md
+│   ├── type-design-reviewer.md
+│   └── sprint-teammate.md   # /rite:sprint:team-execute teammate agent
+├── skills/                  # Claude Code auto-discovered skills
 │   ├── rite-workflow/
-│   │   ├── SKILL.md         # Auto-apply skill
-│   │   └── references/      # Coding principles, context management
-│   └── reviewers/
-│       └── SKILL.md         # Reviewer skill + review criteria
-├── hooks/
-│   ├── session-start.sh
-│   ├── session-end.sh
-│   ├── pre-compact.sh
-│   ├── stop-guard.sh
-│   ├── preflight-check.sh
-│   ├── post-compact-guard.sh
-│   ├── pre-tool-bash-guard.sh
-│   ├── post-tool-wm-sync.sh
-│   ├── local-wm-update.sh
-│   ├── work-memory-lock.sh
-│   ├── work-memory-update.sh
-│   ├── work-memory-parse.py
+│   │   ├── SKILL.md         # Main workflow skill (auto-activated)
+│   │   └── references/      # Coding principles, context management, etc.
+│   ├── reviewers/
+│   │   ├── SKILL.md         # Reviewer skill (auto-activated)
+│   │   ├── {api,code-quality,database,dependencies,devops,error-handling,
+│   │   │   frontend,performance,prompt-engineer,security,tech-writer,
+│   │   │   test,type-design}.md      # Per-reviewer criteria
+│   │   └── references/                # Shared reviewer references
+│   ├── investigate/
+│   │   └── SKILL.md         # Structured code investigation skill
+│   └── wiki/
+│       └── SKILL.md         # Experience Wiki skill (opt-out)
+├── hooks/                   # Claude Code lifecycle hooks + helpers
+│   ├── hooks.json           # Hook registration manifest
+│   ├── session-start.sh / session-end.sh / session-ownership.sh
+│   ├── pre-compact.sh / post-compact.sh                  # #133
+│   ├── stop-guard.sh / preflight-check.sh
+│   ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
+│   ├── phase-transition-whitelist.sh                     # Phase transition guard
+│   ├── verify-terminal-output.sh
+│   ├── hook-preamble.sh / state-path-resolve.sh          # Shared helpers
+│   ├── flow-state-update.sh / local-wm-update.sh
+│   ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │   ├── cleanup-work-memory.sh
-│   ├── state-path-resolve.sh
-│   ├── flow-state-update.sh
-│   ├── issue-body-safe-update.sh
-│   └── notification.sh
+│   ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
+│   ├── notification.sh      # External notification dispatcher (not a Claude hook)
+│   ├── wiki-ingest-trigger.sh / wiki-query-inject.sh     # Wiki auto-integration
+│   ├── workflow-incident-emit.sh                         # #366 / #524 / #555 / #567
+│   ├── scripts/             # Helper scripts invoked by hooks
+│   │   ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
+│   │   ├── wiki-growth-check.sh                          # #524 lint layer-3
+│   │   ├── backlink-format-check.sh / bang-backtick-check.sh
+│   │   ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
+│   │   └── gitignore-health-check.sh                     # #567
+│   └── tests/               # Hook-level test suite (shell-based)
 ├── templates/
-│   ├── completion-report.md  # Completion report format definition
+│   ├── README.md / completion-report.md
+│   ├── config/
+│   │   └── rite-config.yml           # Minimal default distributed by /rite:init
 │   ├── project-types/
-│   │   ├── generic.yml
-│   │   ├── webapp.yml
-│   │   ├── library.yml
-│   │   ├── cli.yml
-│   │   └── documentation.yml
+│   │   ├── generic.yml / webapp.yml / library.yml / cli.yml / documentation.yml
 │   ├── issue/
-│   │   └── default.md
-│   └── pr/
-│       ├── generic.md
-│       ├── webapp.md
-│       ├── library.md
-│       ├── cli.md
-│       └── documentation.md
-├── scripts/
-│   └── create-issue-with-projects.sh  # Issue creation with Projects integration
-├── references/
-│   ├── gh-cli-patterns.md
-│   ├── graphql-helpers.md
-│   └── ...                   # Other reference documents
+│   │   ├── default.md / decomposition-spec.md
+│   │   ├── interview-perspectives.md / template-structure.md
+│   ├── pr/
+│   │   ├── generic.md / webapp.md / library.md / cli.md / documentation.md
+│   │   └── fix-report.md              # Fix loop summary format
+│   ├── review/
+│   │   └── comment.md                 # PR review comment format
+│   └── wiki/
+│       ├── index-template.md / log-template.md
+│       ├── page-template.md / schema-template.md
+├── scripts/                 # Projects integration / Sub-Issue / review metrics
+│   ├── create-issue-with-projects.sh
+│   ├── backfill-sub-issues.sh / link-sub-issue.sh
+│   ├── extract-verified-review-findings.sh / measure-review-findings.sh
+│   ├── projects-status-update.sh
+│   └── tests/               # Script-level test suite
+├── references/              # Cross-cutting references used by commands/skills
+│   ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
+│   ├── graphql-helpers.md / projects-integration.md
+│   ├── priority-markers.md / severity-levels.md / epic-detection.md
+│   ├── review-result-schema.md / investigation-protocol.md
+│   ├── wiki-patterns.md / workflow-incident-emit-protocol.md
+│   ├── bash-compat-guard.md / bash-defensive-patterns.md
+│   ├── sub-issue-link-handler.md / issue-create-with-projects.md
+│   ├── output-patterns.md / execution-metrics.md
+│   ├── plugin-path-resolution.md / git-worktree-patterns.md
+│   ├── common-error-handling.md / error-codes.md
+│   ├── i18n-usage.md / tdd-light.md
+│   └── bottleneck-detection.md
 ├── i18n/
-│   ├── ja.yml              # Japanese (deprecated, kept for backward compatibility)
-│   ├── en.yml              # English (deprecated, kept for backward compatibility)
-│   ├── ja/                 # Japanese split files
-│   │   ├── common.yml
-│   │   ├── issue.yml
-│   │   ├── pr.yml
-│   │   └── other.yml
-│   └── en/                 # English split files
-│       ├── common.yml
-│       ├── issue.yml
-│       ├── pr.yml
-│       └── other.yml
+│   ├── ja.yml / en.yml      # Legacy monolithic files (kept for back-compat)
+│   ├── ja/                  # Japanese split files
+│   │   └── {common,issue,pr,other}.yml
+│   └── en/                  # English split files
+│       └── {common,issue,pr,other}.yml
 └── README.md
 ```
 
