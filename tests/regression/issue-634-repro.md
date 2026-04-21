@@ -75,8 +75,20 @@ grep -F 'RE-ENTRY DETECTED' plugins/rite/hooks/stop-guard.sh
 ### 2.3 Test Suite
 
 ```bash
-bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
-# 期待: TC-634-A 〜 TC-634-P まで全 16 TC が PASS (FAIL 件数 0)
+# TC-634-* が 16 TC すべて PASS していることを確認する
+# (TC-013 は本 Issue 範囲外の pre-existing failure として既知 — baseline develop でも fail する。
+#  stop-guard.test.sh 全体の結果は `=== Results: N passed, 1 failed ===` となり、
+#  1 failed が TC-013 のみであることを確認すること)
+#
+# 実行結果は 2 行構造 (1 行目: `TC-634-X: description`、2 行目: `  ✅ PASS: detail` or `  ❌ FAIL: detail`)
+# のため、awk で TC 宣言行の直後の PASS/FAIL 行を集計する。
+bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | awk '
+  /^TC-634-[A-P]:/ { tc=1; next }
+  tc && /^  ✅ PASS/ { pass++; tc=0 }
+  tc && /^  ❌ FAIL/ { fail++; tc=0 }
+  END { printf "TC-634-* PASS count: %d / 16 (FAIL: %d)\n", pass+0, fail+0 }
+'
+# 期待: TC-634-* PASS count: 16 / 16 (FAIL: 0)
 #
 # TC グルーピング:
 #   - 主機能 (cycle 1-2): TC-634-A/B/C/D
@@ -94,10 +106,11 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
 #       L: flag 無しの patch が error_count を 0 にリセット (default behavior)
 #   - fault injection (cycle 5 F-04): TC-634-M/N
 #       M: stop-guard.sh mv failure fault injection (error_count atomic write の mv 失敗時に diag log 記録)
-#       N: flow-state-update.sh patch mode mv failure fault injection (mv 失敗時に WARNING + exit 1)
-#   - AC-5 / AC-6 structural automation (cycle 6 F-06): TC-634-O/P
+#       N: flow-state-update.sh patch mode mv failure fault injection (mv 失敗時に WARNING + diag log 永続痕跡)
+#   - AC-5 / AC-6 structural automation (cycle 6 F-06 + cycle 7 F-03): TC-634-O/P
 #       O: AC-5 contract phrase grep automation (anti-pattern / correct-pattern / same response turn / DO NOT stop)
-#       P: AC-6 structural non-regression automation (HTML sentinel / case arm / whitelist / Pre-flight)
+#       P: AC-6 structural non-regression automation (HTML sentinel / case arm / whitelist / Pre-flight /
+#          [create:completed: sentinel 3 点 — create.md / create-register.md / create-decompose.md)
 #
 # 将来 TC を追加する場合、本 Section も同時に更新すること (列挙 drift による false-negative 回避)。
 ```
@@ -139,8 +152,8 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
 | AC-2 (Happy path, completed) | Feature preset で deep-dive 実施 → continue 不要で完走 | Manual + Integration (Section 2.4) |
 | AC-3 (Self-exemplar) | 3+ 件連続作成で `continue` 介入ゼロ | Section 2.4 の manual scenario |
 | AC-4 (Error / observable) | stop-guard block → `workflow_incident` sentinel stderr emit | TC-622-B (既存) |
-| AC-5 (Non-regression contract phrases) | create.md に `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` の各 count >= 1 | Section 5 の手動 grep スニペット (下記) — `verify-634-structure.sh` は未実装のため inline grep 手順のみを規範とする |
-| AC-6 (Non-regression structure) | HTML コメント sentinel + case arm + whitelist + Pre-flight + `[create:completed:` sentinel (create.md / create-register.md / create-decompose.md の 3 点) 保持 | 下記 Section 5 |
+| AC-5 (Non-regression contract phrases) | create.md に `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` の各 count >= 1 | Section 5 の inline grep スニペット + TC-634-O automation の両方を規範とする (inline grep は手動 spot-check 用、TC-634-O は CI regression 検出用) |
+| AC-6 (Non-regression structure) | HTML コメント sentinel + case arm + whitelist + Pre-flight + `[create:completed:` sentinel 保持 (対象ファイル一覧は Section 5 を参照) | Section 5 の inline grep スニペット + TC-634-P automation の両方を規範とする (AC-5 と対称: inline grep は手動 spot-check 用、TC-634-P は CI regression 検出用) |
 
 ## 5. 構造的 non-regression grep 検証
 
