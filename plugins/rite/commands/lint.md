@@ -117,11 +117,11 @@ If the Issue number cannot be obtained or the work memory comment does not exist
 
 ---
 
-## Phase 0.5: Config Deprecation Scan (v1.0.0 #557)
+## Phase 0.5: Config Deprecation Scan (v0.4.0 #557)
 
 Before running lint, scan `rite-config.yml` for deprecated review-fix loop configuration keys and emit warnings. Legacy keys are **silently ignored** at runtime (they have no effect), but leaving them in the config file creates confusion, so warn the user to remove them.
 
-**Deprecated keys** (removed in v1.0.0 by #557):
+**Deprecated keys** (removed in v0.4.0 by #557):
 
 | Key | Path | Replaced by |
 |-----|------|-------------|
@@ -141,7 +141,7 @@ for key in severity_gating_cycle_threshold scope_lock_cycle_threshold max_review
 done
 if [ -n "$deprecated_found" ]; then
   echo "⚠️ rite-config.yml に廃止済みキーが残存しています: ${deprecated_found}" >&2
-  echo "⚠️ これらのキーは v1.0.0 (#557) で廃止され、値は無視されます。rite-config.yml から削除してください。" >&2
+  echo "⚠️ これらのキーは v0.4.0 (#557) で廃止され、値は無視されます。rite-config.yml から削除してください。" >&2
   echo "[CONTEXT] DEPRECATED_KEYS=${deprecated_found}"
 else
   echo "[CONTEXT] DEPRECATED_KEYS=none"
@@ -153,14 +153,14 @@ fi
 **Step 3**: When deprecated keys are detected, include a short line in the final lint report so it is visible alongside normal lint output:
 
 ```
-⚠️ Deprecated config keys detected: {keys}. See CHANGELOG v1.0.0 migration guide.
+⚠️ Deprecated config keys detected: {keys}. See CHANGELOG v0.4.0 migration guide.
 ```
 
 This is appended to the report produced by Phase 4 irrespective of lint success/error.
 
 ---
 
-## Phase 0.6: Terminal Output Structure Verification (v1.0.0 #561)
+## Phase 0.6: Terminal Output Structure Verification (v0.4.0 #561)
 
 Run the regression guard for `/rite:issue:create` terminal output structure. This check ensures that Terminal Completion sections in `create-register.md` / `create-decompose.md` / `create-interview.md` emit the completion sentinel (`[create:completed:{N}]` / `[interview:*]`) as an HTML comment wrapper so the user-visible final line is the `✅` completion message + next steps (Issue #561 AC-2, AC-3, AC-6).
 

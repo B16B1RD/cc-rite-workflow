@@ -100,7 +100,7 @@ review:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
     # Review-fix quality signals (#557)
-    # Cycle-count-based degradation was fully removed in v1.0.0. Normal exit is 0 findings only;
+    # Cycle-count-based degradation was fully removed in v0.4.0. Normal exit is 0 findings only;
     # abnormal exit is one of 4 quality signals (fingerprint cycling / root-cause missing /
     # cross-validation disagreement / reviewer self-degraded).
     convergence_monitoring: true          # Enable fingerprint-based cycling detection (default: true)
@@ -198,7 +198,7 @@ pr_review:
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
-  # max_review_fix_loops was removed in v1.0.0 (#557). Loop exits on 0 findings or 4-signal escalation.
+  # max_review_fix_loops was removed in v0.4.0 (#557). Loop exits on 0 findings or 4-signal escalation.
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
@@ -504,7 +504,7 @@ issue:
 | `separate_issue_creation.require_user_confirmation` | boolean | `true` | Require `AskUserQuestion` confirmation for separate-issue creation **even in E2E flow** (#506). **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The "always confirm" behavior is hardcoded in `fix.md` Phase 4.3.3; setting this to `false` currently has no effect. Strongly recommended anyway once wired, to prevent the "escape hatch" misuse of separate issues |
 | `separate_issue_creation.report_pre_existing_issues` | boolean | `false` | Suppress Source C (pre-existing issue) reporting in reviewer output. Use `/rite:investigate` for pre-existing concerns instead |
 
-**Review-fix loop exit (v1.0.0 #557):**
+**Review-fix loop exit (v0.4.0 #557):**
 
 The review-fix loop has two exit paths and no cycle-count-based hard limit:
 
