@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-20T23:00:00+00:00"
+updated: "2026-04-21T10:35:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -44,7 +44,13 @@ sources:
     ref: "raw/reviews/20260420T225458Z-pr-631.md"
   - type: "fixes"
     ref: "raw/fixes/20260420T224940Z-pr-631.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition"]
+  - type: "reviews"
+    ref: "raw/reviews/20260421T030627Z-pr-636-cycle-2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260421T033906Z-pr-636-cycle-4.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260421T031214Z-pr-636-cycle-2.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry"]
 confidence: high
 ---
 
@@ -163,8 +169,19 @@ canonical 対策:
 3. **fix は最小差分 + sibling word-for-word 整合が canonical**: 契約違反 fix は「invocation 側最小修正 (`--quiet` 削除)」と「script 側契約整合 (summary emit 保証)」の 2 択のうち reviewer 推奨に従い最小差分を採る。新 appendix paragraph は sibling 6 箇所のテンプレートに word-for-word 整合させる (PR #631 cycle 2 で 11 lines minimum diff + sibling word-for-word consistency が 2 reviewer 独立承認で 0 findings 収束を実測)
 4. **fix 側 lesson の symmetry**: script 側の contract 違反 (`--quiet` で summary suppress) と invocation 側の不整合 (`--quiet` を付けて呼び出し) は双方で起こりうる。どちらを修正するかは scope/最小差分/canonical 整合性で判断する (PR #631 では invocation 側削除を採用)
 
+### 3-site 対称セット drift の N 回目再発 (PR #636 cycle 1-4 での evidence)
+
+PR #636 (Issue #634 = implicit stop regression の 8 回目累積対策) の cycle 1-4 で、「1 箇所の fix が他 2-3 箇所の sibling site に伝播しない」パターンが複数箇所で再発した:
+
+- **HINT bash 例の path prefix 非対称** (cycle 1 F-12 → cycle 2 F-01 HIGH): stop-guard.sh の `cleanup_pre_ingest` / `create_post_interview` / その他 phase の HINT bash 例 (L310 / L325 / L331) で 1 箇所だけ path prefix を短縮し、他 2 箇所と drift
+- **TC-634-A/B/C の対称性不徹底** (cycle 1 F-07 → cycle 2 F-06 MEDIUM): cycle 1 で TC-634-B のみに fresh_ts fallback を追加、TC-634-C と create_interview case arm に伝播漏れ
+- **Architectural fix の sub-skill 側未適用** (cycle 3 → cycle 4 HIGH x2): cycle 3 で `--preserve-error-count` flag を create.md (orchestrator) + stop-guard HINT の 2 site に適用したが、**create-interview.md (sub-skill) の Pre-flight + Return Output re-patch という symmetric 2 site への伝播漏れ**。DRIFT-CHECK ANCHOR コメントを cycle 3 で追加したにもかかわらず anchor 自身が片方向 (orchestrator 側のみ) で、sub-skill 側には未配置
+
+**学習**: 本 anti-pattern は累積対策 N 回目 PR (特に 5 回目以降) で頻度と severity が両方 escalate する。3-site 以上の対称セットは 1 箇所修正時に必ず grep で sibling 全列挙 + atomic 修正が必須。DRIFT-CHECK ANCHOR を配置する場合は **anchor 自身も全 sibling site に対称配置** しなければ片方向 drift を防げない。詳細な cumulative-defense PR の quality signal 基準は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md) 参照。
+
 ## 関連ページ
 
+- [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](../patterns/drift-check-anchor-prose-code-sync.md)
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md)
@@ -192,3 +209,6 @@ canonical 対策:
 - [PR #631 cycle 1 review (`--quiet` 契約 drift + Phase 4.1 appendix 欠落、4 reviewer 合意)](raw/reviews/20260420T185124Z-pr-631.md)
 - [PR #631 cycle 2 review (mergeable convergence, 11-line minimum diff fix の word-for-word 整合評価)](raw/reviews/20260420T225458Z-pr-631.md)
 - [PR #631 fix results (invocation 側 `--quiet` 削除 + sibling 6 箇所 appendix word-for-word 整合)](raw/fixes/20260420T224940Z-pr-631.md)
+- [PR #636 cycle 2 review (3-site 対称セット HINT path drift + TC 対称性不徹底)](raw/reviews/20260421T030627Z-pr-636-cycle-2.md)
+- [PR #636 cycle 2 fix (path prefix drift 修正 + TC 対称性完全適用)](raw/fixes/20260421T031214Z-pr-636-cycle-2.md)
+- [PR #636 cycle 4 review (architectural fix の sub-skill 側未適用、DRIFT-CHECK ANCHOR 自身が片方向)](raw/reviews/20260421T033906Z-pr-636-cycle-4.md)

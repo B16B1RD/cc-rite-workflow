@@ -2,7 +2,7 @@
 title: "Test が early exit 経路で silent pass する false-positive"
 domain: "anti-patterns"
 created: "2026-04-20T01:10:00+00:00"
-updated: "2026-04-20T01:10:00+00:00"
+updated: "2026-04-21T10:35:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260419T230924Z-pr-608-cycle5-review.md"
@@ -12,7 +12,11 @@ sources:
     ref: "raw/reviews/20260419T232356Z-pr-608-cycle7.md"
   - type: "fixes"
     ref: "raw/fixes/20260419T232739Z-pr-608-cycle8.md"
-tags: []
+  - type: "reviews"
+    ref: "raw/reviews/20260421T045816Z-pr-636.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260421T050914Z-pr-636.md"
+tags: ["silent-false-pass", "fault-injection", "test-coverage"]
 confidence: high
 ---
 
@@ -50,8 +54,60 @@ confidence: high
 - 同 cycle の過去 fix コメントに「false-positive 修正」「guard で抜ける」等の self-aware 痕跡があれば parity TC も同型疑いで精査
 - `rc=0` 以外の assertion (stderr content / diag counter / state file mutation) が存在するか確認
 
+### Silent-false-pass via pre=post state の 3 条件拡張 (PR #636 cycle 5 での evidence)
+
+PR #636 cycle 5 review で発見された別系統の silent-false-pass pattern を追加する。subshell ベース test で以下 **3 条件** が揃うとスクリプトが一切実行されなくても事後条件が PASS する false-positive を形成する:
+
+1. **stderr suppress**: `2>/dev/null` で subshell の stderr を握り潰している
+2. **exit code 未検査**: `( ... ) || fail` を付けず subshell の非 0 exit を無視している
+3. **pre-state = post-state の expected 値**: 例 — `error_count=2` → `error_count=2` 期待値で、script が動かなくても event=0 で PASS する
+
+対策として、事後条件に「**変化する値**」(state transition を伴う field) を含める必要がある。例: `error_count=2` だけでなく `next_action` や `updated_at` など script 実行で変化するフィールドを assert することで「script が呼ばれた証跡」を検証する。
+
+### Fault injection via PATH override (portable で root 不要)
+
+mv / jq write 等の shell builtin やコマンド失敗を test で再現する canonical 手段:
+
+```bash
+# fake binary を作成し PATH を prepend
+fake_bin_dir=$(mktemp -d)
+cat > "$fake_bin_dir/mv" <<'EOF'
+#!/bin/bash
+echo "mv: simulated failure" >&2
+exit 1
+EOF
+chmod +x "$fake_bin_dir/mv"
+PATH="$fake_bin_dir:$PATH" bash target-script.sh
+```
+
+**利点**:
+
+- `chmod -w` / `chattr +i` は root 権限や filesystem feature 依存で portable でない
+- PATH override は POSIX / BSD / GNU 問わず動作し root 不要
+- fake binary で exit code と stderr を完全制御でき、silent failure surface 化の test coverage を mechanical に取れる (PR #636 TC-634-M/N で `error_count_mv_failed` diag log と flow-state-update.sh の mv failed stderr を verify)
+
+### set -e + subshell exit-code 捕捉
+
+`set -euo pipefail` 下で subshell が非 0 exit する test では以下のイディオムで rc を capture する:
+
+```bash
+rc=0  # 事前初期化が必須 (undefined variable で script kill を防ぐ)
+( target_logic ) || rc=$?
+```
+
+rc を capture せずに `set -e` 下で subshell が失敗すると親 script が即座に kill される (debug が困難)。
+
+### Line-number reference anti-pattern の test コメント対応
+
+test fixture コメントで `file.sh L247-250` 形式の行番号参照を埋め込むと、refactor で silent drift する。canonical 対策:
+
+- **semantic anchor**: "error_count atomic write 後 mv 失敗 path" のような意味論的参照
+- **trailer convention**: `(line-number 参照を避ける理由は cycle 8 F-05 参照)` 形式の trailer を付記してリポジトリ内 convention を明示 (PR #636 cycle 5 で確立)
+
 ## 関連ページ
 
+- [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
+- [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](../patterns/drift-check-anchor-semantic-name.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
@@ -60,3 +116,5 @@ confidence: high
 - [PR #608 fix cycle 6 (false-positive 早期露呈パターン)](raw/fixes/20260419T231616Z-pr-608-cycle6.md)
 - [PR #608 review cycle 7 (TC-608-E/F/G false-positive 発見)](raw/reviews/20260419T232356Z-pr-608-cycle7.md)
 - [PR #608 fix cycle 8 (same-cycle 横展開契約)](raw/fixes/20260419T232739Z-pr-608-cycle8.md)
+- [PR #636 cycle 5 review (silent-false-pass 3 条件 + line-number reference convention)](raw/reviews/20260421T045816Z-pr-636.md)
+- [PR #636 cycle 5 fix (silent-false-pass + PATH override fault injection + set -e subshell rc capture)](raw/fixes/20260421T050914Z-pr-636.md)

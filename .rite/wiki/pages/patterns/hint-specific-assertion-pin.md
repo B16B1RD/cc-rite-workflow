@@ -2,13 +2,15 @@
 title: "HINT-specific 文言 pin で case arm 削除 regression を検知する"
 domain: "patterns"
 created: "2026-04-20T13:20:00+00:00"
-updated: "2026-04-20T13:20:00+00:00"
+updated: "2026-04-21T10:35:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260420T104328Z-pr-623.md"
   - type: "fixes"
     ref: "raw/fixes/20260420T105116Z-pr-623.md"
-tags: [testing, regression-detection, bash, hook-assertion]
+  - type: "fixes"
+    ref: "raw/fixes/20260421T033138Z-pr-636-cycle-3.md"
+tags: [testing, regression-detection, bash, hook-assertion, twin-site-contract]
 confidence: high
 ---
 
@@ -56,11 +58,30 @@ HINT phrase pin だけでなく、`[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fa
 
 の 2 直交軸で silent failure 経路を封鎖する。PR #623 cycle 3 fix で cleanup test fixture に両方を追加し 17 assertions を達成。
 
+### Twin site contract への拡張 (PR #636 cycle 3 での evidence)
+
+PR #636 cycle 3 fix で twin site contract verification という拡張パターンが確立された: HINT emit 側 (stop-guard.sh) と grep 参照側 (create.md の `[CONTEXT] XXX_FAILED=1; reason=...` retained flag emit) が対応する marker (`STEP_0_PATCH_FAILED` 等) について、**片側だけ test で verify する** と silent regression を許すため、**両側を同 test で同時に check** する canonical template。
+
+- **TC-634-E**: twin site contract の test 側 canonical template。stop-guard HINT の grep 参照 (`grep -c "STEP_0_PATCH_FAILED"` in HINT) と create.md 側の emit site (`grep -c '\[CONTEXT\] STEP_0_PATCH_FAILED=1' create.md`) の両方を assert
+- **case arm 固有 HINT 文言 pin + twin site contract の併用**: case arm 削除 regression は HINT-specific literal pin で catch、retained flag emit site 削除 regression は twin site contract assert で catch、という 2 直交軸で silent failure 経路を封鎖する
+
+### emit / consume / test の 3 点セット契約 (cumulative-defense PR で特に重要)
+
+累積対策 PR (PR #636 = implicit stop regression の 8 回目) では新 marker 追加時の 3 点セット契約違反が同型再発する傾向が観測された:
+
+1. **emit site**: bash block で `echo "[CONTEXT] ..."` する site
+2. **consume site**: stop-guard.sh HINT の grep 参照 / Pre-check list の evidence 表示 / 関連 hook の検知 logic
+3. **test assertion**: emit と consume の両方を verify する test fixture
+
+3 点のいずれかを欠く marker は「dead signal」となり、次 cycle で削除推奨される (PR #636 cycle 1 F-06 = `MANDATORY_AFTER_INTERVIEW_STEP_0`、cycle 2 F-05 = `STEP_0_PATCH_FAILED` の同型再発)。詳細は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の「Fix 側の予防契約」参照。
+
 ## 関連ページ
 
+- [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
 
 ## ソース
 
 - [PR #623 review results (cycle 1)](raw/reviews/20260420T104328Z-pr-623.md)
 - [PR #623 fix results (cycle 1)](raw/fixes/20260420T105116Z-pr-623.md)
+- [PR #636 cycle 3 fix (twin site contract verification + --preserve-error-count flag)](raw/fixes/20260421T033138Z-pr-636-cycle-3.md)
