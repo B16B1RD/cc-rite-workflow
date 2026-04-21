@@ -425,114 +425,35 @@ Agent documentation...
 
 ### rite-config.yml
 
-Place in project root or `.claude/` directory.
-Uses YAML format for readability and comment support.
+Place in project root or `.claude/` directory. Uses YAML format for readability and comment support.
 
-```yaml
-# rite-workflow configuration file
-schema_version: 2
+Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, which is kept in sync with `plugins/rite/templates/config/rite-config.yml` — the minimal default that `/rite:init` distributes. The template intentionally omits advanced keys; enable them by copying the key declarations from CONFIGURATION.md as needed.
 
-# Project settings
-project:
-  type: webapp  # generic | webapp | library | cli | documentation
+**Top-level sections** (see CONFIGURATION.md for per-key details):
 
-# GitHub Projects integration
-github:
-  projects:
-    enabled: true
-    project_number: null  # Project number (null = auto-detect from repository)
-    owner: null           # Project owner (null = use repository owner)
-    # Field configuration (fully customizable)
-    fields:
-      status:
-        enabled: true
-        options:
-          - { name: "Todo", default: true }
-          - { name: "In Progress" }
-          - { name: "In Review" }
-          - { name: "Done" }
-      priority:
-        enabled: true
-        options:
-          - { name: "High" }
-          - { name: "Medium", default: true }
-          - { name: "Low" }
-      complexity:
-        enabled: true
-        options:
-          - { name: "XS" }
-          - { name: "S" }
-          - { name: "M", default: true }
-          - { name: "L" }
-          - { name: "XL" }
-      # Custom fields (project-specific)
-      # Any Single Select field name from your GitHub Projects can be used
-      # Field name matching is case-insensitive
-      work_type:
-        enabled: true
-        options:
-          - { name: "Feature" }
-          - { name: "Bug Fix" }
-          - { name: "Documentation" }
-          - { name: "Refactor" }
-          - { name: "Chore" }
-      category:
-        enabled: true
-        options:
-          - { name: "Frontend" }
-          - { name: "Backend" }
-          - { name: "Infrastructure" }
-          - { name: "Other" }
+| Section | Purpose |
+|---------|---------|
+| `project.type` | Project preset (`generic` / `webapp` / `library` / `cli` / `documentation`) |
+| `github.projects.*` | GitHub Projects integration (`field_ids`, `fields`, `project_number`, `owner`) |
+| `branch.*` | `base`, `pattern`, `recognized_patterns` |
+| `commit.contextual` | Contextual Commits action lines in commit body |
+| `commands.{build,test,lint}` | Build/test/lint auto-detection overrides |
+| `issue.auto_decompose_threshold` | Threshold for skipping the decomposition prompt |
+| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`, `observed_likelihood_gate.*` / `fail_fast_first.*` / `separate_issue_creation.*` (all #506) |
+| `fix.*` | `fail_fast_response` (#506), `severity_gating` (deprecated #557, pinned `false`) |
+| `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
+| `tdd.*` | TDD Light mode (`off` / `light`) |
+| `parallel.*`, `team.*` | Parallel implementation and Sprint team execution |
+| `iteration.*` | GitHub Projects Iteration field integration |
+| `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
+| `pr_review.post_comment` | PR review output destination (#443) |
+| `workflow_incident.enabled` | Workflow incident auto-registration (#366) |
+| `wiki.*` | Experience Wiki — `enabled` (opt-out), `branch_strategy`, `auto_ingest`, `auto_query`, `auto_lint`, `growth_check.*` |
+| `metrics.*` | Execution metrics recording |
+| `notifications.{slack,discord,teams}` | External notifications |
+| `language` | `auto` / `ja` / `en` |
 
-# Branch naming rules (fully customizable)
-branch:
-  # Base branch for feature branches (default PR target)
-  base: "main"      # default: main (use "develop" for Git Flow)
-  pattern: "{type}/issue-{number}-{slug}"
-  # Available variables: {type}, {number}, {slug}, {date}, {user}
-
-# Commit message
-commit:
-  contextual: true    # Contextual Commits action lines in commit body
-
-# Build/test/lint (auto-detect or manual specification)
-commands:
-  build: null  # Auto-detect
-  test: null   # Auto-detect
-  lint: null   # Auto-detect
-
-# Review settings
-review:
-  # Minimum reviewers (fallback when no reviewers match)
-  min_reviewers: 1
-  # Review criteria (used for automatic reviewer selection)
-  criteria:
-    - file_types       # Judgment by file types
-    - content_analysis # Judgment by content analysis
-  # Note: Reviews always use parallel subagents for each reviewer role
-
-# Notification settings
-notifications:
-  slack:
-    enabled: false
-    webhook_url: null
-  discord:
-    enabled: false
-    webhook_url: null
-  teams:
-    enabled: false
-    webhook_url: null
-
-# Workflow incident auto-registration (#366)
-# Detects workflow blockers (Skill load failure / hook abnormal exit / manual fallback adoption)
-# and auto-registers them as Issues to prevent silent loss.
-# See "Workflow Incident Detection" section for details.
-workflow_incident:
-  enabled: true              # default-on; set false to opt out (AC-8)
-
-# Language setting (auto for auto-detection)
-language: auto  # auto | ja | en
-```
+**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades, and `/rite:lint` emits deprecation warnings for removed keys — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v1.0.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
 
 ---
 
