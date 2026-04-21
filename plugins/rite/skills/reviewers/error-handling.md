@@ -45,6 +45,26 @@ This skill is activated when reviewing files matching:
 - [ ] **Bash: Unguarded error suppression**: `command || true` or `2>/dev/null` on critical operations (API calls, file writes) that hide actionable failures
 - [ ] **Bash: `local` masking exit code**: `local var=$(command)` suppresses non-zero exit code even with `set -e` — use `local var; var=$(command)` instead
 
+### Inverse Pattern Prohibition: reviewer 自身の fallback 推奨禁止
+
+> **Reference**: [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) "Fail-Fast First" 節を必ず参照すること。
+
+silent swallow を CRITICAL として検出するのと **同じ理由** で、reviewer 自身が「null 返却を追加せよ」「catch して default を返せ」「`?? 0` で安全化せよ」と推奨することも **silent failure の共犯行為** であり、本 reviewer の禁止事項である。
+
+正解は常に **`throw` / `raise` / 再 throw で呼び出し元の error boundary に伝播させる** こと。fallback 追加を `推奨対応` 列に書く前に、以下のチェックリストを必ず実施する:
+
+1. [ ] そのコードは `throw` / `raise` で呼び出し元に伝播できるか？できるなら throw を推奨する
+2. [ ] 既存の error boundary（CLI runner / HTTP middleware / Promise root catch / Bash `trap ERR` / `set -e` 等）に到達できるか？できるなら throw + boundary 経由のログ推奨
+3. [ ] `throw` を許さない既存テストがあれば、それは **テストの方が間違っている**。テスト修正を推奨する
+4. [ ] それでも fallback が必要と判断する場合は、本 skill の「allowed fallback case」リスト（後述）に該当するかを確認し、該当しなければ throw を推奨する
+
+**fallback 推奨が許容されるケース** (本 skill の例外リスト):
+
+- **Graceful degradation in non-critical UI render paths**: ユーザーへの致命的エラー表示よりも degraded UI のほうが許容されるレンダリング経路（例: avatar 表示失敗時のデフォルト画像）。critical path（payment / auth / data write）は対象外。
+- **Idempotent retry boundaries**: べき等な操作で retry 後も失敗した場合に warning ログ + null を返すパターン（呼び出し元が null を明示的に check することが前提）。**Rationale**: 全面 `throw` は中間リトライ層 (exponential backoff / circuit breaker 等) で unwrap すべきでない例外連鎖を生むため、明示的な null sentinel + caller 側 null-check の方が contract が局所化される。ただし本例外は **retry 境界のみ** に限定 — 通常の呼び出し経路で null 返却を推奨するのは silent-failure 共犯行為なので禁止。呼び出し元が null を check していない既存コードでこのパターンを推奨してはならない (まず呼び出し元の null-check 追加を指摘する)。
+
+上記いずれにも該当しない場合、fallback の推奨は **CRITICAL** 違反として扱う。
+
 ### Important (Should Fix)
 
 - [ ] **Generic Error Messages**: `throw new Error("failed")` without context about what operation failed and why

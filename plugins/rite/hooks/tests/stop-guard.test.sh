@@ -719,6 +719,796 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-475-A: create_post_interview phase (active=true, fresh) → exit 2 (block)
+# #475 AC-4: stop-guard must block stop when lifecycle is mid-delegation
+# --------------------------------------------------------------------------
+echo "TC-475-A: create_post_interview active → exit 2 (block)"
+dir475a="$GUARD_TEST_DIR/tc475a"
+mkdir -p "$dir475a"
+# F-13 (#636 cycle 6): 他箇所の ${fresh_ts:-$(date ...)} pattern と統一。
+# :- fallback ありの形式にすることで 7200s 超 AGE stale early-exit による silent false-pass を防ぐ
+# (将来 test suite が大量並列化 / mass TC 追加で長時間化した場合の保険)。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir475a" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-475a\"}"
+stderr_file475a="$(mktemp "$GUARD_TEST_DIR/stderr475a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475a\", \"session_id\": \"sid-475a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file475a") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q "create_post_interview" "$stderr_file475a"; then
+  pass "create_post_interview active → blocked with phase in stderr"
+else
+  fail "expected exit 2 with create_post_interview in stderr, got rc=$rc stderr='$(cat "$stderr_file475a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-475-B: create_interview → create_post_interview transition is whitelist-valid
+# --------------------------------------------------------------------------
+echo "TC-475-B: create_interview → create_post_interview whitelist-valid"
+dir475b="$GUARD_TEST_DIR/tc475b"
+mkdir -p "$dir475b"
+create_state_file "$dir475b" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-475b\"}"
+stderr_file475b="$(mktemp "$GUARD_TEST_DIR/stderr475b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475b\", \"session_id\": \"sid-475b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file475b") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file475b"; then
+  pass "create_interview→create_post_interview accepted by whitelist (no invalid_transition)"
+else
+  fail "expected exit 2 without invalid_transition, got rc=$rc stderr='$(cat "$stderr_file475b")'"
+fi
+
+# TC-475-B2: invalid transition create_interview → create_delegation (bypassing post_interview)
+echo "TC-475-B2: invalid transition create_interview → create_delegation → blocked with invalid_transition"
+dir475b2="$GUARD_TEST_DIR/tc475b2"
+mkdir -p "$dir475b2"
+create_state_file "$dir475b2" "{\"active\": true, \"phase\": \"create_delegation\", \"previous_phase\": \"create_interview\", \"next_action\": \"skipped interview post-step\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-475b2\"}"
+stderr_file475b2="$(mktemp "$GUARD_TEST_DIR/stderr475b2.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475b2\", \"session_id\": \"sid-475b2\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file475b2") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q "Invalid phase transition" "$stderr_file475b2"; then
+  pass "invalid transition create_interview→create_delegation detected"
+else
+  fail "expected exit 2 with invalid_transition, got rc=$rc stderr='$(cat "$stderr_file475b2")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-475-C: session_id mismatch → exit 0 (stop allowed, AC-5)
+# --------------------------------------------------------------------------
+echo "TC-475-C: session_id mismatch during create_post_interview → exit 0"
+dir475c="$GUARD_TEST_DIR/tc475c"
+mkdir -p "$dir475c"
+create_state_file "$dir475c" "{\"active\": true, \"phase\": \"create_post_interview\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"session_id\": \"sid-other\"}"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475c\", \"session_id\": \"sid-mine\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "session_id mismatch → stop allowed (AC-5)"
+else
+  fail "expected exit 0, got $rc"
+fi
+
+# --------------------------------------------------------------------------
+# TC-622-A: create_interview phase (active=true, fresh) → exit 2 (block with HINT)
+# Issue #622: stop-guard MUST block implicit stop while the interview sub-skill
+# is mid-execution (or before its 🚨 MANDATORY Pre-flight has run). Prior to #622
+# there was no `create_interview` case arm, so the general-block path fired
+# without a phase-specific WORKFLOW_HINT and workflow_incident sentinel emit
+# was possible but without routing guidance.
+# --------------------------------------------------------------------------
+echo "TC-622-A: create_interview active → exit 2 (block with HINT)"
+dir622a="$GUARD_TEST_DIR/tc622a"
+mkdir -p "$dir622a"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir622a" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"After rite:issue:create-interview returns: proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-622a\"}"
+stderr_file622a="$(mktemp "$GUARD_TEST_DIR/stderr622a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir622a\", \"session_id\": \"sid-622a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file622a") && rc=0 || rc=$?
+# HINT の前半 (Delegation to Interview Pre-write) と後半 (MANDATORY Pre-flight / [create:completed:) を
+# 2 段で検証し、HINT 文言が改変された場合の regression を確実に検出する
+if [ $rc -eq 2 ] \
+    && grep -q "Delegation to Interview Pre-write recorded create_interview" "$stderr_file622a" \
+    && grep -q "MANDATORY Pre-flight" "$stderr_file622a" \
+    && grep -q '\[create:completed:' "$stderr_file622a"; then
+  pass "create_interview active → blocked with #622 HINT"
+else
+  fail "expected exit 2 with #622 HINT (Delegation to Interview + MANDATORY Pre-flight + [create:completed:), got rc=$rc stderr='$(cat "$stderr_file622a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-622-B: create_interview phase emits workflow_incident sentinel to stderr
+# Issue #622: verify the workflow_incident_emit.sh helper is invoked for the
+# create_interview phase (same contract as create_post_interview TC-475-A).
+# The sentinel is echoed to stderr via the exit-2 feedback contract.
+# --------------------------------------------------------------------------
+echo "TC-622-B: create_interview active → workflow_incident sentinel in stderr"
+dir622b="$GUARD_TEST_DIR/tc622b"
+mkdir -p "$dir622b"
+create_state_file "$dir622b" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 622, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-622b\"}"
+stderr_file622b="$(mktemp "$GUARD_TEST_DIR/stderr622b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir622b\", \"session_id\": \"sid-622b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file622b") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "WORKFLOW_INCIDENT=1" "$stderr_file622b" \
+    && grep -q "type=manual_fallback_adopted" "$stderr_file622b"; then
+  pass "create_interview phase emits workflow_incident sentinel to stderr"
+else
+  fail "expected WORKFLOW_INCIDENT sentinel for create_interview, got rc=$rc stderr='$(cat "$stderr_file622b")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-A: create_post_interview WORKFLOW_HINT includes concrete bash invocation
+# Issue #634: HINT must now include the specific bash command for Step 0 Immediate
+# Bash Action ("flow-state-update.sh patch --phase create_post_interview") so the
+# LLM has a concrete next tool call instead of a natural turn-boundary. This test
+# verifies the #634 HINT enhancement is applied to the create_post_interview case
+# arm (symmetric with create_interview case arm TC-622-A).
+# --------------------------------------------------------------------------
+echo "TC-634-A: create_post_interview HINT includes Step 0 Immediate Bash Action"
+dir634a="$GUARD_TEST_DIR/tc634a"
+mkdir -p "$dir634a"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634a" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634a\"}"
+stderr_file634a="$(mktemp "$GUARD_TEST_DIR/stderr634a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634a\", \"session_id\": \"sid-634a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634a") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "Step 0 (Immediate Bash Action" "$stderr_file634a" \
+    && grep -q "INTERVIEW_DONE=1" "$stderr_file634a" \
+    && grep -q "plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview" "$stderr_file634a"; then
+  pass "create_post_interview HINT includes Step 0 bash command (with full path) + INTERVIEW_DONE grep marker"
+else
+  fail "expected #634 HINT with Step 0 Immediate Bash Action + full path to flow-state-update.sh + INTERVIEW_DONE=1 grep marker, got rc=$rc stderr='$(cat "$stderr_file634a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-B: create_post_interview error_count escalation
+# Issue #634: when error_count >= 1, WORKFLOW_HINT is extended with a RE-ENTRY
+# DETECTED message to signal the LLM that the previous block did not advance the
+# phase. This provides escalation pressure for persistent implicit-stop attempts.
+# --------------------------------------------------------------------------
+echo "TC-634-B: create_post_interview with error_count=1 emits RE-ENTRY DETECTED escalation"
+dir634b="$GUARD_TEST_DIR/tc634b"
+mkdir -p "$dir634b"
+# verified-review F-07 / #636: cross-TC 独立性確保のため fresh_ts defensive fallback を
+# TC-634-A 以降の全 TC と同じパターンで初期化する (TC-608-A 以降 12 箇所で統一されている convention)。
+# 旧実装は TC-634-A の fresh_ts 設定が leak して動作していたが、TC-634-A を skip/削除/順序変更すると
+# updated_at が空文字列で AGE check 早期 exit 0 → silent false-pass する経路があった。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634b" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-634b\"}"
+stderr_file634b="$(mktemp "$GUARD_TEST_DIR/stderr634b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634b\", \"session_id\": \"sid-634b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634b") && rc=0 || rc=$?
+# verified-review F-13 / #636: HINT 文字列だけでなく state file の .error_count 実値も検証する。
+# L241-246 の jq write 失敗 (silent) が発生しても HINT だけは error_count=2 を emit するため、
+# state 実値検証がないと silent write failure を test で検出できない経路があった。
+state_error_count=$(jq -r '.error_count // empty' "$dir634b/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 2 ] \
+    && grep -q "RE-ENTRY DETECTED" "$stderr_file634b" \
+    && grep -q "error_count=2" "$stderr_file634b" \
+    && grep -q "execute the following bash block NOW as your next tool call" "$stderr_file634b" \
+    && [ "$state_error_count" = "2" ]; then
+  pass "create_post_interview error_count=1 → RE-ENTRY DETECTED escalation + case-arm-specific HINT + state file error_count=2"
+else
+  fail "expected RE-ENTRY DETECTED escalation + create_post_interview-specific HINT 'execute the following bash block' + error_count=2 in state, got rc=$rc, state_error_count='$state_error_count', stderr='$(cat "$stderr_file634b")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-C: create_interview case arm also enhanced with Step 0 Immediate Bash Action
+# Issue #634: symmetry with create_post_interview — the create_interview case arm
+# (fires when the sub-skill Pre-flight was skipped) now also references Step 0 and
+# INTERVIEW_DONE=1. This ensures both Pre-flight-ran and Pre-flight-skipped paths
+# provide the same continuation guidance.
+# --------------------------------------------------------------------------
+echo "TC-634-C: create_interview HINT includes Step 0 Immediate Bash Action + INTERVIEW_DONE grep"
+dir634c="$GUARD_TEST_DIR/tc634c"
+mkdir -p "$dir634c"
+# verified-review cycle 2 F-06 / #636: TC-634-A/B と対称に fresh_ts defensive fallback を適用。
+# cross-TC 独立性を確保し、TC-634-A/B を skip/削除/順序変更しても silent false-pass しないようにする。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634c" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634c\"}"
+stderr_file634c="$(mktemp "$GUARD_TEST_DIR/stderr634c.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634c\", \"session_id\": \"sid-634c\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634c") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "Step 0 (Immediate Bash Action" "$stderr_file634c" \
+    && grep -q "INTERVIEW_DONE=1" "$stderr_file634c"; then
+  pass "create_interview HINT includes Step 0 bash command + INTERVIEW_DONE grep marker (symmetric with create_post_interview)"
+else
+  fail "expected #634 HINT symmetry on create_interview case arm, got rc=$rc stderr='$(cat "$stderr_file634c")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-D: create_interview case arm error_count escalation (verified-review cycle 2 F-09 / #636)
+# Issue #634: stop-guard.sh の create_interview case arm における `error_count >= 1` で
+# RE-ENTRY DETECTED HINT を追加する escalation branch (line-number 参照を避ける理由は cycle 8 F-05 参照)
+# は cycle 1 テストでは未カバーだった。TC-634-B (create_post_interview) と対称に
+# create_interview + error_count=1 での escalation を verify する。
+# --------------------------------------------------------------------------
+echo "TC-634-D: create_interview with error_count=1 emits RE-ENTRY DETECTED escalation (symmetric with TC-634-B)"
+dir634d="$GUARD_TEST_DIR/tc634d"
+mkdir -p "$dir634d"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634d" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-634d\"}"
+stderr_file634d="$(mktemp "$GUARD_TEST_DIR/stderr634d.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634d\", \"session_id\": \"sid-634d\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634d") && rc=0 || rc=$?
+state_error_count_d=$(jq -r '.error_count // empty' "$dir634d/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 2 ] \
+    && grep -q "RE-ENTRY DETECTED" "$stderr_file634d" \
+    && grep -q "error_count=2" "$stderr_file634d" \
+    && grep -q "previous block did not advance the phase" "$stderr_file634d" \
+    && [ "$state_error_count_d" = "2" ]; then
+  pass "create_interview error_count=1 → RE-ENTRY DETECTED escalation + case-arm-specific HINT + state file error_count=2 (symmetric with TC-634-B)"
+else
+  fail "expected create_interview escalation with RE-ENTRY DETECTED + create_interview-specific HINT 'previous block did not advance the phase' + error_count=2 in state, got rc=$rc, state_error_count='$state_error_count_d', stderr='$(cat "$stderr_file634d")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-E: STEP_0_PATCH_FAILED twin site contract verification (verified-review cycle 3 F-04 / #636)
+# Issue #634: stop-guard.sh の create_post_interview case arm base HINT block (line-number 参照を避ける理由は cycle 8 F-05 参照) が '[CONTEXT] STEP_0_PATCH_FAILED=1' grep 参照を LLM に指示
+# (cycle 2 F-05 consumer wiring として追加)。create.md Step 0 bash block 失敗時の emit 側との
+# twin site contract を verify する。片側の削除/リネームを catch する。
+# --------------------------------------------------------------------------
+echo "TC-634-E: create_post_interview HINT includes STEP_0_PATCH_FAILED grep reference (twin site contract)"
+dir634e="$GUARD_TEST_DIR/tc634e"
+mkdir -p "$dir634e"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634e" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634e\"}"
+stderr_file634e="$(mktemp "$GUARD_TEST_DIR/stderr634e.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634e\", \"session_id\": \"sid-634e\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634e") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "STEP_0_PATCH_FAILED=1" "$stderr_file634e" \
+    && grep -q "a patch site failed" "$stderr_file634e"; then
+  pass "create_post_interview HINT includes [CONTEXT] STEP_0_PATCH_FAILED=1 grep reference (twin site contract preserved)"
+else
+  fail "expected STEP_0_PATCH_FAILED=1 grep hint + natural-language explanation ('a patch site failed') in HINT for twin site contract, got rc=$rc stderr='$(cat "$stderr_file634e")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-475-D: create_completed is terminal — no block
+# --------------------------------------------------------------------------
+echo "TC-475-D: create_completed + active=false → exit 0 (terminal)"
+dir475d="$GUARD_TEST_DIR/tc475d"
+mkdir -p "$dir475d"
+create_state_file "$dir475d" "{\"active\": false, \"phase\": \"create_completed\", \"next_action\": \"none\", \"updated_at\": \"$fresh_ts\", \"session_id\": \"sid-475d\"}"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir475d\", \"session_id\": \"sid-475d\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  pass "create_completed terminal allows stop"
+else
+  fail "expected exit 0, got $rc"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-A: cleanup phase (active=true, fresh) → exit 2 (block)
+# Verifies that the cleanup initial phase added in #608 follow-up surfaces a HINT
+# and blocks premature stop. Uses the direct `bash "$GUARD" 2>"$stderr_file"` pattern
+# (parity with TC-475-A) because run_guard sets LAST_STDERR_FILE inside a subshell.
+# --------------------------------------------------------------------------
+echo "TC-608-A: cleanup active → exit 2 (block)"
+dir608a="$GUARD_TEST_DIR/tc608a"
+mkdir -p "$dir608a"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+# (TC-475-A が定義する fresh_ts を優先し、単独実行時は新規生成する)
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608a" "{\"active\": true, \"phase\": \"cleanup\", \"previous_phase\": \"\", \"next_action\": \"Execute cleanup phases. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608a\"}"
+stderr_file608a="$(mktemp "$GUARD_TEST_DIR/stderr608a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608a\", \"session_id\": \"sid-608a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608a") && rc=0 || rc=$?
+# HINT の前半 (Phase 1.0) と後半 (cleanup_pre_ingest) を 2 段で検証し、
+# HINT 文言が改変された場合の regression を確実に検出する
+if [ $rc -eq 2 ] \
+    && grep -q "/rite:pr:cleanup Phase 1.0" "$stderr_file608a" \
+    && grep -q "cleanup_pre_ingest" "$stderr_file608a"; then
+  pass "cleanup active → blocked with cleanup-specific HINT (Phase 1.0 + cleanup_pre_ingest)"
+else
+  fail "expected exit 2 with HINT containing both 'Phase 1.0' and 'cleanup_pre_ingest', got rc=$rc stderr='$(cat "$stderr_file608a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-B: cleanup → cleanup_pre_ingest transition is whitelist-valid
+# --------------------------------------------------------------------------
+echo "TC-608-B: cleanup → cleanup_pre_ingest whitelist-valid"
+dir608b="$GUARD_TEST_DIR/tc608b"
+mkdir -p "$dir608b"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608b" "{\"active\": true, \"phase\": \"cleanup_pre_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608b\"}"
+stderr_file608b="$(mktemp "$GUARD_TEST_DIR/stderr608b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608b\", \"session_id\": \"sid-608b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608b") && rc=0 || rc=$?
+# HINT 内容も検証 (TC-608-A と parity、stop-guard.sh の 'case "$PHASE" in ... cleanup_pre_ingest)' branch の
+# "Phase 4.W.2 phase recorded" HINT の regression を検出。line-number 参照を避ける理由は cycle 8 F-05 参照)
+if [ $rc -eq 2 ] \
+    && ! grep -q "Invalid phase transition" "$stderr_file608b" \
+    && grep -q "Phase 4.W.2 phase recorded" "$stderr_file608b"; then
+  pass "cleanup→cleanup_pre_ingest whitelist-valid + Phase 4.W.2 HINT"
+else
+  fail "expected exit 2 without invalid_transition with Phase 4.W.2 HINT, got rc=$rc stderr='$(cat "$stderr_file608b")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-C: invalid transition cleanup → cleanup_post_ingest (bypassing pre_ingest)
+# --------------------------------------------------------------------------
+echo "TC-608-C: invalid transition cleanup → cleanup_post_ingest → blocked with invalid_transition"
+dir608c="$GUARD_TEST_DIR/tc608c"
+mkdir -p "$dir608c"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608c" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup\", \"next_action\": \"skipped pre_ingest\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608c\"}"
+stderr_file608c="$(mktemp "$GUARD_TEST_DIR/stderr608c.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608c\", \"session_id\": \"sid-608c\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608c") && rc=0 || rc=$?
+if [ $rc -eq 2 ] && grep -q "Invalid phase transition" "$stderr_file608c"; then
+  pass "invalid transition cleanup→cleanup_post_ingest detected"
+else
+  fail "expected exit 2 with Invalid phase transition, got rc=$rc stderr='$(cat "$stderr_file608c")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-D: cleanup_completed is terminal — no block
+# --------------------------------------------------------------------------
+echo "TC-608-D: cleanup_completed + active=false → exit 0 (terminal)"
+dir608d="$GUARD_TEST_DIR/tc608d"
+mkdir -p "$dir608d"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608d" "{\"active\": false, \"phase\": \"cleanup_completed\", \"next_action\": \"none\", \"updated_at\": \"$fresh_ts\", \"session_id\": \"sid-608d\"}"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608d\", \"session_id\": \"sid-608d\"}"
+output=$(run_guard "$input") && rc=0 || rc=$?
+# NOTE: active=false で stop-guard.sh の `if [ "$ACTIVE" != "true" ]; then exit 0` early exit するため、
+# whitelist の terminal acceptance (`rite_phase_transition_allowed()` の
+# `[ "$next" = "cleanup_completed" ] && return 0` terminal fast-path) は経由しない。
+# `cleanup_completed` を whitelist から削除しても本 TC は pass する false-positive 構造。
+# Terminal acceptance 経由は TC-608-F で検証する。
+if [ $rc -eq 0 ]; then
+  pass "cleanup_completed + active=false → exit 0 (early exit at active check, whitelist not exercised)"
+else
+  fail "expected exit 0, got $rc"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-E: cleanup_pre_ingest → cleanup_post_ingest transition is whitelist-valid (Mandatory After)
+# Covers the core transition that Issue #604 multi-layer defense depends on.
+# --------------------------------------------------------------------------
+echo "TC-608-E: cleanup_pre_ingest → cleanup_post_ingest whitelist-valid"
+dir608e="$GUARD_TEST_DIR/tc608e"
+mkdir -p "$dir608e"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608e" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup_pre_ingest\", \"next_action\": \"emit [cleanup:completed]\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608e\"}"
+stderr_file608e="$(mktemp "$GUARD_TEST_DIR/stderr608e.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608e\", \"session_id\": \"sid-608e\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608e") && rc=0 || rc=$?
+# rc=2 を明示 assert (active=true 経路で block が維持されることを確認、active 判定 regression 検出)
+if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608e"; then
+  pass "cleanup_pre_ingest→cleanup_post_ingest whitelist pass + rc=2 block maintained"
+else
+  fail "expected rc=2 without invalid_transition, got rc=$rc stderr='$(cat "$stderr_file608e")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-F: cleanup_post_ingest → cleanup_completed transition is whitelist-valid (Terminal Completion)
+# Covers the terminal transition that must be accepted for Phase 5 Completion Report.
+# active=true でも whitelist pass を保証する。
+# --------------------------------------------------------------------------
+echo "TC-608-F: cleanup_post_ingest → cleanup_completed whitelist-valid (active=true path)"
+dir608f="$GUARD_TEST_DIR/tc608f"
+mkdir -p "$dir608f"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608f" "{\"active\": true, \"phase\": \"cleanup_completed\", \"previous_phase\": \"cleanup_post_ingest\", \"next_action\": \"terminal\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608f\"}"
+stderr_file608f="$(mktemp "$GUARD_TEST_DIR/stderr608f.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608f\", \"session_id\": \"sid-608f\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608f") && rc=0 || rc=$?
+# whitelist の terminal acceptance path を経由 + rc=2 (active=true で block 維持) を明示検証
+# NOTE (cycle 9 F-04/F-06 明示化): rite_phase_transition_allowed() 内の評価順序上、
+#   terminal fast-path `[ "$next" = "cleanup_completed" ] && return 0` が explicit edge の
+#   for-loop より先に return するため、next=cleanup_completed を input とする本 TC は
+#   **terminal fast-path 経由のみ** が保証される。`["cleanup_post_ingest"]="cleanup_completed"`
+#   の explicit edge entry を削除しても本 TC は依然 pass する false-positive 構造。
+#   explicit edge の regression を検出するには phase-transition-whitelist.sh を source して
+#   rite_phase_transition_allowed() を直接 unit-level で呼び出す別 test file が必要。
+#   (integration test である本ファイルには internal 評価順序まで見えないため本質的限界)
+#   TODO (cycle 10 F-09): phase-transition-whitelist unit test 新設は別 Issue で tracking 予定。
+if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608f"; then
+  pass "cleanup_post_ingest→cleanup_completed whitelist pass + rc=2 block maintained"
+else
+  fail "expected rc=2 without invalid_transition, got rc=$rc stderr='$(cat "$stderr_file608f")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-G: Pin current permissive behavior — cleanup → cleanup_completed (skip pre/post_ingest)
+# 現状は以下 2 つの受理要因が存在する (tighten 時は両方を対象に判断が必要):
+#   (a) phase-transition-whitelist.sh の明示的 edge `["cleanup"]="cleanup_pre_ingest cleanup_completed"`
+#   (b) phase-transition-whitelist.sh の terminal forward-compat (cleanup_completed が terminal acceptance)
+# 将来 tighten された際に TC 追加が必要であることを pin する目的。
+# --------------------------------------------------------------------------
+echo "TC-608-G: cleanup → cleanup_completed direct skip is currently accepted (terminal forward-compat)"
+dir608g="$GUARD_TEST_DIR/tc608g"
+mkdir -p "$dir608g"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608g" "{\"active\": true, \"phase\": \"cleanup_completed\", \"previous_phase\": \"cleanup\", \"next_action\": \"terminal\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608g\"}"
+stderr_file608g="$(mktemp "$GUARD_TEST_DIR/stderr608g.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608g\", \"session_id\": \"sid-608g\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608g") && rc=0 || rc=$?
+# 現状は (a) 明示的 edge + (b) terminal forward-compat の両方により受理される
+# rc=2 を明示 assert (active=true で block が維持されることを確認、permissive pin 目的)
+# NOTE (cycle 9 F-04 明示化): rite_phase_transition_allowed() の評価順序上、
+#   terminal fast-path `[ "$next" = "cleanup_completed" ] && return 0` が先に return するため、
+#   next=cleanup_completed を input とする本 TC は **terminal fast-path 経由のみ** が保証される。
+#   (a) 明示的 edge と (b) terminal fast-path は OR 結合で、片方を削除しても本 TC は依然 pass する。
+#   discriminate するには phase-transition-whitelist.sh を source して rite_phase_transition_allowed()
+#   を直接呼び出す unit test が必要 (integration test である本ファイルには internal 評価順序まで見えない)。
+#   tighten 時は (a)(b) 両方を対象に判断する必要があり、その際は本 NOTE を更新すること。
+#   TODO (cycle 10 F-09): phase-transition-whitelist unit test 新設は別 Issue で tracking 予定。
+if [ $rc -eq 2 ] && ! grep -q "Invalid phase transition" "$stderr_file608g"; then
+  pass "cleanup→cleanup_completed direct skip accepted + rc=2 block maintained (permissive NOTE pin)"
+else
+  fail "cleanup→cleanup_completed direct skip was rejected or rc != 2 — whitelist tightening may have occurred. Update TC-608-G and whitelist NOTE if intentional. rc=$rc stderr='$(cat "$stderr_file608g")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-H: cleanup_post_ingest HINT 文言 regression guard
+# stop-guard.sh の cleanup_post_ingest case の HINT 文言 "Phase 5 Completion Report has NOT been output yet"
+# が改変されても検出するための 2 段検証 (TC-608-A/B と parity)。
+# --------------------------------------------------------------------------
+echo "TC-608-H: cleanup_post_ingest active → HINT '[Phase 5 Completion Report has NOT been output yet]' pinned"
+dir608h="$GUARD_TEST_DIR/tc608h"
+mkdir -p "$dir608h"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir608h" "{\"active\": true, \"phase\": \"cleanup_post_ingest\", \"previous_phase\": \"cleanup_pre_ingest\", \"next_action\": \"emit Phase 5 completion report\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608h\"}"
+stderr_file608h="$(mktemp "$GUARD_TEST_DIR/stderr608h.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608h\", \"session_id\": \"sid-608h\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608h") && rc=0 || rc=$?
+# HINT の必須 phrase 2 つ (rite:wiki:ingest returned + Phase 5 Completion Report has NOT) を両方検証
+if [ $rc -eq 2 ] \
+    && grep -q "rite:wiki:ingest returned" "$stderr_file608h" \
+    && grep -q "Phase 5 Completion Report has NOT been output" "$stderr_file608h"; then
+  pass "cleanup_post_ingest active → blocked with HINT containing 'rite:wiki:ingest returned' and 'Phase 5 Completion Report has NOT been output'"
+else
+  fail "expected rc=2 with both HINT phrases present, got rc=$rc stderr='$(cat "$stderr_file608h")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-608-I: IFS delimiter regression guard (cycle 10 CRITICAL F-01)
+# previous_phase="" (新規 create 直後 / 手動 state file) のとき、旧実装
+# `IFS=$'\t' read ... | @tsv` は POSIX whitespace IFS collapse により全フィールドが
+# 1 つ左 shift し ERROR_COUNT が empty → `[ "" -ge "$THRESHOLD" ]` 整数エラーが発生、
+# error loop の threshold path が永久に発火しない silent corruption を起こしていた。
+# 本 TC は unit separator (\x1f) への修正が正しく適用され、ERROR_COUNT が整数として
+# parse されることを verify する。
+# --------------------------------------------------------------------------
+echo "TC-608-I: IFS regression — previous_phase='' + error_count=0 → threshold path parses correctly"
+dir608i="$GUARD_TEST_DIR/tc608i"
+mkdir -p "$dir608i"
+# Defensive: ${var:-default} は未定義・空のどちらにも作用する bash 仕様に従ったフォールバック。
+# cross-TC 独立性 (TC-475-A が削除/移動されても単独実行可能) を担保する。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# previous_phase は空文字列 (新規 create 直後の初期状態を模倣)
+# error_count は 0 (threshold 未達)、block が正しく機能することを確認
+create_state_file "$dir608i" "{\"active\": true, \"phase\": \"phase5_implementation\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-608i\"}"
+stderr_file608i="$(mktemp "$GUARD_TEST_DIR/stderr608i.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir608i\", \"session_id\": \"sid-608i\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file608i") && rc=0 || rc=$?
+# IFS collapsing bug があると stderr に bash 整数比較エラー (日本語 locale では
+# "整数の式が予期されます"、LC_ALL=C / en_US locale では "integer expression expected") が
+# 出現し rc=0 (threshold-bypass) で許可してしまう。
+# cycle 11 F-03: locale-independent 検証のため、両 phrase を OR で negative grep する。
+# CI 環境 (多くが LC_ALL=C) で false-negative (silent pass) を起こさない設計。
+if [ $rc -eq 2 ] \
+    && ! grep -q "整数の式が予期されます" "$stderr_file608i" \
+    && ! grep -q "integer expression expected" "$stderr_file608i"; then
+  pass "previous_phase='' で ERROR_COUNT が正しく 0 として parse され block 継続 (IFS regression guard、locale-independent)"
+else
+  fail "expected rc=2 without integer parse error (either locale), got rc=$rc stderr='$(cat "$stderr_file608i")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-F: escalation path STEP_0_PATCH_FAILED grep 指示 coverage
+#   (verified-review cycle 4 F-07 / #636)
+# TC-634-E は error_count=0 fresh state の通常 path のみカバー。本 TC は escalation 分岐
+# (`error_count >= 1` で WORKFLOW_HINT に RE-ENTRY DETECTED を append する branch、
+# line-number 参照を避ける理由は cycle 8 F-05 参照)
+# を経由しても base HINT の STEP_0_PATCH_FAILED=1 grep 指示が保持されることを verify する。
+# --------------------------------------------------------------------------
+echo "TC-634-F: create_post_interview + error_count=1 (escalation) still emits STEP_0_PATCH_FAILED grep reference"
+dir634f="$GUARD_TEST_DIR/tc634f"
+mkdir -p "$dir634f"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634f" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-634f\"}"
+stderr_file634f="$(mktemp "$GUARD_TEST_DIR/stderr634f.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634f\", \"session_id\": \"sid-634f\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634f") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "STEP_0_PATCH_FAILED=1" "$stderr_file634f" \
+    && grep -q "RE-ENTRY DETECTED" "$stderr_file634f"; then
+  pass "create_post_interview escalation path preserves STEP_0_PATCH_FAILED grep reference (twin site contract holds during error_count>=1)"
+else
+  fail "expected STEP_0_PATCH_FAILED=1 grep hint retained in escalation path, got rc=$rc stderr='$(cat "$stderr_file634f")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-G/H/I/J: twin-site contract verification for the 4 additional retained flags
+#   (verified-review cycle 4 F-04 / #636)
+# cycle 3 F-04 で STEP_0_PATCH_FAILED の twin-site contract を TC-634-E で pin したが、cycle 3 で
+# 新規追加された 4 flag (STEP_1_PATCH_FAILED, PREFLIGHT_PATCH_FAILED, PREFLIGHT_CREATE_FAILED,
+# INTERVIEW_RETURN_PATCH_FAILED) は consumer 側 (stop-guard HINT + test) で grep 指示されていな
+# かった (cycle 2 F-05 の dead-marker 回避方針に反する asymmetry)。cycle 4 で HINT に grep 指示
+# を追加したので、本 4 TC でその contract を pin する。片側の削除/リネームを catch する。
+# --------------------------------------------------------------------------
+echo "TC-634-G: create_interview HINT includes PREFLIGHT_PATCH_FAILED grep reference (twin site contract)"
+dir634g="$GUARD_TEST_DIR/tc634g"
+mkdir -p "$dir634g"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634g" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634g\"}"
+stderr_file634g="$(mktemp "$GUARD_TEST_DIR/stderr634g.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634g\", \"session_id\": \"sid-634g\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634g") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "PREFLIGHT_PATCH_FAILED=1" "$stderr_file634g"; then
+  pass "create_interview HINT includes [CONTEXT] PREFLIGHT_PATCH_FAILED=1 grep reference"
+else
+  fail "expected PREFLIGHT_PATCH_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634g")'"
+fi
+
+echo "TC-634-H: create_interview HINT includes PREFLIGHT_CREATE_FAILED grep reference (twin site contract)"
+dir634h="$GUARD_TEST_DIR/tc634h"
+mkdir -p "$dir634h"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634h" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634h\"}"
+stderr_file634h="$(mktemp "$GUARD_TEST_DIR/stderr634h.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634h\", \"session_id\": \"sid-634h\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634h") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "PREFLIGHT_CREATE_FAILED=1" "$stderr_file634h"; then
+  pass "create_interview HINT includes [CONTEXT] PREFLIGHT_CREATE_FAILED=1 grep reference"
+else
+  fail "expected PREFLIGHT_CREATE_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634h")'"
+fi
+
+echo "TC-634-I: create_interview HINT includes INTERVIEW_RETURN_PATCH_FAILED grep reference (twin site contract)"
+dir634i="$GUARD_TEST_DIR/tc634i"
+mkdir -p "$dir634i"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634i" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634i\"}"
+stderr_file634i="$(mktemp "$GUARD_TEST_DIR/stderr634i.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634i\", \"session_id\": \"sid-634i\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634i") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "INTERVIEW_RETURN_PATCH_FAILED=1" "$stderr_file634i"; then
+  pass "create_interview HINT includes [CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1 grep reference"
+else
+  fail "expected INTERVIEW_RETURN_PATCH_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634i")'"
+fi
+
+echo "TC-634-J: create_post_interview HINT includes STEP_1_PATCH_FAILED grep reference (twin site contract)"
+dir634j="$GUARD_TEST_DIR/tc634j"
+mkdir -p "$dir634j"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634j" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634j\"}"
+stderr_file634j="$(mktemp "$GUARD_TEST_DIR/stderr634j.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634j\", \"session_id\": \"sid-634j\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634j") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "STEP_1_PATCH_FAILED=1" "$stderr_file634j"; then
+  pass "create_post_interview HINT includes [CONTEXT] STEP_1_PATCH_FAILED=1 grep reference"
+else
+  fail "expected STEP_1_PATCH_FAILED=1 grep hint, got rc=$rc stderr='$(cat "$stderr_file634j")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-K/L: flow-state-update.sh --preserve-error-count flag behavior pin
+#   (verified-review cycle 4 F-03 / #636)
+# cycle 3 F-01 で patch mode JQ_FILTER 分岐 (--preserve-error-count) を実装したが、既存 TC-634-B/D
+# の error_count=2 観察は stop-guard.sh の create_post_interview case arm 内 error_count increment
+# block (直接 `jq --argjson cnt` で state file を atomic write する経路、line-number 参照を避ける理由は
+# cycle 8 F-05 参照) 経由で、flow-state-update.sh patch mode の preserve 分岐 (新コード) を
+# exercise しない。本 2 TC で JQ_FILTER 分岐を直接 verify し、将来の refactor で silent regression
+# しないよう pin する。
+# --------------------------------------------------------------------------
+SCRIPT_UPDATER="$SCRIPT_DIR/../flow-state-update.sh"
+
+echo "TC-634-K: flow-state-update.sh patch --preserve-error-count preserves existing error_count"
+dir634k="$GUARD_TEST_DIR/tc634k"
+mkdir -p "$dir634k"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# error_count=2 の state を手動作成
+# root-cause(test-quality): stderr suppress + exit code 未検査 + next_action 未検査の 3 条件が
+# 揃うと「スクリプトが一切実行されなくても pre-state の error_count=2 がそのまま残って PASS」
+# する silent-false-pass を起こす。本 TC は JQ_FILTER 分岐 silent regression 検出 pin の
+# 役割を果たせないため、exit code + next_action の両方を assertion する。
+create_state_file "$dir634k" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 2, \"session_id\": \"sid-634k\"}"
+# --preserve-error-count 付き patch を実行 (同一 phase self-patch)
+stderr_file634k=$(mktemp /tmp/rite-tc634k-stderr-XXXXXX)
+(
+  cd "$dir634k"
+  bash "$SCRIPT_UPDATER" patch --phase "create_post_interview" --next "after preserve" --preserve-error-count
+) 2>"$stderr_file634k"
+rc634k=$?
+state_error_count_k=$(jq -r '.error_count // empty' "$dir634k/.rite-flow-state" 2>/dev/null)
+state_next_k=$(jq -r '.next_action // empty' "$dir634k/.rite-flow-state" 2>/dev/null)
+if [ "$rc634k" -eq 0 ] && [ "$state_error_count_k" = "2" ] && [ "$state_next_k" = "after preserve" ]; then
+  pass "flow-state-update.sh patch --preserve-error-count keeps error_count=2 intact (rc=0, next_action advanced)"
+else
+  fail "TC-634-K failed: rc=$rc634k, error_count='$state_error_count_k' (expected 2), next_action='$state_next_k' (expected 'after preserve'). stderr=$(cat "$stderr_file634k")"
+fi
+rm -f "$stderr_file634k"
+
+echo "TC-634-L: flow-state-update.sh patch WITHOUT --preserve-error-count resets error_count to 0"
+dir634l="$GUARD_TEST_DIR/tc634l"
+mkdir -p "$dir634l"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# error_count=2 の state を手動作成
+# root-cause(test-quality): TC-634-K と同じ silent-false-pass 経路を持つため、exit code +
+# next_action 変化 + error_count reset の 3 条件を全て assertion して JQ_FILTER default 分岐
+# (reset-to-zero) の silent regression を検出する。
+create_state_file "$dir634l" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 2, \"session_id\": \"sid-634l\"}"
+# flag 無しの patch を実行
+stderr_file634l=$(mktemp /tmp/rite-tc634l-stderr-XXXXXX)
+(
+  cd "$dir634l"
+  bash "$SCRIPT_UPDATER" patch --phase "create_delegation" --next "after reset"
+) 2>"$stderr_file634l"
+rc634l=$?
+state_error_count_l=$(jq -r '.error_count // empty' "$dir634l/.rite-flow-state" 2>/dev/null)
+state_next_l=$(jq -r '.next_action // empty' "$dir634l/.rite-flow-state" 2>/dev/null)
+if [ "$rc634l" -eq 0 ] && [ "$state_error_count_l" = "0" ] && [ "$state_next_l" = "after reset" ]; then
+  pass "flow-state-update.sh patch without --preserve-error-count resets error_count=2 → 0 (rc=0, next_action advanced)"
+else
+  fail "TC-634-L failed: rc=$rc634l, error_count='$state_error_count_l' (expected 0), next_action='$state_next_l' (expected 'after reset'). stderr=$(cat "$stderr_file634l")"
+fi
+rm -f "$stderr_file634l"
+
+# --------------------------------------------------------------------------
+# TC-634-M/N: fault injection for mv failure diagnostic paths
+#   (verified-review cycle 5 F-04 / #636)
+# cycle 4 F-05/F-07/F-08 で stop-guard.sh の error_count atomic write 後 mv 失敗 path と
+# flow-state-update.sh の create/patch/increment mode mv 失敗 path に diagnostic message を
+# 追加したが、test が一切存在せず revert しても全 test が PASS する silent-failure 状態だった。
+# fault injection (PATH override で偽の mv を先頭に挿入) で mv 失敗を再現し、diagnostic log が
+# 記録されること / stderr に mv failed が emit されることを verify する。
+# --------------------------------------------------------------------------
+
+echo "TC-634-M: stop-guard.sh mv failure (fault injection) emits error_count_mv_failed diag log"
+dir634m="$GUARD_TEST_DIR/tc634m"
+mkdir -p "$dir634m"
+# PATH override 用の fake mv binary (disk full / permission denied / EXDEV simulation)
+fake_bin634m=$(mktemp -d "$GUARD_TEST_DIR/tc634m-bin-XXXXXX")
+cat > "$fake_bin634m/mv" << 'FAKEMV_EOF'
+#!/bin/sh
+# Fault injection: simulate mv failure (e.g., disk full / permission denied / EXDEV)
+exit 1
+FAKEMV_EOF
+chmod +x "$fake_bin634m/mv"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# active=true + error_count=0 で stop-guard が error_count を increment する path を通す
+create_state_file "$dir634m" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634m\"}"
+input634m="{\"stop_hook_active\": false, \"cwd\": \"$dir634m\"}"
+# fake mv を PATH 先頭に差し込んで stop-guard.sh を起動
+# stderr_file634m は debug 用に握っておく (stop-guard stderr 自体は exit 2 + block message を含む)
+stderr_file634m=$(mktemp "$GUARD_TEST_DIR/tc634m-stderr-XXXXXX")
+(
+  PATH="$fake_bin634m:$PATH" bash "$GUARD" <<< "$input634m"
+) >/dev/null 2>"$stderr_file634m" || true
+# diag log に error_count_mv_failed エントリが記録されていることを verify
+if [ -f "$dir634m/.rite-stop-guard-diag.log" ] \
+    && grep -q "error_count_mv_failed phase=create_post_interview" "$dir634m/.rite-stop-guard-diag.log"; then
+  pass "stop-guard.sh emits error_count_mv_failed diag log when mv fails (fault injection via PATH)"
+else
+  fail "expected 'error_count_mv_failed phase=create_post_interview' in diag log, got: $(cat "$dir634m/.rite-stop-guard-diag.log" 2>/dev/null || echo '(no diag log)'). stderr=$(cat "$stderr_file634m")"
+fi
+rm -f "$stderr_file634m"
+rm -rf "$fake_bin634m"
+
+echo "TC-634-N: flow-state-update.sh mv failure (fault injection) emits 'mv failed (patch mode)' stderr"
+dir634n="$GUARD_TEST_DIR/tc634n"
+mkdir -p "$dir634n"
+fake_bin634n=$(mktemp -d "$GUARD_TEST_DIR/tc634n-bin-XXXXXX")
+cat > "$fake_bin634n/mv" << 'FAKEMV_EOF'
+#!/bin/sh
+# Fault injection: simulate mv failure in flow-state-update.sh patch mode
+exit 1
+FAKEMV_EOF
+chmod +x "$fake_bin634n/mv"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+# patch mode の対象 state file を事前作成 (mv 失敗後に元の state が温存されることも暗黙に pin)
+create_state_file "$dir634n" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"before\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634n\"}"
+stderr_file634n=$(mktemp "$GUARD_TEST_DIR/tc634n-stderr-XXXXXX")
+rc634n=0
+(
+  cd "$dir634n"
+  PATH="$fake_bin634n:$PATH" bash "$SCRIPT_UPDATER" patch --phase "create_delegation" --next "after patch"
+) >/dev/null 2>"$stderr_file634n" || rc634n=$?
+# flow-state-update.sh は mv 失敗時に `exit 1` するため rc=1 を期待
+# かつ stderr に 'ERROR: mv failed (patch mode)' の diagnostic を期待
+# F-04 (#636 cycle 7): stderr だけでなく `.rite-stop-guard-diag.log` に
+# `flow_state_mv_failed mode=patch` エントリが残る (= _log_flow_diag 永続痕跡) ことも同時に verify。
+# 旧実装は stderr のみ assert しており、`_log_flow_diag` を silent に revert しても
+# TC-634-N が PASS する false-positive test だった (cycle 5 F-04 silent-false-pass の再発)。
+diag_file634n="$dir634n/.rite-stop-guard-diag.log"
+if [ "$rc634n" -ne 0 ] \
+    && grep -q "mv failed (patch mode)" "$stderr_file634n" \
+    && [ -f "$diag_file634n" ] \
+    && grep -q "flow_state_mv_failed mode=patch" "$diag_file634n"; then
+  pass "flow-state-update.sh emits 'mv failed (patch mode)' stderr AND persists 'flow_state_mv_failed mode=patch' diag log on mv failure"
+else
+  fail "expected rc!=0, 'mv failed (patch mode)' stderr, AND 'flow_state_mv_failed mode=patch' diag log entry; got rc=$rc634n, stderr=$(cat "$stderr_file634n"), diag=$(cat "$diag_file634n" 2>/dev/null || echo '(no diag log)')"
+fi
+rm -f "$stderr_file634n"
+rm -rf "$fake_bin634n"
+
+# --------------------------------------------------------------------------
+# TC-634-O: AC-5 contract phrase automation — #634 review cycle 6 F-06
+# Issue #634 AC-5 で必須とされる contract phrase (anti-pattern / correct-pattern /
+# same response turn / DO NOT stop) の各 count >= 1 を create.md で自動検証する。
+# fixture の inline grep 手順にのみ依存していた状態を test suite automation に昇格し、
+# LLM が contract phrase をうっかり削除しても CI で検出できるようにする。
+# --------------------------------------------------------------------------
+echo "TC-634-O: AC-5 contract phrases present in create.md (anti-pattern / correct-pattern / same response turn / DO NOT stop)"
+create_md="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create.md"
+tc634o_ok=1
+tc634o_missing=""
+for phrase in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do
+  # grep -c は 0 件時でも stdout に "0" を出力するが、exit code は非 0 を返す。
+  # 旧実装 `|| echo 0` は grep 失敗時に stdout へ追加で "0" を append し、
+  # `c="0"` + 改行 + `"0"` の 2 行文字列になり、直後の `[ "$c" -lt 1 ]` が integer parse
+  # error を起こし非 0 rc を返して else 分岐へ fall-through、`tc634o_ok=1` のまま PASS する
+  # silent-false-pass を起こしていた (#636 cycle 7 F-01 実測確認済み)。
+  # `|| true` で exit code だけ握りつぶし、grep -c の stdout 側 "0" をそのまま数値として使う。
+  c=$(grep -c -- "$phrase" "$create_md" 2>/dev/null || true)
+  # 異常経路 (grep が全く stdout を出力せず空) でも integer 比較が fail しないよう空→0 正規化。
+  [ -z "$c" ] && c=0
+  if [ "$c" -lt 1 ]; then
+    tc634o_ok=0
+    tc634o_missing="${tc634o_missing} $phrase (count=$c)"
+  fi
+done
+if [ "$tc634o_ok" -eq 1 ]; then
+  pass "all AC-5 contract phrases present in create.md"
+else
+  fail "missing AC-5 contract phrase(s):${tc634o_missing}"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-P: AC-6 structural non-regression automation — #634 review cycle 6 F-06
+# HTML コメント sentinel + case arm + whitelist + Pre-flight の 4 点が保持されることを
+# 自動検証する。fixture の inline grep 手順を test suite に昇格。
+# --------------------------------------------------------------------------
+echo "TC-634-P: AC-6 structural elements present (HTML sentinel / case arm / whitelist / Pre-flight)"
+interview_md="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-interview.md"
+whitelist_sh="$SCRIPT_DIR/../../../../plugins/rite/hooks/phase-transition-whitelist.sh"
+tc634p_ok=1
+tc634p_missing=""
+grep -qF '[interview:skipped]' "$interview_md" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} interview:skipped-sentinel"; }
+grep -qF '[interview:completed]' "$interview_md" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} interview:completed-sentinel"; }
+grep -qE 'create_post_interview\)$' "$GUARD" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create_post_interview-case-arm"; }
+grep -qE '\["create_post_interview"\]=' "$whitelist_sh" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} whitelist-edge"; }
+grep -qF 'MANDATORY Pre-flight' "$interview_md" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} Pre-flight-section"; }
+# F-03 (#636 cycle 7): `[create:completed:` sentinel (create.md / create-register.md / create-decompose.md の 3 点) の
+# 存在を verify。Issue #634 body で AC-6 判定手段として明示された構造要素のうち、cycle 6 までの
+# TC-634-P に grep が欠落していた。sentinel 削除・改名が将来発生した場合に CI で検出する。
+create_md_f03="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create.md"
+create_register_md_f03="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-register.md"
+create_decompose_md_f03="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-decompose.md"
+grep -qF '[create:completed:' "$create_md_f03" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create-completed-sentinel-create.md"; }
+grep -qF '[create:completed:' "$create_register_md_f03" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create-completed-sentinel-create-register.md"; }
+grep -qF '[create:completed:' "$create_decompose_md_f03" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create-completed-sentinel-create-decompose.md"; }
+if [ "$tc634p_ok" -eq 1 ]; then
+  pass "all AC-6 structural elements intact"
+else
+  fail "missing AC-6 structural element(s):${tc634p_missing}"
+fi
+
+# --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ $FAIL -gt 0 ]; then

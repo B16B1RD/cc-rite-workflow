@@ -35,8 +35,8 @@ This command orchestrates the Issue creation flow by delegating to specialized s
 ```
 create.md (orchestrator)
 ├── create-interview.md   ← Phase 0.4.1 + 0.5 (Adaptive Interview)
-├── create-decompose.md   ← Phase 0.7 + 0.8 + 0.9 (Spec + Decompose + Bulk Create)
-└── create-register.md    ← Phase 1 + 2 + 3 (Classify + Confirm + Create Single Issue)
+├── create-decompose.md   ← Phase 0.7 + 0.8 + 0.9 + 1.0 (Spec + Decompose + Bulk Create + Terminal Completion)
+└── create-register.md    ← Phase 1 + 2 + 3 + 4 (Classify + Confirm + Create Single Issue + Terminal Completion)
 ```
 
 ---
@@ -54,11 +54,77 @@ When this command is executed, follow the phases below in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the full protocol. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section.
+> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) and the global reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` for the full contract. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section in the **same response turn**.
 
-**Self-check**: After every sub-skill returns, ask yourself: "Has the Issue been created and the completion report output?" If not, you are NOT done — keep going.
+### Pre-check list (Issue #552 — mandatory before ending any response turn)
 
-**Defense-in-depth**: Each sub-skill (`create-interview.md`, `create-register.md`, `create-decompose.md`) updates `.rite-flow-state` to a `post_*` phase before returning. This ensures the stop-guard blocks any premature stop attempt, even if the orchestrator's 🚨 Mandatory After instructions are not executed immediately.
+**Enforcement coupling**: protocol violation 時は `stop-guard.sh` が block し、`manual_fallback_adopted` workflow_incident sentinel が stderr に echo されて Phase 5.4.4.1 で post-hoc 検出される (AC-7)。つまり「turn を閉じたつもりが stop-guard に止められる」という体験で強制される。
+
+**Evaluation context** (2 場面で同じチェックリストを使う):
+
+| 場面 (a): sub-skill return 直後 | 場面 (b): turn 終了直前 |
+|---|---|
+| まだワークフロー中途。`NO` は「次の継続ステップを実行すべき」を意味する | 終端到達確認。`NO` は **protocol violation** (工程を飛ばして停止しようとしている) |
+
+場面 (a) では Item 1-3 が `NO` でも正常 (まだ Issue 未作成段階)。場面 (b) では 4 項目すべて `YES` が turn 終了の必要条件。
+
+**Procedure**: Item 0 は **routing dispatcher** (YES/NO ではなく tag に応じて経路を選ぶ前段処理)。Item 0 を最優先で evaluate し、該当する経路に進んだ後、場面 (b) では **Item 1-3 が YES/NO で評価される状態チェック**。turn 終了の可否は Item 1-3 のみを集計する。
+
+| # | Check (種別) | If YES/NO / routing, do |
+|---|-------------|------------------------|
+| 0 | **Routing dispatcher** (状態質問ではない): 直前の sub-skill return tag は何か? | grep the recent output (HTML comments included) for `[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]` / `[CONTEXT] INTERVIEW_DONE=1` (Issue #634). Both the bare bracket form (legacy) and HTML-comment form (`<!-- [...] -->`, Issue #561 current) match. 推奨形式は 3 回の `grep -F` 呼び出し: `grep -F '[create:completed:'`, `grep -F '[interview:'`, `grep -F '[CONTEXT] INTERVIEW_DONE=1'`。ERE を使う場合は `grep -E '\[(interview\|create):[a-z:0-9]+\]'` **ではなく** `grep -E '\[(interview|create):[a-z:0-9]+\]'` (unescaped pipe — ERE では `\|` がリテラル `|` として解釈されるため alternation として機能しない、#582 で検出)。**Issue #634 補強**: `[CONTEXT] INTERVIEW_DONE=1` grep marker は `create-interview.md` Return Output Format の FIRST 行として emit される plain-text marker で、HTML コメント除去 rendering でも grep 可能。`[interview:skipped]` / `[interview:completed]` のいずれかが matched **または** `[CONTEXT] INTERVIEW_DONE=1` が matched した時点で **continuation trigger** として扱う — immediately run 🚨 Mandatory After Interview (Step 0 Immediate Bash Action → Step 1 → Step 2 → Step 3 → Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]` matched: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。**本 Item は YES/NO 集計から除外** — ルーティング前段として機能する。 |
+| 1 | **State check**: `[create:completed:{N}]` が HTML コメントまたはベアブラケット形式で最終行 (あるいは末尾近傍) に出力済みか? | 推奨形式: `grep -F '[create:completed:'` (fixed string で HTML コメント内の string も matchable)。ERE 使用時は `grep -E '\[create:completed:[0-9]+\]'` (`-E` flag 必須 — BRE では `[0-9]+` が「1 個の数字 + リテラル `+`」と解釈され sentinel にマッチしない、#582 で検出)。**注意**: bracket-unescaped 形式 `[create:completed:[0-9]+]` は character class として誤解釈されるため使用禁止。場面 (a) では `NO` でも legitimate — 次の Pre-write + sub-skill invocation に進む。場面 (b) では `NO` は terminal sub-skill が未完了 — Mandatory After Delegation Step 3 (defense-in-depth として完了メッセージ + 次のステップ + HTML コメント sentinel を出力) を実行。 |
+| 2 | **State check**: ユーザー向け完了メッセージが表示済みか? (3 形式のいずれか 1 つを含めば YES) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal sub-skill の完了メッセージが欠落 — Mandatory After Delegation Step 3 を実行 (idempotent)。**識別 substring**: 3 形式は以下の排他的な substring で識別可能 — register: `を作成しました:` (コロン付き URL), decompose: `を分解して` (中間句), orchestrator fallback: `を作成しました` かつ `:` を含まない。いずれか 1 形式の識別 substring を含めば YES 判定。 |
+| 3 | **State check**: `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: create_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — terminal sub-skill を呼ぶか Mandatory After Delegation Step 2 を実行。 |
+
+**Rule**: **Item 1-3 すべて `YES`** が turn 終了の必要条件 **ただし場面 (b) においてのみ**。Item 0 は routing dispatcher で YES/NO 集計には含まれない (経路選択が完了すれば Item 1-3 の evaluation に進む)。場面 (a) では Item 1-3 の `NO` は「次のステップに進め」を意味する正常シグナル。Item 1-3 全 `YES` は terminal state (Issue 作成完了 + sentinel 出力 + flow-state deactivate) を保証する。
+
+**Responsibility split**: 本 Pre-check list は turn 終了直前の手続的検証、Anti-pattern / Correct-pattern sections は sub-skill return 直後の推奨/禁止パターン (重複ではなく補完関係)。Pre-check list の各項目が `NO` の場合は Anti-pattern のルール (「turn を閉じない」) に従い即時継続すること。
+
+**Self-check alias** (後方互換): `Has [create:completed:{N}] been output?` = Pre-check Item 1。下流の Mandatory After sections から本 Pre-check list を参照する際は Item 1-3 の終端条件をまとめて評価する。
+
+### Anti-pattern (what NOT to do)
+
+When `rite:issue:create-interview` returns `<!-- [interview:skipped] -->` or `<!-- [interview:completed] -->` (HTML comment form per Issue #561):
+
+```
+[WRONG]
+<Skill rite:issue:create-interview returns>
+<LLM output: "<!-- [interview:skipped] -->">
+<LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
+```
+
+This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off signal. Ending the turn here abandons the workflow mid-flight with no Issue created. Note: even though the sentinel is now wrapped in an HTML comment (#561 UX fix), the LLM's turn-boundary heuristic may still fire if the Mandatory After section is not executed immediately.
+
+### Correct-pattern (what to do)
+
+```
+[CORRECT]
+<Skill rite:issue:create-interview returns>
+<LLM output: "<!-- [interview:skipped] -->">
+<In the same response turn, LLM IMMEDIATELY:>
+  1. Runs the Pre-write bash for Phase 0.6 / Delegation Routing
+  2. Evaluates Phase 0.6 triggers
+  3. Runs the Delegation Routing Pre-write bash
+  4. Invokes skill: "rite:issue:create-register" (or create-decompose)
+  5. Waits for <!-- [create:completed:{N}] --> (HTML comment form)
+  6. Runs Mandatory After Delegation self-check
+```
+
+**Rule**: Treat `[interview:skipped]` / `[interview:completed]` (both now emitted inside HTML comments per Issue #561) as **continuation triggers**, not as stopping points. Both terminal sub-skills (`create-register`, `create-decompose`) output `<!-- [create:completed:{N}] -->` as the unified completion marker (HTML comment form). The **only** valid stop in this workflow is after the user-visible completion message (`✅ Issue #{N} を作成しました: {url}`) + next-steps block have been displayed AND `<!-- [create:completed:{N}] -->` is output as the absolute last line (the terminal sub-skill emits them in this order — see `create-register.md` Phase 4.2/4.3/4.4 and `create-decompose.md` Phase 1.0.2/1.0.3).
+
+> **Contract phrases (AC-3, Issue #525)**: The anti-pattern / correct-pattern contract above uses these exact phrases: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`. These phrases are grep-verified as part of the AC-3 static check — do not rewrite them away. Manual verification command:
+>
+> ```bash
+> for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do
+>   grep -c "$p" plugins/rite/commands/issue/create.md
+> done
+> # Expected: all 4 counts >= 1
+> ```
+
+**Completion marker convention** (Issue #444 + Issue #561): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`, emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) on the absolute last line of the terminal sub-skill's output. The HTML comment form (Issue #561 D-01) keeps the string grep-matchable (`grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`) while ensuring the user-visible final content is the `✅` completion message + next-steps block (AC-2 / AC-3 of #561). Terminal sub-skills (`create-register.md`, `create-decompose.md`) handle flow-state deactivation, user-visible completion message, next-step display, and the HTML-commented sentinel internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
+
+**Defense-in-depth**: `create-interview.md` updates `.rite-flow-state` to a `post_*` phase (`create_post_interview`) before returning. Terminal sub-skills (`create-register.md`, `create-decompose.md`) set `create_completed` with `active: false` and output the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return.
 
 ## Arguments
 
@@ -153,6 +219,18 @@ Projects を使用するには /rite:init を実行してください。
 ---
 
 ## Phase 0: Input Analysis and Completion
+
+> **🚫 MUST NOT — Bypass prohibition (Mode B defense, #475)**
+>
+> Between this point and `[create:completed:{N}]`, the orchestrator MUST NOT:
+>
+> 1. Execute `gh issue create` via the Bash tool (blocked by `pre-tool-bash-guard.sh` hook)
+> 2. Skip from here directly to output without invoking `rite:issue:create-interview`
+> 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a single synthetic "create Issue" step
+>
+> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
+>
+> **⚠️ Drift guard**: This same block is repeated verbatim before the `## Delegation to Interview` section below. **Both occurrences MUST stay identical** — if you update one, update both. A grep-based check is the only drift detector.
 
 ### 0.1 Extract Information from User Input
 
@@ -393,9 +471,40 @@ Determine the task type for Phase 0.4.1 adaptive interview depth via AskUserQues
 
 **Completion criteria for Phase 0.4**: See [Termination Logic > Phase 0.4 Completion Criteria](#phase-04-completion-criteria).
 
+### 0.4.2 Skip Semantics (Critical — Mode B Defense)
+
+> **⚠️ READ THIS EVERY TIME Phase 0.4 is skipped.**
+
+> **Identity reference**: 本 skip semantics は [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` principle の具体化である。「時間的制約」「context 残量」を理由にした step 省略は禁止。user-facing 確認 dialog の skip は 0.4.1 / 0.4.2 / Interview delegation / Phase 0.6 / Routing の MUST step 省略を許可するものではない。
+
+When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmation questions are skipped, this means **ONLY** that the user-facing confirmation dialog is skipped. It does **NOT** mean any of the following are skipped:
+
+| MUST execute even when Phase 0.4 confirmation is skipped | Why (enforcement layer) |
+|---|---|
+| Phase 0.4.1 goal classification (infer task type from Phase 0.1) | Required by Phase 0.5 interview scope determination |
+| Delegation to Interview section (Pre-write + `rite:issue:create-interview` Skill) | Without the `create_interview` flow-state write, stop-guard has no hook to enforce delegation |
+| 🚨 Mandatory After Interview | Updates `.rite-flow-state.phase=create_post_interview`; stop-guard keeps blocking until `create_delegation` is written below |
+| Phase 0.6 (Task Decomposition Decision) | Chooses between `create-register` (single Issue) and `create-decompose` (sub-Issues) |
+| Delegation Routing (Pre-write + terminal sub-skill Skill invocation) | Writes `create_delegation`, advancing the whitelist past `create_post_interview` |
+| 🚨 Mandatory After Delegation | Defense-in-depth for the terminal `create_completed` state |
+
+**The only legitimate way to create a GitHub Issue from this command is by invoking `rite:issue:create-register` or `rite:issue:create-decompose` as a Skill.** Calling `gh issue create` directly from the orchestrator bypasses flow-state tracking, Projects integration, and every enforcement layer — and is **blocked by `pre-tool-bash-guard.sh`** when `.rite-flow-state.phase = create_*`.
+
 ---
 
 ## Delegation to Interview
+
+> **🚫 MUST NOT — Bypass prohibition (Mode B defense, #475)**
+>
+> Between this point and `[create:completed:{N}]`, the orchestrator MUST NOT:
+>
+> 1. Execute `gh issue create` via the Bash tool (blocked by `pre-tool-bash-guard.sh` hook)
+> 2. Skip from here directly to output without invoking `rite:issue:create-interview`
+> 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a single synthetic "create Issue" step
+>
+> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
+>
+> **⚠️ Drift guard**: This same block is repeated verbatim at the start of Phase 0 above. **Both occurrences MUST stay identical** — if you update one, update both. A grep-based check is the only drift detector.
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
 
@@ -416,27 +525,75 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-**🚨 Immediate after interview returns**: When `rite:issue:create-interview` outputs a result pattern (`[interview:completed]` or `[interview:skipped]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below. The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section; execute the 🚨 Mandatory After Interview steps without delay.
+**🚨 Immediate after interview returns**: When `rite:issue:create-interview` outputs a result pattern (`[interview:completed]` / `[interview:skipped]`) or emits the `[CONTEXT] INTERVIEW_DONE=1` marker and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below. The interview sub-skill has already updated `.rite-flow-state` to `create_post_interview` via its Defense-in-Depth section; execute the 🚨 Mandatory After Interview steps without delay.
 
 ### 🚨 Mandatory After Interview
 
-> See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
+> **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: `rite:issue:create-interview` の return 直後、**応答を終了せずに** 以下の Step 0 から Step 3 を順に即座に実行する。`[interview:*]` return tag は turn 境界ではなく継続トリガである。turn を閉じた場合、ユーザーの `continue` 介入なしに workflow が停止し、Issue は作成されない (本 Issue #525 の再発条件)。
 
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-interview` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually. See also the delegation section below for the same pattern.
+> **Enforcement**: `.rite-flow-state.phase` is `create_post_interview` at this point (the sub-skill wrote this via its Defense-in-Depth section). Stop-guard blocks any stop attempt while the flow-state is active — it will not unblock until `.rite-flow-state.phase` advances to `create_delegation` (via the Delegation Routing Pre-write below) or reaches `create_completed` (via the terminal sub-skill). Step 1 below refreshes the state timestamp but does NOT advance the phase on its own — the only legitimate path to a stoppable state is to continue through Phase 0.6 → Delegation Routing → terminal sub-skill. See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
-**Ignore** any "next steps" or standalone guidance from the interview sub-skill. **Immediately** proceed to the next phase.
+No GitHub Issue has been created yet. The interview only collects information.
 
-Do **NOT** stop after `rite:issue:create-interview` returns. The interview sub-skill only collects information — **no GitHub Issue has been created yet**. Stopping here would completely abandon the workflow with no deliverable.
-
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes to the correct next phase:
+**Step 0: Immediate Bash Action (Issue #634)**: Execute this bash block as the **very first tool call** after `rite:issue:create-interview` returns, **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr that the LLM can observe in subsequent context (the actual continuation marker `[CONTEXT] INTERVIEW_DONE=1` is produced by the sub-skill *before* Step 0 runs). **stderr observability 前提** (#636 cycle 8 F-07 対応): 本 flag は Claude Code の `ToolUseResult.stderr` として後続 turn の context に流入する — これは `pr/review.md` の `[CONTEXT] LOCAL_SAVE_FAILED=1` / `pr/fix.md` の `[CONTEXT] WM_UPDATE_FAILED=1` 他 40+ 箇所で採用されている repo-wide convention に依拠している。convention 自体が変われば 40+ 箇所すべてを同時改修する必要があるため、ここでは個別に前提明示せず共通 convention として参照する。
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "create_post_interview" \
-  --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+# Verify sub-skill returned with [CONTEXT] INTERVIEW_DONE=1 in recent context
+# (grep the conversation context, not a file, so this is informational — the actual
+#  continuation is driven by the Pre-flight flow-state write done by the sub-skill).
+# Re-affirm phase and refresh timestamp (idempotent with Step 1 below, but Step 0 is
+# a concrete tool call that prevents LLM implicit stop).
+#
+# Exit code を明示 check して silent failure を防ぐ (verified-review F-03 / #636)。
+# --if-exists は「file 不在 skip」と「patch 成功」を両方 exit 0 で返すため、
+# 真の patch 失敗 (disk full / permission denied 等) のみを区別して STEP_0_PATCH_FAILED
+# として emit する。Step 1 は idempotent patch として redundant に実行されるため、
+# Step 0 の失敗自体は非 blocking (defense-in-depth の 2 重化は維持される)。
+# verified-review cycle 3 F-01 / #636: --preserve-error-count は同一 phase への self-patch で
+# stop-guard.sh の RE-ENTRY DETECTED escalation counter を保持するために必須。未指定だと
+# flow-state-update.sh patch mode の JQ_FILTER が `.error_count = 0` でリセットし、
+# error_count >= 1 escalation と THRESHOLD=3 bail-out 層が永久に fire しなくなる (実測確認済み)。
+if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --next "Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop." \
+    --if-exists \
+    --preserve-error-count; then
+  echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
+  # 非 blocking: Step 1 が idempotent patch として再試行する。ここで exit 1 すると
+  # 既に進捗している workflow を kill してしまうため、warning のみで continue する。
+  # 本 flag は stop-guard.sh create_post_interview case arm の HINT で grep 参照される
+  # (verified-review cycle 2 F-05 / #636): dead marker ではなく LLM post-hoc 観察用の
+  # retained flag。検出時は Step 1 の redundant patch が primary 防御層になる。
+fi
 ```
 
-**Step 2**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
+> **Rationale (Issue #634)**: The regression pattern observed in #552/#561/#622/#628 is that the LLM, after seeing the sub-skill's HTML-comment sentinel (`<!-- [interview:skipped] -->` or `<!-- [interview:completed] -->`), perceives the work as "complete" and ends the turn. Step 0 inserts a **concrete bash tool invocation** as the first required action after the sub-skill returns, eliminating the turn-boundary signal. The LLM sees "I need to run this bash first" instead of "I'm done". Step 0 is redundant with Step 1 (patch mode is idempotent) — the redundancy IS the defense.
+>
+> **DRIFT-CHECK ANCHOR (semantic)**: 本 Step 0 bash block は create-interview.md Return Output `[CONTEXT] INTERVIEW_DONE=1` marker (Return Output Format section) と stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT (`bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview ... --preserve-error-count` を含む) と**3 site 対称**。いずれか 1 site を更新する際は他 2 site も同時更新する必要がある。特に bash 引数 (`--phase`, `--next`, `--preserve-error-count`) の symmetry が崩れると error_count reset loop (verified-review cycle 3 F-01) が再発する。
+>
+> **`--if-exists` の非対称性** (#636 cycle 9 F-01 / cycle 10 F-04 対応): 3-site 対称の bash 引数は `--phase` / `--next` / `--preserve-error-count` の 3 項目のみが対象。`--if-exists` は本 Step 0 / Step 1 (create.md 側) および stop-guard.sh の WORKFLOW_HINT (create.md canonical の literal snapshot として literal に含む) の 2 箇所に存在し、create-interview.md 側の Pre-flight / Return Output re-patch では **`if [ -f ".rite-flow-state" ]; then ... else ... fi`** の branch で file 存在分岐を明示的に処理するため付与しない (意図的非対称)。これは create-interview.md Pre-flight が「file 不在時は create mode で新規生成、存在時は patch mode で更新」という 2 経路を branch で区別する必要があるため、`--if-exists` (= patch mode 専用の silent skip flag) では実装できない責務の違いを反映している。create-interview.md の DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry) の pair anchor は `--if-exists` を列挙していない (両 anchor 間で整合)。stop-guard.sh HINT は create.md Step 0/Step 1 canonical の literal copy のため drift check 対象であり、symmetry 外ではない。(line-number 参照を避ける理由は cycle 8 F-05 参照 — #636 cycle 10 F-01 対応)
+>
+> **path 表現の非対称性は意図的** (#636 cycle 8 F-04 対応): 本 Step 0 / create-interview.md 側は `{plugin_root}/hooks/flow-state-update.sh` placeholder 形式を使い、Claude Code の plugin loader が expand する前提。一方 stop-guard.sh の HINT 文字列内 `bash plugins/rite/hooks/flow-state-update.sh ...` は **LLM が文字列として読んで cwd=repo_root でそのまま実行する想定の literal** のため、placeholder 展開経路を持たない。HINT 内に `{plugin_root}` を入れると LLM が literal `{plugin_root}` をシェルに渡してしまい動作しない。3 site 対称は **bash 引数 / semantics** の対称性であり、**path 表現**の対称性ではない。本注記は将来の drift check で path の非対称性を false positive として flag しないための明示的契約。
+
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`. `--if-exists` を付与することで、`.rite-flow-state` 不在時 (Pre-flight 漏れ経路) は silent skip し、create-interview.md Pre-flight が create mode で file 生成する先着性を defeat しない。file 存在時は Step 0 と Step 1 が 2 重 patch を行い、同時失敗のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` として retained flag を残す (Pre-flight 漏れ経路は stop-guard の create_interview case arm で間接検出される)。`--preserve-error-count` も Step 0 と対称に付与 — これがないと RE-ENTRY DETECTED escalation + THRESHOLD bail-out が永久に unreachable になる (verified-review cycle 3 F-01 / #636):
+
+```bash
+if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+    --if-exists \
+    --preserve-error-count; then
+  echo "[CONTEXT] STEP_1_PATCH_FAILED=1" >&2
+  # 非 blocking: Step 0 / Step 1 同時失敗の persistent 障害シグナルを LLM が post-hoc で
+  # 観察可能にする。create-interview.md Pre-flight 側の patch が primary 防御層として残る。
+fi
+```
+
+**Step 2 (Issue #552 — mandatory continuation step)**: Run the Pre-check list at the top of this document (section "Pre-check list"). If any item is `NO`, do NOT end the turn — continue to Phase 0.6 evaluation.
+
+**Step 3**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
+
+> **Issue #552 reminder**: The return tag `[interview:skipped]` / `[interview:completed]` is a **continuation trigger**, not a turn boundary. Ending the turn here is a **protocol violation** — the stop-guard hook will emit a workflow incident (`type=manual_fallback_adopted` or equivalent) if implicit stop is detected.
 
 ---
 
@@ -567,19 +724,23 @@ Invoke `skill: "rite:issue:create-register"`.
 | Tentative slug | Phase 0.1.3 | Always available |
 | `phases_skipped` flag | Phase 0.1.5 | Set to `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition. Set to `null` otherwise |
 
-**🚨 Immediate after delegation returns**: When the sub-skill (`rite:issue:create-register` or `rite:issue:create-decompose`) outputs a result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Delegation below. The sub-skill has already updated `.rite-flow-state` to `create_post_delegation` via its Defense-in-Depth section; execute the 🚨 Mandatory After Delegation steps without delay.
+**🚨 Immediate after delegation returns**: When the sub-skill outputs a result pattern (`[create:completed:{N}]`) and returns control, verify that the workflow completed successfully.
 
-### 🚨 Mandatory After Delegation
+> **Note on result patterns** (Issue #444): Terminal sub-skills (`create-register`, `create-decompose`) now output `[create:completed:{N}]` as the unified completion marker. The sub-skill handles flow-state deactivation, next-step output, and completion marker internally (Terminal Completion pattern). The legacy patterns `[register:created:{N}]` and `[decompose:completed:{N}]` have been replaced and are no longer output.
 
-> See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) for the general pattern.
+### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important instruction at this transition point. When `rite:issue:create-register` or `rite:issue:create-decompose` returns a result pattern, you MUST continue responding in the same turn. Ending your response here is a **bug** that forces the user to type "continue" manually.
+> **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: delegation sub-skill の return 直後、**応答を終了せずに** 以下の self-check と Step 1-3 を即座に実行する。Terminal sub-skill は通常 `[create:completed:{N}]` を出力して完了するが、万一出力が欠落した場合は本セクションが唯一のリカバリ経路である。
 
-**Verify**: Result pattern confirmed (e.g., `[register:created:{N}]` or `[decompose:completed:{N}]`). The Issue(s) have been created.
+> **Enforcement**: Terminal sub-skills (`create-register.md`, `create-decompose.md`) write `create_completed` + `active: false` and output `[create:completed:{N}]` internally (Issue #444 Terminal Completion pattern). See start.md [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global).
 
-Do **NOT** stop after the sub-skill returns. Post-completion cleanup (flow-state deactivation) is still pending — this is a required step to prevent the stop-guard from blocking future sessions.
+**Self-check and branching**:
 
-**Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic). The sub-skill has already written `create_post_delegation` via its Defense-in-Depth section; this second write updates the `next_action` message and refreshes the timestamp, ensuring stop-guard routes correctly:
+1. **Has `[create:completed:{N}]` been output?**
+   - **Yes** — terminal state reached. `.rite-flow-state.phase` is already `create_completed` and `active: false`. Steps 1-3 below are **no-ops** and MUST be skipped (executing Step 1 would write `create_post_delegation` which is a retrograde transition from the terminal state).
+   - **No** — the sub-skill failed to complete its Terminal Completion phase. Steps 1-3 below are **critical** and must execute to force the workflow into the terminal state.
+
+**Step 1**: Update `.rite-flow-state` to post-delegation phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -587,7 +748,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "Sub-skill completed. Deactivate flow state and output next steps. Do NOT stop."
 ```
 
-**Step 2**: Deactivate flow state:
+**Step 2**: Deactivate flow state (idempotent — safe to re-execute if already deactivated by sub-skill):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -595,17 +756,37 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "none" --active false
 ```
 
-**Step 3**: Output the next steps as the final message. This ensures "次のステップ" appears after all internal processing (flow-state deactivation) is complete:
+**Step 3 (conditional defense-in-depth)**: Output user-facing completion message, next steps, and HTML-commented sentinel **only if the terminal sub-skill did NOT emit them**. In the Normal path the terminal sub-skill (`create-register` Phase 4.2-4.4 / `create-decompose` Phase 1.0.2-1.0.3) already outputs the full terminal sequence, so this Step 3 is typically a **no-op**. Execute only when the self-check detected missing output:
 
-```
-次のステップ:
-1. `/rite:issue:start {number}` で作業を開始
-2. 作業完了後 `/rite:pr:create` で PR 作成
-```
+- **Register 経路** (single Issue created via `create-register`): if the sub-skill's completion message `✅ Issue #{N} を作成しました: {url}` is missing, output the fallback form (matching `create-register.md` Phase 4 Concrete output example):
+  ```
+  ✅ Issue #{number} を作成しました
 
-Where `{number}` is the Issue number extracted from the sub-skill's result pattern (`[register:created:{N}]` or `[decompose:completed:{N}]`).
+  次のステップ:
+  1. `/rite:issue:start {number}` で作業を開始
+  2. 作業完了後 `/rite:pr:create` で PR 作成
 
-**Step 4**: The workflow is now complete. Stop is allowed after cleanup.
+  <!-- [create:completed:{number}] -->
+  ```
+- **Decompose 経路** (parent + sub-Issues via `create-decompose`): if the sub-skill's completion message `✅ Issue #{parent} を分解して {count} 件の Sub-Issue を作成しました: {url}` is missing, output the fallback form (matching `create-decompose.md` Phase 1.0 Concrete output example):
+  ```
+  ✅ Issue #{parent_number} を分解して {count} 件の Sub-Issue を作成しました
+
+  次のステップ:
+  1. `/rite:issue:start #{first_sub_issue}` で最初の Sub-Issue から作業開始
+  2. `/rite:issue:list` で Sub-Issue 一覧を確認
+
+  <!-- [create:completed:{first_sub_issue}] -->
+  ```
+
+Where `{number}` / `{parent_number}` / `{first_sub_issue}` / `{count}` are extracted from the sub-skill's result pattern and work memory.
+
+> **Issue #552 / #561 reminder**: `[create:completed:{N}]` sentinel marker is for hooks/scripts and **always** remains in the output as the absolute last line wrapped in an HTML comment (`<!-- [create:completed:{N}] -->`). The user-facing `✅` completion message + next-steps block is the last user-visible content; the HTML-commented sentinel appears after it (invisible in rendered views, grep-matchable). Terminal sub-skills emit all three in the correct order — this Step 3 only fires as defense-in-depth when that output path failed.
+
+**Step 4 (terminal gate)**: Run the Pre-check list (top of this document) one final time in **場面 (b) mode** — **Item 1-3 すべて MUST be `YES`** (Item 0 は routing dispatcher で集計対象外)。Termination conditions:
+
+- 場面 (b) Item 2 が `NO` のまま Step 3 を実行しても still `NO` → loop 防止のため **manual 停止** し、stop-guard 経由で `workflow_incident` を emit させる (sub-skill / orchestrator 双方で完了メッセージ出力が失敗した異常経路)
+- それ以外 (Item 1-3 全 `YES`) → Stop is allowed after cleanup.
 
 ---
 

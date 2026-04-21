@@ -37,12 +37,12 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 | Frontend Expert | `frontend.md` | `**/*.css`, `**/*.scss`, `**/styles/**`, `**/components/**`, `*.jsx`, `*.tsx`, `*.vue` |
 | Database Expert | `database.md` | `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**` |
 | Dependencies Expert | `dependencies.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
-| Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` |
-| Technical Writer | `tech-writer.md` | `**/*.md` (excluding commands/skills/agents), `docs/**`, `README*` |
+| Prompt Engineer | `prompt-engineer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, and corresponding `.mdx` (`commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`) |
+| Technical Writer | `tech-writer.md` | `**/*.md` (excluding `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`), `**/*.mdx` (excluding `commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`), `docs/**`, `documentation/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `*.rst`, `*.adoc`, `i18n/**/*.md`, `i18n/**/*.mdx` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts) |
 | Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords (Bash); `**/*.sh` |
 | Type Design Expert | `type-design.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
-**Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth.
+**Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth. The tech-writer row is kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` and `plugins/rite/skills/reviewers/tech-writer.md` Activation section; see [`plugins/rite/commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#cross-reference) Cross-Reference section for the drift-prevention invariant. Automated drift detection is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (Issue #353 系統 1; invoked from `/rite:lint` Phase 3.7 as a warning/non-blocking check). The tech-writer row uses **set semantics** (file matching equivalence), not pattern syntax equality — the order of patterns and exact glob syntax may differ across the 3 files (this file, `tech-writer.md`, `review.md`) as long as the matched file set is identical. See `tech-writer.md` Activation section's note for the canonical equivalence statement.
 
 **Code Quality co-reviewer rule**: Code Quality reviewer is additionally selected as a co-reviewer in the following cases:
 
@@ -61,6 +61,26 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 All reviewers must follow these quality standards when reporting findings. These are detailed in each skill file's "Finding Quality Guidelines" section.
 
 > **Reference**: See [Finding Examples](./references/finding-examples.md) for concrete Few-shot examples of good findings, findings that should NOT be reported, and borderline judgment cases.
+
+### Observed Likelihood Gate + Fail-Fast First (全 reviewer 共通)
+
+> **Reference**: [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) の "Observed Likelihood Gate" / "Fail-Fast First" 節と [`references/severity-levels.md`](../../references/severity-levels.md#impact--observed-likelihood-matrix) の Impact × Likelihood Matrix を必ず参照すること。
+
+**Observed Likelihood Gate**:
+
+- 指摘事項化の必要条件は (1) Confidence ≥ 80 + (2) Likelihood ≥ Demonstrable + (3) revert test pass の **3 ゲート同時充足**
+- Demonstrable の立証範囲は **diff 適用後のコードベース全体**（既存 + 本 PR 追加）
+- 立証手段は 4 種 (`existing_call_site` / `new_call_site` / `entrypoint_connection` / `runtime_observation`) のいずれか。`内容` 列に `Likelihood-Evidence: <label> <location>` の literal prefix を必ず記載（詳細は `agents/_reviewer-base.md` の "Demonstrable: proof of burden" 節）。**例外**: Hypothetical Exception Category reviewer (security / database (migration) / devops (infra) / dependencies) が Hypothetical finding を retain する場合は `Likelihood-Evidence:` を省略し、代わりに `Likelihood: Hypothetical (例外カテゴリ: <name>)` を `内容` 列に記載する (canonical 定義は `_reviewer-base.md` の "Hypothetical Exception Category interaction" 節)
+- Hypothetical は降格（**例外カテゴリ**: security / database (migration) / devops (infra) / dependencies の 4 reviewer のみ Hypothetical でも severity 維持可能）
+- Grep 失敗だけで Hypothetical 扱いにしない。dynamic dispatch / hook / framework convention / 設定駆動ルーティングはエントリポイント接続で Demonstrable 立証可
+
+**Fail-Fast First**:
+
+- fallback (null 返却 / default 値 / catch swallow / retry-and-give-up) を推奨する **前に** `throw` / `raise` / 再 throw を必ず検討
+- 既存の error boundary に到達できる経路があれば throw を選ぶ
+- skill 側 (各 reviewer の `.md`) に「fallback 許容条件」が明示されている場合のみ fallback 推奨可
+- project convention と衝突する可能性がある場合は `/rite:wiki:query <keyword>` で Wiki を必須参照し、Wiki に許容パターンが記録されていればそれを尊重
+- reviewer 自身が fallback 追加を推奨することは silent failure の **共犯行為** とみなされる
 
 ### Skeptical Tone Calibration
 

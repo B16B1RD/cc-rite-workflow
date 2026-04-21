@@ -322,6 +322,8 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
 
+> **Note on wiki section (#491)**: `templates/config/rite-config.yml` declares the `wiki:` section **above** the `# --- Advanced ---` boundary as an active (non-commented) block. Step 2 (extract content up to the Advanced boundary) therefore includes the active `wiki:` section automatically in the generated `rite-config.yml`. No additional append step is required for new-generation path. The Advanced boundary is the single source of truth for what gets emitted vs commented-out.
+
 #### 4.1.3 Upgrade Existing Configuration
 
 > This phase is executed when `--upgrade` is specified. It upgrades an existing `rite-config.yml` to the latest schema version while preserving user-customized values.
@@ -341,7 +343,16 @@ Read both files with the Read tool:
 - Current: Read `schema_version` from existing file. If missing, treat as v1.
 - Latest: Read `schema_version` from template. If missing, treat as v1.
 
-If current >= latest: Display "{i18n:init_upgrade_up_to_date}" and exit (no upgrade needed).
+**Branching** (AC-3 compliance — #491): schema 同等であっても Wiki 未初期化の既存ユーザーを追従させる必要があるため、以下のとおり分岐する。**表の実行順序は左から右** (Step 番号順ではなく矢印順):
+
+| Condition | Execution order (left → right) |
+|-----------|--------------------------------|
+| `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 7 Phase 4.7 |
+| `current >= latest` | (1) Step 3 Backup → (2) Step 3.5 Wiki Section Append (conditional) → (3) Step 7 Phase 4.7。Step 4-6 はスキップ |
+
+`current >= latest` 経路では Step 3.5 が config を変更する可能性があるため Step 3 Backup を必ず先に実行する (precondition)。
+
+schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wiki:` active section が存在する」ことを検出して no-op となる。この経路で `{i18n:init_upgrade_up_to_date}` を表示するタイミングは **Step 3.5 の no-op 確定時** (Phase 4.7 進入前) とする。Phase 4.7 はそのまま実行され、Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
 
 **Step 3: Create backup**
 
@@ -351,6 +362,20 @@ cp rite-config.yml "rite-config.yml.bak.$(date +%Y%m%d-%H%M%S)"
 
 Display "{i18n:init_upgrade_backup_created}".
 
+**Step 3.5: Wiki Section Append (conditional — #491)**
+
+**Precondition**: Step 3 Backup must have completed successfully.
+
+**Execution condition**: This step runs only on the `current >= latest` short-circuit path (see Step 2 branching table). On the `current < latest` path, wiki append is handled by Step 6 item 5 instead, so Step 3.5 is skipped.
+
+**Procedure**:
+
+1. Grep `rite-config.yml` for `^wiki:` (excluding lines starting with `#`) to detect an existing active wiki section.
+2. **If an active `^wiki:` match is found** (Wiki section already present): no-op. Display `{i18n:init_upgrade_up_to_date}` and proceed to Step 7 (Phase 4.7). Phase 4.7.2 will subsequently detect the initialized Wiki and set `wiki_status=already_initialized`.
+3. **If no active `^wiki:` match**: invoke the same append procedure defined in Step 6 item 5 below (single source of truth for the wiki block literal source and anchor selection). After the append completes, display `{i18n:init_wiki_config_added}` and proceed to Step 7.
+
+**Anchor/append handoff**: Step 3.5 does NOT duplicate the wiki block literal or anchor-selection logic. Both are defined in Step 6 item 5 below; Step 3.5 simply invokes that same procedure. This keeps the wiki block definition in a single location within `init.md` and prevents drift between the two paths.
+
 **Step 4: Identify changes**
 
 Compare current config against the template and classify each key:
@@ -359,9 +384,12 @@ Compare current config against the template and classify each key:
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** (review.debate, review.fact_check, verification, etc.) | **Add** — insert from template with default values |
-| **Advanced section** (tdd, parallel, team, metrics, context_optimization, safety, investigate) | **Add as comments** — insert commented-out with default values |
+| **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki**) | **Add** — insert from template with default values |
+| **Advanced section** (tdd, parallel, team, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
+| **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 3.5 / Step 6 item 5 (Upgrade path: 未存在時に active block として append) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
+
+**Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
 
 **Step 5: Preview and confirm**
 
@@ -393,9 +421,47 @@ If the user confirms:
 2. Remove deprecated keys using the Edit tool. Display "{i18n:init_upgrade_deprecated_removed}".
 3. Add missing sections from the template using the Edit tool. Display "{i18n:init_upgrade_sections_added}".
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
-5. Preserve all user-customized values
+5. **If `wiki:` section is absent** (#491): append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
 
-Display "{i18n:init_upgrade_applied}" and exit. (`--upgrade` skips Phases 1-3, so Phase 4.2+ context is unavailable.)
+   **Wiki block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the block from `# Wiki settings` through the end of the `wiki:` section (the lines above the `# --- Advanced (below this line) ---` marker). This avoids literal duplication between `init.md` and the template — any change to default values (e.g., `auto_ingest`, `branch_strategy`) in the template automatically propagates to both new-install and `--upgrade` paths.
+
+   **Idempotency guard**: Before inserting, Grep `^wiki:` (excluding comment lines starting with `#`) in the project's `rite-config.yml`. If an active section already exists, skip the Edit entirely (no-op).
+
+   **Anchor selection**:
+   - **Primary anchor**: the `language:` line in `rite-config.yml`. This is unique in the default template and provides a stable insertion point.
+   - **Fallback anchor** (if `language:` line is absent due to user customization): the `# --- Advanced (below this line) ---` boundary marker line. Insert the wiki block **immediately before** this marker (`old_string` = marker line, `new_string` = wiki block + `\n\n` + marker line). If the Advanced marker is also absent, use the last top-level active key (line starting with `[a-z]` followed by `:`) before any comment-only tail region.
+   - **NOT tail-based**: do not anchor to the last non-empty line of the file — this can collide with the template's repeated `enabled: true` / `auto_query: true` lines in multi-section tails.
+
+   **Edit action**:
+   - `old_string` = the anchor line exactly as read (preserving trailing whitespace)
+   - `new_string` = anchor line + `\n\n` + extracted wiki block
+   (For the Advanced-marker fallback, swap: `new_string` = wiki block + `\n\n` + marker line)
+
+   Display `{i18n:init_wiki_config_added}` only when the Edit actually ran (skip the message on idempotency no-op).
+6. Preserve all user-customized values
+
+Display "{i18n:init_upgrade_applied}".
+
+**Step 7: Run Phase 4.7 and display status (#491)**
+
+Step 7 has two sub-steps:
+
+**Step 7a: Invoke Phase 4.7**
+
+Execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization-491) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
+
+Phase 4.7's internal "next step" instructions (e.g., "proceed to the next step: `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit") mean **return to Step 7b here** (continuation after Phase 4.7 completes), not a recursive re-entry into Step 7a.
+
+**Step 7b: Display status line and exit**
+
+After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status line selected from the 4 literal keys based on the `wiki_status` value in LLM context, using the same explicit if/else mapping as Phase 5 (do NOT use dynamic placeholder syntax like `{i18n:init_summary_wiki_<status>}`):
+
+- If `wiki_status == "initialized"` → `{i18n:init_summary_wiki_initialized}`
+- Else if `wiki_status == "already_initialized"` → `{i18n:init_summary_wiki_already_initialized}`
+- Else if `wiki_status == "skipped_disabled"` → `{i18n:init_summary_wiki_skipped_disabled}`
+- Else if `wiki_status == "failed"` → `{i18n:init_summary_wiki_failed}`
+
+After displaying the status line, exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
 If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
 
@@ -758,7 +824,6 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
 | PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM |
-| PostToolUse | `context-pressure.sh` | `""` | Context pressure monitoring (#889) |
 
 **Check procedure**:
 
@@ -768,7 +833,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 
 **Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 8):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |
@@ -796,7 +861,6 @@ Add the following hooks to `.claude/settings.local.json`:
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
 | PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM |
-| PostToolUse | `bash {hooks_dir}/context-pressure.sh` | Context pressure monitoring (#889) |
 
 **Hook registration format** (merge into existing settings without overwriting other entries):
 
@@ -878,15 +942,6 @@ Add the following hooks to `.claude/settings.local.json`:
             "command": "bash {hooks_dir}/post-tool-wm-sync.sh"
           }
         ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash {hooks_dir}/context-pressure.sh"
-          }
-        ]
       }
     ]
   }
@@ -897,8 +952,8 @@ Add the following hooks to `.claude/settings.local.json`:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks that do NOT contain `rite/hooks/` in their command, preserve them as-is. Do not overwrite or remove user-defined hooks.
 - **rite hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
 - **Missing rite hooks**: If any of the required rite hooks (Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them.
-- **Obsolete hooks**: If `post-compact-guard.sh` exists in PreToolUse, **remove** it (replaced by PostCompact `post-compact.sh` in #133).
-- **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `context-pressure.sh` uses `"matcher": ""` to fire on all tool calls. All other hooks use `"matcher": ""`. When multiple PreToolUse or PostToolUse entries exist (different matchers), they are separate array elements.
+- **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は #133 で `post-compact.sh` に置き換え済み。`context-pressure.sh` は #481 で廃止済み。
+- **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. All other hooks use `"matcher": ""`.
 - **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
 
 ### 4.5.3 Make Scripts Executable
@@ -906,7 +961,7 @@ Add the following hooks to `.claude/settings.local.json`:
 Attempt to set executable permissions regardless of source type (LOCAL or MARKETPLACE):
 
 ```bash
-chmod +x {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
+chmod +x {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
 ```
 
 If `chmod` fails (e.g., permission denied, read-only filesystem), display a warning and continue:
@@ -920,7 +975,7 @@ If hooks fail to run, manually run: chmod +x {hooks_dir}/*.sh
 Verify the hook scripts exist and are executable:
 
 ```bash
-ls -la {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/context-pressure.sh
+ls -la {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
 ```
 
 If any file is missing or lacks execute permission, display a warning and continue to Phase 5:
@@ -969,6 +1024,155 @@ Display: `✅ Work memory directory initialized (.rite-work-memory/)`
 
 ---
 
+## Phase 4.7: Wiki Initialization (#491)
+
+Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki:init` manually. Executed after Phase 4.6 (new install) and after the Phase 4.1.3 Apply step (`--upgrade` path).
+
+> **Non-blocking contract**: Phase 4.7 failure (including Skill invocation failure) MUST NOT abort `/rite:init`. On failure, display a warning and continue to Phase 5. The flow always reports Wiki status via the completion report (Phase 5).
+
+> **Status enum** (consumed by Phase 5 — identifier-compatible values, no whitespace/parens, trivial 1:1 i18n mapping):
+>
+> | Status value | i18n key | Meaning |
+> |--------------|----------|---------|
+> | `initialized` | `init_summary_wiki_initialized` | Newly initialized in this `/rite:init` invocation |
+> | `already_initialized` | `init_summary_wiki_already_initialized` | Pre-existing Wiki detected and skipped |
+> | `skipped_disabled` | `init_summary_wiki_skipped_disabled` | `wiki.enabled: false` detected |
+> | `failed` | `init_summary_wiki_failed` | Post-check after Skill invocation found Wiki still uninitialized |
+
+**Retain `wiki_status` as LLM conversational state (NOT a shell variable)**. Claude Code's Bash tool invocations are independent subshells — shell variables do NOT persist across tool calls. Each status set point below instructs the LLM to **remember the value directly in conversation context** and carry it forward to Phase 5. Do NOT attempt `echo $wiki_status` in a subsequent Bash call.
+
+The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so that the Phase 5 i18n mapping is a trivial 1:1 lookup (`init_summary_wiki_${wiki_status}`). No string transformation is required.
+
+### 4.7.1 Wiki Enabled Check
+
+Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `commands/wiki/init.md` Phase 1.1 logic, including the typo-detection WARNING path.
+
+> **sed range robustness note**: The `sed -n '/^wiki:/,/^[a-zA-Z]/p'` pattern terminates at the next line starting with any ASCII letter — which matches the next top-level YAML key. This relies on `rite-config.yml` following the standard shape produced by `/rite:init` (wiki section followed by another top-level key or EOF). In pathological user-customized configs where the wiki section is the last top-level block and is followed only by comment lines, sed reads to EOF, which is still correct. The known limitation: if a user inserts comment lines **inside** the wiki section that start with a letter (e.g., `auto_query: true # note:`), the trailing `# note:` does not affect sed (it's part of the same line). Therefore this pattern is safe for configs conforming to the template shape. Drift in non-standard configs is tracked as a known limitation, not a blocker for #491.
+
+```bash
+wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
+wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
+case "$wiki_enabled" in
+  false|no|0) wiki_enabled="false" ;;
+  true|yes|1) wiki_enabled="true" ;;
+  *)
+    # opt-out default: 未指定 / 不明値は有効として扱う
+    _wiki_raw="$wiki_enabled"  # 上書き前に保存 (typo 検出用)
+    wiki_enabled="true"
+    if [ -z "$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
+      echo "INFO: wiki.enabled キーが rite-config.yml に見つかりません。デフォルト値 'true' (opt-out) を使用します" >&2
+    elif [ -n "$_wiki_raw" ]; then
+      echo "WARNING: wiki.enabled の値 '$_wiki_raw' を解釈できません。デフォルト 'true' (opt-out) を使用します。値は true/false/yes/no/1/0 のいずれかを指定してください" >&2
+    fi
+    unset _wiki_raw
+    ;;
+esac
+echo "wiki_enabled=$wiki_enabled"
+```
+
+**When `wiki_enabled=false`**:
+- Display `{i18n:init_wiki_disabled}`
+- Set `wiki_status=skipped_disabled` (remember in LLM context)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
+
+**When `wiki_enabled=true`**: Display `{i18n:init_wiki_start}` and proceed to 4.7.2.
+
+### 4.7.2 Pre-check: Existing Wiki Detection
+
+Determine if Wiki is already initialized. The detection logic depends on `branch_strategy` from `rite-config.yml`:
+
+- `separate_branch` (default): check for `wiki` branch (local or remote)
+- `same_branch`: check for `.rite/wiki/SCHEMA.md`
+
+```bash
+wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+wiki_branch="${wiki_branch:-wiki}"
+
+branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+branch_strategy="${branch_strategy:-separate_branch}"
+
+if [ "$branch_strategy" = "separate_branch" ]; then
+  if git rev-parse --verify "origin/${wiki_branch}" >/dev/null 2>&1 || \
+     git rev-parse --verify "${wiki_branch}" >/dev/null 2>&1; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+else
+  if [ -f ".rite/wiki/SCHEMA.md" ]; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+fi
+```
+
+**When `WIKI_INITIALIZED=true`**:
+- Display `{i18n:init_wiki_already_initialized}` (substitute `{detection}` with the matched branch name or file path)
+- Set `wiki_status=already_initialized` (remember in LLM context)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
+
+**When `WIKI_INITIALIZED=false`**: Proceed to 4.7.3.
+
+### 4.7.3 Invoke rite:wiki:init Skill
+
+Display `{i18n:init_wiki_invoking}`, then invoke the Skill tool:
+
+```
+skill: "rite:wiki:init"
+```
+
+> **Rationale**: Claude Code's Skill tool does not surface a return value, so failure detection is done via post-check (4.7.4). Do NOT re-implement Wiki initialization logic here — always delegate to the Skill.
+
+### 4.7.4 Post-check: Confirm Initialization
+
+After the Skill returns, re-run **only the detection portion** of 4.7.2 (the `if [ "$branch_strategy" = "separate_branch" ]; then ... fi` block) to confirm the Wiki was actually created. The `branch_strategy` / `wiki_branch` values from 4.7.2 are already known to the LLM and should be embedded as literals rather than re-parsing `rite-config.yml` — this avoids any drift if the Skill modified the config.
+
+**Detection-only re-run** (embed literal values from 4.7.2):
+
+```bash
+# LLM: 4.7.2 の bash block 出力から observed した branch_strategy / wiki_branch 値を
+#      以下の 2 行に literal に置き換えてから実行すること。プレースホルダー表記のまま
+#      実行してはならない (例: branch_strategy="separate_branch"; wiki_branch="wiki")。
+branch_strategy="{4.7.2 で取得した値 — literal に置換}"
+wiki_branch="{4.7.2 で取得した値 — literal に置換}"
+
+if [ "$branch_strategy" = "separate_branch" ]; then
+  if git rev-parse --verify "origin/${wiki_branch}" >/dev/null 2>&1 || \
+     git rev-parse --verify "${wiki_branch}" >/dev/null 2>&1; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+else
+  if [ -f ".rite/wiki/SCHEMA.md" ]; then
+    echo "WIKI_INITIALIZED=true"
+  else
+    echo "WIKI_INITIALIZED=false"
+  fi
+fi
+```
+
+Then:
+
+**When `WIKI_INITIALIZED=true`**:
+- Display `{i18n:init_wiki_success}`
+- Set `wiki_status=initialized` (remember in LLM context)
+
+**When `WIKI_INITIALIZED=false`** (Skill invocation failed or did not complete):
+- Display `{i18n:init_wiki_failed_nonblocking}` (warning only — do NOT exit)
+- Set `wiki_status=failed` (remember in LLM context)
+
+**→ Proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
+
+---
+
 ## Phase 5: Completion Report
 
 ### Display Configuration Summary
@@ -985,6 +1189,18 @@ Display: `✅ Work memory directory initialized (.rite-work-memory/)`
 - {i18n:init_summary_hooks}
 <!-- If hooks were skipped due to NOT_FOUND in Phase 4.5.0: -->
 - {i18n:init_summary_hooks_skipped}
+<!-- Wiki status line from Phase 4.7 (#491). Select exactly one of the following
+     based on the wiki_status value retained in LLM context. Do NOT use dynamic
+     placeholder syntax like {i18n:init_summary_wiki_<status>} — expand to the
+     matching literal key via explicit if/else below: -->
+<!-- If wiki_status == "initialized":         -->
+- {i18n:init_summary_wiki_initialized}
+<!-- Else if wiki_status == "already_initialized": -->
+- {i18n:init_summary_wiki_already_initialized}
+<!-- Else if wiki_status == "skipped_disabled":    -->
+- {i18n:init_summary_wiki_skipped_disabled}
+<!-- Else if wiki_status == "failed":              -->
+- {i18n:init_summary_wiki_failed}
 
 ## {i18n:init_summary_next_steps}
 1. {i18n:init_summary_step1}

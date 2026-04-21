@@ -2,10 +2,6 @@
 name: frontend-reviewer
 description: Reviews UI components, styling, accessibility, and client-side code
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Frontend Reviewer

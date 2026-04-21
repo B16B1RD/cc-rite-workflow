@@ -30,8 +30,15 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 [ -f "$FLOW_STATE" ] || exit 0
 
-_flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring)] | @tsv' "$FLOW_STATE" 2>/dev/null) || exit 0
-IFS=$'\t' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
+# cycle 12 HIGH F-01: unit separator \x1f に変更 (POSIX whitespace IFS collapse bug、
+# stop-guard.sh cycle 10 F-01 と同型)。.phase="" かつ .last_synced_phase 非空のとき
+# 全フィールド左 shift で _phase と _last_synced_phase が入れ替わり、下方の phase diff
+# 判定 (`[ "$_phase" != "$_last_synced_phase" ]` guard) が誤 true → spurious sync +
+# issue-comment-wm-sync.sh の --transform update-phase 呼び出しで last_synced_phase の
+# 値が phase として送信される silent データ汚染を起こす。
+# (line-number 参照を避ける理由は cycle 8 F-05 参照)
+_flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring)] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || exit 0
+IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0
 [ -n "$issue_number" ] || exit 0
 # Session ownership check (#173): skip sync for other session's state
@@ -57,8 +64,9 @@ if [ ! -f "$LOCAL_WM" ]; then
   source "$SCRIPT_DIR/work-memory-update.sh" || { log_debug "failed to source work-memory-update.sh"; exit 0; }
   export WM_PLUGIN_ROOT="${WM_PLUGIN_ROOT:-$(dirname "$SCRIPT_DIR")}"
 
-  _wm_data=$(jq -r '[(.phase // "unknown"), (.next_action // "")] | @tsv' "$FLOW_STATE" 2>/dev/null) || _wm_data=$'unknown\t'
-  IFS=$'\t' read -r phase next_action <<< "$_wm_data"
+  # cycle 12 HIGH F-01: unit separator 統一 (L33 と同じ理由)
+  _wm_data=$(jq -r '[(.phase // "unknown"), (.next_action // "")] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || _wm_data=$'unknown\x1f'
+  IFS=$'\x1f' read -r phase next_action <<< "$_wm_data"
 
   export WM_SOURCE="auto_hook"
   export WM_PHASE="$phase"
@@ -126,8 +134,10 @@ case "$_phase" in
     _impl_status="✅ 完了"
     _test_status="⬜ 未着手"
     _doc_status="⬜ 未着手"
-    echo "$_diff_files" | grep -qE '\.(test|spec)\.|test_|tests/' 2>/dev/null && _test_status="✅ 完了"
-    echo "$_diff_files" | grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' 2>/dev/null && _doc_status="✅ 完了"
+    # SIGPIPE 防止 (#398): echo | grep -qE パターンを here-string に置換。
+    # _diff_files が大きい場合、grep -q の早期終了で echo に SIGPIPE が届く経路を排除。
+    grep -qE '\.(test|spec)\.|test_|tests/' <<< "$_diff_files" 2>/dev/null && _test_status="✅ 完了"
+    grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' <<< "$_diff_files" 2>/dev/null && _doc_status="✅ 完了"
 
     "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
       --issue "$issue_number" \

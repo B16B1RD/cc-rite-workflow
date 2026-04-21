@@ -1,11 +1,6 @@
 ---
 name: performance-reviewer
 description: Reviews code for performance issues (N+1 queries, memory leaks, algorithm efficiency)
-model: sonnet
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Performance Reviewer

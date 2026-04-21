@@ -43,13 +43,13 @@ This is a catch-all reviewer that ensures all PRs receive at least one review pe
 - [ ] **Critical Naming Issues**: Misleading or dangerous variable/function names
 - [ ] **Missing Error Handling**: Unhandled error conditions in critical paths
 - [ ] **Dead Code**: Unreachable or unused code that should be removed
+- [ ] **Unnecessary Fallback**: Fallbacks in the source code that hide failure causes or silently change behavior scope (e.g., `||` default, `?? 0`, `catch (e) { return null }` without justification per the Fail-Fast First protocol in [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md)). Code Quality reviewer inspects the diff (source code), not peer reviewer outputs — cross-reviewer meta-checks (e.g., detecting fallback recommendations in other reviewers' `推奨対応` columns) are out of scope for this reviewer and are enforced instead by each reviewer's self-discipline per the Fail-Fast First section of `_reviewer-base.md`. See [`error-handling.md`](./error-handling.md) "Inverse Pattern Prohibition" for the reviewer self-check protocol.
 
 ### Important (Should Fix)
 
 - [ ] **Structure Issues**: Functions/classes with excessive complexity
 - [ ] **Naming Clarity**: Vague or unclear names
 - [ ] **Error Handling Gaps**: Incomplete error handling in non-critical paths
-- [ ] **Unnecessary Fallback**: Fallbacks that hide failure causes or silently change behavior scope
 - [ ] **Code Organization**: Poor file/module organization
 
 ### Recommendations

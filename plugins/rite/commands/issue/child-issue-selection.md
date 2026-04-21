@@ -181,9 +181,12 @@ Before returning control to the caller, update `.rite-flow-state` to the post-ch
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase1_6_post_child" \
+  --parent-issue {parent_issue_number} \
   --next "rite:issue:child-issue-selection completed. Proceed to Phase 2 (work preparation). Do NOT stop." \
   --if-exists
 ```
+
+> **Note**: `{parent_issue_number}` is the parent Issue number (the Issue originally passed to `/rite:issue:start`). This persists the parent-child relationship in `.rite-flow-state` so it survives context compaction (#497).
 
 After the flow-state update above, output the appropriate result pattern:
 

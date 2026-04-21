@@ -1,11 +1,6 @@
 ---
 name: type-design-reviewer
 description: Reviews type design for encapsulation, invariant expression, usefulness, and enforcement quality
-model: sonnet
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Type Design Reviewer

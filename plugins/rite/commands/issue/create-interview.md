@@ -13,6 +13,55 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 
 ---
 
+## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
+
+> **Issue #622 (regression of #552)**: This section was historically placed at the end of the file (titled "Defense-in-Depth: Flow State Update (Before Return)"). In the Bug Fix / Chore preset path (Phase 0.4.1 → skip Phase 0.5), the LLM running this sub-skill sometimes skipped the Defense-in-Depth bash block and jumped directly to the return output. The result: `.rite-flow-state.phase` stayed at `create_interview`, which had no dedicated `stop-guard.sh` case arm in versions prior to #622 fix, so the orchestrator's implicit stop after `<!-- [interview:skipped] -->` was not blocked and the user had to type `continue` manually. Moving the flow-state write to the **absolute beginning** of the sub-skill guarantees it runs regardless of interview scope.
+>
+> **DRIFT-CHECK ANCHOR (semantic)**: This section is mirrored by `stop-guard.sh` `create_interview` case arm (Issue #622) and `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge. The three sites form a 3-site symmetry — when updating any one, update the others.
+>
+> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — F-06 / #636: 本 Pre-flight bash block の引数 (`--phase`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--preserve-error-count` を含む) と symmetry を取る必要がある。`create.md` の **DRIFT-CHECK ANCHOR (semantic)** 節 (Step 0 Rationale 直後) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
+
+**MUST run before any interview logic** (Phase 0.4.1 scope evaluation, Phase 0.5 deep-dive, or return-output emission). This bash block is **not optional** and **not conditional on interview scope**. Execute it even when Phase 0.4.1 determines the Bug Fix / Chore preset (interview scope = "skip"):
+
+```bash
+# verified-review cycle 3 F-06 / #636: Pre-flight は create.md コメントで「primary 防御層」と
+# 位置付けられており、Step 0/Step 1 と同格の idempotent write。exit-code check を対称に
+# 入れることで persistent な disk full / permission denied 障害下でも silent に通過せず、
+# [CONTEXT] PREFLIGHT_PATCH_FAILED=1 retained flag を残す。layered defense は
+# stop-guard の create_interview case arm が routing する safety net がある。
+#
+# verified-review cycle 4 F-01 / #636: --preserve-error-count を create.md Step 0/Step 1 と
+# 対称に付与。本 Pre-flight bash block は sub-skill 再入時に同一 phase self-patch
+# (create_post_interview → create_post_interview) となるため、flag がないと
+# flow-state-update.sh patch mode の JQ_FILTER が `.error_count = 0` でリセットし、
+# stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out 層が永久に fire しない。
+# create mode (file 不在時の初回書き込み) は phase transition ではないため flag は実質 no-op
+# だが、drift 防止の consistency で対称に付与する。
+if [ -f ".rite-flow-state" ]; then
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+      --phase "create_post_interview" \
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+      --preserve-error-count; then
+    echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
+    # 非 blocking: create.md Step 0/Step 1 の redundant patch が 2 段目防御として存在し、
+    # stop-guard の create_interview case arm が routing する safety net でも間接検出される。
+  fi
+else
+  if ! bash {plugin_root}/hooks/flow-state-update.sh create \
+      --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+      --preserve-error-count; then
+    echo "[CONTEXT] PREFLIGHT_CREATE_FAILED=1" >&2
+  fi
+fi
+```
+
+**Why `create_post_interview` (not `create_interview_running`) at Pre-flight time**: The caller (`create.md` Delegation to Interview Pre-write) has already written `create_interview` to signal that delegation is in flight. The Pre-flight advances the phase to `create_post_interview` **before** the interview runs so that, no matter at which point the sub-skill exits (normal completion, early exit via Bug Fix preset, or unexpected stop), the stop-guard routes to the `create_post_interview` WORKFLOW_HINT which correctly tells the orchestrator to run the 🚨 Mandatory After Interview section and proceed to Phase 0.6. This is safe because `create_post_interview → create_delegation` is the only whitelisted forward transition — the orchestrator must still execute Delegation Routing to advance past it.
+
+**Idempotence**: Running this multiple times within a single sub-skill invocation is safe; each call refreshes the timestamp and `next_action` but does not regress the phase (patch mode sets `previous_phase` from the pre-update `.phase`, which stays `create_post_interview` on re-entry).
+
+---
+
 ## Phase 0.4.1: Adaptive Interview Depth
 
 After Phase 0.4 completes, determine the interview scope for Phase 0.5 based on tentative complexity and task type. This avoids excessive questioning for simple Issues.
@@ -493,41 +542,83 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 
 ---
 
-## Defense-in-Depth: Flow State Update (Before Return)
+## Return Output Format (Before Return)
 
-> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0). The flow-state write was moved to the 🚨 MANDATORY Pre-flight section at the top of this file (Issue #622) so the post-interview phase is recorded regardless of interview scope. The idempotent re-patch below is retained as a defense-in-depth second write that refreshes the timestamp and `next_action` immediately before emitting the return output.
 
-Before returning control to the caller, update `.rite-flow-state` to the post-interview phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+Immediately before emitting the four-line return block, re-patch `.rite-flow-state` to refresh the timestamp. This is idempotent with the 🚨 MANDATORY Pre-flight write (same phase, same transition target):
 
 ```bash
+# verified-review cycle 3 F-06 / #636: Return Output 直前 re-patch も Step 0/Step 1 と対称に
+# exit-code check を追加。primary Pre-flight 防御層の補強として silent failure を surface する。
+#
+# verified-review cycle 4 F-02 / #636: --preserve-error-count を create.md Step 0/Step 1 と
+# 対称に付与。本 re-patch は Pre-flight 後の確定的な同一 phase self-patch であり、
+# flag がないと sub-skill mid-execution で本 re-patch 通過時に error_count が 0 にリセットされ、
+# 直後の orchestrator implicit stop で escalation が再度 ERROR_COUNT=0 から始まり永久に
+# THRESHOLD bail-out 未到達。Pre-flight (F-01) と対称。
 if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
-else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
-    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+      --phase "create_post_interview" \
+      --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+      --preserve-error-count; then
+    echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
+    # 非 blocking: create.md Step 0/Step 1 の redundant patch が続行する。
+  fi
 fi
 ```
 
-After the flow-state update above, output the appropriate result pattern:
+> **Why patch mode only (no create fallback here)**: The 🚨 MANDATORY Pre-flight section at the top already handles the "file missing" branch (`create` mode). By the time execution reaches the return-output section, `.rite-flow-state` is guaranteed to exist with `.phase = create_post_interview`. A second `create` call here would reset `previous_phase` to an empty string and defeat the whitelist-based transition check in stop-guard — patch mode preserves the transition chain correctly.
 
-- **Interview completed**: `[interview:completed]`
-- **Interview skipped** (XS, Bug Fix, Chore): `[interview:skipped]`
+After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. The return block MUST be composed of four lines in the order below: (1) `[CONTEXT] INTERVIEW_DONE=1` grep marker, (2) plain-text blockquote continuation reminder, (3) HTML-commented caller instructions, (4) HTML-commented result sentinel. All four MUST be the last visible lines of this sub-skill's output.
 
-This pattern is consumed by the orchestrator (`create.md`) to determine the next action.
+> **Issue #552 enhancement**: The caller continuation hint is emitted as **both** a plain-text line (visible in rendered Markdown) **and** an HTML comment (visible only in the LLM's raw context). The dual form ensures the reminder is robust against rendering modes where HTML comments are stripped before the LLM sees them. Rewriting this to HTML-comment-only is a regression.
+>
+> **Issue #561 UX fix**: The result pattern (`[interview:skipped]` / `[interview:completed]`) is now emitted as an HTML comment (`<!-- [interview:skipped] -->`). The string `[interview:skipped]` / `[interview:completed]` inside the HTML comment is still grep-matchable (`grep -F '[interview:'`) so the orchestrator's Pre-check Item 0 (routing dispatcher) and any hook/test contract remain intact (AC-3). The HTML comment form prevents the sentinel token from being the user-visible final line, weakening the LLM's turn-boundary heuristic that previously caused premature `continue`-requiring stops.
+>
+> **Issue #634 enhancement**: `[CONTEXT] INTERVIEW_DONE=1` marker is added as the FIRST line of the return block (not the last). This establishes a grep-detectable signal `INTERVIEW_DONE=1` that the orchestrator's Pre-check list Item 0 and Mandatory After Interview Step 0 both consume. Placing the marker FIRST (not last) means the sub-skill's last line remains the sentinel HTML comment (preserving #561 ordering), while the context grep can still find `INTERVIEW_DONE=1` anywhere in recent context. The marker is a plain-text line (not HTML-commented) because Pre-check Item 0 uses context grep which may strip HTML comments in some rendering modes. DRIFT-CHECK ANCHOR (semantic): create.md 🚨 Mandatory After Interview Step 0 Immediate Bash Action / stop-guard.sh create_post_interview case arm WORKFLOW_HINT と 3 site 対称。
+
+**Output format example (interview skipped)**:
+
+```
+[CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_0_6
+> ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
+<!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- [interview:skipped] -->
+```
+
+**Output format example (interview completed)**:
+
+```
+[CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_0_6
+> ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
+<!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- [interview:completed] -->
+```
+
+> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。user-visible な最終コンテンツは `⏭ 継続中:` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
+
+Result patterns (grep-matchable string inside HTML comment):
+
+- **Interview completed**: `<!-- [interview:completed] -->` (matches `grep -F '[interview:completed]'`)
+- **Interview skipped** (XS, Bug Fix, Chore): `<!-- [interview:skipped] -->` (matches `grep -F '[interview:skipped]'`)
+
+This pattern is consumed by the orchestrator (`create.md`) to determine the next action. The plain-text reminder is visible to both the LLM and the human user; the HTML comments hide the caller instructions and sentinel token from the user-visible rendered view while keeping them available to LLM-side grep / context inspection.
 
 ---
 
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller (`create.md`) **MUST immediately** execute its 🚨 Mandatory After Interview section:
+When this sub-skill completes (interview finished or skipped), control **MUST** return to the caller (`create.md`). The caller **MUST immediately** execute its 🚨 Mandatory After Interview section — proceeding to Phase 0.6 (Task Decomposition Decision) in the **same response turn**.
 
-1. Proceed to Phase 0.6 (Task Decomposition Decision)
+**WARNING**: **No GitHub Issue has been created yet.** Stopping here abandons the workflow with no deliverable.
 
-**WARNING**: **No GitHub Issue has been created yet.** No GitHub Issue exists at this point. The interview only collected information — creation happens in `create-register.md` or `create-decompose.md`. Stopping here would completely abandon the workflow with no Issue created.
-
-**Concrete next action for caller**: Evaluate decomposition triggers (Phase 0.6.1), then delegate to `rite:issue:create-register` (single Issue) or `rite:issue:create-decompose` (sub-Issue decomposition).
-
-**→ Return to `create.md` and proceed to Phase 0.6 now. Do NOT stop.**
+**Output rules**:
+0. **FIRST**: Output `[CONTEXT] INTERVIEW_DONE=1; scope={skipped|completed}; next=phase_0_6` as a **plain-text line** (not HTML-commented). Position rules (#636 cycle 8 F-06 — Rule 1 absolute 位置規定との対称化、#636 cycle 9 F-02 — sub-bullet 分解で読解負荷軽減、#636 cycle 10 F-03/F-05 — canonical 規定の明示化 + routing dispatcher 表現の正確化):
+   - **0b (構造保証、canonical)**: the relative ordering of Rules 0-1 pins the full block structure as a **4-line return block**: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST). This 4-line invariant is the canonical structural rule — all other position descriptions derive from it
+   - **0a (絶対位置、0b から導出)**: derived from Rule 0b's 4-line block, this marker is the **4th-to-last visible line** of this sub-skill's output — i.e., 3 lines before the `<!-- [interview:*] -->` absolute-last sentinel defined in Rule 1. Note: this derived position assumes each of the other 3 lines is single-line; if Line 2 (plain-text reminder) or Line 3 (HTML comment) grows to multi-line in the future, Rule 0b's 4-line invariant is broken first and both rules need joint update
+   - **0c (目的)**: Issue #634 補強 — grep marker for orchestrator Pre-check Item 0 (routing dispatcher — the marker actively triggers routing at this site) and for Mandatory After Step 0 bash block comment reference (informational — Step 0 itself is an unconditional idempotent `flow-state-update.sh patch` and does not branch on the marker; the marker serves as documentation context); defense-in-depth against LLM turn-boundary heuristics
+1. Output the result pattern as an HTML comment (`<!-- [interview:completed] -->` or `<!-- [interview:skipped] -->`) as the **absolute last line** of this sub-skill's output (Issue #561 UX fix — the sentinel is grep-matchable but not user-visible)
+2. Do **NOT** emit the sentinel as a bare `[interview:*]` line (without HTML comment wrapping) — the bare form regressed in Issue #561 as the user-visible terminal token
+3. Do **NOT** output any narrative text (e.g., `→ Return to create.md`) after the result pattern — it creates a natural stopping point for the LLM
+4. The caller reads the result pattern via grep (the HTML comment contains the matchable string, plus the plain-text `[CONTEXT] INTERVIEW_DONE=1` marker) and immediately continues to Phase 0.6

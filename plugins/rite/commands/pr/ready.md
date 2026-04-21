@@ -156,7 +156,7 @@ End processing.
 
 ### 2.1 Confirm with User
 
-> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review.
+> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review. Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` principle 参照。
 
 Confirm using `AskUserQuestion`:
 
@@ -371,9 +371,10 @@ github:
 
 **Note**: This file (ready.md) uses GraphQL instead of `gh project field-list`.
 
-**Differences from other command files (close.md, start.md, cleanup.md):**
-- Other files: Use the `gh project field-list` CLI command (adequate when retrieving field lists only)
-- This file: Uses GraphQL (an intentional design decision for the following reasons)
+**Differences from other command files:**
+- `close.md` / `cleanup.md`: Use the `gh project field-list` CLI command directly (adequate when retrieving field lists only)
+- `start.md` (Phase 2.4 / 5.5.1 / 5.7.2): Delegates Projects Status updates to `plugins/rite/scripts/projects-status-update.sh`, which internally uses `gh project field-list` + `gh project item-edit` (see Issue #496 / PR #531 for the refactor)
+- This file (ready.md): Uses GraphQL (an intentional design decision for the following reasons)
 
 **Reasons for using GraphQL:**
 - Both field ID and option ID can be fetched in a single query

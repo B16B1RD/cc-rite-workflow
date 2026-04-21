@@ -81,6 +81,13 @@ review:
   loop:
     verification_mode: false    # 前回レビューコメントが存在する場合に検証モードを有効化（デフォルト: false）
     allow_new_findings_in_unchanged_code: false  # 未変更コードへの新規指摘を blocking にするか（デフォルト: false）
+    # Review-fix quality signals (#557)
+    # サイクル数ベースの縮退ロジックは v1.0.0 で全廃。正常出口は 0 findings のみ。
+    # 4 品質シグナル（同一 finding 循環 / root-cause 不明 fix / cross-validation
+    # 不一致 / finding quality gate 不通過）のいずれかで escalate する。
+    convergence_monitoring: true          # fingerprint ベースの循環検知を有効化（デフォルト: true）
+    auto_propagation_scan: true           # Fix 後に類似パターンの伝播スキャンを実行（デフォルト: true）
+    pre_commit_drift_check: true          # コミット前に distributed-fix-drift-check を実行（デフォルト: true）
   security_reviewer:
     mandatory: false                          # 全 PR で必須選定するか（デフォルト: false）
     recommended_for_code_changes: true        # 実行可能コード変更時は推奨（デフォルト: true）
@@ -92,6 +99,22 @@ review:
     enabled: true            # ファクトチェック Phase の有効/無効（デフォルト: true）
     max_claims: 10           # 1レビューあたり最大検証数（デフォルト: 10）
     use_context7: false      # context7 MCP ツールによる検証を使用（デフォルト: false）
+  doc_heavy:
+    enabled: true                   # Doc-Heavy PR Detection / Override の有効/無効（デフォルト: true）
+    lines_ratio_threshold: 0.6      # doc_lines / total_diff_lines の閾値（行数比率、デフォルト: 0.6）
+    count_ratio_threshold: 0.7      # doc_files / total_files の閾値（ファイル数比率、デフォルト: 0.7）
+    max_diff_lines_for_count: 2000  # ファイル数比率判定を有効にする最大 diff 行数（デフォルト: 2000）
+
+# PR review result recording (#443)
+# 上の `review:` セクションは PR レビュー**実行**設定 (reviewer 選定、debate、fact_check 等)、
+# 本 `pr_review:` セクションは PR レビュー**出力**設定 (post_comment) という責務分離。
+# 出力設定はトップレベルに分離することで、将来 PR コメント以外の出力先 (Slack 通知等) を
+# 追加した際に review: の child key を持ち上げる breaking change を避ける。
+# デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
+# ローカルファイル (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
+# /rite:pr:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
+pr_review:
+  post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false）
 
 # Parallel implementation settings
 parallel:
@@ -119,19 +142,11 @@ metrics:
   #   review_critical_high_improvement: 0.80  # MA5 improvement factor for CRITICAL+HIGH findings
   #   plan_deviation_improvement: 0.90        # MA5 improvement factor for plan deviation count
 
-# Context optimization settings (#80)
-context_optimization:
-  agent_delegation: false            # Enable agent delegation for review-fix loop under context pressure
-  agent_delegation_threshold: 80     # Tool call count threshold to trigger agent delegation
-  pressure_thresholds:
-    # All thresholds are phase-aware: impl/lint +10, review/fix +30, default ±0
-    yellow: 60                       # Warning threshold
-    orange: 90                       # Optimization mode activation threshold
-    red: 120                         # Critical / compact recommendation threshold
-
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue
+  # review-fix ループの hard limit キーは v1.0.0 で廃止（#557）。正常出口は 0 findings のみ、
+  # 異常出口は 4 品質シグナル escalate のみ（サイクル数による打切り廃止）。
   time_budget_minutes: 120         # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop
@@ -140,6 +155,29 @@ safety:
 investigate:
   codex_review:
     enabled: true    # false で Phase 6（Codex クロスチェック）をスキップし代替検証を実施
+
+# Workflow incident auto-registration (#366)
+# Detects workflow blockers (Skill load failure / hook 異常終了 / 手動 fallback 採用) and
+# auto-registers them as Issues to prevent silent loss. See docs/SPEC.md for details.
+workflow_incident:
+  enabled: true              # true で incident 検出機構を有効化（デフォルト: true）
+
+# Wiki settings (LLM Wiki pattern for experience heuristics)
+# See docs/designs/experience-heuristics-persistence-layer.md for full specification.
+wiki:
+  enabled: true                        # true to enable Wiki features (default: true, opt-out)
+  branch_strategy: "separate_branch"   # "separate_branch" (recommended) or "same_branch"
+  branch_name: "wiki"                  # Branch name for Wiki data (when branch_strategy is "separate_branch")
+  auto_ingest: true                    # Auto-ingest on review/fix/close (default: true)
+  auto_query: true                     # Auto-query on start/review/fix/implement (default: true)
+  auto_lint: true                      # Auto-run /rite:wiki:lint --auto after ingest (default: true)
+  growth_check:
+    threshold_prs: 5                   # Issue #524: lint warns when this many merged PRs accumulate
+                                       # since the last commit on `branch_name` with no raw-source ingest
+                                       # in between (warning only — does not change [lint:success])
+    pr_raw_threshold: 3                # Issue #536: warn when this many of the last `threshold_prs`
+                                       # merged PRs have no corresponding raw source on wiki branch
+                                       # (e.g., 3 means "warn if 3+ of last 5 PRs have no raw")
 
 # Language setting
 language: ja

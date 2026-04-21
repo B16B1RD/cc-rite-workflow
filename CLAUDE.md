@@ -5,30 +5,46 @@ Claude Code Rite Workflow - Claude Code 用 Issue ドリブン開発ワークフ
 ## アーキテクチャ
 
 ```
-.claude-plugin/       # プラグインメタデータ（marketplace.json）
+.claude-plugin/                    # マーケットプレイスメタデータ（marketplace.json）
+plugins/rite/.claude-plugin/       # プラグイン固有メタデータ（plugin.json）
 plugins/rite/
 ├── commands/         # スキルから呼び出される実行手順書（Markdown）
-│   ├── issue/        #   Issue 操作（start, create, list, edit, close, update）
-│   ├── pr/           #   PR 操作（create, review, fix, ready, cleanup）
-│   ├── sprint/       #   Sprint 操作（plan, list, current）
-│   ├── skill/        #   スキル操作（suggest）
-│   ├── template/     #   テンプレート操作（reset）
-│   ├── init.md       #   初回セットアップ
-│   ├── lint.md       #   品質チェック
-│   ├── resume.md     #   作業再開
-│   └── workflow.md   #   ワークフローガイド表示
+│   ├── issue/        #   メイン (list, create, start, update, close, edit, recall) +
+│   │                 #   サブスキル (create-{interview,decompose,register}, implement,
+│   │                 #   implementation-plan, completion-report, branch-setup,
+│   │                 #   parent-routing, child-issue-selection, work-memory-init)
+│   ├── pr/           #   メイン (create, ready, review, fix, cleanup) +
+│   │                 #   references/ (fact-check, internal-consistency, fix-relaxation-rules,
+│   │                 #   assessment-rules, reviewer-fallbacks, bash-trap-patterns 等)
+│   ├── sprint/       #   Sprint 操作（list, current, plan, execute, team-execute）
+│   ├── wiki/         #   Experience Wiki 操作（init, query, ingest, lint）+ references/
+│   ├── skill/        #   /rite:skill:suggest
+│   ├── template/     #   /rite:template:reset
+│   └── init.md / getting-started.md / investigate.md / lint.md / resume.md / workflow.md
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）
-│   ├── rite-workflow/  #   メインスキル + references/（コーディング原則、コンテキスト管理等）
-│   └── reviewers/     #   レビュアースキル + 各レビュー基準
+│   ├── rite-workflow/  #   メインスキル + references/（コーディング原則、コンテキスト管理）
+│   ├── reviewers/      #   レビュアースキル + 13 種別の基準ファイル + references/
+│   ├── investigate/    #   コード調査スキル
+│   └── wiki/           #   Experience Wiki スキル（opt-out）
 ├── agents/           # PR レビュー用サブエージェント定義
-├── templates/        # 完了報告・Issue・PR テンプレート
-├── references/       # gh CLI パターン、GraphQL ヘルパー
-├── hooks/            # セッション開始/終了、通知、pre-compact、stop-guard
-└── i18n/             # 多言語対応（ja.yml, en.yml）
-rite-config.yml        # プロジェクト固有設定（ブランチ戦略、Projects連携等）
+│                     # _reviewer-base.md（共通原則）+ 13 reviewer agent + sprint-teammate
+├── templates/        # config/（rite-config.yml 最小デフォルト）、project-types/、
+│                     # issue/, pr/, review/, wiki/ の各フォーマット
+├── references/       # gh CLI パターン、GraphQL、severity-levels、investigation-protocol、
+│                     # wiki-patterns、workflow-incident-emit-protocol、review-result-schema 等
+├── scripts/          # Projects 統合 Issue 作成、Sub-Issue リンク、レビュー結果抽出・計測 等
+├── hooks/            # Claude Code ライフサイクルフック（session / compact / stop-guard /
+│   │                 # preflight / pre-tool-bash-guard / post-tool-wm-sync /
+│   │                 # phase-transition-whitelist / verify-terminal-output /
+│   │                 # wiki-ingest-trigger / wiki-query-inject / workflow-incident-emit /
+│   │                 # session-ownership / hook-preamble 等）+ hooks.json
+│   ├── scripts/      #   Wiki commit / worktree / backlink / gitignore-health check 等のヘルパー
+│   └── tests/        #   hook レベルの自動テストスイート
+└── i18n/             # 多言語対応（ja.yml / en.yml の legacy + ja/, en/ 配下の分割ファイル）
+rite-config.yml        # プロジェクト固有設定（ブランチ戦略、Projects連携、Wiki、review loop 等）
 ```
 
-**コンポーネント間の関係**: スキル（`skills/`）がエントリポイント → コマンド（`commands/`）を Skill ツール経由で実行 → コマンド内からエージェント（`agents/`）やリファレンス（`references/`）を参照
+**コンポーネント間の関係**: スキル（`skills/`）がエントリポイント → コマンド（`commands/`）を Skill ツール経由で実行 → コマンド内からエージェント（`agents/`）やリファレンス（`references/` / `commands/*/references/`）を参照。hooks/ は Claude Code のライフサイクルから独立に発火し、orchestrator とコンテキスト注入・sentinel emit で連携する。ディレクトリ・ファイルの完全な一覧は `docs/SPEC.md` の Plugin Structure 節を参照。
 
 ## 開発ルール
 
@@ -43,6 +59,10 @@ rite-config.yml        # プロジェクト固有設定（ブランチ戦略、P
 - `/rite:lint` でプロジェクト設定に基づく品質チェック
 - `/rite:pr:review` でセルフレビュー（マルチレビュアー方式）
 - 手動: スキル・コマンドの変更は次回呼び出し時に反映されるため、実際に実行して動作確認
+
+## メモリ機能
+
+このプロジェクトでは Claude Code のメモリ機能（`~/.claude/projects/*/memory/`）を使用しない。ワークフローの方針は `rite-config.yml`、`commands/`、`skills/` で表現すること。メモリファイルの新規作成・更新は行わないこと。
 
 ## ドッグフーディング注意事項
 

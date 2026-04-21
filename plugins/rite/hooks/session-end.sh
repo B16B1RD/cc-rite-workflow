@@ -11,6 +11,8 @@ export _RITE_HOOK_RUNNING_SESSIONEND=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# Single source of truth for create_* lifecycle phase names (#501 HIGH).
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -47,6 +49,59 @@ if [ -f "$STATE_FILE" ]; then
         echo "rite: skipping deactivation (state belongs to another session)" >&2
         exit 0
     fi
+
+    # Lifecycle unfinished warnings (#475 AC-9, extended #608 follow-up for cleanup_*).
+    # If the session is ending mid-lifecycle (active=true with a non-terminal phase),
+    # emit an informational warning so the user knows what flow did NOT complete and
+    # how to recover. session-end always proceeds with deactivation regardless.
+    # Phase classification is delegated to phase-transition-whitelist.sh helpers as the
+    # single source of truth (#501 HIGH).
+    _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null) || _state_phase=""
+    _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || _state_active="false"
+    _lifecycle_unfinished_kind=""
+    if [ "$_state_active" = "true" ]; then
+        if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
+            if rite_phase_is_create_lifecycle_in_progress "$_state_phase"; then
+                _lifecycle_unfinished_kind="create"
+            fi
+        elif [[ "$_state_phase" == create_* ]] && [ "$_state_phase" != "create_completed" ]; then
+            _lifecycle_unfinished_kind="create"
+        fi
+        if [ -z "$_lifecycle_unfinished_kind" ]; then
+            if type rite_phase_is_cleanup_lifecycle_in_progress >/dev/null 2>&1; then
+                if rite_phase_is_cleanup_lifecycle_in_progress "$_state_phase"; then
+                    _lifecycle_unfinished_kind="cleanup"
+                fi
+            elif [[ "$_state_phase" == "cleanup" || "$_state_phase" == cleanup_* ]] && [ "$_state_phase" != "cleanup_completed" ]; then
+                # `cleanup*` (underscore なし) は将来 `cleanupXYZ` 等の派生 phase を誤検出するリスクがあるため、
+                # `cleanup` 完全一致 / `cleanup_*` のみを対象に精密化 (create_* 側との対称性、#608 follow-up)
+                _lifecycle_unfinished_kind="cleanup"
+            fi
+        fi
+    fi
+    case "$_lifecycle_unfinished_kind" in
+        create)
+            cat >&2 <<WARN_MSG
+⚠️  rite: /rite:issue:create lifecycle was not completed (phase=$_state_phase).
+    No GitHub Issue was created. The sub-skill delegation flow
+    (create-interview → 0.6 → create-register/create-decompose) did not reach completion.
+    Re-run /rite:issue:create or use /rite:resume to recover.
+WARN_MSG
+            ;;
+        cleanup)
+            cat >&2 <<WARN_MSG
+⚠️  rite: /rite:pr:cleanup lifecycle was not completed (phase=$_state_phase).
+    The cleanup workflow halted before Phase 5 Completion Report.
+    Depending on phase: cleanup → Phase 1-4 incomplete; cleanup_pre_ingest → wiki ingest
+    not invoked or mid-execution; cleanup_post_ingest → wiki ingest returned but Phase 5
+    completion report was never emitted; ingest_pre_lint → caller 経由 wiki ingest の
+    Phase 8.2 Pre-write 直後または rite:wiki:lint --auto 実行中 (ring transient pin);
+    ingest_post_lint → lint return 後 Phase 9 completion report が未出力 (ring transient pin,
+    Phase 9.1 Step 3 terminal patch 未到達).
+    Re-run /rite:pr:cleanup or use /rite:resume to recover.
+WARN_MSG
+            ;;
+    esac
 
     # mktemp with PID-based fallback (consistent with stop-guard.sh)
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"

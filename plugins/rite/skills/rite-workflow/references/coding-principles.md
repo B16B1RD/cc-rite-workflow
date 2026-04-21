@@ -18,6 +18,7 @@ Structured for rite workflow based on Andrej Karpathy's "Issues with AI Coding".
 | `no_unnecessary_fallback` | No Unnecessary Fallback | Phase 5.1, PR Review |
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
+| `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
 
 ---
 
@@ -388,6 +389,50 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 ---
 
+### documentation_consistency (Sync Documentation with Specification Changes)
+
+**Summary**: When an implementation changes user-visible specification (commands, config keys, file paths, public API, workflow phases, hook names, etc.), update related documentation in the same PR. Detect drift before commit, not at PR review time.
+
+**Failure Patterns**:
+- Renaming a command or config key in code without updating README / docs / CLAUDE.md
+- Adding a new workflow phase to `commands/issue/start.md` without updating the corresponding skill / reference docs
+- Removing a feature from code while marketing copy in README still describes it
+- Deferring documentation drift to a separate "follow-up" Issue that never gets done
+- Relying on the tech-writer reviewer at PR review time to catch drift, causing avoidable review round-trips
+
+**Rules**:
+1. Before committing, identify user-facing identifiers introduced/changed/removed by the diff
+2. Search the entire repository (`*.md`, `README*`, `CLAUDE.md`, `docs/`, `plugins/rite/**/*.md`) for those identifiers
+3. Update stale documentation in the **same branch** as the implementation — never defer
+4. Do **not** ask the user for permission via `AskUserQuestion`; documentation sync is mandatory when drift is detected
+5. Do **not** create a separate Issue for the drift (this contradicts the same-PR rule and `issue_accountability` for in-scope work)
+6. Skip when the diff is internals-only, documentation-only, or test-only
+
+**Where to Apply**:
+- Phase 5.1 (Implementation): Run as the dedicated `5.1.0.7 Documentation Impact Investigation` step before `5.1.1` commit
+- This complements (does not replace) the tech-writer reviewer at PR review time
+
+**Example**:
+
+```text
+実装で /rite:issue:resume コマンドを /rite:resume にリネームした
+
+ドキュメント影響調査:
+- Grep "/rite:issue:resume" → README.md L142, docs/getting-started.md L88, plugins/rite/commands/init.md L23
+- 全 3 ファイルを Edit ツールで /rite:resume に更新
+- 同じブランチでステージし、実装と同じコミットに含める
+```
+
+**Anti-pattern**:
+
+```text
+❌ 「ドキュメント追従は別 Issue として後で対応します」
+❌ 「README の記述が古いですが、レビュアーが指摘してくれるはずです」
+❌ AskUserQuestion: 「README を更新しますか？」
+```
+
+---
+
 ### question_self_check (Self-Check Before Asking)
 
 **Summary**: Self-check whether the question is truly necessary before asking.
@@ -396,6 +441,49 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 **Where to Apply**:
 - All phases: Before asking any question or requesting confirmation
+
+---
+
+## Markdown Authoring Conventions
+
+> **Note**: このセクションは Markdown 記述規約であり、上記の `## Principle List` テーブルに登録されているコード規約 (AI Coding Principles) とは別軸のため、独立セクションとして配置している。`## Related` からも参照される。
+
+These conventions apply to authoring Markdown files loaded by the Claude Code Skill loader. Certain inline-code patterns may interact with the loader's bash interpretation path and cause prose to be executed as shell commands.
+
+**Applicable file paths** (Skill loader 経路にある全カテゴリ):
+
+- `plugins/rite/skills/**/*.md`
+- `plugins/rite/commands/**/*.md`
+- `plugins/rite/agents/**/*.md`
+- `plugins/rite/references/**/*.md`
+- `plugins/rite/templates/**/*.md`
+
+### bash negation operator inline code convention
+
+**Summary**: When referencing the bash negation operator in Markdown inline code, never let a bare bang character (U+0021) sit immediately before the closing backtick of an inline code span. Always include a command, argument, or ellipsis token after the bang.
+
+**Failure pattern** (observed incident): In Issue #365, the file `commands/pr/fix.md` contained 5 occurrences of bang-backtick adjacency (a bang character placed directly next to the closing backtick of an inline code span, with no intervening whitespace or token). The Skill loader mis-executed surrounding documentation text as shell commands at runtime — a silent failure that was only caught through careful diffing. Replacing each occurrence with the trailing-token form (`if ! cmd` / `if ! ...`) resolved the failure.
+
+> **Note on mechanism**: The exact trigger (bash history expansion vs. the Skill loader's internal quoting/parsing processing) is **not fully characterized**. Empirically, bang-backtick adjacency is known to trigger failures in some files and contexts but long-standing occurrences exist in other files (e.g., `plugins/rite/references/gh-cli-patterns.md`) without reported Skill-load failures. See the `gh-cli-patterns.md` "Shell Escaping Notes" section for related unresolved areas. Treat this rule as a **defensive convention grounded in the Issue #365 incident**, not as a statement of a fully understood mechanism.
+
+**NG / OK examples** (the NG example is inside a fenced `text` block per Rule 3 below so it does not itself violate the convention):
+
+```text
+NG pattern (demonstration — do not write this in prose):
+  backtick + bang + closing backtick (bang-backtick adjacency, no trailing token)
+
+OK patterns:
+  `if ! cmd`
+  `if ! ...`
+  `if ! command -v foo`
+```
+
+**Rules**:
+1. Do not write bang-backtick adjacency in Markdown prose (outside fenced code blocks) in any file loaded by the Skill loader.
+2. Always include a trailing token: use `if ! cmd` (specific command) or `if ! ...` (ellipsis placeholder) instead.
+3. When the NG pattern must itself be quoted for documentation, enclose it in a fenced code block tagged `text`. Fenced blocks are not subject to inline-code parsing by the loader.
+
+**Application scope** (silent retroactive sweep 回避): 本 convention は**新規編集時に目視で発見したもののみ**を対象とする。既存ファイルへの retroactive 一括書き換えは行わない — 長期間存在する既存箇所で Skill ロード失敗が観測されておらず、真のトリガ条件が未だ empirically 特定されていないため、一括書き換えは不要な変更を広範に生むリスクがある。真のトリガ条件の dry-run 実証調査は別 Issue で追跡する。
 
 ---
 
@@ -420,6 +508,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 - [ ] `dead_code_hygiene`: Is dead code being left behind?
 - [ ] `no_unnecessary_fallback`: Are there fallbacks that hide failure causes?
 - [ ] `issue_accountability`: Are any discovered problems being ignored?
+- [ ] `documentation_consistency`: Has related documentation been updated for any user-visible spec changes?
 
 ### PR Review
 
@@ -445,3 +534,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 - [Issue Start Workflow](../../../commands/issue/start.md) - start.md
 - [PR Create Command](../../../commands/pr/create.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [PR Review](../../../commands/pr/review.md) - review.md
+- [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention)
+- [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
+- [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)
+- [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md) - Related bang character handling error catalog (Category 6)

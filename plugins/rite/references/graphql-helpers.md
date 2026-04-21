@@ -16,7 +16,8 @@ A collection of common GraphQL query patterns used in rite workflow.
 6. [PR Creation Guards](#pr-creation-guards)
 7. [Safe GraphQL Variable Encoding](#safe-graphql-variable-encoding)
 8. [Error Handling](#error-handling)
-9. [Related Documents](#related-documents)
+9. [addSubIssue Helper](#addsubissue-helper)
+10. [Related Documents](#related-documents)
 
 ---
 
@@ -473,6 +474,111 @@ if [ "$SKIP_PROJECT" != "true" ]; then
   gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL"
 fi
 ```
+
+---
+
+## addSubIssue Helper
+
+GitHub の Sub-issues feature を使って、Issue 間の親子関係を API レベルで設定するためのヘルパーです。本文メタ（`Parent Issue: #N` や `## Sub-Issues` チェックリスト）と並行して、`subIssues` GraphQL relation を一次情報源として登録します。
+
+### When to Use
+
+- `/rite:issue:create-decompose` の bulk create 後に各 Sub-Issue を親に紐付ける
+- `/rite:issue:start` Phase 1.5 (parent-routing) の child creation path で新規子 Issue を親に紐付ける
+- 既存 Issue の body メタのみで API 未紐付けな状態を後付けで補修する（`backfill-sub-issues.sh`）
+
+### Helper Script: `link-sub-issue.sh`
+
+The helper script `plugins/rite/scripts/link-sub-issue.sh` encapsulates node ID resolution, the `addSubIssue` mutation call, retry-on-5xx, and idempotent handling of already-linked relations.
+
+```bash
+# Usage
+bash plugins/rite/scripts/link-sub-issue.sh <owner> <repo> <parent_number> <child_number>
+
+# Example
+result=$(bash plugins/rite/scripts/link-sub-issue.sh "B16B1RD" "cc-rite-workflow" 514 600)
+status=$(printf '%s' "$result" | jq -r '.status')
+case "$status" in
+  ok|already-linked)
+    printf '%s' "$result" | jq -r '.message'
+    ;;
+  failed)
+    printf '%s' "$result" | jq -r '.warnings[]' | while read -r w; do echo "⚠️ $w" >&2; done
+    ;;
+esac
+```
+
+**Output schema** (stdout JSON):
+
+```json
+{
+  "status": "ok | already-linked | failed",
+  "parent": 514,
+  "child": 600,
+  "message": "linked #600 as sub-issue of #514",
+  "warnings": []
+}
+```
+
+**Exit code policy**: The helper exits `0` for `ok`, `already-linked`, **and** `failed`. Callers MUST inspect the `status` field to determine success. Exit code `1` is reserved exclusively for fatal argument errors (missing/non-numeric arguments, self-reference). All other failure modes — including network errors, permission denials, GraphQL errors, and exhausted retries — are surfaced via `status: failed` with exit `0` and warnings populated in the JSON output. Callers can therefore safely use the helper in pipelines without worrying about non-fatal failures aborting `set -e` scripts.
+
+### Underlying GraphQL
+
+The helper internally executes the following two-step flow:
+
+```graphql
+# Step 1: Resolve node IDs
+query($owner: String!, $repo: String!, $parent: Int!, $child: Int!) {
+  repository(owner: $owner, name: $repo) {
+    parent: issue(number: $parent) { id }
+    child: issue(number: $child) { id }
+  }
+}
+
+# Step 2: Establish parent-child relation
+mutation($parentId: ID!, $childId: ID!) {
+  addSubIssue(input: { issueId: $parentId, subIssueId: $childId }) {
+    issue { id number }
+    subIssue { id number }
+  }
+}
+```
+
+### Verification Query
+
+After linkage, verify with the following query:
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      subIssues(first: 50) { nodes { number title state } }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={parent_number}
+```
+
+### Error Handling Matrix
+
+| Condition | Helper Response | Caller Action |
+|-----------|-----------------|---------------|
+| Linkage succeeds | `status=ok` | Continue normally |
+| Already linked (idempotent retry) | `status=already-linked` | Treat as success, continue |
+| 5xx server error | Retry up to 3 times (1s -> 2s -> 4s exponential backoff), then `status=failed` | Surface warning, fall back to body meta only, do NOT block |
+| 4xx (permission / API not enabled) | `status=failed` immediately | Surface warning, fall back to body meta only, do NOT block |
+| Parent or child Issue not found | `status=failed` | Skip linkage for this child only |
+| Network failure | Retried as 5xx | Same as 5xx |
+
+### Decision Log: GraphQL vs REST
+
+This helper uses **GraphQL** (`addSubIssue` mutation), not the REST `POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues` endpoint, for the following reasons:
+
+1. **Consistency**: All other rite workflow Projects/Issue queries use GraphQL via `gh api graphql`. Mixing REST and GraphQL would fragment error handling and authentication paths.
+2. **Type safety**: The introspection-verified `AddSubIssueInput` schema (`issueId: ID!`, `subIssueId: ID`) provides clearer contract than the REST shape.
+3. **Single round-trip after node ID resolution**: GraphQL accepts node IDs directly, matching how the rest of rite workflow already passes node IDs across Project mutations.
+
+REST remains a documented fallback if GraphQL becomes unavailable, but no current code path uses it.
 
 ---
 

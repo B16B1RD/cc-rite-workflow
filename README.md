@@ -4,8 +4,14 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.3.10-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.3.10)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.4.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## ⚠️ Breaking Changes (v0.4.0)
+
+**v0.4.0 — Cycle-count-based review-fix degradation removed (#557)**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored. The review-fix loop now terminates only on 0 findings or when one of four **quality signals** fires (fingerprint cycling / root-cause-missing fix / cross-validation disagreement / reviewer self-degraded). Existing users should remove the three keys from `rite-config.yml`; `/rite:lint` will warn until they are removed. See [CHANGELOG](CHANGELOG.md#040---2026-04-17) for the migration guide.
+
+**v0.3 — Named subagent reviewer invocation (#358)**: `/rite:pr:review` invokes reviewer agents as **named subagents** (`rite:{reviewer_type}-reviewer`) instead of `general-purpose`. This gives reviewer discipline stronger system-prompt-level enforcement and activates per-reviewer `model` / `tools` frontmatter. Most noticeable effect: 9 reviewers are pinned to `model: opus`, so users previously running reviews on sonnet will see forced opus upgrade and a cost increase. See [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) for rationale, rollback scenarios, and opt-out instructions. Tracked in [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358).
 
 ## Why "Rite"?
 
@@ -21,12 +27,14 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Automated**: Auto-detection and auto-configuration
 - **Customizable**: Flexible configuration via YAML
 - **Integrated**: GitHub Projects, notifications (Slack/Discord/Teams)
-- **Smart Reviews**: Dynamic multi-reviewer code review
+- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/commands/pr/references/internal-consistency.md`](plugins/rite/commands/pr/references/internal-consistency.md) for the full verification protocol
+- **External Review Integration**: `/rite:pr:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
 - **Sprint Management**: Optional Iteration/Sprint support with team execution
 - **TDD Light Mode**: Generate test skeletons from acceptance criteria before implementation
 - **Preflight Check**: Unified pre-execution verification across all commands
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications
+- **Experience Wiki**: LLM-driven project knowledge base. Auto-ingests review/fix outcomes into topical pages and injects relevant heuristics at the start of each Issue (opt-out)
 
 ## Installation
 
@@ -63,6 +71,8 @@ This will:
 | Command | Description |
 |---------|-------------|
 | `/rite:init` | Initial setup wizard |
+| `/rite:init --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
+| `/rite:getting-started` | Interactive onboarding guide |
 | `/rite:workflow` | Show workflow guide |
 | `/rite:issue:list` | List Issues |
 | `/rite:issue:create` | Create new Issue |
@@ -70,6 +80,7 @@ This will:
 | `/rite:issue:update` | Update work memory |
 | `/rite:issue:close` | Check Issue completion |
 | `/rite:issue:edit` | Edit existing Issue interactively |
+| `/rite:issue:recall` | Search Contextual Commit history for past decisions |
 | `/rite:pr:create` | Create draft PR |
 | `/rite:pr:ready` | Mark as Ready for review |
 | `/rite:pr:review` | Multi-reviewer review |
@@ -83,6 +94,10 @@ This will:
 | `/rite:sprint:plan` | Sprint planning (optional) |
 | `/rite:sprint:execute` | Execute sprint Issues sequentially (optional) |
 | `/rite:sprint:team-execute` | Execute sprint Issues in parallel with worktree-based teams (optional) |
+| `/rite:wiki:init` | Initialize Experience Wiki branch and directory layout |
+| `/rite:wiki:query` | Query Wiki pages for heuristics matching keywords |
+| `/rite:wiki:ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
+| `/rite:wiki:lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
 | `/rite:resume` | Resume interrupted work |
 | `/rite:skill:suggest` | Analyze context and suggest applicable skills |
 
@@ -139,7 +154,6 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all options.
 
 - [Full Specification](docs/SPEC.md)
 - [Configuration Reference](docs/CONFIGURATION.md)
-- [Best Practices Alignment](docs/BEST_PRACTICES_ALIGNMENT.md)
 - [日本語ドキュメント](README.ja.md)
 
 ## Requirements

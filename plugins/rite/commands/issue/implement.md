@@ -15,6 +15,54 @@ Perform actual implementation work following the implementation plan approved in
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
 
+### 5.0.W Wiki Query Injection (Conditional)
+
+> **Reference**: [Wiki Query](../wiki/query.md) — `wiki-query-inject.sh` API
+
+Before starting implementation, inject relevant experiential knowledge from the Wiki to inform the implementation approach.
+
+**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_query: true` in `rite-config.yml`. Skip silently otherwise.
+
+**Step 1**: Check Wiki configuration:
+
+```bash
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_query=""
+if [[ -n "$wiki_section" ]]; then
+  auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # #483: opt-out default
+case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
+```
+
+If `wiki_enabled=false` or `auto_query=false`, skip this section and proceed to implementation.
+
+**Step 2**: Generate keywords from the implementation plan and invoke the query:
+
+Keywords are derived from: implementation plan step descriptions, target file paths, and relevant domain terms from the plan.
+
+```bash
+# {plugin_root} はリテラル値で埋め込む
+# {keywords} は実装計画のキーワード（ファイルパス、ドメイン用語等）をカンマ区切りで生成
+wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
+  --keywords "{keywords}" \
+  --format compact 2>/dev/null) || wiki_context=""
+if [ -n "$wiki_context" ]; then
+  echo "$wiki_context"
+else
+  echo "(Wiki から関連経験則は見つかりませんでした)"
+fi
+```
+
+**Step 3**: If `wiki_context` is non-empty, retain it in conversation context and reference it during implementation. The injected experiential knowledge may inform: common implementation patterns, known pitfalls, and effective approaches for similar changes.
+
 **Basic implementation flow:**
 
 1. Check current file content with Read tool
@@ -159,7 +207,7 @@ Analyze the "files to change" from the implementation plan (Phase 3) and determi
 
 ```
 parallel.enabled を確認
-├─ false → 通常の順次実装（5.1.0 をスキップ、5.1.1 へ）
+├─ false → 5.1.0.1-5.1.0.4 parallel implementation はスキップ、5.1.0.5 Adaptive Re-evaluation / 5.1.0.6 Test Verification Gate / 5.1.0.6.1 Acceptance Criteria Check / 5.1.0.7 Documentation Impact Investigation を経て 5.1.1 へ
 └─ true → 複雑度を確認
     ├─ XS/S → 通常の順次実装
     └─ M 以上 → 独立タスクを分析
@@ -418,7 +466,7 @@ Oracle: なし（フォールバック分解を適用）
 
 > **Reference**: See [Bottleneck Detection Reference - User Notification](../../references/bottleneck-detection.md#user-notification) for complete display format details.
 
-**When all steps are complete**: Proceed to 5.1.0.6 (Test Verification Gate) or 5.1.1 (Commit).
+**When all steps are complete**: Proceed to 5.1.0.6 (Test Verification Gate), then 5.1.0.7 (Documentation Impact Investigation), then 5.1.1 (Commit). The chain is **5.1.0.6 → 5.1.0.6.1 → 5.1.0.7 → 5.1.1**; never bypass 5.1.0.7 on the way to commit.
 
 #### 5.1.0.6 Test Verification Gate (Conditional)
 
@@ -433,7 +481,7 @@ Read `rite-config.yml` and check:
 | `commands.test` is set | Non-null value in `rite-config.yml` |
 | `verification.run_tests_before_pr` is `true` | From `rite-config.yml` (default: `true`) |
 
-**Skip conditions** (any match → skip to 5.1.1):
+**Skip conditions** (any match → skip to 5.1.0.7, then 5.1.1):
 - `commands.test` is `null` or not set
 - `verification.run_tests_before_pr` is `false`
 
@@ -452,7 +500,7 @@ When skipped, display the appropriate message:
 
 | Exit Code | Action |
 |-----------|--------|
-| 0 | Tests passed → proceed to 5.1.0.6.1 (acceptance criteria check) then 5.1.1 (commit) |
+| 0 | Tests passed → proceed to 5.1.0.6.1 (acceptance criteria check) → 5.1.0.7 (documentation impact investigation) → 5.1.1 (commit) |
 | Non-zero | Tests failed → display failures, return to 5.1 implementation |
 
 **On test failure:**
@@ -486,11 +534,11 @@ Return to Phase 5.1 (implementation). Do NOT proceed to commit.
 
 The section extends from the matched heading to the next `##` heading or end of body.
 
-**Skip conditions** (any match → skip to 5.1.1):
+**Skip conditions** (any match → skip to 5.1.0.7, then 5.1.1):
 - `verification.acceptance_criteria_check` is `false`
 - Issue body does not contain an acceptance criteria section (none of the above headings found)
 
-**Issue body retrieval**: Use the Issue body already obtained in Phase 0.1 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.1.
+**Issue body retrieval**: Use the Issue body already obtained in Phase 0.1 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
 
 **Check procedure:**
 
@@ -512,10 +560,89 @@ The section extends from the matched heading to the next `##` heading or end of 
 
 | Result | Action |
 |--------|--------|
-| All criteria satisfied | Proceed to 5.1.1 (commit) |
+| All criteria satisfied | Proceed to 5.1.0.7 (documentation impact investigation) → 5.1.1 (commit) |
 | Some need attention | Display via `AskUserQuestion`: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
 
 **Note**: This check is advisory — it helps catch missed requirements but does not block the flow when the user chooses to proceed.
+
+#### 5.1.0.7 Documentation Impact Investigation
+
+> **Reference**: Apply `documentation_consistency` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
+
+Before committing, investigate whether the implementation introduces any user-facing specification change that requires updating related documentation (README, `docs/`, `CLAUDE.md`, `plugins/rite/**/*.md`, etc.). When stale documentation is detected, fix it immediately within the same branch — do NOT defer to a separate Issue, do NOT ask the user via `AskUserQuestion`.
+
+This step is the implementer's responsibility and complements (does not replace) the tech-writer reviewer at PR review time. Catching documentation drift before commit avoids a review round-trip.
+
+##### Skip Conditions
+
+Skip this entire section (proceed directly to 5.1.1) when **any** of the following holds:
+
+| Skip condition | Determination |
+|---------------|---------------|
+| No specification change | The diff only touches internals (private functions, refactor, code style, comment-only edits) with no observable change to commands, configuration keys, file layout, public API, workflow phases, or user-visible behavior |
+| Auxiliary documentation-only change | The diff only modifies auxiliary documentation that does NOT define user-visible workflow, commands, config keys, or specification — e.g., `CHANGELOG*`, release notes, or pure prose updates to `README*`. **Do NOT skip** when the diff touches files that define workflow or specification (e.g., `plugins/rite/commands/**/*.md`, `plugins/rite/skills/**/*.md`, `plugins/rite/references/**/*.md`, or any `docs/` file documenting a public API) — those changes are themselves the drift source that this step is meant to detect |
+| Test-only change | The diff only touches test files (`*.test.*`, `*.spec.*`, `tests/**`) |
+
+The decision is made by the LLM based on the actual diff (`git diff --name-status origin/{base_branch}...HEAD` plus the work memory's "決定事項・メモ") — there is no explicit trigger pattern. When in doubt, do **NOT** skip.
+
+##### Investigation Procedure
+
+**Step 1: Extract specification keywords**
+
+From the implementation just completed, extract user-facing identifiers that may appear in documentation. Sources:
+
+| Source | Examples |
+|--------|---------|
+| Renamed / added / removed commands | `/rite:issue:start`, slash-command names |
+| Renamed / added / removed config keys | `rite-config.yml` keys (`branch.base`, `wiki.enabled`) |
+| Renamed / added / removed file paths | Section file paths a user copies into their project |
+| Renamed / added / removed phase / workflow names | `Phase 5.4`, `review-fix loop` |
+| Renamed / added / removed public function / hook names | hook script names, exported helpers |
+
+Use the work memory's `決定事項・メモ` and the diff itself as the source. Skip identifiers that are clearly internal.
+
+**Step 2: Project-wide search**
+
+For each keyword, search the **entire repository** for documentation references using the Grep tool. The search scope is fixed to project-wide and is not configurable.
+
+**Required Grep invocations (run all three per keyword)**:
+
+1. `glob: "**/*.md"` — all Markdown files (includes `CLAUDE.md` at any depth, `docs/**/*.md`, `plugins/**/*.md`)
+2. `glob: "README*"` — extension-less or alternative-extension README files (`README`, `README.rst`, `README.adoc`, etc.) that the `*.md` glob misses
+3. `glob: "CHANGELOG*"` — CHANGELOG files that reference user-visible features by name
+
+All three globs use `output_mode: "files_with_matches"` and the same `pattern: "{keyword}"`. Running all three is mandatory — skipping `README*` or `CHANGELOG*` because "they're usually `*.md`" causes silent drift in repos that use extension-less READMEs.
+
+**Exclude the modified file set from the results**: Compute the set of currently-modified files from `git diff --name-only origin/{base_branch}...HEAD` and exclude any file in that set from the Read/Edit step (Step 3). The modified file set is typically multiple files, not one — do not assume a single "the file".
+
+**Step 3: Read and judge**
+
+For each candidate file returned by the search, use the Read tool to inspect the matched lines and judge whether the documentation is now stale:
+
+| Judgment | Action |
+|---------|--------|
+| Stale (documentation describes the old behavior / old name / removed feature) | Edit immediately with the Edit tool |
+| Still accurate (the keyword appears but the surrounding text is still correct) | Leave as-is |
+| Uncertain | Treat as stale and update; over-updating documentation is cheaper than leaving drift |
+
+**Step 4: Edit and stage**
+
+Apply the necessary edits with the Edit tool. Do **not** prompt the user via `AskUserQuestion` — the auto-fix is mandatory per Issue #485 MUST NOT constraints. Stage the edited documentation files together with the implementation changes.
+
+##### Result Handling
+
+| Result | Action |
+|--------|--------|
+| 0 hits across all keywords | Proceed silently to 5.1.1 (no warning, no extra commit) |
+| Stale docs detected and auto-fixed | Stage the edited documentation files and proceed to 5.1.1 — the documentation edits are committed in the **same** commit as the implementation. (Note: 5.1.0.7 always runs **before** 5.1.1 in the normal flow, so the implementation is never already committed at this point.) |
+| Search command failed (Grep tool error, etc.) | Display warning `WARNING: ドキュメント影響調査でエラー: {error}. ステップをスキップして実装フェーズを継続します` and proceed to 5.1.1 — do NOT block the flow |
+
+##### Constraints
+
+- **MUST NOT** invoke `AskUserQuestion` from this step
+- **MUST NOT** defer detected drift to a separate Issue (this contradicts `issue_accountability` and the Issue #485 MUST NOT constraints)
+- **MUST NOT** modify files outside documentation (no code changes triggered by this step)
+- **MUST NOT** modify `plugins/rite/skills/reviewers/**`, `plugins/rite/hooks/**`, or `rite-config.yml` from this step — those are out of scope for documentation impact investigation
 
 ### 5.1.1 Commit and Push Changes
 
@@ -731,7 +858,18 @@ WM_SOURCE="implement" \
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when working on a child Issue selected in Phase 1.6.
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically from `.rite-flow-state` (#497 — survives context compaction):
+
+```bash
+parent_issue_number=$(jq -r '.parent_issue_number // 0' .rite-flow-state 2>/dev/null) || parent_issue_number=0
+if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
+  echo "[CONTEXT] PARENT_ISSUE=none — skip 5.1.2"
+else
+  echo "[CONTEXT] PARENT_ISSUE=$parent_issue_number — execute 5.1.2"
+fi
+```
+
+Skip this section when `PARENT_ISSUE=none`.
 
 **5.1.2.1 Tasklist Update**
 

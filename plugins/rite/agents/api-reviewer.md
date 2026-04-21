@@ -2,10 +2,6 @@
 name: api-reviewer
 description: Reviews API design, REST conventions, and interface contracts
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # API Design Reviewer

@@ -156,7 +156,7 @@ Defined in `rite-config.yml` under the `safety` section. See [Safety Configurati
 
 ```yaml
 safety:
-  max_review_fix_loops: 7        # review-fix loop hard limit (existing)
+  # review-fix loop hard limit was removed in v0.4.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
   max_implementation_rounds: 20  # implementation round hard limit
   time_budget_minutes: 120       # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true  # stop on repeated failure
@@ -165,7 +165,7 @@ safety:
 
 ### Fail-Closed Behavior
 
-When a safety threshold is exceeded (`max_review_fix_loops`, `max_implementation_rounds`, `repeated_failure_threshold`):
+When a safety threshold is exceeded (`max_implementation_rounds`, `repeated_failure_threshold`):
 
 > **Note**: `time_budget_minutes` is advisory only. Claude Code has no timer mechanism, so this threshold is not automatically enforced. It serves as a reference for manual intervention decisions.
 
@@ -206,7 +206,7 @@ metrics:
     plan_deviation_improvement: 0.90        # MA5 improvement factor
 
 safety:
-  max_review_fix_loops: 7        # review-fix loop hard limit (existing)
+  # review-fix loop hard limit was removed in v0.4.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
   max_implementation_rounds: 20  # implementation round hard limit
   time_budget_minutes: 120       # time budget per Issue (advisory, not enforced by timer)
   auto_stop_on_repeated_failure: true  # stop on repeated failure

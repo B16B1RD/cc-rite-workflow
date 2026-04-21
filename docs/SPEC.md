@@ -37,12 +37,14 @@ The command prefix `rite` was chosen for:
 9. [Notification Integration](#notification-integration)
 10. [Build/Test/Lint Auto-Detection](#buildtestlint-auto-detection)
 11. [Dynamic Reviewer Generation](#dynamic-reviewer-generation)
-12. [Error Handling](#error-handling)
-13. [Migration](#migration)
-14. [Internationalization](#internationalization)
-15. [Dependencies](#dependencies)
-16. [Distribution](#distribution)
-17. [Project Types](#project-types)
+12. [Workflow Incident Detection](#workflow-incident-detection)
+13. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
+14. [Error Handling](#error-handling)
+15. [Migration](#migration)
+16. [Internationalization](#internationalization)
+17. [Dependencies](#dependencies)
+18. [Distribution](#distribution)
+19. [Project Types](#project-types)
 
 ---
 
@@ -50,14 +52,17 @@ The command prefix `rite` was chosen for:
 
 | Command | Description | Arguments |
 |---------|-------------|-----------|
-| `/rite:init` | Initial setup wizard | None |
+| `/rite:init` | Initial setup wizard | `[--upgrade]` (upgrade existing `rite-config.yml` schema to the latest version) |
+| `/rite:getting-started` | Interactive onboarding guide | None |
 | `/rite:workflow` | Show workflow guide | None |
+| `/rite:investigate` | Structured code investigation | `<topic or question>` |
 | `/rite:issue:list` | List Issues | `[filter]` |
 | `/rite:issue:create` | Create new Issue | `<title or description>` |
 | `/rite:issue:start` | Start work (end-to-end: branch → implementation → PR) | `<Issue number>` |
 | `/rite:issue:update` | Update work memory | `[memo]` |
 | `/rite:issue:close` | Check Issue completion | `<Issue number>` |
 | `/rite:issue:edit` | Interactively edit existing Issue | `<Issue number>` |
+| `/rite:issue:recall` | Search Contextual Commit history for past decisions | `[{scope}\|{action}({scope})]` |
 | `/rite:pr:create` | Create draft PR | `[PR title]` |
 | `/rite:pr:ready` | Mark as Ready for review | `[PR number]` |
 | `/rite:pr:review` | Multi-reviewer review | `[PR number]` |
@@ -70,6 +75,10 @@ The command prefix `rite` was chosen for:
 | `/rite:sprint:plan` | Execute sprint planning | `[current\|next\|"Sprint name"]` |
 | `/rite:sprint:execute` | Sequentially execute Todo Issues in Sprint | `[Sprint name]` |
 | `/rite:sprint:team-execute` | Parallel team execution of Todo Issues in Sprint | `[Sprint name]` |
+| `/rite:wiki:init` | Initialize Experience Wiki (branch, directories, templates) | None |
+| `/rite:wiki:query` | Search Wiki pages for heuristics by keyword and inject into context | `<keywords>` |
+| `/rite:wiki:ingest` | Extract heuristics from raw sources and update Wiki pages | `[source]` |
+| `/rite:wiki:lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs | `[--auto] [--stale-days <N>]` |
 | `/rite:resume` | Resume interrupted work | `[issue_number]` |
 | `/rite:skill:suggest` | Analyze context and suggest applicable skills | `[--verbose\|--filter]` |
 
@@ -129,117 +138,159 @@ Todo → In Progress → In Review → Done
 rite-workflow/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin metadata
-├── commands/
-│   ├── init.md              # /rite:init
+├── commands/                # Skill-invoked command files (Markdown)
+│   ├── init.md              # /rite:init (+ --upgrade)
 │   ├── getting-started.md   # /rite:getting-started
 │   ├── workflow.md          # /rite:workflow
+│   ├── investigate.md       # /rite:investigate
+│   ├── lint.md              # /rite:lint
+│   ├── resume.md            # /rite:resume
 │   ├── issue/
 │   │   ├── list.md          # /rite:issue:list
 │   │   ├── create.md        # /rite:issue:create
-│   │   ├── start.md         # /rite:issue:start
+│   │   ├── create-interview.md       # Sub-skill: interview phase
+│   │   ├── create-decompose.md       # Sub-skill: Issue decomposition
+│   │   ├── create-register.md        # Sub-skill: single-Issue registration
+│   │   ├── start.md         # /rite:issue:start (end-to-end)
 │   │   ├── update.md        # /rite:issue:update
 │   │   ├── close.md         # /rite:issue:close
-│   │   └── completion-report.md  # Completion report format
+│   │   ├── edit.md          # /rite:issue:edit
+│   │   ├── recall.md        # /rite:issue:recall
+│   │   ├── implement.md              # Sub-skill: implementation phase
+│   │   ├── implementation-plan.md    # Sub-skill: plan generation
+│   │   ├── completion-report.md      # Sub-skill: completion report format
+│   │   ├── branch-setup.md           # Sub-skill: branch creation
+│   │   ├── child-issue-selection.md  # Sub-skill: parent-child routing
+│   │   ├── parent-routing.md         # Sub-skill: parent Issue detection
+│   │   └── work-memory-init.md       # Sub-skill: work memory initialization
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready
 │   │   ├── review.md        # /rite:pr:review
 │   │   ├── fix.md           # /rite:pr:fix
 │   │   ├── cleanup.md       # /rite:pr:cleanup
-│   │   └── references/
-│   │       ├── assessment-rules.md        # Review assessment rules
-│   │       ├── archive-procedures.md      # Archive procedures
+│   │   └── references/      # Protocol documents referenced by pr/ commands
+│   │       ├── assessment-rules.md         # Review assessment rules
+│   │       ├── archive-procedures.md       # Archive procedures
+│   │       ├── bash-trap-patterns.md       # Bash trap patterns for review/fix
+│   │       ├── change-intelligence.md      # Change intelligence
+│   │       ├── fact-check.md               # External fact-checking protocol
+│   │       ├── fix-relaxation-rules.md     # Fix relaxation / 4 quality signals
+│   │       ├── internal-consistency.md     # Doc-implementation consistency protocol
 │   │       ├── review-context-optimization.md  # Review context optimization
-│   │       ├── reviewer-fallbacks.md      # Reviewer fallback profiles
-│   │       ├── change-intelligence.md     # Change intelligence
-│   │       └── fix-relaxation-rules.md    # Fix relaxation rules
-│   ├── lint.md              # /rite:lint
-│   ├── resume.md            # /rite:resume
-│   ├── skill/
-│   │   └── suggest.md       # /rite:skill:suggest
+│   │       └── reviewer-fallbacks.md       # Reviewer fallback profiles
 │   ├── sprint/
 │   │   ├── list.md          # /rite:sprint:list
 │   │   ├── current.md       # /rite:sprint:current
 │   │   ├── plan.md          # /rite:sprint:plan
 │   │   ├── execute.md       # /rite:sprint:execute
 │   │   └── team-execute.md  # /rite:sprint:team-execute
+│   ├── wiki/
+│   │   ├── init.md          # /rite:wiki:init
+│   │   ├── query.md         # /rite:wiki:query
+│   │   ├── ingest.md        # /rite:wiki:ingest
+│   │   ├── lint.md          # /rite:wiki:lint
+│   │   └── references/
+│   │       └── bash-cross-boundary-state-transfer.md
+│   ├── skill/
+│   │   └── suggest.md       # /rite:skill:suggest
 │   └── template/
 │       └── reset.md         # /rite:template:reset
-├── agents/
-│   ├── security-reviewer.md        # Security vulnerability detection
-│   ├── performance-reviewer.md     # Performance issue detection
-│   ├── code-quality-reviewer.md    # Code quality review
-│   ├── api-reviewer.md             # API design review
-│   ├── database-reviewer.md        # Database schema/query review
-│   ├── devops-reviewer.md          # Infrastructure/CI-CD review
-│   ├── frontend-reviewer.md        # UI/accessibility review
-│   ├── test-reviewer.md            # Test quality review
-│   ├── dependencies-reviewer.md    # Dependency security review
-│   ├── prompt-engineer-reviewer.md # Skill/command/agent definition review
-│   ├── tech-writer-reviewer.md     # Documentation review
-│   ├── error-handling-reviewer.md  # Error handling review
-│   ├── type-design-reviewer.md     # Type design review
-│   └── sprint-teammate.md          # Sprint team member
-├── skills/
+├── agents/                  # Subagent definitions for /rite:pr:review
+│   ├── _reviewer-base.md             # Shared reviewer principles (not a subagent)
+│   ├── security-reviewer.md
+│   ├── performance-reviewer.md
+│   ├── code-quality-reviewer.md
+│   ├── api-reviewer.md
+│   ├── database-reviewer.md
+│   ├── devops-reviewer.md
+│   ├── frontend-reviewer.md
+│   ├── test-reviewer.md
+│   ├── dependencies-reviewer.md
+│   ├── prompt-engineer-reviewer.md
+│   ├── tech-writer-reviewer.md
+│   ├── error-handling-reviewer.md
+│   ├── type-design-reviewer.md
+│   └── sprint-teammate.md   # /rite:sprint:team-execute teammate agent
+├── skills/                  # Claude Code auto-discovered skills
 │   ├── rite-workflow/
-│   │   ├── SKILL.md         # Auto-apply skill
-│   │   └── references/      # Coding principles, context management
-│   └── reviewers/
-│       └── SKILL.md         # Reviewer skill + review criteria
-├── hooks/
-│   ├── session-start.sh
-│   ├── session-end.sh
-│   ├── pre-compact.sh
-│   ├── stop-guard.sh
-│   ├── preflight-check.sh
-│   ├── post-compact-guard.sh
-│   ├── pre-tool-bash-guard.sh
-│   ├── post-tool-wm-sync.sh
-│   ├── local-wm-update.sh
-│   ├── work-memory-lock.sh
-│   ├── work-memory-update.sh
-│   ├── work-memory-parse.py
+│   │   ├── SKILL.md         # Main workflow skill (auto-activated)
+│   │   └── references/      # Coding principles, context management, etc.
+│   ├── reviewers/
+│   │   ├── SKILL.md         # Reviewer skill (auto-activated)
+│   │   ├── {api,code-quality,database,dependencies,devops,error-handling,
+│   │   │   frontend,performance,prompt-engineer,security,tech-writer,
+│   │   │   test,type-design}.md      # Per-reviewer criteria
+│   │   └── references/                # Shared reviewer references
+│   ├── investigate/
+│   │   └── SKILL.md         # Structured code investigation skill
+│   └── wiki/
+│       └── SKILL.md         # Experience Wiki skill (opt-out)
+├── hooks/                   # Claude Code lifecycle hooks + helpers
+│   ├── hooks.json           # Hook registration manifest
+│   ├── session-start.sh / session-end.sh / session-ownership.sh
+│   ├── pre-compact.sh / post-compact.sh                  # #133
+│   ├── stop-guard.sh / preflight-check.sh
+│   ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
+│   ├── phase-transition-whitelist.sh                     # Phase transition guard
+│   ├── verify-terminal-output.sh
+│   ├── hook-preamble.sh / state-path-resolve.sh          # Shared helpers
+│   ├── flow-state-update.sh / local-wm-update.sh
+│   ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │   ├── cleanup-work-memory.sh
-│   ├── state-path-resolve.sh
-│   ├── flow-state-update.sh
-│   ├── issue-body-safe-update.sh
-│   ├── context-pressure.sh
-│   └── notification.sh
+│   ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
+│   ├── notification.sh      # External notification dispatcher (not a Claude hook)
+│   ├── wiki-ingest-trigger.sh / wiki-query-inject.sh     # Wiki auto-integration
+│   ├── workflow-incident-emit.sh                         # #366 / #524 / #555 / #567
+│   ├── scripts/             # Helper scripts invoked by hooks
+│   │   ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
+│   │   ├── wiki-growth-check.sh                          # #524 lint layer-3
+│   │   ├── backlink-format-check.sh / bang-backtick-check.sh
+│   │   ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
+│   │   └── gitignore-health-check.sh                     # #567
+│   └── tests/               # Hook-level test suite (shell-based)
 ├── templates/
-│   ├── completion-report.md  # Completion report format definition
+│   ├── README.md / completion-report.md
+│   ├── config/
+│   │   └── rite-config.yml           # Minimal default distributed by /rite:init
 │   ├── project-types/
-│   │   ├── generic.yml
-│   │   ├── webapp.yml
-│   │   ├── library.yml
-│   │   ├── cli.yml
-│   │   └── documentation.yml
+│   │   ├── generic.yml / webapp.yml / library.yml / cli.yml / documentation.yml
 │   ├── issue/
-│   │   └── default.md
-│   └── pr/
-│       ├── generic.md
-│       ├── webapp.md
-│       ├── library.md
-│       ├── cli.md
-│       └── documentation.md
-├── scripts/
-│   └── create-issue-with-projects.sh  # Issue creation with Projects integration
-├── references/
-│   ├── gh-cli-patterns.md
-│   ├── graphql-helpers.md
-│   └── ...                   # Other reference documents
+│   │   ├── default.md / decomposition-spec.md
+│   │   ├── interview-perspectives.md / template-structure.md
+│   ├── pr/
+│   │   ├── generic.md / webapp.md / library.md / cli.md / documentation.md
+│   │   └── fix-report.md              # Fix loop summary format
+│   ├── review/
+│   │   └── comment.md                 # PR review comment format
+│   └── wiki/
+│       ├── index-template.md / log-template.md
+│       ├── page-template.md / schema-template.md
+├── scripts/                 # Projects integration / Sub-Issue / review metrics
+│   ├── create-issue-with-projects.sh
+│   ├── backfill-sub-issues.sh / link-sub-issue.sh
+│   ├── extract-verified-review-findings.sh / measure-review-findings.sh
+│   ├── projects-status-update.sh
+│   └── tests/               # Script-level test suite
+├── references/              # Cross-cutting references used by commands/skills
+│   ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
+│   ├── graphql-helpers.md / projects-integration.md
+│   ├── priority-markers.md / severity-levels.md / epic-detection.md
+│   ├── review-result-schema.md / investigation-protocol.md
+│   ├── wiki-patterns.md / workflow-incident-emit-protocol.md
+│   ├── bash-compat-guard.md / bash-defensive-patterns.md
+│   ├── sub-issue-link-handler.md / issue-create-with-projects.md
+│   ├── output-patterns.md / execution-metrics.md
+│   ├── plugin-path-resolution.md / git-worktree-patterns.md
+│   ├── common-error-handling.md / error-codes.md
+│   ├── i18n-usage.md / tdd-light.md
+│   └── bottleneck-detection.md
 ├── i18n/
-│   ├── ja.yml              # Japanese (deprecated, kept for backward compatibility)
-│   ├── en.yml              # English (deprecated, kept for backward compatibility)
-│   ├── ja/                 # Japanese split files
-│   │   ├── common.yml
-│   │   ├── issue.yml
-│   │   ├── pr.yml
-│   │   └── other.yml
-│   └── en/                 # English split files
-│       ├── common.yml
-│       ├── issue.yml
-│       ├── pr.yml
-│       └── other.yml
+│   ├── ja.yml / en.yml      # Legacy monolithic files (kept for back-compat)
+│   ├── ja/                  # Japanese split files
+│   │   └── {common,issue,pr,other}.yml
+│   └── en/                  # English split files
+│       └── {common,issue,pr,other}.yml
 └── README.md
 ```
 
@@ -250,7 +301,7 @@ Plugin metadata file format:
 ```json
 {
   "name": "rite",
-  "version": "0.3.10",
+  "version": "0.4.0",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "B16B1RD" },
   "license": "MIT"
@@ -334,11 +385,7 @@ Agent files (`agents/*.md`) define subagents for specialized tasks:
 ---
 name: agent-name
 description: Short purpose description
-model: sonnet  # opus | sonnet | haiku
-tools:
-  - Read
-  - Grep
-  - Glob
+model: opus  # opus | sonnet | haiku (optional; omit to inherit from parent session)
 ---
 
 # Agent Name
@@ -350,16 +397,18 @@ Agent documentation...
 |-------|----------|-------------|
 | `name` | Yes | Unique agent identifier |
 | `description` | Yes | Short description for Task tool |
-| `model` | No | Model selection (default: inherit from parent) |
-| `tools` | Yes | List of available tools |
+| `model` | No | Model selection (default: inherit from parent session) |
+| `tools` | No | List of available tools (default: inherit all tools from parent; omit to enable all tools) |
+
+**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3 (#358). The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. See [`docs/migration-guides/review-named-subagent.md`](migration-guides/review-named-subagent.md) for the full rationale, opus recommendation, and rollback scenarios.
 
 **Current Agents:**
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | `security-reviewer` | opus | Security vulnerabilities, authentication, data handling |
-| `performance-reviewer` | opus | N+1 queries, memory leaks, algorithm efficiency |
-| `code-quality-reviewer` | opus | Duplication, naming, error handling, structure |
+| `performance-reviewer` | inherit | N+1 queries, memory leaks, algorithm efficiency |
+| `code-quality-reviewer` | inherit | Duplication, naming, error handling, structure |
 | `api-reviewer` | opus | API design, REST conventions, interface contracts |
 | `database-reviewer` | opus | Schema design, queries, migrations, data operations |
 | `devops-reviewer` | opus | Infrastructure, CI/CD pipelines, deployment configurations |
@@ -368,8 +417,8 @@ Agent documentation...
 | `dependencies-reviewer` | opus | Package dependencies, versions, supply chain security |
 | `prompt-engineer-reviewer` | opus | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | opus | Documentation clarity, accuracy, completeness |
-| `error-handling-reviewer` | opus | Error handling patterns, silent failures, recovery logic |
-| `type-design-reviewer` | opus | Type design, encapsulation, invariant expression |
+| `error-handling-reviewer` | inherit | Error handling patterns, silent failures, recovery logic |
+| `type-design-reviewer` | inherit | Type design, encapsulation, invariant expression |
 
 ---
 
@@ -377,107 +426,35 @@ Agent documentation...
 
 ### rite-config.yml
 
-Place in project root or `.claude/` directory.
-Uses YAML format for readability and comment support.
+Place in project root or `.claude/` directory. Uses YAML format for readability and comment support.
 
-```yaml
-# rite-workflow configuration file
-schema_version: 2
+Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, which is kept in sync with `plugins/rite/templates/config/rite-config.yml` — the minimal default that `/rite:init` distributes. The template intentionally omits advanced keys; enable them by copying the key declarations from CONFIGURATION.md as needed.
 
-# Project settings
-project:
-  type: webapp  # generic | webapp | library | cli | documentation
+**Top-level sections** (see CONFIGURATION.md for per-key details):
 
-# GitHub Projects integration
-github:
-  projects:
-    enabled: true
-    project_number: null  # Project number (null = auto-detect from repository)
-    owner: null           # Project owner (null = use repository owner)
-    # Field configuration (fully customizable)
-    fields:
-      status:
-        enabled: true
-        options:
-          - { name: "Todo", default: true }
-          - { name: "In Progress" }
-          - { name: "In Review" }
-          - { name: "Done" }
-      priority:
-        enabled: true
-        options:
-          - { name: "High" }
-          - { name: "Medium", default: true }
-          - { name: "Low" }
-      complexity:
-        enabled: true
-        options:
-          - { name: "XS" }
-          - { name: "S" }
-          - { name: "M", default: true }
-          - { name: "L" }
-          - { name: "XL" }
-      # Custom fields (project-specific)
-      # Any Single Select field name from your GitHub Projects can be used
-      # Field name matching is case-insensitive
-      work_type:
-        enabled: true
-        options:
-          - { name: "Feature" }
-          - { name: "Bug Fix" }
-          - { name: "Documentation" }
-          - { name: "Refactor" }
-          - { name: "Chore" }
-      category:
-        enabled: true
-        options:
-          - { name: "Frontend" }
-          - { name: "Backend" }
-          - { name: "Infrastructure" }
-          - { name: "Other" }
+| Section | Purpose |
+|---------|---------|
+| `project.type` | Project preset (`generic` / `webapp` / `library` / `cli` / `documentation`) |
+| `github.projects.*` | GitHub Projects integration (`field_ids`, `fields`, `project_number`, `owner`) |
+| `branch.*` | `base`, `pattern`, `recognized_patterns` |
+| `commit.contextual` | Contextual Commits action lines in commit body |
+| `commands.{build,test,lint}` | Build/test/lint auto-detection overrides |
+| `issue.auto_decompose_threshold` | Threshold for skipping the decomposition prompt |
+| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`, `observed_likelihood_gate.*` / `fail_fast_first.*` / `separate_issue_creation.*` (all #506) |
+| `fix.*` | `fail_fast_response` (#506), `severity_gating` (deprecated #557, pinned `false`) |
+| `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
+| `tdd.*` | TDD Light mode (`off` / `light`) |
+| `parallel.*`, `team.*` | Parallel implementation and Sprint team execution |
+| `iteration.*` | GitHub Projects Iteration field integration |
+| `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
+| `pr_review.post_comment` | PR review output destination (#443) |
+| `workflow_incident.enabled` | Workflow incident auto-registration (#366) |
+| `wiki.*` | Experience Wiki — `enabled` (opt-out), `branch_strategy`, `auto_ingest`, `auto_query`, `auto_lint`, `growth_check.*` |
+| `metrics.*` | Execution metrics recording |
+| `notifications.{slack,discord,teams}` | External notifications |
+| `language` | `auto` / `ja` / `en` |
 
-# Branch naming rules (fully customizable)
-branch:
-  # Base branch for feature branches (default PR target)
-  base: "main"      # default: main (use "develop" for Git Flow)
-  pattern: "{type}/issue-{number}-{slug}"
-  # Available variables: {type}, {number}, {slug}, {date}, {user}
-
-# Commit message
-commit:
-  contextual: true    # Contextual Commits action lines in commit body
-
-# Build/test/lint (auto-detect or manual specification)
-commands:
-  build: null  # Auto-detect
-  test: null   # Auto-detect
-  lint: null   # Auto-detect
-
-# Review settings
-review:
-  # Minimum reviewers (fallback when no reviewers match)
-  min_reviewers: 1
-  # Review criteria (used for automatic reviewer selection)
-  criteria:
-    - file_types       # Judgment by file types
-    - content_analysis # Judgment by content analysis
-  # Note: Reviews always use parallel subagents for each reviewer role
-
-# Notification settings
-notifications:
-  slack:
-    enabled: false
-    webhook_url: null
-  discord:
-    enabled: false
-    webhook_url: null
-  teams:
-    enabled: false
-    webhook_url: null
-
-# Language setting (auto for auto-detection)
-language: auto  # auto | ja | en
-```
+**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades, and `/rite:lint` emits deprecation warnings for removed keys — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
 
 ---
 
@@ -486,6 +463,13 @@ language: auto  # auto | ja | en
 ### /rite:init
 
 **Description:** Initial setup of rite workflow for a project
+
+**Arguments:** `[--upgrade]` (optional)
+
+| Argument | Description |
+|----------|-------------|
+| (none) | Run fresh setup (executes Phases 1–5 sequentially) |
+| `--upgrade` | Upgrade the schema of an existing `rite-config.yml` to the latest version (skips Phases 1–3 and 5, and executes Phase 4.1.3; Phase 4.1.3 invokes Phase 4.7 (Wiki initialization) at its Step 7, so the effective execution is Phase 4.1.3 + Phase 4.7) |
 
 **Process Flow:**
 
@@ -515,10 +499,64 @@ language: auto  # auto | ja | en
    - Recognize if exists
    - Auto-generate if not
 2. Generate `rite-config.yml`
+3. If an existing `rite-config.yml` is present, check its `schema_version`; if out of date, display guidance to run `/rite:init --upgrade`
 
 #### Phase 5: Completion Report
 1. Display settings summary
 2. Guide next steps
+
+---
+
+#### --upgrade Option (Existing Configuration Schema Upgrade)
+
+**Purpose:** Bring an existing project's `rite-config.yml` up to the latest schema while preserving user-customized values (`project_number`, `owner`, `branch.base`, `language`, and so on). The upgrade applies the additions (new sections), removals (deprecated keys), and `schema_version` bump in a single confirmed batch.
+
+**When to use:**
+
+- When a warning that `rite-config.yml` schema is outdated appears after upgrading the rite workflow plugin and running `/rite:init` or starting a session. The exact Japanese message emitted by `/rite:init` is: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。` The session-start hook emits a slightly different variant ending in `/rite:init --upgrade を実行してください。` ("run `/rite:init --upgrade`")
+- When release notes (`CHANGELOG.md`, or migration notes referenced from the release notes — e.g., `docs/migration-guides/` when present) announce new configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from your local `rite-config.yml`
+- When the `schema_version` at the top of your `rite-config.yml` diverges from the `schema_version` in the bundled template (`plugins/rite/templates/config/rite-config.yml`)
+
+**Example:**
+
+```bash
+/rite:init --upgrade
+```
+
+**Phase 4.1.3 Behavior (runs only with `--upgrade`):**
+
+1. **Read current config and compare versions**
+   Read `schema_version` from both the existing `rite-config.yml` and the bundled template. Missing values are treated as v1.
+2. **Create a backup**
+   Copy the existing file to `rite-config.yml.bak.YYYYMMDD-HHMMSS` for rollback.
+3. **Branching**
+   - `current < latest`: Run Step 4–6 (identify changes → preview → apply after approval), then Step 7 (Phase 4.7 Wiki initialization).
+   - `current == latest` and `wiki:` section absent: After backup, append the `wiki:` block from the template and run Phase 4.7.
+   - `current == latest` and `wiki:` section present: No-op; display "configuration is up to date" and run Phase 4.7 (idempotent — no-op if Wiki is already initialized).
+4. **Identify and classify changes** (Step 4, only on the `current < latest` path)
+   Each key is classified as one of:
+   - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.
+   - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`
+   - **Missing section** (add with template defaults): `review.debate`, `review.fact_check`, `verification`, etc.
+   - **Advanced section** (add as commented-out block): `tdd`, `parallel`, `team`, `metrics`, `safety`, `investigate`
+   - **Unknown key** (preserve with warning): user-added keys not present in the template
+5. **Preview and confirm** (Step 5)
+   Display deprecated keys to be removed, sections to be added, and preserved existing settings; ask via `AskUserQuestion` to either apply or cancel.
+6. **Apply** (Step 6)
+   On approval, update `schema_version` to the latest value, remove deprecated keys, add missing sections (including commented-out Advanced sections), and append the `wiki:` section if it was absent. All user-customized values are preserved.
+7. **Run Phase 4.7 (Wiki initialization)** (Step 7)
+   Invoke Phase 4.7 to bring existing users up to the Wiki-initialized state. If Wiki is already initialized, the phase is an idempotent no-op. Phase 4.7 is non-blocking: its failure does not affect `--upgrade` success. A final Wiki status line is displayed before the command exits.
+
+**Relationship with `schema_version`:**
+
+- The `schema_version` key at the top of `rite-config.yml` is an integer that identifies the configuration schema version (e.g., `schema_version: 2`). It is incremented whenever the rite workflow introduces a backward-incompatible schema change.
+- `--upgrade` compares the `schema_version` in the current file against the one in the bundled template and runs the Phase 4.1.3 flow above when the current file is behind.
+- Configuration files without a `schema_version` key are implicitly treated as v1 and can be brought up to date via `--upgrade`.
+
+**Relationship with Phase 5 (new-install completion report):**
+
+- `--upgrade` skips Phases 1–3 and the Phase 5 new-install completion report; only the Wiki status line is displayed at the end.
+- It does not merge with the fresh-install completion report (`--upgrade` is a dedicated path for updating existing configurations).
 
 ---
 
@@ -1168,20 +1206,20 @@ Pre-validation script called before every `/rite:*` command execution. Detects b
 bash plugins/rite/hooks/preflight-check.sh --command-id "/rite:issue:start" --cwd "$PWD"
 ```
 
-### Post-Compact Guard (`post-compact-guard.sh`)
+### Post-Compact Recovery (`post-compact.sh`) (#133)
 
-Registered as a PreToolUse hook. After compact occurs, **blocks all tool usage** until the user runs `/clear` → `/rite:resume`.
+Registered as a PostCompact hook. After a compact event, restores workflow context by outputting the current `.rite-flow-state` / work-memory state to stdout, which Claude Code injects into the model's context so the workflow can auto-continue without user intervention.
 
 **Behavior:**
 
-1. Reads `.rite-compact-state`
-2. Checks if workflow is active via `.rite-flow-state`
-3. If workflow is inactive, cleans up `.rite-compact-state` (self-healing)
-4. If `compact_state` is `blocked`, denies tool usage and instructs the LLM to stop
+1. Reads `.rite-compact-state` and `.rite-flow-state` under the resolved state root (delegates resolution to `state-path-resolve.sh`)
+2. If no flow state exists, cleans `.rite-compact-state` and exits 0 (self-healing for orphaned compact markers)
+3. Otherwise, emits a recovery block to stdout containing Issue number, phase, and next-action hints so the orchestrator can resume from the compact boundary
+4. Double-execution is guarded via `_RITE_HOOK_RUNNING_POSTCOMPACT` (hooks.json + legacy `settings.local.json` migration safety)
 
 **Self-Healing Mechanism:**
 
-If the workflow has ended but `.rite-compact-state` remains (e.g., due to crash), automatically cleans up and resumes normal operation.
+If the workflow has ended but `.rite-compact-state` remains (e.g., due to crash), the hook cleans it up and exits silently so that a fresh session is not blocked.
 
 ### Pre-Tool Bash Guard (`pre-tool-bash-guard.sh`)
 
@@ -1252,6 +1290,80 @@ Shared library script providing `mkdir`-based lock/unlock functionality. Used by
 **Stale Lock Detection:**
 
 If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file is checked to verify process liveness. If the process has terminated, the lock is automatically released.
+
+### Phase Transition Whitelist (`phase-transition-whitelist.sh`) (#490)
+
+Sourced (not executed) library that provides the canonical phase-transition graph consumed by `stop-guard.sh` and other orchestration helpers. Silent phase-skipping in `/rite:issue:start` end-to-end flow used to be an observability gap; this graph turns unexpected transitions into blockable events.
+
+**Provided Functions (post-source):**
+
+| Function | Purpose |
+|----------|---------|
+| `rite_phase_transition_allowed <prev> <next>` | 0 if the transition is whitelisted |
+| `rite_phase_expected_next <phase>` | Prints space-separated valid next phases |
+| `rite_phase_is_known <phase>` | 0 if the phase name is known |
+
+**Override merging:** Projects can extend (not overwrite) the whitelist via `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` in `rite-config.yml`. Bash 4.2+ is required for `declare -gA`; older bash aborts gracefully so stop-guard can fail-open.
+
+### Verify Terminal Output (`verify-terminal-output.sh`) (#561)
+
+Standalone check that validates Terminal Completion sections in `/rite:issue:create` sub-skills wrap sentinel markers in HTML comments (`<!-- [create:completed:{…}] -->`, `<!-- [interview:skipped] -->`, etc.), so the user-visible final line remains the human-readable completion message rather than a bare sentinel token. Non-regression contract: the raw string `[create:completed:` / `[interview:` must still appear in the file for grep-based hooks to keep matching.
+
+**Exit codes:** `0` all checks passed / `1` check failed (details on stderr) / `2` usage error.
+
+### Session Ownership (`session-ownership.sh`) (#174–#179)
+
+Shared library sourced by `session-start.sh` / `session-end.sh` / `stop-guard.sh` / `post-tool-wm-sync.sh` / `pre-compact.sh` / `post-compact.sh` for multi-session conflict prevention.
+
+**Provided Functions:**
+
+| Function | Purpose |
+|----------|---------|
+| `extract_session_id <hook_json>` | Pulls `session_id` from a hook's JSON stdin payload |
+| `get_state_session_id <file>` | Reads `session_id` from `.rite-flow-state` |
+| `check_session_ownership <hook_json> <state_file>` | Returns `own` / `legacy` / `other` / `stale` |
+| `parse_iso8601_to_epoch <timestamp>` | Cross-platform ISO 8601 → epoch parser |
+
+### Issue Comment WM Sync (`issue-comment-wm-sync.sh`) (#161 / #167)
+
+Registered as a PostToolUse hook. Synchronizes work-memory updates into the Issue comment when a phase change is detected. Delegates deterministic JSON/body construction to `issue-comment-wm-update.py` to avoid fragile inline jq + atomic-write patterns.
+
+### Wiki Ingest Trigger (`wiki-ingest-trigger.sh`) and Wiki Query Inject (`wiki-query-inject.sh`)
+
+A pair of hooks that automate Experience Wiki integration (opt-out via `wiki.enabled: false`).
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| `wiki-ingest-trigger.sh` | Phase 5.4.3 (post review), Phase 5.4.6 (post fix), Issue close | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
+| `wiki-query-inject.sh` | Phase 2.6 (work memory init), Phase 5.1 (implement), Phase 5.4.1 (review), Phase 5.4.4 (fix) | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree; #555). |
+
+See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and the separate `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` helpers that actually commit + push raw sources onto the wiki branch.
+
+### Workflow Incident Emit (`workflow-incident-emit.sh`) (#366)
+
+Emits a single sentinel line of the form `[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>` that `/rite:issue:start` Phase 5.4.4.1 detects via context grep to auto-register workflow blockers as Issues.
+
+**Supported `--type` values:** `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` (#524) / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567).
+
+See [Workflow Incident Detection](#workflow-incident-detection) for the detection / dedup / registration protocol.
+
+### Hook Preamble (`hook-preamble.sh`)
+
+Sourced at the top of most hooks to perform shared pre-processing: plugin-root resolution via `.rite-plugin-root`, `RITE_DEBUG` log setup, and double-execution guard bookkeeping. Hooks that need to read stdin must source it *after* capturing stdin to avoid consumption conflicts.
+
+### Helper Scripts (`hooks/scripts/`)
+
+Non-hook helper scripts invoked either directly from orchestrator commands or by other hooks:
+
+| Script | Purpose | Related Issue |
+|--------|---------|---------------|
+| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` | Stash-based single-process commit + push of raw sources onto the `wiki` branch | #524 refactor |
+| `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | #524 / #536 |
+| `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | #627 |
+| `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
+| `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
+| `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | #349 |
+| `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | #564 / #567 |
 
 ---
 
@@ -1335,14 +1447,23 @@ A mechanism that dynamically adjusts the number of questions based on Issue comp
 
 A test framework for ensuring Hook script quality. Located in `plugins/rite/hooks/tests/`.
 
-**Test Targets:**
+**Test Targets (excerpt — see `hooks/tests/` for the full suite):**
 
 | Script | Test Content |
 |--------|-------------|
-| `stop-guard.sh` | Stop block/allow decisions per phase |
+| `stop-guard.sh` | Stop block/allow decisions per phase (+ `stop-guard-cleanup`, `stop-guard-ingest`) |
 | `preflight-check.sh` | Command blocking by compact state |
-| `post-compact-guard.sh` | Tool usage blocking, self-healing |
+| `post-compact.sh` | Recovery context emission, `.rite-compact-state` self-healing |
+| `pre-compact.sh` | State capture before compact |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
+| `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls |
+| `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions |
+| `work-memory-lock.sh` | Lock acquire/release + stale detection |
+| `verify-terminal-output.sh` | Terminal Completion sentinel HTML-comment wrap (#561) |
+| `wiki-ingest-trigger.sh` | Raw-source write contract |
+| `workflow-incident-emit.sh` | Sentinel emit format + `--type` whitelist |
+| `parent-child-sync-static` | Parent/child Issue state synchronization |
+| `notification.sh` | Notification dispatcher contract |
 
 **Execution:**
 
@@ -1499,6 +1620,229 @@ LLM analyzes diff content to determine:
 ```
 
 ---
+
+## Workflow Incident Detection
+
+### Overview (#366)
+
+The rite workflow auto-detects **workflow blockers** during `/rite:issue:start` end-to-end execution and registers them as Issues to prevent silent loss. This was implemented after PR #363 demonstrated that Skill loader bugs (#365) could be silently bypassed via manual Edit-tool fallback, leaving incidents undocumented.
+
+### Detection Scope
+
+| Type | Trigger | Source |
+|------|---------|--------|
+| `skill_load_failure` | Skill tool fails to load (e.g., Markdown parser bash interpretation error) | Orchestrator post-condition check (expected result pattern missing) |
+| `hook_abnormal_exit` | A hook script returns non-zero exit code or stderr ERROR message | Skill internal failure paths (file modification error, work memory PATCH failure, etc.) |
+| `manual_fallback_adopted` | User selects "manual Edit fallback" option in any orchestrator `AskUserQuestion` | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
+| `wiki_ingest_skipped` (#524) | `wiki.enabled=false` or `wiki.auto_ingest=false` causes Phase X.X.W (`pr/review.md` 6.5.W / `pr/fix.md` 4.6.W / `issue/close.md` 4.4.W) to skip the Wiki ingest pipeline | Sub-skill emits sentinel from Phase X.X.W Step 1 along with `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` status line |
+| `wiki_ingest_failed` (#524) | `wiki-ingest-trigger.sh` exits with a non-zero code other than 2 (exit 2 = Wiki disabled/uninitialized = legitimate skip) during Phase X.X.W | Sub-skill emits sentinel from Phase X.X.W Step 3 along with `[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_{n}` status line |
+| `wiki_ingest_push_failed` (#555) | `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed during Phase X.X.W.2 | Sub-skill emits sentinel along with `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` status line |
+| `gitignore_drift` (#567) | `/rite:lint` Phase 3.9 detects that the `.rite/wiki/` rule (PR #564 last-line-of-defense) is missing from `.gitignore`, OR `same_branch` strategy lacks the required negation entry | `gitignore-health-check.sh` emits sentinel via `workflow-incident-emit.sh` when drift is detected |
+
+### Sentinel Format
+
+The `root_cause_hint` field is **optional** and entirely omitted from the sentinel line when empty:
+
+```
+[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | enum | yes | One of `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567) |
+| `details` | string | yes | One-line incident description (semicolons replaced by commas, newlines stripped) |
+| `root_cause_hint` | string | no | Optional cause hypothesis (omitted from sentinel if empty) |
+| `iteration_id` | string | yes | `{pr_number}-{epoch_seconds}` for traceability |
+
+Sentinels are emitted by `plugins/rite/hooks/workflow-incident-emit.sh`. Detection happens in `/rite:issue:start` Phase 5.4.4.1 via context grep.
+
+### Detection Logic
+
+1. **Sentinel detection**: Phase 5.4.4.1 grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines after each Skill invocation in Phase 5.
+2. **Parse fields**: Extract `type`, `details`, `root_cause_hint`, `iteration_id`.
+3. **Duplicate suppression**: A context-local `workflow_incident_processed_types` set tracks types already handled in the current session. Re-occurrences of the same type are silently logged but not re-prompted.
+4. **User confirmation**: `AskUserQuestion` presents the incident details with options "register as Issue (recommended) / skip".
+5. **Issue creation**: On user approval, calls `plugins/rite/scripts/create-issue-with-projects.sh` with `Status: Todo / Priority: High / Complexity: S / source: workflow_incident`.
+6. **Non-blocking error handling**: Failure to create Issue does not abort the workflow. The incident is retained in `workflow_incident_skipped` for Phase 5.6 reporting.
+
+### Configuration
+
+```yaml
+workflow_incident:
+  enabled: true              # default-on; set false to opt out entirely
+```
+
+When the `workflow_incident:` section is absent, defaults are used (effective `enabled: true`).
+
+The current implementation always behaves as non-blocking (registration failure does not halt the workflow) and deduplicates incidents per session (same type is only prompted once).
+
+### Acceptance Criteria Mapping
+
+| AC | Behavior | Implementation |
+|----|----------|---------------|
+| AC-1 | Skill load failure detection | `start.md` Phase 5.4.4.1 context grep + skill internal sentinel emit |
+| AC-2 | User-approved Issue creation | `create-issue-with-projects.sh` call with `Priority: High / Complexity: S` |
+| AC-3 | Skip path retention | `workflow_incident_skipped` list + Phase 5.6 reporting section |
+| AC-4 | Same-type dedupe | `workflow_incident_processed_types` context-local set |
+| AC-5 | Hook abnormal exit detection | `workflow-incident-emit.sh --type hook_abnormal_exit` from skill failure paths |
+| AC-6 | Manual fallback detection | Orchestrator fallback prompt options emit `--type manual_fallback_adopted` |
+| AC-7 | Default-on | Phase 5.0 Step 6 reads config with default `true` when absent |
+| AC-8 | Opt-out | `workflow_incident.enabled: false` skips Phase 5.4.4.1 entirely |
+| AC-9 | Phase 7 non-interference | Independent codepath; only `create-issue-with-projects.sh` shared |
+| AC-10 | Non-blocking on registration failure | `non_blocking_projects: true` + warning to stderr + workflow continues |
+
+### Phase 7 Relationship
+
+Phase 7 (Automatic Issue Creation from review recommendations) and Phase 5.4.4.1 (Workflow Incident Detection) are **independent codepaths** that share only `create-issue-with-projects.sh` as a common helper. Both may run in the same `/rite:issue:start` flow and create separate Issues. There is no logic merging.
+
+| Phase | Purpose | Source field |
+|-------|---------|--------------|
+| Phase 7 | Issues from reviewer "別 Issue として作成" recommendations | `pr_review` |
+| Phase 5.4.4.1 | Issues from workflow blockers (sentinel-detected) | `workflow_incident` |
+
+## Experience Wiki
+
+### Overview
+
+The Experience Wiki is an LLM-driven project knowledge base that persists **experiential heuristics** — the "what we learned the hard way" lessons that usually live only in reviewer heads or scattered across Issue/PR comments. It is based on the LLM Wiki pattern (Karpathy). The full design rationale lives in `docs/designs/experience-heuristics-persistence-layer.md`.
+
+Wiki is **opt-out** by default (`wiki.enabled: true`). Configuration lives under the `wiki:` section of `rite-config.yml` — see [Configuration Reference → wiki](CONFIGURATION.md#wiki).
+
+### Architecture
+
+Wiki data is stored in a dedicated branch (default: `wiki`) or inline on the working branch, controlled by `wiki.branch_strategy`. Each Wiki page is a Markdown file keyed by topic (e.g., `review-quality.md`, `fix-cycle-convergence.md`). Pages are built up incrementally from raw sources (review comments, fix outcomes, Issue discussions) through an ingest pipeline that deduplicates and merges overlapping heuristics.
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/rite:wiki:init` | One-time setup: create the Wiki branch (if `branch_strategy: "separate_branch"`), scaffold directory structure, and install page templates |
+| `/rite:wiki:ingest` | Parse raw sources (review results, fix outcomes, closed Issues) and update or create Wiki pages. Invoked manually or automatically by the `wiki-ingest-trigger.sh` hook |
+| `/rite:wiki:query` | Search Wiki pages by keyword and inject matching heuristics into the conversation context. Invoked manually or automatically by the `wiki-query-inject.sh` hook at Issue start / review / fix / implement phases |
+| `/rite:wiki:lint` | Check Wiki pages for contradictions, staleness, orphans (pages with no cross-refs), missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs. Supports `--auto` mode for CI-style batch runs |
+
+### Automatic Hook Integration
+
+When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the following hooks fire without user action:
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| `wiki-query-inject.sh` | Phase 2.6 (work memory init), Phase 5.1 (implement), Phase 5.4.1 (review), Phase 5.4.4 (fix) | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
+| `wiki-ingest-trigger.sh` | Phase 5.4.3 (after review), Phase 5.4.6 (after fix), Issue close | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
+| `wiki-ingest-commit.sh` | Phase 6.5.W.2 (review), Phase 4.6.W.2 (fix), Phase 4.4.W.2 (close) — immediately after the trigger | Move pending raw sources onto the `wiki` branch and commit + push them **in a single shell process** with no dependency on Claude multi-step orchestration |
+| `/rite:wiki:ingest` | Manual or optional post-commit invocation | LLM-driven page integration: read accumulated raw sources, produce/update wiki pages, refresh `index.md` / `log.md` |
+| `/rite:wiki:lint --auto` | After each successful page integration (when `auto_lint: true`) | Validate Wiki consistency; surface warnings without blocking the workflow |
+
+### Phase X.X.W Mandatory Execution (#524 + shell commit refactor)
+
+`pr/review.md` Phase 6.5.W / 6.5.W.2, `pr/fix.md` Phase 4.6.W / 4.6.W.2, and `issue/close.md` Phase 4.4.W / 4.4.W.2 collectively form the **Wiki growth path**. Issue #524 hardened this path against silent skip with a 3-layer defense; the subsequent shell-commit refactor added a deterministic foundation underneath layers 1-3.
+
+| Layer | Mechanism | Files |
+|-------|-----------|-------|
+| **0. Deterministic raw-commit path** | Phase X.X.W.2 invokes `wiki-ingest-commit.sh` directly as a single shell process. The script stashes raw sources into `/tmp`, removes them from the dev working tree, stashes any remaining unrelated changes, checks out the wiki branch, replays the staged raw sources, commits, pushes, checks out the original branch again, and pops the stash — all within one `bash` invocation. This eliminates dependency on Claude multi-step orchestration (the root cause of the pre-refactor regression where the `wiki` branch never grew despite multiple rounds of layer 1-3 defence — Issues #515, #518, #524). | `hooks/scripts/wiki-ingest-commit.sh`, `pr/review.md`, `pr/fix.md`, `issue/close.md` |
+| **1. Mandatory execution** | Each Phase X.X.W explicitly states "**NEVER** skipped under E2E Output Minimization" and emits an observable `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` line at completion (success / config-skip / commit-failure) | `pr/review.md`, `pr/fix.md`, `issue/close.md` |
+| **2. Sentinel-based observability** | Both legitimate skip (`wiki_ingest_skipped`) and commit failure (`wiki_ingest_failed`) emit workflow-incident sentinels via `workflow-incident-emit.sh`, which `start.md` Phase 5.4.4.1 detects via context grep and surfaces to the user via `AskUserQuestion` | `workflow-incident-emit.sh`, `start.md` Phase 5.4.4.1 |
+| **3. Lint growth check** | `lint.md` Phase 3.8 runs `wiki-growth-check.sh` which warns (non-blocking, `[lint:success]` retained) when `wiki.growth_check.threshold_prs` consecutive merged PRs land without a corresponding wiki branch commit. With layer 0 in place, a growth stall is a genuine regression signal (no longer confounded by fragile orchestration), and the warning is worth investigating promptly even though the contract remains non-blocking. | `wiki-growth-check.sh`, `lint.md` Phase 3.8 |
+
+**Responsibility split after the refactor**: `wiki-ingest-commit.sh` commits **raw sources only**. LLM-driven Wiki **page** integration (reading raw sources, deciding create/update/skip, writing `.rite/wiki/pages/*`) is **deferred** to `/rite:wiki:ingest`, which is idempotent over accumulated raw sources and can be invoked at a later, independent time (manually or in a separate session). This separation guarantees that raw sources are never lost even when page integration is skipped or fails.
+
+Layer 3's threshold is configurable via `wiki.growth_check.threshold_prs` (default: 5). Setting it to a very large number effectively disables the lint check while preserving layers 0-2.
+
+The completion report (`start.md` Phase 5.6.2) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each `/rite:issue:start` invocation. AC-5 of #524 explicitly requires this section to render even when all counters are zero (the absence is itself the regression signal).
+
+### Relationship to Workflow Incident Detection
+
+Both features persist operational learnings, but their scopes are distinct:
+
+| Concern | Destination |
+|---------|-------------|
+| **Recurring quality/process heuristics** (e.g., "review-fix loops should not skip LOW findings", "use dotenvx not dotenv") | Wiki pages via `/rite:wiki:ingest` |
+| **One-time platform defects** (e.g., "hook X exited abnormally in iteration Y") | Issues via `workflow_incident` auto-registration (#366) |
+
+They share no code paths.
+
+## Sub-skill Return Auto-Continuation Contract
+
+### Overview (#525)
+
+When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[interview:skipped]`, `[review:mergeable]`, `[create:completed:{N}]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary.
+
+Violating this contract leaves the workflow partially executed: no Issue created, `.rite-flow-state` stuck in `active: true`, stale timestamps, and the user forced to type `continue` manually to recover. Issue #525 was filed after multiple instances of this failure in `/rite:issue:create` with the Bug Fix preset.
+
+### The defense-in-depth layers
+
+| Layer | Mechanism | Enforced by |
+|-------|-----------|------------|
+| **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases in orchestrator documentation | `commands/issue/start.md` Sub-skill Return Protocol (Global), `commands/issue/create.md` Sub-skill Return Protocol, `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` |
+| **2. Flow state** | Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocks every stop attempt until the orchestrator reaches the terminal phase (`create_completed` with `active: false` for `/rite:issue:create`) | `hooks/flow-state-update.sh`, `hooks/stop-guard.sh` |
+| **3. Caller-continuation hints** | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments (#552). | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` |
+| **4. Pre-check list (#552)** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:completed:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. | `commands/issue/create.md` "Pre-check list" section |
+| **5. Completion message (#552)** | Terminal sub-skills emit an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `[create:completed:{N}]` sentinel. The sentinel remains the absolute last line for grep-based tooling (AC-4 backward compat). | `commands/issue/create-register.md` Phase 4.2, `commands/issue/create-decompose.md` Phase 1.0.2 |
+| **6. stop-guard incident emit (#552)** | When `stop-guard.sh` blocks an implicit stop during `create_post_interview` / `create_delegation` / `create_post_delegation`, it captures a `manual_fallback_adopted` workflow_incident sentinel from `workflow-incident-emit.sh` and echoes it to stderr. stop-hook stderr is fed back to the assistant via the exit-2 contract, so Phase 5.4.4.1 grep-detects it in the next context cycle for post-hoc visibility. | `hooks/stop-guard.sh` (best-effort, non-blocking — helper missing / failure is recorded to diag log but does not alter the stop-block decision) |
+
+All six layers are complementary. Removing any one weakens the contract — e.g., weakening Layer 1 (prompt) without adding Layer 4 (Pre-check list) re-opens the original #525 failure mode. #552 added Layers 4-6 after re-occurrence under dogfooding (Bug Fix preset with Phase 0.5 skipped).
+
+### Contract specification
+
+For every Skill tool invocation within an orchestrator:
+
+1. When the sub-skill returns control (outputs its result pattern), the orchestrator LLM **MUST NOT** end its response.
+2. The orchestrator **MUST NOT** re-invoke the completed sub-skill.
+3. The orchestrator **MUST** execute its 🚨 Mandatory After section for the current phase, beginning with the `.rite-flow-state` update, then proceeding to the next phase — all in the same response turn.
+4. If `stop-guard.sh` blocks a stop attempt (exit 2), the orchestrator **MUST** follow the `ACTION:` instructions in the hook's stderr message, not retry the stop.
+
+The contract ends only when the orchestrator's terminal completion marker has been output:
+
+| Orchestrator | Terminal marker |
+|-------------|----------------|
+| `/rite:issue:start` | Phase 5.6 completion report + Workflow Termination block |
+| `/rite:issue:create` | `[create:completed:{N}]` as the absolute last line |
+
+### Phase-aware stop-guard hints (#525)
+
+When `stop-guard.sh` blocks a stop attempt with an active `.rite-flow-state`, the blocking message now includes phase-specific continuation hints for `/rite:issue:create` paths:
+
+| Active phase | Hint content |
+|-------------|-------------|
+| `create_post_interview` | "Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn." |
+| `create_delegation` | "Delegation sub-skill is in-flight. When it returns `[create:completed:{N}]`, run Mandatory After Delegation self-check in the SAME response turn. DO NOT stop before the completion marker is output." |
+| `create_post_delegation` | "Terminal sub-skill returned without `[create:completed:{N}]` (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state." |
+
+These hints are **best-effort**: they only fire when a stop attempt is actually blocked, so they act as a backstop for the prompt contract rather than a primary enforcement mechanism. The primary path is the prompt contract (Layer 1).
+
+### Optional sentinel: `auto_continuation_failed` (MAY)
+
+When the contract is violated in practice — i.e., the user types `continue` to recover — the orchestrator **MAY** emit the `auto_continuation_failed` sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` so the incident is auto-registered as an Issue via Phase 5.4.4.1 (Workflow Incident Detection).
+
+This sentinel is classified as **MAY** rather than **MUST** because:
+
+1. The detection heuristic (recognising a `continue`-recovery as a contract violation) has false-positive risk — users may type `continue` for reasons unrelated to auto-continuation (e.g., resuming after a legitimate user-initiated pause).
+2. Implementation is scoped to a follow-up PR (#525 Decision Log D-02) to avoid bloating the main fix.
+
+Sentinel format (when implemented):
+
+```
+[CONTEXT] WORKFLOW_INCIDENT=1; type=auto_continuation_failed; details=<details>; iteration_id=<pr>-<epoch>
+```
+
+The sentinel would integrate with the existing Phase 5.4.4.1 detection flow (same as the existing five sentinel types: `skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`) — no new dispatch code is required in the orchestrator. Note: the `type` enum in the "Workflow Incident Detection" section above remains five-valued until `auto_continuation_failed` is implemented.
+
+### Acceptance criteria
+
+| AC | Description |
+|----|-------------|
+| AC-1 | bug fix preset で `/rite:issue:create` が end-to-end で `[create:completed:{N}]` まで自動完了する（利用者の `continue` 介入なし） |
+| AC-2 | M complexity 以上で interview 完了後に同 turn 内で `create-register` が発火する |
+| AC-3 | `create.md` の Sub-skill Return Protocol セクションに "anti-pattern" / "correct-pattern" / "same response turn" / "DO NOT stop" の 4 phrase が全て含まれる |
+| AC-4 | `auto_continuation_failed` sentinel 実装時、Phase 5.4.4.1 detection で観測可能（MAY — 本 Issue スコープ外） |
+| AC-5 | Terminal Completion pattern (`[create:completed:{N}]` + `.rite-flow-state active: false`) が引き続き動作する (non-regression) |
+| AC-6 (#552) | Terminal sub-skill の最終出力に `✅` で始まるユーザー向け完了メッセージが含まれる。Register 経路: `✅ Issue #{N} を作成しました: {url}`、Decompose 経路: `✅ Issue #{N} を分解して {count} 件の Sub-Issue を作成しました: {url}`。いずれの形式も `[create:completed:{N}]` は最終行として維持される |
+| AC-7 (#552) | `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` workflow_incident sentinel を `workflow-incident-emit.sh` から capture し、stderr に echo する (stop-hook stderr は exit-2 契約で assistant にフィードされる)。helper 不在 / 失敗時は diag log に記録されるが block 決定には影響しない |
+| AC-8 (#552) | `create.md` に "Pre-check list" セクションが存在し、4 項目全て `YES` が turn 終了の必要条件として文書化されている |
+
+### Relationship to Workflow Incident Detection
+
+Phase 5.4.4.1 (Workflow Incident Detection) currently treats five sentinel types as contract violations (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`). The optional `auto_continuation_failed` sentinel (MAY, scoped to a follow-up PR — see Decision Log D-02 in Issue #525) would integrate via the same flow when implemented; until then, the `type` enum remains five-valued. All sentinel types share the same detection → AskUserQuestion → Issue registration flow via `create-issue-with-projects.sh`.
 
 ## Error Handling
 
@@ -1823,7 +2167,6 @@ Closes #XXX
 ## References
 
 - [Best Practices for Claude Code](https://code.claude.com/docs/en/best-practices)
-- [Best Practices Alignment](BEST_PRACTICES_ALIGNMENT.md) - How rite workflow aligns with best practices
 - [Claude Code Plugins Reference](https://code.claude.com/docs/en/plugins-reference)
 - [GitHub CLI Documentation](https://cli.github.com/manual/)
 - [Conventional Commits](https://www.conventionalcommits.org/)

@@ -2,10 +2,6 @@
 name: prompt-engineer-reviewer
 description: Reviews Claude Code skill, command, and agent definitions for prompt quality
 model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Prompt Engineer Reviewer

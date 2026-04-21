@@ -51,17 +51,25 @@ chore: maintenance
 ```
 plugins/rite/
 ├── commands/         # Slash command execution procedures (Markdown)
-│   ├── issue/        #   Issue operations (start, create, list, edit, close, update)
+│   ├── issue/        #   Issue operations (start, create, list, edit, close, update, implement, ...)
 │   │   └── completion-report.md  # Completion report format (extracted from start.md)
 │   ├── pr/           #   PR operations (create, review, fix, ready, cleanup)
 │   │   └── references/  # Assessment rules, archive procedures
-│   ├── sprint/       #   Sprint operations (plan, list, current)
+│   ├── sprint/       #   Sprint operations (plan, list, current, execute, team-execute)
+│   ├── wiki/         #   Experience Wiki operations (init, query, ingest, lint)
 │   ├── skill/        #   Skill operations (suggest)
 │   ├── template/     #   Template operations (reset)
-│   └── ...           #   Other commands (init, lint, resume, workflow, getting-started)
+│   ├── init.md       #   Initial setup wizard
+│   ├── getting-started.md  # Interactive onboarding guide
+│   ├── investigate.md      # Structured code investigation
+│   ├── lint.md       #   Quality checks
+│   ├── resume.md     #   Resume interrupted work
+│   └── workflow.md   #   Display workflow guide
 ├── skills/           # Skill definitions auto-detected by Claude Code (SKILL.md)
 │   ├── rite-workflow/ #   Main skill + references (coding principles, context management)
-│   └── reviewers/    #   Reviewer skills + review criteria
+│   ├── reviewers/    #   Reviewer skills + review criteria
+│   ├── investigate/  #   Code investigation skill
+│   └── wiki/         #   Experience Wiki skill (ingest/query/lint heuristics)
 ├── agents/           # Sub-agent definitions for PR review
 ├── hooks/            # Event handler scripts (Bash)
 │   └── tests/        #   Shell script tests
@@ -73,36 +81,48 @@ plugins/rite/
 
 ## Hook Development Guide
 
-Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered in `.claude/settings.local.json` and executed automatically.
+Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered via `plugins/rite/hooks/hooks.json` (native plugin hook management) and executed automatically by Claude Code. For legacy setups without `hooks.json`, `/rite:init` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json` — see the Hook Events and Registration section below.
 
 ### Hook Directory Structure
 
 ```
 plugins/rite/hooks/
-├── stop-guard.sh           # Stop hook: prevents Claude from stopping during active workflow
-├── session-start.sh        # SessionStart hook: re-injects flow state after compact or resume
-├── session-end.sh          # SessionEnd hook: saves final state when session ends
-├── pre-compact.sh          # PreCompact hook: saves work memory snapshot before context compaction
-├── post-compact-guard.sh   # PreToolUse hook: blocks tool use after compaction until resume
-├── pre-tool-bash-guard.sh  # PreToolUse hook (Bash): blocks known-bad Bash command patterns
-├── post-tool-wm-sync.sh    # PostToolUse hook (Bash): auto-creates local work memory when missing
-├── preflight-check.sh      # Guard script called by commands before execution
-├── notification.sh         # Sends notifications to configured channels (Slack, Discord, Teams)
-├── local-wm-update.sh      # Self-resolving wrapper for local work memory file updates
-├── work-memory-update.sh   # Shared helper for local work memory atomic writes
-├── work-memory-lock.sh     # mkdir-based lock/unlock for issue-level work memory access
-├── work-memory-parse.py    # YAML frontmatter parser for work memory files
-├── state-path-resolve.sh   # Resolves root directory for rite state files
-├── cleanup-work-memory.sh  # Deterministic cleanup of local work memory files
-├── flow-state-update.sh    # Atomic .rite-flow-state create/patch/increment operations
-├── issue-body-safe-update.sh  # Safe Issue body fetch/apply with backup and validation
-├── context-pressure.sh     # Context pressure detection and optimization hints
-└── tests/                  # Test scripts
+├── stop-guard.sh             # Stop hook: prevents Claude from stopping during active workflow
+├── session-start.sh          # SessionStart hook: re-injects flow state after compact or resume
+├── session-end.sh            # SessionEnd hook: saves final state when session ends
+├── session-ownership.sh      # Helper: session ownership guard for .rite-flow-state writes
+├── pre-compact.sh            # PreCompact hook: saves work memory snapshot before context compaction
+├── post-compact.sh           # PostCompact hook: restores state after context compaction
+├── pre-tool-bash-guard.sh    # PreToolUse hook (Bash): blocks known-bad Bash command patterns
+├── post-tool-wm-sync.sh      # PostToolUse hook (Bash): auto-creates local work memory when missing
+├── preflight-check.sh        # Guard script called by commands before execution
+├── notification.sh           # Sends notifications to configured channels (Slack, Discord, Teams)
+├── hook-preamble.sh          # Shared preamble sourced by hooks (env, logging, state path)
+├── local-wm-update.sh        # Self-resolving wrapper for local work memory file updates
+├── work-memory-update.sh     # Shared helper for local work memory atomic writes
+├── work-memory-lock.sh       # mkdir-based lock/unlock for issue-level work memory access
+├── issue-comment-wm-sync.sh  # Sync local work memory to Issue comment backup
+├── issue-comment-wm-update.py # Python helper for Issue comment work memory updates
+├── state-path-resolve.sh     # Resolves root directory for rite state files
+├── cleanup-work-memory.sh    # Deterministic cleanup of local work memory files
+├── flow-state-update.sh      # Atomic .rite-flow-state create/patch/increment operations
+├── issue-body-safe-update.sh # Safe Issue body fetch/apply with backup and validation
+├── wiki-ingest-trigger.sh    # Hook: trigger Wiki ingest on review/fix/close events
+├── wiki-query-inject.sh      # Hook: inject Wiki heuristics at start/review/fix/implement
+├── workflow-incident-emit.sh # Emit workflow incident sentinel for auto Issue registration (#366)
+├── work-memory-parse.py      # YAML frontmatter parser for work memory files
+├── hooks.json                # Native plugin hook registration (managed by Claude Code plugin system)
+├── scripts/                  # Internal helper scripts (drift-check, bang-backtick-check, etc.)
+└── tests/                    # Test scripts
 ```
+
+> **Note**: Context pressure monitoring hooks (previously `context-pressure.sh`, `post-compact-guard.sh`) were retired in PR #481 / commit 77f0c49. Stop/compact recovery is now handled by `stop-guard.sh` + `pre-compact.sh` + `post-compact.sh` + `session-start.sh` exclusively.
 
 ### Hook Events and Registration
 
-Hooks are registered in `.claude/settings.local.json` under the `hooks` key. The following is a partial example — all events are automatically registered by `/rite:init` during setup:
+Rite Workflow uses native Claude Code plugin hook management via `plugins/rite/hooks/hooks.json`. When the plugin is installed (or developed locally), Claude Code reads this file and registers all hooks automatically — no manual edits to `.claude/settings.local.json` are required.
+
+For legacy setups or environments where `hooks.json` is unavailable, `/rite:init` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json`. The following is a partial example of that fallback format:
 
 ```json
 {
@@ -114,10 +134,6 @@ Hooks are registered in `.claude/settings.local.json` under the `hooks` key. The
       }
     ],
     "PreToolUse": [
-      {
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": "bash /path/to/hooks/post-compact-guard.sh" }]
-      },
       {
         "matcher": "Bash",
         "hooks": [{ "type": "command", "command": "bash /path/to/hooks/pre-tool-bash-guard.sh" }]
@@ -135,6 +151,7 @@ Available hook events:
 | `SessionStart` | Session begins or resumes | JSON via stdin (`cwd`, `source`) |
 | `SessionEnd` | Session ends | JSON via stdin |
 | `PreCompact` | Before context compaction | JSON via stdin |
+| `PostCompact` | After context compaction | JSON via stdin |
 | `PreToolUse` | Before a tool is executed | JSON via stdin (tool name via `matcher`) |
 | `PostToolUse` | After a tool is executed | JSON via stdin |
 
@@ -159,7 +176,7 @@ fi
 ```
 
 2. Make it executable: `chmod +x plugins/rite/hooks/your-hook.sh`
-3. Register it in `init.md` (Phase 4.5.2) so it gets added to `.claude/settings.local.json` during setup
+3. Register it in `plugins/rite/hooks/hooks.json` (native plugin hook registration) and — for legacy fallback — in `init.md` (Phase 4.5.2) so it also lands in `.claude/settings.local.json`
 4. Write tests in `plugins/rite/hooks/tests/your-hook.test.sh`
 
 ### Hook Conventions
@@ -167,7 +184,7 @@ fi
 - Always use `set -euo pipefail` at the top
 - Read JSON input from stdin using `INPUT=$(cat)` and parse with `jq`
 - Use `state-path-resolve.sh` to resolve the state root directory
-- For guard hooks (e.g., `stop-guard.sh`, `post-compact-guard.sh`): exit code `0` means "allow", non-zero means "block"
+- For guard hooks (e.g., `stop-guard.sh`, `pre-tool-bash-guard.sh`): exit code `0` means "allow", non-zero means "block"
 - For non-guard hooks (e.g., `session-start.sh`, `notification.sh`): exit code `0` indicates successful execution
 - Use `mktemp` for temporary files with `trap 'rm -f "$tmpfile"' EXIT` for cleanup
 - Keep hooks fast — they run on every matching event

@@ -213,8 +213,46 @@ if [ -z "$result" ]; then
   exit 1
 fi
 sub_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
+sub_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
 project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
 printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
+
+# Sub-issues API linkage (mandatory but non-blocking) — see references/graphql-helpers.md#addsubissue-helper
+# Canonical SoT: [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) Variant A (basic — カウンタなし)
+# 本パスは単一 child を 1 件ずつ処理し、全件失敗の集計を行わないため Variant A 必須。
+# ⚠️ DRIFT 警告: 下記 case ブロックを修正する際は、必ず以下 2 ファイルも同期すること:
+#   1. references/sub-issue-link-handler.md (Variant A 定義、link_failures 増分を除いた部分が共通)
+#   2. commands/issue/create-decompose.md (Variant B 利用箇所、link_failures 増分のみ差分)
+# Issue #514 MUST NOT (unknown status silent 通過禁止) は `*)` ブランチで保持されている。
+# Note: jq -r で field 欠落時は "null" 文字列が返るため、正規表現で数値であることを確認する
+if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
+  # canonical reference (sub-issue-link-handler.md「前提」テーブル) は呼び出し元が
+  # `$sub_number` を設定済みであることを契約とする。本パスでは `$sub_issue_number` を
+  # ループ外で取得しているため、ここで alias を追加して reference の前提を満たす
+  # (これにより Variant A の case ブロックが変数名 contract レベルで reference と一致する。
+  #  enclosing if 内の 2-space indent を除いた case 本体は reference Variant A と semantic 一致)。
+  sub_number="$sub_issue_number"
+  link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
+    "{owner}" "{repo}" "{parent_issue_number}" "$sub_number")
+  link_status=$(printf '%s' "$link_result" | jq -r '.status')
+  link_msg=$(printf '%s' "$link_result" | jq -r '.message')
+  case "$link_status" in
+    ok|already-linked)
+      echo "✅ $link_msg"
+      ;;
+    failed)
+      printf '%s' "$link_result" | jq -r '.warnings[]' \
+        | while read -r w; do echo "⚠️ $w" >&2; done
+      echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+      ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
+      ;;
+  esac
+else
+  echo "⚠️ sub_issue_number が不正のため Sub-issues API linkage をスキップします: '$sub_issue_number'" >&2
+fi
 ```
 
 **Placeholder descriptions:**
@@ -222,14 +260,17 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 - `{estimated_complexity}`: Complexity estimated during decomposition proposal (XS-XL)
 - `{iteration_mode}`: `"auto"` if `iteration.enabled` and `iteration.auto_assign` are `true`, otherwise `"none"`
 - `{parent_labels_json}`: JSON array of parent Issue labels to inherit (e.g., `["enhancement"]`)
+- `{parent_issue_number}`: The parent Issue number (the one currently being decomposed)
+- `{owner}`, `{repo}`: Repository owner/name (from `gh repo view --json owner,name`)
 
 After each child Issue is created:
-1. Retain `sub_issue_url` for Tasklist update
+1. Retain `sub_issue_url` and `sub_issue_number` for Tasklist update and Sub-issues API linkage
 2. The script handles Projects registration + field setup + iteration assignment internally
+3. The inline `link-sub-issue.sh` invocation establishes the GitHub `subIssues` API relation. **Failures are non-blocking**: warnings are surfaced to stderr, the body meta (`Parent Issue: #N`) acts as fallback, and processing continues.
 
 After all child Issues are created and registered:
-3. Add `## Sub-Issues` section (Tasklist) to parent Issue body
-4. Decomposition content can be revised up to 3 times in a loop
+4. Add `## Sub-Issues` section (Tasklist) to parent Issue body
+5. Decomposition content can be revised up to 3 times in a loop
 
 **Complexity estimation during decomposition proposal**: When presenting decomposition proposals, estimate and specify each child Issue's Complexity (values from `rite-config.yml`'s `github.projects.fields.complexity.options`: XS/S/M/L/XL). Estimation criteria: 1-2 changed files and under 50 changed lines -> XS, 3-5 changed files or 50-200 changed lines -> S, 5-10 changed files or 200-500 changed lines -> M, more -> L/XL.
 

@@ -1,4 +1,13 @@
-# Best Practices for Claude Code Alignment
+# Best Practices for Claude Code Alignment (Archived)
+
+> **Archived (2026-04-21)**: This document records the v0.1–v0.3 era Best
+> Practices alignment history and is kept for reference only. Some tables
+> (notably "Current Agents" and "Current Structure") reflect the state at
+> the time they were written and no longer match v0.4.0+ implementation —
+> `tools: frontmatter` has been removed from all reviewer agents (#357),
+> 13 reviewer agents are in use (not 3), and the CLAUDE.md example shown
+> is from the 20-line era. For the current specification see
+> [`docs/SPEC.md`](../SPEC.md) and [`docs/CONFIGURATION.md`](../CONFIGURATION.md).
 
 This document describes how rite workflow aligns with [Best Practices for Claude Code](https://code.claude.com/docs/en/best-practices).
 
@@ -62,9 +71,13 @@ Commands that display information without state changes use `context: fork`:
 | Category | Commands | context: fork | Reason |
 |----------|----------|---------------|--------|
 | Information Display | `/rite:issue:list`, `/rite:sprint:list`, `/rite:sprint:current` | ✅ Applied | Results only, no state needed |
-| Analysis | `/rite:skill:suggest` | ✅ Applied | Independent analysis |
+| Analysis | `/rite:skill:suggest`, `/rite:investigate` | ✅ Applied | Independent analysis |
+| Read-only Display | `/rite:workflow` | ✅ Applied | Information display only |
 | Interactive | `/rite:issue:create`, `/rite:issue:start` | ❌ Not Applied | User interaction required |
-| State-changing | `/rite:pr:create`, `/rite:pr:cleanup` | ❌ Not Applied | Modifies repository state |
+| State-changing | `/rite:pr:cleanup`, `/rite:pr:ready` | ❌ Not Applied | Modifies repository state |
+| Interactive + State-changing | `/rite:pr:review`, `/rite:pr:fix`, `/rite:lint`, `/rite:pr:create` | ❌ Not Applied | `AskUserQuestion` required in e2e flow (#436) |
+
+> **Note**: `context: fork` と `AskUserQuestion` は非互換です。`context: fork` 環境では `AskUserQuestion` がユーザーとの対話を完了できず、skill が accumulated output を返して終了します（#436）。Interactive なコマンドには `context: fork` を適用しないでください。
 
 ### Output Pattern Standardization
 

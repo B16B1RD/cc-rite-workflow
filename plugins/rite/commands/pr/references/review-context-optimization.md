@@ -40,23 +40,6 @@ gh pr view {pr_number} --json files --jq '.files[].path'
 
 Then extract per-reviewer diffs in Phase 4.3.
 
-## Context Pressure Detection
-
-When a large diff is detected during the end-to-end flow (`/rite:issue:start`):
-
-| State | Action |
-|------|------|
-| Context headroom available | Continue review as normal |
-| Signs of context pressure | Automatically switch to per-file split mode |
-
-**Signs of context pressure (OR evaluation, optimization applied if any one matches):**
-- Tool calls exceed 50
-- Read exceeds 5000 lines (or 10+ files)
-- diff exceeds 2000 lines
-- review-fix loop exceeds 3 cycles
-
-Under pressure, apply optimization of passing only related diffs per reviewer.
-
 ## Diff Passing Optimization
 
 Optimize diff passing based on scale:

@@ -99,6 +99,18 @@ review:
   loop:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
+    # Review-fix quality signals (#557)
+    # Cycle-count-based degradation was fully removed in v0.4.0. Normal exit is 0 findings only;
+    # abnormal exit is one of 4 quality signals (fingerprint cycling / root-cause missing /
+    # cross-validation disagreement / reviewer self-degraded).
+    convergence_monitoring: true          # Enable fingerprint-based cycling detection (default: true)
+    auto_propagation_scan: true           # Run similar-pattern propagation scan after fix (default: true)
+    pre_commit_drift_check: true          # Run distributed-fix-drift-check before commit (default: true)
+  doc_heavy:
+    enabled: true                   # Enable Doc-Heavy PR detection and override (default: true)
+    lines_ratio_threshold: 0.6      # doc_lines / total_diff_lines threshold (default: 0.6)
+    count_ratio_threshold: 0.7      # doc_files / total_files threshold (default: 0.7)
+    max_diff_lines_for_count: 2000  # Max diff lines where count ratio is used (default: 2000)
   security_reviewer:
     mandatory: false                          # Require security reviewer for all PRs (default: false)
     recommended_for_code_changes: true        # Recommend for executable code changes (default: true)
@@ -107,9 +119,39 @@ review:
     max_rounds: 1            # Maximum debate rounds for cost control (default: 1)
   confidence_threshold: 80   # Minimum confidence score for findings table (default: 80)
   fact_check:
-    enabled: true            # Enable fact-check phase for review findings (default: true)
-    max_claims: 10           # Maximum number of claims to verify per review (default: 10)
-    use_context7: false      # Use context7 MCP tool for verification (default: false)
+    enabled: true                      # Enable fact-check phase for review findings (default: true)
+    max_claims: 20                     # Maximum number of External claims to verify per review (default: 20). Internal Likelihood claims are Grep-based and counted outside this cap
+    use_context7: true                 # Use context7 MCP tool for verification (default: true). Auto-falls back to WebSearch when context7 is unavailable
+    verify_internal_likelihood: true   # Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep (default: true)
+  # Observed Likelihood Gate (#506): Require evidence of actual occurrence for findings.
+  # See `plugins/rite/references/severity-levels.md` for the Observed / Demonstrable / Hypothetical axis.
+  observed_likelihood_gate:
+    enabled: true                      # Enable Observed Likelihood Gate (default: true)
+    security_exception: true           # Security reviewer keeps severity even for Hypothetical findings (default: true)
+    hypothetical_exception_reviewers:  # Reviewer categories allowed to report Hypothetical findings
+      - security
+      - database
+      - devops
+      - dependencies
+    minimum: "demonstrable"            # Minimum likelihood for non-exception reviewers (default: "demonstrable")
+  # Fail-Fast First (#506): Require throw/raise propagation to be considered before recommending fallback.
+  fail_fast_first:
+    enabled: true                      # Enable Fail-Fast First principle for reviewer recommendations (default: true)
+    allow_skill_exceptions: true       # Respect skill-level fallback allowances (default: true)
+    wiki_query_required: true          # Require Wiki check for project-specific fallback patterns before recommendation (default: true)
+  # Separate Issue Creation (#506): Always require user confirmation for separate-issue creation.
+  separate_issue_creation:
+    require_user_confirmation: true    # Require AskUserQuestion even in E2E flow (default: true). Strongly recommended.
+    report_pre_existing_issues: false  # Suppress Source C (pre-existing issue) reporting in reviewer output (default: false)
+
+# Fix settings (#506)
+fix:
+  fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
+  # DEPRECATED (#506): severity_gating convergence strategy has been removed.
+  # The key is retained for backward compatibility only; it is always treated as false.
+  # Non-convergence is now handled via fix.md Phase 4.3.3 AskUserQuestion (retry / separate issue / withdraw).
+  severity_gating:
+    enabled: false                     # DEPRECATED (#506): Pinned to false; not referenced by any code path
 
 # Iteration/Sprint settings (optional)
 iteration:
@@ -144,12 +186,37 @@ team:
   teammate_model: "sonnet"   # Model for teammate agents (default: "sonnet")
   auto_review: true          # Auto-run /rite:pr:review after all PRs created (default: true)
 
+# PR review result recording (#443)
+# The `review:` section above configures PR review **execution** (reviewer selection, debate,
+# fact_check, etc.), while this `pr_review:` section configures PR review **output** (post_comment).
+# By default, review results are saved to timestamped local files
+# (`.rite/review-results/{pr_number}-{timestamp}.json`) instead of being posted to PR comments.
+# `/rite:pr:fix` auto-reads results in the priority order: conversation > local file > PR comment.
+pr_review:
+  post_comment: false   # true to enable PR comment recording (equivalent to --post-comment, default: false)
+
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
+  # max_review_fix_loops was removed in v0.4.0 (#557). Loop exits on 0 findings or 4-signal escalation.
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
+
+# Workflow incident auto-registration (#366)
+# Detects workflow blockers (Skill load failure, hook abnormal exit, manual fallback adoption)
+# and auto-registers them as Issues to prevent silent loss.
+workflow_incident:
+  enabled: true              # Enable incident detection mechanism (default: true, opt-out)
+
+# Experience Wiki (opt-out, see wiki section below for full description)
+wiki:
+  enabled: true                        # Enable Wiki features (default: true, opt-out)
+  branch_strategy: "separate_branch"   # "separate_branch" (recommended) or "same_branch"
+  branch_name: "wiki"                  # Branch name for Wiki data (when branch_strategy is "separate_branch")
+  auto_ingest: true                    # Auto-ingest on review/fix/close (default: true)
+  auto_query: true                     # Auto-query on start/review/fix/implement (default: true)
+  auto_lint: true                      # Auto-run /rite:wiki:lint --auto after ingest (default: true)
 
 # Metrics settings
 metrics:
@@ -411,18 +478,60 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
+| `loop.convergence_monitoring` | boolean | `true` | Enable fingerprint-based cycling detection (#557). When a finding fingerprint persists across two or more review cycles, the orchestrator fires Quality Signal 1 and escalates via `AskUserQuestion`. Replaces the prior cycle-count-based convergence strategy |
+| `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
+| `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
+| `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
+| `doc_heavy.lines_ratio_threshold` | float | `0.6` | Threshold for `doc_lines / total_diff_lines` that marks a PR as doc-heavy |
+| `doc_heavy.count_ratio_threshold` | float | `0.7` | Threshold for `doc_files / total_files` (used as fallback for small diffs) |
+| `doc_heavy.max_diff_lines_for_count` | integer | `2000` | Maximum diff line count below which `count_ratio_threshold` is consulted |
 | `security_reviewer.mandatory` | boolean | `false` | Require security reviewer for all PRs regardless of file types |
 | `security_reviewer.recommended_for_code_changes` | boolean | `true` | Include security reviewer when executable code files are changed |
 | `debate.enabled` | boolean | `true` | Enable inter-reviewer debate phase |
 | `debate.max_rounds` | integer | `1` | Maximum debate rounds (cost control) |
 | `confidence_threshold` | integer | `80` | Minimum confidence score for findings to be included in findings table |
 | `fact_check.enabled` | boolean | `true` | Enable fact-check phase for review findings |
-| `fact_check.max_claims` | integer | `10` | Maximum number of claims to verify per review |
-| `fact_check.use_context7` | boolean | `false` | Use context7 MCP tool for verification |
+| `fact_check.max_claims` | integer | `20` | Maximum number of **External** claims to verify per review (Sub-Phase A). Internal Likelihood claims are Grep-based and counted outside this cap |
+| `fact_check.use_context7` | boolean | `true` | Use context7 MCP tool for verification. Auto-falls back to WebSearch when context7 is unavailable |
+| `fact_check.verify_internal_likelihood` | boolean | `true` | Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep-based call site / entry point checks |
+| `observed_likelihood_gate.enabled` | boolean | `true` | Enable Observed Likelihood Gate (#506). Requires reviewers to evidence actual occurrence (Observed / Demonstrable) before reporting, reducing hypothetical-only findings. **⚠️ Known limitation (#506)**: config scaffolding only — not yet referenced by conditional runtime logic. The new behavior is hardcoded in `fix.md` / `review.md` / `_reviewer-base.md` prose. Setting this to `false` currently has no effect. Wiring is tracked as a follow-up |
+| `observed_likelihood_gate.security_exception` | boolean | `true` | Security reviewer retains severity for Hypothetical findings (adversarial-input threat modeling is its job) |
+| `observed_likelihood_gate.hypothetical_exception_reviewers` | array | `[security, database, devops, dependencies]` | Reviewer categories allowed to report Hypothetical findings — database migrations / infra / CVE are fatal on first occurrence |
+| `observed_likelihood_gate.minimum` | string | `"demonstrable"` | Minimum likelihood required for non-exception reviewers (`observed` / `demonstrable` / `hypothetical`) |
+| `fail_fast_first.enabled` | boolean | `true` | Enable Fail-Fast First principle (#506). Reviewers must consider throw/raise propagation before recommending fallback code. **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. Setting this to `false` currently has no effect |
+| `fail_fast_first.allow_skill_exceptions` | boolean | `true` | Respect skill-level explicit fallback allowances (e.g., UI graceful degradation, stale-cache requirement) |
+| `fail_fast_first.wiki_query_required` | boolean | `true` | Require Wiki query (`/rite:wiki:query`) for project-specific fallback patterns before recommendation |
+| `separate_issue_creation.require_user_confirmation` | boolean | `true` | Require `AskUserQuestion` confirmation for separate-issue creation **even in E2E flow** (#506). **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The "always confirm" behavior is hardcoded in `fix.md` Phase 4.3.3; setting this to `false` currently has no effect. Strongly recommended anyway once wired, to prevent the "escape hatch" misuse of separate issues |
+| `separate_issue_creation.report_pre_existing_issues` | boolean | `false` | Suppress Source C (pre-existing issue) reporting in reviewer output. Use `/rite:investigate` for pre-existing concerns instead |
 
-**Review-fix loop convergence:**
+**Review-fix loop exit (v0.4.0 #557):**
 
-The review-fix loop exits only when all findings are resolved (zero blocking findings). There is no iteration limit or progressive relaxation — every finding must be addressed.
+The review-fix loop has two exit paths and no cycle-count-based hard limit:
+
+| Exit | Trigger |
+|------|---------|
+| Normal | 0 findings remaining → `[review:mergeable]` |
+| Escalate | Any of the 4 quality signals fires → `AskUserQuestion` with `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` |
+
+**Four quality signals** (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation` for full specification):
+
+| # | Signal | Detection point |
+|---|--------|-----------------|
+| 1 | Same-finding cycling | `start.md` Phase 5.4.1.0 fingerprint check before every re-review |
+| 2 | Root-cause-missing fix | `fix.md` Phase 3.2.1 commit body gate |
+| 3 | Cross-validation disagreement | `review.md` Phase 5.2 + debate phase |
+| 4 | Reviewer self-degraded | `_reviewer-base.md` Finding Quality Guardrail |
+
+There is intentionally no cycle-count safety limit: the 4 quality signals are the sole termination mechanism. When they fire, the user chooses the next action via `AskUserQuestion`.
+
+**Fix settings (#506):**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
+| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506 / #557)**. Retained for backward compatibility only; pinned to `false` and not referenced by any code path. Non-convergence mitigation is now handled automatically by the 4 quality signals (#557) — no strategy configuration is needed |
+
+**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
 
 **Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, from cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). The default `false` performs full review only every cycle, maximizing review quality.
 
@@ -667,6 +776,79 @@ metrics:
 2. **Post-baseline**: Metrics are evaluated against per-Issue thresholds and moving average (MA5) thresholds
 3. **Failure classification**: When thresholds are exceeded, failures are classified (e.g., scope creep, quality regression) and corrective actions are suggested
 4. **Repeated failure detection**: If `safety.auto_stop_on_repeated_failure` is enabled, consecutive same-class failures trigger auto-stop
+
+### pr_review
+
+Settings for PR review **output** recording. This section is intentionally separated from the `review:` section (which configures review **execution**) so that future output destinations (Slack notifications, etc.) can be added without a breaking change to `review:` child keys.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), results are saved to `.rite/review-results/{pr_number}-{timestamp}.json` only |
+
+`/rite:pr:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself. See #443 for rationale.
+
+### workflow_incident
+
+Settings for workflow incident auto-registration. When a workflow blocker is detected (Skill load failure, hook abnormal exit, or user adoption of a manual fallback), the orchestrator emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh`. Detected incidents are auto-registered as Issues to prevent silent loss of actionable platform defects.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable the incident detection mechanism. Set `false` to opt out entirely |
+
+**Non-blocking and dedupe behavior** (not configurable):
+
+- Registration failure (network error, API error) never halts the workflow — the incident is retained in a context-local list and reported in the Phase 5.6 completion report.
+- Within a single session, the same incident `type` is prompted only once (subsequent occurrences are suppressed to avoid `AskUserQuestion` spam).
+- When absent from `rite-config.yml`, the section is treated as `enabled: true` (opt-out). Only the literal value `false` opts out.
+
+See `docs/SPEC.md` "Workflow Incident Detection" (#366) for the full specification.
+
+### wiki
+
+Settings for the Experience Wiki — an LLM-driven project knowledge base that persists experiential heuristics extracted from review/fix/Issue outcomes. Based on the LLM Wiki pattern (Karpathy). See `docs/designs/experience-heuristics-persistence-layer.md` for the full design.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable Wiki features (opt-out). Set `false` to skip all Wiki hooks and commands |
+| `branch_strategy` | string | `"separate_branch"` | Where Wiki data lives: `"separate_branch"` (dedicated orphan-like branch, recommended) or `"same_branch"` (Wiki files committed alongside code on the working branch) |
+| `branch_name` | string | `"wiki"` | Name of the Wiki branch (used only when `branch_strategy` is `"separate_branch"`) |
+| `auto_ingest` | boolean | `true` | Automatically run `/rite:wiki:ingest` on review/fix/close events to extract heuristics from raw sources |
+| `auto_query` | boolean | `true` | Automatically run `/rite:wiki:query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
+| `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
+| `growth_check.threshold_prs` | integer | `5` | Issue #524 layer 3 (lint growth check) — `/rite:lint` Phase 3.8 emits a non-blocking warning when this many merged PRs accumulate on the development base branch since the last commit on `branch_name` (signalling that Phase X.X.W may be silently skipped). Increase to relax the check; setting it to a very large number effectively disables the lint warning while preserving layers 1-2 |
+| `growth_check.pr_raw_threshold` | integer | `3` | Issue #536 — warn when this many of the last `threshold_prs` merged PRs have no corresponding raw source on the wiki branch. Detects regressions where PRs are merged but Phase X.X.W never fires. Override at runtime with `--pr-raw-threshold N` |
+
+**Example (opt out completely):**
+
+```yaml
+wiki:
+  enabled: false
+```
+
+**Example (same-branch Wiki without auto-lint):**
+
+```yaml
+wiki:
+  enabled: true
+  branch_strategy: "same_branch"
+  auto_ingest: true
+  auto_query: true
+  auto_lint: false
+```
+
+> **Note for `same_branch` users**: The project's `.gitignore` ships with `.rite/wiki/` excluded as a silent-leak defense line for the default `separate_branch` strategy. If you switch to `same_branch`, you MUST add negation entries so that Wiki files are not ignored. See the `.gitignore` comment block between the `# >>> gitignore-wiki-section-start` and `# <<< gitignore-wiki-section-end` anchor markers (`grep -n 'gitignore-wiki-section-start' .gitignore` to jump there) for the full verification-first setup: required negation entries (`!.rite/wiki/` and `!.rite/wiki/**`), the mandatory `mkdir -p .rite/wiki/raw && touch .rite/wiki/raw/.negation-probe && git add --dry-run .rite/wiki/raw/.negation-probe` sanity check, the idempotency note for already-tracked files, and the rationale for using `git add --dry-run` instead of `git check-ignore -v` as the canonical verification step.
+
+**Example (loose growth-check threshold for slow-moving repos):**
+
+```yaml
+wiki:
+  enabled: true
+  growth_check:
+    threshold_prs: 20   # warn only after 20 PRs have accumulated since the last wiki commit
+    pr_raw_threshold: 5  # warn if 5+ of last 20 PRs have no raw source (Issue #536)
+```
+
+**Related commands:** `/rite:wiki:init` (one-time setup), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
 
 ### notifications
 

@@ -77,61 +77,7 @@ _cleanup_stale_compact() {
   fi
 }
 
-# Reset context pressure counter on startup/clear (#889)
-if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ]; then
-  rm -f "$STATE_ROOT/.rite-context-counter" 2>/dev/null || true
-fi
-
-# --- Context budget estimation on startup (#889) ---
-# System prompt can approach 200K token API limit when many plugins/MCP servers are loaded.
-# Warn early so users can reduce loaded components before hitting the limit mid-session.
 if [ "$SOURCE" = "startup" ]; then
-  _budget_warnings=0
-
-  # Check MEMORY.md size (auto-memory contributes to system prompt)
-  _memory_dir="$HOME/.claude/projects"
-  # Find the project-specific memory file by matching the CWD path
-  _cwd_encoded=$(echo "$CWD" | sed 's|/|-|g')
-  _memory_file="${_memory_dir}/${_cwd_encoded}/memory/MEMORY.md"
-  if [ -f "$_memory_file" ]; then
-    _mem_size=$(wc -c < "$_memory_file" 2>/dev/null) || _mem_size=0
-    if [ "$_mem_size" -gt 8000 ]; then
-      _budget_warnings=$((_budget_warnings + 1))
-    fi
-  fi
-
-  # Check number of enabled plugins (each adds skill descriptions to system prompt)
-  _settings_file="$HOME/.claude/settings.json"
-  if [ -f "$_settings_file" ]; then
-    _plugin_count=$(jq '[.enabledPlugins // {} | to_entries[] | select(.value == true)] | length' "$_settings_file" 2>/dev/null) || _plugin_count=0
-    if [ "$_plugin_count" -gt 3 ]; then
-      _budget_warnings=$((_budget_warnings + 1))
-    fi
-  fi
-
-  # Check for MCP servers (each adds tool definitions to system prompt)
-  _mcp_count=0
-  if [ -f "$_settings_file" ]; then
-    _mcp_count=$(jq '.mcpServers // {} | length' "$_settings_file" 2>/dev/null) || _mcp_count=0
-  fi
-  # Also check project-level MCP config
-  for _mcp_file in "$CWD/.mcp.json" "$CWD/.mcp/config.json"; do
-    if [ -f "$_mcp_file" ]; then
-      _proj_mcp=$(jq '.mcpServers // {} | length' "$_mcp_file" 2>/dev/null) || _proj_mcp=0
-      _mcp_count=$((_mcp_count + _proj_mcp))
-    fi
-  done
-  if [ "$_mcp_count" -gt 0 ]; then
-    _budget_warnings=$((_budget_warnings + 1))
-  fi
-
-  # Warn if multiple risk factors detected
-  if [ "$_budget_warnings" -ge 2 ]; then
-    echo "[rite] ⚠️ コンテキストバジェット警告: プラグイン${_plugin_count}個 + MCP${_mcp_count}個が検出されました。" >&2
-    echo "[rite] 長時間ワークフローでは auto-compact 後に API 上限 (200K tokens) を超える可能性があります。" >&2
-    echo "[rite] 対策: 不要なプラグイン/MCP サーバーを無効化するか、定期的に /compact を実行してください。" >&2
-  fi
-
   # --- Schema version check (#284) ---
   _rite_config="$STATE_ROOT/rite-config.yml"
   if [ -f "$_rite_config" ]; then
@@ -301,23 +247,45 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# --- Defensive reset helper (#761, #173, #206) ---
-# Shared by startup and clear blocks. Resets active=false and shows a soft message.
-# Always proceeds with reset regardless of session ownership (#206).
+# --- Defensive reset helper (#558, #761, #173, #206) ---
+# Shared by startup and clear blocks. Resets active=false on phase != completed.
+#
+# When the state is owned by another active session (check_session_ownership
+# returns "other"), skip the reset — overwriting another session's active state
+# would clobber its in-flight work memory and trip stop-guard whitelist
+# violations on its next phase transition. For "own" / "legacy" / "stale" /
+# fail-safe paths, proceed with reset (crash-recovery and backward-compat take
+# priority over multi-instance protection).
+#
+# Regression note (#558): a prior commit moved the check_session_ownership call
+# inside an RITE_DEBUG block as a "performance" optimization, silently disabling
+# multi-instance protection in normal runs. DO NOT re-enclose check_session_ownership
+# in conditional gates — it must run on every reset path so the "other" branch can fire.
+#
 # Note: This function always terminates via exit 0 — it never returns to the caller.
 # When issue_number is empty (e.g., state file has no issue), exits silently without message.
 _reset_active_state() {
-  local _phase _issue _branch
+  local _phase _issue _branch _ownership
   _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || _phase=""
   _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
   _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
 
-  # Debug log for session ownership diagnostics (#206)
-  if [ -n "${RITE_DEBUG:-}" ]; then
-    local _ownership
+  # Session ownership check runs on the normal execution path (#558), not just RITE_DEBUG.
+  # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
+  # and proceed with reset — crash-recovery takes priority over multi-instance protection.
+  if command -v check_session_ownership >/dev/null 2>&1; then
     _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
-    echo "[rite] Resetting active state (ownership: $_ownership)" >&2
+  else
+    _ownership="unknown"
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] ownership check unavailable (check_session_ownership not sourced)" >&2
   fi
+
+  if [ "$_ownership" = "other" ]; then
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Skipping reset (state owned by other session)" >&2
+    exit 0
+  fi
+
+  [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Resetting active state (ownership: $_ownership)" >&2
 
   # Atomic write: jq to temp file, then mv. No trap — explicit cleanup on failure.
   local _tmp
@@ -353,9 +321,11 @@ fi
 find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency
-# Use IFS=$'\t' because @tsv outputs tab-delimited fields; default IFS includes
-# spaces which would break values like "After rite:lint, execute Phase 5.2.1...".
-# Defense-in-depth: Line 111's ACTIVE check already catches invalid JSON (jq
+# cycle 11 MEDIUM F-04: unit separator \x1f (\037) を使用する理由。tab は POSIX IFS whitespace
+# で隣接 delimiter を単一区切りに collapse するため、next_action="" 時に LOOP 欄に他フィールドが
+# shift する silent 注入 bug を起こす (stop-guard.sh cycle 10 F-01 と同型)。non-whitespace IFS は
+# adjacent-delimiter を empty field として preserve する POSIX 準拠挙動となる。
+# Defense-in-depth: ACTIVE check (earlier in this script) already catches invalid JSON (jq
 # fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
 # the file becomes corrupt between the two jq reads (e.g., race condition,
 # partial write). It is not reachable by normal unit tests.
@@ -364,11 +334,11 @@ _tsv_output=$(jq -r '[
   (.phase // "unknown"),
   (.next_action // "unknown"),
   (.loop_count // 0 | tostring)
-] | @tsv' "$STATE_FILE" 2>/dev/null) || {
+] | join("\u001f")' "$STATE_FILE" 2>/dev/null) || {
   echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
   exit 0
 }
-IFS=$'\t' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
+IFS=$'\x1f' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then

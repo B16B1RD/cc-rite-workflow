@@ -277,3 +277,9 @@ messages:
   pr_create_ask_create_without_issue: "Issue なしで PR を作成しますか？"
   pr_create_option_specify_other: "別の Issue を指定"
 
+  # Fail-Fast First / Observed Likelihood / Separate Issue Creation (#506)
+  review_fail_fast_first_warning: "⚠️ Fail-Fast First 原則: fallback を推奨する前に throw/raise での伝播を検討してください。skill 側の fallback 許容条件を確認し、Wiki (/rite:wiki:query) で project-specific な許容パターンを確認してから推奨してください。"
+  review_observed_likelihood_demotion_notice: "🔽 Observed Likelihood Gate: 指摘 {finding_id} は実発生の立証が不十分なため {from_severity} → {to_severity} に降格されました（理由: {reason}）。Grep で triggering call site を示せる場合は再指摘を検討してください。"
+  review_separate_issue_user_confirmation_question: "別 Issue 化は本 PR の findings を本 PR 外に逃がす手段として誤用されやすいため、E2E でも必ずユーザー確認を行います。以下の skip findings について対応方針を選択してください: {count} 件"
+  fix_fail_fast_response_checklist_prompt: "Fail-Fast Response Principle: 修正方針を決定する前に以下を必ず確認してください — (1) throw/raise で呼び出し元に伝播する選択肢を検討したか (2) 既存のエラー境界に到達させる方が自然ではないか (3) 追加する null チェック / optional chaining が問題を隠蔽していないか (4) テスト側の修正が正しくないか。fallback を採用する場合は commit message にその理由を明示してください。"
+
