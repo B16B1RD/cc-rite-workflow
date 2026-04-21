@@ -154,7 +154,6 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all options.
 
 - [Full Specification](docs/SPEC.md)
 - [Configuration Reference](docs/CONFIGURATION.md)
-- [Best Practices Alignment](docs/BEST_PRACTICES_ALIGNMENT.md)
 - [日本語ドキュメント](README.ja.md)
 
 ## Requirements
