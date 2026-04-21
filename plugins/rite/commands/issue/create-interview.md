@@ -19,7 +19,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 >
 > **DRIFT-CHECK ANCHOR (semantic)**: This section is mirrored by `stop-guard.sh` `create_interview` case arm (Issue #622) and `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge. The three sites form a 3-site symmetry — when updating any one, update the others.
 >
-> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — verified-review cycle 4 F-06 / #636: 本 Pre-flight bash block の引数 (`--phase`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--preserve-error-count` を含む) と symmetry を取る必要がある。create.md Step 0/Step 1 の `DRIFT-CHECK ANCHOR` (create.md:572) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
+> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — F-06 / #636: 本 Pre-flight bash block の引数 (`--phase`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--preserve-error-count` を含む) と symmetry を取る必要がある。`create.md` の **DRIFT-CHECK ANCHOR (semantic)** 節 (Step 0 Rationale 直後) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
 
 **MUST run before any interview logic** (Phase 0.4.1 scope evaluation, Phase 0.5 deep-dive, or return-output emission). This bash block is **not optional** and **not conditional on interview scope**. Execute it even when Phase 0.4.1 determines the Bug Fix / Chore preset (interview scope = "skip"):
 
@@ -614,7 +614,8 @@ When this sub-skill completes (interview finished or skipped), control **MUST** 
 **WARNING**: **No GitHub Issue has been created yet.** Stopping here abandons the workflow with no deliverable.
 
 **Output rules**:
+0. **FIRST**: Output `[CONTEXT] INTERVIEW_DONE=1; scope={skipped|completed}; next=phase_0_6` as a **plain-text line** (not HTML-commented) as the first line of the return block (Issue #634 補強 — grep marker for orchestrator Pre-check Item 0 and Mandatory After Step 0 routing dispatcher; defense-in-depth against LLM turn-boundary heuristics)
 1. Output the result pattern as an HTML comment (`<!-- [interview:completed] -->` or `<!-- [interview:skipped] -->`) as the **absolute last line** of this sub-skill's output (Issue #561 UX fix — the sentinel is grep-matchable but not user-visible)
 2. Do **NOT** emit the sentinel as a bare `[interview:*]` line (without HTML comment wrapping) — the bare form regressed in Issue #561 as the user-visible terminal token
 3. Do **NOT** output any narrative text (e.g., `→ Return to create.md`) after the result pattern — it creates a natural stopping point for the LLM
-4. The caller reads the result pattern via grep (the HTML comment contains the matchable string) and immediately continues to Phase 0.6
+4. The caller reads the result pattern via grep (the HTML comment contains the matchable string, plus the plain-text `[CONTEXT] INTERVIEW_DONE=1` marker) and immediately continues to Phase 0.6

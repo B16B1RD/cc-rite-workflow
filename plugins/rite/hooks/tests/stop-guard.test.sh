@@ -725,7 +725,10 @@ fi
 echo "TC-475-A: create_post_interview active → exit 2 (block)"
 dir475a="$GUARD_TEST_DIR/tc475a"
 mkdir -p "$dir475a"
-fresh_ts=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+# F-13 (#636 cycle 6): 他箇所の ${fresh_ts:-$(date ...)} pattern と統一。
+# :- fallback ありの形式にすることで 7200s 超 AGE stale early-exit による silent false-pass を防ぐ
+# (将来 test suite が大量並列化 / mass TC 追加で長時間化した場合の保険)。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir475a" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 0, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-475a\"}"
 stderr_file475a="$(mktemp "$GUARD_TEST_DIR/stderr475a.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir475a\", \"session_id\": \"sid-475a\"}"
@@ -1434,6 +1437,52 @@ else
 fi
 rm -f "$stderr_file634n"
 rm -rf "$fake_bin634n"
+
+# --------------------------------------------------------------------------
+# TC-634-O: AC-5 contract phrase automation — #634 review cycle 6 F-06
+# Issue #634 AC-5 で必須とされる contract phrase (anti-pattern / correct-pattern /
+# same response turn / DO NOT stop) の各 count >= 1 を create.md で自動検証する。
+# fixture の inline grep 手順にのみ依存していた状態を test suite automation に昇格し、
+# LLM が contract phrase をうっかり削除しても CI で検出できるようにする。
+# --------------------------------------------------------------------------
+echo "TC-634-O: AC-5 contract phrases present in create.md (anti-pattern / correct-pattern / same response turn / DO NOT stop)"
+create_md="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create.md"
+tc634o_ok=1
+tc634o_missing=""
+for phrase in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do
+  # grep -c は 0 件でも exit 1 ではなく exit 0 を返す場合があるため、件数判定で確実に検出する
+  c=$(grep -c -- "$phrase" "$create_md" 2>/dev/null || echo 0)
+  if [ "$c" -lt 1 ]; then
+    tc634o_ok=0
+    tc634o_missing="${tc634o_missing} $phrase (count=$c)"
+  fi
+done
+if [ "$tc634o_ok" -eq 1 ]; then
+  pass "all AC-5 contract phrases present in create.md"
+else
+  fail "missing AC-5 contract phrase(s):${tc634o_missing}"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-P: AC-6 structural non-regression automation — #634 review cycle 6 F-06
+# HTML コメント sentinel + case arm + whitelist + Pre-flight の 4 点が保持されることを
+# 自動検証する。fixture の inline grep 手順を test suite に昇格。
+# --------------------------------------------------------------------------
+echo "TC-634-P: AC-6 structural elements present (HTML sentinel / case arm / whitelist / Pre-flight)"
+interview_md="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-interview.md"
+whitelist_sh="$SCRIPT_DIR/../../../../plugins/rite/hooks/phase-transition-whitelist.sh"
+tc634p_ok=1
+tc634p_missing=""
+grep -qF '[interview:skipped]' "$interview_md" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} interview:skipped-sentinel"; }
+grep -qF '[interview:completed]' "$interview_md" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} interview:completed-sentinel"; }
+grep -qE 'create_post_interview\)$' "$GUARD" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create_post_interview-case-arm"; }
+grep -qE '\["create_post_interview"\]=' "$whitelist_sh" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} whitelist-edge"; }
+grep -qF 'MANDATORY Pre-flight' "$interview_md" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} Pre-flight-section"; }
+if [ "$tc634p_ok" -eq 1 ]; then
+  pass "all AC-6 structural elements intact"
+else
+  fail "missing AC-6 structural element(s):${tc634p_missing}"
+fi
 
 # --------------------------------------------------------------------------
 echo ""

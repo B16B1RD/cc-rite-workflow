@@ -240,14 +240,23 @@ fi
 TMP_STATE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_STATE="${STATE_FILE}.tmp.$$"
 trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
 if jq --argjson cnt "$((ERROR_COUNT + 1))" '.error_count = $cnt' "$STATE_FILE" > "$TMP_STATE" 2>/dev/null; then
-  # verified-review cycle 3 F-07 / #636: mv 失敗 path も F-08 jq_write_failed と対称に diag log 記録。
+  # F-07 / #636: mv 失敗 path も F-08 jq_write_failed と対称に diag log 記録。
   # jq が tmp に json を書いた後、mv のみ permission denied / disk full / TOCTOU で失敗した場合、
   # state 実値と HINT 上の error_count 想定値が乖離する結末は jq 失敗時と同一だが、従来は片方だけ
   # diag log に残り他方は silent だった。対称的に log_diag を追加して silent-failure-hunter 一貫化。
-  if ! mv "$TMP_STATE" "$STATE_FILE" 2>/dev/null; then
-    log_diag "error_count_mv_failed phase=$PHASE error_count=$ERROR_COUNT session_id=${SESSION_ID:-unknown}"
+  # F-11 (#636 cycle 6): mv の stderr を tempfile に退避して errno を diag log に含める。
+  # 旧実装 `mv ... 2>/dev/null` は Permission denied / No space left / EXDEV の区別を永久喪失
+  # させていた (発生は知れるが原因が知れない partial surface)。root cause 特定を可能にする。
+  _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
+  if ! mv "$TMP_STATE" "$STATE_FILE" 2>"${_mv_err:-/dev/null}"; then
+    _mv_reason=""
+    if [ -n "$_mv_err" ] && [ -s "$_mv_err" ]; then
+      _mv_reason=" reason=$(head -1 "$_mv_err" | tr -d '\n' | head -c 200)"
+    fi
+    log_diag "error_count_mv_failed phase=$PHASE error_count=$ERROR_COUNT${_mv_reason} session_id=${SESSION_ID:-unknown}"
     rm -f "$TMP_STATE"
   fi
+  [ -n "$_mv_err" ] && rm -f "$_mv_err"
 else
   # verified-review F-08 / #636: jq write 失敗 (disk full / permission denied / TOCTOU)
   # を silent に握りつぶさず diag log に残す。HINT 上の error_count 想定値と state file

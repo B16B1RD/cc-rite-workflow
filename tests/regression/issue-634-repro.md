@@ -32,7 +32,7 @@
 3. **Delegation to Interview Pre-write**: `.rite-flow-state.phase = create_interview` に patch
 4. `Skill: rite:issue:create-interview` invoke
 5. `create-interview.md` が Bug Fix preset を適用 (Phase 0.4.1 → skip Phase 0.5)。`<!-- [interview:skipped] -->` を最終行として emit
-6. ⚠️ **turn 境界形成 (implicit stop)** — user に `Crunched for 2m XXs` が表示される (#622 対策後も低頻度で再発)
+6. ⚠️ **turn 境界形成 (implicit stop)** — user に `✻ Crunched for 2m XXs` (実 UI 上は `✻` U+273B prefix 付き) が表示される (#622 対策後も低頻度で再発)
 7. user が `continue` を入力
 8. `create.md` の 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → `create-register` invoke
 
@@ -56,8 +56,8 @@ step 5 と step 8 が **同 turn 内で連続実行される**。`Crunched for .
 ```bash
 # 新 marker の grep 検証
 grep -F '[CONTEXT] INTERVIEW_DONE=1' plugins/rite/commands/issue/create-interview.md
-# 期待: example ブロック内で 2 件 (skipped example + completed example で emit)。
-# 説明文中の言及を含めた合計は 4 件以上になる (Line 538 / 544 等で参照される)。
+# 期待: Return Output Format セクション内 example ブロック 2 件 (skipped example + completed
+# example で emit) + 説明文 2 件の計 4 件以上が出現する。
 # 判定基準: `>= 2` (example での emit を必須とするが、説明文での言及は将来変動しうる)
 
 # Step 0 Immediate Bash Action の grep 検証
@@ -76,7 +76,7 @@ grep -F 'RE-ENTRY DETECTED' plugins/rite/hooks/stop-guard.sh
 
 ```bash
 bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
-# 期待: TC-634-A 〜 TC-634-L まで全 12 TC が PASS (FAIL 件数 0)
+# 期待: TC-634-A 〜 TC-634-P まで全 16 TC が PASS (FAIL 件数 0)
 #
 # TC グルーピング:
 #   - 主機能 (cycle 1-2): TC-634-A/B/C/D
@@ -92,6 +92,12 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
 #   - --preserve-error-count flag (cycle 4 F-03): TC-634-K/L
 #       K: flow-state-update.sh patch --preserve-error-count が error_count=2 を保持
 #       L: flag 無しの patch が error_count を 0 にリセット (default behavior)
+#   - fault injection (cycle 5 F-04): TC-634-M/N
+#       M: stop-guard.sh mv failure fault injection (error_count atomic write の mv 失敗時に diag log 記録)
+#       N: flow-state-update.sh patch mode mv failure fault injection (mv 失敗時に WARNING + exit 1)
+#   - AC-5 / AC-6 structural automation (cycle 6 F-06): TC-634-O/P
+#       O: AC-5 contract phrase grep automation (anti-pattern / correct-pattern / same response turn / DO NOT stop)
+#       P: AC-6 structural non-regression automation (HTML sentinel / case arm / whitelist / Pre-flight)
 #
 # 将来 TC を追加する場合、本 Section も同時に更新すること (列挙 drift による false-negative 回避)。
 ```
@@ -137,6 +143,8 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
 | AC-6 (Non-regression structure) | HTML コメント sentinel + case arm + whitelist + Pre-flight 4 点保持 | 下記 Section 5 |
 
 ## 5. 構造的 non-regression grep 検証
+
+本 fixture では実装 drift 回避のため shell script 化せず inline grep を規範とする (AC-5 判定手段)。`verify-634-structure.sh` のような別スクリプトに切り出すと、文書と script の二重管理で drift が発生するため意図的に本文書内にロジックを保持する。
 
 ```bash
 # AC-5 contract phrases

@@ -28,7 +28,8 @@
 #   --field                  Field name to increment (increment mode)
 #   --if-exists              Only execute if .rite-flow-state exists (patch/increment mode)
 #   --session                Session UUID override (create mode; defaults to .rite-session-id)
-#   --preserve-error-count   Preserve existing .error_count during patch (same-phase self-patch; patch mode only)
+#   --preserve-error-count   Preserve existing .error_count during patch (same-phase self-patch; patch mode only;
+#                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency)
 #
 # Exit codes:
 #   0: Success
@@ -111,7 +112,19 @@ case "$MODE" in
 esac
 
 # --- Atomic write ---
-TMP_STATE="${FLOW_STATE}.tmp.$$"
+# F-01 / F-04 (#636 cycle 6): repo-wide convention (stop-guard.sh:240 / session-end.sh / post-tool-wm-sync.sh 等)
+# と整合する mktemp-first + PID fallback pattern。trap で signal 別 cleanup を保護し、
+# jq stdout redirect 中の SIGTERM/SIGINT/SIGHUP で orphan が残る経路を塞ぐ。
+TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_STATE="${FLOW_STATE}.tmp.$$"
+trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT HUP
+
+# F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
+# stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
+# 既存の .rite-stop-guard-diag.log を re-use (ring buffer と日付形式を揃える)。
+_log_flow_diag() {
+  local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true
+}
 
 case "$MODE" in
   create)
@@ -205,11 +218,13 @@ case "$MODE" in
       '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
       > "$TMP_STATE"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
+        _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE"
         rm -f "$TMP_STATE"
         echo "ERROR: mv failed (create mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
         exit 1
       fi
     else
+      _log_flow_diag "flow_state_jq_failed mode=create phase=$PHASE issue=$ISSUE"
       rm -f "$TMP_STATE"
       echo "ERROR: jq create failed" >&2
       exit 1
@@ -241,30 +256,34 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
       JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)診断する。
+    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
     if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
+        _log_flow_diag "flow_state_mv_failed mode=patch phase=$PHASE"
         rm -f "$TMP_STATE"
         echo "ERROR: mv failed (patch mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
         exit 1
       fi
     else
+      _log_flow_diag "flow_state_jq_failed mode=patch phase=$PHASE"
       rm -f "$TMP_STATE"
       echo "ERROR: jq patch failed" >&2
       exit 1
     fi
     ;;
   increment)
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)診断する。
+    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
        "$FLOW_STATE" > "$TMP_STATE"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
+        _log_flow_diag "flow_state_mv_failed mode=increment field=$FIELD"
         rm -f "$TMP_STATE"
         echo "ERROR: mv failed (increment mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
         exit 1
       fi
     else
+      _log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"
       rm -f "$TMP_STATE"
       echo "ERROR: jq increment failed" >&2
       exit 1
