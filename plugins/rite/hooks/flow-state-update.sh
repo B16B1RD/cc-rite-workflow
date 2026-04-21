@@ -120,7 +120,10 @@ trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT HUP
 
 # F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
 # stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
-# 既存の .rite-stop-guard-diag.log を re-use (ring buffer と日付形式を揃える)。
+# 既存の .rite-stop-guard-diag.log を re-use (日付形式のみ揃える。ring buffer truncation は
+# stop-guard.sh 側 log_diag() の mapfile + ${_lines[@]: -50} に委譲する — 本関数は append only)。
+# (#636 cycle 12 F-01 対応: 旧 comment「ring buffer と日付形式を揃える」は mapfile truncation
+# を含まない実装と drift していたため修正。truncation は stop-guard.sh 次回起動時に発火する)
 _log_flow_diag() {
   local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true

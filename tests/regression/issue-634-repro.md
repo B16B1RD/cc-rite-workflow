@@ -106,7 +106,7 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | awk '
 #       L: flag 無しの patch が error_count を 0 にリセット (default behavior)
 #   - fault injection (cycle 5 F-04): TC-634-M/N
 #       M: stop-guard.sh mv failure fault injection (error_count atomic write の mv 失敗時に diag log 記録)
-#       N: flow-state-update.sh patch mode mv failure fault injection (mv 失敗時に WARNING + diag log 永続痕跡)
+#       N: flow-state-update.sh patch mode mv failure fault injection (mv 失敗時に ERROR stderr + diag log 永続痕跡 — #636 cycle 12 F-02)
 #   - AC-5 / AC-6 structural automation (cycle 6 F-06 + cycle 7 F-03): TC-634-O/P
 #       O: AC-5 contract phrase grep automation (anti-pattern / correct-pattern / same response turn / DO NOT stop)
 #       P: AC-6 structural non-regression automation (HTML sentinel / case arm / whitelist / Pre-flight /
