@@ -1430,10 +1430,18 @@ rc634n=0
 ) >/dev/null 2>"$stderr_file634n" || rc634n=$?
 # flow-state-update.sh は mv 失敗時に `exit 1` するため rc=1 を期待
 # かつ stderr に 'ERROR: mv failed (patch mode)' の diagnostic を期待
-if [ "$rc634n" -ne 0 ] && grep -q "mv failed (patch mode)" "$stderr_file634n"; then
-  pass "flow-state-update.sh emits 'mv failed (patch mode)' stderr and exits non-zero on mv failure"
+# F-04 (#636 cycle 7): stderr だけでなく `.rite-stop-guard-diag.log` に
+# `flow_state_mv_failed mode=patch` エントリが残る (= _log_flow_diag 永続痕跡) ことも同時に verify。
+# 旧実装は stderr のみ assert しており、`_log_flow_diag` を silent に revert しても
+# TC-634-N が PASS する false-positive test だった (cycle 5 F-04 silent-false-pass の再発)。
+diag_file634n="$dir634n/.rite-stop-guard-diag.log"
+if [ "$rc634n" -ne 0 ] \
+    && grep -q "mv failed (patch mode)" "$stderr_file634n" \
+    && [ -f "$diag_file634n" ] \
+    && grep -q "flow_state_mv_failed mode=patch" "$diag_file634n"; then
+  pass "flow-state-update.sh emits 'mv failed (patch mode)' stderr AND persists 'flow_state_mv_failed mode=patch' diag log on mv failure"
 else
-  fail "expected rc!=0 and 'mv failed (patch mode)' stderr, got rc=$rc634n, stderr=$(cat "$stderr_file634n")"
+  fail "expected rc!=0, 'mv failed (patch mode)' stderr, AND 'flow_state_mv_failed mode=patch' diag log entry; got rc=$rc634n, stderr=$(cat "$stderr_file634n"), diag=$(cat "$diag_file634n" 2>/dev/null || echo '(no diag log)')"
 fi
 rm -f "$stderr_file634n"
 rm -rf "$fake_bin634n"
@@ -1450,8 +1458,15 @@ create_md="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create.md"
 tc634o_ok=1
 tc634o_missing=""
 for phrase in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do
-  # grep -c は 0 件でも exit 1 ではなく exit 0 を返す場合があるため、件数判定で確実に検出する
-  c=$(grep -c -- "$phrase" "$create_md" 2>/dev/null || echo 0)
+  # grep -c は 0 件時でも stdout に "0" を出力するが、exit code は非 0 を返す。
+  # 旧実装 `|| echo 0` は grep 失敗時に stdout へ追加で "0" を append し、
+  # `c="0"` + 改行 + `"0"` の 2 行文字列になり、直後の `[ "$c" -lt 1 ]` が integer parse
+  # error を起こし非 0 rc を返して else 分岐へ fall-through、`tc634o_ok=1` のまま PASS する
+  # silent-false-pass を起こしていた (#636 cycle 7 F-01 実測確認済み)。
+  # `|| true` で exit code だけ握りつぶし、grep -c の stdout 側 "0" をそのまま数値として使う。
+  c=$(grep -c -- "$phrase" "$create_md" 2>/dev/null || true)
+  # 異常経路 (grep が全く stdout を出力せず空) でも integer 比較が fail しないよう空→0 正規化。
+  [ -z "$c" ] && c=0
   if [ "$c" -lt 1 ]; then
     tc634o_ok=0
     tc634o_missing="${tc634o_missing} $phrase (count=$c)"
@@ -1478,6 +1493,15 @@ grep -qF '[interview:completed]' "$interview_md" 2>/dev/null || { tc634p_ok=0; t
 grep -qE 'create_post_interview\)$' "$GUARD" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create_post_interview-case-arm"; }
 grep -qE '\["create_post_interview"\]=' "$whitelist_sh" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} whitelist-edge"; }
 grep -qF 'MANDATORY Pre-flight' "$interview_md" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} Pre-flight-section"; }
+# F-03 (#636 cycle 7): `[create:completed:` sentinel (create.md / create-register.md / create-decompose.md の 3 点) の
+# 存在を verify。Issue #634 body で AC-6 判定手段として明示された構造要素のうち、cycle 6 までの
+# TC-634-P に grep が欠落していた。sentinel 削除・改名が将来発生した場合に CI で検出する。
+create_md_f03="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create.md"
+create_register_md_f03="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-register.md"
+create_decompose_md_f03="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-decompose.md"
+grep -qF '[create:completed:' "$create_md_f03" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create-completed-sentinel-create.md"; }
+grep -qF '[create:completed:' "$create_register_md_f03" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create-completed-sentinel-create-register.md"; }
+grep -qF '[create:completed:' "$create_decompose_md_f03" 2>/dev/null || { tc634p_ok=0; tc634p_missing="${tc634p_missing} create-completed-sentinel-create-decompose.md"; }
 if [ "$tc634p_ok" -eq 1 ]; then
   pass "all AC-6 structural elements intact"
 else

@@ -238,7 +238,11 @@ fi
 # Atomically increment error_count before blocking.
 # If the write fails (disk full, permissions), skip silently — the primary goal is protection.
 TMP_STATE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_STATE="${STATE_FILE}.tmp.$$"
-trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
+# F-02 / F-05 (#636 cycle 7): SIGHUP 追加 + _mv_err を cleanup 対象に含める。
+# flow-state-update.sh:119 (EXIT TERM INT HUP) と対称化。SSH disconnect (SIGHUP) 到来時の
+# $TMP_STATE / $_mv_err orphan を防ぐ。_mv_err は下で mktemp されるが `${_mv_err:-}` で
+# 未定義時も safe に no-op となる。
+trap 'rm -f "$TMP_STATE" "${_mv_err:-}" 2>/dev/null' EXIT TERM INT HUP
 if jq --argjson cnt "$((ERROR_COUNT + 1))" '.error_count = $cnt' "$STATE_FILE" > "$TMP_STATE" 2>/dev/null; then
   # F-07 / #636: mv 失敗 path も F-08 jq_write_failed と対称に diag log 記録。
   # jq が tmp に json を書いた後、mv のみ permission denied / disk full / TOCTOU で失敗した場合、
@@ -423,7 +427,10 @@ if [ -n "$WORKFLOW_INCIDENT_TYPE" ]; then
       # handler — the new `trap '...'` declaration overwrites the previous one for the same
       # signal set. The replacement keeps `rm -f "$TMP_STATE"` explicit so TMP_STATE cleanup
       # still happens. (line-number 参照を避ける理由は cycle 8 F-05 参照)
-      trap 'rm -f "$TMP_STATE" "${_emit_stderr:-}" 2>/dev/null' EXIT TERM INT
+      # F-02 (#636 cycle 7): SIGHUP 追加で上の trap と対称化 (SSH disconnect 時 orphan 防止)。
+      # `_mv_err` はこの scope では既に使用終了しているが、正常 path 実行順の前提で `${_mv_err:-}`
+      # を引き続き cleanup 対象に含めても害なし (trap 非対称による silent leak の再発防止)。
+      trap 'rm -f "$TMP_STATE" "${_emit_stderr:-}" "${_mv_err:-}" 2>/dev/null' EXIT TERM INT HUP
     else
       log_diag "incident_emit_stderr_mktemp_failed session_id=${SESSION_ID:-unknown}"
       # _emit_stderr stays empty; stderr will be redirected to /dev/null below

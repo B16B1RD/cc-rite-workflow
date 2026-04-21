@@ -140,7 +140,7 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | grep -E 'TC-634'
 | AC-3 (Self-exemplar) | 3+ 件連続作成で `continue` 介入ゼロ | Section 2.4 の manual scenario |
 | AC-4 (Error / observable) | stop-guard block → `workflow_incident` sentinel stderr emit | TC-622-B (既存) |
 | AC-5 (Non-regression contract phrases) | create.md に `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` の各 count >= 1 | Section 5 の手動 grep スニペット (下記) — `verify-634-structure.sh` は未実装のため inline grep 手順のみを規範とする |
-| AC-6 (Non-regression structure) | HTML コメント sentinel + case arm + whitelist + Pre-flight 4 点保持 | 下記 Section 5 |
+| AC-6 (Non-regression structure) | HTML コメント sentinel + case arm + whitelist + Pre-flight + `[create:completed:` sentinel (create.md / create-register.md / create-decompose.md の 3 点) 保持 | 下記 Section 5 |
 
 ## 5. 構造的 non-regression grep 検証
 
@@ -170,6 +170,18 @@ grep -E '\["create_post_interview"\]=' plugins/rite/hooks/phase-transition-white
 grep -F 'MANDATORY Pre-flight' plugins/rite/commands/issue/create-interview.md >/dev/null \
   && echo "✅ Pre-flight section intact" \
   || echo "❌ Pre-flight section missing"
+
+# #636 cycle 7 F-03: AC-6 判定手段として Issue #634 body で明示された
+# `[create:completed:` sentinel (create.md / create-register.md / create-decompose.md の 3 点)
+# の存在を grep で verify。sentinel は #561 / #622 対策の一部であり、
+# 将来の削除・改名を regression として検出する。
+for f in plugins/rite/commands/issue/create.md \
+         plugins/rite/commands/issue/create-register.md \
+         plugins/rite/commands/issue/create-decompose.md; do
+  grep -F '[create:completed:' "$f" >/dev/null \
+    && echo "✅ [create:completed: sentinel intact in $f" \
+    || echo "❌ [create:completed: sentinel missing in $f"
+done
 ```
 
 期待出力: 全 phrase + 構造要素が `✅` 判定。
