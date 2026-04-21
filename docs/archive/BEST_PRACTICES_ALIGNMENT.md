@@ -1,4 +1,13 @@
-# Best Practices for Claude Code Alignment
+# Best Practices for Claude Code Alignment (Archived)
+
+> **Archived (2026-04-21)**: This document records the v0.1–v0.3 era Best
+> Practices alignment history and is kept for reference only. Some tables
+> (notably "Current Agents" and "Current Structure") reflect the state at
+> the time they were written and no longer match v1.0.0+ implementation —
+> `tools: frontmatter` has been removed from all reviewer agents (#357),
+> 13 reviewer agents are in use (not 3), and the CLAUDE.md example shown
+> is from the 20-line era. For the current specification see
+> [`docs/SPEC.md`](../SPEC.md) and [`docs/CONFIGURATION.md`](../CONFIGURATION.md).
 
 This document describes how rite workflow aligns with [Best Practices for Claude Code](https://code.claude.com/docs/en/best-practices).
 

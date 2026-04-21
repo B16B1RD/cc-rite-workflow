@@ -2184,7 +2184,6 @@ Closes #XXX
 ## 参考資料
 
 - [Best Practices for Claude Code](https://code.claude.com/docs/en/best-practices)
-- [Best Practices 対応表](BEST_PRACTICES_ALIGNMENT.md) - rite workflow のベストプラクティス準拠状況
 - [Claude Code Plugins Reference](https://code.claude.com/docs/en/plugins-reference)
 - [GitHub CLI Documentation](https://cli.github.com/manual/)
 - [Conventional Commits](https://www.conventionalcommits.org/)

@@ -2119,7 +2119,6 @@ Closes #XXX
 ## References
 
 - [Best Practices for Claude Code](https://code.claude.com/docs/en/best-practices)
-- [Best Practices Alignment](BEST_PRACTICES_ALIGNMENT.md) - How rite workflow aligns with best practices
 - [Claude Code Plugins Reference](https://code.claude.com/docs/en/plugins-reference)
 - [GitHub CLI Documentation](https://cli.github.com/manual/)
 - [Conventional Commits](https://www.conventionalcommits.org/)

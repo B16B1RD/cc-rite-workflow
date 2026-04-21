@@ -155,7 +155,6 @@ iteration:
 
 - [仕様書](docs/SPEC.ja.md)
 - [設定リファレンス](docs/CONFIGURATION.md)
-- [Best Practices 対応表](docs/BEST_PRACTICES_ALIGNMENT.md)
 - [English Documentation](README.md)
 
 ## 必要要件
