@@ -239,9 +239,11 @@ fi
 # If the write fails (disk full, permissions), skip silently — the primary goal is protection.
 TMP_STATE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_STATE="${STATE_FILE}.tmp.$$"
 # F-02 / F-05 (#636 cycle 7): SIGHUP 追加 + _mv_err を cleanup 対象に含める。
-# flow-state-update.sh:119 (EXIT TERM INT HUP) と対称化。SSH disconnect (SIGHUP) 到来時の
+# flow-state-update.sh の EXIT/TERM/INT/HUP trap と対称化 (flow-state-update.sh の
+# _log_flow_diag() 直前の TMP_STATE trap 宣言が canonical)。SSH disconnect (SIGHUP) 到来時の
 # $TMP_STATE / $_mv_err orphan を防ぐ。_mv_err は下で mktemp されるが `${_mv_err:-}` で
 # 未定義時も safe に no-op となる。
+# (line-number 参照を避ける理由は cycle 8 F-05 参照 — #636 cycle 10 F-02 対応)
 trap 'rm -f "$TMP_STATE" "${_mv_err:-}" 2>/dev/null' EXIT TERM INT HUP
 if jq --argjson cnt "$((ERROR_COUNT + 1))" '.error_count = $cnt' "$STATE_FILE" > "$TMP_STATE" 2>/dev/null; then
   # F-07 / #636: mv 失敗 path も F-08 jq_write_failed と対称に diag log 記録。
