@@ -830,6 +830,73 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-634-A: create_post_interview WORKFLOW_HINT includes concrete bash invocation
+# Issue #634: HINT must now include the specific bash command for Step 0 Immediate
+# Bash Action ("flow-state-update.sh patch --phase create_post_interview") so the
+# LLM has a concrete next tool call instead of a natural turn-boundary. This test
+# verifies the #634 HINT enhancement is applied to the create_post_interview case
+# arm (symmetric with create_interview case arm TC-622-A).
+# --------------------------------------------------------------------------
+echo "TC-634-A: create_post_interview HINT includes Step 0 Immediate Bash Action"
+dir634a="$GUARD_TEST_DIR/tc634a"
+mkdir -p "$dir634a"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634a" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634a\"}"
+stderr_file634a="$(mktemp "$GUARD_TEST_DIR/stderr634a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634a\", \"session_id\": \"sid-634a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634a") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "Step 0 (Immediate Bash Action" "$stderr_file634a" \
+    && grep -q "INTERVIEW_DONE=1" "$stderr_file634a"; then
+  pass "create_post_interview HINT includes Step 0 bash command + INTERVIEW_DONE grep marker"
+else
+  fail "expected #634 HINT with Step 0 Immediate Bash Action + INTERVIEW_DONE=1 grep marker, got rc=$rc stderr='$(cat "$stderr_file634a")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-B: create_post_interview error_count escalation
+# Issue #634: when error_count >= 1, WORKFLOW_HINT is extended with a RE-ENTRY
+# DETECTED message to signal the LLM that the previous block did not advance the
+# phase. This provides escalation pressure for persistent implicit-stop attempts.
+# --------------------------------------------------------------------------
+echo "TC-634-B: create_post_interview with error_count=1 emits RE-ENTRY DETECTED escalation"
+dir634b="$GUARD_TEST_DIR/tc634b"
+mkdir -p "$dir634b"
+create_state_file "$dir634b" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Proceed to Phase 0.6. Do NOT stop.\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-634b\"}"
+stderr_file634b="$(mktemp "$GUARD_TEST_DIR/stderr634b.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634b\", \"session_id\": \"sid-634b\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634b") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "RE-ENTRY DETECTED" "$stderr_file634b" \
+    && grep -q "error_count=2" "$stderr_file634b"; then
+  pass "create_post_interview error_count=1 → RE-ENTRY DETECTED escalation (error_count=2 in HINT)"
+else
+  fail "expected RE-ENTRY DETECTED escalation with error_count=2 (post-increment), got rc=$rc stderr='$(cat "$stderr_file634b")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-C: create_interview case arm also enhanced with Step 0 Immediate Bash Action
+# Issue #634: symmetry with create_post_interview — the create_interview case arm
+# (fires when the sub-skill Pre-flight was skipped) now also references Step 0 and
+# INTERVIEW_DONE=1. This ensures both Pre-flight-ran and Pre-flight-skipped paths
+# provide the same continuation guidance.
+# --------------------------------------------------------------------------
+echo "TC-634-C: create_interview HINT includes Step 0 Immediate Bash Action + INTERVIEW_DONE grep"
+dir634c="$GUARD_TEST_DIR/tc634c"
+mkdir -p "$dir634c"
+create_state_file "$dir634c" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634c\"}"
+stderr_file634c="$(mktemp "$GUARD_TEST_DIR/stderr634c.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634c\", \"session_id\": \"sid-634c\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634c") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -q "Step 0 (Immediate Bash Action" "$stderr_file634c" \
+    && grep -q "INTERVIEW_DONE=1" "$stderr_file634c"; then
+  pass "create_interview HINT includes Step 0 bash command + INTERVIEW_DONE grep marker (symmetric with create_post_interview)"
+else
+  fail "expected #634 HINT symmetry on create_interview case arm, got rc=$rc stderr='$(cat "$stderr_file634c")'"
+fi
+
+# --------------------------------------------------------------------------
 # TC-475-D: create_completed is terminal — no block
 # --------------------------------------------------------------------------
 echo "TC-475-D: create_completed + active=false → exit 0 (terminal)"

@@ -303,10 +303,27 @@ case "$PHASE" in
     # either position so the workflow does not silently end the turn before delegation.
     # DRIFT-CHECK ANCHOR (semantic): create-interview.md 🚨 MANDATORY Pre-flight section /
     # phase-transition-whitelist.sh create_interview entry と 3 site 対称。
-    WORKFLOW_HINT="HINT: /rite:issue:create Delegation to Interview Pre-write recorded create_interview. The block may have fired immediately before the rite:issue:create-interview Skill invoke, OR while the interview sub-skill is mid-execution (create-interview.md MUST write create_post_interview via its 🚨 MANDATORY Pre-flight section before returning). In either case, do NOT stop. Continue: if interview has not been invoked yet, invoke it; if interview has returned <!-- [interview:skipped] --> or <!-- [interview:completed] --> but .rite-flow-state.phase is still create_interview, the sub-skill Pre-flight patch was skipped — run 🚨 Mandatory After Interview Step 1 (patch create_post_interview) manually → Phase 0.6 → Delegation Routing → terminal sub-skill in the SAME response turn. DO NOT stop before <!-- [create:completed:{N}] --> is output."
+    WORKFLOW_HINT="HINT: /rite:issue:create Delegation to Interview Pre-write recorded create_interview. The block may have fired immediately before the rite:issue:create-interview Skill invoke, OR while the interview sub-skill is mid-execution (create-interview.md MUST write create_post_interview via its 🚨 MANDATORY Pre-flight section before returning). In either case, do NOT stop. Continue: if interview has not been invoked yet, invoke it; if interview has returned <!-- [interview:skipped] --> or <!-- [interview:completed] --> but .rite-flow-state.phase is still create_interview, the sub-skill Pre-flight patch was skipped — run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Pre-flight fallback; proceeding to Phase 0.6' --if-exists) → Step 1 (idempotent re-patch) → Phase 0.6 → Delegation Routing → terminal sub-skill in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm sub-skill return completed. DO NOT stop before <!-- [create:completed:{N}] --> is output."
+    # Issue #634 escalation: re-entry detected when error_count >= 1.
+    if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
+      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not advance the phase. Execute the above bash block NOW as your next tool call before any narrative output."
+    fi
     ;;
   create_post_interview)
-    WORKFLOW_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. No GitHub Issue has been created yet."
+    # Issue #634: accumulated regression N+1 after #525/#444/#475/#552/#561/#622/#628.
+    # Root cause hypothesis (Issue body §3): Bug Fix / Chore preset 経路では sub-skill 側処理が
+    # 軽く return 直後の LLM turn-boundary heuristic が発火しやすい。HINT を more concrete に
+    # し、orchestrator が consume すべき specific bash 名を含めることで「次に何をすべきか」の
+    # cognitive load を最小化する。
+    # DRIFT-CHECK ANCHOR (semantic): create.md 🚨 Mandatory After Interview Step 0 Immediate
+    # Bash Action / create-interview.md Return Output [CONTEXT] INTERVIEW_DONE=1 marker と
+    # 3 site 対称。
+    WORKFLOW_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash flow-state-update.sh patch --phase create_post_interview --next 'proceeding to Phase 0.6' --if-exists) → Step 1 (re-patch timestamp) → Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm the sub-skill completed its return output. No GitHub Issue has been created yet."
+    # Issue #634 escalation: error_count-based reminder. 2 回目以降の block では
+    # LLM が recovery path を取っていない signal とみなして HINT を更に明示化。
+    if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
+      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not result in continuation. If you are reading this HINT, execute the following bash block NOW as your next tool call (before any other text output): bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'proceeding to Phase 0.6 after re-entry' --if-exists ; then proceed to Phase 0.6 in the SAME response turn."
+    fi
     ;;
   create_delegation)
     WORKFLOW_HINT="HINT: Delegation sub-skill is in-flight. When it returns [create:completed:{N}], run Mandatory After Delegation self-check (Step 1/2 are no-ops if marker present) in the SAME response turn. DO NOT stop before the completion marker is output."

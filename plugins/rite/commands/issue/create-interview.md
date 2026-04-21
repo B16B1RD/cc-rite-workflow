@@ -535,15 +535,18 @@ fi
 
 > **Why patch mode only (no create fallback here)**: The 🚨 MANDATORY Pre-flight section at the top already handles the "file missing" branch (`create` mode). By the time execution reaches the return-output section, `.rite-flow-state` is guaranteed to exist with `.phase = create_post_interview`. A second `create` call here would reset `previous_phase` to an empty string and defeat the whitelist-based transition check in stop-guard — patch mode preserves the transition chain correctly.
 
-After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. Both the plain-text reminder and the HTML comment precede the result pattern, and the result pattern itself is wrapped in an HTML comment (Issue #561 UX fix) — all three MUST be the last visible lines of this sub-skill's output, in the order below:
+After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. The return block MUST be composed of four lines in the order below: (1) `[CONTEXT] INTERVIEW_DONE=1` grep marker, (2) plain-text blockquote continuation reminder, (3) HTML-commented caller instructions, (4) HTML-commented result sentinel. All four MUST be the last visible lines of this sub-skill's output.
 
 > **Issue #552 enhancement**: The caller continuation hint is emitted as **both** a plain-text line (visible in rendered Markdown) **and** an HTML comment (visible only in the LLM's raw context). The dual form ensures the reminder is robust against rendering modes where HTML comments are stripped before the LLM sees them. Rewriting this to HTML-comment-only is a regression.
 >
 > **Issue #561 UX fix**: The result pattern (`[interview:skipped]` / `[interview:completed]`) is now emitted as an HTML comment (`<!-- [interview:skipped] -->`). The string `[interview:skipped]` / `[interview:completed]` inside the HTML comment is still grep-matchable (`grep -F '[interview:'`) so the orchestrator's Pre-check Item 0 (routing dispatcher) and any hook/test contract remain intact (AC-3). The HTML comment form prevents the sentinel token from being the user-visible final line, weakening the LLM's turn-boundary heuristic that previously caused premature `continue`-requiring stops.
+>
+> **Issue #634 enhancement**: `[CONTEXT] INTERVIEW_DONE=1` marker is added as the FIRST line of the return block (not the last). This establishes a grep-detectable signal `INTERVIEW_DONE=1` that the orchestrator's Pre-check list Item 0 and Mandatory After Interview Step 0 both consume. Placing the marker FIRST (not last) means the sub-skill's last line remains the sentinel HTML comment (preserving #561 ordering), while the context grep can still find `INTERVIEW_DONE=1` anywhere in recent context. The marker is a plain-text line (not HTML-commented) because Pre-check Item 0 uses context grep which may strip HTML comments in some rendering modes. DRIFT-CHECK ANCHOR (semantic): create.md 🚨 Mandatory After Interview Step 0 Immediate Bash Action / stop-guard.sh create_post_interview case arm WORKFLOW_HINT と 3 site 対称。
 
 **Output format example (interview skipped)**:
 
 ```
+[CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:skipped] -->
@@ -552,6 +555,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 **Output format example (interview completed)**:
 
 ```
+[CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
 <!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:completed] -->
