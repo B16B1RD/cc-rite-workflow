@@ -1205,20 +1205,20 @@ Pre-validation script called before every `/rite:*` command execution. Detects b
 bash plugins/rite/hooks/preflight-check.sh --command-id "/rite:issue:start" --cwd "$PWD"
 ```
 
-### Post-Compact Guard (`post-compact-guard.sh`)
+### Post-Compact Recovery (`post-compact.sh`) (#133)
 
-Registered as a PreToolUse hook. After compact occurs, **blocks all tool usage** until the user runs `/clear` → `/rite:resume`.
+Registered as a PostCompact hook. After a compact event, restores workflow context by outputting the current `.rite-flow-state` / work-memory state to stdout, which Claude Code injects into the model's context so the workflow can auto-continue without user intervention.
 
 **Behavior:**
 
-1. Reads `.rite-compact-state`
-2. Checks if workflow is active via `.rite-flow-state`
-3. If workflow is inactive, cleans up `.rite-compact-state` (self-healing)
-4. If `compact_state` is `blocked`, denies tool usage and instructs the LLM to stop
+1. Reads `.rite-compact-state` and `.rite-flow-state` under the resolved state root (delegates resolution to `state-path-resolve.sh`)
+2. If no flow state exists, cleans `.rite-compact-state` and exits 0 (self-healing for orphaned compact markers)
+3. Otherwise, emits a recovery block to stdout containing Issue number, phase, and next-action hints so the orchestrator can resume from the compact boundary
+4. Double-execution is guarded via `_RITE_HOOK_RUNNING_POSTCOMPACT` (hooks.json + legacy `settings.local.json` migration safety)
 
 **Self-Healing Mechanism:**
 
-If the workflow has ended but `.rite-compact-state` remains (e.g., due to crash), automatically cleans up and resumes normal operation.
+If the workflow has ended but `.rite-compact-state` remains (e.g., due to crash), the hook cleans it up and exits silently so that a fresh session is not blocked.
 
 ### Pre-Tool Bash Guard (`pre-tool-bash-guard.sh`)
 
@@ -1289,6 +1289,80 @@ Shared library script providing `mkdir`-based lock/unlock functionality. Used by
 **Stale Lock Detection:**
 
 If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file is checked to verify process liveness. If the process has terminated, the lock is automatically released.
+
+### Phase Transition Whitelist (`phase-transition-whitelist.sh`) (#490)
+
+Sourced (not executed) library that provides the canonical phase-transition graph consumed by `stop-guard.sh` and other orchestration helpers. Silent phase-skipping in `/rite:issue:start` end-to-end flow used to be an observability gap; this graph turns unexpected transitions into blockable events.
+
+**Provided Functions (post-source):**
+
+| Function | Purpose |
+|----------|---------|
+| `rite_phase_transition_allowed <prev> <next>` | 0 if the transition is whitelisted |
+| `rite_phase_expected_next <phase>` | Prints space-separated valid next phases |
+| `rite_phase_is_known <phase>` | 0 if the phase name is known |
+
+**Override merging:** Projects can extend (not overwrite) the whitelist via `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` in `rite-config.yml`. Bash 4.2+ is required for `declare -gA`; older bash aborts gracefully so stop-guard can fail-open.
+
+### Verify Terminal Output (`verify-terminal-output.sh`) (#561)
+
+Standalone check that validates Terminal Completion sections in `/rite:issue:create` sub-skills wrap sentinel markers in HTML comments (`<!-- [create:completed:{…}] -->`, `<!-- [interview:skipped] -->`, etc.), so the user-visible final line remains the human-readable completion message rather than a bare sentinel token. Non-regression contract: the raw string `[create:completed:` / `[interview:` must still appear in the file for grep-based hooks to keep matching.
+
+**Exit codes:** `0` all checks passed / `1` check failed (details on stderr) / `2` usage error.
+
+### Session Ownership (`session-ownership.sh`) (#174–#179)
+
+Shared library sourced by `session-start.sh` / `session-end.sh` / `stop-guard.sh` / `post-tool-wm-sync.sh` / `pre-compact.sh` / `post-compact.sh` for multi-session conflict prevention.
+
+**Provided Functions:**
+
+| Function | Purpose |
+|----------|---------|
+| `extract_session_id <hook_json>` | Pulls `session_id` from a hook's JSON stdin payload |
+| `get_state_session_id <file>` | Reads `session_id` from `.rite-flow-state` |
+| `check_session_ownership <hook_json> <state_file>` | Returns `own` / `legacy` / `other` / `stale` |
+| `parse_iso8601_to_epoch <timestamp>` | Cross-platform ISO 8601 → epoch parser |
+
+### Issue Comment WM Sync (`issue-comment-wm-sync.sh`) (#161 / #167)
+
+Registered as a PostToolUse hook. Synchronizes work-memory updates into the Issue comment when a phase change is detected. Delegates deterministic JSON/body construction to `issue-comment-wm-update.py` to avoid fragile inline jq + atomic-write patterns.
+
+### Wiki Ingest Trigger (`wiki-ingest-trigger.sh`) and Wiki Query Inject (`wiki-query-inject.sh`)
+
+A pair of hooks that automate Experience Wiki integration (opt-out via `wiki.enabled: false`).
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| `wiki-ingest-trigger.sh` | Phase 5.4.3 (post review), Phase 5.4.6 (post fix), Issue close | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
+| `wiki-query-inject.sh` | Phase 2.6 (work memory init), Phase 5.1 (implement), Phase 5.4.1 (review), Phase 5.4.4 (fix) | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree; #555). |
+
+See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and the separate `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` helpers that actually commit + push raw sources onto the wiki branch.
+
+### Workflow Incident Emit (`workflow-incident-emit.sh`) (#366)
+
+Emits a single sentinel line of the form `[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>` that `/rite:issue:start` Phase 5.4.4.1 detects via context grep to auto-register workflow blockers as Issues.
+
+**Supported `--type` values:** `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` (#524) / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567).
+
+See [Workflow Incident Detection](#workflow-incident-detection) for the detection / dedup / registration protocol.
+
+### Hook Preamble (`hook-preamble.sh`)
+
+Sourced at the top of most hooks to perform shared pre-processing: plugin-root resolution via `.rite-plugin-root`, `RITE_DEBUG` log setup, and double-execution guard bookkeeping. Hooks that need to read stdin must source it *after* capturing stdin to avoid consumption conflicts.
+
+### Helper Scripts (`hooks/scripts/`)
+
+Non-hook helper scripts invoked either directly from orchestrator commands or by other hooks:
+
+| Script | Purpose | Related Issue |
+|--------|---------|---------------|
+| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` | Stash-based single-process commit + push of raw sources onto the `wiki` branch | #524 refactor |
+| `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | #524 / #536 |
+| `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | #627 |
+| `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
+| `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
+| `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | #349 |
+| `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | #564 / #567 |
 
 ---
 
@@ -1372,14 +1446,23 @@ A mechanism that dynamically adjusts the number of questions based on Issue comp
 
 A test framework for ensuring Hook script quality. Located in `plugins/rite/hooks/tests/`.
 
-**Test Targets:**
+**Test Targets (excerpt — see `hooks/tests/` for the full suite):**
 
 | Script | Test Content |
 |--------|-------------|
-| `stop-guard.sh` | Stop block/allow decisions per phase |
+| `stop-guard.sh` | Stop block/allow decisions per phase (+ `stop-guard-cleanup`, `stop-guard-ingest`) |
 | `preflight-check.sh` | Command blocking by compact state |
-| `post-compact-guard.sh` | Tool usage blocking, self-healing |
+| `post-compact.sh` | Recovery context emission, `.rite-compact-state` self-healing |
+| `pre-compact.sh` | State capture before compact |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
+| `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls |
+| `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions |
+| `work-memory-lock.sh` | Lock acquire/release + stale detection |
+| `verify-terminal-output.sh` | Terminal Completion sentinel HTML-comment wrap (#561) |
+| `wiki-ingest-trigger.sh` | Raw-source write contract |
+| `workflow-incident-emit.sh` | Sentinel emit format + `--type` whitelist |
+| `parent-child-sync-static` | Parent/child Issue state synchronization |
+| `notification.sh` | Notification dispatcher contract |
 
 **Execution:**
 
