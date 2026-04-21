@@ -72,7 +72,7 @@ When this command is executed, follow the phases below in order.
 
 | # | Check (種別) | If YES/NO / routing, do |
 |---|-------------|------------------------|
-| 0 | **Routing dispatcher** (状態質問ではない): 直前の sub-skill return tag は何か? | grep the recent output (HTML comments included) for `[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]` / `[CONTEXT] INTERVIEW_DONE=1` (Issue #634). Both the bare bracket form (legacy) and HTML-comment form (`<!-- [...] -->`, Issue #561 current) match. 推奨形式は 3 回の `grep -F` 呼び出し: `grep -F '[create:completed:'`, `grep -F '[interview:'`, `grep -F '[CONTEXT] INTERVIEW_DONE=1'`。ERE を使う場合は `grep -E '\[(interview\|create):[a-z:0-9]+\]'` **ではなく** `grep -E '\[(interview|create):[a-z:0-9]+\]'` (unescaped pipe — ERE では `\|` がリテラル `|` として解釈されるため alternation として機能しない、#582 で検出)。**Issue #634 補強**: `[CONTEXT] INTERVIEW_DONE=1` grep marker は `create-interview.md` Return Output Format の FIRST 行として emit される plain-text marker で、HTML コメント除去 rendering でも grep 可能。`[interview:skipped]` / `[interview:completed]` のいずれかが matched **または** `[CONTEXT] INTERVIEW_DONE=1` が matched した時点で **continuation trigger** として扱う — immediately run 🚨 Mandatory After Interview (Step 0 Immediate Bash Action → Step 1 → Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]` matched: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。**本 Item は YES/NO 集計から除外** — ルーティング前段として機能する。 |
+| 0 | **Routing dispatcher** (状態質問ではない): 直前の sub-skill return tag は何か? | grep the recent output (HTML comments included) for `[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]` / `[CONTEXT] INTERVIEW_DONE=1` (Issue #634). Both the bare bracket form (legacy) and HTML-comment form (`<!-- [...] -->`, Issue #561 current) match. 推奨形式は 3 回の `grep -F` 呼び出し: `grep -F '[create:completed:'`, `grep -F '[interview:'`, `grep -F '[CONTEXT] INTERVIEW_DONE=1'`。ERE を使う場合は `grep -E '\[(interview\|create):[a-z:0-9]+\]'` **ではなく** `grep -E '\[(interview|create):[a-z:0-9]+\]'` (unescaped pipe — ERE では `\|` がリテラル `|` として解釈されるため alternation として機能しない、#582 で検出)。**Issue #634 補強**: `[CONTEXT] INTERVIEW_DONE=1` grep marker は `create-interview.md` Return Output Format の FIRST 行として emit される plain-text marker で、HTML コメント除去 rendering でも grep 可能。`[interview:skipped]` / `[interview:completed]` のいずれかが matched **または** `[CONTEXT] INTERVIEW_DONE=1` が matched した時点で **continuation trigger** として扱う — immediately run 🚨 Mandatory After Interview (Step 0 Immediate Bash Action → Step 1 → Step 2 → Step 3 → Phase 0.6 → Delegation Routing → terminal sub-skill)。If `[create:completed:{N}]` matched: run 🚨 Mandatory After Delegation self-check (Step 1/2 no-ops when marker is present, Step 3 is idempotent output)。If tag が上記いずれでもない / 無い: 通常の Phase 進行中なので Item 1-3 を評価 (場面 (a) は NO でも legitimate)。未知 tag (unexpected return format): manual 停止して diag log を確認。**本 Item は YES/NO 集計から除外** — ルーティング前段として機能する。 |
 | 1 | **State check**: `[create:completed:{N}]` が HTML コメントまたはベアブラケット形式で最終行 (あるいは末尾近傍) に出力済みか? | 推奨形式: `grep -F '[create:completed:'` (fixed string で HTML コメント内の string も matchable)。ERE 使用時は `grep -E '\[create:completed:[0-9]+\]'` (`-E` flag 必須 — BRE では `[0-9]+` が「1 個の数字 + リテラル `+`」と解釈され sentinel にマッチしない、#582 で検出)。**注意**: bracket-unescaped 形式 `[create:completed:[0-9]+]` は character class として誤解釈されるため使用禁止。場面 (a) では `NO` でも legitimate — 次の Pre-write + sub-skill invocation に進む。場面 (b) では `NO` は terminal sub-skill が未完了 — Mandatory After Delegation Step 3 (defense-in-depth として完了メッセージ + 次のステップ + HTML コメント sentinel を出力) を実行。 |
 | 2 | **State check**: ユーザー向け完了メッセージが表示済みか? (3 形式のいずれか 1 つを含めば YES) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal sub-skill の完了メッセージが欠落 — Mandatory After Delegation Step 3 を実行 (idempotent)。**識別 substring**: 3 形式は以下の排他的な substring で識別可能 — register: `を作成しました:` (コロン付き URL), decompose: `を分解して` (中間句), orchestrator fallback: `を作成しました` かつ `:` を含まない。いずれか 1 形式の識別 substring を含めば YES 判定。 |
 | 3 | **State check**: `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: create_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — terminal sub-skill を呼ぶか Mandatory After Delegation Step 2 を実行。 |
@@ -535,7 +535,7 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 No GitHub Issue has been created yet. The interview only collects information.
 
-**Step 0: Immediate Bash Action (Issue #634)**: Execute this bash block as the **very first tool call** after `rite:issue:create-interview` returns, **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase and emits a continuation marker that Step 1-3 can verify:
+**Step 0: Immediate Bash Action (Issue #634)**: Execute this bash block as the **very first tool call** after `rite:issue:create-interview` returns, **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr that the LLM can observe in subsequent context (the actual continuation marker `[CONTEXT] INTERVIEW_DONE=1` is produced by the sub-skill *before* Step 0 runs):
 
 ```bash
 # Verify sub-skill returned with [CONTEXT] INTERVIEW_DONE=1 in recent context
@@ -556,18 +556,25 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
   echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
   # 非 blocking: Step 1 が idempotent patch として再試行する。ここで exit 1 すると
   # 既に進捗している workflow を kill してしまうため、warning のみで continue する。
+  # 本 flag は stop-guard.sh create_post_interview case arm の HINT で grep 参照される
+  # (verified-review cycle 2 F-05 / #636): dead marker ではなく LLM post-hoc 観察用の
+  # retained flag。検出時は Step 1 の redundant patch が primary 防御層になる。
 fi
 ```
 
 > **Rationale (Issue #634)**: The regression pattern observed in #552/#561/#622/#628 is that the LLM, after seeing the sub-skill's HTML-comment sentinel (`<!-- [interview:skipped] -->` or `<!-- [interview:completed] -->`), perceives the work as "complete" and ends the turn. Step 0 inserts a **concrete bash tool invocation** as the first required action after the sub-skill returns, eliminating the turn-boundary signal. The LLM sees "I need to run this bash first" instead of "I'm done". Step 0 is redundant with Step 1 (patch mode is idempotent) — the redundancy IS the defense.
 
-**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`. `--if-exists` を Step 0 と対称に付与することで、Pre-flight 漏れ経路でも defense-in-depth redundancy が一貫して保たれる (verified-review F-11 / #636):
+**Step 1**: Update `.rite-flow-state` to post-interview phase (atomic). The sub-skill has already written `create_post_interview` via its Defense-in-Depth section; this second write refreshes the timestamp and `next_action`. `--if-exists` を Step 0 と対称に付与することで、Pre-flight 漏れ経路でも defense-in-depth redundancy が一貫して保たれる (verified-review F-11 / #636)。Step 0 と対称に exit code check を入れることで、Step 0 と Step 1 が同時失敗する persistent な障害条件 (disk full / permission denied) でも silent に通過せず `[CONTEXT] STEP_1_PATCH_FAILED=1` を retained flag として残す (cycle 2 F-04 / #636):
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "create_post_interview" \
-  --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-  --if-exists
+if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+    --if-exists; then
+  echo "[CONTEXT] STEP_1_PATCH_FAILED=1" >&2
+  # 非 blocking: Step 0 / Step 1 同時失敗の persistent 障害シグナルを LLM が post-hoc で
+  # 観察可能にする。create-interview.md Pre-flight 側の patch が primary 防御層として残る。
+fi
 ```
 
 **Step 2 (Issue #552 — mandatory continuation step)**: Run the Pre-check list at the top of this document (section "Pre-check list"). If any item is `NO`, do NOT end the turn — continue to Phase 0.6 evaluation.

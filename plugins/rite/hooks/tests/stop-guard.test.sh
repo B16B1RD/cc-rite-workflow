@@ -847,10 +847,11 @@ input="{\"stop_hook_active\": false, \"cwd\": \"$dir634a\", \"session_id\": \"si
 output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634a") && rc=0 || rc=$?
 if [ $rc -eq 2 ] \
     && grep -q "Step 0 (Immediate Bash Action" "$stderr_file634a" \
-    && grep -q "INTERVIEW_DONE=1" "$stderr_file634a"; then
-  pass "create_post_interview HINT includes Step 0 bash command + INTERVIEW_DONE grep marker"
+    && grep -q "INTERVIEW_DONE=1" "$stderr_file634a" \
+    && grep -q "plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview" "$stderr_file634a"; then
+  pass "create_post_interview HINT includes Step 0 bash command (with full path) + INTERVIEW_DONE grep marker"
 else
-  fail "expected #634 HINT with Step 0 Immediate Bash Action + INTERVIEW_DONE=1 grep marker, got rc=$rc stderr='$(cat "$stderr_file634a")'"
+  fail "expected #634 HINT with Step 0 Immediate Bash Action + full path to flow-state-update.sh + INTERVIEW_DONE=1 grep marker, got rc=$rc stderr='$(cat "$stderr_file634a")'"
 fi
 
 # --------------------------------------------------------------------------
@@ -894,6 +895,9 @@ fi
 echo "TC-634-C: create_interview HINT includes Step 0 Immediate Bash Action + INTERVIEW_DONE grep"
 dir634c="$GUARD_TEST_DIR/tc634c"
 mkdir -p "$dir634c"
+# verified-review cycle 2 F-06 / #636: TC-634-A/B と対称に fresh_ts defensive fallback を適用。
+# cross-TC 独立性を確保し、TC-634-A/B を skip/削除/順序変更しても silent false-pass しないようにする。
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
 create_state_file "$dir634c" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-634c\"}"
 stderr_file634c="$(mktemp "$GUARD_TEST_DIR/stderr634c.XXXXXX")"
 input="{\"stop_hook_active\": false, \"cwd\": \"$dir634c\", \"session_id\": \"sid-634c\"}"
@@ -904,6 +908,30 @@ if [ $rc -eq 2 ] \
   pass "create_interview HINT includes Step 0 bash command + INTERVIEW_DONE grep marker (symmetric with create_post_interview)"
 else
   fail "expected #634 HINT symmetry on create_interview case arm, got rc=$rc stderr='$(cat "$stderr_file634c")'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-634-D: create_interview case arm error_count escalation (verified-review cycle 2 F-09 / #636)
+# Issue #634: stop-guard.sh L312-314 (`error_count >= 1` で RE-ENTRY DETECTED HINT 追加) の create_interview
+# 側 escalation path は cycle 1 テストでは未カバーだった。TC-634-B (create_post_interview) と対称に
+# create_interview + error_count=1 での escalation を verify する。
+# --------------------------------------------------------------------------
+echo "TC-634-D: create_interview with error_count=1 emits RE-ENTRY DETECTED escalation (symmetric with TC-634-B)"
+dir634d="$GUARD_TEST_DIR/tc634d"
+mkdir -p "$dir634d"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir634d" "{\"active\": true, \"phase\": \"create_interview\", \"previous_phase\": \"\", \"next_action\": \"continue\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 634, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-634d\"}"
+stderr_file634d="$(mktemp "$GUARD_TEST_DIR/stderr634d.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir634d\", \"session_id\": \"sid-634d\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file634d") && rc=0 || rc=$?
+state_error_count_d=$(jq -r '.error_count // empty' "$dir634d/.rite-flow-state" 2>/dev/null)
+if [ $rc -eq 2 ] \
+    && grep -q "RE-ENTRY DETECTED" "$stderr_file634d" \
+    && grep -q "error_count=2" "$stderr_file634d" \
+    && [ "$state_error_count_d" = "2" ]; then
+  pass "create_interview error_count=1 → RE-ENTRY DETECTED escalation + state file error_count=2 (symmetric with TC-634-B)"
+else
+  fail "expected create_interview escalation with RE-ENTRY DETECTED + error_count=2 in both HINT and state, got rc=$rc, state_error_count='$state_error_count_d', stderr='$(cat "$stderr_file634d")'"
 fi
 
 # --------------------------------------------------------------------------

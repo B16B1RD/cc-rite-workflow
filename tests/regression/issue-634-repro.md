@@ -12,7 +12,7 @@
 
 ### 1.1 前提条件
 
-- `plugins/rite/.claude-plugin/plugin.json` の `hooks` field から `plugins/rite/hooks/hooks.json` が native plugin hook として読み込まれ登録されている (`Stop` hook = `stop-guard.sh`)
+- `plugins/rite/hooks/hooks.json` が存在し、Claude Code の native plugin hook discovery (ファイル存在ベース) により `Stop` hook = `stop-guard.sh` が登録されている (init.md Phase 4.5.0.2 / start.md Step 2 参照)
 - `jq` がインストールされている
 - `.rite-flow-state` が存在しない (fresh start)
 - #628 までの全累積対策が適用されている HEAD
