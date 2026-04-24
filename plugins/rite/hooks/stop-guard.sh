@@ -328,7 +328,9 @@ case "$PHASE" in
     # Defense-in-Depth bash block at the end of the markdown only). stop-guard must block in
     # either position so the workflow does not silently end the turn before delegation.
     # DRIFT-CHECK ANCHOR (semantic): create-interview.md 🚨 MANDATORY Pre-flight section /
-    # phase-transition-whitelist.sh create_interview entry と 3 site 対称。
+    # phase-transition-whitelist.sh create_interview entry と 3 site 対称 (本 anchor は
+    # create_interview phase 用で、create_post_interview の 4-site anchor とは別系統。
+    # 両 anchor 系統の混同を避けるため明示的に scope を区別する)。
     WORKFLOW_HINT="HINT: /rite:issue:create Delegation to Interview Pre-write recorded create_interview. The block may have fired immediately before the rite:issue:create-interview Skill invoke, OR while the interview sub-skill is mid-execution (create-interview.md MUST write create_post_interview via its 🚨 MANDATORY Pre-flight section before returning). In either case, do NOT stop. Continue: if interview has not been invoked yet, invoke it; if interview has returned <!-- [interview:skipped] --> or <!-- [interview:completed] --> but .rite-flow-state.phase is still create_interview, the sub-skill Pre-flight patch was skipped — run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count) → Step 1 (idempotent re-patch) → Phase 0.6 → Delegation Routing → terminal sub-skill in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm sub-skill return completed. Also grep for '[CONTEXT] PREFLIGHT_PATCH_FAILED=1' / '[CONTEXT] PREFLIGHT_CREATE_FAILED=1' / '[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1' — if any present, the sub-skill Pre-flight / Return Output re-patch encountered disk full / permission denied; caller Step 0 / Step 1 serve as redundant retry. DO NOT stop before <!-- [create:completed:{N}] --> is output."
     # Issue #634 escalation: re-entry detected when error_count >= 1.
     if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
@@ -341,9 +343,13 @@ case "$PHASE" in
     # 軽く return 直後の LLM turn-boundary heuristic が発火しやすい。HINT を more concrete に
     # し、orchestrator が consume すべき specific bash 名を含めることで「次に何をすべきか」の
     # cognitive load を最小化する。
-    # DRIFT-CHECK ANCHOR (semantic): create.md 🚨 Mandatory After Interview Step 0 Immediate
-    # Bash Action / create-interview.md Return Output [CONTEXT] INTERVIEW_DONE=1 marker と
-    # 3 site 対称。
+    # DRIFT-CHECK ANCHOR (semantic, 4-site) — Issue #651 PR #654 review F-03 で 3-site → 4-site 対称化:
+    # 本 case arm WORKFLOW_HINT は (1) create.md 🚨 Mandatory After Interview Step 0 / (2) create-interview.md
+    # 🚨 MANDATORY Pre-flight / (3) create-interview.md Return Output re-patch (caller HTML コメント inline
+    # literal を含む) / (4) 本 stop-guard.sh case arm の **4 site 対称**。
+    # bash 引数 symmetry (--phase, --next, --preserve-error-count) の崩れは error_count reset loop
+    # (verified-review cycle 3 F-01) を再発させる。create-interview.md / create.md の同名 anchor と
+    # pair で 4 site 同期する。
     WORKFLOW_HINT="HINT: Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run 🚨 Mandatory After Interview Step 0 (Immediate Bash Action: bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count) → Step 1 (re-patch timestamp) → Phase 0.6 (Task Decomposition Decision) → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn. Grep recent context for '[CONTEXT] INTERVIEW_DONE=1' to confirm the sub-skill completed its return output. Also grep for '[CONTEXT] STEP_0_PATCH_FAILED=1' / '[CONTEXT] STEP_1_PATCH_FAILED=1' / '[CONTEXT] PREFLIGHT_PATCH_FAILED=1' / '[CONTEXT] PREFLIGHT_CREATE_FAILED=1' / '[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1' — if any present, a patch site failed (disk full / permission denied); the 2 重 patch defense-in-depth (Step 0 + Step 1 + Pre-flight + Return Output re-patch) means at least one site should have succeeded, but if all 5 are concurrently failing you must resolve the underlying disk/permission issue before retrying. No GitHub Issue has been created yet."
     # Issue #634 escalation: error_count-based reminder. 2 回目以降の block では
     # LLM が recovery path を取っていない signal とみなして HINT を更に明示化。

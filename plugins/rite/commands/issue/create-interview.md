@@ -576,14 +576,14 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 >
 > **Issue #561 UX fix**: The result pattern (`[interview:skipped]` / `[interview:completed]`) is now emitted as an HTML comment (`<!-- [interview:skipped] -->`). The string `[interview:skipped]` / `[interview:completed]` inside the HTML comment is still grep-matchable (`grep -F '[interview:'`) so the orchestrator's Pre-check Item 0 (routing dispatcher) and any hook/test contract remain intact (AC-3). The HTML comment form prevents the sentinel token from being the user-visible final line, weakening the LLM's turn-boundary heuristic that previously caused premature `continue`-requiring stops.
 >
-> **Issue #634 enhancement**: `[CONTEXT] INTERVIEW_DONE=1` marker is added as the FIRST line of the return block (not the last). This establishes a grep-detectable signal `INTERVIEW_DONE=1` that the orchestrator's Pre-check list Item 0 and Mandatory After Interview Step 0 both consume. Placing the marker FIRST (not last) means the sub-skill's last line remains the sentinel HTML comment (preserving #561 ordering), while the context grep can still find `INTERVIEW_DONE=1` anywhere in recent context. The marker is a plain-text line (not HTML-commented) because Pre-check Item 0 uses context grep which may strip HTML comments in some rendering modes. DRIFT-CHECK ANCHOR (semantic): create.md 🚨 Mandatory After Interview Step 0 Immediate Bash Action / stop-guard.sh create_post_interview case arm WORKFLOW_HINT と 3 site 対称。
+> **Issue #634 enhancement**: `[CONTEXT] INTERVIEW_DONE=1` marker is added as the FIRST line of the return block (not the last). This establishes a grep-detectable signal `INTERVIEW_DONE=1` that the orchestrator's Pre-check list Item 0 and Mandatory After Interview Step 0 both consume. Placing the marker FIRST (not last) means the sub-skill's last line remains the sentinel HTML comment (preserving #561 ordering), while the context grep can still find `INTERVIEW_DONE=1` anywhere in recent context. The marker is a plain-text line (not HTML-commented) because Pre-check Item 0 uses context grep which may strip HTML comments in some rendering modes. DRIFT-CHECK ANCHOR (semantic, 4-site): create.md 🚨 Mandatory After Interview Step 0 Immediate Bash Action / create-interview.md 🚨 MANDATORY Pre-flight / create-interview.md Return Output re-patch (本セクション末尾) / stop-guard.sh create_post_interview case arm WORKFLOW_HINT と **4 site 対称** (Issue #651 PR #654 cycle 2 review F-NEW1 で 3-site → 4-site 拡張、本セクション末尾の DRIFT-CHECK ANCHOR (semantic, 4-site) と同一 scope)。
 
 **Output format example (interview skipped)**:
 
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:skipped] -->
 ```
 
@@ -592,9 +592,17 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:completed] -->
 ```
+
+> **Issue #651 enhancement (4-site 対称化、syntax-safe inline bash command)**: caller HTML コメントに Step 0 Immediate Bash Action の bash command literal を **backtick で明示的に区切って** inline で含めることで、orchestrator が次に実行すべき具体的な tool call を sub-skill 出力直後に視認できるようにする。`bash ... --preserve-error-count` までを backtick で囲い、その後を散文 `THEN (after the bash command above succeeds) continue with Phase 0.6 ...` で続けることで、LLM が caller HTML コメントを literal 解釈しても **bash 構文として valid な単一コマンド** として実行可能になる (旧版 `; then continue with Phase 0.6` は `if cmd; then ... fi` 構文の一部と誤解釈されて syntax error になる問題を修正、Issue #651 PR #654 review F-01)。bash 引数 (`--phase create_post_interview` / `--if-exists` / `--preserve-error-count`) は **create.md Mandatory After Interview Step 0 Immediate Bash Action** / **Pre-flight (本ファイル冒頭)** / **Return Output re-patch (本セクション直前)** / **stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT bash literal** と **4-site 対称**。
+>
+> **`--if-exists` の非対称性** (時系列で説明): orchestrator が caller HTML コメントの bash command を実行する時点では、本 sub-skill (create-interview.md) の Pre-flight が既に完了しており `.rite-flow-state` の存在は保証されている → よって `--if-exists` は no-op safety net として無害に働く。一方 create-interview.md の Pre-flight / Return Output re-patch は **file 不在時に `create` mode で新規生成する 2 経路分岐** を持つため `if [ -f ".rite-flow-state" ]; then ... else ... fi` 形式で明示処理 (意図的非対称、本 inline bash literal は orchestrator-side 実行想定)。
+>
+> **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651: 本 caller HTML コメント内 bash literal は (1) create.md 🚨 Mandatory After Interview Step 0 / (2) create-interview.md 🚨 MANDATORY Pre-flight / (3) create-interview.md Return Output re-patch (本セクション直前) / (4) stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT と **4-site 対称**。bash 引数 symmetry (`--phase` / `--if-exists` / `--preserve-error-count`) は #636 cycle 3 F-01 の error_count reset loop 防止規約に従う。`--next` 文字列は HINT/canonical で異なる (Step 0 fired vs continue caller) が動作影響なし。
+>
+> **2 site 内対称性 (skipped/completed paths)**: 本ファイル内の `[interview:skipped]` (line 586 周辺) と `[interview:completed]` (line 595 周辺) の両 example で同一 bash literal を保持する必要がある。片方のみの更新は drift とみなされ、TC-651-B の 2-site count 検証で fail する (PR #654 review F-05 / F-08)。
 
 > **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。user-visible な最終コンテンツは `⏭ 継続中:` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
 
