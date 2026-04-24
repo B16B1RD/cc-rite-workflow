@@ -406,10 +406,10 @@ case "$PHASE" in
     # cleanup_pre_ingest case arm (上方) は別 target (cleanup.md Step 0 Immediate Bash Action、
     # next-phase patch) と対称で、本 arm とは異なる drift check scope を持つ (Issue #650 review
     # MEDIUM 指摘対応で ANCHOR コメントを arm 別に分岐)。
-    WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. In the SAME response turn, output the cleanup completion message (Phase 5.1) + next-steps ordered list (Phase 5.2) with inline <!-- [cleanup:completed] --> HTML sentinel at the trailing position of the final list item (#652: independent-line emission causes a visible blank line in rendered view due to CommonMark HTML block rules; inline emission avoids it), THEN deactivate flow state (cleanup_completed, active: false via \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists\`). Grep recent context for '[CONTEXT] STEP_0_PATCH_FAILED=1' / '[CONTEXT] STEP_1_PATCH_FAILED=1' — if either present, the previous Step 0 / Step 1 patch failed (disk full / permission denied); Phase 5 Completion Report will still execute, but the terminal deactivate patch (cleanup_completed) must succeed or the next session will see stale active=true state (session-end.sh cleanup lifecycle WARN will surface it). DO NOT stop before <!-- [cleanup:completed] --> is output."
+    WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. In the SAME response turn, output the cleanup completion message (Phase 5.1) + next-steps ordered list (Phase 5.2) with inline <!-- [cleanup:completed] --> HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list) (#652: independent-line emission causes a visible blank line in rendered view due to CommonMark HTML block rules; inline emission avoids it), THEN deactivate flow state (cleanup_completed, active: false via \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists\`). Grep recent context for '[CONTEXT] STEP_0_PATCH_FAILED=1' / '[CONTEXT] STEP_1_PATCH_FAILED=1' — if either present, the previous Step 0 / Step 1 patch failed (disk full / permission denied); Phase 5 Completion Report will still execute, but the terminal deactivate patch (cleanup_completed) must succeed or the next session will see stale active=true state (session-end.sh cleanup lifecycle WARN will surface it). DO NOT stop before <!-- [cleanup:completed] --> is output."
     # Issue #650 escalation: error_count-based reminder (cleanup_pre_ingest case arm と対称)。
     if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
-      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not result in Phase 5 continuation. If you are reading this HINT, execute the following bash block NOW as your next tool call (before any other text output): \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists\`. After the bash block succeeds, output the Phase 5 Completion Report (Phase 5.1 message + Phase 5.2 ordered list with inline <!-- [cleanup:completed] --> HTML sentinel at the trailing position of the final list item, #652) in the SAME response turn."
+      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not result in Phase 5 continuation. If you are reading this HINT, execute the following bash block NOW as your next tool call (before any other text output): \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists\`. After the bash block succeeds, output the Phase 5 Completion Report (Phase 5.1 message + Phase 5.2 ordered list with inline <!-- [cleanup:completed] --> HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list), #652) in the SAME response turn."
     fi
     ;;
   ingest_pre_lint)
@@ -423,11 +423,10 @@ case "$PHASE" in
     # phase-transition-whitelist.sh ingest_pre_lint entry と 3 site 対称。
     # INTENTIONAL TERMINOLOGY DIVERGENCE (#652): ingest 系は "absolute last line" 規約を維持
     # (ingest.md Phase 9.1 Step 3 三点セット規約)。cleanup 系 (#652 対応で inline HTML sentinel
-    # at the trailing position of the final list item of Phase 5.2 に移行) と意図的に異なる。
-    # 詳細な divergence 理由 (cycle 2 factual correction、#652 Root Cause モデル) は
-    # docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md 参照 (cleanup_pre_ingest case arm
-    # の cleanup-wiki-ingest-turn-boundary 系列 anti-pattern doc、sentinel 後の bash UI 有無に
-    # よる CommonMark HTML block 空行可視化の非対称として factual に説明されている)。
+    # at the trailing position of the final list item of Phase 5.2 (ordered list) に移行) と
+    # 意図的に異なる。詳細な divergence 理由 (markdown channel separation モデル、#655 F-C4-01
+    # cycle 5 factual correction) は docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md の
+    # INTENTIONAL DIVERGENCE Rationale セクションを参照 (ingest_post_lint arm と同一 reference)。
     WORKFLOW_HINT="HINT: /rite:wiki:ingest Phase 8.2 Pre-write recorded ingest_pre_lint. The block may have fired immediately before the rite:wiki:lint --auto Skill invoke, OR while the lint sub-skill is mid-execution. Do NOT stop. Continue: if lint has not been invoked yet, invoke it; if lint has returned (check recent output for <!-- [lint:completed:auto] --> HTML comment sentinel or Lint: 6-field line), run 🚨 Mandatory After Auto-Lint Step 1 (patch ingest_post_lint) → Step 2 (Phase 8.3 Lint parse → 8.4/8.5 → Phase 9 Completion Report) → Step 3 (output caller continuation HTML comment + <!-- [ingest:completed] --> sentinel as absolute last line per ingest.md Phase 9.1 Step 3 三点セット規約) in the SAME response turn. DO NOT stop before <!-- [ingest:completed] --> is output."
     ;;
   ingest_post_lint)
@@ -437,10 +436,10 @@ case "$PHASE" in
     # cleanup_post_ingest TC-608-H pin.
     # INTENTIONAL TERMINOLOGY DIVERGENCE (#652): ingest 系は "absolute last line" 規約を維持
     # (ingest.md Phase 9.1 Step 3 三点セット規約)。cleanup 系 (#652 対応で inline HTML sentinel
-    # at the trailing position of the final list item of Phase 5.2 に移行) と意図的に異なる。
-    # 詳細な divergence 理由 (cycle 2 factual correction、#652 Root Cause モデル) は
-    # docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md 参照 (ingest_pre_lint case arm
-    # と同一の semantic reference — sibling arm 対称性維持 #655 F-05)。
+    # at the trailing position of the final list item of Phase 5.2 (ordered list) に移行) と
+    # 意図的に異なる。詳細な divergence 理由 (markdown channel separation モデル、#655 F-C4-01
+    # cycle 5 factual correction) は docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md の
+    # INTENTIONAL DIVERGENCE Rationale セクションを参照 (ingest_pre_lint arm と同一 reference)。
     WORKFLOW_HINT="HINT: rite:wiki:lint --auto returned and ingest_post_lint is recorded. Phase 9 Completion Report has NOT been output yet. In the SAME response turn, execute Phase 8.3 (Lint result parse) → Phase 8.4 (Ingest 完了レポート統合) → Phase 8.5 (n_warnings 加算) → Phase 9 (user-visible completion message), THEN output caller continuation HTML comment (<!-- continuation: caller MUST proceed ... -->), THEN deactivate flow state (ingest_completed, active:false via Phase 9.1 Step 3 bash block), THEN output <!-- [ingest:completed] --> HTML comment sentinel as the absolute last line of the response per ingest.md Phase 9.1 Step 3 三点セット規約. DO NOT stop."
     ;;
 esac
