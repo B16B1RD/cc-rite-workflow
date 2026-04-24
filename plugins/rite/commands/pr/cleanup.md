@@ -1869,7 +1869,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
 fi
 ```
 
-> **Note (#652)**: 旧 Step 2 (HTML sentinel 独立行出力) は Phase 5.2 inline sentinel に吸収済み (上記 Output ordering 参照)。Step 1 bash 実行後に LLM は追加のテキストを出力禁止 — 独立行 emit の CommonMark HTML block 規則による空行可視化根拠は L1846 の MUST NOT (#652-2) を参照。
+> **Note (#652)**: 旧 Step 2 (HTML sentinel 独立行出力) は Phase 5.2 inline sentinel に吸収済み (上記 Output ordering 参照)。Step 1 bash 実行後に LLM は追加のテキストを出力禁止 — 独立行 emit の CommonMark HTML block 規則による空行可視化根拠は上記 Phase 5.2 MUST NOT (#652) の #652-2 項を参照。
 
 **Self-verification** (Pre-check Item 1-3 evaluation, 場面 (b) mode):
 - Item 1: `grep -F '[cleanup:completed]'` against the response output finds the HTML-commented sentinel in Phase 5.2 final list item? → MUST be YES

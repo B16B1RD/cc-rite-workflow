@@ -142,6 +142,12 @@ assert_contains "stderr contains Phase:" "Phase:" "$STDERR_CONTENT"
 assert_contains "stderr contains ingest_pre_lint" "ingest_pre_lint" "$STDERR_CONTENT"
 # HINT-specific phrase pin (Issue #618 AC-4): ingest_pre_lint case arm 内にのみ存在する文言を pin
 assert_contains "stderr contains 'Phase 8.2 Pre-write recorded'" "Phase 8.2 Pre-write recorded" "$STDERR_CONTENT"
+# #655 F-06 canonical phrase pin: ingest 系 "absolute last line" 規約 (ingest.md Phase 9.1 Step 3
+# 三点セット規約) が ingest arm から drift した場合に検知。stop-guard-cleanup.test.sh の
+# "HTML sentinel at the trailing position of the final list item" pin と sibling fixture で
+# 相補関係を形成し、cleanup 系 ↔ ingest 系の意図的 divergence を silent unification regression
+# から守る (wiki 経験則: HINT phrase 相補関係 + sentinel emission との orthogonal 検知)。
+assert_contains "stderr contains ingest canonical phrase" "absolute last line per ingest.md Phase 9.1 Step 3 三点セット規約" "$STDERR_CONTENT"
 # Sentinel emission pin: stop-guard.sh:332 の WORKFLOW_INCIDENT_TYPE 設定分岐で
 # manual_fallback_adopted sentinel が stderr に echo されることを assert
 assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
@@ -156,6 +162,9 @@ assert_contains "stderr contains ingest_post_lint" "ingest_post_lint" "$STDERR_C
 # HINT-specific phrase pin: ingest_post_lint case arm 内にのみ存在する文言を pin
 assert_contains "stderr contains 'rite:wiki:lint --auto returned'" "rite:wiki:lint --auto returned" "$STDERR_CONTENT"
 assert_contains "stderr contains 'Phase 9 Completion Report has NOT been output'" "Phase 9 Completion Report has NOT been output" "$STDERR_CONTENT"
+# #655 F-06 canonical phrase pin: Test 1 と同様に ingest 系 "absolute last line" 規約の
+# stop-guard-cleanup.test.sh との sibling 相補関係 pin (意図的 divergence 保持)
+assert_contains "stderr contains ingest canonical phrase" "absolute last line of the response per ingest.md Phase 9.1 Step 3 三点セット規約" "$STDERR_CONTENT"
 # Sentinel emission pin
 assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
 
