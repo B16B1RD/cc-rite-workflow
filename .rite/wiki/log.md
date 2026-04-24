@@ -183,3 +183,8 @@
 | 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | sources 配列に 3 件追加、tags に literal-syntax-validity / anchor-prose-propagation 追加 |
 | 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | 関連 PR #654 cycle 2 fix を sources に追加 (Asymmetric Fix Transcription 派生形) |
 | 2026-04-24T06:35:21Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0 |
+| 2026-04-24T14:55:00+00:00 | ingest:create | pages/patterns/markdown-channel-separation-for-terminal-sentinel.md | PR #655 cycle 3 review を統合 (Issue #652 Root Cause 散文モデル、CommonMark HTML block type 2 の前後空行要求) |
+| 2026-04-24T14:55:00+00:00 | ingest:create | pages/anti-patterns/test-pin-protection-theater.md | PR #655 cycle 4 review を統合 (canonical phrase partial unification の blind spot 指摘、factual correction regression の hint) |
+| 2026-04-24T14:55:00+00:00 | ingest:create | pages/anti-patterns/test-pin-protection-theater.md | PR #655 cycle 6 review を統合 (F-C6-03 protection theater 初明文化 + E-2 経験則) |
+| 2026-04-24T14:55:00+00:00 | ingest:create | pages/patterns/markdown-channel-separation-for-terminal-sentinel.md | PR #655 cycle 3 fix を統合 (inline HTML sentinel 適用実装、前方空行要求回避) |
+| 2026-04-24T14:55:00+00:00 | ingest:create | pages/patterns/markdown-channel-separation-for-terminal-sentinel.md | PR #655 cycle 5 fix を統合 (factual correction と anti-pattern doc 整合、markdown channel separation 初文言化) |
