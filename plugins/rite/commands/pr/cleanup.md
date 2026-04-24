@@ -43,7 +43,7 @@ When this command is executed, run the following phases in order.
 | # | Check (種別) | If YES/NO / routing, do |
 |---|-------------|------------------------|
 | 0 | **Routing dispatcher (MUST execute step-by-step, skip 禁止 — Issue #621)**: 直前の sub-skill return tag は何か? | 本 Item は routing dispatcher (YES/NO 集計から除外)。手順 (1)(2)(3) は下記 **Item 0 — Routing dispatcher 手順** サブセクションで定義する。evidence 出力の義務化により LLM の silent skip を検出可能にする。 |
-| 1 | **State check**: `[cleanup:completed]` が HTML コメント形式で最終行 (あるいは末尾近傍) に出力済みか? | 推奨形式: `grep -F '[cleanup:completed]'` (fixed string で HTML コメント内の string も matchable)。場面 (a) では `NO` でも legitimate — 次の Mandatory After Wiki Ingest / Phase 5 出力に進む。場面 (b) では `NO` は terminal sub-skill (Phase 5) が未完了 — Phase 5 完了メッセージ + 次のステップ + HTML コメント sentinel を出力する。 |
+| 1 | **State check**: `[cleanup:completed]` が HTML コメント形式で Phase 5.2 最終 list item 末尾に inline 出力済みか (#652)? | 推奨形式: `grep -F '[cleanup:completed]'` (fixed string で HTML コメント内の string も matchable。inline / independent-line 両形式で match 可能)。場面 (a) では `NO` でも legitimate — 次の Mandatory After Wiki Ingest / Phase 5 出力に進む。場面 (b) では `NO` は terminal sub-skill (Phase 5) が未完了 — Phase 5 完了メッセージ + 次のステップ ordered list (最終 list item 末尾に inline HTML sentinel を含む) を出力する。 |
 | 2 | **State check**: ユーザー向け完了メッセージ (`クリーンアップが完了しました` 行を含むブロック) が表示済みか? | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は Phase 5 完了レポートが欠落 — Phase 5.1 / 5.2 を実行する。 |
 | 3 | **State check**: `.rite-flow-state` が deactivate 済みか? (`active: false`, `phase: cleanup_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — Phase 5 末尾の flow-state deactivate を実行する。 |
 
@@ -61,11 +61,11 @@ When this command is executed, run the following phases in order.
      - `[CONTEXT] INGEST_DONE=` (AC-2 literal defensive matcher: 将来 sub-skill が WIKI_ prefix なしで emit するよう変更された場合に備える)
    - **いずれかが matched** した時点で `ingest=matched`、すべて unmatched なら `ingest=unmatched` と判定する (OR 集約)
    - 判定結果を response text に 1 行含める: **HTML コメント形式のみ許容** (`<!-- [routing-check] ingest=matched -->` または `<!-- [routing-check] ingest=unmatched -->`)。bare bracket 形式 (`[routing-check] ingest=matched`) は禁止 — 同ファイル内の bare sentinel 禁止規約 (#604, mirrors #561) と衝突し、Mode B implicit stop を誘発するため
-   - 本 evidence 行は response の最終行に置いてはならない (最終行は `<!-- [cleanup:completed] -->` sentinel 専用)
+   - 本 evidence 行は response の最終行に置いてはならない (最終行は Phase 5.2 最終 list item (inline HTML sentinel `<!-- [cleanup:completed] -->` 付き) 専用、#652)
 2. **`[cleanup:completed]` を検索して evidence を出力する**:
    - 直前応答の text body に対し `[cleanup:completed]` を grep -F で検索する
    - 判定結果を response text に 1 行含める: `<!-- [routing-check] cleanup=matched -->` または `<!-- [routing-check] cleanup=unmatched -->` (HTML コメント形式のみ許容)
-   - 本 evidence 行も response の最終行に置いてはならない (最終行は `<!-- [cleanup:completed] -->` sentinel 専用)
+   - 本 evidence 行も response の最終行に置いてはならない (最終行は Phase 5.2 最終 list item (inline HTML sentinel `<!-- [cleanup:completed] -->` 付き) 専用、#652)
 3. **上記 2 行の判定に従って routing する** (両 tag matched 時の優先順位を明示):
    - **優先ルール**: 両方 matched が発生しうるのは同一 session 内で過去 cleanup 完了済み後に次 PR cleanup で ingest を呼んだ直後等の混在ケース。このとき **`ingest=matched` を優先採択**し `cleanup=matched` は無視する (直前 sub-skill return は ingest なので continuation trigger が真の意図)
    - `ingest=matched` → **continuation trigger** として即座に 🚨 Mandatory After Wiki Ingest (`cleanup_post_ingest` patch → Phase 5 Completion Report) を同 turn 内で実行
@@ -97,9 +97,8 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
 <LLM output: brief recap (optional)>
 <In the same response turn, LLM IMMEDIATELY:>
   1. Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)
-  2. Outputs Phase 5.1 Cleanup Result Summary + Phase 5.2 Guidance for Next Steps (user-visible)
-  3. Phase 5.2 最終 list item 末尾に inline `<!-- [cleanup:completed] -->` HTML sentinel を付加 (#652: 独立行で出力しない)
-  4. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false)
+  2. Outputs Phase 5.1 Cleanup Result Summary + Phase 5.2 Guidance for Next Steps — **最終 list item 末尾に inline `<!-- [cleanup:completed] -->` HTML sentinel を literal として含める** (#652: 独立行で出力しない。Phase 5.2 出力の一部として同一行に配置する)
+  3. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false)
 ```
 
 **Rule**: Treat `rite:wiki:ingest` return as a **continuation trigger**, not a stopping point. The **only** valid stop is after the user-visible completion message (`クリーンアップが完了しました`) + next-steps block (with inline `<!-- [cleanup:completed] -->` sentinel at the final list item's trailing inline position — #652) have been displayed. The HTML-commented sentinel is invisible in rendered views but grep-matchable for hooks/scripts.
@@ -115,7 +114,7 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
 
 **Completion marker convention** (Issue #604, mirrors create.md Issue #561 D-01, updated by #652): The unified completion marker for `/rite:pr:cleanup` is `[cleanup:completed]`, emitted as an HTML comment (`<!-- [cleanup:completed] -->`) **inline at the trailing position of Phase 5.2's final list item** (not as an independent line — #652: independent-line emission triggers CommonMark HTML block blank-line requirements and causes a visible blank line in rendered view). The HTML comment form keeps the string grep-matchable (`grep -F '[cleanup:completed]'`) while ensuring the user-visible final content is the `クリーンアップが完了しました` checklist + guidance block. Phase 5 handles flow-state deactivation (`cleanup_completed`, `active: false`) in Phase 5.3 Step 1, and the inline HTML sentinel is emitted as part of Phase 5.2's final list item (Terminal Completion pattern).
 
-**Defense-in-depth**: Phase 1.0 activates `.rite-flow-state` to `cleanup` (Phase 1-4 区間の保護)。Phase 4.W.2 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then 🚨 Mandatory After Wiki Ingest Step 1 (Phase 4.W sub-section: `### 🚨 Mandatory After Wiki Ingest` at h3, inside `## Phase 4.W`) writes `cleanup_post_ingest` after the sub-skill returns. Phase 5.3 writes `cleanup_completed` with `active: false` and outputs the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 (start.md 配下) detection.
+**Defense-in-depth**: Phase 1.0 activates `.rite-flow-state` to `cleanup` (Phase 1-4 区間の保護)。Phase 4.W.2 writes `.rite-flow-state` to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then 🚨 Mandatory After Wiki Ingest Step 1 (Phase 4.W sub-section: `### 🚨 Mandatory After Wiki Ingest` at h3, inside `## Phase 4.W`) writes `cleanup_post_ingest` after the sub-skill returns. Phase 5.3 Step 1 writes `cleanup_completed` with `active: false` as the terminal flow-state deactivate step (the completion marker itself is emitted inline by Phase 5.2's final list item, see the completion marker convention above — #652). This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 (start.md 配下) detection.
 
 ---
 
@@ -1527,7 +1526,7 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_pre_ingest" --active true \
-    --next "After rite:wiki:ingest returns: run 🚨 Mandatory After Wiki Ingest (Pre-write cleanup_post_ingest) → Phase 5 Completion Report (cleanup_completed + <!-- [cleanup:completed] --> sentinel) in the SAME response turn. Do NOT stop." \
+    --next "After rite:wiki:ingest returns: run 🚨 Mandatory After Wiki Ingest (Pre-write cleanup_post_ingest) → Phase 5 Completion Report (cleanup_completed + inline <!-- [cleanup:completed] --> HTML sentinel at Phase 5.2 final list item trailing position, #652) in the SAME response turn. Do NOT stop." \
     --if-exists; then
   echo "WARNING: flow-state-update.sh patch (cleanup_pre_ingest) failed — stop-guard defence-in-depth is disabled for this Phase 4.W.2 invocation. Sub-skill rite:wiki:ingest will still be invoked, but premature end_turn will not be blocked. Investigate the helper exit reason in stderr above before relying on this protection again." >&2
 fi
@@ -1841,11 +1840,11 @@ git stash pop
 1. `/rite:issue:list` で次の Issue を確認
 2. `/rite:issue:start <issue_number>` で新しい作業を開始 <!-- [cleanup:completed] -->
 
-> **⚠️ MUST NOT (#633, #652, Phase 9.2 三点セット規約整合)**:
+> **⚠️ MUST NOT (#633, #652)**:
 > - **#633**: 「次のステップ:」ブロック最終項目直後に余計な空行を出力してはならない (非退行)。
 > - **#652-1**: Phase 5.2 を fenced code block (` ``` ` で囲む形式) にしてはならない。通常 ordered list として出力する。理由: fenced code block 内では inline HTML が literal 文字列として可視表示され、`[cleanup:completed]` bare bracket 形式の UI 可視化につながり #604 に違反するため。
 > - **#652-2**: HTML コメント sentinel を独立行として出力してはならない。独立行だと CommonMark HTML block (type 2) として解釈され、renderer が前後に空行を要求し、`Ran 1 shell command` (下記 Phase 5.3 Step 1 bash UI) と後続 recap の間に余計な空行が rendered view で可視化する (Issue #652 Root Cause)。最終 list item `2. /rite:issue:start ...` の末尾に **半角スペース区切りで inline 付加** することで inline HTML として処理され、前後空行要求を回避する。
-> - 末尾空行は LLM turn-boundary heuristic を誤発火させうる fragile 要因であり、Phase 9.2 三点セット規約 (完了メッセージ → 次のステップ → HTML コメント sentinel の連続出力、`wiki/lint.md` Phase 9.2 canonical pattern 参照) と整合させること。
+> - 末尾空行は LLM turn-boundary heuristic を誤発火させうる fragile 要因。**#652 対応により cleanup.md は `wiki/lint.md` Phase 9.2 三点セット規約 (3 独立ブロック構造) から意図的に divergence し、2 ブロック構造 (完了メッセージ + 次のステップ-with-inline-sentinel) を採用する**。rendered view での空行抑制が 3 ブロック規約整合より優先される (cleanup.md ↔ wiki/lint.md の構造は意図的に異なる)。
 
 ### 5.3 Terminal Completion (Issue #604, updated #652)
 
@@ -1853,9 +1852,10 @@ git stash pop
 >
 > **Output ordering** (絶対遵守 — **各ブロック間に余計な空行を挿入しない** (#633)、**HTML sentinel は LLM の独立行として出力しない** (#652))。Phase 5.1 / 5.2 は前段 sub-phase として Phase 5.3 進入前に既に出力済み、下記 Phase 5.3 Step 1 と直接対応:
 > 1. Phase 5.1 Cleanup Result Summary — 前段で出力済み (ユーザー可視メッセージ + チェックリスト + 警告群)
-> 2. Phase 5.2 Guidance for Next Steps — 前段で出力済み (ユーザー可視 ordered list、**最終項目末尾に inline HTML sentinel `<!-- [cleanup:completed] -->` を付加** — Phase 9.2 三点セット規約整合、#633 / #652)
+> 2. Phase 5.2 Guidance for Next Steps — 前段で出力済み (ユーザー可視 ordered list、**最終項目末尾に inline HTML sentinel `<!-- [cleanup:completed] -->` を付加** — #633 / #652)
 > 3. Phase 5.3 Step 1: flow-state deactivate (下記 Step 1) — Phase 5.2 最終項目直後に連続実行する (中間に空行を挟まない、#633)。bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
-> 4. **(Issue #652 で削除)** 従来の Step 2 (HTML sentinel の独立行出力) は廃止。HTML sentinel は Phase 5.2 最終 list item 末尾に inline 吸収された。LLM は Step 1 bash 実行後に追加のテキストを出力してはならない。
+>
+> 注記 (Issue #652 で削除): 従来の Step 2 (HTML sentinel の独立行出力) は廃止。HTML sentinel は Phase 5.2 最終 list item 末尾に inline 吸収された。LLM は Step 1 bash 実行後に追加のテキストを出力してはならない。
 
 **Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if ! cmd; then` rc capture is mandatory — silent failure here leaves `.rite-flow-state.active = true`, which causes the **next** session-end / stop-guard evaluation to surface a stale HINT for the already-completed cleanup workflow (#608 follow-up):
 
