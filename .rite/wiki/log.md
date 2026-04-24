@@ -179,3 +179,6 @@
 | 2026-04-19T08:15:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=37, broken_refs=16 |
 | 2026-04-20T01:35:00+00:00 | ingest:skip | raw/reviews/20260420T013202Z-pr-612.md | XS mechanical text replacement (3 箇所) で 2 reviewer 0 findings 収束。generalizable heuristic が乏しく、表記 convention の documentation task は follow-up Issue #613 に分離済みのため skip (raw: pr-612) |
 | 2026-04-20T01:40:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=45, broken_refs=0 |
+| 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #653 review + PR #654 cycle 1/2 fix を統合 (累積 9 件目 self-exemplar、literal 構文有効性、隣接 prose 波及漏れ) |
+| 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | sources 配列に 3 件追加、tags に literal-syntax-validity / anchor-prose-propagation 追加 |
+| 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | 関連 PR #654 cycle 2 fix を sources に追加 (Asymmetric Fix Transcription 派生形) |
