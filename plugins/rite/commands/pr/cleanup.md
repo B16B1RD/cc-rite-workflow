@@ -99,7 +99,7 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
   1. Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)
   2. Outputs Phase 5.1 Cleanup Result Summary
   3. Outputs Phase 5.2 Guidance for Next Steps — **最終 list item 末尾に inline `<!-- [cleanup:completed] -->` HTML sentinel を literal として含める** (#652: 独立行で出力しない。Phase 5.2 出力の一部として同一行に配置する)
-  4. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false)
+  4. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false) — この bash 実行後に LLM は追加の text / tool call を出力せず turn を閉じる (inline sentinel が absolute last markdown text として既に Step 3 で出力済み、#652 / #655 F-C6-09 cycle 7 対応)
 ```
 
 **Rule**: Treat `rite:wiki:ingest` return as a **continuation trigger**, not a stopping point. The **only** valid stop is after the user-visible completion message (`クリーンアップが完了しました`) + next-steps block (with `<!-- [cleanup:completed] -->` as inline HTML sentinel at the trailing position of the final list item of Phase 5.2 — #652) have been displayed. The HTML-commented sentinel is invisible in rendered views but grep-matchable for hooks/scripts.
@@ -1699,6 +1699,8 @@ fi
 
 ### 5.1 Cleanup Result Summary
 
+> **出力形式 note (#655 F-C6-10 cycle 7 対応)**: 以下の fenced code block は **テンプレート記法** であり、LLM は実 output 時に fence なしでテキスト本文のみを展開する (Phase 5.2 と同じ fence-less 通常 markdown)。プレースホルダー `{pr_number}` / `{issue_number}` 等は実値に置換する。fence そのものを rendered view に出力してはならない (Phase 5.2 MUST NOT #652-1 と同趣旨の fence 禁止)。
+
 ```
 クリーンアップが完了しました
 
@@ -1856,7 +1858,7 @@ git stash pop
 > 2. Phase 5.2 Guidance for Next Steps — 前段で出力済み (ユーザー可視 ordered list、**最終項目末尾に inline HTML sentinel `<!-- [cleanup:completed] -->` を付加** — #633 / #652)
 > 3. Phase 5.3 Step 1: flow-state deactivate (下記 Step 1) — Phase 5.2 最終項目直後に連続実行する (中間に空行を挟まない、#633)。bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
 >
-> 注記 (Issue #652 で削除): 従来の Step 2 (HTML sentinel の独立行出力) は廃止。HTML sentinel は Phase 5.2 最終 list item 末尾に inline 吸収された。LLM は Step 1 bash 実行後に追加のテキストを出力してはならない。
+> 注記 (Issue #652 で削除、#655 F-C6-08/16 cycle 7 対応で明確化): 従来の **Phase 5.3 Step 2** (HTML sentinel の独立行出力) は廃止。HTML sentinel は Phase 5.2 最終 list item 末尾に inline 吸収された。LLM は Step 1 bash 実行後に追加のテキストを出力してはならない (本 phase の terminal 条件)。**注**: L1692 付近の Phase 4.W.2 Mandatory After Wiki Ingest の `Step 2: Proceed to Phase 5 now` は別文脈の Step で生存している — 廃止対象は本 Phase 5.3 内の旧 Step 2 のみ。
 
 **Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if ! cmd; then` rc capture is mandatory — silent failure here leaves `.rite-flow-state.active = true`, which causes the **next** session-end / stop-guard evaluation to surface a stale HINT for the already-completed cleanup workflow (#608 follow-up):
 
@@ -1869,7 +1871,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
 fi
 ```
 
-> **Note (#652)**: 旧 Step 2 (HTML sentinel 独立行出力) は Phase 5.2 inline sentinel に吸収済み (上記 Output ordering 参照)。Step 1 bash 実行後に LLM は追加のテキストを出力禁止 — 独立行 emit の CommonMark HTML block 規則による空行可視化根拠は上記 Phase 5.2 MUST NOT (#652) の #652-2 項を参照。
+> **Reminder (#655 F-C6-08 cycle 7 対応)**: 上記 Step 1 bash 実行はこの Phase 5.3 で LLM が取る最後の action。直後にさらに text output / tool call を追加してはならない (terminal 条件、output ordering 参照)。bash tool stdout は markdown text channel と分離されているため、sentinel の最終行性質は既に保たれている。
 
 **Self-verification** (Pre-check Item 1-3 evaluation, 場面 (b) mode):
 - Item 1: `grep -F '[cleanup:completed]'` against the response output finds the HTML-commented sentinel in Phase 5.2 final list item? → MUST be YES

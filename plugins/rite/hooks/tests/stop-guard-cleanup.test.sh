@@ -164,6 +164,11 @@ assert_contains "stderr contains cleanup_pre_ingest" "cleanup_pre_ingest" "$STDE
 # HINT-specific phrase pin (F-13): fallback STOP_MSG でも Phase 名は出るが、下記文言は
 # cleanup_pre_ingest case arm 内にのみ存在するため、arm 削除 regression を検知できる。
 assert_contains "stderr contains 'Phase 4.W.2 phase recorded'" "Phase 4.W.2 phase recorded" "$STDERR_CONTENT"
+# #655 F-C6-03 cycle 7 対応: Test 1 でも canonical phrase pin を適用し L383 drift を catch する。
+# 旧 cycle 5 修正で「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」と宣言しつつ実装は
+# Test 2 のみに pin を追加した protection theater を是正。mutation test で L383 suffix drift が
+# Test 1 FAIL として検知されることを verify 済み。
+assert_contains "Test 1 stderr contains #652 canonical phrase" "HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list)" "$STDERR_CONTENT"
 # Sentinel emission pin (cycle 3 C3-eh-M1): file header が「session log にその痕跡が残ることを verify」と
 # 謳う以上、HINT phrase だけでなく実際の workflow_incident sentinel (stop-guard.sh:389 で stderr へ
 # echo) が emit されることも assert する。WORKFLOW_INCIDENT_TYPE 設定分岐 (stop-guard.sh:332) の
@@ -182,11 +187,15 @@ assert_contains "stderr contains cleanup_post_ingest" "cleanup_post_ingest" "$ST
 # 併せて検査することで、文言 drift / case arm 削除 regression を検知。
 assert_contains "stderr contains 'rite:wiki:ingest returned'" "rite:wiki:ingest returned" "$STDERR_CONTENT"
 assert_contains "stderr contains 'Phase 5 Completion Report has NOT been output'" "Phase 5 Completion Report has NOT been output" "$STDERR_CONTENT"
-# #652 canonical phrase pin (cycle 3 → cycle 5 強化): inline HTML sentinel at the trailing position of
-# Phase 5.2's final list item が cleanup arm STOP_MSG から再 drift した場合に検知。#652 対応で cleanup
-# 系と ingest 系の terminal 規約を意図的に divergence させたため、canonical phrase 統一が将来の
-# silent unification regression の grep anchor として機能する。#655 F-C4-03 cycle 5 修正で完全形
-# `of Phase 5.2 (ordered list)` suffix を含めて cleanup arm 3 site (L383/L409/L412) の完全一致を pin。
+# #652 canonical phrase pin (cycle 3 → cycle 5 強化 → cycle 7 scope 拡大): inline HTML sentinel at
+# the trailing position of the final list item of Phase 5.2 が cleanup arm STOP_MSG から再 drift
+# した場合に検知。#652 対応で cleanup 系と ingest 系の terminal 規約を意図的に divergence させた
+# ため、canonical phrase 統一が将来の silent unification regression の grep anchor として機能する。
+# #655 F-C4-03 cycle 5 で完全形 `of Phase 5.2 (ordered list)` suffix を含めて cleanup arm 3 site
+# (L383/L409/L412) の完全一致を pin 宣言したが、cycle 5 実装は Test 2 のみに pin を追加しており
+# 宣言と実装が不一致だった (#655 F-C6-03 cycle 6 で指摘)。cycle 7 で Test 1 / Test 5 / Test 6 にも
+# pin を追加し 4 Test site で pin する形に是正 (mutation test で L383/L409/L412 drift が全 Test で
+# catch されることを verify 済み)。
 assert_contains "stderr contains #652 canonical phrase" "HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list)" "$STDERR_CONTENT"
 # Sentinel emission pin (cycle 3 C3-eh-M1): Test 1 と同じく sentinel stderr emit を verify。
 assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
@@ -216,6 +225,9 @@ assert_contains "Test 5 stderr contains 'RE-ENTRY DETECTED'" "RE-ENTRY DETECTED"
 # bash literal pin: escalation HINT が LLM 直接実行可能な bash 呼び出しを含むこと (#650 AC-5)
 assert_contains "Test 5 stderr contains escalation bash literal" "bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_post_ingest" "$STDERR_CONTENT"
 assert_contains "Test 5 stderr contains --preserve-error-count" "preserve-error-count" "$STDERR_CONTENT"
+# #655 F-C6-03 cycle 7 対応: L383 escalation path (cleanup_pre_ingest RE-ENTRY) の canonical phrase
+# drift を catch する (L383 と L388 escalation HINT 両方に canonical phrase が含まれる設計)。
+assert_contains "Test 5 stderr contains #652 canonical phrase" "HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list)" "$STDERR_CONTENT"
 
 # Test 6 (TC-650-F): cleanup_post_ingest + error_count=1 → RE-ENTRY DETECTED escalation
 # Test 5 と対称。cleanup_post_ingest arm 用 terminal patch の bash literal が escalation HINT に含まれることを verify。
@@ -226,7 +238,17 @@ assert "cleanup_post_ingest error_count=1 exits 2" "2" "$rc"
 assert_contains "Test 6 stderr contains 'RE-ENTRY DETECTED'" "RE-ENTRY DETECTED" "$STDERR_CONTENT"
 # bash literal pin: terminal patch (cleanup_completed --active false) の bash 呼び出しを含むこと
 assert_contains "Test 6 stderr contains escalation bash literal" "bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false" "$STDERR_CONTENT"
+# #655 F-C6-03 cycle 7 対応: L412 escalation path (cleanup_post_ingest RE-ENTRY) の canonical phrase
+# drift を catch する。test reviewer の mutation test で実証された silent pass 経路を塞ぐ
+# (`sed -i 's|final list item of Phase 5.2 (ordered list)|final list item|g' stop-guard.sh:412` →
+# cycle 6 時点では PASS=25 FAIL=0 で silent pass、cycle 7 で本 pin により FAIL に昇格)。
+assert_contains "Test 6 stderr contains #652 canonical phrase" "HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list)" "$STDERR_CONTENT"
 
+# NOTE (#655 F-C6-14 cycle 7 対応): Test 4 は Test 5/6 の escalation verify 後に配置する意図的な順序
+# (#650 対応で Test 5/6 を前方挿入した歴史的経緯)。宣言順序は 1→2→3→5→6→4 で非連続だが、
+# error_count=1 の escalation verify を終えてから active:false negative assertion を行う構造で、
+# FAIL 時のデバッグで Test 番号と L 行番号の対応を追う際は宣言位置ではなく Test 番号の意味論
+# (1/2: cleanup arm primary / 3: fallback / 5/6: escalation / 4: terminal state negative) で読み解く。
 # Test 4: cleanup_completed with active=false should allow stop (exit 0) and NOT emit STOP_MSG
 echo "# Test 4: cleanup_completed + active:false allows stop (negative assertion)"
 cat > "$FIXTURE_DIR/.rite-flow-state" <<EOF
