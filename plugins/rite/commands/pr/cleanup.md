@@ -99,7 +99,7 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
   1. Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)
   2. Outputs Phase 5.1 Cleanup Result Summary
   3. Outputs Phase 5.2 Guidance for Next Steps — **最終 list item 末尾に inline `<!-- [cleanup:completed] -->` HTML sentinel を literal として含める** (#652: 独立行で出力しない。Phase 5.2 出力の一部として同一行に配置する)
-  4. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false) — この bash 実行後に LLM は追加の text / tool call を出力せず turn を閉じる (inline sentinel が absolute last markdown text として既に Step 3 で出力済み、#652 / #655 F-C6-09 cycle 7 対応)
+  4. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false) — この bash 実行後に LLM は追加の text / tool call を出力せず turn を閉じる (inline sentinel は **上記 Step 3 (Phase 5.2 最終 list item inline sentinel)** で markdown text 終端として既に出力済み。bash tool は markdown channel と分離されているため sentinel 最終性は保たれる。#652 / #655 F-C6-09 cycle 7 + F-C8-05 cycle 9 dual-numbering 解消対応)
 ```
 
 **Rule**: Treat `rite:wiki:ingest` return as a **continuation trigger**, not a stopping point. The **only** valid stop is after the user-visible completion message (`クリーンアップが完了しました`) + next-steps block (with `<!-- [cleanup:completed] -->` as inline HTML sentinel at the trailing position of the final list item of Phase 5.2 — #652) have been displayed. The HTML-commented sentinel is invisible in rendered views but grep-matchable for hooks/scripts.
@@ -1689,7 +1689,7 @@ fi
 # fail-safe path 経由で到達した場合に備え、defense-in-depth を各 patch 箇所で完全化する。
 ```
 
-**Step 2**: **→ Proceed to Phase 5 now**. The Phase 5 procedure handles the user-visible completion message, the `<!-- [cleanup:completed] -->` HTML comment sentinel (inline at Phase 5.2 final list item's trailing position, #652), and the final flow-state deactivate (`cleanup_completed`, `active: false`) in a single contiguous block.
+**Step 2**: **→ Proceed to Phase 5 now**. The Phase 5 procedure handles the user-visible completion message, the `<!-- [cleanup:completed] -->` HTML comment sentinel (inline at the trailing position of the final list item of Phase 5.2 (ordered list), #652), and the final flow-state deactivate (`cleanup_completed`, `active: false`) in a single contiguous block.
 
 > **Anti-pattern reminder**: Do NOT output a recap line such as "※ wiki ingest 完了。次は Phase 5 完了レポート" as the **last** content of the response — that would create a turn-boundary heuristic trigger (the LLM may end the turn after a "looks final" recap line). Recap lines are acceptable as **leading** informational content only; the final user-visible content MUST be the Phase 5.2 ordered list whose final item carries the inline HTML-commented sentinel (#652).
 
@@ -1858,7 +1858,7 @@ git stash pop
 > 2. Phase 5.2 Guidance for Next Steps — 前段で出力済み (ユーザー可視 ordered list、**最終項目末尾に inline HTML sentinel `<!-- [cleanup:completed] -->` を付加** — #633 / #652)
 > 3. Phase 5.3 Step 1: flow-state deactivate (下記 Step 1) — Phase 5.2 最終項目直後に連続実行する (中間に空行を挟まない、#633)。bash 出力はユーザー可視だが、`(Bash completed with no output)` のため最終行にならない
 >
-> 注記 (Issue #652 で削除、#655 F-C6-08/16 cycle 7 対応で明確化): 従来の **Phase 5.3 Step 2** (HTML sentinel の独立行出力) は廃止。HTML sentinel は Phase 5.2 最終 list item 末尾に inline 吸収された。LLM は Step 1 bash 実行後に追加のテキストを出力してはならない (本 phase の terminal 条件)。**注**: L1692 付近の Phase 4.W.2 Mandatory After Wiki Ingest の `Step 2: Proceed to Phase 5 now` は別文脈の Step で生存している — 廃止対象は本 Phase 5.3 内の旧 Step 2 のみ。
+> 注記 (Issue #652 で削除、#655 F-C6-08/16 cycle 7 対応で明確化 / F-C8-04 cycle 9 対応で literal 行番号削除): 従来の **Phase 5.3 Step 2** (HTML sentinel の独立行出力) は廃止。HTML sentinel は Phase 5.2 最終 list item 末尾に inline 吸収された。LLM は Step 1 bash 実行後に追加のテキストを出力してはならない (本 phase の terminal 条件)。**注**: Phase 4.W.2 🚨 Mandatory After Wiki Ingest の `Step 2 (→ Proceed to Phase 5 now)` は別文脈の Step で生存している — 廃止対象は本 Phase 5.3 内の旧 Step 2 のみ。
 
 **Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if ! cmd; then` rc capture is mandatory — silent failure here leaves `.rite-flow-state.active = true`, which causes the **next** session-end / stop-guard evaluation to surface a stale HINT for the already-completed cleanup workflow (#608 follow-up):
 
