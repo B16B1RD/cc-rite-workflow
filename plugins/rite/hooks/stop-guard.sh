@@ -365,7 +365,22 @@ case "$PHASE" in
   cleanup_pre_ingest)
     # cycle 10 F-05: 末尾 `[cleanup:completed]` を `<!-- [cleanup:completed] -->` に統一
     # (cleanup_post_ingest HINT と asymmetry を解消、#561 bare-sentinel 対策を full 達成)
-    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state, so the caller phase remains pinned during the entire sub-skill invocation). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned <!-- [ingest:completed] -->, run 🚨 Mandatory After Wiki Ingest (writes cleanup_post_ingest) → Phase 5 Completion Report (writes cleanup_completed + emits <!-- [cleanup:completed] --> sentinel as absolute last line) in the SAME response turn. DO NOT stop before <!-- [cleanup:completed] --> is output."
+    # Issue #650: Step 0 Immediate Bash Action pattern を HINT に literal として含め、
+    # ingest sub-skill return 直後の canonical continuation 手順を明示する。
+    # DRIFT-CHECK ANCHOR (semantic — Issue #650): 本 case arm の HINT 内 bash block literal は
+    # **cleanup.md 🚨 Mandatory After Wiki Ingest Step 0 (Immediate Bash Action、next-phase patch:
+    # --phase cleanup_post_ingest --active true --preserve-error-count) と 2 site 対称**。
+    # `--phase` / `--next` / `--preserve-error-count` の引数 symmetry を死守する (create.md
+    # verified-review cycle 3 F-01 と同型の error_count reset loop 再発防止)。
+    # cleanup_post_ingest case arm (下方) は別 target (terminal patch) と対称で、本 arm とは異なる
+    # drift check scope を持つ (重複 ANCHOR 文言による混同防止、Issue #650 review MEDIUM 指摘)。
+    WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state directly via cleanup_* phases, but the caller phase remains pinned during sub-skill invocation modulo the ring structure for ingest_pre_lint / ingest_post_lint / ingest_completed). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned <!-- [ingest:completed] --> (grep -F '[ingest:completed]') or [CONTEXT] WIKI_INGEST_DONE=1 (grep -F '[CONTEXT] WIKI_INGEST_DONE='), immediately run 🚨 Mandatory After Wiki Ingest Step 0 (Immediate Bash Action: \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_post_ingest --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 5 Completion Report. Do NOT stop.' --if-exists --preserve-error-count\`) → Step 1 (idempotent re-patch) → Step 2 (Phase 5 Completion Report: user-visible message + cleanup_completed deactivate + <!-- [cleanup:completed] --> sentinel as absolute last line) in the SAME response turn. Grep recent context for '[CONTEXT] STEP_0_PATCH_FAILED=1' / '[CONTEXT] STEP_1_PATCH_FAILED=1' — if either present, a patch site failed (disk full / permission denied); the 2 重 patch defense-in-depth (Step 0 + Step 1) means at least one site should have succeeded. DO NOT stop before <!-- [cleanup:completed] --> is output."
+    # Issue #650 escalation: error_count-based reminder. 2 回目以降の block では
+    # LLM が recovery path を取っていない signal とみなして HINT を更に明示化 (create.md
+    # create_post_interview case arm と同型パターン、#634 / #636 cycle 8 F-07 参照)。
+    if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
+      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not advance the phase. If you are reading this HINT, execute the following bash block NOW as your next tool call (before any other text output): \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_post_ingest --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 5 Completion Report. Do NOT stop.' --if-exists --preserve-error-count\`. After the bash block succeeds, proceed to Phase 5 Completion Report in the SAME response turn."
+    fi
     ;;
   cleanup_post_ingest)
     # cycle 9 F-13: instruction 語順を cleanup.md Phase 5.3 Output ordering (Step 1 deactivate
@@ -373,7 +388,23 @@ case "$PHASE" in
     # 先に emit すると bash 後続 output で sentinel が最終行でなくなる bare-sentinel 類似 bug
     # #561 の再発リスクがあった)。TC-608-H pinned phrase (rite:wiki:ingest returned /
     # Phase 5 Completion Report has NOT been output) は維持。
-    WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. In the SAME response turn, output the cleanup completion message + next-steps block (user-visible content), THEN deactivate flow state (cleanup_completed, active: false), THEN output <!-- [cleanup:completed] --> HTML comment sentinel as the absolute last line of the response. DO NOT stop."
+    # Issue #650: bash block literal 追加で canonical continuation 手順を明示。HINT が
+    # 「何をすべきか」を abstract に述べるだけでなく、LLM が直接実行可能な bash 呼び出しを
+    # 含むことで cognitive load を最小化する (create.md create_post_interview case arm と同型)。
+    # DRIFT-CHECK ANCHOR (semantic — Issue #650): 本 case arm の HINT 内 bash block literal は
+    # **wiki/ingest.md Phase 9.1 Step 3 (terminal patch: ingest_completed, active=false)** と
+    # 呼応する cleanup 側の terminal patch (cleanup_completed, active=false) を含む。ring handoff
+    # の一端として、sub-skill 側 terminal patch と cleanup 側 terminal patch の両方が "deactivate
+    # 対象 phase の patch" という役割で対応する。bash 引数 (`--phase cleanup_completed` / `--next none`
+    # / `--active false` / `--if-exists`) の symmetry を死守する。
+    # cleanup_pre_ingest case arm (上方) は別 target (cleanup.md Step 0 Immediate Bash Action、
+    # next-phase patch) と対称で、本 arm とは異なる drift check scope を持つ (Issue #650 review
+    # MEDIUM 指摘対応で ANCHOR コメントを arm 別に分岐)。
+    WORKFLOW_HINT="HINT: rite:wiki:ingest returned and cleanup_post_ingest is recorded. Phase 5 Completion Report has NOT been output yet. In the SAME response turn, output the cleanup completion message + next-steps block (user-visible content), THEN deactivate flow state (cleanup_completed, active: false via \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists\`), THEN output <!-- [cleanup:completed] --> HTML comment sentinel as the absolute last line of the response. Grep recent context for '[CONTEXT] STEP_0_PATCH_FAILED=1' / '[CONTEXT] STEP_1_PATCH_FAILED=1' — if either present, the previous Step 0 / Step 1 patch failed (disk full / permission denied); Phase 5 Completion Report will still execute, but the terminal deactivate patch (cleanup_completed) must succeed or the next session will see stale active=true state (session-end.sh cleanup lifecycle WARN will surface it). DO NOT stop before <!-- [cleanup:completed] --> is output."
+    # Issue #650 escalation: error_count-based reminder (cleanup_pre_ingest case arm と対称)。
+    if [ "${ERROR_COUNT:-0}" -ge 1 ]; then
+      WORKFLOW_HINT="$WORKFLOW_HINT RE-ENTRY DETECTED (error_count=$((ERROR_COUNT + 1))): previous block did not result in Phase 5 continuation. If you are reading this HINT, execute the following bash block NOW as your next tool call (before any other text output): \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists\`. After the bash block succeeds, output the Phase 5 Completion Report user-visible message + <!-- [cleanup:completed] --> HTML comment sentinel as absolute last line in the SAME response turn."
+    fi
     ;;
   ingest_pre_lint)
     # Issue #618 (reverts the #608 follow-up YAGNI removal): ingest.md Phase 8.2 Pre-write

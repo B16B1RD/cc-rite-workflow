@@ -51,6 +51,7 @@ SESSION_ID="00000000-0000-0000-0000-000000000001"
 # $1: phase name
 # $2: previous_phase (optional、省略時は "cleanup" がデフォルト)
 #     明示的に空文字を渡したい場合は "" を指定する (Test 3 がこの用途で使用)
+# $3: error_count (optional、省略時は 0)。Issue #650 TC-650-E で escalation を trigger するため追加
 make_state() {
   local phase="$1"
   # bash の ${2:-default} は「unset または null (空文字含む)」の両方で default 展開される。
@@ -59,6 +60,7 @@ make_state() {
   # したがって Test 3 の `run_guard "cleanup" ""` は実際には prev="cleanup" となる。
   # 旧コメントの「prev="" になる」は bash 仕様誤解に基づく記述だった。
   local prev="${2:-cleanup}"
+  local ec="${3:-0}"
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
   cat > "$FIXTURE_DIR/.rite-flow-state" <<EOF
@@ -73,7 +75,7 @@ make_state() {
   "next_action": "test fixture",
   "updated_at": "$ts",
   "session_id": "$SESSION_ID",
-  "error_count": 0
+  "error_count": $ec
 }
 EOF
 }
@@ -82,11 +84,13 @@ EOF
 # stderr_file は FIXTURE_DIR 内に配置する (F-15: trap cleanup が一括削除、orphan 防止)。
 # $1: phase
 # $2: previous_phase
+# $3: error_count (optional、省略時は 0)。Issue #650 TC-650-E で escalation trigger に使用
 STDERR_CONTENT=""
 run_guard() {
   local phase="$1"
   local prev="$2"
-  make_state "$phase" "$prev"
+  local ec="${3:-0}"
+  make_state "$phase" "$prev" "$ec"
   local input
   input=$(printf '{"cwd":"%s","session_id":"%s"}' "$FIXTURE_DIR" "$SESSION_ID")
   local stderr_file
@@ -192,6 +196,30 @@ assert_contains "stderr contains Phase:" "Phase:" "$STDERR_CONTENT"
 # 内にのみ存在するため、case arm 削除 regression を fallback STOP_MSG の `Phase:` 出力に紛れて
 # silent pass させない。sibling stop-guard.test.sh TC-608-A とも相補関係 (同じ Phase 1.0 を pin)。
 assert_contains "stderr contains 'Phase 1.0 (Activate Flow State)'" "Phase 1.0 (Activate Flow State)" "$STDERR_CONTENT"
+
+# Test 5 (TC-650-E): cleanup_pre_ingest + error_count=1 → RE-ENTRY DETECTED escalation
+# Issue #650 — create_post_interview TC-634-E/F と対称化。error_count>=1 時に
+# cleanup_pre_ingest case arm が RE-ENTRY DETECTED 警告 + bash literal を含む追加 HINT
+# を emit することを verify する。escalation 分岐 (stop-guard.sh の `if [ "${ERROR_COUNT:-0}" -ge 1 ]`)
+# の削除 regression を検知。
+echo "# Test 5 (TC-650-E): cleanup_pre_ingest error_count=1 → RE-ENTRY DETECTED + bash literal"
+run_guard "cleanup_pre_ingest" "cleanup" 1
+rc=$?
+assert "cleanup_pre_ingest error_count=1 exits 2" "2" "$rc"
+assert_contains "Test 5 stderr contains 'RE-ENTRY DETECTED'" "RE-ENTRY DETECTED" "$STDERR_CONTENT"
+# bash literal pin: escalation HINT が LLM 直接実行可能な bash 呼び出しを含むこと (#650 AC-5)
+assert_contains "Test 5 stderr contains escalation bash literal" "bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_post_ingest" "$STDERR_CONTENT"
+assert_contains "Test 5 stderr contains --preserve-error-count" "preserve-error-count" "$STDERR_CONTENT"
+
+# Test 6 (TC-650-F): cleanup_post_ingest + error_count=1 → RE-ENTRY DETECTED escalation
+# Test 5 と対称。cleanup_post_ingest arm 用 terminal patch の bash literal が escalation HINT に含まれることを verify。
+echo "# Test 6 (TC-650-F): cleanup_post_ingest error_count=1 → RE-ENTRY DETECTED + bash literal"
+run_guard "cleanup_post_ingest" "cleanup_pre_ingest" 1
+rc=$?
+assert "cleanup_post_ingest error_count=1 exits 2" "2" "$rc"
+assert_contains "Test 6 stderr contains 'RE-ENTRY DETECTED'" "RE-ENTRY DETECTED" "$STDERR_CONTENT"
+# bash literal pin: terminal patch (cleanup_completed --active false) の bash 呼び出しを含むこと
+assert_contains "Test 6 stderr contains escalation bash literal" "bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false" "$STDERR_CONTENT"
 
 # Test 4: cleanup_completed with active=false should allow stop (exit 0) and NOT emit STOP_MSG
 echo "# Test 4: cleanup_completed + active:false allows stop (negative assertion)"
