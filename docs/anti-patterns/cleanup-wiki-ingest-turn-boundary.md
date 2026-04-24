@@ -27,7 +27,7 @@ last_updated: 2026-04-20T19:45:00+09:00
    - `<!-- [ingest:completed] -->`
 7. **`✻ Cooked for 6m 23s` で turn 終了 (implicit stop)** ← bug
 8. user が `continue` を入力
-9. cleanup.md の 🚨 Mandatory After Wiki Ingest Step 1（`cleanup_post_ingest` patch）+ Phase 5 完了レポート + `<!-- [cleanup:completed] -->` sentinel emit
+9. cleanup.md の 🚨 Mandatory After Wiki Ingest Step 1（`cleanup_post_ingest` patch）+ Phase 5 完了レポート (#652 対応: `<!-- [cleanup:completed] -->` は Phase 5.2 最終 list item 末尾に inline HTML sentinel として配置、独立行 emit は廃止)
 
 ## 期待動作
 
