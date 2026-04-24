@@ -172,9 +172,11 @@ assert_contains "stderr contains cleanup_pre_ingest" "cleanup_pre_ingest" "$STDE
 # cleanup_pre_ingest case arm 内にのみ存在するため、arm 削除 regression を検知できる。
 assert_contains "stderr contains 'Phase 4.W.2 phase recorded'" "Phase 4.W.2 phase recorded" "$STDERR_CONTENT"
 # #655 F-C6-03 cycle 7 対応: Test 1 でも canonical phrase pin を適用し L383 drift を catch する。
-# 旧 cycle 5 修正で「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」と宣言しつつ実装は
-# Test 2 のみに pin を追加した protection theater を是正。mutation test で L383 suffix drift が
-# Test 1 FAIL として検知されることを verify 済み。
+# 旧 cycle 5 修正で「cleanup arm 3 site の完全一致を pin」と宣言しつつ実装は Test 2 のみに
+# pin を追加した protection theater を是正 (F-C10-01 cycle 11 対応で factual correction: 旧 quote の
+# `L409` は canonical phrase 非含有の boundary コメント行のため削除、実 site は 3 = primary x2 +
+# escalation x1 の semantic breakdown が正確)。mutation test で primary HINT (cleanup_pre_ingest) の
+# canonical phrase drift が Test 1 FAIL として検知されることを verify 済み。
 assert_contains "Test 1 stderr contains #652 canonical phrase" "HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list)" "$STDERR_CONTENT"
 # Sentinel emission pin (cycle 3 C3-eh-M1): file header が「session log にその痕跡が残ることを verify」と
 # 謳う以上、HINT phrase だけでなく実際の workflow_incident sentinel (sentinel stderr echo ブロック —
@@ -201,10 +203,17 @@ assert_contains "stderr contains 'Phase 5 Completion Report has NOT been output'
 # した場合に検知。#652 対応で cleanup 系と ingest 系の terminal 規約を意図的に divergence させた
 # ため、canonical phrase 統一が将来の silent unification regression の grep anchor として機能する。
 # #655 F-C4-03 cycle 5 で完全形 `of Phase 5.2 (ordered list)` suffix を含めて cleanup arm 3 site
-# (L383/L409/L412) の完全一致を pin 宣言したが、cycle 5 実装は Test 2 のみに pin を追加しており
-# 宣言と実装が不一致だった (#655 F-C6-03 cycle 6 で指摘)。cycle 7 で Test 1 / Test 5 / Test 6 にも
-# pin を追加し 4 Test site で pin する形に是正 (mutation test で L383/L409/L412 drift が全 Test で
-# catch されることを verify 済み)。
+# の完全一致を pin 宣言したが、cycle 5 実装は Test 2 のみに pin を追加しており宣言と実装が不一致
+# だった (#655 F-C6-03 cycle 6 で指摘)。cycle 7 で Test 1 / Test 5 / Test 6 にも pin を追加し 4 Test
+# site で pin する形に是正。F-C10-01 cycle 11 対応 (factual correction): canonical phrase の実在 site
+# は stop-guard.sh 内の 3 箇所 — cleanup_pre_ingest primary HINT / cleanup_post_ingest primary HINT /
+# cleanup_post_ingest escalation HINT (旧 quote の `L409` は case arm boundary コメント行で canonical
+# phrase 非含有だった)。mutation test empirical 結果 (3 scenarios):
+#   - primary HINT drift (cleanup_pre_ingest) → Test 1 + Test 5 catch (L383 共通経路)
+#   - primary HINT drift (cleanup_post_ingest) → Test 2 が直接 catch、Test 6 は L412+L415 concat 構造
+#     のため escalation HINT 側 canonical phrase が残存していれば silent pass (double regression canary)
+#   - escalation HINT drift (cleanup_post_ingest) → undocumented silent-pass site (F-C8-01 cycle 9 で明文化)
+# cycle 5/7 の narrative「全 Test で catch」主張は上記 3 scenario を集計すると empirical に false。
 assert_contains "stderr contains #652 canonical phrase" "HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list)" "$STDERR_CONTENT"
 # Sentinel emission pin (cycle 3 C3-eh-M1): Test 1 と同じく sentinel stderr emit を verify。
 assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
