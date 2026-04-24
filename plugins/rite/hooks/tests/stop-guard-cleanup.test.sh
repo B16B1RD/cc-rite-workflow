@@ -182,6 +182,11 @@ assert_contains "stderr contains cleanup_post_ingest" "cleanup_post_ingest" "$ST
 # 併せて検査することで、文言 drift / case arm 削除 regression を検知。
 assert_contains "stderr contains 'rite:wiki:ingest returned'" "rite:wiki:ingest returned" "$STDERR_CONTENT"
 assert_contains "stderr contains 'Phase 5 Completion Report has NOT been output'" "Phase 5 Completion Report has NOT been output" "$STDERR_CONTENT"
+# #652 canonical phrase pin (cycle 3): inline HTML sentinel at the trailing position of Phase 5.2's
+# final list item が cleanup arm STOP_MSG から再 drift した場合に検知。#652 対応で cleanup 系と
+# ingest 系の terminal 規約を意図的に divergence させたため、canonical phrase 統一が将来の
+# silent unification regression の grep anchor として機能する。
+assert_contains "stderr contains #652 canonical phrase" "HTML sentinel at the trailing position of the final list item" "$STDERR_CONTENT"
 # Sentinel emission pin (cycle 3 C3-eh-M1): Test 1 と同じく sentinel stderr emit を verify。
 assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
 

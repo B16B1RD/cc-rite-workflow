@@ -97,8 +97,9 @@ This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-
 <LLM output: brief recap (optional)>
 <In the same response turn, LLM IMMEDIATELY:>
   1. Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)
-  2. Outputs Phase 5.1 Cleanup Result Summary + Phase 5.2 Guidance for Next Steps — **最終 list item 末尾に inline `<!-- [cleanup:completed] -->` HTML sentinel を literal として含める** (#652: 独立行で出力しない。Phase 5.2 出力の一部として同一行に配置する)
-  3. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false)
+  2. Outputs Phase 5.1 Cleanup Result Summary
+  3. Outputs Phase 5.2 Guidance for Next Steps — **最終 list item 末尾に inline `<!-- [cleanup:completed] -->` HTML sentinel を literal として含める** (#652: 独立行で出力しない。Phase 5.2 出力の一部として同一行に配置する)
+  4. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false)
 ```
 
 **Rule**: Treat `rite:wiki:ingest` return as a **continuation trigger**, not a stopping point. The **only** valid stop is after the user-visible completion message (`クリーンアップが完了しました`) + next-steps block (with `<!-- [cleanup:completed] -->` as inline HTML sentinel at the trailing position of Phase 5.2's final list item — #652) have been displayed. The HTML-commented sentinel is invisible in rendered views but grep-matchable for hooks/scripts.
@@ -1641,7 +1642,7 @@ trap - EXIT INT TERM HUP
 
 **Self-check and branching**:
 
-1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of Phase 5.2's final list item, per #652)?** (grep the recent response text — `grep -F '[cleanup:completed]'` matches HTML-comment form regardless of inline / independent-line position)
+1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of Phase 5.2's final list item, per #652)?** (grep the recent response text — `grep -F '[cleanup:completed]'` matches HTML-comment form regardless of inline / independent-line position. **Note (#652)**: この broad match は **terminal state 到達判定**用途 (Item 0 Routing dispatcher の `[cleanup:completed]` matcher と同意味の「存在確認」) であり、独立行 regression 検出 (#652 の再発検出) 用途には不十分。独立行 regression を検出したい場合は `grep -nE '^<!--\s*\[cleanup:completed\]\s*-->$'` 等、**行頭から独立行で出力された case のみをマッチ**する正規表現を別途使用する。本 Item 1 は terminal 判定の broad match に留め、regression 検出は別機構 (review-fix loop / lint 等) に委譲する)
    - **Yes** — terminal state reached. `.rite-flow-state.phase` is already `cleanup_completed` and `active: false`. **本 Yes 分岐は terminal 到達後の重複呼び出し防止のための例外経路**であり、non-terminal (phase=cleanup_pre_ingest) 時点の Step 0/1 正規路 (Correct-pattern の Step 1「Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)」) と矛盾しないことに留意する。Step 0 / Step 1 below MUST be skipped. 理由: `cleanup_completed` は terminal state であり、Step 0/1 の `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、phase を `cleanup_post_ingest` に巻き戻して flow-state を破壊する。phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定し、prev が terminal でも accept するため whitelist 保護には依存できない — 実行しないことで確実に防ぐ。
    - **No** — Phase 5 has NOT been output yet (phase=cleanup_pre_ingest など non-terminal 状態)。Steps 0-2 below are **critical** — execute immediately to force the workflow into the terminal state (Step 0/1 が正規 handoff パス)。
 
@@ -1868,7 +1869,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
 fi
 ```
 
-> **Note (#652)**: 従来の Step 2 (HTML コメント sentinel の独立行出力) は廃止された。HTML sentinel は Phase 5.2 最終 list item 末尾に inline 付加されるため、Step 1 bash 実行後に LLM は追加のテキストを出力してはならない。独立行で `<!-- [cleanup:completed] -->` を再度出力すると CommonMark HTML block 規則により rendered view で空行が可視化し、#652 regression が再発する。
+> **Note (#652)**: 旧 Step 2 (HTML sentinel 独立行出力) は Phase 5.2 inline sentinel に吸収済み (上記 Output ordering 参照)。Step 1 bash 実行後に LLM は追加のテキストを出力禁止 — 独立行 emit の CommonMark HTML block 規則による空行可視化根拠は L1846 の MUST NOT (#652-2) を参照。
 
 **Self-verification** (Pre-check Item 1-3 evaluation, 場面 (b) mode):
 - Item 1: `grep -F '[cleanup:completed]'` against the response output finds the HTML-commented sentinel in Phase 5.2 final list item? → MUST be YES

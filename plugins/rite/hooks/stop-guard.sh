@@ -425,10 +425,16 @@ case "$PHASE" in
     # 維持する。これは ingest.md Phase 9.1 Step 3 の三点セット規約 (completion message +
     # caller continuation HTML comment + HTML sentinel の 3 独立ブロック構造) に従っており、
     # cleanup 系 arm (上方、#652 対応で inline HTML sentinel at Phase 5.2's final list item に移行)
-    # とは意図的に異なる terminal 規約を採用する。ingest 側は `<!-- [ingest:completed] -->` の
-    # 独立行 emit が Phase 9.1 Step 3 で正当化されており、cleanup 側のような rendered view
-    # 空行可視化問題は発生しない (ingest 完了時は fixed code fence 内の sentinel output 構造が
-    # 異なるため)。両者の divergence は #652 Known Issues で認識済みで follow-up 整理の予定。
+    # とは意図的に異なる terminal 規約を採用する。
+    #
+    # 真の divergence 理由 (cycle 2 review で factual correction、#652 Root Cause の正確なモデル):
+    # ingest 側も実際には `<!-- [ingest:completed] -->` を response text の absolute last line に
+    # 独立行として emit するため、HTML block structure は cleanup 旧仕様と同じ。しかし ingest 側では
+    # sentinel の**後に**ユーザー可視 content (bash UI 等) が続かないため、CommonMark HTML block
+    # (type 2) の後方空行要求が response 終端で吸収され rendered view での可視化が発生しない。
+    # cleanup 側 (#652 旧仕様) は sentinel の後に Phase 5.3 Step 1 bash UI `Ran 1 shell command` が
+    # 続く構造だったため、sentinel 前側の空行要求が bash UI の前に挿入され rendered view で可視化した
+    # (#652 Root Cause)。両者の divergence は #652 Known Issues で認識済みで follow-up 整理の予定。
     WORKFLOW_HINT="HINT: /rite:wiki:ingest Phase 8.2 Pre-write recorded ingest_pre_lint. The block may have fired immediately before the rite:wiki:lint --auto Skill invoke, OR while the lint sub-skill is mid-execution. Do NOT stop. Continue: if lint has not been invoked yet, invoke it; if lint has returned (check recent output for <!-- [lint:completed:auto] --> HTML comment sentinel or Lint: 6-field line), run 🚨 Mandatory After Auto-Lint Step 1 (patch ingest_post_lint) → Step 2 (Phase 8.3 Lint parse → 8.4/8.5 → Phase 9 Completion Report) → Step 3 (output caller continuation HTML comment + <!-- [ingest:completed] --> sentinel as absolute last line per ingest.md Phase 9.1 Step 3 三点セット規約) in the SAME response turn. DO NOT stop before <!-- [ingest:completed] --> is output."
     ;;
   ingest_post_lint)
