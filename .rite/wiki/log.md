@@ -182,3 +182,4 @@
 | 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #653 review + PR #654 cycle 1/2 fix を統合 (累積 9 件目 self-exemplar、literal 構文有効性、隣接 prose 波及漏れ) |
 | 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | sources 配列に 3 件追加、tags に literal-syntax-validity / anchor-prose-propagation 追加 |
 | 2026-04-24T06:34:35Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | 関連 PR #654 cycle 2 fix を sources に追加 (Asymmetric Fix Transcription 派生形) |
+| 2026-04-24T06:35:21Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0 |
