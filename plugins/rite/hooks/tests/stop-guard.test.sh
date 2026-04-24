@@ -1533,47 +1533,95 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-651-B: 4-site 対称性 — create-interview.md Return Output の caller HTML コメント内に
-# Step 0 Immediate Bash Action と同一の bash literal (`flow-state-update.sh patch
-# --phase create_post_interview --if-exists --preserve-error-count`) が含まれていることを
-# verify。新規 declarative 強化 layer (本 PR で追加) の non-regression。
+# TC-651-A2: AC-4 escalation path — error_count=1 状態 (TC-634-F 相当) でも
+# `[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fallback_adopted` sentinel 4 句が
+# 保持されることを mechanical assertion (PR #654 review F-07 対応、initial entry path
+# のみ verify していた TC-651-A の補完)。
 # --------------------------------------------------------------------------
-echo "TC-651-B: create-interview.md Return Output に 4-site 対称 bash literal が inline されている"
+echo "TC-651-A2: create_post_interview escalation (error_count=1) でも sentinel 4 句が emit される"
+dir651a2="$GUARD_TEST_DIR/tc651a2"
+mkdir -p "$dir651a2"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir651a2" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Test escalation path AC-4 verification\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 651, \"pr_number\": 0, \"error_count\": 1, \"session_id\": \"sid-651a2\"}"
+stderr_file651a2="$(mktemp "$GUARD_TEST_DIR/stderr651a2.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir651a2\", \"session_id\": \"sid-651a2\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file651a2") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -qF '[CONTEXT] WORKFLOW_INCIDENT=1' "$stderr_file651a2" \
+    && grep -qF 'type=manual_fallback_adopted' "$stderr_file651a2" \
+    && grep -qF 'phase=create_post_interview' "$stderr_file651a2" \
+    && grep -qF 'iteration_id=' "$stderr_file651a2" \
+    && grep -qF 'RE-ENTRY DETECTED' "$stderr_file651a2"; then
+  pass "AC-4 escalation: exit 2 + sentinel 4 句 + RE-ENTRY DETECTED emit on create_post_interview block (error_count=1)"
+else
+  fail "expected exit 2 + sentinel + RE-ENTRY DETECTED, got exit=$rc, stderr=$(head -3 "$stderr_file651a2")"
+fi
+
+# --------------------------------------------------------------------------
+# TC-651-B: 4-site 対称性 — create-interview.md Return Output の caller HTML コメント内に
+# Step 0 Immediate Bash Action と同一の bash literal が **2 site 内で** 含まれていることを
+# verify (interview:skipped + interview:completed の両 example で 2 件以上 match)。
+# 加えて bash literal が backtick で正しく区切られ syntax-valid であること、
+# 4-site DRIFT-CHECK ANCHOR が保持されていることを確認 (PR #654 review F-01 / F-05 / F-08 対応)。
+# --------------------------------------------------------------------------
+echo "TC-651-B: create-interview.md Return Output 4-site 対称性 + 2-site count >= 2 + syntax-valid bash literal"
 interview_md_651b="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-interview.md"
 tc651b_ok=1
 tc651b_missing=""
-# (1) caller HTML コメント内に literal bash command が含まれること
-grep -qF "flow-state-update.sh patch --phase create_post_interview" "$interview_md_651b" 2>/dev/null \
-  || { tc651b_ok=0; tc651b_missing="${tc651b_missing} bash-literal-in-caller-comment"; }
-# (2) --if-exists flag が含まれること (orchestrator 側想定)
-grep -qF -- "--if-exists --preserve-error-count" "$interview_md_651b" 2>/dev/null \
-  || { tc651b_ok=0; tc651b_missing="${tc651b_missing} preserve-error-count-flag"; }
+# (1) caller HTML コメント内 bash literal (interview:skipped + interview:completed の両経路で
+#     合計 >= 2 件) F-05 / F-08 対応: count check で 2-site 内対称性の崩れを検出
+bash_literal_count=$(grep -cF "flow-state-update.sh patch --phase create_post_interview" "$interview_md_651b" 2>/dev/null)
+if [ "$bash_literal_count" -lt 2 ]; then
+  tc651b_ok=0
+  tc651b_missing="${tc651b_missing} bash-literal-count(<2:got_${bash_literal_count})"
+fi
+# (2) --if-exists flag が含まれること (orchestrator 側想定、count >= 2 で 2-site 対称性確認)
+preserve_count=$(grep -cF -- "--if-exists --preserve-error-count" "$interview_md_651b" 2>/dev/null)
+if [ "$preserve_count" -lt 2 ]; then
+  tc651b_ok=0
+  tc651b_missing="${tc651b_missing} preserve-error-count-count(<2:got_${preserve_count})"
+fi
 # (3) 4-site DRIFT-CHECK ANCHOR (本 PR で追加した anchor) が grep 可能
 grep -qF "DRIFT-CHECK ANCHOR (semantic, 4-site)" "$interview_md_651b" 2>/dev/null \
   || { tc651b_ok=0; tc651b_missing="${tc651b_missing} 4-site-drift-check-anchor"; }
+# (4) F-01 対応: bash literal が `; then continue` という invalid syntax を含まないこと
+#     (`; then` は `if cmd; then ... fi` の文法トークンであり、if 句なしで使うと syntax error。
+#     PR #654 で散文 `THEN (after the bash command above succeeds)` に修正済み)
+if grep -qE -- "--preserve-error-count[[:space:]]*;[[:space:]]*then[[:space:]]+continue" "$interview_md_651b" 2>/dev/null; then
+  tc651b_ok=0
+  tc651b_missing="${tc651b_missing} invalid-bash-syntax(;_then_continue_after_preserve-error-count)"
+fi
+# (5) F-01 対応: bash literal が backtick で囲まれていること (構文区切りの明示)
+grep -qF '`bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview' "$interview_md_651b" 2>/dev/null \
+  || { tc651b_ok=0; tc651b_missing="${tc651b_missing} bash-literal-not-in-backticks"; }
 if [ "$tc651b_ok" -eq 1 ]; then
-  pass "create-interview.md Return Output 4-site 対称性 (bash literal + --if-exists --preserve-error-count + 4-site ANCHOR) intact"
+  pass "create-interview.md Return Output 4-site + 2-site count + syntax-valid (bash_literal=$bash_literal_count, preserve=$preserve_count, anchor + backtick + no-invalid-syntax)"
 else
-  fail "missing 4-site symmetry element(s):${tc651b_missing}"
+  fail "missing 4-site symmetry / syntax violation:${tc651b_missing}"
 fi
 
 # --------------------------------------------------------------------------
 # TC-651-C: stop-guard.sh の create_post_interview WORKFLOW_HINT に
-# `flow-state-update.sh patch --phase create_post_interview` literal が含まれることを
-# assert。Issue #651 で確立した 4-site 対称規約の twin-site verification (create-interview.md
-# 側 = TC-651-B、stop-guard.sh 側 = 本 TC)。drift 検出専用。
+# **site-specific な** bash literal が含まれることを assert。create_post_interview 文脈と
+# 組み合わせた literal を 1 行で grep し、cleanup_post_ingest 等の他 case arm の
+# `--if-exists --preserve-error-count` flag への false-positive match を排除する
+# (PR #654 review F-06 対応)。
 # --------------------------------------------------------------------------
-echo "TC-651-C: stop-guard.sh create_post_interview WORKFLOW_HINT に 4-site 対称 bash literal が含まれる"
+echo "TC-651-C: stop-guard.sh create_post_interview WORKFLOW_HINT に site-specific 4-site 対称 bash literal が含まれる"
 tc651c_ok=1
 tc651c_missing=""
-grep -qF "flow-state-update.sh patch --phase create_post_interview" "$GUARD" 2>/dev/null \
-  || { tc651c_ok=0; tc651c_missing="${tc651c_missing} bash-literal-in-stop-guard"; }
-grep -qF -- "--if-exists --preserve-error-count" "$GUARD" 2>/dev/null \
-  || { tc651c_ok=0; tc651c_missing="${tc651c_missing} preserve-error-count-in-stop-guard"; }
+# Site-specific pattern: `--phase create_post_interview --next 'Step 0 Immediate Bash Action fired`
+# は create_post_interview WORKFLOW_HINT 内にしか出現しない literal で、cleanup_post_ingest 等の
+# 他 case arm にある同類 flag (`--if-exists --preserve-error-count` 単独) では false-positive しない
+grep -qF "create_post_interview --next 'Step 0 Immediate Bash Action fired" "$GUARD" 2>/dev/null \
+  || { tc651c_ok=0; tc651c_missing="${tc651c_missing} site-specific-bash-literal-in-stop-guard"; }
+# 4-site DRIFT-CHECK ANCHOR (PR #654 review F-03 で追加された 4-site 文言) も verify
+grep -qF "DRIFT-CHECK ANCHOR (semantic, 4-site)" "$GUARD" 2>/dev/null \
+  || { tc651c_ok=0; tc651c_missing="${tc651c_missing} 4-site-anchor-in-stop-guard"; }
 if [ "$tc651c_ok" -eq 1 ]; then
-  pass "stop-guard.sh WORKFLOW_HINT で 4-site 対称 bash literal 保持"
+  pass "stop-guard.sh WORKFLOW_HINT で site-specific 4-site 対称 bash literal + 4-site ANCHOR 保持"
 else
-  fail "missing 4-site symmetry in stop-guard.sh:${tc651c_missing}"
+  fail "missing site-specific 4-site symmetry in stop-guard.sh:${tc651c_missing}"
 fi
 
 # --------------------------------------------------------------------------
