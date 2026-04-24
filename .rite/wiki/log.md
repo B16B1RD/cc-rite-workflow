@@ -188,3 +188,4 @@
 | 2026-04-24T14:55:00+00:00 | ingest:create | pages/anti-patterns/test-pin-protection-theater.md | PR #655 cycle 6 review を統合 (F-C6-03 protection theater 初明文化 + E-2 経験則) |
 | 2026-04-24T14:55:00+00:00 | ingest:create | pages/patterns/markdown-channel-separation-for-terminal-sentinel.md | PR #655 cycle 3 fix を統合 (inline HTML sentinel 適用実装、前方空行要求回避) |
 | 2026-04-24T14:55:00+00:00 | ingest:create | pages/patterns/markdown-channel-separation-for-terminal-sentinel.md | PR #655 cycle 5 fix を統合 (factual correction と anti-pattern doc 整合、markdown channel separation 初文言化) |
+| 2026-04-25T00:00:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=48, broken_refs=0 |
