@@ -2,15 +2,17 @@
 title: cleanup-wiki-ingest-turn-boundary
 domain: anti-patterns
 confidence: high
-source_issues: [621, 604, 618, 561]
-last_updated: 2026-04-20T19:45:00+09:00
+source_refs:
+  issues: [621, 604, 618, 561, 652]
+  prs: [655]
+last_updated: 2026-04-24T21:15:00+09:00
 ---
 
 # `/rite:pr:cleanup` の Wiki ingest sub-skill return 後に implicit stop が発生する regression
 
 ## 背景
 
-`/rite:pr:cleanup` Phase 4.W.2 で `rite:wiki:ingest` を Skill 経由で invoke する。ingest.md Phase 9.1 は三点セット（完了レポート本体 / caller 継続 HTML コメント / `<!-- [ingest:completed] -->` sentinel）を返し、caller である `cleanup.md` は直後に 🚨 Mandatory After Wiki Ingest → Phase 5 完了レポート → `<!-- [cleanup:completed] -->` sentinel を出力する契約になっている。
+`/rite:pr:cleanup` Phase 4.W.2 で `rite:wiki:ingest` を Skill 経由で invoke する。ingest.md Phase 9.1 は三点セット（完了レポート本体 / caller 継続 HTML コメント / `<!-- [ingest:completed] -->` sentinel）を返し、caller である `cleanup.md` は直後に 🚨 Mandatory After Wiki Ingest → Phase 5 完了レポート (#652 対応により Phase 5.2 最終 list item 末尾に `<!-- [cleanup:completed] -->` を inline HTML sentinel として含む形で出力。cleanup.md は `wiki/lint.md` Phase 9.2 三点セット規約から意図的 divergence した 2 ブロック構造を採用) を出力する契約になっている。
 
 しかし Issue #604 の対策（5 層 defense-in-depth）を導入した後にも、sub-skill return 後に LLM が implicit stop を起こし、ユーザーが手動で `continue` 入力しなければ Phase 5 に進まない regression が観測されている（Issue #621）。
 
@@ -27,7 +29,8 @@ last_updated: 2026-04-20T19:45:00+09:00
    - `<!-- [ingest:completed] -->`
 7. **`✻ Cooked for 6m 23s` で turn 終了 (implicit stop)** ← bug
 8. user が `continue` を入力
-9. cleanup.md の 🚨 Mandatory After Wiki Ingest Step 1（`cleanup_post_ingest` patch）+ Phase 5 完了レポート + `<!-- [cleanup:completed] -->` sentinel emit
+9. cleanup.md の 🚨 Mandatory After Wiki Ingest Step 1（`cleanup_post_ingest` patch）+ Phase 5 完了レポート
+   - 注記 (#652 対応): `<!-- [cleanup:completed] -->` は Phase 5.2 最終 list item 末尾に inline HTML sentinel として配置、独立行 emit は廃止
 
 ## 期待動作
 
@@ -71,12 +74,37 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 2. **ingest.md Phase 9.1 の三点セット #2/#3 間 recap 挿入禁止**: MUST NOT 行を追加し、caller 継続 HTML コメント直後に即 sentinel を出力する規約を reinforce
 3. **unit test fixture** (`plugins/rite/hooks/tests/stop-guard-cleanup.test.sh`、4 tests / 14 assertions、実行: `bash plugins/rite/hooks/tests/run-tests.sh` で既存 hook test suite と共に自動実行): stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup` phase で invoke、exit 2 + stderr に Phase 情報 + HINT-specific 文言が出力されることを assert (Test 4 は active:false 時の正常終了を negative assertion で検証)。既存 `stop-guard.test.sh` TC-608-A〜H とは役割分担: 本 fixture は **fixture ベースで独立実行可能** (同テストを異なる環境でスタンドアロン起動する用途)、TC-608-A〜H は **HINT-specific 文言 pin** (regression 検知性能優先)。両者は同一 HINT 文言を pin するため相補関係を形成する (片方の regression でもう片方が catch)
 
+## INTENTIONAL DIVERGENCE Rationale (#652) — cleanup 系 vs ingest 系の terminal 規約
+
+#652 対応で `cleanup` 系 arm (`cleanup_pre_ingest` / `cleanup_post_ingest`) と `ingest` 系 arm (`ingest_pre_lint` / `ingest_post_lint`) は意図的に異なる terminal 規約を採用している。`stop-guard.sh` の両 arm 系列から本セクションへ cross-reference している。
+
+| 系 | 規約 | emit 形式 |
+|----|------|-----------|
+| cleanup 系 | inline HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list) | Phase 5.2 最終 list item 末尾 (`2. /rite:issue:start ... <!-- [cleanup:completed] -->`) |
+| ingest 系 | absolute last line (independent line) per ingest.md Phase 9.1 Step 3 三点セット規約 | 独立行 emit (`\n<!-- [ingest:completed] -->\n`) |
+
+### 真の divergence 理由 (markdown channel separation モデル、cycle 4 HIGH 指摘対応)
+
+ingest 側も実際には `<!-- [ingest:completed] -->` を response **markdown text** の absolute last line に **独立行として emit** する (HTML block structure は cleanup 旧仕様と同じ)。ingest.md Phase 9.1 Step 3 の bash tool (flow-state deactivate) は sentinel 出力**後**に実行されるが、**bash tool の stdout/stderr は assistant response の markdown text content とは別チャンネル** (ingest.md Phase 9.1 の bash tool 実行 note + 設計メモ (非レンダリング注釈) Step 3 meta-step 特性 — #655 F-C8-12 cycle 9 対応で literal 行番号 citation から semantic 参照に書き換え) であり markdown renderer の入力には含まれない。したがって sentinel が markdown text の absolute last line である性質が保たれ、CommonMark HTML block (type 2) の後方空行要求は markdown text 終端で吸収され rendered view での可視化が発生しない。また ingest 側では sentinel 直前の caller 継続 HTML コメント (`<!-- continuation: caller MUST proceed ... -->`) も HTML block type 2 であり、HTML block が連続する区間では前方空行要求も rendered 空行として可視化されない (HTML block 境界同士は CommonMark の空行挿入対象外)。cleanup 旧仕様の可視化原因は「list item → HTML block」境界での前方空行要求が発火した点にある (#655 F-C6-15 で因果 chain 補強、#655 F-C8-07 cycle 9 で「またingest」スペース欠落 typo 修正)。
+
+cleanup 側 (#652 旧仕様) は Phase 5.3 Step 1 bash (deactivate) を Step 2 sentinel の**前**に実行し、Step 2 の独立行 sentinel を response markdown text の最終行として出力する構造だった。しかし「独立行として emit される HTML block」と「末尾ではない (後続に空行が必要) な位置」の組み合わせにより、CommonMark HTML block の前方空行要求が直前の Phase 5.2 list item と sentinel の間に空行を挿入し、rendered view で bash UI `Ran 1 shell command` と recap の間に可視化された (#652 Root Cause)。
+
+> **Note (事実参照)**: cycle 2 で本ファイルの「背景」セクションに一時的に追加された「sentinel 後に bash UI が続かない」という説明は factually 誤り。ingest 側も sentinel 後に bash (Step 3 deactivate) を実行している。正しい divergence 根拠は上記の「markdown text channel と bash tool channel の separation」であり、cycle 4 re-review (#655 F-C4-01) で訂正された。行番号 literal 参照 (`L13` 等) は ingest.md 設計メモ内の PR #617 規約 (「line 番号 literal は PR #617 規約違反となるため使わない」) と整合しないため使わない (#655 F-C6-06 cycle 6 対応、F-C8-06 cycle 9 で self-contradictory literal citation を quote 化)。
+
+両者の divergence は本 anti-pattern.md 側 (INTENTIONAL DIVERGENCE Rationale セクション) で canonical に記録される。
+
+> ※ 本セクションは #652 Bug 対応作業中に新設。cross-reference の正確性は #655 F-C6-04 cycle 6 対応で修正 (Issue #652 本文には「Known Issues」セクションは存在しないため、`#652 Known Issues` 参照は anti-pattern.md 側の record に訂正)。narrative 構造化は F-C8-13 cycle 9 対応。
+
+将来両 arm の terminal 規約を unify する場合は、(a) cleanup 側も **ingest.md Phase 9.1 と対称の構造** (sentinel を markdown text の absolute last line に独立行で出力し、flow-state deactivate bash を sentinel 出力**後**に meta-step として実行、markdown channel separation を活用) に戻す構造変更、または (b) ingest 側も inline sentinel 方式に統一し三点セット規約を改定、のいずれかの選択になる。
+
 ## 関連 Issue
 
-- **#621** — 本 regression の追跡 Issue
-- **#604** — 原 Issue (CLOSED)、5 層 defense-in-depth の導入元
-- **#618** — 対称問題 (OPEN)、ingest.md Phase 8 auto-lint return 後の implicit stop
-- **#561** — bare-sentinel 禁止規約の原点（create.md での同型問題解決）
+- **#621** — (CLOSED) 本 regression の追跡 Issue
+- **#604** — (CLOSED) 原 Issue、5 層 defense-in-depth の導入元
+- **#618** — (CLOSED) 対称問題、ingest.md Phase 8 auto-lint return 後の implicit stop (closedAt: 2026-04-20 / PR #624 で解決済み、同 PR の成果物が本 anti-pattern.md が citation する ingest.md Phase 9.1 の bash tool 実行 note + 設計メモ Step 3 meta-step 特性そのもの)
+- **#561** — (CLOSED) bare-sentinel 禁止規約の原点（create.md での同型問題解決）
+- **#652** — (OPEN) Phase 5.2 最終 list item inline sentinel 化による空行可視化解消 (上記 INTENTIONAL DIVERGENCE セクションの起点)
+- **#655** — (本 PR) cycle 6/8 re-review loop で factual regression (cycle 6: #618 OPEN 誤記、cycle 8: convention violation の再発) を含む findings を継続的に検出・修正 (F-C8-18 cycle 9 対応で cycle-agnostic 記述に変更)
 
 ## 関連参考パターン
 

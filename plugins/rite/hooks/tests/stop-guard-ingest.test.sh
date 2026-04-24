@@ -11,8 +11,20 @@
 # - 本 fixture は ingest_* phase 3 種 (ingest_pre_lint / ingest_post_lint / ingest_completed)
 #   の block と terminal 経路を verify。HINT-specific 文言 pin により stop-guard.sh の
 #   case arm 削除 regression を catch する。
-# - stop-guard.test.sh TC-618-* (future) と相補関係: 片方の文言 drift でもう片方が catch。
+# - stop-guard-cleanup.test.sh との sibling 相補関係: 同 fixture の Test 1/2/5/6 に配置された
+#   #652 canonical phrase pin と対称的に、本 fixture の Test 1/2 には ingest canonical phrase pin
+#   を配置する。cleanup 系 ↔ ingest 系の意図的 divergence (terminal 規約) を silent unification
+#   regression から守る現行の主要な protection layer。cycle 5 で既に成立済み
+#   (F-C8-02 cycle 9 対応で literal 行番号 L147-149 参照を semantic 記述に書き換え、PR #617 規約と整合)。
+# - stop-guard.test.sh TC-618-* は未実装 (grep TC-618 stop-guard.test.sh → 0 件、#655 F-C6-13
+#   cycle 7 対応で実態と一致するよう記述修正)。将来 TC-618-* が追加された際には相補関係を
+#   形成する想定で設計されているが、現時点の relevant な相補関係は stop-guard-cleanup.test.sh
+#   との間のみ。
 # 本 fixture は `*.test.sh` 命名規約に従い run-tests.sh の glob に拾われる。
+#
+# Note (F-C8-22 cycle 9 対応): ingest arm は error_count>=1 escalation 不要
+# (Phase 9.1 Step 3 terminal patch が caller 側継続判断を持つため、LLM 再入耐性は caller arm 側で担保)。
+# cleanup arm との symmetry 違いの rationale を明示。
 #
 # DRIFT-CHECK ANCHOR (semantic): plugins/rite/commands/wiki/ingest.md
 # 🚨 Mandatory After Auto-Lint section / plugins/rite/hooks/stop-guard.sh
@@ -142,7 +154,14 @@ assert_contains "stderr contains Phase:" "Phase:" "$STDERR_CONTENT"
 assert_contains "stderr contains ingest_pre_lint" "ingest_pre_lint" "$STDERR_CONTENT"
 # HINT-specific phrase pin (Issue #618 AC-4): ingest_pre_lint case arm 内にのみ存在する文言を pin
 assert_contains "stderr contains 'Phase 8.2 Pre-write recorded'" "Phase 8.2 Pre-write recorded" "$STDERR_CONTENT"
-# Sentinel emission pin: stop-guard.sh:332 の WORKFLOW_INCIDENT_TYPE 設定分岐で
+# #655 F-C6-02 cycle 7 対応: canonical phrase pin (F-C8-09 cycle 9 で ID typo 修正: F-06 → F-C6-02): ingest 系 "absolute last line" 規約 (ingest.md Phase 9.1 Step 3
+# 三点セット規約) が ingest arm から drift した場合に検知。stop-guard-cleanup.test.sh の
+# "HTML sentinel at the trailing position of the final list item" pin と sibling fixture で
+# 相補関係を形成し、cleanup 系 ↔ ingest 系の意図的 divergence を silent unification regression
+# から守る (wiki 経験則: HINT phrase 相補関係 + sentinel emission との orthogonal 検知)。
+assert_contains "stderr contains ingest canonical phrase" "HTML comment sentinel as the absolute last line of the response per ingest.md Phase 9.1 Step 3 三点セット規約" "$STDERR_CONTENT"
+# Sentinel emission pin: stop-guard.sh の WORKFLOW_INCIDENT_TYPE 初期設定分岐で
+# (F-C8-15 cycle 9 対応: literal 行番号 :332 を semantic 参照に変更、PR #617 規約準拠)
 # manual_fallback_adopted sentinel が stderr に echo されることを assert
 assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
 
@@ -156,6 +175,9 @@ assert_contains "stderr contains ingest_post_lint" "ingest_post_lint" "$STDERR_C
 # HINT-specific phrase pin: ingest_post_lint case arm 内にのみ存在する文言を pin
 assert_contains "stderr contains 'rite:wiki:lint --auto returned'" "rite:wiki:lint --auto returned" "$STDERR_CONTENT"
 assert_contains "stderr contains 'Phase 9 Completion Report has NOT been output'" "Phase 9 Completion Report has NOT been output" "$STDERR_CONTENT"
+# #655 F-C6-02 cycle 7 対応: canonical phrase pin (F-C8-09 cycle 9 で ID typo 修正: F-06 → F-C6-02): Test 1 と同様に ingest 系 "absolute last line" 規約の
+# stop-guard-cleanup.test.sh との sibling 相補関係 pin (意図的 divergence 保持)
+assert_contains "stderr contains ingest canonical phrase" "HTML comment sentinel as the absolute last line of the response per ingest.md Phase 9.1 Step 3 三点セット規約" "$STDERR_CONTENT"
 # Sentinel emission pin
 assert_contains "stderr contains manual_fallback_adopted sentinel" "WORKFLOW_INCIDENT=1; type=manual_fallback_adopted" "$STDERR_CONTENT"
 
