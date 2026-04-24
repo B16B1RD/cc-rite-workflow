@@ -583,7 +583,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run as your next tool call (Step 0 Immediate Bash Action literal): bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count ; then continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:skipped] -->
 ```
 
@@ -592,9 +592,13 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: read .rite-flow-state and continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run as your next tool call (Step 0 Immediate Bash Action literal): bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count ; then continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:completed] -->
 ```
+
+> **Issue #651 enhancement (4-site 対称化)**: caller HTML コメントに Step 0 Immediate Bash Action の bash command literal を inline で含めることで、orchestrator が次に実行すべき具体的な tool call を sub-skill 出力直後に視認できるようにする。これにより「caller が `.rite-flow-state` を読んでから次のステップを判断する」cognitive overhead を排除し、bash 名 + 引数を直接コピー実行できる経路を提供する。bash 引数 (`--phase create_post_interview` / `--if-exists` / `--preserve-error-count`) は **create.md Mandatory After Interview Step 0 Immediate Bash Action** / **Pre-flight (本ファイル冒頭)** / **Return Output re-patch (本セクション直前)** / **stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT bash literal** と **4-site 対称**。`--if-exists` の非対称性は #636 cycle 9 F-01 の説明に従い **本 caller HTML コメント内では含む** (orchestrator は `.rite-flow-state` 存在を Pre-flight で保証されているため `--if-exists` 安全)、ただし create-interview.md の Pre-flight / Return Output re-patch は file 不在時 `create` mode 分岐を持つため `if [ -f ... ]` 形式で別途処理 (意図的非対称、本 inline bash literal は orchestrator-side 想定)。
+>
+> **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651: 本 caller HTML コメント内 bash literal は (1) create.md 🚨 Mandatory After Interview Step 0 / (2) create-interview.md 🚨 MANDATORY Pre-flight / (3) create-interview.md Return Output re-patch (本セクション直前) / (4) stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT と **4-site 対称**。bash 引数 symmetry (`--phase` / `--if-exists` / `--preserve-error-count`) は #636 cycle 3 F-01 の error_count reset loop 防止規約に従う。`--next` 文字列は HINT/canonical で異なる (Step 0 fired vs continue caller) が動作影響なし。
 
 > **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。user-visible な最終コンテンツは `⏭ 継続中:` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
 

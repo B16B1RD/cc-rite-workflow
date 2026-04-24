@@ -1509,6 +1509,74 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-651-A: AC-4 — create_post_interview phase で stop-guard が exit 2 + workflow_incident
+# sentinel を emit することを mechanical assertion。Issue #651 root-cause 検証で実証された
+# 「stop-guard 自体は完璧に動作」を CI で永久 pin する (将来 sentinel 形式変更時の
+# silent regression 検出が目的)。
+# --------------------------------------------------------------------------
+echo "TC-651-A: create_post_interview phase で exit 2 + [CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fallback_adopted emit"
+dir651a="$GUARD_TEST_DIR/tc651a"
+mkdir -p "$dir651a"
+fresh_ts="${fresh_ts:-$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")}"
+create_state_file "$dir651a" "{\"active\": true, \"phase\": \"create_post_interview\", \"previous_phase\": \"create_interview\", \"next_action\": \"Test invocation for AC-4 verification\", \"updated_at\": \"$fresh_ts\", \"issue_number\": 651, \"pr_number\": 0, \"error_count\": 0, \"session_id\": \"sid-651a\"}"
+stderr_file651a="$(mktemp "$GUARD_TEST_DIR/stderr651a.XXXXXX")"
+input="{\"stop_hook_active\": false, \"cwd\": \"$dir651a\", \"session_id\": \"sid-651a\"}"
+output=$(echo "$input" | bash "$GUARD" 2>"$stderr_file651a") && rc=0 || rc=$?
+if [ $rc -eq 2 ] \
+    && grep -qF '[CONTEXT] WORKFLOW_INCIDENT=1' "$stderr_file651a" \
+    && grep -qF 'type=manual_fallback_adopted' "$stderr_file651a" \
+    && grep -qF 'phase=create_post_interview' "$stderr_file651a" \
+    && grep -qF 'iteration_id=' "$stderr_file651a"; then
+  pass "AC-4: exit 2 + workflow_incident sentinel (manual_fallback_adopted) emitted on create_post_interview block"
+else
+  fail "expected exit 2 + sentinel, got exit=$rc, stderr=$(head -3 "$stderr_file651a")"
+fi
+
+# --------------------------------------------------------------------------
+# TC-651-B: 4-site 対称性 — create-interview.md Return Output の caller HTML コメント内に
+# Step 0 Immediate Bash Action と同一の bash literal (`flow-state-update.sh patch
+# --phase create_post_interview --if-exists --preserve-error-count`) が含まれていることを
+# verify。新規 declarative 強化 layer (本 PR で追加) の non-regression。
+# --------------------------------------------------------------------------
+echo "TC-651-B: create-interview.md Return Output に 4-site 対称 bash literal が inline されている"
+interview_md_651b="$SCRIPT_DIR/../../../../plugins/rite/commands/issue/create-interview.md"
+tc651b_ok=1
+tc651b_missing=""
+# (1) caller HTML コメント内に literal bash command が含まれること
+grep -qF "flow-state-update.sh patch --phase create_post_interview" "$interview_md_651b" 2>/dev/null \
+  || { tc651b_ok=0; tc651b_missing="${tc651b_missing} bash-literal-in-caller-comment"; }
+# (2) --if-exists flag が含まれること (orchestrator 側想定)
+grep -qF -- "--if-exists --preserve-error-count" "$interview_md_651b" 2>/dev/null \
+  || { tc651b_ok=0; tc651b_missing="${tc651b_missing} preserve-error-count-flag"; }
+# (3) 4-site DRIFT-CHECK ANCHOR (本 PR で追加した anchor) が grep 可能
+grep -qF "DRIFT-CHECK ANCHOR (semantic, 4-site)" "$interview_md_651b" 2>/dev/null \
+  || { tc651b_ok=0; tc651b_missing="${tc651b_missing} 4-site-drift-check-anchor"; }
+if [ "$tc651b_ok" -eq 1 ]; then
+  pass "create-interview.md Return Output 4-site 対称性 (bash literal + --if-exists --preserve-error-count + 4-site ANCHOR) intact"
+else
+  fail "missing 4-site symmetry element(s):${tc651b_missing}"
+fi
+
+# --------------------------------------------------------------------------
+# TC-651-C: stop-guard.sh の create_post_interview WORKFLOW_HINT に
+# `flow-state-update.sh patch --phase create_post_interview` literal が含まれることを
+# assert。Issue #651 で確立した 4-site 対称規約の twin-site verification (create-interview.md
+# 側 = TC-651-B、stop-guard.sh 側 = 本 TC)。drift 検出専用。
+# --------------------------------------------------------------------------
+echo "TC-651-C: stop-guard.sh create_post_interview WORKFLOW_HINT に 4-site 対称 bash literal が含まれる"
+tc651c_ok=1
+tc651c_missing=""
+grep -qF "flow-state-update.sh patch --phase create_post_interview" "$GUARD" 2>/dev/null \
+  || { tc651c_ok=0; tc651c_missing="${tc651c_missing} bash-literal-in-stop-guard"; }
+grep -qF -- "--if-exists --preserve-error-count" "$GUARD" 2>/dev/null \
+  || { tc651c_ok=0; tc651c_missing="${tc651c_missing} preserve-error-count-in-stop-guard"; }
+if [ "$tc651c_ok" -eq 1 ]; then
+  pass "stop-guard.sh WORKFLOW_HINT で 4-site 対称 bash literal 保持"
+else
+  fail "missing 4-site symmetry in stop-guard.sh:${tc651c_missing}"
+fi
+
+# --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ $FAIL -gt 0 ]; then
