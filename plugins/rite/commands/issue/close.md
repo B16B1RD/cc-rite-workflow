@@ -81,17 +81,19 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
 
 `auto_add: false` because the Issue is already CLOSED at this point — auto-adding a closed Issue is unexpected and would mask a configuration drift. The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline.
 
-#### 1.3.3 Result Handling
+#### 1.3.2.1 Result Handling
 
 Inspect the script's stdout JSON and route by `.result`:
 
 | `.result` | User-visible action |
 |-----------|--------------------|
-| `"updated"` | Display `Projects Status を "Done" に更新しました` (or, when the Status was already "Done", the same message — the script is idempotent) and proceed to Phase 5 |
+| `"updated"` | Display `Projects Status を "Done" に更新しました` and proceed to Phase 5. Note: the script always PATCHes regardless of pre-state, so `already Done` and `newly Done` both surface as `.result == "updated"` (idempotent at API level, but indistinguishable from the caller's perspective) |
 | `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません` and proceed to Phase 5 |
 | `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed to Phase 5 |
 
 **All result branches are non-blocking** — the Issue is already closed; a Projects Status update issue MUST NOT halt the close flow.
+
+> **Bash 実装テンプレート**: 上記表の routing を実装する完全な bash パターン (`status_json=$(...) || status_json=""`、`.warnings[]` の stderr surface、case 分岐) は `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること。
 
 > **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
@@ -264,6 +266,8 @@ Inspect the script's stdout JSON and route by `.result`:
 | `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed to Phase 4.3 |
 
 **All result branches are non-blocking** — the close has already executed (`gh issue close` in Phase 4.1); a Projects Status update issue MUST NOT halt the close flow.
+
+> **Bash 実装テンプレート**: 上記表の routing を実装する完全な bash パターン (`status_json=$(...) || status_json=""`、`.warnings[]` の stderr surface、case 分岐) は `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること。
 
 > **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
@@ -993,14 +997,21 @@ projects_enabled="{projects_enabled}"  # "true" or "false" from rite-config.yml
 project_number="{project_number}"      # integer from rite-config.yml
 issue_number="{issue_number}"          # the child Issue that triggered this close
 
-status_update_result="skipped"  # success | not_registered | update_failed | projects_disabled | skipped
+status_update_result="skipped"  # success | not_registered | update_failed | projects_disabled
 status_warning_lines=""         # captured .warnings[] from the script for Step 3 surface
 issue_close_result="pending"    # success | failed | pending
 
-# --- stderr capture tempfile for the gh issue close call ---
+# --- stderr capture tempfiles ---
+# p463_err_close: gh issue close stderr 退避
+# p463_err_status: projects-status-update.sh script invocation stderr 退避
+#   (Issue #659 F-03: 旧実装は `2>/dev/null` で script 起動側 stderr を完全廃棄していた。
+#    script 内部の gh stderr は `.warnings[]` で surface されるが、script 外部エラー
+#    (jq 不在 / bash syntax / mktemp 失敗 / `{plugin_root}` 置換漏れ) は stderr 直書きのため
+#    `2>/dev/null` で完全消失していた)
 p463_err_close=""
+p463_err_status=""
 _rite_close_p463_cleanup() {
-  rm -f "${p463_err_close:-}"
+  rm -f "${p463_err_close:-}" "${p463_err_status:-}"
 }
 trap 'rc=$?; _rite_close_p463_cleanup; exit $rc' EXIT
 trap '_rite_close_p463_cleanup; exit 130' INT
@@ -1029,9 +1040,18 @@ if [ "$projects_enabled" = "true" ]; then
     --argjson auto_add false \
     --argjson non_blocking true \
     '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
-  status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>/dev/null) || status_json=""
+  # script の stderr を tempfile に退避し、JSON 出力前死亡時 (jq 不在 / mktemp 失敗 / `{plugin_root}`
+  # 置換漏れ等) の原因を Step 3 inconsistency summary に surface できるようにする (Issue #659 F-03)
+  p463_err_status=$(_mktemp_or_warn "Step 1 invocation")
+  status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>"${p463_err_status:-/dev/null}") || status_json=""
   status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
   status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+
+  # script が JSON を吐く前に死んだ場合 (status_json="") は status_warning_lines も空のため、
+  # 退避した stderr を warning_lines に注入して Step 3 で surface する
+  if [ -z "$status_json" ] && [ -n "$p463_err_status" ] && [ -s "$p463_err_status" ]; then
+    status_warning_lines=$(printf 'script invocation died before JSON emit: %s' "$(head -5 "$p463_err_status")")
+  fi
 
   case "$status_result" in
     updated)
@@ -1042,8 +1062,18 @@ if [ "$projects_enabled" = "true" ]; then
       status_update_result="not_registered"
       echo "警告: 親 Issue #${parent_number} は Project #${project_number} に登録されていません。Status 更新をスキップします。" >&2
       ;;
-    failed|*)
+    failed)
       status_update_result="update_failed"
+      echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
+      if [ -n "$status_warning_lines" ]; then
+        printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2
+      fi
+      ;;
+    *)
+      # 未知の .result 値 (script の schema 拡張で `not_eligible` / `rate_limited` 等が将来追加された場合)
+      # silent miscategorization を防ぐため debug log を出してから update_failed 扱いにする
+      status_update_result="update_failed"
+      echo "警告: projects-status-update.sh から未知の .result='$status_result' を受信しました。update_failed として扱います" >&2
       echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
       if [ -n "$status_warning_lines" ]; then
         printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2
@@ -1093,9 +1123,14 @@ case "${issue_close_result}:${status_update_result}" in
     echo "⚠️  state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"
     echo "    復旧コマンド: gh issue close ${parent_number}" >&2
     ;;
-  "failed:projects_disabled"|"failed:not_registered")
+  "failed:projects_disabled")
     echo ""
-    echo "⚠️  親 Issue のクローズに失敗しました (Status 更新は対象外)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+    echo "⚠️  親 Issue のクローズに失敗しました (Projects 機能は config で無効化されているため Status 更新は対象外)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+    ;;
+  "failed:not_registered")
+    echo ""
+    echo "⚠️  親 Issue のクローズに失敗しました (親 Issue は Project に未登録、config は enabled)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+    echo "    Project に追加すべきか確認: gh project item-add ${project_number} --owner ${owner} --url https://github.com/${owner}/${repo}/issues/${parent_number}" >&2
     ;;
   "failed:"*)
     echo ""

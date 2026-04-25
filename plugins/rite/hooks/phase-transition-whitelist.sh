@@ -99,7 +99,8 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["phase5_post_fix"]="phase5_review phase5_ready phase5_post_ready phase5_ready_error"
 
   # Phase 5.5: ready → status → metrics → completion
-  # phase5_ready_error is a terminal error state emitted by ready.md Phase 4.5 when skill errors
+  # phase5_ready_error is a terminal error state emitted by ready.md Phase 3.1 when skill errors
+  # (Issue #659 で旧 Phase 4.5 → 新 Phase 3.1 に renumber 済み。本コメントは renumber 後の事実反映)
   # (devops-reviewer HIGH #5). Allow error → post_ready and error → completed transitions so the
   # workflow can recover via user choice (retry / manual / terminate).
   ["phase5_ready"]="phase5_post_ready phase5_ready_error"

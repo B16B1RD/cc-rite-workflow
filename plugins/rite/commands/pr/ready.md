@@ -336,7 +336,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
   '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-`auto_add: false` because by ready time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline, with built-in handling for User / Organization owners.
+`auto_add: false` because by ready time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline. The query uses GraphQL の `repository(owner:)` 形式 (User / Organization どちらの owner でも透過的に解決されるため、client-side type detection は不要)。旧 ready.md inline 経路は `user(login:)` を直接 query して Organization fallback を行う実装だったが、`repository(owner:)` への delegation でこの分岐自体が不要になった。
 
 #### 4.2.1 Result Handling
 
@@ -349,6 +349,8 @@ Inspect the script's stdout JSON and route by `.result`:
 | `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 |
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
+
+> **Bash 実装テンプレート**: 上記表の routing を実装する完全な bash パターン (`status_json=$(...) || status_json=""`、`.warnings[]` の stderr surface、case 分岐) は `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること。delegate-only 経路で `.warnings[]` の stderr surface を実装し忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するリスクがある。
 
 > **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 

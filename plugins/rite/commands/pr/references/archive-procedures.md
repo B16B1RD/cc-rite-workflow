@@ -58,7 +58,33 @@ Track the final success/failure of the Projects Status update for inclusion in t
 
 When Phase 3.2 returns `.result == "skipped_not_in_project"` or `"failed"`, `projects_status_updated` retains its default `false` value and the failure has already been surfaced via the `.warnings[]` lines + manual recovery hint above.
 
-The LLM retains `projects_status_updated` in conversation context. Phase 5.1 uses it for conditional display of the Projects Status update result.
+The LLM retains `projects_status_updated` in conversation context. Phase 5.1 uses it for conditional display of the Projects Status update result via the `{projects_check}` / `{projects_status_result}` placeholders (see `cleanup.md` Phase 5.1).
+
+**Bash 実装パターン** (LLM 向け実装ヒント — Phase 3.2 script delegate 呼び出し直後に挿入する):
+
+```bash
+# Phase 3.2 の bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n ...)" 直後
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$(...)")
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"')
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?')
+projects_status_updated="false"  # default
+case "$status_result" in
+  updated)
+    projects_status_updated="true"
+    echo "Projects Status を \"Done\" に更新しました"
+    ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2
+    ;;
+  failed)
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2
+    ;;
+esac
+# projects_status_updated を Phase 5.1 で参照するため context-local に保持する
+```
+
+完全な bash 実装サンプルは `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary を含む完全形)。
 
 ### 3.5 Automatic Final Update of Work Memory
 
