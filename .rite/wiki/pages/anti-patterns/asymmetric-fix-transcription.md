@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-25T11:40:00+00:00"
+updated: "2026-04-25T17:50:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -54,7 +54,13 @@ sources:
     ref: "raw/reviews/20260425T074416Z-pr-659.md"
   - type: "reviews"
     ref: "raw/reviews/20260425T081422Z-pr-659-cycle2.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry"]
+  - type: "reviews"
+    ref: "raw/reviews/20260425T165246Z-pr-661.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T165546Z-pr-661.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T171440Z-pr-661-cycle-4.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage"]
 confidence: high
 ---
 
@@ -197,6 +203,26 @@ PR #659 (Issue #658 = `/rite:pr:cleanup` 完了後の Projects Status 停留 reg
 2. **sibling site との side-by-side diff 検証**: ready.md / close.md / archive-procedures.md の同種 phase が同種 guard 構造を持つ場合、refactor 後に 3-way side-by-side diff を取り、guard 条件が byte-for-byte 整合しているかを mechanical verification する
 3. **連鎖 drift fractal の cycle escalation 認識**: 同種 refactor PR で cycle 1 で defensive shape drift、cycle 2 で guard 条件 drift、cycle 3 で reference drift と段階的に surface する場合、cycle 1 fix 時点で「他観点の drift も同 site に潜む可能性が高い」と認識し、追加の grep / 全 guard 条件 enumeration を mandatory 化する。本 anti-pattern は単独 cycle ではなく 1 PR 全体の review-fix loop 履歴で観測する fractal pattern として認識する
 
+### PR #661 (Issue #660) で実測された Propagation scan pattern coverage 不足
+
+PR #661 cycle 2 で `cleanup.md:1674` の hardcoded line-number reference (`(line 1659, 1680)`) を structural reference (`wiki/ingest.md Phase 9.1 Step 3` 等) に修正したが、cycle 3 review で **同型 drift が cycle 1 で同時導入された create-interview.md:605 にも存在**することを cross-validation で発見。具体的には:
+- `本セクション直前の line 588 / 597 caller HTML inline literal も --active true を含む 4-arg symmetry に揃え済み`
+- `create.md:580 / create-interview.md:22 の DRIFT-CHECK ANCHOR と pair 同期する`
+
+**cycle 2 propagation scan が見落とした原因**: cycle 2 fix の scan logic は `(line N, M)` parenthesized form を grep していたが、create-interview.md:605 は **散文形式**の hardcoded reference を含むため pattern が異なり検出できなかった。
+
+**canonical 拡張**: drift-check-anchor lint pattern を以下の **5 種表記すべて**に対応させる:
+
+| 表記形式 | 例 |
+|---------|------|
+| `(line N, M)` parenthesized form | `(line 1659, 1680)` |
+| `(L<num>)` short form | `(L156-160)` |
+| `<file>:<num>` colon form | `cleanup.md:1674` |
+| `本セクション直前の line N` 散文形式 | `本セクション直前の line 588 / 597` |
+| `Line <num>` capitalized form | `Line 605 を参照` |
+
+**cross-validation の威力**: create-interview.md:605 の 散文形式 line-number reference は単独 reviewer なら見逃した可能性 (LOW Confidence) だが、prompt-engineer + code-quality の 2 名が独立に同じ問題を発見し、Phase 5.2 cross-validation で High Confidence + severity boost (LOW + MEDIUM → MEDIUM) として確定。本 PR が解決しようとしている root cause (silent 単一障害点) と、cycle 2 / cycle 3 で発見された finding は、共に「文書間 / 文書内の reference drift」という同型構造で、self-meta drift の典型例。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -232,3 +258,6 @@ PR #659 (Issue #658 = `/rite:pr:cleanup` 完了後の Projects Status 停留 reg
 - [PR #636 cycle 4 review (architectural fix の sub-skill 側未適用、DRIFT-CHECK ANCHOR 自身が片方向)](raw/reviews/20260421T033906Z-pr-636-cycle-4.md)
 - [PR #659 cycle 1 review (5 sister sites 中 1 site のみ canonical 化漏れ、3 reviewer 独立検出)](raw/reviews/20260425T074416Z-pr-659.md)
 - [PR #659 cycle 2 review (cycle 1 fix と test の同期義務 + 初期値 silent fall-through risk)](raw/reviews/20260425T081422Z-pr-659-cycle2.md)
+- [PR #661 cycle 3 review (create-interview.md:605 散文形式 line-number reference の cross-validation 検出)](../../raw/reviews/20260425T165246Z-pr-661.md)
+- [PR #661 cycle 3 fix (propagation scan pattern coverage 拡張)](../../raw/fixes/20260425T165546Z-pr-661.md)
+- [PR #661 Cycle 4 Review (mergeable, REC-04 で drift-check-anchor lint pattern 拡張提案)](../../raw/reviews/20260425T171440Z-pr-661-cycle-4.md)

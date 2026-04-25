@@ -2,10 +2,28 @@
 title: "前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する"
 domain: "anti-patterns"
 created: "2026-04-25T12:30:00+00:00"
-updated: "2026-04-25T12:30:00+00:00"
+updated: "2026-04-25T17:50:00+00:00"
 sources:
   - type: "retrospectives"
     ref: "raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T133145Z-pr-661.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T153740Z-pr-661.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T161137Z-pr-661.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T165246Z-pr-661.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T171440Z-pr-661-cycle-4.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T133451Z-pr-661.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T154517Z-pr-661-cycle-1.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T161635Z-pr-661.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T165546Z-pr-661.md"
 tags: [defense-in-depth, and-logic, precondition, flow-state, stop-guard, silent-failure, fragility, hook]
 confidence: high
 ---
@@ -118,6 +136,19 @@ stop-guard の early return 条件を「current session が書いた flow-state 
 
 防御層を追加する際、その層が **fire するための前提条件**を必ず明文化し、本番でその前提条件が成立しているかを **一次情報** (hook diag log / stop_hook_summary / .rite-flow-state の現状) で定期検証する。AND 論理の防御層を組む場合、各 link の前提条件が **生成側の実装で網羅** されているかを grep audit で証明できる構造にする。
 
+### PR #661 (Issue #660) で実証された短期修復と invariant 強化
+
+PR #661 で 17 patch site / 12 ファイルに `--active true` を網羅追加 (terminal phase 除く)。post-fix の本番 diag log で `EXIT:2 reason=blocking` が 9 件、`EXIT:0 reason=not_active` が 3 件観測され、stop-guard が正しく blocking 動作するように回復した。重要な副次対策:
+
+1. **本番条件再現 TC の追加** (TC-660-A〜E): 既存 60+ TC が「pre-set + active=true」前提で書かれており、本番起動条件 (`active=false` 起動 → exit 0 → case arm 到達不能) を assert する TC が一つも無かった。`active=false` で起動したら `EXIT:0 reason=not_active` が必ず emit される negative assertion を canonical な test infrastructure として永続化することで、AND 論理 silent omit が次回 PR で再導入された場合に CI で検出可能になる。
+2. **Inverse TC の重要性**: 「`--active true` 明示時の flip」だけでなく「`--active` 省略時の preserve-existing semantics」も assert する inverse TC が必要。修正対象の `flow-state-update.sh:254` の `if [[ -n "$ACTIVE" ]]` 条件分岐 semantics が将来変更されると、AC-1 を full carpeted した修正自体が無効化される silent regression が起きるため、双方向 (active=false / active=true) の preserve assertion で固定する。
+3. **AC 文言の literal 検証可能性**: AC-1 等で「`git grep` 1 行の oneliner」を AC として記載すると、複数行の `\` continuation 構造を持つ patch site で literal 実行が常に false positive になる。block-aware scan (awk) または python here-doc を AC 文言に書く運用ガイドが必要。
+4. **4-site DRIFT-CHECK ANCHOR の bash 引数 symmetry 拡張**: 元 `--phase` / `--next` / `--preserve-error-count` の 3-arg → `--phase` / `--active` / `--next` / `--preserve-error-count` の 4-arg に昇格。create.md / create-interview.md / cleanup.md / stop-guard.sh の 4 site を atomic 同期。本拡張は「Asymmetric Fix Transcription」と「DRIFT-CHECK ANCHOR は semantic name 参照で記述する」の合流ケース。
+
+### 累積対策 PR の review-fix loop convergence (PR #661 cycle 1→4)
+
+PR #661 (Issue #660 = 累積対策 11 回目) では cycle 1 → 4 で findings 数が 7 → 2 → 1 → 0 と明確 convergence。各 cycle の finding の大半 (cycle 2 の MEDIUM 2、cycle 3 の MEDIUM 1) は前 cycle fix 自体が導入した drift 起因 (詳細は「Fix-induced drift in cumulative defense」参照)。これは「累積対策 PR fractal pattern」の典型的な収束プロファイル。production diag log の `EXIT:2 reason=blocking` 観測数の変化と finding count を併走させて、修復が link 全体に波及したことを多角的に確認するのが canonical。
+
 ## 関連ページ
 
 - [Declarative enforcement で LLM の stop_reason: end_turn は抑制できない](declarative-enforcement-cannot-prevent-llm-end-turn.md)
@@ -128,3 +159,12 @@ stop-guard の early return 条件を「current session が書いた flow-state 
 ## ソース
 
 - [meta-investigation: /rite:issue:create が累積 9 件の対策後も止まり続けた meta-retrospective](../../raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md)
+- [PR #661 review results (cycle 1)](../../raw/reviews/20260425T133145Z-pr-661.md)
+- [PR #661 review results (cycle 1, expanded)](../../raw/reviews/20260425T153740Z-pr-661.md)
+- [PR #661 review results (cycle 2)](../../raw/reviews/20260425T161137Z-pr-661.md)
+- [PR #661 review results (cycle 3)](../../raw/reviews/20260425T165246Z-pr-661.md)
+- [PR #661 Cycle 4 Review (mergeable, 0 findings)](../../raw/reviews/20260425T171440Z-pr-661-cycle-4.md)
+- [PR #661 fix results (cycle 0)](../../raw/fixes/20260425T133451Z-pr-661.md)
+- [PR #661 fix results (cycle 1)](../../raw/fixes/20260425T154517Z-pr-661-cycle-1.md)
+- [PR #661 fix results (cycle 2)](../../raw/fixes/20260425T161635Z-pr-661.md)
+- [PR #661 fix results (cycle 3)](../../raw/fixes/20260425T165546Z-pr-661.md)

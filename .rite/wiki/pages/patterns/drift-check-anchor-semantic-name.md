@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-04-20T16:53:38+00:00"
+updated: "2026-04-25T17:50:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -28,6 +28,18 @@ sources:
     ref: "raw/reviews/20260420T145943Z-pr-624-cycle2.md"
   - type: "reviews"
     ref: "raw/reviews/20260420T160140Z-pr-626.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T133145Z-pr-661.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T161137Z-pr-661.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T165246Z-pr-661.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T154517Z-pr-661-cycle-1.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T161635Z-pr-661.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260425T165546Z-pr-661.md"
 tags: []
 confidence: high
 ---
@@ -233,6 +245,41 @@ PR #624 (Issue #618) cycle 2 で、PR #617 merge 直後に作成された本 PR 
 
 本原則は semantic anchor 規約に限らず、**最近の PR で確立された任意の規約** (コメント規約、naming convention、test pattern 等) に一般化される。team velocity の高い repository ほど規約 velocity も高く、直前 PR の規約違反が 24 時間以内に発生する risk が上昇する。
 
+### PR #661 (Issue #660) で実測された 5 種表記の散文形式 drift
+
+PR #661 では 4-arg DRIFT-CHECK ANCHOR 拡張時に、cycle 1 で **2 site 同時に** hardcoded line-number reference が新規導入された:
+
+| Site | 表記形式 | 違反内容 |
+|------|---------|---------|
+| `cleanup.md:1674` | parenthesized form | `(line 1659, 1680)` |
+| `create-interview.md:605` | 散文形式 | `本セクション直前の line 588 / 597 caller HTML inline literal` + `create.md:580 / create-interview.md:22 の DRIFT-CHECK ANCHOR` |
+
+cycle 2 fix で cleanup.md の `(line N, M)` 表記を structural reference 化したが、**propagation scan logic が `(line N, M)` 形式に限定されていた**ため、create-interview.md:605 の散文形式は検出できず cycle 3 まで残留。prompt-engineer + code-quality の cross-validation で発覚した。
+
+**stop-guard.sh で 3 箇所明文化されている project convention (line-number 参照を避ける、cycle 8 F-05) は本ページの canonical reference**。本 PR cycle 1 fix の commit message も `learned: ANCHOR comment の prose 内 bash 引数 enumeration は literal block と同等の同期義務がある` と教訓化していたにもかかわらず、横展開検査が cleanup.md 1 ファイルに留まり、create-interview.md は scope 外に落ちた。
+
+**5 種表記すべてを scan 対象にする canonical 拡張**: drift-check-anchor lint pattern を以下の 5 種すべてに対応させる必要がある (REC-04 として PR #661 で別 Issue 候補化):
+
+1. `(line N, M)` parenthesized form
+2. `(L<num>)` short form (bracket variant)
+3. `<file>:<num>` colon form
+4. `本セクション直前の line N` 散文形式 (Japanese inline)
+5. `Line <num>` capitalized form (English title case)
+
+### 4-arg DRIFT-CHECK ANCHOR symmetry 拡張の canonical procedure (PR #661)
+
+既存の symmetry 概念に新しい引数を昇格させる作業 (3-arg → 4-arg) は、影響を受ける anchor location 全件を事前列挙してチェックリスト化することで drift を防げる。PR #661 では:
+
+| Site | 4-arg 化対象 | Result |
+|------|-------------|--------|
+| `commands/issue/create.md` Step 0 | literal block + ANCHOR comment prose | cycle 1 で同期完了 |
+| `commands/issue/create-interview.md` Pre-flight + Return Output re-patch | literal block (×2) | cycle 1 で同期完了 |
+| `commands/pr/cleanup.md` Step 0 | literal block | cycle 1 で同期完了 |
+| `hooks/stop-guard.sh` case arm WORKFLOW_HINT | literal block | cycle 1 で同期完了 |
+| `commands/issue/create-interview.md` Issue #651 enhancement blockquote | **prose 側 1 site のみ 3-arg 表記残留 (cycle 2 で検出)** | cycle 2 で同期完了 |
+
+**ANCHOR comment と literal の pair sync invariant**: ANCHOR comment と literal は同期 invariant を持つ。片方を更新する PR は対称先の comment も同時更新しないと、後続 PR で comment と literal の drift を見て「3-arg が正」と誤判断するリスクが残る (cycle 1 で 3 箇所同時に発覚した HIGH 3 件はこの構造)。
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
@@ -255,3 +302,9 @@ PR #624 (Issue #618) cycle 2 で、PR #617 merge 直後に作成された本 PR 
 - [PR #619 review (bidirectional backlink team guideline 5 ANCHOR 拡張 + allowed redundancy)](../../raw/reviews/20260420T052907Z-pr-619.md)
 - [PR #624 cycle 2 review (直前 merge PR 規約への後続 PR 違反)](../../raw/reviews/20260420T145943Z-pr-624-cycle2.md)
 - [PR #626 review (bidirectional backlink canonical format 統一 refactor の healthy landing)](../../raw/reviews/20260420T160140Z-pr-626.md)
+- [PR #661 cycle 1 review (4-arg DRIFT-CHECK ANCHOR drift 3 件)](../../raw/reviews/20260425T133145Z-pr-661.md)
+- [PR #661 cycle 1 fix (4-arg ANCHOR comment 統一)](../../raw/fixes/20260425T154517Z-pr-661-cycle-1.md)
+- [PR #661 cycle 2 review (cleanup.md:1674 hardcoded line-number 違反)](../../raw/reviews/20260425T161137Z-pr-661.md)
+- [PR #661 cycle 2 fix (structural reference 化)](../../raw/fixes/20260425T161635Z-pr-661.md)
+- [PR #661 cycle 3 review (create-interview.md:605 散文形式 line-number reference cross-validation 検出)](../../raw/reviews/20260425T165246Z-pr-661.md)
+- [PR #661 cycle 3 fix (5 種表記対応への scan 拡張提案)](../../raw/fixes/20260425T165546Z-pr-661.md)
