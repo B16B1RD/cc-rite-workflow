@@ -15,126 +15,81 @@ github:
     owner: "{owner}"
 ```
 
-### 3.2 Retrieve Issue's Project Item Information
+### 3.2 Update Status via Shared Script
 
-If a related Issue has been identified:
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 (Issue #496 / PR #531). Direct inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because LLM attention loss / partial-failure paths through the 3-stage inline pipeline produced silent skips that left Issue Status stuck at the previous value (Issue #658 — observed on #593 stuck at "In Review" and #652 stuck at "In Progress").
 
-```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
-```
-
-#### 3.2.1 Error Handling
-
-Validate the GraphQL query result and handle errors:
-
-| Condition | Action | Message |
-|-----------|--------|---------|
-| Query fails (API error, network error) | Display warning, skip Phase 3.3-3.4 | `警告: Projects 情報の取得に失敗しました。Status 更新をスキップします。理由: {error_message}` |
-| `projectItems.nodes` is empty (`[]`) | Display warning, skip Phase 3.3-3.4 | `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。` |
-| No node matches configured `project_number` | Display warning, skip Phase 3.3-3.4 | `警告: Issue #{issue_number} は対象 Project (#{project_number}) に登録されていません。Status 更新をスキップします。` |
-
-**Note**: All failures are non-blocking — display the warning and proceed to Phase 3.5 (work memory update). The cleanup process must not fail due to a Projects Status update issue.
-
-### 3.3 Retrieve Status Field
-
-**Important**: The option ID (`{done_option_id}`) must always be retrieved from the API. Only field IDs can be specified via `field_ids`; option IDs (Done, In Progress, etc.) are not included.
-
-**Retrieving the field ID:**
-
-If `github.projects.field_ids.status` is set in `rite-config.yml`, use that value directly as `{status_field_id}` (skip extracting the field ID from the API result):
-
-Replace the configuration value with the actual project ID (see CONFIGURATION.md for how to obtain it):
-
-```yaml
-github:
-  projects:
-    field_ids:
-      status: "PVTSSF_your-status-field-id"
-```
-
-**Retrieving the option ID (always required):**
+Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` Phase 1.5, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
-gh project field-list {project_number} --owner {owner} --format json
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-From the resulting JSON, find the field where `name` is `"Status"` and retrieve the following information:
-- `id`: The Status field ID (`{status_field_id}`) -- only used when `field_ids` is not set
-- From the `options` array, the `id` of the option where `name` is `"Done"` (`{done_option_id}`)
+`auto_add: false` because by cleanup time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline.
 
-**Retrieval logic:**
-1. Execute the API (always required to retrieve the option ID)
-2. Check `github.projects.field_ids.status` in `rite-config.yml`
-3. Determine the field ID:
-   - If set -> Use the configured value as `{status_field_id}`
-   - If not set -> Retrieve `{status_field_id}` from the API result
-4. Option ID: Retrieve `{done_option_id}` from the API result
+#### 3.2.1 Result Handling
 
-#### 3.3.1 Error Handling
+Inspect the script's stdout JSON and route by `.result`:
 
-Validate the field retrieval result and handle errors:
+| `.result` | `projects_status_updated` | User-visible action |
+|-----------|---------------------------|--------------------|
+| `"updated"` | Set to `true` | Display `Projects Status を "Done" に更新しました` |
+| `"skipped_not_in_project"` | Stays `false` (default) | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。` and proceed |
+| `"failed"` | Stays `false` (default) | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed |
 
-| Condition | Action | Message |
-|-----------|--------|---------|
-| `gh project field-list` command fails | Display warning, skip Phase 3.4 | `警告: Project フィールド情報の取得に失敗しました。Status 更新をスキップします。理由: {error_message}` |
-| Status field not found in result | Display warning, skip Phase 3.4 | `警告: Project に Status フィールドが見つかりません。Status 更新をスキップします。` |
-| "Done" option not found in Status field | Display warning, skip Phase 3.4 | `警告: Status フィールドに "Done" オプションが見つかりません。Status 更新をスキップします。` |
+**All result branches are non-blocking** — display the appropriate message and proceed to Phase 3.5 (work memory update). The cleanup process MUST NOT fail due to a Projects Status update issue.
 
-**Note**: All failures are non-blocking — display the warning and proceed to Phase 3.5.
+> **Underlying API documentation**: See [projects-integration.md §2.4](../../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
-### 3.4 Update Status to "Done"
-
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
-```
-
-**Purpose of retrieved values:**
-- `{project_id}`: The Project ID retrieved in Phase 3.2 (`projectItems.nodes[].project.id`)
-- `{item_id}`: The Issue's Project item ID retrieved in Phase 3.2 (`projectItems.nodes[].id`)
-
-**If Project is not configured:**
-
-```
-警告: GitHub Projects が設定されていません
-Status の更新をスキップします
-```
-
-#### 3.4.1 Error Handling
-
-Validate the `gh project item-edit` result:
-
-| Condition | Action | Message |
-|-----------|--------|---------|
-| `gh project item-edit` command fails | Display warning, proceed to Phase 3.5 | `警告: Projects Status の "Done" への更新に失敗しました。理由: {error_message}。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更してください。` |
-| Command succeeds | Display confirmation | `Projects Status を "Done" に更新しました` |
-
-**Note**: Failure is non-blocking — display the warning with manual recovery instructions and proceed to Phase 3.5.
-
-#### 3.4.2 Phase 3 Result Summary
+#### 3.2.2 Phase 3 Result Summary
 
 Track the final success/failure of the Projects Status update for inclusion in the Phase 5 completion report:
 
 **Result variable:**
-- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.4 `gh project item-edit` succeeds.
+- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.2 returns `.result == "updated"`.
 
-When Phase 3.2 or 3.3 fails and subsequent phases are skipped, `projects_status_updated` retains its default `false` value.
+When Phase 3.2 returns `.result == "skipped_not_in_project"` or `"failed"`, `projects_status_updated` retains its default `false` value and the failure has already been surfaced via the `.warnings[]` lines + manual recovery hint above.
 
-The LLM retains this value in conversation context. Phase 5.1 uses it for conditional display of the Projects Status update result.
+The LLM retains `projects_status_updated` in conversation context. Phase 5.1 uses it for conditional display of the Projects Status update result via the `{projects_check}` / `{projects_status_result}` placeholders (see `cleanup.md` Phase 5.1).
+
+**Bash 実装パターン** (LLM 向け実装ヒント — Phase 3.2 の `bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"` 行を以下のように書き換える):
+
+```bash
+# Phase 3.2 の script delegate invocation を defensive shape で書き換える
+# (sister sites: close.md Phase 1.3.2.1 / 4.2.1, ready.md Phase 4.2.1, archive-procedures.md Phase 3.7.2.1
+#  と byte-for-byte 整合させる — `|| status_json=""` fallback / jq 2>/dev/null 抑制 / `failed|*)`
+#  catch-all は AC-2 silent skip 復活ベクタを塞ぐために必須)
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+projects_status_updated="false"  # default
+case "$status_result" in
+  updated)
+    projects_status_updated="true"
+    echo "Projects Status を \"Done\" に更新しました"
+    ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2
+    ;;
+  failed|*)
+    # script が JSON-emit 前に死んだ場合 (jq 不在 / mktemp 失敗 / `{plugin_root}` 置換漏れ等) は
+    # status_result が空文字となり `*)` で捕捉される — silent fall-through 防止
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2
+    ;;
+esac
+# projects_status_updated を Phase 5.1 で参照するため context-local に保持する
+```
+
+完全な bash 実装サンプルは `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary を含む完全形)。
 
 ### 3.5 Automatic Final Update of Work Memory
 
@@ -469,45 +424,48 @@ If all child Issues are complete, auto-close the parent Issue without user confi
 
 ##### 3.7.2.1 Update Parent Issue's Projects Status to "Done"
 
-If the parent Issue is registered in a Project, update the Status:
+Skip this substep if `github.projects.enabled: false` in `rite-config.yml` and proceed to 3.7.2.2 (close processing). Otherwise, invoke the shared script to transition the parent Issue Status to **Done** (same delegate pattern as Phase 3.2 — see Issue #658 for rationale):
 
 ```bash
-# 親 Issue の Project アイテム情報を取得
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={parent_issue_number}
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {parent_issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-If registered in a Project:
+Inspect the script's stdout JSON:
 
-```bash
-# Status を "Done" に更新
-gh project item-edit --project-id {project_id} --id {parent_item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
-```
+| `.result` | Action |
+|-----------|--------|
+| `"updated"` | Display `親 Issue #{parent_issue_number} の Projects Status を "Done" に更新しました` and proceed to 3.7.2.2 |
+| `"skipped_not_in_project"` | Display `警告: 親 Issue #{parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します` and proceed to 3.7.2.2 |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: 親 Issue #{parent_issue_number} の Projects Status 更新に失敗しました。手動更新が必要な場合があります。クローズ処理は続行します` and proceed to 3.7.2.2 |
 
-**Note**: Use the `{done_option_id}` value already retrieved in Phase 3.3.
+**All result branches are non-blocking** — the parent Issue close (3.7.2.2) MUST proceed regardless of Status update outcome.
 
-**If the parent Issue is not registered in a Project:**
-
-Display a warning and skip the status update, but continue with the close processing (3.7.2.2):
-
-```
-警告: 親 Issue #{parent_issue_number} は Project に登録されていません
-Status 更新をスキップしてクローズ処理を続行します
-```
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形、parent Issue Done 更新版)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated) echo "親 Issue #${parent_issue_number} の Projects Status を \"Done\" に更新しました" ;;
+>   skipped_not_in_project) echo "警告: 親 Issue #${parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: 親 Issue #${parent_issue_number} の Projects Status 更新に失敗しました。クローズ処理は続行します" >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (cleanup 経由 parent Issue auto-close では Step 3 inconsistency summary は別 phase 3.7.2.2 で扱う) の標準パターン。`.warnings[]` の stderr surface を必ず含めること。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + 一体化された inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照 (Issue close と Status update を unified block で扱う)。
 
 ##### 3.7.2.2 Close the Parent Issue
 

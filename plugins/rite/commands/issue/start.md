@@ -1702,7 +1702,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **Owner**: `/rite:issue:start` (defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow).
 
-**Note**: Delegates to `plugins/rite/scripts/projects-status-update.sh`. This differs from `ready.md` Phase 4 which uses a direct GraphQL mutation — an intentional design choice documented there.
+**Note**: Delegates to `plugins/rite/scripts/projects-status-update.sh`. `ready.md` Phase 4.2 も同じく `projects-status-update.sh` delegate に統一済み (PR #659 / Issue #658 で旧 inline GraphQL mutation 経路は完全削除)。本 Phase 5.5.1 は defense-in-depth の二重実行であり、ready.md 失敗時の補完として機能する。
 
 Skip if `projects.enabled: false` in rite-config.yml. Otherwise invoke the shared script to transition the Issue Status to **In Review**:
 

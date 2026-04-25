@@ -61,101 +61,60 @@ Read `rite-config.yml` with the Read tool and check `github.projects.enabled`.
 
 If `projects.enabled: false` (or not configured): skip this phase and proceed to Phase 5.
 
-### 1.3.2 Retrieve Current Projects Status
+### 1.3.2 Update Status via Shared Script
 
-Retrieve the Issue's project item and current status:
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 (Issue #496 / PR #531). Direct inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status stuck at the previous value (Issue #658). The script is idempotent: invoking it when the Status is already "Done" returns `.result == "updated"` with no observable side-effect, so the explicit "already Done" check is no longer required.
 
-```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-          fieldValueByName(name: "Status") {
-            ... on ProjectV2ItemFieldSingleSelectValue {
-              name
-              optionId
-            }
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
-```
-
-Find the node where `project.number` matches the `project_number` from `rite-config.yml`. Extract `{item_id}` (node `id`) and `{project_id}` (node `project.id`).
-
-**Error handling for Phase 1.3.2:**
-
-| Condition | Action |
-|-----------|--------|
-| GraphQL API error (network error, auth failure, etc.) | Display `警告: Projects API の呼び出しに失敗しました` → Proceed to Phase 5 (non-blocking) |
-| `projectItems.nodes` is empty (Issue not registered in Project) | Display `警告: Issue #{issue_number} は Project に登録されていません` → Proceed to Phase 5 (non-blocking) |
-| No node matches configured `project_number` | Display `警告: Issue #{issue_number} は対象の Project (#{project_number}) に登録されていません` → Proceed to Phase 5 (non-blocking) |
-
-### 1.3.3 Check and Update Status
-
-Determine the current status from `fieldValueByName`. If `fieldValueByName` is `null` (status not set on the item), treat as NOT "Done" and proceed to the update flow.
-
-**If current status is already "Done":**
-
-```
-Projects Status は既に "Done" です
-```
-
-Display message and proceed to Phase 5.
-
-**If current status is NOT "Done" (or null/unset):**
-
-Retrieve the "Done" option ID and update.
-
-#### 1.3.3.1 Retrieve Status Field Information
-
-**Retrieval Logic:**
-1. Execute the API (always required to get the option ID):
-   ```bash
-   gh project field-list {project_number} --owner {owner} --format json
-   ```
-2. Check `rite-config.yml`'s `github.projects.field_ids.status`
-3. Determine the field ID:
-   - If configured → use the configured value as `{status_field_id}`
-   - If not configured → retrieve `{status_field_id}` from API results (the `id` of the field where `name` is `"Status"`)
-4. Option ID: retrieve `{done_option_id}` from API results (the `id` of the option where `name` is `"Done"`)
-
-**Error handling for Phase 1.3.3.1:**
-
-| Condition | Action |
-|-----------|--------|
-| `gh project field-list` command fails (permission error, network error, etc.) | Display `警告: Projects フィールド情報の取得に失敗しました` → Proceed to Phase 5 (non-blocking) |
-| Status field not found in API results | Display `警告: Status フィールドが見つかりません` → Proceed to Phase 5 (non-blocking) |
-| "Done" option not found in Status field options | Display `警告: Status フィールドに "Done" オプションが見つかりません` → Proceed to Phase 5 (non-blocking) |
-
-#### 1.3.3.2 Update Status to "Done"
+Invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-On success:
+`auto_add: false` because the Issue is already CLOSED at this point — auto-adding a closed Issue is unexpected and would mask a configuration drift. The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline.
 
-```
-Projects Status を "Done" に更新しました
-```
+#### 1.3.2.1 Result Handling
 
-On failure:
+Inspect the script's stdout JSON and route by `.result`:
 
-```
-警告: Projects Status の更新に失敗しました
-```
+| `.result` | User-visible action |
+|-----------|--------------------|
+| `"updated"` | Display `Projects Status を "Done" に更新しました` and proceed to Phase 5. Note: the script always PATCHes regardless of pre-state, so `already Done` and `newly Done` both surface as `.result == "updated"` (idempotent at API level, but indistinguishable from the caller's perspective) |
+| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません` and proceed to Phase 5 |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed to Phase 5 |
 
-Display warning and proceed to Phase 5 (non-blocking).
+**All result branches are non-blocking** — the Issue is already closed; a Projects Status update issue MUST NOT halt the close flow.
+
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated)
+>     echo "Projects Status を \"Done\" に更新しました" ;;
+>   skipped_not_in_project)
+>     echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface を必ず含めること (省略すると AC-2 silent skip risk)。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照。
+
+> **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
 Proceed to Phase 5.
 
@@ -295,70 +254,60 @@ If the user selected manual close:
 gh issue close {issue_number}
 ```
 
-### 4.2 Update Projects Status
+### 4.2 Update Projects Status via Shared Script
 
-When the Issue is closed, update the Projects Status to "Done":
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 (Issue #496 / PR #531). Direct inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status stuck at the previous value (Issue #658).
 
-```bash
-# プロジェクトアイテム情報を取得
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
-```
-
-#### 4.2.1 Retrieve Status Field Information
-
-**Important**: The option ID (`{done_option_id}`) must always be retrieved from the API. Only field IDs can be specified in `field_ids`; the IDs for each option (Done, In Progress, etc.) are not included.
-
-**Retrieving the Field ID:**
-
-If `rite-config.yml`'s `github.projects.field_ids.status` is configured, use that value directly as `{status_field_id}` (skip extracting the field ID from API results):
-
-Replace the configured value with the actual project ID (see CONFIGURATION.md for how to obtain it):
-
-```yaml
-github:
-  projects:
-    field_ids:
-      status: "PVTSSF_your-status-field-id"
-```
-
-**Retrieving the Option ID (always required):**
+Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` and proceed to Phase 4.3. Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
-gh project field-list {project_number} --owner {owner} --format json
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-From the resulting JSON, find the field where `name` is `"Status"` and retrieve the following information:
-- `id`: The Status field ID (`{status_field_id}`) -- used only when `field_ids` is not configured
-- From the `options` array, the `id` of the option where `name` is `"Done"` (`{done_option_id}`)
+`auto_add: false` because by close time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline.
 
-**Retrieval Logic:**
-1. Execute the API (always required to get the option ID)
-2. Check `rite-config.yml`'s `github.projects.field_ids.status`
-3. Determine the field ID:
-   - If configured -> use the configured value as `{status_field_id}`
-   - If not configured -> retrieve `{status_field_id}` from API results
-4. Option ID: retrieve `{done_option_id}` from API results
+#### 4.2.1 Result Handling
 
-**Update Status to "Done":**
+Inspect the script's stdout JSON and route by `.result`:
 
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
-```
+| `.result` | User-visible action |
+|-----------|--------------------|
+| `"updated"` | Display `Projects Status を "Done" に更新しました` and proceed to Phase 4.3 |
+| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.3 |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed to Phase 4.3 |
+
+**All result branches are non-blocking** — the close has already executed (`gh issue close` in Phase 4.1); a Projects Status update issue MUST NOT halt the close flow.
+
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated)
+>     echo "Projects Status を \"Done\" に更新しました" ;;
+>   skipped_not_in_project)
+>     echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface を必ず含めること (省略すると AC-2 silent skip risk)。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照。
+
+> **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
 ### 4.3 Update Local Work Memory
 
@@ -1059,17 +1008,19 @@ Confirm via `AskUserQuestion`:
 
 ### 4.6.3 Update Parent Projects Status to "Done" and Close
 
-Skip the Status update if `github.projects.enabled: false` in `rite-config.yml`; still execute the Issue close in Step 4.
+Skip the Status update if `github.projects.enabled: false` in `rite-config.yml`; still execute the Issue close in Step 2.
 
-All 4 steps run in a **single bash block** to preserve intermediate state and to guarantee the final state-inconsistency summary (Step 5) is always emitted.
+The Status update delegates to `plugins/rite/scripts/projects-status-update.sh` (the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 — Issue #496 / PR #531). Inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips (Issue #658). Step 1 (Status update) and Step 2 (Issue close) run sequentially, and Step 3 (state-inconsistency summary) MUST always emit — running this whole substep in a single bash block preserves intermediate variable state.
 
-**Design notes** (Issue #517 review fixes — cycles 1 + 2):
+**Design notes** (Issue #517 invariants preserved):
 
-- **All `gh` calls capture stderr to a tempfile (not `2>/dev/null`)**: every `gh api graphql` / `gh project field-list` / `gh project item-edit` / `gh issue close` failure surfaces its first 5 stderr lines via `head -5 | sed` so the user can diagnose auth / network / permission / rate-limit / field-id mismatch root causes. This is the same pattern Phase 4.6.1 Method A uses and the pattern Phase 4.6.0 was extended to match.
+- **Step 3 state-inconsistency summary always emits** to make silent data corruption (one of `gh issue close` / Status update succeeded while the other silently failed) impossible.
+- **Step 2 (`gh issue close`) captures stderr to a tempfile (not `2>/dev/null`)** so failures surface the first 5 stderr lines via `head -5 | sed` for auth / network / permission / rate-limit diagnostics.
+- **Status update failures already surface `.warnings[]` from the script's stdout JSON** — the script handles its own stderr capture internally. The orchestrator reads `.result` and `.warnings[]` from the JSON.
+- **5-class → 4-class consolidation**: Inline-only failure modes `field_lookup_failed` (option-ID resolution failed mid-pipeline) and `update_failed` (item-edit call failed) merge into the script's single `.result == "failed"` (with the specific cause in `.warnings[]`). The user-visible "two entities, one inconsistent" guarantee is unchanged.
 - **`set -uo pipefail`** enables strict mode against undefined variables and pipeline failure propagation. `-e` is omitted so explicit `|| fallback` handling remains intentional.
 - **`mktemp` respects `$TMPDIR`** (no `/tmp` hardcode).
-- **State inconsistency summary emits targeted recovery commands per case**: `success:field_lookup_failed` prints a `gh project field-list ...` diagnostic command (not a broken `--field-id ''` one-liner), `success:update_failed` prints the executable recovery one-liner with the actually-populated IDs, and `failed:projects_disabled` / `failed:not_registered` are classified as "Issue close failed, Status update not applicable" instead of being lumped into the catch-all "両方失敗" bucket.
-- **Placeholder source assumption**: `{projects_enabled}`, `{project_number}`, `{owner}` are substituted by the LLM from `rite-config.yml` before executing this block. `{parent_number}` and `{issue_number}` are substituted from Phase 4.5.1 and Phase 0 respectively. If any placeholder is missing, the LLM must read `rite-config.yml` before substituting.
+- **Placeholder source assumption**: `{projects_enabled}`, `{project_number}`, `{owner}`, `{repo}` are substituted by the LLM from `rite-config.yml` before executing this block. `{parent_number}` and `{issue_number}` are substituted from Phase 4.5.1 and Phase 0 respectively. `{plugin_root}` is substituted per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script). If any placeholder is missing, the LLM must read `rite-config.yml` before substituting.
 
 ```bash
 # ============================================================================
@@ -1084,20 +1035,25 @@ projects_enabled="{projects_enabled}"  # "true" or "false" from rite-config.yml
 project_number="{project_number}"      # integer from rite-config.yml
 issue_number="{issue_number}"          # the child Issue that triggered this close
 
-status_update_result="skipped"
-issue_close_result="pending"
-parent_item_id=""
-parent_project_id=""
-status_field_id=""
-done_option_id=""
+status_update_result="projects_disabled"  # success | not_registered | update_failed | projects_disabled
+                                          # 初期値は "projects_disabled" (= 「処理未到達 = projects_disabled として扱う」safe-side 既定値)。
+                                          # 後段の `if [ "$projects_enabled" = "true" ]` 分岐で必ず別値に上書きされるが、将来 early-exit
+                                          # 経路が混入した場合でも Step 3 case の `success:projects_disabled` が整合性 OK 判定を出す経路に倒す
+                                          # (旧初期値 "skipped" は case 文に該当ラベルが無く silent fall-through の risk があった、Issue #658 cycle 2 F-02 修正)。
+status_warning_lines=""         # captured .warnings[] from the script for Step 3 surface
+issue_close_result="pending"    # success | failed | pending
 
-# --- stderr capture tempfiles (one per gh call) ---
-p463_err_s1=""
-p463_err_s2=""
-p463_err_s3=""
-p463_err_s4=""
+# --- stderr capture tempfiles ---
+# p463_err_close: gh issue close stderr 退避
+# p463_err_status: projects-status-update.sh script invocation stderr 退避
+#   (Issue #659 F-03: 旧実装は `2>/dev/null` で script 起動側 stderr を完全廃棄していた。
+#    script 内部の gh stderr は `.warnings[]` で surface されるが、script 外部エラー
+#    (jq 不在 / bash syntax / mktemp 失敗 / `{plugin_root}` 置換漏れ) は stderr 直書きのため
+#    `2>/dev/null` で完全消失していた)
+p463_err_close=""
+p463_err_status=""
 _rite_close_p463_cleanup() {
-  rm -f "${p463_err_s1:-}" "${p463_err_s2:-}" "${p463_err_s3:-}" "${p463_err_s4:-}"
+  rm -f "${p463_err_close:-}" "${p463_err_status:-}"
 }
 trap 'rc=$?; _rite_close_p463_cleanup; exit $rc' EXIT
 trap '_rite_close_p463_cleanup; exit 130' INT
@@ -1115,101 +1071,89 @@ _mktemp_or_warn() {
   fi
 }
 
-# --- Step 1: Retrieve parent's project item ID and project GraphQL id ---
+# --- Step 1: Update parent's Projects Status via shared script ---
 if [ "$projects_enabled" = "true" ]; then
-  p463_err_s1=$(_mktemp_or_warn "Step 1")
-  if project_items_json=$(gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes { id project { id number } }
-      }
-    }
-  }
-}' -f owner="$owner" -f repo="$repo" -F number="$parent_number" 2>"${p463_err_s1:-/dev/null}"); then
-    :
-  else
-    p463_s1_rc=$?
-    echo "[DEBUG] p463 Step 1: gh api graphql failed (rc=$p463_s1_rc)" >&2
-    if [ -n "$p463_err_s1" ] && [ -s "$p463_err_s1" ]; then
-      head -5 "$p463_err_s1" | sed 's/^/  p463 Step 1 stderr: /' >&2
-    fi
-    project_items_json=""
+  status_json_args=$(jq -n \
+    --argjson issue "$parent_number" \
+    --arg owner "$owner" \
+    --arg repo "$repo" \
+    --argjson project_number "$project_number" \
+    --arg status "Done" \
+    --argjson auto_add false \
+    --argjson non_blocking true \
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  # script の stderr を tempfile に退避し、JSON 出力前死亡時 (jq 不在 / mktemp 失敗 / `{plugin_root}`
+  # 置換漏れ等) の原因を Step 3 inconsistency summary に surface できるようにする (Issue #659 F-03)
+  p463_err_status=$(_mktemp_or_warn "Step 1 invocation")
+  status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>"${p463_err_status:-/dev/null}") || status_json=""
+  status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+  status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+  # 失敗時の recovery one-liner で実値埋め込みするため、script JSON から 4 ID を抽出する。
+  # projects-status-update.sh は失敗時にも .item_id / .project_id / .status_field_id / .option_id を
+  # 含めて emit する (output_result() 仕様、scripts/projects-status-update.sh §27-35)。
+  # 部分パイプライン失敗時 (例: gh project item-edit のみ失敗) では 4 ID 全て populated されるため
+  # copy-paste-ready な recovery command を Step 3 で構築できる。空値時は placeholder template に fallback。
+  script_item_id=$(printf '%s' "$status_json" | jq -r '.item_id // empty' 2>/dev/null)
+  script_project_id=$(printf '%s' "$status_json" | jq -r '.project_id // empty' 2>/dev/null)
+  script_status_field_id=$(printf '%s' "$status_json" | jq -r '.status_field_id // empty' 2>/dev/null)
+  script_option_id=$(printf '%s' "$status_json" | jq -r '.option_id // empty' 2>/dev/null)
+
+  # script が JSON を吐く前に死んだ場合 (status_json="") は status_warning_lines も空のため、
+  # 退避した stderr を warning_lines に注入して Step 3 で surface する
+  if [ -z "$status_json" ] && [ -n "$p463_err_status" ] && [ -s "$p463_err_status" ]; then
+    status_warning_lines=$(printf 'script invocation died before JSON emit: %s' "$(head -5 "$p463_err_status")")
   fi
 
-  if [ -n "$project_items_json" ]; then
-    # Extract the node whose project.number matches {project_number}
-    parent_item_id=$(printf '%s' "$project_items_json" \
-      | jq -r --argjson pn "$project_number" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .id' 2>/dev/null || echo "")
-    parent_project_id=$(printf '%s' "$project_items_json" \
-      | jq -r --argjson pn "$project_number" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .project.id' 2>/dev/null || echo "")
-  fi
-
-  if [ -z "$parent_item_id" ] || [ -z "$parent_project_id" ]; then
-    echo "警告: 親 Issue #${parent_number} は Project #${project_number} に登録されていません (または GraphQL 取得失敗)。Status 更新をスキップします。" >&2
-    status_update_result="not_registered"
-  else
-    # --- Step 2: Retrieve Status field id and "Done" option id ---
-    p463_err_s2=$(_mktemp_or_warn "Step 2")
-    if field_list_json=$(gh project field-list "$project_number" --owner "$owner" --format json 2>"${p463_err_s2:-/dev/null}"); then
-      :
-    else
-      p463_s2_rc=$?
-      echo "[DEBUG] p463 Step 2: gh project field-list failed (rc=$p463_s2_rc)" >&2
-      if [ -n "$p463_err_s2" ] && [ -s "$p463_err_s2" ]; then
-        head -5 "$p463_err_s2" | sed 's/^/  p463 Step 2 stderr: /' >&2
+  case "$status_result" in
+    updated)
+      status_update_result="success"
+      echo "親 Issue #${parent_number} の Status を 'Done' に更新しました"
+      ;;
+    skipped_not_in_project)
+      status_update_result="not_registered"
+      echo "警告: 親 Issue #${parent_number} は Project #${project_number} に登録されていません。Status 更新をスキップします。" >&2
+      ;;
+    failed)
+      status_update_result="update_failed"
+      echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
+      if [ -n "$status_warning_lines" ]; then
+        printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2
       fi
-      field_list_json=""
-    fi
-
-    if [ -n "$field_list_json" ]; then
-      status_field_id=$(printf '%s' "$field_list_json" \
-        | jq -r '.fields[] | select(.name == "Status") | .id' 2>/dev/null || echo "")
-      done_option_id=$(printf '%s' "$field_list_json" \
-        | jq -r '.fields[] | select(.name == "Status") | .options[] | select(.name == "Done") | .id' 2>/dev/null || echo "")
-    fi
-
-    if [ -z "$status_field_id" ] || [ -z "$done_option_id" ]; then
-      echo "警告: Status フィールドまたは 'Done' オプションの取得に失敗しました (field_id='$status_field_id' done_option_id='$done_option_id')" >&2
-      status_update_result="field_lookup_failed"
-    else
-      # --- Step 3: Update the Status ---
-      p463_err_s3=$(_mktemp_or_warn "Step 3")
-      if gh project item-edit --project-id "$parent_project_id" --id "$parent_item_id" --field-id "$status_field_id" --single-select-option-id "$done_option_id" >/dev/null 2>"${p463_err_s3:-/dev/null}"; then
-        status_update_result="success"
-        echo "親 Issue #${parent_number} の Status を 'Done' に更新しました"
-      else
-        p463_s3_rc=$?
-        status_update_result="update_failed"
-        echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました (rc=$p463_s3_rc)。後続の gh issue close は続行します。" >&2
-        if [ -n "$p463_err_s3" ] && [ -s "$p463_err_s3" ]; then
-          head -5 "$p463_err_s3" | sed 's/^/  p463 Step 3 stderr: /' >&2
-        fi
+      ;;
+    *)
+      # 未知の .result 値 (script の schema 拡張で `not_eligible` / `rate_limited` 等が将来追加された場合)
+      # silent miscategorization を防ぐため [DEBUG] 内部 trace を出してから update_failed 扱いにする
+      # codebase convention: [DEBUG] = 内部 trace / observability、警告: = user-actionable warning
+      status_update_result="update_failed"
+      echo "[DEBUG] projects-status-update.sh から未知の .result='$status_result' を受信しました。update_failed として扱います" >&2
+      echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
+      if [ -n "$status_warning_lines" ]; then
+        printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2
       fi
-    fi
-  fi
+      ;;
+  esac
 else
   status_update_result="projects_disabled"
 fi
 
-# --- Step 4: Close the parent Issue ---
-p463_err_s4=$(_mktemp_or_warn "Step 4")
-if gh issue close "$parent_number" --comment "子 Issue がすべて完了したため、自動クローズします。(/rite:issue:close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>"${p463_err_s4:-/dev/null}"; then
+# --- Step 2: Close the parent Issue ---
+p463_err_close=$(_mktemp_or_warn "Step 2")
+if gh issue close "$parent_number" --comment "子 Issue がすべて完了したため、自動クローズします。(/rite:issue:close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>"${p463_err_close:-/dev/null}"; then
   issue_close_result="success"
   echo "親 Issue #${parent_number} を自動クローズしました"
 else
-  p463_s4_rc=$?
+  p463_close_rc=$?
   issue_close_result="failed"
-  echo "警告: 親 Issue #${parent_number} のクローズに失敗しました (rc=$p463_s4_rc)。手動でクローズしてください: gh issue close ${parent_number}" >&2
-  if [ -n "$p463_err_s4" ] && [ -s "$p463_err_s4" ]; then
-    head -5 "$p463_err_s4" | sed 's/^/  p463 Step 4 stderr: /' >&2
+  echo "警告: 親 Issue #${parent_number} のクローズに失敗しました (rc=$p463_close_rc)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+  if [ -n "$p463_err_close" ] && [ -s "$p463_err_close" ]; then
+    head -5 "$p463_err_close" | sed 's/^/  p463 Step 2 stderr: /' >&2
   fi
 fi
 
-# --- Step 5: State inconsistency summary (MUST always emit — silent data corruption prevention) ---
-# Parent Issue と Projects Status が別エンティティのため、片方成功 / 片方失敗の不整合を
-# 必ずユーザーに可視化する。case 分類は 4 象限 + not_applicable の 5 クラスに細分化している。
+# --- Step 3: State inconsistency summary (MUST always emit — silent data corruption prevention) ---
+# Parent Issue と Projects Status は別エンティティのため、片方成功 / 片方失敗の不整合を
+# 必ずユーザーに可視化する。script delegate 化に伴い 5-class → 4-class に整理 (.result の
+# updated / skipped_not_in_project / failed への合流に揃えた)。
 echo ""
 echo "=== 親 Issue #${parent_number} 処理結果 ==="
 echo "  Issue close:   $issue_close_result"
@@ -1222,14 +1166,22 @@ case "${issue_close_result}:${status_update_result}" in
   "success:update_failed")
     echo ""
     echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
-    echo "    復旧コマンド: gh project item-edit --project-id '$parent_project_id' --id '$parent_item_id' --field-id '$status_field_id' --single-select-option-id '$done_option_id'"
-    echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
-    ;;
-  "success:field_lookup_failed")
-    echo ""
-    echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Project の Status フィールド / 'Done' オプション ID の解決に失敗したため Status は未更新です。"
-    echo "    診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json"
-    echo "    (出力から 'Status' field の id と 'Done' option の id を確認し、gh project item-edit に渡してください)"
+    # case `*)` 経路で update_failed に倒した場合、scrollback に頼らず由来情報を summary 内に残す
+    # (status_result は Step 1 内で capture 済みで preserved。"failed" 値は legitimate な script.result なので除外)
+    if [ -n "${status_result:-}" ] && [ "$status_result" != "failed" ] && [ "$status_result" != "updated" ] && [ "$status_result" != "skipped_not_in_project" ]; then
+      echo "    (Note: 未知の .result='$status_result' を受信したため update_failed として処理 — script schema 拡張可能性)"
+    fi
+    # Step 1 で抽出した 4 ID が全て populated されていれば copy-paste-ready な recovery command を出す
+    # (script は失敗時にも .item_id / .project_id / .status_field_id / .option_id を emit するため、
+    #  例えば gh project item-edit のみ失敗の経路では 4 ID 全て揃って実用的な復旧コマンドが生成できる)。
+    # いずれかが欠落している場合 (script が ID 解決前に死んだ等) は placeholder + 診断コマンドに fallback。
+    if [ -n "${script_item_id:-}" ] && [ -n "${script_project_id:-}" ] \
+       && [ -n "${script_status_field_id:-}" ] && [ -n "${script_option_id:-}" ]; then
+      echo "    復旧コマンド: gh project item-edit --project-id ${script_project_id} --id ${script_item_id} --field-id ${script_status_field_id} --single-select-option-id ${script_option_id}"
+    else
+      echo "    手動更新の例: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>"
+      echo "    診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json (Status field の id と 'Done' option の id を確認)"
+    fi
     echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
     ;;
   "failed:success")
@@ -1237,9 +1189,14 @@ case "${issue_close_result}:${status_update_result}" in
     echo "⚠️  state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"
     echo "    復旧コマンド: gh issue close ${parent_number}" >&2
     ;;
-  "failed:projects_disabled"|"failed:not_registered")
+  "failed:projects_disabled")
     echo ""
-    echo "⚠️  親 Issue のクローズに失敗しました (Status 更新は対象外)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+    echo "⚠️  親 Issue のクローズに失敗しました (Projects 機能は config で無効化されているため Status 更新は対象外)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+    ;;
+  "failed:not_registered")
+    echo ""
+    echo "⚠️  親 Issue のクローズに失敗しました (親 Issue は Project に未登録、config は enabled)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+    echo "    Project に追加すべきか確認: gh project item-add ${project_number} --owner ${owner} --url https://github.com/${owner}/${repo}/issues/${parent_number}" >&2
     ;;
   "failed:"*)
     echo ""
@@ -1248,7 +1205,7 @@ case "${issue_close_result}:${status_update_result}" in
 esac
 ```
 
-Proceed to Phase 5 regardless of the outcome (non-blocking, AC-5 applied to close side — the inconsistency summary above makes silent failure impossible).
+Proceed to Phase 5 regardless of the outcome (non-blocking — the Step 3 inconsistency summary above makes silent failure impossible per Issue #517 invariants).
 
 ---
 

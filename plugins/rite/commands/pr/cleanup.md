@@ -1403,7 +1403,7 @@ git worktree prune
 
 ## Phase 3: Projects Status Update
 
-> See [references/archive-procedures.md](./references/archive-procedures.md) for the full archive procedures: Projects Status Update (3.1-3.4), Work Memory final update (3.5), Issue close (3.6), Parent Issue handling (3.6.4, 3.7), and State reset (Phase 4).
+> See [references/archive-procedures.md](./references/archive-procedures.md) for the full archive procedures: Projects Status Update (3.1-3.2 — 旧 3.3 / 3.4 は #658 で `projects-status-update.sh` delegate に統合), Work Memory final update (3.5), Issue close (3.6), Parent Issue handling (3.6.4, 3.7), and State reset (Phase 4).
 
 ---
 

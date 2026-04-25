@@ -100,39 +100,56 @@ assert_file_contains "$CLOSE_MD" 'all_closed=.*all\([[:space:]]*\.\[\][[:space:]
   "All-children-closed check logic is present"
 assert_file_contains "$CLOSE_MD" 'gh issue close.*parent_number' \
   "Parent close command is present"
-assert_file_contains "$CLOSE_MD" 'done_option_id' \
-  "Projects Status -> Done update logic is present"
-# CRITICAL fix: explicit jq extraction for project item / status field / done option (determinism)
-assert_file_contains "$CLOSE_MD" 'jq -r .*projectItems\.nodes\[\].*select.*\.project\.number' \
-  "Phase 4.6.3 Step 1: deterministic jq extraction for parent_item_id exists"
-assert_file_contains "$CLOSE_MD" 'jq -r .*fields\[\].*select.*name.*==.*"Status".*options\[\].*select.*name.*==.*"Done"' \
-  "Phase 4.6.3 Step 2: deterministic jq extraction for done_option_id exists"
-# state-inconsistency summary (cycle 1 MEDIUM fix)
+# Issue #658 PR #659 で Phase 4.6.3 の bash 構造が抜本的に変更された:
+#   - Step 1-5 → Step 1-3 に整理 (Step 1=script delegate / Step 2=gh issue close / Step 3=inconsistency summary)
+#   - inline `gh api graphql` + `gh project field-list` + `gh project item-edit` の 3 段 pipeline を
+#     `bash {plugin_root}/scripts/projects-status-update.sh` への delegate に統一
+#   - `p463_err_s1-4` (4 変数) → `p463_err_close` + `p463_err_status` (2 変数) に統合
+#   - `success:field_lookup_failed` 独立 case を `success:update_failed` へ合流 (5-class → 4-class)
+#   - `done_option_id` / `parent_item_id` の jq 抽出は script に移管 (caller 側では不要)
+# 本 group のアサーションは新構造 (delegate + 2-tempfile + 4-class) を期待する形に更新する
+# (Issue #513 / #517 / #658 incident regression gate を維持)
+assert_file_contains "$CLOSE_MD" 'projects-status-update\.sh' \
+  "Phase 4.6.3 Step 1: delegate to projects-status-update.sh (Issue #658)"
+assert_file_contains "$CLOSE_MD" 'jq -r .*\.result.*//.*"failed"' \
+  "Phase 4.6.3 Step 1: delegate result jq extraction (.result // \"failed\")"
+assert_file_contains "$CLOSE_MD" 'jq -r .*\.warnings\[\]' \
+  "Phase 4.6.3 Step 1: delegate warnings jq extraction (.warnings[]?)"
+# state-inconsistency summary (Issue #517 invariants preserved)
 assert_file_contains "$CLOSE_MD" 'state 不整合' \
-  "Phase 4.6.3 Step 5: state inconsistency summary is emitted"
-# Cycle 2 MEDIUM fix: success:field_lookup_failed case is separated from success:update_failed
-# and prints a field-list diagnostic command instead of a broken one-liner with empty vars.
-assert_file_contains "$CLOSE_MD" '"success:field_lookup_failed"\)' \
-  "Phase 4.6.3 Step 5: success:field_lookup_failed is a dedicated case (not merged)"
-assert_file_contains "$CLOSE_MD" '診断コマンド: gh project field-list' \
-  "Phase 4.6.3 Step 5: field_lookup_failed case prints diagnostic command (not broken one-liner)"
-# Cycle 2 LOW fix: failed:projects_disabled / failed:not_registered are classified separately
-assert_file_contains "$CLOSE_MD" '"failed:projects_disabled"[|]"failed:not_registered"\)' \
-  "Phase 4.6.3 Step 5: failed:projects_disabled/not_registered case is separated from catch-all"
+  "Phase 4.6.3 Step 3: state inconsistency summary is emitted"
+# 4-class case 構造 (5-class field_lookup_failed → update_failed 合流、Issue #658)
+assert_file_contains "$CLOSE_MD" '"success:update_failed"\)' \
+  "Phase 4.6.3 Step 3: success:update_failed dedicated case (5-class → 4-class merge)"
+# F-09 修正で failed:projects_disabled と failed:not_registered は独立 case に分離 (Issue #658 cycle 1)
+assert_file_contains "$CLOSE_MD" '"failed:projects_disabled"\)' \
+  "Phase 4.6.3 Step 3: failed:projects_disabled is a dedicated case"
+assert_file_contains "$CLOSE_MD" '"failed:not_registered"\)' \
+  "Phase 4.6.3 Step 3: failed:not_registered is a dedicated case (separated from catch-all)"
+assert_file_contains "$CLOSE_MD" 'gh project item-add' \
+  "Phase 4.6.3 Step 3: failed:not_registered case offers gh project item-add hint"
 assert_file_contains "$CLOSE_MD" 'AskUserQuestion' \
   "User confirmation via AskUserQuestion (AC-2: not silent auto-close)"
 # Cycle 1 HIGH fix: Method A uses tempfile stderr capture (not 2>/dev/null)
 assert_file_contains "$CLOSE_MD" 'method_a_err=.*mktemp' \
   "Phase 4.6.1 Method A stderr capture (no silent suppression)"
-# Cycle 2 HIGH fix: Phase 4.6.3 Step 1-4 all capture stderr to tempfile (not 2>/dev/null / >/dev/null 2>&1)
-assert_file_contains "$CLOSE_MD" 'p463_err_s1.*mktemp' \
-  "Phase 4.6.3 Step 1: stderr tempfile capture (p463_err_s1)"
-assert_file_contains "$CLOSE_MD" 'p463_err_s2.*mktemp' \
-  "Phase 4.6.3 Step 2: stderr tempfile capture (p463_err_s2)"
-assert_file_contains "$CLOSE_MD" 'p463_err_s3.*mktemp' \
-  "Phase 4.6.3 Step 3: stderr tempfile capture (p463_err_s3)"
-assert_file_contains "$CLOSE_MD" 'p463_err_s4.*mktemp' \
-  "Phase 4.6.3 Step 4: stderr tempfile capture (p463_err_s4)"
+# Issue #658 cycle 1 F-03 修正: Phase 4.6.3 では stderr capture 用 tempfile が
+# `p463_err_close` (gh issue close stderr) と `p463_err_status` (script invocation stderr) の
+# 2 変数に統合された (旧 p463_err_s1-4 の 4 変数からの delegate 移行)。
+# F-03 で導入した script invocation stderr capture により JSON 出力前死亡時 (jq 不在 / mktemp
+# 失敗 / placeholder 置換漏れ) の原因を `status_warning_lines` に注入して Step 3 で surface する。
+assert_file_contains "$CLOSE_MD" 'p463_err_close.*mktemp' \
+  "Phase 4.6.3 Step 2 (gh issue close): stderr tempfile capture (p463_err_close)"
+assert_file_contains "$CLOSE_MD" 'p463_err_status.*mktemp' \
+  "Phase 4.6.3 Step 1 (script invocation): stderr tempfile capture (p463_err_status, F-03)"
+assert_file_contains "$CLOSE_MD" 'script invocation died before JSON emit' \
+  "Phase 4.6.3 Step 1: F-03 stderr injection prefix into status_warning_lines"
+# Regression guard: 旧 p463_err_s1-4 (4 変数) への参照が残存していないこと (delegate 移行後 dead state)
+assert_file_not_contains "$CLOSE_MD" 'p463_err_s[1-4]' \
+  "Regression guard: legacy p463_err_s1-4 references removed (delegate 化で 2 変数に統合)"
+# Regression guard: success:field_lookup_failed 独立 case が削除されている (4-class 合流済み)
+assert_file_not_contains "$CLOSE_MD" '"success:field_lookup_failed"' \
+  "Regression guard: legacy success:field_lookup_failed case removed (5-class → 4-class merge)"
 # Cycle 2 MEDIUM fix: strict mode (set -uo pipefail) in Phase 4.6.0, 4.6.1, 4.6.3 bash blocks
 assert_file_contains "$CLOSE_MD" 'Phase 4\.6\.0.*parent already closed' \
   "Phase 4.6.0 bash block header present"
