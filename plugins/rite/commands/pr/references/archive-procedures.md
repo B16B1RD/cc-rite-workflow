@@ -443,6 +443,25 @@ Inspect the script's stdout JSON:
 
 **All result branches are non-blocking** — the parent Issue close (3.7.2.2) MUST proceed regardless of Status update outcome.
 
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形、parent Issue Done 更新版)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated) echo "親 Issue #${parent_issue_number} の Projects Status を \"Done\" に更新しました" ;;
+>   skipped_not_in_project) echo "警告: 親 Issue #${parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: 親 Issue #${parent_issue_number} の Projects Status 更新に失敗しました。クローズ処理は続行します" >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (cleanup 経由 parent Issue auto-close では Step 3 inconsistency summary は別 phase 3.7.2.2 で扱う) の標準パターン。`.warnings[]` の stderr surface を必ず含めること。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + 一体化された inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照 (Issue close と Status update を unified block で扱う)。
+
 ##### 3.7.2.2 Close the Parent Issue
 
 Close with a detailed comment and short close reason (2-step pattern per `gh-cli-patterns.md` policy):

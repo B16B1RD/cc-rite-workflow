@@ -99,8 +99,10 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["phase5_post_fix"]="phase5_review phase5_ready phase5_post_ready phase5_ready_error"
 
   # Phase 5.5: ready → status → metrics → completion
-  # phase5_ready_error is a terminal error state emitted by ready.md Phase 3.1 when skill errors
-  # (Issue #659 で旧 Phase 4.5 → 新 Phase 3.1 に renumber 済み。本コメントは renumber 後の事実反映)
+  # phase5_ready_error is a terminal error state emitted by ready.md Phase 3.1 when skill errors.
+  # (旧コメントは "Phase 4.5" と stale 記述だった。実際の emit 点は develop baseline 時点から
+  #  ready.md `### 3.1 Execute gh pr ready` 内であり、本コメントはその事実を反映する訂正である。
+  #  Issue #659 の renumber は Phase 4.5 削除/4.2 統合に限定されており、Phase 3.1 emit は不変)
   # (devops-reviewer HIGH #5). Allow error → post_ready and error → completed transitions so the
   # workflow can recover via user choice (retry / manual / terminate).
   ["phase5_ready"]="phase5_post_ready phase5_ready_error"

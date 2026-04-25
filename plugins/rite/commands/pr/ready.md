@@ -350,7 +350,26 @@ Inspect the script's stdout JSON and route by `.result`:
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
-> **Bash 実装テンプレート**: 上記表の routing を実装する完全な bash パターン (`status_json=$(...) || status_json=""`、`.warnings[]` の stderr surface、case 分岐) は `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること。delegate-only 経路で `.warnings[]` の stderr surface を実装し忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するリスクがある。
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated)
+>     echo "Projects Status を \"In Review\" に更新しました" ;;
+>   skipped_not_in_project)
+>     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: Projects Status の \"In Review\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するため必ず含めること。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合 (parent Issue close と Status update の片方失敗を可視化する unified block) は `commands/issue/close.md` Phase 4.6.3 を参照すること。
 
 > **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 

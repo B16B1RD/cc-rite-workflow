@@ -93,7 +93,26 @@ Inspect the script's stdout JSON and route by `.result`:
 
 **All result branches are non-blocking** — the Issue is already closed; a Projects Status update issue MUST NOT halt the close flow.
 
-> **Bash 実装テンプレート**: 上記表の routing を実装する完全な bash パターン (`status_json=$(...) || status_json=""`、`.warnings[]` の stderr surface、case 分岐) は `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること。
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated)
+>     echo "Projects Status を \"Done\" に更新しました" ;;
+>   skipped_not_in_project)
+>     echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface を必ず含めること (省略すると AC-2 silent skip risk)。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照。
 
 > **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
@@ -267,7 +286,26 @@ Inspect the script's stdout JSON and route by `.result`:
 
 **All result branches are non-blocking** — the close has already executed (`gh issue close` in Phase 4.1); a Projects Status update issue MUST NOT halt the close flow.
 
-> **Bash 実装テンプレート**: 上記表の routing を実装する完全な bash パターン (`status_json=$(...) || status_json=""`、`.warnings[]` の stderr surface、case 分岐) は `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること。
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated)
+>     echo "Projects Status を \"Done\" に更新しました" ;;
+>   skipped_not_in_project)
+>     echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface を必ず含めること (省略すると AC-2 silent skip risk)。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照。
 
 > **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
@@ -997,7 +1035,11 @@ projects_enabled="{projects_enabled}"  # "true" or "false" from rite-config.yml
 project_number="{project_number}"      # integer from rite-config.yml
 issue_number="{issue_number}"          # the child Issue that triggered this close
 
-status_update_result="skipped"  # success | not_registered | update_failed | projects_disabled
+status_update_result="projects_disabled"  # success | not_registered | update_failed | projects_disabled
+                                          # 初期値は "projects_disabled" (= 「処理未到達 = projects_disabled として扱う」safe-side 既定値)。
+                                          # 後段の `if [ "$projects_enabled" = "true" ]` 分岐で必ず別値に上書きされるが、将来 early-exit
+                                          # 経路が混入した場合でも Step 3 case の `success:projects_disabled` が整合性 OK 判定を出す経路に倒す
+                                          # (旧初期値 "skipped" は case 文に該当ラベルが無く silent fall-through の risk があった、Issue #658 cycle 2 F-02 修正)。
 status_warning_lines=""         # captured .warnings[] from the script for Step 3 surface
 issue_close_result="pending"    # success | failed | pending
 
@@ -1071,9 +1113,10 @@ if [ "$projects_enabled" = "true" ]; then
       ;;
     *)
       # 未知の .result 値 (script の schema 拡張で `not_eligible` / `rate_limited` 等が将来追加された場合)
-      # silent miscategorization を防ぐため debug log を出してから update_failed 扱いにする
+      # silent miscategorization を防ぐため [DEBUG] 内部 trace を出してから update_failed 扱いにする
+      # codebase convention: [DEBUG] = 内部 trace / observability、警告: = user-actionable warning
       status_update_result="update_failed"
-      echo "警告: projects-status-update.sh から未知の .result='$status_result' を受信しました。update_failed として扱います" >&2
+      echo "[DEBUG] projects-status-update.sh から未知の .result='$status_result' を受信しました。update_failed として扱います" >&2
       echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
       if [ -n "$status_warning_lines" ]; then
         printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2
@@ -1114,6 +1157,11 @@ case "${issue_close_result}:${status_update_result}" in
   "success:update_failed")
     echo ""
     echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
+    # case `*)` 経路で update_failed に倒した場合、scrollback に頼らず由来情報を summary 内に残す
+    # (status_result は line 1075 で capture 済みで preserved。"failed" 値は legitimate な script.result なので除外)
+    if [ -n "${status_result:-}" ] && [ "$status_result" != "failed" ] && [ "$status_result" != "updated" ] && [ "$status_result" != "skipped_not_in_project" ]; then
+      echo "    (Note: 未知の .result='$status_result' を受信したため update_failed として処理 — script schema 拡張可能性)"
+    fi
     echo "    手動更新の例: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>"
     echo "    診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json (Status field の id と 'Done' option の id を確認)"
     echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
@@ -1139,7 +1187,7 @@ case "${issue_close_result}:${status_update_result}" in
 esac
 ```
 
-Proceed to Phase 5 regardless of the outcome (non-blocking, AC-5 applied to close side — the inconsistency summary above makes silent failure impossible).
+Proceed to Phase 5 regardless of the outcome (non-blocking — the Step 3 inconsistency summary above makes silent failure impossible per Issue #517 invariants).
 
 ---
 
