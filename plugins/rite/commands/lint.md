@@ -742,6 +742,7 @@ Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "{phase_value}" \
+  --active true \
   --next "{next_action_value}" \
   --if-exists
 ```

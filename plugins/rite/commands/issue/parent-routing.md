@@ -333,6 +333,7 @@ Before returning control to the caller, update `.rite-flow-state` to the post-pa
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase1_5_post_parent" \
+  --active true \
   --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2 (work preparation). Do NOT stop." \
   --if-exists
 ```

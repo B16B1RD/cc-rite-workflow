@@ -638,6 +638,7 @@ Before returning control to the caller, update `.rite-flow-state` to the post-pl
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase3_post_plan" \
+  --active true \
   --next "rite:issue:implementation-plan completed. Proceed to Phase 4 (work start guidance). Do NOT stop." \
   --if-exists
 ```

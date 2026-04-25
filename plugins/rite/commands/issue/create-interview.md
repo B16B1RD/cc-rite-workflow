@@ -19,7 +19,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 >
 > **DRIFT-CHECK ANCHOR (semantic)**: This section is mirrored by `stop-guard.sh` `create_interview` case arm (Issue #622) and `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge. The three sites form a 3-site symmetry — when updating any one, update the others.
 >
-> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — F-06 / #636: 本 Pre-flight bash block の引数 (`--phase`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--preserve-error-count` を含む) と symmetry を取る必要がある。`create.md` の **DRIFT-CHECK ANCHOR (semantic)** 節 (Step 0 Rationale 直後) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
+> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — F-06 / #636 / #660: 本 Pre-flight bash block の引数 (`--phase`, `--active`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--active true` と `--preserve-error-count` を含む) と symmetry を取る必要がある。`create.md` の **DRIFT-CHECK ANCHOR (semantic)** 節 (Step 0 Rationale 直後) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) または `active=false` 残存による stop-guard early return (Issue #660) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
 
 **MUST run before any interview logic** (Phase 0.4.1 scope evaluation, Phase 0.5 deep-dive, or return-output emission). This bash block is **not optional** and **not conditional on interview scope**. Execute it even when Phase 0.4.1 determines the Bug Fix / Chore preset (interview scope = "skip"):
 
@@ -40,6 +40,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 if [ -f ".rite-flow-state" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
+      --active true \
       --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
@@ -560,6 +561,7 @@ Immediately before emitting the four-line return block, re-patch `.rite-flow-sta
 if [ -f ".rite-flow-state" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
+      --active true \
       --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
@@ -583,7 +585,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:skipped] -->
 ```
 
@@ -592,15 +594,15 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:completed] -->
 ```
 
-> **Issue #651 enhancement (4-site 対称化、syntax-safe inline bash command)**: caller HTML コメントに Step 0 Immediate Bash Action の bash command literal を **backtick で明示的に区切って** inline で含めることで、orchestrator が次に実行すべき具体的な tool call を sub-skill 出力直後に視認できるようにする。`bash ... --preserve-error-count` までを backtick で囲い、その後を散文 `THEN (after the bash command above succeeds) continue with Phase 0.6 ...` で続けることで、LLM が caller HTML コメントを literal 解釈しても **bash 構文として valid な単一コマンド** として実行可能になる (旧版 `; then continue with Phase 0.6` は `if cmd; then ... fi` 構文の一部と誤解釈されて syntax error になる問題を修正、Issue #651 PR #654 review F-01)。bash 引数 (`--phase create_post_interview` / `--if-exists` / `--preserve-error-count`) は **create.md Mandatory After Interview Step 0 Immediate Bash Action** / **Pre-flight (本ファイル冒頭)** / **Return Output re-patch (本セクション直前)** / **stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT bash literal** と **4-site 対称**。
+> **Issue #651 / Issue #660 enhancement (4-site 対称化、syntax-safe inline bash command)**: caller HTML コメントに Step 0 Immediate Bash Action の bash command literal を **backtick で明示的に区切って** inline で含めることで、orchestrator が次に実行すべき具体的な tool call を sub-skill 出力直後に視認できるようにする。`bash ... --preserve-error-count` までを backtick で囲い、その後を散文 `THEN (after the bash command above succeeds) continue with Phase 0.6 ...` で続けることで、LLM が caller HTML コメントを literal 解釈しても **bash 構文として valid な単一コマンド** として実行可能になる (旧版 `; then continue with Phase 0.6` は `if cmd; then ... fi` 構文の一部と誤解釈されて syntax error になる問題を修正、Issue #651 PR #654 review F-01)。bash 引数 (`--phase create_post_interview` / `--active` / `--next` / `--if-exists` / `--preserve-error-count`) は **create.md Mandatory After Interview Step 0 Immediate Bash Action** / **Pre-flight (本ファイル冒頭)** / **Return Output re-patch (本セクション直前)** / **stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT bash literal** と **4-site 対称** (Issue #660 で `--active true` を symmetry 引数 list に追加)。
 >
 > **`--if-exists` の非対称性** (時系列で説明): orchestrator が caller HTML コメントの bash command を実行する時点では、本 sub-skill (create-interview.md) の Pre-flight が既に完了しており `.rite-flow-state` の存在は保証されている → よって `--if-exists` は no-op safety net として無害に働く。一方 create-interview.md の Pre-flight / Return Output re-patch は **file 不在時に `create` mode で新規生成する 2 経路分岐** を持つため `if [ -f ".rite-flow-state" ]; then ... else ... fi` 形式で明示処理 (意図的非対称、本 inline bash literal は orchestrator-side 実行想定)。
 >
-> **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651: 本 caller HTML コメント内 bash literal は (1) create.md 🚨 Mandatory After Interview Step 0 / (2) create-interview.md 🚨 MANDATORY Pre-flight / (3) create-interview.md Return Output re-patch (本セクション直前) / (4) stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT と **4-site 対称**。bash 引数 symmetry (`--phase` / `--if-exists` / `--preserve-error-count`) は #636 cycle 3 F-01 の error_count reset loop 防止規約に従う。`--next` 文字列は HINT/canonical で異なる (Step 0 fired vs continue caller) が動作影響なし。
+> **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651 / Issue #660: 本 caller HTML コメント内 bash literal は (1) create.md 🚨 Mandatory After Interview Step 0 / (2) create-interview.md 🚨 MANDATORY Pre-flight / (3) create-interview.md Return Output re-patch (本セクション直前) / (4) stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT と **4-site 対称**。bash 引数 symmetry (`--phase` / `--active` / `--next` / `--if-exists` / `--preserve-error-count`) は #636 cycle 3 F-01 の error_count reset loop 防止規約 + Issue #660 の `--active true` 4 引数 symmetry 拡張に従う (本セクション直前の Output format example sections (`[interview:skipped]` / `[interview:completed]`) 内の caller HTML inline literal も `--active true` を含む 4-arg symmetry に揃え済み)。`--next` 文字列は HINT/canonical で異なる (Step 0 fired vs continue caller) が動作影響なし。create.md 🚨 Mandatory After Interview Step 0 直後の DRIFT-CHECK ANCHOR / create-interview.md 🚨 MANDATORY Pre-flight 直後の DRIFT-CHECK ANCHOR と pair 同期する。
 >
 > **2 site 内対称性 (skipped/completed paths)**: 本ファイル内の `[interview:skipped]` (line 586 周辺) と `[interview:completed]` (line 595 周辺) の両 example で同一 bash literal を保持する必要がある。片方のみの更新は drift とみなされ、TC-651-B の 2-site count 検証で fail する (PR #654 review F-05 / F-08)。
 
