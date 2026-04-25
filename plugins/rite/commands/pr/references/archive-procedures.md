@@ -19,7 +19,7 @@ github:
 
 > **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 (Issue #496 / PR #531). Direct inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because LLM attention loss / partial-failure paths through the 3-stage inline pipeline produced silent skips that left Issue Status stuck at the previous value (Issue #658 — observed on #593 stuck at "In Review" and #652 stuck at "In Progress").
 
-Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
+Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` Phase 1.5, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
 bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
