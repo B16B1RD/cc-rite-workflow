@@ -192,3 +192,5 @@
 | 2026-04-24T14:55:00+00:00 | ingest:create | pages/patterns/markdown-channel-separation-for-terminal-sentinel.md | PR #655 cycle 3 fix を統合 (inline HTML sentinel 適用実装、前方空行要求回避) |
 | 2026-04-24T14:55:00+00:00 | ingest:create | pages/patterns/markdown-channel-separation-for-terminal-sentinel.md | PR #655 cycle 5 fix を統合 (factual correction と anti-pattern doc 整合、markdown channel separation 初文言化) |
 | 2026-04-25T00:00:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=48, broken_refs=0 |
+| 2026-04-25T12:30:00+00:00 | ingest:create | pages/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md | meta-investigation: /rite:issue:create 累積 9 件対策後再発の root cause 究明 (case-α: LLM の end_turn 選択は declarative enforcement で抑制不可、`f0d8791d` / `f7afee09` の .jsonl 一次情報による実証) |
+| 2026-04-25T12:30:00+00:00 | ingest:create | pages/anti-patterns/silent-precondition-omit-disables-and-defense-chain.md | meta-investigation: /rite:issue:create 累積 9 件対策後再発の root cause 究明 (case-δ': `.rite-flow-state.active=false` 残存 + `--active true` omit で stop-guard が 93% 機能不全、AND 論理防御チェーンの silent 単一障害点) |
