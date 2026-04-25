@@ -1637,17 +1637,42 @@ fi
 # (active=false) との gap で機能不全を検出できなかった。本 TC で gap を顕在化する。
 # --------------------------------------------------------------------------
 echo "TC-active-omit-A: phase=create_post_interview, active=false で stop-guard が exit 0 + reason=not_active"
+# review #2 MEDIUM 対応 (verified-review): RITE_STOP_GUARD_DIAG_LOG 環境変数は本番コード
+# (stop-guard.sh:43 の `local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"`) で参照されない
+# dead code のため削除。stop-guard.sh は STATE_ROOT (= cwd fallback) からハードコードで diag log
+# パスを解決するため、env var 設定は no-op だった。
+# review #3 MEDIUM 対応: TC-029 と stop-guard.sh L79-85 early return path 上で意味的に等価のため、
+# 本 TC の独立価値を確保するための negative assertion (active=false 経路では create_post_interview
+# WORKFLOW_HINT が emit されない) を追加。
 dir_aoa="$GUARD_TEST_DIR/tc-active-omit-A"
 mkdir -p "$dir_aoa"
 now_aoa=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 create_state_file "$dir_aoa" "{\"active\": false, \"phase\": \"create_post_interview\", \"updated_at\": \"$now_aoa\", \"next_action\": \"continue\"}"
 diag_aoa="$dir_aoa/.rite-stop-guard-diag.log"
 input_aoa="{\"stop_hook_active\": false, \"cwd\": \"$dir_aoa\"}"
-RITE_STOP_GUARD_DIAG_LOG="$diag_aoa" output_aoa=$(echo "$input_aoa" | bash "$GUARD" 2>/dev/null) && rc_aoa=0 || rc_aoa=$?
-if [ "$rc_aoa" -eq 0 ] && grep -qF "EXIT:0 reason=not_active" "$diag_aoa" 2>/dev/null; then
-  pass "active=false で exit 0 + diag log に EXIT:0 reason=not_active 記録"
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-active-omit-A.stderr.XXXXXX")"
+output_aoa=$(echo "$input_aoa" | bash "$GUARD" 2>"$LAST_STDERR_FILE") && rc_aoa=0 || rc_aoa=$?
+tc_aoa_ok=1
+tc_aoa_missing=""
+if [ "$rc_aoa" -ne 0 ]; then
+  tc_aoa_ok=0
+  tc_aoa_missing="${tc_aoa_missing} exit-not-0(rc=$rc_aoa)"
+fi
+if ! grep -qF "EXIT:0 reason=not_active" "$diag_aoa" 2>/dev/null; then
+  tc_aoa_ok=0
+  tc_aoa_missing="${tc_aoa_missing} reason-not-active-not-in-diag"
+fi
+# Negative assertion: active=false 経路では WORKFLOW_HINT が stderr に emit されないこと
+# (active=true なら create_post_interview の HINT bash literal が出るが、early return 経路では
+# 出ないことを正の検証として追加。これにより TC-029 との独立価値を確保)
+if grep -qF "create_post_interview --active true --next 'Step 0 Immediate Bash Action fired" "$LAST_STDERR_FILE" 2>/dev/null; then
+  tc_aoa_ok=0
+  tc_aoa_missing="${tc_aoa_missing} workflow-hint-emitted-in-active-false-path"
+fi
+if [ "$tc_aoa_ok" -eq 1 ]; then
+  pass "active=false で exit 0 + diag log に EXIT:0 reason=not_active 記録 + WORKFLOW_HINT 非 emit (early return 確認)"
 else
-  fail "active=false で exit 非0 (rc=$rc_aoa) または diag log に reason=not_active 不在"
+  fail "active=false 期待動作不在:${tc_aoa_missing}"
 fi
 
 # --------------------------------------------------------------------------
@@ -1697,21 +1722,32 @@ fi
 # 区別するため、--active true 明示時の挙動を独立に検証。
 # --------------------------------------------------------------------------
 echo "TC-active-omit-C: flow-state-update.sh patch --active true で active=false → true に更新"
+# review #1 HIGH 対応 (verified-review): subshell + stderr 完全黙殺 + 終了コード未確認の三重盲検を解消。
+# `set -euo pipefail` (L4) 下で flow-state-update.sh が失敗した場合に test 全体が silent abort
+# する経路を防ぐため、(a) subshell の終了コードを `&& rc=0 || rc=$?` で捕捉、(b) stderr を別 mktemp
+# file に redirect、(c) rc 非 0 時に明示 fail で診断 message を表示する。
+# review #4 LOW 対応: TC-active-omit-C 専用に LAST_STDERR_FILE を新規割当することで、TC-active-omit-B
+# の stderr が show_stderr 経由で誤表示される debug 誤誘導を防ぐ。
 dir_aoc="$GUARD_TEST_DIR/tc-active-omit-C"
 mkdir -p "$dir_aoc"
 now_aoc=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 create_state_file "$dir_aoc" "{\"active\": false, \"phase\": \"create_interview\", \"updated_at\": \"$now_aoc\", \"next_action\": \"continue\", \"error_count\": 0}"
 FSU="$SCRIPT_DIR/../flow-state-update.sh"
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-active-omit-C.stderr.XXXXXX")"
 (cd "$dir_aoc" && bash "$FSU" patch \
   --phase "create_post_interview" --active true \
   --next "TC-active-omit-C verification" \
-  --if-exists --preserve-error-count >/dev/null 2>&1)
-patched_active=$(jq -r '.active' "$dir_aoc/.rite-flow-state" 2>/dev/null)
-patched_phase=$(jq -r '.phase' "$dir_aoc/.rite-flow-state" 2>/dev/null)
-if [ "$patched_active" = "true" ] && [ "$patched_phase" = "create_post_interview" ]; then
-  pass "patch --active true で active=false → true、phase 同時更新"
+  --if-exists --preserve-error-count >/dev/null 2>"$LAST_STDERR_FILE") && rc_aoc=0 || rc_aoc=$?
+if [ "$rc_aoc" -ne 0 ]; then
+  fail "FSU patch failed: rc=$rc_aoc"
 else
-  fail "patch --active true 失敗 (active=$patched_active, phase=$patched_phase)"
+  patched_active=$(jq -r '.active' "$dir_aoc/.rite-flow-state" 2>/dev/null)
+  patched_phase=$(jq -r '.phase' "$dir_aoc/.rite-flow-state" 2>/dev/null)
+  if [ "$patched_active" = "true" ] && [ "$patched_phase" = "create_post_interview" ]; then
+    pass "patch --active true で active=false → true、phase 同時更新"
+  else
+    fail "patch --active true 失敗 (active=$patched_active, phase=$patched_phase)"
+  fi
 fi
 
 # --------------------------------------------------------------------------
