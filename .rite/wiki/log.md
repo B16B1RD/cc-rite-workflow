@@ -199,3 +199,4 @@
 | 2026-04-25T17:50:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #661 cycle 3 review/fix + cycle 4 review を統合 (propagation scan pattern coverage 不足、5 種表記対応への lint 拡張提案 = REC-04) |
 | 2026-04-25T17:50:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #661 cycle 1/2/3 review/fix を統合 (cleanup.md:1674 の (line N, M) + create-interview.md:605 の散文形式 line-number reference を 2 site 同時 cross-validation 検出、4-arg DRIFT-CHECK ANCHOR symmetry 拡張の canonical procedure) |
 | 2026-04-25T17:50:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-prose-code-sync.md | PR #661 cycle 1/2 review/fix を統合 (ANCHOR comment の prose 内 bash 引数 enumeration 同期漏れ、distributed-fix-drift-check.sh Pattern-2 を ANCHOR comment 内 prose enumeration へ拡張する canonical 提案) |
+| 2026-04-25T17:55:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=48, broken_refs=0 |
