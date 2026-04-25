@@ -131,6 +131,7 @@ Before returning control to the caller, update `.rite-flow-state` to the post-br
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase2_post_branch" \
+  --active true \
   --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop." \
   --if-exists
 ```

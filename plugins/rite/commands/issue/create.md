@@ -515,6 +515,7 @@ if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
   bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_interview" \
+    --active true \
     --next "After rite:issue:create-interview returns: proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -555,6 +556,7 @@ No GitHub Issue has been created yet. The interview only collects information.
 # error_count >= 1 escalation と THRESHOLD=3 bail-out 層が永久に fire しなくなる (実測確認済み)。
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_post_interview" \
+    --active true \
     --next "Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop." \
     --if-exists \
     --preserve-error-count; then
@@ -575,9 +577,9 @@ fi
 > - **(b) 実証根拠**: **類似経路の実証根拠** として、Issue #634 修正セッション (2026-04-21) の `.rite-stop-guard-diag.log` で `EXIT:2 reason=blocking phase=phase5_post_review` が複数件記録されている。**注意**: 本 phase 名は `phase5_post_review` (pr/review.md の review-fix loop 文脈) であり、本 Step 0 の `create_post_interview` (issue/create flow 文脈) とは異なる。同 case arm pattern (`stop-guard.sh case arm + exit 2 + WORKFLOW_HINT emit`) を共有する**類比的実証**であり、`create_post_interview` 自体の直接ログではない。両者は同型実装のため等価動作を期待できる。
 > - **(c) Claude Code UI 限界**: Stop hook の UI 上は exit 2 後でも `Churned for X` 表示が出る場合があり、ユーザーが「`continue` 手動入力が必要」と認識する余地がある (技術的には自動継続している)。本 Issue #651 では declarative 強化路線で 4-site 対称化 (本 Step 0 + Pre-flight + Return Output re-patch + stop-guard WORKFLOW_HINT) を維持・強化することで、いずれの経路でも同一 bash literal が caller に提示されるよう保証する。
 >
-> **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651: 本 Step 0 bash block は (1) **create.md 🚨 Mandatory After Interview Step 0** (本 site) / (2) **create-interview.md 🚨 MANDATORY Pre-flight** / (3) **create-interview.md Return Output re-patch** (Return Output Format section、`[CONTEXT] INTERVIEW_DONE=1` marker と caller HTML コメント inline literal を含む) / (4) **stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT** (`bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview ... --preserve-error-count` を含む) と **4 site 対称**。いずれか 1 site を更新する際は他 3 site も同時更新する必要がある。特に bash 引数 (`--phase`, `--next`, `--preserve-error-count`) の symmetry が崩れると error_count reset loop (verified-review cycle 3 F-01) が再発する。本 anchor は create-interview.md の **DRIFT-CHECK ANCHOR (semantic, 4-site)** anchor と pair で 2 site 同期する (PR #654 review F-03 で 3-site → 4-site 対称化に統一)。
+> **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651 / #660: 本 Step 0 bash block は (1) **create.md 🚨 Mandatory After Interview Step 0** (本 site) / (2) **create-interview.md 🚨 MANDATORY Pre-flight** / (3) **create-interview.md Return Output re-patch** (Return Output Format section、`[CONTEXT] INTERVIEW_DONE=1` marker と caller HTML コメント inline literal を含む) / (4) **stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT** (`bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true ... --preserve-error-count` を含む) と **4 site 対称**。いずれか 1 site を更新する際は他 3 site も同時更新する必要がある。特に bash 引数 (`--phase`, `--active`, `--next`, `--preserve-error-count`) の symmetry が崩れると error_count reset loop (verified-review cycle 3 F-01) または `active=false` 残存による stop-guard early return (Issue #660) が再発する。本 anchor は create-interview.md の **DRIFT-CHECK ANCHOR (semantic, 4-site)** anchor と pair で 2 site 同期する (PR #654 review F-03 で 3-site → 4-site 対称化に統一、Issue #660 で `--active true` を 4 引数 symmetry に拡張)。
 >
-> **`--if-exists` の非対称性** (#636 cycle 9 F-01 / cycle 10 F-04 対応、Issue #651 PR #654 cycle 2 review F-NEW1 で 3-site → 4-site terminology 拡張): 4-site 対称の bash 引数は `--phase` / `--next` / `--preserve-error-count` の 3 項目のみが対象。`--if-exists` は本 Step 0 / Step 1 (create.md 側) および stop-guard.sh の WORKFLOW_HINT (create.md canonical の literal snapshot として literal に含む) の 2 箇所に存在し、create-interview.md 側の Pre-flight / Return Output re-patch では **`if [ -f ".rite-flow-state" ]; then ... else ... fi`** の branch で file 存在分岐を明示的に処理するため付与しない (意図的非対称)。これは create-interview.md Pre-flight が「file 不在時は create mode で新規生成、存在時は patch mode で更新」という 2 経路を branch で区別する必要があるため、`--if-exists` (= patch mode 専用の silent skip flag) では実装できない責務の違いを反映している。create-interview.md の DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry) の pair anchor は `--if-exists` を列挙していない (両 anchor 間で整合)。stop-guard.sh HINT は create.md Step 0/Step 1 canonical の literal copy のため drift check 対象であり、symmetry 外ではない。(line-number 参照を避ける理由は cycle 8 F-05 参照 — #636 cycle 10 F-01 対応)
+> **`--if-exists` の非対称性** (#636 cycle 9 F-01 / cycle 10 F-04 対応、Issue #651 PR #654 cycle 2 review F-NEW1 で 3-site → 4-site terminology 拡張、Issue #660 で `--active` を symmetry 引数 list に追加): 4-site 対称の bash 引数は `--phase` / `--active` / `--next` / `--preserve-error-count` の 4 項目が対象。`--if-exists` は本 Step 0 / Step 1 (create.md 側) および stop-guard.sh の WORKFLOW_HINT (create.md canonical の literal snapshot として literal に含む) の 2 箇所に存在し、create-interview.md 側の Pre-flight / Return Output re-patch では **`if [ -f ".rite-flow-state" ]; then ... else ... fi`** の branch で file 存在分岐を明示的に処理するため付与しない (意図的非対称)。これは create-interview.md Pre-flight が「file 不在時は create mode で新規生成、存在時は patch mode で更新」という 2 経路を branch で区別する必要があるため、`--if-exists` (= patch mode 専用の silent skip flag) では実装できない責務の違いを反映している。create-interview.md の DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry) の pair anchor は `--if-exists` を列挙していない (両 anchor 間で整合)。stop-guard.sh HINT は create.md Step 0/Step 1 canonical の literal copy のため drift check 対象であり、symmetry 外ではない。(line-number 参照を避ける理由は cycle 8 F-05 参照 — #636 cycle 10 F-01 対応)
 >
 > **path 表現の非対称性は意図的** (#636 cycle 8 F-04 対応): 本 Step 0 / create-interview.md 側は `{plugin_root}/hooks/flow-state-update.sh` placeholder 形式を使い、Claude Code の plugin loader が expand する前提。一方 stop-guard.sh の HINT 文字列内 `bash plugins/rite/hooks/flow-state-update.sh ...` は **LLM が文字列として読んで cwd=repo_root でそのまま実行する想定の literal** のため、placeholder 展開経路を持たない。HINT 内に `{plugin_root}` を入れると LLM が literal `{plugin_root}` をシェルに渡してしまい動作しない。4 site 対称は **bash 引数 / semantics** の対称性であり、**path 表現**の対称性ではない。本注記は将来の drift check で path の非対称性を false positive として flag しないための明示的契約。
 
@@ -586,6 +588,7 @@ fi
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_post_interview" \
+    --active true \
     --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
     --if-exists \
     --preserve-error-count; then
@@ -703,6 +706,7 @@ if [ -f ".rite-flow-state" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller
   bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_delegation" \
+    --active true \
     --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
 else
   bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -751,6 +755,7 @@ Invoke `skill: "rite:issue:create-register"`.
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "create_post_delegation" \
+  --active true \
   --next "Sub-skill completed. Deactivate flow state and output next steps. Do NOT stop."
 ```
 

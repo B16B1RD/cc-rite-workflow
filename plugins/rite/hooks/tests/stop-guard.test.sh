@@ -1610,10 +1610,11 @@ fi
 echo "TC-651-C: stop-guard.sh create_post_interview WORKFLOW_HINT に site-specific 4-site 対称 bash literal が含まれる"
 tc651c_ok=1
 tc651c_missing=""
-# Site-specific pattern: `--phase create_post_interview --next 'Step 0 Immediate Bash Action fired`
+# Site-specific pattern: `--phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired`
 # は create_post_interview WORKFLOW_HINT 内にしか出現しない literal で、cleanup_post_ingest 等の
-# 他 case arm にある同類 flag (`--if-exists --preserve-error-count` 単独) では false-positive しない
-grep -qF "create_post_interview --next 'Step 0 Immediate Bash Action fired" "$GUARD" 2>/dev/null \
+# 他 case arm にある同類 flag (`--if-exists --preserve-error-count` 単独) では false-positive しない。
+# Issue #660: `--active true` を 4-site 対称引数 list に追加 (--phase / --active / --next / --preserve-error-count)
+grep -qF "create_post_interview --active true --next 'Step 0 Immediate Bash Action fired" "$GUARD" 2>/dev/null \
   || { tc651c_ok=0; tc651c_missing="${tc651c_missing} site-specific-bash-literal-in-stop-guard"; }
 # 4-site DRIFT-CHECK ANCHOR (PR #654 review F-03 で追加された 4-site 文言) も verify
 grep -qF "DRIFT-CHECK ANCHOR (semantic, 4-site)" "$GUARD" 2>/dev/null \
@@ -1622,6 +1623,95 @@ if [ "$tc651c_ok" -eq 1 ]; then
   pass "stop-guard.sh WORKFLOW_HINT で site-specific 4-site 対称 bash literal + 4-site ANCHOR 保持"
 else
   fail "missing site-specific 4-site symmetry in stop-guard.sh:${tc651c_missing}"
+fi
+
+# --------------------------------------------------------------------------
+# TC-active-omit-A (Issue #660 AC-2): 本番条件再現 — active=false で機能不全を実証
+#
+# Given: phase=create_post_interview, active=false の状態
+# When: stop-guard.sh を起動
+# Then: exit 0 + diag log に EXIT:0 reason=not_active が記録される
+#
+# 本 TC は Issue #660 の D4 (本番条件再現 TC を AC に必須化) に該当。
+# 過去 60+ TC は active=true を pre-set してから起動していたため、本番起動条件
+# (active=false) との gap で機能不全を検出できなかった。本 TC で gap を顕在化する。
+# --------------------------------------------------------------------------
+echo "TC-active-omit-A: phase=create_post_interview, active=false で stop-guard が exit 0 + reason=not_active"
+dir_aoa="$GUARD_TEST_DIR/tc-active-omit-A"
+mkdir -p "$dir_aoa"
+now_aoa=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_aoa" "{\"active\": false, \"phase\": \"create_post_interview\", \"updated_at\": \"$now_aoa\", \"next_action\": \"continue\"}"
+diag_aoa="$dir_aoa/.rite-stop-guard-diag.log"
+input_aoa="{\"stop_hook_active\": false, \"cwd\": \"$dir_aoa\"}"
+RITE_STOP_GUARD_DIAG_LOG="$diag_aoa" output_aoa=$(echo "$input_aoa" | bash "$GUARD" 2>/dev/null) && rc_aoa=0 || rc_aoa=$?
+if [ "$rc_aoa" -eq 0 ] && grep -qF "EXIT:0 reason=not_active" "$diag_aoa" 2>/dev/null; then
+  pass "active=false で exit 0 + diag log に EXIT:0 reason=not_active 記録"
+else
+  fail "active=false で exit 非0 (rc=$rc_aoa) または diag log に reason=not_active 不在"
+fi
+
+# --------------------------------------------------------------------------
+# TC-active-omit-B (Issue #660 AC-3): 本番条件成立 — active=true で防御層が fire
+#
+# Given: phase=create_post_interview, active=true の状態
+# When: stop-guard.sh を起動
+# Then: exit 2 + WORKFLOW_HINT に Step 0 bash literal を含む
+#
+# 本 TC は Issue #660 の link 修復後の動作を assert する。
+# AC-1 で全 patch site に --active true が追加された結果、本 case が本番で再現する。
+# --------------------------------------------------------------------------
+echo "TC-active-omit-B: phase=create_post_interview, active=true で stop-guard が exit 2 + WORKFLOW_HINT"
+dir_aob="$GUARD_TEST_DIR/tc-active-omit-B"
+mkdir -p "$dir_aob"
+now_aob=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_aob" "{\"active\": true, \"phase\": \"create_post_interview\", \"updated_at\": \"$now_aob\", \"next_action\": \"continue\"}"
+input_aob="{\"stop_hook_active\": false, \"cwd\": \"$dir_aob\"}"
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-active-omit-B.stderr.XXXXXX")"
+echo "$input_aob" | bash "$GUARD" >/dev/null 2>"$LAST_STDERR_FILE" && rc_aob=0 || rc_aob=$?
+tc_aob_ok=1
+tc_aob_missing=""
+if [ "$rc_aob" -ne 2 ]; then
+  tc_aob_ok=0
+  tc_aob_missing="${tc_aob_missing} exit-not-2(rc=$rc_aob)"
+fi
+# WORKFLOW_HINT 内に Step 0 Immediate Bash Action の bash literal (--active true 含む) があること
+if ! grep -qF "create_post_interview --active true --next 'Step 0 Immediate Bash Action fired" "$LAST_STDERR_FILE" 2>/dev/null; then
+  tc_aob_ok=0
+  tc_aob_missing="${tc_aob_missing} step-0-bash-literal-with-active-true-in-stderr"
+fi
+if [ "$tc_aob_ok" -eq 1 ]; then
+  pass "active=true で exit 2 + WORKFLOW_HINT に --active true を含む Step 0 bash literal 出力"
+else
+  fail "active=true 期待動作不在:${tc_aob_missing}"
+fi
+
+# --------------------------------------------------------------------------
+# TC-active-omit-C (Issue #660 AC-1 補強): --active true 付き patch の挙動検証
+#
+# Given: 既存 .rite-flow-state (active=false)
+# When: flow-state-update.sh patch --phase X --active true ... を実行
+# Then: active が true に更新される (--active true が反映される)
+#
+# 本 TC は flow-state-update.sh の --active 引数が正しく適用されることを assert する。
+# patch mode の --active 省略時は既存値保持の semantics (Issue #660 4.3 参照) と
+# 区別するため、--active true 明示時の挙動を独立に検証。
+# --------------------------------------------------------------------------
+echo "TC-active-omit-C: flow-state-update.sh patch --active true で active=false → true に更新"
+dir_aoc="$GUARD_TEST_DIR/tc-active-omit-C"
+mkdir -p "$dir_aoc"
+now_aoc=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_aoc" "{\"active\": false, \"phase\": \"create_interview\", \"updated_at\": \"$now_aoc\", \"next_action\": \"continue\", \"error_count\": 0}"
+FSU="$SCRIPT_DIR/../flow-state-update.sh"
+(cd "$dir_aoc" && bash "$FSU" patch \
+  --phase "create_post_interview" --active true \
+  --next "TC-active-omit-C verification" \
+  --if-exists --preserve-error-count >/dev/null 2>&1)
+patched_active=$(jq -r '.active' "$dir_aoc/.rite-flow-state" 2>/dev/null)
+patched_phase=$(jq -r '.phase' "$dir_aoc/.rite-flow-state" 2>/dev/null)
+if [ "$patched_active" = "true" ] && [ "$patched_phase" = "create_post_interview" ]; then
+  pass "patch --active true で active=false → true、phase 同時更新"
+else
+  fail "patch --active true 失敗 (active=$patched_active, phase=$patched_phase)"
 fi
 
 # --------------------------------------------------------------------------

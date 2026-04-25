@@ -4420,6 +4420,7 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_review" \
+  --active true \
   --next "{next_action_value}" \
   --if-exists
 ```

@@ -70,6 +70,7 @@ Before returning control to the caller, update `.rite-flow-state` to the post-wo
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase2_post_work_memory" \
+  --active true \
   --next "rite:issue:work-memory-init completed. Proceed to Phase 3 (implementation plan). Do NOT stop." \
   --if-exists
 ```

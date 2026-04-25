@@ -19,7 +19,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 >
 > **DRIFT-CHECK ANCHOR (semantic)**: This section is mirrored by `stop-guard.sh` `create_interview` case arm (Issue #622) and `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge. The three sites form a 3-site symmetry — when updating any one, update the others.
 >
-> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — F-06 / #636: 本 Pre-flight bash block の引数 (`--phase`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--preserve-error-count` を含む) と symmetry を取る必要がある。`create.md` の **DRIFT-CHECK ANCHOR (semantic)** 節 (Step 0 Rationale 直後) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
+> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — F-06 / #636 / #660: 本 Pre-flight bash block の引数 (`--phase`, `--active`, `--next`, `--preserve-error-count`) は `create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** および **Step 1** (両方の patch mode call に `--active true` と `--preserve-error-count` を含む) と symmetry を取る必要がある。`create.md` の **DRIFT-CHECK ANCHOR (semantic)** 節 (Step 0 Rationale 直後) から本セクションへの逆参照であり、create.md 側と本 Pre-flight の bash 引数のいずれかが崩れると error_count reset loop (cycle 3 F-01 / cycle 4 F-01/F-02) または `active=false` 残存による stop-guard early return (Issue #660) が再発する。本セクションの Return Output 直前 re-patch (Return Output Format section) も同一 contract に属する。
 
 **MUST run before any interview logic** (Phase 0.4.1 scope evaluation, Phase 0.5 deep-dive, or return-output emission). This bash block is **not optional** and **not conditional on interview scope**. Execute it even when Phase 0.4.1 determines the Bug Fix / Chore preset (interview scope = "skip"):
 
@@ -40,6 +40,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 if [ -f ".rite-flow-state" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
+      --active true \
       --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
@@ -560,6 +561,7 @@ Immediately before emitting the four-line return block, re-patch `.rite-flow-sta
 if [ -f ".rite-flow-state" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
+      --active true \
       --next "rite:issue:create-interview completed. Proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
@@ -583,7 +585,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:skipped] -->
 ```
 
@@ -592,7 +594,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_0_6
 > ⏭ 継続中: Phase 0.6 → Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:completed] -->
 ```
 

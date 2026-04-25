@@ -215,6 +215,7 @@ Proceed to the next phase.
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_ready_error" \
+  --active true \
   --next "rite:pr:ready failed. Ask user: retry / skip to Phase 5.6 / terminate." \
   --if-exists
 ```
@@ -388,6 +389,7 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_ready" \
+  --active true \
   --next "rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
   --if-exists
 ```
