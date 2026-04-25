@@ -60,13 +60,16 @@ When Phase 3.2 returns `.result == "skipped_not_in_project"` or `"failed"`, `pro
 
 The LLM retains `projects_status_updated` in conversation context. Phase 5.1 uses it for conditional display of the Projects Status update result via the `{projects_check}` / `{projects_status_result}` placeholders (see `cleanup.md` Phase 5.1).
 
-**Bash 実装パターン** (LLM 向け実装ヒント — Phase 3.2 script delegate 呼び出し直後に挿入する):
+**Bash 実装パターン** (LLM 向け実装ヒント — Phase 3.2 の `bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"` 行を以下のように書き換える):
 
 ```bash
-# Phase 3.2 の bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n ...)" 直後
-status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$(...)")
-status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"')
-status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?')
+# Phase 3.2 の script delegate invocation を defensive shape で書き換える
+# (sister sites: close.md Phase 1.3.2.1 / 4.2.1, ready.md Phase 4.2.1, archive-procedures.md Phase 3.7.2.1
+#  と byte-for-byte 整合させる — `|| status_json=""` fallback / jq 2>/dev/null 抑制 / `failed|*)`
+#  catch-all は AC-2 silent skip 復活ベクタを塞ぐために必須)
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
 projects_status_updated="false"  # default
 case "$status_result" in
   updated)
@@ -76,7 +79,9 @@ case "$status_result" in
   skipped_not_in_project)
     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2
     ;;
-  failed)
+  failed|*)
+    # script が JSON-emit 前に死んだ場合 (jq 不在 / mktemp 失敗 / `{plugin_root}` 置換漏れ等) は
+    # status_result が空文字となり `*)` で捕捉される — silent fall-through 防止
     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2
     ;;

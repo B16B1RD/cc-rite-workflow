@@ -1088,6 +1088,15 @@ if [ "$projects_enabled" = "true" ]; then
   status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>"${p463_err_status:-/dev/null}") || status_json=""
   status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
   status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+  # 失敗時の recovery one-liner で実値埋め込みするため、script JSON から 4 ID を抽出する。
+  # projects-status-update.sh は失敗時にも .item_id / .project_id / .status_field_id / .option_id を
+  # 含めて emit する (output_result() 仕様、scripts/projects-status-update.sh §27-35)。
+  # 部分パイプライン失敗時 (例: gh project item-edit のみ失敗) では 4 ID 全て populated されるため
+  # copy-paste-ready な recovery command を Step 3 で構築できる。空値時は placeholder template に fallback。
+  script_item_id=$(printf '%s' "$status_json" | jq -r '.item_id // empty' 2>/dev/null)
+  script_project_id=$(printf '%s' "$status_json" | jq -r '.project_id // empty' 2>/dev/null)
+  script_status_field_id=$(printf '%s' "$status_json" | jq -r '.status_field_id // empty' 2>/dev/null)
+  script_option_id=$(printf '%s' "$status_json" | jq -r '.option_id // empty' 2>/dev/null)
 
   # script が JSON を吐く前に死んだ場合 (status_json="") は status_warning_lines も空のため、
   # 退避した stderr を warning_lines に注入して Step 3 で surface する
@@ -1158,12 +1167,21 @@ case "${issue_close_result}:${status_update_result}" in
     echo ""
     echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
     # case `*)` 経路で update_failed に倒した場合、scrollback に頼らず由来情報を summary 内に残す
-    # (status_result は line 1075 で capture 済みで preserved。"failed" 値は legitimate な script.result なので除外)
+    # (status_result は Step 1 内で capture 済みで preserved。"failed" 値は legitimate な script.result なので除外)
     if [ -n "${status_result:-}" ] && [ "$status_result" != "failed" ] && [ "$status_result" != "updated" ] && [ "$status_result" != "skipped_not_in_project" ]; then
       echo "    (Note: 未知の .result='$status_result' を受信したため update_failed として処理 — script schema 拡張可能性)"
     fi
-    echo "    手動更新の例: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>"
-    echo "    診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json (Status field の id と 'Done' option の id を確認)"
+    # Step 1 で抽出した 4 ID が全て populated されていれば copy-paste-ready な recovery command を出す
+    # (script は失敗時にも .item_id / .project_id / .status_field_id / .option_id を emit するため、
+    #  例えば gh project item-edit のみ失敗の経路では 4 ID 全て揃って実用的な復旧コマンドが生成できる)。
+    # いずれかが欠落している場合 (script が ID 解決前に死んだ等) は placeholder + 診断コマンドに fallback。
+    if [ -n "${script_item_id:-}" ] && [ -n "${script_project_id:-}" ] \
+       && [ -n "${script_status_field_id:-}" ] && [ -n "${script_option_id:-}" ]; then
+      echo "    復旧コマンド: gh project item-edit --project-id ${script_project_id} --id ${script_item_id} --field-id ${script_status_field_id} --single-select-option-id ${script_option_id}"
+    else
+      echo "    手動更新の例: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>"
+      echo "    診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json (Status field の id と 'Done' option の id を確認)"
+    fi
     echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
     ;;
   "failed:success")
