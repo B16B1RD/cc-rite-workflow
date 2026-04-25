@@ -318,129 +318,39 @@ gh pr view {pr_number} --json body,headRefName
 1. `Closes #XX`, `Fixes #XX`, `Resolves #XX` in the PR body
 2. `issue-XX` pattern in the branch name
 
-### 4.2 Retrieve Project Configuration
+### 4.2 Update Status via Shared Script
 
-Retrieve Project information from `rite-config.yml`:
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 (Issue #496 / PR #531). Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (Issue #658 — observed on #652 stuck at "In Progress" through subsequent cleanup).
 
-```yaml
-github:
-  projects:
-    project_number: {number}
-    owner: "{owner}"
-```
-
-### 4.3 Retrieve Issue's Project Item Information
+Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in Phase 4.1, and proceed to Phase 4.6. Otherwise, invoke the shared script to transition the Issue Status to **In Review**:
 
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "In Review" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-### 4.4 Retrieve the Status Field
+`auto_add: false` because by ready time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline, with built-in handling for User / Organization owners.
 
-**Important**: The option ID (`{in_review_option_id}`) must always be fetched from the API. Only field IDs can be specified via `field_ids`; option IDs for each status (Done, In Progress, In Review, etc.) are not included.
+#### 4.2.1 Result Handling
 
-**Retrieving the field ID:**
+Inspect the script's stdout JSON and route by `.result`:
 
-If `github.projects.field_ids.status` is set in `rite-config.yml`, use that value directly as `{status_field_id}` (skip extracting the field ID from the API result):
+| `.result` | User-visible action |
+|-----------|--------------------|
+| `"updated"` | Display `Projects Status を "In Review" に更新しました` and proceed to Phase 4.6 |
+| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 |
 
-Replace the configured value with your actual project ID (see CONFIGURATION.md for how to obtain it):
+**All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
-```yaml
-github:
-  projects:
-    field_ids:
-      status: "PVTSSF_your-status-field-id"
-```
-
-**Retrieving the option ID (always required):**
-
-**Note**: This file (ready.md) uses GraphQL instead of `gh project field-list`.
-
-**Differences from other command files:**
-- `close.md` / `cleanup.md`: Use the `gh project field-list` CLI command directly (adequate when retrieving field lists only)
-- `start.md` (Phase 2.4 / 5.5.1 / 5.7.2): Delegates Projects Status updates to `plugins/rite/scripts/projects-status-update.sh`, which internally uses `gh project field-list` + `gh project item-edit` (see Issue #496 / PR #531 for the refactor)
-- This file (ready.md): Uses GraphQL (an intentional design decision for the following reasons)
-
-**Reasons for using GraphQL:**
-- Both field ID and option ID can be fetched in a single query
-- Provides a consistent method for fetching option IDs whether `field_ids` is configured or not
-- Easier to handle complex cases including Organization/User detection
-
-#### Organization Detection (Before Executing the GraphQL Query)
-
-Before executing the GraphQL query, determine whether the owner is a User or Organization:
-
-```bash
-gh api users/{owner} --jq '.type'
-```
-
-| Result | Action |
-|------|------|
-| `"Organization"` | Change `user(login: $owner)` to `organization(login: $owner)` in the query |
-| `"User"` | Use the query as-is |
-
-#### Execute the GraphQL Query
-
-```bash
-gh api graphql -f query='
-query($owner: String!, $projectNumber: Int!) {
-  user(login: $owner) {
-    projectV2(number: $projectNumber) {
-      id
-      fields(first: 20) {
-        nodes {
-          ... on ProjectV2SingleSelectField {
-            id
-            name
-            options {
-              id
-              name
-            }
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -F projectNumber={project_number}
-```
-
-**Note**: The above is the query for User. For Organization, replace `user` with `organization`.
-
-**Retrieval logic:**
-1. Execute the API (always required for obtaining option IDs)
-2. Check `github.projects.field_ids.status` in `rite-config.yml`
-3. Determine the field ID:
-   - If configured: Use the configured value as `{status_field_id}`
-   - If not configured: Obtain `{status_field_id}` from the GraphQL result
-4. Option ID: Obtain `{in_review_option_id}` from the GraphQL result
-
-### 4.5 Update Status to "In Review"
-
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {in_review_option_id}
-```
-
-**If Project is not configured:**
-
-```
-警告: GitHub Projects が設定されていません
-Status の更新をスキップします
-```
+> **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
