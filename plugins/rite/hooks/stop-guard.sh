@@ -373,11 +373,12 @@ case "$PHASE" in
     # (cleanup_post_ingest HINT と asymmetry を解消、#561 bare-sentinel 対策を full 達成)
     # Issue #650: Step 0 Immediate Bash Action pattern を HINT に literal として含め、
     # ingest sub-skill return 直後の canonical continuation 手順を明示する。
-    # DRIFT-CHECK ANCHOR (semantic — Issue #650): 本 case arm の HINT 内 bash block literal は
+    # DRIFT-CHECK ANCHOR (semantic — Issue #650 / Issue #660): 本 case arm の HINT 内 bash block literal は
     # **cleanup.md 🚨 Mandatory After Wiki Ingest Step 0 (Immediate Bash Action、next-phase patch:
     # --phase cleanup_post_ingest --active true --preserve-error-count) と 2 site 対称**。
-    # `--phase` / `--next` / `--preserve-error-count` の引数 symmetry を死守する (create.md
-    # verified-review cycle 3 F-01 と同型の error_count reset loop 再発防止)。
+    # `--phase` / `--active` / `--next` / `--preserve-error-count` の引数 symmetry を死守する (create.md
+    # verified-review cycle 3 F-01 と同型の error_count reset loop 再発防止 + Issue #660 で
+    # `--active true` を 4 引数 symmetry に拡張)。
     # cleanup_post_ingest case arm (下方) は別 target (terminal patch) と対称で、本 arm とは異なる
     # drift check scope を持つ (重複 ANCHOR 文言による混同防止、Issue #650 review MEDIUM 指摘)。
     WORKFLOW_HINT="HINT: /rite:pr:cleanup Phase 4.W.2 phase recorded. The block may have fired immediately before the rite:wiki:ingest Skill invoke, OR while the ingest sub-skill is mid-execution (ingest.md does not write its own flow-state directly via cleanup_* phases, but the caller phase remains pinned during sub-skill invocation modulo the ring structure for ingest_pre_lint / ingest_post_lint / ingest_completed). In either case, do NOT stop. Continue: if ingest has not been invoked yet, invoke it; if ingest has returned <!-- [ingest:completed] --> (grep -F '[ingest:completed]') or [CONTEXT] WIKI_INGEST_DONE=1 (grep -F '[CONTEXT] WIKI_INGEST_DONE='), immediately run 🚨 Mandatory After Wiki Ingest Step 0 (Immediate Bash Action: \`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_post_ingest --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 5 Completion Report. Do NOT stop.' --if-exists --preserve-error-count\`) → Step 1 (idempotent re-patch) → Phase 5 Completion Report (user-visible message + cleanup_completed deactivate; #652: inline <!-- [cleanup:completed] --> HTML sentinel at the trailing position of the final list item of Phase 5.2 (ordered list), NOT as an independent last line) in the SAME response turn. Grep recent context for '[CONTEXT] STEP_0_PATCH_FAILED=1' / '[CONTEXT] STEP_1_PATCH_FAILED=1' — if either present, a patch site failed (disk full / permission denied); the 2 重 patch defense-in-depth (Step 0 + Step 1) means at least one site should have succeeded. DO NOT stop before <!-- [cleanup:completed] --> is output."

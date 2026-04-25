@@ -1626,7 +1626,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-active-omit-A (Issue #660 AC-2): 本番条件再現 — active=false で機能不全を実証
+# TC-660-A (Issue #660 AC-2): 本番条件再現 — active=false で機能不全を実証
 #
 # Given: phase=create_post_interview, active=false の状態
 # When: stop-guard.sh を起動
@@ -1635,8 +1635,14 @@ fi
 # 本 TC は Issue #660 の D4 (本番条件再現 TC を AC に必須化) に該当。
 # 過去 60+ TC は active=true を pre-set してから起動していたため、本番起動条件
 # (active=false) との gap で機能不全を検出できなかった。本 TC で gap を顕在化する。
+#
+# verified-review (PR #661) cycle 2 review #6 LOW (intent コメント): TC-475-A は
+# exit 2 + create_post_interview emit のみ verify。本 TC は **runtime stderr 経由で
+# WORKFLOW_HINT が active=false 経路で emit されないこと** (negative assertion) を
+# verify する orthogonal 検知。TC-651-C は static source grep のため、case arm 削除
+# regression は本 TC のみで catch する。
 # --------------------------------------------------------------------------
-echo "TC-active-omit-A: phase=create_post_interview, active=false で stop-guard が exit 0 + reason=not_active"
+echo "TC-660-A: phase=create_post_interview, active=false で stop-guard が exit 0 + reason=not_active"
 # review #2 MEDIUM 対応 (verified-review): RITE_STOP_GUARD_DIAG_LOG 環境変数は本番コード
 # (stop-guard.sh:43 の `local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"`) で参照されない
 # dead code のため削除。stop-guard.sh は STATE_ROOT (= cwd fallback) からハードコードで diag log
@@ -1644,39 +1650,41 @@ echo "TC-active-omit-A: phase=create_post_interview, active=false で stop-guard
 # review #3 MEDIUM 対応: TC-029 と stop-guard.sh L79-85 early return path 上で意味的に等価のため、
 # 本 TC の独立価値を確保するための negative assertion (active=false 経路では create_post_interview
 # WORKFLOW_HINT が emit されない) を追加。
-dir_aoa="$GUARD_TEST_DIR/tc-active-omit-A"
-mkdir -p "$dir_aoa"
-now_aoa=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
-create_state_file "$dir_aoa" "{\"active\": false, \"phase\": \"create_post_interview\", \"updated_at\": \"$now_aoa\", \"next_action\": \"continue\"}"
-diag_aoa="$dir_aoa/.rite-stop-guard-diag.log"
-input_aoa="{\"stop_hook_active\": false, \"cwd\": \"$dir_aoa\"}"
-LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-active-omit-A.stderr.XXXXXX")"
-output_aoa=$(echo "$input_aoa" | bash "$GUARD" 2>"$LAST_STDERR_FILE") && rc_aoa=0 || rc_aoa=$?
-tc_aoa_ok=1
-tc_aoa_missing=""
-if [ "$rc_aoa" -ne 0 ]; then
-  tc_aoa_ok=0
-  tc_aoa_missing="${tc_aoa_missing} exit-not-0(rc=$rc_aoa)"
+# verified-review (PR #661) cycle 2 F-07 対応: output_aoa=$(...) で stdout を変数捕捉していたが
+# 以後一切参照されない (dead variable)。隣接 TC-660-B/C と pattern を揃えて >/dev/null に変更。
+dir_660a="$GUARD_TEST_DIR/tc-660-A"
+mkdir -p "$dir_660a"
+now_660a=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_660a" "{\"active\": false, \"phase\": \"create_post_interview\", \"updated_at\": \"$now_660a\", \"next_action\": \"continue\"}"
+diag_660a="$dir_660a/.rite-stop-guard-diag.log"
+input_660a="{\"stop_hook_active\": false, \"cwd\": \"$dir_660a\"}"
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-660-A.stderr.XXXXXX")"
+echo "$input_660a" | bash "$GUARD" >/dev/null 2>"$LAST_STDERR_FILE" && rc_660a=0 || rc_660a=$?
+tc_660a_ok=1
+tc_660a_missing=""
+if [ "$rc_660a" -ne 0 ]; then
+  tc_660a_ok=0
+  tc_660a_missing="${tc_660a_missing} exit-not-0(rc=$rc_660a)"
 fi
-if ! grep -qF "EXIT:0 reason=not_active" "$diag_aoa" 2>/dev/null; then
-  tc_aoa_ok=0
-  tc_aoa_missing="${tc_aoa_missing} reason-not-active-not-in-diag"
+if ! grep -qF "EXIT:0 reason=not_active" "$diag_660a" 2>/dev/null; then
+  tc_660a_ok=0
+  tc_660a_missing="${tc_660a_missing} reason-not-active-not-in-diag"
 fi
 # Negative assertion: active=false 経路では WORKFLOW_HINT が stderr に emit されないこと
 # (active=true なら create_post_interview の HINT bash literal が出るが、early return 経路では
 # 出ないことを正の検証として追加。これにより TC-029 との独立価値を確保)
 if grep -qF "create_post_interview --active true --next 'Step 0 Immediate Bash Action fired" "$LAST_STDERR_FILE" 2>/dev/null; then
-  tc_aoa_ok=0
-  tc_aoa_missing="${tc_aoa_missing} workflow-hint-emitted-in-active-false-path"
+  tc_660a_ok=0
+  tc_660a_missing="${tc_660a_missing} workflow-hint-emitted-in-active-false-path"
 fi
-if [ "$tc_aoa_ok" -eq 1 ]; then
+if [ "$tc_660a_ok" -eq 1 ]; then
   pass "active=false で exit 0 + diag log に EXIT:0 reason=not_active 記録 + WORKFLOW_HINT 非 emit (early return 確認)"
 else
-  fail "active=false 期待動作不在:${tc_aoa_missing}"
+  fail "active=false 期待動作不在:${tc_660a_missing}"
 fi
 
 # --------------------------------------------------------------------------
-# TC-active-omit-B (Issue #660 AC-3): 本番条件成立 — active=true で防御層が fire
+# TC-660-B (Issue #660 AC-3): 本番条件成立 — active=true で防御層が fire
 #
 # Given: phase=create_post_interview, active=true の状態
 # When: stop-guard.sh を起動
@@ -1685,69 +1693,203 @@ fi
 # 本 TC は Issue #660 の link 修復後の動作を assert する。
 # AC-1 で全 patch site に --active true が追加された結果、本 case が本番で再現する。
 # --------------------------------------------------------------------------
-echo "TC-active-omit-B: phase=create_post_interview, active=true で stop-guard が exit 2 + WORKFLOW_HINT"
-dir_aob="$GUARD_TEST_DIR/tc-active-omit-B"
-mkdir -p "$dir_aob"
-now_aob=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
-create_state_file "$dir_aob" "{\"active\": true, \"phase\": \"create_post_interview\", \"updated_at\": \"$now_aob\", \"next_action\": \"continue\"}"
-input_aob="{\"stop_hook_active\": false, \"cwd\": \"$dir_aob\"}"
-LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-active-omit-B.stderr.XXXXXX")"
-echo "$input_aob" | bash "$GUARD" >/dev/null 2>"$LAST_STDERR_FILE" && rc_aob=0 || rc_aob=$?
-tc_aob_ok=1
-tc_aob_missing=""
-if [ "$rc_aob" -ne 2 ]; then
-  tc_aob_ok=0
-  tc_aob_missing="${tc_aob_missing} exit-not-2(rc=$rc_aob)"
+echo "TC-660-B: phase=create_post_interview, active=true で stop-guard が exit 2 + WORKFLOW_HINT"
+dir_660b="$GUARD_TEST_DIR/tc-660-B"
+mkdir -p "$dir_660b"
+now_660b=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_660b" "{\"active\": true, \"phase\": \"create_post_interview\", \"updated_at\": \"$now_660b\", \"next_action\": \"continue\"}"
+input_660b="{\"stop_hook_active\": false, \"cwd\": \"$dir_660b\"}"
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-660-B.stderr.XXXXXX")"
+echo "$input_660b" | bash "$GUARD" >/dev/null 2>"$LAST_STDERR_FILE" && rc_660b=0 || rc_660b=$?
+tc_660b_ok=1
+tc_660b_missing=""
+if [ "$rc_660b" -ne 2 ]; then
+  tc_660b_ok=0
+  tc_660b_missing="${tc_660b_missing} exit-not-2(rc=$rc_660b)"
 fi
 # WORKFLOW_HINT 内に Step 0 Immediate Bash Action の bash literal (--active true 含む) があること
 if ! grep -qF "create_post_interview --active true --next 'Step 0 Immediate Bash Action fired" "$LAST_STDERR_FILE" 2>/dev/null; then
-  tc_aob_ok=0
-  tc_aob_missing="${tc_aob_missing} step-0-bash-literal-with-active-true-in-stderr"
+  tc_660b_ok=0
+  tc_660b_missing="${tc_660b_missing} step-0-bash-literal-with-active-true-in-stderr"
 fi
-if [ "$tc_aob_ok" -eq 1 ]; then
+if [ "$tc_660b_ok" -eq 1 ]; then
   pass "active=true で exit 2 + WORKFLOW_HINT に --active true を含む Step 0 bash literal 出力"
 else
-  fail "active=true 期待動作不在:${tc_aob_missing}"
+  fail "active=true 期待動作不在:${tc_660b_missing}"
 fi
 
 # --------------------------------------------------------------------------
-# TC-active-omit-C (Issue #660 AC-1 補強): --active true 付き patch の挙動検証
+# TC-660-C (Issue #660 AC-1 補強): --active true 付き patch の挙動検証
 #
 # Given: 既存 .rite-flow-state (active=false)
 # When: flow-state-update.sh patch --phase X --active true ... を実行
 # Then: active が true に更新される (--active true が反映される)
 #
 # 本 TC は flow-state-update.sh の --active 引数が正しく適用されることを assert する。
-# patch mode の --active 省略時は既存値保持の semantics (Issue #660 4.3 参照) と
+# patch mode の --active 省略時は既存値保持の semantics (TC-660-E で対称検証) と
 # 区別するため、--active true 明示時の挙動を独立に検証。
 # --------------------------------------------------------------------------
-echo "TC-active-omit-C: flow-state-update.sh patch --active true で active=false → true に更新"
+echo "TC-660-C: flow-state-update.sh patch --active true で active=false → true に更新"
 # review #1 HIGH 対応 (verified-review): subshell + stderr 完全黙殺 + 終了コード未確認の三重盲検を解消。
 # `set -euo pipefail` (L4) 下で flow-state-update.sh が失敗した場合に test 全体が silent abort
 # する経路を防ぐため、(a) subshell の終了コードを `&& rc=0 || rc=$?` で捕捉、(b) stderr を別 mktemp
 # file に redirect、(c) rc 非 0 時に明示 fail で診断 message を表示する。
-# review #4 LOW 対応: TC-active-omit-C 専用に LAST_STDERR_FILE を新規割当することで、TC-active-omit-B
+# review #4 LOW 対応: TC-660-C 専用に LAST_STDERR_FILE を新規割当することで、TC-660-B
 # の stderr が show_stderr 経由で誤表示される debug 誤誘導を防ぐ。
-dir_aoc="$GUARD_TEST_DIR/tc-active-omit-C"
-mkdir -p "$dir_aoc"
-now_aoc=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
-create_state_file "$dir_aoc" "{\"active\": false, \"phase\": \"create_interview\", \"updated_at\": \"$now_aoc\", \"next_action\": \"continue\", \"error_count\": 0}"
+dir_660c="$GUARD_TEST_DIR/tc-660-C"
+mkdir -p "$dir_660c"
+now_660c=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_660c" "{\"active\": false, \"phase\": \"create_interview\", \"updated_at\": \"$now_660c\", \"next_action\": \"continue\", \"error_count\": 0}"
 FSU="$SCRIPT_DIR/../flow-state-update.sh"
-LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-active-omit-C.stderr.XXXXXX")"
-(cd "$dir_aoc" && bash "$FSU" patch \
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-660-C.stderr.XXXXXX")"
+(cd "$dir_660c" && bash "$FSU" patch \
   --phase "create_post_interview" --active true \
-  --next "TC-active-omit-C verification" \
-  --if-exists --preserve-error-count >/dev/null 2>"$LAST_STDERR_FILE") && rc_aoc=0 || rc_aoc=$?
-if [ "$rc_aoc" -ne 0 ]; then
-  fail "FSU patch failed: rc=$rc_aoc"
+  --next "TC-660-C verification" \
+  --if-exists --preserve-error-count >/dev/null 2>"$LAST_STDERR_FILE") && rc_660c=0 || rc_660c=$?
+if [ "$rc_660c" -ne 0 ]; then
+  fail "FSU patch failed: rc=$rc_660c"
 else
-  patched_active=$(jq -r '.active' "$dir_aoc/.rite-flow-state" 2>/dev/null)
-  patched_phase=$(jq -r '.phase' "$dir_aoc/.rite-flow-state" 2>/dev/null)
+  patched_active=$(jq -r '.active' "$dir_660c/.rite-flow-state" 2>/dev/null)
+  patched_phase=$(jq -r '.phase' "$dir_660c/.rite-flow-state" 2>/dev/null)
   if [ "$patched_active" = "true" ] && [ "$patched_phase" = "create_post_interview" ]; then
     pass "patch --active true で active=false → true、phase 同時更新"
   else
     fail "patch --active true 失敗 (active=$patched_active, phase=$patched_phase)"
   fi
+fi
+
+# --------------------------------------------------------------------------
+# TC-660-D (Issue #660 AC-1 機械検証 = test infrastructure 永続化):
+#
+# verified-review (PR #661) cycle 2 F-04 対応:
+# Issue #660 spec と PR description で「block-level Python verification」が言及されたが、
+# 実際の test infrastructure には永続化されていなかった。Wiki 経験則
+# 「emit/consume/test 3 点セット契約」のうち test 点が欠落しており、将来別 patch site が
+# --active true を omit して merge された場合、本 TC によって CI で catch できるようにする。
+#
+# Given: plugins/rite/commands/ 配下の全 .md ファイル
+# When: bash で `flow-state-update.sh patch \` continuation block を block-aware に scan
+# Then: terminal phase (create_completed/cleanup_completed/ingest_completed) を除く
+#       全 non-terminal patch site が `--active true` を含む
+# --------------------------------------------------------------------------
+echo "TC-660-D: AC-1 機械検証 — 全 non-terminal patch site が --active true を含む"
+# 動作: bash 内の awk で各 .md ファイルを走査し、`flow-state-update.sh patch \` で始まる
+# block を抽出。block 内で terminal phase keyword がない && --active true がない場合 violation。
+# script-relative (../../commands) で plugin root を解決して test 実行 cwd に依存しない。
+COMMANDS_ROOT="$SCRIPT_DIR/../../commands"
+violation_count=0
+violation_paths=""
+if [ -d "$COMMANDS_ROOT" ]; then
+  while IFS= read -r md_file; do
+    # awk で block-aware scan: `flow-state-update.sh patch \` で block 開始、
+    # 行末が `\` でない行で block 終了。block 内全体に対して keyword を grep。
+    block_violations=$(awk '
+      /flow-state-update\.sh patch \\$/ { in_block=1; block=""; line_num=NR; next }
+      in_block {
+        block = block "\n" $0
+        if ($0 !~ /\\$/) {
+          # block 終了 — 判定
+          # Terminal / terminal-equivalent phase の patch は意図的 deactivate のため除外:
+          #   - create_completed / cleanup_completed / ingest_completed: sub-skill 終端 (Issue #660 spec)
+          #   - phase5_post_parent_completion: /rite:issue:start Workflow Termination 前段の意図的 deactivate
+          #   - "completed": /rite:issue:start Workflow Termination の terminal final state
+          # `--phase "..."` 形式で厳密に match させ、finding description 等の偶然 match を避ける。
+          if (block ~ /--phase "create_completed"/ || \
+              block ~ /--phase "cleanup_completed"/ || \
+              block ~ /--phase "ingest_completed"/ || \
+              block ~ /--phase "phase5_post_parent_completion"/ || \
+              block ~ /--phase "completed"/) {
+            in_block=0
+            block=""
+            next
+          }
+          # active true / active false の有無を check
+          if (block !~ /--active true/) {
+            print line_num
+          }
+          in_block=0
+          block=""
+        }
+      }
+    ' "$md_file")
+    if [ -n "$block_violations" ]; then
+      while IFS= read -r line_num; do
+        violation_count=$((violation_count + 1))
+        # 相対 path で表示 (long absolute path を避ける)
+        rel_path=$(echo "$md_file" | sed "s|^${COMMANDS_ROOT}/||")
+        violation_paths="${violation_paths} ${rel_path}:${line_num}"
+      done <<< "$block_violations"
+    fi
+  done < <(find "$COMMANDS_ROOT" -name '*.md' -type f)
+fi
+if [ "$violation_count" -eq 0 ]; then
+  pass "全 non-terminal patch site が --active true を含む (block-aware scan で 0 violations)"
+else
+  fail "AC-1 violation: $violation_count patch site(s) lack --active true:${violation_paths}"
+fi
+
+# --------------------------------------------------------------------------
+# TC-660-E (Issue #660 AC-1 補強 = inverse semantics):
+#
+# verified-review (PR #661) cycle 2 F-05 対応:
+# TC-660-C は --active true 明示時の flip のみ assert している。本 PR の root cause は
+# flow-state-update.sh:254 の `if [[ -n "$ACTIVE" ]]` 条件分岐 (= --active 省略時は既存値保持) に
+# 直接依存しており、この semantics が変更されると AC-1 を full carpeted した本 PR の修正自体が
+# 無効化される silent regression が発生する。本 TC で双方向 (active=false 既存 + active=true 既存)
+# の preserve-existing semantics を対称検証する。
+#
+# Given: 既存 .rite-flow-state (active=false / active=true の 2 ケース)
+# When: flow-state-update.sh patch --phase X (--active 省略) を実行
+# Then: 既存の active 値が保持される (false → false / true → true)
+# --------------------------------------------------------------------------
+echo "TC-660-E: flow-state-update.sh patch (--active 省略) で既存 active 値が preserve される"
+FSU="$SCRIPT_DIR/../flow-state-update.sh"
+tc_660e_ok=1
+tc_660e_missing=""
+# Case 1: active=false で --active 省略 → active=false のまま preserve
+dir_660e1="$GUARD_TEST_DIR/tc-660-E1"
+mkdir -p "$dir_660e1"
+now_660e1=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_660e1" "{\"active\": false, \"phase\": \"create_interview\", \"updated_at\": \"$now_660e1\", \"next_action\": \"continue\", \"error_count\": 0}"
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-660-E1.stderr.XXXXXX")"
+(cd "$dir_660e1" && bash "$FSU" patch \
+  --phase "create_post_interview" \
+  --next "TC-660-E1 inverse verification (active omitted)" \
+  --if-exists --preserve-error-count >/dev/null 2>"$LAST_STDERR_FILE") && rc_660e1=0 || rc_660e1=$?
+if [ "$rc_660e1" -ne 0 ]; then
+  tc_660e_ok=0
+  tc_660e_missing="${tc_660e_missing} case1-fsu-failed(rc=$rc_660e1)"
+else
+  preserved_active_1=$(jq -r '.active' "$dir_660e1/.rite-flow-state" 2>/dev/null)
+  if [ "$preserved_active_1" != "false" ]; then
+    tc_660e_ok=0
+    tc_660e_missing="${tc_660e_missing} case1-active-not-preserved(got=$preserved_active_1,expected=false)"
+  fi
+fi
+# Case 2: active=true で --active 省略 → active=true のまま preserve
+dir_660e2="$GUARD_TEST_DIR/tc-660-E2"
+mkdir -p "$dir_660e2"
+now_660e2=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+create_state_file "$dir_660e2" "{\"active\": true, \"phase\": \"create_interview\", \"updated_at\": \"$now_660e2\", \"next_action\": \"continue\", \"error_count\": 0}"
+LAST_STDERR_FILE="$(mktemp "$GUARD_TEST_DIR/tc-660-E2.stderr.XXXXXX")"
+(cd "$dir_660e2" && bash "$FSU" patch \
+  --phase "create_post_interview" \
+  --next "TC-660-E2 inverse verification (active omitted)" \
+  --if-exists --preserve-error-count >/dev/null 2>"$LAST_STDERR_FILE") && rc_660e2=0 || rc_660e2=$?
+if [ "$rc_660e2" -ne 0 ]; then
+  tc_660e_ok=0
+  tc_660e_missing="${tc_660e_missing} case2-fsu-failed(rc=$rc_660e2)"
+else
+  preserved_active_2=$(jq -r '.active' "$dir_660e2/.rite-flow-state" 2>/dev/null)
+  if [ "$preserved_active_2" != "true" ]; then
+    tc_660e_ok=0
+    tc_660e_missing="${tc_660e_missing} case2-active-not-preserved(got=$preserved_active_2,expected=true)"
+  fi
+fi
+if [ "$tc_660e_ok" -eq 1 ]; then
+  pass "patch (--active 省略) で active=false / active=true が双方向 preserve される (flow-state-update.sh:254 if-branch contract pin)"
+else
+  fail "patch (--active 省略) preserve-existing semantics 違反:${tc_660e_missing}"
 fi
 
 # --------------------------------------------------------------------------
