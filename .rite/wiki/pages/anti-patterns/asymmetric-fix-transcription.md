@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-21T10:35:00+00:00"
+updated: "2026-04-25T11:40:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -50,6 +50,10 @@ sources:
     ref: "raw/reviews/20260421T033906Z-pr-636-cycle-4.md"
   - type: "fixes"
     ref: "raw/fixes/20260421T031214Z-pr-636-cycle-2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T074416Z-pr-659.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260425T081422Z-pr-659-cycle2.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry"]
 confidence: high
 ---
@@ -179,6 +183,20 @@ PR #636 (Issue #634 = implicit stop regression の 8 回目累積対策) の cyc
 
 **学習**: 本 anti-pattern は累積対策 N 回目 PR (特に 5 回目以降) で頻度と severity が両方 escalate する。3-site 以上の対称セットは 1 箇所修正時に必ず grep で sibling 全列挙 + atomic 修正が必須。DRIFT-CHECK ANCHOR を配置する場合は **anchor 自身も全 sibling site に対称配置** しなければ片方向 drift を防げない。詳細な cumulative-defense PR の quality signal 基準は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md) 参照。
 
+### 5 sister sites 中 1 site のみ canonical 化漏れ + その後の skip guard 連鎖 drift (PR #659 cycle 1-4 での evidence)
+
+PR #659 (Issue #658 = `/rite:pr:cleanup` 完了後の Projects Status 停留 regression の根本対策) は inline GraphQL+gh project の 3 段 pipeline を `projects-status-update.sh` への共有 script delegate に置き換える refactor。複数 cycle に渡って同型 drift が連鎖した:
+
+- **cycle 1 review**: 6 つの delegate site (`cleanup.md` 経由 `archive-procedures.md` Phase 3.2 / 3.7.2.1, `ready.md` Phase 4.2, `close.md` Phase 1.3.3 / 4.2 / 4.6.3) のうち、1 箇所のみ `failed)` で `*)` catch-all なし、`|| status_json=""` fallback 欠落、jq の `2>/dev/null` 抑制欠落 — 4 sister sites と byte-for-byte で drift。3 reviewer (prompt-engineer / code-quality / error-handling) が独立検出
+- **cycle 3 fix (本 PR fix)**: drift していた `archive-procedures.md` Phase 3.2.2 skeleton を 4 sister sites と byte-for-byte 整合させた
+- **cycle 4 review**: cycle 3 fix が完了した Phase 3.2.2 において、別観点の guard (「related Issue が特定できない場合」の skip clause) が欠落していたことが新たに surface。`ready.md` Phase 4.2 line 325 が両 guard (`projects.enabled: false OR no related Issue`) を持つのに対し、`archive-procedures.md` Phase 3.2 は `projects.enabled` 単独 guard だけ — 本 PR base commit (9ba5249) で inline → delegate refactor 時に元の `If a related Issue has been identified:` wrapper guard が削除され、新文に片方の clause しか残らなかった経路。同 file 内の Phase 3.6.1 (line 305) と Phase 3.7.2.1 (Phase 3.7 implicit guard 経由) は別ロジックで保護されていたため drift が目立たず、3 cycle にわたる reviewer も見落としていた structural blind spot
+
+**学習**: 本 anti-pattern は「**1 PR 内での連鎖 drift fractal**」として再定式化される。inline → delegate refactor で wrapper 文を解体する際、wrapper が複数の skip 条件 (config check + state check + その他) を持つ場合、新文への移行で片方を落とす経路がある。最初の review-fix サイクルで 1 種類の drift (本件: defensive shape の byte-for-byte 不一致) を解消した直後の next cycle で、別観点の drift (本件: state check guard の欠落) が surface する fractal pattern。canonical 対策:
+
+1. **refactor 前の guard 条件 enumeration mandatory 化**: wrapper を解体する前に、wrapper が持つ全 guard 条件 (`If A AND B AND C has been identified:` 等) を箇条書きで列挙し、新文への移行で各条件をどう扱うか (preserve / split / drop) を 1 行ずつ checklist 化する
+2. **sibling site との side-by-side diff 検証**: ready.md / close.md / archive-procedures.md の同種 phase が同種 guard 構造を持つ場合、refactor 後に 3-way side-by-side diff を取り、guard 条件が byte-for-byte 整合しているかを mechanical verification する
+3. **連鎖 drift fractal の cycle escalation 認識**: 同種 refactor PR で cycle 1 で defensive shape drift、cycle 2 で guard 条件 drift、cycle 3 で reference drift と段階的に surface する場合、cycle 1 fix 時点で「他観点の drift も同 site に潜む可能性が高い」と認識し、追加の grep / 全 guard 条件 enumeration を mandatory 化する。本 anti-pattern は単独 cycle ではなく 1 PR 全体の review-fix loop 履歴で観測する fractal pattern として認識する
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -212,3 +230,5 @@ PR #636 (Issue #634 = implicit stop regression の 8 回目累積対策) の cyc
 - [PR #636 cycle 2 review (3-site 対称セット HINT path drift + TC 対称性不徹底)](raw/reviews/20260421T030627Z-pr-636-cycle-2.md)
 - [PR #636 cycle 2 fix (path prefix drift 修正 + TC 対称性完全適用)](raw/fixes/20260421T031214Z-pr-636-cycle-2.md)
 - [PR #636 cycle 4 review (architectural fix の sub-skill 側未適用、DRIFT-CHECK ANCHOR 自身が片方向)](raw/reviews/20260421T033906Z-pr-636-cycle-4.md)
+- [PR #659 cycle 1 review (5 sister sites 中 1 site のみ canonical 化漏れ、3 reviewer 独立検出)](raw/reviews/20260425T074416Z-pr-659.md)
+- [PR #659 cycle 2 review (cycle 1 fix と test の同期義務 + 初期値 silent fall-through risk)](raw/reviews/20260425T081422Z-pr-659-cycle2.md)
