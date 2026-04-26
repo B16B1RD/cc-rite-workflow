@@ -739,6 +739,80 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-027 (#669): Projects registration failure emits root cause to stderr
+# (not just to warnings JSON). MUST 2 / MUST NOT 2: silent fail prohibited.
+# --------------------------------------------------------------------------
+echo "TC-027: project_add failure → stderr contains 'ERROR: Projects registration failed:' (#669)"
+body_file=$(create_body_file)
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Stderr emit test", body_file: $bf},
+  projects: {enabled: true, project_number: 6, owner: "test-owner", status: "Todo"},
+  options: {non_blocking_projects: true}
+}')" "project_add_fail"
+if [ "$LAST_RC" -eq 0 ]; then
+  stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
+  reg=$(json_field '.project_registration')
+  warn_count=$(json_field '.warnings | length')
+  if echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
+     && echo "$stderr_content" | grep -q "after 3 attempts" \
+     && [ "$reg" = "failed" ] \
+     && [ "$warn_count" -gt 0 ]; then
+    pass "item-add fail → stderr emit + reg=$reg + warnings=$warn_count"
+  else
+    fail "Expected stderr 'ERROR: Projects registration failed:' + 'after 3 attempts' + reg=failed + warnings>=1, got reg=$reg, warnings=$warn_count, stderr='$(printf '%s' "$stderr_content" | head -2)'"
+  fi
+else
+  fail "Expected exit 0 (NON_BLOCKING=true), got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# TC-028 (#669): GraphQL field retrieval failure emits root cause to stderr.
+# Validates retry_with_backoff retry count messaging in error output.
+# --------------------------------------------------------------------------
+echo "TC-028: graphql_fail → stderr contains 'ERROR: Projects registration failed:' (#669)"
+body_file=$(create_body_file)
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "GraphQL stderr test", body_file: $bf},
+  projects: {enabled: true, project_number: 6, owner: "test-owner", status: "Todo"},
+  options: {non_blocking_projects: true}
+}')" "graphql_fail"
+if [ "$LAST_RC" -eq 0 ]; then
+  stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
+  reg=$(json_field '.project_registration')
+  if echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
+     && [ "$reg" = "partial" ]; then
+    pass "graphql fail → stderr emit + reg=$reg"
+  else
+    fail "Expected stderr emit + reg=partial, got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# TC-029 (#669): enabled=false skip path does NOT emit stderr (R6 既存挙動維持).
+# Caller contract: add_warning_with_stderr must only fire for registration failures,
+# not for the early skip when projects are disabled.
+# --------------------------------------------------------------------------
+echo "TC-029: enabled=false → no stderr emit (R6 skip path) (#669)"
+body_file=$(create_body_file)
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Skip path test", body_file: $bf},
+  projects: {enabled: false}
+}')"
+if [ "$LAST_RC" -eq 0 ]; then
+  stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
+  reg=$(json_field '.project_registration')
+  if [ "$reg" = "skipped" ] && ! echo "$stderr_content" | grep -q "ERROR: Projects registration failed:"; then
+    pass "enabled=false → reg=skipped, stderr clean"
+  else
+    fail "Expected reg=skipped + no stderr emit, got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ $FAIL -gt 0 ]; then
