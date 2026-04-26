@@ -200,10 +200,11 @@ The script handles errors internally with the following behavior:
 | Error Case | Response |
 |------------|----------|
 | `gh issue create` failure | Output JSON with `project_registration: "failed"` + `exit 1`. Caller's `result=$(bash ...)` captures stdout but gets non-zero exit code |
-| `gh project item-add` failure | Output JSON with `project_registration: "failed"` + `exit 0` (non-blocking) or `exit 1` |
-| `item_id` retrieval failure (after fallback to last: 20) | Output JSON with `project_registration: "partial"` + `exit 0` |
-| Field setup failure | Retry once, then output JSON with `project_registration: "partial"` + `exit 0` |
-| Projects not configured | Output JSON with `project_registration: "skipped"` + `exit 0` |
+| `gh project item-add` failure (after 3 retries) | Output JSON with `project_registration: "failed"` + `exit 0` (non-blocking) or `exit 1`. **stderr emit**: `ERROR: Projects registration failed: ...` |
+| `item_id` retrieval failure (after fallback to last: 20 + 3 retries) | Output JSON with `project_registration: "partial"` + `exit 0`. **stderr emit** on each failure |
+| Field setup failure (after 3 retries) | Output JSON with `project_registration: "partial"` + `exit 0`. **stderr emit** on each failure |
+| Iteration assignment failure (after 3 retries) | `project_registration` becomes `partial`, **stderr emit** on each failure. Issue still created with status set |
+| Projects not configured | Output JSON with `project_registration: "skipped"` + `exit 0`. **No stderr emit** (intentional skip, not failure) |
 
 **Exit code convention:**
 - `exit 0`: Success or non-blocking failure (Projects-related issues when `non_blocking_projects: true`)
@@ -215,6 +216,27 @@ The script handles errors internally with the following behavior:
 - Warnings are collected in the `warnings` array for caller to display
 - If `result` is empty (script crashed), callers should check `$?` and handle gracefully
 
+### Silent Fail Prohibition (#669)
+
+Issue #669 strengthens the script so that **Projects registration failures are never silently absorbed** by the warnings array alone. Two reinforcement layers are in place:
+
+1. **stderr emit on every registration failure** — `add_warning_with_stderr` writes `ERROR: Projects registration failed: <reason>` to stderr in addition to appending to the warnings array. The early `enabled=false` skip path uses plain `add_warning` so it stays silent (intentional skip, not failure).
+2. **3-attempt exponential backoff on transient API errors** — `gh project item-add`, all GraphQL queries (`fields`, `items`, mutations), and `gh project item-edit` are wrapped in `retry_with_backoff 3 ...` (sleeps `RETRY_DELAY * 2^(n-1)` seconds — defaults to 1s, 2s between attempts; tests set `RETRY_DELAY=0`). This satisfies the MUST 2 / MUST NOT 2 requirements:
+   - MUST: stderr surfaces root cause
+   - MUST NOT: failures are not confined to the warnings array under exit code 0
+
+### Static Guard for Direct `gh issue create` Invocations (#669 AC-3)
+
+`plugins/rite/scripts/check-no-direct-gh-issue-create.sh` provides a mechanical check: every Issue creation path in `/rite:issue:start` and the parent-routing module must go through this script. Run it against any new orchestrator/sub-skill files:
+
+```bash
+bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
+  plugins/rite/commands/issue/start.md \
+  plugins/rite/commands/issue/parent-routing.md
+```
+
+Exit 0 = no violations. Exit 1 = direct `gh issue create -...` / `gh issue create $...` / `gh issue create "..."` / `gh issue create '...'` invocation found (after stripping fenced code blocks, blockquotes, Markdown comments, and inline backticks). Tests live at `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` and include positive, negative, and false-positive-avoidance cases (TC-001 through TC-010).
+
 ---
 
 ## Script Internal Details
@@ -224,4 +246,5 @@ The script automatically handles:
 - Item ID retrieval with fallback (last: 10 → last: 20)
 - Field ID and option ID resolution from project field metadata
 - Iteration auto-assignment when `iteration.mode: "auto"`
-- Single retry on field setup failures
+- 3-attempt exponential backoff retry on transient API failures (#669)
+- stderr emit for every Projects registration failure (#669)
