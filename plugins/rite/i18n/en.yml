@@ -769,7 +769,7 @@ messages:
   init_summary_project_type: "Project type"
   init_summary_iteration: "Iteration/Sprint"
   init_summary_config_file: "Config file"
-  init_summary_hooks: "Hooks: stop-guard, pre-compact, session-start, session-end (registered)"
+  init_summary_hooks: "Hooks: pre-compact, session-start, session-end (registered)"
   init_summary_hooks_skipped: "Hooks: skipped (not found)"
   init_summary_wiki_initialized: "Wiki: initialized"
   init_summary_wiki_already_initialized: "Wiki: already initialized"

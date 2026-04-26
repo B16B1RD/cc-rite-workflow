@@ -493,14 +493,14 @@ If `.github/ISSUE_TEMPLATE/` does not exist, show:
 Run the following bash command to detect the hook scripts directory. This command assumes CWD is the project root (Claude Code's Bash tool resets CWD to the project root on each invocation):
 
 ```bash
-if [ -f "plugins/rite/hooks/stop-guard.sh" ]; then
+if [ -f "plugins/rite/hooks/pre-compact.sh" ]; then
   echo "LOCAL:$(cd plugins/rite/hooks && pwd)"
 elif ! command -v jq >/dev/null 2>&1; then
   echo "NOT_FOUND:NO_JQ"
 elif [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
   INSTALL_PATH=$(jq -r '.plugins["rite@rite-marketplace"][0].installPath // empty' \
     "$HOME/.claude/plugins/installed_plugins.json")
-  if [ -n "$INSTALL_PATH" ] && [ -f "$INSTALL_PATH/hooks/stop-guard.sh" ]; then
+  if [ -n "$INSTALL_PATH" ] && [ -f "$INSTALL_PATH/hooks/pre-compact.sh" ]; then
     echo "MARKETPLACE:$INSTALL_PATH/hooks"
   else
     echo "NOT_FOUND:NO_HOOKS"
@@ -520,7 +520,7 @@ fi
 - If `NOT_FOUND:NO_HOOKS` → display warning and **skip the rest of Phase 4.5**:
     ```
     ⚠️ Hook scripts not found. Skipping hook registration.
-    Workflow will function normally, but auto-stop-guard and state persistence hooks will not be active.
+    Workflow will function normally, but state persistence hooks will not be active.
     ```
 
 ### 4.5.0.5 Copy-Type Install Detection and Update Guidance
@@ -817,7 +817,6 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 
 | Hook Event | Script | Matcher | Purpose |
 |------------|--------|---------|---------|
-| Stop | `stop-guard.sh` | `""` | Prevent premature workflow stops |
 | PreCompact | `pre-compact.sh` | `""` | Save state before compaction |
 | PostCompact | `post-compact.sh` | `""` | Auto-recover workflow after compaction |
 | SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
@@ -854,7 +853,6 @@ Add the following hooks to `.claude/settings.local.json`:
 
 | Hook Event | Script | Purpose |
 |------------|--------|---------|
-| Stop | `bash {hooks_dir}/stop-guard.sh` | Prevent premature workflow stops |
 | PreCompact | `bash {hooks_dir}/pre-compact.sh` | Save state before compaction |
 | PostCompact | `bash {hooks_dir}/post-compact.sh` | Auto-recover workflow after compaction |
 | SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |

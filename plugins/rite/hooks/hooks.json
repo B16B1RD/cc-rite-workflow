@@ -1,16 +1,6 @@
 {
   "description": "rite workflow hooks - Issue-driven development lifecycle management",
   "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/stop-guard.sh"
-          }
-        ]
-      }
-    ],
     "PreCompact": [
       {
         "hooks": [
