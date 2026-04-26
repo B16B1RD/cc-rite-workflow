@@ -769,7 +769,7 @@ messages:
   init_summary_project_type: "プロジェクト種別"
   init_summary_iteration: "Iteration/スプリント"
   init_summary_config_file: "設定ファイル"
-  init_summary_hooks: "Hooks: stop-guard, pre-compact, session-start, session-end (registered)"
+  init_summary_hooks: "Hooks: pre-compact, session-start, session-end (registered)"
   init_summary_hooks_skipped: "Hooks: スキップ（未検出）"
   init_summary_wiki_initialized: "Wiki: 初期化完了"
   init_summary_wiki_already_initialized: "Wiki: 既に初期化済み"
