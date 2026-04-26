@@ -80,9 +80,18 @@ cfg="$STATE_ROOT/rite-config.yml"
 if [ -f "$cfg" ]; then
   section=$(sed -n '/^flow_state:/,/^[a-zA-Z]/p' "$cfg" 2>/dev/null) || section=""
   if [ -n "$section" ]; then
+    # Issue #687 AC-4 follow-up (pipefail silent failure 対策):
+    # rite-config.yml の `flow_state:` セクションは存在するが `schema_version:` 行が欠落する
+    # 設定で grep が exit 1 を返すと、`set -euo pipefail` 下では pipeline 全体 exit 1 →
+    # top-level 直接代入のため set -e で helper が silent に exit 1 する。caller は curr=""
+    # を受け取り .phase=" で誤った理由 ERROR exit する経路があった。
+    # 末尾に `|| v=""` を追加して pipefail を吸収し、後続の case "*)" 分岐で安全に default
+    # "1" に落とす。writer 側 flow-state-update.sh は同じコードを `local v=$(...)` で
+    # wrap しているため `local` builtin の always-0 戻り値で偶然 mask されている (writer/reader
+    # の architectural 統一は別 Issue で対応)。
     v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
       | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \
-      | tr -d '[:space:]"'"'"'')
+      | tr -d '[:space:]"'"'"'') || v=""
     case "$v" in
       1|2) SCHEMA_VERSION="$v" ;;
       *)   SCHEMA_VERSION="1" ;;

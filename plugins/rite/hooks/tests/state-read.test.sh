@@ -184,6 +184,24 @@ result=$(run_helper "$SBX" --field phase --default "")
 assert_eq "TC-7.1: schema_version=1 reads legacy not per-session" "v1_legacy" "$result"
 rm -rf "$SBX"
 
+# --- TC-8: flow_state: section present but schema_version: line missing (pipefail regression #687 follow-up) ---
+echo "TC-8: flow_state セクションあり / schema_version 行なし → grep 不一致で pipefail silent failure しない"
+SBX=$(make_sandbox)
+# `flow_state:` セクションは存在するが `schema_version:` キーが欠落する degenerate config。
+# `set -euo pipefail` 下で grep no-match (exit 1) が pipeline 全体 exit 1 を引き起こし、
+# top-level 代入で set -e により helper が silent に exit 1 する regression を再現する設定。
+# 修正後は `|| v=""` で吸収され、case "*)" 分岐で SCHEMA_VERSION="1" にフォールバックして
+# 正常に legacy fallback の値を返すことを確認する。
+cat > "$SBX/rite-config.yml" <<EOF
+flow_state:
+  enabled: true
+EOF
+write_legacy "$SBX" '{"phase":"degenerate_config_legacy"}'
+# 注: SID 不在 + schema_version 行なし → SCHEMA_VERSION="1" fallback → legacy 直接 routing
+result=$(run_helper "$SBX" --field phase --default "")
+assert_eq "TC-8.1: schema_version 行欠落でも helper が exit 0 で完走し legacy を読む" "degenerate_config_legacy" "$result"
+rm -rf "$SBX"
+
 # --- Summary ---
 echo ""
 echo "─── state-read.test.sh summary ──────────────────────────"
