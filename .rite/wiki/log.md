@@ -215,3 +215,4 @@
 | 2026-04-26T21:17:20+09:00 | ingest:skip | raw/reviews/20260426T114728Z-pr-686.md | PR #686 cycle 3 review (mergeable, 0 findings) — 健全収束軌跡 (9→3→0) は既存 patterns/heuristics ページで cover 済み |
 | 2026-04-26T21:17:20+09:00 | ingest:skip | raw/fixes/20260426T113453Z-pr-686.md | PR #686 cycle 1 fix (9 fixes: path traversal / DRY / error msg / test 改善) — 個別修正は既存 anti-patterns ページの応用 |
 | 2026-04-26T21:17:20+09:00 | ingest:skip | raw/fixes/20260426T114309Z-pr-686.md | PR #686 cycle 2 fix (3 fixes: regression test 義務化 / kernel stderr capture / fail-fast message 検証) — 既存パターンの応用範疇 |
+| 2026-04-26T21:18:14+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=4, broken_refs=0 |
