@@ -158,10 +158,17 @@ investigate:
 
 # Flow state file format settings (Issue #672)
 # See docs/designs/multi-session-state.md for full specification.
+#
+# ⚠️ ファイル冒頭の top-level `schema_version: 2` (rite-config.yml 自体の schema バージョン、
+# session-start.sh が template との drift 検知に使用) とは **別系統** の設定です。
+# 本セクションの `flow_state.schema_version` は **`.rite-flow-state` ファイル形式の選択** のみを
+# 制御し、rite-config.yml schema 自体のバージョンとは無関係です。混同しないでください。
+#
 # `schema_version: 2` (default) — Option A: per-session file (`.rite/sessions/{session_id}.flow-state`)。
 #   並行セッションを first-class でサポート。各セッションが独立ファイルに state を保持する。
 # `schema_version: 1` — legacy single-file (`.rite-flow-state`)。
-#   rollback path として暫定的に提供。新規実装は v2 を前提とする。
+#   rollback path として暫定的に提供。新規実装は v2 を前提とする。v0.5.0 で撤去予定
+#   (詳細は docs/designs/multi-session-state.md § Rollback 戦略 参照)。
 # 旧形式 state file (schema_version 未指定 / 1) は `.rite-flow-state.legacy.{timestamp}` に
 # backup された上で自動 migration される（silent skip 禁止 — AC-8）。
 flow_state:
