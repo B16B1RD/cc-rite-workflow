@@ -180,15 +180,26 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 # suppressed (review #686 F-05).
 if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   _flow_state_dir=$(dirname "$FLOW_STATE")
-  if ! mkdir -p "$_flow_state_dir" 2>/dev/null; then
-    # _log_flow_diag is defined later in the file (line ~135); inline the diag
-    # write here because we exit before reaching that definition's call sites.
+  # Capture mkdir stderr so the kernel's specific failure reason
+  # (`mkdir: cannot create directory '...': Not a directory` / `Permission denied` /
+  # `No space left on device` 等) reaches the user instead of being suppressed
+  # to /dev/null (review #686 cycle 2 LOW). Symmetric with the create-mode
+  # `_jq_err` capture pattern.
+  _mkdir_err=$(mktemp 2>/dev/null) || _mkdir_err=""
+  if ! mkdir -p "$_flow_state_dir" 2>"${_mkdir_err:-/dev/null}"; then
+    # _log_flow_diag is defined later in the file; inline the diag write here
+    # because we exit before reaching that definition's call sites.
     _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
     echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] flow_state_mkdir_failed path=$_flow_state_dir" >> "$_diag_file" 2>/dev/null || true
     echo "ERROR: failed to create $_flow_state_dir (permission denied / disk full / parent is a regular file?)" >&2
+    if [ -n "$_mkdir_err" ] && [ -s "$_mkdir_err" ]; then
+      head -3 "$_mkdir_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
     exit 1
   fi
-  unset _flow_state_dir
+  [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
+  unset _flow_state_dir _mkdir_err
 fi
 
 # --- Validation ---
@@ -394,7 +405,7 @@ case "$MODE" in
     else
       _log_flow_diag "flow_state_jq_failed mode=patch phase=$PHASE"
       rm -f "$TMP_STATE"
-      echo "ERROR: jq patch failed" >&2
+      echo "ERROR: flow-state file parse failed (patch mode): $FLOW_STATE" >&2
       exit 1
     fi
     ;;
@@ -412,7 +423,7 @@ case "$MODE" in
     else
       _log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"
       rm -f "$TMP_STATE"
-      echo "ERROR: jq increment failed" >&2
+      echo "ERROR: flow-state file parse failed (increment mode): $FLOW_STATE" >&2
       exit 1
     fi
     ;;

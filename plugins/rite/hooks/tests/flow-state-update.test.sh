@@ -266,17 +266,26 @@ TARGET="$TD/.rite/sessions/$SID.flow-state"
 # on parse failure the script must exit without mv-ing a partial temp into
 # the target.
 echo "{not valid json" > "$TARGET"
+err_log_a="$TD/err-part-a.log"
 set +e
-(cd "$TD" && bash "$HOOK" patch --phase "wont_apply" --next "n2" >/dev/null 2>&1)
+(cd "$TD" && bash "$HOOK" patch --phase "wont_apply" --next "n2" >/dev/null 2>"$err_log_a")
 rc=$?
 set -e
 
-# Post-conditions: rc != 0 AND no orphan ${FLOW_STATE}.XXXXXX temp remains.
+# Post-conditions: rc != 0 AND no orphan ${FLOW_STATE}.XXXXXX temp remains AND
+# the failure message identifies the parse error (review #686 cycle 2 LOW —
+# verify stderr content, not just exit code, so a regression that drops the
+# message but keeps `exit 1` is still caught).
 orphan=$(ls "$TD/.rite/sessions/" 2>/dev/null | grep -E '\.flow-state\.[a-zA-Z0-9]{6,}$' || true)
 if [ "$rc" -ne 0 ] && [ -z "$orphan" ]; then
   pass "patch mode exits non-zero on jq failure with no temp orphan"
 else
   fail "rc=$rc orphan='$orphan'"
+fi
+if grep -q "parse failed" "$err_log_a"; then
+  pass "patch fail-fast preserves parse-failure message in stderr"
+else
+  fail "patch stderr missing 'parse failed' message: $(head -3 "$err_log_a")"
 fi
 
 # Part B: create mode fail-fast on corrupt state preserves file content.
@@ -296,9 +305,10 @@ TARGET="$TD/.rite/sessions/$SID.flow-state"
 # Corrupt the existing state to a non-JSON form. create mode requires reading
 # .phase via jq; parse failure must fail-fast without overwriting the file.
 echo "{corrupt" > "$TARGET"
+err_log_b="$TD/err-part-b.log"
 set +e
 (cd "$TD" && bash "$HOOK" create \
-  --phase "v2" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>&1)
+  --phase "v2" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>"$err_log_b")
 rc2=$?
 set -e
 remaining=$(cat "$TARGET")
@@ -306,6 +316,67 @@ if [ "$rc2" -ne 0 ] && [ "$remaining" = "{corrupt" ]; then
   pass "create mode fail-fast on corrupt state preserves file content (no silent overwrite)"
 else
   fail "rc2=$rc2 remaining='$remaining'"
+fi
+if grep -q "parse failed" "$err_log_b"; then
+  pass "create fail-fast preserves parse-failure message in stderr"
+else
+  fail "create stderr missing 'parse failed' message: $(head -3 "$err_log_b")"
+fi
+
+# --------------------------------------------------------------------------
+# T-LOCAL-5: F-01 path-traversal regression test (review #686 cycle 2 MEDIUM)
+#
+# Cycle 1 commit `432a507` added UUID validation to _resolve_session_id's
+# --session arg path. The fix rejects malformed input with rc=1 and an
+# "invalid session_id format" error, instead of silently writing to
+# `.rite/sessions/../foo.flow-state` (which resolves to `.rite/foo.flow-state`
+# escaping the per-session sandbox). This test guards the security invariant
+# from regressions: validation order, regex, return code, and stderr message
+# all matter — losing any one of them silently re-opens the traversal.
+# --------------------------------------------------------------------------
+echo ""
+echo "T-LOCAL-5 (#686 F-01): --session UUID validation rejects path traversal"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+
+err_log="$TD/err-traversal.log"
+set +e
+(cd "$TD" && bash "$HOOK" create --session "../escape" \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>"$err_log")
+rc_traversal=$?
+set -e
+
+# Three independent assertions — losing any one of them re-opens the regression
+if [ "$rc_traversal" -ne 0 ]; then
+  pass "--session traversal input rejected with non-zero exit ($rc_traversal)"
+else
+  fail "--session traversal accepted (rc=0); UUID validation regressed"
+fi
+if grep -q "invalid session_id format" "$err_log"; then
+  pass "--session traversal emits 'invalid session_id format' error"
+else
+  fail "missing 'invalid session_id format' in stderr: $(head -3 "$err_log")"
+fi
+# No file should leak outside .rite/sessions/. Both relative and absolute
+# escape patterns are checked.
+if [ ! -e "$TD/.rite-flow-state.escape" ] && [ ! -e "$TD/escape.flow-state" ] \
+  && [ ! -e "$TD/.rite/escape.flow-state" ]; then
+  pass "--session traversal did not create any escape-path file"
+else
+  fail "traversal escape file detected"
+fi
+
+# Also verify a non-UUID but harmless string (no slashes) still rejected.
+err_log2="$TD/err-bad-uuid.log"
+set +e
+(cd "$TD" && bash "$HOOK" create --session "not-a-uuid" \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>"$err_log2")
+rc_bad=$?
+set -e
+if [ "$rc_bad" -ne 0 ] && grep -q "invalid session_id format" "$err_log2"; then
+  pass "--session 'not-a-uuid' rejected (defense-in-depth, non-traversal input)"
+else
+  fail "non-UUID --session not rejected: rc=$rc_bad"
 fi
 
 # --------------------------------------------------------------------------
