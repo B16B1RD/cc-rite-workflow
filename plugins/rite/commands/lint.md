@@ -166,7 +166,7 @@ Run the regression guard for `/rite:issue:create` terminal output structure. Thi
 
 **Rationale**: Prior regressions (Issues #525, #552, #561) showed that bare sentinel tokens as the absolute last line coupled the LLM's turn-boundary heuristic with the sentinel, causing premature `continue`-requiring stops. The HTML-comment form (`<!-- [create:completed:{N}] -->`) keeps the sentinel grep-matchable while hiding it from rendered Markdown output.
 
-**Condition**: Always execute when the script exists (Phase 3.5-3.8 の plugin-specific check と同 pattern)。
+**Condition**: Always execute when the script exists (Phase 3.x の plugin-specific check と同 pattern)。
 
 **Execution:**
 
@@ -188,7 +188,7 @@ fi
 | `2` | `error` | Invocation error — record as warning, display error message |
 | `-1` | `skipped` | Script not found — skip silently (marketplace install without hooks) |
 
-**Important**: Terminal output check results are treated as **warnings**, not errors — same policy as Phase 3.5-3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
+**Important**: Terminal output check results are treated as **warnings**, not errors — same policy as the other Phase 3.x checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
 
 **Record results** for Phase 4 reporting:
 
@@ -721,6 +721,47 @@ fi
 - `backlink_format_finding_count`: Extract from `backlink_format_output` by matching the line `==> Total backlink-format findings: N` (regex: `/Total backlink-format findings: (\d+)/`). If no match found, default to 0
 - `backlink_format_output`: Script output (truncated if >50 lines)
 
+### 3.11 Plugin-specific Checks (Hardcoded Line-Number Check) — Issue #666
+
+Execute the hardcoded line-number check script to detect prose-level hardcoded line-number references in `plugins/rite/commands/**/*.md`. This complements the Phase 3.5 distributed fix drift check by catching three drift-prone patterns that the existing `(line N, M)`-only propagation scan missed during PR #661 cycle 2/3 (Issue #666 acceptance):
+
+- **P-A** parenthesized form `(line N)` / `(line N, M)`
+- **P-B** Japanese prose form (qualifier `直前` / `直後` / `上記` / `下記` / `上方` / `下方` / `本セクション` near `line N`)
+- **P-C** cross-file form `{file}.md:N` (single line, not range)
+
+See the script header at `plugins/rite/hooks/scripts/hardcoded-line-number-check.sh` for the exact regex literals and exclusion rules (fenced code blocks, range form `:N-M`, backtick-quoted spans, self-exclusion).
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/hardcoded-line-number-check.sh ]; then
+  hardcoded_line_output=$(bash {plugin_root}/hooks/scripts/hardcoded-line-number-check.sh --all 2>&1)
+  hardcoded_line_exit_code=$?
+else
+  hardcoded_line_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `hardcoded_line_status` | Action |
+|-----------|-------------------------|--------|
+| 0 | `success` | No hardcoded line-number references — continue to Phase 4 |
+| 1 | `warning` | Reference detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Hardcoded line-number check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 / 3.9 / 3.10 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). This stays warning-level so the rule can be enforced progressively without gating CI; structural references are preferred over hardcoded line numbers because they self-document and survive content insertions/deletions (see PR #661 cycle 2/3 incident for the motivating drift).
+
+**Record hardcoded line-number check results** for Phase 4 reporting:
+- `hardcoded_line_status`: `success` / `warning` / `error` / `skipped`
+- `hardcoded_line_finding_count`: Extract from `hardcoded_line_output` by matching the line `==> Total hardcoded line-number findings: N` (regex: `/Total hardcoded line-number findings: (\d+)/`). If no match found, default to 0
+- `hardcoded_line_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -838,7 +879,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {backlink_format_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, or backlink-format warnings/invocation errors.
+**Hardcoded line-number check appendix (Issue #666)** (both standalone and E2E): When `hardcoded_line_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the other Phase 3.x lint checks. When status is `warning` (exit 1, hardcoded reference detected), the appendix output includes each violation line (`[hardcoded-line-number][P-A|P-B|P-C] file:NN: ...`) so reviewers can identify and replace the hardcoded line number with a structural reference:
+
+```
+⚠️ Hardcoded line-number check: {hardcoded_line_finding_count} findings detected ({hardcoded_line_status}, non-blocking)
+{hardcoded_line_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, backlink-format, or hardcoded-line-number warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -916,6 +964,7 @@ Analyze the error content and present fix suggestions when possible:
 | Terminal output check (#561) | {verify_terminal_status} ({verify_terminal_finding_count} findings) |
 | Gitignore health check (#567) | {gitignore_health_status} ({gitignore_health_finding_count} findings) |
 | Backlink format check (#627) | {backlink_format_status} ({backlink_format_finding_count} findings) |
+| Hardcoded line-number check (#666) | {hardcoded_line_status} ({hardcoded_line_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
@@ -926,7 +975,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) and Phase 3.8 (`Wiki growth check`) and Phase 0.6 (`Terminal output check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. All Phase 3.x lint checks added after Phase 3.5 (Phase 0.6 `Terminal output check`, 3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 
