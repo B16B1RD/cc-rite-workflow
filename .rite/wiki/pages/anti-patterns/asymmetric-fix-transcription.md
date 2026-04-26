@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-25T17:50:00+00:00"
+updated: "2026-04-26T09:20:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -60,7 +60,13 @@ sources:
     ref: "raw/fixes/20260425T165546Z-pr-661.md"
   - type: "reviews"
     ref: "raw/reviews/20260425T171440Z-pr-661-cycle-4.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage"]
+  - type: "reviews"
+    ref: "raw/reviews/20260426T080650Z-pr-677.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260426T081122Z-pr-677-cycle-1.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260426T081939Z-pr-677-cycle-2.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift"]
 confidence: high
 ---
 
@@ -223,6 +229,25 @@ PR #661 cycle 2 で `cleanup.md:1674` の hardcoded line-number reference (`(lin
 
 **cross-validation の威力**: create-interview.md:605 の 散文形式 line-number reference は単独 reviewer なら見逃した可能性 (LOW Confidence) だが、prompt-engineer + code-quality の 2 名が独立に同じ問題を発見し、Phase 5.2 cross-validation で High Confidence + severity boost (LOW + MEDIUM → MEDIUM) として確定。本 PR が解決しようとしている root cause (silent 単一障害点) と、cycle 2 / cycle 3 で発見された finding は、共に「文書間 / 文書内の reference drift」という同型構造で、self-meta drift の典型例。
 
+### Split-config drift (project ↔ template) と hook 列挙の multi-location drift (PR #677 cycle 1-4 での evidence)
+
+PR #677 (Issue #672 = `.rite-flow-state` multi-state Decision Log Phase 1) で 2 つの asymmetric-fix-transcription 派生形が観測された:
+
+**1. Split-config drift (project ↔ template)** — cycle 1 P3 + cycle 2 F-05:
+
+プロジェクトローカル `rite-config.yml` で `flow_state.schema_version: 2` を追加したが、`plugins/rite/templates/config/rite-config.yml` (template) への反映を忘れた。新規プロジェクト bootstrap (`/rite:init`) 時に template default が drift する silent regression。さらに cycle 2 で template config への配置箇所も drift: Active セクションに置くべきなのに **Advanced marker 配下に commented-out で配置** → `/rite:init` 生成時に omit される。
+
+**2. Hook 列挙の multi-location drift** — cycle 2 F-02 + cycle 4:
+
+概要 (L6) の hook list を 5 hooks に updated したが、他 4 箇所が 4 hooks のまま残った。cycle 4 で hooks.json を grep evidence として再評価したところ、`phase-transition-whitelist.sh` の library 性誤認 + `session-end.sh` 漏れで全 6 箇所が再 drift していたことが判明。design doc の hook list を SPEC-OVERVIEW セクションで一度定義し、他は参照のみにする方が drift 防止になる。
+
+**学習**: 本 anti-pattern は (a) **project local config と plugin template の split-config drift** および (b) **同一 doc 内の列挙系 (hook list / field list) の multi-location drift** にも適用される。canonical 対策:
+
+1. **Split-config の対称更新**: project local config (`rite-config.yml`) を変更する PR は **同 commit で plugin template (`plugins/rite/templates/config/rite-config.yml`) も更新** する。意図的な scope separation で template 更新を follow-up にする場合は PR description で明示し、後続 Issue を起票する
+2. **template config 配置 semantics の明文化**: Active セクション (Advanced marker の上) と Advanced commented-out セクションは `/rite:init` 生成時の挙動が異なる (前者は生成、後者は omit)。template README / convention で配置 semantics を明文化し、新規 schema 追加時の判断基準を残す
+3. **列挙系は registration ファイルを単一 SoT に**: hook 列挙は `hooks.json`、command 列挙は `plugin.json`、field 列挙は `jq -n create` を SoT として参照する。design doc は SoT 参照を inline 注釈 (`(grep evidence: hooks.json L42)`) として残す。詳細は [Design doc は現 HEAD の SoT を verify してから書く](../heuristics/design-doc-current-head-verification.md) 参照
+4. **Library vs hook の区別**: SOURCED library は registered hook と意味が異なる。hook 列挙では `hooks[]` array を SoT とし、library は除外する旨を Note 化する
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -261,3 +286,6 @@ PR #661 cycle 2 で `cleanup.md:1674` の hardcoded line-number reference (`(lin
 - [PR #661 cycle 3 review (create-interview.md:605 散文形式 line-number reference の cross-validation 検出)](../../raw/reviews/20260425T165246Z-pr-661.md)
 - [PR #661 cycle 3 fix (propagation scan pattern coverage 拡張)](../../raw/fixes/20260425T165546Z-pr-661.md)
 - [PR #661 Cycle 4 Review (mergeable, REC-04 で drift-check-anchor lint pattern 拡張提案)](../../raw/reviews/20260425T171440Z-pr-661-cycle-4.md)
+- [PR #677 cycle 1 review (split-config drift + hook list multi-location drift の cluster 発見)](raw/reviews/20260426T080650Z-pr-677.md)
+- [PR #677 cycle 1 fix (split-config drift の template 配置 semantics 認識)](raw/fixes/20260426T081122Z-pr-677-cycle-1.md)
+- [PR #677 cycle 2 fix (Active vs Advanced marker placement bug + hook 列挙 multi-location drift)](raw/fixes/20260426T081939Z-pr-677-cycle-2.md)
