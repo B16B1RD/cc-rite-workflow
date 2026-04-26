@@ -30,6 +30,10 @@
 #   --session                Session UUID override (create mode; defaults to .rite-session-id)
 #   --preserve-error-count   Preserve existing .error_count during patch (same-phase self-patch; patch mode only;
 #                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency)
+#   --legacy-mode            Force legacy single-file path (`.rite-flow-state`) regardless of
+#                            rite-config.yml `flow_state.schema_version`. Used by migration script
+#                            (#2) and tooling that must read/write the pre-migration source. Without
+#                            this flag, schema_version=2 (default) writes to `.rite/sessions/{session_id}.flow-state`.
 #
 # Exit codes:
 #   0: Success
@@ -44,7 +48,70 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # Resolve repository root
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
-FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+
+# --- Multi-state helpers (#672 / #678) ---
+# Issue #672 design (Option A: per-session file) routes flow-state writes to
+# .rite/sessions/{session_id}.flow-state when schema_version=2. Migration to
+# call sites is staged across #3-#5; this script is the single API surface.
+
+# Resolve session_id from --session arg, or fall back to .rite-session-id file.
+# Validates UUID format (rejects tampered or corrupt content).
+_resolve_session_id() {
+  local provided_sid="${1:-}"
+  if [[ -n "$provided_sid" ]]; then
+    echo "$provided_sid"
+    return 0
+  fi
+  local sid_file="$STATE_ROOT/.rite-session-id"
+  local sid
+  sid=$(cat "$sid_file" 2>/dev/null | tr -d '[:space:]') || sid=""
+  if [[ -n "$sid" && ! "$sid" =~ ^[0-9a-f-]{36}$ ]]; then
+    sid=""
+  fi
+  echo "$sid"
+}
+
+# Resolve flow_state.schema_version from rite-config.yml.
+# Returns "1" (legacy single-file) or "2" (per-session file).
+# Defaults to "1" on parse failure / absent / unrecognized value (safe fallback).
+_resolve_schema_version() {
+  local cfg="$STATE_ROOT/rite-config.yml"
+  if [[ ! -f "$cfg" ]]; then
+    echo "1"
+    return 0
+  fi
+  # Section-range extract guards against `enabled:` 行が enclosing section の外側にある regression
+  # (cf. start.md Phase 5.0 workflow_incident_enabled parser).
+  local section
+  section=$(sed -n '/^flow_state:/,/^[a-zA-Z]/p' "$cfg" 2>/dev/null) || section=""
+  if [[ -z "$section" ]]; then
+    echo "1"
+    return 0
+  fi
+  local v
+  v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
+    | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \
+    | tr -d '[:space:]"'"'"'')
+  case "$v" in
+    1|2) echo "$v" ;;
+    *) echo "1" ;;
+  esac
+}
+
+# Resolve flow-state file path based on (effective_schema_version, legacy_mode, session_id).
+# - When legacy_mode is "true", schema_version != "2", or session_id is empty -> legacy path
+# - Otherwise -> per-session new path
+_resolve_session_state_path() {
+  local sv="$1"
+  local lm="$2"
+  local sid="$3"
+  if [[ "$lm" == "true" ]] || [[ "$sv" != "2" ]] || [[ -z "$sid" ]]; then
+    echo "$LEGACY_FLOW_STATE"
+    return 0
+  fi
+  echo "$STATE_ROOT/.rite/sessions/${sid}.flow-state"
+}
 
 # --- Argument parsing ---
 MODE="${1:-}"
@@ -61,6 +128,7 @@ IF_EXISTS=false
 FIELD=""
 SESSION=""
 PRESERVE_ERROR_COUNT=false
+LEGACY_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,11 +141,32 @@ while [[ $# -gt 0 ]]; do
     --active)   ACTIVE="$2"; shift 2 ;;
     --if-exists) IF_EXISTS=true; shift ;;
     --preserve-error-count) PRESERVE_ERROR_COUNT=true; shift ;;
+    --legacy-mode) LEGACY_MODE=true; shift ;;
     --field)    FIELD="$2"; shift 2 ;;
     --session)  SESSION="$2"; shift 2 ;;
     *) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# --- Resolve effective schema version and target flow-state path ---
+# session_id is needed for both create/patch/increment to route writes to the
+# session-owned file when schema_version=2. patch/increment auto-read from
+# .rite-session-id when --session is not provided (caller-side simplification).
+SESSION=$(_resolve_session_id "$SESSION")
+SCHEMA_VERSION=$(_resolve_schema_version)
+if [[ "$LEGACY_MODE" == "true" ]]; then
+  EFFECTIVE_SCHEMA_VERSION="1"
+else
+  EFFECTIVE_SCHEMA_VERSION="$SCHEMA_VERSION"
+fi
+FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MODE" "$SESSION")
+
+# Ensure parent directory exists for the new format. mkdir -p is idempotent and
+# silently succeeds if already present. Failure (e.g., permission denied) is
+# surfaced by the subsequent mktemp/mv path.
+if [[ "$EFFECTIVE_SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION" ]] && [[ "$LEGACY_MODE" != "true" ]]; then
+  mkdir -p "$STATE_ROOT/.rite/sessions" 2>/dev/null || true
+fi
 
 # --- Validation ---
 case "$MODE" in
@@ -135,15 +224,9 @@ case "$MODE" in
     if [[ -z "$ACTIVE" ]]; then
       ACTIVE="true"
     fi
-    # Auto-read session_id from .rite-session-id if --session was not provided or is empty (#216)
-    if [[ -z "$SESSION" ]]; then
-      _session_id_file="$STATE_ROOT/.rite-session-id"
-      SESSION=$(cat "$_session_id_file" 2>/dev/null | tr -d '[:space:]') || SESSION=""
-      # Validate UUID format (reject tampered or corrupt content)
-      if [[ -n "$SESSION" && ! "$SESSION" =~ ^[0-9a-f-]{36}$ ]]; then
-        SESSION=""
-      fi
-    fi
+    # session_id is now resolved upfront via _resolve_session_id() (see top-level
+    # block after arg parsing). The previous in-mode auto-read (#216) is folded
+    # into the helper so patch/increment also benefit.
     # Session ownership: overwrite protection for active state owned by another session
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
       _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"
@@ -207,6 +290,16 @@ case "$MODE" in
     # 診断メッセージを出す。`set -euo pipefail` 下で mv 失敗は script を非 0 exit させるが、
     # else branch は jq 失敗のみを surface するため、disk full / permission denied / EXDEV 等の
     # mv 失敗要因が silent に握りつぶされる (silent failure-hunter 指摘)。patch / increment mode と対称化。
+    #
+    # #678: schema_version=2 (Option A per-session file) では create object に schema_version: 2 を含め、
+    # Migration 検出条件「schema_version キー無 or < 2」(design doc Migration 戦略) と整合させる。
+    # legacy mode では schema_version field を含めず、旧形式 reader (#3-#5 移行前の hook 群) との
+    # bytewise 互換を保つ。
+    if [[ "$EFFECTIVE_SCHEMA_VERSION" == "2" ]]; then
+      _create_filter='{schema_version: 2, active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}'
+    else
+      _create_filter='{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}'
+    fi
     if jq -n \
       --argjson active "$ACTIVE" \
       --argjson issue "$ISSUE" \
@@ -218,7 +311,7 @@ case "$MODE" in
       --arg next "$NEXT" \
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
       --arg sid "$SESSION" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}' \
+      "$_create_filter" \
       > "$TMP_STATE"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
         _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE"
