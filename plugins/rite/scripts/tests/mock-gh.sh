@@ -22,6 +22,8 @@
 #   "url_parse_fail"       - gh issue create returns non-URL string (no trailing number)
 #   "iteration_mutation_fail" - GraphQL fields query OK (iteration field present),
 #                              but the iteration assignment mutation fails (#669 F-02)
+#   "gql_items_lookup_fail"  - GraphQL fields query OK (items.nodes=[]),
+#                              but the GQL_ITEMS_QUERY (items lookup retry) fails (#669 cycle 2 follow-up)
 #
 # Scenarios (projects-status-update.sh):
 #   "psu_success"              - Issue in project, Status updated
@@ -112,8 +114,9 @@ FLJSON
           echo "error: failed to add item to project" >&2
           exit 1
         fi
-        # no_item_id_no_json: simulate item-add succeeding but without JSON output
-        if [ "$SCENARIO" = "no_item_id_no_json" ]; then
+        # no_item_id_no_json / gql_items_lookup_fail: simulate item-add succeeding but without JSON output
+        # (forces ITEM_ID retrieval to fall through to GQL_RESULT.items.nodes, then GQL_ITEMS_QUERY retry)
+        if [ "$SCENARIO" = "no_item_id_no_json" ] || [ "$SCENARIO" = "gql_items_lookup_fail" ]; then
           exit 0
         fi
         # Check if --format json was requested (pair detection: --format followed by json)
@@ -187,8 +190,13 @@ ITEMJSON
 
         # Detect query shape: projects-status-update.sh queries `repository(owner:`
         # while create-issue-with-projects.sh queries `user|organization(login:`.
+        # gql_items_lookup_fail (#669 cycle 2 follow-up): fields query (containing
+        # `fields(first: 20)`) succeeds with empty items, but the items lookup
+        # retry query (containing `items(last: 20)` and NOT `fields(first: 20)`)
+        # fails with exit 1.
         is_repository_query=false
         is_mutation=false
+        is_items_lookup_only=false
         for arg in "$@"; do
           if [[ "$arg" == query=* ]]; then
             if [[ "$arg" == *"repository(owner:"* ]]; then
@@ -197,9 +205,17 @@ ITEMJSON
             if [[ "$arg" == *mutation* ]]; then
               is_mutation=true
             fi
+            if [[ "$arg" == *"items(last: 20)"* ]] && [[ "$arg" != *"fields(first: 20)"* ]]; then
+              is_items_lookup_only=true
+            fi
             break
           fi
         done
+
+        if [ "$SCENARIO" = "gql_items_lookup_fail" ] && [ "$is_items_lookup_only" = true ]; then
+          echo "error: GraphQL items lookup query failed" >&2
+          exit 1
+        fi
 
         if [ "$is_mutation" = true ]; then
           # iteration_mutation_fail: simulate iteration assignment mutation failure (#669 F-02)
@@ -268,7 +284,7 @@ ITEMJSON
         fi
 
         ITEMS_NODES="[{\"id\":\"${MOCK_ITEM_ID}\",\"content\":{\"number\":${MOCK_ISSUE_NUMBER}}}]"
-        if [ "$SCENARIO" = "no_item_id" ] || [ "$SCENARIO" = "no_item_id_no_json" ]; then
+        if [ "$SCENARIO" = "no_item_id" ] || [ "$SCENARIO" = "no_item_id_no_json" ] || [ "$SCENARIO" = "gql_items_lookup_fail" ]; then
           ITEMS_NODES="[]"
         fi
 

@@ -596,6 +596,40 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-019c (#669 cycle 2 follow-up): GraphQL items lookup query failure
+# 検証: ITEM_ID が item-add からも fields query.items.nodes からも取得不可な状況で、
+# GQL_ITEMS_QUERY (items lookup retry) が retry_with_backoff 3 回失敗時に
+# add_warning_with_stderr が "GraphQL items lookup query failed after 3 attempts"
+# を stderr emit すること (silent-fail 5 path の最後の経路)
+# --------------------------------------------------------------------------
+echo "TC-019c: GraphQL items lookup query failure → stderr emit + reg=partial (#669 cycle 2 follow-up)"
+body_file=$(create_body_file "Test items lookup fail")
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Items Lookup Fail", body_file: $bf},
+  projects: {
+    enabled: true,
+    project_number: 2,
+    owner: "test-owner",
+    status: "Todo"
+  },
+  options: {non_blocking_projects: true}
+}')" "gql_items_lookup_fail"
+if [ "$LAST_RC" -eq 0 ]; then
+  reg=$(json_field '.project_registration')
+  stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
+  if [ "$reg" = "partial" ] \
+     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
+     && echo "$stderr_content" | grep -q "GraphQL items lookup query failed" \
+     && echo "$stderr_content" | grep -q "after 3 attempts"; then
+    pass "items lookup fail → exit=0, reg=$reg + stderr emit + retry-count message"
+  else
+    fail "Expected reg=partial + stderr 'GraphQL items lookup query failed' + 'after 3 attempts', got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -3)'"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
 # TC-020: Iteration field not found → warning
 # --------------------------------------------------------------------------
 echo "TC-020: Iteration field missing → warning"
@@ -791,13 +825,16 @@ if [ "$LAST_RC" -eq 0 ]; then
   stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
   reg=$(json_field '.project_registration')
   warn_count=$(json_field '.warnings | length')
+  # cycle 2 follow-up: "gh project item-add failed" literal assert を追加
+  # silent-fail 復帰 regression を厳密に検出可能化
   if echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
+     && echo "$stderr_content" | grep -q "gh project item-add failed" \
      && echo "$stderr_content" | grep -q "after 3 attempts" \
      && [ "$reg" = "failed" ] \
      && [ "$warn_count" -gt 0 ]; then
-    pass "item-add fail → stderr emit + reg=$reg + warnings=$warn_count"
+    pass "item-add fail → stderr emit + 'gh project item-add failed' literal + reg=$reg + warnings=$warn_count"
   else
-    fail "Expected stderr 'ERROR: Projects registration failed:' + 'after 3 attempts' + reg=failed + warnings>=1, got reg=$reg, warnings=$warn_count, stderr='$(printf '%s' "$stderr_content" | head -2)'"
+    fail "Expected stderr 'ERROR: Projects registration failed:' + 'gh project item-add failed' + 'after 3 attempts' + reg=failed + warnings>=1, got reg=$reg, warnings=$warn_count, stderr='$(printf '%s' "$stderr_content" | head -2)'"
   fi
 else
   fail "Expected exit 0 (NON_BLOCKING=true), got $LAST_RC"
