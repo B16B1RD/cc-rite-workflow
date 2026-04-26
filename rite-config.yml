@@ -156,6 +156,17 @@ investigate:
   codex_review:
     enabled: true    # false で Phase 6（Codex クロスチェック）をスキップし代替検証を実施
 
+# Flow state file format settings (Issue #672)
+# See docs/designs/multi-session-state.md for full specification.
+# `schema_version: 2` (default) — Option A: per-session file (`.rite/sessions/{session_id}.flow-state`)。
+#   並行セッションを first-class でサポート。各セッションが独立ファイルに state を保持する。
+# `schema_version: 1` — legacy single-file (`.rite-flow-state`)。
+#   rollback path として暫定的に提供。新規実装は v2 を前提とする。
+# 旧形式 state file (schema_version 未指定 / 1) は `.rite-flow-state.legacy.{timestamp}` に
+# backup された上で自動 migration される（silent skip 禁止 — AC-8）。
+flow_state:
+  schema_version: 2
+
 # Workflow incident auto-registration (#366)
 # Detects workflow blockers (Skill load failure / hook 異常終了 / 手動 fallback 採用) and
 # auto-registers them as Issues to prevent silent loss. See docs/SPEC.md for details.
