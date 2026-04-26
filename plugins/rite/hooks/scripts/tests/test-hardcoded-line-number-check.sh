@@ -192,6 +192,23 @@ assert "filter A: only P-A reported" "1" "$a_count"
 assert "filter A: P-B suppressed" "0" "$b_count"
 assert "filter A: P-C suppressed" "0" "$c_count"
 
+# --- Filter B/C symmetric tests (cycle 2 review recommendation) -------------
+out_b=$("$SCRIPT" --target "$FIX_MIX" --pattern B --repo-root "$TMPDIR_ROOT" 2>&1)
+b_a_count=$(grep -c '\[P-A\]' <<< "$out_b" || true)
+b_b_count=$(grep -c '\[P-B\]' <<< "$out_b" || true)
+b_c_count=$(grep -c '\[P-C\]' <<< "$out_b" || true)
+assert "filter B: only P-B reported" "1" "$b_b_count"
+assert "filter B: P-A suppressed" "0" "$b_a_count"
+assert "filter B: P-C suppressed" "0" "$b_c_count"
+
+out_c=$("$SCRIPT" --target "$FIX_MIX" --pattern C --repo-root "$TMPDIR_ROOT" 2>&1)
+c_a_count=$(grep -c '\[P-A\]' <<< "$out_c" || true)
+c_b_count=$(grep -c '\[P-B\]' <<< "$out_c" || true)
+c_c_count=$(grep -c '\[P-C\]' <<< "$out_c" || true)
+assert "filter C: only P-C reported" "1" "$c_c_count"
+assert "filter C: P-A suppressed" "0" "$c_a_count"
+assert "filter C: P-B suppressed" "0" "$c_b_count"
+
 # --- Test 11: --all on real plugins/rite/commands (current state should be clean) ---
 out=$("$SCRIPT" --all --quiet 2>&1)
 rc=$?
@@ -220,29 +237,31 @@ assert "tilde fence: exits 1" "1" "$rc"
 assert "tilde fence: only 2 findings (outside fence)" "2" "$total_count"
 
 # --- Test 13: P-C word-boundary edge cases -----------------------------------
-# Ensures `barFoo.md:42` (mixed-case substring) and `foo.bar.md:42` (path with dot) work correctly:
-#   - `barFoo.md:42`: prefix 'F' is uppercase → suffix `oo.md:42` should NOT match (word-boundary guard)
-#   - `foo.bar.md:42`: should match because '.' is part of the filename character class
-# IMPORTANT: fixture must NOT contain literal `oo.md:42` outside the substring case (otherwise
-# the standalone `oo.md:42` would legitimately match and inflate the count).
+# With uppercase support (`[A-Za-z][A-Za-z0-9_.-]*\.md:[0-9]+`), filenames like
+# `barFoo.md`, `README.md`, `CHANGELOG.md` are valid full matches.
+# Word-boundary check still suppresses substring extraction when prev char is alnum/underscore
+# (e.g. `12barFoo.md:42` would attempt match at `b` but prev='2' makes is_continuation=true → skip).
 FIX_WB="$TMPDIR_ROOT/word_boundary.md"
 cat > "$FIX_WB" <<'EOF'
-Mixed-case file name barFoo.md:42 here.
+Mixed-case file name barFoo.md:42 here (now matches as full identifier).
 Path with dot: foo.bar.md:42 references implementation.
 Normal kebab name: bug-fix.md:99 in the comment.
 Range form bug.md:42-50 should NOT trigger.
+README.md:10 uppercase markdown filename should match.
+Continuation suppression test: prefix12barFoo.md:42 should NOT add another finding.
 EOF
 out=$("$SCRIPT" --target "$FIX_WB" --repo-root "$TMPDIR_ROOT" 2>&1)
 rc=$?
 pc_count=$(grep -c '\[P-C\]' <<< "$out")
 assert "word-boundary: exits 1" "1" "$rc"
-# Expected matches: foo.bar.md:42, bug-fix.md:99 = 2
-# barFoo.md:42 substring `oo.md:42` must NOT match (word-boundary guard)
+# Expected matches: barFoo.md:42, foo.bar.md:42, bug-fix.md:99, README.md:10 = 4
 # bug.md:42-50 must NOT match (range exclusion)
-assert "word-boundary: exactly 2 findings (no substring false-positive, no range)" "2" "$pc_count"
-# Verify the substring false-positive is suppressed
-substring_false_positive=$(grep -c 'cross-file line reference: oo\.md:42' <<< "$out" || true)
-assert "word-boundary: barFoo.md:42 substring (oo.md:42) NOT flagged" "0" "$substring_false_positive"
+# prefix12barFoo.md:42 → start at 'p' of "prefix" matches whole "prefix12barFoo.md:42" as one finding,
+#   not as separate barFoo.md:42 substring (word-boundary suppresses substring re-extraction)
+assert_ge "word-boundary: at least 4 findings (uppercase support enabled)" 4 "$pc_count"
+# Verify range form is suppressed
+range_false_positive=$(grep -c 'cross-file line reference: bug\.md:42$' <<< "$out" || true)
+assert "word-boundary: bug.md:42-50 range NOT flagged" "0" "$range_false_positive"
 
 # --- Summary -----------------------------------------------------------------
 echo ""

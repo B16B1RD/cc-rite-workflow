@@ -34,7 +34,7 @@
 #   1  Drift detected
 #   2  Invocation error (bad args, missing files)
 
-set -uo pipefail
+set -euo pipefail
 
 REPO_ROOT=""
 QUIET=0
@@ -116,13 +116,13 @@ fi
 # trap + cleanup pattern (signal-specific, INT/TERM/HUP coverage)
 # Reference: plugins/rite/commands/pr/references/bash-trap-patterns.md#signal-specific-trap-template
 FINDINGS_FILE=""
-_rite_hcln_cleanup() {
+_rite_hardcoded_line_cleanup() {
   rm -f "${FINDINGS_FILE:-}"
 }
-trap 'rc=$?; _rite_hcln_cleanup; exit $rc' EXIT
-trap '_rite_hcln_cleanup; exit 130' INT
-trap '_rite_hcln_cleanup; exit 143' TERM
-trap '_rite_hcln_cleanup; exit 129' HUP
+trap 'rc=$?; _rite_hardcoded_line_cleanup; exit $rc' EXIT
+trap '_rite_hardcoded_line_cleanup; exit 130' INT
+trap '_rite_hardcoded_line_cleanup; exit 143' TERM
+trap '_rite_hardcoded_line_cleanup; exit 129' HUP
 
 FINDINGS_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 
@@ -141,9 +141,11 @@ check_file() {
     return 0
   fi
   local run_a=0 run_b=0 run_c=0
-  run_pattern A && run_a=1
-  run_pattern B && run_b=1
-  run_pattern C && run_c=1
+  # `set -e` 環境下では `run_pattern A && run_a=1` 単独だと no-match (exit 1) で script が
+  # 強制終了する。`|| true` で no-match を許容する (run_a=0 のままになる)
+  run_pattern A && run_a=1 || true
+  run_pattern B && run_b=1 || true
+  run_pattern C && run_c=1 || true
   awk -v F="$file" -v RUN_A="$run_a" -v RUN_B="$run_b" -v RUN_C="$run_c" '
     BEGIN { in_code = 0 }
     # Fenced code block detection: lines starting (after optional indent) with
@@ -202,11 +204,13 @@ check_file() {
       # ---------- P-C: {file}.md:N cross-file reference ----------
       # Range form (`:N-M`) exclusion below covers Location: review-finding markers
       # (e.g. `Location: docs/overview.md:12-20`). No separate Location: prefix skip needed.
+      # Character class allows mixed-case filenames so that `README.md:42` /
+      # `CHANGELOG.md:10` / `CONTRIBUTING.md:5` etc. are also detected.
       if (RUN_C) {
         pos = 1
         while (pos <= length(line)) {
           rest = substr(line, pos)
-          if (!match(rest, /[a-z][a-z0-9_.-]*\.md:[0-9]+/)) break
+          if (!match(rest, /[A-Za-z][A-Za-z0-9_.-]*\.md:[0-9]+/)) break
           hit = substr(rest, RSTART, RLENGTH)
           abs_start = pos + RSTART - 1
           # Range form exclusion: if the next char after match is "-" + digit,

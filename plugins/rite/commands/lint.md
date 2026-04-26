@@ -166,7 +166,7 @@ Run the regression guard for `/rite:issue:create` terminal output structure. Thi
 
 **Rationale**: Prior regressions (Issues #525, #552, #561) showed that bare sentinel tokens as the absolute last line coupled the LLM's turn-boundary heuristic with the sentinel, causing premature `continue`-requiring stops. The HTML-comment form (`<!-- [create:completed:{N}] -->`) keeps the sentinel grep-matchable while hiding it from rendered Markdown output.
 
-**Condition**: Always execute when the script exists (Phase 3.5-3.8 の plugin-specific check と同 pattern)。
+**Condition**: Always execute when the script exists (Phase 3.x の plugin-specific check と同 pattern)。
 
 **Execution:**
 
@@ -188,7 +188,7 @@ fi
 | `2` | `error` | Invocation error — record as warning, display error message |
 | `-1` | `skipped` | Script not found — skip silently (marketplace install without hooks) |
 
-**Important**: Terminal output check results are treated as **warnings**, not errors — same policy as Phase 3.5-3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
+**Important**: Terminal output check results are treated as **warnings**, not errors — same policy as the other Phase 3.x checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
 
 **Record results** for Phase 4 reporting:
 
