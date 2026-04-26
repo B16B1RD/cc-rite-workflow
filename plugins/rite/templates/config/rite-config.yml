@@ -169,6 +169,19 @@ wiki:
   auto_ingest: true           # Auto-ingest on review/fix/close (default: true)
   auto_query: true            # Auto-query on start/review/fix/implement (default: true)
 
+# Flow state file format settings (Issue #672)
+# See docs/designs/multi-session-state.md for full specification.
+#
+# ⚠️ ファイル冒頭の top-level `schema_version: 2` (rite-config.yml 自体の schema バージョン) とは
+# 別系統の設定です。本セクションの `flow_state.schema_version` は `.rite-flow-state` ファイル形式の
+# 選択のみを制御し、rite-config.yml schema 自体のバージョンとは無関係です。
+#
+# `schema_version: 2` (default) — Option A: per-session file (`.rite/sessions/{session_id}.flow-state`)。
+#   並行セッションを first-class でサポート。
+# `schema_version: 1` — legacy single-file (rollback path、v0.5.0 で撤去予定)。
+flow_state:
+  schema_version: 2
+
 # --- Advanced (below this line) ---
 # These sections are omitted during new generation (/rite:init).
 # They are added as comments during --upgrade.
@@ -223,15 +236,5 @@ pr_review:
 #   codex_review:
 #     enabled: true
 
-# Flow state file format settings (Issue #672)
+# Flow state settings are declared above the `--- Advanced ---` marker (active by default, Issue #672).
 # See docs/designs/multi-session-state.md for full specification.
-#
-# ⚠️ ファイル冒頭の top-level `schema_version: 2` (rite-config.yml 自体の schema バージョン) とは
-# 別系統の設定です。本セクションの `flow_state.schema_version` は `.rite-flow-state` ファイル形式の
-# 選択のみを制御し、rite-config.yml schema 自体のバージョンとは無関係です。
-#
-# `schema_version: 2` (default) — Option A: per-session file (`.rite/sessions/{session_id}.flow-state`)。
-#   並行セッションを first-class でサポート。
-# `schema_version: 1` — legacy single-file (rollback path、v0.5.0 で撤去予定)。
-# flow_state:
-#   schema_version: 2
