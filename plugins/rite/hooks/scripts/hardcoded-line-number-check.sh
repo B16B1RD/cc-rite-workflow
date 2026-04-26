@@ -67,7 +67,6 @@ EOF
 }
 
 log() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*" >&2; }
-out() { printf '%s\n' "$*"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -114,8 +113,18 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
   exit 2
 fi
 
+# trap + cleanup pattern (signal-specific, INT/TERM/HUP coverage)
+# Reference: plugins/rite/commands/pr/references/bash-trap-patterns.md#signal-specific-trap-template
+FINDINGS_FILE=""
+_rite_hcln_cleanup() {
+  rm -f "${FINDINGS_FILE:-}"
+}
+trap 'rc=$?; _rite_hcln_cleanup; exit $rc' EXIT
+trap '_rite_hcln_cleanup; exit 130' INT
+trap '_rite_hcln_cleanup; exit 143' TERM
+trap '_rite_hcln_cleanup; exit 129' HUP
+
 FINDINGS_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
-trap 'rm -f "$FINDINGS_FILE"' EXIT
 
 run_pattern() {
   local p="$1"
@@ -137,8 +146,11 @@ check_file() {
   run_pattern C && run_c=1
   awk -v F="$file" -v RUN_A="$run_a" -v RUN_B="$run_b" -v RUN_C="$run_c" '
     BEGIN { in_code = 0 }
-    # Fenced code block detection: lines starting (after optional indent) with ```
-    /^[[:space:]]*```/ { in_code = !in_code; next }
+    # Fenced code block detection: lines starting (after optional indent) with
+    # ``` (backtick fence) or ~~~ (tilde fence). Both forms are valid CommonMark
+    # / GFM fence syntax. Toggling on either form lets the same in_code state
+    # cover both fence styles.
+    /^[[:space:]]*(```|~~~)/ { in_code = !in_code; next }
     in_code { next }
 
     # Helper: check whether a match span (start_pos..end_pos in current line)
@@ -188,14 +200,9 @@ check_file() {
       }
 
       # ---------- P-C: {file}.md:N cross-file reference ----------
+      # Range form (`:N-M`) exclusion below covers Location: review-finding markers
+      # (e.g. `Location: docs/overview.md:12-20`). No separate Location: prefix skip needed.
       if (RUN_C) {
-        # Skip lines that look like canonical review finding location markers
-        # ("Location: ... :NN-MM" form). The :N-M range exclusion below also
-        # covers this, but the explicit Location: prefix skip is more
-        # robust against future format variants.
-        if (line ~ /^[[:space:]]*[-*]?[[:space:]]*Location:[[:space:]]/) {
-          # let the inner range exclusion handle it; do not early-skip
-        }
         pos = 1
         while (pos <= length(line)) {
           rest = substr(line, pos)
@@ -208,7 +215,12 @@ check_file() {
           tail_c1 = substr(line, tail_idx, 1)
           tail_c2 = substr(line, tail_idx + 1, 1)
           is_range = (tail_c1 == "-" && tail_c2 ~ /[0-9]/)
-          if (!is_range && !in_backticks(line, abs_start)) {
+          # Word-boundary exclusion: if the char immediately before match start
+          # is a letter/digit/underscore (e.g. `barFoo.md:42` → suffix `oo.md:42`),
+          # this is a substring of a longer identifier — skip.
+          prev_c = (abs_start > 1) ? substr(line, abs_start - 1, 1) : ""
+          is_continuation = (prev_c ~ /[A-Za-z0-9_]/)
+          if (!is_range && !is_continuation && !in_backticks(line, abs_start)) {
             print "[hardcoded-line-number][P-C] " F ":" NR ": cross-file line reference: " hit
           }
           pos = abs_start + RLENGTH

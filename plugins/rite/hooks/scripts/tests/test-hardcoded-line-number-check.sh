@@ -68,6 +68,18 @@ assert "P-A: exits 1 (drift detected)" "1" "$rc"
 assert "P-A: 3 parenthesized findings" "3" "$count"
 
 # --- Test 4: P-B prose form detected ------------------------------------------
+# Fixture produces exactly 5 P-B matches (one per line):
+#   line 1: 本セクション直前 + line 588 (greedy match consumes through `line 588`) = 1 match
+#   line 2: 直後 + line 22 = 1 match
+#   line 3: 上記 + line 605 = 1 match
+#   line 4: 下記 + line 100 = 1 match
+#   line 5: 上方 + ... line 50 と下方 line 200 (greedy `[^\n]{0,80}` consumes through `line 200`) = 1 match
+# Strict assertion (=) enforces regex precision; loosening to assert_ge would let
+# regex over-broadening go undetected.
+# Note on greedy quantifier: awk's match() is leftmost-longest. The qualifier on
+# line 5 (上方) starts a match that the greedy `[^\n]{0,80}` extends through to
+# the LAST `line N` it can reach within 80 bytes — so "line 50 と下方 line 200"
+# is consumed by a single match, yielding 1 finding for line 5 (not 2).
 FIX_PB="$TMPDIR_ROOT/pb.md"
 cat > "$FIX_PB" <<'EOF'
 本セクション直前の line 588 / 597 caller HTML inline literal を参照。
@@ -80,7 +92,7 @@ out=$("$SCRIPT" --target "$FIX_PB" --repo-root "$TMPDIR_ROOT" 2>&1)
 rc=$?
 count=$(grep -c '\[P-B\]' <<< "$out")
 assert "P-B: exits 1 (drift detected)" "1" "$rc"
-assert_ge "P-B: >=5 prose findings" 5 "$count"
+assert "P-B: exactly 5 prose findings (strict, greedy quantifier consumes line 5)" "5" "$count"
 
 # --- Test 5: P-C cross-file form detected -------------------------------------
 FIX_PC="$TMPDIR_ROOT/pc.md"
@@ -184,6 +196,53 @@ assert "filter A: P-C suppressed" "0" "$c_count"
 out=$("$SCRIPT" --all --quiet 2>&1)
 rc=$?
 assert "current commands/ tree exits 0 (clean baseline)" "0" "$rc"
+
+# --- Test 12: tilde fence (~~~) exclusion ------------------------------------
+FIX_TILDE="$TMPDIR_ROOT/tilde.md"
+cat > "$FIX_TILDE" <<'EOF'
+# Tilde fence exclusion test (CommonMark / GFM `~~~` form)
+
+Outside fence: this should be flagged → (line 100, 200)
+
+~~~bash
+# Inside tilde fence: should NOT be flagged
+echo "(line 300, 400)"
+echo "本セクション直前の line 500"
+echo "foo.md:42"
+~~~
+
+After tilde fence: this should be flagged → (line 700, 800)
+EOF
+out=$("$SCRIPT" --target "$FIX_TILDE" --repo-root "$TMPDIR_ROOT" 2>&1)
+rc=$?
+total_count=$(grep -c '^\[hardcoded' <<< "$out")
+assert "tilde fence: exits 1" "1" "$rc"
+assert "tilde fence: only 2 findings (outside fence)" "2" "$total_count"
+
+# --- Test 13: P-C word-boundary edge cases -----------------------------------
+# Ensures `barFoo.md:42` (mixed-case substring) and `foo.bar.md:42` (path with dot) work correctly:
+#   - `barFoo.md:42`: prefix 'F' is uppercase → suffix `oo.md:42` should NOT match (word-boundary guard)
+#   - `foo.bar.md:42`: should match because '.' is part of the filename character class
+# IMPORTANT: fixture must NOT contain literal `oo.md:42` outside the substring case (otherwise
+# the standalone `oo.md:42` would legitimately match and inflate the count).
+FIX_WB="$TMPDIR_ROOT/word_boundary.md"
+cat > "$FIX_WB" <<'EOF'
+Mixed-case file name barFoo.md:42 here.
+Path with dot: foo.bar.md:42 references implementation.
+Normal kebab name: bug-fix.md:99 in the comment.
+Range form bug.md:42-50 should NOT trigger.
+EOF
+out=$("$SCRIPT" --target "$FIX_WB" --repo-root "$TMPDIR_ROOT" 2>&1)
+rc=$?
+pc_count=$(grep -c '\[P-C\]' <<< "$out")
+assert "word-boundary: exits 1" "1" "$rc"
+# Expected matches: foo.bar.md:42, bug-fix.md:99 = 2
+# barFoo.md:42 substring `oo.md:42` must NOT match (word-boundary guard)
+# bug.md:42-50 must NOT match (range exclusion)
+assert "word-boundary: exactly 2 findings (no substring false-positive, no range)" "2" "$pc_count"
+# Verify the substring false-positive is suppressed
+substring_false_positive=$(grep -c 'cross-file line reference: oo\.md:42' <<< "$out" || true)
+assert "word-boundary: barFoo.md:42 substring (oo.md:42) NOT flagged" "0" "$substring_false_positive"
 
 # --- Summary -----------------------------------------------------------------
 echo ""
