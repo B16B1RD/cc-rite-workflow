@@ -2315,12 +2315,14 @@ When this is a **re-review after a fix** (verification mode or `loop_count >= 1`
 **Step 1**: Determine if attribution is applicable:
 
 ```bash
-loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
+loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0)
 if [ "$loop_count" -lt 1 ]; then
   echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, loop_count=$loop_count)"
   exit 0
 fi
 ```
+
+> **Note (Issue #687 AC-4)**: `loop_count` is read via `state-read.sh` so per-session state is consulted (avoiding stale residue from another session's legacy `.rite-flow-state`).
 
 **Step 2**: Identify files changed by the last fix commit vs original PR files:
 

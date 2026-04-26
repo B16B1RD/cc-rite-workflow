@@ -858,10 +858,10 @@ WM_SOURCE="implement" \
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically from `.rite-flow-state` (#497 — survives context compaction):
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (#497 — survives context compaction; Issue #687 AC-4 — per-session state, not legacy snapshot):
 
 ```bash
-parent_issue_number=$(jq -r '.parent_issue_number // 0' .rite-flow-state 2>/dev/null) || parent_issue_number=0
+parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0)
 if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
   echo "[CONTEXT] PARENT_ISSUE=none — skip 5.1.2"
 else
