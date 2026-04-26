@@ -1768,7 +1768,7 @@ Otherwise:
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
 | `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | `.rite-flow-state` | Read `implementation_round` field (set by Phase 5.1.3): `jq '.implementation_round // 0' .rite-flow-state`. This counts re-entries to Phase 5.1 from checklist failures |
+| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0` (Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot). This counts re-entries to Phase 5.1 from checklist failures |
 
 **Step 2**: Evaluate thresholds.
 
@@ -1937,7 +1937,7 @@ fi
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_completion" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "Execute Phase 5.6 (Completion Report). Read parent_issue_number from .rite-flow-state; if non-zero, proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
+  --next "Execute Phase 5.6 (Completion Report). Read parent_issue_number via bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0 (Issue #687 AC-4 — per-session state); if non-zero, proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
 ```
 
 > See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).

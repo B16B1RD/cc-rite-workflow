@@ -98,10 +98,17 @@ _resolve_schema_version() {
     echo "1"
     return 0
   fi
+  # Issue #687 AC-4 follow-up (writer/reader architectural 統一、PR #688 cycle 3):
+  # `flow_state:` セクションあり + `schema_version:` 行欠落の degenerate config で grep が
+  # exit 1 を返した場合、本関数は `local v=$(...)` で wrap されているため `local` builtin の
+  # always-0 戻り値で偶然 pipefail を mask しており、現状は正常 fallback (echo "1") に落ちる。
+  # しかし将来 `local v; v=$(...)` のような分離 refactor が入ると mask が外れ silent failure
+  # する fragile な構造のため、reader 側 (state-read.sh:92-94) と対称に明示的な `|| v=""`
+  # guard を追加する (defense-in-depth)。
   local v
   v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
     | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \
-    | tr -d '[:space:]"'"'"'')
+    | tr -d '[:space:]"'"'"'') || v=""
   case "$v" in
     1|2) echo "$v" ;;
     *) echo "1" ;;

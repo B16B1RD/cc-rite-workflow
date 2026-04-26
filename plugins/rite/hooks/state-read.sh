@@ -37,6 +37,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Resolve repository root via the existing helper (single SoT).
+# state-path-resolve.sh は現状 `return 0` 固定のため `||` fallback は dead code だが、
+# 将来 git not found / cwd 不在等で non-zero を返す変更が入った際の defensive guard として
+# 維持する。`set -euo pipefail` 下で fail-safe に cwd へ落とす契約を明示する。
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
 LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 
@@ -84,11 +87,10 @@ if [ -f "$cfg" ]; then
     # rite-config.yml の `flow_state:` セクションは存在するが `schema_version:` 行が欠落する
     # 設定で grep が exit 1 を返すと、`set -euo pipefail` 下では pipeline 全体 exit 1 →
     # top-level 直接代入のため set -e で helper が silent に exit 1 する。caller は curr=""
-    # を受け取り .phase=" で誤った理由 ERROR exit する経路があった。
+    # を受け取り .phase="" で誤った理由 ERROR exit する経路があった。
     # 末尾に `|| v=""` を追加して pipefail を吸収し、後続の case "*)" 分岐で安全に default
-    # "1" に落とす。writer 側 flow-state-update.sh は同じコードを `local v=$(...)` で
-    # wrap しているため `local` builtin の always-0 戻り値で偶然 mask されている (writer/reader
-    # の architectural 統一は別 Issue で対応)。
+    # "1" に落とす。writer 側 flow-state-update.sh:87-109 (`_resolve_schema_version`) も
+    # 同パターンで `|| v=""` を追加して architectural 統一を完了済み (PR #688 cycle 3 で実施)。
     v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
       | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \
       | tr -d '[:space:]"'"'"'') || v=""

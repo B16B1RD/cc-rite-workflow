@@ -202,6 +202,44 @@ result=$(run_helper "$SBX" --field phase --default "")
 assert_eq "TC-8.1: schema_version 行欠落でも helper が exit 0 で完走し legacy を読む" "degenerate_config_legacy" "$result"
 rm -rf "$SBX"
 
+# --- TC-9: corrupt JSON state file → DEFAULT 返却 + exit 0 (defensive coverage) ---
+echo "TC-9: corrupt JSON state file → DEFAULT fallback (state-read.sh:127 jq error path)"
+SBX=$(make_sandbox)
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$SBX" "$SID"
+# truncated JSON (closing brace 欠落)
+mkdir -p "$SBX/.rite/sessions"
+printf '%s' '{"phase":"corrupt' > "$SBX/.rite/sessions/${SID}.flow-state"
+result=$(run_helper "$SBX" --field phase --default "corrupt_default")
+assert_eq "TC-9.1: corrupt JSON は DEFAULT を返す (silent fallback)" "corrupt_default" "$result"
+rm -rf "$SBX"
+
+# --- TC-10: JSON null value → caller default に正規化 (line 130-135) ---
+echo "TC-10: JSON null value → caller default に正規化 (null 文字列を返さない)"
+SBX=$(make_sandbox)
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$SBX" "$SID"
+write_per_session "$SBX" "$SID" '{"phase":null}'
+# JSON null は jq -r で literal "null" 文字列になるため、helper が default に変換するか確認
+result=$(run_helper "$SBX" --field phase --default "x")
+assert_eq "TC-10.1: JSON null は default に正規化される" "x" "$result"
+rm -rf "$SBX"
+
+# --- TC-11: --default 省略時の挙動 → 空文字列を返す ---
+echo "TC-11: --default 省略時 → 空文字列を返す (CLI default behaviour)"
+SBX=$(make_sandbox)
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$SBX" "$SID"
+# field が存在しない state を作る
+write_per_session "$SBX" "$SID" '{"phase":"x"}'
+# --default を渡さずに存在しない field を読む
+result=$(run_helper "$SBX" --field nonexistent_field)
+assert_eq "TC-11.1: --default 省略 + field 不在 → 空文字列" "" "$result"
+rm -rf "$SBX"
+
 # --- Summary ---
 echo ""
 echo "─── state-read.test.sh summary ──────────────────────────"
