@@ -388,7 +388,7 @@ fi
 # --------------------------------------------------------------------------
 # TC-013: Field edit failure → partial (non-blocking)
 # --------------------------------------------------------------------------
-echo "TC-013: Field edit failure → partial registration"
+echo "TC-013: Field edit failure → partial registration + stderr emit (#669 F-01)"
 body_file=$(create_body_file "Test field fail")
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Field Fail", body_file: $bf},
@@ -403,10 +403,14 @@ run_script "$(jq -n --arg bf "$body_file" '{
 }')" "field_edit_fail"
 if [ "$LAST_RC" -eq 0 ]; then
   reg=$(json_field '.project_registration')
-  if [ "$reg" = "partial" ]; then
-    pass "Field edit failure: exit=0, reg=$reg"
+  stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
+  if [ "$reg" = "partial" ] \
+     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
+     && echo "$stderr_content" | grep -q "Failed to set" \
+     && echo "$stderr_content" | grep -q "after 3 attempts"; then
+    pass "Field edit failure: exit=0, reg=$reg + stderr emit + retry-count message"
   else
-    fail "Expected reg=partial, got $reg"
+    fail "Expected reg=partial + stderr 'ERROR: Projects registration failed:' + 'Failed to set' + 'after 3 attempts', got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
   fi
 else
   fail "Expected exit 0, got $LAST_RC"
@@ -552,6 +556,40 @@ if [ "$LAST_RC" -eq 0 ]; then
     pass "Iteration auto-assign: reg=$reg"
   else
     fail "Expected reg=ok, got $reg"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# TC-019b (#669 F-02): Iteration mutation failure → stderr emit + reg=partial
+# 検証: iteration assignment mutation 失敗時に retry_with_backoff が 3 回試行し、
+# add_warning_with_stderr が "Iteration assignment failed" + "after 3 attempts" を
+# stderr に emit すること。silent-fail 解消対象として明示されている経路。
+# --------------------------------------------------------------------------
+echo "TC-019b: Iteration mutation failure → stderr emit + reg=partial (#669 F-02)"
+body_file=$(create_body_file "Test iteration mutation fail")
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Iter Mutation Fail", body_file: $bf},
+  projects: {
+    enabled: true,
+    project_number: 2,
+    owner: "test-owner",
+    status: "Todo",
+    iteration: {mode: "auto", field_name: "Sprint"}
+  },
+  options: {non_blocking_projects: true}
+}')" "iteration_mutation_fail"
+if [ "$LAST_RC" -eq 0 ]; then
+  reg=$(json_field '.project_registration')
+  stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
+  if [ "$reg" = "partial" ] \
+     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
+     && echo "$stderr_content" | grep -q "Iteration assignment failed" \
+     && echo "$stderr_content" | grep -q "after 3 attempts"; then
+    pass "Iteration mutation failure: exit=0, reg=$reg + stderr emit + retry-count message"
+  else
+    fail "Expected reg=partial + stderr 'Iteration assignment failed' + 'after 3 attempts', got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -3)'"
   fi
 else
   fail "Expected exit 0, got $LAST_RC"
@@ -780,10 +818,11 @@ if [ "$LAST_RC" -eq 0 ]; then
   stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
   reg=$(json_field '.project_registration')
   if echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
+     && echo "$stderr_content" | grep -q "after 3 attempts" \
      && [ "$reg" = "partial" ]; then
-    pass "graphql fail → stderr emit + reg=$reg"
+    pass "graphql fail → stderr emit + reg=$reg + retry-count message (#669 F-04)"
   else
-    fail "Expected stderr emit + reg=partial, got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
+    fail "Expected stderr emit + 'after 3 attempts' + reg=partial, got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
   fi
 else
   fail "Expected exit 0, got $LAST_RC"

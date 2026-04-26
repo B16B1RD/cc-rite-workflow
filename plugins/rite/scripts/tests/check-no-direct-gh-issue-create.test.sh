@@ -129,6 +129,33 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-006a (#669 F-03): Tilde fence (~~~) → no false positive (exit 0)
+# 検証: awk pattern が ` ``` ` と `~~~` の両方を code fence として認識し、
+# tilde fence 内の literal 呼び出しを誤検出しないこと。
+# --------------------------------------------------------------------------
+echo "TC-006a: Tilde fence (~~~) content → exit 0 (#669 F-03)"
+tilde_file="$TEST_DIR/tilde-fence.md"
+cat > "$tilde_file" <<'EOF'
+# Reference (tilde fence)
+
+Negative reference example using tilde fence:
+
+~~~bash
+# DO NOT do this:
+gh issue create --title "x" --body "y"
+~~~
+
+The script enforces the rule.
+EOF
+rc=0
+output=$(bash "$TARGET" "$tilde_file" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "Tilde fence (~~~) content → exit 0 (no false positive)"
+else
+  fail "Expected exit 0, got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
 # TC-007: Blockquote (> ...) → no false positive (exit 0)
 # --------------------------------------------------------------------------
 echo "TC-007: Blockquote content → exit 0"

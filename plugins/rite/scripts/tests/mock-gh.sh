@@ -20,6 +20,8 @@
 #   "no_current_iteration" - GraphQL includes iteration field but only future iterations
 #   "no_project_id"        - GraphQL returns null project ID
 #   "url_parse_fail"       - gh issue create returns non-URL string (no trailing number)
+#   "iteration_mutation_fail" - GraphQL fields query OK (iteration field present),
+#                              but the iteration assignment mutation fails (#669 F-02)
 #
 # Scenarios (projects-status-update.sh):
 #   "psu_success"              - Issue in project, Status updated
@@ -200,6 +202,11 @@ ITEMJSON
         done
 
         if [ "$is_mutation" = true ]; then
+          # iteration_mutation_fail: simulate iteration assignment mutation failure (#669 F-02)
+          if [ "$SCENARIO" = "iteration_mutation_fail" ]; then
+            echo "error: iteration mutation failed" >&2
+            exit 1
+          fi
           # No stdout output for mutations (only exit code matters to caller)
           exit 0
         fi
@@ -273,7 +280,9 @@ ITEMJSON
         # Iteration field (conditionally included based on scenario)
         ITER_FIELD=""
         MOCK_CURRENT_SPRINT_START=$(date +%Y-%m-01)
-        if [ "$SCENARIO" = "iteration_success" ]; then
+        if [ "$SCENARIO" = "iteration_success" ] || [ "$SCENARIO" = "iteration_mutation_fail" ]; then
+          # iteration_mutation_fail も fields query では Sprint field + current iteration を返し、
+          # mutation 段階で初めて失敗させる (#669 F-02)
           ITER_FIELD=',
             {
               "id": "FIELD_SPRINT",
