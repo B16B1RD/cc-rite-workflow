@@ -23,6 +23,7 @@ temp/
 # rite workflow state (auto-generated)
 .rite-flow-state
 .rite-flow-state.tmp.*
+.rite-flow-state.legacy.*
 .rite-flow-debug.log
 .rite-compact-state
 .rite-compact-state.lockdir/
@@ -37,6 +38,10 @@ temp/
 .rite/fix-cycle-state/
 .rite/fix-cycle-state.json
 .rite/state/
+# Issue #672 — マルチセッション対応 per-session flow-state files (Option A)。
+# 各 Claude Code セッションが `.rite/sessions/{session_id}.flow-state` に独立して
+# state を保持する。session 終了時に該当ファイルが cleanup される設計。
+.rite/sessions/
 # >>> gitignore-wiki-section-start (anchor — docs/CONFIGURATION.md L839 からの grep 参照点 / F-09 対応)
 # Wiki データ本体 (Issue #547 worktree 設計で develop ブランチからは完全分離)。
 # Wiki の正規パスは .rite/wiki-worktree/.rite/wiki/ であり、develop 側の
