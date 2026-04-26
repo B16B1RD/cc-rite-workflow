@@ -210,3 +210,8 @@
 | 2026-04-25T17:55:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=48, broken_refs=0 |
 | 2026-04-26T00:55:00+00:00 | ingest:skip | raw/reviews/20260426T002610Z-pr-670.md | PR #670 review findings (HIGH 2 / MEDIUM 2) は test カバレッジの個別漏れ (silent-fail stderr assertion / retry-count after 3 attempts / awk pattern 形式 test 未網羅) で、既存 test-false-positive-early-exit / mktemp-failure-surface-warning / stderr-selective-surface-over-truncate と直接の抽象化レベルが噛み合わず独立経験則としての特異性が低いため skip |
 | 2026-04-26T00:56:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=49, broken_refs=0 |
+
+| 2026-04-26T21:17:20+09:00 | ingest:skip | raw/reviews/20260426T112933Z-pr-686.md | PR #686 cycle 1 review (9 findings) — 既存 anti-patterns ページで cover 済みの cascading effect 事例、新規経験則抽出価値低 |
+| 2026-04-26T21:17:20+09:00 | ingest:skip | raw/reviews/20260426T114728Z-pr-686.md | PR #686 cycle 3 review (mergeable, 0 findings) — 健全収束軌跡 (9→3→0) は既存 patterns/heuristics ページで cover 済み |
+| 2026-04-26T21:17:20+09:00 | ingest:skip | raw/fixes/20260426T113453Z-pr-686.md | PR #686 cycle 1 fix (9 fixes: path traversal / DRY / error msg / test 改善) — 個別修正は既存 anti-patterns ページの応用 |
+| 2026-04-26T21:17:20+09:00 | ingest:skip | raw/fixes/20260426T114309Z-pr-686.md | PR #686 cycle 2 fix (3 fixes: regression test 義務化 / kernel stderr capture / fail-fast message 検証) — 既存パターンの応用範疇 |
