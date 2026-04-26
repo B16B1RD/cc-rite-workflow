@@ -56,16 +56,25 @@ LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 # call sites is staged across #3-#5; this script is the single API surface.
 
 # Resolve session_id from --session arg, or fall back to .rite-session-id file.
-# Validates UUID format (rejects tampered or corrupt content).
+# Validates UUID format (rejects tampered or corrupt content) on **both** paths:
+# the file-read path AND the --session arg path. Validation parity prevents
+# path traversal via `--session "../foo"` (review #686 F-01).
 _resolve_session_id() {
   local provided_sid="${1:-}"
   if [[ -n "$provided_sid" ]]; then
-    echo "$provided_sid"
-    return 0
+    if [[ "$provided_sid" =~ ^[0-9a-f-]{36}$ ]]; then
+      echo "$provided_sid"
+      return 0
+    fi
+    # Reject malformed --session arg (non-UUID input could escape .rite/sessions/).
+    # Fail-fast rather than legacy fallback: silent fallback would hide the spec
+    # drift and let the caller think a per-session file was created.
+    echo "ERROR: invalid session_id format: '$provided_sid' (expected UUID ^[0-9a-f-]{36}\$)" >&2
+    return 1
   fi
   local sid_file="$STATE_ROOT/.rite-session-id"
   local sid
-  sid=$(cat "$sid_file" 2>/dev/null | tr -d '[:space:]') || sid=""
+  sid=$(tr -d '[:space:]' < "$sid_file" 2>/dev/null) || sid=""
   if [[ -n "$sid" && ! "$sid" =~ ^[0-9a-f-]{36}$ ]]; then
     sid=""
   fi
@@ -152,7 +161,9 @@ done
 # session_id is needed for both create/patch/increment to route writes to the
 # session-owned file when schema_version=2. patch/increment auto-read from
 # .rite-session-id when --session is not provided (caller-side simplification).
-SESSION=$(_resolve_session_id "$SESSION")
+if ! SESSION=$(_resolve_session_id "$SESSION"); then
+  exit 1
+fi
 SCHEMA_VERSION=$(_resolve_schema_version)
 if [[ "$LEGACY_MODE" == "true" ]]; then
   EFFECTIVE_SCHEMA_VERSION="1"
@@ -161,11 +172,23 @@ else
 fi
 FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MODE" "$SESSION")
 
-# Ensure parent directory exists for the new format. mkdir -p is idempotent and
-# silently succeeds if already present. Failure (e.g., permission denied) is
-# surfaced by the subsequent mktemp/mv path.
-if [[ "$EFFECTIVE_SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION" ]] && [[ "$LEGACY_MODE" != "true" ]]; then
-  mkdir -p "$STATE_ROOT/.rite/sessions" 2>/dev/null || true
+# Ensure parent directory exists for the new format. The path-based check below
+# is the single source of truth — `_resolve_session_state_path` already encodes
+# the (schema_version, legacy_mode, session_id) decision, so we just compare the
+# resolved path to the legacy fallback (review #686 F-04). Failures surface via
+# `_log_flow_diag` (symmetric with mv-failure path) rather than being silently
+# suppressed (review #686 F-05).
+if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
+  _flow_state_dir=$(dirname "$FLOW_STATE")
+  if ! mkdir -p "$_flow_state_dir" 2>/dev/null; then
+    # _log_flow_diag is defined later in the file (line ~135); inline the diag
+    # write here because we exit before reaching that definition's call sites.
+    _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+    echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] flow_state_mkdir_failed path=$_flow_state_dir" >> "$_diag_file" 2>/dev/null || true
+    echo "ERROR: failed to create $_flow_state_dir (permission denied / disk full / parent is a regular file?)" >&2
+    exit 1
+  fi
+  unset _flow_state_dir
 fi
 
 # --- Validation ---
@@ -253,12 +276,15 @@ case "$MODE" in
     # When the file exists but is corrupt, fail-fast — silently treating corruption
     # as a cold start would erase the prior phase and effectively bypass the
     # whitelist for the next transition (error-handling CRITICAL #2).
+    # Error messages reference $FLOW_STATE (the resolved path) rather than the
+    # legacy literal `.rite-flow-state` so users running on schema_version=2
+    # see the actual per-session path (review #686 F-06).
     PREV_PHASE=""
     if [[ -f "$FLOW_STATE" ]]; then
       if [[ ! -s "$FLOW_STATE" ]]; then
-        echo "ERROR: .rite-flow-state exists but is empty ($FLOW_STATE)" >&2
+        echo "ERROR: flow-state file exists but is empty: $FLOW_STATE" >&2
         echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
-        echo "  対処: .rite-flow-state を /rite:resume で復旧するか、既存ファイルを削除してから再度 /rite:issue:start を実行" >&2
+        echo "  対処: $FLOW_STATE を /rite:resume で復旧するか、既存ファイルを削除してから再度 /rite:issue:start を実行" >&2
         exit 1
       fi
       # Validate JSON parse; distinguish "missing .phase" (acceptable → "") from
@@ -267,10 +293,10 @@ case "$MODE" in
       if PREV_PHASE=$(jq -r '.phase // ""' "$FLOW_STATE" 2>"${_jq_err:-/dev/null}"); then
         : # jq ok
       else
-        echo "ERROR: .rite-flow-state parse failed ($FLOW_STATE)" >&2
+        echo "ERROR: flow-state file parse failed: $FLOW_STATE" >&2
         [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
         echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
-        echo "  対処: 既存の .rite-flow-state を確認し、必要なら /rite:resume で復旧してください" >&2
+        echo "  対処: $FLOW_STATE を確認し、必要なら /rite:resume で復旧してください" >&2
         [ -n "$_jq_err" ] && rm -f "$_jq_err"
         exit 1
       fi
@@ -295,10 +321,15 @@ case "$MODE" in
     # Migration 検出条件「schema_version キー無 or < 2」(design doc Migration 戦略) と整合させる。
     # legacy mode では schema_version field を含めず、旧形式 reader (#3-#5 移行前の hook 群) との
     # bytewise 互換を保つ。
+    #
+    # DRY (review #686 F-02): 旧実装は 11 フィールドの object literal を if/else で全コピーしており、
+    # 将来の field 追加で片方を更新し忘れる drift リスクがあった。共通 base を 1 か所に定義し、
+    # 新形式は jq の object merge `+` で `schema_version: 2` を prepend する。
+    _create_base='{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}'
     if [[ "$EFFECTIVE_SCHEMA_VERSION" == "2" ]]; then
-      _create_filter='{schema_version: 2, active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}'
+      _create_filter="{schema_version: 2} + $_create_base"
     else
-      _create_filter='{active: $active, issue_number: $issue, branch: $branch, phase: $phase, previous_phase: $prev_phase, pr_number: $pr, parent_issue_number: $parent_issue, next_action: $next, updated_at: $ts, session_id: $sid, last_synced_phase: ""}'
+      _create_filter="$_create_base"
     fi
     if jq -n \
       --argjson active "$ACTIVE" \

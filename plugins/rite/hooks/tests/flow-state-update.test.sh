@@ -61,7 +61,13 @@ cleanup() {
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
 }
+# Signal-specific traps mirror flow-state-update.sh (review #686 F-09): EXIT
+# alone leaks /tmp/tmp.XXXX TEST_DIRs when the run is interrupted with Ctrl+C
+# or killed externally. POSIX exit codes per BSD/Linux convention.
 trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 echo "=== flow-state-update.sh tests (multi-state API #678) ==="
 echo ""
@@ -110,10 +116,20 @@ if [ -f "$NEW" ]; then
 fi
 
 # --------------------------------------------------------------------------
-# T-LOCAL-2 / AC-LOCAL-2: two parallel sessions keep files independent
+# T-LOCAL-2 / AC-LOCAL-2: two sessions keep state independent
+#
+# Coverage strategy (review #686 F-07): AC-LOCAL-2 says "並行 2 session" but
+# verifies state independence regardless of timing. This test combines:
+#   (a) sequential interleave  — A.create → B.create → B.patch — proves that
+#       per-session paths route writes independently.
+#   (b) concurrent create      — A.create & B.create wait — proves that the
+#       mkdir/mktemp/mv sequence has no race against a concurrent peer hitting
+#       the same `.rite/sessions/` parent dir.
+# Sub-second timing on (b) is best-effort (depends on host scheduler), but
+# both files MUST exist after the wait regardless of execution order.
 # --------------------------------------------------------------------------
 echo ""
-echo "T-LOCAL-2 (AC-LOCAL-2): parallel sessions keep state independent"
+echo "T-LOCAL-2 (AC-LOCAL-2): sessions keep state independent (sequential interleave)"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD" 2
 SID_A="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -130,7 +146,7 @@ write_session_id "$TD" "$SID_B"
 A="$TD/.rite/sessions/$SID_A.flow-state"
 B="$TD/.rite/sessions/$SID_B.flow-state"
 if [ -f "$A" ] && [ -f "$B" ]; then
-  pass "both session files created"
+  pass "both session files created (sequential interleave)"
 else
   fail "session files missing: a=$([ -f "$A" ] && echo y || echo n) b=$([ -f "$B" ] && echo y || echo n)"
 fi
@@ -149,6 +165,39 @@ if [ "$(jq -r '.phase' "$A")" = "phase_a" ] && [ "$(jq -r '.phase' "$B")" = "pha
   pass "patch on session B leaves session A untouched"
 else
   fail "isolation violated: a=$(jq -r '.phase' "$A") b=$(jq -r '.phase' "$B")"
+fi
+
+# (b) Concurrent create — both creates fire in parallel & wait for both PIDs.
+# Tests the mkdir/mktemp/mv pipeline against a concurrent peer hitting the same
+# .rite/sessions/ parent dir. Per-session paths are structurally race-free, but
+# the assertion is that BOTH files exist regardless of completion order.
+echo ""
+echo "T-LOCAL-2 (concurrent create): two sessions create in parallel with wait"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+SID_C="cccccccc-cccc-cccc-cccc-cccccccccccc"
+SID_D="dddddddd-dddd-dddd-dddd-dddddddddddd"
+
+# Each session passes its UUID via --session (avoids .rite-session-id race).
+(cd "$TD" && bash "$HOOK" create --session "$SID_C" \
+  --phase "phase_c" --issue 1 --branch "bc" --pr 0 --next "nc" >/dev/null 2>&1) &
+PID_C=$!
+(cd "$TD" && bash "$HOOK" create --session "$SID_D" \
+  --phase "phase_d" --issue 2 --branch "bd" --pr 0 --next "nd" >/dev/null 2>&1) &
+PID_D=$!
+wait "$PID_C" "$PID_D"
+
+C="$TD/.rite/sessions/$SID_C.flow-state"
+D="$TD/.rite/sessions/$SID_D.flow-state"
+if [ -f "$C" ] && [ -f "$D" ]; then
+  pass "both session files created under concurrent execution"
+else
+  fail "concurrent create lost a file: c=$([ -f "$C" ] && echo y || echo n) d=$([ -f "$D" ] && echo y || echo n)"
+fi
+if [ "$(jq -r '.phase' "$C" 2>/dev/null)" = "phase_c" ] && [ "$(jq -r '.phase' "$D" 2>/dev/null)" = "phase_d" ]; then
+  pass "concurrent sessions retain independent phase values"
+else
+  fail "concurrent phase mismatch: c=$(jq -r '.phase' "$C" 2>/dev/null) d=$(jq -r '.phase' "$D" 2>/dev/null)"
 fi
 
 # --------------------------------------------------------------------------
@@ -186,10 +235,24 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# T-LOCAL-4 / AC-9: atomic write integrity — original preserved on jq failure
+# T-LOCAL-4 / AC-9: corrupt-state fail-fast preserves no-orphan invariant
+#
+# AC-9 spec scope (review #686 F-08): The literal "atomic write 中の SIGKILL →
+# state 破壊なし" cannot be reproduced deterministically in bash (kill -9 timing
+# during a subshell is racy). We split the spec into two verifiable pieces:
+#
+#   1. mktemp + mv pattern (atomicity guarantee) — verified by inspection of
+#      flow-state-update.sh (mktemp `${FLOW_STATE}.XXXXXX` + `mv`); the kernel
+#      rename(2) is atomic, so a SIGKILL between mv-call boundary keeps the
+#      target either fully old or fully new.
+#   2. Fail-fast on corrupt input — when the script detects partial-write or
+#      corruption (jq parse error in patch / create read), it exits non-zero
+#      WITHOUT mv-ing a partial temp into the target. This is the deterministic
+#      half of AC-9 that this test covers (Part A: patch mode, Part B: create
+#      mode). True SIGKILL stress is left to manual integration testing.
 # --------------------------------------------------------------------------
 echo ""
-echo "T-LOCAL-4 (AC-9): atomic write keeps original intact when jq fails"
+echo "T-LOCAL-4 (AC-9 part A): patch mode fail-fast on corrupt JSON, no orphan temp"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD" 2
 SID="33333333-3333-3333-3333-333333333333"
@@ -198,19 +261,17 @@ write_session_id "$TD" "$SID"
 (cd "$TD" && bash "$HOOK" create \
   --phase "intact_phase" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>&1)
 TARGET="$TD/.rite/sessions/$SID.flow-state"
-ORIG_HASH=$(sha256sum "$TARGET" | awk '{print $1}')
 
-# Corrupt the file to make jq parse fail (simulates partial-write recovery)
-# patch mode reads the file via jq; on parse failure the script must exit
-# without mv-ing a partial temp into the target.
+# Corrupt the file to make jq parse fail. patch mode reads the file via jq;
+# on parse failure the script must exit without mv-ing a partial temp into
+# the target.
 echo "{not valid json" > "$TARGET"
 set +e
 (cd "$TD" && bash "$HOOK" patch --phase "wont_apply" --next "n2" >/dev/null 2>&1)
 rc=$?
 set -e
 
-# After jq failure: TARGET stays as corrupted content (we corrupted it deliberately)
-# AND no orphan .rite-flow-state.XXXXXX temp remains.
+# Post-conditions: rc != 0 AND no orphan ${FLOW_STATE}.XXXXXX temp remains.
 orphan=$(ls "$TD/.rite/sessions/" 2>/dev/null | grep -E '\.flow-state\.[a-zA-Z0-9]{6,}$' || true)
 if [ "$rc" -ne 0 ] && [ -z "$orphan" ]; then
   pass "patch mode exits non-zero on jq failure with no temp orphan"
@@ -218,8 +279,12 @@ else
   fail "rc=$rc orphan='$orphan'"
 fi
 
-# Restore valid JSON, then test create-mode behavior on simulated mv failure
-# by making the parent directory read-only.
+# Part B: create mode fail-fast on corrupt state preserves file content.
+# Verifies that when create mode encounters a corrupt JSON (jq parse fail in
+# PREV_PHASE capture), it exits 1 BEFORE writing — the corrupted bytes remain
+# untouched (no silent overwrite that would erase forensic evidence).
+echo ""
+echo "T-LOCAL-4 (AC-9 part B): create mode fail-fast on corrupt state preserves bytes"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD" 2
 SID="44444444-4444-4444-4444-444444444444"
@@ -227,8 +292,6 @@ write_session_id "$TD" "$SID"
 (cd "$TD" && bash "$HOOK" create \
   --phase "v1" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>&1)
 TARGET="$TD/.rite/sessions/$SID.flow-state"
-V1_HASH=$(sha256sum "$TARGET" | awk '{print $1}')
-V1_PHASE=$(jq -r '.phase' "$TARGET")
 
 # Corrupt the existing state to a non-JSON form. create mode requires reading
 # .phase via jq; parse failure must fail-fast without overwriting the file.
