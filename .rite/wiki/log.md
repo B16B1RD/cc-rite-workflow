@@ -201,3 +201,4 @@
 | 2026-04-25T17:50:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-prose-code-sync.md | PR #661 cycle 1/2 review/fix を統合 (ANCHOR comment の prose 内 bash 引数 enumeration 同期漏れ、distributed-fix-drift-check.sh Pattern-2 を ANCHOR comment 内 prose enumeration へ拡張する canonical 提案) |
 | 2026-04-25T17:55:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=48, broken_refs=0 |
 | 2026-04-26T00:55:00+00:00 | ingest:skip | raw/reviews/20260426T002610Z-pr-670.md | PR #670 review findings (HIGH 2 / MEDIUM 2) は test カバレッジの個別漏れ (silent-fail stderr assertion / retry-count after 3 attempts / awk pattern 形式 test 未網羅) で、既存 test-false-positive-early-exit / mktemp-failure-surface-warning / stderr-selective-surface-over-truncate と直接の抽象化レベルが噛み合わず独立経験則としての特異性が低いため skip |
+| 2026-04-26T00:56:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=49, broken_refs=0 |
