@@ -286,7 +286,9 @@ write_session_id "$SBX" "$SID"
 # truncated JSON (closing brace 欠落)
 mkdir -p "$SBX/.rite/sessions"
 printf '%s' '{"phase":"corrupt' > "$SBX/.rite/sessions/${SID}.flow-state"
-result=$(run_helper "$SBX" --field phase --default "corrupt_default")
+# verified-review cycle 35 fix F-09 LOW: state-read.sh now emits jq parse error as WARNING on stderr.
+# Use stdout-only capture to assert just the DEFAULT return value.
+result=$(cd "$SBX" && bash "$HOOK" --field phase --default "corrupt_default" 2>/dev/null)
 assert_eq "TC-9.1: corrupt JSON は DEFAULT を返す (silent fallback)" "corrupt_default" "$result"
 rm -rf "$SBX"
 
@@ -356,7 +358,9 @@ write_session_id "$SBX" "$SID"
 mkdir -p "$SBX/.rite/sessions"
 # 完全に非 JSON (plain text) — jq は parse error で stderr 出力 + exit 非 0 → || で DEFAULT
 printf 'this is not json at all\nplain text content\n' > "$SBX/.rite/sessions/${SID}.flow-state"
-result=$(run_helper "$SBX" --field phase --default "non_json_default")
+# verified-review cycle 35 fix F-09 LOW: state-read.sh now emits jq parse error as WARNING on stderr.
+# Use stdout-only capture to assert just the DEFAULT return value.
+result=$(cd "$SBX" && bash "$HOOK" --field phase --default "non_json_default" 2>/dev/null)
 assert_eq "TC-13.1: 非 JSON ファイルは DEFAULT を返す (jq parse error fallback)" "non_json_default" "$result"
 rm -rf "$SBX"
 
@@ -441,6 +445,50 @@ write_session_id "$SBX" "$SID"
 write_legacy "$SBX" "{\"phase\":\"same_session_legacy_phase\",\"session_id\":\"${SID}\"}"
 result=$(run_helper "$SBX" --field phase --default "")
 assert_eq "TC-15.B.1: 同一 session_id の legacy → legacy 値返却 (legitimate take-over)" "same_session_legacy_phase" "$result"
+rm -rf "$SBX"
+
+# --- TC-15.C: reader-side legacy_state_corrupt sentinel emit (verified-review cycle 35 F-06 MEDIUM) ---
+# 背景: cycle 35 review で `_resolve-cross-session-guard.sh` の `corrupt:*` 経路 (legacy_state_corrupt
+# sentinel emit path) が新規 4 test file のいずれでも pin されていなかった。これにより F-01/F-02/F-03 の
+# CRITICAL/HIGH バグが cycle 28-34 の review-fix loop で検出されず残存していた構造的盲点。本 TC は
+# `corrupt:*` 分類経路全体を 3 重 assert で pin する (DEFAULT 返却 + sentinel emit + jq_rc 非ゼロ)。
+echo "TC-15.C: reader-side legacy corrupt JSON → legacy_state_corrupt sentinel emit + DEFAULT 返却"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+SID="22222222-3333-4444-5555-666666666666"
+write_session_id "$SBX" "$SID"
+# per-session file 不在、legacy が corrupt JSON (truncated, size > 0)
+printf '{"phase":"corrupt_payload' > "$SBX/.rite-flow-state"
+stdout_path=$(mktemp /tmp/rite-tc15c-stdout-XXXXXX)
+stderr_path=$(mktemp /tmp/rite-tc15c-stderr-XXXXXX)
+(cd "$SBX" && bash "$HOOK" --field phase --default "DEFAULT_C") >"$stdout_path" 2>"$stderr_path"
+result=$(cat "$stdout_path")
+assert_eq "TC-15.C.1: corrupt legacy + per-session 不在 → DEFAULT 返却" "DEFAULT_C" "$result"
+# stderr に legacy_state_corrupt sentinel が emit されることを確認 (F-01 fix revert test)
+if grep -q "WORKFLOW_INCIDENT=1" "$stderr_path" \
+    && grep -q "type=legacy_state_corrupt" "$stderr_path" \
+    && grep -q "layer=reader" "$stderr_path"; then
+  echo "  ✅ TC-15.C.2: legacy_state_corrupt sentinel emit (F-01/F-02 fix revert test)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-15.C.2: legacy_state_corrupt sentinel emit が確認できません"
+  echo "     stderr:"
+  sed 's/^/       /' "$stderr_path"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-15.C.2: legacy_state_corrupt sentinel emit")
+fi
+# jq_rc が実 jq exit code (>= 1) を含むことを確認 (F-03 fix の revert test)
+if grep -qE "jq_rc=[1-9]" "$stderr_path"; then
+  echo "  ✅ TC-15.C.3: jq_rc が実 jq exit code (>= 1) を含む (F-03 fix revert test)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-15.C.3: jq_rc=0 または欠落 (F-03 fix が revert された可能性)"
+  echo "     stderr (relevant lines):"
+  grep "WORKFLOW_INCIDENT" "$stderr_path" | sed 's/^/       /'
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-15.C.3: jq_rc must be >= 1 for corrupt JSON")
+fi
+rm -f "$stdout_path" "$stderr_path"
 rm -rf "$SBX"
 
 # --- Summary ---

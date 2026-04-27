@@ -54,22 +54,61 @@ if [ ! -f "$LEGACY_PATH" ] || [ ! -s "$LEGACY_PATH" ]; then
 fi
 
 # Capture jq stderr separately so the caller can surface real IO errors.
+# verified-review cycle 35 fix (F-05 MEDIUM): canonical signal-specific trap with
+# variable-first-declared / trap-set-second / mktemp-third ordering. Race window between
+# mktemp success and trap installation is closed; SIGINT/SIGTERM/SIGHUP propagate
+# POSIX-conventional exit codes (130/143/129).
+jq_err=""
+_rite_cross_session_cleanup() {
+  rm -f "${jq_err:-}"
+}
+trap 'rc=$?; _rite_cross_session_cleanup; exit $rc' EXIT
+trap '_rite_cross_session_cleanup; exit 130' INT
+trap '_rite_cross_session_cleanup; exit 143' TERM
+trap '_rite_cross_session_cleanup; exit 129' HUP
 jq_err=$(mktemp /tmp/rite-cross-session-jq-err-XXXXXX 2>/dev/null) || jq_err=""
-trap 'rm -f "${jq_err:-}"' EXIT INT TERM HUP
 
+# verified-review cycle 35 fix (F-03 HIGH): jq_rc capture must be inside the `else`
+# branch. The previous structure `if cmd; then ...; exit 0; fi; jq_rc=$?` always
+# captured 0 because bash's `if` statement's failed branch leaves `$?` at 0 (the
+# failing command's exit code is discarded once `if` evaluates the condition).
+# Moving rc capture into the `else` branch yields the actual jq exit code (4=parse
+# error, 5=I/O error, etc.) which downstream consumers (state-read.sh /
+# flow-state-update.sh) embed in the WORKFLOW_INCIDENT details for diagnosis.
+#
+# Empirical evidence (cycle 35 review): `printf '{corrupt' > /tmp/x && bash _resolve-cross-session-guard.sh /tmp/x <sid>`
+# previously produced `corrupt:0` (wrong); after this fix it produces `corrupt:5` (correct, jq parse error rc).
+#
+# verified-review cycle 35 fix (F-01/F-02 CRITICAL related): stop emitting `cat "$jq_err" >&2` here.
+# The caller (`state-read.sh` / `flow-state-update.sh`) was using `2>&1` to combine stdout/stderr,
+# so any jq parse error message printed here would be merged into the `classification` string and
+# break the `case "$classification" in corrupt:*) ...` match — silently routing to the defensive
+# `*)` arm and suppressing the `legacy_state_corrupt` workflow incident sentinel emit. We now keep
+# stderr clean so callers can use `2>/dev/null` (also fixed in cycle 35) without losing the rc.
+# If a future debug session needs the jq parse error text, the caller can capture it via a
+# separate stderr tempfile (state-read.sh:203 / flow-state-update.sh adopt this pattern).
 if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${jq_err:-/dev/null}"); then
   if [ -z "$legacy_sid" ]; then
     printf 'empty'
   elif [ "$legacy_sid" = "$CURRENT_SID" ]; then
     printf 'same'
   else
-    printf 'foreign:%s' "$legacy_sid"
+    # verified-review cycle 35 fix (F-10 LOW security): validate legacy_sid as
+    # UUID via _resolve-session-id.sh. legacy_sid is read from an untrusted file
+    # (could contain newline / shell metachar / huge payload). The downstream
+    # workflow-incident-emit.sh already sanitizes, but this helper's API contract
+    # promises `foreign:<UUID>` so we enforce it here as defense-in-depth.
+    if validated_legacy=$(bash "$(dirname "${BASH_SOURCE[0]}")/_resolve-session-id.sh" "$legacy_sid" 2>/dev/null); then
+      printf 'foreign:%s' "$validated_legacy"
+    else
+      # legacy session_id is not a valid UUID (corrupt / tampered / legacy schema).
+      # Treat as corrupt (rc=1 sentinel for non-jq-failure invalid format).
+      printf 'corrupt:1'
+    fi
   fi
   exit 0
+else
+  jq_rc=$?
+  printf 'corrupt:%d' "$jq_rc"
+  exit 0
 fi
-
-# jq parse failed — cannot verify session ownership; caller must refuse take-over.
-jq_rc=$?
-[ -n "$jq_err" ] && [ -s "$jq_err" ] && cat "$jq_err" >&2
-printf 'corrupt:%d' "$jq_rc"
-exit 0

@@ -2315,8 +2315,10 @@ When this is a **re-review after a fix** (verification mode or `loop_count >= 1`
 **Step 1**: Determine if attribution is applicable:
 
 ```bash
-# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
-if ! loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0); then
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+if loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0); then
+  :
+else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field loop_count in Phase 5.3.8" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_3_8_loop_count; rc=$rc" >&2

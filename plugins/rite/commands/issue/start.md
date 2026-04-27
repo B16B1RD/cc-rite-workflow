@@ -486,12 +486,16 @@ fi
 > **⚠️ Why `state-read.sh`, not direct `jq` on `.rite-flow-state`** (Issue #687 AC-4): When `flow_state.schema_version=2`, the active state is written to `.rite/sessions/{session_id}.flow-state`, while `.rite-flow-state` may retain another session's residue. Reading the legacy file inline returns stale residue (observed in #687 reproduction: `phase5_post_stop_hook` from a prior session leaked into a fresh Phase 3 check). `state-read.sh` resolves the per-session file first and falls back to legacy only when per-session is absent.
 
 ```bash
-# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
-# 旧実装は `curr=$(bash ... || true)` 相当で helper が exit 1/127 で死ぬと curr="" となり、
-# 後続判定が「phase 不整合」と誤分類してミスリーディングな ERROR を出す silent regression があった。
-# helper 起動失敗 (helper script 欠落 / permission / 内部致命的エラー) と「pre-condition 検査の失敗」を
-# retained flag で区別可能にする。
-if ! curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern instead of if! pattern.
+# Bash spec: `if ! cmd; then rc=$?` always yields rc=0 because `!` negates the
+# pipeline and `then` branch sees the negation result (always 0). Use `if cmd; then :; else rc=$?; fi`
+# to capture the actual exit code. Empirical: `bash -c 'if ! curr=$(exit 42); then rc=$?; echo $rc; fi'` → 0.
+# This invariant ("helper 起動失敗 と pre-condition 失敗を区別可能") was the core reason
+# state-read.sh introduction in Issue #687 AC-4. Symmetric with work-memory-update.sh:97-104 / 177-183 / 184-190
+# which use the correct `if cmd; then :; else rc=$?; fi` pattern.
+if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+  :
+else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 3 pre-condition" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase3_pre_condition; rc=$rc" >&2
@@ -1692,8 +1696,10 @@ WM_SOURCE="ready" \
 **Pre-condition check** (#490 AC-5): Verify that Phase 5.5 (Ready) completed. The current `.phase` must be `phase5_post_ready` (the Mandatory After 5.5 marker). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot which may hold another session's residue.
 
 ```bash
-# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
-if ! curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+  :
+else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.5.1 pre-condition" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_1_pre_condition; rc=$rc" >&2
@@ -1784,7 +1790,7 @@ Otherwise:
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
 | `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0` (Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot). This counts re-entries to Phase 5.1 from checklist failures |
+| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. Use the same fail-fast pattern as the 4 callers in Phase 3 / 5.5.1 / 5.6 / 5.7 (verified-review cycle 35 F-12 LOW): `if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) for --field implementation_round — metrics output skipped" >&2; val=""; fi`. If state-read.sh launch fails, skip the metrics output for this field instead of silently treating the value as `"0"` (which would mis-classify as "no deviation"). Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot. This counts re-entries to Phase 5.1 from checklist failures |
 
 **Step 2**: Evaluate thresholds.
 
@@ -1936,8 +1942,10 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 If `metrics.enabled: false` in rite-config.yml, Phase 5.5.2 must still write the `phase5_post_metrics` marker (the phase body may short-circuit Steps 1-5 below, but the Mandatory After block must run unconditionally — see Phase 5.5.2 Skip Steps note).
 
 ```bash
-# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
-if ! curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+  :
+else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.6 pre-condition" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
@@ -2069,8 +2077,10 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 **Condition**: `parent_issue_number` is non-zero in flow-state. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot:
 
 ```bash
-# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
-if ! parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+  :
+else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.7" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_7_parent_issue; rc=$rc" >&2
@@ -2192,7 +2202,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 > **Placement**: This block runs **after** Phase 5.7 completes **or after Phase 5.6** when no parent Issue was identified in Phase 1.6 / 2.4.7 (the Phase 5.7 skip branch). Both paths converge here so the terminal `phase="completed", active: false` state is set exactly once, with `previous_phase` pointing at a whitelist-valid source (`phase5_post_parent_completion` or `phase5_completion`).
 
-**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When `parent_issue_number` is `0` in flow-state (read via `bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0` — Issue #687 AC-4), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
+**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When `parent_issue_number` is `0` in flow-state (verified-review cycle 35 fix F-13 LOW: this value was **already resolved in Phase 5.7 via `state-read.sh`** — see Phase 5.7 first bash block. This Workflow Termination block does **not** re-read it; the `0` here refers to the value Phase 5.7 captured in the `parent_issue_number` shell variable. The earlier "(read via ...)" wording suggested re-reading at termination time, which would be redundant and could mislead a maintainer into duplicating the fail-fast block. The Phase 5.7 read is the single source of truth — Issue #687 AC-4), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
 
 **Step 1**: Update `.rite-flow-state` to the terminal state (patch mode, preserves `previous_phase`):
 

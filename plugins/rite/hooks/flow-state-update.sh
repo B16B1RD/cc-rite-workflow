@@ -146,7 +146,13 @@ _resolve_session_state_path() {
     # 共通 helper に抽出。reader 側 (state-read.sh) と重複していた legacy.session_id 抽出 + 比較 +
     # corrupt 判定ロジックを 1 箇所に集約し、片肺更新 drift を構造的に防ぐ。
     local classification
-    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>&1) || true
+    # verified-review cycle 35 fix (F-02 CRITICAL): use 2>/dev/null instead of 2>&1.
+    # The 2>&1 was merging helper's stderr (jq parse error text) into the classification
+    # string, breaking `case "$classification" in corrupt:*) ...` matching and silently
+    # routing to the defensive `*)` arm — suppressing the `legacy_state_corrupt` sentinel
+    # emit on the writer side. Helper now keeps stderr clean (cycle 35 fix in
+    # _resolve-cross-session-guard.sh), so 2>/dev/null is safe. Symmetric with state-read.sh:119.
+    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>/dev/null) || true
     case "$classification" in
       same|empty)
         # Same session or sessionless legacy: safe to take over
@@ -158,19 +164,31 @@ _resolve_session_state_path() {
         # (caller will see --if-exists silent skip on per-session path or non-existence error,
         #  prompting create-mode init which is the correct behavior for fresh sessions)
         local legacy_sid="${classification#foreign:}"
-        bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-          --type cross_session_takeover_refused \
-          --details "layer=writer,current_sid=${sid},legacy_sid=${legacy_sid}" \
-          --root-cause-hint "legacy_belongs_to_another_session_use_create_mode" >&2 || true
+        # verified-review cycle 35 fix (F-07 MEDIUM): helper existence check + non-zero rc warning.
+        if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
+          echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=cross_session_takeover_refused details=layer=writer,current_sid=${sid},legacy_sid=${legacy_sid}" >&2
+        elif ! bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+            --type cross_session_takeover_refused \
+            --details "layer=writer,current_sid=${sid},legacy_sid=${legacy_sid}" \
+            --root-cause-hint "legacy_belongs_to_another_session_use_create_mode" >&2; then
+          local emit_rc=$?
+          echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=cross_session_takeover_refused" >&2
+        fi
         echo "WARNING: refusing to write to legacy flow-state (session_id=${legacy_sid}) from current session (sid=${sid}). Routing to per-session path (--if-exists will silent skip, create-mode will init)." >&2
         ;;
       corrupt:*)
         # jq 失敗 (corrupt JSON / IO error) → take over は不安全 (cross-session の可能性を否定できない)
         local jq_rc="${classification#corrupt:}"
-        bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-          --type legacy_state_corrupt \
-          --details "layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" \
-          --root-cause-hint "legacy_jq_parse_failed_cannot_verify_session_ownership" >&2 || true
+        # verified-review cycle 35 fix (F-07 MEDIUM): helper existence check + non-zero rc warning.
+        if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
+          echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=legacy_state_corrupt details=layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" >&2
+        elif ! bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+            --type legacy_state_corrupt \
+            --details "layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" \
+            --root-cause-hint "legacy_jq_parse_failed_cannot_verify_session_ownership" >&2; then
+          local emit_rc=$?
+          echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=legacy_state_corrupt" >&2
+        fi
         echo "WARNING: legacy flow-state ${LEGACY_FLOW_STATE} jq parse failed; routing to per-session path (create-mode will init)." >&2
         ;;
       *)
