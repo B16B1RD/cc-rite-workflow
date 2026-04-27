@@ -125,10 +125,14 @@ update_local_work_memory() {
     fi
   fi
 
-  # Read from .rite-flow-state if requested (lint pattern)
-  if [ "${WM_READ_FROM_FLOW_STATE:-false}" = "true" ] && [ -f ".rite-flow-state" ]; then
-    pr_num=$(jq -r '.pr_number // "null"' .rite-flow-state 2>/dev/null) || pr_num="null"
-    loop_cnt=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_cnt="0"
+  # Read flow-state fields if requested (lint pattern).
+  # PR #688 cycle 10 fix (F-02 HIGH AC-4 caller migration): legacy `.rite-flow-state` 直接読みを
+  # state-read.sh 経由に変更。schema_version=2 環境では state-read.sh が per-session file を解決
+  # するため、別 session の stale residue を読まなくなる。state-read.sh は per-session/legacy
+  # 両方を transparent に解決し、両方不在時は default を返すので、外側の `[ -f ]` check は不要。
+  if [ "${WM_READ_FROM_FLOW_STATE:-false}" = "true" ]; then
+    pr_num=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field pr_number --default "null") || pr_num="null"
+    loop_cnt=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field loop_count --default 0) || loop_cnt="0"
   fi
 
   local last_commit tmp_wm
