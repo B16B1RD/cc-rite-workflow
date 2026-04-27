@@ -69,10 +69,15 @@ fi
 
 # --- Resolve session_id (matches flow-state-update.sh _resolve_session_id) ---
 # UUID-format validation prevents path traversal via tampered .rite-session-id.
+# PR #688 cycle 22 fix (F-03 MEDIUM): RFC 4122 strict pattern (8-4-4-4-12 hex with hyphens at
+# fixed positions). 旧 `^[0-9a-f-]{36}$` はハイフン位置を強制せず、`aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa`
+# と同等に `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` (ハイフン無し 36 字) など RFC 4122 非準拠の
+# パターンを許容していた。本 PR の使用範囲では path traversal に到達しないが、将来 SESSION_ID を
+# 別 context (ログ / sql / curl URL 等) に流用すると spec drift で脆弱性化する future-proofing。
 SESSION_ID=""
 if [ -f "$STATE_ROOT/.rite-session-id" ]; then
   raw=$(tr -d '[:space:]' < "$STATE_ROOT/.rite-session-id" 2>/dev/null) || raw=""
-  if [[ "$raw" =~ ^[0-9a-f-]{36}$ ]]; then
+  if [[ "$raw" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
     SESSION_ID="$raw"
   fi
 fi

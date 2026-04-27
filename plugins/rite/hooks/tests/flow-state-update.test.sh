@@ -380,6 +380,39 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# T-LOCAL-5 (cycle 22 F-03 MEDIUM): RFC 4122 strict pattern validation
+# --------------------------------------------------------------------------
+# 旧 `^[0-9a-f-]{36}$` は hyphen 位置を強制せず、36 字 hex 連続 (hyphen 0 個) や hyphen 位置の
+# 異なる 36 字 hex も valid 扱いだった。cycle 22 で
+# `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` (RFC 4122 strict) に強化したため、
+# 非準拠形式が reject されることを pin する (将来 SESSION_ID を別 context で流用したときの
+# spec drift で脆弱性化を防ぐ defense-in-depth)。
+err_log_rfc1="$TD/err-rfc1.log"
+set +e
+(cd "$TD" && bash "$HOOK" create --session "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>"$err_log_rfc1")
+rc_rfc1=$?
+set -e
+if [ "$rc_rfc1" -ne 0 ] && grep -q "invalid session_id format" "$err_log_rfc1"; then
+  pass "T-LOCAL-5 (cycle 22 F-03): hyphen 無し 36 字 hex は RFC 4122 非準拠で reject"
+else
+  fail "T-LOCAL-5: hyphen 無し 36 字 hex が reject されない (RFC 4122 strict 退行): rc=$rc_rfc1"
+fi
+
+err_log_rfc2="$TD/err-rfc2.log"
+set +e
+# 9-3-4-4-12 (合計 36 字、hyphen 4 個だが位置が 8-4-4-4-12 と異なる)
+(cd "$TD" && bash "$HOOK" create --session "aaaaaaaaa-aaa-aaaa-aaaa-aaaaaaaaaaaa" \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>"$err_log_rfc2")
+rc_rfc2=$?
+set -e
+if [ "$rc_rfc2" -ne 0 ] && grep -q "invalid session_id format" "$err_log_rfc2"; then
+  pass "T-LOCAL-5 (cycle 22 F-03): hyphen 位置不正な 36 字 hex は RFC 4122 非準拠で reject"
+else
+  fail "T-LOCAL-5: hyphen 位置不正な 36 字 hex が reject されない: rc=$rc_rfc2"
+fi
+
+# --------------------------------------------------------------------------
 # Non-regression: --legacy-mode forces legacy single-file path
 # --------------------------------------------------------------------------
 echo ""

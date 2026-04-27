@@ -273,6 +273,33 @@ else
 fi
 assert_eq "TC-4.1: empty phase は patch validation で reject される (cycle 10 guard が必要な根拠)" "yes" "$rejected"
 
+# --- TC-tampered-sid: tampered .rite-session-id (non-UUID) → helper が legacy fallback で patch 成功 (cycle 22 F-01) ---
+# 旧実装は tampered content (例: `../../../etc/passwd`) を validation せずに `--session "$_sid"` として
+# 下流 flow-state-update.sh に流し、UUID validation で reject されて helper exit 1 → resume hard-abort
+# する経路を持っていた。cycle 22 修正で _sid 抽出直後に UUID validation を入れ、invalid 時は空文字に
+# 降格して legacy fallback patch (--session 引数なし) で成功するようにした。
+echo "TC-tampered-sid: tampered .rite-session-id (non-UUID) → helper が legacy fallback patch で exit 0 (cycle 22 F-01 regression guard)"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+# legacy file に valid phase を入れて patch 経路を実行可能にする (両不在 skip 経路に流れないように)
+write_legacy "$SBX" '{"phase":"phase5_lint","next_action":"continue","active":false}'
+# tampered content を .rite-session-id に書き込む (UUID validation を bypass しようとする攻撃ベクトル)
+echo "../../../etc/passwd" > "$SBX/.rite-session-id"
+helper_err=$(mktemp /tmp/rite-resume-tampered-err-XXXXXX)
+if (cd "$SBX" && bash "$HELPER" "$PLUGIN_ROOT" 2>"$helper_err"); then
+  helper_rc=0
+else
+  helper_rc=$?
+fi
+if [ "$helper_rc" -ne 0 ]; then
+  echo "  helper_err:" >&2
+  head -5 "$helper_err" | sed 's/^/    /' >&2
+fi
+rm -f "$helper_err"
+assert_eq "TC-tampered-sid.1: helper exit 0 (tampered sid は empty 扱いで legacy fallback patch 成功)" "0" "$helper_rc"
+# patch が legacy file (.rite-flow-state) に対して active=true を反映していることを確認
+final_active=$(jq -c '.active' "$SBX/.rite-flow-state" 2>/dev/null)
+assert_eq "TC-tampered-sid.2: legacy file の active が true に restored される (patch 成功の side effect)" "true" "$final_active"
+
 # --- Summary ---
 echo
 echo "─── resume-active-flag-restore.test.sh summary ──────────────────────────"

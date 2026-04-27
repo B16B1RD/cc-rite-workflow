@@ -197,6 +197,30 @@ result=$(run_helper "$SBX" --field phase --default "")
 assert_eq "TC-6.1: tampered session_id ignored, legacy used" "safe_legacy" "$result"
 rm -rf "$SBX"
 
+# --- TC-6 RFC 4122 strict (cycle 22 F-03 MEDIUM): hyphen 位置の異なる 36 字 hex も reject ---
+# 旧実装 `^[0-9a-f-]{36}$` は hyphen 位置を強制せず、36 字 hex 連続 (hyphen 0 個) も valid 扱い
+# だった。cycle 22 で `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` (RFC 4122
+# strict) に強化し、これらの非準拠形式も reject されることを pin する (将来 SESSION_ID を別 context
+# に流用したときの spec drift で脆弱性化を防ぐ defense-in-depth)。
+echo "TC-6.RFC: ハイフン無し 36 字 hex (RFC 4122 非準拠) → reject されて legacy fallback (cycle 22 F-03)"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+# 36 字 hex 連続 (旧 regex を通過するが RFC 4122 では invalid) — 1 行に書く
+echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > "$SBX/.rite-session-id"
+write_legacy "$SBX" '{"phase":"safe_legacy_rfc"}'
+result=$(run_helper "$SBX" --field phase --default "")
+assert_eq "TC-6.RFC.1: hyphen 無し 36 字 hex は reject されて legacy fallback" "safe_legacy_rfc" "$result"
+rm -rf "$SBX"
+
+# ハイフン位置が間違った 36 字 (例: 9-3-4-4-12 や 7-5-4-4-12 等) も reject
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+echo "aaaaaaaaa-aaa-aaaa-aaaa-aaaaaaaaaaaa" > "$SBX/.rite-session-id"
+write_legacy "$SBX" '{"phase":"safe_legacy_pos"}'
+result=$(run_helper "$SBX" --field phase --default "")
+assert_eq "TC-6.RFC.2: ハイフン位置不正な 36 字 hex は reject されて legacy fallback" "safe_legacy_pos" "$result"
+rm -rf "$SBX"
+
 # --- TC-7: schema_version=1 (or absent) routes directly to legacy even if SID + per-session exist ---
 echo "TC-7: schema_version=1 routes to legacy"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")

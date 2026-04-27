@@ -61,6 +61,17 @@ curr_next=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field next_action --defaul
 # `|| _sid=""` で cat 失敗 (file 不在 / permission denied 等) を吸収。
 _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
 
+# PR #688 cycle 22 fix (F-01 HIGH): tampered .rite-session-id (non-UUID) を空扱いに正規化。
+# state-read.sh:75 / flow-state-update.sh:78 と対称な「invalid → empty で legacy fallback」semantics
+# を本 helper にも適用する。これがないと tampered content (例: `../../../etc/passwd`) が
+# `--session "$_sid"` として下流 flow-state-update.sh の _resolve_session_id (provided_sid path)
+# に流入し、UUID validation で reject されて helper exit 1 → resume hard-abort する経路が成立する
+# (cycle 9-10 で修正した F-01 CRITICAL empty phase hard-abort と同類型の regression)。
+# RFC 4122 strict: 8-4-4-4-12 hex with hyphens at fixed positions。
+if [[ -n "$_sid" && ! "$_sid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+  _sid=""
+fi
+
 # PR #688 cycle 10 fix (F-01 CRITICAL): curr_phase 空文字ガード。
 # state-read.sh が空文字を返す経路 (resume.md L391 の canonical enumeration の 4 path) で
 # `flow-state-update.sh patch --phase ""` を呼ぶと、flow-state-update.sh patch mode の
@@ -80,37 +91,38 @@ fi
 # PR #688 cycle 10 fix (F-03 MEDIUM): mktemp 失敗時に WARNING を追加。`_err=""` fallback で
 # `2>"${_err:-/dev/null}"` が /dev/null に redirect される経路で flow-state-update.sh の具体的
 # 失敗原因 (`ERROR: mv failed (patch mode)` 等) が消える silent suppression 反パターンを可視化する。
+#
+# PR #688 cycle 22 fix (LOW recommendation): signal-specific trap で SIGINT/SIGTERM/SIGHUP 中断時の
+# tempfile leak を防ぐ。flow-state-update.sh:228 の `trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT HUP`
+# と統一する。Linux の /tmp 自動 cleanup でカバーされるが convention 統一のため追加。
+_err=""
+_rite_resume_active_cleanup() {
+  [ -n "${_err:-}" ] && rm -f "$_err"
+}
+trap '_rite_resume_active_cleanup' EXIT
+trap '_rite_resume_active_cleanup; exit 130' INT
+trap '_rite_resume_active_cleanup; exit 143' TERM
+trap '_rite_resume_active_cleanup; exit 129' HUP
+
 _err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX) || {
   echo "WARNING: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied?)" >&2
   echo "  影響: 次の error 発生時、flow-state-update.sh の具体的失敗原因 (mv 失敗 / UUID validation 失敗 / jq parse error 等) が表示されません" >&2
   _err=""
 }
 
-# patch 経路: sid 有無で 2 経路 (sid 有り: --session 引数あり、sid 無し: legacy fallback)
+# PR #688 cycle 22 fix (F-02 MEDIUM): sid 有無の if/else 完全 duplication を JQ_ARGS 配列パターンに統一。
+# flow-state-update.sh:374-390 で確立済の `JQ_ARGS=()` + `JQ_ARGS+=()` 条件付き append pattern と整合
+# (同 PR 内の確立済 convention に揃える)。失敗ハンドラブロック (echo / head -3 sed / rm -f / exit 1)
+# も 1 か所にまとめ、将来 `--phase` / `--next` 等の patch 引数を変更する際の片肺更新 drift を防ぐ。
+patch_args=(--phase "$curr_phase" --next "$curr_next" --active true --if-exists)
 if [ -n "$_sid" ]; then
-  if ! bash "$PLUGIN_ROOT/hooks/flow-state-update.sh" patch \
-    --phase "$curr_phase" \
-    --next "$curr_next" \
-    --active true \
-    --session "$_sid" \
-    --if-exists 2>"${_err:-/dev/null}"; then
-    echo "ERROR: failed to restore active flag, abort resume" >&2
-    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
-    [ -n "$_err" ] && rm -f "$_err"
-    exit 1
-  fi
-else
-  if ! bash "$PLUGIN_ROOT/hooks/flow-state-update.sh" patch \
-    --phase "$curr_phase" \
-    --next "$curr_next" \
-    --active true \
-    --if-exists 2>"${_err:-/dev/null}"; then
-    echo "ERROR: failed to restore active flag, abort resume" >&2
-    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
-    [ -n "$_err" ] && rm -f "$_err"
-    exit 1
-  fi
+  patch_args+=(--session "$_sid")
 fi
 
-[ -n "$_err" ] && rm -f "$_err"
+if ! bash "$PLUGIN_ROOT/hooks/flow-state-update.sh" patch "${patch_args[@]}" 2>"${_err:-/dev/null}"; then
+  echo "ERROR: failed to restore active flag, abort resume" >&2
+  [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
+  exit 1
+fi
+
 exit 0
