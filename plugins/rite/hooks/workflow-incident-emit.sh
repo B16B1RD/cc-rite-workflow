@@ -32,8 +32,15 @@
 #   1  argument validation error (missing --type or --details, invalid type)
 #
 # Notes:
-#   - Output goes to stdout (not stderr) so the line is captured into the
+#   - Output goes to stdout by default so the line is captured into the
 #     orchestrator's conversation context where Phase 5.4.4.1 grep detects it.
+#     **Caller-side stderr redirect is permitted** (verified-review cycle 38 F-07 fix):
+#     hooks like `_emit-cross-session-incident.sh` route the sentinel via stderr
+#     (`bash workflow-incident-emit.sh ... >&2`) when the caller chain prefers
+#     stderr separation (e.g., to keep stdout reserved for classification tokens).
+#     Both stdout and stderr are captured into the Bash tool result and reach the
+#     orchestrator context, so detection works either way. Future callers may
+#     redirect freely; this script does not enforce a particular stream choice.
 #   - This script never calls gh / network. It is purely a string formatter.
 #   - Detection itself happens in start.md, which reads the sentinel from
 #     conversation context and decides whether to invoke create-issue-with-projects.sh.

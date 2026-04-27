@@ -64,9 +64,11 @@ fi
 # variable-first-declared / trap-set-second / mktemp-third ordering. Race window between
 # mktemp success and trap installation is closed; SIGINT/SIGTERM/SIGHUP propagate
 # POSIX-conventional exit codes (130/143/129).
-jq_err=""
+# verified-review cycle 38 F-14 LOW: jq stderr 退避用変数を state-read.sh と同じ `_jq_err` 表記に統一
+# (旧 `jq_err` は無 prefix で他 helper の命名 `_<name>` 規約から外れていた)。trap cleanup の参照も併せて更新。
+_jq_err=""
 _rite_cross_session_cleanup() {
-  rm -f "${jq_err:-}"
+  rm -f "${_jq_err:-}"
   # verified-review cycle 36 fix (F-03 MEDIUM): explicit `return 0` per Form B doctrine
   # (bash-trap-patterns.md). `set -euo pipefail` is active (L38) — without `return 0`,
   # any future addition that returns non-zero (e.g., short-circuit `[ -n "" ] && rm`)
@@ -78,7 +80,7 @@ trap 'rc=$?; _rite_cross_session_cleanup; exit $rc' EXIT
 trap '_rite_cross_session_cleanup; exit 130' INT
 trap '_rite_cross_session_cleanup; exit 143' TERM
 trap '_rite_cross_session_cleanup; exit 129' HUP
-jq_err=$(mktemp /tmp/rite-cross-session-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+_jq_err=$(mktemp /tmp/rite-cross-session-jq-err-XXXXXX 2>/dev/null) || _jq_err=""
 
 # verified-review cycle 35 fix (F-03 HIGH): jq_rc capture must be inside the `else`
 # branch. The previous structure `if cmd; then ...; exit 0; fi; jq_rc=$?` always
@@ -91,15 +93,16 @@ jq_err=$(mktemp /tmp/rite-cross-session-jq-err-XXXXXX 2>/dev/null) || jq_err=""
 # Empirical evidence (cycle 35 review): `printf '{corrupt' > /tmp/x && bash _resolve-cross-session-guard.sh /tmp/x <sid>`
 # previously produced `corrupt:0` (wrong); after this fix it produces `corrupt:5` (correct, jq parse error rc).
 #
-# verified-review cycle 35 fix (F-01/F-02 CRITICAL related): stop emitting `cat "$jq_err" >&2` here.
+# verified-review cycle 35 fix (F-01/F-02 CRITICAL related): stop emitting `cat "$_jq_err" >&2` here.
 # The caller (`state-read.sh` / `flow-state-update.sh`) was using `2>&1` to combine stdout/stderr,
 # so any jq parse error message printed here would be merged into the `classification` string and
 # break the `case "$classification" in corrupt:*) ...` match — silently routing to the defensive
 # `*)` arm and suppressing the `legacy_state_corrupt` workflow incident sentinel emit. We now keep
 # stderr clean so callers can use `2>/dev/null` (also fixed in cycle 35) without losing the rc.
 # If a future debug session needs the jq parse error text, the caller can capture it via a
-# separate stderr tempfile (state-read.sh:203 / flow-state-update.sh adopt this pattern).
-if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${jq_err:-/dev/null}"); then
+# separate stderr tempfile (state-read.sh の `_jq_err` capture block / flow-state-update.sh の同型
+# pattern を参照。cycle 38 propagation scan: 旧 `state-read.sh:203` 行番号参照を semantic anchor に置換)。
+if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/null}"); then
   if [ -z "$legacy_sid" ]; then
     printf 'empty'
   elif [ "$legacy_sid" = "$CURRENT_SID" ]; then

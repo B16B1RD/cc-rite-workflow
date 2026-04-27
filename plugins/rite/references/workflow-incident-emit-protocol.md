@@ -1,6 +1,6 @@
 # Workflow Incident Emit Protocol
 
-Common emit protocol for workflow incident sentinels, referenced by sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`, `issue/close.md`) and hook scripts (`state-read.sh`, `flow-state-update.sh`). Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarantees to prevent drift across emit sites. cycle 36 F-09 fix expanded scope from "skill commands" to include hook scripts after `cross_session_takeover_refused` / `legacy_state_corrupt` types were added (which only hook scripts emit).
+Common emit protocol for workflow incident sentinels, referenced by sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`, `issue/close.md`) and hook scripts (`state-read.sh`, `flow-state-update.sh` — emit indirectly via helper `_emit-cross-session-incident.sh`). Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarantees to prevent drift across emit sites. cycle 36 F-09 fix expanded scope from "skill commands" to include hook scripts after `cross_session_takeover_refused` / `legacy_state_corrupt` types were added (which only hook scripts emit). cycle 38 F-18 LOW: `state-read.sh` / `flow-state-update.sh` 自身は workflow-incident-emit.sh を直接呼ばず、common helper `_emit-cross-session-incident.sh` 経由で間接 emit する経路を補記 (新規読者が grep `workflow-incident-emit.sh` で直接 caller を辿れない隘路を解消)。
 
 > **Reference**: See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full orchestrator-side specification.
 
@@ -53,7 +53,7 @@ After executing Step 1 and Step 2, the LLM should include the `sentinel_line` va
 
 The `pr/review.md` Phase 6.5.W, `pr/fix.md` Phase 4.6.W, `issue/close.md` Phase 4.4.W use an **extended pattern** that adds (a) stderr capture for emit-script failures, (b) trap-based tempfile cleanup, (c) canonical-format fallback emit (`hook_abnormal_exit`) when `workflow-incident-emit.sh` itself fails. This prevents both silent drop and orphan-format sentinels.
 
-**Pattern shape** (see `pr/review.md` for the canonical full text — 6 invocation sites total across 3 files):
+**Pattern shape** (see `pr/review.md` for the canonical full text — 15 invocation sites total across 3 files: review.md=5, fix.md=5, close.md=5; cycle 38 F-11 MEDIUM: 旧表記「6 invocation sites」を実測値で更新):
 
 ```bash
 emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
@@ -77,7 +77,7 @@ fi
 trap - EXIT INT TERM HUP
 ```
 
-**Future consolidation**: When 4+ skill files adopt the extended pattern, extract into a helper script `hooks/scripts/wiki-sentinel-emit.sh` and reduce each invocation to a 1-line call. Currently kept inline (3 files × 2 sites) to avoid premature abstraction. Drift between sites is monitored manually until the helper is justified.
+**Future consolidation**: Currently kept inline at 3 files × 5 sites = 15 sites total (review.md / fix.md / close.md, cycle 38 F-12 MEDIUM updated count from earlier "3 files × 2 sites" undercount). The original "4+ skill files adopt" extraction trigger was written when only 6 sites existed, but at 15 sites the per-site drift exposure already exceeds the helper-extraction effort cost. When the next emit-pattern change is required (e.g., a new mandatory metadata field), prefer extracting `hooks/scripts/wiki-sentinel-emit.sh` and reducing each invocation to a 1-line call rather than synchronizing 15 inline sites manually. Drift between sites is monitored via `hooks/scripts/distributed-fix-drift-check.sh` until the helper is justified.
 
 ## Configuration Boundary
 

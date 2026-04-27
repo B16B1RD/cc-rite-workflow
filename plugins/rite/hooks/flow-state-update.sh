@@ -46,14 +46,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source session ownership helper for stale detection in create mode
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
-# Helper script existence check (verified-review cycle 34 fix F-09 MEDIUM):
-# state-path-resolve.sh が unset / not executable の場合、`||` fallback で silent に cwd を採用する
-# 経路があった (deploy regression / install 不整合の silent suppression)。fail-fast に格上げする。
-if [ ! -x "$SCRIPT_DIR/state-path-resolve.sh" ]; then
-  echo "ERROR: state-path-resolve.sh not found or not executable: $SCRIPT_DIR/state-path-resolve.sh" >&2
-  echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
-  exit 1
-fi
+# Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
+# 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper を `bash <missing>`
+# invocation 経路で間接的に依存する:
+#   - `_resolve-session-id.sh` (`_resolve_session_id` 関数内の `bash $SCRIPT_DIR/_resolve-session-id.sh ...`)
+#   - `_resolve-schema-version.sh` (`_resolve_schema_version` 関数の helper 委譲)
+#   - `_resolve-cross-session-guard.sh` (`_resolve_session_state_path` 内 cross-session classification)
+#   - `_emit-cross-session-incident.sh` (`_resolve_session_state_path` の foreign:* / corrupt:* / invalid_uuid:* 各 arm)
+# それらが install 不整合 / deploy regression で missing の場合、`set -euo pipefail` の中でも
+# `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through 経路が散在する。Issue #687
+# (writer/reader 片肺更新型 silent regression) と同型の deploy regression を構造的に塞ぐため、依存する
+# 5 helper を upfront で fail-fast 検査する (state-path-resolve.sh は STATE_ROOT 解決経路で `||` fallback
+# により silent suppression する独自経路があるため特に重要)。state-read.sh の同型ブロックと writer/reader
+# 対称化。コメント内の helper 参照は semantic anchor (関数名 / case 構造名) で記述し、行番号を入れない
+# (Wiki 経験則 .rite/wiki/index.md の DRIFT-CHECK ANCHOR 原則 + 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
+for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-schema-version.sh \
+               _resolve-cross-session-guard.sh _emit-cross-session-incident.sh; do
+  if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
+    echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
+    echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
+    exit 1
+  fi
+done
+unset _helper
 
 # Resolve repository root
 # verified-review cycle 34 fix (F-07 MEDIUM): `2>/dev/null` を削除して stderr を pass-through し、
@@ -151,7 +166,9 @@ _resolve_session_state_path() {
     # string, breaking `case "$classification" in corrupt:*) ...` matching and silently
     # routing to the defensive `*)` arm — suppressing the `legacy_state_corrupt` sentinel
     # emit on the writer side. Helper now keeps stderr clean (cycle 35 fix in
-    # _resolve-cross-session-guard.sh), so 2>/dev/null is safe. Symmetric with state-read.sh:119.
+    # _resolve-cross-session-guard.sh), so 2>/dev/null is safe. Symmetric with state-read.sh's
+    # per-session resolver `case "$classification"` block (cycle 35 F-01 fix; cycle 38 propagation
+    # scan replaced hardcoded `state-read.sh:119` line reference with semantic anchor).
     classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>/dev/null) || true
     # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
     # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約 (state-read.sh と writer/reader 対称)。
@@ -303,8 +320,9 @@ case "$MODE" in
 esac
 
 # --- Atomic write ---
-# F-01 / F-04 (#636 cycle 6): repo-wide convention (stop-guard.sh:240 / session-end.sh / post-tool-wm-sync.sh 等)
-# と整合する mktemp-first + PID fallback pattern。trap で signal 別 cleanup を保護し、
+# F-01 / F-04 (#636 cycle 6): repo-wide convention (stop-guard.sh atomic-write block / session-end.sh /
+# post-tool-wm-sync.sh 等の mktemp-first + PID fallback pattern を踏襲)。trap で signal 別 cleanup を保護し、
+# (cycle 38 propagation scan: 旧 `stop-guard.sh:240` 行番号参照を semantic anchor に置換)
 # jq stdout redirect 中の SIGTERM/SIGINT/SIGHUP で orphan が残る経路を塞ぐ。
 TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_STATE="${FLOW_STATE}.tmp.$$"
 trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT HUP

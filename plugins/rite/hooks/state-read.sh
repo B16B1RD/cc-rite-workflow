@@ -37,14 +37,24 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Helper script existence check (verified-review cycle 34 fix F-09 MEDIUM):
-# state-path-resolve.sh が unset / not executable の場合、`||` fallback で silent に cwd を採用する
-# 経路があった (deploy regression / install 不整合の silent suppression)。fail-fast に格上げする。
-if [ ! -x "$SCRIPT_DIR/state-path-resolve.sh" ]; then
-  echo "ERROR: state-path-resolve.sh not found or not executable: $SCRIPT_DIR/state-path-resolve.sh" >&2
-  echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
-  exit 1
-fi
+# Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
+# 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は `_resolve-session-id.sh`
+# (L88) / `_resolve-schema-version.sh` (L97) / `_resolve-cross-session-guard.sh` (L119) /
+# `_emit-cross-session-incident.sh` (L130/137/145) も `bash <missing>` invocation 経路で間接的に依存
+# する。それらが install 不整合 / deploy regression で missing の場合、bash は exit 127 を返すが
+# `set -euo pipefail` の中でも `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through
+# 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
+# 構造的に塞ぐため、依存する 5 helper を upfront で fail-fast 検査する (state-path-resolve.sh は
+# `||` fallback で silent suppression する独自経路があるため特に重要)。
+for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-schema-version.sh \
+               _resolve-cross-session-guard.sh _emit-cross-session-incident.sh; do
+  if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
+    echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
+    echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
+    exit 1
+  fi
+done
+unset _helper
 
 # Resolve repository root via the existing helper (single SoT).
 # `||` fallback は state-path-resolve.sh が将来 non-zero return する場合の defensive guard。
@@ -208,7 +218,13 @@ esac
 # verified-review cycle 35 fix (F-09 LOW): expose jq stderr via tempfile instead of suppressing
 # with 2>/dev/null. Previous behavior swallowed jq parse errors silently, making corrupt JSON
 # detection impossible to debug (operator could not distinguish "field absent" from
-# "file corrupt"). Symmetric with state-read.sh L58 (cycle 33 F-04 / cycle 34 F-07 fixes).
+# "file corrupt"). Symmetric with `_resolve-cross-session-guard.sh`'s jq stderr capture pattern
+# (cycle 33 F-04 / cycle 34 F-07 fixes).
+# verified-review cycle 38 F-04 MEDIUM: 旧コメントは「Symmetric with state-read.sh L58」と本ファイル自身
+# の `--field arg parser` ブロック (jq stderr capture とは無関係) を誤参照していた self-referential drift。
+# 意図したのは `_resolve-cross-session-guard.sh` の jq stderr capture 経路 (`legacy_sid=$(jq ... 2>"$jq_err")`)
+# で、cycle 33 F-04 / cycle 34 F-07 fix 系列はそちらのパターンを確立した。本 PR が警戒する
+# "self-referential drift fractal pattern" の再発を修正。
 #
 # verified-review cycle 36 fix (F-15 LOW security): canonical signal-specific trap pattern with
 # variable-first-declared / trap-set-second / mktemp-third ordering — symmetric with
@@ -224,7 +240,17 @@ trap 'rc=$?; _rite_state_read_jq_cleanup; exit $rc' EXIT
 trap '_rite_state_read_jq_cleanup; exit 130' INT
 trap '_rite_state_read_jq_cleanup; exit 143' TERM
 trap '_rite_state_read_jq_cleanup; exit 129' HUP
-_jq_err=$(mktemp /tmp/rite-state-read-jq-err-XXXXXX 2>/dev/null) || _jq_err=""
+# verified-review cycle 38 F-06 MEDIUM: mktemp 失敗時に WARNING emit。
+# 旧実装は `2>/dev/null || _jq_err=""` で mktemp 失敗 (/tmp full / permission denied / SELinux deny) を
+# silent fallback し、後続の `2>"${_jq_err:-/dev/null}"` で jq stderr が `/dev/null` に redirect される
+# 二重 silent failure になっていた (jq 失敗時の `head -3 _jq_err` 観測経路が無効化される)。
+# resume-active-flag-restore.sh の mktemp 失敗 WARNING 経路と writer/reader 対称化。
+if ! _jq_err=$(mktemp /tmp/rite-state-read-jq-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: state-read.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
+  echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)" >&2
+  echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
+  _jq_err=""
+fi
 if value=$(jq -r --arg default "$DEFAULT" ".${FIELD} // \$default" "$STATE_FILE" 2>"${_jq_err:-/dev/null}"); then
   :
 else

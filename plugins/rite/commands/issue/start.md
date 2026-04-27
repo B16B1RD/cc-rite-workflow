@@ -491,8 +491,14 @@ fi
 # pipeline and `then` branch sees the negation result (always 0). Use `if cmd; then :; else rc=$?; fi`
 # to capture the actual exit code. Empirical: `bash -c 'if ! curr=$(exit 42); then rc=$?; echo $rc; fi'` → 0.
 # This invariant ("helper 起動失敗 と pre-condition 失敗を区別可能") was the core reason
-# state-read.sh introduction in Issue #687 AC-4. Symmetric with work-memory-update.sh:97-104 / 177-183 / 184-190
-# which use the correct `if cmd; then :; else rc=$?; fi` pattern.
+# state-read.sh introduction in Issue #687 AC-4. Symmetric with work-memory-update.sh の
+# `update_local_work_memory` 関数内 `_phase` / `pr_num` / `loop_cnt` capture blocks
+# (canonical `if cmd; then :; else rc=$?; fi` pattern を共有)。
+# verified-review cycle 38 F-10 MEDIUM: 旧コメント `work-memory-update.sh:97-104 / 177-183 / 184-190` の
+# 行番号参照は Wiki 経験則「DRIFT-CHECK ANCHOR は semantic name 参照で記述する — line 番号禁止」
+# (.rite/wiki/index.md) に違反し、function 内の挿入で immediately drift する fragile pattern だった。
+# 関数名 `update_local_work_memory` + capture target 変数名 (`_phase` / `pr_num` / `loop_cnt`) で参照する
+# semantic anchor 形式に置換した (resume.md / 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
   :
 else
@@ -1790,7 +1796,7 @@ Otherwise:
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
 | `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. Use the same fail-fast pattern as the 6 caller sites total (4 in this file at Phase 3 / 5.5.1 / 5.6 / 5.7, plus 2 in implement.md Phase 5.1.2 / pr/review.md Phase 5.3.8) — see Phase 3 pre-condition for the canonical implementation. Brief inline form: `if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi`. If state-read.sh launch fails, skip the metrics output for this field instead of silently treating the value as `"0"` (mis-classified as "no deviation"). verified-review cycle 35 F-12 introduced the fail-fast block; cycle 36 F-11 clarified scope (6 callers total, not just 4 in this file) and cycle 36 F-12 condensed the inline bash to a single sentence (full canonical pattern lives in Phase 3 to avoid table-cell density asymmetry with adjacent rows). Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot. This counts re-entries to Phase 5.1 from checklist failures |
+| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. Use the **same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form, not `if !`). Brief inline form: `if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi`. If state-read.sh launch fails, skip the metrics output for this field instead of silently treating the value as `"0"` (mis-classified as "no deviation"). verified-review cycle 35 F-12 introduced the fail-fast block; cycle 38 F-02 dropped the caller-count pin (previous "6 / 7 caller sites" prose self-undercount-drifted twice — count synchronization contract abandoned in favor of semantic anchor reference). Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot. This counts re-entries to Phase 5.1 from checklist failures |
 
 **Step 2**: Evaluate thresholds.
 
@@ -1967,8 +1973,10 @@ fi
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_completion" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "Execute Phase 5.6 (Completion Report). Read parent_issue_number via bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0 (Issue #687 AC-4 — per-session state); if non-zero, proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
+  --next "Execute Phase 5.6 (Completion Report). Then read parent_issue_number deterministically via state-read.sh (Issue #687 AC-4 — per-session state, not legacy .rite-flow-state snapshot). The canonical caller lives in Phase 5.7 (\"Parent Issue Completion\") which contains the if/else fail-fast capture and numeric validation. If parent_issue_number is non-zero, proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
 ```
+
+> **verified-review cycle 38 F-17 LOW**: 旧 `--next` 文字列は literal `bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0` を埋め込んでおり、Phase 5.7 の actual caller (本ファイル末尾の `Parent Issue Completion` ブロック) と semantic 重複していた。次のコンテキスト中の LLM が next_action 文字列を「実行すべき bash command」と誤解する経路 (caller を 2 回起動する silent regression) を断つため、手順記述に降格し、actual caller への semantic anchor reference (Phase 5.7) のみを残した。
 
 > See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
 

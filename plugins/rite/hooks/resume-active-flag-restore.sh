@@ -44,22 +44,29 @@ if [ -z "$PLUGIN_ROOT" ]; then
   echo "  Usage: bash $0 <plugin_root>" >&2
   exit 1
 fi
-if [ ! -x "$PLUGIN_ROOT/hooks/state-read.sh" ]; then
-  echo "ERROR: state-read.sh not found or not executable: $PLUGIN_ROOT/hooks/state-read.sh" >&2
-  exit 1
-fi
-if [ ! -x "$PLUGIN_ROOT/hooks/flow-state-update.sh" ]; then
-  echo "ERROR: flow-state-update.sh not found or not executable: $PLUGIN_ROOT/hooks/flow-state-update.sh" >&2
-  exit 1
-fi
-if [ ! -x "$PLUGIN_ROOT/hooks/state-path-resolve.sh" ]; then
-  echo "ERROR: state-path-resolve.sh not found or not executable: $PLUGIN_ROOT/hooks/state-path-resolve.sh" >&2
-  exit 1
-fi
+# verified-review cycle 38 F-01 HIGH / F-09 MEDIUM: expand existence check to all 4 directly invoked
+# helpers. 本 helper は state-read.sh (L81/88) / flow-state-update.sh (`patch_args` invocation L191) /
+# state-path-resolve.sh (L63) / `_resolve-session-id.sh` (L106) を `bash <missing>` invocation 経路で
+# 直接依存する。state-read.sh / flow-state-update.sh が呼ぶ transitive helpers (`_resolve-schema-version.sh`
+# 等) はそれぞれのスクリプト先頭の同型チェックで塞がれる。Issue #687 root cause (writer/reader 片肺更新型
+# silent regression) と同型の deploy regression を構造的に防ぐ。state-read.sh / flow-state-update.sh の
+# 同型ブロックと統一表記。
+for _helper in state-read.sh flow-state-update.sh state-path-resolve.sh _resolve-session-id.sh; do
+  if [ ! -x "$PLUGIN_ROOT/hooks/$_helper" ]; then
+    echo "ERROR: $_helper not found or not executable: $PLUGIN_ROOT/hooks/$_helper" >&2
+    exit 1
+  fi
+done
+unset _helper
 
-# PR #688 followup F-02 LOW: state-read.sh:93 / flow-state-update.sh の _resolve_session_id と対称化。
+# PR #688 followup F-02 LOW / cycle 38 F-15 LOW: state-read.sh の per-session resolver
+# (.rite-session-id を tr で読み `_resolve-session-id.sh` に渡す block) および
+# flow-state-update.sh の `_resolve_session_id` 関数と対称化。
 # STATE_ROOT を state-path-resolve.sh 経由で解決してから .rite-session-id を読む (cycle 34 F-01
 # の DRY 化主張との整合)。cwd != repo root で invoke された場合でも正しく解決される。
+# cycle 38 F-15: 旧コメント「state-read.sh:93」は state-read.sh の per-session resolver
+# (.rite-session-id を tr で読んで `_resolve-session-id.sh` に渡す block) を指す stale 行番号参照
+# だった (Wiki 経験則「semantic anchor 必須」原則違反)。関数名 / 動作記述 anchor に置換。
 STATE_ROOT=$("$PLUGIN_ROOT/hooks/state-path-resolve.sh" "$(pwd)") || STATE_ROOT="$(pwd)"
 
 # state-read.sh は per-session/legacy 両方を transparent に解決し、両方不在時は default を返す。
@@ -94,8 +101,9 @@ else
 fi
 
 # .rite-session-id を STATE_ROOT 経由で読む (不在時は空文字)。改行 / 空白を tr で除去。
-# state-read.sh:93 / flow-state-update.sh の _resolve_session_id と対称化 (PR #688 followup F-02 LOW)。
-# `|| _sid=""` で tr 失敗 (file 不在 / permission denied 等) を吸収。
+# state-read.sh の per-session resolver (.rite-session-id 読込 block) / flow-state-update.sh の
+# `_resolve_session_id` 関数と対称化 (PR #688 followup F-02 LOW / cycle 38 F-15: 旧 `state-read.sh:93`
+# 行番号参照を semantic anchor に置換)。`|| _sid=""` で tr 失敗 (file 不在 / permission denied 等) を吸収。
 _sid=$(tr -d '[:space:]' < "$STATE_ROOT/.rite-session-id" 2>/dev/null) || _sid=""
 
 # verified-review cycle 34 fix (F-01 CRITICAL): UUID validation を `_resolve-session-id.sh` 共通 helper
