@@ -99,12 +99,11 @@ _resolve_schema_version() {
     return 0
   fi
   # Issue #687 AC-4 follow-up (writer/reader architectural 統一、PR #688 cycle 3):
+  # 本関数は `local v` 宣言と `v=$(...)` 代入が分離形のため、`set -euo pipefail` 下では
   # `flow_state:` セクションあり + `schema_version:` 行欠落の degenerate config で grep が
-  # exit 1 を返した場合、本関数は `local v=$(...)` で wrap されているため `local` builtin の
-  # always-0 戻り値で偶然 pipefail を mask しており、現状は正常 fallback (echo "1") に落ちる。
-  # しかし将来 `local v; v=$(...)` のような分離 refactor が入ると mask が外れ silent failure
-  # する fragile な構造のため、reader 側 (state-read.sh:92-94) と対称に明示的な `|| v=""`
-  # guard を追加する (defense-in-depth)。
+  # exit 1 を返した場合に pipeline 全体 exit 1 が伝播し、関数全体が silent に exit 1 する経路があった。
+  # 末尾の `|| v=""` で pipefail を吸収し、後続の case 分岐の default fallback (echo "1") に
+  # 安全に落とす。reader 側 (state-read.sh の _resolve_schema_version 相当ブロック) と対称化。
   local v
   v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
     | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \

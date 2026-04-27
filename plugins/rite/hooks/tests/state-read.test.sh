@@ -215,16 +215,26 @@ result=$(run_helper "$SBX" --field phase --default "corrupt_default")
 assert_eq "TC-9.1: corrupt JSON は DEFAULT を返す (silent fallback)" "corrupt_default" "$result"
 rm -rf "$SBX"
 
-# --- TC-10: JSON null value → caller default に正規化 (line 130-135) ---
-echo "TC-10: JSON null value → caller default に正規化 (null 文字列を返さない)"
+# --- TC-10: JSON null value → jq の // 演算子で default に置換される ---
+# PR #688 cycle 4 (test reviewer mutation testing 対応):
+# 旧 TC-10 は state-read.sh の post-processing block (`if [ "$value" = "null" ]`) を検証する
+# 意図だったが、mutation testing でその block を削除しても TC-10 が PASS することが判明
+# → block は dead code であり、jq の `//` 演算子 (alternative operator) が null/false を
+# 自動的に default に置換する仕様 (jq Manual) で動いていた。cycle 4 で post-processing
+# block を削除し、本 TC を「jq の // 演算子による null normalization の動作確認」として
+# 書き直す。state-read.sh の DEFAULT 値 (`"x"`) が確実に返ることで `// $default` の動作を pin。
+echo "TC-10: JSON null value → jq の // 演算子で caller default に置換される"
 SBX=$(make_sandbox)
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$SBX" "$SID"
 write_per_session "$SBX" "$SID" '{"phase":null}'
-# JSON null は jq -r で literal "null" 文字列になるため、helper が default に変換するか確認
+# JSON null は jq の `// $default` で $default に置換される (literal "null" 文字列にはならない)
 result=$(run_helper "$SBX" --field phase --default "x")
-assert_eq "TC-10.1: JSON null は default に正規化される" "x" "$result"
+assert_eq "TC-10.1: JSON null は jq // 経由で default に置換される" "x" "$result"
+# 追加検証: DEFAULT が空文字 "" の場合も同様に置換される (pin jq // 動作)
+result_empty=$(run_helper "$SBX" --field phase --default "")
+assert_eq "TC-10.2: JSON null + DEFAULT 空文字 → 空文字列を返す (literal 'null' を返さない)" "" "$result_empty"
 rm -rf "$SBX"
 
 # --- TC-11: --default 省略時の挙動 → 空文字列を返す ---

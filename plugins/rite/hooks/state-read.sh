@@ -89,7 +89,7 @@ if [ -f "$cfg" ]; then
     # top-level 直接代入のため set -e で helper が silent に exit 1 する。caller は curr=""
     # を受け取り .phase="" で誤った理由 ERROR exit する経路があった。
     # 末尾に `|| v=""` を追加して pipefail を吸収し、後続の case "*)" 分岐で安全に default
-    # "1" に落とす。writer 側 flow-state-update.sh:87-109 (`_resolve_schema_version`) も
+    # "1" に落とす。writer 側 (`flow-state-update.sh` の `_resolve_schema_version` 関数) も
     # 同パターンで `|| v=""` を追加して architectural 統一を完了済み (PR #688 cycle 3 で実施)。
     v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
       | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \
@@ -126,14 +126,20 @@ fi
 # FIELD has been validated as [a-zA-Z_][a-zA-Z0-9_]* so direct interpolation
 # into the filter is safe. This helper is read-only — no object construction
 # (the silent-reset failure mode of writer-side jq is not applicable here).
+#
+# JSON null handling: jq's `// $default` operator returns $default when the
+# left-hand side is null or false. So `.field // $default` evaluates to
+# $default when:
+#   - field is missing (jq returns null)
+#   - field exists but holds JSON null
+#   - field exists but holds JSON false
+# This matches the caller-supplied default semantics natively — no
+# post-processing is needed. (PR #688 cycle 3 review: previous post-processing
+# `if [ "$value" = "null" ]` was demonstrated to be dead code via mutation
+# testing; jq's `//` already handles null normalization.)
+# Source: jq Manual — Alternative operator `//`
+# https://jqlang.github.io/jq/manual/#alternative-operator-
 value=$(jq -r --arg default "$DEFAULT" ".${FIELD} // \$default" "$STATE_FILE" 2>/dev/null) \
   || value="$DEFAULT"
-
-# Normalize: when the field exists but holds JSON null, jq -r emits the literal
-# string "null". Map that to the caller-supplied default (unless the caller
-# explicitly passed "null" as the default).
-if [ "$value" = "null" ] && [ "$DEFAULT" != "null" ]; then
-  value="$DEFAULT"
-fi
 
 echo "$value"
