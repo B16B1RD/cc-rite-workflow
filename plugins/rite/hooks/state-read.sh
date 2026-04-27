@@ -131,17 +131,24 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
         # 別 session の legacy file → foreign session の stale data を silent return しないよう DEFAULT に降格。
         # canonical workflow-incident-emit.sh 経由で protocol-compliant sentinel を emit。
         legacy_sid="${classification#foreign:}"
-        # verified-review cycle 35 fix (F-07 MEDIUM): helper existence check + non-zero rc warning.
-        # The previous `|| true` silently suppressed both ENOENT (deploy regression) AND validation
-        # errors inside the script, causing complete sentinel loss without any operator notification.
+        # verified-review cycle 36/37 fix (F-01 HIGH): if/else pattern instead of `elif ! cmd; then emit_rc=$?`.
+        # Bash spec: `if/elif ! cmd; then rc=$?` always yields rc=0 because `!` negates the
+        # pipeline and `then` branch sees the negation result (always 0). This is the same
+        # anti-pattern that cycle 35 F-04 eliminated from 6 callers — re-introduced here as
+        # part of cycle 35 F-07 fix (Asymmetric Fix Transcription self-referential drift).
+        # Use existence-check then `if cmd; then :; else rc=$?; fi` to capture actual exit code.
         if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
           echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=cross_session_takeover_refused details=layer=reader,current_sid=${SESSION_ID},legacy_sid=${legacy_sid}" >&2
-        elif ! bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-            --type cross_session_takeover_refused \
-            --details "layer=reader,current_sid=${SESSION_ID},legacy_sid=${legacy_sid}" \
-            --root-cause-hint "legacy_belongs_to_another_session_use_create_mode" >&2; then
-          emit_rc=$?
-          echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=cross_session_takeover_refused" >&2
+        else
+          if bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+              --type cross_session_takeover_refused \
+              --details "layer=reader,current_sid=${SESSION_ID},legacy_sid=${legacy_sid}" \
+              --root-cause-hint "legacy_belongs_to_another_session_use_create_mode" >&2; then
+            :
+          else
+            emit_rc=$?
+            echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=cross_session_takeover_refused" >&2
+          fi
         fi
         echo "$DEFAULT"
         exit 0
@@ -149,15 +156,42 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
       corrupt:*)
         # jq 失敗 (corrupt JSON / IO error) → take over は不安全 (cross-session の可能性を否定できない)
         jq_rc="${classification#corrupt:}"
-        # verified-review cycle 35 fix (F-07 MEDIUM): helper existence check + non-zero rc warning.
+        # verified-review cycle 36/37 fix (F-01 HIGH): if/else pattern (same as foreign:* arm above).
         if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
           echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=legacy_state_corrupt details=layer=reader,current_sid=${SESSION_ID},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" >&2
-        elif ! bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-            --type legacy_state_corrupt \
-            --details "layer=reader,current_sid=${SESSION_ID},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" \
-            --root-cause-hint "legacy_jq_parse_failed_cannot_verify_session_ownership" >&2; then
-          emit_rc=$?
-          echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=legacy_state_corrupt" >&2
+        else
+          if bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+              --type legacy_state_corrupt \
+              --details "layer=reader,current_sid=${SESSION_ID},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" \
+              --root-cause-hint "legacy_jq_parse_failed_cannot_verify_session_ownership" >&2; then
+            :
+          else
+            emit_rc=$?
+            echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=legacy_state_corrupt" >&2
+          fi
+        fi
+        echo "$DEFAULT"
+        exit 0
+        ;;
+      invalid_uuid:*)
+        # verified-review cycle 36 fix (F-16 LOW security): legacy.session_id was JSON-parseable
+        # but failed UUID validation in _resolve-session-id.sh. Treat semantically equivalent to
+        # corrupt:* (refuse take-over, emit legacy_state_corrupt sentinel) but with distinct
+        # root_cause_hint so operators can differentiate "tampered / legacy schema with non-UUID
+        # session_id" from "jq parse failure" in incident response.
+        invalid_uuid_rc="${classification#invalid_uuid:}"
+        if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
+          echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=legacy_state_corrupt details=layer=reader,current_sid=${SESSION_ID},path=${LEGACY_FLOW_STATE},reason=invalid_uuid_format,rc=${invalid_uuid_rc}" >&2
+        else
+          if bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+              --type legacy_state_corrupt \
+              --details "layer=reader,current_sid=${SESSION_ID},path=${LEGACY_FLOW_STATE},reason=invalid_uuid_format,rc=${invalid_uuid_rc}" \
+              --root-cause-hint "legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema" >&2; then
+            :
+          else
+            emit_rc=$?
+            echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=legacy_state_corrupt (invalid_uuid)" >&2
+          fi
         fi
         echo "$DEFAULT"
         exit 0
@@ -225,8 +259,22 @@ esac
 # with 2>/dev/null. Previous behavior swallowed jq parse errors silently, making corrupt JSON
 # detection impossible to debug (operator could not distinguish "field absent" from
 # "file corrupt"). Symmetric with state-read.sh L58 (cycle 33 F-04 / cycle 34 F-07 fixes).
+#
+# verified-review cycle 36 fix (F-15 LOW security): canonical signal-specific trap pattern with
+# variable-first-declared / trap-set-second / mktemp-third ordering — symmetric with
+# `_resolve-cross-session-guard.sh` (cycle 35 F-05 canonical pattern). Race window between
+# mktemp success and trap installation is now closed; SIGINT/SIGTERM/SIGHUP propagate
+# POSIX-conventional exit codes (130/143/129).
+_jq_err=""
+_rite_state_read_jq_cleanup() {
+  rm -f "${_jq_err:-}"
+  return 0
+}
+trap 'rc=$?; _rite_state_read_jq_cleanup; exit $rc' EXIT
+trap '_rite_state_read_jq_cleanup; exit 130' INT
+trap '_rite_state_read_jq_cleanup; exit 143' TERM
+trap '_rite_state_read_jq_cleanup; exit 129' HUP
 _jq_err=$(mktemp /tmp/rite-state-read-jq-err-XXXXXX 2>/dev/null) || _jq_err=""
-trap '[ -n "${_jq_err:-}" ] && rm -f "$_jq_err"' EXIT
 if value=$(jq -r --arg default "$DEFAULT" ".${FIELD} // \$default" "$STATE_FILE" 2>"${_jq_err:-/dev/null}"); then
   :
 else

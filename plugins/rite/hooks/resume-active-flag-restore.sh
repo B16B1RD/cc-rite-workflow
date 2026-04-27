@@ -23,11 +23,14 @@
 #   3. Otherwise: invoke flow-state-update.sh patch with --if-exists,
 #      passing --session if .rite-session-id is present, omitting if not
 #
-# The four no-state paths (canonical enumeration in resume.md):
+# The seven no-state paths (canonical enumeration in resume.md — verified-review cycle 36 F-07 fix):
 #   (a) per-session AND legacy files both absent (conjunctive)
 #   (b) file present but phase is null/missing/false (jq // operator)
 #   (c) phase is an empty string
 #   (d) file is empty (size 0) or corrupt JSON
+#   (e) foreign:* — schema_v=2 + per-session absent + legacy.session_id is foreign session
+#   (f) corrupt:* — schema_v=2 + per-session absent + legacy jq parse fails
+#   (g) invalid_uuid:* — schema_v=2 + per-session absent + legacy.session_id JSON-parseable but UUID-invalid
 #
 # Exit codes:
 #   0: success (patch executed) or legitimate skip (curr_phase empty)
@@ -61,16 +64,25 @@ fi
 # failure 抑制系の reasonable 防御は cycle 22-32 で確立済み)。stderr は state-read.sh から
 # 直接 pass-through し (上流で WARNING / ERROR が出る場合に観測可能)、exit code を check して
 # 失敗時は本 helper を fail-fast 終了する。
-curr_phase=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field phase --default "") || {
+# verified-review cycle 36 F-14 fix: switch from `cmd || { rc=$?; ... }` to canonical
+# `if cmd; then :; else rc=$?; fi` form for consistency with the 6 caller sites in
+# commands/issue/start.md / implement.md / pr/review.md (cycle 35 F-04 fix). Both
+# `||` short-circuit and `if/else` correctly preserve `$?`, but style unification
+# helps maintainers grep for the canonical anti-pattern check.
+if curr_phase=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field phase --default ""); then
+  :
+else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase" >&2
   exit 1
-}
-curr_next=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field next_action --default "Resume continuation.") || {
+fi
+if curr_next=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field next_action --default "Resume continuation."); then
+  :
+else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field next_action" >&2
   exit 1
-}
+fi
 
 # .rite-session-id を読む (不在時は空文字)。改行 / 空白を tr で除去。
 # `|| _sid=""` で cat 失敗 (file 不在 / permission denied 等) を吸収。

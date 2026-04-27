@@ -61,6 +61,12 @@ fi
 jq_err=""
 _rite_cross_session_cleanup() {
   rm -f "${jq_err:-}"
+  # verified-review cycle 36 fix (F-03 MEDIUM): explicit `return 0` per Form B doctrine
+  # (bash-trap-patterns.md). `set -euo pipefail` is active (L38) — without `return 0`,
+  # any future addition that returns non-zero (e.g., short-circuit `[ -n "" ] && rm`)
+  # would cause `set -e` to abort the trap action, preventing `exit $rc` from running.
+  # Adding `return 0` unconditionally as preemptive defense.
+  return 0
 }
 trap 'rc=$?; _rite_cross_session_cleanup; exit $rc' EXIT
 trap '_rite_cross_session_cleanup; exit 130' INT
@@ -102,8 +108,13 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${jq_err:-/dev/nu
       printf 'foreign:%s' "$validated_legacy"
     else
       # legacy session_id is not a valid UUID (corrupt / tampered / legacy schema).
-      # Treat as corrupt (rc=1 sentinel for non-jq-failure invalid format).
-      printf 'corrupt:1'
+      # verified-review cycle 36 fix (F-16 LOW security): use `invalid_uuid:` prefix
+      # instead of `corrupt:1` to avoid numeric collision with jq exit code 1
+      # ("any other error"). Operators reading WORKFLOW_INCIDENT details can now
+      # distinguish "UUID validation failure" (this branch) from "jq general error"
+      # (jq_rc=1 in the else branch below). Caller-side classification cases
+      # (state-read.sh / flow-state-update.sh) are updated to handle `invalid_uuid:*`.
+      printf 'invalid_uuid:1'
     fi
   fi
   exit 0

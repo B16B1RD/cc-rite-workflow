@@ -491,6 +491,67 @@ fi
 rm -f "$stdout_path" "$stderr_path"
 rm -rf "$SBX"
 
+# --- TC-15.D: invalid_uuid:* sentinel emit (verified-review cycle 36 F-06 + F-16 MEDIUM/LOW) ---
+# 背景: cycle 36 F-16 で `_resolve-cross-session-guard.sh` の sentinel を `corrupt:1` から
+# `invalid_uuid:1` に分離。caller (state-read.sh) は `invalid_uuid:*` arm を新設し、
+# `legacy_state_corrupt` sentinel に `reason=invalid_uuid_format` を embed する。
+# 本 TC は (a) helper が invalid_uuid:1 を返すこと、(b) state-read.sh が sentinel を emit する
+# こと、(c) reason field が `invalid_uuid_format` を含むことを 3 重 assert で pin する。
+# F-06 の F-10 corrupt:1 → invalid_uuid:1 sentinel pin として機能する。
+echo "TC-15.D: reader-side legacy session_id failed UUID validation → invalid_uuid sentinel emit"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+SID="33333333-4444-5555-6666-777777777777"
+write_session_id "$SBX" "$SID"
+# legacy file は valid JSON だが session_id が UUID format に非準拠
+write_legacy "$SBX" '{"phase":"some_phase","session_id":"not-a-valid-uuid"}'
+stdout_path=$(mktemp /tmp/rite-tc15d-stdout-XXXXXX)
+stderr_path=$(mktemp /tmp/rite-tc15d-stderr-XXXXXX)
+(cd "$SBX" && bash "$HOOK" --field phase --default "DEFAULT_D") >"$stdout_path" 2>"$stderr_path"
+result=$(cat "$stdout_path")
+assert_eq "TC-15.D.1: invalid UUID legacy + per-session 不在 → DEFAULT 返却" "DEFAULT_D" "$result"
+if grep -q "WORKFLOW_INCIDENT=1" "$stderr_path" \
+    && grep -q "type=legacy_state_corrupt" "$stderr_path" \
+    && grep -q "reason=invalid_uuid_format" "$stderr_path"; then
+  echo "  ✅ TC-15.D.2: legacy_state_corrupt sentinel emit with reason=invalid_uuid_format (F-16 fix revert test)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-15.D.2: legacy_state_corrupt sentinel + invalid_uuid_format reason が確認できません"
+  echo "     stderr:"
+  sed 's/^/       /' "$stderr_path"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-15.D.2: invalid_uuid sentinel emit")
+fi
+if grep -q "root_cause_hint=legacy_session_id_failed_uuid_validation" "$stderr_path"; then
+  echo "  ✅ TC-15.D.3: root_cause_hint differentiates invalid_uuid from jq parse failure"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-15.D.3: root_cause_hint=legacy_session_id_failed_uuid_validation が含まれません"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-15.D.3: root_cause_hint distinguishes UUID validation from jq parse")
+fi
+rm -f "$stdout_path" "$stderr_path"
+rm -rf "$SBX"
+
+# --- TC-15.E: caller-side 2>/dev/null source-pin metatest (verified-review cycle 36 F-04 MEDIUM) ---
+# 背景: cycle 36 review で TC-15.2 / TC-15.C.2 が caller-side single revert (`2>/dev/null` → `2>&1`)
+# を fail しないこと (helper-side `cat $jq_err >&2` 削除と組み合わせた場合のみ test が落ちる) が指摘
+# された。F-04 fix として、caller の redirection 形式を test 側で構造的に守る metatest を追加。
+# state-read.sh の `_resolve-cross-session-guard.sh` 呼び出しが必ず `2>/dev/null` を含むことを
+# grep で source-pin する。
+echo "TC-15.E: state-read.sh caller-side `2>/dev/null` source-pin metatest (F-04 fix revert test)"
+state_read_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/state-read.sh"
+if grep -qE '_resolve-cross-session-guard\.sh.*2>/dev/null' "$state_read_path"; then
+  echo "  ✅ TC-15.E.1: state-read.sh contains '_resolve-cross-session-guard.sh ... 2>/dev/null' redirection"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-15.E.1: state-read.sh の caller-side redirection が `2>/dev/null` でない (cycle 35 F-01 fix が revert された可能性)"
+  echo "     現状の caller line:"
+  grep "_resolve-cross-session-guard.sh" "$state_read_path" | sed 's/^/       /'
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-15.E.1: state-read.sh caller-side 2>/dev/null source-pin")
+fi
+
 # --- Summary ---
 echo ""
 echo "─── state-read.test.sh summary ──────────────────────────"

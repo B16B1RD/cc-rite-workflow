@@ -1,6 +1,6 @@
 # Workflow Incident Emit Protocol
 
-Common emit protocol for workflow incident sentinels, referenced by skill commands (`lint.md`, `fix.md`, `review.md`). Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarantees to prevent drift across skills.
+Common emit protocol for workflow incident sentinels, referenced by sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`, `issue/close.md`) and hook scripts (`state-read.sh`, `flow-state-update.sh`). Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarantees to prevent drift across emit sites. cycle 36 F-09 fix expanded scope from "skill commands" to include hook scripts after `cross_session_takeover_refused` / `legacy_state_corrupt` types were added (which only hook scripts emit).
 
 > **Reference**: See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full orchestrator-side specification.
 
@@ -32,7 +32,7 @@ sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
 
 ## Sentinel Visibility Rule (LLM Responsibility — Defensive Practice)
 
-Sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`) execute inline within the orchestrator's conversation context. Bash tool call stdout is directly visible to the orchestrator, so sentinel lines emitted via the bash snippet above are automatically part of the conversation context.
+Sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`, `issue/close.md`) execute inline within the orchestrator's conversation context. Bash tool call stdout is directly visible to the orchestrator, so sentinel lines emitted via the bash snippet above are automatically part of the conversation context. cycle 36 F-13 fix added `issue/close.md` to this list (close.md emits at L390/468/546/571/591 for various failure paths).
 
 As a **defensive practice**, sub-skills SHOULD still include the captured `sentinel_line` value verbatim in their final visible response text. This ensures sentinel detection remains robust even if execution context changes in the future.
 

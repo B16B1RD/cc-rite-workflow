@@ -792,6 +792,42 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# verified-review cycle 36 F-05 + F-04 fix: writer-side metatest
+# --------------------------------------------------------------------------
+# 背景: cycle 36 F-05 で flow-state-update.test.sh の writer 側 `legacy_state_corrupt` sentinel
+# emit を pin する TC が不在と指摘された。state-read.test.sh と異なり、本 test は writer 側の
+# corrupt branch を test するための fixture (per-session 不在 + corrupt legacy + --if-exists patch)
+# のセットアップが複雑なため、軽量な metatest 形式で「caller-side `2>/dev/null` redirection の
+# source-pin」と「invalid_uuid:* arm の存在」を grep で確認する。これにより:
+# (a) cycle 35 F-02 fix (`2>&1` → `2>/dev/null`) の writer 側 partial revert を検出
+# (b) cycle 36 F-16 fix (invalid_uuid:* arm 追加) の writer 側 partial revert を検出
+echo ""
+echo "=== verified-review cycle 36 F-05 + F-04 fix: writer-side metatest ==="
+flow_state_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/flow-state-update.sh"
+if grep -qE '_resolve-cross-session-guard\.sh.*2>/dev/null' "$flow_state_path"; then
+  echo "  ✅ writer-side metatest 1: flow-state-update.sh contains '_resolve-cross-session-guard.sh ... 2>/dev/null' redirection"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 1: flow-state-update.sh の caller-side redirection が `2>/dev/null` でない (cycle 35 F-02 fix が revert された可能性)"
+  FAIL=$((FAIL+1))
+fi
+if grep -q '^      invalid_uuid:\*)' "$flow_state_path"; then
+  echo "  ✅ writer-side metatest 2: flow-state-update.sh has 'invalid_uuid:*)' case arm (F-16 fix)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 2: flow-state-update.sh の 'invalid_uuid:*' arm が存在しない (cycle 36 F-16 fix が revert された可能性)"
+  FAIL=$((FAIL+1))
+fi
+# defensive arm pattern check (`if cmd; then :; else rc=$?; fi` not `elif ! cmd; then rc=$?`)
+if grep -qE '^[[:space:]]*if bash "\$SCRIPT_DIR/workflow-incident-emit\.sh"' "$flow_state_path"; then
+  echo "  ✅ writer-side metatest 3: flow-state-update.sh uses canonical 'if cmd; then :; else rc=$?; fi' pattern (F-01 fix)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 3: flow-state-update.sh が canonical if/else pattern を使っていない (F-01 anti-pattern が再発した可能性)"
+  FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""
