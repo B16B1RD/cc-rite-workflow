@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-27T23:16:29+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=65, broken_refs=16 |
 | 2026-04-27T23:01:24+00:00 | ingest:create | pages/anti-patterns/bash-local-vs-toplevel-pipefail-asymmetry.md | PR #688 cycle 1 review + cycle 1/3 fixes: function 内 `local v=$(cmd)` と top-level `v=$(cmd)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される anti-pattern を新規ページ化。`local` builtin が常に exit 0 を返し pipeline 失敗を mask するため writer (function 内) は偶然救われ、reader (top-level) のみ silent kill。canonical fix は両側で `v=$(cmd) || v=""` の defensive 吸収を対称化 (raw: pr-688 cycle 1 review + cycle 1/3 fixes) |
 | 2026-04-27T23:01:24+00:00 | ingest:update | pages/anti-patterns/bash-local-vs-toplevel-pipefail-asymmetry.md | PR #688 cycle 1 fix: writer 側 (`flow-state-update.sh:_resolve_schema_version`) の `local v=$(...)` mask に依存しない明示化 + degenerate config (`flow_state:` セクション存在 / 特定キー欠落) の境界ケース fixture + scope 判断 (writer 側 fix は別 Issue 推奨、reader 側だけ explicit guard で対称化が当該 PR 最適) (raw: pr-688 cycle 1 fix) |
 | 2026-04-27T23:01:24+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #688 cycle 2 review: scope rule の re-review での適用 (本 PR diff の line 外 pre-existing site は推奨に降格) + load-bearing test 検証 (pre-fix 再現 + post-fix 検証の 2 段階) + AC-4 完全達成のための follow-up scope 規範 (raw: pr-688 cycle 2 review) |
