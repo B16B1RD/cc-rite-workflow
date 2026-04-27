@@ -336,55 +336,14 @@ Ensure flow-state has `active: true` so that the stop-guard hook blocks prematur
 # Note: flow-state-update.sh patch mode は --active 以外に --session を取り、updated_at を自動 set
 # する。`error_count = 0` のリセットは patch mode の default 挙動 (preserve-error-count 未指定時) で
 # 旧実装と同等にカバーされる。
-curr_phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "")
-curr_next=$(bash {plugin_root}/hooks/state-read.sh --field next_action --default "Resume continuation.")
-_sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
-# PR #688 cycle 10 fix (F-01 CRITICAL): curr_phase 空文字ガード追加。
-# state-read.sh が空文字を返す経路 (per-session/legacy 両不在) で `flow-state-update.sh patch
-# --phase ""` を呼ぶと、validation (`[[ -z "$PHASE" || -z "$NEXT" ]]`) が `--if-exists` チェックより
-# 先に評価されて exit 1 し、resume が hard abort する (cycle 9 review F-01 CRITICAL、prose comment
-# 「--if-exists handles silently」と実装の乖離)。空文字時はそもそも patch を呼ばずに skip し、
-# invoked command (e.g., rite:issue:start) の create mode に委譲する。
-if [ -z "$curr_phase" ]; then
-  echo "ℹ️  flow-state phase が解決できなかったため active flag 復元を skip しました (per-session/legacy file 両不在、または phase が null/空文字 — invoked command が create mode で初期化します)" >&2
-else
-  # PR #688 cycle 8 fix (F-01 旧 CRITICAL): pipeline `2>&1 | head -3` を除去し stderr を tmpfile に
-  # 退避する pattern に変更。pipefail 未設定下では pipeline 終端 head -3 の exit 0 が支配的になり、
-  # 上流 flow-state-update.sh の exit 1 を silent に握りつぶしていた経路を解消。
-  #
-  # PR #688 cycle 10 fix (F-03 MEDIUM): mktemp 失敗時に WARNING を追加。`_err=""` fallback で
-  # `2>"${_err:-/dev/null}"` が /dev/null に redirect される経路で flow-state-update.sh の具体的
-  # 失敗原因 (`ERROR: mv failed (patch mode)` 等) が消える silent suppression 反パターンを可視化する。
-  _err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX) || {
-    echo "WARNING: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied?)" >&2
-    echo "  影響: 次の error 発生時、flow-state-update.sh の具体的失敗原因 (mv 失敗 / UUID validation 失敗 / jq parse error 等) が表示されません" >&2
-    _err=""
-  }
-  if [ -n "$_sid" ]; then
-    if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-      --phase "$curr_phase" \
-      --next "$curr_next" \
-      --active true \
-      --session "$_sid" \
-      --if-exists 2>"${_err:-/dev/null}"; then
-      echo "ERROR: failed to restore active flag, abort resume" >&2
-      [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
-      [ -n "$_err" ] && rm -f "$_err"
-      exit 1
-    fi
-  else
-    if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-      --phase "$curr_phase" \
-      --next "$curr_next" \
-      --active true \
-      --if-exists 2>"${_err:-/dev/null}"; then
-      echo "ERROR: failed to restore active flag, abort resume" >&2
-      [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
-      [ -n "$_err" ] && rm -f "$_err"
-      exit 1
-    fi
-  fi
-  [ -n "$_err" ] && rm -f "$_err"
+# PR #688 cycle 18 fix (F-03 MEDIUM): bash block を helper script に抽出。
+# resume-active-flag-restore.test.sh の TC-1.2 / TC-3.2 が tautology (test 自身が `[ -z ]` を計算し
+# その結果を assert) になっていた問題を解消するため、Phase 3.0.1 のロジック全体を helper に
+# 移し、test が helper の exit code と side effect を直接検証できるようにする。
+# 詳細は plugins/rite/hooks/resume-active-flag-restore.sh の冒頭コメントを参照。
+if ! bash {plugin_root}/hooks/resume-active-flag-restore.sh "{plugin_root}"; then
+  echo "ERROR: failed to restore active flag, abort resume" >&2
+  exit 1
 fi
 ```
 

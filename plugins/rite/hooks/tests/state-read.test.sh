@@ -11,7 +11,7 @@
 #   AC-7 — regression test added under hooks/tests/ and run-tests.sh-discoverable
 #
 # Usage: bash plugins/rite/hooks/tests/state-read.test.sh
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../state-read.sh"
