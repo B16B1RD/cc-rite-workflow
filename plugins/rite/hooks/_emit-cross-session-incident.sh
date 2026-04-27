@@ -39,6 +39,13 @@ if [ "$#" -lt 4 ]; then
   echo "  received: $#" >&2
   exit 1
 fi
+# upper bound check (caller のタイプミス検出)。
+# 旧実装は `<4` のみだったため、6+ args を渡された場合 silently 受理されて余分な引数が drop されていた。
+if [ "$#" -gt 5 ]; then
+  echo "ERROR: _emit-cross-session-incident.sh: too many arguments (max 5: classification layer current_sid legacy_sid_or_path [extra_arg])" >&2
+  echo "  received: $#" >&2
+  exit 1
+fi
 
 classification="$1"
 layer="$2"

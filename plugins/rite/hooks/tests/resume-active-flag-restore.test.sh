@@ -327,10 +327,11 @@ write_legacy "$SBX" '{"phase":"phase5_lint","next_action":"continue","active":fa
 # template name が変更された場合、fake mktemp が常に passthrough して TC-mktemp-fail が
 # silent passthrough する regression (mktemp 失敗を simulate せず常に成功扱い → cycle 22 trap regression
 # を再導入しても気付けない silent regression) を防ぐ。
-if ! grep -q 'rite-resume-flow-err-' "$HELPER"; then
-  echo "FAIL (TC-mktemp-fail sanity check): helper does not use 'rite-resume-flow-err-' template" >&2
+if ! grep -qF 'rite-resume-flow-err-XXXXXX' "$HELPER"; then
+  echo "FAIL (TC-mktemp-fail sanity check): helper does not use 'rite-resume-flow-err-XXXXXX' template (literal string match required)" >&2
   echo "  対処: helper の mktemp template name (helper:163 周辺) と本 test の case pattern を同期させてください" >&2
   echo "  影響: fake mktemp が silent passthrough して mktemp 失敗 simulate が無効化される" >&2
+  echo "  Note: substring grep ('rite-resume-flow-err-') を fixed-string XXXXXX 一致に強化 (false negative 防止)" >&2
   exit 1
 fi
 fake_bin="$SBX/.fake-bin"

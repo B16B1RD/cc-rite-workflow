@@ -15,6 +15,10 @@
 #   "empty"                 legacy.session_id is null/missing → safe (sessionless legacy)
 #   "foreign:<other_sid>"   legacy.session_id != current_sid → refuse take-over
 #   "corrupt:<jq_rc>"       legacy file jq parse failed → refuse take-over (cannot verify)
+#   "invalid_uuid:1"        legacy.session_id JSON-parseable but UUID validation failed
+#                           → refuse take-over (tampered / legacy schema with non-UUID session_id)
+#                           Distinct from "corrupt:*" so incident response can differentiate
+#                           UUID validation failure from jq parse failure (cycle 36 F-16)
 #
 # Why this exists (verified-review cycle 34 fix F-02 HIGH):
 #   The same `legacy.session_id` extraction + comparison logic was duplicated
@@ -32,6 +36,8 @@
 #                       and route to per-session path (writer) or DEFAULT (reader)
 #   - "corrupt:<rc>" → emit legacy_state_corrupt via workflow-incident-emit.sh
 #                       and route to per-session path (writer) or DEFAULT (reader)
+#   - "invalid_uuid:<rc>" → emit legacy_state_corrupt with reason=invalid_uuid_format via
+#                       workflow-incident-emit.sh, distinct root_cause_hint for diagnosis
 #
 # Exit codes:
 #   0 — always (classification printed to stdout)
