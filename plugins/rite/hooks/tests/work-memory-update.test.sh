@@ -44,6 +44,7 @@ _wm_update_test_cleanup() {
   for d in "${cleanup_dirs[@]:-}"; do
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
+  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
 trap '_wm_update_test_cleanup' EXIT
 trap '_wm_update_test_cleanup; exit 130' INT
@@ -136,7 +137,8 @@ run_update() {
 }
 
 # --- TC-1: schema_version=2 + per-session present + legacy absent + WM_REQUIRE_FLOW_STATE=true ---
-# cycle 12 fix の core invariant: line 72 が state-read.sh 経由になったので per-session のみで skip しない
+# cycle 12 fix の core invariant: WM_REQUIRE_FLOW_STATE check が legacy file 直接 [ -f ] check ではなく
+# state-read.sh 経由になったので per-session のみで skip しない
 echo "TC-1: schema_v=2 + per-session present + legacy absent + WM_REQUIRE_FLOW_STATE=true → return 0 (cycle 12 false negative regression guard)"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"

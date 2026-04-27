@@ -138,7 +138,7 @@ _rite_<scope>_<phase>_cleanup() {
 時点で trap action を中断するため、後続の `exit $rc` には到達しない (cleanup の rc が script exit code
 として伝播する)。Form B では `return 0` のみが silent regression を防ぐ唯一の手段である。
 
-**まとめ**: Form A → 戻り値無視 OK、Form B → `return 0` 必須 (defense は (B) ではなく (A) の関数末尾)。
+**まとめ**: Form A (`rm -f "${var:-}"` 形式) → 戻り値無視 OK、Form B (`[ -n ] && rm` 形式) → `return 0` 必須。silent regression を防ぐ defense は trap action 側の `rc=$?` 退避 (上述の (B)) ではなく cleanup 関数末尾の `return 0` (上述の (A)) のみが機能する。
 
 ### `${var:-}` 形式で未定義変数を安全化
 
@@ -236,7 +236,9 @@ SIGTERM/SIGINT/SIGHUP が到達した場合に作成済み tmp ファイルが o
 
 - [ ] cleanup 対象となる全変数を mktemp 実行**前**に空文字列で初期化した
 - [ ] cleanup 関数内の全変数参照を `"${var:-}"` 形式にした
-- [ ] cleanup 関数内に `exit` / `return <非ゼロ>` を書いていない
+- [ ] cleanup 関数内に `exit` を書いていない
+- [ ] **Form A** (`rm -f "${var:-}"` 形式) を採用した場合: 関数内に `return <非ゼロ>` を書いていない
+- [ ] **Form B** (`[ -n "${var:-}" ] && rm -f "$var"` portability variant) を採用した場合: 関数末尾に `return 0` を追加した (本ファイルの "cleanup 関数の契約" 節 Form B doctrine 参照)
 - [ ] 4 行 trap (`EXIT` / `INT` / `TERM` / `HUP`) を揃えて設置した
 - [ ] EXIT trap は `rc=$?` で元 exit code を先に capture している
 - [ ] INT/TERM/HUP trap は明示的な `exit 130` / `exit 143` / `exit 129` を含む

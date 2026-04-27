@@ -60,6 +60,7 @@ cleanup() {
   for d in "${cleanup_dirs[@]:-}"; do
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
+  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
 # Signal-specific traps mirror flow-state-update.sh (review #686 F-09): EXIT
 # alone leaks /tmp/tmp.XXXX TEST_DIRs when the run is interrupted with Ctrl+C

@@ -60,10 +60,11 @@ LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 # the file-read path AND the --session arg path. Validation parity prevents
 # path traversal via `--session "../foo"` (review #686 F-01).
 _resolve_session_id() {
-  # PR #688 cycle 22 fix (F-03 MEDIUM): RFC 4122 strict pattern (8-4-4-4-12 hex)。state-read.sh:75 と
-  # symmetric に強化する。旧 `^[0-9a-f-]{36}$` はハイフン位置非依存で 36 字 hex 連続も通過する
-  # ため、将来 SESSION_ID を path 以外の context (ログ / curl URL / SQL 等) に流用したとき
-  # spec drift で脆弱性化するリスクがあった (defense-in-depth)。
+  # PR #688 cycle 22 fix (F-03 MEDIUM): RFC 4122 strict pattern (8-4-4-4-12 hex)。state-read.sh の
+  # SESSION_ID 解決ブロック (raw 読み取り + UUID validation) と symmetric に強化する。旧
+  # `^[0-9a-f-]{36}$` はハイフン位置非依存で 36 字 hex 連続も通過するため、将来 SESSION_ID を path
+  # 以外の context (ログ / curl URL / SQL 等) に流用したとき spec drift で脆弱性化するリスクが
+  # あった (defense-in-depth)。
   local provided_sid="${1:-}"
   if [[ -n "$provided_sid" ]]; then
     if [[ "$provided_sid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then

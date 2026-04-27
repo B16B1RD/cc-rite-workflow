@@ -102,9 +102,9 @@ fi
 # 旧実装 (cycle 22) は `trap '_rite_resume_active_cleanup' EXIT` で関数を直接 trap 登録していたが、
 # `_rite_resume_active_cleanup` の最終評価式 `[ -n "${_err:-}" ] && rm -f "$_err"` は `_err=""` 時に
 # `[ -n "" ]` (rc=1) で短絡し関数 return code 1 になる。`set -euo pipefail` 下で EXIT trap の
-# return code が script exit code を上書きするため、helper の最終 `exit 0` が exit 1 で
-# kill され、resume.md L344 の `if ! bash {plugin_root}/hooks/...` で hard-abort 経路に流れる。
-# patch 自体は成功しているのに resume が中断される silent regression。
+# return code が script exit code を上書きするため、helper の最終 `exit 0` が exit 1 で kill され、
+# resume.md Phase 3.0.1 末尾の `if ! bash {plugin_root}/hooks/resume-active-flag-restore.sh` invocation
+# guard で hard-abort 経路に流れる。patch 自体は成功しているのに resume が中断される silent regression。
 #
 # 修正:
 #   (A) cleanup 関数末尾に `return 0` を追加 — 関数自体が非 0 を返さないようにする。
@@ -112,9 +112,10 @@ fi
 #       が `set -e` で中断され、後続の `exit $rc` に到達しない (実証済: bash -c で `[ -n "" ] && rm`
 #       の後に exit 0 でも rc=1)。bash-trap-patterns.md の "cleanup 関数の契約" 節 Form B (portability
 #       variant: `[ -n "${var:-}" ] && rm -f "$var"` 形式) では `return 0` が必須と明記されており、
-#       本 helper の cleanup 形式 (L124-127 の Form B) と整合する (function rc 漏洩の防止)。
-#   (B) trap action を `rc=$?; cleanup; exit $rc` の wiki-query-inject.sh:59 同型 pattern に統一 —
-#       canonical pattern との表記統一 (cosmetic alignment)。
+#       本 helper の `_rite_resume_active_cleanup` 関数 (Form B 形式: `[ -n "${var:-}" ] && rm -f`
+#       + 末尾 `return 0`) と整合する (function rc 漏洩の防止)。
+#   (B) trap action を `rc=$?; cleanup; exit $rc` の wiki-query-inject.sh の signal-specific trap pattern
+#       (4 行 EXIT/INT/TERM/HUP) と同型に統一 — canonical pattern との表記統一 (cosmetic alignment)。
 #
 # 重要 — (B) は defense-in-depth として機能しない: cleanup 関数が `return N (N≠0)` を返すと、(B) の
 # trap action は `rc=$?` で原 exit code を退避するものの、後続の `cleanup` 呼び出しで `set -e` が

@@ -13,7 +13,8 @@
 #     `hooks/resume-active-flag-restore.sh` に抽出し、test は helper の exit code と side effect を
 #     直接検証する形に変更
 #   - F-04 MEDIUM (test): TC-2 が `--session $SID` 経路のみ test していた coverage gap を解消。
-#     TC-2-no-sid を追加して resume.md L376-385 (sid 無し legacy fallback) も pin
+#     TC-2-no-sid を追加して resume.md Phase 3.0.1 trailing prose の sid 無し legacy fallback 経路
+#     (state-read.sh fallbacks legacy when per-session is absent under schema_version=2) も pin
 #
 # 検証する invariants:
 #   (a) per-session/legacy 両不在 → helper が curr_phase 空文字判定で skip (exit 0、patch 未実行)
@@ -54,6 +55,7 @@ _resume_test_cleanup() {
   for d in "${cleanup_dirs[@]:-}"; do
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
+  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
 trap '_resume_test_cleanup' EXIT
 trap '_resume_test_cleanup; exit 130' INT
@@ -187,7 +189,7 @@ active_value=$(jq -r '.active // empty' "$SBX/.rite/sessions/${SID}.flow-state" 
 assert_eq "TC-2.2: active flag が true に書き戻される (--session 引数経由)" "true" "$active_value"
 
 # --- TC-2-no-sid: per-session 存在 + valid phase + sid 無し → legacy fallback patch 経路 (cycle 18 F-04) ---
-echo "TC-2-no-sid: schema_v=1 + legacy file 存在 + sid 無し → patch (--session なし) 成功経路 (resume.md Phase 3.0.1 内 \"sid 無し legacy fallback path\")"
+echo "TC-2-no-sid: schema_v=1 + legacy file 存在 + sid 無し → patch (--session なし) 成功経路 (resume-active-flag-restore.sh の patch_args 配列内 sid 有無分岐)"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 # schema_v=1 (legacy のみの環境) で sid 無し
 cat > "$SBX/rite-config.yml" <<EOF

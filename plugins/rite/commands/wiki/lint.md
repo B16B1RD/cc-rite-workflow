@@ -277,6 +277,7 @@ ls_err=""
 _rite_wiki_lint_phase2_cleanup() {
   # BSD/macOS rm の空引数対応 (Phase 6.0 と対称化、portable variant)
   [ -n "${ls_err:-}" ] && rm -f "$ls_err"
+  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
 trap 'rc=$?; _rite_wiki_lint_phase2_cleanup; exit $rc' EXIT
 trap '_rite_wiki_lint_phase2_cleanup; exit 130' INT
@@ -610,6 +611,7 @@ _rite_wiki_lint_phase60_cleanup() {
   # L-04 対応: BSD/macOS rm の空引数対応 (portable variant)
   [ -n "${log_err:-}" ] && rm -f "$log_err"
   [ -n "${awk_sort_err:-}" ] && rm -f "$awk_sort_err"
+  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
 trap 'rc=$?; _rite_wiki_lint_phase60_cleanup; exit $rc' EXIT
 trap '_rite_wiki_lint_phase60_cleanup; exit 130' INT
@@ -1019,6 +1021,7 @@ _rite_wiki_lint_phase62_cleanup() {
   [ -n "${page_err:-}" ] && rm -f "$page_err"
   [ -n "${awk_diag:-}" ] && rm -f "$awk_diag"
   [ -n "${sort_err:-}" ] && rm -f "$sort_err"
+  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
 trap 'rc=$?; _rite_wiki_lint_phase62_cleanup; exit $rc' EXIT
 trap '_rite_wiki_lint_phase62_cleanup; exit 130' INT
@@ -1569,6 +1572,7 @@ case "$branch_strategy" in
       # BSD/macOS rm では `rm: : No such file or directory` が stderr に出て operator を混乱させる。
       [ -n "${add_err:-}" ] && rm -f "$add_err"
       [ -n "${commit_err:-}" ] && rm -f "$commit_err"
+      return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照、`set -euo pipefail` 配下)
     }
     trap 'rc=$?; _rite_wiki_lint_phase83_cleanup; exit $rc' EXIT
     trap '_rite_wiki_lint_phase83_cleanup; exit 130' INT
