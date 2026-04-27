@@ -115,7 +115,7 @@ update_local_work_memory() {
   chmod 700 .rite-work-memory 2>/dev/null || true
 
   if [ "${WM_SKIP_LOCK:-false}" = "true" ]; then
-    :  # Lock skipping; RETURN trap set after mktemp (L132)
+    :  # Lock skipping; RETURN trap set later in this function after mktemp (anchor: tmp_wm_mktemp below)
   else
     WM_LOCK_STALE_THRESHOLD="${WM_LOCK_STALE_THRESHOLD:-300}"
 
@@ -193,6 +193,7 @@ update_local_work_memory() {
   local last_commit tmp_wm
   local branch="$current_branch"
   last_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+  # anchor: tmp_wm_mktemp (referenced by lock-skip path comment above)
   tmp_wm=$(mktemp "${local_wm}.tmp.XXXXXX") || { echo "rite: ${WM_SOURCE}: mktemp failed" >&2; return 2; }
   # Extend RETURN trap to also clean up temp file (rm -f is safe even after successful mv)
   if [ "${WM_SKIP_LOCK:-false}" = "true" ]; then

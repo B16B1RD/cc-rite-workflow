@@ -277,7 +277,7 @@ ls_err=""
 _rite_wiki_lint_phase2_cleanup() {
   # BSD/macOS rm の空引数対応 (Phase 6.0 と対称化、portable variant)
   [ -n "${ls_err:-}" ] && rm -f "$ls_err"
-  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
+  return 0  # Form B (portability variant) → 防御的に return 0 を追加 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照、現 Phase は set -e なしのため strict には任意だが、将来の set -e 導入時の silent regression を防ぐ preemptive defense)
 }
 trap 'rc=$?; _rite_wiki_lint_phase2_cleanup; exit $rc' EXIT
 trap '_rite_wiki_lint_phase2_cleanup; exit 130' INT
@@ -611,7 +611,7 @@ _rite_wiki_lint_phase60_cleanup() {
   # L-04 対応: BSD/macOS rm の空引数対応 (portable variant)
   [ -n "${log_err:-}" ] && rm -f "$log_err"
   [ -n "${awk_sort_err:-}" ] && rm -f "$awk_sort_err"
-  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
+  return 0  # Form B (portability variant) → 防御的に return 0 を追加 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照、現 Phase は set -e なしのため strict には任意だが、将来の set -e 導入時の silent regression を防ぐ preemptive defense)
 }
 trap 'rc=$?; _rite_wiki_lint_phase60_cleanup; exit $rc' EXIT
 trap '_rite_wiki_lint_phase60_cleanup; exit 130' INT
@@ -1021,7 +1021,7 @@ _rite_wiki_lint_phase62_cleanup() {
   [ -n "${page_err:-}" ] && rm -f "$page_err"
   [ -n "${awk_diag:-}" ] && rm -f "$awk_diag"
   [ -n "${sort_err:-}" ] && rm -f "$sort_err"
-  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
+  return 0  # Form B (portability variant) → 防御的に return 0 を追加 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照、現 Phase は set -e なしのため strict には任意だが、将来の set -e 導入時の silent regression を防ぐ preemptive defense)
 }
 trap 'rc=$?; _rite_wiki_lint_phase62_cleanup; exit $rc' EXIT
 trap '_rite_wiki_lint_phase62_cleanup; exit 130' INT

@@ -313,7 +313,7 @@ if [ -d "$wiki_raw_root" ]; then
     # BSD variant に統一 (lint.md Phase 6.0 / 6.2 / 8.3 + ingest.md Phase 5.2 と対称化)。
     # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
     [ -n "${find_err:-}" ] && rm -f "$find_err"
-    return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
+    return 0  # Form B (portability variant) → 防御的に return 0 を追加 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照、現 Phase は set -e なしのため strict には任意だが、将来の set -e 導入時の silent regression を防ぐ preemptive defense)
   }
   trap 'rc=$?; _rite_wiki_ingest_phase22_cleanup; exit $rc' EXIT
   trap '_rite_wiki_ingest_phase22_cleanup; exit 130' INT
@@ -408,7 +408,7 @@ _rite_wiki_ingest_phase23_cleanup() {
   # BSD variant に統一 (lint.md Phase 6.0 / 6.2 / 8.3 + ingest.md Phase 5.2 と対称化)。
   # bash-trap-patterns.md の『BSD/macOS rm の rm -f "" 対応 (空引数ガード variant)』規範に準拠。
   [ -n "${cat_err:-}" ] && rm -f "$cat_err"
-  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
+  return 0  # Form B (portability variant) → 防御的に return 0 を追加 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照、現 Phase は set -e なしのため strict には任意だが、将来の set -e 導入時の silent regression を防ぐ preemptive defense)
 }
 trap 'rc=$?; _rite_wiki_ingest_phase23_cleanup; exit $rc' EXIT
 trap '_rite_wiki_ingest_phase23_cleanup; exit 130' INT

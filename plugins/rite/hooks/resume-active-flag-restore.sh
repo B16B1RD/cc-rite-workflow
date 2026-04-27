@@ -76,16 +76,16 @@ curr_next=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field next_action --defaul
 # `|| _sid=""` で cat 失敗 (file 不在 / permission denied 等) を吸収。
 _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
 
-# PR #688 cycle 22 fix (F-01 HIGH): tampered .rite-session-id (non-UUID) を空扱いに正規化。
-# state-read.sh の SESSION_ID 解決ブロック / flow-state-update.sh の _resolve_session_id 関数
-# (file-read path) と対称な「invalid → empty で legacy fallback」semantics を本 helper にも適用する。
-# これがないと tampered content (例: `../../../etc/passwd`) が `--session "$_sid"` として下流
-# flow-state-update.sh の _resolve_session_id (provided_sid path) に流入し、UUID validation で
-# reject されて helper exit 1 → resume hard-abort する経路が成立する (cycle 9-10 で修正した
-# F-01 CRITICAL empty phase hard-abort と同類型の regression)。
-# RFC 4122 strict: 8-4-4-4-12 hex with hyphens at fixed positions。
-if [[ -n "$_sid" && ! "$_sid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-  _sid=""
+# verified-review cycle 34 fix (F-01 CRITICAL): UUID validation を `_resolve-session-id.sh` 共通 helper
+# に抽出。state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh の 5 site で重複していた
+# RFC 4122 strict pattern を 1 箇所に集約し、将来の pattern tightening (variant bit check 等) を
+# 片肺更新 drift から守る。
+if [ -n "$_sid" ]; then
+  if validated=$(bash "$PLUGIN_ROOT/hooks/_resolve-session-id.sh" "$_sid" 2>/dev/null); then
+    _sid="$validated"
+  else
+    _sid=""
+  fi
 fi
 
 # PR #688 cycle 10 fix (F-01 CRITICAL): curr_phase 空文字ガード。

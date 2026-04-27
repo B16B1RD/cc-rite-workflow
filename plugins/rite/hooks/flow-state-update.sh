@@ -46,8 +46,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source session ownership helper for stale detection in create mode
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
+# Helper script existence check (verified-review cycle 34 fix F-09 MEDIUM):
+# state-path-resolve.sh が unset / not executable の場合、`||` fallback で silent に cwd を採用する
+# 経路があった (deploy regression / install 不整合の silent suppression)。fail-fast に格上げする。
+if [ ! -x "$SCRIPT_DIR/state-path-resolve.sh" ]; then
+  echo "ERROR: state-path-resolve.sh not found or not executable: $SCRIPT_DIR/state-path-resolve.sh" >&2
+  echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
+  exit 1
+fi
+
 # Resolve repository root
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
+# verified-review cycle 34 fix (F-07 MEDIUM): `2>/dev/null` を削除して stderr を pass-through し、
+# state-read.sh と writer/reader 対称化する (cycle 33 で reader 側のみ stderr 観測性優先方針に
+# 移行していた非対称を解消)。
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)") || STATE_ROOT="$(pwd)"
 LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 
 # --- Multi-state helpers (#672 / #678) ---
@@ -60,15 +72,15 @@ LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 # the file-read path AND the --session arg path. Validation parity prevents
 # path traversal via `--session "../foo"` (review #686 F-01).
 _resolve_session_id() {
-  # PR #688 cycle 22 fix (F-03 MEDIUM): RFC 4122 strict pattern (8-4-4-4-12 hex)。state-read.sh の
-  # SESSION_ID 解決ブロック (raw 読み取り + UUID validation) と symmetric に強化する。旧
-  # `^[0-9a-f-]{36}$` はハイフン位置非依存で 36 字 hex 連続も通過するため、将来 SESSION_ID を path
-  # 以外の context (ログ / curl URL / SQL 等) に流用したとき spec drift で脆弱性化するリスクが
-  # あった (defense-in-depth)。
+  # verified-review cycle 34 fix (F-01 CRITICAL): UUID validation を `_resolve-session-id.sh` 共通 helper
+  # に抽出。state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh の 5 site で重複していた
+  # RFC 4122 strict pattern を 1 箇所に集約し、将来の pattern tightening (variant bit check 等) を
+  # 片肺更新 drift から守る。
   local provided_sid="${1:-}"
   if [[ -n "$provided_sid" ]]; then
-    if [[ "$provided_sid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-      echo "$provided_sid"
+    local validated
+    if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$provided_sid" 2>/dev/null); then
+      echo "$validated"
       return 0
     fi
     # Reject malformed --session arg (non-UUID input could escape .rite/sessions/).
@@ -80,8 +92,13 @@ _resolve_session_id() {
   local sid_file="$STATE_ROOT/.rite-session-id"
   local sid
   sid=$(tr -d '[:space:]' < "$sid_file" 2>/dev/null) || sid=""
-  if [[ -n "$sid" && ! "$sid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-    sid=""
+  if [[ -n "$sid" ]]; then
+    local validated
+    if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$sid" 2>/dev/null); then
+      sid="$validated"
+    else
+      sid=""
+    fi
   fi
   echo "$sid"
 }
@@ -109,8 +126,9 @@ _resolve_schema_version() {
 #   (cycle 31 F-01 CRITICAL: cycle 30 simple fallback caused silent metadata corruption — issue_number
 #   / branch / pr_number from another session would silently leak into current session via jq per-field
 #   merge). Emit WORKFLOW_INCIDENT sentinel so caller can surface and let create-mode handle init.
-#   Size check (cycle 31 F-02 HIGH): writer must mirror state-read.sh:112's `[ ! -s ]` guard so
-#   size-0 legacy (e.g., from `touch .rite-flow-state`) doesn't silently consume patch updates.
+#   Size check (cycle 31 F-02 HIGH): writer must mirror reader-side state-read.sh's per-session resolver
+#   `[ ! -s ]` guard so size-0 legacy (e.g., from `touch .rite-flow-state`) doesn't silently consume
+#   patch updates. (verified-review cycle 34 fix F-04 HIGH: hardcoded line-number 参照を semantic anchor に置換)
 _resolve_session_state_path() {
   local sv="$1"
   local lm="$2"
@@ -124,18 +142,42 @@ _resolve_session_state_path() {
   # `[ -s ]` ensures legacy is non-empty (cycle 31 F-02). Cross-session check below
   # ensures we only adopt legacy if it belongs to current session or is sessionless legacy.
   if [ ! -f "$per_session_path" ] && [ -f "$LEGACY_FLOW_STATE" ] && [ -s "$LEGACY_FLOW_STATE" ]; then
-    local legacy_sid
-    legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_FLOW_STATE" 2>/dev/null) || legacy_sid=""
-    if [ -z "$legacy_sid" ] || [ "$legacy_sid" = "$sid" ]; then
-      # Same session or sessionless legacy: safe to take over
-      echo "$LEGACY_FLOW_STATE"
-      return 0
-    fi
-    # Cross-session residue: refuse takeover, emit incident sentinel for observability
-    # (helper / caller will see --if-exists silent skip on per-session path or non-existence error,
-    #  prompting create-mode init which is the correct behavior for fresh sessions)
-    echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused; details=legacy_sid=${legacy_sid},current_sid=${sid}; root_cause_hint=legacy_belongs_to_another_session_use_create_mode" >&2
-    echo "WARNING: refusing to write to legacy flow-state (session_id=${legacy_sid}) from current session (sid=${sid}). Routing to per-session path (--if-exists will silent skip, create-mode will init)." >&2
+    # verified-review cycle 34 fix (F-02 HIGH): cross-session guard を `_resolve-cross-session-guard.sh`
+    # 共通 helper に抽出。reader 側 (state-read.sh) と重複していた legacy.session_id 抽出 + 比較 +
+    # corrupt 判定ロジックを 1 箇所に集約し、片肺更新 drift を構造的に防ぐ。
+    local classification
+    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>&1) || true
+    case "$classification" in
+      same|empty)
+        # Same session or sessionless legacy: safe to take over
+        echo "$LEGACY_FLOW_STATE"
+        return 0
+        ;;
+      foreign:*)
+        # Cross-session residue: refuse takeover, emit canonical incident sentinel via helper
+        # (caller will see --if-exists silent skip on per-session path or non-existence error,
+        #  prompting create-mode init which is the correct behavior for fresh sessions)
+        local legacy_sid="${classification#foreign:}"
+        bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+          --type cross_session_takeover_refused \
+          --details "layer=writer,current_sid=${sid},legacy_sid=${legacy_sid}" \
+          --root-cause-hint "legacy_belongs_to_another_session_use_create_mode" >&2 || true
+        echo "WARNING: refusing to write to legacy flow-state (session_id=${legacy_sid}) from current session (sid=${sid}). Routing to per-session path (--if-exists will silent skip, create-mode will init)." >&2
+        ;;
+      corrupt:*)
+        # jq 失敗 (corrupt JSON / IO error) → take over は不安全 (cross-session の可能性を否定できない)
+        local jq_rc="${classification#corrupt:}"
+        bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+          --type legacy_state_corrupt \
+          --details "layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" \
+          --root-cause-hint "legacy_jq_parse_failed_cannot_verify_session_ownership" >&2 || true
+        echo "WARNING: legacy flow-state ${LEGACY_FLOW_STATE} jq parse failed; routing to per-session path (create-mode will init)." >&2
+        ;;
+      *)
+        # 想定外の classification (defensive)
+        echo "WARNING: unexpected classification from _resolve-cross-session-guard.sh: $classification" >&2
+        ;;
+    esac
   fi
   echo "$per_session_path"
 }

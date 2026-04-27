@@ -486,7 +486,17 @@ fi
 > **⚠️ Why `state-read.sh`, not direct `jq` on `.rite-flow-state`** (Issue #687 AC-4): When `flow_state.schema_version=2`, the active state is written to `.rite/sessions/{session_id}.flow-state`, while `.rite-flow-state` may retain another session's residue. Reading the legacy file inline returns stale residue (observed in #687 reproduction: `phase5_post_stop_hook` from a prior session leaked into a fresh Phase 3 check). `state-read.sh` resolves the per-session file first and falls back to legacy only when per-session is absent.
 
 ```bash
-curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "")
+# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
+# 旧実装は `curr=$(bash ... || true)` 相当で helper が exit 1/127 で死ぬと curr="" となり、
+# 後続判定が「phase 不整合」と誤分類してミスリーディングな ERROR を出す silent regression があった。
+# helper 起動失敗 (helper script 欠落 / permission / 内部致命的エラー) と「pre-condition 検査の失敗」を
+# retained flag で区別可能にする。
+if ! curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 3 pre-condition" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase3_pre_condition; rc=$rc" >&2
+  exit 1
+fi
 # Accept phase3_post_plan only for /rite:resume re-entry (plan already completed in a prior session).
 if [ "$curr" != "phase2_post_work_memory" ] && [ "$curr" != "phase3_post_plan" ]; then
   echo "ERROR: Phase 3 pre-condition failed. .phase=$curr (expected: phase2_post_work_memory)" >&2
@@ -1682,7 +1692,13 @@ WM_SOURCE="ready" \
 **Pre-condition check** (#490 AC-5): Verify that Phase 5.5 (Ready) completed. The current `.phase` must be `phase5_post_ready` (the Mandatory After 5.5 marker). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot which may hold another session's residue.
 
 ```bash
-curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "")
+# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
+if ! curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.5.1 pre-condition" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_1_pre_condition; rc=$rc" >&2
+  exit 1
+fi
 if [ "$curr" != "phase5_post_ready" ]; then
   echo "ERROR: Phase 5.5.1 pre-condition failed. .phase=$curr (expected: phase5_post_ready)" >&2
   echo "ACTION: Return to Phase 5.5 (Ready for Review) and execute its Pre-write + rite:pr:ready invocation + Mandatory After 5.5 before entering Phase 5.5.1." >&2
@@ -1920,7 +1936,13 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 If `metrics.enabled: false` in rite-config.yml, Phase 5.5.2 must still write the `phase5_post_metrics` marker (the phase body may short-circuit Steps 1-5 below, but the Mandatory After block must run unconditionally — see Phase 5.5.2 Skip Steps note).
 
 ```bash
-curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "")
+# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
+if ! curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.6 pre-condition" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
+  exit 1
+fi
 if [ "$curr" != "phase5_post_metrics" ]; then
   echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics)" >&2
   echo "ACTION: Return to the missing phase (5.5.1 Status Update → 5.5.2 Metrics) and execute each Pre-write + main procedure + Mandatory After before entering Phase 5.6." >&2
@@ -2047,7 +2069,13 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 **Condition**: `parent_issue_number` is non-zero in flow-state. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot:
 
 ```bash
-parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0)
+# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
+if ! parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.7" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_7_parent_issue; rc=$rc" >&2
+  exit 1
+fi
 # Type validation (PR #688 cycle 5 review security LOW followup):
 # state-read.sh は jq の `// $default` で null/false → default 置換するが値の型は validate しない。
 # 攻撃者が `.rite/sessions/*.flow-state` を書き換えて parent_issue_number に non-numeric

@@ -385,6 +385,64 @@ result_phase=$(run_helper "$SBX" --field phase --default "ignored")
 assert_eq "TC-14.2: 同一ファイルの string field は正しく値を返す (boolean caveat は boolean field 限定)" "phase5_lint" "$result_phase"
 rm -rf "$SBX"
 
+# --- TC-15: reader-side cross-session guard (verified-review cycle 34 fix F-12 MEDIUM) ---
+# state-read.sh の cross-session guard 経路を直接 pin する test case。cycle 33 で導入された
+# 「per-session 不在 + legacy が **別 session_id** を持つ」ケースで、reader が DEFAULT に降格 +
+# WORKFLOW_INCIDENT sentinel を emit する経路をカバーする。
+#
+# TC-2 (per-session 不在 + legacy 存在) は legacy file に session_id field を含めず
+# `legacy_sid=""` 経路でのみ fall-through を検証していた。`[ -z "$legacy_sid" ] || [ "$legacy_sid" = "$SESSION_ID" ]`
+# 比較を将来 (例: `!=` への typo / inverted condition) regress させても TC-2 は通る silent regression
+# 経路があった。本 TC で `legacy_sid != current_sid` 経路を直接 pin することで mutation 耐性を強化する。
+#
+# 背景: writer 側の cross-session takeover refusal は flow-state-update.test.sh TC-AC-4-CROSS-SESSION-REFUSED で
+# 既に pin されている。reader 側 (state-read.sh) も同等の test coverage を持つことで writer/reader
+# 対称化を test レベルでも保証する。
+echo "TC-15: reader-side cross-session guard (per-session 不在 + legacy が別 session_id) → DEFAULT + WORKFLOW_INCIDENT emit"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+LEGACY_SID="22222222-2222-2222-2222-222222222222"
+write_session_id "$SBX" "$SID"
+# per-session file は不在 (writer-symmetric: fresh session で legacy のみ存在する scenario)
+# legacy file は別 session_id を持つ
+write_legacy "$SBX" "{\"phase\":\"phase5_post_stop_hook\",\"session_id\":\"${LEGACY_SID}\"}"
+# stdout/stderr を別々に capture して両方を assert する
+stdout_path=$(mktemp /tmp/rite-tc15-stdout-XXXXXX)
+stderr_path=$(mktemp /tmp/rite-tc15-stderr-XXXXXX)
+(cd "$SBX" && bash "$HOOK" --field phase --default "DEFAULT_REJECTED") >"$stdout_path" 2>"$stderr_path"
+result=$(cat "$stdout_path")
+assert_eq "TC-15.1: 別 session_id の legacy → DEFAULT 返却 (silent take-over 防止)" "DEFAULT_REJECTED" "$result"
+# stderr に WORKFLOW_INCIDENT sentinel が emit されることを確認 (canonical helper 経由)
+if grep -q "WORKFLOW_INCIDENT=1" "$stderr_path" && grep -q "type=cross_session_takeover_refused" "$stderr_path" && grep -q "layer=reader" "$stderr_path"; then
+  echo "  ✅ TC-15.2: WORKFLOW_INCIDENT sentinel emit (canonical helper 経由)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-15.2: WORKFLOW_INCIDENT sentinel emit が確認できません"
+  echo "     stderr:"
+  sed 's/^/       /' "$stderr_path"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-15.2: WORKFLOW_INCIDENT sentinel emit")
+fi
+rm -f "$stdout_path" "$stderr_path"
+rm -rf "$SBX"
+
+# --- TC-15.B: reader-side same-session legacy fallback (legitimate take-over) ---
+# 対比 case: legacy.session_id == current_sid なら take-over OK (TC-2 では sessionless legacy のみ
+# 検証していたが、本 TC で「同じ session_id を持つ legacy」も accept されることを pin する。
+# `[ -z "$legacy_sid" ] || [ "$legacy_sid" = "$SESSION_ID" ]` 条件のうち後半の OR 分岐の
+# revert test coverage)。
+echo "TC-15.B: reader-side same-session legacy fallback (legacy.session_id == current_sid) → legacy 値返却"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$SBX" "$SID"
+# per-session file 不在、legacy が **同じ** session_id を持つ
+write_legacy "$SBX" "{\"phase\":\"same_session_legacy_phase\",\"session_id\":\"${SID}\"}"
+result=$(run_helper "$SBX" --field phase --default "")
+assert_eq "TC-15.B.1: 同一 session_id の legacy → legacy 値返却 (legitimate take-over)" "same_session_legacy_phase" "$result"
+rm -rf "$SBX"
+
 # --- Summary ---
 echo ""
 echo "─── state-read.test.sh summary ──────────────────────────"

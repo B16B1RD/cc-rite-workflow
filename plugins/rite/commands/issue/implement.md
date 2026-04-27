@@ -858,10 +858,16 @@ WM_SOURCE="implement" \
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (#497 — survives context compaction; Issue #687 AC-4 — per-session state, not legacy snapshot):
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot (#497 — also survives context compaction):
 
 ```bash
-parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0)
+# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
+if ! parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.1.2" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_1_2_parent_issue; rc=$rc" >&2
+  exit 1
+fi
 # Type validation (PR #688 cycle 5 review security LOW followup): non-numeric injection 経路を遮断
 case "$parent_issue_number" in
   ''|*[!0-9]*)

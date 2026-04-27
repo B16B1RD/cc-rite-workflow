@@ -2315,7 +2315,13 @@ When this is a **re-review after a fix** (verification mode or `loop_count >= 1`
 **Step 1**: Determine if attribution is applicable:
 
 ```bash
-loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0)
+# verified-review cycle 34 fix (F-05 HIGH): state-read.sh の exit code を fail-fast で捕捉する。
+if ! loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0); then
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field loop_count in Phase 5.3.8" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_3_8_loop_count; rc=$rc" >&2
+  exit 1
+fi
 # Type validation (PR #688 cycle 5 review security LOW followup):
 # non-numeric injection 経路 (`{"loop_count": "true"}` 等) を遮断し、後続 integer 比較が
 # silent regression する経路を fail-safe で default 0 に降格する。
