@@ -44,15 +44,27 @@ assert_eq() {
 }
 
 # Each test uses its own sandbox so failures don't pollute siblings.
+# PR #688 cycle 5 review (code-quality + test reviewer LOW 推奨): git failure を silent suppression せず、
+# fail-fast にする。CI 環境で git config 由来の問題 (init.defaultBranch 未設定 / HOME 不在等) が
+# 発生した場合に sandbox が破損したまま test が走ると、`state-path-resolve.sh` が cwd fallback して
+# 偶発的な silent regression を起こすため、明示的に exit 1 する。stderr を /dev/null に流さず捕捉する。
 make_sandbox() {
-  local d
-  d=$(mktemp -d)
-  (
+  local d sandbox_err
+  d=$(mktemp -d) || { echo "ERROR: make_sandbox: mktemp -d failed" >&2; exit 1; }
+  sandbox_err=$(mktemp /tmp/rite-sandbox-err-XXXXXX) || sandbox_err="/dev/null"
+  if ! (
     cd "$d"
-    git init -q 2>/dev/null
-    echo a > a && git add a 2>/dev/null
-    git -c user.email=t@test.local -c user.name=test commit -q -m init 2>/dev/null
-  )
+    git init -q 2>"$sandbox_err"
+    echo a > a && git add a 2>>"$sandbox_err"
+    git -c user.email=t@test.local -c user.name=test commit -q -m init 2>>"$sandbox_err"
+  ); then
+    echo "ERROR: make_sandbox: git init/commit failed in $d" >&2
+    [ "$sandbox_err" != "/dev/null" ] && [ -s "$sandbox_err" ] && head -5 "$sandbox_err" | sed 's/^/  /' >&2
+    rm -rf "$d"
+    [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
+    exit 1
+  fi
+  [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
   echo "$d"
 }
 
@@ -203,7 +215,10 @@ assert_eq "TC-8.1: schema_version 行欠落でも helper が exit 0 で完走し
 rm -rf "$SBX"
 
 # --- TC-9: corrupt JSON state file → DEFAULT 返却 + exit 0 (defensive coverage) ---
-echo "TC-9: corrupt JSON state file → DEFAULT fallback (state-read.sh:127 jq error path)"
+# PR #688 cycle 5 review (code-quality LOW + prompt-engineer 推奨 + security informational、
+# 3-reviewer 独立検出): hard-coded line number reference は cycle ごとに drift するため、
+# function/region 名で参照する (本体 hook と同じ refactor 耐性パターン)。
+echo "TC-9: corrupt JSON state file → DEFAULT fallback (state-read.sh の jq error path / corrupt JSON branch)"
 SBX=$(make_sandbox)
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
@@ -248,6 +263,35 @@ write_per_session "$SBX" "$SID" '{"phase":"x"}'
 # --default を渡さずに存在しない field を読む
 result=$(run_helper "$SBX" --field nonexistent_field)
 assert_eq "TC-11.1: --default 省略 + field 不在 → 空文字列" "" "$result"
+rm -rf "$SBX"
+
+# --- TC-12: 空ファイル (size 0) → DEFAULT 返却 (F-C MEDIUM cycle 5) ---
+# PR #688 cycle 5 (test reviewer F-C MEDIUM): 空ファイル (touch で作成された size 0) に対する
+# DEFAULT fallback が cycle 4 まで未カバーだった。`[ -s "$STATE_FILE" ]` size check 追加で
+# corrupt JSON (TC-9) と挙動を一致させる。
+echo "TC-12: 空ファイル (size 0) → DEFAULT 返却 (空ファイル edge case)"
+SBX=$(make_sandbox)
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$SBX" "$SID"
+mkdir -p "$SBX/.rite/sessions"
+# touch で 0 byte ファイル作成 (jq は exit 0 + 空出力を返す silent path)
+touch "$SBX/.rite/sessions/${SID}.flow-state"
+result=$(run_helper "$SBX" --field phase --default "empty_file_default")
+assert_eq "TC-12.1: 空ファイル (size 0) は DEFAULT を返す (jq silent empty 防止)" "empty_file_default" "$result"
+rm -rf "$SBX"
+
+# --- TC-13: 非 JSON ファイル → DEFAULT 返却 (F-C MEDIUM cycle 5) ---
+echo "TC-13: 非 JSON ファイル (plain text) → DEFAULT 返却"
+SBX=$(make_sandbox)
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$SBX" "$SID"
+mkdir -p "$SBX/.rite/sessions"
+# 完全に非 JSON (plain text) — jq は parse error で stderr 出力 + exit 非 0 → || で DEFAULT
+printf 'this is not json at all\nplain text content\n' > "$SBX/.rite/sessions/${SID}.flow-state"
+result=$(run_helper "$SBX" --field phase --default "non_json_default")
+assert_eq "TC-13.1: 非 JSON ファイルは DEFAULT を返す (jq parse error fallback)" "non_json_default" "$result"
 rm -rf "$SBX"
 
 # --- Summary ---

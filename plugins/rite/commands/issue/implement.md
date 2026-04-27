@@ -862,6 +862,13 @@ WM_SOURCE="implement" \
 
 ```bash
 parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0)
+# Type validation (PR #688 cycle 5 review security LOW followup): non-numeric injection 経路を遮断
+case "$parent_issue_number" in
+  ''|*[!0-9]*)
+    echo "WARNING: parent_issue_number is not numeric ('$parent_issue_number'), defaulting to 0 (no parent)" >&2
+    parent_issue_number=0
+    ;;
+esac
 if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
   echo "[CONTEXT] PARENT_ISSUE=none — skip 5.1.2"
 else

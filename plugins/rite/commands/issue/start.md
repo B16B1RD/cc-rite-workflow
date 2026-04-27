@@ -2048,6 +2048,18 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 
 ```bash
 parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0)
+# Type validation (PR #688 cycle 5 review security LOW followup):
+# state-read.sh は jq の `// $default` で null/false → default 置換するが値の型は validate しない。
+# 攻撃者が `.rite/sessions/*.flow-state` を書き換えて parent_issue_number に non-numeric
+# (例: "true" / "../etc") を注入した場合、後続の `gh` 呼び出し (`gh issue close $parent_issue_number`)
+# に literal が流入する経路がある。numeric pattern check で fail-safe に default 0 (parent なし扱い)
+# に降格する。
+case "$parent_issue_number" in
+  ''|*[!0-9]*)
+    echo "WARNING: parent_issue_number is not numeric ('$parent_issue_number'), defaulting to 0 (no parent)" >&2
+    parent_issue_number=0
+    ;;
+esac
 if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
   echo "[CONTEXT] PARENT_ISSUE=none — skip Phase 5.7, proceed to Workflow Termination"
 else

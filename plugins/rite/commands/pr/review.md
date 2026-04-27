@@ -2316,6 +2316,15 @@ When this is a **re-review after a fix** (verification mode or `loop_count >= 1`
 
 ```bash
 loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0)
+# Type validation (PR #688 cycle 5 review security LOW followup):
+# non-numeric injection 経路 (`{"loop_count": "true"}` 等) を遮断し、後続 integer 比較が
+# silent regression する経路を fail-safe で default 0 に降格する。
+case "$loop_count" in
+  ''|*[!0-9]*)
+    echo "WARNING: loop_count is not numeric ('$loop_count'), defaulting to 0 (treat as first review)" >&2
+    loop_count=0
+    ;;
+esac
 if [ "$loop_count" -lt 1 ]; then
   echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, loop_count=$loop_count)"
   exit 0

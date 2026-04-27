@@ -84,34 +84,14 @@ _resolve_session_id() {
 # Resolve flow_state.schema_version from rite-config.yml.
 # Returns "1" (legacy single-file) or "2" (per-session file).
 # Defaults to "1" on parse failure / absent / unrecognized value (safe fallback).
+#
+# PR #688 cycle 5 review (code-quality + error-handling 推奨): writer/reader で同一の
+# inline schema_version 解決 logic (cfg → section → grep → case) を持っていた drift リスクを
+# 排除するため、共通 helper `_resolve-schema-version.sh` に抽出済。Issue #687 AC-4 / cycle 3 で
+# 確立した pipefail silent failure 対策 (`|| v=""`) も helper 内で吸収される。
+# 旧 inline 実装 (cfg / section / v 変数 + case 分岐) は helper 内に移動済み。
 _resolve_schema_version() {
-  local cfg="$STATE_ROOT/rite-config.yml"
-  if [[ ! -f "$cfg" ]]; then
-    echo "1"
-    return 0
-  fi
-  # Section-range extract guards against `enabled:` 行が enclosing section の外側にある regression
-  # (cf. start.md Phase 5.0 workflow_incident_enabled parser).
-  local section
-  section=$(sed -n '/^flow_state:/,/^[a-zA-Z]/p' "$cfg" 2>/dev/null) || section=""
-  if [[ -z "$section" ]]; then
-    echo "1"
-    return 0
-  fi
-  # Issue #687 AC-4 follow-up (writer/reader architectural 統一、PR #688 cycle 3):
-  # 本関数は `local v` 宣言と `v=$(...)` 代入が分離形のため、`set -euo pipefail` 下では
-  # `flow_state:` セクションあり + `schema_version:` 行欠落の degenerate config で grep が
-  # exit 1 を返した場合に pipeline 全体 exit 1 が伝播し、関数全体が silent に exit 1 する経路があった。
-  # 末尾の `|| v=""` で pipefail を吸収し、後続の case 分岐の default fallback (echo "1") に
-  # 安全に落とす。reader 側 (state-read.sh の _resolve_schema_version 相当ブロック) と対称化。
-  local v
-  v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
-    | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \
-    | tr -d '[:space:]"'"'"'') || v=""
-  case "$v" in
-    1|2) echo "$v" ;;
-    *) echo "1" ;;
-  esac
+  bash "$(dirname "${BASH_SOURCE[0]}")/_resolve-schema-version.sh" "$STATE_ROOT"
 }
 
 # Resolve flow-state file path based on (effective_schema_version, legacy_mode, session_id).

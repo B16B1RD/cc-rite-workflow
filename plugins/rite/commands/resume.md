@@ -319,20 +319,31 @@ fi
 
 ### 3.0.1 Restore Flow State Active Flag
 
-Ensure `.rite-flow-state` has `active: true` so that the stop-guard hook blocks premature stops during the resumed workflow. Without this, the stop-guard sees `active: false` (or missing state) and allows Claude to stop mid-flow (root cause of Issue #79's resume-session variant).
+Ensure flow-state has `active: true` so that the stop-guard hook blocks premature stops during the resumed workflow. Without this, the stop-guard sees `active: false` (or missing state) and allows Claude to stop mid-flow (root cause of Issue #79's resume-session variant).
 
 ```bash
-STATE_FILE=".rite-flow-state"
-if [ -f "$STATE_FILE" ]; then
-  TMP_STATE="${STATE_FILE}.tmp.$$"
-  _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
-  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" --arg sid "$_sid" \
-    '.active = true | .updated_at = $ts | .error_count = 0 | .session_id = $sid' \
-    "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE" || rm -f "$TMP_STATE"
+# PR #688 cycle 5 review (prompt-engineer 調査推奨): legacy `.rite-flow-state` への直接 jq write を
+# `flow-state-update.sh patch` 経由に変更。schema_version=2 環境 (multi-state) でも per-session file
+# が正しく更新され、AC-4 の write 側 path も統一される。
+# `--if-exists` で flow-state file (legacy or per-session) が存在する場合のみ patch する
+# (不在時は invoked command が create mode で初期化するため no-op)。
+# Note: flow-state-update.sh patch mode は --active 以外に --session を取り、updated_at を自動 set
+# する。`error_count = 0` のリセットは旧実装が行っていたが patch mode 内で `--preserve-error-count`
+# を指定しない場合の default 挙動 (reset) で同等にカバーされる。
+_sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
+if [ -n "$_sid" ]; then
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --active true \
+    --session "$_sid" \
+    --if-exists 2>&1 | head -3
+else
+  bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --active true \
+    --if-exists 2>&1 | head -3
 fi
 ```
 
-**If `.rite-flow-state` does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here.
+**If flow-state does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here. `--if-exists` flag handles this case silently.
 
 ### 3.1 Switch Branch
 

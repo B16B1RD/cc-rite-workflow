@@ -77,29 +77,11 @@ if [ -f "$STATE_ROOT/.rite-session-id" ]; then
   fi
 fi
 
-# --- Resolve schema_version (matches flow-state-update.sh _resolve_schema_version) ---
-SCHEMA_VERSION="1"
-cfg="$STATE_ROOT/rite-config.yml"
-if [ -f "$cfg" ]; then
-  section=$(sed -n '/^flow_state:/,/^[a-zA-Z]/p' "$cfg" 2>/dev/null) || section=""
-  if [ -n "$section" ]; then
-    # Issue #687 AC-4 follow-up (pipefail silent failure 対策):
-    # rite-config.yml の `flow_state:` セクションは存在するが `schema_version:` 行が欠落する
-    # 設定で grep が exit 1 を返すと、`set -euo pipefail` 下では pipeline 全体 exit 1 →
-    # top-level 直接代入のため set -e で helper が silent に exit 1 する。caller は curr=""
-    # を受け取り .phase="" で誤った理由 ERROR exit する経路があった。
-    # 末尾に `|| v=""` を追加して pipefail を吸収し、後続の case "*)" 分岐で安全に default
-    # "1" に落とす。writer 側 (`flow-state-update.sh` の `_resolve_schema_version` 関数) も
-    # 同パターンで `|| v=""` を追加して architectural 統一を完了済み (PR #688 cycle 3 で実施)。
-    v=$(printf '%s\n' "$section" | grep -E '^[[:space:]]+schema_version:' | head -1 \
-      | sed 's/#.*//' | sed 's/.*schema_version:[[:space:]]*//' \
-      | tr -d '[:space:]"'"'"'') || v=""
-    case "$v" in
-      1|2) SCHEMA_VERSION="$v" ;;
-      *)   SCHEMA_VERSION="1" ;;
-    esac
-  fi
-fi
+# --- Resolve schema_version (DRY: shared helper with flow-state-update.sh) ---
+# PR #688 cycle 5 review (code-quality + error-handling 推奨): writer/reader で同一の inline
+# schema_version 解決 logic を持っていた drift リスクを排除するため、共通 helper に抽出済。
+# pipefail silent failure 対策 (Issue #687 AC-4 follow-up) も helper 内で吸収する。
+SCHEMA_VERSION=$(bash "$SCRIPT_DIR/_resolve-schema-version.sh" "$STATE_ROOT")
 
 # --- Resolve target file ---
 # Mirror flow-state-update.sh _resolve_session_state_path. Additional fallback:
@@ -117,7 +99,12 @@ else
 fi
 
 # --- Read field ---
-if [ ! -f "$STATE_FILE" ]; then
+# F-C MEDIUM (PR #688 cycle 5 review test reviewer 推奨): 空ファイル / 非 JSON ファイルの edge case
+# 旧実装は file 存在チェックのみで、空ファイル (`touch .rite-flow-state` 等) や非 JSON ファイル
+# (例: 別プロセスが書き込み中) の場合に jq が exit 0 + 空出力を返す → caller default が
+# 効かず空文字列を silent return する経路があった。`[ -s "$STATE_FILE" ]` (size > 0) を追加して
+# 空ファイル時も DEFAULT に落とす (corrupt JSON 経路と挙動を一致させる)。
+if [ ! -f "$STATE_FILE" ] || [ ! -s "$STATE_FILE" ]; then
   echo "$DEFAULT"
   exit 0
 fi
@@ -137,8 +124,17 @@ fi
 # post-processing is needed. (PR #688 cycle 3 review: previous post-processing
 # `if [ "$value" = "null" ]` was demonstrated to be dead code via mutation
 # testing; jq's `//` already handles null normalization.)
+#
+# ⚠️ Boolean field caveat (PR #688 cycle 5 review): jq の `// $default` は **null と
+# false の両方** を $default に置換するため、本 helper は boolean field の読み取りには
+# **使ってはいけない**。例: `{"active": false}` を `--default true` で読むと結果は "true"
+# となり、stored false が silent に default に置換される。現状の caller (`parent_issue_number`
+# / `phase` / `loop_count` / `implementation_round`) はすべて非 boolean のため影響なし。
+# 将来 boolean field を読む caller を追加する場合は `--default empty` で明示的に取得して
+# 別途分岐するか、inline jq を使うこと。
+#
 # Source: jq Manual — Alternative operator `//`
-# https://jqlang.github.io/jq/manual/#alternative-operator-
+# https://jqlang.org/manual/#alternative-operator
 value=$(jq -r --arg default "$DEFAULT" ".${FIELD} // \$default" "$STATE_FILE" 2>/dev/null) \
   || value="$DEFAULT"
 
