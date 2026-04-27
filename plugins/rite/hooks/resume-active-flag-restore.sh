@@ -157,4 +157,11 @@ if ! bash "$PLUGIN_ROOT/hooks/flow-state-update.sh" patch "${patch_args[@]}" 2>"
   exit 1
 fi
 
+# PR #688 cycle 32 F-06 fix: even on patch success, surface WORKFLOW_INCIDENT sentinels
+# from flow-state-update.sh stderr (e.g. cross-session takeover refused — the patch silent-skips
+# via --if-exists but the incident sentinel must reach the orchestrator for observability).
+if [ -n "$_err" ] && [ -s "$_err" ] && grep -q 'WORKFLOW_INCIDENT' "$_err" 2>/dev/null; then
+  cat "$_err" >&2
+fi
+
 exit 0

@@ -102,12 +102,15 @@ _resolve_schema_version() {
 # Resolve flow-state file path based on (effective_schema_version, legacy_mode, session_id).
 # - When legacy_mode is "true", schema_version != "2", or session_id is empty -> legacy path
 # - Otherwise -> per-session new path
-# - Reader-symmetric legacy fallback (PR #688 cycle 30 F-01 CRITICAL fix):
-#   When schema_v=2 + valid sid + per-session ABSENT + legacy EXISTS, fall back to legacy.
-#   This mirrors state-read.sh:97-104 to prevent the asymmetric reader/writer silent
-#   regression in AC-4 reproduction scenario where the helper would silent no-op
-#   (active=false maintained) because state-read fell back to legacy but the writer
-#   stayed on per-session path that didn't exist. Empirically reproduced + verified.
+# - Reader-symmetric legacy fallback with cross-session guard (PR #688 cycle 32 F-01/F-02 fix):
+#   When schema_v=2 + valid sid + per-session ABSENT + legacy EXISTS (size > 0), fall back to legacy
+#   ONLY IF legacy.session_id matches the current sid OR legacy.session_id is empty/null.
+#   When legacy.session_id != current sid (cross-session residue), refuse to fall back to legacy
+#   (cycle 31 F-01 CRITICAL: cycle 30 simple fallback caused silent metadata corruption — issue_number
+#   / branch / pr_number from another session would silently leak into current session via jq per-field
+#   merge). Emit WORKFLOW_INCIDENT sentinel so caller can surface and let create-mode handle init.
+#   Size check (cycle 31 F-02 HIGH): writer must mirror state-read.sh:112's `[ ! -s ]` guard so
+#   size-0 legacy (e.g., from `touch .rite-flow-state`) doesn't silently consume patch updates.
 _resolve_session_state_path() {
   local sv="$1"
   local lm="$2"
@@ -117,13 +120,22 @@ _resolve_session_state_path() {
     return 0
   fi
   local per_session_path="$STATE_ROOT/.rite/sessions/${sid}.flow-state"
-  # Reader-symmetric fallback: per-session 不在 + legacy 存在 → legacy にフォールバック。
-  # cross-session takeover (legacy.session_id != current sid) は jq による per-field merge で
-  # 部分上書き (session_id / active / phase / next_action 等) が発生する。本 PR は state-read
-  # との対称性を優先し reader と同じ fallback semantics を採用する。
-  if [ ! -f "$per_session_path" ] && [ -f "$LEGACY_FLOW_STATE" ]; then
-    echo "$LEGACY_FLOW_STATE"
-    return 0
+  # Reader-symmetric fallback with cross-session guard + size check.
+  # `[ -s ]` ensures legacy is non-empty (cycle 31 F-02). Cross-session check below
+  # ensures we only adopt legacy if it belongs to current session or is sessionless legacy.
+  if [ ! -f "$per_session_path" ] && [ -f "$LEGACY_FLOW_STATE" ] && [ -s "$LEGACY_FLOW_STATE" ]; then
+    local legacy_sid
+    legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_FLOW_STATE" 2>/dev/null) || legacy_sid=""
+    if [ -z "$legacy_sid" ] || [ "$legacy_sid" = "$sid" ]; then
+      # Same session or sessionless legacy: safe to take over
+      echo "$LEGACY_FLOW_STATE"
+      return 0
+    fi
+    # Cross-session residue: refuse takeover, emit incident sentinel for observability
+    # (helper / caller will see --if-exists silent skip on per-session path or non-existence error,
+    #  prompting create-mode init which is the correct behavior for fresh sessions)
+    echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused; details=legacy_sid=${legacy_sid},current_sid=${sid}; root_cause_hint=legacy_belongs_to_another_session_use_create_mode" >&2
+    echo "WARNING: refusing to write to legacy flow-state (session_id=${legacy_sid}) from current session (sid=${sid}). Routing to per-session path (--if-exists will silent skip, create-mode will init)." >&2
   fi
   echo "$per_session_path"
 }

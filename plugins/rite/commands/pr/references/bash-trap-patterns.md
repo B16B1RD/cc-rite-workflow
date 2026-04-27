@@ -34,10 +34,12 @@ tmpfile=""
 jq_err=""
 # ... 追加の cleanup 対象変数 ...
 
-# 2. cleanup 関数定義 (責務: rm -f のみ。exit/return を含めてはならない)
+# 2. cleanup 関数定義 (責務: rm -f のみ。exit を含めてはならない / return 値は形式により異なる
+#    — Form A 採用時は不要、Form B 採用時は末尾に return 0 必須。下記「cleanup 関数の契約」節参照)
 _rite_<phase>_cleanup() {
   rm -f "${tmpfile:-}" "${jq_err:-}"
   # ... site-specific な conditional cleanup logic (例: 2-state commit pattern) ...
+  # Form B (`[ -n "${var:-}" ] && rm -f "$var"` 形式) を採用する場合は末尾に `return 0` を追加すること
 }
 
 # 3. signal 別 trap (4 行): EXIT は元 exit code を保持、INT/TERM/HUP は明示的 exit code を返す

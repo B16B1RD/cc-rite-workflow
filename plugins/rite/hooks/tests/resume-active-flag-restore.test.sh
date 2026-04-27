@@ -362,6 +362,84 @@ final_active=$(jq -c '.active' "$SBX/.rite-flow-state" 2>/dev/null)
 assert_eq "TC-mktemp-fail.2: legacy file の active が true (mktemp 失敗でも patch は成功)" "true" "$final_active"
 
 # --- Summary ---
+# --------------------------------------------------------------------------
+# TC-AC-4-RESUME-FALLBACK-SAME-SESSION (PR #688 cycle 32 F-06):
+#
+# resume helper の AC-4 reproduction scenario (helper 経由の E2E pin) を追加。
+# Setup: schema_v=2 + valid sid + per-session 不在 + legacy が **同 session** の遺物
+# 期待挙動: helper が legacy fallback path を経由して active=true を legacy に書き戻す
+# (cycle 32 fix で fallback は same-session のときのみ発火する)
+# --------------------------------------------------------------------------
+echo "TC-AC-4-RESUME-FALLBACK-SAME-SESSION (cycle 32 F-06): helper restores active=true via legacy fallback for same-session legacy"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+CURR_SID="55555555-5555-5555-5555-555555555555"
+write_session_id "$SBX" "$CURR_SID"
+# legacy = same session, active=false, OLD phase (F-05 fix と同じ phase 分離 pattern)
+write_legacy "$SBX" "{\"schema_version\":2,\"active\":false,\"issue_number\":42,\"branch\":\"feat/foo\",\"phase\":\"phase4_pre_resume\",\"next_action\":\"old next\",\"session_id\":\"$CURR_SID\",\"error_count\":0}"
+# per-session は作らない (precondition)
+
+stderr_file=$(mktemp /tmp/rite-resume-tc-ac4-same-stderr-XXXXXX)
+if run_helper "$SBX" "$stderr_file"; then
+  rc=0
+else
+  rc=$?
+fi
+assert_eq "TC-AC-4-RESUME-FALLBACK-SAME-SESSION: helper exit 0" "0" "$rc"
+
+# Verify legacy was actually updated (helper 経由の E2E)
+legacy_active=$(jq -r '.active' "$SBX/.rite-flow-state")
+legacy_phase=$(jq -r '.phase' "$SBX/.rite-flow-state")
+assert_eq "TC-AC-4-RESUME-FALLBACK-SAME-SESSION: legacy active flipped to true via helper" "true" "$legacy_active"
+# phase は state-read.sh が読んだ legacy.phase (phase4_pre_resume) で書き戻されるため、
+# 旧値のまま残るのが期待挙動 (helper は phase を変更せず active のみ復元する)
+assert_eq "TC-AC-4-RESUME-FALLBACK-SAME-SESSION: legacy phase preserved (helper is phase-preserving)" "phase4_pre_resume" "$legacy_phase"
+rm -f "$stderr_file"
+
+# --------------------------------------------------------------------------
+# TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED (PR #688 cycle 32 F-06):
+#
+# Cross-session legacy のとき helper が **silent corruption を起こさない** ことを E2E pin。
+# Setup: schema_v=2 + valid sid (CURR) + per-session 不在 + legacy が **別 session** の遺物
+# 期待挙動: helper が flow-state-update.sh の cross-session refuse 経路に流れ、
+#          patch は --if-exists silent skip → exit 0、legacy は完全未変更、
+#          stderr に WORKFLOW_INCIDENT 含む warning
+# --------------------------------------------------------------------------
+echo "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED (cycle 32 F-01): helper preserves legacy when cross-session"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+CURR_SID="66666666-6666-6666-6666-666666666666"
+OTHER_SID="77777777-7777-7777-7777-777777777777"
+write_session_id "$SBX" "$CURR_SID"
+# legacy = OTHER session's residue (different session_id)
+write_legacy "$SBX" "{\"schema_version\":2,\"active\":false,\"issue_number\":999,\"branch\":\"fix/other\",\"phase\":\"phase_other\",\"session_id\":\"$OTHER_SID\",\"error_count\":3}"
+# per-session for CURR_SID は作らない
+
+stderr_file=$(mktemp /tmp/rite-resume-tc-ac4-cross-stderr-XXXXXX)
+if run_helper "$SBX" "$stderr_file"; then
+  rc=0
+else
+  rc=$?
+fi
+# helper itself returns exit 0 (patch --if-exists silent skips on cross-session per-session-absent path)
+assert_eq "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED: helper exit 0" "0" "$rc"
+
+# CRITICAL invariant: legacy file must be UNCHANGED (cross-session corruption refused)
+legacy_active=$(jq -r '.active' "$SBX/.rite-flow-state")
+legacy_sid=$(jq -r '.session_id' "$SBX/.rite-flow-state")
+legacy_issue=$(jq -r '.issue_number' "$SBX/.rite-flow-state")
+legacy_branch=$(jq -r '.branch' "$SBX/.rite-flow-state")
+assert_eq "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED: legacy active unchanged" "false" "$legacy_active"
+assert_eq "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED: legacy session_id preserved (no cross-session takeover)" "$OTHER_SID" "$legacy_sid"
+assert_eq "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED: legacy issue_number preserved (no metadata corruption)" "999" "$legacy_issue"
+assert_eq "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED: legacy branch preserved" "fix/other" "$legacy_branch"
+
+# Verify WORKFLOW_INCIDENT sentinel in stderr (observability)
+stderr_content=$(cat "$stderr_file")
+assert_contains "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED: WORKFLOW_INCIDENT sentinel emitted (observability)" \
+  "cross_session_takeover_refused" "$stderr_content"
+rm -f "$stderr_file"
+
 echo
 echo "─── resume-active-flag-restore.test.sh summary ──────────────────────────"
 echo "PASS: $PASS"

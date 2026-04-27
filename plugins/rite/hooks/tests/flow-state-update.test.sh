@@ -576,55 +576,57 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-AC-4-WRITER-FALLBACK (PR #688 cycle 30 F-01 CRITICAL fix):
+# TC-AC-4-SAME-SESSION-FALLBACK (PR #688 cycle 32 F-05 fix — refines cycle 30 F-01):
 #
-# AC-4 reproduction scenario の核心ケースを直接 pin する。
-# Setup: schema_v=2 + valid sid + per-session 不在 + legacy が別 session の遺物 (異なる session_id)
-# 旧実装 (cycle 29 以前): _resolve_session_state_path が per-session path を返し、
-#   --if-exists が per-session 不在で silent skip → legacy 未更新 (active=false 維持) → silent regression
-# 新実装 (cycle 30): per-session 不在 + legacy 存在で legacy にフォールバック →
-#   patch が legacy に適用され active=true 復元、session_id が現 sid に書き戻される
+# **Same-session legacy** (legacy.session_id matches current sid) において writer fallback が
+# 機能することを pin する。cycle 31 F-01 で「cross-session takeover が silent corruption」を
+# CRITICAL 認定したため、cycle 32 で fallback を session-id 一致時のみに限定。本 TC は
+# 「legitimate な same-session fallback」が引き続き機能することを assert する。
+#
+# F-05 修正: fixture OLD phase と patch 引数 phase を異なる値に分離 (cycle 30 では同値で dead
+# assertion だった)。これにより pre-fix base に対し phase assertion が確実に FAIL し identification
+# power を持つ。
 # --------------------------------------------------------------------------
 echo ""
-echo "TC-AC-4-WRITER-FALLBACK (cycle 30 F-01): writer falls back to legacy when per-session absent"
+echo "TC-AC-4-SAME-SESSION-FALLBACK (cycle 32 F-05): writer falls back to legacy for same-session, with phase divergence"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD" 2
 CURR_SID="22222222-2222-2222-2222-222222222222"
-OTHER_SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$TD" "$CURR_SID"
 
-# legacy file = OTHER session's residue (different session_id, active=false)
+# legacy file = SAME session (session_id matches CURR_SID), active=false, OLD phase
 cat > "$TD/.rite-flow-state" <<EOF
 {
   "schema_version": 2,
   "active": false,
-  "issue_number": 999,
-  "branch": "fix/old",
-  "phase": "phase5_post_review",
-  "previous_phase": "phase5_review",
-  "pr_number": 999,
+  "issue_number": 42,
+  "branch": "feat/foo",
+  "phase": "phase4_pre_resume",
+  "previous_phase": "phase3",
+  "pr_number": 100,
   "parent_issue_number": 0,
-  "next_action": "old session next action",
+  "next_action": "old next",
   "updated_at": "2026-04-01T00:00:00Z",
-  "session_id": "$OTHER_SID",
-  "last_synced_phase": "phase5_review",
+  "session_id": "$CURR_SID",
+  "last_synced_phase": "phase3",
   "error_count": 0,
-  "wm_comment_id": 999
+  "wm_comment_id": 0
 }
 EOF
 
 # Verify per-session for CURR_SID does NOT exist (precondition)
 if [ -f "$TD/.rite/sessions/$CURR_SID.flow-state" ]; then
-  fail "TC-AC-4-WRITER-FALLBACK precondition: per-session for current sid unexpectedly exists"
+  fail "TC-AC-4-SAME-SESSION-FALLBACK precondition: per-session for current sid unexpectedly exists"
 else
-  pass "TC-AC-4-WRITER-FALLBACK precondition: per-session for current sid absent"
+  pass "TC-AC-4-SAME-SESSION-FALLBACK precondition: per-session for current sid absent"
 fi
 
 # Run patch with --if-exists and --session $CURR_SID (matches helper's invocation pattern)
+# Note: NEW phase differs from OLD fixture phase (F-05 fix — gives identification power)
 set +e
 (cd "$TD" && bash "$HOOK" patch \
   --phase "phase5_post_review" \
-  --next "resumed by cycle 30 fix" \
+  --next "resumed by cycle 32 fix" \
   --active true \
   --if-exists \
   --session "$CURR_SID" >/dev/null 2>&1)
@@ -632,39 +634,161 @@ rc=$?
 set -e
 
 if [ "$rc" -eq 0 ]; then
-  pass "TC-AC-4-WRITER-FALLBACK: patch exit 0"
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: patch exit 0"
 else
-  fail "TC-AC-4-WRITER-FALLBACK: patch wrong exit: $rc"
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: patch wrong exit: $rc"
 fi
 
-# Verify legacy file was actually updated (not silently skipped)
+# Verify legacy file was actually updated
 legacy_active=$(jq -r '.active' "$TD/.rite-flow-state")
 legacy_sid=$(jq -r '.session_id' "$TD/.rite-flow-state")
 legacy_phase=$(jq -r '.phase' "$TD/.rite-flow-state")
 
 if [ "$legacy_active" = "true" ]; then
-  pass "TC-AC-4-WRITER-FALLBACK: legacy active flipped to true (silent skip avoided)"
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: legacy active flipped to true"
 else
-  fail "TC-AC-4-WRITER-FALLBACK: legacy active still '$legacy_active' (silent skip detected)"
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: legacy active still '$legacy_active'"
 fi
 
 if [ "$legacy_sid" = "$CURR_SID" ]; then
-  pass "TC-AC-4-WRITER-FALLBACK: legacy session_id replaced with current sid"
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: legacy session_id preserved (same session)"
 else
-  fail "TC-AC-4-WRITER-FALLBACK: legacy session_id is '$legacy_sid', expected '$CURR_SID'"
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: legacy session_id is '$legacy_sid', expected '$CURR_SID'"
 fi
 
+# F-05 fix: phase assertion has identification power because fixture OLD phase
+# (phase4_pre_resume) differs from patch arg new phase (phase5_post_review)
 if [ "$legacy_phase" = "phase5_post_review" ]; then
-  pass "TC-AC-4-WRITER-FALLBACK: legacy phase updated"
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: legacy phase updated (phase4_pre_resume → phase5_post_review)"
 else
-  fail "TC-AC-4-WRITER-FALLBACK: legacy phase is '$legacy_phase', expected 'phase5_post_review'"
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: legacy phase is '$legacy_phase', expected 'phase5_post_review'"
 fi
 
-# Verify per-session was NOT created (writer correctly used legacy path)
 if [ ! -f "$TD/.rite/sessions/$CURR_SID.flow-state" ]; then
-  pass "TC-AC-4-WRITER-FALLBACK: per-session NOT created (writer used legacy path)"
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: per-session NOT created (writer used legacy path)"
 else
-  fail "TC-AC-4-WRITER-FALLBACK: per-session unexpectedly created"
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: per-session unexpectedly created"
+fi
+
+# --------------------------------------------------------------------------
+# TC-AC-4-CROSS-SESSION-REFUSED (PR #688 cycle 32 F-01 CRITICAL fix):
+#
+# **Cross-session legacy** (legacy.session_id != current sid) において writer fallback が
+# REFUSE されることを pin する。cycle 30 fix の simple fallback は jq per-field merge で
+# silent metadata corruption (issue_number / branch / pr_number が別 session の値を保持) を
+# 引き起こしていた CRITICAL silent regression を、cycle 32 で fail-safe に修正。
+# Setup: schema_v=2 + valid sid + per-session 不在 + legacy が別 session の遺物
+# 期待挙動: patch は exit 0 (silent skip on per-session absent via --if-exists)、
+#          legacy は **完全に未変更**、cross-session corruption が起きない
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-AC-4-CROSS-SESSION-REFUSED (cycle 32 F-01): writer refuses fallback when legacy belongs to another session"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+CURR_SID="22222222-2222-2222-2222-222222222222"
+OTHER_SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$TD" "$CURR_SID"
+
+# legacy file = OTHER session's residue
+cat > "$TD/.rite-flow-state" <<EOF
+{
+  "schema_version": 2,
+  "active": false,
+  "issue_number": 999,
+  "branch": "fix/other-session-branch",
+  "phase": "phase5_other_session",
+  "pr_number": 999,
+  "next_action": "other session action",
+  "updated_at": "2026-04-01T00:00:00Z",
+  "session_id": "$OTHER_SID",
+  "error_count": 5
+}
+EOF
+
+# Capture stderr to verify WORKFLOW_INCIDENT emit
+stderr_file=$(mktemp /tmp/rite-tc-cross-stderr-XXXXXX)
+set +e
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "phase5_post_review" \
+  --next "resumed by cycle 32 fix" \
+  --active true \
+  --if-exists \
+  --session "$CURR_SID" 2>"$stderr_file")
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+  pass "TC-AC-4-CROSS-SESSION-REFUSED: patch exit 0 (silent skip via --if-exists)"
+else
+  fail "TC-AC-4-CROSS-SESSION-REFUSED: patch unexpected exit: $rc"
+fi
+
+# CRITICAL invariant: legacy file must be UNCHANGED (cross-session corruption refused)
+legacy_active=$(jq -r '.active' "$TD/.rite-flow-state")
+legacy_sid=$(jq -r '.session_id' "$TD/.rite-flow-state")
+legacy_phase=$(jq -r '.phase' "$TD/.rite-flow-state")
+legacy_issue=$(jq -r '.issue_number' "$TD/.rite-flow-state")
+legacy_branch=$(jq -r '.branch' "$TD/.rite-flow-state")
+
+if [ "$legacy_active" = "false" ] && [ "$legacy_sid" = "$OTHER_SID" ] && \
+   [ "$legacy_phase" = "phase5_other_session" ] && [ "$legacy_issue" = "999" ] && \
+   [ "$legacy_branch" = "fix/other-session-branch" ]; then
+  pass "TC-AC-4-CROSS-SESSION-REFUSED: legacy file completely unchanged (cross-session corruption refused)"
+else
+  fail "TC-AC-4-CROSS-SESSION-REFUSED: legacy file modified — active=$legacy_active sid=$legacy_sid phase=$legacy_phase issue=$legacy_issue branch=$legacy_branch"
+fi
+
+# Verify WORKFLOW_INCIDENT sentinel was emitted to stderr
+if grep -q 'WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused' "$stderr_file"; then
+  pass "TC-AC-4-CROSS-SESSION-REFUSED: WORKFLOW_INCIDENT sentinel emitted (observability confirmed)"
+else
+  fail "TC-AC-4-CROSS-SESSION-REFUSED: WORKFLOW_INCIDENT sentinel missing from stderr"
+fi
+rm -f "$stderr_file"
+
+# --------------------------------------------------------------------------
+# TC-AC-4-EMPTY-LEGACY-NO-FALLBACK (PR #688 cycle 32 F-02 HIGH fix):
+#
+# size-0 legacy のときに writer fallback が **発火しない** ことを pin する。
+# 旧実装 (cycle 30): [ -f LEGACY ] のみで size-0 を「存在」扱い → fallback → jq 空出力 →
+#   silent skip という silent failure 経路。
+# 新実装 (cycle 32): [ -f LEGACY ] && [ -s LEGACY ] で size-0 を fallback 対象から除外。
+# 期待挙動: --if-exists で silent skip (per-session 不在 + size-0 legacy → 両不在扱い)
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK (cycle 32 F-02): writer rejects size-0 legacy as fallback target"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+SID="44444444-4444-4444-4444-444444444444"
+write_session_id "$TD" "$SID"
+touch "$TD/.rite-flow-state"  # size 0
+
+set +e
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "x" --next "y" --active true --if-exists \
+  --session "$SID" >/dev/null 2>&1)
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+  pass "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: patch exit 0 (silent skip via --if-exists)"
+else
+  fail "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: patch unexpected exit: $rc"
+fi
+
+# Verify legacy file remains size 0 (writer did NOT write to size-0 legacy)
+legacy_size=$(stat -c%s "$TD/.rite-flow-state" 2>/dev/null || stat -f%z "$TD/.rite-flow-state" 2>/dev/null)
+if [ "$legacy_size" = "0" ]; then
+  pass "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: legacy remains size 0 (no fallback to empty file)"
+else
+  fail "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: legacy size is $legacy_size (expected 0)"
+fi
+
+# Verify per-session was NOT created either
+if [ ! -f "$TD/.rite/sessions/$SID.flow-state" ]; then
+  pass "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: per-session NOT created (--if-exists silent skip)"
+else
+  fail "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: per-session unexpectedly created"
 fi
 
 # --------------------------------------------------------------------------
