@@ -44,8 +44,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # する。それらが install 不整合 / deploy regression で missing の場合、bash は exit 127 を返すが
 # `set -euo pipefail` の中でも `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through
 # 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
-# 構造的に塞ぐため、依存する 5 helper を upfront で fail-fast 検査する (state-path-resolve.sh は
-# `||` fallback で silent suppression する独自経路があるため特に重要)。
+# 構造的に塞ぐため、依存する全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。
+# 旧コメントは「5 helper」と書いていたが実際の loop は 6 helper を検査しており、cycle 38 F-04 で確立した
+# semantic anchor 原則と矛盾する数値ドリフトを起こしていたため、verified-review cycle 39 で数値削除に統一)。
+# state-path-resolve.sh は `||` fallback で silent suppression する独自経路があるため特に重要。
 for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
                _resolve-schema-version.sh _resolve-cross-session-guard.sh \
                _emit-cross-session-incident.sh; do

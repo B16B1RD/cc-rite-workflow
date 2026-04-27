@@ -56,8 +56,10 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # それらが install 不整合 / deploy regression で missing の場合、`set -euo pipefail` の中でも
 # `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through 経路が散在する。Issue #687
 # (writer/reader 片肺更新型 silent regression) と同型の deploy regression を構造的に塞ぐため、依存する
-# 5 helper を upfront で fail-fast 検査する (state-path-resolve.sh は STATE_ROOT 解決経路で `||` fallback
-# により silent suppression する独自経路があるため特に重要)。state-read.sh の同型ブロックと writer/reader
+# 全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。旧コメントは「5 helper」と
+# 書いていたが実際の loop は 6 helper を検査しており数値ドリフトを起こしていたため、verified-review cycle 39 で
+# 数値削除に統一)。state-path-resolve.sh は STATE_ROOT 解決経路で `||` fallback により silent suppression する
+# 独自経路があるため特に重要。state-read.sh の同型ブロックと writer/reader
 # 対称化。コメント内の helper 参照は semantic anchor (関数名 / case 構造名) で記述し、行番号を入れない
 # (Wiki 経験則 .rite/wiki/index.md の DRIFT-CHECK ANCHOR 原則 + 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
 for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \

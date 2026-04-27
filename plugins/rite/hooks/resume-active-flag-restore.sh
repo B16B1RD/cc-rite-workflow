@@ -44,13 +44,14 @@ if [ -z "$PLUGIN_ROOT" ]; then
   echo "  Usage: bash $0 <plugin_root>" >&2
   exit 1
 fi
-# verified-review cycle 38 F-01 HIGH / F-09 MEDIUM: expand existence check to all 4 directly invoked
-# helpers. 本 helper は state-read.sh (L81/88) / flow-state-update.sh (`patch_args` invocation L191) /
-# state-path-resolve.sh (L63) / `_resolve-session-id.sh` (L106) を `bash <missing>` invocation 経路で
-# 直接依存する。state-read.sh / flow-state-update.sh が呼ぶ transitive helpers (`_resolve-schema-version.sh`
-# 等) はそれぞれのスクリプト先頭の同型チェックで塞がれる。Issue #687 root cause (writer/reader 片肺更新型
-# silent regression) と同型の deploy regression を構造的に防ぐ。state-read.sh / flow-state-update.sh の
-# 同型ブロックと統一表記。
+# verified-review cycle 38 F-01 HIGH / F-09 MEDIUM (cycle 39 数値ドリフト解消): expand existence check to all
+# directly invoked helpers (具体的なリストは下記 for loop が SoT。旧コメントは「all 4 directly invoked helpers」と
+# 書いていたが実際の loop は 5 helper を検査しており数値ドリフトを起こしていたため、verified-review cycle 39 で
+# 数値削除に統一)。本 helper は state-read.sh / flow-state-update.sh / state-path-resolve.sh /
+# `_resolve-session-id.sh` / `_resolve-session-id-from-file.sh` を `bash <missing>` invocation 経路で直接依存する。
+# state-read.sh / flow-state-update.sh が呼ぶ transitive helpers (`_resolve-schema-version.sh` 等) はそれぞれの
+# スクリプト先頭の同型チェックで塞がれる。Issue #687 root cause (writer/reader 片肺更新型 silent regression) と
+# 同型の deploy regression を構造的に防ぐ。state-read.sh / flow-state-update.sh の同型ブロックと統一表記。
 for _helper in state-read.sh flow-state-update.sh state-path-resolve.sh \
                _resolve-session-id.sh _resolve-session-id-from-file.sh; do
   if [ ! -x "$PLUGIN_ROOT/hooks/$_helper" ]; then
@@ -168,7 +169,10 @@ trap '_rite_resume_active_cleanup; exit 130' INT
 trap '_rite_resume_active_cleanup; exit 143' TERM
 trap '_rite_resume_active_cleanup; exit 129' HUP
 
-_err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX) || {
+# verified-review (PR #688 cycle 39) MEDIUM (code-reviewer L-02): mktemp に `2>/dev/null` を追加。
+# state-read.sh L247 / _resolve-cross-session-guard.sh L83 と同形式に統一する (mktemp 失敗時に
+# `mktemp: cannot create temp file: ...` が WARNING より先に stderr に出て二重表示される問題を解消)。
+_err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX 2>/dev/null) || {
   echo "WARNING: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied?)" >&2
   echo "  影響: 次の error 発生時、flow-state-update.sh の具体的失敗原因 (mv 失敗 / UUID validation 失敗 / jq parse error 等) が表示されません" >&2
   _err=""

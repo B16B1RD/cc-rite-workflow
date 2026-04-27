@@ -539,7 +539,7 @@ rm -rf "$SBX"
 # された。F-04 fix として、caller の redirection 形式を test 側で構造的に守る metatest を追加。
 # state-read.sh の `_resolve-cross-session-guard.sh` 呼び出しが必ず `2>/dev/null` を含むことを
 # grep で source-pin する。
-echo "TC-15.E: state-read.sh caller-side `2>/dev/null` source-pin metatest (F-04 fix revert test)"
+echo 'TC-15.E: state-read.sh caller-side `2>/dev/null` source-pin metatest (F-04 fix revert test)'
 state_read_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/state-read.sh"
 if grep -qE '_resolve-cross-session-guard\.sh.*2>/dev/null' "$state_read_path"; then
   echo "  ✅ TC-15.E.1: state-read.sh contains '_resolve-cross-session-guard.sh ... 2>/dev/null' redirection"

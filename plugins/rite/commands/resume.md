@@ -319,7 +319,9 @@ fi
 
 ### 3.0.1 Restore Flow State Active Flag
 
-Ensure flow-state has `active: true` so that the stop-guard hook blocks premature stops during the resumed workflow. Without this, the stop-guard sees `active: false` (or missing state) and allows Claude to stop mid-flow (root cause of Issue #79's resume-session variant).
+Ensure flow-state has `active: true` so the prompt-side `Sub-skill Return Protocol` (in invoked commands like `rite:issue:start` / `rite:issue:implement`) can detect "in-flight" workflows and resume Pre-write/Mandatory After scaffolding. Without this, the resumed sub-skill sees `active: false` (or missing state) and treats the run as a fresh start, skipping recovery scaffolding (root cause of Issue #79's resume-session variant).
+
+**Note (PR #675 で stop-guard.sh は撤去済み)**: 本 phase の以前の実装は撤去済みの `stop-guard.sh` hook が `Stop` イベントで `active: true` を見て premature stop を block する前提で書かれていたが、現在の defense は **prompt-side のみ** に集約されている。撤去後の defense 体系の整理は Decision Log D-03 で別 Issue 化されている (PR #688)。
 
 ```bash
 # PR #688 cycle 5 review (prompt-engineer 調査推奨): legacy `.rite-flow-state` への直接 jq write を

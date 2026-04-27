@@ -46,6 +46,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# verified-review (PR #688 cycle 39 H-01) MEDIUM (silent-failure-hunter):
+# `_resolve-session-id.sh` の存在 check を upfront で実施する。
+# 旧実装は L77 で `bash _resolve-session-id.sh ... 2>/dev/null` と stderr を suppress していたため、
+# helper missing (rc=127) / permission denied / bash 起動失敗 と validation 失敗 (rc=1) が
+# 区別不能 (両方とも「stdout 空文字 + exit 0」で復帰) だった。
+# state-read.sh / flow-state-update.sh は upfront で `[ ! -x ]` check を実施しているため、
+# それらの caller 経由では deploy regression が早期に検出されるが、本 helper を直接呼ぶ
+# 新規 caller が出現した場合に Issue #687 同型の silent skip 経路を作る。
+# state-read.sh L49-57 の helper existence check pattern と同型に統一する。
+if [ ! -x "$SCRIPT_DIR/_resolve-session-id.sh" ]; then
+  echo "ERROR: required helper not found or not executable: $SCRIPT_DIR/_resolve-session-id.sh" >&2
+  echo "  本 helper (_resolve-session-id-from-file.sh) は _resolve-session-id.sh に UUID validation を委譲しています。" >&2
+  echo "  対処: rite plugin が完全にデプロイされているか確認してください (部分配置 / chmod -x / git mv 漏れの可能性)" >&2
+  exit 1
+fi
+
 STATE_ROOT="${1:-}"
 if [ -z "$STATE_ROOT" ]; then
   echo "ERROR: usage: $0 <state_root>" >&2
