@@ -818,12 +818,26 @@ else
   echo "  ❌ writer-side metatest 2: flow-state-update.sh の 'invalid_uuid:*' arm が存在しない (cycle 36 F-16 fix が revert された可能性)"
   FAIL=$((FAIL+1))
 fi
-# defensive arm pattern check (`if cmd; then :; else rc=$?; fi` not `elif ! cmd; then rc=$?`)
-if grep -qE '^[[:space:]]*if bash "\$SCRIPT_DIR/workflow-incident-emit\.sh"' "$flow_state_path"; then
-  echo "  ✅ writer-side metatest 3: flow-state-update.sh uses canonical 'if cmd; then :; else rc=$?; fi' pattern (F-01 fix)"
+# PR #688 followup F-01 MEDIUM: workflow-incident-emit.sh 呼び出しは `_emit-cross-session-incident.sh`
+# helper に集約された。flow-state-update.sh 自身では canonical if/else pattern は使われなくなったため、
+# metatest 3 は helper 経由 SoT を pin する形に更新する:
+#   (a) flow-state-update.sh が _emit-cross-session-incident.sh helper を呼んでいる (foreign / corrupt / invalid_uuid)
+#   (b) _emit-cross-session-incident.sh helper 自身が canonical if/else pattern を使っている (anti-pattern 再発検出)
+helper_path="$(dirname "$flow_state_path")/_emit-cross-session-incident.sh"
+if grep -qE '_emit-cross-session-incident\.sh.*foreign[[:space:]]+writer' "$flow_state_path" \
+   && grep -qE '_emit-cross-session-incident\.sh.*corrupt[[:space:]]+writer' "$flow_state_path" \
+   && grep -qE '_emit-cross-session-incident\.sh.*invalid_uuid[[:space:]]+writer' "$flow_state_path"; then
+  echo "  ✅ writer-side metatest 3a: flow-state-update.sh routes foreign/corrupt/invalid_uuid through _emit-cross-session-incident.sh helper (F-01 helper extraction)"
   PASS=$((PASS+1))
 else
-  echo "  ❌ writer-side metatest 3: flow-state-update.sh が canonical if/else pattern を使っていない (F-01 anti-pattern が再発した可能性)"
+  echo "  ❌ writer-side metatest 3a: flow-state-update.sh が _emit-cross-session-incident.sh helper 経由で 3 classification を emit していない (F-01 helper extraction が revert された可能性)"
+  FAIL=$((FAIL+1))
+fi
+if [ -x "$helper_path" ] && grep -qE '^[[:space:]]*if bash "\$emit_script"' "$helper_path"; then
+  echo "  ✅ writer-side metatest 3b: _emit-cross-session-incident.sh uses canonical 'if cmd; then :; else rc=$?; fi' pattern (F-01 anti-pattern guard)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 3b: _emit-cross-session-incident.sh helper が canonical if/else pattern を使っていない (F-01 anti-pattern が helper 内で再発した可能性)"
   FAIL=$((FAIL+1))
 fi
 

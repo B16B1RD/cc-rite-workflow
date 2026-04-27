@@ -156,6 +156,11 @@ write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue"
 # branch-based extraction の直接検証 (cycle 12 false negative regression guard):
 # make_sandbox が `fix/issue-687-test` branch を作るため、branch parsing が `687` を抽出して
 # `.rite-work-memory/issue-687.md` を生成することを確認する。
+#
+# PR #688 followup F-06 LOW (branch-name coupling 軽減): make_sandbox の git init branch
+# (fix/issue-687-test) と本 TC の assertion で参照する issue 番号 (687) を local var で 1 か所に集約。
+# make_sandbox の branch 名を変更した場合、本 var を同期更新するだけで TC-1.1 / TC-1.2 が追従する。
+EXPECTED_ISSUE_NUM=687  # make_sandbox L88 の "fix/issue-687-test" branch から抽出される値
 if run_update "$SBX" \
   WM_SOURCE="lint" WM_PHASE="phase5_lint" WM_PHASE_DETAIL="quality check" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Test body." \
@@ -164,9 +169,9 @@ if run_update "$SBX" \
 else
   rc=$?
 fi
-assert_eq "TC-1.1: return 0 (per-session resolved via state-read.sh, branch parsing extracts 687)" "0" "$rc"
-assert_eq "TC-1.2: WM file created via branch parsing (issue-687.md)" "yes" \
-  "$([ -f "$SBX/.rite-work-memory/issue-687.md" ] && echo yes || echo no)"
+assert_eq "TC-1.1: return 0 (per-session resolved via state-read.sh, branch parsing extracts ${EXPECTED_ISSUE_NUM})" "0" "$rc"
+assert_eq "TC-1.2: WM file created via branch parsing (issue-${EXPECTED_ISSUE_NUM}.md)" "yes" \
+  "$([ -f "$SBX/.rite-work-memory/issue-${EXPECTED_ISSUE_NUM}.md" ] && echo yes || echo no)"
 
 # --- TC-2: schema_version=2 + both files absent + WM_REQUIRE_FLOW_STATE=true ---
 echo "TC-2: schema_v=2 + per-session/legacy 両不在 + WM_REQUIRE_FLOW_STATE=true → return 1 (skip)"

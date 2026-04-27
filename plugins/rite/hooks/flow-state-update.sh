@@ -153,6 +153,8 @@ _resolve_session_state_path() {
     # emit on the writer side. Helper now keeps stderr clean (cycle 35 fix in
     # _resolve-cross-session-guard.sh), so 2>/dev/null is safe. Symmetric with state-read.sh:119.
     classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>/dev/null) || true
+    # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
+    # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約 (state-read.sh と writer/reader 対称)。
     case "$classification" in
       same|empty)
         # Same session or sessionless legacy: safe to take over
@@ -164,63 +166,19 @@ _resolve_session_state_path() {
         # (caller will see --if-exists silent skip on per-session path or non-existence error,
         #  prompting create-mode init which is the correct behavior for fresh sessions)
         local legacy_sid="${classification#foreign:}"
-        # verified-review cycle 36/37 fix (F-01 HIGH): if/else pattern instead of `elif ! cmd; then emit_rc=$?`.
-        # Bash spec: `if/elif ! cmd; then rc=$?` always yields rc=0 (negation result propagates).
-        # Same anti-pattern that cycle 35 F-04 eliminated from 6 callers — re-introduced as part
-        # of cycle 35 F-07 fix (Asymmetric Fix Transcription self-referential drift). Symmetric
-        # with state-read.sh foreign:* / corrupt:* arms.
-        if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
-          echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=cross_session_takeover_refused details=layer=writer,current_sid=${sid},legacy_sid=${legacy_sid}" >&2
-        else
-          if bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-              --type cross_session_takeover_refused \
-              --details "layer=writer,current_sid=${sid},legacy_sid=${legacy_sid}" \
-              --root-cause-hint "legacy_belongs_to_another_session_use_create_mode" >&2; then
-            :
-          else
-            local emit_rc=$?
-            echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=cross_session_takeover_refused" >&2
-          fi
-        fi
+        bash "$SCRIPT_DIR/_emit-cross-session-incident.sh" foreign writer "$sid" "$legacy_sid"
         echo "WARNING: refusing to write to legacy flow-state (session_id=${legacy_sid}) from current session (sid=${sid}). Routing to per-session path (--if-exists will silent skip, create-mode will init)." >&2
         ;;
       corrupt:*)
         # jq 失敗 (corrupt JSON / IO error) → take over は不安全 (cross-session の可能性を否定できない)
         local jq_rc="${classification#corrupt:}"
-        # verified-review cycle 36/37 fix (F-01 HIGH): if/else pattern (same as foreign:* arm above).
-        if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
-          echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=legacy_state_corrupt details=layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" >&2
-        else
-          if bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-              --type legacy_state_corrupt \
-              --details "layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},jq_rc=${jq_rc}" \
-              --root-cause-hint "legacy_jq_parse_failed_cannot_verify_session_ownership" >&2; then
-            :
-          else
-            local emit_rc=$?
-            echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=legacy_state_corrupt" >&2
-          fi
-        fi
+        bash "$SCRIPT_DIR/_emit-cross-session-incident.sh" corrupt writer "$sid" "$LEGACY_FLOW_STATE" "$jq_rc"
         echo "WARNING: legacy flow-state ${LEGACY_FLOW_STATE} jq parse failed; routing to per-session path (create-mode will init)." >&2
         ;;
       invalid_uuid:*)
-        # verified-review cycle 36 fix (F-16 LOW security): writer-side mirror of state-read.sh
-        # invalid_uuid:* arm. Distinct sentinel (vs corrupt:*) for UUID validation failure to
-        # avoid jq exit code 1 numeric collision in incident response diagnosis.
+        # legacy.session_id が JSON-parseable だが UUID validation 失敗 (tampered / legacy schema)。
         local invalid_uuid_rc="${classification#invalid_uuid:}"
-        if [ ! -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
-          echo "WARNING: workflow-incident-emit.sh missing — sentinel could not be emitted: type=legacy_state_corrupt details=layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},reason=invalid_uuid_format,rc=${invalid_uuid_rc}" >&2
-        else
-          if bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-              --type legacy_state_corrupt \
-              --details "layer=writer,current_sid=${sid},path=${LEGACY_FLOW_STATE},reason=invalid_uuid_format,rc=${invalid_uuid_rc}" \
-              --root-cause-hint "legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema" >&2; then
-            :
-          else
-            local emit_rc=$?
-            echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=legacy_state_corrupt (invalid_uuid)" >&2
-          fi
-        fi
+        bash "$SCRIPT_DIR/_emit-cross-session-incident.sh" invalid_uuid writer "$sid" "$LEGACY_FLOW_STATE" "$invalid_uuid_rc"
         echo "WARNING: legacy flow-state ${LEGACY_FLOW_STATE} session_id failed UUID validation (tampered / legacy schema); routing to per-session path." >&2
         ;;
       *)
