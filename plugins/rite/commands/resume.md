@@ -339,14 +339,23 @@ Ensure flow-state has `active: true` so that the stop-guard hook blocks prematur
 curr_phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "")
 curr_next=$(bash {plugin_root}/hooks/state-read.sh --field next_action --default "Resume continuation.")
 _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
+# PR #688 cycle 8 fix (F-01 CRITICAL): pipeline `2>&1 | head -3` を除去し stderr を tmpfile に
+# 退避する pattern に変更。旧 cycle 6 実装は `set -o pipefail` 未設定の bash デフォルト評価で
+# pipeline 終端 head -3 の exit 0 が支配的になり、上流 flow-state-update.sh の exit 1 を silent
+# に握りつぶしていた (cycle 7 review で 3 reviewer が独立検出した cross-validated CRITICAL)。
+# stderr を tmpfile に退避してから head する pattern にすることで、flow-state-update.sh の
+# exit code を `if !` で正しく評価でき、失敗時に必ず ERROR 出力 + exit 1 で fail-fast する。
+_err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX) || _err=""
 if [ -n "$_sid" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "$curr_phase" \
     --next "$curr_next" \
     --active true \
     --session "$_sid" \
-    --if-exists 2>&1 | head -3; then
+    --if-exists 2>"${_err:-/dev/null}"; then
     echo "ERROR: failed to restore active flag, abort resume" >&2
+    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
+    [ -n "$_err" ] && rm -f "$_err"
     exit 1
   fi
 else
@@ -354,11 +363,14 @@ else
     --phase "$curr_phase" \
     --next "$curr_next" \
     --active true \
-    --if-exists 2>&1 | head -3; then
+    --if-exists 2>"${_err:-/dev/null}"; then
     echo "ERROR: failed to restore active flag, abort resume" >&2
+    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
+    [ -n "$_err" ] && rm -f "$_err"
     exit 1
   fi
 fi
+[ -n "$_err" ] && rm -f "$_err"
 ```
 
 **If flow-state does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here. `--if-exists` flag handles this case silently.

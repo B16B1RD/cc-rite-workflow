@@ -29,6 +29,22 @@ PASS=0
 FAIL=0
 FAILED_NAMES=()
 
+# PR #688 cycle 8 fix (F-02 MEDIUM): signal trap (EXIT/INT/TERM/HUP) で sandbox leak を防ぐ。
+# flow-state-update.test.sh は cycle 5 F-09 で同型の cleanup pattern を導入済みで、本テストは
+# その drift 状態だった (cycle 7 review で test reviewer 検出)。Ctrl+C / SIGTERM で `mktemp -d`
+# で作られた sandbox が `/tmp/tmp.XXXXXX` に leak する経路を塞ぐ。
+cleanup_dirs=()
+_state_read_test_cleanup() {
+  local d
+  for d in "${cleanup_dirs[@]:-}"; do
+    [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
+  done
+}
+trap '_state_read_test_cleanup' EXIT
+trap '_state_read_test_cleanup; exit 130' INT
+trap '_state_read_test_cleanup; exit 143' TERM
+trap '_state_read_test_cleanup; exit 129' HUP
+
 assert_eq() {
   local name="$1" expected="$2" actual="$3"
   if [ "$expected" = "$actual" ]; then
@@ -100,7 +116,7 @@ run_helper() {
 
 # --- TC-1: per-session present + legacy holding another session's residue ---
 echo "TC-1: per-session present + legacy 別 session 残骸 → per-session 値返却 (#687 core)"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$SBX" "$SID"
@@ -116,7 +132,7 @@ rm -rf "$SBX"
 
 # --- TC-2: per-session absent + legacy present → legacy fallback ---
 echo "TC-2: per-session 不在 + legacy 存在 → legacy fallback"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 # No per-session file written.
@@ -129,7 +145,7 @@ rm -rf "$SBX"
 
 # --- TC-3: both absent → default ---
 echo "TC-3: both absent → default returned"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 result=$(run_helper "$SBX" --field phase --default "default_phase")
@@ -140,7 +156,7 @@ rm -rf "$SBX"
 
 # --- TC-4: invalid field name rejected ---
 echo "TC-4: invalid field name (path traversal style) → ERROR + exit 1"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 write_per_session "$SBX" "11111111-1111-1111-1111-111111111111" '{"phase":"x"}'
@@ -161,7 +177,7 @@ rm -rf "$SBX"
 
 # --- TC-5: .rite-session-id absent → legacy fallback ---
 echo "TC-5: .rite-session-id absent → legacy fallback"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 # No .rite-session-id, but per-session file would exist if SID were known.
 mkdir -p "$SBX/.rite/sessions"
@@ -173,7 +189,7 @@ rm -rf "$SBX"
 
 # --- TC-6 (additional safeguard): tampered .rite-session-id rejected, falls back to legacy ---
 echo "TC-6: tampered .rite-session-id (non-UUID) → fallback to legacy (no path traversal)"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 echo "../../../etc/passwd" > "$SBX/.rite-session-id"
 write_legacy "$SBX" '{"phase":"safe_legacy"}'
@@ -183,7 +199,7 @@ rm -rf "$SBX"
 
 # --- TC-7: schema_version=1 (or absent) routes directly to legacy even if SID + per-session exist ---
 echo "TC-7: schema_version=1 routes to legacy"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 cat > "$SBX/rite-config.yml" <<EOF
 flow_state:
   schema_version: 1
@@ -198,7 +214,7 @@ rm -rf "$SBX"
 
 # --- TC-8: flow_state: section present but schema_version: line missing (pipefail regression #687 follow-up) ---
 echo "TC-8: flow_state セクションあり / schema_version 行なし → grep 不一致で pipefail silent failure しない"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 # `flow_state:` セクションは存在するが `schema_version:` キーが欠落する degenerate config。
 # `set -euo pipefail` 下で grep no-match (exit 1) が pipeline 全体 exit 1 を引き起こし、
 # top-level 代入で set -e により helper が silent に exit 1 する regression を再現する設定。
@@ -219,7 +235,7 @@ rm -rf "$SBX"
 # 3-reviewer 独立検出): hard-coded line number reference は cycle ごとに drift するため、
 # function/region 名で参照する (本体 hook と同じ refactor 耐性パターン)。
 echo "TC-9: corrupt JSON state file → DEFAULT fallback (state-read.sh の jq error path / corrupt JSON branch)"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$SBX" "$SID"
@@ -239,7 +255,7 @@ rm -rf "$SBX"
 # block を削除し、本 TC を「jq の // 演算子による null normalization の動作確認」として
 # 書き直す。state-read.sh の DEFAULT 値 (`"x"`) が確実に返ることで `// $default` の動作を pin。
 echo "TC-10: JSON null value → jq の // 演算子で caller default に置換される"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$SBX" "$SID"
@@ -254,7 +270,7 @@ rm -rf "$SBX"
 
 # --- TC-11: --default 省略時の挙動 → 空文字列を返す ---
 echo "TC-11: --default 省略時 → 空文字列を返す (CLI default behaviour)"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$SBX" "$SID"
@@ -270,7 +286,7 @@ rm -rf "$SBX"
 # DEFAULT fallback が cycle 4 まで未カバーだった。`[ -s "$STATE_FILE" ]` size check 追加で
 # corrupt JSON (TC-9) と挙動を一致させる。
 echo "TC-12: 空ファイル (size 0) → DEFAULT 返却 (空ファイル edge case)"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$SBX" "$SID"
@@ -289,7 +305,7 @@ rm -rf "$SBX"
 # coverage を pin する。TC-12 (空ファイル / size 0) と組み合わせることで、size check と jq fallback の
 # 両 path が個別に検証される。
 echo "TC-13: 非 JSON ファイル (plain text) → DEFAULT 返却 (jq parse-error fallback、size check と独立)"
-SBX=$(make_sandbox)
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
 write_session_id "$SBX" "$SID"
