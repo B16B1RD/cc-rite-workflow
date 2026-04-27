@@ -35,7 +35,10 @@
 #                             When set, WM_PR_NUMBER/WM_LOOP_COUNT overrides are ignored;
 #                             values are parsed from the existing work memory file instead.
 #                             (default: "false")
-#   WM_REQUIRE_FLOW_STATE   - If "true", skip if .rite-flow-state doesn't exist (default: "false")
+#   WM_REQUIRE_FLOW_STATE   - If "true", skip if flow-state phase cannot be resolved via
+#                             state-read.sh (per-session and legacy file both absent, or phase
+#                             is null/empty). Uses state-read.sh under the hood so schema_version=2
+#                             per-session files are resolved transparently. (default: "false")
 #   WM_READ_FROM_FLOW_STATE - If "true", read pr_number/loop_count from .rite-flow-state (lint pattern).
 #                             When set, overrides WM_PR_NUMBER/WM_LOOP_COUNT and values from existing WM.
 #                             (default: "false")
@@ -69,8 +72,20 @@ update_local_work_memory() {
     return 1
   fi
 
-  if [ "${WM_REQUIRE_FLOW_STATE:-false}" = "true" ] && [ ! -f ".rite-flow-state" ]; then
-    return 1
+  # PR #688 cycle 12 fix (F-01 HIGH AC-4 caller migration完遂):
+  # legacy `.rite-flow-state` 直接 `[ ! -f ]` check を state-read.sh 経由に変更。
+  # cycle 10 で line 130 の同種 read を移行済みだが、本箇所 (line 72) は cycle 11 review で
+  # 取り残しが指摘された。schema_version=2 環境で per-session file (`.rite/sessions/{sid}.flow-state`)
+  # のみ存在し legacy file 不在のとき、旧 check は false negative で skip し work memory が更新されない
+  # (例: lint pattern で session 起点の caller が WM_REQUIRE_FLOW_STATE=true を渡しても skip される)。
+  # state-read.sh は per-session/legacy 両方を transparent に解決し、両方不在時のみ default ("") を
+  # 返すため、空文字判定で「flow-state が解決できない」状態を正確に検出できる。
+  if [ "${WM_REQUIRE_FLOW_STATE:-false}" = "true" ]; then
+    local _phase
+    _phase=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field phase --default "") || _phase=""
+    if [ -z "$_phase" ]; then
+      return 1
+    fi
   fi
 
   local local_wm=".rite-work-memory/issue-${issue_number}.md"

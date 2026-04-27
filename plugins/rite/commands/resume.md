@@ -346,7 +346,7 @@ _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
 # 「--if-exists handles silently」と実装の乖離)。空文字時はそもそも patch を呼ばずに skip し、
 # invoked command (e.g., rite:issue:start) の create mode に委譲する。
 if [ -z "$curr_phase" ]; then
-  echo "ℹ️  flow-state file が不在のため active flag 復元を skip しました (invoked command が create mode で初期化します)" >&2
+  echo "ℹ️  flow-state phase が解決できなかったため active flag 復元を skip しました (per-session/legacy file 両不在、または phase が null/空文字 — invoked command が create mode で初期化します)" >&2
 else
   # PR #688 cycle 8 fix (F-01 旧 CRITICAL): pipeline `2>&1 | head -3` を除去し stderr を tmpfile に
   # 退避する pattern に変更。pipefail 未設定下では pipeline 終端 head -3 の exit 0 が支配的になり、
@@ -388,7 +388,7 @@ else
 fi
 ```
 
-**If flow-state does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here. `--if-exists` flag handles this case silently.
+**If flow-state does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here. The `[ -z "$curr_phase" ]` guard above is the primary handler — it covers all four no-state paths (per-session file absent / legacy file absent / file present but `phase` null / file present but `phase` empty string) by skipping the patch entirely. The `--if-exists` flag inside the `else` branch is a secondary defense for the rare race where the file disappears between the read and the patch.
 
 ### 3.1 Switch Branch
 
