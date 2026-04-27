@@ -93,8 +93,9 @@ fi
 # 失敗原因 (`ERROR: mv failed (patch mode)` 等) が消える silent suppression 反パターンを可視化する。
 #
 # PR #688 cycle 22 fix (LOW recommendation): signal-specific trap で SIGINT/SIGTERM/SIGHUP 中断時の
-# tempfile leak を防ぐ。flow-state-update.sh:228 の `trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT HUP`
-# と統一する。Linux の /tmp 自動 cleanup でカバーされるが convention 統一のため追加。
+# tempfile leak を防ぐ。flow-state-update.sh の `trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT HUP`
+# (perform_atomic_write 関数内) と統一する。Linux の /tmp 自動 cleanup でカバーされるが convention
+# 統一のため追加。
 #
 # PR #688 cycle 24 fix (F-01 CRITICAL): EXIT trap 経路で script exit code を保持する。
 # 旧実装 (cycle 22) は `trap '_rite_resume_active_cleanup' EXIT` で関数を直接 trap 登録していたが、
@@ -104,14 +105,21 @@ fi
 # kill され、resume.md L344 の `if ! bash {plugin_root}/hooks/...` で hard-abort 経路に流れる。
 # patch 自体は成功しているのに resume が中断される silent regression。
 #
-# 修正は **二重防御** で対応:
+# 修正:
 #   (A) cleanup 関数末尾に `return 0` を追加 — 関数自体が非 0 を返さないようにする。
-#       `set -euo pipefail` 下で cleanup 関数が非 0 を返すと trap action が `set -e` で中断され
-#       後続の `exit $rc` に到達しない (実証済: bash -c で `[ -n "" ] && rm` の後に exit 0 でも rc=1)
+#       これが **必要十分な fix**。`set -euo pipefail` 下で cleanup 関数が非 0 を返すと trap action
+#       が `set -e` で中断され、後続の `exit $rc` に到達しない (実証済: bash -c で `[ -n "" ] && rm`
+#       の後に exit 0 でも rc=1)。bash-trap-patterns.md L101-107 の通り cleanup 関数は **0 を返す責務**
+#       を負う (function rc 漏洩の防止)。
 #   (B) trap action を `rc=$?; cleanup; exit $rc` の wiki-query-inject.sh:59 同型 pattern に統一 —
-#       元の exit code を `rc=$?` で退避して `exit $rc` で復元する defense-in-depth
-# (A) のみでも修正可能だが、(B) を併用することで将来 cleanup 関数に他のコマンドが追加されて非 0 を
-# 返す経路が増えても script exit code が保持される。
+#       canonical pattern との表記統一 (cosmetic alignment)。
+#
+# 重要 — (B) は defense-in-depth として機能しない: cleanup 関数が `return N (N≠0)` を返すと、(B) の
+# trap action は `rc=$?` で原 exit code を退避するものの、後続の `cleanup` 呼び出しで `set -e` が
+# trap action を中断し、`exit $rc` に到達せずに cleanup の rc=N が script exit code として伝播する
+# (cycle 25 reviewer による empirical 検証済み: `cleanup return 7` + (B) trap → script exit 7、
+# 原 exit code 0 は保持されない)。よって (B) のみで cycle 22 regression を修正することは**不可能**。
+# (A) `return 0` の削除は cycle 22 silent regression の再導入になるため厳禁。
 _err=""
 _rite_resume_active_cleanup() {
   [ -n "${_err:-}" ] && rm -f "$_err"
@@ -129,11 +137,11 @@ _err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX) || {
 }
 
 # PR #688 cycle 22 fix (F-02 MEDIUM): sid 有無の if/else 完全 duplication を patch_args 配列パターンに統一。
-# flow-state-update.sh:374-390 で確立済の `JQ_ARGS=()` + `JQ_ARGS+=()` 条件付き append convention と同型
+# flow-state-update.sh の確立済 `JQ_ARGS=()` + `JQ_ARGS+=()` 条件付き append convention と同型
 # (変数名は本 helper の文脈に合わせて patch_args)。失敗ハンドラブロック (echo / head -3 sed / exit 1) を
 # 1 か所にまとめ、将来 `--phase` / `--next` 等の patch 引数を変更する際の片肺更新 drift を防ぐ
-# (tempfile cleanup は L99-105 の trap で別途 EXIT/INT/TERM/HUP に対応)。
-# PR #688 cycle 24 fix (F-03 MEDIUM): cycle 22 cycle 22 コメントの drift を修正
+# (tempfile cleanup は `_rite_resume_active_cleanup` 関数 + EXIT/INT/TERM/HUP trap で別途対応)。
+# PR #688 cycle 24 fix (F-03 MEDIUM): cycle 22 で導入されたコメントの drift を修正
 # (旧表記の "JQ_ARGS 配列パターン" / "rm -f を含む failure handler" が実装と乖離していた)。
 patch_args=(--phase "$curr_phase" --next "$curr_next" --active true --if-exists)
 if [ -n "$_sid" ]; then
