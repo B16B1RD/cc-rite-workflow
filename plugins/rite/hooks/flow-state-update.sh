@@ -102,6 +102,12 @@ _resolve_schema_version() {
 # Resolve flow-state file path based on (effective_schema_version, legacy_mode, session_id).
 # - When legacy_mode is "true", schema_version != "2", or session_id is empty -> legacy path
 # - Otherwise -> per-session new path
+# - Reader-symmetric legacy fallback (PR #688 cycle 30 F-01 CRITICAL fix):
+#   When schema_v=2 + valid sid + per-session ABSENT + legacy EXISTS, fall back to legacy.
+#   This mirrors state-read.sh:97-104 to prevent the asymmetric reader/writer silent
+#   regression in AC-4 reproduction scenario where the helper would silent no-op
+#   (active=false maintained) because state-read fell back to legacy but the writer
+#   stayed on per-session path that didn't exist. Empirically reproduced + verified.
 _resolve_session_state_path() {
   local sv="$1"
   local lm="$2"
@@ -110,7 +116,16 @@ _resolve_session_state_path() {
     echo "$LEGACY_FLOW_STATE"
     return 0
   fi
-  echo "$STATE_ROOT/.rite/sessions/${sid}.flow-state"
+  local per_session_path="$STATE_ROOT/.rite/sessions/${sid}.flow-state"
+  # Reader-symmetric fallback: per-session 不在 + legacy 存在 → legacy にフォールバック。
+  # cross-session takeover (legacy.session_id != current sid) は jq による per-field merge で
+  # 部分上書き (session_id / active / phase / next_action 等) が発生する。本 PR は state-read
+  # との対称性を優先し reader と同じ fallback semantics を採用する。
+  if [ ! -f "$per_session_path" ] && [ -f "$LEGACY_FLOW_STATE" ]; then
+    echo "$LEGACY_FLOW_STATE"
+    return 0
+  fi
+  echo "$per_session_path"
 }
 
 # --- Argument parsing ---

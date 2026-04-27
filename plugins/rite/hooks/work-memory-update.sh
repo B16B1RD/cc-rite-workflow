@@ -74,8 +74,11 @@ update_local_work_memory() {
 
   # PR #688 cycle 12 fix (F-01 HIGH AC-4 caller migration完遂):
   # legacy `.rite-flow-state` 直接 `[ ! -f ]` check を state-read.sh 経由に変更。
-  # cycle 10 で line 130 の同種 read を移行済みだが、本箇所 (line 72) は cycle 11 review で
-  # 取り残しが指摘された。schema_version=2 環境で per-session file (`.rite/sessions/{sid}.flow-state`)
+  # cycle 10 で WM_READ_FROM_FLOW_STATE 分岐の同種 read を移行済みだが、本箇所
+  # (WM_REQUIRE_FLOW_STATE check) は cycle 11 review で取り残しが指摘された。
+  # (verified-review cycle 29 F-04 MEDIUM: cycle 28 で確立した semantic anchor 規範を本箇所
+  # にも適用。旧 "line 130 / line 72" は code shift で drift 済み)
+  # schema_version=2 環境で per-session file (`.rite/sessions/{sid}.flow-state`)
   # のみ存在し legacy file 不在のとき、旧 check は false negative で skip し work memory が更新されない
   # (例: lint pattern で session 起点の caller が WM_REQUIRE_FLOW_STATE=true を渡しても skip される)。
   # state-read.sh は per-session/legacy 両方を transparent に解決し、両方不在時のみ default ("") を

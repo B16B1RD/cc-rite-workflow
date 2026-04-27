@@ -576,6 +576,98 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-AC-4-WRITER-FALLBACK (PR #688 cycle 30 F-01 CRITICAL fix):
+#
+# AC-4 reproduction scenario の核心ケースを直接 pin する。
+# Setup: schema_v=2 + valid sid + per-session 不在 + legacy が別 session の遺物 (異なる session_id)
+# 旧実装 (cycle 29 以前): _resolve_session_state_path が per-session path を返し、
+#   --if-exists が per-session 不在で silent skip → legacy 未更新 (active=false 維持) → silent regression
+# 新実装 (cycle 30): per-session 不在 + legacy 存在で legacy にフォールバック →
+#   patch が legacy に適用され active=true 復元、session_id が現 sid に書き戻される
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-AC-4-WRITER-FALLBACK (cycle 30 F-01): writer falls back to legacy when per-session absent"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+CURR_SID="22222222-2222-2222-2222-222222222222"
+OTHER_SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$TD" "$CURR_SID"
+
+# legacy file = OTHER session's residue (different session_id, active=false)
+cat > "$TD/.rite-flow-state" <<EOF
+{
+  "schema_version": 2,
+  "active": false,
+  "issue_number": 999,
+  "branch": "fix/old",
+  "phase": "phase5_post_review",
+  "previous_phase": "phase5_review",
+  "pr_number": 999,
+  "parent_issue_number": 0,
+  "next_action": "old session next action",
+  "updated_at": "2026-04-01T00:00:00Z",
+  "session_id": "$OTHER_SID",
+  "last_synced_phase": "phase5_review",
+  "error_count": 0,
+  "wm_comment_id": 999
+}
+EOF
+
+# Verify per-session for CURR_SID does NOT exist (precondition)
+if [ -f "$TD/.rite/sessions/$CURR_SID.flow-state" ]; then
+  fail "TC-AC-4-WRITER-FALLBACK precondition: per-session for current sid unexpectedly exists"
+else
+  pass "TC-AC-4-WRITER-FALLBACK precondition: per-session for current sid absent"
+fi
+
+# Run patch with --if-exists and --session $CURR_SID (matches helper's invocation pattern)
+set +e
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "phase5_post_review" \
+  --next "resumed by cycle 30 fix" \
+  --active true \
+  --if-exists \
+  --session "$CURR_SID" >/dev/null 2>&1)
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+  pass "TC-AC-4-WRITER-FALLBACK: patch exit 0"
+else
+  fail "TC-AC-4-WRITER-FALLBACK: patch wrong exit: $rc"
+fi
+
+# Verify legacy file was actually updated (not silently skipped)
+legacy_active=$(jq -r '.active' "$TD/.rite-flow-state")
+legacy_sid=$(jq -r '.session_id' "$TD/.rite-flow-state")
+legacy_phase=$(jq -r '.phase' "$TD/.rite-flow-state")
+
+if [ "$legacy_active" = "true" ]; then
+  pass "TC-AC-4-WRITER-FALLBACK: legacy active flipped to true (silent skip avoided)"
+else
+  fail "TC-AC-4-WRITER-FALLBACK: legacy active still '$legacy_active' (silent skip detected)"
+fi
+
+if [ "$legacy_sid" = "$CURR_SID" ]; then
+  pass "TC-AC-4-WRITER-FALLBACK: legacy session_id replaced with current sid"
+else
+  fail "TC-AC-4-WRITER-FALLBACK: legacy session_id is '$legacy_sid', expected '$CURR_SID'"
+fi
+
+if [ "$legacy_phase" = "phase5_post_review" ]; then
+  pass "TC-AC-4-WRITER-FALLBACK: legacy phase updated"
+else
+  fail "TC-AC-4-WRITER-FALLBACK: legacy phase is '$legacy_phase', expected 'phase5_post_review'"
+fi
+
+# Verify per-session was NOT created (writer correctly used legacy path)
+if [ ! -f "$TD/.rite/sessions/$CURR_SID.flow-state" ]; then
+  pass "TC-AC-4-WRITER-FALLBACK: per-session NOT created (writer used legacy path)"
+else
+  fail "TC-AC-4-WRITER-FALLBACK: per-session unexpectedly created"
+fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""

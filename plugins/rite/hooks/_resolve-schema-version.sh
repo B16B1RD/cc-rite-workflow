@@ -14,12 +14,14 @@
 #   SCHEMA_VERSION=$(bash plugins/rite/hooks/_resolve-schema-version.sh "$STATE_ROOT")
 #
 # Why this exists (PR #688 cycle 5 review code-quality + error-handling 推奨):
-#   The same schema_version resolution logic was duplicated in:
-#     - state-read.sh (reader-side, line 80-102)
-#     - flow-state-update.sh _resolve_schema_version (writer-side, line 102-110)
+#   The same schema_version resolution logic was previously inlined in:
+#     - state-read.sh (reader-side, in the SCHEMA_VERSION resolution block before _resolve-schema-version.sh extraction)
+#     - flow-state-update.sh _resolve_schema_version (writer-side, in the inline cfg/section/grep/case block before extraction)
 #   Both implementations went through cycle 1 (silent failure detection) and
 #   cycle 3 (`|| v=""` pipefail guard added to both). DRY-ifying eliminates
 #   the drift risk where a future micro-fix is applied to one side only.
+#   (verified-review cycle 29 F-05 MEDIUM: cycle 28 で確立した semantic anchor 規範を本箇所
+#   にも適用。旧 "line 80-102" / "line 102-110" は抽出後に意味的に不可能な参照だった)
 #
 # Exit codes:
 #   0 — always (echoes "1" or "2" on stdout)

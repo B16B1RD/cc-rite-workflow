@@ -133,12 +133,13 @@ _rite_<scope>_<phase>_cleanup() {
 後続の `exit $rc` に到達しない** (実証: `bash -c 'set -euo pipefail; f(){ [ -n "" ] && rm -f /tmp/x; }; trap "rc=\$?; f; exit \$rc" EXIT; exit 5'; echo $?` → 1)。
 このため Form B では **必ず `return 0`** を末尾に追加して関数 rc 漏洩を明示防止すること。
 
-**Form B における (B) の限界**: `trap 'rc=$?; cleanup; exit $rc' EXIT` の `rc=$?` capture は、cleanup 関数が
+**Form B における trap action `rc=$?` capture の限界**: `trap 'rc=$?; cleanup; exit $rc' EXIT` の `rc=$?` capture は、cleanup 関数が
 `return N (N≠0)` を返す経路に対して **defense-in-depth として機能しない**。`set -e` が cleanup 呼び出しの
 時点で trap action を中断するため、後続の `exit $rc` には到達しない (cleanup の rc が script exit code
 として伝播する)。Form B では `return 0` のみが silent regression を防ぐ唯一の手段である。
 
-**まとめ**: Form A (`rm -f "${var:-}"` 形式) → 戻り値無視 OK、Form B (`[ -n ] && rm` 形式) → `return 0` 必須。silent regression を防ぐ defense は trap action 側の `rc=$?` 退避 (上述の (B)) ではなく cleanup 関数末尾の `return 0` (上述の (A)) のみが機能する。
+**まとめ**: Form A (`rm -f "${var:-}"` 形式) → 戻り値無視 OK、Form B (`[ -n ] && rm` 形式) → `return 0` 必須。silent regression を防ぐ defense は **trap action 側の `rc=$?` 退避 pattern** ではなく **cleanup 関数末尾の `return 0` (Form B 必須)** のみが機能する。
+(verified-review cycle 29 F-03 MEDIUM: 旧 `(A)` / `(B)` 表記は同 file 内で未定義だったため、`Form A/B` 形式に明示置換。cycle 28 commit message claim と diff の乖離を解消)
 
 ### `${var:-}` 形式で未定義変数を安全化
 
