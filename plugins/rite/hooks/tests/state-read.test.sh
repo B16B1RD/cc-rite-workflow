@@ -202,23 +202,42 @@ rm -rf "$SBX"
 # だった。cycle 22 で `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` (RFC 4122
 # strict) に強化し、これらの非準拠形式も reject されることを pin する (将来 SESSION_ID を別 context
 # に流用したときの spec drift で脆弱性化を防ぐ defense-in-depth)。
+#
+# PR #688 cycle 24 fix (F-02 HIGH): per-session file を bad-name UUID で作成して fallback 経路を分岐
+# させる。cycle 22 旧実装は per-session file を作成せずに legacy のみ書き込んでいたため、pre-fix
+# (lax regex で SESSION_ID accept) と post-fix (strict regex で SESSION_ID="") の両方が legacy
+# fallback で同一値を返し、revert test として機能していなかった (test 自身が validation logic を
+# pin できていない false-positive)。
+# 修正方法: 本 TC で使う bad SESSION_ID 値を per-session file 名として作成し、{"phase":"BAD_RFC*"}
+# を書き込む。pre-fix では SESSION_ID が accept されて per-session file が読まれ BAD_RFC* が返る。
+# post-fix では SESSION_ID="" で legacy fallback され safe_legacy_* が返る。assert は post-fix の
+# 期待値 (safe_legacy_*) のため、pre-fix で BAD_RFC* が返ると test が fail し regex strict 化が
+# pin される。
 echo "TC-6.RFC: ハイフン無し 36 字 hex (RFC 4122 非準拠) → reject されて legacy fallback (cycle 22 F-03)"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 # 36 字 hex 連続 (旧 regex を通過するが RFC 4122 では invalid) — 1 行に書く
-echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > "$SBX/.rite-session-id"
+BAD_SID_NO_HYPHEN="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+echo "$BAD_SID_NO_HYPHEN" > "$SBX/.rite-session-id"
+# bad SESSION_ID 名で per-session file を作成 (pre-fix の lax regex で読み込まれる経路)。
+# post-fix の strict regex では SESSION_ID="" になり下記の per-session file は参照されず legacy fallback。
+mkdir -p "$SBX/.rite/sessions"
+printf '%s' '{"phase":"BAD_RFC1"}' > "$SBX/.rite/sessions/${BAD_SID_NO_HYPHEN}.flow-state"
 write_legacy "$SBX" '{"phase":"safe_legacy_rfc"}'
 result=$(run_helper "$SBX" --field phase --default "")
-assert_eq "TC-6.RFC.1: hyphen 無し 36 字 hex は reject されて legacy fallback" "safe_legacy_rfc" "$result"
+assert_eq "TC-6.RFC.1: hyphen 無し 36 字 hex は reject されて legacy fallback (revert test 有効)" "safe_legacy_rfc" "$result"
 rm -rf "$SBX"
 
 # ハイフン位置が間違った 36 字 (例: 9-3-4-4-12 や 7-5-4-4-12 等) も reject
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
-echo "aaaaaaaaa-aaa-aaaa-aaaa-aaaaaaaaaaaa" > "$SBX/.rite-session-id"
+BAD_SID_BAD_POS="aaaaaaaaa-aaa-aaaa-aaaa-aaaaaaaaaaaa"
+echo "$BAD_SID_BAD_POS" > "$SBX/.rite-session-id"
+mkdir -p "$SBX/.rite/sessions"
+printf '%s' '{"phase":"BAD_RFC2"}' > "$SBX/.rite/sessions/${BAD_SID_BAD_POS}.flow-state"
 write_legacy "$SBX" '{"phase":"safe_legacy_pos"}'
 result=$(run_helper "$SBX" --field phase --default "")
-assert_eq "TC-6.RFC.2: ハイフン位置不正な 36 字 hex は reject されて legacy fallback" "safe_legacy_pos" "$result"
+assert_eq "TC-6.RFC.2: ハイフン位置不正な 36 字 hex は reject されて legacy fallback (revert test 有効)" "safe_legacy_pos" "$result"
 rm -rf "$SBX"
 
 # --- TC-7: schema_version=1 (or absent) routes directly to legacy even if SID + per-session exist ---

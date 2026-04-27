@@ -300,6 +300,62 @@ assert_eq "TC-tampered-sid.1: helper exit 0 (tampered sid は empty 扱いで le
 final_active=$(jq -c '.active' "$SBX/.rite-flow-state" 2>/dev/null)
 assert_eq "TC-tampered-sid.2: legacy file の active が true に restored される (patch 成功の side effect)" "true" "$final_active"
 
+# --- TC-mktemp-fail: mktemp 失敗経路で helper が exit 0 を保持する (cycle 24 F-01 CRITICAL regression guard) ---
+# cycle 22 で追加した signal-specific trap が `_rite_resume_active_cleanup` 関数を直接 trap 登録していたため、
+# `_err=""` (mktemp 失敗 fallback) 時に cleanup function の `[ -n "" ] && rm -f` が `&&` short-circuit
+# で return 1 を返し、`set -euo pipefail` 下で EXIT trap return code が script exit 0 を上書き → helper
+# exit 1 で resume が hard-abort する silent regression があった (patch 自体は成功しているのに)。
+# cycle 24 で `trap 'rc=$?; cleanup; exit $rc' EXIT` の wiki-query-inject.sh:59 同型 pattern に統一して
+# 元の exit code を `rc=$?` で退避し復元するよう修正。本 TC は PATH 経由で fake mktemp を注入し、
+# mktemp が常に失敗する状況下で helper が exit 0 を返すことを pin する。
+echo "TC-mktemp-fail: mktemp 失敗時に helper が exit 0 を保持する (cycle 24 F-01 CRITICAL regression guard)"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_legacy "$SBX" '{"phase":"phase5_lint","next_action":"continue","active":false}'
+# fake mktemp directory を sandbox 内に作成 (test isolation 保証)
+# 重要: helper 専用 pattern (rite-resume-flow-err-) のみ fail させ、flow-state-update.sh の内部 mktemp
+# 呼び出し (rite-flow-state-* 等) は real mktemp に passthrough させる。aggressive fake は
+# flow-state-update.sh 自身を fail させて legitimate な exit 1 を引き起こすため、F-01 (helper 自身の
+# trap regression) を isolate できない。
+fake_bin="$SBX/.fake-bin"
+mkdir -p "$fake_bin"
+cat > "$fake_bin/mktemp" <<'FAKE_MKTEMP'
+#!/bin/bash
+# Selective fake: helper 専用 pattern のみ fail、それ以外は real mktemp に passthrough
+case "$*" in
+  *rite-resume-flow-err-XXXXXX*)
+    echo "fake mktemp: simulated failure for helper's _err tempfile" >&2
+    exit 1
+    ;;
+  *)
+    # Find real mktemp by searching common paths (PATH の先頭に self が居るため $PATH 検索は循環する)
+    for p in /usr/bin/mktemp /bin/mktemp /usr/local/bin/mktemp; do
+      if [ -x "$p" ]; then
+        exec "$p" "$@"
+      fi
+    done
+    echo "fake mktemp: real mktemp not found in standard paths" >&2
+    exit 1
+    ;;
+esac
+FAKE_MKTEMP
+chmod +x "$fake_bin/mktemp"
+
+helper_err=$(mktemp /tmp/rite-resume-mktemp-fail-err-XXXXXX)
+if (cd "$SBX" && PATH="$fake_bin:$PATH" bash "$HELPER" "$PLUGIN_ROOT" 2>"$helper_err"); then
+  helper_rc=0
+else
+  helper_rc=$?
+fi
+if [ "$helper_rc" -ne 0 ]; then
+  echo "  helper_err (cycle 22 trap regression が再発した可能性):" >&2
+  head -10 "$helper_err" | sed 's/^/    /' >&2
+fi
+rm -f "$helper_err"
+assert_eq "TC-mktemp-fail.1: helper exit 0 (mktemp 失敗時も EXIT trap が exit code を保持)" "0" "$helper_rc"
+# mktemp 失敗でも patch 自体は実行され active=true に書き戻されることを確認
+final_active=$(jq -c '.active' "$SBX/.rite-flow-state" 2>/dev/null)
+assert_eq "TC-mktemp-fail.2: legacy file の active が true (mktemp 失敗でも patch は成功)" "true" "$final_active"
+
 # --- Summary ---
 echo
 echo "─── resume-active-flag-restore.test.sh summary ──────────────────────────"
