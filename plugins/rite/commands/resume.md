@@ -325,21 +325,39 @@ Ensure flow-state has `active: true` so that the stop-guard hook blocks prematur
 # PR #688 cycle 5 review (prompt-engineer 調査推奨): legacy `.rite-flow-state` への直接 jq write を
 # `flow-state-update.sh patch` 経由に変更。schema_version=2 環境 (multi-state) でも per-session file
 # が正しく更新され、AC-4 の write 側 path も統一される。
+#
+# PR #688 cycle 6 fix (F-01 CRITICAL + F-02 HIGH): patch mode は `--phase` / `--next` が必須引数のため、
+# self-patch 形式に変更する。state-read.sh で **現在の** phase/next_action を読み取り、それを
+# patch filter に渡すことで「他フィールドは保持しつつ active のみ true に戻す」semantics を維持する。
+# 旧 cycle 5 実装は --phase/--next 不在で flow-state-update.sh が exit 1 silent regression し、
+# `--if-exists` が file 不在 path しかカバーしないため Issue #79 の resume-session variant を再導入していた。
 # `--if-exists` で flow-state file (legacy or per-session) が存在する場合のみ patch する
 # (不在時は invoked command が create mode で初期化するため no-op)。
 # Note: flow-state-update.sh patch mode は --active 以外に --session を取り、updated_at を自動 set
-# する。`error_count = 0` のリセットは旧実装が行っていたが patch mode 内で `--preserve-error-count`
-# を指定しない場合の default 挙動 (reset) で同等にカバーされる。
+# する。`error_count = 0` のリセットは patch mode の default 挙動 (preserve-error-count 未指定時) で
+# 旧実装と同等にカバーされる。
+curr_phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "")
+curr_next=$(bash {plugin_root}/hooks/state-read.sh --field next_action --default "Resume continuation.")
 _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
 if [ -n "$_sid" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "$curr_phase" \
+    --next "$curr_next" \
     --active true \
     --session "$_sid" \
-    --if-exists 2>&1 | head -3
+    --if-exists 2>&1 | head -3; then
+    echo "ERROR: failed to restore active flag, abort resume" >&2
+    exit 1
+  fi
 else
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "$curr_phase" \
+    --next "$curr_next" \
     --active true \
-    --if-exists 2>&1 | head -3
+    --if-exists 2>&1 | head -3; then
+    echo "ERROR: failed to restore active flag, abort resume" >&2
+    exit 1
+  fi
 fi
 ```
 

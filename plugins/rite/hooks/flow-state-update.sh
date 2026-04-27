@@ -380,6 +380,15 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
       JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
+    # PR #688 cycle 6 (F-03 fix): patch mode で session_id を書き戻す経路を追加。
+    # 旧 resume.md は legacy direct jq write で `.session_id = $sid` を atomic 更新していた
+    # (resume 時の所有権移転 semantics) が、cycle 5 で patch 経由化した際に session_id 書き戻しが
+    # drop されていた。SESSION 変数は _resolve_session_id で resolve 済みなので、非空時に
+    # patch filter に追加する (caller は自身の session が所有する flow-state を patch する設計のため安全)。
+    if [[ -n "$SESSION" ]]; then
+      JQ_FILTER="$JQ_FILTER | .session_id = \$session"
+      JQ_ARGS+=(--arg session "$SESSION")
+    fi
     # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
     if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then

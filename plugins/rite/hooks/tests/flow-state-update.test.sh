@@ -483,6 +483,65 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-SESSION-PATCH (PR #688 cycle 6 F-03): patch mode で session_id が書き戻される
+#
+# resume 時の所有権移転 semantics: 別 session が作成した flow-state を引き継ぐ caller が
+# 自身の session_id を patch で書き戻すことで、後続の stop-guard / state-read 等が
+# 「現在の所有 session」として認識する。cycle 5 で legacy direct jq write を patch 経由化した際に
+# session_id 書き戻しが drop されたため、cycle 6 で patch filter に session_id 条件付き update を追加。
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-SESSION-PATCH (cycle 6 F-03): patch mode writes back session_id"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+SID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+write_session_id "$TD" "$SID"
+(cd "$TD" && bash "$HOOK" create \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>&1)
+TARGET="$TD/.rite/sessions/$SID.flow-state"
+
+# Verify create wrote the session_id
+created_sid=$(jq -r '.session_id // ""' "$TARGET")
+if [ "$created_sid" = "$SID" ]; then
+  pass "create mode wrote initial session_id"
+else
+  fail "create did not set session_id: got '$created_sid'"
+fi
+
+# Simulate session_id drift / corruption (e.g., previous owner left a stale value in the file
+# while .rite-session-id has been updated to the current owner). resume.md cycle 5 (旧実装)
+# は legacy direct jq write で `.session_id = $sid` を書き戻すことで所有権メタデータを再同期
+# していたが、cycle 5 で patch 経由化した際に session_id 書き戻しが drop された。
+# このテストは patch mode が file 内の stale session_id を `--session` (or auto-resolved
+# .rite-session-id) で上書きすることを検証する。
+tmp=$(mktemp); jq '.session_id = "stale-or-other-session-uuid"' "$TARGET" > "$tmp" && mv "$tmp" "$TARGET"
+
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "p" --next "n2" --active true --session "$SID" >/dev/null 2>&1)
+patched_sid=$(jq -r '.session_id // ""' "$TARGET")
+if [ "$patched_sid" = "$SID" ]; then
+  pass "patch mode writes back session_id (overrides stale value with caller's session)"
+else
+  fail "patch did not update session_id: got '$patched_sid' expected '$SID'"
+fi
+
+# Negative case: legacy mode + .rite-session-id 不在 → SESSION 解決が空 → session_id 更新しない
+# (caller が session を持たない場合に既存値を上書き破壊しない契約の検証)
+TD2=$(make_test_dir); cleanup_dirs+=("$TD2")
+write_config "$TD2" 1  # legacy mode (schema_version=1)
+# .rite-session-id 作らない
+echo '{"phase":"p","next_action":"n","session_id":"original-uuid-keepme","active":true}' \
+  > "$TD2/.rite-flow-state"
+(cd "$TD2" && bash "$HOOK" patch \
+  --phase "p" --next "n2" --active true >/dev/null 2>&1)
+kept_sid=$(jq -r '.session_id // ""' "$TD2/.rite-flow-state")
+if [ "$kept_sid" = "original-uuid-keepme" ]; then
+  pass "patch mode without resolved session preserves existing session_id (no destructive overwrite)"
+else
+  fail "patch overwrote session_id with empty: got '$kept_sid'"
+fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""

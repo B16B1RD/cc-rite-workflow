@@ -281,8 +281,14 @@ result=$(run_helper "$SBX" --field phase --default "empty_file_default")
 assert_eq "TC-12.1: 空ファイル (size 0) は DEFAULT を返す (jq silent empty 防止)" "empty_file_default" "$result"
 rm -rf "$SBX"
 
-# --- TC-13: 非 JSON ファイル → DEFAULT 返却 (F-C MEDIUM cycle 5) ---
-echo "TC-13: 非 JSON ファイル (plain text) → DEFAULT 返却"
+# --- TC-13: 非 JSON ファイル → DEFAULT 返却 (size check と独立した jq parse-error fallback の defensive coverage) ---
+# PR #688 cycle 6 review (test reviewer F-04 MEDIUM 対応): cycle 5 のコメントは「F-C MEDIUM
+# (size check 追加でカバー)」と記述していたが mutation testing で誤りと判明 — 非 JSON ファイルは
+# size > 0 のため `[ -s "$STATE_FILE" ]` チェックを通過し、jq の parse error fallback (`|| value="$DEFAULT"`)
+# 経路で処理される。本 TC は size check と **独立** に機能する jq parse-error fallback の defensive
+# coverage を pin する。TC-12 (空ファイル / size 0) と組み合わせることで、size check と jq fallback の
+# 両 path が個別に検証される。
+echo "TC-13: 非 JSON ファイル (plain text) → DEFAULT 返却 (jq parse-error fallback、size check と独立)"
 SBX=$(make_sandbox)
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
