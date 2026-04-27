@@ -128,10 +128,11 @@ if bash "$emit_script" \
   :
 else
   emit_rc=$?
-  if [ "$classification" = "invalid_uuid" ]; then
-    echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=${incident_type} (invalid_uuid)" >&2
-  else
-    echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=${incident_type}" >&2
-  fi
+  # verified-review cycle 38 F-13 LOW: corrupt と invalid_uuid は同一 incident_type (legacy_state_corrupt)
+  # を共有するため、WARNING で両者を区別する suffix `(invalid_uuid)` を付加する 1 箇所だけが分岐していた。
+  # 旧実装は if/else の特殊化で完全な 2 行 echo を保持していたが、suffix 変数 1 行で表現する方が DRY。
+  invalid_uuid_suffix=""
+  [ "$classification" = "invalid_uuid" ] && invalid_uuid_suffix=" (invalid_uuid)"
+  echo "WARNING: workflow-incident-emit.sh exited non-zero (rc=$emit_rc) — sentinel may not have been emitted: type=${incident_type}${invalid_uuid_suffix}" >&2
 fi
 exit 0

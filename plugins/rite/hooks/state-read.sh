@@ -46,8 +46,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
 # 構造的に塞ぐため、依存する 5 helper を upfront で fail-fast 検査する (state-path-resolve.sh は
 # `||` fallback で silent suppression する独自経路があるため特に重要)。
-for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-schema-version.sh \
-               _resolve-cross-session-guard.sh _emit-cross-session-incident.sh; do
+for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
+               _resolve-schema-version.sh _resolve-cross-session-guard.sh \
+               _emit-cross-session-incident.sh; do
   if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
     echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
     echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
@@ -92,13 +93,11 @@ fi
 # state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh の 5 site で重複していた
 # RFC 4122 strict pattern を 1 箇所に集約し、将来の pattern tightening (variant bit check 等) を
 # 片肺更新 drift から守る。
-SESSION_ID=""
-if [ -f "$STATE_ROOT/.rite-session-id" ]; then
-  raw=$(tr -d '[:space:]' < "$STATE_ROOT/.rite-session-id" 2>/dev/null) || raw=""
-  if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$raw" 2>/dev/null); then
-    SESSION_ID="$validated"
-  fi
-fi
+# verified-review cycle 38 F-05 MEDIUM: `tr + _resolve-session-id.sh + fallback` の compound sequence
+# 自体も 3 site (本ファイル / flow-state-update.sh / resume-active-flag-restore.sh) で重複していた。
+# `_resolve-session-id-from-file.sh` 共通 helper に抽出し、将来「hex normalize / base64 UUID」等の
+# 上流動作変更で同型片肺更新 drift が発生しない設計に転換した (writer/reader/resume 3 layer の DRY 化)。
+SESSION_ID=$(bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT")
 
 # --- Resolve schema_version (DRY: shared helper with flow-state-update.sh) ---
 # PR #688 cycle 5 review (code-quality + error-handling 推奨): writer/reader で同一の inline

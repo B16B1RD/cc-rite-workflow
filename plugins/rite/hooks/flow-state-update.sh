@@ -60,8 +60,9 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # により silent suppression する独自経路があるため特に重要)。state-read.sh の同型ブロックと writer/reader
 # 対称化。コメント内の helper 参照は semantic anchor (関数名 / case 構造名) で記述し、行番号を入れない
 # (Wiki 経験則 .rite/wiki/index.md の DRIFT-CHECK ANCHOR 原則 + 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
-for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-schema-version.sh \
-               _resolve-cross-session-guard.sh _emit-cross-session-incident.sh; do
+for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
+               _resolve-schema-version.sh _resolve-cross-session-guard.sh \
+               _emit-cross-session-incident.sh; do
   if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
     echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
     echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
@@ -91,6 +92,10 @@ _resolve_session_id() {
   # に抽出。state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh の 5 site で重複していた
   # RFC 4122 strict pattern を 1 箇所に集約し、将来の pattern tightening (variant bit check 等) を
   # 片肺更新 drift から守る。
+  # verified-review cycle 38 F-05 MEDIUM: 引数指定なし経路 (sid_file 読込 + tr + validation + fallback) を
+  # `_resolve-session-id-from-file.sh` 共通 helper に置換。state-read.sh / resume-active-flag-restore.sh と
+  # writer/reader/resume 3 layer 対称化。--session arg 指定経路は writer 固有の fail-fast policy
+  # (silent fallback で spec drift を隠さない) を維持する必要があるため、本関数内で明示処理を残す。
   local provided_sid="${1:-}"
   if [[ -n "$provided_sid" ]]; then
     local validated
@@ -104,18 +109,7 @@ _resolve_session_id() {
     echo "ERROR: invalid session_id format: '$provided_sid' (expected UUID ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\$)" >&2
     return 1
   fi
-  local sid_file="$STATE_ROOT/.rite-session-id"
-  local sid
-  sid=$(tr -d '[:space:]' < "$sid_file" 2>/dev/null) || sid=""
-  if [[ -n "$sid" ]]; then
-    local validated
-    if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$sid" 2>/dev/null); then
-      sid="$validated"
-    else
-      sid=""
-    fi
-  fi
-  echo "$sid"
+  bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT"
 }
 
 # Resolve flow_state.schema_version from rite-config.yml.

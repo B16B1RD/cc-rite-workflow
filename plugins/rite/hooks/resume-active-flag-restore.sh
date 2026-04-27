@@ -51,7 +51,8 @@ fi
 # 等) はそれぞれのスクリプト先頭の同型チェックで塞がれる。Issue #687 root cause (writer/reader 片肺更新型
 # silent regression) と同型の deploy regression を構造的に防ぐ。state-read.sh / flow-state-update.sh の
 # 同型ブロックと統一表記。
-for _helper in state-read.sh flow-state-update.sh state-path-resolve.sh _resolve-session-id.sh; do
+for _helper in state-read.sh flow-state-update.sh state-path-resolve.sh \
+               _resolve-session-id.sh _resolve-session-id-from-file.sh; do
   if [ ! -x "$PLUGIN_ROOT/hooks/$_helper" ]; then
     echo "ERROR: $_helper not found or not executable: $PLUGIN_ROOT/hooks/$_helper" >&2
     exit 1
@@ -100,23 +101,12 @@ else
   exit 1
 fi
 
-# .rite-session-id を STATE_ROOT 経由で読む (不在時は空文字)。改行 / 空白を tr で除去。
-# state-read.sh の per-session resolver (.rite-session-id 読込 block) / flow-state-update.sh の
-# `_resolve_session_id` 関数と対称化 (PR #688 followup F-02 LOW / cycle 38 F-15: 旧 `state-read.sh:93`
-# 行番号参照を semantic anchor に置換)。`|| _sid=""` で tr 失敗 (file 不在 / permission denied 等) を吸収。
-_sid=$(tr -d '[:space:]' < "$STATE_ROOT/.rite-session-id" 2>/dev/null) || _sid=""
-
-# verified-review cycle 34 fix (F-01 CRITICAL): UUID validation を `_resolve-session-id.sh` 共通 helper
-# に抽出。state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh の 5 site で重複していた
-# RFC 4122 strict pattern を 1 箇所に集約し、将来の pattern tightening (variant bit check 等) を
-# 片肺更新 drift から守る。
-if [ -n "$_sid" ]; then
-  if validated=$(bash "$PLUGIN_ROOT/hooks/_resolve-session-id.sh" "$_sid" 2>/dev/null); then
-    _sid="$validated"
-  else
-    _sid=""
-  fi
-fi
+# .rite-session-id を STATE_ROOT 経由で読む (不在時 / 無効 UUID 時は空文字)。
+# verified-review cycle 38 F-05 MEDIUM: `tr + _resolve-session-id.sh + fallback` の compound sequence を
+# `_resolve-session-id-from-file.sh` 共通 helper に置換。state-read.sh の per-session resolver / flow-state-update.sh の
+# `_resolve_session_id` 関数と writer/reader/resume 3 layer 対称化。UUID validation 自体は cycle 34 F-01 で
+# 既に DRY 化済 (`_resolve-session-id.sh`) で、本 cycle はその上流の compound 動作も DRY 化する。
+_sid=$(bash "$PLUGIN_ROOT/hooks/_resolve-session-id-from-file.sh" "$STATE_ROOT")
 
 # PR #688 cycle 10 fix (F-01 CRITICAL): curr_phase 空文字ガード。
 # state-read.sh が空文字を返す経路 (resume.md Phase 3.0.1 trailing prose の canonical enumeration
