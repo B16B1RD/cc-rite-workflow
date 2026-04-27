@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-04-25T17:50:00+00:00"
+updated: "2026-04-27T23:01:24+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260421T024947Z-pr-636.md"
@@ -46,7 +46,11 @@ sources:
     ref: "raw/fixes/20260425T161635Z-pr-661.md"
   - type: "fixes"
     ref: "raw/fixes/20260425T165546Z-pr-661.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern"]
+  - type: "reviews"
+    ref: "raw/reviews/20260427T021251Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260427T155947Z-pr-688.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section"]
 confidence: high
 ---
 
@@ -179,6 +183,51 @@ cycle 1 (7) → cycle 2 (2) → cycle 3 (1) → cycle 4 (0) mergeable
 
 **cycle 4 mergeable 確定の cross-validation 構造**: 5 reviewer (prompt-engineer / code-quality / test / error-handling / devops) 全員が独立に「評価: 可」(0 findings) を出した時点で「累積対策 fractal pattern が収束した」と判定する canonical signal。cycle 4 で **6 件の REC (recommendation Issue 候補)** も同時抽出され、cycle 数を hard limit せず quality signal で判断する原則の追加実証。
 
+### PR #688 (Issue #687 = multi-state-aware flow-state read helper) — 累積 14 回目 38+ cycle 観測
+
+PR #688 は累積 14 回目の対策 PR で 38+ cycle にわたり review-fix loop を継続。本ページの fractal pattern が **新たな 2 つの failure mode を加える** 自己累積実例として記録:
+
+#### Failure mode 1: `cycle 6→7→8→9→10→11→12→13→14` chain での fix-introduced regression 6 連続
+
+| cycle | 修正 | 次 cycle で検出された regression |
+|-------|------|--------------------------------|
+| 6 fix | pipeline 化 | pipeline exit code masking (CRITICAL, 3 reviewer 独立検出) |
+| 8 fix | stderr tmpfile 退避 | fresh-resume hard-abort + silent suppression |
+| 10 fix | AC-4 caller migration | partial migration (line 72 取り残し) + prose drift |
+| 12 fix | prose conjunctive 修正 | 同 file 同 block 隣接行に新規 prose drift 導入 + caller test 不在 |
+| 14 fix | prose + caller test 新規 | TC-1.2 dead code (3 reviewer cross-validated) |
+| 16 fix | dead code 削除 + chain 終止 | 完了 |
+
+→ 各 fix が **immediate symptom focus** から **adjacent area scan** に格上げされる規範。「修正対象行の周辺 ±10 行」「同一ファイル内の同型 prose」「caller 側の test の存在」を必ず確認する discipline。「prose 修正で prose drift を解消するアプローチは constructive ではなく self-introducing パターンを生む」という反省 — **reference を作るのではなく reference を消して self-contained にする** ことで chain を断つ canonical fix 方針が cycle 16 で確立。
+
+#### Failure mode 2: Self-referential learned 節 chain (累積 35+ cycle 越えで初観測)
+
+cycle 35 commit message が learned 節で「累積 12 回目の Asymmetric Fix Transcription」を **明記しながら**、同じ commit 内の F-07 修正で同型 `if !` anti-pattern を新規 4 site (`state-read.sh:139-145, 155-161` / `flow-state-update.sh:170-176, 185-191`) に同時播種した self-referential failure mode を cycle 36 で完全修復。13 回目の累積パターン (詳細は [`if ! cmd; then rc=$?` は常に 0 を捕捉する](./bash-if-bang-rc-capture.md))。実機検証:
+
+```bash
+$ set -euo pipefail; if ! bash -c 'exit 7'; then emit_rc=$?; echo $emit_rc; fi
+0  # 期待 7
+```
+
+これは「**learned 節で言及した直後の同 commit で再演する**」特殊な self-referential pattern で、**認知バイアスとレビュー疲労の交差点で発生** する failure mode。今後の bash 系 PR では cycle commit message に書いた learned 節の対象パターンが「**同 commit 内の他箇所**」で再演されていないかを self-verify する step を追加検討する canonical 規範を追加。
+
+#### Failure mode 3: 大規模 scope 拡張時の bug 埋め込みリスク (cycle 5 で実測)
+
+cycle 5 で「軽微 (URL fix / typo) + 中規模 (edge case) + 大規模 (write 経路 migration)」3 層対応をユーザ judgment で本 PR scope に取り込み、9/10 を 1 commit で解消した結果、大規模 (resume.md write 経路 migration) で flow-state-update.sh patch mode の必須引数 (--phase/--next) を欠落する **CRITICAL bug を導入**。5 reviewer (code-quality / prompt-engineer / error-handling / security / test) が独立に sandbox で実機再現して同一根本原因を検出 (最高信頼度 reviewer 合意)。
+
+→ scope 拡張時は cycle を細分化して各変更を独立に verify する方が safer。caller migration では hook の API contract (必須/optional 引数) を sandbox eval で verify する step が必要。
+
+#### 38 cycle 観測の累積 quality signal 拡張
+
+PR #688 の 38+ cycle 経過で本ページの 4 quality signal に追加:
+
+| 追加 signal | 観測 | escalate 先 |
+|-----------|------|------------|
+| Self-referential learned 節 | commit message の learned 節と同 commit 内の他箇所が同型 anti-pattern を再演 | commit 直前に learned 節対象パターンの全 site grep + sandbox 実機 verify を mandatory 化 |
+| Cross-validated CRITICAL の reviewer 合意数 | 5+ reviewer 独立 sandbox reproduction で同一根本原因を検出 | 単独 reviewer の reasoning に頼らず empirical reproduction を gate にする (cf. [`empirical-reproduction-over-invariant-reasoning.md`](../heuristics/empirical-reproduction-over-invariant-reasoning.md)) |
+| `2>&1` self-defeating sentinel | 「sentinel observability」を deliverable とする PR が、その deliverable 自身を `2>&1` で silent suppress | helper output contract を docstring で明示 + caller test で sentinel emit と exit code の両方を assert (cf. [`stderr-merge-silent-sentinel-suppression.md`](./stderr-merge-silent-sentinel-suppression.md)) |
+| `rejected(scope-creep)` の empirical gate | author の主観判断で reject した懸念事項が cycle N+1 reviewer の empirical revert test で CRITICAL 認定 | reject 判断は cross-validation + empirical revert test で gate (cf. [`scope-creep-rejection-empirical-gate.md`](../heuristics/scope-creep-rejection-empirical-gate.md)) |
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
@@ -210,3 +259,5 @@ cycle 1 (7) → cycle 2 (2) → cycle 3 (1) → cycle 4 (0) mergeable
 - [PR #661 cycle 3 review (create-interview.md:605 横展開漏れの cross-validation 検出)](../../raw/reviews/20260425T165246Z-pr-661.md)
 - [PR #661 cycle 3 fix (propagation scan pattern coverage 不足の修正)](../../raw/fixes/20260425T165546Z-pr-661.md)
 - [PR #661 Cycle 4 Review (mergeable, 0 findings, 6 REC 抽出)](../../raw/reviews/20260425T171440Z-pr-661-cycle-4.md)
+- [PR #688 cycle 5 review (5 reviewer 独立検出 CRITICAL / 大規模 scope 拡張で必須引数欠落)](raw/reviews/20260427T021251Z-pr-688.md)
+- [PR #688 cycle 36 fix (self-referential learned 節 chain 完全修復 + 累積 14 回目 38+ cycle)](raw/fixes/20260427T155947Z-pr-688.md)

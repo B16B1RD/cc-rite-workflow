@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-26T09:20:00+00:00"
+updated: "2026-04-27T23:01:24+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -66,7 +66,13 @@ sources:
     ref: "raw/fixes/20260426T081122Z-pr-677-cycle-1.md"
   - type: "fixes"
     ref: "raw/fixes/20260426T081939Z-pr-677-cycle-2.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift"]
+  - type: "reviews"
+    ref: "raw/reviews/20260426T233323Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260426T233931Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260427T050731Z-pr-688.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry"]
 confidence: high
 ---
 
@@ -248,6 +254,16 @@ PR #677 (Issue #672 = `.rite-flow-state` multi-state Decision Log Phase 1) で 2
 3. **列挙系は registration ファイルを単一 SoT に**: hook 列挙は `hooks.json`、command 列挙は `plugin.json`、field 列挙は `jq -n create` を SoT として参照する。design doc は SoT 参照を inline 注釈 (`(grep evidence: hooks.json L42)`) として残す。詳細は [Design doc は現 HEAD の SoT を verify してから書く](../heuristics/design-doc-current-head-verification.md) 参照
 4. **Library vs hook の区別**: SOURCED library は registered hook と意味が異なる。hook 列挙では `hooks[]` array を SoT とし、library は除外する旨を Note 化する
 
+### Writer/Reader fallback symmetry への拡張 (PR #688 cycles 1-11 での evidence)
+
+PR #688 (multi-state-aware flow-state read helper) で本 anti-pattern が **helper 経由 caller migration の writer/reader 非対称** に拡張されて 38+ cycle にわたり繰り返し observation:
+
+- **cycle 1**: reader (`state-read.sh`) で `set -euo pipefail` + grep no-match の silent kill を `|| v=""` で defensive 吸収。writer (`flow-state-update.sh:_resolve_schema_version`) は `local v=$(...)` の `local` builtin mask で偶然救われていた非対称 → cycle 3 で writer 側にも対称化。詳細: [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差](./bash-local-vs-toplevel-pipefail-asymmetry.md)
+- **cycle 11**: cycle 10 commit が「F-02 HIGH AC-4 caller migration」を謳いながら、**同一ファイル同一関数内 line 72 の同型 skip-check が migration から漏れていた** 自己矛盾 (partial migration の典型例)。同一関数内の同型パターンは grep で全数確認する必要がある
+- **cycle 29-32 (writer/reader fallback)**: state-read.sh は per-session→legacy fallback を実装するが flow-state-update.sh の `_resolve_session_state_path` は持たなかった非対称が AC-4 reproduction scenario の silent regression の根本原因 (28 cycle 経ても empirical 再現で初顕現)。reader と完全対称な fallback (per-session 不在 + legacy 存在 → legacy にフォールバック) を writer に追加。「対称化」claim と実装の strict diff 比較 verification discipline が必須
+
+**学習**: helper 経由化リファクタの caller 列挙では、(a) **同一ファイル内の同型 pattern を全数 grep で確認** + (b) **commit message の claim と実装の strict diff 比較** + (c) **writer / reader 双方の fallback path を symmetric に確認** の 3 段階を必須化する。特に "対称化" を claim する commit は、reader 側の guard (`[ ! -s ]` size guard 等) を writer 側で literal rep しているか strict 比較する。詳細は [`2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される](./stderr-merge-silent-sentinel-suppression.md) も参照。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -289,3 +305,6 @@ PR #677 (Issue #672 = `.rite-flow-state` multi-state Decision Log Phase 1) で 2
 - [PR #677 cycle 1 review (split-config drift + hook list multi-location drift の cluster 発見)](raw/reviews/20260426T080650Z-pr-677.md)
 - [PR #677 cycle 1 fix (split-config drift の template 配置 semantics 認識)](raw/fixes/20260426T081122Z-pr-677-cycle-1.md)
 - [PR #677 cycle 2 fix (Active vs Advanced marker placement bug + hook 列挙 multi-location drift)](raw/fixes/20260426T081939Z-pr-677-cycle-2.md)
+- [PR #688 cycle 2 review (helper 化 caller migration scope rule + load-bearing test 検証)](raw/reviews/20260426T233323Z-pr-688.md)
+- [PR #688 cycle 3 fix (writer/reader 同 PR 完遂 user scope expansion)](raw/fixes/20260426T233931Z-pr-688.md)
+- [PR #688 cycle 11 review (同関数内 line 72 partial migration 自己矛盾)](raw/reviews/20260427T050731Z-pr-688.md)

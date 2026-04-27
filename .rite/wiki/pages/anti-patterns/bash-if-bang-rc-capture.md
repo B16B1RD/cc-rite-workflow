@@ -2,7 +2,7 @@
 title: "`if ! cmd; then rc=$?` は常に 0 を捕捉する"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-04-27T23:01:24+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
@@ -16,6 +16,8 @@ sources:
     ref: "raw/reviews/20260416T171008Z-pr-548.md"
   - type: "reviews"
     ref: "raw/reviews/20260416T173035Z-pr-548.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260427T154519Z-pr-688.md"
 tags: ["bash", "rc-capture", "silent-failure"]
 confidence: high
 ---
@@ -82,9 +84,24 @@ grep -nE 'if ! .*; then' --include='*.md' --include='*.sh' -r .
 
 同型 pattern が複数箇所にある場合、片方だけ fix すると Asymmetric Fix Transcription の温床となる。PR #548 では `ingest.md Phase 1.3` と `init.md Phase 3.5` の両方に本 anti-pattern があり、cycle 2 fix は前者のみ修正し cycle 3 で後者が triple cross-validation で検出された。fix 時は関連する全スクリプト・全 phase を grep で網羅的に確認すること。
 
+### PR #688 cycle 35: 同 commit 内 4 site 同時播種 (累積 13 回目 + self-referential)
+
+cycle 35 commit message が learned 節で「累積 12 回目の Asymmetric Fix Transcription」を **明記しながら**、同じ commit 内の F-07 修正で同型 `if !` anti-pattern を新規 4 site (`state-read.sh:139-145, 155-161` / `flow-state-update.sh:170-176, 185-191`) に同時播種した self-referential failure mode が cycle 36 で実測された。実機検証:
+
+```bash
+$ set -euo pipefail; if ! bash -c 'exit 7'; then emit_rc=$?; echo $emit_rc; fi
+0  # 期待 7
+```
+
+production の sentinel emit failure 経路で operator に false `rc=0` を表示する silent regression。caller migration / refactor で同型 pattern を複数 site に同時導入する PR では、commit 直前に `grep -nE 'if ! .*; then.*rc=\$\?' --include='*.sh' -r .` で全 site self-check が必須。
+
+→ 「learned 節で言及した直後の同 commit で再演する」特殊 self-referential pattern は累積 35+ cycle 越えで初観測 ([`fix-induced-drift-in-cumulative-defense.md`](fix-induced-drift-in-cumulative-defense.md) に詳述)。
+
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
+- [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差](../anti-patterns/bash-local-vs-toplevel-pipefail-asymmetry.md)
 
 ## ソース
 
@@ -94,3 +111,4 @@ grep -nE 'if ! .*; then' --include='*.md' --include='*.sh' -r .
 - [PR #548 cycle 3 fix (init.md 対称位置検出)](raw/fixes/20260416T173607Z-pr-548-cycle3.md)
 - [PR #548 cycle 2 review (17 findings)](raw/reviews/20260416T171008Z-pr-548.md)
 - [PR #548 cycle 3 review (triple cross-validation)](raw/reviews/20260416T173035Z-pr-548.md)
+- [PR #688 cycle 36 review — self-referential 4 site 同時播種 (累積 13 回目)](raw/reviews/20260427T154519Z-pr-688.md)
