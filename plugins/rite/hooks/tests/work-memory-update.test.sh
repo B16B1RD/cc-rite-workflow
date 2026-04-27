@@ -15,7 +15,7 @@
 #   AC-7 — regression test discoverable under hooks/tests/
 #
 # Usage: bash plugins/rite/hooks/tests/work-memory-update.test.sh
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -145,6 +145,14 @@ write_session_id "$SBX" "$SID"
 write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue","pr_number":42,"loop_count":2,"active":true}'
 # legacy は意図的に作成しない (per-session only path)
 
+# PR #688 cycle 16 fix (F-01 MEDIUM cross-validated 3 reviewers): TC-1.2 dead code 削除。
+# work-memory-update.sh:69 の branch parsing は `grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'` で
+# 数字のみ抽出するため、branch=fix/issue-687-test では生成 file 名は issue-687.md (not 687-test)。
+# 旧実装は issue-687-test.md を期待する dead if 分岐を持ち、常に else 経路 (WM_ISSUE_NUMBER override)
+# が実行されていた。これを branch-based extraction の直接 assert に修正する。
+# branch-based extraction の直接検証 (cycle 12 false negative regression guard):
+# make_sandbox が `fix/issue-687-test` branch を作るため、branch parsing が `687` を抽出して
+# `.rite-work-memory/issue-687.md` を生成することを確認する。
 if run_update "$SBX" \
   WM_SOURCE="lint" WM_PHASE="phase5_lint" WM_PHASE_DETAIL="quality check" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Test body." \
@@ -153,22 +161,9 @@ if run_update "$SBX" \
 else
   rc=$?
 fi
-assert_eq "TC-1.1: return 0 (per-session resolved via state-read.sh)" "0" "$rc"
-if [ -f "$SBX/.rite-work-memory/issue-687-test.md" ]; then
-  assert_eq "TC-1.2: WM file created" "yes" "yes"
-else
-  # branch-based issue extraction が test branch では効かない可能性 → fallback to WM_ISSUE_NUMBER
-  if run_update "$SBX" \
-    WM_SOURCE="lint" WM_PHASE="phase5_lint" WM_PHASE_DETAIL="quality check" \
-    WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Test body." \
-    WM_REQUIRE_FLOW_STATE="true" WM_ISSUE_NUMBER="687"; then
-    rc=0
-  else
-    rc=$?
-  fi
-  assert_eq "TC-1.2: WM file created (with WM_ISSUE_NUMBER override)" "yes" \
-    "$([ -f "$SBX/.rite-work-memory/issue-687.md" ] && echo yes || echo no)"
-fi
+assert_eq "TC-1.1: return 0 (per-session resolved via state-read.sh, branch parsing extracts 687)" "0" "$rc"
+assert_eq "TC-1.2: WM file created via branch parsing (issue-687.md)" "yes" \
+  "$([ -f "$SBX/.rite-work-memory/issue-687.md" ] && echo yes || echo no)"
 
 # --- TC-2: schema_version=2 + both files absent + WM_REQUIRE_FLOW_STATE=true ---
 echo "TC-2: schema_v=2 + per-session/legacy 両不在 + WM_REQUIRE_FLOW_STATE=true → return 1 (skip)"
