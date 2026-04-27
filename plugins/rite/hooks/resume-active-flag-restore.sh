@@ -62,23 +62,24 @@ curr_next=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field next_action --defaul
 _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
 
 # PR #688 cycle 22 fix (F-01 HIGH): tampered .rite-session-id (non-UUID) を空扱いに正規化。
-# state-read.sh:75 / flow-state-update.sh:78 と対称な「invalid → empty で legacy fallback」semantics
-# を本 helper にも適用する。これがないと tampered content (例: `../../../etc/passwd`) が
-# `--session "$_sid"` として下流 flow-state-update.sh の _resolve_session_id (provided_sid path)
-# に流入し、UUID validation で reject されて helper exit 1 → resume hard-abort する経路が成立する
-# (cycle 9-10 で修正した F-01 CRITICAL empty phase hard-abort と同類型の regression)。
+# state-read.sh の SESSION_ID 解決ブロック / flow-state-update.sh の _resolve_session_id 関数
+# (file-read path) と対称な「invalid → empty で legacy fallback」semantics を本 helper にも適用する。
+# これがないと tampered content (例: `../../../etc/passwd`) が `--session "$_sid"` として下流
+# flow-state-update.sh の _resolve_session_id (provided_sid path) に流入し、UUID validation で
+# reject されて helper exit 1 → resume hard-abort する経路が成立する (cycle 9-10 で修正した
+# F-01 CRITICAL empty phase hard-abort と同類型の regression)。
 # RFC 4122 strict: 8-4-4-4-12 hex with hyphens at fixed positions。
 if [[ -n "$_sid" && ! "$_sid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
   _sid=""
 fi
 
 # PR #688 cycle 10 fix (F-01 CRITICAL): curr_phase 空文字ガード。
-# state-read.sh が空文字を返す経路 (resume.md L391 の canonical enumeration の 4 path) で
-# `flow-state-update.sh patch --phase ""` を呼ぶと、flow-state-update.sh patch mode の
-# `[[ -z "$PHASE" || -z "$NEXT" ]]` validation が `--if-exists` check より先に評価されて
-# exit 1 し、resume が hard abort する (cycle 9 で実際に発生した CRITICAL 経路)。
-# 空文字時はそもそも patch を呼ばずに skip し、invoked command (e.g., rite:issue:start)
-# の create mode に委譲する。
+# state-read.sh が空文字を返す経路 (resume.md Phase 3.0.1 trailing prose の canonical enumeration
+# of the four paths のいずれか) で `flow-state-update.sh patch --phase ""` を呼ぶと、
+# flow-state-update.sh patch mode の `[[ -z "$PHASE" || -z "$NEXT" ]]` validation が `--if-exists`
+# check より先に評価されて exit 1 し、resume が hard abort する (cycle 9 で実際に発生した
+# CRITICAL 経路)。空文字時はそもそも patch を呼ばずに skip し、invoked command
+# (e.g., rite:issue:start) の create mode に委譲する。
 if [ -z "$curr_phase" ]; then
   echo "ℹ️  flow-state phase が解決できなかったため active flag 復元を skip しました (per-session/legacy file 両不在、または phase が null/空文字 — invoked command が create mode で初期化します)" >&2
   exit 0
@@ -109,8 +110,9 @@ fi
 #   (A) cleanup 関数末尾に `return 0` を追加 — 関数自体が非 0 を返さないようにする。
 #       これが **必要十分な fix**。`set -euo pipefail` 下で cleanup 関数が非 0 を返すと trap action
 #       が `set -e` で中断され、後続の `exit $rc` に到達しない (実証済: bash -c で `[ -n "" ] && rm`
-#       の後に exit 0 でも rc=1)。bash-trap-patterns.md L101-107 の通り cleanup 関数は **0 を返す責務**
-#       を負う (function rc 漏洩の防止)。
+#       の後に exit 0 でも rc=1)。bash-trap-patterns.md の "cleanup 関数の契約" 節 Form B (portability
+#       variant: `[ -n "${var:-}" ] && rm -f "$var"` 形式) では `return 0` が必須と明記されており、
+#       本 helper の cleanup 形式 (L124-127 の Form B) と整合する (function rc 漏洩の防止)。
 #   (B) trap action を `rc=$?; cleanup; exit $rc` の wiki-query-inject.sh:59 同型 pattern に統一 —
 #       canonical pattern との表記統一 (cosmetic alignment)。
 #

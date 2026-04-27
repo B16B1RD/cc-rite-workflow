@@ -146,8 +146,9 @@ write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue"
 # legacy は意図的に作成しない (per-session only path)
 
 # PR #688 cycle 16 fix (F-01 MEDIUM cross-validated 3 reviewers): TC-1.2 dead code 削除。
-# work-memory-update.sh:69 の branch parsing は `grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'` で
-# 数字のみ抽出するため、branch=fix/issue-687-test では生成 file 名は issue-687.md (not 687-test)。
+# work-memory-update.sh の update_local_work_memory 関数内の branch-based issue_number 抽出
+# (`grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'` chain) は数字のみ抽出するため、
+# branch=fix/issue-687-test では生成 file 名は issue-687.md (not 687-test)。
 # 旧実装は issue-687-test.md を期待する dead if 分岐を持ち、常に else 経路 (WM_ISSUE_NUMBER override)
 # が実行されていた。これを branch-based extraction の直接 assert に修正する。
 # branch-based extraction の直接検証 (cycle 12 false negative regression guard):

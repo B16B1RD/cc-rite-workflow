@@ -360,7 +360,8 @@ assert_eq "TC-13.1: 非 JSON ファイルは DEFAULT を返す (jq parse error f
 rm -rf "$SBX"
 
 # --- TC-14: boolean field caveat (cycle 16 fix F-04 MEDIUM、cycle 15 review test reviewer) ---
-# state-read.sh:128-134 で文書化された jq `// $default` 演算子の boolean caveat を pin する。
+# state-read.sh の "⚠️ Boolean field caveat" 節 (jq // 演算子 boolean caveat コメント) で文書化された
+# jq `// $default` 演算子の boolean caveat を pin する。
 # JSON `false` / `null` はいずれも jq の `//` 演算子で「falsy」とみなされ DEFAULT に置換される。
 # これは jq の仕様: `false // "x"` → "x" (`null // "x"` も同様)。
 # 現状の caller は全て非 boolean (phase / pr_number / loop_count 等) のため実害はないが、
@@ -369,7 +370,7 @@ rm -rf "$SBX"
 # 重要: caveat は『boolean field を read してはいけない』ことを document しており、本 TC は
 # その「false が default に置換される」性質を pin する (回帰時に test が落ちて caller 側で
 # boolean read を追加すべきではないことを強制する)。
-echo "TC-14: boolean field caveat — JSON false は jq // 演算子で default に置換される (state-read.sh:128-134)"
+echo "TC-14: boolean field caveat — JSON false は jq // 演算子で default に置換される (state-read.sh の Boolean field caveat 節)"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 SID="11111111-1111-1111-1111-111111111111"
