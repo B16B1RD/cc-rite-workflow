@@ -40,7 +40,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # state-path-resolve.sh は現状 `return 0` 固定のため `||` fallback は dead code だが、
 # 将来 git not found / cwd 不在等で non-zero を返す変更が入った際の defensive guard として
 # 維持する。`set -euo pipefail` 下で fail-safe に cwd へ落とす契約を明示する。
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
+#
+# verified-review cycle 33 fix (F-04 MEDIUM): `2>/dev/null` を削除して stderr を pass-through する。
+# defensive guard の本来の目的は「将来 non-zero return path で何が失敗したか観測可能にする」こと。
+# 現状の return 0 固定では stderr 出力なし = 非 regression。将来 stderr を出すようになった際に
+# 呼び出し側でも観測可能となる (本 PR cycle 5 以降の stderr 観測性優先方針と整合)。
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)") || STATE_ROOT="$(pwd)"
 LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 
 # --- Argument parsing ---
@@ -97,7 +102,23 @@ SCHEMA_VERSION=$(bash "$SCRIPT_DIR/_resolve-schema-version.sh" "$STATE_ROOT")
 if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
   STATE_FILE="$STATE_ROOT/.rite/sessions/${SESSION_ID}.flow-state"
   if [ ! -f "$STATE_FILE" ] && [ -f "$LEGACY_FLOW_STATE" ]; then
-    STATE_FILE="$LEGACY_FLOW_STATE"
+    # verified-review cycle 33 fix (F-03 MEDIUM): reader-side cross-session legacy guard.
+    # writer 側 (flow-state-update.sh:127-138) cycle 32 cross-session takeover refusal と対称化。
+    # legacy file が **別 session** の遺物の場合、foreign session の stale data を silent return
+    # しないよう DEFAULT に落とす。これがないと、Issue #687 root cause 「fresh session で
+    # phase5_post_stop_hook from a prior session leaked into Phase 3 check」の reader 側残存経路が
+    # writer-side guard をすり抜ける。
+    legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_FLOW_STATE" 2>/dev/null) || legacy_sid=""
+    if [ -z "$legacy_sid" ] || [ "$legacy_sid" = "$SESSION_ID" ]; then
+      STATE_FILE="$LEGACY_FLOW_STATE"
+    else
+      # 別 session の legacy file → foreign session の stale data を silent return しないよう DEFAULT に降格。
+      # writer-side `cross_session_takeover_refused` (flow-state-update.sh cycle 32) と対称な sentinel
+      # を stderr に emit して observability を維持する (orchestrator が reader 経路の refusal も検出可能)。
+      echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused; layer=reader; sid=$SESSION_ID; legacy_sid=$legacy_sid" >&2
+      echo "$DEFAULT"
+      exit 0
+    fi
   fi
 else
   STATE_FILE="$LEGACY_FLOW_STATE"

@@ -51,11 +51,26 @@ if [ ! -x "$PLUGIN_ROOT/hooks/flow-state-update.sh" ]; then
 fi
 
 # state-read.sh は per-session/legacy 両方を transparent に解決し、両方不在時は default を返す。
-# `|| true` で state-read.sh の non-zero exit を吸収する (set -e 下での silent abort 回避)。
 # 本 helper の field は hardcoded 値 (phase / next_action) のため state-read.sh の field validation
 # は通過する想定 (FIELD allowlist `^[a-zA-Z_][a-zA-Z0-9_]*$` に match)。
-curr_phase=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field phase --default "" || true)
-curr_next=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field next_action --default "Resume continuation." || true)
+#
+# verified-review cycle 33 fix (F-02 HIGH): 旧 `|| true` を fail-fast に変更。
+# 本 helper の field allowlist は実装上必ず通過するため、吸収すべき non-zero は実質的に
+# 「helper 起動失敗」(SCRIPT_DIR 解決失敗 / `_resolve-schema-version.sh` ENOENT 等) のみで、
+# それを silent suppression するのは Fail-Fast First 原則と矛盾する (Wiki: 累積対策方針 = silent
+# failure 抑制系の reasonable 防御は cycle 22-32 で確立済み)。stderr は state-read.sh から
+# 直接 pass-through し (上流で WARNING / ERROR が出る場合に観測可能)、exit code を check して
+# 失敗時は本 helper を fail-fast 終了する。
+curr_phase=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field phase --default "") || {
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field phase" >&2
+  exit 1
+}
+curr_next=$(bash "$PLUGIN_ROOT/hooks/state-read.sh" --field next_action --default "Resume continuation.") || {
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field next_action" >&2
+  exit 1
+}
 
 # .rite-session-id を読む (不在時は空文字)。改行 / 空白を tr で除去。
 # `|| _sid=""` で cat 失敗 (file 不在 / permission denied 等) を吸収。
@@ -160,7 +175,7 @@ fi
 # PR #688 cycle 32 F-06 fix: even on patch success, surface WORKFLOW_INCIDENT sentinels
 # from flow-state-update.sh stderr (e.g. cross-session takeover refused — the patch silent-skips
 # via --if-exists but the incident sentinel must reach the orchestrator for observability).
-if [ -n "$_err" ] && [ -s "$_err" ] && grep -q 'WORKFLOW_INCIDENT' "$_err" 2>/dev/null; then
+if [ -n "$_err" ] && [ -s "$_err" ] && LC_ALL=C grep -qF 'WORKFLOW_INCIDENT' "$_err"; then
   cat "$_err" >&2
 fi
 

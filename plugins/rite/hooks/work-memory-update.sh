@@ -83,9 +83,25 @@ update_local_work_memory() {
   # (例: lint pattern で session 起点の caller が WM_REQUIRE_FLOW_STATE=true を渡しても skip される)。
   # state-read.sh は per-session/legacy 両方を transparent に解決し、両方不在時のみ default ("") を
   # 返すため、空文字判定で「flow-state が解決できない」状態を正確に検出できる。
+  #
+  # verified-review cycle 33 fix (F-01 HIGH): state-read.sh 起動失敗 (ENOENT / WM_PLUGIN_ROOT 不正 /
+  # permission denied 等) が「両 file 不在 → DEFAULT 返却」と区別不能で silent skip される regression
+  # を解消する。helper が **存在しない** ケースは return 2 で fail-fast、**存在するが exit != 0** の
+  # ケース (jq エラー / 内部失敗) も独立 exit code 捕捉で fail-fast。**存在し exit == 0 だが空文字**
+  # のみが legitimate な「両 file 不在」として return 1 で skip される (Fail-Fast First 原則)。
   if [ "${WM_REQUIRE_FLOW_STATE:-false}" = "true" ]; then
-    local _phase
-    _phase=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field phase --default "") || _phase=""
+    if [ ! -x "$WM_PLUGIN_ROOT/hooks/state-read.sh" ]; then
+      echo "rite: ${WM_SOURCE}: state-read.sh not found at $WM_PLUGIN_ROOT/hooks/" >&2
+      return 2
+    fi
+    local _phase _phase_rc
+    if _phase=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field phase --default ""); then
+      :
+    else
+      _phase_rc=$?
+      echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_phase_rc) for --field phase" >&2
+      return 2
+    fi
     if [ -z "$_phase" ]; then
       return 1
     fi
@@ -148,9 +164,30 @@ update_local_work_memory() {
   # state-read.sh 経由に変更。schema_version=2 環境では state-read.sh が per-session file を解決
   # するため、別 session の stale residue を読まなくなる。state-read.sh は per-session/legacy
   # 両方を transparent に解決し、両方不在時は default を返すので、外側の `[ -f ]` check は不要。
+  #
+  # verified-review cycle 33 fix (F-01 HIGH): WM_REQUIRE_FLOW_STATE 経路と対称化。helper 存在性 +
+  # exit code を独立 capture して silent skip を防ぐ (Fail-Fast First 原則)。`|| pr_num="null"` と
+  # `|| loop_cnt="0"` の旧 fallback パターンは「両 file 不在 → DEFAULT 返却」と「helper 起動失敗」を
+  # 区別不能で silent fallback していたため fail-fast に変更。
   if [ "${WM_READ_FROM_FLOW_STATE:-false}" = "true" ]; then
-    pr_num=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field pr_number --default "null") || pr_num="null"
-    loop_cnt=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field loop_count --default 0) || loop_cnt="0"
+    if [ ! -x "$WM_PLUGIN_ROOT/hooks/state-read.sh" ]; then
+      echo "rite: ${WM_SOURCE}: state-read.sh not found at $WM_PLUGIN_ROOT/hooks/" >&2
+      return 2
+    fi
+    if pr_num=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field pr_number --default "null"); then
+      :
+    else
+      local _pr_rc=$?
+      echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_pr_rc) for --field pr_number" >&2
+      return 2
+    fi
+    if loop_cnt=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field loop_count --default 0); then
+      :
+    else
+      local _loop_rc=$?
+      echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_loop_rc) for --field loop_count" >&2
+      return 2
+    fi
   fi
 
   local last_commit tmp_wm
