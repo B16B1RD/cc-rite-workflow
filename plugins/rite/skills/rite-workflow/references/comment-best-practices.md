@@ -11,9 +11,11 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 | Phase | 適用箇所 |
 |-------|----------|
-| Phase 3 (Implementation Plan) | コメント生成方針の宣言 |
+| Phase 3 (Implementation Plan) | コメント生成方針の宣言 (本 MVP では各原則の Where to Apply に未反映、後続 Issue で具体化) |
 | Phase 5.1 (Implementation) | 実装中のコメント記述 |
 | Phase 5.4 (Review/Fix) | レビュー時のコメント品質判定、修正時の不要コメント削除 |
+
+> **本 MVP のスコープ**: 6 原則の各 Where to Apply 節は Phase 5.1 / 5.4 の 2 フェーズのみを対象とする。Phase 3 (Implementation Plan) での適用は「Implementation Plan 内で本 SoT を参照する」という宣言レベルに留め、各原則の具体的な Phase 3 ステップ (例: 計画段階で生成予定コメントの方針を declarative に記述する仕組み) は後続 Issue で reviewer Detection Checklist 統合と合わせて定義する。
 
 ## 原則一覧
 
