@@ -44,9 +44,12 @@
 #                             (default: "false")
 #
 # Security note:
-#   All WM_* environment variables are written to YAML frontmatter without sanitization.
-#   Callers must ensure values do not contain YAML special characters (e.g., newlines,
-#   colons followed by spaces, or leading dashes) that could break frontmatter parsing.
+#   PR #688 followup: cycle 41 review F-13 MEDIUM (security Hypothetical exception) — 旧実装は
+#   WM_* 環境変数を caller 責務で sanitize する設計だったが、orchestrator 経由で LLM 出力 / Issue
+#   タイトル / next_action 等の動的文字列が直接 frontmatter に流入する経路があり defense-in-depth
+#   不在だった。本 PR で `_sanitize_yaml_value()` helper を導入し、frontmatter 書き込み箇所すべてで
+#   適用する (`"` を `\"` に escape、改行を除去)。WM_BODY_TEXT は frontmatter 外なので除外。
+#   caller 責務は引き続き有効 (helper は defense-in-depth の二段目)。
 #
 # Exit codes:
 #   0: Success (work memory updated)
@@ -202,6 +205,21 @@ update_local_work_memory() {
     trap 'rm -f "$tmp_wm"; release_wm_lock "$lockdir"' RETURN
   fi
 
+  # PR #688 followup: cycle 41 review F-13 MEDIUM (security Hypothetical exception) —
+  # YAML frontmatter 値の defense-in-depth sanitization。改行除去 + `"` を `\"` に escape して
+  # frontmatter 破損 / 子 key injection を防ぐ (caller 責務に加えた二段目の防御層)。
+  # WM_BODY_TEXT は frontmatter 外なので除外 (markdown body は改行を保持する必要がある)。
+  _sanitize_yaml_value() {
+    printf '%s' "$1" | tr -d '\n\r' | sed 's/"/\\"/g'
+  }
+  local _wm_phase_san _wm_phase_detail_san _wm_next_san _wm_source_san _branch_san _last_commit_san
+  _wm_phase_san=$(_sanitize_yaml_value "$WM_PHASE")
+  _wm_phase_detail_san=$(_sanitize_yaml_value "$WM_PHASE_DETAIL")
+  _wm_next_san=$(_sanitize_yaml_value "$WM_NEXT_ACTION")
+  _wm_source_san=$(_sanitize_yaml_value "$WM_SOURCE")
+  _branch_san=$(_sanitize_yaml_value "$branch")
+  _last_commit_san=$(_sanitize_yaml_value "$last_commit")
+
   {
     printf '# 📜 rite 作業メモリ\n\n'
     printf '## Summary\n'
@@ -210,18 +228,18 @@ update_local_work_memory() {
     printf 'issue_number: %s\n' "$issue_number"
     printf 'sync_revision: %s\n' "$sync_rev"
     printf 'sync_status: pending\n'
-    printf 'source: %s\n' "$WM_SOURCE"
+    printf 'source: %s\n' "$_wm_source_san"
     printf 'last_modified_at: "%s"\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    printf 'phase: "%s"\n' "$WM_PHASE"
-    printf 'phase_detail: "%s"\n' "$WM_PHASE_DETAIL"
-    printf 'next_action: "%s"\n' "$WM_NEXT_ACTION"
-    printf 'branch: "%s"\n' "$branch"
+    printf 'phase: "%s"\n' "$_wm_phase_san"
+    printf 'phase_detail: "%s"\n' "$_wm_phase_detail_san"
+    printf 'next_action: "%s"\n' "$_wm_next_san"
+    printf 'branch: "%s"\n' "$_branch_san"
     printf 'pr_number: %s\n' "$pr_num"
-    printf 'last_commit: "%s"\n' "$last_commit"
+    printf 'last_commit: "%s"\n' "$_last_commit_san"
     printf 'loop_count: %s\n' "$loop_cnt"
     printf -- '---\n'
     printf '\n%s\n' "$WM_BODY_TEXT"
-    printf '\n## Detail\nPhase: %s\nBranch: %s\n' "$WM_PHASE" "$branch"
+    printf '\n## Detail\nPhase: %s\nBranch: %s\n' "$_wm_phase_san" "$_branch_san"
   } > "$tmp_wm"
 
   chmod 600 "$tmp_wm" 2>/dev/null || true

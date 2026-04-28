@@ -165,7 +165,15 @@ _resolve_session_state_path() {
     # _resolve-cross-session-guard.sh), so 2>/dev/null is safe. Symmetric with state-read.sh's
     # per-session resolver `case "$classification"` block (cycle 35 F-01 fix; cycle 38 propagation
     # scan replaced hardcoded `state-read.sh:119` line reference with semantic anchor).
-    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>/dev/null) || true
+    # PR #688 followup: cycle 41 review F-01 HIGH — helper の正当な WARNING (mktemp 失敗 WARNING) が
+    # `2>/dev/null` で silent suppress される問題を修正 (state-read.sh と writer/reader 対称化)。
+    local _classify_err
+    _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null) || _classify_err=""
+    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>"${_classify_err:-/dev/null}") || true
+    if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
+      grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true
+    fi
+    [ -n "$_classify_err" ] && rm -f "$_classify_err"
     # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
     # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約 (state-read.sh と writer/reader 対称)。
     case "$classification" in
@@ -266,7 +274,17 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   # `No space left on device` 等) reaches the user instead of being suppressed
   # to /dev/null (review #686 cycle 2 LOW). Symmetric with the create-mode
   # `_jq_err` capture pattern.
-  _mkdir_err=$(mktemp 2>/dev/null) || _mkdir_err=""
+  # PR #688 followup: cycle 41 review F-03 MEDIUM — mktemp 失敗時に WARNING emit。
+  # 旧実装 `2>/dev/null || _mkdir_err=""` は silent fallback で writer/reader 対称化
+  # doctrine と矛盾していた (reader 側 state-read.sh:256-261 は cycle 38 F-06 で
+  # 修正済み)。/tmp full / SELinux deny 環境で mkdir 失敗 line/column が失われる
+  # 二重 silent failure を防ぐ。
+  if ! _mkdir_err=$(mktemp /tmp/rite-flow-state-mkdir-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: flow-state-update.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
+    echo "  影響: mkdir 失敗時の error 詳細が表示されません" >&2
+    echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
+    _mkdir_err=""
+  fi
   if ! mkdir -p "$_flow_state_dir" 2>"${_mkdir_err:-/dev/null}"; then
     # _log_flow_diag is defined later in the file; inline the diag write here
     # because we exit before reaching that definition's call sites.
@@ -316,12 +334,29 @@ case "$MODE" in
 esac
 
 # --- Atomic write ---
-# F-01 / F-04 (#636 cycle 6): repo-wide convention (stop-guard.sh atomic-write block / session-end.sh /
-# post-tool-wm-sync.sh 等の mktemp-first + PID fallback pattern を踏襲)。trap で signal 別 cleanup を保護し、
-# (cycle 38 propagation scan: 旧 `stop-guard.sh:240` 行番号参照を semantic anchor に置換)
-# jq stdout redirect 中の SIGTERM/SIGINT/SIGHUP で orphan が残る経路を塞ぐ。
-TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_STATE="${FLOW_STATE}.tmp.$$"
-trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT HUP
+# PR #688 followup: cycle 41 review F-02/F-04 (HIGH/MEDIUM) — 旧実装は (a) PID-suffix
+# silent fallback で symlink race 攻撃面が増加し、(b) compound 単一行 trap が
+# canonical bash-trap-patterns.md 4-line signal-specific pattern と乖離していた。
+# 本 PR の writer/reader 対称化 doctrine と整合させるため、(1) mktemp 失敗時は
+# fail-fast (atomic write 不能 = exit 1)、(2) 4-line signal-specific trap で
+# SIGINT/SIGTERM/SIGHUP の POSIX exit code 130/143/129 を返す pattern に統一する。
+# canonical trap pattern: references/bash-trap-patterns.md#signal-specific-trap-template
+if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
+  echo "ERROR: flow-state-update.sh: TMP_STATE の mktemp に失敗しました (atomic write 不能)" >&2
+  echo "  対処: $(dirname "$FLOW_STATE") の容量 / permission / read-only filesystem を確認してください" >&2
+  # _log_flow_diag は L332 で定義されるため inline で diag log を書き込む (本ブロックは L323 で定義前)
+  _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null || true
+  unset _diag_file
+  exit 1
+fi
+_rite_flow_state_atomic_cleanup() {
+  rm -f "${TMP_STATE:-}"
+}
+trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
+trap '_rite_flow_state_atomic_cleanup; exit 130' INT
+trap '_rite_flow_state_atomic_cleanup; exit 143' TERM
+trap '_rite_flow_state_atomic_cleanup; exit 129' HUP
 
 # F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
 # stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
@@ -382,7 +417,14 @@ case "$MODE" in
       fi
       # Validate JSON parse; distinguish "missing .phase" (acceptable → "") from
       # "jq parse error" (corrupt state, must not silently fall back).
-      _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+      # PR #688 followup: cycle 41 review F-03 MEDIUM — mktemp 失敗時に WARNING emit
+      # (writer/reader 対称化、reader 側 state-read.sh:256-261 と統一)。
+      if ! _jq_err=$(mktemp /tmp/rite-flow-state-jq-err-XXXXXX 2>/dev/null); then
+        echo "WARNING: flow-state-update.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
+        echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)" >&2
+        echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
+        _jq_err=""
+      fi
       if PREV_PHASE=$(jq -r '.phase // ""' "$FLOW_STATE" 2>"${_jq_err:-/dev/null}"); then
         : # jq ok
       else

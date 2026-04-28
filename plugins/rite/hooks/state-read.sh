@@ -134,7 +134,18 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     # routing to the defensive `*)` arm — suppressing the `legacy_state_corrupt` sentinel
     # emit that Issue #687 was specifically designed to introduce. Helper now keeps stderr
     # clean (cycle 35 fix in _resolve-cross-session-guard.sh), so 2>/dev/null is safe.
-    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$SESSION_ID" 2>/dev/null) || true
+    # PR #688 followup: cycle 41 review F-01 HIGH — helper の正当な WARNING (cycle 39 H-02 で
+    # _resolve-cross-session-guard.sh:93-98 に追加された mktemp 失敗 WARNING) が `2>/dev/null` で
+    # silent suppress される問題を修正。stderr を tempfile に退避し、`^WARNING:` で始まる行のみ
+    # caller chain に pass-through する。これにより /tmp full / SELinux deny 環境で helper 側の
+    # 詳細が両層で失われる二重 silent failure を防ぐ (writer/reader 対称化 doctrine と整合)。
+    _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null) || _classify_err=""
+    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$SESSION_ID" 2>"${_classify_err:-/dev/null}") || true
+    if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
+      grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true
+    fi
+    [ -n "$_classify_err" ] && rm -f "$_classify_err"
+    unset _classify_err
     # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
     # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約。reader/writer × 3 classification の
     # 6 ブロック (~84 行) が semantically identical だった drift リスクを排除する。
@@ -259,6 +270,10 @@ if ! _jq_err=$(mktemp /tmp/rite-state-read-jq-err-XXXXXX 2>/dev/null); then
   echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
   _jq_err=""
 fi
+# PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
+# として chmod 600 を upfront 適用 (BSD mktemp は umask 依存で 0644 になる経路がある)。
+# multi-user 環境で jq stderr 内の絶対 path / session_id leak (path-disclosure) を防ぐ。
+[ -n "$_jq_err" ] && chmod 600 "$_jq_err" 2>/dev/null || true
 if value=$(jq -r --arg default "$DEFAULT" ".${FIELD} // \$default" "$STATE_FILE" 2>"${_jq_err:-/dev/null}"); then
   :
 else

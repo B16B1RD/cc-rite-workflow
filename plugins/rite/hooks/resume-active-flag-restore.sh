@@ -183,6 +183,9 @@ _err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX 2>/dev/null) || {
   echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
   _err=""
 }
+# PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
+# として chmod 600 を upfront 適用 (multi-user / 共有 /tmp 環境での path-disclosure 防止)。
+[ -n "$_err" ] && chmod 600 "$_err" 2>/dev/null || true
 
 # PR #688 cycle 22 fix (F-02 MEDIUM): sid 有無の if/else 完全 duplication を patch_args 配列パターンに統一。
 # flow-state-update.sh の確立済 `JQ_ARGS=()` + `JQ_ARGS+=()` 条件付き append convention と同型

@@ -102,10 +102,17 @@ emit_script="$SCRIPT_DIR/workflow-incident-emit.sh"
 if [ ! -x "$emit_script" ]; then
   echo "WARNING: workflow-incident-emit.sh missing — emitting canonical fallback sentinel directly to keep Phase 5.4.4.1 detection intact: type=${incident_type}" >&2
   fallback_iter="0-$(date +%s)"
+  # PR #688 followup: cycle 41 review F-12 MEDIUM (security Hypothetical exception) — fallback
+  # sentinel が sanitize() を経由していなかった defense-in-depth gap を修正。details / root_cause_hint
+  # に改行 / `;` が混入すると sentinel format `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...;`
+  # が parse 不能になり Phase 5.4.4.1 grep 検出が break する経路を遮断 (workflow-incident-emit.sh
+  # の sanitize() と writer/fallback 完全対称化)。
+  details_sanitized=$(printf '%s' "$details" | tr -d '\n\r' | tr ';' ',')
   if [ -n "$root_cause_hint" ]; then
-    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=${incident_type}; details=${details}; root_cause_hint=${root_cause_hint}; iteration_id=${fallback_iter}"
+    hint_sanitized=$(printf '%s' "$root_cause_hint" | tr -d '\n\r' | tr ';' ',')
+    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=${incident_type}; details=${details_sanitized}; root_cause_hint=${hint_sanitized}; iteration_id=${fallback_iter}"
   else
-    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=${incident_type}; details=${details}; iteration_id=${fallback_iter}"
+    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=${incident_type}; details=${details_sanitized}; iteration_id=${fallback_iter}"
   fi
   # caller chain は stderr 経由 (state-read.sh / flow-state-update.sh の `2>/dev/null` 経路) を期待するため、
   # 本 fallback も stderr に出す (workflow-incident-emit.sh ヘッダ「Caller-side stderr redirect is permitted」

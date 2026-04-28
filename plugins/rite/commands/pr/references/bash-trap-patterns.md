@@ -294,9 +294,16 @@ esac
 
 `plugins/rite/commands/wiki/lint.md` 内で本 pattern が確立されている。Phase 番号 + case label の semantic anchor 形式で参照する (verified-review cycle 41 I-01: 旧 line range 参照は file 編集で容易に drift するため撤廃済み):
 
-- Phase 6 (欠落概念検出) — `case "$branch_strategy" in` (log.md 抽出 path) / `case "$wiki_branch" in` / `case "$pages_list" in` の各 case
-- Phase 7 (壊れた相互参照検出) — page 読取の `case "$mode" in`
-- Phase 8 (log.md 追記) — log.md 追記の `case "$branch_strategy" in` (same_branch / separate_branch の 2 path、PR #564 cycle 11 F-05 で 4-space に統一)
+- Phase 6.0 (欠落概念検出 — log.md 抽出 path) — `case "$branch_strategy" in`
+- Phase 6.2 (対応ページの存在確認と 3 分岐) — `case "$wiki_branch" in` および `case "$pages_list" in` (page 読取 case)
+- Phase 8.2 (書き込み先パスの決定) — `case "$branch_strategy" in`
+- Phase 8.3 (書き込み手順) — `case "$branch_strategy" in` (same_branch / separate_branch の 2 path、PR #564 cycle 11 F-05 で 4-space に統一)
+<!-- PR #688 followup: cycle 41 review F-08 HIGH / F-09 MEDIUM 訂正 — 旧記述では
+     "Phase 7 (壊れた相互参照検出) — page 読取の case $mode in" が事実乖離していた
+     (wiki/lint.md Phase 7 に case 文は存在しない)。develop 版の Phase 6.2 / 8.2 / 8.3 の
+     独立列挙を復元し、Phase 7 行は削除した。本 PR が確立した「semantic anchor で参照」
+     doctrine 自身を violate しないよう、actual heading と一致する anchor のみを記載する。 -->
+
 
 新規 case 文を追加する際は本 pattern を採用すること。本ファイル自身が「DRIFT-CHECK ANCHOR は semantic name 参照」canonical 規範を保管しているため、line 番号での参照は禁止する (cycle 38 F-04 / cycle 41 I-01 で確立)。
 

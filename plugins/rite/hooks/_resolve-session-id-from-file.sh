@@ -82,10 +82,30 @@ if [ ! -f "$sid_file" ]; then
   exit 0
 fi
 
-# Whitespace-stripped read. `2>/dev/null || raw=""` keeps the previous behavior
-# of treating IO errors (permission denied / inode race) as "no session id"
-# rather than fail-fast — caller chains have always degraded gracefully here.
-raw=$(tr -d '[:space:]' < "$sid_file" 2>/dev/null) || raw=""
+# Whitespace-stripped read.
+#
+# PR #688 followup: cycle 41 review F-16 LOW (security Hypothetical exception) — 旧実装
+# `2>/dev/null || raw=""` は permission denied / inode race / EIO 等の IO エラーを「空ファイル」と
+# 区別不能化していた。攻撃者が `.rite-session-id` を chmod 000 にした状態で別 session の
+# session_id を持つ legacy `.rite-flow-state` を残すと、helper が空文字を返し state-read.sh が
+# legacy 経路にフォールバック → cross-session guard が空 SID で意図しない経路を通る。
+# stderr を tempfile に退避し、IO error は WARNING を emit してから空文字復帰する (caller の
+# graceful degradation 動作は維持しつつ、observability を確保)。
+_tr_err=$(mktemp /tmp/rite-resolve-sid-tr-err-XXXXXX 2>/dev/null) || _tr_err=""
+if raw=$(tr -d '[:space:]' < "$sid_file" 2>"${_tr_err:-/dev/null}"); then
+  : # tr success (raw may be empty for empty file — legitimate)
+else
+  _tr_rc=$?
+  echo "WARNING: _resolve-session-id-from-file.sh: tr が IO/permission エラーで失敗しました (rc=$_tr_rc)" >&2
+  if [ -n "$_tr_err" ] && [ -s "$_tr_err" ]; then
+    head -3 "$_tr_err" | sed 's/^/  /' >&2
+  fi
+  echo "  対処: $sid_file の permission / inode 健全性を確認してください" >&2
+  echo "  影響: graceful degradation で空文字復帰しますが、cross-session guard が空 SID で経路判定する可能性があります" >&2
+  raw=""
+fi
+[ -n "$_tr_err" ] && rm -f "$_tr_err"
+unset _tr_err
 if [ -z "$raw" ]; then
   exit 0
 fi

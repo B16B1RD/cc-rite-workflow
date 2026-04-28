@@ -96,6 +96,9 @@ if ! _jq_err=$(mktemp /tmp/rite-cross-session-jq-err-XXXXXX 2>/dev/null); then
   echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
   _jq_err=""
 fi
+# PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
+# として chmod 600 を upfront 適用 (multi-user / 共有 /tmp 環境での path-disclosure 防止)。
+[ -n "$_jq_err" ] && chmod 600 "$_jq_err" 2>/dev/null || true
 
 # verified-review cycle 35 fix (F-03 HIGH): jq_rc capture must be inside the `else`
 # branch. The previous structure `if cmd; then ...; exit 0; fi; jq_rc=$?` always

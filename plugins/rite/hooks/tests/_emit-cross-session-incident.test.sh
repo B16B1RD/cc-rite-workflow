@@ -11,7 +11,24 @@
 #   TC-7: corrupt 正常 emit (extra_arg=jq_rc 検証)
 #   TC-8: invalid_uuid 正常 emit (root_cause_hint differentiation)
 
-set -uo pipefail
+set -euo pipefail
+
+# PR #688 followup: cycle 41 review F-06 MEDIUM — set -uo → set -euo に統一 + Form B
+# cleanup trap を追加。旧実装は本ファイルのみ `set -uo pipefail` (set -e なし、他 6 test は
+# `set -euo pipefail`) かつ Form B trap 不在で、各 TC 末尾の `rm -rf $sandbox` は INT/TERM
+# 中断時に到達せず /tmp/rite-emit-test-XXXXXX を leak していた (state-read.test.sh:32-47 で
+# 同型 cleanup pattern を bash-trap-patterns.md "Form B" として確立済み)。
+cleanup_dirs=()
+_emit_test_cleanup() {
+  local dir
+  for dir in "${cleanup_dirs[@]:-}"; do
+    [ -n "$dir" ] && [ -d "$dir" ] && rm -rf "$dir"
+  done
+}
+trap '_emit_test_cleanup' EXIT
+trap '_emit_test_cleanup; exit 130' INT
+trap '_emit_test_cleanup; exit 143' TERM
+trap '_emit_test_cleanup; exit 129' HUP
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 HELPER="$REPO_ROOT/plugins/rite/hooks/_emit-cross-session-incident.sh"
@@ -96,6 +113,7 @@ run_helper_in_sandbox() {
 
 echo "TC-1: 引数不足 ($# < 4) で exit 1"
 sandbox=$(make_fake_emit_dir ok)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" foreign reader 2>&1)
 rc=$?
 assert_eq "TC-1.1: exit code is 1" "1" "$rc"
@@ -104,6 +122,7 @@ rm -rf "$sandbox"
 
 echo "TC-2: 引数過多 ($# > 5) で exit 1 (cycle 37 followup)"
 sandbox=$(make_fake_emit_dir ok)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" foreign reader sid1 sid2 extra ARG6 ARG7 2>&1)
 rc=$?
 assert_eq "TC-2.1: exit code is 1" "1" "$rc"
@@ -112,6 +131,7 @@ rm -rf "$sandbox"
 
 echo "TC-3: invalid layer で exit 1"
 sandbox=$(make_fake_emit_dir ok)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" foreign invalid sid1 sid2 2>&1)
 rc=$?
 assert_eq "TC-3.1: exit code is 1" "1" "$rc"
@@ -120,6 +140,7 @@ rm -rf "$sandbox"
 
 echo "TC-4: invalid classification で exit 1"
 sandbox=$(make_fake_emit_dir ok)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" bogus reader sid1 sid2 2>&1)
 rc=$?
 assert_eq "TC-4.1: exit code is 1" "1" "$rc"
@@ -128,6 +149,7 @@ rm -rf "$sandbox"
 
 echo "TC-5: workflow-incident-emit.sh 不在で WARNING + exit 0"
 sandbox=$(make_fake_emit_dir missing)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" foreign reader sid1 sid2 2>&1)
 rc=$?
 assert_eq "TC-5.1: exit code is 0 (caller 後段 DEFAULT 降格を阻害しない)" "0" "$rc"
@@ -137,6 +159,7 @@ rm -rf "$sandbox"
 
 echo "TC-6: foreign 正常 emit (details 構成検証)"
 sandbox=$(make_fake_emit_dir ok)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" foreign reader "current-uuid" "legacy-uuid" 2>&1)
 rc=$?
 assert_eq "TC-6.1: exit code is 0" "0" "$rc"
@@ -149,6 +172,7 @@ rm -rf "$sandbox"
 
 echo "TC-7: corrupt 正常 emit (extra_arg=jq_rc 検証)"
 sandbox=$(make_fake_emit_dir ok)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" corrupt writer "current-uuid" "/path/to/legacy" "4" 2>&1)
 rc=$?
 assert_eq "TC-7.1: exit code is 0" "0" "$rc"
@@ -161,6 +185,7 @@ rm -rf "$sandbox"
 
 echo "TC-8: invalid_uuid 正常 emit (root_cause_hint differentiation)"
 sandbox=$(make_fake_emit_dir ok)
+cleanup_dirs+=("$sandbox")
 out=$(run_helper_in_sandbox "$sandbox" invalid_uuid reader "current-uuid" "/path/to/legacy" "1" 2>&1)
 rc=$?
 assert_eq "TC-8.1: exit code is 0" "0" "$rc"

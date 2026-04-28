@@ -148,23 +148,33 @@ assert_eq "TC-8.1: shell metachar UUID → 'invalid_uuid:1'" "invalid_uuid:1" "$
 # Caller (state-read.sh / flow-state-update.sh) uses parameter expansion `${classification#foreign:}`
 # to strip prefix. If helper appended trailing newline, the captured value would carry a stray \n.
 # Verify the entire stdout has NO trailing newline.
+#
+# PR #688 followup: cycle 41 review F-05 HIGH — 旧実装は bash command substitution の trailing
+# newline 自動 strip 仕様により、helper が `printf "%s\n"` (改行付き) に regress しても test が
+# pass する false-positive 構造だった (`raw_out=$(...; echo END)` で末尾 NL が strip され両ケース
+# 同形状)。bytes-exact pin に変更し、helper stdout を tempfile に書き出して `wc -c` で実バイト数
+# を比較する (`echo END` 経由ではなく直接 redirect で trailing NL を保持)。
 echo "TC-9: printf no trailing newline (caller parameter expansion safety)"
 legacy=$(mktemp_legacy)
 printf '%s' "{\"phase\":\"x\",\"session_id\":\"$OTHER_SID\"}" > "$legacy"
-# Capture raw bytes and check last byte
-raw_out=$(bash "$HOOK" "$legacy" "$CURR_SID"; echo END)  # add END marker AFTER capture
-# raw_out should be "foreign:<sid>\nEND" (the END is from echo, not from helper)
-# helper output before the END marker should NOT have trailing newline
-helper_out="${raw_out%$'\n'END}"
-last_char=$(printf '%s' "$helper_out" | tail -c 1)
-if [ "$last_char" = $'\n' ]; then
-  echo "  ❌ TC-9.1: helper output ends with newline (would corrupt parameter expansion)"
-  FAIL=$((FAIL+1))
-  FAILED_NAMES+=("TC-9.1: trailing newline detected")
-else
-  echo "  ✅ TC-9.1: helper output ends without trailing newline"
+# Capture helper stdout to tempfile (preserves trailing NL exactly as helper wrote it).
+helper_stdout=$(mktemp)
+bash "$HOOK" "$legacy" "$CURR_SID" > "$helper_stdout"
+expected_str="foreign:$OTHER_SID"
+expected_bytes=$(printf '%s' "$expected_str" | wc -c | tr -d ' ')
+actual_bytes=$(wc -c < "$helper_stdout" | tr -d ' ')
+if [ "$actual_bytes" = "$expected_bytes" ]; then
+  echo "  ✅ TC-9.1: helper output is exactly $expected_bytes bytes (no trailing newline)"
   PASS=$((PASS+1))
+else
+  echo "  ❌ TC-9.1: helper output bytes mismatch (expected: $expected_bytes, actual: $actual_bytes)"
+  echo "       expected content: '$expected_str'"
+  echo "       actual content (od -c):"
+  od -c "$helper_stdout" | head -2 | sed 's/^/         /'
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-9.1: trailing newline detected (bytes mismatch)")
 fi
+rm -f "$helper_stdout"
 
 # --- TC-10: missing arguments → exit 1 ---
 echo "TC-10: missing arguments → exit 1 with usage error"
