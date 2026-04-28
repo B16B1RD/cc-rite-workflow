@@ -48,20 +48,23 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper を `bash <missing>`
-# invocation 経路で間接的に依存する:
-#   - `_resolve-session-id.sh` (`_resolve_session_id` 関数内の `bash $SCRIPT_DIR/_resolve-session-id.sh ...`)
+# invocation 経路で direct + transitive に依存する。下記 for loop が SoT:
+#   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke。`||` fallback で silent suppression する独自経路を持つため特に重要)
+#   - `_resolve-session-id.sh` (`_resolve_session_id` 関数内の direct invoke)
+#   - `_resolve-session-id-from-file.sh` (transitive 経由で `_resolve_session_state_path` 解決経路)
 #   - `_resolve-schema-version.sh` (`_resolve_schema_version` 関数の helper 委譲)
 #   - `_resolve-cross-session-guard.sh` (`_resolve_session_state_path` 内 cross-session classification)
 #   - `_emit-cross-session-incident.sh` (`_resolve_session_state_path` の foreign:* / corrupt:* / invalid_uuid:* 各 arm)
 # それらが install 不整合 / deploy regression で missing の場合、`set -euo pipefail` の中でも
 # `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through 経路が散在する。Issue #687
 # (writer/reader 片肺更新型 silent regression) と同型の deploy regression を構造的に塞ぐため、依存する
-# 全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。旧コメントは「5 helper」と
-# 書いていたが実際の loop は 6 helper を検査しており数値ドリフトを起こしていたため、verified-review cycle 39 で
-# 数値削除に統一)。state-path-resolve.sh は STATE_ROOT 解決経路で `||` fallback により silent suppression する
-# 独自経路があるため特に重要。state-read.sh の同型ブロックと writer/reader
+# 全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。bullet list と loop は完全一致で
+# 6 entry を列挙する。旧コメントは「5 helper」と書いていたが実際の loop は 6 helper を検査しており数値ドリフトを
+# 起こしていたため、verified-review cycle 39 で数値削除に統一)。state-read.sh の同型ブロックと writer/reader
 # 対称化。コメント内の helper 参照は semantic anchor (関数名 / case 構造名) で記述し、行番号を入れない
 # (Wiki 経験則 .rite/wiki/index.md の DRIFT-CHECK ANCHOR 原則 + 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
+# verified-review cycle 44 F-05 (code-quality MEDIUM): bullet list と loop の entry 数を一致させ
+# (旧版は 5 entry の bullet list が state-path-resolve.sh を本文で別途言及する非対称構造)。
 for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
                _resolve-schema-version.sh _resolve-cross-session-guard.sh \
                _emit-cross-session-incident.sh; do
@@ -172,7 +175,8 @@ _resolve_session_state_path() {
     # (`if ! ... then` + WARNING 3 行 + chmod 600) に統一。詳細は state-read.sh の cycle 43 F-09
     # コメントを参照 (drift 防止のため両層で同一の修正を適用)。
     local _classify_err
-    if ! _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null); then
+    # verified-review cycle 44 F-14 LOW: ${TMPDIR:-/tmp} で POSIX 慣習を尊重 (state-read.sh と writer/reader 対称化)
+    if ! _classify_err=$(mktemp "${TMPDIR:-/tmp}/rite-classify-err-writer-XXXXXX" 2>/dev/null); then
       echo "WARNING: flow-state-update.sh: _classify_err mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
       echo "  影響: cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません" >&2
       echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
@@ -289,7 +293,7 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   # doctrine と矛盾していた (reader 側 state-read.sh:256-261 は cycle 38 F-06 で
   # 修正済み)。/tmp full / SELinux deny 環境で mkdir 失敗 line/column が失われる
   # 二重 silent failure を防ぐ。
-  if ! _mkdir_err=$(mktemp /tmp/rite-flow-state-mkdir-err-XXXXXX 2>/dev/null); then
+  if ! _mkdir_err=$(mktemp "${TMPDIR:-/tmp}/rite-flow-state-mkdir-err-XXXXXX" 2>/dev/null); then
     echo "WARNING: flow-state-update.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
     echo "  影響: mkdir 失敗時の error 詳細が表示されません" >&2
     echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
@@ -331,6 +335,17 @@ case "$MODE" in
   increment)
     if [[ -z "$FIELD" ]]; then
       echo "ERROR: increment mode requires --field" >&2
+      exit 1
+    fi
+    # verified-review cycle 44 F-13 LOW (security Hypothetical exception):
+    # FIELD allowlist validation — state-read.sh:94 と writer/reader 対称化。
+    # 現 caller は commands/issue/start.md:748 で `implementation_round` をハードコードしているのみだが、
+    # FIELD は `_log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"` で .rite-stop-guard-diag.log
+    # に書き込まれるため、改行を含む FIELD で log 形式破壊が可能。helper API 単体としての defense-in-depth gap
+    # を埋めるため、識別子 (英数字 + _) のみ受理する。
+    if ! [[ "$FIELD" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+      echo "ERROR: invalid field name: $FIELD" >&2
+      echo "  field name must match ^[a-zA-Z_][a-zA-Z0-9_]*\$ (state-read.sh と対称化)" >&2
       exit 1
     fi
     if [[ "$IF_EXISTS" == true && ! -f "$FLOW_STATE" ]]; then
@@ -439,7 +454,7 @@ case "$MODE" in
       # "jq parse error" (corrupt state, must not silently fall back).
       # PR #688 followup: cycle 41 review F-03 MEDIUM — mktemp 失敗時に WARNING emit
       # (writer/reader 対称化、reader 側 state-read.sh:256-261 と統一)。
-      if ! _jq_err=$(mktemp /tmp/rite-flow-state-jq-err-XXXXXX 2>/dev/null); then
+      if ! _jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-flow-state-jq-err-XXXXXX" 2>/dev/null); then
         echo "WARNING: flow-state-update.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
         echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)" >&2
         echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2

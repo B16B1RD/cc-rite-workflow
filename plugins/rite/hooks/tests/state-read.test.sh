@@ -189,13 +189,31 @@ assert_eq "TC-5.1: phase falls back to legacy when .rite-session-id absent" "leg
 rm -rf "$SBX"
 
 # --- TC-6 (additional safeguard): tampered .rite-session-id rejected, falls back to legacy ---
-echo "TC-6: tampered .rite-session-id (non-UUID) → fallback to legacy (no path traversal)"
+# verified-review cycle 44 F-03 HIGH 対応:
+# 旧実装は per-session file を作らない設計だったが、`.*` mutation で UUID validation が bypass
+# されると STATE_FILE = `$SBX/.rite/sessions/../../../etc/passwd.flow-state` という path に
+# 解決されて helper はそのファイルが存在しないため legacy fallback、結果 `safe_legacy` が
+# 返る test pass の false-positive (mutation kill power 0) だった。
+#
+# 修正: TC-6.RFC.1/2 と同型の per-session file 作成 pattern を適用。bad SID 名で per-session
+# file を作成し phase=BAD_TRAVERSAL を書き込む。pre-fix (緩い regex) では bad per-session が
+# 読まれ BAD_TRAVERSAL 返却 → assert 失敗で kill される。post-fix (strict regex) では reject
+# されて legacy fallback で safe_legacy 返却 → assert 通過。
+# 注: `../../../etc/passwd` を含む file name は OS によっては作れない。`mkdir -p` の中間ディレクトリ
+# 作成と `printf > path` の組み合わせで sandbox 内 `$SBX/etc/passwd.flow-state` を作る経路になる
+# (sandbox 外には書かない、`rm -rf "$SBX"` で削除される)。失敗時は legacy fallback で test 通過するため
+# false negative にはならないが、mutation kill power はその vector では失われる (best-effort)。
+echo "TC-6: tampered .rite-session-id (path traversal pattern) → fallback to legacy"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
-echo "../../../etc/passwd" > "$SBX/.rite-session-id"
+BAD_SID_TRAVERSAL="../../../etc/passwd"
+echo "$BAD_SID_TRAVERSAL" > "$SBX/.rite-session-id"
+# best-effort per-session file 作成 (mutation kill power 確保のため):
+mkdir -p "$SBX/.rite/sessions" 2>/dev/null
+printf '%s' '{"phase":"BAD_TRAVERSAL"}' > "$SBX/.rite/sessions/${BAD_SID_TRAVERSAL}.flow-state" 2>/dev/null || true
 write_legacy "$SBX" '{"phase":"safe_legacy"}'
 result=$(run_helper "$SBX" --field phase --default "")
-assert_eq "TC-6.1: tampered session_id ignored, legacy used" "safe_legacy" "$result"
+assert_eq "TC-6.1: tampered session_id ignored, legacy used (mutation kill via per-session file)" "safe_legacy" "$result"
 rm -rf "$SBX"
 
 # --- TC-6 RFC 4122 strict (cycle 22 F-03 MEDIUM): hyphen 位置の異なる 36 字 hex も reject ---
@@ -287,13 +305,37 @@ for vector_entry in "${inject_vectors[@]}"; do
   write_config_v2 "$SBX"
   # printf '%b' で escape (e.g. \n) を解釈させて newline injection を実装。bash の echo より portable。
   printf '%b' "$sid_value" > "$SBX/.rite-session-id"
-  # legacy のみ書き込み (per-session file は作らない — accept されると `.rite/sessions/<sid>.flow-state`
-  # を探しに行くが、injected SID 文字列は file system の特殊文字を含む場合があり file 不在で
-  # 結局 legacy fallback に流れる。test の意図は「reject 経路で legacy fallback」を pin することなので、
-  # per-session file を作らない方がより厳密に reject 経路のみを assert できる)。
+
+  # verified-review cycle 44 F-01 CRITICAL 対応:
+  # 旧実装は per-session file を作らない設計だったが、これは UUID validation regex を `.*` に
+  # mutate しても全 vector が pass する false-positive (mutation kill power 0) だった。
+  # 真因: per-session file 不在で validation を bypass しても helper は存在しない
+  # `.rite/sessions/<bad-sid>.flow-state` を探して legacy fallback するため、reject/accept
+  # 両経路が同一結果 (legacy_phase) に収束し pin 不能。
+  #
+  # 修正: bad SESSION_ID 名で per-session file を作成し phase=BAD_INJECTION_<vector> を書き込む。
+  # pre-fix (緩い regex) では bad per-session が読まれ BAD_INJECTION_* 返却 → assert 失敗で kill される。
+  # post-fix (strict regex) では reject されて legacy fallback で safe_legacy_* 返却 → assert 通過。
+  # TC-6.RFC.1/2 と同型のパターンで mutation testing canonical doctrine (PR #688 cycles 3-5/31) と整合。
+  #
+  # ファイルシステム制約: newline / command substitution char (`$()`) / backtick (` `` `) を含む
+  # ファイル名は OS が受け付けない場合があるため、`mkdir -p ... && printf > ...` を best-effort で
+  # 試行する。作成失敗した vector は元実装と等価な「per-session 不在 → legacy fallback」経路で
+  # mutation kill power は得られないが、それ以外 (uppercase / mixed_case / too_short / too_long)
+  # では確実に mutation kill power が成立する (regex 緩和を kill する coverage が 0/7 → 4/7 に向上)。
+  bad_phase="BAD_INJECTION_${vector_name}"
+  expanded_sid=$(printf '%b' "$sid_value")
+  mkdir -p "$SBX/.rite/sessions"
+  # 特殊文字を含むファイル名作成は best-effort。失敗しても test は continue する (legacy fallback に流れる)。
+  # printf 失敗は stderr suppress (file system が受け付けないだけで test bug ではない)。
+  printf '%s' "{\"phase\":\"$bad_phase\"}" > "$SBX/.rite/sessions/${expanded_sid}.flow-state" 2>/dev/null || true
+
   write_legacy "$SBX" "{\"phase\":\"$legacy_phase\"}"
 
   result=$(run_helper "$SBX" --field phase --default "DEFAULT_FALLBACK")
+  # assert: post-fix (strict regex) では bad SID は reject され legacy_phase が返る。
+  # pre-fix (`.*` への regex 緩和 mutation) では bad per-session が読まれ bad_phase が返り test fail で kill される。
+  # ファイル作成失敗 vector でも legacy_phase が返るため assert 通過 (false negative にはならない)。
   if [ "$result" = "$legacy_phase" ]; then
     echo "  ✅ TC-6.INJECTION.$vector_name: $desc → legacy fallback ($legacy_phase)"
     PASS=$((PASS+1))
@@ -450,6 +492,61 @@ assert_eq "TC-14.1: JSON false は jq // 演算子で default に置換される
 # 比較対象: 同一ファイルの phase field (string) は正しく値を返す
 result_phase=$(run_helper "$SBX" --field phase --default "ignored")
 assert_eq "TC-14.2: 同一ファイルの string field は正しく値を返す (boolean caveat は boolean field 限定)" "phase5_lint" "$result_phase"
+rm -rf "$SBX"
+
+# --- TC-14.3: boolean caveat WARNING の存在を pin (verified-review cycle 44 F-06 MEDIUM) ---
+# state-read.sh の `case "$DEFAULT" in true|false)` ブロックが emit する WARNING を pin する。
+# 旧実装では caveat WARNING を mutate (`true|false)` を `DISABLED_*)` に置換) しても全 TC が pass する
+# false-positive (mutation kill power 0) だった。defense-in-depth として導入された警告経路が pin されて
+# おらず、将来の refactor で silent に削除されても気付けないリスクがあったため本 TC で pin する。
+echo "TC-14.3: boolean caveat WARNING — --default true / false 指定時に stderr へ警告を emit する"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$SBX" "$SID"
+write_per_session "$SBX" "$SID" '{"active":true,"phase":"phase5_lint","next_action":"continue"}'
+
+# stderr のみを capture して WARNING line を grep で検索する
+boolean_warn_true_path=$(mktemp /tmp/rite-tc14-warn-true-XXXXXX)
+(cd "$SBX" && bash "$HOOK" --field active --default "true") >/dev/null 2>"$boolean_warn_true_path"
+if grep -q "boolean リテラル値" "$boolean_warn_true_path"; then
+  echo "  ✅ TC-14.3.a: --default true で boolean caveat WARNING が emit される"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-14.3.a: --default true で WARNING が emit されない (mutation kill power 不在)"
+  echo "     stderr:"
+  sed 's/^/       /' "$boolean_warn_true_path"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-14.3.a: boolean caveat WARNING for --default true")
+fi
+rm -f "$boolean_warn_true_path"
+
+boolean_warn_false_path=$(mktemp /tmp/rite-tc14-warn-false-XXXXXX)
+(cd "$SBX" && bash "$HOOK" --field active --default "false") >/dev/null 2>"$boolean_warn_false_path"
+if grep -q "boolean リテラル値" "$boolean_warn_false_path"; then
+  echo "  ✅ TC-14.3.b: --default false で boolean caveat WARNING が emit される"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ TC-14.3.b: --default false で WARNING が emit されない (mutation kill power 不在)"
+  echo "     stderr:"
+  sed 's/^/       /' "$boolean_warn_false_path"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-14.3.b: boolean caveat WARNING for --default false")
+fi
+rm -f "$boolean_warn_false_path"
+
+# negative test: --default true / false 以外では WARNING が出ないことを pin (false positive 検出)
+boolean_warn_other_path=$(mktemp /tmp/rite-tc14-warn-other-XXXXXX)
+(cd "$SBX" && bash "$HOOK" --field active --default "OTHER_VALUE") >/dev/null 2>"$boolean_warn_other_path"
+if grep -q "boolean リテラル値" "$boolean_warn_other_path"; then
+  echo "  ❌ TC-14.3.c: --default OTHER_VALUE で boolean caveat WARNING が誤 emit (case 文の guard が緩い)"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("TC-14.3.c: boolean caveat WARNING false positive")
+else
+  echo "  ✅ TC-14.3.c: --default OTHER_VALUE では WARNING が emit されない (false positive なし)"
+  PASS=$((PASS+1))
+fi
+rm -f "$boolean_warn_other_path"
 rm -rf "$SBX"
 
 # --- TC-15: reader-side cross-session guard (verified-review cycle 34 fix F-12 MEDIUM) ---

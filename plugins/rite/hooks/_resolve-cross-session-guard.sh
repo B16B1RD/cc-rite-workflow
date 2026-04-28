@@ -90,7 +90,7 @@ trap '_rite_cross_session_cleanup; exit 129' HUP
 # verified-review cycle 40: cycle 39 で「state-read.sh L247-252」と書いた行番号参照を
 # semantic anchor (mktemp 失敗 WARNING 3 行 emit ブロック) に置換 (cycle 38 F-04 DRIFT-CHECK ANCHOR
 # 原則と整合)。
-if ! _jq_err=$(mktemp /tmp/rite-cross-session-jq-err-XXXXXX 2>/dev/null); then
+if ! _jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-cross-session-jq-err-XXXXXX" 2>/dev/null); then
   echo "WARNING: _resolve-cross-session-guard.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
   echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt:N rc を観測できますが原因 line/column が失われます)" >&2
   echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2

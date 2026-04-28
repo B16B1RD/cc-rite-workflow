@@ -20,15 +20,26 @@
 #   a future tightening of the pattern (e.g., RFC 4122 variant bit check) is applied
 #   to one site only.
 #
+# Case handling (verified-review cycle 44 F-10 MEDIUM):
+#   RFC 4122 §4 mandates that UUID readers MUST be lenient about case ("readers
+#   should be liberal in what they accept"; only generators are required to emit
+#   lowercase). The previous lowercase-only pattern would reject uppercase /
+#   mixed-case session_ids if Claude Code SDK or upstream Anthropic API ever emit
+#   them, breaking AC-4 multi-state API integrity. We now accept [A-Fa-f] in the
+#   regex AND normalize the validated output to lowercase so downstream
+#   `.rite/sessions/{sid}.flow-state` paths are always lowercase (preventing
+#   case-sensitive filesystem from creating two files for "AAA..." vs "aaa...").
+#
 # Exit codes:
-#   0 — valid UUID (printed to stdout)
+#   0 — valid UUID (lowercase-normalized form printed to stdout)
 #   1 — invalid (empty stdout)
 set -euo pipefail
 
 CANDIDATE="${1:-}"
 
-if [[ "$CANDIDATE" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-  printf '%s' "$CANDIDATE"
+if [[ "$CANDIDATE" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+  # Normalize to lowercase for canonical filesystem path (RFC 4122 §4 lenient reader contract).
+  printf '%s' "$CANDIDATE" | tr 'A-F' 'a-f'
   exit 0
 fi
 

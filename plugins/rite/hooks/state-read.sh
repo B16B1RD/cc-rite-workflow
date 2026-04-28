@@ -39,7 +39,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper にも
-# `bash <missing>` invocation 経路で依存する (direct + transitive):
+# `bash <missing>` invocation 経路で依存する (direct + transitive)。下記 for loop が SoT:
+#   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke。`||` fallback で silent suppression する独自経路を持つため特に重要)
 #   - `_resolve-session-id-from-file.sh` (SESSION_ID resolution block で direct invoke)
 #   - `_resolve-session-id.sh` (上記 helper 内 + `_resolve-cross-session-guard.sh` 内で transitive)
 #   - `_resolve-schema-version.sh` (SCHEMA_VERSION resolution block で direct invoke)
@@ -52,9 +53,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # `set -euo pipefail` の中でも `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through
 # 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
 # 構造的に塞ぐため、依存する全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。
-# 旧コメントは「5 helper」と書いていたが実際の loop は 6 helper を検査しており、cycle 38 F-04 で確立した
-# semantic anchor 原則と矛盾する数値ドリフトを起こしていたため、verified-review cycle 39 で数値削除に統一)。
-# state-path-resolve.sh は `||` fallback で silent suppression する独自経路があるため特に重要。
+# 上記 bullet list は loop と完全一致し 6 entry を列挙する。旧コメントは「5 helper」と書いていたが
+# 実際の loop は 6 helper を検査しており、cycle 38 F-04 で確立した semantic anchor 原則と矛盾する
+# 数値ドリフトを起こしていたため、verified-review cycle 39 で数値削除に統一。
+# verified-review cycle 44 F-05 (code-quality MEDIUM): bullet list と loop の entry 数を一致させ
+# (旧版は 5 entry の bullet list が `state-path-resolve.sh を本文で別途言及` する非対称構造で、
+# 新規 maintainer が「list に列挙された 5 helper だけ checked される」と誤読する余地があった)。
 for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
                _resolve-schema-version.sh _resolve-cross-session-guard.sh \
                _emit-cross-session-incident.sh; do
@@ -148,7 +152,9 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     # 他 5 helper (state-read.sh _jq_err / _resolve-cross-session-guard.sh / flow-state-update.sh ×2 /
     # resume-active-flag-restore.sh / _resolve-session-id-from-file.sh _tr_err — cycle 43 F-08 で対称化済み)
     # の canonical pattern と統一する。trap 統合は別 Issue で追跡 (実行時間が短いため race window 小)。
-    if ! _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null); then
+    # verified-review cycle 44 F-14 LOW (security Hypothetical exception): ${TMPDIR:-/tmp} で
+    # POSIX 慣習を尊重 (SELinux / hardened multi-user 環境での per-user tempdir 隔離に対応)。
+    if ! _classify_err=$(mktemp "${TMPDIR:-/tmp}/rite-classify-err-reader-XXXXXX" 2>/dev/null); then
       echo "WARNING: state-read.sh: _classify_err mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
       echo "  影響: cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません" >&2
       echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
@@ -280,7 +286,7 @@ trap '_rite_state_read_jq_cleanup; exit 129' HUP
 # silent fallback し、後続の `2>"${_jq_err:-/dev/null}"` で jq stderr が `/dev/null` に redirect される
 # 二重 silent failure になっていた (jq 失敗時の `head -3 _jq_err` 観測経路が無効化される)。
 # resume-active-flag-restore.sh の mktemp 失敗 WARNING 経路と writer/reader 対称化。
-if ! _jq_err=$(mktemp /tmp/rite-state-read-jq-err-XXXXXX 2>/dev/null); then
+if ! _jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-state-read-jq-err-XXXXXX" 2>/dev/null); then
   echo "WARNING: state-read.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
   echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)" >&2
   echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2

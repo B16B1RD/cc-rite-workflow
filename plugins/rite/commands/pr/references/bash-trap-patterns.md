@@ -1,6 +1,6 @@
 # Bash Trap + Cleanup Patterns
 
-このファイルは `plugins/rite/commands/pr/fix.md`、`review.md`、`issue/start.md`、および `plugins/rite/commands/wiki/lint.md` の bash block で繰り返し使用される
+このファイルは `plugins/rite/commands/pr/fix.md`、`review.md`、`issue/start.md`、`plugins/rite/commands/wiki/lint.md`、および `plugins/rite/commands/wiki/ingest.md` の bash block で繰り返し使用される
 **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 
 各 bash block の冒頭では、本ファイルの該当セクションへの anchor 参照を pointer コメントとして置き、

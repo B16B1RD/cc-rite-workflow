@@ -106,7 +106,7 @@ trap '_rite_resolve_sid_cleanup; exit 130' INT
 trap '_rite_resolve_sid_cleanup; exit 143' TERM
 trap '_rite_resolve_sid_cleanup; exit 129' HUP
 
-if ! _tr_err=$(mktemp /tmp/rite-resolve-sid-tr-err-XXXXXX 2>/dev/null); then
+if ! _tr_err=$(mktemp "${TMPDIR:-/tmp}/rite-resolve-sid-tr-err-XXXXXX" 2>/dev/null); then
   echo "WARNING: _resolve-session-id-from-file.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
   echo "  影響: tr 失敗時の error 詳細が表示されません" >&2
   echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2

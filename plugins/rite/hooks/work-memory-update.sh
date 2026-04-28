@@ -206,11 +206,19 @@ update_local_work_memory() {
   fi
 
   # PR #688 followup: cycle 41 review F-13 MEDIUM (security Hypothetical exception) —
-  # YAML frontmatter 値の defense-in-depth sanitization。改行除去 + `"` を `\"` に escape して
+  # YAML frontmatter 値の defense-in-depth sanitization。改行除去 + backslash escape + `"` を `\"` に escape して
   # frontmatter 破損 / 子 key injection を防ぐ (caller 責務に加えた二段目の防御層)。
   # WM_BODY_TEXT は frontmatter 外なので除外 (markdown body は改行を保持する必要がある)。
+  #
+  # verified-review cycle 44 F-12 MEDIUM (security Hypothetical exception):
+  # backslash escape を追加。値が `\` で終わる場合、YAML double-quoted string では
+  # closing `"` が `\"` の escape sequence と解釈されて閉じクォート消失 → 後続の
+  # `phase_detail: "..."` 行を value continuation として誤 parse する経路があった。
+  # 例: WM_PHASE='foo\' → `phase: "foo\"` → escaped quote → continuation。
+  # まず backslash を `\\` に escape してから `"` → `\"` の順で sed を実行する
+  # (順序逆転すると新たに作った escape sequence の `\` が更に escape されてしまう)。
   _sanitize_yaml_value() {
-    printf '%s' "$1" | tr -d '\n\r' | sed 's/"/\\"/g'
+    printf '%s' "$1" | tr -d '\n\r' | sed 's/\\/\\\\/g; s/"/\\"/g'
   }
   local _wm_phase_san _wm_phase_detail_san _wm_next_san _wm_source_san _branch_san _last_commit_san
   _wm_phase_san=$(_sanitize_yaml_value "$WM_PHASE")
