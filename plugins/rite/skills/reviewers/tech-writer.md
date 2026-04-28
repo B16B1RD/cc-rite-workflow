@@ -231,7 +231,7 @@ For the full 5-category verification protocol (Implementation Coverage / Enumera
 
 ### Detection Checklist
 
-Perform the following 5 checks for every comment/docstring touched by the diff. Skip checks that do not apply to the specific comment form (e.g., TODO expiry does not apply to a docstring summary).
+Perform the following 6 checks for every comment/docstring touched by the diff. Skip checks that do not apply to the specific comment form (e.g., TODO expiry does not apply to a docstring summary).
 
 #### 1. Function Signature / Docstring Consistency
 
@@ -323,14 +323,39 @@ if (response.success == 1) { ... }
 
 This explains both the non-obvious choice and the historical reason — clearly WHY-oriented.
 
+#### 6. Comment Quality Heuristics
+
+> **SoT 参照**: 検出基準の本文は [`comment-best-practices.md` セクション C — Detection Heuristics](../../skills/rite-workflow/references/comment-best-practices.md#c-detection-heuristics-reviewer-用) を参照。本セクションは reviewer 側のチェックリスト要約であり、原則の詳細・例外・Whitelist は SoT 側を SoT として扱う (DRY)。
+
+本 check は SoT セクション C の 6 ヒューリスティクスのうち #1 / #6 を本 reviewer の既存 #5 (WHY vs WHAT Balance) と #3 (Comment Rot Detection) に統合し、残り #2-#5 を本 #6 で扱う。新規 diff の追加行 (`git diff base...HEAD` の `+` 行) に出現するコメント・docstring のみを対象とする — 既存違反の retrofit は本 reviewer の対象外 (別 Epic)。詳細は [`_reviewer-base.md` の `## Comment Quality Finding Gate`](../../agents/_reviewer-base.md#comment-quality-finding-gate) を参照。
+
+- **(a) ジャーナルコメント検出** (SoT 原則 2 `no_journal_comment` / Severity HIGH): コメント内に `cycle\s*\d+`, `F-\d+`, `PR\s*#\d+`, `verified-review`, `Issue\s*#\d+`, `旧実装は`, `cycle\s*\d+\s*fix`, `cycle\s*\d+\s*F-\d+\s*で確立` のいずれかを含むものを flag。コミットメッセージ・PR 説明・Wiki に書くべき情報がコード内コメントに残存している状態。**Verification**: `Grep` で diff の追加行コメントから上記正規表現を検出。
+- **(b) 行番号・cycle 番号参照検出** (SoT 原則 3 `no_line_or_cycle_reference` / Severity HIGH): コメント内に `[a-zA-Z0-9_./-]+\.\w+:\d+` (file:line) パターンを含むもの、あるいは「`cycle 35 F-04`」のような cycle 内位置参照を flag。コードの再配置・renumber で陳腐化する。**Verification**: `Grep -E '[a-zA-Z0-9_./-]+\.\w+:\d+'` で検出。リファクタ耐性のため symbol / anchor 名参照に置換することを推奨。
+- **(c) 独自社内ジャーゴン濫用検出** (SoT 原則 4 `no_jargon_abuse` / Severity LOW-MEDIUM): コメント内のトークンで、(i) SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) 表に存在せず、(ii) 一般辞書にも存在しない造語を flag。**Verification**: Whitelist 表との突合 (substring match) → 不一致トークンを LLM 判定で確認 (プロジェクト内 3 回以上の独立登場の有無)。
+- **(d) WHY 過剰記述の密度判定** (SoT 原則 5 `density_by_audience` / Severity MEDIUM): SoT [`## D. Density Guideline`](../../skills/rite-workflow/references/comment-best-practices.md#d-density-guideline-公開-api-vs-内部-helper) に従い、内部 helper のコメント密度が公開 API より高い場合 (逆転) を flag。**Verification**: 関数本体行数とコメント行数の比を `Read` + line-count で算出 (空行・閉じ括弧のみの行は分母から除く)。
+- **(e) 公開 API と内部で密度差なし** (SoT 原則 5 派生 / Severity MEDIUM): 公開 API (`export` / `pub` / `public` / docstring 0 行など) のコメント密度が内部 helper の 1.5 倍未満の場合を flag。docstring が薄く、内部 helper の方が WHY 説明が厚い分布になっていないか。**Verification**: API-facing 判定は本 reviewer の既存 Comment Accuracy Finding Severity の API-facing rules を再利用。
+
+**SoT との対応関係**:
+
+| SoT 原則 | 本 reviewer 検出パターン | Severity プリセット |
+|---------|------------------------|------------------|
+| 1. why_over_what | (本 reviewer #5 WHY vs WHAT Balance に統合) | LOW (既存) |
+| 2. no_journal_comment | (a) | **HIGH** |
+| 3. no_line_or_cycle_reference | (b) | **HIGH** |
+| 4. no_jargon_abuse | (c) | LOW-MEDIUM |
+| 5. density_by_audience | (d) (e) | MEDIUM |
+| 6. comment_rot_is_critical | (本 reviewer #3 Comment Rot Detection に統合) | CRITICAL (既存) |
+
+**注意**: 本 reviewer 単独で finding を上げるのではなく、`_reviewer-base.md` の [`## Comment Quality Finding Gate`](../../agents/_reviewer-base.md#comment-quality-finding-gate) の重要度プリセット・「新規 diff 限定 logic」・whitelist 適用順序・Hypothetical → Demonstrable 昇格 signal を必ず通すこと。Severity プリセットの数値表記は Finding Gate 側を SoT として扱う (本セクションの「Severity プリセット」列はクイックリファレンスであり、衝突時は Finding Gate 側を優先)。
+
 ### Comment Accuracy Finding Severity
 
 | Severity | Pattern |
 |----------|---------|
 | **CRITICAL** | Comment documents security/correctness properties that no longer hold (e.g., "this function sanitizes SQL input" above code that no longer sanitizes). Comment actively misleads about safety. |
-| **HIGH** | Comment rot that contradicts current behavior (check #3 critical pattern). Orphan TODO referencing CLOSED Issue in a production path (check #4). Signature-docstring drift on an **API-facing** function/method/class (exported module members, public class methods, CLI command handlers, route handlers, event handler registrations, published REST/GraphQL endpoints — see "API-facing determination" rules below for the authoritative list) that would mislead external callers (check #1). |
-| **MEDIUM** | Reference to non-existent identifier (check #2). Unassigned TODO in non-critical path (check #4). WHY-WHAT imbalance in a publicly-documented API. Signature-docstring drift on a **non-API-facing** function (private helpers, internal-only utilities, test fixtures) where the drift is contained to the file or module (check #1). |
-| **LOW** | Redundant WHAT comment in private helper (check #5). Stale TODO with no clear expiry. Minor wording drift that doesn't change meaning. |
+| **HIGH** | Comment rot that contradicts current behavior (check #3 critical pattern). Orphan TODO referencing CLOSED Issue in a production path (check #4). Signature-docstring drift on an **API-facing** function/method/class (exported module members, public class methods, CLI command handlers, route handlers, event handler registrations, published REST/GraphQL endpoints — see "API-facing determination" rules below for the authoritative list) that would mislead external callers (check #1). **ジャーナルコメント** (`cycle N`, `verified-review`, `PR #N`, `旧実装は`, `cycle N F-X で確立` 等の review-history メタ情報がコード内コメントに残存) — check #6 (a)。**行番号・cycle 番号参照** (`file.sh:42` / `cycle 35 F-04` 等の位置依存参照) — check #6 (b)。 |
+| **MEDIUM** | Reference to non-existent identifier (check #2). Unassigned TODO in non-critical path (check #4). WHY-WHAT imbalance in a publicly-documented API. Signature-docstring drift on a **non-API-facing** function (private helpers, internal-only utilities, test fixtures) where the drift is contained to the file or module (check #1). **コメント密度逆転** (内部 helper のコメント密度が公開 API の 1.5 倍以上、あるいは公開 API の docstring が空) — check #6 (d)/(e)。 |
+| **LOW** | Redundant WHAT comment in private helper (check #5). Stale TODO with no clear expiry. Minor wording drift that doesn't change meaning. **独自社内ジャーゴン濫用** (Whitelist にも一般辞書にもない造語) — check #6 (c)。 |
 
 **API-facing determination**: Use the following rules to classify signature-docstring drift severity:
 
@@ -348,6 +373,8 @@ This explains both the non-obvious choice and the historical reason — clearly 
 | 「TODO の期限が切れている気がする」 | 「`src/api/legacy.ts:120` の `// TODO(#234): remove before 2025-Q1` だが Issue #234 は `state: CLOSED` かつ 2025-03-15 マージ済 (`gh issue view 234`)。該当コードは依然 active path。orphan TODO」 |
 | 「参照先が存在しないかも」 | 「`src/utils.ts:8` の `// See also: helpers/format.ts::formatCurrency` だが `Grep 'formatCurrency' src/` で hit 0 件。`format/currency.ts::format` にリネーム済 (`git log --diff-filter=R`)。broken reference」 |
 | 「コメントが冗長」 | 「`src/store/user.ts:22` の `// Set the user id` (line 23: `user.id = id;`) は WHAT only の redundant comment。前後の context にも validation / migration / transaction の WHY 情報なし。deletion 推奨」 |
+| 「コメントにメタ情報が多い」 | 「`hooks/state-read.sh:42` の `# verified-review cycle 35 fix (F-04 HIGH): if/else pattern instead of if! pattern` は SoT 原則 2 (no_journal_comment) 違反のジャーナルコメント。review-history メタ情報はコード内コメントではなく commit message / PR 説明 / `.rite/wiki/` に書くべき。check #6 (a) — Severity HIGH。本 PR diff の追加行で出現するか `Grep '+ .*verified-review cycle'` で確認」 |
+| 「ジャーゴンが分かりにくい」 | 「`commands/foo.md:15` の `// orchestrator の handshake-validator を経由する` で `handshake-validator` がトークン検出される。SoT [Whitelist](../../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) に未登録、`Grep -r 'handshake-validator' plugins/` で 1 hit (本コメントのみ) → 独立登場 3 回未満。SoT 原則 4 (no_jargon_abuse) 違反。check #6 (c) — Severity LOW。Whitelist 拡張または用語置換を推奨」 |
 
 ## Finding Quality Guidelines
 
