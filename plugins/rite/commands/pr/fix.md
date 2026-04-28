@@ -2966,6 +2966,8 @@ set +o pipefail
 
 ## Phase 3: Fix Commit
 
+> **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — verify that journal comments (`cycle X F-Y`, PR/Issue numbers), file:line references, and unverified jargon are not left in the diff. The goal is WHY-only inline comments; review/fix history belongs in commit messages and PR descriptions.
+
 ### 3.1 Verify Changes
 
 Once all findings have been addressed, verify the changes:
