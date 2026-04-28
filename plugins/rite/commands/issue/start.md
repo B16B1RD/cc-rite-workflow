@@ -1817,7 +1817,18 @@ Otherwise:
 # TC-6 が `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin)。
 if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
 plan_deviation_count="$val"
+# verified-review (PR #688 cycle 14) F-01 (MEDIUM) 対応: prose ↔ code 整合性。
+# state-read.sh 失敗時 (`val=""`) は METRICS_SKIPPED sentinel を emit し、後続 Step 2/3 (judgment 計算 +
+# heredoc 生成) を skip させる。silent に空文字列 `{plan_deviation_count}` substitute が下流 heredoc
+# (Phase 5.5.2 完了レポート) に流入し `| 計画逸脱回数 | 回 | ...` の partial corruption が発生する経路
+# を遮断する。Claude は本 sentinel を会話履歴で grep し、検出時は **Phase 5.5.2 全体を skip** すること
+# (= metrics PATCH を実行せず Phase 5.5.3 へ進む)。
+if [ -z "$val" ]; then
+  echo "[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed" >&2
+fi
 ```
+
+**Claude への指示 (METRICS_SKIPPED 検出時の挙動)**: 上記 bash block 実行後、stderr に `[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed` が emit された場合、Claude は **Step 2 (threshold evaluation) と Step 3 (PATCH heredoc generation) を skip** し、`Phase 5.5.2: state-read.sh 失敗のため metrics 更新を skip しました (manual intervention で次回計測してください)` を stderr に出力してから Phase 5.5.3 へ進む。partial corruption (空文字列 substitute による意味不明な metrics 行) を防ぐための明示分岐。
 
 **Step 2**: Evaluate thresholds.
 
@@ -2235,7 +2246,9 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 > **Placement**: This block runs **after** Phase 5.7 completes **or after Phase 5.6** when no parent Issue was identified in Phase 1.6 / 2.4.7 (the Phase 5.7 skip branch). Both paths converge here so the terminal `phase="completed", active: false` state is set exactly once, with `previous_phase` pointing at a whitelist-valid source (`phase5_post_parent_completion` or `phase5_completion`).
 
-**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When `parent_issue_number` is `0` in flow-state (verified-review cycle 35 F-13 → cycle 36 F-10 fix: this value was **determined in Phase 5.7 via `state-read.sh`** — see Phase 5.7 first bash block. This Workflow Termination block does **not** re-read it. The orchestrator's branching decision is driven by Phase 5.7's `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal observable in conversation context), not by shell-variable persistence — Bash tool invocations do not share shell state across boundaries. cycle 35 F-13 introduced this forward-reference clarification; cycle 36 F-10 further clarified that the `0` value flows via LLM-readable `[CONTEXT]` emit rather than bash-level variable inheritance to preempt the very pitfall ("bash 仕様 verify 不足") cycle 35 commit message itself called out as a learned pattern. Phase 5.7 is the single source of truth for the read — Issue #687 AC-4), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
+**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When `parent_issue_number` is `0` in flow-state (determined in Phase 5.7 via `state-read.sh`), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
+
+> **Why this routing relies on Phase 5.7 emit, not state re-read** (verified-review cycle 35 F-13 → cycle 36 F-10 history、cycle 14 F-02 で inline 段落から blockquote 切り出し): Phase 5.7 が `parent_issue_number` の **single source of truth for the read** であり、本 Workflow Termination block は state を re-read しない。orchestrator の branching decision は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal、会話履歴で観測可能) で駆動され、bash 変数経由ではない (Bash tool invocation は shell state を境界を跨いで共有しない)。cycle 35 F-13 で本 forward-reference clarification を導入、cycle 36 F-10 で `0` 値が LLM-readable `[CONTEXT]` emit 経由で流れることを明示し、cycle 35 commit message が learned pattern として警告した「bash 仕様 verify 不足」pitfall を構造的に予防した。Issue #687 AC-4 と整合。
 
 **Step 1**: Update `.rite-flow-state` to the terminal state (patch mode, preserves `previous_phase`):
 

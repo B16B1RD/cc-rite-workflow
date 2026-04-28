@@ -107,9 +107,11 @@ fi
 # (_resolve-cross-session-guard.sh / _resolve-session-id-from-file.sh と対称化)。
 _classify_err=""
 _jq_err=""
+# verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
+# bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
+# `_resolve-cross-session-guard.sh` の Form A cleanup と統一し、Form A 最小性 doctrine を維持する。
 _rite_state_read_cleanup() {
   rm -f "${_classify_err:-}" "${_jq_err:-}"
-  return 0
 }
 trap 'rc=$?; _rite_state_read_cleanup; exit $rc' EXIT
 trap '_rite_state_read_cleanup; exit 130' INT
@@ -155,10 +157,14 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     # emit that Issue #687 was specifically designed to introduce. Helper now keeps stderr
     # clean (cycle 35 fix in _resolve-cross-session-guard.sh), so 2>/dev/null is safe.
     # PR #688 followup: cycle 41 review F-01 HIGH — helper の正当な WARNING (cycle 39 H-02 で
-    # _resolve-cross-session-guard.sh:93-98 に追加された mktemp 失敗 WARNING) が `2>/dev/null` で
-    # silent suppress される問題を修正。stderr を tempfile に退避し、`^WARNING:` で始まる行のみ
-    # caller chain に pass-through する。これにより /tmp full / SELinux deny 環境で helper 側の
-    # 詳細が両層で失われる二重 silent failure を防ぐ (writer/reader 対称化 doctrine と整合)。
+    # `_resolve-cross-session-guard.sh` の `_mktemp-stderr-guard.sh` 呼び出しブロックに追加された
+    # mktemp 失敗 WARNING) が `2>/dev/null` で silent suppress される問題を修正。
+    # stderr を tempfile に退避し、`^WARNING:` で始まる行のみ caller chain に pass-through する。
+    # これにより /tmp full / SELinux deny 環境で helper 側の詳細が両層で失われる二重 silent failure
+    # を防ぐ (writer/reader 対称化 doctrine と整合)。
+    # verified-review (PR #688 cycle 14) F-04 (MEDIUM): hardcoded 行番号
+    # `_resolve-cross-session-guard.sh:93-98` を「DRIFT-CHECK ANCHOR は semantic name 参照」doctrine
+    # に従って semantic anchor に置換 (cycle 38 F-04 / cycle 40 で確立)。
     #
     # cycle 43 F-09 (MEDIUM) 対応: _classify_err mktemp 失敗時の silent fallback を canonical pattern
     # (`if ! ... then` + WARNING 3 行 + chmod 600) に揃える。旧実装 `|| _classify_err=""` は
@@ -315,7 +321,11 @@ esac
 # helper は失敗時に空文字を返し WARNING を stderr に emit する (non-blocking contract)。
 # verified-review F-05 (MEDIUM): helper 内部で既に chmod 600 を適用しているため
 # caller 側の chmod 重複適用を排除した (旧 `[ -n "$_jq_err" ] && chmod 600 ...` 行を削除)。
-# helper の API 契約 (line 36-37 / 47-48: success: chmod 600) を SoT として尊重する。
+# verified-review (PR #688 cycle 14) F-04 (MEDIUM): hardcoded 行番号
+# `_mktemp-stderr-guard.sh:36-37 / 47-48` を「DRIFT-CHECK ANCHOR は semantic name 参照」doctrine
+# に従って semantic anchor に置換 (cycle 38 F-04 / cycle 40 で確立)。
+# helper の API 契約 (`_mktemp-stderr-guard.sh` の Side effect on success セクション: chmod 600 適用)
+# を SoT として尊重する。
 _jq_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "state-read" "state-read-jq-err" \
   "jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)")

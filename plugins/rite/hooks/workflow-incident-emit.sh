@@ -89,10 +89,15 @@ if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
 fi
 
 # --- Sentinel construction ---
-# Strip newlines and semicolons from free-text fields so the single-line
+# Strip control characters and semicolons from free-text fields so the single-line
 # sentinel format stays parseable by Phase 5.4.4.1's grep.
+#
+# `tr -d '[:cntrl:]'` strips all control characters (newline / CR / tab / BEL / DEL etc.)
+# to match `_emit-cross-session-incident.sh` fallback path's superset behavior
+# (cycle 12 F-07). Earlier `tr -d '\n\r'` only stripped newlines, allowing tab/BEL/DEL
+# to pass through and corrupt downstream tooling's grep on the sentinel.
 sanitize() {
-  printf '%s' "$1" | tr -d '\n\r' | tr ';' ','
+  printf '%s' "$1" | tr -d '[:cntrl:]' | tr ';' ','
 }
 
 DETAILS_SANITIZED=$(sanitize "$DETAILS")

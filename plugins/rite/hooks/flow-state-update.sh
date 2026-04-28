@@ -184,9 +184,11 @@ _resolve_session_state_path() {
     # 内部の trap は subshell に閉じる。parent shell の `_rite_flow_state_atomic_cleanup` trap は影響を受けない。
     # この trap reset は parent への leak が発生した場合の defense-in-depth として残している。
     local _classify_err=""
+    # verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
+    # bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
+    # `_resolve-cross-session-guard.sh` の Form A cleanup と統一し、Form A 最小性 doctrine を維持する。
     _rite_flow_state_classify_cleanup() {
       rm -f "${_classify_err:-}"
-      return 0
     }
     trap 'rc=$?; _rite_flow_state_classify_cleanup; exit $rc' EXIT
     trap '_rite_flow_state_classify_cleanup; exit 130' INT

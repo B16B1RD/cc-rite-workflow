@@ -63,9 +63,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
 # verified-review F-04 MEDIUM: state-read.sh 呼び出し boilerplate を helper 関数に抽出。
 # 旧実装は (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
 # fail-fast capture を 3 箇所 (line 96-110 / 175-186 / 187-193) で完全に同一構造で複製していた。
-# 同一 pattern が resume-active-flag-restore.sh にも 2 site 存在し、計 5 site の boilerplate 重複は
-# 将来の error message 仕様変更時の片肺更新リスク (Issue #687 root cause と同型の drift 構造) を抱えていた。
-# 共通 helper に集約することで spec 変更を 1 箇所で完結させる (writer/reader/resume 3 layer DRY 化)。
+# 共通 helper に集約することで spec 変更を 1 箇所で完結させる。
+#
+# verified-review (PR #688 cycle 14) F-05 (MEDIUM) 対応: 旧コメントは
+# 「resume-active-flag-restore.sh にも 2 site 存在し計 5 site の boilerplate 重複を集約する
+# (writer/reader/resume 3 layer DRY 化)」と主張していたが、resume layer の 2 site
+# (resume-active-flag-restore.sh の curr_phase / curr_next 抽出ブロック) は **本 PR では consolidate
+# されていない**。したがって本 helper の集約スコープは work-memory-update.sh 内 3 site のみで、
+# resume layer の片肺更新リスクは別 Issue で追跡する必要がある (claim と実装の整合性回復)。
 #
 # Arguments:
 #   $1 var_name  caller 側で値を受け取る変数名 (e.g., "_phase")

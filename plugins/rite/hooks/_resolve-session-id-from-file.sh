@@ -125,8 +125,13 @@ fi
 # stderr を tempfile に退避し、IO error は WARNING を emit してから空文字復帰する (caller の
 # graceful degradation 動作は維持しつつ、observability を確保)。
 # cycle 43 F-08 (MEDIUM) 対応: mktemp 失敗 WARNING 統一 + chmod 600 + canonical 4 行 trap。
-# 他 5 helper (state-read.sh:267 / _resolve-cross-session-guard.sh:93 / flow-state-update.sh:282,422 /
-# resume-active-flag-restore.sh:180) で確立した canonical pattern と対称化する。
+# verified-review (PR #688 cycle 14) F-03 (MEDIUM) 対応:
+# 旧コメントに含まれていた hardcoded 行番号 (state-read.sh:267 / _resolve-cross-session-guard.sh:93 /
+# flow-state-update.sh:282,422 / resume-active-flag-restore.sh:180) は本 PR で導入した「DRIFT-CHECK
+# ANCHOR は semantic name 参照、line 番号禁止」doctrine (cycle 38 F-04 / cycle 40) に違反する。
+# 該当 4 site はすでに drift 済 (実行番号と乖離) のため、semantic anchor に置換した。
+# 他 5 helper の canonical pattern (`_mktemp-stderr-guard.sh` 呼び出しブロック / canonical mktemp
+# pattern / mktemp 失敗 WARNING ブロック) と対称化する。
 # 旧実装は (a) mktemp 失敗時に WARNING emit せず silent fallback、(b) chmod 600 path-disclosure
 # defense なし、(c) trap 不在で SIGINT/SIGTERM/SIGHUP 経路で _tr_err orphan のリスク があった。
 # error-handling-reviewer Likelihood-Evidence: existing_call_site で実証済み。
