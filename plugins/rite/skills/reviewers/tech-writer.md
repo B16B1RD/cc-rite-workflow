@@ -40,7 +40,7 @@ The diff contains additions or deletions of comment/docstring tokens, including:
 - `"""..."""` (Python module/function/class docstrings)
 - `'''...'''` (Python alternative docstring form)
 - JSDoc blocks (`/** ... */` with `@param`, `@returns`, etc.)
-- Rustdoc (`///` and `//!`)
+- Rustdoc (`///` and 「//!」)
 - GoDoc (the comment block directly above an exported identifier)
 - `<!-- ... -->` (HTML / Markdown inline comments, when changed in a code file)
 

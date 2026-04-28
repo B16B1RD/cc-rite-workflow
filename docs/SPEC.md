@@ -1231,7 +1231,7 @@ Registered as a PreToolUse hook. Blocks known incorrect Bash command patterns th
 |---------|--------|-------------|
 | `gh pr diff --stat` | `--stat` flag is unsupported | `gh pr view {n} --json files --jq '.files[]'` |
 | `gh pr diff -- <path>` | File filter is unsupported | `gh pr diff {n} \| awk` for filtering |
-| `!= null` (in jq/awk) | Bash history expansion interprets `!` | `select(.field)` or `select(.field == null \| not)` |
+| 「!= null」 (in jq/awk) | Bash history expansion interprets 「!」 | `select(.field)` or `select(.field == null \| not)` |
 
 **Heredoc Safety:**
 

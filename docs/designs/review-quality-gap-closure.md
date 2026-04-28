@@ -207,7 +207,7 @@ named subagent (agent body が system prompt として自動注入)
 
 - **Pattern-1 retained flag coverage**: `exit 1` 直前に `[CONTEXT] *_FAILED=1` emit が欠落しているエラーハンドラを検出 (本セッション H1/H2/H3 で実証)
 - **Pattern-2 reason table drift**: Markdown の reason テーブルに列挙された識別子と、同一ファイル内の `echo "[CONTEXT] *_FAILED=1; reason=..."` の emit 箇所を突き合わせて drift 検出 (本セッション C2 で 12 件登録 vs 28 件実 emit 実測)
-- **Pattern-3 if-wrap drift**: `cat <<'EOF' > "$tmpfile"` が `if !` で wrap されていない箇所を検出 (本セッション C3 で Phase 2.4 が Phase 4.2/4.3.4 から drift していた事例を実証)
+- **Pattern-3 if-wrap drift**: `cat <<'EOF' > "$tmpfile"` が 「if ! cmd; then」 で wrap されていない箇所を検出 (本セッション C3 で Phase 2.4 が Phase 4.2/4.3.4 から drift していた事例を実証)
 - **Pattern-4 anchor drift**: Markdown ファイルの `#anchor` 参照が同一/他ファイルの見出しに解決できるか確認する内部リンクチェッカー (本セッション H6 の `#cross-reference` → `#drift-detection-invariants` 事例)
 - **Pattern-5 evaluation-order table 列挙 drift**: reason 表とは別に、評価順テーブルの括弧内に reason を列挙している箇所を検出。括弧内列挙と実 emit の突き合わせで drift 検出 (本セッション C2 副次発見、fix.md Phase 8.1 評価順 行 2 の 7 件固定列挙 vs 実 28 件 emit)
 

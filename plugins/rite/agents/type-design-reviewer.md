@@ -43,7 +43,7 @@ For each type definition:
 ### Step 4: Usefulness and Enforcement Check
 
 For each type exposed to consumers:
-- Do consumers need frequent type assertions or casts? `Grep` for `as Type`, `!`, type guards
+- Do consumers need frequent type assertions or casts? `Grep` for `as Type`, 「!」, type guards
 - Does the type work well with the language's type inference?
 - Are generic type parameters actually varying across usage sites, or is there only one instantiation?
 - `Grep` for the type name across the codebase to assess adoption and usability patterns

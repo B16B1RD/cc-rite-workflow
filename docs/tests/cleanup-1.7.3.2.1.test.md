@@ -54,7 +54,7 @@ query($owner: String!, $projectNumber: Int!, $issueNumber: Int!) {
 
 | # | 検証項目 | 期待値 | 結果 |
 |---|---------|--------|------|
-| 1 | クエリ変数の型 | `$owner: String!`, `$projectNumber: Int!`, `$issueNumber: Int!` | - |
+| 1 | クエリ変数の型 | 「$owner: String!」, 「$projectNumber: Int!」, 「$issueNumber: Int!」 | - |
 | 2 | user/organization の切り替え | owner が個人の場合 `user`, Organization の場合 `organization` を使用 | - |
 | 3 | items の取得数 | `last: 20` で最新 20 件を取得（追加直後の Issue を確実に含むため） | - |
 | 4 | fields の取得数 | `first: 20` で最大 20 フィールドを取得 | - |

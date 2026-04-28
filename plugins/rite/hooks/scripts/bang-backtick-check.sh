@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # bang-backtick-check.sh
 #
-# Detect bang-backtick adjacent patterns in plugins/rite/commands/**/*.md and
-# plugins/rite/skills/**/*.md that can trigger Skill loader history expansion and
-# break Skill loading (Issue #365 / PR #367 — backtick+bang adjacency in inline
-# code caused /rite:pr:fix Skill load failure).
+# Detect bang-backtick adjacent patterns in plugins/rite/{commands,skills,agents,
+# references}/**/*.md that can trigger Skill loader history expansion and break
+# Skill loading (Issue #365 / PR #367 — backtick+bang adjacency in inline code
+# caused /rite:pr:fix Skill load failure). The agents/ and references/ scopes
+# were added because P3 (no-space-before-! variant) revealed that any markdown
+# the slash command parser may load — directly or transitively via Read — is
+# vulnerable, not just commands/skills entry points.
 #
 # Detected patterns (both are matched within a single Markdown inline code span,
 # i.e. text enclosed by paired single backticks). **All occurrences on a single
@@ -28,6 +31,19 @@
 #                  single ASCII space (captures bash history-expansion shapes
 #                  like "bang+word" while intentionally excluding the Markdown
 #                  image-reference shape "bang+backslash-bracket").
+#
+#   P3: closing-backtick-preceded-by-bang (no-space variant)
+#       regex: `[^`]*[^[:space:]]!`
+#       semantics: inline code where the character right before the closing
+#                  backtick is literal bang AND the preceding character is
+#                  NOT whitespace (e.g. `!` lone-bang span, `//!` Rustdoc
+#                  inner-doc, or `cmd!` style). P1 covered the "space+!"
+#                  variant; P3 catches the no-space variants that the slash
+#                  command parser also treats as `!`+backtick = inline bash
+#                  invocation prefix. Empirically required after the cycle 35
+#                  fix series — the parser was still triggering on
+#                  `` `!` `` lone-bang inline spans because they form
+#                  bang+backtick adjacency at the closing boundary.
 #
 # These patterns were chosen conservatively to produce zero false positives on
 # the existing commands/skills tree (verified at creation time on 70 files).
@@ -91,7 +107,7 @@ usage() {
 Usage: bang-backtick-check.sh [options]
 
 Options:
-  --all              Scan plugins/rite/commands/**/*.md and plugins/rite/skills/**/*.md
+  --all              Scan plugins/rite/{commands,skills,agents,references}/**/*.md
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress/summary log lines on stderr (per-finding
@@ -130,28 +146,29 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 # lives in a different tree than the plugin commands/) get a clear diagnostic
 # instead of the generic "no targets specified" fallback.
 if [ "$USE_ALL" -eq 1 ]; then
-  commands_dir="plugins/rite/commands"
-  skills_dir="plugins/rite/skills"
-  found_any_dir=0
-  if [ -d "$commands_dir" ]; then
-    found_any_dir=1
-  else
-    echo "WARNING: $commands_dir not found under $REPO_ROOT (skipped)" >&2
-  fi
-  if [ -d "$skills_dir" ]; then
-    found_any_dir=1
-  else
-    echo "WARNING: $skills_dir not found under $REPO_ROOT (skipped)" >&2
-  fi
-  if [ "$found_any_dir" -eq 0 ]; then
-    echo "ERROR: --all requested but neither $commands_dir nor $skills_dir exist under $REPO_ROOT" >&2
+  declare -a scan_dirs=()
+  for d in \
+    "plugins/rite/commands" \
+    "plugins/rite/skills" \
+    "plugins/rite/agents" \
+    "plugins/rite/references"
+  do
+    if [ -d "$d" ]; then
+      scan_dirs+=("$d")
+    else
+      echo "WARNING: $d not found under $REPO_ROOT (skipped)" >&2
+    fi
+  done
+  if [ "${#scan_dirs[@]}" -eq 0 ]; then
+    echo "ERROR: --all requested but no scan directory exists under $REPO_ROOT" >&2
+    echo "  Expected one or more of: plugins/rite/{commands,skills,agents,references}" >&2
     echo "  Likely cause: this script was invoked outside the rite plugin repo (e.g. marketplace install)" >&2
     echo "  Recovery: run from the rite plugin source tree, or pass --target FILE explicitly" >&2
     exit 2
   fi
   while IFS= read -r f; do
     TARGETS+=("$f")
-  done < <(find "$commands_dir" "$skills_dir" -type f -name '*.md' 2>/dev/null | sort)
+  done < <(find "${scan_dirs[@]}" -type f -name '*.md' 2>/dev/null | sort)
 fi
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
@@ -199,6 +216,21 @@ check_file() {
         sub_s = substr(line, pos)
         if (!match(sub_s, /`![[:alnum:] ]/)) break
         print "[bang-backtick][P2] " F ":" NR ": opening backtick followed by ! + word/space"
+        pos = pos + RSTART + RLENGTH - 1
+      }
+      # P3: bang-immediately-before-backtick anywhere on the line. Catches
+      # the slash command parser actual !+backtick adjacency trigger
+      # regardless of whether the bang sits inside an inline code span
+      # (lone-bang, Rustdoc //!, cmd!) or appears as a bare !+backtick
+      # prefix. P1 covers the space-before-! variant; P3 covers the
+      # no-space-before-! variants (lone, suffix-of-token).
+      # NOTE: comments in awk script must avoid ASCII apostrophe (single
+      # quote) because the awk script is bash single-quote delimited.
+      pos = 1
+      while (pos <= length(line)) {
+        sub_s = substr(line, pos)
+        if (!match(sub_s, /!`/)) break
+        print "[bang-backtick][P3] " F ":" NR ": ! immediately before backtick (parser inline-bash trigger)"
         pos = pos + RSTART + RLENGTH - 1
       }
     }

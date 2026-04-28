@@ -218,7 +218,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     echo "WIKI_INIT_REASON=branch_missing"
   else
     # worktree をセットアップ (冪等 — 既存なら no-op、未作成なら新規作成)
-    # 注意: `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に `!` の終了 status (= 0) を
+    # 注意: `if ! cmd; then rc=$?` パターンは bash 仕様上 `$?` が常に 「!」 の終了 status (= 0) を
     # 返すため、setup.sh の真の rc を捕捉できない。`set +e; cmd; rc=$?; set -e` で明示的に capture する。
     # また、setup.sh の stderr は `>/dev/null` で捨てない (ERROR / WARNING / hint をユーザーに届ける
     # ため `>&2` で透過させる、ただし stdout は不要なため `>/dev/null` で捨てる)。

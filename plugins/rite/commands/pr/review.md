@@ -3387,7 +3387,7 @@ tmpfile_patched=""
 
 # gh pr comment の exit code を明示捕捉 (silent failure 防止)
 # `if ! cmd; then rc=$?` パターンは bash 仕様上 $? が
-# 常に 0 になる (`!` パイプライン否定の結果が then 節に伝播)。`if cmd; then :; else rc=$?` の
+# 常に 0 になる (「!」 パイプライン否定の結果が then 節に伝播)。`if cmd; then :; else rc=$?` の
 # else 節形式に切り替えることで gh pr comment 自身の exit code を正しく捕捉する。
 # 実証: `bash -c 'if ! (exit 42); then echo $?; fi'` → `0`
 gh_err=$(mktemp /tmp/rite-review-p61b-gh-err-XXXXXX) || gh_err=""
