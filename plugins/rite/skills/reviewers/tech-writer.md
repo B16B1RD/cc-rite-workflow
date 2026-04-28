@@ -101,6 +101,7 @@ The diff contains additions or deletions of comment/docstring tokens, including:
 - [ ] **Inconsistent Terminology**: Same concept with different names
 - [ ] **Poor Organization**: Hard to find needed information
 - [ ] **Incomplete Sections**: Placeholder or stub content
+- [ ] **Self-Apply (Documentation Example Consistency)**: ドキュメント内 code example のコメント (`//`, `#`, `/* ... */`, `"""..."""`, `///`) が、参照先実装ファイルのコメント密度・WHY-vs-WHAT 基準と整合しているか (`agents/tech-writer-reviewer.md` `### Step 5.5: Self-Apply — Documentation Example Consistency` 参照)
 
 ### Recommendations
 

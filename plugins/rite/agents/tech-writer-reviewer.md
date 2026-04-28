@@ -60,18 +60,24 @@ Documentation files (`docs/`, `*.md`) often contain code examples whose `//`, `#
 
 **Procedure**:
 
-1. **Identify doc-embedded code examples**: For documentation files in the diff, locate fenced code blocks (` ```js / ```ts / ```py / ```bash / ```rust ` etc.) and extract any `//`, `#`, `/* ... */` comment lines inside them.
+1. **Identify doc-embedded code examples**: For documentation files in the diff, locate fenced code blocks (` ```js / ```ts / ```py / ```bash / ```rust ` etc.) and extract any `//`, `#`, `/* ... */`, `"""..."""`, `///` comment lines and language-specific docstring blocks inside them. (Python の `"""..."""` docstring と Rust の `///` doc comment は WHY/WHAT 基準 + density 期待が最も厳密に適用される対象であり、Procedure 2 の評価対象から漏らさないよう抽出段階で必ず含める。)
 2. **Apply the SoT comment quality basis**: Check each extracted comment against [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) — specifically the WHY-vs-WHAT distinction, density expectations, and journal-comment exclusions. Doc examples are not exempt.
 3. **Compare with the implementation referenced from the doc**: When the doc example references a real implementation file (e.g., `docs/api.md` describes the function in `src/users.ts`), `Grep`/`Read` the implementation and compare comment density and style. A drift in either direction (docs sparse vs. impl thorough, or docs verbose vs. impl terse) is a finding.
 4. **Flag inconsistencies as Comment Quality findings**: Use the severity preset from [`Comment Quality Finding Gate`](./_reviewer-base.md#comment-quality-finding-gate). Doc-example findings carry the same Impact × Likelihood treatment as implementation-file findings.
 
 **Concrete example** (positive vs. negative):
 
-```js
-// docs/api.md (current — too WHAT-heavy, drifts from implementation density):
-const user = getUserById(id);  // Get user by ID
+> Procedure 1 は「fenced code block 単位 = 同一ファイル」前提で抽出する。以下の 2 ブロックは説明上 doc 側と実装側を並置しているが、Procedure 1 適用時は **2 つの独立 block** として扱うこと。
 
-// src/users.ts (implementation — WHY + contract):
+`docs/api.md` 内の `js` example block (current — too WHAT-heavy, drifts from implementation density):
+
+```js
+const user = getUserById(id);  // Get user by ID
+```
+
+`src/users.ts` 内の実装 (WHY + contract):
+
+```ts
 const user = getUserById(id);  // Fetch user entity by ID; throws on missing (caller treats as 404)
 ```
 

@@ -59,7 +59,7 @@ The final severity reported in the findings table is determined by combining the
 
 ## COMMENT_QUALITY 軸 (Impact カテゴリ)
 
-`COMMENT_QUALITY` は SECURITY / CORRECTNESS と並ぶ Impact カテゴリの一つで、コメント品質違反 (Comment Rot / ジャーナルコメント / 過剰冗長 / 内部 helper の些末コメント等) を Impact × Likelihood Matrix で扱うための軸である。本軸は Issue #699 の SoT ([`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md)) と Issue #700 の reviewer 側 [`Comment Quality Finding Gate`](../agents/_reviewer-base.md#comment-quality-finding-gate) を統合する severity 判定の入口となる。
+`COMMENT_QUALITY` は Impact 軸 (CRITICAL/HIGH/MEDIUM/LOW) に対する Impact カテゴリ分類の一つで、コメント品質違反 (Comment Rot / ジャーナルコメント / 過剰冗長 / 内部 helper の些末コメント等) を Impact × Likelihood Matrix で扱うための軸である。本軸は Issue #699 の SoT ([`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md)) と Issue #700 の reviewer 側 [`Comment Quality Finding Gate`](../agents/_reviewer-base.md#comment-quality-finding-gate) を統合する severity 判定の入口となる。
 
 ### Impact 等級概要
 
@@ -68,13 +68,14 @@ The final severity reported in the findings table is determined by combining the
 | **CRITICAL** | Comment Rot (security/correctness 主張が現コードと不一致 — 読者を能動的にミスリード) |
 | **HIGH** | ジャーナルコメント (`cycle N` / `verified-review` / `PR #N` 等)、行番号・cycle 番号参照 |
 | **MEDIUM** | 過剰冗長 (内部 helper のコメント密度逆転、公開 API の docstring 0 行 等) |
-| **LOW** | 内部 helper の些末 WHAT コメント、孤立した独自ジャーゴン濫用 |
+| **LOW-MEDIUM** | 独自ジャーゴン濫用 (Whitelist 外の造語) |
+| **LOW** | 内部 helper の些末 WHAT コメント等 (詳細粒度は SoT 参照) |
 
-> **重要度プリセット表本体は SoT に集約**: 上記は概要のみ。各違反パターンと SoT check 参照を含む完全な重要度プリセット表は [`_reviewer-base.md` の Comment Quality Finding Gate](../agents/_reviewer-base.md#comment-quality-finding-gate) を参照すること。本ファイル (`severity-levels.md`) で表本体を duplicates すると Issue #707 が解消しようとしている SoT 重複問題を再導入してしまうため、forward-pointer のみとする。
+> **重要度プリセット表本体は SoT に集約**: 上記は概要のみ。各違反パターンと SoT check 参照を含む完全な重要度プリセット表は [`_reviewer-base.md` の Comment Quality Finding Gate](../agents/_reviewer-base.md#comment-quality-finding-gate) を参照すること。本ファイル (`severity-levels.md`) で表本体を duplicates すると Issue #707 が解消しようとしている SoT 重複問題 (= 同じ重要度プリセット表が複数ファイルに duplicated されている状態。Issue #707 で別途整理予定) を再導入してしまうため、forward-pointer のみとする。粒度の対応関係: SoT 表 (`_reviewer-base.md` Comment Quality Finding Gate) は概要表の各等級を 2-3 個の検出パターン (SoT check 番号付き) に細分化したもので、本概要表との粒度差は意図的である。
 
 ### Hypothetical 降格ルール (本軸での適用例)
 
-`COMMENT_QUALITY` カテゴリは Hypothetical Exception Categories (security / database migration / devops / dependencies) に **含まれない**。したがって Impact × Observed Likelihood Matrix の通常ルールに従い、Hypothetical 判定の finding は **推奨事項に降格** される。
+`COMMENT_QUALITY` カテゴリは Hypothetical Exception Categories (security / database migration / devops infra / dependencies) に **含まれない**。したがって Impact × Observed Likelihood Matrix の通常ルールに従い、Hypothetical 判定の finding は **推奨事項に降格** される。
 
 典型的な Hypothetical 降格例:
 
