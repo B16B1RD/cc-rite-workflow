@@ -233,7 +233,7 @@ for comment in comments:
         consensus_section = consensus_section[:end_idx]
 
     by_reviewer = {}
-    by_severity = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    by_severity = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW-MEDIUM": 0, "LOW": 0}
     for line in consensus_section.splitlines():
         m = reviewer_row_re.match(line.strip())
         if not m:
@@ -261,7 +261,7 @@ for comment in comments:
         "by_reviewer": by_reviewer,
     })
 
-totals_by_severity = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+totals_by_severity = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW-MEDIUM": 0, "LOW": 0}
 for c in cycles:
     for sev, n in c["by_severity"].items():
         totals_by_severity[sev] += n

@@ -9,7 +9,7 @@ This document defines the common severity levels and evaluation criteria used by
 | **CRITICAL** | Immediately exploitable vulnerabilities, deployment failures, or production crashes | Must fix before merge |
 | **HIGH** | Serious issues with significant impact (security risks, data exposure, perceptible degradation) | Recommended to fix before merge |
 | **MEDIUM** | Potential concerns or best practice violations that should be addressed | Address early |
-| **LOW-MEDIUM** | Minor concerns whose blast radius is bounded (例: 独自ジャーゴン濫用 — 個別修正で完了する localized 問題) | Address when convenient (LOW より優先、MEDIUM の評価判定 = 条件付き と同等に扱う) |
+| **LOW-MEDIUM** | Minor concerns whose blast radius is bounded (例: 独自ジャーゴン濫用 — 個別修正で完了する localized 問題) | Address when convenient (LOW より優先) |
 | **LOW** | Minor improvements or optimization opportunities | Address when time permits |
 
 **Note**: Each reviewer may provide domain-specific examples of what constitutes each severity level in their respective documentation.
@@ -57,7 +57,7 @@ The final severity reported in the findings table is determined by combining the
 | **LOW-MEDIUM** | LOW-MEDIUM | LOW-MEDIUM | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **LOW** | LOW | LOW | 報告禁止 |
 
-**Rule**: Hypothetical findings in the CRITICAL / HIGH / MEDIUM rows are all downgraded to **推奨事項** (a single, mechanical destination — no reviewer-side judgment required). LOW × Hypothetical is **報告禁止** because both axes are already at the lowest tier and further downgrade would produce zero-information findings. The only exceptions are reviewers in the Hypothetical Exception Categories below.
+**Rule**: Hypothetical findings in the CRITICAL / HIGH / MEDIUM / LOW-MEDIUM rows are all downgraded to **推奨事項** (a single, mechanical destination — no reviewer-side judgment required). LOW × Hypothetical is **報告禁止** because both axes are already at the lowest tier and further downgrade would produce zero-information findings. The only exceptions are reviewers in the Hypothetical Exception Categories below.
 
 ## COMMENT_QUALITY 軸 (Impact カテゴリ)
 
@@ -93,7 +93,7 @@ The final severity reported in the findings table is determined by combining the
 
 ## Hypothetical Exception Categories
 
-Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
+Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM / LOW-MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
 
 | Category | Reviewer | Rationale |
 |---|---|---|

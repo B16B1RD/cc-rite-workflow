@@ -104,7 +104,7 @@
 | `id` | string | ✅ | 指摘 ID (`F-NN` 形式、最小 2 桁ゼロパディング可変長連番、正規表現 `^F-[0-9]{2,}$`)。例: `F-01`, `F-42`, `F-99`, `F-100`, `F-999`。レビュー内ユニーク。99 件以下は 2 桁、100 件以上は 3 桁以上に自然成長する。write 側 (`review.md` Phase 6.1.a) の machine-enforced jq validation と read 側 (`fix.md`) の正規表現は同一パターンで検証される |
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く) と一致する。`plugins/rite/skills/reviewers/*.md` はカテゴリ説明 Markdown であり reviewer 識別子としては使わない (接尾辞 `-reviewer` なし)。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (現時点では drift-check による自動検証は未実装、手動同期)。 |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
-| `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW"` の 4 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
+| `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
 | `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md Phase 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
@@ -113,13 +113,14 @@
 
 ### severity 別名マッピング表
 
-外部レビューツール (`/verified-review`, `pr-review-toolkit:review-pr`, 手動コメント等) が出力する severity 表記を、本 schema の 4 値 enum (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) に正規化する際の受理可能な別名一覧。**比較は必ず case-insensitive で行うこと** (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ)。
+外部レビューツール (`/verified-review`, `pr-review-toolkit:review-pr`, 手動コメント等) が出力する severity 表記を、本 schema の 5 値 enum (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW-MEDIUM`/`LOW`) に正規化する際の受理可能な別名一覧。**比較は必ず case-insensitive で行うこと** (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ)。
 
 | 認識される別名 (case-insensitive) | 正規化先 enum 値 |
 |-----------------------------------|------------------|
 | `Critical`, `CRITICAL`, `BLOCKER`, `CRIT`, `🔴`, `重大`, `致命` | `CRITICAL` |
 | `Important`, `IMPORTANT`, `MAJOR`, `HIGH`, `High`, `🟠`, `重要`, `高` | `HIGH` |
 | `Minor`, `MINOR`, `MEDIUM`, `Medium`, `Normal`, `🟡`, `中` | `MEDIUM` |
+| `Low-Medium`, `LOW-MEDIUM`, `LowMedium`, `low_medium`, `中低`, `軽中` | `LOW-MEDIUM` |
 | `Low`, `LOW`, `INFO`, `TRIVIAL`, `Nit`, `NIT`, `🔵`, `低`, `情報` | `LOW` |
 
 **運用ポリシーとの関係**: rite workflow の運用では reviewer agent (`plugins/rite/agents/*-reviewer.md`) は `Critical` / `Important` / `Minor` の 3 段階を使うことが多い (MEMORY.md `review-quality-principles` 参照)。これは **運用レイヤ** の分類であり、**schema レイヤ** の 4 値 enum に対しては上記マッピング表を通じて: `Critical` → `CRITICAL`、`Important` → `HIGH`、`Minor` → `MEDIUM` のように正規化される。write 側 (`review.md` Phase 6.1.a) は必ず schema enum 4 値で出力し、read 側 (`fix.md` Phase 1.2 best-effort parser) が外部ツール由来の別名をここで正規化する。

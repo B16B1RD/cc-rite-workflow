@@ -60,7 +60,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 ## Severity Definitions
 
-**CRITICAL** (accessibility barrier or security vulnerability), **HIGH** (significant UX issue or performance problem), **MEDIUM** (UI/UX improvement opportunity), **LOW** (minor enhancement).
+**CRITICAL** (accessibility barrier or security vulnerability), **HIGH** (significant UX issue or performance problem), **MEDIUM** (UI/UX improvement opportunity), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor enhancement).
 
 ## Accessibility Quick Reference
 
