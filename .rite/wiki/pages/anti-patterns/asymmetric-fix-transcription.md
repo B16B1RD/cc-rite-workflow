@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-28T05:15:14+00:00"
+updated: "2026-04-29T05:30:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -76,7 +76,13 @@ sources:
     ref: "raw/reviews/20260428T050216Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260428T051514Z-pr-688.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry"]
+  - type: "reviews"
+    ref: "raw/reviews/20260428T194949Z-pr-708.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260428T200123Z-pr-708-cycle-2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T200424Z-pr-708-cycle-2.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file"]
 confidence: high
 ---
 
@@ -279,6 +285,23 @@ PR #688 cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の 
 3. **N site claim は drift 検出アンカーとして併用**: 「15 invocation sites」を literal で書く場合、grep verification 結果を inline 注釈 (`(grep evidence: workflow_incident= の matched count)`) で残し、後続 reviewer が `grep -rcF 'workflow_incident=' --include='*.md' --include='*.sh' .` で再検証可能にする。numeric claim 単独は次の sites 追加で silent drift する
 4. **Self-referential learned 節 vigilance**: cumulative-defense PR (5+ 回目) では「learned 節で言及した anti-pattern を同 commit 内で再演する」self-referential drift が頻発する (詳細は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md) 参照)。learned 節を書いたら **同 commit の全 file diff を再 grep** して learned 節違反を pre-merge gate で捕捉する
 
+### Severity 等級拡張時の同ファイル内 5 箇所 + cross-file 5 種類同期 (PR #708 cycle 1-2 での evidence)
+
+PR #708 (`severity-levels.md` に COMMENT_QUALITY 軸 + LOW-MEDIUM 等級追加) で本 anti-pattern が **severity 等級の拡張** という運用層 invariant に拡張されて 4 cycle 観測:
+
+- **cycle 1 review (HIGH 1件)**: 同一概念 (Hypothetical Exception Categories の 4 reviewer 名) が SoT (`_reviewer-base.md`) と severity-levels.md と Category 表で異なる表記 (`devops infra` vs `devops` vs `Infrastructure`) を持つ cross-file consistency drift。検出は cross-file grep で機械的に可能だが、3 ファイル間の表記等価性は手動同期が必要
+- **cycle 1 review (HIGH 1件)**: agent file (`tech-writer-reviewer.md`) に Detection step (Step 5.5) を追加した際、対応する skill checklist (`skills/reviewers/tech-writer.md`) に self-audit エントリを追加し忘れる Detection-checklist sync 漏れ。reviewer agent file (Detection Process) と skill file (Self-audit Checklist) は対応関係にあり、片側のみの追加は self-audit pass 経路を silent skip させる
+- **cycle 2 review (MEDIUM 2件 = cycle 1 fix で導入された regression)**: 概要表に新 severity level (LOW-MEDIUM) を追加しても、同ファイル内の Severity Levels 表 / Impact × Likelihood Matrix / Evaluation Criteria flowchart に対応する分岐を追加しないと self-consistency 違反になる。cycle 1 fix 時に「概要表のみ追加」したことで cycle 2 で新たに同ファイル内 5 箇所 (Severity Levels 定義表 / Impact × Likelihood Matrix / Evaluation Criteria flowchart / Evaluation 表 / Impact 軸を列挙する他箇所) の同期漏れが surface した
+
+**学習**: 本 anti-pattern は「**severity / enum 等の運用 invariant の同ファイル内多箇所 + cross-file 派生** への対称更新契約」にも適用される。同ファイル内 5+ 箇所と cross-file 5 種類 (write spec / JSON schema / read parser / extract regex / measure dict) の合計 10+ sites を atomic に同期しないと silent severity fallback 経路が成立する。canonical 対策:
+
+1. **概要表追加だけで終わらせない sub-checklist mandatory 化**: severity 等級 / enum を**追加する** PR は、概要表 update を 1 step とし、その直後に「同ファイル内 (Severity Levels 表 / Matrix / flowchart / Evaluation 表 / 列挙箇所) 5+ 箇所」「cross-file (write spec / JSON schema / read parser / extract regex / measure dict) 5 種類」の合計 10+ sites を grep で列挙してから commit する
+2. **agent file ↔ skill file 対応関係の grep verification**: `agents/{name}-reviewer.md` の Detection step / Cross-File Impact step を追加する PR は、対応する `skills/reviewers/{name}.md` の Self-audit Checklist にも対称的にエントリを追加する。grep で `Step N.M` の存在を両 file で確認する
+3. **Inline annotation → blockquote pattern**: Procedure / 手順説明に長文注釈を追加する際は、本文行末に packed せず next-line `> **Note**: ...` blockquote 形式で分離する。SoT への back-reference link も併せて追加することで根拠 traceability を確保 (cycle 2 fix で実測)
+4. **Numerical claim factual check**: 「N 個に細分化」のような具体的数値主張を inline 補足に書く際、SoT 実態 (1:1 マッピング vs N:1 マッピングの分布) と数値が一致しているかを必ず check する。一致しない場合は数値を排して定性的説明に置換する (cycle 2 fix で実測)
+
+詳細な severity 拡張時の closed-loop 6 段階 verification は [Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する](../heuristics/severity-extension-closed-loop-verification.md) 参照。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -286,6 +309,7 @@ PR #688 cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の 
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](../patterns/drift-check-anchor-prose-code-sync.md)
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md)
 - [Fix 修正コメント自身が canonical convention を破る self-drift](./fix-comment-self-drift.md)
+- [Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する](../heuristics/severity-extension-closed-loop-verification.md)
 
 ## ソース
 
@@ -325,3 +349,6 @@ PR #688 cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の 
 - [PR #688 cycle 11 review (同関数内 line 72 partial migration 自己矛盾)](raw/reviews/20260427T050731Z-pr-688.md)
 - [PR #688 cycle 42 review (writer 中核 4 箇所 sweep 責務 + multi-location undercount 再発)](raw/reviews/20260428T050216Z-pr-688.md)
 - [PR #688 cycle 42 fix (reader 3 行 WARNING pattern を writer 中核 4 箇所に対称適用)](raw/fixes/20260428T051514Z-pr-688.md)
+- [PR #708 cycle 1 review (Hypothetical Categories 表記 cross-file drift + Detection-checklist sync 漏れ)](raw/reviews/20260428T194949Z-pr-708.md)
+- [PR #708 cycle 2 review (severity 概要表追加で同ファイル内 5 箇所 self-consistency 違反 surface)](raw/reviews/20260428T200123Z-pr-708-cycle-2.md)
+- [PR #708 cycle 2 fix (同ファイル内 5 箇所同期 + Inline annotation → blockquote pattern)](raw/fixes/20260428T200424Z-pr-708-cycle-2.md)
