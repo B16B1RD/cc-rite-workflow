@@ -48,8 +48,8 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper を `bash <missing>`
-# invocation 経路で direct + transitive に依存する。下記 `_validate-helpers.sh` 呼び出しの引数 list が SoT
-# (verified-review F11-05 で entry 数を完全同期):
+# invocation 経路で direct + transitive に依存する。検査対象 list の Single Source of Truth は
+# `_validate-helpers.sh` 内の **DEFAULT_HELPERS 配列** (PR #688 cycle 13 F-01 で集約):
 #   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke)
 #   - `_resolve-session-id.sh` (`_resolve_session_id` 関数内の direct invoke)
 #   - `_resolve-session-id-from-file.sh` (transitive 経由で `_resolve_session_state_path` 解決経路)
@@ -57,29 +57,25 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 #   - `_resolve-cross-session-guard.sh` (`_resolve_session_state_path` 内 cross-session classification)
 #   - `_emit-cross-session-incident.sh` (foreign:* / corrupt:* / invalid_uuid:* 各 arm)
 #   - `_mktemp-stderr-guard.sh` (jq stderr 退避 / mkdir stderr 退避等で direct invoke)
-# 本コメントは bullet list の数値カウント記述を持たない (cycle 39 で確立した数値削除原則を本ファイル自身にも
-# 適用、F11-05 で「6 entry」claim 削除)。helper を追加する際は本 list と下記 _validate-helpers.sh 引数の
-# 両方を同時更新すること (writer/reader 対称化 doctrine)。
+# 上記 bullet list は人間向けの説明であり、実際の検査対象は DEFAULT_HELPERS 配列が決定する。
+# helper を追加する際は `_validate-helpers.sh` 内 DEFAULT_HELPERS への 1 行追加のみで両 caller
+# (state-read.sh / flow-state-update.sh) に反映される (writer/reader 対称化 doctrine の構造的実装)。
 # それらが install 不整合 / deploy regression で missing の場合、`set -euo pipefail` の中でも
 # `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through 経路が散在する。Issue #687
 # (writer/reader 片肺更新型 silent regression) と同型の deploy regression を構造的に塞ぐため、依存する
 # 全 helper を upfront で fail-fast 検査する。state-read.sh の同型ブロックと writer/reader 対称化。
-# verified-review F-06 (MEDIUM) / PR #688 cycle 12 F-04 (MEDIUM) 訂正: helper existence check の
-# **validation logic** (4 行 if/echo/exit) を `_validate-helpers.sh` に集約。
-# **重要 — 集約範囲の限定**: 集約されたのは validation logic のみで、検査対象の helper 名 list 自体
-# (下記 line 76-78 の 7 entry) は本ファイル (flow-state-update.sh) と `state-read.sh` (line 69-71) の
-# 両方にハードコード重複している。helper を 1 つ追加する際は依然として **両ファイルで同期更新が必要**
-# (片肺更新は構造的には防がれていない)。真の DRY (helper-list を `_validate-helpers.sh` 内
-# DEFAULT_HELPERS 配列等で持つ) は将来 Issue で検討。state-read.sh の同型ブロックと writer/reader 対称化。
+# verified-review F-06 (MEDIUM) / PR #688 cycle 12 F-04 (MEDIUM): helper existence check の
+# **validation logic** を `_validate-helpers.sh` に集約。
+# PR #688 cycle 13 F-01 (HIGH): helper 名 list 自体も `_validate-helpers.sh` 内の DEFAULT_HELPERS
+# 配列に集約し、本 caller は引数 0 個 (script_dir のみ) で呼ぶ形に統一。state-read.sh と本ファイルの
+# helper-list 重複が構造的に解消され、helper 追加時は 1 ファイル更新のみで済む。
 if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
   echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
   exit 1
 fi
-bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" \
-  state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
-  _resolve-schema-version.sh _resolve-cross-session-guard.sh \
-  _emit-cross-session-incident.sh _mktemp-stderr-guard.sh
+# DEFAULT_HELPERS を使用 (引数 0 個 = script_dir のみ)
+bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR"
 
 # Resolve repository root
 # verified-review cycle 34 fix (F-07 MEDIUM): `2>/dev/null` を削除して stderr を pass-through し、

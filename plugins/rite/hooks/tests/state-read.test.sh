@@ -197,23 +197,32 @@ rm -rf "$SBX"
 #
 # 修正: TC-6.RFC.1/2 と同型の per-session file 作成 pattern を適用。bad SID 名で per-session
 # file を作成し phase=BAD_TRAVERSAL を書き込む。pre-fix (緩い regex) では bad per-session が
-# 読まれ BAD_TRAVERSAL 返却 → assert 失敗で kill される。post-fix (strict regex) では reject
+# 読まれ BAD_NON_UUID 返却 → assert 失敗で kill される。post-fix (strict regex) では reject
 # されて legacy fallback で safe_legacy 返却 → assert 通過。
-# 注: `../../../etc/passwd` を含む file name は OS によっては作れない。`mkdir -p` の中間ディレクトリ
-# 作成と `printf > path` の組み合わせで sandbox 内 `$SBX/etc/passwd.flow-state` を作る経路になる
-# (sandbox 外には書かない、`rm -rf "$SBX"` で削除される)。失敗時は legacy fallback で test 通過するため
-# false negative にはならないが、mutation kill power はその vector では失われる (best-effort)。
-echo "TC-6: tampered .rite-session-id (path traversal pattern) → fallback to legacy"
+#
+# PR #688 cycle 13 F-05 (LOW) 修正: 旧実装は `../../../etc/passwd` を BAD_SID として使っていたが、
+# 当該 vector は WSL2 等の OS で per-session file 作成 (`printf > "$SBX/.rite/sessions/../../../etc/passwd.flow-state"`)
+# が `..` の path 解決で sandbox 外を指して permission denied で失敗し、失敗経路は WARNING のみ
+# 出して continue するため per-session file 自体が存在しない状態になり、strict regex 検査を `cat`
+# 等に mutate しても per-session file 不在で legacy fallback に流れて assert pass する false-negative
+# 経路があった。本 cycle で OS-friendly な non-UUID vector (`not_a_uuid`) に置換し、per-session file
+# が確実に作成されることを保証してから mutation kill を行う形に修正する。これにより:
+# - pre-mutation (strict regex): SID `not_a_uuid` reject → SID="" → legacy fallback → safe_legacy
+# - mutation (cat / no-op): SID `not_a_uuid` accept → per-session file 読まれて BAD_NON_UUID 返却 → assert fail
+echo "TC-6: tampered .rite-session-id (non-UUID format) → strict regex reject → legacy fallback"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
-BAD_SID_TRAVERSAL="../../../etc/passwd"
-echo "$BAD_SID_TRAVERSAL" > "$SBX/.rite-session-id"
-# best-effort per-session file 作成 (mutation kill power 確保のため):
-mkdir -p "$SBX/.rite/sessions" 2>/dev/null
-printf '%s' '{"phase":"BAD_TRAVERSAL"}' > "$SBX/.rite/sessions/${BAD_SID_TRAVERSAL}.flow-state" 2>/dev/null || true
+# OS-friendly な non-UUID vector (filesystem 上に作成可能、underscore は RFC 4122 hex 範囲外)。
+# strict regex `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-...` には match しないため、validation が
+# 機能していれば SID="" になり legacy fallback。
+BAD_SID_NON_UUID="not_a_uuid"
+echo "$BAD_SID_NON_UUID" > "$SBX/.rite-session-id"
+# per-session file 作成 (mutation kill power 確保のため必須、OS-friendly なため確実に作成される):
+mkdir -p "$SBX/.rite/sessions"
+printf '%s' '{"phase":"BAD_NON_UUID"}' > "$SBX/.rite/sessions/${BAD_SID_NON_UUID}.flow-state"
 write_legacy "$SBX" '{"phase":"safe_legacy"}'
 result=$(run_helper "$SBX" --field phase --default "")
-assert_eq "TC-6.1: tampered session_id ignored, legacy used (mutation kill via per-session file)" "safe_legacy" "$result"
+assert_eq "TC-6.1: non-UUID session_id ignored, legacy used (mutation kill via per-session file が必ず存在)" "safe_legacy" "$result"
 rm -rf "$SBX"
 
 # --- TC-6 RFC 4122 strict (cycle 22 F-03 MEDIUM): hyphen 位置の異なる 36 字 hex も reject ---

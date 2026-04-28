@@ -226,14 +226,66 @@ assert_match "TC-8.4: root_cause_hint = legacy_session_id_failed_uuid_validation
 assert_match "TC-8.5: details has basename-redacted path (F-13 symmetry with TC-7.4)" "path=.../legacy" "$out"
 rm -rf "$sandbox"
 
+echo "TC-9 (PR #688 cycle 13 F-04): fallback path で details / hint の sanitize 動作を direct verify"
+# F-04 検証: 旧 TC-5 系列は input が clean な状態でしか fallback sentinel を verify していなかった。
+# sanitize logic (`tr -d '[:cntrl:]' | tr ';' ','`) を no-op (cat) に mutate しても全 TC が pass する
+# false-negative 経路があった (test-reviewer Likelihood-Evidence: runtime_observation で実証)。
+# 制御文字 (newline) / `;` を current_sid に inject して fallback sentinel に sanitize が適用される
+# ことを assert する。
+sandbox=$(make_fake_emit_dir missing)
+cleanup_dirs+=("$sandbox")
+# bash ANSI-C quoting で newline + `;` を含む 11 chars 文字列を生成 ("foo;bar\nbaz")
+# redact_sid は length >= 8 なら最初の 8 chars + "***" を返す。最初の 8 chars は "foo;bar\n"。
+# sanitize で newline strip → "foo;bar***" 、`;` → `,` で → "foo,bar***" になることを verify。
+control_sid=$'foo;bar\nbaz'
+if out=$(run_helper_in_sandbox "$sandbox" foreign reader "$control_sid" "legacy-uuid-12chars" 2>&1); then rc=0; else rc=$?; fi
+assert_eq "TC-9.1: exit code is 0 (fallback path 経由)" "0" "$rc"
+assert_match "TC-9.2: fallback sentinel emitted" "[CONTEXT] WORKFLOW_INCIDENT=1" "$out"
+# sentinel line を抽出 (WARNING line とは別)
+sentinel_line=$(printf '%s\n' "$out" | grep '\[CONTEXT\] WORKFLOW_INCIDENT=1' || true)
+sentinel_line_count=$(printf '%s\n' "$sentinel_line" | wc -l | tr -d ' ')
+assert_eq "TC-9.3: sentinel が単一行に収束 (newline が tr -d '[:cntrl:]' で除去された)" "1" "$sentinel_line_count"
+# negative assertion: literal `;` が details 内に残っていないこと (sanitize が適用された証拠)
+if printf '%s' "$sentinel_line" | grep -q "current_sid=foo;"; then
+  rc_negative=1
+else
+  rc_negative=0
+fi
+assert_eq "TC-9.4: sentinel に literal ';' が残っていない (tr ';' ',' 適用)" "0" "$rc_negative"
+# positive assertion: `;` → `,` 置換結果 "foo,bar***" が含まれる
+assert_match "TC-9.5: sentinel に sanitize 後の 'foo,bar***' が含まれる" "current_sid=foo,bar***" "$sentinel_line"
+rm -rf "$sandbox"
+
+echo "TC-10 (PR #688 cycle 13 F-04): 0x07 (BEL) など複数の制御文字も全て strip される"
+# `tr -d '[:cntrl:]'` は newline 以外にも tab / BEL (0x07) / form feed / DEL (0x7F) 等 0x00-0x1F + 0x7F を
+# すべて strip する。BEL 注入で defense-in-depth の completeness を verify する。
+sandbox=$(make_fake_emit_dir missing)
+cleanup_dirs+=("$sandbox")
+# $'\a' = BEL (0x07)、$'\t' = tab (0x09)
+# 8 chars 以上を確保: "fooBARQUUX" (10 chars) + BEL 注入
+bell_sid=$'foo\aBAR\tQUUX'  # 12 chars: f o o BEL B A R TAB Q U U X
+if out=$(run_helper_in_sandbox "$sandbox" foreign reader "$bell_sid" "legacy-uuid-12chars" 2>&1); then rc=0; else rc=$?; fi
+assert_eq "TC-10.1: exit code is 0" "0" "$rc"
+sentinel_line=$(printf '%s\n' "$out" | grep '\[CONTEXT\] WORKFLOW_INCIDENT=1' || true)
+# negative: BEL / tab が strip されていることを byte-level で verify
+# bash の `[[ ... =~ $'\a' ]]` だと cntrl char regex が portable でないため、tr で count
+bell_count=$(printf '%s' "$sentinel_line" | LC_ALL=C grep -c $'\a' || true)
+tab_count=$(printf '%s' "$sentinel_line" | LC_ALL=C grep -c $'\t' || true)
+assert_eq "TC-10.2: sentinel 内に BEL (0x07) が残っていない" "0" "$bell_count"
+assert_eq "TC-10.3: sentinel 内に tab (0x09) が残っていない" "0" "$tab_count"
+# 残った非制御部分が emit されている (10 chars - BEL - tab = 10 chars, 最初の 8 chars + ***)
+# redact: first 8 chars = "foo\aBAR\t" → sanitize: "fooBAR" (BEL + tab strip) → "fooBAR***"
+assert_match "TC-10.4: sanitize 後の 'fooBAR***' が含まれる" "current_sid=fooBAR***" "$sentinel_line"
+rm -rf "$sandbox"
+
 echo ""
 echo "─── _emit-cross-session-incident.test.sh summary ──────────────────────────"
 echo "PASS: $PASS"
 echo "FAIL: $FAIL"
 # cycle 43 F-01 fix: silent abort regression を再発検出する gate
-# 計算根拠 (F11-16 で更新): TC-1 (2) + TC-2 (2) + TC-3 (2) + TC-4 (2) + TC-5 (6) + TC-6 (7) + TC-7 (6) + TC-8 (5) = 32
-# (cycle 9 F-04 で TC-5.4-5.6 追加で 6 件、cycle 9 F-07 で TC-6.7 追加で 7 件、F11-14 で TC-8.5 追加で 5 件)
-expected_total=32
+# 計算根拠: TC-1 (2) + TC-2 (2) + TC-3 (2) + TC-4 (2) + TC-5 (6) + TC-6 (7) + TC-7 (6) + TC-8 (5) +
+#          TC-9 (5) + TC-10 (4) = 41 (PR #688 cycle 13 F-04 で TC-9/TC-10 追加で +9)
+expected_total=41
 total=$((PASS + FAIL))
 if [ "$total" -lt "$expected_total" ]; then
   echo "ERROR: only $total/$expected_total assertions ran (silent abort regression detected)"
