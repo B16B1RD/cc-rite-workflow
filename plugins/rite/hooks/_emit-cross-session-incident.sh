@@ -182,12 +182,16 @@ if [ ! -x "$emit_script" ]; then
   fallback_iter="0-$(date +%s)"
   # PR #688 followup: cycle 41 review F-12 MEDIUM (security Hypothetical exception) — fallback
   # sentinel が sanitize() を経由していなかった defense-in-depth gap を修正。details / root_cause_hint
-  # に改行 / `;` が混入すると sentinel format `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...;`
+  # に制御文字 / `;` が混入すると sentinel format `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...;`
   # が parse 不能になり Phase 5.4.4.1 grep 検出が break する経路を遮断 (workflow-incident-emit.sh
   # の sanitize() と writer/fallback 完全対称化)。
-  details_sanitized=$(printf '%s' "$details" | tr -d '\n\r' | tr ';' ',')
+  # PR #688 cycle 12 F-07 (LOW, security Hypothetical) 強化: `tr -d '\n\r'` を `tr -d '[:cntrl:]'`
+  # に拡張し、tab / backspace / form feed / vertical tab / U+007F (DEL) 等の全制御文字を 1 ステップで
+  # 除去する superset 動作にする。新規追加コストは 1 文字、既存挙動 (`\n\r` 除去) を完全包含する。
+  # POSIX class `[:cntrl:]` は 0x00-0x1F + 0x7F をカバーする。
+  details_sanitized=$(printf '%s' "$details" | tr -d '[:cntrl:]' | tr ';' ',')
   if [ -n "$root_cause_hint" ]; then
-    hint_sanitized=$(printf '%s' "$root_cause_hint" | tr -d '\n\r' | tr ';' ',')
+    hint_sanitized=$(printf '%s' "$root_cause_hint" | tr -d '[:cntrl:]' | tr ';' ',')
     fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=${incident_type}; details=${details_sanitized}; root_cause_hint=${hint_sanitized}; iteration_id=${fallback_iter}"
   else
     fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=${incident_type}; details=${details_sanitized}; iteration_id=${fallback_iter}"

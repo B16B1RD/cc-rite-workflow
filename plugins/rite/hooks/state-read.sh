@@ -55,11 +55,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # `set -euo pipefail` の中でも `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through
 # 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
 # 構造的に塞ぐため、依存する全 helper を upfront で fail-fast 検査する。
-# verified-review F-06 (MEDIUM): helper existence check の重複 list を _validate-helpers.sh に集約。
-# flow-state-update.sh の同型 list (helper existence check) と DRY 化。将来 helper を 1 つ追加
-# する際に本ファイルと flow-state-update.sh の 2 箇所更新が不要になり、Issue #687 root cause と同型の
-# 片肺更新 drift を構造的に防止する。_validate-helpers.sh 自身は最小依存 (set -euo pipefail のみ) で
-# fail-fast 検査を行う。
+# verified-review F-06 (MEDIUM) / PR #688 cycle 12 F-04 (MEDIUM) 訂正: helper existence check の
+# **validation logic** (4 行 if/echo/exit) を `_validate-helpers.sh` に集約。
+# **重要 — 集約範囲の限定**: 集約されたのは validation logic のみで、検査対象の helper 名 list 自体
+# (下記 line 69-71 の `state-path-resolve.sh` ... `_mktemp-stderr-guard.sh` の 7 entry) は本ファイル
+# (state-read.sh) と `flow-state-update.sh` (line 76-78) の両方にハードコード重複している。helper
+# を 1 つ追加する際は依然として **両ファイルで同期更新が必要** (片肺更新は構造的には防がれていない)。
+# 真の DRY (helper-list を `_validate-helpers.sh` 内 DEFAULT_HELPERS 配列等で持つ) は将来 Issue で
+# 検討。`_validate-helpers.sh` 自身は最小依存 (set -euo pipefail のみ) で fail-fast 検査を行う。
 if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
   echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2

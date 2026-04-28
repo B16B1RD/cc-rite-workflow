@@ -64,9 +64,13 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through 経路が散在する。Issue #687
 # (writer/reader 片肺更新型 silent regression) と同型の deploy regression を構造的に塞ぐため、依存する
 # 全 helper を upfront で fail-fast 検査する。state-read.sh の同型ブロックと writer/reader 対称化。
-# verified-review F-06 (MEDIUM): helper existence check の重複 list を _validate-helpers.sh に集約。
-# 将来 helper を 1 つ追加する際に本ファイルと state-read.sh の 2 箇所更新が不要になり、Issue #687
-# root cause と同型の片肺更新 drift を構造的に防止する。
+# verified-review F-06 (MEDIUM) / PR #688 cycle 12 F-04 (MEDIUM) 訂正: helper existence check の
+# **validation logic** (4 行 if/echo/exit) を `_validate-helpers.sh` に集約。
+# **重要 — 集約範囲の限定**: 集約されたのは validation logic のみで、検査対象の helper 名 list 自体
+# (下記 line 76-78 の 7 entry) は本ファイル (flow-state-update.sh) と `state-read.sh` (line 69-71) の
+# 両方にハードコード重複している。helper を 1 つ追加する際は依然として **両ファイルで同期更新が必要**
+# (片肺更新は構造的には防がれていない)。真の DRY (helper-list を `_validate-helpers.sh` 内
+# DEFAULT_HELPERS 配列等で持つ) は将来 Issue で検討。state-read.sh の同型ブロックと writer/reader 対称化。
 if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
   echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
@@ -178,8 +182,11 @@ _resolve_session_state_path() {
     # verified-review F-03 MEDIUM: _classify_err に signal-specific trap を追加 (state-read.sh と
     # writer/reader 対称化)。`_resolve_session_state_path` 関数内に閉じた scope で trap を install し、
     # mktemp 成功 〜 rm 完了の race window で SIGINT/SIGTERM/SIGHUP 中断時の orphan を防ぐ。
-    # 関数 return 時に `trap - EXIT INT TERM HUP` で default に restore し、line 376 area の
-    # `_rite_flow_state_atomic_cleanup` 用 trap install と衝突しないようにする (canonical pattern)。
+    # 関数 return 時に `trap - EXIT INT TERM HUP` で default に restore し、`_rite_flow_state_atomic_cleanup`
+    # 関数定義の trap install ブロックと衝突しないようにする (canonical pattern)。
+    # 注: 本関数は command substitution (`FLOW_STATE=$(_resolve_session_state_path ...)`) で呼ばれるため、
+    # 内部の trap は subshell に閉じる。parent shell の `_rite_flow_state_atomic_cleanup` trap は影響を受けない。
+    # この trap reset は parent への leak が発生した場合の defense-in-depth として残している。
     local _classify_err=""
     _rite_flow_state_classify_cleanup() {
       rm -f "${_classify_err:-}"
@@ -217,7 +224,7 @@ _resolve_session_state_path() {
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
     _classify_err=""
-    # restore default trap (line 376 area の atomic cleanup 用 trap install と衝突しないように reset)
+    # restore default trap (`_rite_flow_state_atomic_cleanup` 関数定義の trap install ブロックと衝突しないように reset)
     trap - EXIT INT TERM HUP
     # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
     # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約 (state-read.sh と writer/reader 対称)。
@@ -428,14 +435,22 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   exit 1
 fi
 
-# F-09 (MEDIUM, security Hypothetical exception): atomic-write tempfile に chmod 600 を upfront 適用。
-# 旧実装は `mktemp ${FLOW_STATE}.XXXXXX` で multi-user umask 022 環境では 644 で作成され、
-# その後 mv で final state file に rename されるため、最終的な `.rite/sessions/{sid}.flow-state` も
-# world-readable になっていた。同 PR で他 helper (state-read.sh _jq_err / _resolve-cross-session-guard.sh /
-# _resolve-session-id-from-file.sh) はすべて chmod 600 を upfront 適用しており、本 atomic-write 経路
-# だけ非対称だった (PR #688 cycle 9 F-09 review 指摘)。multi-user CI runner / shared dev host で
-# session_id・issue_number・branch・phase 等の metadata と (将来) 機密値を含む可能性がある file が
-# 他ユーザーに読まれる経路を防ぐ。chmod 失敗は best-effort skip (cycle 41 F-14 と対称)。
+# F-09 (MEDIUM, security Hypothetical exception) / PR #688 cycle 12 F-06 (LOW) 訂正:
+# atomic-write tempfile に chmod 600 を **defense-in-depth として明示適用**。
+# **重要 — factual correction (cycle 12 F-06)**: 旧コメント「mktemp `${FLOW_STATE}.XXXXXX` で multi-user
+# umask 022 環境では 644 で作成され」は GNU coreutils mktemp の実装と矛盾する factual error だった
+# (man mktemp coreutils:「The file is created with mode 0600」)。実機検証済み: `umask 022; mktemp
+# /tmp/test-XXXXXX` → mode 0600。したがって本 chmod 600 は **mktemp の OS デフォルト (600)** を冗長
+# に強制するもので、現行 GNU coreutils 環境では機能上の差はない。
+# それでも保持する理由 — defense-in-depth:
+#   (1) 将来 mktemp 実装が変更された場合の保険
+#   (2) 非 GNU 環境 (一部の BSD / busybox 等) への移植性
+#   (3) 同 PR で他 helper (state-read.sh _jq_err / _resolve-cross-session-guard.sh /
+#       _resolve-session-id-from-file.sh) と対称化を維持し、コードレビュー時の認知負荷を均一化
+# Source: man mktemp (coreutils): "The file is created with mode 0600"
+# multi-user CI runner / shared dev host で session_id・issue_number・branch・phase 等の metadata と
+# (将来) 機密値を含む可能性がある file が他ユーザーに読まれる経路を構造的に塞ぐ。chmod 失敗は
+# best-effort skip (cycle 41 F-14 と対称)。
 chmod 600 "$TMP_STATE" 2>/dev/null || true
 
 # F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。

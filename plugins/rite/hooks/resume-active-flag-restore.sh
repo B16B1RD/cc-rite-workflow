@@ -44,23 +44,17 @@ if [ -z "$PLUGIN_ROOT" ]; then
   echo "  Usage: bash $0 <plugin_root>" >&2
   exit 1
 fi
-# verified-review cycle 38 F-01 HIGH / F-09 MEDIUM (cycle 39 数値ドリフト解消): expand existence check to all
-# directly invoked helpers (具体的なリストは下記 for loop が SoT。旧コメントは「all 4 directly invoked helpers」と
-# 書いていたが実際の loop は 5 helper を検査しており数値ドリフトを起こしていたため、verified-review cycle 39 で
-# 数値削除に統一)。本 helper は state-read.sh / flow-state-update.sh / state-path-resolve.sh /
-# `_resolve-session-id.sh` / `_resolve-session-id-from-file.sh` を `bash <missing>` invocation 経路で直接依存する。
-# state-read.sh / flow-state-update.sh が呼ぶ transitive helpers (`_resolve-schema-version.sh` 等) はそれぞれの
-# スクリプト先頭の同型チェックで塞がれる。Issue #687 root cause (writer/reader 片肺更新型 silent regression) と
-# 同型の deploy regression を構造的に防ぐ。state-read.sh / flow-state-update.sh の同型ブロックと統一表記。
-for _helper in state-read.sh flow-state-update.sh state-path-resolve.sh \
-               _resolve-session-id.sh _resolve-session-id-from-file.sh \
-               _mktemp-stderr-guard.sh; do
-  if [ ! -x "$PLUGIN_ROOT/hooks/$_helper" ]; then
-    echo "ERROR: $_helper not found or not executable: $PLUGIN_ROOT/hooks/$_helper" >&2
-    exit 1
-  fi
-done
-unset _helper
+# PR #688 cycle 12 F-03 (MEDIUM): state-read.sh / flow-state-update.sh と同様に `_validate-helpers.sh`
+# 経由の existence check に統一する (3 caller の migration 取り残し解消)。本 helper は state-read.sh /
+# flow-state-update.sh / state-path-resolve.sh / `_resolve-session-id.sh` / `_resolve-session-id-from-file.sh` /
+# `_mktemp-stderr-guard.sh` を `bash <missing>` invocation 経路で直接依存する。
+# state-read.sh / flow-state-update.sh が呼ぶ transitive helpers (`_resolve-schema-version.sh` 等) は
+# それぞれのスクリプト先頭の同型チェックで塞がれる。Issue #687 root cause (writer/reader 片肺更新型
+# silent regression) と同型の deploy regression を構造的に防ぐ。
+bash "$PLUGIN_ROOT/hooks/_validate-helpers.sh" "$PLUGIN_ROOT/hooks" \
+  state-read.sh flow-state-update.sh state-path-resolve.sh \
+  _resolve-session-id.sh _resolve-session-id-from-file.sh \
+  _mktemp-stderr-guard.sh
 
 # PR #688 followup F-02 LOW / cycle 38 F-15 LOW: state-read.sh の per-session resolver
 # (.rite-session-id を tr で読み `_resolve-session-id.sh` に渡す block) および

@@ -15,9 +15,10 @@ Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarant
 | `pr/cleanup.md` | actual emit caller | 3 sites |
 | `issue/close.md` | actual emit caller | 5 sites |
 | `state-read.sh` / `flow-state-update.sh` | indirect emit (via `_emit-cross-session-incident.sh`) | — |
-| `lint.md` / `pr/create.md` | **out of scope** (do not reference this protocol, do not emit) | 0 sites |
+| `commands/lint.md` (rite lint) | actual emit caller (declarative; 3 failure paths via Workflow Incident Emit Helper section + indirect `gitignore_drift` via `gitignore-health-check.sh`) | 3 declarative + 1 indirect |
+| `commands/wiki/lint.md` / `pr/create.md` | **out of scope** (do not reference this protocol, do not emit) | 0 sites |
 
-Total: **18 invocation sites across 4 files**.
+Total: **18 invocation sites across 4 files** (sub-skill: `pr/review.md` / `pr/fix.md` / `pr/cleanup.md` / `issue/close.md`). `commands/lint.md` の 3 declarative path は本 count に含まれない (sub-skill ではなく lint 専用の declarative emit のため別カウント)。
 
 ## How to Emit
 
@@ -117,7 +118,7 @@ This section tracks corrections and significant changes to this protocol documen
 | #687 | Added `cross_session_takeover_refused` / `legacy_state_corrupt` sentinel types |
 | PR #688 cycle 41 F-10 HIGH | Updated invocation site count from "15 sites across 3 files" undercount to actual "18 sites across 4 files" (missed `pr/cleanup.md`'s 3 sites) |
 | PR #688 cycle 41 F-11 MEDIUM | Restricted sub-skill list to actual emit callers and added `pr/cleanup.md` (3 emit sites at Phase 4.W.1 [skip], Phase 4.W.3 [push-failed], Phase 4.W.3 [ingest-failed]) |
-| PR #688 cycle 43 F-05 HIGH | Removed incorrect statement that `lint.md` / `pr/create.md` "reference this protocol in documentation" — runtime grep returned 0 references in both files; both are genuinely out of scope |
+| PR #688 cycle 43 F-05 HIGH | Removed incorrect statement that `wiki/lint.md` / `pr/create.md` "reference this protocol in documentation" — runtime grep returned 0 references in both files; both are genuinely out of scope. **Note (cycle 12 F-01 HIGH 訂正)**: cycle 43 F-05 の grep 検査範囲は `commands/wiki/lint.md` のみで `commands/lint.md` (rite lint) を見落としていた。実際には `commands/lint.md:1108` が本 protocol への reverse-reference link を持ち、L1106-1118 で 3 件の declarative sentinel emit failure path (`manual_fallback_adopted` / `hook_abnormal_exit` × 2) を定義している。ファイル名衝突 (`lint.md` vs `wiki/lint.md`) 検査時は `find -name` で全候補列挙してから対象選択する手順を採用 |
 | PR #688 cycle 43 F-10 MEDIUM | Added `cleanup.md Phase 4.W` to the Phase enumeration (the 3-phase list had drifted after cycle 41 F-11 added cleanup.md to the file count) |
 | PR #688 cycle 43 F-11 MEDIUM | Corrected exaggerated drift-monitoring claim — `distributed-fix-drift-check.sh` only covers `fix.md` / `review.md` / `tech-writer.md`, not `cleanup.md` / `close.md`, and does not detect invocation-count drift |
 | PR #688 cycle 9 F-12 LOW | Consolidated inline `cycle XX F-YY` revision notes into this Revision Log section. The protocol body now describes only the current specification, improving readability for new readers (8 lines / ≒9% of the body were meta-commentary). The `Scope` section was added to summarize the file ↔ status ↔ site-count matrix in one place |
