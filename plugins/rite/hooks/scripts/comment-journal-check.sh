@@ -10,8 +10,8 @@
 #   This script is the fast-fail layer below the LLM reviewers (Issues #700,
 #   #701). The reviewers focus on WHY > WHAT semantic judgments; mechanical
 #   100%-confidence patterns are killed here before they reach the reviewer
-#   queue. Operationally invoked from /rite:lint (manual) and /rite:pr:review
-#   (auto). Pre-commit integration is intentionally out of scope.
+#   queue. Operationally invoked from /rite:lint (manual). PR review integration
+#   is intentionally out of scope (Issue #702 採択方針: CI のみ運用).
 #
 # Detected patterns (4 regexes scanned in a single while-match awk loop, so
 # multiple triggers on the same line are all reported — same multi-match
@@ -61,7 +61,7 @@
 #
 # Exit codes: 0 = clean, 1 = pattern detected, 2 = invocation error.
 
-set -uo pipefail
+set -euo pipefail
 
 REPO_ROOT=""
 QUIET=0
