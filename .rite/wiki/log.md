@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-29T05:35:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=66, broken_refs=0 |
 | 2026-04-29T05:30:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #708 cycle 1 review (HIGH 3 + MEDIUM 3): Hypothetical Categories 4 reviewer 名表記 cross-file drift (`devops infra` / `Infrastructure` / `devops`) + agent file (Step 5.5) ↔ skill file (Self-audit Checklist) Detection-checklist sync 漏れ。同ファイル内 5+ 箇所同期 + cross-file 5 種類同期契約として整理 (raw: pr-708 cycle 1 review) |
 | 2026-04-29T05:30:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #708 cycle 2 review (MEDIUM 2 + LOW 1 = cycle 1 fix で導入された regression): 概要表に新 severity level (LOW-MEDIUM) を追加するだけでは self-consistency 違反。同ファイル内 5 箇所 (Severity Levels 表 / Matrix / Evaluation flowchart / Evaluation 表 / Impact 軸列挙) 同期が必須 (raw: pr-708 cycle 2 review) |
 | 2026-04-29T05:30:00+09:00 | ingest:update | pages/anti-patterns/hallucinated-canonical-reference.md | PR #708 cycle 1 fix (HIGH 3 + MEDIUM 3 全解消): architectural false reference 拡張 — 説明文中の named architectural concept (`SECURITY 軸 / CORRECTNESS 軸`) が実在しないのに引用される hallucination リスクを追加。grep 実在検証 / 出典明示 / "orthogonal" 関係表現の警戒の canonical 対策 (raw: pr-708 cycle 1 fix) |
