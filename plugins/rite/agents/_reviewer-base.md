@@ -205,7 +205,13 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 4. **プロジェクト内独立登場頻度チェック**: `Grep -r '{token}' plugins/` で 3 件以上 (本コメント・近接コメント以外) の独立登場があれば事実上の慣習語として許容 (Severity LOW 据え置き判定)。
 5. **上記すべて該当しない造語のみ finding として発行**: Severity LOW (孤立 1 hit) 〜 MEDIUM (本 PR で複数箇所新規導入) を判断。
 
-> **実装ノート**: 上記 1 → 2 → 3 → 4 → 5 を必ずこの順で適用すること。順序が逆 (例: 一般辞書を先に当てる) になると、`sentinel` のような Whitelist 内ジャーゴンが「英語の一般単語」として hit して finding 対象から漏れる、または whitelist の意図 (rite workflow 固有のジャーゴン定義) が機能しなくなる。
+> **実装ノート**: 上記 1 → 2 → 3 → 4 → 5 を必ずこの順で適用すること。順序の本質的意義は以下の 3 点である:
+>
+> 1. **意味的階層の保持**: project 固有の意図を最も明示する SoT Whitelist (順序 1) と `rite-config.yml` 拡張 (順序 2) が、一般辞書 (順序 3) や独立登場頻度ヒューリスティクス (順序 4) より先に評価されることで、reviewer は「Whitelist は project 固有意図、一般辞書は default」という階層を運用判断 (Whitelist 拡張提案) で見失わない
+> 2. **Substring 衝突の早期解決**: `sentinel` のような Whitelist 内ジャーゴンが部分文字列として他のトークン (例: `sentinelize`、`sentinel-marker`) に出現する場合、Whitelist 表マッチで早期確定することで `sentinel` 自体が独立登場頻度チェック (順序 4) で誤って造語と判定される経路を避けられる
+> 3. **計算コスト節約**: 早期 return により下流の Grep / LLM 判定 (順序 4) を skip できる
+>
+> 順序 1 と順序 3 はどちらも「許容」へ進む判定であり、入れ替えても最終的な finding 採否は変わらないが、上記 (1) (2) の意味的・運用的理由から **順序逆転は禁止** とする。
 
 ## Fail-Fast First
 
