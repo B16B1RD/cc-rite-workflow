@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-04-27T23:01:24+00:00"
+updated: "2026-04-29T02:55:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260421T024947Z-pr-636.md"
@@ -50,7 +50,19 @@ sources:
     ref: "raw/reviews/20260427T021251Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260427T155947Z-pr-688.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section"]
+  - type: "reviews"
+    ref: "raw/reviews/20260428T105854Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260428T122927Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260428T151033Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T111028Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T123811Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T153020Z-pr-688.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain"]
 confidence: high
 ---
 
@@ -228,6 +240,40 @@ PR #688 の 38+ cycle 経過で本ページの 4 quality signal に追加:
 | `2>&1` self-defeating sentinel | 「sentinel observability」を deliverable とする PR が、その deliverable 自身を `2>&1` で silent suppress | helper output contract を docstring で明示 + caller test で sentinel emit と exit code の両方を assert (cf. [`stderr-merge-silent-sentinel-suppression.md`](./stderr-merge-silent-sentinel-suppression.md)) |
 | `rejected(scope-creep)` の empirical gate | author の主観判断で reject した懸念事項が cycle N+1 reviewer の empirical revert test で CRITICAL 認定 | reject 判断は cross-validation + empirical revert test で gate (cf. [`scope-creep-rejection-empirical-gate.md`](../heuristics/scope-creep-rejection-empirical-gate.md)) |
 
+#### PR #688 cycle 12 → 14 → 15 chain で実証された self-referential learned 節 chain HIGH 観測
+
+PR #688 の最終収束過程 (cycle 12-15) で「**learned 節で言及した直後の同 commit で再演する**」累積 14 回目 self-referential pattern が **HIGH 級として 2 件** cross-validated で実証された:
+
+| cycle | learned 節で警告 | 同 commit で再演 (HIGH 検出) |
+|-------|----------------|---------------------------|
+| 14 fix (`c0fae09 fix(review): #688 cycle 14`) | Self-referential learned 節 chain を防ぐ目的で `[CONTEXT] METRICS_SKIPPED=1` sentinel と Claude 指示を導入 | その指示自体に「Phase 5.5.3 へ進む」(存在しない phase) を埋め込んでいた → cycle 15 F-01 (HIGH) として検出 |
+| 14 fix | bash-trap-patterns.md の対象ファイルリストを 5 ファイルに拡張する fix を実施 | 同 doctrine 内 line 374 の「対象 3 ファイル」古い列挙 (`fix.md + review.md + start.md` の旧 3-file 列挙) を見落としたまま残存 → cycle 15 F-02 (HIGH, Asymmetric Fix Transcription 再演) として検出 |
+
+これらの 2 件は本ページの「Failure mode 2: Self-referential learned 節 chain」(累積 35+ cycle 越えで初観測) を **HIGH 級で再実証** し、「**累積対策追加 PR が新たな drift / bug を生む self-exemplar**」が 4 連続 (PR #636 → PR #653 → PR #654 → PR #688) で観測された。
+
+#### PR #688 cycle 12 で観測した DRY 集約助手の overstate (新 sub-pattern)
+
+PR #688 cycle 12 review で MEDIUM × 2 として、累積対策 PR の新 failure mode が surface した:
+
+1. **集約 helper のコメント overstate**: `_validate-helpers.sh` で集約したのは validation logic のみだが、コメントは「helper 追加時の 2 箇所更新が不要になり」と書いており、実際には helper 名 list (両ファイルにハードコード重複 7 entry × 2 箇所) が依然 2 箇所同期更新を要する → Issue #687 root cause (drift 防止) と同型の drift 再発許容経路を文書レベルで作成
+2. **Migration 取り残し**: 新規 helper を 3 caller のうち 2 つだけが使用し、`resume-active-flag-restore.sh` 1 つは旧 inline pattern を残存 → 3 caller 中 2/1 の不均一更新 = DRY 化導入の核心理由 (drift 防止) が部分的にしか達成されない
+
+詳細は [DRY 集約助手の効果記述は『何が集約され、何が依然分散しているか』を明示する](./dry-helper-aggregation-effect-overstate.md) に切り出した。
+
+#### 累積対策 14 回目 38+ cycle 観測の収束信号
+
+PR #688 cycle 12-15 の追加観測で、本ページの「累積対策 PR の review-fix loop は cycle 数 hard limit ではなく quality signal で escalate する」原則の追加実証が完了:
+
+```
+cycle 12 (7 findings) → cycle 14 (7) → cycle 15 (9) → cycle 16 (collapse)
+```
+
+- cycle 12 → 14: cycle 12 fix が cycle 14 で 7 件再検出 (うち 2 件 HIGH cross-validated)
+- cycle 14 → 15: cycle 14 fix が cycle 15 で 9 件再検出 (うち 2 件 HIGH cross-validated, 上表参照)
+- cycle 15 → 16: cycle 15 で全 9 finding が code 修正で対応、self-referential learned 節 chain が collapse
+
+これは「累積対策 N+1 回目 PR は learned 節の対象パターンを **同 commit 内で再演** する確率が PR の cycle 経過 (38+) と learned 節の数 (累積 14 回分) に比例して上昇する」観察を実証。learned 節を commit message に書く際は **対象パターンの全 site grep + sandbox 実機 verify** を mandatory step として組み込むのが canonical (本ページ「Cross-validated CRITICAL の reviewer 合意数」signal の延長線)。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
@@ -235,6 +281,7 @@ PR #688 の 38+ cycle 経過で本ページの 4 quality signal に追加:
 - [Test が early exit 経路で silent pass する false-positive](./test-false-positive-early-exit.md)
 - [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](../heuristics/canonical-list-count-claim-drift-anchor.md)
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](./prose-design-without-backing-implementation.md)
+- [DRY 集約助手の効果記述は『何が集約され、何が依然分散しているか』を明示する](./dry-helper-aggregation-effect-overstate.md)
 
 ## ソース
 
@@ -261,3 +308,9 @@ PR #688 の 38+ cycle 経過で本ページの 4 quality signal に追加:
 - [PR #661 Cycle 4 Review (mergeable, 0 findings, 6 REC 抽出)](../../raw/reviews/20260425T171440Z-pr-661-cycle-4.md)
 - [PR #688 cycle 5 review (5 reviewer 独立検出 CRITICAL / 大規模 scope 拡張で必須引数欠落)](raw/reviews/20260427T021251Z-pr-688.md)
 - [PR #688 cycle 36 fix (self-referential learned 節 chain 完全修復 + 累積 14 回目 38+ cycle)](raw/fixes/20260427T155947Z-pr-688.md)
+- [PR #688 cycle 12 review (DRY 集約 overstate / migration 取り残し HIGH × 1 + MEDIUM × 3)](../../raw/reviews/20260428T105854Z-pr-688.md)
+- [PR #688 cycle 14 review (prose ↔ code 不整合 / Form A 非対称 / sanitize 非対称)](../../raw/reviews/20260428T122927Z-pr-688.md)
+- [PR #688 cycle 14 review re-iteration (Self-referential learned 節 chain HIGH × 2)](../../raw/reviews/20260428T151033Z-pr-688.md)
+- [PR #688 cycle 12 fix (HIGH 1 + MEDIUM 3 + LOW 3 を全修正)](../../raw/fixes/20260428T111028Z-pr-688.md)
+- [PR #688 cycle 14 fix (prose-code 整合 + DRY claim 訂正 + Form A 統一 + sanitize 対称化)](../../raw/fixes/20260428T123811Z-pr-688.md)
+- [PR #688 cycle 15 fix (cycle 14 → 15 self-referential drift chain 完全修復)](../../raw/fixes/20260428T153020Z-pr-688.md)

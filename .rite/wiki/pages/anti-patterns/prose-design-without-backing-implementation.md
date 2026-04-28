@@ -2,7 +2,7 @@
 title: "散文で宣言した設計は対応する実装契約がなければ機能しない"
 domain: "anti-patterns"
 created: "2026-04-17T04:30:00+00:00"
-updated: "2026-04-20T13:35:00+00:00"
+updated: "2026-04-29T02:55:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T035556Z-pr-559.md"
@@ -10,7 +10,13 @@ sources:
     ref: "raw/reviews/20260420T104328Z-pr-623.md"
   - type: "fixes"
     ref: "raw/fixes/20260420T105116Z-pr-623.md"
-tags: ["prose-design", "enforcement-gap", "machine-verification"]
+  - type: "fixes"
+    ref: "raw/fixes/20260428T173126Z-pr-705-cycle2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260428T122927Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T123811Z-pr-688.md"
+tags: ["prose-design", "enforcement-gap", "machine-verification", "mvp-undefined-note", "prose-code-consistency"]
 confidence: high
 ---
 
@@ -68,6 +74,43 @@ prompt 側で LLM に evidence 出力 (例: `<!-- [routing-check] ingest=matched
 
 PR #623 cycle 1 は (2) を選択。prose に follow-up Issue 番号を記載することで読者に「prose 側と hook 側の gap は現時点で意図的」ことを伝える。
 
+### MVP の未定義部分は「Note で明示」する (PR #705 cycle 2 で追加)
+
+新規 SoT (Single Source of Truth) を MVP として作成する場合、すべての原則を完全実装できないことがある。その場合、未実装部分を **「曖昧に宣言する」のではなく「未定義であることを明示する Note」** で透明性を保つ。これにより読み手は「dead spec か / 後続定義予定か」を即座に判別できる。
+
+PR #705 (コメントベストプラクティス SoT 新設 MVP) cycle 2 では、SoT 文書の「適用フェーズ」概要表と各原則の「Where to Apply」節の不整合に対し、MVP スコープ尊重のため「未定義であることを明示する Note」選択肢を採用:
+
+```markdown
+## 適用フェーズ
+
+| 原則 | enforce される phase |
+|------|---------------------|
+| 原則 1 | implement.md Phase 3.X |
+| 原則 6 | review.md Phase 6.5.X |
+| ...    | ... |
+
+> Note (MVP scope): 「適用フェーズ」概要表に列挙される phase と、各原則の「Where to Apply」節の対応関係は、本 MVP では未定義です。後続 Issue #N で双方向整合の機械検証を追加予定です。
+```
+
+これは原則 6 (Comment Rot is CRITICAL) と整合する透明性の高い対応で、Prose-only design の **逆方向** (prose で「未定義」を明示することで dead spec ではないと表明) として機能する。
+
+### prose ↔ code 不整合 (PR #688 cycle 14 で追加)
+
+PR #688 cycle 14 review で、`commands/issue/start.md` Phase 5.5.2 metrics 周辺で以下の不整合が検出された (MEDIUM):
+
+- **prose 宣言**: 「`state-read.sh` 失敗時に metrics output を skip する」
+- **bash 実装**: `val=""` で継続 (空 substitute が下流 heredoc に流入し partial corruption silent landed 経路)
+
+LLM 解釈時の二律背反として「prose が正なのか code が正なのか」が判別不能となり、再生成時に LLM が prose に従うか code に従うかが context によって不定。fix では `[CONTEXT] METRICS_SKIPPED=1` sentinel を emit する形で **prose の宣言を bash 実装で履行** し、Claude 向け skip 指示も明示化することで partial corruption 経路を遮断した。
+
+**判定 heuristic**: prose で「失敗時に skip」「異常時に abort」のような分岐を宣言した場合、対応する bash 実装が:
+
+1. **flag 変数で skip 状態を保持しているか**: `if state_read_failed; then skip_metrics=true; fi` のような明示的な分岐
+2. **空文字 fall-through を許容していないか**: `val=$(state-read ...) || val=""` の `||` fallback は silent fall-through 経路
+3. **下流 heredoc / template に空文字 substitute が流れる経路がないか**: `cat <<EOF >> file ... ${val} ... EOF` で `${val}` が空でも EOF が完了する partial corruption
+
+3 点全てを verify しない PR は prose-only design の variant として cycle N+1 で再検出される。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -78,3 +121,6 @@ PR #623 cycle 1 は (2) を選択。prose に follow-up Issue 番号を記載す
 - [PR #559 review results](../../raw/reviews/20260417T035556Z-pr-559.md)
 - [PR #623 review cycle 1 (機械化宣言 without hook 検出指摘)](../../raw/reviews/20260420T104328Z-pr-623.md)
 - [PR #623 fix cycle 1 (follow-up Issue 化戦略選択)](../../raw/fixes/20260420T105116Z-pr-623.md)
+- [PR #705 cycle 2 fix (MVP 未定義部分の Note 明示選択)](../../raw/fixes/20260428T173126Z-pr-705-cycle2.md)
+- [PR #688 cycle 14 review (prose ↔ code 不整合: state-read 失敗時の skip 宣言 vs 空 substitute)](../../raw/reviews/20260428T122927Z-pr-688.md)
+- [PR #688 cycle 14 fix (METRICS_SKIPPED sentinel + Claude 向け skip 指示で prose-code 整合)](../../raw/fixes/20260428T123811Z-pr-688.md)
