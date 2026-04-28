@@ -150,6 +150,69 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 - "メモリリークするかもしれない" — without showing a long-running entrypoint that exercises the leak
 - "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security.md` is the reviewer)
 
+## Comment Quality Finding Gate
+
+> **Reference**: 検出基準の本文と原則は SoT である [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) を参照。本セクションは reviewer 側の **Finding Gate** (重要度プリセット・スコープ限定・Hypothetical 昇格 signal・whitelist 適用順序) を一元化する。検出パターンの一覧は [`tech-writer.md` の `#### 6. Comment Quality Heuristics`](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) を参照。
+
+### Scope: 新規 diff の追加行限定
+
+本 Gate は **新規 diff の追加行コメント** (`git diff {base_branch}...HEAD` の `+` 行に出現するコメント / docstring) のみを対象とする。既存ファイルに pre-existing で残存しているジャーナル / 行番号参照 / ジャーゴンは本 Gate の finding 対象外とし、retrofit Epic (Issue #704) 系で別途対応する。これは初回適用時の finding 爆発を防ぎ、reviewer の signal-to-noise 比を保つための設計上の明示制約。
+
+**Verification 手順**:
+
+1. `git diff {base_branch}...HEAD` で diff hunks を取得 (`{base_branch}` は `rite-config.yml` の `branch.base`、デフォルト `develop`)
+2. 追加行 (`+` で始まる行) のみを判定対象にする (`-` 行・context 行は対象外)
+3. 抽出した追加行に対して [`tech-writer.md` の (a)-(e) heuristics](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) を適用
+
+> **既存違反の retrofit は本 Gate のスコープ外**: pre-existing comment に対する finding は `/rite:investigate` 系・retrofit Epic で別経路で扱う。本 reviewer は revert test (Necessary conditions §3) も「新規 diff 由来であること」を担保する — diff の `+` 行に対象コメントが含まれていなければ revert test fail として finding を破棄する。
+
+### 重要度プリセット
+
+| 違反パターン | check 参照 | プリセット重要度 |
+|------------|-----------|----------------|
+| Comment Rot (security/correctness 主張が現コードと不一致) | tech-writer #3 critical pattern | **CRITICAL** |
+| ジャーナルコメント (`cycle N` / `verified-review` / `PR #N` / `旧実装は` 等) | tech-writer #6 (a) | **HIGH** |
+| 行番号・cycle 番号参照 (`file:42` / `cycle 35 F-04`) | tech-writer #6 (b) | **HIGH** |
+| 過剰冗長 (内部 helper のコメント密度逆転、公開 API の docstring 0 行) | tech-writer #6 (d)/(e) | **MEDIUM** |
+| 独自ジャーゴン濫用 (Whitelist 外の造語) | tech-writer #6 (c) | **LOW-MEDIUM** |
+| 内部 helper の些末 WHAT コメント | tech-writer #5 (既存) | **LOW** |
+
+このプリセットは reviewer 単独判断の finding にも適用する。reviewer は SoT / check 参照を `Likelihood-Evidence:` 行に示し、上記重要度プリセットに従って finding を発行する。重要度のずれが [`tech-writer.md` `#### 6` の SoT 対応表](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) と本 Gate で発生した場合、本 Finding Gate を主、tech-writer 側のクイックリファレンスを従とする。
+
+### Hypothetical → Demonstrable 昇格 signal
+
+コメント品質違反は通常 **Demonstrable** に分類される (diff hunks の追加行に対象コメントが直接出現するため、`Likelihood-Evidence: new_call_site {file}:{line} (本 PR diff の `+` 行で追加)` を提示できる)。以下の追加 signal を観測できた場合は、より明確に「reviewer 主観ではなく機械検出可能」であることを示せる:
+
+- **Git log evidence**: `git log -L :{function}:{file}` または `git log --follow {file}` でコメント merge 時刻を確認し、コードの最終変更とコメントの最終変更の乖離を観測 (Comment Rot の「stale 化した時点」を特定)
+- **Cross-file pattern detection**: 同一 codebase の他ファイルでの同パターン出現を `Grep -r 'verified-review cycle' plugins/` で観測 (孤立違反 vs 蔓延違反の区別 — 蔓延の場合は retrofit Epic 側で扱うべきと主張)
+- **Whitelist diff observation**: SoT [`Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) に未登録のトークンで、`git log --diff-filter=A -S '{token}'` で初出 commit を確認 (本 PR で導入されたトークンか pre-existing トークンかの判定)
+
+**Likelihood-Evidence ラベル**:
+
+```
+Likelihood-Evidence: new_call_site {file}:{line} (本 PR diff の `+` 行で追加)
+```
+
+Hypothetical Exception Category 適用は不要 (コメント品質は security / database migration / devops infra / dependencies のいずれにも該当しない)。コメント品質違反は常に Demonstrable の前提で finding を発行し、Demonstrable に到達できない場合は finding を破棄する (新規 diff の `+` 行に出現していなければ、それは pre-existing 違反であり本 Gate のスコープ外)。
+
+### Whitelist 適用順序
+
+トークン検出時の判定順序は以下に従う (順序を入れ替えると false positive が増える):
+
+1. **SoT Whitelist 表との突合** (substring match): SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) の表に列挙されたジャーゴンであれば許容。
+2. **`rite-config.yml` の `comment_best_practices.jargon_whitelist` 拡張** (将来予約 — MVP では未実装): プロジェクト固有 Whitelist の拡張・上書き。schema は SoT 末尾の YAML 想定例を参照。
+3. **一般辞書チェック**: 英語・日本語の一般単語・略語・標準ライブラリ識別子であれば許容。
+4. **プロジェクト内独立登場頻度チェック**: `Grep -r '{token}' plugins/` で 3 件以上 (本コメント・近接コメント以外) の独立登場があれば事実上の慣習語として許容 (Severity LOW 据え置き判定)。
+5. **上記すべて該当しない造語のみ finding として発行**: Severity LOW (孤立 1 hit) 〜 MEDIUM (本 PR で複数箇所新規導入) を判断。
+
+> **実装ノート**: 上記 1 → 2 → 3 → 4 → 5 を必ずこの順で適用すること。順序の本質的意義は以下の 3 点である:
+>
+> 1. **意味的階層の保持**: project 固有の意図を最も明示する SoT Whitelist (順序 1) と `rite-config.yml` 拡張 (順序 2) が、一般辞書 (順序 3) や独立登場頻度ヒューリスティクス (順序 4) より先に評価されることで、reviewer は「Whitelist は project 固有意図、一般辞書は default」という階層を運用判断 (Whitelist 拡張提案) で見失わない
+> 2. **Substring 衝突の早期解決**: `sentinel` のような Whitelist 内ジャーゴンが部分文字列として他のトークン (例: `sentinelize`、`sentinel-marker`) に出現する場合、Whitelist 表マッチで早期確定することで `sentinel` 自体が独立登場頻度チェック (順序 4) で誤って造語と判定される経路を避けられる
+> 3. **計算コスト節約**: 早期 return により下流の Grep / LLM 判定 (順序 4) を skip できる
+>
+> 順序 1 と順序 3 はどちらも「許容」へ進む判定であり、入れ替えても最終的な finding 採否は変わらないが、上記 (1) (2) の意味的・運用的理由から **順序逆転は禁止** とする。
+
 ## Fail-Fast First
 
 Before recommending a fallback (`||` default, `try/catch` swallowing, null guard, default value substitution, retry-and-give-up), reviewers MUST first consider whether the correct fix is to **fail fast** — `throw` / `raise` / re-throw to the caller and let the existing error boundary handle it.
