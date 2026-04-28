@@ -6,6 +6,10 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-29T04:15:00+00:00 | ingest:create | pages/anti-patterns/sot-reviewer-expression-drift.md | PR #706 cycle 1 review/fix を統合 (HIGH F-01: SoT 期待値「以上」と reviewer「未満で finding」の pos/neg 表現差で派生記述 silent drift) |
+| 2026-04-29T04:15:00+00:00 | ingest:create | pages/heuristics/self-applying-reviewer-rule-false-positive.md | PR #706 cycle 4 review を統合 (HIGH F-03: reviewer rule 自身を編集する PR の self-application false positive リスク + Whitelist cross-reference 義務 + scope 内/外分離 4-cycle 収束 pattern) |
+| 2026-04-29T04:15:00+00:00 | ingest:update | pages/heuristics/self-applying-reviewer-rule-false-positive.md | PR #706 cycle 2/3 fix を統合 (self-application cross-reference 義務 + scope 分離による cycle 抑制 canonical pattern) |
+| 2026-04-29T04:15:00+00:00 | ingest:create | pages/anti-patterns/result-based-justification-logical-fallacy.md | PR #706 cycle 1 fix を統合 (MEDIUM F-02: Whitelist 適用順序「順序逆転で false positive 増加」弁明が結果不変で論理破綻、3 観点での canonical 説明) |
 | 2026-04-29T03:00:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=0 |
 | 2026-04-29T02:55:00+00:00 | ingest:create | pages/heuristics/sot-path-reference-existence-check.md | PR #705 cycle 1 review (6 findings: broken-ref / 表記揺れ / regex incompleteness): 新規 SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する heuristic を新規ページ化。並行 PR / 撤去済み artifact / canonical でない出典への参照は SoT を最初の bad example にする。同一文書内で原則 ID の short form と canonical form を混在させない (raw: pr-705 cycle 1 review) |
 | 2026-04-29T02:55:00+00:00 | ingest:update | pages/heuristics/sot-path-reference-existence-check.md | PR #705 cycle 2 review (1 MEDIUM): 適用フェーズ概要表 vs Where to Apply の双方向整合 sub-section を追加。両方が揃わないと表が dead spec 化する (raw: pr-705 cycle 2 review) |
