@@ -1996,10 +1996,10 @@ fi
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_completion" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "Execute Phase 5.6 (Completion Report). Then read parent_issue_number deterministically via state-read.sh (Issue #687 AC-4 — per-session state, not legacy .rite-flow-state snapshot). The canonical caller lives in Phase 5.7 (\"Parent Issue Completion\") which contains the if/else fail-fast capture and numeric validation. If parent_issue_number is non-zero, proceed to Phase 5.7. Otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
+  --next "Execute Phase 5.6 (Completion Report). Determine parent_issue_number routing in Phase 5.7 (\"Parent Issue Completion\"). If parent_issue_number is non-zero, proceed to Phase 5.7; otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
 ```
 
-> **verified-review cycle 38 F-17 LOW**: 旧 `--next` 文字列は literal `bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0` を埋め込んでおり、Phase 5.7 の actual caller (本ファイル末尾の `Parent Issue Completion` ブロック) と semantic 重複していた。次のコンテキスト中の LLM が next_action 文字列を「実行すべき bash command」と誤解する経路 (caller を 2 回起動する silent regression) を断つため、手順記述に降格し、actual caller への semantic anchor reference (Phase 5.7) のみを残した。
+> **verified-review cycle 38 F-17 LOW / cycle 9 F-06 MEDIUM 対応**: 旧 `--next` 文字列は literal `bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0` を埋め込んでおり、Phase 5.7 の actual caller (本ファイル末尾の `Parent Issue Completion` ブロック) と semantic 重複していた。cycle 38 F-17 で literal を削除したが、`state-read.sh` という helper 名が `--next` 文字列に残存しており、LLM が「state-read.sh を呼べ」と解釈する hallucination 経路がまだ閉じていなかった (PR #688 cycle 9 F-06 review 指摘)。本 cycle で `state-read.sh` 含む helper 名を含まない手順記述に簡素化し、Phase 5.7 への semantic anchor reference のみを残した (caller 2 重起動 silent regression を構造的に防ぐ)。
 
 > See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
 

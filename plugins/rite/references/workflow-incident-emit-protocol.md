@@ -2,13 +2,22 @@
 
 Common emit protocol for workflow incident sentinels, referenced by **actual emit caller** sub-skills (`pr/review.md`, `pr/fix.md`, `pr/cleanup.md`, `issue/close.md`) and hook scripts (`state-read.sh`, `flow-state-update.sh` — emit indirectly via helper `_emit-cross-session-incident.sh`).
 
-Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarantees to prevent drift across emit sites. cycle 36 F-09 fix expanded scope from "skill commands" to include hook scripts after `cross_session_takeover_refused` / `legacy_state_corrupt` types were added (which only hook scripts emit). cycle 38 F-18 LOW: `state-read.sh` / `flow-state-update.sh` 自身は workflow-incident-emit.sh を直接呼ばず、common helper `_emit-cross-session-incident.sh` 経由で間接 emit する経路を補記 (新規読者が grep `workflow-incident-emit.sh` で直接 caller を辿れない隘路を解消)。
-
-PR #688 followup: cycle 41 review F-11 MEDIUM 訂正 — sub-skill list を actual emit caller のみに修正し、`pr/cleanup.md` (3 emit sites at L1453/1581/1611) を追加。
-
-PR #688 cycle 43 F-05 (HIGH) 訂正: 旧版は「`lint.md` and `pr/create.md` reference this protocol in documentation but do **not** themselves emit (their grep -c on `workflow-incident-emit.sh` returns 1 / 0 sites respectively)」と記載していたが、実測 `grep -c "workflow-incident-emit.sh" plugins/rite/commands/wiki/lint.md plugins/rite/commands/pr/create.md` は両者 0 で、`grep -n "workflow-incident-emit\|workflow_incident\|emit-protocol"` も両ファイル 0 件。「reference this protocol in documentation」自体が成立せず、両ファイルは本プロトコルを一切参照しない (= out of scope)。tech-writer-reviewer Likelihood-Evidence: runtime_observation で実証済み。
+Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarantees to prevent drift across emit sites.
 
 > **Reference**: See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full orchestrator-side specification.
+
+## Scope
+
+| File | Status | Emit sites |
+|------|--------|------------|
+| `pr/review.md` | actual emit caller | 5 sites |
+| `pr/fix.md` | actual emit caller | 5 sites |
+| `pr/cleanup.md` | actual emit caller | 3 sites |
+| `issue/close.md` | actual emit caller | 5 sites |
+| `state-read.sh` / `flow-state-update.sh` | indirect emit (via `_emit-cross-session-incident.sh`) | — |
+| `lint.md` / `pr/create.md` | **out of scope** (do not reference this protocol, do not emit) | 0 sites |
+
+Total: **18 invocation sites across 4 files**.
 
 ## How to Emit
 
@@ -30,15 +39,15 @@ sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
 
 | Placeholder | Source |
 |-------------|--------|
-| `{plugin_root}` | [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script) |
-| `{sentinel_type}` | From the skill's failure paths table (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped` (#524), `wiki_ingest_failed` (#524), `wiki_ingest_push_failed` (#555), `gitignore_drift` (#567), `cross_session_takeover_refused` (#687), `legacy_state_corrupt` (#687)) |
+| `{plugin_root}` | [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script-full-version) |
+| `{sentinel_type}` | From the skill's failure paths table (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`, `wiki_ingest_push_failed`, `gitignore_drift`, `cross_session_takeover_refused`, `legacy_state_corrupt`) |
 | `{specific failure description}` | From the skill's failure paths table |
 | `{optional hypothesis}` | Optional root cause hint (may be empty) |
 | `{pr_number}` | Current PR number, or `0` if no PR exists yet |
 
 ## Sentinel Visibility Rule (LLM Responsibility — Defensive Practice)
 
-Sub-skills that **actually emit** (`pr/review.md`, `pr/fix.md`, `pr/cleanup.md`, `issue/close.md`) execute inline within the orchestrator's conversation context. Bash tool call stdout is directly visible to the orchestrator, so sentinel lines emitted via the bash snippet above are automatically part of the conversation context. cycle 36 F-13 fix added `issue/close.md` to this list (close.md emits at L390/468/546/571/591 for various failure paths). PR #688 followup cycle 41 F-11 added `pr/cleanup.md` (emits at L1453/1581/1611). Note: `lint.md` および `pr/create.md` は本プロトコルを参照せず、emit もしない (out of scope。cycle 43 F-05 で実測再検証済み)。
+Sub-skills that **actually emit** execute inline within the orchestrator's conversation context. Bash tool call stdout is directly visible to the orchestrator, so sentinel lines emitted via the bash snippet above are automatically part of the conversation context.
 
 As a **defensive practice**, sub-skills SHOULD still include the captured `sentinel_line` value verbatim in their final visible response text. This ensures sentinel detection remains robust even if execution context changes in the future.
 
@@ -55,11 +64,11 @@ After executing Step 1 and Step 2, the LLM should include the `sentinel_line` va
 
 `|| true` ensures non-blocking behavior — emission failure does not abort the skill flow. The workflow MUST NOT halt because sentinel emission failed.
 
-## Extended Pattern: Wiki Ingest Sentinel Emit (#524)
+## Extended Pattern: Wiki Ingest Sentinel Emit
 
-The `pr/review.md` Phase 6.5.W, `pr/fix.md` Phase 4.6.W, `pr/cleanup.md` Phase 4.W, `issue/close.md` Phase 4.4.W use an **extended pattern** that adds (a) stderr capture for emit-script failures, (b) trap-based tempfile cleanup, (c) canonical-format fallback emit (`hook_abnormal_exit`) when `workflow-incident-emit.sh` itself fails. This prevents both silent drop and orphan-format sentinels. (cycle 43 F-10 MEDIUM 修正: cleanup.md Phase 4.W を Phase 列挙に追加。cycle 41 F-11 で 18 sites total / 4 files の count update が反映されたが、本 phase list が 3 phase のままで drift していた。)
+The `pr/review.md` Phase 6.5.W, `pr/fix.md` Phase 4.6.W, `pr/cleanup.md` Phase 4.W, `issue/close.md` Phase 4.4.W use an **extended pattern** that adds (a) stderr capture for emit-script failures, (b) trap-based tempfile cleanup, (c) canonical-format fallback emit (`hook_abnormal_exit`) when `workflow-incident-emit.sh` itself fails. This prevents both silent drop and orphan-format sentinels.
 
-**Pattern shape** (see `pr/review.md` for the canonical full text — 18 invocation sites total across 4 files: review.md=5, fix.md=5, close.md=5, cleanup.md=3; PR #688 followup cycle 41 F-10 HIGH 修正: 旧表記「15 sites across 3 files」が `pr/cleanup.md` の 3 sites を見落としていた undercount を実測値 18 sites / 4 files に更新):
+**Pattern shape** (see `pr/review.md` for the canonical full text):
 
 ```bash
 emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
@@ -83,10 +92,32 @@ fi
 trap - EXIT INT TERM HUP
 ```
 
-**Future consolidation**: Currently kept inline at 4 files × (5+5+5+3) = 18 sites total (review.md / fix.md / close.md / cleanup.md; PR #688 followup cycle 41 F-10 HIGH updated count from earlier "3 files × 5 sites = 15 sites" undercount that missed cleanup.md's 3 sites). The original "4+ skill files adopt" extraction trigger was written when only 6 sites existed, but at 18 sites the per-site drift exposure already exceeds the helper-extraction effort cost. When the next emit-pattern change is required (e.g., a new mandatory metadata field), prefer extracting `hooks/scripts/wiki-sentinel-emit.sh` and reducing each invocation to a 1-line call rather than synchronizing 18 inline sites manually.
+**Future consolidation**: At 18 invocation sites the per-site drift exposure already exceeds the helper-extraction effort cost. When the next emit-pattern change is required (e.g., a new mandatory metadata field), prefer extracting `hooks/scripts/wiki-sentinel-emit.sh` and reducing each invocation to a 1-line call rather than synchronizing 18 inline sites manually.
 
-**Drift monitoring (current limits)** — cycle 43 F-11 MEDIUM 訂正: 旧版は「Drift between sites is monitored via `hooks/scripts/distributed-fix-drift-check.sh`」と書いていたが、同スクリプトの `DEFAULT_ALL_TARGETS` は `fix.md / review.md / tech-writer.md` のみで cleanup.md / close.md は対象外、かつ `workflow-incident-emit.sh` invocation count drift を直接検出するロジックも未実装 (`grep "workflow-incident-emit\|wiki_ingest_skipped" distributed-fix-drift-check.sh` → 0 件で実証)。実態は **partial audit のみ** で、cleanup.md / close.md drift および invocation-count drift は現状 unmonitored。新規 contributor が「helper extraction を遅延しても drift は捕捉される」と誤解する経路を防ぐため、誇張表現を訂正する。Drift between sites can be **partially audited** via `hooks/scripts/distributed-fix-drift-check.sh` (covers fix.md / review.md / tech-writer.md only; **cleanup.md / close.md drift is currently unmonitored**, and **invocation-count drift across the 18 sites is not directly detected**). Full coverage requires either helper extraction (preferred) or a dedicated drift-check enhancement (separate Issue tracking).
+> **Note for future PR**: When `wiki-sentinel-emit.sh` is extracted, update the Scope table above (1 helper × 18 callsites instead of 4 files × 18 sites) and revise the Pattern shape sample.
+
+**Drift monitoring (current limits)**: Drift between sites can be **partially audited** via `hooks/scripts/distributed-fix-drift-check.sh` (covers `fix.md` / `review.md` / `tech-writer.md` only). **`cleanup.md` / `close.md` drift is currently unmonitored**, and **invocation-count drift across the 18 sites is not directly detected**. Full coverage requires either helper extraction (preferred) or a dedicated drift-check enhancement (separate Issue tracking).
 
 ## Configuration Boundary
 
 Sentinel emission is bounded by `workflow_incident.enabled` in `rite-config.yml`. If disabled (`enabled: false`), the orchestrator simply ignores the sentinel. Skills should still emit sentinels regardless of this setting — the filtering is done at the orchestrator level.
+
+## Revision Log
+
+This section tracks corrections and significant changes to this protocol document. Earlier inline `cycle XX F-YY` notes were consolidated here in PR #688 cycle 9 F-12 (LOW) to improve readability for new readers; the protocol body now describes only the current specification.
+
+| Cycle | Change |
+|-------|--------|
+| cycle 36 F-09 | Expanded scope from "skill commands" to include hook scripts after `cross_session_takeover_refused` / `legacy_state_corrupt` types were added (which only hook scripts emit) |
+| cycle 36 F-13 | Added `issue/close.md` to the Sentinel Visibility Rule list (close.md emits at L390/468/546/571/591) |
+| cycle 38 F-18 LOW | Documented that `state-read.sh` / `flow-state-update.sh` emit indirectly via the common helper `_emit-cross-session-incident.sh` (new readers could not reach direct callers via grep `workflow-incident-emit.sh`) |
+| #524 | Added `wiki_ingest_skipped` / `wiki_ingest_failed` sentinel types |
+| #555 | Added `wiki_ingest_push_failed` sentinel type |
+| #567 | Added `gitignore_drift` sentinel type |
+| #687 | Added `cross_session_takeover_refused` / `legacy_state_corrupt` sentinel types |
+| PR #688 cycle 41 F-10 HIGH | Updated invocation site count from "15 sites across 3 files" undercount to actual "18 sites across 4 files" (missed `pr/cleanup.md`'s 3 sites) |
+| PR #688 cycle 41 F-11 MEDIUM | Restricted sub-skill list to actual emit callers and added `pr/cleanup.md` (3 emit sites at L1453/1581/1611) |
+| PR #688 cycle 43 F-05 HIGH | Removed incorrect statement that `lint.md` / `pr/create.md` "reference this protocol in documentation" — runtime grep returned 0 references in both files; both are genuinely out of scope |
+| PR #688 cycle 43 F-10 MEDIUM | Added `cleanup.md Phase 4.W` to the Phase enumeration (the 3-phase list had drifted after cycle 41 F-11 added cleanup.md to the file count) |
+| PR #688 cycle 43 F-11 MEDIUM | Corrected exaggerated drift-monitoring claim — `distributed-fix-drift-check.sh` only covers `fix.md` / `review.md` / `tech-writer.md`, not `cleanup.md` / `close.md`, and does not detect invocation-count drift |
+| PR #688 cycle 9 F-12 LOW | Consolidated inline `cycle XX F-YY` revision notes into this Revision Log section. The protocol body now describes only the current specification, improving readability for new readers (8 lines / ≒9% of the body were meta-commentary). The `Scope` section was added to summarize the file ↔ status ↔ site-count matrix in one place |

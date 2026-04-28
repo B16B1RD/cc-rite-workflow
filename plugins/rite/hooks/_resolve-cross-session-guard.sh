@@ -90,15 +90,13 @@ trap '_rite_cross_session_cleanup; exit 129' HUP
 # verified-review cycle 40: cycle 39 で「state-read.sh L247-252」と書いた行番号参照を
 # semantic anchor (mktemp 失敗 WARNING 3 行 emit ブロック) に置換 (cycle 38 F-04 DRIFT-CHECK ANCHOR
 # 原則と整合)。
-if ! _jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-cross-session-jq-err-XXXXXX" 2>/dev/null); then
-  echo "WARNING: _resolve-cross-session-guard.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-  echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt:N rc を観測できますが原因 line/column が失われます)" >&2
-  echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-  _jq_err=""
-fi
-# PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
-# として chmod 600 を upfront 適用 (multi-user / 共有 /tmp 環境での path-disclosure 防止)。
-[ -n "$_jq_err" ] && chmod 600 "$_jq_err" 2>/dev/null || true
+# F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
+# Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+# helper は失敗時に空文字を返し WARNING を stderr に emit する (non-blocking contract)。
+# chmod 600 (cycle 41 F-14 で導入された defense-in-depth) は helper 内に内蔵済。
+_jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+  "_resolve-cross-session-guard" "cross-session-jq-err" \
+  "jq 失敗時の parse error 詳細が表示されません (caller は corrupt:N rc を観測できますが原因 line/column が失われます)")
 
 # verified-review cycle 35 fix (F-03 HIGH): jq_rc capture must be inside the `else`
 # branch. The previous structure `if cmd; then ...; exit 0; fi; jq_rc=$?` always

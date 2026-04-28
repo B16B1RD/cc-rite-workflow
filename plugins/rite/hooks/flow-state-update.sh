@@ -67,7 +67,7 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # (旧版は 5 entry の bullet list が state-path-resolve.sh を本文で別途言及する非対称構造)。
 for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
                _resolve-schema-version.sh _resolve-cross-session-guard.sh \
-               _emit-cross-session-incident.sh; do
+               _emit-cross-session-incident.sh _mktemp-stderr-guard.sh; do
   if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
     echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
     echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
@@ -196,7 +196,21 @@ _resolve_session_state_path() {
       _classify_err=""
     fi
     [ -n "$_classify_err" ] && chmod 600 "$_classify_err" 2>/dev/null || true
-    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>"${_classify_err:-/dev/null}") || true
+    # F-01 (HIGH) — writer/reader 対称化 doctrine 違反を解消。state-read.sh の同 doctrine
+    # コメント (writer 側との対称化を維持する原則 — Cross-Reference: state-read.sh の本 helper
+    # invocation 直前の F-11 / 対称化 note と同じ趣旨で記述) に従い、`|| true` で helper の
+    # 想定外 exit を silent swallow せず、`if ... then : else _guard_rc=$?; fi` で rc を捕捉する。
+    # helper の design contract (`exit 0 — always`) が将来 regression した場合、writer 側でも
+    # 確実に WARNING emit + classification="" にして create-mode 経路への routing が壊れない
+    # ようにする (Issue #687 同型の片肺更新 silent regression を新たに導入しない)。
+    local _guard_rc=0
+    if classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>"${_classify_err:-/dev/null}"); then
+      :
+    else
+      _guard_rc=$?
+      echo "WARNING: _resolve-cross-session-guard.sh exited non-zero (rc=$_guard_rc) — design contract violation (helper should always exit 0) [writer]" >&2
+      classification=""
+    fi
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
       grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true
     fi
@@ -309,12 +323,11 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   # doctrine と矛盾していた (reader 側 state-read.sh:256-261 は cycle 38 F-06 で
   # 修正済み)。/tmp full / SELinux deny 環境で mkdir 失敗 line/column が失われる
   # 二重 silent failure を防ぐ。
-  if ! _mkdir_err=$(mktemp "${TMPDIR:-/tmp}/rite-flow-state-mkdir-err-XXXXXX" 2>/dev/null); then
-    echo "WARNING: flow-state-update.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-    echo "  影響: mkdir 失敗時の error 詳細が表示されません" >&2
-    echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-    _mkdir_err=""
-  fi
+  # F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
+  # Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+  _mkdir_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+    "flow-state-update" "flow-state-mkdir-err" \
+    "mkdir 失敗時の error 詳細が表示されません")
   if ! mkdir -p "$_flow_state_dir" 2>"${_mkdir_err:-/dev/null}"; then
     # _log_flow_diag is defined later in the file; inline the diag write here
     # because we exit before reaching that definition's call sites.
@@ -328,6 +341,11 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
     exit 1
   fi
   [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
+  # F-09 (MEDIUM, security Hypothetical exception): .rite/sessions/ ディレクトリにも chmod 700 を
+  # 適用 (.rite-work-memory dir と同型)。multi-user CI runner / shared dev host で session metadata が
+  # group-readable になる経路を防ぐ。chmod 失敗は best-effort skip (filesystem が ACL 非対応 / SELinux
+  # 制約等で chmod 不能な環境でも flow-state 機能は維持する)。
+  chmod 700 "$_flow_state_dir" 2>/dev/null || true
   unset _flow_state_dir _mkdir_err
 fi
 
@@ -409,6 +427,16 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   exit 1
 fi
 
+# F-09 (MEDIUM, security Hypothetical exception): atomic-write tempfile に chmod 600 を upfront 適用。
+# 旧実装は `mktemp ${FLOW_STATE}.XXXXXX` で multi-user umask 022 環境では 644 で作成され、
+# その後 mv で final state file に rename されるため、最終的な `.rite/sessions/{sid}.flow-state` も
+# world-readable になっていた。同 PR で他 helper (state-read.sh _jq_err / _resolve-cross-session-guard.sh /
+# _resolve-session-id-from-file.sh) はすべて chmod 600 を upfront 適用しており、本 atomic-write 経路
+# だけ非対称だった (PR #688 cycle 9 F-09 review 指摘)。multi-user CI runner / shared dev host で
+# session_id・issue_number・branch・phase 等の metadata と (将来) 機密値を含む可能性がある file が
+# 他ユーザーに読まれる経路を防ぐ。chmod 失敗は best-effort skip (cycle 41 F-14 と対称)。
+chmod 600 "$TMP_STATE" 2>/dev/null || true
+
 # F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
 # stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
 # 既存の .rite-stop-guard-diag.log を re-use (日付形式のみ揃える。ring buffer truncation は
@@ -470,12 +498,11 @@ case "$MODE" in
       # "jq parse error" (corrupt state, must not silently fall back).
       # PR #688 followup: cycle 41 review F-03 MEDIUM — mktemp 失敗時に WARNING emit
       # (writer/reader 対称化、reader 側 state-read.sh:256-261 と統一)。
-      if ! _jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-flow-state-jq-err-XXXXXX" 2>/dev/null); then
-        echo "WARNING: flow-state-update.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-        echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)" >&2
-        echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-        _jq_err=""
-      fi
+      # F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
+      # Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+      _jq_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+        "flow-state-update" "flow-state-jq-err" \
+        "jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)")
       if PREV_PHASE=$(jq -r '.phase // ""' "$FLOW_STATE" 2>"${_jq_err:-/dev/null}"); then
         : # jq ok
       else

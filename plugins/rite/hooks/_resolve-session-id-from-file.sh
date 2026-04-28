@@ -73,6 +73,25 @@ if [ -z "$STATE_ROOT" ]; then
   exit 1
 fi
 
+# F-08 (MEDIUM, security Hypothetical exception): STATE_ROOT path traversal validation.
+# 旧実装は STATE_ROOT を空チェックのみで受け、`sid_file="$STATE_ROOT/.rite-session-id"` と
+# path 結合していた。caller (state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh) は
+# すべて state-path-resolve.sh 経由で解決した値を渡しているため現状実害はないが、本 helper を
+# 直接呼ぶ将来 caller (cycle 39 H-01 のコメントが言及している「新規 caller」) が
+# `STATE_ROOT="../../"` 等の untrusted 値を渡した場合、`.rite-session-id` の symlink に従って
+# sandbox 外の hex 文字列 (例: /etc/machine-id) を読み、_resolve-session-id.sh が UUID validation を
+# 通過すれば session takeover 判定に流入する経路があった (Hypothetical / security exception)。
+# 親ディレクトリ参照 `..` と shell metacharacter `$` を含む値を reject することで、helper 単体の
+# defense-in-depth を確保する (caller 信頼境界が破られた場合でも sandbox を維持)。
+case "$STATE_ROOT" in
+  *..*|*'$'*)
+    echo "ERROR: STATE_ROOT contains unsafe traversal or shell metacharacter: '$STATE_ROOT'" >&2
+    echo "  本 helper は親ディレクトリ参照 (..) や shell expansion (\$) を含む path を受理しません。" >&2
+    echo "  対処: caller (state-path-resolve.sh / pwd 由来 path) を経由して正規化された path を渡してください。" >&2
+    exit 1
+    ;;
+esac
+
 sid_file="$STATE_ROOT/.rite-session-id"
 
 # File-absent path: return empty string (legitimate "no session id stored yet").
@@ -106,14 +125,12 @@ trap '_rite_resolve_sid_cleanup; exit 130' INT
 trap '_rite_resolve_sid_cleanup; exit 143' TERM
 trap '_rite_resolve_sid_cleanup; exit 129' HUP
 
-if ! _tr_err=$(mktemp "${TMPDIR:-/tmp}/rite-resolve-sid-tr-err-XXXXXX" 2>/dev/null); then
-  echo "WARNING: _resolve-session-id-from-file.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-  echo "  影響: tr 失敗時の error 詳細が表示されません" >&2
-  echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-  _tr_err=""
-fi
-# path-disclosure defense (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止)
-[ -n "$_tr_err" ] && chmod 600 "$_tr_err" 2>/dev/null || true
+# F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
+# Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+# chmod 600 (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止) は helper 内に内蔵済。
+_tr_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+  "_resolve-session-id-from-file" "resolve-sid-tr-err" \
+  "tr 失敗時の error 詳細が表示されません")
 
 if raw=$(tr -d '[:space:]' < "$sid_file" 2>"${_tr_err:-/dev/null}"); then
   : # tr success (raw may be empty for empty file — legitimate)

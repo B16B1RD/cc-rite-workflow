@@ -327,11 +327,27 @@ write_legacy "$SBX" '{"phase":"phase5_lint","next_action":"continue","active":fa
 # template name が変更された場合、fake mktemp が常に passthrough して TC-mktemp-fail が
 # silent passthrough する regression (mktemp 失敗を simulate せず常に成功扱い → cycle 22 trap regression
 # を再導入しても気付けない silent regression) を防ぐ。
-if ! grep -qF 'rite-resume-flow-err-XXXXXX' "$HELPER"; then
-  echo "FAIL (TC-mktemp-fail sanity check): helper does not use 'rite-resume-flow-err-XXXXXX' template (literal string match required)" >&2
-  echo "  対処: helper の mktemp template name (helper:163 周辺) と本 test の case pattern を同期させてください" >&2
+#
+# PR #688 cycle 9 F-02 (MEDIUM) consolidation: mktemp WARNING block が共通 helper
+# `_mktemp-stderr-guard.sh` に集約された後、resume-active-flag-restore.sh は template suffix
+# (`resume-flow-err`) のみを helper に渡し、最終的な template name (`rite-resume-flow-err-XXXXXX`)
+# は helper 内部で組み立てられる。caller 側の sanity check は `resume-flow-err` (suffix 単独) を
+# grep し、helper 側の template 形式 (`rite-${template_suffix}-XXXXXX`) を別途 grep で検証する。
+mktemp_helper_dir=$(dirname "$HELPER")
+mktemp_helper_path="$mktemp_helper_dir/_mktemp-stderr-guard.sh"
+if ! grep -qF 'resume-flow-err' "$HELPER"; then
+  echo "FAIL (TC-mktemp-fail sanity check): helper does not pass 'resume-flow-err' suffix to _mktemp-stderr-guard.sh" >&2
+  echo "  対処: helper が `_mktemp-stderr-guard.sh` 経由で `resume-flow-err` template suffix を渡しているか確認してください" >&2
   echo "  影響: fake mktemp が silent passthrough して mktemp 失敗 simulate が無効化される" >&2
-  echo "  Note: substring grep ('rite-resume-flow-err-') を fixed-string XXXXXX 一致に強化 (false negative 防止)" >&2
+  exit 1
+fi
+if [ ! -x "$mktemp_helper_path" ]; then
+  echo "FAIL (TC-mktemp-fail sanity check): _mktemp-stderr-guard.sh not found or not executable: $mktemp_helper_path" >&2
+  exit 1
+fi
+if ! grep -qF 'rite-${template_suffix}-XXXXXX' "$mktemp_helper_path"; then
+  echo "FAIL (TC-mktemp-fail sanity check): _mktemp-stderr-guard.sh does not use 'rite-\${template_suffix}-XXXXXX' template (final mktemp pattern)" >&2
+  echo "  対処: _mktemp-stderr-guard.sh の mktemp 行が `rite-\${template_suffix}-XXXXXX` 形式になっているか確認してください" >&2
   exit 1
 fi
 fake_bin="$SBX/.fake-bin"

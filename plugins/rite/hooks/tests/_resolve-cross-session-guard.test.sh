@@ -207,17 +207,23 @@ output=$(bash "$HOOK" "/tmp/x" "" 2>&1; echo "_EXIT_$?") || true
 exit_marker=$(printf '%s' "$output" | grep -oE '_EXIT_[0-9]+$' | tail -1)
 assert_eq "TC-12.1: empty current_sid → exit 1" "_EXIT_1" "$exit_marker"
 
-# --- TC-13: classification 5 値 enumeration source-pin metatest (drift detection) ---
-# helper file 内に 5 つの classification token (`empty` / `same` / `foreign:` / `corrupt:` / `invalid_uuid:`)
+# --- TC-13: classification 6 値 enumeration source-pin metatest (drift detection) ---
+# helper file 内に classification token (`empty` / `same` / `foreign:` / `corrupt:` / `invalid_uuid:`)
 # が printf として残っていることを grep で pin。caller (state-read.sh / flow-state-update.sh) の
 # case statement と整合を保つための drift 検出。
-echo "TC-13: source-pin 5 classifications via grep (drift detection)"
+#
+# F-10 (LOW, PR #688 cycle 9 review): cycle 39 H-01 で追加された `printf 'corrupt:126'` (合計 6 token に
+# 拡張) を TC-13 に追加。本 fallback は `_resolve-session-id.sh` 不在時の collapse-prevention emit で、
+# 削除されると helper 不在時に `invalid_uuid:1` に collapse し root cause 診断時の区別が失われる
+# silent regression を起こす。`printf 'corrupt:%d'` (生 jq rc 経路) と区別するため `corrupt:126` literal を pin。
+echo "TC-13: source-pin 6 classifications via grep (drift detection)"
 helper_path="$HOOK"
 expected_tokens=(
   "printf 'empty'"
   "printf 'same'"
   "printf 'foreign:%s'"
   "printf 'corrupt:%d'"
+  "printf 'corrupt:126'"
   "printf 'invalid_uuid:1'"
 )
 for token in "${expected_tokens[@]}"; do

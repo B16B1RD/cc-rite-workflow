@@ -67,21 +67,45 @@ case "$layer" in
     ;;
 esac
 
+# F-07 (MEDIUM) 対応: session_id を redact してから details に埋め込む。
+# 旧実装は full UUID を平文で埋め込み、`workflow-incident-emit.sh` 経由で
+# `[CONTEXT] WORKFLOW_INCIDENT=1; details=...,current_sid=11111111-...,legacy_sid=22222222-...` として
+# stderr/stdout に emit され、orchestrator (`start.md` Phase 5.4.4.1) が `AskUserQuestion` 経由で
+# `create-issue-with-projects.sh` に渡し、ソース文字列のまま `Details: {details}` の Issue body 行として
+# GitHub に publish していた。session_id は同一マシン上の他 LLM session を識別する内部 token であり、
+# public repo / multi-tenant repo の Issue search で漏洩すると session 取得への足がかりになる
+# (cycle 41 F-12 で sanitize は導入済みだが「機密値そのものの埋込」は未対応だった)。
+# 先頭 8 文字 + `***` の redacted form に変換することで、debug 可能性 (異なる session の判別) を維持
+# しつつ機密値漏洩を防ぐ。元の full UUID は本 helper の caller (state-read.sh / flow-state-update.sh)
+# が独自の local diag log に記録する責務を持つ (リポ外、reposearch 不可)。
+# redaction helper: 先頭 8 文字を保持 + `***` を append (UUID v4 想定: 36 chars)。
+# 8 文字未満の文字列 (空文字 / 短い path 等) は変換せずそのまま使う (defense-in-depth)。
+_redact_sid() {
+  local v="$1"
+  if [ ${#v} -ge 8 ]; then
+    printf '%s***' "${v:0:8}"
+  else
+    printf '%s' "$v"
+  fi
+}
+current_sid_redacted=$(_redact_sid "$current_sid")
+legacy_sid_or_path_redacted=$(_redact_sid "$legacy_sid_or_path")
+
 # classification ごとに type / details / root-cause-hint を組み立てる
 case "$classification" in
   foreign)
     incident_type="cross_session_takeover_refused"
-    details="layer=${layer},current_sid=${current_sid},legacy_sid=${legacy_sid_or_path}"
+    details="layer=${layer},current_sid=${current_sid_redacted},legacy_sid=${legacy_sid_or_path_redacted}"
     root_cause_hint="legacy_belongs_to_another_session_use_create_mode"
     ;;
   corrupt)
     incident_type="legacy_state_corrupt"
-    details="layer=${layer},current_sid=${current_sid},path=${legacy_sid_or_path},jq_rc=${extra_arg}"
+    details="layer=${layer},current_sid=${current_sid_redacted},path=${legacy_sid_or_path_redacted},jq_rc=${extra_arg}"
     root_cause_hint="legacy_jq_parse_failed_cannot_verify_session_ownership"
     ;;
   invalid_uuid)
     incident_type="legacy_state_corrupt"
-    details="layer=${layer},current_sid=${current_sid},path=${legacy_sid_or_path},reason=invalid_uuid_format,rc=${extra_arg}"
+    details="layer=${layer},current_sid=${current_sid_redacted},path=${legacy_sid_or_path_redacted},reason=invalid_uuid_format,rc=${extra_arg}"
     root_cause_hint="legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema"
     ;;
   *)

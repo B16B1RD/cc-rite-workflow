@@ -153,35 +153,59 @@ assert_eq "TC-4.1: exit code is 1" "1" "$rc"
 assert_match "TC-4.2: ERROR contains 'unknown classification'" "unknown classification" "$out"
 rm -rf "$sandbox"
 
-echo "TC-5: workflow-incident-emit.sh 不在で WARNING + exit 0"
+echo "TC-5: workflow-incident-emit.sh 不在で WARNING + exit 0 + canonical fallback sentinel emit (F-04)"
 sandbox=$(make_fake_emit_dir missing)
 cleanup_dirs+=("$sandbox")
 if out=$(run_helper_in_sandbox "$sandbox" foreign reader sid1 sid2 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-5.1: exit code is 0 (caller 後段 DEFAULT 降格を阻害しない)" "0" "$rc"
 assert_match "TC-5.2: WARNING contains 'workflow-incident-emit.sh missing'" "workflow-incident-emit.sh missing" "$out"
 assert_match "TC-5.3: WARNING records type for fallback audit" "type=cross_session_takeover_refused" "$out"
+# F-04 (MEDIUM, PR #688 cycle 9 review): cycle 38 F-08 で導入された canonical fallback sentinel
+# `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...; root_cause_hint=...; iteration_id=...` の
+# emit を assert する。旧実装は WARNING 行のみ確認しており、helper の fallback emit ブロックが
+# silent regress (`exit 0` のみに巻き戻される / sentinel format が壊される) しても TC-5 が pass
+# する false-positive 経路があった。Phase 5.4.4.1 orchestrator detection が break する CRITICAL gap
+# を test 側で守る。
+assert_match "TC-5.4: fallback sentinel emitted (F-04)" "[CONTEXT] WORKFLOW_INCIDENT=1" "$out"
+assert_match "TC-5.5: fallback sentinel has type field (F-04)" "type=cross_session_takeover_refused" "$out"
+assert_match "TC-5.6: fallback sentinel has root_cause_hint (F-04)" "root_cause_hint=legacy_belongs_to_another_session_use_create_mode" "$out"
 rm -rf "$sandbox"
 
-echo "TC-6: foreign 正常 emit (details 構成検証)"
+echo "TC-6: foreign 正常 emit (details 構成検証 + redaction — F-07)"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
+# F-07 (MEDIUM): session_id / legacy path は先頭 8 文字 + *** に redact される
+# - current-uuid (12 文字) → current-***
+# - legacy-uuid (11 文字、先頭 8 文字 = "legacy-u") → legacy-u***
 if out=$(run_helper_in_sandbox "$sandbox" foreign reader "current-uuid" "legacy-uuid" 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-6.1: exit code is 0" "0" "$rc"
 assert_match "TC-6.2: emit type is cross_session_takeover_refused" "type=cross_session_takeover_refused" "$out"
 assert_match "TC-6.3: details has layer=reader" "layer=reader" "$out"
-assert_match "TC-6.4: details has current_sid=current-uuid" "current_sid=current-uuid" "$out"
-assert_match "TC-6.5: details has legacy_sid=legacy-uuid" "legacy_sid=legacy-uuid" "$out"
+assert_match "TC-6.4: details has redacted current_sid (F-07)" "current_sid=current-***" "$out"
+assert_match "TC-6.5: details has redacted legacy_sid (F-07)" "legacy_sid=legacy-u***" "$out"
 assert_match "TC-6.6: root_cause_hint = legacy_belongs_to_another_session_use_create_mode" "hint=legacy_belongs_to_another_session_use_create_mode" "$out"
+# F-07 negative assertion: full UUID が details に含まれないこと (silent regression 防止)
+# `current_sid=current-uuid` が details に **literal で含まれない** ことを inline grep で確認。
+# `assert_no_match` ヘルパは未実装のため、`! grep -q` + `assert_eq "0" "$rc"` で表現する
+# (FAIL 時に redacted 化が regression したことを明示する)。
+if echo "$out" | grep -q "current_sid=current-uuid[^*]"; then
+  rc_neg=1
+else
+  rc_neg=0
+fi
+assert_eq "TC-6.7: full current_sid 'current-uuid' must NOT appear unredacted in details (F-07)" "0" "$rc_neg"
 rm -rf "$sandbox"
 
-echo "TC-7: corrupt 正常 emit (extra_arg=jq_rc 検証)"
+echo "TC-7: corrupt 正常 emit (extra_arg=jq_rc 検証 + redaction — F-07)"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
+# F-07 (MEDIUM): path も同じ redaction 機構を通る
+# - /path/to/legacy (15 文字) → /path/to***
 if out=$(run_helper_in_sandbox "$sandbox" corrupt writer "current-uuid" "/path/to/legacy" "4" 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-7.1: exit code is 0" "0" "$rc"
 assert_match "TC-7.2: emit type is legacy_state_corrupt" "type=legacy_state_corrupt" "$out"
 assert_match "TC-7.3: details has layer=writer" "layer=writer" "$out"
-assert_match "TC-7.4: details has path=/path/to/legacy" "path=/path/to/legacy" "$out"
+assert_match "TC-7.4: details has redacted path (F-07)" "path=/path/to***" "$out"
 assert_match "TC-7.5: details has jq_rc=4" "jq_rc=4" "$out"
 assert_match "TC-7.6: root_cause_hint = legacy_jq_parse_failed_cannot_verify_session_ownership" "hint=legacy_jq_parse_failed_cannot_verify_session_ownership" "$out"
 rm -rf "$sandbox"

@@ -53,7 +53,8 @@ fi
 # スクリプト先頭の同型チェックで塞がれる。Issue #687 root cause (writer/reader 片肺更新型 silent regression) と
 # 同型の deploy regression を構造的に防ぐ。state-read.sh / flow-state-update.sh の同型ブロックと統一表記。
 for _helper in state-read.sh flow-state-update.sh state-path-resolve.sh \
-               _resolve-session-id.sh _resolve-session-id-from-file.sh; do
+               _resolve-session-id.sh _resolve-session-id-from-file.sh \
+               _mktemp-stderr-guard.sh; do
   if [ ! -x "$PLUGIN_ROOT/hooks/$_helper" ]; then
     echo "ERROR: $_helper not found or not executable: $PLUGIN_ROOT/hooks/$_helper" >&2
     exit 1
@@ -180,15 +181,12 @@ trap '_rite_resume_active_cleanup; exit 129' HUP
 # verified-review F-07 LOW: mktemp idiom を canonical `if ! ...; then` 形式に書き換え
 # (state-read.sh / flow-state-update.sh / _resolve-cross-session-guard.sh / _resolve-session-id-from-file.sh
 # の 9 mktemp site と完全対称化)。直前のコメントが主張する「完全対称化」と実装の食い違いを解消。
-if ! _err=$(mktemp "${TMPDIR:-/tmp}/rite-resume-flow-err-XXXXXX" 2>/dev/null); then
-  echo "WARNING: resume-active-flag-restore.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-  echo "  影響: 次の error 発生時、flow-state-update.sh の具体的失敗原因 (mv 失敗 / UUID validation 失敗 / jq parse error 等) が表示されません" >&2
-  echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-  _err=""
-fi
-# PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
-# として chmod 600 を upfront 適用 (multi-user / 共有 /tmp 環境での path-disclosure 防止)。
-[ -n "$_err" ] && chmod 600 "$_err" 2>/dev/null || true
+# F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
+# Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+# chmod 600 (cycle 41 F-14 で導入された defense-in-depth) は helper 内に内蔵済。
+_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+  "resume-active-flag-restore" "resume-flow-err" \
+  "次の error 発生時、flow-state-update.sh の具体的失敗原因 (mv 失敗 / UUID validation 失敗 / jq parse error 等) が表示されません")
 
 # PR #688 cycle 22 fix (F-02 MEDIUM): sid 有無の if/else 完全 duplication を patch_args 配列パターンに統一。
 # flow-state-update.sh の確立済 `JQ_ARGS=()` + `JQ_ARGS+=()` 条件付き append convention と同型

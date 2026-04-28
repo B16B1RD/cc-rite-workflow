@@ -61,7 +61,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 新規 maintainer が「list に列挙された 5 helper だけ checked される」と誤読する余地があった)。
 for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
                _resolve-schema-version.sh _resolve-cross-session-guard.sh \
-               _emit-cross-session-incident.sh; do
+               _emit-cross-session-incident.sh _mktemp-stderr-guard.sh; do
   if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
     echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
     echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
@@ -181,8 +181,12 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     # verified-review F-11 LOW (defense-in-depth): `|| true` で helper の想定外 exit を完全に
     # 握り潰すと、helper の design contract (`exit 0 — always`) が将来 regression したときに
     # silent fail する。`|| _guard_rc=$?` で rc を捕捉し、非 0 時には WARNING を emit する。
-    # writer 側 (flow-state-update.sh:186) との対称化を維持する原則 (本 helper の writer/reader
-    # 対称化 doctrine) に従い、両者で同じ patron に揃える将来 fix も追跡する。
+    # writer 側 (flow-state-update.sh の `_resolve_session_state_path` 関数内の
+    # `_resolve-cross-session-guard.sh` 呼び出し行) との対称化を維持する原則 (本 helper の
+    # writer/reader 対称化 doctrine) に従い、両者で同じ pattern に揃える。本対称化は
+    # PR #688 review F-01 (HIGH) で writer 側にも適用済 (cycle 9 F-01)。
+    # DRIFT-CHECK ANCHOR: 行番号ではなく semantic name で参照する (cycle 38 F-04 / cycle 40
+    # で確立した原則)。`flow-state-update.sh:186` のような hardcoded 行番号は drift しやすい。
     if classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$SESSION_ID" 2>"${_classify_err:-/dev/null}"); then
       :
     else
@@ -296,19 +300,22 @@ esac
 #
 # verified-review F-03 MEDIUM: trap install は file 冒頭の `--- Signal-specific trap ---` セクションに
 # 移動済 (`_classify_err` と `_jq_err` を共通の `_rite_state_read_cleanup` 関数で cleanup する)。
-# 旧実装は本箇所で `_jq_err` 専用の trap を install し、`_classify_err` (line 157 area) は
-# trap 不在の race window を残していた。canonical pattern (cycle 35 F-05 / 36 F-15) と統一。
+# 旧実装は本箇所で `_jq_err` 専用の trap を install し、`_classify_err` (per-session resolver の
+# case classification block で declare される変数) は trap 不在の race window を残していた。
+# canonical pattern (cycle 35 F-05 / 36 F-15) と統一。
+# DRIFT-CHECK ANCHOR: 行番号ではなく semantic name で参照する (cycle 38 F-04 / cycle 40 で
+# 確立した原則)。
 # verified-review cycle 38 F-06 MEDIUM: mktemp 失敗時に WARNING emit。
 # 旧実装は `2>/dev/null || _jq_err=""` で mktemp 失敗 (/tmp full / permission denied / SELinux deny) を
 # silent fallback し、後続の `2>"${_jq_err:-/dev/null}"` で jq stderr が `/dev/null` に redirect される
 # 二重 silent failure になっていた (jq 失敗時の `head -3 _jq_err` 観測経路が無効化される)。
 # resume-active-flag-restore.sh の mktemp 失敗 WARNING 経路と writer/reader 対称化。
-if ! _jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-state-read-jq-err-XXXXXX" 2>/dev/null); then
-  echo "WARNING: state-read.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-  echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)" >&2
-  echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-  _jq_err=""
-fi
+# F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
+# Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+# helper は失敗時に空文字を返し WARNING を stderr に emit する (non-blocking contract)。
+_jq_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+  "state-read" "state-read-jq-err" \
+  "jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)")
 # PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
 # として chmod 600 を upfront 適用 (BSD mktemp は umask 依存で 0644 になる経路がある)。
 # multi-user 環境で jq stderr 内の絶対 path / session_id leak (path-disclosure) を防ぐ。
