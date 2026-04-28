@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-29T03:00:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=0 |
 | 2026-04-29T02:55:00+00:00 | ingest:create | pages/heuristics/sot-path-reference-existence-check.md | PR #705 cycle 1 review (6 findings: broken-ref / 表記揺れ / regex incompleteness): 新規 SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する heuristic を新規ページ化。並行 PR / 撤去済み artifact / canonical でない出典への参照は SoT を最初の bad example にする。同一文書内で原則 ID の short form と canonical form を混在させない (raw: pr-705 cycle 1 review) |
 | 2026-04-29T02:55:00+00:00 | ingest:update | pages/heuristics/sot-path-reference-existence-check.md | PR #705 cycle 2 review (1 MEDIUM): 適用フェーズ概要表 vs Where to Apply の双方向整合 sub-section を追加。両方が揃わないと表が dead spec 化する (raw: pr-705 cycle 2 review) |
 | 2026-04-29T02:55:00+00:00 | ingest:skip | raw/reviews/20260428T173704Z-pr-705-cycle3-final.md | PR #705 cycle 3 final review (0 findings, mergeable): convergence_achieved + dogfooding self-apply validated は観察事実のみで novel な経験則なし。3 cycle 収束パターンは sot-path-reference-existence-check.md の「3 cycle 収束パターン」section で記載済み |
