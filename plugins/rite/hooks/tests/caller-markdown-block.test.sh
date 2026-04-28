@@ -182,6 +182,33 @@ assert_grep "TC-5.3: review.md の loop_count validation が default 0 に降格
   "$REVIEW_MD" \
   'loop_count=0'
 
+# === Test 6: G-03 — inline form pin (verified-review cycle 41 II-1) ===
+# Background: TC-1 / TC-2 / TC-3 は `^if` (行頭) に限定して caller block を pin するが、
+# start.md L1805 周辺の metrics 表内に inline 形式の caller (`| Brief inline form: \`if val=$(bash
+# {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then ...\`` 列内 inline)
+# が存在し、`^if` 限定 grep では捕捉できない (行頭が `|` で始まる markdown table cell のため)。
+# start.md の verified-review cycle 38 F-02 prose に「previous '6 / 7 caller sites' prose
+# self-undercount-drifted twice」と明記されている通り、`implementation_round` field は過去 2 回
+# self-undercount drift を起こした履歴があり、再発確率が高い field。inline 形式が anti-pattern
+# (`if !` 形式) に revert された場合に TC-2 が素通りする盲点を本 TC で塞ぐ。
+echo ""
+echo "TC-6: G-03 — start.md inline form (implementation_round) pin (cycle 41 II-1)"
+
+# 6.1: inline form の caller が start.md に存在すること (markdown table cell 内も検出)
+inline_count=$(grep -cE 'if val=\$\(bash \{plugin_root\}/hooks/state-read\.sh --field implementation_round' "$START_MD" || echo 0)
+assert "TC-6.1: start.md の implementation_round inline form (1 箇所) が存続" "1" "$inline_count"
+
+# 6.2: inline form に `if !` anti-pattern が含まれていないこと (anti-pattern revert 検出)
+assert_not_grep "TC-6.2: start.md の implementation_round inline form に \`if !\` anti-pattern が無い" \
+  "$START_MD" \
+  'if !\s+val=\$\(bash\s+\{plugin_root\}/hooks/state-read\.sh --field implementation_round'
+
+# 6.3: inline form の canonical capture pattern が `; then :; else rc=$?;` を含むこと
+# (else 節の rc capture が削除された場合に検出)
+assert_grep "TC-6.3: start.md の implementation_round inline form が canonical capture pattern を維持" \
+  "$START_MD" \
+  'if val=\$\(bash \{plugin_root\}/hooks/state-read\.sh --field implementation_round.*then :; else rc=\$\?'
+
 # === Summary ===
 echo ""
 echo "=== Summary ==="

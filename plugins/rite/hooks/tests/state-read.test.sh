@@ -241,6 +241,69 @@ result=$(run_helper "$SBX" --field phase --default "")
 assert_eq "TC-6.RFC.2: ハイフン位置不正な 36 字 hex は reject されて legacy fallback (revert test 有効)" "safe_legacy_pos" "$result"
 rm -rf "$SBX"
 
+# --- TC-6.INJECTION: SID injection vector defense-in-depth (verified-review cycle 41 II-4) ---
+# 背景: 既存の TC-4 (path traversal) と TC-6 (no-hyphen / bad-position) は 3 種類の attack vector
+# のみ pin していた。本 TC は newline injection / shell metachar / mixed case 等の追加 vector を
+# pin する (defense-in-depth で正規表現緩和 / `tr` 削除時の silent regression 検出)。
+#
+# **正当化** (verified-review cycle 41 II-4 訂正): 旧 verified-review テキストは「RFC 4122 strict は
+# lowercase only」と表現したが、これは不正確 — RFC 4122 §3 (Output and Input) は
+# 「The hexadecimal values "a" through "f" are output as lower case characters and **are case
+# insensitive on input**」と明記しており、ABNF grammar も `hexDigit = ... / "F"` で uppercase を
+# accept する。実装の `^[0-9a-f]{8}-...` 正規表現は **canonical lowercase output 形式のみを
+# defensive に accept する** 設計選択であり、RFC strict 準拠の input case-insensitivity からは
+# 緩い (= reject すべきでない uppercase UUID も reject する) 仕様。本 test は正規表現の
+# defensive 動作 (canonical lowercase form 以外を reject) を pin する。
+#
+# 本リポでは uuidgen / git の SID 生成は lowercase デフォルトのため、uppercase UUID は外部
+# injection 経路でのみ発生する。canonical lowercase form の defensive accept は実用上 valid な
+# defense-in-depth として機能する (理由付けが「RFC 4122 strict」ではなく「canonical form 強制」
+# である点が cycle 41 II-4 訂正の核心)。
+#
+# 攻撃 vector:
+#   - newline injection: SID 内に改行を埋め込んで後続 line を別 field とする攻撃
+#   - shell metachar: `$()` / バッククォート で command substitution を狙う攻撃
+#   - mixed case (uppercase): canonical lowercase form 以外を reject する defensive 動作
+#   - 短すぎる / 長すぎる SID: regex の長さ制約破壊試行
+echo "TC-6.INJECTION: SID injection vector defense (cycle 41 II-4)"
+
+# 各 vector ごとに make_sandbox + bad SESSION_ID + per-session file (BAD_*) + legacy (safe_legacy_*)
+# のパターンで pin する (TC-6.RFC と同型)。reject されると legacy fallback で safe_legacy_* が返る。
+inject_vectors=(
+  # 形式: "vector_name|sid_value|legacy_phase|description"
+  "newline|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\nphase5_post_stop_hook|safe_legacy_newline|newline injection"
+  "command_sub|\$(echo INJECTED)|safe_legacy_cmdsub|shell command substitution"
+  "backtick|\`whoami\`|safe_legacy_backtick|backtick command substitution"
+  "uppercase|AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA|safe_legacy_upcase|canonical lowercase form 以外 (uppercase) を reject (RFC strict ではなく canonical form の defensive accept)"
+  "mixed_case|aaaaaaaa-AAAA-aaaa-AAAA-aaaaaaaaaaaa|safe_legacy_mixcase|mixed case → canonical form 以外として reject"
+  "too_short|aaaa-aaaa-aaaa-aaaa-aaaa|safe_legacy_short|36 字未満 (regex 長さ制約)"
+  "too_long|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaaaa|safe_legacy_long|36 字超過 (regex 長さ制約)"
+)
+
+for vector_entry in "${inject_vectors[@]}"; do
+  IFS='|' read -r vector_name sid_value legacy_phase desc <<< "$vector_entry"
+
+  SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+  write_config_v2 "$SBX"
+  # printf '%b' で escape (e.g. \n) を解釈させて newline injection を実装。bash の echo より portable。
+  printf '%b' "$sid_value" > "$SBX/.rite-session-id"
+  # legacy のみ書き込み (per-session file は作らない — accept されると `.rite/sessions/<sid>.flow-state`
+  # を探しに行くが、injected SID 文字列は file system の特殊文字を含む場合があり file 不在で
+  # 結局 legacy fallback に流れる。test の意図は「reject 経路で legacy fallback」を pin することなので、
+  # per-session file を作らない方がより厳密に reject 経路のみを assert できる)。
+  write_legacy "$SBX" "{\"phase\":\"$legacy_phase\"}"
+
+  result=$(run_helper "$SBX" --field phase --default "DEFAULT_FALLBACK")
+  if [ "$result" = "$legacy_phase" ]; then
+    echo "  ✅ TC-6.INJECTION.$vector_name: $desc → legacy fallback ($legacy_phase)"
+    PASS=$((PASS+1))
+  else
+    echo "  ❌ TC-6.INJECTION.$vector_name: $desc — expected '$legacy_phase' got '$result'"
+    FAIL=$((FAIL+1))
+    FAILED_NAMES+=("TC-6.INJECTION.$vector_name")
+  fi
+done
+
 # --- TC-7: schema_version=1 (or absent) routes directly to legacy even if SID + per-session exist ---
 echo "TC-7: schema_version=1 routes to legacy"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
@@ -551,6 +614,65 @@ else
   FAIL=$((FAIL+1))
   FAILED_NAMES+=("TC-15.E.1: state-read.sh caller-side 2>/dev/null source-pin")
 fi
+
+# --- TC-DEPLOY-REGRESSION: helper-missing fail-fast 経路 (verified-review cycle 41 CG-2) ---
+# 背景: state-read.sh の冒頭 `for _helper in ...` 存在チェックループは、cycle 38 F-01/F-09 で
+# Issue #687 同型の deploy regression (helper の chmod -x / 削除 / install 不整合) を構造的に
+# 防ぐ目的で導入された。しかし test 不在の場合、将来 loop の typo / rename で silent 空 loop 化しても
+# regression を検出できず、Issue #687 root cause structural defense が無音で消滅するリスクがある。
+# 本 TC は 6 helper × chmod -x 経路を実発火させて、必ず exit 1 + ERROR with helper name が
+# 出力されることを pin する (defense-in-depth の test 化)。
+echo "TC-DEPLOY-REGRESSION: state-read.sh helper-missing fail-fast (cycle 41 CG-2)"
+HOOKS_DIR="$(cd "$(dirname "$HOOK")" && pwd)"
+SANDBOX_HOOKS=$(mktemp -d) || { echo "ERROR: TC-DEPLOY-REGRESSION mktemp -d failed"; exit 1; }
+cleanup_dirs+=("$SANDBOX_HOOKS")
+
+# Copy all .sh helpers to sandbox so SCRIPT_DIR of state-read.sh points there
+cp "$HOOKS_DIR"/*.sh "$SANDBOX_HOOKS/"
+chmod +x "$SANDBOX_HOOKS"/*.sh
+
+# Sandbox repo for STATE_ROOT resolution
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
+
+# 6 helpers checked by state-read.sh's upfront for-loop (semantic anchor: state-path-resolve guard +
+# 5 private helpers). 並び順は state-read.sh の loop と完全一致させる (drift 検出を兼ねる)。
+deploy_regression_helpers=(
+  state-path-resolve.sh
+  _resolve-session-id.sh
+  _resolve-session-id-from-file.sh
+  _resolve-schema-version.sh
+  _resolve-cross-session-guard.sh
+  _emit-cross-session-incident.sh
+)
+
+for _h in "${deploy_regression_helpers[@]}"; do
+  # 全 helper を restore してから対象のみ chmod -x (各 case を independent に保つ)
+  chmod +x "$SANDBOX_HOOKS"/*.sh
+  if [ ! -f "$SANDBOX_HOOKS/$_h" ]; then
+    echo "  ❌ TC-DEPLOY-REGRESSION.$_h: helper not found in sandbox copy"
+    FAIL=$((FAIL+1))
+    FAILED_NAMES+=("TC-DEPLOY-REGRESSION.$_h: missing in sandbox")
+    continue
+  fi
+  chmod -x "$SANDBOX_HOOKS/$_h"
+
+  dr_output=$(cd "$SBX" && bash "$SANDBOX_HOOKS/state-read.sh" --field phase --default "" 2>&1; echo "_EXIT_$?")
+  dr_exit_marker=$(printf '%s' "$dr_output" | grep -oE '_EXIT_[0-9]+$' | tail -1)
+  if [ "$dr_exit_marker" = "_EXIT_1" ] && printf '%s' "$dr_output" | grep -qF "$_h"; then
+    echo "  ✅ TC-DEPLOY-REGRESSION.$_h: chmod -x → exit 1 + ERROR contains helper name"
+    PASS=$((PASS+1))
+  else
+    echo "  ❌ TC-DEPLOY-REGRESSION.$_h: did not fail-fast as expected"
+    echo "     exit_marker: $dr_exit_marker"
+    echo "     output:"
+    printf '%s\n' "$dr_output" | sed 's/^/       /' | head -10
+    FAIL=$((FAIL+1))
+    FAILED_NAMES+=("TC-DEPLOY-REGRESSION.$_h")
+  fi
+done
+chmod +x "$SANDBOX_HOOKS"/*.sh  # Restore for cleanup safety
 
 # --- Summary ---
 echo ""

@@ -290,16 +290,15 @@ esac
 - **`;;` を body と同じ 4-space に揃える**: `;;` は body の終端であり pattern の続きではない。pattern 直下に配置すると「次の pattern が始まる」と誤読される
 - **`*)` (default arm) も同型**: 例外なく同じ indent rule を適用することで、reader が「`*)` だけ別ブロック?」と誤認するリスクを排除する
 
-### 参照実装 (2026-04 時点)
+### 参照実装
 
-`plugins/rite/commands/wiki/lint.md` 内の 4 site で本 pattern が確立されている:
+`plugins/rite/commands/wiki/lint.md` 内で本 pattern が確立されている。Phase 番号 + case label の semantic anchor 形式で参照する (verified-review cycle 41 I-01: 旧 line range 参照は file 編集で容易に drift するため撤廃済み):
 
-- Phase 6.0 (line 650-722 周辺) — log.md 抽出 case
-- Phase 6.2 (line 993-1009 周辺) — page 読取 case
-- Phase 8.2 (line 1292-1305 周辺) — log.md 追記 case
-- Phase 8.3 (line 1373-1480 周辺、PR #564 cycle 11 F-05 で 4-space に統一) — same_branch path case
+- Phase 6 (欠落概念検出) — `case "$branch_strategy" in` (log.md 抽出 path) / `case "$wiki_branch" in` / `case "$pages_list" in` の各 case
+- Phase 7 (壊れた相互参照検出) — page 読取の `case "$mode" in`
+- Phase 8 (log.md 追記) — log.md 追記の `case "$branch_strategy" in` (same_branch / separate_branch の 2 path、PR #564 cycle 11 F-05 で 4-space に統一)
 
-新規 case 文を追加する際は本 pattern を採用すること。
+新規 case 文を追加する際は本 pattern を採用すること。本ファイル自身が「DRIFT-CHECK ANCHOR は semantic name 参照」canonical 規範を保管しているため、line 番号での参照は禁止する (cycle 38 F-04 / cycle 41 I-01 で確立)。
 
 ### Anti-patterns
 

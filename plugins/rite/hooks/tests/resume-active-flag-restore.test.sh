@@ -453,6 +453,61 @@ assert_contains "TC-AC-4-RESUME-FALLBACK-CROSS-SESSION-REFUSED: WORKFLOW_INCIDEN
   "cross_session_takeover_refused" "$stderr_content"
 rm -f "$stderr_file"
 
+# --- TC-DEPLOY-REGRESSION: helper-missing fail-fast (verified-review cycle 41 CG-2) ---
+# resume-active-flag-restore.sh は state-read.sh / flow-state-update.sh / state-path-resolve.sh /
+# _resolve-session-id.sh / _resolve-session-id-from-file.sh の 5 helper を upfront でチェックする。
+# state-read.test.sh の TC-DEPLOY-REGRESSION と対称に、本 helper でも各 helper の chmod -x で
+# fail-fast 経路が発火することを E2E pin する (Issue #687 同型 deploy regression の structural defense)。
+#
+# 本 helper は PLUGIN_ROOT 配下の hooks/ を参照する設計のため、test では plugin tree 全体を
+# sandbox にコピーし、対象 helper を chmod -x してから実行する。
+echo "TC-DEPLOY-REGRESSION: resume-active-flag-restore.sh helper-missing fail-fast (cycle 41 CG-2)"
+SANDBOX_PLUGIN=$(mktemp -d) || { echo "ERROR: TC-DEPLOY-REGRESSION mktemp -d failed"; exit 1; }
+cleanup_dirs+=("$SANDBOX_PLUGIN")
+mkdir -p "$SANDBOX_PLUGIN/hooks"
+cp "$PLUGIN_ROOT/hooks"/*.sh "$SANDBOX_PLUGIN/hooks/"
+chmod +x "$SANDBOX_PLUGIN/hooks"/*.sh
+
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_config_v2 "$SBX"
+write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
+
+# 5 helpers checked by resume-active-flag-restore.sh's upfront for-loop.
+# 並び順は helper の loop 定義と完全一致 (drift 検出を兼ねる)。
+deploy_regression_helpers=(
+  state-read.sh
+  flow-state-update.sh
+  state-path-resolve.sh
+  _resolve-session-id.sh
+  _resolve-session-id-from-file.sh
+)
+
+for _h in "${deploy_regression_helpers[@]}"; do
+  chmod +x "$SANDBOX_PLUGIN/hooks"/*.sh
+  if [ ! -f "$SANDBOX_PLUGIN/hooks/$_h" ]; then
+    echo "  ❌ TC-DEPLOY-REGRESSION.$_h: helper not found in sandbox copy"
+    FAIL=$((FAIL+1))
+    FAILED_NAMES+=("TC-DEPLOY-REGRESSION.$_h: missing in sandbox")
+    continue
+  fi
+  chmod -x "$SANDBOX_PLUGIN/hooks/$_h"
+
+  dr_output=$(cd "$SBX" && bash "$SANDBOX_PLUGIN/hooks/resume-active-flag-restore.sh" "$SANDBOX_PLUGIN" 2>&1; echo "_EXIT_$?")
+  dr_exit_marker=$(printf '%s' "$dr_output" | grep -oE '_EXIT_[0-9]+$' | tail -1)
+  if [ "$dr_exit_marker" = "_EXIT_1" ] && printf '%s' "$dr_output" | grep -qF "$_h"; then
+    echo "  ✅ TC-DEPLOY-REGRESSION.$_h: chmod -x → exit 1 + ERROR contains helper name"
+    PASS=$((PASS+1))
+  else
+    echo "  ❌ TC-DEPLOY-REGRESSION.$_h: did not fail-fast as expected"
+    echo "     exit_marker: $dr_exit_marker"
+    echo "     output:"
+    printf '%s\n' "$dr_output" | sed 's/^/       /' | head -10
+    FAIL=$((FAIL+1))
+    FAILED_NAMES+=("TC-DEPLOY-REGRESSION.$_h")
+  fi
+done
+chmod +x "$SANDBOX_PLUGIN/hooks"/*.sh  # Restore for cleanup safety
+
 echo
 echo "─── resume-active-flag-restore.test.sh summary ──────────────────────────"
 echo "PASS: $PASS"

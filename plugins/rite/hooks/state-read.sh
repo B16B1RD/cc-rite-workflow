@@ -38,10 +38,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
-# 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は `_resolve-session-id.sh`
-# (L88) / `_resolve-schema-version.sh` (L97) / `_resolve-cross-session-guard.sh` (L119) /
-# `_emit-cross-session-incident.sh` (L130/137/145) も `bash <missing>` invocation 経路で間接的に依存
-# する。それらが install 不整合 / deploy regression で missing の場合、bash は exit 127 を返すが
+# 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper にも
+# `bash <missing>` invocation 経路で依存する (direct + transitive):
+#   - `_resolve-session-id-from-file.sh` (SESSION_ID resolution block で direct invoke)
+#   - `_resolve-session-id.sh` (上記 helper 内 + `_resolve-cross-session-guard.sh` 内で transitive)
+#   - `_resolve-schema-version.sh` (SCHEMA_VERSION resolution block で direct invoke)
+#   - `_resolve-cross-session-guard.sh` (per-session resolver の case classification block で direct invoke)
+#   - `_emit-cross-session-incident.sh` (case `foreign:*` / `corrupt:*` / `invalid_uuid:*` arm で direct invoke)
+# verified-review cycle 41 C-01: 旧コメントは line 番号 (L88 / L97 / L119 / L130/137/145) で参照していたが、
+# 各 helper の実行数 (35 / 56 / 149 / 138 行) と整合せず drift していた。cycle 38 F-04 で確立した
+# semantic anchor 原則を本コメント自身にも適用し、関数 / case 文の semantic 名で参照する形式に統一した。
+# それらが install 不整合 / deploy regression で missing の場合、bash は exit 127 を返すが
 # `set -euo pipefail` の中でも `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through
 # 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
 # 構造的に塞ぐため、依存する全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。

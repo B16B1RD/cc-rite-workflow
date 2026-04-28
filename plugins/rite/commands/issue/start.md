@@ -490,6 +490,10 @@ fi
 # Bash spec: `if ! cmd; then rc=$?` always yields rc=0 because `!` negates the
 # pipeline and `then` branch sees the negation result (always 0). Use `if cmd; then :; else rc=$?; fi`
 # to capture the actual exit code. Empirical: `bash -c 'if ! curr=$(exit 42); then rc=$?; echo $rc; fi'` → 0.
+# verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** — `if ! var=$(cmd); then rc=$?` 形式のみ NG。
+# capture を伴わない `if ! cmd; then ...` (例: `if ! mapfile -t arr < <(...)` / `if ! gh pr view ...`) は
+# `!` の挙動が異なるため本ガードの適用範囲外。canonical 説明は `_emit-cross-session-incident.sh` の
+# cycle 38 F-16 LOW コメント (capture 文脈限定の正式記述) を参照。
 # This invariant ("helper 起動失敗 と pre-condition 失敗を区別可能") was the core reason
 # state-read.sh introduction in Issue #687 AC-4. Symmetric with work-memory-update.sh の
 # `update_local_work_memory` 関数内 `_phase` / `pr_num` / `loop_cnt` capture blocks
@@ -1703,6 +1707,8 @@ WM_SOURCE="ready" \
 
 ```bash
 # verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+# verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** (`if ! var=$(cmd)` 形式のみ NG)。capture-less
+# `if ! cmd; then ...` は別仕様で本ガード対象外。詳細: `_emit-cross-session-incident.sh` cycle 38 F-16 コメント参照。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
   :
 else
@@ -1949,6 +1955,8 @@ If `metrics.enabled: false` in rite-config.yml, Phase 5.5.2 must still write the
 
 ```bash
 # verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+# verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** (`if ! var=$(cmd)` 形式のみ NG)。capture-less
+# `if ! cmd; then ...` は別仕様で本ガード対象外。詳細: `_emit-cross-session-incident.sh` cycle 38 F-16 コメント参照。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
   :
 else
@@ -2086,6 +2094,8 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 
 ```bash
 # verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+# verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** (`if ! var=$(cmd)` 形式のみ NG)。capture-less
+# `if ! cmd; then ...` は別仕様で本ガード対象外。詳細: `_emit-cross-session-incident.sh` cycle 38 F-16 コメント参照。
 if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
   :
 else
