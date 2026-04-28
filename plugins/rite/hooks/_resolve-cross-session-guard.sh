@@ -81,11 +81,15 @@ trap '_rite_cross_session_cleanup; exit 130' INT
 trap '_rite_cross_session_cleanup; exit 143' TERM
 trap '_rite_cross_session_cleanup; exit 129' HUP
 # verified-review (PR #688 cycle 39 H-02) MEDIUM (silent-failure-hunter): mktemp 失敗時に WARNING emit。
-# state-read.sh L247-252 の cycle 38 F-06 fix と writer/reader 対称化。
+# state-read.sh の cycle 38 F-06 fix で導入された mktemp 失敗 WARNING 3 行 emit ブロック
+# (jq stderr 退避用 _jq_err 直前の `if ! _jq_err=$(mktemp ...)` ブロック) と writer/reader 対称化。
 # 旧実装は `2>/dev/null || _jq_err=""` で mktemp 失敗 (/tmp full / permission denied / SELinux deny) を
 # silent fallback し、後続の `2>"${_jq_err:-/dev/null}"` で jq stderr が `/dev/null` に redirect される
 # 二重 silent failure になっていた (corrupt:* arm の line/column 詳細が失われる)。
 # state-read.sh と非対称な silent fallback を解消する (writer/reader 対称化は本 helper の存在意義の核心)。
+# verified-review cycle 40: cycle 39 で「state-read.sh L247-252」と書いた行番号参照を
+# semantic anchor (mktemp 失敗 WARNING 3 行 emit ブロック) に置換 (cycle 38 F-04 DRIFT-CHECK ANCHOR
+# 原則と整合)。
 if ! _jq_err=$(mktemp /tmp/rite-cross-session-jq-err-XXXXXX 2>/dev/null); then
   echo "WARNING: _resolve-cross-session-guard.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
   echo "  影響: jq 失敗時の parse error 詳細が表示されません (caller は corrupt:N rc を観測できますが原因 line/column が失われます)" >&2

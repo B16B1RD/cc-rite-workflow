@@ -170,11 +170,17 @@ trap '_rite_resume_active_cleanup; exit 143' TERM
 trap '_rite_resume_active_cleanup; exit 129' HUP
 
 # verified-review (PR #688 cycle 39) MEDIUM (code-reviewer L-02): mktemp に `2>/dev/null` を追加。
-# state-read.sh L247 / _resolve-cross-session-guard.sh L83 と同形式に統一する (mktemp 失敗時に
-# `mktemp: cannot create temp file: ...` が WARNING より先に stderr に出て二重表示される問題を解消)。
+# state-read.sh / _resolve-cross-session-guard.sh の mktemp 失敗 WARNING 3 行 emit ブロックと同形式に
+# 統一する (mktemp 失敗時に `mktemp: cannot create temp file: ...` が WARNING より先に stderr に出て
+# 二重表示される問題を解消)。
+# verified-review cycle 40: cycle 39 で「state-read.sh L247 / _resolve-cross-session-guard.sh L83」と
+# 書いた行番号参照を semantic anchor (mktemp 失敗 WARNING 3 行 emit ブロック) に置換 + cycle 40
+# silent-failure M-01 で WARNING 行構成を 3 行 + script 名 prefix に統一 (state-read.sh /
+# _resolve-cross-session-guard.sh と完全対称化)。
 _err=$(mktemp /tmp/rite-resume-flow-err-XXXXXX 2>/dev/null) || {
-  echo "WARNING: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied?)" >&2
+  echo "WARNING: resume-active-flag-restore.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
   echo "  影響: 次の error 発生時、flow-state-update.sh の具体的失敗原因 (mv 失敗 / UUID validation 失敗 / jq parse error 等) が表示されません" >&2
+  echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
   _err=""
 }
 
