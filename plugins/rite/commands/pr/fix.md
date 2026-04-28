@@ -2070,13 +2070,14 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
        5 列目以降の値は破棄されます。Confidence 列を使うにはヘッダー行に
        'confidence' / '信頼度' / 'conf' / 'score' / '確信度' のいずれかを含めてください。
        ```
-   - **severity 別名マッピング** (大文字小文字無視で完全一致を試行する。Title Case や lower case の値も正規化対象): CRITICAL/HIGH/MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する。**比較は必ず case-insensitive** で行うこと (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ):
+   - **severity 別名マッピング** (大文字小文字無視で完全一致を試行する。Title Case や lower case の値も正規化対象): CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する。**比較は必ず case-insensitive** で行うこと (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ):
 
      | 認識される別名 (case-insensitive 比較) | 正規化先 |
      |---------------------------------------|---------|
      | `Critical`, `BLOCKER`, `CRIT`, `🔴`, `重大`, `致命` | `CRITICAL` |
      | `Important`, `MAJOR`, `HIGH`, `🟠`, `重要`, `高` | `HIGH` |
      | `Minor`, `MEDIUM`, `🟡`, `中`, `Normal` | `MEDIUM` |
+     | `Low-Medium`, `LowMedium`, `low_medium`, `中低`, `軽中` | `LOW-MEDIUM` |
      | `Low`, `INFO`, `TRIVIAL`, `🔵`, `低`, `情報` | `LOW` |
 
      > **Note — 既知の外部ツール出力形式**: rite plugin 配下に `/verified-review` は存在しない (実体はユーザーレベルの `~/.claude/commands/verified-review.md` にある独立コマンドで、rite plugin が提供するものではない)。同コマンドが出力するレビュー結果テーブルは `重要度` 列に **Title Case の `Critical` / `Important`** を使うため、上記マッピング表ではこれらを HIGH / CRITICAL に正規化する経路を必須としている。`pr-review-toolkit:review-pr` も同様に Title Case を使う場合があり、同じ経路で吸収される。
@@ -2088,7 +2089,7 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
        警告: 認識不能な severity 値が {N} 件あります
        - 値: ['{val_1}', '{val_2}', ...]
        - すべて MEDIUM として扱いますが、適切な対応のため手動で再分類してください
-       - 認識可能な severity: CRITICAL / HIGH / MEDIUM / LOW (または上記の別名)
+       - 認識可能な severity: CRITICAL / HIGH / MEDIUM / LOW-MEDIUM / LOW (または上記の別名)
        ```
    - **全テーブル行がパース不能** または **抽出結果 0 件** の場合、警告を表示してユーザーに確認を求める (silent failure 回避):
      ```

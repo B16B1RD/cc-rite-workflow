@@ -2812,7 +2812,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
   - `id`: **`F-NN` 形式、最小 2 桁ゼロパディング可変長連番** (正規表現 `^F-[0-9]{2,}$`)。99 件以下は `F-01`〜`F-99`、100 件以上は `F-100` 等に成長する。
   - `reviewer`: レビュアーエージェント名 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。実在する agent 名は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く) と一致させる。
   - `category`: 指摘カテゴリ (例: `code_quality`, `error_handling`, `security`, `performance`)。アンダースコア区切りで統一する (schema.md の `category` フィールド定義を SoT として参照)
-  - `severity`: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` のいずれか。reviewer が `Critical`/`Important`/`Minor`/`Nit` 等の別表記で返した場合は、write 前に本 enum へ正規化する (別名マッピングは review-result-schema.md の `severity` フィールド定義を参照)。正規化漏れの JSON は read 側 (`fix.md` Phase 1.2.0) で MEDIUM fallback と WARNING emit が発生する。
+  - `severity`: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW-MEDIUM` / `LOW` のいずれか (LOW-MEDIUM は `severity-levels.md` で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。reviewer が `Critical`/`Important`/`Minor`/`Low-Medium`/`Nit` 等の別表記で返した場合は、write 前に本 enum へ正規化する (別名マッピングは review-result-schema.md の `severity` フィールド定義を参照)。正規化漏れの JSON は read 側 (`fix.md` Phase 1.2.0) で MEDIUM fallback と WARNING emit が発生する。
   - `file`: 対象ファイルの相対パス
   - `line`: 正の整数 (>= 1) または `null` (行非依存指摘の sentinel)。schema.md の `line` フィールド定義が SoT。新規出力では `null` を使用し、`0` は生成しないこと (`0` は legacy sentinel として read 側で `null` と同等に扱われるが、write 側で新たに生成すべきではない)。
   - `description`: 指摘内容
