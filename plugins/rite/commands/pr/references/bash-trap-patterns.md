@@ -299,18 +299,21 @@ esac
 
 `plugins/rite/commands/wiki/lint.md` 内で本 pattern が確立されている。Phase 番号 + case label の semantic anchor 形式で参照する (verified-review cycle 41 I-01: 旧 line range 参照は file 編集で容易に drift するため撤廃済み):
 
-複数の case 文を持つ Phase は bullet 入れ子で全 case を列挙する (drift 検出力を維持するため anchor pattern を 1 行に複数列挙しない doctrine、verified-review F-04 で確立):
+複数の case 文を持つ Phase は bullet 入れ子で全 case を列挙する (drift 検出力を維持するため anchor pattern を 1 行に複数列挙しない doctrine、verified-review F-04 で確立)。**Scope**: 本列挙は **top-level の case 文** (placeholder substitute validation gate / strategy dispatch / rc dispatch) を対象とする。while loop 等の inner case (例: `$pollution_check_line` 等) は scope 外とし、各 Phase の主要 dispatch 構造のみを SoT として保持する (verified-review F11-03 で明文化):
 
 - Phase 6.0 (欠落概念検出 — log.md 抽出 path)
   - `case "$branch_strategy" in`
 - Phase 6.2 (対応ページの存在確認と 3 分岐)
+  - `case "$branch_strategy" in` (placeholder substitute validation gate、`$wiki_branch` / `$pages_list` と同型の literal `{...}` 残留検出 gate)
   - `case "$wiki_branch" in` (placeholder substitute validation gate)
   - `case "$pages_list" in` (placeholder substitute validation gate)
-  - `case "$branch_strategy" in` (実際の page 読取 dispatch)
+  - `case "$branch_strategy" in` (実際の page 読取 dispatch、上記 placeholder gate と sibling)
 - Phase 8.2 (書き込み先パスの決定)
   - `case "$branch_strategy" in`
 - Phase 8.3 (書き込み手順)
+  - `case "$log_entry" in` (placeholder substitute validation gate、`{log_entry}` literal 残留検出)
   - `case "$branch_strategy" in` (same_branch / separate_branch の 2 path、PR #564 cycle 11 F-05 で 4-space に統一)
+  - `case "$commit_rc" in` (commit / push の rc dispatch)
 <!-- PR #688 followup: cycle 41 review F-08 HIGH / F-09 MEDIUM 訂正 — 旧記述では
      "Phase 7 (壊れた相互参照検出) — page 読取の case $mode in" が事実乖離していた
      (wiki/lint.md Phase 7 に case 文は存在しない)。develop 版の Phase 6.2 / 8.2 / 8.3 の

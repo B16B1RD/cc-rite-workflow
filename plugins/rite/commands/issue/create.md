@@ -506,7 +506,7 @@ When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmati
 >
 > **⚠️ Drift guard**: This same block is repeated verbatim at the start of Phase 0 above. **Both occurrences MUST stay identical** — if you update one, update both. A grep-based check is the only drift detector.
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
 **Pre-write** (before invoking interview sub-skill): Update `.rite-flow-state` so stop-guard can prevent interruptions:
 

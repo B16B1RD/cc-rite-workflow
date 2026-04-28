@@ -27,7 +27,7 @@ Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
 This command can be invoked in two ways: standalone execution or from the `/rite:issue:start` end-to-end flow (via Phase 5.3).
 
@@ -491,7 +491,7 @@ If "Create separate Issues and continue with PR creation" is selected, create an
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
 | `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
 | `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
-| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
 
 ```bash
 tmpfile=$(mktemp)

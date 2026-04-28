@@ -298,7 +298,7 @@ Display only skills in a specific category:
 
 **Dynamic category retrieval:**
 
-Categories are dynamically retrieved from the directory structure of `{plugin_root}/skills/` (resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script)):
+Categories are dynamically retrieved from the directory structure of `{plugin_root}/skills/` (resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)):
 - `skills/{category}/SKILL.md` -> category name is `{category}`
 - `skills/reviewers/*.md` -> included in category `review`
 

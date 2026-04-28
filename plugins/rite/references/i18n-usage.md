@@ -24,7 +24,7 @@ rite workflow supports multiple languages through an i18n key system. User-facin
 └── en.yml (DEPRECATED - kept for backward compatibility)
 ```
 
-> **Note**: Resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script).
+> **Note**: Resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script-full-version).
 
 Command files reference messages using the `{i18n:key_name}` pattern and load only the relevant i18n file(s) needed.
 

@@ -48,26 +48,25 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 
 # Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper を `bash <missing>`
-# invocation 経路で direct + transitive に依存する。下記 for loop が SoT:
-#   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke。`||` fallback で silent suppression する独自経路を持つため特に重要)
+# invocation 経路で direct + transitive に依存する。下記 `_validate-helpers.sh` 呼び出しの引数 list が SoT
+# (verified-review F11-05 で entry 数を完全同期):
+#   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke)
 #   - `_resolve-session-id.sh` (`_resolve_session_id` 関数内の direct invoke)
 #   - `_resolve-session-id-from-file.sh` (transitive 経由で `_resolve_session_state_path` 解決経路)
 #   - `_resolve-schema-version.sh` (`_resolve_schema_version` 関数の helper 委譲)
 #   - `_resolve-cross-session-guard.sh` (`_resolve_session_state_path` 内 cross-session classification)
-#   - `_emit-cross-session-incident.sh` (`_resolve_session_state_path` の foreign:* / corrupt:* / invalid_uuid:* 各 arm)
+#   - `_emit-cross-session-incident.sh` (foreign:* / corrupt:* / invalid_uuid:* 各 arm)
+#   - `_mktemp-stderr-guard.sh` (jq stderr 退避 / mkdir stderr 退避等で direct invoke)
+# 本コメントは bullet list の数値カウント記述を持たない (cycle 39 で確立した数値削除原則を本ファイル自身にも
+# 適用、F11-05 で「6 entry」claim 削除)。helper を追加する際は本 list と下記 _validate-helpers.sh 引数の
+# 両方を同時更新すること (writer/reader 対称化 doctrine)。
 # それらが install 不整合 / deploy regression で missing の場合、`set -euo pipefail` の中でも
 # `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through 経路が散在する。Issue #687
 # (writer/reader 片肺更新型 silent regression) と同型の deploy regression を構造的に塞ぐため、依存する
-# 全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。bullet list と loop は完全一致で
-# 6 entry を列挙する。旧コメントは「5 helper」と書いていたが実際の loop は 6 helper を検査しており数値ドリフトを
-# 起こしていたため、verified-review cycle 39 で数値削除に統一)。state-read.sh の同型ブロックと writer/reader
-# 対称化。コメント内の helper 参照は semantic anchor (関数名 / case 構造名) で記述し、行番号を入れない
-# (Wiki 経験則 .rite/wiki/index.md の DRIFT-CHECK ANCHOR 原則 + 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
-# verified-review cycle 44 F-05 (code-quality MEDIUM): bullet list と loop の entry 数を一致させ
-# (旧版は 5 entry の bullet list が state-path-resolve.sh を本文で別途言及する非対称構造)。
-# verified-review F-06 (MEDIUM): helper existence check の 7-entry list 重複を _validate-helpers.sh
-# に集約 (state-read.sh と writer/reader 対称化)。将来 helper を 1 つ追加する際に本ファイルと
-# state-read.sh の 2 箇所更新が不要になり、Issue #687 root cause と同型の片肺更新 drift を構造的に防止する。
+# 全 helper を upfront で fail-fast 検査する。state-read.sh の同型ブロックと writer/reader 対称化。
+# verified-review F-06 (MEDIUM): helper existence check の重複 list を _validate-helpers.sh に集約。
+# 将来 helper を 1 つ追加する際に本ファイルと state-read.sh の 2 箇所更新が不要になり、Issue #687
+# root cause と同型の片肺更新 drift を構造的に防止する。
 if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
   echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2

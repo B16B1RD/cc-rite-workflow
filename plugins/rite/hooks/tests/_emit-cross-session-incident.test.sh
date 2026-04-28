@@ -220,6 +220,10 @@ assert_eq "TC-8.1: exit code is 0" "0" "$rc"
 assert_match "TC-8.2: emit type is legacy_state_corrupt (semantically equivalent to corrupt)" "type=legacy_state_corrupt" "$out"
 assert_match "TC-8.3: details has reason=invalid_uuid_format (distinguishes from corrupt:*)" "reason=invalid_uuid_format" "$out"
 assert_match "TC-8.4: root_cause_hint = legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema" "hint=legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema" "$out"
+# F11-14 (LOW): TC-7.4 と対称的に invalid_uuid arm でも basename redaction (F-13) を pin する。
+# `_path_basename` 関数が corrupt と invalid_uuid の両方で使われるため、片方だけ pin だと
+# 将来 invalid_uuid arm が `_redact_sid` (8-char redact 形式) に revert された場合 silently pass する盲点があった。
+assert_match "TC-8.5: details has basename-redacted path (F-13 symmetry with TC-7.4)" "path=.../legacy" "$out"
 rm -rf "$sandbox"
 
 echo ""
@@ -227,8 +231,9 @@ echo "─── _emit-cross-session-incident.test.sh summary ──────�
 echo "PASS: $PASS"
 echo "FAIL: $FAIL"
 # cycle 43 F-01 fix: silent abort regression を再発検出する gate
-# 計算根拠: TC-1 (2) + TC-2 (2) + TC-3 (2) + TC-4 (2) + TC-5 (3) + TC-6 (6) + TC-7 (6) + TC-8 (4) = 27
-expected_total=27
+# 計算根拠 (F11-16 で更新): TC-1 (2) + TC-2 (2) + TC-3 (2) + TC-4 (2) + TC-5 (6) + TC-6 (7) + TC-7 (6) + TC-8 (5) = 32
+# (cycle 9 F-04 で TC-5.4-5.6 追加で 6 件、cycle 9 F-07 で TC-6.7 追加で 7 件、F11-14 で TC-8.5 追加で 5 件)
+expected_total=32
 total=$((PASS + FAIL))
 if [ "$total" -lt "$expected_total" ]; then
   echo "ERROR: only $total/$expected_total assertions ran (silent abort regression detected)"

@@ -346,7 +346,7 @@ A local work memory file is corrupt if any of:
 
 ### Parsing
 
-Use `{plugin_root}/hooks/work-memory-parse.py` for parsing. Do NOT use shell `grep`/`sed` for YAML interpretation. Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script).
+Use `{plugin_root}/hooks/work-memory-parse.py` for parsing. Do NOT use shell `grep`/`sed` for YAML interpretation. Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version).
 
 ```bash
 python3 {plugin_root}/hooks/work-memory-parse.py .rite-work-memory/issue-721.md
@@ -395,7 +395,7 @@ WM_SOURCE="implement" \
   bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-The wrapper auto-resolves the plugin root via `BASH_SOURCE`, then sources `work-memory-update.sh` and calls `update_local_work_memory`. For marketplace installs, resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script), then use `bash {plugin_root}/hooks/local-wm-update.sh` instead. The helper handles lock acquisition, YAML frontmatter parsing, atomic write, and lock release internally. See `hooks/work-memory-update.sh` header comments for the full list of environment variables.
+The wrapper auto-resolves the plugin root via `BASH_SOURCE`, then sources `work-memory-update.sh` and calls `update_local_work_memory`. For marketplace installs, resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version), then use `bash {plugin_root}/hooks/local-wm-update.sh` instead. The helper handles lock acquisition, YAML frontmatter parsing, atomic write, and lock release internally. See `hooks/work-memory-update.sh` header comments for the full list of environment variables.
 
 **Low-level lock API** (for non-standard use cases only):
 

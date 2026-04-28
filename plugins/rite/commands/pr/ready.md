@@ -28,7 +28,7 @@ When this command is executed, run the following phases in order.
 
 | Placeholder | Description | How to Obtain |
 |---------------|------|----------|
-| `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) |
+| `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
 

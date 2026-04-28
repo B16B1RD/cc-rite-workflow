@@ -69,7 +69,7 @@ Stop here.
 - `{issue_number}`: Issue number (from argument or branch name extraction in Phase 1.1)
 - `{owner}`, `{repo}`: Repository information (obtain via `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`)
 - `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version))
-- `{parent_issue_display}`: `state-read.sh --field parent_issue_number` 経由で取得。**capture form は Phase 2.1 Display Interrupted State の直前の独立 bash code block 参照** (verified-review F-02: placeholder 表 cell には bash literal を埋め込まず、actual capture site を semantic anchor で示す方針に統一)。Display `#{N}` if non-zero, `なし` if zero or absent。Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot
+- `{parent_issue_display}`: `state-read.sh --field parent_issue_number` 経由で取得。**capture form は Phase 2.1 Display Interrupted State の Step 1 (Display 直前の独立 bash code block) を参照** (verified-review F-02 で placeholder 表 cell には bash literal を埋め込まず、actual capture site を semantic anchor で示す方針に統一。F11-07 で「直前」→「Step 1」へ用語を厳密化、Step 1 末尾の `[CONTEXT] PARENT_ISSUE_DISPLAY=...` echo を Step 2 で literal substitute する cross-boundary state transfer pattern を採用)。Display `#{N}` if non-zero, `なし` if zero or absent。Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot
 
 #### 1.2.1 Local Work Memory Check
 
@@ -279,7 +279,16 @@ if [ "$parent_issue_number_raw" -eq 0 ] 2>/dev/null; then
 else
   parent_issue_display="#${parent_issue_number_raw}"
 fi
+
+# verified-review F11-01 (CRITICAL): Bash tool 境界を越えた cross-boundary state transfer
+# (start.md Phase 5.7 / implement.md Phase 5.1.2 で確立された canonical pattern と統一)。
+# シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、Step 2 の
+# display block で {parent_issue_display} placeholder を Claude が literal substitute するための
+# observable signal として stdout に echo する (start.md:2238 の SoT 原則と整合)。
+echo "[CONTEXT] PARENT_ISSUE_DISPLAY=$parent_issue_display"
 ```
+
+**Step 2 注記**: Claude は本 bash block の stdout から `[CONTEXT] PARENT_ISSUE_DISPLAY=...` 行を読み取り、Step 2 の display block で `{parent_issue_display}` placeholder を当該値に literal substitute する。
 
 **Step 2: Display the detected information**:
 

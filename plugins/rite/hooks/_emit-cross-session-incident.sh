@@ -67,6 +67,27 @@ case "$layer" in
     ;;
 esac
 
+# verified-review F11-09 (MEDIUM): classification ごとの正しい argument count validation。
+# foreign arm では extra_arg を参照しないため、5 番目の引数が渡されたら caller のタイプミスとして
+# 検出する (corrupt / invalid_uuid arm と対称的に「classification ごとに正しい argument count」を
+# validate)。旧実装は upper-bound のみで「foreign に 5 番目の引数を渡すと silent drop」していた。
+case "$classification" in
+  foreign)
+    if [ -n "$extra_arg" ]; then
+      echo "ERROR: _emit-cross-session-incident.sh: foreign arm does not accept 5th arg (extra_arg)." >&2
+      echo "  received extra_arg: '$extra_arg'" >&2
+      echo "  対処: foreign arm では classification / layer / current_sid / legacy_sid (4 args) のみ渡してください" >&2
+      exit 1
+    fi
+    ;;
+  corrupt|invalid_uuid)
+    : # extra_arg (jq_rc / invalid_uuid_rc) を期待する arm
+    ;;
+  *)
+    : # 不明 classification は下流の case 文で reject される
+    ;;
+esac
+
 # F-07 (MEDIUM) 対応: session_id を redact してから details に埋め込む。
 # 旧実装は full UUID を平文で埋め込み、`workflow-incident-emit.sh` 経由で
 # `[CONTEXT] WORKFLOW_INCIDENT=1; details=...,current_sid=11111111-...,legacy_sid=22222222-...` として
@@ -104,11 +125,19 @@ legacy_sid_redacted=$(_redact_sid "$legacy_sid_or_path")
 # 空文字は as-is (空のまま emit)。
 _path_basename() {
   local v="$1"
-  if [ -n "$v" ]; then
-    local b
-    b=$(basename "$v")
-    printf '.../%s' "$b"
-  fi
+  # verified-review F11-12 (LOW): edge case の semantic 整合性。`/` / `.` のような root-level path を
+  # 渡されたとき basename は `/` / `.` を返し、前置 `.../` を付けると `...//` / `.../.` になり意味的に
+  # 不自然。これらは「parent dir なし」の sentinel として as-is で返す (corrupt:* / invalid_uuid:* arm の
+  # caller は通常 `<repo>/.rite-flow-state` 形式を渡すため到達しないが、helper API 単体としての
+  # defense-in-depth)。基本方針は `_redact_sid` の「8 文字未満は as-is」と同型 (degenerate case 降格)。
+  case "$v" in
+    ""|/|.) printf '%s' "$v" ;;
+    *)
+      local b
+      b=$(basename -- "$v")  # F11 security 推奨: `--` で end-of-options sentinel (例: `-rfoo` を path とした場合の basename option 誤認防止)
+      printf '.../%s' "$b"
+      ;;
+  esac
 }
 legacy_path_basename=$(_path_basename "$legacy_sid_or_path")
 

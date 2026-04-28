@@ -740,8 +740,9 @@ SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 
-# 6 helpers checked by state-read.sh's upfront for-loop (semantic anchor: state-path-resolve guard +
-# 5 private helpers). 並び順は state-read.sh の loop と完全一致させる (drift 検出を兼ねる)。
+# helpers checked by state-read.sh's `_validate-helpers.sh` invocation (cycle 10 F-06 で for-loop から
+# helper 経由に移行)。F11-15 で 7 entry に同期 (旧 6 entry + `_mktemp-stderr-guard.sh` 追加)。
+# 並び順は state-read.sh の `bash _validate-helpers.sh ...` 引数 list と完全一致させる (drift 検出を兼ねる)。
 deploy_regression_helpers=(
   state-path-resolve.sh
   _resolve-session-id.sh
@@ -749,6 +750,7 @@ deploy_regression_helpers=(
   _resolve-schema-version.sh
   _resolve-cross-session-guard.sh
   _emit-cross-session-incident.sh
+  _mktemp-stderr-guard.sh
 )
 
 for _h in "${deploy_regression_helpers[@]}"; do

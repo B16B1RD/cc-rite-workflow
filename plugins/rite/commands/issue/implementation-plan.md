@@ -13,7 +13,7 @@ This module handles Issue content analysis and implementation plan generation.
 
 > **Relationship with `create.md` Phase 0.7**: If the Issue was created via `/rite:issue:create`, a specification document (high-level design: What/Why/Where) may exist in `docs/designs/`. This module generates the **detailed implementation plan** (How/Step-by-step) that builds on that specification. Check for a linked design doc in the Issue body before starting analysis — it provides pre-validated requirements and architectural decisions that reduce redundant exploration.
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
 ### 3.0.W Wiki Query Injection (Conditional)
 

@@ -39,28 +39,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper にも
-# `bash <missing>` invocation 経路で依存する (direct + transitive)。下記 for loop が SoT:
+# `bash <missing>` invocation 経路で依存する (direct + transitive)。下記 `_validate-helpers.sh` 呼び出し
+# の引数 list が SoT (verified-review F11-05 で entry 数を完全同期):
 #   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke。`||` fallback で silent suppression する独自経路を持つため特に重要)
 #   - `_resolve-session-id-from-file.sh` (SESSION_ID resolution block で direct invoke)
 #   - `_resolve-session-id.sh` (上記 helper 内 + `_resolve-cross-session-guard.sh` 内で transitive)
 #   - `_resolve-schema-version.sh` (SCHEMA_VERSION resolution block で direct invoke)
 #   - `_resolve-cross-session-guard.sh` (per-session resolver の case classification block で direct invoke)
 #   - `_emit-cross-session-incident.sh` (case `foreign:*` / `corrupt:*` / `invalid_uuid:*` arm で direct invoke)
-# verified-review cycle 41 C-01: 旧コメントは line 番号 (L88 / L97 / L119 / L130/137/145) で参照していたが、
-# 各 helper の実行数 (35 / 56 / 149 / 138 行) と整合せず drift していた。cycle 38 F-04 で確立した
-# semantic anchor 原則を本コメント自身にも適用し、関数 / case 文の semantic 名で参照する形式に統一した。
+#   - `_mktemp-stderr-guard.sh` (jq stderr 退避 / mkdir stderr 退避 / mv stderr 退避等で direct invoke)
+# 本コメントは bullet list の数値カウント記述を持たない (cycle 39 で確立した数値削除原則を本ファイル自身にも
+# 適用、F11-05 で「6 entry」claim 削除)。helper を追加する際は本 list と下記 _validate-helpers.sh 引数の
+# 両方を同時更新すること (writer/reader 対称化 doctrine)。
 # それらが install 不整合 / deploy regression で missing の場合、bash は exit 127 を返すが
 # `set -euo pipefail` の中でも `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through
 # 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
-# 構造的に塞ぐため、依存する全 helper を upfront で fail-fast 検査する (具体的なリストは下記 for loop が SoT。
-# 上記 bullet list は loop と完全一致し 6 entry を列挙する。旧コメントは「5 helper」と書いていたが
-# 実際の loop は 6 helper を検査しており、cycle 38 F-04 で確立した semantic anchor 原則と矛盾する
-# 数値ドリフトを起こしていたため、verified-review cycle 39 で数値削除に統一。
-# verified-review cycle 44 F-05 (code-quality MEDIUM): bullet list と loop の entry 数を一致させ
-# (旧版は 5 entry の bullet list が `state-path-resolve.sh を本文で別途言及` する非対称構造で、
-# 新規 maintainer が「list に列挙された 5 helper だけ checked される」と誤読する余地があった)。
-# verified-review F-06 (MEDIUM): helper existence check の 6/7-entry list 重複を _validate-helpers.sh
-# に集約。flow-state-update.sh の同型 list (helper existence check) と DRY 化。将来 helper を 1 つ追加
+# 構造的に塞ぐため、依存する全 helper を upfront で fail-fast 検査する。
+# verified-review F-06 (MEDIUM): helper existence check の重複 list を _validate-helpers.sh に集約。
+# flow-state-update.sh の同型 list (helper existence check) と DRY 化。将来 helper を 1 つ追加
 # する際に本ファイルと flow-state-update.sh の 2 箇所更新が不要になり、Issue #687 root cause と同型の
 # 片肺更新 drift を構造的に防止する。_validate-helpers.sh 自身は最小依存 (set -euo pipefail のみ) で
 # fail-fast 検査を行う。

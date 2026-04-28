@@ -110,7 +110,7 @@ This protocol applies to **every** sub-skill invocation in this document. Each �
 | `{default_branch}` | `gh repo view --json defaultBranchRef` (Phase 2.3.2.3 only) |
 | `{project_number}` | `github.projects.project_number` in `rite-config.yml` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
-| `{parent_issue_number}` | Phase 1.6 (child-issue-selection) or Phase 2.4 Step 3 (parent lookup via 2.4.7) result; persisted in flow-state via `--parent-issue` option. Read at the actual call sites — see Phase 5.1.2 / Phase 5.7 / Workflow Termination routing for the canonical fail-fast capture pattern (verified-review F-03: table cell does not embed bash literal; semantic anchor reference only to avoid asymmetric fix transcription with `plan_deviation_count` separation in Phase 5.5.2 cycle 43 F-12). Issue #687 AC-4 — per-session state via `state-read.sh`, not legacy `.rite-flow-state` snapshot |
+| `{parent_issue_number}` | Phase 1.6 (child-issue-selection) or Phase 2.4 Step 3 (parent lookup via 2.4.7) result; persisted in flow-state via `--parent-issue` option. Read at actual call sites — see [Phase 5.1.2 (implement.md)](./implement.md) / Phase 5.7 (this file) / Workflow Termination (this file) for the canonical fail-fast capture pattern (verified-review F-03 / F11-08). Issue #687 AC-4 — per-session state via `state-read.sh`, not legacy `.rite-flow-state` snapshot |
 
 ---
 
