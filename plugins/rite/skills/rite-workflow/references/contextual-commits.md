@@ -21,7 +21,7 @@ commit:
 {action-type}({scope}): {description}
 ```
 
-- **action-type**: 英語固定（以下6種のいずれか）
+- **action-type**: 英語固定（以下7種のいずれか）
 - **scope**: 小文字英数字とハイフン。プロジェクト内で一貫した語彙を使う
 - **description**: `rite-config.yml` の `language` 設定に従う（`ja`: 日本語、`en`: 英語、`auto`: ユーザー入力言語に合わせる）
 
@@ -35,6 +35,7 @@ commit:
 | `rejected(scope)` | 却下した代替案と理由 | 代替案を検討して却下した場合。**必ず理由を含める** |
 | `constraint(scope)` | 実装を制約した条件 | 非自明な制限が実装に影響した場合 |
 | `learned(scope)` | 実装中に発見した知見 | API の癖、ドキュメントにない挙動、パフォーマンス特性など |
+| `comment-update(scope)` | コードコメント単独の修正 (実装変更を伴わない) | ジャーナルコメント削除、Comment Rot 修正、WHY > WHAT への書き換え等のコメント保守作業を git log で独立追跡したい場合 (#703 で新規追加) |
 
 ## Examples
 
@@ -104,8 +105,17 @@ fix(typo): correct variable name in auth handler
 | 対応しなかった指摘とその理由 | `rejected(scope)` |
 | 対応中に発見した制約 | `constraint(scope)` |
 | 対応中の発見事項 | `learned(scope)` |
+| コードコメント単独の修正 (実装変更を伴わない) | `comment-update(scope)` |
 
 **`root-cause(scope)` action type (v0.4.0 #557)**: Quality Signal 2 (root-cause-missing fix detection) を満たすため、レビュー指摘の修正で **なぜその問題が起きたか** を明示する action line。`decision(scope)` が「何を選択したか」を表すのに対し、`root-cause(scope)` は「なぜ修正が必要になったか」を表す。commit body に `root-cause(scope): ...` 行が 1 行含まれていれば fix.md Phase 3.2.1 Root Cause Gate を通過する。`decision(scope)` のテキスト中で root cause を明示している場合も通過する (両方書く必要はない)。対症 fix (symptom-only、例: null check 追加) は `root-cause` を書けないため、このゲートで自然に検出される。
+
+**`comment-update(scope)` action type (#703)**: コードコメントの修正単独 (実装変更を伴わない) を表す action line。`scope` 例: `comment-update(state-read)`, `comment-update(reviewer-base)`。ジャーナルコメント削除、Comment Rot 修正、WHY > WHAT への書き換え等のコメント保守作業を `git log --grep="^comment-update("` で独立に追跡可能にする。修正経緯を commit message body に書ける場所として明示することで、コード内ジャーナルコメントへの圧力を逃がす役割も担う (Issue #699 で確立した「修正経緯はコード内ではなく commit message に書く」原則を受け止める commit 規約)。
+
+使用ガイドライン:
+
+- 実装変更を伴う場合は通常の `fix:` / `refactor:` を使う (本 action-type は実装変更を伴わないコメント単独修正専用)
+- 1 コミットに複数ファイルのコメント修正を含めて OK (関連スコープが共通する場合)
+- review-fix サイクルで「コメント修正のみ」を切り出してコミットする際にも利用可能 ( `fix(review):` と混在させず、`comment-update(scope):` 単独行で記述する)
 
 ## Scope Derivation Rules
 
