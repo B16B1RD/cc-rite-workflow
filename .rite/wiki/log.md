@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-04-29T04:20:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=66, broken_refs=0 |
 | 2026-04-29T04:15:00+00:00 | ingest:create | pages/anti-patterns/sot-reviewer-expression-drift.md | PR #706 cycle 1 review/fix を統合 (HIGH F-01: SoT 期待値「以上」と reviewer「未満で finding」の pos/neg 表現差で派生記述 silent drift) |
 | 2026-04-29T04:15:00+00:00 | ingest:create | pages/heuristics/self-applying-reviewer-rule-false-positive.md | PR #706 cycle 4 review を統合 (HIGH F-03: reviewer rule 自身を編集する PR の self-application false positive リスク + Whitelist cross-reference 義務 + scope 内/外分離 4-cycle 収束 pattern) |
 | 2026-04-29T04:15:00+00:00 | ingest:update | pages/heuristics/self-applying-reviewer-rule-false-positive.md | PR #706 cycle 2/3 fix を統合 (self-application cross-reference 義務 + scope 分離による cycle 抑制 canonical pattern) |
