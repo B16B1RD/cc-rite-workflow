@@ -167,8 +167,18 @@ _resolve_session_state_path() {
     # scan replaced hardcoded `state-read.sh:119` line reference with semantic anchor).
     # PR #688 followup: cycle 41 review F-01 HIGH — helper の正当な WARNING (mktemp 失敗 WARNING) が
     # `2>/dev/null` で silent suppress される問題を修正 (state-read.sh と writer/reader 対称化)。
+    #
+    # cycle 43 F-09 (MEDIUM) 対応: state-read.sh:142 と writer/reader 対称化。canonical pattern
+    # (`if ! ... then` + WARNING 3 行 + chmod 600) に統一。詳細は state-read.sh の cycle 43 F-09
+    # コメントを参照 (drift 防止のため両層で同一の修正を適用)。
     local _classify_err
-    _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null) || _classify_err=""
+    if ! _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null); then
+      echo "WARNING: flow-state-update.sh: _classify_err mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
+      echo "  影響: cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません" >&2
+      echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
+      _classify_err=""
+    fi
+    [ -n "$_classify_err" ] && chmod 600 "$_classify_err" 2>/dev/null || true
     classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$sid" 2>"${_classify_err:-/dev/null}") || true
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
       grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true
@@ -341,15 +351,13 @@ esac
 # fail-fast (atomic write 不能 = exit 1)、(2) 4-line signal-specific trap で
 # SIGINT/SIGTERM/SIGHUP の POSIX exit code 130/143/129 を返す pattern に統一する。
 # canonical trap pattern: references/bash-trap-patterns.md#signal-specific-trap-template
-if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
-  echo "ERROR: flow-state-update.sh: TMP_STATE の mktemp に失敗しました (atomic write 不能)" >&2
-  echo "  対処: $(dirname "$FLOW_STATE") の容量 / permission / read-only filesystem を確認してください" >&2
-  # _log_flow_diag は L332 で定義されるため inline で diag log を書き込む (本ブロックは L323 で定義前)
-  _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null || true
-  unset _diag_file
-  exit 1
-fi
+#
+# cycle 43 F-02 (HIGH): canonical pattern「パス先行宣言 → trap 先行設定 → mktemp」順序に修正。
+# 旧実装は mktemp 成功直後の trap 設定までの間に SIGTERM/SIGINT/SIGHUP 到達で
+# `${FLOW_STATE}.XXXXXX` 形式の orphan が残る race window を持っていた (Regression History H-1
+# = fix.md Phase 4.5.2 で同型 bug を修正済み)。先行宣言 + 関数定義 + trap 設置 → mktemp の順に
+# 入れ替える。L347 の hardcoded 行番号「L332 で定義」も _log_flow_diag 関数名 anchor に置換。
+TMP_STATE=""
 _rite_flow_state_atomic_cleanup() {
   rm -f "${TMP_STATE:-}"
 }
@@ -357,6 +365,18 @@ trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
 trap '_rite_flow_state_atomic_cleanup; exit 130' INT
 trap '_rite_flow_state_atomic_cleanup; exit 143' TERM
 trap '_rite_flow_state_atomic_cleanup; exit 129' HUP
+
+if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
+  echo "ERROR: flow-state-update.sh: TMP_STATE の mktemp に失敗しました (atomic write 不能)" >&2
+  echo "  対処: $(dirname "$FLOW_STATE") の容量 / permission / read-only filesystem を確認してください" >&2
+  # _log_flow_diag 関数は本ブロックの後段 (この case 文の直後) で定義されるため、ここでは inline で
+  # diag log を書き込む。関数名 anchor で定義位置を semantic に参照する (cycle 43 F-02 で hardcoded
+  # 行番号 L332 から関数名 anchor に置換)。
+  _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null || true
+  unset _diag_file
+  exit 1
+fi
 
 # F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
 # stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。

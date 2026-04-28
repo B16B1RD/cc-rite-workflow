@@ -139,7 +139,23 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     # silent suppress される問題を修正。stderr を tempfile に退避し、`^WARNING:` で始まる行のみ
     # caller chain に pass-through する。これにより /tmp full / SELinux deny 環境で helper 側の
     # 詳細が両層で失われる二重 silent failure を防ぐ (writer/reader 対称化 doctrine と整合)。
-    _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null) || _classify_err=""
+    #
+    # cycle 43 F-09 (MEDIUM) 対応: _classify_err mktemp 失敗時の silent fallback を canonical pattern
+    # (`if ! ... then` + WARNING 3 行 + chmod 600) に揃える。旧実装 `|| _classify_err=""` は
+    # mktemp 失敗 (/tmp full / permission denied / SELinux deny) を WARNING なしで silent fallback し、
+    # 後続の `2>"${_classify_err:-/dev/null}"` で helper の WARNING (cycle 39 H-02 で追加) が消える
+    # 入れ子の silent failure になっていた (cycle 41 F-01 のコメント「pass-through する」と乖離)。
+    # 他 5 helper (state-read.sh _jq_err / _resolve-cross-session-guard.sh / flow-state-update.sh ×2 /
+    # resume-active-flag-restore.sh / _resolve-session-id-from-file.sh _tr_err — cycle 43 F-08 で対称化済み)
+    # の canonical pattern と統一する。trap 統合は別 Issue で追跡 (実行時間が短いため race window 小)。
+    if ! _classify_err=$(mktemp /tmp/rite-classify-err-XXXXXX 2>/dev/null); then
+      echo "WARNING: state-read.sh: _classify_err mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
+      echo "  影響: cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません" >&2
+      echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
+      _classify_err=""
+    fi
+    # path-disclosure defense (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止)
+    [ -n "$_classify_err" ] && chmod 600 "$_classify_err" 2>/dev/null || true
     classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$SESSION_ID" 2>"${_classify_err:-/dev/null}") || true
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
       grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true

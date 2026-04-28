@@ -804,11 +804,18 @@ fi
 echo ""
 echo "=== verified-review cycle 36 F-05 + F-04 fix: writer-side metatest ==="
 flow_state_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/flow-state-update.sh"
-if grep -qE '_resolve-cross-session-guard\.sh.*2>/dev/null' "$flow_state_path"; then
-  echo "  ✅ writer-side metatest 1: flow-state-update.sh contains '_resolve-cross-session-guard.sh ... 2>/dev/null' redirection"
+# cycle 43 F-03 (HIGH) 対応: 旧 grep `_resolve-cross-session-guard\.sh.*2>/dev/null` は
+# flow-state-update.sh L165 のコメント行 (`... so 2>/dev/null is safe.`) にマッチして
+# false-positive で常に pass していた (state-read.test.sh:606-616 の TC-15.E.1 と同型 false-positive)。
+# 修正: (1) コメント行を `grep -v '^[[:space:]]*#'` で除外し、(2) 実 invocation line を anchor で検査する。
+flow_state_caller=$(grep -v '^[[:space:]]*#' "$flow_state_path" | grep -E 'classification=\$\(bash[^)]*_resolve-cross-session-guard\.sh[^)]*2>')
+if [ -n "$flow_state_caller" ]; then
+  echo "  ✅ writer-side metatest 1: flow-state-update.sh caller line preserves stderr redirection (cycle 35 F-02 fix is preserved)"
   PASS=$((PASS+1))
 else
-  echo "  ❌ writer-side metatest 1: flow-state-update.sh の caller-side redirection が `2>/dev/null` でない (cycle 35 F-02 fix が revert された可能性)"
+  echo "  ❌ writer-side metatest 1: flow-state-update.sh の caller-side stderr redirection が消失 (cycle 35 F-02 fix が revert された可能性)"
+  echo "     現状の caller line (コメント除外後):"
+  grep -v '^[[:space:]]*#' "$flow_state_path" | grep "_resolve-cross-session-guard.sh" | sed 's/^/       /'
   FAIL=$((FAIL+1))
 fi
 if grep -q '^      invalid_uuid:\*)' "$flow_state_path"; then

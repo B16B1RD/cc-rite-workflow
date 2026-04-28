@@ -487,12 +487,12 @@ fi
 
 ```bash
 # verified-review cycle 35 fix (F-04 HIGH): if/else pattern instead of if! pattern.
-# Bash spec: `if ! cmd; then rc=$?` always yields rc=0 because `!` negates the
+# Bash spec: `if ! cmd; then rc=$?` always yields rc=0 because 「!」 negates the
 # pipeline and `then` branch sees the negation result (always 0). Use `if cmd; then :; else rc=$?; fi`
 # to capture the actual exit code. Empirical: `bash -c 'if ! curr=$(exit 42); then rc=$?; echo $rc; fi'` → 0.
 # verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** — `if ! var=$(cmd); then rc=$?` 形式のみ NG。
 # capture を伴わない `if ! cmd; then ...` (例: `if ! mapfile -t arr < <(...)` / `if ! gh pr view ...`) は
-# `!` の挙動が異なるため本ガードの適用範囲外。canonical 説明は `_emit-cross-session-incident.sh` の
+# 「!」 の挙動が異なるため本ガードの適用範囲外。canonical 説明は `_emit-cross-session-incident.sh` の
 # cycle 38 F-16 LOW コメント (capture 文脈限定の正式記述) を参照。
 # This invariant ("helper 起動失敗 と pre-condition 失敗を区別可能") was the core reason
 # state-read.sh introduction in Issue #687 AC-4. Symmetric with work-memory-update.sh の
@@ -1802,7 +1802,22 @@ Otherwise:
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
 | `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. Use the **same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form, not `if ! cmd; then`). Brief inline form: `if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi`. If state-read.sh launch fails, skip the metrics output for this field instead of silently treating the value as `"0"` (mis-classified as "no deviation"). verified-review cycle 35 F-12 introduced the fail-fast block; cycle 38 F-02 dropped the caller-count pin (previous "6 / 7 caller sites" prose self-undercount-drifted twice — count synchronization contract abandoned in favor of semantic anchor reference). Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot. This counts re-entries to Phase 5.1 from checklist failures |
+| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. **Use the same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form). state-read.sh launch failure 時は metrics output を skip し、silent に `"0"` 扱い (= "no deviation" の誤分類) しないこと。Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot。Phase 5.1 への re-entry 数 (checklist failure 由来) を計測。詳細な bash literal は本ファイル Phase 3 pre-condition の bash block を参照 |
+
+> **Note (cycle 43 F-12 LOW 対応)**: 旧版は本 table cell 内に 250 字超の bash literal (state-read.sh 経由の implementation_round capture form と歴史記述 cycle 35 F-12 / cycle 38 F-02 の caller-count pin 撤廃経緯) を埋め込んでいた。LLM が table を読み取って値を提示する際にこの literal を正規の Bash tool 呼び出しとして実行する/placeholder substitute で混入させるリスク (cycle 38 F-17 で `--next` 文字列から削除した経緯と semantically 同型) があったため、cell prose を Phase 3 pre-condition への semantic reference に降格し、actual bash literal は下記の独立 code block として分離した。
+>
+> **歴史的経緯 (caller-count pin 撤廃)**: verified-review cycle 35 F-12 で fail-fast block を導入、cycle 38 F-02 で「6 / 7 caller sites」の prose self-undercount drift が 2 回発生したため caller-count pin を撤廃し semantic anchor reference に統一。
+
+**`plan_deviation_count` 取得 bash block** (cycle 43 F-12 LOW 対応で table cell から分離。canonical capture pattern を維持し caller-markdown-block.test.sh G-03 metatest が pass することを保証):
+
+```bash
+# canonical fail-fast pattern (Phase 3 pre-condition と同型): state-read.sh 起動失敗時は
+# silent default 0 (= "no deviation") に降格せず、metrics output を skip する。
+# 注意: cycle 41 II-1 で確立した inline form を 1 行で維持 (caller-markdown-block.test.sh
+# TC-6 が `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin)。
+if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
+plan_deviation_count="$val"
+```
 
 **Step 2**: Evaluate thresholds.
 

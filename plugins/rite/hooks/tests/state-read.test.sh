@@ -602,17 +602,24 @@ rm -rf "$SBX"
 # された。F-04 fix として、caller の redirection 形式を test 側で構造的に守る metatest を追加。
 # state-read.sh の `_resolve-cross-session-guard.sh` 呼び出しが必ず `2>/dev/null` を含むことを
 # grep で source-pin する。
-echo 'TC-15.E: state-read.sh caller-side `2>/dev/null` source-pin metatest (F-04 fix revert test)'
+echo 'TC-15.E: state-read.sh caller-side stderr redirection source-pin metatest (F-04 fix revert test)'
 state_read_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/state-read.sh"
-if grep -qE '_resolve-cross-session-guard\.sh.*2>/dev/null' "$state_read_path"; then
-  echo "  ✅ TC-15.E.1: state-read.sh contains '_resolve-cross-session-guard.sh ... 2>/dev/null' redirection"
+# cycle 43 F-03 (HIGH) 対応: 旧 grep `_resolve-cross-session-guard\.sh.*2>/dev/null` は
+# state-read.sh L136/L138 のコメント行 (`... so 2>/dev/null is safe.`) にマッチして
+# false-positive で常に pass していた (test-reviewer Likelihood-Evidence: runtime_observation
+# empirical grep で実証)。実装の redirection 全体を削除しても comment は残るため metatest
+# 素通り。修正: (1) コメント行を `grep -v '^[[:space:]]*#'` で除外し、(2) 実 invocation line
+# (`classification=$(bash ... _resolve-cross-session-guard.sh ... 2>...)`) を anchor で検査する。
+state_read_caller=$(grep -v '^[[:space:]]*#' "$state_read_path" | grep -E 'classification=\$\(bash[^)]*_resolve-cross-session-guard\.sh[^)]*2>')
+if [ -n "$state_read_caller" ]; then
+  echo "  ✅ TC-15.E.1: state-read.sh caller line preserves stderr redirection (cycle 35 F-01 fix is preserved)"
   PASS=$((PASS+1))
 else
-  echo "  ❌ TC-15.E.1: state-read.sh の caller-side redirection が `2>/dev/null` でない (cycle 35 F-01 fix が revert された可能性)"
-  echo "     現状の caller line:"
-  grep "_resolve-cross-session-guard.sh" "$state_read_path" | sed 's/^/       /'
+  echo "  ❌ TC-15.E.1: state-read.sh の caller-side stderr redirection が消失 (cycle 35 F-01 fix が revert された可能性)"
+  echo "     現状の caller line (コメント除外後):"
+  grep -v '^[[:space:]]*#' "$state_read_path" | grep "_resolve-cross-session-guard.sh" | sed 's/^/       /'
   FAIL=$((FAIL+1))
-  FAILED_NAMES+=("TC-15.E.1: state-read.sh caller-side 2>/dev/null source-pin")
+  FAILED_NAMES+=("TC-15.E.1: state-read.sh caller-side stderr redirection source-pin")
 fi
 
 # --- TC-DEPLOY-REGRESSION: helper-missing fail-fast 経路 (verified-review cycle 41 CG-2) ---

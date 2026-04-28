@@ -83,9 +83,12 @@ REVIEW_MD="$COMMANDS_DIR/pr/review.md"
 # === Test 1: caller bash block の存在確認 (regression 対策の前提) ===
 echo "TC-1: state-read.sh 呼出 caller bash block の存在確認"
 
-# start.md は 4 箇所
+# start.md は 5 箇所
+# cycle 43 F-12 LOW 対応: Phase 5.5.2 の plan_deviation_count metric capture を table cell から
+# 別 bash code block へ分離した結果、caller 数が 4 → 5 に増えた (Phase 3 / 5.1.2 / 5.5.1 / 5.7
+# Workflow Termination + Phase 5.5.2 metric)。
 start_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$START_MD" || true)
-assert "TC-1.1: start.md の caller bash block は 4 箇所" "4" "$start_count"
+assert "TC-1.1: start.md の caller bash block は 5 箇所" "5" "$start_count"
 
 # implement.md は 1 箇所
 implement_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$IMPLEMENT_MD" || true)

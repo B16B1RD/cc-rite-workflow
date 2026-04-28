@@ -91,7 +91,30 @@ fi
 # legacy 経路にフォールバック → cross-session guard が空 SID で意図しない経路を通る。
 # stderr を tempfile に退避し、IO error は WARNING を emit してから空文字復帰する (caller の
 # graceful degradation 動作は維持しつつ、observability を確保)。
-_tr_err=$(mktemp /tmp/rite-resolve-sid-tr-err-XXXXXX 2>/dev/null) || _tr_err=""
+# cycle 43 F-08 (MEDIUM) 対応: mktemp 失敗 WARNING 統一 + chmod 600 + canonical 4 行 trap。
+# 他 5 helper (state-read.sh:267 / _resolve-cross-session-guard.sh:93 / flow-state-update.sh:282,422 /
+# resume-active-flag-restore.sh:180) で確立した canonical pattern と対称化する。
+# 旧実装は (a) mktemp 失敗時に WARNING emit せず silent fallback、(b) chmod 600 path-disclosure
+# defense なし、(c) trap 不在で SIGINT/SIGTERM/SIGHUP 経路で _tr_err orphan のリスク があった。
+# error-handling-reviewer Likelihood-Evidence: existing_call_site で実証済み。
+_tr_err=""
+_rite_resolve_sid_cleanup() {
+  rm -f "${_tr_err:-}"
+}
+trap 'rc=$?; _rite_resolve_sid_cleanup; exit $rc' EXIT
+trap '_rite_resolve_sid_cleanup; exit 130' INT
+trap '_rite_resolve_sid_cleanup; exit 143' TERM
+trap '_rite_resolve_sid_cleanup; exit 129' HUP
+
+if ! _tr_err=$(mktemp /tmp/rite-resolve-sid-tr-err-XXXXXX 2>/dev/null); then
+  echo "WARNING: _resolve-session-id-from-file.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
+  echo "  影響: tr 失敗時の error 詳細が表示されません" >&2
+  echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
+  _tr_err=""
+fi
+# path-disclosure defense (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止)
+[ -n "$_tr_err" ] && chmod 600 "$_tr_err" 2>/dev/null || true
+
 if raw=$(tr -d '[:space:]' < "$sid_file" 2>"${_tr_err:-/dev/null}"); then
   : # tr success (raw may be empty for empty file — legitimate)
 else
@@ -104,8 +127,9 @@ else
   echo "  影響: graceful degradation で空文字復帰しますが、cross-session guard が空 SID で経路判定する可能性があります" >&2
   raw=""
 fi
+# trap が EXIT 経路で _tr_err を削除するため、ここでは明示 rm + unset で trap の二重実行を回避
 [ -n "$_tr_err" ] && rm -f "$_tr_err"
-unset _tr_err
+_tr_err=""
 if [ -z "$raw" ]; then
   exit 0
 fi

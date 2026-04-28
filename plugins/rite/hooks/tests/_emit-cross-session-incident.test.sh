@@ -20,9 +20,15 @@ set -euo pipefail
 # 同型 cleanup pattern を bash-trap-patterns.md "Form B" として確立済み)。
 cleanup_dirs=()
 _emit_test_cleanup() {
+  # cycle 43 F-01 followup: `[ -n ] && [ -d ] && rm` 形式は set -e 下で `[ -d ]` false 時に
+  # exit 1 が発火し EXIT trap 経路で script 全体の RC を 1 に汚染していた (sandbox は各 TC 末尾で
+  # `rm -rf` 済みのため、cleanup 時には [ -d ] が必ず false を返す経路がある)。
+  # if-then-fi 形式に変更して set -e の伝播を遮断する。
   local dir
   for dir in "${cleanup_dirs[@]:-}"; do
-    [ -n "$dir" ] && [ -d "$dir" ] && rm -rf "$dir"
+    if [ -n "$dir" ] && [ -d "$dir" ]; then
+      rm -rf "$dir"
+    fi
   done
 }
 trap '_emit_test_cleanup' EXIT
@@ -111,11 +117,14 @@ run_helper_in_sandbox() {
   bash "$sandbox/_emit-cross-session-incident.sh" "$@"
 }
 
+# Phase 1.2 cycle 43 F-01 (CRITICAL) 対応: set -euo pipefail 下で `out=$(cmd)` の cmd が exit != 0 を
+# 返すと command substitution が失敗し set -e が script abort する。これにより TC-1 で abort し
+# TC-2〜TC-8 が silent skip する false-confidence test だった (test-reviewer Likelihood-Evidence:
+# runtime_observation で実証)。`if out=$(... 2>&1); then rc=0; else rc=$?; fi` 形式に統一する。
 echo "TC-1: 引数不足 ($# < 4) で exit 1"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" foreign reader 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" foreign reader 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-1.1: exit code is 1" "1" "$rc"
 assert_match "TC-1.2: ERROR message contains '4 arguments required'" "4 arguments required" "$out"
 rm -rf "$sandbox"
@@ -123,8 +132,7 @@ rm -rf "$sandbox"
 echo "TC-2: 引数過多 ($# > 5) で exit 1 (cycle 37 followup)"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" foreign reader sid1 sid2 extra ARG6 ARG7 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" foreign reader sid1 sid2 extra ARG6 ARG7 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-2.1: exit code is 1" "1" "$rc"
 assert_match "TC-2.2: ERROR message contains 'too many arguments'" "too many arguments" "$out"
 rm -rf "$sandbox"
@@ -132,8 +140,7 @@ rm -rf "$sandbox"
 echo "TC-3: invalid layer で exit 1"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" foreign invalid sid1 sid2 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" foreign invalid sid1 sid2 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-3.1: exit code is 1" "1" "$rc"
 assert_match "TC-3.2: ERROR contains 'invalid layer'" "invalid layer" "$out"
 rm -rf "$sandbox"
@@ -141,8 +148,7 @@ rm -rf "$sandbox"
 echo "TC-4: invalid classification で exit 1"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" bogus reader sid1 sid2 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" bogus reader sid1 sid2 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-4.1: exit code is 1" "1" "$rc"
 assert_match "TC-4.2: ERROR contains 'unknown classification'" "unknown classification" "$out"
 rm -rf "$sandbox"
@@ -150,8 +156,7 @@ rm -rf "$sandbox"
 echo "TC-5: workflow-incident-emit.sh 不在で WARNING + exit 0"
 sandbox=$(make_fake_emit_dir missing)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" foreign reader sid1 sid2 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" foreign reader sid1 sid2 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-5.1: exit code is 0 (caller 後段 DEFAULT 降格を阻害しない)" "0" "$rc"
 assert_match "TC-5.2: WARNING contains 'workflow-incident-emit.sh missing'" "workflow-incident-emit.sh missing" "$out"
 assert_match "TC-5.3: WARNING records type for fallback audit" "type=cross_session_takeover_refused" "$out"
@@ -160,8 +165,7 @@ rm -rf "$sandbox"
 echo "TC-6: foreign 正常 emit (details 構成検証)"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" foreign reader "current-uuid" "legacy-uuid" 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" foreign reader "current-uuid" "legacy-uuid" 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-6.1: exit code is 0" "0" "$rc"
 assert_match "TC-6.2: emit type is cross_session_takeover_refused" "type=cross_session_takeover_refused" "$out"
 assert_match "TC-6.3: details has layer=reader" "layer=reader" "$out"
@@ -173,8 +177,7 @@ rm -rf "$sandbox"
 echo "TC-7: corrupt 正常 emit (extra_arg=jq_rc 検証)"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" corrupt writer "current-uuid" "/path/to/legacy" "4" 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" corrupt writer "current-uuid" "/path/to/legacy" "4" 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-7.1: exit code is 0" "0" "$rc"
 assert_match "TC-7.2: emit type is legacy_state_corrupt" "type=legacy_state_corrupt" "$out"
 assert_match "TC-7.3: details has layer=writer" "layer=writer" "$out"
@@ -186,8 +189,7 @@ rm -rf "$sandbox"
 echo "TC-8: invalid_uuid 正常 emit (root_cause_hint differentiation)"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-out=$(run_helper_in_sandbox "$sandbox" invalid_uuid reader "current-uuid" "/path/to/legacy" "1" 2>&1)
-rc=$?
+if out=$(run_helper_in_sandbox "$sandbox" invalid_uuid reader "current-uuid" "/path/to/legacy" "1" 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-8.1: exit code is 0" "0" "$rc"
 assert_match "TC-8.2: emit type is legacy_state_corrupt (semantically equivalent to corrupt)" "type=legacy_state_corrupt" "$out"
 assert_match "TC-8.3: details has reason=invalid_uuid_format (distinguishes from corrupt:*)" "reason=invalid_uuid_format" "$out"
@@ -198,6 +200,16 @@ echo ""
 echo "─── _emit-cross-session-incident.test.sh summary ──────────────────────────"
 echo "PASS: $PASS"
 echo "FAIL: $FAIL"
+# cycle 43 F-01 fix: silent abort regression を再発検出する gate
+# 計算根拠: TC-1 (2) + TC-2 (2) + TC-3 (2) + TC-4 (2) + TC-5 (3) + TC-6 (6) + TC-7 (6) + TC-8 (4) = 27
+expected_total=27
+total=$((PASS + FAIL))
+if [ "$total" -lt "$expected_total" ]; then
+  echo "ERROR: only $total/$expected_total assertions ran (silent abort regression detected)"
+  echo "  原因候補: set -euo pipefail 下で command substitution が exit != 0 で失敗し set -e で script abort"
+  echo "  対処: out=\$(cmd) を if out=\$(cmd 2>&1); then rc=0; else rc=\$?; fi 形式に揃える"
+  exit 1
+fi
 if [ "$FAIL" -gt 0 ]; then
   echo "Some tests failed."
   exit 1
