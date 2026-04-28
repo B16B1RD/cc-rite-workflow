@@ -693,7 +693,7 @@ Generate structured action lines in the commit body following the Contextual Com
 5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `intent` (intent is preserved last as the core "why")
 
 **Output rules:**
-- Action type names are always in English (`intent`, `decision`, `rejected`, `constraint`, `learned`)
+- Action type names are always in English (`intent`, `decision`, `root-cause`, `rejected`, `constraint`, `learned`, `comment-update`)
 - Description follows the `language` setting in `rite-config.yml`
 - Do not repeat information already visible in the diff
 - Do not fabricate action lines without evidence from work memory, Issue body, or diff
