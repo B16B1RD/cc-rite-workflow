@@ -6,7 +6,7 @@
 #   workflow-incident-emit.sh 呼び出しブロック (~84 行) を 1 行呼び出しに圧縮する。
 #
 # Usage:
-#   bash _emit-cross-session-incident.sh <classification> <layer> <current_sid> <legacy_sid_or_path> [extra_arg] [pr_number]
+#   bash _emit-cross-session-incident.sh <classification> <layer> <current_sid> <legacy_sid_or_path> [extra_arg]
 #
 # Arguments:
 #   $1 classification     "foreign" / "corrupt" / "invalid_uuid"
@@ -15,8 +15,6 @@
 #   $4 legacy_sid_or_path foreign: legacy session_id / corrupt|invalid_uuid: legacy file path
 #   $5 extra_arg          (optional)
 #                          corrupt: jq_rc / invalid_uuid: invalid_uuid_rc
-#   $6 pr_number          (optional, verified-review cycle 44 F-09 MEDIUM)
-#                          fallback sentinel の iteration_id prefix (省略時 "0-<epoch>")
 #
 # Behavior:
 #   - workflow-incident-emit.sh の場所を SCRIPT_DIR から自動解決
@@ -47,12 +45,10 @@ if [ "$#" -lt 4 ]; then
 fi
 # upper bound check (caller のタイプミス検出)。
 # 旧実装は `<4` のみだったため、6+ args を渡された場合 silently 受理されて余分な引数が drop されていた。
-# verified-review cycle 44 F-09 MEDIUM: pr_number 第6引数を追加 (max 6)。caller (state-read.sh /
-# flow-state-update.sh) が PR 番号情報を保持していれば fallback sentinel の iteration_id 精度が
-# 上がり orchestrator (start.md Phase 5.4.4.1) の重複 dedup が機能する。caller 側で PR 番号を
-# まだ取得していない場合は省略可能 (default "0" で旧挙動と等価)。
-if [ "$#" -gt 6 ]; then
-  echo "ERROR: _emit-cross-session-incident.sh: too many arguments (max 6: classification layer current_sid legacy_sid_or_path [extra_arg] [pr_number])" >&2
+# 第 6 引数 pr_number はかつて cycle 44 F-09 で追加されたが、caller 6 site すべてが渡しておらず
+# dead code 化していたため verified-review F-02 で撤去した (max 5 に restore、fallback_iter は "0-<epoch>" 固定)。
+if [ "$#" -gt 5 ]; then
+  echo "ERROR: _emit-cross-session-incident.sh: too many arguments (max 5: classification layer current_sid legacy_sid_or_path [extra_arg])" >&2
   echo "  received: $#" >&2
   exit 1
 fi
@@ -62,7 +58,6 @@ layer="$2"
 current_sid="$3"
 legacy_sid_or_path="$4"
 extra_arg="${5:-}"
-pr_number_arg="${6:-0}"
 
 case "$layer" in
   reader|writer) ;;
@@ -108,10 +103,9 @@ esac
 emit_script="$SCRIPT_DIR/workflow-incident-emit.sh"
 if [ ! -x "$emit_script" ]; then
   echo "WARNING: workflow-incident-emit.sh missing — emitting canonical fallback sentinel directly to keep Phase 5.4.4.1 detection intact: type=${incident_type}" >&2
-  # verified-review cycle 44 F-09 MEDIUM: caller 渡しの pr_number を iteration_id prefix に使う。
-  # caller (state-read.sh / flow-state-update.sh) がまだ PR 番号を取得していない場合は default "0"
-  # に fallback (旧挙動と等価)。
-  fallback_iter="${pr_number_arg}-$(date +%s)"
+  # fallback_iter prefix は "0" 固定 (caller 6 site のいずれも PR 番号を渡していないため、cycle 44 F-09
+  # で導入した第 6 引数は dead code 化していた。verified-review F-02 で撤去し旧挙動に restore)。
+  fallback_iter="0-$(date +%s)"
   # PR #688 followup: cycle 41 review F-12 MEDIUM (security Hypothetical exception) — fallback
   # sentinel が sanitize() を経由していなかった defense-in-depth gap を修正。details / root_cause_hint
   # に改行 / `;` が混入すると sentinel format `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...;`

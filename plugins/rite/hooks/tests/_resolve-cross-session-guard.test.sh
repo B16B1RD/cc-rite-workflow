@@ -64,10 +64,15 @@ assert_eq() {
 CURR_SID="11111111-1111-1111-1111-111111111111"
 OTHER_SID="22222222-2222-2222-2222-222222222222"
 
+# mktemp_legacy: returns a fresh tempfile path on stdout.
+# IMPORTANT: cleanup_files registration MUST be performed by the caller in the
+# parent shell, NOT inside this function. command substitution `legacy=$(mktemp_legacy)`
+# runs the function in a subshell, so any `cleanup_files+=(...)` here would be
+# lost when the subshell exits. Pattern is symmetric with state-read.test.sh's
+# `SBX=$(make_sandbox); cleanup_dirs+=("$SBX")`.
 mktemp_legacy() {
   local f
   f=$(mktemp /tmp/rite-cross-session-test-XXXXXX) || { echo "ERROR: mktemp failed" >&2; exit 1; }
-  cleanup_files+=("$f")
   echo "$f"
 }
 
@@ -79,35 +84,35 @@ assert_eq "TC-1.1: missing file → 'empty'" "empty" "$result"
 
 # --- TC-2: legacy file size 0 → "empty" ---
 echo "TC-2: legacy file size 0 → 'empty'"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 : > "$legacy"
 result=$(bash "$HOOK" "$legacy" "$CURR_SID")
 assert_eq "TC-2.1: size 0 → 'empty'" "empty" "$result"
 
 # --- TC-3: .session_id absent (null) → "empty" ---
 echo "TC-3: .session_id absent (jq // empty) → 'empty'"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' '{"phase":"x","issue_number":42}' > "$legacy"
 result=$(bash "$HOOK" "$legacy" "$CURR_SID")
 assert_eq "TC-3.1: missing .session_id → 'empty'" "empty" "$result"
 
 # --- TC-4: legacy.session_id == current_sid → "same" ---
 echo "TC-4: legacy.session_id == current_sid → 'same'"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' "{\"phase\":\"x\",\"session_id\":\"$CURR_SID\"}" > "$legacy"
 result=$(bash "$HOOK" "$legacy" "$CURR_SID")
 assert_eq "TC-4.1: same sid → 'same'" "same" "$result"
 
 # --- TC-5: legacy.session_id != current_sid (valid UUID) → "foreign:<UUID>" ---
 echo "TC-5: legacy.session_id != current_sid (valid UUID) → 'foreign:<UUID>'"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' "{\"phase\":\"x\",\"session_id\":\"$OTHER_SID\"}" > "$legacy"
 result=$(bash "$HOOK" "$legacy" "$CURR_SID")
 assert_eq "TC-5.1: foreign valid UUID → 'foreign:<other_sid>'" "foreign:$OTHER_SID" "$result"
 
 # --- TC-6: corrupt JSON → "corrupt:<jq_rc>" ---
 echo "TC-6: corrupt JSON → 'corrupt:<jq_rc>' (jq exit code embedded)"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' '{corrupt invalid json' > "$legacy"
 result=$(bash "$HOOK" "$legacy" "$CURR_SID")
 case "$result" in
@@ -132,14 +137,14 @@ esac
 
 # --- TC-7: legacy.session_id JSON-parseable but invalid UUID → "invalid_uuid:1" ---
 echo "TC-7: legacy.session_id JSON-parseable but invalid UUID → 'invalid_uuid:1' (cycle 36 F-16)"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' '{"phase":"x","session_id":"not-a-uuid"}' > "$legacy"
 result=$(bash "$HOOK" "$legacy" "$CURR_SID")
 assert_eq "TC-7.1: invalid UUID → 'invalid_uuid:1'" "invalid_uuid:1" "$result"
 
 # --- TC-8: legacy.session_id with shell metachar → 'invalid_uuid:1' (defense-in-depth) ---
 echo "TC-8: legacy.session_id with shell metachar → 'invalid_uuid:1' (defense-in-depth)"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' '{"phase":"x","session_id":"$(rm /tmp/x)"}' > "$legacy"
 result=$(bash "$HOOK" "$legacy" "$CURR_SID")
 assert_eq "TC-8.1: shell metachar UUID → 'invalid_uuid:1'" "invalid_uuid:1" "$result"
@@ -155,10 +160,10 @@ assert_eq "TC-8.1: shell metachar UUID → 'invalid_uuid:1'" "invalid_uuid:1" "$
 # 同形状)。bytes-exact pin に変更し、helper stdout を tempfile に書き出して `wc -c` で実バイト数
 # を比較する (`echo END` 経由ではなく直接 redirect で trailing NL を保持)。
 echo "TC-9: printf no trailing newline (caller parameter expansion safety)"
-legacy=$(mktemp_legacy)
+legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' "{\"phase\":\"x\",\"session_id\":\"$OTHER_SID\"}" > "$legacy"
 # Capture helper stdout to tempfile (preserves trailing NL exactly as helper wrote it).
-helper_stdout=$(mktemp)
+helper_stdout=$(mktemp); cleanup_files+=("$helper_stdout")
 bash "$HOOK" "$legacy" "$CURR_SID" > "$helper_stdout"
 expected_str="foreign:$OTHER_SID"
 expected_bytes=$(printf '%s' "$expected_str" | wc -c | tr -d ' ')

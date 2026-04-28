@@ -100,6 +100,22 @@ if ! [[ "$FIELD" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
   exit 1
 fi
 
+# --- Signal-specific trap (covers both _classify_err and _jq_err lifecycles) ---
+# verified-review F-03 MEDIUM: 単一の cleanup 関数で _classify_err と _jq_err 両方を rm し、
+# trap を file 冒頭 (per-session 分岐より前) に install することで両 tempfile の race window
+# (mktemp 成功 〜 EXIT/INT/TERM/HUP 受信時) を一貫して closure 化する。canonical pattern
+# (_resolve-cross-session-guard.sh / _resolve-session-id-from-file.sh と対称化)。
+_classify_err=""
+_jq_err=""
+_rite_state_read_cleanup() {
+  rm -f "${_classify_err:-}" "${_jq_err:-}"
+  return 0
+}
+trap 'rc=$?; _rite_state_read_cleanup; exit $rc' EXIT
+trap '_rite_state_read_cleanup; exit 130' INT
+trap '_rite_state_read_cleanup; exit 143' TERM
+trap '_rite_state_read_cleanup; exit 129' HUP
+
 # --- Resolve session_id (matches flow-state-update.sh _resolve_session_id) ---
 # UUID-format validation prevents path traversal via tampered .rite-session-id.
 # PR #688 cycle 34 fix (F-01 CRITICAL): UUID validation を `_resolve-session-id.sh` 共通 helper に抽出。
@@ -162,7 +178,18 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     fi
     # path-disclosure defense (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止)
     [ -n "$_classify_err" ] && chmod 600 "$_classify_err" 2>/dev/null || true
-    classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$SESSION_ID" 2>"${_classify_err:-/dev/null}") || true
+    # verified-review F-11 LOW (defense-in-depth): `|| true` で helper の想定外 exit を完全に
+    # 握り潰すと、helper の design contract (`exit 0 — always`) が将来 regression したときに
+    # silent fail する。`|| _guard_rc=$?` で rc を捕捉し、非 0 時には WARNING を emit する。
+    # writer 側 (flow-state-update.sh:186) との対称化を維持する原則 (本 helper の writer/reader
+    # 対称化 doctrine) に従い、両者で同じ patron に揃える将来 fix も追跡する。
+    if classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$SESSION_ID" 2>"${_classify_err:-/dev/null}"); then
+      :
+    else
+      _guard_rc=$?
+      echo "WARNING: _resolve-cross-session-guard.sh exited non-zero (rc=$_guard_rc) — design contract violation (helper should always exit 0)" >&2
+      classification=""
+    fi
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
       grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true
     fi
@@ -267,20 +294,10 @@ esac
 # で、cycle 33 F-04 / cycle 34 F-07 fix 系列はそちらのパターンを確立した。本 PR が警戒する
 # "self-referential drift fractal pattern" の再発を修正。
 #
-# verified-review cycle 36 fix (F-15 LOW security): canonical signal-specific trap pattern with
-# variable-first-declared / trap-set-second / mktemp-third ordering — symmetric with
-# `_resolve-cross-session-guard.sh` (cycle 35 F-05 canonical pattern). Race window between
-# mktemp success and trap installation is now closed; SIGINT/SIGTERM/SIGHUP propagate
-# POSIX-conventional exit codes (130/143/129).
-_jq_err=""
-_rite_state_read_jq_cleanup() {
-  rm -f "${_jq_err:-}"
-  return 0
-}
-trap 'rc=$?; _rite_state_read_jq_cleanup; exit $rc' EXIT
-trap '_rite_state_read_jq_cleanup; exit 130' INT
-trap '_rite_state_read_jq_cleanup; exit 143' TERM
-trap '_rite_state_read_jq_cleanup; exit 129' HUP
+# verified-review F-03 MEDIUM: trap install は file 冒頭の `--- Signal-specific trap ---` セクションに
+# 移動済 (`_classify_err` と `_jq_err` を共通の `_rite_state_read_cleanup` 関数で cleanup する)。
+# 旧実装は本箇所で `_jq_err` 専用の trap を install し、`_classify_err` (line 157 area) は
+# trap 不在の race window を残していた。canonical pattern (cycle 35 F-05 / 36 F-15) と統一。
 # verified-review cycle 38 F-06 MEDIUM: mktemp 失敗時に WARNING emit。
 # 旧実装は `2>/dev/null || _jq_err=""` で mktemp 失敗 (/tmp full / permission denied / SELinux deny) を
 # silent fallback し、後続の `2>"${_jq_err:-/dev/null}"` で jq stderr が `/dev/null` に redirect される

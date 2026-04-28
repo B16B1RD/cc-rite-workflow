@@ -60,6 +60,39 @@
 # This avoids re-sourcing on every function call and prevents BASH_SOURCE issues.
 source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
 
+# verified-review F-04 MEDIUM: state-read.sh 呼び出し boilerplate を helper 関数に抽出。
+# 旧実装は (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
+# fail-fast capture を 3 箇所 (line 96-110 / 175-186 / 187-193) で完全に同一構造で複製していた。
+# 同一 pattern が resume-active-flag-restore.sh にも 2 site 存在し、計 5 site の boilerplate 重複は
+# 将来の error message 仕様変更時の片肺更新リスク (Issue #687 root cause と同型の drift 構造) を抱えていた。
+# 共通 helper に集約することで spec 変更を 1 箇所で完結させる (writer/reader/resume 3 layer DRY 化)。
+#
+# Arguments:
+#   $1 var_name  caller 側で値を受け取る変数名 (e.g., "_phase")
+#   $2 field     state-read.sh の --field に渡す値 (e.g., "phase" / "pr_number" / "loop_count")
+#   $3 default   state-read.sh の --default に渡す値 (e.g., "" / "null" / "0")
+# Returns:
+#   0 — success (var_name に値が代入される)
+#   2 — helper 不在 / helper exit != 0 (fail-fast)
+_wm_state_read_field() {
+  local _var_name="$1"
+  local _field="$2"
+  local _default="$3"
+  if [ ! -x "$WM_PLUGIN_ROOT/hooks/state-read.sh" ]; then
+    echo "rite: ${WM_SOURCE}: state-read.sh not found at $WM_PLUGIN_ROOT/hooks/" >&2
+    return 2
+  fi
+  local _val _rc
+  if _val=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field "$_field" --default "$_default"); then
+    printf -v "$_var_name" '%s' "$_val"
+    return 0
+  else
+    _rc=$?
+    echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_rc) for --field $_field" >&2
+    return 2
+  fi
+}
+
 update_local_work_memory() {
   local issue_number current_branch
   current_branch=$(git branch --show-current 2>/dev/null || echo "")
@@ -93,18 +126,8 @@ update_local_work_memory() {
   # ケース (jq エラー / 内部失敗) も独立 exit code 捕捉で fail-fast。**存在し exit == 0 だが空文字**
   # のみが legitimate な「両 file 不在」として return 1 で skip される (Fail-Fast First 原則)。
   if [ "${WM_REQUIRE_FLOW_STATE:-false}" = "true" ]; then
-    if [ ! -x "$WM_PLUGIN_ROOT/hooks/state-read.sh" ]; then
-      echo "rite: ${WM_SOURCE}: state-read.sh not found at $WM_PLUGIN_ROOT/hooks/" >&2
-      return 2
-    fi
-    local _phase _phase_rc
-    if _phase=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field phase --default ""); then
-      :
-    else
-      _phase_rc=$?
-      echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_phase_rc) for --field phase" >&2
-      return 2
-    fi
+    local _phase=""
+    _wm_state_read_field _phase phase "" || return $?
     if [ -z "$_phase" ]; then
       return 1
     fi
@@ -173,24 +196,8 @@ update_local_work_memory() {
   # `|| loop_cnt="0"` の旧 fallback パターンは「両 file 不在 → DEFAULT 返却」と「helper 起動失敗」を
   # 区別不能で silent fallback していたため fail-fast に変更。
   if [ "${WM_READ_FROM_FLOW_STATE:-false}" = "true" ]; then
-    if [ ! -x "$WM_PLUGIN_ROOT/hooks/state-read.sh" ]; then
-      echo "rite: ${WM_SOURCE}: state-read.sh not found at $WM_PLUGIN_ROOT/hooks/" >&2
-      return 2
-    fi
-    if pr_num=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field pr_number --default "null"); then
-      :
-    else
-      local _pr_rc=$?
-      echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_pr_rc) for --field pr_number" >&2
-      return 2
-    fi
-    if loop_cnt=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field loop_count --default 0); then
-      :
-    else
-      local _loop_rc=$?
-      echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_loop_rc) for --field loop_count" >&2
-      return 2
-    fi
+    _wm_state_read_field pr_num pr_number "null" || return $?
+    _wm_state_read_field loop_cnt loop_count 0 || return $?
   fi
 
   local last_commit tmp_wm

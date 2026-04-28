@@ -177,12 +177,15 @@ trap '_rite_resume_active_cleanup; exit 129' HUP
 # 書いた行番号参照を semantic anchor (mktemp 失敗 WARNING 3 行 emit ブロック) に置換 + cycle 40
 # silent-failure M-01 で WARNING 行構成を 3 行 + script 名 prefix に統一 (state-read.sh /
 # _resolve-cross-session-guard.sh と完全対称化)。
-_err=$(mktemp "${TMPDIR:-/tmp}/rite-resume-flow-err-XXXXXX" 2>/dev/null) || {
+# verified-review F-07 LOW: mktemp idiom を canonical `if ! ...; then` 形式に書き換え
+# (state-read.sh / flow-state-update.sh / _resolve-cross-session-guard.sh / _resolve-session-id-from-file.sh
+# の 9 mktemp site と完全対称化)。直前のコメントが主張する「完全対称化」と実装の食い違いを解消。
+if ! _err=$(mktemp "${TMPDIR:-/tmp}/rite-resume-flow-err-XXXXXX" 2>/dev/null); then
   echo "WARNING: resume-active-flag-restore.sh: stderr 退避用 tempfile の mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
   echo "  影響: 次の error 発生時、flow-state-update.sh の具体的失敗原因 (mv 失敗 / UUID validation 失敗 / jq parse error 等) が表示されません" >&2
   echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
   _err=""
-}
+fi
 # PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
 # として chmod 600 を upfront 適用 (multi-user / 共有 /tmp 環境での path-disclosure 防止)。
 [ -n "$_err" ] && chmod 600 "$_err" 2>/dev/null || true

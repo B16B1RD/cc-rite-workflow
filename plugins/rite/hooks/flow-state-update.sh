@@ -174,7 +174,20 @@ _resolve_session_state_path() {
     # cycle 43 F-09 (MEDIUM) 対応: state-read.sh:142 と writer/reader 対称化。canonical pattern
     # (`if ! ... then` + WARNING 3 行 + chmod 600) に統一。詳細は state-read.sh の cycle 43 F-09
     # コメントを参照 (drift 防止のため両層で同一の修正を適用)。
-    local _classify_err
+    # verified-review F-03 MEDIUM: _classify_err に signal-specific trap を追加 (state-read.sh と
+    # writer/reader 対称化)。`_resolve_session_state_path` 関数内に閉じた scope で trap を install し、
+    # mktemp 成功 〜 rm 完了の race window で SIGINT/SIGTERM/SIGHUP 中断時の orphan を防ぐ。
+    # 関数 return 時に `trap - EXIT INT TERM HUP` で default に restore し、line 376 area の
+    # `_rite_flow_state_atomic_cleanup` 用 trap install と衝突しないようにする (canonical pattern)。
+    local _classify_err=""
+    _rite_flow_state_classify_cleanup() {
+      rm -f "${_classify_err:-}"
+      return 0
+    }
+    trap 'rc=$?; _rite_flow_state_classify_cleanup; exit $rc' EXIT
+    trap '_rite_flow_state_classify_cleanup; exit 130' INT
+    trap '_rite_flow_state_classify_cleanup; exit 143' TERM
+    trap '_rite_flow_state_classify_cleanup; exit 129' HUP
     # verified-review cycle 44 F-14 LOW: ${TMPDIR:-/tmp} で POSIX 慣習を尊重 (state-read.sh と writer/reader 対称化)
     if ! _classify_err=$(mktemp "${TMPDIR:-/tmp}/rite-classify-err-writer-XXXXXX" 2>/dev/null); then
       echo "WARNING: flow-state-update.sh: _classify_err mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
@@ -188,6 +201,9 @@ _resolve_session_state_path() {
       grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
+    _classify_err=""
+    # restore default trap (line 376 area の atomic cleanup 用 trap install と衝突しないように reset)
+    trap - EXIT INT TERM HUP
     # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
     # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約 (state-read.sh と writer/reader 対称)。
     case "$classification" in

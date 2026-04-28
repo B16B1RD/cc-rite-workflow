@@ -292,8 +292,8 @@ inject_vectors=(
   "newline|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\nphase5_post_stop_hook|safe_legacy_newline|newline injection"
   "command_sub|\$(echo INJECTED)|safe_legacy_cmdsub|shell command substitution"
   "backtick|\`whoami\`|safe_legacy_backtick|backtick command substitution"
-  "uppercase|AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA|safe_legacy_upcase|canonical lowercase form 以外 (uppercase) を reject (RFC strict ではなく canonical form の defensive accept)"
-  "mixed_case|aaaaaaaa-AAAA-aaaa-AAAA-aaaaaaaaaaaa|safe_legacy_mixcase|mixed case → canonical form 以外として reject"
+  "uppercase|AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA|safe_legacy_upcase|lowercase normalize の SoT を pin (uppercase は accept されるが per-session path は normalized lowercase で resolution されるため、fixture が uppercase 名 (BAD_*) で per-session を作る限り not-found → legacy fallback で safe_legacy_upcase が返る。tr A-F a-f の normalize 削除で TC が落ちる identification power を持つ)"
+  "mixed_case|aaaaaaaa-AAAA-aaaa-AAAA-aaaaaaaaaaaa|safe_legacy_mixcase|lowercase normalize の SoT を pin (mixed case も accept + normalize 経路を辿る同型 vector。uppercase entry と同じ逻輯で fallback が発火)"
   "too_short|aaaa-aaaa-aaaa-aaaa-aaaa|safe_legacy_short|36 字未満 (regex 長さ制約)"
   "too_long|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaaaa|safe_legacy_long|36 字超過 (regex 長さ制約)"
 )

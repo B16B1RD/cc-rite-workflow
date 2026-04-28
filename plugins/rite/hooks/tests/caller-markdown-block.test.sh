@@ -21,11 +21,15 @@
 #   対象ではない (markdown を grep するメタテスト)。手動レビュー依存だった部分を機械化する。
 #
 # Caller sites covered (7 箇所):
-#   - commands/issue/start.md (5 箇所): Phase 3 / 5.1.2 (implementation_round inline) / 5.5.1 / 5.6 (phase) + Phase 5.7 (parent_issue_number)
+#   - commands/issue/start.md (5 箇所): Phase 3 (phase) / Phase 5.5.1 (phase) /
+#     Phase 5.5.2 (implementation_round inline metrics capture, cycle 41 II-1 確立) /
+#     Phase 5.6 (phase) + Phase 5.7 (parent_issue_number)
 #   - commands/issue/implement.md (1 箇所): Phase 5.1.2 (parent_issue_number)
 #   - commands/pr/review.md (1 箇所): Phase 5.3.8 (loop_count)
 # 注: 数値の真実の源は本ファイル内 TC-1.1〜TC-1.3 の grep count。docstring drift 防止のため
-# verified-review cycle 44 F-07 で 6→7 に更新 (cycle 43 F-12 で start.md Phase 5.5.2 metric capture 追加分を反映)。
+# verified-review cycle 44 F-07 で 6→7 に更新、verified-review F-14 で start.md Phase 5.1.2 表記を
+# Phase 5.5.2 (implementation_round inline metrics capture) へ正確化 (cycle 43 F-12 + cycle 41 II-1 の
+# semantic 整合)。
 #
 # Type validation only applies to numeric fields (parent_issue_number / loop_count).
 # `phase` は文字列のため type validation は不要 (3 箇所は本テストの type validation 対象外)。

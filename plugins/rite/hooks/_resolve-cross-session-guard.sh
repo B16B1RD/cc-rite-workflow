@@ -131,7 +131,24 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
     # (could contain newline / shell metachar / huge payload). The downstream
     # workflow-incident-emit.sh already sanitizes, but this helper's API contract
     # promises `foreign:<UUID>` so we enforce it here as defense-in-depth.
-    if validated_legacy=$(bash "$(dirname "${BASH_SOURCE[0]}")/_resolve-session-id.sh" "$legacy_sid" 2>/dev/null); then
+    #
+    # verified-review F-09 LOW (defense-in-depth): _resolve-session-id.sh が deploy 不整合で
+    # 不在 (rc=127) / 非実行可能 (rc=126) になった場合、UUID validation 失敗 (rc=1) と区別
+    # 不能で `invalid_uuid:1` に collapse する経路を解消する。upstream caller (state-read.sh
+    # / flow-state-update.sh) は本 helper を呼ぶ前に既に `_resolve-session-id.sh` の
+    # `[ -x ]` を upfront check しているため、本 inline check は二重防御 (transitive 経路で
+    # 個別実行された場合の保険)。_resolve-session-id-from-file.sh が cycle 39 H-01 で同型 fix
+    # を採用しているため writer/reader 対称化。
+    _resolve_sid_helper="$(dirname "${BASH_SOURCE[0]}")/_resolve-session-id.sh"
+    if [ ! -x "$_resolve_sid_helper" ]; then
+      # deploy 不整合: helper 自体が存在しない / 非実行可能。invalid_uuid:1 に collapse させずに
+      # corrupt:126 で emit して root cause 診断時の区別を可能にする (caller 側の
+      # case "$classification" in corrupt:*) は既存経路と同じ動線で legacy_state_corrupt sentinel
+      # を emit する)。
+      printf 'corrupt:126'
+      exit 0
+    fi
+    if validated_legacy=$(bash "$_resolve_sid_helper" "$legacy_sid" 2>/dev/null); then
       printf 'foreign:%s' "$validated_legacy"
     else
       # legacy session_id is not a valid UUID (corrupt / tampered / legacy schema).
