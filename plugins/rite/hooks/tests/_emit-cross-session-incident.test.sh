@@ -199,13 +199,15 @@ rm -rf "$sandbox"
 echo "TC-7: corrupt 正常 emit (extra_arg=jq_rc 検証 + redaction — F-07)"
 sandbox=$(make_fake_emit_dir ok)
 cleanup_dirs+=("$sandbox")
-# F-07 (MEDIUM): path も同じ redaction 機構を通る
-# - /path/to/legacy (15 文字) → /path/to***
+# F-13 (LOW): corrupt / invalid_uuid arm では path を basename + `.../` prefix の形に降格
+# (旧 F-07 の 8-char redaction は incident response 時に「どの project / flow-state file か」が
+# 特定不能になる UX 退行を生むため、cycle 9 verified-review F-13 で basename 形式に移行)
+# - /path/to/legacy → .../legacy
 if out=$(run_helper_in_sandbox "$sandbox" corrupt writer "current-uuid" "/path/to/legacy" "4" 2>&1); then rc=0; else rc=$?; fi
 assert_eq "TC-7.1: exit code is 0" "0" "$rc"
 assert_match "TC-7.2: emit type is legacy_state_corrupt" "type=legacy_state_corrupt" "$out"
 assert_match "TC-7.3: details has layer=writer" "layer=writer" "$out"
-assert_match "TC-7.4: details has redacted path (F-07)" "path=/path/to***" "$out"
+assert_match "TC-7.4: details has basename-redacted path (F-13)" "path=.../legacy" "$out"
 assert_match "TC-7.5: details has jq_rc=4" "jq_rc=4" "$out"
 assert_match "TC-7.6: root_cause_hint = legacy_jq_parse_failed_cannot_verify_session_ownership" "hint=legacy_jq_parse_failed_cannot_verify_session_ownership" "$out"
 rm -rf "$sandbox"

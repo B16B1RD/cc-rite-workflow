@@ -59,16 +59,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # verified-review cycle 44 F-05 (code-quality MEDIUM): bullet list と loop の entry 数を一致させ
 # (旧版は 5 entry の bullet list が `state-path-resolve.sh を本文で別途言及` する非対称構造で、
 # 新規 maintainer が「list に列挙された 5 helper だけ checked される」と誤読する余地があった)。
-for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
-               _resolve-schema-version.sh _resolve-cross-session-guard.sh \
-               _emit-cross-session-incident.sh _mktemp-stderr-guard.sh; do
-  if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
-    echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
-    echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
-    exit 1
-  fi
-done
-unset _helper
+# verified-review F-06 (MEDIUM): helper existence check の 6/7-entry list 重複を _validate-helpers.sh
+# に集約。flow-state-update.sh の同型 list (helper existence check) と DRY 化。将来 helper を 1 つ追加
+# する際に本ファイルと flow-state-update.sh の 2 箇所更新が不要になり、Issue #687 root cause と同型の
+# 片肺更新 drift を構造的に防止する。_validate-helpers.sh 自身は最小依存 (set -euo pipefail のみ) で
+# fail-fast 検査を行う。
+if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
+  echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
+  echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
+  exit 1
+fi
+bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" \
+  state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
+  _resolve-schema-version.sh _resolve-cross-session-guard.sh \
+  _emit-cross-session-incident.sh _mktemp-stderr-guard.sh
 
 # Resolve repository root via the existing helper (single SoT).
 # `||` fallback は state-path-resolve.sh が将来 non-zero return する場合の defensive guard。
@@ -313,13 +317,12 @@ esac
 # F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
 # Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
 # helper は失敗時に空文字を返し WARNING を stderr に emit する (non-blocking contract)。
+# verified-review F-05 (MEDIUM): helper 内部で既に chmod 600 を適用しているため
+# caller 側の chmod 重複適用を排除した (旧 `[ -n "$_jq_err" ] && chmod 600 ...` 行を削除)。
+# helper の API 契約 (line 36-37 / 47-48: success: chmod 600) を SoT として尊重する。
 _jq_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "state-read" "state-read-jq-err" \
   "jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)")
-# PR #688 followup: cycle 41 review F-14 LOW (security Hypothetical exception) — defense-in-depth
-# として chmod 600 を upfront 適用 (BSD mktemp は umask 依存で 0644 になる経路がある)。
-# multi-user 環境で jq stderr 内の絶対 path / session_id leak (path-disclosure) を防ぐ。
-[ -n "$_jq_err" ] && chmod 600 "$_jq_err" 2>/dev/null || true
 if value=$(jq -r --arg default "$DEFAULT" ".${FIELD} // \$default" "$STATE_FILE" 2>"${_jq_err:-/dev/null}"); then
   :
 else

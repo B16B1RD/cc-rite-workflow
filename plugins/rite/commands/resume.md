@@ -68,8 +68,8 @@ Stop here.
 **Placeholder legend:**
 - `{issue_number}`: Issue number (from argument or branch name extraction in Phase 1.1)
 - `{owner}`, `{repo}`: Repository information (obtain via `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`)
-- `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script))
-- `{parent_issue_display}`: Read via `bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0`。**Pattern と field/default 値の参照は 2 箇所に分離**: (a) **canonical fail-fast pattern** (`if cmd; then :; else rc=$?; fi` form) は `commands/issue/start.md` の Phase 3 pre-condition から、(b) **field/default 値の組合せ** (`--field parent_issue_number --default 0`) と実 caller の bash literal は `commands/issue/start.md` Phase 5.7 "Parent Issue Completion" 冒頭の bash block (`parent_issue_number=$(...)` capture form) から、それぞれ参照する。Phase 3 は別 field (`phase`) の capture 例で field/default 値が異なるため Phase 3 の literal を直接コピーすると **誤った field 名で capture する経路** に流れる (cycle 9 F-05 review 指摘)。state-read.sh launch failure (deploy regression で helper missing / non-executable / executable bit 欠落) 時は **ERROR を stderr に表示して abort** し、`なし` 表示への silent fallback はしないこと (parent Issue exists でも "なし" と誤表示する UX 退行を防ぐ)。Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot which may hold another session's residue。Display `#{N}` if non-zero, `なし` if zero or absent。**cycle 43 F-13 LOW 対応**: 旧版は inline 簡略形のみ示しており consumer 側 (Phase 2.1 Display Interrupted State の `{i18n:resume_parent_issue_label}: {parent_issue_display}` 行) でも capture を行わない設計だったため placeholder 自身が canonical を担う必要があった (silent default `0` への降格 = `なし` 誤表示 リスク)。本注記で fail-fast pattern を明示。
+- `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version))
+- `{parent_issue_display}`: `state-read.sh --field parent_issue_number` 経由で取得。**capture form は Phase 2.1 Display Interrupted State の直前の独立 bash code block 参照** (verified-review F-02: placeholder 表 cell には bash literal を埋め込まず、actual capture site を semantic anchor で示す方針に統一)。Display `#{N}` if non-zero, `なし` if zero or absent。Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot
 
 #### 1.2.1 Local Work Memory Check
 
@@ -252,7 +252,36 @@ Confirm with `AskUserQuestion`:
 
 ### 2.1 Display Interrupted State
 
-Display the detected information:
+**Step 1: Capture `{parent_issue_display}` from per-session state** (verified-review F-02):
+
+```bash
+# state-read.sh API: --field parent_issue_number --default 0 (Issue #687 AC-4 — per-session state)
+# canonical fail-fast pattern: `if cmd; then :; else rc=$?; fi` form (cycle 35 F-04 で empirical
+# に bash spec 違反 (`if ! ...; then rc=$?` で $? 常に 0) と判明したため、必ず else 節形式を使う)
+if parent_issue_number_raw=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+  :
+else
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) reading parent_issue_number" >&2
+  echo "  対処: helper の存在 (ls -l {plugin_root}/hooks/state-read.sh) と executable bit (chmod +x) を確認" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=resume_phase_2_1_parent_issue_display; rc=$rc" >&2
+  exit 1
+fi
+
+# 数値 fail-fast gate: state file 改竄 / silent regression 経路で non-numeric が混入した場合の fail-safe
+case "$parent_issue_number_raw" in
+  ''|*[!0-9]*) parent_issue_number_raw=0 ;;
+esac
+
+# Display 整形: 0 / 不在 → `なし`、それ以外 → `#{N}`
+if [ "$parent_issue_number_raw" -eq 0 ] 2>/dev/null; then
+  parent_issue_display="なし"
+else
+  parent_issue_display="#${parent_issue_number_raw}"
+fi
+```
+
+**Step 2: Display the detected information**:
 
 ```
 {i18n:resume_interrupted_work_found}

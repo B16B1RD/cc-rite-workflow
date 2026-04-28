@@ -27,7 +27,7 @@
 #
 # Output:
 #   stdout: tempfile path on success, empty line on failure.
-#   stderr: WARNING block (4 lines) on failure.
+#   stderr: WARNING block (3 lines) on failure.
 #
 # Exit code:
 #   Always 0. Non-blocking by contract — caller checks for empty stdout to detect failure.
@@ -35,8 +35,13 @@
 # Side effect on success:
 #   chmod 600 on the created tempfile (multi-user / shared /tmp 環境での path-disclosure 防止)。
 #   chmod 失敗は best-effort skip (filesystem が ACL 非対応な環境でも mktemp 自体は成功させる)。
+#
+# Shell options note:
+#   set -euo pipefail を使用する (verified-review F-08 対応)。
+#   pipefail-safe: success path / failure path の両方が if-then-else で完結しており、
+#   将来内部に新コマンドを追加しても silent failure を導入しない。
 
-set -u
+set -euo pipefail
 
 caller_id="${1:-unknown}"
 template_suffix="${2:-stderr-err}"

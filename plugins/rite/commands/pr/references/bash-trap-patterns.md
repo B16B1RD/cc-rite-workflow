@@ -299,10 +299,18 @@ esac
 
 `plugins/rite/commands/wiki/lint.md` 内で本 pattern が確立されている。Phase 番号 + case label の semantic anchor 形式で参照する (verified-review cycle 41 I-01: 旧 line range 参照は file 編集で容易に drift するため撤廃済み):
 
-- Phase 6.0 (欠落概念検出 — log.md 抽出 path) — `case "$branch_strategy" in`
-- Phase 6.2 (対応ページの存在確認と 3 分岐) — `case "$wiki_branch" in` および `case "$pages_list" in` (placeholder substitute validation gate。実際の page 読取 dispatch は同 Phase 6.2 内 `case "$branch_strategy" in` で行われる)
-- Phase 8.2 (書き込み先パスの決定) — `case "$branch_strategy" in`
-- Phase 8.3 (書き込み手順) — `case "$branch_strategy" in` (same_branch / separate_branch の 2 path、PR #564 cycle 11 F-05 で 4-space に統一)
+複数の case 文を持つ Phase は bullet 入れ子で全 case を列挙する (drift 検出力を維持するため anchor pattern を 1 行に複数列挙しない doctrine、verified-review F-04 で確立):
+
+- Phase 6.0 (欠落概念検出 — log.md 抽出 path)
+  - `case "$branch_strategy" in`
+- Phase 6.2 (対応ページの存在確認と 3 分岐)
+  - `case "$wiki_branch" in` (placeholder substitute validation gate)
+  - `case "$pages_list" in` (placeholder substitute validation gate)
+  - `case "$branch_strategy" in` (実際の page 読取 dispatch)
+- Phase 8.2 (書き込み先パスの決定)
+  - `case "$branch_strategy" in`
+- Phase 8.3 (書き込み手順)
+  - `case "$branch_strategy" in` (same_branch / separate_branch の 2 path、PR #564 cycle 11 F-05 で 4-space に統一)
 <!-- PR #688 followup: cycle 41 review F-08 HIGH / F-09 MEDIUM 訂正 — 旧記述では
      "Phase 7 (壊れた相互参照検出) — page 読取の case $mode in" が事実乖離していた
      (wiki/lint.md Phase 7 に case 文は存在しない)。develop 版の Phase 6.2 / 8.2 / 8.3 の

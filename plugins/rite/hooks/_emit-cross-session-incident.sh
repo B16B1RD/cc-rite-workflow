@@ -88,24 +88,45 @@ _redact_sid() {
     printf '%s' "$v"
   fi
 }
+# verified-review F-13 (LOW、cross-validation: error-handling + security): foreign arm では
+# legacy_sid_or_path は実際の session_id (UUID) のため redact が正しい。corrupt:* / invalid_uuid:* arm
+# では同引数に absolute path (例: /home/user/project/.rite-flow-state) が渡されるため、redact すると
+# `path=/home/us***` となり incident response 時に「どの project の flow-state file が corrupt か」が
+# 特定不能になる (basename / repo 名の機密度を維持しつつ debug 可能性を確保するため `basename` のみ
+# 抽出する形に降格する)。
 current_sid_redacted=$(_redact_sid "$current_sid")
-legacy_sid_or_path_redacted=$(_redact_sid "$legacy_sid_or_path")
+legacy_sid_redacted=$(_redact_sid "$legacy_sid_or_path")
+# corrupt / invalid_uuid arm の path 表示用: basename を `.../` prefix 付きで emit する。
+# 旧 _redact_sid (UUID 想定 8 chars + `***`) を path 値に適用すると `path=/home/us***` のように
+# 「どの project 配下か」が完全に消失して incident response 不能になる (verified-review F-13 LOW)。
+# basename + `.../` prefix で機密度の高い parent dir 構造 (社員 home / company name) を隠蔽
+# しつつ、`.rite-flow-state` 等の固定名で「どの flow-state file が corrupt か」識別可能にする。
+# 空文字は as-is (空のまま emit)。
+_path_basename() {
+  local v="$1"
+  if [ -n "$v" ]; then
+    local b
+    b=$(basename "$v")
+    printf '.../%s' "$b"
+  fi
+}
+legacy_path_basename=$(_path_basename "$legacy_sid_or_path")
 
 # classification ごとに type / details / root-cause-hint を組み立てる
 case "$classification" in
   foreign)
     incident_type="cross_session_takeover_refused"
-    details="layer=${layer},current_sid=${current_sid_redacted},legacy_sid=${legacy_sid_or_path_redacted}"
+    details="layer=${layer},current_sid=${current_sid_redacted},legacy_sid=${legacy_sid_redacted}"
     root_cause_hint="legacy_belongs_to_another_session_use_create_mode"
     ;;
   corrupt)
     incident_type="legacy_state_corrupt"
-    details="layer=${layer},current_sid=${current_sid_redacted},path=${legacy_sid_or_path_redacted},jq_rc=${extra_arg}"
+    details="layer=${layer},current_sid=${current_sid_redacted},path=${legacy_path_basename},jq_rc=${extra_arg}"
     root_cause_hint="legacy_jq_parse_failed_cannot_verify_session_ownership"
     ;;
   invalid_uuid)
     incident_type="legacy_state_corrupt"
-    details="layer=${layer},current_sid=${current_sid_redacted},path=${legacy_sid_or_path_redacted},reason=invalid_uuid_format,rc=${extra_arg}"
+    details="layer=${layer},current_sid=${current_sid_redacted},path=${legacy_path_basename},reason=invalid_uuid_format,rc=${extra_arg}"
     root_cause_hint="legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema"
     ;;
   *)

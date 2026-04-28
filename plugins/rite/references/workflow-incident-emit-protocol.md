@@ -109,14 +109,14 @@ This section tracks corrections and significant changes to this protocol documen
 | Cycle | Change |
 |-------|--------|
 | cycle 36 F-09 | Expanded scope from "skill commands" to include hook scripts after `cross_session_takeover_refused` / `legacy_state_corrupt` types were added (which only hook scripts emit) |
-| cycle 36 F-13 | Added `issue/close.md` to the Sentinel Visibility Rule list (close.md emits at L390/468/546/571/591) |
+| cycle 36 F-13 | Added `issue/close.md` to the Sentinel Visibility Rule list (close.md emits at Phase 4.4.W Step 1 [skip], Phase 4.4.W [trigger-failed], Phase 4.4.W.2 [skip / push-failed / other-failed]) |
 | cycle 38 F-18 LOW | Documented that `state-read.sh` / `flow-state-update.sh` emit indirectly via the common helper `_emit-cross-session-incident.sh` (new readers could not reach direct callers via grep `workflow-incident-emit.sh`) |
 | #524 | Added `wiki_ingest_skipped` / `wiki_ingest_failed` sentinel types |
 | #555 | Added `wiki_ingest_push_failed` sentinel type |
 | #567 | Added `gitignore_drift` sentinel type |
 | #687 | Added `cross_session_takeover_refused` / `legacy_state_corrupt` sentinel types |
 | PR #688 cycle 41 F-10 HIGH | Updated invocation site count from "15 sites across 3 files" undercount to actual "18 sites across 4 files" (missed `pr/cleanup.md`'s 3 sites) |
-| PR #688 cycle 41 F-11 MEDIUM | Restricted sub-skill list to actual emit callers and added `pr/cleanup.md` (3 emit sites at L1453/1581/1611) |
+| PR #688 cycle 41 F-11 MEDIUM | Restricted sub-skill list to actual emit callers and added `pr/cleanup.md` (3 emit sites at Phase 4.W.1 [skip], Phase 4.W.3 [push-failed], Phase 4.W.3 [ingest-failed]) |
 | PR #688 cycle 43 F-05 HIGH | Removed incorrect statement that `lint.md` / `pr/create.md` "reference this protocol in documentation" — runtime grep returned 0 references in both files; both are genuinely out of scope |
 | PR #688 cycle 43 F-10 MEDIUM | Added `cleanup.md Phase 4.W` to the Phase enumeration (the 3-phase list had drifted after cycle 41 F-11 added cleanup.md to the file count) |
 | PR #688 cycle 43 F-11 MEDIUM | Corrected exaggerated drift-monitoring claim — `distributed-fix-drift-check.sh` only covers `fix.md` / `review.md` / `tech-writer.md`, not `cleanup.md` / `close.md`, and does not detect invocation-count drift |

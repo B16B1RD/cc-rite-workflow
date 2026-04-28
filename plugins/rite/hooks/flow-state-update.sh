@@ -65,16 +65,18 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # (Wiki 経験則 .rite/wiki/index.md の DRIFT-CHECK ANCHOR 原則 + 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
 # verified-review cycle 44 F-05 (code-quality MEDIUM): bullet list と loop の entry 数を一致させ
 # (旧版は 5 entry の bullet list が state-path-resolve.sh を本文で別途言及する非対称構造)。
-for _helper in state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
-               _resolve-schema-version.sh _resolve-cross-session-guard.sh \
-               _emit-cross-session-incident.sh _mktemp-stderr-guard.sh; do
-  if [ ! -x "$SCRIPT_DIR/$_helper" ]; then
-    echo "ERROR: $_helper not found or not executable: $SCRIPT_DIR/$_helper" >&2
-    echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
-    exit 1
-  fi
-done
-unset _helper
+# verified-review F-06 (MEDIUM): helper existence check の 7-entry list 重複を _validate-helpers.sh
+# に集約 (state-read.sh と writer/reader 対称化)。将来 helper を 1 つ追加する際に本ファイルと
+# state-read.sh の 2 箇所更新が不要になり、Issue #687 root cause と同型の片肺更新 drift を構造的に防止する。
+if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
+  echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
+  echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
+  exit 1
+fi
+bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" \
+  state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
+  _resolve-schema-version.sh _resolve-cross-session-guard.sh \
+  _emit-cross-session-incident.sh _mktemp-stderr-guard.sh
 
 # Resolve repository root
 # verified-review cycle 34 fix (F-07 MEDIUM): `2>/dev/null` を削除して stderr を pass-through し、

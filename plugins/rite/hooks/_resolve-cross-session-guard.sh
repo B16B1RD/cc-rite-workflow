@@ -67,14 +67,12 @@ fi
 # verified-review cycle 38 F-14 LOW: jq stderr 退避用変数を state-read.sh と同じ `_jq_err` 表記に統一
 # (旧 `jq_err` は無 prefix で他 helper の命名 `_<name>` 規約から外れていた)。trap cleanup の参照も併せて更新。
 _jq_err=""
+# verified-review F-07 (MEDIUM): cleanup 関数本体は Form A (`rm -f "${_jq_err:-}"` 単一行) のため、
+# bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
+# 旧実装は Form B doctrine を誤って Form A に適用した非対称コード (cycle 36 F-03 で導入) だった。
+# `_resolve-session-id-from-file.sh` の Form A cleanup と統一し、Form A 最小性 doctrine を維持する。
 _rite_cross_session_cleanup() {
   rm -f "${_jq_err:-}"
-  # verified-review cycle 36 fix (F-03 MEDIUM): explicit `return 0` per Form B doctrine
-  # (bash-trap-patterns.md). `set -euo pipefail` is active (L38) — without `return 0`,
-  # any future addition that returns non-zero (e.g., short-circuit `[ -n "" ] && rm`)
-  # would cause `set -e` to abort the trap action, preventing `exit $rc` from running.
-  # Adding `return 0` unconditionally as preemptive defense.
-  return 0
 }
 trap 'rc=$?; _rite_cross_session_cleanup; exit $rc' EXIT
 trap '_rite_cross_session_cleanup; exit 130' INT
