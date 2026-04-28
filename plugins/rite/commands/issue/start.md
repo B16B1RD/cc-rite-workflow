@@ -1706,7 +1706,7 @@ WM_SOURCE="ready" \
 **Pre-condition check** (#490 AC-5): Verify that Phase 5.5 (Ready) completed. The current `.phase` must be `phase5_post_ready` (the Mandatory After 5.5 marker). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot which may hold another session's residue.
 
 ```bash
-# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
 # verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** (`if ! var=$(cmd)` 形式のみ NG)。capture-less
 # `if ! cmd; then ...` は別仕様で本ガード対象外。詳細: `_emit-cross-session-incident.sh` cycle 38 F-16 コメント参照。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
@@ -1802,7 +1802,7 @@ Otherwise:
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
 | `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. Use the **same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form, not `if !`). Brief inline form: `if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi`. If state-read.sh launch fails, skip the metrics output for this field instead of silently treating the value as `"0"` (mis-classified as "no deviation"). verified-review cycle 35 F-12 introduced the fail-fast block; cycle 38 F-02 dropped the caller-count pin (previous "6 / 7 caller sites" prose self-undercount-drifted twice — count synchronization contract abandoned in favor of semantic anchor reference). Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot. This counts re-entries to Phase 5.1 from checklist failures |
+| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. Use the **same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form, not `if ! cmd; then`). Brief inline form: `if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi`. If state-read.sh launch fails, skip the metrics output for this field instead of silently treating the value as `"0"` (mis-classified as "no deviation"). verified-review cycle 35 F-12 introduced the fail-fast block; cycle 38 F-02 dropped the caller-count pin (previous "6 / 7 caller sites" prose self-undercount-drifted twice — count synchronization contract abandoned in favor of semantic anchor reference). Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot. This counts re-entries to Phase 5.1 from checklist failures |
 
 **Step 2**: Evaluate thresholds.
 
@@ -1954,7 +1954,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 If `metrics.enabled: false` in rite-config.yml, Phase 5.5.2 must still write the `phase5_post_metrics` marker (the phase body may short-circuit Steps 1-5 below, but the Mandatory After block must run unconditionally — see Phase 5.5.2 Skip Steps note).
 
 ```bash
-# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
 # verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** (`if ! var=$(cmd)` 形式のみ NG)。capture-less
 # `if ! cmd; then ...` は別仕様で本ガード対象外。詳細: `_emit-cross-session-incident.sh` cycle 38 F-16 コメント参照。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
@@ -2093,7 +2093,7 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 **Condition**: `parent_issue_number` is non-zero in flow-state. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot:
 
 ```bash
-# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
 # verified-review cycle 41 I-03: 本警告は **capture 文脈に限定** (`if ! var=$(cmd)` 形式のみ NG)。capture-less
 # `if ! cmd; then ...` は別仕様で本ガード対象外。詳細: `_emit-cross-session-incident.sh` cycle 38 F-16 コメント参照。
 if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then

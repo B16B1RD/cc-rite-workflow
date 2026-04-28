@@ -861,7 +861,7 @@ WM_SOURCE="implement" \
 **Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot (#497 — also survives context compaction):
 
 ```bash
-# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if !` which always rc=0 — bash spec violation).
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
 if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
   :
 else
