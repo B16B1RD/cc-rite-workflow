@@ -408,7 +408,7 @@ Example: `[ZEN-E001] rite-config.yml not found`
 **Cause**: A specific review agent (security, test, etc.) failed to complete its analysis.
 
 **Recovery Steps**:
-1. Check agent definition file exists: `{plugin_root}/agents/{agent_name}.md` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script))
+1. Check agent definition file exists: `{plugin_root}/agents/{agent_name}.md` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script-full-version))
 2. Review error details in the output
 3. Retry with a subset of reviewers if needed
 4. Report persistent failures as a bug
@@ -436,7 +436,7 @@ Example: `[ZEN-E001] rite-config.yml not found`
 **Cause**: Reviewer skill file is missing, corrupted, or has syntax errors.
 
 **Recovery Steps**:
-1. Verify file exists: `ls {plugin_root}/skills/reviewers/{name}.md` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script))
+1. Verify file exists: `ls {plugin_root}/skills/reviewers/{name}.md` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script-full-version))
 2. Check file syntax and frontmatter
 3. Restore from git history if corrupted
 4. Use fallback profile if file cannot be recovered
@@ -481,7 +481,7 @@ Example: `[ZEN-E001] rite-config.yml not found`
 
 **Recovery Steps**:
 1. Validate YAML syntax: `yq eval . rite-config.yml`
-2. Compare with template: `{plugin_root}/templates/config/rite-config.yml` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script))
+2. Compare with template: `{plugin_root}/templates/config/rite-config.yml` (resolve `{plugin_root}` per [Plugin Path Resolution](./plugin-path-resolution.md#resolution-script-full-version))
 3. Fix syntax errors or missing fields
 4. Retry the command
 

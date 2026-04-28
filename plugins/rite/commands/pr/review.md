@@ -2315,12 +2315,31 @@ When this is a **re-review after a fix** (verification mode or `loop_count >= 1`
 **Step 1**: Determine if attribution is applicable:
 
 ```bash
-loop_count=$(jq -r '.loop_count // 0' .rite-flow-state 2>/dev/null) || loop_count=0
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
+if loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0); then
+  :
+else
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field loop_count in Phase 5.3.8" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_3_8_loop_count; rc=$rc" >&2
+  exit 1
+fi
+# Type validation (PR #688 cycle 5 review security LOW followup):
+# non-numeric injection 経路 (`{"loop_count": "true"}` 等) を遮断し、後続 integer 比較が
+# silent regression する経路を fail-safe で default 0 に降格する。
+case "$loop_count" in
+  ''|*[!0-9]*)
+    echo "WARNING: loop_count is not numeric ('$loop_count'), defaulting to 0 (treat as first review)" >&2
+    loop_count=0
+    ;;
+esac
 if [ "$loop_count" -lt 1 ]; then
   echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, loop_count=$loop_count)"
   exit 0
 fi
 ```
+
+> **Note (Issue #687 AC-4)**: `loop_count` is read via `state-read.sh` so per-session state is consulted (avoiding stale residue from another session's legacy `.rite-flow-state`).
 
 **Step 2**: Identify files changed by the last fix commit vs original PR files:
 

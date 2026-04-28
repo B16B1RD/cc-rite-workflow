@@ -13,7 +13,7 @@ Built-in minimal profiles for when skill files (`skills/reviewers/*.md`) cannot 
 
 **Note**: Fallbacks are minimal emergency configurations and do not need to reproduce all features of the official skill files.
 
-**Warning output requirement**: When a fallback profile is used instead of the official skill file, the reviewer MUST output the following warning at the beginning of its review. Note: `{plugin_root}` is resolved by the caller (`review.md` Phase 4) via [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script) before this template is used.
+**Warning output requirement**: When a fallback profile is used instead of the official skill file, the reviewer MUST output the following warning at the beginning of its review. Note: `{plugin_root}` is resolved by the caller (`review.md` Phase 4) via [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) before this template is used.
 
 ```
 ⚠️ フォールバックプロファイルを使用中: {reviewer_type} のスキルファイル読み込みに失敗しました。

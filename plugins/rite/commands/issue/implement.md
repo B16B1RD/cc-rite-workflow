@@ -13,7 +13,7 @@ Perform actual implementation work following the implementation plan approved in
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, and `dead_code_hygiene`.
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
 ### 5.0.W Wiki Query Injection (Conditional)
 
@@ -858,10 +858,25 @@ WM_SOURCE="implement" \
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically from `.rite-flow-state` (#497 — survives context compaction):
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot (#497 — also survives context compaction):
 
 ```bash
-parent_issue_number=$(jq -r '.parent_issue_number // 0' .rite-flow-state 2>/dev/null) || parent_issue_number=0
+# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
+if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+  :
+else
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.1.2" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_1_2_parent_issue; rc=$rc" >&2
+  exit 1
+fi
+# Type validation (PR #688 cycle 5 review security LOW followup): non-numeric injection 経路を遮断
+case "$parent_issue_number" in
+  ''|*[!0-9]*)
+    echo "WARNING: parent_issue_number is not numeric ('$parent_issue_number'), defaulting to 0 (no parent)" >&2
+    parent_issue_number=0
+    ;;
+esac
 if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
   echo "[CONTEXT] PARENT_ISSUE=none — skip 5.1.2"
 else
