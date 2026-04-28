@@ -3084,7 +3084,7 @@ Generate structured action lines in the commit body following the Contextual Com
    - 対応中に発見した制約 → `constraint(scope)`
    - 対応中の発見事項 → `learned(scope)`
    - **レビューソースの provenance** → `decision(review-source): {review_source}` (verified-review cycle 9 I-1 対応、Phase 1.2.0 Priority chain で決定された `review_source` 値を commit body に記録。schema.md Priority 1 emit 義務の provenance 契約を Phase 3.2 commit message でも履行する)
-5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `intent` (intent is preserved last as the core "why")
+5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `root-cause` → `intent` (intent is preserved last as the core "why"; `root-cause` is preserved at higher priority than `decision` to maintain Phase 3.2.1 Root Cause Gate compliance — fix commits MUST retain at least one `root-cause(scope):` line; `comment-update` is out of scope — single-purpose commits do not exceed 10 lines)
 
 **Output rules:**
 - Action type names are always in English (`intent`, `decision`, `root-cause`, `rejected`, `constraint`, `learned`, `comment-update`)

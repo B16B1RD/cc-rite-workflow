@@ -363,7 +363,7 @@ Generate structured action lines in the commit body following the Contextual Com
 3. **Extract from Issue body**: Derive `intent` from Issue purpose/motivation, `constraint` from acceptance criteria and technical restrictions (Priority 3)
 4. **Infer from diff**: When `git -C {worktree_path} diff --cached` shows clear technical choices (new dependencies, library switches, API design), infer `decision` (Priority 4 — use only when evident)
 5. **Apply mapping table**: Map each extracted item to action types using the [Work Memory → Action Line Mapping](../../skills/rite-workflow/references/contextual-commits.md#work-memory--action-line-mapping) table
-6. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `intent` (intent is preserved last as the core "why")
+6. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `root-cause` → `intent` (intent is preserved last as the core "why"; `comment-update` is out of scope — single-purpose commits do not exceed 10 lines)
 
 **Output rules:**
 - Action type names are always in English (`intent`, `decision`, `root-cause`, `rejected`, `constraint`, `learned`, `comment-update`)
