@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-27T23:01:24+00:00"
+updated: "2026-04-28T05:15:14+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -72,6 +72,10 @@ sources:
     ref: "raw/fixes/20260426T233931Z-pr-688.md"
   - type: "reviews"
     ref: "raw/reviews/20260427T050731Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260428T050216Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T051514Z-pr-688.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry"]
 confidence: high
 ---
@@ -264,6 +268,17 @@ PR #688 (multi-state-aware flow-state read helper) で本 anti-pattern が **hel
 
 **学習**: helper 経由化リファクタの caller 列挙では、(a) **同一ファイル内の同型 pattern を全数 grep で確認** + (b) **commit message の claim と実装の strict diff 比較** + (c) **writer / reader 双方の fallback path を symmetric に確認** の 3 段階を必須化する。特に "対称化" を claim する commit は、reader 側の guard (`[ ! -s ]` size guard 等) を writer 側で literal rep しているか strict 比較する。詳細は [`2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される](./stderr-merge-silent-sentinel-suppression.md) も参照。
 
+### Writer 中核 sweep 責務 + Documentation count grep evidence 同期 (PR #688 cycle 42 累積 14 回目での evidence)
+
+PR #688 cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の writer/reader 対称化 doctrine が、cycle 38 F-06 で reader 側 (`state-read.sh`) に確立した「mktemp 失敗時 3 行 WARNING」「helper WARNING pass-through」「signal-specific 4-line trap」の 3 pattern が writer 中核 4 箇所 (`flow-state-update.sh:269/323/385/324`, `state-read.sh:137 + flow-state-update.sh:168`) に未到達のまま merged されかけた状態が cycle 42 review で初検出された。同 cycle で multi-location undercount 再発 (`workflow-incident-emit-protocol.md` L56/L80 の「15 invocation sites」が `cleanup.md` 3 sites を見落とし → 実測 18 sites / 4 files) も同時に observed。
+
+**学習**: 累積対策 PR で writer/reader 対称化 doctrine を **declaration として打ち立てる cycle** で、その doctrine が writer 中核の **既存箇所** (新規追加した箇所だけでなく previously-shipped 箇所) に対しても同 PR 内で **全件 sweep される責務** がある。「reader 側に新 pattern を導入した」cycle と「writer 側で既存箇所への横展開を完遂する」cycle が分離していると、merge 後に writer 側 silent regression が残留する。canonical 対策:
+
+1. **reader 側 fix 直後の writer 全件 sweep mandatory 化**: reader (`state-read.sh` 等) に 3 行 WARNING / signal-specific trap / pass-through 等の新 pattern を導入したら、**同 PR 内で writer 中核 (`flow-state-update.sh` 等) の同型 pattern 箇所を全数 grep で列挙** + 同型 pattern を **同 commit で対称適用** する。reader 単独 PR + writer follow-up PR の 2 段運用は writer 側 silent regression を merge 後に残す経路となる
+2. **Documentation の invocation site count は grep evidence ベースで literal SoT と同期**: `workflow-incident-emit-protocol.md` の「N invocation sites across M files」のような literal count claim は、**該当 sentinel emission 行を grep evidence (`grep -rn` の matched count) で再評価** してから書く。記憶ベースの「14 sites」「15 sites」claim は cleanup.md / archive-procedures.md / 等の派生 site が PR 累積で追加されるたびに drift する典型箇所
+3. **N site claim は drift 検出アンカーとして併用**: 「15 invocation sites」を literal で書く場合、grep verification 結果を inline 注釈 (`(grep evidence: workflow_incident= の matched count)`) で残し、後続 reviewer が `grep -rcF 'workflow_incident=' --include='*.md' --include='*.sh' .` で再検証可能にする。numeric claim 単独は次の sites 追加で silent drift する
+4. **Self-referential learned 節 vigilance**: cumulative-defense PR (5+ 回目) では「learned 節で言及した anti-pattern を同 commit 内で再演する」self-referential drift が頻発する (詳細は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md) 参照)。learned 節を書いたら **同 commit の全 file diff を再 grep** して learned 節違反を pre-merge gate で捕捉する
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -308,3 +323,5 @@ PR #688 (multi-state-aware flow-state read helper) で本 anti-pattern が **hel
 - [PR #688 cycle 2 review (helper 化 caller migration scope rule + load-bearing test 検証)](raw/reviews/20260426T233323Z-pr-688.md)
 - [PR #688 cycle 3 fix (writer/reader 同 PR 完遂 user scope expansion)](raw/fixes/20260426T233931Z-pr-688.md)
 - [PR #688 cycle 11 review (同関数内 line 72 partial migration 自己矛盾)](raw/reviews/20260427T050731Z-pr-688.md)
+- [PR #688 cycle 42 review (writer 中核 4 箇所 sweep 責務 + multi-location undercount 再発)](raw/reviews/20260428T050216Z-pr-688.md)
+- [PR #688 cycle 42 fix (reader 3 行 WARNING pattern を writer 中核 4 箇所に対称適用)](raw/fixes/20260428T051514Z-pr-688.md)

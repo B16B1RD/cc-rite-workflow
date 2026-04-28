@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-04-27T23:01:24+00:00"
+updated: "2026-04-28T05:15:14+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260426T235945Z-pr-688.md"
@@ -10,7 +10,11 @@ sources:
     ref: "raw/fixes/20260427T000422Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260427T020357Z-pr-688.md"
-tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification"]
+  - type: "reviews"
+    ref: "raw/reviews/20260428T050216Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T051514Z-pr-688.md"
+tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip"]
 confidence: high
 ---
 
@@ -85,7 +89,7 @@ cycle 2 で error-handling reviewer が pre-fix code を `/tmp/state-read-revert
 
 これは「fix が真に bug を防いでいることを実証する load-bearing test」の canonical pattern。
 
-### 適用累積実績 (PR #688 cycles 3 → 4 → 5 → 31)
+### 適用累積実績 (PR #688 cycles 3 → 4 → 5 → 31 → 42)
 
 | cycle | 適用先 | 検出内容 |
 |-------|--------|---------|
@@ -93,8 +97,41 @@ cycle 2 で error-handling reviewer が pre-fix code を `/tmp/state-read-revert
 | 4 | fix verification | dead code 削除 + 真の動作 (jq `// $default`) verify に書き直し |
 | 5 | TC-13 追加時の自己検証 | TC-13 false-positive 判明 |
 | 31 | TC-AC-4-WRITER-FALLBACK | 6 sub-assertions のうち `legacy phase updated` が identification power 0 |
+| 42 | TC-9 (`_resolve-cross-session-guard.test.sh`) | bash command substitution の trailing newline strip 仕様により helper が `printf '%s\n'` に regress しても test PASS する false-positive (assertion が `wc -c` ではなく `=` 比較のため byte 差分が消失) |
 
 → Wiki 経験則として **新規 test 追加時は mutation testing による真正性検証を strongly recommended** と位置付け。
+
+### 適用 4: bash command substitution trailing newline strip 仕様による false-positive (PR #688 cycle 42 での evidence)
+
+cycle 42 review で `_resolve-cross-session-guard.test.sh` TC-9 が **bash の `$(...)` command substitution が末尾 newline を strip する仕様** により helper の出力が `printf '%s'` (newline 無し) ↔ `printf '%s\n'` (newline 有り) のいずれでも assertion `[ "$got" = "$expected" ]` が PASS する false-positive 構造として実測:
+
+```bash
+# helper canonical (no trailing newline)
+printf '%s' "$value"
+
+# 想定 mutation (trailing newline regression)
+printf '%s\n' "$value"
+
+# Test (false-positive)
+got=$(_resolve-cross-session-guard.sh ...)  # bash strips trailing \n
+[ "$got" = "expected_value" ]  # 両 mutation で PASS
+```
+
+→ **`got=$(cmd); echo -n "$got" | wc -c` で byte count を assert** する canonical pattern に変更。bash command substitution の strip 仕様が assertion を bypass する false-positive 構造は **portable shell idiom 全般に潜在** するため、**helper 出力に newline 有無の規約がある場合は必ず byte-exact pin** を mandatory 化する。
+
+```bash
+# Canonical (bytes-exact pin)
+got=$(_resolve-cross-session-guard.sh ...)
+got_bytes=$(printf '%s' "$got" | wc -c | tr -d ' ')
+expected_bytes=5  # "value" の byte 数
+[ "$got_bytes" = "$expected_bytes" ] || fail "expected $expected_bytes bytes, got $got_bytes"
+```
+
+**Detection idiom**: helper 出力の trailing newline 規約を test で pin する場合、以下を mandatory 化:
+
+1. **`$(...)` 経由の string compare assertion は trailing newline 規約を捕捉できない前提で書く**: `assert_eq` の前に `wc -c` で byte count を pin する 1 行を追加
+2. **mutation testing で empirical 検証**: helper 実装を `printf '%s'` ↔ `printf '%s\n'` で双方 mutate し test suite を再実行 → 両 mutation で PASS したら trailing newline 規約は実質 unguarded 状態
+3. **portable shell idiom レビューの check item に追加**: `$(...)` / `<<<` / `read -r` のいずれも trailing newline strip / preserve 挙動が異なる。helper 出力の byte-level 規約を test で pin する場合は `wc -c` / `od -c` 等 byte-level 検査の併用を canonical とする
 
 ### 実装手順 (canonical)
 
@@ -120,3 +157,5 @@ cycle 2 で error-handling reviewer が pre-fix code を `/tmp/state-read-revert
 - [PR #688 review results (cycle 3) — TC-10 false-positive 発見](raw/reviews/20260426T235945Z-pr-688.md)
 - [PR #688 fix results (cycle 4) — mutation testing による解消パターン](raw/fixes/20260427T000422Z-pr-688.md)
 - [PR #688 fix results (cycle 5) — TC-13 false-positive + 3 cycle 連続適用実績](raw/fixes/20260427T020357Z-pr-688.md)
+- [PR #688 cycle 42 review — bash command substitution trailing newline strip 仕様による false-positive 構造](raw/reviews/20260428T050216Z-pr-688.md)
+- [PR #688 cycle 42 fix — bytes-exact pin (`wc -c`) で trailing newline 規約の mutation 耐性を獲得](raw/fixes/20260428T051514Z-pr-688.md)
