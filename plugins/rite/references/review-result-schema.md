@@ -123,7 +123,7 @@
 | `Low-Medium`, `LOW-MEDIUM`, `LowMedium`, `low_medium`, `中低`, `軽中` | `LOW-MEDIUM` |
 | `Low`, `LOW`, `INFO`, `TRIVIAL`, `Nit`, `NIT`, `🔵`, `低`, `情報` | `LOW` |
 
-**運用ポリシーとの関係**: rite workflow の運用では reviewer agent (`plugins/rite/agents/*-reviewer.md`) は `Critical` / `Important` / `Minor` の 3 段階を使うことが多い (MEMORY.md `review-quality-principles` 参照)。これは **運用レイヤ** の分類であり、**schema レイヤ** の 4 値 enum に対しては上記マッピング表を通じて: `Critical` → `CRITICAL`、`Important` → `HIGH`、`Minor` → `MEDIUM` のように正規化される。write 側 (`review.md` Phase 6.1.a) は必ず schema enum 4 値で出力し、read 側 (`fix.md` Phase 1.2 best-effort parser) が外部ツール由来の別名をここで正規化する。
+**運用ポリシーとの関係**: rite workflow の運用では reviewer agent (`plugins/rite/agents/*-reviewer.md`) は `Critical` / `Important` / `Minor` の 3 段階を使うことが多い (MEMORY.md `review-quality-principles` 参照)。これは **運用レイヤ** の分類であり、**schema レイヤ** の 5 値 enum に対しては上記マッピング表を通じて: `Critical` → `CRITICAL`、`Important` → `HIGH`、`Minor` → `MEDIUM`、`Low-Medium` → `LOW-MEDIUM` のように正規化される。write 側 (`review.md` Phase 6.1.a) は必ず schema enum 5 値で出力し、read 側 (`fix.md` Phase 1.2 best-effort parser) が外部ツール由来の別名をここで正規化する。
 
 **絵文字エイリアスの実運用検証状況**: 絵文字 (`🔴`/`🟠`/`🟡`/`🔵`) は将来の互換性のため列挙しているが、主要な外部ツールが絵文字を出力する事例は未検証。新しい外部レビューツールへの対応として絵文字エイリアスを追加した場合は、本表の下に注記を追加すること。
 
