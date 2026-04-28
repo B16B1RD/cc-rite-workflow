@@ -240,6 +240,58 @@ update_local_work_memory() {
   _branch_san=$(_sanitize_yaml_value "$branch")
   _last_commit_san=$(_sanitize_yaml_value "$last_commit")
 
+  # verified-review (PR #688 cycle 15) F-04 (MEDIUM) 対応: defense-in-depth doctrine 片肺更新の解消。
+  # pr_num / loop_cnt は state-read.sh 経由で flow-state JSON から取得されるが、jq -r は raw string を
+  # 返すため、tampered/corrupt な flow-state file (例: `{"pr_number": "123\nmalicious: injection"}`) で
+  # 改行込みの値が返ると YAML frontmatter parse が破壊される (Issue #687 同型の writer/reader 対称化破綻)。
+  # 数値型 validation で非数値値を `null` (YAML literal) に降格し、type 安全性を caller 側で保証する。
+  # cycle 44 F-12 で他 6 field (phase/phase_detail/next_action/source/branch/last_commit) は sanitize 済み。
+  local _pr_num_san _loop_cnt_san
+  case "$pr_num" in
+    ''|null|[0-9]*)
+      # null / 空文字 / 数字始まり値 (整数前提): allow as-is (数字は jq -r 経由の正常値)
+      # *[!0-9]* check で末尾に改行/制御文字が混入していたら null に降格する
+      case "$pr_num" in
+        *[!0-9]*)
+          if [ "$pr_num" != "null" ] && [ -n "$pr_num" ]; then
+            echo "WARNING: pr_num contains non-numeric character (probable YAML injection attempt or state corruption), forcing 'null'" >&2
+            _pr_num_san="null"
+          else
+            _pr_num_san="${pr_num:-null}"
+          fi
+          ;;
+        *)
+          _pr_num_san="${pr_num:-null}"
+          ;;
+      esac
+      ;;
+    *)
+      echo "WARNING: pr_num has invalid format ('$pr_num'), forcing 'null'" >&2
+      _pr_num_san="null"
+      ;;
+  esac
+  case "$loop_cnt" in
+    ''|null|[0-9]*)
+      case "$loop_cnt" in
+        *[!0-9]*)
+          if [ "$loop_cnt" != "null" ] && [ -n "$loop_cnt" ]; then
+            echo "WARNING: loop_cnt contains non-numeric character (probable YAML injection attempt or state corruption), forcing 'null'" >&2
+            _loop_cnt_san="null"
+          else
+            _loop_cnt_san="${loop_cnt:-null}"
+          fi
+          ;;
+        *)
+          _loop_cnt_san="${loop_cnt:-null}"
+          ;;
+      esac
+      ;;
+    *)
+      echo "WARNING: loop_cnt has invalid format ('$loop_cnt'), forcing 'null'" >&2
+      _loop_cnt_san="null"
+      ;;
+  esac
+
   {
     printf '# 📜 rite 作業メモリ\n\n'
     printf '## Summary\n'
@@ -254,9 +306,9 @@ update_local_work_memory() {
     printf 'phase_detail: "%s"\n' "$_wm_phase_detail_san"
     printf 'next_action: "%s"\n' "$_wm_next_san"
     printf 'branch: "%s"\n' "$_branch_san"
-    printf 'pr_number: %s\n' "$pr_num"
+    printf 'pr_number: %s\n' "$_pr_num_san"
     printf 'last_commit: "%s"\n' "$_last_commit_san"
-    printf 'loop_count: %s\n' "$loop_cnt"
+    printf 'loop_count: %s\n' "$_loop_cnt_san"
     printf -- '---\n'
     printf '\n%s\n' "$WM_BODY_TEXT"
     printf '\n## Detail\nPhase: %s\nBranch: %s\n' "$_wm_phase_san" "$_branch_san"

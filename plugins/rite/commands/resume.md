@@ -269,8 +269,15 @@ else
 fi
 
 # 数値 fail-fast gate: state file 改竄 / silent regression 経路で non-numeric が混入した場合の fail-safe
+# verified-review (PR #688 cycle 15) F-08 (MEDIUM) 対応: writer/reader/resume 3 layer 対称化 doctrine。
+# start.md (Phase 5.7) / implement.md (Phase 5.1.2) / pr/review.md (Phase 5.3.8) の 3 caller では
+# `echo "WARNING: ... is not numeric (...), defaulting to 0 ..." >&2` を emit している。本 site のみ
+# silent default 0 だと state file 改竄経路の observability が 0 となり、3 layer 対称化が破れる。
 case "$parent_issue_number_raw" in
-  ''|*[!0-9]*) parent_issue_number_raw=0 ;;
+  ''|*[!0-9]*)
+    echo "WARNING: parent_issue_number_raw is not numeric ('$parent_issue_number_raw'), defaulting to 0 (display なし)" >&2
+    parent_issue_number_raw=0
+    ;;
 esac
 
 # Display 整形: 0 / 不在 → `なし`、それ以外 → `#{N}`

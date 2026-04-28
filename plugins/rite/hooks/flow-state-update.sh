@@ -112,7 +112,7 @@ _resolve_session_id() {
     # Reject malformed --session arg (non-UUID input could escape .rite/sessions/).
     # Fail-fast rather than legacy fallback: silent fallback would hide the spec
     # drift and let the caller think a per-session file was created.
-    echo "ERROR: invalid session_id format: '$provided_sid' (expected UUID ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\$)" >&2
+    echo "ERROR: invalid session_id format: '$provided_sid' (expected UUID, RFC 4122 §4: 8-4-4-4-12 hex with hyphens, case-insensitive — \`_resolve-session-id.sh\` accepts [0-9a-fA-F])" >&2
     return 1
   fi
   bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT"
@@ -194,14 +194,14 @@ _resolve_session_state_path() {
     trap '_rite_flow_state_classify_cleanup; exit 130' INT
     trap '_rite_flow_state_classify_cleanup; exit 143' TERM
     trap '_rite_flow_state_classify_cleanup; exit 129' HUP
-    # verified-review cycle 44 F-14 LOW: ${TMPDIR:-/tmp} で POSIX 慣習を尊重 (state-read.sh と writer/reader 対称化)
-    if ! _classify_err=$(mktemp "${TMPDIR:-/tmp}/rite-classify-err-writer-XXXXXX" 2>/dev/null); then
-      echo "WARNING: flow-state-update.sh: _classify_err mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-      echo "  影響: cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません" >&2
-      echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-      _classify_err=""
-    fi
-    [ -n "$_classify_err" ] && chmod 600 "$_classify_err" 2>/dev/null || true
+    # verified-review (PR #688 cycle 15) F-05 (MEDIUM) 対応: writer/reader 対称化 doctrine 構造的破綻の解消。
+    # 旧実装は `mktemp + WARNING 3 行 + chmod 600` を 6 行 inline で書き、`_mktemp-stderr-guard.sh` の
+    # F-02 consolidation スコープから漏れていた。state-read.sh と byte-for-byte に重複していたため、
+    # 将来 WARNING 文言や chmod 仕様を変更する際の片肺更新 drift リスクが残存していた。
+    # state-read.sh の本 helper invocation と writer/reader 対称化を維持するため、同じ helper 経由に統一する。
+    _classify_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+      "flow-state-update" "classify-err-writer" \
+      "cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません")
     # F-01 (HIGH) — writer/reader 対称化 doctrine 違反を解消。state-read.sh の同 doctrine
     # コメント (writer 側との対称化を維持する原則 — Cross-Reference: state-read.sh の本 helper
     # invocation 直前の F-11 / 対称化 note と同じ趣旨で記述) に従い、`|| true` で helper の

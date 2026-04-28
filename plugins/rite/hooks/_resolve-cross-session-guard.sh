@@ -160,6 +160,17 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
   exit 0
 else
   jq_rc=$?
+  # verified-review (PR #688 cycle 15) F-03 (MEDIUM) 対応: dead-observability 解消。
+  # cycle 35 F-01/F-02 で `cat "$_jq_err" >&2` を削除した (stdout 汚染防止: caller の `2>&1` で
+  # classification token に jq error が混入し case match を破壊していたため)。本 helper は cycle 35 以降、
+  # _jq_err tempfile を確保するが読み出していなかった ("caller は corrupt:N rc を観測できますが原因
+  # line/column が失われます" と _mktemp-stderr-guard.sh の WARNING で documented されている dead state)。
+  # 現在は upstream caller (state-read.sh / flow-state-update.sh) が `2>"$_classify_err"` で stderr を
+  # 独立 tempfile に退避しており、本 helper が stderr に jq parse error 詳細を emit しても classification
+  # token (stdout) は汚染されない。caller chain の `_classify_err` ファイルに parse error が届き、
+  # legacy_state_corrupt incident の root cause 診断 (line/column) が可能になる (Issue #687
+  # writer/reader 対称化 doctrine の核心)。
+  [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" >&2
   printf 'corrupt:%d' "$jq_rc"
   exit 0
 fi

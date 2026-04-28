@@ -299,7 +299,7 @@ esac
 
 `plugins/rite/commands/wiki/lint.md` 内で本 pattern が確立されている。Phase 番号 + case label の semantic anchor 形式で参照する (verified-review cycle 41 I-01: 旧 line range 参照は file 編集で容易に drift するため撤廃済み):
 
-複数の case 文を持つ Phase は bullet 入れ子で全 case を列挙する (drift 検出力を維持するため anchor pattern を 1 行に複数列挙しない doctrine、verified-review F-04 で確立)。**Scope**: 本列挙は **top-level の case 文** (placeholder substitute validation gate / strategy dispatch / rc dispatch) を対象とする。while loop 等の inner case (例: `$pollution_check_line` 等) は scope 外とし、各 Phase の主要 dispatch 構造のみを SoT として保持する (verified-review F11-03 で明文化):
+複数の case 文を持つ Phase は bullet 入れ子で全 case を列挙する (drift 検出力を維持するため anchor pattern を 1 行に複数列挙しない doctrine、verified-review F-04 で確立)。**Scope**: 本列挙は **dispatch 構造の case 文** (placeholder substitute validation gate / strategy dispatch / rc dispatch) を対象とし、**他 case 文の arm 内にネストした dispatch 構造の case も含む** (例: `case "$branch_strategy" in` の `separate_branch)` arm 内に配置された `case "$commit_rc" in` 等)。while loop の inner case (例: `$pollution_check_line` 等の per-iteration 状態判定) は scope 外とし、各 Phase の主要 dispatch 構造のみを SoT として保持する (verified-review F11-03 で明文化、PR #688 cycle 15 F-07 で nested dispatch を含む形に改訂):
 
 - Phase 6.0 (欠落概念検出 — log.md 抽出 path)
   - `case "$branch_strategy" in`
@@ -371,4 +371,4 @@ esac
 この pointer により、**rationale / 説明コメントの更新は本ファイル 1 箇所に集約される** (冒頭の
 「重要 — コード層との境界」で述べた通り、4 行 trap のコード自体はこれとは別に各 site に残っている)。
 signal 動作そのものを変更する場合 (例: HUP 追加、TERM の exit code 変更) は、本ファイルの rationale
-更新後に fix.md + review.md + start.md の全 site の 4 行 trap を Instantiation Checklist に従って同時更新すること。
+更新後に対象 5 ファイル (本ファイル冒頭の対象ファイル list 参照) の全 site の 4 行 trap を Instantiation Checklist に従って同時更新すること。

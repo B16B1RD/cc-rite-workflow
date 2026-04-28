@@ -174,16 +174,17 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     # 他 5 helper (state-read.sh _jq_err / _resolve-cross-session-guard.sh / flow-state-update.sh ×2 /
     # resume-active-flag-restore.sh / _resolve-session-id-from-file.sh _tr_err — cycle 43 F-08 で対称化済み)
     # の canonical pattern と統一する。trap 統合は別 Issue で追跡 (実行時間が短いため race window 小)。
-    # verified-review cycle 44 F-14 LOW (security Hypothetical exception): ${TMPDIR:-/tmp} で
-    # POSIX 慣習を尊重 (SELinux / hardened multi-user 環境での per-user tempdir 隔離に対応)。
-    if ! _classify_err=$(mktemp "${TMPDIR:-/tmp}/rite-classify-err-reader-XXXXXX" 2>/dev/null); then
-      echo "WARNING: state-read.sh: _classify_err mktemp に失敗しました (/tmp full / permission denied / SELinux deny?)" >&2
-      echo "  影響: cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません" >&2
-      echo "  対処: /tmp の空き容量・パーミッションを確認してください" >&2
-      _classify_err=""
-    fi
-    # path-disclosure defense (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止)
-    [ -n "$_classify_err" ] && chmod 600 "$_classify_err" 2>/dev/null || true
+    # verified-review (PR #688 cycle 15) F-05 (MEDIUM) 対応: writer/reader 対称化 doctrine 構造的破綻の解消。
+    # 旧実装は `mktemp + WARNING 3 行 + chmod 600` を 6 行 inline で書き、`_mktemp-stderr-guard.sh` の
+    # F-02 consolidation スコープ (header コメント:「6 hook scripts で重複していた `mktemp + WARNING` を helper
+    # に集約」) から漏れていた。helper API は本ケースを完全にサポート可能 (caller_id / template_suffix /
+    # impact_msg を引数化済、chmod 600 は helper 内蔵 — 詳細は `_mktemp-stderr-guard.sh` 参照)。
+    # 残置は writer/reader 対称化 doctrine の構造的破綻 — 将来 WARNING 文言や chmod 仕様を変更する際に
+    # 両 site 同期更新が必要で、Issue #687 root cause と同型の片肺更新 drift を再導入するリスクがあった。
+    # `_resolve-cross-session-guard.sh` (cycle 9 F-02 で集約済み) と同じ pattern に統一する。
+    _classify_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+      "state-read" "classify-err-reader" \
+      "cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません")
     # verified-review F-11 LOW (defense-in-depth): `|| true` で helper の想定外 exit を完全に
     # 握り潰すと、helper の design contract (`exit 0 — always`) が将来 regression したときに
     # silent fail する。`|| _guard_rc=$?` で rc を捕捉し、非 0 時には WARNING を emit する。
