@@ -9,6 +9,7 @@ This document defines the common severity levels and evaluation criteria used by
 | **CRITICAL** | Immediately exploitable vulnerabilities, deployment failures, or production crashes | Must fix before merge |
 | **HIGH** | Serious issues with significant impact (security risks, data exposure, perceptible degradation) | Recommended to fix before merge |
 | **MEDIUM** | Potential concerns or best practice violations that should be addressed | Address early |
+| **LOW-MEDIUM** | Minor concerns whose blast radius is bounded (例: 独自ジャーゴン濫用 — 個別修正で完了する localized 問題) | Address when convenient (LOW より優先、MEDIUM の評価判定 = 条件付き と同等に扱う) |
 | **LOW** | Minor improvements or optimization opportunities | Address when time permits |
 
 **Note**: Each reviewer may provide domain-specific examples of what constitutes each severity level in their respective documentation.
@@ -46,20 +47,21 @@ If a static text search (`Grep`) returns no results, that alone does NOT downgra
 
 ## Impact × Observed Likelihood Matrix
 
-The final severity reported in the findings table is determined by combining the Impact axis (CRITICAL / HIGH / MEDIUM / LOW) with the Observed Likelihood axis. The matrix below is the mechanical rule reviewers apply at finding-emission time:
+The final severity reported in the findings table is determined by combining the Impact axis (CRITICAL / HIGH / MEDIUM / LOW-MEDIUM / LOW) with the Observed Likelihood axis. The matrix below is the mechanical rule reviewers apply at finding-emission time:
 
 | Impact \ Likelihood | Observed | Demonstrable | Hypothetical |
 |---|---|---|---|
 | **CRITICAL** | CRITICAL | CRITICAL | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **HIGH** | HIGH | HIGH | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **MEDIUM** | MEDIUM | MEDIUM | **降格 → 推奨事項** (例外カテゴリを除く) |
+| **LOW-MEDIUM** | LOW-MEDIUM | LOW-MEDIUM | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **LOW** | LOW | LOW | 報告禁止 |
 
 **Rule**: Hypothetical findings in the CRITICAL / HIGH / MEDIUM rows are all downgraded to **推奨事項** (a single, mechanical destination — no reviewer-side judgment required). LOW × Hypothetical is **報告禁止** because both axes are already at the lowest tier and further downgrade would produce zero-information findings. The only exceptions are reviewers in the Hypothetical Exception Categories below.
 
 ## COMMENT_QUALITY 軸 (Impact カテゴリ)
 
-`COMMENT_QUALITY` は Impact 軸 (CRITICAL/HIGH/MEDIUM/LOW) に対する Impact カテゴリ分類の一つで、コメント品質違反 (Comment Rot / ジャーナルコメント / 過剰冗長 / 内部 helper の些末コメント等) を Impact × Likelihood Matrix で扱うための軸である。本軸は Issue #699 の SoT ([`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md)) と Issue #700 の reviewer 側 [`Comment Quality Finding Gate`](../agents/_reviewer-base.md#comment-quality-finding-gate) を統合する severity 判定の入口となる。
+`COMMENT_QUALITY` は Impact 軸 (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) に対する Impact カテゴリ分類の一つで、コメント品質違反 (Comment Rot / ジャーナルコメント / 過剰冗長 / 内部 helper の些末コメント等) を Impact × Likelihood Matrix で扱うための軸である。本軸は Issue #699 の SoT ([`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md)) と Issue #700 の reviewer 側 [`Comment Quality Finding Gate`](../agents/_reviewer-base.md#comment-quality-finding-gate) を統合する severity 判定の入口となる。
 
 ### Impact 等級概要
 
@@ -71,7 +73,7 @@ The final severity reported in the findings table is determined by combining the
 | **LOW-MEDIUM** | 独自ジャーゴン濫用 (Whitelist 外の造語) |
 | **LOW** | 内部 helper の些末 WHAT コメント等 (詳細粒度は SoT 参照) |
 
-> **重要度プリセット表本体は SoT に集約**: 上記は概要のみ。各違反パターンと SoT check 参照を含む完全な重要度プリセット表は [`_reviewer-base.md` の Comment Quality Finding Gate](../agents/_reviewer-base.md#comment-quality-finding-gate) を参照すること。本ファイル (`severity-levels.md`) で表本体を duplicates すると Issue #707 が解消しようとしている SoT 重複問題 (= 同じ重要度プリセット表が複数ファイルに duplicated されている状態。Issue #707 で別途整理予定) を再導入してしまうため、forward-pointer のみとする。粒度の対応関係: SoT 表 (`_reviewer-base.md` Comment Quality Finding Gate) は概要表の各等級を 2-3 個の検出パターン (SoT check 番号付き) に細分化したもので、本概要表との粒度差は意図的である。
+> **重要度プリセット表本体は SoT に集約**: 上記は概要のみ。各違反パターンと SoT check 参照を含む完全な重要度プリセット表は [`_reviewer-base.md` の Comment Quality Finding Gate](../agents/_reviewer-base.md#comment-quality-finding-gate) を参照すること。本ファイル (`severity-levels.md`) で表本体を複製すると Issue #707 が解消しようとしている SoT 重複問題 (= 同じ重要度プリセット表が複数ファイルに重複している状態。Issue #707 で別途整理予定) を再導入してしまうため、forward-pointer のみとする。粒度の対応関係: SoT 表は検出パターン単位で記述され (各 Impact 等級に対して 1 つ以上の具体的検出パターンを列挙)、概要表は Impact 等級単位で要約する。両者の粒度差は意図的であり、reviewer は finding 発行時に SoT 表で対応する具体的検出パターンを参照する。
 
 ### Hypothetical 降格ルール (本軸での適用例)
 
@@ -120,7 +122,7 @@ CRITICAL 指摘あり？ ──Yes──> 評価: 要修正
 HIGH 指摘あり？ ──Yes──> 評価: 要修正
   │No
   ▼
-MEDIUM 指摘あり？ ──Yes──> 評価: 条件付き
+MEDIUM or LOW-MEDIUM 指摘あり？ ──Yes──> 評価: 条件付き
   │No
   ▼
 LOW 指摘のみ or 指摘なし？ ──Yes──> 評価: 可
@@ -129,5 +131,5 @@ LOW 指摘のみ or 指摘なし？ ──Yes──> 評価: 可
 | Evaluation | Condition |
 |------|------|
 | **要修正** | 1 or more CRITICAL or HIGH findings |
-| **条件付き** | 1 or more MEDIUM findings (no CRITICAL/HIGH) |
+| **条件付き** | 1 or more MEDIUM or LOW-MEDIUM findings (no CRITICAL/HIGH) |
 | **可** | LOW only, or no findings |
