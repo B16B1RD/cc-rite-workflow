@@ -171,7 +171,7 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 | 違反パターン | check 参照 | プリセット重要度 |
 |------------|-----------|----------------|
 | Comment Rot (security/correctness 主張が現コードと不一致) | tech-writer #3 critical pattern | **CRITICAL** |
-| ジャーナルコメント (`cycle N` / `verified-review` / `PR #N` / `旧実装は` 等) | tech-writer #6 (a) | **HIGH** |
+| ジャーナルコメント (例示は [SoT 原則 2 — no_journal_comment](../skills/rite-workflow/references/comment-best-practices.md#2-no_journal_comment-ジャーナルコメント禁止) を参照) | tech-writer #6 (a) | **HIGH** |
 | 行番号・cycle 番号参照 (`file:42` / `cycle 35 F-04`) | tech-writer #6 (b) | **HIGH** |
 | 過剰冗長 (内部 helper のコメント密度逆転、公開 API の docstring 0 行) | tech-writer #6 (d)/(e) | **MEDIUM** |
 | 独自ジャーゴン濫用 (Whitelist 外の造語) | tech-writer #6 (c) | **LOW-MEDIUM** |
