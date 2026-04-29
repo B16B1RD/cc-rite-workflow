@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-29T05:30:00+09:00"
+updated: "2026-04-29T09:00:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -82,7 +82,19 @@ sources:
     ref: "raw/reviews/20260428T200123Z-pr-708-cycle-2.md"
   - type: "fixes"
     ref: "raw/fixes/20260428T200424Z-pr-708-cycle-2.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file"]
+  - type: "reviews"
+    ref: "raw/reviews/20260428T234537Z-pr-711.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260428T235452Z-pr-711-cycle2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260429T000301Z-pr-711-cycle4.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T234911Z-pr-711.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260428T235605Z-pr-711-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260429T000017Z-pr-711-cycle3.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift"]
 confidence: high
 ---
 
@@ -301,6 +313,21 @@ PR #708 (`severity-levels.md` に COMMENT_QUALITY 軸 + LOW-MEDIUM 等級追加)
 4. **Numerical claim factual check**: 「N 個に細分化」のような具体的数値主張を inline 補足に書く際、SoT 実態 (1:1 マッピング vs N:1 マッピングの分布) と数値が一致しているかを必ず check する。一致しない場合は数値を排して定性的説明に置換する (cycle 2 fix で実測)
 
 詳細な severity 拡張時の closed-loop 6 段階 verification は [Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する](../heuristics/severity-extension-closed-loop-verification.md) 参照。
+
+### 同一ファイル内・隣接行の enumeration drift と caller 側 strict 化 drift (PR #711 cycle 1-3 での evidence)
+
+PR #711 (`comment-update(scope)` action-type 追加) で本 anti-pattern が 4 cycle で段階収束し、2 種類の新 sub-pattern を実測:
+
+- **cycle 1 review (CRITICAL 1 + HIGH 4 + MEDIUM 1)**: SoT (`contextual-commits.md` Action Types テーブル) のみ更新し、6 ファイル以上の caller 側 enumeration コピー (`recall.md` Validate / regex / コメント / サマリー、`implement.md` / `team-execute.md` / `pr/fix.md` Output rules、`i18n/{ja,en}/issue.yml` `issue_recall_invalid_action`、`contextual-commits.md` Queryability grep 例) を未同期で残した古典的 cross-file enumeration drift。発見の決定的要因は「`/rite:issue:recall` regex から `comment-update` を silent drop する」UI レベル破綻の trace
+- **cycle 2 review (HIGH 3件)**: cycle 1 fix で `Output rules` enumeration 行 (L696/L369/L3090) を是正したが、**同一ファイル内・3 行上の `Filter to 10-line limit` trim order 行** (L693/L366/L3087) は 5 要素のまま残った。「同形 enumeration が同ファイル内に複数箇所 (隣接 / 3-5 行違い) に存在する」場合、ファイル単位 grep でも見落としやすい新 sub-pattern (**same-file adjacent-line drift**)。さらに `pr/fix.md` の Phase 3.2.1 Root Cause Gate との論理矛盾を併発: trim order に root-cause が無いため LLM が 11 行超 commit body の trim 時に root-cause 行を最初に切り捨てて Gate が自己崩壊する経路
+- **cycle 3 review (HIGH 1件)**: cycle 2 fix で `pr/fix.md` L3087 trim order に追加した rationale 注記 (`MUST retain at least one root-cause(scope): line`) が SoT (`contextual-commits.md` L145) の permissive 表現 (`してよい`) より stricter で、Gate L3145-L3149 の 3 通り OR 通過条件 (`root-cause(scope)` action line / `decision(scope)` のテキスト中で root cause 明示 / 自由記述 `Root cause:` 段落) と矛盾する **caller-side strictness drift**。「caller 側で SoT より厳しい契約を導入する」自己 introduce drift で、cycle 4 で 0 件確定するまでの 4 cycle 段階収束を要した
+
+**学習**: 本 anti-pattern は以下 2 種類の sub-pattern にも拡張される:
+
+1. **Same-file adjacent-line drift**: 同形 enumeration が**同一ファイル内に 3-5 行違いの近接位置**に複数存在する場合、ファイル単位 grep では片方を更新した時点で「該当 enumeration を見つけた」と認識し、隣接の同型 enumeration を見落とす。canonical 対策: enumeration を repeat する **全箇所** を `grep -n` で行番号付き列挙し、SoT 行と caller 行の **行レベル diff チェック** で 1:1 対応を確認してから commit する
+2. **Caller-side strictness drift**: SoT が permissive 表現 (`してよい` / `prefers`) で記述している契約を caller 側で `MUST` / `mandatory` として強化すると、Gate / 通過条件 / API 契約の正規定義と矛盾する自己 introduce drift が発生する。canonical 対策: caller 側で SoT より strict な制約を新設する場合、(a) SoT を先に同 strict に更新する、または (b) caller 側の rationale 注記を SoT を**補足する形** (e.g., `prefers ... as the canonical pass signal — other pass forms also satisfy the gate`) に留める。**MUST / mandatory への強化は禁止**
+
+3 段階収束 (cross-file → file 内隣接 → rationale 強度) は 4 cycle 通じて drift class が**より細かい粒度**へ移動するパターン。各 cycle で 1 つの drift class を集中是正することで段階的に解消可能だが、cycle 1 で「同一ファイル内・隣接行も同時に grep する」習慣があれば cycle 2 を回避でき、cycle 2 で「rationale 注記は SoT を補足する形のみ許可」の sub-rule を意識していれば cycle 3 を回避できた。
 
 ## 関連ページ
 
