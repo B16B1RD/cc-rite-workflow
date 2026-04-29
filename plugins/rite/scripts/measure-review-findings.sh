@@ -17,14 +17,14 @@
 #       {
 #         "cycle": 1,
 #         "total": 14,
-#         "by_severity": { "CRITICAL": 2, "HIGH": 4, "MEDIUM": 6, "LOW": 2 },
+#         "by_severity": { "CRITICAL": 2, "HIGH": 4, "MEDIUM": 6, "LOW-MEDIUM": 0, "LOW": 2 },
 #         "by_reviewer": { "prompt-engineer": 5, "tech-writer": 4, "code-quality": 5 }
 #       }
 #     ],
 #     "totals": {
 #       "total_findings": 20,
 #       "total_cycles": 3,
-#       "by_severity": { "CRITICAL": 2, "HIGH": 5, "MEDIUM": 11, "LOW": 2 }
+#       "by_severity": { "CRITICAL": 2, "HIGH": 5, "MEDIUM": 11, "LOW-MEDIUM": 0, "LOW": 2 }
 #     }
 #   }
 #
@@ -205,7 +205,7 @@ if len(comments) == 1 and "📜 rite レビュー結果" not in comments[0]:
 cycles = []
 header_re = re.compile(r"## 📜 rite レビュー結果(?:\s*\(Cycle\s*(\d+)\))?")
 reviewer_row_re = re.compile(
-    r"^\|\s*([a-zA-Z][\w\-]*)\s*\|\s*([^|]+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*$"
+    r"^\|\s*([a-zA-Z][\w\-]*)\s*\|\s*([^|]+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*$"
 )
 
 cycle_seq = 0
@@ -245,12 +245,13 @@ for comment in comments:
         # headers never reach this point.
         if reviewer.lower() == "reviewer":
             continue
-        crit, high, med, low = (int(m.group(i)) for i in (3, 4, 5, 6))
-        reviewer_total = crit + high + med + low
+        crit, high, med, lm, low = (int(m.group(i)) for i in (3, 4, 5, 6, 7))
+        reviewer_total = crit + high + med + lm + low
         by_reviewer[reviewer] = reviewer_total
         by_severity["CRITICAL"] += crit
         by_severity["HIGH"] += high
         by_severity["MEDIUM"] += med
+        by_severity["LOW-MEDIUM"] += lm
         by_severity["LOW"] += low
 
     total = sum(by_severity.values())
