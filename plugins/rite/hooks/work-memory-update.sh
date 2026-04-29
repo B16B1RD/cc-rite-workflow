@@ -295,6 +295,16 @@ update_local_work_memory() {
   } > "$tmp_wm"
 
   chmod 600 "$tmp_wm" 2>/dev/null || true
-  mv "$tmp_wm" "$local_wm"
+  # mv の exit code を明示的にチェックする (writer/reader 対称化 doctrine、cycle 49 M-1)。
+  # flow-state-update.sh の create/patch/increment mode は同型 pattern (`if ! mv ...; then ...; rm -f; exit 1; fi`)
+  # で mv 失敗を fail-fast 化しているが、本 work-memory-update.sh は `set -e` 不在 (sourced helper) のため
+  # mv 失敗 (disk full / permission denied / EXDEV / 親 dir 削除済) が silent に成功扱いされ、caller が
+  # work memory 書き込み成功と誤認する経路があった。return 2 (本 helper の lock failure と同 code) で
+  # caller の WM 書き込み失敗を fail-fast にする。
+  if ! mv "$tmp_wm" "$local_wm"; then
+    echo "rite: ${WM_SOURCE}: mv failed: $tmp_wm -> $local_wm" >&2
+    rm -f "$tmp_wm"
+    return 2
+  fi
   return 0
 }

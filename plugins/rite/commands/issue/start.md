@@ -1827,7 +1827,13 @@ plan_deviation_count="$val"
 # Step 4 heredoc の `{plan_deviation_count}` placeholder に literal substitute する。シェル変数
 # `$plan_deviation_count` は Bash tool 境界で消失するため、stdout/stderr に明示的に emit しない限り
 # Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 2.1 Step 1
-# / start.md Phase 5.7 / wiki/lint.md Phase 8.2 で確立済みの canonical pattern。
+# / start.md Phase 5.7 で確立済みの canonical pattern。
+#
+# Emit channel policy (cycle 49 H-1 修正): cross-boundary state transfer の sentinel は **stdout / stderr のいずれでも会話コンテキストに記録される**。
+# Claude Code の Bash tool は stdout/stderr 両方を会話コンテキストに取り込む仕様のため、emit channel の
+# 統一は機能要件ではない。本箇所は METRICS_SKIPPED と PLAN_DEVIATION_COUNT を一貫して stderr に emit する
+# (両者を観測値ストリームとして揃える設計選択)。PARENT_ISSUE / PARENT_ISSUE_DISPLAY は stdout 側で emit する
+# 既存の canonical pattern を維持しつつ、本箇所の stderr 採用は **observability ログ専用ストリームを stderr に集約する** 一貫性のための設計選択。
 if [ -z "$val" ]; then
   echo "[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed" >&2
 else
