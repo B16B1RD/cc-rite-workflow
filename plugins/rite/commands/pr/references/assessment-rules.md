@@ -74,7 +74,7 @@ These 4 categories match [Hypothetical Exception Categories](../../../references
 
 **Red blocking rule: If even 1 finding exists (after 5.3.0 demotion), it MUST NOT be assessed as "Merge OK"**
 
-All findings (CRITICAL/HIGH/MEDIUM/LOW) remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining finding must be resolved before merge.
+All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining finding must be resolved before merge.
 
 **Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
 
@@ -84,7 +84,7 @@ When executed standalone (outside a loop), the same rule applies: all findings a
 
 ## 5.3.3 Assessment Logic
 
-Use **all findings** for determination (all findings are blocking). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW findings → Cannot merge (findings exist) | 0 findings → Merge OK.
+Use **all findings** for determination (all findings are blocking). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (findings exist) | 0 findings → Merge OK.
 
 ## 5.3.5 Output Format at Assessment Decision Time
 

@@ -2295,7 +2295,7 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 | 4.6 (完了報告) | `{confidence_override_count}` | `confidence_override_count` の値をそのまま展開 (0 含む) |
 | 4.6 (完了報告) | `{confidence_override_files_suffix}` | `confidence_override_count == 0` なら空文字列、`>= 1` なら ` (file_a.ts:10; file_b.ts:42; ...)` (先頭スペース付きカッコ + 配列を `; ` 区切り) |
 | 4.5.3 (work memory) | `{confidence_override_section}` | `confidence_override_count == 0` なら `なし`、`>= 1` なら同一行に `; ` 区切りで `findings` を列挙 (改行不要、Markdown bullet 構造を壊さない) |
-| 4.3.4 (Issue 本文) | `{confidence_value}` | finding 単位の値。rite review 由来なら finding の severity (CRITICAL/HIGH/MEDIUM/LOW)、外部ツール由来かつ Confidence 列なしなら literal `70 (暫定)` |
+| 4.3.4 (Issue 本文) | `{confidence_value}` | finding 単位の値。rite review 由来なら finding の severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW)、外部ツール由来かつ Confidence 列なしなら literal `70 (暫定)` |
 | 4.3.4 (Issue 本文) | `{confidence_override_value}` | finding 単位の boolean。`confidence_override_findings` に当該 file:line が含まれていれば `true (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み)`、それ以外は `false` |
 
 この手順により、外部レビューツールの信頼度を silent に無視することなく、かつ hallucinated finding の混入も防ぎ、かつ Confidence 80+ ゲート invariant の破壊を silent に起こさない (override は常に trackable)。
@@ -2468,7 +2468,7 @@ Retrieve the `/rite:pr:review` results from PR comments and extract severity inf
 
 1. Search PR comments for those containing `## 📜 rite レビュー結果`
 2. Parse the tables for each reviewer type within the "all findings" section
-3. Extract the severity (CRITICAL/HIGH/MEDIUM/LOW) for each finding
+3. Extract the severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) for each finding
 4. Map severity using file:line as the key
 
 **Search method:**
@@ -2518,7 +2518,7 @@ The rite review result comment (output format of `/rite:pr:review`) has the foll
    }
    ```
 
-**Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW).
+**Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW).
 
 **When rite review results are not found:**
 
@@ -2535,7 +2535,7 @@ Perform severity-based classification using the `severity_map` obtained in Phase
 | Classification | Criteria | Action |
 |---------------|----------|--------|
 | **Required fix** | CRITICAL/HIGH | Must fix |
-| **Needs fix** | MEDIUM/LOW | Fix or separate Issue (action required) |
+| **Needs fix** | MEDIUM/LOW-MEDIUM/LOW | Fix or separate Issue (action required) |
 | **External review** | Findings from human reviewers | Action required |
 | **Resolved** | Resolved threads | - |
 
@@ -2592,7 +2592,7 @@ PR #{number} のレビューコメント
 |---|--------|----------|-----|----------|------------|
 | 1 | {severity} | {path} | {line} | {body_preview} | @{user} |
 
-### 要修正（MEDIUM/LOW）({count}件)
+### 要修正（MEDIUM/LOW-MEDIUM/LOW）({count}件)
 | # | 重要度 | ファイル | 行 | 指摘内容 | レビュアー |
 |---|--------|----------|-----|----------|------------|
 | 1 | {severity} | {path} | {line} | {body_preview} | @{user} |
@@ -2621,7 +2621,7 @@ PR #{number} のレビューコメント
 | Option | Target | Use Case |
 |--------|--------|----------|
 | **すべての指摘に対応（推奨）** | All severities + external reviews | When full resolution is needed. Within `/rite:issue:start` loop, all findings are auto-selected |
-| **CRITICAL/HIGH のみ対応** | CRITICAL + HIGH only | When addressing only urgent issues and deferring MEDIUM/LOW |
+| **CRITICAL/HIGH のみ対応** | CRITICAL + HIGH only | When addressing only urgent issues and deferring MEDIUM/LOW-MEDIUM/LOW |
 | **特定の指摘を選択** | Individual selection | When addressing only specific findings |
 | **キャンセル** | - | Abort the process (Fast Path 経由の場合はハンドオフファイルを削除してから exit) |
 
@@ -3540,7 +3540,7 @@ if ! cat <<'BODY_EOF' > "$tmpfile"
 <!-- placeholder 展開ルール (Claude がスクリプト生成前に置換する):
      - {reviewer_display}: Broad Retrieval 経由なら "@{reviewer}"、Fast Path 経由で
        target_author_mention_skip == "true" なら "(不明なレビュアー)"。詳細は Phase 2.1 の展開ルール表を参照
-     - {confidence_value}: finding が rite review 由来なら CRITICAL/HIGH/MEDIUM/LOW のいずれか。
+     - {confidence_value}: finding が rite review 由来なら CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW のいずれか。
        外部ツール由来で Confidence 列なしの場合は "70 (暫定)" を入れる
      - {confidence_override_value}:
          false (rite review 由来 / Confidence 列ありの外部ツール) → "false"

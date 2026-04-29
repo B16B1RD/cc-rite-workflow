@@ -8,13 +8,14 @@ All findings are always blocking regardless of severity. The review-fix loop con
 
 ## Fix Target Classification
 
-All findings (CRITICAL/HIGH/MEDIUM/LOW) are always fix targets. There is no auto-defer mechanism.
+All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) are always fix targets. There is no auto-defer mechanism.
 
 | Severity | Classification | Action |
 |----------|---------------|--------|
 | CRITICAL | Blocking | Must fix |
 | HIGH | Blocking | Must fix |
 | MEDIUM | Blocking | Must fix |
+| LOW-MEDIUM | Blocking | Must fix |
 | LOW | Blocking | Must fix |
 
 ## Loop Termination (v0.4.0 #557)

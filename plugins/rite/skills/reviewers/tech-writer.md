@@ -117,7 +117,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 ## Severity Definitions
 
-**CRITICAL** (incorrect information or broken functionality), **HIGH** (missing important information or unusable section), **MEDIUM** (clarity or organization issue), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor style or formatting improvement).
+**CRITICAL** (incorrect information or broken functionality), **HIGH** (missing important information or unusable section), **MEDIUM** (clarity or organization issue), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor style or formatting improvement).
 
 ## Documentation Standards
 
