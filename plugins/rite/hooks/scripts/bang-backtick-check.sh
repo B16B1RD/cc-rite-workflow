@@ -32,18 +32,22 @@
 #                  like "bang+word" while intentionally excluding the Markdown
 #                  image-reference shape "bang+backslash-bracket").
 #
-#   P3: closing-backtick-preceded-by-bang (no-space variant)
-#       regex: `[^`]*[^[:space:]]!`
-#       semantics: inline code where the character right before the closing
-#                  backtick is literal bang AND the preceding character is
-#                  NOT whitespace (e.g. `!` lone-bang span, `//!` Rustdoc
-#                  inner-doc, or `cmd!` style). P1 covered the "space+!"
-#                  variant; P3 catches the no-space variants that the slash
-#                  command parser also treats as `!`+backtick = inline bash
-#                  invocation prefix. Empirically required after the cycle 35
-#                  fix series — the parser was still triggering on
-#                  `` `!` `` lone-bang inline spans because they form
-#                  bang+backtick adjacency at the closing boundary.
+#   P3: bang-immediately-before-backtick (anywhere on the line)
+#       regex: !`
+#       semantics: any literal bang character immediately before any backtick,
+#                  regardless of preceding context. This intentionally covers
+#                  ALL bang+backtick adjacencies — whether the bang sits at
+#                  the closing boundary of an inline code span (`!`),
+#                  in Rustdoc inner-doc (//!), in command-suffix style (cmd!),
+#                  or in any other position. P1 covers a more specific
+#                  space+!+backtick variant; P3 is the generic catch-all that
+#                  also matches the P1 cases (intentional double-counting —
+#                  the slash command parser triggers on bang+backtick
+#                  adjacency regardless of upstream whitespace). Empirically
+#                  required after the cycle 35 fix series — the parser was
+#                  still triggering on `` `!` `` lone-bang inline spans
+#                  because they form bang+backtick adjacency at the closing
+#                  boundary.
 #
 # These patterns were chosen conservatively to produce zero false positives on
 # the existing commands/skills tree (verified at creation time on 70 files).

@@ -218,9 +218,12 @@ _resolve_session_state_path() {
       classification=""
     fi
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
-      # post-review F-02 (MEDIUM) 対応: state-read.sh:140 と writer/reader 対称化。
-      # `_resolve-cross-session-guard.sh:173` が出力する生 `jq:` parse error 行 (line/column 診断) を
-      # pass-through し cycle 15 F-03 の dead-observability 解消 intent を回復する。
+      # state-read.sh の `grep -E '^WARNING:|^  |^jq: ' "$_classify_err"` pass-through ブロック (reader)
+      # と writer/reader 対称化。`_resolve-cross-session-guard.sh` の `head -3 "$_jq_err"` ブロックが
+      # 出力する生 `jq:` parse error 行 (line/column 診断) を pass-through し cycle 15 F-03 の
+      # dead-observability 解消 intent を回復する。
+      # (cycle 48 F-03: hardcoded line refs `state-read.sh:140` / `_resolve-cross-session-guard.sh:173`
+      # を semantic anchor に置換 — drift 防止 doctrine cycle 38 F-04 と整合)
       grep -E '^WARNING:|^  |^jq: ' "$_classify_err" >&2 2>/dev/null || true
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
@@ -320,6 +323,25 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 # resolved path to the legacy fallback (review #686 F-04). Failures surface via
 # `_log_flow_diag` (symmetric with mv-failure path) rather than being silently
 # suppressed (review #686 F-05).
+
+# cycle 48 F-01 (HIGH): writer/reader 対称化 doctrine (state-read.sh L88-96 と同型) に従い、
+# atomic-cleanup 関数を 3 変数 (TMP_STATE / _mkdir_err / _jq_err) に拡張し、`_mkdir_err`
+# (line 337 mktemp) を含む全 tempfile の lifecycle を cover する位置に trap を前倒し配置する。
+# 旧実装の trap (line 421-428) は TMP_STATE のみ cleanup で `_mkdir_err` (mktemp 〜 rm 区間) と
+# `_jq_err` (create-mode mktemp 〜 rm 区間) の race window で SIGINT/SIGTERM/SIGHUP 到達時に
+# orphan tempfile が leak する非対称があった (verified-review F-01 HIGH)。canonical pattern
+# 「パス先行宣言 → trap 先行設定 → mktemp」を踏襲する。
+TMP_STATE=""
+_mkdir_err=""
+_jq_err=""
+_rite_flow_state_atomic_cleanup() {
+  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}"
+}
+trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
+trap '_rite_flow_state_atomic_cleanup; exit 130' INT
+trap '_rite_flow_state_atomic_cleanup; exit 143' TERM
+trap '_rite_flow_state_atomic_cleanup; exit 129' HUP
+
 if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   _flow_state_dir=$(dirname "$FLOW_STATE")
   # Capture mkdir stderr so the kernel's specific failure reason
@@ -347,15 +369,19 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
       head -3 "$_mkdir_err" | sed 's/^/  /' >&2
     fi
     [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
+    _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止 (set -u 下で unbound 化しないよう "" を維持)
     exit 1
   fi
   [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
+  _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止 (set -u 下で unbound 化しないよう "" を維持)
   # F-09 (MEDIUM, security Hypothetical exception): .rite/sessions/ ディレクトリにも chmod 700 を
   # 適用 (.rite-work-memory dir と同型)。multi-user CI runner / shared dev host で session metadata が
   # group-readable になる経路を防ぐ。chmod 失敗は best-effort skip (filesystem が ACL 非対応 / SELinux
   # 制約等で chmod 不能な環境でも flow-state 機能は維持する)。
   chmod 700 "$_flow_state_dir" 2>/dev/null || true
-  unset _flow_state_dir _mkdir_err
+  # cycle 48 F-01: 旧実装の `unset _mkdir_err` は trap cleanup の `${_mkdir_err:-}` で問題ないが、
+  # writer/reader 対称化 doctrine に従い再代入で "" に戻す (state-read.sh L148 と同型)。
+  unset _flow_state_dir
 fi
 
 # --- Validation ---
@@ -410,19 +436,11 @@ esac
 # SIGINT/SIGTERM/SIGHUP の POSIX exit code 130/143/129 を返す pattern に統一する。
 # canonical trap pattern: references/bash-trap-patterns.md#signal-specific-trap-template
 #
-# cycle 43 F-02 (HIGH): canonical pattern「パス先行宣言 → trap 先行設定 → mktemp」順序に修正。
-# 旧実装は mktemp 成功直後の trap 設定までの間に SIGTERM/SIGINT/SIGHUP 到達で
-# `${FLOW_STATE}.XXXXXX` 形式の orphan が残る race window を持っていた (Regression History H-1
-# = fix.md Phase 4.5.2 で同型 bug を修正済み)。先行宣言 + 関数定義 + trap 設置 → mktemp の順に
-# 入れ替える。L347 の hardcoded 行番号「L332 で定義」も _log_flow_diag 関数名 anchor に置換。
-TMP_STATE=""
-_rite_flow_state_atomic_cleanup() {
-  rm -f "${TMP_STATE:-}"
-}
-trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
-trap '_rite_flow_state_atomic_cleanup; exit 130' INT
-trap '_rite_flow_state_atomic_cleanup; exit 143' TERM
-trap '_rite_flow_state_atomic_cleanup; exit 129' HUP
+# cycle 48 F-01 (HIGH): trap setup を本ファイル冒頭 (L325 直下) に前倒し済み。
+# `_rite_flow_state_atomic_cleanup` は TMP_STATE / _mkdir_err / _jq_err の 3 変数を cover する。
+# 旧 cycle 43 F-02 (HIGH) で確立した「パス先行宣言 → trap 先行設定 → mktemp」順序の延長で、
+# `_mkdir_err` (line 337 mktemp) と create-mode `_jq_err` (line 520 mktemp) の race window も
+# 同 trap で構造的に保護する。本箇所では既に declared/installed 済みの TMP_STATE への mktemp のみ。
 
 if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   echo "ERROR: flow-state-update.sh: TMP_STATE の mktemp に失敗しました (atomic write 不能)" >&2
@@ -528,9 +546,11 @@ case "$MODE" in
         echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
         echo "  対処: $FLOW_STATE を確認し、必要なら /rite:resume で復旧してください" >&2
         [ -n "$_jq_err" ] && rm -f "$_jq_err"
+        _jq_err=""  # cycle 48 F-01: trap による double-rm 防止
         exit 1
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"
+      _jq_err=""  # cycle 48 F-01: trap による double-rm 防止 (state-read.sh L148 と同型)
       # Preserve parent_issue_number from existing state when --parent-issue is not
       # explicitly specified (#497). Without this, every create call that omits
       # --parent-issue would reset parent_issue_number to 0, erasing the value

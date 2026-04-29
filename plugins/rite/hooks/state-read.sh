@@ -137,11 +137,14 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
       classification=""
     fi
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
-      # post-review F-02 (MEDIUM) 対応: cycle 15 F-03 で `_resolve-cross-session-guard.sh:173` が
-      # `head -3 "$_jq_err" >&2` で出力する生 `jq:` parse error 行 (例: line/column 診断) を pass-through する。
-      # 旧 filter `'^WARNING:|^  '` は `jq:` 行頭にマッチせず operator が legacy_state_corrupt 時の
-      # line/column 診断を観測できない silent regression があった (cycle 15 F-03 の dead-observability 解消の
-      # stated intent と矛盾)。`^jq: ` を許可することで guard の corrupt-arm 観測契約を回復する。
+      # post-review F-02 (MEDIUM) 対応: cycle 15 F-03 で `_resolve-cross-session-guard.sh` の
+      # `head -3 "$_jq_err" >&2` ブロックが出力する生 `jq:` parse error 行 (例: line/column 診断) を
+      # pass-through する。旧 filter `'^WARNING:|^  '` は `jq:` 行頭にマッチせず operator が
+      # legacy_state_corrupt 時の line/column 診断を観測できない silent regression があった
+      # (cycle 15 F-03 の dead-observability 解消の stated intent と矛盾)。`^jq: ` を許可することで
+      # guard の corrupt-arm 観測契約を回復する。
+      # (cycle 48 F-03: hardcoded line ref `_resolve-cross-session-guard.sh:173` を semantic anchor
+      # に置換 — drift 防止 doctrine cycle 38 F-04 と整合)
       grep -E '^WARNING:|^  |^jq: ' "$_classify_err" >&2 2>/dev/null || true
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"

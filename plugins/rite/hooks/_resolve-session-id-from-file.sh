@@ -77,8 +77,11 @@ fi
 # は `_validate-state-root.sh` に集約。詳細な threat model と検証ルールは helper
 # 内コメントを参照。本 helper を直接呼ぶ untrusted 経路 (`STATE_ROOT="../../"` 等)
 # に対する defence-in-depth として実行する。
-# `_validate-helpers.sh` 経由で存在確認すると ERROR 文言の SoT が
-# `_validate-helpers.sh:86-87` に集約され、片肺更新型 drift を構造的に防げる。
+# `_validate-helpers.sh` 経由で存在確認すると ERROR 文言の SoT が同 helper の
+# ERROR 出力ブロック (`echo "ERROR: $_helper not found or not executable: ..."`) に集約され、
+# 片肺更新型 drift を構造的に防げる。
+# (cycle 48 F-03: hardcoded line ref `_validate-helpers.sh:86-87` を semantic anchor に置換 —
+# drift 防止 doctrine cycle 38 F-04 と整合)
 bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" _validate-state-root.sh || exit $?
 bash "$SCRIPT_DIR/_validate-state-root.sh" "$STATE_ROOT" || exit $?
 

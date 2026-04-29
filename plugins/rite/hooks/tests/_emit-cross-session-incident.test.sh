@@ -243,8 +243,16 @@ assert_eq "TC-9.1: exit code is 0 (fallback path 経由)" "0" "$rc"
 assert_match "TC-9.2: fallback sentinel emitted" "[CONTEXT] WORKFLOW_INCIDENT=1" "$out"
 # sentinel line を抽出 (WARNING line とは別)
 sentinel_line=$(printf '%s\n' "$out" | grep '\[CONTEXT\] WORKFLOW_INCIDENT=1' || true)
+# TC-9.3 (informational): grep '[CONTEXT] WORKFLOW_INCIDENT=1' は match 行のみを出力するため、
+# sentinel 内に literal newline が embed されてもマッチ行は 1 行に切り詰められて常に wc -l == 1 になる
+# (実証: printf '[CONTEXT]...\nbaz; rest\n' | grep '\[CONTEXT\]' | wc -l → 1)。
+# したがって本 assertion は単独では「newline が tr -d '[:cntrl:]' で除去された」mutation kill
+# 能力を持たない (verified-review F-05 で指摘)。実際の sanitize 動作の kill power は TC-9.4
+# (current_sid=foo; の負 grep) と TC-9.5 (current_sid=foo,bar*** の正 grep) が担う。
+# 本 assertion は「sentinel が `[CONTEXT]` で始まる単一行として grep 抽出可能であること」の
+# 整合性確認のみを保証する informational assertion として残す。
 sentinel_line_count=$(printf '%s\n' "$sentinel_line" | wc -l | tr -d ' ')
-assert_eq "TC-9.3: sentinel が単一行に収束 (newline が tr -d '[:cntrl:]' で除去された)" "1" "$sentinel_line_count"
+assert_eq "TC-9.3 (informational): sentinel が [CONTEXT] で始まる単一マッチ行として grep 抽出可能 (kill power は TC-9.4/9.5 が担う)" "1" "$sentinel_line_count"
 # negative assertion: literal `;` が details 内に残っていないこと (sanitize が適用された証拠)
 if printf '%s' "$sentinel_line" | grep -q "current_sid=foo;"; then
   rc_negative=1
