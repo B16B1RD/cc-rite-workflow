@@ -187,7 +187,7 @@ messages:
 
   # Issue Recall コマンド
   issue_recall_disabled: "Contextual Commits が無効です（commit.contextual: false）。rite-config.yml で有効にしてください"
-  issue_recall_invalid_action: "無効なアクションタイプです。有効な値: intent, decision, rejected, constraint, learned"
+  issue_recall_invalid_action: "無効なアクションタイプです。有効な値: intent, decision, root-cause, rejected, constraint, learned, comment-update"
   issue_recall_no_results: "アクションラインが見つかりませんでした"
   issue_recall_no_results_branch_hint: "現在のブランチにはコンテキストコミットがありません。コミットにアクションラインを含めるには commit.contextual: true を設定してください"
   issue_recall_no_results_scope_hint: "指定した scope に一致するアクションラインがありません。scope を広げるか、/rite:issue:recall で全件検索してください"
