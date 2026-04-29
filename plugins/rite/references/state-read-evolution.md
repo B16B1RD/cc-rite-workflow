@@ -200,7 +200,8 @@ state-read.sh のコメントを SoT として参照する：
 
 - 元 PR: #688
 - 関連 Issue: #687（本体）, #694（本ドキュメントの分離）
-- 関連 Wiki: `.rite/wiki/pages/anti-patterns/asymmetric-fix-transcription.md`,
-  `.rite/wiki/pages/patterns/drift-check-anchor-semantic-name.md`,
-  `.rite/wiki/pages/heuristics/design-doc-current-head-verification.md`,
-  `.rite/wiki/pages/heuristics/sot-path-reference-existence-check.md`
+- 関連 Wiki (これらのページは `wiki` ブランチに保存されています。develop ブランチでは `.rite/wiki/pages/` 配下が空のため、閲覧時は `git show wiki:.rite/wiki/pages/anti-patterns/asymmetric-fix-transcription.md` のように `git show` で参照するか、`/rite:wiki:query <キーワード>` を実行して該当ページの内容を取得してください):
+  - `.rite/wiki/pages/anti-patterns/asymmetric-fix-transcription.md`
+  - `.rite/wiki/pages/patterns/drift-check-anchor-semantic-name.md`
+  - `.rite/wiki/pages/heuristics/design-doc-current-head-verification.md`
+  - `.rite/wiki/pages/heuristics/sot-path-reference-existence-check.md`

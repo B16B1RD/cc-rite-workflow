@@ -218,7 +218,10 @@ _resolve_session_state_path() {
       classification=""
     fi
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
-      grep -E '^WARNING:|^  ' "$_classify_err" >&2 2>/dev/null || true
+      # post-review F-02 (MEDIUM) 対応: state-read.sh:140 と writer/reader 対称化。
+      # `_resolve-cross-session-guard.sh:173` が出力する生 `jq:` parse error 行 (line/column 診断) を
+      # pass-through し cycle 15 F-03 の dead-observability 解消 intent を回復する。
+      grep -E '^WARNING:|^  |^jq: ' "$_classify_err" >&2 2>/dev/null || true
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
     _classify_err=""
