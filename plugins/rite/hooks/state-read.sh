@@ -43,7 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Validation logic and helper list are both centralized in _validate-helpers.sh
 # (DEFAULT_HELPERS array). Add new helpers there to reflect in both
 # state-read.sh / flow-state-update.sh callers via a single line.
-# See: references/state-read-evolution.md (Cycle 12 F-04 / 13 F-01 / 38 F-01 / 38 F-09).
+# See: plugins/rite/references/state-read-evolution.md (Cycle 12 F-04 / 13 F-01 / 38 F-01 / 38 F-09).
 if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
   echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
@@ -84,7 +84,7 @@ fi
 # --- Signal-specific trap (covers both _classify_err and _jq_err lifecycles) ---
 # Single cleanup function rm-fs both tempfiles; trap installed at file top
 # (before per-session branch) closes the race window for both lifecycles.
-# See: references/state-read-evolution.md (Cycle 35 F-05 / 36 F-15 / F-03 MEDIUM / F-06 LOW).
+# See: plugins/rite/references/state-read-evolution.md (Cycle 35 F-05 / 36 F-15).
 _classify_err=""
 _jq_err=""
 _rite_state_read_cleanup() {
@@ -99,12 +99,12 @@ trap '_rite_state_read_cleanup; exit 129' HUP
 # UUID-format validation prevents path traversal via tampered .rite-session-id.
 # Common helper for tr+UUID-validate+fallback compound sequence shared with
 # writer/resume layers (DRY across writer/reader/resume).
-# See: references/state-read-evolution.md (Cycle 34 F-01 / 38 F-05).
+# See: plugins/rite/references/state-read-evolution.md (Cycle 34 F-01 / 38 F-05).
 SESSION_ID=$(bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT")
 
 # --- Resolve schema_version (DRY: shared helper with flow-state-update.sh) ---
 # pipefail silent failure handling (Issue #687 AC-4 follow-up) absorbed in helper.
-# See: references/state-read-evolution.md (Cycle 5 review).
+# See: plugins/rite/references/state-read-evolution.md (Cycle 5 review).
 SCHEMA_VERSION=$(bash "$SCRIPT_DIR/_resolve-schema-version.sh" "$STATE_ROOT")
 
 # --- Resolve target file ---
@@ -118,12 +118,11 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
   if [ ! -f "$STATE_FILE" ] && [ -f "$LEGACY_FLOW_STATE" ]; then
     # Cross-session guard: classify legacy file as same/empty/foreign/corrupt/invalid_uuid
     # via shared helper, mirrored on both writer/reader sides.
-    # `2>/dev/null` is safe because helper guarantees clean stderr.
-    # `_mktemp-stderr-guard.sh` provides mktemp + WARNING + chmod 600 atomically.
-    # `^WARNING:` filtered pass-through avoids losing helper-emitted detail under
-    # /tmp full / SELinux deny while preserving classification string integrity.
-    # See: references/state-read-evolution.md (Cycle 34 F-02 / 35 F-01 / 41 F-01
-    # / 14 F-04 / 15 F-05 / 43 F-09).
+    # stderr is captured to a tempfile via `_mktemp-stderr-guard.sh`, then `^WARNING:`
+    # lines are pass-through to caller chain so helper-emitted detail is not silent
+    # suppressed under /tmp full / SELinux deny (cycle 41 F-01 doctrine).
+    # See: plugins/rite/references/state-read-evolution.md (Cycle 34 F-02 / 35 F-01 /
+    # 41 F-01 / 14 F-04 / 15 F-05 / 43 F-09).
     _classify_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
       "state-read" "classify-err-reader" \
       "cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません")
@@ -144,7 +143,7 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     unset _classify_err
     # 3 classification × 2 caller の workflow-incident-emit ブロック (~84 行) を
     # `_emit-cross-session-incident.sh` に集約。
-    # See: references/state-read-evolution.md (PR #688 followup F-01 MEDIUM).
+    # See: plugins/rite/references/state-read-evolution.md (PR #688 followup F-01 MEDIUM).
     case "$classification" in
       same|empty)
         STATE_FILE="$LEGACY_FLOW_STATE"
@@ -188,7 +187,7 @@ fi
 # `touch .rite-flow-state` or partial writes by another process do not silently
 # return an empty string — caller-supplied $DEFAULT fires consistently with
 # the corrupt-JSON code path.
-# See: references/state-read-evolution.md (Cycle 5 test reviewer F-C MEDIUM).
+# See: plugins/rite/references/state-read-evolution.md (Cycle 5 test reviewer F-C MEDIUM).
 if [ ! -f "$STATE_FILE" ] || [ ! -s "$STATE_FILE" ]; then
   echo "$DEFAULT"
   exit 0
@@ -219,7 +218,7 @@ esac
 # jq stderr captured via `_mktemp-stderr-guard.sh` so parse errors surface as
 # WARNING (`head -3`) instead of being suppressed by `2>/dev/null`. Symmetric
 # with `_resolve-cross-session-guard.sh` jq stderr capture pattern.
-# See: references/state-read-evolution.md (Cycle 35 F-09 / 38 F-04).
+# See: plugins/rite/references/state-read-evolution.md (Cycle 35 F-09 / 38 F-04).
 # jq Manual — Alternative operator: https://jqlang.org/manual/#alternative-operator
 _jq_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "state-read" "state-read-jq-err" \
