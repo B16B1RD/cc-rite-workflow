@@ -34,10 +34,17 @@ FAILED_NAMES=()
 # その drift 状態だった (cycle 7 review で test reviewer 検出)。Ctrl+C / SIGTERM で `mktemp -d`
 # で作られた sandbox が `/tmp/tmp.XXXXXX` に leak する経路を塞ぐ。
 cleanup_dirs=()
+# F-02 対応: inline mktemp で作成される個別ファイル (TC-14 / TC-15 系の stderr / stdout 退避) を
+# Ctrl+C / SIGTERM 経路で leak させないため、cleanup_files 配列に register する設計を追加。
+# `_resolve-cross-session-guard.test.sh:36-48` の writer/reader 対称化 pattern を踏襲。
+cleanup_files=()
 _state_read_test_cleanup() {
-  local d
+  local d f
   for d in "${cleanup_dirs[@]:-}"; do
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
+  done
+  for f in "${cleanup_files[@]:-}"; do
+    [ -n "$f" ] && [ -f "$f" ] && rm -f "$f"
   done
   return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
@@ -294,6 +301,12 @@ rm -rf "$SBX"
 #   - 短すぎる / 長すぎる SID: regex の長さ制約破壊試行
 echo "TC-6.INJECTION: SID injection vector defense (cycle 41 II-4)"
 
+# mutation kill power 可視化用 counter (F-04 対応)。
+# bad per-session file 作成成功数を tracking し、loop 後の summary で表示することで、
+# 「どの vector が file system 制約で skip されたか」を operator が確認できる。
+# kill power 0/7 → 4/7 (uppercase / mixed_case / too_short / too_long の 4 vector が確実に成立) が design intent。
+inject_created_count=0
+
 # 各 vector ごとに make_sandbox + bad SESSION_ID + per-session file (BAD_*) + legacy (safe_legacy_*)
 # のパターンで pin する (TC-6.RFC と同型)。reject されると legacy fallback で safe_legacy_* が返る。
 inject_vectors=(
@@ -301,8 +314,17 @@ inject_vectors=(
   "newline|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\nphase5_post_stop_hook|safe_legacy_newline|newline injection"
   "command_sub|\$(echo INJECTED)|safe_legacy_cmdsub|shell command substitution"
   "backtick|\`whoami\`|safe_legacy_backtick|backtick command substitution"
-  "uppercase|AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA|safe_legacy_upcase|lowercase normalize の SoT を pin (uppercase は accept されるが per-session path は normalized lowercase で resolution されるため、fixture が uppercase 名 (BAD_*) で per-session を作る限り not-found → legacy fallback で safe_legacy_upcase が返る。tr A-F a-f の normalize 削除で TC が落ちる identification power を持つ)"
-  "mixed_case|aaaaaaaa-AAAA-aaaa-AAAA-aaaaaaaaaaaa|safe_legacy_mixcase|lowercase normalize の SoT を pin (mixed case も accept + normalize 経路を辿る同型 vector。uppercase entry と同じ逻輯で fallback が発火)"
+  # NOTE: uppercase / mixed_case vectors は **case-sensitive filesystem 前提** (Linux ext4/btrfs/xfs 等)。
+  # case-insensitive FS (macOS HFS+ default / exFAT / Windows NTFS) では fixture (uppercase 名)
+  # と lookup (lowercase normalize 後) が一致してしまい、per-session file が読まれて
+  # `BAD_INJECTION_uppercase` 返却 → assert 失敗で false-positive な regression が発生する。
+  # CI は Linux only のため現状実害なしだが、macOS 開発環境でローカル実行すると flaky になる。
+  # 対処オプション (将来):
+  #   (a) fixture 側で `tr A-F a-f` した名前で per-session を作る形に変更し FS 依存を排除する
+  #   (b) Test 冒頭で `[ "$(uname -s)" = "Linux" ]` で gate して macOS では skip する
+  # 現状は (a)/(b) いずれも未実装で、Linux CI での mutation kill power 確保を優先している。
+  "uppercase|AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA|safe_legacy_upcase|lowercase normalize の SoT を pin (uppercase は accept されるが per-session path は normalized lowercase で resolution されるため、fixture が uppercase 名 (BAD_*) で per-session を作る限り not-found → legacy fallback で safe_legacy_upcase が返る。tr A-F a-f の normalize 削除で TC が落ちる identification power を持つ。⚠️ case-sensitive FS 前提)"
+  "mixed_case|aaaaaaaa-AAAA-aaaa-AAAA-aaaaaaaaaaaa|safe_legacy_mixcase|lowercase normalize の SoT を pin (mixed case も accept + normalize 経路を辿る同型 vector。uppercase entry と同じ逻輯で fallback が発火。⚠️ case-sensitive FS 前提)"
   "too_short|aaaa-aaaa-aaaa-aaaa-aaaa|safe_legacy_short|36 字未満 (regex 長さ制約)"
   "too_long|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaaaa|safe_legacy_long|36 字超過 (regex 長さ制約)"
 )
@@ -337,7 +359,10 @@ for vector_entry in "${inject_vectors[@]}"; do
   mkdir -p "$SBX/.rite/sessions"
   # 特殊文字を含むファイル名作成は best-effort。失敗しても test は continue する (legacy fallback に流れる)。
   # printf 失敗は stderr suppress (file system が受け付けないだけで test bug ではない)。
-  printf '%s' "{\"phase\":\"$bad_phase\"}" > "$SBX/.rite/sessions/${expanded_sid}.flow-state" 2>/dev/null || true
+  # mutation kill power 可視化のため、作成成否を inject_created_count にカウントする (F-04 対応)。
+  if printf '%s' "{\"phase\":\"$bad_phase\"}" > "$SBX/.rite/sessions/${expanded_sid}.flow-state" 2>/dev/null; then
+    inject_created_count=$((${inject_created_count:-0} + 1))
+  fi
 
   write_legacy "$SBX" "{\"phase\":\"$legacy_phase\"}"
 
@@ -354,6 +379,10 @@ for vector_entry in "${inject_vectors[@]}"; do
     FAILED_NAMES+=("TC-6.INJECTION.$vector_name")
   fi
 done
+# F-04 対応: mutation kill power 可視化。
+# inject_created_count が想定値 (4/7、case-sensitive FS 上で uppercase/mixed_case/too_short/too_long が成立)
+# を下回る場合、operator は file system 制約 (case-insensitive FS / quota / inode 枯渇) を疑える。
+echo "  ℹ️ TC-6.INJECTION mutation-kill effective: $inject_created_count/${#inject_vectors[@]}"
 
 # --- TC-7: schema_version=1 (or absent) routes directly to legacy even if SID + per-session exist ---
 echo "TC-7: schema_version=1 routes to legacy"
@@ -516,7 +545,7 @@ write_session_id "$SBX" "$SID"
 write_per_session "$SBX" "$SID" '{"active":true,"phase":"phase5_lint","next_action":"continue"}'
 
 # stderr のみを capture して WARNING line を grep で検索する
-boolean_warn_true_path=$(mktemp /tmp/rite-tc14-warn-true-XXXXXX)
+boolean_warn_true_path=$(mktemp /tmp/rite-tc14-warn-true-XXXXXX); cleanup_files+=("$boolean_warn_true_path")
 (cd "$SBX" && bash "$HOOK" --field active --default "true") >/dev/null 2>"$boolean_warn_true_path"
 if grep -q "boolean リテラル値" "$boolean_warn_true_path"; then
   echo "  ✅ TC-14.3.a: --default true で boolean caveat WARNING が emit される"
@@ -530,7 +559,7 @@ else
 fi
 rm -f "$boolean_warn_true_path"
 
-boolean_warn_false_path=$(mktemp /tmp/rite-tc14-warn-false-XXXXXX)
+boolean_warn_false_path=$(mktemp /tmp/rite-tc14-warn-false-XXXXXX); cleanup_files+=("$boolean_warn_false_path")
 (cd "$SBX" && bash "$HOOK" --field active --default "false") >/dev/null 2>"$boolean_warn_false_path"
 if grep -q "boolean リテラル値" "$boolean_warn_false_path"; then
   echo "  ✅ TC-14.3.b: --default false で boolean caveat WARNING が emit される"
@@ -545,7 +574,7 @@ fi
 rm -f "$boolean_warn_false_path"
 
 # negative test: --default true / false 以外では WARNING が出ないことを pin (false positive 検出)
-boolean_warn_other_path=$(mktemp /tmp/rite-tc14-warn-other-XXXXXX)
+boolean_warn_other_path=$(mktemp /tmp/rite-tc14-warn-other-XXXXXX); cleanup_files+=("$boolean_warn_other_path")
 (cd "$SBX" && bash "$HOOK" --field active --default "OTHER_VALUE") >/dev/null 2>"$boolean_warn_other_path"
 if grep -q "boolean リテラル値" "$boolean_warn_other_path"; then
   echo "  ❌ TC-14.3.c: --default OTHER_VALUE で boolean caveat WARNING が誤 emit (case 文の guard が緩い)"
@@ -581,8 +610,8 @@ write_session_id "$SBX" "$SID"
 # legacy file は別 session_id を持つ
 write_legacy "$SBX" "{\"phase\":\"phase5_post_stop_hook\",\"session_id\":\"${LEGACY_SID}\"}"
 # stdout/stderr を別々に capture して両方を assert する
-stdout_path=$(mktemp /tmp/rite-tc15-stdout-XXXXXX)
-stderr_path=$(mktemp /tmp/rite-tc15-stderr-XXXXXX)
+stdout_path=$(mktemp /tmp/rite-tc15-stdout-XXXXXX); cleanup_files+=("$stdout_path")
+stderr_path=$(mktemp /tmp/rite-tc15-stderr-XXXXXX); cleanup_files+=("$stderr_path")
 (cd "$SBX" && bash "$HOOK" --field phase --default "DEFAULT_REJECTED") >"$stdout_path" 2>"$stderr_path"
 result=$(cat "$stdout_path")
 assert_eq "TC-15.1: 別 session_id の legacy → DEFAULT 返却 (silent take-over 防止)" "DEFAULT_REJECTED" "$result"
@@ -628,8 +657,8 @@ SID="22222222-3333-4444-5555-666666666666"
 write_session_id "$SBX" "$SID"
 # per-session file 不在、legacy が corrupt JSON (truncated, size > 0)
 printf '{"phase":"corrupt_payload' > "$SBX/.rite-flow-state"
-stdout_path=$(mktemp /tmp/rite-tc15c-stdout-XXXXXX)
-stderr_path=$(mktemp /tmp/rite-tc15c-stderr-XXXXXX)
+stdout_path=$(mktemp /tmp/rite-tc15c-stdout-XXXXXX); cleanup_files+=("$stdout_path")
+stderr_path=$(mktemp /tmp/rite-tc15c-stderr-XXXXXX); cleanup_files+=("$stderr_path")
 (cd "$SBX" && bash "$HOOK" --field phase --default "DEFAULT_C") >"$stdout_path" 2>"$stderr_path"
 result=$(cat "$stdout_path")
 assert_eq "TC-15.C.1: corrupt legacy + per-session 不在 → DEFAULT 返却" "DEFAULT_C" "$result"
@@ -674,8 +703,8 @@ SID="33333333-4444-5555-6666-777777777777"
 write_session_id "$SBX" "$SID"
 # legacy file は valid JSON だが session_id が UUID format に非準拠
 write_legacy "$SBX" '{"phase":"some_phase","session_id":"not-a-valid-uuid"}'
-stdout_path=$(mktemp /tmp/rite-tc15d-stdout-XXXXXX)
-stderr_path=$(mktemp /tmp/rite-tc15d-stderr-XXXXXX)
+stdout_path=$(mktemp /tmp/rite-tc15d-stdout-XXXXXX); cleanup_files+=("$stdout_path")
+stderr_path=$(mktemp /tmp/rite-tc15d-stderr-XXXXXX); cleanup_files+=("$stderr_path")
 (cd "$SBX" && bash "$HOOK" --field phase --default "DEFAULT_D") >"$stdout_path" 2>"$stderr_path"
 result=$(cat "$stdout_path")
 assert_eq "TC-15.D.1: invalid UUID legacy + per-session 不在 → DEFAULT 返却" "DEFAULT_D" "$result"
@@ -691,11 +720,11 @@ else
   FAIL=$((FAIL+1))
   FAILED_NAMES+=("TC-15.D.2: invalid_uuid sentinel emit")
 fi
-if grep -q "root_cause_hint=legacy_session_id_failed_uuid_validation" "$stderr_path"; then
-  echo "  ✅ TC-15.D.3: root_cause_hint differentiates invalid_uuid from jq parse failure"
+if grep -q "root_cause_hint=legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema" "$stderr_path"; then
+  echo "  ✅ TC-15.D.3: root_cause_hint differentiates invalid_uuid from jq parse failure (full-string pin、F-03 対応)"
   PASS=$((PASS+1))
 else
-  echo "  ❌ TC-15.D.3: root_cause_hint=legacy_session_id_failed_uuid_validation が含まれません"
+  echo "  ❌ TC-15.D.3: root_cause_hint=legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema が含まれません"
   FAIL=$((FAIL+1))
   FAILED_NAMES+=("TC-15.D.3: root_cause_hint distinguishes UUID validation from jq parse")
 fi

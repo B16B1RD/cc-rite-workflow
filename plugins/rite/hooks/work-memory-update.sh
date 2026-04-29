@@ -229,8 +229,12 @@ update_local_work_memory() {
   # 例: WM_PHASE='foo\' → `phase: "foo\"` → escaped quote → continuation。
   # まず backslash を `\\` に escape してから `"` → `\"` の順で sed を実行する
   # (順序逆転すると新たに作った escape sequence の `\` が更に escape されてしまう)。
+  # tr -d '[:cntrl:]' に拡張し、tab / BEL (0x07) / DEL (0x7F) 等の他制御文字も strip する。
+  # workflow-incident-emit.sh / _emit-cross-session-incident.sh / _resolve-session-id-from-file.sh の
+  # superset cntrl char strip 規範と対称化 (tab / BEL を含む caller-supplied 値が frontmatter の
+  # double-quoted string に literal で混入する経路を遮断する)。
   _sanitize_yaml_value() {
-    printf '%s' "$1" | tr -d '\n\r' | sed 's/\\/\\\\/g; s/"/\\"/g'
+    printf '%s' "$1" | tr -d '[:cntrl:]' | sed 's/\\/\\\\/g; s/"/\\"/g'
   }
   # 数値フィールド (pr_num / loop_cnt) の YAML literal 化 helper。state-read.sh 経由で取得される
   # 値に改行 / 制御文字 / その他非数値が混入していた場合 (tampered/corrupt な flow-state file の防御)、
