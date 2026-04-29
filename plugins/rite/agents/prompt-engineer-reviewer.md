@@ -107,7 +107,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **88**: (hypothetical) A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
 - **88**: (hypothetical) A table row adds `agents/**/*.md` to Prompt Engineer's file patterns, but another reviewer's Note section says "excluding agents/" — confirmed by `Grep` for the pattern + `Read` of the exclusion Note
 - **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
-- **85**: A condition table claims 3 severity levels (CRITICAL/HIGH/MEDIUM) but the referenced `severity-levels.md` defines 4 (CRITICAL/HIGH/MEDIUM/LOW) — confirmed by `Read`
+- **85**: A condition table lists fewer severity levels than the referenced `severity-levels.md` actually defines (例: 表に列挙されている severity 等級数が SoT の定義数より少ない) — confirmed by `Read`
 - **85**: (hypothetical) A YAML frontmatter `description` says "Reviews skill and command definitions" but the Activation section lists patterns for `commands/**/*.md`, `skills/**/*.md`, AND `agents/**/*.md` — scope mismatch confirmed by `Read`
 - **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
 - **70**: An instruction "seems unclear" but could be interpreted correctly by a capable LLM — move to recommendations

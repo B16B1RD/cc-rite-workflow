@@ -294,7 +294,7 @@ Fact-Check Phase (Sub-Phase A + B) の結果に基づき、findings を以下の
 
 外部 claim が `max_claims` を超過した場合:
 
-1. 全 External claims を severity 順にソート（CRITICAL > HIGH > MEDIUM > LOW）
+1. 全 External claims を severity 順にソート（CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW）
 2. 同一 severity 内の tiebreak: "要検証" マーカー付きを優先、その後は findings テーブル上の出現順
 3. 上位 `max_claims` 件を検証対象として選択
 4. 残りは `UNVERIFIED:リソース超過` として `全指摘事項` に残す（blocking 維持）

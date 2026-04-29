@@ -21,7 +21,7 @@
 # Output (stdout, JSONL — 1 finding per line):
 #   {
 #     "cycle": 4,                              # cycle 番号 (1-8)
-#     "severity": "CRITICAL",                  # CRITICAL | HIGH | MEDIUM | LOW
+#     "severity": "CRITICAL",                  # CRITICAL | HIGH | MEDIUM | LOW-MEDIUM | LOW
 #     "file_line": "plugins/rite/commands/pr/fix.md:258-262",
 #     "reviewer": "silent-failure-hunter (HIGH-1) / code-reviewer (M2)",
 #     "description": "...",
@@ -40,7 +40,11 @@
 #   1. session log の各 jsonl 行を読み、type=user の tool_result.content と
 #      type=assistant の content[].text を全文走査
 #   2. markdown 表 row `| {SEVERITY} | {file:line} | {reviewer} | {description} |`
-#      を正規表現で抽出 (SEVERITY = CRITICAL|HIGH|MEDIUM|LOW)
+#      を正規表現で抽出 (SEVERITY = CRITICAL|HIGH|MEDIUM|LOW-MEDIUM|LOW)
+#      可読性のため長い alternative (LOW-MEDIUM) を LOW より先に置くが、`\s*\|` anchor の
+#      backtracking により順序非依存で正しくマッチする (LOW を先に置いても LOW-MEDIUM の
+#      入力で LOW match → 後続 `\s*\|` 不一致 → 別 alternative へ backtrack で LOW-MEDIUM
+#      match に成功する)。順序は perf 最適化目的
 #   3. 4 column variant のみサポート (3/5 column variant は v0 では未対応)
 #   4. 同一 raw_row が複数回出現する場合 (ハンドオフで再掲) は dedupe
 #   5. cycle 番号は session 内に出現する直近の「Cycle N」「サイクル N」表記から
@@ -180,7 +184,7 @@ out_path     = sys.argv[6] or None
 
 # Markdown 表 row pattern: | SEV | col2 | col3 | col4 | (4 columns)
 ROW_RE = re.compile(
-    r'^\|\s*(CRITICAL|HIGH|MEDIUM|LOW)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|',
+    r'^\|\s*(CRITICAL|HIGH|MEDIUM|LOW-MEDIUM|LOW)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|',
     re.MULTILINE,
 )
 # Cycle 推定 (大文字小文字無視で "Cycle N" / "サイクル N")
@@ -369,8 +373,8 @@ def process_session(path):
                     # 除外: pure count rows like `| CRITICAL | 1 | desc |`
                     if re.match(r'^\d+$', file_line):
                         continue
-                    # 除外: header `| CRITICAL | HIGH | MEDIUM | LOW |`
-                    if file_line.upper() in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+                    # 除外: header `| CRITICAL | HIGH | MEDIUM | LOW-MEDIUM | LOW |`
+                    if file_line.upper() in ("CRITICAL", "HIGH", "MEDIUM", "LOW-MEDIUM", "LOW"):
                         continue
                     # 除外: file_line が reviewer 名を含む列ズレ row
                     if is_reviewer_column(file_line):

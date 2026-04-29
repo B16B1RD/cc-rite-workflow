@@ -54,6 +54,38 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - If a config key was added/changed, verify all relevant guides mention it
 - If a command interface changed, check all tutorials and README files
 
+### Step 5.5: Self-Apply — Documentation Example Consistency
+
+Documentation files (`docs/`, `*.md`) often contain code examples whose `//`, `#`, `*` comments are themselves subject to the comment quality basis applied to implementation files. Tech-writer-reviewer MUST self-apply the same basis to its own ecosystem so that doc examples do not silently drift from the standard the reviewer enforces elsewhere — this is the **Self-apply 閉ループ**.
+
+**Procedure**:
+
+1. **Identify doc-embedded code examples**: For documentation files in the diff, locate fenced code blocks (` ```js / ```ts / ```py / ```bash / ```rust ` etc.) and extract any `//`, `#`, `/* ... */`, `"""..."""`, `///` comment lines and language-specific docstring blocks inside them.
+   > **Note**: Python の `"""..."""` docstring と Rust の `///` doc comment は WHY/WHAT 基準 + density 期待が最も厳密に適用される対象 (SoT [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) の "公開 API vs 内部 helper" の density guideline 参照)。Procedure 2 の評価対象から漏らさないよう抽出段階で必ず含めること。
+2. **Apply the SoT comment quality basis**: Check each extracted comment against [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) — specifically the WHY-vs-WHAT distinction, density expectations, and journal-comment exclusions. Doc examples are not exempt.
+3. **Compare with the implementation referenced from the doc**: When the doc example references a real implementation file (e.g., `docs/api.md` describes the function in `src/users.ts`), `Grep`/`Read` the implementation and compare comment density and style. A drift in either direction (docs sparse vs. impl thorough, or docs verbose vs. impl terse) is a finding.
+4. **Flag inconsistencies as Comment Quality findings**: Use the severity preset from [`Comment Quality Finding Gate`](./_reviewer-base.md#comment-quality-finding-gate). Doc-example findings carry the same Impact × Likelihood treatment as implementation-file findings.
+
+**Concrete example** (positive vs. negative):
+
+> Procedure 1 は「fenced code block 単位 = 同一ファイル」前提で抽出する。以下の 2 ブロックは説明上 doc 側と実装側を並置しているが、Procedure 1 適用時は **2 つの独立 block** として扱うこと。
+
+`docs/api.md` 内の `js` example block (current — too WHAT-heavy, drifts from implementation density):
+
+```js
+const user = getUserById(id);  // Get user by ID
+```
+
+`src/users.ts` 内の実装 (WHY + contract):
+
+```ts
+const user = getUserById(id);  // Fetch user entity by ID; throws on missing (caller treats as 404)
+```
+
+The `docs/api.md` example states only WHAT the call does (which the function name already conveys), while the implementation comment captures the WHY (`throws on missing`) and a contract that the doc reader needs in order to use the API correctly. This kind of asymmetry is a Step 5.5 finding — propose updating the doc example to align with the implementation's comment density (or to omit the comment entirely if the function name is self-documenting).
+
+**Why Self-apply matters**: a reviewer that enforces a comment-quality basis on implementation but exempts its own doc examples teaches a contradictory standard. Step 5.5 closes that loop and ensures `tech-writer-reviewer` 's own documentation is itself defensible by the basis it applies.
+
 ## Confidence Calibration
 
 - **95**: Documentation references `createClient()` but `Grep` shows the function was renamed to `initializeClient()` — confirmed stale reference

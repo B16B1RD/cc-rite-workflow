@@ -73,7 +73,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 ## Severity Definitions
 
-**CRITICAL** (data loss risk or major performance issue), **HIGH** (significant query performance or integrity issue), **MEDIUM** (suboptimal design or missing optimization), **LOW** (minor improvement).
+**CRITICAL** (data loss risk or major performance issue), **HIGH** (significant query performance or integrity issue), **MEDIUM** (suboptimal design or missing optimization), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor improvement).
 
 ## Migration Safety Guidelines
 

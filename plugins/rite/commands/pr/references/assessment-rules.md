@@ -26,7 +26,7 @@ For each finding in 全指摘事項:
         (matrix rule: LOW × Hypothetical は報告禁止)
       else:
         move to 推奨事項 section
-        (matrix rule: CRITICAL/HIGH/MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
+        (matrix rule: CRITICAL/HIGH/MEDIUM/LOW-MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
 ```
 
 **"Missing `Likelihood-Evidence:` anchor"** means the finding's `内容` column does NOT contain a match for the following regex (per `_reviewer-base.md` "Demonstrable: proof of burden"):
@@ -74,7 +74,7 @@ These 4 categories match [Hypothetical Exception Categories](../../../references
 
 **Red blocking rule: If even 1 finding exists (after 5.3.0 demotion), it MUST NOT be assessed as "Merge OK"**
 
-All findings (CRITICAL/HIGH/MEDIUM/LOW) remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining finding must be resolved before merge.
+All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining finding must be resolved before merge.
 
 **Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
 
@@ -84,7 +84,7 @@ When executed standalone (outside a loop), the same rule applies: all findings a
 
 ## 5.3.3 Assessment Logic
 
-Use **all findings** for determination (all findings are blocking). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW findings → Cannot merge (findings exist) | 0 findings → Merge OK.
+Use **all findings** for determination (all findings are blocking). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (findings exist) | 0 findings → Merge OK.
 
 ## 5.3.5 Output Format at Assessment Decision Time
 
@@ -95,6 +95,7 @@ When determining the assessment, explicitly output the finding count in the foll
 - CRITICAL: {count} 件
 - HIGH: {count} 件
 - MEDIUM: {count} 件
+- LOW-MEDIUM: {count} 件
 - LOW: {count} 件
 - 合計: {total} 件（すべて blocking）
 

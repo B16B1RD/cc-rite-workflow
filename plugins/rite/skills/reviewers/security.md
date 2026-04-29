@@ -71,7 +71,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 ## Severity Definitions
 
-**CRITICAL** (exploitable vulnerability with immediate impact), **HIGH** (security flaw that could lead to data breach), **MEDIUM** (security weakness requiring attention), **LOW** (minor security improvement opportunity).
+**CRITICAL** (exploitable vulnerability with immediate impact), **HIGH** (security flaw that could lead to data breach), **MEDIUM** (security weakness requiring attention), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor security improvement opportunity).
 
 ## Finding Quality Guidelines
 

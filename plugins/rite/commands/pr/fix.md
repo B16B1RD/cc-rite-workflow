@@ -2070,13 +2070,14 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
        5 列目以降の値は破棄されます。Confidence 列を使うにはヘッダー行に
        'confidence' / '信頼度' / 'conf' / 'score' / '確信度' のいずれかを含めてください。
        ```
-   - **severity 別名マッピング** (大文字小文字無視で完全一致を試行する。Title Case や lower case の値も正規化対象): CRITICAL/HIGH/MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する。**比較は必ず case-insensitive** で行うこと (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ):
+   - **severity 別名マッピング** (大文字小文字無視で完全一致を試行する。Title Case や lower case の値も正規化対象): CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW 以外の値が出現した場合、以下の別名マッピングを試行する。**比較は必ず case-insensitive** で行うこと (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ):
 
      | 認識される別名 (case-insensitive 比較) | 正規化先 |
      |---------------------------------------|---------|
      | `Critical`, `BLOCKER`, `CRIT`, `🔴`, `重大`, `致命` | `CRITICAL` |
      | `Important`, `MAJOR`, `HIGH`, `🟠`, `重要`, `高` | `HIGH` |
      | `Minor`, `MEDIUM`, `🟡`, `中`, `Normal` | `MEDIUM` |
+     | `Low-Medium`, `LowMedium`, `low_medium`, `中低`, `軽中` | `LOW-MEDIUM` |
      | `Low`, `INFO`, `TRIVIAL`, `🔵`, `低`, `情報` | `LOW` |
 
      > **Note — 既知の外部ツール出力形式**: rite plugin 配下に `/verified-review` は存在しない (実体はユーザーレベルの `~/.claude/commands/verified-review.md` にある独立コマンドで、rite plugin が提供するものではない)。同コマンドが出力するレビュー結果テーブルは `重要度` 列に **Title Case の `Critical` / `Important`** を使うため、上記マッピング表ではこれらを HIGH / CRITICAL に正規化する経路を必須としている。`pr-review-toolkit:review-pr` も同様に Title Case を使う場合があり、同じ経路で吸収される。
@@ -2088,7 +2089,7 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
        警告: 認識不能な severity 値が {N} 件あります
        - 値: ['{val_1}', '{val_2}', ...]
        - すべて MEDIUM として扱いますが、適切な対応のため手動で再分類してください
-       - 認識可能な severity: CRITICAL / HIGH / MEDIUM / LOW (または上記の別名)
+       - 認識可能な severity: CRITICAL / HIGH / MEDIUM / LOW-MEDIUM / LOW (または上記の別名)
        ```
    - **全テーブル行がパース不能** または **抽出結果 0 件** の場合、警告を表示してユーザーに確認を求める (silent failure 回避):
      ```
@@ -2294,7 +2295,7 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 | 4.6 (完了報告) | `{confidence_override_count}` | `confidence_override_count` の値をそのまま展開 (0 含む) |
 | 4.6 (完了報告) | `{confidence_override_files_suffix}` | `confidence_override_count == 0` なら空文字列、`>= 1` なら ` (file_a.ts:10; file_b.ts:42; ...)` (先頭スペース付きカッコ + 配列を `; ` 区切り) |
 | 4.5.3 (work memory) | `{confidence_override_section}` | `confidence_override_count == 0` なら `なし`、`>= 1` なら同一行に `; ` 区切りで `findings` を列挙 (改行不要、Markdown bullet 構造を壊さない) |
-| 4.3.4 (Issue 本文) | `{confidence_value}` | finding 単位の値。rite review 由来なら finding の severity (CRITICAL/HIGH/MEDIUM/LOW)、外部ツール由来かつ Confidence 列なしなら literal `70 (暫定)` |
+| 4.3.4 (Issue 本文) | `{confidence_value}` | finding 単位の値。rite review 由来なら finding の severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW)、外部ツール由来かつ Confidence 列なしなら literal `70 (暫定)` |
 | 4.3.4 (Issue 本文) | `{confidence_override_value}` | finding 単位の boolean。`confidence_override_findings` に当該 file:line が含まれていれば `true (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み)`、それ以外は `false` |
 
 この手順により、外部レビューツールの信頼度を silent に無視することなく、かつ hallucinated finding の混入も防ぎ、かつ Confidence 80+ ゲート invariant の破壊を silent に起こさない (override は常に trackable)。
@@ -2467,7 +2468,7 @@ Retrieve the `/rite:pr:review` results from PR comments and extract severity inf
 
 1. Search PR comments for those containing `## 📜 rite レビュー結果`
 2. Parse the tables for each reviewer type within the "all findings" section
-3. Extract the severity (CRITICAL/HIGH/MEDIUM/LOW) for each finding
+3. Extract the severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) for each finding
 4. Map severity using file:line as the key
 
 **Search method:**
@@ -2517,7 +2518,7 @@ The rite review result comment (output format of `/rite:pr:review`) has the foll
    }
    ```
 
-**Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW).
+**Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW).
 
 **When rite review results are not found:**
 
@@ -2534,7 +2535,7 @@ Perform severity-based classification using the `severity_map` obtained in Phase
 | Classification | Criteria | Action |
 |---------------|----------|--------|
 | **Required fix** | CRITICAL/HIGH | Must fix |
-| **Needs fix** | MEDIUM/LOW | Fix or separate Issue (action required) |
+| **Needs fix** | MEDIUM/LOW-MEDIUM/LOW | Fix or separate Issue (action required) |
 | **External review** | Findings from human reviewers | Action required |
 | **Resolved** | Resolved threads | - |
 
@@ -2591,7 +2592,7 @@ PR #{number} のレビューコメント
 |---|--------|----------|-----|----------|------------|
 | 1 | {severity} | {path} | {line} | {body_preview} | @{user} |
 
-### 要修正（MEDIUM/LOW）({count}件)
+### 要修正（MEDIUM/LOW-MEDIUM/LOW）({count}件)
 | # | 重要度 | ファイル | 行 | 指摘内容 | レビュアー |
 |---|--------|----------|-----|----------|------------|
 | 1 | {severity} | {path} | {line} | {body_preview} | @{user} |
@@ -2620,7 +2621,7 @@ PR #{number} のレビューコメント
 | Option | Target | Use Case |
 |--------|--------|----------|
 | **すべての指摘に対応（推奨）** | All severities + external reviews | When full resolution is needed. Within `/rite:issue:start` loop, all findings are auto-selected |
-| **CRITICAL/HIGH のみ対応** | CRITICAL + HIGH only | When addressing only urgent issues and deferring MEDIUM/LOW |
+| **CRITICAL/HIGH のみ対応** | CRITICAL + HIGH only | When addressing only urgent issues and deferring MEDIUM/LOW-MEDIUM/LOW |
 | **特定の指摘を選択** | Individual selection | When addressing only specific findings |
 | **キャンセル** | - | Abort the process (Fast Path 経由の場合はハンドオフファイルを削除してから exit) |
 
@@ -2966,6 +2967,8 @@ set +o pipefail
 
 ## Phase 3: Fix Commit
 
+> **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — verify that journal comments (`cycle X F-Y`, PR/Issue numbers), file:line references, and unverified jargon are not left in the diff. The goal is WHY-only inline comments; review/fix history belongs in commit messages and PR descriptions.
+
 ### 3.1 Verify Changes
 
 Once all findings have been addressed, verify the changes:
@@ -3081,10 +3084,10 @@ Generate structured action lines in the commit body following the Contextual Com
    - 対応中に発見した制約 → `constraint(scope)`
    - 対応中の発見事項 → `learned(scope)`
    - **レビューソースの provenance** → `decision(review-source): {review_source}` (verified-review cycle 9 I-1 対応、Phase 1.2.0 Priority chain で決定された `review_source` 値を commit body に記録。schema.md Priority 1 emit 義務の provenance 契約を Phase 3.2 commit message でも履行する)
-5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `intent` (intent is preserved last as the core "why")
+5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `root-cause` → `intent` (intent is preserved last as the core "why"; `root-cause` is preserved at higher priority than `decision` because Phase 3.2.1 Root Cause Gate prefers an explicit `root-cause(scope)` action line as the canonical pass signal — other pass forms (`decision(scope)` naming the root cause, or a `Root cause:` paragraph) also satisfy the gate; `comment-update` is out of scope — single-purpose commits do not exceed 10 lines)
 
 **Output rules:**
-- Action type names are always in English (`intent`, `decision`, `rejected`, `constraint`, `learned`)
+- Action type names are always in English (`intent`, `decision`, `root-cause`, `rejected`, `constraint`, `learned`, `comment-update`)
 - Description follows the `language` setting in `rite-config.yml`
 - Do not repeat information already visible in the diff
 - Do not fabricate action lines without evidence from review findings, work memory, or diff
@@ -3537,7 +3540,7 @@ if ! cat <<'BODY_EOF' > "$tmpfile"
 <!-- placeholder 展開ルール (Claude がスクリプト生成前に置換する):
      - {reviewer_display}: Broad Retrieval 経由なら "@{reviewer}"、Fast Path 経由で
        target_author_mention_skip == "true" なら "(不明なレビュアー)"。詳細は Phase 2.1 の展開ルール表を参照
-     - {confidence_value}: finding が rite review 由来なら CRITICAL/HIGH/MEDIUM/LOW のいずれか。
+     - {confidence_value}: finding が rite review 由来なら CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW のいずれか。
        外部ツール由来で Confidence 列なしの場合は "70 (暫定)" を入れる
      - {confidence_override_value}:
          false (rite review 由来 / Confidence 列ありの外部ツール) → "false"

@@ -762,6 +762,91 @@ fi
 - `hardcoded_line_finding_count`: Extract from `hardcoded_line_output` by matching the line `==> Total hardcoded line-number findings: N` (regex: `/Total hardcoded line-number findings: (\d+)/`). If no match found, default to 0
 - `hardcoded_line_output`: Script output (truncated if >50 lines)
 
+### 3.12 Plugin-specific Checks (Comment Journal Narration) — Issue #702
+
+Execute the comment journal check to detect high-confidence narrative comment violations in **`plugins/rite/**/*.sh`** and **`plugins/rite/**/*.md`**. This is the fast-fail mechanical layer below the LLM reviewers (Issues #700, #701) — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments. See the script header at `plugins/rite/hooks/scripts/comment-journal-check.sh` for the exact regex literals and whitelist rules.
+
+Detected patterns:
+
+- **P1** `verified-review cycle N` — leftover narration referring to a verified-review iteration
+- **P2** `旧実装(は|では)` — comments explaining what the previous version did (belongs in commit/PR history)
+- **P3** `PR #N cycle N fix` — comments tagging a fix to a specific PR review cycle
+- **P4** `cycle N F-N で(導入|確立|集約)` — comments referencing review-finding identifiers
+
+Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` markers anywhere on the line.
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/comment-journal-check.sh ]; then
+  comment_journal_output=$(bash {plugin_root}/hooks/scripts/comment-journal-check.sh --all 2>&1)
+  comment_journal_exit_code=$?
+else
+  comment_journal_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `comment_journal_status` | Action |
+|-----------|--------------------------|--------|
+| 0 | `success` | No journal narration — continue to Phase 4 |
+| 1 | `warning` | Pattern detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Comment journal results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 / 3.9 / 3.10 / 3.11 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). The CI-only adoption (Issue #702 採択方針) keeps this warning-level so authors can clean up journal narration progressively; pre-commit integration is intentionally out of scope.
+
+**Record comment journal check results** for Phase 4 reporting:
+- `comment_journal_status`: `success` / `warning` / `error` / `skipped`
+- `comment_journal_finding_count`: Extract from `comment_journal_output` by matching `==> Total comment-journal findings: N` (regex: `/Total comment-journal findings: (\d+)/`). If no match found, default to 0
+- `comment_journal_output`: Script output (truncated if >50 lines)
+
+### 3.13 Plugin-specific Checks (Comment Line-Number Reference) — Issue #702
+
+Execute the comment line-number reference check to detect hardcoded `<file>.<ext>:<NN>` references inside shell comments under **`plugins/rite/**/*.sh`**. This complements the Phase 3.11 hardcoded line-number check (which targets prose in markdown) by closing the same drift gap inside shell-script comments. See the script header at `plugins/rite/hooks/scripts/comment-line-ref-check.sh` for the exact regex literal and exclusion rules.
+
+Detected pattern (in shell comments only, with shebang excluded):
+
+- `[A-Za-z][A-Za-z0-9_.-]*\.(sh|md|ts|py|js|tsx):[0-9]+`
+
+Exclusions: shebang `#!`, fenced code blocks, range form `:N-M`, backtick-quoted spans, whitelist markers (`# example:` / `<!-- example: -->` / `// example:`), self.
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/comment-line-ref-check.sh ]; then
+  comment_line_ref_output=$(bash {plugin_root}/hooks/scripts/comment-line-ref-check.sh --all 2>&1)
+  comment_line_ref_exit_code=$?
+else
+  comment_line_ref_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `comment_line_ref_status` | Action |
+|-----------|---------------------------|--------|
+| 0 | `success` | No comment line-number references — continue to Phase 4 |
+| 1 | `warning` | Reference detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Comment line-ref check results are treated as **warnings**, not errors — same policy as the rest of Phase 3.x. A finding does NOT change `[lint:success]`. Structural references (e.g., `lint.md Phase 3.11`) survive content insertions/deletions; raw `lint.md:742` references decay the moment a line is added above. The CI-only adoption keeps this warning-level so authors can migrate references progressively.
+
+**Record comment line-ref check results** for Phase 4 reporting:
+- `comment_line_ref_status`: `success` / `warning` / `error` / `skipped`
+- `comment_line_ref_finding_count`: Extract from `comment_line_ref_output` by matching `==> Total comment-line-ref findings: N` (regex: `/Total comment-line-ref findings: (\d+)/`). If no match found, default to 0
+- `comment_line_ref_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -886,7 +971,21 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {hardcoded_line_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, backlink-format, or hardcoded-line-number warnings/invocation errors.
+**Comment journal narration appendix (Issue #702)** (both standalone and E2E): When `comment_journal_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the rest of Phase 3.x. When status is `warning` (exit 1, journal narration detected), the appendix output includes each violation line (`[comment-journal][P1|P2|P3|P4] file:NN: ...`) so authors can move the narration into commit message / PR description / Wiki:
+
+```
+⚠️ Comment journal narration: {comment_journal_finding_count} findings detected ({comment_journal_status}, non-blocking)
+{comment_journal_output}
+```
+
+**Comment line-ref check appendix (Issue #702)** (both standalone and E2E): When `comment_line_ref_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the rest of Phase 3.x. When status is `warning` (exit 1, comment line-number reference detected), the appendix output includes each violation line (`[comment-line-ref] file:NN: ...`) so authors can replace the raw `<file>.<ext>:<NN>` reference with a structural pointer:
+
+```
+⚠️ Comment line-ref check: {comment_line_ref_finding_count} findings detected ({comment_line_ref_status}, non-blocking)
+{comment_line_ref_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, or comment-line-ref warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -965,6 +1064,8 @@ Analyze the error content and present fix suggestions when possible:
 | Gitignore health check (#567) | {gitignore_health_status} ({gitignore_health_finding_count} findings) |
 | Backlink format check (#627) | {backlink_format_status} ({backlink_format_finding_count} findings) |
 | Hardcoded line-number check (#666) | {hardcoded_line_status} ({hardcoded_line_finding_count} findings) |
+| Comment journal narration (#702) | {comment_journal_status} ({comment_journal_finding_count} findings) |
+| Comment line-ref check (#702) | {comment_line_ref_status} ({comment_line_ref_finding_count} findings) |
 | {i18n:lint_duration} | {duration} |
 
 {i18n:lint_next_steps}:
@@ -975,7 +1076,7 @@ Analyze the error content and present fix suggestions when possible:
 > **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. All Phase 3.x lint checks added after Phase 3.5 (Phase 0.6 `Terminal output check`, 3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration (#702)` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check (#702)` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). All Phase 3.x lint checks added after Phase 3.5 (Phase 0.6 `Terminal output check`, 3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

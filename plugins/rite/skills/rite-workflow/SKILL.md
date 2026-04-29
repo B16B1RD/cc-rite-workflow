@@ -51,6 +51,10 @@ When activated, this skill provides:
    - Reduce excessive AskUserQuestion usage
    - See [references/common-principles.md](./references/common-principles.md) for details
 
+6. **Comment Best Practices**
+   - WHY > WHAT, no journal comments, no line/cycle number references, jargon whitelist enforcement
+   - See [references/comment-best-practices.md](./references/comment-best-practices.md) for details
+
 ## Workflow Identity (品質 > 時間/context)
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
