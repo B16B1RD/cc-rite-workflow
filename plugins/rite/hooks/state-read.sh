@@ -12,8 +12,6 @@
 # Examples:
 #   curr=$(bash plugins/rite/hooks/state-read.sh --field phase --default "")
 #   parent=$(bash plugins/rite/hooks/state-read.sh --field parent_issue_number --default 0)
-#   loop=$(bash plugins/rite/hooks/state-read.sh --field loop_count --default 0)
-#   pr=$(bash plugins/rite/hooks/state-read.sh --field pr_number --default "null")
 #
 # Resolution order (matches flow-state-update.sh semantics):
 #   1. schema_version=2 + valid .rite-session-id UUID + per-session file exists
@@ -24,55 +22,38 @@
 #      -> $DEFAULT
 #
 # Why this exists (Issue #687 AC-4):
-#   When schema_version=2 routes flow-state writes to per-session files,
-#   inline `jq -r '.<field>' .rite-flow-state` patterns read stale residue
-#   left by a prior session — observed in #687 reproduction where Phase 3
-#   pre-condition fetched phase5_post_stop_hook from another session's legacy
-#   file instead of phase2_post_work_memory from the active per-session file.
+#   schema_version=2 routes writes to per-session files; inline
+#   `jq -r '.<field>' .rite-flow-state` reads stale residue from another
+#   session's legacy file — observed in #687 reproduction.
 #
 # Exit codes:
 #   0 — success (value or default printed to stdout)
 #   1 — argument error / invalid field name
+#
+# Evolution history:
+#   See plugins/rite/references/state-read-evolution.md for verified-review
+#   cycle 5〜43+ structural fixes, doctrines (writer/reader symmetry,
+#   DRIFT-CHECK ANCHOR semantic naming, Form A cleanup minimality), and
+#   the full list of consolidated helpers.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
-# 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper にも
-# `bash <missing>` invocation 経路で依存する (direct + transitive)。検査対象 list の Single Source
-# of Truth は `_validate-helpers.sh` 内の **DEFAULT_HELPERS 配列** (PR #688 cycle 13 F-01 で集約):
-#   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke。`||` fallback で silent suppression する独自経路を持つため特に重要)
-#   - `_resolve-session-id-from-file.sh` (SESSION_ID resolution block で direct invoke)
-#   - `_resolve-session-id.sh` (上記 helper 内 + `_resolve-cross-session-guard.sh` 内で transitive)
-#   - `_resolve-schema-version.sh` (SCHEMA_VERSION resolution block で direct invoke)
-#   - `_resolve-cross-session-guard.sh` (per-session resolver の case classification block で direct invoke)
-#   - `_emit-cross-session-incident.sh` (case `foreign:*` / `corrupt:*` / `invalid_uuid:*` arm で direct invoke)
-#   - `_mktemp-stderr-guard.sh` (jq stderr 退避 / mkdir stderr 退避 / mv stderr 退避等で direct invoke)
-# 上記 bullet list は人間向けの説明であり、実際の検査対象は DEFAULT_HELPERS 配列が決定する。
-# helper を追加する際は `_validate-helpers.sh` 内 DEFAULT_HELPERS への 1 行追加のみで両 caller
-# (state-read.sh / flow-state-update.sh) に反映される (writer/reader 対称化 doctrine の構造的実装)。
-# それらが install 不整合 / deploy regression で missing の場合、bash は exit 127 を返すが
-# `set -euo pipefail` の中でも `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through
-# 経路が散在する。Issue #687 (writer/reader 片肺更新型 silent regression) と同型の deploy regression を
-# 構造的に塞ぐため、依存する全 helper を upfront で fail-fast 検査する。
-# verified-review F-06 (MEDIUM) / PR #688 cycle 12 F-04 (MEDIUM): helper existence check の
-# **validation logic** を `_validate-helpers.sh` に集約。
-# PR #688 cycle 13 F-01 (HIGH): helper 名 list 自体も `_validate-helpers.sh` 内の DEFAULT_HELPERS
-# 配列に集約し、本 caller は引数 0 個 (script_dir のみ) で呼ぶ形に統一。これにより state-read.sh と
-# flow-state-update.sh の helper-list 重複が構造的に解消され、helper 追加時は `_validate-helpers.sh`
-# 内 DEFAULT_HELPERS への 1 行追加のみで両 caller に反映される (Issue #687 root cause と同型の
-# 片肺更新 drift を別 layer で再発させない構造的実装)。
+# Helper script existence check (fail-fast on deploy regression).
+# Validation logic and helper list are both centralized in _validate-helpers.sh
+# (DEFAULT_HELPERS array). Add new helpers there to reflect in both
+# state-read.sh / flow-state-update.sh callers via a single line.
+# See: references/state-read-evolution.md (Cycle 12 F-04 / 13 F-01 / 38 F-01 / 38 F-09).
 if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   echo "ERROR: _validate-helpers.sh not found or not executable: $SCRIPT_DIR/_validate-helpers.sh" >&2
   echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
   exit 1
 fi
-# DEFAULT_HELPERS を使用 (引数 0 個 = script_dir のみ)
 bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR"
 
 # Resolve repository root via the existing helper (single SoT).
-# `||` fallback は state-path-resolve.sh が将来 non-zero return する場合の defensive guard。
-# stderr は pass-through し、将来 helper が WARNING/ERROR を emit した際に観測可能にする。
+# `||` fallback is a defensive guard for future non-zero return; stderr is
+# pass-through so any helper-emitted WARNING/ERROR remains observable.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)") || STATE_ROOT="$(pwd)"
 LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 
@@ -101,15 +82,11 @@ if ! [[ "$FIELD" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
 fi
 
 # --- Signal-specific trap (covers both _classify_err and _jq_err lifecycles) ---
-# verified-review F-03 MEDIUM: 単一の cleanup 関数で _classify_err と _jq_err 両方を rm し、
-# trap を file 冒頭 (per-session 分岐より前) に install することで両 tempfile の race window
-# (mktemp 成功 〜 EXIT/INT/TERM/HUP 受信時) を一貫して closure 化する。canonical pattern
-# (_resolve-cross-session-guard.sh / _resolve-session-id-from-file.sh と対称化)。
+# Single cleanup function rm-fs both tempfiles; trap installed at file top
+# (before per-session branch) closes the race window for both lifecycles.
+# See: references/state-read-evolution.md (Cycle 35 F-05 / 36 F-15 / F-03 MEDIUM / F-06 LOW).
 _classify_err=""
 _jq_err=""
-# verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
-# bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
-# `_resolve-cross-session-guard.sh` の Form A cleanup と統一し、Form A 最小性 doctrine を維持する。
 _rite_state_read_cleanup() {
   rm -f "${_classify_err:-}" "${_jq_err:-}"
 }
@@ -120,20 +97,14 @@ trap '_rite_state_read_cleanup; exit 129' HUP
 
 # --- Resolve session_id (matches flow-state-update.sh _resolve_session_id) ---
 # UUID-format validation prevents path traversal via tampered .rite-session-id.
-# PR #688 cycle 34 fix (F-01 CRITICAL): UUID validation を `_resolve-session-id.sh` 共通 helper に抽出。
-# state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh の 5 site で重複していた
-# RFC 4122 strict pattern を 1 箇所に集約し、将来の pattern tightening (variant bit check 等) を
-# 片肺更新 drift から守る。
-# verified-review cycle 38 F-05 MEDIUM: `tr + _resolve-session-id.sh + fallback` の compound sequence
-# 自体も 3 site (本ファイル / flow-state-update.sh / resume-active-flag-restore.sh) で重複していた。
-# `_resolve-session-id-from-file.sh` 共通 helper に抽出し、将来「hex normalize / base64 UUID」等の
-# 上流動作変更で同型片肺更新 drift が発生しない設計に転換した (writer/reader/resume 3 layer の DRY 化)。
+# Common helper for tr+UUID-validate+fallback compound sequence shared with
+# writer/resume layers (DRY across writer/reader/resume).
+# See: references/state-read-evolution.md (Cycle 34 F-01 / 38 F-05).
 SESSION_ID=$(bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT")
 
 # --- Resolve schema_version (DRY: shared helper with flow-state-update.sh) ---
-# PR #688 cycle 5 review (code-quality + error-handling 推奨): writer/reader で同一の inline
-# schema_version 解決 logic を持っていた drift リスクを排除するため、共通 helper に抽出済。
-# pipefail silent failure 対策 (Issue #687 AC-4 follow-up) も helper 内で吸収する。
+# pipefail silent failure handling (Issue #687 AC-4 follow-up) absorbed in helper.
+# See: references/state-read-evolution.md (Cycle 5 review).
 SCHEMA_VERSION=$(bash "$SCRIPT_DIR/_resolve-schema-version.sh" "$STATE_ROOT")
 
 # --- Resolve target file ---
@@ -145,55 +116,20 @@ SCHEMA_VERSION=$(bash "$SCRIPT_DIR/_resolve-schema-version.sh" "$STATE_ROOT")
 if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
   STATE_FILE="$STATE_ROOT/.rite/sessions/${SESSION_ID}.flow-state"
   if [ ! -f "$STATE_FILE" ] && [ -f "$LEGACY_FLOW_STATE" ]; then
-    # verified-review cycle 34 fix (F-02 HIGH): cross-session guard を `_resolve-cross-session-guard.sh`
-    # 共通 helper に抽出。writer 側 (flow-state-update.sh `_resolve_session_state_path`) と reader 側
-    # (state-read.sh) で重複していた legacy.session_id 抽出 + 比較 + corrupt 判定ロジックを 1 箇所に
-    # 集約し、Issue #687 root cause 「writer-side guard を cycle 32 で追加、reader-side guard を
-    # cycle 33 で後追い」型の片肺更新 drift を構造的に防ぐ。
-    # verified-review cycle 35 fix (F-01 CRITICAL): use 2>/dev/null instead of 2>&1.
-    # The 2>&1 was merging helper's stderr (jq parse error text) into the classification
-    # string, breaking `case "$classification" in corrupt:*) ...` matching and silently
-    # routing to the defensive `*)` arm — suppressing the `legacy_state_corrupt` sentinel
-    # emit that Issue #687 was specifically designed to introduce. Helper now keeps stderr
-    # clean (cycle 35 fix in _resolve-cross-session-guard.sh), so 2>/dev/null is safe.
-    # PR #688 followup: cycle 41 review F-01 HIGH — helper の正当な WARNING (cycle 39 H-02 で
-    # `_resolve-cross-session-guard.sh` の `_mktemp-stderr-guard.sh` 呼び出しブロックに追加された
-    # mktemp 失敗 WARNING) が `2>/dev/null` で silent suppress される問題を修正。
-    # stderr を tempfile に退避し、`^WARNING:` で始まる行のみ caller chain に pass-through する。
-    # これにより /tmp full / SELinux deny 環境で helper 側の詳細が両層で失われる二重 silent failure
-    # を防ぐ (writer/reader 対称化 doctrine と整合)。
-    # verified-review (PR #688 cycle 14) F-04 (MEDIUM): hardcoded 行番号
-    # `_resolve-cross-session-guard.sh:93-98` を「DRIFT-CHECK ANCHOR は semantic name 参照」doctrine
-    # に従って semantic anchor に置換 (cycle 38 F-04 / cycle 40 で確立)。
-    #
-    # cycle 43 F-09 (MEDIUM) 対応: _classify_err mktemp 失敗時の silent fallback を canonical pattern
-    # (`if ! ... then` + WARNING 3 行 + chmod 600) に揃える。旧実装 `|| _classify_err=""` は
-    # mktemp 失敗 (/tmp full / permission denied / SELinux deny) を WARNING なしで silent fallback し、
-    # 後続の `2>"${_classify_err:-/dev/null}"` で helper の WARNING (cycle 39 H-02 で追加) が消える
-    # 入れ子の silent failure になっていた (cycle 41 F-01 のコメント「pass-through する」と乖離)。
-    # 他 5 helper (state-read.sh _jq_err / _resolve-cross-session-guard.sh / flow-state-update.sh ×2 /
-    # resume-active-flag-restore.sh / _resolve-session-id-from-file.sh _tr_err — cycle 43 F-08 で対称化済み)
-    # の canonical pattern と統一する。trap 統合は別 Issue で追跡 (実行時間が短いため race window 小)。
-    # verified-review (PR #688 cycle 15) F-05 (MEDIUM) 対応: writer/reader 対称化 doctrine 構造的破綻の解消。
-    # 旧実装は `mktemp + WARNING 3 行 + chmod 600` を 6 行 inline で書き、`_mktemp-stderr-guard.sh` の
-    # F-02 consolidation スコープ (header コメント:「6 hook scripts で重複していた `mktemp + WARNING` を helper
-    # に集約」) から漏れていた。helper API は本ケースを完全にサポート可能 (caller_id / template_suffix /
-    # impact_msg を引数化済、chmod 600 は helper 内蔵 — 詳細は `_mktemp-stderr-guard.sh` 参照)。
-    # 残置は writer/reader 対称化 doctrine の構造的破綻 — 将来 WARNING 文言や chmod 仕様を変更する際に
-    # 両 site 同期更新が必要で、Issue #687 root cause と同型の片肺更新 drift を再導入するリスクがあった。
-    # `_resolve-cross-session-guard.sh` (cycle 9 F-02 で集約済み) と同じ pattern に統一する。
+    # Cross-session guard: classify legacy file as same/empty/foreign/corrupt/invalid_uuid
+    # via shared helper, mirrored on both writer/reader sides.
+    # `2>/dev/null` is safe because helper guarantees clean stderr.
+    # `_mktemp-stderr-guard.sh` provides mktemp + WARNING + chmod 600 atomically.
+    # `^WARNING:` filtered pass-through avoids losing helper-emitted detail under
+    # /tmp full / SELinux deny while preserving classification string integrity.
+    # See: references/state-read-evolution.md (Cycle 34 F-02 / 35 F-01 / 41 F-01
+    # / 14 F-04 / 15 F-05 / 43 F-09).
     _classify_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
       "state-read" "classify-err-reader" \
       "cross-session guard helper の WARNING (mktemp 失敗 / jq stderr) が pass-through されません")
-    # verified-review F-11 LOW (defense-in-depth): `|| true` で helper の想定外 exit を完全に
-    # 握り潰すと、helper の design contract (`exit 0 — always`) が将来 regression したときに
-    # silent fail する。`|| _guard_rc=$?` で rc を捕捉し、非 0 時には WARNING を emit する。
-    # writer 側 (flow-state-update.sh の `_resolve_session_state_path` 関数内の
-    # `_resolve-cross-session-guard.sh` 呼び出し行) との対称化を維持する原則 (本 helper の
-    # writer/reader 対称化 doctrine) に従い、両者で同じ pattern に揃える。本対称化は
-    # PR #688 review F-01 (HIGH) で writer 側にも適用済 (cycle 9 F-01)。
-    # DRIFT-CHECK ANCHOR: 行番号ではなく semantic name で参照する (cycle 38 F-04 / cycle 40
-    # で確立した原則)。`flow-state-update.sh:186` のような hardcoded 行番号は drift しやすい。
+    # Defense-in-depth: capture rc to detect helper contract violation
+    # (helper design contract: `exit 0 — always`). Symmetric with writer-side
+    # `_resolve-cross-session-guard.sh` invocation in flow-state-update.sh.
     if classification=$(bash "$SCRIPT_DIR/_resolve-cross-session-guard.sh" "$LEGACY_FLOW_STATE" "$SESSION_ID" 2>"${_classify_err:-/dev/null}"); then
       :
     else
@@ -206,9 +142,9 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
     unset _classify_err
-    # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
-    # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約。reader/writer × 3 classification の
-    # 6 ブロック (~84 行) が semantically identical だった drift リスクを排除する。
+    # 3 classification × 2 caller の workflow-incident-emit ブロック (~84 行) を
+    # `_emit-cross-session-incident.sh` に集約。
+    # See: references/state-read-evolution.md (PR #688 followup F-01 MEDIUM).
     case "$classification" in
       same|empty)
         STATE_FILE="$LEGACY_FLOW_STATE"
@@ -248,11 +184,11 @@ else
 fi
 
 # --- Read field ---
-# F-C MEDIUM (PR #688 cycle 5 review test reviewer 推奨): 空ファイル / 非 JSON ファイルの edge case
-# 旧実装は file 存在チェックのみで、空ファイル (`touch .rite-flow-state` 等) や非 JSON ファイル
-# (例: 別プロセスが書き込み中) の場合に jq が exit 0 + 空出力を返す → caller default が
-# 効かず空文字列を silent return する経路があった。`[ -s "$STATE_FILE" ]` (size > 0) を追加して
-# 空ファイル時も DEFAULT に落とす (corrupt JSON 経路と挙動を一致させる)。
+# Empty / non-JSON file edge case: `[ -s "$STATE_FILE" ]` (size > 0) ensures
+# `touch .rite-flow-state` or partial writes by another process do not silently
+# return an empty string — caller-supplied $DEFAULT fires consistently with
+# the corrupt-JSON code path.
+# See: references/state-read-evolution.md (Cycle 5 test reviewer F-C MEDIUM).
 if [ ! -f "$STATE_FILE" ] || [ ! -s "$STATE_FILE" ]; then
   echo "$DEFAULT"
   exit 0
@@ -260,73 +196,31 @@ fi
 
 # Pass DEFAULT through jq's --arg so quoting/escaping is handled by jq.
 # FIELD has been validated as [a-zA-Z_][a-zA-Z0-9_]* so direct interpolation
-# into the filter is safe. This helper is read-only — no object construction
-# (the silent-reset failure mode of writer-side jq is not applicable here).
+# into the filter is safe. This helper is read-only.
 #
-# JSON null handling: jq's `// $default` operator returns $default when the
-# left-hand side is null or false. So `.field // $default` evaluates to
-# $default when:
-#   - field is missing (jq returns null)
-#   - field exists but holds JSON null
-#   - field exists but holds JSON false
-# This matches the caller-supplied default semantics natively — no
-# post-processing is needed. (PR #688 cycle 3 review: previous post-processing
-# `if [ "$value" = "null" ]` was demonstrated to be dead code via mutation
-# testing; jq's `//` already handles null normalization.)
+# `.field // $default` returns $default when field is missing (null) or holds
+# JSON null/false — caller default semantics are matched natively, no
+# post-processing needed.
 #
-# ⚠️ Boolean field caveat (PR #688 cycle 5 review): jq の `// $default` は **null と
-# false の両方** を $default に置換するため、本 helper は boolean field の読み取りには
-# **使ってはいけない**。例: `{"active": false}` を `--default true` で読むと結果は "true"
-# となり、stored false が silent に default に置換される。現状の caller (`parent_issue_number`
-# / `phase` / `loop_count` / `implementation_round` / `pr_number`) はすべて非 boolean のため影響なし。
-# 将来 boolean field を読む caller を追加する場合は `--default empty` で明示的に取得して
-# 別途分岐するか、inline jq を使うこと。
+# ⚠️ Boolean field caveat: jq の `// $default` は null と false の両方を $default に
+# 置換するため、本 helper は boolean field の読み取りには使ってはいけない
+# (例: `{"active": false}` を `--default true` で読むと結果が "true"、stored false が
+# silent に default に置換される)。現状の caller (`parent_issue_number` / `phase` /
+# `loop_count` / `implementation_round` / `pr_number`) はすべて非 boolean。将来 boolean
+# field を読む場合は `--default empty` + caller 側分岐、または inline jq を使うこと。
 #
-# verified-review cycle 34 fix (F-11 MEDIUM): mechanical guard を追加。`--default true` / `--default false`
-# が指定された場合、boolean field 読み取り意図の可能性が高いので WARNING を emit する (誤呼出経路の
-# silent regression を防ぐ defense-in-depth)。
+# Mechanical guard: WARNING on `--default true|false` flags erroneous boolean reads.
 case "$DEFAULT" in
   true|false)
     echo "WARNING: state-read.sh: --default '$DEFAULT' は boolean リテラル値です。boolean field の読み取りには本 helper を使わないでください (jq の \`// \$default\` 演算子が JSON null と false の両方を default に置換するため、stored false が silent に true に置換される regression を起こします)。non-boolean field (parent_issue_number / phase / loop_count / pr_number 等) のみが現状サポート対象です。boolean field が必要な場合は \`--default empty\` を使い caller 側で明示分岐するか、inline jq を使ってください。" >&2
     ;;
 esac
-#
-# Source: jq Manual — Alternative operator `//`
-# https://jqlang.org/manual/#alternative-operator
-#
-# verified-review cycle 35 fix (F-09 LOW): expose jq stderr via tempfile instead of suppressing
-# with 2>/dev/null. Previous behavior swallowed jq parse errors silently, making corrupt JSON
-# detection impossible to debug (operator could not distinguish "field absent" from
-# "file corrupt"). Symmetric with `_resolve-cross-session-guard.sh`'s jq stderr capture pattern
-# (cycle 33 F-04 / cycle 34 F-07 fixes).
-# verified-review cycle 38 F-04 MEDIUM: 旧コメントは「Symmetric with state-read.sh L58」と本ファイル自身
-# の `--field arg parser` ブロック (jq stderr capture とは無関係) を誤参照していた self-referential drift。
-# 意図したのは `_resolve-cross-session-guard.sh` の jq stderr capture 経路 (`legacy_sid=$(jq ... 2>"$jq_err")`)
-# で、cycle 33 F-04 / cycle 34 F-07 fix 系列はそちらのパターンを確立した。本 PR が警戒する
-# "self-referential drift fractal pattern" の再発を修正。
-#
-# verified-review F-03 MEDIUM: trap install は file 冒頭の `--- Signal-specific trap ---` セクションに
-# 移動済 (`_classify_err` と `_jq_err` を共通の `_rite_state_read_cleanup` 関数で cleanup する)。
-# 旧実装は本箇所で `_jq_err` 専用の trap を install し、`_classify_err` (per-session resolver の
-# case classification block で declare される変数) は trap 不在の race window を残していた。
-# canonical pattern (cycle 35 F-05 / 36 F-15) と統一。
-# DRIFT-CHECK ANCHOR: 行番号ではなく semantic name で参照する (cycle 38 F-04 / cycle 40 で
-# 確立した原則)。
-# verified-review cycle 38 F-06 MEDIUM: mktemp 失敗時に WARNING emit。
-# 旧実装は `2>/dev/null || _jq_err=""` で mktemp 失敗 (/tmp full / permission denied / SELinux deny) を
-# silent fallback し、後続の `2>"${_jq_err:-/dev/null}"` で jq stderr が `/dev/null` に redirect される
-# 二重 silent failure になっていた (jq 失敗時の `head -3 _jq_err` 観測経路が無効化される)。
-# resume-active-flag-restore.sh の mktemp 失敗 WARNING 経路と writer/reader 対称化。
-# F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
-# Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
-# helper は失敗時に空文字を返し WARNING を stderr に emit する (non-blocking contract)。
-# verified-review F-05 (MEDIUM): helper 内部で既に chmod 600 を適用しているため
-# caller 側の chmod 重複適用を排除した (旧 `[ -n "$_jq_err" ] && chmod 600 ...` 行を削除)。
-# verified-review (PR #688 cycle 14) F-04 (MEDIUM): hardcoded 行番号
-# `_mktemp-stderr-guard.sh:36-37 / 47-48` を「DRIFT-CHECK ANCHOR は semantic name 参照」doctrine
-# に従って semantic anchor に置換 (cycle 38 F-04 / cycle 40 で確立)。
-# helper の API 契約 (`_mktemp-stderr-guard.sh` の Side effect on success セクション: chmod 600 適用)
-# を SoT として尊重する。
+
+# jq stderr captured via `_mktemp-stderr-guard.sh` so parse errors surface as
+# WARNING (`head -3`) instead of being suppressed by `2>/dev/null`. Symmetric
+# with `_resolve-cross-session-guard.sh` jq stderr capture pattern.
+# See: references/state-read-evolution.md (Cycle 35 F-09 / 38 F-04).
+# jq Manual — Alternative operator: https://jqlang.org/manual/#alternative-operator
 _jq_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "state-read" "state-read-jq-err" \
   "jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)")
