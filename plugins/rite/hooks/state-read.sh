@@ -119,8 +119,8 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
     # Cross-session guard: classify legacy file as same/empty/foreign/corrupt/invalid_uuid
     # via shared helper, mirrored on both writer/reader sides.
     # stderr is captured to a tempfile via `_mktemp-stderr-guard.sh`, then `^WARNING:`
-    # lines are pass-through to caller chain so helper-emitted detail is not silent
-    # suppressed under /tmp full / SELinux deny (cycle 41 F-01 doctrine).
+    # lines are passed through to the caller chain so helper-emitted detail is not
+    # silently suppressed under /tmp full / SELinux deny (cycle 41 F-01 doctrine).
     # See: plugins/rite/references/state-read-evolution.md (Cycle 34 F-02 / 35 F-01 /
     # 41 F-01 / 14 F-04 / 15 F-05 / 43 F-09).
     _classify_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
