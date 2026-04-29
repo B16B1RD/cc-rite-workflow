@@ -49,11 +49,12 @@ helper を追加する際は `_validate-helpers.sh` 内 `DEFAULT_HELPERS` への
 > **Note**: 「関連 cycle」列は **代表的な cycle のみ** を列挙する (helper の起点となった集約 fix が中心)。
 > 各 helper の使用サイト周りで適用された全 cycle のリストは下記「Cycle 別の主要な修正」節を参照のこと。
 >
-> **`DEFAULT_HELPERS` 配列との対応関係**: 本表は **集約 helper 7 件** を列挙するが、`_validate-helpers.sh` の
-> `DEFAULT_HELPERS` 配列には **合計 8 件** が登録されている。差分の 1 件は `state-path-resolve.sh` で、
-> これは集約 helper ではなく state-read.sh の冒頭 (`STATE_ROOT="$("$SCRIPT_DIR/state-path-resolve.sh" ...)`)
-> から直接利用する **base resolver** (= STATE_ROOT 解決の入口) のため、本表からは除外している。
-> 「表 7 件 = `DEFAULT_HELPERS` 8 件」の数字差分はこの base resolver 1 件分を反映する。
+> **`DEFAULT_HELPERS` 配列との対応関係**: 本表は **集約 helper 8 件 + 参考 base resolver 1 件 = 計 9 行** を列挙する。
+> `_validate-helpers.sh` の `DEFAULT_HELPERS` 配列には **8 件** (集約 helper 7 件 + base resolver `state-path-resolve.sh` 1 件)
+> が登録されており、`_validate-helpers.sh` 自身は validator 側のため配列に登録されない (validator 自身を validate
+> する循環参照を避ける doctrine)。表 9 行と DEFAULT_HELPERS 8 件の差分 1 件分は `_validate-helpers.sh` 自身の有無で説明される。
+> `state-path-resolve.sh` は集約 helper ではなく state-read.sh 冒頭 (`STATE_ROOT="$("$SCRIPT_DIR/state-path-resolve.sh" ...)`)
+> から直接利用する **base resolver** (= STATE_ROOT 解決の入口) のため、表内では「(参考: base resolver)」として注記している。
 
 | helper | 集約された機能 | 関連 cycle |
 |--------|---------------|-----------|

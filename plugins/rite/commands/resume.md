@@ -256,8 +256,8 @@ Confirm with `AskUserQuestion`:
 
 ```bash
 # state-read.sh API: --field parent_issue_number --default 0 (Issue #687 AC-4 — per-session state)
-# canonical fail-fast pattern: `if cmd; then :; else rc=$?; fi` form (cycle 35 F-04 で empirical
-# に bash spec 違反 (`if ! ...; then rc=$?` で $? 常に 0) と判明したため、必ず else 節形式を使う)
+# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
+# 両方取る場合は必ず else 節形式を使う。
 if parent_issue_number_raw=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
   :
 else
@@ -268,11 +268,10 @@ else
   exit 1
 fi
 
-# 数値 fail-fast gate: state file 改竄 / silent regression 経路で non-numeric が混入した場合の fail-safe
-# verified-review (PR #688 cycle 15) F-08 (MEDIUM) 対応: writer/reader/resume 3 layer 対称化 doctrine。
-# start.md (Phase 5.7) / implement.md (Phase 5.1.2) / pr/review.md (Phase 5.3.8) の 3 caller では
-# `echo "WARNING: ... is not numeric (...), defaulting to 0 ..." >&2` を emit している。本 site のみ
-# silent default 0 だと state file 改竄経路の observability が 0 となり、3 layer 対称化が破れる。
+# 数値 fail-fast gate (writer/reader/resume 3 layer 対称化 doctrine): state file 改竄 / silent regression
+# 経路で non-numeric が混入した場合に WARNING を emit してから 0 に降格する。silent default 0 にすると
+# 他 caller (start.md Phase 5.7 / implement.md Phase 5.1.2 / pr/review.md Phase 5.3.8) と observability
+# が非対称になり、3 layer 対称化が破れる。
 case "$parent_issue_number_raw" in
   ''|*[!0-9]*)
     echo "WARNING: parent_issue_number_raw is not numeric ('$parent_issue_number_raw'), defaulting to 0 (display なし)" >&2

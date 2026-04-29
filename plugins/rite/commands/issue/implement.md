@@ -862,7 +862,8 @@ WM_SOURCE="implement" \
 **Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot (#497 — also survives context compaction):
 
 ```bash
-# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
+# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
+# 両方取る場合は if/else 形式にする。
 if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
   :
 else
@@ -871,7 +872,7 @@ else
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_1_2_parent_issue; rc=$rc" >&2
   exit 1
 fi
-# Type validation (PR #688 cycle 5 review security LOW followup): non-numeric injection 経路を遮断
+# non-numeric injection 経路を遮断
 case "$parent_issue_number" in
   ''|*[!0-9]*)
     echo "WARNING: parent_issue_number is not numeric ('$parent_issue_number'), defaulting to 0 (no parent)" >&2

@@ -2315,7 +2315,8 @@ When this is a **re-review after a fix** (verification mode or `loop_count >= 1`
 **Step 1**: Determine if attribution is applicable:
 
 ```bash
-# verified-review cycle 35 fix (F-04 HIGH): if/else pattern (cycle 34 introduced `if ! cmd; then` which always rc=0 — bash spec violation).
+# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
+# 両方取る場合は if/else 形式にする。
 if loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0); then
   :
 else
@@ -2324,7 +2325,6 @@ else
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_3_8_loop_count; rc=$rc" >&2
   exit 1
 fi
-# Type validation (PR #688 cycle 5 review security LOW followup):
 # non-numeric injection 経路 (`{"loop_count": "true"}` 等) を遮断し、後続 integer 比較が
 # silent regression する経路を fail-safe で default 0 に降格する。
 case "$loop_count" in

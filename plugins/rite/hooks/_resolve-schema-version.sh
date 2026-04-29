@@ -34,11 +34,9 @@ STATE_ROOT="${1:-$(pwd)}"
 # は `_validate-state-root.sh` に集約。writer/reader/schema 3 layer の validation
 # 対称化 doctrine を 1 つの helper で表現する。詳細な threat model と検証ルールは
 # helper 内コメントを参照。
-if [ ! -x "$SCRIPT_DIR/_validate-state-root.sh" ]; then
-  echo "ERROR: required helper not found or not executable: $SCRIPT_DIR/_validate-state-root.sh" >&2
-  echo "  対処: rite plugin が完全にデプロイされているか確認してください" >&2
-  exit 1
-fi
+# `_validate-helpers.sh` 経由で存在確認すると ERROR 文言の SoT が
+# `_validate-helpers.sh:86-87` に集約され、片肺更新型 drift を構造的に防げる。
+bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" _validate-state-root.sh || exit $?
 bash "$SCRIPT_DIR/_validate-state-root.sh" "$STATE_ROOT" || exit $?
 
 cfg="$STATE_ROOT/rite-config.yml"
