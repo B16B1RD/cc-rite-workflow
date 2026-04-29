@@ -1817,14 +1817,21 @@ case "$val" in
     ;;
 esac
 plan_deviation_count="$val"
-# verified-review (PR #688 cycle 14) F-01 (MEDIUM) 対応: prose ↔ code 整合性。
 # state-read.sh 失敗時 (`val=""`) は METRICS_SKIPPED sentinel を emit し、後続 Step 2/3 (judgment 計算 +
 # heredoc 生成) を skip させる。silent に空文字列 `{plan_deviation_count}` substitute が下流 heredoc
 # (Phase 5.5.2 完了レポート) に流入し `| 計画逸脱回数 | 回 | ...` の partial corruption が発生する経路
 # を遮断する。Claude は本 sentinel を会話履歴で grep し、検出時は **Phase 5.5.2 metrics body 生成を skip** すること
 # (= metrics PATCH を実行せず、ただし Mandatory After 5.5.2 の `phase5_post_metrics` marker は必ず書き込み、Phase 5.6 へ進む)。
+#
+# 成功経路では PLAN_DEVIATION_COUNT sentinel を emit し、Claude が会話履歴を grep して
+# Step 4 heredoc の `{plan_deviation_count}` placeholder に literal substitute する。シェル変数
+# `$plan_deviation_count` は Bash tool 境界で消失するため、stdout/stderr に明示的に emit しない限り
+# Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 2.1 Step 1
+# / start.md Phase 5.7 / wiki/lint.md Phase 8.2 で確立済みの canonical pattern。
 if [ -z "$val" ]; then
   echo "[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed" >&2
+else
+  echo "[CONTEXT] PLAN_DEVIATION_COUNT=$plan_deviation_count" >&2
 fi
 ```
 
@@ -1941,7 +1948,7 @@ if [[ "${patch_status:-1}" -ne 0 ]]; then
 fi
 ```
 
-**Placeholder descriptions**: `{plan_deviation_rate}`, `{test_pass_rate}`, `{review_critical_high}`, `{review_fix_loops}`, `{plan_deviation_count}` are the values collected in Step 1. `{judgment}` is `pass`/`warn`/`skip` from Step 2. `{threshold}` is the MA5 threshold. `{baseline_status}`, `{primary_failure_class}`, `{corrective_action_pointer}` are from Steps 2-3. Before executing this bash block, replace all `{...}` placeholders in the heredoc body with actual values computed in Steps 1-3. The heredoc uses a single-quoted delimiter (`'METRICS_EOF'`) so shell variables are NOT expanded; Claude must substitute the placeholder text directly in the template before passing it to the Bash tool.
+**Placeholder descriptions**: `{plan_deviation_rate}`, `{test_pass_rate}`, `{review_critical_high}`, `{review_fix_loops}`, `{plan_deviation_count}` are the values collected in Step 1. **`{plan_deviation_count}` の source**: Step 1 bash block の stderr に emit される `[CONTEXT] PLAN_DEVIATION_COUNT=<N>` 行を Claude が会話履歴で first-match で grep し、`<N>` 部分を literal substitute する (state-read.sh 失敗時は `[CONTEXT] METRICS_SKIPPED=1` が代わりに emit され、本 heredoc 全体が skip される — 上記「Claude への指示 (METRICS_SKIPPED 検出時の挙動)」段落を参照)。`{judgment}` is `pass`/`warn`/`skip` from Step 2. `{threshold}` is the MA5 threshold. `{baseline_status}`, `{primary_failure_class}`, `{corrective_action_pointer}` are from Steps 2-3. Before executing this bash block, replace all `{...}` placeholders in the heredoc body with actual values computed in Steps 1-3. The heredoc uses a single-quoted delimiter (`'METRICS_EOF'`) so shell variables are NOT expanded; Claude must substitute the placeholder text directly in the template before passing it to the Bash tool.
 
 **Step 5**: Check repeated failure (if `safety.auto_stop_on_repeated_failure: true`).
 
