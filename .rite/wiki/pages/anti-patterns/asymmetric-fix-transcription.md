@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-29T09:00:00+09:00"
+updated: "2026-04-29T13:33:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -94,6 +94,8 @@ sources:
     ref: "raw/fixes/20260428T235605Z-pr-711-cycle2.md"
   - type: "fixes"
     ref: "raw/fixes/20260429T000017Z-pr-711-cycle3.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260429T041942Z-pr-713.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift"]
 confidence: high
 ---
@@ -329,6 +331,20 @@ PR #711 (`comment-update(scope)` action-type 追加) で本 anti-pattern が 4 c
 
 3 段階収束 (cross-file → file 内隣接 → rationale 強度) は 4 cycle 通じて drift class が**より細かい粒度**へ移動するパターン。各 cycle で 1 つの drift class を集中是正することで段階的に解消可能だが、cycle 1 で「同一ファイル内・隣接行も同時に grep する」習慣があれば cycle 2 を回避でき、cycle 2 で「rationale 注記は SoT を補足する形のみ許可」の sub-rule を意識していれば cycle 3 を回避できた。
 
+### 累積対策 PR の cycle 4 follow-up としての cross-file impact 同期 (PR #713 cycle 1-2 での evidence)
+
+PR #713 (PR #708 = LOW-MEDIUM first-class 化 cycle 4 review で発見された 9 件 cross-file impact (F-20〜F-28) を follow-up で同期した PR) で本 anti-pattern が **「累積対策 PR の cycle 4 で発見された cross-file impact が、原 PR ではなく follow-up PR で別管理される」運用層に拡張** されて 2 cycle で収束 (`3→0`):
+
+- **元 PR #708 cycle 4 の発見**: severity 等級拡張 (LOW-MEDIUM 追加) の同ファイル内 5 箇所同期は cycle 1-2 で解消したが、**cycle 4 で reviewer が cross-file 9 sites の追加 drift を発見** — review.md Phase 5.3.0 demotion_destination spec、extract-verified-review-findings.sh docstring、measure-review-findings.sh JSON 例 + reviewer_row_re regex (4→5 numeric column 拡張)、severity ordering 9 箇所 (assessment-rules / fix-relaxation-rules / fact-check / fix.md)、prompt-engineer-reviewer.md 等級 hardcode、13 reviewer skill files の particle 統一 (`Whitelist 外造語` → `Whitelist 外の造語`)、review-result-schema.md alias 検証注記。**原 PR #708 ではなく follow-up PR #713 で別 Issue (#709) として処理される運用** が観測された
+- **PR #713 cycle 1 review (HIGH×2 + MEDIUM×1)**: F-20〜F-28 のうち主要修正は適用したが、**cycle 1 fix 自身が新たな cross-file 4 値表記を遺した**。具体的には review.md の demotion_destination spec を 5 値化したが、assessment-rules.md の Priority mapping / review.md の他 2 箇所が依然 4 値表記のままで、F-20 と矛盾する状態。**累積対策 PR の follow-up cycle でも本 anti-pattern が同型再発する** ことを示す
+- **PR #713 cycle 2 (mergeable, 0 件)**: cycle 1 指摘 + 内部一貫性 1 件すべて修正で完了。`同ファイル内 5+ 箇所 + cross-file 5 種類` の同期契約 (PR #708 の learning) を 9 finding に対して再適用することで 2 cycle で収束
+
+**学習**: 累積対策 PR (例: PR #708 = LOW-MEDIUM first-class 化) の **cycle 4 以降で発見された cross-file impact** は、原 PR が既に多 cycle を経て収束済みのため、別 Issue + follow-up PR で処理されることが多い。このとき:
+
+1. **Follow-up PR でも本 anti-pattern が同型再発する**: 「累積対策」自体が cross-file 同期契約を前提とするため、follow-up PR の fix も「同ファイル内 5+ 箇所」「cross-file 5 種類」を atomic に同期しないと cycle 1 で必ず drift が surface する
+2. **3 階層 drift の細粒度化が cycle ごとに進行する**: PR #713 では (a) cross-file 同期 (9 sites)、(b) 同ファイル内多箇所 (review.md 6→9 箇所、fix.md 5→7 箇所など内部一貫性で追加箇所 surface)、(c) rationale 強度 (regex 順序 rationale の正確化、prompt-engineer-reviewer.md の hardcode 抽象化) の 3 階層 drift が **cycle 1 で同時 surface** した。原 PR の 4 cycle 観測と follow-up PR の 2 cycle 観測を合算すると、severity 等級拡張という運用 invariant に対する **6 cycle 累積観察** となる
+3. **Follow-up PR の scope 設計**: cycle 4 以降の cross-file impact を follow-up PR にまとめる際、**「9 finding すべてを 1 PR で同期」する scope 設計** が canonical。個別 PR に分割すると `Asymmetric Fix Transcription` のリスクが finding 間の境界に分散し、収束サイクル数が finding 数 × 2-3 cycle に膨張する。PR #713 は 9 finding を 1 PR に bundle して 2 cycle で収束させた
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -379,3 +395,4 @@ PR #711 (`comment-update(scope)` action-type 追加) で本 anti-pattern が 4 c
 - [PR #708 cycle 1 review (Hypothetical Categories 表記 cross-file drift + Detection-checklist sync 漏れ)](raw/reviews/20260428T194949Z-pr-708.md)
 - [PR #708 cycle 2 review (severity 概要表追加で同ファイル内 5 箇所 self-consistency 違反 surface)](raw/reviews/20260428T200123Z-pr-708-cycle-2.md)
 - [PR #708 cycle 2 fix (同ファイル内 5 箇所同期 + Inline annotation → blockquote pattern)](raw/fixes/20260428T200424Z-pr-708-cycle-2.md)
+- [PR #713 review (PR #708 cycle 4 follow-up cross-file 9 sites 同期、2 cycle 収束)](raw/reviews/20260429T041942Z-pr-713.md)

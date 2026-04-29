@@ -272,3 +272,4 @@
 | 2026-04-26T21:17:20+09:00 | ingest:skip | raw/fixes/20260426T114309Z-pr-686.md | PR #686 cycle 2 fix (3 fixes: regression test 義務化 / kernel stderr capture / fail-fast message 検証) — 既存パターンの応用範疇 |
 | 2026-04-26T21:18:14+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=4, broken_refs=0 |
 | 2026-04-29T09:00:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #711 6 raw sources (review × 3 + fix × 3) → asymmetric-fix-transcription に統合 (累積 15 回目)。same-file adjacent-line drift と caller-side strictness drift を sub-pattern として追加 |
+| 2026-04-29T13:33:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #713 review (PR #708 cycle 4 follow-up: Issue #709 として 9 件 cross-file drift を bundle、2 cycle 収束) → asymmetric-fix-transcription に追加。「累積対策 PR の cycle 4 以降の cross-file impact が follow-up PR で別管理されても同 anti-pattern が同型再発する」運用層拡張を実測記録 |
