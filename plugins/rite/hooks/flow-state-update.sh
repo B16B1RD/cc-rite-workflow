@@ -324,13 +324,14 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 # `_log_flow_diag` (symmetric with mv-failure path) rather than being silently
 # suppressed (review #686 F-05).
 
-# cycle 48 F-01 (HIGH): writer/reader 対称化 doctrine (state-read.sh L88-96 と同型) に従い、
-# atomic-cleanup 関数を 3 変数 (TMP_STATE / _mkdir_err / _jq_err) に拡張し、`_mkdir_err`
-# (line 337 mktemp) を含む全 tempfile の lifecycle を cover する位置に trap を前倒し配置する。
-# 旧実装の trap (line 421-428) は TMP_STATE のみ cleanup で `_mkdir_err` (mktemp 〜 rm 区間) と
-# `_jq_err` (create-mode mktemp 〜 rm 区間) の race window で SIGINT/SIGTERM/SIGHUP 到達時に
-# orphan tempfile が leak する非対称があった (verified-review F-01 HIGH)。canonical pattern
-# 「パス先行宣言 → trap 先行設定 → mktemp」を踏襲する。
+# cycle 48 F-01 (HIGH): writer/reader 対称化 doctrine (state-read.sh の `_rite_state_read_cleanup`
+# 関数 — `rm -f "${_classify_err:-}" "${_jq_err:-}"` ブロックと同型) に従い、atomic-cleanup 関数を
+# 3 変数 (TMP_STATE / _mkdir_err / _jq_err) に拡張し、`_mkdir_err` (本ファイル前段の dir-creation
+# block 内 mktemp) と `_jq_err` (create mode の PREV_PHASE 抽出 jq stderr 用 mktemp) を含む全
+# tempfile の lifecycle を cover する位置に trap を前倒し配置する。旧実装の trap (atomic write
+# block 直前の TMP_STATE 専用 cleanup) は TMP_STATE のみ cleanup で、`_mkdir_err` / `_jq_err` の
+# mktemp 〜 rm 区間で SIGINT/SIGTERM/SIGHUP 到達時に orphan tempfile が leak する非対称があった
+# (verified-review F-01 HIGH)。canonical pattern「パス先行宣言 → trap 先行設定 → mktemp」を踏襲する。
 TMP_STATE=""
 _mkdir_err=""
 _jq_err=""
@@ -369,18 +370,19 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
       head -3 "$_mkdir_err" | sed 's/^/  /' >&2
     fi
     [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
-    _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止 (set -u 下で unbound 化しないよう "" を維持)
+    _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止
     exit 1
   fi
   [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
-  _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止 (set -u 下で unbound 化しないよう "" を維持)
+  _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止
   # F-09 (MEDIUM, security Hypothetical exception): .rite/sessions/ ディレクトリにも chmod 700 を
   # 適用 (.rite-work-memory dir と同型)。multi-user CI runner / shared dev host で session metadata が
   # group-readable になる経路を防ぐ。chmod 失敗は best-effort skip (filesystem が ACL 非対応 / SELinux
   # 制約等で chmod 不能な環境でも flow-state 機能は維持する)。
   chmod 700 "$_flow_state_dir" 2>/dev/null || true
   # cycle 48 F-01: 旧実装の `unset _mkdir_err` は trap cleanup の `${_mkdir_err:-}` で問題ないが、
-  # writer/reader 対称化 doctrine に従い再代入で "" に戻す (state-read.sh L148 と同型)。
+  # writer/reader 対称化 doctrine に従い再代入で "" に戻す (state-read.sh の `_classify_err=""`
+  # 再代入ブロック — _classify_err inline rm 直後の writer 対称化コメント箇所と同型)。
   unset _flow_state_dir
 fi
 
@@ -436,11 +438,12 @@ esac
 # SIGINT/SIGTERM/SIGHUP の POSIX exit code 130/143/129 を返す pattern に統一する。
 # canonical trap pattern: references/bash-trap-patterns.md#signal-specific-trap-template
 #
-# cycle 48 F-01 (HIGH): trap setup を本ファイル冒頭 (L325 直下) に前倒し済み。
+# cycle 48 F-01 (HIGH): trap setup を本ファイルの dir-creation block 直前に前倒し済み。
 # `_rite_flow_state_atomic_cleanup` は TMP_STATE / _mkdir_err / _jq_err の 3 変数を cover する。
 # 旧 cycle 43 F-02 (HIGH) で確立した「パス先行宣言 → trap 先行設定 → mktemp」順序の延長で、
-# `_mkdir_err` (line 337 mktemp) と create-mode `_jq_err` (line 520 mktemp) の race window も
-# 同 trap で構造的に保護する。本箇所では既に declared/installed 済みの TMP_STATE への mktemp のみ。
+# `_mkdir_err` (dir-creation block 内 mktemp) と create-mode の `_jq_err` (PREV_PHASE 抽出 jq
+# stderr 用 mktemp) の race window も同 trap で構造的に保護する。本箇所では既に
+# declared/installed 済みの TMP_STATE への mktemp のみ実行する。
 
 if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   echo "ERROR: flow-state-update.sh: TMP_STATE の mktemp に失敗しました (atomic write 不能)" >&2
@@ -550,7 +553,7 @@ case "$MODE" in
         exit 1
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"
-      _jq_err=""  # cycle 48 F-01: trap による double-rm 防止 (state-read.sh L148 と同型)
+      _jq_err=""  # cycle 48 F-01: trap による double-rm 防止 (state-read.sh の `_classify_err=""` 再代入と同型)
       # Preserve parent_issue_number from existing state when --parent-issue is not
       # explicitly specified (#497). Without this, every create call that omits
       # --parent-issue would reset parent_issue_number to 0, erasing the value
