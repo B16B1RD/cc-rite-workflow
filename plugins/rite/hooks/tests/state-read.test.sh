@@ -332,6 +332,19 @@ inject_vectors=(
 for vector_entry in "${inject_vectors[@]}"; do
   IFS='|' read -r vector_name sid_value legacy_phase desc <<< "$vector_entry"
 
+  # uppercase / mixed_case vectors は case-sensitive FS 前提のため macOS HFS+ default や
+  # Windows NTFS で実行すると false-positive な flaky 失敗を引き起こす。Linux 以外では skip
+  # することで CI (Linux only) は引き続き mutation kill power を確保しつつ、開発機 (macOS 等)
+  # でローカル実行した際の偽陽性を防ぐ。
+  case "$vector_name" in
+    uppercase|mixed_case)
+      if [ "$(uname -s)" != "Linux" ]; then
+        echo "  ⏭ TC-6.INJECTION.$vector_name: skipped on $(uname -s) (case-insensitive FS would defeat mutation kill power)"
+        continue
+      fi
+      ;;
+  esac
+
   SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
   write_config_v2 "$SBX"
   # printf '%b' で escape (e.g. \n) を解釈させて newline injection を実装。bash の echo より portable。
@@ -378,6 +391,7 @@ for vector_entry in "${inject_vectors[@]}"; do
     FAIL=$((FAIL+1))
     FAILED_NAMES+=("TC-6.INJECTION.$vector_name")
   fi
+  rm -rf "$SBX"  # 他 21 SBX と inline rm -rf の symmetry。EXIT trap cleanup_dirs[] が二重防御
 done
 # F-04 対応: mutation kill power 可視化。
 # inject_created_count が想定値 (4/7、case-sensitive FS 上で uppercase/mixed_case/too_short/too_long が成立)
@@ -779,8 +793,8 @@ write_config_v2 "$SBX"
 write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 
 # helpers checked by state-read.sh's `_validate-helpers.sh` invocation (cycle 10 F-06 で for-loop から
-# helper 経由に移行)。F11-15 で 7 entry に同期 (旧 6 entry + `_mktemp-stderr-guard.sh` 追加)。
-# 並び順は state-read.sh の `bash _validate-helpers.sh ...` 引数 list と完全一致させる (drift 検出を兼ねる)。
+# helper 経由に移行)。並び順は `_validate-helpers.sh` 内 DEFAULT_HELPERS 配列と完全一致させる
+# (drift 検出を兼ねる — エントリ数や並びが揃っていない場合は本テストが先に落ちる)。
 deploy_regression_helpers=(
   state-path-resolve.sh
   _resolve-session-id.sh
@@ -789,6 +803,7 @@ deploy_regression_helpers=(
   _resolve-cross-session-guard.sh
   _emit-cross-session-incident.sh
   _mktemp-stderr-guard.sh
+  _validate-state-root.sh
 )
 
 for _h in "${deploy_regression_helpers[@]}"; do
@@ -817,6 +832,7 @@ for _h in "${deploy_regression_helpers[@]}"; do
   fi
 done
 chmod +x "$SANDBOX_HOOKS"/*.sh  # Restore for cleanup safety
+rm -rf "$SBX"  # 他 21 SBX と inline rm -rf の symmetry。EXIT trap cleanup_dirs[] が二重防御
 
 # --- Summary ---
 echo ""

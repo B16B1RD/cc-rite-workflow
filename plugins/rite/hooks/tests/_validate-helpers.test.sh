@@ -20,7 +20,7 @@
 #   TC-5: invalid script_dir (`/nonexistent`) で exit 1 + ERROR contains path
 #   TC-6 (legacy API): 複数 helper missing で最初の missing で fail-fast (順序保証)
 #   TC-7 (NEW API): DEFAULT_HELPERS 経路で 1 helper missing → exit 1 + ERROR contains helper basename
-#   TC-8 (NEW API): DEFAULT_HELPERS 配列の 7 entry すべてが検査されることを確認
+#   TC-8 (NEW API): DEFAULT_HELPERS 配列の全 entry すべてが検査されることを確認
 
 set -euo pipefail
 
@@ -74,6 +74,7 @@ DEFAULT_HELPERS_LIST=(
   _resolve-cross-session-guard.sh
   _emit-cross-session-incident.sh
   _mktemp-stderr-guard.sh
+  _validate-state-root.sh
 )
 
 make_sandbox() {
@@ -159,7 +160,7 @@ assert_eq "TC-7.1: exit code is 1 (DEFAULT_HELPERS 経路で fail-fast)" "1" "$r
 assert_match "TC-7.2: ERROR mentions missing helper basename" "_resolve-cross-session-guard.sh" "$out"
 
 # ================================================================
-echo "TC-8 (NEW API): DEFAULT_HELPERS 配列の 7 entry すべてが検査されることを確認"
+echo "TC-8 (NEW API): DEFAULT_HELPERS 配列の全 entry すべてが検査されることを確認"
 # ================================================================
 # 1 つずつ chmod -x して、それぞれが正しく検出されることを確認することで
 # DEFAULT_HELPERS 配列の completeness を verify する (Issue #687 root cause と

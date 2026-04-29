@@ -27,32 +27,19 @@
 #   0 — always (echoes "1" or "2" on stdout)
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_ROOT="${1:-$(pwd)}"
 
-# Defense-in-depth: STATE_ROOT を直接 caller (state-path-resolve.sh / pwd 由来) からのみ受理する想定だが、
-# helper API 単体の sandbox として `_resolve-session-id-from-file.sh:90-107` と同型の validation を実施する。
-# 攻撃面: 多重テナント環境で攻撃者が rite plugin を install したコマンドを driving できる場合、
-# `bash _resolve-schema-version.sh "/etc"` で `/etc/rite-config.yml` 存在性を probe したり、
-# command substitution / path traversal で sandbox 外ファイルを読み出す経路を遮断する。
-# writer/reader/schema 3 layer の validation 対称化 doctrine の完成。
-case "$STATE_ROOT" in
-  *..*|*'$'*|*'`'*)
-    echo "ERROR: STATE_ROOT contains unsafe traversal or shell metacharacter: '$STATE_ROOT'" >&2
-    echo "  本 helper は親ディレクトリ参照 (..) / shell expansion (\$) / command substitution (\`) を含む path を受理しません。" >&2
-    echo "  対処: caller (state-path-resolve.sh / pwd 由来 path) を経由して正規化された path を渡してください。" >&2
-    exit 1
-    ;;
-esac
-# 制御文字 (newline / carriage return / 0x00-0x1F / 0x7F) も独立 check で reject する。
-# bash の case glob では `\n` / `\r` を含む pattern が portable に書けないため、`tr -d '[:cntrl:]'` で
-# 制御文字を除去した結果と元 STATE_ROOT を比較する方式で検出する。
-state_root_sanitized=$(printf '%s' "$STATE_ROOT" | tr -d '[:cntrl:]')
-if [ "$state_root_sanitized" != "$STATE_ROOT" ]; then
-  echo "ERROR: STATE_ROOT contains control characters (newline / NUL / 0x00-0x1F / 0x7F)" >&2
-  echo "  対処: caller (state-path-resolve.sh / pwd 由来 path) を経由して正規化された path を渡してください。" >&2
+# STATE_ROOT path traversal / shell metacharacter / control character validation
+# は `_validate-state-root.sh` に集約。writer/reader/schema 3 layer の validation
+# 対称化 doctrine を 1 つの helper で表現する。詳細な threat model と検証ルールは
+# helper 内コメントを参照。
+if [ ! -x "$SCRIPT_DIR/_validate-state-root.sh" ]; then
+  echo "ERROR: required helper not found or not executable: $SCRIPT_DIR/_validate-state-root.sh" >&2
+  echo "  対処: rite plugin が完全にデプロイされているか確認してください" >&2
   exit 1
 fi
-unset state_root_sanitized
+bash "$SCRIPT_DIR/_validate-state-root.sh" "$STATE_ROOT" || exit $?
 
 cfg="$STATE_ROOT/rite-config.yml"
 

@@ -14,7 +14,7 @@ Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarant
 | `pr/fix.md` | actual emit caller | 5 sites |
 | `pr/cleanup.md` | actual emit caller | 3 sites |
 | `issue/close.md` | actual emit caller | 5 sites |
-| `state-read.sh` / `flow-state-update.sh` | indirect emit (via `_emit-cross-session-incident.sh`) | — |
+| `state-read.sh` / `flow-state-update.sh` | indirect emit (via `_emit-cross-session-incident.sh`) | 6 indirect sites (state-read.sh ×3 [foreign / corrupt / invalid_uuid arms] + flow-state-update.sh ×3 [foreign / corrupt / invalid_uuid arms]) |
 | `commands/lint.md` (rite lint) | actual emit caller (declarative; 3 failure paths via Workflow Incident Emit Helper section + indirect `gitignore_drift` via `gitignore-health-check.sh`) | 3 declarative + 1 indirect |
 | `commands/wiki/lint.md` / `pr/create.md` | **out of scope** (do not reference this protocol, do not emit) | 0 sites |
 
@@ -107,6 +107,8 @@ Sentinel emission is bounded by `workflow_incident.enabled` in `rite-config.yml`
 
 This section tracks corrections and significant changes to this protocol document. Earlier inline `cycle XX F-YY` notes were consolidated here in PR #688 cycle 9 F-12 (LOW) to improve readability for new readers; the protocol body now describes only the current specification.
 
+> **Reading note** — entries are recorded in **chronological commit order**. PR #688 saw two review-fix runs (cycle 1〜44 followed by a post-cycle-44 re-review run that re-numbered cycles from 1〜15). As a result the table is **not** strictly monotonic in cycle number: the `cycle 9 F-12 LOW` row at the bottom is from the post-cycle-44 re-review run, not from before cycle 36. When in doubt, treat the row order as authoritative and the `cycle XX` label as a within-run identifier.
+
 | Cycle | Change |
 |-------|--------|
 | cycle 36 F-09 | Expanded scope from "skill commands" to include hook scripts after `cross_session_takeover_refused` / `legacy_state_corrupt` types were added (which only hook scripts emit) |
@@ -121,4 +123,4 @@ This section tracks corrections and significant changes to this protocol documen
 | PR #688 cycle 43 F-05 HIGH | Removed incorrect statement that `wiki/lint.md` / `pr/create.md` "reference this protocol in documentation" — runtime grep returned 0 references in both files; both are genuinely out of scope. **Note (cycle 12 F-01 HIGH 訂正)**: cycle 43 F-05 の grep 検査範囲は `commands/wiki/lint.md` のみで `commands/lint.md` (rite lint) を見落としていた。実際には `commands/lint.md` の `## Workflow Incident Emit Helper (#366)` section が本 protocol への reverse-reference link を持ち、続く failure path table で 3 件の declarative sentinel emit failure path (`manual_fallback_adopted` / `hook_abnormal_exit` × 2) を定義している。ファイル名衝突 (`lint.md` vs `wiki/lint.md`) 検査時は `find -name` で全候補列挙してから対象選択する手順を採用。**post-review F-04 (LOW) 修正**: cycle 12 F-04 で確立された「DRIFT-CHECK ANCHOR は semantic name 参照」doctrine に従い、line 番号参照 (`commands/lint.md:1108` / `L1106-1118`) を semantic section 名 (`## Workflow Incident Emit Helper (#366)` heading) に置換し line shift drift から守る |
 | PR #688 cycle 43 F-10 MEDIUM | Added `cleanup.md Phase 4.W` to the Phase enumeration (the 3-phase list had drifted after cycle 41 F-11 added cleanup.md to the file count) |
 | PR #688 cycle 43 F-11 MEDIUM | Corrected exaggerated drift-monitoring claim — `distributed-fix-drift-check.sh` only covers `fix.md` / `review.md` / `tech-writer.md`, not `cleanup.md` / `close.md`, and does not detect invocation-count drift |
-| PR #688 cycle 9 F-12 LOW | Consolidated inline `cycle XX F-YY` revision notes into this Revision Log section. The protocol body now describes only the current specification, improving readability for new readers (8 lines / ≒9% of the body were meta-commentary). The `Scope` section was added to summarize the file ↔ status ↔ site-count matrix in one place |
+| PR #688 cycle 9 F-12 LOW (post-cycle-44 re-review run) | Consolidated inline `cycle XX F-YY` revision notes into this Revision Log section. The protocol body now describes only the current specification, improving readability for new readers (8 lines / ≒9% of the body were meta-commentary). The `Scope` section was added to summarize the file ↔ status ↔ site-count matrix in one place |

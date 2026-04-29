@@ -73,38 +73,16 @@ if [ -z "$STATE_ROOT" ]; then
   exit 1
 fi
 
-# F-08 (MEDIUM, security Hypothetical exception) / PR #688 cycle 12 F-05 (LOW, security Hypothetical):
-# STATE_ROOT path traversal + shell metacharacter validation を強化。
-# 旧実装は STATE_ROOT を空チェックのみで受け、`sid_file="$STATE_ROOT/.rite-session-id"` と
-# path 結合していた。caller (state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh) は
-# すべて state-path-resolve.sh 経由で解決した値を渡しているため現状実害はないが、本 helper を
-# 直接呼ぶ将来 caller (cycle 39 H-01 のコメントが言及している「新規 caller」) が
-# `STATE_ROOT="../../"` 等の untrusted 値を渡した場合、`.rite-session-id` の symlink に従って
-# sandbox 外の hex 文字列 (例: /etc/machine-id) を読み、_resolve-session-id.sh が UUID validation を
-# 通過すれば session takeover 判定に流入する経路があった (Hypothetical / security exception)。
-#
-# cycle 12 F-05 強化点 (Hypothetical exception): backtick / newline / 制御文字を含む値も reject する。
-# `*[\\\`\\n\\r]*` で `\` `` ` `` newline carriage return を、`*..*` で path traversal を、
-# `*'$'*` で shell variable expansion を reject する。defense-in-depth として shell metacharacter
-# 全般を sandbox する (caller 信頼境界が破られた場合の subshell 実行誘発 / format 破壊を防ぐ)。
-case "$STATE_ROOT" in
-  *..*|*'$'*|*'`'*)
-    echo "ERROR: STATE_ROOT contains unsafe traversal or shell metacharacter: '$STATE_ROOT'" >&2
-    echo "  本 helper は親ディレクトリ参照 (..) / shell expansion (\$) / command substitution (\`) を含む path を受理しません。" >&2
-    echo "  対処: caller (state-path-resolve.sh / pwd 由来 path) を経由して正規化された path を渡してください。" >&2
-    exit 1
-    ;;
-esac
-# 制御文字 (newline / carriage return / 0x00-0x1F / 0x7F) も独立 check で reject する。
-# bash の case glob では `\n` / `\r` を含む pattern が portable に書けないため、`tr -d '[:cntrl:]'` で
-# 制御文字を除去した結果と元 STATE_ROOT を比較する方式で検出する。
-state_root_sanitized=$(printf '%s' "$STATE_ROOT" | tr -d '[:cntrl:]')
-if [ "$state_root_sanitized" != "$STATE_ROOT" ]; then
-  echo "ERROR: STATE_ROOT contains control characters (newline / NUL / 0x00-0x1F / 0x7F)" >&2
-  echo "  対処: caller (state-path-resolve.sh / pwd 由来 path) を経由して正規化された path を渡してください。" >&2
+# STATE_ROOT path traversal / shell metacharacter / control character validation
+# は `_validate-state-root.sh` に集約。詳細な threat model と検証ルールは helper
+# 内コメントを参照。本 helper を直接呼ぶ untrusted 経路 (`STATE_ROOT="../../"` 等)
+# に対する defence-in-depth として実行する。
+if [ ! -x "$SCRIPT_DIR/_validate-state-root.sh" ]; then
+  echo "ERROR: required helper not found or not executable: $SCRIPT_DIR/_validate-state-root.sh" >&2
+  echo "  対処: rite plugin が完全にデプロイされているか確認してください" >&2
   exit 1
 fi
-unset state_root_sanitized
+bash "$SCRIPT_DIR/_validate-state-root.sh" "$STATE_ROOT" || exit $?
 
 sid_file="$STATE_ROOT/.rite-session-id"
 

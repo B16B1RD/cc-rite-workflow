@@ -145,7 +145,10 @@ if [[ "$SCHEMA_VERSION" == "2" ]] && [[ -n "$SESSION_ID" ]]; then
       grep -E '^WARNING:|^  |^jq: ' "$_classify_err" >&2 2>/dev/null || true
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
-    unset _classify_err
+    # writer (flow-state-update.sh) と対称化: `_classify_err=""` で再代入する。
+    # set -u 下で後続コードが `_classify_err` を再参照しても unbound にならず、
+    # writer/reader doctrine（同一 cleanup pattern）に揃える。
+    _classify_err=""
     # 3 classification × 2 caller の workflow-incident-emit ブロック (~84 行) を
     # `_emit-cross-session-incident.sh` に集約。
     # See: plugins/rite/references/state-read-evolution.md (PR #688 followup F-01 MEDIUM).

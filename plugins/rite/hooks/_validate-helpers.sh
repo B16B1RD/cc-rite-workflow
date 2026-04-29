@@ -1,18 +1,19 @@
 #!/bin/bash
 # _validate-helpers.sh — Common helper-existence fail-fast validator
 #
-# verified-review F-06 (MEDIUM): state-read.sh / flow-state-update.sh が
-# 同一の 6/7-entry helper list (state-path-resolve.sh / _resolve-session-id.sh / 等) を
-# 完全に複製していた DRY 違反を解消。本 helper を caller から呼び出すことで、
-# 将来 helper を 1 つ追加する際に 1 ファイル更新のみで済む。Issue #687 root cause
-# (caller 6 箇所が `.rite-flow-state` を直接 jq read する片肺更新 drift) と同型の
-# 構造的問題を別 layer で再発させないための DRY 化。
+# verified-review F-06 (MEDIUM): state-read.sh / flow-state-update.sh が同一の
+# helper list (state-path-resolve.sh / _resolve-session-id.sh / 等) を完全に複製
+# していた DRY 違反を解消。本 helper を caller から呼び出すことで、将来 helper を
+# 1 つ追加する際に 1 ファイル更新のみで済む。Issue #687 root cause (caller 6 箇所が
+# `.rite-flow-state` を直接 jq read する片肺更新 drift) と同型の構造的問題を別
+# layer で再発させないための DRY 化。
 #
 # PR #688 cycle 13 F-01 (HIGH): caller の helper-list 自体の duplication を解消する。
-# state-read.sh と flow-state-update.sh が同一の 7-entry list を byte-for-byte 重複
-# 保持していた問題に対応するため、本 helper 内に **DEFAULT_HELPERS 配列** を追加し、
-# 引数 0 個 (script_dir のみ) で呼ばれた場合は default list を使う API 拡張を行う。
-# これにより両 caller の hardcoded list を 1 行の helper 呼び出しに置換できる。
+# state-read.sh と flow-state-update.sh が同一 list を byte-for-byte 重複保持していた
+# 問題に対応するため、本 helper 内に **DEFAULT_HELPERS 配列** を追加し、引数 0 個
+# (script_dir のみ) で呼ばれた場合は default list を使う API 拡張を行う。これにより
+# 両 caller の hardcoded list を 1 行の helper 呼び出しに置換できる。
+# 履歴詳細 (entry 数の変遷) は references/state-read-evolution.md を参照。
 #
 # Usage:
 #   # 推奨形式 (DEFAULT_HELPERS 使用):
@@ -60,12 +61,13 @@ DEFAULT_HELPERS=(
   _resolve-cross-session-guard.sh
   _emit-cross-session-incident.sh
   _mktemp-stderr-guard.sh
+  _validate-state-root.sh
 )
 
 if [ "$#" -lt 1 ]; then
   echo "ERROR: _validate-helpers.sh requires at least 1 argument (script_dir)" >&2
   echo "  Usage: bash _validate-helpers.sh <script_dir> [helper_1] [helper_2 ...]" >&2
-  echo "  引数 0 個 (script_dir のみ) で呼ぶと内部の DEFAULT_HELPERS 配列を使用します" >&2
+  echo "  <script_dir> のみ (helpers 引数なし) で呼ぶと内部の DEFAULT_HELPERS 配列を使用します" >&2
   exit 1
 fi
 

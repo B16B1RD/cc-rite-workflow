@@ -60,17 +60,15 @@ if [ ! -f "$LEGACY_PATH" ] || [ ! -s "$LEGACY_PATH" ]; then
 fi
 
 # Capture jq stderr separately so the caller can surface real IO errors.
-# verified-review cycle 35 fix (F-05 MEDIUM): canonical signal-specific trap with
-# variable-first-declared / trap-set-second / mktemp-third ordering. Race window between
-# mktemp success and trap installation is closed; SIGINT/SIGTERM/SIGHUP propagate
-# POSIX-conventional exit codes (130/143/129).
-# verified-review cycle 38 F-14 LOW: jq stderr 退避用変数を state-read.sh と同じ `_jq_err` 表記に統一
-# (旧 `jq_err` は無 prefix で他 helper の命名 `_<name>` 規約から外れていた)。trap cleanup の参照も併せて更新。
+# Trap is canonical signal-specific (variable-first-declared / trap-set-second /
+# mktemp-third) per references/bash-trap-patterns.md; SIGINT/SIGTERM/SIGHUP
+# propagate POSIX exit codes 130/143/129.
+# Variable name `_jq_err` is intentionally aligned with state-read.sh for the
+# writer/reader symmetry that this helper enforces. cleanup is Form A (single
+# `rm -f`); see bash-trap-patterns.md "cleanup 関数の契約" for why `return 0`
+# is unnecessary. Historical drift fixes are catalogued in
+# references/state-read-evolution.md.
 _jq_err=""
-# verified-review F-07 (MEDIUM): cleanup 関数本体は Form A (`rm -f "${_jq_err:-}"` 単一行) のため、
-# bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
-# 旧実装は Form B doctrine を誤って Form A に適用した非対称コード (cycle 36 F-03 で導入) だった。
-# `_resolve-session-id-from-file.sh` の Form A cleanup と統一し、Form A 最小性 doctrine を維持する。
 _rite_cross_session_cleanup() {
   rm -f "${_jq_err:-}"
 }
@@ -78,63 +76,47 @@ trap 'rc=$?; _rite_cross_session_cleanup; exit $rc' EXIT
 trap '_rite_cross_session_cleanup; exit 130' INT
 trap '_rite_cross_session_cleanup; exit 143' TERM
 trap '_rite_cross_session_cleanup; exit 129' HUP
-# verified-review (PR #688 cycle 39 H-02) MEDIUM (silent-failure-hunter): mktemp 失敗時に WARNING emit。
-# state-read.sh の cycle 38 F-06 fix で導入された mktemp 失敗 WARNING 3 行 emit ブロック
-# (jq stderr 退避用 _jq_err 直前の `if ! _jq_err=$(mktemp ...)` ブロック) と writer/reader 対称化。
-# 旧実装は `2>/dev/null || _jq_err=""` で mktemp 失敗 (/tmp full / permission denied / SELinux deny) を
-# silent fallback し、後続の `2>"${_jq_err:-/dev/null}"` で jq stderr が `/dev/null` に redirect される
-# 二重 silent failure になっていた (corrupt:* arm の line/column 詳細が失われる)。
-# state-read.sh と非対称な silent fallback を解消する (writer/reader 対称化は本 helper の存在意義の核心)。
-# verified-review cycle 40: cycle 39 で「state-read.sh L247-252」と書いた行番号参照を
-# semantic anchor (mktemp 失敗 WARNING 3 行 emit ブロック) に置換 (cycle 38 F-04 DRIFT-CHECK ANCHOR
-# 原則と整合)。
-# F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
-# Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
-# helper は失敗時に空文字を返し WARNING を stderr に emit する (non-blocking contract)。
-# chmod 600 (cycle 41 F-14 で導入された defense-in-depth) は helper 内に内蔵済。
+# Mktemp + chmod 600 + WARNING emit on failure are centralised in
+# `_mktemp-stderr-guard.sh` (returns empty path on failure, emits WARNING to
+# stderr). Caller (state-read.sh / flow-state-update.sh) treats an empty path
+# as `/dev/null` redirection — the corrupt:N rc is still observable, only the
+# line/column detail is lost when mktemp itself fails.
 _jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
   "_resolve-cross-session-guard" "cross-session-jq-err" \
   "jq 失敗時の parse error 詳細が表示されません (caller は corrupt:N rc を観測できますが原因 line/column が失われます)")
 
-# verified-review cycle 35 fix (F-03 HIGH): jq_rc capture must be inside the `else`
-# branch. The previous structure `if cmd; then ...; exit 0; fi; jq_rc=$?` always
-# captured 0 because bash's `if` statement's failed branch leaves `$?` at 0 (the
-# failing command's exit code is discarded once `if` evaluates the condition).
-# Moving rc capture into the `else` branch yields the actual jq exit code (4=parse
-# error, 5=I/O error, etc.) which downstream consumers (state-read.sh /
-# flow-state-update.sh) embed in the WORKFLOW_INCIDENT details for diagnosis.
+# jq_rc must be captured inside the `else` branch (not after `fi`): bash's `if`
+# statement leaves `$?` at 0 once the condition is evaluated, so a post-`fi`
+# capture would always read 0 and collapse `corrupt:N` to `corrupt:0`. Capturing
+# in the `else` branch yields the actual jq exit code (4=parse error, 5=I/O,
+# etc.) that downstream consumers embed in the WORKFLOW_INCIDENT details.
 #
-# Empirical evidence (cycle 35 review): `printf '{corrupt' > /tmp/x && bash _resolve-cross-session-guard.sh /tmp/x <sid>`
-# previously produced `corrupt:0` (wrong); after this fix it produces `corrupt:5` (correct, jq parse error rc).
-#
-# verified-review cycle 35 fix (F-01/F-02 CRITICAL related): stop emitting `cat "$_jq_err" >&2` here.
-# The caller (`state-read.sh` / `flow-state-update.sh`) was using `2>&1` to combine stdout/stderr,
-# so any jq parse error message printed here would be merged into the `classification` string and
-# break the `case "$classification" in corrupt:*) ...` match — silently routing to the defensive
-# `*)` arm and suppressing the `legacy_state_corrupt` workflow incident sentinel emit. We now keep
-# stderr clean so callers can use `2>/dev/null` (also fixed in cycle 35) without losing the rc.
-# If a future debug session needs the jq parse error text, the caller can capture it via a
-# separate stderr tempfile (state-read.sh の `_jq_err` capture block / flow-state-update.sh の同型
-# pattern を参照。cycle 38 propagation scan: 旧 `state-read.sh:203` 行番号参照を semantic anchor に置換)。
+# Stderr is intentionally kept clean here. Callers (state-read.sh /
+# flow-state-update.sh) historically combined stdout/stderr with `2>&1` to
+# capture diagnostics, but that merged any `jq:` parse-error text into the
+# `classification` string and broke the `case ... corrupt:*) ...` match,
+# silently routing to the defensive `*)` arm and suppressing the
+# `legacy_state_corrupt` sentinel. The current contract: callers use
+# `2>/dev/null` and observe the rc via `corrupt:N`; full jq stderr is captured
+# by each caller into its own tempfile (see `_jq_err` capture blocks in the
+# caller hooks). Drift history is in references/state-read-evolution.md.
 if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/null}"); then
   if [ -z "$legacy_sid" ]; then
     printf 'empty'
   elif [ "$legacy_sid" = "$CURRENT_SID" ]; then
     printf 'same'
   else
-    # verified-review cycle 35 fix (F-10 LOW security): validate legacy_sid as
-    # UUID via _resolve-session-id.sh. legacy_sid is read from an untrusted file
-    # (could contain newline / shell metachar / huge payload). The downstream
-    # workflow-incident-emit.sh already sanitizes, but this helper's API contract
-    # promises `foreign:<UUID>` so we enforce it here as defense-in-depth.
+    # Validate legacy_sid as UUID via `_resolve-session-id.sh`: the value is
+    # read from an untrusted file (newline / shell metachar / huge payload all
+    # possible). Downstream workflow-incident-emit.sh sanitizes its own input,
+    # but this helper's API contract promises `foreign:<UUID>` and we enforce
+    # it here as defense-in-depth.
     #
-    # verified-review F-09 LOW (defense-in-depth): _resolve-session-id.sh が deploy 不整合で
-    # 不在 (rc=127) / 非実行可能 (rc=126) になった場合、UUID validation 失敗 (rc=1) と区別
-    # 不能で `invalid_uuid:1` に collapse する経路を解消する。upstream caller (state-read.sh
-    # / flow-state-update.sh) は本 helper を呼ぶ前に既に `_resolve-session-id.sh` の
-    # `[ -x ]` を upfront check しているため、本 inline check は二重防御 (transitive 経路で
-    # 個別実行された場合の保険)。_resolve-session-id-from-file.sh が cycle 39 H-01 で同型 fix
-    # を採用しているため writer/reader 対称化。
+    # Helper-existence check distinguishes deploy mishaps (rc=127 missing /
+    # rc=126 non-executable) from real UUID validation failure (rc=1) so they
+    # do not collapse into `invalid_uuid:1`. Upstream callers already perform
+    # an `[ -x ]` check before invoking this helper; this inline check is
+    # double defence for transitive direct execution.
     _resolve_sid_helper="$(dirname "${BASH_SOURCE[0]}")/_resolve-session-id.sh"
     if [ ! -x "$_resolve_sid_helper" ]; then
       # deploy 不整合: helper 自体が存在しない / 非実行可能。invalid_uuid:1 に collapse させずに
@@ -160,16 +142,13 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
   exit 0
 else
   jq_rc=$?
-  # verified-review (PR #688 cycle 15) F-03 (MEDIUM) 対応: dead-observability 解消。
-  # cycle 35 F-01/F-02 で `cat "$_jq_err" >&2` を削除した (stdout 汚染防止: caller の `2>&1` で
-  # classification token に jq error が混入し case match を破壊していたため)。本 helper は cycle 35 以降、
-  # _jq_err tempfile を確保するが読み出していなかった ("caller は corrupt:N rc を観測できますが原因
-  # line/column が失われます" と _mktemp-stderr-guard.sh の WARNING で documented されている dead state)。
-  # 現在は upstream caller (state-read.sh / flow-state-update.sh) が `2>"$_classify_err"` で stderr を
-  # 独立 tempfile に退避しており、本 helper が stderr に jq parse error 詳細を emit しても classification
-  # token (stdout) は汚染されない。caller chain の `_classify_err` ファイルに parse error が届き、
-  # legacy_state_corrupt incident の root cause 診断 (line/column) が可能になる (Issue #687
-  # writer/reader 対称化 doctrine の核心)。
+  # Surface the first 3 lines of jq stderr so the caller's `_classify_err`
+  # tempfile receives the parse-error line/column. Callers redirect stderr
+  # into their own tempfile (`2>"$_classify_err"`), so emitting here does not
+  # contaminate stdout (`classification` token). This restores the
+  # observability that was traded away when stdout pollution forced removal
+  # of an earlier `cat "$_jq_err" >&2` block; details in
+  # references/state-read-evolution.md.
   [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" >&2
   printf 'corrupt:%d' "$jq_rc"
   exit 0
