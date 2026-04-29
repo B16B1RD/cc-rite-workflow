@@ -65,17 +65,26 @@ assert_match() {
   fi
 }
 
-# DEFAULT_HELPERS の SoT (sandbox 構築時に使用)
-DEFAULT_HELPERS_LIST=(
-  state-path-resolve.sh
-  _resolve-session-id.sh
-  _resolve-session-id-from-file.sh
-  _resolve-schema-version.sh
-  _resolve-cross-session-guard.sh
-  _emit-cross-session-incident.sh
-  _mktemp-stderr-guard.sh
-  _validate-state-root.sh
+# DEFAULT_HELPERS の SoT を production 側 (`_validate-helpers.sh`) から動的抽出する。
+# test/production 片肺更新 drift を構造的に防ぐ (cycle 13 F-01 doctrine の test layer 適用)。
+# 旧実装は production 側の DEFAULT_HELPERS と byte-for-byte 重複した hardcoded 配列を持っており、
+# 新規 helper が production に追加されても test sandbox は古い entry のまま動き続ける silent
+# regression 経路を残していた (Issue #687 root cause = writer/reader 片肺更新 と同型の
+# test/production 片肺更新 drift)。
+#
+# 抽出方法: awk で `DEFAULT_HELPERS=(...)` ブロックを抽出 + grep で helper 名 (basename) を取得。
+# `_validate-helpers.sh` を bash source する方式は `set -euo pipefail` + 引数 unset 時 exit 1 の
+# 副作用があるため採らず、静的 awk 抽出で副作用なしに配列値だけを取得する。
+mapfile -t DEFAULT_HELPERS_LIST < <(
+  awk '/^DEFAULT_HELPERS=\(/,/^\)$/' "$HELPER" | grep -oE '[a-z_][a-z_0-9-]*\.sh' || true
 )
+
+if [ "${#DEFAULT_HELPERS_LIST[@]}" -eq 0 ]; then
+  echo "FATAL: DEFAULT_HELPERS_LIST の動的抽出に失敗しました" >&2
+  echo "  HELPER path: $HELPER" >&2
+  echo "  対処: _validate-helpers.sh 内の 'DEFAULT_HELPERS=(' ブロック構造を確認してください" >&2
+  exit 1
+fi
 
 make_sandbox() {
   local sbx

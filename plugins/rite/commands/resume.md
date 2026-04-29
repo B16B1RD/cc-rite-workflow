@@ -291,7 +291,9 @@ fi
 # (start.md Phase 5.7 / implement.md Phase 5.1.2 で確立された canonical pattern と統一)。
 # シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、Step 2 の
 # display block で {parent_issue_display} placeholder を Claude が literal substitute するための
-# observable signal として stdout に echo する (start.md:2238 の SoT 原則と整合)。
+# observable signal として stdout に echo する (start.md の Phase 5.7 (Parent Issue Completion)
+# / Workflow Termination "Why this routing relies on Phase 5.7 emit, not state re-read"
+# blockquote で確立された SoT 原則と整合)。
 echo "[CONTEXT] PARENT_ISSUE_DISPLAY=$parent_issue_display"
 ```
 

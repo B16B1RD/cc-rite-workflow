@@ -17,8 +17,9 @@ Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarant
 | `state-read.sh` / `flow-state-update.sh` | indirect emit (via `_emit-cross-session-incident.sh`) | 6 indirect sites (state-read.sh ×3 [foreign / corrupt / invalid_uuid arms] + flow-state-update.sh ×3 [foreign / corrupt / invalid_uuid arms]) |
 | `commands/lint.md` (rite lint) | actual emit caller (declarative; 3 failure paths via Workflow Incident Emit Helper section + indirect `gitignore_drift` via `gitignore-health-check.sh`) | 3 declarative + 1 indirect |
 | `commands/wiki/lint.md` / `pr/create.md` | **out of scope** (do not reference this protocol, do not emit) | 0 sites |
+| **Subtotal (sub-skill emit callers)** | — | **18 sites** (5+5+3+5) — Total 行で参照されるカウント |
 
-Total: **18 invocation sites across 4 files** (sub-skill: `pr/review.md` / `pr/fix.md` / `pr/cleanup.md` / `issue/close.md`). `commands/lint.md` の 3 declarative path は本 count に含まれない (sub-skill ではなく lint 専用の declarative emit のため別カウント)。
+**Total**: **18 sub-skill emit sites** (sub-skill 4 ファイルの合計、上記 Subtotal 行と一致)。`state-read.sh` / `flow-state-update.sh` の **6 indirect sites** と `commands/lint.md` の **3 declarative + 1 indirect sites** はこの 18 には含まれない別カウントである (前者は helper 経由の indirect emit、後者は sub-skill ではなく lint 専用の declarative emit のため別カテゴリ)。表内の異なる行を視覚レベルを揃えて参照することで「18 = 5+5+3+5+6+4 = 28」と誤読される経路を防ぐ。
 
 ## How to Emit
 

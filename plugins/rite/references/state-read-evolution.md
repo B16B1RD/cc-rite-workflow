@@ -48,6 +48,12 @@ helper を追加する際は `_validate-helpers.sh` 内 `DEFAULT_HELPERS` への
 
 > **Note**: 「関連 cycle」列は **代表的な cycle のみ** を列挙する (helper の起点となった集約 fix が中心)。
 > 各 helper の使用サイト周りで適用された全 cycle のリストは下記「Cycle 別の主要な修正」節を参照のこと。
+>
+> **`DEFAULT_HELPERS` 配列との対応関係**: 本表は **集約 helper 7 件** を列挙するが、`_validate-helpers.sh` の
+> `DEFAULT_HELPERS` 配列には **合計 8 件** が登録されている。差分の 1 件は `state-path-resolve.sh` で、
+> これは集約 helper ではなく state-read.sh の冒頭 (`STATE_ROOT="$("$SCRIPT_DIR/state-path-resolve.sh" ...)`)
+> から直接利用する **base resolver** (= STATE_ROOT 解決の入口) のため、本表からは除外している。
+> 「表 7 件 = `DEFAULT_HELPERS` 8 件」の数字差分はこの base resolver 1 件分を反映する。
 
 | helper | 集約された機能 | 関連 cycle |
 |--------|---------------|-----------|
@@ -59,6 +65,7 @@ helper を追加する際は `_validate-helpers.sh` 内 `DEFAULT_HELPERS` への
 | `_emit-cross-session-incident.sh` | 3 classification × 2 caller の workflow-incident-emit 集約 | PR #688 followup F-01 MEDIUM |
 | `_mktemp-stderr-guard.sh` | mktemp + WARNING 3 行 + chmod 600 のパターン集約 | cycle 9 F-02 / 15 F-05 / 38 F-06 |
 | `_validate-state-root.sh` | STATE_ROOT path traversal + shell metacharacter + control character 検証 | post-cycle-44 re-review (M-1) |
+| `state-path-resolve.sh` (参考: base resolver) | STATE_ROOT 解決の入口 (集約ではないが `DEFAULT_HELPERS` には登録) | (該当なし — base resolver) |
 
 ---
 
