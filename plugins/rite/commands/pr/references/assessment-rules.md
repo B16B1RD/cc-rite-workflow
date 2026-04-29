@@ -26,7 +26,7 @@ For each finding in 全指摘事項:
         (matrix rule: LOW × Hypothetical は報告禁止)
       else:
         move to 推奨事項 section
-        (matrix rule: CRITICAL/HIGH/MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
+        (matrix rule: CRITICAL/HIGH/MEDIUM/LOW-MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
 ```
 
 **"Missing `Likelihood-Evidence:` anchor"** means the finding's `内容` column does NOT contain a match for the following regex (per `_reviewer-base.md` "Demonstrable: proof of burden"):
@@ -95,6 +95,7 @@ When determining the assessment, explicitly output the finding count in the foll
 - CRITICAL: {count} 件
 - HIGH: {count} 件
 - MEDIUM: {count} 件
+- LOW-MEDIUM: {count} 件
 - LOW: {count} 件
 - 合計: {total} 件（すべて blocking）
 

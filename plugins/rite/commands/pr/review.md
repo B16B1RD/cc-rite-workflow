@@ -2522,7 +2522,7 @@ fi
 <!-- Phase 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net) で降格された finding がある場合のみ表示。0件の場合はこのセクション自体を省略。
      両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
 
-> 以下の finding は `Likelihood-Evidence:` anchor が欠落していたため、Phase 5.3.0 の safety net により機械的に降格されました。CRITICAL/HIGH/MEDIUM は「推奨事項」へ、LOW は削除されます。正常運用では本セクションは常に空になるはずです (reviewer 側 Gate が primary)。発火が発生した場合は reviewer の Likelihood-Evidence 出力契約が守られていない兆候のため、reviewer instruction を見直してください。
+> 以下の finding は `Likelihood-Evidence:` anchor が欠落していたため、Phase 5.3.0 の safety net により機械的に降格されました。CRITICAL/HIGH/MEDIUM/LOW-MEDIUM は「推奨事項」へ、LOW は削除されます。正常運用では本セクションは常に空になるはずです (reviewer 側 Gate が primary)。発火が発生した場合は reviewer の Likelihood-Evidence 出力契約が守られていない兆候のため、reviewer instruction を見直してください。
 
 | 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
 |---------|-------|------------|------|---------|
@@ -2701,7 +2701,7 @@ fi
 <!-- Phase 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net) で降格された finding がある場合のみ表示。0件の場合はこのセクション自体を省略。
      両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
 
-> 以下の finding は `Likelihood-Evidence:` anchor が欠落していたため、Phase 5.3.0 の safety net により機械的に降格されました。CRITICAL/HIGH/MEDIUM は「推奨事項」へ、LOW は削除されます。正常運用では本セクションは常に空になるはずです (reviewer 側 Gate が primary)。発火が発生した場合は reviewer の Likelihood-Evidence 出力契約が守られていない兆候のため、reviewer instruction を見直してください。
+> 以下の finding は `Likelihood-Evidence:` anchor が欠落していたため、Phase 5.3.0 の safety net により機械的に降格されました。CRITICAL/HIGH/MEDIUM/LOW-MEDIUM は「推奨事項」へ、LOW は削除されます。正常運用では本セクションは常に空になるはずです (reviewer 側 Gate が primary)。発火が発生した場合は reviewer の Likelihood-Evidence 出力契約が守られていない兆候のため、reviewer instruction を見直してください。
 
 | 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
 |---------|-------|------------|------|---------|
@@ -4255,7 +4255,7 @@ Issue creation failure reasons: (`body_tmpfile_write_failure` / `empty_body_tmpf
 
 **Important**: The entire script block must be executed in a **single Bash tool invocation**.
 
-**Priority mapping**: CRITICAL→High, HIGH→Medium, MEDIUM→Low, Recommendation (Source B)→Medium
+**Priority mapping**: CRITICAL→High, HIGH→Medium, MEDIUM→Low, LOW-MEDIUM→Low, LOW→Low, Recommendation (Source B)→Medium
 
 **Complexity mapping**: XS: single-line/single-location fix. S: multi-line change within 1-2 files
 
