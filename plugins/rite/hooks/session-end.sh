@@ -120,9 +120,11 @@ WARN_MSG
         rm -f "$TMP_FILE"
     fi
 
-    # AC-10 (Issue #680): clean up per-session flow-state file on normal session end.
-    # When schema_version=2 routes state to `.rite/sessions/<sid>.flow-state`, the
-    # file is unique to this session and has no value after the session terminates.
+    # AC-10 (Issue #680): clean up per-session flow-state file on session end.
+    # Note: this block also runs after the jq deactivation `else` arm above —
+    # i.e. when the .active=false update failed. The per-session file is unique
+    # to this session, so even a corrupt one has no value post-termination, and
+    # leaving it would only confuse the next session-start defensive reset.
     # Detection: STATE_FILE matches `*/.rite/sessions/*.flow-state` (the per-session
     # path returned by `_resolve-flow-state-path.sh`).
     # Legacy `.rite-flow-state` is intentionally preserved (it may be the only

@@ -8,7 +8,8 @@
 #   - per-session: <state_root>/.rite/sessions/<session_id>.flow-state
 #   - legacy:      <state_root>/.rite-flow-state
 #
-# Resolution rules (mirrors state-read.sh / flow-state-update.sh semantics):
+# Resolution rules (mirrors path-selection rules of state-read.sh / flow-state-update.sh;
+# cross-session classification is the caller's responsibility via session-ownership.sh):
 #   1. schema_version=2 + valid UUID SID + per-session file exists
 #      -> per-session path
 #   2. schema_version=2 + valid UUID SID + per-session absent + legacy exists
@@ -18,6 +19,12 @@
 #      -> per-session path (for fresh writes; writers create the file)
 #   4. schema_version=1 OR missing SID OR invalid UUID
 #      -> legacy path
+#
+# Note: state-read.sh additionally performs cross-session classification
+# (same/empty/foreign/corrupt/invalid_uuid 5-way) to reject reads from another
+# session's state file. This helper does NOT replicate that — lifecycle hooks
+# instead use `check_session_ownership` from session-ownership.sh for the same
+# guarantee. See Cross-session ownership note below.
 #
 # Cross-session ownership checking is the caller's responsibility. This helper
 # resolves the path only. Lifecycle hooks already invoke
