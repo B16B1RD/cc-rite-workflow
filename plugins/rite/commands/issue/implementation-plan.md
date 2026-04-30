@@ -633,7 +633,7 @@ If the Issue body has no checklist, skip this section and do not record in the w
 
 > **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
 
-Before returning control to the caller, update `.rite-flow-state` to the post-plan phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+Before returning control to the caller, update flow state to the post-plan phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \

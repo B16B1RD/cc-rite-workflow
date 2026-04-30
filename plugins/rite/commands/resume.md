@@ -10,7 +10,7 @@ Resume an interrupted rite command from where it left off after a crash or inter
 - Resuming work after a Claude Code crash
 - Resuming work after a session disconnection
 - Resuming manually interrupted work
-- **Context window 枯渇時の継続**: セッションの context が実際に逼迫した場合は、`/clear` で会話履歴をリセットしてから `/rite:resume` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** であり、LLM が自己判断で step を省略してワークフローを短縮する経路は存在しない（詳細: [workflow-identity.md](../skills/rite-workflow/references/workflow-identity.md)）。`/rite:resume` は `.rite-flow-state` と work memory を読み直して中断点から再開する。
+- **Context window 枯渇時の継続**: セッションの context が実際に逼迫した場合は、`/clear` で会話履歴をリセットしてから `/rite:resume` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** であり、LLM が自己判断で step を省略してワークフローを短縮する経路は存在しない（詳細: [workflow-identity.md](../skills/rite-workflow/references/workflow-identity.md)）。`/rite:resume` は flow state と work memory を読み直して中断点から再開する。
 
 ---
 
@@ -69,7 +69,7 @@ Stop here.
 - `{issue_number}`: Issue number (from argument or branch name extraction in Phase 1.1)
 - `{owner}`, `{repo}`: Repository information (obtain via `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`)
 - `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version))
-- `{parent_issue_display}`: `state-read.sh --field parent_issue_number` 経由で取得。**capture form は Phase 2.1 Display Interrupted State の Step 1 (Display 直前の独立 bash code block) を参照** (verified-review F-02 で placeholder 表 cell には bash literal を埋め込まず、actual capture site を semantic anchor で示す方針に統一。F11-07 で「直前」→「Step 1」へ用語を厳密化、Step 1 末尾の `[CONTEXT] PARENT_ISSUE_DISPLAY=...` echo を Step 2 で literal substitute する cross-boundary state transfer pattern を採用)。Display `#{N}` if non-zero, `なし` if zero or absent。Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot
+- `{parent_issue_display}`: `state-read.sh --field parent_issue_number` 経由で取得。**capture form は Phase 2.1 Display Interrupted State の Step 1 (Display 直前の独立 bash code block) を参照** (verified-review F-02 で placeholder 表 cell には bash literal を埋め込まず、actual capture site を semantic anchor で示す方針に統一。F11-07 で「直前」→「Step 1」へ用語を厳密化、Step 1 末尾の `[CONTEXT] PARENT_ISSUE_DISPLAY=...` echo を Step 2 で literal substitute する cross-boundary state transfer pattern を採用)。Display `#{N}` if non-zero, `なし` if zero or absent。Issue #687 AC-4 — per-session state, not legacy state file snapshot
 
 #### 1.2.1 Local Work Memory Check
 
@@ -370,7 +370,7 @@ Ensure flow-state has `active: true` so the prompt-side `Sub-skill Return Protoc
 **Note (PR #675 で stop-guard.sh は撤去済み)**: 本 phase の以前の実装は撤去済みの `stop-guard.sh` hook が `Stop` イベントで `active: true` を見て premature stop を block する前提で書かれていたが、現在の defense は **prompt-side のみ** に集約されている。撤去後の defense 体系の整理は Decision Log D-03 で別 Issue 化されている (PR #688)。
 
 ```bash
-# PR #688 cycle 5 review (prompt-engineer 調査推奨): legacy `.rite-flow-state` への直接 jq write を
+# PR #688 cycle 5 review (prompt-engineer 調査推奨): legacy state file への直接 jq write を
 # `flow-state-update.sh patch` 経由に変更。schema_version=2 環境 (multi-state) でも per-session file
 # が正しく更新され、AC-4 の write 側 path も統一される。
 #

@@ -582,7 +582,7 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-pat
 
 After the Fail-Closed Gate, run the cleanup-work-memory script. This script performs all cleanup steps in a single deterministic invocation:
 
-1. Resets `.rite-flow-state` to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
+1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
 2. Deletes `.rite-compact-state` and its lockdir (#756)
 3. Deletes ALL `.rite-work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)
@@ -593,15 +593,15 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-pat
 bash {plugin_root}/hooks/cleanup-work-memory.sh
 ```
 
-**Why a script instead of inline shell**: Previous implementations (#740, #753, #776) used inline shell fragments with LLM placeholders (`{issue_number}`, `{branch_name}`, etc.). When the LLM failed to substitute these placeholders, `jq` commands failed silently and `rm` commands deleted literal filenames instead of actual files. The script reads the issue number directly from `.rite-flow-state`, eliminating placeholder dependency.
+**Why a script instead of inline shell**: Previous implementations (#740, #753, #776) used inline shell fragments with LLM placeholders (`{issue_number}`, `{branch_name}`, etc.). When the LLM failed to substitute these placeholders, `jq` commands failed silently and `rm` commands deleted literal filenames instead of actual files. The script reads the issue number directly from the flow state file, eliminating placeholder dependency.
 
-**Key design**: The script resets `.rite-flow-state` to `active: false` **before** deleting files. This ordering prevents the `post-tool-wm-sync.sh` PostToolUse hook from recreating files after deletion (the hook checks `active == true` and exits early when false).
+**Key design**: The script resets flow state to `active: false` **before** deleting files. This ordering prevents the `post-tool-wm-sync.sh` PostToolUse hook from recreating files after deletion (the hook checks `active == true` and exits early when false).
 
 **Error handling:**
 
 | Error Case | Response |
 |-----------|----------|
-| `.rite-flow-state` reset fails | Script displays WARNING to stderr and continues with file deletion |
+| flow state reset fails | Script displays WARNING to stderr and continues with file deletion |
 | File deletion fails | Script displays WARNING to stderr per file and continues |
 | `.rite-work-memory/` does not exist | No error (script handles gracefully) |
 | Script itself fails | Display warning and proceed to Phase 5 (non-blocking) |
@@ -610,7 +610,7 @@ bash {plugin_root}/hooks/cleanup-work-memory.sh
 
 ```
 警告: 作業メモリクリーンアップスクリプトが失敗しました
-手動でリセットする場合: .rite-flow-state を削除するか active を false に変更し、.rite-work-memory/issue-*.md を手動削除してください
+手動でリセットする場合: flow state file を削除するか active を false に変更し、.rite-work-memory/issue-*.md を手動削除してください
 ```
 
 **Note**: Failure does not block the cleanup process. Display a warning and proceed to Phase 5.

@@ -565,7 +565,7 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 ## Phase 4: Terminal Completion
 
-<!-- caller: this sub-skill is terminal. Phase 4 deactivates .rite-flow-state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
+<!-- caller: this sub-skill is terminal. Phase 4 deactivates flow state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
 
 > **Design decision** (Issue #444, D-01): This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
 >
@@ -576,11 +576,11 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 After Phase 3 (Completion Report), deactivate the flow state:
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_completed" \
-    --next "none" --active false
-fi
+# --if-exists で flow state file 不在時は silent skip。
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "create_completed" \
+  --next "none" --active false \
+  --if-exists
 ```
 
 ### 4.2 Completion Message (User-facing, Issue #552 / #561)
@@ -640,7 +640,7 @@ This marker signals to both the orchestrator (`create.md`) and any hook/grep con
 
 When this sub-skill completes (Phase 4 terminal completion), the Issue creation workflow is **fully complete**:
 - Issue created and registered to GitHub Projects ✅
-- `.rite-flow-state` deactivated (`active: false`) ✅
+- flow state deactivated (`active: false`) ✅
 - User-visible completion message + next steps displayed ✅
 - Completion marker emitted as HTML comment (`<!-- [create:completed:{N}] -->`) ✅
 

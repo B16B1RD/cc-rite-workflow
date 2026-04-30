@@ -5,7 +5,7 @@ description: 品質チェックを実行
 # /rite:lint
 
 ## Contract
-**Input**: rite-config.yml `commands` section (lint/test/typecheck commands), `.rite-flow-state` (optional, e2e flow)
+**Input**: rite-config.yml `commands` section (lint/test/typecheck commands), flow state (optional, e2e flow)
 **Output**: `[lint:success]` | `[lint:skipped]` | `[lint:error]` | `[lint:aborted]`
 
 品質チェック（lint）を実行し、結果を報告する
@@ -853,9 +853,9 @@ fi
 
 ### 4.0 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint:error]`, `[lint:aborted]`), update `.rite-flow-state` to reflect the post-lint phase (defense-in-depth, fixes #716). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint:error]`, `[lint:aborted]`), update flow state to reflect the post-lint phase (defense-in-depth, fixes #716). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
 
-**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
+**Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
 **State update by result**:
 
@@ -877,7 +877,7 @@ Replace `{phase_value}` and `{next_action_value}` with the values from the table
 
 **Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
-**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
+**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details and marketplace install notes.
 
@@ -893,7 +893,7 @@ WM_SOURCE="lint" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.rite-flow-state` update above. Claude substitutes these with the actual values based on the lint result before executing.
+Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flow state update above. Claude substitutes these with the actual values based on the lint result before executing.
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
 

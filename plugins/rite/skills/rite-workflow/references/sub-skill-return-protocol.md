@@ -13,7 +13,7 @@ When Claude Code invokes a Skill tool and the sub-skill outputs its result patte
 1. Breaks the "single-command end-to-end" experience that orchestrator commands promise
 2. Causes workflow state to decay (stale timestamps, compact-state drift)
 3. May silently skip mandatory defense-in-depth steps (e.g., flow-state patches, Issue-comment backups)
-4. In terminal sub-skills, may leave `.rite-flow-state` in an `active: true` state indefinitely
+4. In terminal sub-skills, may leave flow state in an `active: true` state indefinitely
 
 ## The contract
 
@@ -21,7 +21,7 @@ When Claude Code invokes a Skill tool and the sub-skill outputs its result patte
 
 1. **DO NOT end your response.** You are still in the middle of the orchestrator's phase flow.
 2. **DO NOT re-invoke the completed skill.** It already finished — re-invoking wastes context and may corrupt state.
-3. **IMMEDIATELY** execute the orchestrator's 🚨 Mandatory After section for the current phase, starting with the `.rite-flow-state` update, then proceeding to the next phase — **in the same response turn**.
+3. **IMMEDIATELY** execute the orchestrator's 🚨 Mandatory After section for the current phase, starting with the flow state update, then proceeding to the next phase — **in the same response turn**.
 4. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message instead of retrying the stop.
 
 ## Self-check after every sub-skill return

@@ -15,7 +15,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 
 ## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
 
-> **Issue #622 (regression of #552)**: This section was historically placed at the end of the file (titled "Defense-in-Depth: Flow State Update (Before Return)"). In the Bug Fix / Chore preset path (Phase 0.4.1 → skip Phase 0.5), the LLM running this sub-skill sometimes skipped the Defense-in-Depth bash block and jumped directly to the return output. The result: `.rite-flow-state.phase` stayed at `create_interview`, which had no dedicated `stop-guard.sh` case arm in versions prior to #622 fix, so the orchestrator's implicit stop after `<!-- [interview:skipped] -->` was not blocked and the user had to type `continue` manually. Moving the flow-state write to the **absolute beginning** of the sub-skill guarantees it runs regardless of interview scope.
+> **Issue #622 (regression of #552)**: This section was historically placed at the end of the file (titled "Defense-in-Depth: Flow State Update (Before Return)"). In the Bug Fix / Chore preset path (Phase 0.4.1 → skip Phase 0.5), the LLM running this sub-skill sometimes skipped the Defense-in-Depth bash block and jumped directly to the return output. The result: flow state の `.phase` stayed at `create_interview`, which had no dedicated `stop-guard.sh` case arm in versions prior to #622 fix, so the orchestrator's implicit stop after `<!-- [interview:skipped] -->` was not blocked and the user had to type `continue` manually. Moving the flow-state write to the **absolute beginning** of the sub-skill guarantees it runs regardless of interview scope.
 >
 > **DRIFT-CHECK ANCHOR (semantic)**: This section is mirrored by `stop-guard.sh` `create_interview` case arm (Issue #622) and `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge. The three sites form a 3-site symmetry — when updating any one, update the others.
 >
@@ -37,7 +37,11 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 # stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out 層が永久に fire しない。
 # create mode (file 不在時の初回書き込み) は phase transition ではないため flag は実質 no-op
 # だが、drift 防止の consistency で対称に付与する。
-if [ -f ".rite-flow-state" ]; then
+# state file の正しい path を解決 (schema_version=2 は per-session file、
+# legacy は single-file 形式)。helper が空文字列を返す異常ケースは create branch に進む。
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
       --active true \
@@ -547,7 +551,7 @@ Interview results are mapped to Implementation Contract sections (Section 1-9) f
 
 > **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0). The flow-state write was moved to the 🚨 MANDATORY Pre-flight section at the top of this file (Issue #622) so the post-interview phase is recorded regardless of interview scope. The idempotent re-patch below is retained as a defense-in-depth second write that refreshes the timestamp and `next_action` immediately before emitting the return output.
 
-Immediately before emitting the four-line return block, re-patch `.rite-flow-state` to refresh the timestamp. This is idempotent with the 🚨 MANDATORY Pre-flight write (same phase, same transition target):
+Immediately before emitting the four-line return block, re-patch flow state to refresh the timestamp. This is idempotent with the 🚨 MANDATORY Pre-flight write (same phase, same transition target):
 
 ```bash
 # verified-review cycle 3 F-06 / #636: Return Output 直前 re-patch も Step 0/Step 1 と対称に
@@ -558,7 +562,11 @@ Immediately before emitting the four-line return block, re-patch `.rite-flow-sta
 # flag がないと sub-skill mid-execution で本 re-patch 通過時に error_count が 0 にリセットされ、
 # 直後の orchestrator implicit stop で escalation が再度 ERROR_COUNT=0 から始まり永久に
 # THRESHOLD bail-out 未到達。Pre-flight (F-01) と対称。
-if [ -f ".rite-flow-state" ]; then
+# state file の正しい path を解決 (schema_version=2 は per-session file、
+# legacy は single-file 形式)。Pre-flight が保証した file 存在を再確認する。
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
       --active true \
@@ -570,7 +578,7 @@ if [ -f ".rite-flow-state" ]; then
 fi
 ```
 
-> **Why patch mode only (no create fallback here)**: The 🚨 MANDATORY Pre-flight section at the top already handles the "file missing" branch (`create` mode). By the time execution reaches the return-output section, `.rite-flow-state` is guaranteed to exist with `.phase = create_post_interview`. A second `create` call here would reset `previous_phase` to an empty string and defeat the whitelist-based transition check in stop-guard — patch mode preserves the transition chain correctly.
+> **Why patch mode only (no create fallback here)**: The 🚨 MANDATORY Pre-flight section at the top already handles the "file missing" branch (`create` mode). By the time execution reaches the return-output section, flow state file is guaranteed to exist with `.phase = create_post_interview`. A second `create` call here would reset `previous_phase` to an empty string and defeat the whitelist-based transition check in stop-guard — patch mode preserves the transition chain correctly.
 
 After the flow-state update above, output the appropriate result pattern. Emit the caller-continuation reminder **immediately before** the result pattern. The return block MUST be composed of four lines in the order below: (1) `[CONTEXT] INTERVIEW_DONE=1` grep marker, (2) plain-text blockquote continuation reminder, (3) HTML-commented caller instructions, (4) HTML-commented result sentinel. All four MUST be the last visible lines of this sub-skill's output.
 
@@ -600,7 +608,7 @@ After the flow-state update above, output the appropriate result pattern. Emit t
 
 > **Issue #651 / Issue #660 enhancement (4-site 対称化、syntax-safe inline bash command)**: caller HTML コメントに Step 0 Immediate Bash Action の bash command literal を **backtick で明示的に区切って** inline で含めることで、orchestrator が次に実行すべき具体的な tool call を sub-skill 出力直後に視認できるようにする。`bash ... --preserve-error-count` までを backtick で囲い、その後を散文 `THEN (after the bash command above succeeds) continue with Phase 0.6 ...` で続けることで、LLM が caller HTML コメントを literal 解釈しても **bash 構文として valid な単一コマンド** として実行可能になる (旧版 `; then continue with Phase 0.6` は `if cmd; then ... fi` 構文の一部と誤解釈されて syntax error になる問題を修正、Issue #651 PR #654 review F-01)。bash 引数 (`--phase create_post_interview` / `--active` / `--next` / `--if-exists` / `--preserve-error-count`) は **create.md Mandatory After Interview Step 0 Immediate Bash Action** / **Pre-flight (本ファイル冒頭)** / **Return Output re-patch (本セクション直前)** / **stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT bash literal** と **4-site 対称** (Issue #660 で `--active true` を symmetry 引数 list に追加)。
 >
-> **`--if-exists` の非対称性** (時系列で説明): orchestrator が caller HTML コメントの bash command を実行する時点では、本 sub-skill (create-interview.md) の Pre-flight が既に完了しており `.rite-flow-state` の存在は保証されている → よって `--if-exists` は no-op safety net として無害に働く。一方 create-interview.md の Pre-flight / Return Output re-patch は **file 不在時に `create` mode で新規生成する 2 経路分岐** を持つため `if [ -f ".rite-flow-state" ]; then ... else ... fi` 形式で明示処理 (意図的非対称、本 inline bash literal は orchestrator-side 実行想定)。
+> **`--if-exists` の非対称性** (時系列で説明): orchestrator が caller HTML コメントの bash command を実行する時点では、本 sub-skill (create-interview.md) の Pre-flight が既に完了しており flow state file の存在は保証されている → よって `--if-exists` は no-op safety net として無害に働く。一方 create-interview.md の Pre-flight / Return Output re-patch は **file 不在時に `create` mode で新規生成する 2 経路分岐** を持つため `_resolve-flow-state-path.sh` 経由で path 解決後に `[ -f "$state_file" ]` 形式で明示処理 (意図的非対称、本 inline bash literal は orchestrator-side 実行想定)。
 >
 > **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651 / Issue #660: 本 caller HTML コメント内 bash literal は (1) create.md 🚨 Mandatory After Interview Step 0 / (2) create-interview.md 🚨 MANDATORY Pre-flight / (3) create-interview.md Return Output re-patch (本セクション直前) / (4) stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT と **4-site 対称**。bash 引数 symmetry (`--phase` / `--active` / `--next` / `--if-exists` / `--preserve-error-count`) は #636 cycle 3 F-01 の error_count reset loop 防止規約 + Issue #660 の `--active true` 4 引数 symmetry 拡張に従う (本セクション直前の Output format example sections (`[interview:skipped]` / `[interview:completed]`) 内の caller HTML inline literal も `--active true` を含む 4-arg symmetry に揃え済み)。`--next` 文字列は HINT/canonical で異なる (Step 0 fired vs continue caller) が動作影響なし。create.md 🚨 Mandatory After Interview Step 0 直後の DRIFT-CHECK ANCHOR / create-interview.md 🚨 MANDATORY Pre-flight 直後の DRIFT-CHECK ANCHOR と pair 同期する。
 >
