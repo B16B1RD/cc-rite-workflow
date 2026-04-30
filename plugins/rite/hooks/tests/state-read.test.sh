@@ -32,7 +32,8 @@ FAIL=0
 FAILED_NAMES=()
 
 # Signal trap (EXIT/INT/TERM/HUP) で sandbox / 個別 file の leak を防ぐ。
-# History: state-read-evolution.md (Form A cleanup minimal contract / 集約された helper)
+# 実装は Form B (portability variant、return 0 必須) — 詳細は L46 / bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照
+# History: state-read-evolution.md (集約された helper)
 cleanup_dirs=()
 cleanup_files=()
 _state_read_test_cleanup() {
@@ -187,7 +188,8 @@ rm -rf "$SBX"
 
 # bad SID 名で per-session file を作成し regex を `.*` に mutate すると bad per-session が
 # 読まれて assert 失敗で kill される (mutation kill power 確保)。OS-friendly な non-UUID vector
-# (`..` traversal 系は WSL2 等で path 解決失敗するため避ける)。History: state-read-evolution.md
+# (`..` traversal 系は WSL2 等で path 解決失敗するため避ける)。
+# History: state-read-evolution.md (Cycle 別の主要な修正 — TC-6 non-UUID vector OS-friendly 化)
 echo "TC-6: tampered .rite-session-id (non-UUID format) → strict regex reject → legacy fallback"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
@@ -205,7 +207,7 @@ rm -rf "$SBX"
 # `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` strict に強化済み。
 # per-session 不在で revert test すると pre-fix/post-fix が同一 legacy 値を返し pin 機能不全に
 # なるため、bad SESSION_ID 名で per-session file を作成して revert test を成立させる必須条件。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Cycle 別の主要な修正 — RFC 4122 strict 化、writer/reader 対称化 doctrine)
 echo "TC-6.RFC: ハイフン無し 36 字 hex (RFC 4122 非準拠) → reject されて legacy fallback"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
@@ -236,7 +238,7 @@ rm -rf "$SBX"
 # 設計選択: `^[0-9a-f]{8}-...` は canonical lowercase form のみ accept する defensive 仕様
 # (RFC 4122 §3 は input case-insensitive 規定だが、本リポの SID 生成は lowercase デフォルトの
 # ため uppercase は外部 injection 経路のみ → canonical form 強制が defense-in-depth として機能)。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Cycle 別の主要な修正 — canonical lowercase form 強制 / case-sensitive FS gate)
 echo "TC-6.INJECTION: SID injection vector defense"
 
 # bad per-session file 作成成功数 tracking (file system が bad SID 名を accept した数)。
@@ -361,7 +363,7 @@ rm -rf "$SBX"
 # 旧 post-processing block (`if [ "$value" = "null" ]`) は dead code (mutation testing で判明)。
 # jq の `//` 演算子 (alternative operator) が null/false を自動的に default に置換する仕様で
 # 動いていたため block は削除済み。本 TC は jq // 経由の null normalization 動作を pin する。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Cycle 別の主要な修正 — TC-10 dead-code post-processing block 削除)
 echo "TC-10: JSON null value → jq の // 演算子で caller default に置換される"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
@@ -498,7 +500,7 @@ rm -rf "$SBX"
 # typo / inverted condition で regress させても TC-2 は通る silent regression 経路があった。
 # writer 側 (flow-state-update.test.sh TC-AC-4-CROSS-SESSION-REFUSED) と対称な test coverage を
 # reader 側に持たせて writer/reader 対称化 doctrine を test レベルで保証する。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Doctrines / Principles, Cycle 別の主要な修正 — reader-side cross-session guard)
 echo "TC-15: reader-side cross-session guard (per-session 不在 + legacy が別 session_id) → DEFAULT + WORKFLOW_INCIDENT emit"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
@@ -543,7 +545,7 @@ rm -rf "$SBX"
 
 # `_resolve-cross-session-guard.sh` の `corrupt:*` 経路を 3 重 assert で pin:
 # (1) DEFAULT 返却 + (2) sentinel emit + (3) jq_rc 非ゼロ。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Cycle 別の主要な修正 — corrupt:* 経路分類 / legacy_state_corrupt sentinel pin)
 echo "TC-15.C: reader-side legacy corrupt JSON → legacy_state_corrupt sentinel emit + DEFAULT 返却"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
@@ -586,7 +588,7 @@ rm -rf "$SBX"
 # `_resolve-cross-session-guard.sh` の sentinel が `corrupt:1` から `invalid_uuid:1` に分離された
 # 経路を pin。state-read.sh は `legacy_state_corrupt` sentinel に `reason=invalid_uuid_format` を
 # embed する。3 重 assert: (a) helper invalid_uuid:1 返却 + (b) sentinel emit + (c) reason field 含有。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Cycle 別の主要な修正 — corrupt:1 → invalid_uuid:1 sentinel 分離)
 echo "TC-15.D: reader-side legacy session_id failed UUID validation → invalid_uuid sentinel emit"
 SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
@@ -627,7 +629,7 @@ rm -rf "$SBX"
 # 必ず `2>/dev/null` を含むことを grep で source-pin する metatest を追加。
 # 旧 grep はコメント行 (`... so 2>/dev/null is safe.`) にマッチして false-positive で常に pass
 # していたため、コメント除外 + 実 invocation line を anchor で検査する形に修正済み。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Cycle 別の主要な修正 — caller-side stderr redirection source-pin)
 echo 'TC-15.E: state-read.sh caller-side stderr redirection source-pin metatest (revert test)'
 state_read_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/state-read.sh"
 state_read_caller=$(grep -v '^[[:space:]]*#' "$state_read_path" | grep -E 'classification=\$\(bash[^)]*_resolve-cross-session-guard\.sh[^)]*2>')
@@ -646,7 +648,7 @@ fi
 # (chmod -x / 削除 / install 不整合) を構造的に防ぐ目的で導入された。test 不在では loop の typo /
 # rename による silent 空 loop 化を検出できず structural defense が無音消滅するため、全 helper ×
 # chmod -x 経路を実発火して exit 1 + ERROR with helper name を pin する。
-# History: state-read-evolution.md
+# History: state-read-evolution.md (Cycle 別の主要な修正 — helper-missing fail-fast / deploy regression structural defense)
 echo "TC-DEPLOY-REGRESSION: state-read.sh helper-missing fail-fast"
 HOOKS_DIR="$(cd "$(dirname "$HOOK")" && pwd)"
 SANDBOX_HOOKS=$(mktemp -d) || { echo "ERROR: TC-DEPLOY-REGRESSION mktemp -d failed"; exit 1; }
@@ -663,7 +665,7 @@ write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 
 # helpers checked by state-read.sh's `_validate-helpers.sh` invocation。
 # _validate-helpers.sh の DEFAULT_HELPERS 配列を SoT として動的抽出することで、ADD 方向の drift
-# (新 helper 追加に本配列が未追従) も検出可能 (helper-list SoT 集約 doctrine、evolution.md 参照)。
+# (新 helper 追加に本配列が未追従) も検出可能 (helper-list SoT 集約 doctrine、state-read-evolution.md 参照)。
 mapfile -t deploy_regression_helpers < <(
   awk '/^DEFAULT_HELPERS=\(/,/^\)$/' "$HOOKS_DIR/_validate-helpers.sh" \
     | grep -oE '[a-z_][a-z_0-9-]*\.sh'
