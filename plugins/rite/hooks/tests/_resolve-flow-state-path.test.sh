@@ -222,6 +222,26 @@ else
 fi
 echo ""
 
+# --- TC-749-CALLER-CONTRACT (Issue #749, AC-2 / AC-LOCAL-2) ---
+# Static grep test: verify that the helper header documents the caller contract
+# and lists current lifecycle hook callers. Drift between code and docs is the
+# silent-regression vector this TC defends against — a future helper change must
+# update the contract section here, otherwise this assertion fails.
+echo "TC-749-CALLER-CONTRACT: header documents caller contract + caller list"
+contract_failed=0
+for keyword in 'Caller contract' 'check_session_ownership' 'Current callers' \
+               'session-start.sh' 'session-end.sh' 'pre-compact.sh' 'post-compact.sh'; do
+  if ! grep -qF "$keyword" "$HELPER"; then
+    fail "Header missing required keyword: '$keyword'"
+    contract_failed=1
+    break
+  fi
+done
+if [ $contract_failed -eq 0 ]; then
+  pass "Caller contract section + 4 lifecycle hook callers documented in header"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ $FAIL -eq 0 ]

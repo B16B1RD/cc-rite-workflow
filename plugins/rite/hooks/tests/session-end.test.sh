@@ -482,6 +482,104 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
+# --------------------------------------------------------------------------
+echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallback WARNING"
+
+HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
+cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
+cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+#!/bin/bash
+echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
+exit 1
+FAKE_RESOLVER_EOF
+chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+
+dir_749="$TEST_DIR/tc749-passthrough"
+mkdir -p "$dir_749"
+cat > "$dir_749/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-test"}
+EOF
+
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
+echo "{\"cwd\": \"$dir_749\"}" \
+  | bash "$sbx_749/session-end.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
+stderr_749="$(cat "$LAST_STDERR_FILE")"
+
+if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated _resolve-flow-state-path failure'; then
+  pass "ERROR line from helper passed through to caller stderr"
+else
+  fail "Expected ERROR pass-through; got stderr: $stderr_749"
+fi
+if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, falling back to legacy'; then
+  pass "Fallback WARNING emitted to stderr"
+else
+  fail "Expected fallback WARNING; got stderr: $stderr_749"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-749-JQ-WRITE-WARN (Issue #749, AC-3)
+# --------------------------------------------------------------------------
+# Verify that when jq fails to write the deactivated state (else arm of the
+# atomic write block), session-end emits a diagnostic WARNING to stderr
+# instead of silently swallowing the failure.
+echo "TC-749-JQ-WRITE-WARN: jq atomic write failure → WARNING emitted"
+
+sbx_jq="$(mktemp -d "$TEST_DIR/sbx-hooks-jq-XXXXXX")"
+cp -a "$HOOKS_REAL_DIR/." "$sbx_jq/"
+
+# Inject a fake jq into a private bin dir at the front of PATH that exits 1
+# only on the deactivation invocation (`.active = false | .updated_at = $ts`),
+# while passing through all other jq calls unchanged so the hook can still parse
+# its inputs (cwd, source, ownership probe, lifecycle phase, etc.).
+fake_jq_bin="$(mktemp -d "$TEST_DIR/fakejq-XXXXXX")"
+cat > "$fake_jq_bin/jq" <<'FAKE_JQ_EOF'
+#!/bin/bash
+# Fake jq: fail only on the session-end deactivation invocation
+for arg in "$@"; do
+  case "$arg" in
+    *'.active = false | .updated_at = $ts'*)
+      echo "fake jq: simulated failure for TC-749-JQ-WRITE-WARN" >&2
+      exit 1
+      ;;
+  esac
+done
+exec /usr/bin/jq "$@"
+FAKE_JQ_EOF
+chmod +x "$fake_jq_bin/jq"
+
+dir_jq="$TEST_DIR/tc749-jq"
+mkdir -p "$dir_jq"
+(
+  cd "$dir_jq" && git init -q \
+    && git -c user.name=test -c user.email=test@test.com commit --allow-empty -m init -q \
+    && git checkout -B "refactor/issue-749-jqwarn" -q
+)
+cat > "$dir_jq/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-jqwarn"}
+EOF
+
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749jq.XXXXXX")"
+PATH="$fake_jq_bin:$PATH" \
+  bash -c "echo '{\"cwd\": \"$dir_jq\"}' | bash '$sbx_jq/session-end.sh'" \
+  >/dev/null 2>"$LAST_STDERR_FILE" || true
+stderr_jq="$(cat "$LAST_STDERR_FILE")"
+
+if printf '%s' "$stderr_jq" | grep -qF 'rite: session-end: failed to deactivate state file'; then
+  pass "WARNING emitted on jq atomic write failure"
+else
+  fail "Expected jq-write WARNING; got stderr: $stderr_jq"
+fi
+if printf '%s' "$stderr_jq" | grep -qF '#749'; then
+  pass "WARNING includes Issue number from branch detection"
+else
+  fail "Expected '#749' in WARNING; got stderr: $stderr_jq"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

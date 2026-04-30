@@ -248,10 +248,26 @@ unset _migrate_script
 # `_resolve-flow-state-path.sh` returns the per-session file
 # (`.rite/sessions/<sid>.flow-state`) when schema_version=2 and a valid
 # session_id is present, otherwise the legacy `.rite-flow-state`. The
-# fallback `|| STATE_FILE=...` keeps the hook non-blocking under helper
-# deploy regression (e.g. chmod -x or partial install).
-STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
-  || STATE_FILE="$STATE_ROOT/.rite-flow-state"
+# fallback path keeps the hook non-blocking under helper deploy regression
+# (e.g. chmod -x or partial install).
+#
+# Issue #749: stderr pass-through for diagnostic visibility.
+# `_validate-helpers.sh` and `_validate-state-root.sh` emit `ERROR:` lines
+# to stderr on deploy regression / path traversal; the previous
+# `2>/dev/null` silently dropped them, hiding the legacy-fallback root
+# cause from the user. Mirrors state-read.sh `_classify_err` doctrine
+# (cycle 41 F-01).
+_resolve_err=$(mktemp /tmp/rite-resolve-flow-state-err-XXXXXX 2>/dev/null) || _resolve_err=""
+if STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}"); then
+  :
+else
+  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+    grep -E '^WARNING:|^ERROR:' "$_resolve_err" >&2 || true
+  fi
+  STATE_FILE="$STATE_ROOT/.rite-flow-state"
+  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($STATE_FILE)" >&2
+fi
+[ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
 if [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists (#756, #800)

@@ -31,8 +31,20 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 
 # Resolve active flow-state file path (Issue #680).
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
-STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
-  || STATE_FILE="$STATE_ROOT/.rite-flow-state"
+#
+# Issue #749: stderr pass-through for diagnostic visibility.
+# Mirrors state-read.sh `_classify_err` doctrine (cycle 41 F-01).
+_resolve_err=$(mktemp /tmp/rite-resolve-flow-state-err-XXXXXX 2>/dev/null) || _resolve_err=""
+if STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}"); then
+  :
+else
+  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+    grep -E '^WARNING:|^ERROR:' "$_resolve_err" >&2 || true
+  fi
+  STATE_FILE="$STATE_ROOT/.rite-flow-state"
+  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($STATE_FILE)" >&2
+fi
+[ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
 # Get current branch
 BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
@@ -116,7 +128,13 @@ WARN_MSG
         mv "$TMP_FILE" "$STATE_FILE"
     else
         # Intentionally not exit 1 here (unlike pre-compact.sh) — session-end
-        # prioritizes cleanup over strict error propagation
+        # prioritizes cleanup over strict error propagation.
+        # Issue #749: emit WARNING so the user knows the deactivate failed
+        # (mirrors pre-compact.sh diagnostic line-prefix `rite: <hook>: ...`).
+        # Without this, .active=false silently fails to be written and the
+        # next session-start defensive reset has no signal that recovery is
+        # needed (#475 / #608 follow-up).
+        echo "rite: session-end: failed to deactivate state file (Issue #${ISSUE_NUMBER:-unknown})" >&2
         rm -f "$TMP_FILE"
     fi
 

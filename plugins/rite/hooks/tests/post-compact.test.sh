@@ -187,5 +187,48 @@ else
 fi
 
 echo ""
+
+# --------------------------------------------------------------------------
+# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
+# --------------------------------------------------------------------------
+echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallback WARNING"
+
+HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
+cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
+cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+#!/bin/bash
+echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
+exit 1
+FAKE_RESOLVER_EOF
+chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+
+# post-compact.sh exits early when no flow_state — provide an active legacy file
+# so the resolver path is exercised, the fallback FLOW_STATE points at it, and
+# the hook continues to attempt recovery (which will exit silently when there
+# is no .rite-compact-state). The point of this TC is the stderr pass-through,
+# not the recovery output.
+dir_749="$TEST_DIR/tc749-passthrough"
+mkdir -p "$dir_749"
+jq -n '{active: true, issue_number: 749, phase: "phase5_test", next_action: "test", loop_count: 0, pr_number: 0, branch: "refactor/issue-749-test"}' \
+  > "$dir_749/.rite-flow-state"
+
+stderr_file="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
+echo "{\"cwd\": \"$dir_749\", \"source\": \"auto\"}" \
+  | bash "$sbx_749/post-compact.sh" >/dev/null 2>"$stderr_file" || true
+stderr_749="$(cat "$stderr_file")"
+
+if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated _resolve-flow-state-path failure'; then
+  pass "ERROR line from helper passed through to caller stderr"
+else
+  fail "Expected ERROR pass-through; got stderr: $stderr_749"
+fi
+if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, falling back to legacy'; then
+  pass "Fallback WARNING emitted to stderr"
+else
+  fail "Expected fallback WARNING; got stderr: $stderr_749"
+fi
+echo ""
+
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

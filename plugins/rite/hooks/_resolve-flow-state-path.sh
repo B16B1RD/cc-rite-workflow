@@ -31,6 +31,31 @@
 # `check_session_ownership` (session-ownership.sh) for the "other session"
 # branch, so layering another guard here would duplicate that contract.
 #
+# ⚠️ Caller contract (Issue #749):
+#   When this helper returns a per-session path
+#   (`<state_root>/.rite/sessions/<sid>.flow-state`), the caller MUST invoke
+#   `check_session_ownership` from session-ownership.sh and skip the modify
+#   path on the "other" branch. Reading or modifying another session's active
+#   per-session state file would clobber its in-flight work memory and trip
+#   stop-guard whitelist violations on its next phase transition.
+#
+#   Failing this contract risks: (1) silent overwrite of another session's
+#   .active=false transition, (2) double-emit of cross-session incidents,
+#   (3) lifecycle warnings (#475 / #608) firing for the wrong session.
+#
+#   `_validate-helpers.sh` intentionally does NOT validate
+#   `_resolve-cross-session-guard.sh` here because this helper does not call
+#   it directly — the caller-side check is sufficient.
+#
+# Current callers (4 lifecycle hooks):
+#   - plugins/rite/hooks/session-start.sh     (defensive reset on startup/clear)
+#   - plugins/rite/hooks/session-end.sh       (deactivation on session end)
+#   - plugins/rite/hooks/pre-compact.sh       (timestamp update before compact)
+#   - plugins/rite/hooks/post-compact.sh      (recovering→normal transition)
+#
+#   New callers (e.g., future lifecycle 5th hook) MUST follow the caller
+#   contract above. Add the new caller name here when introducing one.
+#
 # Why this exists (Issue #680):
 #   The lifecycle 4 hooks each used the same hardcoded `<state_root>/.rite-flow-state`
 #   path, which forces a global single-file lock and breaks the O(1)-per-session

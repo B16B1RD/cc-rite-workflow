@@ -26,8 +26,20 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 # Resolve active flow-state file path (Issue #680).
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
-FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
-  || FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+#
+# Issue #749: stderr pass-through for diagnostic visibility.
+# Mirrors state-read.sh `_classify_err` doctrine (cycle 41 F-01).
+_resolve_err=$(mktemp /tmp/rite-resolve-flow-state-err-XXXXXX 2>/dev/null) || _resolve_err=""
+if FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}"); then
+  :
+else
+  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+    grep -E '^WARNING:|^ERROR:' "$_resolve_err" >&2 || true
+  fi
+  FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($FLOW_STATE)" >&2
+fi
+[ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 LOCKDIR="$COMPACT_STATE.lockdir"
 
 # --- Cleanup helper ---
