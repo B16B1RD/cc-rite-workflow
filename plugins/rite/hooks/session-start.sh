@@ -232,6 +232,18 @@ with open(out_path, "w") as f:
   fi
 fi
 
+# Auto-migrate legacy `.rite-flow-state` to the per-session path
+# (`.rite/sessions/{session_id}.flow-state`) when schema_version is missing or < 2.
+# Issue #672 (multi-state design) / #679 (migration). The script is non-blocking:
+# any error is reported to stderr but the hook continues with the legacy file so
+# the user can retry on the next session start. The explicit migration message
+# (AC-8 — silent skip forbidden) flows through stderr to the user's terminal.
+_migrate_script="$SCRIPT_DIR/scripts/migrate-flow-state.sh"
+if [ -x "$_migrate_script" ]; then
+  STATE_ROOT="$STATE_ROOT" bash "$_migrate_script" || true
+fi
+unset _migrate_script
+
 STATE_FILE="$STATE_ROOT/.rite-flow-state"
 
 if [ ! -f "$STATE_FILE" ]; then
@@ -317,8 +329,14 @@ if [ "$SOURCE" = "clear" ]; then
   _reset_active_state
 fi
 
-# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
-find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
+# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
+# `.rite-flow-state.??????*` is intended to match mktemp tempfiles
+# (`.rite-flow-state.<6-hex>`), but its `??????*` glob matches **any suffix
+# of 6 or more chars**, which includes the migration backup name
+# (`.rite-flow-state.legacy.<timestamp>.<pid>.<random>`). Adding
+# `-not -name '.rite-flow-state.legacy.*'` keeps the migration backup as the
+# manual-recovery source of truth (#679, #747 cycle 4 CRITICAL).
+find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency
 # cycle 11 MEDIUM F-04: unit separator \x1f (\037) を使用する理由。tab は POSIX IFS whitespace

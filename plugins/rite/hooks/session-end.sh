@@ -117,7 +117,13 @@ WARN_MSG
     fi
 fi
 
-# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
+# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
+# Mirrors the same find command in session-start.sh (which is the canonical source).
+# `-not -name '.rite-flow-state.legacy.*'` excludes the migration backup so it
+# remains the manual-recovery source of truth (#679, #747 cycle 4 CRITICAL).
+# DRY note: this cleanup is duplicated across session-start.sh and session-end.sh.
+# Future hardening: extract into a shared helper to prevent one-sided regressions
+# (the cycle 3 fix to session-start.sh missed this hook, surfacing as cycle 4 CRITICAL).
 if [ -d "$CWD" ]; then
-    find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
+    find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 fi
