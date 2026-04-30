@@ -33,8 +33,16 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # otherwise. The atomic write below (last_synced_phase update) targets whichever
 # file the resolver returns, preserving per-session isolation under schema 2 and
 # falling back to the single-file lock under schema 1.
-FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
-  || FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+if FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null); then
+  :
+else
+  # Resolver failed (helper deploy regression / path validation rejection).
+  # stderr was suppressed above to keep the hook silent in the common case;
+  # surface the failure under RITE_DEBUG so deploy regressions are observable.
+  [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: _resolve-flow-state-path.sh failed, falling back to legacy path" \
+    >> "$STATE_ROOT/.rite-flow-debug.log" 2>/dev/null || true
+  FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+fi
 [ -f "$FLOW_STATE" ] || exit 0
 
 # cycle 12 HIGH F-01: unit separator \x1f に変更 (POSIX whitespace IFS collapse bug、
@@ -48,7 +56,15 @@ _flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostr
 IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0
 [ -n "$issue_number" ] || exit 0
-# Session ownership check (#173): skip sync for other session's state
+# Session ownership check (#173): skip sync for other session's state.
+#
+# Note (Issue #681 F-04): under schema_version=2 with a per-session $FLOW_STATE,
+# `check_session_ownership` returns "own" via its schema-2 fast-path without
+# invoking jq, so the failure path is structurally absent and the
+# `|| _ownership="own"` defensive default is dead code in that branch. The
+# fallback remains active for schema_version=1 (legacy single-file path),
+# where extract_session_id / get_state_session_id may fail under
+# environmental issues (jq error, IO error). Keep both branches.
 _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE" 2>/dev/null) || _ownership="own"
 [ "$_ownership" != "other" ] || exit 0
 # Defense-in-depth: don't recreate WM for completed workflows (#776)

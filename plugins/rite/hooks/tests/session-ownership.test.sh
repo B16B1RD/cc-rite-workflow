@@ -25,6 +25,9 @@ cleanup() {
   rm -rf "$TEST_DIR"
 }
 trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 pass() {
   PASS=$((PASS + 1))
@@ -74,18 +77,77 @@ else
 fi
 echo ""
 
-# --- TC-004: check_session_ownership returns "own" for per-session file (fast-path) ---
+# --- TC-003b: is_per_session_state_file edge cases (empty SID part, non-UUID-like) ---
+# Issue #681 F-06: the predicate uses path pattern matching only, so it accepts
+# any non-empty SID-like segment between `/sessions/` and `.flow-state`. These
+# tests pin the current behavior so future SID validation tightening can be
+# detected as a deliberate change.
+echo "TC-003b: is_per_session_state_file edge cases — empty SID segment is accepted by current path-pattern semantics"
+# `/.rite/sessions/.flow-state` has an empty SID segment. The current case glob
+# `*/.rite/sessions/*.flow-state` does not enforce non-empty SID, so this matches.
+# Asserting the *current* behavior here documents the contract; if the predicate
+# is later strengthened to require a non-empty UUID-like segment, this test will
+# fail and force an explicit decision.
+if is_per_session_state_file "/repo/.rite/sessions/.flow-state"; then
+  pass "Empty SID segment is currently accepted (documented behavior, future SID validation may tighten this)"
+else
+  fail "Empty SID segment is rejected — predicate semantics changed unexpectedly"
+fi
+# Non-UUID-like SID (e.g. arbitrary string) is also accepted by the current
+# pattern-only check. Document this for the same reason.
+if is_per_session_state_file "/repo/.rite/sessions/not-a-uuid.flow-state"; then
+  pass "Non-UUID SID segment is currently accepted (documented behavior)"
+else
+  fail "Non-UUID SID segment is rejected — predicate semantics changed unexpectedly"
+fi
+echo ""
+
+# --- TC-004: check_session_ownership returns "own" for per-session file (matching SID fast-path) ---
 # Issue #681: structurally-owned per-session files bypass the 4-state legacy check.
-# The hook_json contains a *different* session_id than what would otherwise be in
-# the state file — the fast-path must NOT consult that mismatch.
-echo "TC-004: check_session_ownership returns 'own' for per-session path (fast-path)"
-hook_json='{"session_id": "current-session-uuid"}'
-ps_path="/tmp/repo/.rite/sessions/different-session-uuid.flow-state"
+# When the hook payload's session_id matches the filename's session_id segment,
+# the fast-path returns "own" without consulting the file body.
+echo "TC-004: check_session_ownership returns 'own' for per-session path with matching SID"
+sid_match="00000000-0000-4000-8000-000000000004"
+hook_json="{\"session_id\": \"$sid_match\"}"
+ps_path="/tmp/repo/.rite/sessions/${sid_match}.flow-state"
 result=$(check_session_ownership "$hook_json" "$ps_path")
 if [ "$result" = "own" ]; then
-  pass "Per-session path returns 'own' (structural fast-path, mismatched SIDs ignored)"
+  pass "Per-session path with matching SID returns 'own' (structural fast-path)"
 else
-  fail "Expected 'own' for per-session path, got '$result'"
+  fail "Expected 'own' for matching per-session path, got '$result'"
+fi
+echo ""
+
+# --- TC-004b: check_session_ownership returns "other" for foreign per-session file (defense-in-depth) ---
+# Issue #681 F-02: when the hook payload's session_id is non-empty AND does not match
+# the filename's session_id segment, the fast-path defense-in-depth branch must
+# return "other" rather than silently classifying as "own". This prevents a future
+# caller bypassing the resolver from being misclassified as own (AC-4 alignment).
+echo "TC-004b: check_session_ownership returns 'other' for foreign per-session path (defense-in-depth)"
+sid_self="00000000-0000-4000-8000-000000000004b1"
+sid_other="00000000-0000-4000-8000-000000000004b2"
+hook_json="{\"session_id\": \"$sid_self\"}"
+foreign_ps_path="/tmp/repo/.rite/sessions/${sid_other}.flow-state"
+result=$(check_session_ownership "$hook_json" "$foreign_ps_path")
+if [ "$result" = "other" ]; then
+  pass "Foreign per-session path returns 'other' (filename SID mismatch detected)"
+else
+  fail "Expected 'other' for foreign per-session path, got '$result'"
+fi
+echo ""
+
+# --- TC-004c: check_session_ownership returns "own" for per-session file with empty hook SID ---
+# Backward-compat: when hook_json lacks session_id (legacy hook input), fall through
+# to "own" — same behavior as legacy 4-state classification's "can't determine, assume own"
+# branch.
+echo "TC-004c: check_session_ownership returns 'own' for per-session path with empty hook SID"
+hook_json='{}'
+ps_path="/tmp/repo/.rite/sessions/some-session-uuid.flow-state"
+result=$(check_session_ownership "$hook_json" "$ps_path")
+if [ "$result" = "own" ]; then
+  pass "Per-session path with empty hook SID returns 'own' (backward-compat fast-path)"
+else
+  fail "Expected 'own' for per-session path with empty hook SID, got '$result'"
 fi
 echo ""
 

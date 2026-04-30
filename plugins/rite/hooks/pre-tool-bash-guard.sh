@@ -180,8 +180,17 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # schema/SID resolution here. Mode B AND-logic (.active=true && phase=create_*)
     # below operates on whichever file the resolver returns.
     if [ -n "$STATE_ROOT_PATH" ]; then
-      STATE_FILE_PATH=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT_PATH" 2>/dev/null) \
-        || STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
+      if STATE_FILE_PATH=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT_PATH" 2>/dev/null); then
+        :
+      else
+        # Resolver failed (helper deploy regression / path validation rejection).
+        # Surface the failure under RITE_DEBUG so deploy regressions are observable
+        # — the legacy fallback would otherwise let Mode B AND-logic operate on the
+        # wrong state file silently when schema_version=2 is configured (Issue #681 F-01).
+        [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
+          >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null || true
+        STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
+      fi
       if [ -f "$STATE_FILE_PATH" ]; then
         STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
         STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"

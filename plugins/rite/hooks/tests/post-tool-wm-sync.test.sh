@@ -207,11 +207,11 @@ else
 fi
 echo ""
 
-# --- TC-PER-SESSION-1: per-session state file (Issue #681) → phase diff detection works ---
+# --- TC-POST-WM-PER-SESSION-1: per-session state file (Issue #681) → phase diff detection works ---
 # Verifies _resolve-flow-state-path.sh integration: when schema_version=2 with a valid SID
 # and a per-session file exists, the hook reads from `.rite/sessions/<sid>.flow-state`
 # (not the legacy `.rite-flow-state`). Phase diff detection must still work end-to-end.
-echo "TC-PER-SESSION-1: per-session state file → phase diff detected"
+echo "TC-POST-WM-PER-SESSION-1: per-session state file → phase diff detected"
 dir_ps="$TEST_DIR/tc_per_session"
 mkdir -p "$dir_ps/.rite-work-memory" "$dir_ps/.rite/sessions"
 echo "existing wm" > "$dir_ps/.rite-work-memory/issue-42.md"
@@ -244,8 +244,8 @@ else
 fi
 echo ""
 
-# TC-PER-SESSION-2: per-session state, last_synced_phase update writes to per-session file
-echo "TC-PER-SESSION-2: per-session state → last_synced_phase atomic write targets per-session path"
+# TC-POST-WM-PER-SESSION-2: per-session state, last_synced_phase update writes to per-session file
+echo "TC-POST-WM-PER-SESSION-2: per-session state → last_synced_phase atomic write targets per-session path"
 dir_ps2="$TEST_DIR/tc_per_session_2"
 mkdir -p "$dir_ps2/.rite-work-memory" "$dir_ps2/.rite/sessions"
 echo "existing wm" > "$dir_ps2/.rite-work-memory/issue-42.md"

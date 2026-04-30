@@ -95,17 +95,31 @@ check_session_ownership() {
   local hook_json="$1"
   local state_file="$2"
 
+  local hook_sid
+  hook_sid=$(extract_session_id "$hook_json")
+
   # Schema-2 fast-path: per-session file structure encodes ownership in the
   # filename. The resolver only returns a per-session path that matches the
-  # current session, so any caller passing such a path is reading its own
-  # state by construction.
+  # current session by construction, so the typical caller passing such a
+  # path is reading its own state. As defense-in-depth (review #681 F-02),
+  # when the hook payload provides a session_id, verify that the filename's
+  # session_id segment matches it. This prevents a future caller bypassing
+  # the resolver and silently passing a foreign per-session file from being
+  # classified as "own".
   if is_per_session_state_file "$state_file"; then
+    if [ -n "$hook_sid" ]; then
+      local fname_sid
+      fname_sid=$(basename "$state_file" .flow-state)
+      if [ "$hook_sid" != "$fname_sid" ]; then
+        # Foreign per-session file passed by a non-resolver caller —
+        # treat the same as legacy "other" (different session, fresh).
+        echo "other"
+        return 0
+      fi
+    fi
     echo "own"
     return 0
   fi
-
-  local hook_sid
-  hook_sid=$(extract_session_id "$hook_json")
 
   # If we can't determine our own session_id, assume ownership (backward compat)
   if [ -z "$hook_sid" ]; then
