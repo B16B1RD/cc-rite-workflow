@@ -290,6 +290,23 @@ _assert "TC-16.no-output" "$([ -z "$out" ] && echo true || echo false)"
 _assert "TC-16.legacy-intact" "$([ -f "$TEST_ROOT/.rite-flow-state" ] && echo true || echo false)"
 _teardown
 
+# ---------- TC-17: backup file gets chmod 600 (security review MEDIUM, #679) ----------
+echo "TC-17: backup file is chmod'd to 600 after step 4 rename (defense-in-depth)"
+_setup
+# Create a legacy file that was manually written with mode 644 (the threat scenario)
+echo '{"active":true,"issue_number":1,"phase":"phaseW","session_id":"66778899-aabb-ccdd-eeff-001122334455"}' > "$TEST_ROOT/.rite-flow-state"
+chmod 644 "$TEST_ROOT/.rite-flow-state"
+STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1
+backup_file=("$TEST_ROOT"/.rite-flow-state.legacy.*)
+if [ -f "${backup_file[0]}" ]; then
+  # stat -c on Linux, stat -f on BSD/macOS — try both
+  perm=$(stat -c '%a' "${backup_file[0]}" 2>/dev/null || stat -f '%A' "${backup_file[0]}" 2>/dev/null)
+  _assert "TC-17.backup-mode-600" "$([ "$perm" = "600" ] && echo true || echo false)"
+else
+  _assert "TC-17.backup-mode-600" "false"
+fi
+_teardown
+
 # ---------- TC-14: backup file content equals pre-migration legacy content ----------
 echo "TC-14: backup file content equals legacy content byte-for-byte (rename, not rebuild)"
 _setup

@@ -173,11 +173,32 @@ if ! mkdir -p "$SESSIONS_DIR" 2>/dev/null; then
 fi
 chmod 700 "$SESSIONS_DIR" 2>/dev/null || true
 
+# Signal-specific trap to clean up the temp file if the script is interrupted
+# between mktemp and the final mv. Without this, SIGINT/SIGTERM/SIGHUP arriving
+# in the race window would leave a `.rite/sessions/{sid}.flow-state.XXXXXX`
+# orphan that subsequent readers see as a "non-UUID flow-state file". The
+# 2-state commit pattern below (`TMP_NEW=""` after successful mv) disarms the
+# trap once the write is committed.
+TMP_NEW=""
+jq_err=""
+_rite_migrate_cleanup() {
+  rm -f "${TMP_NEW:-}" "${jq_err:-}"
+}
+trap 'rc=$?; _rite_migrate_cleanup; exit $rc' EXIT
+trap '_rite_migrate_cleanup; exit 130' INT
+trap '_rite_migrate_cleanup; exit 143' TERM
+trap '_rite_migrate_cleanup; exit 129' HUP
+
 if ! TMP_NEW=$(mktemp "${NEW_FILE}.XXXXXX" 2>/dev/null); then
   echo "[rite] ERROR: migration step 3 (mktemp under $SESSIONS_DIR) failed — legacy state preserved at $LEGACY_FILE" >&2
   exit 1
 fi
 chmod 600 "$TMP_NEW" 2>/dev/null || true
+
+# Capture jq stderr so build failures surface their root cause (e.g. malformed
+# legacy JSON, missing field path) instead of silently emitting a generic
+# "jq build new-format object failed" message.
+jq_err=$(mktemp /tmp/rite-migrate-jq-err-XXXXXX 2>/dev/null) || jq_err=""
 
 # Build the new-format object by merging schema_version: 2 with the legacy
 # fields. Missing fields fall back to defaults compatible with the
@@ -208,18 +229,22 @@ if ! jq -n \
     + (if $L.wm_comment_id   then {wm_comment_id: $L.wm_comment_id}     else {} end)
     + (if $L.error_count     then {error_count: $L.error_count}         else {} end)
     + (if $L.loop_count      then {loop_count: $L.loop_count}           else {} end)
-  ' > "$TMP_NEW" 2>/dev/null
+  ' > "$TMP_NEW" 2>"${jq_err:-/dev/null}"
 then
-  rm -f "$TMP_NEW" 2>/dev/null || true
   echo "[rite] ERROR: migration step 3 (jq build new-format object) failed — legacy state preserved at $LEGACY_FILE" >&2
+  if [ -n "$jq_err" ] && [ -s "$jq_err" ]; then
+    head -3 "$jq_err" | sed 's/^/  /' >&2
+  fi
   exit 1
 fi
+[ -n "$jq_err" ] && rm -f "$jq_err"
+jq_err=""
 
 if ! mv "$TMP_NEW" "$NEW_FILE" 2>/dev/null; then
-  rm -f "$TMP_NEW" 2>/dev/null || true
   echo "[rite] ERROR: migration step 3 (atomic mv $TMP_NEW → $NEW_FILE) failed — legacy state preserved at $LEGACY_FILE" >&2
   exit 1
 fi
+TMP_NEW=""  # disarm trap cleanup — file is now committed under its final name
 
 # --- Step 4: Rename legacy source to backup path ---
 if ! mv "$LEGACY_FILE" "$BACKUP_FILE" 2>/dev/null; then
@@ -228,6 +253,15 @@ if ! mv "$LEGACY_FILE" "$BACKUP_FILE" 2>/dev/null; then
   echo "[rite] ERROR: migration step 4 (rename $LEGACY_FILE → $BACKUP_FILE) failed — new-format file removed, legacy state preserved" >&2
   exit 1
 fi
+
+# Defense-in-depth (#679 review MEDIUM): tighten backup file permissions to 600.
+# `mv` preserves the source inode mode, so a manually-created legacy file with
+# mode 644 (e.g. from `echo > .rite-flow-state` under umask 022) would otherwise
+# leak its content (session_id / issue_number / branch / phase) to other users
+# on a shared host. Symmetric with flow-state-update.sh's writer doctrine which
+# always chmod 600 on tempfiles before mv. Best-effort skip if chmod fails
+# (filesystem without ACL support / SELinux constraint).
+chmod 600 "$BACKUP_FILE" 2>/dev/null || true
 
 # --- Step 5: Emit explicit migration message (silent skip forbidden — AC-8) ---
 echo "[rite] migrated: $LEGACY_FILE → $NEW_FILE (backup: $BACKUP_FILE)" >&2
