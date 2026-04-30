@@ -53,7 +53,7 @@ FAIL=0
 FAILED_NAMES=()
 
 # 既存 codebase convention に合わせた引数順序 (name, expected_substring, actual)。
-# work-memory-update.test.sh:68 / resume-active-flag-restore.test.sh:83 と同型。
+# work-memory-update.test.sh / resume-active-flag-restore.test.sh の assert_contains() 定義と同型。
 assert_contains() {
   local name="$1" expected_substring="$2" actual="$3"
   if [[ "$actual" == *"$expected_substring"* ]]; then
@@ -93,7 +93,6 @@ run_bash_c() {
   local err_var="$3"
   local rc_var="$4"
   local stderr_tmp=""
-  local _run_cleanup
   _run_cleanup() {
     [ -n "${stderr_tmp:-}" ] && [ -f "${stderr_tmp:-}" ] && rm -f "${stderr_tmp:-}"
   }
