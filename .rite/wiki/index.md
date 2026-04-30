@@ -62,9 +62,10 @@
 | [Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する](pages/patterns/bash-cross-boundary-emit-explicit-context.md) | patterns | bash block 内でシェル変数として計算した値は別の Bash tool invocation の heredoc / placeholder substitution で参照する場合 `[CONTEXT] KEY=$VALUE` 形式の sentinel として stdout/stderr に明示 emit する必要がある (Claude Code の Bash tool は invocation 境界でシェル状態を継承しない)。block 内コメントが「partial corruption 防止」を主張しても、success/failure 両経路に対称な emit が無いと self-contradiction として review reviewer の主指摘対象になる。PR #688 cycle 49 H-1 で実測。 | 2026-04-30T01:58:00+00:00 | high |
 | [Markdown inline code を Japanese corner brackets 「!」 に置換すると LLM 提示時 semantic interpretation が劣化する](pages/anti-patterns/markdown-japanese-corner-brackets-break-inline-code.md) | anti-patterns | 本来 backtick inline code (`` `!` ``) で囲うべき記号を Japanese corner brackets (`「!」` / `「//!」`) に置換すると、(a) Markdown renderer で monospace 表示が消失して可読性劣化、(b) LLM が prompt token 上で「コード片」semantic 境界を認識できず解釈劣化、の 2 段 failure mode を引き起こす。embedded backtick を含む inline code は double-backtick で囲うのが canonical。PR #688 cycle 13 で 2 ファイル同時検出。 | 2026-04-30T01:58:00+00:00 | medium |
 | [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) | patterns | prompt / 文書内で「Step 2/3 を skip」「次の Step」のような relative step 参照を書くと、後続の reorder / step 追加で actual heading 構造とのずれが発生し silent regression を生む。Step 番号は heading title 名 + Step 番号の absolute form (例: `Phase 5.5.2 Step 1: METRICS_SKIPPED emit`) で書き、`drift-check-anchor-semantic-name` と同型の semantic 参照で構造的に防ぐ。PR #688 cycle 49 Self-defeating defense root cause として実測。 | 2026-04-30T01:58:00+00:00 | high |
+| [新規 file 命名と既存 find glob が collision して silent 削除を起こす](pages/anti-patterns/find-glob-naming-collision-silent-removal.md) | anti-patterns | 既存の find glob (例: `.rite-flow-state.??????*` で `??????` が 6 文字 wildcard、`*` が任意文字) と新規 file 命名 (例: `.rite-flow-state.legacy.<timestamp>`) が偶発的に一致する場合、find が新規 file をマッチして `-mmin +1` 経過後に silent 削除される。新しい命名規則導入時は既存 glob と semantic 衝突しないかを必ず verify する。`-not -name` 例外 + 命名 token の test 化 + negative counter-test で defense-in-depth。PR #747 cycle 3 で実測 (CRITICAL)、cycle 4 で session-end.sh への propagation 漏れも実測。 | 2026-04-30T03:50:00+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 55
-- ドメイン別: patterns=22, heuristics=15, anti-patterns=18
-- 最終更新: 2026-04-30T01:58:00+00:00
+- 総ページ数: 56
+- ドメイン別: patterns=22, heuristics=15, anti-patterns=19
+- 最終更新: 2026-04-30T03:50:00+00:00

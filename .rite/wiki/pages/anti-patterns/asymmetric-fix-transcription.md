@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-30T01:58:00+00:00"
+updated: "2026-04-30T03:50:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -100,6 +100,8 @@ sources:
     ref: "raw/reviews/20260429T073028Z-pr-688.md"
   - type: "reviews"
     ref: "raw/reviews/20260429T160252Z-pr-688.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260430T031734Z-pr-747.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift"]
 confidence: high
 ---
@@ -358,9 +360,22 @@ PR #688 (累積 14 回目) の cycle 47+ レビューで、error-handling review
 1. **対称化 doctrine 完成宣言 cycle で writer 中核の 1 関数 cleanup pattern 全件 sweep**: reader 側の `_rite_*_cleanup` 関数構造 (例: 両 tempfile を 1 関数で `rm -f` する canonical) を doctrine 化したら、writer 側の対応 trap 関数を **同 PR 内で全件 grep し関数構造を 1:1 対称化** する
 2. **複数 reviewer の `clean` 評価でも code-quality 単独 HIGH を追加 cycle 必須化**: 「主要 surface」「attack surface」「fact-checkable」の 3 評価が clean でも、code-quality 単独の HIGH 検出は merge gate を bypass しない。最後の片肺 surface のために 1 追加 cycle を回す
 
+### Cross-component find pattern propagation (PR #747 cycle 4 CRITICAL での evidence)
+
+PR #747 (`.rite-flow-state` migration 機構実装) の cycle 3 で `session-start.sh` の find cleanup pattern に新規 backup 命名 (`legacy.<ts>`) との glob collision を回避する `-not -name '.rite-flow-state.legacy.*'` 例外を追加したが、cycle 4 reviewer (cross-file impact check) が **`session-end.sh` に同一 find cleanup pattern が存在し例外が伝播していない** ことを CRITICAL として検出。session-start.sh と session-end.sh は対称運用のペア (起動時 cleanup ↔ 終了時 cleanup) で、stale tempfile cleanup の find pattern は両者で完全同型に保たれていた。cycle 3 fix が片方のみ修正したため、session 終了時に新規 backup file が削除される silent regression が残留していた。
+
+**学習**: 本 anti-pattern は「**hook lifecycle のペア (起動 ↔ 終了 / pre ↔ post / setup ↔ cleanup) を成すスクリプト群**」にも適用される。ペア hook は同型の find / grep / cleanup パターンを共有する設計が canonical で、片方のみの修正は必ず次 cycle reviewer の cross-file impact check で検出される。canonical 対策:
+
+1. **Pair hook の find/glob pattern audit**: 新規命名規則を導入する際、`grep -rE 'find.*-name|find.*\\(.*-name' plugins/rite/hooks/` で全 hook の find pattern を一括 audit し、ペア構造を持つ hook (session-start ↔ session-end / pre-compact ↔ post-compact 等) の同期状態を確認する
+2. **DRY note for shared cleanup logic**: 同型 cleanup logic が複数 hook に複製されている場合、共有 helper 抽出が根本解決 (関連: [兄弟 shell script の重複 helper は shared lib 抽出で解く](../heuristics/shell-script-shared-lib-extraction.md))。短期的には `# DRY note: this cleanup is duplicated in session-{start,end}.sh; future hardening: extract into shared helper` のようなコメントで pair 関係を明示する
+3. **regression test の defense-in-depth**: positive case (例外があると削除されない) のみ assert する test は brittle。**negative counter-test** (例外を一時的に削除すると削除される) で「例外なしだと regression が起きる」ことを assert することで、将来 refactor で例外が落ちた場合に確実に検出できる
+
+詳細な find glob collision の root cause は [新規 file 命名と既存 find glob が collision して silent 削除を起こす](./find-glob-naming-collision-silent-removal.md) 参照。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
+- [新規 file 命名と既存 find glob が collision して silent 削除を起こす](./find-glob-naming-collision-silent-removal.md)
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](../patterns/drift-check-anchor-prose-code-sync.md)
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md)
@@ -411,3 +426,4 @@ PR #688 (累積 14 回目) の cycle 47+ レビューで、error-handling review
 - [PR #713 review (PR #708 cycle 4 follow-up cross-file 9 sites 同期、2 cycle 収束)](raw/reviews/20260429T041942Z-pr-713.md)
 - [PR #688 cycle 14 review (writer/reader doctrine 違反、work-memory-update.sh 数値検証 DRY 違反)](raw/reviews/20260429T073028Z-pr-688.md)
 - [PR #688 cycle 47+ review (writer 中核 trap 片肺残存 HIGH、code-quality 単独検出)](raw/reviews/20260429T160252Z-pr-688.md)
+- [PR #747 cycle 4 fix (session-start ↔ session-end find pattern 片肺更新 CRITICAL の解消)](raw/fixes/20260430T031734Z-pr-747.md)
