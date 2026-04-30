@@ -319,26 +319,51 @@ else
 fi
 _teardown
 
-# ---------- TC-18: backup file survives session-start.sh find cleanup (#747 cycle 3 CRITICAL) ----------
-# Regression guard: session-start.sh's stale tempfile cleanup uses the glob
-# `.rite-flow-state.??????*` which incidentally matches `.rite-flow-state.legacy.<timestamp>`
-# because `legacy` is exactly 6 chars and `.<timestamp>` is consumed by `*`.
-# Without the `-not -name '.rite-flow-state.legacy.*'` exception, the backup
-# disappears the next time session-start.sh runs after the file is older than
-# 1 minute. This TC simulates that condition by back-dating the backup file
-# and invoking the same find command session-start.sh uses.
-echo "TC-18: backup file survives session-start.sh stale-tempfile cleanup (#747 cycle 3 CRITICAL)"
+# ---------- TC-18: backup file survives session-start/session-end find cleanup (#747 cycle 3 CRITICAL) ----------
+# Regression guard: both session-start.sh and session-end.sh use the glob
+# `.rite-flow-state.??????*` which matches any suffix of 6+ chars — including
+# the migration backup name. Without `-not -name '.rite-flow-state.legacy.*'`,
+# the backup disappears the next time either hook runs after the file ages
+# past `-mmin +1`. This TC verifies (1) the spec backup name does follow the
+# `legacy.*` convention, (2) back-dated backups survive the protected find,
+# (3) the same find without the exception would have deleted the backup
+# (counter-test, defense-in-depth against the exception being removed in
+# future refactors).
+echo "TC-18: backup file survives session-start/end stale-tempfile cleanup (#747 cycle 3/4 CRITICAL)"
 _setup
 echo '{"active":true,"issue_number":2,"phase":"phaseV","session_id":"77889900-aabb-ccdd-eeff-112233445566"}' > "$TEST_ROOT/.rite-flow-state"
 STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1
 backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
 backup_file="${backup_glob[0]}"
 _assert "TC-18.backup-created" "$([ -f "$backup_file" ] && echo true || echo false)"
-# Back-date the backup file by 2 minutes so the `-mmin +1` predicate matches.
-touch -d "2 minutes ago" "$backup_file" 2>/dev/null || touch -t "$(date -d '2 minutes ago' +%Y%m%d%H%M.%S 2>/dev/null || date -v -2M +%Y%m%d%H%M.%S 2>/dev/null)" "$backup_file"
-# Run the same find command session-start.sh uses (with the legacy exception).
+
+# Naming convention guard: the spec assumes the backup contains the literal
+# `legacy.` token so the find exception can target it. If a future refactor
+# changes the naming, this assertion fails before the silent-deletion regression
+# can re-occur.
+_assert "TC-18.backup-name-contains-legacy" "$([[ "$backup_file" == *.rite-flow-state.legacy.* ]] && echo true || echo false)"
+
+# Back-date the backup file by 2 minutes so `-mmin +1` matches. Verify the
+# back-date actually took effect — otherwise the survives-cleanup assertion
+# would be a false positive (file looks fresh, find skips it for an unrelated
+# reason). 3-tier touch fallback: GNU `touch -d`, GNU `date -d`, BSD `date -v`.
+touch -d "2 minutes ago" "$backup_file" 2>/dev/null \
+  || touch -t "$(date -d '2 minutes ago' +%Y%m%d%H%M.%S 2>/dev/null || date -v -2M +%Y%m%d%H%M.%S 2>/dev/null)" "$backup_file" 2>/dev/null
+backup_mtime=$(stat -c '%Y' "$backup_file" 2>/dev/null || stat -f '%m' "$backup_file" 2>/dev/null || echo 0)
+now_epoch=$(date +%s)
+_assert "TC-18.back-date-applied" "$([ $((now_epoch - backup_mtime)) -gt 60 ] && echo true || echo false)"
+
+# (a) Protected find (matches session-start.sh / session-end.sh canonical form): backup MUST survive.
 find "$TEST_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
-_assert "TC-18.backup-survives-cleanup" "$([ -f "$backup_file" ] && echo true || echo false)"
+_assert "TC-18.backup-survives-protected-cleanup" "$([ -f "$backup_file" ] && echo true || echo false)"
+
+# (b) Counter-test: unprotected find (the exception removed) MUST delete the backup.
+# Defense-in-depth guard: if a future refactor accidentally removes the
+# `-not -name` exception, this counter-test still confirms the regression
+# would have triggered, helping a maintainer understand the protective
+# intent of (a).
+find "$TEST_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
+_assert "TC-18.backup-deleted-by-unprotected-cleanup" "$([ ! -f "$backup_file" ] && echo true || echo false)"
 _teardown
 
 # ---------- Summary ----------

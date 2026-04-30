@@ -167,8 +167,13 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 NEW_FILE="$SESSIONS_DIR/${SESSION_ID}.flow-state"
+# Append PID + RANDOM to the seconds-precision timestamp so two migrations
+# starting in the same second don't resolve to the same BACKUP_FILE path.
+# `mv` would otherwise silently overwrite the first backup. Multi-session
+# concurrency is the documented use case (Issue #672 multi-session-state.md
+# §Migration), so the race is plausible enough to defend against.
 TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-BACKUP_FILE="$STATE_ROOT/.rite-flow-state.legacy.${TIMESTAMP}"
+BACKUP_FILE="$STATE_ROOT/.rite-flow-state.legacy.${TIMESTAMP}.$$.${RANDOM}"
 
 # --- Dry-run early exit (before any filesystem mutation) ---
 if [ "$DRY_RUN" = "true" ]; then
