@@ -145,14 +145,20 @@ fi
 if [ -z "$SESSION_ID" ]; then
   # Generate fresh UUID. Try uuidgen first (POSIX-ish), fall back to
   # /proc/sys/kernel/random/uuid (Linux), then python3 (last resort).
+  # Use a 2-step capture pattern (raw → tr) so a uuidgen failure under
+  # `set -euo pipefail` does not propagate up the pipeline and abort the
+  # script before reaching the next fallback. Symmetric with how
+  # `_LEGACY_SID` is captured above.
   if command -v uuidgen >/dev/null 2>&1; then
-    SESSION_ID=$(uuidgen 2>/dev/null | tr 'A-F' 'a-f')
+    _raw=$(uuidgen 2>/dev/null) || _raw=""
+    [ -n "$_raw" ] && SESSION_ID=$(printf '%s' "$_raw" | tr 'A-F' 'a-f')
   fi
   if [ -z "$SESSION_ID" ] && [ -r /proc/sys/kernel/random/uuid ]; then
-    SESSION_ID=$(tr -d '\n' < /proc/sys/kernel/random/uuid | tr 'A-F' 'a-f')
+    _raw=$(tr -d '\n' < /proc/sys/kernel/random/uuid 2>/dev/null) || _raw=""
+    [ -n "$_raw" ] && SESSION_ID=$(printf '%s' "$_raw" | tr 'A-F' 'a-f')
   fi
   if [ -z "$SESSION_ID" ] && command -v python3 >/dev/null 2>&1; then
-    SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null)
+    SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null) || SESSION_ID=""
   fi
   if [ -z "$SESSION_ID" ]; then
     echo "[rite] ERROR: cannot generate UUID — uuidgen / /proc/sys/kernel/random/uuid / python3 all unavailable" >&2

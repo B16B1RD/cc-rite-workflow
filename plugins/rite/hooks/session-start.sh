@@ -329,8 +329,13 @@ if [ "$SOURCE" = "clear" ]; then
   _reset_active_state
 fi
 
-# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
-find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
+# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
+# `.rite-flow-state.??????*` is intended to match mktemp tempfiles
+# (`.rite-flow-state.<6-hex>`), but its trailing `*` also matches the migration
+# backup (`.rite-flow-state.legacy.<timestamp>`, e.g. `.rite-flow-state.legacy.20260430T120000Z`)
+# because `legacy` is 6 chars and `.<timestamp>` is consumed by `*`. Excluding
+# the legacy backup keeps it as the manual-recovery source of truth (#679).
+find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency
 # cycle 11 MEDIUM F-04: unit separator \x1f (\037) を使用する理由。tab は POSIX IFS whitespace

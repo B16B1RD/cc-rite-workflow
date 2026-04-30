@@ -319,6 +319,28 @@ else
 fi
 _teardown
 
+# ---------- TC-18: backup file survives session-start.sh find cleanup (#747 cycle 3 CRITICAL) ----------
+# Regression guard: session-start.sh's stale tempfile cleanup uses the glob
+# `.rite-flow-state.??????*` which incidentally matches `.rite-flow-state.legacy.<timestamp>`
+# because `legacy` is exactly 6 chars and `.<timestamp>` is consumed by `*`.
+# Without the `-not -name '.rite-flow-state.legacy.*'` exception, the backup
+# disappears the next time session-start.sh runs after the file is older than
+# 1 minute. This TC simulates that condition by back-dating the backup file
+# and invoking the same find command session-start.sh uses.
+echo "TC-18: backup file survives session-start.sh stale-tempfile cleanup (#747 cycle 3 CRITICAL)"
+_setup
+echo '{"active":true,"issue_number":2,"phase":"phaseV","session_id":"77889900-aabb-ccdd-eeff-112233445566"}' > "$TEST_ROOT/.rite-flow-state"
+STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1
+backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
+backup_file="${backup_glob[0]}"
+_assert "TC-18.backup-created" "$([ -f "$backup_file" ] && echo true || echo false)"
+# Back-date the backup file by 2 minutes so the `-mmin +1` predicate matches.
+touch -d "2 minutes ago" "$backup_file" 2>/dev/null || touch -t "$(date -d '2 minutes ago' +%Y%m%d%H%M.%S 2>/dev/null || date -v -2M +%Y%m%d%H%M.%S 2>/dev/null)" "$backup_file"
+# Run the same find command session-start.sh uses (with the legacy exception).
+find "$TEST_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
+_assert "TC-18.backup-survives-cleanup" "$([ -f "$backup_file" ] && echo true || echo false)"
+_teardown
+
 # ---------- Summary ----------
 echo ""
 echo "==============================="
