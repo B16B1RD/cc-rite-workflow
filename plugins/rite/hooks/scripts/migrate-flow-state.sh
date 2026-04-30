@@ -9,7 +9,9 @@
 #   1. Detect legacy file
 #   2. Resolve session_id (read from legacy state, or generate fresh UUID)
 #   3. Atomic write new format file (mktemp + mv)
-#   4. Rename legacy source to `.rite-flow-state.legacy.{timestamp}`
+#   4. Rename legacy source to `.rite-flow-state.legacy.{timestamp}.{pid}.{random}`
+#      (suffix unique-ifies the path so concurrent migrations within the same
+#      second don't silently overwrite each other's backup — #747 cycle 4 HIGH)
 #   5. Emit explicit migration message on stderr (silent skip is forbidden — AC-8)
 #
 # Failure handling preserves legacy state untouched:
@@ -173,7 +175,11 @@ NEW_FILE="$SESSIONS_DIR/${SESSION_ID}.flow-state"
 # concurrency is the documented use case (Issue #672 multi-session-state.md
 # §Migration), so the race is plausible enough to defend against.
 TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-BACKUP_FILE="$STATE_ROOT/.rite-flow-state.legacy.${TIMESTAMP}.$$.${RANDOM}"
+# `${RANDOM:-0}` defends against the rare case where the parent shell
+# unset `$RANDOM` before sourcing this script. In a freshly forked bash
+# subprocess (the standard invocation path) `$RANDOM` is always defined,
+# but the fallback keeps the suffix non-empty under any caller.
+BACKUP_FILE="$STATE_ROOT/.rite-flow-state.legacy.${TIMESTAMP}.$$.${RANDOM:-0}"
 
 # --- Dry-run early exit (before any filesystem mutation) ---
 if [ "$DRY_RUN" = "true" ]; then
@@ -225,9 +231,12 @@ chmod 600 "$TMP_NEW" 2>/dev/null || true
 # "jq build new-format object failed" message. Use the canonical helper to stay
 # symmetric with state-read.sh / flow-state-update.sh / _resolve-cross-session-guard.sh
 # (the helper applies chmod 600 and emits a 3-line WARNING block on mktemp failure).
+# `|| jq_err=""` keeps migration running when the helper itself fails: the helper
+# already prints its own WARNING to stderr, so falling back to "no stderr capture"
+# loses diagnostic depth but does not silently skip the migration.
 jq_err=$(bash "$SCRIPT_DIR/../_mktemp-stderr-guard.sh" \
   "migrate-flow-state" "migrate-jq-err" \
-  "jq build new-format object 失敗時の root cause が表示されません")
+  "jq build new-format object 失敗時の root cause が表示されません") || jq_err=""
 
 # Build the new-format object by merging schema_version: 2 with the legacy
 # fields. Missing fields fall back to defaults compatible with the
