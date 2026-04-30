@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-05-01T05:15:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=0 |
 | 2026-05-01T05:10:00+00:00 | ingest:skip | raw/reviews/20260430T195602Z-pr-755.md | PR #755 cycle 1 review (1 MEDIUM + 1 LOW): retrofit PR でのコメント密度過剰 (48% > Density Guideline) + case arm 内表示用変数の派生可能性。単発検出かつ既存 `fix-comment-self-drift.md` / `comment-best-practices.md` Density Guideline と部分重複、cross-validation 不在 (Observed Likelihood Gate により降格) で経験則化価値が薄いため skip |
 | 2026-05-01T05:10:00+00:00 | ingest:skip | raw/reviews/20260430T200420Z-pr-755.md | PR #755 cycle 2 review (0 findings, mergeable): 1 cycle で 2→0 収束。極小単一ファイル refactor の short-circuit pattern は既存 `small-symmetric-pr-sibling-site-grep-review.md` で記載済み、新規経験則なし |
 | 2026-05-01T05:10:00+00:00 | ingest:skip | raw/fixes/20260430T195902Z-pr-755.md | PR #755 cycle 1 fix (2 findings 全解消): comment density 改善 (48%→24%) + 表示用変数の echo 行派生化。具体的 fix 記録のみで一般化価値なし、defensive over-explanation は既存ページで記載済み |
