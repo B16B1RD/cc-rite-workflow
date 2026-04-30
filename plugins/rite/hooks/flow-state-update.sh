@@ -75,7 +75,7 @@ if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   exit 1
 fi
 # DEFAULT_HELPERS を使用 (引数 0 個 = script_dir のみ)
-bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR"
+bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" || exit $?
 
 # Resolve repository root
 # verified-review cycle 34 fix (F-07 MEDIUM): `2>/dev/null` を削除して stderr を pass-through し、

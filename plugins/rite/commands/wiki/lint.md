@@ -1291,7 +1291,7 @@ step 3 の 3 分岐は LLM が stdout の marker block (`---skipped_refs_begin/e
 
 ### 7.1 ページ本文の Markdown リンク抽出
 
-各 Wiki ページの本文から Markdown リンク `[text](path)` を抽出します。画像リンク（`![alt](path)` の 「!」 prefix）は対象外とし、pipefail を有効化して grep no-match を明示処理します:
+各 Wiki ページの本文から Markdown リンク `[text](path)` を抽出します。画像リンク（`![alt](path)` の `!` prefix）は対象外とし、pipefail を有効化して grep no-match を明示処理します:
 
 ```bash
 set -o pipefail

@@ -24,13 +24,13 @@
 #      passing --session if .rite-session-id is present, omitting if not
 #
 # The seven no-state paths (canonical enumeration in resume.md — verified-review cycle 36 F-07 fix):
-#   (a) per-session AND legacy files both absent (conjunctive)
-#   (b) file present but phase is null/missing/false (jq // operator)
-#   (c) phase is an empty string
-#   (d) file is empty (size 0) or corrupt JSON
-#   (e) foreign:* — schema_v=2 + per-session absent + legacy.session_id is foreign session
-#   (f) corrupt:* — schema_v=2 + per-session absent + legacy jq parse fails
-#   (g) invalid_uuid:* — schema_v=2 + per-session absent + legacy.session_id JSON-parseable but UUID-invalid
+#   1. per-session AND legacy files both absent (conjunctive)
+#   2. file present but phase is null/missing/false (jq // operator)
+#   3. phase is an empty string
+#   4. file is empty (size 0) or corrupt JSON
+#   5. foreign:* — schema_v=2 + per-session absent + legacy.session_id is foreign session
+#   6. corrupt:* — schema_v=2 + per-session absent + legacy jq parse fails
+#   7. invalid_uuid:* — schema_v=2 + per-session absent + legacy.session_id JSON-parseable but UUID-invalid
 #
 # Exit codes:
 #   0: success (patch executed) or legitimate skip (curr_phase empty)
@@ -106,7 +106,7 @@ _sid=$(bash "$PLUGIN_ROOT/hooks/_resolve-session-id-from-file.sh" "$STATE_ROOT")
 
 # PR #688 cycle 10 fix (F-01 CRITICAL): curr_phase 空文字ガード。
 # state-read.sh が空文字を返す経路 (resume.md Phase 3.0.1 trailing prose の canonical enumeration
-# of the seven no-state paths (a)〜(g) のいずれか) で `flow-state-update.sh patch --phase ""` を呼ぶと、
+# of the seven no-state paths 1〜7 のいずれか) で `flow-state-update.sh patch --phase ""` を呼ぶと、
 # flow-state-update.sh patch mode の `[[ -z "$PHASE" || -z "$NEXT" ]]` validation が `--if-exists`
 # check より先に評価されて exit 1 し、resume が hard abort する (cycle 9 で実際に発生した
 # CRITICAL 経路)。空文字時はそもそも patch を呼ばずに skip し、invoked command

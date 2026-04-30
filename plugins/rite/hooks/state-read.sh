@@ -49,7 +49,7 @@ if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
   echo "  対処: rite plugin が正しくセットアップされているか確認してください" >&2
   exit 1
 fi
-bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR"
+bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" || exit $?
 
 # Resolve repository root via the existing helper (single SoT).
 # `||` fallback is a defensive guard for future non-zero return; stderr is
