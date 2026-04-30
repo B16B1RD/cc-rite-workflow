@@ -178,21 +178,23 @@ _resolve_session_state_path() {
     # verified-review F-03 MEDIUM: _classify_err に signal-specific trap を追加 (state-read.sh と
     # writer/reader 対称化)。`_resolve_session_state_path` 関数内に閉じた scope で trap を install し、
     # mktemp 成功 〜 rm 完了の race window で SIGINT/SIGTERM/SIGHUP 中断時の orphan を防ぐ。
-    # 関数 return 時に `trap - EXIT INT TERM HUP` で default に restore し、`_rite_flow_state_atomic_cleanup`
-    # 関数定義の trap install ブロックと衝突しないようにする (canonical pattern)。
-    # 注: 本関数は command substitution (`FLOW_STATE=$(_resolve_session_state_path ...)`) で呼ばれるため、
-    # bash の subshell isolation により leak は発生しない (関数内の trap 変更は subshell 内に閉じ、
-    # parent shell の `_rite_flow_state_atomic_cleanup` trap には影響しない)。
-    # 不変条件は `tests/flow-state-update-trap-isolation.test.sh` (Issue #698 F-09) で経験的に固定されており、
-    # 将来 caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`) に変更された場合は
-    # TC-3 が回帰として検出する。
-    # 本 trap reset は subshell isolation 前提下で「再 install 時に古い trap が残らない」future-proof な
-    # canonical pattern (state-read.sh 側と writer/reader 対称) を維持するために残している。
-    # ただし subshell isolation が破られて direct call 化された場合、本 reset はむしろ parent shell の
-    # `_rite_flow_state_atomic_cleanup` trap を silent に消去する bug の主因となる経路に変質する。
-    # その経路の唯一の正解は TC-3 で検出 → caller を `$()` 形に戻すことであり、本 reset を「direct call 化時の
-    # defense-in-depth」と誤解してはならない (経験的に検証済み: direct call では本 reset 有り版が parent + inner
-    # cleanup 双方を消去するため、reset 削除版より悪い結果になる)。
+    #
+    # ── trap reset の正当性 (Issue #698 F-09 / cycle 2 F-05 統一見解) ──
+    # 本関数は command substitution (`FLOW_STATE=$(_resolve_session_state_path ...)`) で呼ばれる。
+    # bash の subshell isolation により、関数内の trap 変更 (install と reset の両方) は subshell 内に
+    # 閉じ、parent shell の `_rite_flow_state_atomic_cleanup` trap には一切影響しない。よって関数末尾の
+    # `trap - EXIT INT TERM HUP` は parent との衝突回避のためでは**なく**、subshell exit 前に signal-specific
+    # trap を default に戻して再 install 時の古い trap 残存を防ぐ canonical pattern として残している
+    # (state-read.sh 側と writer/reader 対称)。
+    #
+    # ── caller 直接呼び出し化 (subshell isolation 破れ) への姿勢 ──
+    # subshell isolation 不変条件は `tests/flow-state-update-trap-isolation.test.sh` (Issue #698 F-09) で
+    # 経験的に固定されている。caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`)
+    # に変更されると、本関数の trap reset は parent shell の cleanup trap を silent 消去する bug 経路に変質する。
+    # ただし TC-3 は静的 grep による semantic check であり「`$()` 等の subshell 形式が使われていること」を
+    # 確認するに留まる (回帰検出時の修正方向は実装者判断)。本 reset を「direct call 化時の defense-in-depth」
+    # と誤解してはならない — direct call では reset 有り版が reset なし版より悪い結果になる (parent + inner
+    # cleanup 双方を消去) ことを経験的に確認済み。
     local _classify_err=""
     # verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
     # bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
