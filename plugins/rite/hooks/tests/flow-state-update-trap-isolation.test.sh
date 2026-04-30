@@ -1,23 +1,19 @@
 #!/bin/bash
 # Tests for flow-state-update.sh _resolve_session_state_path subshell isolation
-# property (Issue #698 F-09).
+# property.
 #
-# # Why this exists (Issue #698 F-09):
-#   PR #688 verified-review cycle 10 で「`_resolve_session_state_path` 関数内で
-#   `trap - EXIT INT TERM HUP` を実行しているため、line 220 から script-level の
-#   atomic-cleanup trap install までの間 SIGINT/SIGTERM/SIGHUP/EXIT 用 trap が一切ない
-#   race window が発生する」という MEDIUM 指摘 (F-09) が出された。
-#
-#   実際にはこの関数は `FLOW_STATE=$(_resolve_session_state_path ...)` という
-#   command substitution で呼び出されており、bash の subshell isolation により関数内の
-#   trap 変更は parent shell に leak しない。本テストはその不変条件を経験的に固定し、
-#   将来 caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`)
-#   に refactor された場合に回帰として検出できるようにする。
+# Invariant under test:
+#   `_resolve_session_state_path` は `FLOW_STATE=$(_resolve_session_state_path ...)`
+#   の command substitution で呼ばれることを前提に設計されている。bash の subshell
+#   isolation により関数内の `trap` 変更は parent shell に leak しないため、関数末尾の
+#   `trap - EXIT INT TERM HUP` reset は安全である。本テストはこの不変条件を経験的に
+#   固定し、将来 caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`)
+#   に refactor された場合に回帰として検出する。
 #
 # Coverage:
-#   TC-1 — Direct call leaks parent shell trap (issue F-09 reproducer の確認)
-#   TC-2 — Command substitution `$()` preserves parent shell trap (current code path)
-#   TC-3 — flow-state-update.sh actually calls _resolve_session_state_path via $()
+#   TC-1 — Direct call (subshell wrapping なし) で trap leak が発生する (negative control)
+#   TC-2 — Command substitution `$()` で parent trap が保持される (positive control)
+#   TC-3 — flow-state-update.sh が実際に `$(_resolve_session_state_path ...)` で呼ぶ
 #
 # Usage: bash plugins/rite/hooks/tests/flow-state-update-trap-isolation.test.sh
 set -euo pipefail
