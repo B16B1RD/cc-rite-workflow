@@ -33,7 +33,7 @@ FAILED_NAMES=()
 
 # Signal trap (EXIT/INT/TERM/HUP) で sandbox / 個別 file の leak を防ぐ。
 # 実装は Form B (portability variant、return 0 必須) — 詳細は bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照
-# History: state-read-evolution.md (Doctrines / Principles — Form A cleanup minimal contract / cleanup helper 集約)
+# History: state-read-evolution.md (Doctrines / Principles)
 cleanup_dirs=()
 cleanup_files=()
 _state_read_test_cleanup() {
@@ -287,7 +287,8 @@ for vector_entry in "${inject_vectors[@]}"; do
   # 読込 → BAD_* 返却 → assert 失敗で kill。post-fix (strict regex) は reject → legacy fallback。
   # per-session 不在経路では regex を `.*` に mutate しても全 vector pass する false-positive
   # (kill power 0) になるため bad SID 名 per-session 作成は必須。FS 制約で作成失敗する vector
-  # は元実装と等価な経路に流れて kill power 失うが、coverage 0/7 → 4/7 に向上。
+  # は元実装と等価な経路に流れて kill power 失うが、coverage 0/7 → 5/7 に向上 (Linux CI で uppercase /
+  # mixed_case も kill されるなら 7/7、case-insensitive FS では 5/7 が design intent baseline)。
   bad_phase="BAD_INJECTION_${vector_name}"
   expanded_sid=$(printf '%b' "$sid_value")
   mkdir -p "$SBX/.rite/sessions"
