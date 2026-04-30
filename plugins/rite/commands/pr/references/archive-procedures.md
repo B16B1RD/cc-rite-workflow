@@ -576,7 +576,7 @@ if ls .rite-work-memory/issue-*.md 1>/dev/null 2>&1; then
 fi
 ```
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) if not already resolved.
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
 
 **Note**: This is a defense-in-depth mechanism. If Phase 4 executes correctly, this check is a no-op.
 
@@ -587,7 +587,7 @@ After the Fail-Closed Gate, run the cleanup-work-memory script. This script perf
 3. Deletes ALL `.rite-work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) if not already resolved.
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
 
 ```bash
 bash {plugin_root}/hooks/cleanup-work-memory.sh

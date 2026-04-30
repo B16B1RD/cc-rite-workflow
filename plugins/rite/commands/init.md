@@ -258,7 +258,7 @@ If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: 
 
 ### 4.1 Generate rite-config.yml
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing any steps in Phase 4.1. This resolved path is used by 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing any steps in Phase 4.1. This resolved path is used by 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
 
 #### 4.1.1 Check for Existing Configuration
 
@@ -332,7 +332,7 @@ Generate `rite-config.yml` from the template config file.
 
 Display "{i18n:init_upgrade_start}" and "{i18n:init_upgrade_checking}".
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
 
 Read both files with the Read tool:
 - `rite-config.yml` (project root)

@@ -315,7 +315,7 @@ Issue #355 で特定された、baseline_A (rite) が見落とし baseline_V (ve
 - 5 パターンの分散修正 drift 検出 lint を新規実装 (設計書 `review-quality-gap-closure.md` + `distributed-fix-drift-check.sh` 準拠)
 - Pattern-1: retained flag coverage — `exit 1` 直前の `[CONTEXT] *_FAILED=1` emit 欠落検出
 - Pattern-2: reason table drift — reason テーブル列挙と実 emit 箇所の突き合わせ
-- Pattern-3: if-wrap drift — `cat <<'EOF' > "$tmpfile"` が `if !` で wrap されていない箇所の検出
+- Pattern-3: if-wrap drift — `cat <<'EOF' > "$tmpfile"` が `if ! cmd; then` で wrap されていない箇所の検出
 - Pattern-4: anchor drift — Markdown `#anchor` 参照が見出しに解決できるかの内部リンクチェック
 - Pattern-5: evaluation-order table 列挙 drift — 評価順テーブルの括弧内列挙と実 emit の突き合わせ
 

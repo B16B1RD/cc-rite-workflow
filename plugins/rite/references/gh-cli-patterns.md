@@ -21,7 +21,7 @@ A collection of frequently used GitHub CLI (gh) command patterns in rite workflo
 | 3 | Word splitting on unquoted variables | `jq -n --rawfile` (no shell variables in JSON) |
 | 4 | Empty variable expansion | `[ ! -s file ]` validation + `--body-file` |
 | 5 | Missing commits / unpushed branch | Pre-creation guard checks |
-| 6 | `!` history expansion / special chars in GraphQL variables | `jq -n --rawfile` for string variables; heredoc for queries with `!` |
+| 6 | 「!」 history expansion / special chars in GraphQL variables | `jq -n --rawfile` for string variables; heredoc for queries with 「!」 |
 | 7 | Shell-constructed malformed JSON | `jq` for all JSON construction |
 
 **The universal safe pattern**: Always construct JSON payloads with `jq`, never with shell string operations.
@@ -381,7 +381,7 @@ rm -f "$tmpfile_read" "$tmpfile_write"
 
 ## Shell Escaping Notes
 
-When executing jq or awk commands in a shell, bash's history expansion feature may interpret `!` specially, causing unexpected errors. This section covers both jq and awk patterns.
+When executing jq or awk commands in a shell, bash's history expansion feature may interpret 「!」 specially, causing unexpected errors. This section covers both jq and awk patterns.
 
 ### Problematic Patterns
 
@@ -413,19 +413,19 @@ gh api ... --jq '.[] | select(.field == null | not)'
 | Pattern | Alternative | Notes |
 |---------|-------------|-------|
 | `select(.field != null)` | `select(.field)` | Null check can be replaced with truthiness (note: `false` values are also excluded) |
-| `select(.field != "value")` | `select(.field \| . != "value")` | Via pipe, `!` doesn't appear at expression start, making it safe |
+| `select(.field != "value")` | `select(.field \| . != "value")` | Via pipe, 「!」 doesn't appear at expression start, making it safe |
 | `!= null` in general | Truthiness check | In jq, `null` and `false` are falsy |
 
 ### Background
 
-- Bash's history expansion (`!` special interpretation) can be disabled with `set +H`, but since it depends on the environment when AI executes commands, eliminating jq patterns containing `!` from command definitions is more reliable
-- Claude Code's internal quoting processing may interpret `!` specially even within single quotes
+- Bash's history expansion (「!」 special interpretation) can be disabled with `set +H`, but since it depends on the environment when AI executes commands, eliminating jq patterns containing 「!」 from command definitions is more reliable
+- Claude Code's internal quoting processing may interpret 「!」 specially even within single quotes
 
 ### awk Negation Patterns
 
-> **🚫 MANDATORY RULE**: awk スクリプト内で `!` による否定を一切使用してはならない。`!found`, `!in_section`, `!/pattern/` のいずれも禁止。必ず `== 0` 形式または正論理への書き換えで代替すること。
+> **🚫 MANDATORY RULE**: awk スクリプト内で 「!」 による否定を一切使用してはならない。「!found」, 「!in_section」, 「!/pattern/」 のいずれも禁止。必ず 「== 0」 形式または正論理への書き換えで代替すること。
 
-The same `!` issue applies to awk commands. Additionally, `\!` is not valid awk syntax. Even bare `!` inside single-quoted awk scripts can be misinterpreted by bash or Claude Code's shell processing.
+The same 「!」 issue applies to awk commands. Additionally, 「\!」 is not valid awk syntax. Even bare 「!」 inside single-quoted awk scripts can be misinterpreted by bash or Claude Code's shell processing.
 
 ```bash
 # 🚫 PROHIBITED: \! is not valid awk syntax; causes "backslash not last character on line"
@@ -451,10 +451,10 @@ gh pr diff {pr_number} | awk '
 
 | Pattern | Problem | Safe Alternative |
 |---------|---------|-----------------|
-| `awk '!found'` | Bash may interpret `!` | `awk 'found == 0'` |
-| `awk '!in_section'` | Bash may interpret `!` | `awk 'in_section == 0'` |
-| `awk '!/pattern/'` | Bash may interpret `!` before awk | Restructure to positive matching |
-| `awk '/pat/ && \!/other/'` | `\!` is invalid awk syntax | Use positive matching with reset logic |
+| `awk '!found'` | Bash may interpret 「!」 | `awk 'found == 0'` |
+| `awk '!in_section'` | Bash may interpret 「!」 | `awk 'in_section == 0'` |
+| `awk '!/pattern/'` | Bash may interpret 「!」 before awk | Restructure to positive matching |
+| `awk '/pat/ && \!/other/'` | 「\!」 is invalid awk syntax | Use positive matching with reset logic |
 
 ---
 

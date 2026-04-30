@@ -68,8 +68,8 @@ Stop here.
 **Placeholder legend:**
 - `{issue_number}`: Issue number (from argument or branch name extraction in Phase 1.1)
 - `{owner}`, `{repo}`: Repository information (obtain via `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`)
-- `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script))
-- `{parent_issue_display}`: Read from `.rite-flow-state` via `jq -r '.parent_issue_number // 0'`. Display `#{N}` if non-zero, `なし` if zero or absent
+- `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version))
+- `{parent_issue_display}`: `state-read.sh --field parent_issue_number` 経由で取得。**capture form は Phase 2.1 Display Interrupted State の Step 1 (Display 直前の独立 bash code block) を参照** (verified-review F-02 で placeholder 表 cell には bash literal を埋め込まず、actual capture site を semantic anchor で示す方針に統一。F11-07 で「直前」→「Step 1」へ用語を厳密化、Step 1 末尾の `[CONTEXT] PARENT_ISSUE_DISPLAY=...` echo を Step 2 で literal substitute する cross-boundary state transfer pattern を採用)。Display `#{N}` if non-zero, `なし` if zero or absent。Issue #687 AC-4 — per-session state, not legacy `.rite-flow-state` snapshot
 
 #### 1.2.1 Local Work Memory Check
 
@@ -252,7 +252,53 @@ Confirm with `AskUserQuestion`:
 
 ### 2.1 Display Interrupted State
 
-Display the detected information:
+**Step 1: Capture `{parent_issue_display}` from per-session state** (verified-review F-02):
+
+```bash
+# state-read.sh API: --field parent_issue_number --default 0 (Issue #687 AC-4 — per-session state)
+# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
+# 両方取る場合は必ず else 節形式を使う。
+if parent_issue_number_raw=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+  :
+else
+  rc=$?
+  echo "ERROR: state-read.sh failed (rc=$rc) reading parent_issue_number" >&2
+  echo "  対処: helper の存在 (ls -l {plugin_root}/hooks/state-read.sh) と executable bit (chmod +x) を確認" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=resume_phase_2_1_parent_issue_display; rc=$rc" >&2
+  exit 1
+fi
+
+# 数値 fail-fast gate (writer/reader/resume 3 layer 対称化 doctrine): state file 改竄 / silent regression
+# 経路で non-numeric が混入した場合に WARNING を emit してから 0 に降格する。silent default 0 にすると
+# 他 caller (start.md Phase 5.7 / implement.md Phase 5.1.2 / pr/review.md Phase 5.3.8) と observability
+# が非対称になり、3 layer 対称化が破れる。
+case "$parent_issue_number_raw" in
+  ''|*[!0-9]*)
+    echo "WARNING: parent_issue_number_raw is not numeric ('$parent_issue_number_raw'), defaulting to 0 (display なし)" >&2
+    parent_issue_number_raw=0
+    ;;
+esac
+
+# Display 整形: 0 / 不在 → `なし`、それ以外 → `#{N}`
+if [ "$parent_issue_number_raw" -eq 0 ] 2>/dev/null; then
+  parent_issue_display="なし"
+else
+  parent_issue_display="#${parent_issue_number_raw}"
+fi
+
+# verified-review F11-01 (CRITICAL): Bash tool 境界を越えた cross-boundary state transfer
+# (start.md Phase 5.7 / implement.md Phase 5.1.2 で確立された canonical pattern と統一)。
+# シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、Step 2 の
+# display block で {parent_issue_display} placeholder を Claude が literal substitute するための
+# observable signal として stdout に echo する (start.md の Phase 5.7 (Parent Issue Completion)
+# / Workflow Termination "Why this routing relies on Phase 5.7 emit, not state re-read"
+# blockquote で確立された SoT 原則と整合)。
+echo "[CONTEXT] PARENT_ISSUE_DISPLAY=$parent_issue_display"
+```
+
+**Step 2 注記**: Claude は本 bash block の stdout から `[CONTEXT] PARENT_ISSUE_DISPLAY=...` 行を読み取り、Step 2 の display block で `{parent_issue_display}` placeholder を当該値に literal substitute する。
+
+**Step 2: Display the detected information**:
 
 ```
 {i18n:resume_interrupted_work_found}
@@ -319,20 +365,49 @@ fi
 
 ### 3.0.1 Restore Flow State Active Flag
 
-Ensure `.rite-flow-state` has `active: true` so that the stop-guard hook blocks premature stops during the resumed workflow. Without this, the stop-guard sees `active: false` (or missing state) and allows Claude to stop mid-flow (root cause of Issue #79's resume-session variant).
+Ensure flow-state has `active: true` so the prompt-side `Sub-skill Return Protocol` (in invoked commands like `rite:issue:start` / `rite:issue:implement`) can detect "in-flight" workflows and resume Pre-write/Mandatory After scaffolding. Without this, the resumed sub-skill sees `active: false` (or missing state) and treats the run as a fresh start, skipping recovery scaffolding (root cause of Issue #79's resume-session variant).
+
+**Note (PR #675 で stop-guard.sh は撤去済み)**: 本 phase の以前の実装は撤去済みの `stop-guard.sh` hook が `Stop` イベントで `active: true` を見て premature stop を block する前提で書かれていたが、現在の defense は **prompt-side のみ** に集約されている。撤去後の defense 体系の整理は Decision Log D-03 で別 Issue 化されている (PR #688)。
 
 ```bash
-STATE_FILE=".rite-flow-state"
-if [ -f "$STATE_FILE" ]; then
-  TMP_STATE="${STATE_FILE}.tmp.$$"
-  _sid=$(cat .rite-session-id 2>/dev/null | tr -d '[:space:]') || _sid=""
-  jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" --arg sid "$_sid" \
-    '.active = true | .updated_at = $ts | .error_count = 0 | .session_id = $sid' \
-    "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE" || rm -f "$TMP_STATE"
+# PR #688 cycle 5 review (prompt-engineer 調査推奨): legacy `.rite-flow-state` への直接 jq write を
+# `flow-state-update.sh patch` 経由に変更。schema_version=2 環境 (multi-state) でも per-session file
+# が正しく更新され、AC-4 の write 側 path も統一される。
+#
+# PR #688 cycle 6 fix (F-01 CRITICAL + F-02 HIGH): patch mode は `--phase` / `--next` が必須引数のため、
+# self-patch 形式に変更する。state-read.sh で **現在の** phase/next_action を読み取り、それを
+# patch filter に渡すことで「他フィールドは保持しつつ active のみ true に戻す」semantics を維持する。
+# 旧 cycle 5 実装は --phase/--next 不在で flow-state-update.sh が exit 1 silent regression し、
+# `--if-exists` が file 不在 path しかカバーしないため Issue #79 の resume-session variant を再導入していた。
+# `--if-exists` で flow-state file (legacy or per-session) が存在する場合のみ patch する
+# (不在時は invoked command が create mode で初期化するため no-op)。
+# Note: flow-state-update.sh patch mode は --active 以外に --session を取り、updated_at を自動 set
+# する。`error_count = 0` のリセットは patch mode の default 挙動 (preserve-error-count 未指定時) で
+# 旧実装と同等にカバーされる。
+# PR #688 cycle 18 fix (F-03 MEDIUM): bash block を helper script に抽出。
+# resume-active-flag-restore.test.sh の TC-1.2 / TC-3.2 が tautology (test 自身が `[ -z ]` を計算し
+# その結果を assert) になっていた問題を解消するため、Phase 3.0.1 のロジック全体を helper に
+# 移し、test が helper の exit code と side effect を直接検証できるようにする。
+# 詳細は plugins/rite/hooks/resume-active-flag-restore.sh の冒頭コメントを参照。
+if ! bash {plugin_root}/hooks/resume-active-flag-restore.sh "{plugin_root}"; then
+  echo "ERROR: failed to restore active flag, abort resume" >&2
+  exit 1
 fi
 ```
 
-**If `.rite-flow-state` does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here.
+**If flow-state does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here. The actual no-state handling lives in `hooks/resume-active-flag-restore.sh` — it reads `curr_phase` via `state-read.sh --field phase --default ""` and skips the `flow-state-update.sh patch` invocation entirely when `state-read.sh` returns an empty string, deferring to the invoked command's create-mode initialization.
+
+**Canonical enumeration of paths where `state-read.sh` returns the DEFAULT (empty string)** (verified-review cycle 35 F-08 → cycle 36 F-02/F-08 fix — extended from 4 to 7 paths to match implementation reality in `hooks/state-read.sh`. cycle 36 F-02/F-08 fix: line-number citations replaced with semantic anchor references per Wiki 経験則 "DRIFT-CHECK ANCHOR は semantic name 参照で記述する — line 番号禁止" — line numbers drift on minor insertion, semantic case label names do not):
+
+1. per-session **and** legacy files **both** absent (conjunctive — under schema_version=2, single-file absence alone does not trigger an empty result because state-read.sh falls back to legacy when per-session is absent)
+2. file is present but `phase` is null / missing (jq's `// $default` operator returns DEFAULT for null AND missing keys; `phase` is a string field so `false` does not occur in practice — see the boolean field caveat comment block in `state-read.sh` adjacent to its `// $default` operator usage)
+3. `phase` is an empty string
+4. file is empty (size 0) or corrupt JSON
+5. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is a *foreign* session** (`foreign:*` classification) — reader's `foreign:*` case branch in `state-read.sh` emits `cross_session_takeover_refused` sentinel and returns DEFAULT
+6. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id jq parse fails** (`corrupt:*` classification) — reader's `corrupt:*` case branch in `state-read.sh` emits `legacy_state_corrupt` sentinel and returns DEFAULT
+7. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is JSON-parseable but fails UUID validation** (`invalid_uuid:*` classification, cycle 36 F-16 added) — reader's `invalid_uuid:*` case branch in `state-read.sh` emits `legacy_state_corrupt` sentinel with `root_cause_hint=legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema` and returns DEFAULT
+
+The `--if-exists` flag passed to `flow-state-update.sh patch` inside the helper provides a defense-in-depth no-op safety net for the case where both per-session and legacy are absent at write time. Note that PR #688 cycle 30 F-01 fix added reader-symmetric legacy fallback to `_resolve_session_state_path` (in `flow-state-update.sh`), and PR #688 cycle 32 added a cross-session guard to that fallback. Under schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id matches current sid (or is empty/null), the writer routes to legacy and restores active=true. When legacy.session_id belongs to another session, the writer refuses takeover and emits `[CONTEXT] WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused`, routing the helper to per-session path (which silent-skips with `--if-exists`, deferring to create-mode init). This eliminates both the cycle 22-29 AC-4 silent skip regression and the cycle 30 cross-session metadata corruption regression.
 
 ### 3.1 Switch Branch
 

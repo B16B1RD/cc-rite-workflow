@@ -1020,7 +1020,7 @@ The Status update delegates to `plugins/rite/scripts/projects-status-update.sh` 
 - **5-class → 4-class consolidation**: Inline-only failure modes `field_lookup_failed` (option-ID resolution failed mid-pipeline) and `update_failed` (item-edit call failed) merge into the script's single `.result == "failed"` (with the specific cause in `.warnings[]`). The user-visible "two entities, one inconsistent" guarantee is unchanged.
 - **`set -uo pipefail`** enables strict mode against undefined variables and pipeline failure propagation. `-e` is omitted so explicit `|| fallback` handling remains intentional.
 - **`mktemp` respects `$TMPDIR`** (no `/tmp` hardcode).
-- **Placeholder source assumption**: `{projects_enabled}`, `{project_number}`, `{owner}`, `{repo}` are substituted by the LLM from `rite-config.yml` before executing this block. `{parent_number}` and `{issue_number}` are substituted from Phase 4.5.1 and Phase 0 respectively. `{plugin_root}` is substituted per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script). If any placeholder is missing, the LLM must read `rite-config.yml` before substituting.
+- **Placeholder source assumption**: `{projects_enabled}`, `{project_number}`, `{owner}`, `{repo}` are substituted by the LLM from `rite-config.yml` before executing this block. `{parent_number}` and `{issue_number}` are substituted from Phase 4.5.1 and Phase 0 respectively. `{plugin_root}` is substituted per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version). If any placeholder is missing, the LLM must read `rite-config.yml` before substituting.
 
 ```bash
 # ============================================================================
@@ -1215,7 +1215,7 @@ Proceed to Phase 5 regardless of the outcome (non-blocking — the Step 3 incons
 
 Delete the local work memory file and its lock directory for the specified Issue using the cleanup-work-memory script with `--issue` flag (close mode: deletes only the specified Issue's files, does NOT reset `.rite-flow-state` or sweep stale files).
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) if not already resolved.
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
 
 ```bash
 bash {plugin_root}/hooks/cleanup-work-memory.sh --issue {issue_number}

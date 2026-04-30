@@ -9,7 +9,7 @@ This module handles the initialization of work memory — both local file (SoT) 
 **Placeholder legend:**
 - `{issue_number}`: Issue number (from caller argument)
 - `{owner}`, `{repo}`: Repository information (from caller context or `gh repo view --json owner,name`)
-- `{plugin_root}`: Plugin root directory. Resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing any bash code blocks in this module.
+- `{plugin_root}`: Plugin root directory. Resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing any bash code blocks in this module.
 
 ## Phase 2.6: Work Memory Initialization
 

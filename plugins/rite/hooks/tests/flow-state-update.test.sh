@@ -60,6 +60,7 @@ cleanup() {
   for d in "${cleanup_dirs[@]:-}"; do
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
+  return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
 # Signal-specific traps mirror flow-state-update.sh (review #686 F-09): EXIT
 # alone leaks /tmp/tmp.XXXX TEST_DIRs when the run is interrupted with Ctrl+C
@@ -380,6 +381,39 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# T-LOCAL-5 (cycle 22 F-03 MEDIUM): RFC 4122 strict pattern validation
+# --------------------------------------------------------------------------
+# 旧 `^[0-9a-f-]{36}$` は hyphen 位置を強制せず、36 字 hex 連続 (hyphen 0 個) や hyphen 位置の
+# 異なる 36 字 hex も valid 扱いだった。cycle 22 で
+# `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` (RFC 4122 strict) に強化したため、
+# 非準拠形式が reject されることを pin する (将来 SESSION_ID を別 context で流用したときの
+# spec drift で脆弱性化を防ぐ defense-in-depth)。
+err_log_rfc1="$TD/err-rfc1.log"
+set +e
+(cd "$TD" && bash "$HOOK" create --session "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>"$err_log_rfc1")
+rc_rfc1=$?
+set -e
+if [ "$rc_rfc1" -ne 0 ] && grep -q "invalid session_id format" "$err_log_rfc1"; then
+  pass "T-LOCAL-5 (cycle 22 F-03): hyphen 無し 36 字 hex は RFC 4122 非準拠で reject"
+else
+  fail "T-LOCAL-5: hyphen 無し 36 字 hex が reject されない (RFC 4122 strict 退行): rc=$rc_rfc1"
+fi
+
+err_log_rfc2="$TD/err-rfc2.log"
+set +e
+# 9-3-4-4-12 (合計 36 字、hyphen 4 個だが位置が 8-4-4-4-12 と異なる)
+(cd "$TD" && bash "$HOOK" create --session "aaaaaaaaa-aaa-aaaa-aaaa-aaaaaaaaaaaa" \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>"$err_log_rfc2")
+rc_rfc2=$?
+set -e
+if [ "$rc_rfc2" -ne 0 ] && grep -q "invalid session_id format" "$err_log_rfc2"; then
+  pass "T-LOCAL-5 (cycle 22 F-03): hyphen 位置不正な 36 字 hex は RFC 4122 非準拠で reject"
+else
+  fail "T-LOCAL-5: hyphen 位置不正な 36 字 hex が reject されない: rc=$rc_rfc2"
+fi
+
+# --------------------------------------------------------------------------
 # Non-regression: --legacy-mode forces legacy single-file path
 # --------------------------------------------------------------------------
 echo ""
@@ -480,6 +514,338 @@ if [ "$rc" -eq 0 ]; then
   pass "--if-exists on absent file exits 0"
 else
   fail "--if-exists wrong exit: $rc"
+fi
+
+# --------------------------------------------------------------------------
+# TC-SESSION-PATCH (PR #688 cycle 6 F-03): patch mode で session_id が書き戻される
+#
+# resume 時の所有権移転 semantics: 別 session が作成した flow-state を引き継ぐ caller が
+# 自身の session_id を patch で書き戻すことで、後続の stop-guard / state-read 等が
+# 「現在の所有 session」として認識する。cycle 5 で legacy direct jq write を patch 経由化した際に
+# session_id 書き戻しが drop されたため、cycle 6 で patch filter に session_id 条件付き update を追加。
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-SESSION-PATCH (cycle 6 F-03): patch mode writes back session_id"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+SID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+write_session_id "$TD" "$SID"
+(cd "$TD" && bash "$HOOK" create \
+  --phase "p" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>&1)
+TARGET="$TD/.rite/sessions/$SID.flow-state"
+
+# Verify create wrote the session_id
+created_sid=$(jq -r '.session_id // ""' "$TARGET")
+if [ "$created_sid" = "$SID" ]; then
+  pass "create mode wrote initial session_id"
+else
+  fail "create did not set session_id: got '$created_sid'"
+fi
+
+# Simulate session_id drift / corruption (e.g., previous owner left a stale value in the file
+# while .rite-session-id has been updated to the current owner). resume.md cycle 5 (旧実装)
+# は legacy direct jq write で `.session_id = $sid` を書き戻すことで所有権メタデータを再同期
+# していたが、cycle 5 で patch 経由化した際に session_id 書き戻しが drop された。
+# このテストは patch mode が file 内の stale session_id を `--session` (or auto-resolved
+# .rite-session-id) で上書きすることを検証する。
+tmp=$(mktemp); jq '.session_id = "stale-or-other-session-uuid"' "$TARGET" > "$tmp" && mv "$tmp" "$TARGET"
+
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "p" --next "n2" --active true --session "$SID" >/dev/null 2>&1)
+patched_sid=$(jq -r '.session_id // ""' "$TARGET")
+if [ "$patched_sid" = "$SID" ]; then
+  pass "patch mode writes back session_id (overrides stale value with caller's session)"
+else
+  fail "patch did not update session_id: got '$patched_sid' expected '$SID'"
+fi
+
+# Negative case: legacy mode + .rite-session-id 不在 → SESSION 解決が空 → session_id 更新しない
+# (caller が session を持たない場合に既存値を上書き破壊しない契約の検証)
+TD2=$(make_test_dir); cleanup_dirs+=("$TD2")
+write_config "$TD2" 1  # legacy mode (schema_version=1)
+# .rite-session-id 作らない
+echo '{"phase":"p","next_action":"n","session_id":"original-uuid-keepme","active":true}' \
+  > "$TD2/.rite-flow-state"
+(cd "$TD2" && bash "$HOOK" patch \
+  --phase "p" --next "n2" --active true >/dev/null 2>&1)
+kept_sid=$(jq -r '.session_id // ""' "$TD2/.rite-flow-state")
+if [ "$kept_sid" = "original-uuid-keepme" ]; then
+  pass "patch mode without resolved session preserves existing session_id (no destructive overwrite)"
+else
+  fail "patch overwrote session_id with empty: got '$kept_sid'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-AC-4-SAME-SESSION-FALLBACK (PR #688 cycle 32 F-05 fix — refines cycle 30 F-01):
+#
+# **Same-session legacy** (legacy.session_id matches current sid) において writer fallback が
+# 機能することを pin する。cycle 31 F-01 で「cross-session takeover が silent corruption」を
+# CRITICAL 認定したため、cycle 32 で fallback を session-id 一致時のみに限定。本 TC は
+# 「legitimate な same-session fallback」が引き続き機能することを assert する。
+#
+# F-05 修正: fixture OLD phase と patch 引数 phase を異なる値に分離 (cycle 30 では同値で dead
+# assertion だった)。これにより pre-fix base に対し phase assertion が確実に FAIL し identification
+# power を持つ。
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-AC-4-SAME-SESSION-FALLBACK (cycle 32 F-05): writer falls back to legacy for same-session, with phase divergence"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+CURR_SID="22222222-2222-2222-2222-222222222222"
+write_session_id "$TD" "$CURR_SID"
+
+# legacy file = SAME session (session_id matches CURR_SID), active=false, OLD phase
+cat > "$TD/.rite-flow-state" <<EOF
+{
+  "schema_version": 2,
+  "active": false,
+  "issue_number": 42,
+  "branch": "feat/foo",
+  "phase": "phase4_pre_resume",
+  "previous_phase": "phase3",
+  "pr_number": 100,
+  "parent_issue_number": 0,
+  "next_action": "old next",
+  "updated_at": "2026-04-01T00:00:00Z",
+  "session_id": "$CURR_SID",
+  "last_synced_phase": "phase3",
+  "error_count": 0,
+  "wm_comment_id": 0
+}
+EOF
+
+# Verify per-session for CURR_SID does NOT exist (precondition)
+if [ -f "$TD/.rite/sessions/$CURR_SID.flow-state" ]; then
+  fail "TC-AC-4-SAME-SESSION-FALLBACK precondition: per-session for current sid unexpectedly exists"
+else
+  pass "TC-AC-4-SAME-SESSION-FALLBACK precondition: per-session for current sid absent"
+fi
+
+# Run patch with --if-exists and --session $CURR_SID (matches helper's invocation pattern)
+# Note: NEW phase differs from OLD fixture phase (F-05 fix — gives identification power)
+set +e
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "phase5_post_review" \
+  --next "resumed by cycle 32 fix" \
+  --active true \
+  --if-exists \
+  --session "$CURR_SID" >/dev/null 2>&1)
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: patch exit 0"
+else
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: patch wrong exit: $rc"
+fi
+
+# Verify legacy file was actually updated
+legacy_active=$(jq -r '.active' "$TD/.rite-flow-state")
+legacy_sid=$(jq -r '.session_id' "$TD/.rite-flow-state")
+legacy_phase=$(jq -r '.phase' "$TD/.rite-flow-state")
+
+if [ "$legacy_active" = "true" ]; then
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: legacy active flipped to true"
+else
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: legacy active still '$legacy_active'"
+fi
+
+if [ "$legacy_sid" = "$CURR_SID" ]; then
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: legacy session_id preserved (same session)"
+else
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: legacy session_id is '$legacy_sid', expected '$CURR_SID'"
+fi
+
+# F-05 fix: phase assertion has identification power because fixture OLD phase
+# (phase4_pre_resume) differs from patch arg new phase (phase5_post_review)
+if [ "$legacy_phase" = "phase5_post_review" ]; then
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: legacy phase updated (phase4_pre_resume → phase5_post_review)"
+else
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: legacy phase is '$legacy_phase', expected 'phase5_post_review'"
+fi
+
+if [ ! -f "$TD/.rite/sessions/$CURR_SID.flow-state" ]; then
+  pass "TC-AC-4-SAME-SESSION-FALLBACK: per-session NOT created (writer used legacy path)"
+else
+  fail "TC-AC-4-SAME-SESSION-FALLBACK: per-session unexpectedly created"
+fi
+
+# --------------------------------------------------------------------------
+# TC-AC-4-CROSS-SESSION-REFUSED (PR #688 cycle 32 F-01 CRITICAL fix):
+#
+# **Cross-session legacy** (legacy.session_id != current sid) において writer fallback が
+# REFUSE されることを pin する。cycle 30 fix の simple fallback は jq per-field merge で
+# silent metadata corruption (issue_number / branch / pr_number が別 session の値を保持) を
+# 引き起こしていた CRITICAL silent regression を、cycle 32 で fail-safe に修正。
+# Setup: schema_v=2 + valid sid + per-session 不在 + legacy が別 session の遺物
+# 期待挙動: patch は exit 0 (silent skip on per-session absent via --if-exists)、
+#          legacy は **完全に未変更**、cross-session corruption が起きない
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-AC-4-CROSS-SESSION-REFUSED (cycle 32 F-01): writer refuses fallback when legacy belongs to another session"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+CURR_SID="22222222-2222-2222-2222-222222222222"
+OTHER_SID="11111111-1111-1111-1111-111111111111"
+write_session_id "$TD" "$CURR_SID"
+
+# legacy file = OTHER session's residue
+cat > "$TD/.rite-flow-state" <<EOF
+{
+  "schema_version": 2,
+  "active": false,
+  "issue_number": 999,
+  "branch": "fix/other-session-branch",
+  "phase": "phase5_other_session",
+  "pr_number": 999,
+  "next_action": "other session action",
+  "updated_at": "2026-04-01T00:00:00Z",
+  "session_id": "$OTHER_SID",
+  "error_count": 5
+}
+EOF
+
+# Capture stderr to verify WORKFLOW_INCIDENT emit
+stderr_file=$(mktemp /tmp/rite-tc-cross-stderr-XXXXXX)
+set +e
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "phase5_post_review" \
+  --next "resumed by cycle 32 fix" \
+  --active true \
+  --if-exists \
+  --session "$CURR_SID" 2>"$stderr_file")
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+  pass "TC-AC-4-CROSS-SESSION-REFUSED: patch exit 0 (silent skip via --if-exists)"
+else
+  fail "TC-AC-4-CROSS-SESSION-REFUSED: patch unexpected exit: $rc"
+fi
+
+# CRITICAL invariant: legacy file must be UNCHANGED (cross-session corruption refused)
+legacy_active=$(jq -r '.active' "$TD/.rite-flow-state")
+legacy_sid=$(jq -r '.session_id' "$TD/.rite-flow-state")
+legacy_phase=$(jq -r '.phase' "$TD/.rite-flow-state")
+legacy_issue=$(jq -r '.issue_number' "$TD/.rite-flow-state")
+legacy_branch=$(jq -r '.branch' "$TD/.rite-flow-state")
+
+if [ "$legacy_active" = "false" ] && [ "$legacy_sid" = "$OTHER_SID" ] && \
+   [ "$legacy_phase" = "phase5_other_session" ] && [ "$legacy_issue" = "999" ] && \
+   [ "$legacy_branch" = "fix/other-session-branch" ]; then
+  pass "TC-AC-4-CROSS-SESSION-REFUSED: legacy file completely unchanged (cross-session corruption refused)"
+else
+  fail "TC-AC-4-CROSS-SESSION-REFUSED: legacy file modified — active=$legacy_active sid=$legacy_sid phase=$legacy_phase issue=$legacy_issue branch=$legacy_branch"
+fi
+
+# Verify WORKFLOW_INCIDENT sentinel was emitted to stderr
+if grep -q 'WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused' "$stderr_file"; then
+  pass "TC-AC-4-CROSS-SESSION-REFUSED: WORKFLOW_INCIDENT sentinel emitted (observability confirmed)"
+else
+  fail "TC-AC-4-CROSS-SESSION-REFUSED: WORKFLOW_INCIDENT sentinel missing from stderr"
+fi
+rm -f "$stderr_file"
+
+# --------------------------------------------------------------------------
+# TC-AC-4-EMPTY-LEGACY-NO-FALLBACK (PR #688 cycle 32 F-02 HIGH fix):
+#
+# size-0 legacy のときに writer fallback が **発火しない** ことを pin する。
+# 旧実装 (cycle 30): [ -f LEGACY ] のみで size-0 を「存在」扱い → fallback → jq 空出力 →
+#   silent skip という silent failure 経路。
+# 新実装 (cycle 32): [ -f LEGACY ] && [ -s LEGACY ] で size-0 を fallback 対象から除外。
+# 期待挙動: --if-exists で silent skip (per-session 不在 + size-0 legacy → 両不在扱い)
+# --------------------------------------------------------------------------
+echo ""
+echo "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK (cycle 32 F-02): writer rejects size-0 legacy as fallback target"
+TD=$(make_test_dir); cleanup_dirs+=("$TD")
+write_config "$TD" 2
+SID="44444444-4444-4444-4444-444444444444"
+write_session_id "$TD" "$SID"
+touch "$TD/.rite-flow-state"  # size 0
+
+set +e
+(cd "$TD" && bash "$HOOK" patch \
+  --phase "x" --next "y" --active true --if-exists \
+  --session "$SID" >/dev/null 2>&1)
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+  pass "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: patch exit 0 (silent skip via --if-exists)"
+else
+  fail "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: patch unexpected exit: $rc"
+fi
+
+# Verify legacy file remains size 0 (writer did NOT write to size-0 legacy)
+legacy_size=$(stat -c%s "$TD/.rite-flow-state" 2>/dev/null || stat -f%z "$TD/.rite-flow-state" 2>/dev/null)
+if [ "$legacy_size" = "0" ]; then
+  pass "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: legacy remains size 0 (no fallback to empty file)"
+else
+  fail "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: legacy size is $legacy_size (expected 0)"
+fi
+
+# Verify per-session was NOT created either
+if [ ! -f "$TD/.rite/sessions/$SID.flow-state" ]; then
+  pass "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: per-session NOT created (--if-exists silent skip)"
+else
+  fail "TC-AC-4-EMPTY-LEGACY-NO-FALLBACK: per-session unexpectedly created"
+fi
+
+# --------------------------------------------------------------------------
+# verified-review cycle 36 F-05 + F-04 fix: writer-side metatest
+# --------------------------------------------------------------------------
+# 背景: cycle 36 F-05 で flow-state-update.test.sh の writer 側 `legacy_state_corrupt` sentinel
+# emit を pin する TC が不在と指摘された。state-read.test.sh と異なり、本 test は writer 側の
+# corrupt branch を test するための fixture (per-session 不在 + corrupt legacy + --if-exists patch)
+# のセットアップが複雑なため、軽量な metatest 形式で「caller-side `2>/dev/null` redirection の
+# source-pin」と「invalid_uuid:* arm の存在」を grep で確認する。これにより:
+# (a) cycle 35 F-02 fix (`2>&1` → `2>/dev/null`) の writer 側 partial revert を検出
+# (b) cycle 36 F-16 fix (invalid_uuid:* arm 追加) の writer 側 partial revert を検出
+echo ""
+echo "=== verified-review cycle 36 F-05 + F-04 fix: writer-side metatest ==="
+flow_state_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/flow-state-update.sh"
+# cycle 43 F-03 (HIGH) 対応: 旧 grep `_resolve-cross-session-guard\.sh.*2>/dev/null` は
+# flow-state-update.sh L165 のコメント行 (`... so 2>/dev/null is safe.`) にマッチして
+# false-positive で常に pass していた (state-read.test.sh:606-616 の TC-15.E.1 と同型 false-positive)。
+# 修正: (1) コメント行を `grep -v '^[[:space:]]*#'` で除外し、(2) 実 invocation line を anchor で検査する。
+flow_state_caller=$(grep -v '^[[:space:]]*#' "$flow_state_path" | grep -E 'classification=\$\(bash[^)]*_resolve-cross-session-guard\.sh[^)]*2>')
+if [ -n "$flow_state_caller" ]; then
+  echo "  ✅ writer-side metatest 1: flow-state-update.sh caller line preserves stderr redirection (cycle 35 F-02 fix is preserved)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 1: flow-state-update.sh の caller-side stderr redirection が消失 (cycle 35 F-02 fix が revert された可能性)"
+  echo "     現状の caller line (コメント除外後):"
+  grep -v '^[[:space:]]*#' "$flow_state_path" | grep "_resolve-cross-session-guard.sh" | sed 's/^/       /'
+  FAIL=$((FAIL+1))
+fi
+if grep -q '^      invalid_uuid:\*)' "$flow_state_path"; then
+  echo "  ✅ writer-side metatest 2: flow-state-update.sh has 'invalid_uuid:*)' case arm (F-16 fix)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 2: flow-state-update.sh の 'invalid_uuid:*' arm が存在しない (cycle 36 F-16 fix が revert された可能性)"
+  FAIL=$((FAIL+1))
+fi
+# PR #688 followup F-01 MEDIUM: workflow-incident-emit.sh 呼び出しは `_emit-cross-session-incident.sh`
+# helper に集約された。flow-state-update.sh 自身では canonical if/else pattern は使われなくなったため、
+# metatest 3 は helper 経由 SoT を pin する形に更新する:
+#   (a) flow-state-update.sh が _emit-cross-session-incident.sh helper を呼んでいる (foreign / corrupt / invalid_uuid)
+#   (b) _emit-cross-session-incident.sh helper 自身が canonical if/else pattern を使っている (anti-pattern 再発検出)
+helper_path="$(dirname "$flow_state_path")/_emit-cross-session-incident.sh"
+if grep -qE '_emit-cross-session-incident\.sh.*foreign[[:space:]]+writer' "$flow_state_path" \
+   && grep -qE '_emit-cross-session-incident\.sh.*corrupt[[:space:]]+writer' "$flow_state_path" \
+   && grep -qE '_emit-cross-session-incident\.sh.*invalid_uuid[[:space:]]+writer' "$flow_state_path"; then
+  echo "  ✅ writer-side metatest 3a: flow-state-update.sh routes foreign/corrupt/invalid_uuid through _emit-cross-session-incident.sh helper (F-01 helper extraction)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 3a: flow-state-update.sh が _emit-cross-session-incident.sh helper 経由で 3 classification を emit していない (F-01 helper extraction が revert された可能性)"
+  FAIL=$((FAIL+1))
+fi
+if [ -x "$helper_path" ] && grep -qE '^[[:space:]]*if bash "\$emit_script"' "$helper_path"; then
+  echo "  ✅ writer-side metatest 3b: _emit-cross-session-incident.sh uses canonical 'if cmd; then :; else rc=$?; fi' pattern (F-01 anti-pattern guard)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ writer-side metatest 3b: _emit-cross-session-incident.sh helper が canonical if/else pattern を使っていない (F-01 anti-pattern が helper 内で再発した可能性)"
+  FAIL=$((FAIL+1))
 fi
 
 # --------------------------------------------------------------------------

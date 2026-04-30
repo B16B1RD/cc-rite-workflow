@@ -548,8 +548,8 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     # Priority 0: schema_version も Priority 2 と同じく検証するが、失敗時は直接 fallback へ
     # (ユーザーの明示意図を尊重 — Priority 1-3 に silent fall-through しない)
     # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
-    # `if ! var=$(cmd); then rc=$?` では `!` 演算子が cmd の exit code を反転するため、
-    # then ブランチ内の `$?` は `!` の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
+    # `if ! var=$(cmd); then rc=$?` では 「!」 演算子が cmd の exit code を反転するため、
+    # then ブランチ内の `$?` は 「!」 の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
     if schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path" 2>/dev/null); then
       : # jq 成功
     else
@@ -907,8 +907,8 @@ if [ -z "$review_source" ]; then
       else
         # schema_version 検証 (Priority 2 success 内で実施)
         # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
-        # `if ! var=$(cmd); then rc=$?` では `!` 演算子が cmd の exit code を反転するため、
-        # then ブランチ内の `$?` は `!` の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
+        # `if ! var=$(cmd); then rc=$?` では 「!」 演算子が cmd の exit code を反転するため、
+        # then ブランチ内の `$?` は 「!」 の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
         if schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file" 2>/dev/null); then
           : # jq 成功
         else
@@ -1248,8 +1248,8 @@ elif ! printf '%s' "$raw_json" | jq -e '.overall_assessment == "mergeable" or .o
 else
   # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
   # jq exit code を明示捕捉 (Priority 0/2 の commit_sha 抽出と対称化)
-  # `if ! var=$(cmd); then rc=$?` では `!` 演算子が cmd の exit code を反転するため、
-  # then ブランチ内の `$?` は `!` の結果 (= 0) を返す。cmd 自身の非 0 exit code を
+  # `if ! var=$(cmd); then rc=$?` では 「!」 演算子が cmd の exit code を反転するため、
+  # then ブランチ内の `$?` は 「!」 の結果 (= 0) を返す。cmd 自身の非 0 exit code を
   # 取得するには `if cmd; then :; else rc=$?; fi` 形式を使う。
   if schema_version=$(printf '%s' "$raw_json" | jq -r '.schema_version // "unknown"' 2>/dev/null); then
     : # jq 成功
@@ -3578,7 +3578,7 @@ fi
 # 隠蔽し silent に「warnings 0 件」と誤認する。これを防ぐため exit code を捕捉する。
 #
 # 旧 `if ! result=$(cmd); then script_exit=$?` パターンは bash 仕様上
-# `$?` が常に 0 を返す (`!` 否定の結果が then 節に伝播)。command substitution + 明示的 rc 捕捉
+# `$?` が常に 0 を返す (「!」 否定の結果が then 節に伝播)。command substitution + 明示的 rc 捕捉
 # (`result=$(cmd); script_exit=$?`) に変更し、cmd 自身の exit code を正しく取得する。
 # 実証: `bash -c 'if ! result=$(exit 42); then echo $?; fi'` → `0`
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \

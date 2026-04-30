@@ -37,7 +37,7 @@ OWNER_TYPE=$(gh api "users/{owner}" --jq '.type' 2>/dev/null || echo "Organizati
 ### Usage Example
 
 > **Note**: The examples below use `-f query='...'` for brevity.
-> Since these queries contain `!` (e.g., `String!`, `Int!`), prefer the heredoc pattern from [Safe GraphQL Variable Encoding](#safe-graphql-variable-encoding) in production to avoid history expansion issues.
+> Since these queries contain 「!」 (e.g., 「String!」, 「Int!」), prefer the heredoc pattern from [Safe GraphQL Variable Encoding](#safe-graphql-variable-encoding) in production to avoid history expansion issues.
 
 ```bash
 # Switch query based on detection result
@@ -340,7 +340,7 @@ gh api graphql -f query='
 # → Error: UNKNOWN_CHAR
 ```
 
-**History expansion hazard**: See [gh-cli-error-catalog.md Category 6](./gh-cli-error-catalog.md#category-6-graphql-variable-encoding-error--2-sessions) for root cause details. Always deliver queries containing `!` via heredoc or file input.
+**History expansion hazard**: See [gh-cli-error-catalog.md Category 6](./gh-cli-error-catalog.md#category-6-graphql-variable-encoding-error--2-sessions) for root cause details. Always deliver queries containing 「!」 via heredoc or file input.
 
 ### Safe Pattern: jq --rawfile for GraphQL String Variables
 
@@ -386,11 +386,11 @@ jq -n --rawfile body "$tmpfile" --rawfile query "$queryfile" \
 1. `jq --rawfile` reads file content as raw string (handles all escaping)
 2. `jq` constructs valid JSON with properly escaped GraphQL variables
 3. `--input -` passes the complete payload to gh api without shell interpolation
-4. Heredoc (`<<'QUERY_EOF'`) delivers the query text verbatim — no shell interpretation of `!`
+4. Heredoc (`<<'QUERY_EOF'`) delivers the query text verbatim — no shell interpretation of 「!」
 
 ### History Expansion and Special Character Prevention
 
-GraphQL queries containing `!` (e.g., `String!`, `ID!`) are vulnerable to bash history expansion. Additionally, queries must use ASCII quotes (`"`, U+0022) only.
+GraphQL queries containing 「!」 (e.g., 「String!」, 「ID!」) are vulnerable to bash history expansion. Additionally, queries must use ASCII quotes (`"`, U+0022) only.
 
 ```bash
 # Problem 1: History expansion of !
@@ -575,7 +575,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 This helper uses **GraphQL** (`addSubIssue` mutation), not the REST `POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues` endpoint, for the following reasons:
 
 1. **Consistency**: All other rite workflow Projects/Issue queries use GraphQL via `gh api graphql`. Mixing REST and GraphQL would fragment error handling and authentication paths.
-2. **Type safety**: The introspection-verified `AddSubIssueInput` schema (`issueId: ID!`, `subIssueId: ID`) provides clearer contract than the REST shape.
+2. **Type safety**: The introspection-verified `AddSubIssueInput` schema — the required field 「issueId: ID!」 and the optional field 「subIssueId: ID」 — provides clearer contract than the REST shape.
 3. **Single round-trip after node ID resolution**: GraphQL accepts node IDs directly, matching how the rest of rite workflow already passes node IDs across Project mutations.
 
 REST remains a documented fallback if GraphQL becomes unavailable, but no current code path uses it.

@@ -128,7 +128,7 @@ gh pr create --title "feat: new feature" --body "description" --draft
 
 ### Category 6: GraphQL variable encoding error — 2 sessions
 
-**Root cause**: Bash's history expansion interprets `!` specially, corrupting GraphQL type annotations like `String!` and `ID!`. Additionally, special characters in `-f` variable values cause encoding errors.
+**Root cause**: Bash's history expansion interprets 「!」 specially, corrupting GraphQL type annotations like 「String!」 and 「ID!」. Additionally, special characters in `-f` variable values cause encoding errors.
 
 ```bash
 # 🚫 PROHIBITED: Passing unescaped newlines or special chars in -f variable
@@ -181,7 +181,7 @@ echo '{"body": "'"$body"'"}' | gh api ... --input -
 | 3 | Word splitting on unquoted variables | `jq -n --rawfile` (no shell variables in JSON) |
 | 4 | Empty variable expansion | `[ ! -s file ]` validation + `--body-file` |
 | 5 | Missing commits / unpushed branch | Pre-creation guard checks |
-| 6 | `!` history expansion / special chars in GraphQL variables | `jq -n --rawfile` for string variables; heredoc for queries with `!` |
+| 6 | 「!」 history expansion / special chars in GraphQL variables | `jq -n --rawfile` for string variables; heredoc for queries with 「!」 |
 | 7 | Shell-constructed malformed JSON | `jq` for all JSON construction |
 
 **The universal safe pattern**: Always construct JSON payloads with `jq`, never with shell string operations.

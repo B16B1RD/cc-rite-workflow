@@ -32,7 +32,7 @@ Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
 This command has two invocation cases: standalone execution and being called from the `/rite:issue:start` end-to-end flow.
 
