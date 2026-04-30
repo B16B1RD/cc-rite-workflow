@@ -179,22 +179,24 @@ _resolve_session_state_path() {
     # writer/reader 対称化)。`_resolve_session_state_path` 関数内に閉じた scope で trap を install し、
     # mktemp 成功 〜 rm 完了の race window で SIGINT/SIGTERM/SIGHUP 中断時の orphan を防ぐ。
     #
-    # ── trap reset の正当性 (Issue #698 F-09 / cycle 2 F-05 統一見解) ──
+    # ── trap reset の正当性 ──
     # 本関数は command substitution (`FLOW_STATE=$(_resolve_session_state_path ...)`) で呼ばれる。
     # bash の subshell isolation により、関数内の trap 変更 (install と reset の両方) は subshell 内に
     # 閉じ、parent shell の `_rite_flow_state_atomic_cleanup` trap には一切影響しない。よって関数末尾の
     # `trap - EXIT INT TERM HUP` は parent との衝突回避のためでは**なく**、subshell exit 前に signal-specific
     # trap を default に戻して再 install 時の古い trap 残存を防ぐ canonical pattern として残している
-    # (state-read.sh 側と writer/reader 対称)。
+    # (state-read.sh 側の script-wide trap と writer/reader 対称: trap install は両側で行われるが、
+    # reset は本関数 subshell scope に固有。両者とも signal-specific trap で SIGINT/SIGTERM/SIGHUP の
+    # orphan を防ぐ機能要件は対称に満たす)。
     #
     # ── caller 直接呼び出し化 (subshell isolation 破れ) への姿勢 ──
-    # subshell isolation 不変条件は `tests/flow-state-update-trap-isolation.test.sh` (Issue #698 F-09) で
-    # 経験的に固定されている。caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`)
-    # に変更されると、本関数の trap reset は parent shell の cleanup trap を silent 消去する bug 経路に変質する。
-    # ただし TC-3 は静的 grep による semantic check であり「`$()` 等の subshell 形式が使われていること」を
-    # 確認するに留まる (回帰検出時の修正方向は実装者判断)。本 reset を「direct call 化時の defense-in-depth」
-    # と誤解してはならない — direct call では reset 有り版が reset なし版より悪い結果になる (parent + inner
-    # cleanup 双方を消去) ことを経験的に確認済み。
+    # subshell isolation 不変条件は `tests/flow-state-update-trap-isolation.test.sh` で経験的に固定されている。
+    # caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`) に変更されると、本関数の
+    # trap reset は parent shell の cleanup trap を silent 消去する bug 経路に変質する。ただし TC-3 は
+    # 静的 grep による semantic check であり「`$()` 等の subshell 形式が使われていること」を確認するに留まる
+    # (回帰検出時の修正方向は実装者判断)。本 reset を「direct call 化時の defense-in-depth」と誤解しては
+    # ならない — direct call では reset 有り版が reset なし版より悪い結果になる (parent + inner cleanup
+    # 双方を消去) ことを経験的に確認済み。
     local _classify_err=""
     # verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
     # bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
@@ -241,7 +243,8 @@ _resolve_session_state_path() {
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
     _classify_err=""
     # restore default trap (subshell exit 前のクリーンアップ — subshell isolation 前提で leak は発生しないが、
-    # canonical pattern として future-proof な再 install ガードを維持する。詳細は line 183-194 のコメント参照)
+    # canonical pattern として future-proof な再 install ガードを維持する。詳細は本関数
+    # `_resolve_session_state_path` の `── trap reset の正当性 ──` コメントブロックを参照)
     trap - EXIT INT TERM HUP
     # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
     # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約 (state-read.sh と writer/reader 対称)。
