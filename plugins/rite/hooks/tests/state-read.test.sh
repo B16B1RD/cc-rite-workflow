@@ -238,28 +238,42 @@ rm -rf "$SBX"
 # 設計選択: `^[0-9a-f]{8}-...` は canonical lowercase form のみ accept する defensive 仕様
 # (RFC 4122 §3 は input case-insensitive 規定だが、本リポの SID 生成は lowercase デフォルトの
 # ため uppercase は外部 injection 経路のみ → canonical form 強制が defense-in-depth として機能)。
+# uppercase / mixed_case vector は fixture path 側で `tr 'A-F' 'a-f'` を適用して lowercase 化
+# することで case-insensitive FS (macOS HFS+ default / NTFS / exFAT) 依存を排除し、Linux と macOS
+# 双方で同一動作を pin する。`tr` 削除 mutation の direct kill power は FS 非依存に
+# `_resolve-session-id.test.sh` TC-2/TC-3/TC-12/TC-13 がカバー (本 integration test は
+# normalize 統合動作の SoT pin に専念)。
 # History: state-read-evolution.md (Cycle 別の主要な修正)
 echo "TC-6.INJECTION: SID injection vector defense"
 
 # bad per-session file 作成成功数 tracking (file system が bad SID 名を accept した数)。
-# 実 kill power とは別概念。kill 経路は backtick / too_short / too_long / non_hex /
-# hyphen_misplaced (+ case-sensitive FS で uppercase / mixed_case)。newline / 空白を含む
-# vector は `_resolve-session-id-from-file.sh` の tr -d '[:space:]' 副作用で kill power 0。
+# 実 kill power とは別概念。
+# kill 経路:
+#   - injection defense (5/7): non_hex / hyphen_misplaced / backtick / too_short / too_long が
+#     strict regex で reject されて legacy fallback。
+#   - normalize 統合 SoT pin (2/7): uppercase / mixed_case は fixture を tr A-F a-f で lowercase 化
+#     して lookup が fixture と一致 (BAD_* 返却) する動作を pin。
+# newline / 空白を含む vector は `_resolve-session-id-from-file.sh` の tr -d '[:space:]' 副作用で
+# kill power 0。
 inject_created_count=0
 
 # 各 vector で make_sandbox + bad SID + per-session (BAD_*) + legacy (safe_legacy_*) を作成。
-# reject されると legacy fallback で safe_legacy_* が返る。design intent: kill power 5/7
-# (non_hex / hyphen_misplaced / backtick / too_short / too_long が確実に kill)。
+# vector 種別による期待値:
+#   - uppercase / mixed_case: fixture を lowercase 正規化 → state-read.sh は normalize 後の
+#     lowercase path で lookup → fixture と一致 → bad_phase 返却 (normalize 統合 SoT pin)
+#   - その他 5 vector: 不正 SID → strict regex で reject → legacy fallback (injection defense)
 inject_vectors=(
   # 形式: "vector_name|sid_value|legacy_phase|description"
   "non_hex|zzzzzzzz-aaaa-aaaa-aaaa-aaaaaaaaaaaa|safe_legacy_nonhex|non-hex characters (RFC 4122 strict reject, tr 副作用なし)"
   "hyphen_misplaced|aaaaaaaaa-aaa-aaaa-aaaa-aaaaaaaaaaaa|safe_legacy_hyphen|hyphen position invalid (9-3-4-4-12 instead of 8-4-4-4-12, tr 副作用なし)"
   "backtick|\`whoami\`|safe_legacy_backtick|backtick command substitution"
-  # uppercase / mixed_case は **case-sensitive FS 前提** (Linux ext4/btrfs/xfs)。case-insensitive
-  # FS (macOS HFS+ default / NTFS / exFAT) では fixture と lookup が一致して false-positive
-  # 失敗を起こすため、下の loop の `[ "$(uname -s)" != "Linux" ]` skip gate を適用する。
-  "uppercase|AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA|safe_legacy_upcase|lowercase normalize の SoT pin (per-session path は normalize 後 lowercase で resolve、fixture uppercase 名は not-found → legacy fallback。tr A-F a-f normalize 削除で TC が落ちる。⚠️ case-sensitive FS 前提)"
-  "mixed_case|aaaaaaaa-AAAA-aaaa-AAAA-aaaaaaaaaaaa|safe_legacy_mixcase|uppercase と同型 vector。⚠️ case-sensitive FS 前提"
+  # uppercase / mixed_case は fixture path 側で tr 'A-F' 'a-f' を適用 (下の loop 参照) して
+  # lowercase 化することで case-sensitive / case-insensitive FS 双方で同一動作を pin する。
+  # 期待値は BAD_* (normalize 後 lookup が fixture と一致 → 整合動作の SoT pin)。
+  # `tr` 削除 mutation の direct kill power は _resolve-session-id.test.sh TC-2/TC-3/TC-12/TC-13 が
+  # FS 非依存に direct stdout assert としてカバー。
+  "uppercase|AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA|safe_legacy_upcase|lowercase normalize 統合 SoT pin (fixture を tr A-F a-f で lowercase 化 → 正規化後 lookup が fixture と一致 → BAD_* 返却)"
+  "mixed_case|aaaaaaaa-AAAA-aaaa-AAAA-aaaaaaaaaaaa|safe_legacy_mixcase|uppercase と同型 vector (fixture lowercase 正規化)"
   "too_short|aaaa-aaaa-aaaa-aaaa-aaaa|safe_legacy_short|36 字未満 (regex 長さ制約)"
   "too_long|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaaaa|safe_legacy_long|36 字超過 (regex 長さ制約)"
 )
@@ -267,45 +281,48 @@ inject_vectors=(
 for vector_entry in "${inject_vectors[@]}"; do
   IFS='|' read -r vector_name sid_value legacy_phase desc <<< "$vector_entry"
 
-  # case-sensitive FS 前提の vector を Linux 以外では skip (macOS / Windows でローカル実行時の
-  # false-positive 防止)。CI (Linux only) は引き続き kill power を確保。
-  case "$vector_name" in
-    uppercase|mixed_case)
-      if [ "$(uname -s)" != "Linux" ]; then
-        echo "  ⏭ TC-6.INJECTION.$vector_name: skipped on $(uname -s) (case-insensitive FS would defeat mutation kill power)"
-        continue
-      fi
-      ;;
-  esac
-
   SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
   write_config_v2 "$SBX"
   # printf '%b' で escape (e.g. \n) を解釈して newline injection を実装 (echo より portable)
   printf '%b' "$sid_value" > "$SBX/.rite-session-id"
 
-  # bad SID 名で per-session file (BAD_INJECTION_*) を作成。pre-fix (緩い regex) は bad per-session
-  # 読込 → BAD_* 返却 → assert 失敗で kill。post-fix (strict regex) は reject → legacy fallback。
+  # bad SID 名で per-session file (BAD_INJECTION_*) を作成。
+  # uppercase / mixed_case は fixture 側で tr 'A-F' 'a-f' を適用して lowercase 化することで
+  # case-insensitive FS 依存を排除 (Linux と macOS 双方で同一動作を pin)。
+  # post-fix (strict regex + tr normalize) の期待動作:
+  #   - uppercase / mixed_case → 正規化 lookup が fixture (lowercase) と一致 → bad_phase 返却
+  #   - その他不正 vector → strict regex で reject → legacy fallback
   # per-session 不在経路では regex を `.*` に mutate しても全 vector pass する false-positive
-  # (kill power 0) になるため bad SID 名 per-session 作成は必須。FS 制約で作成失敗する vector
-  # は元実装と等価な経路に流れて kill power 失うが、coverage 0/7 → 5/7 に向上 (Linux CI で uppercase /
-  # mixed_case も kill されるなら 7/7、case-insensitive FS では 5/7 が design intent baseline)。
+  # (kill power 0) になるため bad SID 名 per-session 作成は必須。
   bad_phase="BAD_INJECTION_${vector_name}"
   expanded_sid=$(printf '%b' "$sid_value")
+  case "$vector_name" in
+    uppercase|mixed_case)
+      # fixture path を lowercase 化して case-insensitive FS でも reliable に lookup を hit させる
+      fixture_sid=$(printf '%s' "$expanded_sid" | tr 'A-F' 'a-f')
+      expected_phase="$bad_phase"
+      expected_label="$bad_phase (fixture lowercase 正規化と lookup が一致)"
+      ;;
+    *)
+      fixture_sid="$expanded_sid"
+      expected_phase="$legacy_phase"
+      expected_label="legacy fallback ($legacy_phase)"
+      ;;
+  esac
   mkdir -p "$SBX/.rite/sessions"
   # 特殊文字ファイル名は best-effort (FS 制約は test bug ではないため stderr suppress)
-  if printf '%s' "{\"phase\":\"$bad_phase\"}" > "$SBX/.rite/sessions/${expanded_sid}.flow-state" 2>/dev/null; then
+  if printf '%s' "{\"phase\":\"$bad_phase\"}" > "$SBX/.rite/sessions/${fixture_sid}.flow-state" 2>/dev/null; then
     inject_created_count=$((${inject_created_count:-0} + 1))
   fi
 
   write_legacy "$SBX" "{\"phase\":\"$legacy_phase\"}"
 
   result=$(run_helper "$SBX" --field phase --default "DEFAULT_FALLBACK")
-  # post-fix: legacy_phase 返却。pre-fix (`.*` mutation): bad_phase 返却 → kill。
-  if [ "$result" = "$legacy_phase" ]; then
-    echo "  ✅ TC-6.INJECTION.$vector_name: $desc → legacy fallback ($legacy_phase)"
+  if [ "$result" = "$expected_phase" ]; then
+    echo "  ✅ TC-6.INJECTION.$vector_name: $desc → $expected_label"
     PASS=$((PASS+1))
   else
-    echo "  ❌ TC-6.INJECTION.$vector_name: $desc — expected '$legacy_phase' got '$result'"
+    echo "  ❌ TC-6.INJECTION.$vector_name: $desc — expected '$expected_phase' got '$result'"
     FAIL=$((FAIL+1))
     FAILED_NAMES+=("TC-6.INJECTION.$vector_name")
   fi
