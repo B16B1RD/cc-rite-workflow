@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-30T03:50:00+00:00"
+updated: "2026-04-30T08:03:08Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -102,7 +102,13 @@ sources:
     ref: "raw/reviews/20260429T160252Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260430T031734Z-pr-747.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift"]
+  - type: "reviews"
+    ref: "raw/reviews/20260430T074221Z-pr-750.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260430T074655Z-pr-750-cycle-1.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260430T075231Z-pr-750-cycle-2.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference"]
 confidence: high
 ---
 
@@ -371,6 +377,22 @@ PR #747 (`.rite-flow-state` migration 機構実装) の cycle 3 で `session-sta
 3. **regression test の defense-in-depth**: positive case (例外があると削除されない) のみ assert する test は brittle。**negative counter-test** (例外を一時的に削除すると削除される) で「例外なしだと regression が起きる」ことを assert することで、将来 refactor で例外が落ちた場合に確実に検出できる
 
 詳細な find glob collision の root cause は [新規 file 命名と既存 find glob が collision して silent 削除を起こす](./find-glob-naming-collision-silent-removal.md) 参照。
+
+### 兄弟 Issue 対称適用 + caller context 差異の defense-in-depth (PR #750 cycles 1-2 での evidence)
+
+PR #750 (Issue #681 = tool 系 2 hooks + session-ownership helper のマルチステート整理) は兄弟 Issue #680 (lifecycle 4 hooks の自 session state 参照対応) と同型の path resolver 切替 refactor を 3 ファイル (`pre-tool-bash-guard.sh` / `post-tool-wm-sync.sh` / `session-ownership.sh`) に同形 pattern で対称適用した好例。cycle 1 reviewer は対称化自体を「適切」と評価する一方、3 HIGH を独立検出した:
+
+1. **Silent legacy fallback observability の欠如** (HIGH x2): `var=$(helper.sh ... 2>/dev/null) || var="<legacy>"` 形式の resolver 失敗 silent fallback を 5 caller 全件で対称適用したが、deploy regression の本番 silent failure 経路を観測する手段がなかった。canonical fix は RITE_DEBUG gated WARNING を `.rite-flow-debug.log` に対称配置 (詳細は [silent-fallback-observability-via-debug-log.md](../patterns/silent-fallback-observability-via-debug-log.md))
+2. **Schema-2 fast-path API contract code-level enforcement 不在** (HIGH): 「per-session file 構造で ownership は構造的に保証」を信じる API が将来 caller 拡張で silent break するリスク。canonical fix は filename SID と hook SID 比較の defense-in-depth check を追加 (詳細は [structural-guarantee-code-level-enforcement.md](../patterns/structural-guarantee-code-level-enforcement.md))
+3. **AC integration test 欠落** (HIGH): session_id mismatch hook no-op を helper-level の `check_session_ownership` で 3 ケース (matching SID で 'own' / foreign per-session で 'other' / 空 hook SID で 'own' backward-compat) に分割 pin。helper-level test 1 TC で「resolver の path 構築」「ownership fast-path」両方を同時に固定する canonical pattern を確立
+
+cycle 2 で 0 finding に収束し reviewer 全員から「対称性 OK」「regression なし」「fail-secure」と確認された。
+
+**学習**: 「兄弟 Issue 同型修正の対称化 doctrine」は **同 pattern を 3+ 箇所で書き起こす責務** までは確実に enforce するが、**各 caller の context 差異** (Pattern 5 Mode B / post-hook ownership / resolver 失敗時の影響範囲) を見落とすと defense-in-depth が薄くなる。canonical 対策:
+
+1. **対称適用 PR の review checklist に「caller context 差異 audit」を必須化**: 同 pattern を N 箇所適用した PR では、各 caller の責務 (前/後発火 / blocking / non-blocking / silent fallback の影響範囲) を 1 行ずつ列挙し、observability / defense-in-depth が caller ごとに必要かを判断する
+2. **structural guarantee の宣言時に code-level enforcement を併設する pair pattern**: 「構造的に保証される」と散文で宣言した invariant は、実装側で fail-secure に enforce する defense-in-depth check を必ず追加する。本 anti-pattern と [structural-guarantee-code-level-enforcement](../patterns/structural-guarantee-code-level-enforcement.md) は pair として運用する
+3. **helper-level test の 1 TC 複数経路 pin**: hook integration test に踏み込まずに contract を保護する canonical (詳細は [structural-guarantee-code-level-enforcement.md](../patterns/structural-guarantee-code-level-enforcement.md) Detection 観点)
 
 ## 関連ページ
 
