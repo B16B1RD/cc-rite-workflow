@@ -52,12 +52,16 @@ SESSIONS_DIR="$STATE_ROOT/.rite/sessions"
 # operation via `rite-config.yml` (`flow_state.schema_version: 1`) or when the
 # config is absent (default = legacy = "1"). Only schema_version=2 enables
 # migration. This is the documented rollback path (Issue #672 §Rollback).
-# Reuses the canonical _resolve-schema-version.sh helper for drift symmetry
-# with state-read.sh and flow-state-update.sh.
-SCRIPT_DIR_FOR_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_RESOLVE_SCHEMA="$SCRIPT_DIR_FOR_HELPER/../_resolve-schema-version.sh"
+# Reuses the canonical _resolve-schema-version.sh helper. The helper is
+# documented to "always exit 0" (echoes "1" or "2" on stdout), so we call it
+# without a defensive `|| fallback` to stay symmetric with state-read.sh and
+# flow-state-update.sh's _resolve_schema_version function. If the helper file
+# is missing, fall through to the legacy default; the resolution itself never
+# fails by contract.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_RESOLVE_SCHEMA="$SCRIPT_DIR/../_resolve-schema-version.sh"
 if [ -x "$_RESOLVE_SCHEMA" ]; then
-  CONFIG_SCHEMA_VERSION=$(bash "$_RESOLVE_SCHEMA" "$STATE_ROOT" 2>/dev/null) || CONFIG_SCHEMA_VERSION="1"
+  CONFIG_SCHEMA_VERSION=$(bash "$_RESOLVE_SCHEMA" "$STATE_ROOT")
 else
   CONFIG_SCHEMA_VERSION="1"
 fi
@@ -127,7 +131,9 @@ fi
 SESSION_ID=""
 _LEGACY_SID=$(jq -r '.session_id // empty' "$LEGACY_FILE" 2>/dev/null) || _LEGACY_SID=""
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR was set at the top of this script (during config schema resolution);
+# reuse it instead of re-computing. The two earlier declarations were equivalent
+# since BASH_SOURCE[0] is invariant within a single invocation.
 RESOLVE_SID="$SCRIPT_DIR/../_resolve-session-id.sh"
 
 if [ -n "$_LEGACY_SID" ] && [ -x "$RESOLVE_SID" ]; then
@@ -181,8 +187,16 @@ chmod 700 "$SESSIONS_DIR" 2>/dev/null || true
 # trap once the write is committed.
 TMP_NEW=""
 jq_err=""
+NEW_FILE_TO_CLEANUP=""
+NEW_FILE_COMMITTED=false
 _rite_migrate_cleanup() {
   rm -f "${TMP_NEW:-}" "${jq_err:-}"
+  # Roll back the new-format file when step 4 has not committed it yet.
+  # NEW_FILE_TO_CLEANUP is set after step 3's atomic mv; NEW_FILE_COMMITTED
+  # flips to true only after step 4's rename succeeds.
+  if [ -n "${NEW_FILE_TO_CLEANUP:-}" ] && [ "${NEW_FILE_COMMITTED:-false}" != "true" ]; then
+    rm -f "$NEW_FILE_TO_CLEANUP"
+  fi
 }
 trap 'rc=$?; _rite_migrate_cleanup; exit $rc' EXIT
 trap '_rite_migrate_cleanup; exit 130' INT
@@ -197,8 +211,12 @@ chmod 600 "$TMP_NEW" 2>/dev/null || true
 
 # Capture jq stderr so build failures surface their root cause (e.g. malformed
 # legacy JSON, missing field path) instead of silently emitting a generic
-# "jq build new-format object failed" message.
-jq_err=$(mktemp /tmp/rite-migrate-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+# "jq build new-format object failed" message. Use the canonical helper to stay
+# symmetric with state-read.sh / flow-state-update.sh / _resolve-cross-session-guard.sh
+# (the helper applies chmod 600 and emits a 3-line WARNING block on mktemp failure).
+jq_err=$(bash "$SCRIPT_DIR/../_mktemp-stderr-guard.sh" \
+  "migrate-flow-state" "migrate-jq-err" \
+  "jq build new-format object 失敗時の root cause が表示されません")
 
 # Build the new-format object by merging schema_version: 2 with the legacy
 # fields. Missing fields fall back to defaults compatible with the
@@ -246,21 +264,37 @@ if ! mv "$TMP_NEW" "$NEW_FILE" 2>/dev/null; then
 fi
 TMP_NEW=""  # disarm trap cleanup — file is now committed under its final name
 
+# Track NEW_FILE so step 4 failure can route through the same trap-managed
+# rollback path as step 3, instead of an ad-hoc inline rm. NEW_FILE_COMMITTED
+# stays "false" until step 4 succeeds; on any signal/error before that,
+# `_rite_migrate_cleanup` removes the new-format file to preserve the
+# rollback semantics tested by TC-10.
+NEW_FILE_TO_CLEANUP="$NEW_FILE"
+NEW_FILE_COMMITTED=false
+
 # --- Step 4: Rename legacy source to backup path ---
+# Tighten the source file's mode to 600 *before* the rename so the backup
+# inode is born private. `mv` preserves the source inode mode, so doing
+# `chmod 600` after `mv` opens a SIGINT/SIGKILL race window where the
+# backup remains world-readable. Pre-mv chmod is symmetric with
+# flow-state-update.sh's atomic-write block, which `chmod 600` the tempfile
+# before mv. Best-effort: skip on filesystems without permission bit support.
+chmod 600 "$LEGACY_FILE" 2>/dev/null || true
 if ! mv "$LEGACY_FILE" "$BACKUP_FILE" 2>/dev/null; then
-  # Roll back the new-format file so the user can retry on the next session start.
-  rm -f "$NEW_FILE" 2>/dev/null || true
   echo "[rite] ERROR: migration step 4 (rename $LEGACY_FILE → $BACKUP_FILE) failed — new-format file removed, legacy state preserved" >&2
+  # Roll back the new-format file via trap cleanup (NEW_FILE_COMMITTED still false).
   exit 1
 fi
 
-# Defense-in-depth (#679 review MEDIUM): tighten backup file permissions to 600.
-# `mv` preserves the source inode mode, so a manually-created legacy file with
-# mode 644 (e.g. from `echo > .rite-flow-state` under umask 022) would otherwise
-# leak its content (session_id / issue_number / branch / phase) to other users
-# on a shared host. Symmetric with flow-state-update.sh's writer doctrine which
-# always chmod 600 on tempfiles before mv. Best-effort skip if chmod fails
-# (filesystem without ACL support / SELinux constraint).
+# Step 4 succeeded — disarm the new-format rollback so subsequent signals
+# don't delete a committed file.
+NEW_FILE_COMMITTED=true
+
+# Defense-in-depth: re-apply chmod 600 to the backup file. The pre-mv chmod
+# above already makes this redundant on filesystems where it succeeded, but
+# we keep the post-mv invocation so that ACL-restricted environments which
+# refused the source-side chmod still get a chance to tighten the backup
+# (some filesystems allow chmod on the destination but not the source).
 chmod 600 "$BACKUP_FILE" 2>/dev/null || true
 
 # --- Step 5: Emit explicit migration message (silent skip forbidden — AC-8) ---

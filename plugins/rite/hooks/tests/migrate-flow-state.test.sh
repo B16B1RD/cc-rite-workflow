@@ -290,6 +290,18 @@ _assert "TC-16.no-output" "$([ -z "$out" ] && echo true || echo false)"
 _assert "TC-16.legacy-intact" "$([ -f "$TEST_ROOT/.rite-flow-state" ] && echo true || echo false)"
 _teardown
 
+# ---------- TC-14: backup file content equals pre-migration legacy content ----------
+echo "TC-14: backup file content equals legacy content byte-for-byte (rename, not rebuild)"
+_setup
+legacy_payload='{"active":true,"issue_number":11,"phase":"phaseQ","session_id":"55667788-99aa-bbcc-ddee-ff0011223344","custom_field":"do-not-lose-me"}'
+echo "$legacy_payload" > "$TEST_ROOT/.rite-flow-state"
+STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1
+backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
+backup_file="${backup_glob[0]}"
+backup_payload=$(cat "$backup_file")
+_assert "TC-14.backup-equals-legacy" "$([ "$backup_payload" = "$legacy_payload" ] && echo true || echo false)"
+_teardown
+
 # ---------- TC-17: backup file gets chmod 600 (security review MEDIUM, #679) ----------
 echo "TC-17: backup file is chmod'd to 600 after step 4 rename (defense-in-depth)"
 _setup
@@ -305,18 +317,6 @@ if [ -f "${backup_file[0]}" ]; then
 else
   _assert "TC-17.backup-mode-600" "false"
 fi
-_teardown
-
-# ---------- TC-14: backup file content equals pre-migration legacy content ----------
-echo "TC-14: backup file content equals legacy content byte-for-byte (rename, not rebuild)"
-_setup
-legacy_payload='{"active":true,"issue_number":11,"phase":"phaseQ","session_id":"55667788-99aa-bbcc-ddee-ff0011223344","custom_field":"do-not-lose-me"}'
-echo "$legacy_payload" > "$TEST_ROOT/.rite-flow-state"
-STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1
-backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
-backup_file="${backup_glob[0]}"
-backup_payload=$(cat "$backup_file")
-_assert "TC-14.backup-equals-legacy" "$([ "$backup_payload" = "$legacy_payload" ] && echo true || echo false)"
 _teardown
 
 # ---------- Summary ----------
