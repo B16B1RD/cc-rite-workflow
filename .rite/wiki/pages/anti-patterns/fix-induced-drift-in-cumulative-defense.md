@@ -2,12 +2,16 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-04-29T02:55:00+00:00"
+updated: "2026-04-30T01:58:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260421T024947Z-pr-636.md"
   - type: "reviews"
     ref: "raw/reviews/20260421T030627Z-pr-636-cycle-2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260430T005759Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260429T092812Z-pr-688.md"
   - type: "reviews"
     ref: "raw/reviews/20260421T032048Z-pr-636-cycle-3.md"
   - type: "reviews"
@@ -274,6 +278,24 @@ cycle 12 (7 findings) → cycle 14 (7) → cycle 15 (9) → cycle 16 (collapse)
 
 これは「累積対策 N+1 回目 PR は learned 節の対象パターンを **同 commit 内で再演** する確率が PR の cycle 経過 (38+) と learned 節の数 (累積 14 回分) に比例して上昇する」観察を実証。learned 節を commit message に書く際は **対象パターンの全 site grep + sandbox 実機 verify** を mandatory step として組み込むのが canonical (本ページ「Cross-validated CRITICAL の reviewer 合意数」signal の延長線)。
 
+#### Failure mode 4: Self-defeating defense (cycle 49 H-1) — 防衛機構導入 fix 自体が drift を含み防衛対象が再開する
+
+PR #688 cycle 49 review で 1 CRITICAL + 2 HIGH + 7 MEDIUM + 6 LOW を検出した中、**H-1 CRITICAL** は cycle 49 で導入した METRICS_SKIPPED sentinel が、Phase 5.5.2 の Step 番号 off-by-one drift により無効化される self-defeating defense として記録された。Self-referential learned 節 chain anti-pattern の典型例 — **防衛機構を導入する fix 自体が drift を含み、防衛対象だった partial corruption が再開する経路**。
+
+**学習 (canonical 対策)**:
+
+1. **防衛機構導入 cycle に Step 番号 absolute 化を mandatory step**: 防衛機構を導入する fix で「Step N + 1 を skip」「次の Step」のような relative 参照を書いた瞬間、後続 reorder で actual heading 構造とのずれが silent regression を生む。Step 番号は heading title 名 + Step 番号の absolute form (例: `Phase 5.5.2 Step 1: METRICS_SKIPPED emit`) で書く規約を防衛機構導入 cycle に必須適用 (詳細: [Step 番号参照は relative ではなく absolute (heading title 名 + Step 番号) で書く](../patterns/step-reference-absolute-heading-over-relative.md))
+2. **Self-defeating defense 検出のための cross-validation revert test**: 「防衛機構を導入した fix」を merge する前に、**(a) 防衛機構が無いコードで attack scenario を再現** + **(b) 防衛機構を導入した後に同 attack scenario を再実行** + **(c) 防衛機構が actual に block するか empirical に直接観測**。reasoning ベースで「invariant は成立する」判定する経路は accumulated 49 cycle 後にも silent regression を見逃す
+3. **CRITICAL self-defeating defense + HIGH 片肺 drift + MEDIUM mutation kill power gap の組み合わせは累積 escalation 信号**: 1 cycle で同型 anti-pattern が 3 severity に渡って同時 surface する場合、累積対策 PR の防衛文言固化 (cycle 41/43/49 系列で追加された防衛文言が膨張) を意味する。canonical 対策は SoT 集約 (state-read-evolution.md 等) と短い semantic anchor のみへの圧縮
+
+#### PR #688 最終 cycle (47+) 観測の追加 lesson
+
+PR #688 (累積 14 回目) 最終フルレビュー (6 reviewer 21 findings) 後の lesson 追加:
+
+1. **「累積対策 PR の防衛文言は数 cycle で意味を失う」**: cycle 41/43/49 系列で追加された防衛文言が膨張し、第三者読者が 1 行で意味を取れなくなる経路。1 cell に複数 cycle 番号 + 5 件の cross-reference を混在させると Self-referential learned 節 chain が顕在化。SoT 集約 (state-read-evolution.md) と短い semantic anchor のみへの圧縮が必要
+2. **「Mutation testing の vector は production の正規化処理 (tr / sed) との相互作用を empirical 検証する」**: `tr -d '[:space:]'` で改変される vector は SID resolve 結果と per-session file 名が非同期化され mutation kill power が 0 になる経路を持つ。test 設計時に production の正規化処理を前提として vector を選定する必要がある (詳細: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md))
+3. **「scope-creep の cross-validation gate を `rejected(scope-creep)` action lines として commit message に明記する」**: 累積 14 回目 38+ cycle PR では F-03/F-04/F-05/F-06 の MEDIUM 4 件 (helper 抽出 / caller boilerplate 集約 / cleanup 関数命名統一) が scope 大として別 Issue 化された。`rejected(scope-creep)` action line を commit message に明記し、後続 reviewer が cross-validation で gate する canonical flow (詳細: [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](../heuristics/scope-creep-rejection-empirical-gate.md))
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
@@ -314,3 +336,5 @@ cycle 12 (7 findings) → cycle 14 (7) → cycle 15 (9) → cycle 16 (collapse)
 - [PR #688 cycle 12 fix (HIGH 1 + MEDIUM 3 + LOW 3 を全修正)](../../raw/fixes/20260428T111028Z-pr-688.md)
 - [PR #688 cycle 14 fix (prose-code 整合 + DRY claim 訂正 + Form A 統一 + sanitize 対称化)](../../raw/fixes/20260428T123811Z-pr-688.md)
 - [PR #688 cycle 15 fix (cycle 14 → 15 self-referential drift chain 完全修復)](../../raw/fixes/20260428T153020Z-pr-688.md)
+- [PR #688 cycle 49 review (1 CRITICAL Self-defeating defense + 2 HIGH 片肺 + 7 MEDIUM)](../../raw/reviews/20260430T005759Z-pr-688.md)
+- [PR #688 cycle 14 review (8 finding patterns / DRY claim file 自身の partial DRY)](../../raw/reviews/20260429T092812Z-pr-688.md)

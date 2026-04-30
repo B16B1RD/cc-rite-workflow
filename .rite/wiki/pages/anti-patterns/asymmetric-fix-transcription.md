@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-29T13:33:00+09:00"
+updated: "2026-04-30T01:58:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -96,6 +96,10 @@ sources:
     ref: "raw/fixes/20260429T000017Z-pr-711-cycle3.md"
   - type: "reviews"
     ref: "raw/reviews/20260429T041942Z-pr-713.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260429T073028Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260429T160252Z-pr-688.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift"]
 confidence: high
 ---
@@ -345,6 +349,15 @@ PR #713 (PR #708 = LOW-MEDIUM first-class 化 cycle 4 review で発見された 
 2. **3 階層 drift の細粒度化が cycle ごとに進行する**: PR #713 では (a) cross-file 同期 (9 sites)、(b) 同ファイル内多箇所 (review.md 6→9 箇所、fix.md 5→7 箇所など内部一貫性で追加箇所 surface)、(c) rationale 強度 (regex 順序 rationale の正確化、prompt-engineer-reviewer.md の hardcode 抽象化) の 3 階層 drift が **cycle 1 で同時 surface** した。原 PR の 4 cycle 観測と follow-up PR の 2 cycle 観測を合算すると、severity 等級拡張という運用 invariant に対する **6 cycle 累積観察** となる
 3. **Follow-up PR の scope 設計**: cycle 4 以降の cross-file impact を follow-up PR にまとめる際、**「9 finding すべてを 1 PR で同期」する scope 設計** が canonical。個別 PR に分割すると `Asymmetric Fix Transcription` のリスクが finding 間の境界に分散し、収束サイクル数が finding 数 × 2-3 cycle に膨張する。PR #713 は 9 finding を 1 PR に bundle して 2 cycle で収束させた
 
+### Cycle 47+ writer 中核 trap 片肺残存 (PR #688 最終 cycle での evidence)
+
+PR #688 (累積 14 回目) の cycle 47+ レビューで、error-handling reviewer / security reviewer / tech-writer reviewer が独立に「Asymmetric Fix Transcription の構造的予防が完成」「主要 attack surface 構造的に塞がれている」「fact-checkable claim 全て verify 可能」と評価する一方、code-quality reviewer が **writer 中核 (`flow-state-update.sh:_rite_flow_state_atomic_cleanup`) の signal-specific trap が TMP_STATE のみ cleanup で _mkdir_err / _jq_err は inline rm に分裂している HIGH** を依然検出した。reader 側 (`state-read.sh:_rite_state_read_cleanup`) は両 tempfile を 1 関数 cleanup する canonical pattern を確立済み。
+
+**学習**: 累積対策 PR で「対称化 doctrine 完成」と複数 reviewer が同意してもなお、**最後の片肺 (writer 中核 trap) が 47 cycle 後にも残存する**。これは reviewer cross-validation が「主要 surface の structural completion」を判定する一方、writer 中核の subtle な trap 構造の非対称性は code-quality reviewer 単独でしか catch できない場合があるため。canonical 対策:
+
+1. **対称化 doctrine 完成宣言 cycle で writer 中核の 1 関数 cleanup pattern 全件 sweep**: reader 側の `_rite_*_cleanup` 関数構造 (例: 両 tempfile を 1 関数で `rm -f` する canonical) を doctrine 化したら、writer 側の対応 trap 関数を **同 PR 内で全件 grep し関数構造を 1:1 対称化** する
+2. **複数 reviewer の `clean` 評価でも code-quality 単独 HIGH を追加 cycle 必須化**: 「主要 surface」「attack surface」「fact-checkable」の 3 評価が clean でも、code-quality 単独の HIGH 検出は merge gate を bypass しない。最後の片肺 surface のために 1 追加 cycle を回す
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -396,3 +409,5 @@ PR #713 (PR #708 = LOW-MEDIUM first-class 化 cycle 4 review で発見された 
 - [PR #708 cycle 2 review (severity 概要表追加で同ファイル内 5 箇所 self-consistency 違反 surface)](raw/reviews/20260428T200123Z-pr-708-cycle-2.md)
 - [PR #708 cycle 2 fix (同ファイル内 5 箇所同期 + Inline annotation → blockquote pattern)](raw/fixes/20260428T200424Z-pr-708-cycle-2.md)
 - [PR #713 review (PR #708 cycle 4 follow-up cross-file 9 sites 同期、2 cycle 収束)](raw/reviews/20260429T041942Z-pr-713.md)
+- [PR #688 cycle 14 review (writer/reader doctrine 違反、work-memory-update.sh 数値検証 DRY 違反)](raw/reviews/20260429T073028Z-pr-688.md)
+- [PR #688 cycle 47+ review (writer 中核 trap 片肺残存 HIGH、code-quality 単独検出)](raw/reviews/20260429T160252Z-pr-688.md)
