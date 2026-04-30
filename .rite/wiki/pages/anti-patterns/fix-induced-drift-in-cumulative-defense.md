@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-04-30T13:25:00+00:00"
+updated: "2026-05-01T00:00:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260421T024947Z-pr-636.md"
@@ -76,7 +76,17 @@ sources:
     ref: "raw/fixes/20260430T123646Z-pr-753.md"
   - type: "fixes"
     ref: "raw/fixes/20260430T125524Z-pr-753.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot"]
+  - type: "reviews"
+    ref: "raw/reviews/20260430T141522Z-pr-754.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260430T192119Z-pr-754.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260430T141940Z-pr-754.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260430T143329Z-pr-754.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260430T191751Z-pr-754.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat"]
 confidence: high
 ---
 
@@ -396,3 +406,14 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 - [PR #753 cycle 5 review (mergeable, 0 findings — full convergence 確認)](../../raw/reviews/20260430T130829Z-pr-753-cycle5.md)
 - [PR #753 cycle 3 fix (3 HIGH comment-quality SoT 原則 2/3 違反修正)](../../raw/fixes/20260430T123646Z-pr-753.md)
 - [PR #753 cycle 4 fix (test file blind spot 修正: line ref → semantic anchor + dead local 削除)](../../raw/fixes/20260430T125524Z-pr-753.md)
+- [PR #754 cycle 1 review (state-read.test.sh retrofit / Comment Rot CRITICAL + anchor specificity HIGH×2)](../../raw/reviews/20260430T141522Z-pr-754.md)
+- [PR #754 cycle 4 review (mergeable, 0 findings — fractal drift 収束宣言)](../../raw/reviews/20260430T192119Z-pr-754.md)
+- [PR #754 cycle 1-3 fix (anchor specificity retreat doctrine 採用で literal anchor existence 問題を構造的解消)](../../raw/fixes/20260430T141940Z-pr-754.md)
+- [PR #754 cycle 2 fix (broken cross-reference を `(Cycle 別の主要な修正)` 総称形に retreat)](../../raw/fixes/20260430T143329Z-pr-754.md)
+- [PR #754 cycle 3 fix (`Form A vs Form B` 矛盾 + `cleanup helper 集約` literal 不在を Doctrines / Principles 総称形に retreat、4 cycle 収束)](../../raw/fixes/20260430T191751Z-pr-754.md)
+
+## PR #754 (累積 17 回目、4 cycle 収束) で観測した sub-pattern: anchor specificity retreat doctrine
+
+PR #754 (Issue #732 = state-read.test.sh の journal-style コメント retrofit) で 4 サイクル要した anchor 関連 finding chain。cycle 1 で `Form A vs Form B` Comment Rot CRITICAL + bare anchor specificity 不足 HIGH × 2 を fix → cycle 2 で fix 自身が `L46` self-line reference drift を導入 + descriptions が evolution.md に literal 0 件 (broken cross-reference) → cycle 3 で fix が `Form A cleanup minimal contract` 参照 (Form B 実装と矛盾) と `cleanup helper 集約` (literal 不在) を導入 → cycle 4 で「総称形 retreat」doctrine 採用により 0 findings 収束 (`(Cycle 別の主要な修正)` / `(Doctrines / Principles)`)。
+
+**収束のキー**: anchor description は **section 総称形まで** retreat する。fine-grained descriptions は参照先 literal の存在検証が漏れるたびに silent drift 源となる。Issue #732 Non-goal で evolution.md 改修禁止だったため retreat 方向のみが安全。本事例は cycle 17 累積対策 PR で observed Wiki 経験則「Test pin protection theater」「Mutation testing で test の真正性 empirical 検証」と接続し、test ファイル retrofit 系 PR の **anchor 設計指針** として記録。
