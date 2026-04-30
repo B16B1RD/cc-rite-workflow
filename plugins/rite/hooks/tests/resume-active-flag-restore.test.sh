@@ -50,10 +50,14 @@ FAIL=0
 FAILED_NAMES=()
 
 cleanup_dirs=()
+cleanup_files=()
 _resume_test_cleanup() {
-  local d
+  local d f
   for d in "${cleanup_dirs[@]:-}"; do
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
+  done
+  for f in "${cleanup_files[@]:-}"; do
+    [ -n "$f" ] && rm -f "$f"
   done
   return 0  # Form B (portability variant) → return 0 必須 (bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照)
 }
@@ -151,6 +155,8 @@ write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 # per-session も legacy も作成しない
 
 stderr_file=$(mktemp /tmp/rite-resume-tc1-stderr-XXXXXX)
+
+cleanup_files+=("$stderr_file")
 if run_helper "$SBX" "$stderr_file"; then
   rc=0
 else
@@ -173,6 +179,8 @@ write_session_id "$SBX" "$SID"
 write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue","pr_number":42,"loop_count":2,"active":false}'
 
 stderr_file=$(mktemp /tmp/rite-resume-tc2-stderr-XXXXXX)
+
+cleanup_files+=("$stderr_file")
 if run_helper "$SBX" "$stderr_file"; then
   rc=0
 else
@@ -200,6 +208,8 @@ EOF
 write_legacy "$SBX" '{"phase":"phase5_lint","next_action":"continue","pr_number":50,"loop_count":1,"active":false}'
 
 stderr_file=$(mktemp /tmp/rite-resume-tc2-nosid-stderr-XXXXXX)
+
+cleanup_files+=("$stderr_file")
 if run_helper "$SBX" "$stderr_file"; then
   rc=0
 else
@@ -224,6 +234,8 @@ write_session_id "$SBX" "$SID"
 write_per_session "$SBX" "$SID" '{"phase":"","next_action":"continue","active":false}'
 
 stderr_file=$(mktemp /tmp/rite-resume-tc3-stderr-XXXXXX)
+
+cleanup_files+=("$stderr_file")
 if run_helper "$SBX" "$stderr_file"; then
   rc=0
 else
@@ -252,6 +264,7 @@ write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue"
 
 # わざと empty phase を渡す (cycle 9 で発生した silent regression の経路)
 patch_err=$(mktemp /tmp/rite-resume-patch-empty-err-XXXXXX)
+cleanup_files+=("$patch_err")
 if (cd "$SBX" && bash "$FLOW_STATE_UPDATE" patch \
     --phase "" \
     --next "Test." \
@@ -288,6 +301,7 @@ write_legacy "$SBX" '{"phase":"phase5_lint","next_action":"continue","active":fa
 # tampered content を .rite-session-id に書き込む (UUID validation を bypass しようとする攻撃ベクトル)
 echo "../../../etc/passwd" > "$SBX/.rite-session-id"
 helper_err=$(mktemp /tmp/rite-resume-tampered-err-XXXXXX)
+cleanup_files+=("$helper_err")
 if (cd "$SBX" && bash "$HELPER" "$PLUGIN_ROOT" 2>"$helper_err"); then
   helper_rc=0
 else
@@ -375,6 +389,8 @@ FAKE_MKTEMP
 chmod +x "$fake_bin/mktemp"
 
 helper_err=$(mktemp /tmp/rite-resume-mktemp-fail-err-XXXXXX)
+
+cleanup_files+=("$helper_err")
 if (cd "$SBX" && PATH="$fake_bin:$PATH" bash "$HELPER" "$PLUGIN_ROOT" 2>"$helper_err"); then
   helper_rc=0
 else
@@ -409,6 +425,8 @@ write_legacy "$SBX" "{\"schema_version\":2,\"active\":false,\"issue_number\":42,
 # per-session は作らない (precondition)
 
 stderr_file=$(mktemp /tmp/rite-resume-tc-ac4-same-stderr-XXXXXX)
+
+cleanup_files+=("$stderr_file")
 if run_helper "$SBX" "$stderr_file"; then
   rc=0
 else
@@ -445,6 +463,8 @@ write_legacy "$SBX" "{\"schema_version\":2,\"active\":false,\"issue_number\":999
 # per-session for CURR_SID は作らない
 
 stderr_file=$(mktemp /tmp/rite-resume-tc-ac4-cross-stderr-XXXXXX)
+
+cleanup_files+=("$stderr_file")
 if run_helper "$SBX" "$stderr_file"; then
   rc=0
 else
@@ -488,15 +508,20 @@ SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 
-# 5 helpers checked by resume-active-flag-restore.sh's upfront for-loop.
-# 並び順は helper の loop 定義と完全一致 (drift 検出を兼ねる)。
-deploy_regression_helpers=(
-  state-read.sh
-  flow-state-update.sh
-  state-path-resolve.sh
-  _resolve-session-id.sh
-  _resolve-session-id-from-file.sh
+# helpers checked by resume-active-flag-restore.sh's _validate-helpers.sh invocation.
+# production source (resume-active-flag-restore.sh の `_validate-helpers.sh "$..."` 引数) から
+# 動的抽出することで、production 引数と test 配列の drift (片肺更新) を構造的に防ぐ。
+# state-read.test.sh:798-809 と同型の動的抽出 pattern (cycle 13 F-01 doctrine)。
+mapfile -t deploy_regression_helpers < <(
+  awk '/^bash.*_validate-helpers\.sh/{found=1} found{print; if(/[^\\]$/) exit}' \
+    "$PLUGIN_ROOT/hooks/resume-active-flag-restore.sh" \
+    | grep -oE '[a-z_][a-z_0-9-]*\.sh' \
+    | grep -v '_validate-helpers.sh'
 )
+if [ "${#deploy_regression_helpers[@]}" -eq 0 ]; then
+  echo "FATAL: deploy_regression_helpers の動的抽出が空。resume-active-flag-restore.sh の _validate-helpers.sh 呼び出しが読み取れません" >&2
+  exit 1
+fi
 
 for _h in "${deploy_regression_helpers[@]}"; do
   chmod +x "$SANDBOX_PLUGIN/hooks"/*.sh

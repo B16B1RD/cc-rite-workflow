@@ -160,7 +160,7 @@ write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue"
 # PR #688 followup F-06 LOW (branch-name coupling 軽減): make_sandbox の git init branch
 # (fix/issue-687-test) と本 TC の assertion で参照する issue 番号 (687) を local var で 1 か所に集約。
 # make_sandbox の branch 名を変更した場合、本 var を同期更新するだけで TC-1.1 / TC-1.2 が追従する。
-EXPECTED_ISSUE_NUM=687  # make_sandbox L88 の "fix/issue-687-test" branch から抽出される値
+EXPECTED_ISSUE_NUM=687  # make_sandbox 関数内の "fix/issue-687-test" branch 名から抽出される値 (branch 名を変更する場合は本 var を同期更新)
 if run_update "$SBX" \
   WM_SOURCE="lint" WM_PHASE="phase5_lint" WM_PHASE_DETAIL="quality check" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Test body." \

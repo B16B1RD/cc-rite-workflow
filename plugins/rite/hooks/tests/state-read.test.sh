@@ -301,18 +301,25 @@ rm -rf "$SBX"
 #   - 短すぎる / 長すぎる SID: regex の長さ制約破壊試行
 echo "TC-6.INJECTION: SID injection vector defense (cycle 41 II-4)"
 
-# mutation kill power 可視化用 counter (F-04 対応)。
-# bad per-session file 作成成功数を tracking し、loop 後の summary で表示することで、
-# 「どの vector が file system 制約で skip されたか」を operator が確認できる。
-# kill power 0/7 → 4/7 (uppercase / mixed_case / too_short / too_long の 4 vector が確実に成立) が design intent。
+# bad per-session file 作成成功数を tracking する counter。
+# 「どの vector が file system 制約で skip されたか」を operator が確認できるようにする。
+# Note: この counter は file system が bad SID 名を accept したかどうかを示すだけで、
+# 実際の mutation kill power とは別概念。kill power は backtick / too_short / too_long /
+# non_hex / hyphen_misplaced (および case-sensitive FS 上で uppercase / mixed_case) が
+# 真の kill 経路であり、newline / 空白を含む vector は tr -d '[:space:]' 副作用で kill power 0 になる。
 inject_created_count=0
 
 # 各 vector ごとに make_sandbox + bad SESSION_ID + per-session file (BAD_*) + legacy (safe_legacy_*)
 # のパターンで pin する (TC-6.RFC と同型)。reject されると legacy fallback で safe_legacy_* が返る。
 inject_vectors=(
   # 形式: "vector_name|sid_value|legacy_phase|description"
-  "newline|aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\nphase5_post_stop_hook|safe_legacy_newline|newline injection"
-  "command_sub|\$(echo INJECTED)|safe_legacy_cmdsub|shell command substitution"
+  # IMPORTANT: tr -d '[:space:]' 副作用回避ルール — `_resolve-session-id-from-file.sh` の
+  # 正規化処理は whitespace を strip するため、newline / 空白を含む vector は
+  # SID resolve 結果と per-session file 名が非同期化され mutation kill power が 0 になる。
+  # tr で改変されない vector (non-hex 文字 / hyphen 位置不正) のみ採用する。
+  # mutation kill power 5/7 (non_hex / hyphen_misplaced / backtick / too_short / too_long が確実に成立) が design intent。
+  "non_hex|zzzzzzzz-aaaa-aaaa-aaaa-aaaaaaaaaaaa|safe_legacy_nonhex|non-hex characters (RFC 4122 strict reject — character class violation, tr 副作用なし)"
+  "hyphen_misplaced|aaaaaaaaa-aaa-aaaa-aaaa-aaaaaaaaaaaa|safe_legacy_hyphen|hyphen position invalid (RFC 4122 strict reject — 9-3-4-4-12 instead of 8-4-4-4-12, tr 副作用なし)"
   "backtick|\`whoami\`|safe_legacy_backtick|backtick command substitution"
   # NOTE: uppercase / mixed_case vectors は **case-sensitive filesystem 前提** (Linux ext4/btrfs/xfs 等)。
   # case-insensitive FS (macOS HFS+ default / exFAT / Windows NTFS) では fixture (uppercase 名)
@@ -393,10 +400,10 @@ for vector_entry in "${inject_vectors[@]}"; do
   fi
   rm -rf "$SBX"  # 他 21 SBX と inline rm -rf の symmetry。EXIT trap cleanup_dirs[] が二重防御
 done
-# F-04 対応: mutation kill power 可視化。
-# inject_created_count が想定値 (4/7、case-sensitive FS 上で uppercase/mixed_case/too_short/too_long が成立)
-# を下回る場合、operator は file system 制約 (case-insensitive FS / quota / inode 枯渇) を疑える。
-echo "  ℹ️ TC-6.INJECTION mutation-kill effective: $inject_created_count/${#inject_vectors[@]}"
+# inject_created_count が想定値を下回る場合、operator は file system 制約
+# (case-insensitive FS / quota / inode 枯渇 / 特殊文字 reject) を疑える。
+# label を "files created" に変更 (旧 "mutation-kill effective" は実 kill power と乖離していたため誤解を招いていた)。
+echo "  ℹ️ TC-6.INJECTION files created (filesystem accept): $inject_created_count/${#inject_vectors[@]}"
 
 # --- TC-7: schema_version=1 (or absent) routes directly to legacy even if SID + per-session exist ---
 echo "TC-7: schema_version=1 routes to legacy"
@@ -792,19 +799,18 @@ SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
 write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 
-# helpers checked by state-read.sh's `_validate-helpers.sh` invocation (cycle 10 F-06 で for-loop から
-# helper 経由に移行)。並び順は `_validate-helpers.sh` 内 DEFAULT_HELPERS 配列と完全一致させる
-# (drift 検出を兼ねる — エントリ数や並びが揃っていない場合は本テストが先に落ちる)。
-deploy_regression_helpers=(
-  state-path-resolve.sh
-  _resolve-session-id.sh
-  _resolve-session-id-from-file.sh
-  _resolve-schema-version.sh
-  _resolve-cross-session-guard.sh
-  _emit-cross-session-incident.sh
-  _mktemp-stderr-guard.sh
-  _validate-state-root.sh
+# helpers checked by state-read.sh's `_validate-helpers.sh` invocation。
+# DEFAULT_HELPERS 配列を _validate-helpers.sh の SoT から動的抽出することで、
+# ADD 方向の drift (新 helper が DEFAULT_HELPERS に追加されたが本配列が未更新) も検出可能にする。
+# _validate-helpers.test.sh:78-87 と同型の動的抽出 pattern (cycle 13 F-01 doctrine)。
+mapfile -t deploy_regression_helpers < <(
+  awk '/^DEFAULT_HELPERS=\(/,/^\)$/' "$HOOKS_DIR/_validate-helpers.sh" \
+    | grep -oE '[a-z_][a-z_0-9-]*\.sh'
 )
+if [ "${#deploy_regression_helpers[@]}" -eq 0 ]; then
+  echo "FATAL: deploy_regression_helpers の動的抽出が空。_validate-helpers.sh の DEFAULT_HELPERS 配列が読み取れません" >&2
+  exit 1
+fi
 
 for _h in "${deploy_regression_helpers[@]}"; do
   # 全 helper を restore してから対象のみ chmod -x (各 case を independent に保つ)

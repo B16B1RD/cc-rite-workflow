@@ -302,6 +302,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# --- Validate numeric/boolean argument values (defense-in-depth, Issue #688 F-10) ---
+# create mode の `--argjson` は値を JSON literal として parse するため、object literal
+# (`{"x":1}`) や string (`"foo"`) も受理されてしまう。increment mode の FIELD allowlist
+# (cycle 44 F-13) と対称な writer side validation として、数値/boolean 引数を allowlist で
+# 検証する。work-memory-update.sh の `_validate_numeric_yaml_value` と同型の defense-in-depth。
+# Issue title 等の dynamic 文字列が `--issue` に流入する経路があれば flow-state JSON 破壊で
+# stop-guard / phase-transition-whitelist hook の判定が壊れ workflow が hard abort する経路を防ぐ。
+case "${ISSUE:-0}" in
+  ''|*[!0-9]*) echo "ERROR: --issue must be non-negative integer (got: '$ISSUE')" >&2; exit 1 ;;
+esac
+case "${PR:-0}" in
+  ''|*[!0-9]*) echo "ERROR: --pr must be non-negative integer (got: '$PR')" >&2; exit 1 ;;
+esac
+case "${PARENT_ISSUE:-0}" in
+  ''|*[!0-9]*) echo "ERROR: --parent-issue must be non-negative integer (got: '$PARENT_ISSUE')" >&2; exit 1 ;;
+esac
+case "${ACTIVE:-true}" in
+  true|false) ;;
+  *) echo "ERROR: --active must be true or false (got: '$ACTIVE')" >&2; exit 1 ;;
+esac
+
 # --- Resolve effective schema version and target flow-state path ---
 # session_id is needed for both create/patch/increment to route writes to the
 # session-owned file when schema_version=2. patch/increment auto-read from

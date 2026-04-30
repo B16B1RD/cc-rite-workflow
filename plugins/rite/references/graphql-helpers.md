@@ -575,7 +575,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 This helper uses **GraphQL** (`addSubIssue` mutation), not the REST `POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues` endpoint, for the following reasons:
 
 1. **Consistency**: All other rite workflow Projects/Issue queries use GraphQL via `gh api graphql`. Mixing REST and GraphQL would fragment error handling and authentication paths.
-2. **Type safety**: The introspection-verified `AddSubIssueInput` schema (「issueId: ID!」, `subIssueId: ID`) provides clearer contract than the REST shape.
+2. **Type safety**: The introspection-verified `AddSubIssueInput` schema — the required field 「issueId: ID!」 and the optional field 「subIssueId: ID」 — provides clearer contract than the REST shape.
 3. **Single round-trip after node ID resolution**: GraphQL accepts node IDs directly, matching how the rest of rite workflow already passes node IDs across Project mutations.
 
 REST remains a documented fallback if GraphQL becomes unavailable, but no current code path uses it.

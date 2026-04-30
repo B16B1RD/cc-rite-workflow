@@ -106,7 +106,7 @@ _sid=$(bash "$PLUGIN_ROOT/hooks/_resolve-session-id-from-file.sh" "$STATE_ROOT")
 
 # PR #688 cycle 10 fix (F-01 CRITICAL): curr_phase 空文字ガード。
 # state-read.sh が空文字を返す経路 (resume.md Phase 3.0.1 trailing prose の canonical enumeration
-# of the four paths のいずれか) で `flow-state-update.sh patch --phase ""` を呼ぶと、
+# of the seven no-state paths (a)〜(g) のいずれか) で `flow-state-update.sh patch --phase ""` を呼ぶと、
 # flow-state-update.sh patch mode の `[[ -z "$PHASE" || -z "$NEXT" ]]` validation が `--if-exists`
 # check より先に評価されて exit 1 し、resume が hard abort する (cycle 9 で実際に発生した
 # CRITICAL 経路)。空文字時はそもそも patch を呼ばずに skip し、invoked command
