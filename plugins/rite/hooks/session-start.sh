@@ -232,6 +232,18 @@ with open(out_path, "w") as f:
   fi
 fi
 
+# Auto-migrate legacy `.rite-flow-state` to the per-session path
+# (`.rite/sessions/{session_id}.flow-state`) when schema_version is missing or < 2.
+# Issue #672 (multi-state design) / #679 (migration). The script is non-blocking:
+# any error is reported to stderr but the hook continues with the legacy file so
+# the user can retry on the next session start. The explicit migration message
+# (AC-8 — silent skip forbidden) flows through stderr to the user's terminal.
+_migrate_script="$SCRIPT_DIR/scripts/migrate-flow-state.sh"
+if [ -x "$_migrate_script" ]; then
+  STATE_ROOT="$STATE_ROOT" bash "$_migrate_script" || true
+fi
+unset _migrate_script
+
 STATE_FILE="$STATE_ROOT/.rite-flow-state"
 
 if [ ! -f "$STATE_FILE" ]; then
