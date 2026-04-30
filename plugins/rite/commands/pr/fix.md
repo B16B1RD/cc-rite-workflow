@@ -5,7 +5,7 @@ description: レビュー指摘への対応を支援
 # /rite:pr:fix
 
 ## Contract
-**Input**: PR number, review findings from `/rite:pr:review`, `.rite-flow-state` with `phase: phase5_fix` (e2e flow)
+**Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: phase5_fix` (e2e flow)
 **Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:issues-created:{n}]` | `[fix:replied-only]` | `[fix:error]`
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
@@ -4877,7 +4877,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 
 > **Purpose**: Prevent the LLM from outputting a result pattern (`[fix:pushed]` / `[fix:replied-only]` / etc.) without having executed Phase 4.6.W (Wiki Ingest). If Phase 4.6.W was executed, at least one `[CONTEXT] WIKI_INGEST_` sentinel MUST be present in the conversation context (emitted by Phase 4.6.W Step 1 skip path, Step 3 failure path, or Phase 4.6.W.2 success/failure paths). The complete absence of any sentinel indicates the LLM skipped Phase 4.6.W entirely.
 
-**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow) AND `wiki.enabled: true` in `rite-config.yml`. When wiki is disabled, W Phase is legitimately skipped (no sentinel expected) — pass the gate unconditionally.
+**Condition**: Execute only when flow state file exists (indicating e2e flow) AND `wiki.enabled: true` in `rite-config.yml`. When wiki is disabled, W Phase is legitimately skipped (no sentinel expected) — pass the gate unconditionally.
 
 **Check**: Search the conversation context for any of the following sentinel patterns:
 
@@ -4908,7 +4908,7 @@ ACTION: Return to Phase 4.6.W and execute the Wiki Ingest Trigger before outputt
 
 ### 8.1 Output Pattern (Return Control to Caller)
 
-Before outputting the pattern, update `.rite-flow-state` to `phase5_post_fix` (defense-in-depth, fixes #709). This prevents stop-guard `error_count` from accumulating when the flow continues after this skill returns:
+Before outputting the pattern, update flow state to `phase5_post_fix` (defense-in-depth, fixes #709). This prevents stop-guard `error_count` from accumulating when the flow continues after this skill returns:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \

@@ -5,7 +5,7 @@ description: PR を Ready for review に変更
 # /rite:pr:ready
 
 ## Contract
-**Input**: PR number (or auto-detected), `.rite-flow-state` (optional, e2e flow)
+**Input**: PR number (or auto-detected), flow state (optional, e2e flow)
 **Output**: `[ready:completed]` | `[ready:error]`
 
 Change PR to Ready for review and update the related Issue's Status
@@ -210,7 +210,7 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
-**In e2e flow**: If `.rite-flow-state` exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` Phase 5.5):
+**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` Phase 5.5):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -376,9 +376,9 @@ Inspect the script's stdout JSON and route by `.result`:
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:completed]`) or skipping output, update `.rite-flow-state` to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting the result pattern (`[ready:completed]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
 
-**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
+**Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
 **State update**:
 
@@ -396,7 +396,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 **Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
-**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
+**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 
 ```bash
 WM_SOURCE="ready" \

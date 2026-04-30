@@ -124,7 +124,7 @@ After Step 3 completion, proceed to Step 4 of 2.3 (feature branch creation).
 
 > **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
 
-Before returning control to the caller, update `.rite-flow-state` to the post-branch phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+Before returning control to the caller, update flow state to the post-branch phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands below.
 

@@ -709,7 +709,7 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 
 ## Phase 1.0: Terminal Completion (Normal Path Only)
 
-<!-- caller: this sub-skill is terminal on the Normal path. Phase 1.0 deactivates .rite-flow-state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
+<!-- caller: this sub-skill is terminal on the Normal path. Phase 1.0 deactivates flow state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
 
 > **Design decision** (Issue #444, D-01): This sub-skill handles flow-state deactivation, next-step output, and completion marker internally on the **Normal path** (sub-Issues created via Phase 0.9). On the **Delegation path** (cancelled and delegated to `create-register`), `create-register.md` handles its own Terminal Completion — do NOT execute this section.
 >
@@ -722,11 +722,11 @@ Phase 0.8 terminates based on the user's selection in the decomposition result c
 After Phase 0.9.6 (Completion Report), deactivate the flow state:
 
 ```bash
-if [ -f ".rite-flow-state" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_completed" \
-    --next "none" --active false
-fi
+# --if-exists で flow state file 不在時は silent skip。
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "create_completed" \
+  --next "none" --active false \
+  --if-exists
 ```
 
 ### 1.0.2 Completion Message (User-facing, Issue #552 / #561)

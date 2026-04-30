@@ -34,7 +34,7 @@ WM_SOURCE="init" \
 
 ### 2.6.2 Issue Comment (Backup Replica)
 
-Add a work memory comment to the Issue as a backup. The script handles template generation, comment creation, post-creation validation, and comment ID caching in `.rite-flow-state`:
+Add a work memory comment to the Issue as a backup. The script handles template generation, comment creation, post-creation validation, and comment ID caching in flow state:
 
 ```bash
 bash {plugin_root}/hooks/issue-comment-wm-sync.sh init \
@@ -65,7 +65,7 @@ Accumulate confirmation items that arise during work (design decisions, specific
 
 > **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
 
-Before returning control to the caller, update `.rite-flow-state` to the post-work-memory phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+Before returning control to the caller, update flow state to the post-work-memory phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \

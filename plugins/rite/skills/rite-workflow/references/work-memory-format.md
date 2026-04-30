@@ -409,7 +409,7 @@ if acquire_wm_lock "$LOCKDIR"; then
 fi
 ```
 
-**On lock failure**: Commands treat local work memory update as best-effort. `.rite-flow-state` is the primary state record; local work memory is for cross-session recovery.
+**On lock failure**: Commands treat local work memory update as best-effort. The flow state record is the primary state record; local work memory is for cross-session recovery.
 
 ## sync_revision Rules
 
@@ -444,7 +444,7 @@ Issue comment is a backup replica, synced at phase transitions:
 
 ## Preflight Guard Contract (Phase C)
 
-All `/rite:*` commands (except `issue/start` and `resume`, which are Orchestrators) run a preflight check before execution. `issue/start` and `resume` manage flow state via `.rite-flow-state` and delegate preflight to the sub-commands they invoke. The check detects compact-blocked state and prevents execution when recovery is needed.
+All `/rite:*` commands (except `issue/start` and `resume`, which are Orchestrators) run a preflight check before execution. `issue/start` and `resume` manage flow state and delegate preflight to the sub-commands they invoke. The check detects compact-blocked state and prevents execution when recovery is needed.
 
 ### Contract
 
@@ -463,7 +463,7 @@ bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:{command}" --cwd
 | **Write** | `pr/create`, `pr/review`, `pr/ready`, `pr/cleanup`†, `pr/fix`, `issue/close`, `issue/update`, `issue/implement`, `issue/work-memory-init`, `lint` | Read + Write (via `local-wm-update.sh`) |
 | **Read** | `issue/branch-setup`, `issue/implementation-plan`, `sprint/execute`, `sprint/team-execute` | Read only |
 | **Preflight only** | `issue/create`, `issue/list`, `issue/edit`, `issue/parent-routing`, `issue/child-issue-selection`, `workflow`, `getting-started`, `sprint/list`, `sprint/current`, `sprint/plan`, `skill/suggest`, `template/reset`, `init` | None |
-| **Orchestrator** | `issue/start`, `resume` | Managed by flow state (these commands orchestrate other commands; they do not directly read/write local WM but control flow via `.rite-flow-state`) |
+| **Orchestrator** | `issue/start`, `resume` | Managed by flow state (these commands orchestrate other commands; they do not directly read/write local WM but control flow via flow state) |
 
 † `pr/cleanup` updates Issue comment directly in Phase 4.5 (final archival record) because local WM file is deleted earlier in Phase 3.
 

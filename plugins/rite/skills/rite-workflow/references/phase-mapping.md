@@ -40,8 +40,8 @@ phase5_implementation → phase5_lint → phase5_post_lint → phase5_pr → pha
 ```
 
 - `phase5_review`, `phase5_post_review`, `phase5_fix`, and `phase5_post_fix` loop until all issues are resolved
-- `phase5_post_review` updates `.rite-flow-state` after review completion (defense-in-depth, #719)
-- `phase5_post_fix` updates `.rite-flow-state` after fix completion (defense-in-depth)
+- `phase5_post_review` updates flow state after review completion (defense-in-depth, #719)
+- `phase5_post_fix` updates flow state after fix completion (defense-in-depth)
 - Transitions to `completed` when all issues are resolved
 
 ## Usage Example

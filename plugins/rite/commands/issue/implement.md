@@ -835,7 +835,7 @@ rm -f "$changed_files_tmp"
 
 **Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings determined in Step 1 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). All other `{...}` placeholders follow the standard placeholder legend.
 
-**On failure**: The script outputs WARNING on stderr and exits 0 (non-blocking). The progress update is best-effort; `.rite-flow-state` is the primary state record.
+**On failure**: The script outputs WARNING on stderr and exits 0 (non-blocking). The progress update is best-effort; the flow state record is the primary state record.
 
 #### 5.1.1.3 Local Work Memory Update
 
@@ -855,11 +855,11 @@ WM_SOURCE="implement" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-**On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The `.rite-flow-state` update (step 4a) is the primary state record.
+**On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The flow state update (step 4a) is the primary state record.
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy `.rite-flow-state` snapshot (#497 — also survives context compaction):
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy state file snapshot (#497 — also survives context compaction):
 
 ```bash
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
@@ -971,9 +971,9 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 1. Parent Issue progress update (only when working on child Issue, see 5.1.2)
 2. **Update work memory** (record phase info, changed files, next steps)
 3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
-4. **CRITICAL: Initialize `.rite-flow-state` and invoke lint** (atomic pair - MUST execute both):
+4. **CRITICAL: Initialize flow state and invoke lint** (atomic pair - MUST execute both):
 
-   > **Note**: All `.rite-flow-state` writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
+   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
 
    **4a**: Create state file:
 

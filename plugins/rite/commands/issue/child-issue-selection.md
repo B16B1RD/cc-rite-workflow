@@ -174,7 +174,7 @@ After a child Issue is selected:
 
 > **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
 
-Before returning control to the caller, update `.rite-flow-state` to the post-child-selection phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
+Before returning control to the caller, update flow state to the post-child-selection phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands below.
 
@@ -187,7 +187,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --if-exists
 ```
 
-> **Note**: `{parent_issue_number}` is the parent Issue number (the Issue originally passed to `/rite:issue:start`). This persists the parent-child relationship in `.rite-flow-state` so it survives context compaction (#497).
+> **Note**: `{parent_issue_number}` is the parent Issue number (the Issue originally passed to `/rite:issue:start`). This persists the parent-child relationship in flow state so it survives context compaction (#497).
 
 After the flow-state update above, output the appropriate result pattern:
 
