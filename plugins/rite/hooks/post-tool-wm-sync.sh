@@ -27,7 +27,14 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+# Per-session state path resolution (Issue #681): _resolve-flow-state-path.sh
+# returns the per-session file (`<root>/.rite/sessions/<session_id>.flow-state`)
+# when schema_version=2 with a valid SID, or the legacy `.rite-flow-state` path
+# otherwise. The atomic write below (last_synced_phase update) targets whichever
+# file the resolver returns, preserving per-session isolation under schema 2 and
+# falling back to the single-file lock under schema 1.
+FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
+  || FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 [ -f "$FLOW_STATE" ] || exit 0
 
 # cycle 12 HIGH F-01: unit separator \x1f に変更 (POSIX whitespace IFS collapse bug、

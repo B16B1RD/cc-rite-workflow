@@ -172,8 +172,16 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # State file lookup: if $STATE_ROOT_PATH is empty (e.g., CWD outside git repo and
     # state-path-resolve.sh failed), skip the check entirely — no state file means no
     # create lifecycle to enforce, which is the documented "allow" path.
+    #
+    # Per-session state path resolution (Issue #681): _resolve-flow-state-path.sh
+    # returns the per-session file (`<root>/.rite/sessions/<session_id>.flow-state`)
+    # when schema_version=2 with a valid SID, or the legacy `.rite-flow-state` path
+    # otherwise. This keeps Pattern 5 working under both schemas without inlining
+    # schema/SID resolution here. Mode B AND-logic (.active=true && phase=create_*)
+    # below operates on whichever file the resolver returns.
     if [ -n "$STATE_ROOT_PATH" ]; then
-      STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
+      STATE_FILE_PATH=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT_PATH" 2>/dev/null) \
+        || STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
       if [ -f "$STATE_FILE_PATH" ]; then
         STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
         STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"

@@ -207,6 +207,77 @@ else
 fi
 echo ""
 
+# --- TC-PER-SESSION-1: per-session state file (Issue #681) → phase diff detection works ---
+# Verifies _resolve-flow-state-path.sh integration: when schema_version=2 with a valid SID
+# and a per-session file exists, the hook reads from `.rite/sessions/<sid>.flow-state`
+# (not the legacy `.rite-flow-state`). Phase diff detection must still work end-to-end.
+echo "TC-PER-SESSION-1: per-session state file → phase diff detected"
+dir_ps="$TEST_DIR/tc_per_session"
+mkdir -p "$dir_ps/.rite-work-memory" "$dir_ps/.rite/sessions"
+echo "existing wm" > "$dir_ps/.rite-work-memory/issue-42.md"
+cat > "$dir_ps/rite-config.yml" <<'CFG_EOF'
+flow_state:
+  schema_version: 2
+CFG_EOF
+sid_ps="00000000-0000-4000-8000-000000000042"
+printf '%s' "$sid_ps" > "$dir_ps/.rite-session-id"
+cat > "$dir_ps/.rite/sessions/${sid_ps}.flow-state" <<STATE_EOF
+{
+  "schema_version": 2,
+  "active": true,
+  "issue_number": 42,
+  "phase": "phase3_plan",
+  "last_synced_phase": "phase2_post_work_memory",
+  "session_id": "$sid_ps",
+  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")"
+}
+STATE_EOF
+# Intentionally do NOT create the legacy `.rite-flow-state` — the resolver must
+# pick the per-session path when schema_version=2 + valid SID + per-session file exists.
+export RITE_DEBUG=1
+run_hook "$dir_ps" || true
+unset RITE_DEBUG
+if [ -f "$dir_ps/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir_ps/.rite-flow-debug.log" 2>/dev/null; then
+  pass "Phase change detected via per-session state file (schema 2)"
+else
+  fail "Phase change not detected when reading from per-session state file"
+fi
+echo ""
+
+# TC-PER-SESSION-2: per-session state, last_synced_phase update writes to per-session file
+echo "TC-PER-SESSION-2: per-session state → last_synced_phase atomic write targets per-session path"
+dir_ps2="$TEST_DIR/tc_per_session_2"
+mkdir -p "$dir_ps2/.rite-work-memory" "$dir_ps2/.rite/sessions"
+echo "existing wm" > "$dir_ps2/.rite-work-memory/issue-42.md"
+cat > "$dir_ps2/rite-config.yml" <<'CFG_EOF'
+flow_state:
+  schema_version: 2
+CFG_EOF
+sid_ps2="00000000-0000-4000-8000-000000000043"
+printf '%s' "$sid_ps2" > "$dir_ps2/.rite-session-id"
+ps2_state="$dir_ps2/.rite/sessions/${sid_ps2}.flow-state"
+cat > "$ps2_state" <<STATE_EOF
+{
+  "schema_version": 2,
+  "active": true,
+  "issue_number": 42,
+  "phase": "phase5_post_lint",
+  "last_synced_phase": "phase5_lint",
+  "session_id": "$sid_ps2",
+  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")"
+}
+STATE_EOF
+run_hook "$dir_ps2" || true
+# After the hook, last_synced_phase in the per-session file should be updated to phase5_post_lint.
+updated_lsp=$(jq -r '.last_synced_phase // empty' "$ps2_state" 2>/dev/null)
+# Legacy .rite-flow-state must NOT have been created (per-session resolver was used).
+if [ "$updated_lsp" = "phase5_post_lint" ] && [ ! -f "$dir_ps2/.rite-flow-state" ]; then
+  pass "last_synced_phase updated in per-session file, no legacy file created"
+else
+  fail "Expected per-session last_synced_phase=phase5_post_lint and no legacy file (got lsp=$updated_lsp, legacy=$([ -f "$dir_ps2/.rite-flow-state" ] && echo present || echo absent))"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
