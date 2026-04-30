@@ -400,7 +400,7 @@ fi
 **Canonical enumeration of paths where `state-read.sh` returns the DEFAULT (empty string)** (verified-review cycle 35 F-08 → cycle 36 F-02/F-08 fix — extended from 4 to 7 paths to match implementation reality in `hooks/state-read.sh`. cycle 36 F-02/F-08 fix: line-number citations replaced with semantic anchor references per Wiki 経験則 "DRIFT-CHECK ANCHOR は semantic name 参照で記述する — line 番号禁止" — line numbers drift on minor insertion, semantic case label names do not):
 
 1. per-session **and** legacy files **both** absent (conjunctive — under schema_version=2, single-file absence alone does not trigger an empty result because state-read.sh falls back to legacy when per-session is absent)
-2. file is present but `phase` is null / missing (jq's `// $default` operator returns DEFAULT for null AND missing keys; `phase` is a string field so `false` does not occur in practice — see state-read.sh boolean field caveat at line 215-227)
+2. file is present but `phase` is null / missing (jq's `// $default` operator returns DEFAULT for null AND missing keys; `phase` is a string field so `false` does not occur in practice — see the boolean field caveat comment block in `state-read.sh` adjacent to its `// $default` operator usage)
 3. `phase` is an empty string
 4. file is empty (size 0) or corrupt JSON
 5. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is a *foreign* session** (`foreign:*` classification) — reader's `foreign:*` case branch in `state-read.sh` emits `cross_session_takeover_refused` sentinel and returns DEFAULT

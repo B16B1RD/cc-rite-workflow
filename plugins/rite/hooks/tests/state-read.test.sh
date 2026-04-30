@@ -802,7 +802,7 @@ write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 # helpers checked by state-read.sh's `_validate-helpers.sh` invocation。
 # DEFAULT_HELPERS 配列を _validate-helpers.sh の SoT から動的抽出することで、
 # ADD 方向の drift (新 helper が DEFAULT_HELPERS に追加されたが本配列が未更新) も検出可能にする。
-# _validate-helpers.test.sh:78-87 と同型の動的抽出 pattern (cycle 13 F-01 doctrine)。
+# _validate-helpers.test.sh の DEFAULT_HELPERS 動的抽出ブロックと同型の pattern (cycle 13 F-01 doctrine)。
 mapfile -t deploy_regression_helpers < <(
   awk '/^DEFAULT_HELPERS=\(/,/^\)$/' "$HOOKS_DIR/_validate-helpers.sh" \
     | grep -oE '[a-z_][a-z_0-9-]*\.sh'

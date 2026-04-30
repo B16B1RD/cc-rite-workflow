@@ -511,7 +511,7 @@ write_session_id "$SBX" "11111111-1111-1111-1111-111111111111"
 # helpers checked by resume-active-flag-restore.sh's _validate-helpers.sh invocation.
 # production source (resume-active-flag-restore.sh の `_validate-helpers.sh "$..."` 引数) から
 # 動的抽出することで、production 引数と test 配列の drift (片肺更新) を構造的に防ぐ。
-# state-read.test.sh:798-809 と同型の動的抽出 pattern (cycle 13 F-01 doctrine)。
+# state-read.test.sh 内の TC-DEPLOY-REGRESSION ブロックの DEFAULT_HELPERS 動的抽出と同型の pattern (cycle 13 F-01 doctrine)。
 mapfile -t deploy_regression_helpers < <(
   awk '/^bash.*_validate-helpers\.sh/{found=1} found{print; if(/[^\\]$/) exit}' \
     "$PLUGIN_ROOT/hooks/resume-active-flag-restore.sh" \
