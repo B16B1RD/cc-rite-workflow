@@ -1137,6 +1137,73 @@ assert_p5_deny "TC-111 eval 'gh issue create' blocked (quote normalization)" "ev
 assert_p5_deny "TC-112 backslash line continuation blocked" $'gh \\\n  issue \\\n  create --title x'
 
 # --------------------------------------------------------------------------
+# TC-PRE-GUARD-PER-SESSION-1+: Pattern 5 with schema_version=2 per-session state (Issue #681)
+# --------------------------------------------------------------------------
+echo ""
+echo "=== TC-PRE-GUARD-PER-SESSION-1+: Pattern 5 with per-session state file (Issue #681) ==="
+
+# Helper: create a tmp cwd with rite-config.yml (schema 2), .rite-session-id,
+# and a per-session flow-state file under .rite/sessions/<sid>.flow-state.
+# This exercises the _resolve-flow-state-path.sh integration: when the resolver
+# returns the per-session path, Pattern 5 must still read phase/active from it
+# and apply the same Mode B AND-logic.
+make_cwd_with_per_session_state() {
+  local phase="$1"
+  local active="$2"
+  local sid="${3:-00000000-0000-4000-8000-000000000001}"
+  local dir
+  dir=$(mktemp -d "/tmp/rite-test-681.XXXXXX")
+  cat > "$dir/rite-config.yml" <<'CFG_EOF'
+flow_state:
+  schema_version: 2
+CFG_EOF
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  mkdir -p "$dir/.rite/sessions"
+  cat > "$dir/.rite/sessions/${sid}.flow-state" <<STATE_EOF
+{
+  "schema_version": 2,
+  "phase": "$phase",
+  "active": $active,
+  "issue_number": 0,
+  "branch": "",
+  "pr_number": 0,
+  "next_action": "test",
+  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")",
+  "session_id": "$sid"
+}
+STATE_EOF
+  echo "$dir"
+}
+
+# TC-PRE-GUARD-PER-SESSION-1: gh issue create + per-session create_interview active → deny
+echo "TC-PRE-GUARD-PER-SESSION-1: gh issue create + per-session create_interview active → deny"
+tmpdir=$(make_cwd_with_per_session_state "create_interview" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x' --body 'y'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"create-lifecycle-direct-gh-issue"* ]]; then
+  pass "TC-PRE-GUARD-PER-SESSION-1 gh issue create blocked via per-session state (schema 2)"
+else
+  fail "TC-PRE-GUARD-PER-SESSION-1 expected deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$tmpdir"
+
+# TC-PRE-GUARD-PER-SESSION-2: gh issue create + per-session create_completed → allow
+# (verifies the per-session resolver path still respects the create_completed allow branch)
+echo "TC-PRE-GUARD-PER-SESSION-2: gh issue create + per-session create_completed → allow"
+tmpdir=$(make_cwd_with_per_session_state "create_completed" "true")
+rc=0
+output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ -z "$decision" ] || [ "$decision" != "deny" ]; then
+  pass "TC-PRE-GUARD-PER-SESSION-2 allowed when phase=create_completed in per-session state"
+else
+  fail "TC-PRE-GUARD-PER-SESSION-2 expected allow, got decision=$decision"
+fi
+rm -rf "$tmpdir"
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
