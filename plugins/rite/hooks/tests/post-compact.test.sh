@@ -212,6 +212,11 @@ dir_749="$TEST_DIR/tc749-passthrough"
 mkdir -p "$dir_749"
 jq -n '{active: true, issue_number: 749, phase: "phase5_test", next_action: "test", loop_count: 0, pr_number: 0, branch: "refactor/issue-749-test"}' \
   > "$dir_749/.rite-flow-state"
+# Seed compact_state so post-compact.sh actually exercises the recovery transition
+# (instead of the early `! -f compact_state` exit path). This lets us assert the
+# fallback path was loaded by observing the recovering→normal state transition.
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-01T00:00:00Z", active_issue: 749}' \
+  > "$dir_749/.rite-compact-state"
 
 stderr_file="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
 echo "{\"cwd\": \"$dir_749\", \"source\": \"auto\"}" \
@@ -228,14 +233,17 @@ if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, fall
 else
   fail "Expected fallback WARNING; got stderr: $stderr_749"
 fi
-# F-07: Assert the legacy fallback path was actually used (not just the WARNING text).
-# post-compact.sh exits silently when no .rite-compact-state exists, so we verify
-# the fallback path was *opened* by checking there is no other error pattern indicating
-# the resolver returned a different (typo'd) path.
-if ! printf '%s' "$stderr_749" | grep -qE 'No such file or directory.*\.rite-flow-state[^.]'; then
-  pass "Legacy fallback path resolved to expected .rite-flow-state target"
+# Positive evidence: assert the legacy fallback path was actually used by
+# observing the compact_state transition. With compact_state="recovering"
+# seeded above, post-compact.sh on the fallback FLOW_STATE should transition
+# it to "normal". If the fallback path silently broke, post-compact.sh would
+# either ENOENT or transition the wrong file, and compact_state would remain
+# "recovering".
+compact_state_after=$(jq -r '.compact_state' "$dir_749/.rite-compact-state" 2>/dev/null)
+if [ "$compact_state_after" = "normal" ]; then
+  pass "Legacy fallback path was loaded (compact_state transitioned recovering→normal)"
 else
-  fail "Unexpected ENOENT for fallback path: $stderr_749"
+  fail "Expected compact_state=normal after recovery; got: $compact_state_after"
 fi
 echo ""
 

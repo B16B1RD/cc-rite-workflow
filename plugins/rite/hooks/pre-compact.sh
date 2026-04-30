@@ -31,22 +31,22 @@ COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
 #
 # Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
-# `_mktemp-stderr-guard.sh` (PR #688 cycle 9 F-02 で抽出済み)。詳細は session-start.sh
-# の同パターンを参照。filter は state-read.sh:148 と同型 (4-pattern 包括)。
+# `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
+# filter は state-read.sh cross-session guard の 3-pattern を `^ERROR:` で
+# superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
 # success arm でも tempfile を inspect して helper graceful-degrade 経路の WARNING
 # を silent drop しないようにする。
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "pre-compact" \
   "resolve-flow-state-err" \
   "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
-if FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}"); then
-  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
-  fi
-else
-  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
-  fi
+# Single-pass branch (filter runs once regardless of resolver exit status).
+_resolve_failed=0
+FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+fi
+if [ "$_resolve_failed" -eq 1 ]; then
   FLOW_STATE="$STATE_ROOT/.rite-flow-state"
   echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($FLOW_STATE)" >&2
 fi
@@ -57,7 +57,12 @@ LOCKDIR="$COMPACT_STATE.lockdir"
 TMP_FILE=""
 TMP_COMPACT=""
 cleanup() {
-  rm -f "$TMP_FILE" "$TMP_COMPACT" 2>/dev/null
+  # `_resolve_err` is normally rm-ed synchronously above (line ~54), but include
+  # it here as defense-in-depth: if SIGINT/SIGTERM arrives between trap install
+  # and end of script (e.g., during work-memory-update.sh sourcing or lock
+  # acquisition), this ensures the resolver stderr tempfile is not orphaned.
+  # `rm -f` on already-removed file is a harmless no-op.
+  rm -f "$TMP_FILE" "$TMP_COMPACT" "${_resolve_err:-}" 2>/dev/null
   release_wm_lock "$LOCKDIR"
 }
 

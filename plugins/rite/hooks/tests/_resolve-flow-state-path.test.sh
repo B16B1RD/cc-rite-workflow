@@ -228,15 +228,24 @@ echo ""
 # silent-regression vector this TC defends against — a future helper change must
 # update the contract section here, otherwise this assertion fails.
 #
-# F-11: Constrain the grep scope to the header comment block (between the
+# Constrain the grep scope to the header comment block (between the
 # `Caller contract` marker and the `Why this exists` boundary) so that future
 # additions of these keywords elsewhere in the file (e.g., shebang, code body,
 # error messages) do not accidentally satisfy the assertion without updating
 # the actual contract documentation.
+# Defensive: end marker absence guard — if the awk range matcher fails to find
+# the end pattern, it captures until EOF and could falsely PASS via accidental
+# keyword appearances in code body. See line-count sanity check below.
 echo "TC-749-CALLER-CONTRACT: header documents caller contract + caller list"
 header_block=$(awk '/^# ⚠️ Caller contract/,/^# Why this exists/' "$HELPER")
+header_lines=$(printf '%s' "$header_block" | wc -l)
 if [ -z "$header_block" ]; then
   fail "Caller contract section not found in header (awk range extraction returned empty)"
+elif [ "$header_lines" -gt 50 ]; then
+  # Sanity check: if awk captured > 50 lines, the end marker `# Why this exists`
+  # was likely removed/renamed and awk fell through to EOF. This protects
+  # against false PASS via accidental keyword appearances in code body.
+  fail "Header section sanity check failed: extracted $header_lines lines (expected < 50). End marker '# Why this exists' may have been removed/renamed"
 else
   contract_failed=0
   for keyword in 'Caller contract' 'check_session_ownership' 'Current callers' \
@@ -248,7 +257,7 @@ else
     fi
   done
   if [ $contract_failed -eq 0 ]; then
-    pass "Caller contract section + 4 lifecycle hook callers documented in scoped header"
+    pass "Caller contract section + 4 lifecycle hook callers documented in scoped header ($header_lines lines)"
   fi
 fi
 echo ""

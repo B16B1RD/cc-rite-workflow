@@ -252,11 +252,15 @@ unset _migrate_script
 # (e.g. chmod -x or partial install).
 #
 # Issue #749: stderr pass-through for diagnostic visibility, via canonical
-# helper `_mktemp-stderr-guard.sh` (PR #688 cycle 9 F-02 で抽出済み)。
+# helper `_mktemp-stderr-guard.sh`.
 # - mktemp 失敗時に 3 行 WARNING を emit (silent fall-through 解消)
 # - chmod 600 / TMPDIR 尊重を helper 経由で取得
-# - filter は state-read.sh:148 と同型 (`^WARNING:|^ERROR:|^  |^jq: `)
-#   で indented continuation 行と raw `jq:` parse error も pass-through
+# - filter は state-read.sh の cross-session guard pass-through (3-pattern:
+#   `^WARNING:|^  |^jq: `) を `^ERROR:` で superset 化した 4-pattern 拡張版。
+#   `_resolve-flow-state-path.sh` は `_validate-helpers.sh` / `_validate-state-root.sh`
+#   経由で `ERROR:` 行を emit する (resolver self-validation contract) ため、
+#   reader-side filter より広い範囲を要求する。indented continuation 行と
+#   raw `jq:` parse error は state-read.sh と同じく pass-through する
 # - success arm でも tempfile を inspect する (`_resolve-flow-state-path.sh`
 #   が graceful-degrade で exit 0 を返す経路、例えば `_resolve-session-id-from-file.sh`
 #   の tr IO failure による empty SID + WARNING 出力 + exit 0 経路で
@@ -265,14 +269,15 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "session-start" \
   "resolve-flow-state-err" \
   "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
-if STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}"); then
-  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
-  fi
-else
-  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
-  fi
+# Single-pass branch: capture resolver outcome, then run filter once regardless
+# of success/failure (helper may graceful-degrade exit 0 with WARNING in stderr,
+# e.g., empty SID via tr IO failure — both paths require pass-through).
+_resolve_failed=0
+STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+fi
+if [ "$_resolve_failed" -eq 1 ]; then
   STATE_FILE="$STATE_ROOT/.rite-flow-state"
   echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($STATE_FILE)" >&2
 fi

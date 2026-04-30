@@ -517,7 +517,7 @@ if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, fall
 else
   fail "Expected fallback WARNING; got stderr: $stderr_749"
 fi
-# F-07: Assert the legacy fallback path was actually used (not just the WARNING text).
+# Positive evidence: assert the legacy fallback path was actually used.
 # session-end.sh should deactivate the legacy state file (set .active=false). If the
 # fallback path silently broke, the file would remain .active=true.
 deactivated_active=$(jq -r '.active' "$dir_749/.rite-flow-state" 2>/dev/null)
@@ -544,14 +544,14 @@ cp -a "$HOOKS_REAL_DIR/." "$sbx_jq/"
 # unchanged so the hook can still parse its inputs (cwd, source, ownership probe,
 # lifecycle phase, etc.).
 #
-# Note (F-10): The fake jq発火 pattern below uses a relaxed match
-# (`*'.active'*'.updated_at'*`) instead of the exact production string, so that
-# harmless jq expression refactors (whitespace tweaks, order swaps) do not break
-# this TC. The underlying invariant being tested is "WARNING is emitted when jq
-# atomic write fails", not "the production jq expression has not been touched".
+# The fake jq pattern below uses a relaxed match (`*'.active'*'.updated_at'*`)
+# instead of the exact production string, so that harmless jq expression
+# refactors (whitespace tweaks, order swaps) do not break this TC. The
+# underlying invariant being tested is "WARNING is emitted when jq atomic
+# write fails", not "the production jq expression has not been touched".
 #
-# Note (F-06): Resolve the real jq path via `command -v jq` rather than
-# hardcoding `/usr/bin/jq`, because macOS Homebrew installs jq under
+# Resolve the real jq path via `command -v jq` rather than hardcoding
+# `/usr/bin/jq`, because macOS Homebrew installs jq under
 # `/opt/homebrew/bin/jq` and Nix uses `/run/current-system/sw/bin/jq`, etc.
 JQ_REAL="$(command -v jq)"
 if [ -z "$JQ_REAL" ]; then
@@ -598,19 +598,30 @@ if printf '%s' "$stderr_jq" | grep -qF 'rite: session-end: failed to deactivate 
 else
   fail "Expected jq-write WARNING; got stderr: $stderr_jq"
 fi
-# F-08: Assert the structural invariant ("WARNING contains an Issue number")
-# instead of the literal '#749', which only happened to match because the
-# test branch was named `refactor/issue-749-jqwarn`.
+# Assert the structural invariant ("WARNING contains an Issue number") instead
+# of a literal number, which would only match by coincidence with the test
+# branch name and become brittle if the branch convention changes.
 if printf '%s' "$stderr_jq" | grep -qE 'Issue #[0-9]+'; then
   pass "WARNING includes Issue number from branch detection"
 else
   fail "Expected 'Issue #<number>' in WARNING; got stderr: $stderr_jq"
 fi
-# F-05: Assert state_file path appears in WARNING (so $STATE_FILE substitution works)
+# Assert state_file path appears in WARNING (so $STATE_FILE substitution works
+# and operators can locate the failed deactivation target without grepping git).
 if printf '%s' "$stderr_jq" | grep -qF '.rite-flow-state'; then
   pass "WARNING includes state file path"
 else
   fail "Expected state file path '.rite-flow-state' in WARNING; got stderr: $stderr_jq"
+fi
+# Assert jq stderr is passed through to the caller (not silently swallowed).
+# session-end.sh runs `jq ... > "$TMP_FILE"` without `2>/dev/null`, so jq's own
+# error diagnostics (line/column on parse errors, or here our fake script's
+# stderr) MUST reach the user. Locking this in test prevents a future refactor
+# from adding `2>/dev/null` and silently dropping the production jq diagnostic.
+if printf '%s' "$stderr_jq" | grep -qF 'fake jq: simulated failure'; then
+  pass "jq stderr passed through to caller"
+else
+  fail "Expected fake jq stderr in WARNING; got stderr: $stderr_jq"
 fi
 echo ""
 
