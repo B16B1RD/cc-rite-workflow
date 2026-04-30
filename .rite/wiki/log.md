@@ -282,3 +282,4 @@
 | 2026-04-30T01:58:00+00:00 | ingest:create | pages/anti-patterns/markdown-japanese-corner-brackets-break-inline-code.md | PR #688 cycle 13 review (Markdown inline code 退化: 「!」 / 「//!」 Japanese corner brackets 置換が rendering と LLM semantic interpretation を劣化) → 新規 anti-patterns ページ作成 |
 | 2026-04-30T01:58:00+00:00 | ingest:create | pages/patterns/bash-cross-boundary-emit-explicit-context.md | PR #688 cycle 49 H-1 fix (Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として stdout/stderr に明示 emit する) → 新規 patterns ページ作成 |
 | 2026-04-30T01:58:00+00:00 | ingest:skip | raw/fixes/20260430T014425Z-pr-688.md | PR #688 self-dogfood fix (4 件 fix + 17 件 umbrella issue 化) — scope-creep cross-validation gate / Asymmetric Fix Transcription / enumeration label drift / Markdown 表記揺れの 4 観点はすべて既存ページに統合済み |
+| 2026-04-30T02:01:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=67, broken_refs=16 |
