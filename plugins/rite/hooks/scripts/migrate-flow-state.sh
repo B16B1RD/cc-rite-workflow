@@ -229,14 +229,17 @@ chmod 600 "$TMP_NEW" 2>/dev/null || true
 # Capture jq stderr so build failures surface their root cause (e.g. malformed
 # legacy JSON, missing field path) instead of silently emitting a generic
 # "jq build new-format object failed" message. Use the canonical helper to stay
-# symmetric with state-read.sh / flow-state-update.sh / _resolve-cross-session-guard.sh
-# (the helper applies chmod 600 and emits a 3-line WARNING block on mktemp failure).
-# `|| jq_err=""` keeps migration running when the helper itself fails: the helper
-# already prints its own WARNING to stderr, so falling back to "no stderr capture"
-# loses diagnostic depth but does not silently skip the migration.
+# symmetric with state-read.sh / flow-state-update.sh / _resolve-cross-session-guard.sh /
+# _resolve-session-id-from-file.sh / resume-active-flag-restore.sh (the helper
+# applies chmod 600 and emits a 3-line WARNING block on mktemp failure, and is
+# documented to "always exit 0" — so a `|| jq_err=""` fallback would diverge from
+# the 5 sibling caller sites). Helper-binary missing is the only path where this
+# would propagate: that case is caught by the standard `set -euo pipefail`
+# behavior at the top of this script, which is the intended fail-fast for
+# deployment defects.
 jq_err=$(bash "$SCRIPT_DIR/../_mktemp-stderr-guard.sh" \
   "migrate-flow-state" "migrate-jq-err" \
-  "jq build new-format object 失敗時の root cause が表示されません") || jq_err=""
+  "jq build new-format object 失敗時の root cause が表示されません")
 
 # Build the new-format object by merging schema_version: 2 with the legacy
 # fields. Missing fields fall back to defaults compatible with the
