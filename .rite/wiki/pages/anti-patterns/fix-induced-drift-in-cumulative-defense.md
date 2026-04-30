@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-04-30T01:58:00+00:00"
+updated: "2026-04-30T13:25:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260421T024947Z-pr-636.md"
@@ -66,7 +66,17 @@ sources:
     ref: "raw/fixes/20260428T123811Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260428T153020Z-pr-688.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain"]
+  - type: "reviews"
+    ref: "raw/reviews/20260430T123230Z-pr-753.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260430T125141Z-pr-753.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260430T130829Z-pr-753-cycle5.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260430T123646Z-pr-753.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260430T125524Z-pr-753.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot"]
 confidence: high
 ---
 
@@ -296,6 +306,49 @@ PR #688 (累積 14 回目) 最終フルレビュー (6 reviewer 21 findings) 後
 2. **「Mutation testing の vector は production の正規化処理 (tr / sed) との相互作用を empirical 検証する」**: `tr -d '[:space:]'` で改変される vector は SID resolve 結果と per-session file 名が非同期化され mutation kill power が 0 になる経路を持つ。test 設計時に production の正規化処理を前提として vector を選定する必要がある (詳細: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md))
 3. **「scope-creep の cross-validation gate を `rejected(scope-creep)` action lines として commit message に明記する」**: 累積 14 回目 38+ cycle PR では F-03/F-04/F-05/F-06 の MEDIUM 4 件 (helper 抽出 / caller boilerplate 集約 / cleanup 関数命名統一) が scope 大として別 Issue 化された。`rejected(scope-creep)` action line を commit message に明記し、後続 reviewer が cross-validation で gate する canonical flow (詳細: [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](../heuristics/scope-creep-rejection-empirical-gate.md))
 
+### PR #753 (Issue #698 = PR #688 followup) — 累積 15 回目 5 cycle 完全収束 + 新 sub-pattern: review-attention-bias × test file blind spot
+
+PR #753 (Issue #698 = PR #688 verified-review cycle 10 で `rejected(scope-creep)` で延期された 3 件 F-09/F-12/F-15 の followup) は **累積 15 回目** で 5 cycle 完全収束:
+
+```
+cycle 1 (12 findings: 3 HIGH + 4 MEDIUM + 5 LOW)
+  → cycle 2 (15: 1 HIGH + 4 MEDIUM + 10 LOW) — fix 自体が drift 導入 (累積 fractal pattern 再演)
+    → cycle 3 (3 HIGH all comment-quality) — cycle 1+2 fix が SoT 違反 drift 導入
+      → cycle 4 (1 HIGH + 1 MEDIUM, **test file blind spot**) — 新 sub-pattern surface
+        → cycle 5 (0, mergeable) — 4 reviewer 全員 healthy self-assessment
+```
+
+#### 新 sub-pattern: review-attention-bias × fix-scope-narrowing が test file blind spot を温存する
+
+cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolation.test.sh:56` の hardcoded line ref / 1 MEDIUM F-02: 同 file:96 の dead `local _run_cleanup` 宣言) は **cycle 1-3 で test ファイルがレビュー対象に含まれていたにも関わらず連続スルー** された blind spot。Quality Signal 1 (Fingerprint cycling) として cycle 3 F-03 (`flow-state-update.sh:244` line ref) と cycle 4 F-01 (`test.sh:56` line ref) は **同じ SoT 原則 3 (no_literal_line_reference) 違反パターン** だが、cycle 3 fix scope を「flow-state-update.sh 単独」に絞ったため propagation scan が test ファイルに到達しなかった。
+
+**2 つの failure mode の交互作用**:
+
+1. **Reviewer attention bias**: cycle 1-3 で reviewer の attention が flow-state-update.sh の comment quality 違反 (journal comment / line number reference) に集中。test ファイルは「supporting fixture」として scan が浅くなり、同型 drift が見落とされた
+2. **Fix-scope narrowing**: 累積対策 PR では「最小 diff で merge する」圧力で fix scope を該当ファイル単独に絞る傾向があり、propagation scan (同 SoT 原則違反の他 site 検索) が省略される
+
+両者が交互作用すると、SoT 原則違反 drift が **review attention の影に隠れた fixture 系 (test / mock / helper ファイル)** に温存される経路が成立する。
+
+**canonical 対策** (PR #753 cycle 5 fix で確立):
+
+| 対策 | 実装 |
+|------|------|
+| **propagation scan の必須化** | SoT 原則違反 (no_journal_comment / no_literal_line_reference 等) 修正時は、修正対象の 1 file だけでなく、同 PR で touch した全 file に対して同型 violation を grep で検索する必須 step を追加 |
+| **Test ファイル full rescan の独立 step**: | code-quality reviewer が cycle 4 で初めて test ファイル全体を rescan して 2 件発見した経緯を canonical 化。test ファイルは「fixture」ではなく「production code」として同等の review depth を適用する |
+| **Cycle trajectory の「test scope 到達」を可視化** | 累積対策 PR の review checklist に「propagation scan が test ファイルまで到達したか」のフラグを追加 (本 PR では cycle 4 が最初の到達 cycle) |
+
+#### PR #753 で観測された review-fix loop quality signal の強化
+
+本ページの 4 quality signal に加え、PR #753 から **「test/fixture ファイルへの propagation scan 到達 cycle」を escalate signal として追加**:
+
+| 追加 signal | 観測 | escalate 先 |
+|-----------|------|------------|
+| Test/fixture file propagation gap | 累積対策 PR で同型 SoT 違反が production file → test file に N cycle 遅れて surface する | propagation scan の対象 file pattern を初回 cycle から「全 PR diff file」に拡大、reviewer に test ファイル full rescan を mandate |
+
+#### Cycle 5 mergeable convergence の cross-validation 構造 (PR #688 cycle 4 と同型)
+
+4 reviewer (code-quality / test / error-handling / security) 全員が独立に「評価: 可」(mandatory findings 0) + healthy self-assessment を出した時点で「累積対策 fractal pattern が収束した」と判定。本 PR では code-quality reviewer の判定文に `Cycle trajectory: 12 → 15 → 3 → 2 → **0** で完全収束を確認` と明記され、empirical reproduction による convergence 確認が成立した (cf. [`empirical-reproduction-over-invariant-reasoning.md`](../heuristics/empirical-reproduction-over-invariant-reasoning.md))。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
@@ -338,3 +391,8 @@ PR #688 (累積 14 回目) 最終フルレビュー (6 reviewer 21 findings) 後
 - [PR #688 cycle 15 fix (cycle 14 → 15 self-referential drift chain 完全修復)](../../raw/fixes/20260428T153020Z-pr-688.md)
 - [PR #688 cycle 49 review (1 CRITICAL Self-defeating defense + 2 HIGH 片肺 + 7 MEDIUM)](../../raw/reviews/20260430T005759Z-pr-688.md)
 - [PR #688 cycle 14 review (8 finding patterns / DRY claim file 自身の partial DRY)](../../raw/reviews/20260429T092812Z-pr-688.md)
+- [PR #753 cycle 3 review (3 HIGH all comment-quality fix-introduced drift)](../../raw/reviews/20260430T123230Z-pr-753.md)
+- [PR #753 cycle 4 review (1 HIGH + 1 MEDIUM, test file blind spot 初検出)](../../raw/reviews/20260430T125141Z-pr-753.md)
+- [PR #753 cycle 5 review (mergeable, 0 findings — full convergence 確認)](../../raw/reviews/20260430T130829Z-pr-753-cycle5.md)
+- [PR #753 cycle 3 fix (3 HIGH comment-quality SoT 原則 2/3 違反修正)](../../raw/fixes/20260430T123646Z-pr-753.md)
+- [PR #753 cycle 4 fix (test file blind spot 修正: line ref → semantic anchor + dead local 削除)](../../raw/fixes/20260430T125524Z-pr-753.md)
