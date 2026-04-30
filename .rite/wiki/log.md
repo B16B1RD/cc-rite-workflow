@@ -295,3 +295,4 @@
 | 2026-04-30T04:35:33+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=73, broken_refs=16 |
 | 2026-04-30T06:30:00+00:00 | ingest:skip | raw/reviews/20260430T053742Z-pr-748.md | PR #748 cycle 1 review (silent fall-through HIGH→recommendation / Comment WHY 不足 LOW / API contract 文書化不足 MEDIUM→recommendation) — anchor absence で demote 経路を経た指摘で既存 patterns/anti-patterns (silent-precondition-omit / stderr-selective-surface-over-truncate) の同型範疇 |
 | 2026-04-30T06:30:00+00:00 | ingest:skip | raw/reviews/20260430T055856Z-pr-748.md | PR #748 cycle 2 review (3 reviewer 全員 指摘なし、minimal LOW × 2 fix で全合意 — 新規 insight なし) |
+| 2026-04-30T06:35:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=75, broken_refs=16 |
