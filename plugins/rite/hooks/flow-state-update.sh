@@ -185,8 +185,14 @@ _resolve_session_state_path() {
     # parent shell の `_rite_flow_state_atomic_cleanup` trap には影響しない)。
     # 不変条件は `tests/flow-state-update-trap-isolation.test.sh` (Issue #698 F-09) で経験的に固定されており、
     # 将来 caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`) に変更された場合は
-    # TC-3 が回帰として検出する。本 trap reset は (a) 万一 caller が direct call 化した際の defense-in-depth、
-    # および (b) future-proof な canonical pattern 維持のため残している。
+    # TC-3 が回帰として検出する。
+    # 本 trap reset は subshell isolation 前提下で「再 install 時に古い trap が残らない」future-proof な
+    # canonical pattern (state-read.sh 側と writer/reader 対称) を維持するために残している。
+    # ただし subshell isolation が破られて direct call 化された場合、本 reset はむしろ parent shell の
+    # `_rite_flow_state_atomic_cleanup` trap を silent に消去する bug の主因となる経路に変質する。
+    # その経路の唯一の正解は TC-3 で検出 → caller を `$()` 形に戻すことであり、本 reset を「direct call 化時の
+    # defense-in-depth」と誤解してはならない (経験的に検証済み: direct call では本 reset 有り版が parent + inner
+    # cleanup 双方を消去するため、reset 削除版より悪い結果になる)。
     local _classify_err=""
     # verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
     # bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
@@ -232,7 +238,8 @@ _resolve_session_state_path() {
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
     _classify_err=""
-    # restore default trap (`_rite_flow_state_atomic_cleanup` 関数定義の trap install ブロックと衝突しないように reset)
+    # restore default trap (subshell exit 前のクリーンアップ — subshell isolation 前提で leak は発生しないが、
+    # canonical pattern として future-proof な再 install ガードを維持する。詳細は line 183-194 のコメント参照)
     trap - EXIT INT TERM HUP
     # PR #688 followup F-01 MEDIUM: foreign:* / corrupt:* / invalid_uuid:* arm の workflow-incident-emit.sh
     # 呼び出しブロックを `_emit-cross-session-incident.sh` helper に集約 (state-read.sh と writer/reader 対称)。
