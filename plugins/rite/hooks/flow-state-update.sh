@@ -181,8 +181,12 @@ _resolve_session_state_path() {
     # 関数 return 時に `trap - EXIT INT TERM HUP` で default に restore し、`_rite_flow_state_atomic_cleanup`
     # 関数定義の trap install ブロックと衝突しないようにする (canonical pattern)。
     # 注: 本関数は command substitution (`FLOW_STATE=$(_resolve_session_state_path ...)`) で呼ばれるため、
-    # 内部の trap は subshell に閉じる。parent shell の `_rite_flow_state_atomic_cleanup` trap は影響を受けない。
-    # この trap reset は parent への leak が発生した場合の defense-in-depth として残している。
+    # bash の subshell isolation により leak は発生しない (関数内の trap 変更は subshell 内に閉じ、
+    # parent shell の `_rite_flow_state_atomic_cleanup` trap には影響しない)。
+    # 不変条件は `tests/flow-state-update-trap-isolation.test.sh` (Issue #698 F-09) で経験的に固定されており、
+    # 将来 caller が direct call (`_resolve_session_state_path ...; FLOW_STATE=...`) に変更された場合は
+    # TC-3 が回帰として検出する。本 trap reset は (a) 万一 caller が direct call 化した際の defense-in-depth、
+    # および (b) future-proof な canonical pattern 維持のため残している。
     local _classify_err=""
     # verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
     # bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
