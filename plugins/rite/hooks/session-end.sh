@@ -28,7 +28,11 @@ fi
 # Resolve state file path using state-path-resolve.sh (consistent with other hooks)
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
-STATE_FILE="$STATE_ROOT/.rite-flow-state"
+
+# Resolve active flow-state file path (Issue #680).
+# Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
+STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
+  || STATE_FILE="$STATE_ROOT/.rite-flow-state"
 
 # Get current branch
 BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
@@ -114,6 +118,20 @@ WARN_MSG
         # Intentionally not exit 1 here (unlike pre-compact.sh) — session-end
         # prioritizes cleanup over strict error propagation
         rm -f "$TMP_FILE"
+    fi
+
+    # AC-10 (Issue #680): clean up per-session flow-state file on normal session end.
+    # When schema_version=2 routes state to `.rite/sessions/<sid>.flow-state`, the
+    # file is unique to this session and has no value after the session terminates.
+    # Detection: STATE_FILE matches `*/.rite/sessions/*.flow-state` (the per-session
+    # path returned by `_resolve-flow-state-path.sh`).
+    # Legacy `.rite-flow-state` is intentionally preserved (it may be the only
+    # state file in repos still running schema_version=1, and active=false marks
+    # it as terminated for /rite:resume's recovery flow).
+    # Stale-file cleanup (long-running sessions / crash leftovers) is out of scope
+    # for this Issue per Issue #680 §4.3 (handled by a follow-up).
+    if [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
+        rm -f "$STATE_FILE" 2>/dev/null || true
     fi
 fi
 

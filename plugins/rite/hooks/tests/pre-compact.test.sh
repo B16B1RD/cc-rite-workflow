@@ -546,6 +546,42 @@ else
 fi
 echo ""
 
+# --- TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → updated_at touched ---
+# Verifies pre-compact reads & writes the per-session file (not legacy) when
+# schema_version=2 + valid SID + per-session file exists. Also confirms the
+# `.active=true` precondition path still fires the workflow-active branch.
+echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → updated_at touched"
+dir680a="$TEST_DIR/tc680a"
+mkdir -p "$dir680a/.rite/sessions"
+sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
+echo "$sid680a" > "$dir680a/.rite-session-id"
+cat > "$dir680a/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
+echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test", "updated_at": "2020-01-01T00:00:00+00:00"}' \
+  > "$per_session_file"
+old_ts=$(jq -r '.updated_at' "$per_session_file" 2>/dev/null)
+output=$(run_hook "$dir680a") && rc=0 || rc=$?
+if [ $rc -eq 0 ] && [ -f "$per_session_file" ]; then
+  new_ts=$(jq -r '.updated_at' "$per_session_file" 2>/dev/null)
+  if [ "$new_ts" != "$old_ts" ] && [ -n "$new_ts" ]; then
+    pass "TC-680-A: per-session file updated_at refreshed (per-session resolution working)"
+  else
+    fail "TC-680-A: per-session updated_at not refreshed (old=$old_ts new=$new_ts)"
+  fi
+else
+  fail "TC-680-A: hook exited non-zero or per-session file missing (rc=$rc)"
+fi
+# Counter-assertion: workflow-active stdout fired (.active=true precondition)
+if echo "$output" | grep -q "STOP. Compact detected. Issue #680"; then
+  pass "TC-680-A: workflow-active stdout fired on per-session path (.active=true preserved)"
+else
+  fail "TC-680-A: workflow-active stdout missing — .active=true precondition broke on per-session path"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="
 if [ "$FAIL" -gt 0 ]; then
