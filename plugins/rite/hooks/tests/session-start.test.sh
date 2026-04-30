@@ -764,6 +764,60 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → "Active rite workflow detected"
+# Verifies that session-start reads the per-session file (not legacy) when
+# schema_version=2 + valid SID + per-session file exists, and that the
+# `.active=true` precondition still fires the workflow-detected output.
+# --------------------------------------------------------------------------
+echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → workflow detected"
+dir680a="$TEST_DIR/tc680a"
+mkdir -p "$dir680a/.rite/sessions"
+sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
+echo "$sid680a" > "$dir680a/.rite-session-id"
+cat > "$dir680a/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+ts_t680a=$(iso8601_now 0)
+cat > "$dir680a/.rite/sessions/${sid680a}.flow-state" <<EOF
+{"active": true, "issue_number": 680, "branch": "refactor/issue-680-test", "phase": "phase5_review", "next_action": "review", "loop_count": 0, "session_id": "$sid680a", "updated_at": "$ts_t680a"}
+EOF
+output=$(run_hook_with_session "$dir680a" "resume" "$sid680a") && rc=0 || rc=$?
+if [ $rc -eq 0 ] && echo "$output" | grep -q "Active rite workflow detected" \
+   && echo "$output" | grep -q "Issue: #680"; then
+  pass "TC-680-A: per-session file read → 'Active rite workflow detected' fired (AC-LOCAL-2)"
+else
+  fail "TC-680-A: expected workflow-detected output from per-session file; got rc=$rc, output='$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-680-B (Issue #680): per-session active=false → no workflow-detected output
+# Counter-assertion: ensure the .active=false branch on per-session path
+# does NOT trigger the workflow-detected output (AND-logic precondition).
+# --------------------------------------------------------------------------
+echo "TC-680-B (Issue #680): per-session active=false → no detection (AND-logic preserved)"
+dir680b="$TEST_DIR/tc680b"
+mkdir -p "$dir680b/.rite/sessions"
+sid680b="22222222-3333-4444-5555-666666666666"
+echo "$sid680b" > "$dir680b/.rite-session-id"
+cat > "$dir680b/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+ts_t680b=$(iso8601_now 0)
+cat > "$dir680b/.rite/sessions/${sid680b}.flow-state" <<EOF
+{"active": false, "issue_number": 681, "branch": "refactor/issue-681-test", "phase": "completed", "session_id": "$sid680b", "updated_at": "$ts_t680b"}
+EOF
+output=$(run_hook_with_session "$dir680b" "resume" "$sid680b") && rc=0 || rc=$?
+if [ $rc -eq 0 ] && [ -z "$output" ]; then
+  pass "TC-680-B: per-session active=false → no detection output (silent exit)"
+else
+  fail "TC-680-B: expected silent exit; got rc=$rc, output='$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

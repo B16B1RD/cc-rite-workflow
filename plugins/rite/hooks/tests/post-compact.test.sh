@@ -130,6 +130,62 @@ else
   fail "unexpected stdout: $OUTPUT"
 fi
 
+# --- TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true + recovering → recovery output ---
+# Verifies post-compact reads & writes the per-session file (not legacy) when
+# schema_version=2 + valid SID + per-session file exists, and that the
+# `.active=true` precondition path still triggers recovery.
+echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session + recovering → auto-recovery from per-session file"
+TC_DIR=$(setup_test "tc680a")
+sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
+mkdir -p "$TC_DIR/.rite/sessions"
+echo "$sid680a" > "$TC_DIR/.rite-session-id"
+cat > "$TC_DIR/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+per_session_file="$TC_DIR/.rite/sessions/${sid680a}.flow-state"
+jq -n '{active: true, issue_number: 680, phase: "phase5_review", next_action: "review", loop_count: 0, pr_number: 0, branch: "refactor/issue-680-test", session_id: "'"$sid680a"'"}' > "$per_session_file"
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-30T12:00:00Z", active_issue: 680}' > "$TC_DIR/.rite-compact-state"
+
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
+if echo "$OUTPUT" | grep -q "Auto-compact recovery" && echo "$OUTPUT" | grep -q "Issue #680"; then
+  pass "TC-680-A: recovery output read from per-session file (.active=true preserved)"
+else
+  fail "TC-680-A: expected Auto-compact recovery for Issue #680 from per-session, got: $OUTPUT"
+fi
+# Counter-assertion: compact_state transitioned to normal
+cs_state=$(jq -r '.compact_state' "$TC_DIR/.rite-compact-state" 2>/dev/null)
+if [ "$cs_state" = "normal" ]; then
+  pass "TC-680-A: compact_state transitioned to normal after per-session recovery"
+else
+  fail "TC-680-A: compact_state expected 'normal', got '$cs_state'"
+fi
+
+# --- TC-680-B (Issue #680): per-session active=false + recovering → cleanup ---
+echo "TC-680-B (Issue #680): per-session active=false → cleanup (no recovery)"
+TC_DIR=$(setup_test "tc680b")
+sid680b="22222222-3333-4444-5555-666666666666"
+mkdir -p "$TC_DIR/.rite/sessions"
+echo "$sid680b" > "$TC_DIR/.rite-session-id"
+cat > "$TC_DIR/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+jq -n '{active: false, issue_number: 681}' > "$TC_DIR/.rite/sessions/${sid680b}.flow-state"
+jq -n '{compact_state: "recovering"}' > "$TC_DIR/.rite-compact-state"
+
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
+if [ -z "$OUTPUT" ]; then
+  pass "TC-680-B: per-session active=false → no recovery output (silent exit)"
+else
+  fail "TC-680-B: expected silent exit on active=false, got: $OUTPUT"
+fi
+if [ ! -f "$TC_DIR/.rite-compact-state" ]; then
+  pass "TC-680-B: compact_state cleaned up on per-session inactive flow"
+else
+  fail "TC-680-B: compact_state not cleaned up"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

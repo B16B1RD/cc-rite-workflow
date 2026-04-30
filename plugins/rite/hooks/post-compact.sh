@@ -24,7 +24,10 @@ fi
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
-FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+# Resolve active flow-state file path (Issue #680).
+# Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
+FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
+  || FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 LOCKDIR="$COMPACT_STATE.lockdir"
 
 # --- Cleanup helper ---

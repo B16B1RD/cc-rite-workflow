@@ -409,6 +409,79 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-680-A (Issue #680, AC-10): per-session flow-state file is removed on session end
+# --------------------------------------------------------------------------
+echo "TC-680-A (Issue #680, AC-10): per-session file → cleanup on session end"
+dir680a="$TEST_DIR/tc680a"
+mkdir -p "$dir680a/.rite/sessions"
+sid680a="abcdef01-2345-6789-abcd-ef0123456789"
+echo "$sid680a" > "$dir680a/.rite-session-id"
+cat > "$dir680a/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
+echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test"}' > "$per_session_file"
+run_hook "$dir680a" >/dev/null || true
+if [ ! -f "$per_session_file" ]; then
+  pass "TC-680-A: per-session file removed after session-end (AC-10)"
+else
+  fail "TC-680-A: per-session file not removed (still at $per_session_file)"
+fi
+# Counter-assertion: legacy file (which never existed) was not created
+if [ ! -f "$dir680a/.rite-flow-state" ]; then
+  pass "TC-680-A: legacy file not created (no leakage to legacy path)"
+else
+  fail "TC-680-A: legacy file unexpectedly created"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-680-B (Issue #680): legacy flow-state file is preserved (NOT deleted) on session end
+# --------------------------------------------------------------------------
+echo "TC-680-B (Issue #680): legacy file → preserved (active=false marker only)"
+dir680b="$TEST_DIR/tc680b"
+mkdir -p "$dir680b"
+# No rite-config.yml → schema_version=1 (legacy mode)
+create_state_file "$dir680b" '{"active": true, "phase": "phase5_review", "issue_number": 681}'
+run_hook "$dir680b" >/dev/null || true
+if [ -f "$dir680b/.rite-flow-state" ]; then
+  active_after=$(jq -r '.active' "$dir680b/.rite-flow-state" 2>/dev/null)
+  if [ "$active_after" = "false" ]; then
+    pass "TC-680-B: legacy file preserved with active=false (backward compat)"
+  else
+    fail "TC-680-B: legacy file present but active=$active_after (expected false)"
+  fi
+else
+  fail "TC-680-B: legacy file unexpectedly removed (would break v1 backward compat)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-680-C (Issue #680, AC-LOCAL-2): .active=true precondition preserved on per-session path
+# Defense-in-depth: ensure jq -r '.active' / `_state_active=...` paths still
+# fire correctly when the resolved STATE_FILE is per-session, not legacy.
+# --------------------------------------------------------------------------
+echo "TC-680-C (Issue #680, AC-LOCAL-2): per-session active=true → lifecycle warning fires"
+dir680c="$TEST_DIR/tc680c"
+mkdir -p "$dir680c/.rite/sessions"
+sid680c="11111111-2222-3333-4444-555555555555"
+echo "$sid680c" > "$dir680c/.rite-session-id"
+cat > "$dir680c/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+echo '{"active": true, "phase": "create_interview", "issue_number": 682, "branch": "feat/issue-682"}' \
+  > "$dir680c/.rite/sessions/${sid680c}.flow-state"
+run_hook "$dir680c" >/dev/null || true
+if [ -f "${LAST_STDERR_FILE:-}" ] && grep -q "/rite:issue:create lifecycle was not completed" "$LAST_STDERR_FILE"; then
+  pass "TC-680-C: .active=true precondition fires lifecycle warning on per-session path (AND-logic preserved)"
+else
+  fail "TC-680-C: lifecycle warning missing — .active=true precondition broke on per-session path"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

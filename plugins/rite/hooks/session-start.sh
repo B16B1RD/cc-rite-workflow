@@ -244,7 +244,14 @@ if [ -x "$_migrate_script" ]; then
 fi
 unset _migrate_script
 
-STATE_FILE="$STATE_ROOT/.rite-flow-state"
+# Resolve active flow-state file path (Issue #680).
+# `_resolve-flow-state-path.sh` returns the per-session file
+# (`.rite/sessions/<sid>.flow-state`) when schema_version=2 and a valid
+# session_id is present, otherwise the legacy `.rite-flow-state`. The
+# fallback `|| STATE_FILE=...` keeps the hook non-blocking under helper
+# deploy regression (e.g. chmod -x or partial install).
+STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
+  || STATE_FILE="$STATE_ROOT/.rite-flow-state"
 
 if [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists (#756, #800)
