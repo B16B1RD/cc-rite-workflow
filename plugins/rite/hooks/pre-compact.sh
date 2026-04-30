@@ -30,14 +30,22 @@ COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 # Resolve active flow-state file path (Issue #680).
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
 #
-# Issue #749: stderr pass-through for diagnostic visibility.
-# Mirrors state-read.sh `_classify_err` doctrine (cycle 41 F-01).
-_resolve_err=$(mktemp /tmp/rite-resolve-flow-state-err-XXXXXX 2>/dev/null) || _resolve_err=""
+# Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
+# `_mktemp-stderr-guard.sh` (PR #688 cycle 9 F-02 で抽出済み)。詳細は session-start.sh
+# の同パターンを参照。filter は state-read.sh:148 と同型 (4-pattern 包括)。
+# success arm でも tempfile を inspect して helper graceful-degrade 経路の WARNING
+# を silent drop しないようにする。
+_resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+  "pre-compact" \
+  "resolve-flow-state-err" \
+  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 if FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}"); then
-  :
+  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+  fi
 else
   if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-    grep -E '^WARNING:|^ERROR:' "$_resolve_err" >&2 || true
+    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
   fi
   FLOW_STATE="$STATE_ROOT/.rite-flow-state"
   echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($FLOW_STATE)" >&2

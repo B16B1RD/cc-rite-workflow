@@ -618,6 +618,15 @@ if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, fall
 else
   fail "Expected fallback WARNING; got stderr: $stderr_749"
 fi
+# F-07: Assert the legacy fallback path was actually used (not just the WARNING text).
+# pre-compact.sh updates `.updated_at` on the resolved FLOW_STATE. If the fallback
+# silently broke (typo / missing file), this would not happen.
+updated_at_after=$(jq -r '.updated_at // empty' "$dir_749/.rite-flow-state" 2>/dev/null)
+if [ -n "$updated_at_after" ]; then
+  pass "Legacy fallback path was loaded (.updated_at present after pre-compact)"
+else
+  fail "Expected .updated_at in legacy state file; got: '$updated_at_after'"
+fi
 echo ""
 
 # --- Summary ---

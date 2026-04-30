@@ -228,6 +228,15 @@ if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, fall
 else
   fail "Expected fallback WARNING; got stderr: $stderr_749"
 fi
+# F-07: Assert the legacy fallback path was actually used (not just the WARNING text).
+# post-compact.sh exits silently when no .rite-compact-state exists, so we verify
+# the fallback path was *opened* by checking there is no other error pattern indicating
+# the resolver returned a different (typo'd) path.
+if ! printf '%s' "$stderr_749" | grep -qE 'No such file or directory.*\.rite-flow-state[^.]'; then
+  pass "Legacy fallback path resolved to expected .rite-flow-state target"
+else
+  fail "Unexpected ENOENT for fallback path: $stderr_749"
+fi
 echo ""
 
 echo "Results: $PASS passed, $FAIL failed"

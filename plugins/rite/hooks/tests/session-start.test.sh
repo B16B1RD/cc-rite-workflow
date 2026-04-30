@@ -687,6 +687,8 @@ src_hook_dir="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir/session-start.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
+# F-01 (Issue #749): canonical mktemp helper も sandbox にコピーする
+cp "$src_hook_dir/_mktemp-stderr-guard.sh" "$sandbox_hook_dir/" 2>/dev/null || true
 # Stub session-ownership.sh: define helpers that don't break source, but omit check_session_ownership
 cat > "$sandbox_hook_dir/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
@@ -723,6 +725,8 @@ src_hook_dir_b="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir_b/session-start.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
+# F-01 (Issue #749): canonical mktemp helper も sandbox にコピーする
+cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/" 2>/dev/null || true
 cat > "$sandbox_hook_dir_b/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
 extract_session_id() { echo ""; }
@@ -857,6 +861,16 @@ if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, fall
   pass "Fallback WARNING emitted to stderr"
 else
   fail "Expected fallback WARNING; got stderr: $stderr_749"
+fi
+# F-07: Assert the legacy fallback path was actually used (not just the WARNING text).
+# session-start.sh on `source=startup` performs a defensive reset that flips
+# .active=true → false on the resolved STATE_FILE. If the fallback path silently
+# broke (e.g., typo in `.rite-flow_state`), the legacy file would not be written.
+deactivated_active=$(jq -r '.active' "$dir_749/.rite-flow-state" 2>/dev/null)
+if [ "$deactivated_active" = "false" ]; then
+  pass "Legacy fallback path was loaded (defensive reset flipped .active to false)"
+else
+  fail "Expected .active=false in legacy state file after defensive reset; got: $deactivated_active"
 fi
 echo ""
 

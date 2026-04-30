@@ -227,18 +227,29 @@ echo ""
 # and lists current lifecycle hook callers. Drift between code and docs is the
 # silent-regression vector this TC defends against — a future helper change must
 # update the contract section here, otherwise this assertion fails.
+#
+# F-11: Constrain the grep scope to the header comment block (between the
+# `Caller contract` marker and the `Why this exists` boundary) so that future
+# additions of these keywords elsewhere in the file (e.g., shebang, code body,
+# error messages) do not accidentally satisfy the assertion without updating
+# the actual contract documentation.
 echo "TC-749-CALLER-CONTRACT: header documents caller contract + caller list"
-contract_failed=0
-for keyword in 'Caller contract' 'check_session_ownership' 'Current callers' \
-               'session-start.sh' 'session-end.sh' 'pre-compact.sh' 'post-compact.sh'; do
-  if ! grep -qF "$keyword" "$HELPER"; then
-    fail "Header missing required keyword: '$keyword'"
-    contract_failed=1
-    break
+header_block=$(awk '/^# ⚠️ Caller contract/,/^# Why this exists/' "$HELPER")
+if [ -z "$header_block" ]; then
+  fail "Caller contract section not found in header (awk range extraction returned empty)"
+else
+  contract_failed=0
+  for keyword in 'Caller contract' 'check_session_ownership' 'Current callers' \
+                 'session-start.sh' 'session-end.sh' 'pre-compact.sh' 'post-compact.sh'; do
+    if ! printf '%s' "$header_block" | grep -qF "$keyword"; then
+      fail "Header section missing required keyword: '$keyword'"
+      contract_failed=1
+      break
+    fi
+  done
+  if [ $contract_failed -eq 0 ]; then
+    pass "Caller contract section + 4 lifecycle hook callers documented in scoped header"
   fi
-done
-if [ $contract_failed -eq 0 ]; then
-  pass "Caller contract section + 4 lifecycle hook callers documented in header"
 fi
 echo ""
 

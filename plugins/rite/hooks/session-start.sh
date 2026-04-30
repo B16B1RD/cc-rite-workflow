@@ -251,18 +251,27 @@ unset _migrate_script
 # fallback path keeps the hook non-blocking under helper deploy regression
 # (e.g. chmod -x or partial install).
 #
-# Issue #749: stderr pass-through for diagnostic visibility.
-# `_validate-helpers.sh` and `_validate-state-root.sh` emit `ERROR:` lines
-# to stderr on deploy regression / path traversal; the previous
-# `2>/dev/null` silently dropped them, hiding the legacy-fallback root
-# cause from the user. Mirrors state-read.sh `_classify_err` doctrine
-# (cycle 41 F-01).
-_resolve_err=$(mktemp /tmp/rite-resolve-flow-state-err-XXXXXX 2>/dev/null) || _resolve_err=""
+# Issue #749: stderr pass-through for diagnostic visibility, via canonical
+# helper `_mktemp-stderr-guard.sh` (PR #688 cycle 9 F-02 で抽出済み)。
+# - mktemp 失敗時に 3 行 WARNING を emit (silent fall-through 解消)
+# - chmod 600 / TMPDIR 尊重を helper 経由で取得
+# - filter は state-read.sh:148 と同型 (`^WARNING:|^ERROR:|^  |^jq: `)
+#   で indented continuation 行と raw `jq:` parse error も pass-through
+# - success arm でも tempfile を inspect する (`_resolve-flow-state-path.sh`
+#   が graceful-degrade で exit 0 を返す経路、例えば `_resolve-session-id-from-file.sh`
+#   の tr IO failure による empty SID + WARNING 出力 + exit 0 経路で
+#   inner helper の WARNING を silent drop しないため)
+_resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+  "session-start" \
+  "resolve-flow-state-err" \
+  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 if STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}"); then
-  :
+  if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+  fi
 else
   if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-    grep -E '^WARNING:|^ERROR:' "$_resolve_err" >&2 || true
+    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
   fi
   STATE_FILE="$STATE_ROOT/.rite-flow-state"
   echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($STATE_FILE)" >&2

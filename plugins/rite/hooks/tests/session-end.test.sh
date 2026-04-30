@@ -517,6 +517,15 @@ if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, fall
 else
   fail "Expected fallback WARNING; got stderr: $stderr_749"
 fi
+# F-07: Assert the legacy fallback path was actually used (not just the WARNING text).
+# session-end.sh should deactivate the legacy state file (set .active=false). If the
+# fallback path silently broke, the file would remain .active=true.
+deactivated_active=$(jq -r '.active' "$dir_749/.rite-flow-state" 2>/dev/null)
+if [ "$deactivated_active" = "false" ]; then
+  pass "Legacy fallback path was loaded (.active flipped to false)"
+else
+  fail "Expected .active=false in legacy state file; got: $deactivated_active"
+fi
 echo ""
 
 # --------------------------------------------------------------------------
@@ -531,24 +540,41 @@ sbx_jq="$(mktemp -d "$TEST_DIR/sbx-hooks-jq-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_jq/"
 
 # Inject a fake jq into a private bin dir at the front of PATH that exits 1
-# only on the deactivation invocation (`.active = false | .updated_at = $ts`),
-# while passing through all other jq calls unchanged so the hook can still parse
-# its inputs (cwd, source, ownership probe, lifecycle phase, etc.).
-fake_jq_bin="$(mktemp -d "$TEST_DIR/fakejq-XXXXXX")"
-cat > "$fake_jq_bin/jq" <<'FAKE_JQ_EOF'
+# only on the deactivation invocation, while passing through all other jq calls
+# unchanged so the hook can still parse its inputs (cwd, source, ownership probe,
+# lifecycle phase, etc.).
+#
+# Note (F-10): The fake jq発火 pattern below uses a relaxed match
+# (`*'.active'*'.updated_at'*`) instead of the exact production string, so that
+# harmless jq expression refactors (whitespace tweaks, order swaps) do not break
+# this TC. The underlying invariant being tested is "WARNING is emitted when jq
+# atomic write fails", not "the production jq expression has not been touched".
+#
+# Note (F-06): Resolve the real jq path via `command -v jq` rather than
+# hardcoding `/usr/bin/jq`, because macOS Homebrew installs jq under
+# `/opt/homebrew/bin/jq` and Nix uses `/run/current-system/sw/bin/jq`, etc.
+JQ_REAL="$(command -v jq)"
+if [ -z "$JQ_REAL" ]; then
+  fail "TC-749-JQ-WRITE-WARN: real jq not found in PATH (cannot build fake jq)"
+else
+  fake_jq_bin="$(mktemp -d "$TEST_DIR/fakejq-XXXXXX")"
+  # Use double-quoted heredoc so $JQ_REAL is expanded into the fake script
+  cat > "$fake_jq_bin/jq" <<FAKE_JQ_EOF
 #!/bin/bash
 # Fake jq: fail only on the session-end deactivation invocation
-for arg in "$@"; do
-  case "$arg" in
-    *'.active = false | .updated_at = $ts'*)
+# Pattern intentionally relaxed (F-10) — see test file comment above for rationale
+for arg in "\$@"; do
+  case "\$arg" in
+    *'.active'*'.updated_at'*)
       echo "fake jq: simulated failure for TC-749-JQ-WRITE-WARN" >&2
       exit 1
       ;;
   esac
 done
-exec /usr/bin/jq "$@"
+exec '$JQ_REAL' "\$@"
 FAKE_JQ_EOF
-chmod +x "$fake_jq_bin/jq"
+  chmod +x "$fake_jq_bin/jq"
+fi
 
 dir_jq="$TEST_DIR/tc749-jq"
 mkdir -p "$dir_jq"
@@ -572,10 +598,19 @@ if printf '%s' "$stderr_jq" | grep -qF 'rite: session-end: failed to deactivate 
 else
   fail "Expected jq-write WARNING; got stderr: $stderr_jq"
 fi
-if printf '%s' "$stderr_jq" | grep -qF '#749'; then
+# F-08: Assert the structural invariant ("WARNING contains an Issue number")
+# instead of the literal '#749', which only happened to match because the
+# test branch was named `refactor/issue-749-jqwarn`.
+if printf '%s' "$stderr_jq" | grep -qE 'Issue #[0-9]+'; then
   pass "WARNING includes Issue number from branch detection"
 else
-  fail "Expected '#749' in WARNING; got stderr: $stderr_jq"
+  fail "Expected 'Issue #<number>' in WARNING; got stderr: $stderr_jq"
+fi
+# F-05: Assert state_file path appears in WARNING (so $STATE_FILE substitution works)
+if printf '%s' "$stderr_jq" | grep -qF '.rite-flow-state'; then
+  pass "WARNING includes state file path"
+else
+  fail "Expected state file path '.rite-flow-state' in WARNING; got stderr: $stderr_jq"
 fi
 echo ""
 
