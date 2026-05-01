@@ -48,13 +48,15 @@ fi
 
 make_test_dir() {
   local d
-  d=$(mktemp -d)
+  d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
+  [ -n "$d" ] && [ -d "$d" ] || { echo "ERROR: test dir invalid" >&2; return 1; }
   (
+    set -e
     cd "$d"
     git init -q
     echo a > a && git add a
     git -c user.email=t@test.local -c user.name=test commit -q -m init
-  )
+  ) || { echo "ERROR: test fixture setup failed in $d" >&2; return 1; }
   echo "$d"
 }
 
@@ -211,7 +213,7 @@ fi
 # Layer 8: case arm — phase-transition-whitelist.sh の declare -gA テーブル
 # --------------------------------------------------------------------------
 echo "Layer 8 (case arm): phase-transition-whitelist.sh の declare -gA + 関数 dispatch"
-case_arm_count=$(grep -cE 'declare -gA _RITE_PHASE_TRANSITIONS' "$WHITELIST" 2>/dev/null || echo 0)
+case_arm_count=$(grep -E 'declare -gA _RITE_PHASE_TRANSITIONS' "$WHITELIST" 2>/dev/null | wc -l)
 if [ "$case_arm_count" -ge 1 ]; then
   pass "Layer 8 evidence: declare -gA _RITE_PHASE_TRANSITIONS が存在 ($case_arm_count 箇所)"
 else
@@ -255,34 +257,37 @@ write_session_id "$TD" "$SID_INV"
 (cd "$TD" && bash "$HOOK" create --session "$SID_INV" \
   --phase "create_interview" --issue 1 --branch "b" --pr 0 --next "n" >/dev/null 2>&1)
 INV_F="$TD/.rite/sessions/$SID_INV.flow-state"
-jq '.active = false' "$INV_F" > "${INV_F}.tmp" && mv "${INV_F}.tmp" "$INV_F"
 
-HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_INV" \
-  '{cwd: $cwd, session_id: $sid, tool_name: "Bash", tool_input: {command: "echo silent-skip-test"}}')
+# `gh issue create` は phase=create_interview で AND-logic gate が block 対象とする command。
+# active=false → guard は早期 silent skip (stdout 空 / deny JSON なし)
+# active=true → defense pathway 評価に進み stdout に permissionDecision: deny JSON を出力
+# pre-tool-bash-guard は exit 0 のまま stdout で deny を表現するため、stdout 内容で判定する。
+HOOK_INPUT_BLOCKING=$(jq -n --arg cwd "$TD" --arg sid "$SID_INV" \
+  '{cwd: $cwd, session_id: $sid, tool_name: "Bash", tool_input: {command: "gh issue create --title test --body test"}}')
+
+jq '.active = false' "$INV_F" > "${INV_F}.tmp" && mv "${INV_F}.tmp" "$INV_F"
 set +e
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$PRE_TOOL_GUARD" >/dev/null 2>&1)
-rc_false=$?
+out_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
 set -e
 
-# active=true でも (phase=create_interview AND-condition 成立)
 jq '.active = true' "$INV_F" > "${INV_F}.tmp" && mv "${INV_F}.tmp" "$INV_F"
 set +e
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$PRE_TOOL_GUARD" >/dev/null 2>&1)
-rc_true=$?
+out_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
 set -e
 
-# active=false → exit 0 (silent skip = 防御層が gate を通す)
-if [ "$rc_false" -eq 0 ]; then
-  pass "AND-logic: active=false で pre-tool-bash-guard が exit 0 (silent skip = 防御層 no-op)"
+# active=false: deny JSON が出力されない (silent skip = 防御層 no-op、Wiki #660 root cause 経路)
+if ! echo "$out_false" | grep -q '"permissionDecision":[[:space:]]*"deny"'; then
+  pass "AND-logic (active=false): permissionDecision: deny が出力されない (silent skip = 防御層 no-op)"
 else
-  fail "AND-logic: active=false でも guard が block (rc=$rc_false) — silent skip 契約違反"
+  fail "AND-logic (active=false): active=false でも guard が block JSON を出力 (silent skip 契約違反)"
 fi
 
-# active=true → 防御層が evaluation pathway を通る (rc 0 or 2 のいずれかで安定)
-if [ "$rc_true" -eq 0 ] || [ "$rc_true" -eq 2 ]; then
-  pass "AND-logic: active=true で pre-tool-bash-guard が evaluation pathway を通る (rc=$rc_true)"
+# active=true: deny JSON が出力される (AND-logic fire = .active=true 前提が機能している)
+# 旧 `rc=0 or 2` 検査では active 値に関わらず常に pass するため #660 regression を検出不能だった
+if echo "$out_true" | grep -q '"permissionDecision":[[:space:]]*"deny"'; then
+  pass "AND-logic invariant (active=true): permissionDecision: deny が出力 (AND-logic fire verified、#660 regression なし)"
 else
-  fail "AND-logic: active=true で guard が異常 exit code (rc=$rc_true)"
+  fail "AND-logic invariant (active=true): active=true でも guard が block JSON を出力しない (silent AND-logic skip = #660 regression)"
 fi
 
 # --------------------------------------------------------------------------

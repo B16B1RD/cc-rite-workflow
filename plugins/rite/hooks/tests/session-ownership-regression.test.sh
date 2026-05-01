@@ -37,13 +37,15 @@ fi
 
 make_test_dir() {
   local d
-  d=$(mktemp -d)
+  d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
+  [ -n "$d" ] && [ -d "$d" ] || { echo "ERROR: test dir invalid" >&2; return 1; }
   (
+    set -e
     cd "$d"
     git init -q
     echo a > a && git add a
     git -c user.email=t@test.local -c user.name=test commit -q -m init
-  )
+  ) || { echo "ERROR: test fixture setup failed in $d" >&2; return 1; }
   echo "$d"
 }
 
@@ -160,16 +162,13 @@ write_session_id "$TD" "$SID_OWN"
 OWN="$TD/.rite/sessions/$SID_OWN.flow-state"
 [ "$(jq -r '.active' "$OWN")" = "true" ] || fail "TC-558 setup: own state が active=true で作成されていない"
 
-# レガシー単一ファイルを「他 session の state」として配置 (per-session file 形式の他 session を
-# 新規作成すると別 path に書かれて session-start のリゾルバが見にいく対象に乗らないため、
-# レガシー path に other session_id の state を書いて 「session-start.sh が own session の
-# state file を resolve した結果に対して reset 処理を行う」 路を pin する)
-SID_OTHER="66666666-6666-6666-6666-666666666666"
-
 # session-start.sh を SOURCE=startup で起動 (own session)
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_OWN" \
   '{cwd: $cwd, session_id: $sid, source: "startup"}')
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>&1) || true
+ss_err=$(mktemp)
+echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err") || \
+  echo "  WARN: session-start.sh exited non-zero (rc=$?). stderr: $(head -3 "$ss_err")" >&2
+rm -f "$ss_err"
 
 # AC-01: own session の state は reset (active=false)
 if [ "$(jq -r '.active' "$OWN")" = "false" ]; then
@@ -197,7 +196,10 @@ OTHER="$TD/.rite/sessions/$SID_OTHER.flow-state"
 # SID_OTHER の per-session file は触られない (構造的に他 session に手を出せない)
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_ME" \
   '{cwd: $cwd, session_id: $sid, source: "startup"}')
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>&1) || true
+ss_err=$(mktemp)
+echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err") || \
+  echo "  WARN: session-start.sh exited non-zero (rc=$?). stderr: $(head -3 "$ss_err")" >&2
+rm -f "$ss_err"
 
 # 他 session の state は active=true のまま
 if [ "$(jq -r '.active' "$OTHER")" = "true" ]; then
@@ -218,7 +220,10 @@ CLEAR_F="$TD/.rite/sessions/$SID_CLEAR.flow-state"
 
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_CLEAR" \
   '{cwd: $cwd, session_id: $sid, source: "clear"}')
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>&1) || true
+ss_err=$(mktemp)
+echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err") || \
+  echo "  WARN: session-start.sh exited non-zero (rc=$?). stderr: $(head -3 "$ss_err")" >&2
+rm -f "$ss_err"
 
 if [ "$(jq -r '.active' "$CLEAR_F")" = "false" ]; then
   pass "TC-206 AC-2: SOURCE=clear でも own session state が active=false にリセット"
@@ -268,28 +273,36 @@ jq '.active = true' "$GATE_F" > "${GATE_F}.tmp" && mv "${GATE_F}.tmp" "$GATE_F"
 # (詳細な defense fire は stop-guard.sh removal 後の現状では pre-tool-bash-guard 単体の
 #  挙動に依存し、test fixture からは間接観測しかできないため、AND-logic の "active 必須"
 #  contract が成立していることをもって AC-3 の core proposition を満たす)
-guard_active=$(jq -r '.active' "$GATE_F")
-guard_phase=$(jq -r '.phase' "$GATE_F")
-if [ "$guard_active" = "true" ] && [ "$guard_phase" = "create_interview" ]; then
-  pass "TC-660 AC-3: active=true && phase=create_interview の AND condition が成立 (defense pathway 入口)"
-else
-  fail "TC-660 AC-3: AND condition 不成立 (active=$guard_active phase=$guard_phase)"
-fi
+# AC-3: active=true で `gh issue create` 等 phase=create_interview で block 対象となる Bash
+# 入力を渡し、guard の defense decision pathway (AND-logic fire) が走ることを stdout の
+# `permissionDecision: "deny"` JSON 出力で verify する。pre-tool-bash-guard は exit 0 のまま
+# stdout に JSON を返すため exit code 差分では区別できず、stdout 内容で判定する必要がある。
+HOOK_INPUT_BLOCKING=$(jq -n --arg cwd "$TD" --arg sid "$SID_GATE" \
+  '{cwd: $cwd, session_id: $sid, tool_name: "Bash", tool_input: {command: "gh issue create --title test --body test"}}')
 
-# AC-3 補強: active=true 状態で同じ Bash 入力を guard に通したときの exit code が
-# active=false 時と異なる経路を取る (= AND-logic が fire 評価に進む) ことを確認する。
-# 結果が exit 0 (allow) でも exit 2 (deny) でも、active=false の早期 exit と区別できれば良い。
-# ここでは "exit code が 0/2 のいずれかで安定する" ことを smoke check として pass 判定する。
-HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_GATE" \
-  '{cwd: $cwd, session_id: $sid, tool_name: "Bash", tool_input: {command: "echo test"}}')
+# active=false → guard は早期 silent skip (stdout 空 / 短い)
+jq '.active = false' "$GATE_F" > "${GATE_F}.tmp" && mv "${GATE_F}.tmp" "$GATE_F"
 set +e
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$PRE_TOOL_GUARD" >/dev/null 2>&1)
-rc=$?
+out_active_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
 set -e
-if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then
-  pass "TC-660 AC-3: active=true 経路で guard が正常 exit code (0 or 2) を返す"
+
+# active=true → guard は AND-logic 評価に進み deny JSON を出力
+jq '.active = true' "$GATE_F" > "${GATE_F}.tmp" && mv "${GATE_F}.tmp" "$GATE_F"
+set +e
+out_active_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
+set -e
+
+# active=false: deny JSON が出力されないこと (silent skip)
+if ! echo "$out_active_false" | grep -q '"permissionDecision":[[:space:]]*"deny"'; then
+  pass "TC-660 AC-3 (active=false): permissionDecision: deny が出力されない (silent skip = 防御層 no-op)"
 else
-  fail "TC-660 AC-3: active=true 経路で異常 exit code (rc=$rc)"
+  fail "TC-660 AC-3 (active=false): active=false でも guard が block JSON を出力した (silent skip 契約違反)"
+fi
+# active=true: deny JSON が出力されること (AND-logic fire)
+if echo "$out_active_true" | grep -q '"permissionDecision":[[:space:]]*"deny"'; then
+  pass "TC-660 AC-3 (active=true): permissionDecision: deny が出力 (AND-logic fire verified, #660 regression なし)"
+else
+  fail "TC-660 AC-3 (active=true): active=true でも guard が block JSON を出力しない (silent AND-logic skip = #660 regression)"
 fi
 
 # --------------------------------------------------------------------------

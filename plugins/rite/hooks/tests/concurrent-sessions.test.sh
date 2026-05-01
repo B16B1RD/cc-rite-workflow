@@ -29,13 +29,15 @@ fi
 
 make_test_dir() {
   local d
-  d=$(mktemp -d)
+  d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
+  [ -n "$d" ] && [ -d "$d" ] || { echo "ERROR: test dir invalid" >&2; return 1; }
   (
+    set -e
     cd "$d"
     git init -q
     echo a > a && git add a
     git -c user.email=t@test.local -c user.name=test commit -q -m init
-  )
+  ) || { echo "ERROR: test fixture setup failed in $d" >&2; return 1; }
   echo "$d"
 }
 
@@ -46,10 +48,6 @@ write_config() {
 flow_state:
   schema_version: $sv
 EOF
-}
-
-write_session_id() {
-  echo "$2" > "$1/.rite-session-id"
 }
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
@@ -221,7 +219,8 @@ PID_G=$!
     --phase "phase_h" --issue 999 --branch "bh" --pr 0 --next "nh" >/dev/null 2>&1
 ) &
 PID_H=$!
-wait "$PID_G"; wait "$PID_H"
+wait "$PID_G" || fail "TC-4 G concurrent create failed (rc=$?)"
+wait "$PID_H" || fail "TC-4 H concurrent create failed (rc=$?)"
 
 G="$TD/.rite/sessions/$SID_G.flow-state"
 H="$TD/.rite/sessions/$SID_H.flow-state"
@@ -264,8 +263,14 @@ for i in $(seq 1 "$ITERATIONS"); do
       --phase "py_$i" --issue "$i" --branch "by_$i" --pr 0 --next "ny" >/dev/null 2>&1
   ) &
   pid_y=$!
-  wait "$pid_x" || { flake=$((flake + 1)); continue; }
-  wait "$pid_y" || { flake=$((flake + 1)); continue; }
+  if ! wait "$pid_x"; then
+    rc=$?; echo "  flake at iter=$i pid=x rc=$rc" >&2
+    flake=$((flake + 1)); continue
+  fi
+  if ! wait "$pid_y"; then
+    rc=$?; echo "  flake at iter=$i pid=y rc=$rc" >&2
+    flake=$((flake + 1)); continue
+  fi
 
   fx="$TD/.rite/sessions/$SID_X.flow-state"
   fy="$TD/.rite/sessions/$SID_Y.flow-state"
