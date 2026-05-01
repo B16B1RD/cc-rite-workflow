@@ -366,6 +366,131 @@ find "$TEST_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-
 _assert "TC-18.backup-deleted-by-unprotected-cleanup" "$([ ! -f "$backup_file" ] && echo true || echo false)"
 _teardown
 
+# ============================================================================
+# T-08 拡充 (Issue #684, AC-8): edge case + non-regression の追加 TC
+# ============================================================================
+# 既存 TC-01〜TC-18 は AC-LOCAL-1〜AC-LOCAL-4 (Issue #679 内 AC) を中心にカバー。
+# 以下 TC-19〜TC-21 は Issue #672 AC-8 の edge case 観点で:
+#   - TC-19: migration 中 SIGKILL → atomic 3 状態 (pre / mid / post) のいずれか
+#   - TC-20: production session-start.sh / session-end.sh の find pattern が
+#            canonical exception `-not -name '.rite-flow-state.legacy.*'` を含む
+#            ことを pin (#747 cycle 3/4 regression を本体側でも構造的に防ぐ)
+#   - TC-21: rollback (TC-10 chmod 555) 後の filesystem 状態を更に pin
+#            (backup 作成と rename がどちらも skip されることを byte-equal で verify)
+
+# ---------- TC-19: migration 中 SIGKILL → atomic 3 状態のいずれか ----------
+echo "TC-19: migration 中 SIGKILL → atomic invariant (3 states pre/mid/post)"
+_setup
+legacy_payload='{"active":true,"issue_number":684,"phase":"phaseM","session_id":"99887766-5544-3322-1100-aabbccddeeff"}'
+echo "$legacy_payload" > "$TEST_ROOT/.rite-flow-state"
+( STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1 ) &
+_pid=$!
+# micro-sleep to land mid-migration; the script does mkdir → write → rename
+sleep 0.005
+kill -KILL "$_pid" 2>/dev/null || true
+wait "$_pid" 2>/dev/null || true
+
+# Atomic invariant: state must be one of three deterministic snapshots.
+#   (P) pre-migration: legacy intact, no per-session file, no backup
+#   (M) mid-migration: legacy intact, per-session file partial OR backup absent
+#   (S) post-migration: legacy gone, per-session file integral, backup integral
+#
+# In all three, the legacy file (if present) must still hold the original
+# JSON byte-equal to the pre-write payload.  partial-write of the legacy file
+# itself must NEVER occur (the migrator only renames, never edits in place).
+legacy_after=""
+[ -f "$TEST_ROOT/.rite-flow-state" ] && legacy_after=$(cat "$TEST_ROOT/.rite-flow-state")
+sessions_glob=("$TEST_ROOT/.rite/sessions/"*.flow-state)
+session_present=false
+[ -f "${sessions_glob[0]:-/nonexistent}" ] && session_present=true
+backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
+backup_present=false
+[ -f "${backup_glob[0]:-/nonexistent}" ] && backup_present=true
+
+# Classify
+state_label="UNKNOWN"
+if [ -n "$legacy_after" ] && [ "$session_present" = "false" ] && [ "$backup_present" = "false" ]; then
+  state_label="P_pre"
+elif [ -n "$legacy_after" ] && { [ "$session_present" = "true" ] || [ "$backup_present" = "true" ]; }; then
+  state_label="M_mid"
+elif [ -z "$legacy_after" ] && [ ! -f "$TEST_ROOT/.rite-flow-state" ] && [ "$session_present" = "true" ] && [ "$backup_present" = "true" ]; then
+  state_label="S_post"
+fi
+case "$state_label" in
+  P_pre|M_mid|S_post)
+    _assert "TC-19.atomic-3-states (observed=$state_label)" "true"
+    ;;
+  *)
+    _assert "TC-19.atomic-3-states (observed=$state_label)" "false"
+    ;;
+esac
+
+# Stronger invariant: the legacy file (if present) must be byte-identical to
+# pre-write payload — migrator never partially overwrites the legacy file.
+if [ -f "$TEST_ROOT/.rite-flow-state" ]; then
+  _assert "TC-19.legacy-byte-equal-to-payload" \
+    "$([ "$legacy_after" = "$legacy_payload" ] && echo true || echo false)"
+else
+  _assert "TC-19.legacy-byte-equal-to-payload (legacy gone — post-state)" "true"
+fi
+_teardown
+
+# ---------- TC-20: production find patterns include legacy-backup exception ----------
+# Wiki 経験則「新規 file 命名と既存 find glob が collision して silent 削除を起こす」を
+# production スクリプト側でも構造的に pin する。session-start.sh / session-end.sh が
+# 「legacy.* を例外扱いする canonical phrase `-not -name '.rite-flow-state.legacy.*'`」
+# を保持していることを mechanical に verify。誰かが将来 refactor で例外を消したら
+# 本 assertion で fail する。
+echo "TC-20: production session-start/end の find は legacy backup を例外扱いする"
+HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+session_start="$HOOKS_DIR/session-start.sh"
+session_end="$HOOKS_DIR/session-end.sh"
+# F-03 fix: Combined regex で「実 find 行」のみマッチさせ、コメント中の token と
+# 実コード中の token を区別する。旧実装は 2 つの独立 grep だったため、コメント行
+# と実コード行のどちらか片方しかマッチしなくても両 token 揃えば PASS する theater
+# 状態だった (Wiki 経験則「Test pin protection theater」を test 自身が踏んでいた)。
+# 修正後: `find ` で始まる行に絞り、`-not -name` と `.rite-flow-state.legacy.*` が
+# 同一行内に併記されていることを assert する。これにより refactor で実 find 行を
+# 削除して comment だけ残しても TC-20 は fail する。
+combined_regex='find .* -not -name [^[:space:]]*\.rite-flow-state\.legacy\.\*'
+if grep -qE -- "$combined_regex" "$session_start"; then
+  _assert "TC-20.session-start-has-legacy-exception" "true"
+else
+  _assert "TC-20.session-start-has-legacy-exception" "false"
+fi
+if grep -qE -- "$combined_regex" "$session_end"; then
+  _assert "TC-20.session-end-has-legacy-exception" "true"
+else
+  _assert "TC-20.session-end-has-legacy-exception" "false"
+fi
+
+# ---------- TC-21: rollback path leaves NO backup, legacy is byte-equal to original ----------
+# TC-10 が rename 失敗 → new file rolled back を verify するが、本 TC は更に
+# 「backup 作成も skip される (`.rite-flow-state.legacy.*` ファイル不在)」と
+# 「legacy ファイルが元のペイロードと byte-equal」を pin する。
+echo "TC-21: rollback で backup は作られず legacy は byte-equal で保持"
+_setup
+mkdir -p "$TEST_ROOT/.rite/sessions"
+rollback_payload='{"active":true,"issue_number":3,"phase":"phaseRB","session_id":"deadbeef-1111-2222-3333-444455556666"}'
+echo "$rollback_payload" > "$TEST_ROOT/.rite-flow-state"
+chmod 555 "$TEST_ROOT"
+set +e
+STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1
+rc=$?
+set -e
+chmod 755 "$TEST_ROOT"
+
+# legacy is byte-identical
+_assert "TC-21.rollback-rc-non-zero" "$([ "$rc" -ne 0 ] && echo true || echo false)"
+legacy_content=$(cat "$TEST_ROOT/.rite-flow-state" 2>/dev/null || echo "")
+_assert "TC-21.legacy-byte-equal-original" \
+  "$([ "$legacy_content" = "$rollback_payload" ] && echo true || echo false)"
+# no backup written
+backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
+_assert "TC-21.no-backup-on-rollback" \
+  "$([ ! -f "${backup_glob[0]:-/nonexistent}" ] && echo true || echo false)"
+_teardown
+
 # ---------- Summary ----------
 echo ""
 echo "==============================="

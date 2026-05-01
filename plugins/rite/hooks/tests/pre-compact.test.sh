@@ -150,38 +150,56 @@ else
 fi
 echo ""
 
-# --- TC-005: Invalid JSON on stdin → non-zero exit ---
-echo "TC-005: Invalid JSON on stdin → non-zero exit"
+# --- TC-005: Invalid JSON on stdin → exit 0 (best-effort, lifecycle 維持) ---
+# Issue #758: pre-compact.sh は Claude Code lifecycle hook であり、invalid JSON で
+# exit 1 を返すと compact 処理自体が止まる risk がある。production は best-effort
+# 設計 (invalid stdin → silent skip + exit 0) を採用しており、本 TC はその contract
+# を pin する。silent skip の真正性 (downstream に副作用が漏れない) は TC-005b と
+# TC-006 以降で別途 verify される。
+echo "TC-005: Invalid JSON on stdin → exit 0 (best-effort skip, lifecycle 維持)"
 dir005="$TEST_DIR/tc005"
 mkdir -p "$dir005"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 if echo "NOT-VALID-JSON" | bash "$HOOK" 2>"$LAST_STDERR_FILE"; then
-  fail "Hook should exit non-zero on invalid stdin JSON"
+  pass "Hook exit 0 on invalid stdin JSON (best-effort skip preserves Claude Code lifecycle)"
 else
-  pass "Hook exits non-zero on invalid stdin JSON"
+  fail "Hook should exit 0 on invalid stdin JSON (best-effort contract violated)"
 fi
 echo ""
 
-# --- TC-005b: Corrupted state file JSON → non-zero exit ---
-echo "TC-005b: Corrupted state file JSON → non-zero exit"
+# --- TC-005b: Corrupted state file JSON → exit 0 + jq parse error stderr + 元ファイル保持 ---
+# Issue #758: production は corrupted state file 検出時に exit 0 (lifecycle 維持) かつ
+# jq parse error を stderr に出力 (silent failure 防止) かつ元ファイルを保持する
+# (overwrite 防止)。この 3 contract を pin する。
+echo "TC-005b: Corrupted state file → exit 0 + jq parse error stderr + 元ファイル保持"
 dir005b="$TEST_DIR/tc005b"
 mkdir -p "$dir005b"
 echo "{broken" > "$dir005b/.rite-flow-state"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
-if run_hook "$dir005b"; then
-  fail "Hook should exit non-zero on corrupted state file"
+if run_hook "$dir005b" >/dev/null; then
+  rc=0
 else
+  rc=$?
+fi
+if [ "$rc" -eq 0 ]; then
   # Verify the corrupted file is preserved (jq failure should not overwrite it)
   if [ -f "$dir005b/.rite-flow-state" ]; then
     preserved_content=$(cat "$dir005b/.rite-flow-state")
     if [ "$preserved_content" = "{broken" ]; then
-      pass "Hook exits non-zero on corrupted state file JSON, original file preserved"
+      # Verify jq parse error is emitted to stderr (silent failure 防止)
+      if grep -q "parse error" "$LAST_STDERR_FILE" 2>/dev/null; then
+        pass "Hook exit 0 + jq parse error stderr + 元ファイル保持 (3-contract verified)"
+      else
+        fail "Hook exit 0 + 元ファイル保持 OK だが jq parse error が stderr に出力されていない (silent failure)"
+      fi
     else
       fail "Corrupted state file was modified: $preserved_content"
     fi
   else
     fail "Corrupted state file was deleted"
   fi
+else
+  fail "Hook should exit 0 on corrupted state file (best-effort contract violated, rc=$rc)"
 fi
 echo ""
 
