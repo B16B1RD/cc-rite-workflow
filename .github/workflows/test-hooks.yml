@@ -1,0 +1,45 @@
+name: hooks tests
+
+# Run the rite hook test suite (`plugins/rite/hooks/tests/run-tests.sh`) on every
+# push and pull request that touches the hooks directory or the workflow itself.
+# This realises Issue #684 T-06 (AC-6: 既存 hooks test 全 pass の CI 組み込み).
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'plugins/rite/hooks/**'
+      - '.github/workflows/test-hooks.yml'
+  pull_request:
+    paths:
+      - 'plugins/rite/hooks/**'
+      - '.github/workflows/test-hooks.yml'
+
+jobs:
+  test-hooks:
+    name: Run hook test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch a single commit; tests do not need history beyond HEAD.
+          fetch-depth: 1
+
+      - name: Verify required tools (bash, jq, git)
+        run: |
+          set -euo pipefail
+          for tool in bash jq git python3; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "ERROR: required tool not available: $tool" >&2
+              exit 1
+            fi
+            echo "$(command -v "$tool"): $($tool --version 2>&1 | head -1)"
+          done
+
+      - name: Run rite hook test suite
+        run: bash plugins/rite/hooks/tests/run-tests.sh
