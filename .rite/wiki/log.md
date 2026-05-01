@@ -318,3 +318,5 @@
 | 2026-05-01T03:27:29Z | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #756 cycle 5 fix (5 箇所削除 + grep -E '\(line[s]?\s*[~]?[0-9]+' を SoT lint 自動化候補) |
 | 2026-05-01T03:27:29Z | ingest:update | pages/anti-patterns/prose-design-without-backing-implementation.md | PR #756 cycle 5 fix (defense-in-depth claim と race window の time-ordering 乖離 LOW × 1 二重指摘 — pre/post-compact.sh trap cleanup dead code) |
 | 2026-05-01T03:27:29Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=16 |
+| 2026-05-02T00:30:00+09:00 | ingest:create | pages/patterns/race-window-probe-identification-power.md | PR #759 review (Issue #684) — SIGKILL race window probe identification power の新規 page 化 |
+| 2026-05-02T00:30:00+09:00 | ingest:update | pages/anti-patterns/test-pin-protection-theater.md | PR #759 review — Self-application failure mode (TC-20) の sub-pattern 追加 + sources 追記 |

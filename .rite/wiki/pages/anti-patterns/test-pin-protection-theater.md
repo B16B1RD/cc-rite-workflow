@@ -2,12 +2,14 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-04-24T14:55:00+00:00"
+updated: "2026-05-02T00:30:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260424T095915Z-pr-655-cycle6.md"
   - type: "reviews"
     ref: "raw/reviews/20260424T085837Z-pr-655.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260501T140844Z-pr-759.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase]
 confidence: high
 ---
@@ -91,6 +93,37 @@ git checkout plugins/rite/hooks/stop-guard.sh
 ### 累積対策 PR の特性
 
 Protection theater は「cumulative defense」型 PR (同種 regression への累積対策) で特に顕在化する。PR #655 は Issue #652 = #604/#561 系の turn-boundary 累積対策 12 回目で、cycle 6 で初めて F-C6-03 として明文化された。[累積対策 PR の review-fix loop で fix 自体が drift を導入する](fix-induced-drift-in-cumulative-defense.md) の fractal pattern の一部として扱うべき anti-pattern。
+
+### Self-application: Wiki 経験則を作った PR 自身が踏むケース (PR #759 で実測)
+
+PR #759 (Issue #684 hooks test スイート) では `migrate-flow-state.test.sh` TC-20 が **本 anti-pattern を test 自身が踏んでいる** 事例として cross-validation で検出された。canonical 防御策を SoT 化した経験則ページを参照しつつも、test 実装で同じ anti-pattern を再演する self-application failure mode:
+
+```bash
+# TC-20 旧実装 (PR #759 cycle 1 で HIGH 検出)
+canonical_phrase=".rite-flow-state.legacy.*"
+exception_token="-not -name"
+
+if grep -qF -- "$exception_token" "$session_start" \
+    && grep -qF -- "$canonical_phrase" "$session_start"; then
+  _assert "TC-20.session-start-has-legacy-exception" "true"
+fi
+```
+
+問題: 2 つの token を独立した `grep -qF` で検査するため、refactor で実 find 行を削除しても **コメント中に同 token が残っていれば PASS** する。session-start.sh の旧実装ではコメント行と実 find 行の両方に `-not -name` と `.rite-flow-state.legacy.*` が出現しており、test は drift 保護として機能しない。
+
+canonical fix (combined regex で実コード行に絞る):
+
+```bash
+# combined regex: `find ` で始まる行に絞り、両 token が同一行内に併記されていることを assert
+combined_regex='find .* -not -name [^[:space:]]*\.rite-flow-state\.legacy\.\*'
+if grep -qE -- "$combined_regex" "$session_start"; then
+  _assert "TC-20.session-start-has-legacy-exception" "true"
+fi
+```
+
+これにより refactor で実 find 行を削除して comment だけ残しても TC-20 は **fail** し、本来の drift 検出機能を取り戻す。
+
+self-application failure mode の教訓: 経験則ページを書くだけでは self-application は防げない。**新規 test 追加 PR の reviewer は『本 PR の test 自身が anti-pattern を踏んでいないか』を mechanical に verify する step を必須化する** (mutation test を independent reviewer が走らせるなど)。
 
 ## 関連ページ
 

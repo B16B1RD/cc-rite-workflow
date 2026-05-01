@@ -66,9 +66,10 @@
 | [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](pages/patterns/silent-fallback-observability-via-debug-log.md) | patterns | `var=$(helper.sh ... 2>/dev/null) \|\| var="<legacy>"` 形式の silent legacy fallback は本番の deploy regression を完全に隠す。RITE_DEBUG gated WARNING を `.rite-flow-debug.log` に出力する observability layer を caller 全件に対称配置することで、本番挙動を不変に保ったまま root cause を後追い可能にする canonical pattern。PR #750 cycle 1 (HIGH x2 cross-validation) で実測。 | 2026-04-30T08:03:08Z | high |
 | [structural ownership guarantee は code-level defense-in-depth で enforce する](pages/patterns/structural-guarantee-code-level-enforcement.md) | patterns | per-session file 構造で「ファイル名 = session_id だから ownership は構造的に保証」と信じる API は、現 caller が必ず resolver 経由で path を組み立てる前提でのみ成り立つ。将来 resolver を経由しない caller が追加されると invariant が silent に崩壊する。fast-path に「filename SID と hook SID 比較」のような明示的 defense-in-depth check を追加し、空 hook_sid を backward-compat 経路として fail-secure に倒すのが canonical。helper-level test で 1 TC が複数経路 (期待 ok / 期待 reject / backward-compat) を同時に pin することで hook integration test に踏み込まずに contract を保護できる。PR #750 cycle 1 (HIGH cross-validation) で実測。 | 2026-04-30T08:03:08Z | high |
 | [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](pages/anti-patterns/canonical-helper-bypass.md) | anti-patterns | 過去の review-fix loop で抽出された canonical helper (`_mktemp-stderr-guard.sh` 等) がある領域に新規実装を追加する際、helper を呼び出す代わりに inline で再実装してしまう anti-pattern。helper が解決した anti-pattern (Asymmetric Fix Transcription / mktemp 失敗 silent / stderr 取りこぼし等) が再導入され、過去 cycle で確立した doctrine が 1 PR で silent に巻き戻る。filter doctrine の片側 mirror (`'^WARNING:|^  |^jq: '` vs `'^WARNING:|^ERROR:'`) で multi-line WARNING continuation と jq parse error が silent drop される sub-pattern を併発。PR #756 で 3 reviewer 独立合意の HIGH cross-validation で実測。 | 2026-05-01T03:27:29Z | high |
+| [Race window probe の identification power: outcome classification で test の真正性を担保する](pages/patterns/race-window-probe-identification-power.md) | patterns | SIGKILL を使った race window probe で sleep が短すぎると kill が write 開始前に landing し、全 iter で state file ENOENT のまま「PASS」する false positive 経路を生む。production の atomic write が partial-write を残すバグに退化しても test が PASS するため identification power がゼロになる dead code 化が起きる。canonical 防御は (a) sleep を 0.05-0.1s に拡大、(b) iteration outcome を pre/mid_or_temp/post/corrupt に classify、(c) `mid_or_temp + post >= 1` を assert することで race window が実際に当たったことを実証する設計。Mutation testing と pair pattern として併用 (PR #759 で確立)。 | 2026-05-02T00:30:00+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 59
-- ドメイン別: patterns=24, heuristics=15, anti-patterns=20
-- 最終更新: 2026-05-01T03:27:29Z
+- 総ページ数: 60
+- ドメイン別: patterns=25, heuristics=15, anti-patterns=20
+- 最終更新: 2026-05-02T00:30:00+09:00
