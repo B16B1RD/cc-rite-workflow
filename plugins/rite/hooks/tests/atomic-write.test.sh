@@ -1,0 +1,325 @@
+#!/bin/bash
+# Tests for atomic write integrity — Issue #672 / #684 (T-09 / AC-9)
+#
+# Purpose:
+#   `flow-state-update.sh` は state file を更新する際、
+#     mktemp ${FLOW_STATE}.XXXXXX  →  jq 出力で tempfile に書き込み  →  mv tempfile state_file
+#   の atomic write pattern を採る。POSIX で `mv` は同一 filesystem 内では
+#   atomic な rename(2) syscall として実装され、SIGKILL や process crash で
+#   write が中断されても state file 本体は **直前の整合状態を保持** するか
+#   **新しい完全な状態にすり替わる** いずれかになる。partial-write は構造的に
+#   不在となる。
+#
+#   本テストはこの atomic invariant を:
+#     (a) 連続 SIGKILL probe で state file の整合性を 100 iteration verify
+#     (b) sandboxed mutation test (`mv` を `cp` に改変) で test 自身の
+#         identification power を empirical 確認 (Wiki 経験則「Test pin
+#         protection theater」+「Mutation testing」)
+#   で固定する。
+#
+# Test cases:
+#   TC-1: 100 iteration SIGKILL probe → state file 常に integral (jq parse 成功 or ENOENT)
+#   TC-2: 連続 patch (急速 50 回) 完了後 → 最終 phase が最後の patch と一致 (no lost update outside SIGKILL)
+#   TC-3: Mutation test — sandbox に hook をコピー、create mode の `mv` を `false` に改変、
+#         改変版を実行後 (a) exit code 非 0 (b) state file が baseline のまま を verify
+#         (mutation 検出 → test の identification power、Wiki 経験則「Test pin protection theater」)
+#   TC-4: per-session と legacy 両 schema で atomic invariant 成立
+#   TC-5: 連続 SIGKILL 後の最終 state file が完全な JSON object (key 数 ≥ 5) を保持
+#
+# Out of scope:
+#   - trap-based cleanup の隔離 → flow-state-update-trap-isolation.test.sh
+#   - crash resume の再開可能性 → crash-resume.test.sh
+#
+# Usage: bash plugins/rite/hooks/tests/atomic-write.test.sh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+HOOK="$HOOKS_DIR/flow-state-update.sh"
+PASS=0
+FAIL=0
+FAILED_NAMES=()
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: jq is required but not installed" >&2
+  exit 1
+fi
+
+# ---- helpers ----
+cleanup_dirs=()
+cleanup() {
+  local d
+  for d in "${cleanup_dirs[@]:-}"; do
+    [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
+  done
+  return 0
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
+
+pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
+fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ FAIL: $1"; }
+
+make_test_dir() {
+  local schema="${1:-2}"
+  local d
+  d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
+  cleanup_dirs+=("$d")
+  cat > "$d/rite-config.yml" <<EOF
+flow_state:
+  schema_version: $schema
+EOF
+  echo "$d"
+}
+
+# Per-session state file path lookup
+state_path() {
+  local d="$1" sid="$2" schema="${3:-2}"
+  if [ "$schema" = "2" ]; then
+    echo "$d/.rite/sessions/${sid}.flow-state"
+  else
+    echo "$d/.rite-flow-state"
+  fi
+}
+
+# state file integrity predicate: ENOENT は許容、存在時は jq parse 成功必須
+state_file_is_integral() {
+  local f="$1"
+  if [ ! -e "$f" ]; then
+    return 0
+  fi
+  jq empty "$f" >/dev/null 2>&1
+}
+
+echo "=== atomic-write tests (Issue #672 / #684 T-09 AC-9) ==="
+echo ""
+
+# -------------------------------------------------------------------------
+# TC-1: 100 iteration SIGKILL probe → state file 常に integral
+# -------------------------------------------------------------------------
+echo "TC-1: 100 iteration SIGKILL probe → state file 常に integral"
+TD=$(make_test_dir 2)
+SID="aaaaaaaa-9999-9999-9999-999999999999"
+ITERATIONS=100
+flake_partial=0
+
+for i in $(seq 1 "$ITERATIONS"); do
+  (
+    cd "$TD"
+    bash "$HOOK" create --session "$SID" \
+      --phase "phase_iter_${i}" --issue 684 --branch "feat/iter${i}" --pr 0 --next "n${i}" >/dev/null 2>&1
+  ) &
+  pid=$!
+  sleep 0.003
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+
+  state_file=$(state_path "$TD" "$SID" 2)
+  if ! state_file_is_integral "$state_file"; then
+    flake_partial=$((flake_partial + 1))
+  fi
+done
+
+if [ "$flake_partial" -eq 0 ]; then
+  pass "TC-1.1: ${ITERATIONS} SIGKILL iterations all integral (atomic invariant holds)"
+else
+  fail "TC-1.1: partial-write ${flake_partial}/${ITERATIONS}"
+fi
+
+# -------------------------------------------------------------------------
+# TC-2: 連続 patch (50 回、no SIGKILL) → 最終 phase が最後の patch と一致
+# -------------------------------------------------------------------------
+# Counter-test for TC-1: when we don't kill the writer, atomic write must
+# still produce the expected final state. This guards against "atomic
+# property holds because nothing ever wrote" false-positive.
+echo "TC-2: 連続 patch 50 回 (no kill) → 最終 phase が完了 patch と一致"
+TD=$(make_test_dir 2)
+SID="bbbbbbbb-9999-9999-9999-999999999999"
+state_file=$(state_path "$TD" "$SID" 2)
+
+(cd "$TD" && bash "$HOOK" create --session "$SID" \
+  --phase "phase_init" --issue 684 --branch "feat/test" --pr 0 --next "init" >/dev/null 2>&1)
+
+for i in $(seq 1 50); do
+  (cd "$TD" && bash "$HOOK" patch --session "$SID" \
+    --phase "phase_patch_${i}" --next "p${i}" >/dev/null 2>&1)
+done
+
+final_phase=$(jq -r '.phase' "$state_file")
+if [ "$final_phase" = "phase_patch_50" ]; then
+  pass "TC-2.1: 連続 patch 完了 → 最終 phase=$final_phase (no lost update without SIGKILL)"
+else
+  fail "TC-2.1: expected 'phase_patch_50', got '$final_phase'"
+fi
+
+# -------------------------------------------------------------------------
+# TC-3: Mutation test — `mv` を `false` に改変したら mutation を検出する
+# -------------------------------------------------------------------------
+# Wiki 経験則「Mutation testing で test の真正性 (dead code 検出 + identification
+# power) を empirical 検証する」。create mode の atomic rename `mv "$TMP_STATE"
+# "$FLOW_STATE"` を `false` に置換した mutated hook を sandbox で動かすと:
+#   (a) `if ! false` が常に真 → "mv failed (create mode)" error path に入り exit 1
+#   (b) atomic rename が起きないので state file は production の baseline のまま不変
+# この 2 条件で mutation を empirical 検出する。
+#
+# 注意: trap (`_rite_flow_state_atomic_cleanup`) が EXIT で TMP_STATE を rm するため、
+# mutation を `cp` にしてしまうと tempfile が trap で消されて mutation を検出できない
+# (Wiki 経験則「test の identification power 検証」の好例)。`false` 置換にすることで
+# trap の cleanup 経路と独立に mutation を検出できる。
+echo "TC-3: Mutation test (mv→false) で exit code + state 不変を観測"
+TD=$(make_test_dir 2)
+sandbox="$TD/sandbox-hooks"
+mkdir -p "$sandbox"
+cp -a "$HOOKS_DIR/." "$sandbox/"
+
+# Pre-place a baseline state so we can verify it remains unchanged after the
+# mutated hook runs (mutation = atomic rename never happens).
+SID_M="cccccccc-9999-9999-9999-999999999999"
+mkdir -p "$TD/.rite/sessions"
+mut_state_file="$TD/.rite/sessions/${SID_M}.flow-state"
+echo '{"active":true,"phase":"baseline_phase","issue_number":1,"session_id":"'$SID_M'"}' > "$mut_state_file"
+baseline_phase=$(jq -r '.phase' "$mut_state_file")
+# Hash the baseline file so we can detect any mutation-induced change byte-exact.
+baseline_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
+
+# Replace ONLY the create-mode `mv` (first occurrence). sed's `0,/PAT/` range
+# limits the substitution to the first match.
+sed -i.bak -e '0,/if ! mv "\$TMP_STATE" "\$FLOW_STATE"/{s|if ! mv "\$TMP_STATE" "\$FLOW_STATE"|if ! false "\$TMP_STATE" "\$FLOW_STATE"|}' \
+  "$sandbox/flow-state-update.sh"
+rm -f "$sandbox/flow-state-update.sh.bak"
+
+# Verify the mutation actually applied (sed regression guard)
+if ! grep -q 'if ! false "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh"; then
+  fail "TC-3.0: mutation sed did not apply — test infrastructure error"
+else
+  pass "TC-3.0: mutation sed applied (mv→false in create mode)"
+
+  # Pre-existing baseline state belongs to SID_M — mutation will fail at mv,
+  # leaving the existing state file unchanged. Use create mode with --session to
+  # bypass session ownership reject (same SID == own state, fast-path).
+  mut_rc=0
+  mut_out=$(cd "$TD" && bash "$sandbox/flow-state-update.sh" create --session "$SID_M" \
+    --phase "phase_mut" --issue 999 --branch "feat/mut" --pr 0 --next "n_mut" 2>&1) || mut_rc=$?
+
+  if [ "$mut_rc" -ne 0 ]; then
+    pass "TC-3.1a: mutated hook exit non-zero (rc=$mut_rc) — atomic mv path exercised"
+  else
+    fail "TC-3.1a: mutated hook unexpectedly succeeded (rc=$mut_rc) — sed/branch mismatch?"
+  fi
+
+  # state file MUST be byte-identical to baseline (mutation prevented atomic update)
+  current_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
+  current_phase=$(jq -r '.phase' "$mut_state_file")
+  if [ "$current_hash" = "$baseline_hash" ] && [ "$current_phase" = "$baseline_phase" ]; then
+    pass "TC-3.1b: state file unchanged (phase=$current_phase, hash matches) — mutation detected"
+  else
+    fail "TC-3.1b: state file mutated despite mv→false — phase=$current_phase (expected baseline_phase)"
+  fi
+
+  # Counter-positive: production (unmutated) hook on the same scenario MUST
+  # successfully update the state file (rc=0, phase changes).
+  TD2=$(make_test_dir 2)
+  SID_P="dddddddd-9999-9999-9999-999999999999"
+  prod_state_file="$TD2/.rite/sessions/${SID_P}.flow-state"
+  mkdir -p "$TD2/.rite/sessions"
+  echo '{"active":true,"phase":"baseline_phase","issue_number":1,"session_id":"'$SID_P'"}' > "$prod_state_file"
+  prod_rc=0
+  (cd "$TD2" && bash "$HOOK" create --session "$SID_P" \
+    --phase "phase_prod" --issue 999 --branch "feat/prod" --pr 0 --next "n_prod" >/dev/null 2>&1) || prod_rc=$?
+  prod_phase=$(jq -r '.phase' "$prod_state_file")
+  if [ "$prod_rc" -eq 0 ] && [ "$prod_phase" = "phase_prod" ]; then
+    pass "TC-3.2: production hook updates state successfully (rc=0, phase=$prod_phase) — counter-positive"
+  else
+    fail "TC-3.2: production hook failed — rc=$prod_rc phase=$prod_phase"
+  fi
+fi
+
+# -------------------------------------------------------------------------
+# TC-4: per-session と legacy 両 schema で atomic invariant 成立
+# -------------------------------------------------------------------------
+echo "TC-4: legacy schema=1 でも atomic invariant 成立 (50 iteration SIGKILL probe)"
+TD=$(make_test_dir 1)
+state_file_legacy="$TD/.rite-flow-state"
+flake_legacy=0
+LEGACY_ITERS=50
+
+for i in $(seq 1 "$LEGACY_ITERS"); do
+  (
+    cd "$TD"
+    bash "$HOOK" create \
+      --phase "legacy_${i}" --issue 684 --branch "feat/legacy${i}" --pr 0 --next "nL${i}" >/dev/null 2>&1
+  ) &
+  pid=$!
+  sleep 0.003
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+
+  if ! state_file_is_integral "$state_file_legacy"; then
+    flake_legacy=$((flake_legacy + 1))
+  fi
+done
+
+if [ "$flake_legacy" -eq 0 ]; then
+  pass "TC-4.1: legacy ${LEGACY_ITERS} SIGKILL iterations all integral"
+else
+  fail "TC-4.1: legacy partial-write ${flake_legacy}/${LEGACY_ITERS}"
+fi
+
+# -------------------------------------------------------------------------
+# TC-5: 最終 state file が完全な JSON object (必須 key 群) を保持
+# -------------------------------------------------------------------------
+echo "TC-5: SIGKILL'd writes 後の state file が完全 JSON object を保持"
+TD=$(make_test_dir 2)
+SID="eeeeeeee-9999-9999-9999-999999999999"
+state_file=$(state_path "$TD" "$SID" 2)
+
+# Make a clean baseline with full keys
+(cd "$TD" && bash "$HOOK" create --session "$SID" \
+  --phase "baseline" --issue 684 --branch "feat/keys" --pr 42 --next "nbase" >/dev/null 2>&1)
+
+# Then 10 SIGKILL'd patches
+for i in $(seq 1 10); do
+  (cd "$TD" && bash "$HOOK" patch --session "$SID" \
+    --phase "patch_${i}" --next "np${i}" >/dev/null 2>&1) &
+  pid=$!
+  sleep 0.002
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+done
+
+# state file must be parseable AND contain all baseline keys (no field truncation)
+if jq empty "$state_file" 2>/dev/null; then
+  required_keys=("active" "phase" "issue_number" "branch" "session_id" "next_action")
+  missing=0
+  for key in "${required_keys[@]}"; do
+    val=$(jq -r ".$key // \"__MISSING__\"" "$state_file")
+    if [ "$val" = "__MISSING__" ]; then
+      missing=$((missing + 1))
+      echo "  missing key: $key" >&2
+    fi
+  done
+  if [ "$missing" -eq 0 ]; then
+    pass "TC-5.1: state file preserves all required keys after 10 SIGKILL'd patches"
+  else
+    fail "TC-5.1: $missing required key(s) missing from state file"
+  fi
+else
+  fail "TC-5.1: state file failed to parse"
+fi
+
+# -------------------------------------------------------------------------
+# Summary
+# -------------------------------------------------------------------------
+echo ""
+echo "==============================="
+echo "Results: $PASS passed, $FAIL failed"
+if [ "$FAIL" -gt 0 ]; then
+  echo "Failed:"
+  for n in "${FAILED_NAMES[@]}"; do
+    echo "  - $n"
+  done
+  exit 1
+fi
+echo "All atomic-write tests passed!"
