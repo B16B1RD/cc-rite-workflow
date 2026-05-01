@@ -310,3 +310,10 @@
 | 2026-04-30T19:30:31Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #754 cycle 1 fix (CRITICAL + 2 HIGH 対応) |
 | 2026-04-30T19:30:31Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #754 cycle 2 fix (broken cross-reference 解消) |
 | 2026-04-30T19:30:31Z | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #754 cycle 3 fix (anchor specificity retreat doctrine 採用) |
+| 2026-05-01T03:27:29Z | ingest:create | pages/anti-patterns/canonical-helper-bypass.md | PR #756 cycle 1 review (canonical helper bypass HIGH × 1 — 3 reviewer 独立合意 cross-validation: error-handling / code-quality / test) |
+| 2026-05-01T03:27:29Z | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #756 cycle 3 review (journal marker persistence HIGH × 2 二重検出: test-reviewer + code-quality 独立) |
+| 2026-05-01T03:27:29Z | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #756 cycle 4 fix (cycle 内 fix の全置換 claim 機械的検証必須化 + SoT lint 自動化提案) |
+| 2026-05-01T03:27:29Z | ingest:update | pages/heuristics/canonical-list-count-claim-drift-anchor.md | PR #756 cycle 3 review + cycle 4 fix (header caller list と実 caller の cross-file drift / TC で 6+ caller を category 別 enforce 義務) |
+| 2026-05-01T03:27:29Z | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #756 cycle 4 review (approximation 接尾辞 `~` 付き line-number reference HIGH × 1 — 6 種目として禁止 list に追加) |
+| 2026-05-01T03:27:29Z | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #756 cycle 5 fix (5 箇所削除 + grep -E '\(line[s]?\s*[~]?[0-9]+' を SoT lint 自動化候補) |
+| 2026-05-01T03:27:29Z | ingest:update | pages/anti-patterns/prose-design-without-backing-implementation.md | PR #756 cycle 5 fix (defense-in-depth claim と race window の time-ordering 乖離 LOW × 1 二重指摘 — pre/post-compact.sh trap cleanup dead code) |

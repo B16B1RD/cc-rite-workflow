@@ -2,7 +2,7 @@
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
 created: "2026-04-18T12:00:00+00:00"
-updated: "2026-04-26T04:55:00+00:00"
+updated: "2026-05-01T03:27:29Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T114056Z-pr-578.md"
@@ -12,6 +12,10 @@ sources:
     ref: "raw/fixes/20260420T043015Z-pr-617-fix1.md"
   - type: "fixes"
     ref: "raw/fixes/20260426T015356Z-pr-671.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260501T012144Z-pr-756.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260501T020145Z-pr-756.md"
 tags: ["self-drift", "canonical-convention", "grep-self-check", "review-fix-loop", "lint-rule-self-meta-drift"]
 confidence: high
 ---
@@ -101,6 +105,18 @@ PR #671 で、新規 lint script `hardcoded-line-number-check.sh` (P-A `(line N,
 
 cycle 2 は cycle 1 fix 中に発生した self-drift であり、commit 前 grep self-check があれば cycle 2 自体が不要だった。self-check の省略コストは「1 review-fix cycle 分の時間 + reviewer 集中力」に相当する。
 
+### Cycle 内 fix の「全置換」claim と置換漏れ二重検出 (PR #756 で追加)
+
+PR #756 cycle 2 で commit message が「F-NN/F-XX journal markers を semantic 説明に置換」と claim したが、test ファイル全体を網羅的に scan しなかったため一部置換漏れが発生した。test-reviewer と code-quality-reviewer が独立に同一 finding を HIGH × 2 (二重検出) で検出。これは「Comment Quality Finding Gate (no_journal_comment 原則 2)」の反復違反パターン (本 anti-pattern の `lint rule self-meta drift` sub-pattern と並ぶ canonical convention 違反系統)。
+
+教訓:
+
+- **「全置換」claim 時の機械的検証必須化**: cycle 内 fix で「全置換」を主張する commit message を書く前に、`git diff ${base_branch}...HEAD | grep -E '\+.*F-[0-9]+'` のような **機械的 grep 検証** を必須化する。LLM が「ファイルを scan した」自己申告に依存しない
+- **二重検出 reviewer cross-validation の意味**: 独立 reviewer が同一 finding を high confidence で再検出する状況は、「fix 側で grep evidence を提示せずに claim だけで通そうとしている」ことを reviewer 側が見抜いている強い signal。`Observed Likelihood Gate` の triple cross-validation 適用対象
+- **SoT lint 自動化提案**: Comment Quality Finding Gate (no_journal_comment 原則 2) の反復違反 (PR #578, #617, #671, #756) は、SoT (`comment-best-practices.md`) 側に lint script (`grep -E '\+.*F-[0-9]+'`) を CI 自動化することで構造的に防止する。本 wiki でも `hardcoded-line-number-check.sh` 同型の `journal-marker-check.sh` を提案する
+
+PR #756 cycle 3 で 2 件、cycle 4 で 1 件 (line-number drift と複合) の self-drift が累積検出され、cycle 5 で finally 0 finding 収束。本累積パターンは「commit message が claim する変換は機械検証する」doctrine の SoT 化の必要性を実証する。
+
 ## 関連ページ
 
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](../patterns/canonical-reference-sample-code-strict-sync.md)
@@ -115,3 +131,5 @@ cycle 2 は cycle 1 fix 中に発生した self-drift であり、commit 前 gre
 - [PR #578 cycle 2 fix (2 段階修正)](../../raw/fixes/20260418T114231Z-pr-578.md)
 - [PR #617 fix (prose 内行番号 literal scope 拡張)](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)
 - [PR #671 fix (新規 lint rule 自身の self-meta drift)](../../raw/fixes/20260426T015356Z-pr-671.md)
+- [PR #756 cycle 3 review (journal marker 二重検出 HIGH × 2)](../../raw/reviews/20260501T012144Z-pr-756.md)
+- [PR #756 cycle 4 fix (全置換 claim の機械検証必須化)](../../raw/fixes/20260501T020145Z-pr-756.md)
