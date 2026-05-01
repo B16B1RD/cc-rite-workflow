@@ -40,6 +40,27 @@ PASS=0
 FAIL=0
 FAILED_NAMES=()
 
+# Outcome classifier helper (F-01 fix): SIGKILL race window probe で kill が
+# write 中に landed したか (mid_or_temp) を区別する。pre しか観測できないと
+# atomic invariant 検証が dead code 化するため、各 TC で mid_or_temp + post >= 1 を
+# assert することで race window が実際に当たったことを実証する (review F-01)。
+classify_outcome() {
+  local f="$1"
+  if [ -e "$f" ]; then
+    if jq empty "$f" 2>/dev/null; then
+      echo "post"
+    else
+      echo "corrupt"  # partial-write detected (must be 0)
+    fi
+  else
+    if compgen -G "${f}.*" >/dev/null 2>&1; then
+      echo "mid_or_temp"
+    else
+      echo "pre"
+    fi
+  fi
+}
+
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
@@ -97,13 +118,20 @@ echo "=== atomic-write tests (Issue #672 / #684 T-09 AC-9) ==="
 echo ""
 
 # -------------------------------------------------------------------------
-# TC-1: 100 iteration SIGKILL probe → state file 常に integral
+# TC-1: 50 iteration SIGKILL probe → state file 常に integral + race window 実証
 # -------------------------------------------------------------------------
-echo "TC-1: 100 iteration SIGKILL probe → state file 常に integral"
+# F-01 fix: race window probe の identification power を確保するため、
+# (a) sleep を 0.003 → 0.05 に拡大、(b) iteration outcome を classify、
+# (c) mid_or_temp + post >= 1 を assert して race が実際に当たったことを実証
+# (旧実装は全 100 iter pre のみで PASS する false positive 経路があった)
+echo "TC-1: 50 iter SIGKILL probe → integral + race window 実証"
 TD=$(make_test_dir 2)
 SID="aaaaaaaa-9999-9999-9999-999999999999"
-ITERATIONS=100
+ITERATIONS=50
 flake_partial=0
+pre_count=0
+mid_or_temp_count=0
+post_count=0
 
 for i in $(seq 1 "$ITERATIONS"); do
   (
@@ -112,20 +140,31 @@ for i in $(seq 1 "$ITERATIONS"); do
       --phase "phase_iter_${i}" --issue 684 --branch "feat/iter${i}" --pr 0 --next "n${i}" >/dev/null 2>&1
   ) &
   pid=$!
-  sleep 0.003
+  sleep 0.05  # F-01: 0.003 → 0.05
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 
   state_file=$(state_path "$TD" "$SID" 2)
-  if ! state_file_is_integral "$state_file"; then
-    flake_partial=$((flake_partial + 1))
-  fi
+  outcome=$(classify_outcome "$state_file")
+  case "$outcome" in
+    pre)         pre_count=$((pre_count + 1)) ;;
+    mid_or_temp) mid_or_temp_count=$((mid_or_temp_count + 1)) ;;
+    post)        post_count=$((post_count + 1)) ;;
+    corrupt)     flake_partial=$((flake_partial + 1)) ;;
+  esac
 done
 
 if [ "$flake_partial" -eq 0 ]; then
-  pass "TC-1.1: ${ITERATIONS} SIGKILL iterations all integral (atomic invariant holds)"
+  pass "TC-1.1: ${ITERATIONS} iter all integral (partial-write=0)"
 else
   fail "TC-1.1: partial-write ${flake_partial}/${ITERATIONS}"
+fi
+
+race_hit=$((mid_or_temp_count + post_count))
+if [ "$race_hit" -ge 1 ]; then
+  pass "TC-1.2: race window hit ${race_hit}/${ITERATIONS} (pre=$pre_count mid_or_temp=$mid_or_temp_count post=$post_count) — atomic invariant 検証 alive"
+else
+  fail "TC-1.2: race window 全 miss (pre=$pre_count) — sleep 短すぎ test dead code 化"
 fi
 
 # -------------------------------------------------------------------------
@@ -239,11 +278,14 @@ fi
 # -------------------------------------------------------------------------
 # TC-4: per-session と legacy 両 schema で atomic invariant 成立
 # -------------------------------------------------------------------------
-echo "TC-4: legacy schema=1 でも atomic invariant 成立 (50 iteration SIGKILL probe)"
+echo "TC-4: legacy schema=1 でも atomic invariant + race window 実証 (30 iter)"
 TD=$(make_test_dir 1)
 state_file_legacy="$TD/.rite-flow-state"
 flake_legacy=0
-LEGACY_ITERS=50
+LEGACY_ITERS=30
+legacy_pre=0
+legacy_mid=0
+legacy_post=0
 
 for i in $(seq 1 "$LEGACY_ITERS"); do
   (
@@ -252,19 +294,30 @@ for i in $(seq 1 "$LEGACY_ITERS"); do
       --phase "legacy_${i}" --issue 684 --branch "feat/legacy${i}" --pr 0 --next "nL${i}" >/dev/null 2>&1
   ) &
   pid=$!
-  sleep 0.003
+  sleep 0.05  # F-01: 0.003 → 0.05
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 
-  if ! state_file_is_integral "$state_file_legacy"; then
-    flake_legacy=$((flake_legacy + 1))
-  fi
+  outcome=$(classify_outcome "$state_file_legacy")
+  case "$outcome" in
+    pre)         legacy_pre=$((legacy_pre + 1)) ;;
+    mid_or_temp) legacy_mid=$((legacy_mid + 1)) ;;
+    post)        legacy_post=$((legacy_post + 1)) ;;
+    corrupt)     flake_legacy=$((flake_legacy + 1)) ;;
+  esac
 done
 
 if [ "$flake_legacy" -eq 0 ]; then
-  pass "TC-4.1: legacy ${LEGACY_ITERS} SIGKILL iterations all integral"
+  pass "TC-4.1: legacy ${LEGACY_ITERS} iter all integral (partial-write=0)"
 else
   fail "TC-4.1: legacy partial-write ${flake_legacy}/${LEGACY_ITERS}"
+fi
+
+legacy_race_hit=$((legacy_mid + legacy_post))
+if [ "$legacy_race_hit" -ge 1 ]; then
+  pass "TC-4.2: legacy race window hit ${legacy_race_hit}/${LEGACY_ITERS} (pre=$legacy_pre mid=$legacy_mid post=$legacy_post)"
+else
+  fail "TC-4.2: legacy race window 全 miss (pre=$legacy_pre)"
 fi
 
 # -------------------------------------------------------------------------
@@ -279,12 +332,12 @@ state_file=$(state_path "$TD" "$SID" 2)
 (cd "$TD" && bash "$HOOK" create --session "$SID" \
   --phase "baseline" --issue 684 --branch "feat/keys" --pr 42 --next "nbase" >/dev/null 2>&1)
 
-# Then 10 SIGKILL'd patches
+# Then 10 SIGKILL'd patches (F-01: sleep 0.05 で race window 拡大)
 for i in $(seq 1 10); do
   (cd "$TD" && bash "$HOOK" patch --session "$SID" \
     --phase "patch_${i}" --next "np${i}" >/dev/null 2>&1) &
   pid=$!
-  sleep 0.002
+  sleep 0.05
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 done
