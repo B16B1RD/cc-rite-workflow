@@ -121,23 +121,43 @@ fi
 # -------------------------------------------------------------------------
 # TC-2: schema=2 concurrent 同 issue 2 session create → 両方成功
 # -------------------------------------------------------------------------
+# F-06 fix (Issue #760): barrier sync で起動 jitter を排除し true concurrent 化。
+# 旧実装は単純な `cmd & cmd &` で両 process を background 起動していたが、
+# bash の forked process startup には数十 ms の jitter があり、片方が write
+# 完了後にもう片方が start する経路で sequential 化する false negative の
+# 可能性があった (起動順序が決定的でないため race condition 検証としての
+# identification power が dilute される)。
+# canonical 防御: barrier file (`$TD/.barrier-tc2`) を pre-create し、各 child は
+# `while [ -f barrier ]; do sleep 0.001; done` で busy-wait → parent が rm barrier
+# して同時 release。これで両 child が ms 単位で同時起動することを保証する。
 echo "TC-2: schema=2 concurrent 同 issue 2 session create → race-free 両方成功"
 TD=$(make_test_dir 2)
 SID_C="cccccccc-1111-2222-3333-444455556601"
 SID_D="dddddddd-1111-2222-3333-444455556601"
 
+# F-06: pre-create barrier file before launching children
+barrier_file="$TD/.barrier-tc2"
+touch "$barrier_file"
+
 (
   cd "$TD"
+  while [ -f "$barrier_file" ]; do sleep 0.001; done
   bash "$HOOK" create --session "$SID_C" \
     --phase "phase_c" --issue $ISSUE --branch "feat/c" --pr 0 --next "nc" >/dev/null 2>&1
 ) &
 PID_C=$!
 (
   cd "$TD"
+  while [ -f "$barrier_file" ]; do sleep 0.001; done
   bash "$HOOK" create --session "$SID_D" \
     --phase "phase_d" --issue $ISSUE --branch "feat/d" --pr 0 --next "nd" >/dev/null 2>&1
 ) &
 PID_D=$!
+
+# Brief wait to ensure both children have entered their barrier wait loops,
+# then release the barrier — both children proceed simultaneously.
+sleep 0.05
+rm -f "$barrier_file"
 
 c_rc=0; d_rc=0
 wait "$PID_C" || c_rc=$?
@@ -215,8 +235,17 @@ fi
 # TC-5: legacy + foreign active session + stale (>7200s) → overwrite 許可
 # -------------------------------------------------------------------------
 echo "TC-5: legacy foreign active + stale (>7200s) → reject されず overwrite 許可"
+# F-07 fix (Issue #760): GNU/BSD date fallback の silent failure 検出。
+# 旧実装は両 fallback が失敗した場合 `old_ts` が空になり、後続の JSON 構築で
+# `"updated_at":""` として書き込まれ、test が undefined 動作になる経路があった。
+# `[ -z "$old_ts" ]` で empty check し、両環境で fallback 不能なら fail させる。
 old_ts=$(date -u -d "8000 seconds ago" +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null \
   || date -u -v-8000S +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null)
+if [ -z "$old_ts" ]; then
+  fail "TC-5.0: GNU date (-d) と BSD date (-v) の両 fallback が失敗 — test 環境の date が non-portable"
+  echo "ERROR: cannot generate stale timestamp; aborting TC-5" >&2
+  exit 1
+fi
 echo "{\"active\":true,\"phase\":\"phase_own\",\"issue_number\":$ISSUE,\"session_id\":\"$SID_OWN\",\"updated_at\":\"$old_ts\"}" > "$legacy"
 
 stale_rc=0

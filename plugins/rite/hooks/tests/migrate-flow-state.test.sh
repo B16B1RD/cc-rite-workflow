@@ -378,62 +378,110 @@ _teardown
 #   - TC-21: rollback (TC-10 chmod 555) 後の filesystem 状態を更に pin
 #            (backup 作成と rename がどちらも skip されることを byte-equal で verify)
 
-# ---------- TC-19: migration 中 SIGKILL → atomic 3 状態のいずれか ----------
-echo "TC-19: migration 中 SIGKILL → atomic invariant (3 states pre/mid/post)"
-_setup
+# ---------- TC-19: migration 中 SIGKILL → atomic 4 状態 (race window 実証) ----------
+# F-04 fix (Issue #760): 1 iter 単発 → ITERATIONS_TC19 iter classification + race-window
+# assert で identification power を確保。旧実装は state_label が P_pre/M_mid/S_post の
+# いずれかであれば PASS する仕様だったため、すべての iter で kill が write 開始前に
+# landing する短すぎ sleep の場合でも全 P_pre で trivial PASS する false positive 経路
+# を持っていた。canonical 防御 (Wiki 経験則「Race window probe の identification power:
+# outcome classification で test の真正性を担保する」、crash-resume.test.sh TC-1.2 と同型):
+#   (a) sleep を 0.005 → 0.05 に拡大
+#   (b) iteration outcome を P_pre/M_mid/S_post/UNKNOWN に classify
+#   (c) `M_mid + S_post >= 1` を assert
+# F-13 fix (Issue #760): background process orphan reap 改善 — `wait` の exit status を
+# 明示的に capture (`wait_rc=$?`) し、SIGKILL 経路の reaping が完了したことを検証
+# 可能にする。kill 後に wait を呼ばずに leave すると zombie process が残る経路を
+# 構造的に遮断する。最終 iter の wait_rc が SIGKILL/SIGTERM/already-exited のいずれか
+# であることを assert する。
+echo "TC-19: migration 中 SIGKILL → atomic invariant + race window 実証 (iter)"
+ITERATIONS_TC19="${MIGRATE_TC19_ITERATIONS:-30}"
+P_pre_count=0
+M_mid_count=0
+S_post_count=0
+unknown_count=0
+byte_equal_violations=0
+last_wait_rc=0
 legacy_payload='{"active":true,"issue_number":684,"phase":"phaseM","session_id":"99887766-5544-3322-1100-aabbccddeeff"}'
-echo "$legacy_payload" > "$TEST_ROOT/.rite-flow-state"
-( STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1 ) &
-_pid=$!
-# micro-sleep to land mid-migration; the script does mkdir → write → rename
-sleep 0.005
-kill -KILL "$_pid" 2>/dev/null || true
-wait "$_pid" 2>/dev/null || true
 
-# Atomic invariant: state must be one of three deterministic snapshots.
-#   (P) pre-migration: legacy intact, no per-session file, no backup
-#   (M) mid-migration: legacy intact, per-session file partial OR backup absent
-#   (S) post-migration: legacy gone, per-session file integral, backup integral
-#
-# In all three, the legacy file (if present) must still hold the original
-# JSON byte-equal to the pre-write payload.  partial-write of the legacy file
-# itself must NEVER occur (the migrator only renames, never edits in place).
-legacy_after=""
-[ -f "$TEST_ROOT/.rite-flow-state" ] && legacy_after=$(cat "$TEST_ROOT/.rite-flow-state")
-sessions_glob=("$TEST_ROOT/.rite/sessions/"*.flow-state)
-session_present=false
-[ -f "${sessions_glob[0]:-/nonexistent}" ] && session_present=true
-backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
-backup_present=false
-[ -f "${backup_glob[0]:-/nonexistent}" ] && backup_present=true
+for i in $(seq 1 "$ITERATIONS_TC19"); do
+  _setup
+  echo "$legacy_payload" > "$TEST_ROOT/.rite-flow-state"
+  ( STATE_ROOT="$TEST_ROOT" bash "$SCRIPT" >/dev/null 2>&1 ) &
+  _pid=$!
+  # F-04: race window probe — sleep 0.05 で mid_or_post 観測経路を確保
+  sleep 0.05
+  kill -KILL "$_pid" 2>/dev/null || true
+  # F-13: orphan reap — wait の exit status を明示 capture (zombie 化防止)
+  last_wait_rc=0
+  wait "$_pid" 2>/dev/null || last_wait_rc=$?
 
-# Classify
-state_label="UNKNOWN"
-if [ -n "$legacy_after" ] && [ "$session_present" = "false" ] && [ "$backup_present" = "false" ]; then
-  state_label="P_pre"
-elif [ -n "$legacy_after" ] && { [ "$session_present" = "true" ] || [ "$backup_present" = "true" ]; }; then
-  state_label="M_mid"
-elif [ -z "$legacy_after" ] && [ ! -f "$TEST_ROOT/.rite-flow-state" ] && [ "$session_present" = "true" ] && [ "$backup_present" = "true" ]; then
-  state_label="S_post"
+  legacy_after=""
+  [ -f "$TEST_ROOT/.rite-flow-state" ] && legacy_after=$(cat "$TEST_ROOT/.rite-flow-state")
+  sessions_glob=("$TEST_ROOT/.rite/sessions/"*.flow-state)
+  session_present=false
+  [ -f "${sessions_glob[0]:-/nonexistent}" ] && session_present=true
+  backup_glob=("$TEST_ROOT"/.rite-flow-state.legacy.*)
+  backup_present=false
+  [ -f "${backup_glob[0]:-/nonexistent}" ] && backup_present=true
+
+  # Classify
+  state_label="UNKNOWN"
+  if [ -n "$legacy_after" ] && [ "$session_present" = "false" ] && [ "$backup_present" = "false" ]; then
+    state_label="P_pre"
+  elif [ -n "$legacy_after" ] && { [ "$session_present" = "true" ] || [ "$backup_present" = "true" ]; }; then
+    state_label="M_mid"
+  elif [ -z "$legacy_after" ] && [ ! -f "$TEST_ROOT/.rite-flow-state" ] && [ "$session_present" = "true" ] && [ "$backup_present" = "true" ]; then
+    state_label="S_post"
+  fi
+  case "$state_label" in
+    P_pre)   P_pre_count=$((P_pre_count + 1)) ;;
+    M_mid)   M_mid_count=$((M_mid_count + 1)) ;;
+    S_post)  S_post_count=$((S_post_count + 1)) ;;
+    *)       unknown_count=$((unknown_count + 1)) ;;
+  esac
+
+  # Stronger invariant: legacy file (if present) must be byte-equal to payload
+  if [ -f "$TEST_ROOT/.rite-flow-state" ] && [ "$legacy_after" != "$legacy_payload" ]; then
+    byte_equal_violations=$((byte_equal_violations + 1))
+  fi
+
+  _teardown
+done
+
+# (a) atomic 4-state classification: UNKNOWN は production の bug signature
+total_classified=$((P_pre_count + M_mid_count + S_post_count + unknown_count))
+if [ "$unknown_count" -eq 0 ]; then
+  _assert "TC-19.atomic-4-state-classify (unknown=0/${total_classified}, P_pre=$P_pre_count M_mid=$M_mid_count S_post=$S_post_count)" "true"
+else
+  _assert "TC-19.atomic-4-state-classify (unknown=$unknown_count/${total_classified} — production bug signature)" "false"
 fi
-case "$state_label" in
-  P_pre|M_mid|S_post)
-    _assert "TC-19.atomic-3-states (observed=$state_label)" "true"
+
+# (b) race window 実証: M_mid + S_post >= 1 (sleep が短すぎて全 P_pre 化することを防ぐ)
+race_hit=$((M_mid_count + S_post_count))
+if [ "$race_hit" -ge 1 ]; then
+  _assert "TC-19.race-window-hit (mid+post=${race_hit}/${ITERATIONS_TC19} — atomic invariant 検証 alive)" "true"
+else
+  _assert "TC-19.race-window-hit (全 P_pre=${P_pre_count}/${ITERATIONS_TC19} — sleep 短すぎで test dead code 化)" "false"
+fi
+
+# (c) byte-equal invariant: legacy が partial-write されていないこと
+if [ "$byte_equal_violations" -eq 0 ]; then
+  _assert "TC-19.legacy-byte-equal-invariant (violations=0/${total_classified})" "true"
+else
+  _assert "TC-19.legacy-byte-equal-invariant (violations=${byte_equal_violations}/${total_classified} — migrator partial overwrite detected)" "false"
+fi
+
+# (d) F-13: orphan reap が機能していること — 最後の iter の wait_rc を観測。
+# SIGKILL を受けたプロセスの rc は 137 (128+9)、SIGTERM は 143、既に exit 済みは 0。
+# それ以外 (空文字 / non-numeric / 異常 rc) は zombie 化 / test infra error として detect。
+case "$last_wait_rc" in
+  0|137|143)
+    _assert "TC-19.orphan-reap (last wait_rc=$last_wait_rc — reaping completed)" "true"
     ;;
   *)
-    _assert "TC-19.atomic-3-states (observed=$state_label)" "false"
+    _assert "TC-19.orphan-reap (last wait_rc=$last_wait_rc — unexpected, possible zombie)" "false"
     ;;
 esac
-
-# Stronger invariant: the legacy file (if present) must be byte-identical to
-# pre-write payload — migrator never partially overwrites the legacy file.
-if [ -f "$TEST_ROOT/.rite-flow-state" ]; then
-  _assert "TC-19.legacy-byte-equal-to-payload" \
-    "$([ "$legacy_after" = "$legacy_payload" ] && echo true || echo false)"
-else
-  _assert "TC-19.legacy-byte-equal-to-payload (legacy gone — post-state)" "true"
-fi
-_teardown
 
 # ---------- TC-20: production find patterns include legacy-backup exception ----------
 # Wiki 経験則「新規 file 命名と既存 find glob が collision して silent 削除を起こす」を
