@@ -687,6 +687,8 @@ src_hook_dir="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir/session-start.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
+# Sandbox に canonical mktemp helper を含める (silent suppress 禁止 — sibling cp と同じ fail-fast)
+cp "$src_hook_dir/_mktemp-stderr-guard.sh" "$sandbox_hook_dir/"
 # Stub session-ownership.sh: define helpers that don't break source, but omit check_session_ownership
 cat > "$sandbox_hook_dir/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
@@ -723,6 +725,8 @@ src_hook_dir_b="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir_b/session-start.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
+# Issue #749: canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
+cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/"
 cat > "$sandbox_hook_dir_b/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
 extract_session_id() { echo ""; }
@@ -814,6 +818,61 @@ if [ $rc -eq 0 ] && [ -z "$output" ]; then
   pass "TC-680-B: per-session active=false → no detection output (silent exit)"
 else
   fail "TC-680-B: expected silent exit; got rc=$rc, output='$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
+# --------------------------------------------------------------------------
+# Verify that when _resolve-flow-state-path.sh exits non-zero, its stderr
+# (ERROR: lines from _validate-helpers.sh / _validate-state-root.sh) is passed
+# through to the user, AND a fallback WARNING is emitted. This defends against
+# the silent-fall-through regression that the previous `2>/dev/null` produced.
+echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallback WARNING"
+
+HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
+cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
+cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+#!/bin/bash
+echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
+exit 1
+FAKE_RESOLVER_EOF
+chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+
+dir_749="$TEST_DIR/tc749"
+mkdir -p "$dir_749"
+# Seed legacy state file (active=true) so the fallback path has something to load
+cat > "$dir_749/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-test", "next_action": "test", "loop_count": 0}
+EOF
+
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
+echo "{\"cwd\": \"$dir_749\", \"source\": \"startup\"}" \
+  | bash "$sbx_749/session-start.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
+stderr_749="$(cat "$LAST_STDERR_FILE")"
+
+if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated _resolve-flow-state-path failure'; then
+  pass "ERROR line from helper passed through to caller stderr"
+else
+  fail "Expected ERROR pass-through; got stderr: $stderr_749"
+fi
+if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, falling back to legacy'; then
+  pass "Fallback WARNING emitted to stderr"
+else
+  fail "Expected fallback WARNING; got stderr: $stderr_749"
+fi
+# Positive evidence: assert the legacy fallback path was actually used.
+# session-start.sh on `source=startup` performs a defensive reset that flips
+# .active=true → false on the resolved STATE_FILE. If the fallback path silently
+# broke (e.g., typo in `.rite-flow_state`), the legacy file would not be written.
+# This complements the WARNING text assertion above by verifying side-effect
+# rather than just stderr output.
+deactivated_active=$(jq -r '.active' "$dir_749/.rite-flow-state" 2>/dev/null)
+if [ "$deactivated_active" = "false" ]; then
+  pass "Legacy fallback path was loaded (defensive reset flipped .active to false)"
+else
+  fail "Expected .active=false in legacy state file after defensive reset; got: $deactivated_active"
 fi
 echo ""
 

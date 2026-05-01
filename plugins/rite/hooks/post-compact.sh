@@ -26,8 +26,28 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 # Resolve active flow-state file path (Issue #680).
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
-FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>/dev/null) \
-  || FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+#
+# Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
+# `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
+# filter は state-read.sh cross-session guard の 3-pattern を `^ERROR:` で
+# superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
+# success arm でも tempfile を inspect して helper graceful-degrade 経路の WARNING
+# を silent drop しないようにする。
+_resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+  "post-compact" \
+  "resolve-flow-state-err" \
+  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+# Single-pass branch (filter runs once regardless of resolver exit status).
+_resolve_failed=0
+FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+fi
+if [ "$_resolve_failed" -eq 1 ]; then
+  FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($FLOW_STATE)" >&2
+fi
+[ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 LOCKDIR="$COMPACT_STATE.lockdir"
 
 # --- Cleanup helper ---
@@ -85,6 +105,9 @@ IFS=$'\x1f' read -r ISSUE PHASE NEXT_ACTION LOOP PR BRANCH <<< "$FLOW_DATA"
 # --- Transition compact_state to normal (inside lock) ---
 TMP_COMPACT=""
 cleanup() {
+  # `_resolve_err` の synchronous rm は trap install より前で実行される (resolver 直後)
+  # ため、ここで cleanup() に含める必要はない (dead code)。trap が発火する時点では既に
+  # 削除済みで no-op となる。trap install 前の race window は同期 rm 自身でカバーされる。
   rm -f "$TMP_COMPACT" 2>/dev/null
   release_wm_lock "$LOCKDIR"
 }

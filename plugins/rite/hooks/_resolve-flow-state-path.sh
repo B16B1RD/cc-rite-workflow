@@ -31,6 +31,44 @@
 # `check_session_ownership` (session-ownership.sh) for the "other session"
 # branch, so layering another guard here would duplicate that contract.
 #
+# ⚠️ Caller contract (Issue #749):
+#   When this helper returns a per-session path
+#   (`<state_root>/.rite/sessions/<sid>.flow-state`), the caller MUST invoke
+#   `check_session_ownership` from session-ownership.sh and skip the modify
+#   path on the "other" branch. Reading or modifying another session's active
+#   per-session state file would clobber its in-flight work memory and trip
+#   stop-guard whitelist violations on its next phase transition.
+#
+#   Failing this contract risks: (1) silent overwrite of another session's
+#   .active=false transition, (2) double-emit of cross-session incidents,
+#   (3) lifecycle warnings (#475 / #608) firing for the wrong session.
+#
+#   `_validate-helpers.sh` intentionally does NOT validate
+#   `_resolve-cross-session-guard.sh` here because this helper does not call
+#   it directly — the caller-side check is sufficient.
+#
+# Current callers:
+#   Lifecycle 4 hooks (with Issue #749 stderr pass-through pattern, contract critical):
+#     - plugins/rite/hooks/session-start.sh   (defensive reset on startup/clear)
+#     - plugins/rite/hooks/session-end.sh     (deactivation on session end)
+#     - plugins/rite/hooks/pre-compact.sh     (timestamp update before compact)
+#     - plugins/rite/hooks/post-compact.sh    (recovering→normal transition)
+#
+#   Other hooks (no stderr pass-through, RITE_DEBUG-gated diagnostic only — Issue #681):
+#     - plugins/rite/hooks/post-tool-wm-sync.sh   (writer; check_session_ownership 呼出済)
+#     - plugins/rite/hooks/pre-tool-bash-guard.sh (read-only; ownership check 不要)
+#
+#   Command-level callers (silent fall-through to empty state_file via `|| state_file=""`):
+#     - plugins/rite/commands/issue/create.md
+#     - plugins/rite/commands/issue/create-interview.md
+#     - plugins/rite/commands/pr/cleanup.md
+#
+#   New callers MUST follow the caller contract above. When adding a new
+#   caller, append it under the appropriate category here AND update the
+#   keyword loop in tests/_resolve-flow-state-path.test.sh
+#   (TC-749-CALLER-CONTRACT) so the static grep test enforces enumeration
+#   completeness.
+#
 # Why this exists (Issue #680):
 #   The lifecycle 4 hooks each used the same hardcoded `<state_root>/.rite-flow-state`
 #   path, which forces a global single-file lock and breaks the O(1)-per-session

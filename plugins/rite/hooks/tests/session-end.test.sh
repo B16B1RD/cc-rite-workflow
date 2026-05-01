@@ -482,6 +482,150 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
+# --------------------------------------------------------------------------
+echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallback WARNING"
+
+HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
+cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
+cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+#!/bin/bash
+echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
+exit 1
+FAKE_RESOLVER_EOF
+chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+
+dir_749="$TEST_DIR/tc749-passthrough"
+mkdir -p "$dir_749"
+cat > "$dir_749/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-test"}
+EOF
+
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
+echo "{\"cwd\": \"$dir_749\"}" \
+  | bash "$sbx_749/session-end.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
+stderr_749="$(cat "$LAST_STDERR_FILE")"
+
+if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated _resolve-flow-state-path failure'; then
+  pass "ERROR line from helper passed through to caller stderr"
+else
+  fail "Expected ERROR pass-through; got stderr: $stderr_749"
+fi
+if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, falling back to legacy'; then
+  pass "Fallback WARNING emitted to stderr"
+else
+  fail "Expected fallback WARNING; got stderr: $stderr_749"
+fi
+# Positive evidence: assert the legacy fallback path was actually used.
+# session-end.sh should deactivate the legacy state file (set .active=false). If the
+# fallback path silently broke, the file would remain .active=true.
+deactivated_active=$(jq -r '.active' "$dir_749/.rite-flow-state" 2>/dev/null)
+if [ "$deactivated_active" = "false" ]; then
+  pass "Legacy fallback path was loaded (.active flipped to false)"
+else
+  fail "Expected .active=false in legacy state file; got: $deactivated_active"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-749-JQ-WRITE-WARN (Issue #749, AC-3)
+# --------------------------------------------------------------------------
+# Verify that when jq fails to write the deactivated state (else arm of the
+# atomic write block), session-end emits a diagnostic WARNING to stderr
+# instead of silently swallowing the failure.
+echo "TC-749-JQ-WRITE-WARN: jq atomic write failure → WARNING emitted"
+
+sbx_jq="$(mktemp -d "$TEST_DIR/sbx-hooks-jq-XXXXXX")"
+cp -a "$HOOKS_REAL_DIR/." "$sbx_jq/"
+
+# Inject a fake jq into a private bin dir at the front of PATH that exits 1
+# only on the deactivation invocation, while passing through all other jq calls
+# unchanged so the hook can still parse its inputs (cwd, source, ownership probe,
+# lifecycle phase, etc.).
+#
+# The fake jq pattern below uses a relaxed match (`*'.active'*'.updated_at'*`)
+# instead of the exact production string, so that harmless jq expression
+# refactors (whitespace tweaks, order swaps) do not break this TC. The
+# underlying invariant being tested is "WARNING is emitted when jq atomic
+# write fails", not "the production jq expression has not been touched".
+#
+# Resolve the real jq path via `command -v jq` rather than hardcoding
+# `/usr/bin/jq`, because macOS Homebrew installs jq under
+# `/opt/homebrew/bin/jq` and Nix uses `/run/current-system/sw/bin/jq`, etc.
+JQ_REAL="$(command -v jq)"
+if [ -z "$JQ_REAL" ]; then
+  fail "TC-749-JQ-WRITE-WARN: real jq not found in PATH (cannot build fake jq)"
+else
+  fake_jq_bin="$(mktemp -d "$TEST_DIR/fakejq-XXXXXX")"
+  # Use double-quoted heredoc so $JQ_REAL is expanded into the fake script
+  cat > "$fake_jq_bin/jq" <<FAKE_JQ_EOF
+#!/bin/bash
+# Fake jq: fail only on the session-end deactivation invocation
+# Pattern intentionally relaxed — see test file comment above for rationale
+for arg in "\$@"; do
+  case "\$arg" in
+    *'.active'*'.updated_at'*)
+      echo "fake jq: simulated failure for TC-749-JQ-WRITE-WARN" >&2
+      exit 1
+      ;;
+  esac
+done
+exec '$JQ_REAL' "\$@"
+FAKE_JQ_EOF
+  chmod +x "$fake_jq_bin/jq"
+fi
+
+dir_jq="$TEST_DIR/tc749-jq"
+mkdir -p "$dir_jq"
+(
+  cd "$dir_jq" && git init -q \
+    && git -c user.name=test -c user.email=test@test.com commit --allow-empty -m init -q \
+    && git checkout -B "refactor/issue-749-jqwarn" -q
+)
+cat > "$dir_jq/.rite-flow-state" <<EOF
+{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-jqwarn"}
+EOF
+
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749jq.XXXXXX")"
+PATH="$fake_jq_bin:$PATH" \
+  bash -c "echo '{\"cwd\": \"$dir_jq\"}' | bash '$sbx_jq/session-end.sh'" \
+  >/dev/null 2>"$LAST_STDERR_FILE" || true
+stderr_jq="$(cat "$LAST_STDERR_FILE")"
+
+if printf '%s' "$stderr_jq" | grep -qF 'rite: session-end: failed to deactivate state file'; then
+  pass "WARNING emitted on jq atomic write failure"
+else
+  fail "Expected jq-write WARNING; got stderr: $stderr_jq"
+fi
+# Assert the structural invariant ("WARNING contains an Issue number") instead
+# of a literal number, which would only match by coincidence with the test
+# branch name and become brittle if the branch convention changes.
+if printf '%s' "$stderr_jq" | grep -qE 'Issue #[0-9]+'; then
+  pass "WARNING includes Issue number from branch detection"
+else
+  fail "Expected 'Issue #<number>' in WARNING; got stderr: $stderr_jq"
+fi
+# Assert state_file path appears in WARNING (so $STATE_FILE substitution works
+# and operators can locate the failed deactivation target without grepping git).
+if printf '%s' "$stderr_jq" | grep -qF '.rite-flow-state'; then
+  pass "WARNING includes state file path"
+else
+  fail "Expected state file path '.rite-flow-state' in WARNING; got stderr: $stderr_jq"
+fi
+# Assert jq stderr is passed through to the caller (not silently swallowed).
+# session-end.sh runs `jq ... > "$TMP_FILE"` without `2>/dev/null`, so jq's own
+# error diagnostics (line/column on parse errors, or here our fake script's
+# stderr) MUST reach the user. Locking this in test prevents a future refactor
+# from adding `2>/dev/null` and silently dropping the production jq diagnostic.
+if printf '%s' "$stderr_jq" | grep -qF 'fake jq: simulated failure'; then
+  pass "jq stderr passed through to caller"
+else
+  fail "Expected fake jq stderr in WARNING; got stderr: $stderr_jq"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
