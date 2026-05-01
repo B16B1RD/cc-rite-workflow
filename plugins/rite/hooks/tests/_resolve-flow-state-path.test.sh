@@ -241,15 +241,24 @@ header_block=$(awk '/^# ⚠️ Caller contract/,/^# Why this exists/' "$HELPER")
 header_lines=$(printf '%s' "$header_block" | wc -l)
 if [ -z "$header_block" ]; then
   fail "Caller contract section not found in header (awk range extraction returned empty)"
-elif [ "$header_lines" -gt 50 ]; then
-  # Sanity check: if awk captured > 50 lines, the end marker `# Why this exists`
+elif [ "$header_lines" -gt 70 ]; then
+  # Sanity check: if awk captured > 70 lines, the end marker `# Why this exists`
   # was likely removed/renamed and awk fell through to EOF. This protects
   # against false PASS via accidental keyword appearances in code body.
-  fail "Header section sanity check failed: extracted $header_lines lines (expected < 50). End marker '# Why this exists' may have been removed/renamed"
+  # Upper bound bumped from 50 → 70 when the caller list expanded to include
+  # non-lifecycle hook callers (post-tool-wm-sync.sh, pre-tool-bash-guard.sh)
+  # and command-level callers (create.md, create-interview.md, cleanup.md).
+  fail "Header section sanity check failed: extracted $header_lines lines (expected < 70). End marker '# Why this exists' may have been removed/renamed"
 else
   contract_failed=0
+  # Lifecycle 4 hooks (with stderr pass-through pattern) + non-lifecycle hooks
+  # (RITE_DEBUG-gated diagnostic) + command-level callers (silent fall-through).
+  # Enforces enumeration completeness per actual `grep -rn _resolve-flow-state-path`
+  # results. New callers MUST be added both here and in the helper header.
   for keyword in 'Caller contract' 'check_session_ownership' 'Current callers' \
-                 'session-start.sh' 'session-end.sh' 'pre-compact.sh' 'post-compact.sh'; do
+                 'session-start.sh' 'session-end.sh' 'pre-compact.sh' 'post-compact.sh' \
+                 'post-tool-wm-sync.sh' 'pre-tool-bash-guard.sh' \
+                 'create.md' 'create-interview.md' 'cleanup.md'; do
     if ! printf '%s' "$header_block" | grep -qF "$keyword"; then
       fail "Header section missing required keyword: '$keyword'"
       contract_failed=1
@@ -257,7 +266,7 @@ else
     fi
   done
   if [ $contract_failed -eq 0 ]; then
-    pass "Caller contract section + 4 lifecycle hook callers documented in scoped header ($header_lines lines)"
+    pass "Caller contract section + 6 hook callers + 3 command callers documented in scoped header ($header_lines lines)"
   fi
 fi
 echo ""

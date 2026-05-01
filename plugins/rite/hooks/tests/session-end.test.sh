@@ -562,7 +562,7 @@ else
   cat > "$fake_jq_bin/jq" <<FAKE_JQ_EOF
 #!/bin/bash
 # Fake jq: fail only on the session-end deactivation invocation
-# Pattern intentionally relaxed (F-10) — see test file comment above for rationale
+# Pattern intentionally relaxed — see test file comment above for rationale
 for arg in "\$@"; do
   case "\$arg" in
     *'.active'*'.updated_at'*)

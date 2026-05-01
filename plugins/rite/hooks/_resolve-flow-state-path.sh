@@ -47,14 +47,27 @@
 #   `_resolve-cross-session-guard.sh` here because this helper does not call
 #   it directly — the caller-side check is sufficient.
 #
-# Current callers (4 lifecycle hooks):
-#   - plugins/rite/hooks/session-start.sh     (defensive reset on startup/clear)
-#   - plugins/rite/hooks/session-end.sh       (deactivation on session end)
-#   - plugins/rite/hooks/pre-compact.sh       (timestamp update before compact)
-#   - plugins/rite/hooks/post-compact.sh      (recovering→normal transition)
+# Current callers:
+#   Lifecycle 4 hooks (with Issue #749 stderr pass-through pattern, contract critical):
+#     - plugins/rite/hooks/session-start.sh   (defensive reset on startup/clear)
+#     - plugins/rite/hooks/session-end.sh     (deactivation on session end)
+#     - plugins/rite/hooks/pre-compact.sh     (timestamp update before compact)
+#     - plugins/rite/hooks/post-compact.sh    (recovering→normal transition)
 #
-#   New callers (e.g., future lifecycle 5th hook) MUST follow the caller
-#   contract above. Add the new caller name here when introducing one.
+#   Other hooks (no stderr pass-through, RITE_DEBUG-gated diagnostic only — Issue #681):
+#     - plugins/rite/hooks/post-tool-wm-sync.sh   (writer; check_session_ownership 呼出済)
+#     - plugins/rite/hooks/pre-tool-bash-guard.sh (read-only; ownership check 不要)
+#
+#   Command-level callers (silent fall-through to empty state_file via `|| state_file=""`):
+#     - plugins/rite/commands/issue/create.md             (lines 517, 712)
+#     - plugins/rite/commands/issue/create-interview.md   (lines 43, 568)
+#     - plugins/rite/commands/pr/cleanup.md               (line 151)
+#
+#   New callers MUST follow the caller contract above. When adding a new
+#   caller, append it under the appropriate category here AND update the
+#   keyword loop in tests/_resolve-flow-state-path.test.sh
+#   (TC-749-CALLER-CONTRACT) so the static grep test enforces enumeration
+#   completeness.
 #
 # Why this exists (Issue #680):
 #   The lifecycle 4 hooks each used the same hardcoded `<state_root>/.rite-flow-state`
