@@ -320,3 +320,4 @@
 | 2026-05-01T03:27:29Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=16 |
 | 2026-05-02T00:30:00+09:00 | ingest:create | pages/patterns/race-window-probe-identification-power.md | PR #759 review (Issue #684) — SIGKILL race window probe identification power の新規 page 化 |
 | 2026-05-02T00:30:00+09:00 | ingest:update | pages/anti-patterns/test-pin-protection-theater.md | PR #759 review — Self-application failure mode (TC-20) の sub-pattern 追加 + sources 追記 |
+| 2026-05-02T00:35:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=0 |
