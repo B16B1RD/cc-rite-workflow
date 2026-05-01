@@ -17,6 +17,20 @@ on:
       - 'plugins/rite/hooks/**'
       - '.github/workflows/test-hooks.yml'
 
+# F-11 (Issue #760): least-privilege permissions — workflow only reads the repo,
+# never writes back. Restricts GITHUB_TOKEN to read-only contents access so a
+# compromised step cannot mutate the repository or push to other refs.
+permissions:
+  contents: read
+
+# F-12 (Issue #760): cancel in-flight runs on the same ref to save CI minutes
+# and prevent stale results from a superseded commit confusing the PR check.
+# `cancel-in-progress: true` means a new push to the same branch / PR head
+# supersedes the previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-hooks:
     name: Run hook test suite
@@ -24,21 +38,35 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      # F-10 (Issue #760): pin actions/checkout by full SHA (v4.2.2) for
+      # supply-chain integrity. Floating tag pins (`@v4`) can be silently moved
+      # to a malicious commit by a compromised tag operator; full SHA pins are
+      # immutable. Update by changing the SHA + comment together.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Fetch a single commit; tests do not need history beyond HEAD.
           fetch-depth: 1
 
-      - name: Verify required tools (bash, jq, git)
+      # R12 (Issue #760): enhanced tool diagnostic — emit GitHub Actions
+      # annotations (`::error::` / `::notice::`) for visibility in PR check
+      # output, capture resolved binary path + version, and gracefully handle
+      # tools whose `--version` writes nothing on stdout (rare but observed
+      # on minimal runners).
+      - name: Verify required tools (bash, jq, git, python3)
         run: |
           set -euo pipefail
           for tool in bash jq git python3; do
             if ! command -v "$tool" >/dev/null 2>&1; then
-              echo "ERROR: required tool not available: $tool" >&2
+              echo "::error::required tool not available: $tool"
               exit 1
             fi
-            echo "$(command -v "$tool"): $($tool --version 2>&1 | head -1)"
+            tool_path=$(command -v "$tool")
+            tool_version=$("$tool" --version 2>&1 | head -1 || echo "(version unknown)")
+            if [ -z "$tool_version" ]; then
+              tool_version="(empty version output)"
+            fi
+            echo "::notice::$tool resolved to $tool_path ($tool_version)"
           done
 
       - name: Run rite hook test suite
