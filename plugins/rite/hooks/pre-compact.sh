@@ -57,12 +57,10 @@ LOCKDIR="$COMPACT_STATE.lockdir"
 TMP_FILE=""
 TMP_COMPACT=""
 cleanup() {
-  # `_resolve_err` is normally rm-ed synchronously above (line ~54), but include
-  # it here as defense-in-depth: if SIGINT/SIGTERM arrives between trap install
-  # and end of script (e.g., during work-memory-update.sh sourcing or lock
-  # acquisition), this ensures the resolver stderr tempfile is not orphaned.
-  # `rm -f` on already-removed file is a harmless no-op.
-  rm -f "$TMP_FILE" "$TMP_COMPACT" "${_resolve_err:-}" 2>/dev/null
+  # `_resolve_err` の synchronous rm は trap install より前で実行される (resolver 直後)
+  # ため、ここで cleanup() に含める必要はない (dead code)。trap が発火する時点では既に
+  # 削除済みで no-op となる。trap install 前の race window は同期 rm 自身でカバーされる。
+  rm -f "$TMP_FILE" "$TMP_COMPACT" 2>/dev/null
   release_wm_lock "$LOCKDIR"
 }
 

@@ -105,10 +105,10 @@ IFS=$'\x1f' read -r ISSUE PHASE NEXT_ACTION LOOP PR BRANCH <<< "$FLOW_DATA"
 # --- Transition compact_state to normal (inside lock) ---
 TMP_COMPACT=""
 cleanup() {
-  # `_resolve_err` is rm-ed synchronously above (line ~51); include in cleanup
-  # as defense-in-depth for SIGINT/SIGTERM arriving after trap install.
-  # `rm -f` on already-removed file is a harmless no-op.
-  rm -f "$TMP_COMPACT" "${_resolve_err:-}" 2>/dev/null
+  # `_resolve_err` の synchronous rm は trap install より前で実行される (resolver 直後)
+  # ため、ここで cleanup() に含める必要はない (dead code)。trap が発火する時点では既に
+  # 削除済みで no-op となる。trap install 前の race window は同期 rm 自身でカバーされる。
+  rm -f "$TMP_COMPACT" 2>/dev/null
   release_wm_lock "$LOCKDIR"
 }
 trap cleanup EXIT TERM INT
