@@ -317,3 +317,4 @@
 | 2026-05-01T03:27:29Z | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #756 cycle 4 review (approximation 接尾辞 `~` 付き line-number reference HIGH × 1 — 6 種目として禁止 list に追加) |
 | 2026-05-01T03:27:29Z | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #756 cycle 5 fix (5 箇所削除 + grep -E '\(line[s]?\s*[~]?[0-9]+' を SoT lint 自動化候補) |
 | 2026-05-01T03:27:29Z | ingest:update | pages/anti-patterns/prose-design-without-backing-implementation.md | PR #756 cycle 5 fix (defense-in-depth claim と race window の time-ordering 乖離 LOW × 1 二重指摘 — pre/post-compact.sh trap cleanup dead code) |
+| 2026-05-01T03:27:29Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=16 |
