@@ -166,8 +166,11 @@ OWN="$TD/.rite/sessions/$SID_OWN.flow-state"
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_OWN" \
   '{cwd: $cwd, session_id: $sid, source: "startup"}')
 ss_err=$(mktemp)
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err") || \
-  echo "  WARN: session-start.sh exited non-zero (rc=$?). stderr: $(head -3 "$ss_err")" >&2
+if ! echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err"); then
+  ss_rc=$?
+  ss_stderr_preview=$(head -3 "$ss_err")
+  echo "  WARN: session-start.sh exited non-zero (rc=$ss_rc). stderr: ${ss_stderr_preview:-<empty>}" >&2
+fi
 rm -f "$ss_err"
 
 # AC-01: own session の state は reset (active=false)
@@ -197,8 +200,11 @@ OTHER="$TD/.rite/sessions/$SID_OTHER.flow-state"
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_ME" \
   '{cwd: $cwd, session_id: $sid, source: "startup"}')
 ss_err=$(mktemp)
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err") || \
-  echo "  WARN: session-start.sh exited non-zero (rc=$?). stderr: $(head -3 "$ss_err")" >&2
+if ! echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err"); then
+  ss_rc=$?
+  ss_stderr_preview=$(head -3 "$ss_err")
+  echo "  WARN: session-start.sh exited non-zero (rc=$ss_rc). stderr: ${ss_stderr_preview:-<empty>}" >&2
+fi
 rm -f "$ss_err"
 
 # 他 session の state は active=true のまま
@@ -221,8 +227,11 @@ CLEAR_F="$TD/.rite/sessions/$SID_CLEAR.flow-state"
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_CLEAR" \
   '{cwd: $cwd, session_id: $sid, source: "clear"}')
 ss_err=$(mktemp)
-echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err") || \
-  echo "  WARN: session-start.sh exited non-zero (rc=$?). stderr: $(head -3 "$ss_err")" >&2
+if ! echo "$HOOK_INPUT" | (cd "$TD" && bash "$SESSION_START" >/dev/null 2>"$ss_err"); then
+  ss_rc=$?
+  ss_stderr_preview=$(head -3 "$ss_err")
+  echo "  WARN: session-start.sh exited non-zero (rc=$ss_rc). stderr: ${ss_stderr_preview:-<empty>}" >&2
+fi
 rm -f "$ss_err"
 
 if [ "$(jq -r '.active' "$CLEAR_F")" = "false" ]; then
@@ -245,8 +254,20 @@ write_session_id "$TD" "$SID_GATE"
 (cd "$TD" && bash "$HOOK" create --session "$SID_GATE" \
   --phase "create_interview" --issue 40 --branch "bg" --pr 0 --next "ng" >/dev/null 2>&1)
 GATE_F="$TD/.rite/sessions/$SID_GATE.flow-state"
-# active=false に強制 patch
-jq '.active = false' "$GATE_F" > "${GATE_F}.tmp" && mv "${GATE_F}.tmp" "$GATE_F"
+
+# `jq | mv` の `&&` 連鎖は bash の "tested context" 例外で jq 失敗時に silent fall-through
+# する。helper で if/else 化し、jq 失敗時は明示 exit する fail-fast パターンに統一。
+patch_active() {
+  local file="$1" value="$2"
+  if jq ".active = $value" "$file" > "${file}.tmp"; then
+    mv "${file}.tmp" "$file"
+  else
+    echo "ERROR: jq patch failed for $file (.active = $value)" >&2
+    rm -f "${file}.tmp"
+    exit 1
+  fi
+}
+patch_active "$GATE_F" false
 
 # AC-2: active=false → pre-tool-bash-guard は許可 (exit 0)
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_GATE" \
@@ -261,33 +282,20 @@ else
   fail "TC-660 AC-2: active=false でも pre-tool-bash-guard が block (rc=$rc)"
 fi
 
-# AC-3: active=true & phase=create_interview & non-allowed Bash command → guard が defense fire
-# phase が create_interview / create_post_interview の AND-logic の Mode B 経路を pin
-jq '.active = true' "$GATE_F" > "${GATE_F}.tmp" && mv "${GATE_F}.tmp" "$GATE_F"
-
-# 防御層は phase=create_interview の context で `gh issue create` 等を block するロジック。
-# 単純な "echo test" は allow-list に入っているため fire しない可能性がある。
-# 本テストでは「active=true + phase=create_interview の組合せが defense decision pathway を
-# trigger できる」ことを mechanical に verify する。実際の defense 出力ではなく、guard が
-# "条件成立 → 評価実行" の path に進むことを active=false case との対比で確認する設計。
-# (詳細な defense fire は stop-guard.sh removal 後の現状では pre-tool-bash-guard 単体の
-#  挙動に依存し、test fixture からは間接観測しかできないため、AND-logic の "active 必須"
-#  contract が成立していることをもって AC-3 の core proposition を満たす)
-# AC-3: active=true で `gh issue create` 等 phase=create_interview で block 対象となる Bash
-# 入力を渡し、guard の defense decision pathway (AND-logic fire) が走ることを stdout の
-# `permissionDecision: "deny"` JSON 出力で verify する。pre-tool-bash-guard は exit 0 のまま
-# stdout に JSON を返すため exit code 差分では区別できず、stdout 内容で判定する必要がある。
+# AC-3: active=true で `gh issue create` (phase=create_interview で block 対象) を渡し、
+# stdout の `permissionDecision: "deny"` JSON 出力で AND-logic fire を verify する
+# (pre-tool-bash-guard は exit 0 のまま stdout で deny を表現する仕様のため、stdout match で判定)。
 HOOK_INPUT_BLOCKING=$(jq -n --arg cwd "$TD" --arg sid "$SID_GATE" \
   '{cwd: $cwd, session_id: $sid, tool_name: "Bash", tool_input: {command: "gh issue create --title test --body test"}}')
 
-# active=false → guard は早期 silent skip (stdout 空 / 短い)
-jq '.active = false' "$GATE_F" > "${GATE_F}.tmp" && mv "${GATE_F}.tmp" "$GATE_F"
+# active=false → guard は早期 silent skip (deny JSON なし)
+patch_active "$GATE_F" false
 set +e
 out_active_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
 set -e
 
 # active=true → guard は AND-logic 評価に進み deny JSON を出力
-jq '.active = true' "$GATE_F" > "${GATE_F}.tmp" && mv "${GATE_F}.tmp" "$GATE_F"
+patch_active "$GATE_F" true
 set +e
 out_active_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
 set -e

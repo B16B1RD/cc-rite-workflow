@@ -263,14 +263,22 @@ for i in $(seq 1 "$ITERATIONS"); do
       --phase "py_$i" --issue "$i" --branch "by_$i" --pr 0 --next "ny" >/dev/null 2>&1
   ) &
   pid_y=$!
-  if ! wait "$pid_x"; then
-    rc=$?; echo "  flake at iter=$i pid=x rc=$rc" >&2
-    flake=$((flake + 1)); continue
-  fi
-  if ! wait "$pid_y"; then
-    rc=$?; echo "  flake at iter=$i pid=y rc=$rc" >&2
-    flake=$((flake + 1)); continue
-  fi
+  # `if ! wait $pid` の `$?` は bash の否定演算子適用後の値 (0) になり真の rc を取れないため
+  # `wait || { rc=$?; ... }` パターンを使う。continue 前に未 reap の pid_y も明示的に wait で reap し
+  # orphan が次 iter の per-session file 書き込みに影響する race を防ぐ。
+  wait "$pid_x" || {
+    rc_x=$?
+    echo "  flake at iter=$i pid=x rc=$rc_x" >&2
+    wait "$pid_y" 2>/dev/null || true
+    flake=$((flake + 1))
+    continue
+  }
+  wait "$pid_y" || {
+    rc_y=$?
+    echo "  flake at iter=$i pid=y rc=$rc_y" >&2
+    flake=$((flake + 1))
+    continue
+  }
 
   fx="$TD/.rite/sessions/$SID_X.flow-state"
   fy="$TD/.rite/sessions/$SID_Y.flow-state"

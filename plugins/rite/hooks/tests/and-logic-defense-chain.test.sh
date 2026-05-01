@@ -113,7 +113,15 @@ else
 fi
 
 # Runtime: emit が WORKFLOW_INCIDENT=1 sentinel を出力するか
-sentinel_out=$(bash "$INCIDENT_EMIT" --type skill_load_failure --details "test details" --pr-number 0 2>/dev/null) || sentinel_out=""
+# stderr 退避で emit script の syntax error / 引数 parse 失敗 / permission error を可視化
+emit_err=$(mktemp)
+if ! sentinel_out=$(bash "$INCIDENT_EMIT" --type skill_load_failure --details "test details" --pr-number 0 2>"$emit_err"); then
+  emit_rc=$?
+  emit_stderr_preview=$(head -3 "$emit_err")
+  echo "  WARN: workflow-incident-emit.sh rc=$emit_rc. stderr: ${emit_stderr_preview:-<empty>}" >&2
+  sentinel_out=""
+fi
+rm -f "$emit_err"
 if echo "$sentinel_out" | grep -q "WORKFLOW_INCIDENT=1"; then
   pass "Layer 2 runtime: emit 結果に WORKFLOW_INCIDENT=1 が含まれる"
 else
@@ -265,12 +273,25 @@ INV_F="$TD/.rite/sessions/$SID_INV.flow-state"
 HOOK_INPUT_BLOCKING=$(jq -n --arg cwd "$TD" --arg sid "$SID_INV" \
   '{cwd: $cwd, session_id: $sid, tool_name: "Bash", tool_input: {command: "gh issue create --title test --body test"}}')
 
-jq '.active = false' "$INV_F" > "${INV_F}.tmp" && mv "${INV_F}.tmp" "$INV_F"
+# `jq | mv` の `&&` 連鎖は bash の "tested context" 例外で jq 失敗時に silent fall-through する。
+# helper で if/else 化し fail-fast パターンに統一 (session-ownership-regression.test.sh と対称)。
+patch_active() {
+  local file="$1" value="$2"
+  if jq ".active = $value" "$file" > "${file}.tmp"; then
+    mv "${file}.tmp" "$file"
+  else
+    echo "ERROR: jq patch failed for $file (.active = $value)" >&2
+    rm -f "${file}.tmp"
+    exit 1
+  fi
+}
+
+patch_active "$INV_F" false
 set +e
 out_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
 set -e
 
-jq '.active = true' "$INV_F" > "${INV_F}.tmp" && mv "${INV_F}.tmp" "$INV_F"
+patch_active "$INV_F" true
 set +e
 out_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
 set -e
