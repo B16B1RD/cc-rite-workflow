@@ -1,5 +1,8 @@
 ---
-description: 新規 Issue を作成し、GitHub Projects に追加
+description: |
+  Issue 作成 / new issue / 起票 / Issue 化 — 新規 Issue を作成し、GitHub Projects に登録する。
+  重複検出・親 Issue 候補検出・XL 自動分解（Sub-Issue 作成 + 設計仕様書生成）を含む。
+  Use when 「Issue 作って」「タスクを起票」「create issue」「新規 Issue」など。
 ---
 
 # /rite:issue:create

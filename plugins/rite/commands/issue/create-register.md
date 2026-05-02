@@ -1,5 +1,8 @@
 ---
-description: 単一 Issue の確認・作成・登録
+description: |
+  (Internal sub-skill — invoked by /rite:issue:create only. Do NOT invoke directly.)
+  単一 Issue の分類・確認・作成・Projects 登録を行う sub-skill。
+  Phase 1 分類 + Phase 2-4 作成・登録を担当（分解しない単一 Issue 経路）。
 ---
 
 # /rite:issue:create-register
