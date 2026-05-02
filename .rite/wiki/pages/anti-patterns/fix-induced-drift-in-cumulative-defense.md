@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-05-01T00:00:00+00:00"
+updated: "2026-05-02T11:07:39Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260421T024947Z-pr-636.md"
@@ -86,7 +86,13 @@ sources:
     ref: "raw/fixes/20260430T143329Z-pr-754.md"
   - type: "fixes"
     ref: "raw/fixes/20260430T191751Z-pr-754.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat"]
+  - type: "reviews"
+    ref: "raw/reviews/20260502T095733Z-pr-765.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260502T101035Z-pr-765.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260502T103134Z-pr-765-cycle2.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation"]
 confidence: high
 ---
 
@@ -411,9 +417,55 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 - [PR #754 cycle 1-3 fix (anchor specificity retreat doctrine 採用で literal anchor existence 問題を構造的解消)](../../raw/fixes/20260430T141940Z-pr-754.md)
 - [PR #754 cycle 2 fix (broken cross-reference を `(Cycle 別の主要な修正)` 総称形に retreat)](../../raw/fixes/20260430T143329Z-pr-754.md)
 - [PR #754 cycle 3 fix (`Form A vs Form B` 矛盾 + `cleanup helper 集約` literal 不在を Doctrines / Principles 総称形に retreat、4 cycle 収束)](../../raw/fixes/20260430T191751Z-pr-754.md)
+- [PR #765 cycle 1 review (累積 / 3-site bang-backtick adjacency CRITICAL × 3 + Doc precision regression initial seeding)](../../raw/reviews/20260502T095733Z-pr-765.md)
+- [PR #765 cycle 1 fix (b299899: backtick → single-quote 3 site 同期、cycle 2 で fix 自身が 6 件導入)](../../raw/fixes/20260502T101035Z-pr-765.md)
+- [PR #765 cycle 2 review (cycle 1 fix が新規 4 MEDIUM + 2 LOW を導入する fractal pattern 実測)](../../raw/reviews/20260502T103134Z-pr-765-cycle2.md)
 
 ## PR #754 (累積 17 回目、4 cycle 収束) で観測した sub-pattern: anchor specificity retreat doctrine
 
 PR #754 (Issue #732 = state-read.test.sh の journal-style コメント retrofit) で 4 サイクル要した anchor 関連 finding chain。cycle 1 で `Form A vs Form B` Comment Rot CRITICAL + bare anchor specificity 不足 HIGH × 2 を fix → cycle 2 で fix 自身が `L46` self-line reference drift を導入 + descriptions が evolution.md に literal 0 件 (broken cross-reference) → cycle 3 で fix が `Form A cleanup minimal contract` 参照 (Form B 実装と矛盾) と `cleanup helper 集約` (literal 不在) を導入 → cycle 4 で「総称形 retreat」doctrine 採用により 0 findings 収束 (`(Cycle 別の主要な修正)` / `(Doctrines / Principles)`)。
 
 **収束のキー**: anchor description は **section 総称形まで** retreat する。fine-grained descriptions は参照先 literal の存在検証が漏れるたびに silent drift 源となる。Issue #732 Non-goal で evolution.md 改修禁止だったため retreat 方向のみが安全。本事例は cycle 17 累積対策 PR で observed Wiki 経験則「Test pin protection theater」「Mutation testing で test の真正性 empirical 検証」と接続し、test ファイル retrofit 系 PR の **anchor 設計指針** として記録。
+
+## PR #765 (Issue #691 = bang-backtick-check 二段ガード昇格) で観測した sub-pattern: Self-violation cascade と Doc precision regression の chain (2 cycle, 20 → 20 open)
+
+PR #765 は Issue #691 (`/rite:lint` 経由のみで発火する bang-backtick 検出を PostToolUse hook + PR/Ready 前段 hard gate の二段ガードに昇格する累積対策 PR) の review-fix loop で、**cycle 1 fix 自身が予防対象パターンを self-violation する meta-self-inconsistency** が顕在化した実測例:
+
+### Cycle trajectory (findings 数)
+
+| cycle | open | 内訳 |
+|-------|------|------|
+| 1 | 20 | CRITICAL 3 + HIGH 6 + MEDIUM 6 + LOW-MEDIUM 4 + LOW 1 |
+| 2 | 20 | HIGH 3 (cycle 1 carry-over) + MEDIUM 11 (carry-over 7 + NEW 4) + LOW-MEDIUM 4 + LOW 2 (carry-over 1 + NEW 1) |
+
+cycle 1 で CRITICAL 3 + HIGH 6 = 9 件解消したが、cycle 1 fix commit `b299899` 自身が新規 4 MEDIUM + 2 LOW = 6 件の **fix-induced drift** を導入し、cycle 2 で MEDIUM 11 / LOW 2 として initial detection された。
+
+### CRITICAL × 3 site Self-violation pattern (3 reviewer 独立検出)
+
+本 PR の予防対象は「bash の double-quoted string 内に literal `` `!` `` 隣接 backtick が混入することで parser が command substitution として subshell 実行を試み silent regression を起こすパターン」。ところが対策コード自身 (3 site = `commands/pr/create.md` Phase 1.0 + `commands/pr/ready.md` Phase 1.0 + `hooks/scripts/bang-backtick-edit-hook.sh`) が同形 defect を初期 commit に含んでいた。**5 reviewer 並列レビュー (prompt-engineer / code-quality / devops / test / error-handling) でも初期 commit を通過した**。詳細は [asymmetric-fix-transcription.md](./asymmetric-fix-transcription.md#inverse-failure-defect-transcription--drift-check-anchor-射程外への同形混入-pr-765-累積-17-回目での-evidence) Inverse failure 節を参照。
+
+### Doc precision regression cascade (新 sub-pattern)
+
+cycle 1 fix で訂正した「`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` sentinel が Phase 5.4.4.1 grep canonical token と format 乖離している」HIGH F-04/F-05 doc drift について、**cycle 2 で再び新規 precision regression を導入**:
+
+- cycle 1 fix doc: 「format mismatch を明記し option A (doc 訂正で実装と整合) を採用」
+- cycle 2 reviewer 検出 F-21 (MEDIUM): cycle 1 訂正の prose は「Phase 5.4.4.1 で no-pattern emit」を主張するが、実装に no-pattern 具象 codepath が**存在しない** (start.md に該当 code path なし)
+
+cycle 1 で正しく整合させた doc が、訂正過程の prose で**新たな precision regression を導入する fractal pattern**。これは [prose-design-without-backing-implementation.md](./prose-design-without-backing-implementation.md) の sub-pattern としても投影でき、累積対策 PR の review-fix loop における「fix doc が新たな drift 源になる」連鎖の定型として観測された。
+
+### Cycle 2 NEW finding 4 件の根本原因分類
+
+| ID | severity | 分類 | 根本原因 |
+|----|----------|------|----------|
+| F-21 | MEDIUM | Doc precision regression | cycle 1 訂正 prose が新たな specificity drift を導入 |
+| F-22 | MEDIUM | Style B literal 3 site 不整合 | DRIFT-CHECK ANCHOR 射程外 hook の literal が canonical (`bang-backtick-check.sh:69`) から逸脱 |
+| F-23 | MEDIUM | 散文長文構造 drift | 4 em-dash + 168-word sentence、sibling pattern (3-4 sentence 分割) と divergence |
+| F-24 | MEDIUM | Scope filter glob asymmetric | `agents/` depth 2 vs 他 depth 3 の intent 表現 drift (実害なし) |
+
+**学習**: 累積対策 PR で 1 cycle に 6+ files の cross-cutting fix を行うと、各 site での micro-pattern (literal 文字列・散文構造・glob depth) drift を cycle 1 単独ではすべて検出できない。cycle 2 reviewer で fact-check rerun ([Anti-Degradation Guardrail](../heuristics/reviewer-scope-antidegradation.md)) を必須化することで NEW finding を初検出する canonical 経路。
+
+### Canonical 対策の追加
+
+1. **Self-application gate を fix commit 前に必須化**: 本 PR の場合 `bang-backtick-check.sh --all` を fix commit 前に self-grep し、対策コードが予防対象を踏んでいないか mechanical 検証。新 lint rule 追加 PR の self-violation gate と同型 ([fix-comment-self-drift.md](./fix-comment-self-drift.md) と相補)
+2. **Doc 訂正は prose precision を再 grep verify**: cycle 内で doc を訂正する fix では訂正後の prose に対して再度 sentinel format / code path existence の grep verify を必須化 (precision regression cascade 防止)
+3. **DRY 集約助手による 3 site 重複の構造的廃止**: PR #765 lessons learned の `bang-backtick-check.sh --print-action-hint` 提案 (3 site Style A/B literal を 1 source of truth に集約) を follow-up Issue として継承

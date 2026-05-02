@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-30T08:03:08Z"
+updated: "2026-05-02T11:07:39Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -108,7 +108,13 @@ sources:
     ref: "raw/fixes/20260430T074655Z-pr-750-cycle-1.md"
   - type: "reviews"
     ref: "raw/reviews/20260430T075231Z-pr-750-cycle-2.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference"]
+  - type: "reviews"
+    ref: "raw/reviews/20260502T095733Z-pr-765.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260502T101035Z-pr-765.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260502T103134Z-pr-765-cycle2.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit"]
 confidence: high
 ---
 
@@ -394,6 +400,22 @@ cycle 2 で 0 finding に収束し reviewer 全員から「対称性 OK」「reg
 2. **structural guarantee の宣言時に code-level enforcement を併設する pair pattern**: 「構造的に保証される」と散文で宣言した invariant は、実装側で fail-secure に enforce する defense-in-depth check を必ず追加する。本 anti-pattern と [structural-guarantee-code-level-enforcement](../patterns/structural-guarantee-code-level-enforcement.md) は pair として運用する
 3. **helper-level test の 1 TC 複数経路 pin**: hook integration test に踏み込まずに contract を保護する canonical (詳細は [structural-guarantee-code-level-enforcement.md](../patterns/structural-guarantee-code-level-enforcement.md) Detection 観点)
 
+### Inverse failure (defect transcription) — DRIFT-CHECK ANCHOR 射程外への同形混入 (PR #765 累積 17 回目での evidence)
+
+PR #765 (Issue #691 = bang-backtick-check の二段ガード昇格) で、**ANCHOR は asymmetric な fix transcription (片方 site だけ修正) を防ぐが、両 site に同形 defect を初期投入してしまうケースは ANCHOR では防げない**ことが実測された。本 anti-pattern の inverse failure (= defect transcription) と命名する:
+
+1. **CRITICAL × 3 site 同形 defect 初期投入**: `commands/pr/create.md` Phase 1.0 / `commands/pr/ready.md` Phase 1.0 (DRIFT-CHECK ANCHOR で symmetric 維持) + `hooks/scripts/bang-backtick-edit-hook.sh` (ANCHOR 射程外) の 3 site すべてに、`echo` の double-quoted string 内に literal backtick pair `` `if ! cmd; then` `` を含める同形 defect が初期 commit で混入。bash は backtick を command substitution として subshell 実行を試み "syntax error: unexpected end of file" → 該当 error message が空文字に置換される silent UX regression
+2. **Self-referential anti-pattern**: 本 PR が予防対象とする「`!` 隣接 backtick が parser 上で意図しない実行を trigger」というまさに同じパターンを、対策コード自身が再現する meta-self-inconsistency。5 reviewer 並列 (prompt-engineer / code-quality / devops / test / error-handling) でも初期 commit を通過した
+3. **DRIFT-CHECK ANCHOR の射程の限界**: ANCHOR は `commands/pr/create.md` ↔ `commands/pr/ready.md` の bash block 対称性のみを対象とし、`hooks/scripts/bang-backtick-edit-hook.sh` の Style B literal は射程外。3 site 同期の commit message claim と実装が乖離 (cycle 2 で code-quality F-22 として再検出 — Style B literal `'if ! cmd; then'` vs edit-hook の `'if ! cmd'` で canonical `bang-backtick-check.sh:69` から逸脱)
+
+**PR #765 cycle 1 → cycle 2 の収束軌跡**: `20 → 20 (open)`。cycle 1 で CRITICAL 3 + HIGH 6 = 9 件解消するも、fix commit `b299899` 自身が新規 4 MEDIUM + 2 LOW = 6 件導入 (cycle 2 で初検出)。**fix-induced drift の典型例として fractal pattern が再現** (詳細は [fix-induced-drift-in-cumulative-defense.md](./fix-induced-drift-in-cumulative-defense.md) PR #765 evidence 節)。
+
+**Canonical 対策**:
+
+1. **対称化 PR の commit 前に「予防対象パターン self-grep」を必須化**: 本 PR の場合 `bang-backtick-check.sh --all` を本 PR 自身の差分に対して run し、対策コード自身が予防対象を踏んでいないか mechanical に verify する。新 lint rule を追加する PR の self-application gate と同型 ([fix-comment-self-drift](./fix-comment-self-drift.md) と相補)
+2. **DRIFT-CHECK ANCHOR の射程拡張 + byte-equal hash 比較 test**: ANCHOR が cover する site 一覧と射程外 site (例: hook script) の Style B literal を test 側で `sha1sum` 比較で byte-equal pin する。3 site 同期の commit message claim を test で empirical 強制
+3. **Single source of truth 集約**: 例として PR #765 lessons learned で提案された `bang-backtick-check.sh --print-action-hint` flag による Style A/B サジェスト文言の 1 source of truth 集約。3 site の literal 重複自体を構造的に廃する
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -449,3 +471,6 @@ cycle 2 で 0 finding に収束し reviewer 全員から「対称性 OK」「reg
 - [PR #688 cycle 14 review (writer/reader doctrine 違反、work-memory-update.sh 数値検証 DRY 違反)](raw/reviews/20260429T073028Z-pr-688.md)
 - [PR #688 cycle 47+ review (writer 中核 trap 片肺残存 HIGH、code-quality 単独検出)](raw/reviews/20260429T160252Z-pr-688.md)
 - [PR #747 cycle 4 fix (session-start ↔ session-end find pattern 片肺更新 CRITICAL の解消)](raw/fixes/20260430T031734Z-pr-747.md)
+- [PR #765 cycle 1 review (3-site bang-backtick adjacency self-violation, CRITICAL × 3 site 同形 defect 初期投入)](raw/reviews/20260502T095733Z-pr-765.md)
+- [PR #765 cycle 1 fix (backtick → single-quote 3 site 同期適用、ANCHOR 射程外 hook script を含む)](raw/fixes/20260502T101035Z-pr-765.md)
+- [PR #765 cycle 2 review (cycle 1 fix が新規 4 MEDIUM + 2 LOW を導入、Style B literal 3 site 不整合 F-22)](raw/reviews/20260502T103134Z-pr-765-cycle2.md)
