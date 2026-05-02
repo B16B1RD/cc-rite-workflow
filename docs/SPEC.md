@@ -1117,17 +1117,20 @@ iteration:
 
 ### Supported Hook Types
 
+> **Canonical SoT**: The authoritative list of registered hook events lives in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json). This table mirrors that registration; if the two diverge, `hooks.json` wins. The table below is enumerated for reader convenience but MUST be regenerated from `hooks.json` keys (`jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`) whenever the registration changes.
+
 | Type | Timing | Purpose |
 |------|--------|---------|
 | SessionStart | Session start | Load work memory, detect interrupted work |
 | PreCompact | Before compact | Save work memory, record compact state |
 | PostCompact | After compact | Restore work memory, clean compact state |
 | SessionEnd | Session end | Save final state |
-| Stop | On stop attempt (event-driven) | Prevent premature workflow stops |
 | PreToolUse | Before tool execution | Block tool usage after compact, detect dangerous command patterns |
 | PostToolUse | After tool execution | Auto-recover local work memory |
 
 > **Note:** `notification.sh` is not a Claude Code hook type but a utility script called directly from within commands. It is invoked by command scripts during events such as PR creation, Ready status change, and Issue close to send external notifications. See the [Notification Integration](#notification-integration) section for details.
+>
+> **Note:** The Stop hook (`stop-guard.sh`) was removed in PR #675. Workflow stop prevention is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). See the [Multi-Session State Management](#multi-session-state-management) section for details.
 
 ### Hook Execution Order
 
@@ -1141,46 +1144,7 @@ PreCompact (on compact)
 SessionEnd
 ```
 
-> **Note:** Stop hook is event-driven and may trigger at any point during the flow above. Blocks if rite workflow is active.
->
 > **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and replaced by the Preflight check system integrated into command execution.
-
-### Stop Guard (`stop-guard.sh`)
-
-Prevents Claude from stopping during an active rite workflow session.
-
-**Behavior:**
-
-1. Reads `.rite-flow-state` from the working directory (if absent, allows the stop)
-2. If `active` is not `true`, allows the stop
-3. If the workflow was updated within the last hour, blocks the stop
-4. If the workflow is stale (over 1 hour since last update), allows the stop (assumes abandoned)
-
-**Timestamp Parsing (Cross-Platform):**
-
-The script parses `updated_at` (ISO 8601 format) using a fallback chain for cross-platform compatibility:
-
-| Priority | Method | Platform | Notes |
-|----------|--------|----------|-------|
-| 1 | `date -d` (GNU) | Linux | Parses `+09:00` timezone directly |
-| 2 | `date -j -f` (BSD) | macOS | Requires `sed` to convert `+09:00` → `+0900` first |
-| 3 | `echo 0` (fallback) | Any | Sets `STATE_TS=0`, resulting in `AGE ≈ current epoch` (>> 3600), allowing the stop |
-
-**Block Response:**
-
-When blocking, exits with code 2 and writes the continuation message to stderr. Claude Code interprets exit 2 as "prevent stop + feed stderr to assistant":
-
-```
-rite workflow active (phase: <phase>). CONTINUE: <next_action>. If context limit reached, use /clear then /rite:resume to recover.
-```
-
-**Error Count Auto-Release:**
-
-Stop Guard increments `error_count` in `.rite-flow-state` each time it blocks a stop. When `error_count` reaches the threshold (default: 5), it determines that the workflow is stuck in an error loop and allows the stop. `error_count` is reset when the next workflow starts (`.rite-flow-state` is regenerated).
-
-**Debug Logging:**
-
-Set `RITE_DEBUG=1` environment variable to enable debug logging to `.rite-flow-debug.log`. Zero overhead when disabled.
 
 ### Preflight Check (`preflight-check.sh`)
 
@@ -1208,11 +1172,11 @@ bash plugins/rite/hooks/preflight-check.sh --command-id "/rite:issue:start" --cw
 
 ### Post-Compact Recovery (`post-compact.sh`) (#133)
 
-Registered as a PostCompact hook. After a compact event, restores workflow context by outputting the current `.rite-flow-state` / work-memory state to stdout, which Claude Code injects into the model's context so the workflow can auto-continue without user intervention.
+Registered as a PostCompact hook. After a compact event, restores workflow context by outputting the current per-session flow state (`.rite/sessions/{session_id}.flow-state`) and work-memory state to stdout, which Claude Code injects into the model's context so the workflow can auto-continue without user intervention.
 
 **Behavior:**
 
-1. Reads `.rite-compact-state` and `.rite-flow-state` under the resolved state root (delegates resolution to `state-path-resolve.sh`)
+1. Reads `.rite-compact-state` and the per-session flow state file under the resolved state root (delegates resolution to `state-path-resolve.sh`; see [Multi-Session State Management](#multi-session-state-management))
 2. If no flow state exists, cleans `.rite-compact-state` and exits 0 (self-healing for orphaned compact markers)
 3. Otherwise, emits a recovery block to stdout containing Issue number, phase, and next-action hints so the orchestrator can resume from the compact boundary
 4. Double-execution is guarded via `_RITE_HOOK_RUNNING_POSTCOMPACT` (hooks.json + legacy `settings.local.json` migration safety)
@@ -1244,7 +1208,7 @@ Registered as a PostToolUse hook. Automatically creates local work memory files 
 **Behavior:**
 
 1. Fires after Bash tool usage (with recursion guard)
-2. Retrieves active workflow and Issue number from `.rite-flow-state`
+2. Retrieves active workflow and Issue number from the per-session flow state file (`.rite/sessions/{session_id}.flow-state`)
 3. Only creates `.rite-work-memory/issue-{n}.md` if it doesn't exist
 
 **Purpose:** Guarantees auto-recovery of local work memory during `/rite:resume` after compact or session restart.
@@ -1293,7 +1257,9 @@ If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file i
 
 ### Phase Transition Whitelist (`phase-transition-whitelist.sh`) (#490)
 
-Sourced (not executed) library that provides the canonical phase-transition graph consumed by `stop-guard.sh` and other orchestration helpers. Silent phase-skipping in `/rite:issue:start` end-to-end flow used to be an observability gap; this graph turns unexpected transitions into blockable events.
+Sourced (not executed) library that provides the canonical phase-transition graph consumed by orchestration helpers. The Stop hook itself was removed in PR #675; the whitelist is now consumed by phase-transition checks invoked from non-hook code paths (orchestrator command-level Pre-write + 🚨 Mandatory After scaffolding). Silent phase-skipping in `/rite:issue:start` end-to-end flow used to be an observability gap; this graph turns unexpected transitions into blockable events.
+
+> **Hook registration note**: This script is **not registered** in `hooks.json` — it is a `source`-only library used by other hooks (`session-end.sh` / `pre-tool-bash-guard.sh`) and orchestrator commands. Per the canonical SoT in `hooks.json`, only the 6 lifecycle hooks (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`) are wired; this library does not appear in that registration.
 
 **Provided Functions (post-source):**
 
@@ -1303,7 +1269,7 @@ Sourced (not executed) library that provides the canonical phase-transition grap
 | `rite_phase_expected_next <phase>` | Prints space-separated valid next phases |
 | `rite_phase_is_known <phase>` | 0 if the phase name is known |
 
-**Override merging:** Projects can extend (not overwrite) the whitelist via `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` in `rite-config.yml`. Bash 4.2+ is required for `declare -gA`; older bash aborts gracefully so stop-guard can fail-open.
+**Override merging:** Projects can extend (not overwrite) the whitelist via `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` in `rite-config.yml`. (The config key name retains the historical `stop_guard` prefix for backwards compatibility with existing user configs even though the Stop hook was removed; the value is now consumed by the orchestrator-level phase-transition checks.) Bash 4.2+ is required for `declare -gA`; older bash aborts gracefully so the consuming caller can fail-open.
 
 ### Verify Terminal Output (`verify-terminal-output.sh`) (#561)
 
@@ -1313,15 +1279,17 @@ Standalone check that validates Terminal Completion sections in `/rite:issue:cre
 
 ### Session Ownership (`session-ownership.sh`) (#174–#179)
 
-Shared library sourced by `session-start.sh` / `session-end.sh` / `stop-guard.sh` / `post-tool-wm-sync.sh` / `pre-compact.sh` / `post-compact.sh` for multi-session conflict prevention.
+Shared library sourced by the lifecycle hooks for multi-session conflict prevention. With the per-session state structure (#672 / Issue #685 / PR #686 + #747 + #748 + #750 + #751 + #756 + #757 + #759), ownership is **structurally guaranteed** by the file naming (`.rite/sessions/{session_id}.flow-state`); this library now serves as a path/entry resolution layer rather than a runtime guard.
+
+> **Canonical SoT for sourcing callers**: `hooks.json` registration. The hooks that source this library are: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-compact.sh` / `post-tool-wm-sync.sh`. (`stop-guard.sh` was removed in PR #675 and is no longer a caller; the historical `pre-tool-bash-guard.sh` source path was reorganized in PR #750.)
 
 **Provided Functions:**
 
 | Function | Purpose |
 |----------|---------|
 | `extract_session_id <hook_json>` | Pulls `session_id` from a hook's JSON stdin payload |
-| `get_state_session_id <file>` | Reads `session_id` from `.rite-flow-state` |
-| `check_session_ownership <hook_json> <state_file>` | Returns `own` / `legacy` / `other` / `stale` |
+| `get_state_session_id <file>` | Reads `session_id` from a per-session flow state file |
+| `check_session_ownership <hook_json> <state_file>` | Returns `own` / `legacy` / `other` / `stale` (legacy / other / stale are now mostly unreachable in steady-state operation because file naming structurally enforces `own`; retained for migration compatibility and crash-recovery scenarios) |
 | `parse_iso8601_to_epoch <timestamp>` | Cross-platform ISO 8601 → epoch parser |
 
 ### Issue Comment WM Sync (`issue-comment-wm-sync.sh`) (#161 / #167)
@@ -1402,6 +1370,60 @@ A system that performs unified pre-validation before every `/rite:*` command exe
 - In `blocked` state, all commands except `/rite:resume` are blocked
 - Normal state is restored via `/clear` → `/rite:resume`
 
+### Multi-Session State Management
+
+> **Design rationale**: See [`docs/designs/multi-session-state.md`](designs/multi-session-state.md) for the full design selection (6-axis trade-off comparison, Option A vs B Decision Log, and Phase 2 implementation retrospective). This section is the canonical **runtime specification**; the design doc is the canonical **rationale** record.
+
+The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`) introduced by Issue #672 and landed across PR #686 / #747 / #748 + #756 / #750 / #751 / #757 / #759. Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
+
+**File path:**
+
+```
+.rite/
+└── sessions/
+    ├── 34eadf04-8f13-4ce3-adcd-8dc6668a5b9f.flow-state
+    ├── 9a8b7c6d-...flow-state
+    └── ...
+```
+
+The `session_id` is the same UUID stored in `.rite-session-id` and propagated to every hook via the JSON stdin payload.
+
+**Schema (`schema_version: 2`):**
+
+| Category | Field | Source / Writer | Notes |
+|----------|-------|-----------------|-------|
+| Required (11) | `active` | `flow-state-update.sh create` / `patch` | `true` while a workflow is in flight |
+| Required | `issue_number` | `flow-state-update.sh create` | The Issue under work |
+| Required | `branch` | `flow-state-update.sh create` | Feature branch name |
+| Required | `phase` | `flow-state-update.sh create` / `patch` | Current orchestrator phase (e.g. `phase5_post_lint`) |
+| Required | `previous_phase` | `flow-state-update.sh create` | Auto-populated from outgoing `phase` value |
+| Required | `pr_number` | `flow-state-update.sh create` / `patch` | `0` until the PR is opened |
+| Required | `parent_issue_number` | `flow-state-update.sh create` | `0` when the Issue is standalone |
+| Required | `next_action` | `flow-state-update.sh create` / `patch` | Free-text continuation hint surfaced via post-compact recovery |
+| Required | `updated_at` | `flow-state-update.sh` (every write) | ISO 8601 with `+09:00` offset |
+| Required | `session_id` | `flow-state-update.sh create` | Mirrors `.rite-session-id`, used as filename |
+| Required | `last_synced_phase` | `flow-state-update.sh patch` | Tracks the last work-memory sync point |
+| Optional | `wm_comment_id` | `issue-comment-wm-sync.sh` (cache write) | GitHub comment ID for the work memory backup |
+| Optional | `loop_count` | `flow-state-update.sh patch` (writer); read by `post-compact.sh` / `session-start.sh` / `post-tool-wm-sync.sh` / `state-read.sh` / `work-memory-update.sh` | Review-fix loop counter |
+| Optional | `error_count` | `flow-state-update.sh patch` (resets to `0` on phase transition) | Half-legacy field — incrementer was removed with `stop-guard.sh` (PR #675); writer is reset-only. Schema retained for forward compatibility |
+| Optional | `schema_version` | `flow-state-update.sh create` | `2` for the per-session structure; absent or `< 2` triggers migration |
+
+> **`needs_clear` field**: Removed. The previous compact-recovery design discussed `needs_clear` as a flag, but production code never had a writer or non-test reader. Test fixtures (`pre-compact.test.sh` TC-014 / TC-014b) actively assert that `pre-compact does NOT set needs_clear`. The new schema does not include this field.
+
+**Migration from legacy single-file format:**
+
+Legacy `.rite-flow-state` files (flat JSON without `schema_version` or with `schema_version < 2`) are auto-migrated on session start by [`plugins/rite/hooks/scripts/migrate-flow-state.sh`](../plugins/rite/hooks/scripts/migrate-flow-state.sh). The migration is `mktemp + atomic mv` based, preserves the legacy file as `.rite-flow-state.legacy.{timestamp}`, and prints an explicit `migrated:` line to stderr (silent skip is forbidden — AC-8). The full handling matrix (atomic-write failure / rename failure / collision avoidance) is documented in [`docs/designs/multi-session-state.md`](designs/multi-session-state.md#migration-戦略).
+
+**Rollback strategy:**
+
+`rite-config.yml` accepts `flow_state.schema_version: 1` to force the legacy code path (adapter pattern). The dual logic is intended to be removed after a soak period (target: v0.5.0).
+
+**Sub-Issues API parent-child structure:**
+
+The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:issue:start` Phase 0.3 detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`), and Phase 2.4.7 propagates Status promotion (Todo → In Progress) from child to parent in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search).
+
+> **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 6 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event was removed in PR #675 and is not part of the current registration. The library scripts `phase-transition-whitelist.sh` and `session-ownership.sh` are sourced (not registered) and therefore do not appear in `hooks.json`.
+
 ### Local Work Memory + Compact Resilience
 
 In addition to Issue comment backups, work memory is maintained on the local filesystem. This ensures resilience against context compaction.
@@ -1412,14 +1434,14 @@ In addition to Issue comment backups, work memory is maintained on the local fil
 |-----------|------|----------|
 | Local work memory (SoT) | Source of truth | `.rite-work-memory/issue-{n}.md` |
 | Issue comment (backup) | Cross-session backup | GitHub Issue comment |
-| Flow state | Workflow control | `.rite-flow-state` |
+| Flow state | Workflow control | `.rite/sessions/{session_id}.flow-state` (per-session; see [Multi-Session State Management](#multi-session-state-management)) |
 | Compact state | Post-compact state management | `.rite-compact-state` |
 
 **Local Work Memory Features:**
 
 - Exclusive access control via `mkdir`-based locking
 - Auto-recovery through PostToolUse hook
-- State restoration from `.rite-flow-state` possible even after compact
+- State restoration from the per-session flow state file possible even after compact
 
 ### Implementation Contract Issue Format
 
@@ -1798,9 +1820,9 @@ The contract ends only when the orchestrator's terminal completion marker has be
 | `/rite:issue:start` | Phase 5.6 completion report + Workflow Termination block |
 | `/rite:issue:create` | `[create:completed:{N}]` as the absolute last line |
 
-### Phase-aware stop-guard hints (#525)
+### Phase-aware continuation hints (#525)
 
-When `stop-guard.sh` blocks a stop attempt with an active `.rite-flow-state`, the blocking message now includes phase-specific continuation hints for `/rite:issue:create` paths:
+> **Historical note (PR #675)**: Prior to PR #675, these phase-specific continuation hints were emitted by the Stop hook (`stop-guard.sh`) when a stop attempt was blocked with an active per-session flow state. The Stop hook itself was removed in PR #675; the hint table below is preserved as **prompt-level guidance** that the orchestrator surfaces directly when a sub-skill returns without producing the expected terminal marker. These hints are now part of the prompt contract (Layer 1) rather than a runtime enforcement mechanism.
 
 | Active phase | Hint content |
 |-------------|-------------|
@@ -1808,7 +1830,7 @@ When `stop-guard.sh` blocks a stop attempt with an active `.rite-flow-state`, th
 | `create_delegation` | "Delegation sub-skill is in-flight. When it returns `[create:completed:{N}]`, run Mandatory After Delegation self-check in the SAME response turn. DO NOT stop before the completion marker is output." |
 | `create_post_delegation` | "Terminal sub-skill returned without `[create:completed:{N}]` (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state." |
 
-These hints are **best-effort**: they only fire when a stop attempt is actually blocked, so they act as a backstop for the prompt contract rather than a primary enforcement mechanism. The primary path is the prompt contract (Layer 1).
+These hints are **best-effort**: the primary enforcement is the prompt contract (Layer 1) — the orchestrator's 🚨 Mandatory After scaffolding ensures the workflow does not end mid-flight regardless of any runtime hook layer.
 
 ### Optional sentinel: `auto_continuation_failed` (MAY)
 
@@ -1883,7 +1905,7 @@ Long-running commands such as `/rite:issue:start` (end-to-end flow: branch creat
 
 **Why this works:**
 
-- Work memory (Issue comments) and `.rite-flow-state` persist workflow state across sessions
+- Work memory (Issue comments) and the per-session flow state file persist workflow state across sessions
 - All git artifacts (branches, commits, PRs) are preserved — nothing is lost
 - `/rite:resume` reads the persisted state and resumes the appropriate phase
 
@@ -1895,7 +1917,7 @@ Long-running commands such as `/rite:issue:start` (end-to-end flow: branch creat
 | Commits | Git | Yes |
 | Draft PR | GitHub | Yes |
 | Work memory | Issue comment | Yes |
-| Flow state | `.rite-flow-state` | Yes |
+| Flow state | `.rite/sessions/{session_id}.flow-state` (see [Multi-Session State Management](#multi-session-state-management)) | Yes |
 
 ### API Error Handling
 
