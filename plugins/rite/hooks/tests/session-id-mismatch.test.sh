@@ -150,9 +150,18 @@ fi
 # TC-5: legacy file + state_sid != hook_sid + updated_at 7200s 超え → "stale"
 # -------------------------------------------------------------------------
 echo "TC-5: legacy + state_sid != hook_sid + stale (>7200s) → 'stale'"
+# F-07 fix (Issue #760): GNU/BSD date fallback の silent failure 検出。
+# 旧実装は両 fallback が失敗した場合 `old_ts` が空になり、後続 JSON で
+# `"updated_at":""` として書き込まれ、test が undefined 動作になる経路があった。
+# `[ -z "$old_ts" ]` で empty check し、両環境で fallback 不能なら fail させる。
 # 8000 seconds ago
 old_ts=$(date -u -d "8000 seconds ago" +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null \
   || date -u -v-8000S +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null)
+if [ -z "$old_ts" ]; then
+  fail "TC-5.0: GNU date (-d) と BSD date (-v) の両 fallback が失敗 — test 環境の date が non-portable"
+  echo "ERROR: cannot generate stale timestamp; aborting TC-5" >&2
+  exit 1
+fi
 echo "{\"active\":true,\"phase\":\"phaseY\",\"session_id\":\"$SID_STATE\",\"updated_at\":\"$old_ts\"}" > "$legacy_file"
 result=$(call_check_ownership "$hook_json" "$legacy_file")
 if [ "$result" = "stale" ]; then

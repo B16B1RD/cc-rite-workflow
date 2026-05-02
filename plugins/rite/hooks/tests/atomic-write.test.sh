@@ -194,20 +194,30 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-3: Mutation test — `mv` を `false` に改変したら mutation を検出する
+# TC-3: Mutation test — atomic `mv` を `false` に改変した hook が全 mode で
+#       state を破壊しないことを empirical 検証
 # -------------------------------------------------------------------------
 # Wiki 経験則「Mutation testing で test の真正性 (dead code 検出 + identification
-# power) を empirical 検証する」。create mode の atomic rename `mv "$TMP_STATE"
-# "$FLOW_STATE"` を `false` に置換した mutated hook を sandbox で動かすと:
-#   (a) `if ! false` が常に真 → "mv failed (create mode)" error path に入り exit 1
-#   (b) atomic rename が起きないので state file は production の baseline のまま不変
-# この 2 条件で mutation を empirical 検出する。
+# power) を empirical 検証する」。flow-state-update.sh は 3 つの atomic rename
+# site を持つ (create / patch / increment 各 mode の `if ! mv "$TMP_STATE"
+# "$FLOW_STATE"`)。3 つすべてを `false` に置換した mutated hook を sandbox で
+# 動かし、各 mode を順次起動して全 mode で
+#   (a) `if ! false` が常に真 → "mv failed" error path に入り exit 1
+#   (b) atomic rename が起きないので state file は baseline のまま不変
+# の 2 条件を assert する。これにより mode ごとに mutation を独立検出できる。
+#
+# F-05 fix (Issue #760): 旧実装は `0,/PAT/` で create mode 1 occurrence のみを
+# 置換していたため、patch / increment の atomic mv が破壊的に退化しても test が
+# PASS する false positive 経路を持っていた。canonical 防御は (1) `s|...|g` で
+# 3 occurrence 全てを mutate、(2) sed regression guard で mutation 数を pin
+# (`grep -c == 3`)、(3) create/patch/increment 各 mode を独立に起動して
+# rc!=0 + state hash 不変を mode ごとに assert。
 #
 # 注意: trap (`_rite_flow_state_atomic_cleanup`) が EXIT で TMP_STATE を rm するため、
 # mutation を `cp` にしてしまうと tempfile が trap で消されて mutation を検出できない
 # (Wiki 経験則「test の identification power 検証」の好例)。`false` 置換にすることで
 # trap の cleanup 経路と独立に mutation を検出できる。
-echo "TC-3: Mutation test (mv→false) で exit code + state 不変を観測"
+echo "TC-3: Mutation test (mv→false × 3 mode) で exit code + state 不変を観測"
 TD=$(make_test_dir 2)
 sandbox="$TD/sandbox-hooks"
 mkdir -p "$sandbox"
@@ -223,18 +233,29 @@ baseline_phase=$(jq -r '.phase' "$mut_state_file")
 # Hash the baseline file so we can detect any mutation-induced change byte-exact.
 baseline_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
 
-# Replace ONLY the create-mode `mv` (first occurrence). sed's `0,/PAT/` range
-# limits the substitution to the first match.
-sed -i.bak -e '0,/if ! mv "\$TMP_STATE" "\$FLOW_STATE"/{s|if ! mv "\$TMP_STATE" "\$FLOW_STATE"|if ! false "\$TMP_STATE" "\$FLOW_STATE"|}' \
+# F-05: Replace ALL 3 `mv` occurrences (create + patch + increment).
+# sed の挙動: `s|A|B|g` は各行内の全 occurrence を置換 (g flag は per-line)、sed 自体は無 address
+# で全行に対して実行されるため、`mv` site が複数行にわたって配置されている本 hook では合計 3
+# occurrence が置換される。`mut_count == 3` の pin (line 246) が drift (mv site 数の増減) を検出する
+# regression guard として機能する。将来 1 行に 2 mv site が出現した場合は per-line `g` flag が
+# 両方を置換するため `mut_count` の expected value 更新が必要になる (現状は 3 行に各 1 site)。
+sed -i.bak -e 's|if ! mv "\$TMP_STATE" "\$FLOW_STATE"|if ! false "\$TMP_STATE" "\$FLOW_STATE"|g' \
   "$sandbox/flow-state-update.sh"
 rm -f "$sandbox/flow-state-update.sh.bak"
 
-# Verify the mutation actually applied (sed regression guard)
-if ! grep -q 'if ! false "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh"; then
-  fail "TC-3.0: mutation sed did not apply — test infrastructure error"
+# F-05: Verify exactly 3 mutations applied (sed regression guard with count pin).
+# `|| true` is required because grep -c returns exit 1 when count == 0, which
+# would trip `set -e`. We rely on the count value, not the exit status.
+mut_count=$(grep -c 'if ! false "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
+unmutated_count=$(grep -c 'if ! mv "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
+if [ "$mut_count" -eq 3 ] && [ "$unmutated_count" -eq 0 ]; then
+  pass "TC-3.0: mutation sed applied (mut=3, unmutated=0 → all create/patch/increment mv→false)"
 else
-  pass "TC-3.0: mutation sed applied (mv→false in create mode)"
+  fail "TC-3.0: expected mut=3 unmutated=0, got mut=$mut_count unmutated=$unmutated_count — test infrastructure error"
+fi
 
+if [ "$mut_count" -eq 3 ]; then
+  # ---------- TC-3.1: create mode mutation ----------
   # Pre-existing baseline state belongs to SID_M — mutation will fail at mv,
   # leaving the existing state file unchanged. Use create mode with --session to
   # bypass session ownership reject (same SID == own state, fast-path).
@@ -243,22 +264,63 @@ else
     --phase "phase_mut" --issue 999 --branch "feat/mut" --pr 0 --next "n_mut" 2>&1) || mut_rc=$?
 
   if [ "$mut_rc" -ne 0 ]; then
-    pass "TC-3.1a: mutated hook exit non-zero (rc=$mut_rc) — atomic mv path exercised"
+    pass "TC-3.1a: create mode mutated hook exit non-zero (rc=$mut_rc) — create mv path exercised"
   else
-    fail "TC-3.1a: mutated hook unexpectedly succeeded (rc=$mut_rc) — sed/branch mismatch?"
+    fail "TC-3.1a: create mode mutated hook unexpectedly succeeded (rc=$mut_rc) — sed/branch mismatch?"
   fi
 
-  # state file MUST be byte-identical to baseline (mutation prevented atomic update)
   current_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
   current_phase=$(jq -r '.phase' "$mut_state_file")
   if [ "$current_hash" = "$baseline_hash" ] && [ "$current_phase" = "$baseline_phase" ]; then
-    pass "TC-3.1b: state file unchanged (phase=$current_phase, hash matches) — mutation detected"
+    pass "TC-3.1b: create mutation → state file unchanged (phase=$current_phase, hash matches)"
   else
-    fail "TC-3.1b: state file mutated despite mv→false — phase=$current_phase (expected baseline_phase)"
+    fail "TC-3.1b: create mutation → state mutated despite mv→false — phase=$current_phase"
   fi
 
-  # Counter-positive: production (unmutated) hook on the same scenario MUST
-  # successfully update the state file (rc=0, phase changes).
+  # ---------- TC-3.2: patch mode mutation (F-05) ----------
+  # patch mode の mv も mutation で fail することを mode 独立に確認する。
+  # patch は既存 state の更新なので、baseline は同じ mut_state_file を流用。
+  mut_rc=0
+  mut_out=$(cd "$TD" && bash "$sandbox/flow-state-update.sh" patch --session "$SID_M" \
+    --phase "phase_patch_mut" --next "n_patch_mut" 2>&1) || mut_rc=$?
+
+  if [ "$mut_rc" -ne 0 ]; then
+    pass "TC-3.2a: patch mode mutated hook exit non-zero (rc=$mut_rc) — patch mv path exercised"
+  else
+    fail "TC-3.2a: patch mode mutated hook unexpectedly succeeded (rc=$mut_rc) — line 687 mv mutation may have failed"
+  fi
+
+  current_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
+  current_phase=$(jq -r '.phase' "$mut_state_file")
+  if [ "$current_hash" = "$baseline_hash" ] && [ "$current_phase" = "$baseline_phase" ]; then
+    pass "TC-3.2b: patch mutation → state file unchanged (phase=$current_phase, hash matches)"
+  else
+    fail "TC-3.2b: patch mutation → state mutated despite mv→false — phase=$current_phase"
+  fi
+
+  # ---------- TC-3.3: increment mode mutation (F-05) ----------
+  # increment mode は loop_count 等の counter 増分。同様に mutation で fail を確認。
+  mut_rc=0
+  mut_out=$(cd "$TD" && bash "$sandbox/flow-state-update.sh" increment --session "$SID_M" \
+    --field "loop_count" 2>&1) || mut_rc=$?
+
+  if [ "$mut_rc" -ne 0 ]; then
+    pass "TC-3.3a: increment mode mutated hook exit non-zero (rc=$mut_rc) — increment mv path exercised"
+  else
+    fail "TC-3.3a: increment mode mutated hook unexpectedly succeeded (rc=$mut_rc) — line 705 mv mutation may have failed"
+  fi
+
+  current_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
+  current_phase=$(jq -r '.phase' "$mut_state_file")
+  if [ "$current_hash" = "$baseline_hash" ] && [ "$current_phase" = "$baseline_phase" ]; then
+    pass "TC-3.3b: increment mutation → state file unchanged (phase=$current_phase, hash matches)"
+  else
+    fail "TC-3.3b: increment mutation → state mutated despite mv→false — phase=$current_phase"
+  fi
+
+  # ---------- TC-3.4: counter-positive — production hook全 mode 成功 ----------
+  # production (unmutated) hook on the same scenario MUST successfully update the
+  # state file (rc=0, phase changes) for create/patch/increment all three modes.
   TD2=$(make_test_dir 2)
   SID_P="dddddddd-9999-9999-9999-999999999999"
   prod_state_file="$TD2/.rite/sessions/${SID_P}.flow-state"
@@ -269,9 +331,9 @@ else
     --phase "phase_prod" --issue 999 --branch "feat/prod" --pr 0 --next "n_prod" >/dev/null 2>&1) || prod_rc=$?
   prod_phase=$(jq -r '.phase' "$prod_state_file")
   if [ "$prod_rc" -eq 0 ] && [ "$prod_phase" = "phase_prod" ]; then
-    pass "TC-3.2: production hook updates state successfully (rc=0, phase=$prod_phase) — counter-positive"
+    pass "TC-3.4: production hook (create) updates state successfully (rc=0, phase=$prod_phase) — counter-positive"
   else
-    fail "TC-3.2: production hook failed — rc=$prod_rc phase=$prod_phase"
+    fail "TC-3.4: production hook (create) failed — rc=$prod_rc phase=$prod_phase"
   fi
 fi
 
