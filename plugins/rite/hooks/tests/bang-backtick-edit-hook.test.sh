@@ -118,6 +118,23 @@ else
   fail "TC-1 stderr missing warning"
   cat "$hook_stderr" >&2
 fi
+# Negative assertion: hook script の "Style B" ACTION line に bash command substitution bug が
+# 混入していないこと。double-quoted echo 内に literal `if ! cmd` (backtick 隣接) を書くと bash が
+# command substitution として subshell 実行を試み、syntax error で Style B 修正例 ("if ! cmd")
+# 部分が空文字に化ける silent UX regression を防ぐ (旧コミット e50d08e で 3 site に同形混入)。
+if grep -qE "command substitution|構文エラー|unexpected end of file|unexpected EOF" "$hook_stderr"; then
+  fail "TC-1 stderr contains bash syntax error (command substitution bug regression)"
+  cat "$hook_stderr" >&2
+else
+  pass "TC-1 stderr free of bash command substitution syntax errors"
+fi
+# Positive assertion: ACTION ヒントの中核 ("Style B (expand 'if ! cmd')") が破損なく出力されていること
+if grep -qF "expand 'if ! cmd'" "$hook_stderr"; then
+  pass "TC-1 ACTION hint includes literal 'if ! cmd' (Style B example intact)"
+else
+  fail "TC-1 ACTION hint missing 'if ! cmd' literal (single-quote regression)"
+  cat "$hook_stderr" >&2
+fi
 rm -f "$hook_stderr"
 
 # ----- TC-2: AC-3 — clean rite plugin md is silent, exit 0 -----------------

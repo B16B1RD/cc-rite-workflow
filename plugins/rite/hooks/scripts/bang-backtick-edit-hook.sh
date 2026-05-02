@@ -128,7 +128,7 @@ case "$hook_rc" in
     # without blocking Edit/Write completion.
     echo "⚠️ bang-backtick adjacency detected after Edit/Write of $REL_PATH:" >&2
     printf '%s\n' "$hook_output" >&2
-    echo "  → Apply Style A (full-width 「!」) or Style B (expand `if ! cmd`) — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for guidance." >&2
+    echo "  → Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for guidance." >&2
     ;;
   2)
     # Invocation error in the underlying script. Per Issue #691 §4.5,

@@ -111,7 +111,7 @@ case "$bang_rc" in
   1)
     echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2
     printf '%s\n' "$bang_output" >&2
-    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand `if ! cmd; then`) — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
+    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
     exit 1
     ;;
   *)
@@ -123,7 +123,7 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The orchestrator (`/rite:issue:start` Phase 5.5) treats this as a `[ready:error]` equivalent. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` sentinel surfaces in Phase 5.4.4.1 (Workflow Incident Detection) for tracking when the failure cause is invocation-side (script missing / rc=2), not when an actual P1/P2/P3 finding is detected (rc=1 — a normal "fix the code" feedback path).
+> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator (`/rite:issue:start` Phase 5.5) treats this as a missing-result-pattern Skill invocation — the post-condition check at start.md emits a `skill_load_failure` sentinel via Phase 5.4.4.1 (Workflow Incident Detection) — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a separate stderr-only diagnostic in a different format than the canonical `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; iteration_id=...` token used by Phase 5.4.4.1 grep, so it does NOT auto-register; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no sentinel is emitted at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 

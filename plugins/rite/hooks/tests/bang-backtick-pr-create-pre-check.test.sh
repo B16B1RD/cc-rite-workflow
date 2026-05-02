@@ -174,6 +174,26 @@ else
   fail "TC-5 lint.md missing bang_backtick_status record"
 fi
 
+# ----- TC-12: CRITICAL regression guard — Style B example must use single-quotes -
+# 旧コミット e50d08e で create.md / ready.md / hook script に backtick 囲みの literal
+# `if ! cmd; then` が混入し、bash double-quoted echo 内で command substitution が発火する
+# CRITICAL bug が発生 (3 site 同形 transcription、Wiki 経験則「Asymmetric Fix Transcription」の
+# inverse failure)。byte 比較で single-quote 囲みであることを pin する。
+echo "TC-12: CRITICAL regression — Style B 'if ! cmd; then' literal must use single-quotes (not backticks)"
+for f in "$CREATE_MD" "$READY_MD"; do
+  fname=$(basename "$f")
+  if grep -qF "expand 'if ! cmd; then'" "$f"; then
+    pass "TC-12 $fname uses single-quoted Style B example"
+  else
+    fail "TC-12 $fname does NOT use single-quoted Style B example (backtick regression?)"
+  fi
+  if grep -qF 'expand `if ! cmd; then`' "$f"; then
+    fail "TC-12 $fname STILL contains backtick-quoted Style B example (CRITICAL regression!)"
+  else
+    pass "TC-12 $fname free of backtick-quoted 'if ! cmd; then' literal"
+  fi
+done
+
 # ----- Summary --------------------------------------------------------------
 echo ""
 echo "==> $PASS PASS / $FAIL FAIL"
