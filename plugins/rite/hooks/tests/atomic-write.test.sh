@@ -234,8 +234,11 @@ baseline_phase=$(jq -r '.phase' "$mut_state_file")
 baseline_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
 
 # F-05: Replace ALL 3 `mv` occurrences (create + patch + increment).
-# `s|...|...|g` performs global substitution within each line, but since each
-# `mv` site is on its own line we effectively substitute every site in the file.
+# sed の挙動: `s|A|B|g` は各行内の全 occurrence を置換 (g flag は per-line)、sed 自体は無 address
+# で全行に対して実行されるため、`mv` site が複数行にわたって配置されている本 hook では合計 3
+# occurrence が置換される。`mut_count == 3` の pin (line 246) が drift (mv site 数の増減) を検出する
+# regression guard として機能する。将来 1 行に 2 mv site が出現した場合は per-line `g` flag が
+# 両方を置換するため `mut_count` の expected value 更新が必要になる (現状は 3 行に各 1 site)。
 sed -i.bak -e 's|if ! mv "\$TMP_STATE" "\$FLOW_STATE"|if ! false "\$TMP_STATE" "\$FLOW_STATE"|g' \
   "$sandbox/flow-state-update.sh"
 rm -f "$sandbox/flow-state-update.sh.bak"

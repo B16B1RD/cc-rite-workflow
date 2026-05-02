@@ -400,7 +400,7 @@ M_mid_count=0
 S_post_count=0
 unknown_count=0
 byte_equal_violations=0
-last_wait_rc=0
+unexpected_wait_rc_count=0
 legacy_payload='{"active":true,"issue_number":684,"phase":"phaseM","session_id":"99887766-5544-3322-1100-aabbccddeeff"}'
 
 for i in $(seq 1 "$ITERATIONS_TC19"); do
@@ -411,9 +411,18 @@ for i in $(seq 1 "$ITERATIONS_TC19"); do
   # F-04: race window probe — sleep 0.05 で mid_or_post 観測経路を確保
   sleep 0.05
   kill -KILL "$_pid" 2>/dev/null || true
-  # F-13: orphan reap — wait の exit status を明示 capture (zombie 化防止)
-  last_wait_rc=0
-  wait "$_pid" 2>/dev/null || last_wait_rc=$?
+  # F-13 (Issue #760) + F-03 (Issue #761 review) fix: orphan reap 全 iter 観測。
+  # 各 iter の wait exit status を capture し、unexpected rc (137/143/0 以外 = zombie 化 / SIGSEGV
+  # 等異常終了) を集計する。byte_equal_violations と同型の collected error pattern。
+  iter_wait_rc=0
+  wait "$_pid" 2>/dev/null || iter_wait_rc=$?
+  case "$iter_wait_rc" in
+    0|137|143)  # 既 exit / SIGKILL reap / SIGTERM = expected
+      ;;
+    *)
+      unexpected_wait_rc_count=$((unexpected_wait_rc_count + 1))
+      ;;
+  esac
 
   legacy_after=""
   [ -f "$TEST_ROOT/.rite-flow-state" ] && legacy_after=$(cat "$TEST_ROOT/.rite-flow-state")
@@ -456,12 +465,21 @@ else
   _assert "TC-19.atomic-4-state-classify (unknown=$unknown_count/${total_classified} — production bug signature)" "false"
 fi
 
-# (b) race window 実証: M_mid + S_post >= 1 (sleep が短すぎて全 P_pre 化することを防ぐ)
+# (b) atomic invariant の post-condition 観測: M_mid + S_post >= 1 (Issue #761 review F-02 仕様明確化)
+# 本 assertion は「sleep が短すぎて全 P_pre のまま completion する trivial PASS」(test dead code 化)
+# を防ぐ guard rail として機能する。実態として migrate-flow-state.sh の mkdir → jq write → mv → mv
+# シーケンスは 50ms 中に完走するため、本 30 iter test では大半が S_post に landing する (M_mid 観測は
+# environment-dependent な best-effort)。F-04 cover letter の「mid_or_post 観測経路を確保」という
+# 表現は本来「**S_post observation** が確実に発火することで sleep 短縮による dead code 化を防ぐ」
+# という意味であり、M_mid を確実に観測することは production sequence の duration に依存するため
+# 保証されない。本 assertion は「partial-write が起きない atomic invariant の正常完了 (S_post)
+# が観測される」ことを post-condition で確認する設計として正しく機能している。
+# True mid-migration partial state observation は別 test (将来 Issue で追加検討) で補強する。
 race_hit=$((M_mid_count + S_post_count))
 if [ "$race_hit" -ge 1 ]; then
-  _assert "TC-19.race-window-hit (mid+post=${race_hit}/${ITERATIONS_TC19} — atomic invariant 検証 alive)" "true"
+  _assert "TC-19.atomic-completion-observed (mid+post=${race_hit}/${ITERATIONS_TC19}, M_mid=$M_mid_count S_post=$S_post_count — atomic invariant 正常完了経路 alive)" "true"
 else
-  _assert "TC-19.race-window-hit (全 P_pre=${P_pre_count}/${ITERATIONS_TC19} — sleep 短すぎで test dead code 化)" "false"
+  _assert "TC-19.atomic-completion-observed (全 P_pre=${P_pre_count}/${ITERATIONS_TC19} — sleep 短すぎで migration 開始前に kill landing)" "false"
 fi
 
 # (c) byte-equal invariant: legacy が partial-write されていないこと
@@ -471,17 +489,14 @@ else
   _assert "TC-19.legacy-byte-equal-invariant (violations=${byte_equal_violations}/${total_classified} — migrator partial overwrite detected)" "false"
 fi
 
-# (d) F-13: orphan reap が機能していること — 最後の iter の wait_rc を観測。
-# SIGKILL を受けたプロセスの rc は 137 (128+9)、SIGTERM は 143、既に exit 済みは 0。
-# それ以外 (空文字 / non-numeric / 異常 rc) は zombie 化 / test infra error として detect。
-case "$last_wait_rc" in
-  0|137|143)
-    _assert "TC-19.orphan-reap (last wait_rc=$last_wait_rc — reaping completed)" "true"
-    ;;
-  *)
-    _assert "TC-19.orphan-reap (last wait_rc=$last_wait_rc — unexpected, possible zombie)" "false"
-    ;;
-esac
+# (d) F-13 + F-03 (Issue #761 review): orphan reap 全 iter 観測。byte_equal_violations と同型の
+# collected error pattern で、30 iter のうち unexpected wait_rc (zombie 化 / SIGSEGV 等) が 0 件
+# であることを assert する。最終 iter のみ assert する旧実装は中盤 iter の zombie 化を見逃していた。
+if [ "$unexpected_wait_rc_count" -eq 0 ]; then
+  _assert "TC-19.orphan-reap-all-iter (unexpected_wait_rc=0/${ITERATIONS_TC19} — 全 iter zombie-free)" "true"
+else
+  _assert "TC-19.orphan-reap-all-iter (unexpected_wait_rc=${unexpected_wait_rc_count}/${ITERATIONS_TC19} — zombie 化検出)" "false"
+fi
 
 # ---------- TC-20: production find patterns include legacy-backup exception ----------
 # Wiki 経験則「新規 file 命名と既存 find glob が collision して silent 削除を起こす」を

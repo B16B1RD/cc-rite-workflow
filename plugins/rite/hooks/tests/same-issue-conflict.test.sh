@@ -239,6 +239,12 @@ echo "TC-5: legacy foreign active + stale (>7200s) → reject されず overwrit
 # 旧実装は両 fallback が失敗した場合 `old_ts` が空になり、後続の JSON 構築で
 # `"updated_at":""` として書き込まれ、test が undefined 動作になる経路があった。
 # `[ -z "$old_ts" ]` で empty check し、両環境で fallback 不能なら fail させる。
+#
+# F-04 note (Issue #761 review): 同形 7-line スニペットが session-id-mismatch.test.sh:158-164
+# にもコピペされており、test code の DRY 違反として LOW 指摘あり。helper extraction (例:
+# tests/_helpers/stale-timestamp.sh の `_make_stale_timestamp <seconds>`) が望ましいが、
+# 現在の test suite は意図的に self-contained ファイル群を維持している (helper module 不在)。
+# Helper 導入は test suite 全体の convention 変更になるため別 Issue で trade-off 議論する。
 old_ts=$(date -u -d "8000 seconds ago" +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null \
   || date -u -v-8000S +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null)
 if [ -z "$old_ts" ]; then
