@@ -333,3 +333,4 @@
 | 2026-05-03T05:50:00+09:00 | ingest:create | pages/anti-patterns/grep-c-or-echo-0-double-print.md | PR #784 review/fix — `grep -c \|\| echo 0` double-print pattern を新規ページ化。POSIX grep(1p) 仕様 (0 件でも `0` を stdout 出力 + exit 1) と `\|\| echo 0` fallback 結合で count が `"0\n0"` に汚染。canonical pattern は `\|\| true` + `${var:-0}` |
 | 2026-05-03T05:50:00+09:00 | ingest:create | pages/patterns/bash-test-summary-basename-auto-sync.md | PR #784 review/fix — bash test summary 行 self-reference は `$(basename "$0")` で自動同期する pattern を新規ページ化。hardcode するとファイル rename で表示名 drift する |
 | 2026-05-03T05:50:00+09:00 | ingest:skip | raw/reviews/20260502T190032Z-pr-784.md | PR #784 review cycle 2 — 前回 HIGH/MEDIUM の 2 行 fix で全件解消した収束確認のみ。新しい一般化可能な経験則を含まないため skip (cycle 1 と fix で抽出済みの経験則と重複) |
+| 2026-05-03T05:55:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=79, broken_refs=0 |
