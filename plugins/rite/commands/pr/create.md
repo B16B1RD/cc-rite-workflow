@@ -108,6 +108,48 @@ If Issue number cannot be retrieved, delegate to Phase 1.4 fallback processing.
 
 ## Phase 1: Verify Current State
 
+### 1.0 Bang-Backtick Adjacency Pre-Check (Pre-PR Gate)
+
+> **Reference**: Issue #691. Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
+>
+> **DRIFT-CHECK ANCHOR (#691 §7 MUST)**: This bash block is intentionally synchronized between `commands/pr/create.md` §1.0 and `commands/pr/ready.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
+>
+> **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** PR mutation when the same pattern is present — lint is the early heads-up, this is the final hard gate before submission.
+
+Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
+
+```bash
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-check.sh" ]; then
+  echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=script_missing; resolved_root=${plugin_root:-<empty>}" >&2
+  echo "ERROR: bang-backtick-check.sh not found. Cannot proceed with PR submission gate." >&2
+  exit 1
+fi
+
+bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all 2>&1)
+bang_rc=$?
+case "$bang_rc" in
+  0)
+    : # clean — proceed to next sub-phase
+    ;;
+  1)
+    echo "❌ Bang-backtick adjacency detected — PR submission blocked:" >&2
+    printf '%s\n' "$bang_output" >&2
+    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
+    exit 1
+    ;;
+  *)
+    echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2
+    echo "ERROR: bang-backtick-check.sh invocation error (rc=$bang_rc):" >&2
+    printf '%s\n' "$bang_output" >&2
+    exit 1
+    ;;
+esac
+```
+
+> **On exit 1 from this bash block**: The bash block exits before any `pr/create.md` result pattern (`[pr:created:{N}]` / `[pr:create-failed]`) is emitted, so the orchestrator (`/rite:issue:start` Phase 5.3) treats this as a missing-result-pattern Skill invocation — the post-condition check at start.md emits a `skill_load_failure` sentinel via Phase 5.4.4.1 (Workflow Incident Detection) — **NOT** a `[pr:create-failed]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a separate stderr-only diagnostic in a different format than the canonical `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; iteration_id=...` token used by Phase 5.4.4.1 grep, so it does NOT auto-register; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no sentinel is emitted at all (the failure is expected and the user fixes the code).
+
 ### 1.1 Retrieve Base Branch
 
 Read `rite-config.yml` at the project root using the Read tool, and get the `branch.base` value:
