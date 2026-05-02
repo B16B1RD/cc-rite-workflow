@@ -1,14 +1,17 @@
 ---
 name: rite-workflow
 description: |
-  Automates the complete Issue-to-PR lifecycle: start working on Issues,
-  create branches, implement changes, run quality checks, and manage PRs —
-  all through a single workflow. Essential for any /rite: command, workflow
-  questions, or when working with Issues, branches, commits, or PRs.
-  Activates on "start issue", "create PR", "next steps", "workflow", "rite",
-  "Issue作業", "ブランチ", "コミット規約", "PR作成", "作業開始", "ワークフロー",
-  "次のステップ". Use for workflow state detection, phase transitions,
-  and command suggestions.
+  Automates the complete Issue-to-PR lifecycle: create new Issues,
+  start working on Issues, create branches, implement changes, run
+  quality checks, and manage PRs — all through a single workflow.
+  Essential for any /rite: command, workflow questions, or when
+  working with Issues, branches, commits, or PRs.
+  Activates on "create issue", "new issue", "起票", "Issue を作成",
+  "タスクを登録", "Issue 化", "新規 Issue", "start issue", "create PR",
+  "next steps", "workflow", "rite", "Issue作業", "ブランチ",
+  "コミット規約", "PR作成", "作業開始", "ワークフロー", "次のステップ".
+  Use for workflow state detection, phase transitions, and command
+  suggestions.
 ---
 
 # Rite Workflow Skill
