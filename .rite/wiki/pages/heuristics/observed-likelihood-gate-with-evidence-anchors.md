@@ -2,7 +2,7 @@
 title: "Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-19T04:50:00Z"
+updated: "2026-05-02T15:58:59Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260416T031452Z-pr-540.md"
@@ -10,7 +10,9 @@ sources:
     ref: "raw/reviews/20260416T173035Z-pr-548.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T043538Z-pr-589.md"
-tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical"]
+  - type: "reviews"
+    ref: "raw/reviews/20260502T155859Z-pr-779.md"
+tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract"]
 confidence: high
 ---
 
@@ -65,6 +67,34 @@ anchor を伴わない finding は以下のリスクを持つ:
 
 このため evidence anchor を「findings 提出の必須フォーマット」として明示化する設計が有効。
 
+### Reviewer literal output contract の重要性 (PR #779)
+
+PR #779 で観測した sub-pattern: **reviewer がレビュー本文中に Likelihood-Evidence 相当の記述を持っていても、`Likelihood-Evidence:` という literal anchor を含めていなければ Phase 5.3.0 で mechanical 降格される**。
+
+PR #779 では prompt-engineer が以下のような構造を持つ MEDIUM finding を返した:
+
+- file:line に具体位置を提示 (`SKILL.md:21-28`)
+- 内容 (WHAT) と影響 (WHY) を明確に記述
+- 推奨対応 (FIX) を具体的に提示
+
+しかし **`Likelihood-Evidence: tool=...` の literal 記述が無かった** ため、`pr/review.md` Phase 5.3.0 の mechanical safety net が「anchor 欠落」と判定し推奨事項に降格 → 結果として `[review:mergeable]` (0 blocking findings) と判定された。
+
+#### Canonical 対策
+
+reviewer agent file (`agents/{type}-reviewer.md`) の Output Format 例 / Detection Process 指示で、`Likelihood-Evidence:` literal を **finding template の必須フィールド** として明示する:
+
+```markdown
+| 重要度 | ファイル:行 | 内容 | 推奨対応 |
+|--------|------------|------|----------|
+| HIGH | src/foo.ts:42 | ... 内容 ... <br> Likelihood-Evidence: tool=Read, path=src/foo.ts, line=42 | ... 推奨 ... |
+```
+
+reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の literal grep 仕様を pair で同期させることで、本 sub-pattern の silent 降格 (= reviewer の判定品質と無関係に finding が消える経路) を解消できる。
+
+#### 影響の orthogonality
+
+本 sub-pattern と Hypothetical 降格軸 (PR #589) は orthogonal — reviewer 内容の構造的問題 (literal anchor 欠落) と reviewer 判定の論理的問題 (現状コード非依存の仮定的リスク) は別軸で処理されるため、両 gate を独立に通過する必要がある。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
@@ -74,3 +104,4 @@ anchor を伴わない finding は以下のリスクを持つ:
 - [PR #540 review (Observed Likelihood Gate 実装例、2 件降格)](raw/reviews/20260416T031452Z-pr-540.md)
 - [PR #548 cycle 3 review (triple cross-validation boost)](raw/reviews/20260416T173035Z-pr-548.md)
 - [PR #589 review (Hypothetical 降格軸の追加実証 — HIGH x2 → 推奨事項降格)](raw/reviews/20260419T043538Z-pr-589.md)
+- [PR #779 review (literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証)](raw/reviews/20260502T155859Z-pr-779.md)

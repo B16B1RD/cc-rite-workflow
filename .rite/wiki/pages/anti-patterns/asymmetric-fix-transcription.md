@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-02T11:07:39Z"
+updated: "2026-05-02T15:58:59Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -114,7 +114,9 @@ sources:
     ref: "raw/fixes/20260502T101035Z-pr-765.md"
   - type: "reviews"
     ref: "raw/reviews/20260502T103134Z-pr-765-cycle2.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit"]
+  - type: "reviews"
+    ref: "raw/reviews/20260502T155859Z-pr-779.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift"]
 confidence: high
 ---
 
@@ -474,3 +476,4 @@ PR #765 (Issue #691 = bang-backtick-check の二段ガード昇格) で、**ANCH
 - [PR #765 cycle 1 review (3-site bang-backtick adjacency self-violation, CRITICAL × 3 site 同形 defect 初期投入)](raw/reviews/20260502T095733Z-pr-765.md)
 - [PR #765 cycle 1 fix (backtick → single-quote 3 site 同期適用、ANCHOR 射程外 hook script を含む)](raw/fixes/20260502T101035Z-pr-765.md)
 - [PR #765 cycle 2 review (cycle 1 fix が新規 4 MEDIUM + 2 LOW を導入、Style B literal 3 site 不整合 F-22)](raw/reviews/20260502T103134Z-pr-765-cycle2.md)
+- [PR #779 review (frontmatter / body 同時更新 sub-pattern: skill description metadata の YAML 側のみ更新で本文 keyword 列が drift する same-file two-source-of-truth 漏れ。後続改修者が本文セクションを真実の源と誤認する経路。canonical 防御は (a) 単一 SoT 化、または (b) frontmatter ↔ body 等価性 lint check)](raw/reviews/20260502T155859Z-pr-779.md)
