@@ -72,7 +72,8 @@ FAILED_NAMES=()
 assert_arg_present() {
   local site="$1" arg="$2"
   local count
-  count=$(grep -cE -- "$arg" "$REPO_ROOT/$site" 2>/dev/null || echo 0)
+  count=$(grep -cE -- "$arg" "$REPO_ROOT/$site" 2>/dev/null || true)
+  count=${count:-0}
   if [ "$count" -ge 1 ]; then
     echo "  ✅ $site: $arg (count=$count)"
     PASS=$((PASS + 1))
@@ -97,7 +98,7 @@ for arg in "${REQUIRED_ARGS[@]}"; do
 done
 
 echo
-echo "─── test-4-site-symmetry.sh summary ──────────────────────"
+echo "─── $(basename "$0") summary ──────────────────────"
 echo "PASS: $PASS"
 echo "FAIL: $FAIL"
 
