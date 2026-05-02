@@ -1,5 +1,8 @@
 ---
-description: Issue の仕様書作成・分解・一括作成
+description: |
+  (Internal sub-skill — invoked by /rite:issue:create only. Do NOT invoke directly.)
+  Issue の仕様書作成・Sub-Issue 分解・一括作成を行う sub-skill。
+  Phase 0.7 仕様書生成 + Phase 0.8/0.9 分解・bulk-create を担当。
 ---
 
 # /rite:issue:create-decompose

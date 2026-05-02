@@ -1,5 +1,8 @@
 ---
-description: Issue 作成のためのインタビュー実行
+description: |
+  (Internal sub-skill — invoked by /rite:issue:create only. Do NOT invoke directly.)
+  Issue 作成のための適応的インタビューを実行する sub-skill。
+  Phase 0.4.1 規模感判定 + Phase 0.5 深堀り質問を担当。
 ---
 
 # /rite:issue:create-interview
