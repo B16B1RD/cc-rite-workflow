@@ -83,6 +83,48 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 
 ## Phase 1: Identify the PR
 
+### 1.0 Bang-Backtick Adjacency Pre-Check (Pre-PR Gate)
+
+> **Reference**: Issue #691. Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
+>
+> **DRIFT-CHECK ANCHOR (#691 §7 MUST)**: This bash block is intentionally synchronized between `commands/pr/create.md` §1.0 and `commands/pr/ready.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
+>
+> **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
+
+Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
+
+```bash
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-check.sh" ]; then
+  echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=script_missing; resolved_root=${plugin_root:-<empty>}" >&2
+  echo "ERROR: bang-backtick-check.sh not found. Cannot proceed with Ready gate." >&2
+  exit 1
+fi
+
+bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all 2>&1)
+bang_rc=$?
+case "$bang_rc" in
+  0)
+    : # clean — proceed to next sub-phase
+    ;;
+  1)
+    echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2
+    printf '%s\n' "$bang_output" >&2
+    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand `if ! cmd; then`) — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
+    exit 1
+    ;;
+  *)
+    echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2
+    echo "ERROR: bang-backtick-check.sh invocation error (rc=$bang_rc):" >&2
+    printf '%s\n' "$bang_output" >&2
+    exit 1
+    ;;
+esac
+```
+
+> **On exit 1 from this bash block**: The orchestrator (`/rite:issue:start` Phase 5.5) treats this as a `[ready:error]` equivalent. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` sentinel surfaces in Phase 5.4.4.1 (Workflow Incident Detection) for tracking when the failure cause is invocation-side (script missing / rc=2), not when an actual P1/P2/P3 finding is detected (rc=1 — a normal "fix the code" feedback path).
+
 ### 1.1 Check Arguments
 
 If a PR number is specified as an argument, use that PR.
