@@ -1337,7 +1337,7 @@ set +o pipefail
 | **アンカーのみ (`#section`)** | 対象外（同一ファイル内参照） |
 | **Raw Source 参照 (`raw/...`)** | `raw_list` に対し同様にアンカー除去 + `page_dir` 起点解決 + `.rite/wiki/` プレフィックス除去で突合 |
 
-**解決規約**: 相対パスは「ページファイルのディレクトリを起点に `realpath -m -s` で正規化してから、`.rite/wiki/` プレフィックスを除去した `pages_list` と完全一致で突合」する。文字列マッチ (`grep -F` で生 link 値を直接突合) は禁止 — `./` / `../` / 連続スラッシュの差で false positive / negative が両方発生する (Issue #798)。`pages_list` の正規化は本 Phase 内で `printf '%s\n' "$pages_list" | sed -E 's|^\.rite/wiki/||'` で実行する (`pages_list_normalized` を生成する独立 Phase は存在しない、呼び出し側責務)。canonical bash 実装と edge case は [Broken Reference Resolution](./references/broken-ref-resolution.md) を参照。
+**解決規約**: 相対パスは「ページファイルのディレクトリを起点に `realpath -m -s` で正規化してから、`.rite/wiki/` プレフィックスを除去した `pages_list` と完全一致で突合」する。文字列マッチ (`grep -F` で生 link 値を直接突合) は禁止 — `./` / `../` / 連続スラッシュの差で false positive / negative が両方発生する (Issue #798)。正規化された `pages_list_normalized` / `raw_list_normalized` は **Phase 7.1 末尾の bash block で生成され**、Phase 7.2 の判定ロジックから直接参照される (専用の独立 Phase は設けない)。canonical bash 実装と edge case は [Broken Reference Resolution](./references/broken-ref-resolution.md) を参照。
 
 **アンカー除去ルール**: 相対パスリンクの `#...` 部分を切り落としてから実在確認を行います（例: `pages/foo.md#section` → `pages/foo.md` として照合）。
 
