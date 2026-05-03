@@ -228,57 +228,7 @@ Projects を使用するには /rite:init を実行してください。
 
 #### EDGE-4: Short Input Handling
 
-**Execution timing**: This check runs at the beginning of Phase 0.1, before the extraction table below.
-
-Before extraction, check input length. If user input is **less than 10 Unicode characters** (excluding the command name), the input is too short to extract meaningful information:
-
-**Step 1**: Detect short input
-
-Count the number of Unicode characters (not bytes) in the user's input text after stripping whitespace. If fewer than 10 characters, treat as short input.
-
-Examples of short input: "Fix" (3 chars), "Bug" (3 chars), "Update" (6 chars), "リファクタ" (5 chars), "修正" (2 chars)
-
-**Note**: "Excluding the command name" means the text provided as the skill argument (e.g., the `args` parameter of the Skill tool). If the user invoked `/rite:issue:create "Fix"`, the input to check is `"Fix"` (3 characters).
-
-**Step 2**: Request supplementary information via AskUserQuestion
-
-Select the template based on the `language` setting (see [Language-Aware Template Selection](#language-aware-template-selection)):
-
-**Japanese** (`ja` or `auto` with Japanese input):
-```
-質問: 入力が短すぎるため、もう少し詳しく教えてください。何を達成したいですか？
-
-オプション:
-- 詳細を入力する
-- 既存の Issue を参照する（Issue 番号を入力）
-```
-
-**English** (`en` or `auto` with English input):
-```
-Question: The input is too short. Could you provide more details? What do you want to achieve?
-
-Options:
-- Provide details
-- Reference an existing Issue (enter Issue number)
-```
-
-**Step 3**: Process the user's selection
-
-| Selection | Action |
-|-----------|--------|
-| **Provide details / 詳細を入力する** | Use the supplementary input as the new user input and proceed to normal extraction below |
-| **Reference an existing Issue / 既存の Issue を参照する** | Execute Step 3a below |
-
-**Step 3a**: Reference an existing Issue
-
-1. Prompt for the Issue number via AskUserQuestion (free-text input)
-2. Verify the Issue exists: `gh issue view {issue_number} --json number,title,state,body --jq '{number,title,state}'`
-3. If the Issue does not exist (404 error), display an error and re-prompt for the number
-4. If the Issue exists and is CLOSED, present options (language-aware): "Use as reference to create new Issue" / "Re-enter Issue number". If reference selected, read body via `gh issue view {issue_number} --json body --jq '.body'` and use as context.
-
-5. If the Issue exists and is OPEN, present options (language-aware): "Use as context for new Issue" / "Run /rite:issue:start on this Issue (cancel create)". If start selected, terminate create and output: `参照先の Issue に対して /rite:issue:start #{issue_number} を実行してください。` (or English equivalent).
-
-**Phase 0.4 skip decision for short inputs**: If the original input was short (< 10 chars) but the supplementary input provides clear What/Why/Where, Phase 0.4 confirmation can be skipped (same logic as normal inputs where Phase 0.1 extracts all elements clearly).
+> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-4-short-input-handling`](./references/edge-cases-create.md#edge-4-short-input-handling) に移動しました。Phase 0.1 開始前に short input (Unicode < 10 chars) を検出し、AskUserQuestion で詳細を要求するか既存 Issue を参照するかを分岐させるロジックを定義します。
 
 ---
 
@@ -667,23 +617,7 @@ Information collected through Phase 0.5 is utilized in Phase 1 onwards as follow
 
 #### EDGE-3: Interview Result Reflection Rules
 
-When "単一 Issue として作成" is selected (Phase 0.6) or "キャンセル" is selected (Phase 0.7), interview results **MUST** be reflected in the Implementation Contract sections of the Issue body. The following rules enforce this:
-
-**Condition logic for inclusion**:
-
-| Phase 0.5 Status | Implementation Contract Sections | Content |
-|-------------------|----------------------------------|---------|
-| Phase 0.5 executed with interview results | **MUST populate** target sections per interview-to-section mapping (`create-register.md` Phase 2.2 Step 3) | Map each interview perspective to corresponding Implementation Contract sections (e.g., Technical Implementation → 4.1, 4.3, 4.4) |
-| Phase 0.5 skipped (XS/Bug Fix/Chore) | **Populate if** Phase 0.4 gathered useful context | Summary of Phase 0.4 context in relevant sections; omit optional sections if no meaningful detail exists |
-| Phase 0.5 executed but user gave minimal responses | **MUST populate** | Whatever was gathered, plus AI-inferred details marked with `（推定）` |
-| Phase 0.3-0.5 all skipped (Phase 0.1.5 early decomposition → cancel back to single Issue) | **MUST populate** MUST sections per Complexity Gate | Phase 0.1 context (What/Why/Where) for available sections; `<!-- 情報未収集 -->` placeholder for MUST sections without data. Goal classification: infer from Phase 0.1 extraction. Complexity: use XL (from Phase 0.1.5 detection) as tentative baseline, finalize via Heuristics Scoring in `create-register.md` Phase 1.1 |
-
-**Display rules for Implementation Contract sections**:
-
-1. **Complexity Gate compliance**: Follow the Complexity Gate table to determine which sections are MUST/SHOULD/OMIT for the given complexity level. This applies uniformly regardless of which phases were executed or skipped
-2. **AI inference marking**: When AI infers details not explicitly confirmed by the user, mark them with `（推定）` suffix
-3. **Cross-reference with Phase 0.4**: Include any What/Why/Where context from Phase 0.4 that was not repeated in Phase 0.5 to avoid information loss. When Phase 0.4 was not executed, use Phase 0.1 context directly
-4. **MUST section placeholder**: If a section is MUST by Complexity Gate but no interview data exists, include the section with a placeholder comment (`<!-- 情報未収集 -->`). This rule applies to all paths — no path is exempt from Complexity Gate compliance
+> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-3-interview-result-reflection-rules`](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules) に移動しました。Phase 0.5 status と Phase 0.1.5 早期分解 cancel パスの組み合わせに応じて Implementation Contract sections に何を populate すべきかを規定します (Complexity Gate compliance / `（推定）` marking / `<!-- 情報未収集 -->` placeholder)。
 
 ---
 
