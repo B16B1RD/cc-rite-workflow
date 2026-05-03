@@ -12,7 +12,7 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 **Prerequisites**: Phase 0.1 and Phase 0.6 have completed in the parent `create.md` flow. Phases 0.3-0.5 may or may not have been executed depending on the flow path. The following information is available in conversation context:
 - Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1 — **always available**
 - Interview results from Phase 0.5 — available if conducted; `null` if skipped
-- Tentative slug from Phase 0.1.3 — **always available**
+- Tentative slug from [Phase 0.1.3](./references/slug-generation.md) — **always available** — generated per [Slug Generation Rules](./references/slug-generation.md#slug-generation-rules)
 - Goal classification from Phase 0.4 — available if conducted; `null` if skipped (Phase 0.1.5 early decomposition path)
 - Language setting from Preparation phase — **always available**
 - `phases_skipped` flag — `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition; `null` otherwise

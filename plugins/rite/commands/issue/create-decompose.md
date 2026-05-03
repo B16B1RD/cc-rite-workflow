@@ -12,7 +12,7 @@ Generate a specification document, decompose into sub-Issues, and create them in
 **Prerequisites**: Phase 0.1 and Phase 0.6 have completed in the parent `create.md` flow. Phases 0.3-0.5 may or may not have been executed depending on the flow path (Phase 0.1.5 early decomposition skips Phase 0.3-0.5). The following information is available in conversation context:
 - Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1 — **always available**
 - Interview results from Phase 0.5 — available if conducted; `null` if skipped
-- Tentative slug from Phase 0.1.3 — **always available**
+- Tentative slug from [Phase 0.1.3](./references/slug-generation.md) — **always available** — generated per [Slug Generation Rules](./references/slug-generation.md#slug-generation-rules)
 - Decomposition decision from Phase 0.6 — **always available**
 
 ---
@@ -114,13 +114,13 @@ Save the generated specification document in the `docs/designs/` directory:
 # ディレクトリが存在しない場合は作成
 mkdir -p docs/designs
 
-# ファイル名は Phase 0.1.3 で事前生成した {tentative_slug} を使用
+# ファイル名は references/slug-generation.md ルールで事前生成した {tentative_slug} を使用
 # タイトルが変更された場合のみ再生成する
 ```
 
-**Slug source**: Use `{tentative_slug}` from Phase 0.1.3. If the Issue title was modified after Phase 0.1 (e.g., through interview refinement), regenerate the slug using the rules defined in Phase 0.1.3 (single source of truth for slug generation rules).
+**Slug source**: Use `{tentative_slug}` from [Phase 0.1.3](./references/slug-generation.md). If the Issue title was modified after Phase 0.1 (e.g., through interview refinement), regenerate the slug using the rules defined in [`references/slug-generation.md#slug-generation-rules`](./references/slug-generation.md#slug-generation-rules) (single source of truth for slug generation rules).
 
-**When `{tentative_slug}` is not available** (e.g., Phase 0.1.3 was skipped or context was compacted): Generate a new slug following the rules in Phase 0.1.3.
+**When `{tentative_slug}` is not available** (e.g., Phase 0.1.3 was skipped or context was compacted): Generate a new slug following the rules in [`references/slug-generation.md#slug-generation-rules`](./references/slug-generation.md#slug-generation-rules).
 
 ### 0.7.3 Specification Document Confirmation
 
