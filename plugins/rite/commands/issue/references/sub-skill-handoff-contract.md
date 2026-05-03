@@ -12,10 +12,10 @@
 
 | # | Site | 役割 |
 |---|------|------|
-| 1 | `commands/issue/create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** | sub-skill return 直後の最初の tool call として idempotent patch を実行し、turn 境界感を解消 |
+| 1 | `commands/issue/create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** + **Step 1** | sub-skill return 直後の最初の tool call として idempotent patch を実行し、turn 境界感を解消 (Step 0 / Step 1 の 2 occurrence) |
 | 2 | `commands/issue/create-interview.md` 🚨 MANDATORY **Pre-flight** | sub-skill 開始時に flow state を `create_post_interview` へ pre-write (file 不在時は create / 存在時は patch) |
-| 3 | `commands/issue/create-interview.md` **Return Output re-patch** | Return Output Format 直前で再度 patch し、`[CONTEXT] INTERVIEW_DONE=1` marker と caller HTML inline literal を整合させる |
-| 4 | `hooks/stop-guard.sh` `create_post_interview` **case arm WORKFLOW_HINT** | implicit stop 発生時に LLM が次に実行すべき bash command literal を stderr に emit し、stop-guard 経由再入経路を提供 |
+| 3 | `commands/issue/create-interview.md` **Return Output re-patch** (Pre-flight bash block + caller HTML inline literal の 2 occurrence) | (3a) Return Output Format 直前で `_resolve-flow-state-path.sh` 経由 bash block により `create_post_interview` を再 patch (機能コード)、(3b) Output format example 内の caller HTML コメント literal で orchestrator-side 実行想定の inline bash command を提供 (`<!-- caller: IMMEDIATELY run ... -->`、interview:skipped/completed の 2 example) |
+| ~~4~~ (historical) | ~~`hooks/stop-guard.sh` `create_post_interview` case arm WORKFLOW_HINT~~ | **撤去済み** (commit `e2dfae0`、2026-04-26、`refactor(hooks): stop-guard.sh を撤去（途中停止問題の根本対策）`)。Stop hook 自体が実装方針として撤去されたため、本 site (4) は **無効化**。撤去前は 4-site 対称契約として機能していたが、現状は **2 ファイル / 4 occurrence** (上記 (1)(2)(3)) で対称契約を維持する。`hooks/tests/4-site-symmetry.test.sh` も SCOPE adjustment コメントで「`stop-guard.sh`: file does not exist」を明記 (verified 2026-05-03) |
 
 ## bash 引数 symmetry — 4 必須引数
 
@@ -32,16 +32,19 @@
 
 ## `--if-exists` の非対称性 (意図的)
 
-`--if-exists` 引数は **3 site のみ** に存在し、`create-interview.md` の Pre-flight / Return Output re-patch には付与しない (意図的非対称):
+`--if-exists` 引数は **occurrence 単位で計 4 箇所** に存在し、`create-interview.md` の Pre-flight bash block / Return Output re-patch bash block (機能コード経路) には付与しない (意図的非対称)。site (3) は **二重構造** (3a Pre-flight bash block / 3b caller HTML inline literal) を持つため、表は site/sub-site 単位で記述する:
 
-| Site | `--if-exists` の有無 | 理由 |
-|------|---------------------|------|
-| (1) `create.md` Step 0 / Step 1 | 付与 | Step 0/1 実行時には sub-skill (Pre-flight) が既に flow state file を生成済みのため、`--if-exists` は no-op safety net として無害 |
-| (2) `create-interview.md` Pre-flight | **付与しない** | flow state file 不在時は `create` mode で新規生成し、存在時は `patch` mode で更新する **2 経路分岐** を `_resolve-flow-state-path.sh` 経由で `[ -f "$state_file" ]` 形式で明示処理する。`--if-exists` (= patch mode 専用 silent skip flag) では 2 経路分岐を実装できない |
-| (3) `create-interview.md` Return Output re-patch | **付与しない** | (2) と同じ理由 |
-| (4) `stop-guard.sh` WORKFLOW_HINT | 付与 | (1) の literal copy として LLM が cwd=repo_root でそのまま実行する想定 |
+| Site | sub-site | 種別 | `--if-exists` の有無 | 理由 |
+|------|---------|------|---------------------|------|
+| (1) `create.md` Step 0 / Step 1 | — | 機能コード (orchestrator 自身の bash block) | 付与 (2 occurrence) | Step 0/1 実行時には sub-skill (Pre-flight) が既に flow state file を生成済みのため、`--if-exists` は no-op safety net として無害 |
+| (2) `create-interview.md` Pre-flight bash block | — | 機能コード (sub-skill 自身の bash block) | **付与しない** | flow state file 不在時は `create` mode で新規生成し、存在時は `patch` mode で更新する **2 経路分岐** を `_resolve-flow-state-path.sh` 経由で `[ -f "$state_file" ]` 形式で明示処理する。`--if-exists` (= patch mode 専用 silent skip flag) では 2 経路分岐を実装できない |
+| (3a) `create-interview.md` Return Output re-patch bash block | — | 機能コード (sub-skill 自身の bash block) | **付与しない** | (2) と同じ責務 (file 存在分岐の 2 経路実装が必要) |
+| (3b) `create-interview.md` Return Output Format 内 caller HTML inline literal | `interview:skipped` example + `interview:completed` example | orchestrator-side 実行想定 literal (HTML コメント内) | 付与 (2 occurrence) | sub-skill return 後に orchestrator が cwd=repo_root で本 inline literal を実行する時点では Pre-flight が既に完了しており flow state file 存在は保証済み。`--if-exists` は no-op safety net として無害 |
+| ~~(4) `stop-guard.sh` WORKFLOW_HINT~~ | — | (historical) | ~~付与~~ | **撤去済み** (commit `e2dfae0`)。本 site は無効化 |
 
-`--if-exists` の非対称性は **bash 引数 symmetry 違反ではない**。symmetry 対象は `--phase` / `--active` / `--next` / `--preserve-error-count` の 4 引数のみであり、`--if-exists` は責務の違いを反映した意図的な差分。本 reference の本セクションが drift check の正規根拠であり、将来の symmetry 拡張案で `--if-exists` を 4 site 全てに揃える PR が出た場合は本 reference の rationale を再確認の上で慎重に判断すること。
+**Occurrence 集計**: 上記 4 occurrence (Step 0 / Step 1 / 3b skipped / 3b completed) で `--if-exists` を含む。**機能コード経路** (1)(2)(3a) では 1+0+0 = 1 site が付与、**caller-side literal 経路** (1 機能コード兼カウント + 3b literal) ではさらに 2 site が付与する形となる。stop-guard.sh 撤去により旧仕様の (4) は無効化されたため、現状は **3 actual sites (1)(2)(3) のうち、(1) と (3b) で付与、(2) と (3a) で非付与** が正しい。
+
+`--if-exists` の非対称性は **bash 引数 symmetry 違反ではない**。symmetry 対象は `--phase` / `--active` / `--next` / `--preserve-error-count` の 4 引数のみであり、`--if-exists` は機能コード/caller-literal の責務の違いを反映した意図的な差分。本 reference の本セクションが drift check の正規根拠であり、将来の symmetry 拡張案で `--if-exists` を全 occurrence に揃える PR が出た場合は本 reference の rationale を再確認の上で慎重に判断すること。
 
 ## path 表現の非対称性 (意図的)
 
@@ -50,10 +53,11 @@
 | Site | path 表現 | 解決経路 |
 |------|----------|---------|
 | (1) `create.md` Step 0 / Step 1 | `{plugin_root}/hooks/flow-state-update.sh` | Claude Code plugin loader が `{plugin_root}` を expand してから LLM へ提示 |
-| (2) `create-interview.md` Pre-flight / re-patch | `{plugin_root}/hooks/flow-state-update.sh` | (1) と同じ |
-| (4) `stop-guard.sh` WORKFLOW_HINT | `bash plugins/rite/hooks/flow-state-update.sh ...` (relative path literal) | LLM が stderr の HINT 文字列をそのまま読んで cwd=repo_root で実行する想定。placeholder 展開経路を持たない |
+| (2)(3a) `create-interview.md` Pre-flight bash block / Return Output re-patch bash block | `{plugin_root}/hooks/flow-state-update.sh` | (1) と同じ機能コード経路 |
+| (3b) `create-interview.md` Return Output Format 内 caller HTML inline literal | `bash plugins/rite/hooks/flow-state-update.sh ...` (relative path literal) | LLM が HTML コメント内の inline literal をそのまま読んで cwd=repo_root で実行する想定。placeholder 展開経路を持たない (orchestrator-side 実行想定) |
+| ~~(4) `stop-guard.sh` WORKFLOW_HINT~~ | (historical, removed in commit `e2dfae0`) | 撤去前は `bash plugins/rite/hooks/flow-state-update.sh ...` 形式の relative path literal を保持していた |
 
-stop-guard.sh の HINT 内に `{plugin_root}` を埋め込むと LLM が literal `{plugin_root}` をシェルへ渡してしまい動作しない。**4 site 対称契約は bash 引数 / semantics の対称性であり、path 表現の対称性ではない**。本注記は将来の drift check で path 非対称を false positive として flag しないための明示的契約。
+caller HTML inline literal (3b) や旧 stop-guard.sh HINT (撤去済み) のような **literal 文字列に `{plugin_root}` を埋め込むと LLM がそのまま literal `{plugin_root}` をシェルへ渡してしまい動作しない**。**対称契約は bash 引数 / semantics の対称性であり、path 表現の対称性ではない**。本注記は将来の drift check で path 非対称を false positive として flag しないための明示的契約。
 
 ## DRIFT-CHECK ANCHOR pattern
 
@@ -78,8 +82,9 @@ stop-guard.sh の HINT 内に `{plugin_root}` を埋め込むと LLM が literal
 | #636 | `--preserve-error-count` を 4 引数 symmetry list に追加。silent failure を防ぐ exit code 明示 check も導入 |
 | #651 / PR #654 | 3 site → 4 site 対称化に拡張 (`stop-guard.sh` WORKFLOW_HINT に bash literal を含める) |
 | #660 | `--active true` を 4 引数 symmetry list に追加。`active=false` 残存による stop-guard early return を防ぐ |
-| #771 (#768 P4-12) | `hooks/tests/4-site-symmetry.test.sh` を新設し 4 引数 symmetry を機械検証 |
-| #773 (#768 P1-3) | 本 reference を新設し 4 site 対称化のメタ契約を集約 (本 PR) |
+| **stop-guard.sh 撤去** (commit `e2dfae0`、2026-04-26) | `refactor(hooks): stop-guard.sh を撤去（途中停止問題の根本対策）` — Stop hook の exit 2 block で LLM が thinking ループに陥る構造的問題を根本解決するため、Issue #561〜#651 系列の累積 9 回以上の対策が拠って立つ前提（「block + 誘導」モデル）を撤去。これにより site (4) は無効化され、現状は **2 ファイル / 4 occurrence** (1)(2)(3a)(3b) で対称契約を維持する |
+| #771 (#768 P4-12) | `hooks/tests/4-site-symmetry.test.sh` を新設し 4 引数 symmetry を機械検証。SCOPE adjustment コメントで `stop-guard.sh: file does not exist as of Issue #771 work (verified 2026-05-03)` を明記 |
+| #773 (#768 P1-3) | 本 reference を新設し対称契約のメタ契約を集約 (本 PR)。stop-guard.sh 撤去後の現状を反映し site (3) の二重構造 (3a 機能コード bash block / 3b caller HTML inline literal) を表で明示 |
 
 ## 関連 Wiki 経験則
 
