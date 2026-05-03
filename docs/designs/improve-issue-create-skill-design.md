@@ -5,7 +5,7 @@
 
 Anthropic 公式 Skill Building Guide (PDF 33 ページ) と Claude Code 公式仕様 (`https://code.claude.com/docs/en/skills.md` (取得日: 2026-04 時点) — "Custom commands have been merged into skills"、`description` は両者ともに auto-trigger 判定用) に準拠する形で、`/rite:issue:create` ワークフロー (orchestrator + 3 sub-skills + references + hooks tests + metrics) を段階的に改善する。
 
-改善は P0-P4 の優先度別 phase として 12 改善ポイントに分解し、各 phase / 各 P を独立 Issue + 独立 PR として実施可能な構造とする。すべての改善は **rite empirical defense (4-site 対称化 / AC-3 grep 検証 phrase / Issue #444-#660 防御層実装) を保護対象として破壊しない** 制約のもとで行う。
+改善は P0-P4 の優先度別 phase として 13 改善ポイントに分解し、各 phase / 各 P を独立 Issue + 独立 PR として実施可能な構造とする。すべての改善は **rite empirical defense (4-site 対称化 / AC-3 grep 検証 phrase / Issue #444-#660 防御層実装) を保護対象として破壊しない** 制約のもとで行う。
 
 <!-- Section ID: SPEC-BACKGROUND -->
 ## 背景・目的
@@ -184,7 +184,7 @@ Issue 作成完了 + [create:completed:{N}] sentinel emit
 | `plugins/rite/commands/issue/references/troubleshooting-create.md` | 症状→原因→対処の表 (6+ 項目) | P2-7 |
 | `plugins/rite/skills/rite-workflow/tests/issue-create-triggers.md` | Should trigger / Should NOT trigger の 7+7 クエリ | P4-10 |
 | `plugins/rite/scripts/measure-create-metrics.sh` | 5 項目 metrics 測定スクリプト | P4-11 |
-| `docs/measurements/issue-create-baseline.md` | Performance baseline 記録 | P4-10 |
+| `docs/measurements/issue-create-baseline.md` | Performance baseline 記録 | P4-13 |
 
 <!-- `hooks/tests/4-site-symmetry.test.sh` は Issue #771 で既に導入済み (FR-5.3 / SPEC-ARCH-COMPONENTS 参照)。本表は新規ファイル一覧のため除外する。 -->
 
@@ -194,7 +194,7 @@ Issue 作成完了 + [create:completed:{N}] sentinel emit
 #### エッジケース / リスク (本プラン §「Risks & Mitigations」と Rollback 戦略から抜粋)
 
 1. **Auto-trigger over-trigger 副作用 (P0)**: description にトリガーフレーズ追加で Issue 起票無関係なクエリでも auto-fire するリスク。**Mitigation**: P4-10 trigger test で should-NOT-trigger ケース (例: 「今ある Issue 一覧見せて」 → /rite:issue:list、「PR を作って」 → /rite:pr:create) を整備し、偽陽性 0% を目標。
-2. **AC-3 grep 検証 / 4-site 対称化破壊 (P1)**: P1-3 の references 抽出で `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` 4 phrase を本体から削ると CI grep 検証が落ちる。**Mitigation**: NFR-2 で「本体に必ず残す」を明文化。Phase 2 開始前に P4-12 (4-site test) を整備し、各 PR で `bash 4-site-symmetry.test.sh` を pre-merge gate とする。
+2. **AC-3 grep 検証 / 4-site 対称化破壊 (P1)**: P1-3 の references 抽出で `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` 4 phrase を本体から削ると CI grep 検証が落ちる。**Mitigation**: NFR-2 で「本体に必ず残す」を明文化。**P4-12 (Issue #771 で導入済みの `4-site-symmetry.test.sh`)** を pre-merge gate として運用し、references 抽出 PR ごとに `bash plugins/rite/hooks/tests/4-site-symmetry.test.sh` の pass を確認する。
 3. **内部リンク破壊 (P1-3)**: `./create.md#section` 参照が `./references/*.md#section` に変わる。**Mitigation**: refactor 中に `grep -r 'create.md#'` で全箇所書き換え対象を網羅。各 references PR で個別検証。
 4. **dogfooding 中の inconsistent state (P1-3)**: 大規模 refactor 中に `/rite:issue:create` を実行すると create.md と references/ の整合不良で workflow が壊れる可能性。**Mitigation**: Phase 2 中は `/rite:issue:create` を使わない、または `develop` 以外の feature branch で作業。問題発生時は `main` から hotfix を切る運用。
 5. **Examples coverage の代理指標としての偏り (P4-11)**: 「Examples coverage ≥70%」は数値最適化に偏ると質的改善が後回しになる。**Mitigation**: 数値 metrics と並行して、月次の質的レビュー (実 Issue を 5 件サンプリング) を併用。
