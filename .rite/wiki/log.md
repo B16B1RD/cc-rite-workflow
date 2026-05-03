@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-05-03T17:30:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=86, broken_refs=149 |
 | 2026-05-03T17:25:46+00:00 | ingest:skip | raw/reviews/20260503T171512Z-pr-796.md | PR #796 review (0 findings, mergeable): PR 5/8 の累積抽出パターン (SoT 宣言 + 抽出経緯 + caller redirect + 内部リンク書き換え) の対称性確認と既存 Wiki 経験則の予防的 chase 成功記録のみで、novel な独立経験則の抽出なし。Wiki 経験則 PR #794「caller redirect ↔ template mirror 対称化漏れ」予防的 grep chase / PR #765「inverse failure / defect transcription」累積 17 回目の即治療 (commit ff8c415) は既存ページに記録済みのため重複回避 |
 | 2026-05-02T09:30:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=78, broken_refs=0 |
 | 2026-05-02T09:25:00+09:00 | ingest:create | pages/heuristics/ac-resolution-statement-implementation-verification.md | PR #761 cycle 1 fix (HIGH F-01) + cycle 2 re-review formalization: AC 解消の核心 statement に数値解釈が含まれる場合、その数値の出典を実装 (run-tests.sh:13 の loop 構造等) で grep 裏取りせずに書くと AC が解消したかった conflate を別形で再演する self-meta drift を生む。canonical 防御は (a) 取得コマンド併記、(b) N 階層明示分離、(c) cycle 2 reviewer fact-check rerun。reviewer-scope-antidegradation との pair pattern。通常 review-fix loop の 2 cycle 収束 (5→0 finding) base rate 実例も併設 (raw: pr-761 fix cycle 1 + pr-761 review cycle 2) |
