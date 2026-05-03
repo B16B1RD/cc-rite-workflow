@@ -1291,15 +1291,23 @@ step 3 の 3 分岐は LLM が stdout の marker block (`---skipped_refs_begin/e
 
 ### 7.1 ページ本文の Markdown リンク抽出
 
-各 Wiki ページの本文から Markdown リンク `[text](path)` を抽出します。画像リンク（`![alt](path)` の 「!」 prefix）は対象外とし、pipefail を有効化して grep no-match を明示処理します:
+各 Wiki ページの本文から Markdown リンク `[text](path)` を抽出します。コードブロック (` ``` ` 囲み) と画像リンク (`![alt](path)` の 「!」 prefix) はいずれも対象外とし、pipefail を有効化して grep no-match を明示処理します:
 
 ```bash
 set -o pipefail
 
-# 画像リンク `![alt](path)` を先に sed で除去し、その後に通常リンク `[text](path)` を抽出
-# これにより画像リンクの path が broken ref として false positive になることを防ぐ
-# アンカー (#section) も除去してから pages_list と突合する
+# 1. コードブロック (` ``` ` 囲み) を sed で削除する。これによりコード例として記載された
+#    `[X](../patterns/example.md)` のようなドキュメント説明用リンクが broken ref として
+#    false positive にカウントされることを防ぐ (Issue #798)
+# 2. 画像リンク `![alt](path)` を sed で除去し、画像 path が broken ref として
+#    検出されることを防ぐ
+# 3. 通常リンク `[text](path)` を抽出
+# 4. アンカー (#section) を除去してから pages_list と突合する
+#
+# 順序の根拠: コードブロック除外 (1) を最初に行わないと、コードブロック内の画像/通常リンクが
+# 個別に抽出されてしまう。画像リンク除去 (2) はコードブロック外でのみ意味を持つため (1) の後に置く。
 page_links=$(printf '%s' "$page_content" \
+  | sed -E '/^```/,/^```/d' \
   | sed -E 's/!\[[^]]*\]\([^)]*\)//g' \
   | { grep -oE '\]\([^)]+\)' || true; } \
   | sed -E 's/^\]\(//; s/\)$//' \
@@ -1308,17 +1316,21 @@ page_links=$(printf '%s' "$page_content" \
 set +o pipefail
 ```
 
+**コードブロック除外の限界**: `sed -E '/^```/,/^```/d'` は ` ``` ` が行頭にある case のみを削除する。インデント付きコードブロック (4-space indent) や行中の ``` (例: `「```」` のような説明文中の引用) は対象外。Wiki ページではコードブロックは行頭 ` ``` ` を慣習とするため実用上の影響はない。
+
 ### 7.2 相互参照の妥当性判定
 
 抽出した各リンクについて以下を判定します:
 
 | リンク種別 | 判定方法 |
 |----------|---------|
-| **相対パス (`./pages/...`, `../pages/...`, `pages/...`)** | アンカー (`#section`) を除去してから `pages_list_normalized` に実在するか確認 |
+| **相対パス (`./pages/...`, `../pages/...`, `pages/...`)** | アンカー (`#section`) を除去し、ページファイルのディレクトリ (`page_dir`) 起点で正規化してから `pages_list_normalized` に実在するか確認 (詳細は [Broken Reference Resolution](./references/broken-ref-resolution.md) 参照) |
 | **絶対パス (`/pages/...`)** | 対象外（HTTP URL 等の可能性） |
 | **外部 URL (`http://...`, `https://...`)** | 対象外（lint 対象外） |
 | **アンカーのみ (`#section`)** | 対象外（同一ファイル内参照） |
 | **Raw Source 参照 (`raw/...`)** | `raw_list_normalized` に実在するか確認 |
+
+**解決規約**: 相対パスは「ページファイルのディレクトリを起点に `realpath -m` で正規化してから `pages_list_normalized` と完全一致で突合」する。文字列マッチ (`grep -F` で生 link 値を直接突合) は禁止 — `./` / `../` / 連続スラッシュの差で false positive / negative が両方発生する (Issue #798)。canonical bash 実装と edge case は [Broken Reference Resolution](./references/broken-ref-resolution.md) を参照。
 
 **アンカー除去ルール**: 相対パスリンクの `#...` 部分を切り落としてから実在確認を行います（例: `pages/foo.md#section` → `pages/foo.md` として照合）。
 
