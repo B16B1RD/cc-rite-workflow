@@ -3,7 +3,7 @@
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
 
-Anthropic 公式 Skill Building Guide (PDF 33 ページ) と Claude Code 公式仕様 (`https://code.claude.com/docs/en/skills.md` — "Custom commands have been merged into skills"、`description` は両者ともに auto-trigger 判定用) に準拠する形で、`/rite:issue:create` ワークフロー (orchestrator + 3 sub-skills + references + hooks tests + metrics) を段階的に改善する。
+Anthropic 公式 Skill Building Guide (PDF 33 ページ) と Claude Code 公式仕様 (`https://code.claude.com/docs/en/skills.md` (取得日: 2026-04 時点) — "Custom commands have been merged into skills"、`description` は両者ともに auto-trigger 判定用) に準拠する形で、`/rite:issue:create` ワークフロー (orchestrator + 3 sub-skills + references + hooks tests + metrics) を段階的に改善する。
 
 改善は P0-P4 の優先度別 phase として 12 改善ポイントに分解し、各 phase / 各 P を独立 Issue + 独立 PR として実施可能な構造とする。すべての改善は **rite empirical defense (4-site 対称化 / AC-3 grep 検証 phrase / Issue #444-#660 防御層実装) を保護対象として破壊しない** 制約のもとで行う。
 
@@ -51,7 +51,7 @@ PDF (33 ページ) と Claude Code 公式仕様確認の結果、`/rite:issue:cr
   - `bulk-create-pattern.md` (単一 Bash invocation での連結パターン)
 - **FR-2.2**: `create.md` 冒頭に Happy Path Overview (≤30 行) を追加し、5 ステップのフロー図で全体像を即座に把握可能にする。
 - **FR-2.3**: 強調マーカー (🚨=12 / ⚠️=6 / 🚫=2 / MUST=20) を **過剰削減ではなく適正化** する。AC-3 grep 検証対象 4 phrase (`anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop`) は **本体に残す** ことが必須。
-- **FR-2.4**: 抽出後の `create.md` 本体は ≤250 行を目標とする (現状 835 行の約 30%)。
+- **FR-2.4**: 抽出後の `create.md` 本体は ≤250 行を目標とする (設計着手時の baseline 835 行から約 30% へのスリム化)。
 
 #### FR-3: P2 PDF 推奨セクション追加 (中優先、UX 改善)
 
@@ -67,13 +67,13 @@ PDF (33 ページ) と Claude Code 公式仕様確認の結果、`/rite:issue:cr
 
 - **FR-5.1**: `plugins/rite/skills/rite-workflow/tests/issue-create-triggers.md` を新設し、Should trigger / Should NOT trigger の 7+7 クエリを記録する (Triggering test)。
 - **FR-5.2**: `plugins/rite/scripts/measure-create-metrics.sh` を新設し、5 項目の rite 固有運用 metrics (Implicit-stop 発生率 / Sub-skill chain 完走率 / AskUserQuestion 平均回数 / 重複検出率 / Examples coverage) を測定可能にする。
-- **FR-5.3**: `plugins/rite/hooks/tests/test-4-site-symmetry.sh` を新設し、`create.md` / `create-interview.md` / `stop-guard.sh` / `phase-transition-whitelist.sh` の 4 site 横断で `--phase` / `--active` / `--next` / `--preserve-error-count` の引数 symmetry を grep 検証する。
+- **FR-5.3**: 既存の `plugins/rite/hooks/tests/4-site-symmetry.test.sh` (Issue #771 で導入済み) を rite empirical defense の監視点として保護対象とする。同 test は `create.md` / `create-interview.md` の 2 site 横断で `--phase` / `--active` / `--next` / `--preserve-error-count` の引数 symmetry を grep 検証する。`stop-guard.sh` は Issue #674 で removal 済みのため対象外。`phase-transition-whitelist.sh` は sourced library で CLI 引数を取らないため対象外 (test 内の SCOPE adjustment コメント参照)。本 sub-issue では新設ではなく既存 test の保護を担当する。
 - **FR-5.4**: `docs/measurements/issue-create-baseline.md` を新設し、P0-1 + P0-2 適用前/後の 3 ケース (M / XL / Bug Fix) の metrics 比較を記録する。
 
 <!-- Section ID: SPEC-REQ-NFR -->
 ### 非機能要件
 
-- **NFR-1 (互換性)**: rite empirical defense の **4-site 対称化** (`create.md` Step 0 / `create-interview.md` Pre-flight / Return Output re-patch / `stop-guard.sh` WORKFLOW_HINT) の bash literal 同期を維持する。`--phase` / `--active` / `--next` / `--preserve-error-count` の引数 symmetry を破壊する変更は禁止。
+- **NFR-1 (互換性)**: rite empirical defense の **4-occurrence 対称化** (`create.md` Step 0 + Step 1 / `create-interview.md` Pre-flight + Return Output re-patch — 2 ファイル × 各 2 occurrence) の bash literal 同期を維持する。`--phase` / `--active` / `--next` / `--preserve-error-count` の引数 symmetry を破壊する変更は禁止。`stop-guard.sh` WORKFLOW_HINT は **Issue #674 で removal 済み** のため historical site として除外 (将来再導入時は site 追加検討)。「4-site 対称化」表記は historical な呼称 (旧 4 site 構成時代の固有名) として保持し、現状の対称契約は実質 2 ファイル / 4 occurrence で維持する。
 - **NFR-2 (互換性)**: AC-3 grep 検証対象 4 phrase は `create.md` 本体に **必ず残す** (`grep -c` で各 1 以上を維持)。
 - **NFR-3 (互換性)**: HTML-comment sentinel 形式 (`<!-- [interview:skipped] -->` / `<!-- [create:completed:N] -->`) を維持する。Issue #561 D-01 の bare bracket 形式 → HTML comment 形式への移行は完了済みであり、再リグレッションを起こさない。
 - **NFR-4 (互換性)**: Phase ナンバリング契約 (Phase 0.1 / 0.4.1 / 0.6.2 等) は hook test や stop-guard との接続点であり、rename しない。FR-2.x は Phase 名ベースの rename を行わない (代替案 B 却下理由)。
@@ -118,7 +118,7 @@ PDF が言う SKILL.md フォルダ形式への変換は **対象外**。理由:
 | **`commands/issue/create-register.md`** | 単一 Issue 確認・作成 sub-skill (Phase 1 - 4) | P0-2 / P1-3 |
 | **`commands/issue/references/`** (新設) | 抽出された詳細リファレンス 8 + Troubleshooting 1 | FR-2.1 / FR-3.1 |
 | **`skills/rite-workflow/tests/`** (新設) | Triggering test 配置場所 | FR-5.1 |
-| **`hooks/tests/test-4-site-symmetry.sh`** (新規) | 4-site 対称化 grep test | FR-5.3 |
+| **`hooks/tests/4-site-symmetry.test.sh`** (既存、Issue #771 で導入済み) | 4-site 対称化 grep test (保護対象) | FR-5.3 |
 | **`scripts/measure-create-metrics.sh`** (新規) | rite 固有 metrics 測定 | FR-5.2 |
 | **`docs/measurements/`** (新設) | Performance baseline 記録 | FR-5.4 |
 
@@ -159,7 +159,9 @@ Issue 作成完了 + [create:completed:{N}] sentinel emit
 
 #### 既存ファイル (修正)
 
-| パス | 現行行数 | 改修内容 | 関連 Sub-Issue |
+下記「baseline 行数」は設計着手時 (Issue #768 起票時) のスナップショット。PR 進行に伴い実際の行数は変動する (例: PR 3/8 完了時点で `create.md`=757 / `create-interview.md`=534)。改修進捗の 1 次 source は **Issue #773 のチェックリスト** を参照すること。
+
+| パス | baseline 行数 (設計着手時) | 改修内容 | 関連 Sub-Issue |
 |---|---|---|---|
 | `plugins/rite/skills/rite-workflow/SKILL.md` | 209 | description にトリガーフレーズ追加 | P0-1 |
 | `plugins/rite/commands/issue/create.md` | 835 | description 書き直し / references 抽出 / Happy Path 追加 / 強調適正化 / Examples 追加 / Pre-check 簡素化 | P0-2 / P1-3 / P1-4 / P1-5 / P2-6 / P3-9 |
@@ -182,7 +184,7 @@ Issue 作成完了 + [create:completed:{N}] sentinel emit
 | `plugins/rite/commands/issue/references/troubleshooting-create.md` | 症状→原因→対処の表 (6+ 項目) | P2-7 |
 | `plugins/rite/skills/rite-workflow/tests/issue-create-triggers.md` | Should trigger / Should NOT trigger の 7+7 クエリ | P4-10 |
 | `plugins/rite/scripts/measure-create-metrics.sh` | 5 項目 metrics 測定スクリプト | P4-11 |
-| `plugins/rite/hooks/tests/test-4-site-symmetry.sh` | 4-site 対称化 grep test | P4-12 |
+<!-- `hooks/tests/4-site-symmetry.test.sh` は Issue #771 で既に導入済み (FR-5.3 / SPEC-ARCH-COMPONENTS 参照)。本表は新規ファイル一覧のため除外する。 -->
 | `docs/measurements/issue-create-baseline.md` | Performance baseline 記録 | P4-10 |
 
 <!-- Section ID: SPEC-IMPL-CONSIDERATIONS -->
