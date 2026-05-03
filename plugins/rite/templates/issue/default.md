@@ -55,18 +55,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 ## Complexity Heuristics
 
-Score +1 for each matching condition:
-
-| Condition | Score |
-|-----------|-------|
-| Changed files > 3 | +1 |
-| Spans multiple modules/services | +1 |
-| Public API/interface changes | +1 |
-| Migration/backward compatibility needed | +1 |
-| Strict non-functional requirements | +1 |
-| 2+ unresolved design decisions | +1 |
-
-Score to complexity: 0-1 = XS, 2 = S, 3-4 = M, 5 = L, 6+ = XL
+> **Moved (Issue #773 P1-3 PR 4/8)**: 本セクションの定義は [`../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring`](../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring) に移動しました。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。本テンプレート内の Heuristics 表は SoT (`references/complexity-gate.md`) の単一定義に集約されています。
 
 ---
 

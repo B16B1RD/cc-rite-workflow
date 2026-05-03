@@ -32,28 +32,17 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 
 ### 1.1 Complexity Estimation
 
-Finalize the complexity using the tentative estimation from Phase 0.4.1 as a baseline. Refer to the Tentative Complexity Estimation table in `create-interview.md` Phase 0.4.1 for the base criteria (XS through XL).
-
-**When Phase 0.4.1 was not executed** (Phase 0.1.5 early decomposition path): Use XL as the tentative baseline (the task was detected as large-scope in Phase 0.1.5). Heuristics Scoring below takes precedence and may adjust the final complexity downward if the scoring conditions indicate a lower complexity.
+> **Moved (Issue #773 P1-3 PR 4/8)**: 本セクションの定義は [`references/complexity-gate.md`](./references/complexity-gate.md) に移動しました。Phase 0.4.1 の Tentative Complexity Estimation を baseline として、Heuristics Scoring を primary method で最終 complexity を確定します。詳細:
+>
+> - [Tentative Complexity Estimation](./references/complexity-gate.md#tentative-complexity-estimation) — XS/S/M/L/XL の判定基準テーブル
+> - [Complexity Heuristics Scoring](./references/complexity-gate.md#complexity-heuristics-scoring) — Score テーブルと Score → complexity mapping
+> - [Final Complexity Decision Rules](./references/complexity-gate.md#final-complexity-decision-rules) — Tentative と Heuristics の優先順位、Phase 0.4.1 not executed の baseline (XL)
+>
+> 最終 complexity は Issue Meta section に記録される。
 
 #### Complexity Heuristics Scoring
 
-Use the Heuristics Scoring as the primary method. The Tentative Complexity Estimation table serves as a quick reference for intuitive estimation; when the two disagree, the Heuristics Score takes precedence.
-
-Score +1 for each matching condition:
-
-| Condition | Score |
-|-----------|-------|
-| Changed files > 3 | +1 |
-| Spans multiple modules/services | +1 |
-| Public API/interface changes | +1 |
-| Migration/backward compatibility needed | +1 |
-| Strict non-functional requirements | +1 |
-| 2+ unresolved design decisions | +1 |
-
-Score to complexity: 0-1 = XS, 2 = S, 3-4 = M, 5 = L, 6+ = XL
-
-Use information from Phase 0.1-0.5 to evaluate each condition. The final complexity is recorded in the Issue Meta section.
+> **Moved (Issue #773 P1-3 PR 4/8)**: 本 subsection の定義は [`references/complexity-gate.md#complexity-heuristics-scoring`](./references/complexity-gate.md#complexity-heuristics-scoring) に移動しました。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。
 
 ### 1.2 Work Type Classification
 

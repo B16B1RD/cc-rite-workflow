@@ -76,21 +76,7 @@ After Phase 0.4 completes, determine the interview scope for Phase 0.5 based on 
 
 ### Tentative Complexity Estimation
 
-Estimate tentative complexity from information gathered in Phases 0.1-0.4. This estimation is used for:
-1. **Adaptive Interview Depth** (below) — determines which interview perspectives to apply
-2. **Task decomposition decision** (Phase 0.6) — XL triggers decomposition
-
-| Tentative Complexity | Criteria | Example |
-|---------------------|----------|---------|
-| **XS** | Change location is clear, 1 to a few lines of modification | typo fix, constant value change |
-| **S** | Content update in a single file, implementation method is uniquely determined | function fix, style adjustment |
-| **M** | Multiple files (approx. 2-5 files) or involves one design decision | small feature addition |
-| **L** | Multiple files (approx. 6-10 files), requires multiple design decisions | medium-scale feature, design change |
-| **XL** | Large-scale change (10+ files) or spans multiple domains, architecture-level design decisions | new system construction, architecture change |
-
-**Notes**:
-- In Phase 0.6 decomposition decision, only XL triggers decomposition (L is not subject to decomposition)
-- The final complexity (XS/S/M/L/XL) is determined in Phase 1.1 and recorded in the Issue
+> **Moved (Issue #773 P1-3 PR 4/8)**: 本セクションの定義は [`references/complexity-gate.md#tentative-complexity-estimation`](./references/complexity-gate.md#tentative-complexity-estimation) に移動しました。Phase 0.1-0.4 の情報から複雑度 (XS/S/M/L/XL) を暫定推定するロジックで、(1) 後続の Adaptive Interview Depth による perspective filtering と (2) Phase 0.6 task decomposition decision (XL のみ trigger) に使われます。最終 complexity は Phase 1.1 Heuristics Scoring (`create-register.md`) で確定します。
 
 ### Complexity-Based Interview Scope
 
@@ -191,7 +177,7 @@ Based on complexity {complexity}, conducting a {standard: standard / full: full}
 
 ### Tentative Complexity
 
-The tentative complexity was estimated in Phase 0.4.1. Refer to the "Tentative Complexity Estimation" section there for criteria and the complexity table. The estimated value drives the interview scope (Phase 0.4.1) and the task decomposition decision (Phase 0.6).
+The tentative complexity was estimated in Phase 0.4.1. Refer to [`references/complexity-gate.md#tentative-complexity-estimation`](./references/complexity-gate.md#tentative-complexity-estimation) for criteria and the complexity table. The estimated value drives the interview scope (Phase 0.4.1) and the task decomposition decision (Phase 0.6).
 
 ### Interview Perspectives
 
