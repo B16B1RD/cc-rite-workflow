@@ -4,7 +4,7 @@
 >
 > **抽出経緯**: 4-site 対称化のメタ説明 (DRIFT-CHECK ANCHOR / `--if-exists` 非対称性 / path 表現非対称性) が `create.md` / `create-interview.md` 双方に長大 blockquote として重複展開されていた状況を、Issue #773 (#768 P1-3) で本 reference に集約。bash literal 自体 (Step 0 / Step 1 / Pre-flight / Return Output re-patch の `flow-state-update.sh patch ...` 呼び出し) は **機能コードであり 4-site test (`hooks/tests/4-site-symmetry.test.sh`) の監視対象** のため、各 caller に引き続き残置する。本 reference は機能コードの **メタ契約のみ** を集約する。
 >
-> **DRIFT-CHECK ANCHOR (semantic, 4-site)** — Issue #651 / #660 / #773: 本セクションの記述は (1) `create.md` 🚨 Mandatory After Interview Step 0 / (2) `create-interview.md` 🚨 MANDATORY Pre-flight / (3) `create-interview.md` Return Output re-patch / (4) `stop-guard.sh` `create_post_interview` case arm WORKFLOW_HINT の **4 site 対称契約** を一元管理する。各 caller の anchor は本 reference へ semantic 参照する。
+> **DRIFT-CHECK ANCHOR (semantic, 3-site + historical 4th)** — Issue #651 / #660 / #773: 本セクションの記述は (1) `create.md` 🚨 Mandatory After Interview Step 0 / (2) `create-interview.md` 🚨 MANDATORY Pre-flight / (3) `create-interview.md` Return Output re-patch の **3 site 対称契約 (現状)** を一元管理する。旧 site (4) `stop-guard.sh` `create_post_interview` case arm WORKFLOW_HINT は撤去済み (commit `e2dfae0`、2026-04-26、Overview 表参照)。「4-site 対称化」「4 site」表記は historical な呼称 (旧 4 site 構成時代の固有名) として保持し、現状の対称契約は 3 site で維持する。各 caller の anchor は本 reference へ semantic 参照する。
 
 ## Overview
 
@@ -14,7 +14,7 @@
 |---|------|------|
 | 1 | `commands/issue/create.md` 🚨 Mandatory After Interview **Step 0 Immediate Bash Action** + **Step 1** | sub-skill return 直後の最初の tool call として idempotent patch を実行し、turn 境界感を解消 (Step 0 / Step 1 の 2 occurrence) |
 | 2 | `commands/issue/create-interview.md` 🚨 MANDATORY **Pre-flight** | sub-skill 開始時に flow state を `create_post_interview` へ pre-write (file 不在時は create / 存在時は patch) |
-| 3 | `commands/issue/create-interview.md` **Return Output re-patch** (Pre-flight bash block + caller HTML inline literal の 2 occurrence) | (3a) Return Output Format 直前で `_resolve-flow-state-path.sh` 経由 bash block により `create_post_interview` を再 patch (機能コード)、(3b) Output format example 内の caller HTML コメント literal で orchestrator-side 実行想定の inline bash command を提供 (`<!-- caller: IMMEDIATELY run ... -->`、interview:skipped/completed の 2 example) |
+| 3 | `commands/issue/create-interview.md` **Return Output re-patch** ((3a) Return Output re-patch bash block + (3b) caller HTML inline literal の 2 occurrence) | (3a) Return Output Format 直前で `_resolve-flow-state-path.sh` 経由 bash block により `create_post_interview` を再 patch (機能コード)、(3b) Output format example 内の caller HTML コメント literal で orchestrator-side 実行想定の inline bash command を提供 (`<!-- caller: IMMEDIATELY run ... -->`、interview:skipped/completed の 2 example) |
 | ~~4~~ (historical) | ~~`hooks/stop-guard.sh` `create_post_interview` case arm WORKFLOW_HINT~~ | **撤去済み** (commit `e2dfae0`、2026-04-26、`refactor(hooks): stop-guard.sh を撤去（途中停止問題の根本対策）`)。Stop hook 自体が実装方針として撤去されたため、本 site (4) は **無効化**。撤去前は 4-site 対称契約として機能していたが、現状は **2 ファイル / 4 occurrence** (上記 (1)(2)(3)) で対称契約を維持する。`hooks/tests/4-site-symmetry.test.sh` も SCOPE adjustment コメントで「`stop-guard.sh`: file does not exist」を明記 (verified 2026-05-03) |
 
 ## bash 引数 symmetry — 4 必須引数
@@ -42,7 +42,28 @@
 | (3b) `create-interview.md` Return Output Format 内 caller HTML inline literal | `interview:skipped` example + `interview:completed` example | orchestrator-side 実行想定 literal (HTML コメント内) | 付与 (2 occurrence) | sub-skill return 後に orchestrator が cwd=repo_root で本 inline literal を実行する時点では Pre-flight が既に完了しており flow state file 存在は保証済み。`--if-exists` は no-op safety net として無害 |
 | ~~(4) `stop-guard.sh` WORKFLOW_HINT~~ | — | (historical) | ~~付与~~ | **撤去済み** (commit `e2dfae0`)。本 site は無効化 |
 
-**Occurrence 集計**: 上記 4 occurrence (Step 0 / Step 1 / 3b skipped / 3b completed) で `--if-exists` を含む。**機能コード経路** (1)(2)(3a) では 1+0+0 = 1 site が付与、**caller-side literal 経路** (1 機能コード兼カウント + 3b literal) ではさらに 2 site が付与する形となる。stop-guard.sh 撤去により旧仕様の (4) は無効化されたため、現状は **3 actual sites (1)(2)(3) のうち、(1) と (3b) で付与、(2) と (3a) で非付与** が正しい。
+**Occurrence 単位の集計** (`--if-exists` を含む箇所を occurrence 単位で列挙):
+
+| Site / sub-site | occurrence 数 | `--if-exists` 付与 |
+|----------------|--------------|-------------------|
+| (1) `create.md` Step 0 | 1 | ✅ |
+| (1) `create.md` Step 1 | 1 | ✅ |
+| (2) `create-interview.md` Pre-flight bash block | 1 | ❌ |
+| (3a) `create-interview.md` Return Output re-patch bash block | 1 | ❌ |
+| (3b) `create-interview.md` interview:skipped example caller HTML inline literal | 1 | ✅ |
+| (3b) `create-interview.md` interview:completed example caller HTML inline literal | 1 | ✅ |
+| **合計** | **6 occurrence** | **付与 4 / 非付与 2** |
+
+**Site 単位の集計** (sub-site を 1 site とまとめる場合):
+
+| Site | 種別 | `--if-exists` 付与 |
+|------|------|-------------------|
+| (1) `create.md` Step 0/Step 1 | 機能コード (orchestrator-side) | ✅ (2 occurrence) |
+| (2) `create-interview.md` Pre-flight bash block | 機能コード (sub-skill 自身) | ❌ |
+| (3a) `create-interview.md` Return Output re-patch bash block | 機能コード (sub-skill 自身) | ❌ |
+| (3b) `create-interview.md` Return Output caller HTML inline literal | orchestrator-side 実行想定 literal | ✅ (2 occurrence) |
+
+stop-guard.sh 撤去により旧仕様の site (4) は無効化されたため、現状の対称契約は **3 site (1)(2)(3) で構成**、site (3) は (3a)/(3b) の二重構造を持つ。`--if-exists` は **機能コード経路 vs caller-literal 経路** で付与判断が分かれる: orchestrator-side (1) と caller-side literal (3b) は Pre-flight 完了後に実行されるため safety net として付与、sub-skill 自身が実行する (2)(3a) は file 不在時の create mode 分岐が必要なため非付与。
 
 `--if-exists` の非対称性は **bash 引数 symmetry 違反ではない**。symmetry 対象は `--phase` / `--active` / `--next` / `--preserve-error-count` の 4 引数のみであり、`--if-exists` は機能コード/caller-literal の責務の違いを反映した意図的な差分。本 reference の本セクションが drift check の正規根拠であり、将来の symmetry 拡張案で `--if-exists` を全 occurrence に揃える PR が出た場合は本 reference の rationale を再確認の上で慎重に判断すること。
 
