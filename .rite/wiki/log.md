@@ -336,3 +336,4 @@
 | 2026-05-03T05:55:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=79, broken_refs=0 |
 | 2026-05-03T03:32:00Z | ingest:skip | raw/reviews/20260503T022237Z-pr-788.md | PR #788 review (12 行 docs PR、LOW 1 + DEMOTED 1) — 4 finding patterns はすべて既存ページで表現済 (TBD link → prose-design-without-backing-implementation, 頻度表現混入 → fix-comment-self-drift, Phase 番号表記揺れ → identity-reference-documentation-unification, sub-skill orchestration → observed-likelihood-gate-with-evidence-anchors)。新規追加価値なしのため skip |
 | 2026-05-03T03:32:00Z | ingest:skip | raw/fixes/20260503T025818Z-pr-788.md | PR #788 fix (replied-only) — Phase 5.3.0 Observed Likelihood Gate で MINOR 1 件降格は既存 observed-likelihood-gate-with-evidence-anchors の典型運用例で新規 sub-pattern なし。skip |
+| 2026-05-03T03:36:12Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=81, broken_refs=0 |
