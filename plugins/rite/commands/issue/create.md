@@ -11,6 +11,18 @@ Create a new Issue and add it to GitHub Projects.
 
 ---
 
+## Happy Path (90% のケース)
+
+1. **Phase 0.1**: ユーザ入力から What/Why/Where を抽出
+2. **`rite:issue:create-interview`**: 適応的インタビュー (Bug Fix/Chore は skip)
+3. **Phase 0.6**: XL 判定 (大規模なら自動分解)
+4. **`rite:issue:create-register`** または **`rite:issue:create-decompose`**: Issue 作成
+5. ✅ Issue #N 作成完了
+
+詳細フローは下のセクション。回帰防止メタ情報は `references/regression-history.md`（TBD: Sub-Issue P1-3 完了後に link 有効化）。
+
+---
+
 ## Responsibility Matrix
 
 This table clarifies responsibility boundaries between `create.md`, `start.md`, and `implementation-plan.md`.
