@@ -1316,7 +1316,7 @@ page_links=$(printf '%s' "$page_content" \
 set +o pipefail
 ```
 
-**コードブロック除外の限界**: `sed -E '/^```/,/^```/d'` は ` ``` ` が行頭にある case のみを削除する。インデント付きコードブロック (4-space indent) や行中の ``` (例: `「```」` のような説明文中の引用) は対象外。Wiki ページではコードブロックは行頭 ` ``` ` を慣習とするため実用上の影響はない。
+**コードブロック除外の限界**: `sed -E '/^```/,/^```/d'` は ` ``` ` が行頭にある case のみを削除する。インデント付きコードブロック (例: list 項目内の 2-space indent fence) や行中の ``` (例: `「```」` のような説明文中の引用) は対象外。多くの Wiki ページではコードブロックは行頭 ` ``` ` を慣習とするが、インデント付き fence を含むページは現存し (例: `pages/patterns/prompt-numbered-list-isomorphic-structure.md`)、その場合 broken_refs に false positive が残る。awk -ベースで fence 開閉を indent 不問で track する改善 (例: `awk '/^\s*```/{f=!f; next} !f'`) は今後の課題として「既知の限界」へ追記済み。
 
 ### 7.2 相互参照の妥当性判定
 
@@ -1324,13 +1324,13 @@ set +o pipefail
 
 | リンク種別 | 判定方法 |
 |----------|---------|
-| **相対パス (`./pages/...`, `../pages/...`, `pages/...`)** | アンカー (`#section`) を除去し、ページファイルのディレクトリ (`page_dir`) 起点で正規化してから `pages_list_normalized` に実在するか確認 (詳細は [Broken Reference Resolution](./references/broken-ref-resolution.md) 参照) |
+| **相対パス (`./pages/...`, `../pages/...`)** | アンカー (`#section`) を除去し、ページファイルのディレクトリ (`page_dir`) 起点で正規化してから、Phase 2.2 で取得した `pages_list` (`.rite/wiki/` プレフィックス付き) と突合する。突合前に両側から `.rite/wiki/` プレフィックスを除去すること (詳細は [Broken Reference Resolution](./references/broken-ref-resolution.md) 参照)。Wiki ルート起点の参照 (`pages/...` prefix なし) は使用しない |
 | **絶対パス (`/pages/...`)** | 対象外（HTTP URL 等の可能性） |
 | **外部 URL (`http://...`, `https://...`)** | 対象外（lint 対象外） |
 | **アンカーのみ (`#section`)** | 対象外（同一ファイル内参照） |
-| **Raw Source 参照 (`raw/...`)** | `raw_list_normalized` に実在するか確認 |
+| **Raw Source 参照 (`raw/...`)** | `raw_list` に対し同様にアンカー除去 + `page_dir` 起点解決 + `.rite/wiki/` プレフィックス除去で突合 |
 
-**解決規約**: 相対パスは「ページファイルのディレクトリを起点に `realpath -m` で正規化してから `pages_list_normalized` と完全一致で突合」する。文字列マッチ (`grep -F` で生 link 値を直接突合) は禁止 — `./` / `../` / 連続スラッシュの差で false positive / negative が両方発生する (Issue #798)。canonical bash 実装と edge case は [Broken Reference Resolution](./references/broken-ref-resolution.md) を参照。
+**解決規約**: 相対パスは「ページファイルのディレクトリを起点に `realpath -m -s` で正規化してから、`.rite/wiki/` プレフィックスを除去した `pages_list` と完全一致で突合」する。文字列マッチ (`grep -F` で生 link 値を直接突合) は禁止 — `./` / `../` / 連続スラッシュの差で false positive / negative が両方発生する (Issue #798)。`pages_list` の正規化は本 Phase 内で `printf '%s\n' "$pages_list" | sed -E 's|^\.rite/wiki/||'` で実行する (`pages_list_normalized` を生成する独立 Phase は存在しない、呼び出し側責務)。canonical bash 実装と edge case は [Broken Reference Resolution](./references/broken-ref-resolution.md) を参照。
 
 **アンカー除去ルール**: 相対パスリンクの `#...` 部分を切り落としてから実在確認を行います（例: `pages/foo.md#section` → `pages/foo.md` として照合）。
 
