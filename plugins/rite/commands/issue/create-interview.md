@@ -167,67 +167,7 @@ Based on complexity {complexity}, conducting a {standard: standard / full: full}
 
 #### EDGE-5: Context Window Pressure Mitigation
 
-Before starting the interview, estimate context pressure using the following heuristics:
-
-| Heuristic | Threshold | Indicator |
-|-----------|-----------|-----------|
-| Tool calls in conversation | > 30 | High pressure |
-| Total Read lines in conversation | > 3000 | High pressure |
-| AskUserQuestion calls so far | > 5 | Moderate pressure |
-
-**Note**: These thresholds are intentionally lower than `start.md` (> 50 / > 5000) because `create.md` runs the interview earlier in its flow and needs to detect pressure sooner to preserve context for Phase 0.6+ processing.
-
-**Pressure level actions:**
-
-| Pressure Level | Trigger | Action |
-|---------------|---------|--------|
-| **High** | Any High pressure threshold exceeded (Tool calls > 30 OR Read lines > 3000) | Activate auto-shortening mode (see below) |
-| **Moderate** | Only Moderate threshold exceeded (AskUserQuestion > 5), no High thresholds | Display warning but continue normal interview. Add a language-appropriate note (see below) |
-
-**Moderate pressure warning message:**
-
-Select the template based on the `language` setting:
-- **Japanese** (`ja` or `auto` with Japanese input): `ℹ️ AskUserQuestion の回数が多くなっています。残りの質問を効率的にまとめます。`
-- **English** (`en` or `auto` with English input): `ℹ️ The number of AskUserQuestion calls is high. Remaining questions will be consolidated efficiently.`
-
-**When high pressure is detected**, activate **auto-shortening mode**:
-
-1. **Reduce perspectives**: Limit to the top 2 most relevant perspectives (based on interview scope priority)
-2. **Batch aggressively**: Combine all remaining questions into a single AskUserQuestion call
-3. **Offer early exit**: Present the following option before starting:
-
-Select the template based on the `language` setting (see [Language-Aware Template Selection](./create.md#language-aware-template-selection)):
-
-**Japanese** (`ja` or `auto` with Japanese input):
-```
-⚠️ Context の残量が少なくなっています。
-
-オプション:
-- 短縮モードでインタビューを続行（最重要の視点のみ確認）
-- 現在の情報で推定して先に進む（インタビューをスキップ）
-- 通常通り続行（context 不足のリスクあり）
-```
-
-**English** (`en` or `auto` with English input):
-```
-⚠️ Context window is running low.
-
-Options:
-- Continue interview in shortened mode (confirm only the most important perspectives)
-- Continue with estimated plan (skip interview)
-- Continue normally (risk of context overflow)
-```
-
-**Auto-shortening mode behavior**:
-
-| Aspect | Normal Mode | Auto-Shortening Mode |
-|--------|-------------|---------------------|
-| Perspectives | All in scope | Top 2 most relevant |
-| Questions per perspective | Multiple follow-ups | 1 key question each |
-| End confirmation | Standard dialog | Skipped (auto-proceed after questions) |
-| Specification detail | Full structured | Condensed bullet points |
-
-**When "Continue with estimated plan" is selected**: AI generates the specification based on available information, marking all inferred details with `（推定）`. Proceed directly to Phase 0.6. Note: Decomposition trigger evaluation in Phase 0.6.1 uses estimated information, so tentative complexity may be less accurate.
+> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-5-context-window-pressure-mitigation`](./references/edge-cases-create.md#edge-5-context-window-pressure-mitigation) に移動しました。Phase 0.5 開始前に context pressure を heuristics (tool calls / read lines / AskUserQuestion calls) で評価し、High pressure 時は auto-shortening mode (perspectives 削減 + batching + 早期 exit option) を発動するロジックを定義します。
 
 ---
 
@@ -278,54 +218,7 @@ The tentative complexity was estimated in Phase 0.4.1. Refer to the "Tentative C
 
 #### EDGE-2: Re-entry After Exit Confirmation
 
-When the user selects "ない、この内容で進めてください" or "残りの詳細は任せる", the interview normally proceeds to Phase 0.6. However, if **new information emerges** after the exit confirmation (e.g., user realizes they forgot to mention something), allow re-entry:
-
-**Re-entry trigger**: After the exit confirmation, if the user provides additional input that contains new requirements or corrections, present the re-entry dialog. Detection criteria:
-
-| Criterion | Examples | Result |
-|-----------|----------|--------|
-| Contains specific technical terms or proper nouns not previously mentioned | "Redis キャッシュも必要", "OAuth2 対応を追加" | New information |
-| Contains requirement verbs (追加, 変更, 削除, 対応, 修正, add, change, remove, support) | "エラーハンドリングを追加したい" | New information |
-| Input is 5 or more words/tokens | "認証フローにMFAサポートを追加してほしい" | New information |
-| Simple acknowledgment or confirmation | "OK", "了解", "ありがとう", "はい", "Sure", "Thanks" | NOT new information (proceed to Phase 0.6) |
-| Single-word response without context | "いいね", "Good", "完璧" | NOT new information (proceed to Phase 0.6) |
-
-If the input is detected as new information, present the re-entry dialog:
-
-Select the template based on the `language` setting (see [Language-Aware Template Selection](./create.md#language-aware-template-selection)):
-
-**Japanese** (`ja` or `auto` with Japanese input):
-```
-質問: 新しい情報が追加されました。インタビューを再開しますか？
-
-オプション:
-- インタビューを再開する（追加情報を深堀り）
-- この情報を仕様に追加して先に進む（深堀りなし）
-- この情報は無視して先に進む
-```
-
-**English** (`en` or `auto` with English input):
-```
-Question: New information was provided. Would you like to resume the interview?
-
-Options:
-- Resume the interview (explore the new information)
-- Add this information to the spec and proceed (no deep-dive)
-- Ignore this information and proceed
-```
-
-**Re-entry behavior**:
-
-| Selection | Action |
-|-----------|--------|
-| Resume interview | Return to Phase 0.5. Only ask about the new information — do NOT re-ask previously confirmed perspectives |
-| Add to spec | Append the new information to the interview results (retained in context for Implementation Contract mapping) and proceed to Phase 0.6 |
-| Ignore | Proceed to Phase 0.6 without changes |
-
-**Limit**: Re-entry is allowed **once** per interview session. If the user triggers re-entry a second time, automatically select "Add to spec" behavior and display a message based on the `language` setting:
-
-- **Japanese** (`ja` or `auto` with Japanese input): `再入力は1回までです。新しい情報を仕様に追加して先に進みます。`
-- **English** (`en` or `auto` with English input): `Re-entry is limited to once. Adding the new information to the spec and proceeding.`
+> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-2-re-entry-after-exit-confirmation`](./references/edge-cases-create.md#edge-2-re-entry-after-exit-confirmation) に移動しました。Phase 0.5 終了確認後にユーザーが新規情報を追加入力した場合の re-entry trigger 検出基準と、再開・spec 追加・無視の 3 分岐挙動 (1 セッション 1 回 limit 付き) を定義します。
 
 ### AskUserQuestion Batch Optimization
 

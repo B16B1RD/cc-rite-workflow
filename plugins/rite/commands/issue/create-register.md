@@ -24,7 +24,7 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 |----------------------|----------|
 | Goal classification (Phase 0.4) | Infer from Phase 0.1 extraction: keywords in title/What → Type mapping (see Phase 1.2 Work Type Classification) |
 | Tentative complexity (Phase 0.4.1) | Use XL as baseline when `phases_skipped` is `"0.3-0.5"` (from Phase 0.1.5 detection); finalize via Heuristics Scoring (Phase 1.1) which takes precedence |
-| Interview results (Phase 0.5) | Apply [EDGE-3 row 4](./create.md#edge-3-interview-result-reflection-rules): MUST sections per Complexity Gate with `<!-- 情報未収集 -->` placeholders |
+| Interview results (Phase 0.5) | Apply [EDGE-3 row 4](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules): MUST sections per Complexity Gate with `<!-- 情報未収集 -->` placeholders |
 
 ---
 
@@ -132,7 +132,7 @@ Confirm with AskUserQuestion before creation:
 
 > **⚠️ Execution order**: First generate the Issue body using the Implementation Contract format (Section "Issue Body Generation" below the script block), then show the Phase 2.1 Confirmation Dialog with `{generated-body}`, and finally run the creation script.
 >
-> **Important**: When generating the Issue body, apply the display rules defined in [EDGE-3: Interview Result Reflection Rules](./create.md#edge-3-interview-result-reflection-rules) for Implementation Contract sections.
+> **Important**: When generating the Issue body, apply the display rules defined in [EDGE-3: Interview Result Reflection Rules](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules) for Implementation Contract sections.
 
 #### Create Issue via Common Script
 
@@ -237,7 +237,7 @@ Apply the interview-to-template mapping from the template:
 | Interview conducted for a perspective | Populate target sections with interview results |
 | Section is MUST but no interview data | Include section with placeholder comment (`<!-- 情報未収集 -->`) |
 | Phase 0.7 cancel path with specification document | Include `docs/designs/{slug}.md` content as design context in Section 4 (Implementation Details). The pre-validated specification supplements interview results for Section 4.1-4.5 |
-| Phase 0.3-0.5 all skipped (`phases_skipped: "0.3-0.5"`) | Apply [EDGE-3 row 4](./create.md#edge-3-interview-result-reflection-rules): populate all MUST sections per Complexity Gate using Phase 0.1 context (What/Why/Where). For MUST sections where no data is available from Phase 0.1, include `<!-- 情報未収集 -->` placeholder. AI-inferred content is marked with `（推定）`. SHOULD/OMIT sections follow normal Gate rules |
+| Phase 0.3-0.5 all skipped (`phases_skipped: "0.3-0.5"`) | Apply [EDGE-3 row 4](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules): populate all MUST sections per Complexity Gate using Phase 0.1 context (What/Why/Where). For MUST sections where no data is available from Phase 0.1, include `<!-- 情報未収集 -->` placeholder. AI-inferred content is marked with `（推定）`. SHOULD/OMIT sections follow normal Gate rules |
 
 **Step 4: Generate Acceptance Criteria**
 

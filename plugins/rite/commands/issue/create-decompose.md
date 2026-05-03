@@ -153,7 +153,7 @@ Information collected through Phase 0.5 and Phase 0.7 is utilized in Phase 1 onw
 | Out-of-scope items | Implementation Contract Section 2 (Out of Scope), Section 1 (Non-goal) |
 | Specification document content (Phase 0.7.1) | Referenced as design context in Implementation Contract Section 4 (Implementation Details) |
 
-**Note**: The specification document generated in Phase 0.7.1 is NOT deleted on cancel. The generated `docs/designs/{slug}.md` file is **retained** and serves as a high-level design reference when the Issue is later started via `/rite:issue:start`. The [Implementation Plan module](./implementation-plan.md) can leverage this pre-validated specification to generate a more accurate detailed plan. Interview result reflection follows [EDGE-3: Interview Result Reflection Rules](./create.md#edge-3-interview-result-reflection-rules).
+**Note**: The specification document generated in Phase 0.7.1 is NOT deleted on cancel. The generated `docs/designs/{slug}.md` file is **retained** and serves as a high-level design reference when the Issue is later started via `/rite:issue:start`. The [Implementation Plan module](./implementation-plan.md) can leverage this pre-validated specification to generate a more accurate detailed plan. Interview result reflection follows [EDGE-3: Interview Result Reflection Rules](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules).
 
 **When "キャンセル" is selected**: Invoke `skill: "rite:issue:create-register"` to create the Issue as a single Issue. Phase 1+ in `create-register.md` uses the context carryover described above.
 
@@ -167,7 +167,7 @@ Information collected through Phase 0.5 and Phase 0.7 is utilized in Phase 1 onw
 | Interview results | From Phase 0.5 if executed; otherwise `null` |
 | Specification document | `docs/designs/{slug}.md` (retained on cancel) — referenced in Implementation Contract Section 4 |
 | `phases_skipped` flag | `"0.3-0.5"` if Phase 0.1.5 triggered early decomposition; `null` if Phase 0.3-0.5 were executed normally |
-| EDGE-3 applicable row | Determined by Phase 0.5 status (see [EDGE-3 condition table](./create.md#edge-3-interview-result-reflection-rules)). When Phase 0.3-0.5 all skipped, row 4 applies |
+| EDGE-3 applicable row | Determined by Phase 0.5 status (see [EDGE-3 condition table](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules)). When Phase 0.3-0.5 all skipped, row 4 applies |
 
 ---
 
