@@ -343,3 +343,4 @@
 | 2026-05-03T12:53:26Z | ingest:skip | raw/fixes/20260503T110110Z-pr-792-fix.md | PR #792 cycle 1 fix (事実誤認 5 件修正) — Doc-Heavy mode 検証 protocol の有効性は既存 design-doc-current-head-verification と重複。cycle 3/5 の方が rich な lesson を含むため cycle 1 単独は skip |
 | 2026-05-03T12:53:26Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #792 cycle 3/5 fix から「メタ contract レイヤーでの再発」evidence section を追加 (累積 18 回目)。FR status 変更時の波及確認 5 項目 checklist と LOW finding 別 Issue 化閾値を canonical 対策として追加 |
 | 2026-05-03T12:53:26Z | ingest:create | pages/anti-patterns/html-comment-breaks-gfm-table-boundary.md | PR #792 cycle 3 fix から新規ページ作成: GFM table 内部の HTML コメント挿入が table boundary を破壊する anti-pattern。Edit ツールでの行の論理的削除コメント化目的での挿入は禁忌、代替 4 パターン (table 外配置 / 別セクション move / strikethrough / Status カラム追加) を canonical 対策として記載 |
+| 2026-05-03T12:53:26Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=85, broken_refs=16 |
