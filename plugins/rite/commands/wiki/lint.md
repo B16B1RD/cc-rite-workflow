@@ -1313,6 +1313,13 @@ page_links=$(printf '%s' "$page_content" \
   | sed -E 's/^\]\(//; s/\)$//' \
   | sed -E 's/#.*$//')
 
+# Phase 7.2 で pages_list_normalized / raw_list_normalized が必要 (broken-ref-resolution.md L21,52-57 参照)。
+# Phase 2.2 で取得した $pages_list / $raw_list は `.rite/wiki/...` プレフィックス付きで返るため、
+# 突合用に prefix 除去版を生成する (canonical 実装 L56-57 が要求する形式)。
+# `grep -v '^$'` で末尾改行由来の空行を除去 (空行マッチによる false negative 防止)。
+pages_list_normalized=$(printf '%s\n' "$pages_list" | sed -E 's|^\.rite/wiki/||' | grep -v '^$' || true)
+raw_list_normalized=$(printf '%s\n' "$raw_list" | sed -E 's|^\.rite/wiki/||' | grep -v '^$' || true)
+
 set +o pipefail
 ```
 
