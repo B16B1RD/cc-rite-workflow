@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-02T15:58:59Z"
+updated: "2026-05-03T12:53:26Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
@@ -116,6 +116,10 @@ sources:
     ref: "raw/reviews/20260502T103134Z-pr-765-cycle2.md"
   - type: "reviews"
     ref: "raw/reviews/20260502T155859Z-pr-779.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260503T111722Z-pr-792-fix-cycle5.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift"]
 confidence: high
 ---
@@ -418,10 +422,41 @@ PR #765 (Issue #691 = bang-backtick-check の二段ガード昇格) で、**ANCH
 2. **DRIFT-CHECK ANCHOR の射程拡張 + byte-equal hash 比較 test**: ANCHOR が cover する site 一覧と射程外 site (例: hook script) の Style B literal を test 側で `sha1sum` 比較で byte-equal pin する。3 site 同期の commit message claim を test で empirical 強制
 3. **Single source of truth 集約**: 例として PR #765 lessons learned で提案された `bang-backtick-check.sh --print-action-hint` flag による Style A/B サジェスト文言の 1 source of truth 集約。3 site の literal 重複自体を構造的に廃する
 
+### 設計ドキュメント FR status 変更時のメタ contract レイヤー再発 (PR #792 cycle 1-5 累積 18 回目での evidence)
+
+PR #792 (Issue #773 sub-issue 3/8、設計ドキュメント `docs/designs/improve-issue-create-skill-design.md` 初コミット + EDGE-2/3/4/5 の references/ 集約) で、**bash literal レベルではなく「FR ⇔ Risks ⇔ P-id 採番表 ⇔ アーキテクチャ表 ⇔ データフロー図 ⇔ bash 実行例」というメタ contract レイヤー**で同じ asymmetric transcription pattern が再発した。本 PR は doc-only refactor だが review-fix が cycle 1 → cycle 5 まで継続した:
+
+1. **cycle 1**: 削除済み `stop-guard.sh` を現存前提で記述、既存 `4-site-symmetry.test.sh` を新設提案として記述、test 対象誤分類、行数 snapshot 不明示など事実誤認 5 件 (HIGH×2 + MEDIUM×2 + LOW×1)
+2. **cycle 3 (cycle 2 fix の副作用)**: cycle 2 で `test-4-site-symmetry.sh → 4-site-symmetry.test.sh` を line 70/121/187 のみ修正し、line 82/149/196 で伝播漏れ。**Asymmetric Fix Transcription pattern の dominant failure mode が再発**。Edit `replace_all=true` で 6 箇所一括統一。
+3. **cycle 3 (副次)**: cycle 2 で SPEC-IMPL-FILES table 内に挿入した HTML コメントが GFM table 継続を break (詳細は [html-comment-breaks-gfm-table-boundary.md](./html-comment-breaks-gfm-table-boundary.md))
+4. **cycle 5 (メタ contract レイヤー)**: cycle 1 で FR-5.3 の status を「新設提案 → 既存」に変更したが、その status 変更を**参照する全箇所 (Risks セクション `Mitigation` 文言、P-id 採番表、新規ファイル table、データフロー図、bash 実行例)** への波及修正を見落としていた。cycle 4 で tech-writer が検出 (MEDIUM×2 + LOW×1)
+5. **cycle 5 (P-id duplication)**: 新規ファイル table で P4-10 重複 (P4-13 に再採番 + 改善ポイント数 12→13 更新の波及)
+
+**根本原因**: cycle 2/3 では「bash literal レベル」の asymmetric transcription を学んだが、cycle 4 では**「1 つの FR の status 変更がシステム全体に与える波及範囲」をメタ contract レイヤーで認識できなかった**。FR の status 変更は局所的な書き換えに見えるが、実際は doc 全体の論理整合性を要求する.
+
+**Canonical 対策** — FR status 変更時の波及確認 5 項目 checklist:
+
+1. **同 FR を参照する Risks セクション** (`Mitigation:` / `軽減策:` 文言で当該 FR を参照する箇所)
+2. **アーキテクチャ表** (`(新設)` / `(新規)` 表記、status カラム)
+3. **新規ファイル table** (P-id 採番、ファイル数集計、改善ポイント数)
+4. **データフロー図** (file path 参照、boundary 表記)
+5. **文章中の bash 実行例** (`bash <filename>` 言及、CLI invocation pattern)
+
+cycle 1 で FR の status 変更 PR を出す際、上記 5 箇所すべてに propagation scan を実行することを契約として明示化する。これは「[propagation-scan-pattern-coverage](#pr-661-issue-660-で実測された-propagation-scan-pattern-coverage-不足) の設計ドキュメント版」として位置づけられる。
+
+**LOW finding を別 Issue 化する閾値の判断基準** (cycle 5 で確立、PR #792 NFR-4 stop-guard 残存参照を Issue #793 で別化):
+
+- 本 PR scope と直接関係する箇所 → 本 PR で修正
+- 本 PR scope 外の発見 (例: NFR-4 の stop-guard 残存参照) → 別 Issue 化
+- review cycle の収束を遅らせる risk が高い場合 → 別 Issue 化を優先 (cycle 数を増やすほうが品質劣化)
+
+review-fix loop の cycle 数 vs finding 検出量の挙動: **設計ドキュメントが「動的進化中の North Star」として高頻度参照されるため、初回 commit の正確性に対する閾値が通常コードより高い**。cycle 数 5 まで finding が出続けることは異常ではなく、設計 doc の特性として想定すべき。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
 - [新規 file 命名と既存 find glob が collision して silent 削除を起こす](./find-glob-naming-collision-silent-removal.md)
+- [Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される](./html-comment-breaks-gfm-table-boundary.md)
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](../patterns/drift-check-anchor-prose-code-sync.md)
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md)
@@ -430,6 +465,8 @@ PR #765 (Issue #691 = bang-backtick-check の二段ガード昇格) で、**ANCH
 
 ## ソース
 
+- [PR #792 cycle 3 fix (Asymmetric pattern 再発 + GFM table boundary 破壊)](raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md)
+- [PR #792 cycle 5 fix (Meta-contract レイヤーでの asymmetric 再発 + FR status 変更 5 項目 checklist)](raw/fixes/20260503T111722Z-pr-792-fix-cycle5.md)
 - [PR #548 cycle 3 fix: asymmetric fix transcription pattern](raw/fixes/20260416T173607Z-pr-548-cycle3.md)
 - [PR #548 cycle 4 fix results](raw/fixes/20260416T180658Z-pr-548.md)
 - [PR #548 cycle 5 fix results](raw/fixes/20260416T181846Z-pr-548.md)
