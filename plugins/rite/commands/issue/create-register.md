@@ -42,7 +42,7 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 
 #### Complexity Heuristics Scoring
 
-> 本 subsection の定義は [`references/complexity-gate.md#complexity-heuristics-scoring`](./references/complexity-gate.md#complexity-heuristics-scoring) に移動しました (Issue #773 P1-3 PR 4/8)。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。
+> **Moved (Issue #773 P1-3 PR 4/8)**: 本 subsection の定義は [`references/complexity-gate.md#complexity-heuristics-scoring`](./references/complexity-gate.md#complexity-heuristics-scoring) に移動しました。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。
 
 ### 1.2 Work Type Classification
 
