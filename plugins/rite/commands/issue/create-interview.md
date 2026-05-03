@@ -12,7 +12,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 **Prerequisites**: Phase 0.1-0.4 have completed in the parent `create.md` flow. The following information is available in conversation context:
 - Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1
 - Goal classification from Phase 0.4
-- Tentative slug from Phase 0.1.3
+- Tentative slug from [Phase 0.1.3](./references/slug-generation.md) — generated per [Slug Generation Rules](./references/slug-generation.md#slug-generation-rules)
 
 ---
 

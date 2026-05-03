@@ -244,26 +244,13 @@ Analyze user input and extract the following elements:
 
 ### 0.1.3 Slug Pre-generation
 
-**Purpose**: Generate the Issue slug early to avoid redundant Japanese→English translation in Phase 0.7.2. The slug is tentative and confirmed later when the Issue title is finalized.
-
-Generate a slug from the extracted **What** element (or user input title):
-
-**Slug generation rules** (canonical definition — referenced by Phase 0.7.2):
-1. For Japanese: Claude translates to appropriate English considering context
-   - Example: "テトリスゲームを作る" -> `tetris-game`
-   - Example: "ユーザー認証システム" -> `user-auth-system`
-   - Example: "ECサイト基盤構築" -> `ec-site-infrastructure`
-2. Convert to lowercase
-3. Replace spaces with hyphens
-4. Remove special characters
-5. Truncate to 50 characters or fewer
-
-**Translation guidelines**:
-- Technical terms are directly converted to English (e.g., "API" -> `api`, "データベース" -> `database`)
-- Proper nouns may be romanized (e.g., "お知らせ機能" -> `oshirase-feature` or `notification-feature`)
-- When in doubt, choose a commonly used, easily searchable English expression
-
-Retain the generated slug in context as `{tentative_slug}` for use in Phase 0.7.2.
+> **Moved (Issue #773 P1-3 PR 5/8)**: 本セクションの定義は [`references/slug-generation.md`](./references/slug-generation.md) に移動しました。Issue slug を early に生成し、Phase 0.7.2 (`create-decompose.md`) における重複した Japanese→English 翻訳を回避するロジックです。詳細:
+>
+> - [Slug Generation Rules](./references/slug-generation.md#slug-generation-rules) — 5 ルール（翻訳・小文字化・ハイフン置換・特殊文字除去・truncate）
+> - [Translation Guidelines](./references/slug-generation.md#translation-guidelines) — Japanese → English 翻訳の細則（技術用語直接英語化 / 固有名詞ローマ字化 / 検索性優先）
+> - [Context Retention](./references/slug-generation.md#context-retention) — `{tentative_slug}` の context retention rule（Phase 0.7.2 での再生成も同一ルール適用）
+>
+> 生成した slug は `{tentative_slug}` として context に保持され、Phase 0.7.2 で再利用される。
 
 <!-- Phase 0.2: Removed — ambiguity detection merged into Phase 0.3 (context gathering) and Phase 0.5 Perspective 1 (Technical Implementation Details) -->
 
@@ -661,7 +648,7 @@ Invoke `skill: "rite:issue:create-register"`.
 | Goal classification | Phase 0.4 | **Not available** — `create-register` Phase 1.2 infers from Phase 0.1 |
 | Tentative complexity | Phase 0.4.1 | **Not available** — `create-register` Phase 1.1 uses XL as baseline (from Phase 0.1.5 detection) and finalizes via Heuristics Scoring |
 | Interview results | Phase 0.5 | **Not available** — EDGE-3 row 4 applies (MUST sections with placeholders) |
-| Tentative slug | Phase 0.1.3 | Always available |
+| Tentative slug | [Phase 0.1.3](./references/slug-generation.md) | Always available |
 | `phases_skipped` flag | Phase 0.1.5 | Set to `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition. Set to `null` otherwise |
 
 **🚨 Immediate after delegation returns**: When the sub-skill outputs a result pattern (`[create:completed:{N}]`) and returns control, verify that the workflow completed successfully.
