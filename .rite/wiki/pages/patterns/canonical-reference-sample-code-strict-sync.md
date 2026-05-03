@@ -2,7 +2,7 @@
 title: "canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する"
 domain: "patterns"
 created: "2026-04-18T17:40:00+09:00"
-updated: "2026-04-19T10:40:43+00:00"
+updated: "2026-05-03T18:46:59Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
@@ -18,6 +18,10 @@ sources:
     ref: "raw/reviews/20260419T094545Z-pr-596.md"
   - type: "reviews"
     ref: "raw/reviews/20260419T104043Z-pr-598.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260503T181256Z-pr-799.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260503T181755Z-pr-799.md"
 tags: []
 confidence: high
 ---
@@ -98,11 +102,28 @@ PR #596 / #598 の 2 連続で観点 (b)(c) が minimal PR により完全解消
 
 参考フロー: PR #590 (別例、+4 lines) と同型の「極小対称化 PR」パターンの appilcation。`極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる` heuristic (heuristics) と組み合わせて運用するのが canonical。
 
+### canonical reference は caller の precondition 契約まで含めて完成させる (PR #799 での evidence)
+
+PR #799 で新規 canonical reference (`broken-ref-resolution.md`) を追加し `realpath -m` ベースの相対パス解決 sample bash を載せたが、reference の sample が要求する precondition 変数 (`pages_list_normalized` / `wiki_root` / `page_path` 絶対パス) を caller (`lint.md` Phase 7.x) で生成する Phase が存在せず、両 reviewer が cycle 1 で CRITICAL 指摘した。reference 単独は「完成形」に見えるが、caller 側の bash 実行コンテキストでは実行不能な broken reference になる。
+
+**学習**: canonical reference を新設する際は **reference 単独の完成度** ではなく **caller (= reference を呼び出す既存契約) と reference のサンプルが要求する precondition 変数の整合** までを完成条件とする。具体的には:
+
+| 観点 | 検証手順 |
+|------|----------|
+| (a) reference の bash sample が依存する変数 / 関数 / 関数 import | sample 内の `${VAR}` / `func_name` を全列挙し、caller 側で生成 / import される箇所を grep で確認 |
+| (b) reference の precondition (「呼び出し前に X が確定している必要」) | caller 側の Phase 番号 / 行範囲で X が generate される段階を明示 |
+| (c) reference の sample exit code / 戻り値の caller 側消費契約 | caller 側で sample 戻り値を受け取り条件分岐 / fail-fast する箇所が存在 |
+
+3 観点いずれかが欠落していれば「reference は完成」と主張してはならない。reference の bash sample は **caller の既存契約と動作整合する範囲でのみ canonical** であり、precondition を caller 側で勝手に invent するのを禁じる契約まで含めて初めて「同期」が成立する。
+
+「呼び出し側責務」「同様」のような prose 委譲表現で caller 側実装を後回しにすると、次 cycle で PARTIAL fix として再指摘される (詳細は [委譲表現を含む fix は次サイクルで PARTIAL fix として再指摘される](../anti-patterns/delegation-phrase-induces-partial-fix.md))。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
 - [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](../heuristics/observed-likelihood-gate-with-evidence-anchors.md)
+- [委譲表現を含む fix は次サイクルで PARTIAL fix として再指摘される](../anti-patterns/delegation-phrase-induces-partial-fix.md)
 
 ## ソース
 
@@ -113,3 +134,5 @@ PR #596 / #598 の 2 連続で観点 (b)(c) が minimal PR により完全解消
 - [PR #586 cycle 7 review (一字一句同期 3 観点の実測)](../../raw/reviews/20260419T035346Z-pr-586-cycle7.md)
 - [PR #596 review (観点 (b) `-- ` 引数区切り残留を別 Issue #587 → minimal PR で解消した成功例)](../../raw/reviews/20260419T094545Z-pr-596.md)
 - [PR #598 review (観点 (c) `dry_run_out=""` / `dry_run_rc=0` 事前宣言残留を別 Issue #588 → minimal PR で解消した成功例)](../../raw/reviews/20260419T104043Z-pr-598.md)
+- [PR #799 review (cycle 1 — reference precondition 契約乖離 CRITICAL)](../../raw/reviews/20260503T181256Z-pr-799.md)
+- [PR #799 fix (cycle 1 — reference 単独修正、cycle 2 で PARTIAL 指摘)](../../raw/fixes/20260503T181755Z-pr-799.md)

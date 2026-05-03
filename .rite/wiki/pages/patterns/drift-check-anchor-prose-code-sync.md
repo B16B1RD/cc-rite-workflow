@@ -2,7 +2,7 @@
 title: "AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する"
 domain: "patterns"
 created: "2026-04-17T00:49:00+00:00"
-updated: "2026-04-25T17:50:00+00:00"
+updated: "2026-05-03T18:46:59Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T002317Z-pr-553.md"
@@ -18,6 +18,8 @@ sources:
     ref: "raw/fixes/20260425T154517Z-pr-661-cycle-1.md"
   - type: "fixes"
     ref: "raw/fixes/20260425T161635Z-pr-661.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260503T183643Z-pr-799-cycle4.md"
 tags: ["drift-detection", "lint", "pre-commit", "convergence", "mechanical-validation", "anchor-prose-enumeration"]
 confidence: high
 ---
@@ -88,6 +90,23 @@ PR #661 cycle 2 で **DRIFT-CHECK ANCHOR comment の prose 内 bash 引数 enume
 
 **教訓**: drift-check-anchor lint pattern を literal block だけでなく ANCHOR comment 内の prose enumeration にも拡張する必要がある (PR #661 cycle 2 で実測)。「2 重契約」が「N 重契約」に拡張する場面では、N 番目の sync site が新規追加されるたびに lint pattern も同型拡張する義務を負う。
 
+### 実装変更と対応する prose / 既知の限界表 / Edge Case 表の同時更新義務 (PR #799 cycle 4 での evidence)
+
+PR #799 cycle 3 で `lint.md` Phase 7.2 の bash block を新規追加したが、対応する Phase 7.2 の prose は cycle 1 時点の「呼び出し側責務」記述のまま残留した。cycle 4 reviewer が「実装は更新されたが prose は cycle 1 時点の方針を述べている」という **prose-implementation drift** として HIGH 指摘し、cycle 4 fix で prose 側を実装に合わせて改訂。同時に reference (`broken-ref-resolution.md`) の **既知の限界表** と **Edge Case 表** の factual claim も実機反証で訂正された (詳細は [`empirical-reproduction-over-invariant-reasoning`](../heuristics/empirical-reproduction-over-invariant-reasoning.md) 参照)。
+
+**学習**: 実装 (bash block / Phase 番号 / 関数 invoke) を変更する際は **同 PR / 同 cycle 内で** 以下 4 site の同期を契約する:
+
+| Sync site | 例 |
+|-----------|----|
+| (a) 実装 (bash block / function / Phase の手続き) | `lint.md` Phase 7.2 bash block |
+| (b) 同ファイル内の prose 説明 | Phase 7.2 の散文「相対パス解決方針」 |
+| (c) reference の bash sample コード | `broken-ref-resolution.md` の canonical sample |
+| (d) reference の **既知の限界表** / **Edge Case 表** / **factual claim** | reference の「Wiki ルート直下ページ」「`-m` の symlink 挙動」「`--relative-to` 外側挙動」 |
+
+drift-check-anchor lint pattern (Pattern-2 / Pattern-5) が現状 (a)(c) の literal block sync を機械検証するが、(b) prose 散文 / (d) 既知の限界表 / Edge Case 表 / factual claim は scan 対象外。本 sync 義務は当面 PR レビューでの目視検証に依存するが、N 重契約として認識し fix を出す側が **「実装変更したら 4 site 全てを順に確認」** を checklist 化する必要がある。
+
+**「Cross-File Impact Check の delete/rename 参照整合性」との同型性**: 本 sync 義務は「削除/リネームされた export の参照整合性」と同型の cross-site impact pattern。実装の semantics 変更が prose / 限界表 / Edge Case 表 / factual claim を invalidate する可能性を、実装変更時 default で確認する習慣を持つ。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -102,3 +121,4 @@ PR #661 cycle 2 で **DRIFT-CHECK ANCHOR comment の prose 内 bash 引数 enume
 - [PR #661 cycle 1 fix (4-arg ANCHOR comment 統一)](../../raw/fixes/20260425T154517Z-pr-661-cycle-1.md)
 - [PR #661 cycle 2 review (ANCHOR comment prose 内 enumeration 同期漏れ実測)](../../raw/reviews/20260425T161137Z-pr-661.md)
 - [PR #661 cycle 2 fix (prose 側 4-arg 拡張完了)](../../raw/fixes/20260425T161635Z-pr-661.md)
+- [PR #799 cycle 4 fix (prose-implementation drift 訂正 + reference Edge Case / 既知の限界表 factual error 訂正)](../../raw/fixes/20260503T183643Z-pr-799-cycle4.md)
