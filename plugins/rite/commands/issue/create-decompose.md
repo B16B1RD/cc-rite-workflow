@@ -362,7 +362,7 @@ XL（{count} 件の Sub-Issue に分解）
 
 ### 0.9.2 Bulk Creation of Sub-Issues
 
-> **Source of Truth**: Pre-amble + Per-Sub-Issue body の bash literal / placeholder descriptions / Sub-Issue body structure / Error handling for partial failures / anti-pattern 例の正規定義は [`references/bulk-create-pattern.md`](./references/bulk-create-pattern.md) を参照する。
+> **Partial Moved (Issue #773 P1-3 PR 8/8)**: Pre-amble + Per-Sub-Issue body の bash literal / placeholder descriptions / Sub-Issue body structure / Error handling for partial failures / anti-pattern 例の正規定義は [`references/bulk-create-pattern.md`](./references/bulk-create-pattern.md) を参照する。critical 警告は本体に維持 (NFR-2 protected、下記 ⚠️ CRITICAL 段落参照)。
 
 Phase 0.9.2 は **2 つの部分** から構成され、両者は **a single Bash tool invocation** で実行されることが MUST 要件:
 
