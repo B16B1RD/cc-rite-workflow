@@ -25,86 +25,54 @@ Generate a specification document, decompose into sub-Issues, and create them in
 
 ### 0.7.1 Specification Document Structure
 
-Generate a specification document with the following structure. Each section has a **Section ID** (e.g., `SPEC-REQ-FUNC`) that Phase 0.8 uses to directly reference content without re-analysis.
+Generate a specification document with the structure below. Each section has a **Section ID** (e.g., `SPEC-REQ-FUNC`) embedded as `<!-- Section ID: ... -->` HTML comment immediately before the heading. Phase 0.8 references these IDs directly to avoid re-analyzing the full document.
+
+| Section ID | Level | Heading | Content | Phase 0.8 Usage |
+|------------|-------|---------|---------|-----------------|
+| `SPEC-OVERVIEW` | h2 | `## 概要` | What: 何を作るか | (完成度のみ) |
+| `SPEC-BACKGROUND` | h2 | `## 背景・目的` | Why: なぜ必要か | (完成度のみ) |
+| `SPEC-REQ-FUNC` | h3 | `### 機能要件` (under `## 要件`) | Phase 0.5 インタビュー結果から抽出 | Primary source for feature-based decomposition |
+| `SPEC-REQ-NFR` | h3 | `### 非機能要件` (under `## 要件`) | Phase 0.5 インタビュー結果から抽出 | NFR constraints per Sub-Issue |
+| `SPEC-TECH-DECISIONS` | h2 | `## 技術的決定事項` | Phase 0.5 で確定した技術的選択 | (完成度のみ) |
+| `SPEC-ARCH-COMPONENTS` | h3 | `### コンポーネント構成` (under `## アーキテクチャ`) | 主要コンポーネントと役割 | Layer-based decomposition |
+| `SPEC-ARCH-DATAFLOW` | h3 | `### データフロー` (under `## アーキテクチャ`) | データの流れの説明 | (完成度のみ) |
+| `SPEC-IMPL-FILES` | h3 | `### 変更が必要なファイル/領域` (under `## 実装ガイドライン`) | Where の詳細 | File assignment per Sub-Issue |
+| `SPEC-IMPL-CONSIDERATIONS` | h3 | `### 考慮事項` (under `## 実装ガイドライン`) | エッジケース・セキュリティ・パフォーマンス等 | Risk allocation per Sub-Issue |
+| `SPEC-OUT-OF-SCOPE` | h2 | `## スコープ外` | 今回の実装範囲に含めないもの | Scope boundary per Sub-Issue |
+
+**Document outline** (h1 = `# {Issue タイトル}` followed by sections in the order above):
 
 ```markdown
 # {Issue タイトル}
-
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
-
-{What: 何を作るか}
-
 <!-- Section ID: SPEC-BACKGROUND -->
 ## 背景・目的
-
-{Why: なぜ必要か}
-
 ## 要件
-
 <!-- Section ID: SPEC-REQ-FUNC -->
 ### 機能要件
-
-{Phase 0.5 のインタビュー結果から抽出}
-
 <!-- Section ID: SPEC-REQ-NFR -->
 ### 非機能要件
-
-{Phase 0.5 のインタビュー結果から抽出}
-
 <!-- Section ID: SPEC-TECH-DECISIONS -->
 ## 技術的決定事項
-
-{Phase 0.5 で確定した技術的な選択}
-
 ## アーキテクチャ
-
 <!-- Section ID: SPEC-ARCH-COMPONENTS -->
 ### コンポーネント構成
-
-{主要なコンポーネントとその役割}
-
 <!-- Section ID: SPEC-ARCH-DATAFLOW -->
 ### データフロー
-
-{データの流れの説明}
-
 ## 実装ガイドライン
-
 <!-- Section ID: SPEC-IMPL-FILES -->
 ### 変更が必要なファイル/領域
-
-{Where の詳細}
-
 <!-- Section ID: SPEC-IMPL-CONSIDERATIONS -->
 ### 考慮事項
-
-{エッジケース、セキュリティ、パフォーマンス等}
-
 <!-- Section ID: SPEC-OUT-OF-SCOPE -->
 ## スコープ外
-
-{今回の実装範囲に含めないもの}
 ```
 
-**Note**: The "## Sub-Issue 候補" section is automatically appended after Phase 0.8 is complete. Do not include it at Phase 0.7.
-
-#### Section ID Reference Guide (for Phase 0.8)
-
-Phase 0.8 (Sub-Issue Decomposition) should reference specification sections by ID rather than re-analyzing the full document:
-
-| Section ID | Used For | Phase 0.8 Usage |
-|------------|----------|-----------------|
-| `SPEC-REQ-FUNC` | Functional requirements | Primary source for feature-based decomposition |
-| `SPEC-REQ-NFR` | Non-functional requirements | NFR constraints per Sub-Issue |
-| `SPEC-ARCH-COMPONENTS` | Component structure | Layer-based decomposition |
-| `SPEC-IMPL-FILES` | Target files | File assignment per Sub-Issue |
-| `SPEC-IMPL-CONSIDERATIONS` | Edge cases, constraints | Risk allocation per Sub-Issue |
-| `SPEC-OUT-OF-SCOPE` | Exclusions | Scope boundary per Sub-Issue |
-
-**Note**: `SPEC-OVERVIEW`, `SPEC-BACKGROUND`, `SPEC-TECH-DECISIONS`, and `SPEC-ARCH-DATAFLOW` are defined in the template for document completeness but are not directly referenced by Phase 0.8 decomposition.
-
-**How Phase 0.8 uses Section IDs**: Instead of re-reading and re-analyzing the entire specification, Phase 0.8 directly references specific sections by ID comment markers. For example, to determine feature boundaries for decomposition, read only `SPEC-REQ-FUNC` and `SPEC-ARCH-COMPONENTS` sections. This reduces redundant analysis and token consumption.
+**Notes**:
+- `## Sub-Issue 候補` 節は Phase 0.8 完了後に自動追記される (Phase 0.7 では含めない)
+- `(完成度のみ)` の Section ID は document completeness のために定義されているが Phase 0.8 decomposition では直接参照されない
+- Phase 0.8 は ID コメントマーカーで該当 section のみを抽出読みすることで redundant analysis と token 消費を削減する
 
 ### 0.7.2 Saving the Specification Document
 
@@ -143,31 +111,19 @@ Display the generated specification document and confirm with `AskUserQuestion`:
 
 **Context carryover when "キャンセル" is selected**:
 
-Information collected through Phase 0.5 and Phase 0.7 is utilized in Phase 1 onwards as follows:
+Phase 0.5 / Phase 0.7 で収集した情報は cancel 後も Phase 1+ で利用される。`docs/designs/{slug}.md` は **削除されず保持** され、後続 `/rite:issue:start` で [Implementation Plan module](./implementation-plan.md) が high-level design context として参照する。Interview result の反映は [EDGE-3: Interview Result Reflection Rules](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules) に従う。Implementation Contract Section への mapping (What/Why/Where → Section 1/2、Interview results → Section 1-9、Tentative complexity XL → Phase 1.1 で確定、Out-of-scope → Section 2 Out of Scope / Section 1 Non-goal、Spec document content → Section 4 Implementation Details) は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) を参照。
 
-| Collected Information | Carryover Destination |
-|----------------------|----------------------|
-| What/Why/Where | Implementation Contract Section 1 (Goal), Section 2 (Scope) of the Issue body |
-| Interview results (technical decisions, etc.) | Implementation Contract Sections 1-9 via interview-to-section mapping (see [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping)) |
-| Tentative complexity XL | Finalized in Phase 1.1. Recorded as XL even when decomposition is cancelled |
-| Out-of-scope items | Implementation Contract Section 2 (Out of Scope), Section 1 (Non-goal) |
-| Specification document content (Phase 0.7.1) | Referenced as design context in Implementation Contract Section 4 (Implementation Details) |
+**When "キャンセル" is selected**: Invoke `skill: "rite:issue:create-register"` で単一 Issue として作成。`create-register.md` Phase 1+ は本 carryover を利用する。
 
-**Note**: The specification document generated in Phase 0.7.1 is NOT deleted on cancel. The generated `docs/designs/{slug}.md` file is **retained** and serves as a high-level design reference when the Issue is later started via `/rite:issue:start`. The [Implementation Plan module](./implementation-plan.md) can leverage this pre-validated specification to generate a more accurate detailed plan. Interview result reflection follows [EDGE-3: Interview Result Reflection Rules](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules).
-
-**When "キャンセル" is selected**: Invoke `skill: "rite:issue:create-register"` to create the Issue as a single Issue. Phase 1+ in `create-register.md` uses the context carryover described above.
-
-**Context handoff to `create-register`**: When invoking the skill, include these in the prompt context to prevent information loss across skill boundaries. This table extends the base context from `create.md` Delegation Routing with decompose-specific items (Specification document, EDGE-3 applicable row):
+**Context handoff to `create-register`**: skill 起動時 prompt に decompose 固有の追加項目 (`create.md` Delegation Routing の base context に追記):
 
 | Context | Value |
 |---------|-------|
-| What/Why/Where | From Phase 0.1 extraction (always available) |
-| Goal classification | From Phase 0.4 if executed; otherwise `null` (create-register infers from Phase 0.1) |
-| Tentative complexity | XL (from Phase 0.1.5 detection); Phase 0.4.1 value (when Phase 0.6 triggered after normal flow) |
-| Interview results | From Phase 0.5 if executed; otherwise `null` |
-| Specification document | `docs/designs/{slug}.md` (retained on cancel) — referenced in Implementation Contract Section 4 |
-| `phases_skipped` flag | `"0.3-0.5"` if Phase 0.1.5 triggered early decomposition; `null` if Phase 0.3-0.5 were executed normally |
-| EDGE-3 applicable row | Determined by Phase 0.5 status (see [EDGE-3 condition table](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules)). When Phase 0.3-0.5 all skipped, row 4 applies |
+| Specification document | `docs/designs/{slug}.md` (retained on cancel) — Section 4 で参照 |
+| `phases_skipped` flag | `"0.3-0.5"` (Phase 0.1.5 early decomposition trigger) / `null` (normal flow) |
+| EDGE-3 applicable row | Phase 0.5 status から決定 ([EDGE-3 condition table](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules))。Phase 0.3-0.5 全 skip 時は row 4 適用 |
+
+base context (What/Why/Where / Goal classification / Tentative complexity / Interview results) は `create.md` Delegation Routing の正規定義を参照。
 
 ---
 
@@ -179,85 +135,30 @@ Information collected through Phase 0.5 and Phase 0.7 is utilized in Phase 1 onw
 
 ### 0.8.1 Decomposition Algorithm
 
-Reference the specification document via Section IDs and extract Sub-Issues based on the following criteria:
+Decomposition criteria + selection priority:
 
-| Decomposition Criteria | Description | Applicable Scenario |
-|-----------------------|-------------|---------------------|
-| **By feature** (preferred) | Split by independent features (e.g., authentication, data display, settings) | When multiple independent features exist (default) |
-| **By layer** | Split by architecture layers (e.g., UI, logic, data layer) | When a single feature spans multiple layers |
-| **By dependency order** | Split based on implementation dependencies (foundation -> application) | Applied when determining implementation order after splitting by the above criteria |
+| Priority | Criteria | Description | Applicable Scenario |
+|---------:|----------|-------------|---------------------|
+| 1 | **By feature** (preferred) | Split by independent features (auth / data display / settings 等) | 独立した複数 feature が存在 (default) |
+| 2 | **By layer** | Architecture layer (UI / logic / data) で分割 | 単一 feature が複数 layer にまたがる |
+| 3 | **By dependency order** | 実装依存 (foundation → application) に基づく分割 | 上記で分割後に実装順序を決定する際 |
+| Fallback | **By work timeline** | initial setup → implementation → testing | 上記いずれも適用不可な場合 |
 
-**Algorithm for selecting decomposition criteria**:
-
-1. First consider whether splitting "by feature" is possible (are there multiple independent features?)
-2. For a single feature, split "by layer" (can it be divided into UI/logic/data layers?)
-3. After splitting, determine implementation order "by dependency order"
-4. If none of the above apply, split by work timeline (initial setup -> implementation -> testing)
-
-**Sub-Issue granularity**:
-- Each Sub-Issue should be approximately **1 Issue = 1 PR** in size
-- Estimated complexity: S to L (split so that none becomes XL)
-- Can be completed independently (parallel work with other Sub-Issues is possible)
+**Sub-Issue granularity**: 各 Sub-Issue は **1 Issue = 1 PR** 規模、Complexity S–L (XL は更に分割)、独立完結 (他 Sub-Issue と並行作業可能)。
 
 ### 0.8.2 Dependency Analysis
 
-Analyze dependencies between Sub-Issues:
-
-```
-例:
-#1 データモデル定義 (依存なし)
-#2 バックエンド API 実装 (依存: #1)
-#3 フロントエンド UI 実装 (依存: #1)
-#4 API 連携実装 (依存: #2, #3)
-#5 テスト追加 (依存: #4)
-```
+Sub-Issue 間の依存を解析。表現例: `#1 データモデル定義 (依存なし)` → `#2 API 実装 (依存: #1)` → `#3 UI 実装 (依存: #1)` → `#4 API 連携 (依存: #2, #3)` → `#5 テスト (依存: #4)`。
 
 ### 0.8.3 Implementation Order Proposal
 
-Propose implementation order based on dependencies:
-
-```
-## 実装順序（提案）
-
-### フェーズ 1: 基盤構築
-1. #{number} - データモデル定義 (複雑度: S)
-
-### フェーズ 2: コア実装（並行可能）
-2. #{number} - バックエンド API 実装 (複雑度: M)
-3. #{number} - フロントエンド UI 実装 (複雑度: M)
-
-### フェーズ 3: 統合
-4. #{number} - API 連携実装 (複雑度: M)
-
-### フェーズ 4: 品質保証
-5. #{number} - テスト追加 (複雑度: S)
-```
+依存関係に基づく実装順序を 4 フェーズ (`### フェーズ 1: 基盤構築` / `### フェーズ 2: コア実装（並行可能）` / `### フェーズ 3: 統合` / `### フェーズ 4: 品質保証`) で提示。各エントリは `1. #{number} - {title} (複雑度: {complexity})` 形式。
 
 ### 0.8.4 Decomposition Result Confirmation
 
-> **Reference**: See [Termination Logic > Phase 0.8 Decomposition Result Termination](#phase-08-decomposition-result-termination) for the termination routing table.
+> **Reference**: 終了 routing は [Termination Logic > Phase 0.8 Decomposition Result Termination](#phase-08-decomposition-result-termination) を参照。
 
-Confirm the decomposition result with `AskUserQuestion`:
-
-```
-以下の Sub-Issue に分解しました:
-
-| # | タイトル | 複雑度 | 依存 |
-|---|---------|--------|------|
-| 1 | {title} | {complexity} | - |
-| 2 | {title} | {complexity} | #1 |
-| ... | ... | ... | ... |
-
-合計: {count} 件の Sub-Issue
-
-オプション:
-- この分解で作成する（推奨）
-- Sub-Issue を追加
-- Sub-Issue を統合
-- 分解をやり直す
-```
-
-**Subsequent processing for each option**: See [Termination Logic > Phase 0.8 Decomposition Result Termination](#phase-08-decomposition-result-termination).
+`AskUserQuestion` で分解結果を確認 (項目: タイトル / 複雑度 / 依存 を持つ Sub-Issue table を表示し、合計 N 件)。オプション: `この分解で作成する（推奨）` / `Sub-Issue を追加` / `Sub-Issue を統合` / `分解をやり直す`。各選択後の処理は同 Termination Logic を参照。
 
 ---
 
@@ -327,38 +228,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 - `{owner}`: From `github.projects.owner` in `rite-config.yml`
 - `{priority}`: Priority value determined during Issue creation (Phase 1)
 
-**Parent Issue body structure**:
-
-```markdown
-## 概要
-
-{概要}
-
-## 背景・目的
-
-{背景・目的}
-
-## 設計ドキュメント
-
-詳細な仕様は [docs/designs/{slug}.md](docs/designs/{slug}.md) を参照してください。
-
-## Sub-Issues
-
-<!-- 自動更新: Sub-Issue 作成後にタスクリストを追加 -->
-
-## 進捗
-
-| フェーズ | 状態 |
-|---------|------|
-| 基盤構築 | [ ] 未着手 |
-| コア実装 | [ ] 未着手 |
-| 統合 | [ ] 未着手 |
-| 品質保証 | [ ] 未着手 |
-
-## 複雑度
-
-XL（{count} 件の Sub-Issue に分解）
-```
+> **Moved (Issue #806 follow-up of #773)**: Parent Issue body の正規 markdown 構造と placeholder definitions は [`references/bulk-create-pattern.md#parent-issue-body-structure`](./references/bulk-create-pattern.md#parent-issue-body-structure) を参照する。`{概要}` / `{背景・目的}` / `{slug}` / `{count}` の source mapping も同節を参照。
 
 ### 0.9.2 Bulk Creation of Sub-Issues
 
@@ -437,33 +307,22 @@ After bulk Sub-Issue creation in Phase 0.9.2, **always** establish the parent-ch
 >
 > Do **not** issue a separate Bash tool call for Phase 0.9.4 — the AC-1 empty-array guard (`exit 1` when `SUB_ISSUE_NUMBERS` is empty) will trip immediately because the array exists only in the previous shell process. (Phase 0.9.3 — the Tasklist update — can run as a separate Bash invocation either before or after this combined script, since it only needs the `sub_issue_number` / title pairs which Claude already has from the Phase 0.9.2 results displayed in stdout.)
 
+> **Partial Moved (Issue #806 follow-up of #773)**: case ブロックの正規定義は [`references/sub-issue-link-handler.md` Variant B](../../references/sub-issue-link-handler.md#variant-b-counting-失敗カウンタあり) を参照する。Behavioral guarantees / Error handling matrix の正規定義は [`references/graphql-helpers.md#addsubissue-helper`](../../references/graphql-helpers.md#addsubissue-helper) を参照する。本体には NFR-2 protected (MANDATORY guard + 全件失敗時 ERROR レイヤ) のみを残す。
+
 ```bash
 # 各 Sub-Issue について Sub-issues API で親に紐付ける
 # SUB_ISSUE_NUMBERS は Phase 0.9.2 で収集した sub_issue_number の配列
 
-# === MANDATORY guard: 配列が空の場合は ERROR で停止 ===
-# 0.9.2 で配列蓄積を忘れると ${SUB_ISSUE_NUMBERS[@]} が空になり、
-# linkage がサイレント no-op となる (AC-1 違反)。
-# feedback_e2e_no_stop_before_review に従い、このケースは silent skip ではなく fail-fast。
+# === MANDATORY guard (NFR-2 protected): 配列が空の場合は AC-1 違反として fail-fast ===
+# 0.9.2 で配列蓄積を忘れると ${SUB_ISSUE_NUMBERS[@]} が空になり、linkage がサイレント no-op となる。
+# feedback_e2e_no_stop_before_review に従い silent skip ではなく fail-fast。
 if [ "${#SUB_ISSUE_NUMBERS[@]}" -eq 0 ]; then
   echo "ERROR: SUB_ISSUE_NUMBERS が空です。Phase 0.9.2 のループ内で 'SUB_ISSUE_NUMBERS+=(\"\$sub_issue_number\")' が抜けている可能性があります。Sub-issues API linkage を実行できません (AC-1 違反)。" >&2
   exit 1
 fi
 
-# Note on placeholder substitution:
-# {owner}/{repo}/{parent_issue_number} は Claude が bash 実行前に必ず実値で置換すること。
-# 置換漏れの早期検出は link-sub-issue.sh 側の引数 validation で担保される
-# (helper の OWNER/REPO 引数が `{` で始まる場合 fail-fast し warning を返す)。
-# このコマンド側で同等のガードを書くと、Claude が指示通り置換する以上 dead code になる
-# (Issue #520 で指摘・修正済み)。
-
-# Canonical SoT: [references/sub-issue-link-handler.md](../../references/sub-issue-link-handler.md) Variant B (counting — link_failures カウンタあり)
-# 本 loop は全件失敗時の ERROR レイヤ (下の if) に依存しているため Variant B 必須。
-# ⚠️ DRIFT 警告: 下記 case ブロックを修正する際は、必ず以下 2 ファイルも同期すること:
-#   1. references/sub-issue-link-handler.md (Variant B 定義、link_failures 増分を含む全文)
-#   2. commands/issue/parent-routing.md (Variant A 利用箇所、link_failures 増分を除いた部分が共通)
-# Issue #514 MUST NOT (unknown status silent 通過禁止) は `*)` ブランチで保持されている。
-
+# === Linkage loop: case ブロックは sub-issue-link-handler.md Variant B を inline 展開 ===
+# Variant B は link_failures カウンタ付き。Issue #514 MUST NOT (unknown status silent 通過禁止) を `*)` ブランチで保持。
 link_failures=0
 for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
   link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
@@ -471,58 +330,27 @@ for sub_number in "${SUB_ISSUE_NUMBERS[@]}"; do
   link_status=$(printf '%s' "$link_result" | jq -r '.status')
   link_msg=$(printf '%s' "$link_result" | jq -r '.message')
   case "$link_status" in
-    ok|already-linked)
-      echo "✅ $link_msg"
-      ;;
+    ok|already-linked) echo "✅ $link_msg" ;;
     failed)
-      printf '%s' "$link_result" | jq -r '.warnings[]' \
-        | while read -r w; do echo "⚠️ $w" >&2; done
+      printf '%s' "$link_result" | jq -r '.warnings[]' | while read -r w; do echo "⚠️ $w" >&2; done
       echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
-      link_failures=$((link_failures + 1))
-      ;;
-    *)
-      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
-      echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
-      link_failures=$((link_failures + 1))
-      ;;
+      link_failures=$((link_failures + 1)) ;;
+    *) echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
+       link_failures=$((link_failures + 1)) ;;
   esac
 done
 
+# === 全件失敗時 ERROR レイヤ (NFR-2 protected): AC-4/AC-5 に従い ERROR 警告 + 継続 ===
+# 全 Sub-Issue で linkage 失敗 = 設定不備 ({repo} 未解決 / 権限不足 / API 未開放等) の可能性が高い。
+# Tasklist + body meta が fallback として残るため後続 Phase 0.9.5/0.9.6 は実行する (parent-routing.md と統一)。
 if [ "$link_failures" -eq "${#SUB_ISSUE_NUMBERS[@]}" ]; then
-  # 全 Sub-Issue で linkage 失敗 = 設定不備 ({repo} 未解決 / 権限不足 / API 未開放等) の可能性が高い。
-  # ただし AC-4/AC-5 (本コマンドは Sub-issues API の失敗で全体処理を中断しない) を遵守するため
-  # ERROR 級の警告を stderr に出して継続する。Tasklist + body meta が fallback として残るため、
-  # 後続の Phase 0.9.5 (Projects 検証) と Phase 0.9.6 (完了報告) は実行されなければならない。
-  # placeholder 未解決のような構成不備の早期検出は、bash ブロック冒頭の literal-token guard で
-  # 別レイヤとして担保する (本ブロックの責務ではない)。
   echo "ERROR: 全 Sub-Issue (${#SUB_ISSUE_NUMBERS[@]} 件) で Sub-issues API linkage が失敗しました。" >&2
   echo "  考えられる原因: {owner}/{repo}/{parent_issue_number} プレースホルダーの未解決、token scope 不足、Sub-issues API が無効など。" >&2
-  echo "  body メタ (Tasklist + Parent Issue: #N) は残っているため parent-child の追跡は可能ですが、" >&2
-  echo "  GitHub UI の Sub-issues セクションには表示されません。本実行は AC-4/AC-5 に従い継続します。" >&2
-  echo "  (継続: parent-routing.md と挙動を統一)" >&2
+  echo "  body メタ (Tasklist + Parent Issue: #N) は残っているため parent-child の追跡は可能。AC-4/AC-5 に従い継続。" >&2
 elif [ "$link_failures" -gt 0 ]; then
   echo "⚠️ $link_failures/${#SUB_ISSUE_NUMBERS[@]} 件の Sub-Issue で API 紐付けに失敗しました（body メタは維持されます）" >&2
 fi
 ```
-
-**Behavioral guarantees**:
-
-- **Mandatory but non-blocking**: The helper is invoked for every Sub-Issue, but linkage failure does NOT abort `create-decompose`. The Tasklist (Phase 0.9.3) and `Parent Issue: #N` body meta act as fallback identification.
-- **Idempotent**: Re-invoking the helper for an already-linked relation is a no-op (`status=already-linked`).
-- **Retried automatically**: 5xx server errors are retried up to 3 times with exponential backoff inside the helper; callers see only the final outcome.
-- **Visible failures**: Failures emit `⚠️ Sub-issues API linkage failed: #C -> #P` to stderr (no silent skip), preserving CLAUDE.md feedback `feedback_e2e_no_stop_before_review` for hook-style steps.
-
-**Error handling matrix**:
-
-| Helper Status | Detection | Response |
-|---------------|-----------|----------|
-| `ok` | Mutation succeeded | Display success, continue |
-| `already-linked` | GitHub returned an `already`/`sub-issue exists` error message | Treat as success, continue |
-| `failed` (4xx) | Permission denied / Sub-issues API not enabled | Surface warning to stderr, fall back to body meta, continue |
-| `failed` (5xx after retries) | Persistent server error | Surface warning to stderr, fall back to body meta, continue |
-| `failed` (parent/child not found) | Node ID resolution failed | Surface warning, skip this Sub-Issue's linkage only |
-
-**Note**: The Tasklist created in Phase 0.9.3 and the `Parent Issue:` body meta in Sub-Issue bodies remain in place even when linkage succeeds, providing both API-level and human-readable backup for parent-child traceability. See [graphql-helpers.md addSubIssue Helper](../../references/graphql-helpers.md#addsubissue-helper) for the full helper contract.
 
 ### 0.9.5 Projects Registration
 
