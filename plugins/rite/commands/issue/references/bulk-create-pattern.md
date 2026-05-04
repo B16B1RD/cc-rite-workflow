@@ -4,7 +4,7 @@
 >
 > **抽出経緯**: `create-decompose.md` Phase 0.9.2 (旧 lines 363-505、約 140 行) には Pre-amble bash block / Per-Sub-Issue body bash block / Critical guard 警告 / Sub-Issue body structure / Placeholder descriptions / Error handling が集約されており、本体ファイルの認知負荷を高めていた。これを Issue #773 (#768 P1-3) PR 8/8 で本 reference に移管し、`create-decompose.md` Phase 0.9.2 本体には **概要 + AC-1 critical 警告 (NFR-2 protected で本体に残す) + 本 reference への参照リンク** のみを残す形にスリム化する。
 >
-> **NFR-2 (本体保持)**: AC-1 enforcement boundary に関する critical 警告 (`single-Bash-invocation requirement` / `silent-skip risk` の 2 文) は **`create-decompose.md` 本体に残す**。理由: AC-3 grep 検証 4 phrase の同 turn 警告は本体読込時に LLM が認識できる位置にある必要がある。本 reference は **手順詳細とコードリテラル** を集約し、警告そのものは本体側 SoT を維持する。
+> **NFR-2 (本体保持)**: AC-1 enforcement boundary に関する critical 警告 (`single-Bash-invocation requirement` / `silent-skip risk` の 2 文) は **`create-decompose.md` 本体に残す**。理由: AC-1 enforcement boundary の同 turn 警告は Phase 0.9.4 空配列 fail-fast との因果関係を保つため、本体読込時に LLM が認識できる位置にある必要がある。本 reference は **手順詳細とコードリテラル** を集約し、警告そのものは本体側 SoT を維持する。
 
 ## 位置づけ
 
@@ -230,10 +230,6 @@ done
 
 ## Regression context
 
-本 pattern の AC-1 enforcement (Phase 0.9.4 空配列ガード + Per-Sub-Issue body 内の数値検証) は以下の incident を経て段階的に強化されてきた:
+本 pattern の AC-1 enforcement (Phase 0.9.4 空配列ガード + Per-Sub-Issue body 内の数値検証) と各防御層 (per-call non-blocking、`link-sub-issue.sh` 経由の linkage、数値検証ガード、Phase 0.9.4 空配列 fail-fast 等) は、`/rite:issue:create` workflow 周辺で発生した複数の incident を経て段階的に強化されてきた。
 
-- **Issue #444** — Sub-Issue creation の partial failure 時に親 Issue tasklist が部分的に更新される問題への対策として `link-sub-issue.sh` の per-call non-blocking + Phase 0.9.6 報告 pattern を確立
-- **Issue #475** — `sub_issue_number` が `"null"` 文字列になるエッジケース (jq parse 失敗時) で linkage が malformed リクエストを送る問題に対し、`[[ "$sub_issue_number" =~ ^[0-9]+$ ]]` 数値検証ガードを追加
-- **Issue #525 / #552** — single-Bash-invocation 要件の暗黙化により分割実装が再発した incident。Phase 0.9.4 に空配列 fail-fast を追加して final defense layer を確立
-
-詳細な incident → 防御層導入経緯の時系列は [`regression-history.md`](./regression-history.md) を参照。
+各 Issue 番号別の incident → 防御層導入経緯の時系列は [`regression-history.md`](./regression-history.md) を参照。本 reference では Issue 番号の個別引用は行わず、SoT との二重定義を避ける。
