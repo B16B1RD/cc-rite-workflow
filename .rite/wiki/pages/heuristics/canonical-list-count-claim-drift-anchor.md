@@ -2,7 +2,7 @@
 title: "新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する"
 domain: "heuristics"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-05-01T03:27:29Z"
+updated: "2026-05-04T03:30:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T123408Z-pr-579.md"
@@ -26,6 +26,10 @@ sources:
     ref: "raw/reviews/20260501T012144Z-pr-756.md"
   - type: "fixes"
     ref: "raw/fixes/20260501T020145Z-pr-756.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260504T013212Z-pr-800-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260504T012717Z-pr-800.md"
 tags: []
 confidence: high
 ---
@@ -114,6 +118,19 @@ PR #756 cycle 3 review で `_resolve-flow-state-path.sh` header の **Caller con
 
 PR #756 fix で `_resolve-flow-state-path.sh` header に 6+ caller を category 別 (lifecycle hooks / observability hooks / command-level) で記述し、TC を全 caller enforce に拡張した。これにより同型 drift が将来再発した際に CI で decisive 検出可能になった。
 
+### 拡張: PR description 記載数値と reference 内記述の cross-file 数値 commitment drift (PR #800 cycle 1 で実証)
+
+PR #800 cycle 1 で reviewer (prompt-engineer) が MEDIUM finding として「PR description の数値 commitment (`12 → 4`) と reference 内記述 (`12 → ≤ 5`) の乖離」を検出。同一概念 (強調マーカー削減数) の数値表現が `pull request body` / `commit message` / `reference 内 prose` の 3 箇所に散在しており、片方のみ更新すると `12 → 4 (上限 ≤ 5)` のような統合形式に修正しないと整合性が取れない drift パターン。
+
+**Canonical 対策の拡張** (PR #800 cycle 1 で確立):
+
+1. **数値 commitment の SoT を 1 箇所に集約**: 同一概念の数値 (削減目標 / 件数 / 閾値) は SoT を 1 箇所 (推奨: PR description) のみに置き、他箇所は SoT への参照リンクで代替
+2. **集約困難な場合は同期契約の prose 明示**: SoT 集約が物理的に困難な場合 (commit message / reference 等で文脈ごとに表現が異なる必要がある場合)、各 site で「他 site の数値 X と整合」の同期契約を prose で明示する
+3. **統合形式での表現**: 上限値 / 達成値の両方を表現する場合 (`12 → 4 (上限 ≤ 5)` のように) 1 つの表現に集約することで、片方のみ更新する drift 経路を構造的に塞ぐ
+4. **cycle 2 での verify**: 数値 commitment 修正後の verify (cycle 2 の cross-validation review) で全 site が drift なし確認されることを mergeable 条件とする
+
+PR #800 では本対策で cycle 2 reviewer (prompt-engineer + code-quality) が cross-validation で全 3 site の drift なしを確認、cycle 4 で mergeable 達成。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -133,3 +150,5 @@ PR #756 fix で `_resolve-flow-state-path.sh` header に 6+ caller を category 
 - [PR #599 fix results](../../raw/fixes/20260419T112900Z-pr-599.md)
 - [PR #756 cycle 3 review (caller contract enumeration drift MEDIUM)](../../raw/reviews/20260501T012144Z-pr-756.md)
 - [PR #756 cycle 4 fix (header caller list を 6+ caller に拡張 + TC enforce 強化)](../../raw/fixes/20260501T020145Z-pr-756.md)
+- [PR #800 cycle 2 review (cross-file 数値 commitment drift 全 3 site 整合 verify)](../../raw/reviews/20260504T013212Z-pr-800-cycle2.md)
+- [PR #800 cycle 1 fix (`12 → 4 (上限 ≤ 5)` 統合形式での数値 commitment 集約)](../../raw/fixes/20260504T012717Z-pr-800.md)

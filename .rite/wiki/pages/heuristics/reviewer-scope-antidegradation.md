@@ -2,7 +2,7 @@
 title: "re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)"
 domain: "heuristics"
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-04-30T03:50:00+00:00"
+updated: "2026-05-04T03:30:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260419T032801Z-pr-586.md"
@@ -12,6 +12,8 @@ sources:
     ref: "raw/reviews/20260420T043312Z-pr-617-cycle2.md"
   - type: "reviews"
     ref: "raw/reviews/20260430T033635Z-pr-747.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260504T030800Z-pr-800-cycle4.md"
 tags: []
 confidence: high
 ---
@@ -77,11 +79,30 @@ PR #747 (`.rite-flow-state` migration 機構実装) の dogfooding review で、
 
 PR #747 のような healthy 7-cycle 軌跡では `loop_count` hard limit ではなく **Quality Signal 監視 + reviewer の `mergeable` 自己評価** で loop 終了を機械的に判定するのが canonical。Anti-Degradation Guardrail を時間効率の理由で緩めると、本来 cycle 後半で初検出される latent issue が merge 後 regression として顕在化するリスクが高い (cf. [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md))。
 
+### Severity 厳格化による無限 fix-loop 回避 (PR #800 cycle 4 で実証)
+
+PR #800 cycle 4 で Anti-Degradation Guardrail を **maximum strict** に適用した結果、`Confidence ≥ 80` + `revert test pass` + `機能影響あり` の 3 条件を満たす finding のみを blocking とする運用で 4 cycle で `[review:mergeable]` に収束 (累計 6 finding、CRITICAL 1 + MEDIUM 2 + LOW 3、5 fixed + 1 replied-only)。
+
+cycle 1-3 で発生していた以下のリスクを cycle 4 で decisive に回避:
+
+- **informational/hypothetical/nitpick の永久 fix-loop**: Severity 評価を厳格化することで、reviewer 自身が「対応不要」と明記した LOW を `[fix:replied-only]` 経路に振り分け再発火を防止 ([reviewer 推奨尊重ヒューリスティック](./respect-reviewer-no-action-recommendation.md))
+- **false positive fix による regression**: cycle 3 で「reviewer 指摘の actual code 照合義務」を確立し、SoT-aligned だった wording を壊す regression を CRITICAL revert で復旧 ([self-application false positive 経験則の拡張](./self-applying-reviewer-rule-false-positive.md#拡張-履歴解説-reference-の指摘を-actual-code-との-cross-check-なしに-fix-すると-regression-を誘発する-pr-800-cycle-2-4-で実証))
+
+**判定基準の厳格化条件** (cycle 4 で確立した canonical 3 条件):
+
+1. **Confidence ≥ 80**: reviewer が finding 信頼度を 80% 未満で評価した場合は推奨事項 (advisory) に降格
+2. **revert test pass**: 修正前後の wording をそれぞれ「実装 code との一致度」で機械検証し、両方とも SoT-aligned な場合は wording 改変を行わない
+3. **機能影響あり**: 修正対象が実装 code の挙動 / API contract / user-visible behavior に影響を与えるかを判定。pure prose 改変で機能影響なしの場合は LOW 以下に降格
+
+3 条件すべて満たす finding のみが blocking として fix される。informational / hypothetical / nitpick / pre-existing drift / scope 外は本 gate で自動降格され、loop 数を 4 以下に抑える効果が実証された (PR #800 4 cycle 6 finding 累計、healthy convergence)。
+
 ## 関連ページ
 
 - [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](../anti-patterns/dogfooding-anchor-hardcode.md)
 - [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](./observed-likelihood-gate-with-evidence-anchors.md)
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
+- [Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重する](./respect-reviewer-no-action-recommendation.md)
+- [Reviewer rule 自身を編集する PR は self-application false positive を verify する](./self-applying-reviewer-rule-false-positive.md)
 
 ## ソース
 
@@ -89,3 +110,4 @@ PR #747 のような healthy 7-cycle 軌跡では `loop_count` hard limit では
 - [PR #586 cycle 4 fix (cycle 1-3 で見落とされた latent issue の修正)](../../raw/fixes/20260419T032801Z-pr-586.md)
 - [PR #617 cycle 2 verification review (grep + bash -n evidence gate canonical 確立)](../../raw/reviews/20260420T043312Z-pr-617-cycle2.md)
 - [PR #747 cycle 7 review (mergeable, 7-cycle 自然収束 + Quality Signal 1 unfired)](raw/reviews/20260430T033635Z-pr-747.md)
+- [PR #800 cycle 4 review (mergeable, Severity 厳格化 3 条件で 4-cycle 収束)](../../raw/reviews/20260504T030800Z-pr-800-cycle4.md)
