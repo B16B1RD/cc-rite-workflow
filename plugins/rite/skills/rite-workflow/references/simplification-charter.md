@@ -4,6 +4,8 @@
 
 rite workflow 自体および rite workflow が生成する成果物（commit message / Issue body / PR description / reference ファイル）が、自己生成的に肥大化することを防ぐ。**「シンプル化」のための作業が新たな複雑性を生む** 自己言及ループを止めるための判断基準を本 charter に集約する。
 
+**「自己生成的肥大化」「自己言及ループ」とは**: rite workflow 自体を rite workflow で開発しているため (ドッグフーディング)、生成出力 (PR description / commit message / review 指摘) が次の入力に戻る構造を持つ。改善のための PR が新しい reference / 契約レイヤー / 経緯記述を生み、それを保護するためのテストや別の契約が増え、複雑性が雪だるま式に増えるリスクがある。
+
 ## 対象
 
 本 charter は以下を編集・生成する LLM および人間メンテナに適用される:
@@ -14,9 +16,9 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
 
 ## 5 つの自問
 
-ファイル新規作成・セクション追加・段落追加の前に順に自問する。**1 つでも YES に該当したら、その記述は削除候補**。
+ファイル新規作成・セクション追加・段落追加の前に順に自問する。**1 つでも矢印の右側 (削除条件) に該当したら、その記述は削除候補**。
 
-1. **これを削除して、`/rite:*` の動作は変わるか? → 変わらないなら削除**
+1. **これは runtime に効くか? → 効かないなら削除**
    - runtime に効く: bash literal、MUST/MUST NOT 条文、decision tree、手順記述、設定スキーマ
    - runtime に効かない: 抽出経緯、対称化契約の散文、過去 incident の解説、cycle 番号付き review 記録
 
@@ -32,18 +34,20 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
    - 親 skill が confirmation を取った直後に、子 skill で MANDATORY confirmation を再発火させない
    - 同一 phase に対する flow-state patch を複数 site で繰り返さない
 
-5. **この記述を読むのは LLM か、人間か?**
+5. **この記述は LLM が runtime で読むものか? → 人間向けの長文経緯なら削除**
    - LLM 向け: SoT として 1 箇所に集約
-   - 人間向けの長文経緯: コードベース外（git log / GitHub の close 済み Issue / `docs/decisions/`）に置く
+   - 人間向けの長文経緯: コードベース外（git log / GitHub の close 済み Issue / `docs/designs/` 配下の design / investigation）に置く
 
 ## 禁止パターン（コードベース内 .md / .yml / .sh に書かない）
 
-- `Issue #[0-9]+` / `PR #[0-9]+` / `cycle [0-9]+` の本文引用（セクション見出しでも最小限）
+- `Issue #[0-9]+` / `PR #[0-9]+` / `cycle [0-9]+` の本文引用
+  - **上限**: セクション見出し / 本文ともに 0 件を原則とし、どうしても必要な場合は 1 ファイル 1 件まで
+  - metavariable / regex (`Issue #N` / `Issue #[0-9]+` 等) として「禁止対象を明示する目的」での記述は許容
 - `Drift guard` / `DRIFT-CHECK ANCHOR` / `NFR-[0-9]+` 系の対称化契約の散文記述
-  - 対称化が必要な場合は **テストで担保**（例: `hooks/tests/4-site-symmetry.test.sh`）し、散文重複は書かない
+  - 対称化が必要な場合は **テストで担保**（例: `plugins/rite/hooks/tests/4-site-symmetry.test.sh`）し、散文重複は書かない
 - 「抽出経緯」「移管経緯」「Regression context」セクション
 - review cycle 番号付きの指摘記録（`cycle 3 F-NEW1` など）
-- `🚨` の濫用（1 ファイル 5 occurrence 以下）
+- `🚨` の濫用（**許容上限: 1 ファイル 5 occurrence、6 件以上は禁止**）
 
 ## 推奨パターン
 
@@ -68,3 +72,5 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
 - `plugins/rite/hooks/` の hook 自体（runtime に効く）
 - decision tree 系の reference（`complexity-gate.md` / `slug-generation.md` / `pre-check-routing.md` 等）
 - bash literal そのもの（`create-decompose.md` の bulk-create block 等）
+
+ただし、これら適用範囲外のファイル**内でも上記『禁止パターン』は適用される** (`Issue #` 本文引用 / cycle # 記録 / 散文対称化契約 / `🚨` 濫用 等)。「適用範囲外」とは「ファイル丸ごと削除しない」の意味であり、ファイル内の歴史記述ノイズの整理は対象。
