@@ -319,7 +319,7 @@ Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** call
 
 **WARNING**: **GitHub Issue は未作成**。本セクションで停止すると deliverable なしで workflow 放棄。
 
-**Output rules** (canonical contract — bash 引数 / exit-code / marker 詳細は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md)):
+**Output rules** (本セクションが marker 形式の SoT。bash 引数 / exit-code symmetry の SoT は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md)):
 
 0. **FIRST**: `[CONTEXT] INTERVIEW_DONE=1; scope={skipped|completed}; next=phase_0_6` を **plain-text line** で出力（HTML-commented 不可）。位置規定:
    - **0b (構造保証、canonical)**: Rules 0-1 の相対順序が **4-line return block** を pin する: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST)。この 4-line invariant が canonical で、他の位置記述はここから導出
