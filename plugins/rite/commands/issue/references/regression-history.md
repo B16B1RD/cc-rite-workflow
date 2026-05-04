@@ -17,6 +17,7 @@
 - **本体に残すもの**: 短い参照 `(Issue #N)` / 実行時に LLM が読む MUST/MUST NOT 条文 / 機能挙動への直接的な参照
 - **本 reference に移すもの**: 長い経緯解説 / Drift guard 説明 / cycle 番号付きの review 記録
 - **触らないもの**: AC-3 grep 検証 4 phrase (`anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop`) は `create.md` 本体に残す (NFR-2)
+- **本 reference 内での `🚨` 使用**: `🚨 Mandatory After ...` の section 名引用時のみ使用 (本体側 sentinel との対称性確保)。本体 P1-5 の削減方針 (12 → 4 occurrence) は `create.md` 本体限定で、references 内では引用目的の使用を許容する
 
 ## Issue 番号別経緯 (時系列順)
 
@@ -119,7 +120,7 @@ cycle 2 review F-NEW1 で「Stop hook の UI 上は exit 2 後でも `Churned fo
 
 ### Issue #773 (#768 P1-3) — references 抽出 + 強調マーカー適正化 (本 PR シリーズ)
 
-> **強化内容**: `commands/issue/references/` ディレクトリを新設し、`create.md` 本体 (835 行) から 8 ファイル抽出 + 本体を ≤ 250 行にスリム化する。同時に強調マーカー (P1-5) と Pre-check list 分離 (P3-9) も実施する。
+> **強化内容**: `commands/issue/references/` ディレクトリを新設し、`create.md` 本体 (835 行) から 8 ファイル抽出 + 本体を ≤ 250 行にスリム化する (PR 1-8 で漸進、PR 6/8 時点での本体行数: 734 行、PR 7-8 完了で目標達成予定)。同時に強調マーカー (P1-5) と Pre-check list 分離 (P3-9) も実施する。
 
 | PR | スコープ | 抽出 references |
 |----|---------|----------------|
@@ -132,7 +133,7 @@ cycle 2 review F-NEW1 で「Stop hook の UI 上は exit 2 後でも `Churned fo
 | PR 7 (予定) | Implementation Contract Section 1-9 mapping | `contract-section-mapping.md` |
 | PR 8 (予定) | bulk-create 連結パターン | `bulk-create-pattern.md` |
 
-PR 6 で本 reference を抽出すると同時に、`create.md` の `🚨` 強調マーカーを 12 → ≤ 5 occurrence に削減する (P1-5)。Issue #475 由来の重複 protocol violation 警告は、Drift guard 契約 (「両方 identical を保て」) を **解除して** 1 箇所統合し、もう 1 箇所は本 reference へのリンクで代替する。
+PR 6 で本 reference を抽出すると同時に、`create.md` の `🚨` 強調マーカーを **12 → 4 occurrence** に削減する (P1-5、上限 ≤ 5、PR 7-8 で逸脱しないこと)。Issue #475 由来の重複 protocol violation 警告は、Drift guard 契約 (「両方 identical を保て」) を **解除して** 1 箇所統合し、もう 1 箇所は本 reference へのリンクで代替する。
 
 ## 旧構成: stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT (撤去済み)
 
