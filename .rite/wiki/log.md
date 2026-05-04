@@ -370,3 +370,5 @@
 | 2026-05-04T05:30:00Z | ingest:create | pages/patterns/pr-series-stub-format-consistency.md | PR #802 cycle 2 fix から「PR シリーズ間の stub 残置 markdown formatting 踏襲 (`> **Moved` / `> **Partial Moved` prefix の semantic 区別)」を LOW 1 cosmetic 修正 pattern として新規ページ化 |
 | 2026-05-04T05:30:00Z | ingest:skip | raw/reviews/20260504T051702Z-pr-802-cycle3.md | cycle 3 mergeable は 0 findings 収束の統計情報のみで新規経験則は cycle 1 raw 側に集約済み。skip |
 | 2026-05-04T05:35:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=90, broken_refs=187 |
+| 2026-05-04T06:50:00Z | ingest:create | pages/anti-patterns/heading-hierarchy-skip-on-large-markdown-compression.md | PR #808 cycle 1 review から「Markdown 大規模圧縮 refactor (734 → 334, -55%) 時の heading level skip (h2 → h4) 3 箇所発生」+ 関連観測 (inline pack vs scannability for MUST-execute list / 野心目標 vs 現実着地点 gap) を 2 reviewer 独立検出 MEDIUM 2 の root cause として新規ページ化 |
+| 2026-05-04T06:50:00Z | ingest:skip | raw/reviews/20260504T063429Z-pr-808-cycle2.md | cycle 2 mergeable は 0 findings 収束の統計情報のみで新規経験則は cycle 1 raw 側に集約済み。skip |
