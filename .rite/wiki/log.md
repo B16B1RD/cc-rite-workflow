@@ -375,3 +375,4 @@
 | 2026-05-04T06:55:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=91, broken_refs=187 |
 | 2026-05-04T09:50:00Z | ingest:update | pages/anti-patterns/heading-hierarchy-skip-on-large-markdown-compression.md | PR #809 review (0 findings, -35% slimdown) を sibling refactor の self-application 実証として既存ページに追記。confidence medium → high 格上げ、Self-application 実証セクションと累積 self-application 効果テーブルを追加 |
 | 2026-05-04T09:50:00Z | ingest:create | pages/heuristics/compression-refactor-ac-vs-structural-constraint.md | PR #809 で観測された AC ≤200 → ≤350 緩和の構造制約パターンから「圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める」を新規ページ化 (4 step canonical 手順 + 兄弟 PR 転用禁止原則) |
+| 2026-05-04T09:55:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=91, broken_refs=187 |
