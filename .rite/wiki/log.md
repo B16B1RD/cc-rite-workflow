@@ -366,3 +366,6 @@
 | 2026-05-04T05:00:00Z | ingest:skip | raw/reviews/20260504T041229Z-pr-801-cycle2.md | cycle 2 (re-review) は cycle 1 fix の verification が中心で新規経験則は薄く、cosmetic MEDIUM/LOW の判断軸 (reviewer 自身の self-assessment 「可」を尊重) は既存 `respect-reviewer-no-action-recommendation` 系列で吸収済みのため skip |
 | 2026-05-04T05:00:00Z | ingest:skip | raw/reviews/20260504T042228Z-pr-801-cycle3.md | cycle 3 (cosmetic-only re-review) は blocking 0 件で安定収束する典型パターン。新規経験則は cycle 1 raw 側に集約済みのため skip |
 | 2026-05-04T05:05:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=89, broken_refs=187 |
+| 2026-05-04T05:30:00Z | ingest:create | pages/heuristics/references-extraction-content-fidelity.md | PR #802 cycle 1 review + fix から「References 抽出時の SoT verify 不足 (factual divergence) + 理由付け文の context-bleeding (引用元 invariant の対象ファイル転用)」を 2 reviewer 独立検出 (HIGH 1 + MEDIUM 1) の root cause として新規ページ化 |
+| 2026-05-04T05:30:00Z | ingest:create | pages/patterns/pr-series-stub-format-consistency.md | PR #802 cycle 2 fix から「PR シリーズ間の stub 残置 markdown formatting 踏襲 (`> **Moved` / `> **Partial Moved` prefix の semantic 区別)」を LOW 1 cosmetic 修正 pattern として新規ページ化 |
+| 2026-05-04T05:30:00Z | ingest:skip | raw/reviews/20260504T051702Z-pr-802-cycle3.md | cycle 3 mergeable は 0 findings 収束の統計情報のみで新規経験則は cycle 1 raw 側に集約済み。skip |
