@@ -37,7 +37,7 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
-    # 非 blocking: create.md Step 0/Step 1 の redundant patch + stop-guard create_interview case arm が safety net。
+    # 非 blocking: create.md Step 0/Step 1 の redundant patch + phase-transition-whitelist.sh の create_interview case arm (pre-tool-bash-guard.sh / session-end.sh が source、stop-guard.sh は撤去済み) が safety net。
   fi
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -49,7 +49,7 @@ else
 fi
 ```
 
-**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも stop-guard が `create_post_interview` WORKFLOW_HINT へ routing し orchestrator を Phase 0.6 へ誘導する。`create_post_interview → create_delegation` のみが whitelisted forward transition のため、orchestrator は Delegation Routing を必ず実行する必要がある。
+**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 0.6 へ進む経路に切り替わる (`stop-guard.sh` 撤去済み — 撤去前は同 hook が `WORKFLOW_HINT` 経由で routing していた)。`phase-transition-whitelist.sh` が `create_post_interview → create_delegation` を唯一の whitelisted forward transition として graph 定義するため、orchestrator は Delegation Routing を必ず実行する必要がある。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `create_post_interview` のまま phase regression しない。
 
@@ -267,7 +267,7 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
 fi
 ```
 
-> **Why patch mode only (no create fallback)**: Pre-flight が "file missing" branch (`create` mode) を処理済。本 section 到達時は flow state file 存在 + `.phase = create_post_interview` が保証済。ここで `create` 呼出は `previous_phase` を空文字列にリセットし stop-guard whitelist transition check を defeat するため不可。patch mode で transition chain を preserve する。
+> **Why patch mode only (no create fallback)**: Pre-flight が "file missing" branch (`create` mode) を処理済。本 section 到達時は flow state file 存在 + `.phase = create_post_interview` が保証済。ここで `create` 呼出は `previous_phase` を空文字列にリセットし `phase-transition-whitelist.sh` whitelist transition check を defeat する (`pre-tool-bash-guard.sh` / `session-end.sh` が source、`stop-guard.sh` は撤去済み) ため不可。patch mode で transition chain を preserve する。
 
 After the flow-state update, output the result pattern. Caller-continuation reminder を **immediately before** result pattern に emit。Return block は **4 line** 構成: (1) `[CONTEXT] INTERVIEW_DONE=1` grep marker / (2) plain-text blockquote continuation reminder / (3) HTML-commented caller instructions / (4) HTML-commented result sentinel。全 4 行が sub-skill の **last visible lines**。
 
