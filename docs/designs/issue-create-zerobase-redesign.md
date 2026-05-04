@@ -39,7 +39,7 @@
 | `commands/issue/create-interview.md` | 329 | adaptive interview (Phase 0.4.1 + 0.5) | ✅ in scope |
 | `commands/issue/create-decompose.md` | 506 | XL 分解 (Phase 0.7-1.0) | ✅ in scope |
 | `commands/issue/create-register.md` | 615 | 単一 Issue 作成 (Phase 1.1-4.4) | ✅ in scope |
-| `commands/issue/parent-routing.md` | 357 | parent Issue 検出/分解 (Phase 1.5.1-1.5.5) | ❌ out of scope (start.md 系) |
+| `commands/issue/parent-routing.md` | 357 | parent Issue 検出/分解 (Phase 1.5.1-1.5.5) | ❌ out of scope (start.md / create-* 双方から共有 invoke。本 plan では parent Issue 検出ロジック自体の再設計は scope 外) |
 | **本体合計 (ファイル所属)** | **2151** | — | — |
 | **本 plan スコープ内合計** | **1794** | — | — |
 | `commands/issue/references/` 配下 7 ファイル | 815 | bulk-create / complexity-gate / contract-mapping / edge-cases / pre-check / slug / sub-skill-handoff | ❌ out of scope (charter 適用範囲外) |
@@ -55,13 +55,13 @@
 | `create-interview.md` | 0.4.1, 0.5 | 2 |
 | `create-decompose.md` | 0.7.1, 0.7.2, 0.7.3, 0.8.1, 0.8.2, 0.8.3, 0.8.4, 0.9.1, 0.9.2, 0.9.3, 0.9.4, 0.9.5, 0.9.6, 1.0.1, 1.0.2, 1.0.3 | 16 |
 | `create-register.md` | 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 4.1, 4.2, 4.3, 4.4 | 11 |
-| `parent-routing.md` | 1.5.1, 1.5.2, 1.5.3, 1.5.4, 1.5.5 (parent-routing は start.md 系のため本 plan スコープ外) | 5 |
+| `parent-routing.md` | 1.5.1, 1.5.2, 1.5.3, 1.5.4, 1.5.5 (parent-routing は start.md と create-register/create-decompose 双方から共有 invoke される。本 plan では parent Issue 検出ロジック自体の再設計は scope 外) | 5 |
 | **本 plan スコープ内合計 (parent-routing 除く)** | — | **37** |
 | **総計 (parent-routing 含む)** | — | **42** |
 
 **AC-2 違反観測点**:
 
-- 3 階層番号 (`0.6.1`, `0.6.2`, `0.7.1`, `0.7.2`, `0.7.3`, `0.8.1-4`, `0.9.1-6`, `1.0.1-3`, `1.5.1-5`) が 32/42 サブセクションに存在 (本 plan スコープ内では 27/37)。AC-2 が許容するのは整数 + 0.x の 1 階層のみのため、**32 サブセクション (本 plan スコープ内 27 件)** が番号体系の整理対象。
+- 3 階層番号 (`0.1.3`, `0.1.5`, `0.4.2`, `0.6.1`, `0.6.2`, `0.7.1-3`, `0.8.1-4`, `0.9.1-6`, `1.0.1-3`, `1.5.1-5`) が **26/42** サブセクションに存在 (本 plan スコープ内では **21/37**、parent-routing 1.5.1-5 の 5 件除く)。AC-2 が許容するのは整数 + 0.x の 1 階層のみのため、**26 サブセクション (本 plan スコープ内 21 件)** が番号体系の整理対象。実測コマンド: `grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' commands/issue/create*.md commands/issue/parent-routing.md` の合計。
 
 ### 2.3 AskUserQuestion 出現箇所
 
@@ -154,7 +154,7 @@
 | 0.6 + 0.6.1 + 0.6.2 (Decomposition decision) | **Phase 2 (Decision)** | 整数 Phase 2 に collapse。trigger 評価 (現 0.6.1) と confirmation (現 0.6.2) は subsection 2.1 / 2.2 ではなく単一 phase 内連続処理 |
 | 0.7.1 / 0.7.2 / 0.7.3 / 0.8.1-4 / 0.9.1-6 / 1.0.1-3 (decompose) | **Phase 3 (Execution: Decompose path)** | 整数 Phase 3 に collapse。spec generation / Sub-Issue creation / link / Tasklist update は Phase 3 内連続処理 (subsection なし) |
 | 1.1 / 1.2 / 1.3 / 2.x / 4.x (register) | **Phase 3 (Execution: Single Issue path)** | 整数 Phase 3 に collapse。classify / confirm / create / register / output は Phase 3 内連続処理 |
-| 1.5.1-5 (parent-routing) | **start.md 側 (no change)** | parent-routing は start.md sub-skill の責務、create.md スコープ外 (本 plan は touch しない) |
+| 1.5.1-5 (parent-routing) | **(no change)** | parent-routing は start.md と create-register.md / create-decompose.md の双方から共有 invoke される (純粋な start.md 系ではない) が、本 plan では parent Issue 検出ロジック自体の再設計は scope 外として扱う (charter 適用は両系統横断 PR で別途) |
 
 ### 4.2 新 Phase 構造のサマリー
 
@@ -202,20 +202,21 @@ NFR-4 ([improve-issue-create-skill-design.md](./improve-issue-create-skill-desig
 |-----------|----------|----------|------|
 | `create-interview.md` (329 行) | Phase 0.4.1 + 0.5 (interview scope + deep-dive) | **統合候補** (本体内ヘルパー化) | charter 推奨「sub-skill 分離は最小限」+ Bug Fix/Chore preset では interview を skip するだけで delegate コストに見合わない。Phase 1 (Interview) 本体内処理化で `create_interview` flow-state phase は本体内 subsection 移行で保持 |
 | `create-decompose.md` (506 行) | Phase 0.7-1.0 (XL 分解) | **維持** | XL 分解は単一 Issue 作成と独立した処理経路。bulk-create-pattern.md (`references/`) の 274 行 bash literal は decompose 専用で、本体に inline すると create.md が肥大化。sub-skill 分離が複雑性管理に有効 |
-| `create-register.md` (615 行) | Phase 1.1-4.4 (単一 Issue 作成) | **統合候補** (本体内ヘルパー化) | 単一 Issue 作成は create.md の **default path** であり、orchestrator から delegate する意義が薄い。Heuristics Scoring (Phase 1.1) は `references/complexity-gate.md` に既に SoT 化されており本体への inline コストは低い |
+| `create-register.md` (615 行) | Phase 1.1-4.4 (単一 Issue 作成) | **維持** (案 A 採用) | 単一 Issue 作成は create.md の default path であり統合候補だったが、本体に inline すると create.md が 800-900 行になり NFR-6 違反 (≤250 行) が悪化するため、**Section 5.2 案 A** に従い維持。Heuristics Scoring (Phase 1.1) の SoT は `references/complexity-gate.md` に既に集約されており、orchestrator → register sub-skill の delegate コストは現状許容範囲 |
 | `parent-routing.md` (357 行) | Phase 1.5 (parent Issue handling) | **維持 (本 plan のスコープ外)** | `start.md` 系 sub-skill (Issue 開始フローの一部)、create.md の責務外 |
 
 ### 5.1 統合後の構造 (案)
 
 ```
 commands/issue/
-├── create.md            (orchestrator + Phase 0/1/2/3 single Issue path、推定 600-900 行)
+├── create.md            (orchestrator + Phase 0/1/2/3 single Issue path、推定 600-700 行 — 案 A)
 ├── create-decompose.md  (Phase 3 decompose path、現状維持または若干スリム化)
-├── parent-routing.md    (start.md 系、変更なし)
-└── references/          (現状維持、charter 適用範囲外)
+├── create-register.md   (Phase 3 single Issue path、現状維持 — 案 A、NFR-6 違反悪化を避けるため delegate 保持)
+├── parent-routing.md    (start.md / create.md 双方から共有 invoke、本 plan スコープ外)
+└── references/          (7 ファイル現状維持、charter 適用範囲外)
 ```
 
-合計 5 ファイル → 3 ファイル (-40%)。本 plan スコープ内行数 1794 → 約 1500-1700 (-15〜-25%) 想定だが、`create.md` 単体の行数は **NFR-6 違反となる可能性が高い** (5.2 で詳述)。
+**ファイル数**: 合計 5 ファイル → **4 ファイル** (-20%、案 A 採用に伴う `create-interview.md` のみ削除)。**本 plan スコープ内行数**: 1794 → 約 1700-1800 (-5〜0%、本体 +200〜+300 行 + interview 329 行削除 = ネット -29〜-129 行)。`create.md` 単体は **NFR-6 違反となる**ため、5.2 で代替案とともに明示する。
 
 ### 5.2 統合後の `create.md` 単体行数と NFR-6 違反の明示
 
@@ -294,10 +295,35 @@ S8 段階的 PR で option を選択。**廃止判断は flow-state phase transi
 
 | PR # | scope | 主な AC | 検証手順 | 想定行数変動 |
 |------|-------|---------|---------|-------------|
-| **PR-E1** | charter 5 自問適用による散文削除 (本文中の経緯記述 / 4-site 対称契約散文 / 重複 confirmation 散文) | charter 5 自問 1/2/3 pass; AC-4 機能契約 (C-1〜C-5) grep 全 pass; 既存 e2e test 3 経路 pass | (a) `grep -rE 'Issue #[0-9]+\|PR #[0-9]+\|cycle [0-9]+' commands/issue/create*.md commands/issue/parent-routing.md` で全 sub-skill ファイル横断の本文引用件数を測定し、PR 着手前と比べて減少していることを確認、(b) AC-4 grep 検証式実行 (Section 7 の C-1〜C-5 全 pass)、(c) e2e test (Bug Fix preset / single Issue M / XL decompose) 各 1 回手動実行 | 本体 -150〜-300 行 |
-| **PR-E2** | Phase 番号整数化 (現状 37 サブセクション → 5-6 サブセクション、Section 4 mapping 表に従う) | AC-2 (整数 + 0.x の 1 階層) ; flow-state phase 名 NFR-4 (rename 禁止) 遵守 | (a) `grep -c '^### [0-9]+\.[0-9]+\.[0-9]+' commands/issue/create*.md` で 3 階層 0 件確認、(b) hook test (`phase-transition-whitelist.sh` source check) pass、(c) e2e test 3 経路 pass | 散文行数 +50〜100 (Phase 番号統合に伴う mapping 表追加)、構造的圧縮で本体は -100〜-200 行 |
+| **PR-E1** | charter 5 自問適用による散文削除 (本文中の経緯記述 / 4-site 対称契約散文 / 重複 confirmation 散文) | charter 5 自問 1/2/3 pass; AC-4 機能契約 (C-1〜C-5) grep 全 pass; 既存 e2e test 3 経路 pass | (a) 本文引用件数を測定 (検証コマンドは下記 §8.1.1)、(b) AC-4 grep 検証式実行 (Section 7 の C-1〜C-5 全 pass)、(c) e2e test (Bug Fix preset / single Issue M / XL decompose) 各 1 回手動実行 | 本体 -150〜-300 行 |
+| **PR-E2** | Phase 番号整数化 (現状 21 サブセクション (本 plan スコープ内) → 5-6 サブセクション、Section 4 mapping 表に従う) | AC-2 (整数 + 0.x の 1 階層) ; flow-state phase 名 NFR-4 (rename 禁止) 遵守 | (a) 3 階層 0 件確認 (検証コマンドは下記 §8.1.1)、(b) hook test (`phase-transition-whitelist.sh` source check) pass、(c) e2e test 3 経路 pass | 散文行数 +50〜100 (Phase 番号統合に伴う mapping 表追加)、構造的圧縮で本体は -100〜-200 行 |
 | **PR-E3** | AskUserQuestion 統合 (Phase 0.4 / 0.4.1 / 0.4.2 を Phase 1 単一 batch に統合、Phase 0.1.5 parent pre-detection 削除) | AC-3 (Bug Fix/Chore で 0-1 回 / Feature M で 2-3 回以下); EDGE-2/3/4/5 ロジック保持 | (a) `[interview:*]` / `[create:*]` sentinel emit を grep して各 preset で発火 sentinel 数を測定、(b) 各 preset を実機実行して `AskUserQuestion` tool 呼び出し回数を手動カウント (transcript ベース) し PR description に記録、(c) e2e test 3 経路 pass | 本体 -50〜-100 行 |
-| **PR-E4** | sub-skill 統合 (`create-interview.md` を本体内ヘルパー化、option B/C 選択は本 PR 内で確定、案 A 採用判断) + 4-site-symmetry test scope 調整 + NFR-6 違反評価 | AC-1 (新規 contributor が本体 1〜2 ファイル把握); AC-4 機能契約 grep 全 pass; 4-site-symmetry test 縮小後も pass; NFR-6 違反の許容範囲を SoT 化 | (a) `wc -l commands/issue/create*.md` でファイル数縮小確認 (5 → 3 ファイル想定)、(b) 4-site-symmetry test exit 0 (option 選択次第で test スコープ縮小)、(c) e2e test 3 経路 pass、(d) `create.md` 単体行数を NFR-6 目標値 250 と比較し、許容判断を PR description に明記 | 本体 +200〜+300 (interview 統合) / 全体 -329 行 (interview ファイル削除) → ネット -29〜-129 行 |
+| **PR-E4** | sub-skill 統合 (`create-interview.md` を本体内ヘルパー化、案 A 採用) + 4-site-symmetry test scope 調整 + NFR-6 違反評価 | AC-1 (新規 contributor が本体 1〜2 ファイル把握); AC-4 機能契約 grep 全 pass; 4-site-symmetry test 縮小後も pass; NFR-6 違反の許容範囲を SoT 化 | (a) `wc -l commands/issue/*.md` でファイル数縮小確認 (5 → **4 ファイル**想定、案 A)、(b) 4-site-symmetry test exit 0 (option 選択次第で test スコープ縮小)、(c) e2e test 3 経路 pass、(d) `create.md` 単体行数を NFR-6 目標値 250 と比較し、許容判断を PR description に明記 | 本体 +200〜+300 (interview 統合) / 全体 -329 行 (interview ファイル削除) → ネット -29〜-129 行 (PR-E1〜E3 の累計 -300〜-600 行と合わせ、Section 5.1 の本 plan スコープ内 -94〜-294 行推定と整合) |
+
+### 8.1.1 検証コマンド集
+
+各 PR の検証手順 (a) で参照する grep コマンドは raw markdown source からそのまま copy して動作するよう、表外の fenced code block にて記述する (markdown table cell 内の `|` escape による silent fail を回避):
+
+```bash
+# PR-E1: 全 sub-skill ファイル横断の本文引用件数測定 (charter 禁止パターンの 3 種を ERE alternation で検出)
+# PR 着手前後で件数が減少していることを確認する
+grep -rcE 'Issue #[0-9]+|PR #[0-9]+|cycle [0-9]+' \
+  plugins/rite/commands/issue/create.md \
+  plugins/rite/commands/issue/create-interview.md \
+  plugins/rite/commands/issue/create-decompose.md \
+  plugins/rite/commands/issue/create-register.md \
+  plugins/rite/commands/issue/parent-routing.md
+```
+
+```bash
+# PR-E2: 3 階層 phase 番号 (0.x.y) が 0 件であることを確認 (ERE で `+` 量指定子を有効化)
+# `-cE` 必須 — `-c` (BRE) では `+` がリテラル扱いとなり常に 0 件で silent-pass する
+grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
+  plugins/rite/commands/issue/create.md \
+  plugins/rite/commands/issue/create-interview.md \
+  plugins/rite/commands/issue/create-decompose.md \
+  plugins/rite/commands/issue/create-register.md
+```
 
 ### 8.2 各 PR の charter 5 自問 pass 戦略
 
