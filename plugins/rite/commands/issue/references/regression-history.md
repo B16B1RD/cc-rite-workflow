@@ -135,7 +135,7 @@ cycle 2 review F-NEW1 で「Stop hook の UI 上は exit 2 後でも `Churned fo
 
 PR 6 で本 reference を抽出すると同時に、`create.md` の `🚨` 強調マーカーを **12 → 4 occurrence** に削減した (P1-5、上限 ≤ 5、PR 7-8 で逸脱しないこと)。Issue #475 由来の重複 protocol violation 警告は、Drift guard 契約 (「両方 identical を保て」) を **解除して** 1 箇所統合し、もう 1 箇所は本 reference へのリンクで代替している。
 
-PR 7 では `create-register.md` Phase 2.2 Step 2-3 の Type → Section 3 Type Core mapping table・Interview Perspective → Target Sections mapping table・Section inclusion rules table を `contract-section-mapping.md` に集約し、本体には `> Moved` 参照ブロックのみ残置する。`create-decompose.md` Phase 0.7.3 cancel path の `create-register.md Phase 2.2 Step 3` への参照リンクも本 reference 経由に更新する。Step 4-6 (AC 生成 / Test 仕様 / Output Validation) は Implementation Contract の **生成手順** であり mapping ではないため、本体に維持する。
+PR 7 では `create-register.md` Phase 2.2 Step 2-3 の Type → Section 3 Type Core mapping table・Interview Perspective → Target Sections mapping table・Section inclusion rules table を `contract-section-mapping.md` に集約し、本体には `> Moved` 参照ブロックのみ残置した。`create-decompose.md` Phase 0.7.3 cancel path の `create-register.md Phase 2.2 Step 3` への参照リンクも本 reference 経由に更新している。Step 4-6 (AC 生成 / Test 仕様 / Output Validation) は Implementation Contract の **生成手順** であり mapping ではないため、本体に維持している。
 
 ## 旧構成: stop-guard.sh `create_post_interview` case arm WORKFLOW_HINT (撤去済み)
 

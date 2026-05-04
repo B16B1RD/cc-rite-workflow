@@ -369,9 +369,9 @@ After batch responses, derive follow-up questions from answers. Follow-ups are a
 
 ### Reflecting Interview Results
 
-> **Moved (Issue #773 P1-3 PR 7/8 fix #801)**: Interview Perspective → Target Sections の正規 mapping table は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) に集約済み (二重 SoT 解消)。Phase 0.5 では本 reference の mapping に従って interview results を Section 1-9 に割り当てること。
+> **Moved (Issue #773 P1-3 PR 7/8)**: Interview Perspective → Target Sections の正規 mapping table は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) に移動しました。Phase 0.5 では本 reference の mapping に従って interview results を Section 1-9 に割り当てること。
 
-**Note**: This mapping is applied during Issue body generation in `create-register.md` Phase 2.2 ([Step 3 — `references/contract-section-mapping.md`](./references/contract-section-mapping.md)). Phase 0.5 collects and retains the raw interview results in conversation context; the structured mapping to Implementation Contract sections occurs at generation time.
+**Note**: Phase 0.5 collects and retains the raw interview results in conversation context; the structured mapping to Implementation Contract sections occurs at Issue body generation time (`create-register.md` Phase 2.2 Step 3).
 
 **Retention format** (in conversation context, not in Issue body):
 

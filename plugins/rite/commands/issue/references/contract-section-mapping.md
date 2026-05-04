@@ -46,13 +46,13 @@
 
 Phase 1.2 で確定した Type に基づき、Section 3 として include する Type Core Section を選択する:
 
-| Type | Section 3 内容 | template-structure.md 参照 |
-|------|---------------|---------------------------|
-| Feature | User Scenarios | `3-Feature: User Scenarios` |
-| BugFix | Bug Details (Reproduction / Root Cause Hypothesis) | `3-BugFix: Bug Details` |
-| Refactor | Before / After Contract / Compatibility Policy | `3-Refactor: Before / After Contract` |
-| Chore | Operational Context | `3-Chore: Operational Context` |
-| Docs | Documentation Target | `3-Docs: Documentation Target` |
+| Type | Section 3 内容 | template-structure.md 内 subsection |
+|------|---------------|------------------------------------|
+| Feature | User Scenarios | [`3-Feature: User Scenarios`](../../../templates/issue/template-structure.md#3-feature-user-scenarios) |
+| BugFix | Bug Details (Reproduction / Root Cause Hypothesis) | [`3-BugFix: Bug Details`](../../../templates/issue/template-structure.md#3-bugfix-bug-details) |
+| Refactor | Before / After Contract / Compatibility Policy | [`3-Refactor: Before / After Contract`](../../../templates/issue/template-structure.md#3-refactor-before--after-contract) |
+| Chore | Operational Context | [`3-Chore: Operational Context`](../../../templates/issue/template-structure.md#3-chore-operational-context) |
+| Docs | Documentation Target | [`3-Docs: Documentation Target`](../../../templates/issue/template-structure.md#3-docs-documentation-target) |
 
 **Type 判定の優先順位**: Labels > title keywords > body content analysis (`create-register.md` Phase 1.2 参照)。
 

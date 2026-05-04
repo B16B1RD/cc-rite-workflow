@@ -84,7 +84,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 ## Interview to Template Mapping
 
-> **Moved (Issue #773 P1-3 PR 7/8 fix #801)**: Interview Perspective → Target Sections の正規 mapping table は [`commands/issue/references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](../../commands/issue/references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) に集約済み (二重 SoT 解消)。本 template から interview mapping を参照する場合は本 reference を経由すること。
+> **Moved (Issue #773 P1-3 PR 7/8)**: Interview Perspective → Target Sections の正規 mapping table は [`commands/issue/references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](../../commands/issue/references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) に移動しました。本 template から interview mapping を参照する場合は本 reference を経由すること。
 
 ---
 
