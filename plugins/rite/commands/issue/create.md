@@ -76,7 +76,7 @@ create.md (orchestrator)
 
 **Repository**: `gh repo view --json owner,name`
 
-#### Language-Aware Template Selection
+### Language-Aware Template Selection
 
 `rite-config.yml` の `language` (`ja` / `en` / `auto`、未設定 `auto`) を Phase 0.1.5 / 0.3 / 0.4 / 0.4.1 / 2.1 の AskUserQuestion テンプレート言語選択に使用 (Phase 0.5 Deep-Dive Interview は Japanese-only)。
 
@@ -149,11 +149,20 @@ echo "$result"
 | What 明確、Why or Where 不足 | 不足要素のみ単一 AskUserQuestion で確認 |
 | What 不足 | Goal clarification を full asking |
 
-**Goal classification** (常に決定): AskUserQuestion (language-aware) で 新機能 / バグ修正 / ドキュメント / リファクタリング / その他。Phase 0.1 から推定可能なら ask 不要。完了条件は [Termination Logic > Phase 0.4 Completion Criteria](#phase-04-completion-criteria) を参照。
+**Goal classification** (常に決定、Phase 0.4.1 adaptive interview depth 決定用): AskUserQuestion (language-aware) で 新機能 / バグ修正 / ドキュメント / リファクタリング / その他。Phase 0.1 から推定可能なら ask 不要。完了条件は [Termination Logic > Phase 0.4 Completion Criteria](#phase-04-completion-criteria) を参照。
 
 ### 0.4.2 Skip Semantics (Mode B Defense)
 
-> **READ THIS EVERY TIME Phase 0.4 is skipped.** Phase 0.4 confirmation の skip は **user-facing dialog の skip のみ**。以下は MUST execute: (1) Phase 0.4.1 goal classification (Phase 0.1 から推定) — Phase 0.5 interview scope 決定で必要 / (2) Delegation to Interview (Pre-write + Skill 起動) — `create_interview` write がないと stop-guard が enforce できない / (3) Mandatory After Interview — flow state を `create_post_interview` に進める / (4) Phase 0.6 — `create-register` vs `create-decompose` 選択 / (5) Delegation Routing (Pre-write + terminal sub-skill) — `create_delegation` を書き whitelist を進める / (6) Mandatory After Delegation — terminal `create_completed` の defense-in-depth。
+> **READ THIS EVERY TIME Phase 0.4 is skipped.** Phase 0.4 confirmation の skip は **user-facing dialog の skip のみ**。以下は MUST execute:
+
+| # | MUST execute | Why |
+|---|--------------|-----|
+| 1 | Phase 0.4.1 goal classification (Phase 0.1 から推定) | Phase 0.5 interview scope 決定で必要 |
+| 2 | Delegation to Interview (Pre-write + Skill 起動) | `create_interview` write がないと stop-guard が enforce できない |
+| 3 | Mandatory After Interview | flow state を `create_post_interview` に進める |
+| 4 | Phase 0.6 | `create-register` vs `create-decompose` 選択 |
+| 5 | Delegation Routing (Pre-write + terminal sub-skill) | `create_delegation` を書き whitelist を進める |
+| 6 | Mandatory After Delegation | terminal `create_completed` の defense-in-depth |
 
 **唯一の合法 path**: `rite:issue:create-register` または `rite:issue:create-decompose` Skill 起動経由でのみ Issue を作成する。`gh issue create` 直接呼出しは `pre-tool-bash-guard.sh` で block される。本 skip semantics は [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` の具体化 — 時間的制約や context 残量を理由にした step 省略は禁止。
 
@@ -322,11 +331,11 @@ Concrete output 例は `create-register.md` Phase 4.2-4.4 / `create-decompose.md
 
 ## Termination Logic
 
-#### Phase 0.4 Completion Criteria
+### Phase 0.4 Completion Criteria
 
 What / Why / Where がすべて clear なら完了。不足があれば clarifying questions を発行 (Phase 0.4 templates 参照)。
 
-#### Phase 0.6 Decomposition Decision Termination
+### Phase 0.6 Decomposition Decision Termination
 
 | User Selection | Next Phase |
 |----------------|------------|
