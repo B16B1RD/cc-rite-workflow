@@ -196,25 +196,35 @@ End processing.
 
 ## Phase 2: Execution Confirmation
 
-### 2.1 Confirm with User (Standalone Only)
+### 2.1 Confirm with User (Standalone Path)
 
-> **End-to-end flow からの呼び出し時は本 confirmation を skip する**: orchestrator (`start.md` Phase 5.5) が user に Ready 移行を確認済みのため二重確認は不要 ([Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) の「重複 confirmation 禁止」原則)。本 sub-skill が flow state の `.phase` を確認し、`phase5_post_review` / `phase5_post_fix` のいずれかなら e2e 内の Ready 移行と判定。
+> **End-to-end flow の主経路から呼び出された場合は本 confirmation を skip する**: orchestrator (`start.md` Phase 5.5) が user に Ready 移行を確認済みのため二重確認は不要 ([Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) 5 つの自問の 4 番目「既に承認された判断を再確認しているか? → 重複なら除去」原則)。本 sub-skill が flow state の `.phase` を確認し、`phase5_post_review` / `phase5_post_fix` (review→ready / fix→ready の主経路) のいずれかなら confirmation を skip。
 >
-> **Standalone 実行時のみ** `AskUserQuestion` で確認 (`/rite:pr:ready` 直接呼び出し時の誤実行防止 safety net)。
+> **副次経路は fail-safe に standalone 経路 (旧挙動) で退行**: 主経路以外 (例: `/rite:resume` 経由 / 同 session 内 e2e 中断後の standalone 再呼び出し / 想定外の phase 値) で本 sub-skill に到達した場合、`*)` 分岐で `in_e2e_flow=false` に倒し confirmation を表示する (silent skip ではなく silent confirm 方向への退行で UX harm なし)。
+>
+> **Standalone 実行時** (`/rite:pr:ready` 直接呼び出し) は `AskUserQuestion` で確認 (誤実行防止 safety net)。
 
-**E2E flow detection**:
+**E2E flow detection** (canonical pattern: helper 起動失敗時は WARNING + sentinel emit してから fail-safe 退行):
 
 ```bash
-phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "" 2>/dev/null || echo "")
+if phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: state-read.sh failed (rc=$rc) for --field phase in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1; rc=$rc" >&2
+  phase=""
+fi
+# Whitelist approach: 主経路 (review→ready / fix→ready) のみ confirmation skip。
+# 想定外値 (phase5_post_ready 以降 / 空文字 / その他) は fail-safe に standalone 扱い。
 case "$phase" in
   phase5_post_review|phase5_post_fix) in_e2e_flow=true ;;
   *) in_e2e_flow=false ;;
 esac
+echo "in_e2e_flow=$in_e2e_flow"
 ```
 
-`$in_e2e_flow == "true"` の場合は本 sub-section の AskUserQuestion を skip して Phase 3 へ direct。
-
-`$in_e2e_flow == "false"` (standalone) の場合のみ `AskUserQuestion` で確認:
+LLM は本 bash の stdout (`in_e2e_flow=...`) を読み取り、`in_e2e_flow=true` の場合は本 sub-section の AskUserQuestion を skip して Phase 3 へ direct。`in_e2e_flow=false` の場合のみ `AskUserQuestion` で確認:
 
 ```
 PR #{number} を Ready for review に変更します。
@@ -229,7 +239,7 @@ URL: {pr_url}
 - キャンセル: 処理を中止します
 ```
 
-**If "Cancel" is selected (standalone only):**
+**If "Cancel" is selected:**
 
 ```
 処理を中止しました。
