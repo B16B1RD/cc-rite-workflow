@@ -1277,6 +1277,8 @@ When the reviewer count reaches 4 or more, recommend splitting the review execut
 ### 3.3 Confirm Reviewers
 
 > **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm the reviewer configuration before review execution begins.
+>
+> **Note (区別注記 — PR #818 / Issue #820)**: 本ガード文は **reviewer 構成確認に固有**であり、`pr/ready.md` の Ready 移行確認とは別概念です。Ready 移行確認は親 skill `start.md` Phase 5.5 の `AskUserQuestion`（「Ready for review に変更 / ドラフトのまま完了 / 追加の修正を行う」）で同等の確認が実施されているため PR #818 で `ready.md` 側の MANDATORY ガード文を撤廃しましたが、reviewer 構成確認は親 skill での代替確認が存在しないため本ガード文を保持します。本対応を `ready.md` と同様に削除しないこと。
 
 Confirm the reviewer configuration with `AskUserQuestion` (fallback: see Phase 1.4 note):
 
