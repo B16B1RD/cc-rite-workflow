@@ -9,6 +9,8 @@ description: |
 
 Create a new Issue and add it to GitHub Projects.
 
+> 生成する Issue body / commit message は [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) に従う（過去 PR / cycle 番号の本文引用を避け、経緯は git log に任せる）。
+
 ## Happy Path & Architecture
 
 1. **Phase 0.1**: ユーザ入力から What/Why/Where を抽出

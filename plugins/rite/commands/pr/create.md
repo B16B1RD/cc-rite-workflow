@@ -10,6 +10,8 @@ description: ドラフト Pull Request を作成
 
 ドラフト PR を作成し、関連 Issue と連携する
 
+> 生成する PR description / commit message は [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) に従う（過去 PR / cycle 番号の本文引用を避け、経緯は git log に任せる）。
+
 ## E2E Output Minimization
 
 When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
