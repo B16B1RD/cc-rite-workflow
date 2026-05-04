@@ -96,7 +96,7 @@ LLM の turn-boundary heuristic も弱体化させる効果があり、bare sent
 
 ### Issue #636 — `--preserve-error-count` silent failure 防止
 
-> **強化内容**: `flow-state-update.sh patch` mode の JQ_FILTER がデフォルトで `.error_count = 0` をリセットすることが判明。これにより、Step 0 (`create_interview` への idempotent re-affirm)、Step 1 (`create_post_interview` への advance)、`create-interview.md` Pre-flight (`create_interview` への initial write) の対称契約全体で error_count がリセットされ、`RE-ENTRY DETECTED` escalation counter を毎回ゼロクリアし、`THRESHOLD=3` bail-out 層が **永久に unreachable** になっていた。
+> **強化内容**: `flow-state-update.sh patch` mode の JQ_FILTER がデフォルトで `.error_count = 0` をリセットすることが判明。これにより、3 site (`create.md` Step 0 / Step 1 / `create-interview.md` Pre-flight) すべてが `--phase create_post_interview` で同一 phase へ idempotent patch する対称契約全体で error_count がリセットされ、`RE-ENTRY DETECTED` escalation counter を毎回ゼロクリアし、`THRESHOLD=3` bail-out 層が **永久に unreachable** になっていた。
 
 修正: `--preserve-error-count` を 4 引数 symmetry list (`--phase` / `--active` / `--next` / `--preserve-error-count`) に追加し、self-patch でも escalation counter を保持。verified-review cycle 3 F-01 で実測確認。同時に exit code 明示 check も導入 (`--if-exists` は file 不在 skip と patch 成功を両方 exit 0 で返すため、真の patch 失敗のみを `STEP_0_PATCH_FAILED` retained flag で区別する)。
 
