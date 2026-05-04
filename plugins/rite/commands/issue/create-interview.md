@@ -369,18 +369,9 @@ After batch responses, derive follow-up questions from answers. Follow-ups are a
 
 ### Reflecting Interview Results
 
-Interview results are mapped to Implementation Contract sections (Section 1-9) for the Issue body. The mapping follows Step 3 of the Issue Body Generation process in `create-register.md`:
+> **Moved (Issue #773 P1-3 PR 7/8 fix #801)**: Interview Perspective → Target Sections の正規 mapping table は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) に集約済み (二重 SoT 解消)。Phase 0.5 では本 reference の mapping に従って interview results を Section 1-9 に割り当てること。
 
-| Interview Perspective | Target Sections |
-|----------------------|----------------|
-| Technical Implementation | 4.1 Target Files, 4.3 Interface/Data Contract, 4.4 Behavioral Requirements |
-| User Experience | 1 Goal, 3 Type Core (Feature scenarios), 5 AC (Happy Path) |
-| Edge Cases | 5 AC (Boundary/Error), 6 Test Specification |
-| Existing Feature Impact | 2 Scope (Out), 4.2 Non-Target, 4.4 MUST NOT |
-| Non-Functional Requirements | 4.5 Error/Constraints, 5 AC (NFR outcome), 6 Test Specification |
-| Tradeoffs | 1 Non-goal, 4.4 SHOULD/MAY, 9 Decision Log |
-
-**Note**: This mapping is applied during Issue body generation in `create-register.md` Phase 2.2 (Step 3). Phase 0.5 collects and retains the raw interview results in conversation context; the structured mapping to Implementation Contract sections occurs at generation time.
+**Note**: This mapping is applied during Issue body generation in `create-register.md` Phase 2.2 ([Step 3 — `references/contract-section-mapping.md`](./references/contract-section-mapping.md)). Phase 0.5 collects and retains the raw interview results in conversation context; the structured mapping to Implementation Contract sections occurs at generation time.
 
 **Retention format** (in conversation context, not in Issue body):
 

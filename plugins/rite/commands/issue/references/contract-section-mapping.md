@@ -83,7 +83,7 @@ Step 2 で Section 3 を確定し、Step 3 で interview 結果を section に m
 | Phase 0.7 cancel path with specification document | Include `docs/designs/{slug}.md` content as design context in Section 4 (Implementation Details). Pre-validated specification supplements interview results for Section 4.1-4.5 |
 | Phase 0.3-0.5 all skipped (`phases_skipped: "0.3-0.5"`) | Apply [EDGE-3 row 4](./edge-cases-create.md#edge-3-interview-result-reflection-rules): populate all MUST sections per Complexity Gate using Phase 0.1 context (What/Why/Where). For MUST sections where no data is available from Phase 0.1, include `<!-- 情報未収集 -->` placeholder. AI-inferred content is marked with `（推定）`. SHOULD/OMIT sections follow normal Gate rules |
 
-**MUST/SHOULD/OMIT の判定基準**: [`complexity-gate.md#complexity-gate-section-inclusion`](./complexity-gate.md) を参照。Complexity (XS/S/M/L/XL) ごとに各 section の include 必須度が決定される。
+**MUST/SHOULD/OMIT の判定基準**: [`complexity-gate.md#complexity-heuristics-scoring`](./complexity-gate.md#complexity-heuristics-scoring) と [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) の Complexity Gate 表を参照。Complexity (XS/S/M/L/XL) ごとに各 section の include 必須度が決定される。
 
 ## 関連参照
 

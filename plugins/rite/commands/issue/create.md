@@ -588,7 +588,7 @@ Information collected through Phase 0.5 is utilized in Phase 1 onwards as follow
 | Collected Information | Carryover Destination |
 |----------------------|----------------------|
 | What/Why/Where | Implementation Contract Section 1 (Goal), Section 2 (Scope) of the Issue body |
-| Interview results (technical decisions, etc.) | Implementation Contract Sections 1-9 via interview-to-section mapping (see `create-register.md` Phase 2.2 Step 3) |
+| Interview results (technical decisions, etc.) | Implementation Contract Sections 1-9 via interview-to-section mapping (see [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping)) |
 | Tentative complexity XL | Finalized in Phase 1.1. Recorded as XL even when decomposition is cancelled |
 | Out-of-scope items | Implementation Contract Section 2 (Out of Scope), Section 1 (Non-goal) |
 
@@ -731,4 +731,4 @@ Phase 0.6 terminates based on the user's selection in the decomposition confirma
 | User Selection | Next Phase |
 |----------------|------------|
 | Sub-Issue に分解する（推奨） | Invoke `skill: "rite:issue:create-decompose"` |
-| 単一 Issue として作成 | Invoke `skill: "rite:issue:create-register"`. Interview results from Phase 0.5 are mapped to Implementation Contract sections via `create-register.md` Phase 2.2 Step 3. See Phase 0.6.2 for context carryover details |
+| 単一 Issue として作成 | Invoke `skill: "rite:issue:create-register"`. Interview results from Phase 0.5 are mapped to Implementation Contract sections via [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping). See Phase 0.6.2 for context carryover details |
