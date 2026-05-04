@@ -6,14 +6,14 @@
 `/rite:issue:create` コマンドを構成する 3 つの sub-skill ファイルの本体スリム化を実施する。
 
 - `create-interview.md` (当初目標 ≤200 行 / **#809 で実着地 331 行 (-35%)**、AC-1 緩和済み)
-- `create-decompose.md` (当初目標 ≤300 行 / **#806 で実着地 489 行 (-26%)**、AC-1 緩和済み)
+- `create-decompose.md` (当初目標 ≤300 行 / **#806 で実着地 506 行 (-23%、cycle 1 489 行 → cycle 2 review 修正で +17 行)**、AC-1 段階的緩和済み)
 - `create-register.md` (当初目標 ≤300 行 / 未着手、protected 区域から逆算した現実的着地点を再評価予定)
 
 各ファイル独立で進められるため Sub-Issue 化する。
 
-**実装中の AC-1 緩和方針 (Wiki 経験則「圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める」#809 で確立)**:
+**実装中の AC-1 緩和方針 (Wiki 経験則「圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める」#809 で確立、#806 で段階的緩和パターンを追加実証)**:
 
-当初目標の行数は野心的設定であり、protected 区域 (NFR-2 protected: Pre-flight bash block / Defense-in-Depth / Terminal Completion sentinel emit / 機械検証必須 bash literal) と SPEC-OUT-OF-SCOPE 制約 (新規 references 作成禁止 / references 側 modify は scope 制約付き許可) の組み合わせで構造的に達成困難になる。各 Sub-Issue 着手時に逆算 (現状行数 - protected 行数 - 必須 prose 行数 = 圧縮後最低行数) で AC-1 を再評価し、user 承認のもと現実的着地点に緩和する。実例: #809 で当初 ≤200 → ≤350 に緩和、#806 で当初 ≤300 → ≤500 に緩和。
+当初目標の行数は野心的設定であり、protected 区域 (NFR-2 protected: Pre-flight bash block / Defense-in-Depth / Terminal Completion sentinel emit / 機械検証必須 bash literal) と SPEC-OUT-OF-SCOPE 制約 (新規 references 作成禁止 / references 側 modify は scope 制約付き許可) の組み合わせで構造的に達成困難になる。各 Sub-Issue 着手時に逆算 (現状行数 - protected 行数 - 必須 prose 行数 = 圧縮後最低行数) で AC-1 を再評価し、user 承認のもと現実的着地点に緩和する。さらに review cycle 内で broken cross-reference / 対称性破壊 / placeholder 説明欠落等の必要な追加修正により行数が増えた場合、AC-1 を段階的に微緩和する運用も確立。実例: #809 で当初 ≤200 → ≤350 に緩和、#806 で当初 ≤300 → cycle 1 ≤500 → cycle 2 review 修正で ≤510 に段階的緩和 (506 行で着地、-23%)。
 
 <!-- Section ID: SPEC-BACKGROUND -->
 ## 背景・目的
