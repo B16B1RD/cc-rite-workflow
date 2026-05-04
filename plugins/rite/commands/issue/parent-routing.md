@@ -223,7 +223,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 # ⚠️ DRIFT 警告: 下記 case ブロックを修正する際は、必ず以下 2 ファイルも同期すること:
 #   1. references/sub-issue-link-handler.md (Variant A 定義、link_failures 増分を除いた部分が共通)
 #   2. commands/issue/create-decompose.md (Variant B 利用箇所、link_failures 増分のみ差分)
-# Issue #514 MUST NOT (unknown status silent 通過禁止) は `*)` ブランチで保持されている。
+# MUST NOT: 未知 status を `*)` ブランチで silent 通過させない。
 # Note: jq -r で field 欠落時は "null" 文字列が返るため、正規表現で数値であることを確認する
 if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
   # canonical reference (sub-issue-link-handler.md「前提」テーブル) は呼び出し元が
@@ -246,7 +246,7 @@ if [[ "$sub_issue_number" =~ ^[0-9]+$ ]] && [ "$sub_issue_number" != "0" ]; then
       echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
       ;;
     *)
-      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      # MUST NOT: 未知 status を silent 通過させない
       echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
       ;;
   esac
