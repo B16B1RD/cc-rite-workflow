@@ -26,7 +26,7 @@ create.md (orchestrator)
 
 **Responsibility split**: `create.md` = Issue specification + duplicate detection + Issue creation + Projects registration (Phase 0-2)。`start.md` = Issue quality validation + parent Issue detection + branch creation + work start (Phase 0-5)。`implementation-plan.md` = detailed step-by-step plan (Phase 3)。`create.md` Phase 0.3 = Similar Issue Search、`start.md` Phase 0.3 = Parent Issue Auto-Detection (異なる責務)。
 
-**CRITICAL**: After every sub-skill returns, **immediately** proceed to the next phase. Do NOT stop until the Issue is created and `<!-- [create:completed:{N}] -->` is emitted. 回帰防止メタ情報は [`references/regression-history.md`](./references/regression-history.md) を参照。
+**CRITICAL**: After every sub-skill returns, **immediately** proceed to the next phase. Do NOT stop until the Issue is created and `<!-- [create:completed:{N}] -->` is emitted.
 
 ## Sub-skill Return Protocol
 
@@ -62,9 +62,9 @@ create.md (orchestrator)
 
 **Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 4.2/4.3/4.4 / `create-decompose.md` Phase 1.0.2/1.0.3 で順序通り emit) が出力された後のみ。
 
-> **Contract phrases (AC-3, Issue #525)**: anti-pattern / correct-pattern 契約は以下 4 phrase を grep-verified で必ず含む: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`。書換禁止。manual verification: `for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do grep -c "$p" plugins/rite/commands/issue/create.md; done` で全て ≥1。
+> **Contract phrases (AC-3)**: anti-pattern / correct-pattern 契約は以下 4 phrase を grep-verified で必ず含む: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`。書換禁止。manual verification: `for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do grep -c "$p" plugins/rite/commands/issue/create.md; done` で全て ≥1。
 
-> **Moved (Issue #773 P1-3 PR 8/8)**: Completion marker convention (Issue #444 + #561) と Defense-in-depth による Terminal Completion pattern の正規定義は [`references/regression-history.md#issue-444--terminal-completion-pattern`](./references/regression-history.md#issue-444--terminal-completion-pattern) と [`references/regression-history.md#issue-561--html-comment-sentinel-ux-fix`](./references/regression-history.md#issue-561--html-comment-sentinel-ux-fix) に集約。Terminal sub-skills は flow-state deactivation + `✅` 完了メッセージ + `<!-- [create:completed:{N}] -->` を内製、`create-interview.md` は post-phase (`create_post_interview`) に進めて return する (Defense-in-Depth)。
+> Terminal sub-skills は flow-state deactivation + `✅` 完了メッセージ + `<!-- [create:completed:{N}] -->` を内製する。`create-interview.md` は post-phase (`create_post_interview`) に進めて return する (Defense-in-Depth)。
 
 ## Arguments
 
@@ -88,7 +88,7 @@ create.md (orchestrator)
 
 ## Phase 0: Input Analysis and Completion
 
-> **🚫 MUST NOT (Bypass prohibition, Mode B defense, #475)**: 本セクションから `[create:completed:{N}]` までの間、orchestrator は (1) `gh issue create` を直接呼ぶ (2) `rite:issue:create-interview` 起動を skip する (3) Delegation to Interview / Phase 0.6 / Delegation Routing を 1 ステップに collapse する のいずれも禁止 (`pre-tool-bash-guard.sh` hook で実行時 block)。経緯と統合方針は [`references/regression-history.md#issue-475--mode-b-defense-bypass-prohibition`](./references/regression-history.md#issue-475--mode-b-defense-bypass-prohibition) を参照。
+> **🚫 MUST NOT (Bypass prohibition)**: 本セクションから `[create:completed:{N}]` までの間、orchestrator は (1) `gh issue create` を直接呼ぶ (2) `rite:issue:create-interview` 起動を skip する (3) Delegation to Interview / Phase 0.6 / Delegation Routing を 1 ステップに collapse する のいずれも禁止 (`pre-tool-bash-guard.sh` hook で実行時 block)。
 
 ### 0.1 Extract Information from User Input
 
@@ -168,7 +168,7 @@ echo "$result"
 
 ## Delegation to Interview
 
-> Phase 0 の Bypass prohibition は本セクション以降も継続適用 ([`references/regression-history.md#issue-475--mode-b-defense-bypass-prohibition`](./references/regression-history.md#issue-475--mode-b-defense-bypass-prohibition))。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決。
+> Phase 0 の Bypass prohibition は本セクション以降も継続適用。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決。
 
 **Pre-write** (before invoking interview sub-skill):
 
@@ -198,12 +198,11 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 > **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない (Issue #525 再発条件)。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。stop-guard は active の間 stop を block — `create_delegation` (Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) に進むまで unblock しない。
 
-**Step 0: Immediate Bash Action (Issue #634)**: sub-skill return 直後の **very first tool call** として実行し turn-boundary 感を bash invocation に置換。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
+**Step 0: Immediate Bash Action**: sub-skill return 直後の **very first tool call** として実行し turn-boundary 感を bash invocation に置換。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
 
 ```bash
 # Re-affirm phase + refresh timestamp (idempotent with Step 1)。--if-exists は file 不在 skip
 # と patch 成功を両方 exit 0 で返すため STEP_0_PATCH_FAILED は真の失敗のみを区別する非 blocking flag。
-# 詳細は references/sub-skill-handoff-contract.md / regression-history.md (#634 / #636) 参照。
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "create_post_interview" \
     --active true \
@@ -214,7 +213,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
 fi
 ```
 
-> **Moved (Issue #773 P1-3 PR 8/8)**: Step 0 Rationale (Issue #634) / Issue #651 補強 / DRIFT-CHECK ANCHOR は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md) と [`references/regression-history.md#issue-634--context-interview_done1-marker-enhancement`](./references/regression-history.md#issue-634--context-interview_done1-marker-enhancement) に集約。本 Step 0 bash block は **3 site 対称契約** (Step 0/1 + `create-interview.md` Pre-flight + Return Output re-patch) で 4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) は `hooks/tests/4-site-symmetry.test.sh` で機械検証される (旧 site (4) `stop-guard.sh` WORKFLOW_HINT は commit `e2dfae0` で撤去済み)。
+> 本 Step 0 bash block は Step 0/1 + `create-interview.md` Pre-flight + Return Output re-patch の 3 site 対称契約で、4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) は `hooks/tests/4-site-symmetry.test.sh` で機械検証される。
 
 **Step 1**: post-interview phase patch (atomic、idempotent with Step 0)。Step 0 と同じ 4 引数 symmetry を維持:
 

@@ -272,9 +272,3 @@ done
 ```
 
 `create-decompose.md` 本体の AC-1 critical 警告で何度繰り返されているように、この single-Bash-invocation 要件は **本コマンドにおける silent-skip リスク最大の箇所** である。
-
-## Regression context
-
-本 pattern の AC-1 enforcement (Phase 0.9.4 空配列ガード + Per-Sub-Issue body 内の数値検証) と各防御層 (per-call non-blocking、`link-sub-issue.sh` 経由の linkage、数値検証ガード、Phase 0.9.4 空配列 fail-fast 等) は、`/rite:issue:create` workflow 周辺で発生した複数の incident を経て段階的に強化されてきた。
-
-各 Issue 番号別の incident → 防御層導入経緯の時系列は [`regression-history.md`](./regression-history.md) を参照。本 reference では Issue 番号の個別引用は行わず、SoT との二重定義を避ける。

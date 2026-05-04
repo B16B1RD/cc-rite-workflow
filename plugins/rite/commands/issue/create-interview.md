@@ -22,14 +22,14 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 >
 > **DRIFT-CHECK ANCHOR (semantic)**: 本セクションは `stop-guard.sh` `create_interview` case arm (Issue #622) と `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge と 3-site symmetry を成す。一方を更新したら他方も同期更新する。
 >
-> **DRIFT-CHECK ANCHOR (semantic, bash 引数 symmetry)** — 本 Pre-flight bash block は **3 site 対称契約 (現状)** に属し、bash 引数 (`--phase` / `--active` / `--next` / `--preserve-error-count`) symmetry / `--if-exists` 意図的非対称性 / pair 同期契約 / 関連 Issue history (#636 / #651 / #660 / #771 / #773) の **正規定義は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md)** を参照。本セクションは site (2) `create-interview.md` 🚨 MANDATORY Pre-flight、site (1) `create.md` Step 0/Step 1 / site (3) Return Output re-patch と pair 同期する。symmetry 破壊は `hooks/tests/4-site-symmetry.test.sh` で検出。
+> 本 Pre-flight bash block は 3 site 対称契約 (site (2) `create-interview.md` Pre-flight / site (1) `create.md` Step 0/Step 1 / site (3) Return Output re-patch) に属し、4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) と `--if-exists` 意図的非対称性は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md) で定義。symmetry 破壊は `hooks/tests/4-site-symmetry.test.sh` で検出。
 
 **MUST run before any interview logic** (Phase 0.4.1 scope evaluation / Phase 0.5 deep-dive / return-output emission)。**not optional**、**interview scope に conditional でない** — Bug Fix / Chore preset (scope = "skip") でも実行:
 
 ```bash
-# bash 引数 / exit-code check / --preserve-error-count rationale は references/sub-skill-handoff-contract.md (canonical SoT) と
-# references/regression-history.md (#636 / #660 累積経緯) に集約。本ブロックは canonical bash 引数 symmetry を保持し、
-# state-path-resolve.sh + _resolve-flow-state-path.sh で per-session (schema_version=2) / legacy 両形式に対応。
+# bash 引数 / exit-code check / --preserve-error-count rationale は references/sub-skill-handoff-contract.md (canonical SoT)
+# に集約。本ブロックは canonical bash 引数 symmetry を保持し、state-path-resolve.sh + _resolve-flow-state-path.sh で
+# per-session (schema_version=2) / legacy 両形式に対応。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
@@ -248,13 +248,13 @@ After batch responses, follow-ups are asked individually (not batched) as they r
 
 ## Return Output Format (Before Return)
 
-> **Reference**: `start.md` の sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0) に追従。flow-state write は Issue #622 で 🚨 MANDATORY Pre-flight (本ファイル冒頭) へ移動し interview scope に関係なく post-interview phase を記録。本 re-patch は defense-in-depth second write として timestamp / `next_action` を refresh する。
+> **Reference**: `start.md` の sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0) に追従。flow-state write は 🚨 MANDATORY Pre-flight (本ファイル冒頭) で interview scope に関係なく post-interview phase を記録。本 re-patch は defense-in-depth second write として timestamp / `next_action` を refresh する。
 
 Immediately before emitting the four-line return block, re-patch flow state (idempotent with Pre-flight write):
 
 ```bash
-# bash 引数 / exit-code check / --preserve-error-count rationale は references/sub-skill-handoff-contract.md (canonical SoT) と
-# references/regression-history.md (#636 累積経緯) に集約。Pre-flight 後の同一 phase self-patch のため file 存在は保証済み。
+# bash 引数 / exit-code check / --preserve-error-count rationale は references/sub-skill-handoff-contract.md (canonical SoT)
+# に集約。Pre-flight 後の同一 phase self-patch のため file 存在は保証済み。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
@@ -273,12 +273,12 @@ fi
 
 After the flow-state update, output the result pattern. Caller-continuation reminder を **immediately before** result pattern に emit。Return block は **4 line** 構成: (1) `[CONTEXT] INTERVIEW_DONE=1` grep marker / (2) plain-text blockquote continuation reminder / (3) HTML-commented caller instructions / (4) HTML-commented result sentinel。全 4 行が sub-skill の **last visible lines**。
 
-> **Cumulative regression strengthening** (詳細経緯は `references/sub-skill-handoff-contract.md` および `references/regression-history.md` 参照):
-> - **Issue #552**: caller continuation hint を plain-text line + HTML comment の **dual form** で emit（HTML comment が rendering で strip される場合への defense）
-> - **Issue #561**: result pattern を HTML comment 化 (`<!-- [interview:skipped] -->`) — sentinel は grep-matchable (`grep -F '[interview:'`) のまま AC-3 保持し、user-visible terminal token としての sentinel 出力を抑止して LLM turn-boundary heuristic 起因の `continue` 要求 stop を防ぐ
-> - **Issue #634**: `[CONTEXT] INTERVIEW_DONE=1` marker を return block の **FIRST line** に追加（not last）— orchestrator Pre-check Item 0 と Mandatory After Interview Step 0 が consume する grep signal、HTML strip rendering でも検出可能な plain-text 形式
+> **Return block design rationale**:
+> - caller continuation hint を plain-text line + HTML comment の **dual form** で emit（HTML comment が rendering で strip される場合への defense）
+> - result pattern を HTML comment 化 (`<!-- [interview:skipped] -->`) — sentinel は grep-matchable (`grep -F '[interview:'`) のまま AC-3 保持し、user-visible terminal token としての sentinel 出力を抑止して LLM turn-boundary heuristic 起因の `continue` 要求 stop を防ぐ
+> - `[CONTEXT] INTERVIEW_DONE=1` marker を return block の **FIRST line** に追加（not last）— orchestrator Pre-check Item 0 と Mandatory After Interview Step 0 が consume する grep signal、HTML strip rendering でも検出可能な plain-text 形式
 >
-> **DRIFT-CHECK ANCHOR (semantic, 3-site + historical 4th)**: create.md 🚨 Mandatory After Interview Step 0 Immediate Bash Action / create-interview.md 🚨 MANDATORY Pre-flight / create-interview.md Return Output re-patch (本セクション末尾) と **3 site 対称契約 (現状)** (Issue #651 PR #654 で 3→4-site 拡張、stop-guard.sh 撤去 commit `e2dfae0` で site (4) 無効化、後続 DRIFT-CHECK ANCHOR (semantic, 3-site + historical 4th) と同一 scope)。
+> 本セクションは create.md 🚨 Mandatory After Interview Step 0 / create-interview.md 🚨 MANDATORY Pre-flight / create-interview.md Return Output re-patch の 3 site 対称契約に属する。`hooks/tests/4-site-symmetry.test.sh` で機械検証。
 
 **Output format example (interview skipped)**:
 
@@ -319,13 +319,13 @@ Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** call
 
 **WARNING**: **GitHub Issue は未作成**。本セクションで停止すると deliverable なしで workflow 放棄。
 
-**Output rules** (#636 / #634 / #561 / #552 累積強化、詳細経緯は `references/sub-skill-handoff-contract.md` および `references/regression-history.md` を参照):
+**Output rules** (canonical contract — bash 引数 / exit-code / marker 詳細は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md)):
 
 0. **FIRST**: `[CONTEXT] INTERVIEW_DONE=1; scope={skipped|completed}; next=phase_0_6` を **plain-text line** で出力（HTML-commented 不可）。位置規定:
    - **0b (構造保証、canonical)**: Rules 0-1 の相対順序が **4-line return block** を pin する: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST)。この 4-line invariant が canonical で、他の位置記述はここから導出
    - **0a (絶対位置、0b から導出)**: 4-line block 構造より、本 marker は **4th-to-last visible line**（`<!-- [interview:*] -->` absolute-last sentinel の 3 行前）。各行が single-line である前提。Line 2/3 が multi-line 化した場合は 0b 4-line invariant が先に壊れるため両 Rule の joint update が必要
-   - **0c (目的)**: Issue #634 — grep marker for orchestrator Pre-check Item 0 (routing dispatcher、本 site で active routing 発火) and for Mandatory After Step 0 bash block comment reference (informational — Step 0 は unconditional idempotent `flow-state-update.sh patch` であり marker 分岐なし、marker は documentation context); LLM turn-boundary heuristic 対策の defense-in-depth
-1. Result pattern を HTML comment (`<!-- [interview:completed] -->` / `<!-- [interview:skipped] -->`) で **absolute last line** に出力 (Issue #561 UX fix: sentinel は grep-matchable だが user-visible でない)
-2. Bare `[interview:*]` 形式（HTML comment wrap なし）は **禁止**（Issue #561 で user-visible terminal token として regressed）
+   - **0c (目的)**: grep marker for orchestrator Pre-check Item 0 (routing dispatcher、本 site で active routing 発火) and for Mandatory After Step 0 bash block comment reference (informational — Step 0 は unconditional idempotent `flow-state-update.sh patch` であり marker 分岐なし、marker は documentation context); LLM turn-boundary heuristic 対策の defense-in-depth
+1. Result pattern を HTML comment (`<!-- [interview:completed] -->` / `<!-- [interview:skipped] -->`) で **absolute last line** に出力 (sentinel は grep-matchable だが user-visible でない)
+2. Bare `[interview:*]` 形式（HTML comment wrap なし）は **禁止**（user-visible terminal token として regressed）
 3. Result pattern の **後ろに narrative text を出さない**（`→ Return to create.md` 等）— LLM の natural stopping point を生む
 4. Caller は HTML comment 内の grep-matchable 文字列と plain-text `[CONTEXT] INTERVIEW_DONE=1` marker を grep で読取り、即 Phase 0.6 へ継続
