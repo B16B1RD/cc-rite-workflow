@@ -19,7 +19,7 @@ Create a new Issue and add it to GitHub Projects.
 4. **`rite:issue:create-register`** または **`rite:issue:create-decompose`**: Issue 作成
 5. ✅ Issue #N 作成完了
 
-詳細フローは下のセクション。回帰防止メタ情報は `references/regression-history.md`（TBD: Sub-Issue P1-3 完了後に link 有効化）。
+詳細フローは下のセクション。回帰防止メタ情報は [`references/regression-history.md`](./references/regression-history.md) を参照。
 
 ---
 
@@ -69,7 +69,7 @@ When this command is executed, follow the phases below in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) and the global reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` for the full contract. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After section in the **same response turn**.
+> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](./start.md#sub-skill-return-protocol-global) and the global reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` for the full contract. The same rules apply here — DO NOT end your response after a sub-skill returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the Mandatory After section in the **same response turn**.
 
 ### Pre-check list (Issue #552 — mandatory before ending any response turn)
 
@@ -114,7 +114,7 @@ This is a **bug**. The return tag is NOT a turn boundary — it is a hand-off si
 > # Expected: all 4 counts >= 1
 > ```
 
-**Completion marker convention** (Issue #444 + Issue #561): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`, emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) on the absolute last line of the terminal sub-skill's output. The HTML comment form (Issue #561 D-01) keeps the string grep-matchable (`grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`) while ensuring the user-visible final content is the `✅` completion message + next-steps block (AC-2 / AC-3 of #561). Terminal sub-skills (`create-register.md`, `create-decompose.md`) handle flow-state deactivation, user-visible completion message, next-step display, and the HTML-commented sentinel internally (Terminal Completion pattern). The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth.
+**Completion marker convention** (Issue #444 + Issue #561): The unified completion marker for the entire `/rite:issue:create` workflow is `[create:completed:{N}]`, emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) on the absolute last line of the terminal sub-skill's output. The HTML comment form (Issue #561 D-01) keeps the string grep-matchable (`grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`) while ensuring the user-visible final content is the `✅` completion message + next-steps block (AC-2 / AC-3 of #561). Terminal sub-skills (`create-register.md`, `create-decompose.md`) handle flow-state deactivation, user-visible completion message, next-step display, and the HTML-commented sentinel internally (Terminal Completion pattern). The orchestrator's Mandatory After Delegation section serves as defense-in-depth (詳細経緯は [`references/regression-history.md`](./references/regression-history.md#issue-444--terminal-completion-pattern) を参照)。
 
 **Defense-in-depth**: `create-interview.md` updates flow state to a `post_*` phase (`create_post_interview`) before returning. Terminal sub-skills (`create-register.md`, `create-decompose.md`) set `create_completed` with `active: false` and output the completion marker directly. This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return.
 
@@ -220,9 +220,9 @@ Projects を使用するには /rite:init を実行してください。
 > 2. Skip from here directly to output without invoking `rite:issue:create-interview`
 > 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a single synthetic "create Issue" step
 >
-> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
+> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
 >
-> **⚠️ Drift guard**: This same block is repeated verbatim before the `## Delegation to Interview` section below. **Both occurrences MUST stay identical** — if you update one, update both. A grep-based check is the only drift detector.
+> 本 Bypass prohibition は `/rite:issue:create` ワークフロー全体を通して有効。Delegation to Interview セクションでも `[create:completed:{N}]` まで継続的に適用される (Issue #475 Mode B defense の経緯と本ガード文の重複統合方針は [`references/regression-history.md`](./references/regression-history.md#issue-475--mode-b-defense-bypass-prohibition) を参照)。
 
 ### 0.1 Extract Information from User Input
 
@@ -412,10 +412,10 @@ When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmati
 |---|---|
 | Phase 0.4.1 goal classification (infer task type from Phase 0.1) | Required by Phase 0.5 interview scope determination |
 | Delegation to Interview section (Pre-write + `rite:issue:create-interview` Skill) | Without the `create_interview` flow-state write, stop-guard has no hook to enforce delegation |
-| 🚨 Mandatory After Interview | Updates flow state の `.phase=create_post_interview`; stop-guard keeps blocking until `create_delegation` is written below |
+| Mandatory After Interview | Updates flow state の `.phase=create_post_interview`; stop-guard keeps blocking until `create_delegation` is written below |
 | Phase 0.6 (Task Decomposition Decision) | Chooses between `create-register` (single Issue) and `create-decompose` (sub-Issues) |
 | Delegation Routing (Pre-write + terminal sub-skill Skill invocation) | Writes `create_delegation`, advancing the whitelist past `create_post_interview` |
-| 🚨 Mandatory After Delegation | Defense-in-depth for the terminal `create_completed` state |
+| Mandatory After Delegation | Defense-in-depth for the terminal `create_completed` state |
 
 **The only legitimate way to create a GitHub Issue from this command is by invoking `rite:issue:create-register` or `rite:issue:create-decompose` as a Skill.** Calling `gh issue create` directly from the orchestrator bypasses flow-state tracking, Projects integration, and every enforcement layer — and is **blocked by `pre-tool-bash-guard.sh`** when flow state の `.phase = create_*`.
 
@@ -423,17 +423,7 @@ When Phase 0.1 already extracted What/Why/Where clearly and Phase 0.4 confirmati
 
 ## Delegation to Interview
 
-> **🚫 MUST NOT — Bypass prohibition (Mode B defense, #475)**
->
-> Between this point and `[create:completed:{N}]`, the orchestrator MUST NOT:
->
-> 1. Execute `gh issue create` via the Bash tool (blocked by `pre-tool-bash-guard.sh` hook)
-> 2. Skip from here directly to output without invoking `rite:issue:create-interview`
-> 3. Collapse the Delegation to Interview / Phase 0.6 / Delegation Routing sections into a single synthetic "create Issue" step
->
-> Any of the above is a **protocol violation** regardless of how clearly Phase 0.1 extracted the information. The only legitimate path forward is: Pre-write below → `skill: "rite:issue:create-interview"` → 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → terminal sub-skill.
->
-> **⚠️ Drift guard**: This same block is repeated verbatim at the start of Phase 0 above. **Both occurrences MUST stay identical** — if you update one, update both. A grep-based check is the only drift detector.
+> **MUST NOT reminder**: Phase 0 で宣言した [Bypass prohibition (Mode B defense, #475)](#phase-0-input-analysis-and-completion) が `[create:completed:{N}]` まで継続的に適用される。`gh issue create` の直接呼び出し / `rite:issue:create-interview` 起動 skip / Phase 0.6 等の collapse は **依然として禁止**。`pre-tool-bash-guard.sh` hook がランタイム検出する。経緯と統合方針は [`references/regression-history.md`](./references/regression-history.md#issue-475--mode-b-defense-bypass-prohibition) を参照。
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
@@ -459,7 +449,7 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-**🚨 Immediate after interview returns**: When `rite:issue:create-interview` outputs a result pattern (`[interview:completed]` / `[interview:skipped]`) or emits the `[CONTEXT] INTERVIEW_DONE=1` marker and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After Interview below. The interview sub-skill has already updated flow state to `create_post_interview` via its Defense-in-Depth section; execute the 🚨 Mandatory After Interview steps without delay.
+**🚨 Immediate after interview returns**: When `rite:issue:create-interview` outputs a result pattern (`[interview:completed]` / `[interview:skipped]`) or emits the `[CONTEXT] INTERVIEW_DONE=1` marker and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After Interview below. The interview sub-skill has already updated flow state to `create_post_interview` via its Defense-in-Depth section; execute the Mandatory After Interview steps without delay.
 
 ### 🚨 Mandatory After Interview
 
