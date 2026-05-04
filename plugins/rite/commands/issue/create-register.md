@@ -32,17 +32,17 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 
 ### 1.1 Complexity Estimation
 
-> **Moved (Issue #773 P1-3 PR 4/8)**: 本セクションの定義は [`references/complexity-gate.md`](./references/complexity-gate.md) に移動しました。Phase 0.4.1 の Tentative Complexity Estimation を baseline として、Heuristics Scoring を primary method で最終 complexity を確定します。詳細:
->
-> - [Tentative Complexity Estimation](./references/complexity-gate.md#tentative-complexity-estimation) — XS/S/M/L/XL の判定基準テーブル
-> - [Complexity Heuristics Scoring](./references/complexity-gate.md#complexity-heuristics-scoring) — Score テーブルと Score → complexity mapping
-> - [Final Complexity Decision Rules](./references/complexity-gate.md#final-complexity-decision-rules) — Tentative と Heuristics の優先順位、Phase 0.4.1 not executed の baseline (XL)
->
-> 最終 complexity は Issue Meta section に記録される。
+詳細は [`references/complexity-gate.md`](./references/complexity-gate.md) を参照。Phase 0.4.1 の Tentative Complexity Estimation を baseline として、Heuristics Scoring を primary method で最終 complexity を確定する:
+
+- [Tentative Complexity Estimation](./references/complexity-gate.md#tentative-complexity-estimation) — XS/S/M/L/XL の判定基準テーブル
+- [Complexity Heuristics Scoring](./references/complexity-gate.md#complexity-heuristics-scoring) — Score テーブルと Score → complexity mapping
+- [Final Complexity Decision Rules](./references/complexity-gate.md#final-complexity-decision-rules) — Tentative と Heuristics の優先順位、Phase 0.4.1 not executed の baseline (XL)
+
+最終 complexity は Issue Meta section に記録される。
 
 #### Complexity Heuristics Scoring
 
-> **Moved (Issue #773 P1-3 PR 4/8)**: 本 subsection の定義は [`references/complexity-gate.md#complexity-heuristics-scoring`](./references/complexity-gate.md#complexity-heuristics-scoring) に移動しました。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。
+詳細は [`references/complexity-gate.md#complexity-heuristics-scoring`](./references/complexity-gate.md#complexity-heuristics-scoring) を参照。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL)。
 
 ### 1.2 Work Type Classification
 
@@ -195,14 +195,14 @@ Read the Complexity Gate table from the template. For the determined complexity,
 
 **Step 2: Select Type Core Section**
 
-> **Moved (Issue #773 P1-3 PR 7/8)**: Type → Section 3 Type Core Section の mapping table は [`references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping`](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) に移動しました。Phase 1.2 で確定した Type に対応する Section 3 (User Scenarios / Bug Details / Before-After Contract / Operational Context / Documentation Target) を選択してください。
+Type → Section 3 Type Core Section の mapping table は [`references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping`](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) を参照。Phase 1.2 で確定した Type に対応する Section 3 (User Scenarios / Bug Details / Before-After Contract / Operational Context / Documentation Target) を選択する。
 
 **Step 3: Map Interview Results to Sections**
 
-> **Moved (Issue #773 P1-3 PR 7/8)**: Interview Perspective → Target Sections mapping table と Section inclusion rules table は [`references/contract-section-mapping.md`](./references/contract-section-mapping.md) に移動しました。詳細:
->
-> - [Step 3: Interview Perspective → Target Sections Mapping](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) — 6 Perspective × Section の正規対応表
-> - [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) — Interview not conducted / MUST but no data / Phase 0.7 cancel / `phases_skipped: "0.3-0.5"` のハンドリング (EDGE-3 row 4 への参照含む)
+Interview Perspective → Target Sections mapping table と Section inclusion rules table は [`references/contract-section-mapping.md`](./references/contract-section-mapping.md) を参照:
+
+- [Step 3: Interview Perspective → Target Sections Mapping](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) — 6 Perspective × Section の正規対応表
+- [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) — Interview not conducted / MUST but no data / Phase 0.7 cancel / `phases_skipped: "0.3-0.5"` のハンドリング (EDGE-3 row 4 への参照含む)
 
 **Step 4: Generate Acceptance Criteria**
 
@@ -535,9 +535,9 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 <!-- caller: this sub-skill is terminal. Phase 4 deactivates flow state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
 
-> **Design decision** (Issue #444, D-01): This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
+> **Design decision**: This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
 >
-> **Design decision** (Issue #561, D-01): The `[create:completed:{N}]` sentinel is now emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) so that the user-visible final line is the `✅` completion message + next steps, not the sentinel token. The string `[create:completed:N]` inside the HTML comment is still grep-matchable (`grep -F` / `grep -E '\[create:completed:[0-9]+\]'`) so existing hook/test contracts (AC-3) remain intact. The HTML comment is invisible in rendered Markdown views, which also weakens the LLM's turn-boundary heuristic that previously treated a bare `[create:completed:N]` line as a natural stopping point (root cause of the #561 regression).
+> **Design decision**: The `[create:completed:{N}]` sentinel is emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) so that the user-visible final line is the `✅` completion message + next steps, not the sentinel token. The string `[create:completed:N]` inside the HTML comment is still grep-matchable (`grep -F` / `grep -E '\[create:completed:[0-9]+\]'`) so existing hook/test contracts remain intact. The HTML comment is invisible in rendered Markdown views, which also weakens the LLM's turn-boundary heuristic that would otherwise treat a bare `[create:completed:N]` line as a natural stopping point.
 
 ### 4.1 Flow State Deactivation
 
@@ -551,9 +551,9 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --if-exists
 ```
 
-### 4.2 Completion Message (User-facing, Issue #552 / #561)
+### 4.2 Completion Message (User-facing)
 
-> **Design decision** (Issue #552 Bug2 + Issue #561 UX fix): The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified by AC-4 of #552 / AC-3 of #561). Emit an explicit user-visible completion message followed by the next-steps block; place the sentinel as a trailing HTML comment so the user's visible final content is the `✅` message + next steps (AC-2 of #561).
+> **Design decision**: The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified). Emit an explicit user-visible completion message followed by the next-steps block; place the sentinel as a trailing HTML comment so the user's visible final content is the `✅` message + next steps.
 
 Output the user-facing completion message as the first deliverable line of Phase 4's output:
 
@@ -587,7 +587,7 @@ This marker signals to both the orchestrator (`create.md`) and any hook/grep con
 1. `<!-- [create:completed:{N}] -->` is the **absolute last line** of Phase 4's output — no plain text after it
 2. The user-visible final content (last non-comment line) MUST be the next-steps block (`次のステップ: ...`) immediately preceded by the `✅` completion message
 3. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
-4. Do **NOT** emit the sentinel as a bare `[create:completed:{N}]` line (without HTML comment wrapping) — the bare form regressed in Issue #561 as the user-visible terminal token
+4. Do **NOT** emit the sentinel as a bare `[create:completed:{N}]` line (without HTML comment wrapping) — the bare form regresses to the user-visible terminal token
 5. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
 
 **Concrete output example**:

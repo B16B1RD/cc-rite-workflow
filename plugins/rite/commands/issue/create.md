@@ -36,7 +36,7 @@ create.md (orchestrator)
 
 ### Anti-pattern (what NOT to do)
 
-`rite:issue:create-interview` が `<!-- [interview:skipped] -->` / `<!-- [interview:completed] -->` (HTML comment 形式、Issue #561) を返した時:
+`rite:issue:create-interview` が `<!-- [interview:skipped] -->` / `<!-- [interview:completed] -->` (HTML comment 形式) を返した時:
 
 ```
 [WRONG]
@@ -96,13 +96,13 @@ create.md (orchestrator)
 
 #### EDGE-4: Short Input Handling
 
-> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-4-short-input-handling`](./references/edge-cases-create.md#edge-4-short-input-handling) に移動しました。Phase 0.1 開始前に short input (Unicode < 10 chars) を検出し、AskUserQuestion で詳細を要求するか既存 Issue を参照するかを分岐させるロジックを定義します。
+詳細は [`references/edge-cases-create.md#edge-4-short-input-handling`](./references/edge-cases-create.md#edge-4-short-input-handling) を参照。Phase 0.1 開始前に short input (Unicode < 10 chars) を検出し、AskUserQuestion で詳細を要求するか既存 Issue を参照するかを分岐させるロジックを定義する。
 
 ユーザ入力から以下を抽出: **What** (何をするか) / **Why** (なぜ必要か) / **Where** (変更対象) / **Scope** (影響範囲) / **Constraints** (制約)。例: "Add login feature" / "For user authentication" / "Under src/auth/" / "Frontend and backend" / "Maintain compatibility with existing API"。
 
 ### 0.1.3 Slug Pre-generation
 
-> **Moved (Issue #773 P1-3 PR 5/8)**: 本セクションの定義は [`references/slug-generation.md`](./references/slug-generation.md) に移動しました ([Slug Generation Rules](./references/slug-generation.md#slug-generation-rules) / [Translation Guidelines](./references/slug-generation.md#translation-guidelines) / [Context Retention](./references/slug-generation.md#context-retention))。生成した slug は `{tentative_slug}` として context に保持し Phase 0.7.2 で再利用する。
+詳細は [`references/slug-generation.md`](./references/slug-generation.md) を参照 ([Slug Generation Rules](./references/slug-generation.md#slug-generation-rules) / [Translation Guidelines](./references/slug-generation.md#translation-guidelines) / [Context Retention](./references/slug-generation.md#context-retention))。生成した slug は `{tentative_slug}` として context に保持し Phase 0.7.2 で再利用する。
 
 ### 0.1.5 Parent Issue Pre-detection
 
@@ -198,7 +198,7 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 ### 🚨 Mandatory After Interview
 
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない (Issue #525 再発条件)。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。stop-guard は active の間 stop を block — `create_delegation` (Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) に進むまで unblock しない。
+> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。stop-guard は active の間 stop を block — `create_delegation` (Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) に進むまで unblock しない。
 
 **Step 0: Immediate Bash Action**: sub-skill return 直後の **very first tool call** として実行し turn-boundary 感を bash invocation に置換。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
 
@@ -234,7 +234,7 @@ fi
 
 **Step 3**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
-> **Issue #552 reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で stop-guard が `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
+> **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で stop-guard が `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
 
 ## Phase 0.6: Task Decomposition Decision
 
@@ -254,7 +254,7 @@ fi
 
 #### EDGE-3: Interview Result Reflection Rules
 
-> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-3-interview-result-reflection-rules`](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules) に移動しました。Phase 0.5 status と Phase 0.1.5 早期分解 cancel パスの組み合わせに応じて Implementation Contract sections に何を populate すべきかを規定します (Complexity Gate compliance / `（推定）` marking / `<!-- 情報未収集 -->` placeholder)。
+詳細は [`references/edge-cases-create.md#edge-3-interview-result-reflection-rules`](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules) を参照。Phase 0.5 status と Phase 0.1.5 早期分解 cancel パスの組み合わせに応じて Implementation Contract sections に何を populate すべきかを規定する (Complexity Gate compliance / `（推定）` marking / `<!-- 情報未収集 -->` placeholder)。
 
 ## Delegation Routing
 
@@ -296,11 +296,11 @@ fi
 | Tentative slug | [Phase 0.1.3](./references/slug-generation.md) | 常に available |
 | `phases_skipped` flag | Phase 0.1.5 | `"0.3-0.5"` (Phase 0.1.5 早期分解時) または `null` |
 
-**🚨 Immediate after delegation returns**: sub-skill が `[create:completed:{N}]` (Issue #444 で legacy `[register:created:{N}]` / `[decompose:completed:{N}]` から統合) を出力したら同 turn 内で Mandatory After Delegation を実行。
+**🚨 Immediate after delegation returns**: sub-skill が `[create:completed:{N}]` を出力したら同 turn 内で Mandatory After Delegation を実行。
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: terminal sub-skill (`create-register.md`, `create-decompose.md`) は通常 `[create:completed:{N}]` + `create_completed` / `active: false` を内製出力する (Issue #444 Terminal Completion pattern)。本セクションは欠落時の defense-in-depth recovery path。
+> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: terminal sub-skill (`create-register.md`, `create-decompose.md`) は通常 `[create:completed:{N}]` + `create_completed` / `active: false` を内製出力する (Terminal Completion pattern)。本セクションは欠落時の defense-in-depth recovery path。
 
 **Self-check**: `[create:completed:{N}]` が出力済みか? **Yes** (Normal path) → terminal state 既達、Steps 1-3 は **no-op で skip** (Step 1 は retrograde transition になる)。**No** (異常経路) → Steps 1-3 が critical、terminal state に強制遷移。
 
@@ -326,7 +326,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 - **Register**: `✅ Issue #{number} を作成しました` + 次ステップ (`/rite:issue:start {number}` / `/rite:pr:create`) + `<!-- [create:completed:{number}] -->`
 - **Decompose**: `✅ Issue #{parent_number} を分解して {count} 件の Sub-Issue を作成しました` + 次ステップ (`/rite:issue:start #{first_sub_issue}` / `/rite:issue:list`) + `<!-- [create:completed:{first_sub_issue}] -->`
 
-Concrete output 例は `create-register.md` Phase 4.2-4.4 / `create-decompose.md` Phase 1.0.2-1.0.3。HTML コメント sentinel は grep-matchable を維持しつつ user-visible 末尾を `✅` メッセージに固定 (Issue #552 / #561)。
+Concrete output 例は `create-register.md` Phase 4.2-4.4 / `create-decompose.md` Phase 1.0.2-1.0.3。HTML コメント sentinel は grep-matchable を維持しつつ user-visible 末尾を `✅` メッセージに固定。
 
 **Step 4 (terminal gate)**: Pre-check list を場面 (b) mode で再実行 — Item 1-3 全 `YES` なら停止可、`NO` 残存時は manual 停止して stop-guard 経由で `workflow_incident` を emit。
 

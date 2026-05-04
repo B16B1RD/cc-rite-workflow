@@ -18,9 +18,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 
 ## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
 
-> **Issue #622 (regression of #552)**: 旧版では本ロジックがファイル末尾の Defense-in-Depth section に配置されていたが、Bug Fix / Chore preset path (Phase 0.4.1 → skip Phase 0.5) で sub-skill が末尾 bash block を skip して return output に直行する failure mode が再発した結果、flow state `.phase` が `create_interview` に残存し orchestrator implicit stop で `continue` 手入力が必要となった。本 Pre-flight を sub-skill **先頭** に配置することで interview scope に関係なく flow-state write を保証する。
->
-> **DRIFT-CHECK ANCHOR (semantic)**: 本セクションは `stop-guard.sh` `create_interview` case arm (Issue #622) と `phase-transition-whitelist.sh` `create_interview → create_post_interview` edge と 3-site symmetry を成す。一方を更新したら他方も同期更新する。
+> 本 Pre-flight は sub-skill の **先頭** で実行し interview scope に関係なく flow-state write を保証する (Bug Fix / Chore preset path でも skip 不可)。末尾配置だと scope=skip path で sub-skill が早期 return し flow-state write が抜けるため、先頭配置が必須。
 >
 > 本 Pre-flight bash block は 3 site 対称契約 (site (2) `create-interview.md` Pre-flight / site (1) `create.md` Step 0/Step 1 / site (3) Return Output re-patch) に属し、4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) と `--if-exists` 意図的非対称性は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md) で定義。symmetry 破壊は `hooks/tests/4-site-symmetry.test.sh` で検出。
 
@@ -63,7 +61,7 @@ After Phase 0.4 completes, determine the interview scope for Phase 0.5 based on 
 
 ### Tentative Complexity Estimation
 
-> **Moved (Issue #773 P1-3 PR 4/8)**: 本セクションの定義は [`references/complexity-gate.md#tentative-complexity-estimation`](./references/complexity-gate.md#tentative-complexity-estimation) に移動しました。Phase 0.1-0.4 の情報から複雑度 (XS/S/M/L/XL) を暫定推定するロジックで、(1) 後続の Adaptive Interview Depth による perspective filtering と (2) Phase 0.6 task decomposition decision (XL のみ trigger) に使われます。最終 complexity は Phase 1.1 Heuristics Scoring (`create-register.md`) で確定します。
+詳細は [`references/complexity-gate.md#tentative-complexity-estimation`](./references/complexity-gate.md#tentative-complexity-estimation) を参照。Phase 0.1-0.4 の情報から複雑度 (XS/S/M/L/XL) を暫定推定するロジックで、(1) 後続の Adaptive Interview Depth による perspective filtering と (2) Phase 0.6 task decomposition decision (XL のみ trigger) に使う。最終 complexity は Phase 1.1 Heuristics Scoring (`create-register.md`) で確定する。
 
 ### Complexity-Based Interview Scope
 
@@ -112,7 +110,7 @@ When entering Phase 0.5, display the scope to the user. Select language per `lan
 
 ### EDGE-5: Context Window Pressure Mitigation
 
-> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-5-context-window-pressure-mitigation`](./references/edge-cases-create.md#edge-5-context-window-pressure-mitigation) に移動しました。Phase 0.5 開始前に context pressure を heuristics で評価し、High pressure 時は auto-shortening mode (perspectives 削減 + batching + 早期 exit option) を発動します。
+詳細は [`references/edge-cases-create.md#edge-5-context-window-pressure-mitigation`](./references/edge-cases-create.md#edge-5-context-window-pressure-mitigation) を参照。Phase 0.5 開始前に context pressure を heuristics で評価し、High pressure 時は auto-shortening mode (perspectives 削減 + batching + 早期 exit option) を発動する。
 
 ---
 
@@ -149,7 +147,7 @@ When entering Phase 0.5, display the scope to the user. Select language per `lan
 
 ### EDGE-2: Re-entry After Exit Confirmation
 
-> **Moved (Issue #773 P1-3 PR 3/8)**: 本セクションの定義は [`references/edge-cases-create.md#edge-2-re-entry-after-exit-confirmation`](./references/edge-cases-create.md#edge-2-re-entry-after-exit-confirmation) に移動しました。Phase 0.5 終了確認後にユーザーが新規情報を追加入力した場合の re-entry trigger 検出基準と、再開・spec 追加・無視の 3 分岐挙動 (1 セッション 1 回 limit 付き) を定義します。
+詳細は [`references/edge-cases-create.md#edge-2-re-entry-after-exit-confirmation`](./references/edge-cases-create.md#edge-2-re-entry-after-exit-confirmation) を参照。Phase 0.5 終了確認後にユーザーが新規情報を追加入力した場合の re-entry trigger 検出基準と、再開・spec 追加・無視の 3 分岐挙動 (1 セッション 1 回 limit 付き) を定義する。
 
 ### AskUserQuestion Batch Optimization
 
@@ -217,7 +215,7 @@ After batch responses, follow-ups are asked individually (not batched) as they r
 
 ### Reflecting Interview Results
 
-> **Moved (Issue #773 P1-3 PR 7/8)**: Interview Perspective → Target Sections の正規 mapping table は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) に移動しました。Phase 0.5 では本 reference の mapping に従って interview results を Section 1-9 に割り当てること。
+Interview Perspective → Target Sections の正規 mapping table は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) を参照。Phase 0.5 では本 reference の mapping に従って interview results を Section 1-9 に割り当てる。
 
 **Note**: Phase 0.5 は raw interview results を会話コンテキストに保持するのみ。Implementation Contract Section 1-9 への構造化 mapping は Issue body 生成時 (`create-register.md` Phase 2.2 Step 3) に実施する。
 
@@ -298,9 +296,9 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 <!-- [interview:completed] -->
 ```
 
-> **DRIFT-CHECK ANCHOR (semantic, 3-site + historical 4th)** — 上記 Output format example の caller HTML コメント内 bash literal は **3 site 対称契約 (現状)** に属する。bash 引数 (`--phase` / `--active` / `--next` / `--if-exists` / `--preserve-error-count`) symmetry / `--if-exists` の意図的非対称性 (orchestrator-side 実行想定で safety net として付与) / syntax-safe inline backtick 形式 / pair 同期契約 / 関連 Issue history (#651 PR #654 / #660 / #771 / #773) の **正規定義は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md)** を参照。本セクションは canonical SoT における site (3b) `create-interview.md` Return Output Format 内 caller HTML inline literal に該当し、site (1) `create.md` Step 0/Step 1 / site (2) Pre-flight (本ファイル冒頭) / site (3a) Return Output re-patch bash block と pair 同期する。旧 site (4) `stop-guard.sh` WORKFLOW_HINT は撤去済み (commit `e2dfae0`、2026-04-26) のため pair 同期対象に含めない。symmetry 破壊は `hooks/tests/4-site-symmetry.test.sh` で検出される。
+> 上記 Output format example の caller HTML コメント内 bash literal は 3 site 対称契約 (site (1) `create.md` Step 0/Step 1 / site (2) Pre-flight / site (3) Return Output Format 内 caller inline literal) に属する。4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) と `--if-exists` 意図的非対称性は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md) で定義。
 >
-> **2 site 内対称性 (skipped/completed paths)**: 本ファイル内の `[interview:skipped]` example と `[interview:completed]` example の両 caller HTML コメントで同一 bash literal を保持する必要がある (片方のみの更新は drift、PR #654 review F-05 / F-08)。
+> **2 site 内対称性 (skipped/completed paths)**: 本ファイル内の `[interview:skipped]` example と `[interview:completed]` example の両 caller HTML コメントで同一 bash literal を保持する必要がある (片方のみの更新は drift)。`hooks/tests/4-site-symmetry.test.sh` で機械検証。
 
 > **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。user-visible な最終コンテンツは `⏭ 継続中:` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
 
