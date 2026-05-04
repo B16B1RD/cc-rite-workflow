@@ -2,7 +2,7 @@
 title: "SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する"
 domain: "heuristics"
 created: "2026-04-29T02:55:00+00:00"
-updated: "2026-04-29T02:55:00+00:00"
+updated: "2026-05-04T05:00:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260428T171940Z-pr-705.md"
@@ -10,6 +10,10 @@ sources:
     ref: "raw/reviews/20260428T173005Z-pr-705-cycle2.md"
   - type: "fixes"
     ref: "raw/fixes/20260428T172314Z-pr-705.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260504T040112Z-pr-801.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260504T040558Z-pr-801.md"
 tags: ["sot-document", "path-reference", "broken-ref", "self-violation", "cross-pr-fragility", "identifier-consistency"]
 confidence: high
 ---
@@ -96,3 +100,5 @@ cycle 1 (6 findings) → cycle 2 (1 finding) → cycle 3 (0 findings, mergeable)
 - [PR #705 cycle 1 review (6 findings: broken-ref / 表記揺れ / regex incompleteness)](../../raw/reviews/20260428T171940Z-pr-705.md)
 - [PR #705 cycle 2 review (内部矛盾: 適用フェーズ vs Where to Apply)](../../raw/reviews/20260428T173005Z-pr-705-cycle2.md)
 - [PR #705 cycle 1 fix (broken-ref 3 件 / cross-PR fragility / identifier / regex 全 6 解消)](../../raw/fixes/20260428T172314Z-pr-705.md)
+- [PR #801 review (新規 reference の inter-file anchor `[link](./complexity-gate.md#complexity-gate-section-inclusion)` が target ファイルに存在せず、両 reviewer (prompt-engineer + code-quality) で cross-validated。経験則: 新規 anchor 記述前に `grep -E '^##+ ' <target>` で実在 heading slug を検証してから書く)](../../raw/reviews/20260504T040112Z-pr-801.md)
+- [PR #801 fix (broken anchor 解消、grep ベースの heading slug 検証を anchor 記述前 pre-flight check として明示化)](../../raw/fixes/20260504T040558Z-pr-801.md)
