@@ -369,3 +369,4 @@
 | 2026-05-04T05:30:00Z | ingest:create | pages/heuristics/references-extraction-content-fidelity.md | PR #802 cycle 1 review + fix から「References 抽出時の SoT verify 不足 (factual divergence) + 理由付け文の context-bleeding (引用元 invariant の対象ファイル転用)」を 2 reviewer 独立検出 (HIGH 1 + MEDIUM 1) の root cause として新規ページ化 |
 | 2026-05-04T05:30:00Z | ingest:create | pages/patterns/pr-series-stub-format-consistency.md | PR #802 cycle 2 fix から「PR シリーズ間の stub 残置 markdown formatting 踏襲 (`> **Moved` / `> **Partial Moved` prefix の semantic 区別)」を LOW 1 cosmetic 修正 pattern として新規ページ化 |
 | 2026-05-04T05:30:00Z | ingest:skip | raw/reviews/20260504T051702Z-pr-802-cycle3.md | cycle 3 mergeable は 0 findings 収束の統計情報のみで新規経験則は cycle 1 raw 側に集約済み。skip |
+| 2026-05-04T05:35:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=90, broken_refs=187 |
