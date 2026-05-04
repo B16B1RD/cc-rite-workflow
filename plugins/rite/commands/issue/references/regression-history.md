@@ -43,9 +43,9 @@
 
 ### Issue #520 — create-decompose.md case 分岐 fix
 
-> **強化内容**: `create-decompose.md` の sub-issues API linkage における case 分岐の修正 (詳細は `create-decompose.md` L578 のインラインコメント参照)。
+> **強化内容**: `create-decompose.md` Phase 0.9.4 (Sub-Issues API linkage) の placeholder 未解決検出を helper 側 (`link-sub-issue.sh` の OWNER/REPO 引数が `{` で始まる場合に fail-fast し warning を返す) に集約。create-decompose.md 側で同等のガードを書くと、Claude が指示通り placeholder を置換する以上 dead code になるため意図的に持たない設計を確立。
 
-短い修正であり、本 reference では存在記録のみ保持。
+短い修正であり、本 reference では rationale を inline 化することで `create-decompose.md` 内のインラインコメント (#806 でスリム化により削除) への依存を解消した。
 
 ### Issue #525 — Sub-skill return tag implicit stop / 4-site declarative
 

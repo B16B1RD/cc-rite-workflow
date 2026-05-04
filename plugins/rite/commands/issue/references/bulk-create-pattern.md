@@ -12,7 +12,7 @@
 
 | Step | 役割 | SoT |
 |------|------|-----|
-| Phase 0.9.1 | Create the Parent Issue | `create-decompose.md` 本体 |
+| Phase 0.9.1 | Create the Parent Issue | `create-decompose.md` 本体 (作成 bash literal) + 本 reference ([Parent Issue body structure](#parent-issue-body-structure) — Issue #806 で移動) |
 | **Phase 0.9.2** | **Bulk Creation of Sub-Issues** (Pre-amble + Per-Sub-Issue body) | **本 reference** |
 | Phase 0.9.3 | Add Tasklist to Parent Issue | `create-decompose.md` 本体 |
 | Phase 0.9.4 | Sub-Issues API Linkage (Mandatory) | `create-decompose.md` 本体 + [`graphql-helpers.md`](../../../references/graphql-helpers.md#addsubissue-helper) |
@@ -172,6 +172,51 @@ Per-Sub-Issue body の `{sub_issue_body}` placeholder に展開する markdown:
 - [ ] テスト追加/更新
 - [ ] ドキュメント更新（必要な場合）
 ```
+
+## Parent Issue body structure
+
+Phase 0.9.1 で `create-issue-with-projects.sh` に渡す `{parent_issue_body}` の正規 markdown:
+
+```markdown
+## 概要
+
+{概要}
+
+## 背景・目的
+
+{背景・目的}
+
+## 設計ドキュメント
+
+詳細な仕様は [docs/designs/{slug}.md](docs/designs/{slug}.md) を参照してください。
+
+## Sub-Issues
+
+<!-- 自動更新: Sub-Issue 作成後にタスクリストを追加 -->
+
+## 進捗
+
+| フェーズ | 状態 |
+|---------|------|
+| 基盤構築 | [ ] 未着手 |
+| コア実装 | [ ] 未着手 |
+| 統合 | [ ] 未着手 |
+| 品質保証 | [ ] 未着手 |
+
+## 複雑度
+
+XL（{count} 件の Sub-Issue に分解）
+```
+
+**Placeholders for Parent Issue body**:
+
+| Placeholder | 値の source |
+|-------------|-------------|
+| `{概要}` / `{背景・目的}` | Phase 0.7 仕様書の SPEC-OVERVIEW / SPEC-BACKGROUND |
+| `{slug}` | Phase 0.1.3 で生成した tentative_slug (タイトル変更時は再生成) |
+| `{count}` | Phase 0.8 分解で確定した Sub-Issue 件数 |
+
+`Sub-Issues` 節は Phase 0.9.3 で Tasklist に置き換わる。`進捗` テーブルは Phase 0.8.3 の実装順序提案フェーズに準拠した 4 段固定。
 
 ## Error handling for partial failures
 
