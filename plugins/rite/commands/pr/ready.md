@@ -196,11 +196,25 @@ End processing.
 
 ## Phase 2: Execution Confirmation
 
-### 2.1 Confirm with User
+### 2.1 Confirm with User (Standalone Only)
 
-> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review. Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` principle 参照。
+> **End-to-end flow からの呼び出し時は本 confirmation を skip する**: orchestrator (`start.md` Phase 5.5) が user に Ready 移行を確認済みのため二重確認は不要 ([Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) の「重複 confirmation 禁止」原則)。本 sub-skill が flow state の `.phase` を確認し、`phase5_post_review` / `phase5_post_fix` のいずれかなら e2e 内の Ready 移行と判定。
+>
+> **Standalone 実行時のみ** `AskUserQuestion` で確認 (`/rite:pr:ready` 直接呼び出し時の誤実行防止 safety net)。
 
-Confirm using `AskUserQuestion`:
+**E2E flow detection**:
+
+```bash
+phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "" 2>/dev/null || echo "")
+case "$phase" in
+  phase5_post_review|phase5_post_fix) in_e2e_flow=true ;;
+  *) in_e2e_flow=false ;;
+esac
+```
+
+`$in_e2e_flow == "true"` の場合は本 sub-section の AskUserQuestion を skip して Phase 3 へ direct。
+
+`$in_e2e_flow == "false"` (standalone) の場合のみ `AskUserQuestion` で確認:
 
 ```
 PR #{number} を Ready for review に変更します。
@@ -215,7 +229,7 @@ URL: {pr_url}
 - キャンセル: 処理を中止します
 ```
 
-**If "Cancel" is selected:**
+**If "Cancel" is selected (standalone only):**
 
 ```
 処理を中止しました。
