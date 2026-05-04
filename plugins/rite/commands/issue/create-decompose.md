@@ -148,7 +148,7 @@ Information collected through Phase 0.5 and Phase 0.7 is utilized in Phase 1 onw
 | Collected Information | Carryover Destination |
 |----------------------|----------------------|
 | What/Why/Where | Implementation Contract Section 1 (Goal), Section 2 (Scope) of the Issue body |
-| Interview results (technical decisions, etc.) | Implementation Contract Sections 1-9 via interview-to-section mapping (see `create-register.md` Phase 2.2 Step 3) |
+| Interview results (technical decisions, etc.) | Implementation Contract Sections 1-9 via interview-to-section mapping (see [`references/contract-section-mapping.md`](./references/contract-section-mapping.md)) |
 | Tentative complexity XL | Finalized in Phase 1.1. Recorded as XL even when decomposition is cancelled |
 | Out-of-scope items | Implementation Contract Section 2 (Out of Scope), Section 1 (Non-goal) |
 | Specification document content (Phase 0.7.1) | Referenced as design context in Implementation Contract Section 4 (Implementation Details) |
