@@ -365,3 +365,4 @@
 | 2026-05-04T05:00:00Z | ingest:update | pages/heuristics/sot-path-reference-existence-check.md | PR #801 review/fix から「新規 reference 内 inter-file anchor の broken-anchor」(2 reviewer cross-validated) の実例を追加、`grep -E '^##+ ' <target>` による heading slug の事前検証を pre-flight check として明示化 |
 | 2026-05-04T05:00:00Z | ingest:skip | raw/reviews/20260504T041229Z-pr-801-cycle2.md | cycle 2 (re-review) は cycle 1 fix の verification が中心で新規経験則は薄く、cosmetic MEDIUM/LOW の判断軸 (reviewer 自身の self-assessment 「可」を尊重) は既存 `respect-reviewer-no-action-recommendation` 系列で吸収済みのため skip |
 | 2026-05-04T05:00:00Z | ingest:skip | raw/reviews/20260504T042228Z-pr-801-cycle3.md | cycle 3 (cosmetic-only re-review) は blocking 0 件で安定収束する典型パターン。新規経験則は cycle 1 raw 側に集約済みのため skip |
+| 2026-05-04T05:05:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=89, broken_refs=187 |
