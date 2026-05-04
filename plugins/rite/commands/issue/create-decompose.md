@@ -362,147 +362,27 @@ XL（{count} 件の Sub-Issue に分解）
 
 ### 0.9.2 Bulk Creation of Sub-Issues
 
-Phase 0.9.2 consists of **two parts** that MUST be executed in **a single Bash tool invocation** so that shell state (the accumulator arrays) is preserved across all Sub-Issue iterations:
+> **Partial Moved (Issue #773 P1-3 PR 8/8)**: Pre-amble + Per-Sub-Issue body の bash literal / placeholder descriptions / Sub-Issue body structure / Error handling for partial failures / anti-pattern 例の正規定義は [`references/bulk-create-pattern.md`](./references/bulk-create-pattern.md) を参照する。critical 警告は本体に維持 (NFR-2 protected、下記 ⚠️ CRITICAL 段落参照)。
 
-1. **Pre-amble** (executed exactly **once** at the top): declare the accumulator arrays.
-2. **Per-Sub-Issue body** (repeated **N times**, one iteration per entry in the Phase 0.8 decomposition list): create the Sub-Issue and append its number/URL to the accumulators.
+Phase 0.9.2 は **2 つの部分** から構成され、両者は **a single Bash tool invocation** で実行されることが MUST 要件:
+
+1. **Pre-amble** (1 回のみ実行): accumulator arrays (`SUB_ISSUE_NUMBERS` / `SUB_ISSUE_URLS`) を宣言する
+2. **Per-Sub-Issue body** (Phase 0.8 分解 list の項目数 N 回実行): Sub-Issue を作成し accumulator に append する
 
 > **⚠️ CRITICAL (AC-1 enforcement — single-Bash-invocation requirement)**:
-> - Concatenate the Pre-amble and **all N copies of the Per-Sub-Issue body** into **one single Bash tool call**. Each copy of the body MUST have `{sub_issue_title}`, `{sub_issue_body}`, and `{estimated_complexity}` substituted with that iteration's actual values **before** execution.
-> - Do **NOT** split the iterations across multiple Bash tool invocations. Bash variables (including `SUB_ISSUE_NUMBERS`/`SUB_ISSUE_URLS`) do not persist across separate Bash tool calls. If split, the arrays will be empty when Phase 0.9.4 runs, and the AC-1 empty-array guard will fail-fast with `exit 1`.
-> - The Pre-amble appears **exactly once** at the top of the combined script. Do not re-declare the arrays inside each per-Sub-Issue body — that would reset accumulated state.
-> - After every successful create, the per-Sub-Issue body appends `sub_issue_number` to `SUB_ISSUE_NUMBERS` and `sub_issue_url` to `SUB_ISSUE_URLS`. This bookkeeping is what allows Phase 0.9.4 (Sub-issues API linkage) to iterate over all created Sub-Issues. Phase 0.9.4 is the AC-1 enforcement boundary: if the array is empty, linkage is silently skipped and AC-1 is violated.
-> - This is the single most common silent-skip risk in this command — do not omit the bookkeeping or split the script under any circumstance.
+> - Pre-amble + **all N copies of the Per-Sub-Issue body** + Phase 0.9.4 linkage を **one single Bash tool call** に連結する。各 Per-Sub-Issue body 複製は実行前に `{sub_issue_title}` / `{sub_issue_body}` / `{estimated_complexity}` を当該反復の実値で置換する。
+> - **Do NOT split the iterations across multiple Bash tool invocations**。Bash 変数 (`SUB_ISSUE_NUMBERS` / `SUB_ISSUE_URLS` accumulator arrays を含む) は別 Bash tool 呼び出し境界で消失する。分割すると Phase 0.9.4 が空配列を参照し、AC-1 enforcement が silent 違反される (per-call linkage failure は non-blocking)。Phase 0.9.4 の空配列 fail-fast (`exit 1`) が最終防御層。
+> - Pre-amble は結合 script の先頭に **exactly once** 配置する。各 Per-Sub-Issue body 内で配列を再宣言してはならない (蓄積状態がリセットされる)。
+> - 各 successful create 後、Per-Sub-Issue body は `sub_issue_number` を `SUB_ISSUE_NUMBERS` に、`sub_issue_url` を `SUB_ISSUE_URLS` に append する。この bookkeeping により Phase 0.9.4 (Sub-issues API linkage) が全 Sub-Issue を反復可能となる。
+> - これは本コマンドにおける **silent-skip risk 最大の箇所**。bookkeeping 省略 / script 分割は **いかなる事情でも許容されない**。
 
-#### Pre-amble (execute exactly once, at the top of the combined script)
+具体的な bash literal (Pre-amble + Per-Sub-Issue body)、placeholder descriptions、Sub-Issue body structure、Error handling for partial failures、anti-pattern (split 禁止) の正規定義は [`references/bulk-create-pattern.md`](./references/bulk-create-pattern.md) を参照すること。本体には上記 critical 警告 (NFR-2 protected) のみを残し、実装詳細は references に集約する形で認知負荷を低減する。
 
-```bash
-# === Loop pre-amble (このブロックは結合スクリプトの先頭で1回だけ実行) ===
-# SUB_ISSUE_NUMBERS / SUB_ISSUE_URLS は Per-Sub-Issue body の全反復で蓄積され、
-# 同一 Bash ツール呼び出し内の Phase 0.9.4 から参照される。
-SUB_ISSUE_NUMBERS=()
-SUB_ISSUE_URLS=()
-```
+各 Sub-Issue 作成成功後の post-processing:
 
-#### Per-Sub-Issue body (paste once per entry in the decomposition list, in the same Bash invocation)
-
-For each Sub-Issue in the Phase 0.8 decomposition list, append a copy of the following block to the combined script — substituting `{sub_issue_title}`, `{sub_issue_body}`, and `{estimated_complexity}` with that iteration's actual values. All copies share the accumulator arrays declared in the Pre-amble above.
-
-```bash
-# === Per-Sub-Issue body (N 回複製して連結。各複製ごとに placeholder を実値で置換) ===
-# Generate body content from Phase 0.8 decomposition and the structure defined below (see "Sub-Issue body structure")
-# Note: Empty check is required because {sub_issue_body} is dynamically generated.
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-
-cat <<'BODY_EOF' > "$tmpfile"
-{sub_issue_body}
-BODY_EOF
-
-if [ ! -s "$tmpfile" ]; then
-  echo "ERROR: Issue body is empty for Sub-Issue '{sub_issue_title}'" >&2
-else
-  result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-    --arg title "{sub_issue_title}" \
-    --arg body_file "$tmpfile" \
-    --argjson projects_enabled {projects_enabled} \
-    --argjson project_number {project_number} \
-    --arg owner "{owner}" \
-    --arg priority "{priority}" \
-    --arg complexity "{estimated_complexity}" \
-    --arg iter_mode "none" \
-    '{
-      issue: { title: $title, body_file: $body_file },
-      projects: {
-        enabled: $projects_enabled,
-        project_number: $project_number,
-        owner: $owner,
-        status: "Todo",
-        priority: $priority,
-        complexity: $complexity,
-        iteration: { mode: $iter_mode }
-      },
-      options: { source: "xl_decomposition", non_blocking_projects: true }
-    }'
-  )")
-
-  if [ -z "$result" ]; then
-    echo "ERROR: create-issue-with-projects.sh returned empty result for Sub-Issue '{sub_issue_title}'" >&2
-    # Skip accumulation for this Sub-Issue but continue to the next iteration block.
-    # NOTE: We intentionally do NOT use `continue` here because each per-Sub-Issue body
-    # is concatenated as a flat sequence (not wrapped in a for/while loop), and `continue`
-    # outside a loop is a bash syntax error. The else-branch below handles the skip.
-  else
-    sub_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
-    sub_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
-    sub_project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
-    # project_id/item_id は XL 分解パスでは後続フェーズで使用しないため省略
-    printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
-
-    # === MANDATORY: 配列に蓄積（Phase 0.9.4 が参照） ===
-    # 数値であることを検証してから追加（"null" や空文字を弾く）
-    if [[ "$sub_issue_number" =~ ^[0-9]+$ ]]; then
-      SUB_ISSUE_NUMBERS+=("$sub_issue_number")
-      SUB_ISSUE_URLS+=("$sub_issue_url")
-    else
-      echo "⚠️ Sub-Issue '{sub_issue_title}' の番号が不正のため linkage 配列に追加しません: '$sub_issue_number'" >&2
-    fi
-  fi
-fi
-# === Per-Sub-Issue body 終了。次の Sub-Issue があれば、ここに次の複製を連結する ===
-```
-
-> **Alternative (advanced)**: If you prefer an explicit loop structure, you may instead wrap the per-Sub-Issue body in `for sub_entry in ...; do ... done` after expanding the decomposition list as bash array entries. In that case `continue` (instead of the else-branch skip) becomes syntactically valid. Either approach is acceptable as long as the Pre-amble runs once and all iterations execute in the same Bash tool invocation.
-
-**Placeholder descriptions:**
-- `{estimated_complexity}`: Complexity estimated during Phase 0.8 decomposition (XS/S/M/L/XL per Sub-Issue)
-- `{priority}`: Inherited from parent Issue priority
-- `{owner}`: Repository owner (from `github.projects.owner` in `rite-config.yml`, or `gh repo view --json owner --jq '.owner.login'`)
-- `{repo}`: Repository name (from `gh repo view --json name --jq '.name'`). Required by Phase 0.9.4's `link-sub-issue.sh` invocation; if omitted, the GraphQL `repository(owner:..., name:"{repo}")` lookup will always fail with "Could not resolve to a Repository", and AC-1 will be silently violated (per-call failures are non-blocking).
-- `{parent_issue_number}`: The parent Issue number created in Phase 0.9.1 (the one whose Sub-Issues are being created)
-
-**Error handling for partial failures:**
-- If a Sub-Issue creation fails mid-loop, log the error and continue with remaining Sub-Issues
-- After the loop completes, report which Sub-Issues succeeded and which failed in Phase 0.9.6
-- The user can retry failed ones manually via `/rite:issue:create`
-
-After each Sub-Issue is created:
-1. Retain `sub_issue_url` and `sub_issue_number` for Tasklist update in Phase 0.9.3
-2. The script handles Projects registration + field setup internally
-
-**Sub-Issue body structure**:
-
-```markdown
-## 概要
-
-{この Sub-Issue で実装する内容}
-
-## 親 Issue
-
-#{parent_issue_number} - {parent_issue_title}
-
-## 設計ドキュメント
-
-詳細な仕様は [docs/designs/{slug}.md](docs/designs/{slug}.md) を参照してください。
-
-## 変更内容
-
-{具体的な変更内容}
-
-## 依存関係
-
-{依存する Sub-Issue があれば記載}
-
-## 複雑度
-
-{complexity}
-
-## チェックリスト
-
-- [ ] 実装完了
-- [ ] テスト追加/更新
-- [ ] ドキュメント更新（必要な場合）
-```
+1. `sub_issue_url` / `sub_issue_number` を Phase 0.9.3 (Tasklist update) のため retain する
+2. accumulator (`SUB_ISSUE_NUMBERS` / `SUB_ISSUE_URLS`) に append する (Phase 0.9.4 が参照)
+3. Per-call failure は non-blocking で継続、Phase 0.9.6 で成功 / 失敗を集約報告
 
 ### 0.9.3 Add Tasklist to Parent Issue
 
