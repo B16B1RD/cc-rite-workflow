@@ -198,9 +198,9 @@ End processing.
 
 ### 2.1 Confirm with User (Standalone Path)
 
-> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator (`start.md` Phase 5.5) has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and skips the confirmation when it is `phase5_post_review` / `phase5_post_fix` (the review→ready / fix→ready main paths).
+> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator (`start.md` Phase 5.5) has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` is `phase5_post_review` / `phase5_post_fix` (the review→ready / fix→ready main paths) AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
 >
-> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), the `*)` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety.
+> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `state-read.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
 >
 > **Standalone execution** (direct `/rite:pr:ready` invocation): always confirm via `AskUserQuestion` as a misuse safety net.
 
@@ -212,15 +212,34 @@ if phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); t
 else
   rc=$?
   echo "WARNING: state-read.sh failed (rc=$rc) for --field phase in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1; rc=$rc" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1_phase; rc=$rc" >&2
   phase=""
 fi
-# Whitelist approach: only the main paths (review→ready / fix→ready) skip the confirmation.
-# Unexpected values (phase5_post_ready and beyond / empty / other) fall back fail-safe to standalone.
-case "$phase" in
-  phase5_post_review|phase5_post_fix) in_e2e_flow=true ;;
-  *) in_e2e_flow=false ;;
-esac
+# Boolean field read via state-read.sh: `--default ""` returns "" for both stored false
+# and missing field (jq's `// $default` collapses null/false to default). The binary
+# AND check below (`[ "$active" = "true" ]`) is safe — both `active=false` and missing
+# route to the `else` branch (in_e2e_flow=false), which is the fail-safe behavior.
+# A NOT-style check (`[ x = "false" ]`) would NOT be safe under this default and is
+# explicitly forbidden by state-read.sh's caveat block.
+if active=$(bash {plugin_root}/hooks/state-read.sh --field active --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: state-read.sh failed (rc=$rc) for --field active in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1_active; rc=$rc" >&2
+  active=""
+fi
+# Whitelist approach with AND condition: only the main paths (review→ready / fix→ready)
+# AND an active flow state skip the confirmation.
+# Unexpected phase values (phase5_post_ready and beyond / empty / other) OR active!="true"
+# fall back fail-safe to standalone. The bash test `[ "$active" = "true" ]` AND condition
+# closes the same-session interruption + standalone re-invocation gap that the cross-session
+# guard alone leaves open (legacy file's `active=false` after e2e stop is the rejecting condition).
+if { [ "$phase" = "phase5_post_review" ] || [ "$phase" = "phase5_post_fix" ]; } && [ "$active" = "true" ]; then
+  in_e2e_flow=true
+else
+  in_e2e_flow=false
+fi
 echo "in_e2e_flow=$in_e2e_flow"
 ```
 
