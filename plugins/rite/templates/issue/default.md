@@ -84,14 +84,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 ## Interview to Template Mapping
 
-| Interview Perspective | Target Sections |
-|----------------------|----------------|
-| Technical Implementation | 4.1 Target Files, 4.3 Interface/Data Contract, 4.4 Behavioral Requirements |
-| User Experience | 1 Goal, 3 Type Core (Feature scenarios), 5 AC (Happy Path) |
-| Edge Cases | 5 AC (Boundary/Error), 6 Test Specification (Boundary/Error rows) |
-| Existing Feature Impact | 2 Scope (Out of Scope), 4.2 Non-Target, 4.4 MUST NOT |
-| Non-Functional Requirements | 4.5 Error/Constraints, 5 AC (NFR outcome), 6 Test Specification |
-| Tradeoffs | 1 Non-goal, 4.4 SHOULD/MAY, 9 Decision Log |
+> **Moved (Issue #773 P1-3 PR 7/8)**: Interview Perspective → Target Sections の正規 mapping table は [`commands/issue/references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](../../commands/issue/references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) に移動しました。本 template から interview mapping を参照する場合は本 reference を経由すること。
 
 ---
 

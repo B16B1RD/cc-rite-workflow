@@ -195,38 +195,14 @@ Read the Complexity Gate table from the template. For the determined complexity,
 
 **Step 2: Select Type Core Section**
 
-Based on the Type from Phase 1.2, include the corresponding Type Core Section (Section 3):
-
-| Type | Section 3 Content |
-|------|------------------|
-| Feature | User Scenarios |
-| BugFix | Bug Details (Reproduction, Root Cause) |
-| Refactor | Before/After Contract, Compatibility Policy |
-| Chore | Operational Context |
-| Docs | Documentation Target |
+> **Moved (Issue #773 P1-3 PR 7/8)**: Type → Section 3 Type Core Section の mapping table は [`references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping`](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) に移動しました。Phase 1.2 で確定した Type に対応する Section 3 (User Scenarios / Bug Details / Before-After Contract / Operational Context / Documentation Target) を選択してください。
 
 **Step 3: Map Interview Results to Sections**
 
-Apply the interview-to-template mapping from the template:
-
-| Interview Perspective | Target Sections |
-|----------------------|----------------|
-| Technical Implementation | 4.1 Target Files, 4.3 Interface/Data Contract, 4.4 Behavioral Requirements |
-| User Experience | 1 Goal, 3 Type Core (Feature scenarios), 5 AC (Happy Path) |
-| Edge Cases | 5 AC (Boundary/Error), 6 Test Specification |
-| Existing Feature Impact | 2 Scope (Out), 4.2 Non-Target, 4.4 MUST NOT |
-| Non-Functional Requirements | 4.5 Error/Constraints, 5 AC (NFR outcome), 6 Test Specification |
-| Tradeoffs | 1 Non-goal, 4.4 SHOULD/MAY, 9 Decision Log |
-
-**Section inclusion rules**:
-
-| Condition | Behavior |
-|-----------|----------|
-| Interview not conducted for a perspective | Omit target sections (unless MUST by Complexity Gate) |
-| Interview conducted for a perspective | Populate target sections with interview results |
-| Section is MUST but no interview data | Include section with placeholder comment (`<!-- 情報未収集 -->`) |
-| Phase 0.7 cancel path with specification document | Include `docs/designs/{slug}.md` content as design context in Section 4 (Implementation Details). The pre-validated specification supplements interview results for Section 4.1-4.5 |
-| Phase 0.3-0.5 all skipped (`phases_skipped: "0.3-0.5"`) | Apply [EDGE-3 row 4](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules): populate all MUST sections per Complexity Gate using Phase 0.1 context (What/Why/Where). For MUST sections where no data is available from Phase 0.1, include `<!-- 情報未収集 -->` placeholder. AI-inferred content is marked with `（推定）`. SHOULD/OMIT sections follow normal Gate rules |
+> **Moved (Issue #773 P1-3 PR 7/8)**: Interview Perspective → Target Sections mapping table と Section inclusion rules table は [`references/contract-section-mapping.md`](./references/contract-section-mapping.md) に移動しました。詳細:
+>
+> - [Step 3: Interview Perspective → Target Sections Mapping](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) — 6 Perspective × Section の正規対応表
+> - [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) — Interview not conducted / MUST but no data / Phase 0.7 cancel / `phases_skipped: "0.3-0.5"` のハンドリング (EDGE-3 row 4 への参照含む)
 
 **Step 4: Generate Acceptance Criteria**
 
