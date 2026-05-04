@@ -18,7 +18,7 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 
 ## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
 
-> 本 Pre-flight は sub-skill の **先頭** で実行し interview scope に関係なく flow-state write を保証する (Bug Fix / Chore preset path でも skip 不可)。
+> 本 Pre-flight は sub-skill の **先頭** で実行し interview scope に関係なく flow-state write を保証する (Bug Fix / Chore preset path でも skip 不可)。末尾配置だと scope=skip path で sub-skill が早期 return し flow-state write が抜けるため、先頭配置が必須。
 >
 > 本 Pre-flight bash block は 3 site 対称契約 (site (2) `create-interview.md` Pre-flight / site (1) `create.md` Step 0/Step 1 / site (3) Return Output re-patch) に属し、4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) と `--if-exists` 意図的非対称性は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md) で定義。symmetry 破壊は `hooks/tests/4-site-symmetry.test.sh` で検出。
 

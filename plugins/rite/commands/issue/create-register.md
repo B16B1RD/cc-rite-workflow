@@ -200,9 +200,9 @@ Type → Section 3 Type Core Section の mapping table は [`references/contract
 **Step 3: Map Interview Results to Sections**
 
 Interview Perspective → Target Sections mapping table と Section inclusion rules table は [`references/contract-section-mapping.md`](./references/contract-section-mapping.md) を参照:
->
-> - [Step 3: Interview Perspective → Target Sections Mapping](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) — 6 Perspective × Section の正規対応表
-> - [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) — Interview not conducted / MUST but no data / Phase 0.7 cancel / `phases_skipped: "0.3-0.5"` のハンドリング (EDGE-3 row 4 への参照含む)
+
+- [Step 3: Interview Perspective → Target Sections Mapping](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) — 6 Perspective × Section の正規対応表
+- [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) — Interview not conducted / MUST but no data / Phase 0.7 cancel / `phases_skipped: "0.3-0.5"` のハンドリング (EDGE-3 row 4 への参照含む)
 
 **Step 4: Generate Acceptance Criteria**
 

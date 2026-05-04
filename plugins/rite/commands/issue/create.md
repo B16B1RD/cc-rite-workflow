@@ -232,7 +232,7 @@ fi
 
 **Step 3**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
-> **Reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で stop-guard が `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
+> **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で stop-guard が `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
 
 ## Phase 0.6: Task Decomposition Decision
 
