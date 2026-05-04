@@ -12,7 +12,7 @@
 
 | Step | 役割 | SoT |
 |------|------|-----|
-| Phase 0.9.1 | Create the Parent Issue | `create-decompose.md` 本体 |
+| Phase 0.9.1 | Create the Parent Issue | `create-decompose.md` 本体 (作成 bash literal) + 本 reference ([Parent Issue body structure](#parent-issue-body-structure) — Issue #806 で移動) |
 | **Phase 0.9.2** | **Bulk Creation of Sub-Issues** (Pre-amble + Per-Sub-Issue body) | **本 reference** |
 | Phase 0.9.3 | Add Tasklist to Parent Issue | `create-decompose.md` 本体 |
 | Phase 0.9.4 | Sub-Issues API Linkage (Mandatory) | `create-decompose.md` 本体 + [`graphql-helpers.md`](../../../references/graphql-helpers.md#addsubissue-helper) |
