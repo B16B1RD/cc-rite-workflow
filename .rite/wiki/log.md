@@ -394,3 +394,4 @@
 | 2026-05-05T03:53:38Z | ingest:update | pages/heuristics/design-doc-current-head-verification.md | PR #829 fix cycle 2: design doc plan PR の 4 修正パターン (採用案 SoT 分裂を 4 箇所同期 / 検証 grep の syntax 不能 = markdown table cell 内 `\|` ERE alternation 不能 + BRE `+` literal 扱いで silent-pass、表内 grep を表外 fenced code block に分離 / 数値主張の grep 実測値乖離を再現コマンド明記で再計算 / scope rationale の事実誤認を表現緩和) |
 | 2026-05-05T03:53:38Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=94, broken_refs=183 |
 | 2026-05-05T14:30:00+09:00 | ingest:skip | raw/reviews/20260505T051552Z-pr-830.md | PR #830 (PR-E1 of #823) review had 0 findings; lessons (asymmetric fix transcription, charter 5 自問, staged PR scope) are all applications of existing wiki rules — no new experiential pattern to extract |
+| 2026-05-05T14:35:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=1, broken_refs=0 |
