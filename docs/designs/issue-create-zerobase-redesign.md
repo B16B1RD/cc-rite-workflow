@@ -216,7 +216,7 @@ commands/issue/
 └── references/          (7 ファイル現状維持、charter 適用範囲外)
 ```
 
-**ファイル数**: 合計 5 ファイル → **4 ファイル** (-20%、案 A 採用に伴う `create-interview.md` のみ削除)。**本 plan スコープ内行数**: 1794 → 約 1700-1800 (-5〜0%、本体 +200〜+300 行 + interview 329 行削除 = ネット -29〜-129 行)。`create.md` 単体は **NFR-6 違反となる**ため、5.2 で代替案とともに明示する。
+**ファイル数**: 合計 5 ファイル → **4 ファイル** (-20%、案 A 採用に伴う `create-interview.md` のみ削除)。**本 plan スコープ内行数**: 1794 → 約 1665〜1765 (-7.2%〜-1.6%、本体 +200〜+300 行 + interview 329 行削除 = ネット -29〜-129 行)。`create.md` 単体は **NFR-6 違反となる**ため、5.2 で代替案とともに明示する。
 
 ### 5.2 統合後の `create.md` 単体行数と NFR-6 違反の明示
 
@@ -296,9 +296,9 @@ S8 段階的 PR で option を選択。**廃止判断は flow-state phase transi
 | PR # | scope | 主な AC | 検証手順 | 想定行数変動 |
 |------|-------|---------|---------|-------------|
 | **PR-E1** | charter 5 自問適用による散文削除 (本文中の経緯記述 / 4-site 対称契約散文 / 重複 confirmation 散文) | charter 5 自問 1/2/3 pass; AC-4 機能契約 (C-1〜C-5) grep 全 pass; 既存 e2e test 3 経路 pass | (a) 本文引用件数を測定 (検証コマンドは下記 §8.1.1)、(b) AC-4 grep 検証式実行 (Section 7 の C-1〜C-5 全 pass)、(c) e2e test (Bug Fix preset / single Issue M / XL decompose) 各 1 回手動実行 | 本体 -150〜-300 行 |
-| **PR-E2** | Phase 番号整数化 (現状 21 サブセクション (本 plan スコープ内) → 5-6 サブセクション、Section 4 mapping 表に従う) | AC-2 (整数 + 0.x の 1 階層) ; flow-state phase 名 NFR-4 (rename 禁止) 遵守 | (a) 3 階層 0 件確認 (検証コマンドは下記 §8.1.1)、(b) hook test (`phase-transition-whitelist.sh` source check) pass、(c) e2e test 3 経路 pass | 散文行数 +50〜100 (Phase 番号統合に伴う mapping 表追加)、構造的圧縮で本体は -100〜-200 行 |
+| **PR-E2** | Phase 番号整数化 (現状 37 サブセクション (本 plan スコープ内、Section 2.2) → 5-6 サブセクション (Section 4.2)、うち 21 件が AC-2 違反 (3 階層番号) で削減対象。Section 4 mapping 表に従う) | AC-2 (整数 + 0.x の 1 階層、AC-2 違反 21 件 → 0 件) ; flow-state phase 名 NFR-4 (rename 禁止) 遵守 | (a) 3 階層 0 件確認 (検証コマンドは下記 §8.1.1)、(b) hook test (`phase-transition-whitelist.sh` source check) pass、(c) e2e test 3 経路 pass | 散文行数 +50〜100 (Phase 番号統合に伴う mapping 表追加)、構造的圧縮で本体は -100〜-200 行 |
 | **PR-E3** | AskUserQuestion 統合 (Phase 0.4 / 0.4.1 / 0.4.2 を Phase 1 単一 batch に統合、Phase 0.1.5 parent pre-detection 削除) | AC-3 (Bug Fix/Chore で 0-1 回 / Feature M で 2-3 回以下); EDGE-2/3/4/5 ロジック保持 | (a) `[interview:*]` / `[create:*]` sentinel emit を grep して各 preset で発火 sentinel 数を測定、(b) 各 preset を実機実行して `AskUserQuestion` tool 呼び出し回数を手動カウント (transcript ベース) し PR description に記録、(c) e2e test 3 経路 pass | 本体 -50〜-100 行 |
-| **PR-E4** | sub-skill 統合 (`create-interview.md` を本体内ヘルパー化、案 A 採用) + 4-site-symmetry test scope 調整 + NFR-6 違反評価 | AC-1 (新規 contributor が本体 1〜2 ファイル把握); AC-4 機能契約 grep 全 pass; 4-site-symmetry test 縮小後も pass; NFR-6 違反の許容範囲を SoT 化 | (a) `wc -l commands/issue/*.md` でファイル数縮小確認 (5 → **4 ファイル**想定、案 A)、(b) 4-site-symmetry test exit 0 (option 選択次第で test スコープ縮小)、(c) e2e test 3 経路 pass、(d) `create.md` 単体行数を NFR-6 目標値 250 と比較し、許容判断を PR description に明記 | 本体 +200〜+300 (interview 統合) / 全体 -329 行 (interview ファイル削除) → ネット -29〜-129 行 (PR-E1〜E3 の累計 -300〜-600 行と合わせ、Section 5.1 の本 plan スコープ内 -94〜-294 行推定と整合) |
+| **PR-E4** | sub-skill 統合 (`create-interview.md` を本体内ヘルパー化、案 A 採用) + 4-site-symmetry test scope 調整 + NFR-6 違反評価 | AC-1 (新規 contributor が本体 1〜2 ファイル把握); AC-4 機能契約 grep 全 pass; 4-site-symmetry test 縮小後も pass; NFR-6 違反の許容範囲を SoT 化 | (a) `wc -l commands/issue/*.md` でファイル数縮小確認 (5 → **4 ファイル**想定、案 A)、(b) 4-site-symmetry test exit 0 (option 選択次第で test スコープ縮小)、(c) e2e test 3 経路 pass、(d) `create.md` 単体行数を NFR-6 目標値 250 と比較し、許容判断を PR description に明記 | 本体 +200〜+300 (interview 統合) / 全体 -329 行 (interview ファイル削除) → ネット **-29〜-129 行** (Section 5.1 の本 plan スコープ内 1665〜1765 行推定と整合 — Section 5.1 の ledger を SoT として参照。PR-E1〜E3 の散文削減 (-300〜-600 行) は別系統で本数値には含まない) |
 
 ### 8.1.1 検証コマンド集
 
