@@ -90,20 +90,14 @@ References (`commands/issue/references/`): 7 ファイル
 
 | リスク | 緩和策 |
 |--------|--------|
-| Asymmetric Fix Transcription (Wiki 累積23回目) | S3 + S4 を **同一 commit** で実施 |
+| Asymmetric Fix Transcription (Wiki 累積23回目) | S3/S4 は本 PR で未実施 (Section 8.3 参照)。caller 側 (create.md / create-interview.md) に handoff contract slim 化への追従が不要だったため (grep で 0 件確認済)、片肺更新リスクは実体化せず |
 | `--active true` / `--preserve-error-count` の silent omit (Wiki: AND 論理防御層チェーン無効化) | bash literal 不変、`4-site-symmetry.test.sh` で 4 引数の存在を機械検証 |
 | Markdown heading hierarchy skip (Wiki: PR #808-#809) | slim 化後の `## / ###` 連続性を目視確認 |
 | Protected 区域削除 (Wiki: 圧縮 AC は protected 区域から逆算) | 4 必須引数表 / `--if-exists` 非対称表 / path 非対称表は削除対象外 |
 
-## 8. 残課題と次 PR 候補
+## 8. 実施した simplification
 
-- AskUserQuestion 削減 (AC-3) のさらなる強化 (Bug Fix preset 経路 0-1 回 / Refactor M 規模 2-3 回以下の達成度計測)
-- e2e test 3 経路 (Bug Fix preset / single Issue / XL decomposition) の実機実行および pass 確認
-- handoff contract slim 化後に残る「Asymmetric Fix Transcription 経緯」「DRIFT-CHECK ANCHOR 設計理由」等の人間向け文脈は、本評価レポートおよび git log で代替されるため、コードベース内の散文記述は更に削減可能
-
-## 9. 実施した simplification
-
-### 9.1 変更内容
+### 8.1 変更内容
 
 | 対象 | 変更 | Before | After |
 |------|------|--------|-------|
@@ -111,14 +105,14 @@ References (`commands/issue/references/`): 7 ファイル
 | `commands/issue/create.md` | 追加整理 **不要** と確定 | 347 行 / 🚨 4 occurrence / Issue・PR 引用 0 | 同左 (PR-E1〜E3 で既に slim 化済) |
 | `commands/issue/create-interview.md` | 追加整理 **不要** と確定 (handoff contract slim 化に追従が必要な箇所も 0 件) | 315 行 / 🚨 4 occurrence / Issue・PR 引用 0 | 同左 (PR-E1〜E3 で既に slim 化済) |
 
-### 9.2 機能契約保持の検証
+### 8.2 機能契約保持の検証
 
 - `bash plugins/rite/hooks/tests/4-site-symmetry.test.sh` → exit 0 (PASS 8 / FAIL 0)
 - 4 必須引数 (`--phase` / `--active` / `--next` / `--preserve-error-count`) が両 caller で grep -c >= 1 で機械検証
 - `create.md`: `--phase`(8) `--active`(6) `--next`(8) `--preserve-error-count`(2)
 - `create-interview.md`: `--phase`(5) `--active`(4) `--next`(5) `--preserve-error-count`(7)
 
-### 9.3 計画逸脱
+### 8.3 計画逸脱
 
 実装計画 S3 / S4 (create.md / create-interview.md の DRIFT-CHECK ANCHOR / 散文整理) は **追加実施せず**、handoff contract slim 化のみで本 PR-E4 の主成果物とした。
 
@@ -129,7 +123,7 @@ References (`commands/issue/references/`): 7 ファイル
 
 これにより本 PR の scope は「handoff contract 散文 slim 化 + 評価レポート」のみに収束。
 
-### 9.4 charter 5 自問 self-check (本 PR への適用)
+### 8.4 charter 5 自問 self-check (本 PR への適用)
 
 | # | 自問 | 本 PR での回答 |
 |---|------|--------------|
@@ -139,9 +133,10 @@ References (`commands/issue/references/`): 7 ファイル
 | 4 | 既に承認された判断を再確認しているか? | DRIFT-CHECK ANCHOR の散文重複は本 PR で削減 (semantic anchor pattern セクションに集約) |
 | 5 | LLM が runtime で読むものか? | 残した内容は全て LLM が `flow-state-update.sh patch` 編集時に参照する SoT。削除した経緯記述は人間メンテナの好奇心向け |
 
-## 10. 残課題と次 PR 候補
+## 9. 残課題と次 PR 候補
 
 - `commands/issue/create-decompose.md` (508 行) の charter 適用評価 (本 PR scope 外)
 - `commands/issue/create-register.md` (623 行) の charter 適用評価 (本 PR scope 外)
-- AskUserQuestion 削減 (AC-3) のさらなる強化と達成度計測
+- AskUserQuestion 削減 (AC-3) のさらなる強化と達成度計測 (Bug Fix preset 経路 0-1 回 / Refactor M 規模 2-3 回以下の達成度計測)
 - e2e test 3 経路 (Bug Fix preset / single Issue / XL decomposition) の実機実行および pass 確認 (AC-5)
+- handoff contract slim 化後に残る「Asymmetric Fix Transcription 経緯」「DRIFT-CHECK ANCHOR 設計理由」等の人間向け文脈は、本評価レポートおよび git log で代替されるため、コードベース内の散文記述は更に削減可能
