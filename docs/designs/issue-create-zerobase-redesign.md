@@ -209,7 +209,7 @@ NFR-4 ([improve-issue-create-skill-design.md](./improve-issue-create-skill-desig
 
 ```
 commands/issue/
-├── create.md            (orchestrator + Phase 0/1/2/3 single Issue path、推定 600-700 行 — 案 A)
+├── create.md            (orchestrator + Phase 0/1/2/3 single Issue path、本体行数は Section 5.2 案 A 参照)
 ├── create-decompose.md  (Phase 3 decompose path、現状維持または若干スリム化)
 ├── create-register.md   (Phase 3 single Issue path、現状維持 — 案 A、NFR-6 違反悪化を避けるため delegate 保持)
 ├── parent-routing.md    (start.md / create.md 双方から共有 invoke、本 plan スコープ外)
@@ -223,8 +223,8 @@ commands/issue/
 NFR-6 ([improve-issue-create-skill-design.md](./improve-issue-create-skill-design.md):81 「`create.md` 本体 ≤250 行を目標とする」) との関係を明確化する:
 
 - 現状 `create.md`: 344 行 (NFR-6 目標値の 1.4 倍)
-- 統合後 `create.md` 推定: 600-900 行 (NFR-6 目標値の 2.4-3.6 倍)
-- 比率: 1.4x → 2.4-3.6x の悪化
+- 統合後 `create.md` 推定範囲 (案 A〜案 B): 544-900 行 (NFR-6 目標値の 2.2-3.6 倍) — 採用案 A の確定値は下記 5.2 表 案 A 行を SoT として参照
+- 比率: 1.4x → 2.2-3.6x の悪化 — 案 A (採用) は 2.2-2.6x、案 B (代替) は 3.2-3.6x、いずれも下記 5.2 表参照
 
 これは「緊張関係」ではなく **明確な NFR-6 違反** であり、本 plan は以下の代替案も含めて Section 8 段階的 PR で評価する:
 
@@ -386,7 +386,7 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 | 2026-05-05 | 4-site-symmetry test の廃止判断は PR-E4 内で 3 option (A/B/C) のいずれを選択するかと連動 | flow-state phase transition の defense-in-depth 喪失リスクとの trade-off |
 | 2026-05-05 | flow-state phase 名 (`create_interview` 等) は本 plan で rename しない | NFR-4 (Phase ナンバリング契約は hook test や stop-guard との接続点) 遵守 |
 | 2026-05-05 | references/ 配下 7 ファイル (`bulk-create-pattern.md`, `complexity-gate.md`, `contract-section-mapping.md`, `edge-cases-create.md`, `pre-check-routing.md`, `slug-generation.md`, `sub-skill-handoff-contract.md`) は本 plan で touch しない | charter §「適用範囲外」(decision tree 系 reference は適用範囲外) 遵守 |
-| 2026-05-05 | NFR-6 (`create.md` ≤250 行) との関係を「明確な NFR-6 違反」と認識 (Section 5.2)。許容範囲の SoT 化は PR-E4 内で確定 | 統合後 600-900 行は NFR-6 目標値の 2.4-3.6 倍であり、「緊張関係」表現では問題の重大性が伝わらないため |
+| 2026-05-05 | NFR-6 (`create.md` ≤250 行) との関係を「明確な NFR-6 違反」と認識 (Section 5.2)。許容範囲の SoT 化は PR-E4 内で確定 | 統合後本体行数の範囲は案 A〜案 B の合算で NFR-6 目標値の 2.2-3.6 倍 (採用案 A: 2.2-2.6x / 不採用案 B: 3.2-3.6x、Section 5.2 SoT 表参照)、いずれも「緊張関係」表現では問題の重大性が伝わらないため |
 | 2026-05-05 | Section ID タクソノミーは Phase E doc 専用の独自命名を採用 (Section 1 冒頭 Note 参照) | sibling design doc 2 件の固定タクソノミーは Phase A-D 用に最適化されており、Phase E (charter 適用 + 段階的 PR 分割) の固有構造を表現するには不十分 |
 | 2026-05-05 | `bulk-create-pattern.md` の Pre-amble + Per-Sub-Issue body 連結契約は実装契約として保持 | Issue #823 § 2 Out of Scope で MUST 保持と明記、charter §「適用範囲外」の bash literal 該当 |
 
