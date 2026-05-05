@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-04T20:42:00Z"
+updated: "2026-05-05T03:53:38Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260504T231559Z-pr-829.md"
   - type: "fixes"
     ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
   - type: "fixes"
@@ -584,3 +586,4 @@ PR #827 (Issue #821 = `commands/pr/ready.md` Phase 2.1 detection を `phase` AND
 - [PR #827 cycle 1 review (累積 22 回目: Helper docstring caller-extension drift HIGH + writer-side CLI flag vs reader-side bash test 表記混同 MEDIUM + sentinel sub-discriminator suffix 未付与 LOW、3 件 HIGH/MEDIUM/LOW から 1 cycle 構造的収束)](raw/reviews/20260504T202047Z-pr-827.md)
 - [PR #827 fix (3 finding 全件対応: helper docstring を inline コメントで design intent pin / writer-side ↔ reader-side prose 統一 / `STATE_READ_FAILED_{phase,active}` sub-discriminator suffix 導入)](raw/fixes/20260504T202458Z-pr-827.md)
 - [PR #827 cycle 2 review (1 件 LOW polish のみ: PR 適用前 semantics を前提とした第 1 段落の refactor 後 stale 化、formal anchor 無しで safety net demote、prose 冒頭段落 update を refactor PR で必須化する canonical を追加)](raw/reviews/20260504T203317Z-pr-827-cycle2.md)
+- [PR #829 fix cycle 1 (design doc plan PR で Phase 0.4.x 統合範囲が 4 sibling 表 (Section 3 / 4.1 / 6.2 / 8.1) で 2 件 0.4.2 含む / 2 件欠落、Section 3.1 references 列挙が「7 ファイル」claim と 6 件のみ列挙で drift。plan layer (実コード以外) でも asymmetric fix transcription が発火する事例として実測累積)](raw/fixes/20260504T231559Z-pr-829.md)
