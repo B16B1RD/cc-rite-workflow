@@ -2,8 +2,18 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-05T03:53:38Z"
+updated: "2026-05-05T14:30:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260505T133653Z-pr-838.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260505T140020Z-pr-838-cycle4.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260505T134051Z-pr-838.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260505T135040Z-pr-838-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260505T135657Z-pr-838-cycle3.md"
   - type: "fixes"
     ref: "raw/fixes/20260504T231559Z-pr-829.md"
   - type: "fixes"
@@ -514,6 +524,20 @@ PR #827 (Issue #821 = `commands/pr/ready.md` Phase 2.1 detection を `phase` AND
 
 **この sub-pattern が示すこと**: Asymmetric fix transcription は同一 file 内の literal-level drift だけでなく、**helper docstring (writer 側 contract) ↔ caller usage (reader 側拡張) ↔ prose 説明 (人間読者向け semantics)** の 3 layer 同期にも適用される。S complexity の小さな refactor PR でも 3 layer のうち 1 layer でも忘れると後続 reviewer の cross-validation で必ず surface する。1 cycle 構造的収束 (3→1 件) は asymmetric pattern が完全に消えたわけではなく、polish 級の prose stale が「safety net で LOW demote」されて user 判断に委ねられた残量として可視化された (formal anchor 不在の prose drift は機械検出が難しいため、累積データで pattern 化することで検出感度を上げる必要がある)。
 
+### Commit message 明示宣言と sweep 漏れ (PR #838 cycle 2 での evidence、累積 24 回目)
+
+PR #838 (Issue #823 PR-E5、Doc-Heavy retrospective PR、design doc Section 11 + CHANGELOG ja/.md の 3 ファイル変更) の cycle 1 fix で `decision(evidence): handoff contract 行数を実測値「97 → 60 行 (-38%)」に修正 — PR-E4 description (98 → 60、-39%) の誤記が本 PR に複製されていた` と commit message body で明示宣言しながら、CHANGELOG ja/.md は `97 → 60、-38%` に統一したものの**同 PR 内 design doc Section 11.1 PR-E4 行 line 410 の `handoff contract -39%` を見落とした partial fix** を実測。cycle 2 reviewer (tech-writer + code-quality) から cross-validated MEDIUM (両 reviewer 独立検出) として再指摘され、cycle 2 fix で commit message に「PR-E4 description / commit 745d282 の `98 → 60 行 / -39%` は line-count・割合とも誤記」と注記を加えて Section 11.1 PR-E4 行を `-38%` に修正、3 ファイル間の SoT 単一性を回復した。
+
+cycle 3 でも続いて MEDIUM precision finding (cycle 2 fix の注記が percentage 誤記のみを明示し line-count 誤記を暗黙にしていた点) と LOW tense finding (AC-5 「としていた」過去形 → 現在形) を 2 reviewer から canonical Likelihood-Evidence anchor 形式で報告され、cycle 3 fix で対応。cycle 4 で両 reviewer 評価「可」、0 blocking findings、4-cycle 構造的収束を達成。
+
+**観測された pattern (Doc-Heavy retrospective PR の典型的 convergence)**: cycle 1 (6 findings: HIGH 2 / MEDIUM 2 / LOW 2 — 構造的問題) → cycle 2 (5 findings: cross-validated MEDIUM 1 fixed + Phase 5.3.0 demoted 4 — 1 件 actionable) → cycle 3 (2 findings: MEDIUM precision + LOW tense — minor improvement) → cycle 4 (0 blocking — convergence)。Phase 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net) が canonical `Likelihood-Evidence:` anchor 形式不在の minor stylistic findings を機械的に降格することで、loop infinite cycling を構造的に防止する効果も併せて実測 (cycle 2 で 5 findings 中 4 件が降格対象)。
+
+**学習**: 本 anti-pattern は「commit message で明示宣言した修正対象 (例: `-39%` リテラル / 特定の関数名 / 特定のコメント文字列) の sweep 漏れ」にも適用される。明示宣言は workflow rigor の signal だが「**宣言しただけで完遂したと錯覚する self-confirmation bias**」を生み、同 PR 内の symmetric site への propagation scan を skip する経路を形成する。canonical 対策:
+
+1. **commit message 明示宣言型修正の self-sweep checklist 必須化**: `decision(evidence): X を Y に修正` 形式の宣言を commit body に書く際は、`X` リテラル (上記例なら `-39%`) を `git grep '\-39%' .` で同 PR 全 file (working tree) の残存件数 0 を verify する手順を fix workflow に組み込む。Test Plan 上に「明示宣言した修正対象の同 PR 全 sweep 完了」を明記
+2. **partial fix の cycle 2 cross-validation での補捉構造**: 1 cycle で完全な sweep を保証できない場合でも、cycle 2 reviewer の cross-validation で必ず surface する設計が機能していることを実測 (PR #838 cycle 2 で MEDIUM 検出)。cross-validation は単独 reviewer の死角を補完する load-bearing mechanism として継続的に依拠してよい
+3. **Doc-Heavy retrospective PR の予測収束軌跡**: cycle 1 で 6 findings → 4-cycle 内で 0 blocking 達成は典型的 pattern。cycle 数 hard limit ではなく `findings == 0` 収束を待つこと、cycle 2-3 で minor findings が出ても Phase 5.3.0 自動降格と cross-validated finding 例外修正の組み合わせで収束する設計に依拠してよい (本 PR の cycle 数 cap 撤廃 #557 設計判断と整合)
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -587,3 +611,8 @@ PR #827 (Issue #821 = `commands/pr/ready.md` Phase 2.1 detection を `phase` AND
 - [PR #827 fix (3 finding 全件対応: helper docstring を inline コメントで design intent pin / writer-side ↔ reader-side prose 統一 / `STATE_READ_FAILED_{phase,active}` sub-discriminator suffix 導入)](raw/fixes/20260504T202458Z-pr-827.md)
 - [PR #827 cycle 2 review (1 件 LOW polish のみ: PR 適用前 semantics を前提とした第 1 段落の refactor 後 stale 化、formal anchor 無しで safety net demote、prose 冒頭段落 update を refactor PR で必須化する canonical を追加)](raw/reviews/20260504T203317Z-pr-827-cycle2.md)
 - [PR #829 fix cycle 1 (design doc plan PR で Phase 0.4.x 統合範囲が 4 sibling 表 (Section 3 / 4.1 / 6.2 / 8.1) で 2 件 0.4.2 含む / 2 件欠落、Section 3.1 references 列挙が「7 ファイル」claim と 6 件のみ列挙で drift。plan layer (実コード以外) でも asymmetric fix transcription が発火する事例として実測累積)](raw/fixes/20260504T231559Z-pr-829.md)
+- [PR #838 review cycle 1 (Doc-Heavy retrospective PR で 6 findings: 数値表記揺れ HIGH x 1 cross-validated + AC evidence grep 結果不整合 HIGH x 1 + PR description 経由数値伝播ミス MEDIUM x 1 + 散文 phrasing ズレ MEDIUM x 1 + self-referential stale risk LOW x 2、累積 24 回目 instance の起点)](raw/reviews/20260505T133653Z-pr-838.md)
+- [PR #838 fix cycle 1 (6 findings 全件対応、commit message body で明示宣言した修正対象を Section 11.1 で見落とす partial fix を実施し cycle 2 で cross-validated MEDIUM として detect される pattern の起点)](raw/fixes/20260505T134051Z-pr-838.md)
+- [PR #838 fix cycle 2 (cross-validated MEDIUM 1 件 = Section 11.1 PR-E4 行 `-39%` 残存 を Phase 5.3.0 例外的に修正、commit message 明示宣言型修正の sweep 漏れ事例を確立)](raw/fixes/20260505T135040Z-pr-838-cycle2.md)
+- [PR #838 fix cycle 3 (MEDIUM precision + LOW tense 2 件対応、minor improvement への収束を実測)](raw/fixes/20260505T135657Z-pr-838-cycle3.md)
+- [PR #838 review cycle 4 (両 reviewer 評価「可」、0 blocking findings、4-cycle 構造的収束、Phase 5.3.0 安全網の effectiveness と Doc-Heavy retrospective PR の典型的 convergence 軌跡を実測)](raw/reviews/20260505T140020Z-pr-838-cycle4.md)
