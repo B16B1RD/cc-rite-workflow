@@ -408,7 +408,7 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 | #833 (PR-E2) | refactor(create): Phase 番号整数化 | Phase 番号体系の整数 + 0.x 1 階層化 (3 階層 21 → 0、Section 11.3 evidence と同一 grep regex `^### [0-9]+\.[0-9]+\.[0-9]+`) | ✅ 2026-05-05 |
 | #834 (PR-E3) | refactor(create): /rite:issue:create AskUserQuestion 削減 | Phase 0.3 fast-path / Phase 3 register preview-only | ✅ 2026-05-05 |
 | #837 (PR-E4) | refactor(create): sub-skill 統合検討 / handoff contract slim 化 | sub-skill 統合可能性評価 (案 C 採用) + handoff contract -38% (実測 97 → 60 行、PR-E4 description / commit 745d282 の `98 → 60 行 / -39%` は line-count・割合とも誤記) | ✅ 2026-05-05 |
-| **PR-E5 (本 PR)** | refactor(rite): #823 Phase E 完了レポート + CHANGELOG | DoD #2-#5 wrap-up (retrospective + CHANGELOG + e2e test plan) | ⏳ |
+| #838 (PR-E5) | docs(rite): #823 Phase E 完了レポート + CHANGELOG | DoD #2-#5 wrap-up (retrospective + CHANGELOG + e2e test plan) | ✅ 2026-05-05 |
 
 ### 11.2 charter 5 自問 consolidated 検証
 
@@ -420,6 +420,7 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 | PR-E2 (#833) | ✅ flow-state token 不変 | ✅ 旧番号 git log 追跡可 | ✅ 手順構造整理 | ✅ 重複 patch なし | ✅ 整数 + 0.x で構造把握改善 |
 | PR-E3 (#834) | ✅ context flag で fast-path | ✅ ambiguity fallback 残存で代替可 | ✅ 手順 (preview / fast-path) | ✅ Phase 0.3 既承認判断を Phase 2.2 で再確認しない | ✅ user UX 向上 |
 | PR-E4 (#837) | ✅ 機能契約保持 (4-site test) | ✅ 抽出経緯は git log | ✅ slim 化のみ | ✅ historical site 削除 | ✅ SoT 単一化 |
+| PR-E5 (#838) | ✅ docs only (CHANGELOG + retrospective)、runtime 動作変更なし | ✅ E1-E4 詳細経緯は git log + 各 PR description で参照可 | ✅ retrospective + e2e test manual 手順 | ✅ Section 11 単一 SoT、cross-reference のみ | ⚖️ retrospective は人間向けだが Issue close 時の DoD 確認 / e2e test 実行時の参照点として実用価値あり |
 
 ### 11.3 AC 達成 evidence
 
@@ -431,7 +432,7 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 | **AC-2** (Phase 番号整数化) | ✅ 達成 | `grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' commands/issue/create*.md` の合計 = **0 件** (PR-E2 前は 21 件)。整数 + 0.x の 1 階層のみ |
 | **AC-3** (AskUserQuestion 削減) | ✅ 達成 (runtime 経路) | runtime 通過数 (preset 別、PR-E3 適用後): Bug Fix preset **0-1 回** (旧 1-3 回) / Feature M **2-3 回** (旧 6-8 回) / XL decompose **3-4 回** (旧 7-10 回)。静的 grep 値は ambiguity fallback 分岐追加により若干変動するが、preset 別 runtime 経路で AC-3 を達成 |
 | **AC-4** (機能契約保持) | ✅ 達成 | (a) `pre-tool-bash-guard.sh` Bypass block: `create.md` で grep 検出 (Phase 0 prohibition で全 sub-skill scope に適用、`create-interview.md` 等は `create.md` 経由で Bypass 規約を継承し独立宣言は持たない)。(b) Terminal Completion pattern: `create.md` / `create-decompose.md` / `create-register.md` で grep 検出。(c) 4-site-symmetry test: `plugins/rite/hooks/tests/4-site-symmetry.test.sh` 存続 |
-| **AC-5** (e2e test 3 経路 pass) | ⏳ manual 実行待ち | 自動化 e2e test infrastructure は本 plan の deliverable に含めない (Section 8.3 で「ad-hoc 手動実行」を運用方針として表明、PR-E0 を必要時 option として位置付けている)。Section 11.4 の manual test 手順を user が Issue close 前に実行することで達成 |
+| **AC-5** (e2e test 3 経路 pass) | ✅ 達成 (2026-05-05) | 自動化 e2e test infrastructure は本 plan の deliverable に含めない (Section 8.3 で「ad-hoc 手動実行」を運用方針として表明、PR-E0 を必要時 option として位置付けている)。Section 11.4 の manual test 手順を Issue #823 close 直前に実行完了。実測結果: 経路 1 = 0 calls / 経路 2 = 3 calls / 経路 3 = 3-4 calls (Phase 0.3 + decompose 内部想定)。3 経路すべて期待値範囲内で動作確認済み。詳細は [Issue #823 close コメント](https://github.com/B16B1RD/cc-rite-workflow/issues/823) を参照 |
 
 ### 11.4 e2e test manual 実行手順
 
@@ -483,14 +484,17 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 | DoD 項目 | 状態 | 証跡 |
 |---------|------|------|
 | (1) plan ドキュメント作成 → user 合意 | ✅ 達成 | PR #829 merged |
-| (2) 段階的リファクタ PR (3〜5 本想定) 全 merge | ✅ 達成 (E5 merge 時) | E1-E4 merged + 本 PR (E5) で wrap-up |
+| (2) 段階的リファクタ PR (3〜5 本想定) 全 merge | ✅ 達成 (2026-05-05) | E1-E5 (#830 / #833 / #834 / #837 / #838) all merged |
 | (3) charter 5 自問の条件を全 PR で通過 | ✅ 達成 | Section 11.2 consolidated 表 |
-| (4) e2e test 3 経路 pass | ⏳ user manual 実行待ち | Section 11.4 手順、Issue #823 close 時実行 |
+| (4) e2e test 3 経路 pass | ✅ 達成 (2026-05-05) | Section 11.4 手順を Issue #823 close 直前に manual 実行、結果を Issue コメントとして記録 |
 | (5) PR description / commit message に再設計の方向性を明記 | ✅ 達成 | 各 PR description / 本 Section 11 / CHANGELOG entry |
 
-### 11.6 残タスク
+### 11.6 完了サマリー
 
-- Issue #823 close 前に Section 11.4 の e2e test 3 経路を user が manual 実行
-- e2e test 結果を Issue #823 にコメント記録 (DoD #4 達成証跡)
-- Issue body checklist の最終更新 (`gh issue edit` で全 `[x]` 化)
-- 本 PR (PR-E5) merge 後、Section 11.1 表の **PR-E5 (本 PR)** 行 `merged` 列を `⏳` から `✅ {merged_at}` に更新 (post-merge action)
+Phase E (Issue #823) は 2026-05-05 に全 DoD 達成・Issue close 完了:
+
+- **PR 集合**: #829 (plan) + #830 (E1) + #833 (E2) + #834 (E3) + #837 (E4) + #838 (E5、retrospective + CHANGELOG)、計 6 PR で構成
+- **AC 達成**: AC-1〜AC-5 すべて達成 (Section 11.3)
+- **e2e test**: 3 経路すべて期待値範囲内で動作確認済み (Section 11.4 + Issue #823 close コメント)
+- **Issue checklist**: 全 5 項目 `[x]` 化完了 (closed at 2026-05-05T14:39:18Z)
+- **Wiki 経験則**: PR #838 review-fix サイクルから得られた `commit message 明示宣言と sweep 漏れ` pattern を `pages/anti-patterns/asymmetric-fix-transcription.md` に累積 24 回目 instance として ingest 済み
