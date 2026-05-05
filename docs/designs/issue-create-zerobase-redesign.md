@@ -177,7 +177,7 @@ Phase 3 (Execution)
   - Decompose path: spec generation + Sub-Issue creation + link + Tasklist + output
 ```
 
-**サブセクション数**: 37 → 約 5-6 (Phase 0 / 1 / 1.1 / 2 / 3 single / 3 decompose) で **>85% 削減** (本 plan スコープ内の整理対象 27 件 → 5-6)。
+**サブセクション数**: 37 → 約 5-6 (Phase 0 / 1 / 1.1 / 2 / 3 single / 3 decompose) で **>85% 削減** (本 plan スコープ内 全 subsection 37 件 → 5-6 件、うち 21 件が AC-2 違反 (3 階層番号) で削減対象。Section 2.2 の AC-2 violation count 21 件を SoT として参照)。
 
 ### 4.3 NFR-4 (Phase 名 rename 禁止) との整合性
 
@@ -230,11 +230,11 @@ NFR-6 ([improve-issue-create-skill-design.md](./improve-issue-create-skill-desig
 
 | 代替案 | 説明 | trade-off |
 |-------|------|-----------|
-| **案 A (採用)**: `create-interview.md` のみ統合 | `create-register.md` は維持。本体は約 600-700 行 | NFR-6 違反は維持されるが軽減 (1.4x → 2.0-2.3x)、interview の delegate コスト削減 |
+| **案 A (採用)**: `create-interview.md` のみ統合 | `create-register.md` は維持。本体は約 544-644 行 (Section 5.1 ledger SoT、本体 344 + 200〜300 行) | NFR-6 違反は維持されるが軽減 (1.4x → 2.2-2.6x)、interview の delegate コスト削減 |
 | **案 B**: `create-interview.md` + `create-register.md` 両方統合 | 本体は約 800-900 行 | NFR-6 違反が悪化 (3.2-3.6x)、ただし sub-skill 数最小 (3 ファイル) |
 | **案 C**: 統合せず散文削減のみ | sub-skill 構成は現状維持、散文 charter 5 自問削減のみ実施 | NFR-6 達成は不可能 (本体 344 行のうち散文削減で目標 250 行は構造的に困難)、AC-1 の「本体 1〜2 ファイル」要件未達 |
 
-**判断**: 案 A を default 採用とし、PR-E4 着手時に 600-700 行が NFR-6 violation として許容範囲か再評価する。NFR-6 が「目標 (target)」か「上限 (cap)」かは sibling design doc に明記されておらず、本 plan の段階的 PR で SoT 化候補となる。
+**判断**: 案 A を default 採用とし、PR-E4 着手時に 544-644 行が NFR-6 violation として許容範囲か再評価する。NFR-6 が「目標 (target)」か「上限 (cap)」かは sibling design doc に明記されておらず、本 plan の段階的 PR で SoT 化候補となる。
 
 <!-- Section ID: SPEC-ASKUSERQUESTION-REDUCTION -->
 ## 6. AskUserQuestion 削減戦略 (S6)
