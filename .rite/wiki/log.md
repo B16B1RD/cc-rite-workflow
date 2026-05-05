@@ -411,3 +411,4 @@
 | 2026-05-06T02:39:30+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=86, broken_refs=149 |
 | 2026-05-06T04:00:00+09:00 | ingest:update | pages/anti-patterns/test-pin-protection-theater.md | PR #848 review (Wording-revision drift sub-pattern: docstring SoT 統一 refactor で WARNING 文言短縮→test grep pin と asymmetric drift→CI red 確定発火、cross-validated CRITICAL by code-quality + error-handling) |
 | 2026-05-06T04:00:00+09:00 | ingest:update | pages/anti-patterns/test-pin-protection-theater.md | PR #848 fix (修正戦略 3 択比較: WARNING 復元採用 (mutation kill power 維持) / docstring に文言改訂時の test 同期義務を codify) |
+| 2026-05-06T04:01:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=86, broken_refs=149 |
