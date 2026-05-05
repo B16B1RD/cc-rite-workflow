@@ -91,4 +91,3 @@ Step 2 で Section 3 を確定し、Step 3 で interview 結果を section に m
 - [`templates/issue/default.md`](../../../templates/issue/default.md) — Complexity Gate / Type 定義の overview
 - [`complexity-gate.md`](./complexity-gate.md) — Complexity (XS/S/M/L/XL) 判定基準と MUST/SHOULD/OMIT mapping
 - [`edge-cases-create.md`](./edge-cases-create.md) — EDGE-3 Interview Result Reflection Rules (`phases_skipped` ハンドリング)
-- [`sub-skill-handoff-contract.md`](./sub-skill-handoff-contract.md) — orchestrator / sub-skill 間 hand-off の正規定義
