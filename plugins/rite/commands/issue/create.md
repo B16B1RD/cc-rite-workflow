@@ -115,9 +115,11 @@ create.md (orchestrator)
 | Selection | Action |
 |-----------|--------|
 | はい、分解 / Yes, decompose | Phase 0.4-0.5 を skip、Phase 2 へ direct (`force_decompose: true`、Phase 2.1/2.2 confirmation も skip し Phase 3 (decompose path) へ) |
-| いいえ、単一 / No, single | Phase 0.4 へ通常進行 |
+| いいえ、単一 / No, single | context flag `decomposition_decision_finalized: true` を保持し、Phase 0.4 へ通常進行 (Phase 2.2 confirmation は本 flag により skip される) |
 
 **⚠️ Phase 0.4 skip notice**: 「はい、分解」時は Phase 0.4 (重複検出) を skip — 大型タスクは exact duplicate が稀で、Phase 3 の sub-Issue 個別作成時に重複検出される。重複懸念があれば「いいえ」を選択。
+
+**Context flag `decomposition_decision_finalized`**: Phase 0.3 で user が「いいえ、単一」を明示選択した時点で、分解要否の判断は確定済み。Phase 2.2 で同じ問いを再発火させない (charter 5 自問 #4「既に承認された判断を再確認しない」)。本 flag は Phase 1 で tentative complexity が XL に上昇したケースでも保持され、Phase 2.2 は skip される (Phase 0.3 の user 明示選択を尊重)。
 
 ### 0.4 Search for Similar Issues
 
@@ -246,7 +248,9 @@ fi
 
 ### 2.2 Decomposition Confirmation
 
-`AskUserQuestion` で「Sub-Issue に分解する（推奨） / 単一 Issue として作成」を確認 (language-aware)。詳細 routing は [Termination Logic > Phase 2 Decomposition Decision Termination](#phase-2-decomposition-decision-termination) を参照。
+**Fast-path** (`decomposition_decision_finalized: true`): Phase 0.3 で user が「いいえ、単一」を明示選択していた場合、本 confirmation を skip して single Issue path (Phase 3 register) へ進む。skip notice として「Phase 0.3 の選択 (`いいえ、単一`) に従い Phase 2.2 確認を skip しました」を表示する。Phase 1 で tentative complexity が XL に上昇したケースでも user の明示選択を尊重する (charter 5 自問 #4「既に承認された判断を再確認しない」適用)。
+
+**通常 path** (Phase 0.3 を skip した / Phase 0.3 で「いいえ」を選んでいない場合): `AskUserQuestion` で「Sub-Issue に分解する（推奨） / 単一 Issue として作成」を確認 (language-aware)。詳細 routing は [Termination Logic > Phase 2 Decomposition Decision Termination](#phase-2-decomposition-decision-termination) を参照。
 
 **「単一 Issue として作成」時の context carryover**: Phase 1.1 interview 結果は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) 経由で Implementation Contract Section 1-9 に mapping。What/Why/Where → Section 1/2、tentative complexity XL → Phase 3 (Single Issue path) で最終確定 (cancel 時も XL 記録)、Out-of-scope → Section 2 (Out of Scope) / Section 1 (Non-goal)。
 
@@ -336,7 +340,8 @@ What / Why / Where がすべて clear なら完了。不足があれば clarifyi
 
 ### Phase 2 Decomposition Decision Termination
 
-| User Selection | Next Phase |
-|----------------|------------|
+| User Selection / Path | Next Phase |
+|----------------------|------------|
+| (fast-path) Phase 0.3 で「いいえ、単一」明示選択 → Phase 2.2 skip | `skill: "rite:issue:create-register"` (`decomposition_decision_finalized: true` 経由、interview 結果 → Implementation Contract sections は下記 single Issue 行と同 mapping) |
 | Sub-Issue に分解する（推奨） | `skill: "rite:issue:create-decompose"` |
 | 単一 Issue として作成 | `skill: "rite:issue:create-register"` (interview 結果 → Implementation Contract sections は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) で mapping) |

@@ -92,7 +92,9 @@ The type determines which Type Core Section (Section 3) is used in the Issue bod
 | "API エンドポイントを追加する" | Japanese (contains "エ", "追加") | "API エンドポイントの追加" |
 | "Add new API endpoint" | English (no Japanese characters) | "Add new API endpoint" |
 
-**Confirmation Dialog**: Confirm with AskUserQuestion before creation:
+**Pre-creation Preview & Ambiguity Gate**: Issue 作成前に preview を表示し、ambiguity が検出されない場合は auto-create する。ambiguity 検出時のみ AskUserQuestion で user に judgement を委ねる (charter 5 自問 #4「既に承認された判断を再確認しない」適用 — Phase 1 interview と Phase 0.5 confirmation で全要素が確定済みのケースで再度「よろしいですか？」を聞かない)。
+
+**Preview format** (常に表示):
 
 ```
 以下の内容で Issue を作成します:
@@ -104,14 +106,28 @@ The type determines which Type Core Section (Section 3) is used in the Issue bod
 
 説明:
 {generated-body}
+```
 
-よろしいですか？
+**Ambiguity detection** (any → AskUserQuestion で確認):
+
+| Trigger | 理由 |
+|---------|------|
+| Phase 0.4 で類似 Issue が title 完全一致 / 90%+ 類似度 | 重複 Issue 作成リスク |
+| Projects 設定が `enabled: true` だが `project_number` 未取得 / API エラー | Projects 登録失敗の silent missing risk |
+| Complexity = XL かつ Implementation Contract Section 4 (Implementation Details) が空 | spec 不足 PR を生む risk |
+| Title が 200 文字超 | GitHub 制限近接、編集機会必要 |
+
+Ambiguity 検出時の AskUserQuestion:
+
+```
 オプション:
 - はい、作成する
 - タイトルを変更
 - 説明を編集
 - キャンセル
 ```
+
+**Ambiguity 未検出時の auto-create**: Preview 表示後、直接 Issue Body Generation and Creation の `create-issue-with-projects.sh` 起動に進む。中断が必要なら user は次の tool invocation 前に Ctrl+C で介入可能。
 
 #### Issue Body Generation and Creation
 
