@@ -12,12 +12,12 @@ Referenced from:
 - `commands/pr/fix.md` Phase 4.3.4 Step 2
 - `commands/pr/review.md` Phase 7.4.2
 - `commands/pr/create.md` Phase 2.5.5
-- `commands/issue/create.md` Phase 2.2
+- `commands/issue/create-register.md` Phase 3.2 (Issue Body Generation and Creation)
 - `commands/pr/cleanup.md` Phase 1.7.3.2
 - `commands/issue/parent-routing.md` Phase 1.5.4.5
 - `commands/issue/start.md` Phase 5.2.0.1
-- `commands/issue/create.md` Phase 0.9.1 (parent Issue creation in XL decomposition)
-- `commands/issue/create.md` Phase 0.9.2 (Sub-Issue bulk creation in XL decomposition)
+- `commands/issue/create-decompose.md` Phase 3.3 (parent Issue creation in XL decomposition)
+- `commands/issue/create-decompose.md` Phase 3.3 (Sub-Issue bulk creation in XL decomposition)
 
 Related documents:
 - [projects-integration.md](./projects-integration.md) - Existing Issue Status update / Iteration assignment (this document covers new Issue creation with Projects registration)
@@ -178,12 +178,12 @@ Each caller determines Priority using its own logic before passing it to the scr
 |---------|----------------|--------|
 | Child Issue creation | Inherited from parent | Use parent's Priority value |
 
-### create.md (Phase 0.9): XL Decomposition
+### create-decompose.md (Phase 3.3): XL Decomposition
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|
-| Parent Issue creation (Phase 0.9.1) | Determined in Phase 1 | Use Priority value decided during Issue creation |
-| Sub-Issue bulk creation (Phase 0.9.2) | Inherited from parent | Use parent Issue's Priority value |
+| Parent Issue creation (Phase 3.3 — Create the Parent Issue) | Determined in Phase 3.1 | Use Priority value decided during Issue creation |
+| Sub-Issue bulk creation (Phase 3.3 — Bulk Creation of Sub-Issues) | Inherited from parent | Use parent Issue's Priority value |
 
 ### start.md (Phase 5.2.0.1): Lint Warnings
 
