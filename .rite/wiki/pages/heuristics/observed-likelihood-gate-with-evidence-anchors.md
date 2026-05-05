@@ -2,7 +2,7 @@
 title: "Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-02T15:58:59Z"
+updated: "2026-05-05T10:30:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260416T031452Z-pr-540.md"
@@ -12,6 +12,8 @@ sources:
     ref: "raw/reviews/20260419T043538Z-pr-589.md"
   - type: "reviews"
     ref: "raw/reviews/20260502T155859Z-pr-779.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260505T095516Z-pr-834.md"
 tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract"]
 confidence: high
 ---
@@ -45,6 +47,8 @@ Likelihood-Evidence: tool=Grep, pattern='if ! .*; then$', path=plugins/rite/, ma
 | Hypothetical（将来の他 Phase 変更に依存する仮定的リスク） | — | 推奨事項（現状コードで発火しないため fix 対象外） |
 
 PR #540 では 2 件の finding が「Observed Likelihood Gate により推奨事項に降格」され、severity distribution は `HIGH: 0, MEDIUM: 0` に収束した。PR #589 では error-handling reviewer の HIGH 指摘 2 件が「Likelihood-Evidence anchor 欠落 + Hypothetical（Phase 5.1 将来変更に依存）」のため Phase 5.3.0 safety net で機械的降格され、同じく `HIGH: 0, MEDIUM: 0` に収束。Hypothetical 降格は anchor 欠落と独立した orthogonal な降格軸として加えるのが canonical（Claude Code の Bash tool は invocation ごとに独立 shell を生成するため、bash fenced block 終了で trap 自動 cleanup される事実が降格根拠となった）。
+
+PR #834 では charter 5 自問 #4「既に承認された判断を再確認しない」の適用 PR レビューで 11 findings (HIGH 5 / MEDIUM 4 / LOW 4) が検出されたが、Phase 5.3.0 Observed Likelihood Gate 適用後、全 finding が Likelihood-Evidence anchor 欠落で推奨事項降格 (9 件) または削除 (4 件) され `HIGH/MEDIUM/LOW: 0` に収束した。注目点は **2 reviewer による cross-validation 合意 (AskUserQuestion 4 選択肢の routing 未定義) でも literal anchor を伴わなければ降格対象になる**こと — cross-validation boost (上記 triple cross-validation 表) は anchor 提示が前提であり、cross-validation だけでは anchor 欠落を補わない。reviewer 内容の妥当性 (AskUserQuestion routing 未定義は実装上事実) と severity 判定 (anchor 欠落で降格) は orthogonal で、PR #779 で観測された literal output contract の重要性をさらに強化する empirical 証拠となった。
 
 ### Triple Cross-validation による severity boost
 
@@ -105,3 +109,4 @@ reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の lite
 - [PR #548 cycle 3 review (triple cross-validation boost)](raw/reviews/20260416T173035Z-pr-548.md)
 - [PR #589 review (Hypothetical 降格軸の追加実証 — HIGH x2 → 推奨事項降格)](raw/reviews/20260419T043538Z-pr-589.md)
 - [PR #779 review (literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証)](raw/reviews/20260502T155859Z-pr-779.md)
+- [PR #834 review (11 findings 全降格 — cross-validation 合意でも literal anchor 欠落は補えない実証)](raw/reviews/20260505T095516Z-pr-834.md)
