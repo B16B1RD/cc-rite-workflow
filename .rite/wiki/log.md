@@ -400,3 +400,4 @@
 | 2026-05-05T11:15:55Z | ingest:create | pages/anti-patterns/parallel-section-same-heading-duplicate.md | PR #837 cycle 1 review (HIGH): 評価レポート系ドキュメントで scope/timeline 異なる候補リストを並列 Section 展開すると同名 heading (`残課題と次 PR 候補`) が Section 8/10 で重複し reader が混乱する構造的問題。1 Section 集約 + heading uniqueness で解消 |
 | 2026-05-05T11:15:55Z | ingest:create | pages/patterns/plan-deviation-forward-reference-contract.md | PR #837 cycle 1 review (LOW): 計画逸脱時にリスク表 (Section 7 S3+S4 claim) と結果セクション (Section 9.3 未実施開示) の disclosure 順内部矛盾。リスク表/Implementation 表/結果セクションの 3 site への前方参照契約で bottom-up/top-down 整合 |
 | 2026-05-05T11:15:55Z | ingest:skip | raw/reviews/20260505T110156Z-pr-837.md | PR #837 cycle 2 re-review: 0 findings (cycle 1 fix で完全解消)、新規経験則なし。1 cycle 収束データのみで「累積対策 PR の review-fix loop」既存ページの 1 データ点に過ぎず page 化不要 |
+| 2026-05-05T11:21:05Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=96, broken_refs=201 |
