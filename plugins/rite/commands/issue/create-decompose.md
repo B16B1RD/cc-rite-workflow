@@ -241,7 +241,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 - `{projects_enabled}`: `true` if `github.projects.enabled` is `true` in `rite-config.yml`, otherwise `false`
 - `{project_number}`: From `github.projects.project_number` in `rite-config.yml`
 - `{owner}`: From `github.projects.owner` in `rite-config.yml`
-- `{priority}`: Priority value determined during Issue creation (Phase 3 — Single Issue path)
+- `{priority}`: Priority value carried over from `create.md` Phase 0/1 (orchestrator → `create-decompose.md` context handoff). XL decomposition path does not invoke `create-register.md` Phase 3.1 Priority Estimation; the parent Issue inherits the orchestrator-level tentative priority and Sub-Issues inherit it from the parent
 
 Sub-Issues API linkage (later in this Phase 3.3) で参照する `{repo}` / `{parent_issue_number}` / `{plugin_root}` 等の解決規則は [`references/bulk-create-pattern.md#placeholder-descriptions`](./references/bulk-create-pattern.md#placeholder-descriptions) を参照する (Bulk Creation 用に定義済みの placeholder list を Sub-Issues API linkage でも再利用)。
 

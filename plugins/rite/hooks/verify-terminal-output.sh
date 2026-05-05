@@ -119,7 +119,7 @@ info() {
 }
 
 # -----------------------------------------------------------------------------
-# Check 1: create-register.md Phase 4 HTML-comment sentinel
+# Check 1: create-register.md Phase 3.4 HTML-comment sentinel
 # -----------------------------------------------------------------------------
 CREATE_REGISTER="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-register.md"
 

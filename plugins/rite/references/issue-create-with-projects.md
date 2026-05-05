@@ -182,7 +182,7 @@ Each caller determines Priority using its own logic before passing it to the scr
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|
-| Parent Issue creation (Phase 3.3 — Create the Parent Issue) | Determined in Phase 3.1 | Use Priority value decided during Issue creation |
+| Parent Issue creation (Phase 3.3 — Create the Parent Issue) | Determined in `create-register.md` Phase 3.1 (Priority Estimation) | Use Priority value decided during Issue creation |
 | Sub-Issue bulk creation (Phase 3.3 — Bulk Creation of Sub-Issues) | Inherited from parent | Use parent Issue's Priority value |
 
 ### start.md (Phase 5.2.0.1): Lint Warnings
