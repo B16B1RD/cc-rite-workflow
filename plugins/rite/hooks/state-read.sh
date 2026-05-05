@@ -220,7 +220,7 @@ fi
 # `active` のみ (binary AND check `[ "$active" = "true" ]` + `--default ""` 経路、
 # stored false / 不在 → 共に `else` 分岐の fail-safe pattern)。
 # それ以外 (`parent_issue_number` / `phase` / `loop_count` / `implementation_round` /
-# `pr_number`) はすべて非 boolean。boolean field を新しく読みたい場合は本 pattern
+# `pr_number` / `next_action`) はすべて非 boolean。boolean field を新しく読みたい場合は本 pattern
 # (binary AND check + `--default ""`) を採用するか、`--default empty` + caller 側分岐
 # を使うこと。
 #
