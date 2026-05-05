@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-05T14:30:00Z"
+updated: "2026-05-06T00:15:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260505T133653Z-pr-838.md"
@@ -152,6 +152,8 @@ sources:
     ref: "raw/reviews/20260504T203317Z-pr-827-cycle2.md"
   - type: "fixes"
     ref: "raw/fixes/20260504T202458Z-pr-827.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260505T151316Z-pr-839.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix"]
 confidence: high
 ---
@@ -610,6 +612,7 @@ cycle 3 でも続いて MEDIUM precision finding (cycle 2 fix の注記が perce
 - [PR #827 cycle 1 review (累積 22 回目: Helper docstring caller-extension drift HIGH + writer-side CLI flag vs reader-side bash test 表記混同 MEDIUM + sentinel sub-discriminator suffix 未付与 LOW、3 件 HIGH/MEDIUM/LOW から 1 cycle 構造的収束)](raw/reviews/20260504T202047Z-pr-827.md)
 - [PR #827 fix (3 finding 全件対応: helper docstring を inline コメントで design intent pin / writer-side ↔ reader-side prose 統一 / `STATE_READ_FAILED_{phase,active}` sub-discriminator suffix 導入)](raw/fixes/20260504T202458Z-pr-827.md)
 - [PR #827 cycle 2 review (1 件 LOW polish のみ: PR 適用前 semantics を前提とした第 1 段落の refactor 後 stale 化、formal anchor 無しで safety net demote、prose 冒頭段落 update を refactor PR で必須化する canonical を追加)](raw/reviews/20260504T203317Z-pr-827-cycle2.md)
+- [PR #839 review (PR #827 の helper-side follow-up: state-read.sh docstring の caller 列挙を最新化し PR #827 で identified された Helper docstring caller-extension drift sub-pattern の helper / caller / prose 3 layer 同期契約を完成。0 blocking findings (CRITICAL/HIGH/MEDIUM=0) で 1 cycle 完了、両 reviewer (code-quality / error-handling) が Grep で全 caller を独立検証し ready.md:224 が唯一の boolean caller であることを確認。累積 22 回目 sub-pattern の verification cycle として実測 — sub-pattern 識別後の follow-up は構造化された review-fix loop なしに 0 findings に到達する efficiency を示す)](raw/reviews/20260505T151316Z-pr-839.md)
 - [PR #829 fix cycle 1 (design doc plan PR で Phase 0.4.x 統合範囲が 4 sibling 表 (Section 3 / 4.1 / 6.2 / 8.1) で 2 件 0.4.2 含む / 2 件欠落、Section 3.1 references 列挙が「7 ファイル」claim と 6 件のみ列挙で drift。plan layer (実コード以外) でも asymmetric fix transcription が発火する事例として実測累積)](raw/fixes/20260504T231559Z-pr-829.md)
 - [PR #838 review cycle 1 (Doc-Heavy retrospective PR で 6 findings: 数値表記揺れ HIGH x 1 cross-validated + AC evidence grep 結果不整合 HIGH x 1 + PR description 経由数値伝播ミス MEDIUM x 1 + 散文 phrasing ズレ MEDIUM x 1 + self-referential stale risk LOW x 2、累積 24 回目 instance の起点)](raw/reviews/20260505T133653Z-pr-838.md)
 - [PR #838 fix cycle 1 (6 findings 全件対応、commit message body で明示宣言した修正対象を Section 11.1 で見落とす partial fix を実施し cycle 2 で cross-validated MEDIUM として detect される pattern の起点)](raw/fixes/20260505T134051Z-pr-838.md)

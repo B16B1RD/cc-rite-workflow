@@ -406,3 +406,4 @@
 | 2026-05-05T14:30:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #838 fix cycle 1 (root causes: different regex SoT / downstream literal copy / measurement target mismatch) |
 | 2026-05-05T14:30:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #838 fix cycle 2 (累積 24 回目: commit message 明示宣言した修正対象の sweep 漏れ instance) |
 | 2026-05-05T14:30:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #838 fix cycle 3 (precision improvements convergence) |
+| 2026-05-06T00:15:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #839 review (PR #827 helper-side follow-up: helper docstring caller-extension drift sub-pattern verification cycle, 0 blocking findings 1-cycle completion) |
