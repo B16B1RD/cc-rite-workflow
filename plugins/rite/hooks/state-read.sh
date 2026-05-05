@@ -51,7 +51,7 @@ if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
 fi
 bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" || exit $?
 
-# Resolve repository root via the existing helper (single SoT).
+# Resolve repository root via the existing helper (single source of truth).
 # `||` fallback is a defensive guard for future non-zero return; stderr is
 # pass-through so any helper-emitted WARNING/ERROR remains observable.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)") || STATE_ROOT="$(pwd)"
