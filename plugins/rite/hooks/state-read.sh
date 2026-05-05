@@ -212,7 +212,7 @@ fi
 # JSON null/false — caller default semantics are matched natively, no
 # post-processing needed.
 #
-# ⚠️ Boolean field caveat (canonical SoT for caller patterns):
+# ⚠️ Boolean field caveat (single source of truth for caller patterns):
 #
 # jq の `// $default` は null と false の両方を $default に置換するため、本 helper は
 # boolean field の読み取りには使ってはいけない (例: `{"active": false}` を
@@ -220,10 +220,12 @@ fi
 #
 # 現状の caller のうち boolean field を読むのは `commands/pr/ready.md` Phase 2.1 の
 # `active` のみ。それ以外 (`parent_issue_number` / `phase` / `loop_count` /
-# `implementation_round` / `pr_number` / `next_action`) はすべて非 boolean field
-# (本 helper の通常用途)。
+# `implementation_round` / `pr_number` / `next_action` 等) は非 boolean field
+# (本 helper の通常用途)。`pr_number` / `next_action` 等は helper script 経由で間接的に
+# 読まれる (例: `work-memory-update.sh` / `resume-active-flag-restore.sh`) ため、
+# 列挙は documented-supported field を示し、現状全 caller を網羅するものではない。
 #
-# Approved caller pattern (canonical, the only supported boolean read path):
+# Approved caller pattern (the only supported boolean read path through this helper):
 #   `--default ""` + binary AND check `[ "$value" = "true" ]`
 #     stored false / 不在 → 共に空文字列 → else 分岐の fail-safe pattern。
 #   `commands/pr/ready.md` Phase 2.1 の `active` field がこの典型 (false と missing を
@@ -231,19 +233,21 @@ fi
 # 上記 pattern で要件を満たせない場合は本 helper を経由せず inline jq を使うこと
 # (例: `jq -r '.active' .rite-flow-state`)。
 #
-# Note (deprecated alternative): 旧 docstring が `--default empty` + caller 側分岐
-# を alternative として推奨していたが、`empty` は jq builtin ではなく literal string
-# `"empty"` として `--arg default "$DEFAULT"` 経由で渡されるため、機能的には
-# `--default ""` と等価 (stored false → `"empty"`、missing → `"empty"` で caller 側
-# で false / missing を区別不能)。新規 caller では採用しないこと。
+# Note (deprecated alternative): `--default empty` + caller 側分岐 alternative は
+# 採用不可 — `empty` は jq builtin ではなく literal string `"empty"` として
+# `--arg default "$DEFAULT"` 経由で渡されるため `--default ""` と機能的等価で、
+# stored false / missing が caller 側で disambiguate 不能。新規 caller では Approved
+# pattern のみ使用すること。
 #
 # Mechanical guard (below): WARNING on `--default true|false` flags erroneous boolean
 # reads. The WARNING message is intentionally short and delegates to this caveat
 # block as the single source of truth — do not duplicate caller-pattern guidance
-# inside the WARNING text (Issue #842).
+# inside the WARNING text (Issue #842). WARNING の文言を改訂する際は
+# `plugins/rite/hooks/tests/state-read.test.sh` TC-14.3 の grep pattern と同期させること
+# (mutation kill power 維持のため)。
 case "$DEFAULT" in
   true|false)
-    echo "WARNING: state-read.sh: --default '$DEFAULT' は boolean リテラル。jq の \`// \$default\` が null/false を default に silent 置換し stored false を失います。詳細は docstring \"Boolean field caveat\" 節を参照。" >&2
+    echo "WARNING: state-read.sh: --default '$DEFAULT' は boolean リテラル値です。jq の \`// \$default\` が null/false を default に silent 置換し stored false を失います。詳細は docstring \"Boolean field caveat\" 節を参照。" >&2
     ;;
 esac
 
