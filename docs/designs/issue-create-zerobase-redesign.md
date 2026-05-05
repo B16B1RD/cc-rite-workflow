@@ -407,7 +407,7 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 | #830 (PR-E1) | refactor(create): remove charter-prohibited prose | charter 散文削除 (4-site/3-site 対称契約 / 撤去歴史 / PR # 引用) | ✅ 2026-05-05 |
 | #833 (PR-E2) | refactor(create): Phase 番号整数化 | Phase 番号体系の整数 + 0.x 1 階層化 (3 階層 21 → 0、Section 11.3 evidence と同一 grep regex `^### [0-9]+\.[0-9]+\.[0-9]+`) | ✅ 2026-05-05 |
 | #834 (PR-E3) | refactor(create): /rite:issue:create AskUserQuestion 削減 | Phase 0.3 fast-path / Phase 3 register preview-only | ✅ 2026-05-05 |
-| #837 (PR-E4) | refactor(create): sub-skill 統合検討 / handoff contract slim 化 | sub-skill 統合可能性評価 (案 C 採用) + handoff contract -39% | ✅ 2026-05-05 |
+| #837 (PR-E4) | refactor(create): sub-skill 統合検討 / handoff contract slim 化 | sub-skill 統合可能性評価 (案 C 採用) + handoff contract -38% (実測 97 → 60 行、PR-E4 description の `-39%` は誤記) | ✅ 2026-05-05 |
 | **PR-E5 (本 PR)** | refactor(rite): #823 Phase E 完了レポート + CHANGELOG | DoD #2-#5 wrap-up (retrospective + CHANGELOG + e2e test plan) | ⏳ |
 
 ### 11.2 charter 5 自問 consolidated 検証
