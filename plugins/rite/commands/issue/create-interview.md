@@ -19,8 +19,6 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 ## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
 
 > 本 Pre-flight は sub-skill の **先頭** で実行し interview scope に関係なく flow-state write を保証する (Bug Fix / Chore preset path でも skip 不可)。末尾配置だと scope=skip path で sub-skill が早期 return し flow-state write が抜けるため、先頭配置が必須。
->
-> 本 Pre-flight bash block は 3 site 対称契約 (site (2) `create-interview.md` Pre-flight / site (1) `create.md` Step 0/Step 1 / site (3) Return Output re-patch) に属し、4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) と `--if-exists` 意図的非対称性は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md) で定義。symmetry 破壊は `hooks/tests/4-site-symmetry.test.sh` で検出。
 
 **MUST run before any interview logic** (Phase 0.4.1 scope evaluation / Phase 0.5 deep-dive / return-output emission)。**not optional**、**interview scope に conditional でない** — Bug Fix / Chore preset (scope = "skip") でも実行:
 
@@ -37,7 +35,7 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 0.4.1/0.5 if applicable, then return to caller. Caller MUST proceed to Phase 0.6 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
-    # 非 blocking: create.md Step 0/Step 1 の redundant patch + phase-transition-whitelist.sh の create_interview case arm (pre-tool-bash-guard.sh / session-end.sh が source、stop-guard.sh は撤去済み) が safety net。
+    # 非 blocking: create.md Step 0/Step 1 の redundant patch + phase-transition-whitelist.sh の create_interview case arm (pre-tool-bash-guard.sh / session-end.sh が source) が safety net。
   fi
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -49,7 +47,7 @@ else
 fi
 ```
 
-**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 0.6 へ進む経路に切り替わる (`stop-guard.sh` 撤去済み — 撤去前は同 hook が `WORKFLOW_HINT` 経由で routing していた)。`phase-transition-whitelist.sh` が `create_post_interview → create_delegation` を唯一の whitelisted forward transition として graph 定義するため、orchestrator は Delegation Routing を必ず実行する必要がある。
+**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 0.6 へ進む経路に切り替わる。`phase-transition-whitelist.sh` が `create_post_interview → create_delegation` を唯一の whitelisted forward transition として graph 定義するため、orchestrator は Delegation Routing を必ず実行する必要がある。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `create_post_interview` のまま phase regression しない。
 
@@ -267,7 +265,7 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
 fi
 ```
 
-> **Why patch mode only (no create fallback)**: Pre-flight が "file missing" branch (`create` mode) を処理済。本 section 到達時は flow state file 存在 + `.phase = create_post_interview` が保証済。ここで `create` 呼出は `previous_phase` を空文字列にリセットし `phase-transition-whitelist.sh` whitelist transition check を defeat する (`pre-tool-bash-guard.sh` / `session-end.sh` が source、`stop-guard.sh` は撤去済み) ため不可。patch mode で transition chain を preserve する。
+> **Why patch mode only (no create fallback)**: Pre-flight が "file missing" branch (`create` mode) を処理済。本 section 到達時は flow state file 存在 + `.phase = create_post_interview` が保証済。ここで `create` 呼出は `previous_phase` を空文字列にリセットし `phase-transition-whitelist.sh` whitelist transition check を defeat する (`pre-tool-bash-guard.sh` / `session-end.sh` が source) ため不可。patch mode で transition chain を preserve する。
 
 After the flow-state update, output the result pattern. Caller-continuation reminder を **immediately before** result pattern に emit。Return block は **4 line** 構成: (1) `[CONTEXT] INTERVIEW_DONE=1` grep marker / (2) plain-text blockquote continuation reminder / (3) HTML-commented caller instructions / (4) HTML-commented result sentinel。全 4 行が sub-skill の **last visible lines**。
 
@@ -275,8 +273,6 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 > - caller continuation hint を plain-text line + HTML comment の **dual form** で emit（HTML comment が rendering で strip される場合への defense）
 > - result pattern を HTML comment 化 (`<!-- [interview:skipped] -->`) — sentinel は grep-matchable (`grep -F '[interview:'`) のまま AC-3 保持し、user-visible terminal token としての sentinel 出力を抑止して LLM turn-boundary heuristic 起因の `continue` 要求 stop を防ぐ
 > - `[CONTEXT] INTERVIEW_DONE=1` marker を return block の **FIRST line** に追加（not last）— orchestrator Pre-check Item 0 と Mandatory After Interview Step 0 が consume する grep signal、HTML strip rendering でも検出可能な plain-text 形式
->
-> 本セクションは create.md 🚨 Mandatory After Interview Step 0 / create-interview.md 🚨 MANDATORY Pre-flight / create-interview.md Return Output re-patch の 3 site 対称契約に属する。`hooks/tests/4-site-symmetry.test.sh` で機械検証。
 
 **Output format example (interview skipped)**:
 
@@ -295,10 +291,6 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 <!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 0.6. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 0.6 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
 <!-- [interview:completed] -->
 ```
-
-> 上記 Output format example の caller HTML コメント内 bash literal は 3 site 対称契約 (site (1) `create.md` Step 0/Step 1 / site (2) Pre-flight / site (3) Return Output Format 内 caller inline literal) に属する。4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) と `--if-exists` 意図的非対称性は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md) で定義。
->
-> **2 site 内対称性 (skipped/completed paths)**: 本ファイル内の `[interview:skipped]` example と `[interview:completed]` example の両 caller HTML コメントで同一 bash literal を保持する必要がある (片方のみの更新は drift)。`hooks/tests/4-site-symmetry.test.sh` で機械検証。
 
 > **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。user-visible な最終コンテンツは `⏭ 継続中:` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
 

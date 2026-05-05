@@ -45,7 +45,7 @@ create.md (orchestrator)
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-これは **bug**。return tag は turn 境界ではなく hand-off signal。HTML コメント wrapping (#561 UX fix) でも LLM の turn-boundary heuristic が誤発火し得るため、Mandatory After を即時実行しないと workflow が abandoned になる。
+これは **bug**。return tag は turn 境界ではなく hand-off signal。HTML コメント wrapping でも LLM の turn-boundary heuristic が誤発火し得るため、Mandatory After を即時実行しないと workflow が abandoned になる。
 
 ### Correct-pattern (what to do)
 
@@ -160,7 +160,7 @@ echo "$result"
 | # | MUST execute | Why |
 |---|--------------|-----|
 | 1 | Phase 0.4.1 goal classification (Phase 0.1 から推定) | Phase 0.5 interview scope 決定で必要 |
-| 2 | Delegation to Interview (Pre-write + Skill 起動) | `create_interview` write がないと `phase-transition-whitelist.sh` の case arm が enforce できない (`pre-tool-bash-guard.sh` / `session-end.sh` が source、`stop-guard.sh` は撤去済み) |
+| 2 | Delegation to Interview (Pre-write + Skill 起動) | `create_interview` write がないと `phase-transition-whitelist.sh` の case arm が enforce できない (`pre-tool-bash-guard.sh` / `session-end.sh` が source) |
 | 3 | Mandatory After Interview | flow state を `create_post_interview` に進める |
 | 4 | Phase 0.6 | `create-register` vs `create-decompose` 選択 |
 | 5 | Delegation Routing (Pre-write + terminal sub-skill) | `create_delegation` を書き whitelist を進める |
@@ -198,7 +198,7 @@ Invoke `skill: "rite:issue:create-interview"`.
 
 ### 🚨 Mandatory After Interview
 
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。`phase-transition-whitelist.sh` の whitelist transition graph により、active の間は `create_delegation` (Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) への transition のみが許可される — `pre-tool-bash-guard.sh` / `session-end.sh` が enforce 経路 (`stop-guard.sh` は撤去済み)。
+> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。`phase-transition-whitelist.sh` の whitelist transition graph により、active の間は `create_delegation` (Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) への transition のみが許可される — `pre-tool-bash-guard.sh` / `session-end.sh` が enforce 経路。
 
 **Step 0: Immediate Bash Action**: sub-skill return 直後の **very first tool call** として実行し turn-boundary 感を bash invocation に置換。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
 
@@ -215,9 +215,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
 fi
 ```
 
-> 本 Step 0 bash block は Step 0/1 + `create-interview.md` Pre-flight + Return Output re-patch の 3 site 対称契約で、4 引数 symmetry (`--phase` / `--active` / `--next` / `--preserve-error-count`) は `hooks/tests/4-site-symmetry.test.sh` で機械検証される。
-
-**Step 1**: post-interview phase patch (atomic、idempotent with Step 0)。Step 0 と同じ 4 引数 symmetry を維持:
+**Step 1**: post-interview phase patch (atomic、idempotent with Step 0):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -234,7 +232,7 @@ fi
 
 **Step 3**: **→ Proceed to Phase 0.6 (Task Decomposition Decision) now. Do NOT stop.**
 
-> **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` (`type=manual_fallback_adopted`) を emit する (`stop-guard.sh` 撤去前は同 hook が auto emit していた)。
+> **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
 
 ## Phase 0.6: Task Decomposition Decision
 
@@ -328,7 +326,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 Concrete output 例は `create-register.md` Phase 4.2-4.4 / `create-decompose.md` Phase 1.0.2-1.0.3。HTML コメント sentinel は grep-matchable を維持しつつ user-visible 末尾を `✅` メッセージに固定。
 
-**Step 4 (terminal gate)**: Pre-check list を場面 (b) mode で再実行 — Item 1-3 全 `YES` なら停止可、`NO` 残存時は manual 停止して `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` を emit (`stop-guard.sh` 撤去前は同 hook が auto emit していた)。
+**Step 4 (terminal gate)**: Pre-check list を場面 (b) mode で再実行 — Item 1-3 全 `YES` なら停止可、`NO` 残存時は manual 停止して `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` を emit。
 
 ## Termination Logic
 
