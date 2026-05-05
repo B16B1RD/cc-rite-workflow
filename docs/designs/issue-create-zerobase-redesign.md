@@ -405,7 +405,7 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 |------|---------|-------|--------|
 | #829 | docs(rite): /rite:issue:create ゼロベース再設計 plan (Phase E) | DoD #1 (plan ドキュメント作成 → user 合意) | ✅ 2026-05-05 |
 | #830 (PR-E1) | refactor(create): remove charter-prohibited prose | charter 散文削除 (4-site/3-site 対称契約 / 撤去歴史 / PR # 引用) | ✅ 2026-05-05 |
-| #833 (PR-E2) | refactor(create): Phase 番号整数化 | Phase 番号体系の整数 + 0.x 1 階層化 (3 階層 22 → 0) | ✅ 2026-05-05 |
+| #833 (PR-E2) | refactor(create): Phase 番号整数化 | Phase 番号体系の整数 + 0.x 1 階層化 (3 階層 21 → 0、Section 11.3 evidence と同一 grep regex `^### [0-9]+\.[0-9]+\.[0-9]+`) | ✅ 2026-05-05 |
 | #834 (PR-E3) | refactor(create): /rite:issue:create AskUserQuestion 削減 | Phase 0.3 fast-path / Phase 3 register preview-only | ✅ 2026-05-05 |
 | #837 (PR-E4) | refactor(create): sub-skill 統合検討 / handoff contract slim 化 | sub-skill 統合可能性評価 (案 C 採用) + handoff contract -39% | ✅ 2026-05-05 |
 | **PR-E5 (本 PR)** | refactor(rite): #823 Phase E 完了レポート + CHANGELOG | DoD #2-#5 wrap-up (retrospective + CHANGELOG + e2e test plan) | ⏳ |
@@ -427,15 +427,15 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 
 | AC | 達成状況 | evidence |
 |----|---------|----------|
-| **AC-1** (本体 1〜2 ファイルで全体像把握) | ✅ 達成 | `create.md` 347 行 (orchestrator entry point) + sub-skill 3 本 (interview 315 / decompose 508 / register 623)。新規 contributor は `create.md` 単独で Phase 0/1/2/3 + delegation 構造を把握可能。E4 評価 (#837 評価ドキュメント Section 3) で案 A/B/C 比較の上 案 C 採用を確定 |
+| **AC-1** (本体 1〜2 ファイルで全体像把握) | ✅ 達成 | `create.md` 347 行 (orchestrator entry point) + sub-skill 3 本 (interview 315 / decompose 508 / register 623)。新規 contributor は `create.md` 単独で **orchestration 構造** (Phase 0/1/2/3 + sub-skill への delegation routing) + sub-skill 責務分担を把握可能 (各 sub-skill 内部の Phase 3.x 詳細実装は該当 sub-skill ファイルを参照)。E4 評価 (#837 評価ドキュメント Section 3) で案 A/B/C 比較の上 案 C 採用を確定 |
 | **AC-2** (Phase 番号整数化) | ✅ 達成 | `grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' commands/issue/create*.md` の合計 = **0 件** (PR-E2 前は 21 件)。整数 + 0.x の 1 階層のみ |
 | **AC-3** (AskUserQuestion 削減) | ✅ 達成 (runtime 経路) | runtime 通過数 (preset 別、PR-E3 適用後): Bug Fix preset **0-1 回** (旧 1-3 回) / Feature M **2-3 回** (旧 6-8 回) / XL decompose **3-4 回** (旧 7-10 回)。静的 grep 値は ambiguity fallback 分岐追加により若干変動するが、preset 別 runtime 経路で AC-3 を達成 |
-| **AC-4** (機能契約保持) | ✅ 達成 | (a) `pre-tool-bash-guard.sh` Bypass block: `create.md` / `create-interview.md` で grep 検出。(b) Terminal Completion pattern: `create.md` / `create-decompose.md` / `create-register.md` で grep 検出。(c) 4-site-symmetry test: `plugins/rite/hooks/tests/4-site-symmetry.test.sh` 存続 |
-| **AC-5** (e2e test 3 経路 pass) | ⏳ manual 実行待ち | 自動化 e2e test infrastructure は本 plan scope 外 (Section 8.3 で明示)。Section 11.4 の manual test 手順を user が Issue close 前に実行することで達成 |
+| **AC-4** (機能契約保持) | ✅ 達成 | (a) `pre-tool-bash-guard.sh` Bypass block: `create.md` で grep 検出 (Phase 0 prohibition で全 sub-skill scope に適用、`create-interview.md` 等は `create.md` 経由で Bypass 規約を継承し独立宣言は持たない)。(b) Terminal Completion pattern: `create.md` / `create-decompose.md` / `create-register.md` で grep 検出。(c) 4-site-symmetry test: `plugins/rite/hooks/tests/4-site-symmetry.test.sh` 存続 |
+| **AC-5** (e2e test 3 経路 pass) | ⏳ manual 実行待ち | 自動化 e2e test infrastructure は本 plan の deliverable に含めない (Section 8.3 で「ad-hoc 手動実行」を運用方針として表明、PR-E0 を必要時 option としていた)。Section 11.4 の manual test 手順を user が Issue close 前に実行することで達成 |
 
 ### 11.4 e2e test manual 実行手順
 
-> **位置づけ**: 自動化された e2e test infrastructure は本 plan scope 外 (Section 8.3 で明示)。以下 3 経路を `develop` (E5 merge 後) で manual 実行し、結果を Issue #823 close 時のコメントとして記録する。
+> **位置づけ**: 自動化された e2e test infrastructure は本 plan の deliverable に含めない (Section 8.3 で「ad-hoc 手動実行」を運用方針として表明)。以下 3 経路を `develop` (E5 merge 後) で manual 実行し、結果を Issue #823 close 時のコメントとして記録する。
 
 **経路 1: Bug Fix preset**
 
@@ -493,3 +493,4 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 - Issue #823 close 前に Section 11.4 の e2e test 3 経路を user が manual 実行
 - e2e test 結果を Issue #823 にコメント記録 (DoD #4 達成証跡)
 - Issue body checklist の最終更新 (`gh issue edit` で全 `[x]` 化)
+- 本 PR (PR-E5) merge 後、Section 11.1 表の **PR-E5 (本 PR)** 行 `merged` 列を `⏳` から `✅ {merged_at}` に更新 (post-merge action)

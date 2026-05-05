@@ -19,7 +19,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 ### 変更
 
 - `/rite:issue:create` ゼロベース再設計 (Phase E) を完了 (#823)
-  - [Simplification Charter](plugins/rite/skills/rite-workflow/references/simplification-charter.md) の 5 自問・推奨パターンに基づき、Phase 番号体系の整数化 (3 階層 21 件 → 0 件) / AskUserQuestion runtime 経路の削減 (Bug Fix preset 1-3 → 0-1 回 / Feature M 6-8 → 2-3 回 / XL decompose 7-10 → 3-4 回) / sub-skill 統合可能性評価 (案 C 採用) / `references/sub-skill-handoff-contract.md` slim 化 (98 → 60 行、-39%) を達成。
+  - [Simplification Charter](plugins/rite/skills/rite-workflow/references/simplification-charter.md) の 5 自問・推奨パターンに基づき、Phase 番号体系の整数化 (3 階層 21 件 → 0 件) / AskUserQuestion runtime 経路の削減 (Bug Fix preset 1-3 → 0-1 回 / Feature M 6-8 → 2-3 回 / XL decompose 7-10 → 3-4 回) / sub-skill 統合可能性評価 (案 C 採用) / `references/sub-skill-handoff-contract.md` slim 化 (97 → 60 行、-38%) を達成。
   - 段階的に 5 PR で実施: 計画 (#829) → charter 散文削除 (PR-E1 #830) → Phase 番号整数化 (PR-E2 #833) → AskUserQuestion 削減 (PR-E3 #834) → sub-skill 統合検討 + handoff contract slim 化 (PR-E4 #837) → 完了レポート + CHANGELOG (PR-E5 本 PR)。
   - 機能契約 (`pre-tool-bash-guard.sh` Bypass block / Terminal Completion pattern / `4-site-symmetry.test.sh` / sentinel emit) は全保持。flow-state phase token も無変更 (NFR-4 遵守)。
   - 詳細な完了レポートと AC 達成 evidence は [`docs/designs/issue-create-zerobase-redesign.md`](docs/designs/issue-create-zerobase-redesign.md) Section 11 を参照。
