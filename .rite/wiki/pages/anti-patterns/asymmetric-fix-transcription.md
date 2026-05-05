@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-06T00:15:00Z"
+updated: "2026-05-05T17:38:50Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260505T170709Z-pr-846.md"
   - type: "reviews"
     ref: "raw/reviews/20260505T133653Z-pr-838.md"
   - type: "reviews"
@@ -619,3 +621,4 @@ cycle 3 でも続いて MEDIUM precision finding (cycle 2 fix の注記が perce
 - [PR #838 fix cycle 2 (cross-validated MEDIUM 1 件 = Section 11.1 PR-E4 行 `-39%` 残存 を Phase 5.3.0 例外的に修正、commit message 明示宣言型修正の sweep 漏れ事例を確立)](raw/fixes/20260505T135040Z-pr-838-cycle2.md)
 - [PR #838 fix cycle 3 (MEDIUM precision + LOW tense 2 件対応、minor improvement への収束を実測)](raw/fixes/20260505T135657Z-pr-838-cycle3.md)
 - [PR #838 review cycle 4 (両 reviewer 評価「可」、0 blocking findings、4-cycle 構造的収束、Phase 5.3.0 安全網の effectiveness と Doc-Heavy retrospective PR の典型的 convergence 軌跡を実測)](raw/reviews/20260505T140020Z-pr-838-cycle4.md)
+- [PR #846 review (PR #839 の更なる follow-up: state-read.sh docstring の non-boolean caller 列挙に `next_action` 1 件を追加、PR #839 が見落とした 6 → 7 caller の cumulative 再発を 0 blocking 1 cycle で収束。code-quality reviewer の investigation suggestion で `pr_number` が docstring 列挙されているが `state-read.sh --field pr_number` を呼ぶ実 caller がゼロ件 (work-memory-update.sh:77 の docstring 例にのみ存在) であることを発見し、docstring 列挙が「現状の caller 完全列挙」ではなく「documented-supported field list」として運用されている lexicon-implementation gap を可視化。helper / caller / prose 3 layer 同期契約の next iteration として「列挙の意味論宣言 (caller list vs supported field list) 自体が drift 源になりうる」観点を追加 — sub-pattern 識別後も意味論層で同型 drift が再発する shrinking-cycle observation)](raw/reviews/20260505T170709Z-pr-846.md)
