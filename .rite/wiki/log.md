@@ -396,3 +396,4 @@
 | 2026-05-05T14:30:00+09:00 | ingest:skip | raw/reviews/20260505T051552Z-pr-830.md | PR #830 (PR-E1 of #823) review had 0 findings; lessons (asymmetric fix transcription, charter 5 自問, staged PR scope) are all applications of existing wiki rules — no new experiential pattern to extract |
 | 2026-05-05T14:35:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=1, broken_refs=0 |
 | 2026-05-05T10:30:00Z | ingest:update | pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md | PR #834 (PR-E3 of #823) review: 11 findings (HIGH 5 / MEDIUM 4 / LOW 4) が Phase 5.3.0 Observed Likelihood Gate で全件降格 (9 件推奨事項 / 4 件削除)。2 reviewer cross-validation 合意 (AskUserQuestion 4 選択肢 routing 未定義) でも literal anchor 欠落を補えない empirical 証拠を追記 |
+| 2026-05-05T10:35:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=95, broken_refs=201 |
