@@ -215,9 +215,14 @@ fi
 # ⚠️ Boolean field caveat: jq の `// $default` は null と false の両方を $default に
 # 置換するため、本 helper は boolean field の読み取りには使ってはいけない
 # (例: `{"active": false}` を `--default true` で読むと結果が "true"、stored false が
-# silent に default に置換される)。現状の caller (`parent_issue_number` / `phase` /
-# `loop_count` / `implementation_round` / `pr_number`) はすべて非 boolean。将来 boolean
-# field を読む場合は `--default empty` + caller 側分岐、または inline jq を使うこと。
+# silent に default に置換される)。
+# 現状の caller のうち boolean field を読むのは `commands/pr/ready.md` Phase 2.1 の
+# `active` のみ (binary AND check `[ "$active" = "true" ]` + `--default ""` 経路、
+# stored false / 不在 → 共に `else` 分岐の fail-safe pattern)。
+# それ以外 (`parent_issue_number` / `phase` / `loop_count` / `implementation_round` /
+# `pr_number`) はすべて非 boolean。boolean field を新しく読みたい場合は本 pattern
+# (binary AND check + `--default ""`) を採用するか、`--default empty` + caller 側分岐
+# を使うこと。
 #
 # Mechanical guard: WARNING on `--default true|false` flags erroneous boolean reads.
 case "$DEFAULT" in
