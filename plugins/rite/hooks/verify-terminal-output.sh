@@ -6,9 +6,9 @@
 # always the human-readable completion message, not a bare sentinel token.
 #
 # Enforced contract (per Issue #561 D-01 / #561 AC-2, AC-3, AC-6):
-#   - plugins/rite/commands/issue/create-register.md   Phase 4.4 sentinel is
+#   - plugins/rite/commands/issue/create-register.md   Phase 3.4 sentinel is
 #     documented as `<!-- [create:completed:{...}] -->` (HTML comment form)
-#   - plugins/rite/commands/issue/create-decompose.md  Phase 1.0.3 sentinel is
+#   - plugins/rite/commands/issue/create-decompose.md  Phase 3.4 sentinel is
 #     documented as `<!-- [create:completed:{...}] -->` (HTML comment form)
 #   - plugins/rite/commands/issue/create-interview.md  Defense-in-Depth example
 #     outputs `<!-- [interview:skipped] -->` / `<!-- [interview:completed] -->`
@@ -119,7 +119,7 @@ info() {
 }
 
 # -----------------------------------------------------------------------------
-# Check 1: create-register.md Phase 4 HTML-comment sentinel
+# Check 1: create-register.md Phase 3.4 HTML-comment sentinel
 # -----------------------------------------------------------------------------
 CREATE_REGISTER="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-register.md"
 
@@ -155,7 +155,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# Check 2: create-decompose.md Phase 1.0 HTML-comment sentinel
+# Check 2: create-decompose.md Phase 3.4 HTML-comment sentinel
 # -----------------------------------------------------------------------------
 CREATE_DECOMPOSE="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-decompose.md"
 

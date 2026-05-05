@@ -2,49 +2,49 @@
 description: |
   (Internal sub-skill — invoked by /rite:issue:create only. Do NOT invoke directly.)
   単一 Issue の分類・確認・作成・Projects 登録を行う sub-skill。
-  Phase 1 分類 + Phase 2-4 作成・登録を担当（分解しない単一 Issue 経路）。
+  Phase 3 (Single Issue Path) の分類・作成・登録・終了処理を担当（分解しない単一 Issue 経路）。
 ---
 
 # /rite:issue:create-register
 
 Classify, confirm, create, and register a single Issue. This sub-command is invoked from `create.md` when a single Issue is created (no decomposition), or from `create-decompose.md` when decomposition is cancelled.
 
-**Prerequisites**: Phase 0.1 and Phase 0.6 have completed in the parent `create.md` flow. Phases 0.3-0.5 may or may not have been executed depending on the flow path. The following information is available in conversation context:
+**Prerequisites**: Phase 0.1 and Phase 2 have completed in the parent `create.md` flow. Phases 0.4-0.5 may or may not have been executed depending on the flow path. The following information is available in conversation context:
 - Extracted elements (What/Why/Where/Scope/Constraints) from Phase 0.1 — **always available**
-- Interview results from Phase 0.5 — available if conducted; `null` if skipped
-- Tentative slug from [Phase 0.1.3](./references/slug-generation.md) — **always available** — generated per [Slug Generation Rules](./references/slug-generation.md#slug-generation-rules)
-- Goal classification from Phase 0.4 — available if conducted; `null` if skipped (Phase 0.1.5 early decomposition path)
+- Interview results from Phase 1.1 — available if conducted; `null` if skipped
+- Tentative slug from [Phase 0.2](./references/slug-generation.md) — **always available** — generated per [Slug Generation Rules](./references/slug-generation.md#slug-generation-rules)
+- Goal classification from Phase 0.5 — available if conducted; `null` if skipped (Phase 0.3 early decomposition path)
 - Language setting from Preparation phase — **always available**
-- `phases_skipped` flag — `"0.3-0.5"` when Phase 0.1.5 triggered early decomposition; `null` otherwise
-- Specification document path — available when invoked from `create-decompose.md` cancel (Phase 0.7.3)
+- `phases_skipped` flag — `"0.4-0.5"` when Phase 0.3 triggered early decomposition; `null` otherwise
+- Specification document path — available when invoked from `create-decompose.md` cancel (Phase 3.1 Specification Document Confirmation)
 
 **Fallback rules for missing prerequisites**:
 
 | Missing Prerequisite | Fallback |
 |----------------------|----------|
-| Goal classification (Phase 0.4) | Infer from Phase 0.1 extraction: keywords in title/What → Type mapping (see Phase 1.2 Work Type Classification) |
-| Tentative complexity (Phase 0.4.1) | Use XL as baseline when `phases_skipped` is `"0.3-0.5"` (from Phase 0.1.5 detection); finalize via Heuristics Scoring (Phase 1.1) which takes precedence |
-| Interview results (Phase 0.5) | Apply [EDGE-3 row 4](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules): MUST sections per Complexity Gate with `<!-- 情報未収集 -->` placeholders |
+| Goal classification (Phase 0.5) | Infer from Phase 0.1 extraction: keywords in title/What → Type mapping (see Work Type Classification subsection of Phase 3.1) |
+| Tentative complexity (Phase 1) | Use XL as baseline when `phases_skipped` is `"0.4-0.5"` (from Phase 0.3 detection); finalize via Heuristics Scoring (Phase 3.1) which takes precedence |
+| Interview results (Phase 1.1) | Apply [EDGE-3 row 4](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules): MUST sections per Complexity Gate with `<!-- 情報未収集 -->` placeholders |
 
 ---
 
-## Phase 1: Classification and Estimation
+## Phase 3: Execution (Single Issue Path)
 
-### 1.1 Complexity Estimation
+### 3.1 Classification and Estimation
 
-詳細は [`references/complexity-gate.md`](./references/complexity-gate.md) を参照。Phase 0.4.1 の Tentative Complexity Estimation を baseline として、Heuristics Scoring を primary method で最終 complexity を確定する:
+#### Complexity Estimation
+
+詳細は [`references/complexity-gate.md`](./references/complexity-gate.md) を参照。Phase 1 の Tentative Complexity Estimation を baseline として、Heuristics Scoring を primary method で最終 complexity を確定する:
 
 - [Tentative Complexity Estimation](./references/complexity-gate.md#tentative-complexity-estimation) — XS/S/M/L/XL の判定基準テーブル
 - [Complexity Heuristics Scoring](./references/complexity-gate.md#complexity-heuristics-scoring) — Score テーブルと Score → complexity mapping
-- [Final Complexity Decision Rules](./references/complexity-gate.md#final-complexity-decision-rules) — Tentative と Heuristics の優先順位、Phase 0.4.1 not executed の baseline (XL)
+- [Final Complexity Decision Rules](./references/complexity-gate.md#final-complexity-decision-rules) — Tentative と Heuristics の優先順位、Phase 1 not executed の baseline (XL)
 
 最終 complexity は Issue Meta section に記録される。
 
-#### Complexity Heuristics Scoring
+**Complexity Heuristics Scoring**: 詳細は [`references/complexity-gate.md#complexity-heuristics-scoring`](./references/complexity-gate.md#complexity-heuristics-scoring) を参照。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL)。
 
-詳細は [`references/complexity-gate.md#complexity-heuristics-scoring`](./references/complexity-gate.md#complexity-heuristics-scoring) を参照。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL)。
-
-### 1.2 Work Type Classification
+#### Work Type Classification
 
 | Type | Criteria | Heuristics |
 |------|----------|------------|
@@ -58,7 +58,7 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 
 The type determines which Type Core Section (Section 3) is used in the Issue body. See the [Issue template structure](../../templates/issue/template-structure.md) for type-specific section templates, and [default.md](../../templates/issue/default.md) for type definitions and complexity gate.
 
-### 1.3 Priority Estimation
+#### Priority Estimation
 
 | Priority | Criteria |
 |----------|----------|
@@ -68,13 +68,11 @@ The type determines which Type Core Section (Section 3) is used in the Issue bod
 
 ---
 
-## Phase 2: Confirmation and Creation
+### 3.2 Confirmation and Creation
 
-### 2.1 Issue Content Confirmation
+#### Issue Content Confirmation
 
-#### Title Language Unification Rules
-
-Determine the language for Issue title and body based on the `language` setting in `rite-config.yml` retrieved during **Preparation**:
+**Title Language Unification Rules**: Determine the language for Issue title and body based on the `language` setting in `rite-config.yml` retrieved during **Preparation**:
 
 | Setting Value | Behavior |
 |--------------|----------|
@@ -86,7 +84,7 @@ Determine the language for Issue title and body based on the `language` setting 
 
 **Language detection priority** (when `auto` setting):
 1. Language used by the user when executing the command
-2. Language of similar Issues retrieved in Phase 0.3 (if similar Issues exist)
+2. Language of similar Issues retrieved in Phase 0.4 (if similar Issues exist)
 3. Default: Japanese
 
 | Overview Section Example | Detection | Title Example |
@@ -94,9 +92,7 @@ Determine the language for Issue title and body based on the `language` setting 
 | "API エンドポイントを追加する" | Japanese (contains "エ", "追加") | "API エンドポイントの追加" |
 | "Add new API endpoint" | English (no Japanese characters) | "Add new API endpoint" |
 
-#### Confirmation Dialog
-
-Confirm with AskUserQuestion before creation:
+**Confirmation Dialog**: Confirm with AskUserQuestion before creation:
 
 ```
 以下の内容で Issue を作成します:
@@ -117,13 +113,13 @@ Confirm with AskUserQuestion before creation:
 - キャンセル
 ```
 
-### 2.2 Issue Body Generation and Creation
+#### Issue Body Generation and Creation
 
-> **⚠️ Execution order**: First generate the Issue body using the Implementation Contract format (Section "Issue Body Generation" below the script block), then show the Phase 2.1 Confirmation Dialog with `{generated-body}`, and finally run the creation script.
+> **⚠️ Execution order**: First generate the Issue body using the Implementation Contract format (Section "Issue Body Generation" below the script block), then show the Issue Content Confirmation dialog with `{generated-body}`, and finally run the creation script.
 >
 > **Important**: When generating the Issue body, apply the display rules defined in [EDGE-3: Interview Result Reflection Rules](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules) for Implementation Contract sections.
 
-#### Create Issue via Common Script
+**Create Issue via Common Script**
 
 > **Reference**: [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md)
 
@@ -177,17 +173,17 @@ project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
 printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
 ```
 
-**Note — Iteration coordination pattern**: `iteration.mode` is intentionally set to `"none"` here. The `create-issue-with-projects.sh` script handles **creation + basic Projects registration** (Status, Priority, Complexity), while `create-register.md` handles **interactive Iteration assignment** separately in Phase 2.5 after user confirmation. This two-phase approach avoids assigning an Iteration the user hasn't confirmed. The `project_id` and `item_id` from the script result are reused for Phase 2.3 (custom fields) and Phase 2.5 (Iteration), eliminating redundant API calls.
+**Note — Iteration coordination pattern**: `iteration.mode` is intentionally set to `"none"` here. The `create-issue-with-projects.sh` script handles **creation + basic Projects registration** (Status, Priority, Complexity), while `create-register.md` handles **interactive Iteration assignment** separately in Iteration Assignment subsection (after user confirmation). This two-phase approach avoids assigning an Iteration the user hasn't confirmed. The `project_id` and `item_id` from the script result are reused for Custom Field Configuration and Iteration Assignment, eliminating redundant API calls.
 
 > **Contrast with `start.md`**: When `start.md`'s child modules call `create-issue-with-projects.sh`, iteration handling varies by call site: `start.md` Phase 5.2.0.1 (lint warning Issues) uses `iteration.mode: "none"` directly, while `parent-routing.md` (invoked from `start.md` Phase 1.5 for child Issue creation) uses `"auto"` or `"none"` based on `rite-config.yml`'s `iteration.enabled` and `iteration.auto_assign` settings. Neither flow includes interactive Iteration confirmation.
 
-#### Issue Body Generation (Implementation Contract Format)
+**Issue Body Generation (Implementation Contract Format)**
 
 > **Template reference**:
 > 1. Read `{plugin_root}/templates/issue/default.md` — complexity gate, type definitions, section overview
 > 2. Read `{plugin_root}/templates/issue/template-structure.md` — full section-by-section template structure, type-specific sections
 
-Generate the Issue body using the Implementation Contract format. The body structure is determined by Type (Phase 1.2) and Complexity (Phase 1.1).
+Generate the Issue body using the Implementation Contract format. The body structure is determined by Type (Work Type Classification subsection) and Complexity (Complexity Estimation subsection).
 
 **Step 1: Apply Complexity Gate**
 
@@ -195,14 +191,14 @@ Read the Complexity Gate table from the template. For the determined complexity,
 
 **Step 2: Select Type Core Section**
 
-Type → Section 3 Type Core Section の mapping table は [`references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping`](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) を参照。Phase 1.2 で確定した Type に対応する Section 3 (User Scenarios / Bug Details / Before-After Contract / Operational Context / Documentation Target) を選択する。
+Type → Section 3 Type Core Section の mapping table は [`references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping`](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) を参照。Work Type Classification で確定した Type に対応する Section 3 (User Scenarios / Bug Details / Before-After Contract / Operational Context / Documentation Target) を選択する。
 
 **Step 3: Map Interview Results to Sections**
 
 Interview Perspective → Target Sections mapping table と Section inclusion rules table は [`references/contract-section-mapping.md`](./references/contract-section-mapping.md) を参照:
 
 - [Step 3: Interview Perspective → Target Sections Mapping](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) — 6 Perspective × Section の正規対応表
-- [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) — Interview not conducted / MUST but no data / Phase 0.7 cancel / `phases_skipped: "0.3-0.5"` のハンドリング (EDGE-3 row 4 への参照含む)
+- [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) — Interview not conducted / MUST but no data / Phase 3.1 cancel / `phases_skipped: "0.4-0.5"` のハンドリング (EDGE-3 row 4 への参照含む)
 
 **Step 4: Generate Acceptance Criteria**
 
@@ -232,7 +228,7 @@ Generate test cases that map to ACs:
 
 **Step 5.5: Append Extension Metadata**
 
-If `Extends: #{number}` was set in Phase 0.3 (when the user selected "拡張として作成する" / "Create as an extension"), add the extension reference to the Issue body:
+If `Extends: #{number}` was set in Phase 0.4 (when the user selected "拡張として作成する" / "Create as an extension"), add the extension reference to the Issue body:
 
 **Case 1: `## 関連` section already exists** in the generated body — append `Extends: #{number}` to the existing section:
 
@@ -251,13 +247,13 @@ Extends: #{number}
 Extends: #{number}
 ```
 
-**Cross-reference comment** (post-creation): After the Issue is created in Phase 2.2 and `issue_number` is available, post a cross-reference comment on the extended Issue. This must execute **after** the `create-issue-with-projects.sh` script returns, not during body generation:
+**Cross-reference comment** (post-creation): After the Issue is created and `issue_number` is available, post a cross-reference comment on the extended Issue. This must execute **after** the `create-issue-with-projects.sh` script returns, not during body generation:
 
 ```bash
 gh issue comment {extended_issue_number} --body "Related: This Issue has been extended by #{new_issue_number}"
 ```
 
-If no `Extends` metadata was set in Phase 0.3, skip this step entirely.
+If no `Extends` metadata was set in Phase 0.4, skip this step entirely.
 
 **Step 6: Output Validation**
 
@@ -274,22 +270,20 @@ If validation fails, fix the Issue body before proceeding to creation.
 
 **Example Issue body**: See `{plugin_root}/templates/issue/template-structure.md` for the full section-by-section template with type-specific Section 3 definitions. AC count and test row count MUST follow the complexity guidelines in Step 4 and Step 5.
 
-**Backward compatibility**: The old format (概要/背景・目的/仕様詳細/変更内容/チェックリスト) is no longer generated in the normal flow. Phase 0.9 (XL decomposition) retains the simplified format. Existing Issues retain their format.
+**Backward compatibility**: The old format (概要/背景・目的/仕様詳細/変更内容/チェックリスト) is no longer generated in the normal flow. Phase 3 (Decompose path in `create-decompose.md`) retains the simplified format. Existing Issues retain their format.
 
-### 2.3 Custom Field Configuration
+#### Custom Field Configuration
 
-**Note**: Standard fields (Status, Priority, Complexity) are already set by the common script in Phase 2.2. This section handles additional custom fields only.
+**Note**: Standard fields (Status, Priority, Complexity) are already set by the common script in Issue Body Generation and Creation. This subsection handles additional custom fields only.
 
-**Prerequisites**: `project_id` and `item_id` are obtained from the Phase 2.2 script result. If `project_reg` is `"skipped"`, skip this section. If `project_reg` is `"failed"`, offer recovery options (see below). If `project_reg` is `"partial"`, proceed directly to Phase 2.3 with existing IDs (see below).
+**Prerequisites**: `project_id` and `item_id` are obtained from the creation script result. If `project_reg` is `"skipped"`, skip this subsection. If `project_reg` is `"failed"`, offer recovery options (see below). If `project_reg` is `"partial"`, proceed directly to Custom Field Configuration with existing IDs (see below).
 
-#### Projects Registration Failure Recovery
-
-**Branching by `project_reg` value:**
+**Projects Registration Failure Recovery — Branching by `project_reg` value**:
 
 | `project_reg` | Meaning | Action |
 |----------------|---------|--------|
 | `"failed"` | `item-add` itself failed; no `project_id`/`item_id` available | Present recovery options (retry/skip/cancel) |
-| `"partial"` | `item-add` succeeded but some field settings failed; `project_id` and `item_id` are available in the script result | Proceed directly to Phase 2.3 with existing `project_id`/`item_id` (field settings will be retried there) |
+| `"partial"` | `item-add` succeeded but some field settings failed; `project_id` and `item_id` are available in the script result | Proceed directly to Custom Field Configuration with existing `project_id`/`item_id` (field settings will be retried there) |
 
 **When `project_reg` is `"failed"`**, present recovery options via `AskUserQuestion`:
 
@@ -304,29 +298,29 @@ Projects 登録が失敗しました。
 - キャンセル
 ```
 
-**Retry**: Re-register the already-created Issue to Projects using `gh project item-add`. The Issue itself was already created successfully in Phase 2.2, so only Projects registration is retried:
+**Retry**: Re-register the already-created Issue to Projects using `gh project item-add`. The Issue itself was already created successfully in Issue Body Generation and Creation, so only Projects registration is retried:
 
 ```bash
 gh project item-add {project_number} --owner {owner} --url {issue_url} --format json
 ```
 
-On success, retrieve the `item_id` from the result and continue to Phase 2.3 (custom fields) and Phase 2.5 (Iteration). On second failure, skip with warning.
+On success, retrieve the `item_id` from the result and continue to Custom Field Configuration and Iteration Assignment. On second failure, skip with warning.
 
 **Skip**: Proceed without Projects registration. Display: `⚠️ Projects 登録をスキップしました。手動で登録してください: gh project item-add {project_number} --owner {owner} --url {issue_url}`
 
-**Cancel**: Issue is already created (Phase 2.2) and is not deleted. Skip Projects registration and all subsequent phases (Phase 2.3 custom fields, Phase 2.5 Iteration). Display the created Issue URL: `Issue #{issue_number} は作成済みです: {issue_url}。Projects 登録は手動で行ってください。`
+**Cancel**: Issue is already created and is not deleted. Skip Projects registration and all subsequent subsections (Custom Field Configuration, Iteration Assignment). Display the created Issue URL: `Issue #{issue_number} は作成済みです: {issue_url}。Projects 登録は手動で行ってください。`
 
-**When `project_reg` is `"partial"`**, display a warning and proceed directly to Phase 2.3:
+**When `project_reg` is `"partial"`**, display a warning and proceed directly to Custom Field Configuration:
 
 ```
 ⚠️ Projects フィールド設定が一部失敗しました。
 
 失敗箇所: {warnings_from_script}
 
-Projects への登録自体は成功しています。Phase 2.3 でカスタムフィールドの設定を試みます。
+Projects への登録自体は成功しています。Custom Field Configuration でカスタムフィールドの設定を試みます。
 ```
 
-Use the `project_id` and `item_id` from the script result (already available) and continue to Phase 2.3. No retry or user confirmation is needed.
+Use the `project_id` and `item_id` from the script result (already available) and continue. No retry or user confirmation is needed.
 
 To retrieve field IDs for custom fields, query the project fields:
 
@@ -367,10 +361,10 @@ Set custom fields defined in `github.projects.fields` of `rite-config.yml`.
 
 **How to retrieve field IDs:**
 
-From the field list retrieved in Phase 2.3, search for a field matching the custom field name (case-insensitive):
+From the field list retrieved above, search for a field matching the custom field name (case-insensitive):
 
 ```bash
-# Phase 2.3 のクエリ結果から、フィールド名で検索
+# 上記のクエリ結果から、フィールド名で検索
 # 例: rite-config.yml に "category" がある場合、
 # fields.nodes から name が "category" (case-insensitive) のフィールドを探す
 ```
@@ -403,9 +397,7 @@ With the above configuration, set the `category` field to "Autonomous" (default)
 gh project item-edit --project-id {project-id} --id {item-id} --field-id {category-field-id} --single-select-option-id {autonomous-option-id}
 ```
 
-**Fallback behavior on error:**
-
-If an error occurs during custom field configuration, continue with Issue creation and skip only the affected field's configuration.
+**Fallback behavior on error**: If an error occurs during custom field configuration, continue with Issue creation and skip only the affected field's configuration.
 
 | Error Type | Behavior | Message |
 |-----------|----------|---------|
@@ -429,9 +421,9 @@ GitHub Projects でフィールド名を確認し、rite-config.yml を更新し
 このフィールドの設定をスキップします。
 ```
 
-### 2.4 Iteration Assignment (Optional)
+#### Iteration Assignment (Optional)
 
-**Prerequisites**: `project_id` and `item_id` are obtained from the Phase 2.2 script result.
+**Prerequisites**: `project_id` and `item_id` are obtained from the creation script result.
 
 If `iteration.enabled` is `true` in `rite-config.yml`, confirm Iteration assignment:
 
@@ -468,7 +460,7 @@ mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
 
 ---
 
-## Phase 3: Completion Report
+### 3.3 Completion Report
 
 Report the creation results:
 
@@ -483,6 +475,79 @@ Projects 設定:
 - Priority: {priority}
 - Complexity: {complexity}
 - Iteration: {iteration_name または "バックログ"}  <!-- Iteration 有効時のみ表示 -->
+```
+
+---
+
+### 3.4 Terminal Completion
+
+<!-- caller: this sub-skill is terminal. Phase 3.4 deactivates flow state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
+
+> **Design decision**: This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
+>
+> **Design decision**: The `[create:completed:{N}]` sentinel is emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) so that the user-visible final line is the `✅` completion message + next steps, not the sentinel token. The string `[create:completed:N]` inside the HTML comment is still grep-matchable (`grep -F` / `grep -E '\[create:completed:[0-9]+\]'`) so existing hook/test contracts remain intact. The HTML comment is invisible in rendered Markdown views, which also weakens the LLM's turn-boundary heuristic that would otherwise treat a bare `[create:completed:N]` line as a natural stopping point.
+
+#### Flow State Deactivation
+
+After Phase 3.3 (Completion Report), deactivate the flow state:
+
+```bash
+# --if-exists で flow state file 不在時は silent skip。
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "create_completed" \
+  --next "none" --active false \
+  --if-exists
+```
+
+#### Completion Message (User-facing)
+
+> **Design decision**: The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified). Emit an explicit user-visible completion message followed by the next-steps block; place the sentinel as a trailing HTML comment so the user's visible final content is the `✅` message + next steps.
+
+Output the user-facing completion message as the first deliverable line of Phase 3.4's output:
+
+```
+✅ Issue #{issue_number} を作成しました: {issue_url}
+```
+
+Where `{issue_number}` and `{issue_url}` are from the creation script result.
+
+#### Next Steps Output
+
+Output the next steps after the completion message:
+
+```
+次のステップ:
+1. `/rite:issue:start {issue_number}` で作業を開始
+2. 作業完了後 `/rite:pr:create` で PR 作成
+```
+
+Where `{issue_number}` is the Issue number from the creation script result.
+
+#### Completion Marker (HTML comment form)
+
+Output the completion marker as an **HTML comment on the final line** — invisible to the user in rendered views, but matchable by `grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`:
+
+- **Issue created**: `<!-- [create:completed:{issue_number}] -->`
+
+This marker signals to both the orchestrator (`create.md`) and any hook/grep consumer that the workflow is fully complete (Issue created, Projects registered, flow-state deactivated, next steps displayed). The HTML comment form ensures the user-visible final line is the next-steps block, not the sentinel token.
+
+**Output rules**:
+1. `<!-- [create:completed:{N}] -->` is the **absolute last line** of Phase 3.4's output — no plain text after it
+2. The user-visible final content (last non-comment line) MUST be the next-steps block (`次のステップ: ...`) immediately preceded by the `✅` completion message
+3. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
+4. Do **NOT** emit the sentinel as a bare `[create:completed:{N}]` line (without HTML comment wrapping) — the bare form regresses to the user-visible terminal token
+5. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
+
+**Concrete output example**:
+
+```
+✅ Issue #1234 を作成しました: https://github.com/.../issues/1234
+
+次のステップ:
+1. `/rite:issue:start 1234` で作業を開始
+2. 作業完了後 `/rite:pr:create` で PR 作成
+
+<!-- [create:completed:1234] -->
 ```
 
 ---
@@ -509,7 +574,7 @@ github:
           - { name: "M", default: true }
 ```
 
-### Configuration Value Priority
+**Configuration Value Priority**:
 
 1. If `github.projects.project_number` is set in `rite-config.yml` -> Use that Project
 2. If not set -> Auto-detect Projects linked to the repository
@@ -531,82 +596,9 @@ See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) for de
 
 ---
 
-## Phase 4: Terminal Completion
-
-<!-- caller: this sub-skill is terminal. Phase 4 deactivates flow state and outputs the user-visible completion message (✅) + next steps as the last user-visible content, with [create:completed:{N}] embedded in a trailing HTML comment (grep-matchable but not user-visible). The orchestrator's 🚨 Mandatory After Delegation section MUST run in the SAME response turn as a defense-in-depth no-op (Step 1/2 skipped when marker present). DO NOT stop before the orchestrator's self-check completes. -->
-
-> **Design decision**: This sub-skill is a terminal sub-skill — it handles flow-state deactivation, next-step output, and completion marker internally. The caller (`create.md`) retains the same steps as defense-in-depth but is no longer the primary path for these actions. This prevents the workflow from stalling when the orchestrator fails to continue after sub-skill return.
->
-> **Design decision**: The `[create:completed:{N}]` sentinel is emitted as an HTML comment (`<!-- [create:completed:{N}] -->`) so that the user-visible final line is the `✅` completion message + next steps, not the sentinel token. The string `[create:completed:N]` inside the HTML comment is still grep-matchable (`grep -F` / `grep -E '\[create:completed:[0-9]+\]'`) so existing hook/test contracts remain intact. The HTML comment is invisible in rendered Markdown views, which also weakens the LLM's turn-boundary heuristic that would otherwise treat a bare `[create:completed:N]` line as a natural stopping point.
-
-### 4.1 Flow State Deactivation
-
-After Phase 3 (Completion Report), deactivate the flow state:
-
-```bash
-# --if-exists で flow state file 不在時は silent skip。
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "create_completed" \
-  --next "none" --active false \
-  --if-exists
-```
-
-### 4.2 Completion Message (User-facing)
-
-> **Design decision**: The `[create:completed:{N}]` sentinel marker is primarily for hooks/scripts (grep-verified). Emit an explicit user-visible completion message followed by the next-steps block; place the sentinel as a trailing HTML comment so the user's visible final content is the `✅` message + next steps.
-
-Output the user-facing completion message as the first deliverable line of Phase 4's output:
-
-```
-✅ Issue #{issue_number} を作成しました: {issue_url}
-```
-
-Where `{issue_number}` and `{issue_url}` are from the Phase 2.2 script result.
-
-### 4.3 Next Steps Output
-
-Output the next steps after the completion message:
-
-```
-次のステップ:
-1. `/rite:issue:start {issue_number}` で作業を開始
-2. 作業完了後 `/rite:pr:create` で PR 作成
-```
-
-Where `{issue_number}` is the Issue number from Phase 2.2.
-
-### 4.4 Completion Marker (HTML comment form)
-
-Output the completion marker as an **HTML comment on the final line** — invisible to the user in rendered views, but matchable by `grep -F '[create:completed:'` / `grep -E '\[create:completed:[0-9]+\]'`:
-
-- **Issue created**: `<!-- [create:completed:{issue_number}] -->`
-
-This marker signals to both the orchestrator (`create.md`) and any hook/grep consumer that the workflow is fully complete (Issue created, Projects registered, flow-state deactivated, next steps displayed). The HTML comment form ensures the user-visible final line is the next-steps block, not the sentinel token.
-
-**Output rules**:
-1. `<!-- [create:completed:{N}] -->` is the **absolute last line** of Phase 4's output — no plain text after it
-2. The user-visible final content (last non-comment line) MUST be the next-steps block (`次のステップ: ...`) immediately preceded by the `✅` completion message
-3. Do **NOT** output narrative text like `→ create.md に戻ります` — it is not actionable and creates a natural stopping point for the LLM
-4. Do **NOT** emit the sentinel as a bare `[create:completed:{N}]` line (without HTML comment wrapping) — the bare form regresses to the user-visible terminal token
-5. The orchestrator's 🚨 Mandatory After Delegation section serves as defense-in-depth only
-
-**Concrete output example**:
-
-```
-✅ Issue #1234 を作成しました: https://github.com/.../issues/1234
-
-次のステップ:
-1. `/rite:issue:start 1234` で作業を開始
-2. 作業完了後 `/rite:pr:create` で PR 作成
-
-<!-- [create:completed:1234] -->
-```
-
----
-
 ## 🚨 Caller Return Protocol
 
-When this sub-skill completes (Phase 4 terminal completion), the Issue creation workflow is **fully complete**:
+When this sub-skill completes (Phase 3.4 terminal completion), the Issue creation workflow is **fully complete**:
 - Issue created and registered to GitHub Projects ✅
 - flow state deactivated (`active: false`) ✅
 - User-visible completion message + next steps displayed ✅
