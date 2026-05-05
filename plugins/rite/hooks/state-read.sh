@@ -227,7 +227,7 @@ fi
 # Mechanical guard: WARNING on `--default true|false` flags erroneous boolean reads.
 case "$DEFAULT" in
   true|false)
-    echo "WARNING: state-read.sh: --default '$DEFAULT' は boolean リテラル値です。boolean field の読み取りには本 helper を使わないでください (jq の \`// \$default\` 演算子が JSON null と false の両方を default に置換するため、stored false が silent に true に置換される regression を起こします)。non-boolean field (parent_issue_number / phase / loop_count / pr_number 等) のみが現状サポート対象です。boolean field が必要な場合は \`--default empty\` を使い caller 側で明示分岐するか、inline jq を使ってください。" >&2
+    echo "WARNING: state-read.sh: --default '$DEFAULT' は boolean リテラル値です。boolean field の読み取りには本 helper を使わないでください (jq の \`// \$default\` 演算子が JSON null と false の両方を default に置換するため、stored false が silent に true に置換される regression を起こします)。non-boolean field (parent_issue_number / phase / loop_count / pr_number 等) のみが現状サポート対象です。boolean field が必要な場合は \`--default empty\` を使い caller 側で明示分岐するか、inline jq を使ってください。ただし \`--default \"\"\` + binary AND check \`[ \"\$value\" = \"true\" ]\` 経路 (例: commands/pr/ready.md Phase 2.1 の \`active\` field) は、stored false / 不在 → 共に else 分岐の fail-safe pattern として許容されます (上の caveat docstring 参照)。" >&2
     ;;
 esac
 
