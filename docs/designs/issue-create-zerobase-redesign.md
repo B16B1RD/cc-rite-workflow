@@ -393,3 +393,104 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 ---
 
 > 本 design doc は Issue #823 の DoD 第 1 項「plan ドキュメント作成 → user 合意」のための plan deliverable。後続の段階的 refactor PR (PR-E1 〜 PR-E4) は本 plan で合意取得後に着手する。
+
+<!-- Section ID: SPEC-COMPLETION-REPORT -->
+## 11. Phase E 完了レポート
+
+> **位置づけ**: 本セクションは Phase E (PR-E1〜E5) 完了時点での成果物・AC 達成状況・charter 5 自問 consolidated 検証結果を記録する。詳細な経緯は各 PR description / git log を参照 (charter §「git log で代替可な記述は本文に残さない」適用)。
+
+### 11.1 段階的 PR 完了状況
+
+| PR # | タイトル | scope | merged |
+|------|---------|-------|--------|
+| #829 | docs(rite): /rite:issue:create ゼロベース再設計 plan (Phase E) | DoD #1 (plan ドキュメント作成 → user 合意) | ✅ 2026-05-05 |
+| #830 (PR-E1) | refactor(create): remove charter-prohibited prose | charter 散文削除 (4-site/3-site 対称契約 / 撤去歴史 / PR # 引用) | ✅ 2026-05-05 |
+| #833 (PR-E2) | refactor(create): Phase 番号整数化 | Phase 番号体系の整数 + 0.x 1 階層化 (3 階層 21 → 0、Section 11.3 evidence と同一 grep regex `^### [0-9]+\.[0-9]+\.[0-9]+`) | ✅ 2026-05-05 |
+| #834 (PR-E3) | refactor(create): /rite:issue:create AskUserQuestion 削減 | Phase 0.3 fast-path / Phase 3 register preview-only | ✅ 2026-05-05 |
+| #837 (PR-E4) | refactor(create): sub-skill 統合検討 / handoff contract slim 化 | sub-skill 統合可能性評価 (案 C 採用) + handoff contract -38% (実測 97 → 60 行、PR-E4 description / commit 745d282 の `98 → 60 行 / -39%` は line-count・割合とも誤記) | ✅ 2026-05-05 |
+| **PR-E5 (本 PR)** | refactor(rite): #823 Phase E 完了レポート + CHANGELOG | DoD #2-#5 wrap-up (retrospective + CHANGELOG + e2e test plan) | ⏳ |
+
+### 11.2 charter 5 自問 consolidated 検証
+
+各 PR description で個別記録した 5 自問 pass 判定の集約 (詳細は各 PR description を参照):
+
+| PR | Q1: runtime に効くか? | Q2: git log で代替可? | Q3: 説明か手順か? | Q4: 重複 confirmation? | Q5: LLM 向けか人間向けか? |
+|----|----------------------|----------------------|------------------|-----------------------|--------------------------|
+| PR-E1 (#830) | ✅ test/hook で担保 | ✅ git log で参照可 | ✅ 削除のみ | ✅ 該当なし | ✅ LLM 向け SoT 集約 |
+| PR-E2 (#833) | ✅ flow-state token 不変 | ✅ 旧番号 git log 追跡可 | ✅ 手順構造整理 | ✅ 重複 patch なし | ✅ 整数 + 0.x で構造把握改善 |
+| PR-E3 (#834) | ✅ context flag で fast-path | ✅ ambiguity fallback 残存で代替可 | ✅ 手順 (preview / fast-path) | ✅ Phase 0.3 既承認判断を Phase 2.2 で再確認しない | ✅ user UX 向上 |
+| PR-E4 (#837) | ✅ 機能契約保持 (4-site test) | ✅ 抽出経緯は git log | ✅ slim 化のみ | ✅ historical site 削除 | ✅ SoT 単一化 |
+
+### 11.3 AC 達成 evidence
+
+実測コマンドと結果 (測定日: 2026-05-05、評価対象: `commands/issue/create*.md` 4 ファイル):
+
+| AC | 達成状況 | evidence |
+|----|---------|----------|
+| **AC-1** (本体 1〜2 ファイルで全体像把握) | ✅ 達成 | `create.md` 347 行 (orchestrator entry point) + sub-skill 3 本 (interview 315 / decompose 508 / register 623)。新規 contributor は `create.md` 単独で **orchestration 構造** (Phase 0/1/2/3 + sub-skill への delegation routing) + sub-skill 責務分担を把握可能 (各 sub-skill 内部の Phase 3.x 詳細実装は該当 sub-skill ファイルを参照)。E4 評価 (#837 評価ドキュメント Section 3) で案 A/B/C 比較の上 案 C 採用を確定 |
+| **AC-2** (Phase 番号整数化) | ✅ 達成 | `grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' commands/issue/create*.md` の合計 = **0 件** (PR-E2 前は 21 件)。整数 + 0.x の 1 階層のみ |
+| **AC-3** (AskUserQuestion 削減) | ✅ 達成 (runtime 経路) | runtime 通過数 (preset 別、PR-E3 適用後): Bug Fix preset **0-1 回** (旧 1-3 回) / Feature M **2-3 回** (旧 6-8 回) / XL decompose **3-4 回** (旧 7-10 回)。静的 grep 値は ambiguity fallback 分岐追加により若干変動するが、preset 別 runtime 経路で AC-3 を達成 |
+| **AC-4** (機能契約保持) | ✅ 達成 | (a) `pre-tool-bash-guard.sh` Bypass block: `create.md` で grep 検出 (Phase 0 prohibition で全 sub-skill scope に適用、`create-interview.md` 等は `create.md` 経由で Bypass 規約を継承し独立宣言は持たない)。(b) Terminal Completion pattern: `create.md` / `create-decompose.md` / `create-register.md` で grep 検出。(c) 4-site-symmetry test: `plugins/rite/hooks/tests/4-site-symmetry.test.sh` 存続 |
+| **AC-5** (e2e test 3 経路 pass) | ⏳ manual 実行待ち | 自動化 e2e test infrastructure は本 plan の deliverable に含めない (Section 8.3 で「ad-hoc 手動実行」を運用方針として表明、PR-E0 を必要時 option として位置付けている)。Section 11.4 の manual test 手順を user が Issue close 前に実行することで達成 |
+
+### 11.4 e2e test manual 実行手順
+
+> **位置づけ**: 自動化された e2e test infrastructure は本 plan の deliverable に含めない (Section 8.3 で「ad-hoc 手動実行」を運用方針として表明)。以下 3 経路を `develop` (E5 merge 後) で manual 実行し、結果を Issue #823 close 時のコメントとして記録する。
+
+**経路 1: Bug Fix preset**
+
+```text
+/rite:issue:create "Fix typo in CHANGELOG"
+```
+
+期待挙動:
+
+- Phase 1 で Bug Fix preset 検出 → adaptive interview の早期 return
+- Phase 2 で complexity != XL → decompose スキップ
+- Phase 3 register で auto-create (preview-only fallback) または ambiguity 検出時のみ confirm
+- 通過 AskUserQuestion: **0-1 回**
+
+**経路 2: Single Issue (M complexity)**
+
+```text
+/rite:issue:create "Add user logout endpoint to auth API"
+```
+
+期待挙動:
+
+- Phase 1 で Feature 経路 → adaptive interview (B1 / B2 follow-up 通過)
+- Phase 2 で complexity == M → decompose スキップ
+- Phase 3 register で confirmation
+- 通過 AskUserQuestion: **2-3 回**
+
+**経路 3: XL decompose**
+
+```text
+/rite:issue:create "Build user management system with auth, profiles, admin dashboard"
+```
+
+期待挙動:
+
+- Phase 1 で Feature 経路 → adaptive interview
+- Phase 2 で complexity == XL → decompose 提案
+- Phase 3 decompose で Sub-Issue 自動作成 + bulk-create
+- 通過 AskUserQuestion: **3-4 回**
+
+**判定基準**: 各経路で (a) 想定 AskUserQuestion 数以内で完了、(b) 作成された Issue が GitHub Projects に正しく登録される、(c) Sub-Issue 作成経路では parent ↔ child link が `subIssues` API で establish される。
+
+### 11.5 DoD 達成状況
+
+| DoD 項目 | 状態 | 証跡 |
+|---------|------|------|
+| (1) plan ドキュメント作成 → user 合意 | ✅ 達成 | PR #829 merged |
+| (2) 段階的リファクタ PR (3〜5 本想定) 全 merge | ✅ 達成 (E5 merge 時) | E1-E4 merged + 本 PR (E5) で wrap-up |
+| (3) charter 5 自問の条件を全 PR で通過 | ✅ 達成 | Section 11.2 consolidated 表 |
+| (4) e2e test 3 経路 pass | ⏳ user manual 実行待ち | Section 11.4 手順、Issue #823 close 時実行 |
+| (5) PR description / commit message に再設計の方向性を明記 | ✅ 達成 | 各 PR description / 本 Section 11 / CHANGELOG entry |
+
+### 11.6 残タスク
+
+- Issue #823 close 前に Section 11.4 の e2e test 3 経路を user が manual 実行
+- e2e test 結果を Issue #823 にコメント記録 (DoD #4 達成証跡)
+- Issue body checklist の最終更新 (`gh issue edit` で全 `[x]` 化)
+- 本 PR (PR-E5) merge 後、Section 11.1 表の **PR-E5 (本 PR)** 行 `merged` 列を `⏳` から `✅ {merged_at}` に更新 (post-merge action)

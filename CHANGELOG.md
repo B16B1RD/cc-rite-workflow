@@ -17,6 +17,14 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+### Changed
+
+- Completed zero-base redesign of `/rite:issue:create` (Phase E) (#823)
+  - Applied [Simplification Charter](plugins/rite/skills/rite-workflow/references/simplification-charter.md) (5 self-questions / recommended patterns) to achieve: integer Phase numbering (21 three-level numbers → 0) / reduced runtime AskUserQuestion count (Bug Fix preset 1-3 → 0-1 / Feature M 6-8 → 2-3 / XL decompose 7-10 → 3-4) / sub-skill consolidation evaluation (Option C adopted) / slimmed `references/sub-skill-handoff-contract.md` (97 → 60 lines, -38%).
+  - Delivered as 5 staged PRs: planning (#829) → charter prose removal (PR-E1 #830) → Phase numbering integerization (PR-E2 #833) → AskUserQuestion reduction (PR-E3 #834) → sub-skill consolidation evaluation + handoff contract slim (PR-E4 #837) → completion report + CHANGELOG (PR-E5 this PR).
+  - All functional contracts preserved (`pre-tool-bash-guard.sh` Bypass block / Terminal Completion pattern / `4-site-symmetry.test.sh` / sentinel emit). flow-state phase tokens unchanged (NFR-4 compliance).
+  - For detailed completion report and AC achievement evidence, see [`docs/designs/issue-create-zerobase-redesign.md`](docs/designs/issue-create-zerobase-redesign.md) Section 11.
+
 ## [0.4.0] - 2026-04-22
 
 ### BREAKING CHANGE
