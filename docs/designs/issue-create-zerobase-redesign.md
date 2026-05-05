@@ -47,7 +47,7 @@
 
 ### 2.2 Phase 番号体系 (小数点・3 階層、grep 実測結果)
 
-> **実測コマンド** (再現可能): 各ファイルの phase 番号は `grep -oE '^### (Phase )?[0-9]+\\.[0-9]+(\\.[0-9]+)?' <file> | sort -u` で抽出した (`create-interview.md` のみ `## Phase` heading のため `^## (Phase )?` を使用)。
+> **実測コマンド** (再現可能): 各ファイルの phase 番号は `grep -oE '^### (Phase )?[0-9]+\.[0-9]+(\.[0-9]+)?' <file> | sort -u` で抽出した (`create-interview.md` のみ `## Phase` heading のため `^## (Phase )?` を使用)。Section 8.1.1 の設計原則 (raw markdown source からそのまま copy 実行で正常動作させるため、table cell 外の inline code では single backslash `\.` を使用する) に準拠。
 
 | ファイル | grep 実測値 | サブセクション数 |
 |---------|------------|----------------|
@@ -129,7 +129,7 @@
 | 7 | Phase 番号 0.6.1 / 0.6.2 / 0.7.1-3 / 0.8.1-4 / 0.9.1-6 / 1.0.1-3 / 1.5.1-5 (3 階層) | 自問 5 (人間向け長文 = 詳細記述ノイズ): runtime に効くが LLM への階層的指示としては 1 階層で十分 | **整理候補** (整数 Phase + 0.x 1 階層に collapse、3 階層 → 1 階層 collapse) |
 | 8 | references/ 配下 7 ファイル 815 行 | 自問 1/3 (runtime decision tree か説明か) | **保持 (charter 適用範囲外)** decision tree 系 reference は適用範囲外 (charter §「適用範囲外」) |
 | 9 | 経緯記述 (Issue #444-#660 防御層導入経緯、cycle 番号付き review 記録、PR # 本文引用) が `create*.md` 本文に散在 | 自問 2 (git log で代替可) + 自問 5 (人間向け長文) + charter 禁止パターン (`Issue #N` / `PR #N` / `cycle N` 本文引用、対称化契約の散文記述) | **削除候補** (commit message + close 済み Issue で代替、本文からは grep で機械的に削除可能) |
-| 10 | EDGE-3 / EDGE-4 / EDGE-5 (edge-cases-create.md) | 自問 1 (runtime decision tree) | **保持 (適用範囲外)** |
+| 10 | EDGE-2 / EDGE-3 / EDGE-4 / EDGE-5 (edge-cases-create.md) | 自問 1 (runtime decision tree) | **保持 (適用範囲外)** |
 
 ### 3.1 charter MUST NOT (適用範囲外) の確認
 
