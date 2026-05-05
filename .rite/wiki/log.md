@@ -408,3 +408,4 @@
 | 2026-05-05T14:30:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #838 fix cycle 3 (precision improvements convergence) |
 | 2026-05-06T00:15:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #839 review (PR #827 helper-side follow-up: helper docstring caller-extension drift sub-pattern verification cycle, 0 blocking findings 1-cycle completion) |
 | 2026-05-06T02:38:50+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #846 review (PR #839 follow-up of follow-up: next_action caller を docstring 列挙に追加、reviewer investigation suggestion で pr_number 実 caller 不在の lexicon-implementation gap を可視化、0 blocking 1 cycle) |
+| 2026-05-06T02:39:30+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=86, broken_refs=149 |
