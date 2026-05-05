@@ -23,9 +23,9 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 **MUST run before any interview logic** (Phase 1 scope evaluation / Phase 1.1 deep-dive / return-output emission)。**not optional**、**interview scope に conditional でない** — Bug Fix / Chore preset (scope = "skip") でも実行:
 
 ```bash
-# bash 引数 / exit-code check / --preserve-error-count rationale は references/sub-skill-handoff-contract.md (canonical SoT)
-# に集約。本ブロックは canonical bash 引数 symmetry を保持し、state-path-resolve.sh + _resolve-flow-state-path.sh で
-# per-session (schema_version=2) / legacy 両形式に対応。
+# 4 引数 symmetry (--phase / --active / --next / --preserve-error-count) は
+# plugins/rite/hooks/tests/4-site-symmetry.test.sh で test 担保。state-path-resolve.sh
+# + _resolve-flow-state-path.sh で per-session (schema_version=2) / legacy 両形式に対応。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
@@ -243,8 +243,9 @@ Interview Perspective → Target Sections の正規 mapping table は [`referenc
 Immediately before emitting the four-line return block, re-patch flow state (idempotent with Pre-flight write):
 
 ```bash
-# bash 引数 / exit-code check / --preserve-error-count rationale は references/sub-skill-handoff-contract.md (canonical SoT)
-# に集約。Pre-flight 後の同一 phase self-patch のため file 存在は保証済み。
+# 4 引数 symmetry (--phase / --active / --next / --preserve-error-count) は
+# plugins/rite/hooks/tests/4-site-symmetry.test.sh で test 担保。Pre-flight 後の同一 phase
+# self-patch のため file 存在は保証済み。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
@@ -303,7 +304,7 @@ Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** call
 
 **WARNING**: **GitHub Issue は未作成**。本セクションで停止すると deliverable なしで workflow 放棄。
 
-**Output rules** (本セクションが marker 形式の SoT。bash 引数 / exit-code symmetry の SoT は [`references/sub-skill-handoff-contract.md`](./references/sub-skill-handoff-contract.md)):
+**Output rules** (本セクションが marker 形式の SoT。bash 引数 symmetry は [`hooks/tests/4-site-symmetry.test.sh`](../../hooks/tests/4-site-symmetry.test.sh) で test 担保):
 
 0. **FIRST**: `[CONTEXT] INTERVIEW_DONE=1; scope={skipped|completed}; next=phase_2` を **plain-text line** で出力（HTML-commented 不可）。位置規定:
    - **0b (構造保証、canonical)**: Rules 0-1 の相対順序が **4-line return block** を pin する: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST)。この 4-line invariant が canonical で、他の位置記述はここから導出

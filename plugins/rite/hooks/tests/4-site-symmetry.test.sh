@@ -36,6 +36,36 @@
 #     test for phase-name registration (e.g., `create_post_interview` is whitelisted)
 #     is a different concern handled elsewhere if needed.
 #
+# Intentional asymmetries (NOT covered by this test, by design):
+#   The 4-site contract has two intentional, runtime-significant asymmetries that
+#   this test deliberately does NOT enforce. They live in the orchestrator
+#   (`create.md`) / sub-skill (`create-interview.md`) literals themselves and any
+#   change must preserve them:
+#
+#   (a) `--if-exists` flag asymmetry:
+#         - PRESENT in: orchestrator-side patches (create.md Step 0 + Step 1) and
+#           caller HTML inline literals in create-interview.md Return Output.
+#           These run AFTER Pre-flight has guaranteed file existence, so
+#           `--if-exists` is a no-op safety net.
+#         - ABSENT in: functional bash blocks inside create-interview.md
+#           (Pre-flight + Return Output re-patch). These must branch on
+#           `[ -f "$state_file" ]` to handle the file-absent case via `create`
+#           mode, which `--if-exists` (a patch-mode-only silent-skip flag)
+#           cannot express.
+#
+#   (b) path expression asymmetry:
+#         - `{plugin_root}/hooks/flow-state-update.sh` in functional code
+#           (Claude Code plugin loader expands `{plugin_root}` before LLM sees it).
+#         - `bash plugins/rite/hooks/flow-state-update.sh ...` (relative path,
+#           cwd=repo_root) in caller HTML inline literals — embedding
+#           `{plugin_root}` inside an HTML comment would cause the LLM to pass
+#           the literal placeholder to the shell, breaking execution.
+#
+#   The 4-arg symmetry test below is the canonical drift detector for the
+#   symmetric part of the contract. The asymmetric part above is preserved by
+#   matching the literals already present in create.md / create-interview.md when
+#   editing — do NOT "normalize" `--if-exists` or path expressions across sites.
+#
 # Test cases:
 #   For each (site, arg) pair in SITES × REQUIRED_ARGS, assert that grep -cE
 #   reports >= 1. Coarse drift detector (won't catch removal from one occurrence
