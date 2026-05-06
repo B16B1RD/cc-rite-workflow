@@ -299,7 +299,7 @@ fi
 | Interview results | Phase 1.1 | **N/A** — EDGE-3 row 4 適用 (MUST sections に placeholder) |
 | Tentative slug | [Phase 0.2](./references/slug-generation.md) | 常に available |
 | `phases_skipped` flag | Phase 0.3 | `"0.4-0.5"` (Phase 0.3 早期分解時) または `null` |
-| `decomposition_decision_finalized` flag | Phase 0.3 | `true` (Phase 0.3 で「いいえ、単一」明示選択時) または `null`。conversation context で保持 (flow-state file には persist しない)。`create-register` Phase 3 の path 認識には影響しないが、create.md Phase 2.2 fast-path 経由で create-register が呼ばれた根拠を context として handoff する |
+| `decomposition_decision_finalized` flag | Phase 0.3 | `true` (Phase 0.3 で「いいえ、単一」明示選択時) または `null`。Phase 0.3 fast-path 由来であることを示す traceability context として handoff (詳細・retention 仕様は Phase 0.3 の Retention mechanism 段落参照、`create-register` 側 path 認識への影響なし) |
 
 **🚨 Immediate after delegation returns**: sub-skill が `[create:completed:{N}]` を出力したら同 turn 内で Mandatory After Delegation を実行。
 
