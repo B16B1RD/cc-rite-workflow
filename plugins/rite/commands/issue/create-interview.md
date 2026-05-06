@@ -304,7 +304,9 @@ Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** call
 
 **WARNING**: **GitHub Issue は未作成**。本セクションで停止すると deliverable なしで workflow 放棄。
 
-**Output rules** (本セクションが marker 形式の SoT、かつ **両 test の hub**: bash 引数 symmetry は [`hooks/tests/4-site-symmetry.test.sh`](../../hooks/tests/4-site-symmetry.test.sh) で test 担保、`[interview:skipped]` / `[interview:completed]` 2 example block 間の caller HTML inline literal の byte equality は [`hooks/tests/caller-html-literal-symmetry.test.sh`](../../hooks/tests/caller-html-literal-symmetry.test.sh) で test 担保。bash block 側コメント (🚨 MANDATORY Pre-flight / Return Output Format) は bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持):
+本セクションは marker 形式の SoT であり、かつ **両 test の hub** として機能する。bash 引数 symmetry は [`hooks/tests/4-site-symmetry.test.sh`](../../hooks/tests/4-site-symmetry.test.sh) で test 担保、`[interview:skipped]` / `[interview:completed]` 2 example block 間の caller HTML inline literal の byte equality は [`hooks/tests/caller-html-literal-symmetry.test.sh`](../../hooks/tests/caller-html-literal-symmetry.test.sh) で test 担保する。bash block 側コメント (🚨 MANDATORY Pre-flight / Return Output Format) は bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持する。
+
+**Output rules**:
 
 0. **FIRST**: `[CONTEXT] INTERVIEW_DONE=1; scope={skipped|completed}; next=phase_2` を **plain-text line** で出力（HTML-commented 不可）。位置規定:
    - **0b (構造保証、canonical)**: Rules 0-1 の相対順序が **4-line return block** を pin する: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST)。この 4-line invariant が canonical で、他の位置記述はここから導出
