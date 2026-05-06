@@ -2,10 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-05T17:38:50Z"
+updated: "2026-05-06T04:50:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260505T170709Z-pr-846.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260506T035708Z-pr-858.md"
   - type: "reviews"
     ref: "raw/reviews/20260505T133653Z-pr-838.md"
   - type: "reviews"
@@ -542,8 +544,22 @@ cycle 3 でも続いて MEDIUM precision finding (cycle 2 fix の注記が perce
 2. **partial fix の cycle 2 cross-validation での補捉構造**: 1 cycle で完全な sweep を保証できない場合でも、cycle 2 reviewer の cross-validation で必ず surface する設計が機能していることを実測 (PR #838 cycle 2 で MEDIUM 検出)。cross-validation は単独 reviewer の死角を補完する load-bearing mechanism として継続的に依拠してよい
 3. **Doc-Heavy retrospective PR の予測収束軌跡**: cycle 1 で 6 findings → 4-cycle 内で 0 blocking 達成は典型的 pattern。cycle 数 hard limit ではなく `findings == 0` 収束を待つこと、cycle 2-3 で minor findings が出ても Phase 5.3.0 自動降格と cross-validated finding 例外修正の組み合わせで収束する設計に依拠してよい (本 PR の cycle 数 cap 撤廃 #557 設計判断と整合)
 
+### Hub 化 + 責務分離による構造的解決 (PR #858 / Issue #851 retrospective、累積 25 回目の resolution alternative 観測)
+
+PR #858 (1-line minimal-diff doc PR) と Issue #851 close retrospective で、本 anti-pattern の **解決手段の選択肢 (Option A vs Option B)** が初めて明示的に記録された:
+
+- **Option A — 両側修正 (symmetric replication)**: 対称位置すべてに同じ参照/fix を物理的に複製。これまでの累積データの中心戦略
+- **Option B — hub 化 + 責務分離文書化**: 一方を hub (Single Source of Truth) と宣言し、もう一方の責務範囲を narrow して「両者は別 layer の責務」と canonical 文書化することで、symmetry 自体を構造的に不要にする
+
+Issue #851 では line 27/247 の bash block コメントが line 307 SoT への逆参照を欠いた asymmetric pattern を、Option B (line 307 を「両 test の hub」と明示) で解決。**「bash block 側コメントは bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持」** という責務分離記述が、将来「両側にも書こう」という refactor 提案を SoT 行を通じて構造的に retract する drift 経路の物理的閉塞を達成。
+
+**観測された落とし穴**: Option B は新しい SoT を作るため、**hub 行の prose 構造そのもの**が後続 review の品質ゲート対象になる。PR #858 で追加した hub 明示 1 line が parenthetical 末尾の `):` で「半角 `)` + 半角 `:`」と「list 始端 colon」を兼ねる二重役割となり、style drift として PR #862 で再修正された。Option B 採用判断と並行して、hub 行の prose style (parenthetical 構造、style 統一) も style guide 対象に含めるべき。
+
+**選択基準と詳細な canonical 対策**は別ページで管理: [Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
+
 ## 関連ページ
 
+- [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
 - [新規 file 命名と既存 find glob が collision して silent 削除を起こす](./find-glob-naming-collision-silent-removal.md)
 - [Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される](./html-comment-breaks-gfm-table-boundary.md)
@@ -622,3 +638,4 @@ cycle 3 でも続いて MEDIUM precision finding (cycle 2 fix の注記が perce
 - [PR #838 fix cycle 3 (MEDIUM precision + LOW tense 2 件対応、minor improvement への収束を実測)](raw/fixes/20260505T135657Z-pr-838-cycle3.md)
 - [PR #838 review cycle 4 (両 reviewer 評価「可」、0 blocking findings、4-cycle 構造的収束、Phase 5.3.0 安全網の effectiveness と Doc-Heavy retrospective PR の典型的 convergence 軌跡を実測)](raw/reviews/20260505T140020Z-pr-838-cycle4.md)
 - [PR #846 review (PR #839 の更なる follow-up: state-read.sh docstring の non-boolean caller 列挙に `next_action` 1 件を追加、PR #839 が見落とした 6 → 7 caller の cumulative 再発を 0 blocking 1 cycle で収束。code-quality reviewer の investigation suggestion で `pr_number` が docstring 列挙されているが `state-read.sh --field pr_number` を呼ぶ実 caller がゼロ件 (work-memory-update.sh:77 の docstring 例にのみ存在) であることを発見し、docstring 列挙が「現状の caller 完全列挙」ではなく「documented-supported field list」として運用されている lexicon-implementation gap を可視化。helper / caller / prose 3 layer 同期契約の next iteration として「列挙の意味論宣言 (caller list vs supported field list) 自体が drift 源になりうる」観点を追加 — sub-pattern 識別後も意味論層で同型 drift が再発する shrinking-cycle observation)](raw/reviews/20260505T170709Z-pr-846.md)
+- [PR #858 review (1-line minimal-diff doc PR で Asymmetric Fix Transcription の解決手段として Option B (hub 化 + 責務分離文書化) を採用、両 reviewer 0 blocking findings で merge 完了、Issue #851 の line 307 を「両 test の hub」と明示することで line 27/247 bash block コメントとの asymmetric pattern を構造的に閉塞)](raw/reviews/20260506T035708Z-pr-858.md)
