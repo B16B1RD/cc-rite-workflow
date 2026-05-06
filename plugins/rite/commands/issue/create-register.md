@@ -113,7 +113,6 @@ The type determines which Type Core Section (Section 3) is used in the Issue bod
 
 | Trigger | 理由 |
 |---------|------|
-| Phase 0.4 で類似 Issue が title 完全一致 / 90%+ 類似度 | 重複 Issue 作成リスク |
 | Projects 設定が `enabled: true` だが `project_number` 未取得 / API エラー | Projects 登録失敗の silent missing risk |
 | Complexity = XL かつ Implementation Contract Section 4 (Implementation Details) が空 | spec 不足 PR を生む risk |
 | Title が 200 文字超 | GitHub 制限近接、編集機会必要 |
