@@ -121,6 +121,8 @@ create.md (orchestrator)
 
 **Context flag `decomposition_decision_finalized`**: Phase 0.3 で user が「いいえ、単一」を明示選択した時点で、分解要否の判断は確定済み。Phase 2.2 で同じ問いを再発火させない (charter 5 自問 #4「既に承認された判断を再確認しない」)。本 flag は Phase 1 で tentative complexity が XL に上昇したケースでも保持され、Phase 2.2 は skip される (Phase 0.3 の user 明示選択を尊重)。
 
+**Retention mechanism**: 本 flag は **conversation context** 内で保持される (flow-state file には persist しない)。`create.md` Phase 0.3 → Phase 1 → Phase 2.2 → Phase 3 handoff は同一セッション内の一気通貫実行を前提としているため、`/clear` で context が破棄された場合 flag は失われる (再開時は通常 path が走り、Phase 2.2 で再確認が発生する)。これは意図的設計 (`/clear` 後は user の判断状況が変わっている可能性があり、再確認が安全な default)。
+
 ### 0.4 Search for Similar Issues
 
 **Purpose**: 重複検出 / context gathering / extension 候補検出 (parent Issue 検出は `start.md` 担当)。
@@ -297,6 +299,7 @@ fi
 | Interview results | Phase 1.1 | **N/A** — EDGE-3 row 4 適用 (MUST sections に placeholder) |
 | Tentative slug | [Phase 0.2](./references/slug-generation.md) | 常に available |
 | `phases_skipped` flag | Phase 0.3 | `"0.4-0.5"` (Phase 0.3 早期分解時) または `null` |
+| `decomposition_decision_finalized` flag | Phase 0.3 | `true` (Phase 0.3 で「いいえ、単一」明示選択時) または `null`。conversation context で保持 (flow-state file には persist しない)。`create-register` Phase 3 の path 認識には影響しないが、create.md Phase 2.2 fast-path 経由で create-register が呼ばれた根拠を context として handoff する |
 
 **🚨 Immediate after delegation returns**: sub-skill が `[create:completed:{N}]` を出力したら同 turn 内で Mandatory After Delegation を実行。
 

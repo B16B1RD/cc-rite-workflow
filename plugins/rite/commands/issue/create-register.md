@@ -16,6 +16,7 @@ Classify, confirm, create, and register a single Issue. This sub-command is invo
 - Goal classification from Phase 0.5 — available if conducted; `null` if skipped (Phase 0.3 early decomposition path)
 - Language setting from Preparation phase — **always available**
 - `phases_skipped` flag — `"0.4-0.5"` when Phase 0.3 triggered early decomposition; `null` otherwise
+- `decomposition_decision_finalized` flag — `true` when Phase 0.3 で user が「いいえ、単一」を明示選択した fast-path 経由で呼び出された (Phase 2.2 confirmation skip); `null` otherwise. Conversation context 内で保持され (flow-state file には persist しない)、`create-register` 側では path 認識への影響はないが、Phase 0.3 fast-path 由来であることを示す context として handoff される
 - Specification document path — available when invoked from `create-decompose.md` cancel (Phase 3.1 Specification Document Confirmation)
 
 **Fallback rules for missing prerequisites**:
