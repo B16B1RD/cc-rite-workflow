@@ -414,3 +414,4 @@
 | 2026-05-06T04:01:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=86, broken_refs=149 |
 | 2026-05-06T05:48:00+09:00 | ingest:skip | raw/reviews/20260505T203854Z-pr-850.md | PR #850 (Issue #832 option B 採択) review: 0 blocking findings 1-cycle 完全収束、4 LOW/INFO は Observed Likelihood Gate で推奨事項に降格。学習対象は既存 Wiki ページ (Asymmetric Fix Transcription / 5-perspective test reviewer pattern / cross-validation 役割) の confirmation のみで新規経験則なし、page 化不要 |
 | 2026-05-06T05:48:30+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=97, broken_refs=208 |
+| 2026-05-06T03:09:30Z | ingest:skip | raw/reviews/20260506T021305Z-pr-857.md | PR #857 (Issue #836 — Phase 0.4 と Phase 3 ambiguity gate 二重確認矛盾解消) review: 0 blocking findings 1-cycle 完全収束、charter 5 自問 #4 適用例 + Asymmetric Fix Transcription 既存ページの cross-doc grep verification pattern の confirmation のみで新規経験則なし、page 化不要 |
