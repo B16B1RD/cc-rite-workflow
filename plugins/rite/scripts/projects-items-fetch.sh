@@ -48,9 +48,12 @@ command -v jq >/dev/null 2>&1 || fetch_failed "jq not found"
 # --- tempfile 準備 + cleanup trap ---
 # tmpfile は成功時に caller へ hand-off するため trap 対象から外す (handed_off で制御)。
 # pages / err は中間ファイルのため全経路で削除する。
-tmpfile=$(mktemp) || fetch_failed "mktemp failed for result tempfile"
-pages=$(mktemp) || { rm -f "$tmpfile"; fetch_failed "mktemp failed for pages tempfile"; }
-err=$(mktemp) || { rm -f "$tmpfile" "$pages"; fetch_failed "mktemp failed for stderr tempfile"; }
+# 明示的な `${TMPDIR:-/tmp}/rite-…-XXXXXX` テンプレートを使う (リポジトリ共通慣習)。bare `mktemp`
+# は BSD/macOS で $TMPDIR を GNU と同じには尊重せず既定 location に着地するため、caller が
+# $TMPDIR で隔離を張っても外れる (Issue #2008)。
+tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-projects-items-result-XXXXXX") || fetch_failed "mktemp failed for result tempfile"
+pages=$(mktemp "${TMPDIR:-/tmp}/rite-projects-items-pages-XXXXXX") || { rm -f "$tmpfile"; fetch_failed "mktemp failed for pages tempfile"; }
+err=$(mktemp "${TMPDIR:-/tmp}/rite-projects-items-err-XXXXXX") || { rm -f "$tmpfile" "$pages"; fetch_failed "mktemp failed for stderr tempfile"; }
 handed_off=0
 _cleanup() {
   rm -f "$pages" "$err"

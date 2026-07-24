@@ -289,14 +289,14 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-11: tempfile lifecycle"
 run_fetch pif_graphql_fail --project-number 6 --owner test-owner
-leak_count=$(find "$ISOLATED_TMP" -type f | wc -l)
+leak_count=$(find "$ISOLATED_TMP" -type f | wc -l | tr -d ' ')
 if [ "$leak_count" = "0" ]; then
   pass "failure path leaves no tempfiles"
 else
   fail "failure path leaked $leak_count tempfile(s): $(find "$ISOLATED_TMP" -type f)"
 fi
 run_fetch pif_success --project-number 6 --owner test-owner
-remain_count=$(find "$ISOLATED_TMP" -type f | wc -l)
+remain_count=$(find "$ISOLATED_TMP" -type f | wc -l | tr -d ' ')
 if [ "$remain_count" = "1" ] && [ -f "$LAST_OUTPUT" ]; then
   pass "success path hands off exactly one result file"
 else
@@ -315,7 +315,7 @@ if [ "$LAST_RC" = "0" ] && [[ "$LAST_OUTPUT" == "[projects:fetch-failed] jq norm
 else
   fail "unexpected (rc=$LAST_RC): $LAST_OUTPUT"
 fi
-norm_leak_count=$(find "$ISOLATED_TMP" -type f | wc -l)
+norm_leak_count=$(find "$ISOLATED_TMP" -type f | wc -l | tr -d ' ')
 if [ "$norm_leak_count" = "0" ]; then
   pass "normalization failure path leaves no tempfiles"
 else
