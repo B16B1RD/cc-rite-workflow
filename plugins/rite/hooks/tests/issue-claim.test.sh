@@ -155,7 +155,7 @@ else
   # serialized, so mutual exclusion cannot be guaranteed — all N contenders may
   # steal the same stale claim (a real production gap tracked in #2010). Skip the
   # exactly-one assertions here rather than asserting the degraded behavior.
-  echo "  ⏭️  TC-14 skipped (flock absent; stale-steal mutual-exclusion gap tracked in #2010; observed stolen=$_stolen other=$_other)"
+  skip "TC-14 skipped (flock absent; stale-steal mutual-exclusion gap tracked in #2010; observed stolen=$_stolen other=$_other)"
 fi
 
 echo "=== TC-15 (Issue #1718 AC-2): single-session stale-steal is non-regressed ==="

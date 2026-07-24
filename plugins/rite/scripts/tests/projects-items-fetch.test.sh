@@ -315,6 +315,17 @@ if [ "$remain_count" = "1" ] && [ -f "$LAST_OUTPUT" ]; then
 else
   fail "expected exactly 1 handed-off file, got $remain_count"
 fi
+# The leak counts above cannot detect a revert to bare `mktemp`: GNU mktemp honours
+# $TMPDIR without a template, so the files land in $ISOLATED_TMP either way and the
+# counts are identical. Asserting the basename pins the explicit template on the
+# blocking Linux leg, where the BSD behaviour the change targets is unobservable
+# (Issue #2008 review G-05).
+case "$(basename "$LAST_OUTPUT")" in
+  rite-projects-items-result-*)
+    pass "result tempfile uses the explicit rite-projects-items-result-XXXXXX template" ;;
+  *)
+    fail "result tempfile basename '$(basename "$LAST_OUTPUT")' does not match rite-projects-items-result-* — bare mktemp regression?" ;;
+esac
 
 # --------------------------------------------------------------------------
 # TC-12: jq normalization 失敗 → fetch-failed sentinel + tempfile 非 leak

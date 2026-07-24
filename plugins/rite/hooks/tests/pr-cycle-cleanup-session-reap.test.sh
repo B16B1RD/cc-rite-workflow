@@ -299,7 +299,7 @@ assert_grep "T-07 live-cwd guard WARNING on stderr" "$R/pcc.err" "live-cwd guard
 case "$out" in *"session_worktrees=0"*) pass "T-07 status reports session_worktrees=0" ;; *) fail "T-07 status: $out" ;; esac
 kill "$_h80" 2>/dev/null || true; wait "$_h80" 2>/dev/null || true
 else
-  echo "  ⏭️  T-07 skipped (no /proc: OS-level live-cwd guard uses lsof; exit-code false-negative reaps live tree, tracked in #2011)"
+  skip "T-07 skipped (no /proc: OS-level live-cwd guard uses lsof; exit-code false-negative reaps live tree, tracked in #2011)"
 fi
 
 echo "=== T-08 (Issue #1544 non-regression): same clean+stale worktree with NO live cwd → reaped ==="

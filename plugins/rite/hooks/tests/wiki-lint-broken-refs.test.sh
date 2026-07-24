@@ -46,6 +46,10 @@ PASS=0
 FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (Issue #2008 review G-04). Same shape as _test-helpers.sh skip().
+SKIP=0
+skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
 # page A: 検査対象。有効 / broken / 除外対象の link を混在させる
 PAGE_A='---
@@ -182,7 +186,7 @@ else
   fail "TC-5 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
 fi
 else
-  echo "  ⏭️  TC-1..TC-5 skipped (GNU 'realpath -m -s' absent; broken-refs detection is a no-op here by design)"
+  skip "TC-1..TC-5 skipped (GNU 'realpath -m -s' absent; broken-refs detection is a no-op here by design)"
   # TC-6/7/8 (arg validation) still run — they exit before the realpath gate —
   # but need a valid $repo to cd into (the detection TCs above normally set it).
   repo=$(make_same_branch_sandbox tc_argval)
@@ -225,9 +229,9 @@ else
   fail "TC-9 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 else
-  echo "  ⏭️  TC-9 skipped (GNU 'realpath -m -s' absent; broken-refs is a no-op here by design)"
+  skip "TC-9 skipped (GNU 'realpath -m -s' absent; broken-refs is a no-op here by design)"
 fi
 
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
+echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" )"
 [ "$FAIL" -eq 0 ] || exit 1

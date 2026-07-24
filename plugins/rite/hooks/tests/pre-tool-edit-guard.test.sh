@@ -53,6 +53,10 @@ REAL_JQ=$(command -v jq)   # absolute path, captured before any PATH-shim test s
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (Issue #2008 review G-04). This file does not source _test-helpers.sh.
+SKIP=0
+skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
 SUBAGENT_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/subagents/agent-abc123.jsonl"
 MAIN_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/main.jsonl"
@@ -297,13 +301,26 @@ echo ""
 # element, which works on BSD too. Do NOT describe AC-3 (Claude Code's Edit/Write
 # refusing symlink writes) as the backstop here: pre-tool-edit-guard.sh states
 # that the guard "does not rely on that (undocumented) harness behavior", so
-# leaning on it as the macOS safety net contradicts the hook's own design. The
-# residual exposure while #2014 is open is a Write landing a new file in the
-# parent working tree (visible in `git status`); the .git RCE path stays closed
-# because pre-tool-bash-guard.sh's `_gd_fileverb` denies it independently.
+# leaning on it as the macOS safety net contradicts the hook's own design.
+#
+# Do not name pre-tool-bash-guard.sh's `_gd_fileverb` as the backstop either.
+# That gate is on the Bash tool and never sees the Edit/Write path, and its own
+# header declares the verb list a deliberately non-exhaustive COMMON-SET rather
+# than full closure — a reviewer that creates the symlink by any means outside
+# that list still reaches the parent `.git` on BSD. While #2014 is open, the only
+# layers left on macOS are the reviewer prompt contract (Layer 1) and AC-3.
+# Do not narrow the residual exposure to "a new file in the parent working tree".
 _sym_probe=$(mktemp -d); ln -s "$_sym_probe/no-such-target" "$_sym_probe/lnk"
 if realpath "$_sym_probe/lnk" >/dev/null 2>&1; then RESOLVES_DANGLING_SYMLINK=1; else RESOLVES_DANGLING_SYMLINK=0; fi
 rm -rf "$_sym_probe"
+
+# The probe is a capability check, not a platform check, so a Linux host with
+# realpath missing or shadowed on PATH would silently skip the only coverage of
+# AC-2 — a security control — and still report green. Linux is the blocking gate,
+# so require the probe to succeed there.
+if [ "$(uname -s)" = "Linux" ] && [ "$RESOLVES_DANGLING_SYMLINK" != 1 ]; then
+  fail "TC-SYMLINK probe: realpath cannot resolve a dangling symlink on Linux (missing or shadowed on PATH?) — the AC-2 symlink TCs must never be skipped on the blocking gate"
+fi
 
 if [ "$RESOLVES_DANGLING_SYMLINK" = 1 ]; then
 echo "TC-SYMLINK-gitdir: isolation symlink → parent .git → deny (git-dir)"
@@ -320,7 +337,7 @@ assert_deny "isolation symlink into parent working tree resolved & blocked" "$ou
 rm -f "$ISO_MUT_DIR/evil-into-tree"
 echo ""
 else
-  echo "  ⏭️  TC-SYMLINK-gitdir/tree skipped (realpath can't resolve a dangling symlink here; AC-2 final-element resolution no-ops on BSD/macOS — production gap tracked in Issue #2014, skip introduced by Issue #2008)"
+  skip "TC-SYMLINK-gitdir/tree skipped (realpath can't resolve a dangling symlink here; AC-2 final-element resolution no-ops on BSD/macOS — production gap tracked in Issue #2014, skip introduced by Issue #2008)"
 fi
 
 echo "TC-SYMLINK-local: isolation-internal symlink → allow (no regression)"
@@ -366,7 +383,7 @@ echo ""
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
-echo "=== Results: $PASS passed, $FAIL failed ==="
+echo "=== Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" ) ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi

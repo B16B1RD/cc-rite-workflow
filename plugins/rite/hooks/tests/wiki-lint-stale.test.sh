@@ -50,10 +50,27 @@ trap cleanup EXIT
 # than vacuously green. (Issue #2008)
 if date -d "2025-01-01" +%s >/dev/null 2>&1; then HAS_GNU_DATE=1; else HAS_GNU_DATE=0; fi
 
+# TC-3 and TC-9 do run through the date path, and their headline expectations
+# (`n_stale=0` + rc 0) are byte-identical to the degradation output — so asserting
+# only those would let both pass on BSD without exercising anything. They assert
+# the `stale_check_ok` enum instead, switched on the same probe: `true` where the
+# comparison ran, `skipped_no_gnu_date` where it degraded. Both platforms stay
+# fail-closed (a broken threshold on GNU, or a silently-changed degradation
+# contract on BSD, still fails) without turning macOS red.
+if [ "$HAS_GNU_DATE" = 1 ]; then
+  EXPECT_STALE_CHECK_OK='stale_check_ok=true'
+else
+  EXPECT_STALE_CHECK_OK='stale_check_ok=skipped_no_gnu_date'
+fi
+
 PASS=0
 FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (Issue #2008 review G-04). Same shape as _test-helpers.sh skip().
+SKIP=0
+skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
 # ページフィクスチャ: stale (2020 年) / fresh (現在) / updated 欠落 / パース不能
 make_page() {
@@ -148,7 +165,7 @@ else
   fail "TC-2 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 else
-  echo "  ⏭️  TC-1/TC-2 skipped (GNU 'date -d' absent; stale detection degrades to skipped_no_gnu_date by design)"
+  skip "TC-1/TC-2 skipped (GNU 'date -d' absent; stale detection degrades to skipped_no_gnu_date by design)"
 fi
 
 echo "=== TC-3: --stale-days 境界 (巨大閾値 → 0 件) ==="
@@ -158,14 +175,15 @@ run_helper "$repo" "$PAGES_2" --branch-strategy same_branch --stale-days 36500
 # skipped_no_gnu_date degradation emits, so asserting only those two would let
 # TC-3 pass on BSD/macOS without ever exercising the threshold comparison — and
 # it would keep passing even if that comparison were completely broken. The
-# script already emits `stale_check_ok={true|skipped_no_gnu_date}` as a machine
-# readable discriminator; requiring `true` makes this TC fail closed instead.
+# script emits `stale_check_ok={true|skipped_no_gnu_date}` as a machine-readable
+# discriminator; pinning the platform-appropriate value makes this TC fail closed
+# on both (see EXPECT_STALE_CHECK_OK above).
 if [ "$HELPER_RC" -eq 0 ] \
   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0' \
-  && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stale_check_ok=true'; then
-  pass "TC-3 閾値内は 0 件 (stale_check_ok=true — date 経路を実行済み)"
+  && printf '%s\n' "$HELPER_STDOUT" | grep -qx "$EXPECT_STALE_CHECK_OK"; then
+  pass "TC-3 閾値内は 0 件 ($EXPECT_STALE_CHECK_OK)"
 else
-  fail "TC-3 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  fail "TC-3 (rc=$HELPER_RC expected=$EXPECT_STALE_CHECK_OK stdout=$HELPER_STDOUT)"
 fi
 
 echo "=== TC-4: placeholder residue (--branch-strategy) → exit 1 ==="
@@ -209,21 +227,21 @@ else
   fail "TC-8 (rc=$HELPER_RC)"
 fi
 
-echo "=== TC-9: 空 stdin → n_stale=0 + 空 marker block + stale_check_ok=true ==="
+echo "=== TC-9: 空 stdin → n_stale=0 + 空 marker block + stale_check_ok 判別子 ==="
 run_helper "$repo" "" --branch-strategy same_branch
-# `stale_check_ok=true` is required for the same reason as TC-3: the
+# The `stale_check_ok` discriminator is required for the same reason as TC-3: the
 # skipped_no_gnu_date degradation emits an identical n_stale=0 + marker block +
-# WIKI_LINT_STALE=0 payload, so without the discriminator this TC would pass on
-# BSD/macOS without exercising the empty-input path (Issue #2008 review F-05).
+# WIKI_LINT_STALE=0 payload, so without it this TC would pass on BSD/macOS
+# without exercising the empty-input path (Issue #2008 review F-05).
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stale_check_ok=true' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx "$EXPECT_STALE_CHECK_OK" \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---stale_pages_begin---' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---stale_pages_end---' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_STALE=0'; then
-  pass "TC-9 空入力で 0 件 + marker block 維持 (stale_check_ok=true)"
+  pass "TC-9 空入力で 0 件 + marker block 維持 ($EXPECT_STALE_CHECK_OK)"
 else
-  fail "TC-9 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  fail "TC-9 (rc=$HELPER_RC expected=$EXPECT_STALE_CHECK_OK stdout=$HELPER_STDOUT)"
 fi
 
 echo "=== TC-10: --stale-days 非整数 → exit 2 ==="
@@ -235,5 +253,5 @@ else
 fi
 
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
+echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" )"
 [ "$FAIL" -eq 0 ] || exit 1

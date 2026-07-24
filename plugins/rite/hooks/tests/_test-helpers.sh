@@ -56,13 +56,21 @@
 #   tests honoring this convention will continue to work without change.
 #
 # Provided variables (initialized to 0 / empty array on source):
-#   PASS, FAIL, FAILED_NAMES
+#   PASS, FAIL, SKIP, FAILED_NAMES
+#
+# Preconditions:
+#   Sourcing ABORTS the caller (exit 1) when neither timeout(1) nor perl(1) is
+#   available, because _timeout below cannot detect hangs without one of them and
+#   every caller reads a non-124 exit code as "no hang". Failing loudly at source
+#   time is the only placement that cannot be swallowed by a `$( )` subshell.
 #
 # Provided functions:
 #   _helpers_resolve_plugin_root <script_dir>
 #   _helpers_resolve_repo_root   <script_dir>
 #   pass <label>                                 # writes to stdout
 #   fail <label>                                 # writes to stdout
+#   skip <label>                                 # writes to stdout, counted in SKIP
+#   _timeout <seconds> <command...>              # portable timeout(1); see Preconditions
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
 #   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
 #   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
@@ -93,12 +101,27 @@ _helpers_resolve_repo_root() {
 # normal pattern (run-tests.sh forks a fresh `bash` per test) makes that unnecessary.
 PASS=0
 FAIL=0
+SKIP=0
 FAILED_NAMES=()
 
 # Pass marker — writes to stdout (see "Output convention" in the file header).
 pass() {
   PASS=$((PASS + 1))
   echo "  ✅ $1"
+}
+
+# Skip marker — writes to stdout (see "Output convention" in the file header).
+#
+# Skips are counted, not just printed. A platform-gated suite that prints
+# "PASS: 8, FAIL: 0" tells the reader nothing about how many assertions never
+# ran; on the macOS leg that difference is 31 assertions, several of them
+# guarding known production bugs (#2010 / #2011 / #2014). Counting them keeps
+# "green" honest and makes a growing skip set visible in the summary.
+# Same shape as the pre-existing skip() in pre-compact.test.sh and
+# pr-cycle-cleanup.test.sh.
+skip() {
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
 }
 
 # Fail marker — writes to stdout (see "Output convention" in the file header).
@@ -485,6 +508,7 @@ print_summary() {
   echo "─── $test_name summary ──────────────────────"
   echo "PASS: $PASS"
   echo "FAIL: $FAIL"
+  [ "${SKIP:-0}" -gt 0 ] && echo "SKIP: $SKIP"
   if [ "$FAIL" -ne 0 ]; then
     if [ "${#FAILED_NAMES[@]}" -gt 0 ]; then
       echo "Failed assertions:"

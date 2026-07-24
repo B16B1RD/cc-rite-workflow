@@ -49,11 +49,36 @@ fi
 # A PATH that deliberately omits `timeout` so `command -v timeout` fails and the
 # perl branch runs even on a host that has GNU coreutils. Only the interpreters
 # the shim and the fixtures need are linked in.
+#
+# The fixture is built fail-closed. A missing tool here is indistinguishable from
+# a passing test in the negative assertions below: TC-5 passes when its canary is
+# absent, so silently dropping `touch` would make it green even against the very
+# `exec @ARGV` regression it exists to catch. Resolve every tool to an absolute
+# path (`kill` is excluded — `command -v kill` returns the bash builtin name,
+# which would produce a self-referential symlink; TC-3's `sh -c 'kill -9 $$'`
+# uses the shell builtin and needs no binary).
 FAKE_BIN="$TEST_DIR/bin"
 mkdir -p "$FAKE_BIN"
-for tool in perl bash sh env sleep kill cat touch; do
-  tool_path=$(command -v "$tool" 2>/dev/null) || continue
-  ln -sf "$tool_path" "$FAKE_BIN/$tool"
+for tool in perl bash sh env sleep cat touch; do
+  tool_path=$(command -v "$tool" 2>/dev/null) || {
+    echo "ERROR: fixture tool '$tool' not found on PATH — the TCs below would pass vacuously" >&2
+    exit 1
+  }
+  case "$tool_path" in
+    /*) ;;
+    *)
+      echo "ERROR: '$tool' resolved to '$tool_path' (not an absolute path — builtin or alias?)" >&2
+      exit 1
+      ;;
+  esac
+  ln -sf "$tool_path" "$FAKE_BIN/$tool" || {
+    echo "ERROR: failed to link fixture tool '$tool' into $FAKE_BIN" >&2
+    exit 1
+  }
+  [ -x "$FAKE_BIN/$tool" ] || {
+    echo "ERROR: fixture link $FAKE_BIN/$tool is not executable" >&2
+    exit 1
+  }
 done
 if [ -e "$FAKE_BIN/timeout" ]; then
   echo "ERROR: fixture PATH unexpectedly contains timeout — the fallback would not run" >&2
@@ -63,10 +88,15 @@ fi
 # run_fallback <seconds> <command...> — invoke _timeout with the fallback forced.
 # Runs in a child bash so the restricted PATH cannot leak into later TCs, and
 # echoes the exit code so callers can assert on it without `set -e` aborting.
+# `declare -F` guards against the child sourcing successfully but not defining
+# `_timeout` (a rename would otherwise surface as 127 and be misread as TC-4's
+# "missing program" result). 3 is outside every code the shim itself returns.
 run_fallback() {
   local secs="$1"; shift
   PATH="$FAKE_BIN" bash -c '
-    source "$1"; shift
+    source "$1" || exit 3
+    shift
+    declare -F _timeout >/dev/null || exit 3
     _timeout "$@"
   ' _ "$SCRIPT_DIR/_test-helpers.sh" "$secs" "$@"
 }
@@ -117,13 +147,28 @@ echo "=== TC-5: a single metacharacter-bearing argument is not shell-interpreted
 # perl's `exec LIST` shells out when LIST holds exactly one element containing
 # metacharacters; the block form `exec { $ARGV[0] } @ARGV` forces execvp. GNU
 # timeout never shells out, so the shim must not either.
+#
+# This is a negative assertion — it passes when the canary is ABSENT — so it is
+# preceded by a positive control proving the canary mechanism itself works under
+# this fixture. Without it, anything that stops the child from running at all
+# (a broken fixture, a missing `touch`) reads as "correctly not shell-interpreted".
 canary="$TEST_DIR/shell-interpreted.canary"
 rm -f "$canary"
+run_fallback 5 touch "$canary" >/dev/null 2>&1
+if [ -e "$canary" ]; then
+  pass "TC-5 control: the canary mechanism works under this fixture"
+else
+  fail "TC-5 control: the canary was not created even by a direct touch — fixture is broken, the negative assertion below would be vacuous"
+fi
+rm -f "$canary"
 run_fallback 5 "sh -c 'touch $canary'" >/dev/null 2>&1
+rc=$?
 if [ -e "$canary" ]; then
   fail "TC-5 the shim handed a single argument to /bin/sh (canary created) — use exec BLOCK LIST"
+elif [ "$rc" -ne 127 ]; then
+  fail "TC-5 expected 127 (execvp of a nonexistent program named by the whole string) but got $rc — the child may not have run at all"
 else
-  pass "TC-5 single argument goes through execvp, never /bin/sh"
+  pass "TC-5 single argument goes through execvp (rc 127), never /bin/sh"
 fi
 
 echo "=== TC-6: stdin stays connected through the shim ==="
@@ -138,48 +183,67 @@ echo "=== TC-7: the _timeout copies are byte-identical ==="
 # The shim is duplicated because five test files cannot source _test-helpers.sh.
 # A fix applied to one copy (the signal mapping and the exec block form both were)
 # must land in all of them, so compare the function bodies directly.
-TIMEOUT_COPIES=(
-  "$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
-  "$PLUGIN_ROOT/hooks/tests/pre-tool-bash-guard.test.sh"
-  "$PLUGIN_ROOT/hooks/tests/wiki-branch-init.test.sh"
-  "$PLUGIN_ROOT/hooks/tests/wiki-query-inject.test.sh"
-  "$PLUGIN_ROOT/scripts/tests/projects-items-fetch.test.sh"
-  "$PLUGIN_ROOT/scripts/tests/review-findings-maps.test.sh"
-)
-extract_timeout_body() {
-  awk '/^_timeout\(\) \{$/ { capture = 1 } capture { print } /^\}$/ { if (capture) exit }' "$1"
-}
-reference_body=$(extract_timeout_body "${TIMEOUT_COPIES[0]}")
-if [ -z "$reference_body" ]; then
-  fail "TC-7 could not extract _timeout from ${TIMEOUT_COPIES[0]} (definition renamed or reformatted?)"
+#
+# The file list is DISCOVERED, never hardcoded. This PR established the pattern of
+# inlining the shim into a test file, so a seventh copy is a realistic addition —
+# and a hardcoded list would leave it invisible to both this TC and TC-8, letting
+# the pre-fix `exec @ARGV` form live on indefinitely.
+mapfile -t TIMEOUT_COPIES < <(grep -rl '^_timeout() {' "$PLUGIN_ROOT/hooks/tests" "$PLUGIN_ROOT/scripts/tests" 2>/dev/null | sort)
+REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
+# Floor check: discovery returning too few files is itself a failure mode (a moved
+# directory, a reformatted definition line), and would otherwise make TC-7/TC-8
+# vacuously green over an empty or truncated set.
+if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
+  fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 6) — grep pattern or layout changed: ${TIMEOUT_COPIES[*]-<none>}"
+elif ! printf '%s\n' "${TIMEOUT_COPIES[@]}" | grep -qxF "$REFERENCE_COPY"; then
+  fail "TC-7 discovery did not include the reference copy $REFERENCE_COPY"
 else
-  drifted=()
-  for copy in "${TIMEOUT_COPIES[@]:1}"; do
-    body=$(extract_timeout_body "$copy")
-    if [ "$body" != "$reference_body" ]; then
-      drifted+=("$copy")
-    fi
-  done
-  if [ "${#drifted[@]}" -eq 0 ]; then
-    pass "TC-7 all ${#TIMEOUT_COPIES[@]} _timeout copies match _test-helpers.sh"
+  extract_timeout_body() {
+    awk '/^_timeout\(\) \{$/ { capture = 1 } capture { print } /^\}$/ { if (capture) exit }' "$1"
+  }
+  reference_body=$(extract_timeout_body "$REFERENCE_COPY")
+  if [ -z "$reference_body" ]; then
+    fail "TC-7 could not extract _timeout from $REFERENCE_COPY (definition renamed or reformatted?)"
   else
-    fail "TC-7 _timeout drifted from _test-helpers.sh in: ${drifted[*]}"
+    drifted=()
+    for copy in "${TIMEOUT_COPIES[@]}"; do
+      [ "$copy" = "$REFERENCE_COPY" ] && continue
+      body=$(extract_timeout_body "$copy")
+      # An empty extraction is drift too — otherwise a reformatted copy would
+      # compare "nothing" against the reference and be reported as matching.
+      if [ -z "$body" ] || [ "$body" != "$reference_body" ]; then
+        drifted+=("$copy")
+      fi
+    done
+    if [ "${#drifted[@]}" -eq 0 ]; then
+      pass "TC-7 all ${#TIMEOUT_COPIES[@]} discovered _timeout copies match _test-helpers.sh"
+    else
+      fail "TC-7 _timeout drifted from _test-helpers.sh in: ${drifted[*]}"
+    fi
   fi
 fi
 
 echo "=== TC-8: every _timeout definition carries the fail-closed guard ==="
 # Without the guard a host lacking both backends falls through to rc 127, which
 # every caller reads as "no hang" — the exact silent pass the shim exists to stop.
-missing_guard=()
-for copy in "${TIMEOUT_COPIES[@]}"; do
-  if ! grep -q 'neither timeout(1) nor perl(1) is available' "$copy"; then
-    missing_guard+=("$copy")
-  fi
-done
-if [ "${#missing_guard[@]}" -eq 0 ]; then
-  pass "TC-8 all _timeout definitions abort when no backend exists"
+if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
+  fail "TC-8 skipped because discovery failed (see TC-7)"
 else
-  fail "TC-8 fail-closed guard missing in: ${missing_guard[*]}"
+  missing_guard=()
+  for copy in "${TIMEOUT_COPIES[@]}"; do
+    if ! grep -q 'neither timeout(1) nor perl(1) is available' "$copy"; then
+      missing_guard+=("$copy")
+    fi
+  done
+  if [ "${#missing_guard[@]}" -eq 0 ]; then
+    pass "TC-8 all ${#TIMEOUT_COPIES[@]} _timeout definitions abort when no backend exists"
+  else
+    fail "TC-8 fail-closed guard missing in: ${missing_guard[*]}"
+  fi
 fi
 
-print_summary "timeout-shim"
+# Explicit exit rather than relying on print_summary being the last command —
+# a single line appended below would otherwise swallow every failure.
+if ! print_summary "timeout-shim"; then
+  exit 1
+fi

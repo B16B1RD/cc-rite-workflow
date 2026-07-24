@@ -113,7 +113,7 @@ assert "TC-10 while foreign held → rc 0" "0" "$(probe_rc "$D5" --self-root 999
 wait "$hp" 2>/dev/null || true
 assert "TC-10 after holder exits → rc 1" "1" "$(probe_rc "$D5" --self-root 99999)"
 else
-  echo "  ⏭️  TC-4..TC-10 skipped (no /proc: worktree-foreign-cwd.sh returns rc 2 by design; caller removes — safe degradation)"
+  skip "TC-4..TC-10 skipped (no /proc: worktree-foreign-cwd.sh returns rc 2 by design; caller removes — safe degradation)"
 fi
 
 if ! print_summary "$(basename "$0")" "worktree-foreign-cwd.sh の self-exclusion 付き live-cwd 判定 (Issue #1670): self の harness subtree を除外し、別 live セッションのみ削除を遅延させる"; then

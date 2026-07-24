@@ -63,7 +63,7 @@ mkdir -p "$D2/sub/deep"
 sleep 0.3
 assert "TC-4 nested-held dir → rc 0" "0" "$(probe_rc "$D2")"
 else
-  echo "  ⏭️  TC-4 skipped (no /proc: auto backend → lsof; lsof exit-code false-negative on nested dirs tracked in #2011)"
+  skip "TC-4 skipped (no /proc: auto backend → lsof; lsof exit-code false-negative on nested dirs tracked in #2011)"
 fi
 
 echo "=== TC-5: sibling-prefix dir must not false-match (issue-1 vs issue-12) ==="
@@ -106,7 +106,7 @@ assert "TC-9 probe=proc free dir → rc 1" "1" "$(RITE_WORKTREE_LIVE_CWD_PROBE=p
 sleep 0.3
 assert "TC-9 probe=proc held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=proc bash "$PROBE" "$D6" >/dev/null 2>&1; echo $?)"
 else
-  echo "  ⏭️  TC-9 skipped (forced 'proc' backend requires /proc; absent on macOS by design)"
+  skip "TC-9 skipped (forced 'proc' backend requires /proc; absent on macOS by design)"
 fi
 
 echo "=== TC-10: forced 'lsof' backend (the BSD/macOS fallback) ==="
@@ -138,7 +138,7 @@ sleep 0.3
 assert "TC-11 real path → rc 0" "0" "$(probe_rc "$Dreal/wt")"
 assert "TC-11 symlinked path → rc 0" "0" "$(probe_rc "$Dlink/wtlink")"
 else
-  echo "  ⏭️  TC-11 skipped (no /proc: auto backend → lsof; exit-code false-negative tracked in #2011)"
+  skip "TC-11 skipped (no /proc: auto backend → lsof; exit-code false-negative tracked in #2011)"
 fi
 
 if ! print_summary "$(basename "$0")" "worktree-live-cwd.sh の OS 接地 liveness 判定 (Issue #1544)"; then
