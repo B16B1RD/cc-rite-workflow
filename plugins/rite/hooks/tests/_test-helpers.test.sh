@@ -520,7 +520,14 @@ fi
 # unobservable on Linux by default, which means reverting both call sites leaves
 # the whole hooks suite at 103/103 and the macOS leg is `continue-on-error`. Point
 # $TMPDIR at a symlink so the difference becomes visible on the blocking gate too.
-tc14_real=$(mktemp -d)
+#
+# The fixture root itself must be canonical before it can serve as the expected
+# prefix: on macOS $TMPDIR already lives under /var/folders, a symlink to
+# /private/var, so a raw `mktemp -d` here would produce an uncanonical path and
+# the helper's own canonicalization would resolve past it — the assertion would
+# fail on exactly the platform the feature exists for.
+tc14_real=$(mktemp -d) || exit 1
+tc14_real=$(cd "$tc14_real" && pwd -P) || exit 1
 tc14_link="${tc14_real}-link"
 if ln -s "$tc14_real" "$tc14_link" 2>/dev/null; then
   sbx_canon=$(TMPDIR="$tc14_link" bash -c "source '$HELPERS'; make_plain_sandbox")
