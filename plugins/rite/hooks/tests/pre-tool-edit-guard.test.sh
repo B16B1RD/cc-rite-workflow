@@ -318,7 +318,12 @@ rm -rf "$_sym_probe"
 # realpath missing or shadowed on PATH would silently skip the only coverage of
 # AC-2 — a security control — and still report green. Linux is the blocking gate,
 # so require the probe to succeed there.
-if [ "$(uname -s)" = "Linux" ] && [ "$RESOLVES_DANGLING_SYMLINK" != 1 ]; then
+#
+# `[ -d /proc ]` rather than `uname -s`: the threat this floor guards against is a
+# tampered PATH, and `uname` is looked up on the same PATH as the shadowed
+# `realpath`. A filesystem fact cannot be shadowed, and it matches the platform
+# predicate the other gates in this suite already use.
+if [ -d /proc ] && [ "$RESOLVES_DANGLING_SYMLINK" != 1 ]; then
   fail "TC-SYMLINK probe: realpath cannot resolve a dangling symlink on Linux (missing or shadowed on PATH?) — the AC-2 symlink TCs must never be skipped on the blocking gate"
 fi
 

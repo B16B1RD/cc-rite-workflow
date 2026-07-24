@@ -347,16 +347,31 @@ fi
 # that a later formatting pass could strip with CI still green. A static guard pins them on every
 # platform instead: no unbraced `$var` may sit directly against a non-ASCII byte. Comment lines are
 # exempt so the surrounding rationale can quote the anti-pattern verbatim.
+#
+# The guard covers every shell script under plugins/rite, not just flow-state.sh. The invariant it
+# states is a whole-codebase one, and scoping the check to a single file while wording it as a rule
+# would leave the class looking closed when it was not: the same shape lived in seven other places
+# (pr-cycle-cleanup.sh and lib/worktree-git.sh, all on WARNING paths under `set -u`, where the
+# failure turns a warning into a hard abort). Those were braced in the same change.
 echo ""
-echo "=== TC-8b-h: no unbraced \$var abuts a multibyte character in flow-state.sh ==="
-unbraced_hits=$(LC_ALL=C grep -v '^[[:space:]]*#' "$HOOK" \
-  | LC_ALL=C grep -c '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' || true)
-if [ "$unbraced_hits" = "0" ]; then
+echo "=== TC-8b-h: no unbraced \$var abuts a multibyte character in any plugins/rite shell script ==="
+unbraced_report=""
+unbraced_total=0
+while IFS= read -r _sh; do
+  _hits=$(LC_ALL=C grep -v '^[[:space:]]*#' "$_sh" | LC_ALL=C grep -c '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' || true)
+  case "$_hits" in ''|*[!0-9]*) _hits=0 ;; esac
+  if [ "$_hits" -gt 0 ]; then
+    unbraced_total=$((unbraced_total + _hits))
+    unbraced_report="$unbraced_report
+$(LC_ALL=C grep -v '^[[:space:]]*#' "$_sh" | LC_ALL=C grep -n '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' | sed "s|^|$_sh:|")"
+  fi
+done < <(find "$PLUGIN_ROOT" -name '*.sh' -type f | sort)
+if [ "$unbraced_total" = "0" ]; then
   pass "TC-8b-h: all variables abutting multibyte characters are brace-delimited"
 else
-  fail "TC-8b-h: $unbraced_hits unbraced \$var(s) abut a multibyte character — brace them (\${var}) or a non-UTF-8 locale will fold the following byte into the name and trip set -u:
-$(LC_ALL=C grep -vn '^[[:space:]]*#' "$HOOK" | LC_ALL=C grep '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]')"
+  fail "TC-8b-h: $unbraced_total unbraced \$var(s) abut a multibyte character — brace them (\${var}) or a non-UTF-8 locale will fold the following byte into the name and trip set -u:$unbraced_report"
 fi
+unset unbraced_report unbraced_total _sh _hits
 
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""

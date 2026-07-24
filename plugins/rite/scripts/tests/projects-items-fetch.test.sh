@@ -22,7 +22,12 @@ _timeout() {
     timeout "$_d" "$@"
   else
     perl -e '
-      my $d = shift; my $pid = fork;
+      my $d = shift;
+      # alarm truncates to an integer, so a fractional deadline silently becomes
+      # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
+      # Reject rather than degrade.
+      die "_timeout: fractional seconds are not supported by the perl fallback: $d\n" unless $d =~ /^[0-9]+$/;
+      my $pid = fork;
       exit 127 unless defined $pid;
       if ($pid == 0) { exec { $ARGV[0] } @ARGV; exit 127; }
       $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };

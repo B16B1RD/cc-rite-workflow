@@ -1183,17 +1183,17 @@ if [ -d "$session_wt_root" ]; then
           _wt_mf_rc=0
           grep -vxF "session_worktree$(printf '\t')$wt_path" "$manifest_path" > "$_wt_mf_keep" 2>/dev/null || _wt_mf_rc=$?
           if [ "$_wt_mf_rc" -ge 2 ]; then
-            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_wt_mf_rc)（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_wt_mf_rc)（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
           elif [ -s "$_wt_mf_keep" ]; then
             cp "$_wt_mf_keep" "$manifest_path" 2>/dev/null \
-              || echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+              || echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
           elif ! rm -f "$manifest_path" 2>/dev/null; then
-            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
           fi
           rm -f "$_wt_mf_keep" 2>/dev/null || true
           _wt_mf_keep=""
         else
-          echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+          echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
         fi
       fi
 

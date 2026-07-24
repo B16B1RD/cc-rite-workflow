@@ -72,6 +72,16 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 SKIP=0
 skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
+# `HAS_GNU_DATE` above is a capability check, not a platform check. With `date`
+# missing or shadowed on a Linux host, TC-1/TC-2 skip AND EXPECT_STALE_CHECK_OK
+# flips to the degradation value — so TC-3/TC-9 would assert the degraded contract
+# and the file would report green with zero coverage of stale detection, on the
+# only blocking gate. Require the probe to succeed there. `[ -d /proc ]` rather
+# than `uname -s` because `uname` resolves through the same PATH as `date`.
+if [ -d /proc ] && [ "$HAS_GNU_DATE" != 1 ]; then
+  fail "HAS_GNU_DATE probe: 'date -d' unavailable on Linux (missing or shadowed on PATH?) — the stale-detection TCs must never be skipped on the blocking gate"
+fi
+
 # ページフィクスチャ: stale (2020 年) / fresh (現在) / updated 欠落 / パース不能
 make_page() {
   local path="$1" updated="$2"

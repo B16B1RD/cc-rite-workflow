@@ -34,21 +34,39 @@ for f in "$SCRIPT_DIR"/../scripts/tests/test-*.sh; do
   [ -f "$f" ] && test_files+=("$f")
 done
 
+# Roll the per-file skip counts up into the headline. Without this, a platform-gated
+# run prints a headline byte-identical to a fully-exercised one, and the reader has
+# to scroll the whole log to learn that (for example) 10 groups of assertions never
+# ran on macOS. The count is parsed from what the files already print — `SKIP: N`
+# from print_summary, or `, N skipped` from the three files with their own summary.
+SKIPPED=0
 for test_file in "${test_files[@]}"; do
   test_name="$(basename "$test_file")"
   TOTAL=$((TOTAL + 1))
   echo "=== Running: $test_name ==="
-  if bash "$test_file"; then
+  test_rc=0
+  test_out=$(bash "$test_file" 2>&1) || test_rc=$?
+  printf '%s\n' "$test_out"
+  if [ "$test_rc" -eq 0 ]; then
     PASSED=$((PASSED + 1))
   else
     FAILED=$((FAILED + 1))
     FAILED_TESTS+=("$test_name")
   fi
+  file_skips=$(printf '%s\n' "$test_out" \
+    | sed -n -E 's/^[[:space:]]*SKIP: ([0-9]+)[[:space:]]*$/\1/p; s/.*, ([0-9]+) skipped.*/\1/p' \
+    | awk '{s += $1} END {print s + 0}')
+  case "$file_skips" in ''|*[!0-9]*) file_skips=0 ;; esac
+  SKIPPED=$((SKIPPED + file_skips))
   echo ""
 done
 
 echo "==============================="
-echo "Results: $PASSED/$TOTAL passed, $FAILED failed"
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "Results: $PASSED/$TOTAL passed, $FAILED failed, $SKIPPED skipped"
+else
+  echo "Results: $PASSED/$TOTAL passed, $FAILED failed"
+fi
 if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
   echo "Failed tests:"
   for t in "${FAILED_TESTS[@]}"; do

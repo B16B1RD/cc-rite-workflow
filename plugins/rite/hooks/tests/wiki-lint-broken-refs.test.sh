@@ -51,6 +51,15 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 SKIP=0
 skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
+# The probe above is a capability check, not a platform check: `realpath` missing
+# or shadowed on a Linux host would skip TC-1..TC-5 and TC-9 and still exit 0,
+# leaving the blocking gate with only the arg-validation TCs. Require the probe to
+# succeed where the gate actually blocks. `[ -d /proc ]` rather than `uname -s`
+# because `uname` resolves through the same PATH that would be hiding `realpath`.
+if [ -d /proc ] && [ "$HAS_GNU_REALPATH" != 1 ]; then
+  fail "HAS_GNU_REALPATH probe: GNU 'realpath -m -s' unavailable on Linux (missing or shadowed on PATH?) — the broken-refs detection TCs must never be skipped on the blocking gate"
+fi
+
 # page A: 検査対象。有効 / broken / 除外対象の link を混在させる
 PAGE_A='---
 title: "A"

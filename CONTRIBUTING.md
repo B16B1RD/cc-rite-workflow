@@ -194,6 +194,13 @@ fi
 
 The project uses a lightweight custom test framework (not bats) located in `plugins/rite/hooks/tests/`.
 
+### Prerequisites
+
+Beyond `jq` and bash 4+, the suite needs **either `timeout(1)` or `perl(1)`**. `_test-helpers.sh`
+provides a `_timeout` shim that falls back to perl where GNU coreutils is absent (macOS), and it
+aborts at source time when neither is available — every caller reads a non-124 exit code as "no
+hang", so degrading instead of aborting would turn each hang assertion into a silent pass.
+
 ### Running Tests
 
 ```bash
@@ -216,9 +223,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../your-hook.sh"
-TEST_DIR="$(mktemp -d)"
+# Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
+# changing directory, so a failed mktemp inside that nesting yields the current
+# directory — which the cleanup trap below would then delete.
+TEST_DIR="$(mktemp -d)" || exit 1
 PASS=0
 FAIL=0
+SKIP=0
 
 # Prerequisite check
 if ! command -v jq >/dev/null 2>&1; then
@@ -241,6 +252,13 @@ fail() {
   echo "  ❌ FAIL: $1"
 }
 
+# Skips are counted, never just printed: a platform-gated suite that reports only
+# PASS/FAIL says nothing about how many assertions never ran.
+skip() {
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
+}
+
 # --- Test cases ---
 
 echo "TC-001: Description of test case"
@@ -253,17 +271,33 @@ fi
 
 # --- Summary ---
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
+echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" )"
 [ "$FAIL" -eq 0 ] || exit 1
 ```
+
+Sourcing `_test-helpers.sh` gives you `pass` / `fail` / `skip` / `assert*` / `print_summary` /
+`make_sandbox` / `make_plain_sandbox` / `_timeout` and the `PASS` / `FAIL` / `SKIP` counters, so a
+new test usually only needs the test cases themselves. See the header of that file for the full API.
 
 ### Writing a New Test
 
 1. Create `plugins/rite/hooks/tests/your-hook.test.sh`
-2. Follow the structure above: setup temporary directory, define `pass`/`fail` helpers, write test cases
+2. Follow the structure above: setup temporary directory, define `pass`/`fail`/`skip` helpers (or
+   source `_test-helpers.sh` and get them for free), write test cases
 3. Use `mktemp -d` for isolated test environments
 4. Clean up with `trap cleanup EXIT`
 5. Exit with code 1 if any test fails
+6. **Gate platform-dependent cases with `skip`, never a bare `echo`** — a skipped case must appear
+   in the counters so the summary states what did not run. When the gate is a capability probe
+   (`command -v X`, "does this tool support flag Y") rather than a platform fact, add a floor that
+   fails on the blocking gate: a shadowed or missing tool on Linux must not silently drop coverage.
+7. **Prefer a discriminator over a bare success assertion** when the code under test degrades
+   gracefully. If the degraded path emits the same headline result as the healthy one, assert the
+   machine-readable enum that distinguishes them (see `stale_check_ok` in `wiki-lint-stale.test.sh`)
+   so the case cannot pass without exercising anything.
+8. **Give every negative assertion a positive control.** A case that passes when a file is *absent*
+   also passes when the fixture never ran; prove the mechanism works first (see TC-5 in
+   `timeout-shim.test.sh`).
 
 The test runner (`run-tests.sh`) automatically discovers all `*.test.sh` files in `plugins/rite/hooks/tests/` plus the `test-*.sh` files in `plugins/rite/hooks/scripts/tests/`, and reports aggregate results.
 

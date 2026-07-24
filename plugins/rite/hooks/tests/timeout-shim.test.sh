@@ -90,13 +90,14 @@ fi
 # echoes the exit code so callers can assert on it without `set -e` aborting.
 # `declare -F` guards against the child sourcing successfully but not defining
 # `_timeout` (a rename would otherwise surface as 127 and be misread as TC-4's
-# "missing program" result). 3 is outside every code the shim itself returns.
+# "missing program" result). 125 is the sentinel: 0/2/3 are asserted by TC-2, 124
+# by TC-1 and 127 by TC-4, so 3 would collide with a value under test.
 run_fallback() {
   local secs="$1"; shift
   PATH="$FAKE_BIN" bash -c '
-    source "$1" || exit 3
+    source "$1" || exit 125
     shift
-    declare -F _timeout >/dev/null || exit 3
+    declare -F _timeout >/dev/null || exit 125
     _timeout "$@"
   ' _ "$SCRIPT_DIR/_test-helpers.sh" "$secs" "$@"
 }
@@ -188,7 +189,16 @@ echo "=== TC-7: the _timeout copies are byte-identical ==="
 # inlining the shim into a test file, so a seventh copy is a realistic addition —
 # and a hardcoded list would leave it invisible to both this TC and TC-8, letting
 # the pre-fix `exec @ARGV` form live on indefinitely.
-mapfile -t TIMEOUT_COPIES < <(grep -rl '^_timeout() {' "$PLUGIN_ROOT/hooks/tests" "$PLUGIN_ROOT/scripts/tests" 2>/dev/null | sort)
+TIMEOUT_SEARCH_ROOTS=(
+  "$PLUGIN_ROOT/hooks/tests"
+  "$PLUGIN_ROOT/scripts/tests"
+  "$PLUGIN_ROOT/hooks/scripts/tests"   # run-tests.sh also executes test-*.sh from here
+)
+# A vanished root must not be absorbed by 2>/dev/null and the surviving roots' hits.
+for _root in "${TIMEOUT_SEARCH_ROOTS[@]}"; do
+  [ -d "$_root" ] || fail "TC-7 discovery root missing: $_root (layout changed?)"
+done
+mapfile -t TIMEOUT_COPIES < <(grep -rl '^_timeout() {' "${TIMEOUT_SEARCH_ROOTS[@]}" 2>/dev/null | sort)
 REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
 # Floor check: discovery returning too few files is itself a failure mode (a moved
 # directory, a reformatted definition line), and would otherwise make TC-7/TC-8

@@ -512,6 +512,61 @@ else
   outer_fail "TC-13.2: expected PASS=0 FAIL=1 RC=1 + diagnostic, got PASS=$mp FAIL=$mf RC=$mrc state='$missing_state'"
 fi
 
+# Cycle 3 G-H03: TC-14 — the sandbox roots are canonicalized.
+#
+# The canonicalization exists because macOS puts $TMPDIR under /var/folders, a
+# symlink to /private/var, while production resolves paths through git rev-parse /
+# realpath — so a raw mktemp path fails every path-equality assertion. That is
+# unobservable on Linux by default, which means reverting both call sites leaves
+# the whole hooks suite at 103/103 and the macOS leg is `continue-on-error`. Point
+# $TMPDIR at a symlink so the difference becomes visible on the blocking gate too.
+tc14_real=$(mktemp -d)
+tc14_link="${tc14_real}-link"
+if ln -s "$tc14_real" "$tc14_link" 2>/dev/null; then
+  sbx_canon=$(TMPDIR="$tc14_link" bash -c "source '$HELPERS'; make_plain_sandbox")
+  case "$sbx_canon" in
+    "$tc14_link"/*)
+      outer_fail "TC-14.1: make_plain_sandbox returned an uncanonicalized path under the symlink ($sbx_canon) — pwd -P canonicalization lost?" ;;
+    "$tc14_real"/*)
+      outer_pass "TC-14.1: make_plain_sandbox canonicalizes the sandbox root through a symlinked TMPDIR" ;;
+    *)
+      outer_fail "TC-14.1: unexpected sandbox path '$sbx_canon' (expected under $tc14_real)" ;;
+  esac
+  rm -rf "$sbx_canon"
+  sbx_canon_git=$(TMPDIR="$tc14_link" bash -c "source '$HELPERS'; make_sandbox")
+  case "$sbx_canon_git" in
+    "$tc14_link"/*)
+      outer_fail "TC-14.2: make_sandbox returned an uncanonicalized path under the symlink ($sbx_canon_git) — pwd -P canonicalization lost?" ;;
+    "$tc14_real"/*)
+      outer_pass "TC-14.2: make_sandbox canonicalizes the sandbox root through a symlinked TMPDIR" ;;
+    *)
+      outer_fail "TC-14.2: unexpected sandbox path '$sbx_canon_git' (expected under $tc14_real)" ;;
+  esac
+  rm -rf "$sbx_canon_git"
+  rm -f "$tc14_link"
+else
+  outer_fail "TC-14: could not create the symlink fixture at $tc14_link — canonicalization would go unverified"
+fi
+rm -rf "$tc14_real"
+
+# Cycle 3 G-H05: TC-15 — skip() counts and print_summary reports it.
+#
+# Without this, dropping the `SKIP=$((SKIP + 1))` from skip() would go unnoticed:
+# the ⏭️ line would still print and every suite would still be green, which is the
+# exact "green says nothing about what did not run" failure skip() was added for.
+skip_state=$(bash -c "source '$HELPERS'; skip TC-dummy >/dev/null; skip TC-dummy2 >/dev/null; print_summary skip-probe")
+if echo "$skip_state" | grep -qx 'SKIP: 2'; then
+  outer_pass "TC-15.1: skip() increments SKIP and print_summary reports it"
+else
+  outer_fail "TC-15.1: expected 'SKIP: 2' in print_summary output, got: $skip_state"
+fi
+no_skip_state=$(bash -c "source '$HELPERS'; print_summary skip-probe-zero")
+if echo "$no_skip_state" | grep -q 'SKIP:'; then
+  outer_fail "TC-15.2: print_summary printed a SKIP line with SKIP=0 (should be omitted): $no_skip_state"
+else
+  outer_pass "TC-15.2: print_summary omits the SKIP line when nothing was skipped"
+fi
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"
