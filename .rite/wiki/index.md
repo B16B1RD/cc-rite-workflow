@@ -6,6 +6,7 @@
 
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
+| [依存要件ドキュメントの「ツールを入れれば有効化」主張は実コードの呼び出し名を grep で裏取りする](pages/heuristics/dependency-doc-tool-enablement-claim-verify-invocation-name.md) | heuristics | README 等の依存要件で「ツール X を入れれば機能 Y が有効化」と書く前に、実コードがそのツール名を literal に呼んでいるか grep で確認する。実装が別コマンド名（例: gdate ではなく date -d）を呼んでいると、そのツールを導入しても機能は有効化されず記述が不正確になる。PR #2004 で tech-writer の Doc-Heavy mode が README の coreutils/gdate 記述 drift を検出・修正し、gnubin を PATH に載せる正しい手順へ是正した。 | 2026-07-24T17:57:51+09:00 | medium |
 | [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) | anti-patterns | bash 等のローカライズ済みエラーメッセージ（例: 「コマンドが見つかりません」）を英語文字列で grep する assert は、非英語 locale のホスト/CI で常に空振りし、実装破壊 mutation に対して green のまま通過する dead assertion になる。LC_ALL=C で locale を固定するか、rc 直接 assert・「degrade が働いて初めて成立する肯定結果」（状態遷移）の assert 等の locale 非依存 discriminator に置換する。probe は専用識別子で行い本体の判定を汚染しない。PR #2003 で 2 レビュアーが mutation 実験により独立実証。 | 2026-07-24T16:55:00+09:00 | high |
 | [カテゴリ列挙の圧縮はブロッキング/informational の分類を SoT で確認してから削る](pages/heuristics/enumeration-compression-verify-blocking-classification.md) | heuristics | ドキュメントのカテゴリ列挙を要約・圧縮する際、削る対象が実装のどの分類（ブロッキング/informational）に属すかを SoT のカテゴリ表で確認せずに削ると、ブロッキングカテゴリが脱落して実装との Implementation Coverage 乖離を生む。修正はコード識別子を避けた plain language 再追加で元の受入基準を維持したまま集合の完全性を回復できる。 | 2026-07-23T19:20:00+09:00 | medium |
 | [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) | anti-patterns | 既存の共有リソース（reap manifest の type エントリ等）の名前空間を新機能で再利用する際、その共有リソースの既存消費者が持つ暗黙の不変条件（コメントで明示済み）を確認しないと、健全なリソースを警告なしに破壊する CRITICAL な回帰を生む。 | 2026-07-23T04:14:28Z | high |
@@ -244,6 +245,6 @@
 
 ## 統計
 
-- 総ページ数: 195
-- ドメイン別: patterns=64, heuristics=63, anti-patterns=66
-- 最終更新: 2026-07-24T17:00:00+09:00
+- 総ページ数: 196
+- ドメイン別: patterns=64, heuristics=64, anti-patterns=66
+- 最終更新: 2026-07-24T17:57:51+09:00

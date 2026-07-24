@@ -1,5 +1,7 @@
 ## 2026-07-24
 
+* **Create**: [依存要件ドキュメントの「ツールを入れれば有効化」主張は実コードの呼び出し名を grep で裏取りする](pages/heuristics/dependency-doc-tool-enablement-claim-verify-invocation-name.md) — raw/reviews/20260724T083434Z-pr-2004.md を新規ページ化
+* **Update**: [依存要件ドキュメントの「ツールを入れれば有効化」主張は実コードの呼び出し名を grep で裏取りする](pages/heuristics/dependency-doc-tool-enablement-claim-verify-invocation-name.md) — raw/fixes/20260724T083743Z-pr-2004.md, raw/reviews/20260724T084754Z-pr-2004.md を統合
 * **Skip**: [20260724T051104Z-pr-1992.md](raw/reviews/20260724T051104Z-pr-1992.md) — 指摘0件のドキュメント専用PR（/reload-plugins手順追加）。Doc-Heavy PR Modeの5カテゴリ検証プロトコルが期待通り機能した事例だが、既存の`skills/pr-review/references/internal-consistency.md`に既に文書化済みの内容の再確認にとどまり新規の経験則は無いため経験則化を見送った
 * **Skip**: [20260723T172336Z-pr-1986.md](raw/reviews/20260723T172336Z-pr-1986.md) — 指摘0件の機械的バージョン文字列更新PR。DRY非該当の判断はHyperFramesのシーン独立アーキテクチャに固有で汎用性が低く、既存の関連ページも無いため経験則化を見送った
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=279, broken_refs=0
