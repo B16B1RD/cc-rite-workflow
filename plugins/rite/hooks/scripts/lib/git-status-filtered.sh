@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # rite workflow - git status filtered for sandbox write-block ghost mounts
 #
 # Responsibility: wrap `git status --porcelain -z` and drop untracked (`??`)

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # rite workflow - Worktree git helpers (commit/push + session-worktree ensure)
 #
 # Responsibility 1 (source-only): provide the canonical
