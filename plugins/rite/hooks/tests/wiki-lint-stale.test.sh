@@ -37,6 +37,15 @@ TEST_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
+# wiki-lint-stale.sh's stale detection uses GNU `date -d "ISO"` and, on a
+# GNU-incompatible host (BSD/macOS), deliberately degrades: it emits a WARNING
+# and returns n_stale=0 / stale_check_ok=skipped_no_gnu_date (non-blocking
+# contract). The detection TCs (TC-1/TC-2) assert real n_stale=1 results, so
+# guard them behind the same GNU-date probe the script uses; the arg-validation
+# TCs (TC-4..TC-8, TC-10) and the empty-input TC-9 stay platform-agnostic
+# (they exit before / don't depend on the date path). (Issue #2008)
+if date -d "2025-01-01" +%s >/dev/null 2>&1; then HAS_GNU_DATE=1; else HAS_GNU_DATE=0; fi
+
 PASS=0
 FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
@@ -104,6 +113,7 @@ run_helper() {
   return 0
 }
 
+if [ "$HAS_GNU_DATE" = 1 ]; then
 echo "=== TC-1: same_branch 検出 (stale 1 / fresh 1 / 欠落 1 / パース不能 1) ==="
 repo=$(make_same_branch_sandbox tc1)
 run_helper "$repo" "$PAGES_4" --branch-strategy same_branch
@@ -132,6 +142,9 @@ if [ "$HELPER_RC" -eq 0 ] \
   pass "TC-2 separate_branch で stale 検出"
 else
   fail "TC-2 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+else
+  echo "  ⏭️  TC-1/TC-2 skipped (GNU 'date -d' absent; stale detection degrades to skipped_no_gnu_date by design)"
 fi
 
 echo "=== TC-3: --stale-days 境界 (巨大閾値 → 0 件) ==="

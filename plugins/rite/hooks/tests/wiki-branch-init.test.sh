@@ -211,7 +211,9 @@ dump_state() {
     fi
     echo "main_subject=$(git log -1 --format=%s main 2>/dev/null || echo '<none>')"
     echo "main_body=$( (git log -1 --format=%B main 2>/dev/null || echo '<none>') | tr '\n' '|')"
-    echo "stash_count=$(git stash list | wc -l)"
+    # `wc -l` right-justifies its count with leading spaces on BSD/macOS, which
+    # would make the `^stash_count=0$` assertions fail; strip it (Issue #2008).
+    echo "stash_count=$(git stash list | wc -l | tr -d ' ')"
     echo "base_content=$(cat base.txt 2>/dev/null || echo '<missing>')"
   )
 }

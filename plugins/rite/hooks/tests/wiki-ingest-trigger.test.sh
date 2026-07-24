@@ -5,7 +5,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../wiki-ingest-trigger.sh"
-TEST_DIR="$(mktemp -d)"
+# Canonicalize the sandbox root. wiki-ingest-trigger.sh's --content-file guard
+# compares realpath(content-file) against $PWD; on macOS $TMPDIR is under
+# /var/folders (symlinked to /private/var), so a raw mktemp path makes every
+# `cd "$TEST_DIR/tcN" && ... --content-file body.md` case fail the $PWD-arm match
+# ("must be under $PWD"). pwd -P aligns the fixture with the canonical form the
+# guard resolves to (Issue #2008; the guard's own $PWD-arm symlink handling is
+# tracked separately in #2012).
+TEST_DIR="$(cd "$(mktemp -d)" && pwd -P)"
 PASS=0
 FAIL=0
 

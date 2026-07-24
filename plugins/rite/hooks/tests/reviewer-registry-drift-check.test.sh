@@ -282,7 +282,10 @@ fi
 # 変更による抽出崩壊が狙いなので、発火元が抽出ガードであることを文言で特定する
 # （どちらのガードが落ちたのか未検証のまま rc=2 だけ見ると、実装が別ガードで
 # 偶然 rc=2 を返す regression を見逃す）。
-if printf '%s\n' "$out" | grep -Fq "extracted only 0 reviewers"; then
+# BSD/macOS `wc` right-justifies the count with leading spaces, so the script's
+# message reads "extracted only        0 reviewers" — match with a whitespace
+# class instead of a fixed single space (Issue #2008; same BSD wc padding as TC-15).
+if printf '%s\n' "$out" | grep -qE "extracted only[[:space:]]+0 reviewers"; then
   pass "TC-7: fired via the >= 6 extraction guard (not the I3 row-count guard)"
 else
   fail "TC-7: rc=2 but not via the extraction guard — unexpected message"
