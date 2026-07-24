@@ -15,6 +15,7 @@ HELPERS="$SCRIPT_DIR/_test-helpers.sh"
 OUTER_PASS=0
 OUTER_FAIL=0
 OUTER_FAILED=()
+OUTER_SKIP=0
 
 outer_pass() { OUTER_PASS=$((OUTER_PASS + 1)); echo "  ✅ $1"; }
 outer_fail() { OUTER_FAIL=$((OUTER_FAIL + 1)); OUTER_FAILED+=("$1"); echo "  ❌ $1"; }
@@ -516,44 +517,71 @@ fi
 #
 # The canonicalization exists because macOS puts $TMPDIR under /var/folders, a
 # symlink to /private/var, while production resolves paths through git rev-parse /
-# realpath — so a raw mktemp path fails every path-equality assertion. That is
-# unobservable on Linux by default, which means reverting both call sites leaves
-# the whole hooks suite at 103/103 and the macOS leg is `continue-on-error`. Point
-# $TMPDIR at a symlink so the difference becomes visible on the blocking gate too.
+# realpath — so a raw mktemp path fails every path-equality assertion. Reverting
+# both call sites left the whole hooks suite at 103/103, and the macOS leg is
+# `continue-on-error`, so the fix had no coverage anywhere.
 #
-# The fixture root itself must be canonical before it can serve as the expected
-# prefix: on macOS $TMPDIR already lives under /var/folders, a symlink to
-# /private/var, so a raw `mktemp -d` here would produce an uncanonical path and
-# the helper's own canonicalization would resolve past it — the assertion would
-# fail on exactly the platform the feature exists for.
+# Two assertions, because no single one is load-bearing on both platforms:
+#
+#   TC-14.1/.2 — the returned path is already its own `pwd -P`. On macOS this is
+#     load-bearing on its own: bare `mktemp -d` returns the /var/folders form and
+#     the helper must hand back the /private/var one. On Linux, where $TMPDIR is
+#     usually canonical to begin with, it holds either way.
+#   TC-14.3/.4 — the same helpers under a $TMPDIR that IS a symlink, which makes
+#     the assertion load-bearing on Linux too. This needs `mktemp -d` to honour
+#     $TMPDIR; BSD mktemp does not for a bare invocation, so it is probed rather
+#     than assumed, with a floor requiring it on the blocking gate.
 tc14_real=$(mktemp -d) || exit 1
 tc14_real=$(cd "$tc14_real" && pwd -P) || exit 1
+
+for _tc14 in "1:make_plain_sandbox" "2:make_sandbox"; do
+  _n="${_tc14%%:*}"; _fn="${_tc14#*:}"
+  _sbx=$(bash -c "source '$HELPERS'; $_fn")
+  _sbx_resolved=$(cd "$_sbx" && pwd -P)
+  if [ "$_sbx" = "$_sbx_resolved" ]; then
+    outer_pass "TC-14.$_n: $_fn returns an already-canonical path"
+  else
+    outer_fail "TC-14.$_n: $_fn returned '$_sbx' but its canonical form is '$_sbx_resolved' — pwd -P canonicalization lost?"
+  fi
+  rm -rf "$_sbx"
+done
+
+# Probe: does a bare `mktemp -d` honour $TMPDIR? GNU does, BSD does not.
 tc14_link="${tc14_real}-link"
+tc14_honors_tmpdir=0
 if ln -s "$tc14_real" "$tc14_link" 2>/dev/null; then
-  sbx_canon=$(TMPDIR="$tc14_link" bash -c "source '$HELPERS'; make_plain_sandbox")
-  case "$sbx_canon" in
-    "$tc14_link"/*)
-      outer_fail "TC-14.1: make_plain_sandbox returned an uncanonicalized path under the symlink ($sbx_canon) — pwd -P canonicalization lost?" ;;
-    "$tc14_real"/*)
-      outer_pass "TC-14.1: make_plain_sandbox canonicalizes the sandbox root through a symlinked TMPDIR" ;;
-    *)
-      outer_fail "TC-14.1: unexpected sandbox path '$sbx_canon' (expected under $tc14_real)" ;;
-  esac
-  rm -rf "$sbx_canon"
-  sbx_canon_git=$(TMPDIR="$tc14_link" bash -c "source '$HELPERS'; make_sandbox")
-  case "$sbx_canon_git" in
-    "$tc14_link"/*)
-      outer_fail "TC-14.2: make_sandbox returned an uncanonicalized path under the symlink ($sbx_canon_git) — pwd -P canonicalization lost?" ;;
-    "$tc14_real"/*)
-      outer_pass "TC-14.2: make_sandbox canonicalizes the sandbox root through a symlinked TMPDIR" ;;
-    *)
-      outer_fail "TC-14.2: unexpected sandbox path '$sbx_canon_git' (expected under $tc14_real)" ;;
-  esac
-  rm -rf "$sbx_canon_git"
-  rm -f "$tc14_link"
+  _probe=$(TMPDIR="$tc14_link" mktemp -d 2>/dev/null) || _probe=""
+  case "$_probe" in "$tc14_link"/*) tc14_honors_tmpdir=1 ;; esac
+  [ -n "$_probe" ] && rm -rf "$_probe"
 else
-  outer_fail "TC-14: could not create the symlink fixture at $tc14_link — canonicalization would go unverified"
+  outer_fail "TC-14: could not create the symlink fixture at $tc14_link — the Linux-side assertions would go unverified"
 fi
+
+# Floor: on the blocking gate the symlink variant must actually run, otherwise the
+# only coverage that is load-bearing on Linux would disappear without a trace.
+if [ -d /proc ] && [ "$tc14_honors_tmpdir" != 1 ]; then
+  outer_fail "TC-14: bare 'mktemp -d' does not honour \$TMPDIR on Linux — the symlinked-TMPDIR assertions cannot run on the blocking gate"
+fi
+
+if [ "$tc14_honors_tmpdir" = 1 ]; then
+  for _tc14 in "3:make_plain_sandbox" "4:make_sandbox"; do
+    _n="${_tc14%%:*}"; _fn="${_tc14#*:}"
+    _sbx=$(TMPDIR="$tc14_link" bash -c "source '$HELPERS'; $_fn")
+    case "$_sbx" in
+      "$tc14_link"/*)
+        outer_fail "TC-14.$_n: $_fn returned an uncanonicalized path under the symlink ($_sbx) — pwd -P canonicalization lost?" ;;
+      "$tc14_real"/*)
+        outer_pass "TC-14.$_n: $_fn canonicalizes the sandbox root through a symlinked TMPDIR" ;;
+      *)
+        outer_fail "TC-14.$_n: unexpected sandbox path '$_sbx' (expected under $tc14_real)" ;;
+    esac
+    rm -rf "$_sbx"
+  done
+else
+  OUTER_SKIP=$((OUTER_SKIP + 1))
+  echo "  ⏭️ SKIP: TC-14.3/.4 (bare 'mktemp -d' does not honour \$TMPDIR here — BSD/macOS; TC-14.1/.2 still cover canonicalization on this platform)"
+fi
+rm -f "$tc14_link"
 rm -rf "$tc14_real"
 
 # Cycle 3 G-H05: TC-15 — skip() counts and print_summary reports it.
@@ -579,6 +607,7 @@ echo
 echo "─── $(basename "$0") summary ──────────────────────"
 echo "PASS: $OUTER_PASS"
 echo "FAIL: $OUTER_FAIL"
+[ "$OUTER_SKIP" -gt 0 ] && echo "SKIP: $OUTER_SKIP"
 
 if [ "$OUTER_FAIL" -ne 0 ]; then
   echo "Failed assertions:"
