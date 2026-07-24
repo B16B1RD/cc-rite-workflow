@@ -116,10 +116,15 @@ pass() {
 # Skip marker — writes to stdout (see "Output convention" in the file header).
 #
 # Skips are counted, not just printed. A platform-gated suite that prints
-# "PASS: 8, FAIL: 0" tells the reader nothing about how many assertions never
-# ran; on the macOS leg that difference is 31 assertions, several of them
-# guarding known production bugs (#2010 / #2011 / #2014). Counting them keeps
-# "green" honest and makes a growing skip set visible in the summary.
+# "PASS: 8, FAIL: 0" tells the reader nothing about what never ran; on the macOS
+# leg roughly 30 assertions are gated away, several of them guarding known
+# production bugs (#2010 / #2011 / #2014). Counting keeps "green" honest and
+# makes a growing skip set visible.
+#
+# The unit is one skip CALL, not one assertion — a single call can gate a whole
+# block (worktree-foreign-cwd gates eleven assertions with one). The runners
+# therefore report "N gated group(s) skipped" rather than "N skipped", so the
+# number is not mistaken for an assertion count.
 # Same shape as the pre-existing skip() in pre-compact.test.sh and
 # pr-cycle-cleanup.test.sh.
 skip() {

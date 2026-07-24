@@ -41,11 +41,21 @@ FAILED_NAMES=()
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ FAIL: $1"; }
 
+# The suite as a whole needs timeout(1) OR perl(1); only the fallback TCs below
+# need perl specifically. Exiting 1 here would silently promote perl to a hard
+# requirement for the whole suite and contradict what CONTRIBUTING.md and
+# _test-helpers.sh state. Skip TC-1..TC-6 instead and still run the drift checks
+# (TC-7 / TC-8), which are platform-independent.
+HAS_PERL=1
 if ! command -v perl >/dev/null 2>&1; then
-  echo "ERROR: perl(1) is required to exercise the _timeout fallback branch." >&2
-  echo "  The fallback is the whole subject of this file, so skipping it would" >&2
-  echo "  defeat the purpose. Install perl to run the suite." >&2
-  exit 1
+  HAS_PERL=0
+fi
+# The blocking gate must exercise the fallback: it is the only leg that can fail
+# the build, and the fallback runs on no other. `[ -d /proc ]` rather than
+# `uname -s` because `uname` resolves through the same PATH that would be hiding
+# `perl`.
+if [ -d /proc ] && [ "$HAS_PERL" != 1 ]; then
+  fail "perl probe: perl(1) unavailable on Linux (missing or shadowed on PATH?) — the _timeout fallback TCs must never be skipped on the blocking gate"
 fi
 
 # A PATH that deliberately omits `timeout` so `command -v timeout` fails and the
@@ -59,141 +69,150 @@ fi
 # path (`kill` is excluded — `command -v kill` returns the bash builtin name,
 # which would produce a self-referential symlink; TC-3's `sh -c 'kill -9 $$'`
 # uses the shell builtin and needs no binary).
-FAKE_BIN="$TEST_DIR/bin"
-mkdir -p "$FAKE_BIN"
-for tool in perl bash sh env sleep cat touch; do
-  tool_path=$(command -v "$tool" 2>/dev/null) || {
-    echo "ERROR: fixture tool '$tool' not found on PATH — the TCs below would pass vacuously" >&2
-    exit 1
-  }
-  case "$tool_path" in
-    /*) ;;
-    *)
-      echo "ERROR: '$tool' resolved to '$tool_path' (not an absolute path — builtin or alias?)" >&2
+if [ "$HAS_PERL" = 1 ]; then
+  FAKE_BIN="$TEST_DIR/bin"
+  mkdir -p "$FAKE_BIN"
+  for tool in perl bash sh env sleep cat touch; do
+    tool_path=$(command -v "$tool" 2>/dev/null) || {
+      echo "ERROR: fixture tool '$tool' not found on PATH — the TCs below would pass vacuously" >&2
       exit 1
-      ;;
-  esac
-  ln -sf "$tool_path" "$FAKE_BIN/$tool" || {
-    echo "ERROR: failed to link fixture tool '$tool' into $FAKE_BIN" >&2
+    }
+    case "$tool_path" in
+      /*) ;;
+      *)
+        echo "ERROR: '$tool' resolved to '$tool_path' (not an absolute path — builtin or alias?)" >&2
+        exit 1
+        ;;
+    esac
+    ln -sf "$tool_path" "$FAKE_BIN/$tool" || {
+      echo "ERROR: failed to link fixture tool '$tool' into $FAKE_BIN" >&2
+      exit 1
+    }
+    [ -x "$FAKE_BIN/$tool" ] || {
+      echo "ERROR: fixture link $FAKE_BIN/$tool is not executable" >&2
+      exit 1
+    }
+  done
+  if [ -e "$FAKE_BIN/timeout" ]; then
+    echo "ERROR: fixture PATH unexpectedly contains timeout — the fallback would not run" >&2
     exit 1
-  }
-  [ -x "$FAKE_BIN/$tool" ] || {
-    echo "ERROR: fixture link $FAKE_BIN/$tool is not executable" >&2
-    exit 1
-  }
-done
-if [ -e "$FAKE_BIN/timeout" ]; then
-  echo "ERROR: fixture PATH unexpectedly contains timeout — the fallback would not run" >&2
-  exit 1
-fi
-
-# run_fallback <seconds> <command...> — invoke _timeout with the fallback forced.
-# Runs in a child bash so the restricted PATH cannot leak into later TCs, and
-# echoes the exit code so callers can assert on it without `set -e` aborting.
-# `declare -F` guards against the child sourcing successfully but not defining
-# `_timeout` (a rename would otherwise surface as 127 and be misread as TC-4's
-# "missing program" result). 125 is the sentinel: 0/2/3 are asserted by TC-2, 124
-# by TC-1 and 127 by TC-4, so 3 would collide with a value under test.
-run_fallback() {
-  local secs="$1"; shift
-  PATH="$FAKE_BIN" bash -c '
-    source "$1" || exit 125
-    shift
-    declare -F _timeout >/dev/null || exit 125
-    _timeout "$@"
-  ' _ "$SCRIPT_DIR/_test-helpers.sh" "$secs" "$@"
-}
-
-echo "=== TC-1: exceeding the deadline exits 124 ==="
-run_fallback 1 sleep 10 >/dev/null 2>&1
-rc=$?
-if [ "$rc" -eq 124 ]; then
-  pass "TC-1 timeout maps to 124"
-else
-  fail "TC-1 expected 124 but got $rc (callers assert on 124 to detect hangs)"
-fi
-
-echo "=== TC-2: a normal exit code is propagated verbatim ==="
-tc2_ok=1
-for expected in 0 2 3; do
-  run_fallback 5 sh -c "exit $expected" >/dev/null 2>&1
-  rc=$?
-  if [ "$rc" -ne "$expected" ]; then
-    fail "TC-2 exit $expected was reported as $rc"
-    tc2_ok=0
   fi
-done
-[ "$tc2_ok" = "1" ] && pass "TC-2 exit codes 0/2/3 propagate unchanged"
 
-echo "=== TC-3: a signal-killed child maps to 128+N ==="
-# `exit($? >> 8)` alone reports 0 here (WEXITSTATUS of a signalled child), which
-# would make a crashed hook indistinguishable from a clean run for the strict rc
-# comparisons in review-helpers-gate-behavior.test.sh.
-run_fallback 5 sh -c 'kill -9 $$' >/dev/null 2>&1
-rc=$?
-if [ "$rc" -eq 137 ]; then
-  pass "TC-3 SIGKILL maps to 137 (128+9), matching timeout(1)"
-else
-  fail "TC-3 expected 137 for a SIGKILL'd child but got $rc (a 0 here would score a crash as success)"
-fi
+  # run_fallback <seconds> <command...> — invoke _timeout with the fallback forced.
+  # Runs in a child bash so the restricted PATH cannot leak into later TCs, and
+  # echoes the exit code so callers can assert on it without `set -e` aborting.
+  # `declare -F` guards against the child sourcing successfully but not defining
+  # `_timeout` (a rename would otherwise surface as 127 and be misread as TC-4's
+  # "missing program" result). 126 is the sentinel — every other code the shim can
+  # return is asserted by some TC (0/2/3 by TC-2, 124 by TC-1, 125 by TC-5b,
+  # 127 by TC-4), so a fixture failure must not reuse one of them.
+  run_fallback() {
+    local secs="$1"; shift
+    PATH="$FAKE_BIN" bash -c '
+      source "$1" || exit 126
+      shift
+      declare -F _timeout >/dev/null || exit 126
+      _timeout "$@"
+    ' _ "$SCRIPT_DIR/_test-helpers.sh" "$secs" "$@"
+  }
 
-echo "=== TC-4: a missing program exits 127 ==="
-run_fallback 5 "$TEST_DIR/definitely-not-a-program" >/dev/null 2>&1
-rc=$?
-if [ "$rc" -eq 127 ]; then
-  pass "TC-4 missing program exits 127"
-else
-  fail "TC-4 expected 127 for a missing program but got $rc"
-fi
+  echo "=== TC-1: exceeding the deadline exits 124 ==="
+  run_fallback 1 sleep 10 >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 124 ]; then
+    pass "TC-1 timeout maps to 124"
+  else
+    fail "TC-1 expected 124 but got $rc (callers assert on 124 to detect hangs)"
+  fi
 
-echo "=== TC-5: a single metacharacter-bearing argument is not shell-interpreted ==="
-# perl's `exec LIST` shells out when LIST holds exactly one element containing
-# metacharacters; the block form `exec { $ARGV[0] } @ARGV` forces execvp. GNU
-# timeout never shells out, so the shim must not either.
-#
-# This is a negative assertion — it passes when the canary is ABSENT — so it is
-# preceded by a positive control proving the canary mechanism itself works under
-# this fixture. Without it, anything that stops the child from running at all
-# (a broken fixture, a missing `touch`) reads as "correctly not shell-interpreted".
-canary="$TEST_DIR/shell-interpreted.canary"
-rm -f "$canary"
-run_fallback 5 touch "$canary" >/dev/null 2>&1
-if [ -e "$canary" ]; then
-  pass "TC-5 control: the canary mechanism works under this fixture"
-else
-  fail "TC-5 control: the canary was not created even by a direct touch — fixture is broken, the negative assertion below would be vacuous"
-fi
-rm -f "$canary"
-run_fallback 5 "sh -c 'touch $canary'" >/dev/null 2>&1
-rc=$?
-if [ -e "$canary" ]; then
-  fail "TC-5 the shim handed a single argument to /bin/sh (canary created) — use exec BLOCK LIST"
-elif [ "$rc" -ne 127 ]; then
-  fail "TC-5 expected 127 (execvp of a nonexistent program named by the whole string) but got $rc — the child may not have run at all"
-else
-  pass "TC-5 single argument goes through execvp (rc 127), never /bin/sh"
-fi
+  echo "=== TC-2: a normal exit code is propagated verbatim ==="
+  tc2_ok=1
+  for expected in 0 2 3; do
+    run_fallback 5 sh -c "exit $expected" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" -ne "$expected" ]; then
+      fail "TC-2 exit $expected was reported as $rc"
+      tc2_ok=0
+    fi
+  done
+  [ "$tc2_ok" = "1" ] && pass "TC-2 exit codes 0/2/3 propagate unchanged"
 
-echo "=== TC-5b: a fractional deadline is rejected with a distinguishable code ==="
-# perl's alarm truncates to an integer, so `alarm 0.5` becomes `alarm 0` — no
-# timeout at all, and waitpid then blocks until the CI job limit. The shim rejects
-# fractions instead. The exit code matters as much as the rejection: every caller
-# reads "not 124" as "no hang", so `die` (255) would be scored as a pass. 125 is
-# outside every code the shim otherwise returns.
-run_fallback 0.5 sh -c 'exit 0' >/dev/null 2>&1
-rc=$?
-if [ "$rc" -eq 125 ]; then
-  pass "TC-5b fractional seconds rejected with rc 125"
-else
-  fail "TC-5b expected 125 for a fractional deadline but got $rc (255/die would read as 'no hang' to every caller)"
-fi
+  echo "=== TC-3: a signal-killed child maps to 128+N ==="
+  # `exit($? >> 8)` alone reports 0 here (WEXITSTATUS of a signalled child), which
+  # would make a crashed hook indistinguishable from a clean run for the strict rc
+  # comparisons in review-helpers-gate-behavior.test.sh.
+  run_fallback 5 sh -c 'kill -9 $$' >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 137 ]; then
+    pass "TC-3 SIGKILL maps to 137 (128+9), matching timeout(1)"
+  else
+    fail "TC-3 expected 137 for a SIGKILL'd child but got $rc (a 0 here would score a crash as success)"
+  fi
 
-echo "=== TC-6: stdin stays connected through the shim ==="
-stdin_out=$(printf 'hello-stdin\n' | run_fallback 5 sh -c 'cat' 2>/dev/null)
-if [ "$stdin_out" = "hello-stdin" ]; then
-  pass "TC-6 stdin is passed through to the child"
+  echo "=== TC-4: a missing program exits 127 ==="
+  run_fallback 5 "$TEST_DIR/definitely-not-a-program" >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 127 ]; then
+    pass "TC-4 missing program exits 127"
+  else
+    fail "TC-4 expected 127 for a missing program but got $rc"
+  fi
+
+  echo "=== TC-5: a single metacharacter-bearing argument is not shell-interpreted ==="
+  # perl's `exec LIST` shells out when LIST holds exactly one element containing
+  # metacharacters; the block form `exec { $ARGV[0] } @ARGV` forces execvp. GNU
+  # timeout never shells out, so the shim must not either.
+  #
+  # This is a negative assertion — it passes when the canary is ABSENT — so it is
+  # preceded by a positive control proving the canary mechanism itself works under
+  # this fixture. Without it, anything that stops the child from running at all
+  # (a broken fixture, a missing `touch`) reads as "correctly not shell-interpreted".
+  canary="$TEST_DIR/shell-interpreted.canary"
+  rm -f "$canary"
+  run_fallback 5 touch "$canary" >/dev/null 2>&1
+  if [ -e "$canary" ]; then
+    pass "TC-5 control: the canary mechanism works under this fixture"
+  else
+    fail "TC-5 control: the canary was not created even by a direct touch — fixture is broken, the negative assertion below would be vacuous"
+  fi
+  rm -f "$canary"
+  run_fallback 5 "sh -c 'touch $canary'" >/dev/null 2>&1
+  rc=$?
+  if [ -e "$canary" ]; then
+    fail "TC-5 the shim handed a single argument to /bin/sh (canary created) — use exec BLOCK LIST"
+  elif [ "$rc" -ne 127 ]; then
+    fail "TC-5 expected 127 (execvp of a nonexistent program named by the whole string) but got $rc — the child may not have run at all"
+  else
+    pass "TC-5 single argument goes through execvp (rc 127), never /bin/sh"
+  fi
+
+  echo "=== TC-5b: a fractional deadline is rejected with a distinguishable code ==="
+  # perl's alarm truncates to an integer, so `alarm 0.5` becomes `alarm 0` — no
+  # timeout at all, and waitpid then blocks until the CI job limit. The shim rejects
+  # fractions instead. The exit code matters as much as the rejection: every caller
+  # reads "not 124" as "no hang", so `die` (255) would be scored as a pass. 125 is
+  # outside every code the shim otherwise returns.
+  tc5b_err="$TEST_DIR/tc5b.err"
+  run_fallback 0.5 sh -c 'exit 0' >/dev/null 2>"$tc5b_err"
+  rc=$?
+  if [ "$rc" -eq 125 ] && grep -q 'fractional seconds are not supported' "$tc5b_err"; then
+    pass "TC-5b fractional seconds rejected with rc 125 and a matching diagnostic"
+  elif [ "$rc" -eq 125 ]; then
+    fail "TC-5b got rc 125 but not the rejection message — a broken fixture would look the same: $(cat "$tc5b_err")"
+  else
+    fail "TC-5b expected 125 for a fractional deadline but got $rc (255/die would read as 'no hang' to every caller)"
+  fi
+  rm -f "$tc5b_err"
+
+  echo "=== TC-6: stdin stays connected through the shim ==="
+  stdin_out=$(printf 'hello-stdin\n' | run_fallback 5 sh -c 'cat' 2>/dev/null)
+  if [ "$stdin_out" = "hello-stdin" ]; then
+    pass "TC-6 stdin is passed through to the child"
+  else
+    fail "TC-6 stdin was not forwarded (got '$stdin_out')"
+  fi
 else
-  fail "TC-6 stdin was not forwarded (got '$stdin_out')"
+  skip "TC-1..TC-6 (perl(1) unavailable — the _timeout fallback cannot be exercised here; TC-7/TC-8 still check drift)"
 fi
 
 echo "=== TC-7: the _timeout copies are byte-identical ==="
@@ -227,7 +246,7 @@ elif ! printf '%s\n' "${TIMEOUT_COPIES[@]}" | grep -qxF "$REFERENCE_COPY"; then
   fail "TC-7 discovery did not include the reference copy $REFERENCE_COPY"
 else
   extract_timeout_body() {
-    awk '/^_timeout\(\) \{$/ { capture = 1 } capture { print } /^\}$/ { if (capture) exit }' "$1"
+    awk '/^[[:space:]]*(function[[:space:]]+)?_timeout[[:space:]]*(\(\))?[[:space:]]*\{/ { capture = 1 } capture { print } /^\}$/ { if (capture) exit }' "$1"
   }
   reference_body=$(extract_timeout_body "$REFERENCE_COPY")
   if [ -z "$reference_body" ]; then

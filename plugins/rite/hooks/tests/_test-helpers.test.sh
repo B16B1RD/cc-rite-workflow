@@ -19,6 +19,8 @@ OUTER_SKIP=0
 
 outer_pass() { OUTER_PASS=$((OUTER_PASS + 1)); echo "  ✅ $1"; }
 outer_fail() { OUTER_FAIL=$((OUTER_FAIL + 1)); OUTER_FAILED+=("$1"); echo "  ❌ $1"; }
+# Counted rather than a bare echo so the runner's marker/count cross-check agrees.
+outer_skip() { OUTER_SKIP=$((OUTER_SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
 if [ ! -f "$HELPERS" ]; then
   # Output convention: Hard precondition (missing executable) → stderr
@@ -578,8 +580,7 @@ if [ "$tc14_honors_tmpdir" = 1 ]; then
     rm -rf "$_sbx"
   done
 else
-  OUTER_SKIP=$((OUTER_SKIP + 1))
-  echo "  ⏭️ SKIP: TC-14.3/.4 (bare 'mktemp -d' does not honour \$TMPDIR here — BSD/macOS; TC-14.1/.2 still cover canonicalization on this platform)"
+  outer_skip "TC-14.3/.4 (bare 'mktemp -d' does not honour \$TMPDIR here — BSD/macOS; TC-14.1/.2 still cover canonicalization on this platform)"
 fi
 rm -f "$tc14_link"
 rm -rf "$tc14_real"

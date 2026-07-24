@@ -354,10 +354,14 @@ fi
 # (pr-cycle-cleanup.sh and lib/worktree-git.sh, all on WARNING paths under `set -u`, where the
 # failure turns a warning into a hard abort). Those were braced in the same change.
 #
-# Scope limit, stated honestly: bash fenced in SKILL.md / references is NOT scanned. Those blocks
-# are executed by rite but are not `*.sh` files, and extracting fences reliably is a separate job.
-# Two such sites exist today (skills/setup/SKILL.md, skills/pr-review/references/finding-cycling.md);
-# neither runs under `set -u`, so the failure mode there is garbled output rather than an abort.
+# Scope limits, stated honestly:
+#   - Only leading-`#` comment LINES are exempt. A trailing comment quoting the anti-pattern
+#     (`foo   # see $sv→v3`) is still reported; stripping trailing comments would require
+#     distinguishing them from `#` inside strings and `${var#pat}`, which is not worth it here.
+#   - bash fenced in SKILL.md / references is NOT scanned. Those blocks are executed by rite but
+#     are not `*.sh` files, and extracting fences reliably is a separate job. Two such sites exist
+#     today (skills/setup/SKILL.md, skills/pr-review/references/finding-cycling.md); neither runs
+#     under `set -u`, so the failure mode there is garbled output rather than an abort.
 echo ""
 echo "=== TC-8b-h: no unbraced \$var abuts a multibyte character in any plugins/rite shell script ==="
 #
@@ -365,10 +369,29 @@ echo "=== TC-8b-h: no unbraced \$var abuts a multibyte character in any plugins/
 # comment-stripping filter first and numbering the survivors reports the offset
 # within the filtered stream, not the real line — across ~200 files that is off by
 # hundreds of lines and sends the reader to unrelated code.
+_tc8bh_detect() {
+  LC_ALL=C awk '!/^[[:space:]]*#/ && /\$[A-Za-z_][A-Za-z0-9_]*[^ -~]/ { print FILENAME ":" NR ": " $0 }' "$1"
+}
+
+# Positive control. This is a negative assertion — it passes when nothing is found — so a broken
+# detector or an empty file list would report success. Prove the detector fires on a known
+# violation through the SAME function the scan uses, otherwise a rotted pattern would sail through
+# its own control.
+_tc8bh_probe=$(mktemp "${TMPDIR:-/tmp}/rite-tc8bh-probe-XXXXXX.sh")
+printf 'sv=2\necho "v$sv\xe2\x86\x92v3"\n' > "$_tc8bh_probe"
+if [ "$(_tc8bh_detect "$_tc8bh_probe" | wc -l | tr -d '[:space:]')" = "1" ]; then
+  pass "TC-8b-h control: the detector reports a known unbraced-\$var violation"
+else
+  fail "TC-8b-h control: the detector did NOT report a known violation — the scan below is vacuous"
+fi
+rm -f "$_tc8bh_probe"
+
 unbraced_report=""
 unbraced_total=0
+_tc8bh_scanned=0
 while IFS= read -r _sh; do
-  _found=$(LC_ALL=C awk '!/^[[:space:]]*#/ && /\$[A-Za-z_][A-Za-z0-9_]*[^ -~]/ { print FILENAME ":" NR ": " $0 }' "$_sh")
+  _tc8bh_scanned=$((_tc8bh_scanned + 1))
+  _found=$(_tc8bh_detect "$_sh")
   if [ -n "$_found" ]; then
     _hits=$(printf '%s\n' "$_found" | wc -l | tr -d '[:space:]')
     unbraced_total=$((unbraced_total + _hits))
@@ -376,12 +399,16 @@ while IFS= read -r _sh; do
 $_found"
   fi
 done < <(find "$PLUGIN_ROOT" -name '*.sh' -type f | sort)
-if [ "$unbraced_total" = "0" ]; then
-  pass "TC-8b-h: all variables abutting multibyte characters are brace-delimited"
+# A discovery that returns nothing is a broken scan, not a clean one.
+if [ "$_tc8bh_scanned" -eq 0 ]; then
+  fail "TC-8b-h: found no *.sh under $PLUGIN_ROOT — the scan matched nothing to check (layout changed?)"
+elif [ "$unbraced_total" = "0" ]; then
+  pass "TC-8b-h: all variables abutting multibyte characters are brace-delimited ($_tc8bh_scanned files scanned)"
 else
-  fail "TC-8b-h: $unbraced_total unbraced \$var(s) abut a multibyte character — brace them (\${var}) or a non-UTF-8 locale will fold the following byte into the name and trip set -u:$unbraced_report"
+  fail "TC-8b-h: $unbraced_total line(s) hold an unbraced \$var abutting a multibyte character — brace them (\${var}) or a non-UTF-8 locale will fold the following byte into the name and trip set -u:$unbraced_report"
 fi
-unset unbraced_report unbraced_total _sh _hits _found
+unset -f _tc8bh_detect
+unset unbraced_report unbraced_total _sh _hits _found _tc8bh_probe _tc8bh_scanned
 
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""

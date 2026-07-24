@@ -40,6 +40,7 @@ done
 # ran on macOS. The count is parsed from what the files already print — `SKIP: N`
 # from print_summary, or `, N skipped` from the three files with their own summary.
 SKIPPED=0
+SKIP_ACCOUNTING_BROKEN=0
 for test_file in "${test_files[@]}"; do
   test_name="$(basename "$test_file")"
   TOTAL=$((TOTAL + 1))
@@ -73,12 +74,16 @@ for test_file in "${test_files[@]}"; do
       | awk '{s += $1} END {print s + 0}')
     case "$file_skips" in ''|*[!0-9]*) file_skips=0 ;; esac
   fi
-  # A visible ⏭️ marker with nothing parsed means a file is reporting skips in a
-  # format the runner does not know about — surface it instead of undercounting.
+  # Cross-check the parsed count against the visible markers. A mismatch in either
+  # direction means the file reports skips in a shape the runner does not know
+  # about, and the undercount is exactly what this accounting exists to prevent —
+  # so it FAILS the run rather than only warning. Counting only the zero case
+  # would miss a file that mixes counted skip() calls with bare echoes.
   visible_skips=$(printf '%s\n' "$test_out" | grep -c '⏭️' || true)
   case "$visible_skips" in ''|*[!0-9]*) visible_skips=0 ;; esac
-  if [ "$visible_skips" -gt 0 ] && [ "$file_skips" -eq 0 ]; then
-    echo "WARNING: $test_name printed $visible_skips skip marker(s) but reported no count — summary format drift?" >&2
+  if [ "$visible_skips" -ne "$file_skips" ]; then
+    echo "ERROR: $test_name printed $visible_skips skip marker(s) but the summary reported $file_skips — summary format drift, the skip total below is wrong" >&2
+    SKIP_ACCOUNTING_BROKEN=1
   fi
   SKIPPED=$((SKIPPED + file_skips))
   echo ""
@@ -86,9 +91,16 @@ done
 
 echo "==============================="
 if [ "$SKIPPED" -gt 0 ]; then
-  echo "Results: $PASSED/$TOTAL passed, $FAILED failed, $SKIPPED skipped"
+  # "gated group(s)", not "skipped": the unit is a skip call, and one call can gate
+  # anywhere from one to eleven assertions. Naming it precisely stops the number
+  # from being read as an assertion count it is not.
+  echo "Results: $PASSED/$TOTAL passed, $FAILED failed, $SKIPPED gated group(s) skipped"
 else
   echo "Results: $PASSED/$TOTAL passed, $FAILED failed"
+fi
+if [ "$SKIP_ACCOUNTING_BROKEN" -eq 1 ]; then
+  echo "Skip accounting is unreliable for this run (see the ERROR lines above)."
+  exit 1
 fi
 if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
   echo "Failed tests:"
