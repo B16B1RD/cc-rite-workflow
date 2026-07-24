@@ -288,10 +288,19 @@ echo ""
 # The AC-2 resolution relies on `realpath` resolving a symlink whose target does
 # not yet exist (the symlink targets below are never created). GNU realpath does;
 # BSD/macOS realpath errors, so the final-element resolution no-ops there — the
-# hook comment above already notes this fallthrough is "no worse than before", and
-# AC-3 (Claude Code Edit/Write refuse symlink writes) is the backstop. Probe the
-# exact behavior and skip these two TCs where realpath can't resolve a dangling
-# symlink (Issue #2008; documented BSD limitation, not a regression).
+# hook comment above already notes this fallthrough is "no worse than before".
+# Probe the exact behavior and skip these two TCs where realpath can't resolve a
+# dangling symlink (Issue #2008).
+#
+# This is a production gap on macOS, not a test-only quirk, and it is tracked in
+# Issue #2014 — the fix resolves the link target's parent instead of the final
+# element, which works on BSD too. Do NOT describe AC-3 (Claude Code's Edit/Write
+# refusing symlink writes) as the backstop here: pre-tool-edit-guard.sh states
+# that the guard "does not rely on that (undocumented) harness behavior", so
+# leaning on it as the macOS safety net contradicts the hook's own design. The
+# residual exposure while #2014 is open is a Write landing a new file in the
+# parent working tree (visible in `git status`); the .git RCE path stays closed
+# because pre-tool-bash-guard.sh's `_gd_fileverb` denies it independently.
 _sym_probe=$(mktemp -d); ln -s "$_sym_probe/no-such-target" "$_sym_probe/lnk"
 if realpath "$_sym_probe/lnk" >/dev/null 2>&1; then RESOLVES_DANGLING_SYMLINK=1; else RESOLVES_DANGLING_SYMLINK=0; fi
 rm -rf "$_sym_probe"
@@ -311,7 +320,7 @@ assert_deny "isolation symlink into parent working tree resolved & blocked" "$ou
 rm -f "$ISO_MUT_DIR/evil-into-tree"
 echo ""
 else
-  echo "  ⏭️  TC-SYMLINK-gitdir/tree skipped (realpath can't resolve a dangling symlink here; AC-2 final-element resolution no-ops on BSD/macOS — AC-3 Edit/Write symlink refusal is the backstop, Issue #2008)"
+  echo "  ⏭️  TC-SYMLINK-gitdir/tree skipped (realpath can't resolve a dangling symlink here; AC-2 final-element resolution no-ops on BSD/macOS — production gap tracked in Issue #2014, skip introduced by Issue #2008)"
 fi
 
 echo "TC-SYMLINK-local: isolation-internal symlink → allow (no regression)"

@@ -12,7 +12,13 @@ HOOK="$SCRIPT_DIR/../wiki-ingest-trigger.sh"
 # ("must be under $PWD"). pwd -P aligns the fixture with the canonical form the
 # guard resolves to (Issue #2008; the guard's own $PWD-arm symlink handling is
 # tracked separately in #2012).
-TEST_DIR="$(cd "$(mktemp -d)" && pwd -P)"
+#
+# Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
+# changing directory, so a failed mktemp inside that nesting would yield the
+# current directory (the repository checkout under CI) with a zero exit status,
+# and the `rm -rf "$TEST_DIR"` in the EXIT trap below would delete it.
+TEST_DIR="$(mktemp -d)" || exit 1
+TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 PASS=0
 FAIL=0
 

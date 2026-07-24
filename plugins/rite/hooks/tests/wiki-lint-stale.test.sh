@@ -41,9 +41,13 @@ trap cleanup EXIT
 # GNU-incompatible host (BSD/macOS), deliberately degrades: it emits a WARNING
 # and returns n_stale=0 / stale_check_ok=skipped_no_gnu_date (non-blocking
 # contract). The detection TCs (TC-1/TC-2) assert real n_stale=1 results, so
-# guard them behind the same GNU-date probe the script uses; the arg-validation
-# TCs (TC-4..TC-8, TC-10) and the empty-input TC-9 stay platform-agnostic
-# (they exit before / don't depend on the date path). (Issue #2008)
+# guard them behind the same GNU-date probe the script uses. The arg-validation
+# TCs (TC-4..TC-8, TC-10) stay platform-agnostic because they exit before the
+# date path. TC-3 and TC-9 do run through the date path — their expected output
+# (n_stale=0 + rc 0) is byte-identical to the degradation output — so instead of
+# guarding them they assert `stale_check_ok=true`, which the script only emits
+# when the comparison actually ran. That keeps them fail-closed on BSD rather
+# than vacuously green. (Issue #2008)
 if date -d "2025-01-01" +%s >/dev/null 2>&1; then HAS_GNU_DATE=1; else HAS_GNU_DATE=0; fi
 
 PASS=0
@@ -150,8 +154,16 @@ fi
 echo "=== TC-3: --stale-days 境界 (巨大閾値 → 0 件) ==="
 repo=$(make_same_branch_sandbox tc3)
 run_helper "$repo" "$PAGES_2" --branch-strategy same_branch --stale-days 36500
-if [ "$HELPER_RC" -eq 0 ] && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0'; then
-  pass "TC-3 閾値内は 0 件"
+# Why (Issue #2008 review F-05): `n_stale=0` + rc 0 is also exactly what the
+# skipped_no_gnu_date degradation emits, so asserting only those two would let
+# TC-3 pass on BSD/macOS without ever exercising the threshold comparison — and
+# it would keep passing even if that comparison were completely broken. The
+# script already emits `stale_check_ok={true|skipped_no_gnu_date}` as a machine
+# readable discriminator; requiring `true` makes this TC fail closed instead.
+if [ "$HELPER_RC" -eq 0 ] \
+  && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0' \
+  && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stale_check_ok=true'; then
+  pass "TC-3 閾値内は 0 件 (stale_check_ok=true — date 経路を実行済み)"
 else
   fail "TC-3 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
@@ -197,14 +209,19 @@ else
   fail "TC-8 (rc=$HELPER_RC)"
 fi
 
-echo "=== TC-9: 空 stdin → n_stale=0 + 空 marker block ==="
+echo "=== TC-9: 空 stdin → n_stale=0 + 空 marker block + stale_check_ok=true ==="
 run_helper "$repo" "" --branch-strategy same_branch
+# `stale_check_ok=true` is required for the same reason as TC-3: the
+# skipped_no_gnu_date degradation emits an identical n_stale=0 + marker block +
+# WIKI_LINT_STALE=0 payload, so without the discriminator this TC would pass on
+# BSD/macOS without exercising the empty-input path (Issue #2008 review F-05).
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stale_check_ok=true' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---stale_pages_begin---' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---stale_pages_end---' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_STALE=0'; then
-  pass "TC-9 空入力で 0 件 + marker block 維持"
+  pass "TC-9 空入力で 0 件 + marker block 維持 (stale_check_ok=true)"
 else
   fail "TC-9 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi

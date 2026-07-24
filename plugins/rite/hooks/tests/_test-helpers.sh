@@ -261,16 +261,20 @@ assert_grep_in_section() {
 # GNU `timeout` is absent on macOS (BSD / no coreutils — the macOS CI leg
 # deliberately omits coreutils to expose GNU/BSD divergence, so the suite must
 # NOT depend on the binary). When it is present we use it; otherwise we fall
-# back to a perl fork/waitpid shim that reproduces timeout(1)'s contract: on
-# timeout it kills the child and exits 124 (the value several suites assert on
-# to detect an infinite-loop regression), otherwise it propagates the child's
-# real exit code. macOS ships /usr/bin/perl, so hang-protection coverage is
-# preserved rather than silently skipped. A naive `perl -e 'alarm; exec'` is
-# WRONG here — after exec, SIGALRM hits the target with its default disposition
-# and the process dies with 142 (128+14), defeating the `== 124` assertions;
-# the fork/waitpid form below maps the alarm to a real 124. `exec` in the child
-# keeps fd 0, so stdin-fed callers (`printf ... | _timeout N bash ...`,
-# `_timeout N bash hook < in.json`) work unchanged.
+# back to a perl fork/waitpid shim that reproduces timeout(1)'s full exit-code
+# contract: 124 on timeout (the value several suites assert on to detect an
+# infinite-loop regression), 128+N when the child dies from signal N, and the
+# child's own status otherwise. macOS ships /usr/bin/perl, so hang-protection
+# coverage is preserved rather than silently skipped. A naive
+# `perl -e 'alarm; exec'` is WRONG here — after exec, SIGALRM hits the target
+# with its default disposition and the process dies with 142 (128+14),
+# defeating the `== 124` assertions; the fork/waitpid form below maps the alarm
+# to a real 124. `exec` in the child keeps fd 0, so stdin-fed callers
+# (`printf ... | _timeout N bash ...`, `_timeout N bash hook < in.json`) work
+# unchanged. The block form `exec { $ARGV[0] } @ARGV` forces execvp even for a
+# single argument, so a command string containing shell metacharacters is never
+# handed to /bin/sh (plain `exec @ARGV` would shell-interpret it, diverging from
+# timeout(1) and turning the shim into an injection sink).
 _timeout() {
   local _d="$1"; shift
   if command -v timeout >/dev/null 2>&1; then
@@ -279,12 +283,23 @@ _timeout() {
     perl -e '
       my $d = shift; my $pid = fork;
       exit 127 unless defined $pid;
-      if ($pid == 0) { exec @ARGV; exit 127; }
+      if ($pid == 0) { exec { $ARGV[0] } @ARGV; exit 127; }
       $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
-      alarm $d; waitpid $pid, 0; exit($? >> 8);
+      alarm $d; waitpid $pid, 0;
+      my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
     ' "$_d" "$@"
   fi
 }
+
+# Fail closed when no backend exists. Every `_timeout` caller reads a non-124 rc
+# as "no hang", so a missing backend would silently turn each hang assertion into
+# a pass. Abort at source time rather than degrade.
+if ! command -v timeout >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then
+  echo "ERROR: neither timeout(1) nor perl(1) is available — _timeout cannot detect" >&2
+  echo "  hangs, and every hang assertion in this suite would silently pass." >&2
+  echo "  Install GNU coreutils (timeout) or perl before running the test suite." >&2
+  exit 1
+fi
 
 # make_sandbox — git-init + initial-commit sandbox.
 #
@@ -356,7 +371,18 @@ make_sandbox() {
   # and git rev-parse / realpath in production canonicalize to the /private
   # form. Comparing the raw mktemp path against those canonical paths would
   # spuriously fail path-equality assertions (Issue #2008 Family D).
-  d=$(cd "$d" && pwd -P) || true
+  #
+  # Fail closed on canonicalization failure. `cd ""` returns 0 without changing
+  # the directory, so letting an empty $d through would make the git init/commit
+  # subshell below run in the caller's CWD — the repository checkout under CI —
+  # instead of a sandbox, and the helper would still return 0.
+  local d_canon
+  d_canon=$(cd "$d" && pwd -P) || {
+    echo "ERROR: make_sandbox: failed to canonicalize sandbox root '$d'" >&2
+    [ "$soft_fail" -eq 1 ] && return 1
+    exit 1
+  }
+  d="$d_canon"
   sandbox_err=$(mktemp "${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX" 2>/dev/null) || {
     echo "WARNING: make_sandbox: mktemp ${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX failed; diagnostic capture disabled (git stderr will not be surfaced on failure)" >&2
     sandbox_err="/dev/null"
@@ -435,8 +461,15 @@ make_plain_sandbox() {
   }
   # Canonicalize so the sandbox root matches production's realpath/pwd -P view
   # (macOS $TMPDIR is under the /private-symlinked /var/folders). See make_sandbox.
-  d=$(cd "$d" && pwd -P) || true
-  echo "$d"
+  # Fail closed: emitting an empty path here would make callers' `cd "$sbx"` a
+  # no-op (bash `cd ""` returns 0) and land their fixtures in the caller's CWD.
+  local d_canon
+  d_canon=$(cd "$d" && pwd -P) || {
+    echo "ERROR: make_plain_sandbox: failed to canonicalize sandbox root '$d'" >&2
+    [ "$soft_fail" -eq 1 ] && return 1
+    exit 1
+  }
+  echo "$d_canon"
 }
 
 # Print summary block and return non-zero when any assertion failed.

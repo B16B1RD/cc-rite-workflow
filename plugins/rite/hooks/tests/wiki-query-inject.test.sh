@@ -13,9 +13,11 @@ set -uo pipefail
 
 # _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
 # GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
-# fork/waitpid shim reproducing timeout(1)'s 124-on-timeout contract (a naive
+# fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
+# 128+N on signal death, the child's status otherwise (a naive
 # `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
-# This file does not source _test-helpers.sh, so the shim is inlined here.
+# This file does not source _test-helpers.sh, so the shim is inlined here — keep
+# it byte-identical with _test-helpers.sh (timeout-shim.test.sh asserts no drift).
 _timeout() {
   local _d="$1"; shift
   if command -v timeout >/dev/null 2>&1; then
@@ -24,12 +26,23 @@ _timeout() {
     perl -e '
       my $d = shift; my $pid = fork;
       exit 127 unless defined $pid;
-      if ($pid == 0) { exec @ARGV; exit 127; }
+      if ($pid == 0) { exec { $ARGV[0] } @ARGV; exit 127; }
       $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
-      alarm $d; waitpid $pid, 0; exit($? >> 8);
+      alarm $d; waitpid $pid, 0;
+      my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
     ' "$_d" "$@"
   fi
 }
+
+# Fail closed when no backend exists. Every `_timeout` caller reads a non-124 rc
+# as "no hang", so a missing backend would silently turn each hang assertion into
+# a pass. Abort at source time rather than degrade.
+if ! command -v timeout >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then
+  echo "ERROR: neither timeout(1) nor perl(1) is available — _timeout cannot detect" >&2
+  echo "  hangs, and every hang assertion in this suite would silently pass." >&2
+  echo "  Install GNU coreutils (timeout) or perl before running the test suite." >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/../wiki-query-inject.sh"

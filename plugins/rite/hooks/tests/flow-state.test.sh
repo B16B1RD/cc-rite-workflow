@@ -172,18 +172,27 @@ echo ""
 echo "=== TC-8b: AC-8 non-verbose migrate emits 'migrated:' to stderr; v3-only stays silent ==="
 # Why: session-start auto path silences only stdout. If `migrated:` is gated on --verbose or
 # moved to stdout, a real migration becomes silent and violates AC-8 (silent skip forbidden).
-# NOTE (Issue #2008): each `err=$( … migrate … )` capture below ends in `|| true`, matching TC-8's
-# own tolerance. The root cause that made migrate exit non-zero on macOS — an unbraced `$sv→` in
-# flow-state.sh tripping `set -u` under a non-UTF-8 locale — is now fixed at source, so migrate
-# exits 0. The `|| true` is retained defensively: these TCs assert on the captured stderr, never on
-# the migrate exit code, so should a future migrate-exit regression recur it surfaces as a single
-# assertion failure here rather than aborting the whole file under `set -e`.
+# NOTE (Issue #2008): each `err=$( … migrate … )` capture below records the exit code into $rc
+# instead of discarding it with `|| true`, so a migrate crash cannot masquerade as a normal run.
+# The root cause that made migrate exit non-zero on macOS — an unbraced `$sv→` in flow-state.sh
+# tripping `set -u` under a non-UTF-8 locale — is fixed at source, so migrate exits 0. Capturing
+# rather than discarding keeps the file from aborting under `set -e` (TC-8's own tolerance) while
+# preserving the crash signal: TC-8b-b asserts the *absence* of output, so without an explicit rc
+# assertion an aborted migrate would produce empty stderr and be scored as "correctly silent".
+assert_migrate_rc() { # <tc-label> <rc>
+  if [ "$2" = "0" ]; then
+    pass "$1: migrate exits 0"
+  else
+    fail "$1: migrate exited $2 (expected 0 — crash would otherwise be indistinguishable from a normal run)"
+  fi
+}
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-a" "$rc"
 # Why: grep specificity に v[12]→v3 矢印と phase 変換 token を要求することで、emission format が
 # `migrate done:` 等にリネームされた場合も regression を検出できる (format stability invariant)。
 echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
@@ -194,7 +203,11 @@ echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
 # でのみ出力される invariant も同時に検証する (quiet session start での noise 抑制)。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase fix --issue 8 --branch "b" --pr 1 --next "n")
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+# Why (Issue #2008 review F-04): this is the only negative assertion in TC-8b — it passes when the
+# capture is empty. An aborted migrate also produces empty stderr, so the exit code is the sole
+# remaining signal distinguishing "correctly silent" from "crashed before printing anything".
+assert_migrate_rc "TC-8b-b" "$rc"
 if echo "$err" | grep -q "migrated:\|skip (already v3)"; then
   fail "TC-8b-b: non-verbose migrate of v3-only emitted output (should be silent): '$err'"
 else
@@ -209,7 +222,8 @@ mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"phase":"cleanup_pre_ingest","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-c" "$rc"
 echo "$err" | grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' \
   && pass "TC-8b-c: non-verbose migrate of v1 (schema_version 欠落) announces 'migrated:' on stderr" \
   || fail "TC-8b-c: v1 schema 欠落 migrate did not emit expected 'migrated:.*v1→v3.*phase→phase' format: '$err'"
@@ -226,7 +240,8 @@ EOF
 cat > "$d/.rite/sessions/${sid2}.flow-state" <<EOF
 {"schema_version":2,"phase":"create_branch","session_id":"$sid2","issue_number":4,"branch":"b2","pr_number":0,"next_action":"y","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-d" "$rc"
 # Why: 行頭 anchor `^  migrated:` で固定することで、将来 hook が `Already migrated:` 等の文言を
 # 追加した場合の false match を防ぐ (TC-8b-e/g と同じ anchor 形式)。
 migrated_count=$(echo "$err" | grep -c '^  migrated:' || true)
@@ -315,11 +330,32 @@ mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 ) || true
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-f" "$rc"
 if echo "$err" | grep -q 'would migrate:'; then
   pass "TC-8b-f: --dry-run preview goes to stderr"
 else
   fail "TC-8b-f: --dry-run preview missing from stderr (regression — possibly moved back to stdout): '$err'"
+fi
+
+# --- TC-8b-h: the `${sv}`/`${cp}` braces around the U+2192 arrow are load-bearing ---
+# Why (Issue #2008 review F-06): the braces were added because an unbraced variable abutting the
+# multibyte arrow folds the arrow's leading byte into the variable name under a non-UTF-8 locale,
+# tripping `set -u`. That failure mode does not reproduce on glibc — every locale available here
+# (C / POSIX / C.UTF-8 / en_US.utf8) expands the unbraced form correctly — so a behavioural TC
+# would be vacuous on the blocking Linux leg and the braces would read as a redundant style choice
+# that a later formatting pass could strip with CI still green. A static guard pins them on every
+# platform instead: no unbraced `$var` may sit directly against a non-ASCII byte. Comment lines are
+# exempt so the surrounding rationale can quote the anti-pattern verbatim.
+echo ""
+echo "=== TC-8b-h: no unbraced \$var abuts a multibyte character in flow-state.sh ==="
+unbraced_hits=$(LC_ALL=C grep -v '^[[:space:]]*#' "$HOOK" \
+  | LC_ALL=C grep -c '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' || true)
+if [ "$unbraced_hits" = "0" ]; then
+  pass "TC-8b-h: all variables abutting multibyte characters are brace-delimited"
+else
+  fail "TC-8b-h: $unbraced_hits unbraced \$var(s) abut a multibyte character — brace them (\${var}) or a non-UTF-8 locale will fold the following byte into the name and trip set -u:
+$(LC_ALL=C grep -vn '^[[:space:]]*#' "$HOOK" | LC_ALL=C grep '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]')"
 fi
 
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
