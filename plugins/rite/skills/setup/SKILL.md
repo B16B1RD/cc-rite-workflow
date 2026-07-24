@@ -86,11 +86,12 @@ if [ "$dep_bash" = "ok" ] && [ "$dep_jq" = "ok" ] && [ "$dep_flock" = "ok" ]; th
   echo "✅ 依存検査: bash ${BASH_VERSION%%.*}+ / jq / flock をすべて検出しました（os=$os）"
 fi
 
-# 機械可読 marker（後続フェーズ用。全ケースで emit する。Phase 4.5.0 が jq= を参照する）
+# 機械可読 marker（data contract として全ケースで emit する。現状どの後続フェーズも機械 parse しない
+# — jq 案内の重複排除は Phase 4.5.0 の NO_JQ メッセージが Phase 1.0 を文言で参照して達成する）
 echo "[CONTEXT] DEP_CHECK; bash=$dep_bash; jq=$dep_jq; flock=$dep_flock; os=$os_kind"
 ```
 
-この bash ブロックは **常に exit 0** で終わる（依存欠落を理由に setup を停止しない）。`[CONTEXT] DEP_CHECK` marker の各フィールド（`bash=ok|old|nonbash` / `jq=ok|missing` / `flock=ok|missing` / `os=macos|linux|windows|unknown`）は後続フェーズが参照する。出力を読んだうえで、欠落があってもそのまま 1.1 へ続行する。
+この bash ブロックは **常に exit 0** で終わる（依存欠落を理由に setup を停止しない）。`[CONTEXT] DEP_CHECK` marker の各フィールド（`bash=ok|old|nonbash` / `jq=ok|missing` / `flock=ok|missing` / `os=macos|linux|windows|unknown`）は data contract / observability として全ケースで emit するが、現状どの bash フェーズも機械 parse しない（jq 案内の重複排除は Phase 4.5.0 の NO_JQ メッセージが Phase 1.0 を文言で参照して達成しており、marker の消費には依存しない）。出力を読んだうえで、欠落があってもそのまま 1.1 へ続行する。
 
 ### 1.1 Verify gh CLI Installation
 
@@ -612,8 +613,8 @@ fi
 - If `LOCAL:<path>` or `MARKETPLACE:<path>` → extract all text after the first `:` (the absolute path) and use it as `{hooks_dir}` for all subsequent phases. Also retain the source type (`LOCAL` or `MARKETPLACE`) for use in the Phase 5 completion report.
 - If `NOT_FOUND:NO_JQ` → display warning and **skip the rest of Phase 4.5**（jq のインストール案内は Phase 1.0 の依存検査で既出のため、ここでは繰り返さない — AC-3。NO_JQ 経路に入る時点で jq は必ず欠落しており Phase 1.0 が既に OS 別案内を表示済み）:
     ```
-    ⚠️ Hook scripts not found. jq が検出されなかったため hook 登録をスキップします。
-    （jq のインストール案内は上記 Phase 1.0 の依存検査を参照してください）
+    ⚠️ Hook scripts not found. jq was not detected, so hook registration is skipped.
+    (See the Phase 1.0 dependency check above for jq installation guidance.)
     Workflow will function normally without hooks.
     ```
 - If `NOT_FOUND:NO_HOOKS` → display warning and **skip the rest of Phase 4.5**:
