@@ -186,11 +186,11 @@ iteration:
 
 - [GitHub CLI (gh)](https://cli.github.com/) - GitHub 操作（Issue / PR / Projects）に必須
 - [jq](https://jqlang.github.io/jq/) - フックとスクリプトの JSON 解析に必須
-- **bash 4+** - 必須。フックが連想配列（`declare -A`）や `mapfile` など bash 4 の機能に依存
+- **bash 4+** - 必須。フックとスクリプトが連想配列（`declare -A`）や `mapfile` など bash 4 の機能に依存
 
 推奨:
 
-- **macOS**: [coreutils](https://formulae.brew.sh/formula/coreutils)（`brew install coreutils`）- `gdate`（GNU `date`）を提供し、Wiki の陳腐化検出を有効化（未導入時はその検出のみスキップ）
+- **macOS**: [coreutils](https://formulae.brew.sh/formula/coreutils)（`brew install coreutils`）- Wiki の陳腐化検出は GNU の `date -d` を使うが、macOS 標準の BSD `date` にはこの機能がない。coreutils を入れ、その `gnubin` を `PATH` に追加して `date` を GNU 版に解決させるとこの検出が有効になる（未対応時はその検出のみスキップ）
 
 ## ライセンス
 
