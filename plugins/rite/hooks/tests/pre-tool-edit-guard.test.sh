@@ -285,6 +285,18 @@ echo ""
 # dodge the guard by landing _tdir on the isolation root. AC-3 note: Claude Code's own
 # Edit/Write tools already refuse symlink writes, so this is defense-in-depth.
 # --------------------------------------------------------------------------
+# The AC-2 resolution relies on `realpath` resolving a symlink whose target does
+# not yet exist (the symlink targets below are never created). GNU realpath does;
+# BSD/macOS realpath errors, so the final-element resolution no-ops there — the
+# hook comment above already notes this fallthrough is "no worse than before", and
+# AC-3 (Claude Code Edit/Write refuse symlink writes) is the backstop. Probe the
+# exact behavior and skip these two TCs where realpath can't resolve a dangling
+# symlink (Issue #2008; documented BSD limitation, not a regression).
+_sym_probe=$(mktemp -d); ln -s "$_sym_probe/no-such-target" "$_sym_probe/lnk"
+if realpath "$_sym_probe/lnk" >/dev/null 2>&1; then RESOLVES_DANGLING_SYMLINK=1; else RESOLVES_DANGLING_SYMLINK=0; fi
+rm -rf "$_sym_probe"
+
+if [ "$RESOLVES_DANGLING_SYMLINK" = 1 ]; then
 echo "TC-SYMLINK-gitdir: isolation symlink → parent .git → deny (git-dir)"
 ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/evil-into-gitdir"
 out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-gitdir" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
@@ -298,6 +310,9 @@ out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-tree" "$ISO_MUT_DIR" "$SUBA
 assert_deny "isolation symlink into parent working tree resolved & blocked" "$out"
 rm -f "$ISO_MUT_DIR/evil-into-tree"
 echo ""
+else
+  echo "  ⏭️  TC-SYMLINK-gitdir/tree skipped (realpath can't resolve a dangling symlink here; AC-2 final-element resolution no-ops on BSD/macOS — AC-3 Edit/Write symlink refusal is the backstop, Issue #2008)"
+fi
 
 echo "TC-SYMLINK-local: isolation-internal symlink → allow (no regression)"
 : > "$ISO_MUT_DIR/realfile.txt"

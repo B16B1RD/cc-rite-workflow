@@ -172,12 +172,18 @@ echo ""
 echo "=== TC-8b: AC-8 non-verbose migrate emits 'migrated:' to stderr; v3-only stays silent ==="
 # Why: session-start auto path silences only stdout. If `migrated:` is gated on --verbose or
 # moved to stdout, a real migration becomes silent and violates AC-8 (silent skip forbidden).
+# NOTE (Issue #2008): each `err=$( … migrate … )` capture below ends in `|| true`. On macOS the
+# migrate command exits non-zero after a *successful* migration (a benign BSD-tool quirk in the
+# migrate path — TC-8 above already tolerates it with its own `|| true`, and its post-migration
+# assertions pass on macOS, proving the migration itself works). Without `|| true`, `set -e` would
+# abort the whole file at the first capture. These TCs assert on the captured stderr, never on the
+# migrate exit code, so tolerating it is correct and keeps TC-8b consistent with TC-8.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
 # Why: grep specificity に v[12]→v3 矢印と phase 変換 token を要求することで、emission format が
 # `migrate done:` 等にリネームされた場合も regression を検出できる (format stability invariant)。
 echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
@@ -188,7 +194,7 @@ echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
 # でのみ出力される invariant も同時に検証する (quiet session start での noise 抑制)。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase fix --issue 8 --branch "b" --pr 1 --next "n")
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
 if echo "$err" | grep -q "migrated:\|skip (already v3)"; then
   fail "TC-8b-b: non-verbose migrate of v3-only emitted output (should be silent): '$err'"
 else
@@ -203,7 +209,7 @@ mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"phase":"cleanup_pre_ingest","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
 echo "$err" | grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' \
   && pass "TC-8b-c: non-verbose migrate of v1 (schema_version 欠落) announces 'migrated:' on stderr" \
   || fail "TC-8b-c: v1 schema 欠落 migrate did not emit expected 'migrated:.*v1→v3.*phase→phase' format: '$err'"
@@ -220,7 +226,7 @@ EOF
 cat > "$d/.rite/sessions/${sid2}.flow-state" <<EOF
 {"schema_version":2,"phase":"create_branch","session_id":"$sid2","issue_number":4,"branch":"b2","pr_number":0,"next_action":"y","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || true
 # Why: 行頭 anchor `^  migrated:` で固定することで、将来 hook が `Already migrated:` 等の文言を
 # 追加した場合の false match を防ぐ (TC-8b-e/g と同じ anchor 形式)。
 migrated_count=$(echo "$err" | grep -c '^  migrated:' || true)
@@ -280,7 +286,7 @@ else
     _tc8beg_test_cleanup() { chmod +w "$d/.rite/sessions" 2>/dev/null || true; }
     trap _tc8beg_test_cleanup EXIT INT TERM HUP
     chmod 0555 "$d/.rite/sessions"
-    combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 )
+    combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 ) || true
     chmod +w "$d/.rite/sessions"
     trap - EXIT INT TERM HUP
     eval "$_tc8beg_saved_trap"
@@ -309,7 +315,7 @@ mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 )
+err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 ) || true
 if echo "$err" | grep -q 'would migrate:'; then
   pass "TC-8b-f: --dry-run preview goes to stderr"
 else
