@@ -27,8 +27,14 @@ _timeout() {
       my $d = shift;
       # alarm truncates to an integer, so a fractional deadline silently becomes
       # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
-      # Reject rather than degrade.
-      die "_timeout: fractional seconds are not supported by the perl fallback: $d\n" unless $d =~ /^[0-9]+$/;
+      # Reject rather than degrade, and exit 125 rather than die: die exits 255,
+      # which every caller reads as "not 124, so no hang" — the same silent pass
+      # the rejection exists to prevent. GNU timeout accepts fractions, so this
+      # shim only claims the contract for integer seconds.
+      if ($d !~ /^[0-9]+$/) {
+        print STDERR "_timeout: fractional seconds are not supported by the perl fallback: $d\n";
+        exit 125;
+      }
       my $pid = fork;
       exit 127 unless defined $pid;
       if ($pid == 0) { exec { $ARGV[0] } @ARGV; exit 127; }

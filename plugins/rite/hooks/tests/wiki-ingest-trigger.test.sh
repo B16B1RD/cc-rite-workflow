@@ -38,6 +38,14 @@ fail() {
   echo "  ❌ FAIL: $1"
 }
 
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (Issue #2008 review I-03). Same shape as _test-helpers.sh skip().
+SKIP=0
+skip() {
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
+}
+
 echo "=== wiki-ingest-trigger.sh tests ==="
 echo ""
 
@@ -751,7 +759,7 @@ EOF
     fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
 else
-  echo "  SKIP: TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
+  skip "TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
 fi
 echo ""
 
@@ -1290,7 +1298,7 @@ echo ""
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
-echo "=== Results: $PASS passed, $FAIL failed ==="
+echo "=== Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" ) ==="
 if [ $FAIL -gt 0 ]; then
   exit 1
 fi

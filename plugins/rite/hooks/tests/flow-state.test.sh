@@ -348,22 +348,32 @@ fi
 # platform instead: no unbraced `$var` may sit directly against a non-ASCII byte. Comment lines are
 # exempt so the surrounding rationale can quote the anti-pattern verbatim.
 #
-# The guard covers every shell script under plugins/rite, not just flow-state.sh. The invariant it
-# states is a whole-codebase one, and scoping the check to a single file while wording it as a rule
-# would leave the class looking closed when it was not: the same shape lived in seven other places
+# The guard covers every `*.sh` under plugins/rite, not just flow-state.sh. The invariant is a
+# whole-codebase one, and scoping the check to a single file while wording it as a rule would leave
+# the class looking closed when it was not: the same shape lived in seven other places
 # (pr-cycle-cleanup.sh and lib/worktree-git.sh, all on WARNING paths under `set -u`, where the
 # failure turns a warning into a hard abort). Those were braced in the same change.
+#
+# Scope limit, stated honestly: bash fenced in SKILL.md / references is NOT scanned. Those blocks
+# are executed by rite but are not `*.sh` files, and extracting fences reliably is a separate job.
+# Two such sites exist today (skills/setup/SKILL.md, skills/pr-review/references/finding-cycling.md);
+# neither runs under `set -u`, so the failure mode there is garbled output rather than an abort.
 echo ""
 echo "=== TC-8b-h: no unbraced \$var abuts a multibyte character in any plugins/rite shell script ==="
+#
+# One awk pass per file, numbering against the ORIGINAL file. Piping through a
+# comment-stripping filter first and numbering the survivors reports the offset
+# within the filtered stream, not the real line — across ~200 files that is off by
+# hundreds of lines and sends the reader to unrelated code.
 unbraced_report=""
 unbraced_total=0
 while IFS= read -r _sh; do
-  _hits=$(LC_ALL=C grep -v '^[[:space:]]*#' "$_sh" | LC_ALL=C grep -c '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' || true)
-  case "$_hits" in ''|*[!0-9]*) _hits=0 ;; esac
-  if [ "$_hits" -gt 0 ]; then
+  _found=$(LC_ALL=C awk '!/^[[:space:]]*#/ && /\$[A-Za-z_][A-Za-z0-9_]*[^ -~]/ { print FILENAME ":" NR ": " $0 }' "$_sh")
+  if [ -n "$_found" ]; then
+    _hits=$(printf '%s\n' "$_found" | wc -l | tr -d '[:space:]')
     unbraced_total=$((unbraced_total + _hits))
     unbraced_report="$unbraced_report
-$(LC_ALL=C grep -v '^[[:space:]]*#' "$_sh" | LC_ALL=C grep -n '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' | sed "s|^|$_sh:|")"
+$_found"
   fi
 done < <(find "$PLUGIN_ROOT" -name '*.sh' -type f | sort)
 if [ "$unbraced_total" = "0" ]; then
@@ -371,7 +381,7 @@ if [ "$unbraced_total" = "0" ]; then
 else
   fail "TC-8b-h: $unbraced_total unbraced \$var(s) abut a multibyte character — brace them (\${var}) or a non-UTF-8 locale will fold the following byte into the name and trip set -u:$unbraced_report"
 fi
-unset unbraced_report unbraced_total _sh _hits
+unset unbraced_report unbraced_total _sh _hits _found
 
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""

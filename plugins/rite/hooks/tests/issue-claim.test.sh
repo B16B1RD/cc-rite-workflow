@@ -147,6 +147,14 @@ for i in 1 2 3 4 5; do
     other)   _other=$((_other+1)) ;;
   esac
 done
+# `command -v flock` is a capability probe, not a platform check: flock missing or
+# shadowed on Linux would silently drop the only coverage of the stale-steal mutual
+# exclusion (Issue #1718 AC-1) and still exit 0. Require it on the blocking gate.
+# `[ -d /proc ]` rather than `uname -s` because `uname` resolves through the same
+# PATH that would be hiding `flock`.
+if [ -d /proc ] && ! command -v flock >/dev/null 2>&1; then
+  fail "TC-14 floor: flock unavailable on Linux (missing or shadowed on PATH?) — the stale-steal mutual-exclusion assertions must never be skipped on the blocking gate"
+fi
 if command -v flock >/dev/null 2>&1; then
   assert "TC-14 exactly one stole the stale claim (AC-1)" "1" "$_stolen"
   assert "TC-14 the other four aborted with 'other'" "4" "$_other"

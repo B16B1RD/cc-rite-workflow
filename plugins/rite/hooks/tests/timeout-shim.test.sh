@@ -18,8 +18,10 @@
 #   TC-4  fallback: a missing program exits 127
 #   TC-5  fallback: a single argument containing shell metacharacters is NOT
 #         shell-interpreted (`exec BLOCK LIST` forces execvp)
+#   TC-5b fallback: a fractional deadline is rejected with rc 125 (alarm truncates
+#         to an integer, so accepting it would disable the timeout entirely)
 #   TC-6  fallback: stdin stays connected through the shim
-#   TC-7  drift: the 6 `_timeout` copies across the suite are byte-identical
+#   TC-7  drift: every discovered `_timeout` copy is byte-identical
 #   TC-8  drift: every file defining `_timeout` also carries the fail-closed guard
 set -uo pipefail
 
@@ -172,6 +174,20 @@ else
   pass "TC-5 single argument goes through execvp (rc 127), never /bin/sh"
 fi
 
+echo "=== TC-5b: a fractional deadline is rejected with a distinguishable code ==="
+# perl's alarm truncates to an integer, so `alarm 0.5` becomes `alarm 0` — no
+# timeout at all, and waitpid then blocks until the CI job limit. The shim rejects
+# fractions instead. The exit code matters as much as the rejection: every caller
+# reads "not 124" as "no hang", so `die` (255) would be scored as a pass. 125 is
+# outside every code the shim otherwise returns.
+run_fallback 0.5 sh -c 'exit 0' >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 125 ]; then
+  pass "TC-5b fractional seconds rejected with rc 125"
+else
+  fail "TC-5b expected 125 for a fractional deadline but got $rc (255/die would read as 'no hang' to every caller)"
+fi
+
 echo "=== TC-6: stdin stays connected through the shim ==="
 stdin_out=$(printf 'hello-stdin\n' | run_fallback 5 sh -c 'cat' 2>/dev/null)
 if [ "$stdin_out" = "hello-stdin" ]; then
@@ -198,7 +214,9 @@ TIMEOUT_SEARCH_ROOTS=(
 for _root in "${TIMEOUT_SEARCH_ROOTS[@]}"; do
   [ -d "$_root" ] || fail "TC-7 discovery root missing: $_root (layout changed?)"
 done
-mapfile -t TIMEOUT_COPIES < <(grep -rl '^_timeout() {' "${TIMEOUT_SEARCH_ROOTS[@]}" 2>/dev/null | sort)
+# ERE rather than a literal: a seventh copy written as `function _timeout {` or
+# with leading whitespace would otherwise be invisible to both TC-7 and TC-8.
+mapfile -t TIMEOUT_COPIES < <(grep -rlE '^[[:space:]]*(function[[:space:]]+)?_timeout[[:space:]]*(\(\))?[[:space:]]*\{' "${TIMEOUT_SEARCH_ROOTS[@]}" 2>/dev/null | sort)
 REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
 # Floor check: discovery returning too few files is itself a failure mode (a moved
 # directory, a reformatted definition line), and would otherwise make TC-7/TC-8

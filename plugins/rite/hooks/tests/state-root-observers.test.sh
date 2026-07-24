@@ -38,7 +38,11 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 echo "=== state-root-observers tests ==="
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "SKIP: jq not available — review-schema-version-check requires jq" >&2
+  # Emit the counted form so the runner rolls this into its "N skipped" headline —
+  # a whole file that exits 0 without running anything would otherwise be scored
+  # as a pass (Issue #2008 review I-03).
+  echo "  ⏭️ SKIP: jq not available — review-schema-version-check requires jq"
+  echo "SKIP: 1"
   exit 0
 fi
 

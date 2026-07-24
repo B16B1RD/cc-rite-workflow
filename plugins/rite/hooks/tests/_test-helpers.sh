@@ -50,10 +50,13 @@
 #   The convention exists so downstream consumers (CI log parsers, grep
 #   filters scanning for `❌` / `PASS:`) can rely on a single source stream
 #   to capture the full test-result narrative without losing failure
-#   detail context. `run-tests.sh` currently inherits the parent shell's
-#   streams (no per-test split), so the rule is observable rather than
-#   enforced — if the runner grows per-stream capture in the future,
-#   tests honoring this convention will continue to work without change.
+#   detail context. `run-tests.sh` and `scripts/tests/run-all.sh` capture
+#   each test file with `$(bash "$f" 2>&1)` — both streams MERGED — so that
+#   they can parse the per-file skip count out of the summary. The rule
+#   therefore remains observable rather than enforced: an environment error
+#   written to stderr lands in the same captured stream as the assertions,
+#   and the runner's skip parser anchors on summary-line shapes precisely
+#   so that stderr text cannot be mistaken for a count.
 #
 # Provided variables (initialized to 0 / empty array on source):
 #   PASS, FAIL, SKIP, FAILED_NAMES
@@ -307,8 +310,14 @@ _timeout() {
       my $d = shift;
       # alarm truncates to an integer, so a fractional deadline silently becomes
       # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
-      # Reject rather than degrade.
-      die "_timeout: fractional seconds are not supported by the perl fallback: $d\n" unless $d =~ /^[0-9]+$/;
+      # Reject rather than degrade, and exit 125 rather than die: die exits 255,
+      # which every caller reads as "not 124, so no hang" — the same silent pass
+      # the rejection exists to prevent. GNU timeout accepts fractions, so this
+      # shim only claims the contract for integer seconds.
+      if ($d !~ /^[0-9]+$/) {
+        print STDERR "_timeout: fractional seconds are not supported by the perl fallback: $d\n";
+        exit 125;
+      }
       my $pid = fork;
       exit 127 unless defined $pid;
       if ($pid == 0) { exec { $ARGV[0] } @ARGV; exit 127; }
