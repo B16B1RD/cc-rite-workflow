@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # rite workflow - Wiki config parsing / branch name validation helpers
 #
 # Responsibility: provide the canonical implementations of

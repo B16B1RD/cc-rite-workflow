@@ -45,7 +45,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/state-path-resolve.sh"
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
-# shellcheck source=session-ownership.sh  (parse_iso8601_to_epoch + 2h threshold)
+# session-ownership.sh: parse_iso8601_to_epoch + 2h threshold
+# shellcheck source=session-ownership.sh
 source "$SCRIPT_DIR/session-ownership.sh"
 
 export GIT_TERMINAL_PROMPT=0

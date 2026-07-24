@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # rite workflow - Git remote owner/repo resolution
 #
 # Responsibility: resolve "owner" and "repo" from the `origin` remote URL

@@ -121,7 +121,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   shellcheck:
-    name: shellcheck (informational)
+    name: shellcheck
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -132,22 +132,25 @@ jobs:
           fetch-depth: 1
 
       # shellcheck is pre-installed on GitHub ubuntu runners. It runs over EVERY
-      # *.sh under plugins/rite (Issue #2002 AC-3) but is NON-BLOCKING during the
-      # staged rollout (D-04): the existing tree has a known backlog (baseline at
-      # introduction: error=5, warning=104, info=722, style=734) living in files
-      # this Issue must not modify. The counts are reported to the job summary so
-      # regressions are visible; making it blocking + clearing the backlog is a
-      # follow-up. This step always exits 0.
-      - name: shellcheck plugins/rite/**/*.sh (informational, non-blocking)
+      # *.sh under plugins/rite (Issue #2002 AC-3). error-severity findings are a
+      # BLOCKING gate (Issue #2006): the backlog that kept this informational at
+      # introduction (baseline error=5) is cleared, so a newly introduced
+      # error-level finding fails the job. warning/info/style stay informational
+      # and are reported to the job summary for the staged reduction tracked
+      # separately (Issue #2006 step 3).
+      #
+      # Note: a failing job only *blocks a merge* once this check is added to the
+      # branch's required status checks — a repo-admin setting outside this file.
+      - name: shellcheck plugins/rite/**/*.sh (error = blocking gate)
         run: |
           set -u
           shellcheck --version
           mapfile -t files < <(find plugins/rite -name '*.sh' -type f | sort)
           echo "shellcheck targets: ${#files[@]} files"
-          # One scan at the lowest threshold captures every finding; count by level.
+          # One scan at the lowest threshold captures every finding for the report.
           report=$(shellcheck --severity=style --format=json "${files[@]}" 2>/dev/null || true)
           {
-            echo "## shellcheck report — plugins/rite/**/*.sh (informational)"
+            echo "## shellcheck report — plugins/rite/**/*.sh"
             echo ""
             echo "Target files: ${#files[@]}"
             echo ""
@@ -158,7 +161,7 @@ jobs:
               echo "| $lvl | $n |"
             done
             echo ""
-            echo "> Non-blocking during staged rollout (Issue #2002, D-04). Blocking-ization + backlog cleanup tracked as a follow-up."
+            echo "> error is a blocking gate (Issue #2006). warning/info/style stay informational; staged reduction tracked separately."
             echo ""
             echo "<details><summary>error-level findings</summary>"
             echo ""
@@ -167,6 +170,14 @@ jobs:
             echo '```'
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
-          err_count=$(printf '%s' "$report" | jq '[.[] | select(.level == "error")] | length' 2>/dev/null || echo '?')
-          echo "error-level findings: $err_count (informational — not failing the job)"
-          exit 0
+          # Blocking gate: re-scan at severity=error and let shellcheck's own exit
+          # code decide (non-zero iff findings at/above the threshold). Using the
+          # exit code rather than a jq-parsed count means a shellcheck invocation
+          # failure fails the job loudly instead of passing silently on an empty
+          # report.
+          if shellcheck --severity=error "${files[@]}"; then
+            echo "✅ shellcheck: no error-severity findings (blocking gate passed)"
+          else
+            echo "::error::shellcheck found error-severity findings — blocking gate failed"
+            exit 1
+          fi
