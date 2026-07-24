@@ -249,6 +249,77 @@ else
 fi
 
 # -------------------------------------------------------------------------
+# TC-6 (Issue #1999 / T-02 / AC-2): flock 不在 PATH でも set が成功し
+#       state file が書かれ、stderr に "flock timeout" が出ない
+# -------------------------------------------------------------------------
+# TC-1/2/5 はホストの flock を使う flock-present 分岐のみ通過するため、
+# _atomic_write の command -v flock ガード（不在時 plain mv degrade）は
+# issue-claim.test.sh TC-16 と同じ PATH シンボリックリンクスタブで強制する。
+# スタブ完全性と degrade 挙動を切り分けるため、まず flock 入りスタブで
+# sanity probe し、probe が通らないホストは skip（fail ではなく環境起因）。
+echo "TC-6: flock 不在 PATH → set 成功 + state file 書込 + no 'flock timeout'"
+noflock_stub=$(mktemp -d)
+cleanup_dirs+=("$noflock_stub")
+for _c in bash sh awk basename cat chmod date dirname find git grep head jq \
+          mkdir mktemp mv rm sed sleep tail touch tr wc; do
+  _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$noflock_stub/$_c"
+done
+_flock_path=$(command -v flock 2>/dev/null) || _flock_path=""
+
+TD=$(make_test_dir)
+SID="ffffffff-9999-9999-9999-999999999999"
+state_file=$(state_path "$TD" "$SID")
+
+probe_ok=1
+if [ -n "$_flock_path" ]; then
+  ln -sf "$_flock_path" "$noflock_stub/flock"
+  if ! (cd "$TD" && PATH="$noflock_stub" bash "$HOOK" set --session "$SID" \
+        --phase "probe" --issue 1999 --branch "fix/noflock" --pr 0 --next "p" >/dev/null 2>&1); then
+    probe_ok=0
+  fi
+  rm -f "$noflock_stub/flock"
+fi
+
+if [ "$probe_ok" -eq 0 ]; then
+  pass "TC-6 skipped: PATH スタブがこのホストで set を実行できない (環境起因の setup gap)"
+else
+  err_file=$(mktemp)
+  rc=0
+  # LC_ALL=C で bash のエラーメッセージを英語に固定する。これがないと非英語 locale では
+  # 「コマンドが見つかりません」等のローカライズ済みメッセージになり、TC-6.3/6.4 の
+  # 英語文字列 grep が常に空振りして dead assertion 化する
+  (cd "$TD" && LC_ALL=C PATH="$noflock_stub" bash "$HOOK" set --session "$SID" \
+    --phase "noflock_phase" --issue 1999 --branch "fix/noflock" --pr 0 --next "n" \
+    >/dev/null 2>"$err_file") || rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    pass "TC-6.1: flock 不在で set が exit 0"
+  else
+    fail "TC-6.1: flock 不在で set が exit $rc"
+    head -5 "$err_file" | sed 's/^/    stderr: /'
+  fi
+
+  if [ "$(jq -r '.phase' "$state_file" 2>/dev/null)" = "noflock_phase" ]; then
+    pass "TC-6.2: state file が書き込まれ phase=noflock_phase"
+  else
+    fail "TC-6.2: state file 不在または phase 不一致"
+  fi
+
+  if grep -q "flock timeout" "$err_file"; then
+    fail "TC-6.3: stderr に 'flock timeout' が出力された (degrade されていない)"
+  else
+    pass "TC-6.3: stderr に 'flock timeout' なし"
+  fi
+
+  if grep -q "command not found" "$err_file"; then
+    fail "TC-6.4: stderr に 'command not found' (exit 127 系) が出力された"
+  else
+    pass "TC-6.4: stderr に 'command not found' なし"
+  fi
+  rm -f "$err_file"
+fi
+
+# -------------------------------------------------------------------------
 # Summary
 # -------------------------------------------------------------------------
 echo ""

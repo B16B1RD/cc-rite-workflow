@@ -90,5 +90,60 @@ env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" acquire >/dev/nul
 assert "TC-8 env-absent acquire holder resolved via file sid (SID_B)" "$SID_B" "$(cat "$LOCKDIR/session_id")"
 assert "TC-8 env-absent check own (resolver returned file sid SID_B == holder)" "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)"
 
+echo "=== TC-9 (Issue #1999 / T-03 / AC-3): flock 不在 PATH でロック経路が続行する ==="
+# wiki-ingest-lock.sh 自体は mkdir ロックで flock を呼ばないが、liveness 判定が
+# flow-state.sh get/set を経由するため、flock 不在環境で set→acquire→check→release の
+# 全経路がエラー終了せず続行することを PATH スタブで固定する（issue-claim.test.sh
+# TC-16 と同じスタブ方式）。判別は locale 非依存の 2 assert で行う:
+#   (1) no-flock `set` の rc を直接 assert（degrade が壊れると rc 非 0）
+#   (2) 別セッションからの check が `held` を返すことを assert — holder SID_NF の
+#       liveness 判定が flow-state get を経由するため、state 書込が失敗していれば
+#       `stale` になり検出できる（TC-2/TC-4 と同じ挙動の再利用）
+# エラーメッセージ文字列の grep は locale 依存（非英語 locale では bash がローカライズ
+# 済みメッセージを出す）のため判別に使わない。probe は write 経路（set）を SID_NF とは
+# 別の probe 専用 sid で行い、環境起因の setup gap を degrade 不具合と誤判定せず、
+# かつ probe の flock あり書込が SID_NF の liveness 判定を汚染しないようにする。
+bash "$WIL" release --session "$SID_B" >/dev/null 2>&1 || true
+rm -rf "$LOCKDIR" 2>/dev/null || true
+noflock_stub=$(mktemp -d)
+cleanup_dirs+=("$noflock_stub")
+for _c in bash sh awk basename cat chmod date dirname find git grep head jq \
+          mkdir mktemp mv rm sed sleep tail touch tr wc; do
+  _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$noflock_stub/$_c"
+done
+SID_NF="cccccccc-9999-9999-9999-999999999999"
+SID_PROBE="dddddddd-9999-9999-9999-999999999999"
+_flock_path=$(command -v flock 2>/dev/null) || _flock_path=""
+probe_ok=1
+if [ -n "$_flock_path" ]; then
+  ln -sf "$_flock_path" "$noflock_stub/flock"
+  if ! PATH="$noflock_stub" bash "$FS" set --session "$SID_PROBE" --phase ingest --issue 1 --branch x --next n >/dev/null 2>&1; then
+    probe_ok=0
+  fi
+  rm -f "$noflock_stub/flock"
+fi
+if [ "$probe_ok" -eq 0 ]; then
+  pass "TC-9 skipped: PATH スタブがこのホストで set を実行できない (環境起因の setup gap)"
+else
+  nf_err=$(mktemp)
+  fail_before=$FAIL
+  set_rc=0
+  PATH="$noflock_stub" bash "$FS" set --session "$SID_NF" --phase ingest --issue 1 --branch x --next n \
+    >/dev/null 2>>"$nf_err" || set_rc=$?
+  assert "TC-9 no-flock flow-state set rc 0" "0" "$set_rc"
+  rc=0; got=$(PATH="$noflock_stub" bash "$WIL" acquire --session "$SID_NF" 2>>"$nf_err") || rc=$?
+  assert "TC-9 no-flock acquire → acquired" "acquired" "$got"
+  assert "TC-9 no-flock acquire rc 0" "0" "$rc"
+  assert "TC-9 no-flock check → own" "own" "$(PATH="$noflock_stub" bash "$WIL" check --session "$SID_NF" 2>>"$nf_err")"
+  assert "TC-9 no-flock 別セッション check → held (state 書込が liveness 判定に到達)" "held" "$(PATH="$noflock_stub" bash "$WIL" check --session "$SID_A" 2>>"$nf_err")"
+  assert "TC-9 no-flock release → released" "released" "$(PATH="$noflock_stub" bash "$WIL" release --session "$SID_NF" 2>>"$nf_err")"
+  # assert 失敗時は捕捉済み stderr を表示してから削除する（診断の握り潰し防止、TC-6 の
+  # err_file 表示と対称）
+  if [ "$FAIL" -gt "$fail_before" ] && [ -s "$nf_err" ]; then
+    head -5 "$nf_err" | sed 's/^/    stderr: /'
+  fi
+  rm -f "$nf_err"
+fi
+
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530)."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530); no-flock PATH degrade continuation (Issue #1999)."

@@ -127,6 +127,9 @@ _state_path() {
 # or any non-zero from the flock+mv subshell. Callers MUST check rc (e.g.
 # `_atomic_write "$f" "$updated" || return 1`) — silent success leads to false
 # "migrated:" announcements when EROFS/ENOSPC/EXDEV/EACCES truncate the tmpfile.
+# Degrades to a plain atomic mv when flock is unavailable (stock macOS /
+# Windows Git Bash without util-linux) — matches _atomic_claim_write and the
+# wiki helpers; rename(2) atomicity holds without the advisory lock.
 _atomic_write() {
   local target="$1" content="$2" lockfile="${1}.lock" tmpfile rc=0
   tmpfile=$(mktemp "${target}.XXXXXX") || return 1
@@ -147,8 +150,13 @@ _atomic_write() {
     rm -f "$tmpfile" 2>/dev/null
     return 1
   }
-  ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
-    mv "$tmpfile" "$target" ) 9>"$lockfile" || rc=$?
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
+      mv "$tmpfile" "$target" ) 9>"$lockfile" || rc=$?
+  else
+    # No flock (stock macOS / Windows Git Bash): lock skip + plain atomic mv.
+    mv "$tmpfile" "$target" || rc=$?
+  fi
   [ -f "$tmpfile" ] && rm -f "$tmpfile" 2>/dev/null || true
   return $rc
 }
