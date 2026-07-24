@@ -182,7 +182,15 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all options.
 
 ## Requirements
 
-- [GitHub CLI (gh)](https://cli.github.com/) - Required for GitHub operations
+Required:
+
+- [GitHub CLI (gh)](https://cli.github.com/) - Required for GitHub operations (Issues, PRs, Projects)
+- [jq](https://jqlang.github.io/jq/) - Required by the hooks and scripts for JSON parsing
+- **bash 4+** - Required; hooks rely on bash 4 features such as associative arrays (`declare -A`) and `mapfile`
+
+Recommended:
+
+- **macOS**: [coreutils](https://formulae.brew.sh/formula/coreutils) (`brew install coreutils`) - Provides `gdate` (GNU `date`), which enables Wiki staleness detection; without it, that check is skipped
 
 ## License
 
