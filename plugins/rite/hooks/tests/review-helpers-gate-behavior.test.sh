@@ -82,17 +82,17 @@ GH_BODY="$TMP_ROOT/gh-stub-body.md"
 # --- 実行ヘルパー: rc を $RC に、stdout/stderr を $OUT/$ERR に capture ---
 run_skip() {
   RC=0
-  timeout 10 bash "$PLUGIN_ROOT/hooks/review-skip-notification.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
+  _timeout 10 bash "$PLUGIN_ROOT/hooks/review-skip-notification.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
 }
 run_post() {
   : > "$GH_LOG"
   RC=0
   PATH="$STUB_DIR:$PATH" GH_STUB_LOG="$GH_LOG" GH_STUB_BODY="$GH_BODY" GH_STUB_RC="${GH_STUB_RC:-0}" \
-    timeout 10 bash "$PLUGIN_ROOT/hooks/review-comment-post.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
+    _timeout 10 bash "$PLUGIN_ROOT/hooks/review-comment-post.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
 }
 run_save() {
   RC=0
-  timeout 10 bash "$PLUGIN_ROOT/hooks/review-result-save.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
+  _timeout 10 bash "$PLUGIN_ROOT/hooks/review-result-save.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
 }
 
 # =====================================================================

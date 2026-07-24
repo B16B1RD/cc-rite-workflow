@@ -11,6 +11,26 @@
 #                    candidate (no phantom "index.md may be stale" WARNING)
 set -uo pipefail
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
+# fork/waitpid shim reproducing timeout(1)'s 124-on-timeout contract (a naive
+# `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
+# This file does not source _test-helpers.sh, so the shim is inlined here.
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift; my $pid = fork;
+      exit 127 unless defined $pid;
+      if ($pid == 0) { exec @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0; exit($? >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/../wiki-query-inject.sh"
 TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-query-test-XXXXXX")
@@ -47,7 +67,7 @@ write_page() {
 
 run_query() {
   local repo="$1"; shift
-  QOUT=$( (cd "$repo" && timeout 15 bash "$SCRIPT" "$@") 2>"$TEST_DIR/qerr" )
+  QOUT=$( (cd "$repo" && _timeout 15 bash "$SCRIPT" "$@") 2>"$TEST_DIR/qerr" )
   QRC=$?
   QERR=$(cat "$TEST_DIR/qerr")
 }

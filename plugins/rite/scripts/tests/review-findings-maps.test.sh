@@ -9,6 +9,26 @@
 # Usage: bash plugins/rite/scripts/tests/review-findings-maps.test.sh
 set -uo pipefail
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
+# fork/waitpid shim reproducing timeout(1)'s 124-on-timeout contract (a naive
+# `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
+# This file does not source _test-helpers.sh, so the shim is inlined here.
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift; my $pid = fork;
+      exit 127 unless defined $pid;
+      if ($pid == 0) { exec @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0; exit($? >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/../review-findings-maps.sh"
 TEST_DIR="$(mktemp -d)"
@@ -213,7 +233,7 @@ run_reference() {
   sed -e "s|^review_source=\"{review_source}\"|review_source=\"$source\"|" \
       -e "s|^review_source_path=\"{review_source_path}\"|review_source_path=\"$path\"|" "$REF_TEMPLATE" > "$script"
   local rc=0
-  REF_STDOUT=$( (cd "$repo" && timeout 10 bash "$script") 2>"$TEST_DIR/ref_stderr" ) || rc=$?
+  REF_STDOUT=$( (cd "$repo" && _timeout 10 bash "$script") 2>"$TEST_DIR/ref_stderr" ) || rc=$?
   REF_RC=$rc
   REF_STDERR=$(cat "$TEST_DIR/ref_stderr")
   return 0
@@ -222,7 +242,7 @@ run_reference() {
 run_helper() {
   local repo="$1" source="$2" path="$3"
   local rc=0
-  HELPER_STDOUT=$( timeout 10 bash "$TARGET" --review-source "$source" --review-source-path "$path" --repo-root "$repo" 2>"$TEST_DIR/helper_stderr" ) || rc=$?
+  HELPER_STDOUT=$( _timeout 10 bash "$TARGET" --review-source "$source" --review-source-path "$path" --repo-root "$repo" 2>"$TEST_DIR/helper_stderr" ) || rc=$?
   HELPER_RC=$rc
   HELPER_STDERR=$(cat "$TEST_DIR/helper_stderr")
   return 0
@@ -344,14 +364,14 @@ fi
 echo "TC-8: invocation errors"
 repo=$(make_sandbox tc8 default)
 rc=0
-out=$(timeout 10 bash "$TARGET" --review-source local_file --repo-root "$repo" 2>&1) || rc=$?
+out=$(_timeout 10 bash "$TARGET" --review-source local_file --repo-root "$repo" 2>&1) || rc=$?
 if [ "$rc" = "2" ]; then
   pass "path 欠落 → exit 2"
 else
   fail "unexpected rc=$rc: $out"
 fi
 rc=0
-out=$(timeout 10 bash "$TARGET" --review-source local_file --review-source-path 2>&1) || rc=$?
+out=$(_timeout 10 bash "$TARGET" --review-source local_file --review-source-path 2>&1) || rc=$?
 if [ "$rc" != "124" ]; then
   pass "値なしフラグ末尾 no-hang (rc=$rc)"
 else

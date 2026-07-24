@@ -256,6 +256,36 @@ assert_grep_in_section() {
   rm -f "$section_file"
 }
 
+# _timeout <seconds> <command...> — portable timeout(1) for the test suite.
+#
+# GNU `timeout` is absent on macOS (BSD / no coreutils — the macOS CI leg
+# deliberately omits coreutils to expose GNU/BSD divergence, so the suite must
+# NOT depend on the binary). When it is present we use it; otherwise we fall
+# back to a perl fork/waitpid shim that reproduces timeout(1)'s contract: on
+# timeout it kills the child and exits 124 (the value several suites assert on
+# to detect an infinite-loop regression), otherwise it propagates the child's
+# real exit code. macOS ships /usr/bin/perl, so hang-protection coverage is
+# preserved rather than silently skipped. A naive `perl -e 'alarm; exec'` is
+# WRONG here — after exec, SIGALRM hits the target with its default disposition
+# and the process dies with 142 (128+14), defeating the `== 124` assertions;
+# the fork/waitpid form below maps the alarm to a real 124. `exec` in the child
+# keeps fd 0, so stdin-fed callers (`printf ... | _timeout N bash ...`,
+# `_timeout N bash hook < in.json`) work unchanged.
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift; my $pid = fork;
+      exit 127 unless defined $pid;
+      if ($pid == 0) { exec @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0; exit($? >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
 # make_sandbox — git-init + initial-commit sandbox.
 #
 # Consolidates the inline `make_sandbox()` definition shared by
@@ -321,6 +351,12 @@ make_sandbox() {
     [ "$soft_fail" -eq 1 ] && return 1
     exit 1
   }
+  # Canonicalize the sandbox root so it matches what the code under test sees.
+  # On macOS $TMPDIR lives under /var/folders (a symlink to /private/var/...),
+  # and git rev-parse / realpath in production canonicalize to the /private
+  # form. Comparing the raw mktemp path against those canonical paths would
+  # spuriously fail path-equality assertions (Issue #2008 Family D).
+  d=$(cd "$d" && pwd -P) || true
   sandbox_err=$(mktemp "${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX" 2>/dev/null) || {
     echo "WARNING: make_sandbox: mktemp ${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX failed; diagnostic capture disabled (git stderr will not be surfaced on failure)" >&2
     sandbox_err="/dev/null"
@@ -397,6 +433,9 @@ make_plain_sandbox() {
     [ "$soft_fail" -eq 1 ] && return 1
     exit 1
   }
+  # Canonicalize so the sandbox root matches production's realpath/pwd -P view
+  # (macOS $TMPDIR is under the /private-symlinked /var/folders). See make_sandbox.
+  d=$(cd "$d" && pwd -P) || true
   echo "$d"
 }
 

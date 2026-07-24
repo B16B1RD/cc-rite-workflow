@@ -87,7 +87,10 @@ assert "TC-7: newline preserved, others neutralized" "6c313f0a6c323f0a" "$(print
 echo ""
 echo "=== TC-8: 可読 ASCII 無傷 + 1:1 置換 (長さ保存 — 空削除への revert を catch) ==="
 assert "TC-8: printable ASCII untouched" "readable TEXT-123_ok" "$(printf 'readable TEXT-123_ok' | neutralize_ctrl)"
-assert "TC-8: 1:1 replacement preserves byte length" "3" "$(printf 'A\x9bB' | neutralize_ctrl | wc -c)"
+# `wc -c` right-justifies its count with leading spaces on BSD/macOS (GNU emits
+# the bare number). `$( )` strips the trailing newline but not the leading pad,
+# so strip whitespace before the string comparison (Issue #2008).
+assert "TC-8: 1:1 replacement preserves byte length" "3" "$(printf 'A\x9bB' | neutralize_ctrl | wc -c | tr -d ' ')"
 
 echo ""
 echo "=== TC-9: NUL バイト (0x00) → ? (バイトストリーム性 pin) ==="

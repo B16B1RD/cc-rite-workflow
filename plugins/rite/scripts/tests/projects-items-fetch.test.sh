@@ -9,6 +9,26 @@
 # Usage: bash plugins/rite/scripts/tests/projects-items-fetch.test.sh
 set -euo pipefail
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
+# fork/waitpid shim reproducing timeout(1)'s 124-on-timeout contract (a naive
+# `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
+# This file does not source _test-helpers.sh, so the shim is inlined here.
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift; my $pid = fork;
+      exit 127 unless defined $pid;
+      if ($pid == 0) { exec @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0; exit($? >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/../projects-items-fetch.sh"
 MOCK_DIR="$SCRIPT_DIR"
@@ -68,7 +88,7 @@ run_fetch() {
     MOCK_GH_SCENARIO="$scenario" \
     TMPDIR="$ISOLATED_TMP" \
     PATH="$MOCK_BIN_DIR:$PATH" \
-    timeout 10 bash "$TARGET" "$@" 2>"$TEST_DIR/last_stderr"
+    _timeout 10 bash "$TARGET" "$@" 2>"$TEST_DIR/last_stderr"
   ) || rc=$?
   LAST_OUTPUT="$output"
   LAST_RC=$rc
@@ -133,7 +153,7 @@ run_reference() {
     MOCK_GH_SCENARIO="$scenario" \
     TMPDIR="$ISOLATED_TMP" \
     PATH="$MOCK_BIN_DIR:$PATH" \
-    timeout 10 bash "$REF_SCRIPT" 2>"$TEST_DIR/ref_stderr"
+    _timeout 10 bash "$REF_SCRIPT" 2>"$TEST_DIR/ref_stderr"
   ) || rc=$?
   REF_OUTPUT="$output"
   REF_RC=$rc

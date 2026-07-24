@@ -98,7 +98,7 @@ PAGES_2='.rite/wiki/pages/patterns/stale.md
 run_helper() {
   local repo="$1" input="$2"; shift 2
   local rc=0
-  HELPER_STDOUT=$( (cd "$repo" && printf '%s\n' "$input" | timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
+  HELPER_STDOUT=$( (cd "$repo" && printf '%s\n' "$input" | _timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
   HELPER_RC=$rc
   HELPER_STDERR=$(cat "$TEST_DIR/helper_stderr")
   return 0

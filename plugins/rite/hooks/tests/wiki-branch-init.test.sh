@@ -10,6 +10,26 @@
 # Usage: bash plugins/rite/hooks/tests/wiki-branch-init.test.sh
 set -uo pipefail
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
+# fork/waitpid shim reproducing timeout(1)'s 124-on-timeout contract (a naive
+# `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
+# This file does not source _test-helpers.sh, so the shim is inlined here.
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift; my $pid = fork;
+      exit 127 unless defined $pid;
+      if ($pid == 0) { exec @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0; exit($? >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/../scripts/wiki-branch-init.sh"
 TEST_DIR="$(mktemp -d)"
@@ -199,7 +219,7 @@ dump_state() {
 run_helper() {
   local repo="$1"; shift
   local rc=0
-  HELPER_OUTPUT=$( (cd "$repo" && timeout 20 bash "$TARGET" "$@") 2>&1 ) || rc=$?
+  HELPER_OUTPUT=$( (cd "$repo" && _timeout 20 bash "$TARGET" "$@") 2>&1 ) || rc=$?
   HELPER_RC=$rc
   return 0
 }
@@ -209,7 +229,7 @@ run_reference() {
   local script="$TEST_DIR/ref-rendered-$$.sh"
   render_reference "$strategy" "$wiki" "$script"
   local rc=0
-  REF_OUTPUT=$( (cd "$repo" && timeout 20 bash "$script") 2>&1 ) || rc=$?
+  REF_OUTPUT=$( (cd "$repo" && _timeout 20 bash "$script") 2>&1 ) || rc=$?
   REF_RC=$rc
   return 0
 }
