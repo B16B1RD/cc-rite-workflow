@@ -1,5 +1,6 @@
 ## 2026-07-24
 
+* **Update**: [散文で宣言した設計は対応する実装契約がなければ機能しない](pages/anti-patterns/prose-design-without-backing-implementation.md) — raw/reviews/20260724T100356Z-pr-2005.md, raw/fixes/20260724T100752Z-pr-2005.md, raw/reviews/20260724T102005Z-pr-2005.md を統合（PR #2005: data-contract emit の marker コメントが phantom consumer を断定する亜種。review→fix→verify アークを 1 ページに統合）
 * **Create**: [依存要件ドキュメントの「ツールを入れれば有効化」主張は実コードの呼び出し名を grep で裏取りする](pages/heuristics/dependency-doc-tool-enablement-claim-verify-invocation-name.md) — raw/reviews/20260724T083434Z-pr-2004.md を新規ページ化
 * **Update**: [依存要件ドキュメントの「ツールを入れれば有効化」主張は実コードの呼び出し名を grep で裏取りする](pages/heuristics/dependency-doc-tool-enablement-claim-verify-invocation-name.md) — raw/fixes/20260724T083743Z-pr-2004.md, raw/reviews/20260724T084754Z-pr-2004.md を統合
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=280, broken_refs=0

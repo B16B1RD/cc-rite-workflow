@@ -2,7 +2,7 @@
 title: "散文で宣言した設計は対応する実装契約がなければ機能しない"
 domain: "anti-patterns"
 created: "2026-04-17T04:30:00+00:00"
-updated: "2026-05-01T03:27:29Z"
+updated: "2026-07-24T10:32:51Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T035556Z-pr-559.md"
@@ -18,7 +18,13 @@ sources:
     ref: "raw/fixes/20260428T123811Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260501T025722Z-pr-756.md"
-tags: ["prose-design", "enforcement-gap", "machine-verification", "mvp-undefined-note", "prose-code-consistency", "defense-in-depth-claim-divergence"]
+  - type: "reviews"
+    ref: "raw/reviews/20260724T100356Z-pr-2005.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260724T100752Z-pr-2005.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260724T102005Z-pr-2005.md"
+tags: ["prose-design", "enforcement-gap", "machine-verification", "mvp-undefined-note", "prose-code-consistency", "defense-in-depth-claim-divergence", "phantom-marker-consumer"]
 confidence: high
 ---
 
@@ -137,6 +143,23 @@ PR #756 cycle 5 fix では (a) の dead code 削除を選択し、F-01 (line-num
 
 両者とも prose-only design の sub-class だが、検出 heuristic が異なる (前者は下流の data flow trace、後者は code の time-ordering 検証)。
 
+### data-contract emit の comment が phantom consumer を断定する (PR #2005 cycle 1-2 で追加)
+
+PR #2005 (setup 依存検査追加) で、新設した `[CONTEXT] DEP_CHECK` marker の emit 行コメントと後段散文が **存在しない consumer を present-tense で断定** し、2 reviewer (prompt-engineer + tech-writer) が同一箇所で MEDIUM 指摘 (High Confidence)。典型パターン表 row 3「sentinel/marker の consumer 不在」の亜種だが、以下の nuance が異なる:
+
+- **旧 row 3 (PR #559)**: marker を emit するが consumer が無い = 純粋な dead code (marker に効果なし)
+- **PR #2005**: marker emit 自体は正当な **data contract / observability 目的** (Issue の Interface が「機械可読 marker で後続フェーズに渡す」と要求)。しかしコメントが「Phase 4.5.0 が jq= を参照する」/ 散文が「後続フェーズが参照する」と **具体的な consumer 関係を断定** した。実際には Phase 4.5.0 は marker を機械 parse せず独立に `command -v jq` を再実行し、jq 案内の重複排除は **marker 消費ではなく prose 参照** (NO_JQ メッセージが Phase 1.0 を文言で指す) で達成されていた
+
+**failure mode**: emit が「働いている」ため dead-code 検出 (row 3) では拾えない。marker の効果 (dedup) は別機構 (prose 参照) で実現されているのに、コメントが fictional な dataflow (marker → 4.5.0 が consume) を主張する。保守者に「marker が load-bearing」と誤認させる executable-spec 上の false claim。
+
+**判定 heuristic** (data-contract emit 系):
+
+1. **consumer 関係を書く前に grep 裏取り**: marker を「後続フェーズ / X が参照する / consume する」と書く前に `grep -rn "{MARKER}" .` で機械 parse する consumer の実在を確認する (row 3 の consumer trace と同一手段だが、**dead-code 判定ではなく comment の claim 精度**の裏取りとして適用)。0 件なら「参照する」と書いてはならない
+2. **data contract と consumption を分離して記述**: marker が Issue の data-contract 要件で emit されるが機械 consumer が未実装/不要な場合、コメントは「data contract / observability 目的で全ケース emit。現状どの後続フェーズも機械 parse しない」と honest に書く。効果 (dedup 等) が別機構で達成されているならその機構 (prose 参照等) を明記し、marker 消費に依存しないことを述べる
+3. **consumer 化への「修正」を安易に選ばない**: fictional な consumer を実在化する ([CONTEXT] marker 依存の分岐を後続フェーズに足す) 対処は、marker が会話 context から失われる resume / compaction で silent fallback を招く別のアンチパターン (`[[open-branch-gate-marker-context-dependency]]` 系) を再導入しうる。コメントを実態に合わせる (consumer は作らない) 一択が安全な場合が多い
+
+**review→fix→verify アークでの grep 反射**: cycle 1 で 2 reviewer が `grep -rn DEP_CHECK` により consumer ゼロを提示して指摘 → fix でコメント/散文を実態 (機械 parse されない) に訂正 → cycle 2 で reviewer が **訂正後の universal-negative 主張「現状どの後続フェーズも機械 parse しない」を再び grep で独立検証** して解消確認。この「主張の真偽を反例 (consumer) の grep 探索で裏取りする」反射は [[docs-review-implementation-grep-verification]] と同根で、data-contract emit の comment 精度検証に一般化できる。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -151,3 +174,6 @@ PR #756 cycle 5 fix では (a) の dead code 削除を選択し、F-01 (line-num
 - [PR #688 cycle 14 review (prose ↔ code 不整合: state-read 失敗時の skip 宣言 vs 空 substitute)](../../raw/reviews/20260428T122927Z-pr-688.md)
 - [PR #688 cycle 14 fix (METRICS_SKIPPED sentinel + Claude 向け skip 指示で prose-code 整合)](../../raw/fixes/20260428T123811Z-pr-688.md)
 - [PR #756 cycle 5 fix (defense-in-depth claim と race window 乖離: dead code 削除選択)](../../raw/fixes/20260501T025722Z-pr-756.md)
+- [PR #2005 review cycle 1 (DEP_CHECK marker の phantom consumer 断定を grep で検出)](../../raw/reviews/20260724T100356Z-pr-2005.md)
+- [PR #2005 fix (marker コメント/散文を data-contract emit の実態に訂正)](../../raw/fixes/20260724T100752Z-pr-2005.md)
+- [PR #2005 review cycle 2 (訂正後の universal-negative 主張を grep で再検証・解消確認)](../../raw/reviews/20260724T102005Z-pr-2005.md)
