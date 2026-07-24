@@ -87,10 +87,18 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # shell: bash forces `bash --noprofile --norc -eo pipefail {0}`. Without it,
+      # the default `run:` shell is `bash -e {0}` (NO pipefail), so `<suite> | tee`
+      # would take tee's exit code (always 0) and mask a failing suite — the ubuntu
+      # blocking job would go green on a real regression. pipefail makes the suite's
+      # non-zero exit propagate through the pipe. On macOS, `shell: bash` resolves
+      # bash from PATH = the Homebrew bash 5 prepended above.
       - name: Run hook test suite
+        shell: bash
         run: bash plugins/rite/hooks/tests/run-tests.sh 2>&1 | tee hooks-tests.log
 
       - name: Run script test suite
+        shell: bash
         run: bash plugins/rite/scripts/tests/run-all.sh 2>&1 | tee scripts-tests.log
 
       # SHOULD (Issue #2002 AC-5): surface which tests failed and on which OS in
