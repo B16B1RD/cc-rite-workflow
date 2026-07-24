@@ -172,12 +172,12 @@ echo ""
 echo "=== TC-8b: AC-8 non-verbose migrate emits 'migrated:' to stderr; v3-only stays silent ==="
 # Why: session-start auto path silences only stdout. If `migrated:` is gated on --verbose or
 # moved to stdout, a real migration becomes silent and violates AC-8 (silent skip forbidden).
-# NOTE (Issue #2008): each `err=$( … migrate … )` capture below ends in `|| true`. On macOS the
-# migrate command exits non-zero after a *successful* migration (a benign BSD-tool quirk in the
-# migrate path — TC-8 above already tolerates it with its own `|| true`, and its post-migration
-# assertions pass on macOS, proving the migration itself works). Without `|| true`, `set -e` would
-# abort the whole file at the first capture. These TCs assert on the captured stderr, never on the
-# migrate exit code, so tolerating it is correct and keeps TC-8b consistent with TC-8.
+# NOTE (Issue #2008): each `err=$( … migrate … )` capture below ends in `|| true`, matching TC-8's
+# own tolerance. The root cause that made migrate exit non-zero on macOS — an unbraced `$sv→` in
+# flow-state.sh tripping `set -u` under a non-UTF-8 locale — is now fixed at source, so migrate
+# exits 0. The `|| true` is retained defensively: these TCs assert on the captured stderr, never on
+# the migrate exit code, so should a future migrate-exit regression recur it surfaces as a single
+# assertion failure here rather than aborting the whole file under `set -e`.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
