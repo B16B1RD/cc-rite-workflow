@@ -2,8 +2,12 @@
 title: "stderr ノイズ削減: truncate ではなく selective surface で解く"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-21T12:35:00+09:00"
+updated: "2026-07-24T17:00:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260724T072825Z-pr-2003.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260724T073107Z-pr-2003.md"
   - type: "reviews"
     ref: "raw/reviews/20260721T014901Z-pr-1937-cycle2.md"
   - type: "fixes"
@@ -181,6 +185,24 @@ dirty=$(bash lib/git-status-filtered.sh) || dirty="?? (dirty-check failed — as
 
 教訓: **「安全側に倒す」ことと「失敗理由を可視化する」ことは独立した要件であり、片方を満たしても他方が漏れることがある**。fail-safe fallback (`|| fallback=...`) を追加する修正では、fallback 値の安全性だけでなく、`2>/dev/null` 等で helper 自身の診断出力を握り潰していないかを併せて確認する。同一コミット内で複数の同型呼び出し箇所に fail-safe を追加する際は、`2>/dev/null` の有無が箇所ごとに非対称にならないよう揃える ([[asymmetric-fix-transcription]] の delegation-shim/fallback 版)。
 
+### テストの captured-stderr は assert 失敗時に surface してから削除する (PR #2003 での拡張)
+
+テストが被検査コマンドの stderr を tempfile (`2>>"$nf_err"`) に捕捉しながら、**assert 失敗時にも内容を表示せず無条件 `rm -f` する**構成は、本 anti-pattern のテスト版。ガード退行時の CI トリアージで「expected/actual の不一致」しか見えず、根本原因行 (`flock: command not found` → `ERROR: flock timeout` 等) が失われる。PR #2003 cycle 2 で error-handling レビュアーが mutation 実験中に「FAIL 2 件が出るのに stderr 詳細がゼロ表示」を実測して検出した (同一 PR 内の別テストは失敗時 `head -5` 表示済みで非対称)。
+
+canonical 形は「失敗時のみ selective surface」— 成功時はノイズゼロを保ちながら診断を失わない:
+
+```bash
+# ✅ OK: assert 群の前にカウンタを記録し、失敗が増えた場合のみ表示してから削除
+fail_before=$FAIL
+# ... assert 群 (2>>"$nf_err" で捕捉しつつ実行) ...
+if [ "$FAIL" -gt "$fail_before" ] && [ -s "$nf_err" ]; then
+  head -5 "$nf_err" | sed 's/^/    stderr: /'
+fi
+rm -f "$nf_err"
+```
+
+教訓: **stderr を捕捉するテストブロックを書いたら、その tempfile の削除前に「失敗時に surface する経路」があるかを必ず確認する**。捕捉 (`2>>`) だけして表示経路が無い構成は、捕捉しない (`2>/dev/null`) のと診断上等価であり、むしろ「捕捉している」見た目が問題を隠す。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
@@ -200,3 +222,5 @@ dirty=$(bash lib/git-status-filtered.sh) || dirty="?? (dirty-check failed — as
 - [PR #1741 review cycle 1 (delegation-shim 以外の新規 git fetch フォールバックで全 truncate anti-pattern を検出、HIGH)](../../raw/reviews/20260703T104045Z-pr-1741.md)
 - [PR #1741 fix cycle 1 (canonical selective-surface パターンへ整合)](../../raw/fixes/20260703T104347Z-pr-1741.md)
 - [PR #1741 review cycle 2 (0 findings、mergeable に収束)](../../raw/reviews/20260703T104924Z-pr-1741.md)
+- [PR #2003 review cycle 2 (テストの captured-stderr 無条件 rm による診断握り潰しを LOW 検出、mutation 実験で実測)](../../raw/reviews/20260724T072825Z-pr-2003.md)
+- [PR #2003 fix cycle 2 (fail_before=$FAIL による失敗時のみ selective surface パターンへ修正)](../../raw/fixes/20260724T073107Z-pr-2003.md)

@@ -2,8 +2,12 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-23T04:14:28Z"
+updated: "2026-07-24T16:58:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260724T070805Z-pr-2003.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260724T074215Z-pr-2003.md"
   - type: "fixes"
     ref: "raw/fixes/20260723T021111Z-pr-1974-cycle2.md"
   - type: "reviews"
@@ -763,6 +767,18 @@ PR #1974 (Issue #1945) cycle 2 で、新規追加した `session_worktree` type 
 
 新機能が「安全ゲート（`{pr_merged}=true` 等の条件）付きで既存の共有インフラを呼び出す」形の場合、テストカバレッジは **consumer 側（呼び出された結果をどう処理するか）だけでなく producer 側（呼び出す条件そのもの）にも discriminating assert が必要**。producer 側のテストが「呼ばれたら動く」ことしか検証せず「ガードなしでは呼ばれないこと」を検証していないと、安全ゲート自体を剥がす regression がテストスイートを無検知で通過する。本パターンは適用 5 の Self-grep tautology / Path filter coverage gap と同型 (呼び出し条件の mutation に対する identification power 0) だが、対象を「安全ゲート付き呼び出しの producer/consumer 両面カバレッジ」に一般化したもの。関連する共有リソース契約違反の背景は [[shared-resource-type-reuse-without-consumer-contract-check]] を参照。
 
+### 適用 31: degrade 経路テストの discriminator は「degrade が働いて初めて成立する肯定結果」で設計し、commit 前 mutation で識別力を検証する (PR #2003 で実証)
+
+PR #2003 (Issue #1999、flock 不在環境の `command -v flock` degrade 追加) では、**同一 PR 内の 2 つの新規テストで識別力が分岐した**: TC-6 (atomic-write) は set の rc / state file 内容 / stderr を直接 assert して mutation (ガード除去) を正しく検出したが、TC-9 (wiki-ingest-lock) は (1) rc の `|| true` 破棄、(2) locale 依存の英語エラーメッセージ grep（非英語 locale で never match）、(3) mkdir ロック実装ゆえガード有無で構造的に pass する assert 構成、の 3 重で mutation に対し全 green の false-positive test だった。error-handling / test 両レビュアーが隔離 worktree の mutation 実験で独立にこれを実証した (cycle 1 HIGH)。
+
+fix では discriminator を「degrade が働いて初めて成立する肯定結果」で再設計した — no-flock `set` の rc 直接 assert に加え、**別セッションからの liveness 判定が `held` を返す**ことを assert する (degrade が壊れて state 未書込なら holder not-live → `stale` が返るため locale 非依存に検出できる。既存 TC の挙動の再利用)。fix commit 前にガード除去 mutation で新 TC-9 が正確に 2 assert FAIL することを検証してから push し、cycle 2 で両レビュアーが独立再実証して収束した (3 cycle: HIGH 1 → LOW 1 → 0)。
+
+#### 教訓
+
+- degrade / fallback 経路のテストは、エラーメッセージ文字列の否定形 grep ではなく「degrade 成功時にのみ成立する状態遷移・戻り値」を assert する ([[locale-dependent-error-message-grep-assertion]] 参照)
+- 「テストの識別力を直す fix」自体も、commit 前に mutation で FAIL することを確認してから push する — 修正が本当に teeth を持つかは実測でしか分からない
+- degrade 系 PR の妥当性説明には「どの環境でも機能していた保護を除去しない (degrade 前は当該環境で操作自体が失敗していた) = strictly additive availability」の framing が有効 (application レビュアーが cycle 3 で明文化)
+
 ## 関連ページ
 
 - [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](../heuristics/defensive-code-needs-its-own-failure-path-test.md)
@@ -829,3 +845,5 @@ PR #1974 (Issue #1945) cycle 2 で、新規追加した `session_worktree` type 
 - [PR #1970 review results (cycle 3, mergeable) — 隔離 scratchpad での mutation test により TC-15 の実効性を実証 (適用 29)](../../raw/reviews/20260722T122232Z-pr-1970-cycle3.md)
 - [PR #1972 review results — テストのみ変更 (branch_remote 経路の回帰テスト追加) で 4 reviewer 全員が独立にスクラッチコピーへの mutation で新規テストの検出力を実証、0 findings / 1 cycle mergeable](../../raw/reviews/20260722T133807Z-pr-1972.md)
 - [PR #1974 fix results (cycle 2) — producer 側 (recorder + guard) の discriminating assert 欠如を安全ゲート剥がし mutation で実測、consumer 側のみのカバレッジでは無検知で通過することを確認 (適用 30)](../../raw/fixes/20260723T021111Z-pr-1974-cycle2.md)
+- [PR #2003 review cycle 1 — 同一 PR 内で TC-6 (識別力あり) と TC-9 (false-positive) が分岐、2 レビュアーが隔離 worktree mutation で独立実証 (適用 31)](../../raw/reviews/20260724T070805Z-pr-2003.md)
+- [PR #2003 review cycle 3 — 3 cycle 収束の最終検証と strictly additive availability framing の明文化 (適用 31)](../../raw/reviews/20260724T074215Z-pr-2003.md)

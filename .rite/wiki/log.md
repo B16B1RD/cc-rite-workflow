@@ -4,6 +4,11 @@
 * **Skip**: [20260723T172336Z-pr-1986.md](raw/reviews/20260723T172336Z-pr-1986.md) — 指摘0件の機械的バージョン文字列更新PR。DRY非該当の判断はHyperFramesのシーン独立アーキテクチャに固有で汎用性が低く、既存の関連ページも無いため経験則化を見送った
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=279, broken_refs=0
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=280, broken_refs=0
+* **Create**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — raw/reviews/20260724T070805Z-pr-2003.md を新規ページ化
+* **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — raw/fixes/20260724T071409Z-pr-2003.md を統合（locale 非依存 discriminator への置換 + probe sid 分離）
+* **Update**: [stderr ノイズ削減: truncate ではなく selective surface で解く](pages/heuristics/stderr-selective-surface-over-truncate.md) — raw/reviews/20260724T072825Z-pr-2003.md を統合（テストの captured-stderr 握り潰し検出）
+* **Update**: [stderr ノイズ削減: truncate ではなく selective surface で解く](pages/heuristics/stderr-selective-surface-over-truncate.md) — raw/fixes/20260724T073107Z-pr-2003.md を統合（fail_before=$FAIL 失敗時のみ surface パターン）
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260724T074215Z-pr-2003.md を統合（適用 31: degrade 経路 discriminator 設計 + commit 前 mutation 検証）
 
 ## 2026-07-23
 
