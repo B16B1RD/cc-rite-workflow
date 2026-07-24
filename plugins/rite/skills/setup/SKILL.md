@@ -24,6 +24,75 @@ When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#413-upgrade-exis
 
 ## Phase 1: Environment Check
 
+### 1.0 Verify Core Dependencies (bash ≥4 / jq / flock)
+
+rite の hook / スクリプト群は bash 4+ / jq に依存し、flow-state のロックに flock を使う。導入時点でこれらを検査し、欠落があれば OS 別のインストール案内を出す（macOS stock bash 3.2 のまま pr-review 系が不可解に失敗する事故の予防）。**この検査は non-blocking**（欠落があっても setup は継続し、`exit 1` しない）。全依存 OK のときは 1 行サマリのみで邪魔をしない。
+
+> **検査基準（Decision D-01）**: bash は「実行中の bash の `BASH_VERSION`」を基準にする。macOS での PATH 解決（Homebrew bash か `/bin/bash` 3.2 か）が環境依存で不確実なため、実行コンテキスト自身を測るのが最も正確。
+
+```bash
+# OS 検出（uname -s ベース。テスト時は uname() 関数を定義して shadow 可能）
+os=$(uname -s 2>/dev/null || echo "unknown")
+case "$os" in
+  Darwin) os_kind=macos ;;
+  Linux)  os_kind=linux ;;
+  MINGW*|MSYS*|CYGWIN*) os_kind=windows ;;
+  *) os_kind=unknown ;;
+esac
+
+dep_bash=ok; dep_jq=ok; dep_flock=ok
+
+# bash バージョン検査（実行中の bash の BASH_VERSION を基準。テスト時は先頭で
+# BASH_VERSION=3.2.57 を注入すれば <4 経路を実際に踏める — BASH_VERSION は再代入可能）
+if [ -z "${BASH_VERSION:-}" ]; then
+  dep_bash=nonbash
+  echo "⚠️ BASH_VERSION が空です（bash 以外で実行されている可能性）。bash 依存検査をスキップします。"
+  echo "   rite の hook / スクリプトは bash 実行を前提とします。bash で再実行してください。"
+else
+  bash_major=${BASH_VERSION%%.*}
+  if [ "$bash_major" -lt 4 ] 2>/dev/null; then
+    dep_bash=old
+    echo "⚠️ bash ${BASH_VERSION} を検出しました。rite の一部スクリプト（pr-review の review-source-resolve.sh 等）は bash 4 以上を必要とします。"
+    case "$os_kind" in
+      macos)   echo "   インストール: brew install bash（macOS 標準の bash 3.2 は古すぎます）" ;;
+      linux)   echo "   インストール: sudo apt install --only-upgrade bash（Debian/Ubuntu）/ sudo dnf upgrade bash（Fedora）" ;;
+      windows) echo "   インストール: Git for Windows 同梱の bash（4+）を使うか、winget/scoop で更新してください" ;;
+      *)       echo "   インストール: お使いの環境のパッケージマネージャで bash 4+ を導入してください（https://www.gnu.org/software/bash/）" ;;
+    esac
+  fi
+fi
+
+# jq 検査（欠落は ⚠️ 警告 + OS 別案内。案内は本フェーズで 1 回だけ出し、Phase 4.5.0 の
+# NO_JQ 経路では繰り返さない — AC-3）
+if ! command -v jq >/dev/null 2>&1; then
+  dep_jq=missing
+  echo "⚠️ jq が見つかりません。rite の hook / スクリプトは JSON 処理に jq を必要とします。"
+  case "$os_kind" in
+    macos)   echo "   インストール: brew install jq" ;;
+    linux)   echo "   インストール: sudo apt install jq（Debian/Ubuntu）/ sudo dnf install jq（Fedora）" ;;
+    windows) echo "   インストール: winget install jqlang.jq または scoop install jq" ;;
+    *)       echo "   インストール: https://jqlang.github.io/jq/ を参照してください" ;;
+  esac
+fi
+
+# flock 検査（non-blocking = ℹ️ 情報表示のみ。警告レベルにしない — AC-4）
+if ! command -v flock >/dev/null 2>&1; then
+  dep_flock=missing
+  echo "ℹ️ flock が見つかりません（macOS / Git Bash では標準未同梱）。flow-state のロックは degrade 動作（ロックなし）になりますが、rite の動作は妨げません。"
+fi
+
+# 全依存 OK なら 1 行サマリのみ（AC-1）
+if [ "$dep_bash" = "ok" ] && [ "$dep_jq" = "ok" ] && [ "$dep_flock" = "ok" ]; then
+  echo "✅ 依存検査: bash ${BASH_VERSION%%.*}+ / jq / flock をすべて検出しました（os=$os）"
+fi
+
+# 機械可読 marker（data contract として全ケースで emit する。現状どの後続フェーズも機械 parse しない
+# — jq 案内の重複排除は Phase 4.5.0 の NO_JQ メッセージが Phase 1.0 を文言で参照して達成する）
+echo "[CONTEXT] DEP_CHECK; bash=$dep_bash; jq=$dep_jq; flock=$dep_flock; os=$os_kind"
+```
+
+この bash ブロックは **常に exit 0** で終わる（依存欠落を理由に setup を停止しない）。`[CONTEXT] DEP_CHECK` marker の各フィールド（`bash=ok|old|nonbash` / `jq=ok|missing` / `flock=ok|missing` / `os=macos|linux|windows|unknown`）は data contract / observability として全ケースで emit するが、現状どの bash フェーズも機械 parse しない（jq 案内の重複排除は Phase 4.5.0 の NO_JQ メッセージが Phase 1.0 を文言で参照して達成しており、marker の消費には依存しない）。出力を読んだうえで、欠落があってもそのまま 1.1 へ続行する。
+
 ### 1.1 Verify gh CLI Installation
 
 ```bash
@@ -542,11 +611,11 @@ fi
 ```
 
 - If `LOCAL:<path>` or `MARKETPLACE:<path>` → extract all text after the first `:` (the absolute path) and use it as `{hooks_dir}` for all subsequent phases. Also retain the source type (`LOCAL` or `MARKETPLACE`) for use in the Phase 5 completion report.
-- If `NOT_FOUND:NO_JQ` → display warning and **skip the rest of Phase 4.5**:
+- If `NOT_FOUND:NO_JQ` → display warning and **skip the rest of Phase 4.5**（jq のインストール案内は Phase 1.0 の依存検査で既出のため、ここでは繰り返さない — AC-3。NO_JQ 経路に入る時点で jq は必ず欠落しており Phase 1.0 が既に OS 別案内を表示済み）:
     ```
-    ⚠️ Hook scripts not found. jq is required for hook scripts but was not detected.
-    Install jq (https://jqlang.github.io/jq/) to enable hooks.
-    Skipping hook registration. Workflow will function normally without hooks.
+    ⚠️ Hook scripts not found. jq was not detected, so hook registration is skipped.
+    (See the Phase 1.0 dependency check above for jq installation guidance.)
+    Workflow will function normally without hooks.
     ```
 - If `NOT_FOUND:NO_HOOKS` → display warning and **skip the rest of Phase 4.5**:
     ```

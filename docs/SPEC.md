@@ -445,9 +445,10 @@ rite workflow has **3 independently-versioned schemas that are commonly conflate
 **Process Flow:**
 
 #### Phase 1: Environment Check
-1. Verify gh CLI installation
-2. Check GitHub authentication status
-3. Get repository information
+1. Verify core dependencies (bash ≥4 / jq / flock) with `uname`-based OS-specific install guidance (non-blocking; a one-line summary when all present)
+2. Verify gh CLI installation
+3. Check GitHub authentication status
+4. Get repository information
 
 #### ~~Phase 2: Project Type Detection~~ (Removed)
 
