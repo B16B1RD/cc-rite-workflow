@@ -220,6 +220,19 @@ while [ -L "$ABS_PATH" ] && [ "$_hop" -lt 40 ]; do
   ABS_PATH="$_lt"
   _hop=$((_hop + 1))
 done
+# Both give-up arms above (readlink failed → break; hop cap reached → loop exit) leave
+# ABS_PATH a link, so a link that stays inside the isolation worktree is allowed with AC-2
+# effectively off. That fail-open direction is correct here — scope is not yet confirmed, and
+# a legitimate isolation-internal symlink must not be false-denied — but the operator would
+# otherwise have no way to tell "allowed because it was safe" from "allowed because the deref
+# gave up". Record the give-up under RITE_DEBUG, same channel as the subagent-detection
+# fallback above. Not a fallback of its own: the decision is unchanged either way.
+if [ -n "${RITE_DEBUG:-}" ] && [ -L "$ABS_PATH" ]; then
+  printf '[%s] pre-tool-edit-guard: AC-2 deref gave up after %s hop(s), target still a symlink: %s\n' \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_hop" \
+    "$(printf '%s' "${ABS_PATH:0:120}" | neutralize_ctrl --c0-only)" \
+    >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+fi
 
 # --- Resolve the git worktree that OWNS the target ---
 # The isolation allowance is defined by "the target lives inside a sanctioned reviewer isolation

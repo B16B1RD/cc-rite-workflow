@@ -387,6 +387,10 @@ ln -s "$TEST_REPO/src/newdir/newfile.py" "$ISO_MUT_DIR/evil-missing-parent"
 out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-missing-parent" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
 assert_deny "symlink to a not-yet-created parent-tree path resolved & blocked" "$out"
 rm -f "$ISO_MUT_DIR/evil-missing-parent"
+# Roll the fixture back so no later TC silently depends on $TEST_REPO/src existing (several
+# earlier TCs exercise the walk-up branch precisely because it does NOT). Best-effort: the
+# directory is inside $TEST_REPO, which cleanup() removes wholesale either way.
+rmdir "$TEST_REPO/src" 2>/dev/null || true
 echo ""
 
 # Every TC above uses an ABSOLUTE link target, so none of them execute the relative-target
@@ -487,6 +491,10 @@ assert_deny "LF-terminated directory component preserved & blocked" "$out"
 # stays one line even with the neutralization removed — the pin would silently stop testing
 # anything. Floor it the same two-tier way the rest of this file does: hard-fail on the
 # blocking gate, skip elsewhere so a long-$TMPDIR workstation is not spuriously red.
+#
+# `[^"]*` relies on this fixture's path containing no `"` — the hook escapes an embedded quote
+# to `\"` (pre-tool-edit-guard.sh), which would stop the class short of the closing quote and
+# fail even with the defense intact. Keep quotes out of the names used here.
 _lf_off=$(( ${#ISO_MUT_DIR} + ${#lf_dir} ))   # byte offset of the LF within "<iso>/lf-dir<LF>"
 if [ "$_lf_off" -ge 120 ]; then
   if [ -d /proc ]; then
