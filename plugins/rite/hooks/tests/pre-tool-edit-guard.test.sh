@@ -55,6 +55,56 @@ REAL_JQ=$(command -v jq)   # absolute path, captured before any PATH-shim test s
 # execs the real binary. Empty when realpath is absent — that TC then skips.
 REAL_REALPATH=$(command -v realpath 2>/dev/null) || REAL_REALPATH=""
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+#
+# Byte-identical copy of the reference definition in _test-helpers.sh, which this file
+# deliberately does not source (see the note above). timeout-shim.test.sh TC-7 compares
+# every discovered copy against that reference and TC-8 requires the fail-closed guard
+# below, so edit the reference first and re-copy — do not hand-tune this block.
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift;
+      # alarm truncates to an integer, so a fractional deadline silently becomes
+      # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
+      # Reject rather than degrade, and exit 125 rather than die: die exits 255,
+      # which every caller reads as "not 124, so no hang" — the same silent pass
+      # the rejection exists to prevent. GNU timeout accepts fractions, so this
+      # shim only claims the contract for integer seconds.
+      if ($d !~ /^[0-9]+$/) {
+        print STDERR "_timeout: fractional seconds are not supported by the perl fallback: $d\n";
+        exit 125;
+      }
+      my $pid = fork;
+      exit 127 unless defined $pid;
+      # setpgrp puts the child in its own process group so the alarm handler can
+      # signal the whole tree with a negative pid. GNU timeout does the same; without
+      # it the deadline only reaches the direct child, and a grandchild holding the
+      # captured stdout keeps the caller blocked long past the timeout (measured 30s
+      # against a 1s deadline). The runners capture output with $( ), so that stall
+      # would consume the CI job limit instead of failing at 124.
+      if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", -$pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0;
+      my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
+# Fail closed when no backend exists. Every `_timeout` caller reads a non-124 rc
+# as "no hang", so a missing backend would silently turn each hang assertion into
+# a pass. Abort at source time rather than degrade.
+if ! command -v timeout >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then
+  echo "ERROR: neither timeout(1) nor perl(1) is available — _timeout cannot detect" >&2
+  echo "  hangs, and every hang assertion in this suite would silently pass." >&2
+  echo "  Install GNU coreutils (timeout) or perl before running the test suite." >&2
+  exit 1
+fi
+
+
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 # Skips are counted so a platform-gated green states how many assertions never ran
@@ -361,20 +411,38 @@ echo ""
 # The hop cap is what makes a symlink CYCLE terminate. Without it this PreToolUse hook spins
 # until the harness 10s timeout on every Edit/Write — invisible to CI, fatal in production.
 # Asserting "allow" alone would be vacuous (deleting the whole deref block also allows), so
-# assert TERMINATION: run under `timeout` and treat rc=124 as the failure.
+# assert TERMINATION: run under the portable `_timeout` shim and treat rc=124 as the failure.
+# Bare `timeout(1)` must not be used — it is absent on macOS (the CI leg deliberately omits
+# coreutils), where the call would exit 127 and this pin would silently stop testing anything.
 echo "TC-SYMLINK-cycle: symlink cycle → terminates via hop cap (no hang) → allow"
 ln -s "$ISO_MUT_DIR/cyc2" "$ISO_MUT_DIR/cyc1"
 ln -s "$ISO_MUT_DIR/cyc1" "$ISO_MUT_DIR/cyc2"
 rc=0
 out=$(jq -n --arg p "$ISO_MUT_DIR/cyc1" --arg cwd "$ISO_MUT_DIR" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Write", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
-  | timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  | _timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
 if [ "$rc" = "124" ]; then
   fail "symlink cycle did not terminate within 10s (hop cap missing?)"
 else
   assert_allow "symlink cycle terminates and falls through to allow" "$out" "$rc"
 fi
 rm -f "$ISO_MUT_DIR/cyc1" "$ISO_MUT_DIR/cyc2"
+echo ""
+
+# TC-SYMLINK-cycle above pins that a cap EXISTS; it does not pin its VALUE. Lowering the cap
+# to anything >= 2 leaves the whole suite green, yet a cap below the kernel's own limit
+# reopens the multi-hop bypass: for chain lengths between cap+1 and the kernel limit the hook
+# gives up (leaving ABS_PATH a link inside the isolation worktree → allow) while the kernel
+# happily follows the rest of the chain into the parent .git. Pin the LOWER bound only — a
+# larger cap is equally safe, so asserting the upper side would over-pin the implementation.
+echo "TC-SYMLINK-hop-cap-value: a chain exactly at the cap still resolves → deny (git-dir)"
+ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/hopchain-0"
+for _i in $(seq 1 39); do
+  ln -s "$ISO_MUT_DIR/hopchain-$((_i - 1))" "$ISO_MUT_DIR/hopchain-$_i"
+done
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/hopchain-39" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny_gitdir "40-hop chain into parent .git resolved & blocked (cap must be >= 40)" "$out"
+for _i in $(seq 0 39); do rm -f "$ISO_MUT_DIR/hopchain-$_i"; done
 echo ""
 
 # A link target that ends in LF is where a command-substitution capture silently truncates:
