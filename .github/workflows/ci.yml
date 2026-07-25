@@ -118,7 +118,10 @@ jobs:
               echo "<details><summary>$log</summary>"
               echo ""
               echo '```'
-              grep -E 'FAIL|Failed tests:|^  - |[0-9]+/[0-9]+ passed|[0-9]+ passed, [0-9]+ failed' "$log" || echo '(no failure markers captured — see full job log)'
+              # `Skip accounting` / `^ERROR: ` cover the runners' skip-drift bail:
+              # it fails the job without emitting any FAIL marker, so without these
+              # the summary would show only a green-looking "N/N passed" line.
+              grep -E 'FAIL|Failed tests:|Skip accounting|^ERROR: |^  - |[0-9]+/[0-9]+ passed|[0-9]+ passed, [0-9]+ failed' "$log" || echo '(no failure markers captured — see full job log)'
               echo '```'
               echo "</details>"
             done

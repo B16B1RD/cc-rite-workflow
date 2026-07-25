@@ -194,6 +194,12 @@ fi
 
 The project uses a lightweight custom test framework (not bats) located in `plugins/rite/hooks/tests/`.
 
+The suite runs on an `ubuntu-latest` + `macos-latest` CI matrix. Which leg is the
+**blocking gate** — the one whose failure stops a merge — is declared in
+`.github/workflows/ci.yml`; the other stays informational while its pass rate is
+still being established. "Blocking gate" below always means whichever leg that file
+declares, so the rules here survive the two swapping.
+
 ### Prerequisites
 
 Beyond `jq` and bash 4+, the suite needs **either `timeout(1)` or `perl(1)`**. `_test-helpers.sh`
@@ -225,8 +231,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../your-hook.sh"
 # Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
 # changing directory, so a failed mktemp inside that nesting yields the current
-# directory — which the cleanup trap below would then delete.
+# directory — which the cleanup trap below would then delete. The second step is
+# what makes path comparisons hold on macOS, where `$TMPDIR` lives under
+# `/var/folders` (a symlink into `/private`) while `git rev-parse` and `realpath`
+# report the resolved form.
 TEST_DIR="$(mktemp -d)" || exit 1
+TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 PASS=0
 FAIL=0
 SKIP=0
@@ -284,7 +294,10 @@ new test usually only needs the test cases themselves. See the header of that fi
 1. Create `plugins/rite/hooks/tests/your-hook.test.sh`
 2. Follow the structure above: setup temporary directory, define `pass`/`fail`/`skip` helpers (or
    source `_test-helpers.sh` and get them for free), write test cases
-3. Use `mktemp -d` for isolated test environments
+3. Use `mktemp -d` for isolated test environments, then canonicalize the root with
+   `pwd -P` as the structure above does — anything that compares the sandbox path
+   against a path the code under test resolved breaks on macOS otherwise
+   (`make_sandbox` / `make_plain_sandbox` from `_test-helpers.sh` already do this)
 4. Clean up with `trap cleanup EXIT`
 5. Exit with code 1 if any test fails
 6. **Gate platform-dependent cases with `skip`, never a bare `echo`** — a skipped case must appear

@@ -98,15 +98,24 @@ if [ "$SKIPPED" -gt 0 ]; then
 else
   echo "Results: $PASSED/$TOTAL passed, $FAILED failed"
 fi
-if [ "$SKIP_ACCOUNTING_BROKEN" -eq 1 ]; then
-  echo "Skip accounting is unreliable for this run (see the ERROR lines above)."
-  exit 1
-fi
+# The failure list comes before the accounting bail: both exit 1, and bailing
+# first would swallow the only line that names which files failed. Drift and a
+# real failure land together whenever a set -e test aborts after a skip() call
+# but before its summary, so the two diagnostics have to coexist.
 if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
   echo "Failed tests:"
   for t in "${FAILED_TESTS[@]}"; do
     echo "  - $t"
   done
+fi
+if [ "$SKIP_ACCOUNTING_BROKEN" -eq 1 ]; then
+  echo "Skip accounting is unreliable for this run (see the ERROR lines above)."
   exit 1
 fi
-echo "All tests passed!"
+if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
+  exit 1
+fi
+# The gated-group count rides on the success line too (mirrors run-all.sh): a bare
+# "All tests passed!" under a run that skipped ten groups reads as full coverage,
+# which is the exact misreading the counting exists to prevent.
+echo "All tests passed!$( [ "$SKIPPED" -gt 0 ] && printf ' (%s gated group(s) skipped)' "$SKIPPED" )"

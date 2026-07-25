@@ -59,12 +59,17 @@ done
 
 # The skip count is reported on the red path too — "what did not run" is at least
 # as important when something failed.
+# The failure list comes before the accounting bail: both exit 1, and bailing
+# first would leave this runner with no summary line at all, since it has no
+# unconditional "Results:" equivalent (mirrors hooks/tests/run-tests.sh).
+if [ ${#FAILED_FILES[@]} -gt 0 ]; then
+  echo "=== FAILED test files: ${FAILED_FILES[*]}$( [ "$SKIPPED" -gt 0 ] && printf " (%s gated group(s) skipped)" "$SKIPPED" ) ==="
+fi
 if [ "$SKIP_ACCOUNTING_BROKEN" -eq 1 ]; then
   echo "=== Skip accounting is unreliable for this run (see the ERROR lines above) ==="
   exit 1
 fi
 if [ ${#FAILED_FILES[@]} -gt 0 ]; then
-  echo "=== FAILED test files: ${FAILED_FILES[*]}$( [ "$SKIPPED" -gt 0 ] && printf " (%s gated group(s) skipped)" "$SKIPPED" ) ==="
   exit 1
 elif [ "$SKIPPED" -gt 0 ]; then
   echo "=== All script tests passed ($SKIPPED gated group(s) skipped) ==="
