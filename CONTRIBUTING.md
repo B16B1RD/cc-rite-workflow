@@ -205,8 +205,21 @@ to macOS would mean revisiting those floor conditions, not just the CI file.
 
 Beyond `jq` and bash 4+, the suite needs **either `timeout(1)` or `perl(1)`**. `_test-helpers.sh`
 provides a `_timeout` shim that falls back to perl where GNU coreutils is absent (macOS), and it
-aborts at source time when neither is available — every caller reads a non-124 exit code as "no
-hang", so degrading instead of aborting would turn each hang assertion into a silent pass.
+aborts when neither is available — every caller reads a non-124 exit code as "no hang", so
+degrading instead of aborting would turn each hang assertion into a silent pass. Files that source
+`_test-helpers.sh` abort at source time; the five that cannot source it abort on the inlined guard
+at the top of the file.
+
+`_timeout` is duplicated into those five files (three under `hooks/tests/`, two under
+`scripts/tests/`) because they do not source `_test-helpers.sh`. `timeout-shim.test.sh` enforces the
+duplication mechanically: TC-7 requires every copy's function body to be **byte-identical** to the
+one in `_test-helpers.sh`, TC-8 requires each copy to carry the fail-closed guard. So:
+
+- Changing `_timeout` means changing **all six copies** in the same edit — patching only
+  `_test-helpers.sh` fails TC-7.
+- Inlining a seventh copy means copying the guard along with the function.
+- Consolidating the copies means lowering the `>= 6` floor in **both** `timeout-shim.test.sh:243`
+  and `:276`, or TC-8 reports a discovery failure that did not happen.
 
 ### Running Tests
 
@@ -318,6 +331,13 @@ new test usually only needs the test cases themselves. See the header of that fi
    two shapes: `SKIP: N` (what `print_summary` emits) or `Results: …, N skipped` (what the
    template above emits). A test with its own summary line that mentions neither will take the
    suite down the moment it gains its first `skip` — so add the counter to that line too.
+
+   **`⏭️` is reserved suite-wide, not just inside `skip()`.** The cross-check counts the glyph
+   anywhere in a file's merged stdout+stderr, so it also sees output from whatever script the test
+   is exercising. If a test runs something that prints `⏭️` itself, or dumps a captured buffer
+   verbatim, the file trips the mismatch even though its own summary is correct — and the message
+   blames summary format drift, pointing at the wrong thing. Neutralize the glyph before printing
+   (`sed 's/⏭️/<skip-marker>/g'`) in those cases.
 7. **Prefer a discriminator over a bare success assertion** when the code under test degrades
    gracefully. If the degraded path emits the same headline result as the healthy one, assert the
    machine-readable enum that distinguishes them (see `stale_check_ok` in `wiki-lint-stale.test.sh`)

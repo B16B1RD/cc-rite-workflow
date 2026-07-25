@@ -29,8 +29,14 @@ _timeout() {
       }
       my $pid = fork;
       exit 127 unless defined $pid;
-      if ($pid == 0) { exec { $ARGV[0] } @ARGV; exit 127; }
-      $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
+      # setpgrp puts the child in its own process group so the alarm handler can
+      # signal the whole tree with a negative pid. GNU timeout does the same; without
+      # it the deadline only reaches the direct child, and a grandchild holding the
+      # captured stdout keeps the caller blocked long past the timeout (measured 30s
+      # against a 1s deadline). The runners capture output with $( ), so that stall
+      # would consume the CI job limit instead of failing at 124.
+      if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", -$pid; waitpid($pid, 0); exit 124; };
       alarm $d; waitpid $pid, 0;
       my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
     ' "$_d" "$@"

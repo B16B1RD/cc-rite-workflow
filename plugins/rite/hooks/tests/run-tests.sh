@@ -51,10 +51,12 @@ for test_file in "${test_files[@]}"; do
   # failing test aborts the runner before it can record the failure and continue.
   # Capturing shares tee's other hazard rather than avoiding it: both wait for pipe
   # EOF, so a background writer outliving its test file stalls the runner (measured
-  # 6s vs 0s), which direct fd inheritance did not. No current test leaks one — every
-  # background job is reaped by its cleanup trap. The other trade-off is that a hung
-  # file prints nothing until it returns — the preceding `=== Running: X ===` line
-  # still identifies which file hung, but its output is lost if the CI job times out.
+  # 6s vs 0s), which direct fd inheritance did not. Two things bound that: every test
+  # reaps its own background jobs in a cleanup trap, and `_timeout` puts its child in
+  # a process group so a hung command's grandchildren die with it. The other trade-off
+  # is that a hung file prints nothing until it returns — the preceding
+  # `=== Running: X ===` line still identifies which file hung, but its output is
+  # lost if the CI job times out.
   test_out=$(bash "$test_file" 2>&1) || test_rc=$?
   printf '%s\n' "$test_out"
   if [ "$test_rc" -eq 0 ]; then

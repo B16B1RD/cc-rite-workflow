@@ -110,7 +110,11 @@ assert_not_contains() {
 # line alone would stay green.
 assert_line_matches() {
   local label="$1" line_needle="$2" pattern="$3" line
-  line=$(printf '%s\n' "$RUN_OUT" | grep -F "$line_needle" | tail -1)
+  # `|| true` is scoped to grep alone: a no-match is an expected outcome here (it is
+  # what the empty-line branch below reports), but under `set -o pipefail` its exit 1
+  # would fail the assignment and abort the file, taking the diagnostic with it.
+  # Wrapping the whole substitution instead would also swallow tail/printf failures.
+  line=$(printf '%s\n' "$RUN_OUT" | { grep -F "$line_needle" || true; } | tail -1)
   if [ -z "$line" ]; then
     fail "$label: no line containing '$line_needle'"
   elif printf '%s' "$line" | grep -qE "$pattern"; then
@@ -120,19 +124,46 @@ assert_line_matches() {
   fi
 }
 
+# Assert that some whole line matches a pattern. Needed wherever a bare substring
+# would also hit the runner's own `=== Running: <file> ===` progress line, which is
+# printed for every file regardless of outcome — a filename assertion anchored only
+# on the name can never fail.
+assert_line_present() {
+  local label="$1" pattern="$2"
+  if printf '%s\n' "$RUN_OUT" | grep -qE "$pattern"; then
+    pass "$label"
+  else
+    fail "$label: no line matched /$pattern/"
+  fi
+}
+
 # The runners differ only in how they name things; the logic under test is shared.
-# Each entry: runner path, sandbox prefix, failure-list marker, success marker.
+# Each entry: runner path, sandbox prefix, failure-list marker, success marker,
+# failure-entry line pattern (a printf format taking the escaped filename), and the
+# line that carries the gated-group count on the red path. The last two exist because
+# the two runners format those differently: the hooks runner gives each failure its
+# own `  - <file>` line and puts the count on `Results:`, while the scripts runner
+# packs both into its single `=== FAILED test files: … ===` line.
 run_case_on_both() {
   local case_fn="$1"
-  "$case_fn" "$HOOKS_RUNNER" "hooks" "Failed tests:" "All tests passed!"
-  "$case_fn" "$SCRIPTS_RUNNER" "scripts" "FAILED test files:" "All script tests passed"
+  "$case_fn" "$HOOKS_RUNNER" "hooks" "Failed tests:" "All tests passed!" \
+    '^  - %s$' "Results:"
+  "$case_fn" "$SCRIPTS_RUNNER" "scripts" "FAILED test files:" "All script tests passed" \
+    '^.*FAILED test files:.*%s.*$' "FAILED test files:"
+}
+
+# Build the failure-entry pattern for a given runner and filename.
+failure_entry_pattern() {
+  local fmt="$1" file="$2"
+  # shellcheck disable=SC2059  # fmt is a trusted per-runner template, not user input
+  printf "$fmt" "${file//./\\.}"
 }
 
 # --- TC-1: quadrant 1 — no failure, no drift ---
 
 echo "=== TC-1: clean run exits 0 and reports the gated-group count ==="
 tc1() {
-  local runner="$1" tag="$2" _fail_marker="$3" success_marker="$4" dir
+  local runner="$1" tag="$2" _fail_marker="$3" success_marker="$4" _entry_fmt="$5" _count_line="$6" dir
   dir=$(stage_runner "$runner" "tc1-$tag")
   # A well-formed skip: marker plus the `SKIP: N` summary form.
   make_test_file "$dir" "a.test.sh" 0 "  ⏭️ SKIP: gated group" "SKIP: 1"
@@ -152,13 +183,17 @@ run_case_on_both tc1
 echo ""
 echo "=== TC-2: a failing test exits 1 and names the file ==="
 tc2() {
-  local runner="$1" tag="$2" fail_marker="$3" success_marker="$4" dir
+  local runner="$1" tag="$2" fail_marker="$3" success_marker="$4" entry_fmt="$5" _count_line="$6" dir
   dir=$(stage_runner "$runner" "tc2-$tag")
   make_test_file "$dir" "broken.test.sh" 1 "  ❌ FAIL: synthetic"
   run_staged "$dir"
   assert_rc "TC-2/$tag failing run exits 1" 1 "$RUN_RC"
   assert_contains "TC-2/$tag failure list is printed" "$fail_marker"
-  assert_contains "TC-2/$tag failing file is named" "broken.test.sh"
+  # Anchored to the failure-list entry, not to the name alone: every file also gets a
+  # `=== Running: broken.test.sh ===` line, so a bare substring match passes even when
+  # the list stops naming anything.
+  assert_line_present "TC-2/$tag failing file is named in the failure list" \
+    "$(failure_entry_pattern "$entry_fmt" "broken.test.sh")"
   assert_not_contains "TC-2/$tag success line is withheld" "$success_marker"
 }
 run_case_on_both tc2
@@ -168,7 +203,7 @@ run_case_on_both tc2
 echo ""
 echo "=== TC-3: a marker without a summary count fails the run ==="
 tc3() {
-  local runner="$1" tag="$2" _fail_marker="$3" success_marker="$4" dir
+  local runner="$1" tag="$2" _fail_marker="$3" success_marker="$4" _entry_fmt="$5" _count_line="$6" dir
   dir=$(stage_runner "$runner" "tc3-$tag")
   # Marker printed, but no `SKIP: N` and no `, N skipped` — the undercount this
   # accounting exists to catch. The file itself passes.
@@ -186,7 +221,7 @@ run_case_on_both tc3
 echo ""
 echo "=== TC-4: failure list survives a simultaneous accounting bail ==="
 tc4() {
-  local runner="$1" tag="$2" fail_marker="$3" _success_marker="$4" dir
+  local runner="$1" tag="$2" fail_marker="$3" _success_marker="$4" entry_fmt="$5" _count_line="$6" dir
   dir=$(stage_runner "$runner" "tc4-$tag")
   # Both conditions at once. This is structural rather than rare: a `set -e` test
   # that aborts after a skip() call but before its summary produces exactly this.
@@ -196,7 +231,8 @@ tc4() {
   run_staged "$dir"
   assert_rc "TC-4/$tag exits 1 when both conditions hold" 1 "$RUN_RC"
   assert_contains "TC-4/$tag failure list is not swallowed by the bail" "$fail_marker"
-  assert_contains "TC-4/$tag failing file is still named" "both.test.sh"
+  assert_line_present "TC-4/$tag failing file is still named in the failure list" \
+    "$(failure_entry_pattern "$entry_fmt" "both.test.sh")"
   assert_contains "TC-4/$tag accounting bail is also reported" "Skip accounting is unreliable"
 }
 run_case_on_both tc4
@@ -206,7 +242,7 @@ run_case_on_both tc4
 echo ""
 echo "=== TC-5: the 'Results: ..., N skipped' form is counted too ==="
 tc5() {
-  local runner="$1" tag="$2" _fail_marker="$3" success_marker="$4" dir
+  local runner="$1" tag="$2" _fail_marker="$3" success_marker="$4" _entry_fmt="$5" _count_line="$6" dir
   dir=$(stage_runner "$runner" "tc5-$tag")
   # The form the CONTRIBUTING.md template emits, as opposed to print_summary's.
   make_test_file "$dir" "b.test.sh" 0 \
@@ -224,7 +260,7 @@ run_case_on_both tc5
 echo ""
 echo "=== TC-6: a summary claiming more skips than it printed also fails ==="
 tc6() {
-  local runner="$1" tag="$2" _fail_marker="$3" _success_marker="$4" dir
+  local runner="$1" tag="$2" _fail_marker="$3" _success_marker="$4" _entry_fmt="$5" _count_line="$6" dir
   dir=$(stage_runner "$runner" "tc6-$tag")
   # The mirror of TC-3. Counting only the zero case would let a file that mixes
   # counted skip() calls with bare echoes through.
@@ -234,6 +270,71 @@ tc6() {
   assert_contains "TC-6/$tag mismatch is diagnosed" "summary format drift"
 }
 run_case_on_both tc6
+
+# --- TC-7: failure alongside correctly-counted skips, across several files ---
+
+echo ""
+echo "=== TC-7: the red path reports the skip total, summed across files ==="
+tc7() {
+  local runner="$1" tag="$2" _fail_marker="$3" _success_marker="$4" _entry_fmt="$5" count_line="$6" dir
+  dir=$(stage_runner "$runner" "tc7-$tag")
+  # Three files, so the total has to be accumulated rather than taken from the last
+  # file — `SKIPPED=$file_skips` would pass every single-file case above. The failure
+  # puts the run on the red path, where the hooks runner carries the count on
+  # `Results:` and the scripts runner on its `FAILED test files:` line; neither is
+  # exercised by the green cases.
+  make_test_file "$dir" "a.test.sh" 0 "  ⏭️ SKIP: one" "SKIP: 1"
+  make_test_file "$dir" "b.test.sh" 0 "  ⏭️ SKIP: two" "SKIP: 1"
+  make_test_file "$dir" "c.test.sh" 1 "  ❌ FAIL: synthetic"
+  run_staged "$dir"
+  assert_rc "TC-7/$tag failure with counted skips exits 1" 1 "$RUN_RC"
+  assert_line_matches "TC-7/$tag red path carries the summed gated-group count" \
+    "$count_line" '2 gated group\(s\) skipped'
+  assert_not_contains "TC-7/$tag counted skips raise no drift" "summary format drift"
+}
+run_case_on_both tc7
+
+# --- TC-8: the parsers only read summary lines, not diagnostics ---
+
+echo ""
+echo "=== TC-8: a diagnostic quoting 'SKIP: N' is not counted (first parser) ==="
+tc8() {
+  local runner="$1" tag="$2" _fail_marker="$3" _success_marker="$4" _entry_fmt="$5" _count_line="$6" dir
+  dir=$(stage_runner "$runner" "tc8-$tag")
+  # A failure diagnostic that embeds `SKIP: 3` mid-line. Only the whole-line anchor in
+  # the first parser keeps it out of the count — without it the file would report 4
+  # skips against 1 marker and take the suite down.
+  make_test_file "$dir" "quoting.test.sh" 0 \
+    '  ⏭️ SKIP: real' \
+    '  ❌ FAIL: got: SKIP: 3' \
+    "SKIP: 1"
+  run_staged "$dir"
+  assert_rc "TC-8/$tag quoted 'SKIP: N' keeps the run green" 0 "$RUN_RC"
+  assert_not_contains "TC-8/$tag quoted 'SKIP: N' raises no drift" "summary format drift"
+}
+run_case_on_both tc8
+
+# --- TC-9: the second parser ignores a quoted 'Results:' line ---
+
+echo ""
+echo "=== TC-9: a diagnostic quoting a Results line is not counted (second parser) ==="
+tc9() {
+  local runner="$1" tag="$2" _fail_marker="$3" _success_marker="$4" _entry_fmt="$5" _count_line="$6" dir
+  dir=$(stage_runner "$runner" "tc9-$tag")
+  # Reaching the second parser requires the first to find nothing, so this file uses
+  # the `Results: …, N skipped` summary form rather than `SKIP: N`. The diagnostic
+  # above it quotes another Results line; only the `[^❌]` guard keeps its 7 out of
+  # the count. Without the guard the file reports 8 skips against 1 marker and the
+  # suite fails on a drift that never happened.
+  make_test_file "$dir" "quoting-results.test.sh" 0 \
+    '  ⏭️ SKIP: real' \
+    '  ❌ FAIL: expected "Results: 1 passed, 0 failed, 7 skipped"' \
+    "Results: 2 passed, 0 failed, 1 skipped"
+  run_staged "$dir"
+  assert_rc "TC-9/$tag quoted Results line keeps the run green" 0 "$RUN_RC"
+  assert_not_contains "TC-9/$tag quoted Results line raises no drift" "summary format drift"
+}
+run_case_on_both tc9
 
 # --- Summary ---
 echo ""

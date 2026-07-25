@@ -305,7 +305,9 @@ assert_grep_in_section() {
 # unchanged. The block form `exec { $ARGV[0] } @ARGV` forces execvp even for a
 # single argument, so a command string containing shell metacharacters is never
 # handed to /bin/sh (plain `exec @ARGV` would shell-interpret it, diverging from
-# timeout(1) and turning the shim into an injection sink).
+# timeout(1) and turning the shim into an injection sink). The child also gets its
+# own process group so the deadline reaches the whole tree, not just the direct
+# child — see the comment on setpgrp below for what that costs when it is missing.
 _timeout() {
   local _d="$1"; shift
   if command -v timeout >/dev/null 2>&1; then
@@ -325,8 +327,14 @@ _timeout() {
       }
       my $pid = fork;
       exit 127 unless defined $pid;
-      if ($pid == 0) { exec { $ARGV[0] } @ARGV; exit 127; }
-      $SIG{ALRM} = sub { kill "TERM", $pid; waitpid($pid, 0); exit 124; };
+      # setpgrp puts the child in its own process group so the alarm handler can
+      # signal the whole tree with a negative pid. GNU timeout does the same; without
+      # it the deadline only reaches the direct child, and a grandchild holding the
+      # captured stdout keeps the caller blocked long past the timeout (measured 30s
+      # against a 1s deadline). The runners capture output with $( ), so that stall
+      # would consume the CI job limit instead of failing at 124.
+      if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", -$pid; waitpid($pid, 0); exit 124; };
       alarm $d; waitpid $pid, 0;
       my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
     ' "$_d" "$@"
