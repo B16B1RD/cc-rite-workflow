@@ -22,6 +22,7 @@
 * **Update**: [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) — raw/reviews/20260725T032345Z-pr-2013.md, raw/reviews/20260725T041328Z-pr-2013.md を統合（実例 5: 出力側フィルタでなく入力側プロンプトで「0 件は正当」を明示して収束。実例 6: 数値主張が誤っていても中核欠陥は実在しうる）
 * **Update**: [`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort](pages/anti-patterns/grep-oe-wc-pipefail-silent-abort.md) — raw/reviews/20260725T032345Z-pr-2013.md, raw/fixes/20260725T033607Z-pr-2013.md を統合（変種: $(cmd | grep) の no-match が直後の空判定を到達不能にし、守っている regression が起きたときだけ診断が消える）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=280, broken_refs=0
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=280, broken_refs=0
 
 ## 2026-07-24
 
