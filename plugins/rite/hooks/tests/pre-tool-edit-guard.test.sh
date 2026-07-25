@@ -37,12 +37,13 @@ ISO_REV_DIR=$(mktemp -u -t rite-revert-test-XXXXXX)
 OUTSIDE_DIR=$(mktemp -d)   # a plain, non-repo scratch dir
 shimdir=""                 # set by TC-FAILCLOSED; cleaned here so an interrupt leaves no residue
 rp_shimdir=""              # set by TC-SYMLINK-BSD-REALPATH; tracked separately for the same reason
+rl_shimdir=""              # set by TC-SYMLINK-lf-target-bsd; tracked separately for the same reason
 
 cleanup() {
   rm -f "$STDERR_FILE"
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_MUT_DIR" 2>/dev/null ) || true
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_REV_DIR" 2>/dev/null ) || true
-  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"} ${rp_shimdir:+"$rp_shimdir"}
+  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"} ${rp_shimdir:+"$rp_shimdir"} ${rl_shimdir:+"$rl_shimdir"}
 }
 trap cleanup EXIT
 
@@ -54,6 +55,9 @@ REAL_JQ=$(command -v jq)   # absolute path, captured before any PATH-shim test s
 # Same reason for realpath: TC-SYMLINK-BSD-REALPATH shims it, and the shim itself
 # execs the real binary. Empty when realpath is absent — that TC then skips.
 REAL_REALPATH=$(command -v realpath 2>/dev/null) || REAL_REALPATH=""
+# Same for readlink: TC-SYMLINK-lf-target-bsd shims it to the macOS-observed
+# no-delimiter behaviour. Empty when readlink is absent — that TC then skips.
+REAL_READLINK=$(command -v readlink 2>/dev/null) || REAL_READLINK=""
 
 # _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
 #
@@ -466,6 +470,52 @@ ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/$lf_name"
 ln -s "$lf_name" "$ISO_MUT_DIR/evil-lf"
 out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-lf" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
 assert_deny_gitdir "LF-terminated link target resolved & blocked" "$out"
+
+# The assertion above passes on GNU even when the capture is NOT byte-exact, because GNU
+# readlink appends a newline that a "strip one trailing LF" step happens to undo. macOS
+# readlink appends nothing, so the same step eats a GENUINE trailing LF and the deref lands on
+# a nonexistent path → allow. That divergence reached CI as a macOS-only failure of this very
+# TC while Linux stayed green, i.e. exactly the platform-gap shape #2014 exists to close.
+# Shim readlink to the macOS-observed behaviour (no trailing delimiter) so the blocking gate
+# sees it too. perl reads the link raw and prints it without a delimiter; `$(…)` cannot be used
+# inside the shim because it would strip the very byte under test.
+if [ -n "$REAL_READLINK" ] && command -v perl >/dev/null 2>&1; then
+  echo "TC-SYMLINK-lf-target-bsd: LF-terminated target under a no-delimiter readlink → deny (git-dir)"
+  rl_shimdir=$(mktemp -d)
+  cat > "$rl_shimdir/readlink" <<'SHIM'
+#!/bin/bash
+_t=""
+for a in "$@"; do case "$a" in -*) continue ;; *) _t=$a ;; esac; done
+exec perl -e 'my $l = readlink($ARGV[0]); exit 1 unless defined $l; print $l;' "$_t"
+SHIM
+  chmod +x "$rl_shimdir/readlink"
+
+  # Floor: a shim that never gets picked up would make the assertion below a duplicate of the
+  # GNU one above rather than a BSD-parity check. Probe with a target that does NOT end in LF
+  # and capture through a sentinel, so the comparison sees the delimiter byte itself rather
+  # than losing it to `$( )` — the exact trap this whole TC exists to pin.
+  ln -s "rl-probe-target" "$ISO_MUT_DIR/rl-probe"
+  _rl_probe=$(PATH="$rl_shimdir:$PATH" readlink "$ISO_MUT_DIR/rl-probe"; printf 'X')
+  if [ "${_rl_probe%X}" = "rl-probe-target" ]; then
+    pass "no-delimiter readlink shim is in effect (emits no trailing newline)"
+  else
+    fail "TC-SYMLINK-lf-target-bsd: the no-delimiter readlink shim did not take effect — the BSD-parity assertion below would be vacuous"
+  fi
+  rm -f "$ISO_MUT_DIR/rl-probe"
+
+  out=$(PATH="$rl_shimdir:$PATH" jq -n --arg p "$ISO_MUT_DIR/evil-lf" --arg cwd "$ISO_MUT_DIR" \
+    --arg tp "$SUBAGENT_TRANSCRIPT" \
+    '{tool_name: "Write", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
+    | PATH="$rl_shimdir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || true
+  assert_deny_gitdir "LF-terminated target blocked under a no-delimiter readlink" "$out"
+
+  rm -rf "$rl_shimdir"; rl_shimdir=""
+elif [ -d /proc ]; then
+  fail "TC-SYMLINK-lf-target-bsd floor: readlink or perl unavailable on Linux — the BSD readlink-parity pin must never be skipped on the blocking gate"
+else
+  skip "TC-SYMLINK-lf-target-bsd skipped (readlink or perl unavailable, so the no-delimiter behaviour cannot be shimmed)"
+fi
+
 rm -f "$ISO_MUT_DIR/evil-lf" "$ISO_MUT_DIR/$lf_name"
 echo ""
 

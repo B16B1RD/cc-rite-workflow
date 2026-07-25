@@ -193,8 +193,8 @@ esac
 #   is defense-in-depth — it does not rely on that (undocumented) harness behavior.
 _hop=0
 while [ -L "$ABS_PATH" ] && [ "$_hop" -lt 40 ]; do
-  # Bare `readlink` (never `readlink -f`): the one-level form is POSIX and behaves the same on
-  # BSD, whereas `-f` is a GNU extension historically absent from macOS.
+  # `readlink -n` (never `readlink -f`): the one-level form exists on both GNU and BSD, whereas
+  # `-f` is a GNU extension historically absent from macOS.
   #
   # BYTE-EXACT capture is a hard requirement here, not a style choice. A plain `$(readlink …)`
   # strips EVERY trailing newline, so a link target that legitimately ends in LF comes back
@@ -202,11 +202,16 @@ while [ -L "$ABS_PATH" ] && [ "$_hop" -lt 40 ]; do
   # when the write lands. `ln -s $'y\n' <iso>/evil` with `<iso>/y<LF> -> <main>/.git/hooks/…`
   # scoped to `<iso>/y` (inside the isolation worktree → allowed) while the write itself
   # followed the real link into the parent .git. The `&& printf 'X'` sentinel makes the capture
-  # end in a non-newline byte so nothing is stripped; `%X` drops the sentinel and `%$'\n'`
-  # drops exactly the one newline readlink itself appends.
-  _lt=$(readlink "$ABS_PATH" 2>/dev/null && printf 'X') || _lt=""
+  # end in a non-newline byte so nothing is stripped, and `%X` drops the sentinel.
+  #
+  # `-n` is what makes that byte-exact on BOTH platforms. Without it the capture ends in an
+  # ambiguous newline — GNU readlink appends one, macOS readlink does not — and "strip exactly
+  # one trailing LF" therefore either restores the target (GNU) or eats a genuine trailing LF
+  # (macOS), where the deref then lands on a nonexistent path and falls back to allow. That
+  # divergence is the same shape as the realpath one this Issue exists to remove, so suppress
+  # the delimiter at the source rather than compensate for it afterwards.
+  _lt=$(readlink -n "$ABS_PATH" 2>/dev/null && printf 'X') || _lt=""
   _lt=${_lt%X}
-  _lt=${_lt%$'\n'}
   [ -n "$_lt" ] || break
   case "$_lt" in
     /*) ;;
