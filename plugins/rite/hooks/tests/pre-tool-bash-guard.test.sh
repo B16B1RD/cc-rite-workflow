@@ -1198,13 +1198,36 @@ fi
 # (d) oversized (~80KB) MAIN-session command → must NOT be denied (MUST NOT — reviewer-only guard)
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/mainin.json"
+# Positive control for the negative assertion that follows. The hook prints NOTHING
+# when it permits a command — a deny JSON is the only thing it ever emits, which is
+# why assert_subagent_allow spells allow as "rc 0 AND empty stdout" — so `decision`
+# is legitimately empty in the passing case and cannot double as the liveness signal.
+# Prove the fixture reaches the length guard instead: the same input with only
+# transcript_path flipped to the reviewer transcript must be denied. Without that
+# proof, a malformed input JSON or a hook that never ran reads as "correctly permitted".
+jq --arg tp "$SUBAGENT_TRANSCRIPT" '.transcript_path = $tp' "$tc124_dir/mainin.json" > "$tc124_dir/mainctl.json"
+rc=0
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainctl.json" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-124 (d) control: the fixture drives the length guard (same input, reviewer transcript → deny)"
+else
+  fail "TC-124 (d) control: expected deny with the reviewer transcript, got decision='$decision' rc=$rc — the fixture is broken and the MUST NOT assertion below would be vacuous"
+fi
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" != "deny" ]; then
-  pass "TC-124 oversized MAIN-session command is not denied by the reviewer-only length guard"
-else
+# Assert the permit contract positively (rc 0 + no output) rather than `!= "deny"`:
+# a crash, a timeout, or any output shape the hook was never meant to produce all
+# leave `decision` empty, and the negation alone accepted every one of them.
+if [ "$rc" != "0" ]; then
+  fail "TC-124 oversized main-session command: hook exited rc=$rc instead of permitting (a crash or timeout empties decision too)"
+elif [ "$decision" = "deny" ]; then
   fail "TC-124 oversized main-session command was wrongly denied (MUST NOT violation)"
+elif [ -n "$output" ]; then
+  fail "TC-124 oversized main-session command: expected no output (permit), got: $output"
+else
+  pass "TC-124 oversized MAIN-session command is not denied by the reviewer-only length guard"
 fi
 rm -rf "$tc124_dir"
 echo ""
