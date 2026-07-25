@@ -239,9 +239,11 @@ mapfile -t TIMEOUT_COPIES < <(grep -rlE '^[[:space:]]*(function[[:space:]]+)?_ti
 REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
 # Floor check: discovery returning too few files is itself a failure mode (a moved
 # directory, a reformatted definition line), and would otherwise make TC-7/TC-8
-# vacuously green over an empty or truncated set.
-if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
-  fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 6) — either the grep pattern or the layout changed, or copies were deliberately consolidated, in which case lower this floor and TC-8's: ${TIMEOUT_COPIES[*]-<none>}"
+# vacuously green over an empty or truncated set. The floor only does that job while it
+# equals the real copy count — leaving it below the count buys slack that hides exactly the
+# reformatted-definition case, so a PR that ADDS a copy must raise it in the same change.
+if [ "${#TIMEOUT_COPIES[@]}" -lt 7 ]; then
+  fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 7) — either the grep pattern or the layout changed, or copies were deliberately consolidated, in which case lower this floor and TC-8's; conversely, raise both when you add a copy: ${TIMEOUT_COPIES[*]-<none>}"
 elif ! printf '%s\n' "${TIMEOUT_COPIES[@]}" | grep -qxF "$REFERENCE_COPY"; then
   fail "TC-7 discovery did not include the reference copy $REFERENCE_COPY"
 else
@@ -273,7 +275,7 @@ fi
 echo "=== TC-8: every _timeout definition carries the fail-closed guard ==="
 # Without the guard a host lacking both backends falls through to rc 127, which
 # every caller reads as "no hang" — the exact silent pass the shim exists to stop.
-if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
+if [ "${#TIMEOUT_COPIES[@]}" -lt 7 ]; then
   fail "TC-8 skipped because discovery failed (see TC-7)"
 else
   missing_guard=()

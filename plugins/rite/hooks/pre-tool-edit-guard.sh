@@ -275,10 +275,14 @@ fi
 trap '_rite_teg_fail_closed' ERR
 
 # Log block event (stderr, for effect measurement) — mirror bash-guard's format.
-# The deref loop above made a raw LF reachable in ABS_PATH for the first time (a link target
-# may legitimately end in one, and the capture now preserves it), so a path carrying one would
-# split this single-line record in two and let a forged `edit-guard: BLOCKED …` line be
-# injected. Neutralize control characters the same way the RITE_DEBUG snippet above does.
+# ABS_PATH can carry a raw LF regardless of how the final element is resolved, so neutralize
+# independently of the resolution strategy: the pre-#2014 `realpath` capture already preserved
+# a MID-string LF (command substitution strips only TRAILING newlines — verified: on
+# origin/develop this stderr record splits in two), and the deref loop additionally admits link
+# targets that legitimately END in one. A raw LF here would split this single-line record and
+# let a forged `edit-guard: BLOCKED …` line be injected, so the neutralization closes a
+# pre-existing forgery vector rather than one this fix opened — do not drop it if the deref
+# loop is ever reworked. Same helper the RITE_DEBUG snippet above uses.
 PATH_SUMMARY=$(printf '%s' "${ABS_PATH:0:120}" | neutralize_ctrl --c0-only)
 PATH_SUMMARY="${PATH_SUMMARY//\"/\\\"}"
 echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] edit-guard: BLOCKED kind=$_deny_kind tool=$TOOL_NAME path=\"$PATH_SUMMARY\"" >&2

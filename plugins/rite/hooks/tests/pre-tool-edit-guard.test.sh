@@ -468,10 +468,23 @@ ln -s "../../$(basename "$TEST_REPO")/tracked.py" "$ISO_MUT_DIR/$lf_dir/rel"
 ln -s "$ISO_MUT_DIR/$lf_dir/rel" "$ISO_MUT_DIR/evil-lf-dir"
 out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-lf-dir" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
 assert_deny "LF-terminated directory component preserved & blocked" "$out"
+# The resolved ABS_PATH here carries a raw LF, which is exactly what would split the
+# single-line `edit-guard: BLOCKED … path="…"` audit record in two and let a reviewer forge a
+# second record. `grep -c 'edit-guard: BLOCKED'` cannot see that — the split happens INSIDE
+# path="…", so the count stays 1 either way. Requiring the closing quote to land on the same
+# line is what distinguishes a neutralized record from a split one, and it stays robust when
+# hook-preamble or other callers add unrelated stderr lines.
+if grep -q 'edit-guard: BLOCKED .*path="[^"]*"$' "$STDERR_FILE"; then
+  pass "BLOCKED audit record stays one physical line under an LF-bearing path"
+else
+  fail "BLOCKED audit record was split by a raw LF (log-injection defense missing): $(cat -A "$STDERR_FILE" | head -3)"
+fi
 # Remove the exact entries rather than `rm -rf` the directory: an empty $ISO_MUT_DIR would
-# make a recursive delete target the filesystem root (SC2115).
+# make a recursive delete target the filesystem root (SC2115). `|| fail` rather than a bare
+# rmdir: under `set -e` a leftover entry would abort the suite before the `=== Results ===`
+# summary, hiding how many assertions ran (the honesty the SKIP counter exists to protect).
 rm -f "$ISO_MUT_DIR/evil-lf-dir" "$ISO_MUT_DIR/$lf_dir/rel"
-rmdir "$ISO_MUT_DIR/$lf_dir"
+rmdir "$ISO_MUT_DIR/$lf_dir" || fail "TC-SYMLINK-lf-dirname cleanup: $ISO_MUT_DIR/\$lf_dir not empty"
 echo ""
 
 # --------------------------------------------------------------------------
