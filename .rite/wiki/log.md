@@ -3,6 +3,7 @@
 * **Update**: [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) — raw/reviews/20260725T151649Z-pr-2020.md, raw/fixes/20260725T152249Z-pr-2020.md, raw/reviews/20260725T154346Z-pr-2020.md, raw/fixes/20260725T154630Z-pr-2020.md, raw/reviews/20260725T162025Z-pr-2020.md を統合（control の派生元は本体が実際に読む入力ファイル / permit を無出力で表す契約では抽出値の非空を liveness signal にできない / 判定は出力形状 → exit code の順）
 * **Create**: [`set -euo pipefail` 下の `var=$(cmd | jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる](pages/anti-patterns/pipefail-jq-assignment-silent-abort.md) — raw/reviews/20260725T151649Z-pr-2020.md, raw/fixes/20260725T152249Z-pr-2020.md を新規ページ化（jq の rc が代入コマンドの rc になり errexit で落ちる。後段の分岐が dead branch 化し診断ごと失われる。引数位置のコマンド置換は安全という非対称も含む）
 * **Create**: [コメントの主語は「変更イベント」ではなく「コードの現在の性質」に置く — lint が緑でも規約違反は成立する](pages/heuristics/comment-subject-present-tense-not-change-event.md) — raw/reviews/20260725T160402Z-pr-2020.md, raw/fixes/20260725T160545Z-pr-2020.md, raw/fixes/20260725T154630Z-pr-2020.md を新規ページ化（旧版表現の書き換え型 / 削除済みコードを指す定冠詞 / 規約が LLM 判定に委ねた領域では lint 0 件が適合の証拠にならない / コメントのみ変更の md5 機械証明）
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=280, broken_refs=0
 
 ## 2026-07-25
 
