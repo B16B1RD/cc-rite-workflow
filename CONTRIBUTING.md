@@ -218,8 +218,8 @@ one in `_test-helpers.sh`, TC-8 requires each copy to carry the fail-closed guar
 - Changing `_timeout` means changing **all six copies** in the same edit — patching only
   `_test-helpers.sh` fails TC-7.
 - Inlining a seventh copy means copying the guard along with the function.
-- Consolidating the copies means lowering the `>= 6` floor in **both** `timeout-shim.test.sh:243`
-  and `:276`, or TC-8 reports a discovery failure that did not happen.
+- Consolidating the copies means lowering the `>= 6` floor in **both TC-7 and TC-8**, or TC-8
+  reports a discovery failure that did not happen.
 
 ### Running Tests
 

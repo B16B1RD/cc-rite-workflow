@@ -758,6 +758,13 @@ EOF
   else
     fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
+elif [ -d /proc ]; then
+  # Floor: writability of /tmp is a capability probe, not a platform fact. On the
+  # blocking gate a non-writable /tmp means the environment was constrained, not
+  # that the platform cannot do this — skipping there would drop the only coverage
+  # of the hook's /tmp/rite-* allowlist arm while the run stays green.
+  # `[ -d /proc ]` rather than `uname -s`, which resolves through the same PATH.
+  fail "TC-036a floor: /tmp is not writable on Linux (constrained sandbox?) — the /tmp/rite-* prefix acceptance must never be skipped on the blocking gate"
 else
   skip "TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
 fi
