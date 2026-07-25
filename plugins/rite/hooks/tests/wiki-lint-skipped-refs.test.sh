@@ -113,7 +113,7 @@ make_separate_branch_sandbox() {
 run_helper() {
   local repo="$1"; shift
   local rc=0
-  HELPER_STDOUT=$( (cd "$repo" && timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
+  HELPER_STDOUT=$( (cd "$repo" && _timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
   HELPER_RC=$rc
   HELPER_STDERR=$(cat "$TEST_DIR/helper_stderr")
   return 0

@@ -282,7 +282,10 @@ fi
 # 変更による抽出崩壊が狙いなので、発火元が抽出ガードであることを文言で特定する
 # （どちらのガードが落ちたのか未検証のまま rc=2 だけ見ると、実装が別ガードで
 # 偶然 rc=2 を返す regression を見逃す）。
-if printf '%s\n' "$out" | grep -Fq "extracted only 0 reviewers"; then
+# BSD/macOS `wc` right-justifies the count with leading spaces, so the script's
+# message reads "extracted only        0 reviewers" — match with a whitespace
+# class instead of a fixed single space (Issue #2008; same BSD wc padding as TC-15).
+if printf '%s\n' "$out" | grep -qE "extracted only[[:space:]]+0 reviewers"; then
   pass "TC-7: fired via the >= 6 extraction guard (not the I3 row-count guard)"
 else
   fail "TC-7: rc=2 but not via the extraction guard — unexpected message"
@@ -497,19 +500,23 @@ else
   fail "TC-15: expected rc=0, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -qE "agents/ profiles[[:space:]]*: ${expected_count} reviewers"; then
+# The `[[:space:]]*` after the colon tolerates BSD/macOS `wc -l` output, which
+# right-justifies its count with leading spaces (the checker interpolates that
+# count into these log lines). AGENT_RE itself is already digit-aware and
+# portable — the count still asserts web3-reviewer.md is not dropped (Issue #2008).
+if printf '%s\n' "$out" | grep -qE "agents/ profiles[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
   pass "TC-15: agents/ profiles count includes web3-reviewer.md (not silently dropped by AGENT_RE)"
 else
   fail "TC-15: expected agents/ profiles count to be ${expected_count} (web3 must not be excluded by a digit-unaware AGENT_RE)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -qE "Available Reviewers table[[:space:]]*: ${expected_count} reviewers"; then
+if printf '%s\n' "$out" | grep -qE "Available Reviewers table[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
   pass "TC-15: Available Reviewers table count includes web3-reviewer.md"
 else
   fail "TC-15: expected Available Reviewers table count to be ${expected_count}"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -qE "Type Identifiers table[[:space:]]*: ${expected_count} reviewers"; then
+if printf '%s\n' "$out" | grep -qE "Type Identifiers table[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
   pass "TC-15: Type Identifiers table count includes web3-reviewer.md"
 else
   fail "TC-15: expected Type Identifiers table count to be ${expected_count}"

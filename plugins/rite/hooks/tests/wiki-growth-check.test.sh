@@ -29,7 +29,20 @@ fi
 # (skip) and the exit-1 assertion below would FAIL rather than skip. Guard the
 # whole test the same way the sibling review-schema-version-check.test.sh does.
 if ! command -v jq >/dev/null 2>&1; then
-  echo "SKIP: jq not available — wiki-growth-check requires jq" >&2
+  # Floor first: jq is a prerequisite for every leg, so its absence on the blocking
+  # gate means it was removed or shadowed on PATH, not that the platform lacks it.
+  # Skipping there would drop this file's entire coverage while the run stays green.
+  # `[ -d /proc ]` rather than `uname -s`, which resolves through the same PATH.
+  if [ -d /proc ]; then
+    echo "  ❌ FAIL: wiki-growth-check floor: jq unavailable on Linux (missing or shadowed on PATH?) — this file's coverage must never be skipped on the blocking gate"
+    echo "Results: 0 passed, 1 failed"
+    exit 1
+  fi
+  # Emit the counted form so the runner rolls this into its "N skipped" headline —
+  # a whole file that exits 0 without running anything would otherwise be scored
+  # as a pass (Issue #2008 review I-03).
+  echo "  ⏭️ SKIP: jq not available — wiki-growth-check requires jq"
+  echo "SKIP: 1"
   exit 0
 fi
 

@@ -53,6 +53,10 @@ REAL_JQ=$(command -v jq)   # absolute path, captured before any PATH-shim test s
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (Issue #2008 review G-04). This file does not source _test-helpers.sh.
+SKIP=0
+skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
 SUBAGENT_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/subagents/agent-abc123.jsonl"
 MAIN_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/main.jsonl"
@@ -285,6 +289,45 @@ echo ""
 # dodge the guard by landing _tdir on the isolation root. AC-3 note: Claude Code's own
 # Edit/Write tools already refuse symlink writes, so this is defense-in-depth.
 # --------------------------------------------------------------------------
+# The AC-2 resolution relies on `realpath` resolving a symlink whose target does
+# not yet exist (the symlink targets below are never created). GNU realpath does;
+# BSD/macOS realpath errors, so the final-element resolution no-ops there — the
+# hook comment above already notes this fallthrough is "no worse than before".
+# Probe the exact behavior and skip these two TCs where realpath can't resolve a
+# dangling symlink (Issue #2008).
+#
+# This is a production gap on macOS, not a test-only quirk, and it is tracked in
+# Issue #2014 — the fix resolves the link target's parent instead of the final
+# element, which works on BSD too. Do NOT describe AC-3 (Claude Code's Edit/Write
+# refusing symlink writes) as the backstop here: pre-tool-edit-guard.sh states
+# that the guard "does not rely on that (undocumented) harness behavior", so
+# leaning on it as the macOS safety net contradicts the hook's own design.
+#
+# Do not name pre-tool-bash-guard.sh's `_gd_fileverb` as the backstop either.
+# That gate is on the Bash tool and never sees the Edit/Write path, and its own
+# header declares the verb list a deliberately non-exhaustive COMMON-SET rather
+# than full closure — a reviewer that creates the symlink by any means outside
+# that list still reaches the parent `.git` on BSD. While #2014 is open, the only
+# layers left on macOS are the reviewer prompt contract (Layer 1) and AC-3.
+# Do not narrow the residual exposure to "a new file in the parent working tree".
+_sym_probe=$(mktemp -d); ln -s "$_sym_probe/no-such-target" "$_sym_probe/lnk"
+if realpath "$_sym_probe/lnk" >/dev/null 2>&1; then RESOLVES_DANGLING_SYMLINK=1; else RESOLVES_DANGLING_SYMLINK=0; fi
+rm -rf "$_sym_probe"
+
+# The probe is a capability check, not a platform check, so a Linux host with
+# realpath missing or shadowed on PATH would silently skip the only coverage of
+# AC-2 — a security control — and still report green. Linux is the blocking gate,
+# so require the probe to succeed there.
+#
+# `[ -d /proc ]` rather than `uname -s`: the threat this floor guards against is a
+# tampered PATH, and `uname` is looked up on the same PATH as the shadowed
+# `realpath`. A filesystem fact cannot be shadowed, and it matches the platform
+# predicate the other gates in this suite already use.
+if [ -d /proc ] && [ "$RESOLVES_DANGLING_SYMLINK" != 1 ]; then
+  fail "TC-SYMLINK probe: realpath cannot resolve a dangling symlink on Linux (missing or shadowed on PATH?) — the AC-2 symlink TCs must never be skipped on the blocking gate"
+fi
+
+if [ "$RESOLVES_DANGLING_SYMLINK" = 1 ]; then
 echo "TC-SYMLINK-gitdir: isolation symlink → parent .git → deny (git-dir)"
 ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/evil-into-gitdir"
 out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-gitdir" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
@@ -298,6 +341,9 @@ out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-tree" "$ISO_MUT_DIR" "$SUBA
 assert_deny "isolation symlink into parent working tree resolved & blocked" "$out"
 rm -f "$ISO_MUT_DIR/evil-into-tree"
 echo ""
+else
+  skip "TC-SYMLINK-gitdir/tree skipped (realpath can't resolve a dangling symlink here; AC-2 final-element resolution no-ops on BSD/macOS — production gap tracked in Issue #2014, skip introduced by Issue #2008)"
+fi
 
 echo "TC-SYMLINK-local: isolation-internal symlink → allow (no regression)"
 : > "$ISO_MUT_DIR/realfile.txt"
@@ -342,7 +388,7 @@ echo ""
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
-echo "=== Results: $PASS passed, $FAIL failed ==="
+echo "=== Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" ) ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi

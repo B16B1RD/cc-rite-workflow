@@ -5,7 +5,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../wiki-ingest-trigger.sh"
-TEST_DIR="$(mktemp -d)"
+# Canonicalize the sandbox root. wiki-ingest-trigger.sh's --content-file guard
+# compares realpath(content-file) against $PWD; on macOS $TMPDIR is under
+# /var/folders (symlinked to /private/var), so a raw mktemp path makes every
+# `cd "$TEST_DIR/tcN" && ... --content-file body.md` case fail the $PWD-arm match
+# ("must be under $PWD"). pwd -P aligns the fixture with the canonical form the
+# guard resolves to (Issue #2008; the guard's own $PWD-arm symlink handling is
+# tracked separately in #2012).
+#
+# Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
+# changing directory, so a failed mktemp inside that nesting would yield the
+# current directory (the repository checkout under CI) with a zero exit status,
+# and the `rm -rf "$TEST_DIR"` in the EXIT trap below would delete it.
+TEST_DIR="$(mktemp -d)" || exit 1
+TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 PASS=0
 FAIL=0
 
@@ -23,6 +36,14 @@ pass() {
 fail() {
   FAIL=$((FAIL + 1))
   echo "  ❌ FAIL: $1"
+}
+
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (Issue #2008 review I-03). Same shape as _test-helpers.sh skip().
+SKIP=0
+skip() {
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
 }
 
 echo "=== wiki-ingest-trigger.sh tests ==="
@@ -737,8 +758,15 @@ EOF
   else
     fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
+elif [ -d /proc ]; then
+  # Floor: writability of /tmp is a capability probe, not a platform fact. On the
+  # blocking gate a non-writable /tmp means the environment was constrained, not
+  # that the platform cannot do this — skipping there would drop the only coverage
+  # of the hook's /tmp/rite-* allowlist arm while the run stays green.
+  # `[ -d /proc ]` rather than `uname -s`, which resolves through the same PATH.
+  fail "TC-036a floor: /tmp is not writable on Linux (constrained sandbox?) — the /tmp/rite-* prefix acceptance must never be skipped on the blocking gate"
 else
-  echo "  SKIP: TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
+  skip "TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
 fi
 echo ""
 
@@ -1277,7 +1305,7 @@ echo ""
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
-echo "=== Results: $PASS passed, $FAIL failed ==="
+echo "=== Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" ) ==="
 if [ $FAIL -gt 0 ]; then
   exit 1
 fi

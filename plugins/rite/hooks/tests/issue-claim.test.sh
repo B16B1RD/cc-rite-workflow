@@ -147,8 +147,24 @@ for i in 1 2 3 4 5; do
     other)   _other=$((_other+1)) ;;
   esac
 done
-assert "TC-14 exactly one stole the stale claim (AC-1)" "1" "$_stolen"
-assert "TC-14 the other four aborted with 'other'" "4" "$_other"
+# `command -v flock` is a capability probe, not a platform check: flock missing or
+# shadowed on Linux would silently drop the only coverage of the stale-steal mutual
+# exclusion (Issue #1718 AC-1) and still exit 0. Require it on the blocking gate.
+# `[ -d /proc ]` rather than `uname -s` because `uname` resolves through the same
+# PATH that would be hiding `flock`.
+if [ -d /proc ] && ! command -v flock >/dev/null 2>&1; then
+  fail "TC-14 floor: flock unavailable on Linux (missing or shadowed on PATH?) — the stale-steal mutual-exclusion assertions must never be skipped on the blocking gate"
+fi
+if command -v flock >/dev/null 2>&1; then
+  assert "TC-14 exactly one stole the stale claim (AC-1)" "1" "$_stolen"
+  assert "TC-14 the other four aborted with 'other'" "4" "$_other"
+else
+  # No flock (macOS / BSD): _atomic_claim_steal's critical section is not
+  # serialized, so mutual exclusion cannot be guaranteed — all N contenders may
+  # steal the same stale claim (a real production gap tracked in #2010). Skip the
+  # exactly-one assertions here rather than asserting the degraded behavior.
+  skip "TC-14 skipped (flock absent; stale-steal mutual-exclusion gap tracked in #2010; observed stolen=$_stolen other=$_other)"
+fi
 
 echo "=== TC-15 (Issue #1718 AC-2): single-session stale-steal is non-regressed ==="
 # The CAS path must still let a lone stealer succeed (holder unchanged == expected).

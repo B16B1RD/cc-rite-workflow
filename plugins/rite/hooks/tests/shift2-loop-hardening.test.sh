@@ -41,7 +41,7 @@ run_no_hang() {
     return
   fi
   local rc=0
-  timeout 5 bash "$path" "$flag" >/dev/null 2>&1 || rc=$?
+  _timeout 5 bash "$path" "$flag" >/dev/null 2>&1 || rc=$?
   if [ "$rc" -eq 124 ]; then
     fail "$label: 値なしフラグ '$flag' 末尾で timeout=124 (無限ループ検出 — shift 2 残存の可能性)"
   else

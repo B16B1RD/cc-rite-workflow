@@ -5,7 +5,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../session-start.sh"
-TEST_DIR="$(mktemp -d)"
+# Canonicalize the sandbox root: on macOS $TMPDIR is under /var/folders (a
+# symlink to /private/var/...), while session-start.sh resolves paths via
+# state-path-resolve.sh (git rev-parse) to the /private form. Comparing the raw
+# mktemp path against the canonical one would spuriously fail the reap-gate
+# path-equality checks (Issue #2008 Family D — TC-6, T-03, TC-1968-*).
+#
+# Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
+# changing directory, so a failed mktemp inside that nesting would yield the
+# current directory (the repository checkout under CI) with a zero exit status,
+# and the `rm -rf "$TEST_DIR"` in the EXIT trap below would delete it.
+TEST_DIR="$(mktemp -d)" || exit 1
+TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 LAST_STDERR_FILE=""
 PASS=0
 FAIL=0

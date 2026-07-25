@@ -512,7 +512,10 @@ _migrate_file() {
   # `--dry-run` の preview を stderr に統一する (本関数末尾の `migrated:` announcement と対称化)。
   # session-start.sh は stdout のみ silence するため、dry-run preview を stderr に出すことで
   # 実際の migration announcement と同じ経路で observability を確保する。
-  [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v$sv→v$SCHEMA_VERSION_V3, phase $cp→$np)" >&2; return 0; }
+  # Brace-delimit variables that abut the multibyte `→` (U+2192): under a non-UTF-8
+  # locale (e.g. macOS CI), bash otherwise folds the arrow's leading byte into the
+  # variable name (`$sv→` → `sv\xe2`), tripping `set -u` "unbound variable" (Issue #2008).
+  [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v${sv}→v$SCHEMA_VERSION_V3, phase ${cp}→$np)" >&2; return 0; }
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   # v3 schema: drop legacy `previous_phase` (replaced by step name discrimination in v3) and
   # normalize legacy `branch_name` → `branch`. `last_synced_phase` is preserved because
@@ -535,7 +538,9 @@ _migrate_file() {
   # announced on stderr, even without --verbose, so the session-start auto path
   # (session-start.sh silences only stdout) surfaces it. The no-op "skip (already
   # v3)" case above stays --verbose-gated to keep quiet session starts quiet.
-  echo "  migrated: $f (v$sv→v$SCHEMA_VERSION_V3, $cp→$np)" >&2
+  # `${sv}`/`${cp}` braces are load-bearing: they keep the abutting `→` (U+2192)
+  # out of the variable name under a non-UTF-8 locale (Issue #2008; see the dry-run branch).
+  echo "  migrated: $f (v${sv}→v$SCHEMA_VERSION_V3, ${cp}→$np)" >&2
   return 0
 }
 

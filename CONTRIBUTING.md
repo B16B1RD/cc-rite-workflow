@@ -194,11 +194,41 @@ fi
 
 The project uses a lightweight custom test framework (not bats) located in `plugins/rite/hooks/tests/`.
 
+The suite runs on an `ubuntu-latest` + `macos-latest` CI matrix. `.github/workflows/ci.yml`
+declares which leg is informational (`continue-on-error`) and which is the **blocking gate**;
+whether a red gate actually stops a merge additionally depends on the branch's required
+status checks, a repo-admin setting outside that file. Today the blocking gate is the Linux
+leg, and the floors in rule 6 below encode that directly as `[ -d /proc ]`. Moving the gate
+to macOS would mean revisiting those floor conditions, not just the CI file.
+
+### Prerequisites
+
+Beyond `jq` and bash 4+, the suite needs **either `timeout(1)` or `perl(1)`**. `_test-helpers.sh`
+provides a `_timeout` shim that falls back to perl where GNU coreutils is absent (macOS), and it
+aborts when neither is available — every caller reads a non-124 exit code as "no hang", so
+degrading instead of aborting would turn each hang assertion into a silent pass. Files that source
+`_test-helpers.sh` abort at source time; the five that cannot source it abort on the inlined guard
+at the top of the file.
+
+`_timeout` is duplicated into those five files (three under `hooks/tests/`, two under
+`scripts/tests/`) because they do not source `_test-helpers.sh`. `timeout-shim.test.sh` enforces the
+duplication mechanically: TC-7 requires every copy's function body to be **byte-identical** to the
+one in `_test-helpers.sh`, TC-8 requires each copy to carry the fail-closed guard. So:
+
+- Changing `_timeout` means changing **all six copies** in the same edit — patching only
+  `_test-helpers.sh` fails TC-7.
+- Inlining a seventh copy means copying the guard along with the function.
+- Consolidating the copies means lowering the `>= 6` floor in **both TC-7 and TC-8**, or TC-8
+  reports a discovery failure that did not happen.
+
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all hook tests
 bash plugins/rite/hooks/tests/run-tests.sh
+
+# Run all script tests (the second suite; CI runs it as a separate step)
+bash plugins/rite/scripts/tests/run-all.sh
 
 # Run a single test
 bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
@@ -216,9 +246,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../your-hook.sh"
-TEST_DIR="$(mktemp -d)"
+# Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
+# changing directory, so a failed mktemp inside that nesting yields the current
+# directory — which the cleanup trap below would then delete. The second step is
+# what makes path comparisons hold on macOS, where `$TMPDIR` lives under
+# `/var/folders` (a symlink into `/private`) while `git rev-parse` and `realpath`
+# report the resolved form.
+TEST_DIR="$(mktemp -d)" || exit 1
+TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 PASS=0
 FAIL=0
+SKIP=0
 
 # Prerequisite check
 if ! command -v jq >/dev/null 2>&1; then
@@ -241,6 +279,13 @@ fail() {
   echo "  ❌ FAIL: $1"
 }
 
+# Skips are counted, never just printed: a platform-gated suite that reports only
+# PASS/FAIL says nothing about how many assertions never ran.
+skip() {
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
+}
+
 # --- Test cases ---
 
 echo "TC-001: Description of test case"
@@ -253,19 +298,59 @@ fi
 
 # --- Summary ---
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
+echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" )"
 [ "$FAIL" -eq 0 ] || exit 1
 ```
+
+Sourcing `_test-helpers.sh` gives you `pass` / `fail` / `skip` / `assert*` / `print_summary` /
+`make_sandbox` / `make_plain_sandbox` / `_timeout` and the `PASS` / `FAIL` / `SKIP` counters, so a
+new test usually only needs the test cases themselves. See the header of that file for the full API.
 
 ### Writing a New Test
 
 1. Create `plugins/rite/hooks/tests/your-hook.test.sh`
-2. Follow the structure above: setup temporary directory, define `pass`/`fail` helpers, write test cases
-3. Use `mktemp -d` for isolated test environments
+2. Follow the structure above: setup temporary directory, define `pass`/`fail`/`skip` helpers (or
+   source `_test-helpers.sh` and get them for free), write test cases
+3. Use `mktemp -d` for isolated test environments, then canonicalize the root with
+   `pwd -P` as the structure above does — anything that compares the sandbox path
+   against a path the code under test resolved breaks on macOS otherwise
+   (`make_sandbox` / `make_plain_sandbox` from `_test-helpers.sh` already do this)
 4. Clean up with `trap cleanup EXIT`
 5. Exit with code 1 if any test fails
+6. **Gate platform-dependent cases with `skip` — never a bare `echo`, and never `pass`.**
+   A skipped case must appear in the counters so the summary states what did not run.
+   `pass "… skipped"` is the worse of the two: it inflates the PASS count *and* clears the
+   runner's cross-check, so the run looks fully exercised. When the gate is a capability probe
+   (`command -v X`, "does this tool support flag Y") rather than a platform fact, add a floor that
+   fails on the blocking gate: a shadowed or missing tool on Linux must not silently drop coverage
+   (the existing floors spell this as `[ -d /proc ]` — see `issue-claim.test.sh`).
 
-The test runner (`run-tests.sh`) automatically discovers all `*.test.sh` files in `plugins/rite/hooks/tests/` plus the `test-*.sh` files in `plugins/rite/hooks/scripts/tests/`, and reports aggregate results.
+   **Adding a `skip` to an existing test means fixing its summary line in the same edit.**
+   Both runners cross-check each file's `⏭️` markers against the count parsed from its summary,
+   and a mismatch fails the **whole suite**, not just that file. The count is read from exactly
+   two shapes: `SKIP: N` (what `print_summary` emits) or `Results: …, N skipped` (what the
+   template above emits). A test with its own summary line that mentions neither will take the
+   suite down the moment it gains its first `skip` — so add the counter to that line too.
+
+   **`⏭️` is reserved suite-wide, not just inside `skip()`.** The cross-check counts the glyph
+   anywhere in a file's merged stdout+stderr, so it also sees output from whatever script the test
+   is exercising. If a test runs something that prints `⏭️` itself, or dumps a captured buffer
+   verbatim, the file trips the mismatch even though its own summary is correct — and the message
+   blames summary format drift, pointing at the wrong thing. Neutralize the glyph before printing
+   (`sed 's/⏭️/<skip-marker>/g'`) in those cases.
+7. **Prefer a discriminator over a bare success assertion** when the code under test degrades
+   gracefully. If the degraded path emits the same headline result as the healthy one, assert the
+   machine-readable enum that distinguishes them (see `stale_check_ok` in `wiki-lint-stale.test.sh`)
+   so the case cannot pass without exercising anything.
+8. **Give every negative assertion a positive control.** A case that passes when a file is *absent*
+   also passes when the fixture never ran; prove the mechanism works first (see TC-5 in
+   `timeout-shim.test.sh`).
+
+There are two runners, and CI runs both as separate steps. `plugins/rite/hooks/tests/run-tests.sh`
+discovers all `*.test.sh` files in `plugins/rite/hooks/tests/` plus the `test-*.sh` files in
+`plugins/rite/hooks/scripts/tests/`; `plugins/rite/scripts/tests/run-all.sh` discovers the
+`*.test.sh` files beside it. Both report aggregate results, and **rules 6-8 apply equally to
+either** — the skip accounting is the same implementation in both.
 
 ## Worktree Workflow
 

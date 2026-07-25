@@ -84,6 +84,10 @@ jobs:
             echo "sed:     $(command -v sed) — $(sed --version 2>/dev/null | head -1 || echo 'BSD sed (no --version)')"
             echo "git:     $(git --version)"
             echo "python3: $(command -v python3 >/dev/null && python3 --version || echo 'MISSING')"
+            # The test suite's _timeout shim needs timeout(1) or perl(1); with neither,
+            # sourcing _test-helpers.sh aborts rather than degrade hang detection.
+            echo "timeout: $(command -v timeout || echo 'absent (expected on macOS)')"
+            echo "perl:    $(command -v perl >/dev/null && perl -e 'print $^V' || echo 'MISSING — _timeout fallback unavailable')"
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -114,7 +118,10 @@ jobs:
               echo "<details><summary>$log</summary>"
               echo ""
               echo '```'
-              grep -E 'FAIL|Failed tests:|^  - |[0-9]+/[0-9]+ passed|[0-9]+ passed, [0-9]+ failed' "$log" || echo '(no failure markers captured — see full job log)'
+              # `Skip accounting` / `^ERROR: ` cover the runners' skip-drift bail:
+              # it fails the job without emitting any FAIL marker, so without these
+              # the summary would show only a green-looking "N/N passed" line.
+              grep -E 'FAIL|Failed tests:|Skip accounting|^ERROR: |^  - |[0-9]+/[0-9]+ passed|[0-9]+ passed, [0-9]+ failed' "$log" || echo '(no failure markers captured — see full job log)'
               echo '```'
               echo "</details>"
             done

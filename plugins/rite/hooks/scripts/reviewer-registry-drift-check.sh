@@ -189,9 +189,12 @@ extract_section_rows "Available Reviewers" \
 extract_section_rows "Reviewer Type Identifiers" > "$WORK_DIR/identifiers.rows"
 grep -oE "$AGENT_RE" "$WORK_DIR/identifiers.rows" | sort -u > "$WORK_DIR/identifiers.set"
 
-agents_count=$(wc -l < "$WORK_DIR/agents.set")
-available_count=$(wc -l < "$WORK_DIR/available.set")
-identifiers_count=$(wc -l < "$WORK_DIR/identifiers.set")
+# Arithmetic expansion strips the leading blanks BSD `wc` pads its output with;
+# these counts go straight into human-facing diagnostics below, so on macOS the
+# raw form reads as `extracted only        0 reviewers`.
+agents_count=$(( $(wc -l < "$WORK_DIR/agents.set") ))
+available_count=$(( $(wc -l < "$WORK_DIR/available.set") ))
+identifiers_count=$(( $(wc -l < "$WORK_DIR/identifiers.set") ))
 
 log "agents/ profiles           : ${agents_count} reviewers"
 log "Available Reviewers table  : ${available_count} reviewers"

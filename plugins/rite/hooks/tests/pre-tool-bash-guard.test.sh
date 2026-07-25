@@ -3,6 +3,56 @@
 # Usage: bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
 set -euo pipefail
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
+# fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
+# 128+N on signal death, the child's status otherwise (a naive
+# `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
+# This file does not source _test-helpers.sh, so the shim is inlined here — keep
+# it byte-identical with _test-helpers.sh (timeout-shim.test.sh asserts no drift).
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift;
+      # alarm truncates to an integer, so a fractional deadline silently becomes
+      # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
+      # Reject rather than degrade, and exit 125 rather than die: die exits 255,
+      # which every caller reads as "not 124, so no hang" — the same silent pass
+      # the rejection exists to prevent. GNU timeout accepts fractions, so this
+      # shim only claims the contract for integer seconds.
+      if ($d !~ /^[0-9]+$/) {
+        print STDERR "_timeout: fractional seconds are not supported by the perl fallback: $d\n";
+        exit 125;
+      }
+      my $pid = fork;
+      exit 127 unless defined $pid;
+      # setpgrp puts the child in its own process group so the alarm handler can
+      # signal the whole tree with a negative pid. GNU timeout does the same; without
+      # it the deadline only reaches the direct child, and a grandchild holding the
+      # captured stdout keeps the caller blocked long past the timeout (measured 30s
+      # against a 1s deadline). The runners capture output with $( ), so that stall
+      # would consume the CI job limit instead of failing at 124.
+      if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", -$pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0;
+      my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
+# Fail closed when no backend exists. Every `_timeout` caller reads a non-124 rc
+# as "no hang", so a missing backend would silently turn each hang assertion into
+# a pass. Abort at source time rather than degrade.
+if ! command -v timeout >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then
+  echo "ERROR: neither timeout(1) nor perl(1) is available — _timeout cannot detect" >&2
+  echo "  hangs, and every hang assertion in this suite would silently pass." >&2
+  echo "  Install GNU coreutils (timeout) or perl before running the test suite." >&2
+  exit 1
+fi
+
 # Tier 3 (env var) subagent detection を導入したため、host 環境に
 # CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE が export されていると既存の
 # main-session allow テストが Tier 3 経路で誤って deny 判定され flake する。
@@ -1094,7 +1144,7 @@ jq -n --rawfile cmd "$tc124_dir/cmd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/in.json"
 rc=0
 _t0=$(date +%s%N)
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=$?
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=$?
 _t1=$(date +%s%N)
 _ms=$(( (_t1 - _t0) / 1000000 ))
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
@@ -1119,7 +1169,7 @@ fi
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/roin.json"
 rc=0
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/roin.json" 2>"$STDERR_FILE") || rc=$?
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/roin.json" 2>"$STDERR_FILE") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 if [ "$decision" = "deny" ]; then
   pass "TC-124 oversized READ-ONLY reviewer command is denied (length guard, allow→deny flip)"
@@ -1138,7 +1188,7 @@ fi
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
 rc=0
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 if [ "$decision" = "deny" ]; then
   pass "TC-124 heredoc-body-oversized READ-ONLY command is denied (length guard uses full command length)"
@@ -1149,7 +1199,7 @@ fi
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/mainin.json"
 rc=0
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 if [ "$decision" != "deny" ]; then
   pass "TC-124 oversized MAIN-session command is not denied by the reviewer-only length guard"
