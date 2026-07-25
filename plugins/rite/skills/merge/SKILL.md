@@ -115,7 +115,7 @@ fi
 
 - PR: #{pr_number}
 - マージ方式: squash
-- ブランチ: {branch_name} (まだ削除されていません)
+- ブランチ: {branch_name} (ローカルブランチは残っています。リモートは `delete_branch_on_merge: true` のリポジトリでは既に削除済みの場合があります)
 
 次のステップ:
 - クリーンアップ: /rite:cleanup {pr_number}
@@ -130,7 +130,7 @@ fi
 ## 設計判断
 
 - **責務は merge のみ**: `gh pr merge` を叩く 1 アクションに専念。cleanup を呼び出さない (`pr.auto_cleanup_after_merge` 等の設定キーも追加しない)
-- **`--delete-branch=false` 明示**: ブランチ削除は `/rite:cleanup` の責務であり、`gh` の default 挙動に依存しないことを保証する
+- **`--delete-branch=false` 明示**: `gh` の default 挙動に任せてクライアント側から削除 API を呼ぶことを抑止し、ブランチ削除を `/rite:cleanup` の責務に寄せる。ただし**抑止できるのは gh クライアント側の削除だけ**で、リポジトリ設定 `delete_branch_on_merge: true` の環境では GitHub がマージ完了時にサーバサイドで head ブランチを削除する。このフラグはそれを止められないため、「マージ後もブランチが必ず残る」ことは保証されない（#2016）。`/rite:cleanup` のリモート削除ステップは、この既削除を正常系として扱う（`skills/cleanup/SKILL.md` ステップ 5 の `git ls-remote --exit-code` ガード）
 - **flow-state は触らない**: マージ完了時点では `phase=ready` のまま。`completed` への遷移は `/rite:cleanup` 末尾で行う (既存仕様維持)
 - **マージ戦略は squash ハードコード**: 設定キー (`pr.merge_strategy` 等) を追加すると将来対応スキャフォルディングになる。`merge` / `rebase` に変えたい場合は本ファイルを直接編集する
 - **stderr 分離**: `gh pr merge` の stderr は `gh_err` tmpfile に退避し、成功時は warning (deprecation / rate-limit) のみ surface、失敗時は詳細を表示する。`2>&1` で stdout merge すると warning が混在し原因診断が困難になるため避ける
