@@ -18,11 +18,14 @@ for test_file in "$SCRIPT_DIR"/*.test.sh; do
   echo "--- Running: $(basename "$test_file") ---"
   test_rc=0
   # Captured rather than streamed so the skip count can be parsed per file. A
-  # `| tee` pipeline was tried and rejected: under `set -euo pipefail` a failing
-  # test aborts the runner before it can record the failure and continue, and the
-  # pipe keeps the runner waiting on any background holder the test leaves behind.
-  # The trade-off is that a hung file prints nothing until it returns — the
-  # preceding `=== Running: X ===` line still identifies which file hung.
+  # `| tee` pipeline was tried and rejected because under `set -euo pipefail` a
+  # failing test aborts the runner before it can record the failure and continue.
+  # Capturing shares tee's other hazard rather than avoiding it: both wait for pipe
+  # EOF, so a background writer outliving its test file stalls the runner (measured
+  # 6s vs 0s), which direct fd inheritance did not. No current test leaks one — every
+  # background job is reaped by its cleanup trap. The other trade-off is that a hung
+  # file prints nothing until it returns — the preceding `--- Running: X ---` line
+  # still identifies which file hung, but its output is lost if the CI job times out.
   test_out=$(bash "$test_file" 2>&1) || test_rc=$?
   printf '%s\n' "$test_out"
   if [ "$test_rc" -ne 0 ]; then

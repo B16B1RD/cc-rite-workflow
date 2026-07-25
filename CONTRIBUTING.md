@@ -194,11 +194,12 @@ fi
 
 The project uses a lightweight custom test framework (not bats) located in `plugins/rite/hooks/tests/`.
 
-The suite runs on an `ubuntu-latest` + `macos-latest` CI matrix. Which leg is the
-**blocking gate** — the one whose failure stops a merge — is declared in
-`.github/workflows/ci.yml`; the other stays informational while its pass rate is
-still being established. "Blocking gate" below always means whichever leg that file
-declares, so the rules here survive the two swapping.
+The suite runs on an `ubuntu-latest` + `macos-latest` CI matrix. `.github/workflows/ci.yml`
+declares which leg is informational (`continue-on-error`) and which is the **blocking gate**;
+whether a red gate actually stops a merge additionally depends on the branch's required
+status checks, a repo-admin setting outside that file. Today the blocking gate is the Linux
+leg, and the floors in rule 6 below encode that directly as `[ -d /proc ]`. Moving the gate
+to macOS would mean revisiting those floor conditions, not just the CI file.
 
 ### Prerequisites
 
@@ -210,8 +211,11 @@ hang", so degrading instead of aborting would turn each hang assertion into a si
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all hook tests
 bash plugins/rite/hooks/tests/run-tests.sh
+
+# Run all script tests (the second suite; CI runs it as a separate step)
+bash plugins/rite/scripts/tests/run-all.sh
 
 # Run a single test
 bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
@@ -300,10 +304,20 @@ new test usually only needs the test cases themselves. See the header of that fi
    (`make_sandbox` / `make_plain_sandbox` from `_test-helpers.sh` already do this)
 4. Clean up with `trap cleanup EXIT`
 5. Exit with code 1 if any test fails
-6. **Gate platform-dependent cases with `skip`, never a bare `echo`** — a skipped case must appear
-   in the counters so the summary states what did not run. When the gate is a capability probe
+6. **Gate platform-dependent cases with `skip` — never a bare `echo`, and never `pass`.**
+   A skipped case must appear in the counters so the summary states what did not run.
+   `pass "… skipped"` is the worse of the two: it inflates the PASS count *and* clears the
+   runner's cross-check, so the run looks fully exercised. When the gate is a capability probe
    (`command -v X`, "does this tool support flag Y") rather than a platform fact, add a floor that
-   fails on the blocking gate: a shadowed or missing tool on Linux must not silently drop coverage.
+   fails on the blocking gate: a shadowed or missing tool on Linux must not silently drop coverage
+   (the existing floors spell this as `[ -d /proc ]` — see `issue-claim.test.sh`).
+
+   **Adding a `skip` to an existing test means fixing its summary line in the same edit.**
+   Both runners cross-check each file's `⏭️` markers against the count parsed from its summary,
+   and a mismatch fails the **whole suite**, not just that file. The count is read from exactly
+   two shapes: `SKIP: N` (what `print_summary` emits) or `Results: …, N skipped` (what the
+   template above emits). A test with its own summary line that mentions neither will take the
+   suite down the moment it gains its first `skip` — so add the counter to that line too.
 7. **Prefer a discriminator over a bare success assertion** when the code under test degrades
    gracefully. If the degraded path emits the same headline result as the healthy one, assert the
    machine-readable enum that distinguishes them (see `stale_check_ok` in `wiki-lint-stale.test.sh`)
@@ -312,7 +326,11 @@ new test usually only needs the test cases themselves. See the header of that fi
    also passes when the fixture never ran; prove the mechanism works first (see TC-5 in
    `timeout-shim.test.sh`).
 
-The test runner (`run-tests.sh`) automatically discovers all `*.test.sh` files in `plugins/rite/hooks/tests/` plus the `test-*.sh` files in `plugins/rite/hooks/scripts/tests/`, and reports aggregate results.
+There are two runners, and CI runs both as separate steps. `plugins/rite/hooks/tests/run-tests.sh`
+discovers all `*.test.sh` files in `plugins/rite/hooks/tests/` plus the `test-*.sh` files in
+`plugins/rite/hooks/scripts/tests/`; `plugins/rite/scripts/tests/run-all.sh` discovers the
+`*.test.sh` files beside it. Both report aggregate results, and **rules 6-8 apply equally to
+either** — the skip accounting is the same implementation in both.
 
 ## Worktree Workflow
 

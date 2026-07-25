@@ -594,11 +594,15 @@ skip_state=$(bash -c "source '$HELPERS'; skip TC-dummy >/dev/null; skip TC-dummy
 if echo "$skip_state" | grep -qx 'SKIP: 2'; then
   outer_pass "TC-15.1: skip() increments SKIP and print_summary reports it"
 else
-  outer_fail "TC-15.1: expected 'SKIP: 2' in print_summary output, got: $skip_state"
+  # Newlines are folded out of the captured summary before it lands in the message:
+  # printed verbatim, its `SKIP: 2` line starts a line of its own and the runner's
+  # `^[[:space:]]*SKIP: N$` parser counts it, while the ⏭️ markers stayed in /dev/null.
+  # The resulting mismatch reports "summary format drift" instead of this failure.
+  outer_fail "TC-15.1: expected 'SKIP: 2' in print_summary output, got: $(printf '%s' "$skip_state" | tr '\n' '|')"
 fi
 no_skip_state=$(bash -c "source '$HELPERS'; print_summary skip-probe-zero")
 if echo "$no_skip_state" | grep -q 'SKIP:'; then
-  outer_fail "TC-15.2: print_summary printed a SKIP line with SKIP=0 (should be omitted): $no_skip_state"
+  outer_fail "TC-15.2: print_summary printed a SKIP line with SKIP=0 (should be omitted): $(printf '%s' "$no_skip_state" | tr '\n' '|')"
 else
   outer_pass "TC-15.2: print_summary omits the SKIP line when nothing was skipped"
 fi

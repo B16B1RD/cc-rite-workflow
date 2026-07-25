@@ -241,7 +241,7 @@ REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
 # directory, a reformatted definition line), and would otherwise make TC-7/TC-8
 # vacuously green over an empty or truncated set.
 if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
-  fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 6) — grep pattern or layout changed: ${TIMEOUT_COPIES[*]-<none>}"
+  fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 6) — either the grep pattern or the layout changed, or copies were deliberately consolidated, in which case lower this floor and TC-8's: ${TIMEOUT_COPIES[*]-<none>}"
 elif ! printf '%s\n' "${TIMEOUT_COPIES[@]}" | grep -qxF "$REFERENCE_COPY"; then
   fail "TC-7 discovery did not include the reference copy $REFERENCE_COPY"
 else
