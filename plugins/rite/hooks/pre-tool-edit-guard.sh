@@ -195,11 +195,27 @@ _hop=0
 while [ -L "$ABS_PATH" ] && [ "$_hop" -lt 40 ]; do
   # Bare `readlink` (never `readlink -f`): the one-level form is POSIX and behaves the same on
   # BSD, whereas `-f` is a GNU extension historically absent from macOS.
-  _lt=$(readlink "$ABS_PATH" 2>/dev/null) || _lt=""
+  #
+  # BYTE-EXACT capture is a hard requirement here, not a style choice. A plain `$(readlink …)`
+  # strips EVERY trailing newline, so a link target that legitimately ends in LF comes back
+  # truncated — and the hook would then scope a DIFFERENT path than the one the kernel follows
+  # when the write lands. `ln -s $'y\n' <iso>/evil` with `<iso>/y<LF> -> <main>/.git/hooks/…`
+  # scoped to `<iso>/y` (inside the isolation worktree → allowed) while the write itself
+  # followed the real link into the parent .git. The `&& printf 'X'` sentinel makes the capture
+  # end in a non-newline byte so nothing is stripped; `%X` drops the sentinel and `%$'\n'`
+  # drops exactly the one newline readlink itself appends.
+  _lt=$(readlink "$ABS_PATH" 2>/dev/null && printf 'X') || _lt=""
+  _lt=${_lt%X}
+  _lt=${_lt%$'\n'}
   [ -n "$_lt" ] || break
   case "$_lt" in
     /*) ;;
-    *)  _lt="$(dirname "$ABS_PATH")/$_lt" ;;
+    # `${ABS_PATH%/*}` rather than `$(dirname …)` for the same byte-exactness reason: the
+    # command substitution would strip a trailing LF from a directory name that ends in one.
+    # ABS_PATH is always absolute here (set from `/*` or `${CWD%/}/…` above), so it always
+    # contains a slash; at the root the expansion yields "" and the result is "/target",
+    # which is what dirname would have meant.
+    *)  _lt="${ABS_PATH%/*}/$_lt" ;;
   esac
   ABS_PATH="$_lt"
   _hop=$((_hop + 1))

@@ -338,6 +338,74 @@ assert_deny "symlink to a not-yet-created parent-tree path resolved & blocked" "
 rm -f "$ISO_MUT_DIR/evil-missing-parent"
 echo ""
 
+# Every TC above uses an ABSOLUTE link target, so none of them execute the relative-target
+# branch (`*) _lt="${ABS_PATH%/*}/$_lt"`). That branch is load-bearing — stubbing it out to
+# `: ;` leaves the whole suite green while a relative `../<repo>/.git/hooks/pre-commit` link
+# walks straight into the parent .git. Assert the deny KIND, not just "deny": with the branch
+# stubbed and the hook's cwd inside some other repo the target still denies as parent-tree,
+# so only the git-dir kind distinguishes a working branch from a stubbed one.
+echo "TC-SYMLINK-relative: isolation symlink with a RELATIVE target → parent .git → deny (git-dir)"
+ln -s "../$(basename "$TEST_REPO")/.git/hooks/pre-commit" "$ISO_MUT_DIR/evil-rel"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-rel" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny_gitdir "relative symlink target into parent .git resolved & blocked" "$out"
+rm -f "$ISO_MUT_DIR/evil-rel"
+
+# Pair the deny case with an allow case, or "make the relative branch always deny" would pass.
+: > "$ISO_MUT_DIR/rel-target.txt"
+ln -s "rel-target.txt" "$ISO_MUT_DIR/rel-local"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/rel-local" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") && rc=0 || rc=$?
+assert_allow "isolation-internal relative symlink still allowed" "$out" "$rc"
+rm -f "$ISO_MUT_DIR/rel-local" "$ISO_MUT_DIR/rel-target.txt"
+echo ""
+
+# The hop cap is what makes a symlink CYCLE terminate. Without it this PreToolUse hook spins
+# until the harness 10s timeout on every Edit/Write — invisible to CI, fatal in production.
+# Asserting "allow" alone would be vacuous (deleting the whole deref block also allows), so
+# assert TERMINATION: run under `timeout` and treat rc=124 as the failure.
+echo "TC-SYMLINK-cycle: symlink cycle → terminates via hop cap (no hang) → allow"
+ln -s "$ISO_MUT_DIR/cyc2" "$ISO_MUT_DIR/cyc1"
+ln -s "$ISO_MUT_DIR/cyc1" "$ISO_MUT_DIR/cyc2"
+rc=0
+out=$(jq -n --arg p "$ISO_MUT_DIR/cyc1" --arg cwd "$ISO_MUT_DIR" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Write", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
+  | timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "124" ]; then
+  fail "symlink cycle did not terminate within 10s (hop cap missing?)"
+else
+  assert_allow "symlink cycle terminates and falls through to allow" "$out" "$rc"
+fi
+rm -f "$ISO_MUT_DIR/cyc1" "$ISO_MUT_DIR/cyc2"
+echo ""
+
+# A link target that ends in LF is where a command-substitution capture silently truncates:
+# `$(readlink …)` strips every trailing newline, so the hook would scope `<iso>/lf-mid`
+# (inside the isolation worktree → allow) while the kernel follows `<iso>/lf-mid<LF>` into the
+# parent tree. Both shapes below deny only when the capture is byte-exact.
+echo "TC-SYMLINK-lf-target: link target ending in LF → parent .git → deny (git-dir)"
+lf_name=$'lf-mid\n'
+ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/$lf_name"
+ln -s "$lf_name" "$ISO_MUT_DIR/evil-lf"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-lf" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny_gitdir "LF-terminated link target resolved & blocked" "$out"
+rm -f "$ISO_MUT_DIR/evil-lf" "$ISO_MUT_DIR/$lf_name"
+echo ""
+
+# Same truncation, but via the DIRECTORY component: `$(dirname …)` on `<iso>/lf-dir<LF>/rel`
+# returns `<iso>/lf-dir` once the trailing LF is stripped. Only a parameter-expansion split
+# keeps the byte. Uses a relative target so the dirname branch is the one under test.
+echo "TC-SYMLINK-lf-dirname: link inside an LF-terminated directory → parent tree → deny (parent-tree)"
+lf_dir=$'lf-dir\n'
+mkdir -p "$ISO_MUT_DIR/$lf_dir"
+ln -s "../../$(basename "$TEST_REPO")/tracked.py" "$ISO_MUT_DIR/$lf_dir/rel"
+ln -s "$ISO_MUT_DIR/$lf_dir/rel" "$ISO_MUT_DIR/evil-lf-dir"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-lf-dir" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny "LF-terminated directory component preserved & blocked" "$out"
+# Remove the exact entries rather than `rm -rf` the directory: an empty $ISO_MUT_DIR would
+# make a recursive delete target the filesystem root (SC2115).
+rm -f "$ISO_MUT_DIR/evil-lf-dir" "$ISO_MUT_DIR/$lf_dir/rel"
+rmdir "$ISO_MUT_DIR/$lf_dir"
+echo ""
+
 # --------------------------------------------------------------------------
 # BSD/macOS realpath parity (Issue #2014). The gitdir TC above passes on Linux even
 # with a realpath-based resolution, so it alone cannot catch a regression back to one
@@ -347,6 +415,16 @@ echo ""
 # realpath does, while an existing dir passes straight through to the real binary (which
 # keeps hook-preamble.sh's own realpath call working).
 # --------------------------------------------------------------------------
+# Linux is the blocking gate, so a security TC must never skip there. The old
+# RESOLVES_DANGLING_SYMLINK floor guarded the AC-2 TCs; those now run unconditionally, but this
+# gate introduces a NEW skip path (`realpath` missing or shadowed on PATH) that would silently
+# drop the only regression pin against going back to a realpath-dependent resolution. Same
+# floor shape as wiki-lint-broken-refs.test.sh — `[ -d /proc ]` rather than `uname -s` because
+# the threat is a tampered PATH and `uname` is looked up on that same PATH.
+if [ -d /proc ] && [ -z "$REAL_REALPATH" ]; then
+  fail "TC-SYMLINK-BSD-REALPATH floor: realpath unavailable on Linux (missing or shadowed on PATH?) — the BSD-parity regression pin must never be skipped on the blocking gate"
+fi
+
 if [ -n "$REAL_REALPATH" ]; then
   echo "TC-SYMLINK-BSD-REALPATH: AC-2 resolution does not depend on GNU realpath"
   rp_shimdir=$(mktemp -d)
@@ -361,7 +439,10 @@ SHIM
   chmod +x "$rp_shimdir/realpath"
 
   # Floor: a shim that never gets picked up would turn this whole TC into a false green.
-  ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/shim-probe"
+  # The probe target must be a name `git init` can never materialise — pointing it at
+  # .git/hooks/pre-commit would spuriously fail this floor on a host whose
+  # init.templateDir ships a real pre-commit hook (husky-style templates do).
+  ln -s "$TEST_REPO/.git/hooks/rite-2014-no-such-hook" "$ISO_MUT_DIR/shim-probe"
   if PATH="$rp_shimdir:$PATH" realpath "$ISO_MUT_DIR/shim-probe" >/dev/null 2>&1; then
     fail "TC-SYMLINK-BSD-REALPATH: the BSD realpath shim did not take effect (still resolving a dangling symlink) — the GNU-independence assertions below would be vacuous"
   else
