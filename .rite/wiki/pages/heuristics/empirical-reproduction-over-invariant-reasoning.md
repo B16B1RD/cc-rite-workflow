@@ -2,10 +2,12 @@
 title: "「invariant は logic 上成立」を信頼せず empirical reproduction で verify する"
 domain: "heuristics"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-22T22:54:19Z"
+updated: "2026-07-25T14:18:43Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260722T224239Z-pr-1973.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260725T103301Z-pr-2017-cycle3.md"
   - type: "reviews"
     ref: "raw/reviews/20260427T115727Z-pr-688.md"
   - type: "fixes"
@@ -140,8 +142,28 @@ security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer 
 
 結果、hypothetical finding が 1 件も出ず実証ベースの指摘のみで構成され、唯一の指摘は cycle 1 の MEDIUM 1 件 (コメント内コードポイント範囲ラベルと実装バイト範囲の不整合) → cycle 2 で 0 findings mergeable の low-noise 2-cycle 収束。empirical verification discipline が全 reviewer に行き渡ると、reasoning ベースの憶測 finding によるノイズと cycle 浪費が構造的に消えることを示す positive evidence (本ページが規範とする検出規範の全員適用形)。
 
+### reviewer 間の矛盾は「どちらが正しいか」ではなく「何を測ったか」で解く（PR #2017）
+
+同一現象について reviewer の結論が割れた例: 1 名が「このコメントの因果は正確」、2 名が「不正確」と結論した。両者とも実測に基づいていたが、**測った経路が違った**。
+
+| 主張 | 測定した経路 | 結果 |
+|---|---|---|
+| 正確 | envelope 経由（`file_path` に生 LF） | jq の `@tsv` がエスケープするため到達しない → 0 件 |
+| 不正確 | 旧実装の `realpath` 出力経由 | 中間の LF がそのまま残り到達する → 監査レコード 2 行に分割 |
+
+orchestrator が両経路を同一ハーネスで測ると、どちらの測定も正しく、**一般化の範囲だけが誤っていた**ことが判明した（値の入力経路が複数あるとき、1 経路の測定から「到達しない」と結論できない）。
+
+調停の手順は「多数決」でも「severity の高い方を採用」でもなく、**各主張が何を測った結果かを突き合わせ、測っていない経路を orchestrator が埋める**。同 PR ではもう 1 件の矛盾（多層防御が成立するか）も同じ方法で解けた — 一方は「削除」の mutation を、他方は「定義行の再フォーマット」の mutation を測っており、後者では別 TC が捕捉しないことが分かった。
+
+### ハーネス自身の false-negative を control ケースで先に潰す
+
+revert test で新旧を比較するとき、ハーネスの構成ミスで **両方とも「問題なし」に揃う** ことがある。PR #2017 では検証用の親リポジトリを `rite-review-mutation-*` 配下の一時ディレクトリに作ったため、ガードがそれを sanctioned な隔離ワークツリーと判定して全許可になり、control ケースまで通ってしまった。
+
+比較を始める前に、**確実に deny になるはずの control 入力で期待どおり deny すること**を確認する。control が期待どおりでないなら、その後の差分測定はすべて無意味。
+
 ## 関連ページ
 
+- [レビューが足場を対象に発散したら finding の基準を prompt で明示して止める](./review-finding-bar-stops-scaffolding-divergence.md)
 - [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](../heuristics/observed-likelihood-gate-with-evidence-anchors.md)
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
 - [re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)](../heuristics/reviewer-scope-antidegradation.md)
@@ -149,6 +171,7 @@ security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer 
 
 ## ソース
 
+- [PR #2017 review results (cycle 3) — reviewer 間矛盾を「何を測ったか」で調停](../../raw/reviews/20260725T103301Z-pr-2017-cycle3.md)
 - [PR #688 cycle 29 review results — empirical reproduction で初顕現 silent regression](../../raw/reviews/20260427T115727Z-pr-688.md)
 - [PR #688 cycle 30 fix results — empirical reproduction-driven fix](../../raw/fixes/20260427T120659Z-pr-688.md)
 - [PR #799 cycle 1 review (canonical reference factual claim 反証)](../../raw/reviews/20260503T181256Z-pr-799.md)

@@ -2,10 +2,12 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-25T07:05:21Z"
+updated: "2026-07-25T14:18:43Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T032345Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260725T101401Z-pr-2017-cycle2.md"
   - type: "fixes"
     ref: "raw/fixes/20260725T025323Z-pr-2013.md"
   - type: "fixes"
@@ -820,8 +822,30 @@ cycle 3 では 9 種の mutation（失敗名 suppress ×2 / 集計行の gated g
 
 cycle 2 で新設した会計テストの初版は 42 assertions が緑だったが、mutation（成功行から gated group サフィックスを削除）を **検出できなかった**。原因は `assert_contains` が出力全体を見ており、集計行にも同じ文字列があったため。行を特定する `assert_line_matches` を足して塞いだ。
 
+### 「安全装置の存在」と「安全装置の値」は別々に pin する（PR #2017）
+
+閾値を持つ安全装置では、存在を pin する mutation（機構ごと削除）と値を pin する mutation（閾値だけ変更）で結果が分かれる。symlink 追跡のホップ上限を例に:
+
+| mutation | 結果 |
+|---|---|
+| 上限機構ごと削除 | 終了性を assert する TC が kill（無限ループ検出） |
+| 上限 40 → 8 / 40 → 2 | **全 TC green のまま生存** |
+
+既存 TC が使う最長チェーンが 2 ホップだったため、2 以上のどの値に下げても素通りした。上限がカーネルの `ELOOP` 上限を下回ると、その差分の長さで実装は解決を諦めて許可を返す一方カーネルは追従するため、バイパスが silent に再開する（9 ホップで実書き込み成功まで実証）。
+
+対処は **下限だけを pin する**: 上限ちょうどの入力（40 リンクのチェーン）が期待どおり処理されることを assert する。上限側（41 リンクで許可になること）は assert しない — より大きい上限も同等に安全なので、実装詳細の over-pin になる。
+
+### 防御コードを追加したら、その防御自体に mutation を当てる
+
+「新規分岐には TC を付ける」規律が徹底されていても、新規に追加した **防御行**（1 行の無害化処理など）は分岐ではないため規律の網から漏れる。PR #2017 では他の全変更に pin がある中で防御行 1 行だけが空いており、4 名のレビュアー全員が対比でそこを指摘した。防御を足したら「消したらテストが赤くなるか」を必ず確認する。
+
+### 生存した変異は理由を個別に説明できて初めて完了
+
+最終サイクルの mutation matrix は 16 変異中 13 kill、生存 3 件だった。生存 = カバレッジ欠落ではないが、その判断には到達経路の実証が要る。3 件はそれぞれ (a) production の判定を変えない診断経路、(b) 既存 TC の意味を変えない cleanup、(c) Linux では空ターゲット symlink を作成できず到達不能、と個別に実測で結論づけた。**生存を一括で「問題なし」と扱わない。**
 
 ## 関連ページ
+
+- [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
 
 - [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](../heuristics/defensive-code-needs-its-own-failure-path-test.md)
 
@@ -836,6 +860,7 @@ cycle 2 で新設した会計テストの初版は 42 assertions が緑だった
 
 ## ソース
 
+- [PR #2017 fix results (cycle 2) — 閾値の存在と値を別々に pin する](../../raw/fixes/20260725T101401Z-pr-2017-cycle2.md)
 - [PR #1967 review results cycle 1 (D-03 fixture が manifest 消費分岐に未到達で空虚テスト、HIGH 1件)](../../raw/reviews/20260722T020659Z-pr-1967.md)
 - [PR #1967 review results cycle 2 (D-04/D-05 の mutation 実証)](../../raw/reviews/20260722T022920Z-pr-1967.md)
 - [PR #688 review results (cycle 3) — TC-10 false-positive 発見](../../raw/reviews/20260426T235945Z-pr-688.md)
