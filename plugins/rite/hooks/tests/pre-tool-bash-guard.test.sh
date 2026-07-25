@@ -1200,32 +1200,45 @@ jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/mainin.json"
 # Positive control for the negative assertion that follows. The hook prints NOTHING
 # when it permits a command — a deny JSON is the only thing it ever emits, which is
-# why assert_subagent_allow spells allow as "rc 0 AND empty stdout" — so `decision`
-# is legitimately empty in the passing case and cannot double as the liveness signal.
-# Prove the fixture reaches the length guard instead: the same input with only
+# why assert_subagent_allow spells allow as "rc 0 AND empty stdout" — so an empty
+# stdout is exactly what the passing case looks like and cannot double as the liveness
+# signal. Prove the fixture reaches the length guard instead: the same input with only
 # transcript_path flipped to the reviewer transcript must be denied. Without that
 # proof, a malformed input JSON or a hook that never ran reads as "correctly permitted".
+#
+# Both assertions match the raw stdout instead of piping it through jq. Under
+# `set -euo pipefail` a non-JSON stdout makes the extraction assignment abort the whole
+# file before any assertion runs, which loses the diagnosis entirely — the very failure
+# mode this control exists to surface. The deny envelope carries `"deny"` exactly once
+# and never inside the reason text, so the substring test is as strict as the parse was,
+# and it keeps `rc` free to distinguish a crash from a deny that exits non-zero.
 jq --arg tp "$SUBAGENT_TRANSCRIPT" '.transcript_path = $tp' "$tc124_dir/mainin.json" > "$tc124_dir/mainctl.json"
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainctl.json" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "TC-124 (d) control: the fixture drives the length guard (same input, reviewer transcript → deny)"
-else
-  fail "TC-124 (d) control: expected deny with the reviewer transcript, got decision='$decision' rc=$rc — the fixture is broken and the MUST NOT assertion below would be vacuous"
-fi
+case "$output" in
+  *'"deny"'*)
+    pass "TC-124 (d) control: the fixture drives the length guard (same input, reviewer transcript → deny)"
+    ;;
+  *)
+    fail "TC-124 (d) control: expected deny with the reviewer transcript, got rc=$rc output='$output' — the fixture or the guard regressed, so the MUST NOT assertion below would be vacuous: $(cat -v "$STDERR_FILE")"
+    ;;
+esac
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-# Assert the permit contract positively (rc 0 + no output) rather than `!= "deny"`:
-# a crash, a timeout, or any output shape the hook was never meant to produce all
-# leave `decision` empty, and the negation alone accepted every one of them.
-if [ "$rc" != "0" ]; then
-  fail "TC-124 oversized main-session command: hook exited rc=$rc instead of permitting (a crash or timeout empties decision too)"
-elif [ "$decision" = "deny" ]; then
-  fail "TC-124 oversized main-session command was wrongly denied (MUST NOT violation)"
-elif [ -n "$output" ]; then
-  fail "TC-124 oversized main-session command: expected no output (permit), got: $output"
+# Assert the permit contract positively (no output, then rc 0). The old `!= "deny"` form
+# accepted a crash, a timeout, and every output shape the hook was never meant to produce,
+# because all of them left the extracted decision empty.
+if [ -n "$output" ]; then
+  case "$output" in
+    *'"deny"'*)
+      fail "TC-124 oversized main-session command was wrongly denied (MUST NOT violation): $output"
+      ;;
+    *)
+      fail "TC-124 oversized main-session command: expected no output (permit), got: $output"
+      ;;
+  esac
+elif [ "$rc" != "0" ]; then
+  fail "TC-124 oversized main-session command: hook exited rc=$rc with no output instead of permitting: $(cat -v "$STDERR_FILE")"
 else
   pass "TC-124 oversized MAIN-session command is not denied by the reviewer-only length guard"
 fi
