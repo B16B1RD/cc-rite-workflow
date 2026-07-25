@@ -1216,8 +1216,9 @@ jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
 # `set -euo pipefail` a non-JSON stdout makes the extraction assignment abort before any
 # assertion in this block runs, which loses the diagnosis entirely — the very failure
 # mode this control exists to surface. The deny envelope carries `"deny"` exactly once
-# and never inside the reason text, so the substring test is as strict as the parse was,
-# and it keeps `rc` free to distinguish a crash from a deny that exits non-zero. The
+# and never inside the reason text, so the substring test is as strict as a
+# `permissionDecision` parse would be, and it keeps `rc` free to distinguish a crash
+# from a deny that exits non-zero. The
 # fixture jq below can still abort the same way, but it builds our own input rather than
 # reading the hook's output, and run-tests.sh reports that abort as a file-level failure.
 jq --arg tp "$SUBAGENT_TRANSCRIPT" '.transcript_path = $tp' "$tc124_dir/mainin.json" > "$tc124_dir/mainctl.json"
@@ -1233,9 +1234,9 @@ case "$output" in
 esac
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
-# Assert the permit contract positively (no output, then rc 0). The old `!= "deny"` form
-# accepted a crash, a timeout, and every output shape the hook was never meant to produce,
-# because all of them left the extracted decision empty.
+# Assert the permit contract positively (no output, then rc 0). A bare `!= "deny"` test
+# cannot express this contract: a crash, a timeout, and every output shape the hook never
+# emits all leave the extracted decision empty, so they would all pass.
 if [ -n "$output" ]; then
   case "$output" in
     *'"deny"'*)
