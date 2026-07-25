@@ -156,25 +156,87 @@ case "$FILE_PATH" in
   *)  ABS_PATH="${CWD%/}/$FILE_PATH" ;;
 esac
 
-# --- Physically resolve a FINAL-element symlink before isolation scoping (Issue #1864 AC-2) ---
+# --- Dereference a FINAL-element symlink before isolation scoping (Issue #1864 AC-2) ---
 # The _tdir walk below resolves INTERMEDIATE dirs physically (via `[ -d ]` / `git -C`), but the
 # target's own final element is never dereferenced. A reviewer could drop a symlink inside its
 # sanctioned isolation worktree pointing at the parent repo's .git —
 # `ln -s <main>/.git/hooks/pre-commit <iso>/evil` (ln is a Bash-tool op, out of THIS hook's Edit
 # path) — then `Write file_path=<iso>/evil`: _tdir resolves to the isolation root → allowed, and
-# the write follows the link into the parent .git. Resolve the final symlink PHYSICALLY here so
-# such a target lands on the real parent .git (→ git-dir deny below) instead. `realpath` follows
-# every link and resolves `..` against the REAL directory tree, so it cannot be forged the way a
-# lexical `..` collapse could (the property the block below relies on). A legitimate symlink that
-# stays inside the isolation worktree still resolves to a path inside it → still allowed (no
-# regression). realpath failure (e.g. the link's target parent dir is missing) leaves ABS_PATH
-# unchanged and falls through to the _tdir walk — no worse than before this fix.
+# the write follows the link into the parent .git. Retarget ABS_PATH at the link's destination
+# here so such a write lands on the real parent .git (→ git-dir deny below) instead.
+#
+# The retarget is LEXICAL on purpose (`readlink` + absolutize a relative target against the
+# link's own directory); it deliberately does NOT canonicalize `..` or intermediate symlinks.
+# That is safe because the _tdir walk immediately below does the physical resolution: `[ -d ]`
+# and `git -C` both chdir, so a target carrying `..` or a directory symlink lands on the REAL
+# tree that owns it — the same property that closes the `..` re-entry forgery for non-symlink
+# targets. So a forged `..` cannot escape here either, and nothing downstream of the walk needs
+# a canonical ABS_PATH — it is only reported (the deny reason and the BLOCKED stderr log); the
+# decision is made on TARGET_ROOT, which `git -C` produces already-resolved.
+#
+# Why not `realpath` (Issue #2014): it is the one step that would need the target to EXIST.
+# GNU realpath tolerates a dangling final component, BSD/macOS realpath errors on it, so the
+# old `realpath "$ABS_PATH"` returned empty for exactly the attack shape above (the target
+# `.git/hooks/pre-commit` normally does not exist) and this whole block silently no-op'd on
+# macOS. Resolving only the target's PARENT would still no-op when that parent is itself
+# not-yet-created (`<iso>/evil → <main>/src/newdir/newfile.py`), which is precisely the
+# parent-tree case the walk already handles. Handing the raw target to the walk needs no
+# existence check at all and behaves identically on GNU and BSD — there is no platform branch
+# left to diverge.
+#
+# The loop follows a MULTI-HOP chain (`evil → hop → <main>/.git/...`); stopping after one hop
+# would let a two-link chain land _tdir back on the isolation root. Capped at 40 hops (Linux's
+# own ELOOP limit) so a symlink cycle terminates; a cycle then falls through to the walk with
+# ABS_PATH still a link inside the isolation worktree → allowed, exactly as before this fix.
 #   Note (Issue #1864 AC-3): Claude Code's own Edit/Write tools REFUSE to write through a
 #   final-element symlink ("Refusing to write through symlink …"), verified empirically, so this
 #   is defense-in-depth — it does not rely on that (undocumented) harness behavior.
-if [ -L "$ABS_PATH" ]; then
-  _resolved=$(realpath "$ABS_PATH" 2>/dev/null) || _resolved=""
-  [ -n "$_resolved" ] && ABS_PATH="$_resolved"
+_hop=0
+while [ -L "$ABS_PATH" ] && [ "$_hop" -lt 40 ]; do
+  # `readlink -n` (never `readlink -f`): the one-level form exists on both GNU and BSD, whereas
+  # `-f` is a GNU extension historically absent from macOS.
+  #
+  # BYTE-EXACT capture is a hard requirement here, not a style choice. A plain `$(readlink …)`
+  # strips EVERY trailing newline, so a link target that legitimately ends in LF comes back
+  # truncated — and the hook would then scope a DIFFERENT path than the one the kernel follows
+  # when the write lands. `ln -s $'y\n' <iso>/evil` with `<iso>/y<LF> -> <main>/.git/hooks/…`
+  # scoped to `<iso>/y` (inside the isolation worktree → allowed) while the write itself
+  # followed the real link into the parent .git. The `&& printf 'X'` sentinel makes the capture
+  # end in a non-newline byte so nothing is stripped, and `%X` drops the sentinel.
+  #
+  # `-n` is what makes that byte-exact on BOTH platforms. Without it the capture ends in an
+  # ambiguous newline — GNU readlink appends one, macOS readlink does not — and "strip exactly
+  # one trailing LF" therefore either restores the target (GNU) or eats a genuine trailing LF
+  # (macOS), where the deref then lands on a nonexistent path and falls back to allow. That
+  # divergence is the same shape as the realpath one this Issue exists to remove, so suppress
+  # the delimiter at the source rather than compensate for it afterwards.
+  _lt=$(readlink -n "$ABS_PATH" 2>/dev/null && printf 'X') || _lt=""
+  _lt=${_lt%X}
+  [ -n "$_lt" ] || break
+  case "$_lt" in
+    /*) ;;
+    # `${ABS_PATH%/*}` rather than `$(dirname …)` for the same byte-exactness reason: the
+    # command substitution would strip a trailing LF from a directory name that ends in one.
+    # ABS_PATH is always absolute here (set from `/*` or `${CWD%/}/…` above), so it always
+    # contains a slash; at the root the expansion yields "" and the result is "/target",
+    # which is what dirname would have meant.
+    *)  _lt="${ABS_PATH%/*}/$_lt" ;;
+  esac
+  ABS_PATH="$_lt"
+  _hop=$((_hop + 1))
+done
+# Both give-up arms above (readlink failed → break; hop cap reached → loop exit) leave
+# ABS_PATH a link, so a link that stays inside the isolation worktree is allowed with AC-2
+# effectively off. That fail-open direction is correct here — scope is not yet confirmed, and
+# a legitimate isolation-internal symlink must not be false-denied — but the operator would
+# otherwise have no way to tell "allowed because it was safe" from "allowed because the deref
+# gave up". Record the give-up under RITE_DEBUG, same channel as the subagent-detection
+# fallback above. Not a fallback of its own: the decision is unchanged either way.
+if [ -n "${RITE_DEBUG:-}" ] && [ -L "$ABS_PATH" ]; then
+  printf '[%s] pre-tool-edit-guard: AC-2 deref gave up after %s hop(s), target still a symlink: %s\n' \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_hop" \
+    "$(printf '%s' "${ABS_PATH:0:120}" | neutralize_ctrl --c0-only)" \
+    >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
 fi
 
 # --- Resolve the git worktree that OWNS the target ---
@@ -231,7 +293,15 @@ fi
 trap '_rite_teg_fail_closed' ERR
 
 # Log block event (stderr, for effect measurement) — mirror bash-guard's format.
-PATH_SUMMARY="${ABS_PATH:0:120}"
+# ABS_PATH can carry a raw LF regardless of how the final element is resolved, so neutralize
+# independently of the resolution strategy: the pre-#2014 `realpath` capture already preserved
+# a MID-string LF (command substitution strips only TRAILING newlines — verified: on
+# origin/develop this stderr record splits in two), and the deref loop additionally admits link
+# targets that legitimately END in one. A raw LF here would split this single-line record and
+# let a forged `edit-guard: BLOCKED …` line be injected, so the neutralization closes a
+# pre-existing forgery vector rather than one this fix opened — do not drop it if the deref
+# loop is ever reworked. Same helper the RITE_DEBUG snippet above uses.
+PATH_SUMMARY=$(printf '%s' "${ABS_PATH:0:120}" | neutralize_ctrl --c0-only)
 PATH_SUMMARY="${PATH_SUMMARY//\"/\\\"}"
 echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] edit-guard: BLOCKED kind=$_deny_kind tool=$TOOL_NAME path=\"$PATH_SUMMARY\"" >&2
 
