@@ -171,8 +171,8 @@ esac
 # and `git -C` both chdir, so a target carrying `..` or a directory symlink lands on the REAL
 # tree that owns it — the same property that closes the `..` re-entry forgery for non-symlink
 # targets. So a forged `..` cannot escape here either, and nothing downstream of the walk needs
-# a canonical ABS_PATH (it is only echoed into the deny reason; the decision is made on
-# TARGET_ROOT, which `git -C` produces already-resolved).
+# a canonical ABS_PATH — it is only reported (the deny reason and the BLOCKED stderr log); the
+# decision is made on TARGET_ROOT, which `git -C` produces already-resolved.
 #
 # Why not `realpath` (Issue #2014): it is the one step that would need the target to EXIST.
 # GNU realpath tolerates a dangling final component, BSD/macOS realpath errors on it, so the
