@@ -2,8 +2,14 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-24T16:58:00+09:00"
+updated: "2026-07-25T07:05:21Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260725T032345Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260725T025323Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260725T033607Z-pr-2013.md"
   - type: "reviews"
     ref: "raw/reviews/20260724T070805Z-pr-2003.md"
   - type: "reviews"
@@ -779,6 +785,42 @@ fix では discriminator を「degrade が働いて初めて成立する肯定�
 - 「テストの識別力を直す fix」自体も、commit 前に mutation で FAIL することを確認してから push する — 修正が本当に teeth を持つかは実測でしか分からない
 - degrade 系 PR の妥当性説明には「どの環境でも機能していた保護を除去しない (degrade 前は当該環境で操作自体が失敗していた) = strictly additive availability」の framing が有効 (application レビュアーが cycle 3 で明文化)
 
+### 適用 32: mutation は「今直した箇所」ではなく「そのテストが守ると主張する全アサート」に当てる (PR #2013 cycle 3 で CRITICAL として実証)
+
+PR #2013 cycle 2 で「成功行のアサートが集計行にもマッチする」穴を見つけ `assert_line_matches` で塞ぎ、3 種の mutation で確認した。ところが cycle 3 で、**同じファイルの別のアサート**（失敗ファイル名を検証する側）が runner の `=== Running: X ===` 進捗行にマッチしたまま残っていることが判明した。
+
+```bash
+# TC-4 のアサート（守ると宣言した軸: 「失敗リストがファイル名を出す」）
+assert_contains "$OUT" "_test-helpers.test.sh"
+
+# 実際にマッチしていたのは失敗リストではなく進捗行:
+#   === Running: _test-helpers.test.sh ===
+# この行は結果に関係なく必ず出るため、失敗リストが名前を出さなくなっても 4 assertions が永久に green
+```
+
+TC-4 のコメント自身が「ファイル名を出す行が消えるのを防ぐ」と書いており、**守ると宣言した軸そのものが未 pin** だった。直接の原因は cycle 2 で **修正した箇所（成功行）しか mutation で検証しなかった** こと。
+
+> **規則 1**: mutation は「今直した箇所」ではなく **そのテストが守ると主張する全アサート** に回す。アサートごとに「これが守る挙動を壊したら赤くなるか」を 1 つずつ確認する。直した箇所だけを検証するのは「修正の確認」であって「テストの検証」ではない。
+>
+> **規則 2**: 文字列マッチを書いたら、**被テスト対象がその文字列を別の目的で出していないか grep する**。進捗行・ヘッダ・診断文は同じ識別子を含みやすい。
+
+#### 「N 象限を pin した」と主張するときは軸の直交性を確認する
+
+同 PR は「4 象限（失敗 × drift）」を pin したと称したが、`失敗 × 正しくカウントされた skip` のセルが無く、各 TC のサンドボックスに合成ファイルが 1 個しかないため **ファイル横断の積み上げ**（`SKIPPED=$((SKIPPED + file_skips))`）が一度も実行されていなかった。結果 5 種の mutation が生存した。さらにパーサ 2 種のうち 2 つ目は、1 つ目が先にマッチして **到達すらしていなかった**（`SKIP: N` を出すと `Results:` パーサに届かない）。
+
+> **規則 3**: 「象限」を主張するなら各軸の値が **独立に変化する** ケースを列挙して埋める。集計ロジックを pin するなら入力を複数にし、フォールバック経路を pin するなら先行経路が空振りする入力を作る。
+
+#### mutation が生存したら、テストを足す前に「なぜ届かないか」を実測する
+
+cycle 3 では 9 種の mutation（失敗名 suppress ×2 / 集計行の gated group 削除 ×2 / 積み上げ→代入 / `[^❌]` ガード緩和 ×2 / 行アンカー除去 / bail 順序 revert / 成功行サフィックス削除）を全て KILLED まで持っていった。うち 1 種（`[^❌]` ガード緩和）は初回 SURVIVED し、原因を調べたところ「TC-8 が `SKIP: N` を出すため 2 つ目のパーサに到達していない」ことが判明、`Results:` 形式を使う TC-9 を分離して塞いだ。
+
+> **規則 4**: mutation が生存したら、**テストを足す前に「なぜ届かないか」を実測で特定する**。届かない原因を潰さずにテストを増やすと、同じ死角に別の vacuous TC を積むだけになる。
+
+#### 「N 件 pass」は識別力の証拠にならない
+
+cycle 2 で新設した会計テストの初版は 42 assertions が緑だったが、mutation（成功行から gated group サフィックスを削除）を **検出できなかった**。原因は `assert_contains` が出力全体を見ており、集計行にも同じ文字列があったため。行を特定する `assert_line_matches` を足して塞いだ。
+
+
 ## 関連ページ
 
 - [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](../heuristics/defensive-code-needs-its-own-failure-path-test.md)
@@ -847,3 +889,6 @@ fix では discriminator を「degrade が働いて初めて成立する肯定�
 - [PR #1974 fix results (cycle 2) — producer 側 (recorder + guard) の discriminating assert 欠如を安全ゲート剥がし mutation で実測、consumer 側のみのカバレッジでは無検知で通過することを確認 (適用 30)](../../raw/fixes/20260723T021111Z-pr-1974-cycle2.md)
 - [PR #2003 review cycle 1 — 同一 PR 内で TC-6 (識別力あり) と TC-9 (false-positive) が分岐、2 レビュアーが隔離 worktree mutation で独立実証 (適用 31)](../../raw/reviews/20260724T070805Z-pr-2003.md)
 - [PR #2003 review cycle 3 — 3 cycle 収束の最終検証と strictly additive availability framing の明文化 (適用 31)](../../raw/reviews/20260724T074215Z-pr-2003.md)
+- [PR #2013 review cycle 3 — 守ると宣言した軸そのものが未 pin だった CRITICAL (適用 32)](../../raw/reviews/20260725T032345Z-pr-2013.md)
+- [PR #2013 fix results (cycle 2) — 42 assertions 緑でも mutation を検出できない初版](../../raw/fixes/20260725T025323Z-pr-2013.md)
+- [PR #2013 fix results (cycle 3) — 9 種 mutation を全て KILLED まで持っていった記録](../../raw/fixes/20260725T033607Z-pr-2013.md)

@@ -2,8 +2,14 @@
 title: "「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる"
 domain: "heuristics"
 created: "2026-06-10T12:50:00+09:00"
-updated: "2026-06-10T13:50:00+09:00"
+updated: "2026-07-25T07:05:21Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260725T041328Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260724T193804Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260724T202517Z-pr-2013.md"
   - type: "reviews"
     ref: "raw/reviews/20260609T233431Z-pr-1334.md"
   - type: "fixes"
@@ -42,6 +48,36 @@ PR #1332 (Issue #1207、doc cross-ref drift 解消) で、link-sub-issue.sh の�
 2. **scope note には基準と棚卸し方法の両方を書く**: 「literal を持つ consumer のみ (設計ドキュメント除く)」という基準だけだと、基準に合致する未列挙ファイルの存在が次 cycle の指摘になる。「grep X で棚卸し済」と方法まで書けば、将来の更新者も同じ手順で再検証できる。
 3. **二次 drift に注意**: cross-ref drift の修正 PR 自体が、参照先の置換で「旧参照先が担っていた別役割 (復旧手順等) への pointer」を消す二次 drift を起こしやすい。置換前に旧参照先の全役割を棚卸しする。
 
+## 変種: 規約の適用対象は「構文」でなく「概念」で grep する (PR #2013)
+
+規約を新設した PR が **自分でその規約に適用漏れを起こす** 事例が 4 cycle で 3 回反復した。核心は棚卸しの検索語の選び方にある。
+
+| cycle | 何を grep したか | 何を取りこぼしたか |
+|---|---|---|
+| 2 | 1 箇所に床を入れて終わり | 同じ形の probe が他に 2 つ |
+| 3 | `command -v` という **構文** | `mktemp` の成否で判定している TC-036a の probe |
+| 4 | — | （概念で探して収束） |
+
+cycle 3 で「capability probe には blocking gate の floor を付けよ」と CONTRIBUTING に明文化した同じ PR が、触った 3 つの `command -v jq` gate に floor を付けていなかった。cycle 4 で最後に残った 1 件は、`command -v` 形だけを grep したために `mktemp` ベースの probe を取りこぼしたものだった。
+
+> **規約が定義するのは「capability probe」という概念であって `command -v` という構文ではない。** 構文で探すと、同じ性質を持つが別の書き方をしている箇所が構造的に漏れる。
+
+同型の指摘は「否定アサーション」「予約グリフ」でも起きた。いずれも規約の言葉（概念）で探せば見つかり、実装形（構文）で探すと漏れる。
+
+**あわせて「対象外」の判断も根拠付きで記録する**: cycle 3 の修正では、他 7 ファイルの jq probe は `ERROR + exit 1` の hard fail で silent skip しないため対象外、と grep で全数確認してから修正範囲を決めた。「探して、無かった」と「探していない」を読み手が区別できる形にする。
+
+### 部分適用が新しい盲点を作る
+
+原則を部分適用すると、**残りの箇所は「対処済みのクラス」に見えて逆に発見されにくくなる**。「非 ASCII 隣接の未ブレース変数を禁じる」規則も、宣言文は全体規則として書きながら走査は 1 ファイルに限っていた。レビューで原則を立てたら、**その場で grep して全適用箇所を列挙する**。
+
+### 補足: フィルタしたストリームへの `grep -n` は行番号を壊す
+
+棚卸しの実行時、`grep -v '^#' file | grep -n pattern` は「コメント除去後の何行目か」を返す。単一ファイルなら気づくが、走査対象を数百ファイルに広げると数百行ずれた無関係な位置を指し、診断が誤誘導になる。元ファイルに採番する単一 awk パスにすれば構造的に起きない:
+
+```bash
+awk '!/^#/ && /pattern/ { print FILENAME ":" NR ": " $0 }' file...
+```
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -55,3 +91,6 @@ PR #1332 (Issue #1207、doc cross-ref drift 解消) で、link-sub-issue.sh の�
 - [PR #1332 fix cycle 4 (grep 全数棚卸しで収束)](../../raw/fixes/20260609T232051Z-pr-1332-c4.md)
 - [PR #1332 review cycle 5 mergeable (3 reviewer 独立検証で過不足ゼロ)](../../raw/reviews/20260609T232442Z-pr-1332-c5.md)
 - [PR #1334 review mergeable (派生事例: doc 追記の Issue 番号帰属を git log で裏取りし、番号を付ける対象を裏付けの取れた側のみに限定して誤帰属を回避 — reviewer の独立検証と一致して 1 cycle 0 findings 収束)](../../raw/reviews/20260609T233431Z-pr-1334.md)
+- [PR #2013 review cycle 4 — 規約の適用漏れは「構文」でなく「概念」で grep する](../../raw/reviews/20260725T041328Z-pr-2013.md)
+- [PR #2013 fix results (cycle 3) — 原則は立てた箇所でなく当てはまる全箇所に適用する](../../raw/fixes/20260724T193804Z-pr-2013.md)
+- [PR #2013 fix results (cycle 4) — フィルタ済みストリームへの grep -n が行番号を壊す](../../raw/fixes/20260724T202517Z-pr-2013.md)

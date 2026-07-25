@@ -4,8 +4,12 @@ title: "Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾
 domain: "heuristics"
 description: "複数 reviewer の所見が食い違う場合は他 reviewer の反証（既存実装の grep 確認）で解決し、単一 reviewer の指摘事項テーブル記載でも reviewer 自身が「対応不要」と結論した場合は Finding Quality Guardrail (bikeshedding filter) で blocking から除外する。"
 created: "2026-07-06T04:10:00+00:00"
-updated: "2026-07-06T05:02:35+00:00"
+updated: "2026-07-25T07:05:21Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260725T032345Z-pr-2013.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260725T041328Z-pr-2013.md"
   - type: "reviews"
     ref: "raw/reviews/20260706T033041Z-pr-1756.md"
   - type: "reviews"
@@ -50,12 +54,31 @@ fix 後の cycle 2 レビューで、prompt-engineer / tech-writer の両者が�
 
 **教訓**: sole-reviewer guardによる2人目co-reviewer追加時にも同じ判定パターンが安定して機能する。co-reviewerが独自の観点（本例ではテンプレート内表記形式の混在）を追加指摘しても、reviewer自身が非blockingと明記していれば同一のguardrailで扱える。
 
+### 実例 5: 出力側フィルタでなく入力側プロンプトで収束させる — 「0 件は正当な結論」を明示する (PR #2013)
+
+実例 1〜4 はいずれも **reviewer が出した指摘を orchestrator が事後にフィルタする**（出力側）解法だった。PR #2013 の cycle 4 では、**プロンプト設計で事前に**（入力側）収束させる対の手法が実証された。
+
+cycle 4 のプロンプトでは各 reviewer に「ここまで 19 件が全て解消されている。マージをブロックするに値しない観察を指摘事項に格上げしないこと。**指摘 0 件は正当な結論**」と明記した。結果、**6 名中 4 名が「格上げを検討したが見送った」根拠を所見に明示して 0 件を返し**、6 名全員 0 件・評価「可」で収束した（4 cycle の推移: 4 → 8 → 7 → 0）。error-handling は `--kill-after` 未設定を「GNU との意図的パリティ」と判断し、devops は前 cycle の自分の主張を「今 cycle の調査で過大だったと判明」と自ら訂正した。
+
+> **教訓**: 収束が近い cycle では、reviewer に「0 件が正当」と **明示する**。出さないと「まだ何か見つけなければ」という圧力が働き、severity を水増しした指摘が出て cycle が伸びる。出力側の Finding Quality Guardrail（実例 1〜4）と入力側のプロンプト明示は対をなし、後者は水増し指摘の発生自体を抑える。
+
+**あわせて、収束の決め手は「実測で潰した」記録が reviewer 側に残ること**だった。最終 cycle が 0 件になったのは reviewer が懸念を持たなかったからではなく、懸念を実機で潰したから — security は `kill "TERM", -$pid` について「呼び出し元シェルのグループを撃つか」を sibling プロセスの生存確認で否定し、test は 6 種の mutation で新テストの load-bearing を確認し、devops は CI 実行時間を実測した（両スイート 81s / 予算 15 分の 9%）。前 cycle の指摘への対応内容と検証手順を具体的に渡すと、reviewer は再現から入れる。
+
+### 実例 6: reviewer の数値主張が誤っていても、中核の欠陥は実在しうる (PR #2013 cycle 3)
+
+application reviewer が `_timeout` の perl シムについて「GNU timeout 2s vs シム 27s」と報告したが、orchestrator が再現したところ **GNU timeout も 27s**（trap TERM を持つ子は、グループ送信でも TERM を無視すれば待つ）で数値は不正確だった。しかし **別のケース（孤児が stdout を保持）では GNU 3s vs シム 30s** となり、中核の主張（deadline がプロセスグループに効かない）は実在を確認できた。
+
+> **教訓**: reviewer の数値主張は **再現してから採否を決める**。ただし「数値が違う = 指摘ごと棄却」にしない — 数値が誤っていても中核の欠陥は実在しうる。数値の誤りは severity 調整（発火経路の有無で follow-up へ降格等）の材料であって、指摘そのものの棄却理由ではない。これは実例 1 の「orchestrator 自身が実ファイルで検証する」を **反証側だけでなく肯定側にも** 適用した形。
+
 ## 関連ページ
 
 - [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](./scope-creep-rejection-empirical-gate.md)
+- [新設した検証機構が、その機構自身の目的を局所的に打ち消す](../anti-patterns/self-defeating-guard-local-purpose-negation.md)
 
 ## ソース
 
+- [PR #2013 review cycle 3 — reviewer の数値主張を再現し、数値の誤りと中核欠陥の実在を切り分けた記録](../../raw/reviews/20260725T032345Z-pr-2013.md)
+- [PR #2013 review cycle 4 — 「0 件は正当な結論」をプロンプトに明示して 6 名全員 0 件で収束](../../raw/reviews/20260725T041328Z-pr-2013.md)
 - [PR #1756 review results](../../raw/reviews/20260706T033041Z-pr-1756.md)
 - [PR #1757 review results](../../raw/reviews/20260706T043448Z-pr-1757.md)
 - [PR #1758 review results](../../raw/reviews/20260706T050235Z-pr-1758.md)

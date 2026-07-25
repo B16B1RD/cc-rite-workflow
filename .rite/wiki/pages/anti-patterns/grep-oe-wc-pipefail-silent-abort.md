@@ -2,12 +2,16 @@
 title: "`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort"
 domain: "anti-patterns"
 created: "2026-05-08T17:43:55+00:00"
-updated: "2026-05-08T17:43:55+00:00"
+updated: "2026-07-25T07:05:21Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260508T174355Z-pr-906.md"
   - type: "reviews"
     ref: "raw/reviews/20260508T175233Z-pr-906.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260725T032345Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260725T033607Z-pr-2013.md"
 tags: ["bash", "pipefail", "set-euo-pipefail", "grep", "ratchet-test", "silent-abort"]
 confidence: high
 ---
@@ -79,13 +83,39 @@ PR #906 で同一 fingerprint が 3 cycle に渡って degenerate した:
 | [grep -c || echo 0 double-print](./grep-c-or-echo-0-double-print.md) | `grep -c` の POSIX 仕様で 0 出力 + exit 1 | `count=$(grep -c ... || true); count=${count:-0}` |
 | [bash-local-vs-toplevel-pipefail-asymmetry](./bash-local-vs-toplevel-pipefail-asymmetry.md) | function 内外の pipefail 伝播非対称 | `v=$(... || true) || v=""` |
 
+### 変種: `$(cmd | grep ...)` の no-match が「その次の行の空判定」を到達不能にする (PR #2013)
+
+同じ pipefail 伝播が、**assert の直前で診断を消す**形で現れた変種。テストヘルパーが以下のように書かれていた:
+
+```bash
+set -euo pipefail
+line=$(printf '%s\n' "$OUT" | grep -F "$needle" | tail -1)
+[ -z "$line" ] && fail "needle '$needle' not found"     # ← 到達不能な dead branch
+```
+
+grep の rc 1 が pipefail で伝播して代入自体が失敗し、`set -e` がスクリプトごと落とす。直後に書いた空判定は **一度も実行されない**。結果、`needle` が消えたとき — すなわち **そのテストが守っている regression が実際に起きたとき** だけ、診断メッセージが出ず以降の assertions も走らない。「守りたい状況でだけ壊れる」最悪の failure mode。
+
+canonical fix はカウント用途と同じく group + `|| true` だが、**握る範囲を grep だけに限定する**のが要点:
+
+```bash
+line=$({ printf '%s\n' "$OUT" | grep -F "$needle" || true; } | tail -1)
+[ -z "$line" ] && fail "needle '$needle' not found"     # ← 到達可能になる
+```
+
+> **`|| var=""` で代入全体を握るのは不可**: `tail` や `printf` の失敗まで飲み込むため、pipeline 内の別の故障が「マッチしなかった」に化ける。
+
+**判定基準**: 「マッチしないこと」が正常系にありうる grep は局所的に無害化し、空判定を次行で必ず assert する。「マッチしないことがありえない」grep（= マッチしなければ即バグ）は `|| true` を付けず errexit に落とすのが正しい。
+
 ## 関連ページ
 
 - [`mapfile -t < <(...)` で pipefail safe な iteration を書く](../patterns/mapfile-process-substitution-pipefail-safe.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
 - [Mutation Testing Test Fidelity](../patterns/mutation-testing-test-fidelity.md)
+- [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](./bare-statement-under-set-e-dead-code-rc-branch.md)
 
 ## ソース
 
 - [PR #906 fix results (cycle 3)](../../raw/fixes/20260508T174355Z-pr-906.md)
 - [PR #906 review results (cycle 4 final)](../../raw/reviews/20260508T175233Z-pr-906.md)
+- [PR #2013 review cycle 3 — `$(cmd | grep)` の no-match が直後の空判定を dead branch にする](../../raw/reviews/20260725T032345Z-pr-2013.md)
+- [PR #2013 fix results (cycle 3) — grep だけを局所無害化する canonical fix](../../raw/fixes/20260725T033607Z-pr-2013.md)
