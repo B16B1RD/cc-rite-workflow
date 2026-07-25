@@ -1204,14 +1204,22 @@ jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
 # stdout is exactly what the passing case looks like and cannot double as the liveness
 # signal. Prove the fixture reaches the length guard instead: the same input with only
 # transcript_path flipped to the reviewer transcript must be denied. Without that
-# proof, a malformed input JSON or a hook that never ran reads as "correctly permitted".
+# proof, a padding shortfall that drops ro.txt back under the byte ceiling, a corrupted
+# tool_name, or a hook that allows everything early all read as "correctly permitted".
+#
+# Deriving the control from mainin.json is load-bearing, not a duplicate of (b): (b)
+# builds roin.json independently, so a break in the jq that assembles mainin.json leaves
+# (b) green while the assertion below goes vacuous. Only a control fed by the very file
+# that assertion reads can catch it.
 #
 # Both assertions match the raw stdout instead of piping it through jq. Under
-# `set -euo pipefail` a non-JSON stdout makes the extraction assignment abort the whole
-# file before any assertion runs, which loses the diagnosis entirely — the very failure
+# `set -euo pipefail` a non-JSON stdout makes the extraction assignment abort before any
+# assertion in this block runs, which loses the diagnosis entirely — the very failure
 # mode this control exists to surface. The deny envelope carries `"deny"` exactly once
 # and never inside the reason text, so the substring test is as strict as the parse was,
-# and it keeps `rc` free to distinguish a crash from a deny that exits non-zero.
+# and it keeps `rc` free to distinguish a crash from a deny that exits non-zero. The
+# fixture jq below can still abort the same way, but it builds our own input rather than
+# reading the hook's output, and run-tests.sh reports that abort as a file-level failure.
 jq --arg tp "$SUBAGENT_TRANSCRIPT" '.transcript_path = $tp' "$tc124_dir/mainin.json" > "$tc124_dir/mainctl.json"
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainctl.json" 2>"$STDERR_FILE") || rc=$?
