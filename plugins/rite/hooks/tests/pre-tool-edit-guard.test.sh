@@ -57,10 +57,11 @@ REAL_REALPATH=$(command -v realpath 2>/dev/null) || REAL_REALPATH=""
 
 # _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
 #
-# Byte-identical copy of the reference definition in _test-helpers.sh, which this file
-# deliberately does not source (see the note above). timeout-shim.test.sh TC-7 compares
-# every discovered copy against that reference and TC-8 requires the fail-closed guard
-# below, so edit the reference first and re-copy — do not hand-tune this block.
+# Byte-identical copy of the reference definition in _test-helpers.sh. This file does not
+# source _test-helpers.sh (it defines its own pass/fail/skip counters below), so the shim is
+# inlined here. timeout-shim.test.sh TC-7 compares every discovered copy against that
+# reference and TC-8 requires the fail-closed guard below, so edit the reference first and
+# re-copy — do not hand-tune this block.
 _timeout() {
   local _d="$1"; shift
   if command -v timeout >/dev/null 2>&1; then
@@ -392,11 +393,17 @@ echo ""
 # branch (`*) _lt="${ABS_PATH%/*}/$_lt"`). That branch is load-bearing — stubbing it out to
 # `: ;` leaves the whole suite green while a relative `../<repo>/.git/hooks/pre-commit` link
 # walks straight into the parent .git. Assert the deny KIND, not just "deny": with the branch
-# stubbed and the hook's cwd inside some other repo the target still denies as parent-tree,
-# so only the git-dir kind distinguishes a working branch from a stubbed one.
+# stubbed the target can still deny as parent-tree, so only the git-dir kind tells a working
+# branch from a stubbed one.
+#
+# Run the hook from `/` rather than inheriting the caller's cwd. With the branch stubbed,
+# ABS_PATH stays the RELATIVE `../<repo>/.git/hooks/pre-commit`, which the _tdir walk resolves
+# against the hook process's own cwd — so a caller sitting one level under $TMPDIR (exactly
+# where agents/_reviewer-base.md tells reviewers to run their mutation experiments) makes the
+# stubbed branch resolve correctly by accident and the TC pass. `/` has no such sibling.
 echo "TC-SYMLINK-relative: isolation symlink with a RELATIVE target → parent .git → deny (git-dir)"
 ln -s "../$(basename "$TEST_REPO")/.git/hooks/pre-commit" "$ISO_MUT_DIR/evil-rel"
-out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-rel" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+out=$(cd / && run_edit_guard "Write" "$ISO_MUT_DIR/evil-rel" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
 assert_deny_gitdir "relative symlink target into parent .git resolved & blocked" "$out"
 rm -f "$ISO_MUT_DIR/evil-rel"
 
@@ -471,13 +478,26 @@ assert_deny "LF-terminated directory component preserved & blocked" "$out"
 # The resolved ABS_PATH here carries a raw LF, which is exactly what would split the
 # single-line `edit-guard: BLOCKED … path="…"` audit record in two and let a reviewer forge a
 # second record. `grep -c 'edit-guard: BLOCKED'` cannot see that — the split happens INSIDE
-# path="…", so the count stays 1 either way. Requiring the closing quote to land on the same
-# line is what distinguishes a neutralized record from a split one, and it stays robust when
-# hook-preamble or other callers add unrelated stderr lines.
-if grep -q 'edit-guard: BLOCKED .*path="[^"]*"$' "$STDERR_FILE"; then
-  pass "BLOCKED audit record stays one physical line under an LF-bearing path"
+# path="…", so the count stays 1 either way. Requiring the closing quote AND the neutralized
+# `lf-dir?` on the same line distinguishes a neutralized record from a split one, and it stays
+# robust when hook-preamble or other callers add unrelated stderr lines.
+#
+# The hook only reports ${ABS_PATH:0:120}, so this pin can only observe a split while the LF
+# lands inside that window. Under a long $TMPDIR the truncation drops the LF and the record
+# stays one line even with the neutralization removed — the pin would silently stop testing
+# anything. Floor it the same two-tier way the rest of this file does: hard-fail on the
+# blocking gate, skip elsewhere so a long-$TMPDIR workstation is not spuriously red.
+_lf_off=$(( ${#ISO_MUT_DIR} + ${#lf_dir} ))   # byte offset of the LF within "<iso>/lf-dir<LF>"
+if [ "$_lf_off" -ge 120 ]; then
+  if [ -d /proc ]; then
+    fail "TC-SYMLINK-lf-dirname floor: the LF sits at byte $_lf_off, outside the hook's 120-byte path summary window (\$TMPDIR too long) — the log-injection pin below would be vacuous"
+  else
+    skip "TC-SYMLINK-lf-dirname log-injection pin (LF at byte $_lf_off is outside the hook's 120-byte window; \$TMPDIR is ${#TMPDIR} chars)"
+  fi
+elif grep -q 'edit-guard: BLOCKED .*path="[^"]*lf-dir?[^"]*"$' "$STDERR_FILE"; then
+  pass "BLOCKED audit record stays one physical line with the LF neutralized"
 else
-  fail "BLOCKED audit record was split by a raw LF (log-injection defense missing): $(cat -A "$STDERR_FILE" | head -3)"
+  fail "BLOCKED audit record was split by a raw LF (log-injection defense missing): $(cat -e "$STDERR_FILE" | head -3)"
 fi
 # Remove the exact entries rather than `rm -rf` the directory: an empty $ISO_MUT_DIR would
 # make a recursive delete target the filesystem root (SC2115). `|| fail` rather than a bare
