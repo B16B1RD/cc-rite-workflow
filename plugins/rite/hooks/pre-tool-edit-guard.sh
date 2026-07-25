@@ -156,26 +156,54 @@ case "$FILE_PATH" in
   *)  ABS_PATH="${CWD%/}/$FILE_PATH" ;;
 esac
 
-# --- Physically resolve a FINAL-element symlink before isolation scoping (Issue #1864 AC-2) ---
+# --- Dereference a FINAL-element symlink before isolation scoping (Issue #1864 AC-2) ---
 # The _tdir walk below resolves INTERMEDIATE dirs physically (via `[ -d ]` / `git -C`), but the
 # target's own final element is never dereferenced. A reviewer could drop a symlink inside its
 # sanctioned isolation worktree pointing at the parent repo's .git —
 # `ln -s <main>/.git/hooks/pre-commit <iso>/evil` (ln is a Bash-tool op, out of THIS hook's Edit
 # path) — then `Write file_path=<iso>/evil`: _tdir resolves to the isolation root → allowed, and
-# the write follows the link into the parent .git. Resolve the final symlink PHYSICALLY here so
-# such a target lands on the real parent .git (→ git-dir deny below) instead. `realpath` follows
-# every link and resolves `..` against the REAL directory tree, so it cannot be forged the way a
-# lexical `..` collapse could (the property the block below relies on). A legitimate symlink that
-# stays inside the isolation worktree still resolves to a path inside it → still allowed (no
-# regression). realpath failure (e.g. the link's target parent dir is missing) leaves ABS_PATH
-# unchanged and falls through to the _tdir walk — no worse than before this fix.
+# the write follows the link into the parent .git. Retarget ABS_PATH at the link's destination
+# here so such a write lands on the real parent .git (→ git-dir deny below) instead.
+#
+# The retarget is LEXICAL on purpose (`readlink` + absolutize a relative target against the
+# link's own directory); it deliberately does NOT canonicalize `..` or intermediate symlinks.
+# That is safe because the _tdir walk immediately below does the physical resolution: `[ -d ]`
+# and `git -C` both chdir, so a target carrying `..` or a directory symlink lands on the REAL
+# tree that owns it — the same property that closes the `..` re-entry forgery for non-symlink
+# targets. So a forged `..` cannot escape here either, and nothing downstream of the walk needs
+# a canonical ABS_PATH (it is only echoed into the deny reason; the decision is made on
+# TARGET_ROOT, which `git -C` produces already-resolved).
+#
+# Why not `realpath` (Issue #2014): it is the one step that would need the target to EXIST.
+# GNU realpath tolerates a dangling final component, BSD/macOS realpath errors on it, so the
+# old `realpath "$ABS_PATH"` returned empty for exactly the attack shape above (the target
+# `.git/hooks/pre-commit` normally does not exist) and this whole block silently no-op'd on
+# macOS. Resolving only the target's PARENT would still no-op when that parent is itself
+# not-yet-created (`<iso>/evil → <main>/src/newdir/newfile.py`), which is precisely the
+# parent-tree case the walk already handles. Handing the raw target to the walk needs no
+# existence check at all and behaves identically on GNU and BSD — there is no platform branch
+# left to diverge.
+#
+# The loop follows a MULTI-HOP chain (`evil → hop → <main>/.git/...`); stopping after one hop
+# would let a two-link chain land _tdir back on the isolation root. Capped at 40 hops (Linux's
+# own ELOOP limit) so a symlink cycle terminates; a cycle then falls through to the walk with
+# ABS_PATH still a link inside the isolation worktree → allowed, exactly as before this fix.
 #   Note (Issue #1864 AC-3): Claude Code's own Edit/Write tools REFUSE to write through a
 #   final-element symlink ("Refusing to write through symlink …"), verified empirically, so this
 #   is defense-in-depth — it does not rely on that (undocumented) harness behavior.
-if [ -L "$ABS_PATH" ]; then
-  _resolved=$(realpath "$ABS_PATH" 2>/dev/null) || _resolved=""
-  [ -n "$_resolved" ] && ABS_PATH="$_resolved"
-fi
+_hop=0
+while [ -L "$ABS_PATH" ] && [ "$_hop" -lt 40 ]; do
+  # Bare `readlink` (never `readlink -f`): the one-level form is POSIX and behaves the same on
+  # BSD, whereas `-f` is a GNU extension historically absent from macOS.
+  _lt=$(readlink "$ABS_PATH" 2>/dev/null) || _lt=""
+  [ -n "$_lt" ] || break
+  case "$_lt" in
+    /*) ;;
+    *)  _lt="$(dirname "$ABS_PATH")/$_lt" ;;
+  esac
+  ABS_PATH="$_lt"
+  _hop=$((_hop + 1))
+done
 
 # --- Resolve the git worktree that OWNS the target ---
 # The isolation allowance is defined by "the target lives inside a sanctioned reviewer isolation

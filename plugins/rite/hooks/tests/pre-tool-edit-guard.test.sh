@@ -36,12 +36,13 @@ ISO_REV_DIR=$(mktemp -u -t rite-revert-test-XXXXXX)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_REV_DIR" HEAD )
 OUTSIDE_DIR=$(mktemp -d)   # a plain, non-repo scratch dir
 shimdir=""                 # set by TC-FAILCLOSED; cleaned here so an interrupt leaves no residue
+rp_shimdir=""              # set by TC-SYMLINK-BSD-REALPATH; tracked separately for the same reason
 
 cleanup() {
   rm -f "$STDERR_FILE"
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_MUT_DIR" 2>/dev/null ) || true
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_REV_DIR" 2>/dev/null ) || true
-  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"}
+  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"} ${rp_shimdir:+"$rp_shimdir"}
 }
 trap cleanup EXIT
 
@@ -50,6 +51,9 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 REAL_JQ=$(command -v jq)   # absolute path, captured before any PATH-shim test shadows `jq`
+# Same reason for realpath: TC-SYMLINK-BSD-REALPATH shims it, and the shim itself
+# execs the real binary. Empty when realpath is absent — that TC then skips.
+REAL_REALPATH=$(command -v realpath 2>/dev/null) || REAL_REALPATH=""
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
@@ -285,49 +289,18 @@ echo ""
 # --------------------------------------------------------------------------
 # Final-element symlink resolution (Issue #1864 AC-2): a symlink dropped INSIDE a
 # sanctioned isolation worktree that points at the parent repo's .git / working tree
-# is physically resolved (realpath) BEFORE the isolation decision, so it can no longer
-# dodge the guard by landing _tdir on the isolation root. AC-3 note: Claude Code's own
-# Edit/Write tools already refuse symlink writes, so this is defense-in-depth.
+# is dereferenced BEFORE the isolation decision, so it can no longer dodge the guard
+# by landing _tdir on the isolation root. AC-3 note: Claude Code's own Edit/Write
+# tools already refuse symlink writes, so this is defense-in-depth.
 # --------------------------------------------------------------------------
-# The AC-2 resolution relies on `realpath` resolving a symlink whose target does
-# not yet exist (the symlink targets below are never created). GNU realpath does;
-# BSD/macOS realpath errors, so the final-element resolution no-ops there — the
-# hook comment above already notes this fallthrough is "no worse than before".
-# Probe the exact behavior and skip these two TCs where realpath can't resolve a
-# dangling symlink (Issue #2008).
-#
-# This is a production gap on macOS, not a test-only quirk, and it is tracked in
-# Issue #2014 — the fix resolves the link target's parent instead of the final
-# element, which works on BSD too. Do NOT describe AC-3 (Claude Code's Edit/Write
-# refusing symlink writes) as the backstop here: pre-tool-edit-guard.sh states
-# that the guard "does not rely on that (undocumented) harness behavior", so
-# leaning on it as the macOS safety net contradicts the hook's own design.
-#
-# Do not name pre-tool-bash-guard.sh's `_gd_fileverb` as the backstop either.
-# That gate is on the Bash tool and never sees the Edit/Write path, and its own
-# header declares the verb list a deliberately non-exhaustive COMMON-SET rather
-# than full closure — a reviewer that creates the symlink by any means outside
-# that list still reaches the parent `.git` on BSD. While #2014 is open, the only
-# layers left on macOS are the reviewer prompt contract (Layer 1) and AC-3.
-# Do not narrow the residual exposure to "a new file in the parent working tree".
-_sym_probe=$(mktemp -d); ln -s "$_sym_probe/no-such-target" "$_sym_probe/lnk"
-if realpath "$_sym_probe/lnk" >/dev/null 2>&1; then RESOLVES_DANGLING_SYMLINK=1; else RESOLVES_DANGLING_SYMLINK=0; fi
-rm -rf "$_sym_probe"
-
-# The probe is a capability check, not a platform check, so a Linux host with
-# realpath missing or shadowed on PATH would silently skip the only coverage of
-# AC-2 — a security control — and still report green. Linux is the blocking gate,
-# so require the probe to succeed there.
-#
-# `[ -d /proc ]` rather than `uname -s`: the threat this floor guards against is a
-# tampered PATH, and `uname` is looked up on the same PATH as the shadowed
-# `realpath`. A filesystem fact cannot be shadowed, and it matches the platform
-# predicate the other gates in this suite already use.
-if [ -d /proc ] && [ "$RESOLVES_DANGLING_SYMLINK" != 1 ]; then
-  fail "TC-SYMLINK probe: realpath cannot resolve a dangling symlink on Linux (missing or shadowed on PATH?) — the AC-2 symlink TCs must never be skipped on the blocking gate"
-fi
-
-if [ "$RESOLVES_DANGLING_SYMLINK" = 1 ]; then
+# These TCs used to be skipped wherever `realpath` could not resolve a dangling
+# symlink, because the hook resolved the final element with `realpath` and that
+# no-op'd on BSD/macOS — a production gap, not a test quirk (Issue #2008 → #2014).
+# The hook now retargets ABS_PATH via bare `readlink` and lets the _tdir walk do the
+# physical resolution, which needs no existence check and has no platform branch, so
+# the skip is gone and these run everywhere. TC-SYMLINK-BSD-REALPATH below pins that
+# platform-independence down by proving the chain still denies when `realpath` is
+# shimmed to BSD semantics.
 echo "TC-SYMLINK-gitdir: isolation symlink → parent .git → deny (git-dir)"
 ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/evil-into-gitdir"
 out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-gitdir" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
@@ -341,8 +314,81 @@ out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-tree" "$ISO_MUT_DIR" "$SUBA
 assert_deny "isolation symlink into parent working tree resolved & blocked" "$out"
 rm -f "$ISO_MUT_DIR/evil-into-tree"
 echo ""
+
+# A two-link chain: resolving only ONE hop would leave ABS_PATH at `$ISO_MUT_DIR/hop`,
+# landing _tdir back on the isolation root → allow. Pins the loop against a future
+# "just dereference once" simplification (Issue #2014).
+echo "TC-SYMLINK-chain: isolation symlink → symlink → parent .git → deny (git-dir)"
+ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/hop"
+ln -s "$ISO_MUT_DIR/hop" "$ISO_MUT_DIR/evil-chain"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-chain" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny_gitdir "multi-hop symlink chain into parent .git resolved & blocked" "$out"
+rm -f "$ISO_MUT_DIR/evil-chain" "$ISO_MUT_DIR/hop"
+echo ""
+
+# The target's PARENT does not exist either, so any fix that canonicalizes the link
+# target's parent dir (the shape first proposed in Issue #2014) still no-ops here and
+# falls through to allow. Handing the raw target to the _tdir walk denies, because the
+# walk climbs to the nearest EXISTING ancestor ($TEST_REPO/src) before asking git.
+echo "TC-SYMLINK-missing-parent: isolation symlink → not-yet-created dir in parent tree → deny (parent-tree)"
+mkdir -p "$TEST_REPO/src"
+ln -s "$TEST_REPO/src/newdir/newfile.py" "$ISO_MUT_DIR/evil-missing-parent"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-missing-parent" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny "symlink to a not-yet-created parent-tree path resolved & blocked" "$out"
+rm -f "$ISO_MUT_DIR/evil-missing-parent"
+echo ""
+
+# --------------------------------------------------------------------------
+# BSD/macOS realpath parity (Issue #2014). The gitdir TC above passes on Linux even
+# with a realpath-based resolution, so it alone cannot catch a regression back to one
+# that needs `realpath` to tolerate a dangling final component. Shim `realpath` to BSD
+# semantics — every component INCLUDING the last must exist — and re-run the two attack
+# shapes. `[ -e ]` follows symlinks, so a dangling link fails the shim exactly as BSD
+# realpath does, while an existing dir passes straight through to the real binary (which
+# keeps hook-preamble.sh's own realpath call working).
+# --------------------------------------------------------------------------
+if [ -n "$REAL_REALPATH" ]; then
+  echo "TC-SYMLINK-BSD-REALPATH: AC-2 resolution does not depend on GNU realpath"
+  rp_shimdir=$(mktemp -d)
+  cat > "$rp_shimdir/realpath" <<SHIM
+#!/bin/bash
+for a in "\$@"; do
+  case "\$a" in -*) continue ;; esac
+  [ -e "\$a" ] || exit 1
+done
+exec "$REAL_REALPATH" "\$@"
+SHIM
+  chmod +x "$rp_shimdir/realpath"
+
+  # Floor: a shim that never gets picked up would turn this whole TC into a false green.
+  ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/shim-probe"
+  if PATH="$rp_shimdir:$PATH" realpath "$ISO_MUT_DIR/shim-probe" >/dev/null 2>&1; then
+    fail "TC-SYMLINK-BSD-REALPATH: the BSD realpath shim did not take effect (still resolving a dangling symlink) — the GNU-independence assertions below would be vacuous"
+  else
+    pass "BSD realpath shim is in effect (dangling symlink errors, as on macOS)"
+  fi
+  rm -f "$ISO_MUT_DIR/shim-probe"
+
+  ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/bsd-into-gitdir"
+  out=$(PATH="$rp_shimdir:$PATH" jq -n --arg p "$ISO_MUT_DIR/bsd-into-gitdir" --arg cwd "$ISO_MUT_DIR" \
+    --arg tp "$SUBAGENT_TRANSCRIPT" \
+    '{tool_name: "Write", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
+    | PATH="$rp_shimdir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || true
+  assert_deny_gitdir "isolation symlink into parent .git blocked under BSD realpath" "$out"
+  rm -f "$ISO_MUT_DIR/bsd-into-gitdir"
+
+  ln -s "$TEST_REPO/tracked.py" "$ISO_MUT_DIR/bsd-into-tree"
+  out=$(PATH="$rp_shimdir:$PATH" jq -n --arg p "$ISO_MUT_DIR/bsd-into-tree" --arg cwd "$ISO_MUT_DIR" \
+    --arg tp "$SUBAGENT_TRANSCRIPT" \
+    '{tool_name: "Write", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
+    | PATH="$rp_shimdir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || true
+  assert_deny "isolation symlink into parent working tree blocked under BSD realpath" "$out"
+  rm -f "$ISO_MUT_DIR/bsd-into-tree"
+
+  rm -rf "$rp_shimdir"; rp_shimdir=""
+  echo ""
 else
-  skip "TC-SYMLINK-gitdir/tree skipped (realpath can't resolve a dangling symlink here; AC-2 final-element resolution no-ops on BSD/macOS — production gap tracked in Issue #2014, skip introduced by Issue #2008)"
+  skip "TC-SYMLINK-BSD-REALPATH skipped (no realpath on PATH, so BSD semantics cannot be shimmed; the TCs above already cover the resolution itself)"
 fi
 
 echo "TC-SYMLINK-local: isolation-internal symlink → allow (no regression)"
