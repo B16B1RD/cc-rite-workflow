@@ -667,7 +667,7 @@ Settings for PR review **output** recording. This section is intentionally separ
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), review results are saved to `.rite/review-results/{pr_number}-{timestamp}.json`. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, a single update-in-place comment) is posted to the PR independently of this setting whenever the review produces one or more non-measured findings (Measured CONFIRMED Gate, Issue #2024 D-01) |
+| `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), review results are saved to `.rite/review-results/{pr_number}-{timestamp}.json`. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, a single update-in-place comment) is posted to the PR independently of this setting whenever the review produces one or more non-measured findings — and additionally refreshed in place on a converged cycle that produces zero, when a record comment from a previous cycle already exists (Measured CONFIRMED Gate, Issue #2024 D-01) |
 
 `/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep the full review report off the PR; note that the non-measured findings record comment is still posted regardless (update-in-place, at most one). Enable `post_comment: true` only if you want an auditable full review trail on the PR itself.
 

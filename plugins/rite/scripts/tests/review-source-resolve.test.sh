@@ -380,7 +380,7 @@ assert_err_lacks "reason=local_file_verification_type_invalid" "type guard must 
 # all→any 変異 (単一 finding fixture では観測不能) を検出する。型ガードが 2 件目を検出し、
 # invariant #2 の rc=5 誤診断 (型ガード導入前の症状) が復活しないことを併せて pin する
 cat > "$RR/709-20260101000000.json" <<'JSON'
-{"schema_version":"1.1.0","pr_number":709,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+{"schema_version":"1.1.0","pr_number":709,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
 JSON
 run --pr-number 709 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
 assert_rc 0 "p2 multi-finding type guard (2nd finding malformed) -> exit 0 (pr_comment)"
@@ -396,7 +396,7 @@ run --pr-number 710 --review-file-path "$UNSET" --conversation-decision none --p
 assert_rc 0 "p2 multi-finding invariant #2 (one measured blocker among non-measured) -> exit 0 (pr_comment)"
 assert_err_has "reason=local_file_cross_field_invariant_violated" "p2 multi-finding invariant #2 fires on the single measured blocker"
 
-# P0 鏡像 (F-08): verification:{} 受理 (measured 欠落 = default mapping、false rejection 防止)
+# P0 鏡像: verification:{} 受理 (measured 欠落 = default mapping、false rejection 防止)
 verification_empty_p0="$SANDBOX/verification-empty.json"
 cat > "$verification_empty_p0" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{}}]}
@@ -406,7 +406,7 @@ assert_rc 0 "p0 empty verification object -> accepted"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$verification_empty_p0" "p0 empty verification object accepted marker"
 assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 type guard must not fire for verification:{}"
 
-# P0 鏡像 (F-08): measured:"true" (非 bool) reject -> fallback
+# P0 鏡像: measured:"true" (非 bool) reject -> fallback
 measured_string_p0="$SANDBOX/measured-string.json"
 cat > "$measured_string_p0" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":"true","repro":"cmd => boom","failing_test":null}}]}
@@ -434,8 +434,8 @@ if [ "$inv2_sh_count" = "2" ]; then pass "parity: full invariant #2 measured cla
 if [ "$guard_md_count" = "1" ]; then pass "parity: full type guard predicate x1 in fix/SKILL.md (P3)"; else fail "parity: full type guard predicate expected 1 in fix/SKILL.md, got $guard_md_count"; fi
 if [ "$inv2_md_count" = "1" ]; then pass "parity: full invariant #2 measured clause x1 in fix/SKILL.md (P3)"; else fail "parity: full invariant #2 measured clause expected 1 in fix/SKILL.md, got $inv2_md_count"; fi
 # P3 の順序 drift pin: fix/SKILL.md 内で型ガード行が invariant #2 行より前に出現すること
-guard_md_line=$(grep -nF "$GUARD_PRED" "$FIX_MD" | head -1 | cut -d: -f1)
-inv2_md_line=$(grep -nF "$INV2_PRED" "$FIX_MD" | head -1 | cut -d: -f1)
+guard_md_line=$(grep -nF "$GUARD_PRED" "$FIX_MD" | head -1 | cut -d: -f1 || true)
+inv2_md_line=$(grep -nF "$INV2_PRED" "$FIX_MD" | head -1 | cut -d: -f1 || true)
 if [ -n "$guard_md_line" ] && [ -n "$inv2_md_line" ] && [ "$guard_md_line" -lt "$inv2_md_line" ]; then
   pass "parity: P3 type guard precedes invariant #2 (line $guard_md_line < $inv2_md_line)"
 else

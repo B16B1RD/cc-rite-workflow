@@ -2356,7 +2356,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
    ```
 
 1. **JSON body 生成 + Write**: Claude は [review-result-schema.md](../../references/review-result-schema.md) に従う JSON 本文を生成し、`"timestamp"` フィールドに literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込んだ上で、**Write tool で `{review_tmp_dir}/rite-review-result-{pr_number}.json` に保存**する (旧 `RITE_JSON_EOF` heredoc 埋め込みを廃止し、巨大 inline bash による malform 無言停止を回避)。`suppressed_findings` 除外契約は本 JSON 生成時に適用する (`findings[]` から除外、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す)。`timestamp` の実値は helper が `$iso_timestamp` で注入するため Claude は知る必要がない。
-1.5. **invariant #6 write 側自己点検の emit (条件付き)**: step 1 の JSON 生成中に「measured: true なのに repro / failing_test とも null/空」の組を検出して measured=false に降格した場合 (invariant #6 write 側 backstop — 5.3.0.M regex 層通過後の生成ミスのみここに到達する)、降格件数を `{n}` にリテラル置換して以下の bash を実行し WARNING + marker を emit する。降格が 0 件なら本 step を silent skip する:
+1b. **invariant #6 write 側自己点検の emit (条件付き)**: step 1 の JSON 生成中に「measured: true なのに repro / failing_test とも null/空」の組を検出して measured=false に降格した場合 (invariant #6 write 側 backstop — 5.3.0.M regex 層通過後の生成ミスのみここに到達する)、降格件数を `{n}` にリテラル置換して以下の bash を実行し WARNING + marker を emit する。降格が 0 件なら本 step を silent skip する:
 
    ```bash
    echo "WARNING: JSON 生成時に measured=true かつ実測証跡空の finding {n} 件を measured=false に降格しました (invariant #6 write 側 backstop)" >&2
@@ -2448,11 +2448,37 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
 
 #### 6.1.d 非実測指摘の PR コメント記録 (non-blocking、条件付き実行)
 
-**Condition**: 次のいずれかの場合に実行する: (a) ステップ 5.3.0.M で `non_blocking_findings` に分類された finding が **1 件以上** ある、または (b) 0 件だが**既存の記録コメントが存在する** (前 cycle の非実測指摘が解消された収束 cycle — 陳腐化した記録を最新化するため「本 cycle の非実測指摘: 0 件 (前 cycle の記録は解消済み)」+ `📎 reviewed_commit:` の本文で PATCH する)。0 件かつ既存コメントなしなら本サブステップ全体を silent skip する (AC-4: 指摘ゼロ経路は現行と同一)。`{post_comment_mode}` には **依存しない** — 非実測指摘の記録は D-01 (破棄せず PR コメント記録) の担保であり、通常レビューコメントの opt-in 設定とは独立に実行する (`pr_review.post_comment: false` の opt-out 対象外であることは `templates/config/rite-config.yml` の post_comment 解説・docs/SPEC.md・**docs/CONFIGURATION.md (Full schema reference)** にも明記済み — 設定の意味論と実装を一致させる)。
+**Condition**: (a) ステップ 5.3.0.M で `non_blocking_findings` に分類された finding が **1 件以上** ある、または (b) 0 件だが**既存の記録コメントが存在する** (収束 cycle の記録最新化) 場合に実行する。**(b) の判定は下記 step 0 の検索結果 (`existing_id`) を用いる** — 判定と実行を単一手順に一本化するため、`non_blocking_findings` が 0 件でも**必ず step 0 (検索のみ、副作用なし) を実行**し、`0 件 ∧ existing_id 空` なら step 1 以降を skip する (投稿ゼロ = AC-4 の指摘ゼロ経路を維持)。`0 件 ∧ 検索 degraded` も skip する (事実と異なる 0 件クリアコメントを新規作成しない)。`{post_comment_mode}` には **依存しない** — 非実測指摘の記録は D-01 (破棄せず PR コメント記録) の担保であり、通常レビューコメントの opt-in 設定とは独立に実行する (`pr_review.post_comment: false` の opt-out 対象外であることは `templates/config/rite-config.yml` の post_comment 解説・docs/SPEC.md・**docs/CONFIGURATION.md (Full schema reference)** にも明記済み — 設定の意味論と実装を一致させる)。
 
 **実行手順**:
 
-1. **コメント本文生成 + Write**: Claude は以下の構造のコメント本文を生成し、**Write tool で `{review_tmp_dir}/rite-nonblocking-{pr_number}.md` に保存**する (`{review_tmp_dir}` はステップ 6.1.a step-0 の marker 値をリテラル置換):
+0. **既存コメント検索 (判定兼用、副作用なし)**: 以下の bash を実行し `existing_id` を確定する。検索は `--paginate --slurp` + 外側 jq で全ページ走査する (非 paginate は既定 30 件・昇順のためコメント 30 件超の PR で marker を miss し冪等化が silent 破綻する)。pipefail + gh stderr 退避は canonical ([finding-cycling.md §1](references/finding-cycling.md)) に準拠 — pipefail なしでは gh 失敗が末尾 jq の rc=0 に mask され degraded 分岐が dead code になる:
+
+   ```bash
+   # ステップ 6.1.d step 0: 既存記録コメント検索 (Condition (b) 判定兼用)
+   set -o pipefail
+   gh_err=$(mktemp "${TMPDIR:-/tmp}/rite-nonblocking-gh-err-XXXXXX" 2>/dev/null) || gh_err=""
+   lookup_degraded=0
+   if existing_id=$(gh api --paginate --slurp "repos/{owner_repo}/issues/{pr_number}/comments" 2>"${gh_err:-/dev/null}" \
+        | jq -r 'add | [.[] | select(.body | contains("📜 rite 非実測指摘の記録"))] | last | .id // empty'); then
+     :
+   else
+     echo "WARNING: 既存記録コメントの検索に失敗しました (gh/jq)。存在不明として扱います" >&2
+     [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | sed 's/^/  /' >&2
+     echo "[CONTEXT] NONBLOCKING_LOOKUP_DEGRADED=1; pr={pr_number}" >&2
+     existing_id=""
+     lookup_degraded=1
+   fi
+   [ -n "$gh_err" ] && rm -f "$gh_err"
+   set +o pipefail
+   echo "[CONTEXT] NONBLOCKING_LOOKUP=done; pr={pr_number}; existing_id=${existing_id:-none}; degraded=$lookup_degraded"
+   ```
+
+   **skip 判定** (marker の値で分岐): `non_blocking_count == 0` かつ `existing_id` 空 (degraded 含む) → **step 1 以降を skip** して本サブステップ終了。それ以外 → step 1 へ。
+
+1. **コメント本文生成 + Write**: Claude はコメント本文を生成し、**Write tool で `{review_tmp_dir}/rite-nonblocking-{pr_number}.md` に保存**する (`{review_tmp_dir}` はステップ 6.1.a step-0 の marker 値をリテラル置換)。本文は件数で 2 variant — **どちらも 1 行目の marker 見出しと末尾の `📎 reviewed_commit:` を必ず維持する** (marker を落とすと step 0 の検索が miss し update-in-place が恒久破綻する):
+
+   **variant A (`non_blocking_count >= 1`)**:
 
    ```markdown
    ## 📜 rite 非実測指摘の記録 (non-blocking)
@@ -2470,19 +2496,20 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
 
    `non_blocking_findings` の全件を表の行として列挙する (severity は明示 — 非実測 CRITICAL/HIGH も本表で人間に可視化される)。
 
-2. **投稿 (update-in-place 冪等 + 非ブロッキング契約、AC-3)**: 以下の bash を実行する。既存の記録コメントを marker (`📜 rite 非実測指摘の記録`) で検索し、あれば **PATCH で update-in-place**、無ければ新規作成する (毎 cycle の新規コメント積み上げを防ぐ — 本リポジトリの永続コメント慣行 marker 検索 + PATCH に準拠。非実測記録は最新状態のみが意味を持つため cycle 履歴は残さない)。検索は `--paginate --slurp` + 外側 jq で全ページ走査する (非 paginate は既定 30 件・昇順のためコメント 30 件超の PR で marker を miss し冪等化が silent 破綻する — canonical: [finding-cycling.md §1](references/finding-cycling.md))。**gh 失敗はループを止めない** — 検索・PATCH・作成のどの失敗も WARNING を stderr に出して続行し、mergeable 判定結果には影響させない:
+   **variant B (`non_blocking_count == 0` ∧ `existing_id` あり — 収束 cycle のクリア)**:
+
+   ```markdown
+   ## 📜 rite 非実測指摘の記録 (non-blocking)
+
+   本 cycle の非実測指摘: 0 件 (前 cycle の記録は解消済み)
+
+   📎 reviewed_commit: {current_commit_sha}
+   ```
+
+2. **投稿 (update-in-place 冪等 + 非ブロッキング契約、AC-3)**: 以下の bash を実行する。`existing_id` は step 0 の marker 値、`{non_blocking_count}` は `non_blocking_findings` の件数 (variant B では `0`) をリテラル置換する。create 分岐は `count > 0` でガードする (0 件で既存なしの新規作成 — 事実と異なるコメント — を機械的に遮断)。**gh 失敗はループを止めない**:
 
    ```bash
-   # ステップ 6.1.d: 非実測指摘の PR コメント記録 (update-in-place 冪等 + non-blocking 契約)
-   # 検索失敗は「既存なし」と区別して WARNING + marker で可視化してから新規作成に縮退する
-   if existing_id=$(gh api --paginate --slurp "repos/{owner_repo}/issues/{pr_number}/comments" 2>/dev/null \
-        | jq -r 'add | [.[] | select(.body | contains("📜 rite 非実測指摘の記録"))] | last | .id // empty'); then
-     :
-   else
-     echo "WARNING: 既存記録コメントの検索に失敗しました (gh/jq)。存在不明のため新規作成に縮退します (重複コメントの可能性あり)" >&2
-     echo "[CONTEXT] NONBLOCKING_LOOKUP_DEGRADED=1; pr={pr_number}" >&2
-     existing_id=""
-   fi
+   # ステップ 6.1.d step 2: PATCH (update-in-place) / create (count ガード付き)
    if [ -n "$existing_id" ]; then
      if gh api --method PATCH "repos/{owner_repo}/issues/comments/${existing_id}" \
           --field body=@"{review_tmp_dir}/rite-nonblocking-{pr_number}.md" >/dev/null; then
@@ -2491,17 +2518,20 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
        echo "WARNING: 非実測指摘の PR コメント更新 (PATCH) に失敗しました (gh 失敗)。mergeable 判定には影響しません。記録内容は ステップ 5.4 integrated report の「実測なし指摘」section と 6.1.a ローカル JSON (measured=false finding) から参照できます" >&2
        echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr={pr_number}; reason=patch_failed" >&2
      fi
-   else
+   elif [ "{non_blocking_count}" -gt 0 ] 2>/dev/null; then
      if gh pr comment {pr_number} -R {owner_repo} --body-file "{review_tmp_dir}/rite-nonblocking-{pr_number}.md"; then
        echo "[CONTEXT] NONBLOCKING_RECORDED=1; pr={pr_number}; count={non_blocking_count}; mode=created"
      else
        echo "WARNING: 非実測指摘の PR コメント記録に失敗しました (gh pr comment 失敗)。mergeable 判定には影響しません。記録内容は ステップ 5.4 integrated report の「実測なし指摘」section と 6.1.a ローカル JSON (measured=false finding) から参照できます" >&2
        echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr={pr_number}; reason=create_failed" >&2
      fi
+   else
+     # defensive: step 0 の skip 判定で通常到達しないが、0 件 & 既存なしの新規作成を機械的に遮断する
+     echo "[CONTEXT] NONBLOCKING_CLEAR_SKIPPED=1; pr={pr_number}"
    fi
    ```
 
-   `{non_blocking_count}` は `non_blocking_findings` の件数をリテラル置換する (Condition (b) の 0 件クリア経路では `0`)。既存コメント検索の失敗は WARNING + `NONBLOCKING_LOOKUP_DEGRADED` marker を emit してから新規作成に縮退する (silent 縮退しない)。記録の成否は `overall_assessment` / result pattern (`[review:mergeable]` 等) の判定に **一切影響しない** (AC-3)。
+   検索失敗 (degraded) 時は `0 件 → skip` / `>0 件 → 新規作成に縮退` (WARNING + marker は step 0 で emit 済み — silent 縮退しない)。記録の成否は `overall_assessment` / result pattern (`[review:mergeable]` 等) の判定に **一切影響しない** (AC-3)。
 
 ### 6.2 Update Work Memory Phase
 

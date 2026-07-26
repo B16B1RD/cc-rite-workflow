@@ -1595,7 +1595,7 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
    }
    ```
 
-6. **`### 実測なし指摘 (non-blocking)` セクションの抽出 + `measured_map` 構築 (実測必須ゲート)**: コメント本文に `### 実測なし指摘 (non-blocking)` で**前方一致**する見出し (テンプレート実体は「（該当がある場合のみ）」等の注記が付く) のセクションが存在する場合、その配下の表 (**6 列**: レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 — `全指摘事項` の 5 列と列数が異なる点に注意。列ズレ防止のため本セクション専用の 6 列パースを適用する) の各行を `non_blocking_findings` として retain し、**severity_map / scope_map にも通常どおり投入した上で** `measured_map[file:line] = false` として登録する (母集団を severity_map に統一 — 除外すると 1.3 step 4 に到達できず、co-located thread が External review へ誤落下する)。`### 全指摘事項` 由来の行は `measured_map[file:line] = true` として登録する。件数 `non_blocking_count` は **`measured_map` 中の `false` の件数**として全経路 (JSON / Markdown) で一貫導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う。セクション不在時は当該登録なし (`non_blocking_count = 0`)
+6. **`### 実測なし指摘 (non-blocking)` セクションの抽出 + `measured_map` 構築 (実測必須ゲート)**: コメント本文に `### 実測なし指摘 (non-blocking)` で**前方一致**する見出し (テンプレート実体は「（該当がある場合のみ）」等の注記が付く) のセクションが存在する場合、その配下の表 (**6 列**: レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 — `全指摘事項` の 5 列と列数が異なる点に注意。列ズレ防止のため本セクション専用の 6 列パースを適用する) の各行を `non_blocking_findings` として retain し、**severity_map / scope_map にも通常どおり投入した上で** `measured_map[file:line] = false` として登録する (母集団を severity_map に統一 — 除外すると 1.3 step 4 に到達できず、co-located thread が External review へ誤落下する)。`### 全指摘事項` 由来の行は `measured_map[file:line] = true` として登録する。**measured_map 構築の共通規則 (JSON / Markdown / 会話の全経路に適用)**: (a) **`scope == "nit-noted"` の finding は `measured_map` に登録しない** — nit 経路 (1.3 step 4 の nit routing / `acknowledged_nit_count`) が先取するため。登録すると `acknowledged_nit_count` との二重計上で finalize 等式 `全指摘 == 対応指摘` が破綻する (`pr-review/SKILL.md` ステップ 5.1 の「二重計上防止」と対称)。(b) **key 正規化は severity_map と同一** (`line == null || line == 0` → `{file}:anchor`)。(c) **同一 key の衝突は `true` (blocking) 優先** — false で上書きしない (blocking-biased fail-safe: 複数 reviewer が同一 file:line を指摘し一方のみ実測付きの場合、実測済み blocking 指摘の silent skip を防ぐ)。件数 `non_blocking_count` は **`measured_map` 中の `false` の件数** (規則 (a) により nit-noted 除外済み) として全経路で一貫導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件 `scope ∈ {current-pr, follow-up}` と同一フィルタのため分類数とも一致する)。セクション不在時は当該登録なし (`non_blocking_count = 0`)
 
 **Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW). The `scope` column is consumed downstream by `/rite:fix` ステップ 2 (nit-noted 受け流し経路) to determine acknowledge vs. fix-required handling.
 
@@ -1627,8 +1627,8 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 3. Check if the finding's file:line exists in `severity_map`
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; route directly to ステップ 2.4 `nit-noted-reply` (skip ステップ 2.1 selection、fix commit 対象外)
-   - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一。3 値: `false` = non-blocking / `true` = blocking / **未登録** = 未判定)。`measured_map` の構築は経路別:
-     - **JSON 経路 (Priority 0/2/3 Raw JSON)**: 各 finding について `measured_map[file:line] = (.verification.measured // false)` (verification 欠落の旧形式は false = non-blocking、エラーにしない — AC-5)。**legacy ファイルの可視化 (silent 0 件 fix 防止)**: findings が 1 件以上あり、かつ**全 finding が `verification` キーを持たない** JSON を読んだ場合は、一度だけ以下を bash で実行して WARNING + retained flag を emit する (判定は measured=false のまま変えない — AC-5。`{n}` は findings 件数。Priority 0/2 と Fast Path は `{json_path}` にファイルパスをリテラル置換して判定 jq を実行、Priority 3 Broad 経路は raw JSON がファイルとして残らないため severity_map 構築ブロック内で `printf '%s' "$raw_json" | jq -e '...'` として同じ式を実行するか、会話コンテキストの JSON から LLM が判定する):
+   - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一 — ただし **scope==nit-noted は登録対象外**。key 正規化・tie-break を含む構築共通規則はステップ 1.2.1 step 6 が単一定義。3 値: `false` = non-blocking / `true` = blocking / **未登録** = 未判定または nit-noted)。`measured_map` の構築は経路別:
+     - **JSON 経路 (Priority 0/2/3 Raw JSON)**: `scope != "nit-noted"` の各 finding について `measured_map[file:line] = (.verification.measured // false)` (verification 欠落の旧形式は false = non-blocking、エラーにしない — AC-5。nit-noted は登録しない — step 6 共通規則 (a))。**legacy ファイルの可視化 (silent 0 件 fix 防止)**: findings が 1 件以上あり、かつ**全 finding が `verification` キーを持たない** JSON を読んだ場合は、一度だけ以下を bash で実行して WARNING + retained flag を emit する (判定は measured=false のまま変えない — AC-5。`{n}` は findings 件数。Priority 0/2 と Fast Path は `{json_path}` にファイルパスをリテラル置換して判定 jq を実行、Priority 3 Broad 経路は raw JSON がファイルとして残らないため severity_map 構築ブロック内で `printf '%s' "$raw_json" | jq -e '...'` として同じ式を実行するか、会話コンテキストの JSON から LLM が判定する):
        ```bash
        # 判定 jq: jq -e '(.findings | length) > 0 and all(.findings[]; has("verification") | not)' {json_path}
        echo "WARNING: レビュー結果 JSON の全 finding ({n} 件) が verification フィールドを持ちません (verification 導入前の旧形式 / 手書き)。実測必須ゲートにより全件 non-blocking 扱いとなり、本 fix は修正 0 件で完了します。次回 /rite:pr-review が新形式で再生成します" >&2
@@ -1700,10 +1700,11 @@ PR #{number} のレビューコメント
 
 ### non-blocking (実測なし) ({non_blocking_count}件)
 <!-- verification.measured == false (verification 欠落の旧形式含む) の finding はサマリ表示のみ (0 件なら本セクション省略)。
-     {non_blocking_count} の導出: **measured_map 中の false の件数** (単一定義。JSON 経路は verification から、
+     {non_blocking_count} の導出: **measured_map 中の false の件数** (単一定義。scope==nit-noted は step 6 共通規則 (a) で
+     measured_map 未登録のため本カウントに含まれず、acknowledged_nit_count と二重計上しない。JSON 経路は verification から、
      Markdown / 会話経路は ステップ 1.2.1 step 6 のセクション別登録から構築される同一 map を数えるため全経路で一致する。
-     ステップ 1.3 の non-blocking 分類数とも定義上一致する。外部ツール / best-effort parse 経路は measured_map 未登録 = 未判定
-     のため本カウント対象外 = External review のまま)。
+     ステップ 1.3 の non-blocking 分類条件 (scope ∈ {current-pr, follow-up}) と同一フィルタのため分類数とも一致する。
+     外部ツール / best-effort parse 経路は measured_map 未登録 = 未判定のため本カウント対象外 = External review のまま)。
      ステップ 4.6 completion report の同名 placeholder と同一値で、「対応した指摘」計算式にも算入される。
      実測必須ゲート (severity-levels.md §実測必須ゲート) により fix 対象外 — ステップ 2.1 auto-select 対象から除外、
      fix commit 対象からも完全除外、reply も投稿しない (記録は pr-review ステップ 6.1.d の PR コメントが担う)。 -->
@@ -2437,7 +2438,7 @@ EOF
 - すべての nit-noted finding を処理し終えたら本サブステップ終了
 - 投稿失敗 (gh api POST 失敗 / rate limit / network error) は `[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=...` を emit し、当該 finding は skip して次へ進む (non-blocking、`acknowledged_nit_count` 集計対象外)
 - すべての投稿が完了したら次の Phase へ進む:
-  - **fix commit 不要 PR**: 判定と skip の実体は **ステップ 3.1 冒頭の前置ガード**を参照 (`fix_count == 0` かつ working tree 無変更ならステップ 3 全体を skip し 4.2/4.3 へ直行)。前置ガードは 2.4.N を経由しない non-blocking-only 経路でも評価される全経路共通の単一定義であり、本 bullet はその参照のみ (二重定義しない)
+  - **fix commit 不要 PR**: 判定と skip の実体は **ステップ 3.1 冒頭の前置ガード**を参照 (`fix_count == 0` かつ working tree 無変更ならステップ 3 全体を skip し 4.2 へ直行)。前置ガードは 2.4.N を経由しない non-blocking-only 経路でも評価される全経路共通の単一定義であり、本 bullet はその参照のみ (二重定義しない)
   - **mixed PR** (nit-noted + non-nit findings 混在): non-nit findings は通常通り ステップ 2.2/2.3 経由で ステップ 3 (commit) へ進む。nit-noted reply は parallel に投稿済の状態で commit に embed される
 
 **Why no commit**: [design-rationale.md#nit-noted-reply-notes](references/design-rationale.md#nit-noted-reply-notes)
@@ -2464,7 +2465,7 @@ EOF
 
 ### 3.1 Verify Changes
 
-**前置ガード — fix commit 不要 PR の skip (全経路共通)**: ステップ 3 に入る前に必ず評価する。`fix_count == 0` かつ `git status --porcelain` が空 (working tree 無変更) の場合 — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在 — は**ステップ 3 全体 (3.1〜3.5) を skip** し、ステップ 4.2 / 4.3 へ直行する (空 `git commit` の失敗と fix-cycle-state への無関係 diff 記録を防ぐ)。本ガードはステップ 2 の出口に相当し、2.4.N を経由しない non-blocking-only 経路でも必ず評価される (ステップ 2.4.N Loop termination の分岐は本ガードへの参照)。
+**前置ガード — fix commit 不要 PR の skip (全経路共通)**: ステップ 3 に入る前に必ず評価する。`fix_count == 0` かつ `git status --porcelain` が空 (working tree 無変更) の場合 — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在 — は**ステップ 3 全体 (3.1〜3.5) を skip** し、ステップ 4.2 (完了報告系) へ直行する (空 `git commit` の失敗と fix-cycle-state への無関係 diff 記録を防ぐ)。本ガードはステップ 2 の出口に相当し、2.4.N を経由しない non-blocking-only 経路でも必ず評価される (ステップ 2.4.N Loop termination の分岐は本ガードへの参照)。
 
 Once all findings have been addressed, verify the changes:
 
@@ -3252,9 +3253,9 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 
 | Field | Description | Calculation |
 |-------|-------------|-------------|
-| `全指摘: {total_count}件` | Total number of findings | ステップ 1 で取得した finding 数 (**`non_blocking_findings` を含む** — 母集団は severity_map と同一で、`total_count = |severity_map|` が全経路で成立する。4.6 の `対応した指摘` 式と同一母集団であることが finalize 条件 `全指摘 == 対応指摘` の前提) |
+| `全指摘: {total_count}件` | Total number of findings | ステップ 1 で取得した finding 数 (**`non_blocking_findings` を含む**)。母集団 = **severity_map ∪ ステップ 1.3 fallback (GitHub state ベース) で分類された未対応コメント** — rite レビュー結果を読めた経路では `total_count = |severity_map|`、severity_map が空の fallback 経路 (手動レビューのみ / pr-review 未実行) では fallback 分類の件数を用いる。4.6 の `対応した指摘` 式と同一母集団であることが finalize 条件 `全指摘 == 対応指摘` の前提。なお pr-review 側の `total_findings` (blocking 集合のみの件数 — assessment-rules.md §5.3.3) とは**別概念** |
 | `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count` (nit-noted reply 投稿と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — non_blocking_count を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する) |
-| `non-blocking (実測なし): {non_blocking_count}件` | Number of findings classified as non-blocking by the measured gate | **measured_map 中の false の件数** (単一定義 — ステップ 1.2.1 step 6 / 1.4 表示テンプレートと同一。ステップ 1.3 の non-blocking 分類数とも定義上一致する。`acknowledged_nit_count` と同型の独立カウンタ)。fix commit / reply の対象外だが「対応済み」に算入する (記録は pr-review 6.1.d の PR コメントが担う)。0 件でも常時表示 |
+| `non-blocking (実測なし): {non_blocking_count}件` | Number of findings classified as non-blocking by the measured gate | **measured_map 中の false の件数** (単一定義 — ステップ 1.2.1 step 6 / 1.4 表示テンプレートと同一。scope==nit-noted は measured_map 未登録のため含まれず `acknowledged_nit_count` と二重計上しない。ステップ 1.3 の non-blocking 分類条件と同一フィルタのため分類数とも一致)。fix commit / reply の対象外だが「対応済み」に算入する (記録は pr-review 6.1.d の PR コメントが担う)。0 件でも常時表示 |
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | ステップ 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
 

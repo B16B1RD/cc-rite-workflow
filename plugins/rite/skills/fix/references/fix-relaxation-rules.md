@@ -73,7 +73,7 @@ The review-fix loop exits via:
 | **Normal** | 0 blocking findings remaining | `[review:mergeable]` → `/rite:iterate` がループ終了 |
 | **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:recover` で復帰 |
 
-`/rite:iterate` は「指摘ゼロ（mergeable）までループする」契約を基本とし、加えて `safety.max_review_cycles`（既定 5）到達で発火する cycle 上限サーキットブレーカーを唯一の自動安全網として持つ（#1701）。quality-signal escalation / 同一 finding 検出といった細粒度の安全網は持たない。上限到達時は、対話実行では AskUserQuestion（継続 / 中止 / draft のまま停止）、`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進む。Ctrl+C による手動中断も従来どおり可能。
+`/rite:iterate` は「**blocking 指摘ゼロ**（mergeable）までループする」契約を基本とし（blocking = `verification.measured == true` かつ `scope ∈ {current-pr, follow-up}` の CONFIRMED 指摘 — SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。非実測指摘は PR コメント記録のまま残存して正常出口に到達しうる）、加えて `safety.max_review_cycles`（既定 5）到達で発火する cycle 上限サーキットブレーカーを唯一の自動安全網として持つ（#1701）。quality-signal escalation / 同一 finding 検出といった細粒度の安全網は持たない。上限到達時は、対話実行では AskUserQuestion（継続 / 中止 / draft のまま停止）、`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進む。Ctrl+C による手動中断も従来どおり可能。
 
 `fix.md` ステップ 3 の Root Cause Gate は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
 

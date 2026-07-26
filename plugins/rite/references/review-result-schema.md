@@ -85,6 +85,11 @@
       "scope": "nit-noted",
       "pre_existing": true,
       "nit_reason": "本 PR の責務範囲外の既存設定ファイル整形 — 単発修正で完了する localized 改善",
+      "verification": {
+        "measured": false,
+        "repro": null,
+        "failing_test": null
+      },
       "file": "path/to/config.ts",
       "line": null,
       "description": "ファイル全体への指摘 (行非依存)",
@@ -99,6 +104,11 @@
       "scope": "follow-up",
       "pre_existing": false,
       "original_severity": "MEDIUM",
+      "verification": {
+        "measured": false,
+        "repro": null,
+        "failing_test": null
+      },
       "file": "path/to/utils.ts",
       "line": 100,
       "description": "Refactoring候補 — 動作には影響しない",
@@ -178,7 +188,7 @@
 3. **ファイル名 timestamp ↔ JSON `timestamp` 同期**: `{timestamp}` prefix (JST `YYYYMMDDHHMMSS`) と JSON 内 `.timestamp` (ISO 8601) は同一瞬間を指す。ただし本不変条件は read 側で検証せず (ファイル rename 時にしか破綻しえないため)、write 側が ステップ 6.1.a で一度に生成することで担保する。
 4. **`severity ∈ {CRITICAL, HIGH}` ∧ `scope == "nit-noted"` 禁止**: blocker (CRITICAL/HIGH) 級の指摘は「修正不要の nit」として受け流すことができない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason={priority_prefix}_critical_high_scope_nit_noted` を emit して **legacy parser fallthrough** (invariant #2 と同じ FAIL routing)。canonical jq expression: `[.findings[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0`。reviewer が CRITICAL を nit に降格させたい場合は severity を MEDIUM/LOW へ自己降格し、`original_severity` フィールドに元値を保持すること。本 invariant は 1.1.0 JSON にのみ適用される (1.0/1.0.0 では `scope` フィールドが欠落しているため後方互換 default mapping 経由で評価)。
 5. **`pre_existing == false` ∧ `scope == "nit-noted"` 禁止**: 本 PR で **新規に導入された** finding (`pre_existing == false`) を「修正不要の nit」として受け流すことは、本 PR の責任範囲内の問題を silent に放置することを意味するため禁止。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count={n}` を emit し、該当 finding の `scope` を **自動で `"current-pr"` に書き換え** (auto-correct) して severity_map 構築を続行する。canonical jq mutation: `(.findings[] | select(.pre_existing == false and .scope == "nit-noted") | .scope) |= "current-pr"`。本 invariant は **#4 と異なり FAIL ではなく auto-correct** のため、JSON read 全体を fallthrough させない。1.0/1.0.0 JSON では `pre_existing` フィールドが欠落しているため本 invariant は発火しない (default mapping は scope を severity ベースで補完するのみで、`pre_existing` は補完しない)。
-6. **`verification.measured == true` ∧ `repro`/`failing_test` とも null/空 禁止 (write 側 auto-correct 降格)**: 実測の証跡なしに `measured: true` を宣言することは実測必須ゲートの bypass となるため禁止。**検出主体は write 側のみ** — 2 層で担う: (a) `pr-review.md` ステップ 5.3.0.M の **anchor 検出 regex 層** が「`Verification:` アンカー無し / `=>` 右辺空 / whitespace-only」を non-blocking に分類する（右辺空・whitespace-only の検出はこの層の担当）、(b) 6.1.a の JSON 生成時に measured=true ∧ repro/failing_test とも null/空文字の組を検出したら `measured` を **`false` に書き換え** (auto-correct = non-blocking へ降格) し、6.1.a **step 1.5 の明示 bash step** で WARNING を stderr に出力し `[CONTEXT] MEASURED_DEMOTED_ON_WRITE=1; count={n}` を emit して続行する。(b) は **Claude の生成時自己点検 + 明示 emit 手順** であり (機械 helper `review-result-save.sh` は verification を検証しない)、下記 canonical jq mutation は自己点検に使う参照式 (field 全体の null/空文字のみ検出。`=>` 右辺空は (a) regex 層の担当): `(.findings[] | select((.verification.measured // false) == true and ((.verification.repro // "") == "") and ((.verification.failing_test // "") == "")) | .verification.measured) |= false`。**read 側 (`fix.md` ステップ 1.2.0) は auto-correct を実装せず**、生成済み JSON の `measured` 値をそのまま信頼する（#5 が read 側 auto-correct を持つのと異なる点。**verification 型ガードが `measured` の型を boolean/null に固定していることを前提に**、bool の `measured: true` を偽装しても blocking が増える = fix 対象が増える方向にしか働かず、bool 値による mergeable 偽装の bypass は invariant #2 が引き続き遮断するため read 側 auto-correct は不要と判断。非 bool 値による bypass は型ガードが前段で reject する）。`verification` フィールド自体が欠落している finding は本 invariant の対象外 (measured=false 扱いの default mapping が適用されるのみ)。なお read 側は `verification` / `measured` の**型検証**のみ行う（違反は専用 reason で reject — 下記 [後方互換性 §verification の default mapping 直下の verification 型ガード](#verification-型ガード-read-側) 参照）。
+6. **`verification.measured == true` ∧ `repro`/`failing_test` とも null/空 禁止 (write 側 auto-correct 降格)**: 実測の証跡なしに `measured: true` を宣言することは実測必須ゲートの bypass となるため禁止。**検出主体は write 側のみ** — 2 層で担う: (a) `pr-review.md` ステップ 5.3.0.M の **anchor 検出 regex 層** が「`Verification:` アンカー無し / `=>` 右辺空 / whitespace-only」を non-blocking に分類する（右辺空・whitespace-only の検出はこの層の担当）、(b) 6.1.a の JSON 生成時に measured=true ∧ repro/failing_test とも null/空文字の組を検出したら `measured` を **`false` に書き換え** (auto-correct = non-blocking へ降格) し、6.1.a **step 1b の明示 bash step** で WARNING を stderr に出力し `[CONTEXT] MEASURED_DEMOTED_ON_WRITE=1; count={n}` を emit して続行する。(b) は **Claude の生成時自己点検 + 明示 emit 手順** であり (機械 helper `review-result-save.sh` は verification を検証しない)、下記 canonical jq mutation は自己点検に使う参照式 (field 全体の null/空文字のみ検出。`=>` 右辺空は (a) regex 層の担当): `(.findings[] | select((.verification.measured // false) == true and ((.verification.repro // "") == "") and ((.verification.failing_test // "") == "")) | .verification.measured) |= false`。**read 側 (`fix.md` ステップ 1.2.0) は auto-correct を実装せず**、生成済み JSON の `measured` 値をそのまま信頼する（#5 が read 側 auto-correct を持つのと異なる点。**verification 型ガードが `measured` の型を boolean/null に固定していることを前提に**、bool の `measured: true` を偽装しても blocking が増える = fix 対象が増える方向にしか働かず、bool 値による mergeable 偽装の bypass は invariant #2 が引き続き遮断するため read 側 auto-correct は不要と判断。非 bool 値による bypass は型ガードが前段で reject する）。`verification` フィールド自体が欠落している finding は本 invariant の対象外 (measured=false 扱いの default mapping が適用されるのみ)。なお read 側は `verification` / `measured` の**型検証**のみ行う（違反は専用 reason で reject — 下記 [後方互換性 §verification の default mapping 直下の verification 型ガード](#verification-型ガード-read-側) 参照）。
 
 ## 後方互換性 (schema 1.0 ↔ 1.1.0)
 
@@ -276,6 +286,12 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 |--------|----------|------------|------|----------|
 | HIGH | current-pr | path/to/file.ts:42 | エラーハンドリングが不足 | try-catch を追加 |
 
+### 実測なし指摘 (non-blocking)
+
+| Reviewer | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|----------|--------|----------|------------|------|---------|
+| security-reviewer | MEDIUM | nit-noted | path/to/config.ts | ファイル全体への指摘 (行非依存) | 設定ファイルヘッダにコンテキスト説明を追加 |
+
 ---
 
 ### 📄 Raw JSON
@@ -295,6 +311,11 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
       "severity": "HIGH",
       "scope": "current-pr",
       "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined",
+        "failing_test": null
+      },
       "file": "path/to/file.ts",
       "line": 42,
       "description": "エラーハンドリングが不足",
@@ -307,6 +328,7 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 ````
 
 - 既存の Markdown テーブル形式は保持 (後方互換、人間可読性)
+- `### 実測なし指摘 (non-blocking)` セクション (非実測 finding が 1 件以上あるときのみ出力) は **6 列** (Reviewer 列を先頭に追加) — reviewer 毎の `#### {reviewer}` 見出し下に置かれる 全指摘事項テーブル (5 列) と異なり、複数 reviewer の非実測指摘を単一テーブルに集約するため Reviewer 列が必要。列構成は `pr-review.md` ステップ 6.1.d のコメント本文テーブル (integrated-report-templates.md の実測なし指摘 section) と同一
 - 末尾に `### 📄 Raw JSON` セクションを追加し、code fence で JSON を埋め込む
 - `/rite:fix` ステップ 1.2.0 Priority 3 は code fence 内の JSON を `---` separator 以降の **最後** の `### 📄 Raw JSON` section に scope 限定して抽出する。awk パーサの対象は PR コメント本文 (`gh pr view --json comments` で取得した文字列) のみで、リポジトリ内の本ドキュメント (schema.md) を読むことはない。scope 限定の目的は、finding の `description` / `suggestion` 列内に literal `### 📄 Raw JSON` 文字列が含まれる場合 (本 PR 自身が該当) の誤捕捉を防ぐこと。POSIX awk のみで動作する 1-pass + END 逆方向スキャン実装は fix.md ステップ 1.2.0 の bash block を参照
 
