@@ -7,11 +7,11 @@ sources:
   - type: "retrospectives"
     ref: "raw/retrospectives/20260518T-pr-1039-recommendation-aggregate-evasion.md"
   - type: "issues"
-    ref: "https://github.com/asakaguchi/cc-rite-workflow/issues/1042"
+    ref: "https://github.com/B16B1RD/cc-rite-workflow/issues/1042"
   - type: "issues"
-    ref: "https://github.com/asakaguchi/cc-rite-workflow/issues/1040"
+    ref: "https://github.com/B16B1RD/cc-rite-workflow/issues/1040"
   - type: "issues"
-    ref: "https://github.com/asakaguchi/cc-rite-workflow/issues/1041"
+    ref: "https://github.com/B16B1RD/cc-rite-workflow/issues/1041"
 tags: [recommendation, aggregate-label, silent-skip, askuserquestion, disposition, phase-7, review-loop, responsibility-obscuring]
 confidence: high
 ---
@@ -109,7 +109,7 @@ prose 強制では LLM の skip 経路を塞げないため、機械的 gate を
 
 ## ソース
 
-- [PR #1039 (review-fix loop で 4 件の「推奨事項」を aggregate 報告した発火事例)](https://github.com/asakaguchi/cc-rite-workflow/pull/1039)
-- [Issue #1040 (PR #1039 review で missed された actionable item の事後起票)](https://github.com/asakaguchi/cc-rite-workflow/issues/1040)
-- [Issue #1041 (PR #1039 review で missed された actionable item の事後起票)](https://github.com/asakaguchi/cc-rite-workflow/issues/1041)
-- [Issue #1042 (本 anti-pattern を Wiki 化し、防止策を `/rite:pr:review` / `/rite:issue:start-finalize` に組み込む meta-issue)](https://github.com/asakaguchi/cc-rite-workflow/issues/1042)
+- [PR #1039 (review-fix loop で 4 件の「推奨事項」を aggregate 報告した発火事例)](https://github.com/B16B1RD/cc-rite-workflow/pull/1039)
+- [Issue #1040 (PR #1039 review で missed された actionable item の事後起票)](https://github.com/B16B1RD/cc-rite-workflow/issues/1040)
+- [Issue #1041 (PR #1039 review で missed された actionable item の事後起票)](https://github.com/B16B1RD/cc-rite-workflow/issues/1041)
+- [Issue #1042 (本 anti-pattern を Wiki 化し、防止策を `/rite:pr:review` / `/rite:issue:start-finalize` に組み込む meta-issue)](https://github.com/B16B1RD/cc-rite-workflow/issues/1042)
