@@ -5,8 +5,8 @@ schema_version: 2
 github:
   projects:
     enabled: true
-    project_number: 1  # cc-rite-workflow project
-    owner: "asakaguchi"   # Projects オーナー（user / organization）
+    project_number: 11  # cc-rite-workflow project
+    owner: "B16B1RD"   # Projects オーナー（user / organization）
     # フィールド名のローカライズ上書き（任意）:
     #   Project のフィールド名が英語以外のとき各 field に `name:` を設定する。
     #   未設定時は helper 内蔵の英日エイリアス（Status↔ステータス, Priority↔優先度,
