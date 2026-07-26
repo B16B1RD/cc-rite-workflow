@@ -614,8 +614,12 @@ case "$_ls_rc" in
     fi ;;
   2) echo "[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}" ;;
   *)
-    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=$_ls_rc" >&2
-    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗しました (git ls-remote rc=$_ls_rc): $_ls_err。削除は試行していません。" >&2 ;;
+    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_ls_rc}" >&2
+    # 変数展開は必ず brace で閉じる。日本語文中で `$_ls_err。` と書くと bash が `。` の先頭バイト
+    # (0xE3) を変数名に取り込み、非 UTF-8 ロケール (macOS CI 等) で変数が未定義化して原因テキストが
+    # 消える。残った不正バイトは下流の BSD sed 等も落とす（同 invariant: hooks/tests/flow-state.test.sh
+    # TC-8b-h、Issue #2008）。
+    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗しました (git ls-remote rc=${_ls_rc}): ${_ls_err} — 削除は試行していません。" >&2 ;;
 esac
 ```
 

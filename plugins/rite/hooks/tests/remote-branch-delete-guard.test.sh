@@ -70,6 +70,21 @@ for required in 'ls-remote --exit-code' 'push origin --delete' 'REMOTE_BRANCH_DE
     exit 1
   fi
 done
+# brace 無し変数展開が非 ASCII バイトに隣接していないことを検査する。`$var。` と書くと bash が
+# 多バイト文字の先頭バイトを変数名に取り込み、非 UTF-8 ロケール (macOS CI) で変数が未定義化して
+# 診断が消え、残った不正バイトが下流の BSD sed も落とす (Issue #2008 / TC-8b-h と同 invariant)。
+# TC-8b-h のスイープは *.sh のみを走査し SKILL.md の bash fence を対象外にしている
+# (同テストが scope limit として明記) ため、抽出したスニペットに対してここで検査する。
+# 行頭 `#` のコメント行は TC-8b-h と同じ規約で除外する (周囲の rationale が anti-pattern を
+# verbatim 引用できるようにするため)。grep -P はロケール依存で取りこぼすため perl を使う。
+if perl -ne 'next if /^\s*#/; exit 1 if /\$[A-Za-z_]\w*[\x{80}-\x{FF}]/' "$GUARD_SNIPPET"; then
+  :
+else
+  echo "FAIL: 抽出したガードに brace 無しの変数展開が非 ASCII バイトへ直接隣接する箇所があります"
+  perl -ne 'next if /^\s*#/; print "  L$.: $_" if /\$[A-Za-z_]\w*[\x{80}-\x{FF}]/' "$GUARD_SNIPPET"
+  echo "  対処: \${var} の形で閉じるか、変数と多バイト文字の間に ASCII 文字を挟んでください"
+  exit 1
+fi
 
 # --- git ラッパー stub: push 呼び出しを記録しつつ実 git へ委譲する ---
 # 「push --delete が呼ばれなかった」を出力の不在ではなく呼び出し記録で直接検証するため
@@ -169,22 +184,34 @@ git switch -qc "$BRANCH" 2>/dev/null || git switch -q "$BRANCH"
 echo "v3" > file.txt
 git add -A && git commit -qm work2 && git push -q origin "$BRANCH" 2>/dev/null
 git switch -q main
+# setup の成立を TC-2 と同形の precondition で確認する。ここを assertion 段まで遅延させると、
+# setup 失敗が「marker が出ていない」という誤った診断に化ける。
+git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1 \
+  || { echo "FATAL: TC-2b setup: origin へのブランチ push に失敗"; exit 1; }
 git -C "$ORIGIN" config receive.denyDeletes true
 out=$(run_guard "$GUARD_SNIPPET")
 git -C "$ORIGIN" config --unset receive.denyDeletes
+# ref 残存（= setup が実際に削除を阻止できたか）を marker チェックより先に評価する。
+# denyDeletes が効かない環境では push が成功して marker が出ないため、順序が逆だと
+# 「marker が surface されていない」という真因と異なる診断になる。
 if ! push_delete_called; then
   fail "TC-2b: setup 不備 — ref が存在するのに push --delete が呼ばれていない"
+elif ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+  fail "TC-2b: setup 不備 — 削除が拒否されたはずだがリモート ref が消えている (receive.denyDeletes が効いていない)"
 elif ! printf '%s' "$out" | grep -q 'REMOTE_BRANCH_DELETE_FAILED=1'; then
   fail "TC-2b: push 失敗が marker で surface されていない。ステップ 12 が削除失敗を x と報告する (出力: '$out')"
-elif ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-  fail "TC-2b: setup 不備 — 削除が拒否されたはずだがリモート ref が消えている"
+elif ! printf '%s' "$out" | grep -qE 'denyDeletes|remote rejected'; then
+  # TC-3 と対称。`_push_err=$(... 2>&1)` は stdout/stderr を両方飲み込むため、WARNING から
+  # $_push_err が落ちると原因情報がゼロになる（ターミナルにも何も残らない）。
+  fail "TC-2b: WARNING に push 失敗の原因テキストが載っていない (出力: '$out')"
 else
-  pass "TC-2b (push 失敗を marker で surface)"
+  pass "TC-2b (push 失敗を marker + 原因テキストで surface)"
 fi
-# 後始末の失敗を握り潰さない。ここで ref が残ると TC-5 の precondition（$BRANCH が origin に不在）
-# が崩れ、mutant が「実在する ref を消しただけ」で push を呼んで TC-5 が vacuous に PASS する。
-git push -q origin --delete "$BRANCH" 2>/dev/null \
-  || { echo "FATAL: TC-2b teardown: リモートブランチ $BRANCH の削除に失敗"; exit 1; }
+# 後始末。ここで ref が残ると TC-5 の precondition（$BRANCH が origin に不在）が崩れるが、
+# その状態は TC-5 precondition 自身が正しい帰属で FATAL にする。ここを致命にすると
+# 「teardown 失敗」と誤帰属したうえ後続 4 TC がカスケード中断するため、警告に留めて原因だけ残す。
+_td_err=$(LC_ALL=C git push -q origin --delete "$BRANCH" 2>&1) \
+  || echo "WARN: TC-2b teardown: $BRANCH の削除に失敗: $_td_err" >&2
 
 # ─── TC-3 (AC-1): ls-remote 自体の失敗 → CHECK_FAILED、削除は試行しない ───
 # ネットワーク断・認証失敗は rc=128 になる。これを rc=2 (不在) と取り違えて「既削除」に
@@ -232,17 +259,21 @@ echo "TC-6: cleanup/SKILL.md ステップ 12 pins the remote-side judgement rule
 remote_section=$(awk '/^  \*\*リモート側\*\*/{f=1} f{print} f && /^- `\{projects_status_result\}/{found=1; exit} END{exit !found}' "$CLEANUP_MD")
 awk_rc=$?
 tc6_fail=""
-# 抽出の両端を検査する。開始アンカー消失は空抽出で loud fail するが、閉じアンカー消失は
-# awk が EOF まで走って section スコープが実質無効化される (over-capture) ため rc で検出する。
-[ "$awk_rc" -eq 0 ] || tc6_fail="リモート側 section の閉じアンカー (- \`{projects_status_result}\`) に到達しなかった (over-capture)"
-[ -z "$tc6_fail" ] && { [ -n "$remote_section" ] || tc6_fail="リモート側 section が空 (開始アンカー **リモート側** が変更された可能性)"; }
-# 各ルールは marker 名だけでなく「判定値」まで pin する。marker 名の存在確認だけだと
-# ` `(未完了) → `x`(完了) への反転を素通しし、本 Issue の headline 欠陥そのものを通す。
-# 未完了判定に固有の救済文言を要求する形にすると、`x` 判定には存在し得ないため堅い。
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETE_FAILED=1.*手動削除' || tc6_fail="REMOTE_BRANCH_DELETE_FAILED が未完了判定 (手動削除の案内) になっていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*削除を試行していません' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が未完了判定 (削除未試行の案内) になっていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*`x`' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
+# 抽出の両端を検査する。**空抽出 (開始アンカー消失) を先に判定する** — 開始アンカーが消えると
+# awk は f=0 のまま閉じアンカー規則に到達せず found=0 → rc=1 を返すため、rc ゲートを先に置くと
+# 開始アンカー消失まで「over-capture」と誤診断してしまう (保守者が反対側の端を調べることになる)。
+[ -n "$remote_section" ] || tc6_fail="リモート側 section が空 (開始アンカー **リモート側** が変更された可能性)"
+# 閉じアンカー消失は awk が EOF まで走って section スコープが実質無効化される (over-capture)。
+[ -z "$tc6_fail" ] && { [ "$awk_rc" -eq 0 ] || tc6_fail="リモート側 section の閉じアンカー (- \`{projects_status_result}\`) に到達しなかった (over-capture)"; }
+# 各ルールは marker 名だけでなく **判定値そのものと処方コマンド** まで pin する。救済文言だけを
+# 要求する形では、文言を残したまま判定値を ` `(未完了) → `x`(完了) に反転する mutation を素通しし、
+# 本 Issue の headline 欠陥（削除失敗が完了として報告される）をそのまま通す。処方コマンドまで
+# 含めるのは、リモート用 `git push origin --delete` をローカル用 `git branch -D` に差し替える
+# 誤処方（アンカー化規約が防ごうとしているもの）も同時に捕捉するため。
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETE_FAILED=1.*: ` ` \+.*git push origin --delete.*手動削除' || tc6_fail="REMOTE_BRANCH_DELETE_FAILED が「未完了 ` ` + git push origin --delete での手動削除」になっていない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*: ` ` \+.*削除を試行していません' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が「未完了 ` ` + 削除未試行の案内」になっていない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*）: `x`$' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="リモート側 fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
 # 両側独立評価の AND ルール文 (ローカル成功でリモート失敗が握り潰される回帰の pin)
 [ -z "$tc6_fail" ] && { grep -q '両方が `x` 相当のときだけ `x`' "$CLEANUP_MD" || tc6_fail="ローカル/リモート独立評価の AND ルール文がない"; }
 # marker 名の部分文字列衝突: REMOTE_BRANCH_DELETE_FAILED ⊃ BRANCH_DELETE_FAILED のため、
@@ -251,9 +282,17 @@ tc6_fail=""
 local_section=$(awk '/^  \*\*ローカル側\*\*/{f=1} f && /^  \*\*リモート側\*\*/{exit} f{print}' "$CLEANUP_MD")
 [ -z "$tc6_fail" ] && { [ -n "$local_section" ] || tc6_fail="ローカル側 section が空 (開始アンカー **ローカル側** が変更された可能性)"; }
 if [ -z "$tc6_fail" ]; then
-  unanchored=$(printf '%s\n' "$local_section" | grep -nE '^  - `BRANCH_DELETE' || true)
-  [ -z "$unanchored" ] || tc6_fail="ローカル側ルールが非アンカー (REMOTE_BRANCH_DELETE_FAILED に誤一致する): $unanchored"
+  unanchored=$(printf '%s\n' "$local_section" | grep -nE '^  - `BRANCH_DELETE'); grep_rc=$?
+  case "$grep_rc" in
+    0) tc6_fail="ローカル側ルールが非アンカー (REMOTE_BRANCH_DELETE_FAILED に誤一致する): $unanchored" ;;
+    1) : ;;  # 非アンカー行なし (期待動作)
+    *) tc6_fail="ローカル側アンカー検査の grep が IO エラー (rc=$grep_rc)" ;;
+  esac
 fi
+# ローカル側 fallback の marker family スコープ (リモート側と対称に pin する)。無条件形へ戻す
+# mutation が素通りしていたため追加。SKILL.md 自身がこの形を「リモート側 marker の存在で偽になり
+# 判定が破綻する」と明記して禁じている。
+[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*' || tc6_fail="ローカル側 fallback が marker family でスコープされていない"; }
 [ -z "$tc6_fail" ] && { grep -q 'marker 名は `\[CONTEXT\] ` prefix 込みで一致させる' "$CLEANUP_MD" || tc6_fail="アンカー照合の規約文がない"; }
 if [ -n "$tc6_fail" ]; then
   fail "TC-6: $tc6_fail"
