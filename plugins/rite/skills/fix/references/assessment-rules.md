@@ -156,7 +156,7 @@ When determining the assessment, explicitly output the finding count in the foll
 - 総合評価: {マージ可 / マージ不可（指摘あり） / 修正必要}
 ```
 
-**【実測必須ゲート】の省略規則**: `non_blocking_count == 0` かつ `total == 0` (指摘ゼロ) の場合は【実測必須ゲート】ブロック自体を省略してよい (AC-4: 指摘ゼロ経路の出力を現行と同一に保つ)。いずれかが 1 件以上なら必ず出力する。
+**【実測必須ゲート】の省略規則**: `non_blocking_count == 0` かつ `total == 0` (指摘ゼロ) の場合は【実測必須ゲート】ブロック自体を**省略する** (MUST — permissive な裁量を残さない。AC-4: 指摘ゼロ経路の出力を現行と同一に保つ)。いずれかが 1 件以上なら必ず出力する。
 
 **Additional output when fact-check was executed:**
 

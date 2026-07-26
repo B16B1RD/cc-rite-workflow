@@ -569,11 +569,13 @@ elif ! printf '%s' "$raw_json" | jq -e '
   echo "WARNING: PR コメント内の Raw JSON が必須フィールドを欠いています。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_required_fields_missing" >&2
 elif ! printf '%s' "$raw_json" | jq -e '
-  all(.findings[]?; (.verification == null) or ((.verification | type) == "object"))
+  all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))
 ' >/dev/null 2>&1; then
-  # verification 型ガード (review-source-resolve.sh P0/P2 と対称): 非 object は後続 invariant #2 の
-  # nested access が jq rc=5 になり誤診断と合流するため、前段で専用 reason により legacy parser へ流す
-  echo "WARNING: PR コメント内の Raw JSON の findings[].verification が object / null 以外の型を含みます (型崩れ)。legacy parser に fallthrough します。" >&2
+  # verification 型ガード (review-source-resolve.sh P0/P2 と対称): 非 object の verification は後続
+  # invariant #2 の nested access が jq rc=5 になり誤診断と合流し、非 bool の measured ("true" 文字列等) は
+  # `// false` で silent non-blocking 化して mergeable 偽装 bypass になるため、前段で専用 reason により
+  # legacy parser へ流す。measured の存在は要求しない (verification:{} → default mapping 維持)
+  echo "WARNING: PR コメント内の Raw JSON の findings[].verification が型崩れです (verification は object/null、measured は boolean/null のみ受理)。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_verification_type_invalid" >&2
 elif ! printf '%s' "$raw_json" | jq -e '
   (.overall_assessment != "mergeable")
@@ -784,7 +786,8 @@ exit 1
 | `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
 | `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 awk が失敗 (rc 非 0、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough) |
 | `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
-| `pr_comment_verification_type_invalid` | Priority 3 で取得した PR コメント Raw JSON の `findings[].verification` が object / null 以外の型 (手書き JSON の型崩れ)。invariant #2 の nested access が jq rc=5 で誤診断と合流するのを防ぐ前段の型ガード (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_PARSE_FAILED` flag)。P0/P2 の同型 reason (`explicit_file_verification_type_invalid` / `local_file_verification_type_invalid`) は `scripts/review-source-resolve.sh` が emit する |
+| `pr_comment_verification_type_invalid` | Priority 3 で取得した PR コメント Raw JSON の `findings[].verification` が object / null 以外、または `verification.measured` が boolean / null 以外の型 (手書き JSON の型崩れ)。invariant #2 の nested access が jq rc=5 で誤診断と合流する / 非 bool measured が silent non-blocking 化するのを防ぐ前段の型ガード (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_PARSE_FAILED` flag)。P0/P2 の同型 reason (`explicit_file_verification_type_invalid` / `local_file_verification_type_invalid`) は `scripts/review-source-resolve.sh` が emit する |
+| `verification_field_absent_in_all_findings` | ステップ 1.3 measured lookup (JSON 経路) で、findings 1 件以上かつ**全 finding が verification キーを持たない** legacy ファイル (verification 導入前の旧 plugin 生成 / 手書き) を検出した際の一度きり observability emit (`REVIEW_SOURCE_VERIFICATION_ABSENT` flag、非ブロッキング)。判定は measured=false のまま (AC-5) — 全件 non-blocking 化により fix が no-op 完了することを可視化する (silent 0 件 fix 防止)。次回 /rite:pr-review が新形式で再生成すれば自己回復する |
 | `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open かつ measured==true (blocking) の finding が存在 (measured==false の非実測 finding は実測必須ゲートにより対象外。legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_critical_high_scope_nit_noted` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant #4 違反: `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
@@ -817,7 +820,7 @@ exit 1
 - `severity_map_build_failed`: Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `findings_maps_build_failed` + `[fix:error]` に昇格)
 - `scope_map_build_failed`: Priority 0/2 (file-based) で scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
 
-**Eval-order enumeration** (Pattern-2 documented-union input): 本 enumeration の reason は fix.md に対する Pattern-2 forward check の **documented set（reason 表 ∪ enumeration）** に寄与する。reason 表と本 enumeration は人間可読性のため同期させること（Pattern 2 はどちらか一方に存在すれば documented とみなすため、両者の厳密な同期や enumeration 側の reverse staleness — 列挙済だが emit されない reason — は機械検証されない）。reason を追加・削除する際は表と本 enumeration の両方を更新する (`scripts/review-findings-maps.sh` へ委譲済の reason は helper docstring 側の enumeration に記載するため本 enumeration には含めない)。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_verification_type_invalid` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `low_current_pr_demoted_to_nit_noted` / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`)
+**Eval-order enumeration** (Pattern-2 documented-union input): 本 enumeration の reason は fix.md に対する Pattern-2 forward check の **documented set（reason 表 ∪ enumeration）** に寄与する。reason 表と本 enumeration は人間可読性のため同期させること（Pattern 2 はどちらか一方に存在すれば documented とみなすため、両者の厳密な同期や enumeration 側の reverse staleness — 列挙済だが emit されない reason — は機械検証されない）。reason を追加・削除する際は表と本 enumeration の両方を更新する (`scripts/review-findings-maps.sh` へ委譲済の reason は helper docstring 側の enumeration に記載するため本 enumeration には含めない)。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_verification_type_invalid` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `low_current_pr_demoted_to_nit_noted` / `pr_comment_scope_map_build_failed` / `verification_field_absent_in_all_findings` / `review_source_resolve_failed` / `findings_maps_build_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -1592,6 +1595,8 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
    }
    ```
 
+6. **`### 実測なし指摘 (non-blocking)` セクションの抽出 (実測必須ゲート)**: コメント本文に `### 実測なし指摘 (non-blocking)` セクションが存在する場合、その配下の表 (**6 列**: レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 — `全指摘事項` の 5 列と列数が異なる点に注意。列ズレ防止のため本セクション専用の 6 列パースを適用する) の各行を `non_blocking_findings` として retain する。これらの行は **severity_map / scope_map には投入しない** (fix 対象外のため)。件数を `non_blocking_count` として保持し、ステップ 1.4 表示・ステップ 4.6 集計に使う。セクション不在時は `non_blocking_findings` は空 (`non_blocking_count = 0`)
+
 **Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW). The `scope` column is consumed downstream by `/rite:fix` ステップ 2 (nit-noted 受け流し経路) to determine acknowledge vs. fix-required handling.
 
 **When rite review results are not found:**
@@ -1608,8 +1613,8 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 
 | Classification | Criteria | Action |
 |---------------|----------|--------|
-| **Required fix** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} AND measured == true | Must fix in this PR |
-| **Needs fix** | severity ∈ {MEDIUM, LOW-MEDIUM, LOW} AND scope ∈ {current-pr, follow-up} AND measured == true | Must fix in this PR (action required) |
+| **Required fix** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} AND measured ∈ {true, 未判定 (外部ツール由来)} | Must fix in this PR |
+| **Needs fix** | severity ∈ {MEDIUM, LOW-MEDIUM, LOW} AND scope ∈ {current-pr, follow-up} AND measured ∈ {true, 未判定 (外部ツール由来)} | Must fix in this PR (action required) |
 | **nit (認知のみ)** | scope == "nit-noted" | Reply-only via ステップ 2.4 `nit-noted-reply`; NOT a fix target |
 | **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (verification 欠落含む。rite review 由来の JSON / 会話 / Markdown 経路のみ — 経路別判定は下記 measured lookup 参照) | 表示のみ; NOT a fix target (実測必須ゲート — PR コメント記録は pr-review ステップ 6.1.d が実施済み) |
 | **External review** | Findings from human reviewers (実測必須ゲートの**対象外** — `Verification:` アンカーを構造的に持てないため measured 未判定でも non-blocking に落とさない) | Action required |
@@ -1623,14 +1628,19 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; route directly to ステップ 2.4 `nit-noted-reply` (skip ステップ 2.1 selection、fix commit 対象外)
    - **measured lookup (実測必須ゲート)**: 当該 finding の `verification.measured` を経路別に確認する:
-     - **JSON 経路 (Priority 0/2/3 Raw JSON)**: `(.verification.measured // false)` (verification 欠落の旧形式は false = non-blocking、エラーにしない — AC-5)
+     - **JSON 経路 (Priority 0/2/3 Raw JSON)**: `(.verification.measured // false)` (verification 欠落の旧形式は false = non-blocking、エラーにしない — AC-5)。**legacy ファイルの可視化 (silent 0 件 fix 防止)**: findings が 1 件以上あり、かつ**全 finding が `verification` キーを持たない** JSON を読んだ場合は、一度だけ以下を bash で実行して WARNING + retained flag を emit する (判定は measured=false のまま変えない — AC-5。旧 plugin 生成 / 手書きの legacy ファイルで fix が no-op になることを observable にする。`{n}` は findings 件数、`{json_path}` は読取ソースパスをリテラル置換):
+       ```bash
+       # 判定 jq: jq -e '(.findings | length) > 0 and all(.findings[]; has("verification") | not)' {json_path}
+       echo "WARNING: レビュー結果 JSON の全 finding ({n} 件) が verification フィールドを持ちません (verification 導入前の旧形式 / 手書き)。実測必須ゲートにより全件 non-blocking 扱いとなり、本 fix は修正 0 件で完了します。次回 /rite:pr-review が新形式で再生成します" >&2
+       echo "[CONTEXT] REVIEW_SOURCE_VERIFICATION_ABSENT=1; reason=verification_field_absent_in_all_findings; count={n}" >&2
+       ```
      - **会話コンテキスト経路 (Priority 1)**: integrated report の `### 実測なし指摘 (non-blocking)` section に載っているかで判定する
-     - **Markdown パース経路 (Target Comment Fast Path の rite レビュー結果 / Priority 3 legacy Markdown fallthrough)**: `### 全指摘事項` 表の行は pr-review ステップ 5.3.0.M 通過済み (非実測分は `### 実測なし指摘` セクションへ分離済み) のため **measured=true として扱う**。同一コメント内に `### 実測なし指摘 (non-blocking)` セクションが存在する場合、その表の行のみ measured=false。5.3.0.M 導入前の旧コメントも全件 blocking 前提で描画されているため true 既定が後方互換上も正しい
+     - **Markdown パース経路 (Target Comment Fast Path の rite レビュー結果 / Priority 3 legacy Markdown fallthrough)**: `### 全指摘事項` 表の行は pr-review ステップ 5.3.0.M 通過済み (非実測分は `### 実測なし指摘` セクションへ分離済み) のため **measured=true として扱う**。同一コメント内の `### 実測なし指摘 (non-blocking)` セクションの行 (ステップ 1.2.1 の抽出手順で `non_blocking_findings` として取得) のみ measured=false。5.3.0.M 導入前の旧コメントも全件 blocking 前提で描画されているため true 既定が後方互換上も正しい。**JSON 経路 (欠落 = false) と既定が逆になるのは意図的な設計判断**: Markdown の `全指摘事項` 表は 5.3.0.M で非実測分を分離した後の blocking 集合であるのに対し、JSON の `findings[]` は non-blocking 分も含む全集合を保持するため (schema invariant #2 の意図的緩和の明文化も参照)
      - **外部ツール / best-effort parse 経路 (手動コメント / verified-review 等)**: `Verification:` アンカーを構造的に持てないため**実測必須ゲートの対象外** — measured 未判定を non-blocking と解釈せず、従来どおり External review (Action required = blocking) として扱う
      判定の結果 **`measured == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外、reply も不要 (記録は pr-review ステップ 6.1.d の PR コメントが担う)
-   - `scope ∈ {current-pr, follow-up}` AND measured == true AND severity ∈ {CRITICAL, HIGH} -> Required fix
-   - `scope ∈ {current-pr, follow-up}` AND measured == true AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
-5. Unresolved comments not in `severity_map` -> External review
+   - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定 (外部ツール由来)} AND severity ∈ {CRITICAL, HIGH} -> Required fix
+   - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定 (外部ツール由来)} AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
+5. Unresolved comments not in `severity_map`、**または** 外部ツール / best-effort parse 由来で severity_map に登録済みだが measured 未判定の finding (Confidence override 取込分を含む — 実測必須ゲートの対象外) -> External review (Action required = blocking)
 
 
 **Mapping method with `severity_map`:**
@@ -1843,7 +1853,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 1. scope_map[file:line] を look up
 2. `scope == "nit-noted"` → ステップ 2.1 (本セクション) を skip、ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を 1 件投稿
 3. **measured lookup (実測必須ゲート)**: ステップ 1.3 で **non-blocking (実測なし)** に分類された finding (`verification.measured == false`、verification 欠落の旧形式含む) → ステップ 2.1 (本セクション) を **skip** し、ステップ 2.4 の reply も投稿しない (fix commit 対象外。記録は pr-review ステップ 6.1.d の PR コメントが担う)
-4. `scope ∈ {current-pr, follow-up}` (measured == true) または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行
+4. `scope ∈ {current-pr, follow-up}` かつ **measured != false** (= measured == true、または外部ツール / best-effort parse 由来で measured **未判定** — ステップ 1.3 の External review 行参照)、または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行 (Confidence override で取り込んだ外部ツール finding もここに含まれ、silent skip されない)
 5. nit-noted / non-blocking skip 経路では「コードを修正する / accept (認知のみ) / 説明・返信のみ」の選択 UI は **表示しない** (ユーザー判断不要)。nit-noted reply の冪等性は ステップ 2.4 サブステップ内で comment ID 単位で管理される
 
 
@@ -2425,7 +2435,7 @@ EOF
 - すべての nit-noted finding を処理し終えたら本サブステップ終了
 - 投稿失敗 (gh api POST 失敗 / rate limit / network error) は `[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=...` を emit し、当該 finding は skip して次へ進む (non-blocking、`acknowledged_nit_count` 集計対象外)
 - すべての投稿が完了したら次の Phase へ進む:
-  - **nit-only PR** (`acknowledged_nit_count == total_count` かつ non-nit findings 0 件): ステップ 3 (commit) を skip し ステップ 4.2 / 4.3 へ直行 (working tree への変更ゼロのため commit 不要)
+  - **fix commit 不要 PR** (`fix_count == 0` かつ working tree に変更なし — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在): ステップ 3 (commit) を skip し ステップ 4.2 / 4.3 へ直行 (working tree への変更ゼロのため commit 不要。空 `git commit` の失敗と fix-cycle-state への無関係 diff 記録を防ぐ。旧 nit-only 限定条件 `acknowledged_nit_count == total_count` を一般化した条件 — non-blocking 分類も fix/reply を発生させないため同じ理由で skip 対象)
   - **mixed PR** (nit-noted + non-nit findings 混在): non-nit findings は通常通り ステップ 2.2/2.3 経由で ステップ 3 (commit) へ進む。nit-noted reply は parallel に投稿済の状態で commit に embed される
 
 **Why no commit**: [design-rationale.md#nit-noted-reply-notes](references/design-rationale.md#nit-noted-reply-notes)

@@ -184,12 +184,14 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     review_source="fallback"
     review_source_path=""
   elif ! jq -e '
-    all(.findings[]?; (.verification == null) or ((.verification | type) == "object"))
+    all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))
   ' "$review_file_path" >/dev/null 2>&1; then
-    # verification 型ガード (review-result-schema.md): verification は object または欠落 (null) のみ受理。
-    # 非 object (boolean / string / array) は後続 invariant #2 の nested access が jq rc=5 になり
-    # invariant 違反と誤合流して事実と逆の診断を出すため、前段で専用 reason により fail-fast する。
-    echo "エラー: --review-file の findings[].verification が object / null 以外の型を含みます (手書き JSON の型崩れ)" >&2
+    # verification 型ガード (review-result-schema.md): verification は object または欠落 (null)、
+    # measured は boolean または欠落 (null) のみ受理。非 object の verification は invariant #2 の
+    # nested access が jq rc=5 になり誤診断と合流し、非 bool の measured ("true" 文字列等) は
+    # `// false` で silent に non-blocking 化して mergeable 偽装 bypass になるため、前段で
+    # 専用 reason により fail-fast する。measured の存在は要求しない (verification:{} → default mapping 維持)。
+    echo "エラー: --review-file の findings[].verification が型崩れです (verification は object/null、measured は boolean/null のみ受理)" >&2
     echo "  期待: \"verification\": {\"measured\": bool, \"repro\": string|null, \"failing_test\": string|null} または欠落" >&2
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" >&2
     review_source="fallback"
@@ -461,9 +463,9 @@ if [ -z "$review_source" ]; then
         # 次回の lexicographic sort で選ばれないようにする。WARNING を出すだけで corrupted file を
         # 残すと、次回呼び出し時も同じファイルが最新 timestamp として選ばれ、同一 WARNING が
         # 繰り返される無限 ring に陥る。
-        # ⚠️ corrupt file rename ロジック (Instance 1/2 — jq parse failure path)
-        # 同一ロジックが下の schema_required_fields_missing path (Instance 2/2) にも複製されている。
-        # 変更時は両方を同時に更新すること (ドリフト防止)。
+        # ⚠️ corrupt file rename ロジック (Instance 1/3 — jq parse failure path)
+        # 同一ロジックが下の schema_required_fields_missing path (Instance 2/3) と verification type guard path (Instance 3/3) にも複製されている。
+        # 変更時は 3 箇所を同時に更新すること (ドリフト防止)。
         # mv の stderr を tempfile に退避し、失敗時に原因を可視化する。
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
@@ -509,12 +511,32 @@ if [ -z "$review_source" ]; then
         review_source="pr_comment"
         review_source_path=""
       elif ! jq -e '
-        all(.findings[]?; (.verification == null) or ((.verification | type) == "object"))
+        all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))
       ' "$latest_file" >/dev/null 2>&1; then
-        # verification 型ガード (P0 と対称): 非 object は invariant #2 の nested access が jq rc=5 になり
-        # 誤診断と合流するため、前段で専用 reason により Priority 3 へ routing する。
-        echo "WARNING: $latest_file の findings[].verification が object / null 以外の型を含みます (型崩れ)。Priority 3 に routing します。" >&2
+        # verification 型ガード (P0 と対称): 非 object の verification、および非 bool の measured
+        # ("measured": "true" 等) は invariant #2 の判定を歪める (nested access の jq rc=5 誤合流 /
+        # 文字列 "true" の silent non-blocking 化 = mergeable 偽装 bypass) ため、前段で専用 reason により
+        # Priority 3 へ routing する。measured の存在は要求しない (verification:{} → default mapping 維持)。
+        echo "WARNING: $latest_file の findings[].verification が型崩れです (verification は object/null、measured は boolean/null のみ受理)。Priority 3 に routing します。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" >&2
+        # ⚠️ corrupt file rename ロジック (Instance 3/3 — verification type guard path)
+        # Instance 1/3 (jq parse failure) / 2/3 (schema_required_fields_missing) と同一ロジック。
+        # 型崩れは構造的 schema 違反で自己修復しないため、sibling と同じく rename して
+        # 次回 lexicographic sort で選ばれないようにする (WARNING 反復の防止)。
+        corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
+        corrupt_suffix=".corrupt-${corrupt_epoch}"
+        mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-corrupt-mv-err-XXXXXX" 2>/dev/null) || mv_err=""
+        if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
+          echo "  type-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
+        else
+          mv_corrupt_vtype_rc=$?
+          echo "  WARNING: type-invalid file の rename に失敗 (rc=$mv_corrupt_vtype_rc)。次回 fix で同じ WARNING が再発します" >&2
+          if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
+            head -3 "$mv_err" | sed 's/^/    /' >&2
+          fi
+          echo "    手動削除: rm \"$latest_file\"" >&2
+        fi
+        [ -n "$mv_err" ] && rm -f "$mv_err"
         review_source="pr_comment"
         review_source_path=""
       elif ! jq -e '

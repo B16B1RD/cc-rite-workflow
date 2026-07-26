@@ -349,6 +349,49 @@ JSON
 run --pr-number 123 --review-file-path "$verification_bool_p0" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
 assert_rc 0 "p0 verification type invalid -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 verification type guard reason"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 verification type guard -> fallback routing (no silent fall-through to P1-3)"
+
+# measured サブフィールド型ガード (P2): measured が非 bool ("true" 文字列) -> 専用 reason で reject
+# (measured:"true" は `// false` で silent に non-blocking 化し mergeable 偽装 bypass になる経路 —
+#  型ガードが boolean/null 以外を前段で loud に落とすことを positive control で pin する)
+cat > "$RR/707-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":707,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":"true","repro":"cmd => boom","failing_test":null}}]}
+JSON
+run --pr-number 707 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 measured type invalid (string) -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 measured type guard reason"
+assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 measured type invalid must not be accepted as local_file"
+if ls "$RR"/707-20260101000000.json.corrupt-* >/dev/null 2>&1; then
+  pass "type-invalid file renamed to .corrupt-* (Instance 3/3)"
+else
+  fail "type-invalid file NOT renamed (Instance 3/3)"
+fi
+
+# measured 欠落 (verification:{}) は default mapping 対象として受理される (型ガードは measured の存在を要求しない)
+cat > "$RR/708-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":708,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{}}]}
+JSON
+run --pr-number 708 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 empty verification object -> accepted (measured absent = default mapping)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 empty verification object accepted marker"
+assert_err_lacks "reason=local_file_verification_type_invalid" "type guard must not fire for verification:{}"
+
+# -----------------------------------------------------------------
+echo "--- Test 10: 3-site parity (static) — 型ガード / invariant #2 measured 節 ---"
+# 同一 jq 述語が review-source-resolve.sh (P0/P2 の 2 site) と fix/SKILL.md (P3 の 1 site) に
+# 同数出現することを静的に検証する (片側だけ更新される drift の検出。P3 は markdown 埋め込み
+# bash のため実行テスト不能 — grep parity で pin する)
+GUARD_PRED='((.verification.measured | type) == "boolean")'
+INV2_PRED='((.verification.measured // false) != true)'
+FIX_MD="$SCRIPT_DIR/../../skills/fix/SKILL.md"
+guard_sh_count=$(grep -cF "$GUARD_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" || true)
+inv2_sh_count=$(grep -cF "$INV2_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" || true)
+guard_md_count=$(grep -cF "$GUARD_PRED" "$FIX_MD" || true)
+inv2_md_count=$(grep -cF "$INV2_PRED" "$FIX_MD" || true)
+if [ "$guard_sh_count" = "2" ]; then pass "parity: type guard predicate x2 in review-source-resolve.sh"; else fail "parity: type guard predicate expected 2 in .sh, got $guard_sh_count"; fi
+if [ "$inv2_sh_count" = "2" ]; then pass "parity: invariant #2 measured clause x2 in review-source-resolve.sh"; else fail "parity: invariant #2 measured clause expected 2 in .sh, got $inv2_sh_count"; fi
+if [ "$guard_md_count" = "1" ]; then pass "parity: type guard predicate x1 in fix/SKILL.md (P3)"; else fail "parity: type guard predicate expected 1 in fix/SKILL.md, got $guard_md_count"; fi
+if [ "$inv2_md_count" = "1" ]; then pass "parity: invariant #2 measured clause x1 in fix/SKILL.md (P3)"; else fail "parity: invariant #2 measured clause expected 1 in fix/SKILL.md, got $inv2_md_count"; fi
 
 # -----------------------------------------------------------------
 echo ""

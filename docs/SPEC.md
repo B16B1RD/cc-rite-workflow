@@ -410,7 +410,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true`; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |
 | `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
-| `pr_review.post_comment` | PR review output destination |
+| `pr_review.post_comment` | PR review output destination. The non-measured findings record comment (`📜 rite 非実測指摘の記録`, single update-in-place comment from the Measured CONFIRMED Gate) is posted **independently of this setting** (not subject to the opt-out — it upholds Issue #2024 D-01 "record non-measured findings as a PR comment") |
 | `wiki.*` | Experience Wiki — `enabled` (opt-out), `branch_strategy`, `auto_ingest`, `auto_query`, `auto_lint`, `growth_check.*` |
 | `metrics.*` | Execution metrics recording |
 | `language` | `auto` / `ja` / `en` |
