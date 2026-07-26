@@ -61,9 +61,25 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 3. **Observed Likelihood 基準**: この問題が発生する call site を今のコードから Grep で示せるか？（ハイポセティカル禁止）
 4. **立証責任基準**: 指摘の内容欄に「{file}:{line} でこの入力が渡される」と書けるか？（証拠提示必須）
 
+さらに、掲載可否とは独立に次を自問してください（**No でも報告可**。掲載可否は上の 4 自問だけが決めます）:
+
+5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → 実測ありとして記録される。No → 実測なしとして記録される）
+
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
 | {CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW} | {current-pr/follow-up/nit-noted} | {file:line} | {WHAT: 何が問題か} + {WHY: なぜ問題か（影響・リスク・既存パターンとの比較）} | {FIX: 修正方法} + {EXAMPLE: コード例（該当時）} |
+
+**`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は実測の記録を担う直交アンカー。実測できた指摘は両方を末尾に付けること）:
+
+> ⚠️ **`Verification:` アンカーの LHS/RHS に raw `|` (パイプ) を含めないこと。** テーブルのセル境界と衝突し、アンカーを機械抽出できず実測の記録が失われます。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
+
+```
+{WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined
+```
+
+```
+{WHAT + WHY の叙述}<br>Likelihood-Evidence: runtime_observation printf '%s' "$raw" ¦ jq -e '.a' が false を返す<br>Verification: repro printf '%s' "$raw" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)
+```
 
 
 ### 推奨事項

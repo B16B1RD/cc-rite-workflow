@@ -184,6 +184,21 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     review_source="fallback"
     review_source_path=""
   elif ! jq -e '
+    all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))
+  ' "$review_file_path" >/dev/null 2>&1; then
+    # verification 型ガード (review-result-schema.md §verification 型ガード (read 側)):
+    # verification は object または欠落 (null)、measured は boolean または欠落 (null) のみ受理する。
+    # 後段の cross-field invariant より前に置く理由は 2 つ:
+    #   - 非 object の verification は nested access が jq ランタイムエラー (rc=5) になり、
+    #     invariant 違反と区別できない診断に誤合流する
+    #   - 非 bool の measured ("true" 文字列等) は判定式の `// false` で silent に畳まれる
+    # measured の存在は要求しない (verification:{} は default mapping の対象として受理する)。
+    echo "エラー: --review-file の findings[].verification が型崩れです (verification は object/null、measured は boolean/null のみ受理)" >&2
+    echo "  期待: \"verification\": {\"measured\": bool, \"repro\": string|null, \"failing_test\": string|null} または欠落" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" >&2
+    review_source="fallback"
+    review_source_path=""
+  elif ! jq -e '
     (.overall_assessment != "mergeable")
     or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
   ' "$review_file_path" >/dev/null 2>&1; then
@@ -448,9 +463,12 @@ if [ -z "$review_source" ]; then
         # 次回の lexicographic sort で選ばれないようにする。WARNING を出すだけで corrupted file を
         # 残すと、次回呼び出し時も同じファイルが最新 timestamp として選ばれ、同一 WARNING が
         # 繰り返される無限 ring に陥る。
-        # ⚠️ corrupt file rename ロジック (Instance 1/2 — jq parse failure path)
-        # 同一ロジックが下の schema_required_fields_missing path (Instance 2/2) にも複製されている。
-        # 変更時は両方を同時に更新すること (ドリフト防止)。
+        # ⚠️ corrupt file rename ロジック (Instance 1/3 — jq parse failure path)
+        # 同一ロジックが下の schema_required_fields_missing path (Instance 2/3) と
+        # verification type guard path (Instance 3/3) にも複製されている。
+        # 3 instance の差分は「ラベル語 (corrupted / schema-invalid / type-invalid) と rc 変数名」のみで、
+        # 制御構造・emit する行数・インデントはすべて一致させること。
+        # 変更時は 3 箇所を同時に更新すること (ドリフト防止)。
         # mv の stderr を tempfile に退避し、失敗時に原因を可視化する。
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
@@ -479,17 +497,50 @@ if [ -z "$review_source" ]; then
         # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
         echo "WARNING: $latest_file の必須フィールドが欠落。Priority 3 (PR コメント) に routing します。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" >&2
+        # ⚠️ corrupt file rename ロジック (Instance 2/3 — schema_required_fields_missing path)
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
         mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-corrupt-mv-err-XXXXXX" 2>/dev/null) || mv_err=""
         if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
           echo "  schema-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
+          echo "  対処: 内容を確認後、手動で削除するか新しい review を生成してください" >&2
         else
           mv_corrupt_schema_rc=$?
           echo "  WARNING: schema-invalid file の rename に失敗 (rc=$mv_corrupt_schema_rc)。次回 fix で同じ WARNING が再発します" >&2
           if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
-            head -3 "$mv_err" | sed 's/^/    /' >&2
+            echo "    詳細 (mv stderr):" >&2
+            head -3 "$mv_err" | sed 's/^/      /' >&2
           fi
+          echo "    対処: permission denied / read-only filesystem / cross-filesystem / target exists のいずれかを確認" >&2
+          echo "    手動削除: rm \"$latest_file\"" >&2
+        fi
+        [ -n "$mv_err" ] && rm -f "$mv_err"
+        review_source="pr_comment"
+        review_source_path=""
+      elif ! jq -e '
+        all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))
+      ' "$latest_file" >/dev/null 2>&1; then
+        # verification 型ガード (Priority 0 と対称。判定式と受理範囲の SoT は
+        # review-result-schema.md §verification 型ガード (read 側))。
+        echo "WARNING: $latest_file の findings[].verification が型崩れです (verification は object/null、measured は boolean/null のみ受理)。Priority 3 に routing します。" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" >&2
+        # ⚠️ corrupt file rename ロジック (Instance 3/3 — verification type guard path)
+        # 型崩れは構造的な schema 違反で自己修復しないため、sibling instance と同じく rename して
+        # 次回の lexicographic sort で選ばれないようにする (同一 WARNING の反復を防ぐ)。
+        corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
+        corrupt_suffix=".corrupt-${corrupt_epoch}"
+        mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-corrupt-mv-err-XXXXXX" 2>/dev/null) || mv_err=""
+        if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
+          echo "  type-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
+          echo "  対処: 内容を確認後、手動で削除するか新しい review を生成してください" >&2
+        else
+          mv_corrupt_vtype_rc=$?
+          echo "  WARNING: type-invalid file の rename に失敗 (rc=$mv_corrupt_vtype_rc)。次回 fix で同じ WARNING が再発します" >&2
+          if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
+            echo "    詳細 (mv stderr):" >&2
+            head -3 "$mv_err" | sed 's/^/      /' >&2
+          fi
+          echo "    対処: permission denied / read-only filesystem / cross-filesystem / target exists のいずれかを確認" >&2
           echo "    手動削除: rm \"$latest_file\"" >&2
         fi
         [ -n "$mv_err" ] && rm -f "$mv_err"

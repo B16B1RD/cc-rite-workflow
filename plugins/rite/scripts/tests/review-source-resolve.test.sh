@@ -259,7 +259,7 @@ assert_err_has "REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch" "p
 assert_no_fixerror_stdout "p2 stale path"
 
 # -----------------------------------------------------------------
-echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename Instance 2/2 ---"
+echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename Instance 2/3 ---"
 # invariant #4: severity CRITICAL + scope nit-noted -> pr_comment
 cat > "$RR/700-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":700,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"CRITICAL","status":"open","scope":"nit-noted"}]}
@@ -284,16 +284,136 @@ run --pr-number 702 --review-file-path "$UNSET" --conversation-decision none --p
 assert_rc 0 "p2 schema_version unknown -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=local_file_schema_version_unknown" "p2 schema_version unknown reason"
 
-# corrupt-rename Instance 2/2: valid JSON but required fields missing -> rename + pr_comment
+# corrupt-rename Instance 2/3: valid JSON but required fields missing -> rename + pr_comment
 printf '{"foo":"bar"}' > "$RR/703-20260101000000.json"
 run --pr-number 703 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
 assert_rc 0 "p2 schema_required_fields_missing -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" "p2 schema_required_fields_missing reason"
 if ls "$RR"/703-20260101000000.json.corrupt-* >/dev/null 2>&1; then
-  pass "schema-invalid file renamed to .corrupt-* (Instance 2/2)"
+  pass "schema-invalid file renamed to .corrupt-* (Instance 2/3)"
 else
-  fail "schema-invalid file NOT renamed (Instance 2/2)"
+  fail "schema-invalid file NOT renamed (Instance 2/3)"
 fi
+
+# -----------------------------------------------------------------
+echo "--- Test 10: verification 型ガード / default mapping (Priority 0) ---"
+# 全 fixture の overall_assessment は fix-needed。mergeable + open HIGH は cross-field
+# invariant #2 が先に発火して routing を奪うため、それでは verification の受理/reject を
+# 観測できず vacuous pass になる (invariant #2 自体は本 Issue の範囲外で無変更)。
+
+# 正準非実測形状 (review-result-schema.md §verification サブフィールド が write 側に課す形) の受理。
+# verification 欠落 / {} は「旧形式・部分形」であって主経路ではないため、この形状を直接 pin する。
+cat > "$SANDBOX/p0-verif-canonical.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":false,"repro":null,"failing_test":null}}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-canonical.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 canonical non-measured verification -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-canonical.json" "p0 canonical verification accepted"
+assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 canonical: type guard must not fire"
+
+# 実測あり形状 (measured=true + repro) も型ガードを通過する
+cat > "$SANDBOX/p0-verif-measured.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"bash cmd => observed failure","failing_test":null}}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-measured.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 measured verification -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-measured.json" "p0 measured verification accepted"
+
+# verification 欠落の旧形式が受理される (後方互換 — 型ガードは verification の存在を要求しない)
+cat > "$SANDBOX/p0-verif-absent.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-absent.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 verification absent (legacy shape) -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-absent.json" "p0 verification absent accepted"
+assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 verification absent: type guard must not fire"
+
+# verification:{} (measured 欠落) は default mapping 対象として受理される。
+# 型ガード述語を「measured の存在を要求する」形に強めた mutation はここで落ちる。
+cat > "$SANDBOX/p0-verif-empty.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{}}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-empty.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 empty verification object -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-empty.json" "p0 empty verification accepted (measured absent = default mapping)"
+assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 verification:{}: type guard must not fire"
+
+# 非 object の verification: nested access が jq rc=5 になり後段 invariant と誤合流するため、
+# 前段で専用 reason により fallback へ routing する (Priority 1-3 に silent fall-through しない)。
+cat > "$SANDBOX/p0-verif-bool.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-bool.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 verification type invalid (bool) -> exit 0 (fallback)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 verification type guard reason"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 type guard -> fallback (no silent fall-through)"
+
+# 非 bool の measured ("true" 文字列): `// false` で silent に non-blocking へ畳まれる経路を塞ぐ
+cat > "$SANDBOX/p0-measured-string.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":"true","repro":"cmd => boom","failing_test":null}}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-measured-string.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 measured type invalid (string) -> exit 0 (fallback)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 measured type guard reason"
+assert_err_lacks "[CONTEXT] REVIEW_SOURCE=explicit_file;" "p0 measured type invalid must not be accepted"
+
+# all() 普遍量化: 先頭 finding が正常でも後続の型崩れを検出する
+# (述語を .findings[0] だけ見る形に弱めた mutation はここで落ちる)
+cat > "$SANDBOX/p0-verif-multi.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-multi.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 multi-finding type guard -> exit 0 (fallback)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 all() detects 2nd finding"
+
+# -----------------------------------------------------------------
+echo "--- Test 11: verification 型ガード / default mapping (Priority 2) ---"
+# P0 の鏡像。P2 は型崩れを .corrupt-{epoch} に rename して Priority 3 へ routing する
+# (sibling の parse failure / required-fields missing と同じ扱い — 型崩れは自己修復しないため)。
+
+cat > "$RR/704-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":704,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":false,"repro":null,"failing_test":null}}]}
+JSON
+run --pr-number 704 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 canonical non-measured verification -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 canonical verification accepted"
+assert_err_lacks "reason=local_file_verification_type_invalid" "p2 canonical: type guard must not fire"
+
+cat > "$RR/705-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":705,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{}}]}
+JSON
+run --pr-number 705 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 empty verification object -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 empty verification accepted (measured absent = default mapping)"
+assert_err_lacks "reason=local_file_verification_type_invalid" "p2 verification:{}: type guard must not fire"
+
+cat > "$RR/706-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":706,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+JSON
+run --pr-number 706 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 verification type invalid (bool) -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 verification type guard reason"
+assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 type invalid must not be accepted as local_file"
+if ls "$RR"/706-20260101000000.json.corrupt-* >/dev/null 2>&1; then
+  pass "type-invalid file renamed to .corrupt-* (Instance 3/3)"
+else
+  fail "type-invalid file NOT renamed (Instance 3/3)"
+fi
+
+cat > "$RR/707-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":707,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":"true","repro":"cmd => boom","failing_test":null}}]}
+JSON
+run --pr-number 707 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 measured type invalid (string) -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 measured type guard reason"
+assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 measured type invalid must not be accepted as local_file"
+
+cat > "$RR/708-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":708,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+JSON
+run --pr-number 708 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 multi-finding type guard -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 all() detects 2nd finding"
 
 # -----------------------------------------------------------------
 echo ""

@@ -167,6 +167,35 @@ The `Likelihood-Evidence:` prefix is the required anchor for downstream mechanic
 
 **Hypothetical Exception Category interaction**: Reviewers in the Hypothetical Exception Categories (security / database migration / devops infra / dependencies) MAY omit the `Likelihood-Evidence:` line when the finding is explicitly Hypothetical — in that case the required marker instead is `Likelihood: Hypothetical (例外カテゴリ: <name>)` in the `内容` column, as specified in each of those reviewer skill files. This is the single exception to the mandatory `Likelihood-Evidence:` rule.
 
+### Verification: runtime 実測の添付
+
+<a id="verification-runtime-measurement"></a>
+
+指摘に runtime 実測 (実際に走らせて観測した誤動作、または落ちるテスト) を伴う場合、`内容` 列に以下の machine-readable アンカーを添付する。形式は schema 側で固定されている — [review-result-schema.md §verification サブフィールド](../references/review-result-schema.md#verification-サブフィールド)。
+
+**Machine-readable format**:
+
+```
+Verification: repro <再現コマンド> => <観測される誤動作>
+Verification: failing_test <テストパス> => <失敗出力>
+```
+
+| アンカー形式 | 記入例 |
+|---|---|
+| `Verification: repro` | `Verification: repro bash hooks/flow-state.sh get --field x => ERROR: invalid field name` |
+| `Verification: failing_test` | `Verification: failing_test hooks/tests/test-flow-state.sh => TC-07 FAILED: expected 0 got 1` |
+
+**Placement**: `Likelihood-Evidence:` 行と同じ規約 — `内容` 列の末尾に置く。Markdown テーブルセル内では `<br>` を separator に使うか、WHAT + WHY 叙述の後に同一論理行で続ける。
+
+**Rules**:
+
+- **アンカーの有無は、指摘を報告してよいかどうかを変えない。** 掲載可否は上記「Necessary conditions for inclusion in 指摘事項」の 3 ゲートが決める。実測できない懸念も、3 ゲートを満たすなら従来どおり報告する。本アンカーは「その指摘に実測の裏付けがあるか」を機械可読な形で記録するためのもので、`findings[].verification` として保存される。
+- `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として記録される。
+- `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は掲載可否 (Observed Likelihood Gate) を担い、`Verification:` は実測の記録を担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` の形式でも添付すること (両方を書く)。
+- 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
+- `=>` の右辺 (観測結果) を空にしない。実測結果を書けないなら、そもそもアンカーを付けずに報告する (証跡なしの `Verification:` は [invariant #6](../references/review-result-schema.md#cross-field-invariants-型レベルで表現しきれない制約) により `measured=false` へ降格される)。
+- **アンカーの LHS/RHS に raw `|` (パイプ) を含めないこと。** Markdown テーブルセル内ではセル境界と衝突して表構造を壊し、アンカーを機械抽出する側もセル境界を跨げないため、パイプを含む再現コマンドは抽出できず実測の記録が失われる。パイプを含むコマンドは `¦` (U+00A6) で代替表記し、その旨を実測結果側に添える。例: `Verification: repro printf '%s' "$json" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)`
+
 ### Hypothetical downgrade patterns
 
 The following patterns are typical Hypothetical claims that MUST be downgraded (unless the reviewer is in an Exception Category):
