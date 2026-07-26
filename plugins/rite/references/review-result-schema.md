@@ -288,9 +288,9 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 
 ### 実測なし指摘 (non-blocking)
 
-| Reviewer | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
-|----------|--------|----------|------------|------|---------|
-| security-reviewer | MEDIUM | nit-noted | path/to/config.ts | ファイル全体への指摘 (行非依存) | 設定ファイルヘッダにコンテキスト説明を追加 |
+| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|-----------|--------|----------|------------|------|---------|
+| code-quality-reviewer | MEDIUM | current-pr | path/to/config.ts | 設定キーの説明が実装と乖離 (実測なし) | 設定ファイルヘッダの説明を実装スキーマに同期 |
 
 ---
 
@@ -321,6 +321,24 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
       "description": "エラーハンドリングが不足",
       "suggestion": "try-catch を追加",
       "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "code-quality-reviewer",
+      "category": "code_quality",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": false,
+        "repro": null,
+        "failing_test": null
+      },
+      "file": "path/to/config.ts",
+      "line": null,
+      "description": "設定キーの説明が実装と乖離 (実測なし)",
+      "suggestion": "設定ファイルヘッダの説明を実装スキーマに同期",
+      "status": "open"
     }
   ]
 }
@@ -328,7 +346,8 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 ````
 
 - 既存の Markdown テーブル形式は保持 (後方互換、人間可読性)
-- `### 実測なし指摘 (non-blocking)` セクション (非実測 finding が 1 件以上あるときのみ出力) は **6 列** (Reviewer 列を先頭に追加) — reviewer 毎の `#### {reviewer}` 見出し下に置かれる 全指摘事項テーブル (5 列) と異なり、複数 reviewer の非実測指摘を単一テーブルに集約するため Reviewer 列が必要。列構成は `pr-review.md` ステップ 6.1.d のコメント本文テーブル (integrated-report-templates.md の実測なし指摘 section) と同一
+- `### 実測なし指摘 (non-blocking)` セクション (非実測 finding が 1 件以上あるときのみ出力) は **6 列** (レビュアー列を先頭に追加) — reviewer 毎の `#### {reviewer}` 見出し下に置かれる 全指摘事項テーブル (5 列) と異なり、複数 reviewer の非実測指摘を単一テーブルに集約するためレビュアー列が必要。列構成・ヘッダ表記は `integrated-report-templates.md` の「実測なし指摘」section (ステップ 5.4 統合レポート) と同一。ステップ 6.1.d が投稿する別コメント (`📜 rite 非実測指摘の記録`) も同じ 6 列構成・同一ヘッダだが**独立したコメント**である (本節が定めるのは 6.1.b 内 section の形式)
+- **本セクションに `scope == "nit-noted"` の行を出力してはならない** — nit-noted finding は nit 経路が先取し `non_measured_findings` に入らない (fix/SKILL.md ステップ 1.2.1 step 6 規則 (a) / assessment-rules.md §5.3.0.M)。一方 **Raw JSON の `findings[]` には nit-noted を含む全 finding を保持する** (JSON は全量、Markdown セクションは非実測 ∧ 非 nit のみという写像の非対称に注意)。Markdown 側に出した非実測 finding は必ず Raw JSON 側にも対応する finding (verification.measured=false) として存在させる (欠落すると Priority 3 経路で finding が消失する)
 - 末尾に `### 📄 Raw JSON` セクションを追加し、code fence で JSON を埋め込む
 - `/rite:fix` ステップ 1.2.0 Priority 3 は code fence 内の JSON を `---` separator 以降の **最後** の `### 📄 Raw JSON` section に scope 限定して抽出する。awk パーサの対象は PR コメント本文 (`gh pr view --json comments` で取得した文字列) のみで、リポジトリ内の本ドキュメント (schema.md) を読むことはない。scope 限定の目的は、finding の `description` / `suggestion` 列内に literal `### 📄 Raw JSON` 文字列が含まれる場合 (本 PR 自身が該当) の誤捕捉を防ぐこと。POSIX awk のみで動作する 1-pass + END 逆方向スキャン実装は fix.md ステップ 1.2.0 の bash block を参照
 

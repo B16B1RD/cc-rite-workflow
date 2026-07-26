@@ -2265,11 +2265,12 @@ fi
 
 ### 6.1 Output Review Result (Local Save + Conditional PR Comment)
 
-Output the review results via two independent paths. Use `mktemp` + `--body-file` to safely handle markdown content for the PR comment path.
+Output the review results via three independent paths. Use `mktemp` + `--body-file` to safely handle markdown content for the PR comment paths.
 
-This phase now performs **two independent outputs**:
+This phase now performs **three independent outputs**:
 1. **Local JSON file save** (always, even when `{post_comment_mode}=false`)
 2. **PR comment post** (only when `{post_comment_mode}=true` from ステップ 1.0)
+3. **非実測指摘の記録コメント** (always — `{post_comment_mode}` に**依存しない**。ステップ 6.1.d。既定設定 `post_comment: false` でも 6.1.c 完了後に必ず 6.1.d を評価する)
 
 ステップ 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-required-fields-snippet-canonical` の canonical jq snippet を参照):
 
@@ -2446,6 +2447,8 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
 
 **`post_comment_mode=false` と `LOCAL_SAVE_FAILED=1` が同時に成立する場合**: `review-skip-notification.sh` の machine-enforced gate により必ずケース 2 (⚠️ ERROR) が選択され、ステップ 6 は `exit 2` で終了する。Claude の自然言語判断には依存しない (silent data loss 防止)。WARNING のみの exit 0 経路はユーザー可視性と CI 検出性を両立できないため hard fail に統一する。
 
+**6.1.d への hand-off**: 本サブステップ (ケース 1 正常終了) の完了後、`{post_comment_mode}` の値に関わらず**必ず ステップ 6.1.d を評価する** (6.1.d は本フェーズの第 3 の独立出力経路であり、6.1.c の skip 通知で ステップ 6.1 を完了扱いにしてはならない)。ケース 2 (`exit 2` hard fail) はステップ 6 全体が fail するため 6.1.d に進まない (永続化失敗時は非実測記録より復旧が優先)。
+
 #### 6.1.d 非実測指摘の PR コメント記録 (non-blocking、条件付き実行)
 
 **Condition**: (a) ステップ 5.3.0.M で `non_blocking_findings` に分類された finding が **1 件以上** ある、または (b) 0 件だが**既存の記録コメントが存在する** (収束 cycle の記録最新化) 場合に実行する。**(b) の判定は下記 step 0 の検索結果 (`existing_id`) を用いる** — 判定と実行を単一手順に一本化するため、`non_blocking_findings` が 0 件でも**必ず step 0 (検索のみ、副作用なし) を実行**し、`0 件 ∧ existing_id 空` なら step 1 以降を skip する (投稿ゼロ = AC-4 の指摘ゼロ経路を維持)。`0 件 ∧ 検索 degraded` も skip する (事実と異なる 0 件クリアコメントを新規作成しない)。`{post_comment_mode}` には **依存しない** — 非実測指摘の記録は D-01 (破棄せず PR コメント記録) の担保であり、通常レビューコメントの opt-in 設定とは独立に実行する (`pr_review.post_comment: false` の opt-out 対象外であることは `templates/config/rite-config.yml` の post_comment 解説・docs/SPEC.md・**docs/CONFIGURATION.md (Full schema reference)** にも明記済み — 設定の意味論と実装を一致させる)。
@@ -2471,8 +2474,10 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    fi
    [ -n "$gh_err" ] && rm -f "$gh_err"
    set +o pipefail
-   echo "[CONTEXT] NONBLOCKING_LOOKUP=done; pr={pr_number}; existing_id=${existing_id:-none}; degraded=$lookup_degraded"
+   echo "[CONTEXT] NONBLOCKING_LOOKUP=done; pr={pr_number}; existing_id=${existing_id}; degraded=$lookup_degraded"
    ```
+
+   marker の `existing_id=` は**未検出時は空文字**になる (`none` 等の sentinel 文字列は emit しない — step 2 のリテラル置換で `[ -n "none" ]` が真になり存在しない comment id への PATCH 404 を誘発するため)。
 
    **skip 判定** (marker の値で分岐): `non_blocking_count == 0` かつ `existing_id` 空 (degraded 含む) → **step 1 以降を skip** して本サブステップ終了。それ以外 → step 1 へ。
 
@@ -2487,8 +2492,8 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    **non-blocking** に分類されました (mergeable 判定を block しません)。マージ後に人間が
    拾い直せるようここに記録します。
 
-   | Reviewer | Severity | Scope | ファイル:行 | 内容 | 推奨対応 |
-   |----------|----------|-------|------------|------|---------|
+   | レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+   |-----------|--------|----------|------------|------|---------|
    | {reviewer_type} | {severity} | {scope} | {file}:{line} | {description} | {suggestion} |
 
    📎 reviewed_commit: {current_commit_sha}
@@ -2506,10 +2511,12 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    📎 reviewed_commit: {current_commit_sha}
    ```
 
-2. **投稿 (update-in-place 冪等 + 非ブロッキング契約、AC-3)**: 以下の bash を実行する。`existing_id` は step 0 の marker 値、`{non_blocking_count}` は `non_blocking_findings` の件数 (variant B では `0`) をリテラル置換する。create 分岐は `count > 0` でガードする (0 件で既存なしの新規作成 — 事実と異なるコメント — を機械的に遮断)。**gh 失敗はループを止めない**:
+2. **投稿 (update-in-place 冪等 + 非ブロッキング契約、AC-3)**: 以下の bash を実行する。**`{existing_comment_id_from_p61d_step0}` は step 0 の `NONBLOCKING_LOOKUP` marker の `existing_id=` 値 (未検出時は空文字) をリテラル置換する** — step 0 と本 step は別 Bash 呼び出し (間に step 1 の Write が入る) のため shell 変数は引き継がれない。6.1.b の `{json_saved_from_p61a}` 等と同じ brace-placeholder idiom。`{non_blocking_count}` は `non_blocking_findings` の件数 (variant B では `0`) をリテラル置換する。create 分岐は `count > 0` でガードする (0 件で既存なしの新規作成 — 事実と異なるコメント — を機械的に遮断)。**gh 失敗はループを止めない**:
 
    ```bash
    # ステップ 6.1.d step 2: PATCH (update-in-place) / create (count ガード付き)
+   # existing_id は step 0 marker のリテラル置換で束縛する (cross-Bash-call の shell 変数参照は禁止)
+   existing_id="{existing_comment_id_from_p61d_step0}"
    if [ -n "$existing_id" ]; then
      if gh api --method PATCH "repos/{owner_repo}/issues/comments/${existing_id}" \
           --field body=@"{review_tmp_dir}/rite-nonblocking-{pr_number}.md" >/dev/null; then

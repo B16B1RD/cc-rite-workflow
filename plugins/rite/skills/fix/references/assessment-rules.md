@@ -98,8 +98,10 @@ For each finding in 全指摘事項 (post-5.3.0):
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
 ```
-(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+\S.*=>[[:space:]]*\S
+(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[[:space:]]*(?!<br)[^|[:space:]]
 ```
+
+LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。マッチしない場合は安全側 (non-blocking 降格 + WARNING) に倒れる。
 
 **non_blocking_findings の扱い**:
 
@@ -183,7 +185,7 @@ When `review_mode == "verification"`, output the following in addition to the ab
 - リグレッション: {regression_count} 件
 ```
 
-**Important**: Any findings → cannot merge → `/rite:iterate` loop continues. "Merge OK" = 0 findings.
+**Important**: Any **blocking** findings (`verification.measured == true` × `scope ∈ {current-pr, follow-up}`) → cannot merge → `/rite:iterate` loop continues. "Merge OK" = 0 blocking findings (nit-noted / non-measured のみの残存は許容 — §5.3.3 と同一定義).
 
 ## 5.3.6 Return Values to Caller (Important)
 

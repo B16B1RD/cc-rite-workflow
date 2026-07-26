@@ -441,6 +441,25 @@ if [ -n "$guard_md_line" ] && [ -n "$inv2_md_line" ] && [ "$guard_md_line" -lt "
 else
   fail "parity: P3 order drift — type guard line=$guard_md_line, invariant #2 line=$inv2_md_line"
 fi
+# P3 到達性 pin: 述語行の直前行が生きた elif 分岐そのものであること。述語テキストと行順だけの
+# parity では `elif false && ! printf` 等の死に分岐化 drift が素通りする (mutation 実測で確認済み)
+guard_md_prev=$(sed -n "$(( ${guard_md_line:-0} - 1 ))p" "$FIX_MD" 2>/dev/null || true)
+case "$guard_md_prev" in
+  "elif ! printf '%s' \"\$raw_json\" | jq -e '")
+    pass "parity: P3 type guard sits in a live elif branch"
+    ;;
+  *)
+    fail "parity: P3 type guard reachability drift — prev line: ${guard_md_prev:-<empty>}"
+    ;;
+esac
+# P3 emit pin: 専用 reason の stderr emit 行 (reason 文字列 + >&2 まで含む固定文字列) が 1 箇所
+# 存在すること。reason 改変 / stderr → stdout 化の drift は述語 parity では検出できない
+guard_emit_count=$(grep -cF 'reason=pr_comment_verification_type_invalid" >&2' "$FIX_MD" || true)
+if [ "$guard_emit_count" = "1" ]; then
+  pass "parity: P3 type guard emit line (reason + stderr redirect) pinned x1"
+else
+  fail "parity: P3 type guard emit drift — expected 1, got $guard_emit_count"
+fi
 
 # -----------------------------------------------------------------
 echo ""
