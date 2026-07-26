@@ -92,8 +92,10 @@ for required in 'ls-remote --exit-code' 'if _push_err=\$(LC_ALL=C git push origi
                 'REMOTE_BRANCH_DELETED' 'REMOTE_BRANCH_DELETE_FAILED' \
                 'REMOTE_BRANCH_ALREADY_ABSENT' 'REMOTE_BRANCH_CHECK_FAILED' \
                 '\[CONTEXT\] REMOTE_BRANCH_' \
-                'push stderr begin' 'ls-remote stderr begin'; do
-  if ! grep -q "$required" "$GUARD_SNIPPET"; then
+                '--- push stderr begin ---' '--- push stderr end ---' \
+                '--- ls-remote stderr begin ---' '--- ls-remote stderr end ---'; do
+  # `-e` は必須。`---` で始まるパターンを grep がオプションとして解釈するのを防ぐ。
+  if ! grep -q -e "$required" "$GUARD_SNIPPET"; then
     echo "FAIL: 抽出したガードに '$required' がありません — cleanup/SKILL.md ステップ 5 のガード契約が失われた可能性 (#2016 の退行)"
     echo "  抽出自体は成功しています ($(wc -l < "$GUARD_SNIPPET") 行)。アンカーではなくガード本体を確認してください"
     exit 1
@@ -237,7 +239,7 @@ fi
 echo "TC-2: existing remote ref -> push --delete runs and the ref is gone (backward compat)"
 git switch -qc "$BRANCH" 2>/dev/null
 echo "v2" > file.txt
-_setup_err=$(LC_ALL=C git add -A && LC_ALL=C git commit -qm work && LC_ALL=C git push -q origin "$BRANCH" 2>&1) \
+_setup_err=$({ LC_ALL=C git add -A && LC_ALL=C git commit -qm work && LC_ALL=C git push -q origin "$BRANCH"; } 2>&1) \
   || { echo "FATAL: TC-2 setup: commit/push に失敗: $_setup_err"; exit 1; }
 git switch -q main
 git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1 \
@@ -265,7 +267,7 @@ fi
 echo "TC-2b: push --delete failure -> REMOTE_BRANCH_DELETE_FAILED (not silent success)"
 git switch -qc "$BRANCH" 2>/dev/null || git switch -q "$BRANCH"
 echo "v3" > file.txt
-_setup_err=$(LC_ALL=C git add -A && LC_ALL=C git commit -qm work2 && LC_ALL=C git push -q origin "$BRANCH" 2>&1) \
+_setup_err=$({ LC_ALL=C git add -A && LC_ALL=C git commit -qm work2 && LC_ALL=C git push -q origin "$BRANCH"; } 2>&1) \
   || { echo "FATAL: TC-2b setup: commit/push に失敗: $_setup_err"; exit 1; }
 git switch -q main
 # setup の成立を TC-2 と同形の precondition で確認する。ここを assertion 段まで遅延させると、
@@ -346,7 +348,7 @@ elif ! printf '%s' "$decision" | grep -qE '抑止できるのは.*(gh|クライ�
   # 「できる側」を丸ごと削って冗長さを整理する編集で AC-3 の半分が無防備になる (実測で緑を確認済み)。
   fail "TC-4: 「抑止できるもの (gh クライアント側の削除)」の明示がない (AC-3 の片側のみ)"
 else
-  # F-06: 設計判断 bullet は内部 rationale で、ユーザーが読むのはステップ 3 の完了通知の方。
+  # 設計判断 bullet は内部 rationale で、ユーザーが読むのはステップ 3 の完了通知の方。
   # 欠陥 1 のユーザー可視な現れはそちらなので、旧文言の不在と新契約の存在を両方 pin する
   # (不在だけだと別の言い換えを素通しする)。
   branch_line=$(grep -n '^- ブランチ: {branch_name}' "$MERGE_MD" | head -1 | cut -d: -f2-)
@@ -356,6 +358,13 @@ else
     fail "TC-4: 完了通知が「まだ削除されていません」に戻っている (delete_branch_on_merge: true では事実虚偽)"
   elif ! printf '%s' "$branch_line" | grep -q 'delete_branch_on_merge'; then
     fail "TC-4: 完了通知がリモート側の既削除可能性 (delete_branch_on_merge) に言及していない"
+  elif ! printf '%s' "$branch_line" | grep -q '既に削除'; then
+    # 語彙 (旧文言の不在 + トークンの存在) だけでは、同じ語彙で意味を反転した文が通る。
+    # 「リモートは既に削除されている場合がある」という命題そのものを要求する。
+    fail "TC-4: 完了通知が「リモートは既に削除済みの場合がある」旨を述べていない (語彙は揃うが命題が逆の文を通す)"
+  elif printf '%s' "$branch_line" | grep -qE '必ず残|削除されません|残り続け'; then
+    # 命題の否定形も禁止する。肯定の存在だけを要求すると、肯定と否定を同居させる文で回避できる。
+    fail "TC-4: 完了通知が「リモートブランチは必ず残る」と主張している (#2016 が是正した過大主張の再導入)"
   else
     pass "TC-4 (設計判断と完了通知の双方が抑止できるもの/できないものを区別して記述)"
   fi
@@ -368,6 +377,23 @@ echo "TC-6: cleanup/SKILL.md ステップ 12 pins the remote-side judgement rule
 remote_section=$(awk '/^  \*\*リモート側\*\*/{f=1} f{print} f && /^- `\{projects_status_result\}/{found=1; exit} END{exit !found}' "$CLEANUP_MD")
 awk_rc=$?
 tc6_fail=""
+# 散文 pin の positive control。本ファイルは「pin が見出しラベルや語彙にだけ一致し、operative な
+# 命題を捉えていない」欠陥を繰り返し出した (デリミタ pin・行頭一致 pin が、いずれも太字見出しだけで
+# 充足していた)。pin を足すたびに人手で確かめる運用は同じ穴を再生産するので、pin 自身に対して
+# 「弱化形にはマッチしないこと」を機械的に要求する。_brace_detect の positive control と同じ規律。
+#   $1 検査対象テキスト / $2 pin パターン (grep -E) / $3 弱化形 probe / $4 失敗時の説明
+assert_prose_pin() {
+  local _text="$1" _pattern="$2" _probe="$3" _label="$4"
+  [ -n "$tc6_fail" ] && return 0
+  if ! printf '%s' "$_text" | grep -qE "$_pattern"; then
+    tc6_fail="$_label"
+    return 0
+  fi
+  # probe は「規約を弱めた形／見出しだけ残した形」。ここに一致する pin は命題を捉えていない。
+  if printf '%s' "$_probe" | grep -qE "$_pattern"; then
+    tc6_fail="pin が弱すぎる: $_label のパターンが弱化形にも一致する (命題ではなく語彙を捉えている)"
+  fi
+}
 # 抽出の両端を検査する。**空抽出 (開始アンカー消失) を先に判定する** — 開始アンカーが消えると
 # awk は f=0 のまま閉じアンカー規則に到達せず found=0 → rc=1 を返すため、rc ゲートを先に置くと
 # 開始アンカー消失まで「over-capture」と誤診断してしまう (保守者が反対側の端を調べることになる)。
@@ -380,7 +406,7 @@ tc6_fail=""
 # 含めるのは、リモート用 `git push origin --delete` をローカル用 `git branch -D` に差し替える
 # 誤処方（アンカー化規約が防ごうとしているもの）も同時に捕捉するため。
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETE_FAILED=1.*: ` ` \+.*git push origin --delete' || tc6_fail="REMOTE_BRANCH_DELETE_FAILED が「未完了 ` ` + git push origin --delete での手動削除」になっていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*: ` ` \+.*削除.*試行' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が「未完了 ` ` + 削除未試行の案内」になっていない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*: ` ` \+.*削除.*試行.*ls-remote --exit-code --heads' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が「未完了 ` ` + 削除未試行の案内」になっていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*: `x`' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETED=1.*: `x`' || tc6_fail="REMOTE_BRANCH_DELETED が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="リモート側 fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
@@ -404,10 +430,14 @@ done
 # 以下 2 本の grep をファイル全体ではなくここへスコープする — ファイル全体を対象にすると、
 # 判定ブロックから当該文を削除して「過去の設計では…」等の歴史メモへ格下げしても、文字列が
 # どこかに残っていれば PASS してしまう。
-judgement_block=$(awk '/^- `\{local_branch_check\}`/{f=1} f && /^- `\{projects_status_result\}`/{exit} f{print}' "$CLEANUP_MD")
+judgement_block=$(awk '/^- `\{local_branch_check\}`/{f=1} f && /^- `\{projects_status_result\}`/{found=1; exit} f{print} END{exit !found}' "$CLEANUP_MD")
+jb_rc=$?
 [ -z "$tc6_fail" ] && { [ -n "$judgement_block" ] || tc6_fail="{local_branch_check} の判定ブロックを抽出できない"; }
+[ -z "$tc6_fail" ] && { [ "$jb_rc" -eq 0 ] || tc6_fail="判定ブロックの閉じアンカーに到達しなかった (over-capture — スコープ限定が無効化されている)"; }
 # 両側独立評価の AND ルール文 (ローカル成功でリモート失敗が握り潰される回帰の pin)
-[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE '両方が `x` 相当のとき(だけ|に限り) `x`' || tc6_fail="ローカル/リモート独立評価の AND ルール文が判定ブロックにない"; }
+assert_prose_pin "$judgement_block" '両方が `x` 相当のとき(だけ|に限り) `x`' \
+  'ローカル側判定とリモート側判定を独立に評価する' \
+  "ローカル/リモート独立評価の AND ルール文が判定ブロックにない"
 # marker 名の部分文字列衝突: REMOTE_BRANCH_DELETE_FAILED ⊃ BRANCH_DELETE_FAILED のため、
 # ローカル側ルールが非アンカーだとリモート marker 行に誤一致し誤処方になる。
 # ローカル側の 4 ルール + fallback がすべて `[CONTEXT] ` prefix 込みでアンカーされていることを pin。
@@ -429,27 +459,55 @@ fi
 # ならない。片側だけ `x` に倒す mutation は「同一条件に正反対の意味」という矛盾を復活させる。
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_DELETE_\*.*無いとき: ` ` \+' || tc6_fail="ローカル側 fallback が未完了 ` ` になっていない (リモート側と非対称: marker 不在を削除成功と読む契約に退行)"; }
 # ローカル側もリモート側と対称に branch= スコープを要求する。grep 対象は $local_section に限定する
-# — ファイル全体を対象にすると `BRANCH_DELETED=1; branch=...` がリモート側行の部分文字列として
-# 一致し vacuous に PASS する。
+# — ファイル全体を対象にするとステップ 5 の emitter コード行 (`echo "[CONTEXT] BRANCH_DELETED=1;
+# branch={branch_name}"`) に一致してしまい、判定表側からルールを消しても vacuous に PASS する。
 for _m in BRANCH_DELETE_DEFERRED BRANCH_DELETED BRANCH_DELETE_FAILED BRANCH_DELETE_UNMERGED; do
   [ -n "$tc6_fail" ] && break
   printf '%s' "$local_section" | grep -q "\[CONTEXT\] $_m=1; branch={branch_name}" \
     || tc6_fail="ローカル側ルール $_m が branch={branch_name} までスコープされていない (batch-run の stale marker に誤一致する)"
 done
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*.*branch={branch_name}' || tc6_fail="ローカル側 fallback が branch={branch_name} までスコープされていない"; }
-# F-05: 3 つ目の marker family ({session_worktree_check}) の fallback スコープ。同一の失敗モードを
+# 3 つ目の marker family ({session_worktree_check}) の fallback スコープ。同一の失敗モードを
 # 2 family で pin しておきながら 3 個目を落とすと、旧無条件形へ戻す退行が検出されない。
-wt_section=$(awk '/^- `\{session_worktree_check\}`/{f=1} f && /^- `\{local_branch_check\}`/{exit} f{print}' "$CLEANUP_MD")
+wt_section=$(awk '/^- `\{session_worktree_check\}`/{f=1} f && /^- `\{local_branch_check\}`/{found=1; exit} f{print} END{exit !found}' "$CLEANUP_MD")
+wt_rc=$?
 [ -z "$tc6_fail" ] && { [ -n "$wt_section" ] || tc6_fail="{session_worktree_check} section を抽出できない"; }
+[ -z "$tc6_fail" ] && { [ "$wt_rc" -eq 0 ] || tc6_fail="{session_worktree_check} section の閉じアンカーに到達しなかった (over-capture)"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$wt_section" | grep -q 'WORKTREE_REMOVE_\*' || tc6_fail="{session_worktree_check} fallback が WORKTREE_REMOVE_* の marker family でスコープされていない"; }
-# F-02 の規約 (デリミタ + 肯定/否定とも行頭一致) を pin する
-[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE 'デリミタに挟まれた行を data' || tc6_fail="退避 stderr をデリミタで data 扱いする規約文が判定ブロックにない"; }
-# F-03 の recency ルールを pin する
-[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE '複数行が一致.*最後の出現' || tc6_fail="同一 marker family の recency ルール文が判定ブロックにない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE 'marker 名.*\[CONTEXT\].*prefix 込み' || tc6_fail="アンカー照合の規約文が判定ブロックにない"; }
+# この family は「marker 不在 = 削除成功」が正当 (ステップ 4-W は成功時に marker を出さない)。
+# 他 2 family と前提が逆なので、判定値とその根拠の両方を pin する。
+[ -z "$tc6_fail" ] && { printf '%s' "$wt_section" | grep -qE 'WORKTREE_REMOVE_\*.*無い（削除成功）とき: `x`' || tc6_fail="{session_worktree_check} fallback の判定値 x が pin されていない"; }
+# デリミタ + 肯定/否定とも行頭一致の規約を pin する
+assert_prose_pin "$judgement_block" 'デリミタに挟まれた行を data として扱い' \
+  '**さらに prefix は行頭から一致させ、デリミタ内は data として無視する**' \
+  "退避 stderr をデリミタで data 扱いする規約文が判定ブロックにない"
+# recency ルールを pin する
+# recency は「存在」だけでなく**適用順序**まで要求する。順序が未規定だと各側見出しの
+# 「上から評価し最初に一致」と正面から矛盾し、同一入力に 2 通りの答えが出る。
+assert_prose_pin "$judgement_block" '最後の出現を採用.*判定ルールを評価する前' \
+  '同一 marker family で複数行が一致したときは最後の出現を採用する' \
+  "recency の適用順序 (ルール評価より前) が判定ブロックに明記されていない"
+# 各側見出しが 2 段手順になっていること。段の入れ替え禁止まで要求する。
+assert_prose_pin "$judgement_block" '段の順序を入れ替えてはならない' \
+  '上から評価し最初に一致したものを採用' \
+  "各側の見出しが 2 段手順 (recency で 1 行選択 → ルール評価) になっていない"
+# branch= の右端。左端だけ塞いで右端を開けたままにしない。
+assert_prose_pin "$judgement_block" '直後が `;` または行末' \
+  'branch={branch_name} までスコープして照合する' \
+  "branch= の右端 (直後が ; または行末) が規定されていない"
+assert_prose_pin "$judgement_block" 'marker 名.*\[CONTEXT\].*prefix 込みで一致させる' \
+  'marker は [CONTEXT] と一緒に扱う' \
+  "アンカー照合の規約文が判定ブロックにない"
 # 行頭一致の規約。ステップ 5 は git の stderr (外部由来・複数行) を marker と同じストリームへ
 # 流すため、prefix だけ要求して位置を要求しないと WARNING 本文中の断片が marker として読まれる。
-[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE 'prefix.*行頭.*一致' || tc6_fail="行頭一致の規約文が判定ブロックにない (行中の [CONTEXT] が marker として読まれる)"; }
+# operative 節を要求する。probe は太字見出しだけの形 — 以前の pin はこれで充足していた。
+assert_prose_pin "$judgement_block" '肯定・否定とも行頭一致' \
+  '**さらに prefix は行頭から一致させ、デリミタ内は data として無視する**' \
+  "行頭一致の規約が肯定・否定の両方に掛かっていない (fallback が先行ルールの否定にならない)"
+# インデントが security boundary である旨と、列 0 のみを marker 候補とする契約
+assert_prose_pin "$judgement_block" '列 0 から始まる行だけを marker 候補' \
+  '退避テキストはデリミタで囲む' \
+  "退避テキストのインデント契約 (列 0 のみ marker 候補) が判定ブロックにない"
 if [ -n "$tc6_fail" ]; then
   fail "TC-6: $tc6_fail"
 else
