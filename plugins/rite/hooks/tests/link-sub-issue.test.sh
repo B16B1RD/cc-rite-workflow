@@ -36,7 +36,7 @@ else
 fi
 
 rc=0
-out=$(bash "$TARGET" 'asakaguchi' '{repo}' '1' '2' 2>&1) || rc=$?
+out=$(bash "$TARGET" 'B16B1RD' '{repo}' '1' '2' 2>&1) || rc=$?
 if [ "$rc" -ne 0 ]; then
   pass "TC-02 unsubstituted repo placeholder → non-zero exit"
 else

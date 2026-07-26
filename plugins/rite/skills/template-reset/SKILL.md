@@ -144,7 +144,7 @@ assignees: ''
 <!-- Links to related issues, PRs, or documentation -->
 
 ---
-🤖 Generated with [rite workflow](https://github.com/asakaguchi/cc-rite-workflow)
+🤖 Generated with [rite workflow](https://github.com/B16B1RD/cc-rite-workflow)
 ```
 
 #### Bug Report Template
@@ -188,7 +188,7 @@ assignees: ''
 <!-- Screenshots, logs, or other relevant information -->
 
 ---
-🤖 Generated with [rite workflow](https://github.com/asakaguchi/cc-rite-workflow)
+🤖 Generated with [rite workflow](https://github.com/B16B1RD/cc-rite-workflow)
 ```
 
 ### 3.2 Generate PR Template

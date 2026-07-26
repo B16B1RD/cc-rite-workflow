@@ -164,7 +164,7 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 | `{pr_number}` | 現在の PR 番号 (review-fix ループのコンテキスト) | `1253` |
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
-| `{owner}` | `rite-config.yml` → `github.projects.owner` | `asakaguchi` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
 | `{plugin_root}` | [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
 
 ```bash

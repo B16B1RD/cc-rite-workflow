@@ -23,7 +23,7 @@
 #     "projects": {
 #       "enabled": true,                    # default: true
 #       "project_number": 6,
-#       "owner": "asakaguchi",
+#       "owner": "B16B1RD",
 #       "status": "Todo",                   # default: "Todo"
 #       "priority": "High|Medium|Low"
 #     },

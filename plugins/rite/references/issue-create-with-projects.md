@@ -53,7 +53,7 @@ args_json=$(jq -n \
  --argjson labels '["label1"]' \
  --argjson enabled true \
  --argjson project_number 2 \
- --arg owner "asakaguchi" \
+ --arg owner "B16B1RD" \
  --arg status "Todo" \
  --arg priority "Medium" \
  --arg complexity "S" \
