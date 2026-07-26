@@ -263,8 +263,10 @@
 | [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) | patterns | 散文を契約として grep で pin すると、命題ではなく見出しラベルや語彙にマッチして意味を反転させても緑のまま通る。pin 自身に positive control（意味を弱めた probe に一致しないこと）を課すとこの欠陥クラスが自動検出される。あわせて pin の scope（判定ブロックへの抽出）・単位（要素ごと）・対象文字列（判定値と識別子に限定、語尾や助詞を含めない）に規律が要る。 | 2026-07-26T19:05:51+09:00 | high |
 | [存在確認と破壊的操作で ref 解決規則が異なると、検証した ref 集合と破壊する ref 集合がずれる](pages/anti-patterns/ref-verify-delete-resolution-asymmetry.md) | anti-patterns | git では `ls-remote <pattern>` が slash 境界の tail 一致、`push --delete <dst>` が全 namespace 解決で、どちらも完全一致ではない。存在確認を refs/heads/ 修飾で行いながら削除を非修飾で行うと検証した集合と削除する集合が一致しない窓が生まれる。破壊的操作は検証と同じ ref 修飾で行い、検証側は rc だけでなく出力の ref 名まで完全一致で確かめる。 | 2026-07-26T19:05:51+09:00 | high |
 | [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) | heuristics | LLM が解釈する散文を契約として扱う設計では、規約の強度を上げるたびに次の穴が可視化され指摘が収束しない。指摘の主成分が「前 cycle の修正が作った欠陥」「規約の適用範囲」に移ったら、それは PR の品質不足ではなくループが価値を生まなくなった合図であり、サーキットブレーカーの終端判断材料にする。 | 2026-07-26T19:05:51+09:00 | high |
+| [リポジトリ owner rename の一括置換はリポジトリ外成果物に届かない](pages/heuristics/repo-rename-sweep-misses-external-artifacts.md) | heuristics | owner/URL の一括置換 PR は git grep で見えるツリー内しか更新できない。アップロード済み動画などリポジトリ外に出た成果物はソース置換後も旧表記を表示し続けるため、成果物の隣に暫定注記 + 正しい導線を置き、本体差し替えは follow-up に分離して収束させる。PR #2029 で実測。 | 2026-07-26T20:51:40+09:00 | medium |
+| [暫定注記は対象成果物内の同種表記を全数列挙してから書く](pages/heuristics/interim-notice-enumerate-all-stale-references-first.md) | heuristics | 陳腐化した成果物に暫定注記を書くとき、対象内の同種表記を最初に全数把握（生成元ソースの Read / grep）してから列挙しないと、部分列挙が次レビューで Enumeration Completeness の指摘になり cycle を 1 回無駄にする。収束確認も「全数 grep で件数一致」で機械的に判定できる。PR #2029 の 3 cycle 収束で実測。 | 2026-07-26T20:51:40+09:00 | medium |
 ## 統計
 
-- 総ページ数: 255
-- ドメイン別: patterns=74, heuristics=96, anti-patterns=85
-- 最終更新: 2026-07-26T19:05:51+09:00
+- 総ページ数: 257
+- ドメイン別: patterns=74, heuristics=98, anti-patterns=85
+- 最終更新: 2026-07-26T20:51:40+09:00

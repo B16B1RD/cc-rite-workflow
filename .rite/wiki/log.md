@@ -10,6 +10,8 @@
 * **Create**: [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) — raw/reviews/20260726T044237Z-pr-2022.md, raw/reviews/20260726T035338Z-pr-2022.md, raw/reviews/20260726T020559Z-pr-2022.md, raw/fixes/20260726T040115Z-pr-2022.md, raw/fixes/20260726T021138Z-pr-2022.md を新規ページ化（規約強化の階段に終端がない / 終端判断は指摘の性質の変化で見る / 上限を伝えると収束方向に働く）
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/fixes/20260726T062935Z-pr-2022.md, raw/fixes/20260726T055002Z-pr-2022.md, raw/reviews/20260726T035338Z-pr-2022.md, raw/reviews/20260726T044237Z-pr-2022.md を統合（規約を新設した同じコミットで自分がその規約を破る変種。「2 箇所に適用して 3 個目を落とす」が同一 PR 内で 3 cycle 連続再発）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=280, broken_refs=0
+* **Create**: [リポジトリ owner rename の一括置換はリポジトリ外成果物に届かない](pages/heuristics/repo-rename-sweep-misses-external-artifacts.md) — raw/reviews/20260726T110848Z-pr-2029.md, raw/fixes/20260726T111323Z-pr-2029.md を新規ページ化（git grep はリポジトリ外成果物と誤 owner スロットに届かない / 暫定注記 + follow-up 分離 / transfer redirect と project_number 連番の再確認）
+* **Create**: [暫定注記は対象成果物内の同種表記を全数列挙してから書く](pages/heuristics/interim-notice-enumerate-all-stale-references-first.md) — raw/reviews/20260726T112624Z-pr-2029.md, raw/reviews/20260726T114240Z-pr-2029.md, raw/fixes/20260726T112821Z-pr-2029.md を新規ページ化（部分列挙は Enumeration Completeness で再指摘され cycle を消費 / 全数 grep が機械的な終了条件になる / 英日ペア同時更新）
 
 ## 2026-07-25
 
