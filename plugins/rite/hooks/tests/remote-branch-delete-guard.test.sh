@@ -33,8 +33,10 @@
 #                      marker family スコープ + アンカー/行頭規約 + ローカル/リモート独立評価の
 #                      AND ルール文を静的に pin する
 #                      (emitter だけ検証して consumer が無防備になる穴を塞ぐ)
-# - TC-5 = T-04       : 抽出した実物のガードから --exit-code を除いた mutant で TC-1 相当が
-#                      落ちる (ガードが load-bearing であることの実証)
+# - TC-7       (#2016 cycle 3): marker のデリミタ文字 (`;` `=`) や空値を含むブランチ名は
+#                      fail-fast で弾き、削除を試行せず sentinel marker で fallback へ倒す
+# - TC-5 = T-04       : 抽出した実物のガードから完全一致検証を弱めた mutant で TC-1 相当が
+#                      落ちる (完全一致検証が load-bearing であることの実証)
 #
 # marker 照合の規約: 正の assertion (marker が出ていること) は consumer 側と同形の
 # 「行頭 + `[CONTEXT] ` 込み」で照合する。負の assertion (marker が出ていないこと) は
@@ -51,7 +53,11 @@ TEST_DIR=""
 cleanup() { [ -n "$TEST_DIR" ] && rm -rf "$TEST_DIR"; return 0; }
 trap cleanup EXIT
 TEST_DIR="$(mktemp -d)" || exit 1
-TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
+# canonical 化は別変数へ受けてから代入する。`TEST_DIR="$(cd ... )" || exit 1` は cd/pwd が
+# 失敗したとき `|| exit 1` が走る前に TEST_DIR を空文字で上書きするため、EXIT trap の cleanup()
+# が no-op になり直前に作った temp dir が leak する (:48-49 の設計意図と正面から矛盾する)。
+_canon="$(cd "$TEST_DIR" && pwd -P)" || exit 1
+TEST_DIR="$_canon"
 REAL_GIT="$(command -v git)" || { echo "FATAL: git が見つかりません"; exit 1; }
 PASS=0
 FAIL=0
@@ -66,10 +72,11 @@ BRANCH="fix/issue-2016-sample"
 # 閉じアンカーに `^esac$` を使わないこと — ガードは case を入れ子にしており (ブランチ名の
 # デリミタ検査 → 存在確認 → rc 分岐)、最初の `^esac$` で切ると内側の case までしか取れず
 # `fi ;; esac` が落ちて構文エラーになる。fence 終端なら入れ子の深さに依存しない。
-extract_guard() {
+extract_guard_as() {
   awk '/^# リモートブランチ削除/{f=1} f && /^```$/{exit} f{print}' "$CLEANUP_MD" \
-    | sed -e "s|{branch_name}|$BRANCH|g"
+    | sed -e "s|{branch_name}|$1|g"
 }
+extract_guard() { extract_guard_as "$BRANCH"; }
 GUARD_SNIPPET="$TEST_DIR/guard.sh"
 extract_guard > "$GUARD_SNIPPET"
 # 必須文字列を 2 群に分け、**診断文面を分ける**。抽出の破損とガード契約の消失は原因も対処も別物で、
@@ -79,13 +86,22 @@ extract_guard > "$GUARD_SNIPPET"
 # 群 1: 抽出の**構造**健全性のみ。閉じアンカーが抽出結果の末尾に来ていることを見る。
 # 契約文字列 (marker 名や `[CONTEXT] ` prefix) はここに置かない — 置くと契約の消失を
 # 「アンカーが変更された可能性」と報じてしまい、群を分けた目的そのものが失われる。
-for required in '^esac$'; do
+for required in '^case "' '^esac$'; do
   if ! grep -q "$required" "$GUARD_SNIPPET"; then
     echo "FAIL: cleanup/SKILL.md からのガード抽出に失敗しました ('$required' 不在。アンカーが変更された可能性)"
     echo "  抽出結果: $(wc -l < "$GUARD_SNIPPET") 行"
     exit 1
   fi
 done
+# 列 0 の `case`/`esac` が 2 組あること。ガードは外側 (ブランチ名の事前検証) と内側 (ls-remote の
+# rc 分岐) の 2 段構造で、外側を de-wrap する mutation は内側だけで `^case`/`^esac` を充足するため
+# 存在検査では捕捉できない。組数まで要求して外側の消失を検出する。
+_case_n=$(grep -c '^case "' "$GUARD_SNIPPET"); _esac_n=$(grep -c '^esac$' "$GUARD_SNIPPET")
+if [ "$_case_n" -ne 2 ] || [ "$_esac_n" -ne 2 ]; then
+  echo "FAIL: 抽出したガードの case/esac が 2 組ではありません (case=$_case_n, esac=$_esac_n)"
+  echo "  外側のブランチ名事前検証 case が de-wrap された可能性があります (#2016 の fail-fast ガード消失)"
+  exit 1
+fi
 # 群 2: ガードの振る舞い契約。抽出は成功しているので、不在は artifact 側で契約が失われたことを意味する。
 # 4 経路すべてを含める (どれか 1 経路だけが対象外という非対称を残さない)。
 # `[CONTEXT] ` prefix は consumer (ステップ 12) がアンカー照合する契約の一部なので群 2 に置く。
@@ -103,6 +119,9 @@ done
 for required in 'ls-remote --exit-code' \
                 'if _push_err=\$(LC_ALL=C git push origin --delete "refs/heads/' \
                 '-v r="refs/heads/' '$2 == r' \
+                '*[\;=]*)' 'rc=invalid-branch-name' 'branch=<unsupported branch name>' \
+                'rc=mktemp-failed' 'if \[ -z "\$_ls_out" \]; then' \
+                '_ls_rc="awk-\${_match_rc}"' 'if \[ "\$_ls_rc" -eq 0 \]; then' \
                 'REMOTE_BRANCH_DELETED=1; branch=' 'REMOTE_BRANCH_DELETE_FAILED=1; branch=' \
                 'REMOTE_BRANCH_ALREADY_ABSENT=1; branch=' 'REMOTE_BRANCH_CHECK_FAILED=1; branch=' \
                 '\[CONTEXT\] REMOTE_BRANCH_' \
@@ -121,10 +140,14 @@ done
 # 範囲に含めない。群 2 (抽出結果が対象) では 3 箇所目だけが無防備という非対称が残るため、
 # $CLEANUP_MD 全体を対象にする群として分離する。群 2 に混ぜると「抽出は成功しています」という
 # 群 2 の診断文面と矛盾する (抽出範囲外の文字列を抽出結果に要求することになる)。
-for required in '--- branch delete stderr begin ---' '--- branch delete stderr end ---'; do
+for required in '--- branch delete stderr begin ---' '--- branch delete stderr end ---' \
+                '"\$del_err" | tr -d ' \
+                'git show-ref --verify --quiet "refs/heads/{branch_name}"' \
+                '\[CONTEXT\] BRANCH_ALREADY_ABSENT=1; branch={branch_name}' \
+                '\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch={branch_name}'; do
   if ! grep -q -e "$required" "$CLEANUP_MD"; then
-    echo "FAIL: cleanup/SKILL.md に '$required' がありません — ローカル削除失敗時の退避 stderr が"
-    echo "  data/marker 分離されていません (複数行 stderr の 2 行目以降が列 0 に着地し marker として読まれる)"
+    echo "FAIL: cleanup/SKILL.md に '$required' がありません — ローカル削除側の契約が失われています"
+    echo "  (退避 stderr の data/marker 分離、または存在確認 rc の 3 分岐 = 不在 / 判定不能 / 存在)"
     exit 1
   fi
 done
@@ -291,8 +314,11 @@ git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1 \
   || { echo "FATAL: 入れ子衝突 ref が full refname pattern に一致しない — TC-1/TC-5 の完全一致 pin が vacuous になる"; exit 1; }
 
 # 同名タグ。`git push origin --delete <shortname>` は remote の**全 namespace** に対して <dst> を
-# 解決するため、ブランチが不在でタグが存在すると**タグを削除する** (実測)。ガードは削除先も
-# `refs/heads/` で修飾しており、TC-1/TC-2 がその回帰 pin になる (修飾を外すとタグが消える)。
+# 解決するため、ブランチが不在でタグのみが存在すると**タグを削除する** (実測)。ガードは削除先も
+# `refs/heads/` で修飾しており、この fixture がその回帰 net になる。ただし**発火の仕方は間接的**で、
+# ブランチとタグが同名で共存する TC-2 の状態では非修飾 <dst> は `dst refspec ... matches more than
+# one` で **push 自体が失敗する**ため、TC-2 は「タグが消えた」ではなく「ブランチが削除されていない」
+# として落ちる (実測確認済み。タグ fixture を外すと同じ mutation が全 TC 緑を通る)。
 _setup_err=$(LC_ALL=C git push -q origin "HEAD:refs/tags/$BRANCH" 2>&1) \
   || { echo "FATAL: 同名タグの push に失敗: $_setup_err"; exit 1; }
 tag_present() { git ls-remote origin "refs/tags/$BRANCH" 2>/dev/null | grep -q .; }
@@ -321,11 +347,11 @@ elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=
   fail "TC-1: REMOTE_BRANCH_ALREADY_ABSENT marker が branch= スコープ込みで行頭に出ていない (出力: '$out')"
 elif printf '%s' "$out" | grep -q '^error:'; then
   fail "TC-1: error: 行が出力された (AC-1 違反。出力: '$out')"
-elif ! tag_present; then
-  # 削除先の namespace 修飾が外れると、ブランチ不在でも同名タグが <dst> の解決対象になり消える。
-  fail "TC-1: 同名タグ refs/tags/$BRANCH が消えた (削除先の refs/heads/ 修飾が外れている)"
 else
-  pass "TC-1 (削除を試行せず既削除として marker を emit、同名タグも保持)"
+  # ここでタグ非削除を assert しない — TC-1 は存在確認が不在 (rc=2) に落ちて push 自体を呼ばない
+  # ため、修飾が外れていてもタグは無傷であり、assertion は構造的に到達不能になる。タグ fixture の
+  # 回帰 net は TC-2 側 (ambiguous dst による push 失敗) が担う。
+  pass "TC-1 (削除を試行せず既削除として marker を emit)"
 fi
 
 # ─── TC-2 (T-02 / AC-2): ref 存在 → 削除経路へ入りリモートから消える ───
@@ -341,7 +367,7 @@ out=$(run_guard "$GUARD_SNIPPET")
 if ! push_delete_called; then
   fail "TC-2: git push origin --delete が呼ばれていない (delete_branch_on_merge:false 環境の機能後退)"
 elif branch_exists_exact; then
-  fail "TC-2: リモートブランチが削除されていない"
+  fail "TC-2: リモートブランチが削除されていない (削除先の refs/heads/ 修飾が外れ、同名タグとの ambiguous dst で push が失敗した可能性)"
 elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_DELETED=1; branch=$BRANCH(;|\$)"; then
   # ステップ 12 の契約は 4 経路すべてが marker を出すこと。成功も positive marker で表さないと
   # 「marker 不在 = 削除成功」に戻り、ステップ 5 の未実行と削除成功が区別できなくなる (#2016)。
@@ -352,11 +378,10 @@ elif printf '%s' "$out" | grep -qE 'REMOTE_BRANCH_(DELETE_FAILED|CHECK_FAILED|AL
   # 行中/行頭に関わらず「出ていること」を捕捉したいので、アンカーすると検出範囲が狭まる。
   fail "TC-2: 削除成功なのに失敗系 marker が出た。ステップ 12 が正常系を未完了と報告する (出力: '$out')"
 elif ! tag_present; then
-  # 削除対象は refs/heads/ に限定される。同名タグが巻き添えで消えるのは <dst> の namespace
-  # 修飾が外れたことを意味する (共有リモートのタグ削除は不可逆)。
+  # 到達しにくいが残す — 将来 fixture が変わりタグのみが存在する状態で本 TC が走る場合の net。
   fail "TC-2: ブランチ削除に伴って同名タグ refs/tags/$BRANCH まで消えた (削除先の refs/heads/ 修飾が外れている)"
 else
-  pass "TC-2 (従来どおりリモートブランチを削除、REMOTE_BRANCH_DELETED を emit し失敗系 marker は不在、同名タグは保持)"
+  pass "TC-2 (従来どおりリモートブランチを削除、REMOTE_BRANCH_DELETED を emit し失敗系 marker は不在)"
 fi
 
 # ─── TC-2b (AC-1/AC-4): rc=0 経路で push --delete が失敗 → REMOTE_BRANCH_DELETE_FAILED ───
@@ -423,6 +448,26 @@ else
   pass "TC-3 (判定不能を未完了として surface、原因テキストも保持、退避 stderr は列 0 に到達しない)"
 fi
 git remote set-url origin "$ORIGIN"
+
+# ─── TC-7 (#2016 cycle 3): 契約を満たせないブランチ名は削除を試行しない (fail-fast) ───
+# marker 契約は `branch=<値>` の右端を「直後が `;` または行末」で照合する。`;` と `=` はどちらも
+# 合法な refname 文字なので、これらを含む名前を marker に載せると別ブランチの判定ルールへ誤帰属
+# しうる。ガードは実ブランチ名を載せず sentinel を出して consumer を fallback (未確認) へ倒す。
+echo "TC-7: invalid branch name (marker delimiters) -> fail-fast, no push --delete, sentinel marker"
+EVIL_BRANCH="fix/issue-2016;branch=other"
+EVIL_SNIPPET="$TEST_DIR/guard-evil.sh"
+extract_guard_as "$EVIL_BRANCH" > "$EVIL_SNIPPET"
+out=$(run_guard "$EVIL_SNIPPET")
+if push_delete_called; then
+  fail "TC-7: 契約を満たせないブランチ名なのに push --delete が呼ばれた ($(cat "$CALL_LOG"))"
+elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=invalid-branch-name'; then
+  fail "TC-7: fail-fast の sentinel marker が行頭に出ていない (出力: '$out')"
+elif printf '%s' "$out" | grep -q "^\[CONTEXT\].*branch=$EVIL_BRANCH"; then
+  # 実ブランチ名を marker に載せると `branch=other` が別ブランチのルールに右端境界で一致する。
+  fail "TC-7: marker 行に実ブランチ名が載っている (guard が防ぐはずの誤帰属経路が開いたまま。出力: '$out')"
+else
+  pass "TC-7 (契約外のブランチ名は削除を試行せず sentinel で fallback へ倒す)"
+fi
 
 # ─── TC-4 (T-03 / AC-3): merge/SKILL.md の設計判断が保証を主張していない ───
 # 「保証する」literal の不在だけを見ると「必ず残ることを保証します」等の言い換えを素通しするため
@@ -564,7 +609,7 @@ fi
 # ローカル側もリモート側と対称に branch= スコープを要求する。grep 対象は $local_section に限定する
 # — ファイル全体を対象にするとステップ 5 の emitter コード行 (`echo "[CONTEXT] BRANCH_DELETED=1;
 # branch={branch_name}"`) に一致してしまい、判定表側からルールを消しても vacuous に PASS する。
-for _m in BRANCH_DELETE_DEFERRED BRANCH_DELETED BRANCH_DELETE_FAILED BRANCH_DELETE_UNMERGED BRANCH_ALREADY_ABSENT; do
+for _m in BRANCH_DELETE_DEFERRED BRANCH_DELETED BRANCH_DELETE_FAILED BRANCH_DELETE_UNMERGED BRANCH_ALREADY_ABSENT BRANCH_CHECK_FAILED; do
   [ -n "$tc6_fail" ] && break
   printf '%s' "$local_section" | grep -q "\[CONTEXT\] $_m=1; branch={branch_name}" \
     || tc6_fail="ローカル側ルール $_m が branch={branch_name} までスコープされていない (batch-run の stale marker に誤一致する)"
@@ -576,6 +621,11 @@ done
 # 正常系に倒したのと同型の症状がローカル側に残る、#2016)。fallback の family 列挙にも含める。
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_ALREADY_ABSENT=1; branch=\{branch_name\}.*: `x`' || tc6_fail="ローカル側の BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*.*BRANCH_ALREADY_ABSENT' || tc6_fail="ローカル側 fallback の marker family 列挙に BRANCH_ALREADY_ABSENT が含まれていない"; }
+# 「存在確認に失敗 = 判定不能」を正常系に倒さないルール。リモート側 REMOTE_BRANCH_CHECK_FAILED と
+# 対称で、これが無いと `git show-ref` の rc=128 (リポジトリ外での実行等) が「既に不在」に丸められ、
+# ローカルブランチが残ったまま完了と報告される (#2016)。
+[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_CHECK_FAILED=1; branch=\{branch_name\}.*: ` ` \+' || tc6_fail="ローカル側の BRANCH_CHECK_FAILED が未完了 ` ` になっていない (判定不能を正常系に倒す退行)"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*.*BRANCH_CHECK_FAILED' || tc6_fail="ローカル側 fallback の marker family 列挙に BRANCH_CHECK_FAILED が含まれていない"; }
 # 3 つ目の marker family ({session_worktree_check}) の fallback スコープ。同一の失敗モードを
 # 2 family で pin しておきながら 3 個目を落とすと、旧無条件形へ戻す退行が検出されない。
 wt_section=$(awk '/^- `\{session_worktree_check\}`/{f=1} f && /^- `\{local_branch_check\}`/{found=1; exit} f{print} END{exit !found}' "$CLEANUP_MD")
