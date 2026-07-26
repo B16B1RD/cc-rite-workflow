@@ -618,7 +618,12 @@ case "$_ls_rc" in
       echo "[CONTEXT] REMOTE_BRANCH_DELETED=1; branch={branch_name}"
     else
       echo "[CONTEXT] REMOTE_BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
-      echo "WARNING: リモートブランチ {branch_name} の削除に失敗しました: $_push_err" >&2
+      # 外部由来テキストはデリミタで囲む。行頭一致だけでは複数行 stderr の 2 行目以降が列 0 に
+      # 着地して marker として読まれうる（ステップ 4 の dirty ファイル一覧と同じ data/marker 分離）。
+      echo "WARNING: リモートブランチ {branch_name} の削除に失敗しました:" >&2
+      echo "--- push stderr begin ---" >&2
+      printf '%s\n' "$_push_err" >&2
+      echo "--- push stderr end ---" >&2
     fi ;;
   2) echo "[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}" ;;
   *)
@@ -630,7 +635,10 @@ case "$_ls_rc" in
     # 捕捉した stderr は文末に置く。ls-remote の stderr は空行を含む複数行が常態のため、文中に
     # 挿入すると operative な日本語（削除を試行していない旨）が英文パラグラフの末尾に孤立する。
     # 直上のローカル削除が $del_err を文末に置いているのと同じ配置。
-    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません (git ls-remote rc=${_ls_rc}): ${_ls_err}" >&2 ;;
+    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません (git ls-remote rc=${_ls_rc}):" >&2
+    echo "--- ls-remote stderr begin ---" >&2
+    printf '%s\n' "${_ls_err}" >&2
+    echo "--- ls-remote stderr end ---" >&2 ;;
 esac
 ```
 
@@ -894,9 +902,9 @@ Status: {projects_status_result}
 
   **marker 名は `[CONTEXT] ` prefix 込みで一致させる（部分文字列一致させない）**: リモート側 marker `REMOTE_BRANCH_DELETE_FAILED` はローカル側 marker `BRANCH_DELETE_FAILED` を部分文字列として含むため、非アンカーで照合すると `[CONTEXT] REMOTE_BRANCH_DELETE_FAILED=1` の行にローカル側ルールが先に一致し、リモートの残渣に対してローカル削除コマンドを案内する誤処方になる（#2016）。`[CONTEXT] ` の直後から一致させれば `REMOTE_` が間に入るため衝突しない。本規約は `{base_update_check}` の `[CONTEXT] BASE_UPDATE=` 行 と同形で、今後 `REMOTE_` 系の marker を追加しても同じ衝突を構造的に防ぐ。
 
-  **さらに marker は `branch={branch_name}` までスコープして照合する**: `/rite:batch-run --merge` は同一セッション内で Issue ごとに `/rite:cleanup` をループ invoke するため、先行 Issue が残した `[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=A` 等が後続 Issue の判定時にも文脈へ残る。marker 名までしか一致条件に含めないと、リモート側は失敗ルールを先頭に評価する設計上、**stale な失敗が自分の成功 marker を必ず上書きする**（既削除の B に対して「削除に失敗しました。手動削除してください」と処方し、実行すれば本 Issue が消したはずの `error:` が再び出る）。評価順序の入れ替えは解にならない — 成功を先頭にすると今度は stale な成功が実失敗を握り潰し、本 Issue が塞いだ false-success そのものになる。ステップ 5 は 4 経路すべての marker に `; branch={branch_name}` を付けて emit しているので、照合側でスコープするだけで衝突は構造的に消える（#2016）。
+  **さらに marker は `branch={branch_name}` までスコープして照合する**: `/rite:batch-run --merge` は同一セッション内で Issue ごとに `/rite:cleanup` をループ invoke するため、先行 Issue が残した `[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=A` 等が後続 Issue の判定時にも文脈へ残る。marker 名までしか一致条件に含めないと、リモート側は失敗ルールを先頭に評価する設計上、**stale な失敗が自分の成功 marker を必ず上書きする**（既削除の B に対して「削除に失敗しました。手動削除してください」と処方し、実行すれば本 Issue が消したはずの `error:` が再び出る）。評価順序の入れ替えは解にならない — 成功を先頭にすると今度は stale な成功が実失敗を握り潰し、本 Issue が塞いだ false-success そのものになる。ステップ 5 は 4 経路すべての marker に `; branch={branch_name}` を付けて emit しているので、照合側でスコープすれば **Issue 間の**衝突は消える（#2016）。ただし `branch=` は**同一ブランチに対する cleanup 再実行**を識別できない（1 回目がネットワーク断で `CHECK_FAILED` を残し、原因解消後の 2 回目が `ALREADY_ABSENT` を出す場合、両者の `branch=` は一致する）。そのため **同一 marker family で複数行が一致したときは最後の出現を採用する**（recency）。これがないと失敗ルール先頭評価の設計上、前回実行の失敗が今回の成功を決定的に上書きし、既削除ブランチに「削除に失敗しました。手動削除してください」と誤処方する — AC-4 が禁じた症状そのものになる。recency はローカル側・リモート側の両判定に適用する。
 
-  **さらに prefix は行頭から一致させる（行中の `[CONTEXT] ` は data として無視する）**: ステップ 5 は `$_ls_err` / `$_push_err` に退避した git の stderr を WARNING 本文に載せるため、marker と同じ出力ストリームに**外部由来の複数行テキスト**が流れる。行中一致を許すと、その本文に現れた `[CONTEXT] ` 断片が marker として読まれうる。本規約はステップ 4 の dirty ファイル一覧が `--- dirty files begin/end ---` デリミタで data と marker を分離しているのと同じ目的で、以下のルールで「行があるとき」と書いた箇所はすべて**行頭一致**を意味する。
+  **さらに prefix は行頭から一致させ、デリミタ内は data として無視する**: ステップ 5 は `$_ls_err` / `$_push_err` に退避した git の stderr を WARNING に載せるため、marker と同じ出力ストリームに**外部由来の複数行テキスト**が流れる。行頭一致だけでは足りない — 複数行テキストの 2 行目以降は列 0 に着地するため、その中の `[CONTEXT] ` 行は行頭一致を突破する。そこでステップ 5 は退避 stderr を `--- push stderr begin/end ---` / `--- ls-remote stderr begin/end ---` で囲んで出力する（ステップ 4 の dirty ファイル一覧が `--- dirty files begin/end ---` で data と marker を分離しているのと同形）。**照合側はこれらのデリミタに挟まれた行を data として扱い、marker として解釈しない**。以下のルールで「行があるとき」「行がいずれも無いとき」と書いた判定は、**肯定・否定とも行頭一致**で行う（fallback を非アンカーで判定すると先行ルールの否定にならず、行中に marker 断片が現れた入力でどのルールにも一致しない未定義状態が生じる）。
 
   **ローカル側**（上から評価し最初に一致したものを採用）:
   - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中（#1670）または sandbox マスク skip（#1957）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記

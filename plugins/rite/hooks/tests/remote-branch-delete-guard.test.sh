@@ -91,7 +91,8 @@ done
 for required in 'ls-remote --exit-code' 'if _push_err=\$(LC_ALL=C git push origin --delete' \
                 'REMOTE_BRANCH_DELETED' 'REMOTE_BRANCH_DELETE_FAILED' \
                 'REMOTE_BRANCH_ALREADY_ABSENT' 'REMOTE_BRANCH_CHECK_FAILED' \
-                '\[CONTEXT\] REMOTE_BRANCH_'; do
+                '\[CONTEXT\] REMOTE_BRANCH_' \
+                'push stderr begin' 'ls-remote stderr begin'; do
   if ! grep -q "$required" "$GUARD_SNIPPET"; then
     echo "FAIL: 抽出したガードに '$required' がありません — cleanup/SKILL.md ステップ 5 のガード契約が失われた可能性 (#2016 の退行)"
     echo "  抽出自体は成功しています ($(wc -l < "$GUARD_SNIPPET") 行)。アンカーではなくガード本体を確認してください"
@@ -122,8 +123,7 @@ _brace_detect() {
 }
 # Positive control。本検査は negative assertion (何も見つからなければ PASS) のため、検出器が
 # 壊れると守っているはずの違反があっても緑になる。既知の違反を **同じ関数** に通して発火することを
-# 先に証明する (TC-8b-h と同形。develop f45be675 の「positive control を付け vacuous pass を排除する」
-# と同じ規律)。
+# 先に証明する (TC-8b-h と同形。negative assertion は検出器の非 vacuity を先に証明してから走らせる)。
 # probe は trap 済みの $TEST_DIR 配下に置く。mktemp を使うと rc 未検査のとき空パスが検出器へ渡り、
 # 「検出器が既知の違反を報告しません」という真因と異なる帰属で落ちる（$TEST_DIR は生成時に
 # ガード済みで EXIT trap の掃除対象にも入るため、rc 検査も個別の rm -f も不要になる）。
@@ -237,7 +237,8 @@ fi
 echo "TC-2: existing remote ref -> push --delete runs and the ref is gone (backward compat)"
 git switch -qc "$BRANCH" 2>/dev/null
 echo "v2" > file.txt
-git add -A && git commit -qm work && git push -q origin "$BRANCH" 2>/dev/null
+_setup_err=$(LC_ALL=C git add -A && LC_ALL=C git commit -qm work && LC_ALL=C git push -q origin "$BRANCH" 2>&1) \
+  || { echo "FATAL: TC-2 setup: commit/push に失敗: $_setup_err"; exit 1; }
 git switch -q main
 git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1 \
   || { echo "FATAL: TC-2 setup: origin へのブランチ push に失敗"; exit 1; }
@@ -264,7 +265,8 @@ fi
 echo "TC-2b: push --delete failure -> REMOTE_BRANCH_DELETE_FAILED (not silent success)"
 git switch -qc "$BRANCH" 2>/dev/null || git switch -q "$BRANCH"
 echo "v3" > file.txt
-git add -A && git commit -qm work2 && git push -q origin "$BRANCH" 2>/dev/null
+_setup_err=$(LC_ALL=C git add -A && LC_ALL=C git commit -qm work2 && LC_ALL=C git push -q origin "$BRANCH" 2>&1) \
+  || { echo "FATAL: TC-2b setup: commit/push に失敗: $_setup_err"; exit 1; }
 git switch -q main
 # setup の成立を TC-2 と同形の precondition で確認する。ここを assertion 段まで遅延させると、
 # setup 失敗が「marker が出ていない」という誤った診断に化ける。
@@ -344,7 +346,19 @@ elif ! printf '%s' "$decision" | grep -qE '抑止できるのは.*(gh|クライ�
   # 「できる側」を丸ごと削って冗長さを整理する編集で AC-3 の半分が無防備になる (実測で緑を確認済み)。
   fail "TC-4: 「抑止できるもの (gh クライアント側の削除)」の明示がない (AC-3 の片側のみ)"
 else
-  pass "TC-4 (抑止できるもの/できないものを区別して記述)"
+  # F-06: 設計判断 bullet は内部 rationale で、ユーザーが読むのはステップ 3 の完了通知の方。
+  # 欠陥 1 のユーザー可視な現れはそちらなので、旧文言の不在と新契約の存在を両方 pin する
+  # (不在だけだと別の言い換えを素通しする)。
+  branch_line=$(grep -n '^- ブランチ: {branch_name}' "$MERGE_MD" | head -1 | cut -d: -f2-)
+  if [ -z "$branch_line" ]; then
+    fail "TC-4: merge/SKILL.md の完了通知に '- ブランチ: {branch_name}' 行がない (アンカーが変更された可能性)"
+  elif printf '%s' "$branch_line" | grep -q 'まだ削除されていません'; then
+    fail "TC-4: 完了通知が「まだ削除されていません」に戻っている (delete_branch_on_merge: true では事実虚偽)"
+  elif ! printf '%s' "$branch_line" | grep -q 'delete_branch_on_merge'; then
+    fail "TC-4: 完了通知がリモート側の既削除可能性 (delete_branch_on_merge) に言及していない"
+  else
+    pass "TC-4 (設計判断と完了通知の双方が抑止できるもの/できないものを区別して記述)"
+  fi
 fi
 
 # ─── TC-6 (AC-4): ステップ 12 リモート側判定の契約を pin する ───
@@ -414,6 +428,24 @@ fi
 # ローカル側 fallback の判定値。リモート側と同じ到達条件なので同じ意味 (` ` = 未確認) でなければ
 # ならない。片側だけ `x` に倒す mutation は「同一条件に正反対の意味」という矛盾を復活させる。
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_DELETE_\*.*無いとき: ` ` \+' || tc6_fail="ローカル側 fallback が未完了 ` ` になっていない (リモート側と非対称: marker 不在を削除成功と読む契約に退行)"; }
+# ローカル側もリモート側と対称に branch= スコープを要求する。grep 対象は $local_section に限定する
+# — ファイル全体を対象にすると `BRANCH_DELETED=1; branch=...` がリモート側行の部分文字列として
+# 一致し vacuous に PASS する。
+for _m in BRANCH_DELETE_DEFERRED BRANCH_DELETED BRANCH_DELETE_FAILED BRANCH_DELETE_UNMERGED; do
+  [ -n "$tc6_fail" ] && break
+  printf '%s' "$local_section" | grep -q "\[CONTEXT\] $_m=1; branch={branch_name}" \
+    || tc6_fail="ローカル側ルール $_m が branch={branch_name} までスコープされていない (batch-run の stale marker に誤一致する)"
+done
+[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*.*branch={branch_name}' || tc6_fail="ローカル側 fallback が branch={branch_name} までスコープされていない"; }
+# F-05: 3 つ目の marker family ({session_worktree_check}) の fallback スコープ。同一の失敗モードを
+# 2 family で pin しておきながら 3 個目を落とすと、旧無条件形へ戻す退行が検出されない。
+wt_section=$(awk '/^- `\{session_worktree_check\}`/{f=1} f && /^- `\{local_branch_check\}`/{exit} f{print}' "$CLEANUP_MD")
+[ -z "$tc6_fail" ] && { [ -n "$wt_section" ] || tc6_fail="{session_worktree_check} section を抽出できない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$wt_section" | grep -q 'WORKTREE_REMOVE_\*' || tc6_fail="{session_worktree_check} fallback が WORKTREE_REMOVE_* の marker family でスコープされていない"; }
+# F-02 の規約 (デリミタ + 肯定/否定とも行頭一致) を pin する
+[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE 'デリミタに挟まれた行を data' || tc6_fail="退避 stderr をデリミタで data 扱いする規約文が判定ブロックにない"; }
+# F-03 の recency ルールを pin する
+[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE '複数行が一致.*最後の出現' || tc6_fail="同一 marker family の recency ルール文が判定ブロックにない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE 'marker 名.*\[CONTEXT\].*prefix 込み' || tc6_fail="アンカー照合の規約文が判定ブロックにない"; }
 # 行頭一致の規約。ステップ 5 は git の stderr (外部由来・複数行) を marker と同じストリームへ
 # 流すため、prefix だけ要求して位置を要求しないと WARNING 本文中の断片が marker として読まれる。
