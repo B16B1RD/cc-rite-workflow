@@ -184,6 +184,17 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     review_source="fallback"
     review_source_path=""
   elif ! jq -e '
+    all(.findings[]?; (.verification == null) or ((.verification | type) == "object"))
+  ' "$review_file_path" >/dev/null 2>&1; then
+    # verification 型ガード (review-result-schema.md): verification は object または欠落 (null) のみ受理。
+    # 非 object (boolean / string / array) は後続 invariant #2 の nested access が jq rc=5 になり
+    # invariant 違反と誤合流して事実と逆の診断を出すため、前段で専用 reason により fail-fast する。
+    echo "エラー: --review-file の findings[].verification が object / null 以外の型を含みます (手書き JSON の型崩れ)" >&2
+    echo "  期待: \"verification\": {\"measured\": bool, \"repro\": string|null, \"failing_test\": string|null} または欠落" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" >&2
+    review_source="fallback"
+    review_source_path=""
+  elif ! jq -e '
     (.overall_assessment != "mergeable")
     or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open") or ((.verification.measured // false) != true)))
   ' "$review_file_path" >/dev/null 2>&1; then
@@ -495,6 +506,15 @@ if [ -z "$review_source" ]; then
           echo "    手動削除: rm \"$latest_file\"" >&2
         fi
         [ -n "$mv_err" ] && rm -f "$mv_err"
+        review_source="pr_comment"
+        review_source_path=""
+      elif ! jq -e '
+        all(.findings[]?; (.verification == null) or ((.verification | type) == "object"))
+      ' "$latest_file" >/dev/null 2>&1; then
+        # verification 型ガード (P0 と対称): 非 object は invariant #2 の nested access が jq rc=5 になり
+        # 誤診断と合流するため、前段で専用 reason により Priority 3 へ routing する。
+        echo "WARNING: $latest_file の findings[].verification が object / null 以外の型を含みます (型崩れ)。Priority 3 に routing します。" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" >&2
         review_source="pr_comment"
         review_source_path=""
       elif ! jq -e '

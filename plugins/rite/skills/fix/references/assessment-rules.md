@@ -90,7 +90,9 @@ For each finding in 全指摘事項 (post-5.3.0):
   else:
     move to non_blocking_findings
     (severity / scope は維持したまま blocking 集合から除外。破棄しない。
-     アンカーはあるが実測内容が空の場合は schema 違反として WARNING を stderr に出し同様に降格 — invariant #6)
+     アンカーはあるが実測内容が空の場合も本 regex 層が no-match として検出し WARNING を stderr に出して
+     同様に降格する — `=>` 右辺空 / whitespace-only の検出責務は本 regex 層にある。
+     invariant #6 の canonical jq は field 全体の null/空のみ対象の write 側 backstop — review-result-schema.md 参照)
 ```
 
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):

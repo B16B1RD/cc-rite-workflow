@@ -52,18 +52,29 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 ### 指摘事項
 
-**重要**: 指摘事項テーブルに記載する項目は全て**必須修正**として扱われます。「任意」「推奨」「必須ではないが」といった修正は指摘事項に含めず、下の「推奨事項」セクションに記載してください。
+**重要**: 指摘事項テーブルに記載する項目は全て**報告必須**として扱われます。うち **`Verification:` アンカー（repro / failing_test の実測）付きのみがマージを block** し、アンカー無しの指摘は non-blocking として PR コメントに記録されます（実測必須ゲート — `_reviewer-base.md` §Verification: runtime 実測の添付）。「任意」「推奨」「必須ではないが」といった修正は指摘事項に含めず、下の「推奨事項」セクションに記載してください。
 
-指摘を挙げる前に、以下の **4 必須自問** に全て Yes で答えられるかを確認してください。いずれかが No の場合、推奨事項 欄に落とすか、報告しないでください:
+指摘を挙げる前に、以下の **5 必須自問** を確認してください。自問 1〜4 のいずれかが No の場合、推奨事項 欄に落とすか、報告しないでください。自問 5 は No でも報告可（ただし non-blocking になります）:
 
-1. **マージブロック基準**: この問題を修正しなければマージすべきでないと確信できるか？
+1. **報告価値基準**: この問題は放置すると実害（誤動作・誤誘導・contract 違反）につながると確信できるか？
 2. **Confidence 基準**: 確信度 (Confidence) が 80 以上か？
 3. **Observed Likelihood 基準**: この問題が発生する call site を今のコードから Grep で示せるか？（ハイポセティカル禁止）
 4. **立証責任基準**: 指摘の内容欄に「{file}:{line} でこの入力が渡される」と書けるか？（証拠提示必須）
+5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → blocking。No → 報告可だが non-blocking として PR コメント記録に落ちる）
 
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
 | {CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW} | {current-pr/follow-up/nit-noted} | {file:line} | {WHAT: 何が問題か} + {WHY: なぜ問題か（影響・リスク・既存パターンとの比較）} | {FIX: 修正方法} + {EXAMPLE: コード例（該当時）} |
+
+**`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は blocking 可否を担う直交アンカー。blocking を意図する指摘は両方を末尾に付けること）:
+
+```
+{WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined
+```
+
+```
+{WHAT + WHY の叙述}<br>Likelihood-Evidence: runtime_observation pytest -k test_bar で AssertionError<br>Verification: failing_test tests/test_bar.py => AssertionError: expected 0 got 1
+```
 
 
 ### 推奨事項

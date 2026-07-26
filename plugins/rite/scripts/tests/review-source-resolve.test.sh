@@ -313,6 +313,43 @@ else
   fail "schema-invalid file NOT renamed (Instance 2/2)"
 fi
 
+# invariant #2 P2 mirror (positive control): mergeable + open HIGH + measured=true -> pr_comment
+# (実測必須ゲート: measured=true の blocking finding のみ invariant #2 が発火する — P0 側 Test 3 の鏡像)
+cat > "$RR/704-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":704,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"bash cmd => observed failure","failing_test":null}}]}
+JSON
+run --pr-number 704 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 invariant #2 (measured=true) -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_cross_field_invariant_violated" "p2 invariant #2 reason"
+
+# invariant #2 P2 mirror (negative control): mergeable + open HIGH + verification 欠落 (measured=false) -> accepted
+cat > "$RR/705-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":705,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
+JSON
+run --pr-number 705 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 mergeable+non-measured HIGH -> accepted (non-blocking)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 non-measured mergeable accepted marker"
+assert_err_lacks "reason=local_file_cross_field_invariant_violated" "p2 invariant #2 must not fire for measured=false"
+
+# verification 型ガード (P2): 非 object の verification -> 専用 reason で pr_comment routing
+# (旧実装では invariant #2 の nested access が jq rc=5 になり誤診断と合流していた経路)
+cat > "$RR/706-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":706,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+JSON
+run --pr-number 706 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 verification type invalid -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 verification type guard reason"
+assert_err_lacks "reason=local_file_cross_field_invariant_violated" "p2 type guard fires before invariant #2 (no false invariant diagnosis)"
+
+# verification 型ガード (P0): 非 object の verification -> 専用 reason で fallback routing
+verification_bool_p0="$SANDBOX/verification-bool.json"
+cat > "$verification_bool_p0" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":false}]}
+JSON
+run --pr-number 123 --review-file-path "$verification_bool_p0" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 verification type invalid -> exit 0 (fallback)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 verification type guard reason"
+
 # -----------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

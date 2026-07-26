@@ -102,7 +102,7 @@ Before including a finding in the issues table, assign an internal confidence sc
 
 | Score Range | Classification | Action |
 |-------------|---------------|--------|
-| 80-100 | High confidence | Include in **指摘事項** table (mandatory fix) |
+| 80-100 | High confidence | Include in **指摘事項** table (報告必須。うち `Verification:` アンカー付きのみ blocking — [実測必須ゲート](#verification-runtime-measurement)。アンカー無しは non-blocking として PR コメント記録に落ちる) |
 | 60-79 | Medium confidence | Include in **推奨事項** section (optional improvement) |
 | 0-59 | Low confidence | Do NOT report. Insufficient evidence. |
 
@@ -124,7 +124,7 @@ The default confidence threshold is 80. This value is also recorded in `review.c
 
 ### Necessary conditions for inclusion in 指摘事項
 
-A finding may be reported as a **指摘事項** (mandatory fix) only when **all three** of the following are satisfied:
+A finding may be reported as a **指摘事項** only when **all three** of the following are satisfied. The three gates govern **掲載可否** (whether the finding may appear in the 指摘事項 table); whether it **blocks merge** is decided separately by the [実測必須ゲート](#verification-runtime-measurement) — a listed finding blocks only when it carries a `Verification:` anchor (repro / failing_test), and anchor-less findings are recorded as non-blocking PR comments instead of driving the fix cycle:
 
 1. **Confidence ≥ 80** — the reviewer can cite the exact impact and has verified the issue with Grep/Read.
 2. **Observed Likelihood ≥ Demonstrable** — the reviewer can cite a call site or entrypoint connection in the diff-applied codebase (existing code + new code introduced by this PR). Hypothetical findings are downgraded per the Impact × Likelihood Matrix unless the reviewer is in a Hypothetical Exception Category.
@@ -192,7 +192,7 @@ Verification: failing_test <テストパス> => <失敗出力>
 - `Verification:` アンカーを持たない指摘は **measured=false (非実測)** として扱われ、blocking にならない (Phase 5 の実測必須ゲートで non-blocking に分類され、PR コメントに記録される。fix サイクルは起動しない)。指摘自体は破棄されないため、実測できない懸念は従来どおり報告してよい — ただしそれが merge を block しないことを理解した上で報告すること。
 - 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
 - `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は指摘事項への掲載可否 (Observed Likelihood Gate)、`Verification:` は blocking 可否 (実測必須ゲート) をそれぞれ担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` 形式でも添付すること (両方を書く)。
-- `Verification:` アンカーだけあって実測内容が空 (`=>` の右辺が空等) の場合は schema 違反として measured=false に降格される (Cross-field invariant #6、WARNING 付き)。
+- `Verification:` アンカーだけあって実測内容が空 (`=>` の右辺が空等) の場合は schema 違反として measured=false に降格される。この降格を担うのは **Phase 5.3.0.M の anchor 検出 regex 層** (`=>` の右辺に非空白文字を要求する — [assessment-rules.md §5.3.0.M](../skills/fix/references/assessment-rules.md))。Cross-field invariant #6 の canonical jq は field 全体が null/空文字の場合のみを検出する write 側 defense-in-depth backstop であり、右辺空・whitespace-only の検出は regex 層の担当 (両層の書き分けは [review-result-schema.md invariant #6](../references/review-result-schema.md) 参照)。
 
 ### Hypothetical downgrade patterns
 
