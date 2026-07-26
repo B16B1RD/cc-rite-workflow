@@ -9,6 +9,7 @@
 * **Create**: [存在確認と破壊的操作で ref 解決規則が異なると、検証した ref 集合と破壊する ref 集合がずれる](pages/anti-patterns/ref-verify-delete-resolution-asymmetry.md) — raw/reviews/20260726T080036Z-pr-2022.md, raw/fixes/20260726T082019Z-pr-2022.md, raw/fixes/20260726T040115Z-pr-2022.md, raw/fixes/20260726T092442Z-pr-2022.md, raw/fixes/20260726T085050Z-pr-2022.md を新規ページ化（ls-remote は slash 境界の tail 一致 / push --delete は全 namespace 解決 / rc 3 分岐 / check-ref-format で refname 合法性を先に確定）
 * **Create**: [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) — raw/reviews/20260726T044237Z-pr-2022.md, raw/reviews/20260726T035338Z-pr-2022.md, raw/reviews/20260726T020559Z-pr-2022.md, raw/fixes/20260726T040115Z-pr-2022.md, raw/fixes/20260726T021138Z-pr-2022.md を新規ページ化（規約強化の階段に終端がない / 終端判断は指摘の性質の変化で見る / 上限を伝えると収束方向に働く）
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/fixes/20260726T062935Z-pr-2022.md, raw/fixes/20260726T055002Z-pr-2022.md, raw/reviews/20260726T035338Z-pr-2022.md, raw/reviews/20260726T044237Z-pr-2022.md を統合（規約を新設した同じコミットで自分がその規約を破る変種。「2 箇所に適用して 3 個目を落とす」が同一 PR 内で 3 cycle 連続再発）
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=280, broken_refs=0
 
 ## 2026-07-25
 
