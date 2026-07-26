@@ -474,12 +474,16 @@ FIX_MD="$SCRIPT_DIR/../../skills/fix/SKILL.md"
 # grep の rc=1 (マッチなし = 正常な 0 件) と rc=2 (ファイル読取不能 = IO エラー) を区別する。
 # `|| true` で融合すると IO エラー時に grep -c がカウントを出力せず変数が空文字になり、
 # 後段の等値比較が "expected 2, got " という原因不明の parity 失敗として報告される (診断の誤誘導)。
+# 注: 本 helper はコマンド置換 (`x=$(count_pred ...)`) から呼ばれるため、内部で `fail` を呼んでは
+# ならない — サブシェル内の `fail` は (a) FAIL カウンタの加算が親に伝播せず、(b) 出力が stdout 経由で
+# 呼び出し元の変数に吸収され、sentinel 値と連結して観測不能になる。IO エラーは stderr へ出し、
+# 自己説明的な sentinel を返して**親側の等値比較に判定を委ねる** (親が 1 度だけ fail を呼ぶ)。
 count_pred() {  # $1=pattern $2=file $3=label
   local out rc
   out=$(grep -cF "$1" "$2"); rc=$?
   case "$rc" in
     0|1) printf '%s' "${out:-0}" ;;
-    *)   fail "parity: grep IO error on $3 (rc=$rc, file=$2)"; printf '%s' "-1" ;;
+    *)   echo "  parity: grep IO error on $3 (rc=$rc, file=$2)" >&2; printf '%s' "IOERR(rc=$rc)" ;;
   esac
 }
 guard_sh_count=$(count_pred "$GUARD_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" "type guard/.sh")
@@ -516,6 +520,84 @@ if [ "$guard_emit_count" = "1" ]; then
   pass "parity: P3 type guard emit line (reason + stderr redirect) pinned x1"
 else
   fail "parity: P3 type guard emit drift — expected 1, got $guard_emit_count"
+fi
+
+# -----------------------------------------------------------------
+echo "--- Test 11: ステップ 6.1.d 静的 pin (markdown 埋め込み bash) ---"
+# 6.1.d は pr-review/SKILL.md 内の markdown 埋め込み bash のため実行テスト不能。Test 10 と同じ
+# 静的 pin 方針で、silent failure に直結する 5 つの契約を固定する。
+# (helper 抽出 + mock-gh による hermetic テストは follow-up Issue — scripts/review-nonblocking-record.sh
+#  への抽出が前提で本 PR のスコープを超える。本 Test は drift 検出の最低限の網。)
+REVIEW_MD="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
+
+# (a) marker 検索は前方一致 (`contains` への退行 = 他コメント破壊)
+p61d_startswith=$(count_pred 'select((.body // "") | startswith("## 📜 rite 非実測指摘の記録"))' "$REVIEW_MD" "6.1.d startswith")
+if [ "$p61d_startswith" = "1" ]; then
+  pass "6.1.d: marker 検索が startswith (前方一致) で pinned x1"
+else
+  fail "6.1.d: startswith 述語 drift — expected 1, got $p61d_startswith (contains への退行は他コメントの PATCH 破壊を招く)"
+fi
+p61d_contains=$(count_pred 'select(.body | contains("📜 rite 非実測指摘の記録"))' "$REVIEW_MD" "6.1.d contains")
+if [ "$p61d_contains" = "0" ]; then
+  pass "6.1.d: 旧 contains 述語が残っていない"
+else
+  fail "6.1.d: 旧 contains 述語が復活している ($p61d_contains 箇所)"
+fi
+
+# (b) marker に iteration_id がある (stale marker による gate の false-positive pass 防止)
+p61d_iter=$(count_pred 'iteration_id=$p61d_iteration_id' "$REVIEW_MD" "6.1.d iteration_id")
+if [ "$p61d_iter" = "1" ]; then
+  pass "6.1.d: NONBLOCKING_LOOKUP marker の iteration_id が pinned x1"
+else
+  fail "6.1.d: iteration_id drift — expected 1, got $p61d_iter (cycle 2+ で stale marker に gate が誤 pass する)"
+fi
+
+# (c) placeholder residue gate 3 種 (pr_number / non_blocking_count / existing_id)
+# 各 reason は emit 箇所 + reason 節 + Retained flag mapping + Eval-order enumeration の
+# 計 4 箇所に出現する (F-08 が要求する 3 documented set + emit)。
+for pair in \
+  'non_blocking_count_placeholder_residue|6.1.d nb_count gate' \
+  'existing_id_placeholder_residue|6.1.d existing_id gate' \
+  'body_file_empty|6.1.d body_file_empty'; do
+  pat=${pair%%|*}; lbl=${pair##*|}
+  c=$(count_pred "$pat" "$REVIEW_MD" "$lbl")
+  if [ "$c" -ge 4 ] 2>/dev/null; then
+    pass "6.1.d: $lbl が emit + documented set 3 箇所に登録済 ($c 箇所)"
+  else
+    fail "6.1.d: $lbl の登録漏れ — expected >=4 (emit + reason 節 + flag mapping + eval-order), got $c"
+  fi
+done
+# pr_number_placeholder_residue は 6.1.a も同名 reason を持つ (flag namespace が別) ため
+# 全体件数で判定できない。6.1.d 側の documented set 3 箇所 + emit を個別に確認する。
+p61d_prnum_emit=$(count_pred 'NONBLOCKING_RECORD_FAILED=1; reason=pr_number_placeholder_residue' "$REVIEW_MD" "6.1.d pr_number emit")
+if [ "$p61d_prnum_emit" = "1" ]; then
+  pass "6.1.d: pr_number gate の emit (NONBLOCKING_RECORD_FAILED namespace) が pinned x1"
+else
+  fail "6.1.d: pr_number gate emit drift — expected 1, got $p61d_prnum_emit"
+fi
+
+# (d) body ファイル非空検査 (空 body PATCH による 1 行目 marker 消失の防止)
+p61d_body=$(count_pred 'if [ ! -s "$body_file" ]; then' "$REVIEW_MD" "6.1.d body -s check")
+if [ "$p61d_body" = "1" ]; then
+  pass "6.1.d: body ファイル非空検査が pinned x1"
+else
+  fail "6.1.d: body 非空検査 drift — expected 1, got $p61d_body (空 body PATCH は marker を消し step 0 検索を恒久破綻させる)"
+fi
+
+# (e) 2>/dev/null による rc 握り潰しが count ガードに復活していない
+p61d_swallow=$(count_pred '"{non_blocking_count}" -gt 0 ] 2>/dev/null' "$REVIEW_MD" "6.1.d swallow")
+if [ "$p61d_swallow" = "0" ]; then
+  pass "6.1.d: count ガードに 2>/dev/null の rc 握り潰しがない"
+else
+  fail "6.1.d: 2>/dev/null が復活している ($p61d_swallow 箇所) — placeholder residue が正常系と同一 marker で silent skip する"
+fi
+
+# (f) 外部 gate (8.0.3) が result-emit boundary の外側に存在する
+p61d_ext_gate=$(count_pred '### 8.0.3 ステップ 6.1.d Post-condition Gate Reference' "$REVIEW_MD" "8.0.3 gate")
+if [ "$p61d_ext_gate" = "1" ]; then
+  pass "6.1.d: 外部 post-condition gate (8.0.3) が存在する"
+else
+  fail "6.1.d: 8.0.3 外部 gate が見つからない — 6.1.d 全体 skip を catch する層が消えている"
 fi
 
 # -----------------------------------------------------------------

@@ -112,6 +112,7 @@
 | Retry 回数サマリー | {verification_post_condition_retry_summary} | per-reviewer retry counter の集計 |
 
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
+ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation の効力は overall assessment 昇格が担う。
 
 
 ### 全指摘事項
@@ -301,6 +302,7 @@
 | Retry 回数サマリー | {verification_post_condition_retry_summary} | per-reviewer retry counter の集計 |
 
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
+ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation の効力は overall assessment 昇格が担う。
 
 
 ### 全指摘事項

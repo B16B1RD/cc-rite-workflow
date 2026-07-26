@@ -465,6 +465,8 @@ if [ -z "$review_source" ]; then
         # 繰り返される無限 ring に陥る。
         # ⚠️ corrupt file rename ロジック (Instance 1/3 — jq parse failure path)
         # 同一ロジックが下の schema_required_fields_missing path (Instance 2/3) と verification type guard path (Instance 3/3) にも複製されている。
+        # 3 instance の差分は「ラベル語 (corrupted / schema-invalid / type-invalid) と rc 変数名」のみで、
+        # 制御構造・emit する行数・インデントはすべて一致させること。
         # 変更時は 3 箇所を同時に更新すること (ドリフト防止)。
         # mv の stderr を tempfile に退避し、失敗時に原因を可視化する。
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
@@ -499,12 +501,15 @@ if [ -z "$review_source" ]; then
         mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-corrupt-mv-err-XXXXXX" 2>/dev/null) || mv_err=""
         if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
           echo "  schema-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
+          echo "  対処: 内容を確認後、手動で削除するか新しい review を生成してください" >&2
         else
           mv_corrupt_schema_rc=$?
           echo "  WARNING: schema-invalid file の rename に失敗 (rc=$mv_corrupt_schema_rc)。次回 fix で同じ WARNING が再発します" >&2
           if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
-            head -3 "$mv_err" | sed 's/^/    /' >&2
+            echo "    詳細 (mv stderr):" >&2
+            head -3 "$mv_err" | sed 's/^/      /' >&2
           fi
+          echo "    対処: permission denied / read-only filesystem / cross-filesystem / target exists のいずれかを確認" >&2
           echo "    手動削除: rm \"$latest_file\"" >&2
         fi
         [ -n "$mv_err" ] && rm -f "$mv_err"
@@ -528,12 +533,15 @@ if [ -z "$review_source" ]; then
         mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-corrupt-mv-err-XXXXXX" 2>/dev/null) || mv_err=""
         if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
           echo "  type-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
+          echo "  対処: 内容を確認後、手動で削除するか新しい review を生成してください" >&2
         else
           mv_corrupt_vtype_rc=$?
           echo "  WARNING: type-invalid file の rename に失敗 (rc=$mv_corrupt_vtype_rc)。次回 fix で同じ WARNING が再発します" >&2
           if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
-            head -3 "$mv_err" | sed 's/^/    /' >&2
+            echo "    詳細 (mv stderr):" >&2
+            head -3 "$mv_err" | sed 's/^/      /' >&2
           fi
+          echo "    対処: permission denied / read-only filesystem / cross-filesystem / target exists のいずれかを確認" >&2
           echo "    手動削除: rm \"$latest_file\"" >&2
         fi
         [ -n "$mv_err" ] && rm -f "$mv_err"
