@@ -61,9 +61,15 @@ extract_guard() {
 }
 GUARD_SNIPPET="$TEST_DIR/guard.sh"
 extract_guard > "$GUARD_SNIPPET"
-# 3 分岐すべてを必須文字列に含める (rc=0 の削除分岐だけが対象外という非対称を残さない)
+# 3 分岐すべてを必須文字列に含める (rc=0 の削除分岐だけが対象外という非対称を残さない)。
+# marker 名だけでなく `[CONTEXT] ` prefix 込みで pin する: ステップ 12 のリモート側ルールは
+# `[CONTEXT] REMOTE_BRANCH_...` でアンカー照合するため、emitter から prefix が落ちると全ルールが
+# 不一致になり fallback (marker 不在 = 削除成功) が発火して削除失敗が `x` として報告される。
+# marker 名のみの pin ではその退行を素通りさせる。`grep "$required"` は BRE なので
+# `[CONTEXT]` はブラケット式に解釈される — `\[` `\]` のエスケープを外さないこと。
 for required in 'ls-remote --exit-code' 'push origin --delete' 'REMOTE_BRANCH_DELETE_FAILED' \
-                'REMOTE_BRANCH_ALREADY_ABSENT' 'REMOTE_BRANCH_CHECK_FAILED' '^esac$'; do
+                'REMOTE_BRANCH_ALREADY_ABSENT' 'REMOTE_BRANCH_CHECK_FAILED' \
+                '\[CONTEXT\] REMOTE_BRANCH_' '^esac$'; do
   if ! grep -q "$required" "$GUARD_SNIPPET"; then
     echo "FAIL: cleanup/SKILL.md からのガード抽出に失敗しました ('$required' 不在。アンカーが変更された可能性)"
     echo "  抽出結果: $(wc -l < "$GUARD_SNIPPET") 行"
@@ -180,7 +186,9 @@ echo "TC-1: absent remote ref -> no push --delete, REMOTE_BRANCH_ALREADY_ABSENT"
 out=$(run_guard "$GUARD_SNIPPET")
 if push_delete_called; then
   fail "TC-1: git push origin --delete が呼ばれた ($(cat "$CALL_LOG"))"
-elif ! printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1'; then
+elif ! printf '%s' "$out" | grep -q '\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1'; then
+  # 照合はステップ 12 の consumer 側と同形の `[CONTEXT] ` 込みで行う。marker 名だけを見ると
+  # emitter から prefix が落ちた退行を通してしまう (consumer は全ルール不一致 → 完了扱いになる)。
   fail "TC-1: REMOTE_BRANCH_ALREADY_ABSENT marker が出力されていない (出力: '$out')"
 elif printf '%s' "$out" | grep -q '^error:'; then
   fail "TC-1: error: 行が出力された (AC-1 違反。出力: '$out')"
@@ -231,7 +239,7 @@ if ! push_delete_called; then
   fail "TC-2b: setup 不備 — ref が存在するのに push --delete が呼ばれていない"
 elif ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
   fail "TC-2b: setup 不備 — 削除が拒否されたはずだがリモート ref が消えている (receive.denyDeletes が効いていない)"
-elif ! printf '%s' "$out" | grep -q 'REMOTE_BRANCH_DELETE_FAILED=1'; then
+elif ! printf '%s' "$out" | grep -q '\[CONTEXT\] REMOTE_BRANCH_DELETE_FAILED=1'; then
   fail "TC-2b: push 失敗が marker で surface されていない。ステップ 12 が削除失敗を x と報告する (出力: '$out')"
 elif ! printf '%s' "$out" | grep -qE 'denyDeletes|remote rejected'; then
   # TC-3 と対称。`_push_err=$(... 2>&1)` は stdout/stderr を両方飲み込むため、WARNING から
@@ -256,7 +264,7 @@ if push_delete_called; then
   fail "TC-3: 存在判定できていないのに push --delete が呼ばれた ($(cat "$CALL_LOG"))"
 elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1'; then
   fail "TC-3: ネットワーク失敗を「既削除」に丸めた (出力: '$out')"
-elif ! printf '%s' "$out" | grep -q 'REMOTE_BRANCH_CHECK_FAILED=1'; then
+elif ! printf '%s' "$out" | grep -q '\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1'; then
   fail "TC-3: REMOTE_BRANCH_CHECK_FAILED marker が出力されていない (出力: '$out')"
 elif ! printf '%s' "$out" | grep -q 'does not appear to be a git repository'; then
   # ガードは `2>&1 >/dev/null` で stderr のみ退避して WARNING に載せる設計。順序を
