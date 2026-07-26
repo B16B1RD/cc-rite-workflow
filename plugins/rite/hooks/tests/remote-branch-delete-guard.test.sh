@@ -15,22 +15,30 @@
 # delete_branch_on_merge: true の環境 (merge 時にサーバサイドで head が削除済み) では
 # cleanup が完全に成功しているのに `error: unable to delete ...` を 2 行出していた。
 #
-# TC 対応 (Issue #2016 Section 7):
+# TC 対応 (Issue #2016 Section 7)。実行順は TC-0 → 1 → 2 → 2b → 3 → 4 → 6 → 5 で、TC-5 だけ
+# 番号順から外れる (precondition が「対象ブランチが origin に不在」で前段 TC の後始末に依存する)。
+# - TC-0              : git ls-remote --heads が ref 不在でも rc=0 を返す前提の pin
+#                      (修正前の && ガードが常に成立していたことの根拠)
 # - TC-1 = T-01 (AC-1): ref 不在 → push --delete を呼ばず REMOTE_BRANCH_ALREADY_ABSENT を emit
-# - TC-2 = T-02 (AC-2): ref 存在 → 従来どおり削除経路へ入り、リモートから実際に消える
+# - TC-2 = T-02 (AC-2): ref 存在 → 従来どおり削除経路へ入り、リモートから実際に消える。
+#                      成功 marker REMOTE_BRANCH_DELETED が出て失敗系 marker は出ない
 # - TC-2b      (AC-1/AC-4): rc=0 経路で push --delete 自体が失敗したとき
-#                      REMOTE_BRANCH_DELETE_FAILED を emit する (marker 不在を
-#                      「削除成功」と解釈するステップ 12 の契約に対し、削除失敗が
-#                      完了として報告される false-success を防ぐ)
+#                      REMOTE_BRANCH_DELETE_FAILED を emit する (削除失敗が完了として
+#                      報告される false-success を防ぐ)
 # - TC-3       (AC-1): ls-remote 自体の失敗 (rc=0/2 以外) は「既削除」に丸めず
 #                      REMOTE_BRANCH_CHECK_FAILED を emit し、削除も試行しない
 # - TC-4 = T-03 (AC-3): merge/SKILL.md の設計判断が全称的な保証を主張せず、
 #                      抑止できないものを否定表現で明示して区別している
-# - TC-6       (AC-4): ステップ 12 リモート側の判定 3 ルール + marker family スコープ +
-#                      ローカル/リモート独立評価の AND ルール文を静的に pin する
+# - TC-6       (AC-4): ステップ 12 リモート側の判定 4 ルール + fallback の判定値と禁止文 +
+#                      marker family スコープ + アンカー/行頭規約 + ローカル/リモート独立評価の
+#                      AND ルール文を静的に pin する
 #                      (emitter だけ検証して consumer が無防備になる穴を塞ぐ)
-# - TC-5 = T-04       : 修正前のガード式へ mutation で戻すと TC-1 が落ちる
-#                      (ガードが load-bearing であることの実証)
+# - TC-5 = T-04       : 抽出した実物のガードから --exit-code を除いた mutant で TC-1 相当が
+#                      落ちる (ガードが load-bearing であることの実証)
+#
+# marker 照合の規約: 正の assertion (marker が出ていること) は consumer 側と同形の
+# 「行頭 + `[CONTEXT] ` 込み」で照合する。負の assertion (marker が出ていないこと) は
+# 非アンカーのままにする — マッチ面が広いほど検出が厳しくなるため、アンカーするとテストが弱まる。
 
 set -uo pipefail
 
@@ -61,15 +69,15 @@ extract_guard() {
 }
 GUARD_SNIPPET="$TEST_DIR/guard.sh"
 extract_guard > "$GUARD_SNIPPET"
-# 3 分岐すべてを必須文字列に含める (rc=0 の削除分岐だけが対象外という非対称を残さない)。
+# 4 経路すべてを必須文字列に含める (どれか 1 経路だけが対象外という非対称を残さない)。
 # marker 名だけでなく `[CONTEXT] ` prefix 込みで pin する: ステップ 12 のリモート側ルールは
 # `[CONTEXT] REMOTE_BRANCH_...` でアンカー照合するため、emitter から prefix が落ちると全ルールが
 # 不一致になり fallback (marker 不在 = 削除成功) が発火して削除失敗が `x` として報告される。
 # marker 名のみの pin ではその退行を素通りさせる。`grep "$required"` は BRE なので
 # `[CONTEXT]` はブラケット式に解釈される — `\[` `\]` のエスケープを外さないこと。
-for required in 'ls-remote --exit-code' 'push origin --delete' 'REMOTE_BRANCH_DELETE_FAILED' \
-                'REMOTE_BRANCH_ALREADY_ABSENT' 'REMOTE_BRANCH_CHECK_FAILED' \
-                '\[CONTEXT\] REMOTE_BRANCH_' '^esac$'; do
+for required in 'ls-remote --exit-code' 'push origin --delete' 'REMOTE_BRANCH_DELETED' \
+                'REMOTE_BRANCH_DELETE_FAILED' 'REMOTE_BRANCH_ALREADY_ABSENT' \
+                'REMOTE_BRANCH_CHECK_FAILED' '\[CONTEXT\] REMOTE_BRANCH_' '^esac$'; do
   if ! grep -q "$required" "$GUARD_SNIPPET"; then
     echo "FAIL: cleanup/SKILL.md からのガード抽出に失敗しました ('$required' 不在。アンカーが変更された可能性)"
     echo "  抽出結果: $(wc -l < "$GUARD_SNIPPET") 行"
@@ -186,10 +194,11 @@ echo "TC-1: absent remote ref -> no push --delete, REMOTE_BRANCH_ALREADY_ABSENT"
 out=$(run_guard "$GUARD_SNIPPET")
 if push_delete_called; then
   fail "TC-1: git push origin --delete が呼ばれた ($(cat "$CALL_LOG"))"
-elif ! printf '%s' "$out" | grep -q '\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1'; then
-  # 照合はステップ 12 の consumer 側と同形の `[CONTEXT] ` 込みで行う。marker 名だけを見ると
-  # emitter から prefix が落ちた退行を通してしまう (consumer は全ルール不一致 → 完了扱いになる)。
-  fail "TC-1: REMOTE_BRANCH_ALREADY_ABSENT marker が出力されていない (出力: '$out')"
+elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1'; then
+  # 照合はステップ 12 の consumer 側と同形の「行頭 + `[CONTEXT] ` 込み」で行う。marker 名だけを
+  # 見ると emitter から prefix が落ちた退行を通し、行頭を要求しないと marker を WARNING 本文の
+  # 行中へ移す退行を通す。どちらも consumer 側では全ルール不一致 → fallback 行きになる。
+  fail "TC-1: REMOTE_BRANCH_ALREADY_ABSENT marker が行頭に出力されていない (出力: '$out')"
 elif printf '%s' "$out" | grep -q '^error:'; then
   fail "TC-1: error: 行が出力された (AC-1 違反。出力: '$out')"
 else
@@ -209,12 +218,16 @@ if ! push_delete_called; then
   fail "TC-2: git push origin --delete が呼ばれていない (delete_branch_on_merge:false 環境の機能後退)"
 elif git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
   fail "TC-2: リモートブランチが削除されていない"
-elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_'; then
-  # ステップ 12 の契約は「REMOTE_BRANCH_* marker 不在 = 削除成功」。正常系で pin すべきは
-  # 特定 marker ではなく family 全体の不在（成功時に失敗 marker を出す退行を通さないため）。
-  fail "TC-2: 削除成功なのに REMOTE_BRANCH_* marker が出た。ステップ 12 が正常系を未完了と報告する (出力: '$out')"
+elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_DELETED=1'; then
+  # ステップ 12 の契約は 4 経路すべてが marker を出すこと。成功も positive marker で表さないと
+  # 「marker 不在 = 削除成功」に戻り、ステップ 5 の未実行と削除成功が区別できなくなる (#2016)。
+  fail "TC-2: 削除成功の marker REMOTE_BRANCH_DELETED が行頭に出ていない。ステップ 12 が marker 不在を成功と読む契約に退行する (出力: '$out')"
+elif printf '%s' "$out" | grep -qE 'REMOTE_BRANCH_(DELETE_FAILED|CHECK_FAILED|ALREADY_ABSENT)'; then
+  # 失敗系 3 marker は正常系で出てはならない。非アンカーで照合するのは意図的 — prefix の有無や
+  # 行中/行頭に関わらず「出ていること」を捕捉したいので、アンカーすると検出範囲が狭まる。
+  fail "TC-2: 削除成功なのに失敗系 marker が出た。ステップ 12 が正常系を未完了と報告する (出力: '$out')"
 else
-  pass "TC-2 (従来どおりリモートブランチを削除、REMOTE_BRANCH_* marker 不在)"
+  pass "TC-2 (従来どおりリモートブランチを削除、REMOTE_BRANCH_DELETED を emit し失敗系 marker は不在)"
 fi
 
 # ─── TC-2b (AC-1/AC-4): rc=0 経路で push --delete が失敗 → REMOTE_BRANCH_DELETE_FAILED ───
@@ -239,8 +252,8 @@ if ! push_delete_called; then
   fail "TC-2b: setup 不備 — ref が存在するのに push --delete が呼ばれていない"
 elif ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
   fail "TC-2b: setup 不備 — 削除が拒否されたはずだがリモート ref が消えている (receive.denyDeletes が効いていない)"
-elif ! printf '%s' "$out" | grep -q '\[CONTEXT\] REMOTE_BRANCH_DELETE_FAILED=1'; then
-  fail "TC-2b: push 失敗が marker で surface されていない。ステップ 12 が削除失敗を x と報告する (出力: '$out')"
+elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_DELETE_FAILED=1'; then
+  fail "TC-2b: push 失敗が行頭 marker で surface されていない。ステップ 12 が削除失敗を x と報告する (出力: '$out')"
 elif ! printf '%s' "$out" | grep -qE 'denyDeletes|remote rejected'; then
   # TC-3 と対称。`_push_err=$(... 2>&1)` は stdout/stderr を両方飲み込むため、WARNING から
   # $_push_err が落ちると原因情報がゼロになる（ターミナルにも何も残らない）。
@@ -264,8 +277,8 @@ if push_delete_called; then
   fail "TC-3: 存在判定できていないのに push --delete が呼ばれた ($(cat "$CALL_LOG"))"
 elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1'; then
   fail "TC-3: ネットワーク失敗を「既削除」に丸めた (出力: '$out')"
-elif ! printf '%s' "$out" | grep -q '\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1'; then
-  fail "TC-3: REMOTE_BRANCH_CHECK_FAILED marker が出力されていない (出力: '$out')"
+elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1'; then
+  fail "TC-3: REMOTE_BRANCH_CHECK_FAILED marker が行頭に出力されていない (出力: '$out')"
 elif ! printf '%s' "$out" | grep -q 'does not appear to be a git repository'; then
   # ガードは `2>&1 >/dev/null` で stderr のみ退避して WARNING に載せる設計。順序を
   # `>/dev/null 2>&1` に取り違えると原因が消え rc だけになる（認証失敗・DNS 解決失敗・
@@ -323,7 +336,14 @@ tc6_fail=""
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETE_FAILED=1.*: ` ` \+.*git push origin --delete.*手動削除' || tc6_fail="REMOTE_BRANCH_DELETE_FAILED が「未完了 ` ` + git push origin --delete での手動削除」になっていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*: ` ` \+.*削除を試行していません' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が「未完了 ` ` + 削除未試行の案内」になっていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*）: `x`$' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETED=1.*）: `x`$' || tc6_fail="REMOTE_BRANCH_DELETED が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="リモート側 fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
+# fallback の判定値。marker 不在を `x` に倒す mutation は「ステップ 5 が実行されなかった」と
+# 「削除成功」を再び同一視し、本 Issue が塞いだ false-success を判定表側から復活させる。
+# 判定値 (` `) と「成功と読むな」の禁止文の両方を要求する — 判定値だけだと禁止根拠が消え、
+# 禁止文だけだと値の反転を素通しする。
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_\*.*いずれの行も無いとき: ` ` \+' || tc6_fail="リモート側 fallback が未完了 ` ` になっていない (marker 不在を削除成功と読む契約に退行)"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'marker 不在を「削除成功」と読んではならない' || tc6_fail="リモート側 fallback に marker 不在を成功と読む禁止文がない"; }
 # 判定ブロック全体 (ローカル側 + リモート側を含む {local_branch_check} の箇条書き) を抽出する。
 # 以下 2 本の grep をファイル全体ではなくここへスコープする — ファイル全体を対象にすると、
 # 判定ブロックから当該文を削除して「過去の設計では…」等の歴史メモへ格下げしても、文字列が
@@ -350,10 +370,13 @@ fi
 # 判定が破綻する」と明記して禁じている。
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*' || tc6_fail="ローカル側 fallback が marker family でスコープされていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -q 'marker 名は `\[CONTEXT\] ` prefix 込みで一致させる' || tc6_fail="アンカー照合の規約文が判定ブロックにない"; }
+# 行頭一致の規約。ステップ 5 は git の stderr (外部由来・複数行) を marker と同じストリームへ
+# 流すため、prefix だけ要求して位置を要求しないと WARNING 本文中の断片が marker として読まれる。
+[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -q 'prefix は行頭から一致させる' || tc6_fail="行頭一致の規約文が判定ブロックにない (行中の [CONTEXT] が marker として読まれる)"; }
 if [ -n "$tc6_fail" ]; then
   fail "TC-6: $tc6_fail"
 else
-  pass "TC-6 (ステップ 12 リモート側判定 3 ルール + fallback スコープ + AND ルールを pin)"
+  pass "TC-6 (ステップ 12 リモート側判定 4 ルール + fallback 判定値/禁止文 + アンカー/行頭規約 + AND ルールを pin)"
 fi
 
 # ─── TC-5 (T-04): mutation — 修正前のガード式に戻すと TC-1 が落ちる ───
@@ -369,14 +392,26 @@ case "$_pc_rc" in
 esac
 # ガードが load-bearing であることの実証 (経験則「Mutation testing で test の真正性を
 # empirical 検証する」)。vacuous pass (ガードを外しても緑のまま) を排除する。
-echo "TC-5: mutation — reverting to the pre-fix guard makes TC-1 fail (guard is load-bearing)"
+echo "TC-5: mutation — removing --exit-code from the extracted guard makes TC-1 fail (guard is load-bearing)"
 MUTANT="$TEST_DIR/guard-mutant.sh"
-printf '%s\n' "git ls-remote --heads origin $BRANCH && git push origin --delete $BRANCH" > "$MUTANT"
-out=$(run_guard "$MUTANT")
-if push_delete_called; then
-  pass "TC-5 (修正前の式では不在ブランチにも push --delete が走る = ガードは load-bearing)"
+# mutant は **抽出した実物** ($GUARD_SNIPPET) から導出する。ハードコードした修正前の式を実行しても、
+# それは git の exit code 仕様を再確認しているだけで、cleanup/SKILL.md の現在のガードが
+# load-bearing であることの証明にはならない (TC-5 の PASS/FAIL が artifact から独立してしまう)。
+sed 's/ls-remote --exit-code/ls-remote/' "$GUARD_SNIPPET" > "$MUTANT" \
+  || { echo "FATAL: TC-5: mutant の生成に失敗"; exit 1; }
+# 変異が実際に入ったことを確認する。抽出側の文字列が変わって sed が空振りすると、mutant が原本と
+# 同一になり「ガードが効いている」= push が呼ばれない、で TC-5 が誤帰属の FAIL を出す。
+if grep -q 'ls-remote --exit-code' "$MUTANT"; then
+  fail "TC-5: mutant に --exit-code が残っている (sed の対象文字列が変わった可能性)"
 else
-  fail "TC-5: 修正前の式でも push --delete が呼ばれなかった。TC-1 がガードを検証できていない (vacuous pass)"
+  out=$(run_guard "$MUTANT")
+  if ! push_delete_called; then
+    fail "TC-5: --exit-code を外しても push --delete が呼ばれなかった。TC-1 がガードを検証できていない (vacuous pass)"
+  elif printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1'; then
+    fail "TC-5: --exit-code を外しても不在判定 (rc=2) が成立した。ガードが --exit-code に依存していない (出力: '$out')"
+  else
+    pass "TC-5 (--exit-code を外すと不在ブランチにも push --delete が走る = ガードは load-bearing)"
+  fi
 fi
 
 echo ""
