@@ -153,10 +153,12 @@ if ! push_delete_called; then
   fail "TC-2: git push origin --delete が呼ばれていない (delete_branch_on_merge:false 環境の機能後退)"
 elif git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
   fail "TC-2: リモートブランチが削除されていない"
-elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1'; then
-  fail "TC-2: 存在するのに ALREADY_ABSENT marker が出た (出力: '$out')"
+elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_'; then
+  # ステップ 12 の契約は「REMOTE_BRANCH_* marker 不在 = 削除成功」。正常系で pin すべきは
+  # 特定 marker ではなく family 全体の不在（成功時に失敗 marker を出す退行を通さないため）。
+  fail "TC-2: 削除成功なのに REMOTE_BRANCH_* marker が出た。ステップ 12 が正常系を未完了と報告する (出力: '$out')"
 else
-  pass "TC-2 (従来どおりリモートブランチを削除)"
+  pass "TC-2 (従来どおりリモートブランチを削除、REMOTE_BRANCH_* marker 不在)"
 fi
 
 # ─── TC-2b (AC-1/AC-4): rc=0 経路で push --delete が失敗 → REMOTE_BRANCH_DELETE_FAILED ───
@@ -179,7 +181,10 @@ elif ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
 else
   pass "TC-2b (push 失敗を marker で surface)"
 fi
-git push -q origin --delete "$BRANCH" 2>/dev/null || true
+# 後始末の失敗を握り潰さない。ここで ref が残ると TC-5 の precondition（$BRANCH が origin に不在）
+# が崩れ、mutant が「実在する ref を消しただけ」で push を呼んで TC-5 が vacuous に PASS する。
+git push -q origin --delete "$BRANCH" 2>/dev/null \
+  || { echo "FATAL: TC-2b teardown: リモートブランチ $BRANCH の削除に失敗"; exit 1; }
 
 # ─── TC-3 (AC-1): ls-remote 自体の失敗 → CHECK_FAILED、削除は試行しない ───
 # ネットワーク断・認証失敗は rc=128 になる。これを rc=2 (不在) と取り違えて「既削除」に
@@ -193,8 +198,13 @@ elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1'; then
   fail "TC-3: ネットワーク失敗を「既削除」に丸めた (出力: '$out')"
 elif ! printf '%s' "$out" | grep -q 'REMOTE_BRANCH_CHECK_FAILED=1'; then
   fail "TC-3: REMOTE_BRANCH_CHECK_FAILED marker が出力されていない (出力: '$out')"
+elif ! printf '%s' "$out" | grep -q 'does not appear to be a git repository'; then
+  # ガードは `2>&1 >/dev/null` で stderr のみ退避して WARNING に載せる設計。順序を
+  # `>/dev/null 2>&1` に取り違えると原因が消え rc だけになる（認証失敗・DNS 解決失敗・
+  # proxy 遮断がすべて 128 に潰れて切り分け不能になる）。LC_ALL=C 固定で文言は安定する。
+  fail "TC-3: WARNING に ls-remote の原因テキストが載っていない (stderr 退避の順序が壊れた可能性。出力: '$out')"
 else
-  pass "TC-3 (判定不能を未完了として surface)"
+  pass "TC-3 (判定不能を未完了として surface、原因テキストも保持)"
 fi
 git remote set-url origin "$ORIGIN"
 
@@ -219,14 +229,32 @@ fi
 # emitter (ステップ 5 のガード) だけを検証すると consumer (完了報告の判定ルール) が無防備になる。
 # 当該ブロックを削除する mutation でも全スイートが green になっていたため、散文側も静的に pin する。
 echo "TC-6: cleanup/SKILL.md ステップ 12 pins the remote-side judgement rules"
-remote_section=$(awk '/^  \*\*リモート側\*\*/{f=1} f{print} f && /^- `\{projects_status_result\}/{exit}' "$CLEANUP_MD")
+remote_section=$(awk '/^  \*\*リモート側\*\*/{f=1} f{print} f && /^- `\{projects_status_result\}/{found=1; exit} END{exit !found}' "$CLEANUP_MD")
+awk_rc=$?
 tc6_fail=""
-printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_DELETE_FAILED=1' || tc6_fail="REMOTE_BRANCH_DELETE_FAILED の判定行がない"
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_CHECK_FAILED=1' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED の判定行がない"; }
+# 抽出の両端を検査する。開始アンカー消失は空抽出で loud fail するが、閉じアンカー消失は
+# awk が EOF まで走って section スコープが実質無効化される (over-capture) ため rc で検出する。
+[ "$awk_rc" -eq 0 ] || tc6_fail="リモート側 section の閉じアンカー (- \`{projects_status_result}\`) に到達しなかった (over-capture)"
+[ -z "$tc6_fail" ] && { [ -n "$remote_section" ] || tc6_fail="リモート側 section が空 (開始アンカー **リモート側** が変更された可能性)"; }
+# 各ルールは marker 名だけでなく「判定値」まで pin する。marker 名の存在確認だけだと
+# ` `(未完了) → `x`(完了) への反転を素通しし、本 Issue の headline 欠陥そのものを通す。
+# 未完了判定に固有の救済文言を要求する形にすると、`x` 判定には存在し得ないため堅い。
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETE_FAILED=1.*手動削除' || tc6_fail="REMOTE_BRANCH_DELETE_FAILED が未完了判定 (手動削除の案内) になっていない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*削除を試行していません' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が未完了判定 (削除未試行の案内) になっていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*`x`' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
 # 両側独立評価の AND ルール文 (ローカル成功でリモート失敗が握り潰される回帰の pin)
 [ -z "$tc6_fail" ] && { grep -q '両方が `x` 相当のときだけ `x`' "$CLEANUP_MD" || tc6_fail="ローカル/リモート独立評価の AND ルール文がない"; }
+# marker 名の部分文字列衝突: REMOTE_BRANCH_DELETE_FAILED ⊃ BRANCH_DELETE_FAILED のため、
+# ローカル側ルールが非アンカーだとリモート marker 行に誤一致し誤処方になる。
+# ローカル側の 4 ルール + fallback がすべて `[CONTEXT] ` prefix 込みでアンカーされていることを pin。
+local_section=$(awk '/^  \*\*ローカル側\*\*/{f=1} f && /^  \*\*リモート側\*\*/{exit} f{print}' "$CLEANUP_MD")
+[ -z "$tc6_fail" ] && { [ -n "$local_section" ] || tc6_fail="ローカル側 section が空 (開始アンカー **ローカル側** が変更された可能性)"; }
+if [ -z "$tc6_fail" ]; then
+  unanchored=$(printf '%s\n' "$local_section" | grep -nE '^  - `BRANCH_DELETE' || true)
+  [ -z "$unanchored" ] || tc6_fail="ローカル側ルールが非アンカー (REMOTE_BRANCH_DELETE_FAILED に誤一致する): $unanchored"
+fi
+[ -z "$tc6_fail" ] && { grep -q 'marker 名は `\[CONTEXT\] ` prefix 込みで一致させる' "$CLEANUP_MD" || tc6_fail="アンカー照合の規約文がない"; }
 if [ -n "$tc6_fail" ]; then
   fail "TC-6: $tc6_fail"
 else
@@ -234,11 +262,16 @@ else
 fi
 
 # ─── TC-5 (T-04): mutation — 修正前のガード式に戻すと TC-1 が落ちる ───
-# TC-3 が origin を差し替えたままだと mutant の ls-remote が rc=128 で短絡し push が呼ばれず、
-# 「TC-1 が vacuous」という事実と異なるメッセージで落ちる。origin 到達性を明示的に担保する。
+# TC-5 の assertion が依存するのは「$BRANCH が origin に不在」。TC-3 が origin を差し替えたままでも
+# 前段 TC-2b の後始末が失敗しても、いずれも mutant が「別の理由で push を呼ぶ」経路になり、
+# 非 vacuity を証明するはずの TC 自身が vacuous 化する。両方を rc で切り分けて明示 assert する。
 git remote set-url origin "$ORIGIN"
-git ls-remote --exit-code --heads origin main >/dev/null 2>&1 \
-  || { echo "FATAL: TC-5 precondition: origin が到達不能"; exit 1; }
+_pc_err=$(LC_ALL=C git ls-remote --exit-code --heads origin "$BRANCH" 2>&1 >/dev/null); _pc_rc=$?
+case "$_pc_rc" in
+  0) echo "FATAL: TC-5 precondition: $BRANCH が origin に残存 (TC-2b の後始末が失敗) — TC-5 が vacuous になる"; exit 1 ;;
+  2) : ;;  # 期待状態: 対象ブランチは origin に不在
+  *) echo "FATAL: TC-5 precondition: origin の存在確認に失敗 (rc=$_pc_rc): $_pc_err"; exit 1 ;;
+esac
 # ガードが load-bearing であることの実証 (経験則「Mutation testing で test の真正性を
 # empirical 検証する」)。vacuous pass (ガードを外しても緑のまま) を排除する。
 echo "TC-5: mutation — reverting to the pre-fix guard makes TC-1 fail (guard is load-bearing)"
