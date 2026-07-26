@@ -82,7 +82,7 @@ These categories inherit [Hypothetical Exception Categories](../../../references
 **Mechanical detection + demotion**:
 
 ```
-For each finding in 全指摘事項 (post-5.3.0):
+For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, follow-up}:
   if finding's 内容 column contains a `Verification:` anchor
      (repro / failing_test、_reviewer-base.md §Verification: runtime 実測の添付 で定義)
      and the anchor's `=>` 右辺 (観測結果 / 失敗出力) is non-empty:
@@ -90,10 +90,22 @@ For each finding in 全指摘事項 (post-5.3.0):
   else:
     move to non_blocking_findings
     (severity / scope は維持したまま blocking 集合から除外。破棄しない。
-     アンカーはあるが実測内容が空の場合も本 regex 層が no-match として検出し WARNING を stderr に出して
-     同様に降格する — `=>` 右辺空 / whitespace-only の検出責務は本 regex 層にある。
      invariant #6 の canonical jq は field 全体の null/空のみ対象の write 側 backstop — review-result-schema.md 参照)
 ```
+
+> 疑似コードのループ条件に `where scope ∈ {current-pr, follow-up}` を明示するのは、本節が
+> `pr-review/SKILL.md` ステップ 5.3 実行順 step 2 から「集合演算の SoT」として参照されるため。
+> nit-noted 除外は散文 (下記「scope=nit-noted との関係」) と `pr-review/SKILL.md:1547` にも書かれて
+> いるが、SoT の疑似コード単独で三者整合が読み取れる状態を保つ。
+
+**WARNING emit (AC-6 主経路)**: 降格した finding のうち **`Verification:` アンカーは存在するが `=>` 右辺が空 / whitespace-only** のものは schema 違反 (AC-6) であり、単なる「アンカー無し」とは区別して stderr に WARNING を出す。`=>` 右辺空 / whitespace-only の検出責務は本 regex 層が単独で負う (invariant #6 の jq は field 全体 null/空のみ)。5.3.0.M は bash を実行しない推論ステップのため、「WARNING を出す」だけでは構造的に達成できない — 降格件数が 1 件以上なら以下を**明示的に実行**する (6.1.a step 1b の `MEASURED_DEMOTED_ON_WRITE` と対称):
+
+```bash
+echo "WARNING: Verification: アンカーはあるが => 右辺が空の finding {n} 件を measured=false に降格しました (5.3.0.M anchor regex 層)" >&2
+echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}" >&2
+```
+
+アンカーがそもそも存在しない finding (非実測指摘の正常系) は WARNING を出さない — 全 non-blocking 降格で WARNING を出すと schema 違反と正常系が区別できなくなるため。`MEASURED_DEMOTED_ON_ANCHOR` は `pr-review/SKILL.md` ステップ 6 の reason 節 / Retained flag mapping / Eval-order enumeration に登録済み。
 
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
@@ -101,7 +113,7 @@ For each finding in 全指摘事項 (post-5.3.0):
 (?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[[:space:]]*(?!<br)[^|[:space:]]
 ```
 
-LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。マッチしない場合は安全側 (non-blocking 降格 + WARNING) に倒れる。
+LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。**この制約は authoring 側 SoT (`_reviewer-base.md` §Verification の Rules / `reviewer-prompt-generator.md` の記入例) にも明記済み** — detection 側にだけ書くと、reviewer が最も自然に書くパイプ入り repro が no-match で silent に降格する (本節冒頭の同期規約が要求する双方向同期)。マッチしない場合は安全側 (non-blocking 降格) に倒れる (WARNING の発火条件は上記 **WARNING emit** 節が唯一の定義 — `=>` 右辺空 / whitespace-only のみが対象で、アンカー無しの正常系では出さない)。
 
 **non_blocking_findings の扱い**:
 

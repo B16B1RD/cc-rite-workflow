@@ -2313,6 +2313,16 @@ This phase now performs **three independent outputs**:
 - `p61c_local_save_failed_invalid`: `--local-save-failed` が不正値 (空文字/0/1 以外)
 - `p61c_persistence_unrecoverable`: ケース 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1`) で silent data loss 防止のため ステップ 6 全体を `exit 2` で fail
 
+**ステップ 6.1.d reasons** (helper 委譲ではなく **本 SKILL.md 自身が emit**。`[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` を stderr emit、全て **非ブロッキング** — 記録の成否は `overall_assessment` / result pattern に一切影響しない (AC-3)。ただし placeholder residue の 2 種のみ bash block を `exit 1` で止める):
+- `non_blocking_count_placeholder_residue`: step 2 の `{non_blocking_count}` が literal substitute されていない / 数値以外 (旧 `2>/dev/null` 握り潰しでは正常系と同一の `NONBLOCKING_CLEAR_SKIPPED` marker を rc=0 で emit し記録が silent に skip されていた)
+- `existing_id_placeholder_residue`: step 2 の `{existing_comment_id_from_p61d_step0}` が `{...}` 形状のまま到達 (置換漏れ時の 404 PATCH を事前に遮断)
+- `body_file_empty`: `{review_tmp_dir}/rite-nonblocking-{pr_number}.md` が空または不在 (step 1 の Write 失敗)。空 body で PATCH すると 1 行目 marker が消え step 0 の検索が恒久破綻するため投稿を中止する
+- `patch_failed`: 既存記録コメントの `gh api --method PATCH` が exit != 0 (network / auth / rate-limit / permission)
+- `create_failed`: 新規記録コメントの `gh pr comment` が exit != 0 (同上)
+
+**ステップ 6.1.d post-condition gate reason** (`[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=...`、6.1.b/6.1.c と同一 flag namespace):
+- `p61d_not_evaluated`: ステップ 6.1.d step 3 の post-condition gate で、本 cycle の出力に `[CONTEXT] NONBLOCKING_LOOKUP=done` marker が見つからなかった (= 6.1.d 未評価)。ステップ 7.7 / 8.0.1 と同じ prose gate であり、LLM が ERROR text を認識して 6.1.d step 0 に戻る
+
 **Non-blocking contract**: ステップ 6.1.a の全 14 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`) are all logged as WARNING and MUST NOT cause ステップ 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**:
@@ -2320,8 +2330,11 @@ This phase now performs **three independent outputs**:
 - **ステップ 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 14 種のいずれか: `pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`。この flag は ステップ 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。ステップ 6 全体の exit code には影響しない (非ブロッキング契約)。
 - **ステップ 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` / `p61b_post_comment_mode_invalid` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として ステップ 6 を fail させる (ステップ 6.1.a の非ブロッキング契約とは対照的)。なお `post_comment_mode=false` で 6.1.b に誤呼出された場合は gate が **silent skip (exit 0)** するため、caller branch selection ミスは retained flag emit せずに吸収される (データ破壊なし、gh pr comment も実行されない)。
 - **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
+- **ステップ 6.1.d** は `[CONTEXT] NONBLOCKING_RECORD_FAILED=1` flag を emit する。reason 値は `non_blocking_count_placeholder_residue` / `existing_id_placeholder_residue` / `body_file_empty` / `patch_failed` / `create_failed` のいずれか。**非ブロッキング** — `overall_assessment` / result pattern の判定に影響しない (AC-3)。あわせて observability marker として `NONBLOCKING_LOOKUP=done; pr=...; existing_id=...; degraded=...` (step 0 の探索結果、後述 post-condition gate の入力)、`NONBLOCKING_LOOKUP_DEGRADED=1` (step 0 の gh/jq 失敗で存在不明に縮退)、`NONBLOCKING_RECORDED=1; ...; mode=updated|created` (投稿成功)、`NONBLOCKING_CLEAR_SKIPPED=1` (0 件かつ既存なしの defensive skip) を emit する。post-condition gate 違反時のみ `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61d_not_evaluated` を emit する (6.1.b/6.1.c と同一 flag)。
+- **ステップ 6.1.a step 1b** は verification マッピング時の invariant #6 write 側 backstop として `[CONTEXT] MEASURED_DEMOTED_ON_WRITE=1; count={n}` を emit する (helper 委譲ではなく **LLM が直接 emit**。`review-result-save.sh` の `LOCAL_SAVE_FAILED` reason 群とは別 namespace)。
+- **ステップ 5.3.0.M** は anchor 検出 regex 層での AC-6 降格時に `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}` を emit する (同じく **LLM が直接 emit**。`Verification:` アンカーはあるが `=>` 右辺が空 / whitespace-only の finding のみが対象で、アンカー無しの正常系では出さない。定義の SoT は [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md))。
 
-**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称).
+**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称); ステップ 6.1.d emit = (`non_blocking_count_placeholder_residue` / `existing_id_placeholder_residue` / `body_file_empty` / `patch_failed` / `create_failed` / `p61d_not_evaluated`) — step 2 bash block 内の実 emit 順 (2 種の placeholder residue gate → body 非空検査 → PATCH / create の分岐)、末尾の `p61d_not_evaluated` は step 3 post-condition gate.
 
 #### 6.1.a Local JSON File Save (Always Executed) <!-- AC-1 / D-01 / D-02 / D-04 -->
 
@@ -2419,6 +2432,8 @@ bash {plugin_root}/hooks/review-comment-post.sh \
 
 **Note on Raw JSON section**: The `### 📄 Raw JSON` section embeds the same JSON as saved to the local file (ステップ 6.1.a). This enables `/rite:fix` to extract the JSON via a parse over the `` ```json `` fence using **section-scoped awk line-state parsing** in `fix.md` ステップ 1.2.0 Priority 3 (the parser uses the `### 📄 Raw JSON` heading as a scope marker to avoid capturing sample JSON fences from findings' suggestion columns earlier in the comment). The Markdown table format above the Raw JSON section is preserved for human readability and backward compatibility with older fix-loop parsing logic.
 
+**6.1.d への hand-off**: 本サブステップ完了後は 6.1.c を **skip して** ステップ 6.1.d を評価する (6.1.c は `post_comment_mode=false` 専用)。6.1.d は `{post_comment_mode}` に依存しない第 3 の独立出力経路であり、`post_comment_mode=true` 経路でも必ず評価する。実行保証は ステップ 6.1.d step 3 の post-condition gate が担う。
+
 #### 6.1.c Skip Notification (when `{post_comment_mode}=false`)
 
 When `{post_comment_mode}=false`, inform the user that PR comment posting was skipped (for observability — this is not an error).
@@ -2462,8 +2477,13 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    set -o pipefail
    gh_err=$(mktemp "${TMPDIR:-/tmp}/rite-nonblocking-gh-err-XXXXXX" 2>/dev/null) || gh_err=""
    lookup_degraded=0
+   # 述語は **1 行目 marker 見出しへの前方一致** (`startswith`)。`contains` で本文全体を対象にすると、
+   # marker 文字列を引用しただけの別コメント (6.1.b が投稿するレビュー結果コメントの finding 本文 /
+   # 人間の Quote reply) が `last` で選ばれ、step 2 の PATCH がそのコメントを丸ごと上書き破壊する。
+   # step 1 が「どちらの variant も 1 行目の marker 見出しを維持する」を write 側契約として要求して
+   # いるため、前方一致でマッチ能力は損なわれない (引用返信は先頭に `> ` が付くため除外される)。
    if existing_id=$(gh api --paginate --slurp "repos/{owner_repo}/issues/{pr_number}/comments" 2>"${gh_err:-/dev/null}" \
-        | jq -r 'add | [.[] | select(.body | contains("📜 rite 非実測指摘の記録"))] | last | .id // empty'); then
+        | jq -r 'add | [.[] | select((.body // "") | startswith("## 📜 rite 非実測指摘の記録"))] | last | .id // empty'); then
      :
    else
      echo "WARNING: 既存記録コメントの検索に失敗しました (gh/jq)。存在不明として扱います" >&2
@@ -2517,17 +2537,45 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    # ステップ 6.1.d step 2: PATCH (update-in-place) / create (count ガード付き)
    # existing_id は step 0 marker のリテラル置換で束縛する (cross-Bash-call の shell 変数参照は禁止)
    existing_id="{existing_comment_id_from_p61d_step0}"
-   if [ -n "$existing_id" ]; then
+   nb_count="{non_blocking_count}"
+
+   # placeholder residue gate (6.1.a/b/c の numeric gate・ステップ 5.0.A の `{orig_*}` gate と対称)。
+   # `[ "{non_blocking_count}" -gt 0 ] 2>/dev/null` で置換漏れの rc=2 を握り潰すと、非実測指摘が
+   # 1 件以上あっても正常系と同一の NONBLOCKING_CLEAR_SKIPPED marker を rc=0 で emit して記録を
+   # skip し、D-01 (破棄せず記録) が silent に破られる。数値以外は専用 reason で loud に落とす。
+   case "$nb_count" in
+     ''|*[!0-9]*)
+       echo "ERROR: {non_blocking_count} が literal substitute されていません (値: '$nb_count')" >&2
+       echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr={pr_number}; reason=non_blocking_count_placeholder_residue" >&2
+       exit 1
+       ;;
+   esac
+   case "$existing_id" in
+     "{"*"}")
+       echo "ERROR: {existing_comment_id_from_p61d_step0} が literal substitute されていません (値: '$existing_id')" >&2
+       echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr={pr_number}; reason=existing_id_placeholder_residue" >&2
+       exit 1
+       ;;
+   esac
+
+   # body ファイルの非空検査 (gh-cli-patterns.md の `[ ! -s file ]` 規約。姉妹実装
+   # hooks/review-comment-post.sh の --content-file 不在 reject と対称)。空 body で PATCH が成功すると
+   # step 1 が守るべき 1 行目 marker が消え、step 0 の検索が恒久的に miss して update-in-place が破綻する。
+   body_file="{review_tmp_dir}/rite-nonblocking-{pr_number}.md"
+   if [ ! -s "$body_file" ]; then
+     echo "WARNING: 非実測記録の本文ファイルが空または不在です ($body_file)。投稿を中止します (既存コメントの marker 破壊を防ぐ)" >&2
+     echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr={pr_number}; reason=body_file_empty" >&2
+   elif [ -n "$existing_id" ]; then
      if gh api --method PATCH "repos/{owner_repo}/issues/comments/${existing_id}" \
-          --field body=@"{review_tmp_dir}/rite-nonblocking-{pr_number}.md" >/dev/null; then
-       echo "[CONTEXT] NONBLOCKING_RECORDED=1; pr={pr_number}; count={non_blocking_count}; mode=updated; comment_id=${existing_id}"
+          --field body=@"$body_file" >/dev/null; then
+       echo "[CONTEXT] NONBLOCKING_RECORDED=1; pr={pr_number}; count=$nb_count; mode=updated; comment_id=${existing_id}"
      else
        echo "WARNING: 非実測指摘の PR コメント更新 (PATCH) に失敗しました (gh 失敗)。mergeable 判定には影響しません。記録内容は ステップ 5.4 integrated report の「実測なし指摘」section と 6.1.a ローカル JSON (measured=false finding) から参照できます" >&2
        echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr={pr_number}; reason=patch_failed" >&2
      fi
-   elif [ "{non_blocking_count}" -gt 0 ] 2>/dev/null; then
-     if gh pr comment {pr_number} -R {owner_repo} --body-file "{review_tmp_dir}/rite-nonblocking-{pr_number}.md"; then
-       echo "[CONTEXT] NONBLOCKING_RECORDED=1; pr={pr_number}; count={non_blocking_count}; mode=created"
+   elif [ "$nb_count" -gt 0 ]; then
+     if gh pr comment {pr_number} -R {owner_repo} --body-file "$body_file"; then
+       echo "[CONTEXT] NONBLOCKING_RECORDED=1; pr={pr_number}; count=$nb_count; mode=created"
      else
        echo "WARNING: 非実測指摘の PR コメント記録に失敗しました (gh pr comment 失敗)。mergeable 判定には影響しません。記録内容は ステップ 5.4 integrated report の「実測なし指摘」section と 6.1.a ローカル JSON (measured=false finding) から参照できます" >&2
        echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr={pr_number}; reason=create_failed" >&2
@@ -2539,6 +2587,31 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    ```
 
    検索失敗 (degraded) 時は `0 件 → skip` / `>0 件 → 新規作成に縮退` (WARNING + marker は step 0 で emit 済み — silent 縮退しない)。記録の成否は `overall_assessment` / result pattern (`[review:mergeable]` 等) の判定に **一切影響しない** (AC-3)。
+
+3. **post-condition gate (6.1.d 実行保証)**: 6.1.a/b/c はいずれも helper 側に machine-enforced gate を持つのに対し、6.1.d は SKILL.md 直書きのため実行保証が散文依存になる。`.rite/review-results/` は gitignore 対象で、既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の**唯一の durable かつ共有可能な記録**であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。ステップ 6 を終える前に step 0 の marker 出力を post-condition として検査する (ステップ 7.7 / 8.0.1 の sentinel-presence gate と同型):
+
+   **Check**: 本 cycle の出力に `[CONTEXT] NONBLOCKING_LOOKUP=done` が存在するか。
+
+   | Condition | Action |
+   |-----------|--------|
+   | marker あり | Gate passes — ステップ 6.2 へ |
+   | marker なし | **ERROR**: 6.1.d が未評価。下記 ACTION を実行 |
+
+   **On ERROR**:
+
+   ```
+   ERROR: ステップ 6.1.d post-condition gate failed.
+   No [CONTEXT] NONBLOCKING_LOOKUP=done marker found in this cycle's output.
+   This means ステップ 6.1.d (非実測指摘の PR コメント記録) was NOT evaluated.
+   ACTION: Return to ステップ 6.1.d step 0 and execute it before proceeding. Do NOT emit the
+   result pattern ([review:mergeable] / [review:fix-needed:{n}]) without a NONBLOCKING_LOOKUP marker.
+   ```
+
+   ```bash
+   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; pr={pr_number}; reason=p61d_not_evaluated" >&2
+   ```
+
+   本 gate は prose instruction として LLM 側の認識に依存する (ステップ 7.7 / 8.0.1 と同じ性質)。LLM は ERROR text を認識して 6.1.d step 0 に戻る必要がある。
 
 ### 6.2 Update Work Memory Phase
 

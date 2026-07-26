@@ -139,9 +139,11 @@ mergeable 判定の blocking 条件を「**runtime 実測を伴う CONFIRMED 指
 ```
 blocking = CONFIRMED (全指摘事項に残存)
          ∧ verification.measured == true   (repro または failing_test の実測証跡あり)
+                                           (※ 未判定 = 本式の対象外。下記「適用範囲」参照)
          ∧ scope ∈ {current-pr, follow-up}  (nit-noted は従来どおり対象外)
 ```
 
+- **適用範囲 (measured は 3 値)**: 本式が対象とするのは **`全指摘事項` に載る rite reviewer finding のみ**。`measured` は `true` / `false` に加えて **未判定** (`measured_map` 未登録) の 3 値を取り、外部ツール / 人間レビュー由来の指摘は `Verification:` アンカーを構造的に持てないため **未判定 = 本ゲートの対象外**として従来どおり blocking に扱う (SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.3 分類表の External review 行)。したがって consumer 側の [`fix-relaxation-rules.md`](../skills/fix/references/fix-relaxation-rules.md) が `blocking = measured != false` と書くのは本式との**意図的なスコープ差**であり矛盾ではない — 本式は rite reviewer finding に閉じた定義、consumer 側は未判定を含む fix loop 全体の定義。
 - **severity 閾値**: 既存の 5.3.1 Red blocking rule を踏襲し **全 severity 帯** (CRITICAL〜LOW) が対象 (nit-noted / auto-demote 済みを除く)。severity による段階的緩和は導入しない。
 - **実測 (measured=true) の受理形式**: (a) 再現コマンド + 観測される誤動作 (`repro`)、または (b) failing test のパス + 失敗出力 (`failing_test`) のいずれか。形式は [`review-result-schema.md` §verification サブフィールド](./review-result-schema.md#verification-サブフィールド) で固定し、LLM の自由裁量に委ねない。
 - **非実測指摘 (measured=false) の扱い**: 破棄せず **non-blocking** に分類し、PR コメント (non-blocking セクション) として記録する。fix サイクルは起動しない (mergeable countdown / `total_findings` から除外)。マージ後に人間が拾い直せる状態を保つ (Issue #2024 D-01)。

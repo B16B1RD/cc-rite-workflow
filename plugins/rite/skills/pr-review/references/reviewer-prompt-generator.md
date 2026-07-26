@@ -68,12 +68,14 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 **`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は blocking 可否を担う直交アンカー。blocking を意図する指摘は両方を末尾に付けること）:
 
+> ⚠️ **`Verification:` アンカーの LHS/RHS に raw `|` (パイプ) を含めないこと。** 検出 regex はセル境界に束縛されるため、パイプを含む再現コマンドは no-match となり **実測済みの指摘が non-blocking に降格** する。パイプは `¦` (U+00A6) で代替表記する（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification の Rules を参照。
+
 ```
 {WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined
 ```
 
 ```
-{WHAT + WHY の叙述}<br>Likelihood-Evidence: runtime_observation pytest -k test_bar で AssertionError<br>Verification: failing_test tests/test_bar.py => AssertionError: expected 0 got 1
+{WHAT + WHY の叙述}<br>Likelihood-Evidence: runtime_observation printf '%s' "$raw" ¦ jq -e '.a' が false を返す<br>Verification: repro printf '%s' "$raw" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)
 ```
 
 

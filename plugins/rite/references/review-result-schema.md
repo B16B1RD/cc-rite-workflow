@@ -25,6 +25,8 @@
 
 **受理される値** (読取側): `"1.0.0"` (canonical 1.0) / legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ、1.0.0 と semantic 等価、v2.0 まで受理) / `"1.1.0"` (canonical 1.1) の **3 値**。`"1.0.0"` / `"1.0"` で受信した JSON は `findings[].scope` / `findings[].pre_existing` フィールドが欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性 (schema 1.0 ↔ 1.1.0)](#後方互換性-schema-10--110) 参照)。詳細経緯は CHANGELOG を参照。
 
+**`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる** (Issue #2024 D-03: read 側 accept list 3 箇所の同期変更を避けるため schema_version を bump しない)。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。
+
 **検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
 
 **読取側 (3 値受理義務、3 箇所で完全同期)**:
@@ -144,7 +146,7 @@
 | `pre_existing` | bool | ✅ (1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、Cross-field invariant #5 は read 側ではトリガしない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
 | `original_severity` | string | (任意、1.1.0+) | severity 自己降格 (reviewer が CRITICAL 判定後 PR scope 不適合と判断し scope=follow-up や nit-noted へ送る際に severity を MEDIUM 等へ降格) 時の元値を保持。**自己降格 trace 用途のみ**で、cross-field invariant 評価には使わない。omit 可 (1.0 / 1.0.0 互換、降格していない finding には不要)。値の domain は `severity` enum 5 値と同じ |
 | `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
-| `verification` | object | (任意、additive) | 実測情報オブジェクト `{measured, repro, failing_test}` (下記サブフィールド表参照)。**欠落時は `measured=false` 扱い** (非実測 = non-blocking。詳細は [後方互換性](#後方互換性-schema-10--110) の verification default mapping)。実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) の判定入力。schema_version の bump は行わない (optional field の additive 追加のため 1.1.0 のまま) |
+| `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (D-03: schema_version を bump しない additive 追加のため — [Schema Version SoT](#schema-version-sot) 参照)。実測情報オブジェクト `{measured, repro, failing_test}` (下記サブフィールド表参照)。**欠落時は `measured=false` 扱い** (非実測 = non-blocking。詳細は [後方互換性](#後方互換性-schema-10--110) の verification default mapping)。実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) の判定入力 |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
 | `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md ステップ 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |

@@ -193,6 +193,7 @@ Verification: failing_test <テストパス> => <失敗出力>
 - 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
 - `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は指摘事項への掲載可否 (Observed Likelihood Gate)、`Verification:` は blocking 可否 (実測必須ゲート) をそれぞれ担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` 形式でも添付すること (両方を書く)。
 - `Verification:` アンカーだけあって実測内容が空 (`=>` の右辺が空等) の場合は schema 違反として measured=false に降格される。この降格を担うのは **Phase 5.3.0.M の anchor 検出 regex 層** (`=>` の右辺に非空白文字を要求する — [assessment-rules.md §5.3.0.M](../skills/fix/references/assessment-rules.md))。Cross-field invariant #6 の canonical jq は field 全体が null/空文字の場合のみを検出する write 側 defense-in-depth backstop であり、右辺空・whitespace-only の検出は regex 層の担当 (両層の書き分けは [review-result-schema.md invariant #6](../references/review-result-schema.md) 参照)。
+- **アンカーの LHS/RHS に raw `|` (パイプ) を含めないこと。** Markdown テーブルセル内ではセル境界と衝突して表構造を壊すうえ、5.3.0.M の検出 regex はアンカー自身の最初の `=>` に束縛されセル境界 `|` を跨がないため、パイプを含む再現コマンドは **no-match → measured=false 降格** になる (安全側だが、実測済みの指摘が blocking にならない)。パイプを含むコマンドは `¦` (U+00A6) で代替表記し、その旨を実測結果側に添える。例: `Verification: repro printf '%s' "$json" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)`。この制約の detection 側 SoT は [assessment-rules.md §Anchor detection regex](../skills/fix/references/assessment-rules.md) で、本 bullet と双方向同期させること。
 
 ### Hypothetical downgrade patterns
 

@@ -376,6 +376,20 @@ assert_rc 0 "p2 empty verification object -> accepted (measured absent = default
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 empty verification object accepted marker"
 assert_err_lacks "reason=local_file_verification_type_invalid" "type guard must not fire for verification:{}"
 
+# 正準非実測形状の受理 (AC-2 主経路): pr-review ステップ 6.1.a は非実測 finding に対し **常に**
+# {"measured":false,"repro":null,"failing_test":null} を出力する。この形状が受理されることを
+# 直接 pin する (verification 欠落 / verification:{} は「旧形式・部分形」であって主経路ではない)。
+# 型ガード述語を `(.verification.measured == true)` 等に変える 3-site 一貫 mutation は、
+# Test 10 の静的 parity では anchor も同時更新されるため素通りする — 本 fixture が唯一の semantics pin。
+cat > "$RR/711-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":711,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":false,"repro":null,"failing_test":null}}]}
+JSON
+run --pr-number 711 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 canonical non-measured shape -> accepted (AC-2 main path)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 canonical non-measured accepted marker"
+assert_err_lacks "reason=local_file_verification_type_invalid" "p2 canonical non-measured: type guard must not fire"
+assert_err_lacks "reason=local_file_cross_field_invariant_violated" "p2 canonical non-measured: invariant #2 must not fire (measured=false)"
+
 # all() 普遍量化の pin (P2 型ガード): 1 件目 well-typed / 2 件目型崩れの複数 finding で、
 # all→any 変異 (単一 finding fixture では観測不能) を検出する。型ガードが 2 件目を検出し、
 # invariant #2 の rc=5 誤診断 (型ガード導入前の症状) が復活しないことを併せて pin する
@@ -416,6 +430,38 @@ assert_rc 0 "p0 measured type invalid (string) -> exit 0 (fallback)"
 assert_err_has "reason=explicit_file_verification_type_invalid" "p0 measured type guard reason"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 measured type invalid -> fallback routing"
 
+# P0 鏡像: 正準非実測形状の受理 (AC-2 主経路、P2 fixture 711 の鏡像)
+nonmeasured_p0="$SANDBOX/nonmeasured-canonical.json"
+cat > "$nonmeasured_p0" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":false,"repro":null,"failing_test":null}}]}
+JSON
+run --pr-number 123 --review-file-path "$nonmeasured_p0" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 canonical non-measured shape -> accepted (AC-2 main path)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$nonmeasured_p0" "p0 canonical non-measured accepted marker"
+assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 canonical non-measured: type guard must not fire"
+assert_err_lacks "reason=mergeable_has_open_blockers" "p0 canonical non-measured: invariant #2 must not fire (measured=false)"
+
+# P0 鏡像: all() 普遍量化の pin (型ガード)。P2 fixture 709 と同形状。
+# P0 は --review-file 明示指定経路であり、単一 finding fixture だけでは all→any 変異が
+# 静的 parity のカウントでしか検出されない (semantics 非 pin) ため、複数 finding を置く。
+multi_typeguard_p0="$SANDBOX/multi-typeguard.json"
+cat > "$multi_typeguard_p0" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+JSON
+run --pr-number 123 --review-file-path "$multi_typeguard_p0" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 multi-finding type guard (2nd finding malformed) -> exit 0 (fallback)"
+assert_err_has "reason=explicit_file_verification_type_invalid" "p0 multi-finding all() quantification detects 2nd finding"
+assert_err_lacks "reason=mergeable_has_open_blockers" "p0 multi-finding: no rc=5 false invariant diagnosis"
+
+# P0 鏡像: all() 普遍量化の pin (invariant #2)。P2 fixture 710 と同形状。
+multi_invariant_p0="$SANDBOX/multi-invariant.json"
+cat > "$multi_invariant_p0" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"cmd => boom","failing_test":null}}]}
+JSON
+run --pr-number 123 --review-file-path "$multi_invariant_p0" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 multi-finding invariant #2 (one measured blocker among non-measured) -> exit 0 (fallback)"
+assert_err_has "reason=mergeable_has_open_blockers" "p0 multi-finding invariant #2 fires on the single measured blocker"
+
 # -----------------------------------------------------------------
 echo "--- Test 10: 3-site parity (static) — 型ガード / invariant #2 measured 節 ---"
 # 同一 jq 述語が review-source-resolve.sh (P0/P2 の 2 site) と fix/SKILL.md (P3 の 1 site) に
@@ -425,10 +471,21 @@ echo "--- Test 10: 3-site parity (static) — 型ガード / invariant #2 measur
 GUARD_PRED='all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))'
 INV2_PRED='or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open") or ((.verification.measured // false) != true)))'
 FIX_MD="$SCRIPT_DIR/../../skills/fix/SKILL.md"
-guard_sh_count=$(grep -cF "$GUARD_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" || true)
-inv2_sh_count=$(grep -cF "$INV2_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" || true)
-guard_md_count=$(grep -cF "$GUARD_PRED" "$FIX_MD" || true)
-inv2_md_count=$(grep -cF "$INV2_PRED" "$FIX_MD" || true)
+# grep の rc=1 (マッチなし = 正常な 0 件) と rc=2 (ファイル読取不能 = IO エラー) を区別する。
+# `|| true` で融合すると IO エラー時に grep -c がカウントを出力せず変数が空文字になり、
+# 後段の等値比較が "expected 2, got " という原因不明の parity 失敗として報告される (診断の誤誘導)。
+count_pred() {  # $1=pattern $2=file $3=label
+  local out rc
+  out=$(grep -cF "$1" "$2"); rc=$?
+  case "$rc" in
+    0|1) printf '%s' "${out:-0}" ;;
+    *)   fail "parity: grep IO error on $3 (rc=$rc, file=$2)"; printf '%s' "-1" ;;
+  esac
+}
+guard_sh_count=$(count_pred "$GUARD_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" "type guard/.sh")
+inv2_sh_count=$(count_pred "$INV2_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" "invariant #2/.sh")
+guard_md_count=$(count_pred "$GUARD_PRED" "$FIX_MD" "type guard/fix.md")
+inv2_md_count=$(count_pred "$INV2_PRED" "$FIX_MD" "invariant #2/fix.md")
 if [ "$guard_sh_count" = "2" ]; then pass "parity: full type guard predicate x2 in review-source-resolve.sh"; else fail "parity: full type guard predicate expected 2 in .sh, got $guard_sh_count"; fi
 if [ "$inv2_sh_count" = "2" ]; then pass "parity: full invariant #2 measured clause x2 in review-source-resolve.sh"; else fail "parity: full invariant #2 measured clause expected 2 in .sh, got $inv2_sh_count"; fi
 if [ "$guard_md_count" = "1" ]; then pass "parity: full type guard predicate x1 in fix/SKILL.md (P3)"; else fail "parity: full type guard predicate expected 1 in fix/SKILL.md, got $guard_md_count"; fi
@@ -454,7 +511,7 @@ case "$guard_md_prev" in
 esac
 # P3 emit pin: 専用 reason の stderr emit 行 (reason 文字列 + >&2 まで含む固定文字列) が 1 箇所
 # 存在すること。reason 改変 / stderr → stdout 化の drift は述語 parity では検出できない
-guard_emit_count=$(grep -cF 'reason=pr_comment_verification_type_invalid" >&2' "$FIX_MD" || true)
+guard_emit_count=$(count_pred 'reason=pr_comment_verification_type_invalid" >&2' "$FIX_MD" "P3 emit/fix.md")
 if [ "$guard_emit_count" = "1" ]; then
   pass "parity: P3 type guard emit line (reason + stderr redirect) pinned x1"
 else
