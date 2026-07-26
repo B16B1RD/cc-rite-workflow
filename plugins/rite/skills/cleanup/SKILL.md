@@ -566,8 +566,11 @@ case "{branch_name}" in
 # 実行等）まで「不在」に丸め、ローカルブランチが残ったまま完了と報告される（リモート側が rc=0/2
 # 以外を REMOTE_BRANCH_CHECK_FAILED に倒すのと同じ扱いにする — #2016）。
 # ただし rc=1 は「本当に不在」だけを意味しない — refname として非合法な値（末尾空白 / `:` 混入 /
-# `origin/` 前置の誤入力等）でも rc=1 になり、同じく「既削除 = 正常系」へ倒れて削除していないのに
-# 完了と報告する。rc=1 の意味を確定させるため、先に refname 合法性を検査する。
+# `..` や制御文字の混入等）でも rc=1 になり、同じく「既削除 = 正常系」へ倒れて削除していないのに
+# 完了と報告する。そこで **refname 構文に起因する rc=1 を分離する**ために先に合法性を検査する。
+# **これは rc=1 の多義性を解消しない** — `origin/foo` のように構文的には合法だが対象と別物の値、
+# および ref store 側の障害（ref ファイル不可読 / 破損）はこの検査を素通りし、依然として
+# 「不在」として扱われる。塞げていない範囲を「塞いだ」と書かないための注記。
 # stderr は退避して WARNING に載せる（rc=128 の原因が消えると認証失敗・リポジトリ外・破損が
 # 区別できない。リモート側が $_ls_err で原因を surface するのと対称）。
 LC_ALL=C git check-ref-format "refs/heads/{branch_name}" >/dev/null 2>&1; _cf_rc=$?
@@ -767,7 +770,7 @@ esac
 
 `BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中(#1670) または sandbox マスク skip(#1957)。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true かつ reap manifest への記録を verify 済み）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、または記録漏れ）は自動回収されないため手動 `git branch -D` が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
 
-リモート削除は **ブランチ名の事前検証 → 一時ファイル確保 → `git ls-remote --exit-code` + ref 名の完全一致検証** の順に進み、**どの経路も必ず marker を emit する**（marker 名は 4 種、emit 箇所は 6 — うち fail-fast 2 経路は `ls-remote` を実行しない。#2016）: 事前検証（空値 / marker デリミタ文字 / refname 非合法）に落ちた場合、一時ファイルを確保できなかった場合、ref 名の完全一致検証が異常終了した場合はいずれも削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1`（原因は marker の `rc=` と `reason=` で区別する）。`rc=0`（存在確認済み）は削除し、成功なら `REMOTE_BRANCH_DELETED=1`、失敗（protected branch / 権限不足 / race）なら `REMOTE_BRANCH_DELETE_FAILED=1` を emit する。`rc=2` は不在なので削除せず `REMOTE_BRANCH_ALREADY_ABSENT=1`、それ以外の非 0 は存在有無が判定できないため削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1` を emit する。成功側も marker を出すのは、ステップ 12 が marker 不在を「削除成功」と読まないようにするため — 不在を成功の符号化に使うと、本ブロックが実行されなかった経路と削除成功が同一視され、`/rite:merge` の完了報告と同種の「実際には起きていないことを完了として報告する」嘘が判定表側から復活する。リポジトリ設定 `delete_branch_on_merge: true` の環境では merge 時にサーバサイドで head ブランチが削除されるため通常は `rc=2` に落ち、`/rite:merge` の `--delete-branch=false` はこれを抑止しない（`skills/merge/SKILL.md` の設計判断を参照）。`delete_branch_on_merge: false` のリポジトリでは従来どおり `rc=0` 経路で削除される。
+リモート削除は **ブランチ名の事前検証 → 一時ファイル確保 → `git ls-remote --exit-code` + ref 名の完全一致検証** の順に進み、**どの経路も必ず marker を emit する**（marker 名は 4 種、emit 箇所は 8 — うち fail-fast 4 経路（空値 / marker デリミタ / refname 非合法 / 一時ファイル確保失敗）は `ls-remote` を実行しない。#2016）: 事前検証（空値 / marker デリミタ文字 / refname 非合法）に落ちた場合、一時ファイルを確保できなかった場合、ref 名の完全一致検証が異常終了した場合はいずれも削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1`（原因は marker の `rc=` と `reason=` で区別する）。`rc=0`（存在確認済み）は削除し、成功なら `REMOTE_BRANCH_DELETED=1`、失敗（protected branch / 権限不足 / race）なら `REMOTE_BRANCH_DELETE_FAILED=1` を emit する。`rc=2` は不在なので削除せず `REMOTE_BRANCH_ALREADY_ABSENT=1`、それ以外の非 0 は存在有無が判定できないため削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1` を emit する。成功側も marker を出すのは、ステップ 12 が marker 不在を「削除成功」と読まないようにするため — 不在を成功の符号化に使うと、本ブロックが実行されなかった経路と削除成功が同一視され、`/rite:merge` の完了報告と同種の「実際には起きていないことを完了として報告する」嘘が判定表側から復活する。リポジトリ設定 `delete_branch_on_merge: true` の環境では merge 時にサーバサイドで head ブランチが削除されるため通常は `rc=2` に落ち、`/rite:merge` の `--delete-branch=false` はこれを抑止しない（`skills/merge/SKILL.md` の設計判断を参照）。`delete_branch_on_merge: false` のリポジトリでは従来どおり `rc=0` 経路で削除される。
 
 ---
 
