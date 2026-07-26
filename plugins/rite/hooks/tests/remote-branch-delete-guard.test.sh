@@ -77,6 +77,18 @@ extract_guard_as() {
     | sed -e "s|{branch_name}|$1|g"
 }
 extract_guard() { extract_guard_as "$BRANCH"; }
+# ローカル削除ブロックの抽出。リモート側と別アンカーが要る — `# リモートブランチ削除` を開始
+# アンカーにする extract_guard はローカル側を範囲外にするため、ローカルの契約 (事前検証 case /
+# 存在確認 rc の 3 分岐) がどの検査にも掛からない状態だった (#2016 cycle 3 で実測)。
+# 終端はリモートブロックの開始コメント。{pr_merged} / {plugin_root} もこのブロックで展開される。
+# raw 版は placeholder を残す (静的 pin は `{branch_name}` を含む literal を要求するため)。
+extract_local_guard_raw() {
+  awk '/^## ステップ 5: ローカル \/ リモートブランチを削除/{s=1} s && /^```bash$/{f=1; next} f && /^# リモートブランチ削除/{exit} f{print}' "$CLEANUP_MD"
+}
+extract_local_guard_as() {
+  extract_local_guard_raw \
+    | sed -e "s|{branch_name}|$1|g" -e "s|{pr_merged}|true|g" -e "s|{plugin_root}|$TEST_DIR/no-plugin|g"
+}
 GUARD_SNIPPET="$TEST_DIR/guard.sh"
 extract_guard > "$GUARD_SNIPPET"
 # 必須文字列を 2 群に分け、**診断文面を分ける**。抽出の破損とガード契約の消失は原因も対処も別物で、
@@ -103,7 +115,7 @@ if [ "$_case_n" -ne 2 ] || [ "$_esac_n" -ne 2 ]; then
   exit 1
 fi
 # 群 2: ガードの振る舞い契約。抽出は成功しているので、不在は artifact 側で契約が失われたことを意味する。
-# 4 経路すべてを含める (どれか 1 経路だけが対象外という非対称を残さない)。
+# marker 名 4 種 / emit 箇所 6 のすべてを含める (どれか 1 経路だけが対象外という非対称を残さない)。
 # `[CONTEXT] ` prefix は consumer (ステップ 12) がアンカー照合する契約の一部なので群 2 に置く。
 # `grep "$required"` は BRE なので `[CONTEXT]` はブラケット式に解釈される — エスケープを外さないこと。
 # `push origin --delete` は抽出範囲内のコメントにも現れるため、コード行だけに現れる形で要求する。
@@ -119,9 +131,13 @@ fi
 for required in 'ls-remote --exit-code' \
                 'if _push_err=\$(LC_ALL=C git push origin --delete "refs/heads/' \
                 '-v r="refs/heads/' '$2 == r' \
-                '*[\;=]*)' 'rc=invalid-branch-name' 'branch=<unsupported branch name>' \
-                'rc=mktemp-failed' 'if \[ -z "\$_ls_out" \]; then' \
-                '_ls_rc="awk-\${_match_rc}"' 'if \[ "\$_ls_rc" -eq 0 \]; then' \
+                '*[\;=]*)' 'branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name' \
+                'branch=<unsupported branch name>; rc=empty-branch-name' \
+                'REMOTE_BRANCH_CHECK_FAILED=1; branch=.*rc=invalid-refname' \
+                'REMOTE_BRANCH_CHECK_FAILED=1; branch=.*rc=mktemp-failed' \
+                'if \[ -z "\$_ls_out" \]; then' \
+                '_check_reason="ref-match-awk-\${_match_rc}"' 'if \[ "\$_ls_rc" -eq 0 \]; then' \
+                '^  2) echo "\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT' \
                 'REMOTE_BRANCH_DELETED=1; branch=' 'REMOTE_BRANCH_DELETE_FAILED=1; branch=' \
                 'REMOTE_BRANCH_ALREADY_ABSENT=1; branch=' 'REMOTE_BRANCH_CHECK_FAILED=1; branch=' \
                 '\[CONTEXT\] REMOTE_BRANCH_' \
@@ -140,14 +156,40 @@ done
 # 範囲に含めない。群 2 (抽出結果が対象) では 3 箇所目だけが無防備という非対称が残るため、
 # $CLEANUP_MD 全体を対象にする群として分離する。群 2 に混ぜると「抽出は成功しています」という
 # 群 2 の診断文面と矛盾する (抽出範囲外の文字列を抽出結果に要求することになる)。
+LOCAL_SNIPPET="$TEST_DIR/guard-local-raw.sh"
+extract_local_guard_raw > "$LOCAL_SNIPPET"
+# 抽出の健全性 (リモート側の群 1 と同形)。ファイル全体を grep する形にしてはならない —
+# 判定表 (ステップ 12) に同一 literal が存在するため、emitter を消しても充足されて vacuous になる
+# (テスト側で同じ穴を逆向きに開けたのが #2016 cycle 3)。
+if [ ! -s "$LOCAL_SNIPPET" ] || ! grep -q '^case "{branch_name}" in' "$LOCAL_SNIPPET"; then
+  echo "FAIL: cleanup/SKILL.md からローカル削除ブロックを抽出できません (アンカーが変更された可能性)"
+  echo "  抽出結果: $(wc -l < "$LOCAL_SNIPPET") 行"
+  exit 1
+fi
+if grep -q '^# リモートブランチ削除' "$LOCAL_SNIPPET"; then
+  echo "FAIL: ローカル抽出がリモートブロックまで over-capture しています (終端アンカーが変更された可能性)"
+  exit 1
+fi
+if ! bash -n "$LOCAL_SNIPPET" 2>/dev/null; then
+  echo "FAIL: 抽出したローカル削除ブロックが構文的に不完全です"
+  bash -n "$LOCAL_SNIPPET" 2>&1 | sed 's/^/    /'
+  exit 1
+fi
+# ローカル側の契約。marker 名と判定値/rc 値を 1 パターンで要求する (連言) — marker 名だけを
+# 要求する形は、判定値を正常系へ反転する mutation を素通しする。
 for required in '--- branch delete stderr begin ---' '--- branch delete stderr end ---' \
-                '"\$del_err" | tr -d ' \
-                'git show-ref --verify --quiet "refs/heads/{branch_name}"' \
-                '\[CONTEXT\] BRANCH_ALREADY_ABSENT=1; branch={branch_name}' \
-                '\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch={branch_name}'; do
-  if ! grep -q -e "$required" "$CLEANUP_MD"; then
-    echo "FAIL: cleanup/SKILL.md に '$required' がありません — ローカル削除側の契約が失われています"
-    echo "  (退避 stderr の data/marker 分離、または存在確認 rc の 3 分岐 = 不在 / 判定不能 / 存在)"
+                '"\$del_err" | tr -d ' '"\${_sr_err}" | tr -d ' \
+                'git check-ref-format "refs/heads/' \
+                'BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname' \
+                'git show-ref --verify --quiet "refs/heads/{branch_name}" 2>&1 >/dev/null); _sr_rc=\$?' \
+                'if \[ "\$_sr_rc" -eq 1 \]; then' 'elif \[ "\$_sr_rc" -ne 0 \]; then' \
+                'BRANCH_ALREADY_ABSENT=1; branch={branch_name}' \
+                'BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=\${_sr_rc}' \
+                'branch=<unsupported branch name>; rc=empty-branch-name' \
+                'branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name'; do
+  if ! grep -q -e "$required" "$LOCAL_SNIPPET"; then
+    echo "FAIL: 抽出したローカル削除ブロックに '$required' がありません"
+    echo "  ローカル側の契約 (事前検証 / refname 合法性 / 存在確認 rc の 3 分岐 / 退避 stderr の分離) が失われています"
     exit 1
   fi
 done
@@ -369,7 +411,7 @@ if ! push_delete_called; then
 elif branch_exists_exact; then
   fail "TC-2: リモートブランチが削除されていない (削除先の refs/heads/ 修飾が外れ、同名タグとの ambiguous dst で push が失敗した可能性)"
 elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_DELETED=1; branch=$BRANCH(;|\$)"; then
-  # ステップ 12 の契約は 4 経路すべてが marker を出すこと。成功も positive marker で表さないと
+  # ステップ 12 の契約は全 emit 経路が marker を出すこと。成功も positive marker で表さないと
   # 「marker 不在 = 削除成功」に戻り、ステップ 5 の未実行と削除成功が区別できなくなる (#2016)。
   # branch= の右端境界まで要求する理由は TC-1 と同じ。
   fail "TC-2: 削除成功の marker REMOTE_BRANCH_DELETED が branch= スコープ込みで行頭に出ていない。ステップ 12 が marker 不在を成功と読む契約に退行する (出力: '$out')"
@@ -460,13 +502,75 @@ extract_guard_as "$EVIL_BRANCH" > "$EVIL_SNIPPET"
 out=$(run_guard "$EVIL_SNIPPET")
 if push_delete_called; then
   fail "TC-7: 契約を満たせないブランチ名なのに push --delete が呼ばれた ($(cat "$CALL_LOG"))"
-elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=invalid-branch-name'; then
+elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name'; then
   fail "TC-7: fail-fast の sentinel marker が行頭に出ていない (出力: '$out')"
 elif printf '%s' "$out" | grep -q "^\[CONTEXT\].*branch=$EVIL_BRANCH"; then
   # 実ブランチ名を marker に載せると `branch=other` が別ブランチのルールに右端境界で一致する。
   fail "TC-7: marker 行に実ブランチ名が載っている (guard が防ぐはずの誤帰属経路が開いたまま。出力: '$out')"
 else
   pass "TC-7 (契約外のブランチ名は削除を試行せず sentinel で fallback へ倒す)"
+fi
+
+# ─── TC-8 (#2016 cycle 4): ローカル削除ブロックの事前検証と存在確認 rc 分岐 ───
+# ローカルブロックは cycle 3 まで抽出対象外で、fail-fast と rc 3 分岐のどちらも無検証だった
+# (実測で両方を revert しても全 TC 緑)。emitter 側を実行して pin する。
+echo "TC-8: local delete block -> fail-fast on invalid names, rc=1 only means absent"
+LOCAL_RUN="$TEST_DIR/local-run.sh"
+run_local() {
+  : > "$CALL_LOG"
+  extract_local_guard_as "$1" > "$LOCAL_RUN"
+  PATH="$BIN_DIR:$PATH" bash "$LOCAL_RUN" 2>&1
+}
+tc8_fail=""
+# (a) デリミタ含みの名前 -> sentinel、実名を marker に載せない
+out=$(run_local "fix/issue-2016;branch=other")
+printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name' \
+  || tc8_fail="デリミタ含みの名前で sentinel marker が行頭に出ていない (出力: '$out')"
+[ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'branch=fix/issue-2016;branch=other' \
+  && tc8_fail="marker 行に実ブランチ名が載っている (誤帰属経路が開いたまま)"; }
+# (b) 空名 -> sentinel。必ず失敗する処方 (`git branch -D ""`) を出さない
+if [ -z "$tc8_fail" ]; then
+  out=$(run_local "")
+  printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name' \
+    || tc8_fail="空ブランチ名で sentinel marker が行頭に出ていない (出力: '$out')"
+  [ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'git branch -D ""' \
+    && tc8_fail="空ブランチ名に対して必ず失敗する処方 git branch -D \"\" を提示している"; }
+fi
+# (c) refname 非合法 (末尾空白) -> 「既削除」に丸めない
+if [ -z "$tc8_fail" ]; then
+  out=$(run_local "fix/trailing ")
+  printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=fix/trailing ; rc=invalid-refname' \
+    || tc8_fail="refname 非合法な名前が invalid-refname として surface されていない (出力: '$out')"
+  [ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'BRANCH_ALREADY_ABSENT' \
+    && tc8_fail="refname 非合法な名前を「既削除 = 正常系」に丸めた (削除していないのに完了と報告する)"; }
+fi
+# (d) 本当に不在 -> 正常系
+if [ -z "$tc8_fail" ]; then
+  out=$(run_local "fix/definitely-absent")
+  printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_ALREADY_ABSENT=1; branch=fix/definitely-absent' \
+    || tc8_fail="不在ブランチが BRANCH_ALREADY_ABSENT (正常系) になっていない (出力: '$out')"
+fi
+if [ -n "$tc8_fail" ]; then
+  fail "TC-8: $tc8_fail"
+else
+  pass "TC-8 (契約外の名前は削除を試行せず surface、rc=1 のみを既削除として扱う)"
+fi
+
+# ─── TC-9 (#2016 cycle 4): 存在確認が判定不能なとき「既削除」に丸めない ───
+# cycle 1 の修正が rc=1 と rc=128 を融合し、cycle 2 で HIGH の回帰として検出された経路。
+# 非 git ディレクトリを cwd にして show-ref を rc=128 にする。
+echo "TC-9: local existence check failure (rc!=0/1) -> BRANCH_CHECK_FAILED, not ALREADY_ABSENT"
+NONREPO="$TEST_DIR/nonrepo"; mkdir -p "$NONREPO"
+extract_local_guard_as "fix/whatever" > "$NONREPO/run.sh"
+out=$(cd "$NONREPO" && PATH="$BIN_DIR:$PATH" bash ./run.sh 2>&1)
+if printf '%s' "$out" | grep -q 'BRANCH_ALREADY_ABSENT'; then
+  fail "TC-9: 判定不能 (rc=128) を「既削除」に丸めた — cycle 1 の回帰そのもの (出力: '$out')"
+elif ! printf '%s' "$out" | grep -qE '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=fix/whatever; rc=[0-9]+'; then
+  fail "TC-9: BRANCH_CHECK_FAILED が行頭 marker で surface されていない (出力: '$out')"
+elif ! delimited_block_indented "$out" "show-ref"; then
+  fail "TC-9: 退避 stderr の行が列 0 から始まっている (出力: '$out')"
+else
+  pass "TC-9 (判定不能を未完了として surface、原因テキストも列 0 に到達しない)"
 fi
 
 # ─── TC-4 (T-03 / AC-3): merge/SKILL.md の設計判断が保証を主張していない ───
@@ -520,6 +624,7 @@ fi
 
 # ─── TC-6 (AC-4): ステップ 12 リモート側判定の契約を pin する ───
 # emitter (ステップ 5 のガード) だけを検証すると consumer (完了報告の判定ルール) が無防備になる。
+# ステップ 12 の契約は全 emit 経路が marker を出すこと。
 # 当該ブロックを削除する mutation でも全スイートが green になっていたため、散文側も静的に pin する。
 echo "TC-6: cleanup/SKILL.md ステップ 12 pins the remote-side judgement rules"
 remote_section=$(awk '/^  \*\*リモート側\*\*/{f=1} f{print} f && /^- `\{projects_status_result\}/{found=1; exit} END{exit !found}' "$CLEANUP_MD")

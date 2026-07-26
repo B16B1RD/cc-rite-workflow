@@ -553,15 +553,29 @@ fi
 # 構造的に排除する。リモート削除ブロックも同じ検査を独立に持つ（各ブロックが単体で抽出・実行
 # されうるため、ガードもブロック単位で自己完結させる）。
 case "{branch_name}" in
-  ''|*[\;=]*)
-    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=invalid-branch-name" >&2
-    echo "WARNING: ブランチ名が空、または marker のデリミタ文字 (; =) を含むため、ローカルブランチの削除を試行していません。手動で削除してください: git branch -D \"{branch_name}\"" >&2 ;;
+  '')
+    # 空値は処方を出さない。存在しないブランチに対する `git branch -D ""` は必ず失敗するため、
+    # 本 Issue が塞いだ「必ず失敗する処方」と同じものを新設することになる。
+    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name" >&2
+    echo "WARNING: 削除対象のブランチ名が空のため、ローカルブランチの削除を試行していません。対象ブランチを特定してから再実行してください。" >&2 ;;
+  *[\;=]*)
+    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name" >&2
+    echo "WARNING: ブランチ名に marker のデリミタ文字 (; =) が含まれるため、ローカルブランチの削除を試行していません。手動で削除してください: git branch -D \"{branch_name}\"" >&2 ;;
   *)
 # rc を捕捉して **rc=1（不在）だけ**を「既削除」に倒す。否定付き if の短絡形だと rc=128（リポジトリ外での
 # 実行等）まで「不在」に丸め、ローカルブランチが残ったまま完了と報告される（リモート側が rc=0/2
 # 以外を REMOTE_BRANCH_CHECK_FAILED に倒すのと同じ扱いにする — #2016）。
-LC_ALL=C git show-ref --verify --quiet "refs/heads/{branch_name}"; _sr_rc=$?
-if [ "$_sr_rc" -eq 1 ]; then
+# ただし rc=1 は「本当に不在」だけを意味しない — refname として非合法な値（末尾空白 / `:` 混入 /
+# `origin/` 前置の誤入力等）でも rc=1 になり、同じく「既削除 = 正常系」へ倒れて削除していないのに
+# 完了と報告する。rc=1 の意味を確定させるため、先に refname 合法性を検査する。
+# stderr は退避して WARNING に載せる（rc=128 の原因が消えると認証失敗・リポジトリ外・破損が
+# 区別できない。リモート側が $_ls_err で原因を surface するのと対称）。
+LC_ALL=C git check-ref-format "refs/heads/{branch_name}" >/dev/null 2>&1; _cf_rc=$?
+_sr_err=$(LC_ALL=C git show-ref --verify --quiet "refs/heads/{branch_name}" 2>&1 >/dev/null); _sr_rc=$?
+if [ "$_cf_rc" -ne 0 ]; then
+  echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname" >&2
+  echo "WARNING: ブランチ名が refname として非合法なため、ローカルブランチの存在を判定できず削除を試行していません (git check-ref-format rc=${_cf_rc})。" >&2
+elif [ "$_sr_rc" -eq 1 ]; then
   # 既に不在（cleanup の再実行 / 別セッションで削除済み）は正常系。存在確認せず `git branch -d` に
   # 渡すと "branch not found" で失敗して下の `*)` に落ち、BRANCH_DELETE_FAILED として
   # 「削除に失敗。`git branch -D` で手動削除」という**必ず失敗する処方**を出す。これはリモート側で
@@ -571,7 +585,10 @@ if [ "$_sr_rc" -eq 1 ]; then
 elif [ "$_sr_rc" -ne 0 ]; then
   # 存在有無が不明。削除を試行せず未完了として surface する（安全側）。
   echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_sr_rc}" >&2
-  echo "WARNING: ローカルブランチ {branch_name} の存在確認に失敗したため削除を試行していません (git show-ref rc=${_sr_rc})。" >&2
+  echo "WARNING: ローカルブランチ {branch_name} の存在確認に失敗したため削除を試行していません (git show-ref rc=${_sr_rc}):" >&2
+  echo "--- show-ref stderr begin ---" >&2
+  printf '%s\n' "${_sr_err}" | tr -d '\r' | sed 's/^/  /' >&2
+  echo "--- show-ref stderr end ---" >&2
 elif del_err=$(LC_ALL=C git branch -d {branch_name} 2>&1); then
   echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}"
 else
@@ -645,25 +662,35 @@ esac
 # 別ブランチの判定ルールに一致しうる（`;` `=` はいずれも合法な refname 文字）。エンコード規約を
 # emitter/consumer の両側に増やすより、契約を満たせない入力を fail-fast で弾く（Fail-Fast First）。
 case "{branch_name}" in
-  ''|*[\;=]*)
+  '')
+    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name" >&2
+    echo "WARNING: 削除対象のブランチ名が空のため、リモート削除を試行していません。対象ブランチを特定してから再実行してください。" >&2 ;;
+  *[\;=]*)
     # sentinel 値を使い、実ブランチ名を marker へ載せない（載せると誤帰属そのものを再現する）。
     # 値に空白を含めて refname として非合法にし、実在ブランチとの衝突を構造的に排除する。
     # consumer 側は `branch={branch_name}` に一致しないため fallback（未確認）に落ちる。
     # 空値も弾く — 空だと完全一致検証が決して一致せず「既削除 = 正常系」に倒れ、削除していない
     # のに完了と報告する。
-    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=invalid-branch-name" >&2
-    echo "WARNING: ブランチ名が空、または marker のデリミタ文字 (; =) を含むため、リモート削除の自動判定を行いません。手動で削除してください: git push origin --delete \"refs/heads/{branch_name}\"" >&2
+    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name" >&2
+    echo "WARNING: ブランチ名に marker のデリミタ文字 (; =) が含まれるため、リモート削除の自動判定を行いません。手動で削除してください: git push origin --delete \"refs/heads/{branch_name}\"" >&2
     ;;
   *)
-# `_ls_out` は先行宣言 → cleanup 関数 → 4 行 trap → mktemp の順で確保する（`references/
-# bash-trap-patterns.md` の canonical パターン）。`git ls-remote` は本ブロック唯一のネットワーク
+# refname 非合法な値は ls-remote の完全一致検証が決して一致せず「既削除 = 正常系」へ倒れるため、
+# ローカル側と対称に先に弾く（削除していないのに完了と報告するのを防ぐ）。
+if ! LC_ALL=C git check-ref-format "refs/heads/{branch_name}" >/dev/null 2>&1; then
+  echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname" >&2
+  echo "WARNING: ブランチ名が refname として非合法なため、リモートブランチの存在を判定できず削除を試行していません。" >&2
+else
+# `_ls_out` は先行宣言 → cleanup 関数 → 4 行 trap → mktemp の順で確保する
+# （rationale: ../../references/bash-trap-patterns.md#signal-specific-trap-template）。`git ls-remote` は本ブロック唯一のネットワーク
 # 操作で最も長くブロックしうるため、Ctrl-C の着弾点になりやすい。
 _ls_out=""
-_rite_cleanup_step5_remote_cleanup() { rm -f "${_ls_out:-}"; }
-trap 'rc=$?; _rite_cleanup_step5_remote_cleanup; exit $rc' EXIT
-trap '_rite_cleanup_step5_remote_cleanup; exit 130' INT
-trap '_rite_cleanup_step5_remote_cleanup; exit 143' TERM
-trap '_rite_cleanup_step5_remote_cleanup; exit 129' HUP
+_check_reason=""
+_rite_cleanup_phase5_cleanup() { [ -n "${_ls_out:-}" ] && rm -f "$_ls_out"; return 0; }
+trap 'rc=$?; _rite_cleanup_phase5_cleanup; exit $rc' EXIT
+trap '_rite_cleanup_phase5_cleanup; exit 130' INT
+trap '_rite_cleanup_phase5_cleanup; exit 143' TERM
+trap '_rite_cleanup_phase5_cleanup; exit 129' HUP
 _ls_out=$(mktemp "${TMPDIR:-/tmp}/rite-cleanup-lsremote-XXXXXX") || _ls_out=""
 if [ -z "$_ls_out" ]; then
   # stdout を分離できない = 完全一致検証ができない。検証なしで削除経路へ入ると tail 一致の
@@ -685,7 +712,9 @@ if [ "$_ls_rc" -eq 0 ]; then
   case "$_match_rc" in
     0) : ;;                       # 完全一致 = 存在
     1) _ls_rc=2 ;;                # 不一致 = 不在
-    *) _ls_rc="awk-${_match_rc}" ;;  # 判定不能 → 下の `*)` が CHECK_FAILED を emit
+    # 判定不能 → 下の `*)` が CHECK_FAILED を emit。`_ls_rc` は数値のまま保ち、原因は別変数へ
+    # 分ける（文字列を代入すると後続で数値比較を足した瞬間に壊れ、診断も ls-remote に誤帰属する）。
+    *) _ls_rc=3; _check_reason="ref-match-awk-${_match_rc}" ;;
   esac
 fi
 rm -f "$_ls_out"; _ls_out=""
@@ -715,7 +744,7 @@ case "$_ls_rc" in
     fi ;;
   2) echo "[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}" ;;
   *)
-    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_ls_rc}" >&2
+    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_ls_rc}${_check_reason:+; reason=${_check_reason}}" >&2
     # 多バイト文字に隣接する変数展開は必ず brace で閉じる。日本語文中で `$_ls_err。` と書くと
     # bash が `。` の先頭バイト (0xE3) を変数名に取り込み、非 UTF-8 ロケール (macOS CI 等) で
     # 変数が未定義化して原因テキストが消える。残った不正バイトは下流の BSD sed 等も落とす
@@ -723,19 +752,22 @@ case "$_ls_rc" in
     # 捕捉した stderr は文末に置く。ls-remote の stderr は空行を含む複数行が常態のため、文中に
     # 挿入すると operative な日本語（削除を試行していない旨）が英文パラグラフの末尾に孤立する。
     # 直上のローカル削除が $del_err を文末に置いているのと同じ配置。
-    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません (git ls-remote rc=${_ls_rc}):" >&2
+    # 原因は ls-remote とは限らない（完全一致検証の異常終了も本分岐へ落ちる）ため、コマンドを
+    # 名指しせず rc と reason で示す。
+    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません (rc=${_ls_rc}${_check_reason:+, ${_check_reason}}):" >&2
     echo "--- ls-remote stderr begin ---" >&2
     printf '%s\n' "${_ls_err}" | tr -d '\r' | sed 's/^/  /' >&2
     echo "--- ls-remote stderr end ---" >&2 ;;
 esac
+trap - EXIT INT TERM HUP
 fi
-trap - EXIT INT TERM HUP ;;
+fi ;;
 esac
 ```
 
 `BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中(#1670) または sandbox マスク skip(#1957)。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true かつ reap manifest への記録を verify 済み）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、または記録漏れ）は自動回収されないため手動 `git branch -D` が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
 
-リモート削除は **ブランチ名の事前検証 → 一時ファイル確保 → `git ls-remote --exit-code` + ref 名の完全一致検証** の順に進み、**どの経路も必ず marker を emit する**（marker 名は 4 種、emit 箇所は 6 — うち fail-fast 2 経路は `ls-remote` を実行しない。#2016）: 事前検証に落ちた場合と一時ファイルを確保できなかった場合は削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1`。`rc=0`（存在確認済み）は削除し、成功なら `REMOTE_BRANCH_DELETED=1`、失敗（protected branch / 権限不足 / race）なら `REMOTE_BRANCH_DELETE_FAILED=1` を emit する。`rc=2` は不在なので削除せず `REMOTE_BRANCH_ALREADY_ABSENT=1`、それ以外の非 0 は存在有無が判定できないため削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1` を emit する。成功側も marker を出すのは、ステップ 12 が marker 不在を「削除成功」と読まないようにするため — 不在を成功の符号化に使うと、本ブロックが実行されなかった経路と削除成功が同一視され、`/rite:merge` の完了報告と同種の「実際には起きていないことを完了として報告する」嘘が判定表側から復活する。リポジトリ設定 `delete_branch_on_merge: true` の環境では merge 時にサーバサイドで head ブランチが削除されるため通常は `rc=2` に落ち、`/rite:merge` の `--delete-branch=false` はこれを抑止しない（`skills/merge/SKILL.md` の設計判断を参照）。`delete_branch_on_merge: false` のリポジトリでは従来どおり `rc=0` 経路で削除される。
+リモート削除は **ブランチ名の事前検証 → 一時ファイル確保 → `git ls-remote --exit-code` + ref 名の完全一致検証** の順に進み、**どの経路も必ず marker を emit する**（marker 名は 4 種、emit 箇所は 6 — うち fail-fast 2 経路は `ls-remote` を実行しない。#2016）: 事前検証（空値 / marker デリミタ文字 / refname 非合法）に落ちた場合、一時ファイルを確保できなかった場合、ref 名の完全一致検証が異常終了した場合はいずれも削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1`（原因は marker の `rc=` と `reason=` で区別する）。`rc=0`（存在確認済み）は削除し、成功なら `REMOTE_BRANCH_DELETED=1`、失敗（protected branch / 権限不足 / race）なら `REMOTE_BRANCH_DELETE_FAILED=1` を emit する。`rc=2` は不在なので削除せず `REMOTE_BRANCH_ALREADY_ABSENT=1`、それ以外の非 0 は存在有無が判定できないため削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1` を emit する。成功側も marker を出すのは、ステップ 12 が marker 不在を「削除成功」と読まないようにするため — 不在を成功の符号化に使うと、本ブロックが実行されなかった経路と削除成功が同一視され、`/rite:merge` の完了報告と同種の「実際には起きていないことを完了として報告する」嘘が判定表側から復活する。リポジトリ設定 `delete_branch_on_merge: true` の環境では merge 時にサーバサイドで head ブランチが削除されるため通常は `rc=2` に落ち、`/rite:merge` の `--delete-branch=false` はこれを抑止しない（`skills/merge/SKILL.md` の設計判断を参照）。`delete_branch_on_merge: false` のリポジトリでは従来どおり `rc=0` 経路で削除される。
 
 ---
 
@@ -1009,14 +1041,14 @@ Status: {projects_status_result}
       ```
   - `[CONTEXT] BRANCH_DELETED=1; branch={branch_name}` 行があるとき（通常削除、squash 残渣の自動強制削除 `via=squash-merged`、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
   - `[CONTEXT] BRANCH_ALREADY_ABSENT=1; branch={branch_name}` 行があるとき（cleanup 再実行 / 別セッションで削除済みなどで既に不在。**正常系であり残作業ではない** — リモート側 `REMOTE_BRANCH_ALREADY_ABSENT` と対称）: `x`
-  - `[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}` 行があるとき（`git show-ref` が rc=0/1 以外で失敗し、ローカルブランチの存在を判定できなかったため削除を試行していない。リモート側 `REMOTE_BRANCH_CHECK_FAILED` と対称）: ` ` + 「ローカルブランチ {branch_name} の存在確認に失敗したため削除を試行していません。`git branch --list {branch_name}` で確認し、残っていれば `git branch -D {branch_name}` で手動削除」を付記
+  - `[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}` 行があるとき（ブランチ名の事前検証に落ちた、または `git show-ref` が rc=0/1 以外で失敗して存在を判定できなかったため削除を試行していない。原因は marker の `rc=` で区別する。リモート側 `REMOTE_BRANCH_CHECK_FAILED` と対称）: ` ` + 「ローカルブランチ {branch_name} の存在確認に失敗したため削除を試行していません。`git branch --list {branch_name}` で確認し、残っていれば `git branch -D {branch_name}` で手動削除」を付記
   - `[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}` 行があるとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（作業ツリーで使用中なら解放後）」を付記
   - `[CONTEXT] BRANCH_DELETE_UNMERGED=1; branch={branch_name}` 行があるとき（= 未マージ PR の強制 cleanup でユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
   - `[CONTEXT] BRANCH_DELETED` / `[CONTEXT] BRANCH_DELETE_*` / `[CONTEXT] BRANCH_ALREADY_ABSENT` / `[CONTEXT] BRANCH_CHECK_FAILED` かつ `branch={branch_name}` の行がいずれも無いとき: ` ` + 「ローカルブランチ {branch_name} の削除結果を確認できませんでした。`git branch --list {branch_name}` で確認し、残っていれば `git branch -D {branch_name}` で手動削除」を付記。**marker 不在を「削除成功」と読んではならない**（#2016） — ステップ 5 はローカル側 6 marker（`BRANCH_ALREADY_ABSENT` / `BRANCH_DELETED` / `BRANCH_DELETE_DEFERRED` / `BRANCH_DELETE_UNMERGED` / `BRANCH_DELETE_FAILED` / `BRANCH_CHECK_FAILED`）のいずれかを必ず emit するため、不在が意味するのは削除成功ではなく「ステップ 5 の bash block が実行されなかった」「出力が compact で失われた」等の**実行結果を確認できていない状態**である。リモート側 fallback と同一の到達条件・同一の意味に揃える（片側だけ `x` に倒すと、同じ条件に正反対の意味を割り当てる矛盾になる）。**marker family でスコープすること** — 無条件の「いずれの `[CONTEXT]` 行も無いとき」はリモート側 marker の存在で偽になり判定が破綻する
 
   **リモート側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family + `branch={branch_name}` に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない — ルールを先に評価すると、蓄積した stale marker のうち上位ルールに当たるものが最新の行より先に一致し、recency が働かない。#2016）:
   - `[CONTEXT] REMOTE_BRANCH_DELETE_FAILED=1; branch={branch_name}` 行があるとき（`rc=0` 経路で `git push origin --delete` を実行したが失敗した — protected branch / 権限不足 / race。リモートブランチは残存している）: ` ` + 「リモートブランチ {branch_name} の削除に失敗しました。`git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記
-  - `[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}` 行があるとき（`git ls-remote` が rc=0/2 以外で失敗し、リモートブランチの存在を判定できなかったため削除を試行していない）: ` ` + 「リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません。`git ls-remote --exit-code --heads origin "refs/heads/{branch_name}"` で確認し、残っていれば `git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記（案内する確認コマンドにも `--exit-code` を付ける — 本 Issue が「ガードとして機能しない」と特定した `--heads` 単体の形をユーザーに処方すると、同じ誤判定を再生産する）
+  - `[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}` 行があるとき（`git ls-remote` が rc=0/2 以外で失敗した、またはブランチ名の事前検証・一時ファイル確保・ref 名の完全一致検証のいずれかが失敗して存在確認自体を完了できなかったため、削除を試行していない）: ` ` + 「リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません。`git ls-remote --exit-code --heads origin "refs/heads/{branch_name}"` で確認し、残っていれば `git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記（案内する確認コマンドにも `--exit-code` を付ける — 本 Issue が「ガードとして機能しない」と特定した `--heads` 単体の形をユーザーに処方すると、同じ誤判定を再生産する）
   - `[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}` 行があるとき（`delete_branch_on_merge: true` によるサーバサイド auto-delete などで既に不在。**正常系であり残作業ではない** — AC-4）: `x`
   - `[CONTEXT] REMOTE_BRANCH_DELETED=1; branch={branch_name}` 行があるとき（`rc=0` 経路で `git push origin --delete` を実行し成功した = 通常削除。`delete_branch_on_merge: false` のリポジトリの正常系）: `x`
   - `[CONTEXT] REMOTE_BRANCH_*` かつ `branch={branch_name}` の行がいずれも無いとき: ` ` + 「リモートブランチ {branch_name} の削除結果を確認できませんでした。`git ls-remote --exit-code --heads origin "refs/heads/{branch_name}"` で確認し、残っていれば `git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記。**marker 不在を「削除成功」と読んではならない**（#2016） — ステップ 5 はリモート側 4 marker（`REMOTE_BRANCH_DELETED` / `REMOTE_BRANCH_DELETE_FAILED` / `REMOTE_BRANCH_ALREADY_ABSENT` / `REMOTE_BRANCH_CHECK_FAILED`）のいずれかを必ず emit するため、不在が意味するのは削除成功ではなく「ステップ 5 の bash block が実行されなかった」「出力が compact で失われた」等の**実行結果を確認できていない状態**である。ここを `x` に倒すと、`{base_update_check}` が marker 不在を「実行結果が確認できませんでした」として扱う規約と正反対になり、同 Issue が塞いだ false-success を判定表側から復活させる。**marker family でスコープすること** — 無条件の「いずれの `[CONTEXT]` 行も無いとき」は正常系でもローカル側の `BRANCH_DELETED=1` が必ず存在するため常に偽になり、リモート側の判定オペランドが未定義になる
