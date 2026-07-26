@@ -93,7 +93,9 @@ review:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
     # Review-fix loop termination
-    # The loop terminates only on (a) 0 findings remaining → [review:mergeable] (normal exit), or
+    # The loop terminates only on (a) 0 blocking findings remaining → [review:mergeable] (normal exit;
+    #     blocking = a CONFIRMED finding with runtime measurement, verification.measured=true —
+    #     see plugins/rite/references/severity-levels.md §実測必須ゲート), or
     # (b) manual abort via Ctrl+C → /rite:recover (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]).
     # The keys below remain as config scaffolding but have no
     # runtime effect on loop termination — see skills/iterate/SKILL.md ループ仕様 and
@@ -405,7 +407,7 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits on 0 findings (normal), the `safety.max_review_cycles` circuit breaker (default 5), or manual abort (Ctrl+C → `/rite:recover`) — see `skills/iterate/SKILL.md` for the live spec |
+| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits on 0 blocking findings (normal; blocking = measured CONFIRMED findings), the `safety.max_review_cycles` circuit breaker (default 5), or manual abort (Ctrl+C → `/rite:recover`) — see `skills/iterate/SKILL.md` for the live spec |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `review-schema-version-check` before committing fix changes to catch review-result schema_version drift |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
@@ -428,7 +430,7 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 
 | Exit | Trigger |
 |------|---------|
-| Normal | 0 findings remaining → `[review:mergeable]` |
+| Normal | 0 **blocking** findings remaining → `[review:mergeable]` (blocking = `verification.measured=true` の CONFIRMED 指摘 — non-measured findings are recorded as a PR comment and do not block; see `plugins/rite/references/severity-levels.md` §実測必須ゲート) |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:recover` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/pr-review/references/internal-consistency.md` for the full protocol.
@@ -626,7 +628,7 @@ When a limit is exceeded, the workflow presents options:
 
 **`max_review_cycles` (review⇄fix circuit breaker):**
 
-The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 findings). `max_review_cycles` adds a circuit breaker so a non-convergent PR cannot loop forever. When the cycle count reaches the limit:
+The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 **blocking** findings — measured CONFIRMED findings; non-measured findings are non-blocking). `max_review_cycles` adds a circuit breaker so a non-convergent PR cannot loop forever. When the cycle count reaches the limit:
 
 - **Interactive `/rite:iterate`**: an `AskUserQuestion` is presented (continue for another `max_review_cycles` cycles / abort / leave the draft as-is). The loop is never auto-continued past the limit.
 - **`/rite:batch-run` batch**: the Issue is recorded as failed (`[iterate:max-cycles-reached]`) and the batch advances to the next Issue, leaving the draft/open PR for review. This prevents one non-convergent PR from stalling the whole batch.
@@ -665,9 +667,9 @@ Settings for PR review **output** recording. This section is intentionally separ
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), results are saved to `.rite/review-results/{pr_number}-{timestamp}.json` only |
+| `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), review results are saved to `.rite/review-results/{pr_number}-{timestamp}.json`. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, a single update-in-place comment) is posted to the PR independently of this setting whenever the review produces one or more non-measured findings (Measured CONFIRMED Gate, Issue #2024 D-01) |
 
-`/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself.
+`/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep the full review report off the PR; note that the non-measured findings record comment is still posted regardless (update-in-place, at most one). Enable `post_comment: true` only if you want an auditable full review trail on the PR itself.
 
 ### wiki
 

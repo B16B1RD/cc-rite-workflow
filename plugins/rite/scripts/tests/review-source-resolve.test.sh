@@ -277,7 +277,7 @@ assert_err_has "REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch" "p
 assert_no_fixerror_stdout "p2 stale path"
 
 # -----------------------------------------------------------------
-echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename Instance 2/2 ---"
+echo "--- Test 9: Priority 2 invariant #2/#4 / enum / schema / 型ガード / corrupt-rename Instance 2-3/3 ---"
 # invariant #4: severity CRITICAL + scope nit-noted -> pr_comment
 cat > "$RR/700-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":700,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"CRITICAL","status":"open","scope":"nit-noted"}]}
@@ -302,15 +302,15 @@ run --pr-number 702 --review-file-path "$UNSET" --conversation-decision none --p
 assert_rc 0 "p2 schema_version unknown -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=local_file_schema_version_unknown" "p2 schema_version unknown reason"
 
-# corrupt-rename Instance 2/2: valid JSON but required fields missing -> rename + pr_comment
+# corrupt-rename Instance 2/3: valid JSON but required fields missing -> rename + pr_comment
 printf '{"foo":"bar"}' > "$RR/703-20260101000000.json"
 run --pr-number 703 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
 assert_rc 0 "p2 schema_required_fields_missing -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" "p2 schema_required_fields_missing reason"
 if ls "$RR"/703-20260101000000.json.corrupt-* >/dev/null 2>&1; then
-  pass "schema-invalid file renamed to .corrupt-* (Instance 2/2)"
+  pass "schema-invalid file renamed to .corrupt-* (Instance 2/3)"
 else
-  fail "schema-invalid file NOT renamed (Instance 2/2)"
+  fail "schema-invalid file NOT renamed (Instance 2/3)"
 fi
 
 # invariant #2 P2 mirror (positive control): mergeable + open HIGH + measured=true -> pr_comment
@@ -376,22 +376,71 @@ assert_rc 0 "p2 empty verification object -> accepted (measured absent = default
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 empty verification object accepted marker"
 assert_err_lacks "reason=local_file_verification_type_invalid" "type guard must not fire for verification:{}"
 
+# all() 普遍量化の pin (P2 型ガード): 1 件目 well-typed / 2 件目型崩れの複数 finding で、
+# all→any 変異 (単一 finding fixture では観測不能) を検出する。型ガードが 2 件目を検出し、
+# invariant #2 の rc=5 誤診断 (型ガード導入前の症状) が復活しないことを併せて pin する
+cat > "$RR/709-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":709,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
+JSON
+run --pr-number 709 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 multi-finding type guard (2nd finding malformed) -> exit 0 (pr_comment)"
+assert_err_has "reason=local_file_verification_type_invalid" "p2 multi-finding all() quantification detects 2nd finding"
+assert_err_lacks "reason=local_file_cross_field_invariant_violated" "p2 multi-finding: no rc=5 false invariant diagnosis"
+
+# all() 普遍量化の pin (P2 invariant #2): 非実測 HIGH + 実測 HIGH の 2 件 mergeable で
+# 「1 件でも measured=true の open blocker があれば発火する」ことを pin する
+cat > "$RR/710-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":710,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"cmd => boom","failing_test":null}}]}
+JSON
+run --pr-number 710 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 multi-finding invariant #2 (one measured blocker among non-measured) -> exit 0 (pr_comment)"
+assert_err_has "reason=local_file_cross_field_invariant_violated" "p2 multi-finding invariant #2 fires on the single measured blocker"
+
+# P0 鏡像 (F-08): verification:{} 受理 (measured 欠落 = default mapping、false rejection 防止)
+verification_empty_p0="$SANDBOX/verification-empty.json"
+cat > "$verification_empty_p0" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{}}]}
+JSON
+run --pr-number 123 --review-file-path "$verification_empty_p0" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 empty verification object -> accepted"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$verification_empty_p0" "p0 empty verification object accepted marker"
+assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 type guard must not fire for verification:{}"
+
+# P0 鏡像 (F-08): measured:"true" (非 bool) reject -> fallback
+measured_string_p0="$SANDBOX/measured-string.json"
+cat > "$measured_string_p0" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":"true","repro":"cmd => boom","failing_test":null}}]}
+JSON
+run --pr-number 123 --review-file-path "$measured_string_p0" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 measured type invalid (string) -> exit 0 (fallback)"
+assert_err_has "reason=explicit_file_verification_type_invalid" "p0 measured type guard reason"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 measured type invalid -> fallback routing"
+
 # -----------------------------------------------------------------
 echo "--- Test 10: 3-site parity (static) — 型ガード / invariant #2 measured 節 ---"
 # 同一 jq 述語が review-source-resolve.sh (P0/P2 の 2 site) と fix/SKILL.md (P3 の 1 site) に
 # 同数出現することを静的に検証する (片側だけ更新される drift の検出。P3 は markdown 埋め込み
-# bash のため実行テスト不能 — grep parity で pin する)
-GUARD_PRED='((.verification.measured | type) == "boolean")'
-INV2_PRED='((.verification.measured // false) != true)'
+# bash のため実行テスト不能 — grep parity で pin する)。anchor は述語式**全体** (all( prefix と
+# 選言構造を含む) — 部分文字列 anchor では all→any 等の意味論 drift が素通りするため
+GUARD_PRED='all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))'
+INV2_PRED='or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open") or ((.verification.measured // false) != true)))'
 FIX_MD="$SCRIPT_DIR/../../skills/fix/SKILL.md"
 guard_sh_count=$(grep -cF "$GUARD_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" || true)
 inv2_sh_count=$(grep -cF "$INV2_PRED" "$SCRIPT_DIR/../review-source-resolve.sh" || true)
 guard_md_count=$(grep -cF "$GUARD_PRED" "$FIX_MD" || true)
 inv2_md_count=$(grep -cF "$INV2_PRED" "$FIX_MD" || true)
-if [ "$guard_sh_count" = "2" ]; then pass "parity: type guard predicate x2 in review-source-resolve.sh"; else fail "parity: type guard predicate expected 2 in .sh, got $guard_sh_count"; fi
-if [ "$inv2_sh_count" = "2" ]; then pass "parity: invariant #2 measured clause x2 in review-source-resolve.sh"; else fail "parity: invariant #2 measured clause expected 2 in .sh, got $inv2_sh_count"; fi
-if [ "$guard_md_count" = "1" ]; then pass "parity: type guard predicate x1 in fix/SKILL.md (P3)"; else fail "parity: type guard predicate expected 1 in fix/SKILL.md, got $guard_md_count"; fi
-if [ "$inv2_md_count" = "1" ]; then pass "parity: invariant #2 measured clause x1 in fix/SKILL.md (P3)"; else fail "parity: invariant #2 measured clause expected 1 in fix/SKILL.md, got $inv2_md_count"; fi
+if [ "$guard_sh_count" = "2" ]; then pass "parity: full type guard predicate x2 in review-source-resolve.sh"; else fail "parity: full type guard predicate expected 2 in .sh, got $guard_sh_count"; fi
+if [ "$inv2_sh_count" = "2" ]; then pass "parity: full invariant #2 measured clause x2 in review-source-resolve.sh"; else fail "parity: full invariant #2 measured clause expected 2 in .sh, got $inv2_sh_count"; fi
+if [ "$guard_md_count" = "1" ]; then pass "parity: full type guard predicate x1 in fix/SKILL.md (P3)"; else fail "parity: full type guard predicate expected 1 in fix/SKILL.md, got $guard_md_count"; fi
+if [ "$inv2_md_count" = "1" ]; then pass "parity: full invariant #2 measured clause x1 in fix/SKILL.md (P3)"; else fail "parity: full invariant #2 measured clause expected 1 in fix/SKILL.md, got $inv2_md_count"; fi
+# P3 の順序 drift pin: fix/SKILL.md 内で型ガード行が invariant #2 行より前に出現すること
+guard_md_line=$(grep -nF "$GUARD_PRED" "$FIX_MD" | head -1 | cut -d: -f1)
+inv2_md_line=$(grep -nF "$INV2_PRED" "$FIX_MD" | head -1 | cut -d: -f1)
+if [ -n "$guard_md_line" ] && [ -n "$inv2_md_line" ] && [ "$guard_md_line" -lt "$inv2_md_line" ]; then
+  pass "parity: P3 type guard precedes invariant #2 (line $guard_md_line < $inv2_md_line)"
+else
+  fail "parity: P3 order drift — type guard line=$guard_md_line, invariant #2 line=$inv2_md_line"
+fi
 
 # -----------------------------------------------------------------
 echo ""

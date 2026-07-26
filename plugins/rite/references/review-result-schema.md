@@ -143,13 +143,13 @@
 
 ### `verification` サブフィールド
 
-`findings[].verification` オブジェクトのサブフィールド定義。「実測」の判定を LLM の自由裁量に委ねないため、受理形式を本表で固定する (Issue #2024 MUST NOT):
+`findings[].verification` オブジェクトのサブフィールド定義。「実測」の判定を LLM の自由裁量に委ねないため、**write 側 (`pr-review.md` ステップ 6.1.a) が出力すべき形式を本表で固定する** (Issue #2024 MUST NOT)。read 側の受理範囲は本表より広い — [§verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理し default mapping で measured=false に畳む):
 
-| フィールド | 型 | 必須 | 説明 |
-|-----------|-----|------|------|
-| `measured` | bool | ✅ (verification 存在時) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null** であることが必須 (Cross-field invariant #6)。`true` = blocking 候補、`false` = non-blocking (PR コメント記録のみ) |
-| `repro` | string \| null | ✅ (verification 存在時、null 可) | 再現手順。**形式固定**: `<再現コマンド> => <観測される誤動作>` (`=>` 区切り)。例: `bash hooks/foo.sh --bad-arg => ERROR: unbound variable` |
-| `failing_test` | string \| null | ✅ (verification 存在時、null 可) | failing test。**形式固定**: `<テストパス> => <失敗出力>` (`=>` 区切り)。例: `hooks/tests/test-foo.sh => TC-03 FAILED: expected 0 got 1` |
+| フィールド | 型 | 必須 (write 側) | read 側の受理 | 説明 |
+|-----------|-----|------|------|------|
+| `measured` | bool | ✅ (6.1.a は常に 3 キーを出力) | 欠落 / null 許容 (→ measured=false 扱い)。**型は boolean/null のみ** (型ガード) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null** であることが必須 (Cross-field invariant #6)。`true` = blocking 候補、`false` = non-blocking (PR コメント記録のみ) |
+| `repro` | string \| null | ✅ (null 可) | 欠落 / null 許容 (read 側は jq 評価しないため型制約なし) | 再現手順。**形式固定**: `<再現コマンド> => <観測される誤動作>` (`=>` 区切り)。例: `bash hooks/foo.sh --bad-arg => ERROR: unbound variable` |
+| `failing_test` | string \| null | ✅ (null 可) | 同上 | failing test。**形式固定**: `<テストパス> => <失敗出力>` (`=>` 区切り)。例: `hooks/tests/test-foo.sh => TC-03 FAILED: expected 0 got 1` |
 
 ### severity 別名マッピング表
 
