@@ -11,6 +11,8 @@
 
 From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
 
+> **Note**: The install command shown in the video still uses the previous repository owner (`asakaguchi`). See [Installation](#installation) below for the current command.
+
 https://github.com/user-attachments/assets/b1f50f60-6c7c-4d86-9ceb-9071ae4b1c9f
 
 ## Why "Rite"?
