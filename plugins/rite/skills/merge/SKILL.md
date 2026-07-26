@@ -115,7 +115,7 @@ fi
 
 - PR: #{pr_number}
 - マージ方式: squash
-- ブランチ: {branch_name} (ローカルブランチは残っています。リモートは `delete_branch_on_merge: true` のリポジトリでは既に削除済みの場合があります)
+- ブランチ: {branch_name} (`/rite:merge` はローカルブランチを削除していません。リモートは `delete_branch_on_merge: true` のリポジトリでは既に削除済みの場合があります)
 
 次のステップ:
 - クリーンアップ: /rite:cleanup {pr_number}
