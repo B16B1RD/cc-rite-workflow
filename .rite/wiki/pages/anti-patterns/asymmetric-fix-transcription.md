@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-25T07:05:21Z"
+updated: "2026-07-26T10:05:51Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T003541Z-pr-2013.md"
@@ -550,6 +550,14 @@ sources:
     ref: "raw/fixes/20260721T103101Z-pr-1955.md"
   - type: "reviews"
     ref: "raw/reviews/20260721T104835Z-pr-1955-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260726T062935Z-pr-2022.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260726T055002Z-pr-2022.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260726T035338Z-pr-2022.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260726T044237Z-pr-2022.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file"]
 confidence: high
 ---
@@ -1839,7 +1847,21 @@ macOS の `$TMPDIR`（`/var/folders` = `/private` への symlink）問題を、�
 
 > **教訓**: 移植性・規約バグを直す PR では、実装本体だけでなく **そのパターンを再生産する SoT（ひな形・スニペット・コード生成器・ドキュメント内サンプル）** を必ず grep して同時に更新する。テンプレートとコメントが食い違っている状態（コメントは新しい規約を説明しているのに本体が旧形）は、その grep が行われなかった直接の痕跡として検出できる。
 
+## 変種: 「2 箇所に適用して 3 個目を落とす」が 3 cycle 連続で再発する（PR #2022、11 cycle 未収束）
+
+marker 照合規約を段階的に強化した PR で、本 anti-pattern が **同一 PR 内で 3 cycle 連続** 発現した。デリミタは開き側だけ、setup の stderr 捕捉は `&&` チェーンの最終段だけ、over-capture ゲートは 4 抽出中 2 つだけ、判定値 pin は 3 family 中 2 つだけ、という形で毎 cycle 1 つずつ取り残した。
+
+とりわけ深刻だったのは **規約を新設した同じコミットで自分がその規約を破る** 形の非対称である:
+
+- リモート側 fallback を「marker 不在 = 未確認」へ反転し「marker 不在を削除成功と読んではならない」と明文化しながら、**7 行上** のローカル側 fallback を `x`（= まさに marker 不在を成功と読む形）のまま残した。同一 bash fence 内の 2 つの marker family は完全に同じ条件で同時に不在になるため、同一到達条件に正反対の意味を割り当てる矛盾になった。3 reviewer が独立に指摘。
+- 「負の assertion は非アンカーにする」という規約をファイル冒頭に新設した同一コミットで、追加した TC の負 assertion にアンカーを付けた。2 reviewer が独立に指摘。
+- pin が命題ではなく見出しラベルにマッチする欠陥を発見して直した **同じコミットで**、隣の pin に同じ形を作った。
+
+> **教訓**: (1) 非対称を解消する修正は、対称化の相手側も **同じコミットで** 直す。片側だけ直すと「直し忘れ」ではなく「意図的な非対称」として読まれ、次 cycle で矛盾として再指摘される。(2) 規約を新設したら、同一ファイル内の類似箇所すべてに適用したかを機械的に確認する。「1 段落で全ルールに掛ける」書き方は重複を避けられるが、段落の自己限定（「以下のルールで『行があるとき』と書いた箇所」）が fallback（「いずれの行も無いとき」）に届かない射程の穴を作りやすいため、肯定・否定の両方を明示的に含める。(3) 同じ規約を N 個の family に適用したら N 個すべてを pin する。
+
 ## ソース（追記分）
 
 - [PR #2013 review cycle 1 — ドキュメント SoT テンプレートと実コードの乖離（3 レビュアーが独立収束）](../../raw/reviews/20260725T003541Z-pr-2013.md)
 - [PR #2013 fix results — バグを直したらそのバグを再生産するテンプレートも直す](../../raw/fixes/20260725T004542Z-pr-2013.md)
+- [PR #2022 fix results (cycle 11) — 片側だけ硬化して兄弟箇所へ転記しない欠陥が 3 cycle 連続](../../raw/fixes/20260726T062935Z-pr-2022.md)
+- [PR #2022 review results (cycle 8) — 規約を新設する修正が自分でその規約を破る](../../raw/reviews/20260726T035338Z-pr-2022.md)
