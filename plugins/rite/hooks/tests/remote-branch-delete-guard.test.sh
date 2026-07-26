@@ -96,14 +96,15 @@ _brace_detect() {
 # 壊れると守っているはずの違反があっても緑になる。既知の違反を **同じ関数** に通して発火することを
 # 先に証明する (TC-8b-h と同形。develop f45be675 の「positive control を付け vacuous pass を排除する」
 # と同じ規律)。
-_brace_probe=$(mktemp "${TMPDIR:-/tmp}/rite-brace-probe-XXXXXX.sh")
+# probe は trap 済みの $TEST_DIR 配下に置く。mktemp を使うと rc 未検査のとき空パスが検出器へ渡り、
+# 「検出器が既知の違反を報告しません」という真因と異なる帰属で落ちる（$TEST_DIR は生成時に
+# ガード済みで EXIT trap の掃除対象にも入るため、rc 検査も個別の rm -f も不要になる）。
+_brace_probe="$TEST_DIR/brace-probe.sh"
 printf 'echo "x: $_ls_err\xe3\x80\x82"\n' > "$_brace_probe"
 if [ "$(_brace_detect "$_brace_probe" | wc -l | tr -d '[:space:]')" != "1" ]; then
   echo "FAIL: brace 検出器が既知の違反を報告しません — 以降のスキャンは vacuous です"
-  rm -f "$_brace_probe"
   exit 1
 fi
-rm -f "$_brace_probe"
 
 _brace_violations=$(_brace_detect "$GUARD_SNIPPET")
 if [ -n "$_brace_violations" ]; then
@@ -271,14 +272,23 @@ git remote set-url origin "$ORIGIN"
 # 「保証する」literal の不在だけを見ると「必ず残ることを保証します」等の言い換えを素通しするため
 # (実測で確認)、AC-3 が要求する性質「できないことを明示している」を否定語の存在で肯定的に assert する。
 echo "TC-4: merge/SKILL.md states what --delete-branch=false can and cannot suppress"
-decision=$(grep -n -- '--delete-branch=false` 明示' "$MERGE_MD" | head -1)
+# 検査対象は bullet 全体。marker 行だけを見ると、設計判断を複数行に分割するだけで assertion を
+# 回避できる。次の bullet または空行までを 1 単位として抽出する。
+decision=$(awk '
+  /^- \*\*`--delete-branch=false` 明示\*\*/ { f=1; print; next }
+  f && (/^- \*\*/ || /^[[:space:]]*$/) { exit }
+  f { print }
+' "$MERGE_MD")
 if [ -z "$decision" ]; then
   fail "TC-4: merge/SKILL.md に --delete-branch=false の設計判断項目が見つからない"
 elif printf '%s' "$decision" | grep -qE '保証する|保証します|保証される|保証できる'; then
   fail "TC-4: 全称的な保証の主張が残っている: $decision"
 elif ! printf '%s' "$decision" | grep -q 'delete_branch_on_merge'; then
   fail "TC-4: サーバサイド auto-delete (delete_branch_on_merge) への言及がない: $decision"
-elif ! printf '%s' "$decision" | grep -qE '保証されない|止められない|抑止できるのは'; then
+elif ! printf '%s' "$decision" | grep -qE '保証されない|止められない'; then
+  # 否定表現は **単体で否定を含意するもの** に限る。「抑止できるのは」のような断片を alternation に
+  # 混ぜると、後続が「…だけである。よってマージ後はブランチが必ず残る」という過大主張でもマッチし、
+  # AC-3 が禁じている当の違反に false confidence を与える (実測で確認)。
   fail "TC-4: 「抑止できないもの」を明示する否定表現がない (AC-3 が求める区別に届いていない): $decision"
 else
   pass "TC-4 (抑止できるもの/できないものを区別して記述)"
