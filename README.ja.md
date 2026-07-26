@@ -2,7 +2,7 @@
 
 > Claude Code のための汎用 Issue ドリブン開発ワークフロー
 
-[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.9.2)
+[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.9.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | **日本語**
@@ -10,6 +10,8 @@
 ## Demo
 
 Issue から PR まで、開発を“儀式”に変える — 約125秒で分かる紹介動画（日本語字幕）。
+
+> **注**: 動画内のインストールコマンドおよび末尾のフッター URL は旧リポジトリオーナー（`asakaguchi`）表記のままです。最新のコマンドは下記[インストール](#インストール)を参照してください。
 
 https://github.com/user-attachments/assets/82ba8e65-0c07-4346-9964-5a482a1f4df5
 
@@ -43,7 +45,7 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 **ステップ 1**: マーケットプレイスを追加
 
 ```bash
-/plugin marketplace add asakaguchi/cc-rite-workflow
+/plugin marketplace add B16B1RD/cc-rite-workflow
 ```
 
 **ステップ 2**: プラグインをインストール

@@ -53,21 +53,21 @@ resolve_in() {
 #     protocol-style branch stripping `:port` instead of the host) would
 #     still produce 2 non-empty fields and slip past a structural-only check.
 declare -A urls=(
-  ["scp-like SSH Host alias (the #1899 repro case)"]="git@github.com-work:asakaguchi/cc-rite-workflow.git"
-  ["scp-like SSH canonical host"]="git@github.com:asakaguchi/cc-rite-workflow.git"
-  ["https with .git suffix"]="https://github.com/asakaguchi/cc-rite-workflow.git"
-  ["https without .git suffix"]="https://github.com/asakaguchi/cc-rite-workflow"
-  ["ssh:// with explicit user"]="ssh://git@github.com/asakaguchi/cc-rite-workflow.git"
-  ["ssh:// with explicit port"]="ssh://git@github.com:22/asakaguchi/cc-rite-workflow.git"
+  ["scp-like SSH Host alias (the #1899 repro case)"]="git@github.com-work:B16B1RD/cc-rite-workflow.git"
+  ["scp-like SSH canonical host"]="git@github.com:B16B1RD/cc-rite-workflow.git"
+  ["https with .git suffix"]="https://github.com/B16B1RD/cc-rite-workflow.git"
+  ["https without .git suffix"]="https://github.com/B16B1RD/cc-rite-workflow"
+  ["ssh:// with explicit user"]="ssh://git@github.com/B16B1RD/cc-rite-workflow.git"
+  ["ssh:// with explicit port"]="ssh://git@github.com:22/B16B1RD/cc-rite-workflow.git"
   ["https on a GitHub Enterprise host"]="https://github.mycompany.com/org/repo.git"
 )
 declare -A expected=(
-  ["scp-like SSH Host alias (the #1899 repro case)"]="asakaguchi/cc-rite-workflow"
-  ["scp-like SSH canonical host"]="asakaguchi/cc-rite-workflow"
-  ["https with .git suffix"]="asakaguchi/cc-rite-workflow"
-  ["https without .git suffix"]="asakaguchi/cc-rite-workflow"
-  ["ssh:// with explicit user"]="asakaguchi/cc-rite-workflow"
-  ["ssh:// with explicit port"]="asakaguchi/cc-rite-workflow"
+  ["scp-like SSH Host alias (the #1899 repro case)"]="B16B1RD/cc-rite-workflow"
+  ["scp-like SSH canonical host"]="B16B1RD/cc-rite-workflow"
+  ["https with .git suffix"]="B16B1RD/cc-rite-workflow"
+  ["https without .git suffix"]="B16B1RD/cc-rite-workflow"
+  ["ssh:// with explicit user"]="B16B1RD/cc-rite-workflow"
+  ["ssh:// with explicit port"]="B16B1RD/cc-rite-workflow"
   ["https on a GitHub Enterprise host"]="org/repo"
 )
 
@@ -83,9 +83,9 @@ for label in "${!urls[@]}"; do
 done
 
 # Spot-check one exact value end-to-end (owner and repo both correct, not just non-empty).
-( cd "$sbx" && git remote remove origin >/dev/null 2>&1; git remote add origin "git@github.com-work:asakaguchi/cc-rite-workflow.git" ) >/dev/null 2>&1
+( cd "$sbx" && git remote remove origin >/dev/null 2>&1; git remote add origin "git@github.com-work:B16B1RD/cc-rite-workflow.git" ) >/dev/null 2>&1
 out=$(resolve_in "$sbx")
-assert "alias case: exact owner<TAB>repo value" "$(printf 'asakaguchi\tcc-rite-workflow')" "$out"
+assert "alias case: exact owner<TAB>repo value" "$(printf 'B16B1RD\tcc-rite-workflow')" "$out"
 
 # --- Reject: git repo with no origin remote configured ----------------------
 sbx_noremote=$(make_sandbox) && cleanup_dirs+=("$sbx_noremote") || { echo "ERROR: make_sandbox failed, aborting" >&2; exit 1; }

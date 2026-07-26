@@ -183,7 +183,7 @@ grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md 
 カテゴリ（Added/Fixed/Changed/Removed）は該当するもののみ。ファイル末尾の比較リンクも追加:
 
 ```markdown
-[{VERSION}]: https://github.com/asakaguchi/cc-rite-workflow/compare/v{PREV_VERSION}...v{VERSION}
+[{VERSION}]: https://github.com/B16B1RD/cc-rite-workflow/compare/v{PREV_VERSION}...v{VERSION}
 ```
 
 #### CHANGELOG.ja.md（日本語）
@@ -326,7 +326,7 @@ git pull origin develop
 
 ```
 [release:success] v{VERSION} released successfully
-- GitHub Release: https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v{VERSION}
+- GitHub Release: https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v{VERSION}
 - Issues closed: #{PREP_ISSUE_NUMBER}, #{RELEASE_ISSUE_NUMBER}
 ```
 

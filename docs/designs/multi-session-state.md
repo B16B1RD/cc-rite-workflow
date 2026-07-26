@@ -34,7 +34,7 @@ Session Ownership 機構（一連の Session Ownership 系 Issue で段階的に
 
 ### Wiki 経験則からの強い制約
 
-[Session Ownership 系列の Wiki 経験則](https://github.com/asakaguchi/cc-rite-workflow/issues/660) によれば、過去 9 件の Issue で導入した 8 種類の防御層 (declarative / sentinel / Pre-check / whitelist / Pre-flight / Step 0 / 4-site 対称化 / case arm) は AND 論理で組まれており、**`.rite-flow-state.active=true` という単一前提条件に依存** していた。当時の運用統計 (`.rite-stop-guard-diag.log` 直近 30 件中 28 件 = 93% が `EXIT:0 reason=not_active`) は撤去前の stop-guard.sh の挙動を示しており、**現行 6 hooks における同等の前提条件依存の有無は本設計選定時点では未測定**である。
+[Session Ownership 系列の Wiki 経験則](https://github.com/B16B1RD/cc-rite-workflow/issues/660) によれば、過去 9 件の Issue で導入した 8 種類の防御層 (declarative / sentinel / Pre-check / whitelist / Pre-flight / Step 0 / 4-site 対称化 / case arm) は AND 論理で組まれており、**`.rite-flow-state.active=true` という単一前提条件に依存** していた。当時の運用統計 (`.rite-stop-guard-diag.log` 直近 30 件中 28 件 = 93% が `EXIT:0 reason=not_active`) は撤去前の stop-guard.sh の挙動を示しており、**現行 6 hooks における同等の前提条件依存の有無は本設計選定時点では未測定**である。
 
 ただし、`.active=true` 前提条件への AND 論理依存自体は session-start.sh / session-end.sh / pre-compact.sh / post-compact.sh / pre-tool-bash-guard.sh / post-tool-wm-sync.sh の `.active` 参照箇所 (各 hook の `jq -r '.active'` 経路) として残存している。マルチステート対応では、これら残存 hook 群でも **同等保証を残す必要がある**。さもなくばマルチステート移行と同時に過去の N+1 patch が部分的にでも無効化されるリスクがある。経験則の射程を「`.active=true` 前提への AND 論理依存」だけに絞り、残存 hook 群への適用は S3 以降の実装フェーズで explicit に検証する。
 

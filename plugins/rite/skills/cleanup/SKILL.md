@@ -177,7 +177,7 @@ incomplete=$(printf '%s\n' "$comment_body" | sed -n '/### 進捗/,/### /p' \
 | `{task_text}` | 同上の本文 (チェックボックス行のテキスト) | `step-5: references/ 整理` |
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` (boolean) | `true` |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
-| `{owner}` | `rite-config.yml` → `github.projects.owner` | `asakaguchi` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
 | `{repo}` | ステップ 1.4 で取得した `$repo`（git-remote.sh 優先 + gh repo view fallback） | `cc-rite-workflow` |
 
 **Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):

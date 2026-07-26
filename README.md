@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.9.2)
+[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.9.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
@@ -10,6 +10,8 @@
 ## Demo
 
 From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
+
+> **Note**: The install command and the closing footer URL shown in the video still use the previous repository owner (`asakaguchi`). See [Installation](#installation) below for the current command.
 
 https://github.com/user-attachments/assets/b1f50f60-6c7c-4d86-9ceb-9071ae4b1c9f
 
@@ -43,7 +45,7 @@ Rite Workflow uses a three-step installation: register the marketplace, install 
 **Step 1**: Add the marketplace
 
 ```bash
-/plugin marketplace add asakaguchi/cc-rite-workflow
+/plugin marketplace add B16B1RD/cc-rite-workflow
 ```
 
 **Step 2**: Install the plugin

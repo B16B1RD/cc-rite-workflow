@@ -14,7 +14,7 @@
 # Input JSON schema:
 #   {
 #     "issue_number": 496,
-#     "owner": "asakaguchi",
+#     "owner": "B16B1RD",
 #     "repo": "cc-rite-workflow",
 #     "project_number": 6,
 #     "status_name": "In Progress",           # required: Todo|In Progress|In Review|Done|...
