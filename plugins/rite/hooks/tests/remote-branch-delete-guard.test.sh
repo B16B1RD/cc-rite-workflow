@@ -73,11 +73,10 @@ extract_guard > "$GUARD_SNIPPET"
 # 後者を「アンカーが変更された可能性」と報じると、本テストが検出すべき #2016 の退行そのものを
 # 「テスト側の問題」に誤帰属させる (本ファイルが随所で欠陥として扱っている誤帰属)。
 #
-# 群 1: 抽出アンカーの健全性。marker 名だけでなく `[CONTEXT] ` prefix 込みで pin する — ステップ 12 の
-# リモート側ルールは `[CONTEXT] REMOTE_BRANCH_...` でアンカー照合するため、emitter から prefix が
-# 落ちると全ルールが不一致になり fallback が発火する。`grep "$required"` は BRE なので `[CONTEXT]` は
-# ブラケット式に解釈される — `\[` `\]` のエスケープを外さないこと。
-for required in '\[CONTEXT\] REMOTE_BRANCH_' '^esac$'; do
+# 群 1: 抽出の**構造**健全性のみ。閉じアンカーが抽出結果の末尾に来ていることを見る。
+# 契約文字列 (marker 名や `[CONTEXT] ` prefix) はここに置かない — 置くと契約の消失を
+# 「アンカーが変更された可能性」と報じてしまい、群を分けた目的そのものが失われる。
+for required in '^esac$'; do
   if ! grep -q "$required" "$GUARD_SNIPPET"; then
     echo "FAIL: cleanup/SKILL.md からのガード抽出に失敗しました ('$required' 不在。アンカーが変更された可能性)"
     echo "  抽出結果: $(wc -l < "$GUARD_SNIPPET") 行"
@@ -86,9 +85,13 @@ for required in '\[CONTEXT\] REMOTE_BRANCH_' '^esac$'; do
 done
 # 群 2: ガードの振る舞い契約。抽出は成功しているので、不在は artifact 側で契約が失われたことを意味する。
 # 4 経路すべてを含める (どれか 1 経路だけが対象外という非対称を残さない)。
-for required in 'ls-remote --exit-code' 'push origin --delete' 'REMOTE_BRANCH_DELETED' \
-                'REMOTE_BRANCH_DELETE_FAILED' 'REMOTE_BRANCH_ALREADY_ABSENT' \
-                'REMOTE_BRANCH_CHECK_FAILED'; do
+# `[CONTEXT] ` prefix は consumer (ステップ 12) がアンカー照合する契約の一部なので群 2 に置く。
+# `grep "$required"` は BRE なので `[CONTEXT]` はブラケット式に解釈される — エスケープを外さないこと。
+# `push origin --delete` は抽出範囲内のコメントにも現れるため、コード行だけに現れる形で要求する。
+for required in 'ls-remote --exit-code' 'if _push_err=\$(LC_ALL=C git push origin --delete' \
+                'REMOTE_BRANCH_DELETED' 'REMOTE_BRANCH_DELETE_FAILED' \
+                'REMOTE_BRANCH_ALREADY_ABSENT' 'REMOTE_BRANCH_CHECK_FAILED' \
+                '\[CONTEXT\] REMOTE_BRANCH_'; do
   if ! grep -q "$required" "$GUARD_SNIPPET"; then
     echo "FAIL: 抽出したガードに '$required' がありません — cleanup/SKILL.md ステップ 5 のガード契約が失われた可能性 (#2016 の退行)"
     echo "  抽出自体は成功しています ($(wc -l < "$GUARD_SNIPPET") 行)。アンカーではなくガード本体を確認してください"
@@ -205,8 +208,10 @@ fi
 # rc=0 になり削除経路へ落ちる (#2016)。以降の TC はこの状態で走るので、ガードが full refname を
 # 使っていることを TC-1 が回帰 pin する (短い名前へ戻すと TC-1 で push --delete が呼ばれて落ちる)。
 COLLIDING="wip/$BRANCH"
-git switch -qc "$COLLIDING" 2>/dev/null || { echo "FATAL: 衝突 ref の作成に失敗"; exit 1; }
-git push -q origin "$COLLIDING" 2>/dev/null || { echo "FATAL: 衝突 ref の push に失敗"; exit 1; }
+_setup_err=$(LC_ALL=C git switch -qc "$COLLIDING" 2>&1) \
+  || { echo "FATAL: 衝突 ref の作成に失敗: $_setup_err"; exit 1; }
+_setup_err=$(LC_ALL=C git push -q origin "$COLLIDING" 2>&1) \
+  || { echo "FATAL: 衝突 ref の push に失敗: $_setup_err"; exit 1; }
 git switch -q main || { echo "FATAL: main への切り戻しに失敗"; exit 1; }
 # 仕込みが成立していることを確認する。ここが崩れると TC-1 は「衝突なし」を検証する別物になる。
 git ls-remote --exit-code --heads origin "refs/heads/$COLLIDING" >/dev/null 2>&1 \
@@ -334,6 +339,10 @@ elif ! printf '%s' "$decision" | grep -qE '保証されない|担保されない
   # 混ぜると、後続が「…だけである。よってマージ後はブランチが必ず残る」という過大主張でもマッチし、
   # AC-3 が禁じている当の違反に false confidence を与える (実測で確認)。
   fail "TC-4: 「抑止できないもの」を明示する否定表現がない (AC-3 が求める区別に届いていない): $decision"
+elif ! printf '%s' "$decision" | grep -qE '抑止できるのは.*(gh|クライアント)'; then
+  # AC-3 は「できる側」と「できない側」の**区別**を要求する。否定表現だけを pin すると、
+  # 「できる側」を丸ごと削って冗長さを整理する編集で AC-3 の半分が無防備になる (実測で緑を確認済み)。
+  fail "TC-4: 「抑止できるもの (gh クライアント側の削除)」の明示がない (AC-3 の片側のみ)"
 else
   pass "TC-4 (抑止できるもの/できないものを区別して記述)"
 fi
@@ -361,11 +370,21 @@ tc6_fail=""
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*: `x`' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETED=1.*: `x`' || tc6_fail="REMOTE_BRANCH_DELETED が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="リモート側 fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
+# marker の branch= スコープ。batch-run は同一セッションで Issue ごとに cleanup をループ invoke する
+# ため、先行 Issue の stale marker が後続 Issue の判定に一致する。リモート側は失敗ルールが先頭なので、
+# スコープが落ちると stale な失敗が自分の成功を必ず上書きする (既削除に対する誤処方)。
+# section 内に 1 箇所あれば通る形では弱い (fallback だけスコープが残っていても緑になる)。
+# 4 ルールそれぞれが marker 名の直後に branch= を持つことを個別に要求する。
+for _m in REMOTE_BRANCH_DELETE_FAILED REMOTE_BRANCH_CHECK_FAILED REMOTE_BRANCH_ALREADY_ABSENT REMOTE_BRANCH_DELETED; do
+  [ -n "$tc6_fail" ] && break
+  printf '%s' "$remote_section" | grep -q "$_m=1; branch={branch_name}" \
+    || tc6_fail="リモート側ルール $_m が branch={branch_name} までスコープされていない (batch-run の stale marker に誤一致する)"
+done
 # fallback の判定値。marker 不在を `x` に倒す mutation は「ステップ 5 が実行されなかった」と
 # 「削除成功」を再び同一視し、本 Issue が塞いだ false-success を判定表側から復活させる。
 # 判定値 (` `) と「成功と読むな」の禁止文の両方を要求する — 判定値だけだと禁止根拠が消え、
 # 禁止文だけだと値の反転を素通しする。
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_\*.*いずれの行も無いとき: ` ` \+' || tc6_fail="リモート側 fallback が未完了 ` ` になっていない (marker 不在を削除成功と読む契約に退行)"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_\*.*無いとき: ` ` \+' || tc6_fail="リモート側 fallback が未完了 ` ` になっていない (marker 不在を削除成功と読む契約に退行)"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE '不在.*削除成功.*(ならない|いけない)' || tc6_fail="リモート側 fallback に marker 不在を成功と読む禁止文がない"; }
 # 判定ブロック全体 (ローカル側 + リモート側を含む {local_branch_check} の箇条書き) を抽出する。
 # 以下 2 本の grep をファイル全体ではなくここへスコープする — ファイル全体を対象にすると、
@@ -394,7 +413,7 @@ fi
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*' || tc6_fail="ローカル側 fallback が marker family でスコープされていない"; }
 # ローカル側 fallback の判定値。リモート側と同じ到達条件なので同じ意味 (` ` = 未確認) でなければ
 # ならない。片側だけ `x` に倒す mutation は「同一条件に正反対の意味」という矛盾を復活させる。
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_DELETE_\*.*いずれの行も無いとき: ` ` \+' || tc6_fail="ローカル側 fallback が未完了 ` ` になっていない (リモート側と非対称: marker 不在を削除成功と読む契約に退行)"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_DELETE_\*.*無いとき: ` ` \+' || tc6_fail="ローカル側 fallback が未完了 ` ` になっていない (リモート側と非対称: marker 不在を削除成功と読む契約に退行)"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -qE 'marker 名.*\[CONTEXT\].*prefix 込み' || tc6_fail="アンカー照合の規約文が判定ブロックにない"; }
 # 行頭一致の規約。ステップ 5 は git の stderr (外部由来・複数行) を marker と同じストリームへ
 # 流すため、prefix だけ要求して位置を要求しないと WARNING 本文中の断片が marker として読まれる。
