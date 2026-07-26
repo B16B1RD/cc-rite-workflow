@@ -87,6 +87,16 @@ valid_json_sha() {
 JSON
 }
 
+measured_json() {
+  # $1 = path, $2 = overall_assessment (default fix-needed). No commit_sha => stale skip.
+  # Same shape as valid_json but the finding carries verification.measured=true (blocking) —
+  # cross-field invariant #2 は measured=true の finding にのみ発火する (実測必須ゲート、Issue #2024)。
+  local p="$1" oa="${2:-fix-needed}"
+  cat > "$p" <<JSON
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"$oa","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"bash cmd => observed failure","failing_test":null}}]}
+JSON
+}
+
 UNSET="__RITE_UNSET__"
 
 # -----------------------------------------------------------------
@@ -154,10 +164,18 @@ run --pr-number 123 --review-file-path "$SANDBOX/bad.json" --conversation-decisi
 assert_rc 0 "explicit invalid JSON -> fallback"
 assert_err_has "reason=explicit_file_parse" "explicit_file_parse reason"
 
-valid_json "$SANDBOX/mergeable.json" "mergeable"
+measured_json "$SANDBOX/mergeable.json" "mergeable"
 run --pr-number 123 --review-file-path "$SANDBOX/mergeable.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
-assert_rc 0 "explicit mergeable+open-blocker -> fallback"
+assert_rc 0 "explicit mergeable+open-blocker (measured=true) -> fallback"
 assert_err_has "reason=mergeable_has_open_blockers" "cross-field invariant reason"
+
+# 実測必須ゲート (Issue #2024 AC-2/AC-5): mergeable + open HIGH でも measured=false (verification 欠落
+# の旧形式) なら non-blocking として invariant #2 は発火せず、正常に受理される
+valid_json "$SANDBOX/mergeable-nonmeasured.json" "mergeable"
+run --pr-number 123 --review-file-path "$SANDBOX/mergeable-nonmeasured.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "explicit mergeable+non-measured HIGH -> accepted (non-blocking)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/mergeable-nonmeasured.json" "non-measured mergeable accepted marker"
+assert_err_lacks "reason=mergeable_has_open_blockers" "invariant #2 must not fire for measured=false"
 
 # -----------------------------------------------------------------
 echo "--- Test 4: Priority 2 local file ---"

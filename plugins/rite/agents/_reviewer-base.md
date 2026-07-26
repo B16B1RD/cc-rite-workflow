@@ -167,6 +167,33 @@ The `Likelihood-Evidence:` prefix is the required anchor for downstream mechanic
 
 **Hypothetical Exception Category interaction**: Reviewers in the Hypothetical Exception Categories (security / database migration / devops infra / dependencies) MAY omit the `Likelihood-Evidence:` line when the finding is explicitly Hypothetical — in that case the required marker instead is `Likelihood: Hypothetical (例外カテゴリ: <name>)` in the `内容` column, as specified in each of those reviewer skill files. This is the single exception to the mandatory `Likelihood-Evidence:` rule.
 
+### Verification: runtime 実測の添付 (実測必須ゲート)
+
+<a id="verification-runtime-measurement"></a>
+
+mergeable 判定を block できるのは **runtime 実測を伴う指摘のみ** ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate))。blocking を意図する指摘には、`内容` 列に以下の **いずれか一方以上** の machine-readable アンカーを添付すること (形式は schema で固定 — [review-result-schema.md §verification サブフィールド](../references/review-result-schema.md#verification-サブフィールド)):
+
+**Machine-readable format** (required for blocking):
+
+```
+Verification: repro <再現コマンド> => <観測される誤動作>
+Verification: failing_test <テストパス> => <失敗出力>
+```
+
+| アンカー形式 | 記入例 |
+|---|---|
+| `Verification: repro` | `Verification: repro bash hooks/flow-state.sh get --field x => ERROR: invalid field name` |
+| `Verification: failing_test` | `Verification: failing_test hooks/tests/test-flow-state.sh => TC-07 FAILED: expected 0 got 1` |
+
+**Placement**: `Likelihood-Evidence:` 行と同じ規約 — `内容` 列の末尾に置く。Markdown テーブルセル内では `<br>` を separator に使うか、WHAT + WHY 叙述の後に同一論理行で続ける。
+
+**Rules**:
+
+- `Verification:` アンカーを持たない指摘は **measured=false (非実測)** として扱われ、blocking にならない (Phase 5 の実測必須ゲートで non-blocking に分類され、PR コメントに記録される。fix サイクルは起動しない)。指摘自体は破棄されないため、実測できない懸念は従来どおり報告してよい — ただしそれが merge を block しないことを理解した上で報告すること。
+- 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
+- `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は指摘事項への掲載可否 (Observed Likelihood Gate)、`Verification:` は blocking 可否 (実測必須ゲート) をそれぞれ担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` 形式でも添付すること (両方を書く)。
+- `Verification:` アンカーだけあって実測内容が空 (`=>` の右辺が空等) の場合は schema 違反として measured=false に降格される (Cross-field invariant #6、WARNING 付き)。
+
 ### Hypothetical downgrade patterns
 
 The following patterns are typical Hypothetical claims that MUST be downgraded (unless the reviewer is in an Exception Category):

@@ -145,6 +145,17 @@
 |---------|-------|------------|------|---------|
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
 
+### 実測なし指摘 (non-blocking)（該当がある場合のみ）
+<!-- ステップ 5.3.0.M 実測必須ゲートで non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
+ blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
+ ステップ 6.1.d で PR コメントにも同内容が記録される。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+
+| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|-----------|--------|----------|------------|------|---------|
+| {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
+
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。
  両 template (full mode / verification mode) で同一内容で同期すること (drift 防止)。
@@ -322,6 +333,17 @@
 | 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
 |---------|-------|------------|------|---------|
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
+
+### 実測なし指摘 (non-blocking)（該当がある場合のみ）
+<!-- ステップ 5.3.0.M 実測必須ゲートで non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
+ blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
+ ステップ 6.1.d で PR コメントにも同内容が記録される。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+
+| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|-----------|--------|----------|------------|------|---------|
+| {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
 
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。

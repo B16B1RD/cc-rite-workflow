@@ -570,10 +570,12 @@ elif ! printf '%s' "$raw_json" | jq -e '
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_required_fields_missing" >&2
 elif ! printf '%s' "$raw_json" | jq -e '
   (.overall_assessment != "mergeable")
-  or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
+  or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open") or ((.verification.measured // false) != true)))
 ' >/dev/null 2>&1; then
-  # Cross-field invariant (review-result-schema.md): mergeable × open CRITICAL/HIGH は禁止
-  echo "WARNING: PR コメント内の Raw JSON が cross-field invariant に違反しています (mergeable だが open な CRITICAL/HIGH finding あり)。legacy parser に fallthrough します。" >&2
+  # Cross-field invariant #2 (review-result-schema.md): mergeable × open CRITICAL/HIGH × measured=true は禁止
+  # (measured=false = 非実測 non-blocking は実測必須ゲートにより mergeable と両立するため対象外。
+  #  verification 欠落の旧形式は `// false` により対象外 — 後方互換)
+  echo "WARNING: PR コメント内の Raw JSON が cross-field invariant に違反しています (mergeable だが open かつ measured=true な CRITICAL/HIGH finding あり)。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_comment_cross_field_invariant_violated" >&2
 elif ! printf '%s' "$raw_json" | jq -e '
   [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
@@ -775,7 +777,7 @@ exit 1
 | `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
 | `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 awk が失敗 (rc 非 0、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough) |
 | `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
-| `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
+| `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open かつ measured==true (blocking) の finding が存在 (measured==false の非実測 finding は実測必須ゲートにより対象外。legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_critical_high_scope_nit_noted` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant #4 違反: `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (ステップ 5.1 評価順 1 で `[fix:error]` に昇格) |
@@ -1598,9 +1600,10 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 
 | Classification | Criteria | Action |
 |---------------|----------|--------|
-| **Required fix** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} | Must fix in this PR |
-| **Needs fix** | severity ∈ {MEDIUM, LOW-MEDIUM, LOW} AND scope ∈ {current-pr, follow-up} | Must fix in this PR (action required) |
+| **Required fix** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} AND measured == true | Must fix in this PR |
+| **Needs fix** | severity ∈ {MEDIUM, LOW-MEDIUM, LOW} AND scope ∈ {current-pr, follow-up} AND measured == true | Must fix in this PR (action required) |
 | **nit (認知のみ)** | scope == "nit-noted" | Reply-only via ステップ 2.4 `nit-noted-reply`; NOT a fix target |
+| **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (verification 欠落含む) | 表示のみ; NOT a fix target (実測必須ゲート — PR コメント記録は pr-review ステップ 6.1.d が実施済み) |
 | **External review** | Findings from human reviewers | Action required |
 | **Resolved** | Resolved threads | - |
 
@@ -1611,8 +1614,9 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 3. Check if the finding's file:line exists in `severity_map`
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; route directly to ステップ 2.4 `nit-noted-reply` (skip ステップ 2.1 selection、fix commit 対象外)
-   - `scope ∈ {current-pr, follow-up}` AND severity ∈ {CRITICAL, HIGH} -> Required fix
-   - `scope ∈ {current-pr, follow-up}` AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
+   - **measured lookup (実測必須ゲート)**: 当該 finding の `verification.measured` を確認する — JSON 経路 (Priority 0/2/3) では `(.verification.measured // false)` (verification 欠落の旧形式は false = non-blocking、エラーにしない — AC-5)、会話コンテキスト経路 (Priority 1) では integrated report の `### 実測なし指摘 (non-blocking)` section に載っているかで判定する。**`measured == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外、reply も不要 (記録は pr-review ステップ 6.1.d の PR コメントが担う)
+   - `scope ∈ {current-pr, follow-up}` AND measured == true AND severity ∈ {CRITICAL, HIGH} -> Required fix
+   - `scope ∈ {current-pr, follow-up}` AND measured == true AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
 5. Unresolved comments not in `severity_map` -> External review
 
 
@@ -1670,6 +1674,14 @@ PR #{number} のレビューコメント
 | # | 重要度 | スコープ | ファイル | 行 | 指摘内容 | レビュアー |
 |---|--------|----------|----------|-----|----------|------------|
 | 1 | {severity} | nit-noted | {path} | {line} | {body_preview} | @{user} |
+
+### non-blocking (実測なし) ({non_blocking_count}件)
+<!-- verification.measured == false (verification 欠落の旧形式含む) の finding はサマリ表示のみ (0 件なら本セクション省略)。
+     実測必須ゲート (severity-levels.md §実測必須ゲート) により fix 対象外 — ステップ 2.1 auto-select 対象から除外、
+     fix commit 対象からも完全除外、reply も投稿しない (記録は pr-review ステップ 6.1.d の PR コメントが担う)。 -->
+| # | 重要度 | スコープ | ファイル | 行 | 指摘内容 | レビュアー |
+|---|--------|----------|----------|-----|----------|------------|
+| 1 | {severity} | {scope} | {path} | {line} | {body_preview} | @{user} |
 
 
 ### 外部レビュー({count}件)
@@ -1814,8 +1826,9 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 1. scope_map[file:line] を look up
 2. `scope == "nit-noted"` → ステップ 2.1 (本セクション) を skip、ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を 1 件投稿
-3. `scope ∈ {current-pr, follow-up}` または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行
-4. nit-noted skip 経路では「コードを修正する / accept (認知のみ) / 説明・返信のみ」の選択 UI は **表示しない** (ユーザー判断不要)。reply の冪等性は ステップ 2.4 サブステップ内で comment ID 単位で管理される
+3. **measured lookup (実測必須ゲート)**: ステップ 1.3 で **non-blocking (実測なし)** に分類された finding (`verification.measured == false`、verification 欠落の旧形式含む) → ステップ 2.1 (本セクション) を **skip** し、ステップ 2.4 の reply も投稿しない (fix commit 対象外。記録は pr-review ステップ 6.1.d の PR コメントが担う)
+4. `scope ∈ {current-pr, follow-up}` (measured == true) または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行
+5. nit-noted / non-blocking skip 経路では「コードを修正する / accept (認知のみ) / 説明・返信のみ」の選択 UI は **表示しない** (ユーザー判断不要)。nit-noted reply の冪等性は ステップ 2.4 サブステップ内で comment ID 単位で管理される
 
 
 ---

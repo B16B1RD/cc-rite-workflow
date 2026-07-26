@@ -6,11 +6,13 @@ Defines how fix targets are determined in the `/rite:iterate` review-fix loop.
 
 ## Overview
 
-All findings whose `scope ∈ {current-pr, follow-up}` are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they are handled via the reply-only path and never participate in `/rite:fix` Phase 2.1 selection nor in mergeable countdown. **別 Issue 化の経路は廃止済み** — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
+All findings whose `scope ∈ {current-pr, follow-up}` **and `verification.measured == true` (runtime 実測あり)** are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they are handled via the reply-only path and never participate in `/rite:fix` Phase 2.1 selection nor in mergeable countdown. **`verification.measured == false` (非実測、verification フィールド欠落を含む — 旧形式後方互換) の findings も not blocking** — 実測必須ゲート ([severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) により PR コメント記録のみで fix サイクルを起動しない (`/rite:fix` の修正対象・auto-select・fix commit 対象から完全除外)。**別 Issue 化の経路は廃止済み** — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
 
 ## Fix Target Classification
 
 Findings are classified by **severity × scope**. Scope was added in schema 1.1.0; the M2 receive-flow path routes `nit-noted` findings out of the blocking set entirely.
+
+**前提: 実測必須ゲートが先に適用される** — 下表の Blocking 判定は `verification.measured == true` の finding にのみ適用される。`measured == false` (verification 欠落の旧形式を含む) の finding は severity / scope に依らず **non-blocking** であり、下表に入る前に除外される (fix 対象外、PR コメント記録のみ。`/rite:fix` ステップ 1.3 では「non-blocking (実測なし)」として分類・表示され、Phase 2.1 選定・fix commit から完全除外される)。
 
 | Severity | Scope | Classification | Action |
 |----------|-------|----------------|--------|

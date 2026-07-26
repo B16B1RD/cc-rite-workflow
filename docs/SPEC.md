@@ -850,11 +850,11 @@ Starts when "Start implementation" is selected. The following steps are executed
 | Approve with conditions | Fix with `/rite:fix` → Return to 5.4 |
 | Request changes | Fix with `/rite:fix` → Return to 5.4 |
 
-**Review-Fix Cycle Continuation:** The `/rite:pr-review` → `/rite:fix` → `/rite:pr-review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The normal exit is `[review:mergeable]` (all findings resolved). A `safety.max_review_cycles` circuit breaker (#1701, default 5) additionally bounds non-convergent loops: on reach, interactive `/rite:iterate` prompts via `AskUserQuestion` (continue/abort/leave-draft) and `/rite:batch-run` batch marks the Issue failed and advances to the next. There is no progressive relaxation.
+**Review-Fix Cycle Continuation:** The `/rite:pr-review` → `/rite:fix` → `/rite:pr-review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The normal exit is `[review:mergeable]` (all blocking findings resolved). A `safety.max_review_cycles` circuit breaker (#1701, default 5) additionally bounds non-convergent loops: on reach, interactive `/rite:iterate` prompts via `AskUserQuestion` (continue/abort/leave-draft) and `/rite:batch-run` batch marks the Issue failed and advances to the next. There is no progressive relaxation.
 
 **Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from the second iteration onward, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every iteration, maximizing review quality.
 
-**Definition of "Approve":** Zero blocking findings.
+**Definition of "Approve":** Zero blocking findings, where **blocking = a CONFIRMED finding with runtime measurement** (`verification.measured=true` — a repro command with observed misbehavior, or a failing test with its output — Measured CONFIRMED Gate, #2024). Findings without runtime measurement are demoted to non-blocking, recorded as a PR comment (severity preserved for post-merge human triage), and never drive the fix cycle. This makes "zero findings" a reachable exit condition and bounds the review ⇄ fix loop. See `plugins/rite/references/severity-levels.md` §実測必須ゲート for the gate definition.
 
 ### Automatic Work Memory Updates
 

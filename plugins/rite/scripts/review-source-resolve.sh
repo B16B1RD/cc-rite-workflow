@@ -185,12 +185,14 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     review_source_path=""
   elif ! jq -e '
     (.overall_assessment != "mergeable")
-    or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
+    or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open") or ((.verification.measured // false) != true)))
   ' "$review_file_path" >/dev/null 2>&1; then
-    # Cross-field invariant (review-result-schema.md): overall_assessment=="mergeable" のときは
-    # CRITICAL/HIGH かつ status==open の finding が存在してはならない。違反時は手書き JSON で
+    # Cross-field invariant #2 (review-result-schema.md): overall_assessment=="mergeable" のときは
+    # CRITICAL/HIGH かつ status==open かつ measured==true (blocking) の finding が存在してはならない。
+    # measured==false (非実測 = non-blocking、verification 欠落の旧形式含む) は実測必須ゲートにより
+    # mergeable と両立するため対象外。違反時は手書き JSON で
     # fix ループを silent に 0 件脱出させる bypass になるため fallback 経路に route する。
-    echo "エラー: --review-file の cross-field invariant 違反: overall_assessment=\"mergeable\" だが CRITICAL/HIGH で status=\"open\" の finding が存在します" >&2
+    echo "エラー: --review-file の cross-field invariant 違反: overall_assessment=\"mergeable\" だが CRITICAL/HIGH で status=\"open\" かつ実測あり (measured=true) の finding が存在します" >&2
     echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers" >&2
     review_source="fallback"
     review_source_path=""
@@ -497,12 +499,13 @@ if [ -z "$review_source" ]; then
         review_source_path=""
       elif ! jq -e '
         (.overall_assessment != "mergeable")
-        or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
+        or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open") or ((.verification.measured // false) != true)))
       ' "$latest_file" >/dev/null 2>&1; then
-        # Cross-field invariant (review-result-schema.md): overall_assessment=="mergeable" のときは
-        # CRITICAL/HIGH かつ status==open の finding が存在してはならない。
+        # Cross-field invariant #2 (review-result-schema.md): overall_assessment=="mergeable" のときは
+        # CRITICAL/HIGH かつ status==open かつ measured==true (blocking) の finding が存在してはならない。
+        # measured==false (非実測 = non-blocking、verification 欠落の旧形式含む) は実測必須ゲートにより対象外。
         # corrupt rename はしない (データは構造的に valid、ビジネスルール違反のみ)。
-        echo "WARNING: $latest_file の cross-field invariant 違反 (mergeable だが open の CRITICAL/HIGH finding あり)。Priority 3 に routing します。" >&2
+        echo "WARNING: $latest_file の cross-field invariant 違反 (mergeable だが open の CRITICAL/HIGH かつ measured=true finding あり)。Priority 3 に routing します。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_cross_field_invariant_violated" >&2
         review_source="pr_comment"
         review_source_path=""

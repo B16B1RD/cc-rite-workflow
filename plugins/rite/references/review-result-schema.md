@@ -66,6 +66,11 @@
       "severity": "HIGH",
       "scope": "current-pr",
       "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined",
+        "failing_test": null
+      },
       "file": "path/to/file.ts",
       "line": 42,
       "description": "エラーハンドリングが不足",
@@ -129,11 +134,22 @@
 | `pre_existing` | bool | ✅ (1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、Cross-field invariant #5 は read 側ではトリガしない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
 | `original_severity` | string | (任意、1.1.0+) | severity 自己降格 (reviewer が CRITICAL 判定後 PR scope 不適合と判断し scope=follow-up や nit-noted へ送る際に severity を MEDIUM 等へ降格) 時の元値を保持。**自己降格 trace 用途のみ**で、cross-field invariant 評価には使わない。omit 可 (1.0 / 1.0.0 互換、降格していない finding には不要)。値の domain は `severity` enum 5 値と同じ |
 | `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
+| `verification` | object | (任意、additive) | 実測情報オブジェクト `{measured, repro, failing_test}` (下記サブフィールド表参照)。**欠落時は `measured=false` 扱い** (非実測 = non-blocking。詳細は [後方互換性](#後方互換性-schema-10--110) の verification default mapping)。実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) の判定入力。schema_version の bump は行わない (optional field の additive 追加のため 1.1.0 のまま) |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
 | `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md ステップ 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
+
+### `verification` サブフィールド
+
+`findings[].verification` オブジェクトのサブフィールド定義。「実測」の判定を LLM の自由裁量に委ねないため、受理形式を本表で固定する (Issue #2024 MUST NOT):
+
+| フィールド | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `measured` | bool | ✅ (verification 存在時) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null** であることが必須 (Cross-field invariant #6)。`true` = blocking 候補、`false` = non-blocking (PR コメント記録のみ) |
+| `repro` | string \| null | ✅ (verification 存在時、null 可) | 再現手順。**形式固定**: `<再現コマンド> => <観測される誤動作>` (`=>` 区切り)。例: `bash hooks/foo.sh --bad-arg => ERROR: unbound variable` |
+| `failing_test` | string \| null | ✅ (verification 存在時、null 可) | failing test。**形式固定**: `<テストパス> => <失敗出力>` (`=>` 区切り)。例: `hooks/tests/test-foo.sh => TC-03 FAILED: expected 0 got 1` |
 
 ### severity 別名マッピング表
 
@@ -158,10 +174,11 @@
 以下の制約は単一フィールドの型では表現できないため、write 側 (`pr-review.md` ステップ 6.1.a) が生成時に守る義務があり、read 側 (`fix.md` ステップ 1.2.0) は post-condition jq として検証する:
 
 1. **ファイル名 ↔ JSON `pr_number` 同期**: `.rite/review-results/{pr_number}-{timestamp}.json` の `{pr_number}` prefix と JSON 内 `.pr_number` の値は必ず一致する。不一致時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_number_mismatch` を emit して legacy parser fallthrough。手動でファイルを rename した場合のみ発火しうる。
-2. **`overall_assessment == "mergeable"` ∧ CRITICAL/HIGH open finding 存在禁止**: `overall_assessment` が `"mergeable"` のとき、`findings[]` に `severity ∈ {"CRITICAL", "HIGH"}` かつ `status == "open"` の要素が含まれてはならない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers` を emit して legacy parser fallthrough (手書き JSON で fix ループを silent に 0 件脱出させる bypass を防ぐ)。
+2. **`overall_assessment == "mergeable"` ∧ CRITICAL/HIGH open **blocking** finding 存在禁止**: `overall_assessment` が `"mergeable"` のとき、`findings[]` に `severity ∈ {"CRITICAL", "HIGH"}` かつ `status == "open"` かつ **`(.verification.measured // false) == true`** の要素が含まれてはならない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers` を emit して legacy parser fallthrough (手書き JSON で fix ループを silent に 0 件脱出させる bypass を防ぐ)。**measured=false (非実測 = non-blocking) の CRITICAL/HIGH open finding は本 invariant の対象外** — 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) により non-blocking は mergeable と両立する (AC-2)。verification 欠落の旧形式 JSON は `// false` により全 finding が対象外となり、旧形式でも発火しない (AC-5)。
 3. **ファイル名 timestamp ↔ JSON `timestamp` 同期**: `{timestamp}` prefix (JST `YYYYMMDDHHMMSS`) と JSON 内 `.timestamp` (ISO 8601) は同一瞬間を指す。ただし本不変条件は read 側で検証せず (ファイル rename 時にしか破綻しえないため)、write 側が ステップ 6.1.a で一度に生成することで担保する。
 4. **`severity ∈ {CRITICAL, HIGH}` ∧ `scope == "nit-noted"` 禁止**: blocker (CRITICAL/HIGH) 級の指摘は「修正不要の nit」として受け流すことができない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason={priority_prefix}_critical_high_scope_nit_noted` を emit して **legacy parser fallthrough** (invariant #2 と同じ FAIL routing)。canonical jq expression: `[.findings[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0`。reviewer が CRITICAL を nit に降格させたい場合は severity を MEDIUM/LOW へ自己降格し、`original_severity` フィールドに元値を保持すること。本 invariant は 1.1.0 JSON にのみ適用される (1.0/1.0.0 では `scope` フィールドが欠落しているため後方互換 default mapping 経由で評価)。
 5. **`pre_existing == false` ∧ `scope == "nit-noted"` 禁止**: 本 PR で **新規に導入された** finding (`pre_existing == false`) を「修正不要の nit」として受け流すことは、本 PR の責任範囲内の問題を silent に放置することを意味するため禁止。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count={n}` を emit し、該当 finding の `scope` を **自動で `"current-pr"` に書き換え** (auto-correct) して severity_map 構築を続行する。canonical jq mutation: `(.findings[] | select(.pre_existing == false and .scope == "nit-noted") | .scope) |= "current-pr"`。本 invariant は **#4 と異なり FAIL ではなく auto-correct** のため、JSON read 全体を fallthrough させない。1.0/1.0.0 JSON では `pre_existing` フィールドが欠落しているため本 invariant は発火しない (default mapping は scope を severity ベースで補完するのみで、`pre_existing` は補完しない)。
+6. **`verification.measured == true` ∧ `repro`/`failing_test` とも null/空 禁止 (auto-correct 降格)**: 実測の証跡なしに `measured: true` を宣言することは実測必須ゲートの bypass となるため禁止。違反時は write 側 (`pr-review.md` ステップ 6.1.a 生成時) / read 側 (`fix.md` ステップ 1.2.0) のいずれで検出しても WARNING を stderr に出力し + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=measured_true_without_evidence; count={n}` を emit した上で、該当 finding の `measured` を **自動で `false` に書き換え** (auto-correct、= non-blocking へ降格) して処理を続行する。canonical jq mutation: `(.findings[] | select((.verification.measured // false) == true and ((.verification.repro // "") == "") and ((.verification.failing_test // "") == "")) | .verification.measured) |= false`。**#5 と同じ auto-correct パターン** で FAIL ではないため、JSON read 全体を fallthrough させない。`verification` フィールド自体が欠落している finding は本 invariant の対象外 (measured=false 扱いの default mapping が適用されるのみ)。
 
 ## 後方互換性 (schema 1.0 ↔ 1.1.0)
 
@@ -202,6 +219,18 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 - `pre_existing` の判定には revert test (reviewer による mental revert) が必要で、severity 等の他フィールドから機械的に推論できない
 - 欠落のままにすることで Cross-field invariant #5 (`pre_existing == false × scope == nit-noted`) が **発火しない** (`null != false`)
 - 1.0/1.0.0 JSON で生成された finding は invariant #5 の auto-correct 対象外となり、後方互換が保たれる
+
+### verification の default mapping (measured=false 扱い)
+
+`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、および verification 導入前に生成された 1.1.0 JSON)、read 側は当該 finding を **`measured=false` (非実測 = non-blocking)** として扱う。フィールドの物理的な補完は必須ではなく、判定時に `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない (AC-5):
+
+```
+(.verification.measured // false) == true   # blocking 候補の判定式 (欠落 = false = non-blocking)
+```
+
+- 旧形式 JSON を read してもエラーなく処理が続行される (既存の抽出スクリプトは verification を参照しないため無影響)
+- `scope` default mapping (上記) とは独立に適用される (scope は severity から補完、verification は一律 measured=false)
+- Cross-field invariant #6 は verification 欠落時には発火しない (対象は `measured: true` を明示宣言した finding のみ)
 
 ### REVIEW_SOURCE_SCOPE_DEFAULTED emit
 

@@ -75,11 +75,47 @@ These categories inherit [Hypothetical Exception Categories](../../../references
 
 **Expected firing frequency**: When reviewers correctly apply the reviewer-side Gate, Phase 5.3.0 SHOULD fire zero times (all findings carry `Likelihood-Evidence:` markers). Non-zero firings indicate reviewer-side contract violations that warrant investigation via Wiki Ingest or reviewer training.
 
+## 5.3.0.M 実測必須ゲート (Measured CONFIRMED Gate)
+
+5.3.0 の後・5.3.1 の前に適用する **mechanical** な分類ゲート (Issue #2024)。ゲート定義の SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。5.3.0 と同じく deterministic rule であり、AI judgment は関与しない (5.3.7 の禁止対象外 — mechanical rule = allowed)。
+
+**Mechanical detection + demotion**:
+
+```
+For each finding in 全指摘事項 (post-5.3.0):
+  if finding's 内容 column contains a `Verification:` anchor
+     (repro / failing_test、_reviewer-base.md §Verification: runtime 実測の添付 で定義)
+     and the anchor's `=>` 右辺 (観測結果 / 失敗出力) is non-empty:
+    keep (measured=true、blocking 候補として 5.3.1 以降へ)
+  else:
+    move to non_blocking_findings
+    (severity / scope は維持したまま blocking 集合から除外。破棄しない。
+     アンカーはあるが実測内容が空の場合は schema 違反として WARNING を stderr に出し同様に降格 — invariant #6)
+```
+
+**Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
+
+```
+(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+\S.*=>[[:space:]]*\S
+```
+
+**non_blocking_findings の扱い**:
+
+- `total_findings` にカウントしない (mergeable countdown から除外)
+- 5.4 integrated report の `### 実測なし指摘 (non-blocking)` section に記録する (severity 明示)
+- pr-review.md ステップ 6.1.d で PR コメントに記録する (gh 失敗は WARNING のみ — 記録失敗でループを止めない)
+- 6.1.a JSON には `verification: {measured: false, ...}` として含める (`/rite:fix` 読取側が修正対象から除外できるようにする)
+- fix サイクルは起動しない (fix.md 側の除外分岐は [fix-relaxation-rules.md](./fix-relaxation-rules.md) §Fix Target Classification 参照)
+
+**scope=nit-noted との関係**: nit-noted は従来どおり §5.3.1 の nit-noted exclusion で扱い、本ゲートの対象にしない (二重計上防止)。本ゲートの対象は `scope ∈ {current-pr, follow-up}` の finding のみ。
+
+**指摘ゼロの場合**: `全指摘事項` が空なら本ゲートは no-op であり、mergeable 判定は現行と同一 (AC-4 非退行)。
+
 ## 5.3.1 Assessment Rules
 
-**Red blocking rule: If even 1 finding with `scope ∈ {current-pr, follow-up}` exists (after 5.3.0 demotion), it MUST NOT be assessed as "Merge OK"**
+**Red blocking rule: If even 1 finding with `scope ∈ {current-pr, follow-up}` **and measured=true** exists (after 5.3.0 / 5.3.0.M demotion), it MUST NOT be assessed as "Merge OK"**
 
-All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) with `scope ∈ {current-pr, follow-up}` remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining blocking finding must be resolved before merge.
+All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) with `scope ∈ {current-pr, follow-up}` remaining in `全指摘事項` after 5.3.0 **and 5.3.0.M (実測必須ゲート)** demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining blocking finding must be resolved before merge. 実測 (repro / failing_test) を伴わない finding は 5.3.0.M で `non_blocking_findings` に分類済みのため本 rule の対象に残らない — blocking = 「runtime 実測を伴う CONFIRMED 指摘」のみであり、「指摘ゼロ」は到達可能な終了条件になる (Issue #2024)。
 
 **scope=nit-noted exclusion**: Findings with `scope == "nit-noted"` (`acknowledged` トラックの informational 情報共有) are **excluded from `overall_assessment`** and **excluded from the mergeable countdown**. They are surfaced via two separate paths: (a) `/rite:pr-review` ステップ 5.4 「指摘事項」表の **scope 列** (pr-review.md ステップ 5.4 Integrated Report の `全指摘事項` 表で scope=nit-noted 行として可視化)、および (b) `/rite:fix` ステップ 1.4 display の独立した「nit (認知のみ) ({nit_noted_count}件)」セクション (fix.md 内のサブセクション、修正対象外と明示)。両者は表示先が異なるが scope=nit-noted という意味は共通で、いずれも merge を block しない。 The `/rite:fix` ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を投稿することで decay-track され、ステップ 4.6 サマリでは `acknowledged_nit_count` として独立カウントされる。これは fix commit 対象からも完全除外される。schema invariant #4 (CRITICAL/HIGH × nit-noted FAIL) により blocker 級の指摘を nit に降格する経路は禁止されているため、本除外は安全に運用できる。詳細な fix loop 経路は [`fix-relaxation-rules.md`](./fix-relaxation-rules.md) §Fix Target Classification を参照。
 
@@ -91,9 +127,9 @@ When executed standalone (outside a loop), the same rules apply: scope ∈ {curr
 
 ## 5.3.3 Assessment Logic
 
-Use **only findings with `scope ∈ {current-pr, follow-up}`** for determination (nit-noted findings are excluded per §5.3.1 nit-noted exclusion). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (blocking findings exist) | 0 blocking findings (nit-noted のみ残存可) → Merge OK.
+Use **only findings with `scope ∈ {current-pr, follow-up}` and `measured == true`** for determination (nit-noted findings are excluded per §5.3.1 nit-noted exclusion; non-measured findings are excluded per §5.3.0.M 実測必須ゲート). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (blocking findings exist) | 0 blocking findings (nit-noted / non-measured のみ残存可) → Merge OK.
 
-**`total_findings` definition**: `total_findings = count(findings where scope ∈ {current-pr, follow-up})`. `acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。
+**`total_findings` definition**: `total_findings = count(findings where scope ∈ {current-pr, follow-up} and verification.measured == true)`. `acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。`non_blocking_count = count(non_blocking_findings)` (5.3.0.M で分類) も独立 metric で、5.3.5 サマリと 6.1.d PR コメント記録に使う (`overall_assessment` 評価には使われない)。
 
 ## 5.3.5 Output Format at Assessment Decision Time
 
@@ -106,13 +142,19 @@ When determining the assessment, explicitly output the finding count in the foll
 - MEDIUM: {count} 件
 - LOW-MEDIUM: {count} 件
 - LOW: {count} 件
-- 合計: {total} 件（すべて blocking）
+- 合計: {total} 件（すべて blocking = 実測あり）
+
+【実測必須ゲート】
+- 実測あり (blocking): {total} 件
+- 実測なし (non-blocking、PR コメント記録): {non_blocking_count} 件
 
 【評価判定】
 - 指摘件数: {total} 件
 - 優先度 {n} に該当: {条件の説明}
 - 総合評価: {マージ可 / マージ不可（指摘あり） / 修正必要}
 ```
+
+**【実測必須ゲート】の省略規則**: `non_blocking_count == 0` かつ `total == 0` (指摘ゼロ) の場合は【実測必須ゲート】ブロック自体を省略してよい (AC-4: 指摘ゼロ経路の出力を現行と同一に保つ)。いずれかが 1 件以上なら必ず出力する。
 
 **Additional output when fact-check was executed:**
 

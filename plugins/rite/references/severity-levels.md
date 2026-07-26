@@ -128,6 +128,28 @@ All other reviewers MUST apply the matrix above and downgrade Hypothetical findi
 
 > **Note — 3 ゲート運用への forward-pointer**: 指摘事項化の必要条件は impact + likelihood の 2 軸に加えて **revert test を含む 3 ゲート** を同時充足することが求められます。revert test の運用手順は [`agents/_reviewer-base.md` "Necessary conditions for inclusion in 指摘事項"](../agents/_reviewer-base.md#necessary-conditions-for-inclusion-in-指摘事項) を参照してください。本ファイル (severity-levels.md) は impact + likelihood の 2 軸定義に特化しており、revert test の定義は意図的に `_reviewer-base.md` に集約されています。
 
+## 実測必須ゲート (Measured CONFIRMED Gate)
+
+<a id="実測必須ゲート-measured-confirmed-gate"></a>
+
+mergeable 判定の blocking 条件を「**runtime 実測を伴う CONFIRMED 指摘ゼロ**」に定義する (Issue #2024)。「CONFIRMED 指摘」= 3 ゲート (Confidence ≥ 80 / Observed Likelihood ≥ Demonstrable / revert test pass) を通過して `全指摘事項` に残った指摘を指す。
+
+**blocking の定義** (実測必須ゲート適用後):
+
+```
+blocking = CONFIRMED (全指摘事項に残存)
+         ∧ verification.measured == true   (repro または failing_test の実測証跡あり)
+         ∧ scope ∈ {current-pr, follow-up}  (nit-noted は従来どおり対象外)
+```
+
+- **severity 閾値**: 既存の 5.3.1 Red blocking rule を踏襲し **全 severity 帯** (CRITICAL〜LOW) が対象 (nit-noted / auto-demote 済みを除く)。severity による段階的緩和は導入しない。
+- **実測 (measured=true) の受理形式**: (a) 再現コマンド + 観測される誤動作 (`repro`)、または (b) failing test のパス + 失敗出力 (`failing_test`) のいずれか。形式は [`review-result-schema.md` §verification サブフィールド](./review-result-schema.md#verification-サブフィールド) で固定し、LLM の自由裁量に委ねない。
+- **非実測指摘 (measured=false) の扱い**: 破棄せず **non-blocking** に分類し、PR コメント (non-blocking セクション) として記録する。fix サイクルは起動しない (mergeable countdown / `total_findings` から除外)。マージ後に人間が拾い直せる状態を保つ (Issue #2024 D-01)。
+- **Observed Likelihood 軸との関係**: `measured=true` は Likelihood 軸の **Observed** (runtime 実測済み) に相当する。Demonstrable (call site 提示のみ・実測なし) は CONFIRMED ではあるが measured=false のため non-blocking。Likelihood 軸のゲート (Hypothetical 降格) は従来どおり **先に** 適用され、実測必須ゲートはその後段で blocking / non-blocking を分ける。
+- **Hypothetical Exception Categories との関係**: 例外カテゴリ (security / database migration / devops infra / dependencies) は Likelihood 軸の例外 (Hypothetical でも severity 維持で `全指摘事項` に残せる) であって、**実測必須ゲートの例外ではない**。実測を伴わない例外カテゴリ指摘も non-blocking として PR コメントに記録され (severity 明示)、draft PR の人間レビューで判断される。ループ収束性 (「指摘ゼロ」の到達可能性) を優先する設計判断。
+
+**判定の全体順序**: Impact × Likelihood Matrix (Hypothetical 降格) → 3 ゲート通過で CONFIRMED → **実測必須ゲート** (measured=false → non-blocking 降格 + PR コメント記録) → 残った blocking 指摘ゼロで mergeable。適用手順の実装は [`assessment-rules.md`](../skills/fix/references/assessment-rules.md) §5.3.1 / §5.3.3 を参照。
+
 ## Severity × Scope Matrix
 
 > **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](./review-result-schema.md) を参照。scope assign 手順の SoT は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#scope-assignment-flowchart)。
