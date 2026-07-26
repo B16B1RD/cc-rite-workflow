@@ -615,11 +615,14 @@ case "$_ls_rc" in
   2) echo "[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}" ;;
   *)
     echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_ls_rc}" >&2
-    # 変数展開は必ず brace で閉じる。日本語文中で `$_ls_err。` と書くと bash が `。` の先頭バイト
-    # (0xE3) を変数名に取り込み、非 UTF-8 ロケール (macOS CI 等) で変数が未定義化して原因テキストが
-    # 消える。残った不正バイトは下流の BSD sed 等も落とす（同 invariant: hooks/tests/flow-state.test.sh
-    # TC-8b-h、Issue #2008）。
-    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗しました (git ls-remote rc=${_ls_rc}): ${_ls_err} — 削除は試行していません。" >&2 ;;
+    # 多バイト文字に隣接する変数展開は必ず brace で閉じる。日本語文中で `$_ls_err。` と書くと
+    # bash が `。` の先頭バイト (0xE3) を変数名に取り込み、非 UTF-8 ロケール (macOS CI 等) で
+    # 変数が未定義化して原因テキストが消える。残った不正バイトは下流の BSD sed 等も落とす
+    # （同 invariant: hooks/tests/flow-state.test.sh TC-8b-h、Issue #2008）。
+    # 捕捉した stderr は文末に置く。ls-remote の stderr は空行を含む複数行が常態のため、文中に
+    # 挿入すると operative な日本語（削除を試行していない旨）が英文パラグラフの末尾に孤立する。
+    # 直上のローカル削除が $del_err を文末に置いているのと同じ配置。
+    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません (git ls-remote rc=${_ls_rc}): ${_ls_err}" >&2 ;;
 esac
 ```
 

@@ -70,18 +70,45 @@ for required in 'ls-remote --exit-code' 'push origin --delete' 'REMOTE_BRANCH_DE
     exit 1
   fi
 done
+# 閉じアンカー `^esac$` は cleanup/SKILL.md 内で一意ではない (5 箇所) ため、必須文字列チェックだけでは
+# over-capture (ガードの esac を書き換えると抽出が後続ブロックまで膨張する) を検出できない。
+# 抽出が bash fence を越えていないことで代替検出する — 正常な抽出に fence terminator は現れない。
+if grep -q '^```' "$GUARD_SNIPPET"; then
+  echo "FAIL: 抽出が bash fence を越えました (閉じアンカー esac が変更された可能性)"
+  echo "  抽出結果: $(wc -l < "$GUARD_SNIPPET") 行"
+  exit 1
+fi
+
 # brace 無し変数展開が非 ASCII バイトに隣接していないことを検査する。`$var。` と書くと bash が
 # 多バイト文字の先頭バイトを変数名に取り込み、非 UTF-8 ロケール (macOS CI) で変数が未定義化して
 # 診断が消え、残った不正バイトが下流の BSD sed も落とす (Issue #2008 / TC-8b-h と同 invariant)。
 # TC-8b-h のスイープは *.sh のみを走査し SKILL.md の bash fence を対象外にしている
 # (同テストが scope limit として明記) ため、抽出したスニペットに対してここで検査する。
-# 行頭 `#` のコメント行は TC-8b-h と同じ規約で除外する (周囲の rationale が anti-pattern を
-# verbatim 引用できるようにするため)。grep -P はロケール依存で取りこぼすため perl を使う。
-if perl -ne 'next if /^\s*#/; exit 1 if /\$[A-Za-z_]\w*[\x{80}-\x{FF}]/' "$GUARD_SNIPPET"; then
-  :
-else
+#
+# 検出は `LC_ALL=C awk` で行う。perl の `[\x{80}-\x{FF}]` は入力デコードが有効な環境
+# (PERLIO=:utf8 / PERL_UNICODE=SD) で多バイト文字がクラス外に出て silently 見逃す。
+# awk は本ファイルが既に使っており依存も増やさない。行頭 `#` のコメント行は TC-8b-h と同じ規約で
+# 除外する (周囲の rationale が anti-pattern を verbatim 引用できるようにするため)。
+_brace_detect() {
+  LC_ALL=C awk '!/^[[:space:]]*#/ && /\$[A-Za-z_][A-Za-z0-9_]*[^ -~]/ { printf "  L%d: %s\n", NR, $0 }' "$1"
+}
+# Positive control。本検査は negative assertion (何も見つからなければ PASS) のため、検出器が
+# 壊れると守っているはずの違反があっても緑になる。既知の違反を **同じ関数** に通して発火することを
+# 先に証明する (TC-8b-h と同形。develop f45be675 の「positive control を付け vacuous pass を排除する」
+# と同じ規律)。
+_brace_probe=$(mktemp "${TMPDIR:-/tmp}/rite-brace-probe-XXXXXX.sh")
+printf 'echo "x: $_ls_err\xe3\x80\x82"\n' > "$_brace_probe"
+if [ "$(_brace_detect "$_brace_probe" | wc -l | tr -d '[:space:]')" != "1" ]; then
+  echo "FAIL: brace 検出器が既知の違反を報告しません — 以降のスキャンは vacuous です"
+  rm -f "$_brace_probe"
+  exit 1
+fi
+rm -f "$_brace_probe"
+
+_brace_violations=$(_brace_detect "$GUARD_SNIPPET")
+if [ -n "$_brace_violations" ]; then
   echo "FAIL: 抽出したガードに brace 無しの変数展開が非 ASCII バイトへ直接隣接する箇所があります"
-  perl -ne 'next if /^\s*#/; print "  L$.: $_" if /\$[A-Za-z_]\w*[\x{80}-\x{FF}]/' "$GUARD_SNIPPET"
+  printf '%s\n' "$_brace_violations"
   echo "  対処: \${var} の形で閉じるか、変数と多バイト文字の間に ASCII 文字を挟んでください"
   exit 1
 fi
@@ -126,8 +153,13 @@ git clone -q "$ORIGIN" "$REPO" 2>/dev/null || { echo "FATAL: sandbox clone 失�
 cd "$REPO" || { echo "FATAL: sandbox cd 失敗"; exit 1; }
 git config user.email test@example.com
 git config user.name test
+# 同ディレクトリの fixture テスト群と同じ規約。global 設定で commit.gpgsign=true の環境
+# (鍵切れ / tty なし / gpg 未導入) では初期 commit が失敗し、&& で push が skip され、
+# TC-0/TC-1 が「origin に不在」で偶然 PASS したうえ TC-2 が真因を外した帰属で落ちる。
+git config commit.gpgsign false
 echo "v1" > file.txt
-git add -A && git commit -qm init && git push -q origin main 2>/dev/null
+git add -A && git commit -qm init && git push -q origin main 2>/dev/null \
+  || { echo "FATAL: sandbox bootstrap の commit/push に失敗"; exit 1; }
 
 echo "=== remote branch delete guard tests (SKILL.md 抽出実行) ==="
 echo ""
@@ -274,8 +306,14 @@ tc6_fail=""
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*: ` ` \+.*削除を試行していません' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が「未完了 ` ` + 削除未試行の案内」になっていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*）: `x`$' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
 [ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="リモート側 fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
+# 判定ブロック全体 (ローカル側 + リモート側を含む {local_branch_check} の箇条書き) を抽出する。
+# 以下 2 本の grep をファイル全体ではなくここへスコープする — ファイル全体を対象にすると、
+# 判定ブロックから当該文を削除して「過去の設計では…」等の歴史メモへ格下げしても、文字列が
+# どこかに残っていれば PASS してしまう。
+judgement_block=$(awk '/^- `\{local_branch_check\}`/{f=1} f && /^- `\{projects_status_result\}`/{exit} f{print}' "$CLEANUP_MD")
+[ -z "$tc6_fail" ] && { [ -n "$judgement_block" ] || tc6_fail="{local_branch_check} の判定ブロックを抽出できない"; }
 # 両側独立評価の AND ルール文 (ローカル成功でリモート失敗が握り潰される回帰の pin)
-[ -z "$tc6_fail" ] && { grep -q '両方が `x` 相当のときだけ `x`' "$CLEANUP_MD" || tc6_fail="ローカル/リモート独立評価の AND ルール文がない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -q '両方が `x` 相当のときだけ `x`' || tc6_fail="ローカル/リモート独立評価の AND ルール文が判定ブロックにない"; }
 # marker 名の部分文字列衝突: REMOTE_BRANCH_DELETE_FAILED ⊃ BRANCH_DELETE_FAILED のため、
 # ローカル側ルールが非アンカーだとリモート marker 行に誤一致し誤処方になる。
 # ローカル側の 4 ルール + fallback がすべて `[CONTEXT] ` prefix 込みでアンカーされていることを pin。
@@ -293,7 +331,7 @@ fi
 # mutation が素通りしていたため追加。SKILL.md 自身がこの形を「リモート側 marker の存在で偽になり
 # 判定が破綻する」と明記して禁じている。
 [ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*' || tc6_fail="ローカル側 fallback が marker family でスコープされていない"; }
-[ -z "$tc6_fail" ] && { grep -q 'marker 名は `\[CONTEXT\] ` prefix 込みで一致させる' "$CLEANUP_MD" || tc6_fail="アンカー照合の規約文がない"; }
+[ -z "$tc6_fail" ] && { printf '%s' "$judgement_block" | grep -q 'marker 名は `\[CONTEXT\] ` prefix 込みで一致させる' || tc6_fail="アンカー照合の規約文が判定ブロックにない"; }
 if [ -n "$tc6_fail" ]; then
   fail "TC-6: $tc6_fail"
 else
