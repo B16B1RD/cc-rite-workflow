@@ -2484,6 +2484,8 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
 
 1. **コメント本文生成 + Write**: Claude はコメント本文を生成し、**Write tool で `{review_tmp_dir}/rite-nonblocking-{pr_number}-{review_cycle_id}.md` に保存**する (`{review_tmp_dir}` / `{review_cycle_id}` は ステップ 6.1.a step 0 の `[CONTEXT] REVIEW_TMP_DIR=` / `REVIEW_CYCLE_ID=` marker 値をリテラル置換。**パスに cycle 識別子を含めるのは必須** — 含めないと `${TMPDIR}` がセッション内で不変なため前 cycle の本文が同一パスに残り、step 1 を飛ばして step 2 だけ実行したときに前 cycle の内容で canonical コメントを上書きしてしまう。cycle 識別子を含めれば同じ状況が `content_file_missing` の loud fail として現れる)。本文は件数で 2 variant — **どちらも 1 行目を marker 見出し `## 📜 rite 非実測指摘の記録` にし、末尾に `📎 reviewed_commit: {current_commit_sha}` を置く** (`{current_commit_sha}` は ステップ 1.2.5 で取得した実 SHA にリテラル置換する — 未置換のまま投稿しても helper の本文検査は非空 / 1 行目 marker / `📎 non_blocking_count:` の 3 段のみで `{current_commit_sha}` 自体は検査対象外のため素通りする。1 行目 marker は helper の前方一致検索の needle であり、落とすと update-in-place が恒久破綻する。本行は「この記録がどの commit 時点のレビューで作られたか」を PR 上で人間が追うためのもので、機械 consumer は持たない):
 
+   > **本文は列 0 から書き出すこと (字下げ禁止)** — 下記 variant A / B のテンプレートは本手順が番号付きリスト項目の内側にあるため、表示上は全行が 3 スペース字下げされている。**Write する本文にはこの字下げを含めてはならない**。helper の本文検査 2 段はいずれも行頭 anchor で先頭空白を許容しない (1 行目 marker は `case "$(head -n 1 ...)" in "$MARKER"*)`、件数行は `grep -E '^📎 non_blocking_count:...'`)。字下げたまま転記すると毎 cycle `body_marker_missing` / `count_body_mismatch` で `outcome=failed` となり、記録コメントが一度も投稿されない。gate は `outcome` を問わず pass するため result pattern は変わらず、既定 `post_comment: false` では D-01 の「レビュアーと共有できる永続チャネル」が恒久的にゼロになる。
+
    **variant A (`non_blocking_count >= 1`)**:
 
    ```markdown

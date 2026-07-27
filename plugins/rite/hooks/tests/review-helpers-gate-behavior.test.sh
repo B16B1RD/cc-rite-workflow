@@ -1125,6 +1125,25 @@ else
       _vb_literal0_count=$(sed -n "${_vb_line},$(( _next_line - 1 ))p" "$REVIEW_MD" | grep -cE "^[[:space:]]*${_count_re}[[:space:]]*0[[:space:]]*\$" || true)
       assert "TC-5g''' variant A 区間の値は {non_blocking_count} placeholder (literal 数字への drift 検出)" "1" "$_va_placeholder_count"
       assert "TC-5g''' variant B 区間の値は literal 0 (別数字への drift 検出)" "1" "$_vb_literal0_count"
+
+      # (h) 「本文は列 0 から書き出す」指示が variant テンプレートより **前** に 1 本だけ存在する。
+      #     variant A/B は番号付きリスト項目の内側にあるため表示上 3 スペース字下げされる一方、
+      #     helper の本文検査 2 段は行頭 anchor (`case "$(head -n 1 ...)" in "$MARKER"*)` と
+      #     `grep -E '^📎 non_blocking_count:...'`) で先頭空白を許容しない。指示が無いと LLM は
+      #     表示どおり字下げごと転記し、毎 cycle body_marker_missing / count_body_mismatch で
+      #     outcome=failed となって記録が一度も投稿されない (gate は outcome を問わず pass する
+      #     ため result pattern は変わらず、既定 post_comment: false では D-01 の永続チャネルが
+      #     恒久的にゼロになる)。TC-5g''/g''' の needle 照合は `^[[:space:]]*` で字下げを許容する
+      #     ため、この乖離は本 pin でしか検出できない。位置も固定する — テンプレートより後ろに
+      #     置かれた指示は読み手が本文生成を終えた後に現れるので用をなさない。
+      _indent_rule_line=$(grep -n '本文は列 0 から書き出すこと' "$REVIEW_MD" | head -1 | cut -d: -f1)
+      _indent_rule_count=$(grep -c '本文は列 0 から書き出すこと' "$REVIEW_MD" || true)
+      assert "TC-5h 6.1.d に字下げ禁止の指示が 1 箇所" "1" "$_indent_rule_count"
+      if [ -n "$_indent_rule_line" ] && [ "$_indent_rule_line" -lt "$_va_line" ] 2>/dev/null; then
+        pass "TC-5h 字下げ禁止の指示が variant テンプレートより前にある ($_indent_rule_line < $_va_line)"
+      else
+        fail "TC-5h 字下げ禁止の指示が variant テンプレートより前にない (rule=$_indent_rule_line va=$_va_line)"
+      fi
     else
       fail "TC-5g'' variant A/B の見出し位置を特定できない (va=$_va_line vb=$_vb_line next=$_next_line)"
     fi
@@ -1159,13 +1178,45 @@ else
     _data_rows=$(printf '%s\n' "$_gate_section" | grep -E '^\|' | grep -vE '^\|[[:space:]]*(Condition|-+)')
     _data_row_count=$(printf '%s\n' "$_data_rows" | grep -c . || true)
     _conforming=$(printf '%s\n' "$_data_rows" | grep -cE 'next gate in the 8\.0 evaluation order|\*\*ERROR\*\*|legitimately skipped' || true)
-    # 各 gate が最低 1 本のデータ行を持つこと (0 になったら区間抽出そのものが壊れている)
-    if [ "$_data_row_count" -ge 3 ] 2>/dev/null; then
-      pass "TC-5e 8.0.x にデータ行が 3 本以上ある ($_data_row_count 本)"
-    else
-      fail "TC-5e 8.0.x のデータ行が 3 本未満 ($_data_row_count) — 区間抽出か gate 定義の drift"
-    fi
     assert "TC-5e 全データ行が言語非依存の許容フレーズ (次 gate へ/ERROR/legitimately skipped) を含む" "$_data_row_count" "$_conforming"
+    # 【層 3 / gate ごとの実在性と hand-off】層 1・層 2 はいずれも「行の削除」に無反応である。
+    # 層 2 の等値判定は _data_row_count と _conforming を同一集合 (_data_rows) から導出するため、
+    # 行を消しても両辺が同時に減って等値が保たれる。合計下限 (旧 `-ge 3`) も 3 gate 合算のため、
+    # 1 gate 分の表 (4 行) が丸ごと消えても残り 7 本で閾値を満たして通る (#2030 F-09 の
+    # 「pin コメントが謳う保証を実装が持たない」/ F-10 の「合計下限が個別削除を吸収する」と同型)。
+    # 実測: 8.0.2 の pass 行 2 本を削除して 8.0.3 を到達不能にしても suite は緑のままだった。
+    # これは AC-6 が守ると宣言している当の failure mode (先行 PR の F-04) そのものなので、
+    # gate ごとに区間を切って (i) データ行の実在、(ii) 後続 gate への hand-off、を個別に固定する。
+    for _g in '8.0.1' '8.0.2' '8.0.3'; do
+      _g_re=$(printf '%s' "$_g" | sed 's/\./\\./g')
+      _g_start=$(grep -n "^### ${_g_re} " "$REVIEW_MD" | head -1 | cut -d: -f1)
+      if [ -z "$_g_start" ]; then
+        fail "TC-5e gate 見出し '### $_g' が見つからない — gate 定義の削除または見出しの drift"
+        continue
+      fi
+      # 次の `### ` 見出し (8.0.x でも 8.1 でも可) の直前までを当該 gate の区間とする
+      _g_end=$(awk -v s="$_g_start" 'NR > s && /^### / { print NR; exit }' "$REVIEW_MD")
+      [ -n "$_g_end" ] || _g_end=$(( $(wc -l < "$REVIEW_MD") + 1 ))
+      _g_rows=$(sed -n "${_g_start},$(( _g_end - 1 ))p" "$REVIEW_MD" | grep -E '^\|' | grep -vE '^\|[[:space:]]*(Condition|-+)')
+      _g_row_count=$(printf '%s\n' "$_g_rows" | grep -c . || true)
+      if [ "$_g_row_count" -ge 1 ] 2>/dev/null; then
+        pass "TC-5e $_g のデータ行が 1 本以上 ($_g_row_count 本)"
+      else
+        fail "TC-5e $_g のデータ行が 0 本 — 表の削除または区間抽出の drift"
+      fi
+      # 8.0.3 は評価順の終端 gate であり「次の gate」を持たない (順序規定により 8.1 へ抜ける) ため
+      # hand-off 検査の対象外。8.0.1 / 8.0.2 は pass 行を失うと後続 gate が到達不能になるので必須。
+      case "$_g" in
+        8.0.1|8.0.2)
+          _g_next=$(printf '%s\n' "$_g_rows" | grep -cE 'next gate in the 8\.0 evaluation order' || true)
+          if [ "$_g_next" -ge 1 ] 2>/dev/null; then
+            pass "TC-5e $_g が次 gate への pass 行を持つ ($_g_next 本)"
+          else
+            fail "TC-5e $_g の次 gate への pass 行が 0 本 — 後続 gate が到達不能になる (#2030 F-04 と同型)"
+          fi
+          ;;
+      esac
+    done
   else
     fail "TC-5e 8.0.1 / 8.1 の見出しが見つからない (s801=$s801 s81=$s81)"
   fi
