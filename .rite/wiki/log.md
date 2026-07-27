@@ -20,6 +20,14 @@
 * **Skip**: [20260726T133850Z-pr-2030.md](raw/reviews/20260726T133850Z-pr-2030.md) — 経験則は既存ページ群に統合済み
 * **Skip**: [20260726T142820Z-pr-2030.md](raw/reviews/20260726T142820Z-pr-2030.md) — 経験則は accept/reject fixture ページに統合済み
 * **lint:warning** — contradictions=0, stale=16, orphans=0, missing_concept=0, unregistered_raw=279, broken_refs=0
+* **Create**: [記録専用フィールドを判定入力に格上げする変更は 4 点を同時に同期する](pages/heuristics/field-semantics-promotion-record-to-decision-input.md) — raw/reviews/20260727T041403Z-pr-2036.md を新規ページ化
+* **Create**: [「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する](pages/heuristics/reduce-sync-sites-before-syncing-them.md) — raw/fixes/20260727T042311Z-pr-2036.md を新規ページ化
+* **Create**: [「破棄しない」を保証する記録先は永続チャネルに置き、除外契約と保存先をセットで規定する](pages/patterns/durable-channel-for-no-discard-guarantee.md) — raw/fixes/20260727T053017Z-pr-2036.md を新規ページ化
+* **Create**: [検出層の表記ゆれ対応は「列挙」ではなく「正規化」で吸収する](pages/patterns/normalize-instead-of-enumerate-in-detection-layer.md) — raw/reviews/20260727T084223Z-pr-2036.md を新規ページ化
+* **Create**: [advisory データの欠陥検証を hard fail にすると primary データごと失われる](pages/anti-patterns/advisory-data-validation-hard-fail-drops-primary-data.md) — raw/reviews/20260727T084223Z-pr-2036.md を新規ページ化
+* **Create**: [canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる](pages/patterns/canonical-example-must-pass-its-own-enforcer.md) — raw/reviews/20260727T084223Z-pr-2036.md を新規ページ化
+* **Create**: [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](pages/anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md) — raw/fixes/20260727T053017Z-pr-2036.md を新規ページ化
+* **Create**: [file:line を key にする map は、同じ位置にある別出自のデータを無音で巻き添えにする](pages/anti-patterns/colocated-key-map-swallows-different-provenance-data.md) — raw/fixes/20260727T053017Z-pr-2036.md を新規ページ化
 
 ## 2026-07-26
 
