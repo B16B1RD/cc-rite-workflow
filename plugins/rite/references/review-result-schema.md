@@ -25,6 +25,8 @@
 
 **受理される値** (読取側): `"1.0.0"` (canonical 1.0) / legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ、1.0.0 と semantic 等価、v2.0 まで受理) / `"1.1.0"` (canonical 1.1) の **3 値**。`"1.0.0"` / `"1.0"` で受信した JSON は `findings[].scope` / `findings[].pre_existing` フィールドが欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性 (schema 1.0 ↔ 1.1.0)](#後方互換性-schema-10--110) 参照)。詳細経緯は CHANGELOG を参照。
 
+**`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる**。読取側 accept list 3 箇所の同期変更を避けるため schema_version は bump しない。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。
+
 **検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
 
 **読取側 (3 値受理義務、3 箇所で完全同期)**:
@@ -66,6 +68,11 @@
       "severity": "HIGH",
       "scope": "current-pr",
       "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined",
+        "failing_test": null
+      },
       "file": "path/to/file.ts",
       "line": 42,
       "description": "エラーハンドリングが不足",
@@ -80,6 +87,11 @@
       "scope": "nit-noted",
       "pre_existing": true,
       "nit_reason": "本 PR の責務範囲外の既存設定ファイル整形 — 単発修正で完了する localized 改善",
+      "verification": {
+        "measured": false,
+        "repro": null,
+        "failing_test": null
+      },
       "file": "path/to/config.ts",
       "line": null,
       "description": "ファイル全体への指摘 (行非依存)",
@@ -94,6 +106,11 @@
       "scope": "follow-up",
       "pre_existing": false,
       "original_severity": "MEDIUM",
+      "verification": {
+        "measured": false,
+        "repro": null,
+        "failing_test": null
+      },
       "file": "path/to/utils.ts",
       "line": 100,
       "description": "Refactoring候補 — 動作には影響しない",
@@ -129,11 +146,26 @@
 | `pre_existing` | bool | ✅ (1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、Cross-field invariant #5 は read 側ではトリガしない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
 | `original_severity` | string | (任意、1.1.0+) | severity 自己降格 (reviewer が CRITICAL 判定後 PR scope 不適合と判断し scope=follow-up や nit-noted へ送る際に severity を MEDIUM 等へ降格) 時の元値を保持。**自己降格 trace 用途のみ**で、cross-field invariant 評価には使わない。omit 可 (1.0 / 1.0.0 互換、降格していない finding には不要)。値の domain は `severity` enum 5 値と同じ |
 | `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
+| `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (schema_version を bump しない additive 追加のため — [Schema Version](#schema-version-sot) 参照)。runtime 実測の記録 `{measured, repro, failing_test}` (下記 [verification サブフィールド](#verification-サブフィールド) 参照)。**欠落時は `measured=false` 扱い** ([後方互換性](#後方互換性-schema-10--110) の verification default mapping)。**値は現時点では記録専用で、blocking / mergeable 判定には使われない** — reviewer が実測の有無を機械可読な形で残すためのデータ契約であり、これを判定入力として消費する層は別途導入する。**型は判定に使われる**: read 側の型ガードが object/boolean 制約を検証し、違反時は当該 review-result file 全体の routing を変える ([verification 型ガード (read 側)](#verification-型ガード-read-側)) |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
 | `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md ステップ 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
+
+### `verification` サブフィールド
+
+<a id="verification-サブフィールド"></a>
+
+`findings[].verification` オブジェクトのサブフィールド定義。「実測」の記録形式を LLM の自由裁量に委ねると後段で機械処理できないため、**write 側が `verification` を出力する際に守るべき形式を本表で固定する**。
+
+**本表は形式契約であって、write 側の配線状況の記述ではない**: 現時点で `pr-review.md` ステップ 6.1.a の per-finding 必須フィールド列挙に `verification` は含まれず、reviewer が `内容` 列に書いた `Verification:` アンカーを `findings[].verification` へ写す手順も存在しない。write 側への配線は後続スコープで行う。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理し、default mapping で `measured=false` に畳む):
+
+| フィールド | 型 | 必須 (write 側が出力する場合) | read 側の受理 | 説明 |
+|-----------|-----|------|------|------|
+| `measured` | bool | ✅ (出力するなら 3 キーをすべて埋める) | 欠落 / null 許容 (→ `measured=false` 扱い)。**型は boolean/null のみ** (型ガード) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null かつ非空文字列**であることが必須 (Cross-field invariant #6) |
+| `repro` | string \| null | ✅ (null 可) | 欠落 / null 許容 (read 側は値を jq 評価しないため型制約なし) | 再現手順。**形式固定**: `<再現コマンド> => <観測される誤動作>` (`=>` 区切り)。例: `bash hooks/foo.sh --bad-arg => ERROR: unbound variable`。`内容` 列に raw `|` (パイプ) を含めない制約は本フィールドにも及ぶ (理由と代替表記は `agents/_reviewer-base.md` の §Verification: runtime 実測の添付 の Rules) |
+| `failing_test` | string \| null | ✅ (null 可) | 同上 | failing test。**形式固定**: `<テストパス> => <失敗出力>` (`=>` 区切り)。例: `hooks/tests/test-foo.sh => TC-03 FAILED: expected 0 got 1`。raw パイプ制約は `repro` と同じ |
 
 ### severity 別名マッピング表
 
@@ -162,12 +194,15 @@
 3. **ファイル名 timestamp ↔ JSON `timestamp` 同期**: `{timestamp}` prefix (JST `YYYYMMDDHHMMSS`) と JSON 内 `.timestamp` (ISO 8601) は同一瞬間を指す。ただし本不変条件は read 側で検証せず (ファイル rename 時にしか破綻しえないため)、write 側が ステップ 6.1.a で一度に生成することで担保する。
 4. **`severity ∈ {CRITICAL, HIGH}` ∧ `scope == "nit-noted"` 禁止**: blocker (CRITICAL/HIGH) 級の指摘は「修正不要の nit」として受け流すことができない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason={priority_prefix}_critical_high_scope_nit_noted` を emit して **legacy parser fallthrough** (invariant #2 と同じ FAIL routing)。canonical jq expression: `[.findings[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0`。reviewer が CRITICAL を nit に降格させたい場合は severity を MEDIUM/LOW へ自己降格し、`original_severity` フィールドに元値を保持すること。本 invariant は 1.1.0 JSON にのみ適用される (1.0/1.0.0 では `scope` フィールドが欠落しているため後方互換 default mapping 経由で評価)。
 5. **`pre_existing == false` ∧ `scope == "nit-noted"` 禁止**: 本 PR で **新規に導入された** finding (`pre_existing == false`) を「修正不要の nit」として受け流すことは、本 PR の責任範囲内の問題を silent に放置することを意味するため禁止。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count={n}` を emit し、該当 finding の `scope` を **自動で `"current-pr"` に書き換え** (auto-correct) して severity_map 構築を続行する。canonical jq mutation: `(.findings[] | select(.pre_existing == false and .scope == "nit-noted") | .scope) |= "current-pr"`。本 invariant は **#4 と異なり FAIL ではなく auto-correct** のため、JSON read 全体を fallthrough させない。1.0/1.0.0 JSON では `pre_existing` フィールドが欠落しているため本 invariant は発火しない (default mapping は scope を severity ベースで補完するのみで、`pre_existing` は補完しない)。
+6. **`verification.measured == true` ∧ `repro`/`failing_test` とも null/空 禁止 (write 側 auto-correct 降格)**: 実測の証跡なしに `measured: true` を宣言することは、記録された実測フラグを無意味にするため禁止。**本 invariant は形式契約であり、現時点の配線状況の記述ではない** — `pr-review.md` ステップ 6.1.a に本自己点検を行う手順は存在せず (write 側が `verification` を出力しないため auto-correct すべき `measured: true` も発生しない)、配線は後続スコープ。以下は**配線後に** write 側が守るべき挙動を規定する。**検出主体は write 側のみ** — `pr-review.md` ステップ 6.1.a が JSON 生成時に `measured=true` ∧ `repro`/`failing_test` とも null/空文字の組を検出したら `measured` を **`false` に書き換え** (auto-correct) し、WARNING を stderr に出力して続行する。これは機械 helper (`review-result-save.sh` は `verification` を検証しない) ではなく **Claude の生成時自己点検**であり、canonical jq mutation はその自己点検に使う参照式: `(.findings[] | select((.verification.measured // false) == true and ((.verification.repro // "") == "") and ((.verification.failing_test // "") == "")) | .verification.measured) |= false`。**read 側 (`fix.md` ステップ 1.2.0) は auto-correct を実装しない** (#5 が read 側 auto-correct を持つのと異なる) — `measured` は現時点で判定に使われない記録専用フィールドであり、値の真偽が routing を変えないため。ただし**型**は read 側で検証する (違反は専用 reason で reject — [verification 型ガード (read 側)](#verification-型ガード-read-側))。`verification` フィールド自体が欠落している finding は本 invariant の対象外 (`measured=false` の default mapping が適用されるのみ)。
 
 ## 後方互換性 (schema 1.0 ↔ 1.1.0)
 
 <a id="後方互換性-schema-10--110"></a>
 
-1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、以下の default mapping を適用する。
+1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 `scope` 節の default mapping を適用する (`pre_existing` は schema_version に依らず default mapping を**適用しない** — 下記 `pre_existing` 節参照。欠落のまま保持することが invariant #5 の後方互換の前提になっている)。
+
+**`verification` の default mapping のみ schema_version に依らず適用される** — `verification` は 1.1.0 内で additive 追加されたため 1.1.0 JSON でも欠落しうる ([Schema Version](#schema-version-sot) 参照)。schema_version で gate してはならない。
 
 ### scope の default mapping
 
@@ -203,6 +238,30 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 - 欠落のままにすることで Cross-field invariant #5 (`pre_existing == false × scope == nit-noted`) が **発火しない** (`null != false`)
 - 1.0/1.0.0 JSON で生成された finding は invariant #5 の auto-correct 対象外となり、後方互換が保たれる
 
+### verification の default mapping (measured=false 扱い)
+
+`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、および verification 導入前に生成された 1.1.0 JSON)、read 側は当該 finding を **`measured=false` (実測なし)** として扱う。フィールドの物理的な補完は不要で、値を参照する側が `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない:
+
+```
+(.verification.measured // false) == true   # 実測ありの判定式 (欠落 = false)
+```
+
+- 旧形式 JSON を read してもエラーなく処理が続行される (既存の抽出ロジックは `verification` を参照しないため無影響)
+- `scope` の default mapping とは独立に適用される (scope は severity から補完、verification は一律 `measured=false`)
+- Cross-field invariant #6 は verification 欠落時には発火しない (対象は `measured: true` を明示宣言した finding のみ)
+
+<a id="verification-型ガード-read-側"></a>
+
+**verification 型ガード (read 側)**: `findings[].verification` は **object または欠落 (null)** のみ、`findings[].verification.measured` は **boolean または欠落 (null)** のみ受理する。read 側 (`scripts/review-source-resolve.sh` の Priority 0 / Priority 2) は invariant 評価の**前段**で両方の型を検証し、違反時は専用 reason `{explicit_file|local_file}_verification_type_invalid` で WARNING + routing する (P0 → fallback、P2 → Priority 3 + `.corrupt-{epoch}` rename)。`measured` の**存在**は要求しない (`verification: {}` は `measured=false` の default mapping 対象)。silent 受理 (`.measured?` での握り潰し) は型崩れという schema 違反シグナルを消すため採用しない。canonical jq: `all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))`
+
+**ガードを invariant の前段に置く理由（prospective）**: 現時点の read 経路に `.verification.measured` を評価する式は本ガード自身以外に存在せず、後段の invariant #2 / #4 / enum チェックはいずれも `.verification` を参照しない。したがって「非 object の verification が後段を rc=5 にして誤合流する」ことは**現在は起きない**。前段配置が守るのは、default mapping 節が正準として示す `(.verification.measured // false)` を評価する**将来の read 側 consumer** であり、consumer 追加を待たずに型崩れを弾いておく予防的配置である (invariant #6 の自己点検式は write 側の責務なので、read 経路に置いた本ガードの保護対象には含まれない)。P0/P2 で先に弾くのは、これらが永続ファイル (次回以降も再読込されうる入力) を入力に取るため — うち `.corrupt-{epoch}` rename を伴うのは P2 のみで、P0 は fallback に倒すだけである (上記 routing 参照)。順序が現時点で生む観測可能な差は reason ラベルと P2 の rename 有無で、`scripts/tests/review-source-resolve.test.sh` の順序 pin fixture (`overall_assessment: "mergeable"` + 型崩れ) がこれを機械的に固定している。
+
+**jq 実行失敗と型崩れの分離**: ガードの jq が rc>=2 (findings 要素が非 object で nested access がランタイムエラー / jq バイナリ異常 / IO エラー) で終了した場合、型崩れ (rc=1) と同じ reason に融合してはならない。`verification` を一切持たない JSON にも `verification_type_invalid` が付いて診断が事実とずれるため、read 側は専用 reason `{explicit_file|local_file}_verification_guard_jq_failed` で routing し、**P2 では rename しない** (破損が未証明のまま破壊的操作を conflated signal で駆動しないため)。
+
+**Priority 3 (PR コメント Raw JSON) には型ガードを置かない**: P0/P2 との違いは「その経路が `verification` を参照するか」ではなく (前述のとおり現時点ではどの read 経路も参照しない)、**入力が永続ファイルかどうか**にある。P3 の入力は PR コメント本文で、`.corrupt-{epoch}` rename に相当する退避経路を持たず、reject すると legacy Markdown parser への fallthrough による情報損失のほうが大きい。`verification` を持つ Raw JSON は P3 でも従来どおり受理される。
+
+**P3 にガードを追加すべきトリガ** (2 つの独立した軸で判定する): (a) P3 の入力が永続ファイル化した場合 (退避経路を持てるようになるため P0/P2 と同じ扱いに揃う)、または (b) P3 の parse 経路自身が `.verification` を評価する式を持った場合 (その式が型崩れで rc=5 になるため、前段で弾く実益が生じる)。いずれかが成立した時点で本節の判定式を P0/P2 と同形で追加すること。
+
 ### REVIEW_SOURCE_SCOPE_DEFAULTED emit
 
 scope を補完した finding が 1 件以上ある場合、read 側は以下の `[CONTEXT]` flag を stderr に emit する:
@@ -221,6 +280,7 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 
 - **invariant #4** (CRITICAL/HIGH × nit-noted FAIL): 1.0/1.0.0 では CRITICAL/HIGH → `current-pr` に default mapping されるため、invariant #4 は **発火しない** (規約的に違反不可能な状態)
 - **invariant #5** (pre_existing=false × nit-noted auto-correct): 1.0/1.0.0 では `pre_existing` が欠落 (`null`) のため、invariant #5 は **発火しない**
+- **invariant #6** (measured=true × 証跡なし): `verification` が欠落した JSON (1.0/1.0.0 全般、および verification 導入前の 1.1.0) では `measured` を明示宣言していないため **発火しない**。型ガードも `verification == null` を受理するため、旧形式は前段でも reject されない
 
 つまり 1.0/1.0.0 JSON は read 後の severity_map 構築段階で invariant #4/#5 を確定的に pass する。これは「1.0 互換性を保ったまま 1.1.0 invariants を追加する」設計判断 — 既存 PR で生成された 1.0 JSON を re-read しても新規 invariant 違反で fallthrough しないことを保証する。
 
@@ -262,6 +322,11 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
       "severity": "HIGH",
       "scope": "current-pr",
       "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined",
+        "failing_test": null
+      },
       "file": "path/to/file.ts",
       "line": 42,
       "description": "エラーハンドリングが不足",
@@ -283,9 +348,9 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 
 | Priority | ソース | 発動条件 | 失敗時の動作 |
 |----------|-------|---------|-------------|
-| 0 | **明示的ファイル指定** | `--review-file <path>` 指定時 | 指定パスを読取。**4 種の失敗モード** (パス不在 / JSON 不正 / schema_version 不明 / `explicit_file_commit_sha_mismatch` (json commit_sha が HEAD と不一致、stale file protection)) のいずれでも Priority 1-3 にフォールスルーせず直接 Priority 4 (対話式 fallback) へ遷移 (ユーザーの明示意図を尊重) |
+| 0 | **明示的ファイル指定** | `--review-file <path>` 指定時 | 指定パスを読取。**6 種の失敗モード** (パス不在 / JSON 不正 / schema_version 不明 / `explicit_file_verification_type_invalid` (verification が object/null 以外、または measured が boolean/null 以外 — 型ガード) / `explicit_file_verification_guard_jq_failed` (型ガードの jq が rc>=2 で失敗) / `explicit_file_commit_sha_mismatch` (json commit_sha が HEAD と不一致、stale file protection)) のいずれでも Priority 1-3 にフォールスルーせず直接 Priority 4 (対話式 fallback) へ遷移 (ユーザーの明示意図を尊重) |
 | 1 | **会話コンテキスト** | 同一セッション内で `/rite:pr-review` が直前に実行されていれば、その結果を直接利用。**採用時は `[CONTEXT] REVIEW_SOURCE=conversation; pr_number={pr_number}` を stderr に emit する義務がある** (observability 義務、後段の provenance log に必要) | Claude が会話履歴に rite review 結果を見つけられなかった場合は次の Priority へ |
-| 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | **4 種の失敗モードいずれも** WARNING を出して **Priority 3 (PR コメント) に直接 routing** する: (a) `local_file_json_parse_failure` (`jq empty` で JSON syntax invalid)、(b) `local_file_schema_required_fields_missing` (parse 可能だが `schema_version` 非空文字列 / `pr_number` 数値型 / `findings[]` 配列型のいずれかが欠落)、(c) `local_file_schema_version_unknown` (schema_version 未知)、(d) `local_file_commit_sha_mismatch` (json commit_sha が現 HEAD と不一致、stale file protection)。古い timestamp ファイルには fallback しない |
+| 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | **6 種の失敗モードいずれも** WARNING を出して **Priority 3 (PR コメント) に直接 routing** する: (a) `local_file_json_parse_failure` (`jq empty` で JSON syntax invalid、`.corrupt-{epoch}` rename あり)、(b) `local_file_schema_required_fields_missing` (parse 可能だが `schema_version` 非空文字列 / `pr_number` 数値型 / `findings[]` 配列型のいずれかが欠落、rename あり)、(c) `local_file_verification_type_invalid` (verification が object/null 以外、または measured が boolean/null 以外 — 型ガード、rename あり)、(d) `local_file_verification_guard_jq_failed` (型ガードの jq が rc>=2 で失敗 — **rename なし**。破損が未証明のため破壊的操作をしない)、(e) `local_file_schema_version_unknown` (schema_version 未知、**rename なし**)、(f) `local_file_commit_sha_mismatch` (json commit_sha が現 HEAD と不一致、stale file protection、**rename なし**)。古い timestamp ファイルには fallback しない |
 | 3 | **PR コメント (後方互換)** | PR コメントの `## 📜 rite レビュー結果` セクション (新形式: `### 📄 Raw JSON` 付き → awk で Raw JSON section-scoped 抽出。旧形式: Markdown テーブル → 既存パースロジック) | 失敗モード: (a) `pr_comment_raw_json_parse_failure`、(b) `pr_comment_schema_required_fields_missing`、(c) `pr_comment_schema_version_unknown` は legacy Markdown parser へ fallthrough。(d) `pr_comment_commit_sha_mismatch` は **WARNING のみで continue** (Raw JSON の severity_map 構築を続行。PR コメントは最新 push 後に投稿される可能性が高く、legacy parser への fallthrough はむしろ情報損失になるため) |
 | 4 | **対話式 fallback** | 上記すべて欠落時 | `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示 (ファイルパス指定は 1 回のみ再実行する one-shot。retry ループ・state file hard gate なし。再実行でも invalid なら `[fix:error]` で終了) |
 
