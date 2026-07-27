@@ -410,7 +410,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true`; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |
 | `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
-| `pr_review.post_comment` | PR review output destination |
+| `pr_review.post_comment` | PR review output destination. The non-measured findings record comment (`📜 rite 非実測指摘の記録`, a single update-in-place comment from the Measured CONFIRMED Gate) is posted **independently of this setting** (not subject to the opt-out — it upholds Issue #2024 D-01 "record non-measured findings as a PR comment") |
 | `wiki.*` | Experience Wiki — `enabled` (opt-out), `branch_strategy`, `auto_ingest`, `auto_query`, `auto_lint`, `growth_check.*` |
 | `metrics.*` | Execution metrics recording |
 | `language` | `auto` / `ja` / `en` |
@@ -854,7 +854,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 
 **Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from the second iteration onward, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every iteration, maximizing review quality.
 
-**Definition of "Approve":** Zero blocking findings.
+**Definition of "Approve":** Zero blocking findings, where **blocking = a CONFIRMED finding whose `verification.measured` is `true`** (a repro command with the observed misbehavior, or a failing test with its output — Measured CONFIRMED Gate, #2024). A rite reviewer finding that explicitly declares `measured: false` is demoted to non-blocking: it keeps its severity, is recorded (persistent JSON `non_blocking_findings[]` and a single update-in-place PR comment, `## 📜 rite 非実測指摘の記録`, posted independently of `pr_review.post_comment`), and does not drive the fix cycle. The demotion is **not** unconditional across all findings: `measured` is a three-valued input, and **undetermined** — findings that structurally cannot carry the anchor (external tooling / human review) or whose `verification` field is absent — stays outside the gate and remains blocking as before. This makes "zero blocking findings" a reachable exit condition and bounds the review ⇄ fix loop. See `plugins/rite/references/severity-levels.md` §実測必須ゲート for the gate definition and the three-value scope.
 
 ### Automatic Work Memory Updates
 
