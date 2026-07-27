@@ -1001,6 +1001,11 @@ else
   nbr_invoke_line=$(grep -nE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' "$REVIEW_MD" | cut -d: -f1)
   nbr_invoke_count=$(printf '%s\n' "$nbr_invoke_line" | grep -c '[0-9]' || true)
   assert "TC-5a 6.1.d の helper 呼び出しが live な行として 1 箇所" "1" "$nbr_invoke_count"
+  # [伝播修正, cycle 2 F-04 と同型]: 上記はファイル全体の件数で、ラベルが表明する scope (6.1.d) を
+  # 検査していない。呼び出しを 6.1.d の外へ移しても件数は 1 のままだが、6.1.d を読む LLM には
+  # 呼び出しが見えなくなり記録経路が実行されない。区間限定でも 1 本であることを併せて固定する。
+  nbr_invoke_in_section=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' || true)
+  assert "TC-5a 6.1.d 区間に helper 呼び出しが 1 箇所" "1" "$nbr_invoke_in_section"
   # 到達性 assertion を件数 pin の内側に入れない。gate すると件数 pin が落ちたとき到達性側が
   # 無言で実行されず、総 assertion 数だけが減る (赤にはなるが「何本走ったか」が変わる)。
   # 前提が崩れているときは fail で 1 本計上し、集計を安定させる。
@@ -1059,6 +1064,28 @@ else
   assert "TC-5b 6.1.d step 3 の \`**Check**:\` 見出しは区間内に 1 本だけ" "1" "$_check_label_610d"
   _check_label_803=$(sed -n "/^### 8\\.0\\.3 /,/^### 8\\.1 /p" "$REVIEW_MD" | grep -cE '\*\*Check\*\*:' || true)
   assert "TC-5b 8.0.3 の \`**Check**:\` 見出しは区間内に 1 本だけ" "1" "$_check_label_803"
+
+  # [test-reviewer F-03 指摘, cycle 2]: 上記 4 件の allowlist はトークンの**出現順**しか見ておらず
+  # 比較の**向き**を固定していない。Check を「一致しなくてもよい (存在すれば十分)」へ反転しても
+  # 全トークンが同順で残るため素通りする (実測: 反転変異で 293/0 のまま)。反転が production に
+  # 入ると両 gate が前 cycle の stale sentinel を受理し、AC-7/T-06 が禁じる当の false-positive
+  # match が成立する。allowlist だけでは向きを固定できないため 2 層で塞ぐ:
+  #   (a) denylist — Check 行に一致判定の否定形が現れないこと (表を触らない反転を捕まえる)
+  #   (b) 構造 — 判定の向きが構造として現れる Routing 表の「不一致 → **ERROR**」行の実在
+  #       (文言の言い換えに強い。(a) だけだと未知の否定表現をすり抜ける)
+  # 検査対象は `**Check**:` 行に限定する — Routing 表の Condition 列には正当な
+  # 「(`outcome` は問わない)」があり、区間全体を denylist にかけると false positive になる。
+  _neg_re='一致しな(い|くて)|一致は問わない|存在すれば十分|iteration_id は問わない'
+  _check_610d=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -E '\*\*Check\*\*:')
+  _check_803=$(sed -n "/^### 8\\.0\\.3 /,/^### 8\\.1 /p" "$REVIEW_MD" | grep -E '\*\*Check\*\*:')
+  _neg_610d=$(printf '%s\n' "$_check_610d" | grep -cE "$_neg_re" || true)
+  _neg_803=$(printf '%s\n' "$_check_803" | grep -cE "$_neg_re" || true)
+  assert "TC-5b 6.1.d step 3 の Check に一致判定の否定形が無い" "0" "$_neg_610d"
+  assert "TC-5b 8.0.3 の Check に一致判定の否定形が無い" "0" "$_neg_803"
+  _mismatch_610d=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -cE '^[[:space:]]*\|.*(不一致|!=).*\*\*ERROR\*\*' || true)
+  _mismatch_803=$(sed -n "/^### 8\\.0\\.3 /,/^### 8\\.1 /p" "$REVIEW_MD" | grep -cE '^[[:space:]]*\|.*(不一致|!=).*\*\*ERROR\*\*' || true)
+  assert "TC-5b 6.1.d step 3 の Routing に「不一致 → ERROR」行が 1 本" "1" "$_mismatch_610d"
+  assert "TC-5b 8.0.3 の Routing に「不一致 → ERROR」行が 1 本" "1" "$_mismatch_803"
 
   # (c) helper の MARKER 値と SKILL.md の variant 見出しの前方一致関係を固定する。
   #      helper 側だけを変えれば TC-4.2 が落ちるが、SKILL.md の見出しテンプレートだけを変えると
@@ -1136,9 +1163,13 @@ else
       #     恒久的にゼロになる)。TC-5g''/g''' の needle 照合は `^[[:space:]]*` で字下げを許容する
       #     ため、この乖離は本 pin でしか検出できない。位置も固定する — テンプレートより後ろに
       #     置かれた指示は読み手が本文生成を終えた後に現れるので用をなさない。
+      # [test-reviewer F-04 指摘, cycle 2]: 第 1 版はファイル全体の件数しか数えておらず、ラベルが
+      # 表明する scope (6.1.d) と検査範囲が食い違っていた。指示文を 6.1.d から約 2370 行離れた
+      # 無関係な節へ移しても、位置条件 (rule < variant A) が成立するため素通りする (#2030 F-09 と
+      # 同型)。TC-5b と同じ区間限定 idiom に揃え、ラベルの表明どおり 6.1.d 区間内で数える。
       _indent_rule_line=$(grep -n '本文は列 0 から書き出すこと' "$REVIEW_MD" | head -1 | cut -d: -f1)
-      _indent_rule_count=$(grep -c '本文は列 0 から書き出すこと' "$REVIEW_MD" || true)
-      assert "TC-5h 6.1.d に字下げ禁止の指示が 1 箇所" "1" "$_indent_rule_count"
+      _indent_rule_count=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -c '本文は列 0 から書き出すこと' || true)
+      assert "TC-5h 6.1.d 区間に字下げ禁止の指示が 1 箇所" "1" "$_indent_rule_count"
       if [ -n "$_indent_rule_line" ] && [ "$_indent_rule_line" -lt "$_va_line" ] 2>/dev/null; then
         pass "TC-5h 字下げ禁止の指示が variant テンプレートより前にある ($_indent_rule_line < $_va_line)"
       else
@@ -1152,6 +1183,11 @@ else
   # (d) 8.0 の gate 評価順序規定が 1 箇所存在する (8.0.4 追加時に全 pass 行を書き換えない構造)
   order_rule_count=$(count_lit '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1' '8.0 順序規定')
   assert "TC-5d 8.0 の gate 評価順序規定が 1 箇所" "1" "$order_rule_count"
+  # [伝播修正, cycle 2 F-04 と同型]: count_lit はファイル全体を数えるため、順序規定を 8.0 の外へ
+  # 移しても通る。8.0 冒頭に置くこと自体が「gate 追加時に既存 pass 行を書き換えない」設計の要
+  # (各 pass 行は「次の gate へ」としか書かず、順序は 1 箇所の規定が担う) なので区間で固定する。
+  order_rule_in_section=$(sed -n "/^### 8\\.0 /,/^### 8\\.0\\.1 /p" "$REVIEW_MD" | grep -cF '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1' || true)
+  assert "TC-5d 8.0 区間に gate 評価順序規定が 1 箇所" "1" "$order_rule_in_section"
 
   # (e) 8.0.x の gate 表が終端 (ステップ 8.1) を名指ししない。名指しすると、後から 8.0.4 を足した
   #     ときに既存 pass 行が 8.1 へ直行し続け、新設 gate が到達不能になる。検査は表の行に限定する
@@ -1185,9 +1221,24 @@ else
     # 1 gate 分の表 (4 行) が丸ごと消えても残り 7 本で閾値を満たして通る (#2030 F-09 の
     # 「pin コメントが謳う保証を実装が持たない」/ F-10 の「合計下限が個別削除を吸収する」と同型)。
     # 実測: 8.0.2 の pass 行 2 本を削除して 8.0.3 を到達不能にしても suite は緑のままだった。
-    # これは AC-6 が守ると宣言している当の failure mode (先行 PR の F-04) そのものなので、
-    # gate ごとに区間を切って (i) データ行の実在、(ii) 後続 gate への hand-off、を個別に固定する。
-    for _g in '8.0.1' '8.0.2' '8.0.3'; do
+    # これは AC-6 が守ると宣言している当の failure mode (先行 PR の F-04) そのもの。
+    #
+    # [test-reviewer F-01/F-02 指摘, cycle 2]: 上記を gate ごとの `-ge 1` に細分した第 1 版は、
+    # (a) 8.0.3 を hand-off 検査から除外し、(b) 下限判定のまま、(c) 規約フレーズの有無だけを見て
+    # いたため、同型の穴を 3 つ残していた。(a) の除外理由「終端 gate は次の gate を持たない」は
+    # SKILL.md の実物と食い違う — 8.0.3 の pass 行も規約統一のため同じフレーズを持ち、除外すると
+    # その唯一の pass 行 (WARNING 転記義務が書かれている行) を消しても検出されない。(b) は 1 gate が
+    # pass 行を複数持つとき「正常系が通る当の行」の削除を他の行が吸収する。(c) は pass 行を ERROR 行へ
+    # **反転**しても同じ本数を数える。よって 3 gate すべてを対象にし、`Gate passes` と規約フレーズの
+    # **共起**を要求し、データ行数・pass 行数とも**厳密な等値**で固定する。gate 表を意図的に変えた
+    # ときは本 pin が落ちるので、期待値の更新とあわせて hand-off の再確認が強制される。
+    # 期待値 `見出し:データ行数:pass 行数` — 8.0.3 の pass 行が 1 本なのは、legitimate-skip 行
+    # (ステップ 6 hard fail) が hand-off を持たない片方向の終端行だから。
+    for _g_spec in '8.0.1:3:2' '8.0.2:4:2' '8.0.3:4:1'; do
+      _g=${_g_spec%%:*}
+      _g_rest=${_g_spec#*:}
+      _g_rows_exp=${_g_rest%%:*}
+      _g_pass_exp=${_g_rest#*:}
       _g_re=$(printf '%s' "$_g" | sed 's/\./\\./g')
       _g_start=$(grep -n "^### ${_g_re} " "$REVIEW_MD" | head -1 | cut -d: -f1)
       if [ -z "$_g_start" ]; then
@@ -1199,23 +1250,11 @@ else
       [ -n "$_g_end" ] || _g_end=$(( $(wc -l < "$REVIEW_MD") + 1 ))
       _g_rows=$(sed -n "${_g_start},$(( _g_end - 1 ))p" "$REVIEW_MD" | grep -E '^\|' | grep -vE '^\|[[:space:]]*(Condition|-+)')
       _g_row_count=$(printf '%s\n' "$_g_rows" | grep -c . || true)
-      if [ "$_g_row_count" -ge 1 ] 2>/dev/null; then
-        pass "TC-5e $_g のデータ行が 1 本以上 ($_g_row_count 本)"
-      else
-        fail "TC-5e $_g のデータ行が 0 本 — 表の削除または区間抽出の drift"
-      fi
-      # 8.0.3 は評価順の終端 gate であり「次の gate」を持たない (順序規定により 8.1 へ抜ける) ため
-      # hand-off 検査の対象外。8.0.1 / 8.0.2 は pass 行を失うと後続 gate が到達不能になるので必須。
-      case "$_g" in
-        8.0.1|8.0.2)
-          _g_next=$(printf '%s\n' "$_g_rows" | grep -cE 'next gate in the 8\.0 evaluation order' || true)
-          if [ "$_g_next" -ge 1 ] 2>/dev/null; then
-            pass "TC-5e $_g が次 gate への pass 行を持つ ($_g_next 本)"
-          else
-            fail "TC-5e $_g の次 gate への pass 行が 0 本 — 後続 gate が到達不能になる (#2030 F-04 と同型)"
-          fi
-          ;;
-      esac
+      assert "TC-5e $_g のデータ行数 (部分削除・無断追加の検出)" "$_g_rows_exp" "$_g_row_count"
+      # `Gate passes` と規約フレーズの共起を要求する — フレーズ単独では pass 行を ERROR 行へ
+      # 反転する変異を見逃す (フレーズが残るため本数が変わらない)。
+      _g_pass=$(printf '%s\n' "$_g_rows" | grep -cE 'Gate passes.*next gate in the 8\.0 evaluation order' || true)
+      assert "TC-5e $_g の次 gate への pass 行数 (後続 gate の到達性)" "$_g_pass_exp" "$_g_pass"
     done
   else
     fail "TC-5e 8.0.1 / 8.1 の見出しが見つからない (s801=$s801 s81=$s81)"
