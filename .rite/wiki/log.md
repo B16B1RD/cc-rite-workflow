@@ -19,6 +19,7 @@
 * **Skip**: [20260726T141238Z-pr-2030.md](raw/fixes/20260726T141238Z-pr-2030.md) — 経験則は属性の別 map 化ページに統合済み
 * **Skip**: [20260726T133850Z-pr-2030.md](raw/reviews/20260726T133850Z-pr-2030.md) — 経験則は既存ページ群に統合済み
 * **Skip**: [20260726T142820Z-pr-2030.md](raw/reviews/20260726T142820Z-pr-2030.md) — 経験則は accept/reject fixture ページに統合済み
+* **lint:warning** — contradictions=0, stale=16, orphans=0, missing_concept=0, unregistered_raw=279, broken_refs=0
 
 ## 2026-07-26
 
