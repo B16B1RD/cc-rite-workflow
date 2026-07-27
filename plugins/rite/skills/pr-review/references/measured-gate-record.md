@@ -66,13 +66,19 @@ PR #2030 は 8.0.3 を追加した一方、先行する 8.0.2 の pass 行が「
 ステップ 7.7（procedure 内部）⇄ ステップ 8.0.2（全体 skip）と同じ dual placement。**両者は同一の述語**（terminal sentinel の存在 ∧ `iteration_id` が本 cycle と一致）を異なる位置で評価する。片側だけ弱い述語にすると、その位置で F-02 の穴が再発する。
 
 <a id="startswith"></a>
-## marker 検索を前方一致にする理由
+## lookup と本文検査の設計理由（PATCH 先の同定）
 
-既存コメントの特定は **1 行目 marker への `startswith`（前方一致）**で行う。`contains` で本文全体を対象にすると、marker 文字列を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれ、PATCH がそのコメントを丸ごと上書き破壊する。
+`hooks/review-nonblocking-record.sh` は本節を rationale の実体として参照する（helper 側は契約の宣言のみを持つ）。
 
-write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置く」を契約として守るため、前方一致でマッチ能力は損なわれない（引用返信は先頭に `> ` が付くため構造的に除外される）。
+**lookup は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」の連言**で行う。
 
-本文ファイルの非空検査を投稿前に置くのも同根で、空 body の PATCH は 1 行目 marker を消し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻）。
+- **author 条件が必須な理由**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで `last` がそれを掴み、PATCH 先が奪われる。書込権限があれば他人のコメントを丸ごと上書き破壊し、権限不足なら 403 で `patch_failed` に落ちて以後の cycle も同じ id を掴み続け、記録が恒久的に失われる。
+- **`contains` を使わない理由**: 本文全体を対象にすると、marker 文字列を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
+- **前方一致でマッチ能力が損なわれない理由**: write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置く」を契約として守るため。引用返信は先頭に `> ` が付くため構造的に除外される。
+
+**投稿前に本文を 2 段で検査する**（非空 → 1 行目が marker で始まる）。どちらの契約違反も、1 行目 marker を失ったコメントを PATCH で作り出し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため両者は別 reason（`body_file_empty` / `body_marker_missing`）にする。
+
+**degraded 時は単一コメント不変条件を意図的に諦める**: lookup が gh 失敗で degraded したとき、`count > 0` なら既存コメントの有無に関わらず新規作成へ縮退する。既存の記録コメントが実在していれば 2 通目が作られ、古い方は孤児として残る。skip して記録を落とすより、重複してでも記録を残す方を選んだ（WARNING と `degraded=1` で可視化されるため silent ではない）。ユーザー向け文書が「update-in-place の 1 件」と書くのはこの縮退を除いた通常時の挙動。
 
 <a id="static-pin"></a>
 ## 静的 pin に mutation 実測を要求する理由（F-03 / F-09 / F-10 / F-11）

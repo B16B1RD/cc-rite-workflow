@@ -198,7 +198,7 @@ rite-workflow/
 │ ├── cleanup-work-memory.sh
 │ ├── issue-claim.sh # Issue claim (同一 Issue 二重着手ガード、always-on)
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
-│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # skills/pr-review/SKILL.md 6.1.a/b/c 委譲
+│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh / review-nonblocking-record.sh # skills/pr-review/SKILL.md 6.1.a/b/c/d 委譲
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
@@ -854,7 +854,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 
 **Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from the second iteration onward, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every iteration, maximizing review quality.
 
-**Definition of "Approve":** Zero blocking findings, where **blocking = a CONFIRMED finding whose `verification.measured` is `true`** (a repro command with the observed misbehavior, or a failing test with its output — Measured CONFIRMED Gate, #2024). A rite reviewer finding that explicitly declares `measured: false` is demoted to non-blocking: it keeps its severity, is recorded (persistent JSON `non_blocking_findings[]` and a single update-in-place PR comment, `## 📜 rite 非実測指摘の記録`, posted independently of `pr_review.post_comment`), and does not drive the fix cycle. The demotion is **not** unconditional across all findings: `measured` is a three-valued input, and **undetermined** — findings that structurally cannot carry the anchor (external tooling / human review) or whose `verification` field is absent — stays outside the gate and remains blocking as before. This makes "zero blocking findings" a reachable exit condition and bounds the review ⇄ fix loop. See `plugins/rite/references/severity-levels.md` §実測必須ゲート for the gate definition and the three-value scope.
+**Definition of "Approve":** Zero blocking findings, where **blocking = a CONFIRMED finding, in scope `current-pr` / `follow-up`, whose `verification.measured` is `true`** (a repro command with the observed misbehavior, or a failing test with its output — Measured CONFIRMED Gate, #2024) — **undetermined `measured` is outside this formula and stays blocking**, and `nit-noted` scope is outside it as before. A rite reviewer finding that explicitly declares `measured: false` is demoted to non-blocking: it keeps its severity, is recorded (persistent JSON `non_blocking_findings[]` and a single update-in-place PR comment, `## 📜 rite 非実測指摘の記録`, posted independently of `pr_review.post_comment`), and does not drive the fix cycle. The demotion is **not** unconditional across all findings: `measured` is a three-valued input, and undetermined — findings that structurally cannot carry the anchor (external tooling / human review) or whose `verification` field is absent — is not demoted. This makes "zero blocking findings" a reachable exit condition and bounds the review ⇄ fix loop. See `plugins/rite/references/severity-levels.md` §実測必須ゲート for the gate definition, the three-value scope, and the canonical formula.
 
 ### Automatic Work Memory Updates
 

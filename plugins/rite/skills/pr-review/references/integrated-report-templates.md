@@ -149,7 +149,7 @@
 ### 実測なし指摘 (non-blocking)（該当がある場合のみ）
 <!-- ステップ 5.3.0.M 実測必須ゲートで non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
  blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
- 記録先は 3 経路 (永続 JSON の non_blocking_findings[] / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の PR 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
  本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
  両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
 
@@ -340,7 +340,7 @@
 ### 実測なし指摘 (non-blocking)（該当がある場合のみ）
 <!-- ステップ 5.3.0.M 実測必須ゲートで non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
  blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
- 記録先は 3 経路 (永続 JSON の non_blocking_findings[] / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の PR 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
  本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
  両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
 
