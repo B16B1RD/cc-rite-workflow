@@ -29,16 +29,16 @@
 #        (引用返信も第三者 author も掴まない) / 本文検査 2 段 (非空 / 1 行目 marker) / 分岐 4 種
 #        (created / updated / skipped / failed) / 非ブロッキング契約 (gh 失敗でも exit 0) /
 #        **terminal sentinel が動作完了を表すことの実測** (outcome が created|updated を名乗るときは
-#        gh stub log に投稿呼び出しが実在し、skipped のときは投稿呼び出しが 1 件も無い —
-#        Issue #2034 F-02 / AC-5) / iteration_id の echo back (AC-7)
+#        gh stub log に投稿呼び出しが実在し、skipped のときは投稿呼び出しが 1 件も無い) /
+#        iteration_id の echo back
 #   TC-5 skills/pr-review/SKILL.md 静的 pin — markdown 埋め込みの prose gate は実行テストできない
 #        ため、silent failure に直結する 5 契約を静的に固定する: (a) 6.1.d の helper 呼び出しが
 #        live な bash block にある (行頭 anchor + fence 検査で `# bash ...` コメントアウトを検出) /
 #        (b) 両 gate の **Check 行そのもの** が terminal sentinel を参照する (出現数の等値ではなく
 #        live な述語を pin する — 数の等値は散文追加で相殺され双方向に誤る) / (c) helper の MARKER 値と
 #        SKILL.md の variant 見出しの前方一致 coupling / (d) 8.0 の gate 評価順序規定 / (e) 8.0.x の
-#        **pass 行** が 8.1 を名指ししない。各 pin は追加時に mutation を当てて落ちることを実測済
-#        (PR 本文の mutation matrix 参照、Issue #2034 AC-8 / F-03)
+#        表の行が終端 (ステップ 8.1) を名指しせず、英文 pass 行が「次の gate へ」規約文言を持つ。
+#        各 pin は追加時に mutation を当てて落ちることを実測する (手順: measured-gate-record.md#static-pin)
 #
 # Network 非依存: gh は PATH 先頭の stub に差し替え、review-result-save は --results-dir で
 # sandbox に隔離する (repo の .rite/ を汚さない)。
@@ -99,7 +99,22 @@ if [ "${1:-}" = "api" ] && [ "${2:-}" = "--paginate" ]; then
     echo "stub: lookup failure" >&2
     exit "${GH_LOOKUP_RC}"
   fi
-  [ -n "${GH_LOOKUP_JSON:-}" ] && cat "$GH_LOOKUP_JSON"
+  # abort 経路テスト用の hang スイッチ (判定分岐に到達する前に signal を受けさせる)
+  if [ -n "${GH_LOOKUP_HANG:-}" ]; then
+    echo "stub: lookup hang" >&2
+    sleep 30
+    exit 0
+  fi
+  # fixture は「ページの配列」。実 gh のフラグ意味論を再現する:
+  #   --slurp あり -> 全ページを 1 つの配列にまとめて出す (helper の `add` が平坦化する形)
+  #   --slurp なし -> ページごとに独立した JSON を stream 出力する (`add` が壊れる形)
+  # これを stub 側で再現しないと --slurp の脱落が観測上まったく差を生まず検出できない。
+  if [ -n "${GH_LOOKUP_JSON:-}" ]; then
+    case " $* " in
+      *" --slurp "*) cat "$GH_LOOKUP_JSON" ;;
+      *)             jq -c '.[]' "$GH_LOOKUP_JSON" ;;
+    esac
+  fi
   exit 0
 fi
 # 実 gh は `--input -` で stdin を読み切る。読まないと上流 jq が SIGPIPE を受け、pipefail が
@@ -116,13 +131,6 @@ while [ "$i" -lt "${#args[@]}" ]; do
     next=$((i + 1))
     [ "$next" -lt "${#args[@]}" ] && cp "${args[$next]}" "$GH_STUB_BODY"
   fi
-  # `gh api --field body=@<path>` 形式 (6.1.d の PATCH 経路) も本文を capture する
-  case "${args[$i]}" in
-    --field) next=$((i + 1))
-             case "${args[$next]:-}" in
-               body=@*) [ -n "${GH_STUB_BODY:-}" ] && cp "${args[$next]#body=@}" "$GH_STUB_BODY" ;;
-             esac ;;
-  esac
   i=$((i + 1))
 done
 exit "${GH_STUB_RC:-0}"
@@ -461,7 +469,7 @@ NBR_EMPTY_BODY="$TMP_ROOT/nbr-empty.md"
 # `last` に選ばれて PATCH 破壊を起こす。前方一致 (startswith) が id=11 を選ぶことを固定する。
 NBR_COMMENTS="$TMP_ROOT/nbr-comments.json"
 cat > "$NBR_COMMENTS" <<'EOF'
-[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt"}]]
+[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)"}]]
 EOF
 NBR_EMPTY_COMMENTS="$TMP_ROOT/nbr-empty-comments.json"
 echo '[[]]' > "$NBR_EMPTY_COMMENTS"
@@ -480,6 +488,18 @@ assert_grep "TC-4.1a reason=pr_number_placeholder_residue emit" "$ERR" 'NONBLOCK
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo "{owner_repo}" --count 1 --iteration-id 9-1 --content-file "$NBR_BODY"
 assert "TC-4.1b owner_repo placeholder: exit 1" "1" "$RC"
 assert_grep "TC-4.1b reason=owner_repo_placeholder_residue emit" "$ERR" 'reason=owner_repo_placeholder_residue'
+# owner_repo の allowlist: gh は `[HOST/]OWNER/REPO` を受けるため 3 セグメント値は別ホストへの送出になる。
+# パストラバーサル・許可外文字も同じ gate で拒否する (producer 側 git-remote.sh の allowlist を継承)。
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo "ghe.example.com/o/r" --count 1 --iteration-id 9-1 --content-file "$NBR_BODY"
+assert "TC-4.1b2 HOST/OWNER/REPO 形式: exit 1" "1" "$RC"
+assert_grep "TC-4.1b2 reason=owner_repo_placeholder_residue" "$ERR" 'reason=owner_repo_placeholder_residue'
+assert_not_grep "TC-4.1b2 terminal sentinel を emit しない" "$ERR" 'NONBLOCKING_RECORD_DONE=1'
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo "o/../r" --count 1 --iteration-id 9-1 --content-file "$NBR_BODY"
+assert "TC-4.1b3 パストラバーサル: exit 1" "1" "$RC"
+assert_grep "TC-4.1b3 reason=owner_repo_placeholder_residue" "$ERR" 'reason=owner_repo_placeholder_residue'
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo 'o/r;id' --count 1 --iteration-id 9-1 --content-file "$NBR_BODY"
+assert "TC-4.1b4 許可外文字: exit 1" "1" "$RC"
+assert_grep "TC-4.1b4 reason=owner_repo_placeholder_residue" "$ERR" 'reason=owner_repo_placeholder_residue'
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count "{non_blocking_count}" --iteration-id 9-1 --content-file "$NBR_BODY"
 assert "TC-4.1c count placeholder: exit 1" "1" "$RC"
 assert_grep "TC-4.1c reason=non_blocking_count_placeholder_residue emit" "$ERR" 'reason=non_blocking_count_placeholder_residue'
@@ -533,8 +553,15 @@ done
 # TC-4.2 既存コメントあり → update-in-place (AC-2)。前方一致で id=11 を選ぶ (引用返信 id=12 ではない)
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-200 --content-file "$NBR_BODY"
 assert "TC-4.2a 既存あり: exit 0" "0" "$RC"
-assert_grep "TC-4.2a outcome=updated + comment_id=11 (前方一致)" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=updated; count=2; iteration_id=9-200; comment_id=11;'
-assert_grep "TC-4.2b PATCH が実行された (SoT 正規形 -X PATCH --input -)" "$GH_LOG" '^api repos/o/r/issues/comments/11 -X PATCH --input -'
+# 自 login の marker コメントが 2 件あるときは **最新 (last)** を掴む。degraded 縮退で 2 件目が
+# 生まれた次 cycle に古い方を更新し続けると、最新の記録が孤児化する。
+assert_grep "TC-4.2a outcome=updated + comment_id=13 (自 login の最新を掴む)" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=updated; count=2; iteration_id=9-200; comment_id=13;'
+assert_grep "TC-4.2b PATCH が実行された (SoT 正規形 -X PATCH --input -)" "$GH_LOG" '^api repos/o/r/issues/comments/13 -X PATCH --input -'
+# positive control: 以降の TC-4.2f / 4.4c / 4.8b / 4.8d が使う **negative control の pattern そのもの** を、
+# PATCH が確かに存在するログに対して assert_grep で当てる。pattern が grep のオプションとして食われる
+# (先頭 `-X` が option 解釈され rc=2 → assert_not_grep が「不在」と読む) 種類の vacuous pass を、
+# pattern を変更した瞬間にこの assertion が落ちる形で構造的に排除する。
+assert_grep "TC-4.2b' [positive control] negative control の pattern は PATCH を検出できる" "$GH_LOG" '^api repos/.* -X PATCH'
 assert_not_grep "TC-4.2c 引用返信 (id=12) を PATCH しない" "$GH_LOG" 'issues/comments/12'
 # author 条件: 第三者 (other-user) が 1 行目 marker で投稿しても PATCH 先を奪われない
 assert_not_grep "TC-4.2d 第三者 author (id=99) を PATCH しない" "$GH_LOG" 'issues/comments/99'
@@ -560,7 +587,7 @@ assert_grep "TC-4.2g PATCH 先が id=11" "$GH_LOG" 'issues/comments/11'
 GH_LOOKUP_JSON="$NBR_COMMENTS" GH_ME_RC=1 run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-210 --content-file "$NBR_BODY"
 assert "TC-4.2f 自 login 取得失敗: exit 0" "0" "$RC"
 assert_grep "TC-4.2f degraded=1 かつ created に縮退" "$ERR" 'outcome=created; count=2; iteration_id=9-210; comment_id=; degraded=1'
-assert_not_grep "TC-4.2f 誤って PATCH しない" "$GH_LOG" '-X PATCH'
+assert_not_grep "TC-4.2f 誤って PATCH しない" "$GH_LOG" '^api repos/.* -X PATCH'
 
 # TC-4.3 既存なし ∧ count>0 → 新規作成 (AC-1)
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-201 --content-file "$NBR_BODY"
@@ -573,12 +600,13 @@ GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 -
 assert "TC-4.4a 0 件 ∧ 既存なし: exit 0" "0" "$RC"
 assert_grep "TC-4.4a outcome=skipped" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=skipped; count=0; iteration_id=9-202;'
 assert_not_grep "TC-4.4b 投稿呼び出しが 1 件も無い (create)" "$GH_LOG" '^pr comment'
-assert_not_grep "TC-4.4c 投稿呼び出しが 1 件も無い (PATCH)" "$GH_LOG" '-X PATCH'
+assert_not_grep "TC-4.4c 投稿呼び出しが 1 件も無い (PATCH)" "$GH_LOG" '^api repos/.* -X PATCH'
 
 # TC-4.5 既存あり ∧ 0 件 → 収束 cycle のクリアとして update-in-place (AC-2)
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-203 --content-file "$NBR_BODY"
 assert "TC-4.5a 0 件 ∧ 既存あり: exit 0" "0" "$RC"
 assert_grep "TC-4.5a outcome=updated (count=0)" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=updated; count=0; iteration_id=9-203;'
+assert_grep "TC-4.5b comment_id は最新の自 login コメント" "$ERR" 'comment_id=13;'
 
 # TC-4.6 gh 失敗は非ブロッキング (AC-3): WARNING + reason emit、exit は 0 のまま
 GH_LOOKUP_JSON="$NBR_COMMENTS" GH_STUB_RC=1 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-204 --content-file "$NBR_BODY"
@@ -604,7 +632,7 @@ assert_not_grep "TC-4.7b 事実と異なる 0 件コメントを作らない" "$
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-208 --content-file "$NBR_EMPTY_BODY"
 assert "TC-4.8a 本文空: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.8a reason=body_file_empty emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_file_empty'
-assert_not_grep "TC-4.8b 空 body で PATCH しない" "$GH_LOG" '-X PATCH'
+assert_not_grep "TC-4.8b 空 body で PATCH しない" "$GH_LOG" '^api repos/.* -X PATCH'
 # 非空だが 1 行目が marker でない本文 → 空 body と同じ破綻 (marker 消失) を起こすため別 reason で遮断
 NBR_NOMARKER_BODY="$TMP_ROOT/nbr-nomarker.md"
 printf 'ERROR: reviewer output could not be rendered\n' > "$NBR_NOMARKER_BODY"
@@ -612,9 +640,9 @@ GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 --itera
 assert "TC-4.8c 1 行目 marker 欠落: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.8c reason=body_marker_missing emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_marker_missing'
 assert_not_grep "TC-4.8c body_file_empty に融合しない" "$ERR" 'reason=body_file_empty'
-assert_not_grep "TC-4.8d marker 欠落本文で PATCH しない" "$GH_LOG" '-X PATCH'
+assert_not_grep "TC-4.8d marker 欠落本文で PATCH しない" "$GH_LOG" '^api repos/.* -X PATCH'
 
-# TC-4.9 【最重要 invariant / F-02・AC-5】terminal sentinel は「動作の完了」を表す。
+# TC-4.9 【最重要 invariant】terminal sentinel は「動作の完了」を表す。
 # gate は本 sentinel だけを pass 条件にするため、outcome が created|updated を名乗るときは
 # gh stub log に投稿呼び出しが**実在**していなければならない (動作前 marker で green を騙れない)。
 # TC-4.2/4.3 は個別に log を検査済。ここでは全 outcome を横断して対応関係を機械的に固定する。
@@ -630,6 +658,31 @@ for case_spec in \
   assert "TC-4.9 outcome=$_want ⇒ 投稿呼び出し実在=$_expect_post" "$_expect_post" "$_posted"
 done
 
+# TC-4.9b abort 経路: helper が判定分岐に到達する前に signal で落ちたとき、terminal sentinel は
+# outcome=aborted を **1 回だけ** emit し、投稿呼び出しは 1 件も無い。outcome の初期値が
+# success 値を騙れないという中核契約を、初期値を書き換える mutation で落ちる形に固定する。
+: > "$GH_LOG"; rm -f "$GH_BODY" "$GH_STDIN"
+_abort_err="$TMP_ROOT/abort-err"
+PATH="$STUB_DIR:$PATH" GH_STUB_LOG="$GH_LOG" GH_LOOKUP_JSON="$NBR_COMMENTS" GH_LOOKUP_HANG=1 \
+  bash "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" \
+  --pr 9 --owner-repo o/r --count 2 --iteration-id 9-900 --content-file "$NBR_BODY" \
+  >"$OUT" 2>"$_abort_err" &
+_abort_pid=$!
+# lookup が hang している間に TERM を送る (判定分岐に到達する前)
+_waited=0
+while [ "$_waited" -lt 30 ] && ! grep -q 'stub: lookup hang' "$_abort_err" 2>/dev/null; do
+  _waited=$((_waited + 1)); sleep 0.1
+done
+kill -TERM "$_abort_pid" 2>/dev/null
+wait "$_abort_pid" 2>/dev/null; _abort_rc=$?
+assert "TC-4.9b SIGTERM: rc=143" "143" "$_abort_rc"
+assert_grep "TC-4.9b outcome=aborted を emit" "$_abort_err" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=aborted;'
+_abort_sentinels=$(grep -c '^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1' "$_abort_err" || true)
+assert "TC-4.9b terminal sentinel は 1 回だけ (trap 再入の冪等化)" "1" "$_abort_sentinels"
+assert_grep "TC-4.9b signal 中断が loud に出る" "$_abort_err" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=signal_aborted'
+assert_not_grep "TC-4.9b 投稿呼び出しが無い (create)" "$GH_LOG" '^pr comment'
+assert_not_grep "TC-4.9b 投稿呼び出しが無い (PATCH)" "$GH_LOG" '^api repos/.* -X PATCH'
+
 # TC-4.10 iteration_id は verbatim に echo back される (AC-7: gate の cycle 一致判定の入力)
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id "9-1799999999" --content-file "$NBR_BODY"
 assert_grep "TC-4.10 iteration_id を verbatim に echo back" "$ERR" 'iteration_id=9-1799999999;'
@@ -638,8 +691,9 @@ assert_grep "TC-4.10 iteration_id を verbatim に echo back" "$ERR" 'iteration_
 echo "=== TC-5: skills/pr-review/SKILL.md 静的 pin (6.1.d / 8.0.3) ==="
 # =====================================================================
 # 6.1.d の記録経路と実行保証 gate は markdown 埋め込みの prose gate であり実行テストできない。
-# silent failure に直結する 5 契約だけを静的に固定する。**本 pin 群は追加時に mutation を当てて
-# 落ちることを実測済** (述語置換 / 死に分岐化 / 変数リネーム / 散文追加 — PR 本文の mutation matrix)。
+# silent failure に直結する契約だけを静的に固定する。**pin を追加・変更するときは、その場で
+# mutation (述語置換 / 死に分岐化 / 変数リネーム / 散文追加 / 区間境界変更) を当て、落ちること
+# および無害な変更では落ちないことを実測してから commit する**。手順は下記 rationale を参照。
 # rationale: ../../skills/pr-review/references/measured-gate-record.md#static-pin
 REVIEW_MD="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 if [ ! -f "$REVIEW_MD" ]; then
@@ -653,23 +707,6 @@ else
     case "$rc" in
       0|1) printf '%s' "${out:-0}" ;;
       *)   echo "  TC-5: grep IO error on $2 (rc=$rc)" >&2; printf '%s' "IOERR(rc=$rc)" ;;
-    esac
-  }
-
-  # 見出し行番号で区間を切り出し、その区間内だけを数える (ファイル全体の総数を pin すると
-  # 無関係な散文追加で壊れ、逆に区間外の言及で live 参照の削除が相殺されうる)。
-  section_count() {  # $1=開始見出しパターン $2=終了見出しパターン $3=検索するリテラル $4=label
-    local from to out rc
-    from=$(grep -nE "$1" "$REVIEW_MD" | head -1 | cut -d: -f1)
-    to=$(grep -nE "$2" "$REVIEW_MD" | head -1 | cut -d: -f1)
-    if [ -z "$from" ] || [ -z "$to" ] || [ "$from" -ge "$to" ]; then
-      echo "  TC-5: section boundary not found for $4 (from=$from to=$to)" >&2
-      printf '%s' "NOSECTION"; return
-    fi
-    out=$(sed -n "${from},$(( to - 1 ))p" "$REVIEW_MD" | grep -cF "$3"); rc=$?
-    case "$rc" in
-      0|1) printf '%s' "${out:-0}" ;;
-      *)   echo "  TC-5: grep IO error on $4 (rc=$rc)" >&2; printf '%s' "IOERR(rc=$rc)" ;;
     esac
   }
 
@@ -689,7 +726,7 @@ else
   fi
 
   # (b) 二層 gate (6.1.d step 3 / 8.0.3) がともに **terminal sentinel** を pass 条件にしている。
-  #     動作前 marker (lookup 系) を pass 条件に戻す退行が本 pin の検出対象 (Issue #2034 F-02)。
+  #     動作前 marker (lookup 系) を pass 条件に戻す退行が本 pin の検出対象。
   #     pin するのは「区間内のリテラル出現数」ではなく **gate の live な Check 行そのもの**。
   #     出現数の等値 pin は双方向に誤る: Check を動作前 marker に差し替えつつ同区間に散文を
   #     1 行足すと数が相殺されて素通りし (false negative)、逆に gate 無変更の散文追加だけで
@@ -723,18 +760,24 @@ else
   order_rule_count=$(count_lit '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1' '8.0 順序規定')
   assert "TC-5d 8.0 の gate 評価順序規定が 1 箇所" "1" "$order_rule_count"
 
-  # (e) 8.0.x の **pass 行** が終端 (ステップ 8.1) を名指ししない。名指しは新設 gate の到達不能を
-  #     生む (Issue #2034 F-04: 8.0.2 の pass 行が 8.1 のままで 8.0.3 が到達不能だった)。
-  #     検査は表セルの pass 行 (`| Gate passes — proceed to ステップ 8.1`) に限定する。区間全体で
-  #     素の `proceed to ステップ 8.1` を数えると、ERROR text 中の否定文
-  #     (`Do NOT proceed to ステップ 8.1 without ...`) のような正当な散文でも落ちる。
+  # (e) 8.0.x の gate 表が終端 (ステップ 8.1) を名指ししない。名指しすると、後から 8.0.4 を足した
+  #     ときに既存 pass 行が 8.1 へ直行し続け、新設 gate が到達不能になる。検査は表の行に限定する
+  #     — 区間全体で素の `ステップ 8.1` を数えると、ERROR text の否定文
+  #     (`Do NOT proceed to ステップ 8.1 without ...`) や節の cross-reference といった正当な散文でも落ちる。
   s801=$(grep -n '^### 8\.0\.1 ' "$REVIEW_MD" | head -1 | cut -d: -f1)
   s81=$(grep -n '^### 8\.1 ' "$REVIEW_MD" | head -1 | cut -d: -f1)
   if [ -n "$s801" ] && [ -n "$s81" ] && [ "$s801" -lt "$s81" ]; then
-    # denylist (特定表記の不在) ではなく allowlist (規約文言の存在) で判定する。
-    # 英語 1 語句の denylist は、同じ SKILL.md が既に使う和文形 (`Gate passes — ステップ N へ`) で
-    # 書けば素通りするため、F-04 型の退行 (新設 gate の到達不能) を検出できない。
     _gate_section=$(sed -n "${s801},$(( s81 - 1 ))p" "$REVIEW_MD")
+    # 【層 1 / 構造 denylist】区間内の **表の行** (`^|`) が終端 `ステップ 8.1` を名指ししないこと。
+    # 判定材料が「表の行である」ことと節番号リテラルだけなので、行の文面が和文でも英文でも効く。
+    # 散文中の言及 (例: 「いずれもステップ 8.1 result emit の前に発火する」) は表の行ではないため
+    # 対象外で、正当な cross-reference を壊さない。
+    _rows_naming_terminal=$(printf '%s\n' "$_gate_section" | grep -cE '^\|.*ステップ 8\.1' || true)
+    assert "TC-5e 8.0.x の表の行が終端 (ステップ 8.1) を名指ししない" "0" "$_rows_naming_terminal"
+    # 【層 2 / 表記 allowlist】英文 pass 行が「次の gate へ」規約文言を持つこと。層 1 が「終端を
+    # 名指ししない」しか見ないのに対し、こちらは「次の gate を正しく指す」正の契約を固定する。
+    # ただし行の抽出自体が英語リテラル `Gate passes` 依存であり、和文で書かれた pass 行は分子・分母
+    # 双方から落ちてこの assertion をすり抜ける。その穴は層 1 が言語非依存に塞ぐ。
     _pass_rows=$(printf '%s\n' "$_gate_section" | grep -cF 'Gate passes' || true)
     _conforming=$(printf '%s\n' "$_gate_section" | grep -cF 'next gate in the 8.0 evaluation order' || true)
     # 各 gate が最低 1 本の pass 行を持つこと (0 になったら区間抽出そのものが壊れている)
@@ -743,9 +786,7 @@ else
     else
       fail "TC-5e 8.0.x の pass 行が 3 本未満 ($_pass_rows) — 区間抽出か gate 定義の drift"
     fi
-    # 表記ではなく規約への適合を要求する。和文・英文いずれの言い換えでも「次の gate へ」を
-    # 含まない pass 行は非適合として検出される。
-    assert "TC-5e pass 行がすべて「次の gate へ」規約文言を含む" "$_pass_rows" "$_conforming"
+    assert "TC-5e 英文 pass 行がすべて「次の gate へ」規約文言を含む" "$_pass_rows" "$_conforming"
   else
     fail "TC-5e 8.0.1 / 8.1 の見出しが見つからない (s801=$s801 s81=$s81)"
   fi

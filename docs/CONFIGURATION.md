@@ -144,9 +144,11 @@ parallel:
 # By default, review results are saved to timestamped local files
 # (`.rite/review-results/{pr_number}-{timestamp}.json`) instead of being posted to PR comments.
 # `/rite:fix` auto-reads results in the priority order: conversation > local file > PR comment.
-# Note: the non-measured findings record comment ("📜 rite 非実測指摘の記録", a single
-# update-in-place comment) is posted regardless of this setting — it is the guarantee behind
-# Issue #2024 D-01 ("non-measured findings are recorded, never discarded") and is not opt-out-able.
+# Note: the non-measured findings record comment ("📜 rite 非実測指摘の記録") is posted regardless
+# of this setting — it is the guarantee behind Issue #2024 D-01 ("non-measured findings are
+# recorded, never discarded") and is not opt-out-able. It is normally a single comment updated
+# in place each cycle; when the helper cannot identify its own previous comment (e.g. `gh api
+# user` fails) it degrades to creating a new one, so more than one may accumulate on a PR.
 pr_review:
   post_comment: false   # true to enable PR comment recording (equivalent to --post-comment, default: false; the non-measured findings record comment is independent of this setting)
 

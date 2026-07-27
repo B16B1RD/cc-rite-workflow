@@ -19,7 +19,7 @@
 #   TC-4 review-source-resolve.sh    (scripts/,       5 箇所) — 値なしフラグ末尾 → no-hang
 #   TC-5 decompose-issues.sh         (scripts/,       1 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6 review-skip-notification.sh (hooks/,         4 箇所) — 値なしフラグ末尾 → no-hang (新規 helper、当初から shift; shift 採用)
-#   TC-7 anti-pattern guard — 6 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
+#   TC-7 anti-pattern guard — 7 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
 #
 # 各 TC は `timeout 5` で hang (exit 124) を検出する。値なしフラグはいずれも required value を
 # 空にし、ループ完了後のローカル guard で exit する経路 (network/git に触れない) を選択している。
@@ -59,6 +59,7 @@ run_no_hang "TC-3 review-result-save"       "hooks/review-result-save.sh"       
 run_no_hang "TC-4 review-source-resolve"    "scripts/review-source-resolve.sh"         "--pr-number"       ""
 run_no_hang "TC-5 decompose-issues"         "scripts/decompose-issues.sh"              "--spec"            "2"
 run_no_hang "TC-6 review-skip-notification" "hooks/review-skip-notification.sh"         "--pr"              ""
+run_no_hang "TC-6b review-nonblocking-record" "hooks/review-nonblocking-record.sh"       "--pr"              "1"
 
 # === TC-7: anti-pattern guard — 実 `shift 2` 文が再混入していないこと ===
 # comment 内の `shift 2` 参照 (backtick 囲み) は許容し、実際の statement だけを検出する。
@@ -69,6 +70,7 @@ for script in \
   "hooks/review-comment-post.sh" \
   "hooks/review-result-save.sh" \
   "hooks/review-skip-notification.sh" \
+  "hooks/review-nonblocking-record.sh" \
   "scripts/review-source-resolve.sh" \
   "scripts/decompose-issues.sh"; do
   path="$PLUGIN_ROOT/$script"

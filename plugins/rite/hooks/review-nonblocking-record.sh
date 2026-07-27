@@ -36,8 +36,9 @@
 #     例外は placeholder residue 系 gate (skill 定義のバグ) で、loud に exit 1 する。
 #     reason 語彙: pr_number_placeholder_residue / owner_repo_placeholder_residue /
 #       non_blocking_count_placeholder_residue / iteration_id_placeholder_residue /
-#       content_file_placeholder_residue / content_file_missing / body_file_empty /
-#       body_marker_missing / patch_failed / create_failed
+#       content_file_placeholder_residue / content_file_missing / unknown_option /
+#       body_file_empty / body_marker_missing / patch_failed / create_failed /
+#       signal_aborted
 #   - **既存コメントの特定は「自分が投稿した」∧「1 行目 marker への前方一致 (startswith)」の連言**。
 #     author 条件を欠くと、marker で始まるコメントを第三者が 1 件投稿するだけで PATCH 先を奪える。
 #     `contains` (本文全体を対象) も別コメントを掴む。
@@ -79,7 +80,9 @@ while [[ $# -gt 0 ]]; do
     --content-file) CONTENT_FILE="${2:-}"; shift; shift ;;
     # 値の verbatim echo は禁止 (下記 iteration_id gate と同根)。本分岐は trap 設置**前**のため
     # real sentinel が 1 本も出ず、偽 sentinel が唯一の sentinel になりうる。
-    *) echo "ERROR: review-nonblocking-record: unknown option: $(printf '%s' "$1" | neutralize_ctrl)" >&2; exit 1 ;;
+    *) echo "ERROR: review-nonblocking-record: unknown option: $(printf '%s' "$1" | neutralize_ctrl)" >&2
+       echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=unknown_option" >&2
+       exit 1 ;;
   esac
 done
 
@@ -95,16 +98,17 @@ case "$PR_NUMBER" in
     exit 1
     ;;
 esac
+# owner_repo は `gh pr comment -R` に渡る。gh は `[HOST/]OWNER/REPO` を受けるため、3 セグメント値は
+# 先頭がホスト名として解釈され、記録が別 GitHub インスタンスへ送られる。producer 側
+# (hooks/scripts/lib/git-remote.sh) が同じ理由で持つ allowlist をここでも継承する。
 case "$OWNER_REPO" in
-  */*)
-    case "$OWNER_REPO" in
-      *'{'*|*'}'*|*' '*)
-        echo "ERROR: review-nonblocking-record: owner_repo に placeholder / 空白が残留しています (値: '$(printf '%s' "$OWNER_REPO" | neutralize_ctrl)')" >&2
-        echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=owner_repo_placeholder_residue" >&2
-        exit 1
-        ;;
-    esac
+  */*/*|*[!A-Za-z0-9._/-]*|*/|/*|""|*..*)
+    echo "ERROR: review-nonblocking-record: owner_repo が owner/repo 形式ではありません (値: '$(printf '%s' "$OWNER_REPO" | neutralize_ctrl)')" >&2
+    echo "  期待: 英数字 / '.' / '_' / '-' からなる 2 セグメント (例: owner/repo)。HOST/OWNER/REPO の 3 セグメント形は別ホストへの送出になるため拒否する" >&2
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=owner_repo_placeholder_residue" >&2
+    exit 1
     ;;
+  */*) ;;
   *)
     echo "ERROR: review-nonblocking-record: owner_repo が owner/repo 形式ではありません (値: '$(printf '%s' "$OWNER_REPO" | neutralize_ctrl)')" >&2
     echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=owner_repo_placeholder_residue" >&2
@@ -170,6 +174,13 @@ _terminal_emitted="false"
 _rite_p61d_cleanup() {
   rm -f "${gh_err:-}"
 }
+# lookup が degraded したときの案内。**記録は続行される** (count > 0 なら新規作成へ縮退) ため、
+# 記録失敗用の _record_failure_hint とは文言を分ける。共用すると「記録が失われた」と読める案内が
+# 成功経路で出て、operator を不要なレビュー再実行へ誘導する。
+_record_degraded_hint() {
+  echo "  対処: gh auth status を確認してください。update-in-place を諦め新規作成へ縮退します" >&2
+  echo "  記録自体は投稿されるため、mergeable 判定にも記録の保全にも影響しません (同一 PR にコメントが 2 件以上並ぶことがあります)" >&2
+}
 # 記録できなかったときの共通案内。非ブロッキングな失敗 reason (body_file_empty /
 # body_marker_missing / patch_failed / create_failed) のすべてから呼べるよう trap 定義直後に置く。
 _record_failure_hint() {
@@ -181,26 +192,32 @@ _rite_p61d_emit_terminal() {
   _terminal_emitted="true"
   echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=$PR_NUMBER; outcome=$outcome; count=$NB_COUNT; iteration_id=$ITERATION_ID; comment_id=$existing_id; degraded=$lookup_degraded" >&2
 }
+# signal 中断は sentinel だけを出すと「記録が走ったのか」を読む側が判別できない。gate は
+# outcome=aborted を「評価はされた」として通すため、記録が確実に未投稿である事実を loud に残す。
+_rite_p61d_signal_abort() {  # $1=rc $2=signal
+  echo "ERROR: review-nonblocking-record: signal で中断されました (記録は投稿されていません)" >&2
+  echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=signal_aborted; rc=$1; signal=$2" >&2
+}
 trap 'rc=$?; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit $rc' EXIT
-trap '_rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 130' INT
-trap '_rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 143' TERM
-trap '_rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 129' HUP
+trap '_rite_p61d_signal_abort 130 2; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 130' INT
+trap '_rite_p61d_signal_abort 143 15; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 143' TERM
+trap '_rite_p61d_signal_abort 129 1; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 129' HUP
 
 # --- 既存記録コメントの探索 ---
 # `--paginate --slurp` + 外側 jq で全ページ走査する (非 paginate は既定 30 件・昇順のため
 # コメント 30 件超の PR で marker を miss し、update-in-place が silent に破綻する)。
 # pipefail なしでは gh 失敗が末尾 jq の rc=0 に mask され degraded 分岐が dead code になる。
 gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
-  review-nonblocking-record p61d-gh-err "gh/jq 失敗時の詳細が表示されません") || gh_err=""
+  review-nonblocking-record p61d-lookup-err "lookup 失敗時の gh/jq 詳細が表示されません")
 
 # **author 条件は必須**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで
 # `last` がそれを掴み PATCH 先を奪われる (書込権限があれば他人のコメントを破壊、無ければ 403 で
 # 記録が恒久的に失われる)。自分の login と一致する投稿のみを対象にする。
-gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || gh_login=""
+gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}")
 if [ -z "$gh_login" ]; then
   echo "WARNING: gh api user による自 login の取得に失敗しました。既存コメントを特定できないため存在不明として扱います" >&2
-  [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  _record_failure_hint
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
+  _record_degraded_hint
   existing_id=""
   lookup_degraded=1
 elif existing_id=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
@@ -209,7 +226,8 @@ elif existing_id=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBE
   :
 else
   echo "WARNING: 既存の非実測記録コメントの検索に失敗しました (gh/jq)。存在不明として扱います" >&2
-  [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
+  _record_degraded_hint
   existing_id=""
   lookup_degraded=1
 fi
@@ -248,14 +266,13 @@ case "$(head -n 1 "$CONTENT_FILE")" in
 esac
 
 gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
-  review-nonblocking-record p61d-gh-err "gh 失敗時の stderr 詳細が表示されません") || gh_err=""
+  review-nonblocking-record p61d-post-err "投稿失敗時の gh stderr 詳細が表示されません")
 
 # PATCH / create の失敗診断は差分が label と reason の 2 語だけなので 1 関数に寄せる
-# (片側にだけ診断を足す drift を構造的に防ぐ。関数定義を trap ブロック側へ集約する点は
-# _record_failure_hint と同じ)。
+# (片側にだけ診断を足す drift を構造的に防ぐ)。2 つの呼び出し元の直前に置く。
 _record_gh_failure() {  # $1=label $2=reason $3=rc
   echo "WARNING: 非実測指摘の PR コメント$1 に失敗しました (gh rc=$3)" >&2
-  [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
   _record_failure_hint
   # signal 終了 (rc>=128) を retained flag に併記する (兄弟 review-comment-post.sh と対称)
   if [ "$3" -ge 128 ]; then

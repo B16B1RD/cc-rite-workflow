@@ -2317,7 +2317,7 @@ This phase now performs **three independent outputs**:
 - `p61c_local_save_failed_invalid`: `--local-save-failed` が不正値 (空文字/0/1 以外)
 - `p61c_persistence_unrecoverable`: ケース 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1`) で silent data loss 防止のため ステップ 6 全体を `exit 2` で fail
 
-**ステップ 6.1.d reasons** (`review-nonblocking-record.sh` が `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` を emit。**記録の成否は `overall_assessment` / result pattern に一切影響しない** (AC-3)。ただし **caller 契約違反 6 種** (placeholder residue 5 種 + `content_file_missing`) は skill 定義のバグのため `exit 1` で loud に落とす。Non-blocking Contract の canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義)、reason 語彙の SoT は helper docstring、gate 集合と Issue の MUST list の差分は [references/measured-gate-record.md#placeholder-gate-mapping](references/measured-gate-record.md#placeholder-gate-mapping) を参照):
+**ステップ 6.1.d reasons** (`review-nonblocking-record.sh` が `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` を emit。**記録の成否は `overall_assessment` / result pattern に一切影響しない** (AC-3)。ただし **caller 契約違反 7 種** (placeholder residue 5 種 + `content_file_missing` + `unknown_option`) は skill 定義のバグのため `exit 1` で loud に落とす。Non-blocking Contract の canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義)、reason 語彙の SoT は helper docstring、gate 集合と Issue の MUST list の差分は [references/measured-gate-record.md#placeholder-gate-mapping](references/measured-gate-record.md#placeholder-gate-mapping) を参照):
 - `pr_number_placeholder_residue`: `--pr` が数値以外 (`exit 1`)。**flag namespace が異なるため 6.1.a の同名 reason (`LOCAL_SAVE_FAILED`) とは別物** — 6.1.d は `NONBLOCKING_RECORD_FAILED` で emit する
 - `owner_repo_placeholder_residue`: `--owner-repo` が `owner/repo` 形式でない / ブレース残留 (`exit 1`)
 - `non_blocking_count_placeholder_residue`: `--count` が数値以外 (`exit 1`)。0 件時も `--count 0` を明示的に渡す (空文字は substitute 漏れと区別できない)
@@ -2337,7 +2337,7 @@ This phase now performs **three independent outputs**:
 - **ステップ 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` / `p61b_post_comment_mode_invalid` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として ステップ 6 を fail させる (ステップ 6.1.a の非ブロッキング契約とは対照的)。なお `post_comment_mode=false` で 6.1.b に誤呼出された場合は gate が **silent skip (exit 0)** するため、caller branch selection ミスは retained flag emit せずに吸収される (データ破壊なし、gh pr comment も実行されない)。
 - **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
 - **ステップ 6.1.a** は `non_blocking_findings[]` の欠陥を 2 種の observability marker で報告する (`review-result-save.sh` が emit。**いずれも非ブロッキング** — 保存は続行し `JSON_SAVED=true` のまま。`LOCAL_SAVE_FAILED` reason ではないため 14 種の reason 表 / Eval-order enumeration には登録しない): キー欠落 / 非配列 → `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` / 和集合での id 重複・書式違反 → `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}`。hard fail するのは `findings[]` 側の id 欠陥のみ (`reason=finding_id_format_or_uniqueness_violation`)。
-- **ステップ 6.1.d** は terminal sentinel `[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr={n}; outcome=created|updated|skipped|failed|aborted; count={k}; iteration_id={id}; comment_id={id または空}; degraded=0|1` を **1 種だけ** emit する (`review-nonblocking-record.sh` の EXIT trap)。**6.1.d step 3 / ステップ 8.0.3 の gate が pass 条件として参照するのは本 sentinel のみ**であり、成功 / skip / 失敗の区別は `outcome=` フィールドが担う (別 marker を増やさない — consumer ゼロ marker を作らないため)。失敗時は加えて `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` (上記 6.1.d reasons 表の全 reason) を emit するが、これは reason 語彙の observability 用で gate の入力ではない。**いずれも `overall_assessment` / result pattern に影響しない** (AC-3)。
+- **ステップ 6.1.d** は terminal sentinel `[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr={n}; outcome=created|updated|skipped|failed|aborted; count={k}; iteration_id={id}; comment_id={id または空}; degraded=0|1` を **1 種だけ** emit する (`review-nonblocking-record.sh` の EXIT trap)。**6.1.d step 3 / ステップ 8.0.3 の gate が pass 条件として参照するのは本 sentinel のみ**であり、成功 / skip / 失敗の区別は `outcome=` フィールドが担う (別 marker を増やさない — consumer ゼロ marker を作らないため)。失敗時は加えて `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` (上記 6.1.d reasons 表の全 reason) を emit するが、これは reason 語彙の observability 用で gate の入力ではない。**`outcome=failed` / `aborted` を観測したときは、6.1.d step 3 / ステップ 8.0.3 のいずれで観測した場合も、対応する reason を completion report に転記してから次へ進む** (転記しないと記録が落ちた事実がどこにも残らない)。**いずれも `overall_assessment` / result pattern に影響しない** (AC-3)。
 - **ステップ 5.3.0.M** は実測必須ゲートの anchor 検出 regex 層での降格時に `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` を emit する (helper 委譲ではなく **LLM が直接 emit**)。対象は **`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て** (raw `|` を含む repro / `=>` 右辺空 / 種別ラベル誤記 / 形式崩れ) であり、アンカー文字列そのものが無い正常系 (非実測指摘) では出さない。**存在判定は正規化 marker (`(?i)verification[*_`[:space:]]*[:：]`) で行い、種別キーワードも colon 直後の空白も条件に含めず、装飾文字と全角コロンを吸収する。発火条件を「`=>` 右辺空」だけに絞ってもならない** — 定義の SoT は [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md) の WARNING emit 節で、本行はその写しとして同一語彙を保つ。observability marker であり `*_FAILED` reason ではないため、上記 ステップ 6 failure reasons 表 / 後述 Eval-order enumeration には登録しない (それらは reason 専用の列挙)。
 
 **Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称); ステップ 6.1.d emit = (`pr_number_placeholder_residue` / `owner_repo_placeholder_residue` / `non_blocking_count_placeholder_residue` / `iteration_id_placeholder_residue` / `content_file_placeholder_residue` / `content_file_missing` / `body_file_empty` / `body_marker_missing` / `patch_failed` / `create_failed`) — 10 件、helper 内の実 emit 順 (placeholder residue 5 種 + content_file 存在検査を引数 parse 直後にまとめて評価 → lookup → 本文の非空検査 → 1 行目 marker 検査 → PATCH / create の分岐)。`patch_failed` と `create_failed` は排他分岐のため同一 run で両方は出ない.
@@ -2518,7 +2518,7 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    # helper 契約: 既存コメント lookup (--paginate --slurp + 1 行目 marker への startswith) →
    # skip 判定 (0 件 ∧ 既存なし) → PATCH / create を単一 invocation で実行し、EXIT trap で
    # terminal sentinel [CONTEXT] NONBLOCKING_RECORD_DONE=1; ...; outcome=... を emit する。
-   # caller 契約違反 6 種 (placeholder residue 5 種 + content_file 不在) は exit 1 (loud)、
+   # caller 契約違反 7 種 (placeholder residue 5 種 + content_file 不在 + unknown option) は exit 1 (loud)、
    # 本文不備 / gh / IO 失敗は exit 0 (非ブロッキング、AC-3)。
    # SoT は helper docstring。
    bash {plugin_root}/hooks/review-nonblocking-record.sh \
@@ -2547,10 +2547,15 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    No current-cycle [CONTEXT] NONBLOCKING_RECORD_DONE=1 sentinel found (absent, or iteration_id != REVIEW_CYCLE_ID).
    This means ステップ 6.1.d was NOT executed in this cycle, OR the helper rejected a caller-contract violation
    with exit 1 before its trap was installed (the 6 exit-1 reasons: placeholder residue 5 + content_file_missing).
-   ACTION: まず会話コンテキストに [CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=... があるか確認する。
-     - ある場合: 6.1.d reasons 表の当該 reason に従い、引数のリテラル置換漏れ / step 1 の Write 漏れを直してから
-       step 1-2 を再実行する。**同じ引数での単純再実行は placeholder residue では必ず同じ失敗を再現する。**
-     - 無い場合: 6.1.d 全体が未実行。step 1 (本文生成) から実行する。
+   ACTION: 会話コンテキストで [CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=... を探す。
+     **本 marker は iteration_id を持たない** (helper が引数 gate 段階で落ちると iteration_id が
+     未検証のため載せられない)。よって cycle N-1 の失敗行が context に残っていても見分けが付かない。
+     **本 cycle の step 2 を実行した位置より後ろに現れた行だけを採用する** こと。
+     - 本 cycle の行がある場合: 6.1.d reasons 表の当該 reason に従い、引数のリテラル置換漏れ / step 1 の
+       Write 漏れを直してから step 1-2 を再実行する。**同じ引数での単純再実行は placeholder residue では
+       必ず同じ失敗を再現する。**
+     - 本 cycle の行が無い場合 (marker 自体が無い / 過去 cycle のものだけ): 6.1.d 全体が未実行。
+       step 1 (本文生成) から実行する。
    Do NOT emit the result pattern ([review:mergeable] / [review:fix-needed:{n}]) without a current-cycle
    NONBLOCKING_RECORD_DONE sentinel.
    ```
@@ -3618,7 +3623,8 @@ This means ステップ 6.1.d was NOT evaluated in the current cycle, OR the hel
 violation with exit 1 before its trap was installed (the 6 exit-1 reasons).
 既定設定 post_comment: false では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録であり、
 skip は Issue #2024 D-01 (マージ後に人間が拾い直せる状態を保つ) の無音喪失を意味する。
-ACTION: まず [CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=... の有無を確認する。あれば当該 reason を
+ACTION: まず [CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=... の有無を確認する (**本 marker は
+iteration_id を持たないため、本 cycle の 6.1.d step 2 より後ろに現れた行だけを採用する**)。あれば当該 reason を
 直してから 6.1.d step 1-2 を再実行する (同じ引数での単純再実行は placeholder residue では収束しない)。
 無ければ 6.1.d が未実行なので steps 1-3 を実行し、いずれの場合も then re-enter ステップ 8.0.
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 6.1.d has been executed for the current cycle.

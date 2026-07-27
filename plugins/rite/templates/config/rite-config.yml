@@ -188,7 +188,8 @@ safety:
 # /rite:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
 # `--post-comment` フラグまたは下記 `post_comment: true` で PR コメント記録を有効化できる。
 # 注: 非実測指摘（実測必須ゲートで non-blocking に分類された指摘）の記録コメント
-# （「📜 rite 非実測指摘の記録」、update-in-place の 1 件）は本設定に関わらず投稿される
+# （「📜 rite 非実測指摘の記録」）は本設定に関わらず投稿される。通常は cycle ごとに同じコメントを
+# update-in-place するが、自身の過去コメントを特定できない場合は新規作成へ縮退し複数並ぶことがある
 # （Issue #2024 D-01「非実測指摘は破棄せず PR コメント記録」の担保。opt-out の対象外）。
 pr_review:
   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false。非実測指摘の記録コメントは本設定と独立）

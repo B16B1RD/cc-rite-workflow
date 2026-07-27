@@ -33,7 +33,7 @@ Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existi
 | （新規）`{owner_repo}` | `--owner-repo` の `owner/repo` 形状 gate（`owner_repo_placeholder_residue`） | helper 化で API パスが引数になったため新設 |
 | （新規）`{review_cycle_id}` | `--iteration-id` のブレース残留 gate（`iteration_id_placeholder_residue`） | 鮮度判定の参照値が未置換だと gate の cycle 一致判定が恒久的に成立しなくなる |
 
-**caller 契約違反 6 種**（placeholder residue 5 種 + `content_file_missing`）は **exit 1（loud）**、本文不備 / gh / IO 失敗は **exit 0（非ブロッキング、AC-3）** と扱いを分ける。前者は skill 定義のバグであり、記録の失敗ではないため。`content_file` の**不在**は step 1 の Write 呼び出し漏れ＝契約違反であって IO 失敗ではないので、非空検査に潰さず独立の gate にする（潰すと記録ゼロのまま gate が pass する）。
+**caller 契約違反 7 種**（placeholder residue 5 種 + `content_file_missing` + `unknown_option`）は **exit 1（loud）**、本文不備 / gh / IO 失敗は **exit 0（非ブロッキング、AC-3）** と扱いを分ける。前者は skill 定義のバグであり、記録の失敗ではないため。`content_file` の**不在**は step 1 の Write 呼び出し漏れ＝契約違反であって IO 失敗ではないので、非空検査に潰さず独立の gate にする（潰すと記録ゼロのまま gate が pass する）。
 
 なお placeholder gate は terminal sentinel の trap 設置より**前**に置く。ここで落ちた場合は記録経路が一度も走っていないため、`outcome=failed` を名乗らせず非ゼロ rc で caller に返す（gate 側は sentinel 不在として ERROR を出し、6.1.d へ戻す）。
 
@@ -49,9 +49,14 @@ Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existi
 ## 8.0 の gate 評価順序を規定した理由
 gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1」のままだと**新設 gate が到達不能**になる。個々の gate が終端（8.1）を直接名指しする書き方は、gate を 1 本足すたびに既存の全 pass 行を書き換える必要があり、書き換え漏れが即座に到達不能を生む。
 
-そこで 8.0 冒頭に **gate 評価順序の規定**を 1 箇所だけ置き、各 gate の pass 行は「次の gate へ進む」とだけ書く。終端（8.1 へ抜ける条件）は順序規定側が持つ。8.0.4 を将来追加する場合も、順序規定に 1 行足すだけで既存 gate の pass 行は不変。
+そこで 8.0 冒頭に **gate 評価順序の規定**を 1 箇所だけ置き、各 gate の pass 行は「次の gate へ進む」とだけ書く（実リテラルは `the next gate in the 8.0 evaluation order`）。終端（8.1 へ抜ける条件）は順序規定側が持つ。8.0.4 を将来追加する場合も、順序規定に 1 行足すだけで既存 gate の pass 行は不変。
 
-この不変条件は静的 pin で機械的に固定する（`hooks/tests/review-helpers-gate-behavior.test.sh` TC-5）: 8.0.1〜8.1 の区間の **pass 行がすべて規約文言「次の gate へ進む」を含む**こと（特定表記の denylist ではなく allowlist にすることで、和文・英文いずれの言い換えでも検出できる）、かつ順序規定が 1 箇所存在すること。
+この不変条件は静的 pin で 2 層に固定する（`hooks/tests/review-helpers-gate-behavior.test.sh` TC-5e）。単層では塞げないため両方要る:
+
+1. **構造 denylist（言語非依存）**: 区間内の **表の行**（行頭 `|`）が終端 `ステップ 8.1` を名指ししないこと。判定材料が「表の行であること」と節番号リテラルだけなので、行の文面が和文でも英文でも効く。散文中の cross-reference は表の行ではないため対象外。
+2. **表記 allowlist（英文のみ）**: 英文 pass 行（`Gate passes` を含む行）がすべて規約文言 `the next gate in the 8.0 evaluation order` を含むこと。「次の gate を正しく指す」正の契約を固定する。**行の抽出自体が英語リテラル依存**であり、和文で書かれた pass 行は分子・分母の双方から落ちてこの層をすり抜ける — その穴は層 1 が塞ぐ。
+
+加えて順序規定が 1 箇所だけ存在すること。
 
 <a id="dual-gate"></a>
 ## 二層 gate（6.1.d step 3 ⇄ 8.0.3）が捕捉する failure mode の違い
