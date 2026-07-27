@@ -288,7 +288,7 @@ pr-review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記
 本ファイルから参照する関連ファイル:
 
 - [`./fact-check.md`](./fact-check.md) — 外部仕様検証の対応ファイル
-- [`../../fix/references/assessment-rules.md`](../../fix/references/assessment-rules.md) — ALL findings are blocking ルール
+- [`../../fix/references/assessment-rules.md`](../../fix/references/assessment-rules.md) — measured=true findings are blocking ルール (実測必須ゲート適用後)
 - [`../../../agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) — Confidence Scoring 80+ ゲートの定義
 
 `doc_file_patterns` は `skills/reviewers/SKILL.md` の Technical Writer 行を SoT として `../SKILL.md` ステップ 1.2.7 が参照する構成のため、両者の drift は構造的に発生しない。

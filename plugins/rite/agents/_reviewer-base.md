@@ -202,10 +202,10 @@ Verification: failing_test <テストパス> => <失敗出力>
 
 - **アンカーの有無は、指摘を報告してよいかどうかを変えない。** 実測できない懸念も、3 ゲートを満たすなら従来どおり報告する。ただし**アンカー無しの指摘は merge を止めない** (non-blocking として ステップ 5.4 統合レポートの「実測なし指摘」section に記録され、人間レビューに委ねられる)。実測できるなら必ずアンカーを添えること。
 - **アンカーは判定入力として消費される。** `/rite:pr-review` ステップ 5.3.0.M が reviewer 出力 (統合レポートの `内容` 列) のアンカーを直接読み、blocking / non-blocking を分類する。`findings[].verification` へ写す JSON 配線は現時点の `pr-review.md` ステップ 6.1.a に存在しないため、レビュー結果 JSON にはまだ `measured` / `repro` / `failing_test` として保存されない (配線は後続スコープ)。
-- `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われ、**non-blocking に分類される** (報告してはならないという意味ではない — 下記のとおり掲載可否は変わらない)。
+- `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われ、**non-blocking に分類される** (報告してはならないという意味ではない — 上記のとおり掲載可否は変わらない)。
 - `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は掲載可否 (Observed Likelihood Gate) を担い、`Verification:` は実測の記録を担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` の形式でも添付すること (両方を書く)。
 - 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
-- `=>` の右辺 (観測結果) を空にしない。実測結果を書けないなら、そもそもアンカーを付けずに報告する (アンカー無しは default mapping で `measured=false` になる)。**空 RHS を救う自動降格はない** — [invariant #6](../references/review-result-schema.md#cross-field-invariants-型レベルで表現しきれない制約) は配線後も、`repro` と `failing_test` を**両方とも空のまま** `measured: true` を宣言した場合しか降格しない。`repro` に `cmd =>` と書けば非空文字列として通る。
+- `=>` の右辺 (観測結果) を空にしない。実測結果を書けないなら、そもそもアンカーを付けずに報告する (アンカー無しはステップ 5.3.0.M で `measured=false` = non-blocking に分類される)。**空 RHS を救う自動降格はない** — [invariant #6](../references/review-result-schema.md#cross-field-invariants-型レベルで表現しきれない制約) は配線後も、`repro` と `failing_test` を**両方とも空のまま** `measured: true` を宣言した場合しか降格しない。`repro` に `cmd =>` と書けば非空文字列として通る。
 - **`内容` 列の中では raw `|` (パイプ) を使わないこと** (`Likelihood-Evidence:` / `Verification:` / WHAT + WHY 叙述のいずれも対象)。制約の実体はアンカー種別ではなく Markdown テーブルセルの性質で、セル境界と衝突して 5 列構造を壊す。アンカーを機械抽出する側もセル境界を跨げないため、パイプを含む再現コマンドは抽出できず記録が失われる。パイプを含むコマンドは `¦` (U+00A6) で代替表記し、その旨を実測結果側に添える。例: `Verification: repro printf '%s' "$json" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)`
 
 ## Scope Assignment Flowchart

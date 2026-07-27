@@ -104,19 +104,23 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 判定は 2 段で機械的に書ける:
 
-1. `Verification:[[:space:]]*(repro|failing_test)` の**存在**判定 (アンカー文字列があるか)
+1. `(?i)Verification:[[:space:]]` の**存在**判定 — **bare marker のみで判定し、種別キーワード (`repro` / `failing_test`) を条件に含めない**
 2. 上記 **Anchor detection regex** の full match 判定
 
-(1) が真かつ (2) が偽の finding が対象。5.3.0.M は bash を実行しない推論ステップのため「WARNING を出す」だけでは構造的に達成できない — 対象が 1 件以上なら以下を**明示的に実行**する:
+(1) が真かつ (2) が偽の finding が対象。
+
+> **stage 1 に種別キーワードを含めてはならない**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求すると、ラベルを取り違えた / 落としたアンカー (`Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる / `Verification: bash x.sh => ERROR` — 種別欠落 / `**Verification:** repro ...` — bold 装飾 / 大文字小文字差) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。トレードオフは「無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。5.3.0.M は bash を実行しない推論ステップのため「WARNING を出す」だけでは構造的に達成できない — 対象が 1 件以上なら以下を**明示的に実行**する:
 
 ```bash
-echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を measured=false に降格しました (raw pipe / => 右辺空 / 形式崩れ)。パイプを含むコマンドは ¦ で代替表記してください" >&2
+echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を measured=false に降格しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 形式崩れ)。パイプを含むコマンドは ¦ で代替表記してください" >&2
 echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
 ```
 
 アンカー文字列がそもそも存在しない finding (非実測指摘の正常系) は WARNING を出さない — 全 non-blocking 降格で WARNING を出すと形式違反と正常系が区別できなくなるため。`MEASURED_DEMOTED_ON_ANCHOR` は `pr-review/SKILL.md` ステップ 6 の **Retained flag mapping に登録済み** (1 箇所)。同節の reason 表 / Eval-order enumeration は `*_FAILED` reason 専用の列挙であり、observability marker である本 flag は登録対象ではない。
 
 > **降格を緩めない**: no-match を許容して keep する / regex を greedy に戻す方向の修正は採らない。降格自体は fail-safe として正しく (誤って blocking を落とすより安全)、問題は**無音であること**のみ。
+>
+> **この permissive 例外は上記 WARNING emit と記録先 3 経路が機能していることが前提**: 本ゲートは rite 全体で唯一「判定不能を permissive 側 (non-blocking) に倒す」箇所で、それが許されるのは (a) 降格が必ず WARNING で報告され、(b) 降格した指摘が 3 経路すべてで記録に残るため。後続の変更で (a) か (b) を緩めるなら、本例外の前提が崩れるので同時に見直すこと。blocking 側に倒す修正は AC-2 の収束性を壊す (`/rite:fix` はコードを直す機構でありレビュアー出力の形式崩れは直せず、`max_review_cycles` まで空転する) ため採らない。
 
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
@@ -129,7 +133,10 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 **non_blocking_findings の扱い**:
 
 - `total_findings` にカウントしない (mergeable countdown から除外)
-- 5.4 integrated report の `### 実測なし指摘 (non-blocking)` section に記録する (severity 明示)。本 PR 時点ではこの section が非実測指摘の記録先であり、破棄経路は存在しない
+- 記録先は 3 経路すべてで、破棄経路は存在しない:
+  1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) で唯一の永続チャネル。マージ後に人間が拾い直せる状態を担保する
+  2. **ステップ 5.4 統合レポート** の `### 実測なし指摘 (non-blocking)` section (severity 明示) — E2E でも省略禁止 (`pr-review/SKILL.md` E2E Output Minimization 表の例外)
+  3. **E2E output line** の `| non-blocking: {n}` suffix (件数のみ、`n > 0` のとき)
 - fix サイクルは起動しない (fix.md 側の除外分岐は [fix-relaxation-rules.md](./fix-relaxation-rules.md) §Fix Target Classification 参照)
 
 **scope=nit-noted との関係**: nit-noted は従来どおり §5.3.1 の nit-noted exclusion で扱い、本ゲートの対象にしない (二重計上防止)。本ゲートの対象は `scope ∈ {current-pr, follow-up}` の finding のみ。
@@ -158,11 +165,13 @@ Use **only findings remaining in the post-5.3.0.M `全指摘事項` with `scope 
 
 > **判定媒体に注意**: 本判定が走る `/rite:pr-review` ステップ 5.3 の時点では レビュー結果 JSON はまだ生成されていない (生成は ステップ 6.1.a) ため、`findings[].verification.measured` フィールドは**存在しない**。5.3.3 が評価できるのは 5.3.0.M が `内容` 列のアンカーから機械的に決めた集合だけである。`verification.measured == true` は同一述語を **JSON 側でエンコードした形**であり、`/rite:fix` が JSON を読むときの表現 (fix/SKILL.md ステップ 1.3 measured lookup)。両者を取り違えて 5.3.3 で存在しないフィールドを評価すると `total_findings` が壊れる。
 
-`acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。`non_blocking_count = count(non_blocking_findings)` (5.3.0.M で分類) も独立 metric で、5.3.5 サマリと 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section に使う (`overall_assessment` 評価には使われない)。
+`acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。`non_blocking_count = count(non_blocking_findings)` (5.3.0.M で分類) も独立 metric で、5.3.5 サマリと 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section に使う (`overall_assessment` 評価には使われない)。**本定義は `/rite:pr-review` 側の変数**であり、`/rite:fix` ステップ 4.6 の同名 placeholder は母集団も値も異なる別定義 (`measured_map` の false のうち nit-noted を除く件数 — fix/SKILL.md ステップ 1.2.1 step 6 が SoT。JSON 経路では常に 0)。`total_findings` と同じく **pr-review 側と fix 側で別概念**として扱うこと。
 
 ## 5.3.5 Output Format at Assessment Decision Time
 
 When determining the assessment, explicitly output the finding count in the following format:
+
+本ブロックの **severity 別件数は post-5.3.0.M の blocking 集合**を数える (非実測指摘は下段の【実測必須ゲート】ブロック側で数えるため、severity 別の総和 = `合計` = `実測あり (blocking)` が常に成立する)。
 
 ```
 【指摘件数サマリー】

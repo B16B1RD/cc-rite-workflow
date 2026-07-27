@@ -231,12 +231,15 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
        _rite_verification_type_check "$review_file_path" "${vg_err_p0:-/dev/null}"; vg_rc_p0=$?; \
        [ "$vg_rc_p0" -ne 0 ]; then
     # verification 型ガード (review-result-schema.md §verification 型ガード (read 側))。
-    # 本ガードを cross-field invariant より前段に置くのは、`(.verification.measured // false)` を
-    # 評価する下流 consumer (現時点では未配線 — schema.md の default mapping 節が正準として示す
-    # 将来の consumer) に型崩れを到達させないため。本スクリプト内の後段 invariant (#2 / #4 / enum) は
-    # .verification を参照しないので、ここでの順序は予防的配置であり、後段が rc=5 になるからではない。
+    # 本ガードを cross-field invariant より前段に置くのは、`.verification.measured` を
+    # 評価する下流 consumer (`fix/SKILL.md` ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup の
+    # 3 値判定 — .verification が object かつ .measured が boolean のときのみ値を採用する) に
+    # 型崩れを到達させないため。判定 consumer は schema.md の default mapping 節が示す
+    # `(.verification.measured // false)` 形を**使わない** (同節「3 値モデルへの上書き」参照)。
+    # 本スクリプト内の後段 invariant (#2 / #4 / enum) は .verification を参照しないので、
+    # ここでの順序は予防的配置であり、後段が rc=5 になるからではない。
     # 順序が観測可能な差を生むのは reason ラベル (先に評価した側が routing を取る) のみ。
-    # measured の存在は要求しない (verification:{} は default mapping の対象として受理する)。
+    # measured の存在は要求しない (verification:{} は型ガードを通過し、判定 consumer からは未判定扱い)。
     if [ "$vg_rc_p0" -eq 1 ]; then
       echo "エラー: --review-file の findings[].verification が型崩れです (verification は object/null、measured は boolean/null のみ受理)" >&2
       echo "  期待: \"verification\": {\"measured\": bool, \"repro\": string|null, \"failing_test\": string|null} または欠落" >&2

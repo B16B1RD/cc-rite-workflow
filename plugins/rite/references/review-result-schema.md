@@ -132,7 +132,8 @@
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー (後述の「読取優先順位 (fix)」表 failure mode 列 `*_commit_sha_mismatch` を参照)。read 側 (`fix.md` ステップ 1.2.0) は各 Priority success 経路で `json_commit_sha` vs 現 HEAD を比較し、mismatch 時は WARNING + `[CONTEXT] REVIEW_SOURCE_STALE=1; reason=*_commit_sha_mismatch` emit + 次 Priority への routing を実行する (stale file protection) |
 | `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
-| `findings` | array | ✅ | 指摘事項の配列 (0 件でも空配列として存在) |
+| `findings` | array | ✅ | **blocking 指摘**の配列 (0 件でも空配列として存在)。`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートを通過した集合であり、非実測指摘は下記 `non_blocking_findings` に分離される |
+| `non_blocking_findings` | array | (任意、additive) | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘の配列 (要素の形は `findings[]` と同一)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
 
 ### `findings[]` 要素
 
@@ -146,12 +147,26 @@
 | `pre_existing` | bool | ✅ (1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、Cross-field invariant #5 は read 側ではトリガしない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
 | `original_severity` | string | (任意、1.1.0+) | severity 自己降格 (reviewer が CRITICAL 判定後 PR scope 不適合と判断し scope=follow-up や nit-noted へ送る際に severity を MEDIUM 等へ降格) 時の元値を保持。**自己降格 trace 用途のみ**で、cross-field invariant 評価には使わない。omit 可 (1.0 / 1.0.0 互換、降格していない finding には不要)。値の domain は `severity` enum 5 値と同じ |
 | `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
-| `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (schema_version を bump しない additive 追加のため — [Schema Version](#schema-version-sot) 参照)。runtime 実測の記録 `{measured, repro, failing_test}` (下記 [verification サブフィールド](#verification-サブフィールド) 参照)。**欠落時は `measured=false` 扱い** ([後方互換性](#後方互換性-schema-10--110) の verification default mapping)。**値は blocking / mergeable 判定の入力として消費される** (Issue #2033 の実測必須ゲート — [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。判定 consumer は `measured` を **3 値** (`true` / `false` / 欠落 = **未判定**) として扱い、未判定はゲート対象外 = 従来どおり blocking とする ([3 値モデルへの上書き](#後方互換性-schema-10--110) 参照)。**型は判定に使われる**: read 側の型ガードが object/boolean 制約を検証し、違反時は当該 review-result file 全体の routing を変える ([verification 型ガード (read 側)](#verification-型ガード-read-側)) |
+| `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (schema_version を bump しない additive 追加のため — [Schema Version](#schema-version-sot) 参照)。runtime 実測の記録 `{measured, repro, failing_test}` (下記 [verification サブフィールド](#verification-サブフィールド) 参照)。**欠落時は記録・表示経路では `measured=false` 扱い** ([後方互換性](#後方互換性-schema-10--110) の verification default mapping)。**値は blocking / mergeable 判定の入力として消費される** (Issue #2033 の実測必須ゲート — [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。判定 consumer は `measured` を **3 値** (`true` / `false` / 欠落 = **未判定**) として扱い、未判定はゲート対象外 = 従来どおり blocking とする ([3 値モデルへの上書き](#3値モデルへの上書き) 参照)。**型は判定に使われる**: read 側の型ガードが object/boolean 制約を検証し、違反時は当該 review-result file 全体の routing を変える ([verification 型ガード (read 側)](#verification-型ガード-read-側)) |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
 | `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md ステップ 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
+
+### `non_blocking_findings` 配列
+
+<a id="non_blocking_findings-配列"></a>
+
+`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで **non-blocking に降格した非実測指摘**を保持するトップレベル配列。要素のスキーマは `findings[]` と同一 (`id` / `reviewer` / `category` / `severity` / `scope` / `file` / `line` / `description` / `suggestion` / `status`)。
+
+**設計判断 — なぜ `findings[]` に混ぜないか**: `findings[]` は「merge を止める集合」という単一の意味を持ち、`overall_assessment` / `total_findings` / cross-field invariant #2 のいずれもその前提で書かれている。非実測指摘を同配列に混ぜると invariant #2 (mergeable × open CRITICAL/HIGH 禁止) を read 側 3 経路 + 本 SoT で同時に緩める必要が生じる。独立配列にすれば `findings[]` の契約を一切変えずに記録だけを永続化できる。
+
+**なぜ optional で schema_version を bump しないか**: `verification` と同じ additive 追加の方針。読取側 accept list 3 箇所の同期変更を避ける。read 側は未知キーを無視するため旧 reader でも壊れない。
+
+**0 件のときも空配列 `[]` を出力する** (キー省略との区別): キー自体が無い JSON は「本ゲート適用前の世代」を意味し、空配列は「本ゲートを適用したが降格ゼロ」を意味する。両者を区別できないと、降格が起きたのに記録されなかった事故を後から検出できない。
+
+**read 側の扱い**: 現時点で本配列を消費する read 経路は無い (`/rite:fix` は `findings[]` のみを読む)。本配列は **人間がマージ後に拾い直すための監査記録**であり、`.rite/review-results/*.json` が既定構成 (`pr_review.post_comment: false`) における唯一の永続チャネルであることに対応する。
 
 ### `verification` サブフィールド
 
@@ -159,11 +174,11 @@
 
 `findings[].verification` オブジェクトのサブフィールド定義。「実測」の記録形式を LLM の自由裁量に委ねると後段で機械処理できないため、**write 側が `verification` を出力する際に守るべき形式を本表で固定する**。
 
-**本表は形式契約であって、write 側の配線状況の記述ではない**: 現時点で `pr-review.md` ステップ 6.1.a の per-finding 必須フィールド列挙に `verification` は含まれず、reviewer が `内容` 列に書いた `Verification:` アンカーを `findings[].verification` へ写す手順も存在しない。write 側への配線は後続スコープで行う。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理する。記録・表示経路では default mapping で `measured=false` に畳み、**判定 consumer では「未判定」= blocking として扱う** — [3 値モデルへの上書き](#後方互換性-schema-10--110)):
+**本表は形式契約であって、write 側の配線状況の記述ではない**: 現時点で `pr-review.md` ステップ 6.1.a の per-finding 必須フィールド列挙に `verification` は含まれず、reviewer が `内容` 列に書いた `Verification:` アンカーを `findings[].verification` へ写す手順も存在しない。write 側への配線は後続スコープで行う。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理する。記録・表示経路では default mapping で `measured=false` に畳み、**判定 consumer では「未判定」= blocking として扱う** — [3 値モデルへの上書き](#3値モデルへの上書き)):
 
 | フィールド | 型 | 必須 (write 側が出力する場合) | read 側の受理 | 説明 |
 |-----------|-----|------|------|------|
-| `measured` | bool | ✅ (出力するなら 3 キーをすべて埋める) | 欠落 / null 許容 (記録・表示経路では `measured=false` 扱い、**判定 consumer では「未判定」= blocking** — [3 値モデルへの上書き](#後方互換性-schema-10--110))。**型は boolean/null のみ** (型ガード) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null かつ非空文字列**であることが必須 (Cross-field invariant #6) |
+| `measured` | bool | ✅ (出力するなら 3 キーをすべて埋める) | 欠落 / null 許容 (記録・表示経路では `measured=false` 扱い、**判定 consumer では「未判定」= blocking** — [3 値モデルへの上書き](#3値モデルへの上書き))。**型は boolean/null のみ** (型ガード) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null かつ非空文字列**であることが必須 (Cross-field invariant #6) |
 | `repro` | string \| null | ✅ (null 可) | 欠落 / null 許容 (read 側は値を jq 評価しないため型制約なし) | 再現手順。**形式固定**: `<再現コマンド> => <観測される誤動作>` (`=>` 区切り)。例: `bash hooks/foo.sh --bad-arg => ERROR: unbound variable`。`内容` 列に raw `|` (パイプ) を含めない制約は本フィールドにも及ぶ (理由と代替表記は `agents/_reviewer-base.md` の §Verification: runtime 実測の添付 の Rules) |
 | `failing_test` | string \| null | ✅ (null 可) | 同上 | failing test。**形式固定**: `<テストパス> => <失敗出力>` (`=>` 区切り)。例: `hooks/tests/test-foo.sh => TC-03 FAILED: expected 0 got 1`。raw パイプ制約は `repro` と同じ |
 
@@ -252,13 +267,15 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 - `scope` の default mapping とは独立に適用される (scope は severity から補完、verification は一律 `measured=false`)
 - Cross-field invariant #6 は verification 欠落時には発火しない (対象は `measured: true` を明示宣言した finding のみ)
 
+<a id="3値モデルへの上書き"></a>
+
 > **3 値モデルへの上書き (Issue #2033 以降、判定 consumer に限る)**: 上記 default mapping は `measured` が **判定に使われない記録専用フィールド**だった時点の規定であり、`measured` を **blocking 判定の入力として消費する層**には適用しない。実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) の consumer は `measured` を **3 値** (`true` / `false` / **未判定**) として扱い、**`verification` 欠落 / `verification.measured` 欠落は「未判定」= ゲート対象外 = 従来どおり blocking** と解釈する — 降格するのは `measured: false` を**明示宣言**した finding のみ。判定経路で `(.verification.measured // false)` を使ってはならない (jq の `//` が欠落と `false` を同一視するため、write 側が `verification` を出力しない世代の JSON で全 finding が non-blocking に畳まれ、レビューループが指摘を解消しないまま空転する)。判定経路の canonical 述語は「`.verification` が object かつ `.verification.measured` が boolean のときのみ登録し、値をそのまま採用する」で、SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup。
 >
 > 本節の default mapping は依然として**判定以外の読取 (記録・表示・後方互換の非エラー化)** に有効であり、型ガードが `verification: {}` を受理することにも変更はない。
 
 <a id="verification-型ガード-read-側"></a>
 
-**verification 型ガード (read 側)**: `findings[].verification` は **object または欠落 (null)** のみ、`findings[].verification.measured` は **boolean または欠落 (null)** のみ受理する。read 側 (`scripts/review-source-resolve.sh` の Priority 0 / Priority 2) は invariant 評価の**前段**で両方の型を検証し、違反時は専用 reason `{explicit_file|local_file}_verification_type_invalid` で WARNING + routing する (P0 → fallback、P2 → Priority 3 + `.corrupt-{epoch}` rename)。`measured` の**存在**は要求しない (`verification: {}` は型ガードを通過する。判定 consumer からは `measured` 未登録 = **未判定** として扱われる — [3 値モデルへの上書き](#後方互換性-schema-10--110) 参照)。silent 受理 (`.measured?` での握り潰し) は型崩れという schema 違反シグナルを消すため採用しない。canonical jq: `all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))`
+**verification 型ガード (read 側)**: `findings[].verification` は **object または欠落 (null)** のみ、`findings[].verification.measured` は **boolean または欠落 (null)** のみ受理する。read 側 (`scripts/review-source-resolve.sh` の Priority 0 / Priority 2) は invariant 評価の**前段**で両方の型を検証し、違反時は専用 reason `{explicit_file|local_file}_verification_type_invalid` で WARNING + routing する (P0 → fallback、P2 → Priority 3 + `.corrupt-{epoch}` rename)。`measured` の**存在**は要求しない (`verification: {}` は型ガードを通過する。判定 consumer からは `measured` 未登録 = **未判定** として扱われる — [3 値モデルへの上書き](#3値モデルへの上書き) 参照)。silent 受理 (`.measured?` での握り潰し) は型崩れという schema 違反シグナルを消すため採用しない。canonical jq: `all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))`
 
 **ガードを invariant の前段に置く理由（prospective）**: 現時点の read 経路に `.verification.measured` を評価する式は本ガード自身以外に存在せず、後段の invariant #2 / #4 / enum チェックはいずれも `.verification` を参照しない。したがって「非 object の verification が後段を rc=5 にして誤合流する」ことは**現在は起きない**。前段配置が守るのは、`.verification` が object かつ `.verification.measured` が boolean のときのみ値を採用する **3 値判定 consumer** (`fix/SKILL.md` ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup) であり、型崩れを弾いておく予防的配置である。判定 consumer は default mapping 節の `(.verification.measured // false)` 形を**使わない** (同節「3 値モデルへの上書き」参照) (invariant #6 の自己点検式は write 側の責務なので、read 経路に置いた本ガードの保護対象には含まれない)。P0/P2 で先に弾くのは、これらが永続ファイル (次回以降も再読込されうる入力) を入力に取るため — うち `.corrupt-{epoch}` rename を伴うのは P2 のみで、P0 は fallback に倒すだけである (上記 routing 参照)。順序が現時点で生む観測可能な差は reason ラベルと P2 の rename 有無で、`scripts/tests/review-source-resolve.test.sh` の順序 pin fixture (`overall_assessment: "mergeable"` + 型崩れ) がこれを機械的に固定している。
 

@@ -1589,7 +1589,7 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
 6. **`### 実測なし指摘 (non-blocking)` セクションの抽出 + `measured_map` 構築 (実測必須ゲート)**: コメント本文に `### 実測なし指摘 (non-blocking)` で**前方一致**する見出し (テンプレート実体は「（該当がある場合のみ）」等の注記が付く) のセクションが存在する場合、その配下の表 (**6 列**: レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 — `全指摘事項` の 5 列と列数が異なる点に注意。列ズレ防止のため本セクション専用の 6 列パースを適用する) の各行を `non_blocking_findings` として retain し、**severity_map / scope_map にも通常どおり投入した上で** `measured_map[file:line] = false` として登録する (母集団を severity_map に統一 — 除外すると 1.3 step 4 に到達できず、co-located thread が External review へ誤落下する)。`### 全指摘事項` 由来の行は `measured_map[file:line] = true` として登録する。
 
    **measured_map 構築の共通規則 (JSON / Markdown / 会話の全経路に適用)**:
-   - (a) **scope による登録除外はしない — 全 finding を `measured_map` に登録する**。nit-noted の除外は登録時ではなく**参照時に正規化後の `scope_map` を引いて**行う (1.3 step 4 の nit 分岐が measured lookup より先に評価される)。理由: `measured_map` は正規化**前**の原ファイル (`{review_source_path}`) から構築されるのに対し `scope_map` は `review-findings-maps.sh` の正規化 (auto_demote_low / invariant #5 auto-correct) **後** tempfile 由来のため、登録条件に原ファイルの scope を使うと 2 つの map が別 scope を見て「auto-demote された finding の二重計上 (finalize 等式破綻)」と「auto-correct された finding の未登録 = 未判定扱いによるゲート bypass」の両方向に破綻する。
+   - (a) **scope による登録除外はしない — 全 finding を `measured_map` に登録する**。nit-noted の除外は登録時ではなく**参照時に正規化後の `scope_map` を引いて**行う (1.3 step 4 の nit 分岐が measured lookup より先に評価される)。理由: `measured_map` は正規化**前**の原ファイル (`{review_source_path}`) から構築されるのに対し `scope_map` は `review-findings-maps.sh` の正規化 (auto_demote_low / invariant #5 auto-correct) **後** tempfile 由来のため、登録条件に原ファイルの scope を使うと 2 つの map が別 scope を見て「auto-demote された finding の二重計上 (finalize 等式破綻)」と「auto-correct された finding の未登録 = 未判定扱いによるゲート bypass」の両方向に破綻する。**なお本破綻シナリオが実際に成立するのは write 側が `verification` を出力し JSON 経路に `false` が入るようになった後** (現配線では正規化が走る JSON 経路に `false` が 1 件も入らず、`false` が入る Markdown / 会話経路には正規化ステップが無い)。規則自体は fail-safe として無害なため先行して固定しておく。
    - (b) **key 正規化は severity_map と同一** (`line == null || line == 0` → `{file}:anchor`)。
    - (c) **同一 key の衝突は `true` (blocking) 優先** — false で上書きしない (blocking-biased fail-safe: 複数 reviewer が同一 file:line を指摘し一方のみ実測付きの場合、実測済み blocking 指摘の silent skip を防ぐ)。
    - (d) **3 値を潰さない** — 登録するのは「実測の有無を判定できた finding」のみ。判定する構造が無い finding (外部ツール / 人間レビュー由来、および JSON に `verification` が無い finding) は**未登録のまま残す** (= 未判定)。未判定を `false` に畳んではならない (実測必須ゲートの対象外 = 従来どおり blocking。SoT は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) の「適用範囲 (measured は 3 値)」)。
@@ -1632,7 +1632,9 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
      - **Markdown パース経路 (Target Comment Fast Path の rite レビュー結果 / Priority 3 legacy Markdown fallthrough)**: ステップ 1.2.1 step 6 の構築規則に従う — `### 全指摘事項` の行は `true` (5.3.0.M 通過済み blocking 集合。5.3.0.M 導入前の旧コメントも全件 blocking 前提で描画されているため true が後方互換上も正しい)、`### 実測なし指摘 (non-blocking)` section の行は `false`
      - **外部ツール / best-effort parse 経路 (手動コメント / verified-review 等)**: `Verification:` アンカーを構造的に持てないため `measured_map` に**登録しない** (= 未判定)。実測必須ゲートの対象外 — 未判定を non-blocking と解釈せず、従来どおり External review (Action required = blocking) として扱う
 
-     判定の結果 **`measured_map[file:line] == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外、reply も不要 (記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)
+     判定の結果 **`measured_map[file:line] == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外 (記録は `/rite:pr-review` の 3 経路 — 永続 JSON の `non_blocking_findings[]` / ステップ 5.4 の「実測なし指摘」section / E2E output line — が担う)
+
+     > **人間 thread の巻き添え防止 (MUST)**: `measured_map` は file:line を key にするため、非実測 finding と**同一 file:line にある人間レビュアーの未解決 thread** が本分岐に巻き込まれ、fix も reply もされないまま `non_blocking_count` に「対応済み」として計上されうる。これを防ぐため、本分岐に落とす前に **thread の出自を確認する**: thread 本文が当該 rite finding の description と対応しない (= rite review 由来と確認できない) 場合は non-blocking に落とさず、**step 5 の External review (Action required = blocking)** として扱う。出自が判定できない場合も External review 側 (安全側) に倒す。rite finding 由来と確認できた thread のみが non-blocking になる。
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {CRITICAL, HIGH} -> Required fix
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
 
@@ -2437,7 +2439,7 @@ EOF
 - すべての nit-noted finding を処理し終えたら本サブステップ終了
 - 投稿失敗 (gh api POST 失敗 / rate limit / network error) は `[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=...` を emit し、当該 finding は skip して次へ進む (non-blocking、`acknowledged_nit_count` 集計対象外)
 - すべての投稿が完了したら次の Phase へ進む:
-  - **fix commit 不要 PR**: 判定と skip の実体は **ステップ 3.1 冒頭の前置ガード**を参照 (`fix_count == 0` かつ working tree 無変更ならステップ 3 全体を skip し 4.2 へ直行)。前置ガードは 2.4.N を経由しない non-blocking-only 経路でも評価される全経路共通の単一定義であり、本 bullet はその参照のみ (二重定義しない)
+  - **fix commit 不要 PR**: 判定と skip の実体は **ステップ 3.1 冒頭の前置ガード**を参照 (working tree 無変更ならステップ 3 全体を skip し 4.2 へ直行。判定は `git-status-filtered.sh` 経由)。前置ガードは 2.4.N を経由しない non-blocking-only 経路でも評価される全経路共通の単一定義であり、本 bullet はその参照のみ (二重定義しない)
   - **mixed PR** (nit-noted + non-nit findings 混在): non-nit findings は通常通り ステップ 2.2/2.3 経由で ステップ 3 (commit) へ進む。nit-noted reply は parallel に投稿済の状態で commit に embed される
 
 **Why no commit**: [design-rationale.md#nit-noted-reply-notes](references/design-rationale.md#nit-noted-reply-notes)
@@ -2464,7 +2466,22 @@ EOF
 
 ### 3.1 Verify Changes
 
-**前置ガード — fix commit 不要 PR の skip (全経路共通)**: ステップ 3 に入る前に必ず評価する。`fix_count == 0` かつ `git status --porcelain` が空 (working tree 無変更) の場合 — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在 — は**ステップ 3 全体 (3.1〜3.5) を skip** し、ステップ 4.2 (完了報告系) へ直行する (空 `git commit` の失敗と fix-cycle-state への無関係 diff 記録を防ぐ)。本ガードはステップ 2 の出口に相当し、2.4.N を経由しない non-blocking-only 経路でも必ず評価される (ステップ 2.4.N Loop termination の分岐は本ガードへの参照)。
+**前置ガード — fix commit 不要 PR の skip (全経路共通)**: ステップ 3 に入る前に必ず評価する。**working tree が無変更**の場合 — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在 — は**ステップ 3 全体 (3.1〜3.5) を skip** し、ステップ 4.2 (完了報告系) へ直行する (空 `git commit` の失敗と、3.3.1 が `HEAD~1..HEAD` = 前 cycle の commit を「本 cycle の fix」として fix-cycle-state に誤記録するのを防ぐ)。本ガードはステップ 2 の出口に相当し、2.4.N を経由しない non-blocking-only 経路でも必ず評価される (ステップ 2.4.N Loop termination の分岐は本ガードへの参照)。
+
+判定には **`git-status-filtered.sh` を使う** (raw `git status --porcelain` を使ってはならない — sandbox 内の Bash 呼び出しでは write-block bind mount が `??` エントリとして必ず現れるため raw 版は恒に非空になり、**ガードが一度も発火しない**。本 helper はその ghost-mount エントリを除去する。同型の理由で `pr-review/SKILL.md` ステップ 4.0.A も helper 経由にしている):
+
+```bash
+# helper の rc 非 0 (mktemp 失敗等) は dirty 側 = ガード非発火 = 従来どおりステップ 3 実行 に倒す
+# (working tree の状態が判定できないまま commit を skip すると、実際にあった変更を取りこぼすため)
+dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || dirty="__RITE_STATUS_UNKNOWN__"
+if [ -z "$dirty" ]; then
+  echo "[CONTEXT] FIX_COMMIT_GUARD=skip; reason=worktree_clean"
+else
+  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed"
+fi
+```
+
+`FIX_COMMIT_GUARD=skip` ならステップ 3 全体を skip して ステップ 4.2 へ、`proceed` なら以下を通常どおり実行する。
 
 Once all findings have been addressed, verify the changes:
 
