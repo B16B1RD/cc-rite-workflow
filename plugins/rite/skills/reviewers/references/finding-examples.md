@@ -109,7 +109,7 @@ These findings have real issues but lack the WHY or EXAMPLE that makes them acti
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. This is a system boundary where external input enters the application, and other endpoints (`auth.ts:30`) validate with `zod`.<br>Likelihood-Evidence: new_call_site src/routes/users.ts:45 (本 PR で追加)<br>Verification: repro curl -X POST localhost:3000/users -d '{"email":"a'\''--"}' => 500 SyntaxError near "--" | Add `zod` schema validation consistent with `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. This is a system boundary where external input enters the application, and other endpoints (`auth.ts:30`) validate with `zod`.<br>Likelihood-Evidence: new_call_site src/routes/users.ts:45 (本 PR で追加) | Add `zod` schema validation consistent with `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
 
 **Why the improved version is better:** The WHY ("system boundary where external input enters") tells the fix agent the severity class (injection risk, not just missing validation). The EXAMPLE (`z.object(...)`) gives a concrete code pattern to follow, reducing fix-review loop iterations.
 
