@@ -2329,7 +2329,7 @@ This phase now performs **three independent outputs**:
 - `patch_failed`: 既存コメントの PATCH が失敗 (非ブロッキング、`exit 0`)。`rc=` / signal 終了時は `signal=` を併記
 - `create_failed`: 新規コメント作成が失敗 (非ブロッキング、`exit 0`)。`rc=` / `signal=` は同上
 - `unknown_option`: 未知のフラグが渡された (`exit 1`)。caller 契約違反であり、引数解析の途中で落ちるため `pr=` を伴わない
-- `signal_aborted`: INT / TERM / HUP で中断された (`rc=` / `signal=` を併記)。terminal sentinel は `outcome=aborted` を返すが、それだけでは「記録が投稿されたのか」が読めないため本 reason で「未投稿」を loud に残す
+- `signal_aborted`: INT / TERM / HUP で中断された (`rc=` / `signal=` を併記)。terminal sentinel の `outcome=aborted` だけでは「helper が完走しなかった」ことしか読めないため、中断された事実を本 reason で loud に残す。**「未投稿」とは断定しない** — signal が `gh` の POST 実行中に届いた場合コメントは既に受理されていることがあり、helper には投稿完了状態を読む手段が無い。次 cycle の lookup + PATCH が自己修復する
 
 **Non-blocking contract**: ステップ 6.1.a の全 14 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`) are all logged as WARNING and MUST NOT cause ステップ 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
@@ -2339,8 +2339,10 @@ This phase now performs **three independent outputs**:
 - **ステップ 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` / `p61b_post_comment_mode_invalid` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として ステップ 6 を fail させる (ステップ 6.1.a の非ブロッキング契約とは対照的)。なお `post_comment_mode=false` で 6.1.b に誤呼出された場合は gate が **silent skip (exit 0)** するため、caller branch selection ミスは retained flag emit せずに吸収される (データ破壊なし、gh pr comment も実行されない)。
 - **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
 - **ステップ 6.1.a** は `non_blocking_findings[]` の欠陥を 2 種の observability marker で報告する (`review-result-save.sh` が emit。**いずれも非ブロッキング** — 保存は続行し `JSON_SAVED=true` のまま。`LOCAL_SAVE_FAILED` reason ではないため 14 種の reason 表 / Eval-order enumeration には登録しない): キー欠落 / 非配列 → `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` / 和集合での id 重複・書式違反 → `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}`。hard fail するのは `findings[]` 側の id 欠陥のみ (`reason=finding_id_format_or_uniqueness_violation`)。
-- **ステップ 6.1.d** は terminal sentinel `[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr={n}; outcome=created|updated|skipped|failed|aborted; count={k}; iteration_id={id}; comment_id={id または空}; degraded=0|1` を **1 種だけ** emit する (`review-nonblocking-record.sh` の EXIT trap)。**6.1.d step 3 / ステップ 8.0.3 の gate が pass 条件として参照するのは本 sentinel のみ**であり、成功 / skip / 失敗の区別は `outcome=` フィールドが担う (別 marker を増やさない — consumer ゼロ marker を作らないため)。失敗時は加えて `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` (上記 6.1.d reasons 表の全 reason) を emit するが、これは reason 語彙の observability 用で gate の入力ではない。**`outcome=failed` / `aborted` を観測したときは、6.1.d step 3 / ステップ 8.0.3 のいずれで観測した場合も、対応する reason を completion report に転記してから次へ進む** (転記しないと記録が落ちた事実がどこにも残らない)。**いずれも `overall_assessment` / result pattern に影響しない** (AC-3)。
+- **ステップ 6.1.d** は terminal sentinel `[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr={n}; outcome=created|updated|skipped|failed|aborted; count={k}; iteration_id={id}; comment_id={id または空}; degraded=0|1` を **1 種だけ** emit する (`review-nonblocking-record.sh` の EXIT trap)。**6.1.d step 3 / ステップ 8.0.3 の gate が pass 条件として参照するのは本 sentinel のみ**であり、成功 / skip / 失敗の区別は `outcome=` フィールドが担う (別 marker を増やさない — consumer ゼロ marker を作らないため)。失敗時は加えて `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` (上記 6.1.d reasons 表の全 reason) を emit するが、これは reason 語彙の observability 用で gate の入力ではない。**`outcome=failed` / `aborted`、および `outcome=skipped` ∧ `degraded=1` を観測したときは、6.1.d step 3 / ステップ 8.0.3 のいずれで観測した場合も、helper の WARNING / 対応する reason を completion report に転記してから次へ進む** (転記しないと記録が落ちた / stale が残った事実がどこにも残らない)。**いずれも `overall_assessment` / result pattern に影響しない** (AC-3)。
 - **ステップ 5.3.0.M** は実測必須ゲートの anchor 検出 regex 層での降格時に `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` を emit する (helper 委譲ではなく **LLM が直接 emit**)。対象は **`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て** (raw `|` を含む repro / `=>` 右辺空 / 種別ラベル誤記 / 形式崩れ) であり、アンカー文字列そのものが無い正常系 (非実測指摘) では出さない。**存在判定は正規化 marker (`(?i)verification[*_`[:space:]]*[:：]`) で行い、種別キーワードも colon 直後の空白も条件に含めず、装飾文字と全角コロンを吸収する。発火条件を「`=>` 右辺空」だけに絞ってもならない** — 定義の SoT は [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md) の WARNING emit 節で、本行はその写しとして同一語彙を保つ。observability marker であり `*_FAILED` reason ではないため、上記 ステップ 6 failure reasons 表 / 後述 Eval-order enumeration には登録しない (それらは reason 専用の列挙)。
+
+**Eval-order enumeration (ステップ 6.1.d)**: `unknown_option` (引数解析ループ内) → `pr_number_placeholder_residue` → `owner_repo_placeholder_residue` → `non_blocking_count_placeholder_residue` → `iteration_id_placeholder_residue` → `content_file_placeholder_residue` → `content_file_missing` → `body_file_empty` → `body_marker_missing` → `patch_failed` / `create_failed` — 11 件、helper 内の実 emit 順。`signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する (ステップ 6.1.a が observability marker を除外する慣行と同じ)。
 
 **Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称); ステップ 6.1.d emit = (`pr_number_placeholder_residue` / `owner_repo_placeholder_residue` / `non_blocking_count_placeholder_residue` / `iteration_id_placeholder_residue` / `content_file_placeholder_residue` / `content_file_missing` / `body_file_empty` / `body_marker_missing` / `patch_failed` / `create_failed`) — 10 件、helper 内の実 emit 順 (placeholder residue 5 種 + content_file 存在検査を引数 parse 直後にまとめて評価 → lookup → 本文の非空検査 → 1 行目 marker 検査 → PATCH / create の分岐)。`patch_failed` と `create_failed` は排他分岐のため同一 run で両方は出ない.
 
@@ -2475,13 +2477,13 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
 
 ステップ 5.3.0.M で `non_blocking_findings` に降格した非実測指摘を、PR 上の記録コメントに **update-in-place** で記録する (helper が自分の過去投稿を特定できない degraded 時のみ新規作成へ縮退するため、稀に 2 件以上並ぶ)。Issue #2024 D-01「非実測指摘は破棄せず PR コメント記録」の担保であり、`{post_comment_mode}` には **依存しない** (`pr_review.post_comment: false` の opt-out 対象外 — 設定の意味論は `templates/config/rite-config.yml` の post_comment 解説・docs/SPEC.md・docs/CONFIGURATION.md にも明記済み)。
 
-**Condition**: 常に評価する (skip 条件を持たない)。「投稿しない」判定は helper 内部が行う — 非実測指摘 0 件 ∧ 既存の記録コメントなし のときだけ投稿せず `outcome=skipped` を返す (AC-4 非退行)。件数が 0 でも既存コメントがあれば収束 cycle のクリアとして update-in-place する (AC-2)。
+**Condition**: 常に評価する (skip 条件を持たない)。「投稿しない」判定は helper 内部が行う — 非実測指摘 0 件 ∧ 既存の記録コメントなし のときだけ投稿せず `outcome=skipped` を返す (AC-4 非退行)。件数が 0 でも既存コメントがあれば収束 cycle のクリアとして update-in-place する (AC-2)。**ただし lookup が degraded した cycle では既存コメントを検出できないため、実在しても 0 件 skip に落ちる** (`outcome=skipped; degraded=1`) — 前 cycle の「N 件」記録が stale で残りうる。helper がその旨を WARNING で明示するので、転記して operator に目視確認を促す (下記 step 3 / ステップ 8.0.3 の転記対象)。
 
 > **設計の核**: lookup / skip 判定 / 投稿を `hooks/review-nonblocking-record.sh` の**単一 invocation** に閉じる。「lookup だけ実行して記録を skip した」中間状態が構造的に存在しないため、helper の terminal sentinel の存在が「記録経路が終端まで走った」ことと同値になる。rationale: [references/measured-gate-record.md#single-invocation](references/measured-gate-record.md#single-invocation)
 
 **実行手順**:
 
-1. **コメント本文生成 + Write**: Claude はコメント本文を生成し、**Write tool で `{review_tmp_dir}/rite-nonblocking-{pr_number}-{review_cycle_id}.md` に保存**する (`{review_tmp_dir}` / `{review_cycle_id}` は ステップ 6.1.a step 0 の `[CONTEXT] REVIEW_TMP_DIR=` / `REVIEW_CYCLE_ID=` marker 値をリテラル置換。**パスに cycle 識別子を含めるのは必須** — 含めないと `${TMPDIR}` がセッション内で不変なため前 cycle の本文が同一パスに残り、step 1 を飛ばして step 2 だけ実行したときに前 cycle の内容で canonical コメントを上書きしてしまう。cycle 識別子を含めれば同じ状況が `content_file_missing` の loud fail として現れる)。本文は件数で 2 variant — **どちらも 1 行目を marker 見出し `## 📜 rite 非実測指摘の記録` にし、末尾に `📎 reviewed_commit:` を置く** (1 行目 marker は helper の前方一致検索の needle であり、落とすと update-in-place が恒久破綻する):
+1. **コメント本文生成 + Write**: Claude はコメント本文を生成し、**Write tool で `{review_tmp_dir}/rite-nonblocking-{pr_number}-{review_cycle_id}.md` に保存**する (`{review_tmp_dir}` / `{review_cycle_id}` は ステップ 6.1.a step 0 の `[CONTEXT] REVIEW_TMP_DIR=` / `REVIEW_CYCLE_ID=` marker 値をリテラル置換。**パスに cycle 識別子を含めるのは必須** — 含めないと `${TMPDIR}` がセッション内で不変なため前 cycle の本文が同一パスに残り、step 1 を飛ばして step 2 だけ実行したときに前 cycle の内容で canonical コメントを上書きしてしまう。cycle 識別子を含めれば同じ状況が `content_file_missing` の loud fail として現れる)。本文は件数で 2 variant — **どちらも 1 行目を marker 見出し `## 📜 rite 非実測指摘の記録` にし、末尾に `📎 reviewed_commit: {current_commit_sha}` を置く** (`{current_commit_sha}` は ステップ 1.2.5 で取得した実 SHA にリテラル置換する — 未置換のまま投稿しても helper の本文検査は非空と 1 行目 marker しか見ないため素通りする。1 行目 marker は helper の前方一致検索の needle であり、落とすと update-in-place が恒久破綻する。本行は「この記録がどの commit 時点のレビューで作られたか」を PR 上で人間が追うためのもので、機械 consumer は持たない):
 
    **variant A (`non_blocking_count >= 1`)**:
 
@@ -2506,7 +2508,7 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    ```markdown
    ## 📜 rite 非実測指摘の記録 (non-blocking)
 
-   本 cycle の非実測指摘: 0 件 (前 cycle の記録は解消済み)
+   本 cycle の非実測指摘: 0 件 (前 cycle の記録内容は本 cycle では再報告されていません)
 
    📎 reviewed_commit: {current_commit_sha}
    ```
@@ -2539,7 +2541,7 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
 
    | Condition | Action |
    |-----------|--------|
-   | sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない) | Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted` のときは `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3) |
+   | sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない) | Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted` のとき、および `outcome=skipped` ∧ `degraded=1` のときは helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3) |
    | sentinel なし、または `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と不一致 (前 cycle のもの) | **ERROR**: 6.1.d が本 cycle で未評価。下記 ACTION を実行 |
 
    **On ERROR**:
@@ -2548,7 +2550,7 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    ERROR: ステップ 6.1.d integrity check failed.
    No current-cycle [CONTEXT] NONBLOCKING_RECORD_DONE=1 sentinel found (absent, or iteration_id != REVIEW_CYCLE_ID).
    This means ステップ 6.1.d was NOT executed in this cycle, OR the helper rejected a caller-contract violation
-   with exit 1 before its trap was installed (the 6 exit-1 reasons: placeholder residue 5 + content_file_missing).
+   with exit 1 before its trap was installed (the 7 exit-1 reasons: placeholder residue 5 + content_file_missing + unknown_option).
    ACTION: 会話コンテキストで [CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=... を探す。
      **本 marker は iteration_id を持たない** (helper が引数 gate 段階で落ちると iteration_id が
      未検証のため載せられない)。よって cycle N-1 の失敗行が context に残っていても見分けが付かない。
@@ -2556,6 +2558,9 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
      - 本 cycle の行がある場合: 6.1.d reasons 表の当該 reason に従い、引数のリテラル置換漏れ / step 1 の
        Write 漏れを直してから step 1-2 を再実行する。**同じ引数での単純再実行は placeholder residue では
        必ず同じ失敗を再現する。**
+       **例外: `iteration_id_placeholder_residue` は 6.1.a step 0 まで戻る。** 本 reason の root cause が
+       step 0 の `REVIEW_CYCLE_ID` emit 側 (`{pr_number}` 未置換等) にある場合、6.1.d step 1-2 を何度
+       再実行しても同じ壊れた marker 値を読み直すため収束しない。まず step 0 の emit 値を確認する。
      - 本 cycle の行が無い場合 (marker 自体が無い / 過去 cycle のものだけ): 6.1.d 全体が未実行。
        step 1 (本文生成) から実行する。
    Do NOT emit the result pattern ([review:mergeable] / [review:fix-needed:{n}]) without a current-cycle
@@ -3597,7 +3602,9 @@ ACTION: Return to ステップ 7.1, extract candidates, invoke AskUserQuestion (
 
 ### 8.0.3 ステップ 6.1.d Post-condition Gate Reference
 
-本 gate は ステップ 6.1.d (非実測指摘の PR コメント記録) の **全体 skip** に対する最終防波堤で、8.0.1 (ステップ 6.5.W) / 8.0.2 (ステップ 7) と完全に対称な sentinel-presence based defense-in-depth。6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため 6.1.d を丸ごと skip すると gate 自身も skip される — その failure mode を本 gate が result-emit boundary の**外側**で catch する (ステップ 7.7 ⇄ 8.0.2 の二層構成と同型)。既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録 (`.rite/review-results/` は gitignore 対象) であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
+本 gate は ステップ 6.1.d (非実測指摘の PR コメント記録) の **全体 skip** に対する最終防波堤で、8.0.1 (ステップ 6.5.W) / 8.0.2 (ステップ 7) と同型の sentinel-presence based defense-in-depth。6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため 6.1.d を丸ごと skip すると gate 自身も skip される — その failure mode を本 gate が result-emit boundary の**外側**で catch する (ステップ 7.7 ⇄ 8.0.2 の二層構成と同型)。既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録 (`.rite/review-results/` は gitignore 対象) であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
+
+**catch できる範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり本 gate が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る (前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel) の組が互いに整合するため本 gate は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、「6.1.d 単独の skip」は catch できるが「ステップ 6 全体の skip」は catch できない。後者を塞ぐには ステップ 6 の実行自体を検証する gate (例: `JSON_SAVED` に cycle 識別子を載せる) が別途必要で、本 PR のスコープ外。
 
 **Condition**: Always execute (6.1.d は `{post_comment_mode}` に依存せず常に評価される) — ただし **ステップ 6 が hard fail した場合を除く** (下記 Routing の 1 行目。8.0.1 の `wiki.enabled: false` 行 / 8.0.2 の `candidate_count == 0` 行と同じ legitimate skip)。
 
@@ -3608,13 +3615,13 @@ ACTION: Return to ステップ 7.1, extract candidates, invoke AskUserQuestion (
 | Condition | Action |
 |-----------|--------|
 | ステップ 6 が 6.1.b hard error / 6.1.c ケース 2 (`exit 2`) で fail し 6.1.d に到達していない | Gate は legitimately skipped — 6.1.d へ戻さず **ステップ 6 の失敗として扱う** (永続化の復旧が非実測記録より優先。6.1.c ケース 2 の silent data loss 防止を無効化しないため) |
-| sentinel found AND `iteration_id` == 本 cycle の `REVIEW_CYCLE_ID` (`outcome` は問わない) | Gate passes — ただし `outcome=failed` / `aborted` のときは **LLM が `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記してから** the next gate in the 8.0 evaluation order へ進む |
+| sentinel found AND `iteration_id` == 本 cycle の `REVIEW_CYCLE_ID` (`outcome` は問わない) | Gate passes — ただし `outcome=failed` / `aborted`、および `outcome=skipped` ∧ `degraded=1` のときは **LLM が helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記してから** the next gate in the 8.0 evaluation order へ進む |
 | sentinel NOT found (ステップ 6 は正常完了している) | **ERROR**: ステップ 6.1.d entire procedure was skipped. Execute ACTION below |
 | sentinel found but `iteration_id` != 本 cycle の `REVIEW_CYCLE_ID` (cycle N-1 のもの) | **ERROR**: ステップ 6.1.d was skipped in current cycle. Execute ACTION below |
 
 > 転記指示を 6.1.d step 3 と同じ強さで持たせる理由: rationale は [references/measured-gate-record.md#dual-gate](references/measured-gate-record.md#dual-gate)。
 >
-> `outcome=failed` (gh 失敗 / 本文空 / 1 行目 marker 欠落) でも gate は pass する。本 gate が保証するのは「本 cycle で記録経路が評価されたか」であって記録の成功ではない — 記録失敗は非ブロッキング契約 (AC-3) により mergeable 判定を変えない。`outcome=aborted` も同様に pass 扱い (helper が判定分岐へ到達する前に落ちた異常終了)。この経路は sentinel だけでは記録の成否を読めないため、helper が signal trap から `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=signal_aborted; rc=...; signal=...` を併せて emit する — 転記対象はこの reason。
+> `outcome=failed` (gh 失敗 / 本文空 / 1 行目 marker 欠落) でも gate は pass する。本 gate が保証するのは「本 cycle で記録経路が評価されたか」であって記録の成功ではない — 記録失敗は非ブロッキング契約 (AC-3) により mergeable 判定を変えない。`outcome=aborted` も同様に pass 扱い (helper が完走せず結末を確定できなかった異常終了)。この経路は sentinel だけでは中断の事実が読めないため、helper が signal trap から `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=signal_aborted; rc=...; signal=...` を併せて emit する — 転記対象はこの reason。**投稿されたか否かは不明**として扱う (POST 中の中断ではコメントが実在しうる)。
 
 **On ERROR** (sentinel absent or stale):
 
@@ -3622,11 +3629,13 @@ ACTION: Return to ステップ 7.1, extract candidates, invoke AskUserQuestion (
 ERROR: ステップ 8.0.3 ステップ 6.1.d Post-condition Gate failed.
 No current-cycle [CONTEXT] NONBLOCKING_RECORD_DONE=1 sentinel found (absent, or iteration_id != REVIEW_CYCLE_ID).
 This means ステップ 6.1.d was NOT evaluated in the current cycle, OR the helper rejected a caller-contract
-violation with exit 1 before its trap was installed (the 6 exit-1 reasons).
+violation with exit 1 before its trap was installed (the 7 exit-1 reasons).
 既定設定 post_comment: false では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録であり、
 skip は Issue #2024 D-01 (マージ後に人間が拾い直せる状態を保つ) の無音喪失を意味する。
 ACTION: まず [CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=... の有無を確認する (**本 marker は
-iteration_id を持たないため、本 cycle の 6.1.d step 2 より後ろに現れた行だけを採用する**)。あれば当該 reason を
+iteration_id を持たないため、本 cycle の 6.1.d step 2 より後ろに現れた行だけを採用する**)。
+reason=iteration_id_placeholder_residue のときは 6.1.a step 0 の REVIEW_CYCLE_ID emit 値まで遡って確認する
+(6.1.d の再実行だけでは収束しない)。あれば当該 reason を
 直してから 6.1.d step 1-2 を再実行する (同じ引数での単純再実行は placeholder residue では収束しない)。
 無ければ 6.1.d が未実行なので steps 1-3 を実行し、いずれの場合も then re-enter ステップ 8.0.
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 6.1.d has been executed for the current cycle.

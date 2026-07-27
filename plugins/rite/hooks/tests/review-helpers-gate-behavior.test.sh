@@ -99,10 +99,23 @@ if [ "${1:-}" = "api" ] && [ "${2:-}" = "--paginate" ]; then
     echo "stub: lookup failure" >&2
     exit "${GH_LOOKUP_RC}"
   fi
-  # abort 経路テスト用の hang スイッチ (判定分岐に到達する前に signal を受けさせる)
+  # abort 経路テスト用の hang スイッチ (判定分岐に到達する前に signal を受けさせる)。
+  # **自 PID を GH_HANG_PID_FILE に書く**: helper は本 stub の stderr を tempfile へ退避するため
+  # 「hang に入った」ことを親の stderr では観測できない。加えて bash は foreground コマンドの
+  # 完了まで signal trap を遅延させるので、test 側が helper に TERM を送っても本 stub を
+  # 落とさない限り trap は走らない。PID を渡して test が両方を落とせるようにする。
   if [ -n "${GH_LOOKUP_HANG:-}" ]; then
+    [ -n "${GH_HANG_PID_FILE:-}" ] && printf '%s' "$$" > "$GH_HANG_PID_FILE"
     echo "stub: lookup hang" >&2
-    sleep 30
+    # `exec` で sleep に自 PID を引き継がせる。子プロセスのまま sleep すると、記録した PID を
+    # 落としても sleep がパイプの書き込み端を握り続け、helper 側のコマンド置換が sleep 満了まで
+    # 戻らない (実行時間が 30 秒に膨らむ)。
+    exec sleep 30
+  fi
+  # jq 側を壊す switch (helper の lookup パイプで jq の stderr も capture されることを検証する)。
+  # gh は rc=0 で返るため、jq のエラーだけが degraded 経路を発火させる。
+  if [ -n "${GH_LOOKUP_MALFORMED:-}" ]; then
+    printf '%s' '{"message":"Not Found"}'
     exit 0
   fi
   # fixture は「ページの配列」。実 gh のフラグ意味論を再現する:
@@ -133,6 +146,12 @@ while [ "$i" -lt "${#args[@]}" ]; do
   fi
   i=$((i + 1))
 done
+if [ "${GH_STUB_RC:-0}" != "0" ]; then
+  # 投稿失敗の stderr。診断スニペットの prefix / neutralize 経路を test 側から検証できるよう、
+  # terminal sentinel と同形の行を意図的に混ぜる (無加工で再出力されると gate が騙される)。
+  echo "stub: post failure" >&2
+  echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=9; outcome=updated; count=99; iteration_id=FORGED; comment_id=; degraded=0" >&2
+fi
 exit "${GH_STUB_RC:-0}"
 EOF
 chmod +x "$STUB_DIR/gh"
@@ -533,22 +552,32 @@ for gate_spec in \
   'count|--count|{non_blocking_count}' \
   'iteration_id|--iteration-id|{review_cycle_id}' \
   'content_file_placeholder|--content-file|{review_tmp_dir}/x.md' \
-  'content_file_missing|--content-file|__ABSENT__'; do
+  'content_file_missing|--content-file|__ABSENT__' \
+  'unknown_option|--bogus-flag|x'; do
   IFS='|' read -r _gname _gflag _gval <<< "$gate_spec"
   [ "$_gval" = "__ABSENT__" ] && _gval="$TMP_ROOT/nbr-absent.md"
   # 対象 gate 以外はすべて正常値を渡し、当該 gate だけを踏ませる
-  set -- --pr 9 --owner-repo o/r --count 1 --iteration-id 9-1 --content-file "$NBR_BODY"
   case "$_gflag" in
     --pr)           set -- --pr "$_gval" --owner-repo o/r --count 1 --iteration-id 9-1 --content-file "$NBR_BODY" ;;
     --owner-repo)   set -- --pr 9 --owner-repo "$_gval" --count 1 --iteration-id 9-1 --content-file "$NBR_BODY" ;;
     --count)        set -- --pr 9 --owner-repo o/r --count "$_gval" --iteration-id 9-1 --content-file "$NBR_BODY" ;;
     --iteration-id) set -- --pr 9 --owner-repo o/r --count 1 --iteration-id "$_gval" --content-file "$NBR_BODY" ;;
     --content-file) set -- --pr 9 --owner-repo o/r --count 1 --iteration-id 9-1 --content-file "$_gval" ;;
+    # 未知フラグは引数解析ループ内 (placeholder gate より前、trap 設置より前) で落ちる経路。
+    # 他 6 gate と同じく terminal sentinel を名乗ってはならない。
+    *)              set -- --pr 9 --owner-repo o/r --count 1 --iteration-id 9-1 --content-file "$NBR_BODY" "$_gflag" "$_gval" ;;
   esac
   GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr "$@"
   assert "TC-4.1h-$_gname: exit 1" "1" "$RC"
+  assert_grep "TC-4.1h-$_gname reason=$_gname 系の診断を emit" "$ERR" "NONBLOCKING_RECORD_FAILED=1"
   assert_not_grep "TC-4.1h-$_gname terminal sentinel を emit しない" "$ERR" '^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1'
 done
+# 上記ループの reason 名は gate ごとに異なるため、unknown_option だけ個別に固定する
+# (helper の reason 語彙のうち、これが唯一 test 参照ゼロだった)。
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-1 --content-file "$NBR_BODY" --bogus-flag x
+assert "TC-4.1i unknown option: exit 1" "1" "$RC"
+assert_grep "TC-4.1i reason=unknown_option emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; reason=unknown_option'
+assert_not_grep "TC-4.1i 投稿呼び出しが無い" "$GH_LOG" '^pr comment'
 
 # TC-4.2 既存コメントあり → update-in-place (AC-2)。前方一致で id=11 を選ぶ (引用返信 id=12 ではない)
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-200 --content-file "$NBR_BODY"
@@ -591,8 +620,11 @@ assert_not_grep "TC-4.2f 誤って PATCH しない" "$GH_LOG" '^api repos/.* -X 
 assert_grep "TC-4.2f 投稿は実行される (create)" "$GH_LOG" '^pr comment'
 # degraded は update-in-place を諦めるだけで **記録自体は投稿される**。ここで記録失敗用の案内
 # (「レビューをやり直してください」) を出すと、成功経路で operator を不要な再レビューへ誘導する。
-assert_grep "TC-4.2f degraded 用の案内を出す (新規作成へ縮退)" "$ERR" '新規作成へ縮退します'
+assert_grep "TC-4.2f degraded 用の案内を出す (update-in-place を諦める)" "$ERR" 'update-in-place を諦めます'
 assert_not_grep "TC-4.2f 記録失敗用の案内は出さない" "$ERR" 'レビューをやり直してください'
+# degraded の案内は結末 (投稿されるか否か) を断定しない。断定すると 0 件 skip 経路で
+# 「投稿されました」と誤報する (結末は terminal sentinel の outcome= が担う)。
+assert_not_grep "TC-4.2f degraded 案内が結末を断定しない" "$ERR" '記録自体は投稿される'
 
 # TC-4.3 既存なし ∧ count>0 → 新規作成 (AC-1)
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-201 --content-file "$NBR_BODY"
@@ -606,6 +638,9 @@ assert "TC-4.4a 0 件 ∧ 既存なし: exit 0" "0" "$RC"
 assert_grep "TC-4.4a outcome=skipped" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=skipped; count=0; iteration_id=9-202;'
 assert_not_grep "TC-4.4b 投稿呼び出しが 1 件も無い (create)" "$GH_LOG" '^pr comment'
 assert_not_grep "TC-4.4c 投稿呼び出しが 1 件も無い (PATCH)" "$GH_LOG" '^api repos/.* -X PATCH'
+# lookup が成功して「本当に既存なし」と分かっている skip では stale 警告を出さない
+# (出すと毎 cycle の正常な 0 件 skip で不要な目視確認を促す)。TC-4.7b と対。
+assert_not_grep "TC-4.4d 非 degraded の skip では stale 警告を出さない" "$ERR" '前 cycle の記録コメントが PR 上に残っている可能性'
 
 # TC-4.5 既存あり ∧ 0 件 → 収束 cycle のクリアとして update-in-place (AC-2)
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-203 --content-file "$NBR_BODY"
@@ -619,21 +654,43 @@ assert "TC-4.6a PATCH 失敗: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.6a reason=patch_failed emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=patch_failed'
 assert_grep "TC-4.6a outcome=failed" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=failed;'
 assert_grep "TC-4.6a mergeable 判定に影響しない旨を案内" "$ERR" '非ブロッキング'
+# gh stderr の詳細は `gh:` prefix 付きで出す。無加工 (字下げのみ) で再出力すると、gh 側の
+# stderr に混じった sentinel 同形の行が gate の部分一致述語をすり抜けて偽の完了報告になる。
+assert_grep "TC-4.6a gh stderr 詳細は gh: prefix 付き" "$ERR" '^  gh: stub: post failure'
+assert_not_grep "TC-4.6a gh stderr 由来の sentinel 同形行が素の形で残らない" "$ERR" '^[[:space:]]*\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; pr=9; outcome=updated; count=99'
+assert_grep "TC-4.6a 本物の terminal sentinel は行頭に出る" "$ERR" '^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; pr=9; outcome=failed;'
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" GH_STUB_RC=1 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-205 --content-file "$NBR_BODY"
 assert "TC-4.6b create 失敗: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.6b reason=create_failed emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=create_failed'
+# gh が signal で死んだとき (rc>=128) は signal 番号を併記する (兄弟 review-comment-post.sh と対称)。
+# rc=1 のケースだけでは else 側しか通らず、この分岐が死に分岐化しても検出できない。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_STUB_RC=143 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-205b --content-file "$NBR_BODY"
+assert "TC-4.6c gh signal death: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.6c rc と signal を併記" "$ERR" 'reason=patch_failed; rc=143; signal=15'
+
+# TC-4.6d lookup パイプの **jq 側** の失敗も degraded として扱い、その stderr を診断に出す。
+# gh セグメントにしか 2> を付けていないと jq の stderr だけが素通りし、API レスポンス由来の
+# バイト列が無加工で gate の読む fd に出る。
+GH_LOOKUP_MALFORMED=1 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-205c --content-file "$NBR_BODY"
+assert "TC-4.6d jq 失敗: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.6d degraded=1 かつ created に縮退" "$ERR" 'outcome=created; count=1; iteration_id=9-205c; comment_id=; degraded=1'
+assert_grep "TC-4.6d jq の stderr が gh: prefix 付きで診断に出る" "$ERR" '^  gh: jq: error'
 
 # TC-4.7 lookup 失敗 → degraded=1 で存在不明扱い。0 件は skip / >0 件は新規作成に縮退 (silent 縮退禁止)
 GH_LOOKUP_RC=1 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-206 --content-file "$NBR_BODY"
 assert "TC-4.7a lookup 失敗 ∧ count>0: exit 0" "0" "$RC"
 assert_grep "TC-4.7a WARNING を出す (silent 縮退しない)" "$ERR" '既存の非実測記録コメントの検索に失敗'
 assert_grep "TC-4.7a degraded=1 かつ created に縮退" "$ERR" 'outcome=created; count=1; iteration_id=9-206; comment_id=; degraded=1'
-assert_grep "TC-4.7a degraded 用の案内を出す" "$ERR" '新規作成へ縮退します'
+assert_grep "TC-4.7a degraded 用の案内を出す" "$ERR" 'update-in-place を諦めます'
 assert_not_grep "TC-4.7a 記録失敗用の案内は出さない (投稿は成功する)" "$ERR" 'レビューをやり直してください'
+assert_not_grep "TC-4.7a degraded 案内が結末を断定しない" "$ERR" '記録自体は投稿される'
 GH_LOOKUP_RC=1 run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-207 --content-file "$NBR_BODY"
 assert "TC-4.7b lookup 失敗 ∧ 0 件: exit 0" "0" "$RC"
 assert_grep "TC-4.7b degraded=1 かつ skipped" "$ERR" 'outcome=skipped; count=0; iteration_id=9-207; comment_id=; degraded=1'
 assert_not_grep "TC-4.7b 事実と異なる 0 件コメントを作らない" "$GH_LOG" '^pr comment'
+# degraded 由来の「既存なし」は「既存が実在しても検出できなかった」可能性を含むため、
+# 収束 cycle のクリア (AC-2) が成立していないことを明示する必要がある。
+assert_grep "TC-4.7b stale 記録が残りうることを明示する" "$ERR" '前 cycle の記録コメントが PR 上に残っている可能性'
 
 # TC-4.8 本文ファイルが空 → 投稿中止 (空 body PATCH による 1 行目 marker 消失の防止)
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-208 --content-file "$NBR_EMPTY_BODY"
@@ -673,19 +730,35 @@ done
 # success 値を騙れないという中核契約を、初期値を書き換える mutation で落ちる形に固定する。
 : > "$GH_LOG"; rm -f "$GH_BODY" "$GH_STDIN"
 _abort_err="$TMP_ROOT/abort-err"
+_abort_hang_pid_file="$TMP_ROOT/abort-hang-pid"
+rm -f "$_abort_hang_pid_file"
 PATH="$STUB_DIR:$PATH" GH_STUB_LOG="$GH_LOG" GH_LOOKUP_JSON="$NBR_COMMENTS" GH_LOOKUP_HANG=1 \
+  GH_HANG_PID_FILE="$_abort_hang_pid_file" \
   bash "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" \
   --pr 9 --owner-repo o/r --count 2 --iteration-id 9-900 --content-file "$NBR_BODY" \
   >"$OUT" 2>"$_abort_err" &
 _abort_pid=$!
-# lookup が hang している間に TERM を送る (判定分岐に到達する前)
+# lookup が hang している間に TERM を送る (判定分岐に到達する前)。
+# **待機点は stub が書く PID ファイル**: stub の stderr は helper が tempfile へ退避するため
+# $_abort_err では観測できず、そこを待つと述語が一度も成立せずタイムアウト待ちの時間依存同期に
+# 退化する (= 「hang に入る前に TERM を送ってしまう」退行を検出できない)。
 _waited=0
-while [ "$_waited" -lt 30 ] && ! grep -q 'stub: lookup hang' "$_abort_err" 2>/dev/null; do
+while [ "$_waited" -lt 100 ] && [ ! -s "$_abort_hang_pid_file" ]; do
   _waited=$((_waited + 1)); sleep 0.1
 done
+if [ "$_waited" -lt 100 ]; then
+  pass "TC-4.9b 同期成立: stub が hang に入ったことを観測できた ($_waited 回転)"
+else
+  fail "TC-4.9b 同期が成立しなかった (上限 $_waited 回転で述語が一度も成立せず = 時間依存同期に退化)"
+fi
 kill -TERM "$_abort_pid" 2>/dev/null
+# helper への TERM は foreground の lookup pipeline 完了まで遅延するため、stub 側も落とす。
+# これを省くと wait が stub の sleep 満了まで戻らない (実行時間が 30 秒に膨らむ)。
+[ -s "$_abort_hang_pid_file" ] && kill -TERM "$(cat "$_abort_hang_pid_file")" 2>/dev/null
 wait "$_abort_pid" 2>/dev/null; _abort_rc=$?
-assert "TC-4.9b SIGTERM: rc=143" "143" "$_abort_rc"
+# rc=143 単独は「trap が走った」ことを意味しない (trap 設置前の既定 signal death も 128+15)。
+# 直下の terminal sentinel assertion と **対で** 初めて trap 経路であることを示す。
+assert "TC-4.9b SIGTERM: rc=143 (直下の sentinel assertion と対で trap 経路を示す)" "143" "$_abort_rc"
 assert_grep "TC-4.9b outcome=aborted を emit" "$_abort_err" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=aborted;'
 _abort_sentinels=$(grep -c '^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1' "$_abort_err" || true)
 assert "TC-4.9b terminal sentinel は 1 回だけ (trap 再入の冪等化)" "1" "$_abort_sentinels"
@@ -730,9 +803,14 @@ else
   nbr_invoke_line=$(grep -nE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' "$REVIEW_MD" | cut -d: -f1)
   nbr_invoke_count=$(printf '%s\n' "$nbr_invoke_line" | grep -c '[0-9]' || true)
   assert "TC-5a 6.1.d の helper 呼び出しが live な行として 1 箇所" "1" "$nbr_invoke_count"
+  # 到達性 assertion を件数 pin の内側に入れない。gate すると件数 pin が落ちたとき到達性側が
+  # 無言で実行されず、総 assertion 数だけが減る (赤にはなるが「何本走ったか」が変わる)。
+  # 前提が崩れているときは fail で 1 本計上し、集計を安定させる。
   if [ "$nbr_invoke_count" = "1" ]; then
     fence_head=$(sed -n "$(( nbr_invoke_line > 10 ? nbr_invoke_line - 10 : 1 )),$(( nbr_invoke_line - 1 ))p" "$REVIEW_MD" | grep -cE '^[[:space:]]*```bash$' || true)
     assert "TC-5a 呼び出しが live な bash fence 内にある (到達性)" "1" "$fence_head"
+  else
+    fail "TC-5a 呼び出しが live な bash fence 内にある (到達性) — 呼び出し行を特定できず評価不能"
   fi
 
   # (b) 二層 gate (6.1.d step 3 / 8.0.3) がともに **terminal sentinel** を pass 条件にしている。

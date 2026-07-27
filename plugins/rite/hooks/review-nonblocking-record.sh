@@ -139,8 +139,10 @@ case "$ITERATION_ID" in
     exit 1
     ;;
 esac
-# content-file のブレース残留は body_file_empty (Write の失敗) と別 reason にする。融合させると
-# 「skill 定義のバグ」と「本文生成の失敗」が同一診断に潰れ、caller が誤った復旧手順に誘導される。
+# content-file のブレース残留は content_file_missing (Write 呼び出し漏れ) と別 reason にする。
+# 未置換パスは存在しないパスなので、専用 gate が無ければ後続の存在検査に潰れる。どちらも caller
+# 契約違反だが、前者は skill テンプレートの substitution 漏れ、後者は step 1 の Write 呼び出し漏れで
+# 復旧手順が異なるため独立の reason を持たせる。
 case "$CONTENT_FILE" in
   ''|*'{'*|*'}'*)
     echo "ERROR: review-nonblocking-record: content_file のパスが literal substitute されていません (値: '$(printf '%s' "$CONTENT_FILE" | neutralize_ctrl)')" >&2
@@ -174,12 +176,30 @@ _terminal_emitted="false"
 _rite_p61d_cleanup() {
   rm -f "${gh_err:-}"
 }
-# lookup が degraded したときの案内。**記録は続行される** (count > 0 なら新規作成へ縮退) ため、
-# 記録失敗用の _record_failure_hint とは文言を分ける。共用すると「記録が失われた」と読める案内が
-# 成功経路で出て、operator を不要なレビュー再実行へ誘導する。
+# gh / jq の stderr 詳細を出す共通スニペット。行接頭辞に `gh:` を入れるのは、gh 側の stderr に
+# terminal sentinel と同形の行が混じったとき、字下げだけでは gate の部分一致述語をすり抜けて
+# 偽の完了報告として読まれうるため (テストの negative control は行頭 anchor 付きで検出できず、
+# gate だけが騙される非対称が生まれる)。
+_gh_err_detail() {
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] || return 0
+  echo "  詳細 (gh/jq stderr 先頭 5 行):" >&2
+  head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
+}
+# lookup が degraded したときの案内。**記録は続行されうる** ため、記録失敗用の _record_failure_hint
+# とは文言を分ける。共用すると「記録が失われた」と読める案内が成功経路で出て、operator を不要な
+# レビュー再実行へ誘導する。ただし投稿されるかどうかは件数と既存コメントの有無で決まるため、
+# **結末を断定せず** 「update-in-place を諦める」ことだけを述べる (結末は terminal sentinel の
+# `outcome=` が担う)。
 _record_degraded_hint() {
-  echo "  対処: gh auth status を確認してください。update-in-place を諦め新規作成へ縮退します" >&2
-  echo "  記録自体は投稿されるため、mergeable 判定にも記録の保全にも影響しません (同一 PR にコメントが 2 件以上並ぶことがあります)" >&2
+  echo "  対処: gh auth status を確認してください。既存コメントを特定できないため update-in-place を諦めます" >&2
+  echo "  mergeable 判定には影響しません (非ブロッキング)。以降の結末は terminal sentinel の outcome= を参照してください" >&2
+}
+# degraded skip (既存コメントを特定できず、かつ本 cycle の非実測指摘が 0 件) 専用の案内。
+# 実在する既存コメントを検出できないまま skip するため、前 cycle の「N 件」記録が PR 上に
+# stale で残りうる。この 1 経路だけは「投稿されなかった」ことを明示する必要がある。
+_record_degraded_skip_hint() {
+  echo "  注意: 既存の記録コメントを特定できないまま 0 件 skip したため、前 cycle の記録コメントが PR 上に残っている可能性があります" >&2
+  echo "  対処: PR #${PR_NUMBER} の '$MARKER' コメントを目視で確認してください (mergeable 判定には影響しません)" >&2
 }
 # 記録できなかったときの共通案内。非ブロッキングな失敗 reason (body_file_empty /
 # body_marker_missing / patch_failed / create_failed) のすべてから呼べるよう trap 定義直後に置く。
@@ -195,7 +215,10 @@ _rite_p61d_emit_terminal() {
 # signal 中断は sentinel だけを出すと「記録が走ったのか」を読む側が判別できない。gate は
 # outcome=aborted を「評価はされた」として通すため、記録が確実に未投稿である事実を loud に残す。
 _rite_p61d_signal_abort() {  # $1=rc $2=signal
-  echo "ERROR: review-nonblocking-record: signal で中断されました (記録は投稿されていません)" >&2
+  # 「未投稿」と断定しない: signal が gh の POST 実行中に届いた場合、コメントは既に受理されて
+  # いることがある。投稿完了状態を読む手段が無いため、確実に言えるのは「本 helper が完走せず
+  # 結末を確定できなかった」ことだけ。次 cycle の lookup + PATCH が自己修復する。
+  echo "ERROR: review-nonblocking-record: signal で中断されました (記録が投稿されたかは不明です)" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=signal_aborted; rc=$1; signal=$2" >&2
 }
 trap 'rc=$?; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit $rc' EXIT
@@ -216,17 +239,18 @@ gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}")
 if [ -z "$gh_login" ]; then
   echo "WARNING: gh api user による自 login の取得に失敗しました。既存コメントを特定できないため存在不明として扱います" >&2
-  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
+  _gh_err_detail
   _record_degraded_hint
   existing_id=""
   lookup_degraded=1
 elif existing_id=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
      | jq -r --arg marker "$MARKER" --arg me "$gh_login" \
-         'add | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] | last | .id // empty'); then
+         'add | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] | last | .id // empty' \
+         2>>"${gh_err:-/dev/null}"); then
   :
 else
   echo "WARNING: 既存の非実測記録コメントの検索に失敗しました (gh/jq)。存在不明として扱います" >&2
-  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
+  _gh_err_detail
   _record_degraded_hint
   existing_id=""
   lookup_degraded=1
@@ -238,6 +262,9 @@ fi
 # silent 縮退にはならない)。
 if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ]; then
   # 0 件 ∧ 既存なし: 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを新規作成しない。
+  # ただし degraded 由来の「既存なし」は **既存コメントが実在しても検出できなかった** 可能性が
+  # あるため、収束 cycle のクリア (AC-2) が成立していないことを明示する。
+  [ "$lookup_degraded" = "1" ] && _record_degraded_skip_hint
   outcome="skipped"
   exit 0
 fi
@@ -272,7 +299,7 @@ gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 # (片側にだけ診断を足す drift を構造的に防ぐ)。2 つの呼び出し元の直前に置く。
 _record_gh_failure() {  # $1=label $2=reason $3=rc
   echo "WARNING: 非実測指摘の PR コメント$1 に失敗しました (gh rc=$3)" >&2
-  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
+  _gh_err_detail
   _record_failure_hint
   # signal 終了 (rc>=128) を retained flag に併記する (兄弟 review-comment-post.sh と対称)
   if [ "$3" -ge 128 ]; then

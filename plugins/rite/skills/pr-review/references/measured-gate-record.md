@@ -29,7 +29,7 @@ Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existi
 | `{pr_number}` | `--pr` の numeric gate（`pr_number_placeholder_residue`） | 変更なし |
 | `{non_blocking_count}` | `--count` の numeric gate（`non_blocking_count_placeholder_residue`） | 変更なし。0 件時も `--count 0` を明示要求し、空文字と区別する |
 | `{existing_comment_id}` | **なし（substitution point が消滅）** | helper が内部で lookup するため caller が渡さない。渡せない値に gate は置けない |
-| `{review_tmp_dir}` | `--content-file` のブレース残留 gate（`content_file_placeholder_residue`） | 本文パスに `{review_tmp_dir}` が残ると `[ -s ]` が偽になり `body_file_empty`（Write 失敗）に潰れる。skill 定義のバグと本文生成の失敗は復旧手順が異なるため専用 reason を持つ |
+| `{review_tmp_dir}` | `--content-file` のブレース残留 gate（`content_file_placeholder_residue`） | 未置換パスは存在しないパスなので、専用 gate が無ければ後段の存在検査 `content_file_missing` に潰れる。どちらも caller 契約違反だが、前者は skill テンプレート側の substitution 漏れ、後者は step 1 の Write 呼び出し漏れで復旧手順が異なるため独立の reason を持つ |
 | （新規）`{owner_repo}` | `--owner-repo` の `owner/repo` 形状 gate（`owner_repo_placeholder_residue`） | helper 化で API パスが引数になったため新設 |
 | （新規）`{review_cycle_id}` | `--iteration-id` のブレース残留 gate（`iteration_id_placeholder_residue`） | 鮮度判定の参照値が未置換だと gate の cycle 一致判定が恒久的に成立しなくなる |
 
@@ -54,7 +54,7 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 この不変条件は静的 pin で 2 層に固定する（`hooks/tests/review-helpers-gate-behavior.test.sh` TC-5e）。単層では塞げないため両方要る:
 
 1. **構造 denylist（言語非依存）**: 区間内の **表の行**（行頭 `|`）が終端 `ステップ 8.1` を名指ししないこと。判定材料が「表の行であること」と節番号リテラルだけなので、行の文面が和文でも英文でも効く。散文中の cross-reference は表の行ではないため対象外。
-2. **表記 allowlist（英文のみ）**: 英文 pass 行（`Gate passes` を含む行）がすべて規約文言 `the next gate in the 8.0 evaluation order` を含むこと。「次の gate を正しく指す」正の契約を固定する。**行の抽出自体が英語リテラル依存**であり、和文で書かれた pass 行は分子・分母の双方から落ちてこの層をすり抜ける — その穴は層 1 が塞ぐ。
+2. **表記 allowlist（英文のみ）**: 区間内の `Gate passes` の出現数と規約文言 `the next gate in the 8.0 evaluation order` の出現数が**一致すること**。「次の gate を正しく指す」正の契約を近似的に固定する。全称（すべての pass 行が規約文言を含む）ではなく件数一致で判定するのは実装の都合であり、2 つの近似誤差がある: **(a)** 行の抽出が英語リテラル依存のため、和文で書かれた pass 行は分子・分母の双方から落ちてこの層をすり抜ける（穴は層 1 が塞ぐ）。**(b)** 規約文言を含むが `Gate passes` を含まない行が増えると、規約文言を欠いた pass 行と相殺して等値が成立しうる。現状は差集合が 0 行のため成立している。
 
 加えて順序規定が 1 箇所だけ存在すること。
 
@@ -79,7 +79,14 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 
 **投稿前に本文を 2 段で検査する**（非空 → 1 行目が marker で始まる）。どちらの契約違反も、1 行目 marker を失ったコメントを PATCH で作り出し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため両者は別 reason（`body_file_empty` / `body_marker_missing`）にする。
 
-**lookup が自分の投稿を見つけられないときは単一コメント不変条件を意図的に諦める**: gh 失敗による degraded に加え、別アカウント / 別トークン identity で過去に投稿した記録が残っている場合（author 条件により自分の投稿として拾えない。この場合 `degraded=0` のまま）も同様に、`count > 0` なら新規作成へ縮退する。既存の記録コメントが実在していれば 2 通目が作られ、古い方は孤児として残る。skip して記録を落とすより、重複してでも記録を残す方を選んだ（WARNING と `degraded=1` で可視化されるため silent ではない）。ユーザー向け文書が「update-in-place の 1 件」と書くのはこの縮退を除いた通常時の挙動。
+**lookup が自分の投稿を見つけられないときは単一コメント不変条件を意図的に諦める**: gh 失敗による degraded に加え、別アカウント / 別トークン identity で過去に投稿した記録が残っている場合（author 条件により自分の投稿として拾えない。この場合 `degraded=0` のまま）も同様に、`count > 0` なら新規作成へ縮退する。既存の記録コメントが実在していれば 2 通目が作られ、古い方は孤児として残る。skip して記録を落とすより、重複してでも記録を残す方を選んだ。
+
+可視性は 2 経路で非対称であり、これは受容している:
+
+- **gh 失敗による degraded**: WARNING + `degraded=1` が出るため観測できる。
+- **identity 変更による取りこぼし**: lookup 自体は rc=0 で成功し author 条件が空を返すだけなので、`degraded=0` のまま WARNING も出ない。**出力は正当な初回投稿と完全に同一**で、孤児コメント 1 件が残ることを観測する手段が無い。identity の変更を helper が知る術が無いため（「自分の過去投稿」の定義自体が identity に依存する）、観測不能な縮退として受け入れる。
+
+ユーザー向け文書が「update-in-place の 1 件」と書くのはこれら縮退を除いた通常時の挙動。
 
 <a id="static-pin"></a>
 ## 静的 pin に mutation 実測を要求する理由
