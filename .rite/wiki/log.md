@@ -28,6 +28,7 @@
 * **Create**: [canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる](pages/patterns/canonical-example-must-pass-its-own-enforcer.md) — raw/reviews/20260727T084223Z-pr-2036.md を新規ページ化
 * **Create**: [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](pages/anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md) — raw/fixes/20260727T053017Z-pr-2036.md を新規ページ化
 * **Create**: [file:line を key にする map は、同じ位置にある別出自のデータを無音で巻き添えにする](pages/anti-patterns/colocated-key-map-swallows-different-provenance-data.md) — raw/fixes/20260727T053017Z-pr-2036.md を新規ページ化
+* **lint:warning** — contradictions=0, stale=16, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-07-26
 
