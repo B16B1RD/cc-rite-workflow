@@ -104,12 +104,12 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 判定は 2 段で機械的に書ける:
 
-1. `(?i)Verification:[[:space:]]` の**存在**判定 — **bare marker のみで判定し、種別キーワード (`repro` / `failing_test`) を条件に含めない**
+1. `(?i)\*{0,2}Verification\*{0,2}[[:space:]]*:` の**存在**判定 — **bare marker のみで判定し、種別キーワード (`repro` / `failing_test`) を条件に含めない**。colon 直後の空白も要求しない (`Verification:runtime_observation` を拾う)。bold の内置き `**Verification:**` と外置き `**Verification**:` の両形を許容する
 2. 上記 **Anchor detection regex** の full match 判定
 
 (1) が真かつ (2) が偽の finding が対象。
 
-> **stage 1 に種別キーワードを含めてはならない**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求すると、ラベルを取り違えた / 落としたアンカー (`Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる / `Verification: bash x.sh => ERROR` — 種別欠落 / `**Verification:** repro ...` — bold 装飾 / 大文字小文字差) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。トレードオフは「無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。5.3.0.M は bash を実行しない推論ステップのため「WARNING を出す」だけでは構造的に達成できない — 対象が 1 件以上なら以下を**明示的に実行**する:
+> **stage 1 に種別キーワードを含めてはならない / colon 直後の空白も要求してはならない**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`Verification:[[:space:]]` のように colon 直後の空白を必須にすると、ラベルを取り違えた / 落としたアンカー (`Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる / `Verification: bash x.sh => ERROR` — 種別欠落 / `**Verification:** repro ...` — bold 装飾 / 大文字小文字差) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。トレードオフは「無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。5.3.0.M は bash を実行しない推論ステップのため「WARNING を出す」だけでは構造的に達成できない — 対象が 1 件以上なら以下を**明示的に実行**する:
 
 ```bash
 echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を measured=false に降格しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 形式崩れ)。パイプを含むコマンドは ¦ で代替表記してください" >&2
@@ -133,6 +133,7 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 **non_blocking_findings の扱い**:
 
 - `total_findings` にカウントしない (mergeable countdown から除外)
+- finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、統合レポート 5.4 section と永続 JSON の相互参照が成立する
 - 記録先は 3 経路すべてで、破棄経路は存在しない:
   1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) で唯一の永続チャネル。マージ後に人間が拾い直せる状態を担保する
   2. **ステップ 5.4 統合レポート** の `### 実測なし指摘 (non-blocking)` section (severity 明示) — E2E でも省略禁止 (`pr-review/SKILL.md` E2E Output Minimization 表の例外)

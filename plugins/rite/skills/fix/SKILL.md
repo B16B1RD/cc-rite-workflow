@@ -1586,7 +1586,7 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
    }
    ```
 
-6. **`### 実測なし指摘 (non-blocking)` セクションの抽出 + `measured_map` 構築 (実測必須ゲート)**: コメント本文に `### 実測なし指摘 (non-blocking)` で**前方一致**する見出し (テンプレート実体は「（該当がある場合のみ）」等の注記が付く) のセクションが存在する場合、その配下の表 (**6 列**: レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 — `全指摘事項` の 5 列と列数が異なる点に注意。列ズレ防止のため本セクション専用の 6 列パースを適用する) の各行を `non_blocking_findings` として retain し、**severity_map / scope_map にも通常どおり投入した上で** `measured_map[file:line] = false` として登録する (母集団を severity_map に統一 — 除外すると 1.3 step 4 に到達できず、co-located thread が External review へ誤落下する)。`### 全指摘事項` 由来の行は `measured_map[file:line] = true` として登録する。
+6. **`### 実測なし指摘 (non-blocking)` セクションの抽出 + `measured_map` 構築 (実測必須ゲート)**: コメント本文に `### 実測なし指摘 (non-blocking)` で**前方一致**する見出し (テンプレート実体は「（該当がある場合のみ）」等の注記が付く) のセクションが存在する場合、その配下の表 (**6 列**: レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 — `全指摘事項` の 5 列と列数が異なる点に注意。列ズレ防止のため本セクション専用の 6 列パースを適用する) の各行を `non_blocking_findings` として retain し、**severity_map / scope_map にも通常どおり投入した上で** `measured_map[file:line] = false` として登録する (母集団を severity_map に統一 — 除外すると 1.3 step 4 に到達できず、rite finding 由来の co-located thread まで一律 External review へ落ちて measured 判定を受けられない。非 rite thread を意図的に External review へ振り替えるのは step 4 の出自確認の役割で、両者は別物)。`### 全指摘事項` 由来の行は `measured_map[file:line] = true` として登録する。
 
    **measured_map 構築の共通規則 (JSON / Markdown / 会話の全経路に適用)**:
    - (a) **scope による登録除外はしない — 全 finding を `measured_map` に登録する**。nit-noted の除外は登録時ではなく**参照時に正規化後の `scope_map` を引いて**行う (1.3 step 4 の nit 分岐が measured lookup より先に評価される)。理由: `measured_map` は正規化**前**の原ファイル (`{review_source_path}`) から構築されるのに対し `scope_map` は `review-findings-maps.sh` の正規化 (auto_demote_low / invariant #5 auto-correct) **後** tempfile 由来のため、登録条件に原ファイルの scope を使うと 2 つの map が別 scope を見て「auto-demote された finding の二重計上 (finalize 等式破綻)」と「auto-correct された finding の未登録 = 未判定扱いによるゲート bypass」の両方向に破綻する。**なお本破綻シナリオが実際に成立するのは write 側が `verification` を出力し JSON 経路に `false` が入るようになった後** (現配線では正規化が走る JSON 経路に `false` が 1 件も入らず、`false` が入る Markdown / 会話経路には正規化ステップが無い)。規則自体は fail-safe として無害なため先行して固定しておく。
@@ -1594,7 +1594,7 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
    - (c) **同一 key の衝突は `true` (blocking) 優先** — false で上書きしない (blocking-biased fail-safe: 複数 reviewer が同一 file:line を指摘し一方のみ実測付きの場合、実測済み blocking 指摘の silent skip を防ぐ)。
    - (d) **3 値を潰さない** — 登録するのは「実測の有無を判定できた finding」のみ。判定する構造が無い finding (外部ツール / 人間レビュー由来、および JSON に `verification` が無い finding) は**未登録のまま残す** (= 未判定)。未判定を `false` に畳んではならない (実測必須ゲートの対象外 = 従来どおり blocking。SoT は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) の「適用範囲 (measured は 3 値)」)。
 
-   件数 `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数** (正規化後 scope による nit 除外 — `acknowledged_nit_count` との二重計上を参照時に遮断) として導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件と同一フィルタのため分類数とは常に一致する)。セクション不在時は当該登録なし (`non_blocking_count = 0`)。**経路間で値は一致しない**: `/rite:pr-review` ステップ 6.1.a が `findings[]` から `non_blocking_findings` を除外する契約のため、JSON 経路 (Priority 0/2/3) では `measured_map` に `false` が 1 件も入らず `non_blocking_count` は常に 0 になる。N 件が入るのは `### 実測なし指摘 (non-blocking)` section を読める Markdown / 会話経路のみ。write 側が `verification` を出力し 6.1.a の除外契約が見直された後に、全経路一致が成立する。
+   件数 `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数** (正規化後 scope による nit 除外 — `acknowledged_nit_count` との二重計上を参照時に遮断) として導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件と同一フィルタ。ただし step 4 の**出自確認で External review へ振り替えた key は分類数から外れる**ため、その分だけ「分類数 < カウント」になる — 振り替え分は導出時に減算すること)。セクション不在時は当該登録なし (`non_blocking_count = 0`)。**経路間で値は一致しない**: `/rite:pr-review` ステップ 6.1.a が `findings[]` から `non_blocking_findings` を除外する契約のため、JSON 経路 (Priority 0/2/3) では `measured_map` に `false` が 1 件も入らず `non_blocking_count` は常に 0 になる。N 件が入るのは `### 実測なし指摘 (non-blocking)` section を読める Markdown / 会話経路のみ。write 側が `verification` を出力し 6.1.a の除外契約が見直された後に、全経路一致が成立する。
 
 **Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW). The `scope` column is consumed downstream by `/rite:fix` ステップ 2 (nit-noted 受け流し経路) to determine acknowledge vs. fix-required handling.
 
@@ -1616,7 +1616,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 | **Needs fix** | severity ∈ {MEDIUM, LOW-MEDIUM, LOW} AND scope ∈ {current-pr, follow-up} AND measured ∈ {true, 未判定} | Must fix in this PR (action required) |
 | **nit (認知のみ)** | scope == "nit-noted" | Reply-only via ステップ 2.4 `nit-noted-reply`; NOT a fix target |
 | **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (`measured_map` に明示的に `false` で登録されたもののみ — 経路別判定は下記 measured lookup 参照) | 表示のみ; NOT a fix target (実測必須ゲート — 記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う) |
-| **External review** | severity_map に登録されていない未対応コメント (人間レビュアーの指摘等)。実測必須ゲートの**対象外** — `Verification:` アンカーを構造的に持てないため measured 未判定でも non-blocking に落とさない | Action required |
+| **External review** | severity_map に登録されていない未対応コメント (人間レビュアーの指摘等)、**および step 4 の出自確認で rite finding 由来と確認できなかった thread** (severity_map 登録済みでも本分類へ振り替える)。実測必須ゲートの**対象外** — `Verification:` アンカーを構造的に持てないため measured 未判定でも non-blocking に落とさない | Action required |
 | **Resolved** | Resolved threads | - |
 
 **Classification logic:**
@@ -1638,8 +1638,8 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {CRITICAL, HIGH} -> Required fix
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
 
-   **step 4 は severity_map 登録済み finding の終端**: 本 step で分類が確定した finding を step 5 (External review) へ落としてはならない。外部ツール / best-effort parse 由来で severity_map に**登録済み**の finding (Confidence override 取込分を含む) は `measured_map` 未登録 = 未判定として上記 2 分岐に入り Required fix / Needs fix になる (blocking という結論は External review と同じで、二重計上のみを避ける)。step 5 の対象は severity_map に**登録されていない**未対応コメントに限る。
-5. Unresolved comments not in `severity_map` -> External review (Action required = blocking)
+   **step 4 は severity_map 登録済み finding の終端 (1 例外あり)**: 本 step で分類が確定した finding を step 5 (External review) へ落としてはならない。外部ツール / best-effort parse 由来で severity_map に**登録済み**の finding (Confidence override 取込分を含む) は `measured_map` 未登録 = 未判定として上記 2 分岐に入り Required fix / Needs fix になる (blocking という結論は External review と同じで、二重計上のみを避ける)。**唯一の例外は measured lookup の出自確認**で、`measured_map[key] == false` かつ thread が rite finding 由来と確認できない場合のみ step 5 へ振り替える (下記 MUST 参照)。step 5 の対象は severity_map に**登録されていない**未対応コメント、および本例外で振り替えられた thread。
+5. Unresolved comments not in `severity_map`、**または step 4 の出自確認で振り替えられた thread** -> External review (Action required = blocking)
 
 
 **Mapping method with `severity_map`:**
@@ -1703,7 +1703,7 @@ PR #{number} のレビューコメント
      ステップ 1.2.1 step 6 共通規則 (a) の参照時除外 (正規化後 scope_map) で本カウントに含まれず、acknowledged_nit_count と二重計上しない。
      JSON 経路は pr-review ステップ 6.1.a の除外契約により非実測 finding を受け取らないため常に 0、
      Markdown / 会話経路は ステップ 1.2.1 step 6 のセクション別登録から N 件を数える (経路間で値は一致しない — step 6 共通規則の注記参照)。
-     ステップ 1.3 の non-blocking 分類条件 (scope ∈ {current-pr, follow-up}) と同一フィルタのため分類数とも一致する。
+     ステップ 1.3 の non-blocking 分類条件 (scope ∈ {current-pr, follow-up}) と同一フィルタ。step 4 の出自確認で External review へ振り替えた key は減算する。
      外部ツール / best-effort parse 経路、および verification を持たない JSON の finding は measured_map 未登録 = 未判定のため
      本カウント対象外 = blocking のまま)。
      ステップ 4.6 completion report の同名 placeholder と同一値で、「対応した指摘」計算式にも算入される。
@@ -3269,9 +3269,9 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 
 | Field | Description | Calculation |
 |-------|-------------|-------------|
-| `全指摘: {total_count}件` | Total number of findings | ステップ 1 で取得した finding 数 (**`non_blocking_findings` を含む**)。母集団 = **severity_map ∪ ステップ 1.3 fallback (GitHub state ベース) で分類された未対応コメント** — rite レビュー結果を読めた経路では `total_count = |severity_map|`、severity_map が空の fallback 経路 (手動レビューのみ / pr-review 未実行) では fallback 分類の件数を用いる。4.6 の `対応した指摘` 式と同一母集団であることが finalize 条件 `全指摘 == 対応指摘` の前提。なお pr-review 側の `total_findings` (blocking 集合のみの件数 — assessment-rules.md §5.3.3) とは**別概念** |
-| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count` (nit-noted reply 投稿と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する) |
-| `non-blocking (実測なし): {non_blocking_count}件` | Number of findings classified as non-blocking by the measured gate | **measured_map の false のうち `scope_map[key] != "nit-noted"` の件数** (単一定義 — ステップ 1.2.1 step 6 / 1.4 表示テンプレートと同一。nit-noted は正規化後 scope_map による参照時除外で含まれず `acknowledged_nit_count` と二重計上しない。ステップ 1.3 の non-blocking 分類条件と同一フィルタのため分類数とも一致)。fix commit / reply の対象外だが「対応済み」に算入する (記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)。0 件でも常時表示 |
+| `全指摘: {total_count}件` | Total number of findings | ステップ 1 で取得した finding 数 (**Markdown / 会話経路では `non_blocking_findings` を含む。JSON 経路は pr-review ステップ 6.1.a の除外契約により `findings[]` のみを読むため含まない** — ステップ 1.2.1 step 6 の「経路間で値は一致しない」注記と同一の非対称)。母集団 = **severity_map ∪ ステップ 1.3 fallback (GitHub state ベース) で分類された未対応コメント** — rite レビュー結果を読めた経路では `total_count = |severity_map|`、severity_map が空の fallback 経路 (手動レビューのみ / pr-review 未実行) では fallback 分類の件数を用いる。4.6 の `対応した指摘` 式と同一母集団であることが finalize 条件 `全指摘 == 対応指摘` の前提。なお pr-review 側の `total_findings` (blocking 集合のみの件数 — assessment-rules.md §5.3.3) とは**別概念** |
+| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count` (nit-noted reply 投稿と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `skip_count` は ステップ 2.1 でユーザーが「スキップ」を選んだ finding のみを数え、**non-blocking 分類による ステップ 2.1 skip は含めない** (そちらは `non_blocking_count` が受け持つ)。`acknowledged_nit_count` との排他も同様 (nit-noted は scope による分類で、non-blocking は measured による分類) |
+| `non-blocking (実測なし): {non_blocking_count}件` | Number of findings classified as non-blocking by the measured gate | **measured_map の false のうち `scope_map[key] != "nit-noted"` の件数** (単一定義 — ステップ 1.2.1 step 6 / 1.4 表示テンプレートと同一。nit-noted は正規化後 scope_map による参照時除外で含まれず `acknowledged_nit_count` と二重計上しない。ステップ 1.3 の non-blocking 分類条件と同一フィルタ。step 4 の出自確認で振り替えた key は減算する)。fix commit / reply の対象外だが「対応済み」に算入する (記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)。0 件でも常時表示 |
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | ステップ 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
 
