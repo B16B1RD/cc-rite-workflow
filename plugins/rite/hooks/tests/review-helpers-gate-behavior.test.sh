@@ -483,12 +483,16 @@ printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | cur
 NBR_EMPTY_BODY="$TMP_ROOT/nbr-empty.md"
 : > "$NBR_EMPTY_BODY"
 
-# lookup fixture: id=11 が 1 行目 marker を持つ本物の記録コメント。id=12 は marker 文字列を
-# **本文中に引用しただけ**の別コメント (人間の Quote reply 相当) で、`contains` 述語なら
-# `last` に選ばれて PATCH 破壊を起こす。前方一致 (startswith) が id=11 を選ぶことを固定する。
+# lookup fixture: id=11 と id=13 が 1 行目 marker を持つ本物の記録コメント (id=13 が自 login の最新)。
+# id=12 は marker 文字列を **本文中に引用しただけ**の別コメント (人間の Quote reply 相当) で、
+# `contains` 述語なら (startswith では拾えないが) マッチしうる。id=99 は第三者 author による
+# marker 投稿。両デコイを対象コメント id=13 より **後ろ**に置くことで、`last` の選択がデコイに
+# よって上書きされるかどうかを実際に検出できるようにする (デコイを id=13 より前に置くと、
+# 述語が壊れても位置的に id=13 が最後のままになり検出が vacuous になる)。
+# 前方一致 (startswith) + author 一致が id=13 を選ぶことを固定する。
 NBR_COMMENTS="$TMP_ROOT/nbr-comments.json"
 cat > "$NBR_COMMENTS" <<'EOF'
-[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)"}]]
+[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt"}]]
 EOF
 NBR_EMPTY_COMMENTS="$TMP_ROOT/nbr-empty-comments.json"
 echo '[[]]' > "$NBR_EMPTY_COMMENTS"
@@ -806,9 +810,20 @@ else
   # 到達性 assertion を件数 pin の内側に入れない。gate すると件数 pin が落ちたとき到達性側が
   # 無言で実行されず、総 assertion 数だけが減る (赤にはなるが「何本走ったか」が変わる)。
   # 前提が崩れているときは fail で 1 本計上し、集計を安定させる。
+  # 窓幅ベースの opener 計数 (直前 N 行に ```bash が 1 個あるか) はやめ、ファイル先頭から
+  # fence の開閉状態を逐次追跡して「呼び出し行の時点で実際に fence が開いているか」を直接判定する。
+  # 窓幅方式は (a) 閉じ fence を呼び出し行の直前へ移動する死に分岐化 (呼び出しは fence 外の
+  # 散文になるが、直前 10 行に opener が 1 個残るため見逃す)、(b) fence 内に無害なコメントを
+  # 数行足すだけで opener が窓の外に押し出され偽陽性 FAIL になる、の両方向で不正確だった。
   if [ "$nbr_invoke_count" = "1" ]; then
-    fence_head=$(sed -n "$(( nbr_invoke_line > 10 ? nbr_invoke_line - 10 : 1 )),$(( nbr_invoke_line - 1 ))p" "$REVIEW_MD" | grep -cE '^[[:space:]]*```bash$' || true)
-    assert "TC-5a 呼び出しが live な bash fence 内にある (到達性)" "1" "$fence_head"
+    in_fence=$(awk -v n="$nbr_invoke_line" '
+      NR < n {
+        if ($0 ~ /^[[:space:]]*```bash$/) { f = 1 }
+        else if ($0 ~ /^[[:space:]]*```[[:space:]]*$/) { f = 0 }
+      }
+      NR == n { print f + 0 }
+    ' "$REVIEW_MD")
+    assert "TC-5a 呼び出しが live な bash fence 内にある (到達性)" "1" "$in_fence"
   else
     fail "TC-5a 呼び出しが live な bash fence 内にある (到達性) — 呼び出し行を特定できず評価不能"
   fi
@@ -856,25 +871,30 @@ else
   s81=$(grep -n '^### 8\.1 ' "$REVIEW_MD" | head -1 | cut -d: -f1)
   if [ -n "$s801" ] && [ -n "$s81" ] && [ "$s801" -lt "$s81" ]; then
     _gate_section=$(sed -n "${s801},$(( s81 - 1 ))p" "$REVIEW_MD")
-    # 【層 1 / 構造 denylist】区間内の **表の行** (`^|`) が終端 `ステップ 8.1` を名指ししないこと。
-    # 判定材料が「表の行である」ことと節番号リテラルだけなので、行の文面が和文でも英文でも効く。
-    # 散文中の言及 (例: 「いずれもステップ 8.1 result emit の前に発火する」) は表の行ではないため
-    # 対象外で、正当な cross-reference を壊さない。
-    _rows_naming_terminal=$(printf '%s\n' "$_gate_section" | grep -cE '^\|.*ステップ 8\.1' || true)
-    assert "TC-5e 8.0.x の表の行が終端 (ステップ 8.1) を名指ししない" "0" "$_rows_naming_terminal"
-    # 【層 2 / 表記 allowlist】英文 pass 行が「次の gate へ」規約文言を持つこと。層 1 が「終端を
-    # 名指ししない」しか見ないのに対し、こちらは「次の gate を正しく指す」正の契約を固定する。
-    # ただし行の抽出自体が英語リテラル `Gate passes` 依存であり、和文で書かれた pass 行は分子・分母
-    # 双方から落ちてこの assertion をすり抜ける。その穴は層 1 が言語非依存に塞ぐ。
-    _pass_rows=$(printf '%s\n' "$_gate_section" | grep -cF 'Gate passes' || true)
-    _conforming=$(printf '%s\n' "$_gate_section" | grep -cF 'next gate in the 8.0 evaluation order' || true)
-    # 各 gate が最低 1 本の pass 行を持つこと (0 になったら区間抽出そのものが壊れている)
-    if [ "$_pass_rows" -ge 3 ] 2>/dev/null; then
-      pass "TC-5e 8.0.x に pass 行が 3 本以上ある ($_pass_rows 本)"
+    # 【層 1 / 構造 denylist】区間内の **表の行** (`^|`) が終端 8.1 を (「ステップ」接頭辞の有無に
+    # 関わらず) 名指ししないこと。旧版は `ステップ 8\.1` のリテラルにのみ係留していたため、
+    # 「ステップ」を欠いた bare `8.1` へ言い換えるだけで検出をすり抜けた。`[^0-9.]8\.1` 相当
+    # (直前が数字/ドットでない `8.1`) へ広げることで表記揺れを吸収する。散文中の言及
+    # (例: 「いずれもステップ 8.1 result emit の前に発火する」) は表の行ではないため対象外で、
+    # 正当な cross-reference を壊さない。
+    _rows_naming_terminal=$(printf '%s\n' "$_gate_section" | grep -cE '^\|.*[^0-9.]8\.1([^0-9]|$)' || true)
+    assert "TC-5e 8.0.x の表の行が終端 (8.1) を名指ししない" "0" "$_rows_naming_terminal"
+    # 【層 2 / 言語非依存 allowlist】区間内の全データ行 (`^|` かつヘッダー/セパレータ行を除く) が
+    # 「the next gate in the 8.0 evaluation order」/ `**ERROR**` / 「legitimately skipped」の
+    # いずれかを含むこと。旧版は判定対象を英語リテラル `Gate passes` を含む行に絞り込んでから
+    # 「次の gate へ」規約文言の有無を数えていたため、和文だけで書かれた pass 行はそもそも
+    # 分子・分母の対象から漏れて素通りした (F-04 と同型の実退行を検出できない穴)。全データ行を
+    # 対象にした「含む/含まない」の 2 値判定に変えることで、対象そのものが漏れる経路を塞ぐ。
+    _data_rows=$(printf '%s\n' "$_gate_section" | grep -E '^\|' | grep -vE '^\|[[:space:]]*(Condition|-+)')
+    _data_row_count=$(printf '%s\n' "$_data_rows" | grep -c . || true)
+    _conforming=$(printf '%s\n' "$_data_rows" | grep -cE 'next gate in the 8\.0 evaluation order|\*\*ERROR\*\*|legitimately skipped' || true)
+    # 各 gate が最低 1 本のデータ行を持つこと (0 になったら区間抽出そのものが壊れている)
+    if [ "$_data_row_count" -ge 3 ] 2>/dev/null; then
+      pass "TC-5e 8.0.x にデータ行が 3 本以上ある ($_data_row_count 本)"
     else
-      fail "TC-5e 8.0.x の pass 行が 3 本未満 ($_pass_rows) — 区間抽出か gate 定義の drift"
+      fail "TC-5e 8.0.x のデータ行が 3 本未満 ($_data_row_count) — 区間抽出か gate 定義の drift"
     fi
-    assert "TC-5e 英文 pass 行がすべて「次の gate へ」規約文言を含む" "$_pass_rows" "$_conforming"
+    assert "TC-5e 全データ行が言語非依存の許容フレーズ (次 gate へ/ERROR/legitimately skipped) を含む" "$_data_row_count" "$_conforming"
   else
     fail "TC-5e 8.0.1 / 8.1 の見出しが見つからない (s801=$s801 s81=$s81)"
   fi
