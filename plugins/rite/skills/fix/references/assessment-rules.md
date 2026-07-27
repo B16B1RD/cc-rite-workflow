@@ -83,6 +83,8 @@ These categories inherit [Hypothetical Exception Categories](../../../references
 
 ```
 For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, follow-up}:
+  # match subject は当該 finding の **内容セルの文字列単体** (行全体でも表全体でもない)。
+  # 後続セル・次行・次 finding の文字は subject に含めない。
   if finding's 内容 column matches the full Anchor detection regex below
      (`Verification: repro|failing_test <LHS> => <RHS>`、_reviewer-base.md §Verification: runtime 実測の添付 で定義。
       LHS/RHS とも cell separator `|` と `<br>` を跨がず、RHS は非空):
@@ -119,10 +121,10 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
 ```
-(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[[:space:]]*(?!<br)[^|[:space:]]
+(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[ \t]*(?!<br)[^|[:space:]]
 ```
 
-LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。**この制約は authoring 側 SoT (`_reviewer-base.md` §Verification の Rules / `reviewer-prompt-generator.md` の記入例) にも明記済み** — detection 側にだけ書くと、reviewer が最も自然に書くパイプ入り repro が no-match で降格する。マッチしない場合は安全側 (non-blocking 降格) に倒れるが、**無音では倒れない** — アンカー文字列があるのに no-match だったケースは上記 **WARNING emit** 節の 2 段判定で必ず報告される (正常系 = アンカー文字列なし のみが無音)。
+**match subject は疑似コードと同じく `内容` セルの文字列単体**であり、後続セル・次行を含めない (subject 定義がずれると同じアンカーが配置次第で逆判定になる)。LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。`=>` 直後を `[ \t]*` (水平空白のみ) に狭めているのも同じ理由で、subject を誤って行/レポート単位に取った場合でも RHS 検査が改行を跨がず、`=>` 右辺空アンカーが次行の文字を RHS と誤認して false-pass することを防ぐ (二重の防御)。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。**この制約は authoring 側 SoT (`_reviewer-base.md` §Verification の Rules / `reviewer-prompt-generator.md` の記入例) にも明記済み** — detection 側にだけ書くと、reviewer が最も自然に書くパイプ入り repro が no-match で降格する。マッチしない場合は安全側 (non-blocking 降格) に倒れるが、**無音では倒れない** — アンカー文字列があるのに no-match だったケースは上記 **WARNING emit** 節の 2 段判定で必ず報告される (正常系 = アンカー文字列なし のみが無音)。
 
 **non_blocking_findings の扱い**:
 
@@ -150,9 +152,13 @@ When executed standalone (outside a loop), the same rules apply: scope ∈ {curr
 
 ## 5.3.3 Assessment Logic
 
-Use **only findings with `scope ∈ {current-pr, follow-up}` and `measured == true`** for determination (nit-noted findings are excluded per §5.3.1 nit-noted exclusion; non-measured findings are excluded per §5.3.0.M 実測必須ゲート)。Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (blocking findings exist) | 0 blocking findings (nit-noted / non-measured のみ残存可) → Merge OK.
+Use **only findings remaining in the post-5.3.0.M `全指摘事項` with `scope ∈ {current-pr, follow-up}`** for determination (nit-noted findings are excluded per §5.3.1 nit-noted exclusion; non-measured findings are excluded per §5.3.0.M 実測必須ゲート)。Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (blocking findings exist) | 0 blocking findings (nit-noted / non-measured のみ残存可) → Merge OK.
 
-**`total_findings` definition**: `total_findings = count(findings where scope ∈ {current-pr, follow-up} and verification.measured == true)`. `acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。`non_blocking_count = count(non_blocking_findings)` (5.3.0.M で分類) も独立 metric で、5.3.5 サマリと 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section に使う (`overall_assessment` 評価には使われない)。
+**`total_findings` definition**: `total_findings = |post-5.3.0.M の 全指摘事項 ∩ {scope ∈ {current-pr, follow-up}}|` — すなわち §5.3.0.M の `Verification:` アンカー検出で measured=true と判定され `全指摘事項` に残った finding の件数。
+
+> **判定媒体に注意**: 本判定が走る `/rite:pr-review` ステップ 5.3 の時点では レビュー結果 JSON はまだ生成されていない (生成は ステップ 6.1.a) ため、`findings[].verification.measured` フィールドは**存在しない**。5.3.3 が評価できるのは 5.3.0.M が `内容` 列のアンカーから機械的に決めた集合だけである。`verification.measured == true` は同一述語を **JSON 側でエンコードした形**であり、`/rite:fix` が JSON を読むときの表現 (fix/SKILL.md ステップ 1.3 measured lookup)。両者を取り違えて 5.3.3 で存在しないフィールドを評価すると `total_findings` が壊れる。
+
+`acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。`non_blocking_count = count(non_blocking_findings)` (5.3.0.M で分類) も独立 metric で、5.3.5 サマリと 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section に使う (`overall_assessment` 評価には使われない)。
 
 ## 5.3.5 Output Format at Assessment Decision Time
 
@@ -204,7 +210,7 @@ When `review_mode == "verification"`, output the following in addition to the ab
 - リグレッション: {regression_count} 件
 ```
 
-**Important**: Any **blocking** findings (`verification.measured == true` × `scope ∈ {current-pr, follow-up}`) → cannot merge → `/rite:iterate` loop continues. "Merge OK" = 0 blocking findings (nit-noted / non-measured のみの残存は許容 — §5.3.3 と同一定義)。
+**Important**: Any **blocking** findings (§5.3.0.M のアンカー検出で measured=true と判定され `全指摘事項` に残ったもの × `scope ∈ {current-pr, follow-up}`) → cannot merge → `/rite:iterate` loop continues. "Merge OK" = 0 blocking findings (nit-noted / non-measured のみの残存は許容 — §5.3.3 と同一定義)。
 
 ## 5.3.6 Return Values to Caller (Important)
 
@@ -212,7 +218,7 @@ Return: total_findings (if >0, `/rite:fix` required), evaluation, review_mode.
 
 **Red important constraint:**
 
-The caller (`/rite:iterate` review-fix loop) **mechanically** invokes `/rite:fix` when `total_findings > 0` or `evaluation != "マージ可"`, **regardless of AI judgment**.
+The caller (`/rite:iterate` review-fix loop) **mechanically** invokes `/rite:fix` when `total_findings > 0` (= sentinel `[review:fix-needed:{n}]`), **regardless of AI judgment**. `evaluation` は人間可読ラベルであり caller の起動条件ではない — 両者が乖離するケース (下記) では `total_findings` が単独で routing を確定させる。
 
 **Routing の単一 SoT は sentinel (= `total_findings`)**: 上記 2 条件は通常同時に動くが、実測必須ゲート導入後は乖離しうる — verification post-condition escalation (`pr-review/SKILL.md` ステップ 5.1.1.1 Failure Procedure) が `evaluation` を `修正必要` に昇格させても、当該 reviewer の指摘が全て非実測なら `total_findings == 0` になる。この乖離時は **`total_findings` が routing を確定させ** `[review:mergeable]` を出力する (`[review:fix-needed:0]` への override は禁止 — `pr-review/SKILL.md` ステップ 8.1 の同注記が SoT)。`evaluation` は人間可読ラベルとして統合レポートに残り、escalation の効力は ステップ 5.1.1.1 step 4 の ERROR 出力と ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section が担う。override すると fix が対象 0 件で完了し、次 cycle も同状態のまま `safety.max_review_cycles` まで空転する。
 

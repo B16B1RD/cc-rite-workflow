@@ -182,7 +182,7 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 
 指摘に runtime 実測 (実際に走らせて観測した誤動作、または落ちるテスト) を伴う場合、`内容` 列に以下の machine-readable アンカーを添付する。形式は schema 側で固定されている — [review-result-schema.md §verification サブフィールド](../references/review-result-schema.md#verification-サブフィールド)。
 
-**本節は 4 つ目の掲載条件ではない。** 掲載可否は `## Observed Likelihood Gate` 配下の「Necessary conditions for inclusion in 指摘事項」が挙げる 3 ゲートだけが決める。本アンカーはそれと直交し、掲載が決まった指摘に実測の裏付けがあるかを記録する。
+**本節は 4 つ目の掲載条件ではない。** 掲載可否は `## Observed Likelihood Gate` 配下の「Necessary conditions for inclusion in 指摘事項」が挙げる 3 ゲートだけが決める。本アンカーはそれと直交するが、**merge を止めるか (blocking) を決める判定入力**である — `/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートが本アンカーを `内容` 列から直接読み、アンカーを持たない指摘を non-blocking に分類する ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
 
 **Machine-readable format**:
 
@@ -200,9 +200,9 @@ Verification: failing_test <テストパス> => <失敗出力>
 
 **Rules**:
 
-- **アンカーの有無は、指摘を報告してよいかどうかを変えない。** 実測できない懸念も、3 ゲートを満たすなら従来どおり報告する。本アンカーは「その指摘に実測の裏付けがあるか」を機械可読な形で残すためのもの。
-- **記録経路は後続で導入する。** `findings[].verification` へアンカーを写す手順は現時点の `pr-review.md` ステップ 6.1.a に存在しないため、いま書いたアンカーは reviewer 出力 (統合レポートの `内容` 列) にのみ残る。配線後は `measured` / `repro` / `failing_test` として保存される。
-- `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われる。
+- **アンカーの有無は、指摘を報告してよいかどうかを変えない。** 実測できない懸念も、3 ゲートを満たすなら従来どおり報告する。ただし**アンカー無しの指摘は merge を止めない** (non-blocking として ステップ 5.4 統合レポートの「実測なし指摘」section に記録され、人間レビューに委ねられる)。実測できるなら必ずアンカーを添えること。
+- **アンカーは判定入力として消費される。** `/rite:pr-review` ステップ 5.3.0.M が reviewer 出力 (統合レポートの `内容` 列) のアンカーを直接読み、blocking / non-blocking を分類する。`findings[].verification` へ写す JSON 配線は現時点の `pr-review.md` ステップ 6.1.a に存在しないため、レビュー結果 JSON にはまだ `measured` / `repro` / `failing_test` として保存されない (配線は後続スコープ)。
+- `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われ、**non-blocking に分類される** (報告してはならないという意味ではない — 下記のとおり掲載可否は変わらない)。
 - `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は掲載可否 (Observed Likelihood Gate) を担い、`Verification:` は実測の記録を担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` の形式でも添付すること (両方を書く)。
 - 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
 - `=>` の右辺 (観測結果) を空にしない。実測結果を書けないなら、そもそもアンカーを付けずに報告する (アンカー無しは default mapping で `measured=false` になる)。**空 RHS を救う自動降格はない** — [invariant #6](../references/review-result-schema.md#cross-field-invariants-型レベルで表現しきれない制約) は配線後も、`repro` と `failing_test` を**両方とも空のまま** `measured: true` を宣言した場合しか降格しない。`repro` に `cmd =>` と書けば非空文字列として通る。

@@ -126,6 +126,8 @@ Reviewers in these categories MUST still record the Likelihood classification in
 
 All other reviewers MUST apply the matrix above and downgrade Hypothetical findings.
 
+> **本例外は Likelihood 軸のみに適用される**: 例外カテゴリで severity を維持できるのは「Hypothetical でも `全指摘事項` に残せる」ことまでで、**merge を止めるか (blocking) は [§実測必須ゲート](#実測必須ゲート-measured-confirmed-gate) が別途決める**。実測 (`Verification:` アンカー) を伴わない例外カテゴリ指摘は severity を維持したまま non-blocking に分類され、ステップ 5.4 統合レポートの「実測なし指摘」section に記録されて draft PR の人間レビューに委ねられる。上の rationale 列の「観測を待つのは許容できないリスクモデル」は severity 判定の根拠であり、blocking 判定の根拠ではない。
+
 > **Note — 3 ゲート運用への forward-pointer**: 指摘事項化の必要条件は impact + likelihood の 2 軸に加えて **revert test を含む 3 ゲート** を同時充足することが求められます。revert test の運用手順は [`agents/_reviewer-base.md` "Necessary conditions for inclusion in 指摘事項"](../agents/_reviewer-base.md#necessary-conditions-for-inclusion-in-指摘事項) を参照してください。本ファイル (severity-levels.md) は impact + likelihood の 2 軸定義に特化しており、revert test の定義は意図的に `_reviewer-base.md` に集約されています。
 
 ## 実測必須ゲート (Measured CONFIRMED Gate)
