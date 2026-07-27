@@ -23,14 +23,14 @@
 # 契約 (pr-review.md ステップ 6.1.d と verbatim 一致):
 #   - **単一 invocation**: 既存コメント lookup → skip 判定 → PATCH / create を 1 プロセスに閉じる。
 #     lookup だけ実行して記録を skip した状態が構造的に存在しえないため、terminal sentinel の
-#     存在 = 「記録経路が終端まで走った」を意味する (Issue #2034 F-02: 動作前 marker を gate の
-#     入力にしてはならない)。caller は existing_comment_id を受け渡さない。
+#     存在 = 「記録経路が終端まで走った」を意味する (動作前 marker を gate の入力にしてはならない)。
+#     caller は existing_comment_id を受け渡さない。
 #   - **terminal sentinel は 1 種のみ**: EXIT trap が
 #       [CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=N; outcome=<...>; count=K; iteration_id=ID; comment_id=<id|空>; degraded=<0|1>
 #     を stderr に emit する。outcome は created / updated / skipped / failed / aborted。
 #     `aborted` は trap の初期値で、判定に到達する前に落ちた場合にのみ残る (早期 exit が
-#     success を騙れない構造)。個別の RECORDED / CLEAR_SKIPPED marker は持たない (consumer ゼロの
-#     marker を作らない — F-02)。
+#     success を騙れない構造)。個別の RECORDED / CLEAR_SKIPPED marker は持たない (consumer が
+#     いない marker を作らないため)。
 #   - **非ブロッキング (AC-3)**: gh / jq / IO の失敗は WARNING + `[CONTEXT] NONBLOCKING_RECORD_FAILED=1;
 #     reason=...` を emit して **exit 0**。overall_assessment / result pattern に一切影響しない。
 #     例外は placeholder residue 系 gate (skill 定義のバグ) で、loud に exit 1 する。
@@ -77,7 +77,9 @@ while [[ $# -gt 0 ]]; do
     --count)        NB_COUNT="${2:-}"; shift; shift ;;
     --iteration-id) ITERATION_ID="${2:-}"; shift; shift ;;
     --content-file) CONTENT_FILE="${2:-}"; shift; shift ;;
-    *) echo "ERROR: review-nonblocking-record: unknown option: $1" >&2; exit 1 ;;
+    # 値の verbatim echo は禁止 (下記 iteration_id gate と同根)。本分岐は trap 設置**前**のため
+    # real sentinel が 1 本も出ず、偽 sentinel が唯一の sentinel になりうる。
+    *) echo "ERROR: review-nonblocking-record: unknown option: $(printf '%s' "$1" | neutralize_ctrl)" >&2; exit 1 ;;
   esac
 done
 
@@ -162,17 +164,21 @@ outcome="aborted"
 existing_id=""
 lookup_degraded=0
 gh_err=""
+# signal trap は emit 後に exit するため EXIT trap が再入する。兄弟 review-result-save.sh と同じ
+# 冪等ガードを置き、terminal sentinel が 1 回だけ出ることを保証する。
+_terminal_emitted="false"
 _rite_p61d_cleanup() {
   rm -f "${gh_err:-}"
 }
-# 記録できなかったときの共通案内。3 つの失敗 reason (body_file_empty / body_marker_missing /
-# patch_failed / create_failed) すべてから呼べるよう trap 定義直後に置く (兄弟 helper と同じく
-# 関数定義を trap ブロックへ集約する規約)。
+# 記録できなかったときの共通案内。非ブロッキングな失敗 reason (body_file_empty /
+# body_marker_missing / patch_failed / create_failed) のすべてから呼べるよう trap 定義直後に置く。
 _record_failure_hint() {
   echo "  対処: gh auth status / network 接続 / PR #${PR_NUMBER} への write 権限を確認し、レビューをやり直してください" >&2
   echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
 }
 _rite_p61d_emit_terminal() {
+  [ "$_terminal_emitted" = "true" ] && return 0
+  _terminal_emitted="true"
   echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=$PR_NUMBER; outcome=$outcome; count=$NB_COUNT; iteration_id=$ITERATION_ID; comment_id=$existing_id; degraded=$lookup_degraded" >&2
 }
 trap 'rc=$?; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit $rc' EXIT
@@ -190,9 +196,11 @@ gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 # **author 条件は必須**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで
 # `last` がそれを掴み PATCH 先を奪われる (書込権限があれば他人のコメントを破壊、無ければ 403 で
 # 記録が恒久的に失われる)。自分の login と一致する投稿のみを対象にする。
-gh_login=$(gh api user --jq '.login' 2>/dev/null) || gh_login=""
+gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || gh_login=""
 if [ -z "$gh_login" ]; then
   echo "WARNING: gh api user による自 login の取得に失敗しました。既存コメントを特定できないため存在不明として扱います" >&2
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  _record_failure_hint
   existing_id=""
   lookup_degraded=1
 elif existing_id=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
@@ -217,7 +225,7 @@ if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ]; then
 fi
 
 if [ ! -s "$CONTENT_FILE" ]; then
-  echo "WARNING: 非実測記録の本文ファイルが空です ($CONTENT_FILE)。投稿を中止します (既存コメントの marker 破壊を防ぐ)" >&2
+  echo "WARNING: 非実測記録の本文ファイルが空です ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します (既存コメントの marker 破壊を防ぐ)" >&2
   _record_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_file_empty" >&2
   outcome="failed"
@@ -230,7 +238,7 @@ fi
 case "$(head -n 1 "$CONTENT_FILE")" in
   "$MARKER"*) ;;
   *)
-    echo "WARNING: 非実測記録の本文 1 行目が marker 見出しで始まっていません ($CONTENT_FILE)。投稿を中止します" >&2
+    echo "WARNING: 非実測記録の本文 1 行目が marker 見出しで始まっていません ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します" >&2
     echo "  期待: 1 行目が '$MARKER' で始まること (SKILL.md ステップ 6.1.d step 1 の variant A / B)" >&2
     _record_failure_hint
     echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_marker_missing" >&2
@@ -241,38 +249,40 @@ esac
 
 gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
   review-nonblocking-record p61d-gh-err "gh 失敗時の stderr 詳細が表示されません") || gh_err=""
+
+# PATCH / create の失敗診断は差分が label と reason の 2 語だけなので 1 関数に寄せる
+# (片側にだけ診断を足す drift を構造的に防ぐ。関数定義を trap ブロック側へ集約する点は
+# _record_failure_hint と同じ)。
+_record_gh_failure() {  # $1=label $2=reason $3=rc
+  echo "WARNING: 非実測指摘の PR コメント$1 に失敗しました (gh rc=$3)" >&2
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  _record_failure_hint
+  # signal 終了 (rc>=128) を retained flag に併記する (兄弟 review-comment-post.sh と対称)
+  if [ "$3" -ge 128 ]; then
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=$2; rc=$3; signal=$(($3 - 128))" >&2
+  else
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=$2; rc=$3" >&2
+  fi
+  outcome="failed"
+}
+
 if [ -n "$existing_id" ]; then
-  if gh api --method PATCH "repos/$OWNER_REPO/issues/comments/$existing_id" \
-       --field body=@"$CONTENT_FILE" >/dev/null 2>"${gh_err:-/dev/null}"; then
+  # 本文の受け渡しは gh-cli-patterns.md §"For comment update (gh api PATCH)" の正規形に従う
+  # (jq --rawfile で JSON を組み --input - へ渡す)。subshell で pipefail を局所化し、jq 段の
+  # 失敗も rc に伝播させる (issue-comment-wm-sync.sh と同型)。
+  if ( set -o pipefail
+       jq -n --rawfile body "$CONTENT_FILE" '{"body": $body}' \
+         | gh api "repos/$OWNER_REPO/issues/comments/$existing_id" -X PATCH --input - >/dev/null ) 2>"${gh_err:-/dev/null}"; then
     outcome="updated"
   else
-    gh_rc=$?
-    echo "WARNING: 非実測指摘の PR コメント更新 (PATCH) に失敗しました (gh rc=$gh_rc)" >&2
-    [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    _record_failure_hint
-    # signal 終了 (rc>=128) を retained flag に併記する (兄弟 review-comment-post.sh と対称)
-    if [ "$gh_rc" -ge 128 ]; then
-      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=patch_failed; rc=$gh_rc; signal=$((gh_rc - 128))" >&2
-    else
-      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=patch_failed; rc=$gh_rc" >&2
-    fi
-    outcome="failed"
+    _record_gh_failure "更新 (PATCH)" patch_failed "$?"
   fi
 else
   # ここに来るのは count > 0 のときのみ (0 件 ∧ 既存なしは上で skip 済)。
   if gh pr comment "$PR_NUMBER" -R "$OWNER_REPO" --body-file "$CONTENT_FILE" >/dev/null 2>"${gh_err:-/dev/null}"; then
     outcome="created"
   else
-    gh_rc=$?
-    echo "WARNING: 非実測指摘の PR コメント記録 (新規作成) に失敗しました (gh rc=$gh_rc)" >&2
-    [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    _record_failure_hint
-    if [ "$gh_rc" -ge 128 ]; then
-      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=create_failed; rc=$gh_rc; signal=$((gh_rc - 128))" >&2
-    else
-      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=create_failed; rc=$gh_rc" >&2
-    fi
-    outcome="failed"
+    _record_gh_failure "記録 (新規作成)" create_failed "$?"
   fi
 fi
 

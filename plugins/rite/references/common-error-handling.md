@@ -79,6 +79,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 **適用箇所**:
 - `/rite:pr-review` ステップ 6.1.a (Local JSON File Save)
+- `/rite:pr-review` ステップ 6.1.d (非実測指摘の PR コメント記録 — 本文不備 / gh / IO 失敗のみ非ブロッキング。placeholder residue 5 種と `content_file_missing` は caller 契約違反として `exit 1`)
 - `/rite:cleanup` ステップ 6 (Review Results File Cleanup、旧 Phase 2.5)
 - 将来追加される sub-phase で「失敗しても upstream を kill しない」契約が必要なものは本セクションを参照すること
 
