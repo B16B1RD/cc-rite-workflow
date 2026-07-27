@@ -200,7 +200,9 @@
 
 <a id="後方互換性-schema-10--110"></a>
 
-1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、以下の default mapping を適用する。
+1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 2 節 (`scope` / `pre_existing`) の default mapping を適用する。
+
+**`verification` の default mapping のみ schema_version に依らず適用される** — `verification` は 1.1.0 内で additive 追加されたため 1.1.0 JSON でも欠落しうる ([Schema Version](#schema-version-sot) 参照)。schema_version で gate してはならない。
 
 ### scope の default mapping
 
@@ -258,7 +260,7 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 
 **Priority 3 (PR コメント Raw JSON) には型ガードを置かない**: P0/P2 との違いは「その経路が `verification` を参照するか」ではなく (前述のとおり現時点ではどの read 経路も参照しない)、**入力が永続ファイルかどうか**にある。P3 の入力は PR コメント本文で、`.corrupt-{epoch}` rename に相当する退避経路を持たず、reject すると legacy Markdown parser への fallthrough による情報損失のほうが大きい。`verification` を持つ Raw JSON は P3 でも従来どおり受理される。
 
-**P3 にガードを追加すべきトリガ** (上記の基準と同じ軸で 2 条件に分解する): (a) P3 の入力が永続ファイル化した場合 (退避経路を持てるようになるため P0/P2 と同じ扱いに揃う)、または (b) P3 の parse 経路自身が `.verification` を評価する式を持った場合 (その式が型崩れで rc=5 になるため、前段で弾く実益が生じる)。いずれかが成立した時点で本節の判定式を P0/P2 と同形で追加すること。
+**P3 にガードを追加すべきトリガ** (2 つの独立した軸で判定する): (a) P3 の入力が永続ファイル化した場合 (退避経路を持てるようになるため P0/P2 と同じ扱いに揃う)、または (b) P3 の parse 経路自身が `.verification` を評価する式を持った場合 (その式が型崩れで rc=5 になるため、前段で弾く実益が生じる)。いずれかが成立した時点で本節の判定式を P0/P2 と同形で追加すること。
 
 ### REVIEW_SOURCE_SCOPE_DEFAULTED emit
 
@@ -348,7 +350,7 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 |----------|-------|---------|-------------|
 | 0 | **明示的ファイル指定** | `--review-file <path>` 指定時 | 指定パスを読取。**6 種の失敗モード** (パス不在 / JSON 不正 / schema_version 不明 / `explicit_file_verification_type_invalid` (verification が object/null 以外、または measured が boolean/null 以外 — 型ガード) / `explicit_file_verification_guard_jq_failed` (型ガードの jq が rc>=2 で失敗) / `explicit_file_commit_sha_mismatch` (json commit_sha が HEAD と不一致、stale file protection)) のいずれでも Priority 1-3 にフォールスルーせず直接 Priority 4 (対話式 fallback) へ遷移 (ユーザーの明示意図を尊重) |
 | 1 | **会話コンテキスト** | 同一セッション内で `/rite:pr-review` が直前に実行されていれば、その結果を直接利用。**採用時は `[CONTEXT] REVIEW_SOURCE=conversation; pr_number={pr_number}` を stderr に emit する義務がある** (observability 義務、後段の provenance log に必要) | Claude が会話履歴に rite review 結果を見つけられなかった場合は次の Priority へ |
-| 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | **6 種の失敗モードいずれも** WARNING を出して **Priority 3 (PR コメント) に直接 routing** する: (a) `local_file_json_parse_failure` (`jq empty` で JSON syntax invalid、`.corrupt-{epoch}` rename あり)、(b) `local_file_schema_required_fields_missing` (parse 可能だが `schema_version` 非空文字列 / `pr_number` 数値型 / `findings[]` 配列型のいずれかが欠落、rename あり)、(c) `local_file_verification_type_invalid` (verification が object/null 以外、または measured が boolean/null 以外 — 型ガード、rename あり)、(d) `local_file_verification_guard_jq_failed` (型ガードの jq が rc>=2 で失敗 — **rename なし**。破損が未証明のため破壊的操作をしない)、(e) `local_file_schema_version_unknown` (schema_version 未知)、(f) `local_file_commit_sha_mismatch` (json commit_sha が現 HEAD と不一致、stale file protection)。古い timestamp ファイルには fallback しない |
+| 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | **6 種の失敗モードいずれも** WARNING を出して **Priority 3 (PR コメント) に直接 routing** する: (a) `local_file_json_parse_failure` (`jq empty` で JSON syntax invalid、`.corrupt-{epoch}` rename あり)、(b) `local_file_schema_required_fields_missing` (parse 可能だが `schema_version` 非空文字列 / `pr_number` 数値型 / `findings[]` 配列型のいずれかが欠落、rename あり)、(c) `local_file_verification_type_invalid` (verification が object/null 以外、または measured が boolean/null 以外 — 型ガード、rename あり)、(d) `local_file_verification_guard_jq_failed` (型ガードの jq が rc>=2 で失敗 — **rename なし**。破損が未証明のため破壊的操作をしない)、(e) `local_file_schema_version_unknown` (schema_version 未知、**rename なし**)、(f) `local_file_commit_sha_mismatch` (json commit_sha が現 HEAD と不一致、stale file protection、**rename なし**)。古い timestamp ファイルには fallback しない |
 | 3 | **PR コメント (後方互換)** | PR コメントの `## 📜 rite レビュー結果` セクション (新形式: `### 📄 Raw JSON` 付き → awk で Raw JSON section-scoped 抽出。旧形式: Markdown テーブル → 既存パースロジック) | 失敗モード: (a) `pr_comment_raw_json_parse_failure`、(b) `pr_comment_schema_required_fields_missing`、(c) `pr_comment_schema_version_unknown` は legacy Markdown parser へ fallthrough。(d) `pr_comment_commit_sha_mismatch` は **WARNING のみで continue** (Raw JSON の severity_map 構築を続行。PR コメントは最新 push 後に投稿される可能性が高く、legacy parser への fallthrough はむしろ情報損失になるため) |
 | 4 | **対話式 fallback** | 上記すべて欠落時 | `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示 (ファイルパス指定は 1 回のみ再実行する one-shot。retry ループ・state file hard gate なし。再実行でも invalid なら `[fix:error]` で終了) |
 

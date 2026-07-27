@@ -259,7 +259,7 @@ assert_err_has "REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch" "p
 assert_no_fixerror_stdout "p2 stale path"
 
 # -----------------------------------------------------------------
-echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename Instance 2/3 ---"
+echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename 呼び出し元: schema-invalid path ---"
 # invariant #4: severity CRITICAL + scope nit-noted -> pr_comment
 cat > "$RR/700-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":700,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"CRITICAL","status":"open","scope":"nit-noted"}]}
@@ -284,15 +284,15 @@ run --pr-number 702 --review-file-path "$UNSET" --conversation-decision none --p
 assert_rc 0 "p2 schema_version unknown -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=local_file_schema_version_unknown" "p2 schema_version unknown reason"
 
-# corrupt-rename Instance 2/3: valid JSON but required fields missing -> rename + pr_comment
+# corrupt-rename 呼び出し元 (schema-invalid path): valid JSON but required fields missing -> rename + pr_comment
 printf '{"foo":"bar"}' > "$RR/703-20260101000000.json"
 run --pr-number 703 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
 assert_rc 0 "p2 schema_required_fields_missing -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" "p2 schema_required_fields_missing reason"
 if ls "$RR"/703-20260101000000.json.corrupt-* >/dev/null 2>&1; then
-  pass "schema-invalid file renamed to .corrupt-* (Instance 2/3)"
+  pass "schema-invalid file renamed to .corrupt-* (_rite_rename_corrupt_file 呼び出し元)"
 else
-  fail "schema-invalid file NOT renamed (Instance 2/3)"
+  fail "schema-invalid file NOT renamed (_rite_rename_corrupt_file 呼び出し元)"
 fi
 
 # -----------------------------------------------------------------
@@ -347,6 +347,14 @@ run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-bool.json" --conversat
 assert_rc 0 "p0 verification type invalid (bool) -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 verification type guard reason"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 type guard -> fallback (no silent fall-through)"
+# P0 は rename しない (schema SoT の非対称契約: P0 → fallback のみ / P2 → Priority 3 + rename)。
+# ユーザーが --review-file で明示指定したファイルを破壊的に rename してはならない。
+# P2 側の rename pin と対称化リファクタする際にこの非対称が壊れるのを防ぐ。
+if ls "$SANDBOX"/p0-verif-bool.json.corrupt-* >/dev/null 2>&1; then
+  fail "P0 は明示指定ファイルを rename してはいけない"
+else
+  pass "P0 型ガードは rename しない (P2 との非対称契約)"
+fi
 
 # 非 bool の measured ("true" 文字列): `// false` で silent に non-blocking へ畳まれる経路を塞ぐ
 cat > "$SANDBOX/p0-measured-string.json" <<'JSON'
@@ -425,9 +433,9 @@ assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 type invalid must not
 # (706/707/708/709 は同一の review_source 代入を共有するので 1 箇所で全体を pin できる)
 assert_err_has "[CONTEXT] REVIEW_SOURCE=pr_comment;" "p2 type guard -> pr_comment (Priority 3 routing)"
 if ls "$RR"/706-20260101000000.json.corrupt-* >/dev/null 2>&1; then
-  pass "type-invalid file renamed to .corrupt-* (Instance 3/3)"
+  pass "type-invalid file renamed to .corrupt-* (_rite_rename_corrupt_file 呼び出し元)"
 else
-  fail "type-invalid file NOT renamed (Instance 3/3)"
+  fail "type-invalid file NOT renamed (_rite_rename_corrupt_file 呼び出し元)"
 fi
 
 cat > "$RR/707-20260101000000.json" <<'JSON'
@@ -509,17 +517,47 @@ fi
 # tempfile hygiene: 型ガードが通過する成功経路で jq stderr 退避ファイルが残らないこと。
 # mktemp は elif の条件部で実行されるため、then に入らない成功経路では inline の rm に到達しない。
 # cleanup trap への登録が外れると 1 実行 1 件のペースで TMPDIR に蓄積する。
+# P0 と P2 は別々の変数 (vg_err_p0 / vg_err_p2) を使うため、片方だけを実行する pin では
+# もう片方の登録漏れを検出できない。両経路を同一 TMPDIR で走らせ、glob も -p0- / -p2- を
+# 個別に検査してどちら側が漏れたか判別できるようにする。
+# 「残っていない」は「cleanup が働いた」だけでなく「ガードに到達していない」でも成立するため、
+# 各実行で REVIEW_SOURCE marker を positive に固定してから不在を判定する (vacuous pass の排除)。
 hyg_dir="$TEST_DIR/hygiene"; mkdir -p "$hyg_dir"
 valid_json "$SANDBOX/hygiene-ok.json"
+cat > "$RR/713-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":713,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":false,"repro":null,"failing_test":null}}]}
+JSON
 set +e
+hyg_err_p0="$hyg_dir/run-p0.err"
 (cd "$SANDBOX" && TMPDIR="$hyg_dir" bash "$TARGET" --pr-number 123 \
   --review-file-path "$SANDBOX/hygiene-ok.json" --conversation-decision none \
-  --p1-scan-turns 0 --p1-scan-found false) >/dev/null 2>&1
+  --p1-scan-turns 0 --p1-scan-found false) >/dev/null 2>"$hyg_err_p0"
+hyg_rc_p0=$?
+hyg_err_p2="$hyg_dir/run-p2.err"
+(cd "$SANDBOX" && TMPDIR="$hyg_dir" bash "$TARGET" --pr-number 713 \
+  --review-file-path "$UNSET" --conversation-decision none \
+  --p1-scan-turns 1 --p1-scan-found false) >/dev/null 2>"$hyg_err_p2"
+hyg_rc_p2=$?
 set -e
-if ls "$hyg_dir"/rite-verif-guard-err-* >/dev/null 2>&1; then
-  fail "型ガード成功経路で jq stderr tempfile が残存している ($(ls "$hyg_dir"/rite-verif-guard-err-* | wc -l) 件)"
+# positive control: 両 run が型ガードを通過して当該 Priority で解決したことを固定する
+[ "$hyg_rc_p0" = 0 ] && pass "hygiene P0 run exited 0" || fail "hygiene P0 run exited $hyg_rc_p0"
+grep -qF "[CONTEXT] REVIEW_SOURCE=explicit_file;" "$hyg_err_p0" \
+  && pass "hygiene P0 run が型ガードを通過して explicit_file に解決した" \
+  || fail "hygiene P0 run が explicit_file に到達していない (pin が vacuous)"
+[ "$hyg_rc_p2" = 0 ] && pass "hygiene P2 run exited 0" || fail "hygiene P2 run exited $hyg_rc_p2"
+grep -qF "[CONTEXT] REVIEW_SOURCE=local_file;" "$hyg_err_p2" \
+  && pass "hygiene P2 run が型ガードを通過して local_file に解決した" \
+  || fail "hygiene P2 run が local_file に到達していない (pin が vacuous)"
+# 個別 glob で漏れた側を特定する
+if ls "$hyg_dir"/rite-verif-guard-err-p0-* >/dev/null 2>&1; then
+  fail "P0 成功経路で jq stderr tempfile が残存している ($(ls "$hyg_dir"/rite-verif-guard-err-p0-* | wc -l) 件)"
 else
-  pass "型ガード成功経路で jq stderr tempfile が残らない"
+  pass "P0 成功経路で jq stderr tempfile が残らない"
+fi
+if ls "$hyg_dir"/rite-verif-guard-err-p2-* >/dev/null 2>&1; then
+  fail "P2 成功経路で jq stderr tempfile が残存している ($(ls "$hyg_dir"/rite-verif-guard-err-p2-* | wc -l) 件)"
+else
+  pass "P2 成功経路で jq stderr tempfile が残らない"
 fi
 
 # -----------------------------------------------------------------

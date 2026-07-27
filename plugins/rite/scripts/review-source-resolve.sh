@@ -161,9 +161,10 @@ trap '_rite_fix_p120_cleanup; exit 129' HUP
 set -o pipefail
 
 # corrupt file の退避 (rename) を 3 経路 (jq parse failure / schema_required_fields_missing /
-# verification type guard) で共有する。以前は同一 17 行が 3 箇所に複製され「変更時は 3 箇所を
-# 同時に更新すること」という手書き同期契約に依存していた。ラベル語以外に差分がない以上、
-# 契約ではなく関数で保証する。
+# verification type guard) で共有する。複製は 2 箇所の時点で既に drift しており
+# (schema-invalid 側に成功時の「対処」行・失敗時の mv stderr ヘッダと permission 診断行が欠け、
+# indent も 4 空白だった)、手書き同期契約が守られていなかった。3 経路目を足すにあたり関数へ
+# 集約し、あわせて schema-invalid 側の診断を jq parse 側の詳細版に揃えた (出力は増える方向のみ)。
 _rite_rename_corrupt_file() {
   local target="$1" label="$2"
   local corrupt_epoch corrupt_suffix mv_err mv_rc
@@ -515,8 +516,8 @@ if [ -z "$review_source" ]; then
         # verified-review M-6 (M10) 対応: corrupted file を .corrupt-{epoch} にリネームし、
         # 次回の lexicographic sort で選ばれないようにする。WARNING を出すだけで corrupted file を
         # 残すと、次回呼び出し時も同じファイルが最新 timestamp として選ばれ、同一 WARNING が
-        # 繰り返される無限 ring に陥る。rename 手順は _rite_verification_type_check 上流の
-        # _rite_rename_corrupt_file に集約済 (ラベル語のみ経路ごとに変わる)。
+        # 繰り返される無限 ring に陥る。rename 手順は _rite_rename_corrupt_file に集約済
+        # (経路ごとに変わるのはラベル語のみ)。
         _rite_rename_corrupt_file "$latest_file" "corrupted"
         review_source="pr_comment"
         review_source_path=""
