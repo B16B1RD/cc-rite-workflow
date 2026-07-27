@@ -42,9 +42,10 @@
 #   - **既存コメントの特定は「自分が投稿した」∧「1 行目 marker への前方一致 (startswith)」の連言**。
 #     author 条件を欠くと、marker で始まるコメントを第三者が 1 件投稿するだけで PATCH 先を奪える。
 #     `contains` (本文全体を対象) も別コメントを掴む。
-#   - **投稿する本文は「非空」かつ「1 行目が MARKER で始まる」ことを投稿前に検査する**。
-#     どちらの契約違反も、1 行目 marker を失ったコメントを PATCH で作り出し以降の lookup を
-#     恒久的に miss させる。
+#   - **投稿する本文は「非空」→「1 行目が MARKER で始まる」→「`📎 non_blocking_count:` 行が
+#     --count と一致する」の 3 段で投稿前に検査する**。前 2 段の契約違反は 1 行目 marker を失った
+#     コメントを PATCH で作り出し以降の lookup を恒久的に miss させる。3 段目は step 1 の本文
+#     variant 選択と step 2 の --count 置換のずれ（無音喪失 / 虚偽記録）を捕捉する。
 #     rationale: ../skills/pr-review/references/measured-gate-record.md#startswith
 #   - **create は count > 0 でガード**: 0 件 ∧ 既存なしで「0 件です」という事実と異なるコメントを
 #     新規作成しない (AC-4 非退行)。
@@ -185,8 +186,9 @@ _gh_err_detail() {
   echo "  詳細 (gh/jq stderr 先頭 5 行):" >&2
   head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
 }
-# lookup が degraded したときの案内。**記録は続行されうる** ため、記録失敗用の _record_failure_hint
-# とは文言を分ける。共用すると「記録が失われた」と読める案内が成功経路で出て、operator を不要な
+# lookup が degraded したときの案内。**記録は続行されうる** ため、記録失敗用の
+# _record_gh_io_failure_hint / _record_body_check_failure_hint とは文言を分ける。共用すると
+# 「記録が失われた」と読める案内が成功経路で出て、operator を不要な
 # レビュー再実行へ誘導する。ただし投稿されるかどうかは件数と既存コメントの有無で決まるため、
 # **結末を断定せず** 「update-in-place を諦める」ことだけを述べる (結末は terminal sentinel の
 # `outcome=` が担う)。
@@ -210,10 +212,19 @@ _record_degraded_create_hint() {
   echo "  注意: 既存の記録コメントを特定できないまま新規作成したため、前 cycle の記録コメントが PR 上に重複して残っている可能性があります" >&2
   echo "  対処: PR #${PR_NUMBER} の '$MARKER' コメントを目視で確認し、古い方を手動で削除するか無視してください (mergeable 判定には影響しません)" >&2
 }
-# 記録できなかったときの共通案内。非ブロッキングな失敗 reason (body_file_empty /
-# body_marker_missing / patch_failed / create_failed) のすべてから呼べるよう trap 定義直後に置く。
-_record_failure_hint() {
+# 記録できなかったときの gh/IO 起因の案内。caller (LLM) の本文生成起因ではなく gh 認証 / network /
+# 書込権限に起因する失敗 (patch_failed / create_failed) から呼ぶ。
+_record_gh_io_failure_hint() {
   echo "  対処: gh auth status / network 接続 / PR #${PR_NUMBER} への write 権限を確認し、レビューをやり直してください" >&2
+  echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
+}
+# 記録できなかったときの本文検査起因の案内。gh / IO の障害ではなく caller (LLM) が
+# ステップ 6.1.d step 1 で生成した本文自体の不備 (body_file_empty / body_marker_missing /
+# count_body_mismatch) から呼ぶ。gh auth / network / 権限を指す案内は原因と無関係なため出さない
+# (この 3 reason はいずれも degraded=0 の健全な gh 環境でも発生しうる — 誤った復旧手順を示すと
+# operator が無関係な確認に時間を使い、真因である本文/--count の再生成に辿り着けない)。
+_record_body_check_failure_hint() {
+  echo "  対処: ステップ 6.1.d step 1 の本文生成 (Write) と step 2 の --count 置換を確認し、step 1 から再実行してください (gh 認証 / network / 権限の問題ではありません)" >&2
   echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
 }
 _rite_p61d_emit_terminal() {
@@ -245,8 +256,12 @@ gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 # **author 条件は必須**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで
 # `last` がそれを掴み PATCH 先を奪われる (書込権限があれば他人のコメントを破壊、無ければ 403 で
 # 記録が恒久的に失われる)。自分の login と一致する投稿のみを対象にする。
-gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}")
-if [ -z "$gh_login" ]; then
+# rc も見る (F-01, cycle 4 review, error-handling-reviewer): `gh api` は HTTP エラー時に
+# `--jq` フィルタを適用せずレスポンス body をそのまま stdout へ書いて rc!=0 で終了する
+# (gh 2.96.0 で実測)。空文字判定だけに依存すると、この非空な JSON エラー body が
+# `gh_login` として通過し degraded 検出が素通りする (existing_id="" のまま degraded=0 で
+# 新規作成へ縮退し、WARNING も出ない)。
+if ! gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || [ -z "$gh_login" ]; then
   echo "WARNING: gh api user による自 login の取得に失敗しました。既存コメントを特定できないため存在不明として扱います" >&2
   _gh_err_detail
   _record_degraded_hint
@@ -254,7 +269,7 @@ if [ -z "$gh_login" ]; then
   lookup_degraded=1
 elif existing_id=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
      | jq -r --arg marker "$MARKER" --arg me "$gh_login" \
-         'add | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] | last | .id // empty' \
+         '(add // []) | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] | last | .id // empty' \
          2>>"${gh_err:-/dev/null}"); then
   :
 else
@@ -275,7 +290,7 @@ fi
 # 宣言された本文か」を確認してから skip するため、この経路も count_body_mismatch で捕捉できる。
 if [ ! -s "$CONTENT_FILE" ]; then
   echo "WARNING: 非実測記録の本文ファイルが空です ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します (既存コメントの marker 破壊を防ぐ)" >&2
-  _record_failure_hint
+  _record_body_check_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_file_empty" >&2
   outcome="failed"
   exit 0
@@ -289,7 +304,7 @@ case "$(head -n 1 "$CONTENT_FILE")" in
   *)
     echo "WARNING: 非実測記録の本文 1 行目が marker 見出しで始まっていません ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します" >&2
     echo "  期待: 1 行目が '$MARKER' で始まること (SKILL.md ステップ 6.1.d step 1 の variant A / B)" >&2
-    _record_failure_hint
+    _record_body_check_failure_hint
     echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_marker_missing" >&2
     outcome="failed"
     exit 0
@@ -300,21 +315,22 @@ esac
 # (同 step 1 の LLM 置換) は独立した 2 箇所の置換であり、片方だけずれると事実と異なる記録が投稿
 # される (count=0 + variant A 本文 で 0 件のはずが記録が無音で消える、または count>0 + variant B
 # 「0 件」本文 で虚偽の記録が残る)。投稿前に本文中の該当行を抽出し --count と一致することを検査する。
-body_count=$(grep -m1 -E '^📎 non_blocking_count: [0-9]+$' "$CONTENT_FILE" | grep -oE '[0-9]+$')
+# コロン直後・行末の空白量は固定しない (F-1, cycle 4 review: 本文は毎 cycle LLM が生成する自由文
+# であり、`non_blocking_count:2` や行末 trailing space のような意味を変えない整形のブレで
+# no-match になり記録が丸ごと投稿されなくなるのを防ぐ)。`-m1` (先頭一致) ではなく `tail -1`
+# (末尾一致) で採る (F-2, cycle 4 review: 診断文・SKILL.md の variant A/B はいずれも本行を
+# 本文「末尾」に置く契約のため、コードフェンス等で本文中に同形の行が先に現れても末尾の
+# canonical な行を読む)。
+body_count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$CONTENT_FILE" | tail -1 | grep -oE '[0-9]+')
 if [ -z "$body_count" ] || [ "$body_count" != "$NB_COUNT" ]; then
-  # `body_count` は直前の `grep -oE '[0-9]+$'` により数字列か空文字のみを取り、制御バイトを
-  # 含みえない。neutralize_ctrl の default モードは C1 帯 (0x80-0x9f) をバイト単位で `?` に
-  # 潰す仕様のため、空のときのハードコードされた日本語リテラル `<欠落>` (UTF-8 マルチバイト) を
-  # 誤って通すと中間バイトが破壊され表示が文字化けする。sanitize が必要な入力 (body_count 自体)
-  # にのみ neutralize_ctrl を適用し、プロジェクト側リテラルはそのまま出す。
-  if [ -n "$body_count" ]; then
-    _body_count_disp=$(printf '%s' "$body_count" | neutralize_ctrl)
-  else
-    _body_count_disp="<欠落>"
-  fi
+  # `body_count` は直前の `grep -oE '[0-9]+'` により数字列か空文字のみを取り、制御バイトも
+  # マルチバイト文字も含みえない — neutralize_ctrl の出番はない (F-8, cycle 4 review: 数字列に
+  # 対する neutralize_ctrl は恒等写像であり、以前の呼び出しは自身が不要と論証する死んだコード
+  # だった。空のときのハードコードされた日本語リテラル `<欠落>` はそのまま出す)。
+  _body_count_disp="${body_count:-<欠落>}"
   echo "WARNING: 非実測記録の本文中の '📎 non_blocking_count:' 行 (値: '$_body_count_disp') が --count ($NB_COUNT) と一致しません。投稿を中止します" >&2
   echo "  期待: 本文末尾に '📎 non_blocking_count: $NB_COUNT' 行が存在すること (SKILL.md ステップ 6.1.d step 1 の variant A / B)" >&2
-  _record_failure_hint
+  _record_body_check_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=count_body_mismatch" >&2
   outcome="failed"
   exit 0
@@ -340,7 +356,7 @@ gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 _record_gh_failure() {  # $1=label $2=reason $3=rc
   echo "WARNING: 非実測指摘の PR コメント$1 に失敗しました (gh rc=$3)" >&2
   _gh_err_detail
-  _record_failure_hint
+  _record_gh_io_failure_hint
   # signal 終了 (rc>=128) を retained flag に併記する (兄弟 review-comment-post.sh と対称)
   if [ "$3" -ge 128 ]; then
     echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=$2; rc=$3; signal=$(($3 - 128))" >&2
@@ -352,8 +368,11 @@ _record_gh_failure() {  # $1=label $2=reason $3=rc
 
 if [ -n "$existing_id" ]; then
   # 本文の受け渡しは gh-cli-patterns.md §"For comment update (gh api PATCH)" の正規形に従う
-  # (jq --rawfile で JSON を組み --input - へ渡す)。subshell で pipefail を局所化し、jq 段の
-  # 失敗も rc に伝播させる (issue-comment-wm-sync.sh と同型)。
+  # (jq --rawfile で JSON を組み --input - へ渡す)。pipefail は冒頭の `set -uo pipefail`
+  # (グローバル) を subshell がそのまま継承するため、jq 段の失敗は継承された pipefail によって
+  # rc に伝播する (issue-comment-wm-sync.sh と同型)。subshell 内の `set -o pipefail` は
+  # その継承を前提にした冗長な再宣言であり (F-7, cycle 4 review: 削除しても本 subshell の
+  # 伝播は保たれる)、本 block だけを抜き出して他所へ移植する場合の防御として残す。
   if ( set -o pipefail
        jq -n --rawfile body "$CONTENT_FILE" '{"body": $body}' \
          | gh api "repos/$OWNER_REPO/issues/comments/$existing_id" -X PATCH --input - >/dev/null ) 2>"${gh_err:-/dev/null}"; then
