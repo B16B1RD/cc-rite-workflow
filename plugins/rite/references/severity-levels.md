@@ -126,7 +126,33 @@ Reviewers in these categories MUST still record the Likelihood classification in
 
 All other reviewers MUST apply the matrix above and downgrade Hypothetical findings.
 
+> **本例外は Likelihood 軸のみに適用される**: 例外カテゴリで severity を維持できるのは「Hypothetical でも `全指摘事項` に残せる」ことまでで、**merge を止めるか (blocking) は [§実測必須ゲート](#実測必須ゲート-measured-confirmed-gate) が別途決める**。実測 (`Verification:` アンカー) を伴わない例外カテゴリ指摘は severity を維持したまま non-blocking に分類され、ステップ 5.4 統合レポートの「実測なし指摘」section に記録されて draft PR の人間レビューに委ねられる。上の rationale 列の「観測を待つのは許容できないリスクモデル」は severity 判定の根拠であり、blocking 判定の根拠ではない。
+
 > **Note — 3 ゲート運用への forward-pointer**: 指摘事項化の必要条件は impact + likelihood の 2 軸に加えて **revert test を含む 3 ゲート** を同時充足することが求められます。revert test の運用手順は [`agents/_reviewer-base.md` "Necessary conditions for inclusion in 指摘事項"](../agents/_reviewer-base.md#necessary-conditions-for-inclusion-in-指摘事項) を参照してください。本ファイル (severity-levels.md) は impact + likelihood の 2 軸定義に特化しており、revert test の定義は意図的に `_reviewer-base.md` に集約されています。
+
+## 実測必須ゲート (Measured CONFIRMED Gate)
+
+<a id="実測必須ゲート-measured-confirmed-gate"></a>
+
+mergeable 判定の blocking 条件を「**runtime 実測を伴う CONFIRMED 指摘ゼロ**」に定義する (Issue #2024)。「CONFIRMED 指摘」= 3 ゲート (Confidence >= 80 / Observed Likelihood >= Demonstrable / revert test pass) を通過して `全指摘事項` に残った指摘を指す。
+
+**blocking の定義** (実測必須ゲート適用後):
+
+```
+blocking = CONFIRMED (全指摘事項に残存)
+         AND verification.measured == true   (repro または failing_test の実測証跡あり)
+                                             (※ 未判定 = 本式の対象外。下記「適用範囲」参照)
+         AND scope in {current-pr, follow-up}  (nit-noted は従来どおり対象外)
+```
+
+- **適用範囲 (measured は 3 値)**: 本式が対象とするのは **`全指摘事項` に載る rite reviewer finding のみ**。`measured` は `true` / `false` に加えて **未判定** の 3 値を取る。未判定は「実測の有無を判定する構造そのものが無い」状態で、(a) 外部ツール / 人間レビュー由来の指摘 (`Verification:` アンカーを構造的に持てない) と、(b) レビュー結果 JSON の `findings[].verification` が欠落している場合 (write 側が未配線 / 旧形式) の 2 経路がある。いずれも **未判定 = 本ゲートの対象外**として従来どおり blocking に扱う (SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.3 分類表の External review 行と同ステップの measured lookup)。したがって consumer 側の [`fix-relaxation-rules.md`](../skills/fix/references/fix-relaxation-rules.md) が `blocking = measured != false` と書くのは本式との**意図的なスコープ差**であり矛盾ではない — 本式は rite reviewer finding に閉じた定義、consumer 側は未判定を含む fix loop 全体の定義。
+- **severity 閾値**: 既存の 5.3.1 Red blocking rule を踏襲し **全 severity 帯** (CRITICAL〜LOW) が対象 (nit-noted / auto-demote 済みを除く)。severity による段階的緩和は導入しない。
+- **実測 (measured=true) の受理形式**: (a) 再現コマンド + 観測される誤動作 (`repro`)、または (b) failing test のパス + 失敗出力 (`failing_test`) のいずれか。形式は [`review-result-schema.md` §verification サブフィールド](./review-result-schema.md#verification-サブフィールド) で固定し、LLM の自由裁量に委ねない。
+- **非実測指摘 (measured=false) の扱い**: 破棄せず **non-blocking** に分類し、**3 経路すべてに記録する** — (1) 永続 JSON (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`)、(2) `/rite:pr-review` ステップ 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section (severity 明示、E2E でも省略禁止)、(3) E2E output line の `| non-blocking: {n}` suffix (件数 > 0 のときのみ)。(1) は無条件、(2)(3) は実行モードと件数に依存する補助経路。fix サイクルは起動しない (mergeable countdown / `total_findings` から除外)。ただし同一 file:line の GitHub thread が rite finding 由来と確認できない場合は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.3 step 4 の出自確認で External review = blocking へ振り替わる — 本ゲートは finding を対象とし、thread routing は別レイヤ。既定構成 (`pr_review.post_comment: false`) では (1) が唯一の永続チャネルであり、これによりマージ後に人間が拾い直せる状態を保つ (Issue #2024 D-01)。
+- **Observed Likelihood 軸との関係**: `measured=true` は Likelihood 軸の **Observed** (runtime 実測済み) に相当する。Demonstrable のうち **evidence type 1-3 (existing/new call site・entrypoint connection — call site 提示のみで実測なし)** は CONFIRMED ではあるが measured=false のため non-blocking。**evidence type 4 (runtime observation) は Observed 相当で measured=true** — この場合は `Likelihood-Evidence: runtime_observation` と `Verification: repro` / `failing_test` の**両方**を添付する ([_reviewer-base.md §Verification: runtime 実測の添付](../agents/_reviewer-base.md#verification-runtime-measurement))。Likelihood 軸のゲート (Hypothetical 降格) は従来どおり **先に** 適用され、実測必須ゲートはその後段で blocking / non-blocking を分ける。
+- **Hypothetical Exception Categories との関係**: 例外カテゴリ (security / database migration / devops infra / dependencies) は Likelihood 軸の例外 (Hypothetical でも severity 維持で `全指摘事項` に残せる) であって、**実測必須ゲートの例外ではない**。実測を伴わない例外カテゴリ指摘も non-blocking として ステップ 5.4 に記録され (severity 明示)、draft PR の人間レビューで判断される。ループ収束性 (「指摘ゼロ」の到達可能性) を優先する設計判断。
+
+**判定の全体順序**: Impact × Likelihood Matrix (Hypothetical 降格) → 3 ゲート通過で CONFIRMED → **実測必須ゲート** (measured=false → non-blocking 降格 + ステップ 5.4 記録) → 残った blocking 指摘ゼロで mergeable。適用手順の実装は [`assessment-rules.md`](../skills/fix/references/assessment-rules.md) **§5.3.0.M (適用手順)** / **§5.3.1・§5.3.3 (判定への反映)** を参照。
 
 ## Severity × Scope Matrix
 

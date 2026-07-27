@@ -112,6 +112,7 @@
 | Retry 回数サマリー | {verification_post_condition_retry_summary} | per-reviewer retry counter の集計 |
 
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
+ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
 
 
 ### 全指摘事項
@@ -144,6 +145,18 @@
 | 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
 |---------|-------|------------|------|---------|
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
+
+### 実測なし指摘 (non-blocking)（該当がある場合のみ）
+<!-- ステップ 5.3.0.M 実測必須ゲートで non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
+ blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
+ 記録先は 3 経路 (永続 JSON の non_blocking_findings[] / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+
+| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|-----------|--------|----------|------------|------|---------|
+| {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
 
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。
@@ -290,6 +303,7 @@
 | Retry 回数サマリー | {verification_post_condition_retry_summary} | per-reviewer retry counter の集計 |
 
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
+ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
 
 
 ### 全指摘事項
@@ -322,6 +336,18 @@
 | 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
 |---------|-------|------------|------|---------|
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
+
+### 実測なし指摘 (non-blocking)（該当がある場合のみ）
+<!-- ステップ 5.3.0.M 実測必須ゲートで non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
+ blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
+ 記録先は 3 経路 (永続 JSON の non_blocking_findings[] / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+
+| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|-----------|--------|----------|------------|------|---------|
+| {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
 
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。
