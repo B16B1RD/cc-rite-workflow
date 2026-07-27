@@ -239,6 +239,8 @@ _rite_p61d_signal_abort() {  # $1=rc $2=signal
   # いることがある。投稿完了状態を読む手段が無いため、確実に言えるのは「本 helper が完走せず
   # 結末を確定できなかった」ことだけ。次 cycle の lookup + PATCH が自己修復する。
   echo "ERROR: review-nonblocking-record: signal で中断されました (記録が投稿されたかは不明です)" >&2
+  echo "  対処: 次 cycle の lookup + PATCH が update-in-place で自己修復するため、通常は追加操作は不要です" >&2
+  echo "  中断が繰り返される場合のみ PR #${PR_NUMBER} の '$MARKER' コメントを目視で確認してください (mergeable 判定には影響しません)" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=signal_aborted; rc=$1; signal=$2" >&2
 }
 trap 'rc=$?; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit $rc' EXIT
@@ -318,9 +320,9 @@ esac
 # コロン直後・行末の空白量は固定しない (F-1, cycle 4 review: 本文は毎 cycle LLM が生成する自由文
 # であり、`non_blocking_count:2` や行末 trailing space のような意味を変えない整形のブレで
 # no-match になり記録が丸ごと投稿されなくなるのを防ぐ)。`-m1` (先頭一致) ではなく `tail -1`
-# (末尾一致) で採る (F-2, cycle 4 review: 診断文・SKILL.md の variant A/B はいずれも本行を
-# 本文「末尾」に置く契約のため、コードフェンス等で本文中に同形の行が先に現れても末尾の
-# canonical な行を読む)。
+# (末尾一致) で採る (F-2, cycle 4 review: SKILL.md の variant A/B は本行を `📎 reviewed_commit:`
+# 行の直前に置く契約であり本文の最終行ではないため、コードフェンス等で本文中に同形の行が先に
+# 現れても末尾の canonical な行を読む)。
 body_count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$CONTENT_FILE" | tail -1 | grep -oE '[0-9]+')
 if [ -z "$body_count" ] || [ "$body_count" != "$NB_COUNT" ]; then
   # `body_count` は直前の `grep -oE '[0-9]+'` により数字列か空文字のみを取り、制御バイトも
@@ -329,7 +331,7 @@ if [ -z "$body_count" ] || [ "$body_count" != "$NB_COUNT" ]; then
   # だった。空のときのハードコードされた日本語リテラル `<欠落>` はそのまま出す)。
   _body_count_disp="${body_count:-<欠落>}"
   echo "WARNING: 非実測記録の本文中の '📎 non_blocking_count:' 行 (値: '$_body_count_disp') が --count ($NB_COUNT) と一致しません。投稿を中止します" >&2
-  echo "  期待: 本文末尾に '📎 non_blocking_count: $NB_COUNT' 行が存在すること (SKILL.md ステップ 6.1.d step 1 の variant A / B)" >&2
+  echo "  期待: 本文中に '📎 non_blocking_count: $NB_COUNT' 行が存在すること (SKILL.md ステップ 6.1.d step 1 の variant A / B。variant A/B のテンプレートでは 📎 reviewed_commit: 行の直前)" >&2
   _record_body_check_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=count_body_mismatch" >&2
   outcome="failed"

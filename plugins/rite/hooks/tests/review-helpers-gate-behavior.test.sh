@@ -111,6 +111,12 @@ if [ "${1:-}" = "api" ] && [ "${2:-}" = "user" ]; then
     [ -n "${GH_ME_STDOUT_ON_ERROR:-}" ] && printf '%s' "$GH_ME_STDOUT_ON_ERROR"
     exit "${GH_ME_RC}"
   fi
+  # F-01 (test-reviewer, cycle 5): rc=0 かつ空 stdout (login フィールド欠落等) の軸。
+  # cycle 4 の rc チェック追加は選言 (`rc!=0 || -z`) の rc 側だけを検証しており、`-z` 側
+  # (rc=0 だが空文字) を再現するスイッチが無く、この分岐を削除しても suite が green のままだった。
+  if [ -n "${GH_ME_EMPTY:-}" ]; then
+    exit 0
+  fi
   printf '%s' "${GH_ME:-rite-bot}"
   exit 0
 fi
@@ -210,6 +216,7 @@ run_nbr() {
     GH_LOOKUP_JSON="${GH_LOOKUP_JSON:-}" GH_LOOKUP_RC="${GH_LOOKUP_RC:-0}" GH_STUB_RC="${GH_STUB_RC:-0}" \
     GH_LOOKUP_ZERO_PAGES="${GH_LOOKUP_ZERO_PAGES:-}" \
     GH_ME="${GH_ME:-rite-bot}" GH_ME_RC="${GH_ME_RC:-0}" GH_ME_STDOUT_ON_ERROR="${GH_ME_STDOUT_ON_ERROR:-}" \
+    GH_ME_EMPTY="${GH_ME_EMPTY:-}" \
     _timeout 10 bash "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
 }
 
@@ -683,6 +690,17 @@ assert_grep "TC-4.2h rc チェックにより degraded=1 に倒れる (body を�
 assert_grep "TC-4.2h WARNING を出す (silent 縮退しない)" "$ERR" 'gh api user による自 login の取得に失敗しました'
 assert_not_grep "TC-4.2h 誤って PATCH しない (body を login と誤認しない)" "$GH_LOG" '^api repos/.* -X PATCH'
 
+# TC-4.2h' [test-reviewer F-01, cycle 5]: TC-4.2h は選言 `rc!=0 || -z "$gh_login"` の rc 側だけを
+# 検証しており、`-z` 側 (rc=0 だが `.login` が空 — endpoint 変更や scope 不足で `--jq` が空文字を
+# 返す場合) を再現するテストが無かった。実測: この分岐 (`|| [ -z "$gh_login" ]`) を削除しても
+# 旧 suite は 280/280 green のままだった (回帰を止められない構造的な穴)。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_ME_EMPTY=1 \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-219 --content-file "$NBR_BODY_C2"
+assert "TC-4.2h' gh api user が rc=0 かつ空 stdout: exit 0" "0" "$RC"
+assert_grep "TC-4.2h' -z 側の rc=0+空文字 も degraded=1 に倒れる" "$ERR" 'outcome=created; count=2; iteration_id=9-219; comment_id=; degraded=1'
+assert_grep "TC-4.2h' WARNING を出す (silent 縮退しない)" "$ERR" 'gh api user による自 login の取得に失敗しました'
+assert_not_grep "TC-4.2h' 誤って PATCH しない" "$GH_LOG" '^api repos/.* -X PATCH'
+
 # TC-4.2i [application-reviewer F-9, cycle 4]: `gh api --paginate --slurp` が 0 ページ
 # (真の空配列 `[]` を返す稀な経路) だと、jq の `add` は `null` を返し、後続の `.[]` が
 # jq エラー (rc=5) で落ちる。修正前はこの jq エラーが degraded フォールバック
@@ -876,6 +894,9 @@ assert "TC-4.9b terminal sentinel は 1 回だけ (trap 再入の冪等化)" "1"
 assert_grep "TC-4.9b signal 中断が loud に出る" "$_abort_err" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=signal_aborted'
 assert_not_grep "TC-4.9b 投稿呼び出しが無い (create)" "$GH_LOG" '^pr comment'
 assert_not_grep "TC-4.9b 投稿呼び出しが無い (PATCH)" "$GH_LOG" '^api repos/.* -X PATCH'
+# [error-handling-reviewer F-01, cycle 5]: signal_aborted は他 5 つの非ブロッキング失敗 reason と
+# 異なり「対処」行を持たず、次 cycle が自己修復する事実が operator に届かなかった。2 行追加した。
+assert_grep "TC-4.9b 対処行で自己修復を案内する (他 5 reason と同じ規律)" "$_abort_err" '対処: 次 cycle の lookup \+ PATCH が update-in-place で自己修復するため'
 
 # TC-4.10 iteration_id は verbatim に echo back される (AC-7: gate の cycle 一致判定の入力)
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id "9-1799999999" --content-file "$NBR_BODY"
@@ -1093,6 +1114,17 @@ else
       _vb_count=$(sed -n "${_vb_line},$(( _next_line - 1 ))p" "$REVIEW_MD" | grep -cE "^[[:space:]]*${_count_re}" || true)
       assert "TC-5g'' variant A 区間に needle が 1 件 (位置検証)" "1" "$_va_count"
       assert "TC-5g'' variant B 区間に needle が 1 件 (位置検証)" "1" "$_vb_count"
+
+      # (g''') [test-reviewer F-02, cycle 5] TC-5g' の値 union (`{non_blocking_count}` ¦ `[0-9]+`)
+      # はファイル全体の件数しか見ておらず、variant A が placeholder 側、variant B が literal `0`
+      # 側であることは要求していない。variant A の placeholder を literal 数字 (例: `3`) に、
+      # variant B の `0` を別の数字 (例: `7`) に書き換えても union は変わらず TC-5g' は green の
+      # まま通る (テンプレートが提示する値そのものの誤りを検出できない)。TC-5g'' で特定済みの
+      # 区間を再利用し、値の種別を variant ごとに固定する。
+      _va_placeholder_count=$(sed -n "${_va_line},$(( _vb_line - 1 ))p" "$REVIEW_MD" | grep -cE "^[[:space:]]*${_count_re}[[:space:]]*\\{non_blocking_count\\}[[:space:]]*\$" || true)
+      _vb_literal0_count=$(sed -n "${_vb_line},$(( _next_line - 1 ))p" "$REVIEW_MD" | grep -cE "^[[:space:]]*${_count_re}[[:space:]]*0[[:space:]]*\$" || true)
+      assert "TC-5g''' variant A 区間の値は {non_blocking_count} placeholder (literal 数字への drift 検出)" "1" "$_va_placeholder_count"
+      assert "TC-5g''' variant B 区間の値は literal 0 (別数字への drift 検出)" "1" "$_vb_literal0_count"
     else
       fail "TC-5g'' variant A/B の見出し位置を特定できない (va=$_va_line vb=$_vb_line next=$_next_line)"
     fi
