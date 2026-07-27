@@ -104,12 +104,12 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 判定は 2 段で機械的に書ける:
 
-1. `(?i)\*{0,2}Verification\*{0,2}[[:space:]]*:` の**存在**判定 — **bare marker のみで判定し、種別キーワード (`repro` / `failing_test`) を条件に含めない**。colon 直後の空白も要求しない (`Verification:runtime_observation` を拾う)。bold の内置き `**Verification:**` と外置き `**Verification**:` の両形を許容する
+1. `(?i)verification[*_`[:space:]]*[:：]` の**存在**判定 — **marker を正規化して拾う**。種別キーワード (`repro` / `failing_test`) を条件に含めず、colon 直後の空白も要求せず、**装飾文字 (`*` / `_` / バッククォート) と全角コロン `：` を吸収する**
 2. 上記 **Anchor detection regex** の full match 判定
 
 (1) が真かつ (2) が偽の finding が対象。
 
-> **stage 1 に種別キーワードを含めてはならない / colon 直後の空白も要求してはならない**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`Verification:[[:space:]]` のように colon 直後の空白を必須にすると、ラベルを取り違えた / 落としたアンカー (`Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる / `Verification: bash x.sh => ERROR` — 種別欠落 / `**Verification:** repro ...` — bold 装飾 / 大文字小文字差) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。トレードオフは「無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。5.3.0.M は bash を実行しない推論ステップのため「WARNING を出す」だけでは構造的に達成できない — 対象が 1 件以上なら以下を**明示的に実行**する:
+> **stage 1 は「列挙」ではなく「正規化」で書く**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`\*{0,2}` のように**特定の装飾だけを列挙**すると、列挙から漏れた形 (バッククォート `` `Verification`: ``、全角コロン `Verification：`、三重アスタリスク `***Verification***:`、underscore `_Verification_:`、種別欠落 `Verification: bash x.sh => ERROR`、ラベル取り違え `Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。装飾を 1 つ足すたびに regex を直す設計にせず、装飾文字クラスと全角コロンを吸収する形にする。トレードオフは「散文中の `verification :` 等を拾う無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。5.3.0.M は bash を実行しない推論ステップのため「WARNING を出す」だけでは構造的に達成できない — 対象が 1 件以上なら以下を**明示的に実行**する:
 
 ```bash
 echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を measured=false に降格しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 形式崩れ)。パイプを含むコマンドは ¦ で代替表記してください" >&2
@@ -120,7 +120,7 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 
 > **降格を緩めない**: no-match を許容して keep する / regex を greedy に戻す方向の修正は採らない。降格自体は fail-safe として正しく (誤って blocking を落とすより安全)、問題は**無音であること**のみ。
 >
-> **この permissive 例外は上記 WARNING emit と記録先 3 経路が機能していることが前提**: 本ゲートは rite 全体で唯一「判定不能を permissive 側 (non-blocking) に倒す」箇所で、それが許されるのは (a) 降格が必ず WARNING で報告され、(b) 降格した指摘が 3 経路すべてで記録に残るため。後続の変更で (a) か (b) を緩めるなら、本例外の前提が崩れるので同時に見直すこと。blocking 側に倒す修正は AC-2 の収束性を壊す (`/rite:fix` はコードを直す機構でありレビュアー出力の形式崩れは直せず、`max_review_cycles` まで空転する) ため採らない。
+> **この permissive 例外は上記 WARNING emit と記録先 3 経路が機能していることが前提**: 本ゲートは rite 全体で唯一「判定不能を permissive 側 (non-blocking) に倒す」箇所で、それが許されるのは (a) 降格が必ず WARNING で報告され、(b) 降格した指摘が **永続 JSON (`non_blocking_findings[]`) に必ず残る**ため。5.4 section と E2E output line suffix は補助経路で、実行モード (standalone は ステップ 8 を実行しない) と件数 (0 件なら省略) に依存する。後続の変更で (a) か (b) を緩めるなら、本例外の前提が崩れるので同時に見直すこと。blocking 側に倒す修正は AC-2 の収束性を壊す (`/rite:fix` はコードを直す機構でありレビュアー出力の形式崩れは直せず、`max_review_cycles` まで空転する) ため採らない。
 
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
@@ -133,7 +133,7 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 **non_blocking_findings の扱い**:
 
 - `total_findings` にカウントしない (mergeable countdown から除外)
-- finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、統合レポート 5.4 section と永続 JSON の相互参照が成立する
+- finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、永続 JSON 単体を読む人間が 2 配列を跨いで finding を一意に参照できる (5.4 統合レポートのテーブルは `id` 列を持たないため、JSON ↔ レポート間の相互参照を目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証
 - 記録先は 3 経路すべてで、破棄経路は存在しない:
   1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) で唯一の永続チャネル。マージ後に人間が拾い直せる状態を担保する
   2. **ステップ 5.4 統合レポート** の `### 実測なし指摘 (non-blocking)` section (severity 明示) — E2E でも省略禁止 (`pr-review/SKILL.md` E2E Output Minimization 表の例外)

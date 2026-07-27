@@ -1594,7 +1594,7 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
    - (c) **同一 key の衝突は `true` (blocking) 優先** — false で上書きしない (blocking-biased fail-safe: 複数 reviewer が同一 file:line を指摘し一方のみ実測付きの場合、実測済み blocking 指摘の silent skip を防ぐ)。
    - (d) **3 値を潰さない** — 登録するのは「実測の有無を判定できた finding」のみ。判定する構造が無い finding (外部ツール / 人間レビュー由来、および JSON に `verification` が無い finding) は**未登録のまま残す** (= 未判定)。未判定を `false` に畳んではならない (実測必須ゲートの対象外 = 従来どおり blocking。SoT は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) の「適用範囲 (measured は 3 値)」)。
 
-   件数 `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数** (正規化後 scope による nit 除外 — `acknowledged_nit_count` との二重計上を参照時に遮断) として導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件と同一フィルタ。ただし step 4 の**出自確認で External review へ振り替えた key は分類数から外れる**ため、その分だけ「分類数 < カウント」になる — 振り替え分は導出時に減算すること)。セクション不在時は当該登録なし (`non_blocking_count = 0`)。**経路間で値は一致しない**: `/rite:pr-review` ステップ 6.1.a が `findings[]` から `non_blocking_findings` を除外する契約のため、JSON 経路 (Priority 0/2/3) では `measured_map` に `false` が 1 件も入らず `non_blocking_count` は常に 0 になる。N 件が入るのは `### 実測なし指摘 (non-blocking)` section を読める Markdown / 会話経路のみ。write 側が `verification` を出力し 6.1.a の除外契約が見直された後に、全経路一致が成立する。
+   件数 `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数** (正規化後 scope による nit 除外 — `acknowledged_nit_count` との二重計上を参照時に遮断) として導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件と同一フィルタ。ただし step 4 の**出自確認で External review へ振り替えた key は分類数から外れる**ため、その分だけ「分類数 < カウント」になる — **振り替えた key のみ**を導出時に減算する (対応する GitHub thread が存在しない key は減算対象ではない — rite は per-line thread を作らないため既定構成では大半がこれに該当する))。セクション不在時は当該登録なし (`non_blocking_count = 0`)。**経路間で値は一致しない**: `/rite:pr-review` ステップ 6.1.a が `findings[]` から `non_blocking_findings` を除外する契約のため、JSON 経路 (Priority 0/2/3) では `measured_map` に `false` が 1 件も入らず `non_blocking_count` は常に 0 になる。N 件が入るのは `### 実測なし指摘 (non-blocking)` section を読める Markdown / 会話経路のみ。write 側が `verification` を出力し 6.1.a の除外契約が見直された後に、全経路一致が成立する。
 
 **Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW). The `scope` column is consumed downstream by `/rite:fix` ステップ 2 (nit-noted 受け流し経路) to determine acknowledge vs. fix-required handling.
 
@@ -1635,6 +1635,12 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
      判定の結果 **`measured_map[file:line] == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外 (記録は `/rite:pr-review` の 3 経路 — 永続 JSON の `non_blocking_findings[]` / ステップ 5.4 の「実測なし指摘」section / E2E output line — が担う)
 
      > **人間 thread の巻き添え防止 (MUST)**: `measured_map` は file:line を key にするため、非実測 finding と**同一 file:line にある人間レビュアーの未解決 thread** が本分岐に巻き込まれ、fix も reply もされないまま `non_blocking_count` に「対応済み」として計上されうる。これを防ぐため、本分岐に落とす前に **thread の出自を確認する**: thread 本文が当該 rite finding の description と対応しない (= rite review 由来と確認できない) 場合は non-blocking に落とさず、**step 5 の External review (Action required = blocking)** として扱う。出自が判定できない場合も External review 側 (安全側) に倒す。rite finding 由来と確認できた thread のみが non-blocking になる。
+     >
+     > **振り替え時の marker (MUST)**: 本例外で External review へ振り替えた key が 1 件以上あれば、以下を bash で実行して痕跡を残す (`MEASURED_DEMOTED_ON_ANCHOR` と同じ observability marker。reason 表への登録は不要)。分類を変える唯一の例外分岐であり、かつ後述の `non_blocking_count` 減算を伴うため、無痕跡だと減算漏れによる finalize 等式の永久不成立 (`max_review_cycles` まで空転) の原因が追えない:
+     >
+     > ```bash
+     > echo "[CONTEXT] MEASURED_RECLASSIFIED_TO_EXTERNAL=1; count={n}; cause=provenance_unconfirmed" >&2
+     > ```
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {CRITICAL, HIGH} -> Required fix
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
 
@@ -2476,8 +2482,12 @@ EOF
 dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || dirty="__RITE_STATUS_UNKNOWN__"
 if [ -z "$dirty" ]; then
   echo "[CONTEXT] FIX_COMMIT_GUARD=skip; reason=worktree_clean"
+elif [ "$dirty" = "__RITE_STATUS_UNKNOWN__" ]; then
+  # helper が rc 非 0 (mktemp 失敗 / git repo 外 等)。安全側 = ステップ 3 実行 に倒すが、
+  # 「本当に汚れている」と「検出不能だった」を機械可読チャネル上で区別する
+  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed; reason=status_unknown"
 else
-  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed"
+  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed; reason=worktree_dirty"
 fi
 ```
 
