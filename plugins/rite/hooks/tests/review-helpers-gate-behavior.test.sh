@@ -32,16 +32,20 @@
 #        gh stub log に投稿呼び出しが実在し、skipped のときは投稿呼び出しが 1 件も無い) /
 #        iteration_id の echo back
 #   TC-5 skills/pr-review/SKILL.md 静的 pin — markdown 埋め込みの prose gate は実行テストできない
-#        ため、silent failure に直結する 5 契約を静的に固定する: (a) 6.1.d の helper 呼び出しが
+#        ため、silent failure に直結する契約を静的に固定する: (a) 6.1.d の helper 呼び出しが
 #        live な bash block にある (行頭 anchor + fence 検査で `# bash ...` コメントアウトを検出) /
 #        (b) 両 gate の **Check 行そのもの** が terminal sentinel を参照する (出現数の等値ではなく
 #        live な述語を pin する — 数の等値は散文追加で相殺され双方向に誤る)。加えて同じ Check 行が
-#        `iteration_id` / `REVIEW_CYCLE_ID` の鮮度比較にも言及していることを要求する (AC-7/T-06 —
-#        鮮度比較節だけを両 gate から削っても sentinel の存在は残るため、これが無いと前 cycle の
-#        marker への false-positive match が無検出になる) / (c) helper の MARKER 値と
-#        SKILL.md の variant 見出しの前方一致 coupling / (d) 8.0 の gate 評価順序規定 / (e) 8.0.x の
-#        表の行が終端 (`8.1`、「ステップ」接頭辞の有無を問わない) を名指しせず、全データ行が
-#        「次の gate へ」/ `**ERROR**` / `legitimately skipped` のいずれかの規約文言を持つ。
+#        `iteration_id` / `REVIEW_CYCLE_ID` の**一致判定 (「一致」の語を伴う比較)** にも言及して
+#        いることを要求する (AC-7/T-06 — 両語の共起だけを pin すると、比較セマンティクスを削って
+#        「存在するか」に弱めても REVIEW_CYCLE_ID の定義節に語が残るだけで素通りする。mutation 実測
+#        済み: 比較動詞のみ削除で 249/249 のまま検出漏れだったため「一致」を必須トークンに追加した) /
+#        (c) helper の MARKER 値と SKILL.md の variant 見出しの前方一致 coupling / (d) 8.0 の
+#        gate 評価順序規定 / (e) 8.0.x の表の行が終端 (`8.1`、「ステップ」接頭辞の有無を問わない) を
+#        名指しせず、全データ行が
+#        「次の gate へ」/ `**ERROR**` / `legitimately skipped` のいずれかの規約文言を持つ / (g) helper
+#        が count/body 整合検査で grep する `📎 non_blocking_count:` needle と SKILL.md の variant
+#        A/B テンプレートの coupling (TC-5c の MARKER coupling と同型)。
 #        各 pin は追加時に mutation を当てて落ちることを実測する (手順: measured-gate-record.md#static-pin)
 #
 # Network 非依存: gh は PATH 先頭の stub に差し替え、review-result-save は --results-dir で
@@ -649,7 +653,7 @@ assert_grep "TC-4.3a outcome=created" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; o
 assert_grep "TC-4.3b gh pr comment が実行された" "$GH_LOG" '^pr comment 9 -R o/r --body-file'
 
 # TC-4.4 既存なし ∧ 0 件 → 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを作らない
-GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-202 --content-file "$NBR_BODY"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-202 --content-file "$NBR_BODY_C0"
 assert "TC-4.4a 0 件 ∧ 既存なし: exit 0" "0" "$RC"
 assert_grep "TC-4.4a outcome=skipped" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=skipped; count=0; iteration_id=9-202;'
 assert_not_grep "TC-4.4b 投稿呼び出しが 1 件も無い (create)" "$GH_LOG" '^pr comment'
@@ -703,7 +707,17 @@ assert_not_grep "TC-4.7a degraded 案内が結末を断定しない" "$ERR" '記
 # F-02 (cycle 2 review): created ∧ degraded=1 は既存記録を検出できないまま重複作成した縮退であり、
 # skip 経路 (_record_degraded_skip_hint) と対称に専用の案内を出す (_record_degraded_create_hint)。
 assert_grep "TC-4.7a degraded ∧ created 専用の重複警告を出す" "$ERR" '既存の記録コメントを特定できないまま新規作成したため、前 cycle の記録コメントが PR 上に重複して残っている可能性があります'
-GH_LOOKUP_RC=1 run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-207 --content-file "$NBR_BODY"
+# TC-4.7a' [application-reviewer + error-handling-reviewer 指摘, cycle 3, negative control]:
+# degraded (lookup 失敗) ∧ create 自体も失敗 (GH_STUB_RC=1) の組み合わせでは、実際には何も
+# 投稿されていない (outcome=failed) にもかかわらず「重複して新規作成した」という未確定の結末を
+# 断定する案内を出してはならない。_record_degraded_create_hint を outcome="created" 確定後の
+# 成功分岐内へ移したことで、この run では create_failed の失敗案内のみが出る。
+GH_LOOKUP_RC=1 GH_STUB_RC=1 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-206b --content-file "$NBR_BODY"
+assert "TC-4.7a' lookup 失敗 ∧ create 失敗: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.7a' outcome=failed (投稿されていない)" "$ERR" 'outcome=failed; count=1; iteration_id=9-206b; comment_id=; degraded=1'
+assert_grep "TC-4.7a' reason=create_failed emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=create_failed'
+assert_not_grep "TC-4.7a' 未確定の重複警告を出さない (虚偽案内防止)" "$ERR" '既存の記録コメントを特定できないまま新規作成したため'
+GH_LOOKUP_RC=1 run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-207 --content-file "$NBR_BODY_C0"
 assert "TC-4.7b lookup 失敗 ∧ 0 件: exit 0" "0" "$RC"
 assert_grep "TC-4.7b degraded=1 かつ skipped" "$ERR" 'outcome=skipped; count=0; iteration_id=9-207; comment_id=; degraded=1'
 assert_not_grep "TC-4.7b 事実と異なる 0 件コメントを作らない" "$GH_LOG" '^pr comment'
@@ -737,10 +751,14 @@ for case_spec in \
   "$NBR_EMPTY_COMMENTS|2|created|yes" \
   "$NBR_EMPTY_COMMENTS|0|skipped|no"; do
   IFS='|' read -r _fx _cnt _want _expect_post <<< "$case_spec"
-  # count=2 の 2 ケース (updated/created) は count/body 整合検査を通過する必要があるため
-  # NBR_BODY_C2 を使う。count=0 の skipped ケースは skip 分岐で早期 exit するため body 内容は
-  # 参照されず、同じ fixture を使い回しても影響しない。
-  GH_LOOKUP_JSON="$_fx" run_nbr --pr 9 --owner-repo o/r --count "$_cnt" --iteration-id "9-30-$_want" --content-file "$NBR_BODY_C2"
+  # F-01 (cycle 3 review): count/body 整合検査が skip 判定より前に移動したため、skip ケース
+  # (count=0) も本文検査を通過する必要がある。--count と一致する body fixture を都度選択する。
+  case "$_cnt" in
+    0) _body_fx="$NBR_BODY_C0" ;;
+    2) _body_fx="$NBR_BODY_C2" ;;
+    *) _body_fx="$NBR_BODY" ;;
+  esac
+  GH_LOOKUP_JSON="$_fx" run_nbr --pr 9 --owner-repo o/r --count "$_cnt" --iteration-id "9-30-$_want" --content-file "$_body_fx"
   assert_grep "TC-4.9 outcome=$_want を emit" "$ERR" "outcome=$_want;"
   _posted=no
   grep -qE '^(pr comment|api repos/.* -X PATCH --input -)' "$GH_LOG" && _posted=yes
@@ -813,6 +831,21 @@ GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --itera
 assert "TC-4.11c non_blocking_count 行欠落: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.11c reason=count_body_mismatch emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=count_body_mismatch'
 assert_not_grep "TC-4.11c 不一致時は投稿しない (PATCH)" "$GH_LOG" '^api repos/.* -X PATCH'
+# [application-reviewer 指摘, cycle 3]: 行欠落時のプレースホルダ `<欠落>` は日本語マルチバイト文字を
+# 含むため、neutralize_ctrl の C1 帯バイト単位置換を誤って通すと中間バイトが破壊され文字化けする。
+# リテラルをそのまま出力していること (文字化けしていないこと) を固定する。
+assert_grep "TC-4.11c 欠落プレースホルダが文字化けしていない" "$ERR" "値: '<欠落>'"
+# TC-4.11d [application-reviewer 指摘, cycle 3]: F-01 が本来対象としていた「--count 0 の誤置換 +
+# N 件を表示する本文 + 既存コメントなし」のシナリオ。count/body 整合検査が skip 判定より前に
+# 無いと、この run は existing_id 空 ∧ NB_COUNT==0 の skip 条件に一致して本文を読まないまま
+# outcome=skipped (degraded=0) に落ち、AC-4 の正当な no-op と観測上区別できないまま D-01 の記録が
+# 無音で消える。本文検査を先に置くことでこの run も count_body_mismatch で捕捉されることを固定する。
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-214 --content-file "$NBR_BODY"
+assert "TC-4.11d 既存なし ∧ count(0)-本文(1) 不一致: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.11d reason=count_body_mismatch emit (skipped に縮退しない)" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=count_body_mismatch'
+assert_not_grep "TC-4.11d outcome=skipped に縮退しない (無音喪失防止)" "$ERR" 'outcome=skipped;'
+assert_grep "TC-4.11d outcome=failed" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=failed;'
+assert_not_grep "TC-4.11d 不一致時は投稿しない (create)" "$GH_LOG" '^pr comment'
 
 # =====================================================================
 echo "=== TC-5: skills/pr-review/SKILL.md 静的 pin (6.1.d / 8.0.3) ==="
@@ -884,12 +917,15 @@ else
   assert_grep_in_section "TC-5b 8.0.3 の Check が terminal sentinel を参照" \
     "$REVIEW_MD" '^### 8\.0\.3 ' '^### 8\.1 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1'
   # AC-7/T-06: sentinel の存在だけでは前 cycle の marker に false-positive match しうる。
-  # Check 行自体が iteration_id と REVIEW_CYCLE_ID の鮮度比較まで言及していることを要求する
-  # (出現数の等値ではなく live な Check 行 1 本に両語が同居することを pin する)。
-  assert_grep_in_section "TC-5b 6.1.d step 3 の Check が iteration_id/REVIEW_CYCLE_ID の鮮度比較に言及" \
-    "$REVIEW_MD" '^#### 6\.1\.d ' '^### 6\.2 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID'
-  assert_grep_in_section "TC-5b 8.0.3 の Check が iteration_id/REVIEW_CYCLE_ID の鮮度比較に言及" \
-    "$REVIEW_MD" '^### 8\.0\.3 ' '^### 8\.1 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID'
+  # Check 行自体が iteration_id と REVIEW_CYCLE_ID の**鮮度比較 (一致判定)** まで言及していることを
+  # 要求する。test-reviewer 指摘 (cycle 3): 単に両語の共起だけを pin すると、比較セマンティクス
+  # (「と一致するか」) を削って「が存在するか」に弱めても、REVIEW_CYCLE_ID を定義するだけの後続節に
+  # 語が残っていれば素通りする (mutation 実測で確認: 両語共起のみの pin は 249/249 のまま検出漏れ)。
+  # `一致` を両語の後に置くことで、比較動詞そのものの削除を検出する。
+  assert_grep_in_section "TC-5b 6.1.d step 3 の Check が iteration_id/REVIEW_CYCLE_ID の一致判定に言及" \
+    "$REVIEW_MD" '^#### 6\.1\.d ' '^### 6\.2 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID.*一致'
+  assert_grep_in_section "TC-5b 8.0.3 の Check が iteration_id/REVIEW_CYCLE_ID の一致判定に言及" \
+    "$REVIEW_MD" '^### 8\.0\.3 ' '^### 8\.1 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID.*一致'
 
   # (c) helper の MARKER 値と SKILL.md の variant 見出しの前方一致関係を固定する。
   #      helper 側だけを変えれば TC-4.2 が落ちるが、SKILL.md の見出しテンプレートだけを変えると
@@ -904,6 +940,20 @@ else
     _marker_re=$(printf '%s' "$nbr_marker" | sed 's/[][\.*^$(){}?+|/]/\\&/g')
     variant_heads=$(grep -cE "^[[:space:]]*${_marker_re}" "$REVIEW_MD" || true)
     assert "TC-5c SKILL.md の variant 見出しが MARKER で始まる (A/B の 2 箇所)" "2" "$variant_heads"
+  fi
+
+  # (g) [test-reviewer 指摘, cycle 3] helper が count/body 整合検査で grep する
+  #     `📎 non_blocking_count:` needle と SKILL.md の variant A/B テンプレートの coupling を固定する
+  #     (TC-5c の MARKER coupling と同型)。SKILL.md 側の needle だけ改名すると、production では
+  #     毎 cycle 記録が count_body_mismatch で失敗するが、TC-4 の fixture はハードコードのため
+  #     全 green のまま検出漏れになる。
+  nbr_count_needle=$(sed -n "s/^body_count=\$(grep -m1 -E '\^\(📎 non_blocking_count: \)\[0-9\]+\$'.*/\1/p" "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" | head -1)
+  if [ -z "$nbr_count_needle" ]; then
+    fail "TC-5g helper の non_blocking_count needle を抽出できない (定義形式の drift)"
+  else
+    _count_re=$(printf '%s' "$nbr_count_needle" | sed 's/[][\.*^$(){}?+|/]/\\&/g')
+    count_heads=$(grep -cE "^[[:space:]]*${_count_re}" "$REVIEW_MD" || true)
+    assert "TC-5g SKILL.md の variant テンプレートが helper の non_blocking_count needle と一致 (A/B の 2 箇所)" "2" "$count_heads"
   fi
 
   # (d) 8.0 の gate 評価順序規定が 1 箇所存在する (8.0.4 追加時に全 pass 行を書き換えない構造)

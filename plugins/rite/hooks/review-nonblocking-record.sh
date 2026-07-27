@@ -266,18 +266,13 @@ else
 fi
 [ -n "$gh_err" ] && { rm -f "$gh_err"; gh_err=""; }
 
-# --- 記録 / skip の分岐 ---
-# 検索 degraded 時は `0 件 → skip` / `>0 件 → 新規作成に縮退` (WARNING と degraded=1 は emit 済で
-# silent 縮退にはならない)。
-if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ]; then
-  # 0 件 ∧ 既存なし: 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを新規作成しない。
-  # ただし degraded 由来の「既存なし」は **既存コメントが実在しても検出できなかった** 可能性が
-  # あるため、収束 cycle のクリア (AC-2) が成立していないことを明示する。
-  [ "$lookup_degraded" = "1" ] && _record_degraded_skip_hint
-  outcome="skipped"
-  exit 0
-fi
-
+# --- 本文検査 (非空 → 1 行目 marker → count/body 整合) ---
+# F-01 (cycle 3 review): count/body 整合検査は必ず **skip 判定より前** に置く。skip 判定を先に
+# 評価すると、F-01 が本来対象としていた「--count 0 の誤置換 + N 件を表示する本文 + 既存コメントなし」
+# のシナリオが `existing_id 空 ∧ NB_COUNT==0` の skip 条件に一致し、本文を一切読まないまま
+# `outcome=skipped` へ抜けてしまう (AC-4 の正当な no-op と観測上区別できず、D-01 の記録が無音で
+# 消える経路が温存される)。本文検査を先に行えば、0 件 skip の対象になる run でも「本当に 0 件と
+# 宣言された本文か」を確認してから skip するため、この経路も count_body_mismatch で捕捉できる。
 if [ ! -s "$CONTENT_FILE" ]; then
   echo "WARNING: 非実測記録の本文ファイルが空です ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します (既存コメントの marker 破壊を防ぐ)" >&2
   _record_failure_hint
@@ -301,18 +296,39 @@ case "$(head -n 1 "$CONTENT_FILE")" in
     ;;
 esac
 
-# --- count/body variant 整合検査 ---
 # `--count` (SKILL.md ステップ 6.1.d step 2 の LLM 置換) と本文の `📎 non_blocking_count: {n}` 行
 # (同 step 1 の LLM 置換) は独立した 2 箇所の置換であり、片方だけずれると事実と異なる記録が投稿
 # される (count=0 + variant A 本文 で 0 件のはずが記録が無音で消える、または count>0 + variant B
 # 「0 件」本文 で虚偽の記録が残る)。投稿前に本文中の該当行を抽出し --count と一致することを検査する。
 body_count=$(grep -m1 -E '^📎 non_blocking_count: [0-9]+$' "$CONTENT_FILE" | grep -oE '[0-9]+$')
 if [ -z "$body_count" ] || [ "$body_count" != "$NB_COUNT" ]; then
-  echo "WARNING: 非実測記録の本文中の '📎 non_blocking_count:' 行 (値: '$(printf '%s' "${body_count:-<欠落>}" | neutralize_ctrl)') が --count ($NB_COUNT) と一致しません。投稿を中止します" >&2
+  # `body_count` は直前の `grep -oE '[0-9]+$'` により数字列か空文字のみを取り、制御バイトを
+  # 含みえない。neutralize_ctrl の default モードは C1 帯 (0x80-0x9f) をバイト単位で `?` に
+  # 潰す仕様のため、空のときのハードコードされた日本語リテラル `<欠落>` (UTF-8 マルチバイト) を
+  # 誤って通すと中間バイトが破壊され表示が文字化けする。sanitize が必要な入力 (body_count 自体)
+  # にのみ neutralize_ctrl を適用し、プロジェクト側リテラルはそのまま出す。
+  if [ -n "$body_count" ]; then
+    _body_count_disp=$(printf '%s' "$body_count" | neutralize_ctrl)
+  else
+    _body_count_disp="<欠落>"
+  fi
+  echo "WARNING: 非実測記録の本文中の '📎 non_blocking_count:' 行 (値: '$_body_count_disp') が --count ($NB_COUNT) と一致しません。投稿を中止します" >&2
   echo "  期待: 本文末尾に '📎 non_blocking_count: $NB_COUNT' 行が存在すること (SKILL.md ステップ 6.1.d step 1 の variant A / B)" >&2
   _record_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=count_body_mismatch" >&2
   outcome="failed"
+  exit 0
+fi
+
+# --- 記録 / skip の分岐 ---
+# 検索 degraded 時は `0 件 → skip` / `>0 件 → 新規作成に縮退` (WARNING と degraded=1 は emit 済で
+# silent 縮退にはならない)。ここに到達した時点で本文は count/body 整合検査を通過済み。
+if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ]; then
+  # 0 件 ∧ 既存なし: 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを新規作成しない。
+  # ただし degraded 由来の「既存なし」は **既存コメントが実在しても検出できなかった** 可能性が
+  # あるため、収束 cycle のクリア (AC-2) が成立していないことを明示する。
+  [ "$lookup_degraded" = "1" ] && _record_degraded_skip_hint
+  outcome="skipped"
   exit 0
 fi
 
@@ -347,11 +363,15 @@ if [ -n "$existing_id" ]; then
   fi
 else
   # ここに来るのは count > 0 のときのみ (0 件 ∧ 既存なしは上で skip 済)。
-  # lookup_degraded=1 での新規作成は「既存記録を検出できないまま重複作成した」縮退であり、
-  # skip 経路 (_record_degraded_skip_hint) と対称に明示する。
-  [ "$lookup_degraded" = "1" ] && _record_degraded_create_hint
+  # F-01 (cycle 3 review, application-reviewer + error-handling-reviewer が独立検出):
+  # _record_degraded_create_hint は create の**成否が確定してから** (outcome="created" の直後)
+  # 呼ぶこと。gh pr comment の実行前に呼ぶと、create 自体が失敗した run でも「重複して新規作成した」
+  # という未確定の結末を断定する案内が出てしまう (degraded の主因である gh 認証/network 障害は
+  # create 失敗の主因でもあるため、この誤案内は稀な角ケースではなく支配的な組み合わせで発火する)。
+  # skip 経路の _record_degraded_skip_hint (結末確定後に emit) と同じ規律に揃える。
   if gh pr comment "$PR_NUMBER" -R "$OWNER_REPO" --body-file "$CONTENT_FILE" >/dev/null 2>"${gh_err:-/dev/null}"; then
     outcome="created"
+    [ "$lookup_degraded" = "1" ] && _record_degraded_create_hint
   else
     _record_gh_failure "記録 (新規作成)" create_failed "$?"
   fi

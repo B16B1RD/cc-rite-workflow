@@ -77,7 +77,9 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 - **`contains` を使わない理由**: 本文全体を対象にすると、marker 文字列を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
 - **前方一致でマッチ能力が損なわれない理由**: write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置く」を契約として守るため。引用返信は先頭に `> ` が付くため構造的に除外される。
 
-**投稿前に本文を 2 段で検査する**（非空 → 1 行目が marker で始まる）。どちらの契約違反も、1 行目 marker を失ったコメントを PATCH で作り出し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため両者は別 reason（`body_file_empty` / `body_marker_missing`）にする。
+**投稿前に本文を 3 段で検査する**（非空 → 1 行目が marker で始まる → `📎 non_blocking_count:` 行が `--count` と一致する）。最初の 2 段の契約違反は、1 行目 marker を失ったコメントを PATCH で作り出し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため 3 段は別 reason（`body_file_empty` / `body_marker_missing` / `count_body_mismatch`）にする。
+
+**3 段目（count/body 整合検査）が必要な理由**: ステップ 6.1.d step 1（本文 variant 選択）と step 2（`--count` 置換）は独立した 2 箇所の LLM 置換であり、片方だけずれると事実と異なる記録が投稿される — `--count 0` + variant A 本文（N 件を列挙）で 0 件のはずが記録が無音で消える、または `--count N>0` + variant B「0 件」本文 で虚偽の記録が残る。本文に機械可読な `📎 non_blocking_count: {n}` 行を持たせ、helper が投稿前に `--count` と照合することで、どちらのずれも非ブロッキングな `outcome=failed` に倒し observable にする。
 
 **lookup が自分の投稿を見つけられないときは単一コメント不変条件を意図的に諦める**: gh 失敗による degraded に加え、別アカウント / 別トークン identity で過去に投稿した記録が残っている場合（author 条件により自分の投稿として拾えない。この場合 `degraded=0` のまま）も同様に、`count > 0` なら新規作成へ縮退する。既存の記録コメントが実在していれば 2 通目が作られ、古い方は孤児として残る。skip して記録を落とすより、重複してでも記録を残す方を選んだ。
 
