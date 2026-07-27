@@ -253,39 +253,65 @@ fi
 #   (D-04 非ブロッキング + 会話/PR コメント fallback で production では露見していなかった)。
 #   委譲時に左辺を `([.findings[].id] | unique | length)` と括弧付けして本来意図した
 #   「書式 + 一意性」検証に修正した (空配列 PASS / valid F-NN PASS / dup・F-1 violation で検証済)。
-# id 書式 + 一意性は `findings[]` と `non_blocking_findings[]` の **和集合** で評価する
-# (review-result-schema.md §non_blocking_findings の「id は 2 配列の和集合で一意」規則の強制層。
-#  findings[] だけを見ると、配列ごとに F-01 から独立採番した JSON が素通りして永続化される)。
-# reason 語彙は既存を流用し 14 種を増やさない (reason 表 / Eval-order enumeration の同期不要)。
-if ! jq -e '
-  ((.findings | length) + (.non_blocking_findings // [] | length)) as $total
-  | ($total == 0)
-  or (
-    ([(.findings[]?, .non_blocking_findings[]?)] | all(.id? // "" | test("^F-[0-9]{2,}$")))
-    and (([(.findings[]?, .non_blocking_findings[]?) | .id] | unique | length) == $total)
-  )
-  ' "$json_tmp" >/dev/null 2>&1; then
-  echo "WARNING: JSON の findings[] / non_blocking_findings[] の id が書式 (F-NN) または一意性の要件を満たしていません" >&2
-  echo "  期待: 両配列の全 finding が ^F-[0-9]{2,}\$ に match し、かつ 2 配列の和集合で id が一意" >&2
-  echo "  対処: review-result-schema.md の findings[] id 仕様と §non_blocking_findings の和集合一意規則を確認してください" >&2
-  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation" >&2
-  exit 0
-fi
-
 # non_blocking_findings は write 側で 0 件でも空配列を出す義務がある
 # (review-result-schema.md §non_blocking_findings: キー省略は「本ゲート適用前の世代」を意味し、
 #  「降格ゼロ」と区別できないと降格が記録されなかった事故を後から検出できない)。
 #
-# ただし本 check は **save を中止しない**。LOCAL_SAVE_FAILED 経路は JSON_SAVED=false で
-# ファイルを保存しないため、キー欠落を hard fail にすると「降格記録の欠落」を理由に
-# blocking findings ごと永続チャネルから失う fail-unsafe になる (救おうとした対象より
-# 大きなものを落とす)。observability marker のみ emit して保存は続行する。
-# 型が array でない場合も同様 (jq の後段処理は .non_blocking_findings を参照しない)。
+# **本 check は save を中止しない**。LOCAL_SAVE_FAILED 経路は JSON_SAVED=false でファイルを
+# 保存しないため、キー欠落や型崩れを hard fail にすると「降格記録の欠落」を理由に blocking
+# findings ごと永続チャネルから失う fail-unsafe になる (救おうとした対象より大きなものを落とす)。
+# observability marker のみ emit して保存は続行する。
+#
+# **順序が重要**: 本 check は下段の id gate より **前** に置く。後ろに置くと、非配列で
+# `length` が非 0 になる値 ("abc"→3 / 3→3 / {"a":1}→1 / true→error) が id gate の $total を
+# 水増しし、`.non_blocking_findings[]?` が要素を返さないことによる arity 不一致で hard fail する
+# (= 非ブロッキングと宣言した経路が型によって hard fail に化ける)。
 if ! jq -e 'has("non_blocking_findings") and (.non_blocking_findings | type == "array")' "$json_tmp" >/dev/null 2>&1; then
   echo "WARNING: JSON に non_blocking_findings[] がないか配列ではありません (保存は続行します)" >&2
   echo "  期待: 0 件でも \"non_blocking_findings\": [] を出力する (キー省略は本ゲート適用前の世代を意味し区別不能になる)" >&2
   echo "  対処: review-result-schema.md §non_blocking_findings 配列 を確認してください" >&2
   echo "[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr=$PR_NUMBER" >&2
+fi
+
+# id 書式 + 一意性を `findings[]` と `non_blocking_findings[]` の **和集合** で評価する
+# (review-result-schema.md §non_blocking_findings の「id は 2 配列の和集合で一意」規則の強制層。
+#  findings[] だけを見ると、配列ごとに F-01 から独立採番した JSON が素通りして永続化される)。
+# reason 語彙は既存を流用し 14 種を増やさない (reason 表 / Eval-order enumeration の同期不要)。
+#
+# 非配列は上段の type check で marker 済みなので、ここでは `$nb` に空配列として畳んで
+# 判定から外す (型崩れを id 欠陥として誤診断せず、かつ hard fail に化けさせない)。
+#
+# **hard fail の対象は `findings[]` 側の id 欠陥に限る**。`non_blocking_findings[]` 側に閉じた
+# id 欠陥 (独立採番による和集合重複 / id 欠落) で save 全体を落とすと、上段と同じ fail-unsafe
+# (advisory な記録の欠陥を理由に blocking findings を失う) になるため、marker のみ emit する。
+if ! jq -e '
+  (.findings | length == 0)
+  or (
+    (.findings | all(.id? // "" | test("^F-[0-9]{2,}$")))
+    and (([.findings[].id] | unique | length) == (.findings | length))
+  )
+  ' "$json_tmp" >/dev/null 2>&1; then
+  echo "WARNING: JSON の findings[].id が書式 (F-NN) または一意性の要件を満たしていません" >&2
+  echo "  期待: 全 finding が ^F-[0-9]{2,}\$ に match し、かつ全 id が一意" >&2
+  echo "  対処: review-result-schema.md の findings[] id 仕様を確認してください" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation" >&2
+  exit 0
+fi
+
+# 和集合一意性 (non_blocking_findings[] 側を含む) は非ブロッキング marker で報告する
+if ! jq -e '
+  ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
+  | ((.findings | length) + ($nb | length)) as $total
+  | ($total == 0)
+  or (
+    ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
+    and (([(.findings[]?, $nb[]) | .id] | unique | length) == $total)
+  )
+  ' "$json_tmp" >/dev/null 2>&1; then
+  echo "WARNING: findings[] と non_blocking_findings[] の id が和集合で一意でないか、書式 (F-NN) 違反があります (保存は続行します)" >&2
+  echo "  期待: 5.3.0.M の降格時に id を振り直さず、2 配列の和集合で ^F-[0-9]{2,}\$ かつ一意" >&2
+  echo "  対処: review-result-schema.md §non_blocking_findings 配列 の id 規則を確認してください" >&2
+  echo "[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr=$PR_NUMBER" >&2
 fi
 
 _schema_ver=$(jq -r '.schema_version // "unknown"' "$json_tmp" 2>/dev/null)

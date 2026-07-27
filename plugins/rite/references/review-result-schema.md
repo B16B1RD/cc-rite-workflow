@@ -99,7 +99,7 @@
       "status": "acknowledged"
     },
     {
-      "id": "F-02b",
+      "id": "F-04",
       "reviewer": "code-quality-reviewer",
       "category": "code_quality",
       "severity": "LOW",
@@ -141,7 +141,7 @@
 }
 ```
 
-> 上例は `findings[]` = blocking 集合 (実測あり、または nit-noted)、`non_blocking_findings[]` = 実測必須ゲートで降格した非実測指摘、という分離を示す。`id` は 2 配列の**和集合で一意** (`F-01` / `F-02` / `F-02b` / `F-03`)。**0 件のときも `"non_blocking_findings": []` を出力する** (下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照)。
+> 上例は `findings[]` = post-5.3.0.M の `全指摘事項` (blocking 指摘 + nit-noted 指摘)、`non_blocking_findings[]` = 実測必須ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up})、という分離を示す。`id` は 2 配列の**和集合で一意** (`F-01` / `F-02` / `F-04` / `F-03`) かつ全件が書式 `^F-[0-9]{2,}$` に適合する。**0 件のときも `"non_blocking_findings": []` を出力する** (下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照)。
 
 ## フィールド定義
 
@@ -154,7 +154,7 @@
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー (後述の「読取優先順位 (fix)」表 failure mode 列 `*_commit_sha_mismatch` を参照)。read 側 (`fix.md` ステップ 1.2.0) は各 Priority success 経路で `json_commit_sha` vs 現 HEAD を比較し、mismatch 時は WARNING + `[CONTEXT] REVIEW_SOURCE_STALE=1; reason=*_commit_sha_mismatch` emit + 次 Priority への routing を実行する (stale file protection) |
 | `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
-| `findings` | array | ✅ | **blocking 指摘**の配列 (0 件でも空配列として存在)。`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートを通過した集合であり、非実測指摘は下記 `non_blocking_findings` に分離される |
+| `findings` | array | ✅ | `/rite:pr-review` ステップ 5.3.0.M 通過後の `全指摘事項` (0 件でも空配列として存在)。**blocking 指摘 + `scope == "nit-noted"` 指摘**を含む — nit-noted は本ゲートの対象外 (`assessment-rules.md` §5.3.0.M) のため非実測でも本配列に残る。ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up}) のみが下記 `non_blocking_findings` に分離される |
 | `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘の配列 (要素の形は `findings[]` と同一)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
 
 ### `findings[]` 要素
@@ -188,7 +188,14 @@
 
 **0 件のときも空配列 `[]` を出力する** (キー省略との区別): キー自体が無い JSON は「本ゲート適用前の世代」を意味し、空配列は「本ゲートを適用したが降格ゼロ」を意味する。両者を区別できないと、降格が起きたのに記録されなかった事故を後から検出できない。
 
-**キー欠落時の扱いは非ブロッキング**: `hooks/review-result-save.sh` はキー欠落・非配列を検出すると WARNING + `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1` を emit するが、**保存は続行する**。`LOCAL_SAVE_FAILED` 経路にすると `JSON_SAVED=false` でファイルごと保存されず、「降格記録の欠落」を理由に blocking findings まで永続チャネルから失う fail-unsafe になるため (救おうとした対象より大きなものを落とす)。
+**本配列側の欠陥はすべて非ブロッキング**: `hooks/review-result-save.sh` は以下を WARNING + observability marker で報告するが、**いずれも保存を続行する** (`JSON_SAVED=true`)。`LOCAL_SAVE_FAILED` 経路にすると `JSON_SAVED=false` でファイルごと保存されず、advisory な監査記録の欠陥を理由に blocking findings まで永続チャネルから失う fail-unsafe になるため (救おうとした対象より大きなものを落とす)。
+
+| 検出内容 | marker |
+|---|---|
+| キー欠落 / 非配列 (string / number / bool / object / null) | `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` |
+| 和集合での id 重複 / 書式違反 (本配列側に起因) | `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}` |
+
+**hard fail は `findings[]` 側の id 欠陥に限る** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`)。また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける。
 
 **`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する。
 
@@ -382,7 +389,8 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
       "suggestion": "try-catch を追加",
       "status": "open"
     }
-  ]
+  ],
+  "non_blocking_findings": []
 }
 ```
 ````
