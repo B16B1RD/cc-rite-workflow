@@ -37,8 +37,8 @@
 #     reason 語彙: pr_number_placeholder_residue / owner_repo_placeholder_residue /
 #       non_blocking_count_placeholder_residue / iteration_id_placeholder_residue /
 #       content_file_placeholder_residue / content_file_missing / unknown_option /
-#       body_file_empty / body_marker_missing / patch_failed / create_failed /
-#       signal_aborted
+#       body_file_empty / body_marker_missing / count_body_mismatch / patch_failed /
+#       create_failed / signal_aborted
 #   - **既存コメントの特定は「自分が投稿した」∧「1 行目 marker への前方一致 (startswith)」の連言**。
 #     author 条件を欠くと、marker で始まるコメントを第三者が 1 件投稿するだけで PATCH 先を奪える。
 #     `contains` (本文全体を対象) も別コメントを掴む。
@@ -201,6 +201,15 @@ _record_degraded_skip_hint() {
   echo "  注意: 既存の記録コメントを特定できないまま 0 件 skip したため、前 cycle の記録コメントが PR 上に残っている可能性があります" >&2
   echo "  対処: PR #${PR_NUMBER} の '$MARKER' コメントを目視で確認してください (mergeable 判定には影響しません)" >&2
 }
+# degraded create (既存コメントを特定できず、かつ本 cycle の非実測指摘が 1 件以上あり新規作成へ
+# 縮退) 専用の案内。_record_degraded_skip_hint と対称: こちらは「投稿されなかった」ではなく
+# 「既存を検出できないまま重複して新規作成した」ことを明示する。実在する記録コメントを検出できない
+# まま新規作成するため、前 cycle の記録コメントは PR 上に孤児として残り、以後の lookup は
+# `last` (新しい方) だけを PATCH するので古い方は恒久的に stale で残る (skip 経路と同じ結末)。
+_record_degraded_create_hint() {
+  echo "  注意: 既存の記録コメントを特定できないまま新規作成したため、前 cycle の記録コメントが PR 上に重複して残っている可能性があります" >&2
+  echo "  対処: PR #${PR_NUMBER} の '$MARKER' コメントを目視で確認し、古い方を手動で削除するか無視してください (mergeable 判定には影響しません)" >&2
+}
 # 記録できなかったときの共通案内。非ブロッキングな失敗 reason (body_file_empty /
 # body_marker_missing / patch_failed / create_failed) のすべてから呼べるよう trap 定義直後に置く。
 _record_failure_hint() {
@@ -292,6 +301,21 @@ case "$(head -n 1 "$CONTENT_FILE")" in
     ;;
 esac
 
+# --- count/body variant 整合検査 ---
+# `--count` (SKILL.md ステップ 6.1.d step 2 の LLM 置換) と本文の `📎 non_blocking_count: {n}` 行
+# (同 step 1 の LLM 置換) は独立した 2 箇所の置換であり、片方だけずれると事実と異なる記録が投稿
+# される (count=0 + variant A 本文 で 0 件のはずが記録が無音で消える、または count>0 + variant B
+# 「0 件」本文 で虚偽の記録が残る)。投稿前に本文中の該当行を抽出し --count と一致することを検査する。
+body_count=$(grep -m1 -E '^📎 non_blocking_count: [0-9]+$' "$CONTENT_FILE" | grep -oE '[0-9]+$')
+if [ -z "$body_count" ] || [ "$body_count" != "$NB_COUNT" ]; then
+  echo "WARNING: 非実測記録の本文中の '📎 non_blocking_count:' 行 (値: '$(printf '%s' "${body_count:-<欠落>}" | neutralize_ctrl)') が --count ($NB_COUNT) と一致しません。投稿を中止します" >&2
+  echo "  期待: 本文末尾に '📎 non_blocking_count: $NB_COUNT' 行が存在すること (SKILL.md ステップ 6.1.d step 1 の variant A / B)" >&2
+  _record_failure_hint
+  echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=count_body_mismatch" >&2
+  outcome="failed"
+  exit 0
+fi
+
 gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
   review-nonblocking-record p61d-post-err "投稿失敗時の gh stderr 詳細が表示されません")
 
@@ -323,6 +347,9 @@ if [ -n "$existing_id" ]; then
   fi
 else
   # ここに来るのは count > 0 のときのみ (0 件 ∧ 既存なしは上で skip 済)。
+  # lookup_degraded=1 での新規作成は「既存記録を検出できないまま重複作成した」縮退であり、
+  # skip 経路 (_record_degraded_skip_hint) と対称に明示する。
+  [ "$lookup_degraded" = "1" ] && _record_degraded_create_hint
   if gh pr comment "$PR_NUMBER" -R "$OWNER_REPO" --body-file "$CONTENT_FILE" >/dev/null 2>"${gh_err:-/dev/null}"; then
     outcome="created"
   else
