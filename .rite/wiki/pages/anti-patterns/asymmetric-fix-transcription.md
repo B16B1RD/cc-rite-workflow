@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-26T10:05:51Z"
+updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T003541Z-pr-2013.md"
@@ -1536,6 +1536,26 @@ cycle 1 で検出された保証文 overclaim（機械検証の実カバレッ�
 ### 兄弟行の個別 relabel が同一リスト内の残り 1 行を取りこぼす (PR #1891 cycle 2-3、累積 64 回目、4 cycle 収束)
 
 reviewer registry 統合（13→9 種）の cycle 2 fix で references/ 配下の例示中の旧 reviewer ラベルを relabel した際、**同一リスト・同一ファイル内の同種ラベルを個別に修正したため、兄弟行が 3 箇所で 1 行ずつ取り残された**: cross-validation.md の Contradiction Examples で Example 1/2 を relabel して Example 4 を残す、context-management.md でバッチ例（L22）を直して Split Execution Steps の Group 2（L31）を残す、finding-examples.md で Example 5 見出しと Confidence 表を直して Example 2 見出しを残す。cycle 3 で code-quality reviewer が 3 件とも検出し、pure relabel 5 行の fix で収束した。**教訓**: relabel 系修正は編集箇所を目視で列挙するのではなく、「同一ファイル内の同種ラベルを一括 grep してから直す」— `grep -n '旧ラベル' <file>` の全 hit を修正対象リストとして確定させ、修正後に同 grep で 0 hit を確認する。兄弟行の個別修正は必ず 1 行残す（本 anti-pattern の「同一ファイル内・同一リスト内」という最小 breadth 軸での再現）。
+
+### 対称な実装には対称な pin を置く (PR #2035, 3 cycle 連続で再発)
+
+伝播漏れは実装だけでなく **test の pin** にも起きる。P0/P2 のように対称な 2 経路が別変数を使う実装では、**片方の経路しか実行しない pin はもう片方の退行を構造的に検出できない**。cleanup 登録から片側ずつ外す mutation を当てると、実行していない側だけが SURVIVE する。
+
+PR #2035 では 3 cycle 連続でこれが起きた:
+
+- cycle 2: 否定 assert の補強を P0 側に入れて P2 側に入れず、mutation が片側だけ SURVIVE
+- cycle 3: hygiene pin を P0 のみに置き、P2 側の cleanup 登録を外す mutation が SURVIVE
+- cycle 4: cycle 3 で片側性を指摘された**直後の同じ cycle** で追加した上側境界 pin が P2 のみで、P0 側が欠けていた
+
+**処方**:
+
+1. 実装の対称性を主張するなら、pin も同じ対称性を持たせる
+2. glob を `-p0-` / `-p2-` のように分けると、失敗時にどちら側が漏れたか判別できる
+3. 対称な実装に pin を足すときは、**その場で両側に置いたか確認する**（「片側だけ直す」を指摘された直後ほど再発する）
+
+### 限定句・注記も対称位置に同時に入れる
+
+コードだけでなく散文の限定句も同じ。PR #2035 は「この記述は形式契約であって現在の配線状況ではない」という限定句をサブフィールド表と型ガード節には入れたが、cross-field invariant と reviewer 向け自問には入れなかった。結果、同一ファイル内・同一注入プロンプト内で矛盾する 2 つの主張が併存した。**同じ主張をしている全箇所を grep して一括で処理する**。
 
 ## 関連ページ
 

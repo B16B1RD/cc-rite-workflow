@@ -2,7 +2,7 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-07-23T04:14:28Z"
+updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md"
@@ -31,7 +31,10 @@ sources:
   - type: "fixes"
     ref: "raw/fixes/20260722T064426Z-pr-1969.md"
   - type: "reviews"
-    ref: "raw/reviews/20260722T080039Z-pr-1969-mergeable.md"
+    ref: "raw/reviews/20260722T080039Z-pr-1969-mergeable.md"  - type: "reviews"
+    ref: "raw/reviews/20260727T001018Z-pr-2035.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T014642Z-pr-2035.md"
 tags: []
 confidence: high
 ---
@@ -164,6 +167,27 @@ PR #1974（sandbox 環境での worktree 削除失敗時の自動回収ギャッ
 - **Cycle 4 (0 findings, mergeable)**: 5 reviewer（security / application / error-handling / test / prompt-engineer）全員が 0 findings で合意。boundary 分類の非ブロッキング推奨事項 6 件は「本 PR のスコープ外」「既存パターンとの一貫性」を理由に修正不要と判断され、Decision Log への記録に留めた
 
 **他の累積収束事例との対比**: CRITICAL 1 件を起点に、各 cycle で異なる検出アプローチ（実機再現 / 文書整合性 / mutation testing）が異なる drift class（契約見落とし → ドキュメント精度・テストカバレッジ → テストヘルパー自体の過検出）を段階的に発掘する構造は、PR #1032 の「drift class が cycle ごとに異なる shrinking pattern」と同型。加えて本 PR は、review-fix loop の中で新設したテストヘルパー自身の検証ロジック（awk flip-flop レンジ）にバグが混入し、そのバグを後続 cycle の reviewer が独立検出する **「対策コード自身が新たな精査対象になる」自己言及的パターン**を実証した。
+
+### 5 cycle 収束の推移 (PR #2035, 2026-07-27)
+
+3 cycle で収束しない場合の推移パターンとして、PR #2035（Issue #2032 Sub-A、データ契約の additive 追加）の 5 cycle を記録する。findings 12 → 10 → 10 → 7 → 2（最後の 2 件は両方 nit-noted）:
+
+| cycle | 件数 | 指摘の性質 |
+|---|---|---|
+| 1 | 12 (HIGH 3) | 実装の根拠記述が実態とずれている / 順序契約の pin 欠落 / 未配線を現在形で断定 |
+| 2 | 10 (HIGH 3) | cycle 1 の修正が「対になる側」を取りこぼした（tempfile の cleanup 登録、限定句を入れる箇所、上流の Placement） |
+| 3 | 10 (HIGH 0) | pin の片側性と positive control の欠如、rationale の事実誤認 |
+| 4 | 7 (HIGH 0) | 既存構造の前提を確認せず要素を足した（fence 反転、未実測の実測手順） |
+| 5 | 2 (すべて nit-noted) | 収束 |
+
+**cycle 2 以降の指摘は実装バグではなく「記述の不整合」と「pin の精度」に移る**。cycle 1 の HIGH が実装の根拠記述、cycle 2 が対称性の取りこぼし、cycle 3 が pin 設計、cycle 4 が既存構造の前提確認と、階層が上がっていく。
+
+**収束を早められたポイント（cycle 5 の振り返り）**:
+
+1. **cycle 1 の時点で対称性チェックを明示的に回す** — P0/P2、write/read、実装/ドキュメントのように対になる構造では、片方に足したら必ずもう片方を見る。cycle 2 と cycle 3 の指摘の大半はこれで防げた
+2. **pin を足したらその場で mutation を当てる** — Issue に明記されていたにもかかわらず、cycle ごとに「当てていない軸」が発見された（配置 → 上側境界 → 片側性 → positive control）
+3. **段階分割 PR では時制が最大の落とし穴** — cycle 1〜3 の HIGH 指摘の半分がこの型で、「1 箇所直して他を放置」を 2 度繰り返した
+4. **レンダリング結果を見ないと分からない欠陥は 4 cycle 生き残る** — fence 入れ子による code/prose 反転はテキストとして読む限り気付けない
 
 ## 関連ページ
 

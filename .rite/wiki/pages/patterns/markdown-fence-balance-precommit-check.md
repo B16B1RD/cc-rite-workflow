@@ -2,10 +2,12 @@
 title: "Markdown code fence の balance は commit 前に awk で機械検証する"
 domain: "patterns"
 created: "2026-04-20T01:10:00+00:00"
-updated: "2026-04-20T01:10:00+00:00"
+updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260419T162557Z-pr-608-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T011853Z-pr-2035.md"
 tags: []
 confidence: high
 ---
@@ -58,9 +60,20 @@ grep -c '^```bash' path/to/file.md
 
 いずれも fence balance check で即検出可能。
 
+### 入れ子は外側を 4-backtick にする (PR #2035)
+
+テンプレート全体が 1 本の 3-backtick fence で囲われている文書に、記入例の fence を 3-backtick で追加すると、fence が閉じ位置で分割され **code と prose が反転する**。PR #2035 では追加の主目的だった記入例が prose になり、後半の推奨事項・READ-ONLY 節が code に閉じ込められた。
+
+**この破損は 4 cycle 気付かれなかった**。fence count は偶数のまま（追加した 4 本も偶数）なので上記の balance check を素通りし、テキストとして読む限り異常が見えない。**レンダリング結果を見ないと分からない類の欠陥は、レビューでも発見が遅れる**。
+
+処方: 外側の fence を 4-backtick (` ```` `) にすると内側の 3-backtick を透過的に含められる。同じリポジトリ内に既に先例がある場合は必ず参照する。
+
+検出補強: fence count の偶奇だけでなく、**最外殻 fence の内側にある fence の本数**を見る。3-backtick fence の中に 3-backtick fence を書いた時点で構造は壊れている。
+
 ## 関連ページ
 
-- （関連ページなし）
+- [Markdown channel separation で HTML sentinel の終端性と bash tool 実行を両立させる](./markdown-channel-separation-for-terminal-sentinel.md)
+- [段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける](../heuristics/staged-pr-declared-contract-vs-implemented-fact-tense.md)
 
 ## ソース
 

@@ -1,3 +1,25 @@
+## 2026-07-27
+
+* **Create**: [段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける](pages/heuristics/staged-pr-declared-contract-vs-implemented-fact-tense.md) — raw/reviews/20260727T001018Z-pr-2035.md, raw/fixes/20260727T002133Z-pr-2035.md ほかを新規ページ化（責務宣言と配線状況を分ける / 予防的配置の理由は prospective に書く / 未配線の機能名を grep して一括処理する）
+* **Create**: [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](pages/heuristics/accept-vs-reject-fixture-design-inversion.md) — raw/reviews/20260727T001018Z-pr-2035.md を新規ページ化（accept は先行分岐を黙らせ、reject は両方を鳴らして precedence を見る / 区間制約は上下 2 fixture）
+* **Create**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260727T014642Z-pr-2035.md ほかを新規ページ化（5 軸の列挙と軸ごとの pin の形 / 静的 parity テストの限界）
+* **Create**: [few-shot 例に「実行していない実測」を書く — LLM はもっともらしいコマンドを書く挙動を学習する](pages/anti-patterns/few-shot-unexecuted-measurement-anchor.md) — raw/fixes/20260727T011853Z-pr-2035.md ほかを新規ページ化（主張した観測が出ないコマンド / 調査手順に現れないアンカー / 例の主旨との整合）
+* **Create**: [gate を守る対象の内側に置くと、守るべき唯一の failure mode で gate も一緒に skip される](pages/anti-patterns/gate-placed-inside-guarded-scope.md) — raw/reviews/20260726T164052Z-pr-2030.md ほかを新規ページ化（二層 gate の役割分担 / iteration_id による鮮度判定 / 新設 gate の 3 点セット）
+* **Create**: [属性は母集団からの除外ではなく別 map で持つ — 除外は下流の全分岐を経路依存で壊す](pages/heuristics/attribute-as-separate-map-not-population-exclusion.md) — raw/reviews/20260726T140529Z-pr-2030.md ほかを新規ページ化（除外規則・key 正規化・衝突 tie-break の 3 点セット / 全 map の入力源を揃える）
+* **Create**: [SoT 同期は detection 側と authoring 側の双方向に書く — 片側だけでは機構が silent に空振りする](pages/heuristics/sot-bidirectional-detection-and-authoring-sync.md) — raw/reviews/20260726T160331Z-pr-2030.md ほかを新規ページ化（3 層波及チェックリスト / ガイダンス追加と観測 marker 追加はセット）
+* **Create**: [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md) — raw/reviews/20260726T150008Z-pr-2030-cycle5.md ほかを新規ページ化（3 site 一貫改修 mutation で素通りする実測 / 2 種の pin の書き方）
+* **Create**: [markdown テーブル行に対する greedy `.*` はセル境界を跨いでマッチし、右辺の空検出を dead 化する](pages/anti-patterns/greedy-regex-crosses-markdown-table-cell-separator.md) — raw/reviews/20260726T150008Z-pr-2030-cycle5.md ほかを新規ページ化（negative-lookahead 形への修正 / raw パイプの表記代替 / 4 象限の検証データ）
+* **Create**: [毎回同じ入力で発火する分岐には脱出手順を書き、その破壊性を分岐自身の設計判断に揃える](pages/heuristics/recurring-branch-needs-escape-hatch-matching-its-design.md) — raw/fixes/20260727T011853Z-pr-2035.md を新規ページ化（sibling から文言を借りるときは正当化の前提まで引き継げるか確認する）
+* **Update**: [Markdown code fence の balance は commit 前に awk で機械検証する](pages/patterns/markdown-fence-balance-precommit-check.md) — raw/fixes/20260727T011853Z-pr-2035.md を統合（入れ子は外側を 4-backtick に / fence count 偶数のまま code と prose が反転し 4 cycle 生存した実測）
+* **Update**: [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) — raw/fixes/20260727T004206Z-pr-2035.md ほかを統合（新規 mktemp は cleanup 関数の引数リストに載せる / TMPDIR に 780 件蓄積の実測 / inline rm は削除する）
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/fixes/20260727T004206Z-pr-2035.md ほかを統合（対称な実装には対称な pin を置く / 3 cycle 連続で再発した実例 / 限定句も対称位置に同時に入れる）
+* **Update**: [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — raw/reviews/20260727T014642Z-pr-2035.md ほかを統合（5 cycle 収束の推移 12→10→10→7→2 と収束を早められた 4 ポイント）
+* **Skip**: [20260726T131902Z-pr-2030.md](raw/fixes/20260726T131902Z-pr-2030.md) — 経験則は SoT 双方向同期ページに統合済み
+* **Skip**: [20260726T134912Z-pr-2030.md](raw/fixes/20260726T134912Z-pr-2030.md) — 経験則は静的 parity pin ページに統合済み
+* **Skip**: [20260726T141238Z-pr-2030.md](raw/fixes/20260726T141238Z-pr-2030.md) — 経験則は属性の別 map 化ページに統合済み
+* **Skip**: [20260726T133850Z-pr-2030.md](raw/reviews/20260726T133850Z-pr-2030.md) — 経験則は既存ページ群に統合済み
+* **Skip**: [20260726T142820Z-pr-2030.md](raw/reviews/20260726T142820Z-pr-2030.md) — 経験則は accept/reject fixture ページに統合済み
+
 ## 2026-07-26
 
 * **Update**: [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) — raw/reviews/20260725T151649Z-pr-2020.md, raw/fixes/20260725T152249Z-pr-2020.md, raw/reviews/20260725T154346Z-pr-2020.md, raw/fixes/20260725T154630Z-pr-2020.md, raw/reviews/20260725T162025Z-pr-2020.md を統合（control の派生元は本体が実際に読む入力ファイル / permit を無出力で表す契約では抽出値の非空を liveness signal にできない / 判定は出力形状 → exit code の順）

@@ -2,7 +2,7 @@
 title: "trap 登録 → mktemp の順序で tempfile lifecycle を守る"
 domain: "patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-13T11:05:00Z"
+updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
@@ -145,6 +145,18 @@ norm_tmp=""                       # 4. 元変数クリア (downstream 参照保�
 - **同一 bash block 内で完結**: bash session 境界を跨ぐ追加機構 (PR-specific wildcard cleanup 等) は不要
 
 このパターンは「tempfile を作る人」と「使う人」が同一 bash block 内に居る限り適用可能。block を跨ぐ場合は別の戦略 (caller 側で wildcard cleanup 等) が必要。
+
+### 新規 mktemp は「そのファイルの cleanup 関数の引数リスト」に載せる (PR #2035)
+
+trap を先に張っていても、**新しい tempfile をその cleanup 関数に登録し忘れる**と成功経路でリークする。PR #2035 は型ガード用の tempfile を `elif` の条件部で mktemp し `then` ブロックでのみ `rm` する形にしたため、ガードが通る成功経路（最頻）で毎回リークした。**TMPDIR に 780 件蓄積していたのを実測で確認**、3 reviewer が独立に検出。
+
+同ファイルの既存 tempfile は例外なく「先頭で空文字列に先行宣言 → cleanup 関数に登録 → trap で回収」というパターンを取っており、新規分だけがそこから外れていた。
+
+**チェック**: 新規 `mktemp` を足すときは、そのファイルの cleanup 関数の引数リストを見る。そこに載っていなければ設計が違う。
+
+**テスト側の pin**: 成功経路を実行した後に当該 glob の tempfile が残らないことを assert する（hygiene pin）。ただしこれは「cleanup が働いた」でも「そもそも到達していない」でも成立するため、rc と marker を positive に固定してから不在を判定する（positive control）。実装が P0/P2 のように対称なら、**両側を実行する pin** を置かないと片側の退行が生存する。
+
+**inline rm は削除する**: tempfile が trap に登録済みなら、`[ -n "$v" ] && rm -f "$v"` のような短絡形式の inline `rm` は不要かつ有害（失敗を silent 化する）。
 
 ## 関連ページ
 
