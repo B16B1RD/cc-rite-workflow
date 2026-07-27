@@ -1394,7 +1394,7 @@ Generate instructions for each reviewer.
 
 **Finding quality guidelines:** No vague findings. Investigate with tools (Read/Grep/WebSearch) before reporting. Report only confirmed problems with specific facts/evidence.
 
-**Mandatory fix policy:** All reported findings are blocking. Report only issues where you can point to an existing call path in the current codebase that triggers the problem under a standard user flow. Hypothetical concerns that require unusual inputs, adversarial conditions, or non-existent call sites MUST NOT be reported — unless you are the `security` reviewer reviewing an attack surface. If you cannot grep the exact triggering call site and paste its file:line, do not report the finding. "What if X happened" is not a finding; "X is already happening at file:line" is.
+**Mandatory fix policy:** Reported findings **with runtime measurement** are blocking — a finding blocks merge only when it carries a `Verification:` anchor (repro / failing_test、実測必須ゲート — `_reviewer-base.md` §Verification: runtime 実測の添付)。実測を添付できない finding も報告してよいが、non-blocking として ステップ 5.4 の「実測なし指摘」section に記録される (fix サイクルは起動しない)。Report only issues where you can point to an existing call path in the current codebase that triggers the problem under a standard user flow. Hypothetical concerns that require unusual inputs, adversarial conditions, or non-existent call sites MUST NOT be reported — unless you are the `security` reviewer reviewing an attack surface. If you cannot grep the exact triggering call site and paste its file:line, do not report the finding. "What if X happened" is not a finding; "X is already happening at file:line" is — and "X reproduces with this command / failing test" is what makes it blocking.
 
 **Thoroughness on every cycle:** Apply the same depth and rigor on every review cycle — first pass, re-review, or verification. Do not self-censor findings because "I should have caught this earlier." If you see a real problem now, report it now. Withholding a valid finding to avoid appearing inconsistent is worse than reporting it late.
 
@@ -1544,6 +1544,8 @@ For **every** item in the "### 推奨事項" section (regardless of `別 Issue` 
 - **`recommendation_items`** (本 PR で新設、canonical data): ステップ 5.1 が全 reviewer 推奨事項を classification 付きで集約した list (全 item を保持、Source B extraction の元データ)
 - **`candidate_count`** (ステップ 7.1 で算出、ステップ 7.7 / ステップ 8.0.2 で参照): ステップ 7.1 が Source A (findings + scope-out keyword) と Source B (`recommendation_items` の `classification ∈ {actionable, boundary}` filter + ステップ 7.2 user approval 結果による boundary 採否決定) を **合算 + deduplication した最終件数**。ステップ 7.7 post-condition gate と ステップ 8.0.2 cross-reference はこの値を参照する
 
+**Non-measured findings collection (実測必須ゲート、ステップ 5.3.0.M)**: After collecting findings, scan each finding's `内容` column for the `Verification:` anchor defined in [`_reviewer-base.md` §Verification: runtime 実測の添付](../../agents/_reviewer-base.md#verification-runtime-measurement) (`Verification: repro <コマンド> => <観測結果>` / `Verification: failing_test <パス> => <失敗出力>` — boundary semantics は `Likelihood-Evidence:` と同じ: 行頭 / `<br>` / 空白 / テーブルセル境界)。**アンカーの full regex に match しない finding をすべて** `non_measured_findings` として conversation context に retain する (reviewer_type, severity, scope, file_line, description, suggestion)。これは 2 系統を含む: (a) アンカー文字列そのものが無い finding (非実測指摘の正常系)、および (b) **`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て** (raw `|` を含む repro / `=>` 右辺空 / 形式崩れ — schema 違反として measured=false 降格 + WARNING。**(b) を「`=>` 右辺空」だけに絞ってはならない** — 絞ると raw pipe 入り repro が収集条件から漏れ、`non_measured_findings` に入らず ステップ 5.4 の記録からも脱落する)。発火条件と WARNING の SoT は [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md) で、本段落はその実行側の写しであり同一語彙を保つ。これらは ステップ 5.3.0.M で non-blocking に分類され、`total_findings` から除外され、ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section に記録される。scope=nit-noted の finding は従来どおり nit 経路で扱い、`non_measured_findings` には入れない (二重計上防止)。
+
 **Investigation suggestion collection**: Extract items from each reviewer's "### 調査推奨" section. Retain these as `investigation_suggestions` in the conversation context (reviewer_type, file, concern_description, notes). These are NOT findings and NOT Issue candidates — they do not affect the assessment, finding counts, or merge decision, and are never auto-Issue-ified by ステップ 7. They are collected solely for ステップ 5.4 "調査推奨" section rendering so the user may optionally run `/rite:investigate {file}` afterwards. A reviewer writing nothing in this section is the common case (blocking-worthy issues should go into findings, out-of-scope recommendations with Issue keywords into 推奨事項).
 
 **Demoted findings collection (ステップ 5.3.0 safety net)**: After collecting findings, scan each finding's `内容` column for the `Likelihood-Evidence:` anchor defined in [`_reviewer-base.md`](../../agents/_reviewer-base.md#demonstrable-proof-of-burden). Findings lacking the anchor AND whose `reviewer_type` is NOT in the Hypothetical Exception Categories (security/devops/dependencies; `application` は migration 関連 finding — `Likelihood: Hypothetical (例外カテゴリ: database migration)` 表記を伴うもの — に限り Database migration 例外カテゴリを継承する) are candidates for ステップ 5.3.0 mechanical demotion. Retain these as `demoted_findings` in the conversation context (reviewer_type, severity, file_line, description, demotion_destination) for ステップ 5.3.0 processing and ステップ 5.4 "Observed Likelihood 降格結果" section rendering. The `demotion_destination` is `推奨事項` (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM) or `（削除）` (LOW).
@@ -1553,6 +1555,8 @@ For **every** item in the "### 推奨事項" section (regardless of `別 Issue` 
 When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MISSED_CRITICAL (all blocking). FIXED findings recorded in Fix Verification Summary only.
 
 **フルレビュー由来の新規指摘**: verification mode では、検証レビューに加えてフルレビュー（ステップ 4.5 の通常テンプレート）も実施される。フルレビューで検出された新規指摘は、重要度に関わらずすべて blocking 扱いとする。これは初回フルレビューと同等の基準を適用するためであり、verification mode であることを理由に指摘を非 blocking に降格してはならない。
+
+> **実測必須ゲートとの合成**: 本セクションの「blocking 扱い」は severity / verification-mode 軸での降格禁止を意味し、ステップ 5.3.0.M の実測必須ゲートは **orthogonal に後段で適用される** (初回レビューと同一基準)。すなわち NOT_FIXED / REGRESSION / 新規指摘であっても `Verification:` アンカー (実測) を伴わなければ non-blocking に分類される。前 cycle で実測付きだった finding の NOT_FIXED 検証は、前 cycle の実測 (repro / failing_test) を引き継いで添付すればよい (再実測は失敗が再現し続けている確認を兼ねるため推奨)。
 
 ##### 5.1.1.1 Post-Condition Check: Verification Result Table Presence
 
@@ -1619,6 +1623,10 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 2. overall assessment を `修正必要` に昇格（ステップ 5.3 / ステップ 5.4 の escalation chain と統一された label。`要修正` は reviewer 個別評価用の label で、overall 昇格には使用しない）
 3. 該当 reviewer 由来の指摘を **全件 blocking 扱い**
 4. stderr に下記 ERROR を出力し、silent pass 経路を完全に閉塞する
+
+> **実測必須ゲートとの合成 / escalation の効力範囲**: step 3 の「全件 blocking 扱い」は **verification-mode / severity 軸での降格を禁止する**という意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は 5.3.0.M で non-blocking に分類され `total_findings` から外れる)。したがって step 3 は `total_findings > 0` を**保証しない**。
+>
+> **escalation は overall assessment (`修正必要`) を昇格させるが、machine-readable sentinel の routing は確定させない** — sentinel は ステップ 8.1 の出力パターン表に従い `total_findings` のみで決まる (routing の単一 SoT)。両者が乖離するケース (escalation 発火かつ measured 指摘ゼロ) では `[review:mergeable]` が正であり、`[review:fix-needed:0]` への override は禁止される (ステップ 8.1 の同注記 / [assessment-rules.md §5.3.6](../fix/references/assessment-rules.md) を参照)。override すると fix が対象 0 件で完了し次 cycle も同状態のまま `safety.max_review_cycles` まで空転するだけで、指摘は 1 件も解消しないため。この乖離時に silent pass を防ぐのは sentinel ではなく、**step 4 の ERROR 出力と ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section** — draft PR に残る人間可読な記録が escalation の効力を担う。
 
 **WARNING (初回検出時、stderr)**:
 
@@ -2139,9 +2147,10 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 **Execution order** (mechanical, from top to bottom):
 
 1. **Apply 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net)** first — update `全指摘事項` by mechanically demoting findings that lack a `Likelihood-Evidence:` anchor (see `_reviewer-base.md#observed-likelihood-gate` for the reviewer-side primary Gate). Findings moved to `推奨事項` are NOT counted in `total_findings`. Findings removed (LOW × Hypothetical) are dropped entirely. Record demoted findings in the `### Observed Likelihood 降格結果` section of the ステップ 5.4 integrated report.
-2. **Apply 5.3.1-5.3.7 assessment rules** on the post-5.3.0 `全指摘事項`.
+2. **Apply 5.3.0.M 実測必須ゲート (Measured CONFIRMED Gate)** second — post-5.3.0 の `全指摘事項` から、`Verification:` アンカー (repro / failing_test) の full regex に match しない finding を **non-blocking** に分類し `non_blocking_findings` へ移動する (ステップ 5.1 の `non_measured_findings` から、5.3.0 で `推奨事項` へ降格・削除された finding を**除いた部分集合** — 5.3.0 が破棄した LOW × Hypothetical を復活させない。scope=nit-noted も対象外 — 従来の nit 経路。集合演算の SoT は assessment-rules.md §5.3.0.M の `post-5.3.0` 対象定義)。移動した finding は `total_findings` に **カウントしない** (mergeable countdown から除外)。破棄はせず、ステップ 5.4 integrated report の `### 実測なし指摘 (non-blocking)` section に記録する。ゲート定義の SoT は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。指摘が 1 件もない場合は本ゲートは no-op (AC-3: 現行動作維持)。
+3. **Apply 5.3.1-5.3.7 assessment rules** on the post-5.3.0.M `全指摘事項` (= measured=true の blocking 指摘のみが残った集合).
 
-Skipping 5.3.0 before 5.3.1 is **prohibited**: the Red blocking rule in 5.3.1 operates on `全指摘事項` *after* the safety net demotion, not before.
+Skipping 5.3.0 / 5.3.0.M before 5.3.1 is **prohibited**: the Red blocking rule in 5.3.1 operates on `全指摘事項` *after* both demotions, not before.
 
 
 ### 5.3.8 Fix-Introduced Finding Attribution
@@ -2314,6 +2323,7 @@ This phase now performs **two independent outputs**:
 - **ステップ 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 14 種のいずれか: `pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`。この flag は ステップ 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。ステップ 6 全体の exit code には影響しない (非ブロッキング契約)。
 - **ステップ 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` / `p61b_post_comment_mode_invalid` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として ステップ 6 を fail させる (ステップ 6.1.a の非ブロッキング契約とは対照的)。なお `post_comment_mode=false` で 6.1.b に誤呼出された場合は gate が **silent skip (exit 0)** するため、caller branch selection ミスは retained flag emit せずに吸収される (データ破壊なし、gh pr comment も実行されない)。
 - **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
+- **ステップ 5.3.0.M** は実測必須ゲートの anchor 検出 regex 層での降格時に `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` を emit する (helper 委譲ではなく **LLM が直接 emit**)。対象は **`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て** (raw `|` を含む repro / `=>` 右辺空 / 形式崩れ) であり、アンカー文字列そのものが無い正常系 (非実測指摘) では出さない。**発火条件を「`=>` 右辺空」だけに絞ってはならない** — 定義の SoT は [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md) の WARNING emit 節で、本行はその写しとして同一語彙を保つ。observability marker であり `*_FAILED` reason ではないため、上記 ステップ 6 failure reasons 表 / 後述 Eval-order enumeration には登録しない (それらは reason 専用の列挙)。
 
 **Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称).
 
@@ -2930,8 +2940,10 @@ Before outputting the result pattern, execute ステップ 7.1-7.4 to process re
 
 | Overall Assessment | Output Pattern |
 |---------|------------------------|
-| **Merge OK** (0 findings) | `[review:mergeable]` |
-| **Requires fixes** (findings > 0) | `[review:fix-needed:{total_findings}]` |
+| **Merge OK** (`total_findings == 0` = blocking findings ゼロ) | `[review:mergeable]` |
+| **Requires fixes** (`total_findings >= 1`) | `[review:fix-needed:{total_findings}]` |
+
+> `total_findings` は blocking 集合の件数 (実測必須ゲートで降格された非実測指摘と scope=nit-noted を除く)。非実測指摘のみが残る場合は `[review:mergeable]` が正しい (AC-2、ステップ 8.1 の同注記を参照)。
 
 **Note**: Within the loop, `/rite:pr-review` only outputs results via patterns. Subsequent processing (invoking `/rite:fix`, confirming `/rite:ready` execution, etc.) is determined and executed by `/rite:iterate` ステップ 1-4 (レビュー/修正ループ).
 
@@ -3460,8 +3472,10 @@ Based on the ステップ 6 review results, output the corresponding machine-rea
 
 | Condition | Output Pattern |
 |-----------|---------------|
-| 0 findings | `[review:mergeable]` |
-| 1 or more findings | `[review:fix-needed:{total_findings}]` |
+| `total_findings == 0` (blocking findings ゼロ) | `[review:mergeable]` |
+| `total_findings >= 1` (blocking findings あり) | `[review:fix-needed:{total_findings}]` |
+
+> **`total_findings` は blocking 集合の件数**であり、報告された全指摘の件数ではない。実測必須ゲート (ステップ 5.3.0.M) で non-blocking に降格された指摘と scope=nit-noted は含まれない (定義の SoT は [assessment-rules.md §5.3.3](../fix/references/assessment-rules.md))。非実測指摘が N 件報告されていても `total_findings == 0` なら `[review:mergeable]` が正しい (AC-2)。
 
 **Fact-check suffix**: When fact-check was executed (external claims > 0), append the fact-check summary to the E2E output line: `| fact-check: {v}✅ {c}❌ {u}⚠️`. `{total_findings}` is the post-fact-check count (CONTRADICTED and UNVERIFIED:ソース未確認 excluded). See [E2E Output Minimization](#e2e-output-minimization) for the full format.
 
@@ -3474,8 +3488,10 @@ Based on the ステップ 6 review results, output the corresponding machine-rea
 - The caller determines the next action based on this output pattern
 - The prohibited actions defined in ステップ 5.3.7 "Prohibition of Independent Judgment After Assessment" also apply here
 
-**When assessed as "Merge OK" but findings > 0:**
+**When assessed as "Merge OK" but `total_findings > 0`** (blocking = CONFIRMED ∧ `verification.measured == true` ∧ scope ∈ {current-pr, follow-up}):
 -> Correct to `[review:fix-needed:{total_findings}]`
+
+**⚠️ 非実測 non-blocking 指摘のみが残る場合は correct しない**: 実測必須ゲートで降格された指摘が N 件あっても `total_findings == 0` なら **Merge OK が正** であり `[review:mergeable]` を出力する (AC-2)。ここで `[review:fix-needed:0]` に override すると、`/rite:iterate` は sentinel だけで routing するため fix が起動し、fix 側は対象 0 件で完了 → 次 cycle も同じ状態 → `safety.max_review_cycles` まで空転して AC-2 が構造的に達成不能になる。降格された指摘の可視化は ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section が担う。
 
 **Example output:**
 ```

@@ -6,11 +6,13 @@ Defines how fix targets are determined in the `/rite:iterate` review-fix loop.
 
 ## Overview
 
-All findings whose `scope ∈ {current-pr, follow-up}` are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they are handled via the reply-only path and never participate in `/rite:fix` Phase 2.1 selection nor in mergeable countdown. **別 Issue 化の経路は廃止済み** — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
+All findings whose `scope ∈ {current-pr, follow-up}` **and `measured != false`** (= `verification.measured == true` (runtime 実測あり)、**または** 実測の有無を判定する構造が無く `measured_map` **未登録 = 未判定** — 実測必須ゲートの対象外として従来どおり blocking) are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they are handled via the reply-only path and never participate in `/rite:fix` Phase 2.1 selection nor in mergeable countdown. **`verification.measured == false` (非実測) の findings も not blocking** — 実測必須ゲート ([severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) により `/rite:pr-review` ステップ 5.4 の記録のみで fix サイクルを起動しない (`/rite:fix` の修正対象・auto-select・fix commit 対象から完全除外)。**別 Issue 化の経路は廃止済み** — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
 
 ## Fix Target Classification
 
 Findings are classified by **severity × scope**. Scope was added in schema 1.1.0; the M2 receive-flow path routes `nit-noted` findings out of the blocking set entirely.
+
+**前提: 実測必須ゲートが先に適用される** — 下表の Blocking 判定は `verification.measured != false` の finding にのみ適用される。`measured == false` (明示的に非実測と判定されたもの) の finding は severity / scope に依らず **non-blocking** であり、下表に入る前に除外される (fix 対象外、`/rite:pr-review` ステップ 5.4 の記録のみ。`/rite:fix` ステップ 1.3 では「non-blocking (実測なし)」として分類・表示され、Phase 2.1 選定・fix commit から完全除外される)。外部ツール / 人間レビュー由来の finding、およびレビュー結果 JSON に `verification` が無い finding は `measured_map` に登録されない (= 未判定) — 実測必須ゲートの**対象外**であり、従来どおり blocking として扱う (fix/SKILL.md ステップ 1.3 の measured lookup と External review 行が SoT)。
 
 | Severity | Scope | Classification | Action |
 |----------|-------|----------------|--------|
@@ -71,7 +73,7 @@ The review-fix loop exits via:
 | **Normal** | 0 blocking findings remaining | `[review:mergeable]` → `/rite:iterate` がループ終了 |
 | **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:recover` で復帰 |
 
-`/rite:iterate` は「指摘ゼロ（mergeable）までループする」契約を基本とし、加えて `safety.max_review_cycles`（既定 5）到達で発火する cycle 上限サーキットブレーカーを唯一の自動安全網として持つ（#1701）。quality-signal escalation / 同一 finding 検出といった細粒度の安全網は持たない。上限到達時は、対話実行では AskUserQuestion（継続 / 中止 / draft のまま停止）、`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進む。Ctrl+C による手動中断も従来どおり可能。
+`/rite:iterate` は「**blocking 指摘ゼロ**（mergeable）までループする」契約を基本とし（blocking = `measured != false` (= 実測あり、または未判定) かつ `scope ∈ {current-pr, follow-up}` の CONFIRMED 指摘 — SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。非実測指摘はステップ 5.4 に記録されたまま残存して正常出口に到達しうる）、加えて `safety.max_review_cycles`（既定 5）到達で発火する cycle 上限サーキットブレーカーを唯一の自動安全網として持つ（#1701）。quality-signal escalation / 同一 finding 検出といった細粒度の安全網は持たない。上限到達時は、対話実行では AskUserQuestion（継続 / 中止 / draft のまま停止）、`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進む。Ctrl+C による手動中断も従来どおり可能。
 
 `fix.md` ステップ 3 の Root Cause Gate は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
 
