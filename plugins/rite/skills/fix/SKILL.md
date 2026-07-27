@@ -2481,13 +2481,13 @@ EOF
 # (working tree の状態が判定できないまま commit を skip すると、実際にあった変更を取りこぼすため)
 dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || dirty="__RITE_STATUS_UNKNOWN__"
 if [ -z "$dirty" ]; then
-  echo "[CONTEXT] FIX_COMMIT_GUARD=skip; reason=worktree_clean"
+  echo "[CONTEXT] FIX_COMMIT_GUARD=skip; reason=worktree_clean" >&2
 elif [ "$dirty" = "__RITE_STATUS_UNKNOWN__" ]; then
   # helper が rc 非 0 (mktemp 失敗 / git repo 外 等)。安全側 = ステップ 3 実行 に倒すが、
   # 「本当に汚れている」と「検出不能だった」を機械可読チャネル上で区別する
-  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed; reason=status_unknown"
+  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed; reason=status_unknown" >&2
 else
-  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed; reason=worktree_dirty"
+  echo "[CONTEXT] FIX_COMMIT_GUARD=proceed; reason=worktree_dirty" >&2
 fi
 ```
 

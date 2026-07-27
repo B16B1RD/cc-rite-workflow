@@ -133,7 +133,7 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 **non_blocking_findings の扱い**:
 
 - `total_findings` にカウントしない (mergeable countdown から除外)
-- finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、永続 JSON 単体を読む人間が 2 配列を跨いで finding を一意に参照できる (5.4 統合レポートのテーブルは `id` 列を持たないため、JSON ↔ レポート間の相互参照を目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証
+- finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、永続 JSON 単体を読む人間が 2 配列を跨いで finding を一意に参照できる (5.4 統合レポートのテーブルは `id` 列を持たないため、JSON ↔ レポート間の相互参照を目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証 (本配列側の違反は非ブロッキング marker `NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION` で報告され、保存は続行する)
 - 記録先は 3 経路すべてで、破棄経路は存在しない:
   1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) で唯一の永続チャネル。マージ後に人間が拾い直せる状態を担保する
   2. **ステップ 5.4 統合レポート** の `### 実測なし指摘 (non-blocking)` section (severity 明示) — E2E でも省略禁止 (`pr-review/SKILL.md` E2E Output Minimization 表の例外)

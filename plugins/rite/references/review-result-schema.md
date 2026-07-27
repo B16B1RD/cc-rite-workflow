@@ -197,7 +197,7 @@
 
 **hard fail は `findings[]` 側の id 欠陥に限る** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`)。また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける。
 
-**`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する。
+**`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
 
 **read 側の扱い**: 現時点で本配列を消費する read 経路は無い (`/rite:fix` は `findings[]` のみを読む)。本配列は **人間がマージ後に拾い直すための監査記録**であり、`.rite/review-results/*.json` が既定構成 (`pr_review.post_comment: false`) における唯一の永続チャネルであることに対応する。
 
