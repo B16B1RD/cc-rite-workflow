@@ -588,6 +588,11 @@ GH_LOOKUP_JSON="$NBR_COMMENTS" GH_ME_RC=1 run_nbr --pr 9 --owner-repo o/r --coun
 assert "TC-4.2f 自 login 取得失敗: exit 0" "0" "$RC"
 assert_grep "TC-4.2f degraded=1 かつ created に縮退" "$ERR" 'outcome=created; count=2; iteration_id=9-210; comment_id=; degraded=1'
 assert_not_grep "TC-4.2f 誤って PATCH しない" "$GH_LOG" '^api repos/.* -X PATCH'
+assert_grep "TC-4.2f 投稿は実行される (create)" "$GH_LOG" '^pr comment'
+# degraded は update-in-place を諦めるだけで **記録自体は投稿される**。ここで記録失敗用の案内
+# (「レビューをやり直してください」) を出すと、成功経路で operator を不要な再レビューへ誘導する。
+assert_grep "TC-4.2f degraded 用の案内を出す (新規作成へ縮退)" "$ERR" '新規作成へ縮退します'
+assert_not_grep "TC-4.2f 記録失敗用の案内は出さない" "$ERR" 'レビューをやり直してください'
 
 # TC-4.3 既存なし ∧ count>0 → 新規作成 (AC-1)
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-201 --content-file "$NBR_BODY"
@@ -623,6 +628,8 @@ GH_LOOKUP_RC=1 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-206 --
 assert "TC-4.7a lookup 失敗 ∧ count>0: exit 0" "0" "$RC"
 assert_grep "TC-4.7a WARNING を出す (silent 縮退しない)" "$ERR" '既存の非実測記録コメントの検索に失敗'
 assert_grep "TC-4.7a degraded=1 かつ created に縮退" "$ERR" 'outcome=created; count=1; iteration_id=9-206; comment_id=; degraded=1'
+assert_grep "TC-4.7a degraded 用の案内を出す" "$ERR" '新規作成へ縮退します'
+assert_not_grep "TC-4.7a 記録失敗用の案内は出さない (投稿は成功する)" "$ERR" 'レビューをやり直してください'
 GH_LOOKUP_RC=1 run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-207 --content-file "$NBR_BODY"
 assert "TC-4.7b lookup 失敗 ∧ 0 件: exit 0" "0" "$RC"
 assert_grep "TC-4.7b degraded=1 かつ skipped" "$ERR" 'outcome=skipped; count=0; iteration_id=9-207; comment_id=; degraded=1'
@@ -641,6 +648,9 @@ assert "TC-4.8c 1 行目 marker 欠落: exit 0 (非ブロッキング)" "0" "$RC
 assert_grep "TC-4.8c reason=body_marker_missing emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_marker_missing'
 assert_not_grep "TC-4.8c body_file_empty に融合しない" "$ERR" 'reason=body_file_empty'
 assert_not_grep "TC-4.8d marker 欠落本文で PATCH しない" "$GH_LOG" '^api repos/.* -X PATCH'
+# positive control: TC-4.2f / 4.7a の「記録失敗用の案内は出さない」を vacuous にしないため、
+# 記録が実際に落ちる経路では同じ文言が **出る** ことを対に固定する。
+assert_grep "TC-4.8d' [positive control] 記録失敗経路では記録失敗用の案内が出る" "$ERR" 'レビューをやり直してください'
 
 # TC-4.9 【最重要 invariant】terminal sentinel は「動作の完了」を表す。
 # gate は本 sentinel だけを pass 条件にするため、outcome が created|updated を名乗るときは

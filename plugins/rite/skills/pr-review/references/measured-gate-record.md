@@ -101,4 +101,4 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 5. pin のコメントは実際に検査している対象だけを述べる
 6. 追加時にその場で mutation（述語置換 / コメントアウト / 表記言い換え / 散文追加 / 区間境界変更）を当て、落ちること（かつ無害な変更では落ちないこと）を実測する
 
-mutation の実測結果は PR 本文の mutation matrix に記録する。pin の実装は `hooks/tests/review-helpers-gate-behavior.test.sh` の TC-5。
+mutation の実測結果は、**その pin を追加・変更した PR の本文**に matrix として残す（後から「何を変異させて落ちることを確かめたか」を追える形にするため。既存 PR の matrix を後追いで更新する運用は取らない — 変更した本人がその場で書く）。pin の実装は `hooks/tests/review-helpers-gate-behavior.test.sh` の TC-5。
