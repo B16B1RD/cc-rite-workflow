@@ -400,6 +400,20 @@ assert_rc 0 "p0 guard jq runtime failure -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_guard_jq_failed" "p0 jq 失敗は専用 reason"
 assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 jq 失敗を型崩れ reason に融合しない"
 
+# 型ガードの**上側**境界 (required-fields より後段) を P0 でも pin する (712 の鏡像)。
+# P0 は rename を持たないため退行の観測点は reason ラベルのみだが、「verification を 1 つも
+# 持たない JSON に verification 由来の reason を付けない」は本 PR が明文化した設計原則で、
+# Source Priority 表が reason を契約として列挙している以上ラベルは cosmetic ではない。
+# p0-verif-jqfail (findings:[1]) は findings が配列のため required-fields を通過してしまい、
+# この順序差を観測できない。
+cat > "$SANDBOX/p0-verif-upper.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":{"a":1}}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-upper.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 guard-after-required-fields -> exit 0 (fallback)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_required_fields_missing" "p0 required-fields が型ガードより先に発火する"
+assert_err_lacks "reason=explicit_file_verification_guard_jq_failed" "p0 型ガードは required-fields の後段に留まる"
+
 # -----------------------------------------------------------------
 echo "--- Test 11: verification 型ガード / default mapping (Priority 2) ---"
 # P0 の鏡像。P2 は型崩れを .corrupt-{epoch} に rename して Priority 3 へ routing する
@@ -485,8 +499,9 @@ else
   pass "p2 jq 失敗では rename しない"
 fi
 
-# measured:true の受理 (P0 の p0-verif-measured の鏡像)。述語が P0/P2 に literal 二重化されて
-# いるため、read 側が measured==true を誤 reject する over-reach mutation を両側で pin する
+# measured:true の受理 (P0 の p0-verif-measured の鏡像)。述語自体は共有 helper に単一化済みだが、
+# P2 は独自の rc 分岐と rename 呼び出しを持つ別経路のため、呼び出し側が measured=true を
+# 誤 reject / rename しないことを P2 側でも pin する
 cat > "$RR/711-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":711,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"bash cmd => observed failure","failing_test":null}}]}
 JSON

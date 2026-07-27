@@ -249,7 +249,8 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
       echo "  原因候補: findings 要素が object でない / jq バイナリ異常 / OOM / ファイル IO エラー" >&2
       echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_guard_jq_failed; rc=$vg_rc_p0" >&2
     fi
-    [ -n "$vg_err_p0" ] && rm -f "$vg_err_p0"
+    # tempfile は _rite_fix_p120_cleanup (trap 登録済) が回収する。ここで短絡 rm を書くと
+    # 失敗が silent になり、同ファイルが find_err で是正済みの形式に逆行する。
     review_source="fallback"
     review_source_path=""
   elif ! jq -e '
@@ -550,9 +551,10 @@ if [ -z "$review_source" ]; then
           [ -n "$vg_err_p2" ] && [ -s "$vg_err_p2" ] && head -3 "$vg_err_p2" | sed 's/^/  /' >&2
           echo "  原因候補: findings 要素が object でない / jq バイナリ異常 / OOM / ファイル IO エラー" >&2
           echo "  注: 破損が未証明のため .corrupt-{epoch} rename は行いません" >&2
+          echo "  対処: /rite:pr-review を再実行すれば新しい timestamp のファイルが生成され本ファイルは選ばれなくなります (即時解消は手動削除: rm \"$latest_file\")" >&2
           echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_guard_jq_failed; rc=$vg_rc_p2" >&2
         fi
-        [ -n "$vg_err_p2" ] && rm -f "$vg_err_p2"
+        # tempfile は _rite_fix_p120_cleanup (trap 登録済) が回収する (P0 側と同じ理由)。
         review_source="pr_comment"
         review_source_path=""
       elif ! jq -e '

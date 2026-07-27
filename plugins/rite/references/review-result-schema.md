@@ -200,7 +200,7 @@
 
 <a id="後方互換性-schema-10--110"></a>
 
-1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 2 節 (`scope` / `pre_existing`) の default mapping を適用する。
+1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 `scope` 節の default mapping を適用する (`pre_existing` は schema_version に依らず default mapping を**適用しない** — 下記 `pre_existing` 節参照。欠落のまま保持することが invariant #5 の後方互換の前提になっている)。
 
 **`verification` の default mapping のみ schema_version に依らず適用される** — `verification` は 1.1.0 内で additive 追加されたため 1.1.0 JSON でも欠落しうる ([Schema Version](#schema-version-sot) 参照)。schema_version で gate してはならない。
 

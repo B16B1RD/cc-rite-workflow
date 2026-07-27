@@ -13,13 +13,13 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 3. Searched for validation middleware: `Grep "validateEmail|sanitize" src/` — no matches in this route
 4. Checked other endpoints for comparison: `src/routes/auth.ts:30` uses `zod` schema validation
 5. Verified the route is publicly accessible (no auth middleware)
-6. 実測: dev サーバを起動して `curl -X POST localhost:3000/users -d '{"email":"a'\''--"}'` を実行し、500 SyntaxError と生値が `db.query()` に到達することを観測
+6. 実測: dev サーバを起動して `curl -X POST localhost:3000/users -H 'Content-Type: application/json' -d '{"email":"a'\''--"}'` を実行し、500 SyntaxError と生値が `db.query()` に到達することを観測
 
 **Finding:**
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. Other endpoints (`auth.ts:30`) use `zod` schema validation. This is a system boundary where external input enters the application.<br>Likelihood-Evidence: new_call_site src/routes/users.ts:45 (本 PR で追加)<br>Verification: repro curl -X POST localhost:3000/users -d '{"email":"a'\''--"}' => 500 SyntaxError near "--" (db.query に生値が到達) | Add `zod` schema validation consistent with the existing pattern in `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. Other endpoints (`auth.ts:30`) use `zod` schema validation. This is a system boundary where external input enters the application.<br>Likelihood-Evidence: new_call_site src/routes/users.ts:45 (本 PR で追加)<br>Verification: repro curl -X POST localhost:3000/users -H 'Content-Type: application/json' -d '{"email":"a'\''--"}' => 500 SyntaxError near "--" (db.query に生値が到達) | Add `zod` schema validation consistent with the existing pattern in `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
 
 **Why this is a good finding:** Concrete evidence (specific file/line), investigation with tool usage, comparison with existing patterns, actionable recommendation. **実測の記録**: `Verification: repro` に再現コマンドと観測された誤動作を添えている (配線後は `measured=true` として保存される。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照)。
 

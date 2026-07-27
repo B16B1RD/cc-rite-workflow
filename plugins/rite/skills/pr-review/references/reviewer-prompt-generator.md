@@ -2,7 +2,7 @@
 
 `/rite:pr-review` ステップ 4.5 で各 reviewer agent に渡す通常レビュー指示のテンプレート。SKILL.md 側の「Placeholder embedding method」表に従い `{placeholder}` を埋めて使用する。
 
-```
+````
 PR #{number}: {title} のレビューを {reviewer_type} として実行してください。
 
 ## 変更概要
@@ -106,4 +106,4 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 ## 制約
 [READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。
-```
+````
