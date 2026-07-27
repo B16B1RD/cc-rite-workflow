@@ -356,8 +356,8 @@ run --pr-number 123 --review-file-path "$SANDBOX/p0-measured-string.json" --conv
 assert_rc 0 "p0 measured type invalid (string) -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 measured type guard reason"
 assert_err_lacks "[CONTEXT] REVIEW_SOURCE=explicit_file;" "p0 measured type invalid must not be accepted"
-# sibling (p0-verif-bool) と同じ強さで routing を pin する。assert_err_lacks の否定条件だけでは
-# 「fallback 以外の誤 routing」(例: Test 4 が残した 123-*.json を local_file として拾う) を通す
+# sibling (p0-verif-bool) と同じ強さで routing を pin する。assert_err_lacks は explicit_file 以外の
+# すべてを通す否定条件なので、終端値そのものを positive に固定する
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 measured type invalid -> fallback routing"
 
 # all() 普遍量化: 先頭 finding が正常でも後続の型崩れを検出する
@@ -420,6 +420,10 @@ run --pr-number 706 --review-file-path "$UNSET" --conversation-decision none --p
 assert_rc 0 "p2 verification type invalid (bool) -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 verification type guard reason"
 assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 type invalid must not be accepted as local_file"
+# P0 の fallback pin と対称。否定条件だけでは routing 先が pr_comment 以外に変わっても通るため、
+# schema SoT が定める「P2 の失敗モードはすべて Priority 3 へ」を positive に固定する
+# (706/707/708/709 は同一の review_source 代入を共有するので 1 箇所で全体を pin できる)
+assert_err_has "[CONTEXT] REVIEW_SOURCE=pr_comment;" "p2 type guard -> pr_comment (Priority 3 routing)"
 if ls "$RR"/706-20260101000000.json.corrupt-* >/dev/null 2>&1; then
   pass "type-invalid file renamed to .corrupt-* (Instance 3/3)"
 else
@@ -482,6 +486,41 @@ run --pr-number 711 --review-file-path "$UNSET" --conversation-decision none --p
 assert_rc 0 "p2 measured verification -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 measured verification accepted"
 assert_err_lacks "reason=local_file_verification_type_invalid" "p2 measured=true: type guard must not fire"
+
+# 型ガードの**上側**境界 (required-fields チェックより後段) を pin する。下側 (invariant #2) だけを
+# pin しても、ガードを required-fields の前へ移す退行を検出できない。findings が非配列 object の
+# fixture では、正しい順序だと required-fields が先に弾いて rename するが、退行すると
+# ガードの jq が rc=5 になり rename されなくなる (無限 ring 保護が消える)。
+# 既存の 703 fixture ({"foo":"bar"}) は findings キー自体が無く `.findings[]?` が空生成になるため
+# この差が出ず、上側境界を pin できない。
+cat > "$RR/712-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":712,"overall_assessment":"fix-needed","findings":{"a":1}}
+JSON
+run --pr-number 712 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 guard-after-required-fields -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" "p2 required-fields が型ガードより先に発火する"
+assert_err_lacks "reason=local_file_verification_guard_jq_failed" "p2 型ガードは required-fields の後段に留まる"
+if ls "$RR"/712-20260101000000.json.corrupt-* >/dev/null 2>&1; then
+  pass "p2 上側境界が保たれているため rename も発火する"
+else
+  fail "p2 rename が発火していない (型ガードが required-fields より先行した疑い)"
+fi
+
+# tempfile hygiene: 型ガードが通過する成功経路で jq stderr 退避ファイルが残らないこと。
+# mktemp は elif の条件部で実行されるため、then に入らない成功経路では inline の rm に到達しない。
+# cleanup trap への登録が外れると 1 実行 1 件のペースで TMPDIR に蓄積する。
+hyg_dir="$TEST_DIR/hygiene"; mkdir -p "$hyg_dir"
+valid_json "$SANDBOX/hygiene-ok.json"
+set +e
+(cd "$SANDBOX" && TMPDIR="$hyg_dir" bash "$TARGET" --pr-number 123 \
+  --review-file-path "$SANDBOX/hygiene-ok.json" --conversation-decision none \
+  --p1-scan-turns 0 --p1-scan-found false) >/dev/null 2>&1
+set -e
+if ls "$hyg_dir"/rite-verif-guard-err-* >/dev/null 2>&1; then
+  fail "型ガード成功経路で jq stderr tempfile が残存している ($(ls "$hyg_dir"/rite-verif-guard-err-* | wc -l) 件)"
+else
+  pass "型ガード成功経路で jq stderr tempfile が残らない"
+fi
 
 # -----------------------------------------------------------------
 echo ""

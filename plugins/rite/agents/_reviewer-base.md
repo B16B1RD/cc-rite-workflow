@@ -150,7 +150,7 @@ The `内容` column of every **指摘事項** MUST explicitly state which eviden
 Likelihood-Evidence: <evidence_type> <location_or_observation>
 ```
 
-Place this line at the end of the `内容` column. For Markdown table cells where physical newlines are not supported, use `<br>` as the separator, or append the line as a continuation after the WHAT + WHY narrative on the same logical row.
+Place this line at the end of the `内容` column — or, when a `Verification:` anchor is also attached, immediately before it (see [Verification: runtime 実測の添付](#verification-runtime-measurement) for the anchor order). For Markdown table cells where physical newlines are not supported, use `<br>` as the separator, or append the line as a continuation after the WHAT + WHY narrative on the same logical row.
 
 Where `<evidence_type>` is one of the following literal labels:
 
@@ -205,7 +205,7 @@ Verification: failing_test <テストパス> => <失敗出力>
 - `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われる。
 - `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は掲載可否 (Observed Likelihood Gate) を担い、`Verification:` は実測の記録を担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` の形式でも添付すること (両方を書く)。
 - 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
-- `=>` の右辺 (観測結果) を空にしない。実測結果を書けないなら、そもそもアンカーを付けずに報告する (アンカー無しは default mapping で `measured=false` になる)。**空 RHS は自動降格されない** — [invariant #6](../references/review-result-schema.md#cross-field-invariants-型レベルで表現しきれない制約) が降格するのは `repro` と `failing_test` を**両方とも空のまま** `measured: true` を宣言した場合だけで、`repro` に `cmd =>` と書けば非空文字列として通ってしまう。
+- `=>` の右辺 (観測結果) を空にしない。実測結果を書けないなら、そもそもアンカーを付けずに報告する (アンカー無しは default mapping で `measured=false` になる)。**空 RHS を救う自動降格はない** — [invariant #6](../references/review-result-schema.md#cross-field-invariants-型レベルで表現しきれない制約) は配線後も、`repro` と `failing_test` を**両方とも空のまま** `measured: true` を宣言した場合しか降格しない。`repro` に `cmd =>` と書けば非空文字列として通る。
 - **`内容` 列の中では raw `|` (パイプ) を使わないこと** (`Likelihood-Evidence:` / `Verification:` / WHAT + WHY 叙述のいずれも対象)。制約の実体はアンカー種別ではなく Markdown テーブルセルの性質で、セル境界と衝突して 5 列構造を壊す。アンカーを機械抽出する側もセル境界を跨げないため、パイプを含む再現コマンドは抽出できず記録が失われる。パイプを含むコマンドは `¦` (U+00A6) で代替表記し、その旨を実測結果側に添える。例: `Verification: repro printf '%s' "$json" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)`
 
 ## Scope Assignment Flowchart

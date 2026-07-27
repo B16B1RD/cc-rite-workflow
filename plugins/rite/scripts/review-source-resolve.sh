@@ -145,8 +145,12 @@ review_source_path=""
 find_err=""
 jq_val_err_p0=""
 jq_val_err_p2=""
+# 型ガードの jq stderr 退避先。ガードが通過する成功経路では elif の then ブロックに入らず
+# inline の rm に到達しないため、他の tempfile と同じく cleanup 登録が必須。
+vg_err_p0=""
+vg_err_p2=""
 _rite_fix_p120_cleanup() {
-  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}"
+  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}" "${vg_err_p0:-}" "${vg_err_p2:-}"
 }
 trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
 trap '_rite_fix_p120_cleanup; exit 130' INT
@@ -227,9 +231,9 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
        [ "$vg_rc_p0" -ne 0 ]; then
     # verification 型ガード (review-result-schema.md §verification 型ガード (read 側))。
     # 本ガードを cross-field invariant より前段に置くのは、`(.verification.measured // false)` を
-    # 評価する下流 consumer (fix.md の severity_map 構築経路、および判定層) に型崩れを到達させない
-    # ため。本スクリプト内の後段 invariant (#2 / #4 / enum) は .verification を参照しないので、
-    # ここでの順序は下流保護のための予防的配置であり、後段が rc=5 になるからではない。
+    # 評価する下流 consumer (現時点では未配線 — schema.md の default mapping 節が正準として示す
+    # 将来の consumer) に型崩れを到達させないため。本スクリプト内の後段 invariant (#2 / #4 / enum) は
+    # .verification を参照しないので、ここでの順序は予防的配置であり、後段が rc=5 になるからではない。
     # 順序が観測可能な差を生むのは reason ラベル (先に評価した側が routing を取る) のみ。
     # measured の存在は要求しない (verification:{} は default mapping の対象として受理する)。
     if [ "$vg_rc_p0" -eq 1 ]; then
