@@ -13,15 +13,15 @@ argument-hint: "<pr_number>"
 `/rite:pr-review` ↔ `/rite:fix` を **blocking 指摘ゼロ（mergeable）になるまでループ** する（blocking の定義は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が SoT。実測なし（`measured=false`）と判定された指摘は non-blocking として記録されたまま残存し、その状態で正常出口に到達しうる）。ただし `safety.max_review_cycles`（既定 5）を上限とする **サーキットブレーカー** を備え、reviewer の非決定的な振動や非収束 PR による無限ループを構造的に防ぐ。やることは以下のシーケンシャルなタスク列:
 
 0. flow-state から issue_number / branch_name を復元
-0.6. cycle counter を初期化（fresh は 0 にリセット / resume は継続）+ `safety.max_review_cycles` を読込・検証
+0.6. cycle counter を初期化（fresh は 0 にリセット / resume は継続。ただし counter が上限に達したまま起動された = 発火後の再実行なら phase に依らず fresh）+ `safety.max_review_cycles` を読込・検証
 1. cycle 上限チェック → 未到達なら counter を +1 して `/rite:pr-review` を invoke / 到達なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → 終了 / `[review:fix-needed:N]` → ステップ 3 / その他 → AskUserQuestion）
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / `[fix:error]` → AskUserQuestion）
 5. 完了通知を出す
-6. （cycle 上限到達時のみ）サーキットブレーカー: バッチ実行（`/rite:batch-run`）は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにさせ、対話実行は AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ねる
+6. （cycle 上限到達時のみ）サーキットブレーカー: batch / 対話とも人間に問わず機械的に停止する。バッチ実行（`/rite:batch-run`）は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにさせ、対話実行は `[iterate:max-cycles-stopped]` の停止通知を出して終了する
 
-**サーキットブレーカー**（`safety.max_review_cycles`、既定 5）が唯一の自動安全網。上限到達時は、対話実行では AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ね（自動でループを継続しない）、`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにする sentinel を emit して次 Issue へ進ませる（バッチ全体のストール防止）。cycle_count は flow-state に永続化され resume 後も継続する（AC-3）。それ以外の中断経路は 2 種類: (a) ユーザーが fix.md 内 AskUserQuestion で「中止」を選択 → `[fix:cancelled-by-user]` emit + ループ終了、(b) ユーザーが Ctrl+C で中断 → flow-state phase 残存。どちらも `/rite:recover` で再開可。
+**サーキットブレーカー**（`safety.max_review_cycles`、既定 5）が唯一の自動安全網。**発火＝失敗の機械的記録**であり、上限到達時は batch / 対話とも同構造（failed 記録 + draft 残し + 停止通知 + handoff クリア維持）で停止する — 人間に継続可否を問う経路は持たず、発火からマージへ到達する分岐も存在しない。`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにする sentinel を emit して次 Issue へ進ませる（バッチ全体のストール防止）。ループを再開する唯一の経路は人間が明示的に `/rite:iterate {pr}`（または `/rite:recover`）を再実行することで、このときステップ 0.6 が counter をリセットする。cycle_count は flow-state に永続化され resume 後も継続する（AC-3）。それ以外の中断経路は 2 種類: (a) ユーザーが fix.md 内 AskUserQuestion で「中止」を選択 → `[fix:cancelled-by-user]` emit + ループ終了、(b) ユーザーが Ctrl+C で中断 → flow-state phase 残存。どちらも `/rite:recover` で再開可。
 
 途中で止まったら flow-state に現 phase (review or fix) が残るので `/rite:recover` で再開する。
 
@@ -30,7 +30,7 @@ argument-hint: "<pr_number>"
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` 到達 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話中止）or Ctrl+C 中断）
+**Output**: 完了通知（`[review:mergeable]` 到達 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。いずれも非収束による失敗で、マージには進まない）or Ctrl+C 中断）
 
 ## Arguments
 
@@ -104,6 +104,7 @@ esac
 
 # (2) fresh / resume 判定: iterate 起動時の phase が review/fix なら resume（counter 継続）、それ以外は fresh（0 リセット）。
 #     run バッチで前 Issue の cycle_count が同一セッション flow-state に merge-preserve され次 Issue に漏れるのを防ぐ。
+#     ただし counter が既に上限に達している場合は phase に依らず fresh に倒す（下記 override）。
 cur_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "") || cur_phase=""
 cur_cc=$(bash {plugin_root}/hooks/flow-state.sh get --field cycle_count --default 0) || cur_cc=0
 case "$cur_cc" in ''|*[!0-9]*) cur_cc=0 ;; esac   # 読めない / 不正なら 0 から（安全側: 既定上限で必ず止まる）
@@ -111,19 +112,42 @@ case "$cur_phase" in
   review|fix) cb_mode_init=resume ;;
   *)          cb_mode_init=fresh ;;
 esac
+# 発火後再実行 override: cycle_count が上限に達したまま iterate が起動された = 前回ブレーカーが
+# 発火して停止した後の再実行。ステップ 1 の fire 分岐は phase=review で set するため phase だけでは
+# 「発火後停止」と「review 途中の中断」を区別できず、resume 判定のままだと再実行が即再発火して
+# ループを再開できない（継続経路の消滅）。ブレーカー発火時に handoff は default-clear され、
+# stop-loop-continuation.sh は handoff の有無のみで block を決めるため、発火後に iterate へ
+# 再入場する経路は人間の明示コマンド（/rite:iterate 再実行 / /rite:recover）だけであり、
+# ここで fresh に倒しても自動継続は発生しない。
+if [ "$cur_cc" -ge "$max_cycles" ] 2>/dev/null; then
+  cb_mode_init=fresh
+fi
+reset_status=none
 if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
   # stale counter を除去（--cycle-count 0 は key 自体を削除。他フィールドは merge-preserve）。
   # reset 失敗を握り潰さず WARNING を surface する（stale counter が残るとブレーカーが早期発火し
-  # うるため）。非ブロッキング（iterate は止めない）。ステップ 6.2 継続経路の reset と対称。
-  bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
-    --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 >/dev/null 2>&1 \
-    || echo "WARNING: cycle counter reset に失敗（stale counter が残りブレーカー早期発火の恐れ）" >&2
+  # うるため）。非ブロッキング（iterate は止めない）。ステップ 1 の fire / ok 分岐の set と対称。
+  if bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
+    --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 >/dev/null 2>&1; then
+    reset_status=ok
+  else
+    reset_status=failed
+    echo "WARNING: cycle counter reset に失敗（stale counter が残りブレーカー早期発火の恐れ）" >&2
+  fi
   cur_cc=0
 fi
-echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init"
+echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init; RESET=$reset_status"
 ```
 
 `ITERATE_CYCLE_MAX` / `ITERATE_CYCLE` を retain してステップ 1 の上限チェックに渡す。
+
+`RESET` は reset の実施結果で、ステップ 6 の停止通知が「即時再発火」を説明するために読む:
+
+| `RESET` | 意味 |
+|---|---|
+| `none` | reset 不要だった（counter が既に 0、または resume 継続） |
+| `ok` | counter を 0 にリセット済み |
+| `failed` | reset の flow-state set が失敗し counter が上限のまま残存。**ステップ 1 で即座にブレーカーが再発火する**（WARNING は emit 済み）。この場合ステップ 6 の停止通知に該当行を含める |
 
 ---
 
@@ -267,6 +291,12 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ## ステップ 6: サーキットブレーカー（cycle 上限到達時のみ）
 
+> **発火＝失敗・マージ不可（hard invariant）**: ブレーカー発火は「review⇄fix が非収束のまま上限に達した」という**失敗の機械的記録**であり、成功・完了ではない。本ステップ以降に `/rite:merge` 相当へ到達する分岐は **batch / 対話とも存在しない**（6.1 は制御を `/rite:batch-run` に返し、run 側は `[iterate:max-cycles-reached]` を受けて ready/merge/cleanup を**スキップ**して次 Issue へ進む。6.2 は停止通知を出して終了する）。発火を成功として報告してはならない。
+>
+> 停止通知に記す `/rite:ready {pr_number}` は、人間が draft PR をレビューに出すために**明示的に叩く経路外のアクション**であり、本ステップの自動フローが辿る分岐ではない（かつ `/rite:ready` は Ready 化のみでマージしない）。発火から自動的にマージへ至る経路が無いという上記 invariant はこれによって崩れない。
+>
+> 発火後にループを再開する唯一の経路は、人間が明示的に `/rite:iterate {pr}`（または `/rite:recover`）を再実行することである。再実行時はステップ 0.6 の発火後再実行 override が cycle counter を 0 にリセットするため、即時再発火せずループが再開する。
+
 ステップ 1 で `ITERATE_CB=fire`（`cycle_count >= max_review_cycles`）となったときのみ到達する。まず batch 実行（`/rite:batch-run` 経由）か対話実行かを **自セッションの** run-queue（`run-queue-{session_id}.json`）から判定する。`/rite:batch-run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。iterate は batch-run から**同一セッションで invoke される**ため、driving 中なら本 iterate の ambient session_id と run-queue の session_id は一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、Issue #1859 AC-2）。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
 
 ```bash
@@ -292,7 +322,9 @@ echo "[CONTEXT] ITERATE_CB_MODE=$cb_mode; issue={issue_number}; pr={pr_number}"
 | `ITERATE_CB_MODE` | アクション |
 |---|---|
 | `batch` | ステップ 6.1（failed sentinel emit）|
-| `interactive` | ステップ 6.2（AskUserQuestion）|
+| `interactive` | ステップ 6.2（機械的停止通知）|
+
+**両分岐は挙動として同構造**（failed 記録 + draft 残し + 停止通知 + handoff クリア維持。人間への問い合わせは行わない）であり、差は **sentinel の消費者だけ**である: `[iterate:max-cycles-reached]` は `/rite:batch-run` が grep して当該 Issue を `failed[]` に記録し次 Issue へ進むために消費する。`[iterate:max-cycles-stopped]` は消費者を持たない iterate 内部完結の最終状態表示。どちらの経路もマージには到達しない（上記 invariant）。
 
 ### ステップ 6.1: バッチ実行 — failed sentinel を emit
 
@@ -310,49 +342,31 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 制御を `/rite:batch-run` に戻す（run 側で cursor 前進）。
 
-### ステップ 6.2: 対話実行 — AskUserQuestion
+### ステップ 6.2: 対話実行 — 機械的停止通知を出力
 
-`AskUserQuestion` で以下 3 択を提示する。設問には残 findings 数の推移など観察材料を添えると判断しやすい（Scenario 2）。設問文・選択肢の `{max_review_cycles}` はリテラル置換する:
+`AskUserQuestion` は**使わない**。当該 PR を非収束（failed）として機械的に記録し、draft/open PR をレビュー待ちで残して停止する。6.1（batch）と同構造であり、品質ゲートの履行を人間の裁量に委ねない（発火は失敗であって、人間に選ばせて counter をリセットし続行できる例外を作らない）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない。
 
-- **さらに {max_review_cycles} cycle 継続**: counter を 0 にリセットしてループを再開し、もう {max_review_cycles} cycle 回す
-- **中止**: ループを終了（flow-state phase 保持、`/rite:recover` で再開可）
-- **draft のまま停止**: ループを終了し draft PR をレビュー待ちで残す（`/rite:recover` で再開可）
-
-回答に応じて分岐する:
-
-| 選択 | アクション |
-|---|---|
-| さらに {max_review_cycles} cycle 継続 | 下記で counter を 0 リセット後、**ステップ 1 へ戻る**（もう {max_review_cycles} cycle 実行） |
-| 中止 / draft のまま停止 | 下記の停止通知を出力してループ終了 |
-
-**継続時**（counter リセット → ステップ 1 へ）:
-
-```bash
-# reset の silent 失敗を可視化する（ステップ 0.6 / fire / ok の 3 set と対称の 4 つ目）。
-# 失敗すると cycle_count が上限のまま残り、「継続」を選んでもステップ 1 で即再発火して同じ
-# AskUserQuestion に戻る（fail-safe だが継続選択が無言で無効化される）。非ブロッキング。
-bash {plugin_root}/hooks/flow-state.sh set \
-  --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-  --next "review⇄fix ループ継続（cycle counter reset、ユーザー承認）" --cycle-count 0 \
-  || echo "WARNING: cycle counter reset に失敗（継続選択が反映されず再度ブレーカー発火の恐れ）" >&2
-```
-
-**中止 / draft のまま停止時**（停止通知を出力して終了）:
+下記の停止通知を出力してループを終了する（`{max_review_cycles}` 等はリテラル置換する）:
 
 ```
 ## /rite:iterate サーキットブレーカー発火（対話・停止）
 
 - PR: #{pr_number}（Issue #{issue_number}）
-- 理由: review⇄fix cycle が上限 {max_review_cycles} に到達
-- 選択: {中止 | draft のまま停止}
+- 理由: review⇄fix cycle が上限 {max_review_cycles} に到達（非収束）
+- 措置: 当該 PR を非収束として失敗記録し、draft/open PR をレビュー待ちで残します（マージには進みません）
 
 再開方法:
-- /rite:recover で本コマンドが再起動（flow-state phase 保持）。cycle_count は上限のまま保持されるため、
-  再開直後に再びサーキットブレーカーが発火する（安全側: 上限を越えて自動継続しない）。継続する場合は
-  発火時の AskUserQuestion で「継続」を選ぶ
-- Ready 化して手動でレビューを完了させる: /rite:ready {pr_number}
+- ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter がリセットされ、
+  もう {max_review_cycles} cycle 回る）。/rite:recover 経由の再開も同じ経路
+- Ready 化して人間のレビューに委ねる: /rite:ready {pr_number}
 
 <!-- [iterate:max-cycles-stopped] -->
+```
+
+ステップ 0.6 の `[CONTEXT] ... RESET=failed` を context で観測している場合（前回発火後の再実行で counter リセットに失敗し、そのまま即時再発火したケース）は、上記「理由」行の直後に次の 1 行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）:
+
+```
+- 注意: 前回の cycle counter リセットに失敗したため上限値のまま再発火しました（review は 1 cycle も回っていません）。flow-state の書き込み権限を確認してから再実行してください
 ```
 
 ---
@@ -361,7 +375,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `[fix:error]` 時: 自動継続せず必ず AskUserQuestion で確認 (silent regression 防止)
-- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: `safety.max_review_cycles`（既定 5）到達でサーキットブレーカーが発火する（ステップ 6）。対話実行は AskUserQuestion（継続 / 中止 / draft のまま停止）でユーザーに判断を委ね、`/rite:batch-run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進む。Ctrl+C による手動中断も従来どおり可能
+- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: `safety.max_review_cycles`（既定 5）到達でサーキットブレーカーが発火する（ステップ 6）。batch / 対話とも人間に問わず機械的に停止し（発火＝失敗の記録）、`/rite:batch-run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進み、対話実行は `[iterate:max-cycles-stopped]` の停止通知で終了する。再開は人間による `/rite:iterate {pr}` の明示的な再実行のみ。Ctrl+C による手動中断も従来どおり可能
 
 ---
 
@@ -373,6 +387,6 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 ## 設計判断
 
 - **blocking 指摘ゼロ（mergeable）到達が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする（同 § は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、実測の有無を判定できない指摘は blocking のまま扱う）。実測を伴わない指摘は non-blocking として `/rite:pr-review` ステップ 6.1.d の PR 記録コメント・ステップ 5.4 統合レポート・永続 JSON に記録されたまま残存するため、**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達してループが正常終了しうる**（#2024）— 残存分は draft PR の人間レビューに委ねる設計。加えて `safety.max_review_cycles`（既定 5）到達で発火するサーキットブレーカーを唯一の自動安全網として持つ（#1701）。reviewer の非決定的振動や非収束 PR による無限ループを構造的に防ぐ。同一 finding 検出 / quality signal escalation といった細粒度の安全網は依然として持たず、cycle 上限のみに絞る（CLAUDE.md「シンプルさを死守」）
-- **上限到達時も自動中止しない**: 対話実行は AskUserQuestion でユーザーに判断を委ね（自律実行の哲学を維持）、`/rite:batch-run` バッチ実行のみ failed 扱いで次 Issue へ自動遷移する（バッチ全体のストール防止）
-- **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）
+- **発火＝失敗の機械的記録（batch / 対話で同一）**: 上限到達時は両モードとも人間に問わず停止する（#2026）。導入時（#1701）は対話モードの UX として AskUserQuestion（継続 / 中止 / draft のまま停止）を残していたが、人間の裁量で counter をリセットして続行できる経路は「品質ゲートを機械的に履行する」方針に対する例外であり、人間エスカレーションは責任転嫁で終端にならない。継続は人間が明示的に `/rite:iterate {pr}` を再実行する経路のみに絞り、そのときステップ 0.6 の発火後再実行 override が counter をリセットする。`/rite:batch-run` バッチ実行は従来どおり failed 扱いで次 Issue へ自動遷移する（バッチ全体のストール防止）
+- **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて counter が上限に達したまま iterate が起動された場合は phase に依らず 0 リセットする（発火後再実行 override）— ブレーカー発火後は継続 handoff が default-clear されて自動再入場の経路が無くなるため、この状態で iterate が動いているのは人間が明示的に再実行したときだけであり、リセットしないと再実行が即再発火してループを再開する術が無くなる。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）
 - 別 Issue 化経路は廃止済み (commit 1a で fix.md Phase 4.3 削除) — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている

@@ -638,10 +638,14 @@ When a limit is exceeded, the workflow presents options:
 
 The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 findings). `max_review_cycles` adds a circuit breaker so a non-convergent PR cannot loop forever. When the cycle count reaches the limit:
 
-- **Interactive `/rite:iterate`**: an `AskUserQuestion` is presented (continue for another `max_review_cycles` cycles / abort / leave the draft as-is). The loop is never auto-continued past the limit.
+Tripping the breaker records a **failure** — a non-convergent loop — and never reaches a merge. Both modes stop mechanically without asking the user to decide:
+
+- **Interactive `/rite:iterate`**: the loop stops with a notice (`[iterate:max-cycles-stopped]`), leaving the draft/open PR for review. No prompt is shown; the loop is never auto-continued past the limit.
 - **`/rite:batch-run` batch**: the Issue is recorded as failed (`[iterate:max-cycles-reached]`) and the batch advances to the next Issue, leaving the draft/open PR for review. This prevents one non-convergent PR from stalling the whole batch.
 
-The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:recover` — an interrupted loop resumes its count rather than restarting from 0.
+The only way to resume the loop is to re-run `/rite:iterate {pr}` explicitly (`/rite:recover` takes the same path). On that re-run the cycle counter is reset, so the loop restarts rather than tripping again immediately.
+
+The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:recover` — an interrupted loop resumes its count rather than restarting from 0. The one exception is the re-run above: when the counter is already at the limit at startup, it is reset regardless of the recorded phase, since a tripped breaker clears the continuation handoff and only an explicit human command can re-enter the loop.
 
 ### metrics
 
