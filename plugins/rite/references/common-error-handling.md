@@ -79,6 +79,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 **適用箇所**:
 - `/rite:pr-review` ステップ 6.1.a (Local JSON File Save)
+- `/rite:pr-review` ステップ 6.1.d (非実測指摘の PR コメント記録 — **2 群で帰結が異なる**。gh / IO 失敗 (`patch_failed` / `create_failed` / lookup degraded / `body_check_unavailable`) と signal 中断 (`signal_aborted`) は完全に非ブロッキングで、pending marker も削除する。本文不備 4 種 (`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`) は `exit 0` かつ `overall_assessment` 不変だが **pending marker を保持し ステップ 8.0.3 が result pattern の emit を差し戻す** (caller 契約違反の再試行で 1 iteration 収束)。placeholder residue 5 種 + `content_file_missing` + `unknown_option` の 7 種は caller 契約違反として `exit 1` し、同じく marker が残る)
 - `/rite:cleanup` ステップ 6 (Review Results File Cleanup、旧 Phase 2.5)
 - 将来追加される sub-phase で「失敗しても upstream を kill しない」契約が必要なものは本セクションを参照すること
 

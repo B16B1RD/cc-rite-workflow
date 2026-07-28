@@ -120,7 +120,7 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 
 > **降格を緩めない**: no-match を許容して keep する / regex を greedy に戻す方向の修正は採らない。降格自体は fail-safe として正しく (誤って blocking を落とすより安全)、問題は**無音であること**のみ。
 >
-> **この permissive 例外は上記 WARNING emit と記録先 3 経路が機能していることが前提**: 本ゲートは rite 全体で唯一「判定不能を permissive 側 (non-blocking) に倒す」箇所で、それが許されるのは (a) 降格が必ず WARNING で報告され、(b) 降格した指摘が **永続 JSON (`non_blocking_findings[]`) に必ず残る**ため。5.4 section と E2E output line suffix は補助経路で、実行モード (standalone は ステップ 8 を実行しない) と件数 (0 件なら省略) に依存する。後続の変更で (a) か (b) を緩めるなら、本例外の前提が崩れるので同時に見直すこと。blocking 側に倒す修正は AC-2 の収束性を壊す (`/rite:fix` はコードを直す機構でありレビュアー出力の形式崩れは直せず、`max_review_cycles` まで空転する) ため採らない。
+> **この permissive 例外は上記 WARNING emit と記録先 4 経路が機能していることが前提**: 本ゲートは rite 全体で唯一「判定不能を permissive 側 (non-blocking) に倒す」箇所で、それが許されるのは (a) 降格が必ず WARNING で報告され、(b) 降格した指摘が **永続 JSON (`non_blocking_findings[]`) に必ず残り、ステップ 6.1.d の PR 記録コメントに best-effort で残る**ため (後者は非ブロッキング契約により gh 失敗 / 本文不備で落ちうる。落ちた場合は WARNING と `outcome=failed` が出る)。5.4 section と E2E output line suffix は補助経路で、実行モード (standalone は ステップ 8 を実行しない) と件数 (0 件なら省略) に依存する。後続の変更で (a) か (b) を緩めるなら、本例外の前提が崩れるので同時に見直すこと。blocking 側に倒す修正は AC-2 の収束性を壊す (`/rite:fix` はコードを直す機構でありレビュアー出力の形式崩れは直せず、`max_review_cycles` まで空転する) ため採らない。
 
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
@@ -134,10 +134,11 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 
 - `total_findings` にカウントしない (mergeable countdown から除外)
 - finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、永続 JSON 単体を読む人間が 2 配列を跨いで finding を一意に参照できる (5.4 統合レポートのテーブルは `id` 列を持たないため、JSON ↔ レポート間の相互参照を目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証 (本配列側の違反は非ブロッキング marker `NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION` で報告され、保存は続行する)
-- 記録先は 3 経路すべてで、破棄経路は存在しない:
-  1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) で唯一の永続チャネル。マージ後に人間が拾い直せる状態を担保する
-  2. **ステップ 5.4 統合レポート** の `### 実測なし指摘 (non-blocking)` section (severity 明示) — E2E でも省略禁止 (`pr-review/SKILL.md` E2E Output Minimization 表の例外)
-  3. **E2E output line** の `| non-blocking: {n}` suffix (件数のみ、`n > 0` のとき)
+- 記録先は 4 経路すべてで、破棄経路は存在しない:
+  1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) におけるローカル側の永続チャネル
+  2. **ステップ 6.1.d の PR 記録コメント** (`## 📜 rite 非実測指摘の記録`、`pr_review.post_comment` に**依存しない**。通常は cycle ごとに同じコメントを update-in-place するが、helper が自分の過去投稿を特定できない場合は縮退する — 本 cycle の指摘が 1 件以上なら新規作成となり 2 件目が並び、0 件なら投稿自体を省くため前 cycle の記録が stale で残る) — `.rite/review-results/` は gitignore 対象のため、レビュアーと共有できる永続チャネルはこちらのみ。両者あわせてマージ後に人間が拾い直せる状態を担保する
+  3. **ステップ 5.4 統合レポート** の `### 実測なし指摘 (non-blocking)` section (severity 明示) — E2E でも省略禁止 (`pr-review/SKILL.md` E2E Output Minimization 表の例外)
+  4. **E2E output line** の `| non-blocking: {n}` suffix (件数のみ、`n > 0` のとき)
 - fix サイクルは起動しない (fix.md 側の除外分岐は [fix-relaxation-rules.md](./fix-relaxation-rules.md) §Fix Target Classification 参照)
 
 **scope=nit-noted との関係**: nit-noted は従来どおり §5.3.1 の nit-noted exclusion で扱い、本ゲートの対象にしない (二重計上防止)。本ゲートの対象は `scope ∈ {current-pr, follow-up}` の finding のみ。

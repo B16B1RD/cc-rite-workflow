@@ -144,8 +144,18 @@ parallel:
 # By default, review results are saved to timestamped local files
 # (`.rite/review-results/{pr_number}-{timestamp}.json`) instead of being posted to PR comments.
 # `/rite:fix` auto-reads results in the priority order: conversation > local file > PR comment.
+# Note: the non-measured findings record comment ("📜 rite 非実測指摘の記録") is attempted
+# regardless of this setting — it is the guarantee behind Issue #2024 D-01 ("record non-measured
+# findings as a PR comment, never discard them") and is not opt-out-able. The PR comment is
+# best-effort: a gh failure or a malformed body aborts the post with a warning and
+# `outcome=failed`, so the unconditional channel is the local JSON record, not the comment.
+# It is normally a single comment updated in place each cycle; when the helper cannot identify
+# its own previous comment (e.g. `gh api user` fails, or the earlier comment was posted under a
+# different token identity) it degrades in one of two ways depending on the count: with findings
+# it creates a new one, so more than one may accumulate on a PR; with zero it skips the post
+# entirely, so the previous cycle's record stays on the PR as stale.
 pr_review:
-  post_comment: false   # true to enable PR comment recording (equivalent to --post-comment, default: false)
+  post_comment: false   # true to enable PR comment recording (equivalent to --post-comment, default: false; the non-measured findings record comment is independent of this setting)
 
 # Safety settings (fail-closed thresholds)
 safety:
@@ -665,9 +675,9 @@ Settings for PR review **output** recording. This section is intentionally separ
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), results are saved to `.rite/review-results/{pr_number}-{timestamp}.json` only |
+| `post_comment` | boolean | `false` | When `true`, the full review report is posted as a PR comment (equivalent to `--post-comment`). When `false` (default), the report is saved to `.rite/review-results/{pr_number}-{timestamp}.json` only. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, normally one comment updated in place — the lookup degrades to creating a second one when it cannot identify its own prior comment) is **attempted** independently of this setting whenever the review produces one or more non-measured findings — and is additionally refreshed in place on a converged cycle producing zero, when a record comment from a previous cycle already exists **and the helper can identify it** (a lookup that cannot identify the prior comment — such as a degraded lookup, a prior comment posted under a different token identity, or one whose last non-blank line is not the machine sentinel — skips the refresh, leaving the previous cycle's record stale). The PR comment is **best-effort**: a gh failure (`create_failed` / `patch_failed`), a jq runtime failure (`body_check_unavailable`), or a malformed body (`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`) aborts the post with a warning and `outcome=failed`, so the **unconditional** record channel is the local JSON, not the comment (Measured CONFIRMED Gate, Issue #2024 D-01) |
 
-`/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself.
+`/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep the full review report off the PR; note that the non-measured findings record comment is still recorded regardless — best-effort on the PR (normally one, updated in place), unconditionally in the local JSON. Enable `post_comment: true` only if you want an auditable full review trail on the PR itself.
 
 ### wiki
 

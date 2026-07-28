@@ -198,7 +198,7 @@ rite-workflow/
 │ ├── cleanup-work-memory.sh
 │ ├── issue-claim.sh # Issue claim (同一 Issue 二重着手ガード、always-on)
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
-│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # skills/pr-review/SKILL.md 6.1.a/b/c 委譲
+│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh / review-nonblocking-record.sh # skills/pr-review/SKILL.md 6.1.a/b/c/d 委譲
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
@@ -410,7 +410,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true`; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |
 | `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
-| `pr_review.post_comment` | PR review output destination |
+| `pr_review.post_comment` | PR review output destination. The non-measured findings record comment (`📜 rite 非実測指摘の記録`, one comment from the Measured CONFIRMED Gate, updated in place each cycle — and, when the helper cannot identify its own previous comment, re-created (so possibly duplicated) if the cycle has findings, or not posted at all if the cycle has zero, leaving the previous record stale) is posted **independently of this setting** (not subject to the opt-out — it upholds Issue #2024 D-01 "record non-measured findings as a PR comment") |
 | `wiki.*` | Experience Wiki — `enabled` (opt-out), `branch_strategy`, `auto_ingest`, `auto_query`, `auto_lint`, `growth_check.*` |
 | `metrics.*` | Execution metrics recording |
 | `language` | `auto` / `ja` / `en` |
@@ -854,7 +854,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 
 **Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from the second iteration onward, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every iteration, maximizing review quality.
 
-**Definition of "Approve":** Zero blocking findings.
+**Definition of "Approve":** Zero blocking findings, where **blocking = a CONFIRMED finding, in scope `current-pr` / `follow-up`, whose `measured` is `true`** (a repro command with the observed misbehavior, or a failing test with its output — Measured CONFIRMED Gate, #2024) — **undetermined `measured` is outside this formula and stays blocking**, and `nit-noted` scope is outside it as before. `measured` is resolved **per layer, and within `/rite:fix` per read-route**: in `/rite:pr-review` it comes from the `Verification:` anchor in the reviewer's `内容` column (the gate runs before the review-result JSON is written, so no `verification` field exists at that point). In `/rite:fix` there is no single source — the JSON route reads `findings[].verification`, the conversation and Markdown routes read membership in the integrated report's `### 実測なし指摘 (non-blocking)` section, and the external-tool route supplies nothing at all (leaving `measured` undetermined). Under the current ステップ 6.1.a contract the JSON route never yields `false`, because `non_blocking_findings[]` is kept out of `findings[]`; the `false` values reach `/rite:fix` only through the conversation and Markdown routes. Naming the JSON route as the sole source would make every finding undetermined — and therefore blocking — in `/rite:fix`, contradicting the exit condition stated below. A rite reviewer finding whose `内容` column carries no `Verification:` anchor is demoted to non-blocking: it keeps its severity, is recorded (**unconditionally** in the persistent JSON `non_blocking_findings[]`, and — best-effort, since a gh failure or a malformed body aborts the post — as a PR comment, `## 📜 rite 非実測指摘の記録`, updated in place each cycle — falling back to a new comment when the helper cannot identify its own prior one, see the `pr_review.post_comment` row — and posted independently of `pr_review.post_comment`), and does not drive the fix cycle. The demotion is **not** unconditional across all findings: `measured` is a three-valued input, and undetermined is not demoted: in `/rite:pr-review` that means a finding which structurally cannot carry the anchor (external tooling / human review); in `/rite:fix` it additionally covers a finding whose `verification` field is absent from the JSON (the write side is not yet wired). This makes "zero blocking findings" a reachable exit condition and bounds the review ⇄ fix loop. See `plugins/rite/references/severity-levels.md` §実測必須ゲート for the gate definition, the three-value scope, and the canonical formula.
 
 ### Automatic Work Memory Updates
 
