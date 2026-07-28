@@ -84,7 +84,7 @@ sentinel の grep は **LLM が会話を読む**ことを前提にしている�
 
 marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKING_GATE=degraded` に倒し、prose 判定のみで続行する。機械強制が使えないことを sentinel で可視化したうえで、従来の防御は維持する（degraded を無音にしない）。
 
-**選択規則も述語の一部**: 8.0.3 の Pre-Check が置換する `{pending_marker}` は、`**Check**` の `REVIEW_CYCLE_ID` と**同じ選択規則**（会話に複数ある場合は末尾 `-{epoch}` が最大のもの＝本 cycle のもの）で採る。二層は「6.1.d が本 cycle で完走したか」という同一の問いを異なる位置で評価するものなので、片側にだけ選択規則を置くと層ごとに別 cycle の値を見ることになる。
+**選択規則も述語の一部**: 8.0.3 の Pre-Check が置換する `{pending_marker}` は、`**Check**` の `REVIEW_CYCLE_ID` と**同じ選択規則**（会話に複数ある場合は末尾 `-{epoch}` が最大のもの＝本 cycle のもの）で採る。ただし本 cycle の marker が作れず空文字で emit された場合は、epoch で順序付けできないため空文字を優先する（過去 cycle の実パスは helper が削除済で、採ると `pending_marker_absent` の誤 pass になる。後述の「限界」＝ステップ 6 全体が skip されたケースとは別の経路）。二層は「6.1.d が本 cycle で完走したか」という同一の問いを異なる位置で評価するものなので、片側にだけ選択規則を置くと層ごとに別 cycle の値を見ることになる。
 
 **限界**: 本機構が保証するのは「6.1.d が完走した」ことまで。ステップ 6 を丸ごと skip した cycle では本 cycle の marker がそもそも作られず、会話に残る前 cycle の**実パス**（前 cycle の helper が削除済）を採ると `pending_marker_absent` として **pass** する（`degraded` にはならない — `degraded` に倒れるのは置換値が空文字か `{...}` 形状のときだけ）。ステップ 6 全体の skip を塞ぐには別 gate が要る（[#gate-order](#gate-order) の議論と同様に、守る対象の外へもう一段置く必要がある）。
 

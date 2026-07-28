@@ -1091,9 +1091,20 @@ GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 -
 assert_grep "TC-4.11l 診断の日本語が文字化けしない" "$ERR" "実際の最終非空行: 'ご確認をお願いします。'"
 assert_grep "TC-4.11l reason=body_sentinel_missing (本文検査自体は成立)" "$ERR" 'reason=body_sentinel_missing'
 
+# TC-4.11l' [cycle 10]: --c0-only でも C0 (ESC) は ? 化される。TC-4.11l (日本語がそのまま出る) だけでは
+# `| neutralize_ctrl --c0-only` を丸ごと外す退行が検出できない (素通しでも日本語は出るため)。
+# ESC が素通りすると端末制御シーケンスが診断行とコンテキストに到達する。
+NBR_BODY_ESC="$TMP_ROOT/nbr-body-esc.md"
+printf '## \360\237\223\234 rite 非実測指摘の記録 (non-blocking)\n\n\360\237\223\216 non_blocking_count: 2\n\nescape \033[31m here\n' > "$NBR_BODY_ESC"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-233 --content-file "$NBR_BODY_ESC"
+assert_grep "TC-4.11l' C0 (ESC) は ? 化される" "$ERR" "実際の最終非空行: 'escape \?\[31m here'"
+
 # TC-4.11k [F-01 指摘, cycle 9]: 本文述語 (jq) の**評価自体が失敗**したら caller 契約違反ではなく
 # 環境起因として扱う — pending marker を残さず (8.0.3 が差し戻さない)、reason は body_check_unavailable。
 # 本文を作り直しても解消しない原因を retain 側に落とすと result pattern が永久に emit できなくなる。
+# 注: PATH 先頭の壊れた jq は lookup 側の jq も壊すため、本 TC は「lookup degraded + 本文述語の
+# 評価失敗」の複合経路を通る。write 側だけを壊す現実的な原因は無い — read/write は同一の jq
+# バイナリと同一の述語定数 (LAST_CONTENT_LINE_JQ) を共有する。
 _jq_stub_dir="$TMP_ROOT/jq-stub"; mkdir -p "$_jq_stub_dir"
 printf '#!/bin/sh\nexit 127\n' > "$_jq_stub_dir/jq"; chmod +x "$_jq_stub_dir/jq"
 _nbr_marker_k="${TMPDIR:-/tmp}/rite-nbr-pending-9-231"
@@ -1104,6 +1115,21 @@ assert_grep "TC-4.11k reason=body_check_unavailable" "$ERR" 'NONBLOCKING_RECORD_
 assert_not_grep "TC-4.11k body_sentinel_missing と誤分類しない" "$ERR" 'reason=body_sentinel_missing'
 if [ -e "$_nbr_marker_k" ]; then _k_marker="present"; else _k_marker="absent"; fi
 assert "TC-4.11k pending marker を残さない (8.0.3 が差し戻さない)" "absent" "$_k_marker"
+assert_grep "TC-4.11k outcome=failed (terminal sentinel)" "$ERR" 'outcome=failed; count=2; iteration_id=9-231;'
+# 案内は原因に一致させる (helper の _record_env_failure_hint)。gh auth / network を指す誤案内は
+# operator を真因 (jq 実行環境) から遠ざけるため禁止 — helper 自身が hint 分離の規律として明文化している。
+assert_grep "TC-4.11k 原因に一致した案内 (jq 実行環境)" "$ERR" 'jq --version で jq の実行環境を確認'
+# 複合経路では lookup degraded hint が 'gh auth status を確認してください' を正当に出すため、
+# not_grep は _record_gh_io_failure_hint 固有の文言 (write 権限 + レビューやり直し) に絞る。
+assert_not_grep "TC-4.11k gh io 失敗の誤案内を出さない" "$ERR" 'write 権限を確認し、レビューをやり直してください'
+# 静的 pin: _body_jq_err は生成直後 (jq 実行より前) に gh_err へ代入され EXIT trap の保護下に入る。
+# 代入が jq 実行の後だと、jq 実行中に INT/TERM/HUP を受けた場合に一時ファイルだけが TMPDIR に残る
+# (signal-timing テストは本質的に racy なため、順序の静的 pin で代替する。mutation 実測済み)。
+_k_nbr_sh="$PLUGIN_ROOT/hooks/review-nonblocking-record.sh"  # NBR_SH は TC-5 で定義されるため直接導出
+_k_assign_line=$(grep -n 'gh_err="\$_body_jq_err"' "$_k_nbr_sh" | head -1 | cut -d: -f1)
+_k_jq_line=$(grep -n 'if ! _body_last_line=\$(jq -Rrs' "$_k_nbr_sh" | head -1 | cut -d: -f1)
+if [ -n "$_k_assign_line" ] && [ -n "$_k_jq_line" ] && [ "$_k_assign_line" -lt "$_k_jq_line" ] 2>/dev/null; then _k_order="before"; else _k_order="after-or-missing"; fi
+assert "TC-4.11k' gh_err への代入が jq 実行より前 (signal 窓の trap 保護)" "before" "$_k_order"
 rm -f "$_nbr_marker_k"; rm -rf "$_jq_stub_dir"
 
 # TC-4.11j [F-05 指摘, cycle 8]: **CRLF 本文**を write 側が受理する (read 側の CRLF fixture id=11 と対称)。
@@ -1172,8 +1198,8 @@ assert_not_grep "TC-4.14 [negative control] near-miss 0 件なら marker を出�
 #   - gh / network / IO 起因 → marker を消す (差し戻しても同 cycle 内で収束しない)
 #   - 正常終了 (created / updated / skipped) → marker を消す
 # 本 TC が固定する軸: marker 保持/削除の境界は exit code (trap 設置の前後) ではなく **原因** で引く。
-# exit code で引くと本文検査段の契約違反だけが
-# gh outage と同じ扱いで marker を消し、8.0.3 が pass していた。TC-5b の静的 pin は「削除文が
+# exit code で引くと、本文検査段の契約違反だけが gh outage と同じ扱いで marker を失い、
+# 8.0.3 を素通りする。TC-5b の静的 pin は「削除文が
 # cleanup 区間内に 1 本」しか固定せず、**どの reason が marker を残すか**を検証していなかった
 # ため、この分類の回帰を検出できなかった。本 TC は等値 assert でその軸を固定する。
 echo "--- TC-4.12: pending marker lifecycle (per-reason) ---"
@@ -1270,7 +1296,8 @@ else
   # ACTION は 2 分岐 (caller 契約違反なら本文を作り直す / 6.1.d 未実行なら step 1-2 を実行) を
   # 提示する必要がある。片方だけになると「同一 content-file で step 2 だけ再実行」へ誘導され、
   # 本文検査 4 段の差し戻しが収束しない (F-04, cycle 7)。
-  assert_grep "TC-4.13a ACTION が reason=body_* の確認を先に指示" "$ERR" 'reason=body_\* があるか確認'
+  assert_grep "TC-4.13a ACTION が本文検査 4 reason の確認を先に指示" "$ERR" 'reason=body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch のいずれかがあるか確認'
+assert_grep "TC-4.13a ACTION が body_check_unavailable を対象外と明示" "$ERR" 'body_check_unavailable は対象外'
   assert_grep "TC-4.13a ACTION が本文の作り直しを指示 (契約違反側)" "$ERR" '本文を作り直してから'
   # assert_grep は ERE のため丸括弧は使わない (グループとして解釈され literal 一致しない)
   assert_grep "TC-4.13a ACTION が step 1-2 の実行を指示 (未実行側)" "$ERR" '6\.1\.d 自体が未実行です'
@@ -1313,7 +1340,7 @@ else
   # [prompt-engineer F-02 指摘, cycle 4]: 区間 pin の終端を `^### 8\.1 ` のような**特定の次節**へ
   # ハードコードすると、その手前に新節 (8.0.4 等) が挿入されたとき区間が新節を飲み込み、
   # `assert_grep_in_section` 系は新節の該当行を拾って **vacuous に pass** する (元の節から当該行を
-  # 削除しても検出できなくなる)。実測: SKILL.md 8.0 節冒頭の「8.0.4 以降を追加する場合は」手順どおり 8.0.4 を 8.0.3 と 8.1 の
+  # 削除しても検出できなくなる)。実測: SKILL.md 8.0 節末の「8.0.4 以降を追加する場合は」手順どおり 8.0.4 を 8.0.3 と 8.1 の
   # 間へ追加すると TC-5b の 2 assertion が expected=1 actual=2 で落ちた。
   # TC-5e 層 3 が既に採っている「次の同レベル見出しまで」を全区間 pin の共通 idiom に統一する。
   # `_section_of <start-regex> <heading-level-regex>` は開始行の次から最初に現れる見出しの直前
@@ -1472,9 +1499,9 @@ else
     "$(( _nbr_pm_rm_total - _nbr_pm_rm_inside ))"
 
   # 6.1.a step 0 が marker を作る側であること。作成が落ちると gate は degraded 側へ倒れ機械強制が失われる。
-  # [F-05 指摘, cycle 6]: 本 pin が満たすべき条件: `count_lit` (行頭 anchor なしの部分一致・区間非限定・fence 到達性
-  # 検査なし) で、生成行に `# ` を付けるだけの死に分岐化を検出できなかった。TC-5a が既に移行済みの
-  # 「区間限定 + 行頭 anchor + fence 追跡」へ揃える。6.1.a step 0 は番号付きリスト項目のため
+  # [F-05 指摘, cycle 6]: 本 pin は「区間限定 + 行頭 anchor + fence 到達性」を要求する (TC-5a と同一方式)。
+  # 行頭 anchor なしの部分一致・区間非限定・fence 到達性検査なしの `count_lit` 方式では、
+  # 生成行に `# ` を付けるだけの死に分岐化を検出できない。6.1.a step 0 は番号付きリスト項目のため
   # `^0\. \*\*Write 先実パス解決` を開始 anchor に、次の番号付き項目 (`^1\. `) を終端にする。
   _sec_610a_step0() { _section_of '^0\. \*\*Write 先実パス解決' '^1\. '; }
   _sec_610a_step0_lines=$(_sec_610a_step0 | grep -c . || true)
@@ -1537,8 +1564,8 @@ else
   #     1 行足すと数が相殺されて素通りし (false negative)、逆に gate 無変更の散文追加だけで
   #     落ちる (false positive)。Check 行を直接要求すれば散文に影響されず marker 差し替えを検出する。
   # [F-02 指摘, cycle 5 — test / application / error-handling の 3 reviewer が独立指摘]:
-  # `assert_grep_in_section` で終端を `^### 6\.2 ` / `^### 8\.1 ` に固定する形は
-  # ハードコードしていた。`assert_grep_in_section` は内部で awk の range 形を使うため、cycle 4 で
+  # `assert_grep_in_section` で終端を `^### 6\.2 ` / `^### 8\.1 ` にハードコードする形は採らない。
+  # `assert_grep_in_section` は内部で awk の range 形を使うため、cycle 4 で
   # 「全廃した」と表明した `sed -n "/a/,/b/p"` と機能的に同一で、8.0.4 を 8.0.3 と 8.1 の間へ
   # 挿入すると区間が新節を飲み込む (presence-only なので false green にはならないが、表明と実装が
   # 食い違う #2030 F-09 型)。区間は `_sec_610d` / `_sec_803` の動的解決に統一し、あわせて
@@ -1769,10 +1796,9 @@ else
       #     variant A/B は番号付きリスト項目の内側にあるため表示上 3 スペース字下げされる一方、
       #     helper の本文検査 2 段は行頭 anchor (`case "$(head -n 1 ...)" in "$MARKER"*)` と
       #     `grep -E '^📎 non_blocking_count:...'`) で先頭空白を許容しない。指示が無いと LLM は
-      #     表示どおり字下げごと転記し、毎 cycle body_marker_missing / count_body_mismatch で
-      #     outcome=failed となって記録が一度も投稿されない (gate は outcome を問わず pass する
-      #     ため result pattern は変わらず、既定 post_comment: false では D-01 の永続チャネルが
-      #     恒久的にゼロになる)。TC-5g''/g''' の needle 照合は `^[[:space:]]*` で字下げを許容する
+      #     表示どおり字下げごと転記し、毎 cycle body_marker_missing で outcome=failed となる
+      #     (本文検査は逐次評価のため最初の失敗段のみが発火する)。marker が残るので 8.0.3
+      #     Pre-Check が exit 1 で差し戻し、本文を直すまで result pattern も emit されない。TC-5g''/g''' の needle 照合は `^[[:space:]]*` で字下げを許容する
       #     ため、この乖離は本 pin でしか検出できない。位置も固定する — テンプレートより後ろに
       #     置かれた指示は読み手が本文生成を終えた後に現れるので用をなさない。
       # [test-reviewer F-04 指摘, cycle 2]: 第 1 版はファイル全体の件数しか数えておらず、ラベルが

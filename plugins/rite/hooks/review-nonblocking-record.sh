@@ -291,6 +291,14 @@ _record_gh_io_failure_hint() {
   echo "  対処: gh auth status / network 接続 / PR #${PR_NUMBER} への write 権限を確認し、レビューをやり直してください" >&2
   echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
 }
+# 記録できなかったときの実行環境起因の案内。gh でも本文でもなく、本文述語を評価する jq の
+# 実行環境 (jq 不在 / 実行不能) に起因する失敗 (body_check_unavailable) から呼ぶ。gh auth /
+# network / 権限や本文の再生成を指す案内は原因と無関係なため出さない (下の
+# _record_body_check_failure_hint と同じ規律 — 誤った復旧手順は operator を真因から遠ざける)。
+_record_env_failure_hint() {
+  echo "  対処: jq --version で jq の実行環境を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2
+  echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
+}
 # 記録できなかったときの本文検査起因の案内。gh / IO の障害ではなく caller (LLM) が
 # ステップ 6.1.d step 1 で生成した本文自体の不備 (body_file_empty / body_marker_missing /
 # body_sentinel_missing / count_body_mismatch) から呼ぶ。gh auth / network / 権限を指す案内は原因と無関係なため出さない
@@ -398,9 +406,9 @@ elif lookup_out=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER
   # 異なり、operator を誤った削除対象へ誘導する。
   if [ "$canonical_hit_count" -gt 1 ]; then
     echo "WARNING: 機械専用 sentinel を持つ自分の記録コメントが ${canonical_hit_count} 件あります。最新の 1 件だけを update-in-place し、古い方は stale のまま残ります" >&2
-  echo "  原因は (a) 過去の cycle で lookup が degraded し新規作成へ縮退した、または (b) 同一 author が" >&2
-  echo "  marker 前方一致かつ最終非空行が sentinel のコメントを投稿し update-in-place の対象になった のいずれかです" >&2
-  echo "  (b) の場合、直前の PATCH が当該コメントを上書きしている可能性があります。GitHub のコメント編集履歴を確認してください" >&2
+    echo "  原因は (a) 過去の cycle で lookup が degraded し新規作成へ縮退した、または (b) 同一 author が" >&2
+    echo "  marker 前方一致かつ最終非空行が sentinel のコメントを投稿し update-in-place の対象になった のいずれかです" >&2
+    echo "  (b) の場合、直前の PATCH が当該コメントを上書きしている可能性があります。GitHub のコメント編集履歴を確認してください" >&2
     echo "  対処: PR #${PR_NUMBER} 上で古い方を手動削除してください (mergeable 判定には影響しません)" >&2
     echo "[CONTEXT] NONBLOCKING_DUPLICATE_RECORD=1; pr=$PR_NUMBER; count=$canonical_hit_count" >&2
   fi
@@ -462,24 +470,27 @@ esac
 # を永久に emit できなくなる。境界は exit code ではなく **原因** で引く (docstring の retain/delete 参照)。
 _body_jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
   review-nonblocking-record p61d-body-err "本文述語の評価失敗の詳細が表示されません") || _body_jq_err=""
+# 生成直後に trap 保護下へ置く (EXIT trap は ${gh_err:-} を回収する。代入が jq 実行の後だと、
+# jq 実行中に INT/TERM/HUP を受けた場合に本ファイルだけが TMPDIR に残る)
+gh_err="$_body_jq_err"
 if ! _body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTENT_FILE" 2>"${_body_jq_err:-/dev/null}"); then
   echo "WARNING: 非実測記録の本文述語 (最終非空行の算出) を評価できませんでした。投稿を中止します" >&2
-  gh_err="$_body_jq_err"
   _gh_err_detail
-  _record_gh_io_failure_hint
+  _record_env_failure_hint
   echo "  本文の作り直しでは解消しません (jq の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
   outcome="failed"
   exit 0
 fi
 [ -n "$_body_jq_err" ] && rm -f "$_body_jq_err"
+gh_err=""
 if [ "$_body_last_line" != "$RECORD_SENTINEL" ]; then
   echo "WARNING: 非実測記録の本文の最終非空行が機械専用 sentinel ではありません ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します" >&2
   echo "  期待: 最終非空行が '$RECORD_SENTINEL' と厳密一致すること (SKILL.md ステップ 6.1.d step 1 の variant A / B は最終行に本行を置く)" >&2
   # `--c0-only`: 既定モードは C1 帯 (0x80-0x9f) をバイト単位で ? 化するため、日本語 UTF-8 の
   # 第 2/第 3 バイトを巻き込んで診断が読めなくなる。本行は LLM 生成の自由文が渡る唯一の call site。
   # C0 + DEL は引き続き ? 化されるので偽 [CONTEXT] 行の注入防止は損なわない。
-  echo "  実際の最終非空行: '$(printf '%s' "$_body_last_line" | neutralize_ctrl --c0-only)'" >&2
+  echo "  実際の最終非空行: '$(printf '%s' "$_body_last_line" | neutralize_ctrl --c0-only | head -c 200)'" >&2
   echo "  最終非空行が sentinel でない本文を投稿すると、次 cycle の lookup (最終非空行の等値) が自分の投稿を検出できず記録コメントが増殖します" >&2
   _record_body_check_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_sentinel_missing" >&2
