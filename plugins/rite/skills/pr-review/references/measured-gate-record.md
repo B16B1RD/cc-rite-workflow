@@ -67,6 +67,21 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 
 ステップ 7.7（procedure 内部）⇄ ステップ 8.0.2（全体 skip）と同じ dual placement。**両者は同一の述語**（terminal sentinel の存在 ∧ `iteration_id` が本 cycle と一致）を異なる位置で評価する。片側だけ弱い述語にすると、その位置で「動作前 marker を見る」欠陥が再発する。述語には比較対象の**選択規則**（複数ある `REVIEW_CYCLE_ID` のうち epoch 最大を採る）まで含める — 選択規則が片側にしか無ければ「同一の述語」は成立しない。
 
+<a id="pending-marker"></a>
+## 8.0.3 に機械強制（pending marker）を併置した理由
+
+sentinel の grep は **LLM が会話を読む**ことを前提にしている。読まずに result pattern を emit する経路は prose では構造的に塞げず、実際に本 PR 自身の review cycle で `non_blocking_findings` を持つ 14 cycle のうち記録が PR に届いたのは 1 cycle だけだった（残りは gate が ERROR を出したのか、そもそも評価されなかったのかを事後に区別できない）。「gate を守る対象の外に置く」だけでは、gate の**発火**が保証されても gate の**評価**は保証されない。
+
+そこで ステップ 6.1.a step 0 が `${TMPDIR:-/tmp}/rite-nbr-pending-<review_cycle_id>` を作り、6.1.d の helper が EXIT trap で消す。8.0.3 の bash が `[ -e ]` で見るだけで「6.1.d が完走したか」が LLM の認識に依存せず決まる。設計上の要点は 3 つ:
+
+1. **消すのは helper の EXIT trap だけ** — 記録の成否（`created` / `updated` / `skipped` / `failed` / `aborted`）に関わらず消す。8.0.3 へ伝えるのは「完走した」ことだけで、成否は terminal sentinel の `outcome=` が担う。これにより非ブロッキング契約（AC-3）を gate 側へ持ち込まない。
+2. **引数 gate 群は trap 設置より前で `exit 1` する** — その経路では marker が残り、8.0.3 が caller 契約違反として検出する。記録の失敗（非ブロッキング）と skill 定義のバグ（loud）の区別がそのまま marker の有無に写る。
+3. **gate 側で marker を削除しない** — 削除すると 6.1.d を実行せず再評価だけで gate を通せてしまい、機械強制の意味が消える。静的 pin はこの不在（`rm -f "$pending_marker"` が 8.0.3 区間に 0 本）も固定する。
+
+marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKING_GATE=degraded` に倒し、prose 判定のみで続行する。機械強制が使えないことを sentinel で可視化したうえで、従来の防御は維持する（degraded を無音にしない）。
+
+**限界**: 本機構が保証するのは「6.1.d が完走した」ことまでで、ステップ 6 を丸ごと skip した cycle では marker がそもそも作られないため `degraded` に倒れる。ステップ 6 全体の skip を塞ぐには別 gate が要る（[#gate-order](#gate-order) の議論と同様に、守る対象の外へもう一段置く必要がある）。
+
 <a id="startswith"></a>
 ## lookup と本文検査の設計理由（PATCH 先の同定）
 

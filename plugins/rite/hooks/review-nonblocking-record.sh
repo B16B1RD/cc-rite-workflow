@@ -171,11 +171,21 @@ outcome="aborted"
 existing_id=""
 lookup_degraded=0
 gh_err=""
+# ステップ 8.0.3 の機械強制 marker。パスは SKILL.md ステップ 6.1.a step 0 が作る側と同じ規則
+# (`${TMPDIR:-/tmp}/rite-nbr-pending-<iteration_id>`) で導出する。引数として受け取らないのは、
+# placeholder を 1 つ増やすと residue gate も 1 本増えるため — 導出が外れた場合は marker が
+# 消えず gate が loud に落ちる方向 (誤 pass ではない) なので、安全側に倒れる。
+PENDING_MARKER="${TMPDIR:-/tmp}/rite-nbr-pending-${ITERATION_ID}"
 # signal trap は emit 後に exit するため EXIT trap が再入する。兄弟 review-result-save.sh と同じ
 # 冪等ガードを置き、terminal sentinel が 1 回だけ出ることを保証する。
 _terminal_emitted="false"
 _rite_p61d_cleanup() {
   rm -f "${gh_err:-}"
+  # 記録の成否 (created / updated / skipped / failed / aborted) に関わらず削除する。8.0.3 へ
+  # 伝えるのは「6.1.d が完走した」ことだけで、成否は terminal sentinel の outcome= が担う
+  # (非ブロッキング契約 AC-3 を gate 側へ持ち込まない)。引数 gate 群は本 trap 設置より前で
+  # exit 1 するため、その経路では marker が残り 8.0.3 が caller 契約違反を検出する。
+  rm -f "${PENDING_MARKER:-}"
 }
 # gh / jq の stderr 詳細を出す共通スニペット。行接頭辞に `gh:` を入れるのは、gh 側の stderr に
 # terminal sentinel と同形の行が混じったとき、字下げだけでは gate の部分一致述語をすり抜けて

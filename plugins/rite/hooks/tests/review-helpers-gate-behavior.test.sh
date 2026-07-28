@@ -729,9 +729,13 @@ assert_grep "TC-4.3b gh pr comment が実行された" "$GH_LOG" '^pr comment 9 
 # 両者を同軸の一致/不一致方向と書いていたが誤り):
 #   (c) 抽出の桁境界: body_count 抽出を先頭 1 桁に退行させる (`grep -oE '[0-9]+'` → `'[0-9]'`) と
 #       (c) の 2 assertion が落ちる。この軸は (c) 単独で捕捉できる ((d) は緑のまま)。
-#   (d) 比較の等値性: `[ "$body_count" != "$NB_COUNT" ]` を先頭一致へ退行させると (d) の 2
-#       assertion だけが落ちる。**この軸の唯一の pin** であり、(d) を「(c) と冗長」として
-#       削ると先頭一致退行が無検出になる。
+#   (d)(d') 比較の等値性: `[ "$body_count" != "$NB_COUNT" ]` を先頭一致へ退行させたときに落ちる。
+#       **前方一致は非対称なので両方向の fixture が要る** — 退行形 `[ "${NB_COUNT#$body_count}" =
+#       "$NB_COUNT" ]` は「body_count が NB_COUNT の接頭辞でない」を不一致とみなすため、
+#       (d) の向き (--count 1 / 本文 12) では `${1#12}` = `1` = NB_COUNT となり不一致判定が
+#       保たれて緑のまま通る。落とせるのは (d') の向き (--count 12 / 本文 1) だけで、
+#       そこでは `${12#1}` = `2` ≠ `12` となり一致扱いに化けて投稿が通る。片方向だけ pin すると
+#       production で「非実測 12 件の cycle に本文が 1 件と申告する」虚偽記録が無検出になる。
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 12 --iteration-id 9-231 --content-file "$NBR_BODY_C12"
 assert "TC-4.3c 2 桁 count 一致: exit 0" "0" "$RC"
 assert_grep "TC-4.3c outcome=created かつ count=12 を echo back" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=created; count=12; iteration_id=9-231;'
@@ -740,6 +744,10 @@ GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 -
 assert "TC-4.3d --count 1 と本文 12 の不一致: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.3d reason=count_body_mismatch (先頭一致で通さない)" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=count_body_mismatch'
 assert_not_grep "TC-4.3d 投稿呼び出しが 1 件も無い" "$GH_LOG" '^pr comment'
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 12 --iteration-id 9-233 --content-file "$NBR_BODY"
+assert "TC-4.3d' --count 12 と本文 1 の不一致 (逆向き): exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.3d' reason=count_body_mismatch (逆向き前方一致で通さない)" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=count_body_mismatch'
+assert_not_grep "TC-4.3d' 投稿呼び出しが 1 件も無い" "$GH_LOG" '^pr comment'
 
 # TC-4.4 既存なし ∧ 0 件 → 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを作らない
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-202 --content-file "$NBR_BODY_C0"
@@ -1011,10 +1019,14 @@ else
   # TC-5e 層 3 が既に採っている「次の同レベル見出しまで」を全区間 pin の共通 idiom に統一する。
   # `_section_of <start-regex> <heading-level-regex>` は開始行の次から最初に現れる見出しの直前
   # までを stdout に出す。開始行が見つからなければ空を返す (呼び出し側の件数 assert が loud に落ちる)。
+  # 正規表現は ENVIRON 経由で渡す。`awk -v` は代入時にバックスラッシュエスケープを解釈するため、
+  # `'^### 8\.0 '` を渡すと (a) 警告が毎回 stderr に出て、(b) awk が受け取る実正規表現が
+  # `^### 8.0 ` になり `.` が任意 1 文字へ弱まる (見出しアンカーがコードの見た目より緩くなる)。
+  # ENVIRON はエスケープを解釈しないため、書いたとおりの ERE が awk に届く。
   _section_of() {
-    awk -v start_re="$1" -v head_re="$2" '
-      !inside && $0 ~ start_re { inside = 1; print; next }
-      inside && $0 ~ head_re { exit }
+    start_re="$1" head_re="$2" awk '
+      !inside && $0 ~ ENVIRON["start_re"] { inside = 1; print; next }
+      inside && $0 ~ ENVIRON["head_re"] { exit }
       inside { print }
     ' "$REVIEW_MD"
   }
@@ -1081,6 +1093,44 @@ else
   else
     fail "TC-5a 呼び出しが live な bash fence 内にある (到達性) — 呼び出し行を特定できず評価不能"
   fi
+
+  # (a-2) 8.0.3 の機械強制 (pending marker 検査) が live な bash fence 内に実在する。
+  #     prose gate は LLM が ERROR text を読む前提であり、読まずに result pattern へ進む経路を
+  #     構造的に塞げない。marker は 6.1.d の helper (EXIT trap) でしか消えないため、gate の bash が
+  #     `[ -e ]` で見るだけで「6.1.d が完走したか」を LLM の認識に依存せず判定できる。
+  #     本 pin が守るのは (i) 判定式そのもの、(ii) 失敗時に非ゼロ終了すること、(iii) marker を
+  #     ここで削除しないこと (削除すると 6.1.d を実行せず再評価だけで gate を通せてしまう)。
+  pm_check_line=$(grep -nF 'if [ -e "$pending_marker" ]; then' "$REVIEW_MD" | cut -d: -f1)
+  pm_check_count=$(printf '%s\n' "$pm_check_line" | grep -c '[0-9]' || true)
+  assert "TC-5b 8.0.3 の pending marker 判定式が 1 箇所" "1" "$pm_check_count"
+  assert "TC-5b 8.0.3 区間に pending marker 判定式が 1 箇所" "1" \
+    "$(_sec_803 | grep -cF 'if [ -e "$pending_marker" ]; then' || true)"
+  if [ "$pm_check_count" = "1" ]; then
+    pm_in_fence=$(awk -v n="$pm_check_line" '
+      NR < n {
+        if ($0 ~ /^[[:space:]]*```bash$/) { f = 1 }
+        else if ($0 ~ /^[[:space:]]*```[[:space:]]*$/) { f = 0 }
+      }
+      NR == n { print f + 0 }
+    ' "$REVIEW_MD")
+    assert "TC-5b pending marker 判定が live な bash fence 内にある (到達性)" "1" "$pm_in_fence"
+  else
+    fail "TC-5b pending marker 判定が live な bash fence 内にある (到達性) — 判定行を特定できず評価不能"
+  fi
+  # 残存検出時に非ゼロ終了すること。`exit 1` を落とすと ERROR text だけが出て gate が素通りする。
+  assert "TC-5b 8.0.3 区間に marker 残存時の retained flag が 1 本" "1" \
+    "$(_sec_803 | grep -cF 'NONBLOCKING_GATE_FAILED=1; reason=pending_marker_present' || true)"
+  assert "TC-5b 8.0.3 区間に marker 残存時の exit 1 が 1 本" "1" \
+    "$(_sec_803 | grep -cE '^[[:space:]]*exit 1$' || true)"
+  # marker をこの gate で削除しない (削除すると再評価だけで通せる)。`rm -f "$pending_marker"` の不在を固定。
+  assert "TC-5b 8.0.3 は pending marker を削除しない" "0" \
+    "$(_sec_803 | grep -cF 'rm -f "$pending_marker"' || true)"
+  # helper 側が marker を消す唯一の主体であること (EXIT trap の cleanup 内 1 箇所)。
+  assert "TC-5b helper の cleanup が pending marker を削除する (1 箇所)" "1" \
+    "$(grep -cF 'rm -f "${PENDING_MARKER:-}"' "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" || true)"
+  # 6.1.a step 0 が marker を作る側であること。作成が落ちると gate は degraded 側へ倒れ機械強制が失われる。
+  assert "TC-5b 6.1.a step 0 が pending marker を作成する (1 箇所)" "1" \
+    "$(count_lit 'pending_marker="${TMPDIR:-/tmp}/rite-nbr-pending-$review_cycle_id"' '6.1.a pending marker 生成')"
 
   # (b) 二層 gate (6.1.d step 3 / 8.0.3) がともに **terminal sentinel** を pass 条件にしている。
   #     動作前 marker (lookup 系) を pass 条件に戻す退行が本 pin の検出対象。
@@ -1192,16 +1242,28 @@ else
   # (i) データ行数の厳密等値 — 行の削除・無断追加を検出し、以下の行 index pin の前提を保証する
   assert "TC-5b 6.1.d step 3 の Routing データ行数" "2" "$(_routing_rowcount _sec_610d)"
   assert "TC-5b 8.0.3 の Routing データ行数" "4" "$(_routing_rowcount _sec_803)"
-  # (ii) 判定の向きを担う 2 行 (pass 行 / 不一致→ERROR 行) を canonical 文字列で完全一致固定
+  # (ii) Routing 全データ行を canonical 文字列で完全一致固定する。
+  #      **本数だけを数える層 (TC-5e 層 3) は Action 列を変えずに Condition 列だけを
+  #      狭める / 広げる編集を一切検出しない**ため、行 index ごとの完全一致が要る。
+  #      特に 8.0.3 Routing[3] (sentinel なし → ERROR) は「6.1.d を丸ごと skip した cycle を
+  #      捕まえる」本 gate の存在理由そのものの行で、ここが設定依存に狭められると D-01 の
+  #      永続チャネルが無音でゼロになる。Routing[1] (legitimate skip) も同様に、条件を広げると
+  #      本来 ERROR にすべき skip が正当化されて素通りする。
   assert "TC-5b 6.1.d step 3 Routing[1]: cycle 一致 → Gate passes (canonical)" \
     'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted` のとき、および `degraded=1`（`outcome` を問わない）のときは helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3)' \
     "$(_routing_canonical _sec_610d 1)"
   assert "TC-5b 6.1.d step 3 Routing[2]: 不一致 → ERROR (canonical)" \
     'sentinel なし、または `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と不一致 (前 cycle のもの)~**ERROR**: 6.1.d が本 cycle で未評価。下記 ACTION を実行' \
     "$(_routing_canonical _sec_610d 2)"
+  assert "TC-5b 8.0.3 Routing[1]: ステップ 6 失敗 → legitimate skip (canonical)" \
+    'ステップ 6 が 6.1.b hard error / 6.1.c ケース 2 (`exit 2`) で fail し 6.1.d に到達していない~Gate は legitimately skipped — 6.1.d へ戻さず **ステップ 6 の失敗として扱う** (永続化の復旧が非実測記録より優先。6.1.c ケース 2 の silent data loss 防止を無効化しないため)' \
+    "$(_routing_canonical _sec_803 1)"
   assert "TC-5b 8.0.3 Routing[2]: cycle 一致 → Gate passes (canonical)" \
     'sentinel found AND `iteration_id` == 本 cycle の `REVIEW_CYCLE_ID` (`outcome` は問わない)~Gate passes — ただし `outcome=failed` / `aborted`、および `degraded=1`（`outcome` を問わない）のときは **LLM が helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記してから** the next gate in the 8.0 evaluation order へ進む' \
     "$(_routing_canonical _sec_803 2)"
+  assert "TC-5b 8.0.3 Routing[3]: sentinel なし → ERROR (canonical)" \
+    'sentinel NOT found (ステップ 6 は正常完了している)~**ERROR**: ステップ 6.1.d entire procedure was skipped. Execute ACTION below' \
+    "$(_routing_canonical _sec_803 3)"
   assert "TC-5b 8.0.3 Routing[4]: 不一致 → ERROR (canonical)" \
     'sentinel found but `iteration_id` != 本 cycle の `REVIEW_CYCLE_ID` (cycle N-1 のもの)~**ERROR**: ステップ 6.1.d was skipped in current cycle. Execute ACTION below' \
     "$(_routing_canonical _sec_803 4)"
