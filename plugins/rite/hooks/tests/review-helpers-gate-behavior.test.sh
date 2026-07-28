@@ -1088,33 +1088,34 @@ else
   #     出現数の等値 pin は双方向に誤る: Check を動作前 marker に差し替えつつ同区間に散文を
   #     1 行足すと数が相殺されて素通りし (false negative)、逆に gate 無変更の散文追加だけで
   #     落ちる (false positive)。Check 行を直接要求すれば散文に影響されず marker 差し替えを検出する。
-  # assert_grep_in_section は start 不一致では loud に落ちるが **end 不一致は無音で区間を EOF まで
-  # 拡張する**。見出しを微修正するだけで 6.1.d 区間が 8.0.3 の Check 行まで飲み込み、片側消失を
-  # 見逃す。終端 anchor の存在自体を先に固定しておく。
-  assert_grep "TC-5b 区間終端 ^### 6\.2 が存在" "$REVIEW_MD" '^### 6\.2 '
-  assert_grep "TC-5b 区間終端 ^### 8\.1 が存在" "$REVIEW_MD" '^### 8\.1 '
-  assert_grep_in_section "TC-5b 6.1.d step 3 の Check が terminal sentinel を参照" \
-    "$REVIEW_MD" '^#### 6\.1\.d ' '^### 6\.2 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1'
-  assert_grep_in_section "TC-5b 8.0.3 の Check が terminal sentinel を参照" \
-    "$REVIEW_MD" '^### 8\.0\.3 ' '^### 8\.1 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1'
+  # [F-02 指摘, cycle 5 — test / application / error-handling の 3 reviewer が独立指摘]:
+  # 旧版はここで `assert_grep_in_section` を 4 件使い、終端を `^### 6\.2 ` / `^### 8\.1 ` に
+  # ハードコードしていた。`assert_grep_in_section` は内部で awk の range 形を使うため、cycle 4 で
+  # 「全廃した」と表明した `sed -n "/a/,/b/p"` と機能的に同一で、8.0.4 を 8.0.3 と 8.1 の間へ
+  # 挿入すると区間が新節を飲み込む (presence-only なので false green にはならないが、表明と実装が
+  # 食い違う #2030 F-09 型)。区間は `_sec_610d` / `_sec_803` の動的解決に統一し、あわせて
+  # presence ではなく**件数 1 の等値**で固定する (区間が広がって新節の Check 行を拾えば 2 になる)。
+  # 終端 anchor の存在 assert は `_section_of` が「次の同レベル以上の見出しで閉じる」ため不要になった
+  # (閉じ損ねは区間解決の健全性 assert が行数レンジで捕捉する)。
+  #
   # AC-7/T-06: sentinel の存在だけでは前 cycle の marker に false-positive match しうる。
   # Check 行自体が iteration_id と REVIEW_CYCLE_ID の**鮮度比較 (一致判定)** まで言及していることを
-  # 要求する。test-reviewer 指摘 (cycle 3): 単に両語の共起だけを pin すると、比較セマンティクス
-  # (「と一致するか」) を削って「が存在するか」に弱めても、REVIEW_CYCLE_ID を定義するだけの後続節に
-  # 語が残っていれば素通りする (mutation 実測で確認: 両語共起のみの pin は 249/249 のまま検出漏れ)。
-  # `一致` を両語の後に置くことで、比較動詞そのものの削除を検出する。
-  assert_grep_in_section "TC-5b 6.1.d step 3 の Check が iteration_id/REVIEW_CYCLE_ID の一致判定に言及" \
-    "$REVIEW_MD" '^#### 6\.1\.d ' '^### 6\.2 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID.*一致'
-  assert_grep_in_section "TC-5b 8.0.3 の Check が iteration_id/REVIEW_CYCLE_ID の一致判定に言及" \
-    "$REVIEW_MD" '^### 8\.0\.3 ' '^### 8\.1 ' '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID.*一致'
-  # [test-reviewer F-03 指摘, cycle 4]: assert_grep_in_section は区間内に 1 件でもマッチがあれば
-  # pass するため、上記 4 件は「区間内に該当 Check がある」ことしか保証しない。操作対象の
-  # `**Check**:` 行そのものを弱体化しつつ、同じ区間内に別の `**Check**:` 見出し行 (弱体化された
-  # 述語を含んでいなくてもよい — 弱体化 + 別行追加の 2 編集が揃うと、両者を「トークン全体で」
-  # 数える pin では相殺されて検出できない) を 1 本足すだけで、assert_grep_in_section 自体は
-  # 引き続き pass する。`**Check**:` という見出しラベルそのものの出現数を区間ごとに数え、
-  # 1 本だけであることを別途固定する (弱体化された行がトークン全体パターンから外れても、
-  # 見出しラベルの本数が 2 になった時点で検出できる)。
+  # 要求する。単に両語の共起だけを pin すると、比較セマンティクス (「と一致するか」) を削って
+  # 「が存在するか」に弱めても、REVIEW_CYCLE_ID を定義するだけの後続節に語が残っていれば素通りする
+  # (cycle 3 の mutation 実測で確認)。`一致` を両語の後に置くことで比較動詞そのものの削除を検出する。
+  _chk_sent_610d=$(_sec_610d | grep -cE '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1' || true)
+  _chk_sent_803=$(_sec_803 | grep -cE '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1' || true)
+  assert "TC-5b 6.1.d step 3 の Check が terminal sentinel を参照 (区間内 1 本)" "1" "$_chk_sent_610d"
+  assert "TC-5b 8.0.3 の Check が terminal sentinel を参照 (区間内 1 本)" "1" "$_chk_sent_803"
+  _chk_fresh_610d=$(_sec_610d | grep -cE '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID.*一致' || true)
+  _chk_fresh_803=$(_sec_803 | grep -cE '\*\*Check\*\*:.*NONBLOCKING_RECORD_DONE=1.*iteration_id.*REVIEW_CYCLE_ID.*一致' || true)
+  assert "TC-5b 6.1.d step 3 の Check が iteration_id/REVIEW_CYCLE_ID の一致判定に言及 (区間内 1 本)" "1" "$_chk_fresh_610d"
+  assert "TC-5b 8.0.3 の Check が iteration_id/REVIEW_CYCLE_ID の一致判定に言及 (区間内 1 本)" "1" "$_chk_fresh_803"
+  # 上記 4 件は「トークン全体を含む Check 行が区間内にちょうど 1 本」を見るが、操作対象の
+  # `**Check**:` 行を弱体化しつつ別の `**Check**:` 行を 1 本足す 2 編集では、前者が 0 本・後者が
+  # パターン外のままなので件数 1 に戻らず落ちる。一方「弱体化した行がなおパターンを満たす」形の
+  # 編集は件数が 1 のままになるため、`**Check**:` という**見出しラベルそのもの**の出現数を
+  # 区間ごとに数えて 1 本に固定し、行の追加を独立に検出する。
   _check_label_610d=$(_sec_610d | grep -cE '\*\*Check\*\*:' || true)
   assert "TC-5b 6.1.d step 3 の \`**Check**:\` 見出しは区間内に 1 本だけ" "1" "$_check_label_610d"
   _check_label_803=$(_sec_803 | grep -cE '\*\*Check\*\*:' || true)
@@ -1350,13 +1351,28 @@ else
     # **反転**しても同じ本数を数える。よって 3 gate すべてを対象にし、`Gate passes` と規約フレーズの
     # **共起**を要求し、データ行数・pass 行数とも**厳密な等値**で固定する。gate 表を意図的に変えた
     # ときは本 pin が落ちるので、期待値の更新とあわせて hand-off の再確認が強制される。
-    # 期待値 `見出し:データ行数:pass 行数` — 8.0.3 の pass 行が 1 本なのは、legitimate-skip 行
-    # (ステップ 6 hard fail) が hand-off を持たない片方向の終端行だから。
-    for _g_spec in '8.0.1:3:2' '8.0.2:4:2' '8.0.3:4:1'; do
+    # [test-reviewer / error-handling F-01 指摘, cycle 5]: 上記 2 本 (データ行数 / pass 行数) だけでは
+    # **ERROR 行の極性反転**が通る。ERROR 行を「Gate は legitimately skipped — 先へ進む」へ書き換えても
+    # (a) データ行数は不変、(b) pass 行数も不変 (`Gate passes` を含まないため)、(c) 層 2 の allowlist は
+    # `legitimately skipped` を許容トークンに持つため満たされる、で 310/0 の完全緑になる。**allowlist の
+    # トークン自体が escape hatch** になっていた。8.0.3 の該当行は「sentinel NOT found → ERROR」= 6.1.d を
+    # 丸ごと skip したケースを捕まえる行であり、8.0.3 gate が存在する唯一の理由。実測で 3 表とも素通りを確認。
+    #
+    # canonical pin を個別行に足す修正では当てた表しか守れない (8.0.3 に足しても 8.0.1/8.0.2 は露出)。
+    # **層で当てる** — 行の役割ごとの本数を厳密等値で固定し、ループが 3 表すべてに適用されるようにする。
+    #
+    # 期待値 `見出し:データ行数:pass 行数:ERROR 行数`:
+    #   - 8.0.1 = 3:2:1  (pass 2 / ERROR 1)
+    #   - 8.0.2 = 4:2:2  (pass 2 / ERROR 2)
+    #   - 8.0.3 = 4:1:2  (pass 1 / ERROR 2)。pass が 1 本なのは legitimate-skip 行 (ステップ 6 hard fail) が
+    #     hand-off を持たない片方向の終端行だから。この行は ERROR でも pass でもないため 1+2 < 4 になる。
+    for _g_spec in '8.0.1:3:2:1' '8.0.2:4:2:2' '8.0.3:4:1:2'; do
       _g=${_g_spec%%:*}
       _g_rest=${_g_spec#*:}
       _g_rows_exp=${_g_rest%%:*}
-      _g_pass_exp=${_g_rest#*:}
+      _g_rest=${_g_rest#*:}
+      _g_pass_exp=${_g_rest%%:*}
+      _g_err_exp=${_g_rest#*:}
       _g_re=$(printf '%s' "$_g" | sed 's/\./\\./g')
       _g_start=$(grep -n "^### ${_g_re} " "$REVIEW_MD" | head -1 | cut -d: -f1)
       if [ -z "$_g_start" ]; then
@@ -1373,6 +1389,9 @@ else
       # 反転する変異を見逃す (フレーズが残るため本数が変わらない)。
       _g_pass=$(printf '%s\n' "$_g_rows" | grep -cE 'Gate passes.*next gate in the 8\.0 evaluation order' || true)
       assert "TC-5e $_g の次 gate への pass 行数 (後続 gate の到達性)" "$_g_pass_exp" "$_g_pass"
+      # ERROR 行数の厳密等値 — 上記 2 本が素通りさせる「ERROR 行の極性反転」を捕まえる唯一の層。
+      _g_err=$(printf '%s\n' "$_g_rows" | grep -cE '\*\*ERROR\*\*' || true)
+      assert "TC-5e $_g の ERROR 行数 (極性反転の検出)" "$_g_err_exp" "$_g_err"
     done
   else
     fail "TC-5e 8.0.1 / 8.1 の見出しが見つからない (s801=$s801 s81=$s81)"
