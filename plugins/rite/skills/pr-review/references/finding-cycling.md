@@ -4,7 +4,7 @@
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
-review-fix loop には、cycle 数に応じてレビュー品質を段階的に緩める **cycle-count-based degradation は存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。品質判定の escalation は以下 **4 つの quality signal** で行う。（これとは別レイヤで、非収束ループの最終安全網として `safety.max_review_cycles` の cycle 上限サーキットブレーカー = #1701 が存在するが、これは品質を緩めず cycle 上限で停止/ユーザー委譲するだけで、下記 signal 群とは独立に両立する。詳細は `skills/iterate/SKILL.md` 設計判断を参照。）
+review-fix loop には、cycle 数に応じてレビュー品質を段階的に緩める **cycle-count-based degradation は存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。品質判定の escalation は以下 **4 つの quality signal** で行う。（これとは別レイヤで、非収束ループの最終安全網として `safety.max_review_cycles` の cycle 上限サーキットブレーカー = #1701 が存在するが、これは品質を緩めず cycle 上限で機械的に停止する（対話は停止通知、`/rite:batch-run` バッチは failed 遷移）だけで、下記 signal 群とは独立に両立する。詳細は `skills/iterate/SKILL.md` 設計判断を参照。）
 
 | Signal | 検出 phase | 内容 |
 |--------|-----------|------|

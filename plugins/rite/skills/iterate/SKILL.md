@@ -46,7 +46,7 @@ argument-hint: "<pr_number>"
 | `{issue_number}` | flow-state `issue_number` field |
 | `{branch_name}` | flow-state `branch` field |
 | `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 5、無効値は既定へフォールバック） |
-| `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット） |
+| `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。加えて起動時に上限へ達していれば phase に依らず 0 リセット = 発火後再実行 override、ステップ 0.6） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
@@ -119,21 +119,33 @@ esac
 # stop-loop-continuation.sh は handoff の有無のみで block を決めるため、発火後に iterate へ
 # 再入場する経路は人間の明示コマンド（/rite:iterate 再実行 / /rite:recover）だけであり、
 # ここで fresh に倒しても自動継続は発生しない。
+cb_refire=0
 if [ "$cur_cc" -ge "$max_cycles" ] 2>/dev/null; then
   cb_mode_init=fresh
+  cb_refire=1
 fi
 reset_status=none
 if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
   # stale counter を除去（--cycle-count 0 は key 自体を削除。他フィールドは merge-preserve）。
   # reset 失敗を握り潰さず WARNING を surface する（stale counter が残るとブレーカーが早期発火し
   # うるため）。非ブロッキング（iterate は止めない）。ステップ 1 の fire / ok 分岐の set と対称。
+  # stderr は捨てずに退避する。捨てると flow-state.sh が原因別に出す診断（flock timeout /
+  # corrupt state / write failed 等）が消え、ステップ 6.2 の停止通知が原因を推測で埋めることになる
+  # （pr-review.md ステップ 6.2 / fix.md ステップ 4.5 と同型の canonical な stderr 退避パターン）。
+  reset_err=$(mktemp "${TMPDIR:-/tmp}/rite-iterate-reset-err-XXXXXX" 2>/dev/null) || reset_err=""
   if bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
-    --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 >/dev/null 2>&1; then
+    --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 >/dev/null 2>"${reset_err:-/dev/null}"; then
     reset_status=ok
   else
-    reset_status=failed
+    # 発火直結（cb_refire=1 = counter が上限に達したままの再実行）と stale leak
+    # （fresh entry かつ 0 < cur_cc < max_cycles）を別値に分ける。ステップ 1 で即再発火するのは
+    # 前者だけであり、ステップ 6.2 の注意行を後者にも付けると「review は 1 cycle も回っていません」
+    # が偽になり、真の非収束を書き込み権限の問題へ誤誘導する。
+    if [ "$cb_refire" = 1 ]; then reset_status=failed-refire; else reset_status=failed-stale; fi
     echo "WARNING: cycle counter reset に失敗（stale counter が残りブレーカー早期発火の恐れ）" >&2
+    [ -n "$reset_err" ] && [ -s "$reset_err" ] && head -5 "$reset_err" | sed 's/^/  /' >&2
   fi
+  [ -n "$reset_err" ] && rm -f "$reset_err"
   cur_cc=0
 fi
 echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init; RESET=$reset_status"
@@ -147,7 +159,8 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 |---|---|
 | `none` | reset 不要だった（counter が既に 0、または resume 継続） |
 | `ok` | counter を 0 にリセット済み |
-| `failed` | reset の flow-state set が失敗し counter が上限のまま残存。**ステップ 1 で即座にブレーカーが再発火する**（WARNING は emit 済み）。この場合ステップ 6 の停止通知に該当行を含める |
+| `failed-refire` | **発火後再実行**（`cycle_count >= max_review_cycles` の override 経由）の reset が失敗し counter が上限のまま残存。**ステップ 1 で即座にブレーカーが再発火する**（WARNING と flow-state.sh の診断は emit 済み）。この場合のみステップ 6 の停止通知に該当行を含める |
+| `failed-stale` | **stale counter 除去**（fresh entry かつ `0 < cycle_count < max_review_cycles`。run バッチの Issue 間リーク等）の reset が失敗し counter が残存。上限未満なので即座には再発火せず、残 cycle が目減りした状態でループが回る。ステップ 6 の停止通知に該当行は**含めない**（含めると真の非収束停止に「review は 1 cycle も回っていません」という偽の説明が付く） |
 
 ---
 
@@ -363,10 +376,10 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 <!-- [iterate:max-cycles-stopped] -->
 ```
 
-ステップ 0.6 の `[CONTEXT] ... RESET=failed` を context で観測している場合（前回発火後の再実行で counter リセットに失敗し、そのまま即時再発火したケース）は、上記「理由」行の直後に次の 1 行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）:
+ステップ 0.6 の `[CONTEXT] ... RESET=failed-refire` を context で観測している場合（前回発火後の再実行で counter リセットに失敗し、そのまま即時再発火したケース）は、上記「理由」行の直後に次の 1 行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。`RESET=failed-stale`（上限未満での reset 失敗）では review が実際に回ってから到達しているため**追加しない**:
 
 ```
-- 注意: 前回の cycle counter リセットに失敗したため上限値のまま再発火しました（review は 1 cycle も回っていません）。flow-state の書き込み権限を確認してから再実行してください
+- 注意: 前回の cycle counter リセットに失敗したため上限値のまま再発火しました（review は 1 cycle も回っていません）。ステップ 0.6 の WARNING 直後に出力された flow-state.sh の診断（flock timeout / corrupt state / write failed 等）を確認してから再実行してください
 ```
 
 ---
