@@ -514,35 +514,39 @@ echo "=== TC-4: review-nonblocking-record.sh (6.1.d) ==="
 # =====================================================================
 
 NBR_BODY="$TMP_ROOT/nbr-body.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 1\n📎 reviewed_commit: abc\n' > "$NBR_BODY"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 1\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY"
 # count/body variant 整合検査 (F-01, cycle 2 review) の対象となるテストは、それぞれの --count と
 # 一致する `📎 non_blocking_count:` 行を持つ専用 body fixture を使う (NBR_BODY は count=1 用)。
 NBR_BODY_C0="$TMP_ROOT/nbr-body-c0.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n本 cycle の非実測指摘: 0 件\n\n📎 non_blocking_count: 0\n📎 reviewed_commit: abc\n' > "$NBR_BODY_C0"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n本 cycle の非実測指摘: 0 件\n\n📎 non_blocking_count: 0\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C0"
 NBR_BODY_C2="$TMP_ROOT/nbr-body-c2.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_C2"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C2"
 NBR_BODY_C3="$TMP_ROOT/nbr-body-c3.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n' > "$NBR_BODY_C3"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C3"
 # [test-reviewer F-03 指摘, cycle 3]: count fixture が 0/1/2/3 の 1 桁のみだと、helper の
 # `grep -oE '[0-9]+'` を `[0-9]` へ退行させても全 assertion が緑のままになる (先頭 1 桁しか
 # 拾わなくても 1 桁値なら一致するため)。production では非実測指摘が 10 件以上出た cycle に
 # 限って毎回 count_body_mismatch → outcome=failed となり、最も記録が必要な局面で D-01 の
 # 永続チャネルが落ちる。2 桁 fixture で桁境界を固定する。
 NBR_BODY_C12="$TMP_ROOT/nbr-body-c12.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 12\n📎 reviewed_commit: abc\n' > "$NBR_BODY_C12"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 12\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C12"
 NBR_EMPTY_BODY="$TMP_ROOT/nbr-empty.md"
 : > "$NBR_EMPTY_BODY"
 
-# lookup fixture: id=11 と id=13 が 1 行目 marker を持つ本物の記録コメント (id=13 が自 login の最新)。
-# id=12 は marker 文字列を **本文中に引用しただけ**の別コメント (人間の Quote reply 相当) で、
-# `contains` 述語なら (startswith では拾えないが) マッチしうる。id=99 は第三者 author による
-# marker 投稿。両デコイを対象コメント id=13 より **後ろ**に置くことで、`last` の選択がデコイに
-# よって上書きされるかどうかを実際に検出できるようにする (デコイを id=13 より前に置くと、
-# 述語が壊れても位置的に id=13 が最後のままになり検出が vacuous になる)。
-# 前方一致 (startswith) + author 一致が id=13 を選ぶことを固定する。
+# lookup fixture: id=11 と id=13 が 1 行目 marker **かつ機械専用 sentinel** を持つ本物の記録
+# コメント (id=13 が自 login の最新)。デコイは 3 種で、いずれも対象コメント id=13 より **後ろ**に
+# 置く (前に置くと述語が壊れても位置的に id=13 が最後のままになり検出が vacuous になる):
+#   - id=12: marker 文字列を **本文中に引用しただけ** (人間の Quote reply 相当)。`contains($MARKER)`
+#            述語ならマッチしうる (startswith では拾えない)。
+#   - id=99: **第三者 author** による marker 投稿。author 条件が無ければ PATCH 先を奪える。
+#   - id=98: **同一 author が書いた、引用接頭辞を持たない、marker 前方一致の人間コメント**
+#            (記録の対応状況メモ相当)。author + startswith の 2 条件では除外できず、機械専用
+#            sentinel を持たないことだけが本物との違い。sentinel 条件を落とすと `last` がこれを
+#            掴み、PATCH が人間の本文を丸ごと上書き破壊する (F-09, cycle 6)。
+# 3 条件 (startswith ∧ sentinel ∧ author 一致) が id=13 を選ぶことを固定する。
 NBR_COMMENTS="$TMP_ROOT/nbr-comments.json"
 cat > "$NBR_COMMENTS" <<'EOF'
-[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt"}]]
+[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold\n\n<!-- rite:nbr:v1 -->"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)\n\n<!-- rite:nbr:v1 -->"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt\n\n<!-- rite:nbr:v1 -->"},{"id":98,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 の対応状況\n\nF-03 は次 PR で対応予定。F-05 は仕様どおりのため対応しない。"}]]
 EOF
 NBR_EMPTY_COMMENTS="$TMP_ROOT/nbr-empty-comments.json"
 echo '[[]]' > "$NBR_EMPTY_COMMENTS"
@@ -551,7 +555,7 @@ echo '[[]]' > "$NBR_EMPTY_COMMENTS"
 # (コメント 30 件超の PR で marker を miss しない) が pin されない。
 NBR_PAGED_COMMENTS="$TMP_ROOT/nbr-paged-comments.json"
 cat > "$NBR_PAGED_COMMENTS" <<'EOF'
-[[{"id":21,"user":{"login":"rite-bot"},"body":"page1 noise"}],[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold"}]]
+[[{"id":21,"user":{"login":"rite-bot"},"body":"page1 noise"}],[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold\n\n<!-- rite:nbr:v1 -->"}]]
 EOF
 
 # TC-4.1 placeholder residue gate 5 種はすべて exit 1 (skill 定義のバグ = loud fail)
@@ -955,7 +959,7 @@ assert_not_grep "TC-4.11b 不一致時は投稿しない (PATCH)" "$GH_LOG" '^ap
 # non_blocking_count 行自体が欠落 (variant テンプレート未追従等) も同じ reason で捕捉する。
 # 既存コメントありの lookup を使い skip 分岐を回避する (上記と同じ理由)。
 NBR_NOCOUNT_BODY="$TMP_ROOT/nbr-nocount.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n本 cycle の非実測指摘: 0 件\n\n📎 reviewed_commit: abc\n' > "$NBR_NOCOUNT_BODY"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n本 cycle の非実測指摘: 0 件\n\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_NOCOUNT_BODY"
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-213 --content-file "$NBR_NOCOUNT_BODY"
 assert "TC-4.11c non_blocking_count 行欠落: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.11c reason=count_body_mismatch emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=count_body_mismatch'
@@ -981,7 +985,7 @@ assert_not_grep "TC-4.11d 不一致時は投稿しない (create)" "$GH_LOG" '^p
 # no-match になり、記録が丸ごと投稿されなくなってはならない。値そのもの (数字) は厳格に保ちつつ
 # 周囲の空白だけ許容することを固定する。
 NBR_BODY_WS="$TMP_ROOT/nbr-body-ws.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count:2 \n📎 reviewed_commit: abc\n' > "$NBR_BODY_WS"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count:2 \n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_WS"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-216 --content-file "$NBR_BODY_WS"
 assert "TC-4.11e コロン直後の空白なし・行末 trailing space: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11e 整形のブレを count_body_mismatch と誤判定しない" "$ERR" 'reason=count_body_mismatch'
@@ -993,17 +997,157 @@ assert_grep "TC-4.11e 投稿呼び出しが実在する" "$GH_LOG" '^pr comment'
 # canonical な行を採る契約 (SKILL.md の variant A/B・診断文と一致)。先頭一致 (旧 `-m1`) の
 # ままだと非 canonical な先行行を誤って読み、事実と異なる count_body_mismatch を発火させる。
 NBR_BODY_DECOY="$TMP_ROOT/nbr-body-decoy.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n📎 non_blocking_count: 9\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_DECOY"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n📎 non_blocking_count: 9\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DECOY"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-217 --content-file "$NBR_BODY_DECOY"
 assert "TC-4.11f 本文中の先行デコイ行: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11f 末尾の canonical な行を読み、デコイと誤判定しない" "$ERR" 'reason=count_body_mismatch'
 assert_grep "TC-4.11f outcome=created (記録は投稿される)" "$ERR" 'outcome=created; count=2; iteration_id=9-217;'
 
+# TC-4.11g [F-09 指摘, cycle 6]: 本文が機械専用 sentinel を欠くと投稿を中止する。
+# sentinel は lookup 述語の第 3 条件であり、欠いた本文を投稿すると次 cycle の lookup が自分の
+# 投稿を検出できず記録コメントが cycle ごとに増殖する (1 行目 marker 欠落と同じ結末)。
+NBR_BODY_NOSENT="$TMP_ROOT/nbr-body-nosentinel.md"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_NOSENT"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-218 --content-file "$NBR_BODY_NOSENT"
+assert "TC-4.11g sentinel 欠落: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.11g reason=body_sentinel_missing emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_sentinel_missing'
+assert_grep "TC-4.11g outcome=failed" "$ERR" 'outcome=failed;'
+assert_not_grep "TC-4.11g 投稿呼び出しは実在しない" "$GH_LOG" '^pr comment'
+# [positive control] 本文検査起因の案内が出る (gh 認証/network を指す誤案内でないこと)
+assert_grep "TC-4.11g [positive control] 本文検査起因の案内が出る" "$ERR" 'gh 認証 / network / 権限の問題ではありません'
+
+# =====================================================================
+# TC-4.12 [F-03 指摘, cycle 6]: pending marker lifecycle の per-reason 振る舞い
+# =====================================================================
+# 8.0.3 の機械強制へ差し戻す境界は **原因** で引く (exit code ではない):
+#   - caller (LLM) 契約違反 → marker を残す (差し戻せば 1 iteration で収束する)
+#   - gh / network / IO 起因 → marker を消す (差し戻しても同 cycle 内で収束しない)
+#   - 正常終了 (created / updated / skipped) → marker を消す
+# 旧実装は境界を exit code (trap 設置の前後) で引いていたため、本文検査 3 段の契約違反だけが
+# gh outage と同じ扱いで marker を消し、8.0.3 が pass していた。TC-5b の静的 pin は「削除文が
+# cleanup 区間内に 1 本」しか固定せず、**どの reason が marker を残すか**を検証していなかった
+# ため、この分類の回帰を検出できなかった。本 TC は等値 assert でその軸を固定する。
+echo "--- TC-4.12: pending marker lifecycle (per-reason) ---"
+NBR_BODY_EMPTY="$TMP_ROOT/nbr-body-empty.md"
+: > "$NBR_BODY_EMPTY"
+NBR_BODY_NOMARK="$TMP_ROOT/nbr-body-nomarker.md"
+printf 'ERROR: something went wrong\n\n📎 non_blocking_count: 2\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_NOMARK"
+
+# marker を張ってから helper を走らせ、走行後に marker が残っているかを yes/no で返す。
+# TMPDIR は helper の導出式 (`${TMPDIR:-/tmp}/rite-nbr-pending-<id>`) と同一の値を渡す必要がある。
+_nbr_marker_after() {  # $1=iteration_id, 残りは run_nbr へ渡す引数
+  local iid="$1"; shift
+  local marker="${TMPDIR:-/tmp}/rite-nbr-pending-${iid}"
+  : > "$marker"
+  run_nbr "$@"
+  if [ -e "$marker" ]; then rm -f "$marker"; printf '%s' "yes"; else printf '%s' "no"; fi
+}
+
+# (1) caller 契約違反 4 種 → marker RETAIN (8.0.3 が差し戻す)
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS"
+assert "TC-4.12a body_file_empty は marker を残す" "yes" \
+  "$(_nbr_marker_after 9-301 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-301 --content-file "$NBR_BODY_EMPTY")"
+assert "TC-4.12b body_marker_missing は marker を残す" "yes" \
+  "$(_nbr_marker_after 9-302 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-302 --content-file "$NBR_BODY_NOMARK")"
+assert "TC-4.12c body_sentinel_missing は marker を残す" "yes" \
+  "$(_nbr_marker_after 9-303 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-303 --content-file "$NBR_BODY_NOSENT")"
+assert "TC-4.12d count_body_mismatch は marker を残す" "yes" \
+  "$(_nbr_marker_after 9-304 --pr 9 --owner-repo o/r --count 5 --iteration-id 9-304 --content-file "$NBR_BODY_C2")"
+# content_file_missing は trap 設置**前**の exit 1 なので構造的に marker が残る (境界の対称性確認)
+assert "TC-4.12e content_file_missing は marker を残す (trap 前 exit 1)" "yes" \
+  "$(_nbr_marker_after 9-305 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-305 --content-file "$TMP_ROOT/nbr-does-not-exist.md")"
+
+# (2) gh / IO 起因 → marker DELETE (非ブロッキング契約を gate 側へ持ち込まない)
+GH_STUB_RC=1
+assert "TC-4.12f create_failed は marker を消す (gh 起因)" "no" \
+  "$(_nbr_marker_after 9-306 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-306 --content-file "$NBR_BODY_C2")"
+GH_STUB_RC=0
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_STUB_RC=1
+assert "TC-4.12g patch_failed は marker を消す (gh 起因)" "no" \
+  "$(_nbr_marker_after 9-307 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-307 --content-file "$NBR_BODY_C2")"
+GH_STUB_RC=0
+GH_ME_RC=1
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS"
+assert "TC-4.12h lookup degraded は marker を消す (gh 起因)" "no" \
+  "$(_nbr_marker_after 9-308 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-308 --content-file "$NBR_BODY_C2")"
+GH_ME_RC=0
+
+# (3) 正常終了 3 種 → marker DELETE
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS"
+assert "TC-4.12i outcome=created は marker を消す" "no" \
+  "$(_nbr_marker_after 9-309 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-309 --content-file "$NBR_BODY_C2")"
+GH_LOOKUP_JSON="$NBR_COMMENTS"
+assert "TC-4.12j outcome=updated は marker を消す" "no" \
+  "$(_nbr_marker_after 9-310 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-310 --content-file "$NBR_BODY_C2")"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS"
+assert "TC-4.12k outcome=skipped は marker を消す (AC-4 正常系)" "no" \
+  "$(_nbr_marker_after 9-311 --pr 9 --owner-repo o/r --count 0 --iteration-id 9-311 --content-file "$NBR_BODY_C0")"
+
+# =====================================================================
+# TC-4.13 [F-06 指摘, cycle 6]: 8.0.3 Pre-Check (機械強制 bash) の分岐を **実行**する
+# =====================================================================
+# 8.0.3 の Pre-Check は本 PR で実行可能な bash block になったが、その 4 分岐を実行するテストが
+# 1 件も無く静的 pin のみで担保されていた。AC-5 (「step 1-2 を skip した場合に gate が ERROR を
+# 出す」) を直接検証したテストが存在しない状態だったため、SKILL.md から fence を抽出して実行し、
+# rc と retained flag を等値 assert する。抽出は「8.0.3 節の最初の ```bash fence」で、fence が
+# 見つからなければ fail で loud に落とす (vacuous pass を作らない)。
+echo "--- TC-4.13: 8.0.3 Pre-Check の実行テスト (AC-5) ---"
+_P8_MD="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+_P8_FENCE="$TMP_ROOT/p803-precheck.sh"
+awk '
+  !inside && /^### 8\.0\.3 / { inside = 1; next }
+  inside && /^### / { exit }
+  inside && !infence && /^```bash$/ { infence = 1; next }
+  inside && infence && /^```[[:space:]]*$/ { exit }
+  inside && infence { print }
+' "$_P8_MD" > "$_P8_FENCE"
+if [ ! -s "$_P8_FENCE" ]; then
+  fail "TC-4.13 precondition: 8.0.3 節から Pre-Check の bash fence を抽出できません"
+else
+  pass "TC-4.13 precondition: 8.0.3 の Pre-Check fence を抽出できた ($(grep -c . "$_P8_FENCE") 行)"
+  # placeholder を実値へ置換して実行するヘルパー。rc と stderr を返す。
+  _run_p803() {  # $1=pending_marker の置換値
+    P8_RC=0
+    sed "s|{pending_marker}|$1|" "$_P8_FENCE" > "$_P8_FENCE.run"
+    bash "$_P8_FENCE.run" >"$OUT" 2>"$ERR" || P8_RC=$?
+  }
+
+  # (a) marker 残存 → ERROR + exit 1 (AC-5 の本体: 6.1.d を skip した cycle を機械的に落とす)
+  _p8_marker="$TMP_ROOT/p803-marker-present"
+  : > "$_p8_marker"
+  _run_p803 "$_p8_marker"
+  assert "TC-4.13a marker 残存: exit 1 (gate 失敗)" "1" "$P8_RC"
+  assert_grep "TC-4.13a retained flag に reason=pending_marker_present" "$ERR" 'NONBLOCKING_GATE_FAILED=1; reason=pending_marker_present'
+  assert_grep "TC-4.13a ACTION が 6.1.d への差し戻しを指示" "$ERR" 'ステップ 6.1.d へ戻り'
+  # gate 自身が marker を削除しないこと (削除すると再評価だけで通せる)
+  if [ -e "$_p8_marker" ]; then pass "TC-4.13a gate は marker を削除しない"; else fail "TC-4.13a gate は marker を削除しない"; fi
+  rm -f "$_p8_marker"
+
+  # (b) marker 不在 → pass
+  _run_p803 "$TMP_ROOT/p803-marker-absent"
+  assert "TC-4.13b marker 不在: exit 0 (pass)" "0" "$P8_RC"
+  assert_grep "TC-4.13b retained flag に reason=pending_marker_absent" "$ERR" 'NONBLOCKING_GATE=pass; reason=pending_marker_absent'
+
+  # (c) placeholder 未置換 → degraded (機械強制を skip し prose 判定へ)
+  P8_RC=0
+  bash "$_P8_FENCE" >"$OUT" 2>"$ERR" || P8_RC=$?
+  assert "TC-4.13c placeholder 未置換: exit 0 (degraded)" "0" "$P8_RC"
+  assert_grep "TC-4.13c retained flag に reason=pending_marker_placeholder_residue" "$ERR" 'NONBLOCKING_GATE=degraded; reason=pending_marker_placeholder_residue'
+
+  # (d) 空値 (6.1.a step 0 が marker を作れなかった) → degraded
+  _run_p803 ""
+  assert "TC-4.13d 空値: exit 0 (degraded)" "0" "$P8_RC"
+  assert_grep "TC-4.13d retained flag に reason=pending_marker_unavailable" "$ERR" 'NONBLOCKING_GATE=degraded; reason=pending_marker_unavailable'
+fi
+
 # =====================================================================
 echo "=== TC-5: skills/pr-review/SKILL.md 静的 pin (6.1.d / 8.0.3) ==="
 # =====================================================================
-# 6.1.d の記録経路と実行保証 gate は markdown 埋め込みの prose gate であり実行テストできない。
-# silent failure に直結する契約だけを静的に固定する。**pin を追加・変更するときは、その場で
+# 6.1.d の記録経路と実行保証 gate のうち、**prose 部分**(分岐表・ACTION 文・順序規定) は markdown
+# 埋め込みのため実行テストできない。silent failure に直結する契約だけを静的に固定する。
+# なお 8.0.3 の Pre-Check は実行可能な bash block であり、その 4 分岐は **TC-4.13 が fence を
+# 抽出して実際に実行**する (静的 pin だけに頼らない)。本 TC-5 が担うのは prose 部分と、
+# 実行テストでは届かない「どこに何が書かれているか」の配置契約。**pin を追加・変更するときは、その場で
 # mutation (述語置換 / 死に分岐化 / 変数リネーム / 散文追加 / 区間境界変更) を当て、落ちること
 # および無害な変更では落ちないことを実測してから commit する**。手順は下記 rationale を参照。
 # rationale: ../../skills/pr-review/references/measured-gate-record.md#static-pin
@@ -1125,12 +1269,87 @@ else
   # marker をこの gate で削除しない (削除すると再評価だけで通せる)。`rm -f "$pending_marker"` の不在を固定。
   assert "TC-5b 8.0.3 は pending marker を削除しない" "0" \
     "$(_sec_803 | grep -cF 'rm -f "$pending_marker"' || true)"
-  # helper 側が marker を消す唯一の主体であること (EXIT trap の cleanup 内 1 箇所)。
-  assert "TC-5b helper の cleanup が pending marker を削除する (1 箇所)" "1" \
-    "$(grep -cF 'rm -f "${PENDING_MARKER:-}"' "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" || true)"
+  # helper 側が marker を消す唯一の主体であること。**件数ではなく配置**を固定する:
+  # 削除文を `_rite_p61d_cleanup` の外 (末尾 `exit 0` の直前) へ 1 行移すだけで件数は 1 のまま
+  # 緑になるが、early `exit 0` で抜ける経路 (AC-4 正常系の「0 件 ∧ 既存なし」skip、および
+  # 本文検査失敗) で marker が残り、8.0.3 が毎 cycle exit 1 を返して [review:mergeable] を
+  # 永久に emit できないデッドロックになる。区間内 1 本 / 区間外 0 本の両方を等値で固定する
+  # (TC-5a / TC-5h の「区間解決 + 件数等値」idiom と同型)。
+  NBR_SH="$PLUGIN_ROOT/hooks/review-nonblocking-record.sh"
+  # `_rite_p61d_cleanup() {` から対応する列 0 の `}` までを切り出す。関数定義が見つからなければ
+  # 空を返し、呼び出し側の件数 assert が loud に落ちる。
+  _nbr_cleanup_body() {
+    awk '
+      !inside && /^_rite_p61d_cleanup\(\) \{[[:space:]]*$/ { inside = 1; next }
+      inside && /^\}[[:space:]]*$/ { exit }
+      inside { print }
+    ' "$NBR_SH"
+  }
+  _nbr_cleanup_lines=$(_nbr_cleanup_body | grep -c . || true)
+  if [ "$_nbr_cleanup_lines" -ge 1 ] && [ "$_nbr_cleanup_lines" -le 40 ] 2>/dev/null; then
+    pass "TC-5b 区間解決: _rite_p61d_cleanup が妥当な行数で閉じる ($_nbr_cleanup_lines 行)"
+  else
+    fail "TC-5b 区間解決: _rite_p61d_cleanup の行数が想定外 ($_nbr_cleanup_lines) — 関数名変更か閉じ括弧の消失"
+  fi
+  assert "TC-5b helper の cleanup **区間内** に pending marker 削除が 1 本" "1" \
+    "$(_nbr_cleanup_body | grep -cF 'rm -f "${PENDING_MARKER:-}"' || true)"
+  # 区間外 0 本。ファイル全体の件数から区間内の件数を引いて求める (区間外だけを直接切り出すより
+  # 「移動しても総数は変わらない」という変異の性質を素直に写す)。
+  _nbr_pm_rm_total=$(grep -cF 'rm -f "${PENDING_MARKER:-}"' "$NBR_SH" || true)
+  _nbr_pm_rm_inside=$(_nbr_cleanup_body | grep -cF 'rm -f "${PENDING_MARKER:-}"' || true)
+  assert "TC-5b helper の cleanup **区間外** に pending marker 削除が 0 本" "0" \
+    "$(( _nbr_pm_rm_total - _nbr_pm_rm_inside ))"
+
   # 6.1.a step 0 が marker を作る側であること。作成が落ちると gate は degraded 側へ倒れ機械強制が失われる。
-  assert "TC-5b 6.1.a step 0 が pending marker を作成する (1 箇所)" "1" \
-    "$(count_lit 'pending_marker="${TMPDIR:-/tmp}/rite-nbr-pending-$review_cycle_id"' '6.1.a pending marker 生成')"
+  # [F-05 指摘, cycle 6]: 旧版は `count_lit` (行頭 anchor なしの部分一致・区間非限定・fence 到達性
+  # 検査なし) で、生成行に `# ` を付けるだけの死に分岐化を検出できなかった。TC-5a が既に移行済みの
+  # 「区間限定 + 行頭 anchor + fence 追跡」へ揃える。6.1.a step 0 は番号付きリスト項目のため
+  # `^0\. \*\*Write 先実パス解決` を開始 anchor に、次の番号付き項目 (`^1\. `) を終端にする。
+  _sec_610a_step0() { _section_of '^0\. \*\*Write 先実パス解決' '^1\. '; }
+  _sec_610a_step0_lines=$(_sec_610a_step0 | grep -c . || true)
+  if [ "$_sec_610a_step0_lines" -ge 10 ] && [ "$_sec_610a_step0_lines" -le 120 ] 2>/dev/null; then
+    pass "TC-5b 区間解決: 6.1.a step 0 が妥当な行数で閉じる ($_sec_610a_step0_lines 行)"
+  else
+    fail "TC-5b 区間解決: 6.1.a step 0 の行数が想定外 ($_sec_610a_step0_lines) — 開始 anchor 消失か終端の閉じ損ね"
+  fi
+  assert "TC-5b 6.1.a step 0 区間に pending marker 生成行が 1 本 (行頭 anchor)" "1" \
+    "$(_sec_610a_step0 | grep -cE '^[[:space:]]*pending_marker="\$\{TMPDIR:-/tmp\}/rite-nbr-pending-\$review_cycle_id"' || true)"
+  # 8.0.3 が置換入力として読む emit 行も pin する (この行を殺すと機械強制は degraded に倒れる)。
+  assert "TC-5b 6.1.a step 0 区間に NONBLOCKING_PENDING_MARKER emit が 1 本 (行頭 anchor)" "1" \
+    "$(_sec_610a_step0 | grep -cE '^[[:space:]]*echo "\[CONTEXT\] NONBLOCKING_PENDING_MARKER=\$pending_marker"' || true)"
+  # 生成行が live な bash fence 内にあること (死に分岐化検出)。
+  pm_gen_line=$(grep -nE '^[[:space:]]*pending_marker="\$\{TMPDIR:-/tmp\}/rite-nbr-pending-\$review_cycle_id"' "$REVIEW_MD" | cut -d: -f1)
+  pm_gen_count=$(printf '%s\n' "$pm_gen_line" | grep -c '[0-9]' || true)
+  if [ "$pm_gen_count" = "1" ]; then
+    pm_gen_in_fence=$(awk -v n="$pm_gen_line" '
+      NR < n {
+        if ($0 ~ /^[[:space:]]*```bash$/) { f = 1 }
+        else if ($0 ~ /^[[:space:]]*```[[:space:]]*$/) { f = 0 }
+      }
+      NR == n { print f + 0 }
+    ' "$REVIEW_MD")
+    assert "TC-5b pending marker 生成が live な bash fence 内にある (到達性)" "1" "$pm_gen_in_fence"
+  else
+    fail "TC-5b pending marker 生成が live な bash fence 内にある (到達性) — 生成行を特定できず評価不能"
+  fi
+
+  # [F-04 指摘, cycle 6]: pending marker のパスは 3 者 (6.1.a step 0 が作成 / helper が削除 /
+  # 8.0.3 が検査) で結合している。TC-5c (MARKER 値 ⇄ variant 見出し) / TC-5g (count needle ⇄
+  # variant テンプレート) は同型の coupling を「片側から抽出して他方に照合する」形で pin して
+  # いるが、3 本目のこの coupling だけが抜けていた。片側だけ prefix を変えると作成側と削除側が
+  # desync し、marker が永久に残って 8.0.3 が全 cycle で exit 1 を返す。
+  # 変数名の差 (helper: `${ITERATION_ID}` / SKILL.md: `$review_cycle_id`) を正規化してから照合する。
+  _pm_path_helper=$(sed -n 's/^PENDING_MARKER="\(.*\)"$/\1/p' "$NBR_SH" | head -1 \
+    | sed 's/\${ITERATION_ID}/__CYCLE__/')
+  _pm_path_skill=$(_sec_610a_step0 \
+    | sed -n 's/^[[:space:]]*pending_marker="\(.*\)"$/\1/p' | head -1 \
+    | sed 's/\$review_cycle_id/__CYCLE__/')
+  if [ -n "$_pm_path_helper" ] && [ -n "$_pm_path_skill" ]; then
+    assert "TC-5b pending marker のパス導出が helper と 6.1.a step 0 で一致" \
+      "$_pm_path_helper" "$_pm_path_skill"
+  else
+    fail "TC-5b pending marker のパス導出 coupling — 抽出に失敗 (helper='$_pm_path_helper' skill='$_pm_path_skill')"
+  fi
 
   # (b) 二層 gate (6.1.d step 3 / 8.0.3) がともに **terminal sentinel** を pass 条件にしている。
   #     動作前 marker (lookup 系) を pass 条件に戻す退行が本 pin の検出対象。

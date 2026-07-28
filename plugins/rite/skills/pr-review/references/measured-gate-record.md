@@ -74,28 +74,35 @@ sentinel の grep は **LLM が会話を読む**ことを前提にしている�
 
 そこで ステップ 6.1.a step 0 が `${TMPDIR:-/tmp}/rite-nbr-pending-<review_cycle_id>` を作り、6.1.d の helper が EXIT trap で消す。8.0.3 の bash が `[ -e ]` で見るだけで「6.1.d が完走したか」が LLM の認識に依存せず決まる。設計上の要点は 3 つ:
 
-1. **消すのは helper の EXIT trap だけ** — 記録の成否（`created` / `updated` / `skipped` / `failed` / `aborted`）に関わらず消す。8.0.3 へ伝えるのは「完走した」ことだけで、成否は terminal sentinel の `outcome=` が担う。これにより非ブロッキング契約（AC-3）を gate 側へ持ち込まない。
-2. **引数 gate 群は trap 設置より前で `exit 1` する** — その経路では marker が残り、8.0.3 が caller 契約違反として検出する。記録の失敗（非ブロッキング）と skill 定義のバグ（loud）の区別がそのまま marker の有無に写る。
-3. **gate 側で marker を削除しない** — 削除すると 6.1.d を実行せず再評価だけで gate を通せてしまい、機械強制の意味が消える。静的 pin はこの不在（`rm -f "$pending_marker"` が 8.0.3 区間に 0 本）も固定する。
+1. **消す / 残すの境界は「原因」で引く（exit code ではない）** — 差し戻せば収束するもの（caller 契約違反）は残し、差し戻しても同 cycle 内で収束しないもの（gh / network / rate-limit / IO）は消す。
+   - **残す**: 引数 gate 群（placeholder residue 5 種 / `content_file_missing`、trap 設置**前**の `exit 1`）と本文検査 4 段（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`、trap 設置**後**の `retain_pending_marker=1`）。いずれも caller (LLM) が本文 / `--count` を作り直せば 1 iteration で収束する。
+   - **消す**: `patch_failed` / `create_failed` / lookup degraded、および正常終了（`created` / `updated` / `skipped`）。8.0.3 へ伝えるのは「完走した」ことだけで、成否は terminal sentinel の `outcome=` が担う。これにより非ブロッキング契約（AC-3）を gate 側へ持ち込まない。
+
+   境界を **exit code**（trap 設置の前後）で引くと、同種の caller 契約違反が検出位置の違いだけで機械強制から外れる。本文検査 3 段はまさにその位置にあり、`count_body_mismatch` は「caller 起因で決定論的に再現する」と定義されながら gh outage と同じ扱いで marker を消していた。marker 保持は `overall_assessment` を変えず「result pattern を emit してよいか」だけを止めるため、引数 gate 群が既に行っている挙動と構造的に同一で AC-3 と両立する。
+2. **gate 側で marker を削除しない** — 削除すると 6.1.d を実行せず再評価だけで gate を通せてしまい、機械強制の意味が消える。静的 pin はこの不在（`rm -f "$pending_marker"` が 8.0.3 区間に 0 本）も固定する。
+3. **削除文は helper の EXIT trap 内にあること自体が不変条件** — 関数外（末尾 `exit 0` の直前）へ移すと、early `exit 0` で抜ける経路（AC-4 の正常系である「0 件 ∧ 既存なし」の skip）で marker が残り、8.0.3 が毎 cycle `exit 1` を返して `[review:mergeable]` を永久に emit できないデッドロックになる。静的 pin は「件数 1 本」ではなく **`_rite_p61d_cleanup` 区間内に 1 本 / 区間外に 0 本** の配置で固定する（件数 pin は移動を検出できない）。
 
 marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKING_GATE=degraded` に倒し、prose 判定のみで続行する。機械強制が使えないことを sentinel で可視化したうえで、従来の防御は維持する（degraded を無音にしない）。
 
-**限界**: 本機構が保証するのは「6.1.d が完走した」ことまでで、ステップ 6 を丸ごと skip した cycle では marker がそもそも作られないため `degraded` に倒れる。ステップ 6 全体の skip を塞ぐには別 gate が要る（[#gate-order](#gate-order) の議論と同様に、守る対象の外へもう一段置く必要がある）。
+**選択規則も述語の一部**: 8.0.3 の Pre-Check が置換する `{pending_marker}` は、`**Check**` の `REVIEW_CYCLE_ID` と**同じ選択規則**（会話に複数ある場合は末尾 `-{epoch}` が最大のもの＝本 cycle のもの）で採る。二層は「6.1.d が本 cycle で完走したか」という同一の問いを異なる位置で評価するものなので、片側にだけ選択規則を置くと層ごとに別 cycle の値を見ることになる。
+
+**限界**: 本機構が保証するのは「6.1.d が完走した」ことまで。ステップ 6 を丸ごと skip した cycle では本 cycle の marker がそもそも作られず、会話に残る前 cycle の**実パス**（前 cycle の helper が削除済）を採ると `pending_marker_absent` として **pass** する（`degraded` にはならない — `degraded` に倒れるのは置換値が空文字か `{...}` 形状のときだけ）。ステップ 6 全体の skip を塞ぐには別 gate が要る（[#gate-order](#gate-order) の議論と同様に、守る対象の外へもう一段置く必要がある）。
 
 <a id="startswith"></a>
 ## lookup と本文検査の設計理由（PATCH 先の同定）
 
 `hooks/review-nonblocking-record.sh` は本節を rationale の実体として参照する（helper 側は契約の宣言のみを持つ）。
 
-**lookup は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」の連言**で行う。
+**lookup は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」∧「本文が機械専用 sentinel `<!-- rite:nbr:v1 -->` を含む」の連言**で行う。
 
 - **author 条件が必須な理由**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで `last` がそれを掴み、PATCH 先が奪われる。書込権限があれば他人のコメントを丸ごと上書き破壊し、権限不足なら 403 で `patch_failed` に落ちて以後の cycle も同じ id を掴み続け、記録が恒久的に失われる。
-- **`contains` を使わない理由**: 本文全体を対象にすると、marker 文字列を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
-- **前方一致でマッチ能力が損なわれない理由**: write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置く」を契約として守るため。引用返信は先頭に `> ` が付くため構造的に除外される。
+- **`contains($MARKER)` を使わない理由**: 人間可視の marker 文字列を本文全体で探すと、marker を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
+- **機械専用 sentinel が必須な理由**: author + `startswith` の 2 条件でも、**同一 author が書いた、引用接頭辞を持たない、marker 前方一致の人間コメント**は除外できない。例えば運用者が記録を追跡するために「## 📜 rite 非実測指摘の記録 の対応状況」という見出しでコメントを書くと、次 cycle の 6.1.d がその本文を記録コメントで丸ごと上書きする。「引用返信は先頭に `> ` が付くため構造的に除外される」は GitHub の Quote reply 経路しか覆っていない。`<!-- rite:nbr:v1 -->` は HTML コメントなので rendered view に現れず、人間が見出しへ書き写す経路が存在しない — これは上の「`contains($MARKER)` を使わない理由」（人間可視文字列は引用されうる）に当たらないため、`contains` でも安全に使える。
+- **前方一致でマッチ能力が損なわれない理由**: write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置き、末尾に sentinel を置く」を契約として守るため。
 
-**投稿前に本文を 3 段で検査する**（非空 → 1 行目が marker で始まる → `📎 non_blocking_count:` 行が `--count` と一致する）。最初の 2 段の契約違反は、1 行目 marker を失ったコメントを PATCH で作り出し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため 3 段は別 reason（`body_file_empty` / `body_marker_missing` / `count_body_mismatch`）にする。
+**投稿前に本文を 4 段で検査する**（非空 → 1 行目が marker で始まる → 機械専用 sentinel を含む → `📎 non_blocking_count:` 行が `--count` と一致する）。最初の 3 段の契約違反はいずれも lookup の 3 条件を満たさないコメントを投稿し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻 = 記録コメントが cycle ごとに増殖）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため 4 段は別 reason（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`）にする。
 
-**3 段目（count/body 整合検査）が必要な理由**: ステップ 6.1.d step 1（本文 variant 選択）と step 2（`--count` 置換）は独立した 2 箇所の LLM 置換であり、片方だけずれると事実と異なる記録が投稿される — `--count 0` + variant A 本文（N 件を列挙）で 0 件のはずが記録が無音で消える、または `--count N>0` + variant B「0 件」本文 で虚偽の記録が残る。本文に機械可読な `📎 non_blocking_count: {n}` 行を持たせ、helper が投稿前に `--count` と照合することで、どちらのずれも非ブロッキングな `outcome=failed` に倒し observable にする。
+**4 段目（count/body 整合検査）が必要な理由**: ステップ 6.1.d step 1（本文 variant 選択）と step 2（`--count` 置換）は独立した 2 箇所の LLM 置換であり、片方だけずれると事実と異なる記録が投稿される — `--count 0` + variant A 本文（N 件を列挙）で 0 件のはずが記録が無音で消える、または `--count N>0` + variant B「0 件」本文 で虚偽の記録が残る。本文に機械可読な `📎 non_blocking_count: {n}` 行を持たせ、helper が投稿前に `--count` と照合することで、どちらのずれも非ブロッキングな `outcome=failed` に倒し observable にする。
 
 **lookup が自分の投稿を見つけられないときは単一コメント不変条件を意図的に諦める**: gh 失敗による degraded に加え、別アカウント / 別トークン identity で過去に投稿した記録が残っている場合（author 条件により自分の投稿として拾えない。この場合 `degraded=0` のまま）も同様に、`count > 0` なら新規作成へ縮退する。既存の記録コメントが実在していれば 2 通目が作られ、古い方は孤児として残る。skip して記録を落とすより、重複してでも記録を残す方を選んだ。
 
