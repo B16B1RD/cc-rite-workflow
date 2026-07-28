@@ -1,3 +1,9 @@
+## 2026-07-29
+
+* **Create**: [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) — raw/reviews/20260728T160636Z-pr-2043.md ほか 1 件を新規ページ化（部分列挙と強度 qualifier 脱落の 2 形 / 方針との自己矛盾 / 件数 + ポインタへの寄せ）
+* **Create**: [「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む](pages/heuristics/load-bearing-by-named-dependency-not-count.md) — raw/reviews/20260728T165431Z-pr-2043.md を新規ページ化（レビュアー間矛盾を SoT 照合で決着 / 件数アンカーとの適用場面の違い）
+* **Update**: [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) — raw/reviews/20260728T160636Z-pr-2043.md ほか 2 件を統合（実測必須ゲート下の docs PR は指摘が構造的に non-blocking へ寄りブレーカーが発火しない / ready→iterate の cycle counter fresh リセット）
+
 ## 2026-07-28
 
 * **Create**: [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](pages/anti-patterns/dual-language-predicate-divergence.md) — PR #2038 (11 cycle) の raw source 38 件を統合（述語の二重実装が 4 cycle 分の症状を生んだ構造 / CR 除去範囲と空白クラスの 2 軸 / 定義 1 本化で同値性を構造的な帰結にする）

@@ -4,7 +4,7 @@ title: "散文を契約とする設計では規約を強化するたび「まだ
 domain: "heuristics"
 description: "LLM が解釈する散文を契約として扱う設計では、規約の強度を上げるたびに次の穴が可視化されるため指摘が収束しない。指摘の主成分が「前 cycle の修正が作った欠陥」「規約の適用範囲」に移ったら、それは PR の品質不足ではなくループが価値を生まなくなった合図であり、終端の判断材料にする。"
 created: "2026-07-26T10:05:51Z"
-updated: "2026-07-26T10:05:51Z"
+updated: "2026-07-29T02:10:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260726T044237Z-pr-2022.md"
@@ -16,6 +16,12 @@ sources:
     ref: "raw/fixes/20260726T040115Z-pr-2022.md"
   - type: "fixes"
     ref: "raw/fixes/20260726T021138Z-pr-2022.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T160636Z-pr-2043.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T163233Z-pr-2043.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T165431Z-pr-2043.md"
 tags: []
 confidence: high
 ---
@@ -60,6 +66,16 @@ cycle 5 で「次サイクルはサーキットブレーカーが発火する」
 - **レビュアーの自己訂正を歓迎する。** security reviewer は前 cycle の「アンカー化により marker 偽造は構造的に不可能」という positive finding を、`git check-ref-format` の実測に基づき「偽造不能なのは literal 注入に限られる」と下方修正した。過大な安全主張は次サイクルの探索を止める点で、誤った rationale と同じ害を持つ。
 - **「規約が割れている」という主張は、割れている両側を数え直してから出す。** cycle 4 の「3 対 1 の少数派」という design_confirmation は、実際には 2 対 2 であったとして次 cycle で本人が取り下げた。
 
+### 実測必須ゲート下では docs PR の終端が構造的に「人間の打ち切り」になる
+
+実測必須ゲート（`Verification:` アンカーの無い指摘を non-blocking へ降格する）を通すと、**ドキュメント精度の指摘は構造的に non-blocking へ寄る**。散文の不正確さは runtime 実測を添付できる性質のものが少なく、reviewer が誠実であるほどアンカーを捏造せず `measured=false` として報告するためである。
+
+PR #2043（散文 2 行の docs PR）は 3 cycle 連続で MEDIUM 指摘が出たが、いずれも `Likelihood-Evidence` は持ち `Verification` は持たないため毎回 non-blocking に降格され、blocking 指摘 0 件で `[review:mergeable]` に到達した。指摘の中身は cycle ごとに別（cycle 1 = 記録先の部分列挙、cycle 2 = cycle 1 の修正が落とした強度 qualifier、cycle 3 = SoT の 4 経路中 3 経路）で、内容としては本ページ冒頭の「階段」と同じ構造だった。
+
+**帰結**: サーキットブレーカー（`safety.max_review_cycles`）は blocking 指摘の有無を見ないため、この形の振動では発火しない。ループは毎回「正常終了」する。終端は人間が打ち切るしかない。指摘が non-blocking のまま cycle ごとに別の側面へ移り始めたら、AC 充足を確認して打ち切り、残りを non-blocking 記録に委ねる。
+
+**加えて cycle counter のリセット挙動に注意する。** `/rite:ready` を挟んで `/rite:iterate` へ再入場すると、flow-state の phase が `review`/`fix` 以外（`ready`）になっているため cycle counter が fresh 判定で 0 リセットされる（仕様どおり）。ready → 再レビューを繰り返す運用では、ブレーカーは累積レビュー回数を数えない。完了通知の cycle 表示（`cycle 1/5`）を累積回数と読まないこと。
+
 ### CI の赤は flake と回帰を切り分ける
 
 赤を見たら (1) 失敗テストが本 PR の変更ファイルに含まれるか、(2) 直前コミットの同一ワークフロー、(3) 同一 SHA の別ワークフロー、(4) ログの `Broken pipe` 等、の 4 点を比べる。推定で済ませず **同一 SHA で再実行** し、failure → success なら flake が確定し以後のサイクルで蒸し返さない。
@@ -71,9 +87,14 @@ cycle 5 で「次サイクルはサーキットブレーカーが発火する」
 - [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](./accumulated-pr-three-cycle-convergence.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する](./reviewer-regression-claim-revert-test-attribution.md)
+- [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](../anti-patterns/sot-quote-drops-strength-qualifier.md)
+- [「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む](./load-bearing-by-named-dependency-not-count.md)
 
 ## ソース
 
 - [PR #2022 review results (cycle 10)](../../raw/reviews/20260726T044237Z-pr-2022.md)
 - [PR #2022 review results (cycle 8)](../../raw/reviews/20260726T035338Z-pr-2022.md)
 - [PR #2022 review results (cycle 5)](../../raw/reviews/20260726T020559Z-pr-2022.md)
+- [PR #2043 review results](../../raw/reviews/20260728T160636Z-pr-2043.md)
+- [PR #2043 review results (cycle 2)](../../raw/reviews/20260728T163233Z-pr-2043.md)
+- [PR #2043 review results (cycle 3)](../../raw/reviews/20260728T165431Z-pr-2043.md)
