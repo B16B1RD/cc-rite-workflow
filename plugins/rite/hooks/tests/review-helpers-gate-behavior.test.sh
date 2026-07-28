@@ -725,9 +725,13 @@ assert "TC-4.3a 既存なし count>0: exit 0" "0" "$RC"
 assert_grep "TC-4.3a outcome=created" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=created; count=3; iteration_id=9-201;'
 assert_grep "TC-4.3b gh pr comment が実行された" "$GH_LOG" '^pr comment 9 -R o/r --body-file'
 
-# TC-4.3c/d 多桁 count の桁境界 (F-03, cycle 3 review)。helper の body_count 抽出が先頭 1 桁だけを
-# 拾う退行 (`grep -oE '[0-9]+'` → `'[0-9]'`) を検出する。(c) は一致方向、(d) は「先頭一致で誤って
-# 通る」不一致方向 — (d) が無いと `12` を `1` と読む退行が (c) 側だけでは捕まらない。
+# TC-4.3c/d 多桁 count。(c) と (d) は**別軸**を固定する (cycle 4 で実測し直した — 旧コメントは
+# 両者を同軸の一致/不一致方向と書いていたが誤り):
+#   (c) 抽出の桁境界: body_count 抽出を先頭 1 桁に退行させる (`grep -oE '[0-9]+'` → `'[0-9]'`) と
+#       (c) の 2 assertion が落ちる。この軸は (c) 単独で捕捉できる ((d) は緑のまま)。
+#   (d) 比較の等値性: `[ "$body_count" != "$NB_COUNT" ]` を先頭一致へ退行させると (d) の 2
+#       assertion だけが落ちる。**この軸の唯一の pin** であり、(d) を「(c) と冗長」として
+#       削ると先頭一致退行が無検出になる。
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 12 --iteration-id 9-231 --content-file "$NBR_BODY_C12"
 assert "TC-4.3c 2 桁 count 一致: exit 0" "0" "$RC"
 assert_grep "TC-4.3c outcome=created かつ count=12 を echo back" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=created; count=12; iteration_id=9-231;'
@@ -999,6 +1003,38 @@ REVIEW_MD="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 if [ ! -f "$REVIEW_MD" ]; then
   fail "TC-5 precondition: skills/pr-review/SKILL.md が存在しません"
 else
+  # [prompt-engineer F-02 指摘, cycle 4]: 区間 pin の終端を `^### 8\.1 ` のような**特定の次節**へ
+  # ハードコードすると、その手前に新節 (8.0.4 等) が挿入されたとき区間が新節を飲み込み、
+  # `assert_grep_in_section` 系は新節の該当行を拾って **vacuous に pass** する (元の節から当該行を
+  # 削除しても検出できなくなる)。実測: SKILL.md:3546 が謳う手順どおり 8.0.4 を 8.0.3 と 8.1 の
+  # 間へ追加すると TC-5b の 2 assertion が expected=1 actual=2 で落ちた。
+  # TC-5e 層 3 が既に採っている「次の同レベル見出しまで」を全区間 pin の共通 idiom に統一する。
+  # `_section_of <start-regex> <heading-level-regex>` は開始行の次から最初に現れる見出しの直前
+  # までを stdout に出す。開始行が見つからなければ空を返す (呼び出し側の件数 assert が loud に落ちる)。
+  _section_of() {
+    awk -v start_re="$1" -v head_re="$2" '
+      !inside && $0 ~ start_re { inside = 1; print; next }
+      inside && $0 ~ head_re { exit }
+      inside { print }
+    ' "$REVIEW_MD"
+  }
+  # 6.1.d は h4 なので同レベル (h4) または上位 (h3) の見出しで閉じる。8.0.3 は h3。
+  _sec_610d() { _section_of '^#### 6\.1\.d ' '^(#{3}|#{4}) '; }
+  _sec_803()  { _section_of '^### 8\.0\.3 ' '^### '; }
+  # 区間解決そのものの健全性を先に固定する (区間が空 / 巨大化していれば以降の pin は無意味)。
+  # 上限は「次の見出しで閉じる」ことの確認 — 閉じ損ねると SKILL.md 末尾まで飲み込んで数百行になる。
+  _sec_610d_lines=$(_sec_610d | grep -c . || true)
+  _sec_803_lines=$(_sec_803 | grep -c . || true)
+  if [ "$_sec_610d_lines" -ge 20 ] && [ "$_sec_610d_lines" -le 200 ] 2>/dev/null; then
+    pass "TC-5 区間解決: 6.1.d が妥当な行数で閉じる ($_sec_610d_lines 行)"
+  else
+    fail "TC-5 区間解決: 6.1.d の行数が想定外 ($_sec_610d_lines) — 開始 anchor 消失か終端の閉じ損ね"
+  fi
+  if [ "$_sec_803_lines" -ge 10 ] && [ "$_sec_803_lines" -le 200 ] 2>/dev/null; then
+    pass "TC-5 区間解決: 8.0.3 が妥当な行数で閉じる ($_sec_803_lines 行)"
+  else
+    fail "TC-5 区間解決: 8.0.3 の行数が想定外 ($_sec_803_lines) — 開始 anchor 消失か終端の閉じ損ね"
+  fi
   # grep の rc=1 (0 件 = 正常) と rc>=2 (IO エラー) を区別する。融合すると IO エラー時に
   # 変数が空文字になり「expected 1, got 」という原因不明の失敗として報告される (診断の誤誘導)。
   count_lit() {  # $1=pattern $2=label
@@ -1023,7 +1059,7 @@ else
   # [伝播修正, cycle 2 F-04 と同型]: 上記はファイル全体の件数で、ラベルが表明する scope (6.1.d) を
   # 検査していない。呼び出しを 6.1.d の外へ移しても件数は 1 のままだが、6.1.d を読む LLM には
   # 呼び出しが見えなくなり記録経路が実行されない。区間限定でも 1 本であることを併せて固定する。
-  nbr_invoke_in_section=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' || true)
+  nbr_invoke_in_section=$(_sec_610d | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' || true)
   assert "TC-5a 6.1.d 区間に helper 呼び出しが 1 箇所" "1" "$nbr_invoke_in_section"
   # 到達性 assertion を件数 pin の内側に入れない。gate すると件数 pin が落ちたとき到達性側が
   # 無言で実行されず、総 assertion 数だけが減る (赤にはなるが「何本走ったか」が変わる)。
@@ -1079,9 +1115,9 @@ else
   # 引き続き pass する。`**Check**:` という見出しラベルそのものの出現数を区間ごとに数え、
   # 1 本だけであることを別途固定する (弱体化された行がトークン全体パターンから外れても、
   # 見出しラベルの本数が 2 になった時点で検出できる)。
-  _check_label_610d=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -cE '\*\*Check\*\*:' || true)
+  _check_label_610d=$(_sec_610d | grep -cE '\*\*Check\*\*:' || true)
   assert "TC-5b 6.1.d step 3 の \`**Check**:\` 見出しは区間内に 1 本だけ" "1" "$_check_label_610d"
-  _check_label_803=$(sed -n "/^### 8\\.0\\.3 /,/^### 8\\.1 /p" "$REVIEW_MD" | grep -cE '\*\*Check\*\*:' || true)
+  _check_label_803=$(_sec_803 | grep -cE '\*\*Check\*\*:' || true)
   assert "TC-5b 8.0.3 の \`**Check**:\` 見出しは区間内に 1 本だけ" "1" "$_check_label_803"
 
   # 上記 4 件の allowlist はトークンの**出現順**しか見ておらず比較の**向き**を固定していない。
@@ -1098,45 +1134,76 @@ else
   #     「ERROR にはしない — Gate passes」へ反転しても本数が変わらない (極性が未固定)。
   #   - どちらの層も、実際に判定を担う **pass 行の Condition 列**を拘束していなかった。
   #
-  # そこで pattern 層を積むのをやめ、行を**セルに分割して Condition 列と Action 列の対応**を
-  # 検査する構造的な述語へ置き換える。トークンの出現ではなく行の意味を見るため、文言の言い換えや
-  # 極性反転の双方に耐える。denylist は SoT 規則 3 に従い撤去した。
-  #   (i) Condition が不一致 (不一致 / !=) を述べる行の Action は `**ERROR**` で始まり
-  #       `Gate passes` を含まない — 違反 0 本
-  #   (ii) Condition が iteration_id の**一致**を述べ Action が `Gate passes` の行がちょうど 1 本
-  # `一致` は `不一致` の部分文字列なので (ii) では不一致行を明示的に除外する。
+  # cycle 3 はこれを「Condition 列と Action 列の対応を awk で検査する構造述語」に置き換えたが、
+  # cycle 4 で**セル分割しても substring 検査のままである**ことが実測された。3 経路が残った:
+  #   - 「違反 0 件」を期待する述語は、対象行が **0 本のときも 0** を返す。6.1.d の ERROR 行を
+  #     丸ごと削除しても 306/0 の完全緑だった (空 domain と全件正常が観測上同一)。
+  #   - `cond ~ /一致/ && cond !~ /不一致/` は「一致するかは問わない」を除外できない
+  #     (`一致` を含み `不一致` を含まない)。
+  #   - `act ~ /Gate passes/` が Action 先頭を要求せず、ERROR 行の文中の `Gate passes` も数える。
   #
-  # **本 pin が保証しないこと** (over-claim を避けるため明記する — 保証と実装の乖離が本 PR で
-  # 3 cycle 連続の指摘源になった): 上の `**Check**:` 行 4 件の allowlist は依然としてトークンの
-  # 出現順しか見ておらず、Check 行**単体**の否定形言い換え (「一致するかは問わない」等) は
-  # 検出しない。これを許容するのは、gate の routing を実際に決めるのが Routing 表であり、
-  # 本 (i)(ii) がその表を構造的に固定しているため。Check 行は表を説明する散文であって
-  # 判定の実体ではない。散文側の向きまで pin したくなったら、denylist を足すのではなく
-  # (SoT `measured-gate-record.md#static-pin` 規則 3 が禁じる)、Check 行の記述を表から
-  # 生成する等の構造的な手段を採ること。
-  _routing_cells() {  # $1=start-anchor $2=end-anchor $3=mode(mismatch_violation|pass_row)
-    sed -n "/$1/,/$2/p" "$REVIEW_MD" | awk -F'|' -v mode="$3" '
+  # 4 世代にわたる pin 強化 (合計下限 → gate ごとの下限 → 厳密等値+共起 → セル分割) が毎回
+  # 「隣の穴」を残したのは、いずれも**散文に対する substring 検査**だったから。そこで軸を変え、
+  # **canonical なセル文字列そのものを期待値としてリテラルに固定**する。言い換えは即 loud fail に
+  # なり、意図的な変更なら期待値の更新という形で必ず人手を経る (それが「不変条件を再確認せよ」の
+  # 強制になる)。substring ではなく**完全一致**なので、否定形の挿入も極性反転も原理的に通らない。
+  #
+  # あわせて「不変条件の対象行が実在すること」を行数の厳密等値で固定し、空 domain を排除する。
+  #
+  # **本 pin が保証しないこと**: Routing 表の**意味**が正しいことは保証しない (canonical 文字列
+  # 自体が誤っていれば pin は誤りを固定する)。保証するのは「レビューで妥当性を確認した文字列から
+  # 無断で変わらないこと」だけ。`**Check**:` 行 4 件の allowlist も従来どおりトークンの出現順しか
+  # 見ないが、routing を決めるのは Routing 表であり Check 行はそれを説明する散文なので許容する。
+  #
+  # canonical セル: `Condition|Action` を `~` 区切りで並べる (セル内の前後空白は除去して比較)。
+  #
+  # [error-handling 調査推奨, cycle 4]: 6.1.d 区間には ```markdown フェンス内に variant A の
+  # **サンプル表** (6 列) があり、Routing 表と同じ `|` 始まりの行として現れる。フェンス内を
+  # 除外しないと行 index がずれる (実測: サンプル表のヘッダーが Routing[1] として拾われた)。
+  # 「たまたま列名が衝突しないから無害」という暗黙依存を残さず、フェンスの開閉を追跡して除外する。
+  _routing_rows() {  # $1=section-fn-name — Routing 表のデータ行だけを stdout に出す
+    "$1" | awk '
+      /^[[:space:]]*```/ { fence = !fence; next }
+      fence { next }
       /^[[:space:]]*\|/ {
-        cond = $2; act = $3
-        if (cond ~ /Condition/) next                      # ヘッダー行
-        if (cond ~ /^[[:space:]]*-+[[:space:]]*$/) next   # セパレータ行
-        if (mode == "mismatch_violation") {
-          if (cond ~ /不一致|!=/ && (act !~ /^[[:space:]]*\*\*ERROR\*\*/ || act ~ /Gate passes/)) n++
-        } else {
-          if (cond ~ /iteration_id/ && cond ~ /一致|==/ && cond !~ /不一致|!=/ && act ~ /Gate passes/) n++
-        }
+        split($0, c, "|")
+        if (c[2] ~ /Condition/) next                       # ヘッダー行
+        if (c[2] ~ /^[[:space:]]*-+[[:space:]]*$/) next    # セパレータ行
+        print
       }
-      END { print n + 0 }
     '
   }
-  assert "TC-5b 6.1.d step 3 の Routing: 不一致行の Action が ERROR 極性を保つ (違反 0)" \
-    "0" "$(_routing_cells '^#### 6\.1\.d ' '^### 6\.2 ' mismatch_violation)"
-  assert "TC-5b 8.0.3 の Routing: 不一致行の Action が ERROR 極性を保つ (違反 0)" \
-    "0" "$(_routing_cells '^### 8\.0\.3 ' '^### 8\.1 ' mismatch_violation)"
-  assert "TC-5b 6.1.d step 3 の Routing: cycle 一致を条件に持つ pass 行が 1 本" \
-    "1" "$(_routing_cells '^#### 6\.1\.d ' '^### 6\.2 ' pass_row)"
-  assert "TC-5b 8.0.3 の Routing: cycle 一致を条件に持つ pass 行が 1 本" \
-    "1" "$(_routing_cells '^### 8\.0\.3 ' '^### 8\.1 ' pass_row)"
+  _routing_canonical() {  # $1=section-fn-name $2=row-index(1-origin, データ行のみ)
+    _routing_rows "$1" | awk -F'|' -v want="$2" '
+      { n++ }
+      n == want {
+        cond = $2; act = $3
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", cond)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", act)
+        print cond "~" act
+        exit
+      }
+    '
+  }
+  _routing_rowcount() {  # $1=section-fn-name
+    _routing_rows "$1" | grep -c . || true
+  }
+  # (i) データ行数の厳密等値 — 行の削除・無断追加を検出し、以下の行 index pin の前提を保証する
+  assert "TC-5b 6.1.d step 3 の Routing データ行数" "2" "$(_routing_rowcount _sec_610d)"
+  assert "TC-5b 8.0.3 の Routing データ行数" "4" "$(_routing_rowcount _sec_803)"
+  # (ii) 判定の向きを担う 2 行 (pass 行 / 不一致→ERROR 行) を canonical 文字列で完全一致固定
+  assert "TC-5b 6.1.d step 3 Routing[1]: cycle 一致 → Gate passes (canonical)" \
+    'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted` のとき、および `degraded=1`（`outcome` を問わない）のときは helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3)' \
+    "$(_routing_canonical _sec_610d 1)"
+  assert "TC-5b 6.1.d step 3 Routing[2]: 不一致 → ERROR (canonical)" \
+    'sentinel なし、または `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と不一致 (前 cycle のもの)~**ERROR**: 6.1.d が本 cycle で未評価。下記 ACTION を実行' \
+    "$(_routing_canonical _sec_610d 2)"
+  assert "TC-5b 8.0.3 Routing[2]: cycle 一致 → Gate passes (canonical)" \
+    'sentinel found AND `iteration_id` == 本 cycle の `REVIEW_CYCLE_ID` (`outcome` は問わない)~Gate passes — ただし `outcome=failed` / `aborted`、および `degraded=1`（`outcome` を問わない）のときは **LLM が helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記してから** the next gate in the 8.0 evaluation order へ進む' \
+    "$(_routing_canonical _sec_803 2)"
+  assert "TC-5b 8.0.3 Routing[4]: 不一致 → ERROR (canonical)" \
+    'sentinel found but `iteration_id` != 本 cycle の `REVIEW_CYCLE_ID` (cycle N-1 のもの)~**ERROR**: ステップ 6.1.d was skipped in current cycle. Execute ACTION below' \
+    "$(_routing_canonical _sec_803 4)"
 
   # (c) helper の MARKER 値と SKILL.md の variant 見出しの前方一致関係を固定する。
   #      helper 側だけを変えれば TC-4.2 が落ちるが、SKILL.md の見出しテンプレートだけを変えると
@@ -1219,7 +1286,7 @@ else
       # 無関係な節へ移しても、位置条件 (rule < variant A) が成立するため素通りする (#2030 F-09 と
       # 同型)。TC-5b と同じ区間限定 idiom に揃え、ラベルの表明どおり 6.1.d 区間内で数える。
       _indent_rule_line=$(grep -n '本文は列 0 から書き出すこと' "$REVIEW_MD" | head -1 | cut -d: -f1)
-      _indent_rule_count=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -c '本文は列 0 から書き出すこと' || true)
+      _indent_rule_count=$(_sec_610d | grep -c '本文は列 0 から書き出すこと' || true)
       assert "TC-5h 6.1.d 区間に字下げ禁止の指示が 1 箇所" "1" "$_indent_rule_count"
       if [ -n "$_indent_rule_line" ] && [ "$_indent_rule_line" -lt "$_va_line" ] 2>/dev/null; then
         pass "TC-5h 字下げ禁止の指示が variant テンプレートより前にある ($_indent_rule_line < $_va_line)"
@@ -1237,7 +1304,7 @@ else
   # [伝播修正, cycle 2 F-04 と同型]: count_lit はファイル全体を数えるため、順序規定を 8.0 の外へ
   # 移しても通る。8.0 冒頭に置くこと自体が「gate 追加時に既存 pass 行を書き換えない」設計の要
   # (各 pass 行は「次の gate へ」としか書かず、順序は 1 箇所の規定が担う) なので区間で固定する。
-  order_rule_in_section=$(sed -n "/^### 8\\.0 /,/^### 8\\.0\\.1 /p" "$REVIEW_MD" | grep -cF '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1' || true)
+  order_rule_in_section=$(_section_of '^### 8\.0 ' '^### 8\.0\.' | grep -cF '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1' || true)
   assert "TC-5d 8.0 区間に gate 評価順序規定が 1 箇所" "1" "$order_rule_in_section"
 
   # (e) 8.0.x の gate 表が終端 (ステップ 8.1) を名指ししない。名指しすると、後から 8.0.4 を足した
