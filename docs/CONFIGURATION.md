@@ -629,7 +629,7 @@ safety:
 
 **When safety limits are hit:**
 
-When a limit is exceeded, the workflow presents options (this applies to `max_implementation_rounds`; **`max_review_cycles` is the exception — it stops mechanically without prompting, see below**):
+When a limit is exceeded, the workflow presents options (**except `max_review_cycles`, which stops mechanically without prompting — see below**):
 1. Continue (raise the limit)
 2. Abort (save state to work memory for later resumption)
 3. Manual intervention (user handles directly)
