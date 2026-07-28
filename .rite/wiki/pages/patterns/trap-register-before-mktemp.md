@@ -2,7 +2,7 @@
 title: "trap 登録 → mktemp の順序で tempfile lifecycle を守る"
 domain: "patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-27T10:57:51+09:00"
+updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
@@ -18,7 +18,9 @@ sources:
     ref: "raw/fixes/20260713T093252Z-pr-1850.md"
   - type: "reviews"
     ref: "raw/reviews/20260713T104006Z-pr-1850.md"
-tags: ["bash", "tempfile", "trap", "cleanup", "lifecycle", "hand-off"]
+  - type: "fixes"
+    ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+tags: ["bash", "tempfile", "trap", "cleanup", "lifecycle", "hand-off", "cleanup-variable-assignment-order"]
 confidence: high
 ---
 
@@ -163,6 +165,8 @@ trap を先に張っていても、**新しい tempfile をその cleanup 関数
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](./mktemp-failure-surface-warning.md)
 
+> **PR #2038 (Issue #2034)**: trap の登録順だけでなく、**cleanup 関数が読む変数への代入順**にも同じ窓がある。trap は既に設置済みで `rm -f "${gh_err:-}"` を実行する形だったが、新設した一時ファイルを別変数 `_body_jq_err` に受けてから `gh_err` へ代入するのが**その一時ファイルを使う処理の後**だった。生成〜代入の間に signal を受けると cleanup は空の `gh_err` しか見ず、ファイルが残る（jq stub を sleep させ SIGTERM を送って leak を再現）。修正は代入を生成直後へ前倒しする 1 行。**trap が読む変数への代入は、そのリソースを使い始める前に済ませる。** signal-timing テストは本質的に racy なため、「代入行が使用行より前にある」ことの順序静的 pin で代替した（mutation で検出を実測）。
+
 ## ソース
 
 - [PR #529 cycle 3 fix (tempfile lifecycle 契約)](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
@@ -172,3 +176,4 @@ trap を先に張っていても、**新しい tempfile をその cleanup 関数
 - [PR #1033 review (hand-off registry pattern で `/tmp/rite-fix-normalized-*` orphan 解消)](../../raw/reviews/20260517T231929Z-pr-1033.md)
 - [PR #1850 fix (jq gate を mktemp より前へ移動する最小 reorder — gate-exit variant)](../../raw/fixes/20260713T093252Z-pr-1850.md)
 - [PR #1850 review (2 reviewer 独立検出 + sibling 間の gate 位置非対称の実測)](../../raw/reviews/20260713T104006Z-pr-1850.md)
+- [PR #2038 fix results (cycle 6, final) — 回収変数への代入が遅れて signal 窓が開く](../../raw/fixes/20260728T122258Z-pr-2038.md)

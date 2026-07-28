@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-27T10:57:51+09:00"
+updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T003541Z-pr-2013.md"
@@ -558,7 +558,11 @@ sources:
     ref: "raw/reviews/20260726T035338Z-pr-2022.md"
   - type: "reviews"
     ref: "raw/reviews/20260726T044237Z-pr-2022.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file"]
+  - type: "fixes"
+    ref: "raw/fixes/20260728T093135Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified"]
 confidence: high
 ---
 
@@ -1576,6 +1580,8 @@ PR #2035 では 3 cycle 連続でこれが起きた:
 - [関連 PR 探索は gh pr list --head (exact-match) ではなく --state all + client-side headRefName filter で行う](../heuristics/gh-pr-list-related-pr-resolution.md)
 - [インライン特殊文字 content (title/body) は Write tool・--body-file 委譲で malformed tool-call を構造的に除去する](../patterns/inline-content-delegation-avoids-malformed-toolcall.md)
 
+> **PR #2038 (Issue #2034、11 cycle)**: 2 つの新しい軸が出た。(a) **「両側に置いた」と書いたら grep で両側を確認する** — commit message・Retained flag mapping・Routing 表の 3 箇所が「両 gate に転記条件を置いた」と宣言していたのに、実際には片側だけだった。しかも drift 検出のために置いた canonical 完全一致 pin が、**片側だけの状態を「正解」として固定**していたため、非対称そのものが検出不能になっていた。(b) **rationale リンクの原本を先に直す** — 本体に carve-out を足しても、その行が `rationale:` として名指しでリンクする参照先が旧規則のままなら、参照先を読んだ agent は旧規則を採る。リンクは「参照先が正しい」ことを前提にした委譲であり、述語を変えたら**参照先から先に**更新する。
+
 ## ソース
 
 - [PR #1967 review results cycle 1 (best-effort ブロックの兄弟失敗経路が非対称、HIGH 1件)](../../raw/reviews/20260722T020659Z-pr-1967.md)
@@ -1885,3 +1891,5 @@ marker 照合規約を段階的に強化した PR で、本 anti-pattern が **�
 - [PR #2013 fix results — バグを直したらそのバグを再生産するテンプレートも直す](../../raw/fixes/20260725T004542Z-pr-2013.md)
 - [PR #2022 fix results (cycle 11) — 片側だけ硬化して兄弟箇所へ転記しない欠陥が 3 cycle 連続](../../raw/fixes/20260726T062935Z-pr-2022.md)
 - [PR #2022 review results (cycle 8) — 規約を新設する修正が自分でその規約を破る](../../raw/reviews/20260726T035338Z-pr-2022.md)
+- [PR #2038 fix results (cycle 4) — 「両側に置いた」宣言と実体の乖離、canonical pin が非対称を固定](../../raw/fixes/20260728T093135Z-pr-2038.md)
+- [PR #2038 fix results (cycle 6, final) — rationale リンク先が旧規則のまま残る](../../raw/fixes/20260728T122258Z-pr-2038.md)

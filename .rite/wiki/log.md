@@ -1,3 +1,17 @@
+## 2026-07-28
+
+* **Create**: [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](pages/anti-patterns/dual-language-predicate-divergence.md) — PR #2038 (11 cycle) の raw source 38 件を統合（述語の二重実装が 4 cycle 分の症状を生んだ構造 / CR 除去範囲と空白クラスの 2 軸 / 定義 1 本化で同値性を構造的な帰結にする）
+* **Create**: [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) — PR #2038 (11 cycle) の raw source 38 件を統合（2>/dev/null || var= が環境起因と契約違反を畳む / 差し戻し機構では非収束ループになる / 復旧案内も類型ごとに分ける）
+* **Create**: [pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる](pages/patterns/mutation-before-pin-separates-necessity-from-efficacy.md) — PR #2038 (11 cycle) の raw source 38 件を統合（順序を逆にすると冗長 pin に気づけない / positive と negative は別 pin / 閾値には境界値 fixture）
+* **Create**: [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](pages/heuristics/non-converging-review-loop-suspect-structure.md) — PR #2038 (11 cycle) の raw source 38 件を統合（判定材料は件数でなく内訳 / 実装の本数を数える / 構造変更それ自体が次の欠陥の発生源になる）
+* **Create**: [glob で集合を指すと、集合の増減に silent に追随しない — 診断・分岐の述語には明示列挙を使う](pages/anti-patterns/glob-set-membership-silent-drift.md) — PR #2038 (11 cycle) の raw source 38 件を統合（取りこぼしと過剰一致の 2 方向 / 命名規則と集合の境界は独立に変化する / 対象外も併記する）
+* **Create**: [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](pages/anti-patterns/identity-needle-position-and-machine-only-sentinel.md) — PR #2038 (11 cycle) の raw source 38 件を統合（contains / endswith / 行等値の抜け道 / 機械専用 sentinel / verbatim 複製の残余は原理的に消えない / 述語変更は既存データを孤児化する）
+* **Create**: [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](pages/anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) — PR #2038 (11 cycle) の raw source 38 件を統合（テスト挿入で fixture がずれて恒真化する / 自前 run + positive control / pin のラベルと検査対象の照合）
+* **Create**: [commit 前にリポジトリ自身の checker を全変更ファイルへ回す — 機械検出できる違反を reviewer に探させない](pages/heuristics/run-repo-own-checkers-before-commit.md) — PR #2038 (11 cycle) の raw source 38 件を統合（自動検出できる違反は 1 cycle を消費する / pre-existing の切り分け手順 / checker は下限であって上限ではない）
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/fixes/20260728T093135Z-pr-2038.md ほかを統合（「両側に置いた」宣言と実体の乖離 / rationale リンク先が旧規則のまま残る）
+* **Update**: [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) — raw/fixes/20260728T122258Z-pr-2038.md を統合（cleanup 変数への代入順という第 2 の窓）
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/fixes/20260728T093135Z-pr-2038.md を統合（fixture スコープ由来の恒真化を第 3 の軸として追加）
+
 ## 2026-07-27
 
 * **Create**: [段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける](pages/heuristics/staged-pr-declared-contract-vs-implemented-fact-tense.md) — raw/reviews/20260727T001018Z-pr-2035.md, raw/fixes/20260727T002133Z-pr-2035.md ほかを新規ページ化（責務宣言と配線状況を分ける / 予防的配置の理由は prospective に書く / 未配線の機能名を grep して一括処理する）

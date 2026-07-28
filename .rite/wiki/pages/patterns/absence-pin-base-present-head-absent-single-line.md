@@ -4,13 +4,15 @@ title: "absence pin (assert_not_grep) は「base に存在・head に不在」�
 domain: "patterns"
 description: "旧文面の除去を固定する assert_not_grep pin は、(1) 複数語を .* で橋渡しすると行指向 grep が複数行に跨る旧文面に構造的にマッチせず常に pass する空虚 pin になる、(2) ERE の literal { } は未エスケープだと strict ERE 実装 (BSD grep / ugrep) で regcomp エラーになる。pin は base に単一行で存在し post-PR に不在の識別トークンで書き、両側を grep で確認してから commit する。"
 created: "2026-07-21T18:30:00Z"
-updated: "2026-07-21T18:30:00Z"
+updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260721T175725Z-pr-1959.md"
   - type: "fixes"
     ref: "raw/fixes/20260721T175931Z-pr-1959.md"
-tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin"]
+  - type: "fixes"
+    ref: "raw/fixes/20260728T093135Z-pr-2038.md"
+tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope"]
 confidence: high
 ---
 
@@ -51,7 +53,10 @@ pin の非空虚性は「守っている行をストリーム上で削除（ま�
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](../heuristics/universal-claim-prose-invalidated-by-path-addition.md)
 
+> **PR #2038 (Issue #2034)**: 空虚 pin には**第 3 の軸**がある — 本ページが扱う「複数行に跨る旧文面」「ERE 未エスケープ」に加え、**その run の fixture に対象が存在しない**ケース。直前の run のログを読む形の `assert_not_grep` は、間に別のテストを挿入した瞬間に fixture がずれて恒真化する。対処（自前 run + positive control）は [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) を参照。
+
 ## ソース
 
 - [PR #1959 review cycle 3 (空虚 pin + ERE 未エスケープの runtime 実証)](../../raw/reviews/20260721T175725Z-pr-1959.md)
 - [PR #1959 fix cycle 3 (単一行トークン化 + エスケープ統一)](../../raw/fixes/20260721T175931Z-pr-1959.md)
+- [PR #2038 fix results (cycle 4) — fixture スコープ由来の恒真化](../../raw/fixes/20260728T093135Z-pr-2038.md)
