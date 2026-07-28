@@ -559,6 +559,13 @@ NBR_COMMENTS="$TMP_ROOT/nbr-comments.json"
 cat > "$NBR_COMMENTS" <<'EOF'
 [[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\r\n\r\nold\r\n\r\n<!-- rite:nbr:v1 -->\r\n"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)\n\n<!-- rite:nbr:v1 -->\n\n"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt\n\n<!-- rite:nbr:v1 -->\n"},{"id":98,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 の対応状況\n\nF-03 は次 PR で対応予定。F-05 は仕様どおりのため対応しない。"},{"id":97,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 の対応方針メモ\n\n元記録から引用:\n\n<!-- rite:nbr:v1 -->\n\n上記のうち F-02 だけ対応する。"},{"id":96,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 の対応方針 (引用付き)\n\n以下は元記録の引用です:\n\n> <!-- rite:nbr:v1 -->\n"}]]
 EOF
+# 孤児ちょうど **1 件** の fixture。sentinel 導入前の記録コメントが 1 本残っている migration の
+# 支配的ケースで、`legacy_orphan_count -gt 0` の**境界値**を押さえる (3 件 fixture だけでは
+# 閾値を -gt 1 に退行させても検出できない)。
+NBR_ONE_ORPHAN="$TMP_ROOT/nbr-one-orphan.json"
+cat > "$NBR_ONE_ORPHAN" <<'EOF'
+[[{"id":41,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nsentinel 導入前の記録\n"}]]
+EOF
 NBR_EMPTY_COMMENTS="$TMP_ROOT/nbr-empty-comments.json"
 echo '[[]]' > "$NBR_EMPTY_COMMENTS"
 # 2 ページ fixture: 対象コメントを **2 ページ目** に置く。単一ページ fixture では jq の `add`
@@ -1073,6 +1080,32 @@ assert "TC-4.11i sentinel 後の空行を許容: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11i 末尾空行を sentinel 欠落と誤判定しない" "$ERR" 'reason=body_sentinel_missing'
 assert_grep "TC-4.11i outcome=created (投稿される)" "$ERR" 'outcome=created; count=2; iteration_id=9-225;'
 
+# TC-4.11l [F-05 指摘, cycle 9]: `実際の最終非空行:` 診断に**日本語がそのまま現れる**。
+# neutralize_ctrl の既定モードは C1 帯 (0x80-0x9f) をバイト単位で ? 化するため、日本語 UTF-8 の
+# 第 2/第 3 バイトを巻き込んで診断が読めなくなる。本行は LLM 生成の自由文が渡る唯一の call site で、
+# かつ body_sentinel_missing は 8.0.3 が差し戻す経路のため、読めないと caller が本文の作り直し先を
+# 特定できない。`--c0-only` なら C0 + DEL は ? 化されたまま UTF-8 は保持される。
+NBR_BODY_JP="$TMP_ROOT/nbr-body-jp.md"
+printf '## \360\237\223\234 rite 非実測指摘の記録 (non-blocking)\n\n\360\237\223\216 non_blocking_count: 2\n\nご確認をお願いします。\n' > "$NBR_BODY_JP"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-232 --content-file "$NBR_BODY_JP"
+assert_grep "TC-4.11l 診断の日本語が文字化けしない" "$ERR" "実際の最終非空行: 'ご確認をお願いします。'"
+assert_grep "TC-4.11l reason=body_sentinel_missing (本文検査自体は成立)" "$ERR" 'reason=body_sentinel_missing'
+
+# TC-4.11k [F-01 指摘, cycle 9]: 本文述語 (jq) の**評価自体が失敗**したら caller 契約違反ではなく
+# 環境起因として扱う — pending marker を残さず (8.0.3 が差し戻さない)、reason は body_check_unavailable。
+# 本文を作り直しても解消しない原因を retain 側に落とすと result pattern が永久に emit できなくなる。
+_jq_stub_dir="$TMP_ROOT/jq-stub"; mkdir -p "$_jq_stub_dir"
+printf '#!/bin/sh\nexit 127\n' > "$_jq_stub_dir/jq"; chmod +x "$_jq_stub_dir/jq"
+_nbr_marker_k="${TMPDIR:-/tmp}/rite-nbr-pending-9-231"
+: > "$_nbr_marker_k"
+PATH="$_jq_stub_dir:$PATH" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-231 --content-file "$NBR_BODY_C2"
+assert "TC-4.11k jq 評価失敗: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.11k reason=body_check_unavailable" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_check_unavailable'
+assert_not_grep "TC-4.11k body_sentinel_missing と誤分類しない" "$ERR" 'reason=body_sentinel_missing'
+if [ -e "$_nbr_marker_k" ]; then _k_marker="present"; else _k_marker="absent"; fi
+assert "TC-4.11k pending marker を残さない (8.0.3 が差し戻さない)" "absent" "$_k_marker"
+rm -f "$_nbr_marker_k"; rm -rf "$_jq_stub_dir"
+
 # TC-4.11j [F-05 指摘, cycle 8]: **CRLF 本文**を write 側が受理する (read 側の CRLF fixture id=11 と対称)。
 # read/write は同一の jq 述語を共有するが、その CR 除去を落とすと CRLF 本文が body_sentinel_missing で
 # 毎 cycle 弾かれ、retain_pending_marker=1 → 8.0.3 が exit 1 で差し戻す固定ループになる
@@ -1083,6 +1116,13 @@ GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 -
 assert "TC-4.11j CRLF 本文: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11j CRLF を sentinel 欠落と誤判定しない" "$ERR" 'reason=body_sentinel_missing'
 assert_grep "TC-4.11j outcome=created (投稿される)" "$ERR" 'outcome=created; count=2; iteration_id=9-229;'
+
+# TC-4.14d [F-04 指摘, cycle 9]: 孤児が**ちょうど 1 件**でも marker と件数を emit する
+# (`legacy_orphan_count -gt 0` の境界値)。migration の支配的ケースであり、ここが無音になると
+# 手動削除の案内が operator に届かず、両 gate の転記条件も何も転記しない。
+GH_LOOKUP_JSON="$NBR_ONE_ORPHAN" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-230 --content-file "$NBR_BODY_C2"
+assert_grep "TC-4.14d 孤児 1 件でも LEGACY_ORPHAN marker を emit" "$ERR" 'NONBLOCKING_LEGACY_ORPHAN=1; pr=9; count=1'
+assert_grep "TC-4.14d canonical 不在なので新規作成へ縮退" "$ERR" 'outcome=created; count=2; iteration_id=9-230;'
 
 # TC-4.15 [F-06 指摘, cycle 7]: lookup が非数値の id を返したら PATCH 先にしない。
 # existing_id は mutating な API path (issues/comments/$existing_id の PATCH) へ補間されるため、
@@ -1131,7 +1171,8 @@ assert_not_grep "TC-4.14 [negative control] near-miss 0 件なら marker を出�
 #   - caller (LLM) 契約違反 → marker を残す (差し戻せば 1 iteration で収束する)
 #   - gh / network / IO 起因 → marker を消す (差し戻しても同 cycle 内で収束しない)
 #   - 正常終了 (created / updated / skipped) → marker を消す
-# 旧実装は境界を exit code (trap 設置の前後) で引いていたため、本文検査 3 段の契約違反だけが
+# 本 TC が固定する軸: marker 保持/削除の境界は exit code (trap 設置の前後) ではなく **原因** で引く。
+# exit code で引くと本文検査段の契約違反だけが
 # gh outage と同じ扱いで marker を消し、8.0.3 が pass していた。TC-5b の静的 pin は「削除文が
 # cleanup 区間内に 1 本」しか固定せず、**どの reason が marker を残すか**を検証していなかった
 # ため、この分類の回帰を検出できなかった。本 TC は等値 assert でその軸を固定する。
@@ -1272,7 +1313,7 @@ else
   # [prompt-engineer F-02 指摘, cycle 4]: 区間 pin の終端を `^### 8\.1 ` のような**特定の次節**へ
   # ハードコードすると、その手前に新節 (8.0.4 等) が挿入されたとき区間が新節を飲み込み、
   # `assert_grep_in_section` 系は新節の該当行を拾って **vacuous に pass** する (元の節から当該行を
-  # 削除しても検出できなくなる)。実測: SKILL.md:3546 が謳う手順どおり 8.0.4 を 8.0.3 と 8.1 の
+  # 削除しても検出できなくなる)。実測: SKILL.md 8.0 節冒頭の「8.0.4 以降を追加する場合は」手順どおり 8.0.4 を 8.0.3 と 8.1 の
   # 間へ追加すると TC-5b の 2 assertion が expected=1 actual=2 で落ちた。
   # TC-5e 層 3 が既に採っている「次の同レベル見出しまで」を全区間 pin の共通 idiom に統一する。
   # `_section_of <start-regex> <heading-level-regex>` は開始行の次から最初に現れる見出しの直前
@@ -1357,7 +1398,7 @@ else
   #     helper 呼び出し行の**存在と到達性**しか固定しておらず引数の値を見ていない。片側だけ改名
   #     すると production では毎 cycle content_file_missing で **trap 設置前の exit 1** となり
   #     terminal sentinel が 1 本も出ないため、6.1.d step 3 と 8.0.3 の両 gate が ERROR、かつ
-  #     pending marker も残るので差し戻しループになる。SKILL.md:2508 自身がこのパス構成を「必須」と
+  #     pending marker も残るので差し戻しループになる。SKILL.md 6.1.d step 1 の「パスに cycle 識別子を含めるのは必須」自身がこのパス構成を
   #     明記しているのに、その不変条件を機械的に確認する層が無かった。
   #     抽出失敗は `fail` で loud に落とす (TC-5c / TC-5g の抽出失敗ハンドリングと同型)。
   _p1_path=$(_sec_610d | sed -n 's/.*Write tool で `\([^`]*\)` に保存.*/\1/p' | head -1)
@@ -1431,7 +1472,7 @@ else
     "$(( _nbr_pm_rm_total - _nbr_pm_rm_inside ))"
 
   # 6.1.a step 0 が marker を作る側であること。作成が落ちると gate は degraded 側へ倒れ機械強制が失われる。
-  # [F-05 指摘, cycle 6]: 旧版は `count_lit` (行頭 anchor なしの部分一致・区間非限定・fence 到達性
+  # [F-05 指摘, cycle 6]: 本 pin が満たすべき条件: `count_lit` (行頭 anchor なしの部分一致・区間非限定・fence 到達性
   # 検査なし) で、生成行に `# ` を付けるだけの死に分岐化を検出できなかった。TC-5a が既に移行済みの
   # 「区間限定 + 行頭 anchor + fence 追跡」へ揃える。6.1.a step 0 は番号付きリスト項目のため
   # `^0\. \*\*Write 先実パス解決` を開始 anchor に、次の番号付き項目 (`^1\. `) を終端にする。
@@ -1496,7 +1537,7 @@ else
   #     1 行足すと数が相殺されて素通りし (false negative)、逆に gate 無変更の散文追加だけで
   #     落ちる (false positive)。Check 行を直接要求すれば散文に影響されず marker 差し替えを検出する。
   # [F-02 指摘, cycle 5 — test / application / error-handling の 3 reviewer が独立指摘]:
-  # 旧版はここで `assert_grep_in_section` を 4 件使い、終端を `^### 6\.2 ` / `^### 8\.1 ` に
+  # `assert_grep_in_section` で終端を `^### 6\.2 ` / `^### 8\.1 ` に固定する形は
   # ハードコードしていた。`assert_grep_in_section` は内部で awk の range 形を使うため、cycle 4 で
   # 「全廃した」と表明した `sed -n "/a/,/b/p"` と機能的に同一で、8.0.4 を 8.0.3 と 8.1 の間へ
   # 挿入すると区間が新節を飲み込む (presence-only なので false green にはならないが、表明と実装が
@@ -1769,7 +1810,7 @@ else
   if [ -n "$s801" ] && [ -n "$s81" ] && [ "$s801" -lt "$s81" ]; then
     _gate_section=$(sed -n "${s801},$(( s81 - 1 ))p" "$REVIEW_MD")
     # 【層 1 / 構造 denylist】区間内の **表の行** (`^|`) が終端 8.1 を (「ステップ」接頭辞の有無に
-    # 関わらず) 名指ししないこと。旧版は `ステップ 8\.1` のリテラルにのみ係留していたため、
+    # 関わらず) 名指ししないこと。`ステップ 8\.1` のリテラルにのみ係留する形では、
     # 「ステップ」を欠いた bare `8.1` へ言い換えるだけで検出をすり抜けた。`[^0-9.]8\.1` 相当
     # (直前が数字/ドットでない `8.1`) へ広げることで表記揺れを吸収する。散文中の言及
     # (例: 「いずれもステップ 8.1 result emit の前に発火する」) は表の行ではないため対象外で、
@@ -1778,7 +1819,7 @@ else
     assert "TC-5e 8.0.x の表の行が終端 (8.1) を名指ししない" "0" "$_rows_naming_terminal"
     # 【層 2 / 言語非依存 allowlist】区間内の全データ行 (`^|` かつヘッダー/セパレータ行を除く) が
     # 「the next gate in the 8.0 evaluation order」/ `**ERROR**` / 「legitimately skipped」の
-    # いずれかを含むこと。旧版は判定対象を英語リテラル `Gate passes` を含む行に絞り込んでから
+    # いずれかを含むこと。判定対象を英語リテラル `Gate passes` を含む行に絞り込む形では
     # 「次の gate へ」規約文言の有無を数えていたため、和文だけで書かれた pass 行はそもそも
     # 分子・分母の対象から漏れて素通りした (F-04 と同型の実退行を検出できない穴)。全データ行を
     # 対象にした「含む/含まない」の 2 値判定に変えることで、対象そのものが漏れる経路を塞ぐ。

@@ -38,7 +38,7 @@
 #       non_blocking_count_placeholder_residue / iteration_id_placeholder_residue /
 #       content_file_placeholder_residue / content_file_missing / unknown_option /
 #       body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch /
-#       patch_failed / create_failed / signal_aborted
+#       body_check_unavailable / patch_failed / create_failed / signal_aborted
 #   - **8.0.3 機械強制 (pending marker) の差し戻し境界は「原因」で引く**: caller (LLM) 契約違反は
 #     marker を残して 8.0.3 に差し戻させる。対象は 2 群 (計 11 reason):
 #       (i)  trap 設置**前**の exit 1 (構造的に marker が残る) — unknown_option /
@@ -47,9 +47,11 @@
 #            content_file_placeholder_residue / content_file_missing の 7 種
 #       (ii) trap 設置**後**の exit 0 + retain_pending_marker=1 (本文検査 4 段) —
 #            body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch
-#     gh / network / rate-limit / IO 起因 (patch_failed / create_failed / lookup degraded) と
-#     signal 中断 (signal_aborted) は従来どおり無条件削除する (差し戻しても同 cycle 内で収束しない
-#     ため)。exit code (trap 設置の前後) で境界を引くと (ii) だけが検出位置の違いで機械強制から
+#     gh / network / rate-limit / IO 起因 (patch_failed / create_failed / lookup degraded /
+#     body_check_unavailable) と signal 中断 (signal_aborted) は従来どおり無条件削除する (差し戻しても
+#     同 cycle 内で収束しないため)。`body_check_unavailable` は本文検査と同じ位置で起きるが、
+#     **述語を評価できなかった**環境起因の失敗であり、caller が本文を作り直しても解消しないため
+#     (ii) ではなく本群に属する。exit code (trap 設置の前後) で境界を引くと (ii) だけが検出位置の違いで機械強制から
 #     外れる。marker 保持は overall_assessment を変えず「result pattern を emit してよいか」だけを
 #     止めるため AC-3 と両立する。
 #   - **既存コメントの特定は「自分が投稿した」∧「1 行目 marker への前方一致 (startswith)」∧
@@ -396,7 +398,9 @@ elif lookup_out=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER
   # 異なり、operator を誤った削除対象へ誘導する。
   if [ "$canonical_hit_count" -gt 1 ]; then
     echo "WARNING: 機械専用 sentinel を持つ自分の記録コメントが ${canonical_hit_count} 件あります。最新の 1 件だけを update-in-place し、古い方は stale のまま残ります" >&2
-    echo "  原因: 過去の cycle で lookup が degraded し新規作成へ縮退したため (helper は既存を消しません)" >&2
+  echo "  原因は (a) 過去の cycle で lookup が degraded し新規作成へ縮退した、または (b) 同一 author が" >&2
+  echo "  marker 前方一致かつ最終非空行が sentinel のコメントを投稿し update-in-place の対象になった のいずれかです" >&2
+  echo "  (b) の場合、直前の PATCH が当該コメントを上書きしている可能性があります。GitHub のコメント編集履歴を確認してください" >&2
     echo "  対処: PR #${PR_NUMBER} 上で古い方を手動削除してください (mergeable 判定には影響しません)" >&2
     echo "[CONTEXT] NONBLOCKING_DUPLICATE_RECORD=1; pr=$PR_NUMBER; count=$canonical_hit_count" >&2
   fi
@@ -452,12 +456,30 @@ esac
 # `grep -E '[^[:space:]]'` を使う実装は、空白クラスが locale / grep 実装に依存し、また
 # `tr -d '\r'` の CR 除去範囲が jq の `sub("\r$"; "")` と違うため、read/write の受理集合が
 # 環境で割れる。jq は lookup / PATCH で既に hard dependency なので実装コストは増えない。
-# jq が失敗したら空文字 → 直後の等値検査で拒否となり、投稿を止める fail-safe 側に倒れる。
-_body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTENT_FILE" 2>/dev/null) || _body_last_line=""
+# **jq の rc は捨てない** — 「述語を評価した結果 sentinel と違った」(caller 契約違反、本文を作り直せば
+# 収束する) と「述語の評価自体ができなかった」(jq 不在 / 実行不能などの環境起因、本文を作り直しても
+# 収束しない) は帰結が正反対で、後者を retain 側に落とすと 8.0.3 が毎 cycle 差し戻して result pattern
+# を永久に emit できなくなる。境界は exit code ではなく **原因** で引く (docstring の retain/delete 参照)。
+_body_jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+  review-nonblocking-record p61d-body-err "本文述語の評価失敗の詳細が表示されません") || _body_jq_err=""
+if ! _body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTENT_FILE" 2>"${_body_jq_err:-/dev/null}"); then
+  echo "WARNING: 非実測記録の本文述語 (最終非空行の算出) を評価できませんでした。投稿を中止します" >&2
+  gh_err="$_body_jq_err"
+  _gh_err_detail
+  _record_gh_io_failure_hint
+  echo "  本文の作り直しでは解消しません (jq の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
+  echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
+  outcome="failed"
+  exit 0
+fi
+[ -n "$_body_jq_err" ] && rm -f "$_body_jq_err"
 if [ "$_body_last_line" != "$RECORD_SENTINEL" ]; then
   echo "WARNING: 非実測記録の本文の最終非空行が機械専用 sentinel ではありません ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します" >&2
   echo "  期待: 最終非空行が '$RECORD_SENTINEL' と厳密一致すること (SKILL.md ステップ 6.1.d step 1 の variant A / B は最終行に本行を置く)" >&2
-  echo "  実際の最終非空行: '$(printf '%s' "$_body_last_line" | neutralize_ctrl)'" >&2
+  # `--c0-only`: 既定モードは C1 帯 (0x80-0x9f) をバイト単位で ? 化するため、日本語 UTF-8 の
+  # 第 2/第 3 バイトを巻き込んで診断が読めなくなる。本行は LLM 生成の自由文が渡る唯一の call site。
+  # C0 + DEL は引き続き ? 化されるので偽 [CONTEXT] 行の注入防止は損なわない。
+  echo "  実際の最終非空行: '$(printf '%s' "$_body_last_line" | neutralize_ctrl --c0-only)'" >&2
   echo "  最終非空行が sentinel でない本文を投稿すると、次 cycle の lookup (最終非空行の等値) が自分の投稿を検出できず記録コメントが増殖します" >&2
   _record_body_check_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_sentinel_missing" >&2
