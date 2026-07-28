@@ -14,6 +14,74 @@ sources:
     ref: "raw/fixes/20260728T122258Z-pr-2038.md"
   - type: "reviews"
     ref: "raw/reviews/20260727T111445Z-pr-2038-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T105333Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T112831Z-pr-2038-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T141004Z-pr-2038-cycle4.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T161841Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T170839Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T173829Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T183304Z-pr-2038-cycle4.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T190535Z-pr-2038-cycle5.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T232110Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260727T235835Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T003318Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T011259Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T014820Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T050903Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T055910Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T070208Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T082625Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T090203Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T103843Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T114912Z-pr-2038-cycle3.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T135506Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T152447Z-pr-2038-cycle5.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T160528Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T165144Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T230726Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260727T234533Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T002344Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T005839Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T013838Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T020813Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T050108Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T054003Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T064417Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T081222Z-pr-2038.md"
 tags: []
 confidence: high
 ---
@@ -84,3 +152,37 @@ cycle 5 では、指摘 14 件のうち 2 件が**リポジトリ自身の check
 - [PR #2038 fix results (cycle 5)](../../raw/fixes/20260728T100957Z-pr-2038.md)
 - [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
 - [PR #2038 review results (cycle 2)](../../raw/reviews/20260727T111445Z-pr-2038-cycle2.md)
+- [PR #2038 raw — 20260727T105333Z-pr-2038.md](../../raw/fixes/20260727T105333Z-pr-2038.md)
+- [PR #2038 raw — 20260727T112831Z-pr-2038-cycle2.md](../../raw/fixes/20260727T112831Z-pr-2038-cycle2.md)
+- [PR #2038 raw — 20260727T141004Z-pr-2038-cycle4.md](../../raw/fixes/20260727T141004Z-pr-2038-cycle4.md)
+- [PR #2038 raw — 20260727T161841Z-pr-2038.md](../../raw/fixes/20260727T161841Z-pr-2038.md)
+- [PR #2038 raw — 20260727T170839Z-pr-2038.md](../../raw/fixes/20260727T170839Z-pr-2038.md)
+- [PR #2038 raw — 20260727T173829Z-pr-2038.md](../../raw/fixes/20260727T173829Z-pr-2038.md)
+- [PR #2038 raw — 20260727T183304Z-pr-2038-cycle4.md](../../raw/fixes/20260727T183304Z-pr-2038-cycle4.md)
+- [PR #2038 raw — 20260727T190535Z-pr-2038-cycle5.md](../../raw/fixes/20260727T190535Z-pr-2038-cycle5.md)
+- [PR #2038 raw — 20260727T232110Z-pr-2038.md](../../raw/fixes/20260727T232110Z-pr-2038.md)
+- [PR #2038 raw — 20260727T235835Z-pr-2038.md](../../raw/fixes/20260727T235835Z-pr-2038.md)
+- [PR #2038 raw — 20260728T003318Z-pr-2038.md](../../raw/fixes/20260728T003318Z-pr-2038.md)
+- [PR #2038 raw — 20260728T011259Z-pr-2038.md](../../raw/fixes/20260728T011259Z-pr-2038.md)
+- [PR #2038 raw — 20260728T014820Z-pr-2038.md](../../raw/fixes/20260728T014820Z-pr-2038.md)
+- [PR #2038 raw — 20260728T050903Z-pr-2038.md](../../raw/fixes/20260728T050903Z-pr-2038.md)
+- [PR #2038 raw — 20260728T055910Z-pr-2038.md](../../raw/fixes/20260728T055910Z-pr-2038.md)
+- [PR #2038 raw — 20260728T070208Z-pr-2038.md](../../raw/fixes/20260728T070208Z-pr-2038.md)
+- [PR #2038 raw — 20260728T082625Z-pr-2038.md](../../raw/fixes/20260728T082625Z-pr-2038.md)
+- [PR #2038 raw — 20260728T090203Z-pr-2038.md](../../raw/fixes/20260728T090203Z-pr-2038.md)
+- [PR #2038 raw — 20260727T103843Z-pr-2038.md](../../raw/reviews/20260727T103843Z-pr-2038.md)
+- [PR #2038 raw — 20260727T114912Z-pr-2038-cycle3.md](../../raw/reviews/20260727T114912Z-pr-2038-cycle3.md)
+- [PR #2038 raw — 20260727T135506Z-pr-2038.md](../../raw/reviews/20260727T135506Z-pr-2038.md)
+- [PR #2038 raw — 20260727T152447Z-pr-2038-cycle5.md](../../raw/reviews/20260727T152447Z-pr-2038-cycle5.md)
+- [PR #2038 raw — 20260727T160528Z-pr-2038.md](../../raw/reviews/20260727T160528Z-pr-2038.md)
+- [PR #2038 raw — 20260727T165144Z-pr-2038.md](../../raw/reviews/20260727T165144Z-pr-2038.md)
+- [PR #2038 raw — 20260727T230726Z-pr-2038.md](../../raw/reviews/20260727T230726Z-pr-2038.md)
+- [PR #2038 raw — 20260727T234533Z-pr-2038.md](../../raw/reviews/20260727T234533Z-pr-2038.md)
+- [PR #2038 raw — 20260728T002344Z-pr-2038.md](../../raw/reviews/20260728T002344Z-pr-2038.md)
+- [PR #2038 raw — 20260728T005839Z-pr-2038.md](../../raw/reviews/20260728T005839Z-pr-2038.md)
+- [PR #2038 raw — 20260728T013838Z-pr-2038.md](../../raw/reviews/20260728T013838Z-pr-2038.md)
+- [PR #2038 raw — 20260728T020813Z-pr-2038.md](../../raw/reviews/20260728T020813Z-pr-2038.md)
+- [PR #2038 raw — 20260728T050108Z-pr-2038.md](../../raw/reviews/20260728T050108Z-pr-2038.md)
+- [PR #2038 raw — 20260728T054003Z-pr-2038.md](../../raw/reviews/20260728T054003Z-pr-2038.md)
+- [PR #2038 raw — 20260728T064417Z-pr-2038.md](../../raw/reviews/20260728T064417Z-pr-2038.md)
+- [PR #2038 raw — 20260728T081222Z-pr-2038.md](../../raw/reviews/20260728T081222Z-pr-2038.md)

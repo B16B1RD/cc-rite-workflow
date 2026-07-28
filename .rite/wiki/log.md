@@ -11,6 +11,7 @@
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/fixes/20260728T093135Z-pr-2038.md ほかを統合（「両側に置いた」宣言と実体の乖離 / rationale リンク先が旧規則のまま残る）
 * **Update**: [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) — raw/fixes/20260728T122258Z-pr-2038.md を統合（cleanup 変数への代入順という第 2 の窓）
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/fixes/20260728T093135Z-pr-2038.md を統合（fixture スコープ由来の恒真化を第 3 の軸として追加）
+* **lint:warning** — contradictions=0, stale=21, orphans=0, missing_concept=0, unregistered_raw=285, broken_refs=0
 
 ## 2026-07-27
 
