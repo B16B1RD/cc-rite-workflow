@@ -78,7 +78,7 @@ sentinel の grep は **LLM が会話を読む**ことを前提にしている�
    - **残す**: 引数 gate 群（placeholder residue 5 種 / `content_file_missing`、trap 設置**前**の `exit 1`）と本文検査 4 段（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`、trap 設置**後**の `retain_pending_marker=1`）。いずれも caller (LLM) が本文 / `--count` を作り直せば 1 iteration で収束する。
    - **消す**: `patch_failed` / `create_failed` / lookup degraded、および正常終了（`created` / `updated` / `skipped`）。8.0.3 へ伝えるのは「完走した」ことだけで、成否は terminal sentinel の `outcome=` が担う。これにより非ブロッキング契約（AC-3）を gate 側へ持ち込まない。
 
-   境界を **exit code**（trap 設置の前後）で引くと、同種の caller 契約違反が検出位置の違いだけで機械強制から外れる。本文検査 3 段はまさにその位置にあり、`count_body_mismatch` は「caller 起因で決定論的に再現する」と定義されながら gh outage と同じ扱いで marker を消していた。marker 保持は `overall_assessment` を変えず「result pattern を emit してよいか」だけを止めるため、引数 gate 群が既に行っている挙動と構造的に同一で AC-3 と両立する。
+   境界を **exit code**（trap 設置の前後）で引いてはならない。本文検査 4 段は trap 設置**後**に検出されるため、exit code で線を引くと「caller 起因で決定論的に再現する」と定義した契約違反が gh outage と同じ扱いになり、機械強制から外れる。marker 保持は `overall_assessment` を変えず「result pattern を emit してよいか」だけを止めるため、引数 gate 群が既に行っている挙動と構造的に同一で AC-3 と両立する。
 2. **gate 側で marker を削除しない** — 削除すると 6.1.d を実行せず再評価だけで gate を通せてしまい、機械強制の意味が消える。静的 pin はこの不在（`rm -f "$pending_marker"` が 8.0.3 区間に 0 本）も固定する。
 3. **削除文は helper の EXIT trap 内にあること自体が不変条件** — 関数外（末尾 `exit 0` の直前）へ移すと、early `exit 0` で抜ける経路（AC-4 の正常系である「0 件 ∧ 既存なし」の skip）で marker が残り、8.0.3 が毎 cycle `exit 1` を返して `[review:mergeable]` を永久に emit できないデッドロックになる。静的 pin は「件数 1 本」ではなく **`_rite_p61d_cleanup` 区間内に 1 本 / 区間外に 0 本** の配置で固定する（件数 pin は移動を検出できない）。
 
@@ -97,10 +97,12 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 - **author 条件が必須な理由**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで `last` がそれを掴み、PATCH 先が奪われる。書込権限があれば他人のコメントを丸ごと上書き破壊し、権限不足なら 403 で `patch_failed` に落ちて以後の cycle も同じ id を掴み続け、記録が恒久的に失われる。
 - **`contains($MARKER)` を使わない理由**: 人間可視の marker 文字列を本文全体で探すと、marker を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
-- **機械専用 sentinel が必須な理由**: author + `startswith` の 2 条件でも、**同一 author が書いた、引用接頭辞を持たない、marker 前方一致の人間コメント**は除外できない。例えば運用者が記録を追跡するために「## 📜 rite 非実測指摘の記録 の対応状況」という見出しでコメントを書くと、次 cycle の 6.1.d がその本文を記録コメントで丸ごと上書きする。「引用返信は先頭に `> ` が付くため構造的に除外される」は GitHub の Quote reply 経路しか覆っていない。`<!-- rite:nbr:v1 -->` は HTML コメントなので rendered view に現れず、人間が見出しへ書き写す経路が存在しない — これは上の「`contains($MARKER)` を使わない理由」（人間可視文字列は引用されうる）に当たらないため、`contains` でも安全に使える。
+- **機械専用 sentinel が必須な理由**: author + `startswith` の 2 条件でも、**同一 author が書いた、引用接頭辞を持たない、marker 前方一致の人間コメント**は除外できない。例えば運用者が記録を追跡するために「## 📜 rite 非実測指摘の記録 の対応状況」という見出しでコメントを書くと、次 cycle の 6.1.d がその本文を記録コメントで丸ごと上書きする。「引用返信は先頭に `> ` が付くため構造的に除外される」は GitHub の **Quote reply 経路しか覆っていない**。
+- **sentinel は位置まで固定する（末尾 anchor）**: `<!-- rite:nbr:v1 -->` は HTML コメントなので rendered view には現れないが、**raw markdown の copy-paste では同伴する**（Edit view / `gh api` / `gh pr view --comments` 経由）。したがって「人間が書き写す経路が存在しない」とは言えず、位置非依存の `contains` では、人間が記録の raw を一部貼り込んだメモを拾ってしまい上記の破壊が残る。**末尾空白を除いた本文が sentinel で終わること**を条件にすれば、本文中に引用として現れた sentinel は構造的に除外される。write 側テンプレート（variant A / B）が最終行に置く契約なので read/write は対称。
+- **述語変更は migration 問題を伴う**: 条件を 1 つ足した瞬間、その条件を持たない既存レコードは検出されなくなる。lookup で「author ∧ marker 前方一致は満たすが sentinel 末尾一致に落ちた件数」を数え、0 件でなければ WARNING + `[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1` を emit する。これを silent にすると、sentinel 導入前に投稿された記録コメントが孤児として残ったことを観測する手段が無くなる（本 helper が他の全 degraded 経路で WARNING を出す規律から外れる）。
 - **前方一致でマッチ能力が損なわれない理由**: write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置き、末尾に sentinel を置く」を契約として守るため。
 
-**投稿前に本文を 4 段で検査する**（非空 → 1 行目が marker で始まる → 機械専用 sentinel を含む → `📎 non_blocking_count:` 行が `--count` と一致する）。最初の 3 段の契約違反はいずれも lookup の 3 条件を満たさないコメントを投稿し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻 = 記録コメントが cycle ごとに増殖）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため 4 段は別 reason（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`）にする。
+**投稿前に本文を 4 段で検査する**（非空 → 1 行目が marker で始まる → **最終非空行が**機械専用 sentinel → `📎 non_blocking_count:` 行が `--count` と一致する）。最初の 3 段の契約違反はいずれも lookup の 3 条件を満たさないコメントを投稿し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻 = 記録コメントが cycle ごとに増殖）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため 4 段は別 reason（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`）にする。
 
 **4 段目（count/body 整合検査）が必要な理由**: ステップ 6.1.d step 1（本文 variant 選択）と step 2（`--count` 置換）は独立した 2 箇所の LLM 置換であり、片方だけずれると事実と異なる記録が投稿される — `--count 0` + variant A 本文（N 件を列挙）で 0 件のはずが記録が無音で消える、または `--count N>0` + variant B「0 件」本文 で虚偽の記録が残る。本文に機械可読な `📎 non_blocking_count: {n}` 行を持たせ、helper が投稿前に `--count` と照合することで、どちらのずれも非ブロッキングな `outcome=failed` に倒し observable にする。
 

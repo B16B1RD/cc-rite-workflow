@@ -39,26 +39,36 @@
 #       content_file_placeholder_residue / content_file_missing / unknown_option /
 #       body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch /
 #       patch_failed / create_failed / signal_aborted
-#   - **8.0.3 機械強制 (pending marker) の差し戻し境界は「原因」で引く**: caller (LLM) 契約違反
-#     (placeholder residue 5 種 / content_file_missing / body_file_empty / body_marker_missing /
-#     count_body_mismatch) は marker を残して 8.0.3 に差し戻させる。gh / network / rate-limit / IO
-#     起因 (patch_failed / create_failed / lookup degraded) は従来どおり無条件削除する (差し戻しても
-#     同 cycle 内で収束しないため)。exit code (trap 設置の前後) で境界を引くと、本文検査 3 段の
-#     契約違反だけが検出位置の違いで機械強制から外れる。marker 保持は overall_assessment を変えず
-#     「result pattern を emit してよいか」だけを止めるため AC-3 と両立する。
+#   - **8.0.3 機械強制 (pending marker) の差し戻し境界は「原因」で引く**: caller (LLM) 契約違反は
+#     marker を残して 8.0.3 に差し戻させる。対象は 2 群 (計 11 reason):
+#       (i)  trap 設置**前**の exit 1 (構造的に marker が残る) — unknown_option /
+#            pr_number_placeholder_residue / owner_repo_placeholder_residue /
+#            non_blocking_count_placeholder_residue / iteration_id_placeholder_residue /
+#            content_file_placeholder_residue / content_file_missing の 7 種
+#       (ii) trap 設置**後**の exit 0 + retain_pending_marker=1 (本文検査 4 段) —
+#            body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch
+#     gh / network / rate-limit / IO 起因 (patch_failed / create_failed / lookup degraded) と
+#     signal 中断 (signal_aborted) は従来どおり無条件削除する (差し戻しても同 cycle 内で収束しない
+#     ため)。exit code (trap 設置の前後) で境界を引くと (ii) だけが検出位置の違いで機械強制から
+#     外れる。marker 保持は overall_assessment を変えず「result pattern を emit してよいか」だけを
+#     止めるため AC-3 と両立する。
 #   - **既存コメントの特定は「自分が投稿した」∧「1 行目 marker への前方一致 (startswith)」∧
-#     「本文に機械専用 sentinel を含む」の連言**。author 条件を欠くと、marker で始まるコメントを
-#     第三者が 1 件投稿するだけで PATCH 先を奪える。`contains($MARKER)` (人間可視 marker を本文全体で
-#     探す) も別コメントを掴む。ただし author + startswith だけでは **同一 author が書いた、引用
-#     接頭辞を持たない、marker 前方一致の人間コメント** (例: 記録コメントを追跡するための
+#     「機械専用 sentinel で終わる (末尾 anchor)」の連言**。author 条件を欠くと、marker で始まる
+#     コメントを第三者が 1 件投稿するだけで PATCH 先を奪える。`contains($MARKER)` (人間可視 marker を
+#     本文全体で探す) も別コメントを掴む。ただし author + startswith だけでは **同一 author が書いた、
+#     引用接頭辞を持たない、marker 前方一致の人間コメント** (例: 記録コメントを追跡するための
 #     「## 📜 rite 非実測指摘の記録 の対応状況」という見出し) を除外できず、PATCH がその本文を
-#     丸ごと上書き破壊する。人間が書き得ない機械専用 sentinel (rendered view に現れない HTML
-#     コメント) を第 3 の条件に足してこの残余を塞ぐ。
+#     丸ごと上書き破壊する。第 3 条件の sentinel は **位置まで固定する** — `contains` だと人間が
+#     記録の raw markdown を一部貼り込んだメモも拾ってしまい、同じ破壊が残る。
+#     lookup で「author ∧ marker 前方一致は満たすが sentinel 末尾一致に落ちた件数」を数え、
+#     0 件でなければ WARNING + `[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1` を emit する
+#     (sentinel 導入前の記録コメントの孤児化を silent にしない)。
 #     rationale: ../skills/pr-review/references/measured-gate-record.md#startswith
-#   - **投稿する本文は「非空」→「1 行目が MARKER で始まる」→「機械専用 sentinel を含む」→
+#   - **投稿する本文は「非空」→「1 行目が MARKER で始まる」→「最終非空行が機械専用 sentinel」→
 #     「`📎 non_blocking_count:` 行が --count と一致する」の 4 段で投稿前に検査する**。前 3 段の
 #     契約違反はいずれも lookup の条件を満たさないコメントを投稿し、以降の lookup を恒久的に
-#     miss させる (記録コメントが cycle ごとに増殖する)。4 段目は step 1 の本文 variant 選択と
+#     miss させる (記録コメントが cycle ごとに増殖する)。3 段目は read 側と同じ末尾条件にする
+#     (片側だけ強めると同じ増殖が起きる)。4 段目は step 1 の本文 variant 選択と
 #     step 2 の --count 置換のずれ（無音喪失 / 虚偽記録）を捕捉する。
 #     rationale: ../skills/pr-review/references/measured-gate-record.md#startswith
 #   - **create は count > 0 でガード**: 0 件 ∧ 既存なしで「0 件です」という事実と異なるコメントを
@@ -77,12 +87,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # variant A / B の 1 行目は末尾に ` (non-blocking)` が付くため完全一致ではない。
 MARKER='## 📜 rite 非実測指摘の記録'
 
-# 機械専用 sentinel。lookup の第 3 条件であり、caller が生成する本文が本値を **含む** ことが
-# write 側契約 (SKILL.md ステップ 6.1.d step 1 の variant A / B は末尾に本行を置く)。
-# HTML コメントなので GitHub の rendered view には現れず、人間が記録コメントを引用・追跡する
-# 目的で自分の見出しに書き写すことがない。`contains($MARKER)` を rationale が否定したのは
-# 「人間可視の marker 文字列は別コメントに引用されうる」ためで、本 sentinel はその否定理由に
-# 当たらない (rendered view に出ない = copy-paste で運ばれない)。
+# 機械専用 sentinel。lookup の第 3 条件であり、caller が生成する本文が本値で **終わる** ことが
+# write 側契約 (SKILL.md ステップ 6.1.d step 1 の variant A / B は最終行に本行を置く)。
+# HTML コメントなので GitHub の rendered view には現れないが、**raw markdown の copy-paste では
+# 同伴する** (Edit view / `gh api` / `gh pr view --comments` 経由)。したがって「人間が書き写す経路が
+# 存在しない」とは言えず、位置非依存の `contains` では、人間が記録コメントの raw を一部貼り込んだ
+# メモを PATCH で丸ごと破壊する経路が残る。**末尾 anchor** (末尾空白を除いた本文が本値で終わる)
+# にすることで、本文中に引用として現れた sentinel を構造的に除外する。write 側の本文検査も同じ
+# 「最終非空行が本値と一致する」条件にし、read/write を対称に保つ (片側だけ強めると次 cycle の
+# lookup が自分の投稿を miss して記録コメントが cycle ごとに増殖する)。
 RECORD_SENTINEL='<!-- rite:nbr:v1 -->'
 
 # --- Argument parsing ---
@@ -206,8 +219,8 @@ _terminal_emitted="false"
 #     → marker を残して 8.0.3 に差し戻させる (retain_pending_marker=1)
 #   - gh / network / rate-limit / IO 起因で、差し戻しても同じ cycle 内では収束しないもの
 #     → 従来どおり無条件削除 (非ブロッキング契約 AC-3 をそのまま維持)
-# 引数 gate 群 (placeholder residue / content_file_missing) は本 trap 設置**前**に exit 1 するため
-# 自動的に marker が残る。本フラグは trap 設置**後**に検出される caller 契約違反 (本文検査 3 段) を
+# 引数 gate 群 (unknown_option / placeholder residue 5 種 / content_file_missing = 7 種) は本 trap 設置**前**に exit 1 するため
+# 自動的に marker が残る。本フラグは trap 設置**後**に検出される caller 契約違反 (本文検査 4 段) を
 # 同じ扱いに揃えるためのもの — 境界を exit code (trap 前/後) で引くと、同種の契約違反が検出位置の
 # 違いだけで機械強制の対象から外れる。
 retain_pending_marker=0
@@ -264,8 +277,8 @@ _record_gh_io_failure_hint() {
 }
 # 記録できなかったときの本文検査起因の案内。gh / IO の障害ではなく caller (LLM) が
 # ステップ 6.1.d step 1 で生成した本文自体の不備 (body_file_empty / body_marker_missing /
-# count_body_mismatch) から呼ぶ。gh auth / network / 権限を指す案内は原因と無関係なため出さない
-# (この 3 reason はいずれも degraded=0 の健全な gh 環境でも発生しうる — 誤った復旧手順を示すと
+# body_sentinel_missing / count_body_mismatch) から呼ぶ。gh auth / network / 権限を指す案内は原因と無関係なため出さない
+# (この 4 reason はいずれも degraded=0 の健全な gh 環境でも発生しうる — 誤った復旧手順を示すと
 # operator が無関係な確認に時間を使い、真因である本文/--count の再生成に辿り着けない)。
 _record_body_check_failure_hint() {
   echo "  対処: ステップ 6.1.d step 1 の本文生成 (Write) と step 2 の --count 置換を確認し、step 1 から再実行してください (gh 認証 / network / 権限の問題ではありません)" >&2
@@ -304,7 +317,15 @@ gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 # 記録が恒久的に失われる)。自分の login と一致する投稿のみを対象にする。
 # **機械専用 sentinel 条件も必須**: author + startswith だけでは、同一 author が marker で始まる
 # 見出しの人間コメント (記録の対応状況メモ等) を書いた場合にそれを掴み、PATCH が人間の本文を
-# 丸ごと上書き破壊する。rendered view に現れない HTML コメントを第 3 条件にして残余を塞ぐ。
+# 丸ごと上書き破壊する。sentinel を **末尾 anchor** で見て残余を塞ぐ (`contains` は本文中に引用として
+# 現れた sentinel も拾うため不可 — 上記 RECORD_SENTINEL の注記参照)。
+#
+# 述語は 2 段構えにする。`$near` (author ∧ marker 前方一致 = 「記録コメントの候補」) と `$hit`
+# (さらに sentinel 末尾一致 = 「本 helper が投稿したと確定できるもの」) を別々に数え、差分を
+# **sentinel を持たない候補の件数**として可視化する。差分の正体は (a) sentinel 導入前に投稿された
+# 記録コメント (migration)、または (b) 同一 author が書いた marker 前方一致の手書きコメント の
+# いずれかで、どちらも update-in-place の対象にならず PR 上に孤児として残る。述語変更由来のこの
+# 縮退だけを無音にすると観測手段が無くなるため (本 helper は他の全 degraded 経路で WARNING を出す)。
 # rc も見る (F-01, cycle 4 review, error-handling-reviewer): `gh api` は HTTP エラー時に
 # `--jq` フィルタを適用せずレスポンス body をそのまま stdout へ書いて rc!=0 で終了する
 # (gh 2.96.0 で実測)。空文字判定だけに依存すると、この非空な JSON エラー body が
@@ -316,11 +337,23 @@ if ! gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || [ -z "$gh
   _record_degraded_hint
   existing_id=""
   lookup_degraded=1
-elif existing_id=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
-     | jq -r --arg marker "$MARKER" --arg me "$gh_login" --arg sentinel "$RECORD_SENTINEL" \
-         '(add // []) | [.[] | select(((.body // "") | startswith($marker)) and ((.body // "") | contains($sentinel)) and ((.user.login // "") == $me))] | last | .id // empty' \
-         2>>"${gh_err:-/dev/null}"); then
-  :
+elif lookup_out=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
+     | jq -r --arg marker "$MARKER" --arg me "$gh_login" --arg sentinel "$RECORD_SENTINEL" '
+         (add // [])
+         | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] as $near
+         | [$near[] | select((.body // "") | sub("[[:space:]]+$"; "") | endswith($sentinel))] as $hit
+         | ((($hit | last | .id) // "") | tostring) + "\t" + ((($near | length) - ($hit | length)) | tostring)
+       ' 2>>"${gh_err:-/dev/null}"); then
+  existing_id="${lookup_out%%$'\t'*}"
+  legacy_orphan_count="${lookup_out##*$'\t'}"
+  case "$legacy_orphan_count" in ''|*[!0-9]*) legacy_orphan_count=0 ;; esac
+  if [ "$legacy_orphan_count" -gt 0 ]; then
+    echo "WARNING: marker 前方一致だが機械専用 sentinel を末尾に持たない自分のコメントが ${legacy_orphan_count} 件あります。update-in-place の対象外として扱います" >&2
+    echo "  該当は (a) sentinel 導入前に投稿された記録コメント、または (b) marker で始まる見出しの手書きコメント のいずれかです" >&2
+    echo "  (a) なら PR #${PR_NUMBER} 上で古い記録コメントを手動削除してください (以後は新しい 1 件が update-in-place で維持されます)" >&2
+    echo "  (b) なら意図どおりの除外です (本 helper が人間のコメントを PATCH で上書きしないための条件)" >&2
+    echo "[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1; pr=$PR_NUMBER; count=$legacy_orphan_count" >&2
+  fi
 else
   echo "WARNING: 既存の非実測記録コメントの検索に失敗しました (gh/jq)。存在不明として扱います" >&2
   _gh_err_detail
@@ -364,12 +397,17 @@ esac
 
 # 機械専用 sentinel 検査。lookup の第 3 条件に使う以上、投稿する本文が sentinel を欠くと
 # **次 cycle の lookup が自分の投稿を見つけられず** update-in-place が恒久破綻して記録コメントが
-# cycle ごとに増殖する (1 行目 marker を欠いた場合と同じ結末)。write 側と read 側の条件を
-# 揃えるため、marker 検査と同じ段で投稿前に検査する。
-if ! grep -qF "$RECORD_SENTINEL" "$CONTENT_FILE"; then
-  echo "WARNING: 非実測記録の本文に機械専用 sentinel が含まれていません ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します" >&2
-  echo "  期待: 本文が '$RECORD_SENTINEL' を含むこと (SKILL.md ステップ 6.1.d step 1 の variant A / B は末尾に本行を置く)" >&2
-  echo "  sentinel を欠いた本文を投稿すると、次 cycle の lookup が自分の投稿を検出できず記録コメントが増殖します" >&2
+# cycle ごとに増殖する (1 行目 marker を欠いた場合と同じ結末)。
+# **read 側と同じ「末尾」条件で検査する**: read が末尾 anchor なのに write が位置非依存 (`grep -qF`)
+# だと、sentinel を本文途中にだけ持つ本文が検査を通過して投稿され、次 cycle の lookup が
+# その投稿を miss する (片側だけ強めた場合の増殖経路)。最終**非空**行と厳密一致を要求する
+# (末尾の空行は GitHub 側の整形でも増減しうるため許容する)。
+_body_last_line=$(sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$CONTENT_FILE" | tail -n 1)
+if [ "$_body_last_line" != "$RECORD_SENTINEL" ]; then
+  echo "WARNING: 非実測記録の本文の最終非空行が機械専用 sentinel ではありません ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します" >&2
+  echo "  期待: 最終非空行が '$RECORD_SENTINEL' と厳密一致すること (SKILL.md ステップ 6.1.d step 1 の variant A / B は最終行に本行を置く)" >&2
+  echo "  実際の最終非空行: '$(printf '%s' "$_body_last_line" | neutralize_ctrl)'" >&2
+  echo "  sentinel が末尾に無い本文を投稿すると、次 cycle の lookup (末尾 anchor) が自分の投稿を検出できず記録コメントが増殖します" >&2
   _record_body_check_failure_hint
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_sentinel_missing" >&2
   outcome="failed"

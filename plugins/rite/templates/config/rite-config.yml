@@ -192,6 +192,9 @@ safety:
 # update-in-place するが、自身の過去コメントを特定できない場合は縮退する — 指摘ありなら新規作成
 # されて複数並び、0 件なら投稿自体を省くため前 cycle の記録が stale で残る
 # （Issue #2024 D-01「非実測指摘は破棄せず PR コメント記録」の担保。opt-out の対象外）。
+# ただし投稿自体は best-effort — gh 失敗（create_failed / patch_failed）や本文不備では投稿されず
+# outcome=failed になる。**無条件の記録先はローカル JSON**（.rite/review-results/*.json の
+# non_blocking_findings[]）であってコメントではない。記録コメントが見当たらないときはそちらを見る。
 pr_review:
   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false。非実測指摘の記録コメントは本設定と独立）
 

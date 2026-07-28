@@ -27,7 +27,7 @@
 #   TC-4 review-nonblocking-record.sh — 引数 gate (placeholder residue 5 種 + content_file 不在 +
 #        iteration_id 形状 allowlist、いずれも exit 1) / lookup の「自 login ∧ 1 行目 marker 前方一致」
 #        (引用返信も第三者 author も掴まない、gh api user が rc!=0 かつ body を stdout に出す経路も
-#        含む) / 本文検査 3 段 (非空 / 1 行目 marker / count 整合) / 分岐 4 種
+#        含む) / 本文検査 4 段 (非空 / 1 行目 marker / 機械専用 sentinel の末尾一致 / count 整合) / 分岐 4 種
 #        (created / updated / skipped / failed) / 非ブロッキング契約 (gh 失敗でも exit 0) /
 #        本文検査起因の失敗 (body_file_empty / body_marker_missing / count_body_mismatch) と
 #        gh/IO 起因の失敗 (patch_failed / create_failed) で復旧案内を分ける契約 /
@@ -543,10 +543,13 @@ NBR_EMPTY_BODY="$TMP_ROOT/nbr-empty.md"
 #            (記録の対応状況メモ相当)。author + startswith の 2 条件では除外できず、機械専用
 #            sentinel を持たないことだけが本物との違い。sentinel 条件を落とすと `last` がこれを
 #            掴み、PATCH が人間の本文を丸ごと上書き破壊する (F-09, cycle 6)。
-# 3 条件 (startswith ∧ sentinel ∧ author 一致) が id=13 を選ぶことを固定する。
+#   - id=97: 同上だが、人間が**記録コメントの raw markdown を一部貼り込んだ**ため sentinel を
+#            本文**途中**に持つ。sentinel を位置非依存の `contains` で見ると `last` がこれを掴み、
+#            id=98 と同じ破壊が起きる。**末尾 anchor** でのみ除外できる (F-03, cycle 7)。
+# 3 条件 (startswith ∧ sentinel 末尾一致 ∧ author 一致) が id=13 を選ぶことを固定する。
 NBR_COMMENTS="$TMP_ROOT/nbr-comments.json"
 cat > "$NBR_COMMENTS" <<'EOF'
-[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold\n\n<!-- rite:nbr:v1 -->"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)\n\n<!-- rite:nbr:v1 -->"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt\n\n<!-- rite:nbr:v1 -->"},{"id":98,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 の対応状況\n\nF-03 は次 PR で対応予定。F-05 は仕様どおりのため対応しない。"}]]
+[[{"id":11,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nold\n\n<!-- rite:nbr:v1 -->"},{"id":13,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nnewer (degraded 縮退で生まれた 2 件目)\n\n<!-- rite:nbr:v1 -->"},{"id":12,"user":{"login":"rite-bot"},"body":"> ## 📜 rite 非実測指摘の記録 への返信"},{"id":99,"user":{"login":"other-user"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\nhijack attempt\n\n<!-- rite:nbr:v1 -->"},{"id":98,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 の対応状況\n\nF-03 は次 PR で対応予定。F-05 は仕様どおりのため対応しない。"},{"id":97,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 の対応方針メモ\n\n元記録から引用:\n\n<!-- rite:nbr:v1 -->\n\n上記のうち F-02 だけ対応する。"}]]
 EOF
 NBR_EMPTY_COMMENTS="$TMP_ROOT/nbr-empty-comments.json"
 echo '[[]]' > "$NBR_EMPTY_COMMENTS"
@@ -1009,12 +1012,49 @@ assert_grep "TC-4.11f outcome=created (記録は投稿される)" "$ERR" 'outcom
 NBR_BODY_NOSENT="$TMP_ROOT/nbr-body-nosentinel.md"
 printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_NOSENT"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-218 --content-file "$NBR_BODY_NOSENT"
-assert "TC-4.11g sentinel 欠落: exit 0 (非ブロッキング)" "0" "$RC"
+assert "TC-4.11g sentinel 欠落 (create 経路): exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.11g reason=body_sentinel_missing emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_sentinel_missing'
 assert_grep "TC-4.11g outcome=failed" "$ERR" 'outcome=failed;'
 assert_not_grep "TC-4.11g 投稿呼び出しは実在しない" "$GH_LOG" '^pr comment'
 # [positive control] 本文検査起因の案内が出る (gh 認証/network を指す誤案内でないこと)
 assert_grep "TC-4.11g [positive control] 本文検査起因の案内が出る" "$ERR" 'gh 認証 / network / 権限の問題ではありません'
+
+# TC-4.11g' [F-08 指摘, cycle 7]: 既存コメントありの **PATCH 経路**でも sentinel 検査が効くこと。
+# 兄弟の TC-4.8b / TC-4.8d (body_file_empty / body_marker_missing) は NBR_COMMENTS を使い
+# 「PATCH を実行しない」を assert する規律を持つのに、3 番目の本文検査だけが create 経路限定だった。
+# PATCH 側は「既存の記録コメントを sentinel 無し本文で上書きする」= 以降の lookup が恒久的に
+# miss して記録コメントが cycle ごとに増殖する、より破壊的な方向。
+GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-219 --content-file "$NBR_BODY_NOSENT"
+assert "TC-4.11g' sentinel 欠落 (PATCH 経路): exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.11g' reason=body_sentinel_missing emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_sentinel_missing'
+assert_not_grep "TC-4.11g' sentinel 欠落本文で PATCH しない" "$GH_LOG" '\-X PATCH'
+
+# TC-4.11h [F-03 指摘, cycle 7]: sentinel が本文**途中**にあるだけでは通さない (write 側末尾検査)。
+# read 側 lookup が末尾 anchor なのに write 側が位置非依存だと、sentinel を途中にだけ持つ本文が
+# 投稿され、次 cycle の lookup がその投稿を miss して記録が増殖する (片側だけ強めた場合の増殖経路)。
+NBR_BODY_MIDSENT="$TMP_ROOT/nbr-body-midsentinel.md"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n<!-- rite:nbr:v1 -->\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_MIDSENT"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-220 --content-file "$NBR_BODY_MIDSENT"
+assert "TC-4.11h sentinel が途中のみ: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.11h reason=body_sentinel_missing emit (末尾でないため)" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_sentinel_missing'
+assert_not_grep "TC-4.11h 投稿呼び出しは実在しない" "$GH_LOG" '^pr comment'
+assert_grep "TC-4.11h 診断が実際の最終非空行を示す" "$ERR" '実際の最終非空行:'
+# [positive control] 末尾に置けば通ること (検査が「常に落ちる」死んだ条件でないこと)
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-221 --content-file "$NBR_BODY_C2"
+assert_grep "TC-4.11h [positive control] 末尾 sentinel なら投稿される" "$ERR" 'outcome=created; count=2; iteration_id=9-221;'
+
+# TC-4.14 [F-03 指摘, cycle 7]: sentinel を末尾に持たない自分の marker コメント (legacy 記録 /
+# 人間の手書きメモ) を検出したら silent にせず WARNING + marker を emit する。
+# 述語変更由来の縮退だけを無音にすると、既存記録コメントの孤児化を観測する手段が無くなる。
+# NBR_COMMENTS の id=98 (sentinel なし) と id=97 (sentinel が途中) の 2 件が near-miss。
+GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-222 --content-file "$NBR_BODY_C2"
+assert "TC-4.14 legacy orphan 検出時も exit 0" "0" "$RC"
+assert_grep "TC-4.14 legacy orphan marker を emit (2 件)" "$ERR" 'NONBLOCKING_LEGACY_ORPHAN=1; pr=9; count=2'
+assert_grep "TC-4.14 WARNING に件数が出る" "$ERR" 'sentinel を末尾に持たない自分のコメントが 2 件'
+assert_grep "TC-4.14 canonical な id=13 が PATCH 先のまま (孤児に奪われない)" "$ERR" 'comment_id=13;'
+# [negative control] near-miss が 0 件なら marker を出さない (常時 emit の死んだ分岐でないこと)
+GH_LOOKUP_JSON="$NBR_PAGED_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-223 --content-file "$NBR_BODY_C2"
+assert_not_grep "TC-4.14 [negative control] near-miss 0 件なら marker を出さない" "$ERR" 'NONBLOCKING_LEGACY_ORPHAN=1'
 
 # =====================================================================
 # TC-4.12 [F-03 指摘, cycle 6]: pending marker lifecycle の per-reason 振る舞い
@@ -1118,7 +1158,13 @@ else
   _run_p803 "$_p8_marker"
   assert "TC-4.13a marker 残存: exit 1 (gate 失敗)" "1" "$P8_RC"
   assert_grep "TC-4.13a retained flag に reason=pending_marker_present" "$ERR" 'NONBLOCKING_GATE_FAILED=1; reason=pending_marker_present'
-  assert_grep "TC-4.13a ACTION が 6.1.d への差し戻しを指示" "$ERR" 'ステップ 6.1.d へ戻り'
+  # ACTION は 2 分岐 (caller 契約違反なら本文を作り直す / 6.1.d 未実行なら step 1-2 を実行) を
+  # 提示する必要がある。片方だけになると「同一 content-file で step 2 だけ再実行」へ誘導され、
+  # 本文検査 4 段の差し戻しが収束しない (F-04, cycle 7)。
+  assert_grep "TC-4.13a ACTION が reason=body_* の確認を先に指示" "$ERR" 'reason=body_\* があるか確認'
+  assert_grep "TC-4.13a ACTION が本文の作り直しを指示 (契約違反側)" "$ERR" '本文を作り直してから'
+  # assert_grep は ERE のため丸括弧は使わない (グループとして解釈され literal 一致しない)
+  assert_grep "TC-4.13a ACTION が step 1-2 の実行を指示 (未実行側)" "$ERR" '6\.1\.d 自体が未実行です'
   # gate 自身が marker を削除しないこと (削除すると再評価だけで通せる)
   if [ -e "$_p8_marker" ]; then pass "TC-4.13a gate は marker を削除しない"; else fail "TC-4.13a gate は marker を削除しない"; fi
   rm -f "$_p8_marker"
@@ -1236,6 +1282,22 @@ else
     assert "TC-5a 呼び出しが live な bash fence 内にある (到達性)" "1" "$in_fence"
   else
     fail "TC-5a 呼び出しが live な bash fence 内にある (到達性) — 呼び出し行を特定できず評価不能"
+  fi
+
+  # (a-3) [F-09 指摘, cycle 7] step 1 が Write する本文パスと step 2 が `--content-file` に渡す
+  #     パスは同一文字列でなければならない 2 箇所 coupling だが pin が無かった。TC-5a (a) は
+  #     helper 呼び出し行の**存在と到達性**しか固定しておらず引数の値を見ていない。片側だけ改名
+  #     すると production では毎 cycle content_file_missing で **trap 設置前の exit 1** となり
+  #     terminal sentinel が 1 本も出ないため、6.1.d step 3 と 8.0.3 の両 gate が ERROR、かつ
+  #     pending marker も残るので差し戻しループになる。SKILL.md:2508 自身がこのパス構成を「必須」と
+  #     明記しているのに、その不変条件を機械的に確認する層が無かった。
+  #     抽出失敗は `fail` で loud に落とす (TC-5c / TC-5g の抽出失敗ハンドリングと同型)。
+  _p1_path=$(_sec_610d | sed -n 's/.*Write tool で `\([^`]*\)` に保存.*/\1/p' | head -1)
+  _p2_path=$(_sec_610d | sed -n 's/^[[:space:]]*--content-file \([^ ]*\)[[:space:]]*\\*[[:space:]]*$/\1/p' | head -1)
+  if [ -n "$_p1_path" ] && [ -n "$_p2_path" ]; then
+    assert "TC-5a step 1 の Write 先と step 2 の --content-file が一致" "$_p1_path" "$_p2_path"
+  else
+    fail "TC-5a step1/step2 パス coupling — 抽出に失敗 (step1='$_p1_path' step2='$_p2_path')"
   fi
 
   # (a-2) 8.0.3 の機械強制 (pending marker 検査) が live な bash fence 内に実在する。
@@ -1552,6 +1614,39 @@ else
       _vb_literal0_count=$(sed -n "${_vb_line},$(( _next_line - 1 ))p" "$REVIEW_MD" | grep -cE "^[[:space:]]*${_count_re}[[:space:]]*0[[:space:]]*\$" || true)
       assert "TC-5g''' variant A 区間の値は {non_blocking_count} placeholder (literal 数字への drift 検出)" "1" "$_va_placeholder_count"
       assert "TC-5g''' variant B 区間の値は literal 0 (別数字への drift 検出)" "1" "$_vb_literal0_count"
+
+      # (g'''') [F-06 指摘, cycle 7] helper の RECORD_SENTINEL ⇄ variant A/B テンプレートの
+      #     coupling。TC-5c (MARKER 値) と TC-5g (count needle) は同型の coupling を pin して
+      #     いるのに、cycle 6 新設の 3 本目 (sentinel) だけが無防備だった。helper 側の改名は
+      #     TC-4 fixture がハードコードのため落ちるが、**SKILL.md 側の脱落・改名は fixture に
+      #     触れないため全 green のまま通る**。production では毎 cycle body_sentinel_missing と
+      #     なり、この reason は retain_pending_marker=1 に分類されているため 8.0.3 が exit 1 で
+      #     差し戻し、同じテンプレートから本文を作り直す差し戻しループになる (記録は一度も
+      #     投稿されない)。SKILL.md には sentinel の散文言及もあるためファイル全体 count では
+      #     なく **variant 区間限定 + 行全体 anchor** で数える (TC-5g'' と同型)。
+      nbr_sentinel=$(sed -n "s/^RECORD_SENTINEL='\(.*\)'\$/\1/p" "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" | head -1)
+      if [ -z "$nbr_sentinel" ]; then
+        fail "TC-5g'''' helper の RECORD_SENTINEL を抽出できない (定義形式の drift)"
+      else
+        _sentinel_re=$(printf '%s' "$nbr_sentinel" | sed 's/[][\.*^$(){}?+|/]/\\&/g')
+        _va_sent=$(sed -n "${_va_line},$(( _vb_line - 1 ))p" "$REVIEW_MD" | grep -cE "^[[:space:]]*${_sentinel_re}[[:space:]]*\$" || true)
+        _vb_sent=$(sed -n "${_vb_line},$(( _next_line - 1 ))p" "$REVIEW_MD" | grep -cE "^[[:space:]]*${_sentinel_re}[[:space:]]*\$" || true)
+        assert "TC-5g'''' variant A 区間に sentinel 行が 1 件 (helper 定数と一致)" "1" "$_va_sent"
+        assert "TC-5g'''' variant B 区間に sentinel 行が 1 件 (helper 定数と一致)" "1" "$_vb_sent"
+        # read 側が末尾 anchor である以上、テンプレート側でも sentinel が **fence 内の最終非空行**
+        # でなければならない (途中に置くと write 側検査で毎 cycle body_sentinel_missing になる)。
+        # 区間ではなく ```markdown fence の中身に限定して評価する (fence の後に散文が続くため)。
+        _fence_last_line() {  # $1=start_line $2=end_line
+          sed -n "${1},$(( $2 - 1 ))p" "$REVIEW_MD" | awk '
+            !infence && /^[[:space:]]*```markdown[[:space:]]*$/ { infence = 1; next }
+            infence && /^[[:space:]]*```[[:space:]]*$/ { exit }
+            infence && $0 !~ /^[[:space:]]*$/ { last = $0 }
+            END { sub(/^[[:space:]]+/, "", last); sub(/[[:space:]]+$/, "", last); print last }
+          '
+        }
+        assert "TC-5g'''' variant A テンプレート fence の最終非空行が sentinel" "$nbr_sentinel" "$(_fence_last_line "$_va_line" "$_vb_line")"
+        assert "TC-5g'''' variant B テンプレート fence の最終非空行が sentinel" "$nbr_sentinel" "$(_fence_last_line "$_vb_line" "$_next_line")"
+      fi
 
       # (h) 「本文は列 0 から書き出す」指示が variant テンプレートより **前** に 1 本だけ存在する。
       #     variant A/B は番号付きリスト項目の内側にあるため表示上 3 スペース字下げされる一方、
