@@ -189,7 +189,8 @@ safety:
 # `--post-comment` フラグまたは下記 `post_comment: true` で PR コメント記録を有効化できる。
 # 注: 非実測指摘（実測必須ゲートで non-blocking に分類された指摘）の記録コメント
 # （「📜 rite 非実測指摘の記録」）は本設定に関わらず投稿される。通常は cycle ごとに同じコメントを
-# update-in-place するが、自身の過去コメントを特定できない場合は新規作成へ縮退し複数並ぶことがある
+# update-in-place するが、自身の過去コメントを特定できない場合は縮退する — 指摘ありなら新規作成
+# されて複数並び、0 件なら投稿自体を省くため前 cycle の記録が stale で残る
 # （Issue #2024 D-01「非実測指摘は破棄せず PR コメント記録」の担保。opt-out の対象外）。
 pr_review:
   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false。非実測指摘の記録コメントは本設定と独立）

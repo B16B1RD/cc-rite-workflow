@@ -148,7 +148,9 @@ parallel:
 # of this setting — it is the guarantee behind Issue #2024 D-01 ("non-measured findings are
 # recorded, never discarded") and is not opt-out-able. It is normally a single comment updated
 # in place each cycle; when the helper cannot identify its own previous comment (e.g. `gh api
-# user` fails) it degrades to creating a new one, so more than one may accumulate on a PR.
+# user` fails) it degrades in one of two ways depending on the count: with findings it creates a
+# new one, so more than one may accumulate on a PR; with zero it skips the post entirely, so the
+# previous cycle's record stays on the PR as stale.
 pr_review:
   post_comment: false   # true to enable PR comment recording (equivalent to --post-comment, default: false; the non-measured findings record comment is independent of this setting)
 
@@ -670,7 +672,7 @@ Settings for PR review **output** recording. This section is intentionally separ
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `post_comment` | boolean | `false` | When `true`, the full review report is posted as a PR comment (equivalent to `--post-comment`). When `false` (default), the report is saved to `.rite/review-results/{pr_number}-{timestamp}.json` only. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, normally one comment updated in place — the lookup degrades to creating a second one when it cannot find its own prior comment) is posted to the PR independently of this setting whenever the review produces one or more non-measured findings — and is additionally refreshed in place on a converged cycle producing zero, when a record comment from a previous cycle already exists (Measured CONFIRMED Gate, Issue #2024 D-01) |
+| `post_comment` | boolean | `false` | When `true`, the full review report is posted as a PR comment (equivalent to `--post-comment`). When `false` (default), the report is saved to `.rite/review-results/{pr_number}-{timestamp}.json` only. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, normally one comment updated in place — the lookup degrades to creating a second one when it cannot find its own prior comment) is posted to the PR independently of this setting whenever the review produces one or more non-measured findings — and is additionally refreshed in place on a converged cycle producing zero, when a record comment from a previous cycle already exists **and the helper can identify it** (a degraded lookup skips the refresh, leaving the previous cycle's record stale) (Measured CONFIRMED Gate, Issue #2024 D-01) |
 
 `/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep the full review report off the PR; note that the non-measured findings record comment is still posted regardless (normally one, updated in place). Enable `post_comment: true` only if you want an auditable full review trail on the PR itself.
 

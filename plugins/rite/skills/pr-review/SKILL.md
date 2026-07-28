@@ -3543,7 +3543,7 @@ Replace `{next_action_value}` with the value from the table above based on the r
 8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1
 ```
 
-各 gate の Routing 表は「pass したら**次の gate へ**進む」とだけ書き、終端 (ステップ 8.1) を名指ししない。8.0.4 以降を追加する場合も、本順序規定に 1 行足すだけでよい。rationale: [references/measured-gate-record.md#gate-order](references/measured-gate-record.md#gate-order)
+各 gate の Routing 表は「pass したら**次の gate へ**進む」とだけ書き、終端 (ステップ 8.1) を名指ししない。8.0.4 以降を追加する場合は、(1) 本順序規定の 1 行に新 gate を挿入し、(2) `hooks/tests/review-helpers-gate-behavior.test.sh` TC-5d の期待リテラルを同じ文字列へ更新し、(3) 同 TC-5e の `_g_spec` list に `'8.0.4:{データ行数}:{pass 行数}'` を追加する。**既存 gate の pass 行は変更不要**（順序規定が終端を持つため）。rationale: [references/measured-gate-record.md#gate-order](references/measured-gate-record.md#gate-order)
 
 ### 8.0.1 W Phase Completion Gate (Defense-in-Depth)
 

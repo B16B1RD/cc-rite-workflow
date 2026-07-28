@@ -523,6 +523,13 @@ NBR_BODY_C2="$TMP_ROOT/nbr-body-c2.md"
 printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_C2"
 NBR_BODY_C3="$TMP_ROOT/nbr-body-c3.md"
 printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n' > "$NBR_BODY_C3"
+# [test-reviewer F-03 指摘, cycle 3]: count fixture が 0/1/2/3 の 1 桁のみだと、helper の
+# `grep -oE '[0-9]+'` を `[0-9]` へ退行させても全 assertion が緑のままになる (先頭 1 桁しか
+# 拾わなくても 1 桁値なら一致するため)。production では非実測指摘が 10 件以上出た cycle に
+# 限って毎回 count_body_mismatch → outcome=failed となり、最も記録が必要な局面で D-01 の
+# 永続チャネルが落ちる。2 桁 fixture で桁境界を固定する。
+NBR_BODY_C12="$TMP_ROOT/nbr-body-c12.md"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 12\n📎 reviewed_commit: abc\n' > "$NBR_BODY_C12"
 NBR_EMPTY_BODY="$TMP_ROOT/nbr-empty.md"
 : > "$NBR_EMPTY_BODY"
 
@@ -717,6 +724,18 @@ GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 -
 assert "TC-4.3a 既存なし count>0: exit 0" "0" "$RC"
 assert_grep "TC-4.3a outcome=created" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=created; count=3; iteration_id=9-201;'
 assert_grep "TC-4.3b gh pr comment が実行された" "$GH_LOG" '^pr comment 9 -R o/r --body-file'
+
+# TC-4.3c/d 多桁 count の桁境界 (F-03, cycle 3 review)。helper の body_count 抽出が先頭 1 桁だけを
+# 拾う退行 (`grep -oE '[0-9]+'` → `'[0-9]'`) を検出する。(c) は一致方向、(d) は「先頭一致で誤って
+# 通る」不一致方向 — (d) が無いと `12` を `1` と読む退行が (c) 側だけでは捕まらない。
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 12 --iteration-id 9-231 --content-file "$NBR_BODY_C12"
+assert "TC-4.3c 2 桁 count 一致: exit 0" "0" "$RC"
+assert_grep "TC-4.3c outcome=created かつ count=12 を echo back" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=created; count=12; iteration_id=9-231;'
+assert_grep "TC-4.3c gh pr comment が実行された" "$GH_LOG" '^pr comment 9 -R o/r --body-file'
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-232 --content-file "$NBR_BODY_C12"
+assert "TC-4.3d --count 1 と本文 12 の不一致: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-4.3d reason=count_body_mismatch (先頭一致で通さない)" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=count_body_mismatch'
+assert_not_grep "TC-4.3d 投稿呼び出しが 1 件も無い" "$GH_LOG" '^pr comment'
 
 # TC-4.4 既存なし ∧ 0 件 → 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを作らない
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-202 --content-file "$NBR_BODY_C0"
@@ -1065,27 +1084,59 @@ else
   _check_label_803=$(sed -n "/^### 8\\.0\\.3 /,/^### 8\\.1 /p" "$REVIEW_MD" | grep -cE '\*\*Check\*\*:' || true)
   assert "TC-5b 8.0.3 の \`**Check**:\` 見出しは区間内に 1 本だけ" "1" "$_check_label_803"
 
-  # [test-reviewer F-03 指摘, cycle 2]: 上記 4 件の allowlist はトークンの**出現順**しか見ておらず
-  # 比較の**向き**を固定していない。Check を「一致しなくてもよい (存在すれば十分)」へ反転しても
-  # 全トークンが同順で残るため素通りする (実測: 反転変異で 293/0 のまま)。反転が production に
-  # 入ると両 gate が前 cycle の stale sentinel を受理し、AC-7/T-06 が禁じる当の false-positive
-  # match が成立する。allowlist だけでは向きを固定できないため 2 層で塞ぐ:
-  #   (a) denylist — Check 行に一致判定の否定形が現れないこと (表を触らない反転を捕まえる)
-  #   (b) 構造 — 判定の向きが構造として現れる Routing 表の「不一致 → **ERROR**」行の実在
-  #       (文言の言い換えに強い。(a) だけだと未知の否定表現をすり抜ける)
-  # 検査対象は `**Check**:` 行に限定する — Routing 表の Condition 列には正当な
-  # 「(`outcome` は問わない)」があり、区間全体を denylist にかけると false positive になる。
-  _neg_re='一致しな(い|くて)|一致は問わない|存在すれば十分|iteration_id は問わない'
-  _check_610d=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -E '\*\*Check\*\*:')
-  _check_803=$(sed -n "/^### 8\\.0\\.3 /,/^### 8\\.1 /p" "$REVIEW_MD" | grep -E '\*\*Check\*\*:')
-  _neg_610d=$(printf '%s\n' "$_check_610d" | grep -cE "$_neg_re" || true)
-  _neg_803=$(printf '%s\n' "$_check_803" | grep -cE "$_neg_re" || true)
-  assert "TC-5b 6.1.d step 3 の Check に一致判定の否定形が無い" "0" "$_neg_610d"
-  assert "TC-5b 8.0.3 の Check に一致判定の否定形が無い" "0" "$_neg_803"
-  _mismatch_610d=$(sed -n "/^#### 6\\.1\\.d /,/^### 6\\.2 /p" "$REVIEW_MD" | grep -cE '^[[:space:]]*\|.*(不一致|!=).*\*\*ERROR\*\*' || true)
-  _mismatch_803=$(sed -n "/^### 8\\.0\\.3 /,/^### 8\\.1 /p" "$REVIEW_MD" | grep -cE '^[[:space:]]*\|.*(不一致|!=).*\*\*ERROR\*\*' || true)
-  assert "TC-5b 6.1.d step 3 の Routing に「不一致 → ERROR」行が 1 本" "1" "$_mismatch_610d"
-  assert "TC-5b 8.0.3 の Routing に「不一致 → ERROR」行が 1 本" "1" "$_mismatch_803"
+  # 上記 4 件の allowlist はトークンの**出現順**しか見ておらず比較の**向き**を固定していない。
+  # Check を「一致しなくてもよい (存在すれば十分)」へ反転しても全トークンが同順で残る。反転が
+  # production に入ると両 gate が前 cycle の stale sentinel を受理し、AC-7/T-06 が禁じる当の
+  # false-positive match が成立する。
+  #
+  # cycle 2 はこれを「Check 行の否定形 denylist + Routing 表の『不一致 → ERROR』行の実在」の
+  # 2 層で塞ごうとしたが、cycle 3 で両層とも実効性を持たないことが実測された:
+  #   - denylist は 4 表現の列挙で、`一致することは要求しない` / `一致するかは問わない` のような
+  #     同義形をすり抜ける。そもそも本 PR が SoT として新設した measured-gate-record.md#static-pin
+  #     の規則 3「denylist ではなく allowlist で書く (現行表記への係留を避ける)」に反していた。
+  #   - 「不一致 → ERROR」の grep は同一行内のトークン**出現順**しか見ておらず、Action セルを
+  #     「ERROR にはしない — Gate passes」へ反転しても本数が変わらない (極性が未固定)。
+  #   - どちらの層も、実際に判定を担う **pass 行の Condition 列**を拘束していなかった。
+  #
+  # そこで pattern 層を積むのをやめ、行を**セルに分割して Condition 列と Action 列の対応**を
+  # 検査する構造的な述語へ置き換える。トークンの出現ではなく行の意味を見るため、文言の言い換えや
+  # 極性反転の双方に耐える。denylist は SoT 規則 3 に従い撤去した。
+  #   (i) Condition が不一致 (不一致 / !=) を述べる行の Action は `**ERROR**` で始まり
+  #       `Gate passes` を含まない — 違反 0 本
+  #   (ii) Condition が iteration_id の**一致**を述べ Action が `Gate passes` の行がちょうど 1 本
+  # `一致` は `不一致` の部分文字列なので (ii) では不一致行を明示的に除外する。
+  #
+  # **本 pin が保証しないこと** (over-claim を避けるため明記する — 保証と実装の乖離が本 PR で
+  # 3 cycle 連続の指摘源になった): 上の `**Check**:` 行 4 件の allowlist は依然としてトークンの
+  # 出現順しか見ておらず、Check 行**単体**の否定形言い換え (「一致するかは問わない」等) は
+  # 検出しない。これを許容するのは、gate の routing を実際に決めるのが Routing 表であり、
+  # 本 (i)(ii) がその表を構造的に固定しているため。Check 行は表を説明する散文であって
+  # 判定の実体ではない。散文側の向きまで pin したくなったら、denylist を足すのではなく
+  # (SoT `measured-gate-record.md#static-pin` 規則 3 が禁じる)、Check 行の記述を表から
+  # 生成する等の構造的な手段を採ること。
+  _routing_cells() {  # $1=start-anchor $2=end-anchor $3=mode(mismatch_violation|pass_row)
+    sed -n "/$1/,/$2/p" "$REVIEW_MD" | awk -F'|' -v mode="$3" '
+      /^[[:space:]]*\|/ {
+        cond = $2; act = $3
+        if (cond ~ /Condition/) next                      # ヘッダー行
+        if (cond ~ /^[[:space:]]*-+[[:space:]]*$/) next   # セパレータ行
+        if (mode == "mismatch_violation") {
+          if (cond ~ /不一致|!=/ && (act !~ /^[[:space:]]*\*\*ERROR\*\*/ || act ~ /Gate passes/)) n++
+        } else {
+          if (cond ~ /iteration_id/ && cond ~ /一致|==/ && cond !~ /不一致|!=/ && act ~ /Gate passes/) n++
+        }
+      }
+      END { print n + 0 }
+    '
+  }
+  assert "TC-5b 6.1.d step 3 の Routing: 不一致行の Action が ERROR 極性を保つ (違反 0)" \
+    "0" "$(_routing_cells '^#### 6\.1\.d ' '^### 6\.2 ' mismatch_violation)"
+  assert "TC-5b 8.0.3 の Routing: 不一致行の Action が ERROR 極性を保つ (違反 0)" \
+    "0" "$(_routing_cells '^### 8\.0\.3 ' '^### 8\.1 ' mismatch_violation)"
+  assert "TC-5b 6.1.d step 3 の Routing: cycle 一致を条件に持つ pass 行が 1 本" \
+    "1" "$(_routing_cells '^#### 6\.1\.d ' '^### 6\.2 ' pass_row)"
+  assert "TC-5b 8.0.3 の Routing: cycle 一致を条件に持つ pass 行が 1 本" \
+    "1" "$(_routing_cells '^### 8\.0\.3 ' '^### 8\.1 ' pass_row)"
 
   # (c) helper の MARKER 値と SKILL.md の variant 見出しの前方一致関係を固定する。
   #      helper 側だけを変えれば TC-4.2 が落ちるが、SKILL.md の見出しテンプレートだけを変えると

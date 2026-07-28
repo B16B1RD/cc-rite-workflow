@@ -49,7 +49,7 @@ Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existi
 ## 8.0 の gate 評価順序を規定した理由
 gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1」のままだと**新設 gate が到達不能**になる。個々の gate が終端（8.1）を直接名指しする書き方は、gate を 1 本足すたびに既存の全 pass 行を書き換える必要があり、書き換え漏れが即座に到達不能を生む。
 
-そこで 8.0 冒頭に **gate 評価順序の規定**を 1 箇所だけ置き、各 gate の pass 行は「次の gate へ進む」とだけ書く（実リテラルは `the next gate in the 8.0 evaluation order`）。終端（8.1 へ抜ける条件）は順序規定側が持つ。8.0.4 を将来追加する場合も、順序規定に 1 行足すだけで既存 gate の pass 行は不変。
+そこで 8.0 冒頭に **gate 評価順序の規定**を 1 箇所だけ置き、各 gate の pass 行は「次の gate へ進む」とだけ書く（実リテラルは `the next gate in the 8.0 evaluation order`）。終端（8.1 へ抜ける条件）は順序規定側が持つ。8.0.4 を将来追加する場合、**既存 gate の pass 行は不変**。ただし静的 pin 側は連動更新が要る — TC-5d の期待リテラル（順序規定の全文を `grep -cF` する）と TC-5e の `_g_spec` list（gate ごとのデータ行数 / pass 行数）の 2 箇所。後者を忘れると新 gate だけ per-gate 検査が走らず、部分削除・意味反転の穴がその gate に対して再び開く。
 
 この不変条件は静的 pin で 2 層に固定する（`hooks/tests/review-helpers-gate-behavior.test.sh` TC-5e）。単層では塞げないため両方要る:
 
