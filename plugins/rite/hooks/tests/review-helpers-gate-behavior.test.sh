@@ -25,11 +25,11 @@
 #        validation chain (required fields / findings id / scope enum / CRITICAL×nit-noted) /
 #        happy path (JSON_SAVED=true + sentinel → ISO timestamp 置換)
 #   TC-4 review-nonblocking-record.sh — 引数 gate (placeholder residue 5 種 + content_file 不在 +
-#        iteration_id 形状 allowlist、いずれも exit 1) / lookup の「自 login ∧ 1 行目 marker 前方一致」
+#        iteration_id 形状 allowlist、いずれも exit 1) / lookup の「自 login ∧ 1 行目 marker 前方一致 ∧ 最終非空行 == 機械専用 sentinel」の 3 条件
 #        (引用返信も第三者 author も掴まない、gh api user が rc!=0 かつ body を stdout に出す経路も
-#        含む) / 本文検査 4 段 (非空 / 1 行目 marker / 機械専用 sentinel の末尾一致 / count 整合) / 分岐 4 種
+#        含む) / 本文検査 4 段 (非空 / 1 行目 marker / 最終非空行が機械専用 sentinel / count 整合) / 分岐 4 種
 #        (created / updated / skipped / failed) / 非ブロッキング契約 (gh 失敗でも exit 0) /
-#        本文検査起因の失敗 (body_file_empty / body_marker_missing / count_body_mismatch) と
+#        本文検査起因の失敗 (body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch) と
 #        gh/IO 起因の失敗 (patch_failed / create_failed) で復旧案内を分ける契約 /
 #        **terminal sentinel が動作完了を表すことの実測** (outcome が created|updated を名乗るときは
 #        gh stub log に投稿呼び出しが実在し、skipped のときは投稿呼び出しが 1 件も無い) /
@@ -793,7 +793,7 @@ assert_not_grep "TC-4.6a gh stderr 由来の sentinel 同形行が素の形で�
 assert_grep "TC-4.6a 本物の terminal sentinel は行頭に出る" "$ERR" '^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; pr=9; outcome=failed;'
 # positive control (relocated, cycle 4): 「レビューをやり直してください」は _record_gh_io_failure_hint
 # (gh/IO 起因の失敗専用) がまだ出す文言であることを、実際に失敗する gh/IO 経路で固定する。
-# 本文検査起因の 4 reason (body_file_empty / body_marker_missing / count_body_mismatch) は
+# 本文検査起因の 4 reason (body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch) は
 # _record_body_check_failure_hint に分離され、この文言はもう出さない (下記 TC-4.8d' 参照)。
 assert_grep "TC-4.6a [positive control] gh/IO 起因の記録失敗案内が出る" "$ERR" 'レビューをやり直してください'
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" GH_STUB_RC=1 run_nbr --pr 9 --owner-repo o/r --count 1 --iteration-id 9-205 --content-file "$NBR_BODY"
@@ -1073,6 +1073,17 @@ assert "TC-4.11i sentinel 後の空行を許容: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11i 末尾空行を sentinel 欠落と誤判定しない" "$ERR" 'reason=body_sentinel_missing'
 assert_grep "TC-4.11i outcome=created (投稿される)" "$ERR" 'outcome=created; count=2; iteration_id=9-225;'
 
+# TC-4.11j [F-05 指摘, cycle 8]: **CRLF 本文**を write 側が受理する (read 側の CRLF fixture id=11 と対称)。
+# read/write は同一の jq 述語を共有するが、その CR 除去を落とすと CRLF 本文が body_sentinel_missing で
+# 毎 cycle 弾かれ、retain_pending_marker=1 → 8.0.3 が exit 1 で差し戻す固定ループになる
+# (記録が一度も投稿されず [review:mergeable] も出ない)。
+NBR_BODY_CRLF="$TMP_ROOT/nbr-body-crlf.md"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\r\n\r\n| r | HIGH | current-pr | a.ts:1 | d | s |\r\n\r\n📎 non_blocking_count: 2\r\n📎 reviewed_commit: abc\r\n\r\n<!-- rite:nbr:v1 -->\r\n' > "$NBR_BODY_CRLF"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-229 --content-file "$NBR_BODY_CRLF"
+assert "TC-4.11j CRLF 本文: exit 0" "0" "$RC"
+assert_not_grep "TC-4.11j CRLF を sentinel 欠落と誤判定しない" "$ERR" 'reason=body_sentinel_missing'
+assert_grep "TC-4.11j outcome=created (投稿される)" "$ERR" 'outcome=created; count=2; iteration_id=9-229;'
+
 # TC-4.15 [F-06 指摘, cycle 7]: lookup が非数値の id を返したら PATCH 先にしない。
 # existing_id は mutating な API path (issues/comments/$existing_id の PATCH) へ補間されるため、
 # 同じ jq 出力から取る件数側に数値 guard があるのに書き込み先だけ無検証、という非対称を作らない。
@@ -1098,10 +1109,17 @@ assert_grep "TC-4.14b WARNING が古い方の手動削除を案内" "$ERR" '古�
 GH_LOOKUP_JSON="$NBR_PAGED_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-224 --content-file "$NBR_BODY_C2"
 assert_not_grep "TC-4.14b [negative control] canonical 1 件なら重複 marker を出さない" "$ERR" 'NONBLOCKING_DUPLICATE_RECORD=1'
 
-# TC-4.14c [F-04 指摘, cycle 7]: 最終行が `> <!-- rite:nbr:v1 -->` (Quote reply / raw 引用) の
-# 人間コメント (id=96) を PATCH 先に選ばない。本文全体への endswith は行頭 `> ` を吸収するため
-# 素通りし、人間の本文を丸ごと上書き破壊する。**最終非空行の等値**でのみ除外できる。
+# TC-4.14c [F-04 指摘, cycle 7 / F-02 指摘, cycle 8]: 最終行が `> <!-- rite:nbr:v1 -->`
+# (Quote reply / raw 引用) の人間コメント (id=96) を PATCH 先に選ばない。本文全体への endswith は
+# 行頭 `> ` を吸収するため素通りし、人間の本文を丸ごと上書き破壊する。**最終非空行の等値**で
+# のみ除外できる。
+# **自前 run が必須** — 直前 run の $GH_LOG に依存すると、その run の fixture に id=96 が
+# 含まれない場合 assertion が恒真になる (cycle 7 で実際にそうなっており、述語を endswith へ
+# 退行させても pass し続けた)。id=96 を含む NBR_COMMENTS で run し、positive control として
+# 「canonical な id=13 を PATCH する」も置いて not_grep が常に真でないことを固定する。
+GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-228 --content-file "$NBR_BODY_C2"
 assert_not_grep "TC-4.14c 引用付き末尾 sentinel の人間コメント (id=96) を PATCH しない" "$GH_LOG" '^api repos/.*/comments/96 -X PATCH'
+assert_grep "TC-4.14c [positive control] canonical な id=13 を PATCH する" "$GH_LOG" '^api repos/.*/comments/13 -X PATCH'
 # [negative control] near-miss が 0 件なら marker を出さない (常時 emit の死んだ分岐でないこと)
 GH_LOOKUP_JSON="$NBR_PAGED_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-223 --content-file "$NBR_BODY_C2"
 assert_not_grep "TC-4.14 [negative control] near-miss 0 件なら marker を出さない" "$ERR" 'NONBLOCKING_LEGACY_ORPHAN=1'
@@ -1589,7 +1607,7 @@ else
   #      永続チャネルが無音でゼロになる。Routing[1] (legitimate skip) も同様に、条件を広げると
   #      本来 ERROR にすべき skip が正当化されて素通りする。
   assert "TC-5b 6.1.d step 3 Routing[1]: cycle 一致 → Gate passes (canonical)" \
-    'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted` のとき、および `degraded=1`（`outcome` を問わない）のときは helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3)' \
+    'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted`、`degraded=1`（`outcome` を問わない）、または `NONBLOCKING_LEGACY_ORPHAN=1` / `NONBLOCKING_DUPLICATE_RECORD=1` を観測したときは (ステップ 8.0.3 と同一条件 — 片側だけに置かない) helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3)' \
     "$(_routing_canonical _sec_610d 1)"
   assert "TC-5b 6.1.d step 3 Routing[2]: 不一致 → ERROR (canonical)" \
     'sentinel なし、または `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と不一致 (前 cycle のもの)~**ERROR**: 6.1.d が本 cycle で未評価。下記 ACTION を実行' \

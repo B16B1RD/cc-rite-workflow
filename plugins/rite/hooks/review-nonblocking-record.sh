@@ -100,6 +100,16 @@ MARKER='## 📜 rite 非実測指摘の記録'
 # 投稿を miss して記録コメントが増殖する。
 RECORD_SENTINEL='<!-- rite:nbr:v1 -->'
 
+# read (lookup) と write (本文検査) が共有する述語定義。**2 言語で並行実装してはならない** —
+# shell の `grep -E '[^[:space:]]'` は glibc の空白クラス (locale 依存、grep 実装依存) を使い、
+# jq は Oniguruma (locale 非依存) を使うため受理集合が環境で割れる。`tr -d '\r'` と
+# `sub("\r$"; "")` も CR の除去範囲が違う (全 CR ⇄ 行末 1 個)。片側だけ緩いと人間のコメントを
+# 掴んで PATCH 破壊し、片側だけ厳しいと次 cycle の lookup が自分の投稿を miss して記録コメントが
+# 増殖する。定義を 1 本にして「同値であること」を構造的に保証する
+# (同じ hooks/ の control-char-neutralize.sh が grep 実装差を理由に grep を避けているのと同根)。
+LAST_CONTENT_LINE_JQ='def last_content_line:
+  (. // "") | split("\n") | map(sub("\r$"; "")) | map(select(test("[^[:space:]]"))) | last // "";'
+
 # --- Argument parsing ---
 PR_NUMBER=""
 OWNER_REPO=""
@@ -342,9 +352,8 @@ if ! gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || [ -z "$gh
   existing_id=""
   lookup_degraded=1
 elif lookup_out=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
-     | jq -r --arg marker "$MARKER" --arg me "$gh_login" --arg sentinel "$RECORD_SENTINEL" '
-         def last_content_line:
-           (. // "") | split("\n") | map(sub("\r$"; "")) | map(select(test("[^[:space:]]"))) | last // "";
+     | jq -r --arg marker "$MARKER" --arg me "$gh_login" --arg sentinel "$RECORD_SENTINEL" \
+         "$LAST_CONTENT_LINE_JQ"'
          (add // [])
          | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] as $near
          | [$near[] | select((.body | last_content_line) == $sentinel)] as $hit
@@ -439,10 +448,12 @@ esac
 # だと、sentinel を本文途中にだけ持つ本文が検査を通過して投稿され、次 cycle の lookup が
 # その投稿を miss する (片側だけ強めた場合の増殖経路)。最終**非空**行と厳密一致を要求する
 # (末尾の空行は GitHub 側の整形でも増減しうるため許容する)。
-# read 側 jq の last_content_line と同一定義にする: CR を落とし、空白のみの行を除いた最終行。
-# read/write を同じ述語にしないと、片方だけが受理する本文が生まれて lookup が自分の投稿を
-# miss する (増殖) か、人間のコメントを掴む (破壊) のどちらかに倒れる。
-_body_last_line=$(tr -d '\r' < "$CONTENT_FILE" | grep -E '[^[:space:]]' | tail -n 1)
+# read 側 lookup と **同一の jq 定義** を評価する (LAST_CONTENT_LINE_JQ)。shell 側で
+# `grep -E '[^[:space:]]'` を使う実装は、空白クラスが locale / grep 実装に依存し、また
+# `tr -d '\r'` の CR 除去範囲が jq の `sub("\r$"; "")` と違うため、read/write の受理集合が
+# 環境で割れる。jq は lookup / PATCH で既に hard dependency なので実装コストは増えない。
+# jq が失敗したら空文字 → 直後の等値検査で拒否となり、投稿を止める fail-safe 側に倒れる。
+_body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTENT_FILE" 2>/dev/null) || _body_last_line=""
 if [ "$_body_last_line" != "$RECORD_SENTINEL" ]; then
   echo "WARNING: 非実測記録の本文の最終非空行が機械専用 sentinel ではありません ($(printf '%s' "$CONTENT_FILE" | neutralize_ctrl))。投稿を中止します" >&2
   echo "  期待: 最終非空行が '$RECORD_SENTINEL' と厳密一致すること (SKILL.md ステップ 6.1.d step 1 の variant A / B は最終行に本行を置く)" >&2
