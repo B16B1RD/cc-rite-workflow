@@ -3,6 +3,7 @@
 * **Create**: [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) — raw/reviews/20260728T160636Z-pr-2043.md ほか 1 件を新規ページ化（部分列挙と強度 qualifier 脱落の 2 形 / 方針との自己矛盾 / 件数 + ポインタへの寄せ）
 * **Create**: [「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む](pages/heuristics/load-bearing-by-named-dependency-not-count.md) — raw/reviews/20260728T165431Z-pr-2043.md を新規ページ化（レビュアー間矛盾を SoT 照合で決着 / 件数アンカーとの適用場面の違い）
 * **Update**: [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) — raw/reviews/20260728T160636Z-pr-2043.md ほか 2 件を統合（実測必須ゲート下の docs PR は指摘が構造的に non-blocking へ寄りブレーカーが発火しない / ready→iterate の cycle counter fresh リセット）
+* **lint:warning** — contradictions=0, stale=21, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-07-28
 
