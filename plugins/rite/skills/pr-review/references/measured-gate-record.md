@@ -93,13 +93,13 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 `hooks/review-nonblocking-record.sh` は本節を rationale の実体として参照する（helper 側は契約の宣言のみを持つ）。
 
-**lookup は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」∧「本文が機械専用 sentinel `<!-- rite:nbr:v1 -->` を含む」の連言**で行う。
+**lookup は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」∧「**最終非空行が**機械専用 sentinel `<!-- rite:nbr:v1 -->` **と等しい**」の連言**で行う。write 側の本文検査も同じ「最終非空行の等値」で、read/write は同一述語（CR を落とし、空白のみの行を除いた最終行）。
 
 - **author 条件が必須な理由**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで `last` がそれを掴み、PATCH 先が奪われる。書込権限があれば他人のコメントを丸ごと上書き破壊し、権限不足なら 403 で `patch_failed` に落ちて以後の cycle も同じ id を掴み続け、記録が恒久的に失われる。
 - **`contains($MARKER)` を使わない理由**: 人間可視の marker 文字列を本文全体で探すと、marker を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
 - **機械専用 sentinel が必須な理由**: author + `startswith` の 2 条件でも、**同一 author が書いた、引用接頭辞を持たない、marker 前方一致の人間コメント**は除外できない。例えば運用者が記録を追跡するために「## 📜 rite 非実測指摘の記録 の対応状況」という見出しでコメントを書くと、次 cycle の 6.1.d がその本文を記録コメントで丸ごと上書きする。「引用返信は先頭に `> ` が付くため構造的に除外される」は GitHub の **Quote reply 経路しか覆っていない**。
-- **sentinel は位置まで固定する（末尾 anchor）**: `<!-- rite:nbr:v1 -->` は HTML コメントなので rendered view には現れないが、**raw markdown の copy-paste では同伴する**（Edit view / `gh api` / `gh pr view --comments` 経由）。したがって「人間が書き写す経路が存在しない」とは言えず、位置非依存の `contains` では、人間が記録の raw を一部貼り込んだメモを拾ってしまい上記の破壊が残る。**末尾空白を除いた本文が sentinel で終わること**を条件にすれば、本文中に引用として現れた sentinel は構造的に除外される。write 側テンプレート（variant A / B）が最終行に置く契約なので read/write は対称。
-- **述語変更は migration 問題を伴う**: 条件を 1 つ足した瞬間、その条件を持たない既存レコードは検出されなくなる。lookup で「author ∧ marker 前方一致は満たすが sentinel 末尾一致に落ちた件数」を数え、0 件でなければ WARNING + `[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1` を emit する。これを silent にすると、sentinel 導入前に投稿された記録コメントが孤児として残ったことを観測する手段が無くなる（本 helper が他の全 degraded 経路で WARNING を出す規律から外れる）。
+- **sentinel は位置まで固定する（最終非空行の等値）**: `<!-- rite:nbr:v1 -->` は HTML コメントなので rendered view には現れないが、**raw markdown の copy-paste では同伴する**（Edit view / `gh api` / `gh pr view --comments` 経由）。したがって「人間が書き写す経路が存在しない」とは言えず、位置非依存の `contains` では、人間が記録の raw を一部貼り込んだメモを拾ってしまい上記の破壊が残る。**最終非空行が sentinel と等しいこと**を条件にすれば、本文中に引用として現れた sentinel も、末尾に `> ` 付きで引用された sentinel も構造的に除外される（本文全体への `endswith` は行頭の `> ` を吸収するため不十分）。write 側の本文検査も**完全に同じ述語**（CR を落とし、空白のみの行を除いた最終行の等値）にして read == write を保つ — 片側だけ緩いと人間のコメントを掴んで破壊し、片側だけ厳しいと次 cycle の lookup が自分の投稿を miss して増殖する。
+- **述語変更は migration 問題を伴う**: 条件を 1 つ足した瞬間、その条件を持たない既存レコードは検出されなくなる。lookup で「author ∧ marker 前方一致は満たすが最終非空行 sentinel に落ちた件数」を数え、0 件でなければ WARNING + `[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1` を emit する。あわせて sentinel を持つ自分の記録コメントが 2 件以上（過去の degraded 縮退が生んだ重複）なら `[CONTEXT] NONBLOCKING_DUPLICATE_RECORD=1` を emit する — 原因も復旧手順も違うため合算せず別 marker にする。これを silent にすると、sentinel 導入前に投稿された記録コメントが孤児として残ったことを観測する手段が無くなる（本 helper が他の全 degraded 経路で WARNING を出す規律から外れる）。
 - **前方一致でマッチ能力が損なわれない理由**: write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置き、末尾に sentinel を置く」を契約として守るため。
 
 **投稿前に本文を 4 段で検査する**（非空 → 1 行目が marker で始まる → **最終非空行が**機械専用 sentinel → `📎 non_blocking_count:` 行が `--count` と一致する）。最初の 3 段の契約違反はいずれも lookup の 3 条件を満たさないコメントを投稿し、以降の lookup を恒久的に miss させる（update-in-place の永久破綻 = 記録コメントが cycle ごとに増殖）。空 body だけを塞ぐと、本文生成が失敗した非空ケース（例: エラーメッセージだけが書き込まれた本文）が素通りする。診断の分離のため 4 段は別 reason（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`）にする。
