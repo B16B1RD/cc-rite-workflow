@@ -95,6 +95,11 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 ```bash
 # (0) 診断スニペット用 helper を読み込む。SoT は control-char-neutralize.sh の header
 # （`head -N ... | neutralize_ctrl --keep-newline | sed ... >&2` が全 emission site の canonical idiom）。
+# capture 側の helper 呼び出しには `LC_ALL=C` を付ける（本ブロック / ステップ 1 / ステップ 6 共有前段の
+# 4 サイト共通）。neutralize_ctrl は 0x80-0x9f を**バイト単位**で `?` に潰すため、mktemp / mv / flock 等
+# 外部コマンドがロケール依存の多バイト診断を返すと原因語ごと判読不能になる。flow-state.sh が rc だけを
+# 返し外部コマンドの stderr が唯一の原因行になる経路（`_atomic_write` の mktemp / mv 失敗）では、
+# capture を導入した目的そのもの——停止通知が原因を推測で埋めないこと——が失われる。
 # 未定義のまま pipe すると診断本文ごと消えるため不在時は素通しへ縮退させるが、**縮退は必ず
 # WARNING で告知する**（無言で縮退させると、この helper を通す目的である「制御文字の素通し」が
 # 無通知で復活し、本ブロックが reset_out の stderr を捨てずに capture している理由と矛盾する）。
@@ -142,7 +147,7 @@ if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
   # tempfile ではなく `2>&1` capture を使うのは、tempfile 方式では mktemp 自体が失敗したときに
   # 診断の退避先を失って結局捨てることになるため（helper は成功時 stdout に何も出さないので
   # stdout の混入は無害）。
-  if reset_out=$(bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
+  if reset_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
     --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 2>&1); then
     reset_status=ok
     # reset 成功 = 起動時の stale counter は消えた。ステップ 1 は即 fire しないので述語を落とし、
@@ -230,7 +235,7 @@ if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   # 次回ループ頭で必ず再発火する — 縮退が「停止側」に倒れる。
   # set の成否は HANDOFF_CLEAR marker に載せる（counter reset の成否は別軸で、ステップ 6 の
   # 共有前段が FIRE_RESET として emit する）。stderr は捨てずに変数へ受けて表示する。
-  if fire_out=$(bash {plugin_root}/hooks/flow-state.sh set \
+  if fire_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
     --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
     --next "サーキットブレーカー発火 (cycle 上限 $max_cycles 到達)" 2>&1); then
     handoff_clear=ok
@@ -252,7 +257,7 @@ else
   # marker の counter は常に実効（永続）counter と一致させる）。前進させると、永続 counter は
   # 据え置きなのに marker だけが毎 cycle 進み、観測者は counter 停滞と marker ずれを切り分け
   # られなくなる。
-  if inc_out=$(bash {plugin_root}/hooks/flow-state.sh set \
+  if inc_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
     --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
     --next "review 実行中 (cycle $new_cc/$max_cycles)" --cycle-count "$new_cc" 2>&1); then
     inc_status=ok
@@ -415,7 +420,7 @@ fi
 # 成否は FIRE_RESET marker に載せる。失敗すると counter が上限のまま残り再実行が即再発火する
 # （= 停止通知が約束する「再実行すればもう N cycle 回る」が偽になる）ため、ステップ 6.2 が
 # これを読んで注意行 (b) を出し分ける。
-if cb_reset_out=$(bash {plugin_root}/hooks/flow-state.sh set \
+if cb_reset_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
   --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
   --next "サーキットブレーカー発火 (cycle 上限到達・counter reset 済)" --cycle-count 0 2>&1); then
   fire_reset=ok
@@ -484,7 +489,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 <!-- [iterate:max-cycles-stopped] -->
 ```
 
-ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の照合は `;` 区切りの `KEY=VALUE` 単位で完全一致とする（値側は `failed` の部分一致が `failed-refire` / `failed-stale` の両方に当たり、キー側は `RESET` が `FIRE_RESET` の部分文字列になるため、どちらも部分一致で照合してはならない）。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` はリテラル置換する（`{session_id}` はステップ 6 共有前段の `SESSION_ID=` marker の値）。
+ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の照合は `;` 区切りの `KEY=VALUE` 単位で完全一致とする（値側は `failed` の部分一致が `failed-refire` / `failed-stale` の両方に当たり、キー側は `RESET` が `FIRE_RESET` の部分文字列になるため、どちらも部分一致で照合してはならない）。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` はリテラル置換する（`{session_id}` はステップ 6 共有前段の `SESSION_ID=` marker の値。**marker の値が空のときは (b) ではなく (b') を出す** — 空値を置換したコマンドは `--session --phase` となり `--phase` が session 値として食われて `ERROR: unknown option: review` で即失敗し、人間に渡る唯一の復旧手順が壊れるため）。
 
 **(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
 
@@ -494,11 +499,19 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 `REFIRE=0`（起動時点の counter が上限未満）では review が実際に回ってから到達しているため**追加しない**。`RESET` の値（`failed-refire` / `failed-stale` / `ok` / `none`）は本条件に使わない — 発火時の phase は `review` / `fix` なので再実行はステップ 0.6 で resume 判定となり reset ブロックに入らず、即再発火する当の経路で `RESET=none` になるため。`RESET` は reset を試行した場合の結果を記録するもので、即再発火の判定には `REFIRE` を使う。
 
-**(b) `FIRE_RESET=failed`**（ステップ 6 共有前段の set に失敗し counter がリセットされなかった）:
+**(b) `FIRE_RESET=failed` かつ `SESSION_ID=` marker が非空**（ステップ 6 共有前段の set に失敗し counter がリセットされなかった）:
 
 ```
 - 注意: 発火時の cycle counter リセットに失敗しました。**このまま再実行しても counter が上限のまま即再発火します**。`bash {plugin_root}/hooks/flow-state.sh set --session {session_id} --phase review --next "cycle counter 手動リセット" --cycle-count 0` で手動リセットしてから再実行してください（このコマンドは `--handoff` を伴わないため handoff のクリアも兼ねます。`--session` は必須 — 省略すると端末実行時に別セッションの state を対象にして rc=0 のまま空振りします）
 ```
+
+**(b') `FIRE_RESET=failed` かつ `SESSION_ID=` marker が空**（session 解決自体に失敗している。`cmd_path` と `cmd_set` は同じ `_resolve_session_id` を共有するため、この状態は `FIRE_RESET=failed` と**同時に成立する** — 発火という最後の安全網が二重に劣化した局面にあたる）。(b) の**代わりに**次を出す:
+
+```
+- 注意: 発火時の cycle counter リセットに失敗し、session_id も解決できませんでした。**このまま再実行しても counter が上限のまま即再発火します**。`.rite/sessions/` 配下から当該セッションの `<UUID>.flow-state`（`pr_number` が {pr_number} のもの）を特定し、その `<UUID>` を補って `bash {plugin_root}/hooks/flow-state.sh set --session <UUID> --phase review --next "cycle counter 手動リセット" --cycle-count 0` を実行してから再実行してください（`--session` を空のまま実行すると次の `--phase` が session 値として食われ `ERROR: unknown option: review` で失敗します）
+```
+
+(b) と (b') は排他で、どちらか一方だけを出す。以降で「(b) を観測したとき」と書いた箇所（下記の差し替え規則、および (c) が「上記の手動リセット」で前方参照する対象）は、(b') を観測した場合も同様に適用する。
 
 handoff 迂回のリスクは (b) には含めない。**counter reset の失敗と handoff クリアの失敗は独立した別 set の成否**であり、しかもステップ 6 共有前段の set は `--handoff` を伴わないため handoff を default-clear する（`flow-state.sh` の `cmd_set` は `jq` で state を再構築し、`--handoff` 未指定ならキー自体を書かない）。したがって `HANDOFF_CLEAR=ok` かつ `FIRE_RESET=failed` のとき handoff は既に消えており、(b) に迂回リスクを書くと存在しない障害へ人間を誘導する。迂回が実際に成立するのは**両方の set が失敗したとき**だけなので、独立した条件 (c) として出す:
 
