@@ -224,6 +224,8 @@ rite-workflow/
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
+│ │ ├── dollar-zero-check.sh # lint Phase 3.5 skill 本文の fenced block 内 位置パラメータ 0 参照 検出 (Skill loader が起動引数へ展開する)
+│ │ ├── pr-review-post-comment-read.sh / review-raw-json-extract.sh / fix-reason-coverage-check.sh # skill 本文から退避した awk プログラム (loader 展開の回避)
 │ │ ├── lib/ # 共有ライブラリ (git-remote.sh / git-status-filtered.sh / wiki-config.sh / worktree-git.sh)
 │ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # Hook-level test suite (shell-based)
@@ -1307,6 +1309,10 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
 | `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |
+| `dollar-zero-check.sh` | `/rite:lint` Phase 3.5 — detect positional-parameter-zero references inside fenced code blocks in `skills/**/*.md`. The Skill loader expands them to the invocation argument string, silently corrupting the embedded awk/shell program; real `hooks/**/*.sh` are immune and excluded | — |
+| `pr-review-post-comment-read.sh` | `/rite:pr-review` 引数解決 — read `pr_review.post_comment` from `rite-config.yml` with a single SIGPIPE-safe awk (moved out of the skill body so the loader cannot corrupt it) | — |
+| `review-raw-json-extract.sh` | `/rite:fix` レビュー結果取得 — extract the JSON payload of the last Raw JSON section from a `/rite:pr-review` PR comment body (same reason for living in a real file) | — |
+| `fix-reason-coverage-check.sh` | `/rite:fix` DoD 検証 (手動実行) — verify every emitted `WM_UPDATE_FAILED` reason appears as a row in fix.md's reason table; rc=1 lists the undocumented ones | — |
 | `wiki-branch-init.sh` | `/rite:wiki-init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | — |
 | `wiki-lint-skipped-refs.sh` | `/rite:wiki-lint` ステップ 6.0 — raw frontmatter (`ingest_status: skipped`) を走査して skipped_refs 集合を marker block + `log_read_ok` 4 値 enum で構築 (Issue #1520 で skip SoT が log.md から raw frontmatter へ移行。6.2 `wiki-lint-source-refs.sh` と対称) | — |
 | `wiki-lint-source-refs.sh` | `/rite:wiki-lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | — |

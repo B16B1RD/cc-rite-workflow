@@ -35,7 +35,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **説明的番号参照 (descriptive_number_ref)** | ページ本文に残った説明目的の Issue/PR/commit 番号参照（「PR #N で対応」「(refs #N)」等）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter `sources.ref` と TODO/FIXME は除外 | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
 
 矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターン (ディレクトリ構造 / ブランチ管理 / テンプレート展開) は [Wiki Patterns](../../references/wiki-patterns.md) を参照。
 
@@ -60,20 +60,24 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 
 ### 1.1 Wiki 設定の読み取りとブランチ戦略判定
 
-`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を取得する。ingest.md ステップ 1.1 と同型の YAML パーサ。`branch_strategy` 未知値は fail-fast (silent default を撤廃):
+`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を取得する。ingest.md ステップ 1.1 と同型の設定読み取り (`lib/wiki-config.sh` 委譲)。`branch_strategy` 未知値は fail-fast (silent default を撤廃):
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
+# パーサを書くと Skill loader が位置パラメータを起動引数へ展開し、行マッチが恒偽化して
+# 全キーが空になる (静的検出: hooks/scripts/dollar-zero-check.sh)。
+# helper 不在は下段の branch_strategy 未知値と同じく fail-fast。設定不明のまま opt-out
+# default で「Wiki 無効」と報告するのは silent default そのもの。
+if ! . {plugin_root}/hooks/scripts/lib/wiki-config.sh 2>/dev/null; then
+  echo "ERROR: {plugin_root}/hooks/scripts/lib/wiki-config.sh を読み込めません" >&2
+  echo "  Wiki 設定を判定できないため lint を中止します (無効扱いへは倒しません)" >&2
+  echo "[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1" >&2
+  exit 1
+fi
 
-extract_yaml_key() {
-  local key=$1
-  printf '%s\n' "$wiki_section" | awk -v k="$key" '$0 ~ "^[[:space:]]+" k ":" { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed "s/.*$key:[[:space:]]*//" | tr -d '[:space:]"'\'''
-}
-
-wiki_enabled=$(extract_yaml_key enabled | tr '[:upper:]' '[:lower:]')
-wiki_branch=$(extract_yaml_key branch_name)
-branch_strategy=$(extract_yaml_key branch_strategy)
+wiki_enabled=$(parse_wiki_scalar enabled | tr '[:upper:]' '[:lower:]')
+wiki_branch=$(parse_wiki_scalar branch_name)
+branch_strategy=$(parse_wiki_scalar branch_strategy)
 
 case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac  # opt-out default
 wiki_branch="${wiki_branch:-wiki}"
@@ -100,7 +104,7 @@ echo "branch_strategy=$branch_strategy"
 echo "wiki_branch=$wiki_branch"
 ```
 
-分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な `extract_yaml_key` helper 経由の lenient 2-arm 経路 (#483 opt-out default)。
+分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な `parse_wiki_scalar` 委譲の lenient 2-arm 経路 (#483 opt-out default)。`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1` (bash rc=1) のときは設定を判定できていないため無効扱いへ倒さず中止し、plugin のインストール状態確認 / `/rite:setup` 再実行を案内する。
 
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
@@ -1006,8 +1010,9 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 
 ### 9.3 exit code
 
-- **原則 exit 0**: 検出件数・事前チェック失敗・ブランチ読取失敗のいずれも非ブロッキング
+- **原則 exit 0**: 検出件数・事前チェック失敗 (下記 helper 解決失敗を除く)・ブランチ読取失敗のいずれも非ブロッキング
 - **例外 (`exit 1` fail-fast)**:
+  - `lib/wiki-config.sh` の source 失敗 (ステップ 1.1、`WIKI_CONFIG_HELPER_UNAVAILABLE`。設定を判定できないまま「Wiki 無効」へ倒す silent default の防止)
   - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7) で同型。設定ミスの silent 通過防止)
   - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 / 8.3)
   - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 の partial pollution gate、LLM substitute 忘れによる silent 誤分類防止。各 helper 内で検知)
@@ -1023,6 +1028,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | エラー | 対処 | ステップ |
 |--------|------|---------|
 | `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
+| `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | **exit 1 で fail-fast** (`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定不明のまま「Wiki 無効」へ倒す silent default の防止。plugin インストール状態を確認するか `/rite:setup` を再実行) | ステップ 1.1 |
 | GNU date 非互換環境 | 陳腐化検出 skip（exit 0 + WARNING + `stale_check_ok=skipped_no_gnu_date`） | ステップ 4 (helper 内) |
 | Wiki 未初期化 | `/rite:wiki-init` を案内 (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0) | ステップ 1.3 |
 | `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 / 8.3 |

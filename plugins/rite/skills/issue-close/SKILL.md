@@ -245,18 +245,23 @@ Status: Done
 **Step 1**: Wiki 設定を確認する（`wiki.enabled` opt-out default true / `wiki.auto_ingest` default false）:
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
-parse_wiki_key() {
-  printf '%s\n' "$wiki_section" | awk -v k="$1" '$0 ~ "^[[:space:]]+" k ":" { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed "s/.*$1:[[:space:]]*//" | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]'
-}
-wiki_enabled=$(parse_wiki_key enabled)
-auto_ingest=$(parse_wiki_key auto_ingest)
-case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; *) wiki_enabled="true" ;; esac
-case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+# YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
+# パーサを書くと Skill loader が位置パラメータを起動引数へ展開し、行マッチが恒偽化して
+# 全キーが空になる (静的検出: hooks/scripts/dollar-zero-check.sh)。
+wiki_enabled="true"; auto_ingest="false"; reason=""
+if . {plugin_root}/hooks/scripts/lib/wiki-config.sh 2>/dev/null; then
+  wiki_enabled=$(parse_wiki_scalar enabled | tr '[:upper:]' '[:lower:]')
+  auto_ingest=$(parse_wiki_scalar auto_ingest | tr '[:upper:]' '[:lower:]')
+  case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; *) wiki_enabled="true" ;; esac
+  case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+else
+  # helper 不在は実失敗。opt-out default に吸収させると「実失敗を正常スキップと誤報告する」
+  # 経路を再現するため、専用 reason で surface する。
+  echo "WARNING: {plugin_root}/hooks/scripts/lib/wiki-config.sh を読み込めません。Wiki 設定を判定できないため raw source 蓄積を skip します" >&2
+  reason="config_helper_unavailable"
+fi
 
-reason=""
-[ "$wiki_enabled" = "false" ] && reason="disabled"
+[ -z "$reason" ] && [ "$wiki_enabled" = "false" ] && reason="disabled"
 [ -z "$reason" ] && [ "$auto_ingest" = "false" ] && reason="auto_ingest_off"
 if [ -n "$reason" ]; then
   echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"

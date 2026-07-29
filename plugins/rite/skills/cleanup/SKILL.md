@@ -878,22 +878,28 @@ echo "[CONTEXT] PROJECTS_STATUS_UPDATED=$projects_status_updated"
 `wiki.enabled` (default true) かつ `wiki.auto_ingest` (default false) で、pending raw source があれば実行。
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
-parse_wiki_key() {
-  printf '%s\n' "$wiki_section" | awk -v k="$1" '$0 ~ "^[[:space:]]+" k ":" { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed "s/.*$1:[[:space:]]*//" | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]'
-}
-wiki_enabled=$(parse_wiki_key enabled)
-auto_ingest=$(parse_wiki_key auto_ingest)
-case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; *) wiki_enabled="true" ;; esac
-case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+# YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
+# パーサを書くと Skill loader が位置パラメータを起動引数へ展開し、行マッチが恒偽化して
+# 全キーが空になる (静的検出: hooks/scripts/dollar-zero-check.sh)。
+wiki_enabled="true"; auto_ingest="false"; wiki_branch="wiki"; reason=""
+if . {plugin_root}/hooks/scripts/lib/wiki-config.sh 2>/dev/null; then
+  wiki_enabled=$(parse_wiki_scalar enabled | tr '[:upper:]' '[:lower:]')
+  auto_ingest=$(parse_wiki_scalar auto_ingest | tr '[:upper:]' '[:lower:]')
+  wiki_branch=$(parse_wiki_scalar branch_name)
+  case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; *) wiki_enabled="true" ;; esac
+  case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
+  [ -z "$wiki_branch" ] && wiki_branch="wiki"
+else
+  # helper 不在は実失敗。設定を読めないまま opt-out default へ吸収させると、この Issue が
+  # 潰した「実失敗を正常スキップと誤報告する」経路を再現するため専用 reason で surface する。
+  echo "WARNING: {plugin_root}/hooks/scripts/lib/wiki-config.sh を読み込めません。Wiki 設定を判定できないため ingest を skip します" >&2
+  reason="config_helper_unavailable"
+fi
 
-reason=""
-[ "$wiki_enabled" = "false" ] && reason="disabled"
+[ -z "$reason" ] && [ "$wiki_enabled" = "false" ] && reason="disabled"
 [ -z "$reason" ] && [ "$auto_ingest" = "false" ] && reason="auto_ingest_off"
 
 pending_count=0
-wiki_branch=$(parse_wiki_key branch_name); [ -z "$wiki_branch" ] && wiki_branch="wiki"
 if [ -z "$reason" ]; then
   ref=""
   git rev-parse --verify "$wiki_branch" >/dev/null 2>&1 && ref="$wiki_branch"
@@ -1072,6 +1078,7 @@ Status: {projects_status_result}
   | `WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `x` | `ℹ️ Wiki ingest スキップ (wiki.auto_ingest=false)` |
   | `WIKI_INGEST_SKIPPED=1; reason=no_pending` | `x` | `ℹ️ Wiki ingest スキップ (pending raw source なし)` |
   | `WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest` | `x` | `ℹ️ Wiki ingest スキップ (別セッションが ingest 中。pending raw は次回回収)` |
+  | `WIKI_INGEST_SKIPPED=1; reason=config_helper_unavailable` | ` ` | `⚠️ Wiki ingest スキップ (hooks/scripts/lib/wiki-config.sh を読み込めず設定値を判定できませんでした)。pending raw source があれば /rite:wiki-ingest を手動実行してください。` |
   | `WIKI_INGEST_FAILED=1` | ` ` | `⚠️ Wiki ingest が失敗しました。raw source は wiki branch に保持されています。` |
 
   push 失敗警告 (`{wiki_branch}` はステップ 9 で解決済):

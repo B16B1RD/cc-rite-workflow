@@ -321,20 +321,20 @@ fi
 `wiki.enabled` パースを実装するファイルは以下の通り。本セクションが**唯一の同期一覧**。将来パース仕様を変更する PR は本一覧の全 site を漏れなく同期更新する義務がある:
 
 - `plugins/rite/skills/wiki-query/SKILL.md` ステップ 1.1 (probe 用簡易パーサ、本ファイル参照)
-- `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 1.1 (`extract_yaml_key` helper 経由、`wiki_enabled` のみ呼び出し側で lowercase 適用)
-- `plugins/rite/skills/wiki-lint/SKILL.md` ステップ 1.1 (ingest.md と対称な helper 経由、`wiki_enabled` のみ呼び出し側で lowercase 適用)
+- `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 1.1 (`lib/wiki-config.sh` の `parse_wiki_scalar` へ委譲、`wiki_enabled` のみ呼び出し側で lowercase 適用。helper 解決不可は fail-fast `WIKI_CONFIG_HELPER_UNAVAILABLE`)
+- `plugins/rite/skills/wiki-lint/SKILL.md` ステップ 1.1 (ingest.md と対称な `parse_wiki_scalar` 委譲、`wiki_enabled` のみ呼び出し側で lowercase 適用。helper 解決不可は fail-fast)
 - `plugins/rite/skills/wiki-init/SKILL.md` (init 時の状態判定)
 - `plugins/rite/skills/setup/SKILL.md` Phase 4.7 (`/rite:setup` 内 Wiki 自動初期化判定、独自 inline 実装 + typo 検出 WARNING 付き)
-- `plugins/rite/skills/cleanup/SKILL.md` ステップ 9 (`parse_wiki_key` helper 経由、auto_ingest 起動条件)
+- `plugins/rite/skills/cleanup/SKILL.md` ステップ 9 (`parse_wiki_scalar` 委譲、auto_ingest 起動条件。helper 解決不可は skip reason `config_helper_unavailable`)
 - `plugins/rite/skills/fix/SKILL.md` ステップ 0.5.W / 4.6.W (Wiki query / ingest 起動条件)
 - `plugins/rite/skills/pr-review/SKILL.md` ステップ 4.0.W / 6.5.W (Wiki query / ingest 起動条件)
 - `plugins/rite/skills/issue-implement/SKILL.md` (Wiki query 起動条件)
-- `plugins/rite/skills/issue-close/SKILL.md` (Wiki ingest 起動条件)
+- `plugins/rite/skills/issue-close/SKILL.md` Phase 4.4.W (`parse_wiki_scalar` 委譲、Wiki ingest 起動条件。helper 解決不可は skip reason `config_helper_unavailable`)
 - `plugins/rite/hooks/wiki-query-inject.sh` (auto_query 注入の前提判定、ローカル helper `_extract_yaml_value`)
-- `plugins/rite/hooks/wiki-ingest-trigger.sh` (raw source staging の事前ゲート、`wiki.enabled` のみ参照、独自 inline 実装 — wiki-config.sh とは別経路。self-comment「Three sites still re-implement YAML parsing inline」で 3 sites の 1 つとして自身を列挙)
+- `plugins/rite/hooks/wiki-ingest-trigger.sh` (raw source staging の事前ゲート、`wiki.enabled` のみ参照、独自 inline 実装 — wiki-config.sh とは別経路。self-comment の inline 実装リストで自身 + growth-check.sh + gitignore-health-check.sh の 3 site を列挙し、完全一覧は本セクションを SoT として指す)
 - `plugins/rite/hooks/scripts/wiki-growth-check.sh` (layer 3 growth stall 判定、独自 inline 実装 lenient)
 - `plugins/rite/hooks/scripts/gitignore-health-check.sh` (gitignore drift 判定、独自 inline 実装 lenient)
-- `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `parse_wiki_scalar`、lenient — callers: wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh が `source` 経由で再利用)
+- `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `parse_wiki_scalar`、lenient — callers: wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh の各 script、および skills 側の wiki-ingest / wiki-lint / cleanup / issue-close が `source` 経由で再利用。skills が inline パーサを持てないのは Skill loader が本文の位置パラメータを起動引数へ展開するため — 静的検出は `hooks/scripts/dollar-zero-check.sh`)
 
 **設計差異**:
 - **lenient 経路**: ingest.md / lint.md / query.md / inject.sh / wiki-config.sh / 各 caller (cleanup.md / fix.md / pr-review.md / implement.md / close.md / setup.md) と独立 inline 実装 (growth-check.sh / gitignore-health-check.sh) は **lenient** — `false`/`no`/`0` のみ reject、それ以外 (`true`/`yes`/`1` も不明値も空文字も) は `true` として opt-out default 化する。ingest.md / lint.md は `case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac` の 2-arm 形式
