@@ -72,12 +72,21 @@ for skill in wiki-ingest wiki-lint; do
     fail "$skill lost the WIKI_CONFIG_HELPER_UNAVAILABLE sentinel"
   fi
   # The sentinel without the exit would leave the skill running on unread config.
-  if awk '/WIKI_CONFIG_HELPER_UNAVAILABLE=1/ { found=NR }
-          found && NR > found && NR <= found + 3 && /^\s*exit 1/ { hit=1 }
-          END { exit hit ? 0 : 1 }' "$body"; then
-    pass "$skill exits 1 right after the sentinel"
+  # Scoped to the source-failure block rather than a fixed line window: a window
+  # ties the assertion to how many comment lines sit between the two statements,
+  # and would break on an edit that changes nothing about the contract. `\s` is
+  # avoided deliberately — it is a GNU awk extension that mawk does not honour
+  # (verified against mawk 1.3.4), and this file runs wherever the suite runs.
+  if awk '
+      /^if ! \. .*wiki-config\.sh/ { in_block = 1; sentinel = 0; next }
+      in_block && /WIKI_CONFIG_HELPER_UNAVAILABLE=1/ { sentinel = 1 }
+      in_block && sentinel && /^[[:space:]]*exit 1/ { hit = 1 }
+      in_block && /^fi[[:space:]]*$/ { in_block = 0 }
+      END { exit hit ? 0 : 1 }
+    ' "$body"; then
+    pass "$skill exits 1 inside the helper-source failure block"
   else
-    fail "$skill emits the sentinel but does not exit 1 near it"
+    fail "$skill emits the sentinel but does not exit 1 in the same block"
   fi
 done
 
