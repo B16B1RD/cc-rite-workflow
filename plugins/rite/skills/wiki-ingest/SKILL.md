@@ -48,17 +48,21 @@ Raw Source の wiki branch 着地は `wiki-ingest-commit.sh` が `review` / `fix
 `rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を**単一の bash ブロック**で取得する (本ブロックはプローブ用。各失敗を `|| fallback=""` で個別処理するため `set -euo pipefail` は意図的に省略する。strict mode はステップ 5.1 / 5.2 で明示宣言する):
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
+# パーサを書くと Skill loader が位置パラメータを起動引数へ展開し、行マッチが恒偽化して
+# 全キーが空になる (静的検出: hooks/scripts/dollar-zero-check.sh)。
+# helper 不在は fail-fast: ingest は Wiki 操作そのものであり、設定不明のまま opt-out
+# default で「Wiki 無効」と報告するのは、この Issue が潰した誤報告パターンの再演になる。
+if ! . {plugin_root}/hooks/scripts/lib/wiki-config.sh 2>/dev/null; then
+  echo "ERROR: {plugin_root}/hooks/scripts/lib/wiki-config.sh を読み込めません" >&2
+  echo "  Wiki 設定を判定できないため ingest を中止します (無効扱いへは倒しません)" >&2
+  echo "[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1" >&2
+  exit 1
+fi
 
-extract_yaml_key() {
-  local key=$1
-  printf '%s\n' "$wiki_section" | awk -v k="$key" '$0 ~ "^[[:space:]]+" k ":" { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed "s/.*$key:[[:space:]]*//" | tr -d '[:space:]"'\'''
-}
-
-wiki_enabled=$(extract_yaml_key enabled | tr '[:upper:]' '[:lower:]')
-wiki_branch=$(extract_yaml_key branch_name)
-branch_strategy=$(extract_yaml_key branch_strategy)
+wiki_enabled=$(parse_wiki_scalar enabled | tr '[:upper:]' '[:lower:]')
+wiki_branch=$(parse_wiki_scalar branch_name)
+branch_strategy=$(parse_wiki_scalar branch_strategy)
 
 case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac  # opt-out default
 wiki_branch="${wiki_branch:-wiki}"
@@ -67,7 +71,14 @@ branch_strategy="${branch_strategy:-separate_branch}"
 echo "wiki_enabled=$wiki_enabled branch_strategy=$branch_strategy wiki_branch=$wiki_branch"
 ```
 
-分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは `extract_yaml_key` helper 経由でパースする lenient 2-arm 経路 (wiki-config.sh / inject.sh と同型の lenient ファミリ、opt-out default)。trigger.sh は意図的に strict 3-arm fail-fast で別経路 — 詳細は SoT を参照。
+分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは `lib/wiki-config.sh` の `parse_wiki_scalar` を直接呼ぶ lenient 2-arm 経路 (inject.sh と同型の lenient ファミリ、opt-out default)。trigger.sh は意図的に strict 3-arm fail-fast で別経路 — 詳細は SoT を参照。
+
+**`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1` (bash が rc=1 で終了) の場合**: 設定を判定できていないため無効扱いへ倒さず、そのまま中止してユーザーに案内する:
+
+```
+Wiki 設定を読み取れませんでした（hooks/scripts/lib/wiki-config.sh を解決できません）。
+plugin のインストール状態を確認するか /rite:setup を再実行してください。
+```
 
 **`wiki_enabled=false` の場合**: 早期 return:
 

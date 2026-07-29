@@ -196,7 +196,7 @@ if [ "$flag_post" = "true" ] && [ "$flag_no_post" = "true" ]; then
  exit 1
 fi
 
-# --- Step 3: rite-config.yml の pr_review.post_comment 読取 (C-2: SIGPIPE-safe 単一 awk) ---
+# --- Step 3: rite-config.yml の pr_review.post_comment 読取 (C-2: SIGPIPE-safe) ---
 # 多段 pipeline は禁止 (SIGPIPE rc=141 で config が silent false 化する)
 # rationale: references/design-rationale.md#argument-parsing-notes
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
@@ -207,25 +207,14 @@ if [ -z "$repo_root" ]; then
 elif [ ! -f "$repo_root/rite-config.yml" ]; then
  echo "WARNING: $repo_root/rite-config.yml が見つかりません。post_comment=false (default) で続行します" >&2
 else
- # 単一 awk で pr_review セクション内の post_comment 値を抽出する
- # (`[[:space:]]#` boundary は YAML 仕様: `#` が inline comment になるのは空白直後のみ)
+ # 抽出は helper (実ファイル) に委譲する。skill 本文の fenced bash に awk を書くと、
+ # Skill loader が位置パラメータを起動引数へ展開して行参照が壊れ、値が silent に空へ倒れる
+ # (静的検出: hooks/scripts/dollar-zero-check.sh)。単一 awk / SIGPIPE 禁止契約は helper 側で維持
  awk_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-awk-err-XXXXXX" 2>/dev/null) || awk_err=""
- if raw=$(awk '
- /^pr_review:/ { in_section=1; next }
- in_section && /^[a-zA-Z]/ { exit }
- in_section && /^[[:space:]]+post_comment[[:space:]]*:/ {
- line=$0
- sub(/[[:space:]]#.*/, "", line)
- sub(/.*post_comment[[:space:]]*:[[:space:]]*/, "", line)
- gsub(/[[:space:]]/, "", line)
- gsub(/"/, "", line)
- print tolower(line)
- exit
- }
- ' "$repo_root/rite-config.yml" 2>"${awk_err:-/dev/null}"); then
+ if raw=$(bash {plugin_root}/hooks/scripts/pr-review-post-comment-read.sh "$repo_root/rite-config.yml" 2>"${awk_err:-/dev/null}"); then
  config_post_comment="$raw"
  else
- echo "WARNING: rite-config.yml の awk による読取が失敗しました (IO/binary error)" >&2
+ echo "WARNING: rite-config.yml の post_comment 読取 helper が失敗しました (IO/binary error)" >&2
  [ -n "$awk_err" ] && [ -s "$awk_err" ] && head -3 "$awk_err" | sed 's/^/ /' >&2
  echo " default の false を使用します" >&2
  config_post_comment=""

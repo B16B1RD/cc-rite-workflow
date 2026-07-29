@@ -523,30 +523,17 @@ else
   pr_review_comment_body=""
 fi
 
-# Extract JSON from the Raw JSON section: `---` separator 後に出現する **最後** の
-# `### 📄 Raw JSON` のみを採用する (finding 列内の同名 literal の誤検出防止)。
+# Raw JSON section の抽出は helper (実ファイル) に委譲する。skill 本文の fenced bash に awk を
+# 書くと Skill loader が位置パラメータを起動引数へ展開して行バッファが壊れる
+# (静的検出: hooks/scripts/dollar-zero-check.sh)。どの section を採るかの規則は helper header 参照。
 # here-string `<<<` は printf | awk の SIGPIPE 回避 (bash-defensive-patterns.md Pattern 5)。
 # rationale: references/design-rationale.md#pr-comment-raw-json-extraction
-raw_json=$(awk '
-  /^---$/ { past_separator=1; next }
-  past_separator && /^### 📄 Raw JSON/ { last_section_start=NR; next }
-  past_separator { lines[NR]=$0 }
-  END {
-    if (last_section_start > 0) {
-      flag=0
-      for (i = last_section_start + 1; i <= NR; i++) {
-        if (lines[i] ~ /^```json$/) { flag=1; continue }
-        if (flag && lines[i] ~ /^```$/) { exit }
-        if (flag) print lines[i]
-      }
-    }
-  }
-' <<< "$pr_review_comment_body")
+raw_json=$(bash {plugin_root}/hooks/scripts/review-raw-json-extract.sh <<< "$pr_review_comment_body")
 awk_pr_comment_raw_json_rc=$?
-# awk exit code を明示検査 (空出力と「Raw JSON section なし」の区別を保つ)
+# exit code を明示検査 (空出力と「Raw JSON section なし」の区別を保つ)
 if [ "$awk_pr_comment_raw_json_rc" -ne 0 ]; then
-  echo "WARNING: PR コメントからの Raw JSON 抽出 awk が失敗 (rc=$awk_pr_comment_raw_json_rc)" >&2
-  echo "  原因候補: awk バイナリ異常 / OOM (lines[] 配列が大きすぎ) / SIGPIPE" >&2
+  echo "WARNING: PR コメントからの Raw JSON 抽出 helper が失敗 (rc=$awk_pr_comment_raw_json_rc)" >&2
+  echo "  原因候補: helper 不在 / awk バイナリ異常 / OOM (行バッファが大きすぎ) / SIGPIPE" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_raw_json_awk_failed; rc=$awk_pr_comment_raw_json_rc" >&2
   raw_json=""
 fi
@@ -3689,12 +3676,9 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 **完全性保証** — fix.md 内で `echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=..."` として emit されるすべての reason は、下記 reason 表に行として存在する (WM_UPDATE_FAILED reason ⊆ 表。表は他フラグの reason も併記する superset のため逆方向は保証しない)。DoD 検証スクリプト (手動実行、左差分が空で網羅性を確認。設計上の要点は [design-rationale.md#output-pattern-notes](references/design-rationale.md#output-pattern-notes) 参照):
 
 ```bash
-comm -23 \
-  <(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' plugins/rite/skills/fix/SKILL.md \
-    | sed 's/.*reason=//' | sort -u) \
-  <(awk '/^\| reason \| 発生/{in_table=1; next} in_table && /^[^\|]/{in_table=0} in_table && /^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*[^`]*`/); print substr($0, RSTART+1, RLENGTH-2)}' plugins/rite/skills/fix/SKILL.md \
-    | sed 's/\$.*//' | sort -u)
-# → 空出力 (WM_UPDATE_FAILED reason はすべて表に存在)
+bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
+# → 空出力 + rc=0 (WM_UPDATE_FAILED reason はすべて表に存在)。
+#   欠落があれば当該 reason を 1 行ずつ出力して rc=1 を返す。
 ```
 
 | reason | 発生 Phase | 発生条件 |

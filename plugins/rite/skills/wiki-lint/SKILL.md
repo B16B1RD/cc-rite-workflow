@@ -60,20 +60,24 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 
 ### 1.1 Wiki 設定の読み取りとブランチ戦略判定
 
-`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を取得する。ingest.md ステップ 1.1 と同型の YAML パーサ。`branch_strategy` 未知値は fail-fast (silent default を撤廃):
+`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を取得する。ingest.md ステップ 1.1 と同型の設定読み取り (`lib/wiki-config.sh` 委譲)。`branch_strategy` 未知値は fail-fast (silent default を撤廃):
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
+# パーサを書くと Skill loader が位置パラメータを起動引数へ展開し、行マッチが恒偽化して
+# 全キーが空になる (静的検出: hooks/scripts/dollar-zero-check.sh)。
+# helper 不在は下段の branch_strategy 未知値と同じく fail-fast。設定不明のまま opt-out
+# default で「Wiki 無効」と報告するのは silent default そのもの。
+if ! . {plugin_root}/hooks/scripts/lib/wiki-config.sh 2>/dev/null; then
+  echo "ERROR: {plugin_root}/hooks/scripts/lib/wiki-config.sh を読み込めません" >&2
+  echo "  Wiki 設定を判定できないため lint を中止します (無効扱いへは倒しません)" >&2
+  echo "[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1" >&2
+  exit 1
+fi
 
-extract_yaml_key() {
-  local key=$1
-  printf '%s\n' "$wiki_section" | awk -v k="$key" '$0 ~ "^[[:space:]]+" k ":" { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed "s/.*$key:[[:space:]]*//" | tr -d '[:space:]"'\'''
-}
-
-wiki_enabled=$(extract_yaml_key enabled | tr '[:upper:]' '[:lower:]')
-wiki_branch=$(extract_yaml_key branch_name)
-branch_strategy=$(extract_yaml_key branch_strategy)
+wiki_enabled=$(parse_wiki_scalar enabled | tr '[:upper:]' '[:lower:]')
+wiki_branch=$(parse_wiki_scalar branch_name)
+branch_strategy=$(parse_wiki_scalar branch_strategy)
 
 case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac  # opt-out default
 wiki_branch="${wiki_branch:-wiki}"
@@ -100,7 +104,7 @@ echo "branch_strategy=$branch_strategy"
 echo "wiki_branch=$wiki_branch"
 ```
 
-分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な `extract_yaml_key` helper 経由の lenient 2-arm 経路 (#483 opt-out default)。
+分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な `parse_wiki_scalar` 委譲の lenient 2-arm 経路 (#483 opt-out default)。`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1` (bash rc=1) のときは設定を判定できていないため無効扱いへ倒さず中止し、plugin のインストール状態確認 / `/rite:setup` 再実行を案内する。
 
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
