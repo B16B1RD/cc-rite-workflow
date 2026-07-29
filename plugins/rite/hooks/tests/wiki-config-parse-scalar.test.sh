@@ -39,7 +39,15 @@ if ! type parse_wiki_scalar >/dev/null 2>&1; then
   exit 1
 fi
 
-SANDBOX="$(make_plain_sandbox)"
+# The helper's own hard-fail is `exit 1`, which inside `$( )` ends the subshell
+# and nothing else — so a failed mktemp leaves SANDBOX empty here. `cd ""` is a
+# no-op that returns 0, so the guard on the cd below would not fire either, and
+# every fixture write plus the `rm -f rite-config.yml` further down would land in
+# the caller's working directory — the repository root under run-tests.sh, where
+# rite-config.yml is tracked. The suite would still report PASS. Check the value
+# at the point it is produced.
+SANDBOX="$(make_plain_sandbox)" || { echo "ERROR: make_plain_sandbox failed, aborting" >&2; exit 1; }
+[ -n "$SANDBOX" ] || { echo "ERROR: make_plain_sandbox returned an empty path, aborting" >&2; exit 1; }
 ORIG_PWD="$PWD"
 cleanup() {
   cd "$ORIG_PWD" 2>/dev/null || true
@@ -50,7 +58,7 @@ trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 129' HUP
 
-cd "$SANDBOX" || { echo "ERROR: cannot cd to sandbox" >&2; exit 1; }
+cd "${SANDBOX:?sandbox path is empty}" || { echo "ERROR: cannot cd to sandbox" >&2; exit 1; }
 
 # Writes a rite-config.yml whose `wiki:` section holds the given lines.
 write_wiki_config() {

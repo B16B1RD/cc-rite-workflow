@@ -206,6 +206,30 @@ rm -f "$SANDBOX/plugins/rite/skills/demo/ng-fenced.md" \
       "$SANDBOX/plugins/rite/skills/demo/exclusion-probe.md"
 assert "--all leaves the fenced .sh copy unscanned (exit 0)" "0" "$(run --quiet --all)"
 
+# --- awk failure: the third route to rc=2 -------------------------------------
+# The script's header justifies moving its own unbalanced-fence sentinel to
+# exit 3 by saying it keeps the awk-failure branch from being dead code. Without
+# a case that reaches that branch, the justification is unverified — and
+# deleting its SKIPPED increment makes an unreadable file report rc=0, the very
+# "did not look, reported clean" outcome this checker exists to prevent.
+if [ "$(id -u)" -eq 0 ]; then
+  skip "unreadable file exits 2 (running as root: chmod 000 does not deny access)"
+else
+  printf '```bash\necho ok\n```\n' > "$SANDBOX/plugins/rite/skills/demo/unreadable.md"
+  chmod 000 "$SANDBOX/plugins/rite/skills/demo/unreadable.md"
+  assert "unreadable file exits 2 (awk failure route)" "2" \
+    "$(run --quiet --target plugins/rite/skills/demo/unreadable.md)"
+  unreadable_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
+    --target plugins/rite/skills/demo/unreadable.md 2>&1 >/dev/null || true)"
+  if printf '%s' "$unreadable_err" | grep -qF 'awk failed on'; then
+    pass "awk failure is reported distinctly from the fence sentinel"
+  else
+    fail "awk failure WARNING missing — got: $unreadable_err"
+  fi
+  chmod 644 "$SANDBOX/plugins/rite/skills/demo/unreadable.md"
+  rm -f "$SANDBOX/plugins/rite/skills/demo/unreadable.md"
+fi
+
 # --- Missing target is reported, not silently passed --------------------------
 assert "missing --target exits 2 (per the documented contract)" "2" \
   "$(run --quiet --target plugins/rite/skills/demo/does-not-exist.md)"

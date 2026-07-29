@@ -26,9 +26,12 @@
 #   fix-reason-coverage-check.sh [--repo-root DIR] [--target FILE]
 #
 # Output: reasons that are emitted but absent from the table, one per line.
-#         Empty output means full coverage.
+#         Empty output means full coverage — but only when the exit code is 0.
 # Exit codes: 0 = every emitted reason is documented, 1 = one or more missing,
-#             2 = invocation error.
+#             2 = invocation error (bad args, missing file), or the emit side
+#                 matched nothing at all, meaning the check verified nothing.
+#                 rc=2 also prints nothing on stdout, so an empty output alone
+#                 must not be read as a pass — check the code.
 
 set -uo pipefail
 
@@ -48,7 +51,9 @@ Options:
 Exit codes:
   0  Every emitted WM_UPDATE_FAILED reason appears in the reason table
   1  One or more emitted reasons are missing from the table (listed on stdout)
-  2  Invocation error (bad args, missing file)
+  2  Invocation error (bad args, missing file), or the emit side matched nothing
+     — the check could not verify anything. stdout is empty in this case too, so
+     do not read an empty output as a pass without checking the exit code.
 EOF
 }
 

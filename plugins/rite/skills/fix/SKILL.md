@@ -3681,6 +3681,9 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 # → 空出力 + rc=0 (WM_UPDATE_FAILED reason はすべて表に存在)。
 #   欠落があれば当該 reason を 1 行ずつ出力して rc=1 を返す。
+#   rc=2 は emit を 1 件も抽出できなかった invocation error (emit 記法 drift の疑い)。
+#   この場合も stdout は空になるため、空出力だけを見て pass と読まないこと —
+#   網羅性は検証できていない。stderr の ERROR 行を確認する。
 ```
 
 | reason | 発生 Phase | 発生条件 |

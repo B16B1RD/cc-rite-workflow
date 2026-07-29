@@ -42,6 +42,11 @@
 #   reproduce, inside the guard, the exact defect class the guard exists to
 #   prevent.
 #
+#   When findings and unscannable files occur in the same run, the exit code is
+#   1 (findings win) and the unscannable count is still reported on stderr. rc=2
+#   would relabel a normal detection run as an invocation failure in the lint
+#   status mapping, and rc=1 already routes the output to the same appendix.
+#
 # Not detected (by construction)
 # ------------------------------
 #   - References in prose outside any fence — mentioning the parameter in an
@@ -101,7 +106,8 @@ Exit codes:
   1  Pattern detected
   2  Invocation error (bad args), or one or more files could not be scanned
      (missing --target path, unbalanced fences, awk failure) — the result is
-     not a clean bill, so it must not be reported as success
+     not a clean bill, so it must not be reported as success. When findings are
+     also present the exit code is 1; the unscannable count is still printed.
 EOF
 }
 
@@ -238,7 +244,6 @@ check_file() {
       SKIPPED=$((SKIPPED + 1))
       ;;
   esac
-  : > "$PART_FILE"
 }
 
 log "Scanning ${#TARGETS[@]} file(s)..."
@@ -254,12 +259,22 @@ else
 fi
 log "==> Total dollar-zero findings: ${total}"
 
+# Emitted before the findings check so the count survives a run that has both.
+# It is the only aggregate statement of how much was not looked at, and losing
+# it in the noisiest runs is exactly when it matters most.
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "ERROR: ${SKIPPED} file(s) could not be scanned — this run is not a clean bill" >&2
+  echo "  See the WARNING lines above for which files and why." >&2
+fi
+
+# Findings win the exit code when both are present. rc=1 maps to `warning` in
+# /rite:lint Phase 3.5 and rc=2 to `error`; returning 2 here would relabel a
+# normal detection run as an invocation failure. The unscannable files are still
+# reported above, and rc=1 already routes the output to the appendix.
 if [ "$total" -gt 0 ]; then
   exit 1
 fi
 if [ "$SKIPPED" -gt 0 ]; then
-  echo "ERROR: ${SKIPPED} file(s) could not be scanned — this run is not a clean bill" >&2
-  echo "  See the WARNING lines above for which files and why." >&2
   exit 2
 fi
 exit 0

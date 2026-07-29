@@ -72,10 +72,18 @@ assert "absent key yields empty output" "" \
 assert "absent key still exits 0" "0" \
   "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml" >/dev/null 2>&1; echo $?)"
 
-# The scan stops at the next top-level key, so a same-named key in another
-# section must not leak in.
+# A same-named key in another section must not leak in. Both orderings are
+# needed, and they exercise different code: with `other:` first, `in_section`
+# never becomes true and any implementation returns empty — that case alone
+# passes even with the section-exit guard deleted. Only the second ordering,
+# where the scan has already entered `pr_review:` and must stop at the next
+# top-level key, actually reaches the guard.
 printf 'other:\n  post_comment: true\npr_review:\n  x: 1\n' > "$SANDBOX/config.yml"
-assert "post_comment in a different section is not read" "" \
+assert "post_comment in an earlier section is not read" "" \
+  "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml")"
+
+printf 'pr_review:\n  x: 1\nother:\n  post_comment: true\n' > "$SANDBOX/config.yml"
+assert "post_comment in a later section is not read (section-exit guard)" "" \
   "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml")"
 
 assert "missing config file exits 2" "2" \
