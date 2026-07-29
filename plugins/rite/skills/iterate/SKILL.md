@@ -93,6 +93,14 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 `{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値をリテラル置換する:
 
 ```bash
+# (0) 診断スニペット用 helper を読み込む。SoT は control-char-neutralize.sh の header
+# （`head -N ... | neutralize_ctrl --keep-newline | sed ... >&2` が全 emission site の canonical idiom）。
+# 未定義のまま pipe すると "command not found" で診断ごと消えるため、不在時は素通しへ縮退させる。
+source {plugin_root}/hooks/control-char-neutralize.sh 2>/dev/null || true
+if ! command -v neutralize_ctrl >/dev/null 2>&1; then
+  neutralize_ctrl() { cat; }
+fi
+
 # (1) max_review_cycles を rite-config.yml から読取・検証（AC-4）。無効値（0 以下 / 非数値）は WARNING + 既定値 5
 raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
@@ -133,10 +141,12 @@ if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
   if reset_out=$(bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
     --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 2>&1); then
     reset_status=ok
-    # reset 成功 = 起動時の stale counter は消えた。ステップ 1 は即 fire しないので述語を落とす
+    # reset 成功 = 起動時の stale counter は消えた。ステップ 1 は即 fire しないので述語を落とし、
+    # marker に載せる counter も実効値（0）へ揃える
     # （cb_will_refire は reset 試行**前**の cur_cc で立つため、ここで再評価しないと
     #   「counter は 0 に戻ったのに REFIRE=1」という自己矛盾した marker が出る）。
     cb_will_refire=0
+    cur_cc=0
   else
     # 即再発火（cb_will_refire=1 = counter が上限以上のまま残る）と stale leak
     # （0 < cur_cc < max_cycles）を別値に分ける。ステップ 1 で即再発火するのは前者だけであり、
@@ -144,13 +154,18 @@ if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
     # 真の非収束を書き込み権限の問題へ誤誘導する。
     if [ "$cb_will_refire" = 1 ]; then reset_status=failed-refire; else reset_status=failed-stale; fi
     echo "WARNING: cycle counter reset に失敗（stale counter が残りブレーカー早期発火の恐れ）" >&2
+    # ここでは cur_cc を 0 に落とさない。永続 counter は元の値のまま残っているため、marker の
+    # ITERATE_CYCLE を 0 にすると `ITERATE_CYCLE=0; RESET=failed-refire; REFIRE=1` のように
+    # 「counter は 0 なのに review を回さず発火する」という自己矛盾した観測値になる（成功側で
+    # cb_will_refire を再評価しているのと同じ理由の鏡像）。本ブロック直後の散文が ITERATE_CYCLE を
+    # 「ステップ 1 の上限チェックに渡す値」と規定している以上、実効 counter と一致させる。
   fi
   # 診断の表示は rc に紐付けない。flow-state.sh は破損 state をデフォルト値でマージ書き込みする等、
   # **rc=0 のまま WARNING を出す経路**を持つため、rc!=0 のときだけ表示すると capture 導入前
   # （無リダイレクト）より観測性が落ちる。成功時の capture は空なので下の -n guard が
-  # ノイズを抑止する。
-  [ -n "$reset_out" ] && printf '%s\n' "$reset_out" | head -5 | sed 's/^/  /' >&2
-  cur_cc=0
+  # ノイズを抑止する。neutralize_ctrl は hooks/ の canonical 診断スニペット idiom（SoT:
+  # control-char-neutralize.sh header）。素の pipe だと helper stderr の制御文字が端末に素通しする。
+  [ -n "$reset_out" ] && printf '%s\n' "$reset_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init; RESET=$reset_status; REFIRE=$cb_will_refire"
 ```
@@ -180,6 +195,13 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 ループ頭で cycle_count を上限と比較する。**未到達なら** counter を +1 して `phase=review` に更新後 `/rite:pr-review` を invoke、**到達済みなら** サーキットブレーカー（ステップ 6）へ分岐する。`max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
 
 ```bash
+# 診断スニペット用 helper（ステップ 0.6 (0) と同型。Bash tool 呼び出し間でシェル状態は
+# 引き継がれないため、fire_out を表示する本ブロックでも独立に読み込む）。
+source {plugin_root}/hooks/control-char-neutralize.sh 2>/dev/null || true
+if ! command -v neutralize_ctrl >/dev/null 2>&1; then
+  neutralize_ctrl() { cat; }
+fi
+
 cc=$(bash {plugin_root}/hooks/flow-state.sh get --field cycle_count --default 0) || cc=0
 case "$cc" in ''|*[!0-9]*) cc=0 ;; esac
 raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
@@ -212,8 +234,8 @@ if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   fi
   # 診断の表示は rc に紐付けない（ステップ 0.6 の reset と同型）。flow-state.sh は rc=0 のまま
   # WARNING を出す経路を持つため、rc!=0 のときだけ表示するとブレーカー発火という最後の安全網の
-  # 経路で診断が消える。
-  [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | sed 's/^/  /' >&2
+  # 経路で診断が消える。neutralize_ctrl も同型（本ブロック冒頭で読み込み済み）。
+  [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles; FIRE_RESET=$fire_reset"
 else
   new_cc=$((cc + 1))
@@ -426,7 +448,14 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - 注意: 発火時の cycle counter リセットに失敗しました。**このまま再実行しても counter が上限のまま即再発火します**。`bash {plugin_root}/hooks/flow-state.sh set --phase review --next "cycle counter 手動リセット" --cycle-count 0` で手動リセットしてから再実行してください（同時に handoff のクリアも失敗しているため、Stop hook が `/rite:pr-review` を再注入してブレーカーを迂回する可能性もあります）
 ```
 
-この場合、下記「再開方法」の 1 行目が約束する「cycle counter がリセットされ、もう {max_review_cycles} cycle 回る」は**手動リセットを行うまで成立しない**。(a) と (b) は独立に発火しうるので、両方観測したら両方追加する。
+**(b) は注意行の追加だけでは足りない。** 上記テンプレートの「再開方法」1 行目が約束する「cycle counter がリセットされ、もう {max_review_cycles} cycle 回る」は手動リセットを行うまで偽であり、注意行と同一通知内に並べると矛盾する 2 つの再開手順を人間に提示することになる（注意行は「理由」行の直後に入るため両者は数行しか離れていない）。よって **(b) を観測したときは、テンプレートの当該 1 行を次の 1 行へ差し替えて出力する**（追加ではなく置換）:
+
+```
+- ループを再開する: 上記の手動リセットを実行してから /rite:iterate {pr_number} を再実行する
+  （リセット前に再実行すると即座に再発火する）。/rite:recover 経由の再開も同じ経路
+```
+
+(a) のみを観測した場合はこの差し替えを**行わない**（(a) では counter は fire 分岐で正しくリセットされており、元の 1 行が真）。(a) と (b) は独立に発火しうるので、両方観測したら注意行は両方追加し、差し替えは (b) の分だけ行う。
 
 ---
 
