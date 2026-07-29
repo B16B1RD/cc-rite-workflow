@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-28T21:30:00+09:00"
+updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T003541Z-pr-2013.md"
@@ -562,6 +562,14 @@ sources:
     ref: "raw/fixes/20260728T093135Z-pr-2038.md"
   - type: "fixes"
     ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T043110Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T035608Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T051956Z-pr-2044.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T034634Z-pr-2044.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified"]
 confidence: high
 ---
@@ -1885,8 +1893,27 @@ marker 照合規約を段階的に強化した PR で、本 anti-pattern が **�
 
 > **教訓**: (1) 非対称を解消する修正は、対称化の相手側も **同じコミットで** 直す。片側だけ直すと「直し忘れ」ではなく「意図的な非対称」として読まれ、次 cycle で矛盾として再指摘される。(2) 規約を新設したら、同一ファイル内の類似箇所すべてに適用したかを機械的に確認する。「1 段落で全ルールに掛ける」書き方は重複を避けられるが、段落の自己限定（「以下のルールで『行があるとき』と書いた箇所」）が fallback（「いずれの行も無いとき」）に届かない射程の穴を作りやすいため、肯定・否定の両方を明示的に含める。(3) 同じ規約を N 個の family に適用したら N 個すべてを pin する。
 
+## 変種: 同じ PR 内で「適用範囲が片側に留まる」が 4 形態で再発する（PR #2044、16 fix cycle）
+
+サーキットブレーカーの分岐を 1 つ廃止する PR で、本 anti-pattern が **同一 PR 内で 4 回、毎回違う顔で**再発した。伝播漏れの対象が cycle ごとに移り変わる点が特徴で、「対称位置」の定義自体が cycle ごとに広がっていく。
+
+| cycle | 漏れた対象 | 具体 |
+|---|---|---|
+| 1 | marker の再評価 | 「reset 成功時に述語を再評価しないと自己矛盾 marker が出る」と気づいて成功分岐を直したが、同じ理由が成立する**失敗分岐**（永続 counter が残っているのに表示値だけ 0 にする）を直していない |
+| 2 | invariant の転記 | 「marker に載せる counter は永続 counter と一致させる」を reset の成功・失敗の両分岐に入れたが、構造的に同型の **increment 分岐**には転記しなかった |
+| 3 | 条件記述の追随 | 条件を `RESET` から `REFIRE` へ移したのに、それを名指しする散文 2 箇所が旧語彙のまま |
+| 4 | helper の適用範囲 | 診断 helper をブロックへ読み込ませたが、適用したのは fire 分岐だけで、**毎 cycle 通る increment 分岐**は素通しのまま |
+
+> **教訓**: (1) 自己矛盾を理由に片方の分岐を直したら、**同じ理由が成立する反対分岐を必ず対で確認する**。修正が「気づいた側」で止まって鏡像へ伝播しないのが本型の中核。(2) invariant を分岐に足したら、同じ変数を同じ目的で書く他の分岐を grep して全部に適用する。(3) **「何かをブロックへ導入したら、そのブロック内の全分岐に適用したかを最後に確認する」を機械的な締めの手順にする** — 4 回目の再発を受けて本 PR が導出した対策。
+
+本 repo はこの型に parity test という名前まで付けているが、**markdown 埋め込み bash 側は sweep 対象外**だったため機械検出も効かなかった。規約の SoT を `hooks/` に置きながら同じ idiom を持つ `skills/` の埋め込み bash が射程外にある、という構造そのものが再発源になっている（`neutralize_ctrl` を欠く同型 idiom は develop 時点で `skills/**/*.md` に 63 site 存在）。
+
 ## ソース（追記分）
 
+- [PR #2044 fix results (cycle 2) — 失敗のクリアを記録より前に置く欠陥と increment 分岐への invariant 未転記](../../raw/fixes/20260729T043110Z-pr-2044.md)
+- [PR #2044 fix results — 同じ if の反対分岐を取り残す / canonical idiom を参照しない新設 capture](../../raw/fixes/20260729T035608Z-pr-2044.md)
+- [PR #2044 fix results (cycle 4) — helper の適用先が一部の分岐に留まる（本 PR で 4 回目の再発）](../../raw/fixes/20260729T051956Z-pr-2044.md)
+- [PR #2044 review results — marker 三つ組の自己矛盾（2 レビュアーが独立検出）](../../raw/reviews/20260729T034634Z-pr-2044.md)
 - [PR #2013 review cycle 1 — ドキュメント SoT テンプレートと実コードの乖離（3 レビュアーが独立収束）](../../raw/reviews/20260725T003541Z-pr-2013.md)
 - [PR #2013 fix results — バグを直したらそのバグを再生産するテンプレートも直す](../../raw/fixes/20260725T004542Z-pr-2013.md)
 - [PR #2022 fix results (cycle 11) — 片側だけ硬化して兄弟箇所へ転記しない欠陥が 3 cycle 連続](../../raw/fixes/20260726T062935Z-pr-2022.md)

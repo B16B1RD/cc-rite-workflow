@@ -2,7 +2,7 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-07-27T10:57:51+09:00"
+updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md"
@@ -35,6 +35,12 @@ sources:
     ref: "raw/reviews/20260727T001018Z-pr-2035.md"
   - type: "reviews"
     ref: "raw/reviews/20260727T014642Z-pr-2035.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T045143Z-pr-2044.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T094749Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T045549Z-pr-2044.md"
 tags: []
 confidence: high
 ---
@@ -210,3 +216,41 @@ PR #1974（sandbox 環境での worktree 削除失敗時の自動回収ギャッ
 - [PR #1969 cycle 4 fix (pass-message narrowing + gitignore 保証の self-contained 化、収束後半典型の surgical fix 2 件)](../../raw/fixes/20260722T064426Z-pr-1969.md)
 - [PR #1969 cycle 6/mergeable review (5-cycle shrinking 4→4→1→2→1→0 で 0 findings 到達、cycle 5 の brace group finding が正しく解消されたことを確認)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)
 - [PR #1974 cycle 4 review (5 reviewer 全員 0 findings、CRITICAL 1 → MEDIUM/HIGH 7 の 4-cycle 収束、boundary 推奨事項 6 件は Decision Log 記録のみ)](../../raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md)
+
+## 補強: 収束は「件数」ではなく「指摘が移った層」で読む (PR #2044)
+
+PR #2044 は blocking 件数が cycle 1→2→3 で 2→3→3 と**減らなかった**が、指摘の性質は毎回 1 段ずつ浅くなっていた。
+
+| cycle | 指摘の層 |
+|---|---|
+| 1 | marker の自己矛盾（実装の観測性） |
+| 2 | 安全網の実挙動退行（実装の正しさ） |
+| 3 | 散文の過大主張のみ（記述の精度、**コード指摘ゼロ**） |
+
+> **教訓**: 収束の兆候は「指摘件数」より **「指摘がコード層から散文層へ移ったか」**で読むほうが早い。件数は増えていても層が上がっていれば収束している。
+
+同じ PR の別レビュー系列では 3 cycle で blocking 7 → 0 へ収束し、cycle 2 の CRITICAL が「cycle 1 で直した箇所の数行下にある同型の欠陥（別記法のため grep で拾えなかった）」だった。**fix-introduced finding を attribution できると、収束していないのか掘り進んでいるのかを区別できる。**
+
+## 補強: レビュアーの自己撤回は正常な収束の一形態 (PR #2044)
+
+cycle 3 で 2 名のレビュアーが自分の前 cycle 指摘を**実測に基づき自ら撤回**した。error-handling reviewer は「`INC=failed` の帰結説明が実体とずれる」という cycle 2 の推奨を、書込不能環境での実測により「現行文面のほうが正確で、自分の言い換えの方が狭かった」と訂正。tech-writer も「3 経路と書くが実体 4 経路」を「第 4 の組は構造的に不能」と判明して撤回した。
+
+> **教訓**: レビュアーが自分の過去の指摘を実測で覆せることは、**指摘の量が質を上回り始める drift への自己修正機構**として機能する。re-review で同一 reviewer に前 cycle の指摘を明示的に渡すと、この撤回が起きやすい。
+
+## 補強: 実測必須ゲート下では severity と実測は直交する (PR #2044)
+
+実測必須ゲート（`Verification:` アンカーを持つ指摘のみ blocking）の運用が 3 系列・計 16 cycle で一貫して観測された。
+
+- **HIGH かつ non-blocking は正常な組み合わせ**。ゲートは severity ではなく実測の有無で判定するため、HIGH 相当の事実誤りでも非実測なら降格される。
+- ワークフロー定義 PR では「実行して観測できる欠陥」と「読解上の欠陥」が明確に分かれ、後者（retain 指示漏れ・コメント肥大・未解決の節参照）は構造的に non-blocking へ落ちる。
+- 散文 PR でも実測は成立する。Markdown 内の fenced bash を `$TMPDIR` に切り出し、helper を成否切替可能な stub に差し替えて全経路を実走させる手法が複数レビュアーで再現された。**「doc の指摘は実測できない」は多くの場合思い込みで、条件を状態として再現できるかを先に問うべき**（cycle 1 で non-blocking だった指摘が、`chmod a-w` で書き込み失敗を再現したことで cycle 2 に HIGH blocking へ昇格した実例がある）。
+- ただし stub は自分の理解のコピーなので、**API の default 挙動を主張の根拠にするときは stub ではなく実装を隔離環境で走らせる**。
+- レビュアーが「実測を捏造して blocking にすることはしない」と明記して non-blocking に置いた例もあり、これがゲートの意図どおりの動作。ゲートが無ければその 2 件でさらに 1 cycle 回っていた。
+
+なお **サーキットブレーカーの残 cycle は、修正の大きさを選ぶ制約条件として使える**。「直すべきか」だけでなく「今の残 cycle で検証しきれるか」で判断し、見送りは非実測記録コメントに残して追跡可能にする。
+
+## ソース（追記分）
+
+- [PR #2044 review results (cycle 3) — 収束は層で読む / cross-validation boost](../../raw/reviews/20260729T045143Z-pr-2044.md)
+- [PR #2044 review results (cycle 3, mergeable 到達) — レビュアーの自己撤回](../../raw/reviews/20260729T094749Z-pr-2044.md)
+- [PR #2044 fix results (cycle 3) — Convergence Signal](../../raw/fixes/20260729T045549Z-pr-2044.md)

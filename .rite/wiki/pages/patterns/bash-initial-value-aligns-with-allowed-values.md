@@ -2,10 +2,14 @@
 title: "bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す"
 domain: "patterns"
 created: "2026-04-25T11:40:00+00:00"
-updated: "2026-04-25T11:40:00+00:00"
+updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260425T081422Z-pr-659-cycle2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T070922Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T071243Z-pr-2044.md"
 tags: ["bash", "case-statement", "silent-fall-through", "defensive-programming", "fail-loud"]
 confidence: high
 ---
@@ -128,3 +132,30 @@ silent fall-through 系の bash defensive programming gap は、本 pattern と�
 ## ソース
 
 - [PR #659 cycle 2 review (initial value silent fall-through risk、HIGH 1 件)](../../raw/reviews/20260425T081422Z-pr-659-cycle2.md)
+
+## 補強: marker / placeholder で値を運ぶ経路も同じ設計を要る (PR #2044)
+
+同じ原理が、変数の初期値だけでなく **`[CONTEXT] KEY=value` marker やテンプレート placeholder で値を運ぶ経路**にも効く。
+
+### 空値は「未設定」と同義へ縮退する — sentinel に置き換える
+
+`RITE_STATE_ROOT={state_root}` のように env var へリテラル置換する場合、空文字は `[ -n "$VAR" ]` 判定で **「未設定」と完全に同義**へ縮退する。明示的に渡しているのに省略時と同じ空振りが無言で起きる。
+
+さらに悪いのは分岐で、空値でも別 helper が rc=0 を返すため、劣化を想定した分岐ではなく**健全前提の分岐へ mis-route** する。resolver の rc 検査では救えない（cwd 削除時にも rc=0 で空文字が返る）。
+
+> **対策**: 空値を sentinel（`unresolved` 等）へ置き換えて消費側で弾く。**値を marker で運ぶときは「空だったら」を必ず設計する。**
+
+### emit 側の空値 guard は消費側にも同じ想定を書く
+
+`[ -n "$x" ]` で空を想定している値を `[CONTEXT] KEY=$x` として emit し、消費側（人間向け復旧コマンドの placeholder 置換）に同じ想定が無いパターン。空値が置換されると `--session --phase` のようにオプションが次のフラグを値として食い rc=1 で即失敗する。
+
+しかも空になる根本原因（session 解決失敗）が、その復旧コマンドを提示する分岐の発火条件（state write 失敗）と**共通の関数に由来する**ため、「最後の安全網が劣化した局面でだけ復旧手順が壊れる」形になる。
+
+### リテラル置換される値は quote する
+
+`VAR={placeholder}` 形式は、既存の `VAR="$shell_var"`（assignment context では word splitting が抑止され quote は装飾的）と違い、**word splitting が実際に効く**。空白を含むチェックアウトパスで assignment prefix が途中で切れ rc=127 になる。「既存パターンに合わせた」は、変数展開とリテラル置換の差を無視した弁護。
+
+## ソース（追記分）
+
+- [PR #2044 review results (cycle 3) — 空値の mis-route とリテラル置換の quote](../../raw/reviews/20260729T070922Z-pr-2044.md)
+- [PR #2044 fix results (cycle 3) — 空値 sentinel 化](../../raw/fixes/20260729T071243Z-pr-2044.md)

@@ -2,7 +2,7 @@
 title: "prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する"
 domain: "anti-patterns"
 created: "2026-05-28T23:42:28Z"
-updated: "2026-06-04T08:51:09Z"
+updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260604T061732Z-pr-1267.md"
@@ -10,6 +10,12 @@ sources:
     ref: "raw/reviews/20260528T232433Z-pr-1177.md"
   - type: "fixes"
     ref: "raw/fixes/20260528T232834Z-pr-1177.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260728T234725Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260728T235426Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T004628Z-pr-2044.md"
 tags: ["bash", "case-statement", "extensibility", "hook"]
 confidence: high
 ---
@@ -51,3 +57,35 @@ PR #1267 review では error-handling / code-quality / security の 3 reviewer �
 - [PR #1267 review results (Issue #1245、0 findings の successful application: WIKICHAIN prefix 追加と同時に既知 prefix 明示列挙 + 未知 prefix fail-loud 化を実装、3 reviewer 独立検証 + TC-13 機械検証で 1 cycle mergeable)](../../raw/reviews/20260604T061732Z-pr-1267.md)
 - [PR #1177 review results](../../raw/reviews/20260528T232433Z-pr-1177.md)
 - [PR #1177 fix results](../../raw/fixes/20260528T232834Z-pr-1177.md)
+
+## 補強: enum の設計は「消費側の分岐数」と「相互非接頭辞」の 2 条件で決める (PR #2044)
+
+prefix 関係が `case` の catch-all を騙る問題は、**enum を設計する時点**で塞げる。PR #2044 は 2 つの条件を導出した。
+
+### (1) 値は消費側の分岐数と 1:1 に対応させる
+
+新設した `RESET` marker を「reset が失敗した」という**発生側の事実**で 1 値に定義したのが欠陥の根本だった。消費側（停止通知）は「即時再発火したか」で排他分岐する必要があり、1 値では両立できず、片方の状況で**事実と逆の説明**が出る（「review は 1 cycle も回っていません」という虚偽）。
+
+値を分割し、発生側ではなく**消費側の分岐**で値を切ったことで解消した。
+
+> **判断の型**: 新しい enum 値を足すときは「**これを読む側はいくつに分岐するか**」を先に数える。値が原因で切られているか結果で切られているかを確認する。
+
+### (2) 値集合は相互に非接頭辞に保つ
+
+分割の過程で `failed-refire` が `failed-refire-nodiag` の**厳密な接頭辞**になった。prose 照合（LLM の grep）が一致順で解決すると誤分岐する。
+
+「完全一致で照合せよ」という指示で守るのは弱い。**値の集合を相互に非接頭辞に設計する**か、そもそも値を増やさない。本 PR は最終的に値を減らすことで構造的に解消した。
+
+### 逆転を作らない
+
+条件の移管により、**消費者を失った marker が完全な定義表を持ち、実際に条件となった marker には定義が無い**という逆転が生じた。**記述の重みは依存関係と一致させる。** また enum を分割したら、その分割を読む側が今も存在するかを定期的に確認する（消費者を失った enum は CLAUDE.md の「デッドコードを残さない」に抵触する）。
+
+### 区別できないものは文面で認める
+
+設計上どうしても 1 値が複数の原因を含む場合（発火済みを永続させない設計では、marker だけでは「リセット失敗による再発火」と「最終 cycle 途中の中断からの正常な発火」を原理的に区別できない）、断定的に書くと必ずどちらかで虚偽になる。**設計上の限界は、通知の文面で正直に反映する。**
+
+## ソース（追記分）
+
+- [PR #2044 review results — enum 値の意味の過負荷（3 レビュアーが独立検出）](../../raw/reviews/20260728T234725Z-pr-2044.md)
+- [PR #2044 fix results — marker 値は消費側の分岐数と 1:1 に対応させる](../../raw/fixes/20260728T235426Z-pr-2044.md)
+- [PR #2044 fix results (cycle 3) — enum の値集合を相互に非接頭辞に保つ](../../raw/fixes/20260729T004628Z-pr-2044.md)

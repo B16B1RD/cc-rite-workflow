@@ -4,6 +4,19 @@
 * **Create**: [「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む](pages/heuristics/load-bearing-by-named-dependency-not-count.md) — raw/reviews/20260728T165431Z-pr-2043.md を新規ページ化（レビュアー間矛盾を SoT 照合で決着 / 件数アンカーとの適用場面の違い）
 * **Update**: [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) — raw/reviews/20260728T160636Z-pr-2043.md ほか 2 件を統合（実測必須ゲート下の docs PR は指摘が構造的に non-blocking へ寄りブレーカーが発火しない / ready→iterate の cycle counter fresh リセット）
 * **lint:warning** — contradictions=0, stale=21, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
+* **Create**: [終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない](pages/heuristics/terminal-state-recorded-not-boundary-compared.md) — PR #2044 (16 fix cycle) の raw source 30 件を統合（境界値一致は通過中も真になる / 基準値が可変なら符号化が成立しない / 覚える必要があるかを先に問う）
+* **Create**: [失敗状態のクリアは失敗の記録より後に置く](pages/patterns/clear-failure-state-after-recording-it.md) — PR #2044 (16 fix cycle) の raw source 30 件を統合（リセット導入が既存の自己修復性を外した / 縮退の向きで順序を選ぶ / A/B 対比で修正を証明する）
+* **Create**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — PR #2044 (16 fix cycle) の raw source 30 件を統合（session 軸・state root 軸・SoT helper 置換の 3 形態 / rc=0 は正しい対象に効いた意味ではない / 直交軸は pre-fill で畳む）
+* **Create**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — PR #2044 (16 fix cycle) の raw source 30 件を統合（削除時は新語彙 grep が効かない / 置換した条件式も掃く / {ROOT} を直して $root・<UUID> を残す記法またぎ）
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — PR #2044 の raw source を統合（同一 PR 内で 4 形態が再発: marker 再評価 / invariant 転記 / 条件記述の追随 / helper の適用範囲）
+* **Update**: [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](pages/anti-patterns/canonical-helper-bypass.md) — PR #2044 の raw source を統合（canonical パターンの失敗経路を写さない / SoT helper を「同等品」の標準コマンドへ置き換える）
+* **Update**: [「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する](pages/heuristics/reduce-sync-sites-before-syncing-them.md) — PR #2044 の raw source を統合（同じ箇所が N cycle 連続で壊れたら重複そのものを疑う / SoT 委譲チェーンの終端ノードは他から訂正されない）
+* **Update**: [累積対策 PR の 3 cycle 収束記録](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — PR #2044 の raw source を統合（収束は件数でなく指摘が移った層で読む / レビュアーの自己撤回は正常な収束 / severity と実測は直交）
+* **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — PR #2044 の raw source を統合（表示経路のフィルタで UTF-8 診断が判読不能化 / rc に紐付けた表示条件が rc=0 の診断を捨てる）
+* **Update**: [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) — PR #2044 の raw source を統合（窓を狭めたのに閉じたと書く / 同一 API の default を呼び出しごとに書き下さない / 部分的な留保は無留保より誤解を生む）
+* **Update**: [検出層の表記ゆれ対応は「列挙」ではなく「正規化」で吸収する](pages/patterns/normalize-instead-of-enumerate-in-detection-layer.md) — PR #2044 の raw source を統合（「失敗」と「未到達」は 2x2 になる / 直交する劣化軸はラベルを増やさず pre-fill で畳む）
+* **Update**: [bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す](pages/patterns/bash-initial-value-aligns-with-allowed-values.md) — PR #2044 の raw source を統合（空値は「未設定」と同義へ縮退し mis-route する / リテラル置換される値は quote する）
+* **Update**: [prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する](pages/anti-patterns/catch-all-case-arm-absorbs-future-prefix.md) — PR #2044 の raw source を統合（enum 値は消費側の分岐数と 1:1 / 値集合を相互に非接頭辞に保つ / 区別できないものは文面で認める）
 
 ## 2026-07-28
 

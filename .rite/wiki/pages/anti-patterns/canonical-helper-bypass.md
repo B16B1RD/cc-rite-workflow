@@ -2,12 +2,20 @@
 title: "Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する"
 domain: "anti-patterns"
 created: "2026-05-01T03:27:29Z"
-updated: "2026-05-16T12:30:00+09:00"
+updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260430T204843Z-pr-756.md"
   - type: "reviews"
     ref: "raw/reviews/20260516T032759Z-pr-989.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T004127Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T004628Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T035608Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T073316Z-pr-2044.md"
 tags: ["dry-violation", "helper-bypass", "doctrine-drift", "filter-symmetry", "stderr-passthrough", "test-helper-symmetry"]
 confidence: high
 ---
@@ -102,3 +110,27 @@ grep -nE "'\\^WARNING:|filter.*pass-through" plugins/rite/hooks/state-read.sh
 - [PR #756 cycle 1 review (3 reviewer 独立合意 HIGH cross-validation)](../../raw/reviews/20260430T204843Z-pr-756.md)
 - [PR #989 cycle 1 review (test helper bypass: TC-10 inline jq vs build_stop_payload helper、code-quality MEDIUM)](../../raw/reviews/20260516T030954Z-pr-989.md)
 - [PR #989 cycle 2 review (修正検証: build_stop_payload 経由化で sibling symmetry 復元、blocking 0 件)](../../raw/reviews/20260516T032759Z-pr-989.md)
+
+## 変種: canonical パターンを「参照した」が、参照先の失敗経路まで写していない (PR #2044)
+
+helper の呼び出しを bypass する形だけでなく、**canonical パターンを引用しながら参照先の分岐を落とす**形でも同じ損失が起きる。
+
+- 「canonical な stderr 退避パターンと同型」と称して tempfile 方式を写したが、参照先が持つ「mktemp 失敗時の `2>&1` フォールバック」を落とした。結果、mktemp が失敗すると**実在する診断を自分で捨てる**動作になった。
+- 新設した診断 capture 経路が、`control-char-neutralize.sh` の header が SoT として宣言している `head -N | neutralize_ctrl --keep-newline | sed ... >&2` を参照せず素の pipe で書かれ、制御文字（ESC / C1）が端末へ素通しする経路を新設した。
+
+> **教訓**: canonical パターンを参照するときは**参照先の失敗経路まで読む**。「正常系が同じ形」であることは同型の根拠にならない。診断出力の経路を新設するときは、同種の既存 emission site が従っている canonical idiom を先に grep する。
+
+## 変種: 人間に渡す手順で SoT helper を「同等品」に置き換える (PR #2044)
+
+復旧手順の中で `state-path-resolve.sh` の代わりに `git rev-parse --show-toplevel` を書いた。linked worktree では前者が main checkout へ unify するのに対し後者は worktree root を返すため、復旧コマンドが rc=0・無出力で別ディレクトリに stray な state を作り、直すべき対象は手つかずで残る。
+
+> **教訓**: 「同じ値が得られそうな標準コマンド」は worktree・symlink・sandbox のいずれかで必ず分岐する。SoT helper を呼び、さらに**対象ファイルの実在を gate にして空振りを明示エラーへ倒す**。詳細は [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](../heuristics/recovery-command-verified-in-human-execution-context.md) を参照。
+
+なお本 PR では「bash コメントの rationale を `references/` へ退避すべきか」で 2 レビュアーの見解が割れたが、反対側の論拠「`references/` 新設は『新しい構造を持ち込まない』に反する」は `fix/references/` / `pr-review/references/` が既存であることを grep で確認して否定できた。**「新構造か既存パターンか」はリポジトリを grep すれば決着する** — 規約同士の衝突に見えるものが事実確認で解けることがある。
+
+## ソース（追記分）
+
+- [PR #2044 review results (cycle 3) — canonical パターンの分岐落ち](../../raw/reviews/20260729T004127Z-pr-2044.md)
+- [PR #2044 fix results (cycle 3) — 参照先の失敗経路まで写す](../../raw/fixes/20260729T004628Z-pr-2044.md)
+- [PR #2044 fix results — 新設 capture が canonical idiom を参照しない](../../raw/fixes/20260729T035608Z-pr-2044.md)
+- [PR #2044 fix results (cycle 4) — SoT helper を同等品に置き換えない](../../raw/fixes/20260729T073316Z-pr-2044.md)
