@@ -402,7 +402,7 @@ state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 # 空でも rc=0 を返すため session_id は非空のままで、劣化を想定した (b') ではなく健全前提の (b) へ
 # mis-route する。sentinel にしておけば 6.2 側が「成功を騙るコマンド」を人間に渡さずに済む。
 if [ -z "$state_root" ]; then
-  echo "WARNING: state root を解決できませんでした（手動リセット手順が別ディレクトリを rc=0 のまま対象にする恐れがあるため、ステップ 6.2 はコマンドを提示せず代替案内に切り替えます）" >&2
+  echo "WARNING: state root を解決できませんでした（手動リセット手順が別ディレクトリを rc=0 のまま対象にする恐れがあるため、ステップ 6.2 は state root を埋め込んだコマンドではなく、人間が自分で state root を解決する代替手順に切り替えます）" >&2
   state_root=unresolved
 fi
 fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
@@ -504,7 +504,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 <!-- [iterate:max-cycles-stopped] -->
 ```
 
-ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の照合は `;` 区切りの `KEY=VALUE` 単位で完全一致とする（値側は `failed` の部分一致が `failed-refire` / `failed-stale` の両方に当たり、キー側は `RESET` が `FIRE_RESET` の部分文字列になるため、どちらも部分一致で照合してはならない）。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（`{session_id}` / `{state_root}` はステップ 6 共有前段の `SESSION_ID=` / `STATE_ROOT=` marker の値。**`SESSION_ID=` が空のときは (b) ではなく (b') を出す** — 空値を置換したコマンドは `--session --phase` となり `--phase` が session 値として食われて `ERROR: unknown option: review` で即失敗し、人間に渡る唯一の復旧手順が壊れるため。**`STATE_ROOT=unresolved` のときは (b) / (b') のいずれを選んだ場合もコマンド行を下記の差し替え文へ置き換える**）。
+ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の照合は `;` 区切りの `KEY=VALUE` 単位で完全一致とする（値側は `failed` の部分一致が `failed-refire` / `failed-stale` の両方に当たり、キー側は `RESET` が `FIRE_RESET` の部分文字列になるため、どちらも部分一致で照合してはならない）。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（`{session_id}` / `{state_root}` はステップ 6 共有前段の `SESSION_ID=` / `STATE_ROOT=` marker の値。**`SESSION_ID=` が空のときは (b) ではなく (b') を出す** — 空値を置換したコマンドは `--session --phase` となり `--phase` が session 値として食われて `ERROR: unknown option: review` で即失敗し、人間に渡る唯一の復旧手順が壊れるため。**`STATE_ROOT=unresolved` のときは (b) / (b') のいずれを選んだ場合も注意行全体を下記の差し替え文へ置き換える**）。
 
 **(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
 
@@ -528,10 +528,10 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 (b) と (b') は排他で、どちらか一方だけを出す。以降で「(b) を観測したとき」と書いた箇所（下記の差し替え規則、および (c) が「上記の手動リセット」で前方参照する対象）は、(b') を観測した場合も同様に適用する。
 
-**`STATE_ROOT=unresolved` のとき**（ステップ 6 共有前段が state root を解決できず sentinel に置き換えた）は、(b) / (b') のどちらを選んだ場合も**その本文のコマンド行を出力せず**、次の 1 行に差し替える。空値を `RITE_STATE_ROOT=` として渡しても `flow-state.sh` の `[ -n ... ]` 判定で「未設定」と同義に縮退し、(b) 自身が警告している空振りを起こすため、**成功を騙るコマンドを人間に渡さない**のが目的（新しいラベルは作らず、(b) / (b') 共通の差し替えとして扱う）:
+**`STATE_ROOT=unresolved` のとき**（ステップ 6 共有前段が state root を解決できず sentinel に置き換えた）は、(b) / (b') のどちらを選んだ場合も**その注意行全体**（コマンドだけでなく、(b') が本文に持つ `"{state_root}"/.rite/sessions/` の探索先案内も含む。コマンド部分だけを差し替えると注意行に注意行が入れ子になり、(b') では到達不能な `unresolved/.rite/sessions/` が残る）を次の 1 行に置き換える。空値を `RITE_STATE_ROOT=` として渡しても `flow-state.sh` の `[ -n ... ]` 判定で「未設定」と同義に縮退し、(b) 自身が警告している空振りを起こすため、**成功を騙るコマンドを人間に渡さない**のが目的（新しいラベルは作らず、(b) / (b') 共通の差し替えとして扱う）:
 
 ```
-- 注意: 発火時の cycle counter リセットに失敗し、state root も解決できませんでした。**このまま再実行しても counter が上限のまま即再発火します**。リポジトリのメインチェックアウトへ `cd` した上で、`RITE_STATE_ROOT="$(git rev-parse --show-toplevel)" bash "{plugin_root}"/hooks/flow-state.sh set --session <UUID> --phase review --next "cycle counter 手動リセット" --cycle-count 0` を実行してください（`<UUID>` は `.rite/sessions/` 配下で `pr_number` が {pr_number} の `<UUID>.flow-state` を特定して補います。state root を自分で与えないと別ディレクトリの state を rc=0 のまま作って空振りします）
+- 注意: 発火時の cycle counter リセットに失敗し、state root も解決できませんでした。**このまま再実行しても counter が上限のまま即再発火します**。`root=$(bash "{plugin_root}"/hooks/state-path-resolve.sh)` で state root を解決し、`[ -f "$root/.rite/sessions/<UUID>.flow-state" ]` で対象ファイルの実在を確かめてから `RITE_STATE_ROOT="$root" bash "{plugin_root}"/hooks/flow-state.sh set --session <UUID> --phase review --next "cycle counter 手動リセット" --cycle-count 0` を実行してください（`<UUID>` は `$root/.rite/sessions/` 配下で `pr_number` が {pr_number} のものを特定して補います。**`git rev-parse --show-toplevel` で代用してはいけません** — linked worktree では worktree root を返し、resolver が行う main checkout への unify が効かないため、worktree 内に stray な state file を rc=0 のまま作って空振りします）
 ```
 
 handoff 迂回のリスクは (b) には含めない。**counter reset の失敗と handoff クリアの失敗は独立した別 set の成否**であり、しかもステップ 6 共有前段の set は `--handoff` を伴わないため handoff を default-clear する（`flow-state.sh` の `cmd_set` は `jq` で state を再構築し、`--handoff` 未指定ならキー自体を書かない）。したがって `HANDOFF_CLEAR=ok` かつ `FIRE_RESET=failed` のとき handoff は既に消えており、(b) に迂回リスクを書くと存在しない障害へ人間を誘導する。迂回が実際に成立するのは**両方の set が失敗したとき**だけなので、独立した条件 (c) として出す:
