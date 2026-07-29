@@ -113,9 +113,9 @@ case "$cur_phase" in
   review|fix) cb_mode_init=resume ;;
   *)          cb_mode_init=fresh ;;
 esac
-# reset に失敗して counter が残ったとき、ステップ 1 が即座に fire するか（上限以上なら fire）。
-# fresh entry に上限以上の stale counter が漏れた場合、reset 失敗ならその cycle は review を
-# 1 回も回さずに発火するため、ステップ 6.2 の注意行の付加条件をこの述語が決める。
+# **この起動でステップ 1 が review を回さずに fire するか**（上限以上なら fire）。ステップ 6.2 の
+# 注意行 (a) の付加条件をこの述語が決める。ここでは reset 試行**前**の値で暫定的に立て、
+# reset に成功したら下の分岐で 0 に落とす（実効 counter に合わせる）。
 cb_will_refire=0
 if [ "$cur_cc" -ge "$max_cycles" ] 2>/dev/null; then
   cb_will_refire=1
@@ -133,6 +133,10 @@ if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
   if reset_out=$(bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
     --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 2>&1); then
     reset_status=ok
+    # reset 成功 = 起動時の stale counter は消えた。ステップ 1 は即 fire しないので述語を落とす
+    # （cb_will_refire は reset 試行**前**の cur_cc で立つため、ここで再評価しないと
+    #   「counter は 0 に戻ったのに REFIRE=1」という自己矛盾した marker が出る）。
+    cb_will_refire=0
   else
     # 即再発火（cb_will_refire=1 = counter が上限以上のまま残る）と stale leak
     # （0 < cur_cc < max_cycles）を別値に分ける。ステップ 1 で即再発火するのは前者だけであり、
@@ -153,7 +157,7 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 
 `ITERATE_CYCLE_MAX` / `ITERATE_CYCLE` を retain してステップ 1 の上限チェックに渡す。
 
-`RESET` は reset の実施結果で、ステップ 6 の停止通知が「即時再発火」を説明するために読む:
+`RESET` は reset を**試行した場合**の結果記録で、人間が失敗原因を追うための診断値。**停止通知の注意行の条件には使わない**（条件はステップ 0.6 の `REFIRE` とステップ 1 の `FIRE_RESET`）:
 
 | `RESET` | 意味 |
 |---|---|
@@ -161,6 +165,13 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 | `ok` | counter を 0 にリセット済み |
 | `failed-refire` | reset が失敗し counter が**上限以上**のまま残存（`cycle_count >= max_review_cycles`）。ステップ 1 で即座にブレーカーが再発火する。WARNING と flow-state.sh の診断（helper が出力していれば）は emit 済み。停止通知の注意行は本値ではなく **`REFIRE=1`** が条件（reset を試行しない resume 経路でも即再発火しうるため） |
 | `failed-stale` | **stale counter 除去**（`0 < cycle_count < max_review_cycles`。run バッチの Issue 間リーク等）の reset が失敗し counter が残存。上限未満なので即座には再発火せず、残 cycle が目減りした状態でループが回る。ステップ 6 の停止通知に注意行は**含めない**（含めると真の非収束停止に「review は 1 cycle も回っていません」という偽の説明が付く） |
+
+`REFIRE` は**この起動でステップ 1 が review を回さずに fire するか**の述語で、ステップ 6.2 の注意行 (a) の条件そのもの:
+
+| `REFIRE` | 意味 |
+|---|---|
+| `0` | 起動時点の counter が上限未満、または reset に成功して 0 に戻った。ステップ 1 は review を回してから進む |
+| `1` | counter が上限以上のまま残っている。**ステップ 1 はこの起動で review を 1 回も回さずに fire する**（前回の最終 cycle 途中での中断からの正常な発火と、counter リセット失敗による再発火の両方を含む） |
 
 ---
 
@@ -358,7 +369,7 @@ echo "[CONTEXT] ITERATE_CB_MODE=$cb_mode; issue={issue_number}; pr={pr_number}"
 **両分岐は挙動として同構造**（failed 記録 + draft 残し + 停止通知 + handoff クリア維持。人間への問い合わせは行わない）であり、差は次の 2 点だけである:
 
 1. **sentinel の消費者**: `[iterate:max-cycles-reached]` は `/rite:batch-run` が grep して当該 Issue を `failed[]` に記録し次 Issue へ進むために消費する。`[iterate:max-cycles-stopped]` は消費者を持たない iterate 内部完結の最終状態表示。
-2. **`RESET=failed-refire` / `FIRE_RESET=failed` 注意行の有無**: ステップ 6.2（対話）のみが持つ。6.1（batch）は Issue #2026 §4.2 の Non-Target（MUST NOT modify）のため本スキルでは対称化しない。結果として batch では、前 Issue から漏れた stale counter の reset に失敗した場合、review を 1 cycle も回していない Issue が `failed[]` に「上限到達（非収束）」として記録されうる。対称化は別 Issue で扱う。
+2. **`REFIRE=1` / `FIRE_RESET=failed` 注意行の有無**: ステップ 6.2（対話）のみが持つ。6.1（batch）は Issue #2026 §4.2 の Non-Target（MUST NOT modify）のため本スキルでは対称化しない。結果として batch では、前 Issue から漏れた stale counter の reset に失敗した場合、review を 1 cycle も回していない Issue が `failed[]` に「上限到達（非収束）」として記録されうる。対称化は別 Issue で扱う。
 
 どちらの経路もマージには到達しない（上記 invariant）。
 
@@ -401,10 +412,10 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 ステップ 0.6 / ステップ 1 の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。値の照合は `;` 区切りの `KEY=VALUE` 単位で完全一致とする（`failed` の部分一致は `failed-refire` / `failed-stale` の両方に当たる）。
 
-**(a) `REFIRE=1`**（起動時点で counter が上限以上のまま残っていた = この cycle は review を 1 回も回さずに発火した）:
+**(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
 
 ```
-- 注意: 起動時点で cycle counter が上限以上のまま残っていたため即時再発火しました（この cycle では review が 1 回も回っていません）。ステップ 0.6 / ステップ 1 の WARNING 直後に出力された flow-state.sh の診断を確認してから再実行してください
+- 注意: 起動時点で cycle counter が上限に達していたため、この起動では review を 1 回も回さずに発火しました（前回の最終 cycle 途中で中断していた場合はこれが正常な発火です）。ステップ 0.6 / ステップ 1 に WARNING が出ている場合は、その直後の flow-state.sh の診断を確認してください
 ```
 
 `REFIRE=0`（起動時点の counter が上限未満）では review が実際に回ってから到達しているため**追加しない**。`RESET` の値（`failed-refire` / `failed-stale` / `ok` / `none`）は本条件に使わない — 発火時の phase は `review` / `fix` なので再実行はステップ 0.6 で resume 判定となり reset ブロックに入らず、即再発火する当の経路で `RESET=none` になるため。`RESET` は reset を試行した場合の結果を記録するもので、即再発火の判定には `REFIRE` を使う。
