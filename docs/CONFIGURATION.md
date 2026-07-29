@@ -93,8 +93,10 @@ review:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
     # Review-fix loop termination
-    # The loop terminates only on (a) 0 findings remaining → [review:mergeable] (normal exit), or
-    # (b) manual abort via Ctrl+C → /rite:recover (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]).
+    # The loop terminates on (a) 0 findings remaining → [review:mergeable] (normal exit),
+    # (b) manual abort via Ctrl+C → /rite:recover (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]), or
+    # (c) the safety.max_review_cycles circuit breaker → [iterate:max-cycles-stopped] / [iterate:max-cycles-reached]
+    #     (both modes stop mechanically and record a non-convergent failure; never reaches a merge).
     # The keys below remain as config scaffolding but have no
     # runtime effect on loop termination — see skills/iterate/SKILL.md ループ仕様 and
     # skills/fix/references/fix-relaxation-rules.md "Loop Termination" for the live spec.
@@ -434,12 +436,13 @@ issue:
 
 **Review-fix loop exit:**
 
-The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
+The review-fix loop exits via the following paths:
 
 | Exit | Trigger |
 |------|---------|
 | Normal | 0 findings remaining → `[review:mergeable]` |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:recover` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
+| Circuit breaker | Cycle count reaches `safety.max_review_cycles` → `[iterate:max-cycles-stopped]` (interactive) / `[iterate:max-cycles-reached]` (batch). Both modes stop mechanically without prompting and record a non-convergent **failure** that never reaches a merge — see [`safety` § `max_review_cycles`](#safety) |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/pr-review/references/internal-consistency.md` for the full protocol.
 
@@ -629,7 +632,7 @@ safety:
 
 **When safety limits are hit:**
 
-When a limit is exceeded, the workflow presents options:
+When a limit is exceeded, the workflow presents options (**except `max_review_cycles`, which stops mechanically without prompting — see below**):
 1. Continue (raise the limit)
 2. Abort (save state to work memory for later resumption)
 3. Manual intervention (user handles directly)
@@ -638,10 +641,14 @@ When a limit is exceeded, the workflow presents options:
 
 The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 findings). `max_review_cycles` adds a circuit breaker so a non-convergent PR cannot loop forever. When the cycle count reaches the limit:
 
-- **Interactive `/rite:iterate`**: an `AskUserQuestion` is presented (continue for another `max_review_cycles` cycles / abort / leave the draft as-is). The loop is never auto-continued past the limit.
+Tripping the breaker records a **failure** — a non-convergent loop — and never reaches a merge. Both modes stop mechanically without asking the user to decide:
+
+- **Interactive `/rite:iterate`**: the loop stops with a notice (`[iterate:max-cycles-stopped]`), leaving the draft/open PR for review. No prompt is shown; provided **either** of the two fire-time state writes — `/rite:iterate` step 1's handoff clear or step 6's counter reset — succeeds, the loop is never auto-continued past the limit. Both writes clear the pending continuation handoff because a `flow-state.sh set` that omits `--handoff` deletes that key, and the handoff is what the Stop hook would otherwise consume to re-inject `/rite:pr-review`.
 - **`/rite:batch-run` batch**: the Issue is recorded as failed (`[iterate:max-cycles-reached]`) and the batch advances to the next Issue, leaving the draft/open PR for review. This prevents one non-convergent PR from stalling the whole batch.
 
-The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:recover` — an interrupted loop resumes its count rather than restarting from 0.
+The only way to resume the loop is to re-run `/rite:iterate {pr}` explicitly (`/rite:recover` routes to the same command, so it takes this path too). The breaker clears the cycle counter as it records the trip, so that re-run starts from cycle 1 rather than tripping again immediately. If the counter reset fails, the interactive stop notice says so and points at a manual reset; in a batch run only a stderr WARNING is emitted (the batch notice is not yet symmetric). A failed reset leaves the counter at the limit, so the re-run trips again straight away. Separately, if the pending continuation handoff survives, the Stop hook re-injects `/rite:pr-review`, and that chain re-arms itself at every step — `/rite:pr-review` sets a `/rite:fix` handoff, `/rite:fix` sets a `/rite:pr-review` handoff — without ever re-entering the cycle-count check in `/rite:iterate` step 1. The loop then runs outside the counter's control until the model returns to `/rite:iterate`. That is the one case in which the interactive bullet's "never auto-continued past the limit" guarantee does not hold. For the exact condition under which the handoff survives, see [`stop-loop-continuation-contract.md`](../plugins/rite/references/stop-loop-continuation-contract.md) — it is the single source of truth and is not restated here.
+
+The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:recover` — an interrupted loop resumes its count rather than restarting from 0. The reset happens as the trip is recorded (in the step 6 preamble that runs immediately before the trip sentinel), not at the next start-up, so nothing has to remember "already tripped" across invocations. Placing it there rather than in the step 1 fire branch means a turn that ends **before the preamble runs** leaves the counter at the limit, so the next run trips again instead of silently regaining a full budget. The narrower window between the preamble and the sentinel still resets the counter without recording the trip. Being at the limit (`cycle_count == max_review_cycles`) is the normal state throughout the final cycle; an interrupt there does not go through the fire branch, so its count is resumed and the breaker trips as intended.
 
 ### metrics
 
