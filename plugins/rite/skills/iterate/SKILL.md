@@ -95,9 +95,13 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 ```bash
 # (0) 診断スニペット用 helper を読み込む。SoT は control-char-neutralize.sh の header
 # （`head -N ... | neutralize_ctrl --keep-newline | sed ... >&2` が全 emission site の canonical idiom）。
-# 未定義のまま pipe すると "command not found" で診断ごと消えるため、不在時は素通しへ縮退させる。
-source {plugin_root}/hooks/control-char-neutralize.sh 2>/dev/null || true
+# 未定義のまま pipe すると診断本文ごと消えるため不在時は素通しへ縮退させるが、**縮退は必ず
+# WARNING で告知する**（無言で縮退させると、この helper を通す目的である「制御文字の素通し」が
+# 無通知で復活し、本ブロックが reset_out の stderr を捨てずに capture している理由と矛盾する）。
+# source の stderr も抑止しない（抑止すると helper 不在の原因が消える）。
+source {plugin_root}/hooks/control-char-neutralize.sh
 if ! command -v neutralize_ctrl >/dev/null 2>&1; then
+  echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断スニペットの制御文字が素通しします" >&2
   neutralize_ctrl() { cat; }
 fi
 
@@ -149,9 +153,10 @@ if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
     cur_cc=0
   else
     # 即再発火（cb_will_refire=1 = counter が上限以上のまま残る）と stale leak
-    # （0 < cur_cc < max_cycles）を別値に分ける。ステップ 1 で即再発火するのは前者だけであり、
-    # ステップ 6.2 の注意行を後者にも付けると「review は 1 cycle も回っていません」が偽になり、
-    # 真の非収束を書き込み権限の問題へ誤誘導する。
+    # （0 < cur_cc < max_cycles）を別値に分ける。**停止通知の注意行の条件は REFIRE であって
+    # 本値ではない**（下の RESET 表を参照）。分割の目的は、reset 失敗時に残った counter が
+    # 上限以上か未満か——すなわち即再発火するのか残 cycle が目減りするだけなのか——を、
+    # 人間が診断値だけで切り分けられるようにすることにある。
     if [ "$cb_will_refire" = 1 ]; then reset_status=failed-refire; else reset_status=failed-stale; fi
     echo "WARNING: cycle counter reset に失敗（stale counter が残りブレーカー早期発火の恐れ）" >&2
     # ここでは cur_cc を 0 に落とさない。永続 counter は元の値のまま残っているため、marker の
@@ -195,10 +200,12 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 ループ頭で cycle_count を上限と比較する。**未到達なら** counter を +1 して `phase=review` に更新後 `/rite:pr-review` を invoke、**到達済みなら** サーキットブレーカー（ステップ 6）へ分岐する。`max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
 
 ```bash
-# 診断スニペット用 helper（ステップ 0.6 (0) と同型。Bash tool 呼び出し間でシェル状態は
-# 引き継がれないため、fire_out を表示する本ブロックでも独立に読み込む）。
-source {plugin_root}/hooks/control-char-neutralize.sh 2>/dev/null || true
+# 診断スニペット用 helper（ステップ 0.6 (0) と同型 — 縮退時の WARNING 告知まで含めて同じ。
+# Bash tool 呼び出し間でシェル状態は引き継がれないため、fire_out を表示する本ブロックでも
+# 独立に読み込む）。
+source {plugin_root}/hooks/control-char-neutralize.sh
 if ! command -v neutralize_ctrl >/dev/null 2>&1; then
+  echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断スニペットの制御文字が素通しします" >&2
   neutralize_ctrl() { cat; }
 fi
 
