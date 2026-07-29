@@ -72,6 +72,7 @@ The review-fix loop exits via:
 |-----------|-----------|--------|
 | **Normal** | 0 blocking findings remaining | `[review:mergeable]` → `/rite:iterate` がループ終了 |
 | **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:recover` で復帰 |
+| **Circuit breaker** | cycle が `safety.max_review_cycles`（既定 5）に到達 | batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]`。**両モードとも人間に問わず機械的に停止**し非収束の失敗として記録する（マージには進まない）— 詳細は下記散文 |
 
 `/rite:iterate` は「**blocking 指摘ゼロ**（mergeable）までループする」契約を基本とし（blocking = `measured != false` (= 実測あり、または未判定) かつ `scope ∈ {current-pr, follow-up}` の CONFIRMED 指摘 — SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。非実測指摘はステップ 5.4 に記録されたまま残存して正常出口に到達しうる）、加えて `safety.max_review_cycles`（既定 5）到達で発火する cycle 上限サーキットブレーカーを唯一の自動安全網として持つ（#1701）。quality-signal escalation / 同一 finding 検出といった細粒度の安全網は持たない。上限到達時は batch / 対話とも人間に問わず機械的に停止する（発火＝非収束による失敗の記録であり、マージには進まない）: `/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進み、対話実行では停止通知を出して終了する。ループの再開は人間が `/rite:iterate {pr}` を明示的に再実行する経路のみ。Ctrl+C による手動中断も従来どおり可能。
 
