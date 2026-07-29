@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-29T21:32:36+09:00"
+updated: "2026-07-30T01:25:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T003541Z-pr-2013.md"
@@ -570,6 +570,16 @@ sources:
     ref: "raw/fixes/20260729T051956Z-pr-2044.md"
   - type: "reviews"
     ref: "raw/reviews/20260729T034634Z-pr-2044.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T142410Z-pr-2051.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T150808Z-pr-2051-c2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T153523Z-pr-2051-c3.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T144345Z-pr-2051.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified"]
 confidence: high
 ---
@@ -1920,3 +1930,28 @@ marker 照合規約を段階的に強化した PR で、本 anti-pattern が **�
 - [PR #2022 review results (cycle 8) — 規約を新設する修正が自分でその規約を破る](../../raw/reviews/20260726T035338Z-pr-2022.md)
 - [PR #2038 fix results (cycle 4) — 「両側に置いた」宣言と実体の乖離、canonical pin が非対称を固定](../../raw/fixes/20260728T093135Z-pr-2038.md)
 - [PR #2038 fix results (cycle 6, final) — rationale リンク先が旧規則のまま残る](../../raw/fixes/20260728T122258Z-pr-2038.md)
+
+## 変種: シンボルを消しても、それを列挙する側は同期されない（PR #2051、3 cycle 連続）
+
+inline 実装を helper へ委譲し、元のシンボル名（`extract_yaml_key` / `parse_wiki_key` / `awk_pr_comment_raw_json_rc`）を削除したところ、**それを参照して列挙する側**が cycle 1 で 6 箇所、cycle 2 で 4 箇所、cycle 3 で 3 箇所（うち 2 箇所は cycle 1 から連続）取り残された。
+
+| 取り残された側 | 具体例 |
+|---|---|
+| helper header の caller リスト | 委譲元を列挙するコメントブロック |
+| hook 内の同期インベントリ comment | 「この処理を実装している全 site」の列挙 |
+| SPEC.md の構造ツリー | 新規スクリプトの行が無い / 削除分が残る |
+| reason 表の説明文 | 委譲前の失敗原因のまま |
+| skill 内の相互参照 | 「ステップ X と同じパーサ」型の記述 |
+| 設計差異ブロック | 箇条書きは更新されたが直下の rationale が旧前提のまま |
+
+特筆すべきは、**自ら「唯一の同期一覧。全 site を漏れなく同期更新する義務がある」と宣言しているファイル**ですら、箇条書きだけ更新され直下の設計差異ブロックが取り残された点。宣言の存在は同期を保証しない。
+
+> **教訓**: 削除したシンボル名で**全文 grep する**のが唯一の確実な検出手段。「grep で 0 件確認した」という主張自体が、1 件の残存によって反証された（cycle 2）。さらに **exit code を 1 つ増やす変更は、その値を読む全レイヤ（script header / usage / per-check rationale / caller の DoD 注記 / 汎用 exit code 契約表）を同時に更新する**必要がある — 1 箇所直すと残りが「更新漏れ」として相対的に確定するため、レビューで必ず露見する。
+
+## ソース（追記分 2）
+
+- [PR #2051 review results — 参照関係の列挙が同期されない欠陥クラスが 6 箇所（3 レビュアーが独立指摘）](../../raw/reviews/20260729T142410Z-pr-2051.md)
+- [PR #2051 review results (cycle 2) — rc 契約を変えたのに読み手側の記述が 4 箇所取り残された](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
+- [PR #2051 review results (cycle 3) — 3 サイクル通じて反復した唯一のパターン](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
+- [PR #2051 fix results — 削除したシンボル名で全文 grep する](../../raw/fixes/20260729T144345Z-pr-2051.md)
+- [PR #2051 fix results (cycle 2) — exit code を 1 つ増やす変更は読む全レイヤに波及する](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)

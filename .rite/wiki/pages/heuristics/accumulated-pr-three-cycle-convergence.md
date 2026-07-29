@@ -2,7 +2,7 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-07-29T21:32:36+09:00"
+updated: "2026-07-30T01:25:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md"
@@ -41,6 +41,14 @@ sources:
     ref: "raw/reviews/20260729T094749Z-pr-2044.md"
   - type: "fixes"
     ref: "raw/fixes/20260729T045549Z-pr-2044.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T155350Z-pr-2051-c4.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T153523Z-pr-2051-c3.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260729T150808Z-pr-2051-c2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260729T153947Z-pr-2051-c3.md"
 tags: []
 confidence: high
 ---
@@ -254,3 +262,27 @@ cycle 3 で 2 名のレビュアーが自分の前 cycle 指摘を**実測に基
 - [PR #2044 review results (cycle 3) — 収束は層で読む / cross-validation boost](../../raw/reviews/20260729T045143Z-pr-2044.md)
 - [PR #2044 review results (cycle 3, mergeable 到達) — レビュアーの自己撤回](../../raw/reviews/20260729T094749Z-pr-2044.md)
 - [PR #2044 fix results (cycle 3) — Convergence Signal](../../raw/fixes/20260729T045549Z-pr-2044.md)
+
+## 補強: 4 cycle 収束と「0 件の質」(PR #2051)
+
+blocking 18 → 9 → 1 → 0 で 4 cycle 収束した記録。**収束を判定できた根拠は指摘が減ったことではなく、「0 件」の裏付けが変わったこと**だった。
+
+cycle 4 の reviewer は揃って「これは Finding Quality Guardrail によるフィルタ結果のゼロではなく、実測に裏付けられた実質的なゼロである」と明記し、`Status: degraded` を出さなかった。同じ「指摘 0 件」でも、mutation を回したうえでの 0 件と、回さずに出した 0 件では意味が違う。**完了報告に「0 件の根拠」を書かせると、この区別が機械的に surface する**。
+
+もう 1 つの特徴は、**cycle 2 の 9 件のうち 8 件が cycle 1 の修正によって新規に導入された**こと。累積対策 PR では「修正が新しい契約を導入し、その契約を読む側が追随していない」型が支配的になり、cycle ごとに指摘の性質が変わる。
+
+| cycle | blocking | 指摘の性質 |
+|---|---:|---|
+| 1 | 18 | 元の defect class が修正コード側に再出現（検出器の rc 設計 / 恒真アサーション / 列挙の同期漏れ） |
+| 2 | 9 | cycle 1 の修正が導入した新契約への追随漏れ（rc=2 の読み手 4 箇所 / mutation でのみ判明する空振り 2 件） |
+| 3 | 1 | 修正の効果を固定するテストの不在（rc が同値のため rc assertion では pin できない） |
+| 4 | 0 | 実測裏付きのゼロ。残ったのは実測アンカーなしの non-blocking 1 件と nit 1 件 |
+
+**Finding Quality Guardrail を prompt で明示すると reviewer 側の自己抑制が働く**: cycle 3-4 では複数 reviewer が「新証拠なしの再掲は finding cycling にあたる」と明記して監査ログへ降格し、「防御の上に防御を積む要求」（Guardrail Category 2）に該当する候補も自ら filter した。レビュー prompt に (a) 収束状況（何 cycle 目 / 前 cycle の件数）、(b) その reviewer の前 cycle 指摘とその処置、(c) Guardrail を厳格に適用せよという指示、の 3 点を含めることが効いている。
+
+## ソース（追記分 2）
+
+- [PR #2051 review results (cycle 4, mergeable 到達) — 0 件の質と reviewer の自己抑制](../../raw/reviews/20260729T155350Z-pr-2051-c4.md)
+- [PR #2051 review results (cycle 3) — 実測必須ゲートが記述の不整合と実行を壊す欠陥を分離した](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
+- [PR #2051 review results (cycle 2) — cycle 1 の修正自体が持っていた検証の穴](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
+- [PR #2051 fix results (cycle 3) — 修正が効いていることと効果が固定されていることは別](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)

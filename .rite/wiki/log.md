@@ -1,3 +1,17 @@
+## 2026-07-30
+
+* **Create**: [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) — raw/reviews/20260729T142410Z-pr-2051.md ほか 1 件を新規ページ化（rc=0 を success 扱いする呼び出し元の下では stderr WARNING が構造的に届かない / 走査不能を数えて別 rc に分ける）
+* **Create**: [自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ](pages/anti-patterns/custom-sentinel-collides-with-tool-exit-code.md) — raw/reviews/20260729T142410Z-pr-2051.md ほか 1 件を新規ページ化（gawk/mawk の fatal=2 と衝突し awk 失敗分岐が到達不能だった / 主要ツールの予約 exit code 表）
+* **Create**: [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) — PR #2051 の 4 サイクル分 raw source 5 件を統合（fixture 順序でガードが立たない / 分岐 arm の欠落 / 効果が rc に現れない の 3 型 / 0 件の質を区別する）
+* **Create**: [除外契約のテストは境界の両側に対で書く](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) — raw/reviews/20260729T142410Z-pr-2051.md ほか 1 件を新規ページ化（除外側にしか検出対象を置かない fixture は恒真 / 除外条件を外す変異で赤くなるか実測する）
+* **Create**: [`$( )` でコマンド置換したヘルパーの `exit` は呼び出し元を止めない](pages/anti-patterns/command-substitution-helper-exit-does-not-stop-caller.md) — raw/reviews/20260729T150808Z-pr-2051-c2.md ほか 1 件を新規ページ化（cd "" が rc=0 の no-op でガードが発火せず CWD が汚染される / 代入直後の 3 段検査）
+* **Create**: [集合演算で検証するときは入力集合が空である可能性を成功と区別する](pages/anti-patterns/empty-set-difference-passes-as-success.md) — raw/reviews/20260729T142410Z-pr-2051.md ほか 1 件を新規ページ化（DoD 検証の無言 no-op 化 / 「無いことを確認する」検証の一般形）
+* **Create**: [mktemp が作った名前から派生させたパスは O_CREAT|O_EXCL 保証を失う](pages/anti-patterns/mktemp-derived-path-loses-atomic-creation.md) — raw/reviews/20260729T142410Z-pr-2051.md ほか 1 件を新規ページ化（security reviewer が symlink truncate を実測 / mktemp -d した親配下の固定名は安全）
+* **Create**: [inline 実装を helper へ委譲したら、診断メッセージを新しい失敗分布へ揃える](pages/heuristics/delegation-shifts-failure-mode-distribution.md) — raw/reviews/20260729T153523Z-pr-2051-c3.md ほか 1 件を新規ページ化（支配的失敗が rc=127 へ移る / 診断文に置換対象の placeholder を書かない / 既定動作は不変に保つ）
+* **Create**: [陳腐化した相互参照には「ただ古い」ものと「修正した欠陥へ戻す誘導」がある](pages/heuristics/stale-cross-reference-that-guides-back-to-the-defect.md) — raw/reviews/20260729T153523Z-pr-2051-c3.md ほか 1 件を新規ページ化（次の編集者を修正済みの欠陥へ戻す経路 / 過剰に広い断定も同型 / トリアージ基準）
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — PR #2051 の raw source 5 件を統合（シンボル削除時の列挙側同期漏れが 3 cycle 連続 6→4→3 箇所 / 「唯一の同期一覧」を自称するファイルすら取り残す / exit code 追加は読む全レイヤに波及）
+* **Update**: [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — PR #2051 の raw source 4 件を統合（4 cycle 収束 18→9→1→0 / 収束判定は件数でなく 0 件の裏付け / cycle 2 の 9 件中 8 件は cycle 1 の修正が導入）
+
 ## 2026-07-29
 
 * **Create**: [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) — raw/reviews/20260728T160636Z-pr-2043.md ほか 1 件を新規ページ化（部分列挙と強度 qualifier 脱落の 2 形 / 方針との自己矛盾 / 件数 + ポインタへの寄せ）
