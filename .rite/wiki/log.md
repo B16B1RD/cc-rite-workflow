@@ -11,6 +11,7 @@
 * **Create**: [陳腐化した相互参照には「ただ古い」ものと「修正した欠陥へ戻す誘導」がある](pages/heuristics/stale-cross-reference-that-guides-back-to-the-defect.md) — raw/reviews/20260729T153523Z-pr-2051-c3.md ほか 1 件を新規ページ化（次の編集者を修正済みの欠陥へ戻す経路 / 過剰に広い断定も同型 / トリアージ基準）
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — PR #2051 の raw source 5 件を統合（シンボル削除時の列挙側同期漏れが 3 cycle 連続 6→4→3 箇所 / 「唯一の同期一覧」を自称するファイルすら取り残す / exit code 追加は読む全レイヤに波及）
 * **Update**: [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — PR #2051 の raw source 4 件を統合（4 cycle 収束 18→9→1→0 / 収束判定は件数でなく 0 件の裏付け / cycle 2 の 9 件中 8 件は cycle 1 の修正が導入）
+* **lint:warning** — contradictions=0, stale=23, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-07-29
 
