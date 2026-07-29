@@ -17,6 +17,7 @@
 * **Update**: [検出層の表記ゆれ対応は「列挙」ではなく「正規化」で吸収する](pages/patterns/normalize-instead-of-enumerate-in-detection-layer.md) — PR #2044 の raw source を統合（「失敗」と「未到達」は 2x2 になる / 直交する劣化軸はラベルを増やさず pre-fill で畳む）
 * **Update**: [bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す](pages/patterns/bash-initial-value-aligns-with-allowed-values.md) — PR #2044 の raw source を統合（空値は「未設定」と同義へ縮退し mis-route する / リテラル置換される値は quote する）
 * **Update**: [prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する](pages/anti-patterns/catch-all-case-arm-absorbs-future-prefix.md) — PR #2044 の raw source を統合（enum 値は消費側の分岐数と 1:1 / 値集合を相互に非接頭辞に保つ / 区別できないものは文面で認める）
+* **lint:warning** — contradictions=0, stale=23, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-07-28
 
