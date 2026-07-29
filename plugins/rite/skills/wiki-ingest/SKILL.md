@@ -395,11 +395,11 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 | 基準 | 説明 |
 |------|------|
-| Semantic 近接性 | `index.md` の登録ページ箇条書きから、本ページと同ドメインの隣接トピック、または別ドメインだが概念的に関連するページを選定する |
+| Semantic 近接性 | `index.md` の登録ページ一覧（テーブル行）から、本ページと同ドメインの隣接トピック、または別ドメインだが概念的に関連するページを選定する |
 | 確信度 | LLM の判定として確信があるもの 1-3 件に絞る（量より質） |
 | index.md との照合 | ステップ 3 で読み込んだ `index_content` の一行サマリーとタイトルから判断する |
 
-**title 規約**: `{related_page_title}` は対象ページの frontmatter `title` フィールド (= `index.md` 箇条書きの link text `[title](path)` の title) と **literal 一致** させる。link text の独自言い換えは禁止 (index.md ↔ link text の drift 防止)。
+**title 規約**: `{related_page_title}` は対象ページの frontmatter `title` フィールド (= `index.md` 登録行の link text `[title](path)` の title) と **literal 一致** させる。link text の独自言い換えは禁止 (index.md ↔ link text の drift 防止)。
 
 **path 計算規約**: `{related_page_path}` には **page-dir 相対** の path を substitute する。新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` の page-dir = `.rite/wiki/pages/{domain}/` を起点として相対 path を計算する:
 
@@ -618,7 +618,7 @@ fi
 | `{concept_type}` | OKF v0.1 必須フィールド。page-template.md の frontmatter トップレベル `type:` に substitute する concept 種別。値は `{domain}` と同じ literal（`patterns` / `heuristics` / `anti-patterns`）を入れる。OKF consumer の type ベース routing 用。**⚠️ 本 placeholder は同名衝突回避のため `{concept_type}` と命名している** — ステップ 4.2 / 5.0 の `raw/{type}/{filename}` パスや `sources[].type` 追記で使う `{type}` は Raw Source type（`reviews` / `retrospectives` / `fixes`、`{source_type}` 由来）であり別物 |
 | `{title}` | ステップ 4.1 で生成したタイトル |
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
-| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md の箇条書き `* [title](path) - {description}` にも反映する。`/rite:wiki-query` の Pass 1 がこの index 箇条書きの説明文をキーワード照合に使用する |
+| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。`/rite:wiki-query` の Pass 1 がこの index 登録行の説明文をキーワード照合に使用する |
 | `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
 | `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |
@@ -633,13 +633,24 @@ fi
 
 ## ステップ 6: index.md の更新
 
-`.rite/wiki/index.md` の OKF v0.1 予約構造（箇条書き）に新規ページ行を追加し、既存ページが更新された場合は該当行の説明文を上書きする。メタデータ（ドメイン / 確信度 / 更新日）は各ページ frontmatter を Source of Truth とするため index には重複保持しない。統計も index から分離し、総ページ数は `/rite:wiki-lint` のレポート出力で確認できる（ドメイン別内訳は本 Sub のスコープ外。index を OKF クリーンに保つため）。
+`.rite/wiki/index.md` の `## ページ一覧` セクションにある **5 列 GFM テーブル**に新規ページ行を追加し、既存ページが更新された場合は該当行のサマリー列・更新日列を上書きする。実運用の index.md はテーブル形式（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）であり、本ステップの指示はこの実形式に一致させている — 別形式の行を混ぜると挿入行以降のテーブル構造が崩壊するため、**本ステップに書かれた形式以外の行を index に追加してはならない**。
 
 **更新ルール**:
 
-- **新規ページ**: 箇条書き末尾に `* [{title}]({path}) - {description}` を追加する。`{path}` は `pages/{domain}/{slug}.md` 形式を維持する（孤児検出のリンク grep `](pages/...)` 生存条件、`wiki-lint-orphans.sh`）。`{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）
-- **既存ページ更新**: 該当ページの箇条書き行の `{description}` 部分（` - ` 以降）を上書きする。リンク `[{title}]({path})` は不変
-- **統計**: index には書かない（OKF クリーン維持。query は各ページ frontmatter からメタデータを読むため、index に統計・確信度・更新日を持たせる必要がない）
+- **新規ページ**: `## ページ一覧` テーブルの末尾に次の 1 行を追加する:
+
+  ```
+  | [{title}]({path}) | {domain} | {description} | {updated} | {confidence} |
+  ```
+
+  - 列数 (5) と列順は実 index.md のヘッダ行 `| ページ | ドメイン | サマリー | 更新日 | 確信度 |` と一致させる
+  - `{path}` は `pages/{domain}/{slug}.md` 形式を維持する（孤児検出のリンク grep `](pages/...)` 生存条件、`wiki-lint-orphans.sh`）
+  - `{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）。セル内に `|` を含めない（テーブル破壊防止）
+  - `{updated}` / `{confidence}` は page frontmatter と同値（ISO 8601 タイムスタンプ / `high`・`medium`・`low`）
+- **既存ページ更新**: 該当ページの行の**サマリー列と更新日列**を上書きする。リンク列 `[{title}]({path})` は不変
+- **統計**: index.md 末尾に `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する（総ページ数 = `pages/` 配下の実ファイル数、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` の各ファイル数、最終更新 = 今回の `{updated}` タイムスタンプ）。`## 統計` 節が**存在しない** index.md では統計同期をスキップする（節を新設しない）
+
+**実形式検出（フォールバック）**: index.md の `## ページ一覧` がテーブルではなく別形式（例: 旧テンプレート由来の箇条書き）で運用されているリポジトリでは、**実ファイルの既存形式を検出してそれに従い**、1 つの index に複数形式を混在させない。`wiki-lint-orphans.sh` は `](pages/...)` リンクの grep ベースで形式非依存に登録判定するため、いずれの形式でも `{path}` の形式維持だけが必須条件になる。
 
 書き込みはステップ 5 と同じブランチコンテキスト (separate_branch なら worktree、same_branch なら dev ツリー) で行う。
 
@@ -653,7 +664,7 @@ fi
 
 - 今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加する（新しい順のため最新日付を先頭に置く）。既にあればその見出し配下の bullet 群末尾に追加する
 - 各 Raw Source 1 件につき 1 bullet を追加する:
-  - **新規**: `* **Create**: [{title}](pages/{domain}/{slug}.md) — {source_ref} を新規ページ化`（`{title}` はステップ 5.3 で定義したページタイトル、リンク先は index.md の箇条書きと同じ `pages/{domain}/{slug}.md`）
+  - **新規**: `* **Create**: [{title}](pages/{domain}/{slug}.md) — {source_ref} を新規ページ化`（`{title}` はステップ 5.3 で定義したページタイトル、リンク先は index.md の登録行と同じ `pages/{domain}/{slug}.md`）
   - **更新**: `* **Update**: [{title}](pages/{domain}/{slug}.md) — {source_ref} を統合`
   - **スキップ**: `* **Skip**: [{filename}](raw/{type}/{filename}) — {skip_reason}`（`{filename}` は当該 Raw Source のファイル名、`{type}` は Raw Source type）
 - 既存の日付見出し・bullet（過去エントリ）は改変しない
