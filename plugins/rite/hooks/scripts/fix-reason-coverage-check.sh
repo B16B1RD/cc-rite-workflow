@@ -74,6 +74,19 @@ fi
 emitted=$(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' "$TARGET" \
   | sed 's/.*reason=//' | sort -u)
 
+# An empty left side makes the comm below produce no output, which is
+# indistinguishable from "every emitted reason is documented" — the check would
+# report success without having verified anything. The emit side is matched by a
+# regex against prose markdown, so a change to how fix.md writes the marker
+# silently turns this whole check into a no-op. Fail as an invocation error
+# instead: rc=2 already means "could not run the check" in this contract.
+if [ -z "$emitted" ]; then
+  echo "ERROR: $TARGET から WM_UPDATE_FAILED emit を 1 件も抽出できませんでした" >&2
+  echo "  emit 記法が変わった疑いがあります (grep パターン: 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*')" >&2
+  echo "  --target が正しいか、fix.md 側の emit 記法を確認してください" >&2
+  exit 2
+fi
+
 # Table rows start at the `| reason | 発生...` header and end at the first line
 # that does not open with a pipe. The trailing `sed` drops shell-interpolated
 # suffixes so a cell written as a variable reference still matches its literal.

@@ -20,11 +20,27 @@
 #
 # Detected pattern
 # ----------------
-#   Any parameter-zero reference (bare or brace form) on a line that sits inside
-#   a fenced code block. The fence's info string is NOT considered: the loader
-#   expands regardless of the declared language, so a `text` or `sh` fence is
-#   exactly as vulnerable as a `bash` one. Restricting the scan to `bash` fences
-#   would leave a silent hole for the next writer who picks a different tag.
+#   Any parameter-zero reference on a line that sits inside a fenced code block.
+#   Both the bare form and every brace form are matched — `${0}`, but also the
+#   modified spellings `${0##*/}`, `${0%.*}`, `${0:-x}`, `${0/a/b}`. The loader
+#   expands all of them, so matching only the two unmodified spellings would
+#   leave the next writer a way to reintroduce the defect that reads as safe.
+#
+#   The fence's info string is NOT considered: the loader expands regardless of
+#   the declared language, so a `text` or `sh` fence is exactly as vulnerable as
+#   a `bash` one. Restricting the scan to `bash` fences would leave a silent
+#   hole for the next writer who picks a different tag.
+#
+# Unscannable files are an error, not a clean bill
+# ------------------------------------------------
+#   A file this script could not scan (unbalanced fences, unreadable, missing
+#   --target path) exits 2, not 0. The exit code is the only channel the caller
+#   reads: `/rite:lint` Phase 3.5 maps rc=0 to `success` and shows the script's
+#   output only for `warning`/`error`, and its summary is skipped entirely in
+#   E2E flow — so a WARNING on stderr paired with rc=0 reaches nobody. Folding
+#   "scanned everything, found nothing" together with "could not scan" would
+#   reproduce, inside the guard, the exact defect class the guard exists to
+#   prevent.
 #
 # Not detected (by construction)
 # ------------------------------
@@ -47,7 +63,7 @@
 #                        [--skip-if-no-target]
 #
 # Exit codes: 0 = clean (or not-applicable skip), 1 = pattern detected,
-#             2 = invocation error.
+#             2 = invocation error, or one or more files could not be scanned.
 #
 # --skip-if-no-target: when --all finds no scan directory under the repo root
 #   (a consumer repo that installs rite from the marketplace and does not
@@ -83,7 +99,9 @@ Options:
 Exit codes:
   0  No fenced parameter-zero reference detected (or not-applicable skip)
   1  Pattern detected
-  2  Invocation error (bad args, missing files)
+  2  Invocation error (bad args), or one or more files could not be scanned
+     (missing --target path, unbalanced fences, awk failure) — the result is
+     not a clean bill, so it must not be reported as success
 EOF
 }
 
@@ -130,7 +148,18 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
 fi
 
 FINDINGS_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
-trap 'rm -f "$FINDINGS_FILE"' EXIT
+# The per-file scratch file gets its own mktemp rather than a suffix appended to
+# FINDINGS_FILE. A derived path is predictable and not created by mktemp, so it
+# loses the O_CREAT|O_EXCL guarantee — an attacker-planted symlink at that path
+# would be followed and its target truncated. The sibling checkers avoid the
+# problem by appending straight to their mktemp'd file; this one needs a second
+# handle because it discards per-file output on an unscannable file.
+PART_FILE="$(mktemp)" || { rm -f "$FINDINGS_FILE"; echo "ERROR: mktemp failed" >&2; exit 2; }
+trap 'rm -f "$FINDINGS_FILE" "$PART_FILE"' EXIT
+
+# Files the scanner could not read or parse. Kept separate from findings so the
+# exit code can distinguish "nothing to report" from "did not look".
+SKIPPED=0
 
 # ----- Scan one file ---------------------------------------------------------
 #
@@ -147,7 +176,8 @@ trap 'rm -f "$FINDINGS_FILE"' EXIT
 check_file() {
   local file="$1"
   if [ ! -f "$file" ]; then
-    echo "WARNING: target not found: $file" >&2
+    echo "WARNING: target not found: $file — not scanned" >&2
+    SKIPPED=$((SKIPPED + 1))
     return 0
   fi
   awk -v F="$file" '
@@ -177,9 +207,13 @@ check_file() {
         next
       }
       if (in_fence == 0) next
-      # Brace form is written with a bracket expression so the ERE never sees a
-      # brace that a POSIX awk would read as an interval quantifier.
-      if (match($0, /\$0|\$[{]0[}]/)) {
+      # Matches the bare form and every brace form in one pattern: an optional
+      # opening brace is enough, because what follows it (`}`, `##*/`, `:-x`, …)
+      # never changes the fact that the loader rewrites the reference. Writing
+      # out the closing brace instead would match only the unmodified `${0}`.
+      # The brace is inside a bracket expression so the ERE never sees a brace a
+      # POSIX awk would read as an interval quantifier.
+      if (match($0, /\$[{]?0/)) {
         printf "[dollar-zero] %s:%d: parameter-zero reference inside a fenced code block (the Skill loader expands it to the invocation arguments) — move the program to a helper script under hooks/scripts/\n", F, NR
         findings++
       }
@@ -187,19 +221,24 @@ check_file() {
     END {
       if (in_fence != 0) {
         printf "WARNING: unbalanced code fence in %s — file skipped (detection is dropped rather than guessed)\n", F > "/dev/stderr"
-        exit 2
+        exit 3
       }
     }
-  ' "$file" > "$FINDINGS_FILE.part"
+  ' "$file" > "$PART_FILE"
   local awk_rc=$?
-  # rc=2 is the unbalanced-fence signal: discard whatever was collected so a
-  # partially-parsed file cannot contribute findings.
-  if [ "$awk_rc" -eq 0 ]; then
-    cat "$FINDINGS_FILE.part" >> "$FINDINGS_FILE"
-  elif [ "$awk_rc" -ne 2 ]; then
-    echo "WARNING: awk failed on $file (rc=$awk_rc) — file skipped" >&2
-  fi
-  rm -f "$FINDINGS_FILE.part"
+  # rc=3 is this script's own unbalanced-fence signal. It deliberately avoids 2,
+  # which gawk and mawk return on a fatal error (unreadable file, broken binary)
+  # — collapsing the two would let a file the scanner never opened be reported
+  # as "skipped on purpose", and the awk-failure branch below would be dead code.
+  case "$awk_rc" in
+    0) cat "$PART_FILE" >> "$FINDINGS_FILE" ;;
+    3) SKIPPED=$((SKIPPED + 1)) ;;
+    *)
+      echo "WARNING: awk failed on $file (rc=$awk_rc) — file not scanned" >&2
+      SKIPPED=$((SKIPPED + 1))
+      ;;
+  esac
+  : > "$PART_FILE"
 }
 
 log "Scanning ${#TARGETS[@]} file(s)..."
@@ -217,5 +256,10 @@ log "==> Total dollar-zero findings: ${total}"
 
 if [ "$total" -gt 0 ]; then
   exit 1
+fi
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "ERROR: ${SKIPPED} file(s) could not be scanned — this run is not a clean bill" >&2
+  echo "  See the WARNING lines above for which files and why." >&2
+  exit 2
 fi
 exit 0

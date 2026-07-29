@@ -31,7 +31,14 @@ if [ ! -f "$SCRIPT" ]; then
 fi
 
 SANDBOX="$(make_plain_sandbox)"
-cleanup() { [ -n "${SANDBOX:-}" ] && rm -rf "$SANDBOX"; }
+# Second sandbox stands in for a consumer repo that installs rite from the
+# marketplace and has no plugins/rite/ tree of its own. Created up front so the
+# trap owns both — a bare `rm -rf` at the end of the file leaks it on any signal.
+CONSUMER_SANDBOX="$(make_plain_sandbox)"
+cleanup() {
+  [ -n "${SANDBOX:-}" ] && rm -rf "$SANDBOX"
+  [ -n "${CONSUMER_SANDBOX:-}" ] && rm -rf "$CONSUMER_SANDBOX"
+}
 trap 'rc=$?; cleanup; exit $rc' EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
@@ -42,6 +49,9 @@ trap 'cleanup; exit 129' HUP
 DOLLAR='$'
 P0="${DOLLAR}0"
 P0_BRACE="${DOLLAR}{0}"
+P0_SUFFIX="${DOLLAR}{0##*/}"
+
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
 mkdir -p "$SANDBOX/plugins/rite/skills/demo" "$SANDBOX/plugins/rite/hooks/scripts"
 
@@ -54,6 +64,12 @@ printf 'Prose line.\n\n```bash\nawk -v k="$key" '\''%s ~ "^" k { print }'\''\n``
 # Same defect in brace form — the loader treats both spellings alike.
 printf '```bash\necho "%s"\n```\n' "$P0_BRACE" \
   > "$SANDBOX/plugins/rite/skills/demo/ng-brace.md"
+
+# Brace form with a modifier. The loader rewrites this exactly like the two
+# unmodified spellings, so a pattern that only matched `$0` and `${0}` would let
+# it through while reading as if it were covered.
+printf '```bash\nname=%s\n```\n' "$P0_SUFFIX" \
+  > "$SANDBOX/plugins/rite/skills/demo/ng-brace-suffix.md"
 
 # A fence with no info string is just as vulnerable as a bash one; tagging the
 # fence differently must not buy an exemption.
@@ -74,6 +90,29 @@ printf '```bash\nawk %s\n    if (line ~ /^```json/) next\n%s file\n```\n' "'" "'
 printf 'Prose.\n\n```bash\necho "%s"\n' "$P0" \
   > "$SANDBOX/plugins/rite/skills/demo/ng-unbalanced.md"
 
+# Content-driven desync: a bare unindented fence line inside a fenced block
+# closes it early (a closing fence carries no info string), so the reference on
+# the next line is read as prose and the file ends with an open fence. This is
+# the failure mode that costs a real finding, and it is the reason an
+# unscannable file must not exit 0.
+printf '```bash\necho x\n```\n%s\n```\n' "$P0" \
+  > "$SANDBOX/plugins/rite/skills/demo/ng-unindented-fence-literal.md"
+
+# The same shape but with an info string on the inner fence does NOT close the
+# block — the reference stays inside and is found normally. Pinning both halves
+# keeps a future relaxation of the closing rule from silently swallowing
+# findings in blocks that quote fenced JSON.
+printf '```bash\nawk %s\n```json\n%s\n```\n' "'" "$P0" \
+  > "$SANDBOX/plugins/rite/skills/demo/ng-inner-tagged-fence.md"
+
+# Byte-identical content placed on each side of the scan boundary. Asserting the
+# pair is what verifies the exclusion: a single `.sh` fixture returning rc=0
+# proves nothing, because a fixture whose reference sits outside any fence would
+# also return rc=0 no matter how wide the scan set became.
+EXCLUSION_BODY=$(printf '```bash\necho "%s"\n```\n' "$P0")
+printf '%s\n' "$EXCLUSION_BODY" > "$SANDBOX/plugins/rite/skills/demo/exclusion-probe.md"
+printf '%s\n' "$EXCLUSION_BODY" > "$SANDBOX/plugins/rite/hooks/scripts/exclusion-probe.sh"
+
 # Real shell script carrying the same idiom — immune, because bash executes the
 # file directly and the loader never sees it.
 printf '#!/usr/bin/env bash\necho "invoked as %s"\n' "$P0" \
@@ -91,6 +130,8 @@ assert "fenced reference detected (exit 1)" "1" \
   "$(run --quiet --target plugins/rite/skills/demo/ng-fenced.md)"
 assert "brace form detected (exit 1)" "1" \
   "$(run --quiet --target plugins/rite/skills/demo/ng-brace.md)"
+assert "brace form with modifier detected (exit 1)" "1" \
+  "$(run --quiet --target plugins/rite/skills/demo/ng-brace-suffix.md)"
 assert "untagged fence detected (exit 1)" "1" \
   "$(run --quiet --target plugins/rite/skills/demo/ng-untagged.md)"
 
@@ -120,8 +161,11 @@ assert "prose mention outside a fence is clean (exit 0)" "0" \
 assert "indented fence-looking literal stays inside the block (exit 0)" "0" \
   "$(run --quiet --target plugins/rite/skills/demo/clean-indented-fence-literal.md)"
 
-# --- T-08: unbalanced fence -> WARNING + skip ---------------------------------
-assert "unbalanced fence exits 0 (detection dropped, not guessed)" "0" \
+# --- T-08: unbalanced fence -> WARNING + not-a-clean-bill ---------------------
+# rc=2, not 0: the caller (/rite:lint Phase 3.5) reads only the exit code, maps 0
+# to success, and does not surface stderr for a successful check. Returning 0
+# here would report "scanned, found nothing" for a file that was never scanned.
+assert "unbalanced fence exits 2 (not scanned != clean)" "2" \
   "$(run --quiet --target plugins/rite/skills/demo/ng-unbalanced.md)"
 unbalanced_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
   --target plugins/rite/skills/demo/ng-unbalanced.md 2>&1 >/dev/null || true)"
@@ -130,15 +174,41 @@ if printf '%s' "$unbalanced_err" | grep -qF 'unbalanced code fence'; then
 else
   fail "unbalanced fence WARNING missing — got: $unbalanced_err"
 fi
+if printf '%s' "$unbalanced_err" | grep -qF 'could not be scanned'; then
+  pass "unscannable file is called out as not a clean bill"
+else
+  fail "unscannable ERROR line missing — got: $unbalanced_err"
+fi
+
+# Content-driven desync produces the same outcome. Without this case the suite
+# only pins the indented literal, whose whole point is that it does NOT desync.
+assert "unindented bare fence desyncs the block and exits 2" "2" \
+  "$(run --quiet --target plugins/rite/skills/demo/ng-unindented-fence-literal.md)"
+assert "inner fence with an info string does not close the block (exit 1)" "1" \
+  "$(run --quiet --target plugins/rite/skills/demo/ng-inner-tagged-fence.md)"
 
 # --- T-05: real shell scripts are outside the scan set ------------------------
+# Byte-identical content on each side of the boundary, asserted as a pair. The
+# `.md` copy must be a finding; the `.sh` copy carries its reference *inside* a
+# fence, so if --all ever scanned hooks/scripts/ it would necessarily report it.
+# That is what makes the rc=0 below evidence of exclusion rather than a tautology
+# — unlike a fixture whose reference sits outside any fence, which returns 0 no
+# matter how wide the scan set grows.
+assert "exclusion probe under skills/ is a finding (exit 1)" "1" \
+  "$(run --quiet --target plugins/rite/skills/demo/exclusion-probe.md)"
 rm -f "$SANDBOX/plugins/rite/skills/demo/ng-fenced.md" \
       "$SANDBOX/plugins/rite/skills/demo/ng-brace.md" \
+      "$SANDBOX/plugins/rite/skills/demo/ng-brace-suffix.md" \
       "$SANDBOX/plugins/rite/skills/demo/ng-untagged.md" \
-      "$SANDBOX/plugins/rite/skills/demo/ng-unbalanced.md"
-assert "--all ignores hooks/**/*.sh carrying the same idiom (exit 0)" "0" "$(run --quiet --all)"
+      "$SANDBOX/plugins/rite/skills/demo/ng-unbalanced.md" \
+      "$SANDBOX/plugins/rite/skills/demo/ng-unindented-fence-literal.md" \
+      "$SANDBOX/plugins/rite/skills/demo/ng-inner-tagged-fence.md" \
+      "$SANDBOX/plugins/rite/skills/demo/exclusion-probe.md"
+assert "--all leaves the fenced .sh copy unscanned (exit 0)" "0" "$(run --quiet --all)"
 
 # --- Missing target is reported, not silently passed --------------------------
+assert "missing --target exits 2 (per the documented contract)" "2" \
+  "$(run --quiet --target plugins/rite/skills/demo/does-not-exist.md)"
 missing_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
   --target plugins/rite/skills/demo/does-not-exist.md 2>&1 >/dev/null || true)"
 if printf '%s' "$missing_err" | grep -qF 'target not found'; then
@@ -147,12 +217,41 @@ else
   fail "missing --target produced no WARNING — got: $missing_err"
 fi
 
+# --- Count line format and --quiet contract (both read by /rite:lint row 17) ---
+# lint extracts the finding count with `Total dollar-zero findings: (\d+)` and
+# defaults to 0 when the regex misses, so a wording change would surface as an
+# innocuous-looking "warning (0 findings)" rather than as a failure.
+count_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" \
+  --target plugins/rite/skills/demo/clean-prose.md 2>&1 >/dev/null || true)"
+if printf '%s' "$count_out" | grep -qE 'Total dollar-zero findings: [0-9]+'; then
+  pass "count line matches the regex /rite:lint parses"
+else
+  fail "count line format drifted — got: $count_out"
+fi
+quiet_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
+  --target plugins/rite/skills/demo/clean-prose.md 2>&1 || true)"
+if printf '%s' "$quiet_out" | grep -qF 'Total dollar-zero findings:'; then
+  fail "--quiet leaked the count line — got: $quiet_out"
+else
+  pass "--quiet suppresses the count line"
+fi
+
+# --- Real repository corpus: the regression this check exists to catch ---------
+# Every other assertion runs against a synthetic sandbox, so a reference
+# reintroduced into a real skill body would be invisible to this suite.
+assert "real repo skills/ tree is clean (exit 0)" "0" \
+  "$(bash "$SCRIPT" --repo-root "$REPO_ROOT" --quiet --all --skip-if-no-target >/dev/null 2>&1; echo $?)"
+real_repo_err="$(bash "$SCRIPT" --repo-root "$REPO_ROOT" --quiet --all --skip-if-no-target 2>&1 >/dev/null || true)"
+if printf '%s' "$real_repo_err" | grep -qF 'unbalanced code fence'; then
+  fail "real repo has an unscannable file — coverage is silently reduced: $real_repo_err"
+else
+  pass "no file in the real repo is skipped for an unbalanced fence"
+fi
+
 # --- --skip-if-no-target contract ---------------------------------------------
-CONSUMER_SANDBOX="$(make_plain_sandbox)"
 assert "--all without a scan dir exits 2 by default" "2" \
   "$(bash "$SCRIPT" --repo-root "$CONSUMER_SANDBOX" --quiet --all >/dev/null 2>&1; echo $?)"
 assert "--skip-if-no-target turns that into a clean skip (exit 0)" "0" \
   "$(bash "$SCRIPT" --repo-root "$CONSUMER_SANDBOX" --quiet --all --skip-if-no-target >/dev/null 2>&1; echo $?)"
-rm -rf "$CONSUMER_SANDBOX"
 
-print_summary
+print_summary "$(basename "$0")"

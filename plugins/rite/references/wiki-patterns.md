@@ -331,7 +331,7 @@ fi
 - `plugins/rite/skills/issue-implement/SKILL.md` (Wiki query 起動条件)
 - `plugins/rite/skills/issue-close/SKILL.md` Phase 4.4.W (`parse_wiki_scalar` 委譲、Wiki ingest 起動条件。helper 解決不可は skip reason `config_helper_unavailable`)
 - `plugins/rite/hooks/wiki-query-inject.sh` (auto_query 注入の前提判定、ローカル helper `_extract_yaml_value`)
-- `plugins/rite/hooks/wiki-ingest-trigger.sh` (raw source staging の事前ゲート、`wiki.enabled` のみ参照、独自 inline 実装 — wiki-config.sh とは別経路。self-comment「Three sites still re-implement YAML parsing inline」で 3 sites の 1 つとして自身を列挙)
+- `plugins/rite/hooks/wiki-ingest-trigger.sh` (raw source staging の事前ゲート、`wiki.enabled` のみ参照、独自 inline 実装 — wiki-config.sh とは別経路。self-comment の inline 実装リストで自身 + growth-check.sh + gitignore-health-check.sh の 3 site を列挙し、完全一覧は本セクションを SoT として指す)
 - `plugins/rite/hooks/scripts/wiki-growth-check.sh` (layer 3 growth stall 判定、独自 inline 実装 lenient)
 - `plugins/rite/hooks/scripts/gitignore-health-check.sh` (gitignore drift 判定、独自 inline 実装 lenient)
 - `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `parse_wiki_scalar`、lenient — callers: wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh の各 script、および skills 側の wiki-ingest / wiki-lint / cleanup / issue-close が `source` 経由で再利用。skills が inline パーサを持てないのは Skill loader が本文の位置パラメータを起動引数へ展開するため — 静的検出は `hooks/scripts/dollar-zero-check.sh`)

@@ -255,13 +255,17 @@ fi
 #
 # YAML parse logic sync: the canonical implementation lives in
 # `hooks/scripts/lib/wiki-config.sh` (`parse_wiki_scalar()` / `validate_wiki_branch_name()`).
-# Three sites still re-implement YAML parsing inline and must be kept in sync
-# when the lib's parse contract changes:
+# The complete site inventory is `references/wiki-patterns.md` §分散実装ファイル一覧 (SoT);
+# this comment lists only the sites that still re-implement the parse inline and
+# must be kept in sync when the lib's parse contract changes:
 #   1. this script (wiki-ingest-trigger.sh) — strict 3-arm with fail-fast `*` (safe-default policy)
 #   2. hooks/scripts/wiki-growth-check.sh — lenient (layer 3 growth stall detection)
-#   3. skills/wiki-ingest/SKILL.md ステップ 1.1 — lenient 2-arm (`extract_yaml_key` helper 経由、page integration)
-# The lib-using scripts (wiki-ingest-commit.sh / wiki-worktree-commit.sh /
-# wiki-worktree-setup.sh) source the canonical implementation directly.
+#   3. hooks/scripts/gitignore-health-check.sh — lenient (gitignore drift detection)
+# The lib-using callers source the canonical implementation directly: the scripts
+# wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh, and
+# the skill bodies wiki-ingest / wiki-lint / cleanup / issue-close. A skill body
+# cannot host its own parser — the Skill loader rewrites positional parameters in
+# it (static check: hooks/scripts/dollar-zero-check.sh).
 if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   # Capture sed/awk stderr to a tempfile so syntax errors / binary corruption /
   # IO errors don't get conflated with "no match". The old `2>/dev/null || ...=""`

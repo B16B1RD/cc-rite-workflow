@@ -529,12 +529,14 @@ fi
 # here-string `<<<` は printf | awk の SIGPIPE 回避 (bash-defensive-patterns.md Pattern 5)。
 # rationale: references/design-rationale.md#pr-comment-raw-json-extraction
 raw_json=$(bash {plugin_root}/hooks/scripts/review-raw-json-extract.sh <<< "$pr_review_comment_body")
-awk_pr_comment_raw_json_rc=$?
+# 変数名は helper の rc であることを表す。reason 文字列 pr_comment_raw_json_awk_failed は
+# reason 表と Eval-order enumeration に登録済の documented set のため改名しない。
+raw_json_extract_rc=$?
 # exit code を明示検査 (空出力と「Raw JSON section なし」の区別を保つ)
-if [ "$awk_pr_comment_raw_json_rc" -ne 0 ]; then
-  echo "WARNING: PR コメントからの Raw JSON 抽出 helper が失敗 (rc=$awk_pr_comment_raw_json_rc)" >&2
-  echo "  原因候補: helper 不在 / awk バイナリ異常 / OOM (行バッファが大きすぎ) / SIGPIPE" >&2
-  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_raw_json_awk_failed; rc=$awk_pr_comment_raw_json_rc" >&2
+if [ "$raw_json_extract_rc" -ne 0 ]; then
+  echo "WARNING: PR コメントからの Raw JSON 抽出 helper が失敗 (rc=$raw_json_extract_rc)" >&2
+  echo "  原因候補: helper 解決不能 (rc=127) / awk バイナリ異常 / OOM (行バッファが大きすぎ) / SIGPIPE" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_raw_json_awk_failed; rc=$raw_json_extract_rc" >&2
   raw_json=""
 fi
 
@@ -764,7 +766,7 @@ exit 1
 |--------|-------------|
 | `overall_assessment_unknown_value` | Priority 0/2/3 で `overall_assessment` が受理値 (`mergeable` / `fix-needed`) 以外 (review-result-schema.md enum 違反、`REVIEW_SOURCE_ENUM_UNKNOWN` flag。P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough) |
 | `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
-| `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 awk が失敗 (rc 非 0、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough) |
+| `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 helper (`hooks/scripts/review-raw-json-extract.sh`) が失敗 (helper 解決不能 rc=127 / awk 異常 / OOM / SIGPIPE、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough)。reason 名の `awk` は helper 委譲前からの documented literal で、Eval-order enumeration の機械マッチ対象のため改名しない |
 | `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
 | `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_critical_high_scope_nit_noted` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant #4 違反: `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |

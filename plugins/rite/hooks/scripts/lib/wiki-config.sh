@@ -8,6 +8,15 @@
 # wiki-ingest-commit.sh can share a single definition instead of keeping
 # three character-exact copies in sync manually.
 #
+# The skill bodies wiki-ingest / wiki-lint / cleanup / issue-close also source
+# this file. A skill body cannot host its own parser: the Skill loader rewrites
+# positional parameters in it — including inside fenced code blocks — so an
+# embedded awk program arrives with its line-match condition replaced by the
+# invocation arguments, and every key reads back empty (static check:
+# hooks/scripts/dollar-zero-check.sh). The complete site inventory, including
+# the sites that still parse inline, is references/wiki-patterns.md
+# §分散実装ファイル一覧 (SoT) — keep counts there, not here.
+#
 # Design rationale: review identified that parse_wiki_scalar had drifted across the
 # three sibling scripts, creating a transcription-failure class of bugs
 # every time the `wiki.branch_name` parsing contract changed. Extracting a

@@ -224,6 +224,8 @@ rite-workflow/
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
+│ │ ├── dollar-zero-check.sh # lint Phase 3.5 skill 本文の fenced block 内 位置パラメータ 0 参照 検出 (Skill loader が起動引数へ展開する)
+│ │ ├── pr-review-post-comment-read.sh / review-raw-json-extract.sh / fix-reason-coverage-check.sh # skill 本文から退避した awk プログラム (loader 展開の回避)
 │ │ ├── lib/ # 共有ライブラリ (git-remote.sh / git-status-filtered.sh / wiki-config.sh / worktree-git.sh)
 │ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # Hook-level test suite (shell-based)

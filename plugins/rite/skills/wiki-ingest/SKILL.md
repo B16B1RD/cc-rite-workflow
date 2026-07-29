@@ -45,7 +45,7 @@ Raw Source の wiki branch 着地は `wiki-ingest-commit.sh` が `review` / `fix
 
 ### 1.1 Wiki 設定の読み取りとブランチ戦略判定
 
-`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を**単一の bash ブロック**で取得する (本ブロックはプローブ用。各失敗を `|| fallback=""` で個別処理するため `set -euo pipefail` は意図的に省略する。strict mode はステップ 5.1 / 5.2 で明示宣言する):
+`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を**単一の bash ブロック**で取得する (本ブロックはプローブ用。helper 解決失敗のみ明示 fail-fast で扱い、値の欠落は `${var:-default}` で吸収するため `set -euo pipefail` は不要。strict mode はステップ 5.1 / 5.2 で明示宣言する):
 
 ```bash
 # YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
@@ -932,6 +932,7 @@ sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered 
 | エラー | 対処 |
 |--------|------|
 | `wiki.enabled: false` | 早期 return（ステップ 1.1） |
+| `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
