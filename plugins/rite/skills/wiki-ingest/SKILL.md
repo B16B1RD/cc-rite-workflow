@@ -668,7 +668,7 @@ Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki-lint --auto` と
 
 ### 8.1 auto_lint 設定の確認
 
-`rite-config.yml` の `wiki.auto_lint` をステップ 1.1 と同じ YAML パーサで読み取る:
+`rite-config.yml` の `wiki.auto_lint` を読み取る。**ステップ 1.1 とは別の inline lenient パーサ**を使う (1.1 は `lib/wiki-config.sh` の `parse_wiki_scalar` へ委譲済み。本ステップの awk は位置パラメータを参照しない bare regex 形のため Skill loader の展開を受けず、委譲しなくても壊れない — 検出は `hooks/scripts/dollar-zero-check.sh`)。**1.1 の旧形 (awk で行全体を参照する形) をここへ持ち込んではならない**:
 
 ```bash
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""

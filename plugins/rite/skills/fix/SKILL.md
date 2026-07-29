@@ -3675,7 +3675,7 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 
 **`reason` フィールドの取りうる値** (ステップ 4.5.1 / 4.5.2 で発火する経路の網羅):
 
-**完全性保証** — fix.md 内で `echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=..."` として emit されるすべての reason は、下記 reason 表に行として存在する (WM_UPDATE_FAILED reason ⊆ 表。表は他フラグの reason も併記する superset のため逆方向は保証しない)。DoD 検証スクリプト (手動実行、左差分が空で網羅性を確認。設計上の要点は [design-rationale.md#output-pattern-notes](references/design-rationale.md#output-pattern-notes) 参照):
+**完全性保証** — fix.md 内で `echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=..."` として emit されるすべての reason は、下記 reason 表に行として存在する (WM_UPDATE_FAILED reason ⊆ 表。表は他フラグの reason も併記する superset のため逆方向は保証しない)。DoD 検証スクリプト (手動実行、空出力 + rc=0 で網羅性を確認。設計上の要点は [design-rationale.md#output-pattern-notes](references/design-rationale.md#output-pattern-notes) 参照):
 
 ```bash
 bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh

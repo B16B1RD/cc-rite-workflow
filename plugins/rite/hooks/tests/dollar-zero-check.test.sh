@@ -196,6 +196,29 @@ assert "inner fence with an info string does not close the block (exit 1)" "1" \
 # matter how wide the scan set grows.
 assert "exclusion probe under skills/ is a finding (exit 1)" "1" \
   "$(run --quiet --target plugins/rite/skills/demo/exclusion-probe.md)"
+
+# --- findings and unscannable files in the same run ----------------------------
+# The aggregate "could not be scanned" line is printed before the findings check
+# specifically so it survives a run that has both. Nothing else pins that: the
+# exit code is 1 either way, so an assertion on rc alone holds even if the line
+# is moved back after the early exit and disappears. Assert the stderr.
+if [ "$(id -u)" -eq 0 ]; then
+  skip "findings + unscannable in one run (running as root: chmod 000 does not deny access)"
+else
+  printf '```bash\necho ok\n```\n' > "$SANDBOX/plugins/rite/skills/demo/mixed-unreadable.md"
+  chmod 000 "$SANDBOX/plugins/rite/skills/demo/mixed-unreadable.md"
+  assert "findings win the exit code when both are present (exit 1)" "1" \
+    "$(run --quiet --all)"
+  mixed_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --all 2>&1 >/dev/null || true)"
+  if printf '%s' "$mixed_err" | grep -qF 'could not be scanned'; then
+    pass "the unscannable count survives a run that also has findings"
+  else
+    fail "aggregate unscannable line lost when findings are present — got: $mixed_err"
+  fi
+  chmod 644 "$SANDBOX/plugins/rite/skills/demo/mixed-unreadable.md"
+  rm -f "$SANDBOX/plugins/rite/skills/demo/mixed-unreadable.md"
+fi
+
 rm -f "$SANDBOX/plugins/rite/skills/demo/ng-fenced.md" \
       "$SANDBOX/plugins/rite/skills/demo/ng-brace.md" \
       "$SANDBOX/plugins/rite/skills/demo/ng-brace-suffix.md" \

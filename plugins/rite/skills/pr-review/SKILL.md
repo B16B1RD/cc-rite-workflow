@@ -210,16 +210,19 @@ else
  # 抽出は helper (実ファイル) に委譲する。skill 本文の fenced bash に awk を書くと、
  # Skill loader が位置パラメータを起動引数へ展開して行参照が壊れ、値が silent に空へ倒れる
  # (静的検出: hooks/scripts/dollar-zero-check.sh)。単一 awk / SIGPIPE 禁止契約は helper 側で維持
- awk_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-awk-err-XXXXXX" 2>/dev/null) || awk_err=""
- if raw=$(bash {plugin_root}/hooks/scripts/pr-review-post-comment-read.sh "$repo_root/rite-config.yml" 2>"${awk_err:-/dev/null}"); then
+ helper_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-helper-err-XXXXXX" 2>/dev/null) || helper_err=""
+ if raw=$(bash {plugin_root}/hooks/scripts/pr-review-post-comment-read.sh "$repo_root/rite-config.yml" 2>"${helper_err:-/dev/null}"); then
  config_post_comment="$raw"
  else
- echo "WARNING: rite-config.yml の post_comment 読取 helper が失敗しました (IO/binary error)" >&2
- [ -n "$awk_err" ] && [ -s "$awk_err" ] && head -3 "$awk_err" | sed 's/^/ /' >&2
+ helper_rc=$?
+ echo "WARNING: rite-config.yml の post_comment 読取 helper が失敗しました (rc=$helper_rc)" >&2
+ echo " 原因候補: helper 解決不能 (rc=127、{plugin_root} 未置換 / plugin 未配置) / 引数・ファイル不正 (rc=2) / awk バイナリ異常 / IO エラー" >&2
+ [ -n "$helper_err" ] && [ -s "$helper_err" ] && head -3 "$helper_err" | sed 's/^/ /' >&2
+ [ -z "$helper_err" ] && echo " (stderr 退避用 tempfile の mktemp に失敗したため helper の stderr は失われています)" >&2
  echo " default の false を使用します" >&2
  config_post_comment=""
  fi
- [ -n "$awk_err" ] && rm -f "$awk_err"
+ [ -n "$helper_err" ] && rm -f "$helper_err"
 
  # 不正値は WARNING 表示 (silent false 化禁止)。空文字のみ legitimate fallback として silent OK
  case "$config_post_comment" in
