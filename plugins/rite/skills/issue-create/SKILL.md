@@ -397,7 +397,7 @@ fi
 
 ### 5.1.1 仕様書の断定のファクトチェック
 
-5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する。**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2.1 と同じ共通参照。裏取りコマンド表は同 reference にのみ存在するため、読込を省くと検査が実行できない）。分解パスは ステップ 4.1 を通らないため確定 Complexity を持たないが、親仕様書は親 Complexity が `XL` 固定（5.5 Step 1 の helper 契約）のため **3 クラスすべて**を検査範囲とする（ステップ 3.1 の分解判定は Complexity 以外の条件でも成立しうるため、見込み値を根拠にしない）。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・自己矛盾候補の表面化・`UNVERIFIED` の「要確認」付記はいずれも 4.2.1 と同一。裏取りコマンドが失敗した場合の分類も 4.2.1 と同じく reference のエラー処理表に委ね、条件を本体へ写さない。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。
+5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する。**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2.1 と同じ共通参照。裏取りコマンド表は同 reference にのみ存在するため、読込を省くと検査が実行できない）。分解パスは ステップ 4.1 を通らないため確定 Complexity を持たないが、親仕様書は親 Complexity が `XL` 固定（5.5 Step 1 の helper 契約）のため **3 クラスすべて**を検査範囲とする（ステップ 3.1 の分解判定は Complexity 以外の条件でも成立しうるため、見込み値を根拠にしない）。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・自己矛盾候補の表面化・`UNVERIFIED` の「要確認」付記はいずれも 4.2.1 と同一。裏取りコマンドが失敗した場合の分類も 4.2.1 と同じく reference のエラー処理表に委ね、条件を本体へ写さない。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。**承認された訂正・付記を反映した仕様書を以降の `{spec_document}` とする** — 5.2 の提示も 5.5 Step 1 (B) が `parent_body.md` へ書く内容も、反映後の版を指す（4.2 が「Step 4.2.1 の検証を経て Step 4.3 で渡す」と配線しているのと同型）。
 
 検査対象は 5.1 の設計仕様書に閉じる。5.5 で生成する Sub-Issue body は本ステップの対象外とする（本機能の Scope は 4.2 直後と 5.1 後に限定されており、検査を生成地点である 5.5 まで広げるのは別 Issue の範囲）。
 
@@ -420,7 +420,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
-1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成した設計仕様書（`{spec_document}`）の raw 内容
+1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
 2. 各 Sub-Issue について `{DECOMPOSE_WORKDIR}/sub_{i}_body.md`（i = 1..{sub_count}）← 各 Sub-Issue body の raw 内容（Step 4.2 の Implementation Contract フォーマットで生成する。各 Sub-Issue の確定 Complexity に応じて Complexity Gate を適用）
 3. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
 

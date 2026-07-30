@@ -1,6 +1,6 @@
 # Body Fact-Check — 生成した Issue 本文の断定を検証する
 
-> **SoT scope**: Issue 本文に書かれた**検証可能な断定**を、Issue 作成 / 編集を適用する前にファクトチェックする手順の SoT。consumer は `skills/issue-create/SKILL.md` ステップ 4.2.1（Single Issue path、body 生成直後）と ステップ 5.1.1（Decompose path、設計仕様書生成後）、`skills/issue-edit/SKILL.md` Phase 3.1.1（変更された本文部分）の 3 箇所。判定語彙の**ラベル**（`VERIFIED` / `CONTRADICTED` / `UNVERIFIED`）は [`skills/pr-review/references/fact-check.md`](../../pr-review/references/fact-check.md) と揃えるが、**判定根拠は異なる** — 同 SoT は外部仕様の WebSearch 検証を根拠とし、本 reference は**コマンド出力との突合**を根拠とする。各値の意味は下記「3 値の処理」を正とする（後置修飾を持たない bare `UNVERIFIED` は本 reference のローカル語彙であり、SoT 側の `UNVERIFIED:ソース未確認` / `UNVERIFIED:リソース超過` とは別値）。
+> **SoT scope**: Issue 本文に書かれた**検証可能な断定**を、Issue 作成 / 編集を適用する前にファクトチェックする手順の SoT。consumer は `skills/issue-create/SKILL.md` ステップ 4.2.1（Single Issue path、body 生成直後）と ステップ 5.1.1（Decompose path、設計仕様書生成後）、`skills/issue-edit/SKILL.md` Phase 3.1.1（変更された本文部分）の 3 箇所。判定語彙の**ラベル**（`VERIFIED` / `CONTRADICTED` / `UNVERIFIED`）は [`skills/pr-review/references/fact-check.md`](../../pr-review/references/fact-check.md) と揃えるが、**判定根拠は異なる** — 同 SoT は外部仕様の WebSearch 検証を根拠とし、本 reference は**コマンド出力との突合**を根拠とする。各値の意味は下記「3 値の処理」を正とする（後置修飾を持たない bare `UNVERIFIED` は本 reference のローカル語彙であり、SoT 側の `UNVERIFIED:ソース未確認` / `UNVERIFIED:リソース超過` とは別値。下記 WARNING 規則が使う `SELF_CONTRADICTION` も本 reference のローカルラベルで、SoT 側に対応物を持たない — 判定 3 値ではなくクラス 3 の観測性を担う欄値）。
 
 構造検査（AC 件数・T-xx 対応等）は [`templates/issue/default.md`](../../../templates/issue/default.md) の Output Validation Checklist の責務であり、本 reference は**記述内容の真偽**のみを見る（責務を混ぜない）。
 
