@@ -78,7 +78,7 @@ else
 fi
 ```
 
-判断基準: この実測ケースは fallback 後も**本番挙動が不変**（同じ実質的な state 解決結果に収束）なため、observability を `RITE_DEBUG` gate で opt-in にしても実害がなかった。一方 PR #1808 のケースは fallback が **実際に別ファイル**（schema_v2/v3 の per-session file → legacy 共有 file）を操作対象に切り替える — silent だと `/rite:cleanup` が「成功したように見えて実際には別ファイルをリセットした」という schema 不整合を誰にも気づかれず再生産する（Issue #695 の実害そのもの）。**fallback が操作対象そのものを変える場合は、opt-in の debug ログではなく常時可視の WARNING にする**（gate の要否は「fallback後も対象不変か、対象自体が変わるか」で判定する）。
+判断基準: この実測ケースは fallback 後も**本番挙動が不変**（同じ実質的な state 解決結果に収束）なため、observability を `RITE_DEBUG` gate で opt-in にしても実害がなかった。一方 PR #1808 のケースは fallback が **実際に別ファイル**（schema_v2/v3 の per-session file → legacy 共有 file）を操作対象に切り替える — silent だと `/rite:cleanup` が「成功したように見えて実際には別ファイルをリセットした」という schema 不整合を誰にも気づかれず再生産する（実害として観測済み）。**fallback が操作対象そのものを変える場合は、opt-in の debug ログではなく常時可視の WARNING にする**（gate の要否は「fallback後も対象不変か、対象自体が変わるか」で判定する）。
 
 ### 上位 Pattern との関係
 
