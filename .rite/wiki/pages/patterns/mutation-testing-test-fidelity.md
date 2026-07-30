@@ -203,7 +203,7 @@ cycle 2 で error-handling reviewer が pre-fix code を `/tmp/state-read-revert
 
 これは「fix が真に bug を防いでいることを実証する load-bearing test」の canonical pattern。
 
-### 適用累積実績 (PR #688 cycles 3 → 4 → 5 → 31 → 42)
+### 適用累積実績（同一 PR 内の cycle 3 → 4 → 5 → 31 → 42）
 
 | cycle | 適用先 | 検出内容 |
 |-------|--------|---------|
@@ -215,7 +215,7 @@ cycle 2 で error-handling reviewer が pre-fix code を `/tmp/state-read-revert
 
 → Wiki 経験則として **新規 test 追加時は mutation testing による真正性検証を strongly recommended** と位置付け。
 
-### 適用 4: bash command substitution trailing newline strip 仕様による false-positive (PR #688 cycle 42 での evidence)
+### 適用 4: bash command substitution trailing newline strip 仕様による false-positive（cycle 42 の実測）
 
 cycle 42 review で `_resolve-cross-session-guard.test.sh` TC-9 が **bash の `$(...)` command substitution が末尾 newline を strip する仕様** により helper の出力が `printf '%s'` (newline 無し) ↔ `printf '%s\n'` (newline 有り) のいずれでも assertion `[ "$got" = "$expected" ]` が PASS する false-positive 構造として実測:
 
@@ -260,16 +260,16 @@ expected_bytes=5  # "value" の byte 数
 - fixture と patch value の同値設計 — test author の盲点になりやすい。
 - helper 共通化後の caller-side routing — helper 単体 test は通っても caller 経由経路が pin されていない。
 
-### 適用 5: review test の identification power 不足 — 3 種 dead code 化 pattern (PR #765 review での evidence)
+### 適用 5: review test の identification power 不足 — 3 種 dead code 化 pattern（review での実測）
 
-PR #765 (Issue #691 = bang-backtick-check 二段ガード昇格) cycle 1 review で、新規追加された **review test 自身が mutation 耐性を持たない 3 種の dead code 化 pattern** が cross-validation で検出された。新規 lint rule / hook の test を書く際の canonical な反面教材:
+bang-backtick-check を二段ガードへ昇格させた PR の cycle 1 review で、新規追加された **review test 自身が mutation 耐性を持たない 3 種の dead code 化 pattern** が cross-validation で検出された。新規 lint rule / hook の test を書く際の canonical な反面教材:
 
 #### Pattern 5-A: Self-grep tautology (TC-3)
 
 test 自身が echo した文字列を自身で grep する循環構造。実装の検出ロジックは一切呼ばれず、test fixture の echo string が test 自身の grep 検証で必ず matched する false PASS 経路。
 
 ```bash
-# 反面教材 (PR #765 TC-3)
+# 反面教材 (TC-3)
 echo "[bang-backtick] WARNING: detected pattern" >> "$tmpdir/output"
 grep -q '\[bang-backtick\] WARNING' "$tmpdir/output"  # ← echo した自分自身を grep
 ```
@@ -281,7 +281,7 @@ grep -q '\[bang-backtick\] WARNING' "$tmpdir/output"  # ← echo した自分自
 `grep -c >= 2` 形式の閾値判定で、同一 literal が 3 箇所に存在する場合、**1 箇所を mutate しても残り 2 箇所で PASS する** dead range pattern。
 
 ```bash
-# 反面教材 (PR #765 TC-4)
+# 反面教材 (TC-4)
 match_count=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED' file)
 [ "$match_count" -ge 2 ]  # ← 3 site 中 1 site mutation でも PASS
 ```
@@ -304,9 +304,9 @@ scope filter glob (`agents/*/foo` `references/*/foo` 等) を test fixture に�
 
 3 種の mutation を 1 つの `mutation-test.sh` script として CI に組み込み、新規 rule / hook 追加 PR の review-fix loop で必須実行する。本 pattern は [test-pin-protection-theater.md](../anti-patterns/test-pin-protection-theater.md) の sub-pattern として接続し、test 真正性の 4 軸 (dead code / identification power / self-grep tautology / count threshold mutation evasion / path filter coverage gap) を canonical 化する。
 
-### 適用 6: Load-bearing whitespace を持つ fixture を formatter から守る pre-check (PR #915 review での evidence)
+### 適用 6: Load-bearing whitespace を持つ fixture を formatter から守る pre-check（review での実測）
 
-PR #915 (Issue #914 = mutation fixture M1-M6 永続化) cycle 1 review で、**M6 fixture の末尾 fence の trailing whitespace が M6 識別力の唯一の load-bearing 要素**であるという脆弱性が指摘された。fixture が `prettier` / `editorconfig` / `markdownlint` 等の formatter で silent に剥がされた場合、mutation の identification power は壊れるが test 自身は PASS する false-positive 経路に陥る。
+mutation fixture M1-M6 を永続化した PR の cycle 1 review で、**M6 fixture の末尾 fence の trailing whitespace が M6 識別力の唯一の load-bearing 要素**であるという脆弱性が指摘された。fixture が `prettier` / `editorconfig` / `markdownlint` 等の formatter で silent に剥がされた場合、mutation の identification power は壊れるが test 自身は PASS する false-positive 経路に陥る。
 
 #### 失敗の構造
 
@@ -346,7 +346,7 @@ grep -qE '```[[:space:]]+$' "$M6_FIXTURE" \
 
 本 pattern は適用 5 の 3 種 dead code 化 pattern (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap) と同じく、**fixture の真正性を mutation testing から守る canonical 防御** の系統。
 
-### 適用 7: Regex alternation / quantifier semantic の per-branch positive coverage (PR #1066 で実証)
+### 適用 7: Regex alternation / quantifier semantic の per-branch positive coverage
 
 PR #1066 cycle 11 で 2 種の regex per-branch coverage gap が cross-validated として検出され、本 pattern を **regex alternation / quantifier semantic** 軸へ拡張する canonical 事例になった。本拡張は適用 5 の「Pattern 5-B 件数判定の片側 mutation 隠蔽」と同型構造 (per-branch coverage gap) を、対象が grep -c 閾値ではなく **regex の構造単位 (alternation の各 branch / quantifier の各 semantic)** に変えた sub-pattern。
 
@@ -355,7 +355,7 @@ PR #1066 cycle 11 で 2 種の regex per-branch coverage gap が cross-validated
 regex の alternation (`A|B|C`) は各 branch 独立に matching するため、test の positive case は **全 branch に対して個別に配置** する必要がある。1 branch のみの positive coverage は他 branch を実質 dead range にする。
 
 ```bash
-# 反面教材 (PR #1066 初版 test)
+# 反面教材 (初版 test)
 regex='could not resolve.*pull\s*request\|no.*pull\s*request found'
 # Positive test: `could not resolve to a PullRequest` だけ
 echo "could not resolve to a PullRequest" | grep -qE "$regex"  # PASS
@@ -372,7 +372,7 @@ regex='could not resolve.*pull\s*request\|DIFFERENT_LITERAL'
 regex quantifier (`\s*` / `\s+` / `?` / `*` / `+`) は 0 / 1 / N 回マッチを semantic に表現する。test の positive case は **quantifier semantic の境界値 (0 回 / 1 回 / N 回)** ごとに配置する必要がある。1 境界値のみの coverage は他境界値で発生する quantifier 置換 regression を catch できない。
 
 ```bash
-# 反面教材 (PR #1066 初版 test)
+# 反面教材 (初版 test)
 regex='could not resolve.*pull\s*request'
 # Positive test: `PullRequest` (空白なし、0 回) だけ
 echo "could not resolve to a PullRequest" | grep -qE "$regex"  # PASS
@@ -410,9 +410,9 @@ PR #1066 fix (cycle 1) では positive 6 + negative 6 case で alternation 各 b
 
 本 sub-pattern は適用 5 の 3 種 dead code 化 pattern (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap) と並列し、**regex 構造 (alternation / quantifier / flag) を test 真正性 mutation で守る canonical 防御** の系統として位置付ける。
 
-### 適用 8: 新規 lint helper の regression test が implementation を mutate しても PASS する (PR #1167 cycle 2 follow-up)
+### 適用 8: 新規 lint helper の regression test が implementation を mutate しても PASS する（cycle 2 follow-up）
 
-PR #1167 (Issue #1160 — `sh-cross-ref-check.sh` 新規 lint 追加) cycle 2 review で、新規ヘルパー `strip_code_fences` (コードフェンス内行を除外する awk in_fence toggle) に **identification power を持つ回帰テストが無い** ことを reviewer が mutation 観点で指摘:
+`sh-cross-ref-check.sh` を新規 lint として追加した PR の cycle 2 review で、新規ヘルパー `strip_code_fences` (コードフェンス内行を除外する awk in_fence toggle) に **identification power を持つ回帰テストが無い** ことを reviewer が mutation 観点で指摘:
 
 ```bash
 # Mutation: strip_code_fences の中身を no-op (cat) に置換
@@ -427,9 +427,9 @@ strip_code_fences() { cat "$1"; }   # ← フェンス除去を無効化
 
 本件は cycle 2 で **non-blocking follow-up** として surface した (Observed Likelihood Gate で hypothetical 寄りに降格、本 PR scope 外)。教訓は適用 5 の 共通教訓に集約される通り: **新規 lint rule / hook / helper を導入する PR では、その helper の中核ロジックを no-op に mutate して該当 TC が FAIL することを CI で確認する**。フェンス除去ヘルパー自体の設計は [[lint-strip-code-fence-before-extraction]] を参照。
 
-### 適用 9: bug fix が correctness invariant を導入したら同 PR で mutation-fail test を添える + bash positional 引数誤配置の silent false-positive (PR #1169 で実証)
+### 適用 9: bug fix が correctness invariant を導入したら同 PR で mutation-fail test を添える + bash positional 引数誤配置の silent false-positive
 
-PR #1169 (Issue #1168 — Stop hook loop-continuation) で 2 つの mutation testing 観点が実測された。
+Stop hook の loop-continuation を扱った PR で 2 つの mutation testing 観点が実測された。
 
 #### 9-A: correctness invariant を導入する fix には回帰検出 test を同 PR で添える
 
@@ -446,9 +446,9 @@ cycle 2 で test-reviewer が、TC の positional 引数誤配置 (`stop_payload
 
 教訓: bash positional helper を呼ぶ test は、引数順の誤配置が silent false-positive を生む。helper の中核ロジックを mutate して該当 TC が FAIL するかを確認する mutation gate に加え、**positional 引数を意図的に 1 つずらした mutation でも TC が FAIL する**ことを確認すると、引数スロット誤配置を decisive に catch できる。適用 5 の Self-grep tautology / 件数判定片側 mutation 隠蔽と同じ「test が実装の正否を検出できない」identification power 0 の系統。
 
-### 適用 10: 「対称化」claim は positive / negative 両側を独立 assert で pin し双方向 mutation で検証する (PR #1172 で実証)
+### 適用 10: 「対称化」claim は positive / negative 両側を独立 assert で pin し双方向 mutation で検証する
 
-PR #1172 (Issue #1170 — `consume-handoff` の corrupt JSON 読取時 WARNING を `cmd_set` / `cmd_get` と対称化) は、適用 9 (PR #1169) と同じ `flow-state.sh` consume-handoff 領域の直接 follow-up であり、**「対称化」(symmetrization) を謳う変更の test 真正性**を新しい軸として実測した。
+`consume-handoff` の corrupt JSON 読取時 WARNING を `cmd_set` / `cmd_get` と対称化した PR は、適用 9 と同じ `flow-state.sh` consume-handoff 領域の直接 follow-up であり、**「対称化」(symmetrization) を謳う変更の test 真正性**を新しい軸として実測した。
 
 #### 失敗の構造 — 片側 pin は無条件 emit mutant を見逃す
 
@@ -484,7 +484,7 @@ cycle 1 fix で happy-path (handoff キー欠落の正常系) で corrupt-read W
 
 本 sub-pattern は [[asymmetric-fix-transcription]] (対称位置への fix 伝播漏れ) の **test 側双対**にあたる: 前者は「対称な実装サイトへ fix を伝播し忘れる」失敗、本適用は「対称な動作 invariant の片側を pin し忘れる」失敗。実装の対称化を謳ったら、その対称性を守る test も両側対称に置く。
 
-### 適用 11: 閾値の off-by-one 境界は「測定対象シグナルを単独の結果決定要因」にして pin し mutation で実証する (PR #1222 で実証)
+### 適用 11: 閾値の off-by-one 境界は「測定対象シグナルを単独の結果決定要因」にして pin し mutation で実証する
 
 `nlines >= 25` のような閾値比較の off-by-one (`>=` ↔ `>` / 閾値 `25` ↔ `24`) は、fixture が閾値から離れた値 (本文 26 行以上) で overshoot していると、どの mutation も既存 TC を全 PASS のまますり抜ける。PR #1222 の `bash-heaviness-check` では全 long-block fixture が `filler 26` 以上で、ちょうど 24 / 25 行の境界が未カバーだったため、cycle 1 では「境界値テスト欠落」が推奨に留まっていたが、cycle 2 で reviewer が mutation testing を実施して off-by-one が捕捉されないことを実証し MEDIUM に昇格した。
 
@@ -497,18 +497,18 @@ canonical な解消手順:
 
 これは「detection 完全性 (off-by-one) を test で守る」適用であり、適用 7 (regex quantifier の semantic 境界) や適用 10 (対称化の双方向 pin) と同じ「片側だけ / 境界の外側だけ pin して中身が dead」失敗の数値閾値版にあたる。
 
-### 適用 12: 非ブロッキング契約の回帰防止に「実装末尾 exit 0 削除」mutation で revert test を立証する (PR #1246 で実証)
+### 適用 12: 非ブロッキング契約の回帰防止に「実装末尾 exit 0 削除」mutation で revert test を立証する
 
-PR #1246 (Issue #1232 — `settings-local-rite-hook-cleanup.sh` の非ブロッキング契約) cycle 1 で「CLEANED 経路 + 内側 mktemp 失敗時の exit code leak」HIGH を末尾 `exit 0` 明示で fix し、cycle 2 で 0 findings に収束した。収束を支えたのは **fix の回帰防止 test (S-7) を mutation/revert test で立証**したこと:
+`settings-local-rite-hook-cleanup.sh` の非ブロッキング契約を扱った PR の cycle 1 で「CLEANED 経路 + 内側 mktemp 失敗時の exit code leak」HIGH を末尾 `exit 0` 明示で fix し、cycle 2 で 0 findings に収束した。収束を支えたのは **fix の回帰防止 test (S-7) を mutation/revert test で立証**したこと:
 
 - 複数 reviewer が隔離 worktree で **実装末尾の `exit 0` を削除する mutation** を適用し、S-7 が `expected=0 actual=1` で FAIL することを確認 → 「test が偽陽性 (実装が壊れても pass) でない」ことを実機で否定。
 - edge-case (CLEANED 経路 + 内側 no-arg mktemp 失敗) を再現する S-7 の pin 方法: PATH-shim した mktemp を **引数で分岐** (`[ $# -eq 0 ]` の no-arg call のみ exit 1、テンプレート付き呼び出しは real mktemp へ delegate) させる。S-5/S-6 の mv-shim 技法の拡張。
 
 教訓: 非ブロッキング契約 (exit 0 always) のような「正常系では observable な差が出ない」invariant の回帰防止 test は、正常 input で PASS するだけでは identification power 0 になりやすい。**契約を壊す mutation (末尾 exit 0 削除) で該当 TC が FAIL する**ことを実機で確認して初めて回帰検出力が保証される。本族の exit-code leak 自体は [[trailing-and-shortcircuit-exit-code-leak]] を参照。
 
-### 適用 13: reviewer 側が READ-ONLY 制約下の detached worktree mutation test で新規 self-test の behavioral 性を立証し 0 findings / 1 cycle mergeable を達成 (PR #1266 で実証)
+### 適用 13: reviewer 側が READ-ONLY 制約下の detached worktree mutation test で新規 self-test の behavioral 性を立証し 0 findings / 1 cycle mergeable を達成
 
-PR #1266 (Issue #1250 — review helper 3 件の gate-behavior self-test 追加、371 行 / 87 アサーション) は、本 pattern が推奨する mutation testing を **reviewer 側が review 時点で実施する** successful application として 0 findings / cycle 1 mergeable に到達した:
+review helper 3 件に gate-behavior self-test を追加した PR (371 行 / 87 アサーション) は、本 pattern が推奨する mutation testing を **reviewer 側が review 時点で実施する** successful application として 0 findings / cycle 1 mergeable に到達した:
 
 - test / error-handling reviewer が**それぞれ独立に detached worktree で mutation test** を実施し、「reason 語彙改変 → 3 fail」「exit code 改変 → 2 fail」等で新規テストが no-op false-pass でないこと (behavioral 性) を実証。READ-ONLY 制約下の reviewer でも worktree-only pattern で mutation 検証経路が機能することを実測 (適用 10 の運用要件「mutant を実環境ツリー内に配置」と整合)。
 - helper 3 件の reason 語彙 / exit code / `[CONTEXT]` emit をテストアサーションと **verbatim 照合する「契約照合」アプローチ**で false confidence を排除。
@@ -516,17 +516,17 @@ PR #1266 (Issue #1250 — review helper 3 件の gate-behavior self-test 追加�
 
 教訓: 新規テスト追加 PR は「テスト自身の真正性」が唯一の review 対象になるため、reviewer が mutation testing を独立再現することが最も decisive な検証手段になる。test author 側で適用 5/9/10 の mutation gate を実施済みでも、reviewer 側の独立 mutation 再現 (2 reviewer 以上) が cross-validation として 1 cycle 収束を支える。
 
-### 適用 14: mutation 検証は latent な remediation guidance 矛盾の発見にも機能する (PR #1270 で実証)
+### 適用 14: mutation 検証は latent な remediation guidance 矛盾の発見にも機能する
 
-PR #1270 (Issue #1268 — cleanup WIKICHAIN parity test への intervening set 検出 TC-6 追加) で、適用 13 の reviewer 側 worktree-only mutation pattern が連続適用され (PR #1266 → #1270 で定着)、test / error-handling reviewer が計 6 mutation で TC-6 の検出力を実証 (intervening set 注入で fail / 継続行 `--handoff` join で false positive なし / prose backtick 言及の除外) し 0 findings / 1 cycle mergeable に到達した。
+cleanup WIKICHAIN parity test へ intervening set 検出 TC-6 を追加した PR で、適用 13 の reviewer 側 worktree-only mutation pattern が連続適用され（本 PR で 2 PR 連続の定着）、test / error-handling reviewer が計 6 mutation で TC-6 の検出力を実証 (intervening set 注入で fail / 継続行 `--handoff` join で false positive なし / prose backtick 言及の除外) し 0 findings / 1 cycle mergeable に到達した。
 
 本 PR の新観測は、error-handling reviewer が mutation 検証の **過程で** 「TC-6 の remediation 指示 (`--handoff` 再指定) に従うと TC-1 (単一 site 強制) が count=2 で fail する」という **latent な SoT guidance 矛盾** を発見したこと (pre-existing、本 PR scope 外、boundary 推奨事項として surface)。mutation を実際に適用して test suite を回すと、「ある TC の fix guidance に従った結果が別 TC の前提と衝突する」将来矛盾が、guidance を読むだけでは見えない形で実機顕在化する。
 
 教訓: mutation 検証の価値は (a) test の identification power 実証に加えて、(b) **remediation 経路同士の整合性検証** (guidance に従った修正後の suite 全体の挙動確認) にも及ぶ。test author は TC ごとの fix guidance を書く際、その guidance を適用した状態で suite 全体が意図した fail/pass 分担になるかを mutation で確認すると、TC 間の guidance 矛盾を commit 前に検出できる。
 
-### 適用 15: コメント訂正のみの fix でも mutation で test の弁別力を再確認する (PR #1279 で実証)
+### 適用 15: コメント訂正のみの fix でも mutation で test の弁別力を再確認する
 
-PR #1279 (Issue #1275 — JSON emit フォールバックの C0 neutralize) cycle 2 review で、cycle 1 の fix が **挙動変更を伴わないコメント訂正のみ** (「C1 素通しは jq と対称」claim の入力クラス別書き分け) であったにもかかわらず、test reviewer が mutation 検証 2 種で対象 TC-16 の regression 検出力を再実証した:
+JSON emit フォールバックの C0 neutralize を扱った PR の cycle 2 review で、cycle 1 の fix が **挙動変更を伴わないコメント訂正のみ** (「C1 素通しは jq と対称」claim の入力クラス別書き分け) であったにもかかわらず、test reviewer が mutation 検証 2 種で対象 TC-16 の regression 検出力を再実証した:
 
 | Mutation | 検出する assert |
 |----------|----------------|
@@ -537,9 +537,9 @@ PR #1279 (Issue #1275 — JSON emit フォールバックの C0 neutralize) cycl
 
 教訓: **fix の種別 (挙動変更 / コメント訂正) に関わらず、再レビューでは対象 TC への mutation で弁別力を再確認する**。コメント訂正 PR では「コメントが主張する設計判断を test が pin しているか」が mutation の検証対象になる。claim 自体の事実性検証は [[symmetry-claim-input-class-runtime-verification]] を参照。
 
-### 適用 16: fix 側の mutation claim を reviewer が独立再実証する — 観測数差異は核心一致で合意 (PR #1281 で実証)
+### 適用 16: fix 側の mutation claim を reviewer が独立再実証する — 観測数差異は核心一致で合意
 
-PR #1281 (Issue #1278 — pre-tool-bash-guard deny フォールバックのエスケープ連鎖対称化) で、mutation testing が **fix workflow と review workflow の両側で対になって機能する** 形が完成形として実測された:
+pre-tool-bash-guard の deny フォールバックでエスケープ連鎖を対称化した PR で、mutation testing が **fix workflow と review workflow の両側で対になって機能する** 形が完成形として実測された:
 
 - **fix 側 (commit 前の runtime 実証)**: cycle 1 で検出された vacuous assertion (静的 reason のみで fallback を発火させた TC-116) を関数抽出 + 境界行 extract で非 vacuous 化した際、隔離 worktree で核心行削除 → 2 assertion fail を確認してから commit した。「非 vacuous 化した」という claim を commit 前に mutation で実証する手順 (適用 9-A の系譜)。
 - **review 側 (claim の独立再実証)**: cycle 2 の test reviewer は fix 側の mutation claim を鵜呑みにせず、独立に 4 種の mutation 実験 (各エスケープ行の個別削除 + neutralize→cat 置換) を worktree-only pattern (適用 13) で再実施し、4 段連鎖のどの 1 行を壊しても assertion が落ちることを再実証した。
@@ -547,9 +547,9 @@ PR #1281 (Issue #1278 — pre-tool-bash-guard deny フォールバックのエ�
 
 教訓: fix が mutation 検証を claim する場合、reviewer は同じ mutation をなぞるのではなく **独立に設計した mutation セット** で再実証するのが cross-validation として強い (fix 側の mutation 設計自体の盲点も検出できる)。観測数の差異は核心 (非 vacuous 性) が一致していれば合意条件を満たす。vacuous 化の根本原因と解決手法は [[static-input-chain-function-extraction-non-vacuous-test]] を参照。
 
-### 適用 17: vacuous 教訓を設計段階から反映したテスト追加が 0 findings / 1 cycle 収束を達成 — fake binary の引数精密スコープと両方向 assert (PR #1283 で実証)
+### 適用 17: vacuous 教訓を設計段階から反映したテスト追加が 0 findings / 1 cycle 収束を達成 — fake binary の引数精密スコープと両方向 assert
 
-PR #1283 (Issue #1282 — deny / JSON emit フォールバックの neutralize 失敗時 placeholder 縮退経路に fail-closed テストを追加) は、直前 PR #1281 の TC-116 vacuous 教訓 (適用 16) を **設計段階から反映** したテスト追加 PR で、4 reviewer (test / error-handling / performance / security) 全員が独立 mutation 実験 (placeholder→raw reason 退行 / fake tr matcher 破壊 / BLOCKED stderr 抑止 / silent allow 化) で非 vacuous 性を実証し、**指摘 0 件 / 1 cycle mergeable** に到達した successful preventive application。有効だった 3 パターン:
+deny / JSON emit フォールバックの neutralize 失敗時 placeholder 縮退経路に fail-closed テストを追加した PR は、直前の TC-116 vacuous 教訓 (適用 16) を **設計段階から反映** したテスト追加 PR で、4 reviewer (test / error-handling / performance / security) 全員が独立 mutation 実験 (placeholder→raw reason 退行 / fake tr matcher 破壊 / BLOCKED stderr 抑止 / silent allow 化) で非 vacuous 性を実証し、**指摘 0 件 / 1 cycle mergeable** に到達した successful preventive application。有効だった 3 パターン:
 
 1. **「placeholder 文言あり (positive) + 通常 reason なし (negative)」の両方向 assert が縮退発生の証明として機能**: placeholder 縮退経路は「placeholder が出る」だけでは通常経路の reason が混在しても PASS しうる。「pattern 名を含まない (非 vacuous)」「通常 reason を含まない」の negative 側を対にすることで、縮退が実際に発生したことを decisive に pin する (適用 10 の対称 pin 系譜)。
 2. **fake binary の引数 matcher は対象モードのみに精密スコープし、他用途は real binary へ委譲する**: fake tr は `case "$1" in *000-*)` で neutralize_ctrl の `\000-` レンジ引数のみ exit 1 させ、hook 内の他の tr 用途 (`$1=-d` / `$1=\n` 等) は real tr へ委譲。`flow-state.sh` の `tr -d '[:space:]'` / `contains_ctrl` の `tr -d` への巻き添えゼロを事前調査で確認してから commit する (適用 12 の mktemp 引数分岐 shim 技法の tr 版 — PATH-shim の引数分岐は「実質失敗しない」固定引数パイプ経路を強制発火させる canonical 技法として定着)。
@@ -559,9 +559,9 @@ PR #1283 (Issue #1282 — deny / JSON emit フォールバックの neutralize �
 
 教訓: 直前 PR で実測された vacuous 教訓 (適用 16) を**次の test 追加 PR の設計段階で反映**すると、review-fix loop なしの 1 cycle 収束が達成できる。fake binary 注入で「実質失敗しない」経路を強制発火させる場合は、(a) 引数 matcher の精密スコープ、(b) 巻き添え事前調査、(c) positive/negative ペア assert の 3 点セットを設計時 checklist とする。
 
-### 適用 18: テストのみ変更 PR の新規 assert 4 件を reviewer 側 worktree-only mutation で非 vacuous 立証 + fault-injection shim の引数精密スコープ jq 版 (PR #1295 で実証)
+### 適用 18: テストのみ変更 PR の新規 assert 4 件を reviewer 側 worktree-only mutation で非 vacuous 立証 + fault-injection shim の引数精密スコープ jq 版
 
-PR #1295 (Issue #1287 — 委譲 helper テストの網羅性 follow-up、+101/-5 でテストのみ変更・helper 本体無変更) は 0 findings / 1 cycle mergeable に到達し、本 pattern の複数系譜が並行適用された successful application:
+委譲 helper テストの網羅性 follow-up PR (+101/-5 でテストのみ変更・helper 本体無変更) は 0 findings / 1 cycle mergeable に到達し、本 pattern の複数系譜が並行適用された successful application:
 
 - **新規 assert 4 件の非 vacuous 性立証**: test reviewer が worktree-only pattern (適用 13 の系譜) で absent regex broaden / cleanup 除去 / sentinel swallow の各 mutation を適用し、対応する TC がそれぞれ FAIL することを機械的に確認。
 - **検査方式の置換 (count delta → path 集合差分) を双方向 mutation で上位互換と検証**: leak 注入 (正方向: 検出して FAIL) / 他プロセス削除 (逆方向: false-fail せず PASS) の双方向で検出能力を実証 (適用 10 の双方向 mutation 系譜を「検査方式の置換」検証に適用)。方式自体の詳細は [[shared-tmp-leak-check-path-set-difference]] を参照。
@@ -569,9 +569,9 @@ PR #1295 (Issue #1287 — 委譲 helper テストの網羅性 follow-up、+101/-
 
 教訓: 適用 17 の fake binary 設計 checklist は jq のような構造化データ処理 binary にも同型適用でき、テストのみ変更 PR の 1 cycle 収束を再現する。boundary 推奨 (mktemp template の TMPDIR 非対応による add-direction ambiguity 残存等) を reviewer 自身が non-blocking と明示判断する運用も 1 cycle 収束に寄与した。
 
-### 適用 19: 既存 TC を byte-identical に一般化した新 helper の teeth を双方向退行 mutation で立証 + 「既存 TC との対称性 byte 比較」を review 検証手段に併設 (PR #1301 で実証)
+### 適用 19: 既存 TC を byte-identical に一般化した新 helper の teeth を双方向退行 mutation で立証 + 「既存 TC との対称性 byte 比較」を review 検証手段に併設
 
-PR #1301 (Issue #1293 — symmetry test の保護対象に `pr/create.md` / `pr/cleanup.md` の `create-issue-with-projects.sh` caller を追加、テストのみ変更) は 0 findings / 全 4 レビュアー「可」で初回 mergeable に到達し、適用 13 / 18 の「テストのみ追加 PR を reviewer 側 worktree-only mutation で非 vacuous 立証」系譜を継続した。新 helper `assert_single_create_caller` の 3 assertion (a: canonical callsite 存在 / b: `args_json=$(jq -n` 分離 constructor / c: 全 invocation が canonical) を、test / code-quality / error-handling の 3 reviewer が worktree-isolated mutation で検証:
+symmetry test の保護対象に `pr/create.md` / `pr/cleanup.md` の `create-issue-with-projects.sh` caller を追加した PR (テストのみ変更) は 0 findings / 全 4 レビュアー「可」で初回 mergeable に到達し、適用 13 / 18 の「テストのみ追加 PR を reviewer 側 worktree-only mutation で非 vacuous 立証」系譜を継続した。新 helper `assert_single_create_caller` の 3 assertion (a: canonical callsite 存在 / b: `args_json=$(jq -n` 分離 constructor / c: 全 invocation が canonical) を、test / code-quality / error-handling の 3 reviewer が worktree-isolated mutation で検証:
 
 | Mutation | 期待 | 検出する assert |
 |----------|------|----------------|
@@ -587,9 +587,9 @@ PR #1301 (Issue #1293 — symmetry test の保護対象に `pr/create.md` / `pr/
 
 教訓: 既存 canonical TC を一般化して新 helper を作るテスト追加 PR では、(a) 新 assertion が想定退行で FAIL する teeth 確認、(b) 新 helper の grep/arithmetic が既存 TC と byte 一致する対称性照合、の 2 軸を reviewer 検証手段として併用すると、create.md 系と同等の検証強度を保ったまま 1 cycle 収束できる。byte-identical generalization の対称性側面は [[asymmetric-fix-transcription]] を参照。
 
-### 適用 20: regex alternation の片側 branch を pin する positive TC を reviewer 側 mutation で非 vacuous 立証 (PR #1317 で実証)
+### 適用 20: regex alternation の片側 branch を pin する positive TC を reviewer 側 mutation で非 vacuous 立証
 
-PR #1317 (Issue #1312 — `bash-heaviness-check` の standalone signal `inline-gh-create-title` に single-quote / 非 bash フェンス TC を補強、+56/-0 でテストのみ変更・検出器本体無変更) は 0 findings / 1 cycle mergeable に到達し、適用 7 (regex alternation per-branch coverage) と 適用 13/18/19 (テストのみ変更 PR を reviewer 側 worktree mutation で非 vacuous 立証) が**同一 PR で合流**した successful preventive application。
+`bash-heaviness-check` の standalone signal `inline-gh-create-title` に single-quote / 非 bash フェンス TC を補強した PR (+56/-0 でテストのみ変更・検出器本体無変更) は 0 findings / 1 cycle mergeable に到達し、適用 7 (regex alternation per-branch coverage) と 適用 13/18/19 (テストのみ変更 PR を reviewer 側 worktree mutation で非 vacuous 立証) が**同一 PR で合流**した successful preventive application。
 
 #### 検証構造 — 開始引用符 alternation の `'` branch が既存 TC で dead range だった
 
@@ -604,7 +604,7 @@ PR #1317 (Issue #1312 — `bash-heaviness-check` の standalone signal `inline-g
 
 #### Asymmetric Fix Transcription 監査の test 側適用
 
-test-reviewer は Wiki anti-pattern [[asymmetric-fix-transcription]] の「転記先が静的 reason のみで vacuous 化していないか」観点を本 PR の対称転記 TC (double-quote → single-quote への転記) に適用し、**TC-026 fixture から `--title` を除くとアサーション (rc=1 + signal) が崩れる (falsifiable = 非 vacuous)** ことを確認した。適用 16 (PR #1281) の TC-116 vacuous 教訓が、転記元/転記先の「注入する入力の性質 (静的 vs 動的)」を対称性監査対象に含める形で test 追加 PR の review に定着している。
+test-reviewer は Wiki anti-pattern [[asymmetric-fix-transcription]] の「転記先が静的 reason のみで vacuous 化していないか」観点を本 PR の対称転記 TC (double-quote → single-quote への転記) に適用し、**TC-026 fixture から `--title` を除くとアサーション (rc=1 + signal) が崩れる (falsifiable = 非 vacuous)** ことを確認した。適用 16 の TC-116 vacuous 教訓が、転記元/転記先の「注入する入力の性質 (静的 vs 動的)」を対称性監査対象に含める形で test 追加 PR の review に定着している。
 
 #### 設計判断の test pin
 
@@ -612,9 +612,9 @@ TC-027 は single-quote 内 `$` (`--title '$pr_title'`) が bash では literal 
 
 教訓: 検出 regex の alternation / negated bracket の各 branch は、それぞれ独立の positive/negative TC で pin しないと片側が dead range のまま劣化 mutation をすり抜ける。テストのみ変更 PR では reviewer 側の独立 mutation 再現 (2 reviewer 以上) が teeth の cross-validation として 1 cycle 収束を支える (適用 13/18/19 の連続再現)。boundary 推奨 (equals × single-quote の 2×2 完全網羅) は区切り文字クラス `[[:space:]=]` と開始引用符クラス `["']` が独立文字クラスで直交 pin 済みのため reviewer が「実害なし・スコープ外」と非 blocking 判定し、user も Phase 7 で「無視」を選択した — alternation の各因子が独立なら直交 pin で十分という判断の実測。
 
-### 適用 21: negative assertion の非 vacuity を「差分ペア構造 + 入力決定性」で立証する — 能動 mutation を回せない READ-ONLY reviewer の構造的代替 (PR #1319 で実証)
+### 適用 21: negative assertion の非 vacuity を「差分ペア構造 + 入力決定性」で立証する — 能動 mutation を回せない READ-ONLY reviewer の構造的代替
 
-PR #1319 (Issue #1220 — `review-source-resolve.sh` の未カバー error 経路 5 件に behavioral assertion を追加、+125/-0 でテストのみ変更・検出器本体無変更) は 4 reviewer (test / performance / error-handling / security) 全員「可」/ 指摘 0 件 / 1 cycle mergeable に到達し、適用 13/16/18/19/20 の「テストのみ変更 PR を reviewer 側で非 vacuous 立証」系譜を継続した。本 PR の固有観点は **能動 mutation を回せない状況での negative assertion 非 vacuity 立証手法** にある。
+`review-source-resolve.sh` の未カバー error 経路 5 件に behavioral assertion を追加した PR (+125/-0 でテストのみ変更・検出器本体無変更) は 4 reviewer (test / performance / error-handling / security) 全員「可」/ 指摘 0 件 / 1 cycle mergeable に到達し、適用 13/16/18/19/20 の「テストのみ変更 PR を reviewer 側で非 vacuous 立証」系譜を継続した。本 PR の固有観点は **能動 mutation を回せない状況での negative assertion 非 vacuity 立証手法** にある。
 
 #### 観点 1: differential ペア構造が negative assertion の非 vacuity を構造的に保証する
 
@@ -630,18 +630,18 @@ test / error-handling reviewer はともに、新規 9 件の `assert_err_has ".
 
 教訓: 能動 mutation を回せない READ-ONLY reviewer でも、(a) match/mismatch の差分ペア構造 (positive ケースが negative assertion の非 vacuity を保証)、(b) 入力決定性の理論保証 (all-zeros SHA 等の構造的に衝突しない値)、(c) assert literal と実装 emit の byte 一致照合 の 3 点で error-path behavioral test の identification power を構造的に立証できる。差分ペアによる非 vacuity 担保は active mutation (適用 10/13) の構造的代替として、対称転記の vacuous リスク ([[asymmetric-fix-transcription]] の test 側双対) を回避する。
 
-### 適用 22: dedup assertion の非 vacuity を重複 fixture で立証 + section-scoped 静的契約 test の helper rename 検出を mutation で実証 (PR #1321 で実証)
+### 適用 22: dedup assertion の非 vacuity を重複 fixture で立証 + section-scoped 静的契約 test の helper rename 検出を mutation で実証
 
-PR #1321 (Issue #1209 — `wiki-lint-source-refs.test.sh` の dedup assertion と lint.md 6.2 fallback 回帰追加、+35/-2 でテストのみ変更・helper / lint.md 本体無変更) は test / code-quality 2 reviewer が独立 mutation で 0 findings / 1 cycle mergeable に到達し、適用 13/18/19/20/21 の「テストのみ変更 PR を reviewer 側で非 vacuous 立証」系譜を継続した。本 PR の固有観点は 2 種の vacuity 解消手法を 1 PR で併用した点にある:
+`wiki-lint-source-refs.test.sh` の dedup assertion と lint.md 6.2 fallback 回帰を追加した PR (+35/-2 でテストのみ変更・helper / lint.md 本体無変更) は test / code-quality 2 reviewer が独立 mutation で 0 findings / 1 cycle mergeable に到達し、適用 13/18/19/20/21 の「テストのみ変更 PR を reviewer 側で非 vacuous 立証」系譜を継続した。本 PR の固有観点は 2 種の vacuity 解消手法を 1 PR で併用した点にある:
 
 1. **dedup assertion の非 vacuity は「入力に重複を実在させる」ことで担保する**: TC-1 の label は `sort -u` を謳うが、入力 (p1/p2) に重複 ref が 1 件もないため helper の `sort -u` を `cat` に置換しても全 assert が PASS する vacuous 構造だった (適用 5 Pattern 5-A の dedup 版 — 機構が input に対し no-op だと dead path 化)。fixture `write_pages` の p2 に p1 と同一の**正規化済み** ref を重複追加し、「当該 ref の出力行数 = 1」を assert することで `sort -u`→`cat` mutation が count=2 を生んで FAIL する load-bearing 化を達成。両 ref を prefix なし正規化済み形式に揃え normalization を no-op にすることで、`sort -u` のみが結果決定要因になるよう isolation した (適用 11「測定対象シグナルを単独の結果決定要因にする」の dedup 版)。
 2. **section-scoped 静的契約 test の helper rename 検出を empty-section fail で構造化**: TC-14 は lint.md 6.2 の helper-不在 fallback (`[ ! -f ...wiki-lint-source-refs.sh ]` branch) の io_error 出力契約 4 行を `assert_grep_in_section` で if-branch scoped に pin する。reviewer が io_error→true / helper rename の 2 mutation を実機適用し、前者は read_ok assert が FAIL、後者は guard 内 filename 変化で section 抽出が空になり empty-section fail で surface することを確認。section start_pattern を guard の helper filename に anchor することで「rename しても test が更新を強制される」rename-detection 機構を実装した ([[section-scoped-assertion-prevents-narrative-false-negative]] の rename 検出への応用)。
 
 教訓: 機構 (dedup / sort -u) を test する assertion は、その機構が input に対し実際に作用する fixture (重複を実在させる) を用意しないと no-op mutation をすり抜ける vacuous 構造になる。md 契約の静的回帰 test では section anchor を契約の load-bearing identifier (helper filename 等) に置くことで、anchor 対象の rename を empty-section fail として強制 surface できる。lint.md のような LLM 実行手順書 (bash として直接起動されない) の fallback 分岐は behavioral test 不能なため、section-scoped 静的契約 test が canonical な回帰防御になる ([[static-input-chain-function-extraction-non-vacuous-test]] の md 契約版)。
 
-### 適用 23: sweep 条件の構造的盲点 (>&2 同一行条件 vs 代入行 idiom) を author 側 mutation で実証して fail-closed 設計へ pivot する (PR #1337 で実証)
+### 適用 23: sweep 条件の構造的盲点 (>&2 同一行条件 vs 代入行 idiom) を author 側 mutation で実証して fail-closed 設計へ pivot する
 
-PR #1337 (Issue #1329 — head -c / 関数内 >&2 / cat 系の control-char 中和横展開) で、新規 sweep test TC-3 の初版が **`head -c` + `>&2` 同一行条件**で書かれていたが、author が commit 前の mutation 注入 (post-compact.sh の neutralize_ctrl 除去) で **mutation が検出されない vacuous 状態**を実証した。原因は `head -c` snippet の大半が `var=$(... | head -c 200 ...)` の**代入行**で、emission の `>&2` は後続 echo 行に分離している構造 — 同一行条件 sweep では構造的に検出不能。
+head -c / 関数内 >&2 / cat 系へ control-char 中和を横展開した PR で、新規 sweep test TC-3 の初版が **`head -c` + `>&2` 同一行条件**で書かれていたが、author が commit 前の mutation 注入 (post-compact.sh の neutralize_ctrl 除去) で **mutation が検出されない vacuous 状態**を実証した。原因は `head -c` snippet の大半が `var=$(... | head -c 200 ...)` の**代入行**で、emission の `>&2` は後続 echo 行に分離している構造 — 同一行条件 sweep では構造的に検出不能。
 
 fix 方針: `>&2` 条件を撤去して **head -c 全行を sweep し、非 emission の既知 site (lock pid 読み取り) のみ明示 allowlist で除外する fail-closed 設計**へ pivot。pivot 後の再 mutation で検出を確認。
 
@@ -649,9 +649,9 @@ fix 方針: `>&2` 条件を撤去して **head -c 全行を sweep し、非 emis
 
 教訓: **sweep test の検出条件 (同一行 grep / 行指向フィルタ) は、対象 idiom の構造 (代入行と emission 行の分離) と一致するかを mutation で実証してから commit する**。「条件付き sweep が綺麗」という直感は構造的盲点を隠す — fail-closed (全行 sweep + allowlist) は false positive 管理のコストを払う代わりに盲点を排除する。pivot 時は cross-reference コメントの追随も必須 ([design-pivot-stale-cross-reference-comment](../anti-patterns/design-pivot-stale-cross-reference-comment.md) 参照)。
 
-### 適用 24: 回帰防止テストの grep token は「修正パス固有」にする — 旧コードの remediation hint にもマッチする generic token は修正前でも PASS する (PR #1663 で実証)
+### 適用 24: 回帰防止テストの grep token は「修正パス固有」にする — 旧コードの remediation hint にもマッチする generic token は修正前でも PASS する
 
-PR #1663 (Issue #1662 — corrupt/orphaned wiki-worktree からの自己回復) review で、新規追加された回帰防止テストの assertion が **旧コード (修正前) の remediation hint 文言にもマッチする generic な grep token** を使っていたため、**修正前でも PASS する non-discriminating な構造** になっていたことが指摘された。回帰防止テストの定義上、対象は「修正前は FAIL し修正後は PASS する」べきだが、grep token が修正パス固有でないと修正前でも条件を満たし identification power が 0 になる。
+corrupt/orphaned wiki-worktree からの自己回復を扱った PR の review で、新規追加された回帰防止テストの assertion が **旧コード (修正前) の remediation hint 文言にもマッチする generic な grep token** を使っていたため、**修正前でも PASS する non-discriminating な構造** になっていたことが指摘された。回帰防止テストの定義上、対象は「修正前は FAIL し修正後は PASS する」べきだが、grep token が修正パス固有でないと修正前でも条件を満たし identification power が 0 になる。
 
 ```bash
 # 反面教材 — 修正後の自己回復経路を検証するはずの assertion
@@ -672,7 +672,7 @@ canonical 対策:
 
 教訓: 回帰防止テストの grep token は「対象の修正パスでのみ生成され、修正前のコードには存在しない literal」を選ぶ。これが満たされているかは **修正前 base での revert test が FAIL すること**で機械的に保証する。同ファイル内に旧経路 hint と新経路 WARNING が併存する anti-silent-failure 化修正で特に陥りやすい (修正自身が局所 silent 抑制を残す self-referential 失敗は [[asymmetric-fix-transcription]] / [[mktemp-failure-surface-warning]] と対で監査する)。
 
-### 適用 25: payload/target が「本来 allow されるもの」でないと mutation に対し vacuous (PR #1736)
+### 適用 25: payload/target が「本来 allow されるもの」でないと mutation に対し vacuous
 
 `pre-tool-bash-guard.sh` の reviewer git guard に timeout bypass 対策 (総バイト長ガード + 反復上限) を追加した PR #1736 で、追加テストが「主張する不変条件を実際には検証していない」vacuous サブアサーションを 2 種、cycle をまたいで mutation で摘発した。
 
@@ -683,7 +683,7 @@ canonical 対策:
 
 教訓: 「deny を確認する」テストの payload は、**検証対象の guard を外すと allow に戻る**もの (read-only verb / by-default-allowed 入力) を選ぶ。state-mutating verb や独立に block される入力は、guard の有無に関わらず deny され vacuous。加えて「O(n²)/slow を突く」テストは入力の**配置**まで検証対象の発火条件に合わせる (先頭一致で fast path を通ると空振り)。いずれも **guard 除去 mutant で当該 assertion が FAIL するか**を commit 前に必ず実測する ([[static-input-chain-function-extraction-non-vacuous-test]] / [[leading-dash-arg-injection-gate-pre-git]] と同じ「非 vacuous 化 → mutation 実証」の系譜)。
 
-### 適用 26: 複数ガードが論理和を構成するとき「特定ガードを exercise する」コメントは vacuous — mutation で isolate 可否を確認し、未到達な防御的分岐は正直に文書化する (PR #1718)
+### 適用 26: 複数ガードが論理和を構成するとき「特定ガードを exercise する」コメントは vacuous — mutation で isolate 可否を確認し、未到達な防御的分岐は正直に文書化する
 
 PR #1718 (issue-claim の CAS `_atomic_claim_steal` 二段ガード = mismatch→10 / revive→10 + work-memory-lock の PID 再利用検出) の 4 cycle レビューで、実装ではなく **テストコメントの「カバレッジ主張の正確さ」** が dominant な指摘対象になった。並行奪取テスト TC-14 は全 contender を `mk_active` するため winner が live で、loser は 2 ガードのどちらでも abort しうる。ところが TC-16 のコメントは「mismatch→10 は TC-14 の losers で exercised され、mismatch path が double-steal guarantee を担う」と記し、**特定ガード (mismatch) を単独 isolate している**かのように読めた。
 
@@ -715,9 +715,9 @@ unmutated code では mismatch ガードが先に評価され loser を捕捉す
 
 教訓: **防御 in-depth の複数ガードのうち特定の 1 つを「exercise する」と主張するテストコメントは、mutation で当該ガードを単独除去して該当テストが FAIL するかを確認するまで信じない**。論理和構造では単独 isolation は成立せず、CLI で決定的再現不能な二次防御は「未到達」と正直に文書化するのが最小 fix。
 
-### 適用 27: 2 段構え fallback (優先経路 → fallback 経路) の fallback 側成功パスが未カバーのまま残る (PR #1921 で実証)
+### 適用 27: 2 段構え fallback (優先経路 → fallback 経路) の fallback 側成功パスが未カバーのまま残る
 
-PR #1921 (Issue #1914 — `issue-body-safe-update.sh` の owner/repo 解決を SSH host alias 対応にする) で、優先経路 (`git-remote.sh resolve-owner-repo`) → fallback 経路 (`gh repo view`) の 2 段構え実装に対し、初版テストは「優先経路の成功」と「両経路の失敗」の 2 状態だけを固定し、**fallback 経路が実際に成功する状態が未カバー**のまま残っていた。test reviewer が fallback 関数を `false` に置換する mutation を適用し、全テストが緑のままであることを実測して確定した。
+`issue-body-safe-update.sh` の owner/repo 解決を SSH host alias 対応にした PR で、優先経路 (`git-remote.sh resolve-owner-repo`) → fallback 経路 (`gh repo view`) の 2 段構え実装に対し、初版テストは「優先経路の成功」と「両経路の失敗」の 2 状態だけを固定し、**fallback 経路が実際に成功する状態が未カバー**のまま残っていた。test reviewer が fallback 関数を `false` に置換する mutation を適用し、全テストが緑のままであることを実測して確定した。
 
 ```bash
 # 反面教材 — 2 状態のみ固定
@@ -741,21 +741,21 @@ fallback は「普段通らない経路」であるため、成功系のテス�
 
 教訓: **N 段構え fallback は tier 数と同数の positive pin を用意する**。「優先経路成功」「全滅」の 2 極端だけでは中間 tier (fallback 単独成功) が dead range になる。tier ごとに他 tier を無効化する mutation を適用し、対応する pin が単独で FAIL することを commit 前に確認する。
 
-### 適用 28: fixture は検証対象の分岐に到達するまでの状態ライフサイクル全体を再現しないと mutation で flip しない (PR #1967 で実証)
+### 適用 28: fixture は検証対象の分岐に到達するまでの状態ライフサイクル全体を再現しないと mutation で flip しない
 
 reap manifest（`branch\t<name>` 形式）の消費ロジックに対する新規テスト（D-03: 別名エントリは消費しない、を含む複数 TC）が、mutation testing（消費ロジックを sed で無効化しても全 TC が PASS したままになる）で空虚（vacuous）と判明した。原因は fixture が「manifest にエントリが記録されている」状態だけを用意し、消費ロジックが実際に評価する前提条件（当該 branch が worktree で checkout 中で claim が free、かつ mtime が fresh）を再現していなかったこと — 消費ロジックの手前にある無関係な分岐（stale claim の early continue 等）で TC が early-return し、意図した消費ロジック自体には到達していなかった。修正は「実在する branch + claim-free な worktree」という完全なライフサイクルを fixture 側で構築し、mutation 適用で TC が確実に FAIL することを再確認して収束させた（cycle 2 では新設した D-04/D-05 も同じ observation で non-vacuous を実証）。
 
 教訓: 状態遷移を経由するロジック（manifest 消費、claim 解放、multi-step ワークフロー等）をテストする fixture は、検証対象の分岐に到達するまでの**前提条件を実際に満たす状態**を構築しなければならない。単に「最終状態のデータ（manifest のエントリ）」を置くだけでは、その手前にある無関係な early-return / guard 分岐で TC が意図せず早期終了し、mutation で対象ロジックを無効化しても TC が変化しない空虚テストになる。fixture 設計時は「この TC は本当に対象分岐を通るか」を mutation で実測するまで信頼しない（[[fixture-mutation-isolates-invariants]] の manifest ライフサイクル版）。
 
-### 適用 29: 隔離 scratchpad での mutation test により、新設した WARNING 検証テストの実効性を実証 (PR #1970 で実証)
+### 適用 29: 隔離 scratchpad での mutation test により、新設した WARNING 検証テストの実効性を実証
 
 PR #1970 cycle 2 で追加した TC-15（`.claude/settings.local.json` コピー失敗時の WARNING 出力を検証するテスト）に対し、cycle 3 で error-handling reviewer が実リポジトリを汚さない `scratchpad/mutation-test/` 上の隔離コピーで対象コードを cycle 1 以前の無音化パターン（`2>/dev/null || true`）に意図的に戻し、TC-15 を含むテストスイートが `32/32 PASS` → `31 PASS / 1 FAIL` に変化することを実証した。これにより「新設テストが実際に対象コードの振る舞いに依存しており、トートロジーでない」という主張に実測の裏付けが与えられた。
 
 教訓: mutation testing を実施する際、対象コードが本番の作業ブランチ（PR の diff 対象）そのものである場合、mutation の適用先を **実リポジトリの外（一時ディレクトリ等の隔離コピー）** に限定することで、reviewer の READ-ONLY 制約（working tree を変更しない）を守りながら実効性検証ができる。適用 5〜9 で確立された「mutation で実装を kill してテストが red になるか確認する」手法を、reviewer 自身が対象 PR の branch を直接操作できない制約下でも安全に実行するための具体的な実装パターン。
 
-### 適用 30: 安全ゲートを剥がす mutation は producer 側 (recorder + guard) にも discriminating assert が無いと consumer 側だけでは無検知で通過する (PR #1974 cycle 2 で実証)
+### 適用 30: 安全ゲートを剥がす mutation は producer 側 (recorder + guard) にも discriminating assert が無いと consumer 側だけでは無検知で通過する（cycle 2 の実測）
 
-PR #1974 (Issue #1945) cycle 2 で、新規追加した `session_worktree` type の manifest 記録ロジック（recorder + `{pr_merged}=true` guard）に対し、consumer 側（reap ロジック）の discriminating test は用意されていたが、**producer 側（recorder + guard 自体）** には対応するテストが存在しなかった。test reviewer が両方のブロック（sandbox-mask 分岐 / busy-failed 分岐）から `{pr_merged}=true` guard を剥がす mutation を適用したところ、既存テストスイートが無検知で通過することを実測した。
+当該 PR の cycle 2 で、新規追加した `session_worktree` type の manifest 記録ロジック（recorder + `{pr_merged}=true` guard）に対し、consumer 側（reap ロジック）の discriminating test は用意されていたが、**producer 側（recorder + guard 自体）** には対応するテストが存在しなかった。test reviewer が両方のブロック（sandbox-mask 分岐 / busy-failed 分岐）から `{pr_merged}=true` guard を剥がす mutation を適用したところ、既存テストスイートが無検知で通過することを実測した。
 
 ```bash
 # 反面教材 — consumer 側 (reap ロジック) のみ discriminating assert を持つ
@@ -775,9 +775,9 @@ PR #1974 (Issue #1945) cycle 2 で、新規追加した `session_worktree` type 
 
 新機能が「安全ゲート（`{pr_merged}=true` 等の条件）付きで既存の共有インフラを呼び出す」形の場合、テストカバレッジは **consumer 側（呼び出された結果をどう処理するか）だけでなく producer 側（呼び出す条件そのもの）にも discriminating assert が必要**。producer 側のテストが「呼ばれたら動く」ことしか検証せず「ガードなしでは呼ばれないこと」を検証していないと、安全ゲート自体を剥がす regression がテストスイートを無検知で通過する。本パターンは適用 5 の Self-grep tautology / Path filter coverage gap と同型 (呼び出し条件の mutation に対する identification power 0) だが、対象を「安全ゲート付き呼び出しの producer/consumer 両面カバレッジ」に一般化したもの。関連する共有リソース契約違反の背景は [[shared-resource-type-reuse-without-consumer-contract-check]] を参照。
 
-### 適用 31: degrade 経路テストの discriminator は「degrade が働いて初めて成立する肯定結果」で設計し、commit 前 mutation で識別力を検証する (PR #2003 で実証)
+### 適用 31: degrade 経路テストの discriminator は「degrade が働いて初めて成立する肯定結果」で設計し、commit 前 mutation で識別力を検証する
 
-PR #2003 (Issue #1999、flock 不在環境の `command -v flock` degrade 追加) では、**同一 PR 内の 2 つの新規テストで識別力が分岐した**: TC-6 (atomic-write) は set の rc / state file 内容 / stderr を直接 assert して mutation (ガード除去) を正しく検出したが、TC-9 (wiki-ingest-lock) は (1) rc の `|| true` 破棄、(2) locale 依存の英語エラーメッセージ grep（非英語 locale で never match）、(3) mkdir ロック実装ゆえガード有無で構造的に pass する assert 構成、の 3 重で mutation に対し全 green の false-positive test だった。error-handling / test 両レビュアーが隔離 worktree の mutation 実験で独立にこれを実証した (cycle 1 HIGH)。
+flock 不在環境向けに `command -v flock` degrade を追加した PR では、**同一 PR 内の 2 つの新規テストで識別力が分岐した**: TC-6 (atomic-write) は set の rc / state file 内容 / stderr を直接 assert して mutation (ガード除去) を正しく検出したが、TC-9 (wiki-ingest-lock) は (1) rc の `|| true` 破棄、(2) locale 依存の英語エラーメッセージ grep（非英語 locale で never match）、(3) mkdir ロック実装ゆえガード有無で構造的に pass する assert 構成、の 3 重で mutation に対し全 green の false-positive test だった。error-handling / test 両レビュアーが隔離 worktree の mutation 実験で独立にこれを実証した (cycle 1 HIGH)。
 
 fix では discriminator を「degrade が働いて初めて成立する肯定結果」で再設計した — no-flock `set` の rc 直接 assert に加え、**別セッションからの liveness 判定が `held` を返す**ことを assert する (degrade が壊れて state 未書込なら holder not-live → `stale` が返るため locale 非依存に検出できる。既存 TC の挙動の再利用)。fix commit 前にガード除去 mutation で新 TC-9 が正確に 2 assert FAIL することを検証してから push し、cycle 2 で両レビュアーが独立再実証して収束した (3 cycle: HIGH 1 → LOW 1 → 0)。
 
@@ -787,7 +787,7 @@ fix では discriminator を「degrade が働いて初めて成立する肯定�
 - 「テストの識別力を直す fix」自体も、commit 前に mutation で FAIL することを確認してから push する — 修正が本当に teeth を持つかは実測でしか分からない
 - degrade 系 PR の妥当性説明には「どの環境でも機能していた保護を除去しない (degrade 前は当該環境で操作自体が失敗していた) = strictly additive availability」の framing が有効 (application レビュアーが cycle 3 で明文化)
 
-### 適用 32: mutation は「今直した箇所」ではなく「そのテストが守ると主張する全アサート」に当てる (PR #2013 cycle 3 で CRITICAL として実証)
+### 適用 32: mutation は「今直した箇所」ではなく「そのテストが守ると主張する全アサート」に当てる（cycle 3 で CRITICAL として実測）
 
 PR #2013 cycle 2 で「成功行のアサートが集計行にもマッチする」穴を見つけ `assert_line_matches` で塞ぎ、3 種の mutation で確認した。ところが cycle 3 で、**同じファイルの別のアサート**（失敗ファイル名を検証する側）が runner の `=== Running: X ===` 進捗行にマッチしたまま残っていることが判明した。
 
@@ -822,7 +822,7 @@ cycle 3 では 9 種の mutation（失敗名 suppress ×2 / 集計行の gated g
 
 cycle 2 で新設した会計テストの初版は 42 assertions が緑だったが、mutation（成功行から gated group サフィックスを削除）を **検出できなかった**。原因は `assert_contains` が出力全体を見ており、集計行にも同じ文字列があったため。行を特定する `assert_line_matches` を足して塞いだ。
 
-### 「安全装置の存在」と「安全装置の値」は別々に pin する（PR #2017）
+### 「安全装置の存在」と「安全装置の値」は別々に pin する
 
 閾値を持つ安全装置では、存在を pin する mutation（機構ごと削除）と値を pin する mutation（閾値だけ変更）で結果が分かれる。symlink 追跡のホップ上限を例に:
 
