@@ -26,12 +26,14 @@
 
 **裏取り**: 記憶・推測で `VERIFIED` としてはならない。実際に以下を実行し、出力と本文の断定を突合する:
 
+<a id="verify-commands"></a>
+
 | 断定の種類 | 裏取りコマンド |
 |-----------|---------------|
 | Issue の存在 / title / state | `gh issue view {N} -R {owner_repo} --json number,title,state,url`（**返った `url` のパスセグメントが `/issues/` であることを先に確認する** — 本コマンドは PR 番号でも成功するため。下記「PR 番号 / Issue 番号の混同」参照） |
-| PR の存在 / title / state | `gh pr view {N} -R {owner_repo} --json number,title,state`（**本文が `PR #N` と型を明示している場合にのみ本行から始める**。bare `#N` は 1 行目で型を判定してからこちらに来る — 下記[型解決の規則](#type-resolution)参照） |
+| PR の存在 / title / state | `gh pr view {N} -R {owner_repo} --json number,title,state`（**開始点にしてはならない**。まず 1 行目で型を判定し、[型解決の規則](#type-resolution)で型が `PR` と確定してから title / state の突合のために実行する） |
 | commit の存在 / subject | `git log --oneline -1 {sha}` |
-| 「#N で A → B に変更された」（変更方向） | SHA が本文に直書きされていればそれを `{sha}` に使う。`#N` 形式なら、まず上表 1 行目の `gh issue view {N} -R {owner_repo} --json url` で**種別を判定してから** 2 分岐する（`#N` は PR とは限らない — 本リポジトリの commit 規約では Issue を `refs #N` で引くため Issue 番号 citation が主経路）: `url` が `/pull/` なら `gh pr view {N} -R {owner_repo} --json mergeCommit` の `mergeCommit.oid` を `{sha}` に代入（`null` = 未マージなら `UNVERIFIED`）。`/issues/` なら `git log -E --grep "refs #{N}[^0-9]" --grep "refs #{N}$" --format=%H` で実装 commit を解決して代入（2 つの `--grep` は OR 結合で「N の直後が非数字 or 行末」の語境界を成す。**境界を省いた素の `--grep "refs #{N}"` を使ってはならない** — 語境界を持たない部分一致のため、短い番号が長い番号の prefix として「ちょうど 1 件」マッチし下記 guard を素通りする。0 件 / 複数件で特定できなければ `UNVERIFIED`）。**この解決段階のコマンド失敗を `CONTRADICTED` に流してはならない**（種別は 1 行目の出力で確定済み。解決失敗は `UNVERIFIED` に倒す）。`{sha}` が得られたら `git show {sha}^:{path}`（変更前）と `git show {sha}:{path}`（変更後）を**両方**取得する |
+| 「#N で A → B に変更された」（変更方向） | SHA が本文に直書きされていればそれを `{sha}` に使う。`#N` 形式なら、まず[裏取りコマンド表](#verify-commands) 1 行目の `gh issue view {N} -R {owner_repo} --json url` で**種別を判定してから** 2 分岐する（`#N` は PR とは限らない — 本リポジトリの commit 規約では Issue を `refs #N` で引くため Issue 番号 citation が主経路）: `url` が `/pull/` なら `gh pr view {N} -R {owner_repo} --json mergeCommit` の `mergeCommit.oid` を `{sha}` に代入（`null` = 未マージなら `UNVERIFIED`）。`/issues/` なら `git log -E --grep "refs #{N}[^0-9]" --grep "refs #{N}$" --format=%H` で実装 commit を解決して代入（2 つの `--grep` は OR 結合で「N の直後が非数字 or 行末」の語境界を成す。**境界を省いた素の `--grep "refs #{N}"` を使ってはならない** — 語境界を持たない部分一致のため、短い番号が長い番号の prefix として「ちょうど 1 件」マッチし下記 guard を素通りする。0 件 / 複数件で特定できなければ `UNVERIFIED`）。**この解決段階のコマンド失敗を `CONTRADICTED` に流してはならない**（種別は 1 行目の出力で確定済み。解決失敗は `UNVERIFIED` に倒す）。`{sha}` が得られたら `git show {sha}^:{path}`（変更前）と `git show {sha}:{path}`（変更後）を**両方**取得する |
 
 **変更方向の断定は片側だけ見てはならない**。変更後だけを見ると「元から B だった」と区別できず、方向の逆転を検出できない。
 
@@ -39,7 +41,7 @@
 
 **一致した「位置」で分岐してはならない** — subject 行 / squash された箇条書き行 / trailer 行 / 地の文 のいずれであるかは判別材料にならない。実装 commit も自分の Issue を地の文で引くため、位置で切ると正当な解決を落とす（実測で確認済み）。同じ理由で、一致位置を狭める正規表現（行頭アンカー・括弧付き行末など）を裏取りコマンドに足してはならない — 散文引用と実装 commit は正規表現では区別できず、衝突を減らすぶんだけ正当な解決も失う。判別は上記の全文読解でのみ行う。
 
-**候補が 0 件 / 複数件のときは候補 SHA の一覧を stderr の `WARNING` に載せる**（下記「3 値の処理」の WARNING 規則が定める 1 本に、`{理由}` として候補一覧を含める。WARNING を別に増やさない）。載せないと「解決が曖昧だった」と「ネットワークが落ちていた」が本文の同じ「要確認」注記に潰れ、後から切り分けられない。
+**候補が 0 件 / 複数件のとき、および全文読解で候補を棄却したときは、`git log --grep` が返した候補 SHA（絞り込み**前**）の一覧を stderr の `WARNING` に載せる**（下記「3 値の処理」の WARNING 規則が定める 1 本に、`{理由}` として候補一覧を含める。WARNING を別に増やさない）。棄却ケースを外すと、候補 1 件を全文読解で落とした結果が「元から 0 件」と区別できなくなる — それは上段が本節を新設した動機そのものなので、痕跡が消えては意味がない。載せないと「解決が曖昧だった」と「ネットワークが落ちていた」も本文の同じ「要確認」注記に潰れ、後から切り分けられない。
 
 **PR 番号 / Issue 番号の混同**: squash merge した commit の subject 末尾 `(#N)` は **PR 番号**であり Issue 番号ではない（Issue 番号は commit body の `refs #M` 側にある）。`gh issue view {N}` は **PR 番号を渡してもエラーにせず PR を返す**（対照的に `gh pr view {N}` は Issue 番号を `Could not resolve to a PullRequest` で正しく弾く。壊れているのは Issue 側だけ）。したがって `#N` を Issue として引用する断定は、**上表 `gh issue view` の出力に含まれる `url` のパスセグメントで種別を先に判定する** — `/issues/` なら Issue、`/pull/` なら PR。判定には必ず同じ 1 回の出力を使うこと（`-R {owner_repo}` を落とした二度目の呼び出しは SSH host alias 環境で別リポジトリを引く）。
 
@@ -49,11 +51,11 @@
 
 | 本文の書き方 | 型の決め方 | 型が食い違ったときの判定 |
 |-------------|-----------|------------------------|
-| 型を明示しない bare `#N` | 上表 1 行目の `gh issue view {N} --json url` を先に実行し、返った `url` の判定結果を**その主張の型として採用する** | **`CONTRADICTED` にしない**（本文は型を主張していないので、食い違い自体が存在しない） |
+| 型を明示しない bare `#N` | [裏取りコマンド表](#verify-commands) 1 行目の `gh issue view {N} --json url` を先に実行し、返った `url` の判定結果を**その主張の型として採用する** | **`CONTRADICTED` にしない**（本文は型を主張していないので、食い違い自体が存在しない） |
 | `Issue #N` と明示 | 同上で判定 | `url` が `/pull/` なら `CONTRADICTED` |
 | `PR #N` と明示 | 同上で判定 | `url` が `/issues/` なら `CONTRADICTED` |
 
-bare `#N` を一律 `CONTRADICTED` に倒すと、上記「過検出よりも取りこぼし側に倒してよい」の逆方向になる — 直前の段落が「Issue 番号 citation が主経路」と述べているぶん読み手は bare `#N` を Issue 引用と解釈しやすく、この経路は実際に踏まれる。
+bare `#N` を一律 `CONTRADICTED` に倒すと、上記「過検出よりも取りこぼし側に倒してよい」の逆方向になる — [裏取りコマンド表](#verify-commands)の変更方向行が「Issue 番号 citation が主経路」と述べているぶん読み手は bare `#N` を Issue 引用と解釈しやすく、この経路は実際に踏まれる。
 
 **型判定は必ず `gh issue view` 側で行う**。`gh pr view` は Issue 番号を非ゼロ終了で弾くため `url` を返さず、失敗した時点で型を決める材料が無い。bare `#N` を PR と当たりを付けて `gh pr view` から始めると、実在する Issue 番号が「PR ではない」という stderr だけを根拠に誤って `CONTRADICTED` へ落ちる。
 
@@ -101,7 +103,7 @@ bare `#N` を一律 `CONTRADICTED` に倒すと、上記「過検出よりも取
 
 > **なぜ 3 択か**: 「ユーザー承認なしに本文を書き換えない」と「訂正を拒否しても『要確認』は付記する」は、付記自体が書き換えであるため 2 択では両立しない。付記もユーザー承認下に置くことで両方を満たす。
 
-**`VERIFIED` 以外の判定はすべて stderr に `WARNING` を 1 行出す**（本節が唯一の定義。エラー処理表の個々の行やクラス別の節には書かない）。書式:
+**`VERIFIED` 以外の判定はすべて stderr に `WARNING` を 1 行出す**（本節が唯一の定義。エラー処理表の個々の行やクラス別の節には書かない）。**発行は裏取りコマンドと同じ Bash 呼び出し内で `echo "WARNING: ..." >&2` として行う** — 散文として画面に書くのではない。consumer の `## E2E Output Minimization` は中間説明・サマリを省略対象にしており、散文で出すと E2E 経路で消えるため。既存 helper の新設ではなく `echo` の使用なので下記「制約」の禁止には当たらない。書式:
 
 ```
 WARNING: fact-check {判定} ({参照識別子}): {理由} — {処理}
@@ -109,16 +111,16 @@ WARNING: fact-check {判定} ({参照識別子}): {理由} — {処理}
 
 | 欄 | 内容 |
 |----|------|
-| `{判定}` | `CONTRADICTED` / `UNVERIFIED` |
-| `{参照識別子}` | 本文が引いた形をそのまま使う（`#N` / `Issue #N` / `PR #N` / commit SHA）。番号を持たない現状断定クラスは対象箇所を短く示す |
-| `{理由}` | 判定の根拠。`UNVERIFIED` では**理由を必ず具体化する**（`候補 0 件` / `候補 複数件: {SHA 一覧}` / `未マージ (mergeCommit: null)` / `コマンド失敗: {stderr 要約}` / `実測しないクラス` 等） |
-| `{処理}` | `CONTRADICTED` は選択された処理（`要確認を付記して続行` / `そのまま続行`）。`UNVERIFIED` は付記したマーカー（`要確認` / `要検証`）または `付記なし` |
+| `{判定}` | `CONTRADICTED` / `UNVERIFIED` / `SELF_CONTRADICTION`（クラス 3） |
+| `{参照識別子}` | 本文が引いた形をそのまま使う（`#N` / `Issue #N` / `PR #N` / commit SHA）。番号を持たない現状断定クラス・自己矛盾クラスは対象箇所を短く示す |
+| `{理由}` | 判定の根拠。`UNVERIFIED` では**理由を必ず具体化する**（`候補 0 件` / `候補 複数件: {SHA 一覧}` / `候補 {N} 件を全文読解で全除外: {SHA 一覧}` / `未マージ (mergeCommit: null)` / `コマンド失敗: {stderr 要約}` / `実測しないクラス` 等。`{SHA 一覧}` は絞り込み**前**の候補を指す） |
+| `{処理}` | `CONTRADICTED` は選択された処理（`要確認を付記して続行` / `そのまま続行`）。`UNVERIFIED` は付記したマーカー（`要確認` / `要検証`）または `付記なし`。`SELF_CONTRADICTION` は `修正して続行` / `そのまま続行` |
 
 **`訂正案を採用` で解消した `CONTRADICTED` だけが WARNING を出さない**（矛盾が消えているため）。
 
 これを 1 本の規則にするのは、**判定の強さと観測可能性を逆相関させない**ため。`CONTRADICTED` の `そのまま続行` は本文に何も残さないので、WARNING が無いと痕跡がセッション transcript だけになる。`UNVERIFIED` 側も同様で、非ゼロ終了しない経路（候補 0 件 / 複数件 / 未マージ）はコマンドが成功しているぶん痕跡が「要確認」注記だけになり、ネットワーク断由来のものと同一視される。理由欄の具体化がその 2 者を分ける。
 
-自己矛盾クラスの矛盾候補も確認に載せる（`修正して続行` / `そのまま続行`）。**本クラスは他 2 クラスの判定（`VERIFIED` / `CONTRADICTED` / `UNVERIFIED`）と直交する軸**であり、consumer の分岐表のどの行に該当した場合でも独立に評価する（3 クラスすべてで検出 0 件のときのみ評価しない）。`CONTRADICTED` と同時に検出したときは同一の AskUserQuestion に相乗りし、`CONTRADICTED` が 0 件のときは本項目だけで新規に発行する。
+自己矛盾クラスの矛盾候補も確認に載せる（`修正して続行` / `そのまま続行`）。**`そのまま続行` を選んだ場合も上記 WARNING 規則へ合流させる**（`{判定}` は `SELF_CONTRADICTION`）— 本クラスは 3 値と直交して判定値を持たないため規則の外に落ちやすいが、`そのまま続行` は本文に何も残さないので、WARNING が無いと矛盾を抱えたまま作成された痕跡がセッション transcript にしか残らない。これは同規則が `CONTRADICTED` について塞いだ状態と同型。**本クラスは他 2 クラスの判定（`VERIFIED` / `CONTRADICTED` / `UNVERIFIED`）と直交する軸**であり、consumer の分岐表のどの行に該当した場合でも独立に評価する（3 クラスすべてで検出 0 件のときのみ評価しない）。`CONTRADICTED` と同時に検出したときは同一の AskUserQuestion に相乗りし、`CONTRADICTED` が 0 件のときは本項目だけで新規に発行する。
 
 surface する項目は **1 項目 = 1 question** とし、1 回の AskUserQuestion 呼び出しには**最大 4 件**まで載せる（同ツールの質問数上限）。**1 question に 2 つの決定を載せてはならない** — 回答は 1 つなので、自身の 3 択と他項目の可否を同じ問いで決めることはできない。
 
@@ -130,7 +132,7 @@ surface する項目は **1 項目 = 1 question** とし、1 回の AskUserQuest
 
 **5 件目以降が出た場合**は、`AskUserQuestion` を **2 回目以降として追加で呼び出し**、同じく 1 項目 = 1 question・最大 4 件で載せる（上限は 1 呼び出しあたりの制約であって総予算ではない）。項目が尽きるまで繰り返す。**無承認で本文へ付記してはならない** — 「なぜ 3 択か」が置いた「付記もユーザー承認下に置く」不変条件は、項目数が増えても例外を作らない（上限を理由に例外を作ると、`CONTRADICTED` が最も多い body ほど無承認の書き換えが起きる）。
 
-呼び出し回数が増えるのを避けたい場合でも、**項目を落として本文だけ書き換える縮退は禁止**する。載せきれない事情があるなら、その項目は本文を変更せず `UNVERIFIED` 相当として WARNING に理由付きで記録する（上記 WARNING 規則の `{処理}` 欄を `付記なし` にする）。
+呼び出し回数が増えるのを避けたい場合でも、**項目を落として本文だけ書き換える縮退は禁止**する。「項目が尽きるまで繰り返す」が唯一の規則であり、載せきれないという事情は本規則の下では発生しない（発生させる裁量を実行側に与えると `CONTRADICTED` を表面化せずに済ませる経路になる）。**例外はユーザーが明示的に中断を選択した場合のみ**で、そのときも本文は変更せず、上記 WARNING 規則へ**実際の判定のまま**（`CONTRADICTED` を `UNVERIFIED` に書き換えない）`{処理}` 欄を `付記なし` として記録する。
 
 **各 consumer は本検査専用の AskUserQuestion を発行すること** — 既存の確認へ畳み込むと、その確認自身が枠を消費して上限が consumer ごとに割れ、溢れの扱いも分岐する。専用に発行すれば本節の規定がそのまま全 consumer に適用される。
 
@@ -142,7 +144,7 @@ surface する項目は **1 項目 = 1 question** とし、1 回の AskUserQuest
 | **本文が明示的に `PR #N` と型を書いて**引用した番号が PR ではない（`gh pr view` の stderr が `Could not resolve to a PullRequest` を含む非ゼロ終了 — **不存在を含意しない**。実在する Issue 番号でも同じ stderr になる）。**型を明示しない bare `#N` は本行の対象外**（[型解決の規則](#type-resolution)に従い `gh issue view` 側で型を決める） | `CONTRADICTED`。ただし訂正案はタイポと決めつけず、`gh issue view {N} -R {owner_repo} --json url` を追加実行して切り分ける: (a) `url` が `/issues/` なら「N は Issue 番号であり PR ではない」、(b) `Could not resolve to an issue or pull request` なら番号不存在としてタイポの可能性、(c) **それ以外の失敗（`Could not resolve to a Repository` / 一過性障害 / rate limit / 認証切れ）なら「切り分け不能」**をそれぞれ訂正案として提示する。**(c) でも `CONTRADICTED` 判定は維持する**（判定は `gh pr view` の結果で確定済みで、この追加実行は訂正案を作るためだけのもの）。下 2 行の `UNVERIFIED` は本行の追加実行には適用しない |
 | `git` 裏取りコマンド（`git log` / `git show`）の**非ゼロ終了すべて**（stderr の文言 — `unknown revision` / `bad object` / `invalid object name` / path 系文言 等 — **で分岐しない**。網羅で判定する）。**ローカル git は「存在しない」と「fetch されていない」を区別できない** — 浅い clone / 未 fetch ブランチ / fork 上の commit では**実在する SHA も同一の stderr** になる（本行を `CONTRADICTED` の根拠にしてはならない） | `UNVERIFIED` として「要確認」を付記し続行（タイポと断定しない。WARNING は上記の単一規則が担う）。サーバ権威で不存在を断定したい場合のみ `gh api repos/{owner_repo}/commits/{sha}` を追加実行し、**stderr が `No commit found for SHA`（HTTP 422）のときに限り** `CONTRADICTED` へ昇格してよい（HTTP 404 は SHA ではなく `{owner_repo}` 側の不在なので昇格しない） |
 | **上記以外**の非ゼロ終了（オフライン / `gh` 認証切れ / リポジトリ解決失敗・権限不足（stderr が `Could not resolve to a Repository` — 番号ではなく `{owner_repo}` 側の問題）等） | `UNVERIFIED` として「要確認」を付記し続行（WARNING は上記の単一規則が担う）。Issue 作成 / 編集を**ブロックしない** |
-| **本文が明示的に `Issue #N` と型を書いて**引用した番号が PR として解決した（上表コマンドの `url` が `/pull/` を含む）。**型を明示しない bare `#N` は本行の対象外**（[型解決の規則](#type-resolution)参照） | `CONTRADICTED`（PR 番号を Issue と誤認している。対応する Issue 番号は commit body の `refs #M` 側を確認して訂正案に載せる） |
+| **本文が明示的に `Issue #N` と型を書いて**引用した番号が PR として解決した（[裏取りコマンド表](#verify-commands) 1 行目の `url` が `/pull/` を含む）。**型を明示しない bare `#N` は本行の対象外**（[型解決の規則](#type-resolution)参照） | `CONTRADICTED`（PR 番号を Issue と誤認している。対応する Issue 番号は commit body の `refs #M` 側を確認して訂正案に載せる） |
 | 検査対象 0 件 | silent skip（追加の出力・質問を出さない） |
 | issue-edit で本文以外（title / Projects フィールド）のみの変更 | 検査を実行しない |
 
