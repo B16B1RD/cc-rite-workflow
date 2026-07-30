@@ -14,6 +14,7 @@
 * **Create**: [「後続ステップで生成するものに検査を適用せよ」を生成地点より前に置くと一度も実行されない](pages/anti-patterns/instruction-placed-before-its-execution-point-never-fires.md) — PR #2056 の raw source 3 件を統合（フローの制御構造と突き合わせていない 3 類型 / 「提示する」と書いたら提示先を持たせる / 到達不能化は削除と同じ）
 * **Update**: [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) — PR #2056 の raw source 4 件を統合（分類軸を文言の固有化からサーバ権威 vs ローカルの権威性へ引き上げる / git 側は非ゼロ終了すべてを網羅で判定する / SoT 委譲設計は fix コストを 1/3 にする）
 * **Update**: [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](pages/heuristics/non-converging-review-loop-suspect-structure.md) — PR #2052 / #2056 の raw source 4 件を統合（停止条件は結果を見る前に宣言する / 指摘数が 4 → 7 へ反転したら個別パッチをやめる / 簡素化の成否は行数で確認できる）
+* **lint:warning** — contradictions=0, stale=24, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-07-30
 
