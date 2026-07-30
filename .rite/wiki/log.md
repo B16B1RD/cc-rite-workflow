@@ -1,3 +1,20 @@
+## 2026-07-31
+
+* **Create**: [検証手順を書くときは処方するコマンドの判別能力そのものを実測する](pages/heuristics/prescribed-command-discriminating-power-measured.md) — PR #2056 の raw source 3 件を統合（gh issue view は PR 番号でも成功して PR を返す / 判別子は url のパスセグメントのみ、title と state は使えない / 恒真の確認は盲点を作る）
+* **Create**: [番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する](pages/anti-patterns/identifier-grep-without-word-boundary-prefix-collision.md) — PR #2056 の raw source 4 件を統合（「ちょうど 1 件」だけが判定を出せるため prefix 衝突が主要な発生源になる逆説 / 複数 --grep の OR 結合で pipe なし語境界 / 行頭アンカー案は全件実測で 294 件の正当解決を落とすと判明）
+* **Create**: [分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く](pages/patterns/branch-table-single-observation-key-orthogonal-axis-separation.md) — PR #2052 / #2056 の raw source 5 件を統合（見出しの有無と中身の形式は別の観測量 / 直交条件は表の直下へ / 「同じ〜に載せる」は先行詞の発火条件まで書く / 行列として埋め漏れ確認）
+* **Create**: [判定の強さと観測可能性を逆相関させると、確定した矛盾が検証不能と区別できなくなる](pages/anti-patterns/verdict-strength-observability-inverse-correlation.md) — PR #2056 の raw source 5 件を統合（非成功判定は 1 本の規則で一律に観測可能化し理由欄を必須にする / 規則を値に量化すると値を持たない軸が落ちる / 義務は誰が・どの経路で・いつまで指定する）
+* **Create**: [承認ゲートを跨ぐ自動書き換えは、両立しない不変条件を掲げるのではなく差分の再描画で閉じる](pages/patterns/approval-gate-crossing-rewrite-closed-by-rerender.md) — PR #2056 の raw source 4 件を統合（外部ツール上限を理由にした例外は逆進性を生む / 1 question に 2 決定は載せられない / fold-in 撤去で 4 指摘が同時消滅）
+* **Create**: [SoT を consumer 依存の条件付きにすると seam が増え、指摘数が反転する](pages/anti-patterns/conditional-sot-delegated-to-consumer-multiplies-seams.md) — PR #2056 の raw source 5 件を統合（要約は必ず lossy でありポインタだけを置く / 「複製しない」宣言を grep で検算する / 単一定義へ畳む修正は旧記述の除去まで 1 セット）
+* **Create**: [機構の欠陥を潰す前に、その機構を正当化している前提文を実測で検証する](pages/heuristics/mechanism-justifying-premise-measured-before-patching.md) — PR #2052 の raw source 2 件を統合（GFM テーブルは最初の非テーブル行で終端するため別ブロックなら共存する / 前提を限定に書き換えると 44 行 → 34 行の純減で機構が消えた / 停止条件は結果を見る前に宣言する）
+* **Create**: [構造化レコードの部分更新は全行再生成へ置き換え、同定述語をキー位置まで anchor する](pages/patterns/structured-record-full-row-regeneration-with-anchored-key.md) — PR #2052 の raw source 4 件を統合（キーを含む行では 1 キーが最大 3 行に一致した / 複数一致は fail-loud で中止 / optional フィールドを唯一の値ソースにすると 55% のレコードで既存値が消える）
+* **Create**: [区切り文字の制約は placeholder 単位でなくセル単位で書き、禁止ではなくエスケープを正規形に固定する](pages/patterns/cell-delimiter-constraint-per-cell-with-escape-normal-form.md) — PR #2052 の raw source 3 件を統合（コードスパン内の生 pipe もセル区切りになる / 共通規約は全経路の親へ引き上げ「共通」の係り先を明示する）
+* **Create**: [「実体に合わせる」是正では実体の観測母集団を確認し、1 リポジトリの観測を仕様の前提に昇格させない](pages/heuristics/observed-population-check-before-promoting-to-spec-premise.md) — PR #2052 の raw source 3 件を統合（他 2 リポジトリは別形式で計 139 行が正しく動いていた / provenance は git show <commit>^:<path> で裏を取る / deferred は番号を採る）
+* **Create**: [散文手順のレビューでも文書内の構造的事実は実測でき、実測不能と決めつけると指摘が滞留する](pages/heuristics/prose-procedure-structural-facts-are-measurable.md) — PR #2056 の raw source 4 件を統合（実測アンカー付与率が上がると収束が速い / 収束は件数でなく指摘の種類が変わる形で来る / reviewer の実測値も検算する）
+* **Create**: [「後続ステップで生成するものに検査を適用せよ」を生成地点より前に置くと一度も実行されない](pages/anti-patterns/instruction-placed-before-its-execution-point-never-fires.md) — PR #2056 の raw source 3 件を統合（フローの制御構造と突き合わせていない 3 類型 / 「提示する」と書いたら提示先を持たせる / 到達不能化は削除と同じ）
+* **Update**: [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) — PR #2056 の raw source 4 件を統合（分類軸を文言の固有化からサーバ権威 vs ローカルの権威性へ引き上げる / git 側は非ゼロ終了すべてを網羅で判定する / SoT 委譲設計は fix コストを 1/3 にする）
+* **Update**: [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](pages/heuristics/non-converging-review-loop-suspect-structure.md) — PR #2052 / #2056 の raw source 4 件を統合（停止条件は結果を見る前に宣言する / 指摘数が 4 → 7 へ反転したら個別パッチをやめる / 簡素化の成否は行数で確認できる）
+
 ## 2026-07-30
 
 * **Create**: [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) — raw/reviews/20260729T142410Z-pr-2051.md ほか 1 件を新規ページ化（rc=0 を success 扱いする呼び出し元の下では stderr WARNING が構造的に届かない / 走査不能を数えて別 rc に分ける）
