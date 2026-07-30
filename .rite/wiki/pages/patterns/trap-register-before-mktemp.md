@@ -28,7 +28,7 @@ confidence: high
 
 ## 概要
 
-`mktemp` で tempfile を作った直後に `trap 'rm -f "$f"' EXIT ...` を登録するのでは、signal (INT/TERM/HUP) が `mktemp` 成功直後〜`trap` 登録前の窓で届いた場合に orphan tempfile が残る。canonical 順序は「空文字で変数宣言 → signal-specific trap 登録 → `mktemp` で値代入」。逆順は `mktemp → trap` race と呼ばれ、cycle 4 の PR #548 で複数箇所で検出された。
+`mktemp` で tempfile を作った直後に `trap 'rm -f "$f"' EXIT ...` を登録するのでは、signal (INT/TERM/HUP) が `mktemp` 成功直後〜`trap` 登録前の窓で届いた場合に orphan tempfile が残る。canonical 順序は「空文字で変数宣言 → signal-specific trap 登録 → `mktemp` で値代入」。逆順は `mktemp → trap` race と呼ばれ、起点事例の cycle 4 で複数箇所で検出された。
 
 ## 詳細
 
@@ -86,7 +86,7 @@ trap - EXIT INT TERM HUP
 
 ### 依存コマンド gate は mktemp より前に置く (deterministic gate-exit variant)
 
-signal race だけでなく、**mktemp と trap 登録の間に `exit` 経路 (依存コマンド gate 等) が挟まる**と、その環境では決定論的に orphan が残る。PR #1850 で実測: テストスクリプトが `TEST_DIR="$(mktemp -d)"` → `command -v jq || exit 1` → trap 登録 の順になっており、jq 不在環境では trap 未武装のまま exit して temp dir が実行回数分蓄積する (performance / error-handling の 2 reviewer が独立検出した高信頼シグナル)。
+signal race だけでなく、**mktemp と trap 登録の間に `exit` 経路 (依存コマンド gate 等) が挟まる**と、その環境では決定論的に orphan が残る。exit 経路 orphan 事例で実測: テストスクリプトが `TEST_DIR="$(mktemp -d)"` → `command -v jq || exit 1` → trap 登録 の順になっており、jq 不在環境では trap 未武装のまま exit して temp dir が実行回数分蓄積する (performance / error-handling の 2 reviewer が独立検出した高信頼シグナル)。
 
 ```bash
 # ❌ NG: mktemp と trap の間に exit 経路 (jq gate) が挟まる
@@ -150,7 +150,7 @@ norm_tmp=""                       # 4. 元変数クリア (downstream 参照保�
 
 ### 新規 mktemp は「そのファイルの cleanup 関数の引数リスト」に載せる
 
-trap を先に張っていても、**新しい tempfile をその cleanup 関数に登録し忘れる**と成功経路でリークする。PR #2035 は型ガード用の tempfile を `elif` の条件部で mktemp し `then` ブロックでのみ `rm` する形にしたため、ガードが通る成功経路（最頻）で毎回リークした。**TMPDIR に 780 件蓄積していたのを実測で確認**、3 reviewer が独立に検出。
+trap を先に張っていても、**新しい tempfile をその cleanup 関数に登録し忘れる**と成功経路でリークする。型ガード tempfile 事例は型ガード用の tempfile を `elif` の条件部で mktemp し `then` ブロックでのみ `rm` する形にしたため、ガードが通る成功経路（最頻）で毎回リークした。**TMPDIR に 780 件蓄積していたのを実測で確認**、3 reviewer が独立に検出。
 
 同ファイルの既存 tempfile は例外なく「先頭で空文字列に先行宣言 → cleanup 関数に登録 → trap で回収」というパターンを取っており、新規分だけがそこから外れていた。
 

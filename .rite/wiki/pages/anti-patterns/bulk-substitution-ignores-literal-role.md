@@ -20,11 +20,11 @@ confidence: high
 
 ## 概要
 
-`/tmp/rite-*` → `${TMPDIR:-/tmp}/rite-*` のような一括 sed スイープは、同じ文字列でも**役割が違う出現**を巻き込むと意味論を壊す。スクラッチ置き場の mktemp は変換可だが、(1) 被テスト対象の path allowlist に一致させる load-bearing fixture、(2) `export TMPDIR` より後に評価される生成パス、(3) 文字列リテラル内部、の 3 種は変換の意味が正反対になる。PR #1910 で 3 reviewer が独立に同一箇所（TC-036a）を HIGH で指摘した実測。
+`/tmp/rite-*` → `${TMPDIR:-/tmp}/rite-*` のような一括 sed スイープは、同じ文字列でも**役割が違う出現**を巻き込むと意味論を壊す。スクラッチ置き場の mktemp は変換可だが、(1) 被テスト対象の path allowlist に一致させる load-bearing fixture、(2) `export TMPDIR` より後に評価される生成パス、(3) 文字列リテラル内部、の 3 種は変換の意味が正反対になる。起点事例で 3 reviewer が独立に同一箇所（TC-036a）を HIGH で指摘した実測。
 
 ## 詳細
 
-PR #1910（テストハーネスの mktemp TMPDIR 化）で、28 箇所の機械変換のうち 3 種の「変換してはならない出現」が混入した:
+起点事例（テストハーネスの mktemp TMPDIR 化）で、28 箇所の機械変換のうち 3 種の「変換してはならない出現」が混入した:
 
 1. **load-bearing fixture**: TC-036a の content-file は被テスト hook（wiki-ingest-trigger.sh）の path-containment allowlist（`$PWD/* | /tmp/rite-* | /private/tmp/rite-*`）に一致させるための fixture。TMPDIR 化すると TMPDIR≠/tmp の環境（sandbox・macOS）で hook が**正しく拒否**して偽 FAIL し、かつ本来検証すべき `/tmp/rite-*` prefix 受容を検証しなくなる。修正は literal 復元 + 書込不可環境での writability probe → 明示 SKIP。
 2. **export 後評価の生成パス**: pr-cycle-cleanup.test.sh の `make_temp_repo` は `export TMPDIR="$WORKDIR_SCAN_TMP"` より**後**に `${TMPDIR:-/tmp}` を評価するため、テスト repo が GC 走査対象 dir の**内側**に生成されるようになり、直上コメントの隔離不変条件と矛盾した（prefix 非マッチ + age guard で偶然 PASS する暗黙依存に劣化）。修正は export **前**に `HOST_TMPDIR="${TMPDIR:-/tmp}"` を退避し、生成側は HOST_TMPDIR 基準にする。

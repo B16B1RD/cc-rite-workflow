@@ -22,14 +22,14 @@ Umbrella Issue 配下の Sub-Issue series で各 PR の AC (例: 行数目標) �
 
 ### 観測
 
-- **PR #809 (累積 1 回目)**: Umbrella #804 配下、`create-interview.md` 511 → 目標 ≤200 行を user 承認のもと ≤350 に緩和、331 行で着地 (-35%)。設計 doc `docs/designs/refactor-create-mds-body-slimdown.md` 側の goal-setting (≤200/≤300/≤300) は未更新のまま
-- **PR #813 (累積 2 回目)**: 同 Umbrella 配下、`create-decompose.md` 661 → 目標 ≤300 行を ≤500 → ≤510 に段階的緩和、506 行で着地 (-23%)。**直前 PR で同パターンが起きたにもかかわらず design doc が未更新で再発**。3 reviewer のうち 1 人が「設計 doc の goal-setting と実着地の乖離」を MEDIUM finding として独立検出
+- **累積 1 回目**: 大規模圧縮 umbrella 配下、`create-interview.md` 511 → 目標 ≤200 行を user 承認のもと ≤350 に緩和、331 行で着地 (-35%)。設計 doc `docs/designs/refactor-create-mds-body-slimdown.md` 側の goal-setting (≤200/≤300/≤300) は未更新のまま
+- **累積 2 回目**: 同 umbrella 配下、`create-decompose.md` 661 → 目標 ≤300 行を ≤500 → ≤510 に段階的緩和、506 行で着地 (-23%)。**直前 PR で同パターンが起きたにもかかわらず design doc が未更新で再発**。3 reviewer のうち 1 人が「設計 doc の goal-setting と実着地の乖離」を MEDIUM finding として独立検出
 
 ### Why
 
 - Umbrella 設計 doc の goal-setting は **Sub-Issue 着工前の理想値**であり、protected 区域 (NFR-2 等) と SPEC-OUT-OF-SCOPE 制約 (新規 references 作成禁止 / references 側 modify 禁止) の組み合わせで構造的に達成困難なケースが多い ([圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める](compression-refactor-ac-vs-structural-constraint.md) 参照)
 - 各 Sub-Issue 着工時に grep evidence で逆算 → user 承認 → AC 緩和 という運用が確立しているが、**緩和結果が Umbrella 設計 doc 側に shed されない** と、次 Sub-Issue の reviewer / 着工者が「当初目標」を引きずって作業する silent regression が発生する
-- 関連: [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の系列 — 「fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる」failure mode の運用層拡張。fix 対象が「コード bash literal」ではなく「メタ contract レイヤー (FR ⇔ Risks ⇔ P-id 採番表 ⇔ design doc goal)」に拡張された PR #792 累積 18 回目と同型構造
+- 関連: [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の系列 — 「fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる」failure mode の運用層拡張。fix 対象が「コード bash literal」ではなく「メタ contract レイヤー (FR ⇔ Risks ⇔ P-id 採番表 ⇔ design doc goal)」に拡張された累積 18 回目と同型構造
 
 ### Canonical 対策
 

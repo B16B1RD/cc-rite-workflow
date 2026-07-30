@@ -22,7 +22,7 @@ Linux coreutils と macOS BSD userland でコマンド可用性が異なる bash
 
 ## 詳細
 
-### PR #559 の実例
+### 起点事例
 
 旧実装は `printf '%s' "..." | sha1sum | awk '{print $1}'` を直書きしていた。macOS では `sha1sum` がデフォルトインストールされておらず、`shasum` (Perl script 同梱) が慣例。この状態で実行すると `command not found: sha1sum` で silent skip に落ちていた。
 
@@ -65,9 +65,9 @@ sha1_portable() {
 - プラグイン全体を `grep -rn 'sha1sum\|md5sum\|readlink -f\|date -Iseconds'` で走査し、裸呼び出しを検出
 - CI で macOS runner を最低限 smoke test に含める
 
-### PR #585 の追加事例 (readlink -f の peer-pattern adoption)
+### readlink 事例 (readlink -f の peer-pattern adoption)
 
-PR #585 の `gitignore-health-check.sh` 新規追加で、複数 reviewer が HIGH として `readlink -f "${BASH_SOURCE[0]}"` の BSD 非互換を検出。peer scripts は既に `cd -P "$(dirname "${BASH_SOURCE[0]}")"` idiom (`_SCRIPT_DIR` canonicalize pattern、`script-dir-canonicalize-before-cd.md` を参照) を採用済みだったため、新規 script でも最初から peer と同じ portable idiom を採用することが canonical。
+readlink 事例の `gitignore-health-check.sh` 新規追加で、複数 reviewer が HIGH として `readlink -f "${BASH_SOURCE[0]}"` の BSD 非互換を検出。peer scripts は既に `cd -P "$(dirname "${BASH_SOURCE[0]}")"` idiom (`_SCRIPT_DIR` canonicalize pattern、`script-dir-canonicalize-before-cd.md` を参照) を採用済みだったため、新規 script でも最初から peer と同じ portable idiom を採用することが canonical。
 
 教訓: 新規 bash script 作成時は、同一リポジトリ内の peer script がすでに採用している portable pattern を **grep で先に探してから書き始める**。独自に `readlink -f` を直書きすると本問題の再発源になる。
 

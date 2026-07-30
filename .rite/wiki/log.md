@@ -1632,3 +1632,4 @@
 | 2026-07-30T22:57:38Z | refs:prose | pages/heuristics/identity-reference-documentation-unification.md ほか 5 ページ | バッチ 3: 例数ラベル（N 例目）と性質ラベル（起点事例 / 各 sub-pattern 事例）へ置換 |
 | 2026-07-30T23:05:46Z | refs:prose | pages/patterns/mutation-testing-test-fidelity.md ほか 6 ページ | バッチ 4: 適用番号・例数・性質ラベルへ置換 |
 | 2026-07-30T23:10:59Z | refs:prose | pages 20 件（密度 4-5 hits 帯） | バッチ 5: 起点事例 / 各 sub-pattern 事例ラベルへ置換。frontmatter description の 22 件は Issue Out of Scope として維持 |
+| 2026-07-30T23:13:44Z | refs:prose | pages 23 件（密度 3 hits 帯） | バッチ 6: 起点事例 / sub-pattern 事例ラベルへ置換 |

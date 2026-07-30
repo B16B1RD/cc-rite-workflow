@@ -22,7 +22,7 @@ severity 等級 (CRITICAL / HIGH / MEDIUM / LOW など) を**拡張する**よ�
 
 ### 発生事例（`LOW-MEDIUM` severity 等級追加）
 
-PR #708 は `severity-levels.md` に COMMENT_QUALITY 軸を追加し、cycle 1 では「同ファイル内の概要表に LOW-MEDIUM を導入」の +56 lines minimum diff だった。cycle 3 review-fix で「4 値運用層が 5 値拡張に追従していない silent fallback 経路」が初検出され、scope は 18 file → cycle 4 で 21 files / +132 lines に 4 倍化した。
+起点事例は `severity-levels.md` に COMMENT_QUALITY 軸を追加し、cycle 1 では「同ファイル内の概要表に LOW-MEDIUM を導入」の +56 lines minimum diff だった。cycle 3 review-fix で「4 値運用層が 5 値拡張に追従していない silent fallback 経路」が初検出され、scope は 18 file → cycle 4 で 21 files / +132 lines に 4 倍化した。
 
 具体的に検出された未追従箇所:
 
@@ -93,7 +93,7 @@ extract / measure の regex に新等級を追加する際、より長い altern
 
 ### Progressive scope expansion 制御
 
-severity 拡張のような fundamental change は 1 PR では cross-file invariant 完全同期が困難。PR #708 の実測:
+severity 拡張のような fundamental change は 1 PR では cross-file invariant 完全同期が困難。起点事例の実測:
 
 - initial scope: 2 files +56 行
 - cycle 3 で 18 file へ拡大
@@ -102,7 +102,7 @@ severity 拡張のような fundamental change は 1 PR では cross-file invari
 scope expansion が **3 cycle 連続で 5 file 超ずつ広がる** 場合、別 Issue / Epic 化を検討する判断基準:
 
 1. **silent regression vs stylistic 区別**: write/read 経路の silent severity fallback (CRITICAL 級) は本 PR で必修。docstring の 4 値表記、ordering comparison の 4 軸列挙、terminology drift 等の stylistic は別 Issue で扱う
-2. **HIGH のみ scope 内修正、MEDIUM/LOW は別 Issue**: PR #708 cycle 4 で 12 findings → HIGH 3 件 (silent regression 系) のみ本 PR で修正、残 9 件 (4 MEDIUM + 2 LOW from prompt-engineer/code-quality + 3 MEDIUM from tech-writer) を別 Issue (#709) で追跡する戦略を採用
+2. **HIGH のみ scope 内修正、MEDIUM/LOW は別 Issue**: 起点事例の cycle 4 で 12 findings → HIGH 3 件 (silent regression 系) のみ本 PR で修正、残 9 件 (4 MEDIUM + 2 LOW from prompt-engineer/code-quality + 3 MEDIUM from tech-writer) を別 Issue (#709) で追跡する戦略を採用
 3. **別 Issue 化の判断条件 (3 cycle / 5 file/cycle ルール)**: cycle 1 → cycle 2 → cycle 3 で同種 finding が継続検出され、各 cycle で 5 file 超の追加修正が必要な場合、本 PR は「Closed-loop の最低限を ship」+ 残作業を別 Issue という scope split を判断する
 
 詳細な累積対策 PR の cycle escalation pattern は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) 参照。

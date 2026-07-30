@@ -47,7 +47,7 @@ confidence: high
 
 ### Sub-pattern: SoT の prose 要約参照 vs literal algorithm copy-paste（cycle 1-3）
 
-SoT を参照する新規 site が「SoT と同方式」と prose で宣言するだけでは insufficient であり、SoT の具体的アルゴリズム (bash literal / pseudo-code) を copy-paste で取り込むか、SoT helper を invoke する形に統一する必要がある。PR #1062 で `references/fingerprint-cycling.md` (SoT) の `normalize` 4 ステップ仕様を新規 site `fix.md` Phase 2.1.A bash block が **prose 要約から推測して 2 ステップに勝手に simplify** した結果、fix.md persist fingerprint と review.md compare fingerprint が同一 finding に対して異なる SHA-1 hash になり AC-3 suppression contract が初日から silent failure。2 reviewer 独立検出の CRITICAL × 2 として cycle 1 で surface し、cycle 3 まで再発を引きずった。
+SoT を参照する新規 site が「SoT と同方式」と prose で宣言するだけでは insufficient であり、SoT の具体的アルゴリズム (bash literal / pseudo-code) を copy-paste で取り込むか、SoT helper を invoke する形に統一する必要がある。起点事例で `references/fingerprint-cycling.md` (SoT) の `normalize` 4 ステップ仕様を新規 site `fix.md` Phase 2.1.A bash block が **prose 要約から推測して 2 ステップに勝手に simplify** した結果、fix.md persist fingerprint と review.md compare fingerprint が同一 finding に対して異なる SHA-1 hash になり AC-3 suppression contract が初日から silent failure。2 reviewer 独立検出の CRITICAL × 2 として cycle 1 で surface し、cycle 3 まで再発を引きずった。
 
 **失敗モード**（cycle 1-3 で実測）:
 
@@ -67,9 +67,9 @@ SoT を参照する新規 site が「SoT と同方式」と prose で宣言す�
 
 SoT を新設しつつ forward-pointer (`Reference:` link) を caller に追加した直後、forward-pointer 直後の **inline での性質再宣言** (例: 「本ファイルは strict 4 分岐 + helper 経路」のような 1 行要約) を caller 側に残すと、SoT 内容が誤りだった場合に false claim が複数 site に拡散する。
 
-#### PR #1155 で実測した failure mode
+#### SoT 新設事例で実測した failure mode
 
-PR #1155 cycle 1 で `wiki-patterns.md` に新規 SoT セクション (YAML パース helper の分散実装一覧) を documentation 化したが、SoT 自体に factual error (「strict 4 分岐」と書いたが実装は lenient 2-arm) が含まれていた。同時に `ingest.md` L64 / `lint.md` L93 に forward-pointer link を追加した際、link 直後に「本ファイルは strict 4 分岐 + helper 経路」のインライン要約も同じ false claim を 2 ファイルに複製した。結果として **SoT 誤記が 3 site (wiki-patterns.md + ingest.md + lint.md) に拡散**。
+SoT 新設事例の cycle 1 で `wiki-patterns.md` に新規 SoT セクション (YAML パース helper の分散実装一覧) を documentation 化したが、SoT 自体に factual error (「strict 4 分岐」と書いたが実装は lenient 2-arm) が含まれていた。同時に `ingest.md` L64 / `lint.md` L93 に forward-pointer link を追加した際、link 直後に「本ファイルは strict 4 分岐 + helper 経路」のインライン要約も同じ false claim を 2 ファイルに複製した。結果として **SoT 誤記が 3 site (wiki-patterns.md + ingest.md + lint.md) に拡散**。
 
 #### 経験則: SoT 化方針なら inline 性質再宣言は「削除」が drift-free
 

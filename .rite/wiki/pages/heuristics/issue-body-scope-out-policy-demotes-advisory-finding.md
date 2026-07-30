@@ -36,12 +36,12 @@ umbrella Issue (Phase A/B/C 等の段階分割で 1 PR 1 Phase を順次マー�
 
 ### 降格経路の具体例（Phase A）
 
-PR #885 (charter 適用宣言、本体修正なし、11 files / +22 / -0) のレビューで prompt-engineer から 2 件の advisory finding が出た:
+起点事例 (charter 適用宣言、本体修正なし、11 files / +22 / -0) のレビューで prompt-engineer から 2 件の advisory finding が出た:
 
 1. **Mislabeling (MEDIUM)**: SKILL.md の「pr/cleanup 系」というラベルが、実際には `commands/pr/references/` 9 ファイルのうち cleanup.md から参照されているのは 1 ファイルのみで、残り 8 ファイルは review.md/fix.md/start.md/wiki/* から参照されている件
 2. **表現粒度の非対称性 (LOW)**: cleanup.md の Charter 行は 3 パターン列挙、references/*.md 9 ファイルは 1 パターン
 
-両者とも reviewer 自身が「Phase A スコープ厳守のため本 PR では blocking しない」と明示。Issue #845 §「Scope 外指摘ハンドリングポリシー」により:
+両者とも reviewer 自身が「Phase A スコープ厳守のため本 PR では blocking しない」と明示。umbrella Issue の §「Scope 外指摘ハンドリングポリシー」により:
 
 - finding テーブルから recommendations に移動
 - `total_findings = 0` として `[review:mergeable]` を出力
@@ -50,7 +50,7 @@ PR #885 (charter 適用宣言、本体修正なし、11 files / +22 / -0) のレ
 
 ### 関連する umbrella Issue spec drift サブパターン
 
-advisory finding が umbrella Issue spec **自身の語法問題**に由来するケースがある。PR #885 の MEDIUM finding (mislabeling) は SKILL.md の「pr/cleanup 系」というラベリングが Issue #845 §4.2 自身の Non-Target Files 表記と矛盾していた件で、本 PR で fix すべき対象ではなく Issue spec の語法 alignment が必要な経路。Scope 外ポリシー宣言があれば advisory として記録され、後続の umbrella Issue 編集 PR で対応可能。
+advisory finding が umbrella Issue spec **自身の語法問題**に由来するケースがある。起点事例の MEDIUM finding (mislabeling) は SKILL.md の「pr/cleanup 系」というラベリングが umbrella Issue §4.2 自身の Non-Target Files 表記と矛盾していた件で、本 PR で fix すべき対象ではなく Issue spec の語法 alignment が必要な経路。Scope 外ポリシー宣言があれば advisory として記録され、後続の umbrella Issue 編集 PR で対応可能。
 
 ### いつ宣言すべきか
 

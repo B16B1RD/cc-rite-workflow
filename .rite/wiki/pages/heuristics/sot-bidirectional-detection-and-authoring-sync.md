@@ -28,7 +28,7 @@ confidence: high
 
 ### 観測された失敗
 
-PR #2030 は `Verification:` アンカーの regex がテーブルのセル境界に束縛されるため raw パイプ（`|`）を含む repro が no-match になる、という制約を detection 側にだけ書いた。reviewer が実際に読む authoring 側 SoT には無かったため、canonical な再現イディオム（`printf ... | jq`）を含む指摘がそのまま降格される経路が開いた。
+起点事例は `Verification:` アンカーの regex がテーブルのセル境界に束縛されるため raw パイプ（`|`）を含む repro が no-match になる、という制約を detection 側にだけ書いた。reviewer が実際に読む authoring 側 SoT には無かったため、canonical な再現イディオム（`printf ... | jq`）を含む指摘がそのまま降格される経路が開いた。
 
 **同期規約を自分で書いた PR が、その規約に違反していた**。
 
@@ -46,7 +46,7 @@ PR #2030 は `Verification:` アンカーの regex がテーブルのセル境�
 
 ### enforcement 主体は grep で裏取りする
 
-schema に「read 側でも検出する」と書くなら、その emitter が実在することを grep で確認する。PR #2030 では schema doc が read 側 auto-correct（invariant #6）を宣言したが実装がゼロで、4 レビュアーが独立に検出した。
+schema に「read 側でも検出する」と書くなら、その emitter が実在することを grep で確認する。起点事例では schema doc が read 側 auto-correct（invariant #6）を宣言したが実装がゼロで、4 レビュアーが独立に検出した。
 
 ### 修正時は相互参照を張る
 
@@ -54,7 +54,7 @@ schema に「read 側でも検出する」と書くなら、その emitter が�
 
 ### ガイダンス追加と観測 marker 追加はセットで行う
 
-authoring 側に制約を伝播しても、**守られなかった場合の観測性**がなければ silent failure は残る。PR #2030 では「アンカーに raw pipe を含めない」制約を伝播したが、守られなかったケース（パイプ入り repro）は regex no-match で無音降格したままだった。実測済みの指摘が誰にも気付かれず non-blocking に落ちる。
+authoring 側に制約を伝播しても、**守られなかった場合の観測性**がなければ silent failure は残る。起点事例では「アンカーに raw pipe を含めない」制約を伝播したが、守られなかったケース（パイプ入り repro）は regex no-match で無音降格したままだった。実測済みの指摘が誰にも気付かれず non-blocking に落ちる。
 
 **処方**: fail-safe（no-match なら降格）は緩めず、「アンカー文字列はあるが full regex が no-match」を 2 段判定で切り出して WARNING + cause 付き marker を出す。**fail-safe の維持と観測性の追加は両立する**。
 

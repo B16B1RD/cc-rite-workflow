@@ -20,7 +20,7 @@ validation chain の error reason を doc 化する際は「どの段階が最�
 
 ## 詳細
 
-PR #1226 で `review-result-save.sh` の validation chain (`cat` → `jq` timestamp 注入 → `jq empty`) を 3 reviewer (prompt-engineer / error-handling / code-quality) が独立にトレースし、`review.md` の reason 説明と実挙動の乖離を整理した (0 blocking finding)。
+起点事例で `review-result-save.sh` の validation chain (`cat` → `jq` timestamp 注入 → `jq empty`) を 3 reviewer (prompt-engineer / error-handling / code-quality) が独立にトレースし、`review.md` の reason 説明と実挙動の乖離を整理した (0 blocking finding)。
 
 ### 観察された制御フロー
 
@@ -32,10 +32,10 @@ syntactically invalid JSON（literal substitute 漏れを含む）は **step 2 �
 
 ### Observability surface の三者整合（follow-up）
 
-同一の validation chain には実発火 reason を説明する observability surface が 3 つある: (a) runtime WARNING メッセージ、(b) 実装上部の inline コメント、(c) canonical doc (`review.md`)。PR #1226 で (b)(c) を実挙動 (`json_invalid` は effectively unreachable、実発火は `write_failure`) に整合させたが、(a) runtime WARNING の括弧書きは「literal substitute 漏れの可能性」のまま残り語感が drift していた。follow-up で (a) を「(注入後に外部要因で破損した稀ケース。通常の literal substitute 漏れは upstream の `write_failure` で検出済)」へ補足し、3 surface を揃えた (3 reviewer / 0 finding)。
+同一の validation chain には実発火 reason を説明する observability surface が 3 つある: (a) runtime WARNING メッセージ、(b) 実装上部の inline コメント、(c) canonical doc (`review.md`)。起点事例で (b)(c) を実挙動 (`json_invalid` は effectively unreachable、実発火は `write_failure`) に整合させたが、(a) runtime WARNING の括弧書きは「literal substitute 漏れの可能性」のまま残り語感が drift していた。follow-up で (a) を「(注入後に外部要因で破損した稀ケース。通常の literal substitute 漏れは upstream の `write_failure` で検出済)」へ補足し、3 surface を揃えた (3 reviewer / 0 finding)。
 
 - **実挙動を doc 化したら同概念の全 observability surface を同時に整合させる**。runtime メッセージ・inline コメント・canonical doc は同じ failure semantics を別レイヤーで説明する [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の対称セットであり、1 surface だけ旧文言が残ると観測者を誤誘導する。系譜 #1198→#1199→#1226→#1227 はこの 3 surface 整合を段階的に完成させた連鎖。
-- **reason 文字列・`[CONTEXT]` emit・非ブロッキング契約 (`exit 0`) を verbatim 保持すれば surface 文言補足は安全**。PR #1228 は WARNING の括弧書き 1 行のみ変更し、制御フロー・`jq empty` check 自体・reason 文字列は不変に保った。
+- **reason 文字列・`[CONTEXT]` emit・非ブロッキング契約 (`exit 0`) を verbatim 保持すれば surface 文言補足は安全**。文言補足 PR は WARNING の括弧書き 1 行のみ変更し、制御フロー・`jq empty` check 自体・reason 文字列は不変に保った。
 
 ### 一般化できる経験則
 

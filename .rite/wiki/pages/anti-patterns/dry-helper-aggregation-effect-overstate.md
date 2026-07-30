@@ -20,9 +20,9 @@ DRY 化助手 (shared helper script / function) を導入する際、効果を�
 
 ## 詳細
 
-### PR #688 で実測した overstate パターン
+### 累積 14 回目で実測した overstate パターン
 
-PR #688 (累積 14 回目 38+ cycle、Issue #687 multi-state-aware flow-state read helper) cycle 12 review で MEDIUM × 2 として一斉 surface した:
+累積 14 回目 (38+ cycle、multi-state-aware flow-state read helper の対策) の cycle 12 review で MEDIUM × 2 として一斉 surface した:
 
 #### Pattern 1: 集約スコープの overstate
 
@@ -38,7 +38,7 @@ PR #688 (累積 14 回目 38+ cycle、Issue #687 multi-state-aware flow-state re
 |  | 引数 schema (helper 関数に渡す arg の order / type) |
 |  | error message format |
 
-このコメント overstate は **Issue #687 root cause と同型の drift 再発許容経路** を文書レベルで許容する。読者が「2 箇所更新が不要」と誤読 → helper を追加する際に list 更新を 1 箇所のみで済ます → drift が発生。
+このコメント overstate は **当該 Issue の root cause と同型の drift 再発許容経路** を文書レベルで許容する。読者が「2 箇所更新が不要」と誤読 → helper を追加する際に list 更新を 1 箇所のみで済ます → drift が発生。
 
 #### Pattern 2: Migration 取り残し
 

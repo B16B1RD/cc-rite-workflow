@@ -26,13 +26,13 @@ confidence: high
 
 ## 概要
 
-config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`⏳ 実行予定 → ✅ 実行済`) など状態を変更する commit で、**同一行 / 近傍のインラインコメント** が旧値や未来形 (`default: false` / `... 後に true 化予定`) のまま残置する drift。LLM / reviewer は値そのものは確認するが付随するインラインコメントの語法 (時制 / 旧値表記) は対象外として読み飛ばすため、merge 後の reader が「PR HEAD と書かれている内容が矛盾」する状態に直面する。PR #1065 で `scope_assignment.enabled: false → true` bump と AC-5 完了マークの両方で同症状が観測され、cycle 1 で 7 件 finding の Order-Emphasis Consistency 違反として検出。
+config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`⏳ 実行予定 → ✅ 実行済`) など状態を変更する commit で、**同一行 / 近傍のインラインコメント** が旧値や未来形 (`default: false` / `... 後に true 化予定`) のまま残置する drift。LLM / reviewer は値そのものは確認するが付随するインラインコメントの語法 (時制 / 旧値表記) は対象外として読み飛ばすため、merge 後の reader が「PR HEAD と書かれている内容が矛盾」する状態に直面する。起点事例で `scope_assignment.enabled: false → true` bump と AC-5 完了マークの両方で同症状が観測され、cycle 1 で 7 件 finding の Order-Emphasis Consistency 違反として検出。
 
 ## 詳細
 
 ### 観測された症状
 
-PR #1065 の `rite-config.yml` AC-5 bump で `scope_assignment.enabled: false → true` を変更した際、同一行末尾のコメントが状態変化を反映しないまま残置:
+起点事例の `rite-config.yml` AC-5 bump で `scope_assignment.enabled: false → true` を変更した際、同一行末尾のコメントが状態変化を反映しないまま残置:
 
 ```yaml
 # Before bump (旧 HEAD)
@@ -113,7 +113,7 @@ inline 実装を helper script へ委譲する refactor（fix.md 4.5.2 を `issu
 
 control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Python sentinel 経路削除) で、reason 表 / routing 表は同期したが、**ステップ5 冒頭の用語定義表 (soft failure / hard fail-fast 行) の例示テキスト** (`current_body 空` / `PATCH 失敗` / `git diff 失敗 (Python sentinel 経路)`) が旧実装前提のまま残置した。重要なのは **当該行が git diff 上 byte 一致 (unchanged) だった** こと — staleness は当該行の変更ではなく**他箇所の control-flow 変更の波及 (net effect)** で生じる。revert test は pass する (PR を revert すれば旧実装に戻り表と整合)。
 
-教訓: diff に出る変更行だけでなく、**「diff に出ない unchanged 行で、他箇所の変更により真実値が変わったもの」も review/sync 対象**。control-flow 分類を変える refactor では reason 表・routing 表に加え「用語定義表」のような副次的説明テーブルの例示も同期 scope に含める (Asymmetric Fix Transcription の説明テーブル版)。PR #1201 は cycle 1=comment rot → cycle 2=stderr 破棄 → cycle 3=用語定義表 stale と、実装の正しさ → 診断品質 → 説明整合性 の順に深掘りされた。
+教訓: diff に出る変更行だけでなく、**「diff に出ない unchanged 行で、他箇所の変更により真実値が変わったもの」も review/sync 対象**。control-flow 分類を変える refactor では reason 表・routing 表に加え「用語定義表」のような副次的説明テーブルの例示も同期 scope に含める (Asymmetric Fix Transcription の説明テーブル版)。3 cycle 連鎖事例は cycle 1=comment rot → cycle 2=stderr 破棄 → cycle 3=用語定義表 stale と、実装の正しさ → 診断品質 → 説明整合性 の順に深掘りされた。
 
 ### 関連 anti-pattern との区別
 

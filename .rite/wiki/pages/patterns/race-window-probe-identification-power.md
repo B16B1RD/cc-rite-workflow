@@ -152,11 +152,11 @@ fi
 | 検証方法 | 実装を sed で改変 → assert FAIL | iteration outcome を分類 → race-hit assert |
 | 適用 timing | review 時 (manual) | test 実行時 (automated) |
 
-PR #759 では atomic-write.test.sh TC-3 で Mutation testing (`mv → false`) を、TC-1/TC-4 で Outcome classification を併用する pair pattern が確立された。
+atomic-write 事例では atomic-write.test.sh TC-3 で Mutation testing (`mv → false`) を、TC-1/TC-4 で Outcome classification を併用する pair pattern が確立された。
 
 ### Post-condition への再定義: sleep 過大による M_mid 経路 dilute（実測）
 
-`sleep 0.05` のような race window が確実に当たるサイズに拡大した結果、production sequence (e.g. 50ms) より sleep が長すぎ場合、観測 outcome が **post=100% に偏り M_mid (= mid_or_temp) 観測が environment-dependent な best-effort になる** ケースが発生する。PR #761 cycle 1 で test reviewer が MEDIUM として検出した sub-pattern。
+`sleep 0.05` のような race window が確実に当たるサイズに拡大した結果、production sequence (e.g. 50ms) より sleep が長すぎ場合、観測 outcome が **post=100% に偏り M_mid (= mid_or_temp) 観測が environment-dependent な best-effort になる** ケースが発生する。best-effort 観測事例の cycle 1 で test reviewer が MEDIUM として検出した sub-pattern。
 
 | 状況 | sleep | 観測分布 | identification power |
 |------|-------|---------|---------------------|
@@ -176,7 +176,7 @@ cycle 1 では「mid_or_post 観測経路を確保」と cover letter に記載�
 
 ### Test invariant 検証パターンの内部一貫性
 
-PR #761 cycle 1 MEDIUM では同一 test 内で `byte_equal_violations` (loop 内 collected error counter で集計) と orphan reap (最終 iter のみ assert) が混在し、中盤 iter の zombie 化が検出不能だった。
+同事例の cycle 1 MEDIUM では同一 test 内で `byte_equal_violations` (loop 内 collected error counter で集計) と orphan reap (最終 iter のみ assert) が混在し、中盤 iter の zombie 化が検出不能だった。
 
 **canonical 統一**: invariant 検証は loop 内 collected error counter (e.g. `unexpected_wait_rc_count`) で集計し、ループ外で全 iter assert する pattern に統一する:
 

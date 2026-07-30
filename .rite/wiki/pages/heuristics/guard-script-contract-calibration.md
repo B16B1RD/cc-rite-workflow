@@ -28,11 +28,11 @@ confidence: high
 
 ## 概要
 
-lint / recurrence-guard 系スクリプトのレビューでは「docstring が宣言する検出範囲」と「実際の regex が検出する範囲」の対応が合成テストで実測検証され、乖離は指摘になる。regex は「現存パターンの正確な再現」だけで校正せず宣言意図（quote/flag バリアント含む）に合わせ、意図的な非検出形は Known boundary 節に完全列挙する。PR #1909 の cycle 3-5 で実測された連鎖。
+lint / recurrence-guard 系スクリプトのレビューでは「docstring が宣言する検出範囲」と「実際の regex が検出する範囲」の対応が合成テストで実測検証され、乖離は指摘になる。regex は「現存パターンの正確な再現」だけで校正せず宣言意図（quote/flag バリアント含む）に合わせ、意図的な非検出形は Known boundary 節に完全列挙する。起点事例の cycle 3-5 で実測された連鎖。
 
 ## 詳細
 
-PR #1909（sandbox 非互換パターンの全域スイープ + tmp-hardcode-check.sh 新設）で観測された 3 つの失敗形:
+起点事例（sandbox 非互換パターンの全域スイープ + tmp-hardcode-check.sh 新設）で観測された 3 つの失敗形:
 
 1. **regex が宣言より狭い**: docstring は「mktemp with a /tmp-prefixed template」「fixed /tmp path hardcode (assignment / redirect / -file option)」と宣言したが、regex は quoted template（`mktemp "/tmp/rite-XXXXXX"`）・flag 介在（`mktemp -d /tmp/...`）・quoted redirect・unquoted 代入の 4 形式を素通しした。皮肉なことに、sweep 自身が教える安全形が quoted スタイル（`mktemp "${TMPDIR:-/tmp}/..."`）のため、「quoted のまま /tmp へ regress する」形式が最も蓋然性の高い将来の回帰形だった。レビュアーは widened regex で 4/4 検出かつ false positive 0 を実測して指摘した。
 2. **Known boundary の記載漏れ**: 検出契約の SoT である Known boundary 節に、実測済みの非検出形（refspec 後置 flag `git push origin -u branch`）を書き漏らした。「regex を広げる」より「境界を明記する」が正しいケース — prose への false positive を生む拡張は避け、docstring 追記で契約を誠実にする。
