@@ -146,7 +146,7 @@ confidence: high
 
 ## 概要
 
-同種 regression への N 回目の累積対策 PR では、review-fix loop の各 cycle で適用した fix 自体が次 cycle の新規 drift を生む fractal pattern が顕在化する。PR #636 (Issue #634 = implicit stop regression の 8 回目対策) は 13 cycle 回って収束し、cycle 2 findings の 60% が cycle 1 fix 起因、cycle 3 で cycle 1-2 review では見えなかった architectural HIGH finding (`--preserve-error-count`) が初めて surface した。cycle 数による hard limit ではなく、quality signal (同一パターン反復 / dead marker 追加 / description-impl drift / architectural bug surface) による escalate 判断が canonical。PR #1166 (sentinel rename) でも `cycle-14-15-chain` の典型例が再発: cycle 14 で CHANGELOG の「hook が旧 literal を reject」という stale 文言を「正確に」修正する過程で、検出主体を誤って meta-test に帰属させる新たな事実誤認を導入し、cycle 15 で再訂正した。教訓: finding を「正確に」直す際、修正文が新たに導入する事実主張 (どの機構が何を検出するか) も実体 grep で検証する。とくに enforcement 機構の所在は (runtime hook / 自動 meta-test / 手動 smoke 手順) の 3 層を厳密に区別し、粒度の粗い「test レベル」訂正で test の具体的責務 (新 sentinel assert vs 旧 literal residual grep) を取り違えない。
+同種 regression への N 回目の累積対策 PR では、review-fix loop の各 cycle で適用した fix 自体が次 cycle の新規 drift を生む fractal pattern が顕在化する。implicit stop regression の 8 回目対策 PR は 13 cycle 回って収束し、cycle 2 findings の 60% が cycle 1 fix 起因、cycle 3 で cycle 1-2 review では見えなかった architectural HIGH finding (`--preserve-error-count`) が初めて surface した。cycle 数による hard limit ではなく、quality signal (同一パターン反復 / dead marker 追加 / description-impl drift / architectural bug surface) による escalate 判断が canonical。sentinel rename PR でも `cycle-14-15-chain` の典型例が再発: cycle 14 で CHANGELOG の「hook が旧 literal を reject」という stale 文言を「正確に」修正する過程で、検出主体を誤って meta-test に帰属させる新たな事実誤認を導入し、cycle 15 で再訂正した。教訓: finding を「正確に」直す際、修正文が新たに導入する事実主張 (どの機構が何を検出するか) も実体 grep で検証する。とくに enforcement 機構の所在は (runtime hook / 自動 meta-test / 手動 smoke 手順) の 3 層を厳密に区別し、粒度の粗い「test レベル」訂正で test の具体的責務 (新 sentinel assert vs 旧 literal residual grep) を取り違えない。
 
 ## 詳細
 
@@ -191,7 +191,7 @@ cycle 1 (13) → cycle 2 (10) → cycle 3 (8) → cycle 4 (8) → cycle 5 (4)
 - **Step 追加時の preamble / range 記述は手動 sync 対象**: "Step X-Y を実行" / "N-line block" のような数値記述は Step 追加のたびに手動更新が必要で自動 lint 対象外。review checklist に mandatory 化するか lint rule 追加を検討
 - **Drift 除去 ≠ architectural correctness**: cycle 2 fix で drift 6 件除去しても cycle 3 で HIGH architectural finding が追加検出される。「drift 除去」と「設計の正しさ」は直交軸で、前者の達成は後者を保証しない
 
-### PR #654 (Issue #651) — 9 回目対策の 3 cycle 収束軌跡 (2026-04-24)
+### 9 回目対策の 3 cycle 収束軌跡 (2026-04-24)
 
 PR #636 (8 件目) と同型の累積対策 9 件目 PR で **本ページ自身を裏付ける self-exemplar** が再発した:
 
@@ -207,10 +207,10 @@ declarative 9 件目で `caller HTML コメント内` に追加した bash liter
 
 これは PR #636 cycle 1 F-12 (`; then proceed` bash 構文破綻) の **再発** であり、累積対策追加 PR で literal 文字列を散文と混在させる際に shell 文法トークン (`; then`) を散文と隣接配置すると LLM が if 構文の一部と誤解釈する経路は構造的に発生する。
 
-**declarative 文書追加 PR の 5 つの品質保証ポイント** (PR #654 で確立):
-1. **literal として LLM に渡すコードは構文有効性を test で検証**: `bash -n` 相当の static check が困難な場合は invalid pattern を含まないかの NOT-contain grep で代替可能 (PR #654 では `--preserve-error-count[[:space:]]*;[[:space:]]*then[[:space:]]+continue` を NOT-contain で grep)
+**declarative 文書追加 PR の 5 つの品質保証ポイント**（9 回目対策で確立）:
+1. **literal として LLM に渡すコードは構文有効性を test で検証**: `bash -n` 相当の static check が困難な場合は invalid pattern を含まないかの NOT-contain grep で代替可能（9 回目対策では `--preserve-error-count[[:space:]]*;[[:space:]]*then[[:space:]]+continue` を NOT-contain で grep）
 2. **literal 文字列を散文と混在させる場合、構文区切り (backtick / 括弧) で明示的に分離**
-3. **DRIFT-CHECK ANCHOR は対称化対象の全 site で同一文言で記載** (PR #654 で create-interview.md に新規 4-site anchor を追加したが、対称位置の create.md / stop-guard.sh の既存 3-site anchor は更新されておらず drift detector が機能しなかった)
+3. **DRIFT-CHECK ANCHOR は対称化対象の全 site で同一文言で記載**（create-interview.md に新規 4-site anchor を追加したが、対称位置の create.md / stop-guard.sh の既存 3-site anchor は更新されておらず drift detector が機能しなかった）
 4. **2-site 内 duplication (同一ファイル内 N 箇所) には `grep -cF` で count check を入れる** (1 箇所のみの match で pass する grep は片肺欠落 silent regression を許容)
 5. **escalation path の test (error_count=1+) も初回 entry path と同等の sentinel 4 句 grep で覆う** (TC-651-A2 で initial entry のみ verify していた問題を補完)
 
@@ -218,7 +218,7 @@ declarative 9 件目で `caller HTML コメント内` に追加した bash liter
 
 cycle 2 で発見された 3 LOW (F-11/F-12/F-13) は cycle 1 F-03 修正の波及範囲不足が原因。DRIFT-CHECK ANCHOR section の strict scope だけを更新したが、隣接 prose paragraph 内の同 terminology (`3-site`/`3 site`) は対象外として silent skip された (3 reviewer すべて同 root cause を別 location で指摘し High Confidence cross-validation で確定)。
 
-これは「Asymmetric Fix Transcription (PR #548)」の **派生形**:
+これは「Asymmetric Fix Transcription」の **派生形**:
 - 元の Asymmetric Fix Transcription: 同一 invariant の対称位置 (異なる file/section) への伝播漏れ
 - 本 PR で観察: 同一 file 内・**同一 blockquote 内** の隣接 paragraph への波及漏れ
 
@@ -245,9 +245,9 @@ PR #636 cycle 3 で追加された `--preserve-error-count` flag は、`.error_c
 
 semantics 変更を伴う修正では「新 flag + opt-in + 既存挙動保持」が最もリスクが少ない (PR 全体を書き換えるより diff scope が絞れて review しやすい)。
 
-### PR #661 (Issue #660 = 累積対策 11 回目) で観測された self-meta drift convergence
+### 累積対策 11 回目で観測された self-meta drift convergence
 
-PR #661 (Issue #660 = silent precondition omit の root cause 修正) は cycle 1 → 4 で findings 数が **7 → 2 → 1 → 0** と明確 convergence (PR #636 の 13 cycle と比較して 4 cycle で収束)。各 cycle で見つかる finding の大半は前 cycle fix が導入した self-meta drift だった:
+silent precondition omit の root cause 修正は cycle 1 → 4 で findings 数が **7 → 2 → 1 → 0** と明確 convergence（8 回目対策の 13 cycle と比較して 4 cycle で収束）。各 cycle で見つかる finding の大半は前 cycle fix が導入した self-meta drift だった:
 
 ```
 cycle 1 (7) → cycle 2 (2) → cycle 3 (1) → cycle 4 (0) mergeable
@@ -271,7 +271,7 @@ cycle 1 (7) → cycle 2 (2) → cycle 3 (1) → cycle 4 (0) mergeable
 
 **cycle 4 mergeable 確定の cross-validation 構造**: 5 reviewer (prompt-engineer / code-quality / test / error-handling / devops) 全員が独立に「評価: 可」(0 findings) を出した時点で「累積対策 fractal pattern が収束した」と判定する canonical signal。cycle 4 で **6 件の REC (recommendation Issue 候補)** も同時抽出され、cycle 数を hard limit せず quality signal で判断する原則の追加実証。
 
-### PR #688 (Issue #687 = multi-state-aware flow-state read helper) — 累積 14 回目 38+ cycle 観測
+### multi-state-aware flow-state read helper — 累積 14 回目 38+ cycle 観測
 
 PR #688 は累積 14 回目の対策 PR で 38+ cycle にわたり review-fix loop を継続。本ページの fractal pattern が **新たな 2 つの failure mode を加える** 自己累積実例として記録:
 
@@ -325,7 +325,7 @@ PR #688 の最終収束過程 (cycle 12-15) で「**learned 節で言及した�
 | 14 fix (`c0fae09 fix(review): #688 cycle 14`) | Self-referential learned 節 chain を防ぐ目的で `[CONTEXT] METRICS_SKIPPED=1` sentinel と Claude 指示を導入 | その指示自体に「Phase 5.5.3 へ進む」(存在しない phase) を埋め込んでいた → cycle 15 F-01 (HIGH) として検出 |
 | 14 fix | bash-trap-patterns.md の対象ファイルリストを 5 ファイルに拡張する fix を実施 | 同 doctrine 内 line 374 の「対象 3 ファイル」古い列挙 (`fix.md + review.md + start.md` の旧 3-file 列挙) を見落としたまま残存 → cycle 15 F-02 (HIGH, Asymmetric Fix Transcription 再演) として検出 |
 
-これらの 2 件は本ページの「Failure mode 2: Self-referential learned 節 chain」(累積 35+ cycle 越えで初観測) を **HIGH 級で再実証** し、「**累積対策追加 PR が新たな drift / bug を生む self-exemplar**」が 4 連続 (PR #636 → PR #653 → PR #654 → PR #688) で観測された。
+これらの 2 件は本ページの「Failure mode 2: Self-referential learned 節 chain」(累積 35+ cycle 越えで初観測) を **HIGH 級で再実証** し、「**累積対策追加 PR が新たな drift / bug を生む self-exemplar**」が 4 PR 連続で観測された。
 
 #### PR #688 cycle 12 で観測した DRY 集約助手の overstate (新 sub-pattern)
 
@@ -368,9 +368,9 @@ PR #688 (累積 14 回目) 最終フルレビュー (6 reviewer 21 findings) 後
 2. **「Mutation testing の vector は production の正規化処理 (tr / sed) との相互作用を empirical 検証する」**: `tr -d '[:space:]'` で改変される vector は SID resolve 結果と per-session file 名が非同期化され mutation kill power が 0 になる経路を持つ。test 設計時に production の正規化処理を前提として vector を選定する必要がある (詳細: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md))
 3. **「scope-creep の cross-validation gate を `rejected(scope-creep)` action lines として commit message に明記する」**: 累積 14 回目 38+ cycle PR では F-03/F-04/F-05/F-06 の MEDIUM 4 件 (helper 抽出 / caller boilerplate 集約 / cleanup 関数命名統一) が scope 大として別 Issue 化された。`rejected(scope-creep)` action line を commit message に明記し、後続 reviewer が cross-validation で gate する canonical flow (詳細: [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](../heuristics/scope-creep-rejection-empirical-gate.md))
 
-### PR #753 (Issue #698 = PR #688 followup) — 累積 15 回目 5 cycle 完全収束 + 新 sub-pattern: review-attention-bias × test file blind spot
+### 累積 14 回目の followup — 累積 15 回目 5 cycle 完全収束 + 新 sub-pattern: review-attention-bias × test file blind spot
 
-PR #753 (Issue #698 = PR #688 verified-review cycle 10 で `rejected(scope-creep)` で延期された 3 件 F-09/F-12/F-15 の followup) は **累積 15 回目** で 5 cycle 完全収束:
+累積 14 回目の verified-review cycle 10 で `rejected(scope-creep)` により延期された 3 件 (F-09/F-12/F-15) の followup は **累積 15 回目** で 5 cycle 完全収束:
 
 ```
 cycle 1 (12 findings: 3 HIGH + 4 MEDIUM + 5 LOW)
@@ -391,7 +391,7 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 
 両者が交互作用すると、SoT 原則違反 drift が **review attention の影に隠れた fixture 系 (test / mock / helper ファイル)** に温存される経路が成立する。
 
-**canonical 対策** (PR #753 cycle 5 fix で確立):
+**canonical 対策**（cycle 5 fix で確立）:
 
 | 対策 | 実装 |
 |------|------|
@@ -407,7 +407,7 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 |-----------|------|------------|
 | Test/fixture file propagation gap | 累積対策 PR で同型 SoT 違反が production file → test file に N cycle 遅れて surface する | propagation scan の対象 file pattern を初回 cycle から「全 PR diff file」に拡大、reviewer に test ファイル full rescan を mandate |
 
-#### Cycle 5 mergeable convergence の cross-validation 構造 (PR #688 cycle 4 と同型)
+#### Cycle 5 mergeable convergence の cross-validation 構造（累積 14 回目 cycle 4 と同型）
 
 4 reviewer (code-quality / test / error-handling / security) 全員が独立に「評価: 可」(mandatory findings 0) + healthy self-assessment を出した時点で「累積対策 fractal pattern が収束した」と判定。本 PR では code-quality reviewer の判定文に `Cycle trajectory: 12 → 15 → 3 → 2 → **0** で完全収束を確認` と明記され、empirical reproduction による convergence 確認が成立した (cf. [`empirical-reproduction-over-invariant-reasoning.md`](../heuristics/empirical-reproduction-over-invariant-reasoning.md))。
 
@@ -434,7 +434,7 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 - [PR #636 cycle 5 fix (silent-false-pass via PATH fault injection)](../../raw/fixes/20260421T050914Z-pr-636.md)
 - [PR #636 cycle 13 review (0 findings, mergeable convergence)](../../raw/reviews/20260421T095348Z-pr-636.md)
 - [PR #653 review (累積対策 fractal pattern 観測 / Issue #650)](../../raw/reviews/20260424T045427Z-pr-653.md)
-- [PR #654 cycle 1 fix (Issue #651 / 9 件目 / literal bash syntax error self-exemplar)](../../raw/fixes/20260424T060618Z-pr-654.md)
+- [PR #654 cycle 1 fix — 9 件目 / literal bash syntax error self-exemplar](../../raw/fixes/20260424T060618Z-pr-654.md)
 - [PR #654 cycle 2 fix (隣接 prose 波及漏れ / DRIFT-CHECK ANCHOR scope 拡張)](../../raw/fixes/20260424T061400Z-pr-654.md)
 - [PR #661 cycle 1 review (累積 11 回目 / 7 findings)](../../raw/reviews/20260425T133145Z-pr-661.md)
 - [PR #661 cycle 1 review (expanded — DRIFT-CHECK ANCHOR pair sync drift)](../../raw/reviews/20260425T153740Z-pr-661.md)
@@ -476,11 +476,11 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 
 ## PR #754 (累積 17 回目、4 cycle 収束) で観測した sub-pattern: anchor specificity retreat doctrine
 
-PR #754 (Issue #732 = state-read.test.sh の journal-style コメント retrofit) で 4 サイクル要した anchor 関連 finding chain。cycle 1 で `Form A vs Form B` Comment Rot CRITICAL + bare anchor specificity 不足 HIGH × 2 を fix → cycle 2 で fix 自身が `L46` self-line reference drift を導入 + descriptions が evolution.md に literal 0 件 (broken cross-reference) → cycle 3 で fix が `Form A cleanup minimal contract` 参照 (Form B 実装と矛盾) と `cleanup helper 集約` (literal 不在) を導入 → cycle 4 で「総称形 retreat」doctrine 採用により 0 findings 収束 (`(Cycle 別の主要な修正)` / `(Doctrines / Principles)`)。
+state-read.test.sh の journal-style コメント retrofit で 4 サイクル要した anchor 関連 finding chain。cycle 1 で `Form A vs Form B` Comment Rot CRITICAL + bare anchor specificity 不足 HIGH × 2 を fix → cycle 2 で fix 自身が `L46` self-line reference drift を導入 + descriptions が evolution.md に literal 0 件 (broken cross-reference) → cycle 3 で fix が `Form A cleanup minimal contract` 参照 (Form B 実装と矛盾) と `cleanup helper 集約` (literal 不在) を導入 → cycle 4 で「総称形 retreat」doctrine 採用により 0 findings 収束 (`(Cycle 別の主要な修正)` / `(Doctrines / Principles)`)。
 
 **収束のキー**: anchor description は **section 総称形まで** retreat する。fine-grained descriptions は参照先 literal の存在検証が漏れるたびに silent drift 源となる。Issue #732 Non-goal で evolution.md 改修禁止だったため retreat 方向のみが安全。本事例は cycle 17 累積対策 PR で observed Wiki 経験則「Test pin protection theater」「Mutation testing で test の真正性 empirical 検証」と接続し、test ファイル retrofit 系 PR の **anchor 設計指針** として記録。
 
-## PR #765 (Issue #691 = bang-backtick-check 二段ガード昇格) で観測した sub-pattern: Self-violation cascade と Doc precision regression の chain (2 cycle, 20 → 20 open)
+## bang-backtick-check 二段ガード昇格で観測した sub-pattern: Self-violation cascade と Doc precision regression の chain (2 cycle, 20 → 20 open)
 
 PR #765 は Issue #691 (`/rite:lint` 経由のみで発火する bang-backtick 検出を PostToolUse hook + PR/Ready 前段 hard gate の二段ガードに昇格する累積対策 PR) の review-fix loop で、**cycle 1 fix 自身が予防対象パターンを self-violation する meta-self-inconsistency** が顕在化した実測例:
 
@@ -523,9 +523,9 @@ cycle 1 で正しく整合させた doc が、訂正過程の prose で**新た�
 2. **Doc 訂正は prose precision を再 grep verify**: cycle 内で doc を訂正する fix では訂正後の prose に対して再度 sentinel format / code path existence の grep verify を必須化 (precision regression cascade 防止)
 3. **DRY 集約助手による 3 site 重複の構造的廃止**: PR #765 lessons learned の `bang-backtick-check.sh --print-action-hint` 提案 (3 site Style A/B literal を 1 source of truth に集約) を follow-up Issue として継承
 
-## PR #961 (Issue #960、累積 27 回目、1 cycle 0 findings 収束) — 構造的予防 PR の successful application 実例
+## 累積 27 回目（1 cycle 0 findings 収束）— 構造的予防 PR の successful application 実例
 
-PR #961 (Issue #960 = PR #959 cycle 2 で deferred された MEDIUM 2 + LOW 2 = 4 件の対称化整理 follow-up) は **canonical 予防策の successful application 実例として 1 cycle 0 findings で収束**。これまでの累積エントリは「fix 自体が drift を導入する failure mode」を記録してきたが、本 PR は対照的に「**構造的予防 fix が drift 経路を構造的に閉塞する success case**」を記録する。
+直前 PR の cycle 2 で deferred された MEDIUM 2 + LOW 2 = 4 件の対称化整理 follow-up は **canonical 予防策の successful application 実例として 1 cycle 0 findings で収束**。これまでの累積エントリは「fix 自体が drift を導入する failure mode」を記録してきたが、本 PR は対照的に「**構造的予防 fix が drift 経路を構造的に閉塞する success case**」を記録する。
 
 ### Cycle trajectory
 
@@ -533,11 +533,11 @@ PR #961 (Issue #960 = PR #959 cycle 2 で deferred された MEDIUM 2 + LOW 2 = 
 cycle 1 (0 findings, 3 reviewer 全員「マージ可」合意) → mergeable
 ```
 
-3 reviewer (prompt-engineer / test / code-quality) の独立並列レビューで全員「評価: 可 / 指摘事項: 0 件」、推奨事項 6 件はすべて scope-out (Issue #962 として follow-up 化)。
+3 reviewer (prompt-engineer / test / code-quality) の独立並列レビューで全員「評価: 可 / 指摘事項: 0 件」、推奨事項 6 件はすべて scope-out（follow-up Issue として切り出し）。
 
 ### 直接の予防対象 — PR #959 cycle 1 fix が生成した drift
 
-PR #959 (Issue #956 = RESUME_HINT SoT 化) cycle 1 fix で `### Branch I/II` 見出しを追加した結果、後続行が 6 行 shift し、`caller-markdown-block.test.sh` 内 6 箇所と `pre-condition-gate.md:150` 1 箇所の合計 7 箇所の `line 114` hardcoded reference が silent stale 化した。これは本ページの「累積対策 PR の review-fix loop で fix 自体が drift を導入する」の典型例。PR #959 cycle 2 で reviewer 全員 mergeable 合意した上で MEDIUM 2 + LOW 2 として deferred され、Issue #960 で follow-up 化された。
+RESUME_HINT SoT 化の cycle 1 fix で `### Branch I/II` 見出しを追加した結果、後続行が 6 行 shift し、`caller-markdown-block.test.sh` 内 6 箇所と `pre-condition-gate.md:150` 1 箇所の合計 7 箇所の `line 114` hardcoded reference が silent stale 化した。これは本ページの「累積対策 PR の review-fix loop で fix 自体が drift を導入する」の典型例。cycle 2 で reviewer 全員 mergeable 合意した上で MEDIUM 2 + LOW 2 として deferred され、follow-up Issue へ切り出された。
 
 ### 新 sub-pattern: section-relative reference replacement = 構造的予防の canonical pattern
 
@@ -563,9 +563,9 @@ PR #921 cycle 1 (累積 26 回目) で `cycle [0-9]+` space-only regex の hyphe
 
 **本ページに記録する意義**: 累積対策 PR の failure mode を観察するだけでなく、success case も同じページに記録することで「**予防策が機能した実例の累積**」を蓄積し、将来の累積対策 PR で参照可能な canonical pattern として活用する。
 
-### PR #968 (Issue #962、累積 28 回目、1 cycle 0 findings 収束) — successful prevention pattern の連続再現
+### 累積 28 回目（1 cycle 0 findings 収束）— successful prevention pattern の連続再現
 
-PR #968 (Issue #962 = PR #961 review で 3 reviewer が独立指摘した 4 件の LOW recommendation 対称化 follow-up) は **PR #961 の successful prevention pattern を連続再現** し、1 cycle 0 findings で収束。2 reviewer (prompt-engineer / test) の独立並列レビューで両者「マージ可 / 指摘事項: 0 件」、推奨事項 2 件は scope-irrelevant (bullet 分割提案 / 集約 declare 変数数の将来監視) として scope-out。
+累積 27 回目の review で 3 reviewer が独立指摘した 4 件の LOW recommendation 対称化 follow-up は **累積 27 回目の successful prevention pattern を連続再現** し、1 cycle 0 findings で収束。2 reviewer (prompt-engineer / test) の独立並列レビューで両者「マージ可 / 指摘事項: 0 件」、推奨事項 2 件は scope-irrelevant (bullet 分割提案 / 集約 declare 変数数の将来監視) として scope-out。
 
 #### Cycle trajectory
 
@@ -587,13 +587,13 @@ PR #961 (累積 27 回目) が「構造的予防 PR の successful application �
 
 #### Pattern doctrine の連続再現データ
 
-「構造的予防 PR の successful prevention pattern」が **5 連続 (PR #961 → PR #968 → PR #973 → PR #984 → PR #992) で empirical 確認**。これは PR #765 (累積 17 回目) で観測された「Self-violation cascade と Doc precision regression chain」(2 cycle 20→20 open) と対照的で、**section-relative reference replacement / contract addition / minimal-scope assertion 統合 declare / Issue 本文 line 番号明示 + 機械検証 step / 新規 subsection + test pin / 兄弟 test 対称化 (TC-7 ↔ TC-11)** といった構造的予防策が累積対策 PR の review-fix loop fractal pattern から構造的に離脱する条件を示唆。
+「構造的予防 PR の successful prevention pattern」が **累積 27 回目以降の 5 PR 連続で empirical 確認**。これは累積 17 回目で観測された「Self-violation cascade と Doc precision regression chain」(2 cycle 20→20 open) と対照的で、**section-relative reference replacement / contract addition / minimal-scope assertion 統合 declare / Issue 本文 line 番号明示 + 機械検証 step / 新規 subsection + test pin / 兄弟 test 対称化 (TC-7 ↔ TC-11)** といった構造的予防策が累積対策 PR の review-fix loop fractal pattern から構造的に離脱する条件を示唆。
 
 #### Successful prevention case の signal 拡張
 
 PR #961 で追加した「1 cycle 0 findings 収束 + 推奨事項 N 件 scope-out」signal、PR #968 で拡張した「直前 PR で deferred された scope-out 推奨事項を follow-up PR で対称化整理した case で連続再現する」signal、PR #973 → PR #984 の「Issue 本文 line 番号明示 + 機械検証 step」design の連続 reproducibility に加え、**PR #992 から「self-application 経路でも 2 cycle で収束する」** signal を追加。Wiki 経験則を蓄積した repository で test 追加 PR がまさに本 anti-pattern (Asymmetric Fix Transcription の片肺 5 variants) を踏んだが、cycle 1 review で 2 reviewer が独立検出 → cycle 1 fix で 7 variants 完全対称化 → cycle 2 で reviewer 独立 verify による 0 finding 収束、と review-fix loop が **適用された経験則の independent verification として機能** した。これは「累積対策で蓄積した経験則は wiki 内記述だけでなく review-fix loop の自動運用ガード機構として機能している」ことを示す empirical evidence。
 
-### PR #1004 (Issue #1003 = Projects Status In Review 遷移漏れの多層観測防御、累積 32 回目、3 cycle 収束) — Self-violation cascade × DRY 4-site × observability gap × no_journal_comment self-violation の 4 軸混在
+### Projects Status In Review 遷移漏れの多層観測防御（累積 32 回目、3 cycle 収束）— Self-violation cascade × DRY 4-site × observability gap × no_journal_comment self-violation の 4 軸混在
 
 PR #1004 は Issue #1003 (PR Ready 後の Projects Status In Review 遷移漏れ — compaction / session 分断時) の累積対策 32 回目 PR で、cycle 1 (7) → cycle 2 (15) → cycle 3 (11) → cycle 4 (0) の縮小収束。本ページの「fix 自体が drift を導入する」failure mode が **4 軸混在の高密度** で同時 surface した実例として記録:
 
@@ -620,7 +620,7 @@ cycle 3 で 11 findings 検出された内訳:
 
 #### 4 軸混在の構造的意味
 
-「Self-violation cascade」「N-site canonical sync 不全」「stderr root cause attribution gap」「no_journal_comment self-violation」が **1 cycle で同時 surface** したのは累積 32 回目で初。これは本ページ「累積対策 PR の防衛文言は数 cycle で意味を失う」signal (PR #688 最終 cycle で記録) と接続: 31 回目までの累積で蓄積した予防文言が膨張し、新 PR を書く際の review attention が分散して**個別の予防パターンを self-application 経路で踏みやすくなる**。
+「Self-violation cascade」「N-site canonical sync 不全」「stderr root cause attribution gap」「no_journal_comment self-violation」が **1 cycle で同時 surface** したのは累積 32 回目で初。これは本ページ「累積対策 PR の防衛文言は数 cycle で意味を失う」signal（累積 14 回目の最終 cycle で記録）と接続: 31 回目までの累積で蓄積した予防文言が膨張し、新 PR を書く際の review attention が分散して**個別の予防パターンを self-application 経路で踏みやすくなる**。
 
 **Cycle 3 fix で確立した 3 件別 Issue 化 (scope-creep gate)**:
 
@@ -632,15 +632,15 @@ PR #1004 の観察から、本ページの failure mode 群に追加:
 
 | 追加 failure mode | 観測 | 累積回数で初観測 | escalate 先 |
 |-----------------|------|-----------------|------------|
-| 4 軸高密度混在 (Self-violation × N-site sync × observability × no_journal_comment) | 1 cycle で 4 軸の anti-pattern が同時 surface | 32 回目 (PR #1004 cycle 3) | (a) 累積予防文言の SoT 集約による attention focus 回復、(b) 累積 N 回目 PR では cycle 1 review で 4 軸チェックリストを mandatory step として組み込む、(c) `bash -n` self-application gate を fix commit 前に必須化 ([fix-comment-self-drift.md](./fix-comment-self-drift.md) と相補) |
+| 4 軸高密度混在 (Self-violation × N-site sync × observability × no_journal_comment) | 1 cycle で 4 軸の anti-pattern が同時 surface | 32 回目 (cycle 3) | (a) 累積予防文言の SoT 集約による attention focus 回復、(b) 累積 N 回目 PR では cycle 1 review で 4 軸チェックリストを mandatory step として組み込む、(c) `bash -n` self-application gate を fix commit 前に必須化 ([fix-comment-self-drift.md](./fix-comment-self-drift.md) と相補) |
 
 #### PR #1004 cycle 3 fix で確立した stderr root cause attribution パターン
 
 cycle 3 fix で start.md Step 1.5 / start-finalize.md Step 0 が `gh` と `jq` の stderr を独立 tempfile に分離し pipeline 失敗時の details に `gh_stderr=` と `jq_stderr=` を併記する canonical 実装を導入。これは observability gap (F-08/F-09/F-10) の 3 件を構造的に解消する正しい方向性で、[Embedded markdown bash block の observability 三要素](../patterns/embedded-bash-block-observability-trio.md) として独立ページに切り出した。
 
-### PR #1043 (Issue #1042 = 累積 35 回目相当) — Self-violation cascade 連続 3 回再発 と「完全削除」戦略への転換
+### 累積 35 回目相当 — Self-violation cascade 連続 3 回再発 と「完全削除」戦略への転換
 
-PR #1043 は aggregate-recommendation-label-evasion anti-pattern を解消する meta-PR でありながら、対策コード自身が Self-violation cascade を **連続 3 回再発** させた 4 cycle 構造的収束事例。本ページの [PR #765 (Issue #691) Self-violation cascade 観察](#) の延長線上で「累積対策 PR が解決対象の anti-pattern を fix 自身で再現する」cascade chain の最長記録更新。
+当該 PR は aggregate-recommendation-label-evasion anti-pattern を解消する meta-PR でありながら、対策コード自身が Self-violation cascade を **連続 3 回再発** させた 4 cycle 構造的収束事例。本ページの累積 17 回目 Self-violation cascade 観察の延長線上で「累積対策 PR が解決対象の anti-pattern を fix 自身で再現する」cascade chain の最長記録更新。
 
 #### Convergence pattern (shrinking-cycle)
 
@@ -658,13 +658,13 @@ PR #1043 の観察から、本ページの failure mode 群に追加:
 
 | 追加 failure mode | 観測 | 累積回数で初観測 | escalate 先 |
 |-----------------|------|-----------------|------------|
-| Self-violation cascade 連続 3 回再発 + 「deprecate + 残置」戦略の限界 | 1 PR 内で Self-violation cascade × Recursive Recurrence in Fix Layer × Sentinel Visibility Rule violation × Self-meta drift (legacy field vs 新 field の semantic 不一致) の 4 軸が並行発火、cycle 1-3 で連続再発、cycle 4 で「legacy 完全削除 + disambiguation note 簡素化」の構造的閉塞戦略への転換が必要 | 累積 35 回目相当 (PR #1043 cycle 1-4) | (a) cycle 3 で同型 finding 再発時に「deprecate → delete」への戦略転換を AskUserQuestion で提案、(b) Legacy field 温存戦略採用時の移行計画 (deletion target cycle / deletion PR Issue 番号) を本文に明記、(c) 詳細は [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) を参照 |
+| Self-violation cascade 連続 3 回再発 + 「deprecate + 残置」戦略の限界 | 1 PR 内で Self-violation cascade × Recursive Recurrence in Fix Layer × Sentinel Visibility Rule violation × Self-meta drift (legacy field vs 新 field の semantic 不一致) の 4 軸が並行発火、cycle 1-3 で連続再発、cycle 4 で「legacy 完全削除 + disambiguation note 簡素化」の構造的閉塞戦略への転換が必要 | 累積 35 回目相当 (cycle 1-4) | (a) cycle 3 で同型 finding 再発時に「deprecate → delete」への戦略転換を AskUserQuestion で提案、(b) Legacy field 温存戦略採用時の移行計画 (deletion target cycle / deletion PR Issue 番号) を本文に明記、(c) 詳細は [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) を参照 |
 
 #### Dogfooding evidence — Mechanical gate の必要性を逆説的に実証
 
 PR #1043 は `/rite:pr:review` Phase 7 の AskUserQuestion 起動を **prose enforcement only から mechanical gate に強化** する meta-PR でもあった。cycle 1-3 で「deprecate + 残置」戦略により self-violation cascade を 3 回連続で踏んだ実測は、本 PR の前提仮定 ("prose enforcement only では silent skip が必ず発生する") を逆説的に裏付ける dogfooding 観察となった。**累積対策 PR が解決対象の anti-pattern を fix 自身で再現する経験は、その mechanical gate の必要性の最も強い証拠** である。本観察は本ページの canonical 対策 4 施策 (3 点セット / twin site / sibling symmetry / opt-in flag) に「**5. 構造的閉塞戦略 (= 対称化対象そのものを消滅させる)**」を 5 つ目の canonical mitigation として追加する根拠を提供する。
 
-### PR #1146 (Issue #1141 = Doc-Heavy investigation PR、8 cycle 完全収束) — fractal pattern の Doc-Heavy 系での再現と「systemic 一斉対応」収束
+### Doc-Heavy investigation PR（8 cycle 完全収束）— fractal pattern の Doc-Heavy 系での再現と「systemic 一斉対応」収束
 
 PR #1146 (調査レポート 1 ファイル +238/-0 の Doc-Heavy PR) は累積 44 回目相当の Doc-Heavy 軸で **8 cycle 完全収束 (累計 11 件 → 0)** を達成。本ページの fractal pattern が code PR ではなく **documentation 系 PR でも同型再現** することと、cycle 5 の **systemic 一斉対応** が収束を加速する canonical 戦略を実証。
 
