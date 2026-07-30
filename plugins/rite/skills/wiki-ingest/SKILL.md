@@ -618,7 +618,7 @@ fi
 | `{concept_type}` | OKF v0.1 必須フィールド。page-template.md の frontmatter トップレベル `type:` に substitute する concept 種別。値は `{domain}` と同じ literal（`patterns` / `heuristics` / `anti-patterns`）を入れる。OKF consumer の type ベース routing 用。**⚠️ 本 placeholder は同名衝突回避のため `{concept_type}` と命名している** — ステップ 4.2 / 5.0 の `raw/{type}/{filename}` パスや `sources[].type` 追記で使う `{type}` は Raw Source type（`reviews` / `retrospectives` / `fixes`、`{source_type}` 由来）であり別物 |
 | `{title}` | ステップ 4.1 で生成したタイトル |
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
-| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。`/rite:wiki-query` の Pass 1 がこの index 登録行の説明文をキーワード照合に使用する |
+| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。**⚠️ 読み手側は未対応**: `/rite:wiki-query` の Pass 1（`hooks/wiki-query-inject.sh`）は候補抽出が箇条書き行限定のため、テーブル形式 index ではサマリー列を消費しない（キーワード照合に使われるのは箇条書き形式で運用されている index のみ。読み手のテーブル対応は別 Issue） |
 | `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
 | `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |
@@ -637,6 +637,14 @@ fi
 
 **更新ルール**:
 
+- **`## ページ一覧` 節が存在しない index.md**（`wiki-init` 直後の初期状態。`templates/wiki/index-template.md` は同節を生成しない）: 先に `## ページ一覧` 見出しと下記 2 行を新設し、その配下に「新規ページ」の 1 行目を追加する（節を新設せずに行を書き足す / 別形式へ improvise するのは禁止）:
+
+  ```
+  | ページ | ドメイン | サマリー | 更新日 | 確信度 |
+  |--------|---------|---------|--------|--------|
+  ```
+
+  これにより新規リポジトリでも index は初回 ingest からテーブル形式になる（形式を 1 つに収束させるため意図した挙動）。帰結として `/rite:wiki-query` の Pass 1 は新規リポジトリでも当該 index を parse しない（ステップ 5.3 の `{description}` 注記と同じ理由。読み手のテーブル対応は別 Issue）。
 - **新規ページ**: `## ページ一覧` テーブルの末尾に次の 1 行を追加する:
 
   ```
@@ -645,7 +653,8 @@ fi
 
   - 列数 (5) と列順は実 index.md のヘッダ行 `| ページ | ドメイン | サマリー | 更新日 | 確信度 |` と一致させる
   - `{path}` は `pages/{domain}/{slug}.md` 形式を維持する（孤児検出のリンク grep `](pages/...)` 生存条件、`wiki-lint-orphans.sh`）
-  - `{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）。セル内に `|` を含めない（テーブル破壊防止）
+  - **セル区切り文字のエスケープ（全セル共通）**: `{title}` / `{description}` に `|` が含まれる場合、index 登録行では `\|` にエスケープして substitute する。**インラインコード `` ` `` の内側も対象** — GFM はコードスパン内の生 `|` もセル区切りとして解釈するため、エスケープしないと列がずれて 5 列構造が壊れる。値を言い換えて `|` を避けるのは禁止（ステップ 4.3 の title 規約が frontmatter `title` との literal 一致を要求するため）。**エスケープは index 登録行にのみ適用し、page frontmatter の `title` / `description` は改変しない**
+  - `{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）
   - `{updated}` / `{confidence}` は page frontmatter と同値（ISO 8601 タイムスタンプ / `high`・`medium`・`low`）
 - **既存ページ更新**: 該当ページの行の**サマリー列と更新日列**を上書きする。リンク列 `[{title}]({path})` は不変
 - **統計**: index.md 末尾に `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する（総ページ数 = `pages/` 配下の実ファイル数、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` の各ファイル数、最終更新 = 今回の `{updated}` タイムスタンプ）。`## 統計` 節が**存在しない** index.md では統計同期をスキップする（節を新設しない）
