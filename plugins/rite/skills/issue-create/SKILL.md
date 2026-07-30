@@ -224,7 +224,20 @@ Read tool で以下を読み込む:
 
 `template-structure.md` の AC count guideline と Minimum test rows に従い、確定 Complexity に応じた AC・T-xx 行数を満たす。各 AC は最低 1 つの T-xx に対応させ、Output Validation Checklist で検証する。
 
-生成した body はそのまま Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
+生成した body はそのまま Step 4.2.1 の検証を経て Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
+
+### 4.2.1 本文の断定のファクトチェック
+
+4.2 で生成した body に含まれる**検証可能な断定**を、4.3 の Issue 作成の前に検証する。手順・検出方法・裏取りコマンド・エラー処理は [`references/body-fact-check.md`](./references/body-fact-check.md) が SoT（本体には複製しない）。Complexity は 4.1 で**確定した値**を使う（4.0 の見込み値ではない）。
+
+| 状況 | アクション |
+|------|-----------|
+| 検査対象 0 件 | **silent skip** — 出力・質問を一切出さず 4.3 へ（`## E2E Output Minimization` に準拠） |
+| すべて `VERIFIED` | 出力を増やさず 4.3 へ |
+| `CONTRADICTED` あり | **自動修正せず** AskUserQuestion で 3 択（`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`）。選択を反映して 4.3 へ |
+| 自己矛盾候補あり（M 以上） | 同じ AskUserQuestion に載せる（`修正して続行` / `そのまま続行`）。自動修正しない |
+| `UNVERIFIED` あり | 「要確認」（外部仕様の主張は「要検証」）を本文に付記して 4.3 へ。作成をブロックしない |
+| 裏取りコマンドが失敗 | `UNVERIFIED` 扱い。stderr に `WARNING` を出して 4.3 へ続行 |
 
 ### 4.3 Issue 作成 + Projects 登録
 
@@ -379,6 +392,12 @@ fi
 ## 7. リスク・考慮事項
 {risks}
 ```
+
+### 5.1.1 仕様書の断定のファクトチェック
+
+5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する（[`references/body-fact-check.md`](./references/body-fact-check.md) を共通参照し、検査ロジックを複製しない）。分解パスは見込み Complexity が L/XL のため **3 クラスすべて**を検査範囲とする。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・`UNVERIFIED` の「要確認」付記・裏取り失敗時の non-blocking 続行はいずれも 4.2.1 と同一。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。
+
+5.5 (B) で生成する各 Sub-Issue body は Step 4.2 の Implementation Contract フォーマットに従うため、4.2.1 の検査対象と同じ性質の断定を含みうる。各 Sub-Issue の確定 Complexity に応じた検査範囲で同一 reference を適用する。
 
 ### 5.2 ユーザー確認
 

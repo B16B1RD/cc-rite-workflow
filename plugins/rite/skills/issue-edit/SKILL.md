@@ -251,6 +251,24 @@ Display the pending changes in diff format:
 - Complexity: {old_complexity} → {new_complexity}
 ```
 
+### 3.1.1 Fact-Check the Changed Body
+
+Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 to the **changed body portion only** — the sections shown in the 3.1 diff, not the whole body. Procedure, detection rules, back-verification commands, and error handling live in [`../issue-create/references/body-fact-check.md`](../issue-create/references/body-fact-check.md) (shared SoT — do not duplicate the logic here).
+
+**Complexity source**: use the Projects Complexity field value retrieved in Phase 1.3. When the Issue is not registered in Projects (or the field is unset), narrow the scope to the **number-reference class only** — this errs toward under-detection, matching the reference's stated preference.
+
+| Situation | Action |
+|-----------|--------|
+| No body change (title / Projects fields only) | **Do not run the check** — proceed to 3.2 |
+| 0 claims in the changed portion | **Silent skip** — no output, no question; proceed to 3.2 |
+| All `VERIFIED` | Proceed to 3.2 without extra output |
+| `CONTRADICTED` present | Surface it in the Phase 3.2 confirmation with the 3 options (`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`). Never auto-rewrite |
+| Self-contradiction candidates (M or above) | List them in the Phase 3.2 confirmation. Never auto-fix |
+| `UNVERIFIED` present | Annotate the body with 「要確認」(or 「要検証」for external-spec claims) and proceed to 3.2. Do not block the edit |
+| Back-verification command failed | Treat as `UNVERIFIED`, emit a `WARNING` on stderr, proceed to 3.2 |
+
+Findings fold into the existing Phase 3.2 confirmation rather than raising a separate `AskUserQuestion`, so an edit with nothing to report keeps its current single-confirmation flow.
+
 ### 3.2 User Confirmation
 
 Confirm changes with `AskUserQuestion`:
