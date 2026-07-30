@@ -228,7 +228,9 @@ Read tool で以下を読み込む:
 
 ### 4.2.1 本文の断定のファクトチェック
 
-4.2 で生成した body に含まれる**検証可能な断定**を、4.3 の Issue 作成の前に検証する。手順・検出方法・裏取りコマンド・エラー処理は [`references/body-fact-check.md`](./references/body-fact-check.md) が SoT（本体には複製しない）。Complexity は 4.1 で**確定した値**を使う（4.0 の見込み値ではない）。
+4.2 で生成した body に含まれる**検証可能な断定**を、4.3 の Issue 作成の前に検証する。Complexity は 4.1 で**確定した値**を使う（4.0 の見込み値ではない）。
+
+**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2 Step 1 のテンプレート読込と同じ runtime SoT 読込。3 クラスの検出方法・**裏取りコマンド表**・エラー処理は同 reference にのみ存在し、本体には複製しない。読み込まずに下表だけで進めると実行すべきコマンドが判らず、記憶・推測での `VERIFIED` 判定という同 reference が禁じる経路に落ちる）。
 
 | 状況 | アクション |
 |------|-----------|
@@ -395,7 +397,7 @@ fi
 
 ### 5.1.1 仕様書の断定のファクトチェック
 
-5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する（[`references/body-fact-check.md`](./references/body-fact-check.md) を共通参照し、検査ロジックを複製しない）。分解パスは見込み Complexity が L/XL のため **3 クラスすべて**を検査範囲とする。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・`UNVERIFIED` の「要確認」付記・裏取り失敗時の non-blocking 続行はいずれも 4.2.1 と同一。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。
+5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する。**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2.1 と同じ共通参照。裏取りコマンド表は同 reference にのみ存在するため、読込を省くと検査が実行できない）。分解パスは見込み Complexity が L/XL のため **3 クラスすべて**を検査範囲とする。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・`UNVERIFIED` の「要確認」付記・裏取り失敗時の non-blocking 続行はいずれも 4.2.1 と同一。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。
 
 5.5 (B) で生成する各 Sub-Issue body は Step 4.2 の Implementation Contract フォーマットに従うため、4.2.1 の検査対象と同じ性質の断定を含みうる。各 Sub-Issue の確定 Complexity に応じた検査範囲で同一 reference を適用する。
 

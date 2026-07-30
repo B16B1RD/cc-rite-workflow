@@ -253,7 +253,9 @@ Display the pending changes in diff format:
 
 ### 3.1.1 Fact-Check the Changed Body
 
-Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 to the **changed body portion only** — the sections shown in the 3.1 diff, not the whole body. Procedure, detection rules, back-verification commands, and error handling live in [`../issue-create/references/body-fact-check.md`](../issue-create/references/body-fact-check.md) (shared SoT — do not duplicate the logic here).
+Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 to the **changed body portion only** — the sections shown in the 3.1 diff, not the whole body.
+
+**Load [`../issue-create/references/body-fact-check.md`](../issue-create/references/body-fact-check.md) with the Read tool before running the check** (shared SoT — do not duplicate the logic here). The detection rules, the **back-verification command table**, and the error handling exist only in that reference; skipping the load leaves no commands to run, which drops the check into the memory-based `VERIFIED` verdict the reference forbids.
 
 **Complexity source**: use the Projects Complexity field value retrieved in Phase 1.3. When the Issue is not registered in Projects (or the field is unset), narrow the scope to the **number-reference class only** — this errs toward under-detection, matching the reference's stated preference.
 
