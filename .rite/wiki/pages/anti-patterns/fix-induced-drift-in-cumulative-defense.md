@@ -150,7 +150,7 @@ confidence: high
 
 ## 詳細
 
-### 事象 — PR #636 での 13 cycle 収束軌跡 (findings 数)
+### 事象 — 8 回目対策での 13 cycle 収束軌跡 (findings 数)
 
 ```
 cycle 1 (13) → cycle 2 (10) → cycle 3 (8) → cycle 4 (8) → cycle 5 (4)
@@ -193,7 +193,7 @@ cycle 1 (13) → cycle 2 (10) → cycle 3 (8) → cycle 4 (8) → cycle 5 (4)
 
 ### 9 回目対策の 3 cycle 収束軌跡 (2026-04-24)
 
-PR #636 (8 件目) と同型の累積対策 9 件目 PR で **本ページ自身を裏付ける self-exemplar** が再発した:
+8 件目と同型の累積対策 9 件目 PR で **本ページ自身を裏付ける self-exemplar** が再発した:
 
 ```
 cycle 1 (10 findings: 1 CRIT + 1 HIGH + 4 MED + 4 LOW)
@@ -205,7 +205,7 @@ cycle 1 (10 findings: 1 CRIT + 1 HIGH + 4 MED + 4 LOW)
 
 declarative 9 件目で `caller HTML コメント内` に追加した bash literal `bash ... --preserve-error-count ; then continue with Phase 0.6 ...` が **bash 構文として無効** (`; then` は `if cmd; then ... fi` の文法トークンであり、if 句なしで使うと syntax error rc=2)。LLM が caller HTML コメント冒頭の指示「IMMEDIATELY run as your next tool call」に従い literal copy → Bash tool 実行すると Step 0 自体が syntax error で abort し、Step 1 idempotent retry に依存することになる経路だった。
 
-これは PR #636 cycle 1 F-12 (`; then proceed` bash 構文破綻) の **再発** であり、累積対策追加 PR で literal 文字列を散文と混在させる際に shell 文法トークン (`; then`) を散文と隣接配置すると LLM が if 構文の一部と誤解釈する経路は構造的に発生する。
+これは 8 件目 cycle 1 F-12 (`; then proceed` bash 構文破綻) の **再発** であり、累積対策追加 PR で literal 文字列を散文と混在させる際に shell 文法トークン (`; then`) を散文と隣接配置すると LLM が if 構文の一部と誤解釈する経路は構造的に発生する。
 
 **declarative 文書追加 PR の 5 つの品質保証ポイント**（9 回目対策で確立）:
 1. **literal として LLM に渡すコードは構文有効性を test で検証**: `bash -n` 相当の static check が困難な場合は invalid pattern を含まないかの NOT-contain grep で代替可能（9 回目対策では `--preserve-error-count[[:space:]]*;[[:space:]]*then[[:space:]]+continue` を NOT-contain で grep）
@@ -228,7 +228,7 @@ cycle 2 で発見された 3 LOW (F-11/F-12/F-13) は cycle 1 F-03 修正の波�
 
 #### Self-exemplar 構造の累積メタパターン
 
-PR #636 (8 件目) → PR #653 (本ページに記録) → PR #654 (9 件目) と 3 連続で「累積対策追加 PR が新たな drift / bug を生む」self-exemplar が発生。これは **declarative 強化路線そのものの構造的限界** を示唆:
+8 件目 → 本ページを起こした観測 PR → 9 件目 と 3 連続で「累積対策追加 PR が新たな drift / bug を生む」self-exemplar が発生。これは **declarative 強化路線そのものの構造的限界** を示唆:
 - declarative 規約は LLM の挙動を「説明」するが「強制」しない (規約違反時の machine-enforced gate がない)
 - 規約の追加自体が新たな攻撃面 (literal の構文有効性 / 隣接 prose drift / dead marker) を生む
 - self-review / 単一 reviewer では catch できない構造的 drift は cross-validation High Confidence でしか surface しない
@@ -237,7 +237,7 @@ PR #636 (8 件目) → PR #653 (本ページに記録) → PR #654 (9 件目) �
 
 ### opt-in backward-compatible flag の設計教訓
 
-PR #636 cycle 3 で追加された `--preserve-error-count` flag は、`.error_count = 0` 無条件リセットという従来契約を破壊せずに新 usage pattern (同一 phase への self-patch) を許容する canonical design:
+8 件目 cycle 3 で追加された `--preserve-error-count` flag は、`.error_count = 0` 無条件リセットという従来契約を破壊せずに新 usage pattern (同一 phase への self-patch) を許容する canonical design:
 
 - **既存 caller (phase transition) は flag なしで reset 継続** — 後方互換保証
 - **新規 self-patch caller は明示的に保持を選択** — opt-in で意図を明示
@@ -273,7 +273,7 @@ cycle 1 (7) → cycle 2 (2) → cycle 3 (1) → cycle 4 (0) mergeable
 
 ### multi-state-aware flow-state read helper — 累積 14 回目 38+ cycle 観測
 
-PR #688 は累積 14 回目の対策 PR で 38+ cycle にわたり review-fix loop を継続。本ページの fractal pattern が **新たな 2 つの failure mode を加える** 自己累積実例として記録:
+累積 14 回目の対策 PR は 38+ cycle にわたり review-fix loop を継続。本ページの fractal pattern が **新たな 2 つの failure mode を加える** 自己累積実例として記録:
 
 #### Failure mode 1: `cycle 6→7→8→9→10→11→12→13→14` chain での fix-introduced regression 6 連続
 
@@ -307,7 +307,7 @@ cycle 5 で「軽微 (URL fix / typo) + 中規模 (edge case) + 大規模 (write
 
 #### 38 cycle 観測の累積 quality signal 拡張
 
-PR #688 の 38+ cycle 経過で本ページの 4 quality signal に追加:
+累積 14 回目の 38+ cycle 経過で本ページの 4 quality signal に追加:
 
 | 追加 signal | 観測 | escalate 先 |
 |-----------|------|------------|
@@ -316,9 +316,9 @@ PR #688 の 38+ cycle 経過で本ページの 4 quality signal に追加:
 | `2>&1` self-defeating sentinel | 「sentinel observability」を deliverable とする PR が、その deliverable 自身を `2>&1` で silent suppress | helper output contract を docstring で明示 + caller test で sentinel emit と exit code の両方を assert (cf. [`stderr-merge-silent-sentinel-suppression.md`](./stderr-merge-silent-sentinel-suppression.md)) |
 | `rejected(scope-creep)` の empirical gate | author の主観判断で reject した懸念事項が cycle N+1 reviewer の empirical revert test で CRITICAL 認定 | reject 判断は cross-validation + empirical revert test で gate (cf. [`scope-creep-rejection-empirical-gate.md`](../heuristics/scope-creep-rejection-empirical-gate.md)) |
 
-#### PR #688 cycle 12 → 14 → 15 chain で実証された self-referential learned 節 chain HIGH 観測
+#### 累積 14 回目 cycle 12 → 14 → 15 chain で実証された self-referential learned 節 chain HIGH 観測
 
-PR #688 の最終収束過程 (cycle 12-15) で「**learned 節で言及した直後の同 commit で再演する**」累積 14 回目 self-referential pattern が **HIGH 級として 2 件** cross-validated で実証された:
+累積 14 回目の最終収束過程 (cycle 12-15) で「**learned 節で言及した直後の同 commit で再演する**」累積 14 回目 self-referential pattern が **HIGH 級として 2 件** cross-validated で実証された:
 
 | cycle | learned 節で警告 | 同 commit で再演 (HIGH 検出) |
 |-------|----------------|---------------------------|
@@ -327,18 +327,18 @@ PR #688 の最終収束過程 (cycle 12-15) で「**learned 節で言及した�
 
 これらの 2 件は本ページの「Failure mode 2: Self-referential learned 節 chain」(累積 35+ cycle 越えで初観測) を **HIGH 級で再実証** し、「**累積対策追加 PR が新たな drift / bug を生む self-exemplar**」が 4 PR 連続で観測された。
 
-#### PR #688 cycle 12 で観測した DRY 集約助手の overstate (新 sub-pattern)
+#### 累積 14 回目 cycle 12 で観測した DRY 集約助手の overstate (新 sub-pattern)
 
-PR #688 cycle 12 review で MEDIUM × 2 として、累積対策 PR の新 failure mode が surface した:
+累積 14 回目 cycle 12 review で MEDIUM × 2 として、累積対策 PR の新 failure mode が surface した:
 
-1. **集約 helper のコメント overstate**: `_validate-helpers.sh` で集約したのは validation logic のみだが、コメントは「helper 追加時の 2 箇所更新が不要になり」と書いており、実際には helper 名 list (両ファイルにハードコード重複 7 entry × 2 箇所) が依然 2 箇所同期更新を要する → Issue #687 root cause (drift 防止) と同型の drift 再発許容経路を文書レベルで作成
+1. **集約 helper のコメント overstate**: `_validate-helpers.sh` で集約したのは validation logic のみだが、コメントは「helper 追加時の 2 箇所更新が不要になり」と書いており、実際には helper 名 list (両ファイルにハードコード重複 7 entry × 2 箇所) が依然 2 箇所同期更新を要する → この helper 集約が解こうとした root cause (drift 防止) と同型の drift 再発許容経路を文書レベルで作成
 2. **Migration 取り残し**: 新規 helper を 3 caller のうち 2 つだけが使用し、`resume-active-flag-restore.sh` 1 つは旧 inline pattern を残存 → 3 caller 中 2/1 の不均一更新 = DRY 化導入の核心理由 (drift 防止) が部分的にしか達成されない
 
 詳細は [DRY 集約助手の効果記述は『何が集約され、何が依然分散しているか』を明示する](./dry-helper-aggregation-effect-overstate.md) に切り出した。
 
 #### 累積対策 14 回目 38+ cycle 観測の収束信号
 
-PR #688 cycle 12-15 の追加観測で、本ページの「累積対策 PR の review-fix loop は cycle 数 hard limit ではなく quality signal で escalate する」原則の追加実証が完了:
+累積 14 回目 cycle 12-15 の追加観測で、本ページの「累積対策 PR の review-fix loop は cycle 数 hard limit ではなく quality signal で escalate する」原則の追加実証が完了:
 
 ```
 cycle 12 (7 findings) → cycle 14 (7) → cycle 15 (9) → cycle 16 (collapse)
@@ -352,7 +352,7 @@ cycle 12 (7 findings) → cycle 14 (7) → cycle 15 (9) → cycle 16 (collapse)
 
 #### Failure mode 4: Self-defeating defense (cycle 49 H-1) — 防衛機構導入 fix 自体が drift を含み防衛対象が再開する
 
-PR #688 cycle 49 review で 1 CRITICAL + 2 HIGH + 7 MEDIUM + 6 LOW を検出した中、**H-1 CRITICAL** は cycle 49 で導入した METRICS_SKIPPED sentinel が、Phase 5.5.2 の Step 番号 off-by-one drift により無効化される self-defeating defense として記録された。Self-referential learned 節 chain anti-pattern の典型例 — **防衛機構を導入する fix 自体が drift を含み、防衛対象だった partial corruption が再開する経路**。
+累積 14 回目 cycle 49 review で 1 CRITICAL + 2 HIGH + 7 MEDIUM + 6 LOW を検出した中、**H-1 CRITICAL** は cycle 49 で導入した METRICS_SKIPPED sentinel が、Phase 5.5.2 の Step 番号 off-by-one drift により無効化される self-defeating defense として記録された。Self-referential learned 節 chain anti-pattern の典型例 — **防衛機構を導入する fix 自体が drift を含み、防衛対象だった partial corruption が再開する経路**。
 
 **学習 (canonical 対策)**:
 
@@ -360,9 +360,9 @@ PR #688 cycle 49 review で 1 CRITICAL + 2 HIGH + 7 MEDIUM + 6 LOW を検出し�
 2. **Self-defeating defense 検出のための cross-validation revert test**: 「防衛機構を導入した fix」を merge する前に、**(a) 防衛機構が無いコードで attack scenario を再現** + **(b) 防衛機構を導入した後に同 attack scenario を再実行** + **(c) 防衛機構が actual に block するか empirical に直接観測**。reasoning ベースで「invariant は成立する」判定する経路は accumulated 49 cycle 後にも silent regression を見逃す
 3. **CRITICAL self-defeating defense + HIGH 片肺 drift + MEDIUM mutation kill power gap の組み合わせは累積 escalation 信号**: 1 cycle で同型 anti-pattern が 3 severity に渡って同時 surface する場合、累積対策 PR の防衛文言固化 (cycle 41/43/49 系列で追加された防衛文言が膨張) を意味する。canonical 対策は SoT 集約 (state-read-evolution.md 等) と短い semantic anchor のみへの圧縮
 
-#### PR #688 最終 cycle (47+) 観測の追加 lesson
+#### 累積 14 回目の最終 cycle (47+) 観測の追加 lesson
 
-PR #688 (累積 14 回目) 最終フルレビュー (6 reviewer 21 findings) 後の lesson 追加:
+累積 14 回目の最終フルレビュー (6 reviewer 21 findings) 後の lesson 追加:
 
 1. **「累積対策 PR の防衛文言は数 cycle で意味を失う」**: cycle 41/43/49 系列で追加された防衛文言が膨張し、第三者読者が 1 行で意味を取れなくなる経路。1 cell に複数 cycle 番号 + 5 件の cross-reference を混在させると Self-referential learned 節 chain が顕在化。SoT 集約 (state-read-evolution.md) と短い semantic anchor のみへの圧縮が必要
 2. **「Mutation testing の vector は production の正規化処理 (tr / sed) との相互作用を empirical 検証する」**: `tr -d '[:space:]'` で改変される vector は SID resolve 結果と per-session file 名が非同期化され mutation kill power が 0 になる経路を持つ。test 設計時に production の正規化処理を前提として vector を選定する必要がある (詳細: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md))
@@ -399,9 +399,9 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 | **Test ファイル full rescan の独立 step**: | code-quality reviewer が cycle 4 で初めて test ファイル全体を rescan して 2 件発見した経緯を canonical 化。test ファイルは「fixture」ではなく「production code」として同等の review depth を適用する |
 | **Cycle trajectory の「test scope 到達」を可視化** | 累積対策 PR の review checklist に「propagation scan が test ファイルまで到達したか」のフラグを追加 (本 PR では cycle 4 が最初の到達 cycle) |
 
-#### PR #753 で観測された review-fix loop quality signal の強化
+#### 累積 15 回目で観測された review-fix loop quality signal の強化
 
-本ページの 4 quality signal に加え、PR #753 から **「test/fixture ファイルへの propagation scan 到達 cycle」を escalate signal として追加**:
+本ページの 4 quality signal に加え、累積 15 回目から **「test/fixture ファイルへの propagation scan 到達 cycle」を escalate signal として追加**:
 
 | 追加 signal | 観測 | escalate 先 |
 |-----------|------|------------|
@@ -474,15 +474,15 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 - [PR #1166 cycle 15 review (fix-over-correction: enforcement 主体取り違え)](../../raw/reviews/20260528T060938Z-pr-1166.md)
 - [PR #1166 cycle 15 fix (over-correction 再訂正 / 3 層 enforcement locus 区別)](../../raw/fixes/20260528T061125Z-pr-1166.md)
 
-## PR #754 (累積 17 回目、4 cycle 収束) で観測した sub-pattern: anchor specificity retreat doctrine
+## 累積 17 回目の state-read.test.sh retrofit (4 cycle 収束) で観測した sub-pattern: anchor specificity retreat doctrine
 
 state-read.test.sh の journal-style コメント retrofit で 4 サイクル要した anchor 関連 finding chain。cycle 1 で `Form A vs Form B` Comment Rot CRITICAL + bare anchor specificity 不足 HIGH × 2 を fix → cycle 2 で fix 自身が `L46` self-line reference drift を導入 + descriptions が evolution.md に literal 0 件 (broken cross-reference) → cycle 3 で fix が `Form A cleanup minimal contract` 参照 (Form B 実装と矛盾) と `cleanup helper 集約` (literal 不在) を導入 → cycle 4 で「総称形 retreat」doctrine 採用により 0 findings 収束 (`(Cycle 別の主要な修正)` / `(Doctrines / Principles)`)。
 
-**収束のキー**: anchor description は **section 総称形まで** retreat する。fine-grained descriptions は参照先 literal の存在検証が漏れるたびに silent drift 源となる。Issue #732 Non-goal で evolution.md 改修禁止だったため retreat 方向のみが安全。本事例は cycle 17 累積対策 PR で observed Wiki 経験則「Test pin protection theater」「Mutation testing で test の真正性 empirical 検証」と接続し、test ファイル retrofit 系 PR の **anchor 設計指針** として記録。
+**収束のキー**: anchor description は **section 総称形まで** retreat する。fine-grained descriptions は参照先 literal の存在検証が漏れるたびに silent drift 源となる。当該 Issue の Non-goal で evolution.md 改修禁止だったため retreat 方向のみが安全。本事例は cycle 17 累積対策 PR で observed Wiki 経験則「Test pin protection theater」「Mutation testing で test の真正性 empirical 検証」と接続し、test ファイル retrofit 系 PR の **anchor 設計指針** として記録。
 
 ## bang-backtick-check 二段ガード昇格で観測した sub-pattern: Self-violation cascade と Doc precision regression の chain (2 cycle, 20 → 20 open)
 
-PR #765 は Issue #691 (`/rite:lint` 経由のみで発火する bang-backtick 検出を PostToolUse hook + PR/Ready 前段 hard gate の二段ガードに昇格する累積対策 PR) の review-fix loop で、**cycle 1 fix 自身が予防対象パターンを self-violation する meta-self-inconsistency** が顕在化した実測例:
+bang-backtick 二段ガード昇格 PR (`/rite:lint` 経由のみで発火する bang-backtick 検出を PostToolUse hook + PR/Ready 前段 hard gate の二段ガードへ昇格する累積対策) の review-fix loop で、**cycle 1 fix 自身が予防対象パターンを self-violation する meta-self-inconsistency** が顕在化した実測例:
 
 ### Cycle trajectory (findings 数)
 
@@ -521,7 +521,7 @@ cycle 1 で正しく整合させた doc が、訂正過程の prose で**新た�
 
 1. **Self-application gate を fix commit 前に必須化**: 本 PR の場合 `bang-backtick-check.sh --all` を fix commit 前に self-grep し、対策コードが予防対象を踏んでいないか mechanical 検証。新 lint rule 追加 PR の self-violation gate と同型 ([fix-comment-self-drift.md](./fix-comment-self-drift.md) と相補)
 2. **Doc 訂正は prose precision を再 grep verify**: cycle 内で doc を訂正する fix では訂正後の prose に対して再度 sentinel format / code path existence の grep verify を必須化 (precision regression cascade 防止)
-3. **DRY 集約助手による 3 site 重複の構造的廃止**: PR #765 lessons learned の `bang-backtick-check.sh --print-action-hint` 提案 (3 site Style A/B literal を 1 source of truth に集約) を follow-up Issue として継承
+3. **DRY 集約助手による 3 site 重複の構造的廃止**: bang-backtick 二段ガード昇格 PR の lessons learned にある `bang-backtick-check.sh --print-action-hint` 提案 (3 site Style A/B literal を 1 source of truth に集約) を follow-up Issue として継承
 
 ## 累積 27 回目（1 cycle 0 findings 収束）— 構造的予防 PR の successful application 実例
 
@@ -535,7 +535,7 @@ cycle 1 (0 findings, 3 reviewer 全員「マージ可」合意) → mergeable
 
 3 reviewer (prompt-engineer / test / code-quality) の独立並列レビューで全員「評価: 可 / 指摘事項: 0 件」、推奨事項 6 件はすべて scope-out（follow-up Issue として切り出し）。
 
-### 直接の予防対象 — PR #959 cycle 1 fix が生成した drift
+### 直接の予防対象 — RESUME_HINT SoT 化 PR の cycle 1 fix が生成した drift
 
 RESUME_HINT SoT 化の cycle 1 fix で `### Branch I/II` 見出しを追加した結果、後続行が 6 行 shift し、`caller-markdown-block.test.sh` 内 6 箇所と `pre-condition-gate.md:150` 1 箇所の合計 7 箇所の `line 114` hardcoded reference が silent stale 化した。これは本ページの「累積対策 PR の review-fix loop で fix 自体が drift を導入する」の典型例。cycle 2 で reviewer 全員 mergeable 合意した上で MEDIUM 2 + LOW 2 として deferred され、follow-up Issue へ切り出された。
 
@@ -551,11 +551,11 @@ RESUME_HINT SoT 化の cycle 1 fix で `### Branch I/II` 見出しを追加し�
 
 ### 累積 27 回目の successful prevention case が示す convergence 信号
 
-PR #921 cycle 1 (累積 26 回目) で `cycle [0-9]+` space-only regex の hyphen 形 `prompt-engineer cycle-N` 取りこぼしが MEDIUM finding として surface した直近実例があるが、**PR #961 はそれと対照的に「予防策が機能した successful case」**。累積対策 PR が必ずしも「fix 自体が drift を導入する」failure mode に陥るわけではなく、構造的予防 (section-relative / contract addition) が適切に適用された場合は **1 cycle 0 findings で収束する** ことを示す empirical evidence。
+累積 26 回目 cycle 1 で `cycle [0-9]+` space-only regex の hyphen 形 `prompt-engineer cycle-N` 取りこぼしが MEDIUM finding として surface した直近実例があるが、**累積 27 回目はそれと対照的に「予防策が機能した successful case」**。累積対策 PR が必ずしも「fix 自体が drift を導入する」failure mode に陥るわけではなく、構造的予防 (section-relative / contract addition) が適切に適用された場合は **1 cycle 0 findings で収束する** ことを示す empirical evidence。
 
 ### Canonical 観察への追加
 
-本ページの 4 quality signal に加え、PR #961 から **「successful prevention case の signal」** を追加:
+本ページの 4 quality signal に加え、累積 27 回目から **「successful prevention case の signal」** を追加:
 
 | 追加 signal | 観測 | 解釈 |
 |-----------|------|------|
@@ -575,15 +575,15 @@ cycle 1 (0 findings, 2 reviewer 全員「マージ可」合意) → mergeable
 
 #### 連続再現が示す convergence robustness
 
-PR #961 (累積 27 回目) が「構造的予防 PR の successful application 実例」を初めて記録したのに対し、PR #968 はその直接の follow-up として「**deferred LOW 対称化 follow-up でも同じ 1 cycle 0 findings 収束を再現する**」ことを実証。「構造的予防 PR の successful prevention pattern」が以下の 2 ケースで連続再現したことから、convergence signal の robustness が増した:
+累積 27 回目が「構造的予防 PR の successful application 実例」を初めて記録したのに対し、累積 28 回目はその直接の follow-up として「**deferred LOW 対称化 follow-up でも同じ 1 cycle 0 findings 収束を再現する**」ことを実証。「構造的予防 PR の successful prevention pattern」が以下の 2 ケースで連続再現したことから、convergence signal の robustness が増した:
 
-| PR | 累積回数 | 対象 | findings | reviewer 合意 |
-|----|---------|------|---------|-------------|
-| PR #961 | 27 回目 | PR #959 cycle 2 で deferred された MEDIUM 2 + LOW 2 = 4 件 | 0 | 3 reviewer 全員 mergeable |
-| PR #968 | 28 回目 | PR #961 review で 3 reviewer 独立指摘の LOW 4 件 | 0 | 2 reviewer 全員 mergeable |
-| PR #973 | 29 回目 | 4-site scope drift (Issue 本文 line 番号明示 + 機械検証 step) | 0 | 1 cycle 0 findings |
-| PR #984 | 30 回目 | Strict-mode caller variant subsection + test pin (3 assertion) | 0 | 4 reviewer 全員 mergeable |
-| PR #992 | 31 回目 | TC-11 truthy variant matrix 追加 (cycle 1 で 4 findings → cycle 2 で 0 findings) | 0 (cycle 2) | 2 reviewer 全員 mergeable |
+| 累積回数 | 対象 | findings | reviewer 合意 |
+|---------|------|---------|-------------|
+| 27 回目 | RESUME_HINT SoT 化 PR の cycle 2 で deferred された MEDIUM 2 + LOW 2 = 4 件 | 0 | 3 reviewer 全員 mergeable |
+| 28 回目 | 27 回目の review で 3 reviewer 独立指摘の LOW 4 件 | 0 | 2 reviewer 全員 mergeable |
+| 29 回目 | 4-site scope drift (Issue 本文 line 番号明示 + 機械検証 step) | 0 | 1 cycle 0 findings |
+| 30 回目 | Strict-mode caller variant subsection + test pin (3 assertion) | 0 | 4 reviewer 全員 mergeable |
+| 31 回目 | TC-11 truthy variant matrix 追加 (cycle 1 で 4 findings → cycle 2 で 0 findings) | 0 (cycle 2) | 2 reviewer 全員 mergeable |
 
 #### Pattern doctrine の連続再現データ
 
@@ -591,11 +591,11 @@ PR #961 (累積 27 回目) が「構造的予防 PR の successful application �
 
 #### Successful prevention case の signal 拡張
 
-PR #961 で追加した「1 cycle 0 findings 収束 + 推奨事項 N 件 scope-out」signal、PR #968 で拡張した「直前 PR で deferred された scope-out 推奨事項を follow-up PR で対称化整理した case で連続再現する」signal、PR #973 → PR #984 の「Issue 本文 line 番号明示 + 機械検証 step」design の連続 reproducibility に加え、**PR #992 から「self-application 経路でも 2 cycle で収束する」** signal を追加。Wiki 経験則を蓄積した repository で test 追加 PR がまさに本 anti-pattern (Asymmetric Fix Transcription の片肺 5 variants) を踏んだが、cycle 1 review で 2 reviewer が独立検出 → cycle 1 fix で 7 variants 完全対称化 → cycle 2 で reviewer 独立 verify による 0 finding 収束、と review-fix loop が **適用された経験則の independent verification として機能** した。これは「累積対策で蓄積した経験則は wiki 内記述だけでなく review-fix loop の自動運用ガード機構として機能している」ことを示す empirical evidence。
+累積 27 回目で追加した「1 cycle 0 findings 収束 + 推奨事項 N 件 scope-out」signal、累積 28 回目で拡張した「直前 PR で deferred された scope-out 推奨事項を follow-up PR で対称化整理した case で連続再現する」signal、累積 29 回目 → 30 回目の「Issue 本文 line 番号明示 + 機械検証 step」design の連続 reproducibility に加え、**累積 31 回目から「self-application 経路でも 2 cycle で収束する」** signal を追加。Wiki 経験則を蓄積した repository で test 追加 PR がまさに本 anti-pattern (Asymmetric Fix Transcription の片肺 5 variants) を踏んだが、cycle 1 review で 2 reviewer が独立検出 → cycle 1 fix で 7 variants 完全対称化 → cycle 2 で reviewer 独立 verify による 0 finding 収束、と review-fix loop が **適用された経験則の independent verification として機能** した。これは「累積対策で蓄積した経験則は wiki 内記述だけでなく review-fix loop の自動運用ガード機構として機能している」ことを示す empirical evidence。
 
 ### Projects Status In Review 遷移漏れの多層観測防御（累積 32 回目、3 cycle 収束）— Self-violation cascade × DRY 4-site × observability gap × no_journal_comment self-violation の 4 軸混在
 
-PR #1004 は Issue #1003 (PR Ready 後の Projects Status In Review 遷移漏れ — compaction / session 分断時) の累積対策 32 回目 PR で、cycle 1 (7) → cycle 2 (15) → cycle 3 (11) → cycle 4 (0) の縮小収束。本ページの「fix 自体が drift を導入する」failure mode が **4 軸混在の高密度** で同時 surface した実例として記録:
+累積 32 回目の対策 PR (PR Ready 後の Projects Status In Review 遷移漏れ — compaction / session 分断時 — への対策) は、cycle 1 (7) → cycle 2 (15) → cycle 3 (11) → cycle 4 (0) の縮小収束。本ページの「fix 自体が drift を導入する」failure mode が **4 軸混在の高密度** で同時 surface した実例として記録:
 
 ```
 cycle 1 (7) → cycle 2 (15: CRITICAL 2 + HIGH 7 + MEDIUM 4 + LOW 2) → cycle 3 (11: HIGH 3 + MEDIUM 2 + LOW-MEDIUM 5 + LOW 1) → cycle 4 (0 mergeable)
@@ -628,13 +628,13 @@ cycle 3 fix で 11 件中 8 件を本 PR で fix、refactor scope の 3 件 (`#1
 
 #### Failure mode 5 (新規記録): Self-violation cascade × N-site × observability の 4 軸高密度混在
 
-PR #1004 の観察から、本ページの failure mode 群に追加:
+累積 32 回目の観察から、本ページの failure mode 群に追加:
 
 | 追加 failure mode | 観測 | 累積回数で初観測 | escalate 先 |
 |-----------------|------|-----------------|------------|
 | 4 軸高密度混在 (Self-violation × N-site sync × observability × no_journal_comment) | 1 cycle で 4 軸の anti-pattern が同時 surface | 32 回目 (cycle 3) | (a) 累積予防文言の SoT 集約による attention focus 回復、(b) 累積 N 回目 PR では cycle 1 review で 4 軸チェックリストを mandatory step として組み込む、(c) `bash -n` self-application gate を fix commit 前に必須化 ([fix-comment-self-drift.md](./fix-comment-self-drift.md) と相補) |
 
-#### PR #1004 cycle 3 fix で確立した stderr root cause attribution パターン
+#### 累積 32 回目 cycle 3 fix で確立した stderr root cause attribution パターン
 
 cycle 3 fix で start.md Step 1.5 / start-finalize.md Step 0 が `gh` と `jq` の stderr を独立 tempfile に分離し pipeline 失敗時の details に `gh_stderr=` と `jq_stderr=` を併記する canonical 実装を導入。これは observability gap (F-08/F-09/F-10) の 3 件を構造的に解消する正しい方向性で、[Embedded markdown bash block の observability 三要素](../patterns/embedded-bash-block-observability-trio.md) として独立ページに切り出した。
 
@@ -654,7 +654,7 @@ cycle 3 fix で start.md Step 1.5 / start-finalize.md Step 0 が `gh` と `jq` �
 
 #### Failure mode 6 (新規記録): Self-violation cascade × Recursive Recurrence × Self-meta drift 4 軸並行発火
 
-PR #1043 の観察から、本ページの failure mode 群に追加:
+累積 35 回目相当の観察から、本ページの failure mode 群に追加:
 
 | 追加 failure mode | 観測 | 累積回数で初観測 | escalate 先 |
 |-----------------|------|-----------------|------------|
@@ -662,11 +662,11 @@ PR #1043 の観察から、本ページの failure mode 群に追加:
 
 #### Dogfooding evidence — Mechanical gate の必要性を逆説的に実証
 
-PR #1043 は `/rite:pr:review` Phase 7 の AskUserQuestion 起動を **prose enforcement only から mechanical gate に強化** する meta-PR でもあった。cycle 1-3 で「deprecate + 残置」戦略により self-violation cascade を 3 回連続で踏んだ実測は、本 PR の前提仮定 ("prose enforcement only では silent skip が必ず発生する") を逆説的に裏付ける dogfooding 観察となった。**累積対策 PR が解決対象の anti-pattern を fix 自身で再現する経験は、その mechanical gate の必要性の最も強い証拠** である。本観察は本ページの canonical 対策 4 施策 (3 点セット / twin site / sibling symmetry / opt-in flag) に「**5. 構造的閉塞戦略 (= 対称化対象そのものを消滅させる)**」を 5 つ目の canonical mitigation として追加する根拠を提供する。
+累積 35 回目相当の PR は `/rite:pr:review` Phase 7 の AskUserQuestion 起動を **prose enforcement only から mechanical gate に強化** する meta-PR でもあった。cycle 1-3 で「deprecate + 残置」戦略により self-violation cascade を 3 回連続で踏んだ実測は、本 PR の前提仮定 ("prose enforcement only では silent skip が必ず発生する") を逆説的に裏付ける dogfooding 観察となった。**累積対策 PR が解決対象の anti-pattern を fix 自身で再現する経験は、その mechanical gate の必要性の最も強い証拠** である。本観察は本ページの canonical 対策 4 施策 (3 点セット / twin site / sibling symmetry / opt-in flag) に「**5. 構造的閉塞戦略 (= 対称化対象そのものを消滅させる)**」を 5 つ目の canonical mitigation として追加する根拠を提供する。
 
 ### Doc-Heavy investigation PR（8 cycle 完全収束）— fractal pattern の Doc-Heavy 系での再現と「systemic 一斉対応」収束
 
-PR #1146 (調査レポート 1 ファイル +238/-0 の Doc-Heavy PR) は累積 44 回目相当の Doc-Heavy 軸で **8 cycle 完全収束 (累計 11 件 → 0)** を達成。本ページの fractal pattern が code PR ではなく **documentation 系 PR でも同型再現** することと、cycle 5 の **systemic 一斉対応** が収束を加速する canonical 戦略を実証。
+調査レポート 1 ファイル +238/-0 の Doc-Heavy PR は累積 44 回目相当の Doc-Heavy 軸で **8 cycle 完全収束 (累計 11 件 → 0)** を達成。本ページの fractal pattern が code PR ではなく **documentation 系 PR でも同型再現** することと、cycle 5 の **systemic 一斉対応** が収束を加速する canonical 戦略を実証。
 
 #### Convergence trajectory (shrinking + spike + decay)
 
@@ -695,7 +695,7 @@ cycle 3 で R-3 (L70 :277-284 → 実 278) **単独 nit** として nit-noted �
 
 #### Failure mode 9: auto_demote_low policy override 判断基準の明示化
 
-`rite-config.yml` の `review.scope_assignment.auto_demote_low: true` 設定下では LOW × current-pr は機械的に nit-noted へ降格されるが、PR #1146 cycle 2 で以下 **2 条件のいずれかに該当する場合は policy override で proper fix を選ぶ** 正当な経路が canonical 化された:
+`rite-config.yml` の `review.scope_assignment.auto_demote_low: true` 設定下では LOW × current-pr は機械的に nit-noted へ降格されるが、累積 44 回目相当 cycle 2 で以下 **2 条件のいずれかに該当する場合は policy override で proper fix を選ぶ** 正当な経路が canonical 化された:
 
 | Override 条件 | 根拠 |
 |--------------|------|
@@ -717,6 +717,6 @@ cycle 5 fix では以下 4 軸の一斉対応で 7 件を 1 commit で landing:
 
 #### Doc-Heavy mode 5 カテゴリ verification protocol の有効性
 
-PR #1146 は tech-writer reviewer の Doc-Heavy mode (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) と code-quality reviewer の fenced block detection の **2 reviewer 体制** で cross-validation が機能。F-A2 (L62-70 line ref) を tech-writer (recommendation 1) と code-quality (LOW-MEDIUM finding) が独立検出した実例が、Doc-Heavy + fenced block の 2 reviewer 体制の effectiveness を実証 ([`docs-review-implementation-grep-verification.md`](../heuristics/docs-review-implementation-grep-verification.md) と相補)。
+累積 44 回目相当の PR は tech-writer reviewer の Doc-Heavy mode (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) と code-quality reviewer の fenced block detection の **2 reviewer 体制** で cross-validation が機能。F-A2 (L62-70 line ref) を tech-writer (recommendation 1) と code-quality (LOW-MEDIUM finding) が独立検出した実例が、Doc-Heavy + fenced block の 2 reviewer 体制の effectiveness を実証 ([`docs-review-implementation-grep-verification.md`](../heuristics/docs-review-implementation-grep-verification.md) と相補)。
 
 cycle 8 の完全収束時には reviewer が **「真に finding がないときに何か挙げないと bias」を抑制し、0 件 = 正常終了を恐れない姿勢が loop 永久化を回避** と明言。詳細は [0 件 finding = 正常終了として受容する (false-positive 回避義務)](../heuristics/reviewer-zero-finding-as-legitimate-convergence.md) を参照。
