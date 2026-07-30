@@ -32,7 +32,7 @@ confidence: high
 
 ## 概要
 
-設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。pinky-swear な safeguard として残存し、レビュー時に CRITICAL として検出される。PR #559 の 3 CRITICAL + 5 HIGH のうち、4 件が同じ根 (Finding 1/2/4/5) に由来していた。
+設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。pinky-swear な safeguard として残存し、レビュー時に CRITICAL として検出される。起点事例の 3 CRITICAL + 5 HIGH のうち、4 件が同じ根 (Finding 1/2/4/5) に由来していた。
 
 ## 詳細
 
@@ -67,12 +67,12 @@ confidence: high
 Prose-only design を発見した場合の 3 択:
 
 1. **実装を追加** (推奨): 最も労力が大きいが設計意図を実現する
-2. **Prose を削除 or 意図を変更**: 実装しない / できないなら散文から除去して偽装を解く (例: PR #559 の 100-iteration limit は「意図的に cycle-count 上限を設けない」設計意図へ書き換え)
+2. **Prose を削除 or 意図を変更**: 実装しない / できないなら散文から除去して偽装を解く (例: 起点事例の 100-iteration limit は「意図的に cycle-count 上限を設けない」設計意図へ書き換え)
 3. **LLM-semantic check に格上げ**: bash 実装が脆弱な場合、LLM に semantic な判定を委ねる形で明示化 (例: root-cause gate の書式検査を LLM-semantic に移行)
 
 ### "機械化" 宣言 vs hook 検証不在（F-03 の拡張）
 
-prompt 側で LLM に evidence 出力 (例: `<!-- [routing-check] ingest=matched -->`) を MUST として義務化しつつ、対応する hook 側検出 logic (例: stop-guard.sh や workflow-incident-emit.sh での pattern 検査) が未実装だと「機械的強制」を謳う prose と実態が乖離する。PR #623 Issue #621 では Item 0 routing dispatcher の evidence 出力を prompt 側で義務化したが、LLM が silent skip した場合の検出 hook は scope 外として follow-up Issue 化された。
+prompt 側で LLM に evidence 出力 (例: `<!-- [routing-check] ingest=matched -->`) を MUST として義務化しつつ、対応する hook 側検出 logic (例: stop-guard.sh や workflow-incident-emit.sh での pattern 検査) が未実装だと「機械的強制」を謳う prose と実態が乖離する。routing dispatcher evidence 事例では Item 0 routing dispatcher の evidence 出力を prompt 側で義務化したが、LLM が silent skip した場合の検出 hook は scope 外として follow-up Issue 化された。
 
 **判定 heuristic**: prompt に「機械的」「強制」「義務化」のような文言が出現し、かつ対応する hook/script 層での検出コードが grep で見つからない場合、prose-only design の亜種として分類する。PR scope 分割の選択肢は以下:
 
@@ -80,13 +80,13 @@ prompt 側で LLM に evidence 出力 (例: `<!-- [routing-check] ingest=matched
 2. **follow-up Issue 化 + 当該 prose に Issue 番号を明記** (scope 管理、次 PR で解消)
 3. **"prompt 側のみ強制" と明示的に prose を書き換え** (機械的強制の誤謬除去)
 
-PR #623 cycle 1 は (2) を選択。prose に follow-up Issue 番号を記載することで読者に「prose 側と hook 側の gap は現時点で意図的」ことを伝える。
+routing dispatcher evidence 事例の cycle 1 は (2) を選択。prose に follow-up Issue 番号を記載することで読者に「prose 側と hook 側の gap は現時点で意図的」ことを伝える。
 
 ### MVP の未定義部分は「Note で明示」する（cycle 2 で追加）
 
 新規 SoT (Single Source of Truth) を MVP として作成する場合、すべての原則を完全実装できないことがある。その場合、未実装部分を **「曖昧に宣言する」のではなく「未定義であることを明示する Note」** で透明性を保つ。これにより読み手は「dead spec か / 後続定義予定か」を即座に判別できる。
 
-PR #705 (コメントベストプラクティス SoT 新設 MVP) cycle 2 では、SoT 文書の「適用フェーズ」概要表と各原則の「Where to Apply」節の不整合に対し、MVP スコープ尊重のため「未定義であることを明示する Note」選択肢を採用:
+コメント SoT 新設 MVP 事例の cycle 2 では、SoT 文書の「適用フェーズ」概要表と各原則の「Where to Apply」節の不整合に対し、MVP スコープ尊重のため「未定義であることを明示する Note」選択肢を採用:
 
 ```markdown
 ## 適用フェーズ
@@ -104,7 +104,7 @@ PR #705 (コメントベストプラクティス SoT 新設 MVP) cycle 2 では�
 
 ### prose ↔ code 不整合（cycle 14 で追加）
 
-PR #688 cycle 14 review で、`commands/issue/start.md` Phase 5.5.2 metrics 周辺で以下の不整合が検出された (MEDIUM):
+prose ↔ code 不整合事例の cycle 14 review で、`commands/issue/start.md` Phase 5.5.2 metrics 周辺で以下の不整合が検出された (MEDIUM):
 
 - **prose 宣言**: 「`state-read.sh` 失敗時に metrics output を skip する」
 - **bash 実装**: `val=""` で継続 (空 substitute が下流 heredoc に流入し partial corruption silent landed 経路)
@@ -121,7 +121,7 @@ LLM 解釈時の二律背反として「prose が正なのか code が正なの�
 
 ### Defense-in-depth claim と実コード経路の race window 乖離（cycle 5 で追加）
 
-PR #756 cycle 4 review で、`pre-compact.sh` / `post-compact.sh` の trap cleanup() 関数に追加した `_resolve_err` 削除参照が **dead code** として LOW × 1 (code-quality + error-handling 二重指摘) で検出された。具体的な構造:
+race window 乖離事例の cycle 4 review で、`pre-compact.sh` / `post-compact.sh` の trap cleanup() 関数に追加した `_resolve_err` 削除参照が **dead code** として LOW × 1 (code-quality + error-handling 二重指摘) で検出された。具体的な構造:
 
 - **コメント claim**: 「after trap install を防ぐ defense-in-depth として `_resolve_err` も trap cleanup で削除する」
 - **実コード経路**: `_resolve_err` の同期 rm が **trap install 前** で完了しているため、trap が install されたタイミングで `_resolve_err` は既に空 (= rm 不要)。trap cleanup() 内の追加 rm は常に no-op で実行される
@@ -134,21 +134,21 @@ PR #756 cycle 4 review で、`pre-compact.sh` / `post-compact.sh` の trap clean
 2. **claim と実コード経路の対称化選択肢**: defense-in-depth が無効化されている場合の対処は (a) dead code を削除 (claim 撤回)、(b) 同期 rm を trap install 後に移動 (claim 実現) の 2 択。一方を選択し commit message で明示する
 3. **trap cleanup の lifecycle scope**: trap cleanup() は「install 後に作成された tempfile」のみを対象とする。install 前に rm 済みの tempfile を再 rm する code は意味的 redundancy であり、reviewer が cycle 中に検出する LOW finding として顕在化する
 
-PR #756 cycle 5 fix では (a) の dead code 削除を選択し、F-01 (line-number reference 削除) と統合修正することでコメント整合性を維持した。本 anti-pattern は「defense-in-depth コメントの claim と実コード経路の time-ordering 乖離」として、**race window が存在しない箇所での誇張 claim** を防ぐ canonical 検出経路を提示する。
+race window 乖離事例の cycle 5 fix では (a) の dead code 削除を選択し、F-01 (line-number reference 削除) と統合修正することでコメント整合性を維持した。本 anti-pattern は「defense-in-depth コメントの claim と実コード経路の time-ordering 乖離」として、**race window が存在しない箇所での誇張 claim** を防ぐ canonical 検出経路を提示する。
 
-**経験則の系譜**: 本 sub-pattern は PR #688 cycle 14 の prose ↔ code 不整合 (失敗時 skip 宣言 vs 空 substitute) に類似するが、以下の点で異なる:
+**経験則の系譜**: 本 sub-pattern は prose ↔ code 不整合事例 (失敗時 skip 宣言 vs 空 substitute) に類似するが、以下の点で異なる:
 
-- PR #688 cycle 14: prose 宣言が **下流挙動への影響** を主張するが bash 実装が silent fall-through で履行しない
-- PR #756 cycle 5: prose 宣言が **race window 保護** を主張するが、保護対象の race window が time-ordering 上存在しない (実コード経路の time line で window が消滅している)
+- prose ↔ code 不整合事例: prose 宣言が **下流挙動への影響** を主張するが bash 実装が silent fall-through で履行しない
+- race window 乖離事例: prose 宣言が **race window 保護** を主張するが、保護対象の race window が time-ordering 上存在しない (実コード経路の time line で window が消滅している)
 
 両者とも prose-only design の sub-class だが、検出 heuristic が異なる (前者は下流の data flow trace、後者は code の time-ordering 検証)。
 
 ### data-contract emit の comment が phantom consumer を断定する（cycle 1-2 で追加）
 
-PR #2005 (setup 依存検査追加) で、新設した `[CONTEXT] DEP_CHECK` marker の emit 行コメントと後段散文が **存在しない consumer を present-tense で断定** し、2 reviewer (prompt-engineer + tech-writer) が同一箇所で MEDIUM 指摘 (High Confidence)。典型パターン表 row 3「sentinel/marker の consumer 不在」の亜種だが、以下の nuance が異なる:
+phantom consumer 事例 (setup 依存検査追加) で、新設した `[CONTEXT] DEP_CHECK` marker の emit 行コメントと後段散文が **存在しない consumer を present-tense で断定** し、2 reviewer (prompt-engineer + tech-writer) が同一箇所で MEDIUM 指摘 (High Confidence)。典型パターン表 row 3「sentinel/marker の consumer 不在」の亜種だが、以下の nuance が異なる:
 
 - **旧 row 3**: marker を emit するが consumer が無い = 純粋な dead code (marker に効果なし)
-- **PR #2005**: marker emit 自体は正当な **data contract / observability 目的** (Issue の Interface が「機械可読 marker で後続フェーズに渡す」と要求)。しかしコメントが「Phase 4.5.0 が jq= を参照する」/ 散文が「後続フェーズが参照する」と **具体的な consumer 関係を断定** した。実際には Phase 4.5.0 は marker を機械 parse せず独立に `command -v jq` を再実行し、jq 案内の重複排除は **marker 消費ではなく prose 参照** (NO_JQ メッセージが Phase 1.0 を文言で指す) で達成されていた
+- **phantom consumer 事例**: marker emit 自体は正当な **data contract / observability 目的** (Issue の Interface が「機械可読 marker で後続フェーズに渡す」と要求)。しかしコメントが「Phase 4.5.0 が jq= を参照する」/ 散文が「後続フェーズが参照する」と **具体的な consumer 関係を断定** した。実際には Phase 4.5.0 は marker を機械 parse せず独立に `command -v jq` を再実行し、jq 案内の重複排除は **marker 消費ではなく prose 参照** (NO_JQ メッセージが Phase 1.0 を文言で指す) で達成されていた
 
 **failure mode**: emit が「働いている」ため dead-code 検出 (row 3) では拾えない。marker の効果 (dedup) は別機構 (prose 参照) で実現されているのに、コメントが fictional な dataflow (marker → 4.5.0 が consume) を主張する。保守者に「marker が load-bearing」と誤認させる executable-spec 上の false claim。
 

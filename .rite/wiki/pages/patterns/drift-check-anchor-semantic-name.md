@@ -108,7 +108,7 @@ Phase 5.1 / Phase 5.2 / Phase 5.0.c のように同一 semantic の記述が複�
 
 ### 大量行挿入時のコメント内行番号参照 drift（cycle 5 の実測）
 
-PR #586 cycle 4 fix で Phase 1.3 ブロック (約 235 行) を init.md の Phase 1.2 と Phase 2 の間に挿入した結果、cycle 4 fix の F-02 修正コメント自身が「同一ファイル内 L555」を参照していたが、実際の対象行は L563 にずれた (8 行 drift)。cycle 5 review で F-02 として検出。
+大量行挿入事例の cycle 4 fix で Phase 1.3 ブロック (約 235 行) を init.md の Phase 1.2 と Phase 2 の間に挿入した結果、cycle 4 fix の F-02 修正コメント自身が「同一ファイル内 L555」を参照していたが、実際の対象行は L563 にずれた (8 行 drift)。cycle 5 review で F-02 として検出。
 
 本原則は DRIFT-CHECK ANCHOR コメントだけでなく、**fix コメント / 設計メモ / 概要説明など**「同一ファイル内の他箇所を参照するあらゆる散文」に拡張される:
 
@@ -118,7 +118,7 @@ PR #586 cycle 4 fix で Phase 1.3 ブロック (約 235 行) を init.md の Pha
 
 ### code slice 参照による semantic identifier の canonical 実証（実測）
 
-PR #600 cycle 1 では `plugins/rite/commands/wiki/lint.md` のコメント内に `Phase 6.0 (line 698)` という「Phase 番号 + literal 行番号」の混成表現が残っていた。同 PR の +2 行差分で実体は L700 に shift し、コメントが即 stale 化した。cycle 2 fix で `(line 698)` を `LC_ALL=C cat .rite/wiki/log.md` という **対象コードの特徴的コード片による論理参照** に置換することで完全解消。両 reviewer (prompt-engineer / code-quality) が以下を独立して高く評価:
+code slice 参照事例の cycle 1 では `plugins/rite/commands/wiki/lint.md` のコメント内に `Phase 6.0 (line 698)` という「Phase 番号 + literal 行番号」の混成表現が残っていた。同 PR の +2 行差分で実体は L700 に shift し、コメントが即 stale 化した。cycle 2 fix で `(line 698)` を `LC_ALL=C cat .rite/wiki/log.md` という **対象コードの特徴的コード片による論理参照** に置換することで完全解消。両 reviewer (prompt-engineer / code-quality) が以下を独立して高く評価:
 
 - **Grep で実体存在が機械検証可能**: 将来の読者が `grep 'LC_ALL=C cat .rite/wiki/log.md' lint.md` で target を確実に特定できる
 - **PR の +N 行差分で stale 化しない**: 行番号 anchor のように shift しない
@@ -126,7 +126,7 @@ PR #600 cycle 1 では `plugins/rite/commands/wiki/lint.md` のコメント内�
 
 canonical 記法の階層 (drift 耐性が高い順):
 
-1. **Phase 番号 + 特徴的コード片** (最推奨、PR #600 実証): `Phase 6.0 の \`LC_ALL=C cat .rite/wiki/log.md\``
+1. **Phase 番号 + 特徴的コード片** (最推奨、code slice 参照事例で実証): `Phase 6.0 の \`LC_ALL=C cat .rite/wiki/log.md\``
 2. **Phase 番号 + heading / function 名**: `Phase 5.0.c canonical commit message`
 3. **DRIFT-CHECK ANCHOR の semantic name**: `# >>> DRIFT-CHECK ANCHOR: ... <<<`
 4. **literal 行番号** (禁止): `(line 698)` / `L1331-1332`
@@ -135,7 +135,7 @@ canonical 記法の階層 (drift 耐性が高い順):
 
 ### line 番号 literal の brittleness 実証 + bidirectional backlink 拡張（実測）
 
-PR #605 で init.md L253 / L320 のコメント内に残存していた `L270-277` / `L84-L113` / `L281 付近` を semantic anchor 参照に置換した際、次の 2 点が実証された:
+backlink 導入事例で init.md L253 / L320 のコメント内に残存していた `L270-277` / `L84-L113` / `L281 付近` を semantic anchor 参照に置換した際、次の 2 点が実証された:
 
 1. **brittleness 実証**: 旧 `L270-277` は実際の該当コード (L275-L282) と **±3 行ずれ** ていた。参照先 `gitignore-health-check.sh` が minor revision を重ねるうち silent に drift した典型例で、「行番号 literal は書いた時点から陳腐化が始まる」原理を裏付けた。anchor 参照であれば grep で実体を再同定できるため、この drift は発生しない。
 2. **bidirectional backlink sub-pattern (新規)**: canonical 側 ANCHOR コメントに `# Downstream reference: <downstream-file>:<semantic-name>` という **逆方向のリンク** を併記することで、canonical 側から downstream (参照元) を grep 1 発で特定可能になる。片方向リンク (downstream → canonical のみ) では、canonical を編集する開発者が「この ANCHOR が他のどこから参照されているか」を知る手段がなく silent drift を誘発する。code-quality reviewer 推奨の強化策。
@@ -154,7 +154,7 @@ fi
 
 ### 入れ子追加時の outer/inner END 順序による well-formed nesting（実測）
 
-PR #617 で `.gitignore` 既存 `negation verification canonical` ANCHOR を inner として、それを包む outer ANCHOR `same_branch verification-first setup steps` を追加した際、HIGH finding として **「outer END を inner END より前に配置すると bracket matching が crossing 構造になる」** failure mode が検出された:
+入れ子 ANCHOR 事例で `.gitignore` 既存 `negation verification canonical` ANCHOR を inner として、それを包む outer ANCHOR `same_branch verification-first setup steps` を追加した際、HIGH finding として **「outer END を inner END より前に配置すると bracket matching が crossing 構造になる」** failure mode が検出された:
 
 ```
 [crossing 構造 — 禁止]
@@ -191,7 +191,7 @@ crossing 構造は以下の機械検証経路を破壊する:
 
 ### bidirectional backlink の team guideline 拡張と allowed redundancy（実測）
 
-PR #605 で導入された bidirectional backlink sub-pattern (`# Downstream reference: <downstream-file>`) を、PR #619 で **既存 5 ANCHOR (ingest.md Phase 5.1/5.2 の 4 site + lint.md Phase 8.1 の 1 site) に team guideline として一律適用** した。これにより新規 ANCHOR と既存 ANCHOR の表記が統一され、canonical 側を編集する開発者が「downstream をどこから探せばよいか」を全 ANCHOR で grep 1 発で特定できる状態になった (片方向リンク残存による silent drift 経路を排除)。
+backlink 導入事例で導入された bidirectional backlink sub-pattern (`# Downstream reference: <downstream-file>`) を、backlink 一律適用事例で **既存 5 ANCHOR (ingest.md Phase 5.1/5.2 の 4 site + lint.md Phase 8.1 の 1 site) に team guideline として一律適用** した。これにより新規 ANCHOR と既存 ANCHOR の表記が統一され、canonical 側を編集する開発者が「downstream をどこから探せばよいか」を全 ANCHOR で grep 1 発で特定できる状態になった (片方向リンク残存による silent drift 経路を排除)。
 
 両 reviewer (prompt-engineer / code-quality) が独立して以下の **allowed redundancy** 観察を確認:
 
@@ -209,7 +209,7 @@ PR #605 で導入された bidirectional backlink sub-pattern (`# Downstream ref
 
 ### bidirectional backlink の canonical format 統一（実測）
 
-PR #605 で bidirectional backlink sub-pattern を導入した時点と PR #619 で team guideline として 5 ANCHOR に一律適用した時点で、以下の 3 つの format dialect が並存していた:
+backlink 導入事例で bidirectional backlink sub-pattern を導入した時点と、backlink 一律適用事例で team guideline として 5 ANCHOR に一律適用した時点で、以下の 3 つの format dialect が並存していた:
 
 1. **コロン記法 (Wiki canonical)**: `Downstream reference: plugins/rite/commands/wiki/init.md:Phase 1.3.4`
 2. **スペース区切り（初期実装の dialect）**: `Downstream reference: plugins/rite/commands/wiki/init.md Phase 1.3.4 verification`
@@ -242,8 +242,8 @@ grep -E 'Downstream reference: [^ ]+:Phase [0-9]+\.[0-9]+' <file>
 
 NG pattern (将来 lint で検出):
 
-- `Downstream reference: <file> Phase X.Y` (スペース区切り) — PR #605 旧 dialect
-- `Downstream reference: <file> Phase X.Y (DRIFT-CHECK ANCHOR: ...)` (括弧記法) — PR #619 旧 dialect
+- `Downstream reference: <file> Phase X.Y` (スペース区切り) — backlink 導入事例の旧 dialect
+- `Downstream reference: <file> Phase X.Y (DRIFT-CHECK ANCHOR: ...)` (括弧記法) — backlink 一律適用事例の旧 dialect
 
 **refactor 着地の cross-validation**（実測）: canonical format 統一 refactor を develop へ merge する PR の multi-reviewer review (prompt-engineer / code-quality) で 0 findings / severity 全 0 の healthy landing を確認。extract された observation は以下の 4 点で、いずれも「format 統一 refactor を scope 外汚染なく着地させる」canonical application として機能した:
 
@@ -258,9 +258,9 @@ NG pattern (将来 lint で検出):
 
 「line 番号 literal 禁止 / semantic anchor 化」規約を確立した PR の merge 直後に作成された後続 PR が、その規約を設計メモ記述で破る G4 HIGH が cycle 2 で検出された:
 
-- PR #617 merge timestamp: 2026-04-20T04:30 頃
-- PR #624 初回 commit timestamp: 2026-04-20T14:33 頃 (約 10 時間後)
-- 違反箇所: PR #624 Phase 9.1 設計メモの非レンダリング注釈内で Step 番号 ↔ Output ordering の対応を literal 行番号参照で記述
+- 規約を確立した入れ子 ANCHOR 事例の merge timestamp: 2026-04-20T04:30 頃
+- 後続 PR の初回 commit timestamp: 2026-04-20T14:33 頃 (約 10 時間後)
+- 違反箇所: 後続 PR の Phase 9.1 設計メモの非レンダリング注釈内で Step 番号 ↔ Output ordering の対応を literal 行番号参照で記述
 
 直前 merge PR で確立した規約は、当該 repository の contributors 全員が把握しているとは限らない。特に複数の PR を並行で手掛けている場合、merge 済み PR の PR body から抽出すべき規約の認知に gap が発生し、同規約の violation が 1 日以内に発生する。
 
@@ -275,7 +275,7 @@ NG pattern (将来 lint で検出):
 
 ### 実測された 5 種表記の散文形式 drift
 
-PR #661 では 4-arg DRIFT-CHECK ANCHOR 拡張時に、cycle 1 で **2 site 同時に** hardcoded line-number reference が新規導入された:
+4-arg 拡張事例では 4-arg DRIFT-CHECK ANCHOR 拡張時に、cycle 1 で **2 site 同時に** hardcoded line-number reference が新規導入された:
 
 | Site | 表記形式 | 違反内容 |
 |------|---------|---------|
@@ -286,7 +286,7 @@ cycle 2 fix で cleanup.md の `(line N, M)` 表記を structural reference 化�
 
 **stop-guard.sh で 3 箇所明文化されている project convention (line-number 参照を避ける、cycle 8 F-05) は本ページの canonical reference**。本 PR cycle 1 fix の commit message も `learned: ANCHOR comment の prose 内 bash 引数 enumeration は literal block と同等の同期義務がある` と教訓化していたにもかかわらず、横展開検査が cleanup.md 1 ファイルに留まり、create-interview.md は scope 外に落ちた。
 
-**5 種表記すべてを scan 対象にする canonical 拡張**: drift-check-anchor lint pattern を以下の 5 種すべてに対応させる必要がある (REC-04 として PR #661 で別 Issue 候補化):
+**5 種表記すべてを scan 対象にする canonical 拡張**: drift-check-anchor lint pattern を以下の 5 種すべてに対応させる必要がある (REC-04 として 4-arg 拡張事例で別 Issue 候補化):
 
 1. `(line N, M)` parenthesized form
 2. `(L<num>)` short form (bracket variant)
@@ -296,7 +296,7 @@ cycle 2 fix で cleanup.md の `(line N, M)` 表記を structural reference 化�
 
 ### 4-arg DRIFT-CHECK ANCHOR symmetry 拡張の canonical procedure
 
-既存の symmetry 概念に新しい引数を昇格させる作業 (3-arg → 4-arg) は、影響を受ける anchor location 全件を事前列挙してチェックリスト化することで drift を防げる。PR #661 では:
+既存の symmetry 概念に新しい引数を昇格させる作業 (3-arg → 4-arg) は、影響を受ける anchor location 全件を事前列挙してチェックリスト化することで drift を防げる。4-arg 拡張事例では:
 
 | Site | 4-arg 化対象 | Result |
 |------|-------------|--------|
@@ -304,7 +304,7 @@ cycle 2 fix で cleanup.md の `(line N, M)` 表記を structural reference 化�
 | `commands/issue/create-interview.md` Pre-flight + Return Output re-patch | literal block (×2) | cycle 1 で同期完了 |
 | `commands/pr/cleanup.md` Step 0 | literal block | cycle 1 で同期完了 |
 | `hooks/stop-guard.sh` case arm WORKFLOW_HINT | literal block | cycle 1 で同期完了 |
-| `commands/issue/create-interview.md` Issue #651 enhancement blockquote | **prose 側 1 site のみ 3-arg 表記残留 (cycle 2 で検出)** | cycle 2 で同期完了 |
+| `commands/issue/create-interview.md` の enhancement blockquote | **prose 側 1 site のみ 3-arg 表記残留 (cycle 2 で検出)** | cycle 2 で同期完了 |
 
 **ANCHOR comment と literal の pair sync invariant**: ANCHOR comment と literal は同期 invariant を持つ。片方を更新する PR は対称先の comment も同時更新しないと、後続 PR で comment と literal の drift を見て「3-arg が正」と誤判断するリスクが残る (cycle 1 で 3 箇所同時に発覚した HIGH 3 件はこの構造)。
 
@@ -312,7 +312,7 @@ cycle 2 fix で cleanup.md の `(line N, M)` 表記を structural reference 化�
 
 cycle 4 review で `(line ~N)` のような **approximation 接尾辞 `~` 付き** literal 行番号参照が cycle 2 fix 時に 2 箇所、cycle 4 fix 時に 3 箇所新規導入された自己撞着が HIGH × 1 (code-quality reviewer) で検出された。SoT 原則 3 (no_line_or_cycle_reference) は「cycle/finding ID 参照だけでなく行番号参照も禁止」だが、approximation 接尾辞 `~` を含むケースが「概数だから drift しない」と誤認されやすく、5 種表記に **6 種目** として追加すべき pattern であることが実測された。
 
-PR #756 cycle 5 fix で 5 箇所 (cycle 4 fix 3 箇所 + cycle 2 fix 2 箇所) を全て削除し、`grep -E '\(line[s]?\s*[~]?[0-9]+'` を SoT 側に lint 自動化することを wiki 経験則として蓄積。
+`~` 接尾辞禁止事例の cycle 5 fix で 5 箇所 (cycle 4 fix 3 箇所 + cycle 2 fix 2 箇所) を全て削除し、`grep -E '\(line[s]?\s*[~]?[0-9]+'` を SoT 側に lint 自動化することを wiki 経験則として蓄積。
 
 **禁止対象 6 種表記の canonical list**（6 種目は後から追加）:
 
@@ -343,7 +343,7 @@ PR #756 cycle 5 fix で 5 箇所 (cycle 4 fix 3 箇所 + cycle 2 fix 2 箇所) �
 
 ### Partial symbolic anchor 採用が新規追加で drift 再発（cycle 1→3 の実測）
 
-PR #1035 cycle 1 fix で symbolic anchor 化を **partial** に適用したが、cycle 3 で peer 参照を新規追加する際に literal 行番号で記述した。結果として「既存 anchor は symbolic / 新規 anchor は hardcoded」の混在状態が成立し、cycle 3 で line drift が再発 (累積 N 回目の同型再発)。
+partial 採用事例の cycle 1 fix で symbolic anchor 化を **partial** に適用したが、cycle 3 で peer 参照を新規追加する際に literal 行番号で記述した。結果として「既存 anchor は symbolic / 新規 anchor は hardcoded」の混在状態が成立し、cycle 3 で line drift が再発 (累積 N 回目の同型再発)。
 
 教訓:
 
@@ -363,7 +363,7 @@ cycle 1 → 3 の 2 度同型再発は、本ページの **canonical scope 拡�
 
 2. **semantic anchor 採用後の残る drift 経路の明示**: section 見出し名 / placeholder 名による anchor は行番号 drift には耐えるが、**見出し名やラベルがリネームされると参照が切れる**新たな drift 経路を持つ。SoT (ingest.md) の見出し名と literal 一致させ、見出し名変更時に参照元 (wiki-patterns.md) も同期更新する契約を前提に運用する (行番号 citation より顕著に安定的なため採用自体は妥当という design_confirmation)。
 
-scope 維持の判断: 同一ファイル `wiki-patterns.md` 内の sibling literal citation (L268 `trigger.sh L226-231` / L275 `L308-320` / L276 `lint.md L72-86`) は本 PR では touch せず follow-up Issue #1186 へ分離した。`asymmetric-fix-transcription` の「対称位置への伝播漏れ」を認識しつつ、scope creep を避けて別 Issue として切り出すのが clean (本ページ canonical の「禁止対象表記」を ファイル全体へ一括適用するのは別 PR の責務)。
+scope 維持の判断: 同一ファイル `wiki-patterns.md` 内の sibling literal citation (L268 `trigger.sh L226-231` / L275 `L308-320` / L276 `lint.md L72-86`) は本 PR では touch せず follow-up Issue へ分離した。`asymmetric-fix-transcription` の「対称位置への伝播漏れ」を認識しつつ、scope creep を避けて別 Issue として切り出すのが clean (本ページ canonical の「禁止対象表記」を ファイル全体へ一括適用するのは別 PR の責務)。
 
 ### sibling literal citation の完遂と Doc-Heavy verification による独立検証（実測）
 
@@ -379,13 +379,13 @@ scope 維持の判断: 同一ファイル `wiki-patterns.md` 内の sibling lite
 
 1. **引用文言の drift も伴っていた**: L268 の旧 citation は行番号だけでなく引用文言「3 sites still re-implement inline」自体が実コメント (`Three sites still re-implement YAML parsing inline`) と不一致だった。行番号 citation を semantic anchor 化する際は、anchor 文言を実体と verbatim 一致させる補正も同時に行う (引用 paraphrase の drift は行番号 drift と独立して発生する)。
 2. **Doc-Heavy mode Implementation Coverage 検証が anchor の実在性・一意性の独立検証として機能**: review で tech-writer (Doc-Heavy mode) + code-quality の 2 reviewer が、新 anchor が参照する識別子 (self-comment 文言 / `case "$wiki_enabled"` の出現 1 回・`*) exit 2` 分岐 / lint.md ステップ 1.1 見出し + branch_strategy case) を全件 Grep/Read で照合し、実在かつ一意に解決可能であることを確認 (0 findings / 1 cycle mergeable)。semantic anchor 採用後の「見出しリネームで切れる残存 drift 経路」（前項の design_confirmation）に対する review-time の機械検証層として機能する。
-3. **pre-existing boundary recommendation の revert test 分離**: 同一 doc 行 (`branch_strategy` 検証 bullet) の pre-existing 部分 (ingest.md fail-fast を「`*` arm」と記述) に reviewer が boundary recommendation を出したが、revert test で diff 変更箇所外と判定し別 Issue #1189 へ分離 (scope creep 回避)。citation 整備 PR でも本体スコープ (行番号 → anchor) に集中し、隣接 pre-existing 事項は別 Issue 化するのが clean。
+3. **pre-existing boundary recommendation の revert test 分離**: 同一 doc 行 (`branch_strategy` 検証 bullet) の pre-existing 部分 (ingest.md fail-fast を「`*` arm」と記述) に reviewer が boundary recommendation を出したが、revert test で diff 変更箇所外と判定し別 Issue へ分離 (scope creep 回避)。citation 整備 PR でも本体スコープ (行番号 → anchor) に集中し、隣接 pre-existing 事項は別 Issue 化するのが clean。
 
 ### 相対パス hop 数コメントは基点 (file vs directory) で 1 ずれる — hop 数でなく基点+到達先を書く
 
 `L[0-9]+` 行番号と同様、**相対パスの hop 数をコメントで「N 階層上」と数える**のも hand-maintained な数値であり drift 源になる。特に **ディレクトリ変数** (例: `SCRIPT_DIR`) を基点とする `../..` のような相対式は、「ファイル基点で N 階層」と「ディレクトリ基点で N hop」で数え方が 1 ずれ、comment/code 矛盾を生みやすい。
 
-PR #1306 では `SCRIPT_DIR` (= `hooks/scripts/` ディレクトリ) を基点とする `$SCRIPT_DIR/../..` (2 hop) のコードに対し、コメントが「三階層上」(ファイル基点の数え方) と記述していた。code は正しいが comment が 1 ずれており、cycle 2 reviewer は LOW/nit-noted、cycle 3 reviewer は「将来コメントを信じて `../../..` に誤修正 → PLUGIN_ROOT 破綻 (reconcile / self-ref path 両方)」とより強い current-pr 根拠で MEDIUM 昇格した (同一 comment-nit の severity/scope が reviewer 間で LOW/nit-noted ↔ MEDIUM/current-pr に非決定に振れた例)。
+hop 数コメント事例では `SCRIPT_DIR` (= `hooks/scripts/` ディレクトリ) を基点とする `$SCRIPT_DIR/../..` (2 hop) のコードに対し、コメントが「三階層上」(ファイル基点の数え方) と記述していた。code は正しいが comment が 1 ずれており、cycle 2 reviewer は LOW/nit-noted、cycle 3 reviewer は「将来コメントを信じて `../../..` に誤修正 → PLUGIN_ROOT 破綻 (reconcile / self-ref path 両方)」とより強い current-pr 根拠で MEDIUM 昇格した (同一 comment-nit の severity/scope が reviewer 間で LOW/nit-noted ↔ MEDIUM/current-pr に非決定に振れた例)。
 
 **fix (drift-free 表現)**: hop 数のカウントをやめ、「基点 (`SCRIPT_DIR`) + 到達先 (`plugins/rite`) + 相対式 (`../..`)」を名前で明示する (code は不変)。本ページ canonical の「行番号の代わりに到達先 code slice を書く」と同型で、hand-maintained な hop 数を到達先の固有名に置換することで drift 経路を閉じる。
 
