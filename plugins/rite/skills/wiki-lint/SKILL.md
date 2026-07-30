@@ -33,7 +33,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
-| **説明的番号参照 (descriptive_number_ref)** | ページ本文に残った説明目的の Issue/PR/commit 番号参照（「PR #N で対応」「(refs #N)」等）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter `sources.ref` と TODO/FIXME は除外 | **No** (`n_warnings` 不加算、ステップ 7.5) |
+| **説明的番号参照 (descriptive_number_ref)** | ページ本文に残った説明目的の Issue/PR 番号参照（裸の「PR #N は…」「Issue #N」、括弧付き「(refs #N)」、日本語の「#N で対応」「詳細は #N」）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter・`## ソース` 節・コードフェンス / スパン・TODO/FIXME は除外 | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
 **設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
 
@@ -615,50 +615,44 @@ fi
 
 ## ステップ 7.5: 説明的番号参照検出 (informational)
 
-Wiki ページ本文に残った**説明目的の Issue/PR/commit 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N で対応」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
+Wiki ページ本文に残った**説明目的の Issue/PR 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N は…を統一した」「Issue #N 系譜の継続」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。括弧やキーワードに包まれない裸の `PR #N` / `Issue #N` も対象で、これは SoT §C Detection Heuristics が reviewer 側 regex として既に宣言している範囲に機構を追随させたもの。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
 
 **検出対象と除外**:
-- 対象: ステップ 2 で収集した `pages_list` の各ページ**本文**（YAML frontmatter を除く）
-- 除外: frontmatter の `sources:` / `ref:`（Raw Source ファイルパス参照は番号ではなく provenance のため維持）、TODO/FIXME を含む行（前方追跡ポインタ）
+- 対象: ステップ 2 で収集した `pages_list` の各ページ**本文**
+- 除外: frontmatter（`sources:` / `ref:` は番号ではなく provenance のため維持）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME を含む行（前方追跡ポインタ）
 
-**検出ロジック** (`pages_list` の各ページに対して):
+検出は 2 規則の**正規化**で表現する（表層形の列挙ではない）。R1 は「参照キーワードが番号の直前に来る」形で、括弧付き `(refs #N)` / `see PR #N` / 裸の `PR #N は…` はすべてこの 1 規則に畳まれる。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は正当な文脈が多すぎるため検出しない。語境界は `([^0-9]|$)` で表現する（gawk の `\b` はバックスペース扱いで never-match になるため使用禁止）。各除外の判断根拠と副作用（その範囲内では既知の再発が見えなくなる）は helper 冒頭コメントに記録している。
+
+**検出ロジック**は `wiki-lint-descriptive-refs.sh` に委譲する（ステップ 6.0 / 6.2 helper と同じ stdin `pages_list` + marker block + read_ok enum 契約）。
+
+> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・本文抽出フィルタ（frontmatter / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME）・2 規則の検出・placeholder residue gate / partial pollution gate をすべて内包する。
+
+**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約）。
 
 ```bash
-# `pages_list` は改行区切りの scalar 文字列のため、
-# `while IFS= read -r ... <<< "$pages_list"` で 1 ページずつ走査する (配列展開は不可)。
-# ページ本文は separate_branch 戦略で working tree に無いため、
-# `git show "${wiki_branch}:$page" || cat "$page"` で取得する。
-# frontmatter(先頭の --- ブロック) を除いた本文のみを対象に、SoT 由来の説明的参照パターンを grep。
-#
-# 本 bash block は独立した Bash tool 呼び出しで shell state が persist しないため、
-# `wiki_branch` をブロック先頭で literal substitute し、placeholder 残留を fail-fast する
-# (未 substitute だと separate_branch で git show / cat 双方が空を返し silent no-op に倒れるため)。
-wiki_branch="{wiki_branch}"
-case "$wiki_branch" in
-  "{"*"}")
-    echo "ERROR: ステップ 7.5 の {wiki_branch} placeholder が literal substitute されていません" >&2
-    exit 1 ;;
-esac
-n_descriptive_refs=0
-while IFS= read -r page; do
-  [ -z "$page" ] && continue
-  page_content=$(git show "${wiki_branch}:$page" 2>/dev/null || cat "$page" 2>/dev/null)
-  # frontmatter を除去 (先頭 --- から次の --- まで)、TODO/FIXME 行を除外
-  body=$(printf '%s\n' "$page_content" \
-    | awk 'NR==1 && /^---$/{infm=1; next} infm && /^---$/{infm=0; next} !infm' \
-    | grep -vE 'TODO|FIXME')
-  # SoT 禁止句リスト由来の説明的参照: (Issue/PR/refs #N)・refs/see PR #N・#N で対応・詳細は #N
-  # grep -c は no-match 時に stdout へ `0` を出力し exit 1 を返すため、`|| echo 0` だと
-  # `0\n0` 二重出力になる。`|| true` で rc のみ正規化し grep 自身の単一行 `0` を活かす。
-  hits=$(printf '%s\n' "$body" | grep -coE '[（(](Issue|PR|refs|Refs)[^)）]*#[0-9]+|(refs|Refs|see PR|See PR) #[0-9]+|(PR )?#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+' || true)
-  case "$hits" in ''|*[!0-9]*) hits=0 ;; esac
-  if [ "$hits" -gt 0 ]; then
-    echo "WikiDescriptiveRef: page=${page#*.rite/wiki/}, hits=$hits" >&2
-    n_descriptive_refs=$((n_descriptive_refs + hits))
-  fi
-done <<< "$pages_list"
-echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
+# plugin_root 解決 (ステップ 2.1 の inline one-liner。
+#  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-descriptive-refs.sh" ]; then
+  # helper 不在 (marketplace install で scripts/ を持たない等): informational 指標のため
+  # 0 件で縮退し lint 本体は継続する。ステップ 6.0 / 6.2 の集合構築と違い、本指標は
+  # 他の判定の入力にならないため io_error 扱いにする必要がない。
+  echo "WARNING: wiki-lint-descriptive-refs.sh が見つからないため説明的番号参照検出をスキップします (plugin_root='${plugin_root:-<empty>}')" >&2
+  echo "---descriptive_refs_begin---"
+  echo "---descriptive_refs_end---"
+  echo "descriptive_refs_pages=0"
+  echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=0"
+  echo "descriptive_refs_read_ok=skipped_helper_missing"
+else
+  bash "$plugin_root/hooks/scripts/wiki-lint-descriptive-refs.sh" \
+    --branch-strategy "{branch_strategy}" --wiki-branch "{wiki_branch}" <<'PAGES_LIST_EOF'
+{pages_list}
+PAGES_LIST_EOF
+fi
 ```
+
+**`descriptive_refs_read_ok` enum**: `true`（全ページ読出成功）/ `io_error`（ページが存在するのに全件読出失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。`io_error` / `skipped_helper_missing` のときステップ 9 完了レポートの該当行に「実測されていない」旨を併記する。
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
@@ -932,7 +926,7 @@ Wiki Lint が完了しました。
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
 
-**`{n_descriptive_refs}` 展開ルール**: LLM は ステップ 7.5 bash block stdout の `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 行から値を読み取り `{n_descriptive_refs}` に展開する。ステップ 7.5 が skip された（`pages_list` 空）場合は `0`。
+**`{n_descriptive_refs}` 展開ルール**: LLM は ステップ 7.5 bash block stdout の `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 行から値を読み取り `{n_descriptive_refs}` に展開する。ステップ 7.5 が skip された（`pages_list` 空）場合は `0`。`descriptive_refs_read_ok` が `true` 以外（`io_error` / `skipped_helper_missing`）のときは、件数に続けて「（未実測: {read_ok 値}）」を併記する — 読出失敗由来の `0` を「解消済み」と読ませないため。
 
 **`{stale_check_ok_note}` / `{orphan_check_ok_note}` / `{broken_refs_read_ok_note}` 展開ルール**: LLM は ステップ 4 / 5 / 7 の helper stdout から `stale_check_ok=` / `orphan_check_ok=` / `broken_refs_read_ok=` を読み取り、それぞれ独立に展開する。ステップ 3-7 skip 経路 (処理対象 0 件) では空文字列:
 

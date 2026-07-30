@@ -46,14 +46,30 @@
 #                  Finding IDs are scoped to one review run; the reference
 #                  decays the moment that review is closed.
 #
-#   P5: descriptive Issue/PR reference (English, SoT 禁止句リスト由来)
-#       regex: ([Ss]ee|[Rr]efs|Related to|Closes|Fixes|Resolves)( +PR)? +#[0-9]+
-#       semantics: "See #N" / "Closes #N" / "(refs #N)" 等、Why の代替として貼られた
-#                  説明的参照。番号を辿っても背景は得られないため、Why を散文で残すべき。
+#   P5: descriptive Issue/PR reference (keyword + number, SoT 禁止句リスト由来)
+#       regex: (Issues?|PRs?|[Rr]efs?|[Ss]ee|Related to|Closes|Fixes|Resolves) *#[0-9]+([^0-9]|$)
+#       semantics: "See #N" / "Closes #N" / "(refs #N)" / 裸の "PR #N は…" 等、Why の
+#                  代替として貼られた説明的参照。番号を辿っても背景は得られないため、
+#                  Why を散文で残すべき。
+#                  キーワード列は「語彙」であって表層形の列挙ではない: 括弧付き
+#                  "(refs #N)"・"see PR #N"・裸の "PR #N" はすべて「キーワード、任意の
+#                  空白、番号」に畳まれるため 1 規則で足りる。新しい形に対応するときは
+#                  語彙に 1 語足すのであって、分岐を増やさない。
+#                  裸の `#N` (キーワードなし単独形) は意図的に検出しない — 正当な文脈が
+#                  多すぎて機械的に切り分けられず、対応するには除外を過大に広げる必要が
+#                  生じるため。
 #
-#   P6: descriptive Issue/PR reference (Japanese, SoT 禁止句リスト由来)
-#       regex: (PR )?#[0-9]+ ?で(別途)?対応  および  詳細は ?#[0-9]+
-#       semantics: 「PR #N で対応」「#N で別途対応」「詳細は #N」等の説明的参照。
+#   P6: descriptive Issue/PR reference (keyword-less Japanese, SoT 禁止句リスト由来)
+#       regex: #[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+([^0-9]|$)
+#       semantics: 「#N で対応」「#N で別途対応」「詳細は #N」。参照キーワードを持たない
+#                  ため P5 へは畳めない 2 構文を 1 つの alternation にまとめる。
+#
+# Word boundary:
+#   番号一致は `([^0-9]|$)` で終える (`#204` が `#2047` の途中で止まらない)。貪欲な
+#   `[0-9]+` が既に数字列の末尾まで到達するため実効は同じだが、明示することで将来
+#   番号パターンを狭めたときに prefix 衝突が無言で再発するのを防ぐ契約にする。
+#   NOTE: ここは文字クラスであって `\b` にしてはならない — gawk は `\b` をバックスペース
+#   として読むため `/#[0-9]+\b/` は永久に一致せず、検出器が無言で沈黙する。
 #
 # Whitelist (line-level skip):
 #
@@ -65,11 +81,27 @@
 #
 #   ファイル名アンカー (xxx.test.sh 等) は #N を含まないため P5/P6 に該当せず自然に除外される。
 #
+# Descriptive-reference exclusions (P5 / P6 のみに適用。P1-P4 の挙動は不変):
+#
+#   X1 code fence      — ``` で囲まれた範囲。コマンドや regex を逐語引用する場所であり、
+#                        そこにある番号は主張ではなく literal。
+#   X2 inline code span— `` `refs #204` `` 等。X1 と同じ理由。span は削除ではなく `_` へ
+#                        置換する: 削除するとキーワードと後続番号が隣接して偽の一致を
+#                        作り出すため。
+#   X3 `## ソース` 節   — Wiki ページの provenance リンクラベル (`- [PR #N review results](...)`)
+#                        は出所の監査証跡として維持対象。走査すると当該節を持つ全ページが
+#                        誤検出になる。
+#
+#   いずれの除外もその範囲内では既知アンチパターンの再発が見えなくなる。P1-P4 に広げないのは
+#   その盲点を説明的参照の検出に限定するため (既存 31 件の検出結果を変えない)。
+#
 #   Self-exclusion: this script's own regex literals would otherwise match.
 #   When --all is requested the find walk skips (1) this script's own path,
-#   (2) the SoT 本体 comment-best-practices.md, and (3) parity test
-#   comment-best-practices-parity.test.sh — 後二者は禁止句を「定義・例示」する
-#   性質上、走査すると Bad 例の語句が本物の違反として誤検出されるため除外する。
+#   (2) the SoT 本体 comment-best-practices.md, (3) parity test
+#   comment-best-practices-parity.test.sh, and (4) 検出器自身の test 2 本
+#   (comment-journal-check.test.sh / wiki-lint-descriptive-refs.test.sh) —
+#   (2)-(4) は禁止句を「定義・例示」する性質上、走査すると Bad 例の語句 (test では
+#   fixture 文字列) が本物の違反として誤検出されるため除外する。
 #
 # Future extension: rite-config.yml workflow.lint.comment_journal.whitelist
 # can list extra prefix tokens. Not implemented in this revision; the prefix
@@ -104,11 +136,13 @@ Detected patterns:
   P2  旧実装(は|では)
   P3  PR #N cycle N fix
   P4  cycle N F-N で(導入|確立|集約)
-  P5  descriptive Issue/PR ref (See/Refs/Related to/Closes/Fixes/Resolves #N)
+  P5  descriptive Issue/PR ref (Issue/PR/Refs/See/Related to/Closes/Fixes/Resolves #N)
   P6  descriptive Issue/PR ref ja (#N で(別途)対応 / 詳細は #N)
 
 Whitelist markers (line-level skip):
   <!-- example:    /    # example:    /    // example:    /    TODO / FIXME
+
+Descriptive-ref exclusions (P5/P6 only): code fence, inline code span, "## ソース" section
 
 Scan scope (--all):
   plugins/rite/**/*.{sh,md}, docs/**/*.md, .rite/wiki/**/*.md
@@ -166,6 +200,8 @@ if [ "$USE_ALL" -eq 1 ]; then
       "$self_rel") continue ;;
       plugins/rite/skills/rite-workflow/references/comment-best-practices.md) continue ;;
       plugins/rite/hooks/tests/comment-best-practices-parity.test.sh) continue ;;
+      plugins/rite/hooks/tests/comment-journal-check.test.sh) continue ;;
+      plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh) continue ;;
     esac
     TARGETS+=("$f")
   done < <(find "${scan_roots[@]}" -type f \( -name '*.sh' -o -name '*.md' \) 2>/dev/null | sort)
@@ -198,14 +234,28 @@ check_file() {
     return 0
   fi
   awk -v F="$file" '
+    FNR == 1 { infence = 0; insources = 0 }
     {
       line = $0
+      # コードフェンスと `## ソース` 節の状態は、どの `next` よりも先に更新する。
+      # TODO を含む行や whitelist 行で先に抜けると infence が desync し、以降の
+      # フェンス内外の判定が丸ごとずれる (P5/P6 の除外 X1 / X3 が壊れる)。
+      if (line ~ /^[[:space:]]*```/) { infence = !infence; fence_marker = 1 } else fence_marker = 0
+      if (line ~ /^##[[:space:]]+ソース[[:space:]]*$/) insources = 1
+
       # Whitelist: any line carrying an "example:" marker is skipped wholesale.
       if (line ~ /(<!--[[:space:]]*example:|#[[:space:]]+example:|\/\/[[:space:]]+example:)/) next
       # 廃止判定ルール (comment-best-practices.md): TODO/FIXME に添えた追跡番号は
       # 「前方追跡ポインタ (維持)」であり説明的参照ではないため、TODO/FIXME 行は走査からスキップする。
       # これにより `# TODO(#123): ...` / `<!-- FIXME #99 -->` 等を誤検出しない。
       if (line ~ /(TODO|FIXME)/) next
+
+      # P5/P6 専用の走査対象行: インラインコードスパンを `_` へマスクした line。
+      # `_` は空文字ではない — 空にするとキーワードと後続番号が隣接して偽の一致を作る。
+      ref_line = line
+      gsub(/`[^`]*`/, "_", ref_line)
+      # 除外 X1 (フェンス内 / フェンス記号行そのもの) と X3 (`## ソース` 節以降) を適用する。
+      ref_scan = (!infence && !fence_marker && !insources)
 
       # P1: verified-review cycle N
       pos = 1
@@ -243,29 +293,31 @@ check_file() {
         pos = pos + RSTART + RLENGTH - 1
       }
 
-      # P5: 英語の説明的 Issue/PR 参照 (SoT 禁止句リスト由来): See / Refs / Related to / Closes / Fixes / Resolves #N
+      if (!ref_scan) next
+
+      # P5: 参照キーワード + 番号 (裸の `PR #N` / `Issue #N` を含む)。
       #     ファイル名アンカー (xxx.test.sh 等) は #N を含まないため本パターンに該当せず、自然に除外される。
+      #     報告文字列からは語境界のために消費した末尾 1 文字を落とす (行末一致時は消費なし)。
       pos = 1
-      while (pos <= length(line)) {
-        rest = substr(line, pos)
-        if (!match(rest, /([Ss]ee|[Rr]efs|Related to|Closes|Fixes|Resolves)( +PR)? +#[0-9]+/)) break
-        print "[comment-journal][P5] " F ":" NR ": descriptive issue/PR reference: " substr(rest, RSTART, RLENGTH)
+      while (pos <= length(ref_line)) {
+        rest = substr(ref_line, pos)
+        if (!match(rest, /(Issues?|PRs?|[Rr]efs?|[Ss]ee|Related to|Closes|Fixes|Resolves) *#[0-9]+([^0-9]|$)/)) break
+        hit = substr(rest, RSTART, RLENGTH)
+        # 数字の直後に境界文字を 1 つ消費した場合だけ落とす。無条件に末尾 1 文字を削ると
+        # P6 の「#N で別途対応」のような数字で終わらない一致まで壊れる。
+        if (hit ~ /[0-9][^0-9]$/) hit = substr(hit, 1, length(hit) - 1)
+        print "[comment-journal][P5] " F ":" NR ": descriptive issue/PR reference: " hit
         pos = pos + RSTART + RLENGTH - 1
       }
 
-      # P6: 日本語の説明的 Issue/PR 参照 (SoT 禁止句リスト由来): (PR )#N で(別途)対応 / 詳細は #N
+      # P6: 参照キーワードを持たない日本語 2 構文 (#N で(別途)対応 / 詳細は #N)。
       pos = 1
-      while (pos <= length(line)) {
-        rest = substr(line, pos)
-        if (!match(rest, /(PR )?#[0-9]+ ?で(別途)?対応/)) break
-        print "[comment-journal][P6] " F ":" NR ": descriptive issue/PR reference (ja): " substr(rest, RSTART, RLENGTH)
-        pos = pos + RSTART + RLENGTH - 1
-      }
-      pos = 1
-      while (pos <= length(line)) {
-        rest = substr(line, pos)
-        if (!match(rest, /詳細は ?#[0-9]+/)) break
-        print "[comment-journal][P6] " F ":" NR ": descriptive issue/PR reference (ja): " substr(rest, RSTART, RLENGTH)
+      while (pos <= length(ref_line)) {
+        rest = substr(ref_line, pos)
+        if (!match(rest, /#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+([^0-9]|$)/)) break
+        hit = substr(rest, RSTART, RLENGTH)
+        if (hit ~ /[0-9][^0-9]$/) hit = substr(hit, 1, length(hit) - 1)
+        print "[comment-journal][P6] " F ":" NR ": descriptive issue/PR reference (ja): " hit
         pos = pos + RSTART + RLENGTH - 1
       }
     }
