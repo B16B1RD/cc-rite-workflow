@@ -34,6 +34,8 @@ Exclusions: fenced code blocks, range form `:N-M`, backtick-quoted spans, self. 
 
 ## Comment journal narration (comment-journal-check.sh)
 
+> P5/P6（説明的番号参照）の検出設計の根拠・除外の実測値は `../../wiki-lint/references/descriptive-refs-rationale.md` が SoT。本節は P5/P6 の**検出定義**（キーワード語彙・whitelist・self-exclude 判断）を扱う。
+
 Detects high-confidence narrative comment violations **and descriptive Issue/PR number references** in `plugins/rite/**/*.{sh,md}`, repo-root `docs/**/*.md`, and `.rite/wiki/**/*.md` (ドキュメント散文・Wiki ページまでスコープ拡張 — SoT [適用スコープ](../../rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般). This is the fast-fail mechanical layer below the LLM reviewers — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments.
 
 Detected patterns:
@@ -42,10 +44,20 @@ Detected patterns:
 - **P2** `旧実装(は|では)` — comments explaining what the previous version did (belongs in commit/PR history)
 - **P3** `PR #N cycle N fix` — comments tagging a fix to a specific PR review cycle
 - **P4** `cycle N F-N で(導入|確立|集約)` — comments referencing review-finding identifiers
-- **P5** descriptive Issue/PR ref `See / Refs / Related to / Closes / Fixes / Resolves #N` — Why の代替として貼られた説明的参照
-- **P6** descriptive Issue/PR ref (ja) `#N で(別途)対応` / `詳細は #N` — 同上 (日本語)
+- **P5** descriptive Issue/PR ref — 参照キーワード (`Issue` / `PR` / `Refs` / `See` / `Related to` / `Closes` / `Fixes` / `Resolves`、大小文字対称) が番号の直前に来る形。裸の `PR #N は…` / `Issue #N` / 小文字の `issue #N` も含む。左側に `(^|[^A-Za-z])` の境界を置き `prefs #12` / `hrefs #3` の語尾一致を弾く。キーワード列は語彙であって表層形の列挙ではなく、括弧付き `(refs #N)` も `see PR #N` も同じ 1 規則に畳まれる
+- **P6** descriptive Issue/PR ref (ja) `#N で(別途)対応` / `詳細は #N` — 参照キーワードを持たないため P5 へ畳めない日本語 2 構文
 
-Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` markers, and **`TODO` / `FIXME` lines** (追跡番号は前方ポインタ=維持). ファイル名アンカー (`xxx.test.sh` 等) は `#N` を含まないため P5/P6 に該当せず自然に除外される. Self-exclude: the script itself, `comment-best-practices.md` SoT, and the parity test (禁止句を例示として保持するため).
+キーワードを伴わない裸の `#N` は意図的に検出しない (正当な文脈が多すぎて機械的に切り分けられず、対応するには除外を過大に広げる必要が生じるため)。番号一致は `([^0-9]|$)` で語境界を取る — gawk は `\b` をバックスペースとして読むため、`\b` を使うと検出器が無言で沈黙する。
+
+Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` markers, and **`TODO` / `FIXME` lines** (追跡番号は前方ポインタ=維持). ファイル名アンカー (`xxx.test.sh` 等) は `#N` を含まないため P5/P6 に該当せず自然に除外される.
+
+P5/P6 のみに効く追加除外 (P1-P4 の検出結果は不変): コードフェンス / インラインコードスパン (逐語引用の中の番号は主張ではなく literal。スパンは削除ではなく `_` へ置換する — 削除するとキーワードと後続番号が隣接して偽の一致を作るため) / `## ソース` **節** (Wiki ページの provenance リンクラベルは出所の監査証跡として維持対象)。ソース節の除外は見出しから次の `##` 見出しの手前までで、ファイル末尾までではない — wiki-ingest が `## ソース` の後ろに `## 補強:` 等の本文節を追記するため、EOF まで打ち切ると後続本文が丸ごと盲点になる (現行の接尾辞許容見出しに対して実測 7 ページ / 28 hits。接尾辞を許容する前の計測では 13 ページ / 81 hits)。判定はフェンス状態の更新後に行い、フェンス内に引用された `## ソース` では発火しない。見出しは `## ソース（追記分）` / `## ソース（追記分 N）` 等の接尾辞を許容する（wiki-ingest の LLM 生成形、実測 13 箇所。厳密一致にすると節の開始として認識されないまま「次の見出し」としては認識され、直前の節の除外を打ち切って実測 53 hits の誤検出になる）。いずれの除外もその範囲内では再発が見えなくなるため、P1-P4 には広げず説明的参照の検出に限定している。
+
+P6 は P5 より先に走らせ、報告した ja 接尾構文 (`#N で対応`) を P5 の走査行からマスクする。「PR #N で別途対応」は両規則に当たるため、順序を決めないと同一位置で 2 件に膨らむ。
+
+Self-exclude: the script itself, `comment-best-practices.md` SoT, the parity test, and 検出器自身の test 2 本 (`comment-journal-check.test.sh` / `wiki-lint-descriptive-refs.test.sh`) — いずれも禁止句を例示 (test では fixture) として保持するため。
+
+**`docs/SPEC.md` は self-exclude しない**: 裸形への拡張により同ファイルの provenance 注記 (`Issue #2024` 等) が 8 件検出されるようになったが、これらは SoT の廃止判定ルール上ほんとうに説明的参照であり、「禁止句を定義・例示するファイル」という self-exclude の根拠には当たらない。除外を「検出されると煩わしいファイル」へ広げると、その範囲内で既知アンチパターンの再発が見えなくなる (本節の P5/P6 除外方針と同じ理由)。progressive cleanup の対象として warning に残す。
 
 ## Comment line-ref check (comment-line-ref-check.sh)
 
