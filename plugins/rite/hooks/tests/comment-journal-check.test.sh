@@ -207,7 +207,17 @@ assert_grep "TC-14 自スクリプトを self-exclude" "$SCRIPT" '"\$self_rel"\)
 # 立ち上がる (実測 35 件)。SoT / parity test と同じ理由で除外する。
 assert_grep "TC-14 本 test を self-exclude" "$SCRIPT" 'comment-journal-check\.test\.sh\) continue'
 assert_grep "TC-14 wiki-lint 側 test を self-exclude" "$SCRIPT" 'wiki-lint-descriptive-refs\.test\.sh\) continue'
-all_out=$( ( cd "$PLUGIN_ROOT/../.." && bash "$SCRIPT" --all --quiet ) 2>/dev/null )
+# sandbox に対して --all を回す。実リポジトリを走査すると、走査対象数や awk 実装差 (macOS の
+# BWK awk) で件数が 0 になる環境があり、その環境では下の除外 assert が丸ごと vacuous になる。
+ALLSBX=$(make_plain_sandbox) && cleanup_dirs+=("$ALLSBX") || { echo "ERROR: make_plain_sandbox failed, aborting" >&2; exit 1; }
+mkdir -p "$ALLSBX/plugins/rite/hooks/tests" "$ALLSBX/docs"
+printf 'PR #1300 で統一した
+' > "$ALLSBX/docs/violating.md"
+printf 'Issue #1400 の経緯
+' > "$ALLSBX/plugins/rite/hooks/tests/comment-journal-check.test.sh"
+printf 'PR #1500 の経緯
+' > "$ALLSBX/plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh"
+all_out=$( ( cd "$ALLSBX" && bash "$SCRIPT" --all --quiet --repo-root "$ALLSBX" ) 2>/dev/null )
 all_lines=$(printf '%s' "$all_out" | grep -c . || true)
 # positive control: --all が 1 件も出さない状況 (scan root 不在で rc=2 等) では下の assert が
 # vacuous に pass する。先に「走査自体が成立した」ことを測る。

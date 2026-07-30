@@ -6,13 +6,8 @@
 # holder of numbers (Comment Best Practices SoT 適用スコープ includes Wiki pages),
 # so a body carrying 「PR #N は…」「詳細は #N」「(refs #N)」 is surfaced as a finding.
 #
-# Why a helper:
-#   The inline implementation in wiki-lint/SKILL.md ステップ 7.5 was a compact grep
-#   pipeline. Once the detection widened to bare `PR #N` / `Issue #N`, the body had
-#   to grow four exclusions (frontmatter / provenance section / code fence / code
-#   span) — past bash-heaviness-check.sh's LINE_THRESHOLD, and past what a mutation
-#   test can reach while the logic lives inside a Markdown fence. Delegating keeps
-#   SKILL.md lean and makes the detection directly testable.
+# rationale (why a helper, why normalization, why not `\b`, exclusion measurements):
+#   skills/wiki-lint/references/descriptive-refs-rationale.md
 #
 # Symmetry note: this is the ステップ 7.5 counterpart to ステップ 6.0's
 # `wiki-lint-skipped-refs.sh` and ステップ 6.2's `wiki-lint-source-refs.sh`. The stdin
@@ -23,63 +18,36 @@
 #
 #   R1: a reference keyword immediately preceding a number
 #       (^|[^A-Za-z])([Ii]ssues?|[Pp][Rr]s?|[Rr]efs?|[Ss]ee|…) *#[0-9]+([^0-9]|$)
-#       The keyword list is a vocabulary, not a form enumeration: the parenthesised
-#       form 「(refs #N)」, the 「see PR #N」 form and the bare 「PR #N は…」 form all
-#       reduce to "keyword, optional spaces, number", so they are one rule rather
-#       than three alternatives. Adding a surface form here means adding a word to
-#       the vocabulary, never a new branch.
-#       Case is symmetric across the whole vocabulary (`issue #12` / `pr #3` count too),
-#       and the left `(^|[^A-Za-z])` boundary keeps `prefs #12` / `hrefs #3` from
-#       matching on their tail — a right-only boundary flags those as `refs #N`.
+#       The keyword list is a vocabulary, not a form enumeration. Adding a surface
+#       form means adding a word here, never a new branch.
+#       Case is symmetric; the left `(^|[^A-Za-z])` boundary keeps `prefs #12` /
+#       `hrefs #3` from matching on their tail.
 #
 #   R2: the two keyword-less Japanese descriptive constructs
 #       #[0-9]+ ?で(別途)?対応  および  詳細は ?#[0-9]+
 #       These carry no reference keyword, so they cannot fold into R1.
 #
-#   Bare `#N` with no keyword at all is deliberately NOT detected: it appears in too
-#   many legitimate contexts to separate mechanically, and widening to it would force
-#   exclusions far past the "cut exclusions minimally" rule. AC-1 asks for the bare
-#   `PR #N` / `Issue #N` forms, which R1 covers.
+#   Bare `#N` with no keyword is deliberately NOT detected (see rationale ref above).
 #
 # Word boundary:
 #   Number matches end with `([^0-9]|$)` so a match can never stop mid-number
-#   (`#204` inside `#2047`). Greedy `[0-9]+` already reaches the end of the digit run;
-#   the explicit boundary pins that as a contract so a later narrowing of the number
-#   pattern cannot silently reintroduce prefix collision.
-#   NOTE: keep this a character class rather than `\b`. Here the regex is handed to
-#   `grep -E`, where `\b` would work — but the body filter below runs under awk, and
-#   gawk reads `\b` as backspace (never matching). Using one form across both keeps the
-#   two regexes readable side by side and removes the chance of copying a `\b` into the
-#   awk side, where it would make the filter silently stop matching.
+#   (`#204` inside `#2047`). The explicit boundary pins that as a contract so a later
+#   narrowing of the number pattern cannot silently reintroduce prefix collision.
+#   MUST keep this a character class rather than `\b`: the regex is handed to awk via
+#   `-v re=`, and gawk reads `\b` as backspace — it never matches and never errors, so
+#   a `\b` here makes the detector silently report 0 for every page.
 #
-# Exclusions (each is a deliberate blind spot; the trade-off is recorded per entry
-# because an exclusion also hides genuine recurrences inside its scope):
+# Exclusions (each is a deliberate blind spot; measurements and trade-offs are recorded
+# in the rationale ref above):
 #
-#   E1 frontmatter `sources:` — the `ref` values are provenance file paths, not
-#                             descriptive references. Scoped to the `sources:` block alone
-#                             (key → next top-level key), NOT the whole frontmatter: the
-#                             `description:` / `title:` fields carry real prose, and dropping
-#                             the block wholesale hid 22 genuine refs across the live wiki.
-#                             Blind spot: a descriptive ref written inside `sources:` itself
-#                             (a path value cannot match the number rules, so this is empty
-#                             in practice — the exclusion is defensive only).
-#   E2 `## ソース` section   — the provenance link labels (`- [PR #N review results](...)`)
-#                             are the audit trail for where the page came from and are
-#                             maintained by design. Scanning them would report all 306
-#                             pages that carry the section. Scoped to the section itself
-#                             (heading → next `##` heading), NOT to end-of-file: wiki-ingest
-#                             appends further sections such as `## 補強:` after it, and
-#                             cutting at EOF hid 81 hits across 13 pages. Blind spot: a
-#                             descriptive ref written inside the provenance section itself.
-#   E3 code fence           — fenced blocks quote commands and regexes verbatim; a number
-#                             inside one is a literal, not a claim. Blind spot: a real
-#                             descriptive ref written inside a fence.
-#   E4 inline code span     — same reason as E3 for `` `refs #204` ``. Spans are replaced
-#                             with `_` rather than removed, so masking cannot join a
-#                             keyword to a following number and manufacture a match.
-#   E5 TODO / FIXME lines   — a tracking number on TODO/FIXME is a forward pointer and is
-#                             kept by the 廃止判定ルール. Blind spot: a descriptive ref on
-#                             the same line as a TODO.
+#   E1 frontmatter `sources:` block only (NOT the whole frontmatter — `description:` /
+#      `title:` prose is scanned; ref values are paths that cannot match anyway)
+#   E2 `## ソース` section, scoped heading → next `##` heading (NOT to EOF), with heading
+#      suffix tolerance (`## ソース（追記分）`)
+#   E3 code fence
+#   E4 inline code span — replaced with `_`, never removed (removing would join a keyword
+#      to a following number and manufacture a match)
+#   E5 TODO / FIXME lines (forward-tracking numbers are kept by the 廃止判定ルール)
 #
 # Inputs:
 #   --branch-strategy {separate_branch|same_branch}  (required)
@@ -115,9 +83,9 @@
 # explicitly (`page_rc` / `hits_rc`) so either failure is isolated as a skipped page and
 # counted into `descriptive_refs_read_errors`; a global `set -e` would abort on those rc
 # values instead, so it is intentionally not set. `set -o pipefail` is unnecessary because
-# detection runs as a single awk rather than a pipeline — that is also why the awk rc is
-# meaningful here, where a trailing `grep -c` would have returned 1 on zero matches and made
-# a broken detector indistinguishable from a clean page. `set -u` is not set either; every
+# no filter stage follows the awk, so awk's rc IS the pipeline's meaningful rc — that is why
+# the trailing `grep -c` had to go: it returned 1 on zero matches and made a broken detector
+# indistinguishable from a clean page. `set -u` is not set either; every
 # variable is assigned before first use, so it would add nothing.
 
 # shellcheck source=../control-char-neutralize.sh
@@ -228,6 +196,7 @@ if [ -n "$pages_list" ]; then
   while IFS= read -r _p; do
     [ -z "$_p" ] && continue
     case "$_p" in
+      *..*) _polluted=1 ;;
       .rite/wiki/pages/*) ;;
       *) _polluted="$_p"; break ;;
     esac
@@ -269,8 +238,8 @@ insrc                       { next }
 /(TODO|FIXME)/              { next }
 '
 # 終端アクション: インラインコードスパンを `_` へマスクしてから検出 regex で数える。
-# フィルタ本体と分けているのは、計数を同じ awk 内で完結させるため (pipeline にすると
-# 終端 `grep -c` が no-match で rc=1 を返し、awk の異常終了と 0 件が区別できなくなる)。
+# フィルタ本体と 2 変数に分けているのは、mutation test (TC-16) が本文フィルタだけを差し替え
+# られるようにするため。統合すると mutant 生成器が壊れる。
 _RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }'
 
 # R1 (keyword vocabulary + number) と R2 (keyword-less な日本語 2 構文) の 2 規則。
@@ -310,15 +279,19 @@ while IFS= read -r page; do
   fi
   if [ "$page_rc" -ne 0 ]; then
     n_read_errors=$((n_read_errors + 1))
+    echo "WARNING: ページ ${page} の読出に失敗しました (rc=$page_rc, branch_strategy=$branch_strategy)" >&2
+    # パスは sed 式へ入れない。定数 sed でインデントし、パスは別行で中和して出す
+    # (sibling helper が例外なく定数 sed なのはこのため)。
     [ -n "$page_err" ] && [ -s "$page_err" ] && \
-      head -3 "$page_err" | neutralize_ctrl --keep-newline | sed "s|^|  ${page}: |" >&2
+      head -3 "$page_err" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
     continue
   fi
-  # 本文抽出と計数を 1 つの awk に閉じる。`grep -c` は no-match で rc=1 を返すため rc を
-  # 検査対象にできず、awk が落ちても「0 件」と区別がつかないまま read_ok=true で通っていた
+  # 本文抽出と計数を 1 つの awk に閉じる。終端に `grep -c` を置くと no-match の rc=1 と
+  # awk の異常終了が区別できず、検出器が壊れても「0 件」として read_ok=true で通っていた
   # (検出器そのものの破損だけが未実測ゲートをすり抜ける唯一の穴だった)。
   hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_RITE_COUNT_ACTION}"); hits_rc=$?
-  if [ "$hits_rc" -ne 0 ] || case "$hits" in ''|*[!0-9]*) true ;; *) false ;; esac; then
+  case "$hits" in ''|*[!0-9]*) hits_rc=1 ;; esac
+  if [ "$hits_rc" -ne 0 ]; then
     # 検出器が機能していないページは「0 件」ではなく読出失敗として計上する。
     echo "WARNING: ページ ${page} の検出 awk が失敗しました (rc=$hits_rc, 出力='$hits')" >&2
     n_read_errors=$((n_read_errors + 1))
@@ -328,7 +301,7 @@ while IFS= read -r page; do
     n_descriptive_refs=$((n_descriptive_refs + hits))
     n_pages_with_hits=$((n_pages_with_hits + 1))
     hit_lines="${hit_lines}page=${page}; hits=${hits}"$'\n'
-    echo "WikiDescriptiveRef: page=${page#.rite/wiki/}, hits=${hits}" >&2
+    echo "WikiDescriptiveRef: page=$(printf '%s' "${page#.rite/wiki/}" | neutralize_ctrl), hits=${hits}" >&2
   fi
 done <<< "$pages_list"
 
@@ -342,7 +315,8 @@ case "$n_pages_total" in
     # ページ数を数える awk まで落ちている = 実行環境の異常。0 に倒すと io_error 分岐が
     # 到達不能になり「0 件」が実測済みとして通るため、io_error 側へ寄せる。
     echo "WARNING: pages_list の件数計算に失敗しました (値: '$n_pages_total')。io_error として扱います" >&2
-    n_pages_total=0; n_read_errors=1
+    n_pages_total=0
+    [ "$n_read_errors" -gt 0 ] 2>/dev/null || n_read_errors=1
     ;;
 esac
 descriptive_refs_read_ok="true"

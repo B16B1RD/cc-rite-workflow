@@ -1320,7 +1320,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `wiki-lint-stale.sh` | `/rite:wiki-lint` ステップ 4 — frontmatter `updated` と cutoff 比較で陳腐化集合を marker block + `stale_check_ok` enum で構築 (GNU date 検査内包) | — |
 | `wiki-lint-orphans.sh` | `/rite:wiki-lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | — |
 | `wiki-lint-broken-refs.sh` | `/rite:wiki-lint` ステップ 7 — Markdown link の page-dir 起点 `realpath -m -s` 解決で壊れた相互参照集合を構築 (awk indent 不問 fence tracking) | — |
-| `wiki-lint-descriptive-refs.sh` | `/rite:wiki-lint` ステップ 7.5 — ページ本文に残った説明的 Issue/PR 番号参照 (裸の `PR #N` / `Issue #N` を含む) を検出し marker block + `WIKI_DESCRIPTIVE_REFS` 合計 + `descriptive_refs_read_ok` enum で構築。frontmatter / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME を除外 (informational 指標、`n_warnings` 不加算) | — |
+| `wiki-lint-descriptive-refs.sh` | `/rite:wiki-lint` ステップ 7.5 — ページ本文に残った説明的 Issue/PR 番号参照 (裸の `PR #N` / `Issue #N` を含む) を検出し marker block + `WIKI_DESCRIPTIVE_REFS` 合計 + `descriptive_refs_read_ok` enum で構築。frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME を除外 (informational 指標、`n_warnings` 不加算) | — |
 | `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | — |
 | `bash-heaviness-check.sh` | `skills/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | — |
 | `hardcoded-line-number-check.sh` | procedural markdown (`skills/**/*.md`) 内のハードコード行番号参照を検出 | — |

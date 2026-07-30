@@ -13,7 +13,7 @@
 #   TC-5   コードフェンス内が hit しない / フェンス閉じ後は再び検出される
 #   TC-6   語境界が文字クラスで表現されている (静的 pin。件数では測れないため)
 #   TC-7   旧 4 形 (括弧付き / see PR / #N で対応 / 詳細は #N) の検出が保たれる
-#   TC-8   frontmatter 散文に書かれた番号参照が hit しない (E1 の識別力)
+#   TC-8   frontmatter は `sources:` ブロックのみ除外 (description 散文は hit する)
 #   TC-9   marker block / WIKI_DESCRIPTIVE_REFS / read_ok の stdout 契約
 #   TC-10  空 pages_list → hits 0, read_ok=true (Wiki 初期化直後の legitimate no-op)
 #   TC-11  全ページ読出失敗 → read_ok=io_error (偽の 0 件を「解消済み」と読ませない)
@@ -27,7 +27,9 @@
 #   TC-19  separate_branch (本番既定経路、git show) の positive path
 #   TC-20  `## ソース` 除外が節スコープ (見出し以降 EOF まで打ち切らない)
 #   TC-21  informational 契約の非回帰 (T-06 / T-07: n_warnings 不加算 / canonical Lint: 行不変)
+#   TC-19b separate_branch の読出に cat fallback が無い (ブランチ分離の pin)
 #   TC-22  2 検出器の R1 regex が literal 一致 (語彙 drift の検出)
+#   TC-23  検出器の破損が read_errors / io_error へ伝播する (0 件を実測済みと名乗らない)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -141,7 +143,7 @@ assert_mutated() {
 # ---- 除外の識別力を「フィルタを外した版」との差で測る (TC-16 の測定基盤) -------
 # helper 内のフィルタを外した mutant を作り、除外が無いと hits が跳ね上がることを実証する。
 # **E1 (frontmatter 除去) は本 mutant では測れない** — mutant が frontmatter 除去を残す設計のため。
-# E1 の識別力は TC-8 の fixture (frontmatter 散文に番号参照を置く) が担う。mutant を拡張する際は
+# E1 の識別力は TC-8 の fixture (description 散文 / sources ブロックの両方) が担う。mutant を拡張する際は
 # 「どの除外がその mutant で到達不能か」を先に列挙すること。
 MUT_NOFILTER="$SBX/mutant-nofilter.sh"
 # フィルタ本体 (_RITE_BODY_FILTER) を「frontmatter 除去のみ」に差し替える。
@@ -202,13 +204,18 @@ assert "TC-4 コードスパン内は hit しない"    "0" "$(single_hits '`ref
 # span マスクは削除ではなく `_` 置換。削除するとキーワードと番号が隣接して**誤検出を製造する**
 # 方向に倒れる (comment-journal-check.test.sh TC-4 と対称)。
 assert "TC-4 span マスクがキーワードと番号を連結しない" "0" "$(single_hits 'PR `x` #1234')"
+# 左語境界 (^|[^A-Za-z]): `refs` を語尾に持つ別語を弾く。cjc TC-16 と対称。
+assert "TC-6 prefs #N は hit しない (左語境界)" "0" "$(single_hits 'prefs #12 を設定')"
+assert "TC-6 hrefs #N は hit しない (左語境界)" "0" "$(single_hits 'hrefs #13 を確認')"
 assert "TC-1 キーワードなし裸 #N は hit しない" "0" "$(single_hits '#1234 の単独形は対象外')"
 # E1 は frontmatter 全体ではなく `sources:` ブロックのみを落とす。ref 値はファイルパスで
 # 番号規則に一致しないため除外は防御的だが、`description:` / `title:` の散文は本物の
 # 説明的参照を含む (実 wiki で 22 件)。両方を 1 つの fixture で測る。
 tc8_fm=$(printf -- '---\ndescription: "PR #1300 の経緯"\nsources:\n  - type: "reviews"\n    ref: "raw/reviews/x-pr-1300.md"\ntags: ["a"]\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-8 frontmatter description の番号参照は hit する" "1" "$(single_hits "$tc8_fm")"
-tc8_src=$(printf -- '---\ntitle: "t"\nsources:\n  - type: "reviews"\n    ref: "raw/reviews/x.md"\n---\n\n# t\n\n本文に番号なし\n')
+# ref 値に `#N` を含ませる。ファイルパスに `#` は現れないため E1 は防御的除外だが、`#` を
+# 持たない fixture では E1 を削除しても 0 のままで、この assert が何も pin しない。
+tc8_src=$(printf -- '---\ntitle: "t"\nsources:\n  - type: "reviews"\n    ref: "raw/reviews/PR #1300.md"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-8 frontmatter sources ブロックは hit しない" "0" "$(single_hits "$tc8_src")"
 
 # TC-2: `## ソース` 節のみを持つページ (本文に対象なし) は 0 件
@@ -322,9 +329,9 @@ if (
   git add -A || exit 1
   git -c commit.gpgsign=false -c user.email=t@example.com -c user.name=t commit -qm fixture || exit 1
   git branch -q wiki || exit 1
-  # fixture を blob 限定にする: separate_branch の読出経路が git show 単独であることを
-  # fixture 配置の側でも担保する (旧 inline 実装が持っていた `git show || cat` の fallback が
-  # 将来再導入されても、この TC が緑にならないようにする)。
+  # fixture を blob 限定にする: hits が blob から読めたことを示す (worktree に残すと、
+  # どちらから読んでも同じ hits になり読出元が特定できない)。fallback 再導入の検出は
+  # 下の TC-19b が担う。
   rm -f ".rite/wiki/pages/anti-patterns/fixture.md"
 ) 2>"${git_err:-/dev/null}"; then
   :
@@ -361,23 +368,51 @@ assert_grep "TC-21 (T-07) canonical Lint: summary 行の形式が不変" "$LINT_
 assert_not_grep "TC-21 (T-07) Lint: 行に descriptive フィールドが混入していない" "$LINT_MD" \
   '^Lint: .*descriptive'
 
+# ---- TC-23: 検出器の破損が read_errors へ伝播すること -----------------------
+# 本 helper の read_ok enum は「0 件が実体を反映していない」状況を surface するためにある。
+# 検出器そのものが壊れた場合だけがその enum をすり抜けると、完了レポートに「実測済みの 0 件」
+# として載る。検出 regex を不正にした mutant で、0 件ではなく io_error に倒れることを測る。
+MUT_BADRE="$SBX/mutant-badre.sh"
+sed "s%^_RITE_DESCRIPTIVE_RE='.*'$%_RITE_DESCRIPTIVE_RE='([unclosed'%" "$SCRIPT" > "$MUT_BADRE"
+if assert_mutated "TC-23 MUTATION mutant 生成" "$MUT_BADRE"; then
+  mut_out=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_BADRE" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
+  mut_hits=$(printf '%s' "$mut_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+  mut_ok=$(printf '%s' "$mut_out" | sed -n 's/^descriptive_refs_read_ok=//p')
+  mut_err=$(printf '%s' "$mut_out" | sed -n 's/^descriptive_refs_read_errors=//p')
+  assert "TC-23 検出器破損時は read_ok=io_error (0 件を実測済みと名乗らない)" "io_error" "$mut_ok"
+  assert "TC-23 検出器破損時は read_errors が立つ" "1" "$mut_err"
+  assert "TC-23 検出器破損時の hits は 0" "0" "$mut_hits"
+fi
+
+# ---- TC-19b: separate_branch の読出に cat fallback が無いこと ----------------
+# 旧 inline 実装は `git show ... || cat "$page"` を持っており、wiki ブランチに無いページを
+# ワークツリーから読んでブランチ分離を無言で破っていた。worktree にのみ存在するページで
+# io_error に倒れることを測る (fallback を再導入すると hits>0 / read_ok=true になる)。
+fb_out=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && cp "$SBX/$FIXTURE_REL" "$FIXTURE_REL" 2>/dev/null; bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch nonexistent-branch --repo-root "$GITSBX" ) 2>/dev/null)
+fb_ok=$(printf '%s' "$fb_out" | sed -n 's/^descriptive_refs_read_ok=//p')
+fb_hits=$(printf '%s' "$fb_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+assert "TC-19b worktree にページが在っても git show 失敗は io_error (cat fallback なし)" "io_error" "$fb_ok"
+assert "TC-19b cat fallback が無いので hits は 0" "0" "$fb_hits"
+
 # ---- TC-22: 2 検出器の検出 regex が literal 一致すること -------------------
 # 同じ規則を 2 実装に持つため、語彙を 1 語足すたび両方の同期が要る。実装の共通化は
 # しない (読出元も計数単位も違う) 代わりに、literal のバイト一致を pin して drift を検出する。
 CJC="$PLUGIN_ROOT/hooks/scripts/comment-journal-check.sh"
 # 語彙の alternation (`[Ii]ssues?|…|[Rr]esolves`) だけを両ファイルから抜き、一致を見る。
 # regex 全体を突き合わせるとエスケープが複雑になり、抽出側の破損と drift を混同しやすい。
-vocab_of() { grep -oE '\[Ii\]ssues\?\|[^)]*\[Rr\]esolves' "$1" | head -1; }
+# 語彙 alternation だけを抜くと両端 (先頭への挿入・末尾への追記) の drift を取り逃がす。
+# R1 全体 (左境界 + 語彙 + 番号規則 + 右境界) を 1 単位として比較する。
+vocab_of() { grep -oE '\(\^\|\[\^A-Za-z\]\)\([^)]*\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)' "$1" | head -1; }
 helper_vocab=$(vocab_of "$SCRIPT")
 cjc_vocab=$(vocab_of "$CJC")
 if [ -z "$helper_vocab" ]; then
-  fail "TC-22 helper から語彙を抽出できなかった (実装構造が変わった可能性)"
+  fail "TC-22 helper から R1 regex を抽出できなかった (実装構造が変わった可能性)"
 elif [ -z "$cjc_vocab" ]; then
-  fail "TC-22 comment-journal-check.sh から語彙を抽出できなかった"
+  fail "TC-22 comment-journal-check.sh から R1 regex を抽出できなかった"
 elif [ "$helper_vocab" = "$cjc_vocab" ]; then
-  pass "TC-22 2 検出器の語彙が一致 (drift なし)"
+  pass "TC-22 2 検出器の R1 regex が一致 (drift なし)"
 else
-  fail "TC-22 2 検出器の語彙が drift している
+  fail "TC-22 2 検出器の R1 regex が drift している
     helper: $helper_vocab
     cjc   : $cjc_vocab"
 fi
