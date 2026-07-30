@@ -224,7 +224,22 @@ Read tool で以下を読み込む:
 
 `template-structure.md` の AC count guideline と Minimum test rows に従い、確定 Complexity に応じた AC・T-xx 行数を満たす。各 AC は最低 1 つの T-xx に対応させ、Output Validation Checklist で検証する。
 
-生成した body はそのまま Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
+生成した body はそのまま Step 4.2.1 の検証を経て Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
+
+### 4.2.1 本文の断定のファクトチェック
+
+4.2 で生成した body に含まれる**検証可能な断定**を、4.3 の Issue 作成の前に検証する。Complexity は 4.1 で**確定した値**を使う（4.0 の見込み値ではない）。
+
+**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2 Step 1 のテンプレート読込と同じ runtime SoT 読込。3 クラスの検出方法・**裏取りコマンド表**・**3 値の処理（`VERIFIED` 以外の判定**および**クラス 3 の自己矛盾候補**に義務づけられた stderr `WARNING` 規則と、その発行手段・クラス 2 の限定句候補併記を含む）・エラー処理は同 reference にのみ存在し、本体には複製しない。読み込まずに下表だけで進めると実行すべきコマンドが判らず、記憶・推測での `VERIFIED` 判定という同 reference が禁じる経路に落ちる）。
+
+| 状況 | アクション |
+|------|-----------|
+| 検査対象 0 件 | **silent skip** — 出力・質問を一切出さず 4.3 へ（`## E2E Output Minimization` に準拠） |
+| すべて `VERIFIED` | 出力を増やさず 4.3 へ |
+| `CONTRADICTED` あり | **自動修正せず** AskUserQuestion で 3 択（`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`）。選択を反映して 4.3 へ |
+| `UNVERIFIED` あり | 「要確認」（外部仕様の主張は「要検証」）を本文に付記して 4.3 へ。作成をブロックしない |
+
+自己矛盾候補（M 以上）は上表と**直交する軸**のため行にしない。上表のどの行に該当したかに関わらず、reference の「クラス 3」節が定める規則で独立に評価する（相乗り / 新規発行の分岐も同節が単一定義を持つ。ここに写すと consumer 間で転写漏れが起きるため参照に留める）。
 
 ### 4.3 Issue 作成 + Projects 登録
 
@@ -380,6 +395,12 @@ fi
 {risks}
 ```
 
+### 5.1.1 仕様書の断定のファクトチェック
+
+5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する。**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2.1 と同じ共通参照。裏取りコマンド表は同 reference にのみ存在するため、読込を省くと検査が実行できない）。分解パスは ステップ 4.1 を通らないため確定 Complexity を持たないが、親仕様書は親 Complexity が `XL` 固定（5.5 Step 1 の helper 契約）のため **3 クラスすべて**を検査範囲とする（ステップ 3.1 の分解判定は Complexity 以外の条件でも成立しうるため、見込み値を根拠にしない）。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・自己矛盾候補の表面化・`UNVERIFIED` の「要確認」付記はいずれも 4.2.1 と同一。裏取りコマンドが失敗した場合の分類も 4.2.1 と同じく reference のエラー処理表に委ね、条件を本体へ写さない。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。**承認された訂正・付記を反映した仕様書を以降の `{spec_document}` とする** — 5.2 の提示も 5.5 Step 1 (B) が `parent_body.md` へ書く内容も、反映後の版を指す（4.2 が「Step 4.2.1 の検証を経て Step 4.3 で渡す」と配線しているのと同型）。**5.2 で「分解を修正」が選ばれて仕様書が再生成された場合は、本ステップを再実行する** — ただし既に決着済みの項目は再質問しない（決定内容をセッション状態で持ち越す。`issue-edit` Phase 3.1.1 が同じ再入問題に対して採っている扱いと揃える）。
+
+検査対象は 5.1 の設計仕様書に閉じる。5.5 で生成する Sub-Issue body は本ステップの対象外とする（本機能の Scope は 4.2 直後と 5.1 後に限定されており、検査を生成地点である 5.5 まで広げるのは別 Issue の範囲）。
+
 ### 5.2 ユーザー確認
 
 AskUserQuestion で「この分解で進める / 分解を修正 / 中止」を選択。修正の場合は仕様書を再提示。
@@ -399,7 +420,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
-1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成した設計仕様書（`{spec_document}`）の raw 内容
+1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
 2. 各 Sub-Issue について `{DECOMPOSE_WORKDIR}/sub_{i}_body.md`（i = 1..{sub_count}）← 各 Sub-Issue body の raw 内容（Step 4.2 の Implementation Contract フォーマットで生成する。各 Sub-Issue の確定 Complexity に応じて Complexity Gate を適用）
 3. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
 
