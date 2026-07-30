@@ -47,7 +47,9 @@
 #                  decays the moment that review is closed.
 #
 #   P5: descriptive Issue/PR reference (keyword + number, SoT 禁止句リスト由来)
-#       regex: (Issues?|PRs?|[Rr]efs?|[Ss]ee|Related to|Closes|Fixes|Resolves) *#[0-9]+([^0-9]|$)
+#       regex: (^|[^A-Za-z])([Ii]ssues?|[Pp][Rr]s?|[Rr]efs?|[Ss]ee|…) *#[0-9]+([^0-9]|$)
+#       語彙は大小文字を対称に受ける (`issue #12` / `pr #3` も説明的参照)。左側の
+#       `(^|[^A-Za-z])` は `prefs #12` / `hrefs #3` の語尾が `refs` に一致するのを防ぐ。
 #       semantics: "See #N" / "Closes #N" / "(refs #N)" / 裸の "PR #N は…" 等、Why の
 #                  代替として貼られた説明的参照。番号を辿っても背景は得られないため、
 #                  Why を散文で残すべき。
@@ -63,6 +65,8 @@
 #       regex: #[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+([^0-9]|$)
 #       semantics: 「#N で対応」「#N で別途対応」「詳細は #N」。参照キーワードを持たない
 #                  ため P5 へは畳めない 2 構文を 1 つの alternation にまとめる。
+#       走査順: P6 を P5 より先に実行する。「PR #N で別途対応」は両規則に当たるため、
+#       P6 で報告した接尾構文を P5 の走査行からマスクして同一位置の二重報告を断つ。
 #
 # Word boundary:
 #   番号一致は `([^0-9]|$)` で終える (`#204` が `#2047` の途中で止まらない)。貪欲な
@@ -90,7 +94,9 @@
 #                        作り出すため。
 #   X3 `## ソース` 節   — Wiki ページの provenance リンクラベル (`- [PR #N review results](...)`)
 #                        は出所の監査証跡として維持対象。走査すると当該節を持つ全ページが
-#                        誤検出になる。
+#                        誤検出になる。除外は**節スコープ** (見出しから次の `##` 見出しの手前まで)
+#                        で、ファイル末尾までではない。判定はフェンス状態の更新後に行うため、
+#                        コードフェンス内に引用された `## ソース` では発火しない。
 #
 #   いずれの除外もその範囲内では既知アンチパターンの再発が見えなくなる。P1-P4 に広げないのは
 #   その盲点を説明的参照の検出に限定するため (既存 31 件の検出結果を変えない)。
@@ -241,7 +247,11 @@ check_file() {
       # TODO を含む行や whitelist 行で先に抜けると infence が desync し、以降の
       # フェンス内外の判定が丸ごとずれる (P5/P6 の除外 X1 / X3 が壊れる)。
       if (line ~ /^[[:space:]]*```/) { infence = !infence; fence_marker = 1 } else fence_marker = 0
-      if (line ~ /^##[[:space:]]+ソース[[:space:]]*$/) insources = 1
+      # `## ソース` は節スコープ (見出しから次の `##` 見出しの手前まで)。ファイル末尾まで
+      # 打ち切ると、当該見出しの後ろに続く本文節が丸ごと盲点になる。
+      # 判定はフェンス状態の更新後に置く — フェンス内に引用された `## ソース` で誤発火しない。
+      if (!infence && line ~ /^##[[:space:]]+ソース[[:space:]]*$/) insources = 1
+      else if (!infence && insources && line ~ /^##[[:space:]]/) insources = 0
 
       # Whitelist: any line carrying an "example:" marker is skipped wholesale.
       if (line ~ /(<!--[[:space:]]*example:|#[[:space:]]+example:|\/\/[[:space:]]+example:)/) next
@@ -295,29 +305,39 @@ check_file() {
 
       if (!ref_scan) next
 
-      # P5: 参照キーワード + 番号 (裸の `PR #N` / `Issue #N` を含む)。
-      #     ファイル名アンカー (xxx.test.sh 等) は #N を含まないため本パターンに該当せず、自然に除外される。
-      #     報告文字列からは語境界のために消費した末尾 1 文字を落とす (行末一致時は消費なし)。
-      pos = 1
-      while (pos <= length(ref_line)) {
-        rest = substr(ref_line, pos)
-        if (!match(rest, /(Issues?|PRs?|[Rr]efs?|[Ss]ee|Related to|Closes|Fixes|Resolves) *#[0-9]+([^0-9]|$)/)) break
-        hit = substr(rest, RSTART, RLENGTH)
-        # 数字の直後に境界文字を 1 つ消費した場合だけ落とす。無条件に末尾 1 文字を削ると
-        # P6 の「#N で別途対応」のような数字で終わらない一致まで壊れる。
-        if (hit ~ /[0-9][^0-9]$/) hit = substr(hit, 1, length(hit) - 1)
-        print "[comment-journal][P5] " F ":" NR ": descriptive issue/PR reference: " hit
-        pos = pos + RSTART + RLENGTH - 1
-      }
-
       # P6: 参照キーワードを持たない日本語 2 構文 (#N で(別途)対応 / 詳細は #N)。
+      # P5 より先に走らせる — 「PR #N で別途対応」は両方の規則に当たるため、先に P6 で報告し
+      # 当該範囲を P5 の走査対象から外して同一位置の二重報告を防ぐ。
       pos = 1
       while (pos <= length(ref_line)) {
         rest = substr(ref_line, pos)
         if (!match(rest, /#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+([^0-9]|$)/)) break
         hit = substr(rest, RSTART, RLENGTH)
+        # 数字の直後に境界文字を 1 つ消費した場合だけ落とす。無条件に末尾 1 文字を削ると
+        # 「#N で別途対応」のような数字で終わらない一致まで壊れる。
         if (hit ~ /[0-9][^0-9]$/) hit = substr(hit, 1, length(hit) - 1)
         print "[comment-journal][P6] " F ":" NR ": descriptive issue/PR reference (ja): " hit
+        pos = pos + RSTART + RLENGTH - 1
+      }
+
+      # P5 走査用に、P6 が報告済みの ja 接尾構文をマスクした行を作る。位置計算を持ち回らずに
+      # 二重報告を断てる (「詳細は #N」は P5 の語彙に当たらないためマスク不要)。
+      p5_line = ref_line
+      gsub(/#[0-9]+ ?で(別途)?対応/, "_", p5_line)
+
+      # P5: 参照キーワード + 番号 (裸の `PR #N` / `Issue #N` を含む)。
+      #     ファイル名アンカー (xxx.test.sh 等) は #N を含まないため本パターンに該当せず、自然に除外される。
+      #     語彙は大小文字を対称に受け、左側にも文字クラス境界を置く (`prefs #12` の語尾一致を防ぐ)。
+      #     報告文字列からは語境界のために消費した前後 1 文字を落とす (行頭 / 行末一致時は消費なし)。
+      pos = 1
+      while (pos <= length(p5_line)) {
+        rest = substr(p5_line, pos)
+        if (!match(rest, /(^|[^A-Za-z])([Ii]ssues?|[Pp][Rr]s?|[Rr]efs?|[Ss]ee|[Rr]elated to|[Cc]loses|[Ff]ixes|[Rr]esolves) *#[0-9]+([^0-9]|$)/)) break
+        hit = substr(rest, RSTART, RLENGTH)
+        if (hit ~ /[0-9][^0-9]$/) hit = substr(hit, 1, length(hit) - 1)
+        # 左境界で消費した 1 文字を落とす (行頭一致では消費していないので先頭は英字のまま)
+        if (hit ~ /^[^A-Za-z]/) hit = substr(hit, 2)
+        print "[comment-journal][P5] " F ":" NR ": descriptive issue/PR reference: " hit
         pos = pos + RSTART + RLENGTH - 1
       }
     }

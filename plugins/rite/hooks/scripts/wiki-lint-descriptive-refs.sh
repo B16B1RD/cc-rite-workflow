@@ -21,12 +21,15 @@
 # Detection (2 normalized rules, NOT a list of surface forms):
 #
 #   R1: a reference keyword immediately preceding a number
-#       (Issues?|PRs?|[Rr]efs?|[Ss]ee|Related to|Closes|Fixes|Resolves) *#[0-9]+
+#       (^|[^A-Za-z])([Ii]ssues?|[Pp][Rr]s?|[Rr]efs?|[Ss]ee|…) *#[0-9]+([^0-9]|$)
 #       The keyword list is a vocabulary, not a form enumeration: the parenthesised
 #       form 「(refs #N)」, the 「see PR #N」 form and the bare 「PR #N は…」 form all
 #       reduce to "keyword, optional spaces, number", so they are one rule rather
 #       than three alternatives. Adding a surface form here means adding a word to
 #       the vocabulary, never a new branch.
+#       Case is symmetric across the whole vocabulary (`issue #12` / `pr #3` count too),
+#       and the left `(^|[^A-Za-z])` boundary keeps `prefs #12` / `hrefs #3` from
+#       matching on their tail — a right-only boundary flags those as `refs #N`.
 #
 #   R2: the two keyword-less Japanese descriptive constructs
 #       #[0-9]+ ?で(別途)?対応  および  詳細は ?#[0-9]+
@@ -54,8 +57,11 @@
 #   E2 `## ソース` section   — the provenance link labels (`- [PR #N review results](...)`)
 #                             are the audit trail for where the page came from and are
 #                             maintained by design. Scanning them would report all 306
-#                             pages that carry the section. Blind spot: everything below
-#                             the heading, including any prose accidentally placed there.
+#                             pages that carry the section. Scoped to the section itself
+#                             (heading → next `##` heading), NOT to end-of-file: wiki-ingest
+#                             appends further sections such as `## 補強:` after it, and
+#                             cutting at EOF hid 81 hits across 13 pages. Blind spot: a
+#                             descriptive ref written inside the provenance section itself.
 #   E3 code fence           — fenced blocks quote commands and regexes verbatim; a number
 #                             inside one is a literal, not a claim. Blind spot: a real
 #                             descriptive ref written inside a fence.
@@ -72,13 +78,21 @@
 #   --repo-root DIR                                   (default: git rev-parse --show-toplevel)
 #   pages_list                                        (stdin; one `.rite/wiki/pages/...` path per line)
 #
-# stdout contract (wiki-lint/SKILL.md ステップ 7.5 / ステップ 9 完了レポートが読む):
+# stdout contract:
 #   ---descriptive_refs_begin---
 #   page={path}; hits={n}      # 0..N lines, hits>0 のページのみ
 #   ---descriptive_refs_end---
 #   descriptive_refs_pages={n}
+#   descriptive_refs_read_errors={n}
 #   [CONTEXT] WIKI_DESCRIPTIVE_REFS={n}
 #   descriptive_refs_read_ok={true|io_error}
+#
+# Who reads what: wiki-lint/SKILL.md ステップ 7.5 / ステップ 9 完了レポートが消費するのは
+# `WIKI_DESCRIPTIVE_REFS` (件数) と `descriptive_refs_read_ok` / `descriptive_refs_read_errors`
+# (未実測の併記条件) の 3 つ。marker block と `descriptive_refs_pages` は sibling helper
+# (`wiki-lint-source-refs.sh` / `wiki-lint-skipped-refs.sh`) との出力形状 parity のために出しており、
+# ステップ 9 の検出詳細一覧には転記されない (informational 指標のため — SKILL.md ステップ 7.5 の
+# 「検出結果の記録」節が転記しない旨を明示している)。
 #
 # `hits` counts matching body lines (not occurrences), preserving the metric the
 # inline `grep -c` implementation reported.
@@ -88,11 +102,12 @@
 #   1  fail-fast (placeholder residue / unknown branch_strategy)
 #   2  invocation error (引数欠落 / repo-root cd 失敗)
 #
-# NOTE on shell flags: `$?` is checked explicitly per command (a per-page read failure
-# is isolated as a skipped page, never fatal), so a global `set -e` would break those
-# checks and is intentionally not set. `set -o pipefail` is likewise unused: no
-# pipeline's rc is consumed — every capture is judged by its output. All variable refs
-# are `${var:-}`-guarded, so `set -u` is not needed either.
+# NOTE on shell flags: the per-page read captures `$?` explicitly (`page_rc`) so a read
+# failure is isolated as a skipped page and never fatal; a global `set -e` would abort on
+# that rc instead, so it is intentionally not set. `set -o pipefail` is likewise unused:
+# the detection pipeline's rc is not consumed — `grep -c` returns 1 on zero matches and the
+# count is read from its stdout. `set -u` is not set either; every variable is assigned
+# before first use (the reads above included), so it would add nothing.
 
 # shellcheck source=../control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
@@ -220,20 +235,28 @@ fi
 # E4 inline code span を `_` へマスクした残りを stdout に出す。
 # 順序が契約: fence の toggle は他のどの `next` よりも先に評価する。TODO を含む行や
 # `## ソース` 行で先に打ち切ると fence 状態が desync し、以降の判定が丸ごとずれる。
+# `## ソース` は **節スコープ**で落とす (見出しから次の `##` 見出しの手前まで)。ファイル末尾まで
+# 打ち切ると、wiki-ingest が `## ソース` の後ろに追記する `## 補強:` 等の本文が丸ごと盲点になる
+# (実測: 13 ページ / 81 hits)。節の判定は fence より後に置く — フェンス内に引用された
+# `## ソース` で節スコープが誤発火しないようにするため。
 _RITE_BODY_FILTER='
 NR==1 && /^---[[:space:]]*$/ { infm=1; next }
 infm && /^---[[:space:]]*$/  { infm=0; next }
 infm                        { next }
 /^[[:space:]]*```/          { infence = !infence; next }
 infence                     { next }
-/^##[[:space:]]+ソース[[:space:]]*$/ { exit }
+/^##[[:space:]]+ソース[[:space:]]*$/ { insrc=1; next }
+insrc && /^##[[:space:]]/   { insrc=0 }
+insrc                       { next }
 /(TODO|FIXME)/              { next }
 { gsub(/`[^`]*`/, "_"); print }
 '
 
 # R1 (keyword vocabulary + number) と R2 (keyword-less な日本語 2 構文) の 2 規則。
 # 語境界は `\b` ではなく `([^0-9]|$)` — gawk の `\b` はバックスペース扱いで never-match。
-_RITE_DESCRIPTIVE_RE='(Issues?|PRs?|[Rr]efs?|[Ss]ee|Related to|Closes|Fixes|Resolves) *#[0-9]+([^0-9]|$)|#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+([^0-9]|$)'
+# 左側にも文字クラス境界 `(^|[^A-Za-z])` を置く: 右境界だけだと `prefs #12` / `hrefs #3` の語尾が
+# `refs` に一致して誤検出する。語彙は大小文字を対称に受ける (`issue #12` / `pr #3` を取りこぼさない)。
+_RITE_DESCRIPTIVE_RE='(^|[^A-Za-z])([Ii]ssues?|[Pp][Rr]s?|[Rr]efs?|[Ss]ee|[Rr]elated to|[Cc]loses|[Ff]ixes|[Rr]esolves) *#[0-9]+([^0-9]|$)|#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+([^0-9]|$)'
 
 n_descriptive_refs=0
 n_pages_with_hits=0
@@ -242,15 +265,15 @@ hit_lines=""
 
 while IFS= read -r page; do
   [ -z "$page" ] && continue
+  # 読出コマンドの rc で「読めなかった」を判定する。空文字判定に頼ると 0 バイト / 改行のみの
+  # 正当な空ページが読出失敗として数えられ、逆に読出失敗が空ページと同じ扱いになる
+  # (sibling の wiki-lint-source-refs.sh は rc で切り分けており、その parity を満たすため)。
   if [ "$branch_strategy" = "separate_branch" ]; then
-    page_content=$(LC_ALL=C git show "${wiki_branch}:${page}" 2>/dev/null)
+    page_content=$(LC_ALL=C git show "${wiki_branch}:${page}" 2>/dev/null); page_rc=$?
   else
-    page_content=$(LC_ALL=C cat "$page" 2>/dev/null)
+    page_content=$(LC_ALL=C cat "$page" 2>/dev/null); page_rc=$?
   fi
-  if [ -z "$page_content" ]; then
-    # 空ページと読出失敗はここでは区別できない。どちらも hits 0 で扱いつつ件数を数え、
-    # 全ページが読めなかった場合のみ io_error へ降格する (空 Wiki の legitimate な 0 件と、
-    # 読出総崩れによる偽の 0 件を取り違えないため)。
+  if [ "$page_rc" -ne 0 ]; then
     n_read_errors=$((n_read_errors + 1))
     continue
   fi
@@ -265,7 +288,9 @@ while IFS= read -r page; do
 done <<< "$pages_list"
 
 # read_ok: ページが 1 件以上あるのに全件読めなかった場合のみ io_error。
-# 一部読めなかった場合は残りの集計が有効なため true を維持し、件数だけ WARNING で surface する。
+# 一部読めなかった場合は残りの集計が有効なため true を維持するが、件数を `descriptive_refs_read_errors`
+# として stdout に出す — WARNING は stderr にしか出ず、完了レポートの併記条件が read_ok だけだと
+# 部分欠損した集計が注記なしで「実測済み」として載るため (sibling の all_source_refs_read_errors と同型)。
 n_pages_total=$(printf '%s\n' "$pages_list" | awk 'NF>0 {n++} END {print n+0}')
 descriptive_refs_read_ok="true"
 if [ "$n_pages_total" -gt 0 ] && [ "$n_read_errors" -eq "$n_pages_total" ]; then
@@ -281,5 +306,6 @@ echo "---descriptive_refs_begin---"
 [ -n "$hit_lines" ] && printf '%s' "$hit_lines"
 echo "---descriptive_refs_end---"
 echo "descriptive_refs_pages=$n_pages_with_hits"
+echo "descriptive_refs_read_errors=$n_read_errors"
 echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
 echo "descriptive_refs_read_ok=$descriptive_refs_read_ok"

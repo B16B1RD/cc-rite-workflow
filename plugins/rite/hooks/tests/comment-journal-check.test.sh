@@ -20,6 +20,9 @@
 #   TC-12  MUTATION P5 を旧 regex へ戻すと TC-1 が落ちる (拡張の識別力)
 #   TC-13  MUTATION 除外 (fence/span/ソース節) を外すと TC-2/4/5 が落ちる (除外の識別力)
 #   TC-14  self-exclusion (SoT 本体 / parity test / 自スクリプト) が --all で維持される (静的回帰)
+#   TC-15  `## ソース` 除外が節スコープ + フェンス内の見出しで誤発火しない
+#   TC-16  語彙の大小文字対称性と左語境界 (prefs / hrefs の語尾一致を弾く)
+#   TC-17  「PR #N で別途対応」が P5/P6 で二重報告されない
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -151,7 +154,7 @@ make_mutant() {
 
 # 拡張で語彙に足した裸の Issue / PR を取り除いた mutant では、裸形が落ちる。
 MUT_P5="$SBX/mutant-p5.sh"
-if make_mutant "TC-12 MUTATION mutant 生成" "$MUT_P5" 's%Issues?|PRs?|%%'; then
+if make_mutant "TC-12 MUTATION mutant 生成" "$MUT_P5" 's%\[Ii\]ssues?|\[Pp\]\[Rr\]s?|%%'; then
   printf '%s\n' 'PR #1300 は フォーマットを統一した' > "$SBX/docs/t.md"
   mut_p5_hits=$( ( cd "$SBX" && bash "$MUT_P5" --target docs/t.md --repo-root "$SBX" --quiet ) 2>/dev/null | grep -c . )
   if [ "${mut_p5_hits:-0}" -eq 0 ]; then
@@ -203,9 +206,38 @@ assert_grep "TC-14 自スクリプトを self-exclude" "$SCRIPT" '"\$self_rel"\)
 # 立ち上がる (実測 35 件)。SoT / parity test と同じ理由で除外する。
 assert_grep "TC-14 本 test を self-exclude" "$SCRIPT" 'comment-journal-check\.test\.sh\) continue'
 assert_grep "TC-14 wiki-lint 側 test を self-exclude" "$SCRIPT" 'wiki-lint-descriptive-refs\.test\.sh\) continue'
-excluded_hits=$( ( cd "$PLUGIN_ROOT/../.." && bash "$SCRIPT" --all --quiet ) 2>/dev/null \
-  | grep -cE 'tests/(comment-journal-check|wiki-lint-descriptive-refs)\.test\.sh' || true )
+all_out=$( ( cd "$PLUGIN_ROOT/../.." && bash "$SCRIPT" --all --quiet ) 2>/dev/null )
+all_lines=$(printf '%s' "$all_out" | grep -c . || true)
+# positive control: --all が 1 件も出さない状況 (scan root 不在で rc=2 等) では下の assert が
+# vacuous に pass する。先に「走査自体が成立した」ことを測る。
+if [ "${all_lines:-0}" -gt 0 ]; then
+  pass "TC-14 --all が findings を出した (${all_lines} 行 — 除外 assert が vacuous でない)"
+else
+  fail "TC-14 --all が 0 件 — 除外 assert が vacuous になるため判定不能"
+fi
+excluded_hits=$(printf '%s' "$all_out" | grep -cE 'tests/(comment-journal-check|wiki-lint-descriptive-refs)\.test\.sh' || true)
 assert "TC-14 --all で検出器 test の fixture が hit しない" "0" "$excluded_hits"
+
+# ---- TC-15: `## ソース` 除外の節スコープ + フェンス保護 ---------------------
+# 見出し以降 EOF まで打ち切ると、後続の本文節が丸ごと盲点になる。またフェンス内に引用された
+# `## ソース` で走査が止まると、そのファイルの以降が無言で検出対象外になる。
+post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
+assert "TC-15 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(pat_count "$post_src" '\[P5\]')"
+fenced_src=$(printf '# t\n\n```markdown\n## ソース\n```\n\nPR #1300 はフェンス後の本文\n')
+assert "TC-15 フェンス内の ## ソース では走査が止まらない" "1" "$(pat_count "$fenced_src" '\[P5\]')"
+
+# ---- TC-16: 語彙の大小文字対称性と左語境界 ----------------------------------
+assert "TC-16 小文字 issue #N も hit する"  "1" "$(count 'issue #55 の話')"
+assert "TC-16 小文字 pr #N も hit する"     "1" "$(count 'pr #56 の話')"
+assert "TC-16 prefs #N は hit しない (左語境界)" "0" "$(count 'prefs #12 を設定')"
+assert "TC-16 hrefs #N は hit しない (左語境界)" "0" "$(count 'hrefs #13 を確認')"
+
+# ---- TC-17: P5/P6 の二重報告解消 --------------------------------------------
+# 「PR #N で別途対応」は両規則に当たる。P6 が 1 件だけ報告し P5 は報告しない。
+dup=$(scan 'PR #1152 で別途対応')
+assert "TC-17 PR #N で別途対応 は 1 件のみ報告される" "1" "$(printf '%s' "$dup" | grep -c . || true)"
+assert "TC-17 報告するのは P6 (ja 構文) 側" "1" "$(printf '%s' "$dup" | grep -c '\[P6\]' || true)"
+assert "TC-17 P5 は同一位置を報告しない" "0" "$(printf '%s' "$dup" | grep -c '\[P5\]' || true)"
 
 if ! print_summary "$(basename "$0")" \
   "drift: comment-journal-check.sh の P5/P6 検出 / 除外が変わった可能性。スクリプト冒頭の P5/P6 定義・Word boundary・Descriptive-reference exclusions (X1-X3) の記述を参照。"; then

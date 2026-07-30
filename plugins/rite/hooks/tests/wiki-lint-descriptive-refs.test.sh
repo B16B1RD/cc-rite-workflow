@@ -11,9 +11,9 @@
 #   TC-3   TODO / FIXME 行が hit しない
 #   TC-4   インラインコードスパン内の literal 引用が hit しない
 #   TC-5   コードフェンス内が hit しない / フェンス閉じ後は再び検出される
-#   TC-6   語境界: `#2047` の一致が `#204` で切れない
+#   TC-6   語境界が文字クラスで表現されている (静的 pin。件数では測れないため)
 #   TC-7   旧 4 形 (括弧付き / see PR / #N で対応 / 詳細は #N) の検出が保たれる
-#   TC-8   frontmatter の sources.ref が hit しない
+#   TC-8   frontmatter 散文に書かれた番号参照が hit しない (E1 の識別力)
 #   TC-9   marker block / WIKI_DESCRIPTIVE_REFS / read_ok の stdout 契約
 #   TC-10  空 pages_list → hits 0, read_ok=true (Wiki 初期化直後の legitimate no-op)
 #   TC-11  全ページ読出失敗 → read_ok=io_error (偽の 0 件を「解消済み」と読ませない)
@@ -24,6 +24,9 @@
 #   TC-16  MUTATION 除外フィルタを外すと TC-2..TC-5 が落ちる (除外の識別力)
 #   TC-17  MUTATION 語境界を `\b` にすると gawk では never-match になる (silent 沈黙の実証)
 #   TC-18  SKILL.md ステップ 7.5 が helper 委譲 + helper 不在 fallback を持つ (静的回帰)
+#   TC-19  separate_branch (本番既定経路、git show) の positive path
+#   TC-20  `## ソース` 除外が節スコープ (見出し以降 EOF まで打ち切らない)
+#   TC-21  informational 契約の非回帰 (T-06 / T-07: n_warnings 不加算 / canonical Lint: 行不変)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -73,7 +76,7 @@ See PR #1149 も同様
 詳細は #1151
 #1152 で別途対応
 TODO: #9999 で対応予定
-FIXME #9998 を追う
+FIXME PR #9998 を追う
 `refs #204` が `refs #2047` に一致する
 PR #2047 の語境界
 
@@ -135,6 +138,9 @@ assert_mutated() {
 
 # ---- 除外の識別力を「フィルタを外した版」との差で測る (TC-16 の測定基盤) -------
 # helper 内のフィルタを外した mutant を作り、除外が無いと hits が跳ね上がることを実証する。
+# **E1 (frontmatter 除去) は本 mutant では測れない** — mutant が frontmatter 除去を残す設計のため。
+# E1 の識別力は TC-8 の fixture (frontmatter 散文に番号参照を置く) が担う。mutant を拡張する際は
+# 「どの除外がその mutant で到達不能か」を先に列挙すること。
 MUT_NOFILTER="$SBX/mutant-nofilter.sh"
 # フィルタ本体 (_RITE_BODY_FILTER) を「frontmatter 除去のみ」に差し替える
 awk '
@@ -188,14 +194,13 @@ assert "TC-7 See PR #N が hit"             "1" "$(single_hits 'See PR #1149 も
 assert "TC-7 詳細は #N が hit"             "1" "$(single_hits '詳細は #1151')"
 assert "TC-7 #N で別途対応 が hit"          "1" "$(single_hits '#1152 で別途対応')"
 assert "TC-3 TODO 行は hit しない"          "0" "$(single_hits 'TODO: #9999 で対応予定')"
-assert "TC-3 FIXME 行は hit しない"         "0" "$(single_hits 'FIXME #9998 を追う')"
+assert "TC-3 FIXME 行は hit しない"         "0" "$(single_hits 'FIXME PR #9998 を追う')"
 assert "TC-4 コードスパン内は hit しない"    "0" "$(single_hits '`refs #204` が `refs #2047` に一致する')"
 assert "TC-1 キーワードなし裸 #N は hit しない" "0" "$(single_hits '#1234 の単独形は対象外')"
-assert "TC-8 frontmatter の ref は hit しない" "0" "$(printf 'x' >/dev/null; single_hits '本文に番号なし')"
+tc8_fm=$(printf -- '---\nnote: "PR #1300 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
+assert "TC-8 frontmatter 散文の番号参照は hit しない" "0" "$(single_hits "$tc8_fm")"
 
 # TC-2: `## ソース` 節のみを持つページ (本文に対象なし) は 0 件
-assert "TC-2 ソース節の provenance ラベルは hit しない" "0" \
-  "$(single_hits '## ソース')"
 src_only=$(printf '# t\n\n## ソース\n\n- [PR #1300 review results](../../raw/reviews/a.md)\n- [Issue #1284 fix results](../../raw/fixes/b.md)\n')
 assert "TC-2 ソース節配下のラベル 2 行も hit しない" "0" "$(single_hits "$src_only")"
 
@@ -205,10 +210,12 @@ assert "TC-5 コードフェンス内は hit しない" "0" "$(single_hits "$fen
 fence_then=$(printf '# t\n\n```bash\ngrep -E "PR #7777" f.md\n```\n\nPR #1301 フェンス後\n')
 assert "TC-5 フェンス閉じ後は再び検出される" "1" "$(single_hits "$fence_then")"
 
-# TC-6: 語境界 — `#2047` の行は 1 hit で、`#204` として途中で切れない。
-# 検出 regex 自体を単独で当てて一致文字列を確認する (helper は件数のみ出すため)。
-boundary_match=$(printf 'PR #2047 の語境界\n' | grep -oE '(Issues?|PRs?|[Rr]efs?|[Ss]ee|Related to|Closes|Fixes|Resolves) *#[0-9]+([^0-9]|$)' | head -1 | sed 's/[^0-9]$//')
-assert "TC-6 語境界: 一致は PR #2047 (PR #204 で切れない)" "PR #2047" "$boundary_match"
+# TC-6: 語境界。貪欲な `[0-9]+` により語境界の有無は件数メトリクスに現れないため、件数ベースでは
+# 原理的に検出できない (実装から `([^0-9]|$)` を消しても hits は不変)。よって helper の regex 定義を
+# 静的に pin する。行内容ベースの識別力は comment-journal-check.test.sh の TC-6 が担う。
+assert_grep "TC-6 語境界は文字クラスで表現される (gawk の \\b はバックスペース扱いのため使えない)" \
+  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\(\[\^0-9\]\|\$\)'
+assert_not_grep "TC-6 検出 regex に \\b を使っていない" "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[0-9\]\+.b'
 
 # TC-17: gawk の `\b` は語境界ではなくバックスペース。`([^0-9]|$)` を `\b` に替えた
 # mutant が沈黙することを実証する (この落とし穴を踏むと検出器が無言で 0 件になる)。
@@ -261,7 +268,43 @@ assert_grep "TC-18 helper 不在 fallback が WIKI_DESCRIPTIVE_REFS=0 を出す"
 assert_grep "TC-18 helper 不在 fallback の read_ok" "$LINT_MD" 'descriptive_refs_read_ok=skipped_helper_missing'
 assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD" 'see PR\|See PR\) #\[0-9\]\+'
 
+# ---- TC-19: separate_branch (本番既定経路) の positive path ----------------
+# 44 assertion が same_branch (cat) に偏っており、rite-config.yml の既定 separate_branch
+# (git show) は error 経路でしか踏まれていなかった。同じ fixture で同じ hits になることを pin する。
+GITSBX=$(make_plain_sandbox)
+cleanup_dirs+=("$GITSBX")
+(
+  cd "$GITSBX" || exit 1
+  git init -q . 2>/dev/null
+  git config user.email t@example.com; git config user.name t
+  mkdir -p .rite/wiki/pages/anti-patterns
+  cp "$SBX/$FIXTURE_REL" ".rite/wiki/pages/anti-patterns/fixture.md"
+  git add -A >/dev/null 2>&1
+  git commit -qm "fixture" >/dev/null 2>&1
+  git branch -q wiki 2>/dev/null
+) || true
+sb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+assert "TC-19 separate_branch (git show) で same_branch と同じ hits" "$hits" "$sb_hits"
+sb_ok=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) 2>/dev/null | sed -n 's/^descriptive_refs_read_ok=//p')
+assert "TC-19 separate_branch で read_ok=true" "true" "$sb_ok"
+
+# ---- TC-20: `## ソース` 除外の節スコープ ------------------------------------
+# 見出し以降 EOF まで打ち切ると、wiki-ingest が後ろに追記する `## 補強:` 等の本文が盲点になる。
+post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
+assert "TC-20 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(single_hits "$post_src")"
+assert "TC-20 ソース節内の provenance ラベルは hit しない" "0" \
+  "$(single_hits "$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n')")"
+
+# ---- TC-21: informational 契約の非回帰 (Issue の T-06 / T-07) ---------------
+# 実測で確認しただけでは非回帰は担保されない。SKILL.md 側を静的に pin する。
+assert_grep "TC-21 (T-06) n_descriptive_refs は n_warnings に加算しない" "$LINT_MD" \
+  'n_descriptive_refs.*n_warnings.*加算しない'
+assert_grep "TC-21 (T-07) canonical Lint: summary 行の形式が不変" "$LINT_MD" \
+  '^Lint: contradictions=\{n_contradictions\}, stale=\{n_stale\}, orphans=\{n_orphans\}, missing_concept=\{n_missing_concept\}, unregistered_raw=\{n_unregistered_raw\}, broken_refs=\{n_broken_refs\}$'
+assert_not_grep "TC-21 (T-07) Lint: 行に descriptive フィールドが混入していない" "$LINT_MD" \
+  '^Lint: .*descriptive'
+
 if ! print_summary "$(basename "$0")" \
-  "drift: wiki-lint-descriptive-refs.sh の検出 / 除外が変わった可能性。SKILL.md ステップ 7.5 の委譲契約と helper 冒頭の検出 2 規則・除外 X1-X5 の記述を参照。"; then
+  "drift: wiki-lint-descriptive-refs.sh の検出 / 除外が変わった可能性。SKILL.md ステップ 7.5 の委譲契約と helper 冒頭の検出 2 規則・除外 E1-E5 の記述を参照。"; then
   exit 1
 fi

@@ -19,7 +19,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 5. 孤児ページ検出 (`index.md` 未登録、`wiki-lint-orphans.sh` 委譲)
 6. 欠落概念検出 (`missing_concept` + `unregistered_raw` の 3 分岐)
 7. 壊れた相互参照検出 (Markdown link 解決失敗、`wiki-lint-broken-refs.sh` 委譲)
-7.5. 説明的番号参照検出 (ページ本文の Issue/PR/commit 番号参照、informational)
+7.5. 説明的番号参照検出 (ページ本文の Issue/PR 番号参照、informational)
 8. log.md 追記 (`lint:clean` / `lint:warning`)
 9. 完了レポート (通常モード / `--auto` モード)
 
@@ -35,7 +35,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **説明的番号参照 (descriptive_number_ref)** | ページ本文に残った説明目的の Issue/PR 番号参照（裸の「PR #N は…」「Issue #N」、括弧付き「(refs #N)」、日本語の「#N で対応」「詳細は #N」）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter・`## ソース` 節・コードフェンス / スパン・TODO/FIXME は除外 | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
 
 矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターン (ディレクトリ構造 / ブランチ管理 / テンプレート展開) は [Wiki Patterns](../../references/wiki-patterns.md) を参照。
 
@@ -197,7 +197,7 @@ exit 0
 | `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（raw frontmatter の `ingest_status: skipped` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
 | `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 の `wiki-lint-broken-refs.sh` が emit する `n_broken_refs=` 値を転記 (LLM 独自カウント禁止) |
-| `n_descriptive_refs` | 0 | ステップ 7.5 でページ本文の説明的 Issue/PR/commit 番号参照を検出した hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
+| `n_descriptive_refs` | 0 | ステップ 7.5 の `wiki-lint-descriptive-refs.sh` が emit する `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 値を転記する（**LLM 独自カウント禁止**）。ページ本文の説明的 Issue/PR 番号参照の hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
 | `issues[]` | `[]` | 各検出結果を `{category, page, detail}` として append (helper 委譲カテゴリは marker block の行を転記) |
 
 ---
@@ -642,6 +642,7 @@ if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-descrip
   echo "---descriptive_refs_begin---"
   echo "---descriptive_refs_end---"
   echo "descriptive_refs_pages=0"
+  echo "descriptive_refs_read_errors=0"
   echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=0"
   echo "descriptive_refs_read_ok=skipped_helper_missing"
 else
@@ -652,7 +653,11 @@ PAGES_LIST_EOF
 fi
 ```
 
-**`descriptive_refs_read_ok` enum**: `true`（全ページ読出成功）/ `io_error`（ページが存在するのに全件読出失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。`io_error` / `skipped_helper_missing` のときステップ 9 完了レポートの該当行に「実測されていない」旨を併記する。
+**`descriptive_refs_read_ok` enum**: `true`（全ページ読出成功）/ `io_error`（ページが存在するのに全件読出失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。`descriptive_refs_read_errors` は読み出せなかったページ数で、`read_ok=true` でも部分欠損があれば正の値を取る。ステップ 9 完了レポートの note 展開はこの 2 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
+
+**検出結果の記録**: 本カテゴリは **informational 指標のため、ステップ 6.3 の `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 6.3 の generic 契約「helper 委譲カテゴリは marker block の行を転記する」は blocking カテゴリ（陳腐化 / 孤児 / 壊れた相互参照）を対象とし、informational カテゴリ（本ステップと `unregistered_raw`）は対象外。転記すると 226 件超の検出詳細が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
+
+marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、本 SKILL.md 内に消費者を持たない。ページ内訳を人間が見たい場合は helper を直接実行する。
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
@@ -907,7 +912,7 @@ Wiki Lint が完了しました。
 - 欠落概念: {n_missing_concept} 件{log_read_ok_note}{all_source_refs_read_ok_note}
 - 壊れた相互参照: {n_broken_refs} 件{broken_refs_read_ok_note}
 - 未登録 raw（skip 済）: {n_unregistered_raw} 件（informational、`n_warnings` 不加算）
-- 説明的番号参照: {n_descriptive_refs} 件（informational、`n_warnings` 不加算。ページ本文の Issue/PR/commit 番号参照。ステップ 7.5）
+- 説明的番号参照: {n_descriptive_refs} 件{descriptive_refs_read_ok_note}（informational、`n_warnings` 不加算。ページ本文の Issue/PR 番号参照。ステップ 7.5）
 
 {log_read_ok_warning}{all_source_refs_read_ok_warning}
 
@@ -926,7 +931,14 @@ Wiki Lint が完了しました。
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
 
-**`{n_descriptive_refs}` 展開ルール**: LLM は ステップ 7.5 bash block stdout の `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 行から値を読み取り `{n_descriptive_refs}` に展開する。ステップ 7.5 が skip された（`pages_list` 空）場合は `0`。`descriptive_refs_read_ok` が `true` 以外（`io_error` / `skipped_helper_missing`）のときは、件数に続けて「（未実測: {read_ok 値}）」を併記する — 読出失敗由来の `0` を「解消済み」と読ませないため。
+**`{n_descriptive_refs}` / `{descriptive_refs_read_ok_note}` 展開ルール**: LLM は ステップ 7.5 の helper stdout から `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` を読み取り `{n_descriptive_refs}` に展開する（ステップ 7.5 が skip された（`pages_list` 空）場合は `0`）。note は兄弟 enum（`{stale_check_ok_note}` 等）と同じく件数の直後に置き、`descriptive_refs_read_ok` と `descriptive_refs_read_errors` の 2 値から下表で決める — 読出失敗由来の `0` や部分欠損した集計を「解消済み」と読ませないため:
+
+| 条件 | note（件数の直後） |
+|------|------------------|
+| `read_ok=true` かつ `read_errors=0` | 空文字列 |
+| `read_ok=true` かつ `read_errors>0` | ` ⚠️ (未実測: {read_errors} ページ読出失敗のため集計から除外)` |
+| `read_ok=io_error` | ` ⚠️ (未実測: io_error — 全ページ読出失敗)` |
+| `read_ok=skipped_helper_missing` | ` ⚠️ (未実測: skipped_helper_missing — helper 不在)` |
 
 **`{stale_check_ok_note}` / `{orphan_check_ok_note}` / `{broken_refs_read_ok_note}` 展開ルール**: LLM は ステップ 4 / 5 / 7 の helper stdout から `stale_check_ok=` / `orphan_check_ok=` / `broken_refs_read_ok=` を読み取り、それぞれ独立に展開する。ステップ 3-7 skip 経路 (処理対象 0 件) では空文字列:
 
