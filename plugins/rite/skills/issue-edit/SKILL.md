@@ -271,7 +271,9 @@ Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 
 
 All findings — **including `UNVERIFIED`** — fold into the existing Phase 3.2 confirmation rather than raising a separate `AskUserQuestion`, so an edit with nothing to report keeps its current single-confirmation flow. **The body is never rewritten before that confirmation**: every annotation and correction surfaced here is applied only after the user approves, which is what keeps the diff shown in 3.1 identical to what Phase 4.1 writes.
 
-Skip a claim that already carries a 「要確認」/「要検証」annotation — Phase 3.2's 「変更を修正」branch returns to Phase 2.1 with the applied changes retained, so an unguarded re-entry would annotate the same claim twice.
+Skip a claim that already carries a 「要確認」/「要検証」annotation — the `issue-create` skill annotates at ステップ 4.2.1, so an edited section can arrive here with those markers already in place, and an unguarded pass would add a second one.
+
+**Budget**: Phase 3.2's own question occupies one of the four slots an `AskUserQuestion` call allows, so surface at most **3** items here (the shared reference derives this as the remaining slots for a fold-in consumer). Beyond that, list the overflow inside the Phase 3.2 confirmation text rather than writing it into the body — the reference's default overflow rule (annotate the body directly) would break the invariant above.
 
 ### 3.2 User Confirmation
 
