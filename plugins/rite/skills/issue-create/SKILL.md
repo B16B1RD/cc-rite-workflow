@@ -230,7 +230,7 @@ Read tool で以下を読み込む:
 
 4.2 で生成した body に含まれる**検証可能な断定**を、4.3 の Issue 作成の前に検証する。Complexity は 4.1 で**確定した値**を使う（4.0 の見込み値ではない）。
 
-**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2 Step 1 のテンプレート読込と同じ runtime SoT 読込。3 クラスの検出方法・**裏取りコマンド表**・**3 値の処理（`VERIFIED` 以外の判定に義務づけられた stderr `WARNING` 規則とクラス 2 の限定句候補併記を含む）**・エラー処理は同 reference にのみ存在し、本体には複製しない。読み込まずに下表だけで進めると実行すべきコマンドが判らず、記憶・推測での `VERIFIED` 判定という同 reference が禁じる経路に落ちる）。
+**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2 Step 1 のテンプレート読込と同じ runtime SoT 読込。3 クラスの検出方法・**裏取りコマンド表**・**3 値の処理（`VERIFIED` 以外の判定**および**クラス 3 の自己矛盾候補**に義務づけられた stderr `WARNING` 規則と、その発行手段・クラス 2 の限定句候補併記を含む）・エラー処理は同 reference にのみ存在し、本体には複製しない。読み込まずに下表だけで進めると実行すべきコマンドが判らず、記憶・推測での `VERIFIED` 判定という同 reference が禁じる経路に落ちる）。
 
 | 状況 | アクション |
 |------|-----------|
