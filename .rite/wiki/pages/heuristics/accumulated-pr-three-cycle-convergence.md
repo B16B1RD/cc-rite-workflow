@@ -57,13 +57,13 @@ confidence: high
 
 ## 概要
 
-PR #997 cycle 2 の LOW follow-up として起票された PR #1011 (Issue #999) は、3 cycle で 0 findings に収束した実例。cycle 1 で code-quality MEDIUM + security LOW の 2 reviewer 独立指摘が Phase 5.2 cross-validation で HIGH に boost、cycle 1 fix 自体が新たな minor inaccuracy を導入 (Wiki 経験則「fix-induced regression」の再現)、cycle 2 で 2 階層構造に書き直し、cycle 3 で 3 reviewer マージ可。
+cycle 2 の LOW follow-up として起票された PR は、3 cycle で 0 findings に収束した実例。cycle 1 で code-quality MEDIUM + security LOW の 2 reviewer 独立指摘が Phase 5.2 cross-validation で HIGH に boost、cycle 1 fix 自体が新たな minor inaccuracy を導入 (Wiki 経験則「fix-induced regression」の再現)、cycle 2 で 2 階層構造に書き直し、cycle 3 で 3 reviewer マージ可。
 
 ## 詳細
 
 ### Cycle 1: cross-validation severity boost が正しく機能
 
-- **対象**: `pre-tool-bash-guard.sh:315` のコメント論拠 (PR #997 cycle 2 で追加した「(A)〜(G) deny case-glob は trailing space 必須」)
+- **対象**: `pre-tool-bash-guard.sh:315` のコメント論拠 (cycle 2 で追加した「(A)〜(G) deny case-glob は trailing space 必須」)
 - **指摘**: code-quality MEDIUM + security LOW が同じ箇所のコメント論拠不整合を独立に指摘
 - **boost**: Phase 5.2 cross-validation で 2 reviewer 合意 → MEDIUM の 1 段階上 HIGH に severity boost
 - **意義**: 単独 reviewer なら LOW で informational に降格される finding が、複数 reviewer の独立検証で blocking 化される実例
@@ -92,9 +92,9 @@ PR #997 cycle 2 の LOW follow-up として起票された PR #1011 (Issue #999)
 
 - **silent skip**: Wiki ingest 経路の auto_ingest 判定で bash パース bug により silent skip が発生 (本セッションで後追い手動 ingest として記録)。本来は Phase 6.5.W / 4.6.W で自動 ingest されるべき経路
 
-### PR #1032 (Issue #1025): bash semantics 版 3-cycle 連鎖収束の実証
+### bash semantics 版 3-cycle 連鎖収束の実証
 
-PR #1032 (Issue #1025 — `plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路 SoT 同期 refactor) は、PR #1011 の 3-cycle 収束パターンの **bash semantics 版** 連続再現事例。各 cycle で異なる drift class が surface し cycle 4 で 0 findings に到達:
+当該 PR (`plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路 SoT 同期 refactor) は、前項の 3-cycle 収束パターンの **bash semantics 版** 連続再現事例。各 cycle で異なる drift class が surface し cycle 4 で 0 findings に到達:
 
 - **Cycle 1 (CRITICAL — bash 言語仕様罠)**: format 同期目的の SoT-aligned refactor で `if ! cmd; then rc=$?` 形式を新規導入し bash `!` 演算子の boolean 反転による rc 常時 0 化 silent regression。reviewer 2 名 cross-validation 一致検出
 - **Cycle 2 (MEDIUM + LOW — fix-introduced regression)**: cycle 1 fix が hardcoded line-number reference (`L1147-L1150`) を comment に埋め込み SoT 実位置 (L1122-L1156) と乖離 + L799 mktemp の `2>/dev/null` 欠落で 24/25 サイト対称化漏れ
@@ -104,11 +104,11 @@ PR #1032 (Issue #1025 — `plugins/rite/commands/pr/fix.md` L797-L802 の `mktem
 **PR #1011 との対比による新観点**:
 
 1. **drift class が cycle ごとに異なる shrinking pattern**: PR #1011 は同一 class (cycle 1 / 2 とも「サブブロック別 trailing space 説明の精密化」) の段階的詳細化で収束したが、PR #1032 は **cycle ごとに異なる drift class** (cycle 1: bash 言語仕様 → cycle 2: documentation pointer → cycle 3: numeric counter) が連続発火。それでも **shrinking cycle count (3 findings → 2 findings → 1 finding → 0 findings)** で 4 cycle で収束する empirical 規則が成立。
-2. **3-cycle 連鎖は drift class 横断でも 4 cycle 内で完結する**: cycle ごとに drift class を semantic anchor に置換していくことで、各 cycle で発火する drift class が異なっても shrinking cycle で収束。「recursive recurrence in fix layer」の発火上限は **3 cycle 連鎖 + cycle 4 で 0 findings 期待** が 2 連続 (PR #1011, PR #1032) で再現された empirical evidence。
+2. **3-cycle 連鎖は drift class 横断でも 4 cycle 内で完結する**: cycle ごとに drift class を semantic anchor に置換していくことで、各 cycle で発火する drift class が異なっても shrinking cycle で収束。「recursive recurrence in fix layer」の発火上限は **3 cycle 連鎖 + cycle 4 で 0 findings 期待** が 2 連続で再現された empirical evidence。
 3. **format 同期 refactor の小規模 PR でも 3-cycle 連鎖が発火する**: PR #1011 は 7 形式 (A/B/C/D/E case-glob/E token-loop/G 短形式/G long-form) の対称性を扱う中規模 PR だったが、PR #1032 は **6 行の bash block を新 SoT 形式に refactor する小規模 PR** でも同型の 3-cycle 連鎖が発火することを示した。これは「PR の規模ではなく **新 SoT との対称化責務の層数** (本 PR では format token / bash structure / runtime semantics の 3 層) が 3-cycle 連鎖の発火条件である」観点を支持する。
 4. **「累積対策 PR の 3-cycle 収束記録」pattern の reproducibility は 2 PR 連続で確立**: PR #1011 (heuristics 経験則の起点) → PR #1032 (連続再現事例) として、本 heuristics 経験則は 2 PR 連続で再現された。bash semantics layer まで含む drift class 横断の 3-cycle 連鎖でも 4 cycle で収束する empirical pattern が、`fix-induced-drift-in-cumulative-defense.md` と本ページの両方で観測されている。
 
-### PR #1049 (Issue #1047): 1-cycle convergence の下限事例
+### 1-cycle convergence の下限事例
 
 PR #1049 (`_test-helpers.sh` への新規 `assert_grep_in_section` helper 追加 + T-2/T-3/T-4 caller test 3 ファイルの API 移行) は、本ページが記録してきた 3-cycle 収束 pattern の **対比となる下限事例** として位置付けられる。cycle 1 で 3 reviewer 独立合意 HIGH を含む 3 finding 検出 → cycle 1 fix で structural resolution → cycle 2 で 0 finding mergeable に到達する **1-cycle convergence (cycle 0 を含めて 2 cycle で完結)** を実測:
 
@@ -120,10 +120,10 @@ PR #1049 (`_test-helpers.sh` への新規 `assert_grep_in_section` helper 追加
 
 1. **shrinking cycle count の下限は 1 cycle convergence (cycle 0 含め 2 cycle)** — 累積対策 PR の 3-cycle 連鎖が「上限」だとすると、本 PR #1049 は対極の「下限」事例として 1-cycle 収束を実測。**収束 cycle 数は (a) 問題の structural clarity、(b) cycle 1 fix の semantic 完全性、(c) reviewer cross-validation の depth の 3 因子で決まる** 観点を支持。PR #1049 は (a) helper test coverage 対称性が grep evidence で 1 trigger で structurally clear に成立、(b) cycle 1 fix が 3 reviewer 全指摘を semantic anchor 化で一括解消、(c) 3 reviewer 並列レビューで cross-validation depth 最大 — の 3 因子がすべて揃った。
 2. **「fix-induced regression が発火しない条件」の輪郭** — PR #1011 / #1032 では cycle 1 fix が新規 drift を導入したが、PR #1049 では cycle 1 fix が新規 drift を introduce せずに直接 mergeable に到達。違いは「fix が structural anchor (TC-12 self-test、3 点セット) を新規確立する形態」であることで、fix-induced regression は **「format 同期 / 列挙対称化 / hardcoded reference 書き換え」など precedent-following 形態** の fix で発火率が高く、**「新規 contract 確立」形態** の fix では発火率が低い、という pattern 仮説を提示。
-3. **3 reviewer 並列レビュー × 1 cycle 収束の reproducibility 候補** — 累積 30 回目 (PR #984、4 reviewer 全員 0 finding 1 cycle merge) と本 PR #1049 (3 reviewer 並列で HIGH cross-validated → 1 cycle 構造的解消) が **「複数 reviewer 並列レビューが initial detection の完全性を上げ、fix の structural anchor 確立を促進する」** 共通 mechanism を示唆。3-cycle 連鎖の前提となる「cycle 1 fix の不完全性」が、reviewer cross-validation depth で抑制される経路を支持する empirical evidence。
+3. **3 reviewer 並列レビュー × 1 cycle 収束の reproducibility 候補** — 累積 30 回目（4 reviewer 全員 0 finding・1 cycle merge）と本事例 (3 reviewer 並列で HIGH cross-validated → 1 cycle 構造的解消) が **「複数 reviewer 並列レビューが initial detection の完全性を上げ、fix の structural anchor 確立を促進する」** 共通 mechanism を示唆。3-cycle 連鎖の前提となる「cycle 1 fix の不完全性」が、reviewer cross-validation depth で抑制される経路を支持する empirical evidence。
 4. **Reviewer 自身による FIXED verification の standard pattern** — error-handling reviewer が cycle 1 で MEDIUM (awk silent swallow) を指摘し、cycle 2 で同 reviewer 自身が「5 failure mode を診断レベルで区別可能化された」と FIXED verification するパターンは、`fix-verification-requires-natural-workflow-firing.md` の reviewer ownership pattern と整合。「指摘した reviewer が次サイクルで verify する」契約は、PR #1049 のような 1-cycle 収束 PR でも standard pattern として再現されることを実測。
 
-### PR #1064 (Issue #1021): 14 → 0/1-nit-noted への mass batch fix 1-cycle convergence
+### 14 → 0/1-nit-noted への mass batch fix 1-cycle convergence
 
 PR #1064 (`migrate-review-state-to-1.1.sh` + `review-schema-version-check.sh` + `scope-enum-check.test.sh` の 3 artifacts 追加 + `distributed-fix-drift-check.sh` への Pattern 6 統合) は、本ページが記録してきた 1-cycle convergence pattern の **mass batch fix 版**。cycle 1 で 4 reviewer 並列レビューにより 14 findings (CRITICAL × 2 / HIGH × 4 / MEDIUM × 6 / LOW × 2) が検出され、cycle 1 fix で 14 件全件を一括 structural fix → cycle 2 re-review で 1-nit-noted (LOW-MEDIUM、scope=`nit-noted` で non-blocking) + 2 recommendations のみという 1-cycle 収束を実測:
 
@@ -138,7 +138,7 @@ PR #1064 (`migrate-review-state-to-1.1.sh` + `review-schema-version-check.sh` + 
 3. **scope=`nit-noted` の Issue #1019 M5 受け流し経路が初めて real-world で発火**: cycle 2 で残った LOW-MEDIUM 1 件は `nit-noted` scope 割当て + `accept (認知のみ)` 選択で revocable に accept 永続化されることが期待される (Phase 2.1.A fingerprint suppression、本 Epic #1015 M5 設計)。本 PR はこの経路が初めて real-world cycle で発火するエッジ事例。
 4. **`spec-vs-spec-canonical-priority` heuristic との連動**: 本 PR cycle 1 の CRITICAL × 1 (Issue body vs schema doc canonical) は `[[spec-vs-spec-canonical-priority]]` の origin 事例。本ページは convergence pattern (cycle 数の reproducibility)、対称ページは canonical priority resolution の意思決定原則 — 同一 PR から相補的な 2 つの heuristic が抽出されたことは Wiki 経験則の coverage が深化している evidence。
 
-### PR #1078 (Issue #1077): 5-cycle shrinking convergence with reviewer disagreement resolution
+### 5-cycle shrinking convergence with reviewer disagreement resolution
 
 PR #1078 (`start-execute.md` / `checklist-auto-check.md` / `cleanup.md` の 3 site に threshold=5 mass-residual warning + workflow_incident emit を導入) は、本ページが記録してきた 3-cycle / 1-cycle convergence pattern の **5-cycle 拡張版** 事例。13 findings を **8 → 3 → 2 → 1 → 0** の完全 shrinking trajectory で 5 cycle 収束:
 
@@ -155,7 +155,7 @@ PR #1078 (`start-execute.md` / `checklist-auto-check.md` / `cleanup.md` の 3 si
 3. **Shrinking trajectory 8 → 3 → 2 → 1 → 0 は initial detection completeness の指標**: cycle 1 で 8 findings 検出は 2 reviewer 並列の最大検出力。各 cycle で半減未満 (8→3 で 5/8 削減、3→2 で 2/3 維持、2→1 で 1/2 削減) のシリアル shrinking は、各 cycle fix が partial structural anchor 化 (`Asymmetric Fix Transcription` の sub-pattern 段階解消) を意味する
 4. **Wiki 経験則の自己実証**: 本 PR の review-fix loop 自体が `accumulated-pr-three-cycle-convergence` / `asymmetric-fix-transcription` / `fix-induced-drift-in-cumulative-defense` / `phase-number-structural-symmetry` の 4 既存 Wiki 経験則の **実測再現**。Wiki 経験則がワークフロー自身の品質改善に feed back する self-reinforcing loop が cycle 5 で完結
 
-### PR #1151 (Issue #1150): 大規模 rename PR の 4-cycle 累積収束 + tail residue pattern
+### 大規模 rename PR の 4-cycle 累積収束 + tail residue pattern
 
 PR #1151 (`wiki/*` commands の `Phase N` → `ステップ N` heading rename、16 files / +484/-484) は、本ページが記録してきた累積収束 pattern の **大規模 rename PR 版** 事例。18 findings を **18 → 3 → 2 → 0** の 4 cycle shrinking trajectory で収束:
 
@@ -166,12 +166,12 @@ PR #1151 (`wiki/*` commands の `Phase N` → `ステップ N` heading rename、
 
 **PR #1011 / #1032 / #1049 / #1064 / #1078 との対比による新観点**:
 
-1. **rename PR は drift class の分散度合いが特殊**: 通常の累積対策 PR (PR #1011, #1032 等) は単一 SoT との対称化責務 (format token / bash structure 等) の層数で cycle 数が決まるが、rename PR は **同 file 内の類似 violation の分散度合い** で cycle 数が決まる。本 PR では archive doc 1 file 内に 8 件の同型 violation が散在し、cycle ごとに 1-2 件単位の tail residue が surface する `tail-end pattern` を実証
-2. **AC verification grep の narrow pattern 盲点が cycle 数を伸ばす**: AC を `Phase [0-9]+(\.[0-9]+)?` で定義したことで、bare prose / 表ヘッダ / 命名規約 prose の 13+ 件残留が cycle 0 で検出できず cycle 1 で初めて発火。**AC を word boundary (`Phase\b`) で再定義すれば cycle 1 finding 数を 18 → 5 程度に圧縮できた可能性** (PR #1151 fix cycle 1 から導出された hint)
+1. **rename PR は drift class の分散度合いが特殊**: 通常の累積対策 PR は単一 SoT との対称化責務 (format token / bash structure 等) の層数で cycle 数が決まるが、rename PR は **同 file 内の類似 violation の分散度合い** で cycle 数が決まる。本 PR では archive doc 1 file 内に 8 件の同型 violation が散在し、cycle ごとに 1-2 件単位の tail residue が surface する `tail-end pattern` を実証
+2. **AC verification grep の narrow pattern 盲点が cycle 数を伸ばす**: AC を `Phase [0-9]+(\.[0-9]+)?` で定義したことで、bare prose / 表ヘッダ / 命名規約 prose の 13+ 件残留が cycle 0 で検出できず cycle 1 で初めて発火。**AC を word boundary (`Phase\b`) で再定義すれば cycle 1 finding 数を 18 → 5 程度に圧縮できた可能性**（fix cycle 1 から導出された hint）
 3. **archive doc の front-matter policy violation が cycle 1↔2 revert を発生させる**: cycle 1 fix で over-translation → cycle 2 で F-21 revert → cycle 3 で revert 漏れ tail residue という往復が発生。**reviewer 間で document classification (archive vs current) の認識を共有する仕組み** がないと、同一 file の同一行が cycle を往復する経路を生む (詳細は [Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む](../anti-patterns/archive-doc-frontmatter-policy-violation.md) 参照)
 4. **大規模 rename PR の収束式は `cycle_count ≈ 1 + ⌈log2(tail_residue_density)⌉`**: 本 PR では同 file 内に 8 件分散 → cycle 1 で 6 件 fix → 2 件 tail residue → cycle 2 で 1 件 → cycle 3 で残 1 件、と log2 オーダーで shrinking。経験則として、rename PR の cycle 1 完了時点で **同 file 内の全 `(Phase|ステップ) [0-9]` を pre-fix scan + audit** を導入すれば 4 cycle → 2 cycle に圧縮できる可能性
 
-### PR #1974 (Issue #1945): CRITICAL 1件の共有リソース契約違反から始まる 4-cycle 収束
+### CRITICAL 1 件の共有リソース契約違反から始まる 4-cycle 収束
 
 PR #1974（sandbox 環境での worktree 削除失敗時の自動回収ギャップ解消）は、CRITICAL 1 件（既存共有リソースの type 名前空間を新機能で再利用し既存消費者の契約を見落とす回帰、[[shared-resource-type-reuse-without-consumer-contract-check]] 参照）を起点に、4 cycle で段階的に収束した事例:
 
@@ -182,9 +182,9 @@ PR #1974（sandbox 環境での worktree 削除失敗時の自動回収ギャッ
 
 **他の累積収束事例との対比**: CRITICAL 1 件を起点に、各 cycle で異なる検出アプローチ（実機再現 / 文書整合性 / mutation testing）が異なる drift class（契約見落とし → ドキュメント精度・テストカバレッジ → テストヘルパー自体の過検出）を段階的に発掘する構造は、PR #1032 の「drift class が cycle ごとに異なる shrinking pattern」と同型。加えて本 PR は、review-fix loop の中で新設したテストヘルパー自身の検証ロジック（awk flip-flop レンジ）にバグが混入し、そのバグを後続 cycle の reviewer が独立検出する **「対策コード自身が新たな精査対象になる」自己言及的パターン**を実証した。
 
-### 5 cycle 収束の推移 (PR #2035, 2026-07-27)
+### 5 cycle 収束の推移 (2026-07-27)
 
-3 cycle で収束しない場合の推移パターンとして、PR #2035（Issue #2032 Sub-A、データ契約の additive 追加）の 5 cycle を記録する。findings 12 → 10 → 10 → 7 → 2（最後の 2 件は両方 nit-noted）:
+3 cycle で収束しない場合の推移パターンとして、データ契約を additive に追加した PR (Sub-A) の 5 cycle を記録する。findings 12 → 10 → 10 → 7 → 2（最後の 2 件は両方 nit-noted）:
 
 | cycle | 件数 | 指摘の性質 |
 |---|---|---|
@@ -215,7 +215,7 @@ PR #1974（sandbox 環境での worktree 削除失敗時の自動回収ギャッ
 - [PR #1011 cycle 2 review (1 LOW + 1 informational)](../../raw/reviews/20260517T133937Z-pr-1011-cycle-2.md)
 - [PR #1032 cycle 4 review (mergeable — bash semantics 版 3-cycle 連鎖収束、cycle 4 で両 reviewer 0 findings 合意、drift class 横断 (bash 言語仕様 → documentation pointer → numeric counter) でも 4 cycle で収束する 2 連続再現事例)](../../raw/reviews/20260517T223309Z-pr-1032.md)
 - [PR #1049 cycle 2 re-review (mergeable — 1-cycle convergence の下限事例、3 reviewer 並列レビューで HIGH cross-validated → cycle 1 fix で structural resolution → cycle 2 で 0 finding mergeable。3-cycle 連鎖の対極として 1-cycle 収束が成立する 3 条件 (structural clarity / cycle 1 fix semantic 完全性 / reviewer cross-validation depth) を実測)](../../raw/reviews/20260518T165729Z-pr-1049-cycle2.md)
-- [PR #1064 cycle 2 re-review (mergeable — 14-finding mass batch fix の 1-cycle convergence 上限事例、4 reviewer 並列で 14 findings → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted (Issue #1019 M5 受け流し経路) + 2 recommendations のみ。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動)](../../raw/reviews/20260519T164439Z-pr-1064-cycle2.md)
+- [PR #1064 cycle 2 re-review (mergeable — 14-finding mass batch fix の 1-cycle convergence 上限事例、4 reviewer 並列で 14 findings → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted（M5 受け流し経路） + 2 recommendations のみ。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動)](../../raw/reviews/20260519T164439Z-pr-1064-cycle2.md)
 - [PR #1078 cycle 5 mergeable (5-cycle shrinking convergence、13 findings を 8→3→2→1→0 で収束、cycle 4 reviewer disagreement (Quality Signal 3) を実装による合意形成で解消、Wiki 経験則 4 件の self-reinforcing 実測再現)](../../raw/reviews/20260521T083746Z-pr-1078.md)
 - [PR #1078 cycle 1 fix patterns (累積 13 findings の 7 件 batch fix、cycle 1 で Simplification Charter cross-validated 違反検出、printf vs echo 同一 SoT 内 style consistency、Step 0 → AskUserQuestion silent fall-through 防止 MUST 句強化、Phase 5.4.4.1 detector 不在主張の prose 誤記訂正の 4 fix pattern)](../../raw/fixes/20260521T073426Z-pr-1078.md)
 - [PR #1151 cycle 4 mergeable (大規模 rename PR の 4-cycle 累積収束、18→3→2→0 trajectory、archive doc tail residue pattern + intra-document contradiction の実測)](../../raw/reviews/20260526T161411Z-pr-1151.md)
@@ -225,7 +225,7 @@ PR #1974（sandbox 環境での worktree 削除失敗時の自動回収ギャッ
 - [PR #1969 cycle 6/mergeable review (5-cycle shrinking 4→4→1→2→1→0 で 0 findings 到達、cycle 5 の brace group finding が正しく解消されたことを確認)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)
 - [PR #1974 cycle 4 review (5 reviewer 全員 0 findings、CRITICAL 1 → MEDIUM/HIGH 7 の 4-cycle 収束、boundary 推奨事項 6 件は Decision Log 記録のみ)](../../raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md)
 
-## 補強: 収束は「件数」ではなく「指摘が移った層」で読む (PR #2044)
+## 補強: 収束は「件数」ではなく「指摘が移った層」で読む
 
 PR #2044 は blocking 件数が cycle 1→2→3 で 2→3→3 と**減らなかった**が、指摘の性質は毎回 1 段ずつ浅くなっていた。
 
@@ -239,13 +239,13 @@ PR #2044 は blocking 件数が cycle 1→2→3 で 2→3→3 と**減らなか�
 
 同じ PR の別レビュー系列では 3 cycle で blocking 7 → 0 へ収束し、cycle 2 の CRITICAL が「cycle 1 で直した箇所の数行下にある同型の欠陥（別記法のため grep で拾えなかった）」だった。**fix-introduced finding を attribution できると、収束していないのか掘り進んでいるのかを区別できる。**
 
-## 補強: レビュアーの自己撤回は正常な収束の一形態 (PR #2044)
+## 補強: レビュアーの自己撤回は正常な収束の一形態
 
 cycle 3 で 2 名のレビュアーが自分の前 cycle 指摘を**実測に基づき自ら撤回**した。error-handling reviewer は「`INC=failed` の帰結説明が実体とずれる」という cycle 2 の推奨を、書込不能環境での実測により「現行文面のほうが正確で、自分の言い換えの方が狭かった」と訂正。tech-writer も「3 経路と書くが実体 4 経路」を「第 4 の組は構造的に不能」と判明して撤回した。
 
 > **教訓**: レビュアーが自分の過去の指摘を実測で覆せることは、**指摘の量が質を上回り始める drift への自己修正機構**として機能する。re-review で同一 reviewer に前 cycle の指摘を明示的に渡すと、この撤回が起きやすい。
 
-## 補強: 実測必須ゲート下では severity と実測は直交する (PR #2044)
+## 補強: 実測必須ゲート下では severity と実測は直交する
 
 実測必須ゲート（`Verification:` アンカーを持つ指摘のみ blocking）の運用が 3 系列・計 16 cycle で一貫して観測された。
 
@@ -263,7 +263,7 @@ cycle 3 で 2 名のレビュアーが自分の前 cycle 指摘を**実測に基
 - [PR #2044 review results (cycle 3, mergeable 到達) — レビュアーの自己撤回](../../raw/reviews/20260729T094749Z-pr-2044.md)
 - [PR #2044 fix results (cycle 3) — Convergence Signal](../../raw/fixes/20260729T045549Z-pr-2044.md)
 
-## 補強: 4 cycle 収束と「0 件の質」(PR #2051)
+## 補強: 4 cycle 収束と「0 件の質」
 
 blocking 18 → 9 → 1 → 0 で 4 cycle 収束した記録。**収束を判定できた根拠は指摘が減ったことではなく、「0 件」の裏付けが変わったこと**だった。
 

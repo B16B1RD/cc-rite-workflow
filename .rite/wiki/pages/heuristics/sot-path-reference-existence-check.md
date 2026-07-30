@@ -71,7 +71,7 @@ done < /tmp/sot-paths.txt
 
 未マージ PR に依存する Bad/Good 例は (a) 別 file/branch から自己完結する例に書き換える、または (b) 「PR #N の commit `<hash>` 時点の状態を引用 (post-merge 不整合は意図的)」と脚注で明示する。
 
-### 適用フェーズ表と Where to Apply の双方向整合 (PR #705 cycle 2 で追加)
+### 適用フェーズ表と Where to Apply の双方向整合（cycle 2 で追加）
 
 SoT 文書には「適用フェーズ」概要表 (どの phase でこの原則が enforce されるか) と、各原則の「Where to Apply」具体化セクションが含まれる場合がある。両者は **双方向に整合** させる必要がある:
 
@@ -82,7 +82,7 @@ SoT 文書には「適用フェーズ」概要表 (どの phase でこの原則�
 
 PR #705 cycle 2 では cycle 1 で broken-ref / 表記揺れ / regex の defect を一括解消した直後、内部矛盾 (適用フェーズ vs Where to Apply) が cycle 2 で初検出された。MVP スコープを尊重しつつ「未定義であることを明示する Note」で透明化する選択肢も canonical (cf. [Prose-only design](../anti-patterns/prose-design-without-backing-implementation.md))。
 
-### 3 cycle 収束パターン (PR #705)
+### 3 cycle 収束パターン
 
 ```
 cycle 1 (6 findings) → cycle 2 (1 finding) → cycle 3 (0 findings, mergeable)
@@ -94,7 +94,7 @@ cycle 1 (6 findings) → cycle 2 (1 finding) → cycle 3 (0 findings, mergeable)
 
 新規 SoT は最初から完全ではなく、3 cycle 程度の review-fix で収束する想定で書くと scope が現実的になる。
 
-### 逆方向: broken reference の修正 PR でも引用先実在性を事前確認する (PR #1102)
+### 逆方向: broken reference の修正 PR でも引用先実在性を事前確認する
 
 PR #1102 (累積、`phase-mapping.md` の broken cross-reference 修正 doc PR) は本経験則の **逆方向の適用** を実測した: 新規 SoT 作成時の existence check だけでなく、**既に壊れている参照を修正する PR** でも、修正後参照先 (resume.md Phase 3.5 cross-check / Phase 5.3 mapping) の実在を Read tool で事前確認することが 0 blocking finding / 1 cycle 着地に直結した。`phase-mapping.md` が `commands/resume.md` の存在しない「Phase 3.2 legacy alias 表」を SoT として参照していた broken reference を、実在する Phase 3.5 / Phase 5.3 参照に書き換えた。両 reviewer (prompt-engineer / code-quality) が修正後参照の実在を Read で independently verify。
 
@@ -102,9 +102,9 @@ PR #1102 (累積、`phase-mapping.md` の broken cross-reference 修正 doc PR) 
 
 加えて PR #1102 で観測された **pre-existing 同型 broken reference の残存**: 同じ「Phase 3.2 legacy table」への broken 参照が `sub-skill-return-protocol.md` / `docs/SPEC.md` / `docs/SPEC.ja.md` にも残存していることが調査で surface した (本 PR scope 外として別途調査推奨)。これは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版であり、1 箇所の broken ref を直す際に同型参照を repo 全体で `grep` して残存件数を確認する pre-flight が canonical 対策となる。
 
-### relative reference の検証は『file 存在』だけでなく『depth-aware な相対 path 解決』まで含む (PR #1190)
+### relative reference の検証は『file 存在』だけでなく『depth-aware な相対 path 解決』まで含む
 
-PR #1190 (`commands/pr/open.md` ステップ3.5 の dangling reference `references/issue-body-checklist.md` を実在の `../../references/gh-cli-patterns.md#safe-checklist-operation-patterns` へ差し替える doc PR) は、本経験則の逆方向 (PR #1102) を再実測しつつ、**relative reference 特有の検証軸**を追加した: 0 blocking finding / 1 cycle 着地で、両 reviewer (prompt-engineer + code-quality) が以下 4 点を機械検証した:
+PR #1190 (`commands/pr/open.md` ステップ3.5 の dangling reference `references/issue-body-checklist.md` を実在の `../../references/gh-cli-patterns.md#safe-checklist-operation-patterns` へ差し替える doc PR) は、本経験則の逆方向を再実測しつつ、**relative reference 特有の検証軸**を追加した: 0 blocking finding / 1 cycle 着地で、両 reviewer (prompt-engineer + code-quality) が以下 4 点を機械検証した:
 
 1. **file 存在**: 差し替え先 `plugins/rite/references/gh-cli-patterns.md` の実在 (find / test -e)
 2. **anchor 一致**: `## Safe Checklist Operation Patterns` 見出しが GitHub slug 規則で `#safe-checklist-operation-patterns` に一致 (唯一見出し)
@@ -122,9 +122,9 @@ bare `references/` と depth 別 relative prefix の混在が drift 源になる
 
 教訓: relative reference を含む doc を書く / 直すときの existence check は、`git ls-tree` での file 存在確認に加えて、**参照元 file の depth から相対 prefix が正しく解決するか** (`readlink -f` / `cd $(dirname) && ls $ref`) と **anchor slug が target 見出しに実在するか** (`grep -E '^##+ '`) の 3 点をセットで verify する。
 
-### 適用例: 委譲後 cross-ref drift 修正の 3 点検証 (PR #1342、1 行 docs 修正、1 cycle mergeable)
+### 適用例: 委譲後 cross-ref drift 修正の 3 点検証（1 行 docs 修正、1 cycle mergeable）
 
-helper 委譲 (PR #1205) 後に stale 化した cross-ref を更新する 1 行 docs PR で、2 reviewer (prompt-engineer / code-quality) が以下の 3 点検証で cycle 1 mergeable を判定:
+helper 委譲後に stale 化した cross-ref を更新する 1 行 docs PR で、2 reviewer (prompt-engineer / code-quality) が以下の 3 点検証で cycle 1 mergeable を判定:
 
 1. **新参照の実在性**: 更新後の見出し参照が対象ファイルの実見出しと文字列レベルで完全一致すること + 委譲先 script の実在を Read/Grep で確認
 2. **旧参照の stale 性 (revert test)**: revert すると stale 参照が復活する = 本 diff 由来の修正として正当

@@ -91,7 +91,7 @@ fi
 grep -nE 'mktemp[^|]*\|\|[[:space:]]*[a-z_]+=""' --include='*.sh' -r .
 ```
 
-### 一般化: silent fallback 全般に適用される原則 (PR #550 で拡張)
+### 一般化: silent fallback 全般に適用される原則
 
 本 pattern は `mktemp` に限らず、**「成功経路と見分けがつかなくなる silent fallback」全般**に適用される:
 
@@ -101,12 +101,12 @@ grep -nE 'mktemp[^|]*\|\|[[:space:]]*[a-z_]+=""' --include='*.sh' -r .
 
 いずれも **「低頻度だが起きたとき成功経路と区別不能」** という共通構造を持ち、`if ! ...; then WARNING; [CONTEXT]; var=""; fi` 形式で可視化する。PR #550 では `worktree_commit_push()` の head SHA capture と `wiki-ingest-commit.sh` の rm failure surfacing で同じ pattern を適用した (asymmetric 発火経路も同一方針で揃えるのが要点 — [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) 参照)。
 
-### awk text manipulation 経路への一般化と 3 点セット canonical pattern (PR #1049 cycle 1 fix での evidence)
+### awk text manipulation 経路への一般化と 3 点セット canonical pattern（cycle 1 fix の実測）
 
-PR #1049 (Issue #1047 — `plugins/rite/hooks/tests/_test-helpers.sh` への `assert_grep_in_section` helper 追加) では、本 pattern が awk 経路にも適用可能であることが test / code-quality / error-handling の 3 reviewer 独立 MEDIUM 指摘 + cycle 1 fix で実測された。helper 内部の section 抽出経路:
+`plugins/rite/hooks/tests/_test-helpers.sh` へ `assert_grep_in_section` helper を追加した PR では、本 pattern が awk 経路にも適用可能であることが test / code-quality / error-handling の 3 reviewer 独立 MEDIUM 指摘 + cycle 1 fix で実測された。helper 内部の section 抽出経路:
 
 ```bash
-# ❌ NG: awk 失敗を silent に握り潰す (PR #1049 cycle 1 検出)
+# ❌ NG: awk 失敗を silent に握り潰す (cycle 1 検出)
 awk '/start/, /end/' "$source_file" > "$section_file"
 # awk syntax error / IO error / pattern not found / empty range が
 # すべて空 section file に縮退し、後続 assert_grep が「pattern not found」を返す。
@@ -126,7 +126,7 @@ awk の exit code を捕捉しない経路は、上記 mktemp / git rev-parse �
 これら 5 mode を診断レベルで区別可能化する canonical fix は、PR #1049 cycle 1 fix で確立した **3 点セット**:
 
 ```bash
-# ✅ OK: awk 経路の 5 failure mode 区別 (PR #1049 cycle 1 fix で確立)
+# ✅ OK: awk 経路の 5 failure mode 区別 (cycle 1 fix で確立)
 section_file=$(mktemp /tmp/section-XXXXXX) || {
   echo "WARNING: mktemp failed for section_file" >&2
   echo "[CONTEXT] FALLBACK=1; reason=mktemp_failure_section" >&2
@@ -159,9 +159,9 @@ fi
 
 PR #1049 の cycle 1 で test / code-quality / error-handling の 3 reviewer が独立に「awk silent swallow → 5 failure mode 混同」を MEDIUM 指摘し、cycle 1 fix の 3 点セットで cycle 2 では同 reviewer 自身が「5 mode が診断レベルで区別可能化された」と FIXED verification、1-cycle 収束に至った。本 evidence は「成功経路と区別不能な silent fallback」class が awk 経路を含む helper layer 全般で発火しうることを示し、本 pattern の適用範囲を mktemp / git semantics から **text manipulation primitive 全般 (awk / sed / cut / sort 等)** へ一般化する。
 
-### Flatten refactor 経由の格下げ regression (PR #1155 で実測)
+### Flatten refactor 経由の格下げ regression（実測）
 
-PR #1155 (Issue #1154 — `wiki:* commands` の cleanup.md スタイル本格フラット化) で、**「コメント削除のみ許容」を謳う flatten refactor PR が Pattern 3 規範 WARNING を silent fallback に格下げする regression** を実測した。本 pattern の維持が refactor PR の lurking failure mode として継続することを示す evidence。
+`wiki:* commands` を cleanup.md スタイルへ本格フラット化した PR で、**「コメント削除のみ許容」を謳う flatten refactor PR が Pattern 3 規範 WARNING を silent fallback に格下げする regression** を実測した。本 pattern の維持が refactor PR の lurking failure mode として継続することを示す evidence。
 
 #### 検出された格下げ
 
@@ -174,7 +174,7 @@ if ! cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX); then
   cat_err=""
 fi
 
-# After (PR #1155 cycle 1 merge candidate): silent fallback に格下げ
+# After (cycle 1 merge candidate): silent fallback に格下げ
 cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX 2>/dev/null) || cat_err=""
 ```
 
@@ -186,13 +186,13 @@ cycle 1 で `ingest.md` L248 (cat_err) / L535 (_reset_err) の 2 site が格下�
 - **同 PR 内対称性 grep 検査による detection**: refactor 中 `grep -rn 'mktemp.*|| .*=""'` で同型 anti-pattern を網羅検査することが silent regression 検出の決定打。1 site だけ修正して「対称性が達成された」と評価しない ([[asymmetric-fix-transcription]] PR #1155 補強事例参照)
 - **PR description の自己宣言と機能 statement 削除の乖離**: 「behavior-preserving refactor」「コメント削除のみ許容」を謳う PR でも、Pattern 3 規範 WARNING の格下げが silent 混入し得る。description だけで判断せず、機能 statement の existence-check を grep で実測する
 
-### grep 経路への一般化: no-match (exit 1) と実エラー (exit 2+) の区別 (PR #1771 cycle 1 review での evidence)
+### grep 経路への一般化: no-match (exit 1) と実エラー (exit 2+) の区別（cycle 1 review の実測）
 
-PR #1771 (Issue #1709 — sentinel 文字列 emitter/consumer 検証スクリプトの新設) の cycle 1 review で、**「sentinel drift を silent failure から守る」ことが目的の検証スクリプト自身**が、内部の未宣言 sentinel 検出ロジック (I3) で本 pattern と同型の HIGH finding を持つという自己言及的な事例が実測された:
+sentinel 文字列の emitter/consumer 検証スクリプトを新設した PR の cycle 1 review で、**「sentinel drift を silent failure から守る」ことが目的の検証スクリプト自身**が、内部の未宣言 sentinel 検出ロジック (I3) で本 pattern と同型の HIGH finding を持つという自己言及的な事例が実測された:
 
 ```bash
 # ❌ NG: grep の no-match (exit 1) と実エラー (exit 2+、IO error / invalid regex 等) を
-# 区別せず一括で silent 握り潰す (PR #1771 cycle 1 検出、I3 ロジック)
+# 区別せず一括で silent 握り潰す (cycle 1 検出、I3 ロジック)
 grep -rn '\[[a-z_]\+:[a-z_-]\+\]' plugins/rite/skills/ 2>/dev/null || true
 # grep の `|| true` は「該当行が 0 件」(意図した正常系) と「permission denied /
 # ディレクトリ不在 / 正規表現エラー」(異常系) を同一の空 output に縮退させる。
@@ -203,7 +203,7 @@ grep -rn '\[[a-z_]\+:[a-z_-]\+\]' plugins/rite/skills/ 2>/dev/null || true
 grep の exit code 語彙は `0`=マッチあり / `1`=マッチなし (正常系) / `2`=構文エラー・ファイル不在等の実エラー、の 3 値であり、`|| true` は 1 と 2 を同一視して実エラーを「0 件検出」として黙って通過させる。修正 (canonical) は rc を明示 capture し `1` のみ許容する:
 
 ```bash
-# ✅ OK: grep の rc を明示区別 (PR #1771 cycle 1 fix)
+# ✅ OK: grep の rc を明示区別 (cycle 1 fix)
 scan_out=$(grep -rn '...' plugins/rite/skills/ 2>"$scan_err")
 scan_rc=$?
 if [ "$scan_rc" -gt 1 ]; then
@@ -215,9 +215,9 @@ fi
 
 **「同じスクリプト内の複数の同種検証ロジック (I1/I2/I3) で 1 つだけガードが非対称に欠落する」** のは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の一種でもあり、本 pattern (silent-fallback-indistinguishable-from-success) と対称性欠落の 2 軸が重なって発火した事例。**「検証ツール自身が、検証しようとしている性質 (silent failure) を内部に持つ」self-referential 発火**は、PR #765 (bang-backtick self-reference)・PR #1043 (aggregate-label self-violation)・PR #1167 (wiki-lint self-application)・PR #1328 (parity test self-referential)・PR #1764 (drift-check family self-application) に続く累積事例であり、**新設の検証・lint ツールは自身の実装が検証対象の failure mode を含んでいないか個別レビューする**ことが必要。
 
-### 既存 helper への新規呼び出し追加は helper 自身の呼び出し規約を継承する義務を負う (PR #1973)
+### 既存 helper への新規呼び出し追加は helper 自身の呼び出し規約を継承する義務を負う
 
-PR #1973 (Issue #1944 — pr-review drift 検出の porcelain hash が sandbox ghost-mount 差分で誤警報を出す修正) で、既存ヘルパー `lib/git-status-filtered.sh` (#1936 で導入、内部で `mktemp` に依存) を **新規の呼び出し経路** (`post-review-state-verify.sh` の worktree drift axis と `pr-review/SKILL.md` ステップ 4.0.A の snapshot 側) から呼び出す fix が、helper 自身の exit code チェックを行わずに出力をそのまま hash 化していた:
+pr-review の drift 検出で porcelain hash が sandbox ghost-mount 差分により誤警報を出す問題を修正した PR で、既存ヘルパー `lib/git-status-filtered.sh` (#1936 で導入、内部で `mktemp` に依存) を **新規の呼び出し経路** (`post-review-state-verify.sh` の worktree drift axis と `pr-review/SKILL.md` ステップ 4.0.A の snapshot 側) から呼び出す fix が、helper 自身の exit code チェックを行わずに出力をそのまま hash 化していた:
 
 ```bash
 # ❌ NG: 既存 helper を新規呼び出しするが、helper 自身の失敗を無視する
@@ -260,7 +260,7 @@ fi
 - [PR #1155 cycle 2 review (cycle 1 fix が 2/6 site のみで partial fix、lint.md sort_err / add_err / commit_err の追加 3 site が surface)](../../raw/reviews/20260526T182658Z-pr-1155-cycle2.md)
 - [PR #1155 cycle 1 fix (9 件の mktemp 呼び出しのうち 2 件のみ silent fallback だった非対称 regression の検出と復元)](../../raw/fixes/20260526T180309Z-pr-1155.md)
 - [PR #1155 cycle 2 fix (6 site 対称セットの partial fix トラップ回収、grep 網羅検査の経験則化)](../../raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md)
-- [PR #1771 cycle 1 review (Issue #1709、sentinel 検証スクリプト自身の I3 ロジックで grep no-match/実エラー区別欠落を HIGH 検出、I1/I2 の同型ガードとの非対称も指摘)](../../raw/reviews/20260706T175107Z-pr-1771.md)
+- [PR #1771 cycle 1 review — sentinel 検証スクリプト自身の I3 ロジックで grep no-match/実エラー区別欠落を HIGH 検出、I1/I2 の同型ガードとの非対称も指摘](../../raw/reviews/20260706T175107Z-pr-1771.md)
 - [PR #1771 cycle 1 fix (grep rc を明示 capture し rc>1 で exit 2、I1/I2 と対称なガードに修正)](../../raw/fixes/20260706T175443Z-pr-1771.md)
-- [PR #1973 cycle 1 review (Issue #1944、既存 helper `git-status-filtered.sh` への新規呼び出し経路が exit code チェックを欠落、error-handling reviewer が CRITICAL / 他 3 reviewer が non-blocking の cross-validation 対立)](../../raw/reviews/20260722T212955Z-pr-1973.md)
+- [PR #1973 cycle 1 review — 既存 helper `git-status-filtered.sh` への新規呼び出し経路が exit code チェックを欠落、error-handling reviewer が CRITICAL / 他 3 reviewer が non-blocking の cross-validation 対立](../../raw/reviews/20260722T212955Z-pr-1973.md)
 - [PR #1973 cycle 1 fix (実機 revert test で TMPDIR 書込制限下の mktemp 失敗を再現し error-handling の主張を実証、exit code チェック + WARNING + 空文字列 fallback で修正)](../../raw/fixes/20260722T213801Z-pr-1973.md)

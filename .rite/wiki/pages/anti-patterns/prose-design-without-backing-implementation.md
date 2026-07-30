@@ -38,7 +38,7 @@ confidence: high
 
 ### 典型パターン
 
-| 形態 | 具体例 (PR #559) |
+| 形態 | 具体例 |
 |------|------|
 | 1. 参照変数の未定義 | `fix.md` Phase 3.2.1 の `$commit_body` が Phase 3.2 で一切 export されていないのに grep 入力として使われる。毎回空文字列 → 常に `ROOT_CAUSE_GATE=missing` false-positive 発火 |
 | 2. 書式規約の文書化忘れ | gate が `Root cause:` header を期待しているが、`contextual-commits.md` の action type 表に `root-cause(scope)` が列挙されていない。全 commit で gate が発火し続ける |
@@ -70,7 +70,7 @@ Prose-only design を発見した場合の 3 択:
 2. **Prose を削除 or 意図を変更**: 実装しない / できないなら散文から除去して偽装を解く (例: PR #559 の 100-iteration limit は「意図的に cycle-count 上限を設けない」設計意図へ書き換え)
 3. **LLM-semantic check に格上げ**: bash 実装が脆弱な場合、LLM に semantic な判定を委ねる形で明示化 (例: root-cause gate の書式検査を LLM-semantic に移行)
 
-### "機械化" 宣言 vs hook 検証不在 (PR #623 F-03 での拡張)
+### "機械化" 宣言 vs hook 検証不在（F-03 の拡張）
 
 prompt 側で LLM に evidence 出力 (例: `<!-- [routing-check] ingest=matched -->`) を MUST として義務化しつつ、対応する hook 側検出 logic (例: stop-guard.sh や workflow-incident-emit.sh での pattern 検査) が未実装だと「機械的強制」を謳う prose と実態が乖離する。PR #623 Issue #621 では Item 0 routing dispatcher の evidence 出力を prompt 側で義務化したが、LLM が silent skip した場合の検出 hook は scope 外として follow-up Issue 化された。
 
@@ -82,7 +82,7 @@ prompt 側で LLM に evidence 出力 (例: `<!-- [routing-check] ingest=matched
 
 PR #623 cycle 1 は (2) を選択。prose に follow-up Issue 番号を記載することで読者に「prose 側と hook 側の gap は現時点で意図的」ことを伝える。
 
-### MVP の未定義部分は「Note で明示」する (PR #705 cycle 2 で追加)
+### MVP の未定義部分は「Note で明示」する（cycle 2 で追加）
 
 新規 SoT (Single Source of Truth) を MVP として作成する場合、すべての原則を完全実装できないことがある。その場合、未実装部分を **「曖昧に宣言する」のではなく「未定義であることを明示する Note」** で透明性を保つ。これにより読み手は「dead spec か / 後続定義予定か」を即座に判別できる。
 
@@ -102,7 +102,7 @@ PR #705 (コメントベストプラクティス SoT 新設 MVP) cycle 2 では�
 
 これは原則 6 (Comment Rot is CRITICAL) と整合する透明性の高い対応で、Prose-only design の **逆方向** (prose で「未定義」を明示することで dead spec ではないと表明) として機能する。
 
-### prose ↔ code 不整合 (PR #688 cycle 14 で追加)
+### prose ↔ code 不整合（cycle 14 で追加）
 
 PR #688 cycle 14 review で、`commands/issue/start.md` Phase 5.5.2 metrics 周辺で以下の不整合が検出された (MEDIUM):
 
@@ -119,7 +119,7 @@ LLM 解釈時の二律背反として「prose が正なのか code が正なの�
 
 3 点全てを verify しない PR は prose-only design の variant として cycle N+1 で再検出される。
 
-### Defense-in-depth claim と実コード経路の race window 乖離 (PR #756 cycle 5 で追加)
+### Defense-in-depth claim と実コード経路の race window 乖離（cycle 5 で追加）
 
 PR #756 cycle 4 review で、`pre-compact.sh` / `post-compact.sh` の trap cleanup() 関数に追加した `_resolve_err` 削除参照が **dead code** として LOW × 1 (code-quality + error-handling 二重指摘) で検出された。具体的な構造:
 
@@ -143,11 +143,11 @@ PR #756 cycle 5 fix では (a) の dead code 削除を選択し、F-01 (line-num
 
 両者とも prose-only design の sub-class だが、検出 heuristic が異なる (前者は下流の data flow trace、後者は code の time-ordering 検証)。
 
-### data-contract emit の comment が phantom consumer を断定する (PR #2005 cycle 1-2 で追加)
+### data-contract emit の comment が phantom consumer を断定する（cycle 1-2 で追加）
 
 PR #2005 (setup 依存検査追加) で、新設した `[CONTEXT] DEP_CHECK` marker の emit 行コメントと後段散文が **存在しない consumer を present-tense で断定** し、2 reviewer (prompt-engineer + tech-writer) が同一箇所で MEDIUM 指摘 (High Confidence)。典型パターン表 row 3「sentinel/marker の consumer 不在」の亜種だが、以下の nuance が異なる:
 
-- **旧 row 3 (PR #559)**: marker を emit するが consumer が無い = 純粋な dead code (marker に効果なし)
+- **旧 row 3**: marker を emit するが consumer が無い = 純粋な dead code (marker に効果なし)
 - **PR #2005**: marker emit 自体は正当な **data contract / observability 目的** (Issue の Interface が「機械可読 marker で後続フェーズに渡す」と要求)。しかしコメントが「Phase 4.5.0 が jq= を参照する」/ 散文が「後続フェーズが参照する」と **具体的な consumer 関係を断定** した。実際には Phase 4.5.0 は marker を機械 parse せず独立に `command -v jq` を再実行し、jq 案内の重複排除は **marker 消費ではなく prose 参照** (NO_JQ メッセージが Phase 1.0 を文言で指す) で達成されていた
 
 **failure mode**: emit が「働いている」ため dead-code 検出 (row 3) では拾えない。marker の効果 (dedup) は別機構 (prose 参照) で実現されているのに、コメントが fictional な dataflow (marker → 4.5.0 が consume) を主張する。保守者に「marker が load-bearing」と誤認させる executable-spec 上の false claim。

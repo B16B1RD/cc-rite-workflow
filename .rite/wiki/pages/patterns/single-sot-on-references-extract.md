@@ -30,12 +30,12 @@ confidence: high
 
 ### 失敗モード
 
-PR #936 (Issue #900 PR D、`start.md` から 3 references への抽出) で実測。Sentinel Visibility Rule のような cross-cutting な契約を `workflow-incident-detection.md` と `workflow-incident-emit-pattern.md` の両 reference に同一 bash literal で保持すると、両者が SoT を主張する状態になる。後続 PR で片方を改修したときに他方への伝播が漏れる経路は `asymmetric-fix-transcription` と同型だが、起点は **refactor 計画段階の設計不備** にある (fix 適用時の伝播漏れではなく、そもそも 2 箇所に SoT を置いたこと自体が原因)。
+`start.md` から 3 references へ抽出した PR (シリーズ D) で実測。Sentinel Visibility Rule のような cross-cutting な契約を `workflow-incident-detection.md` と `workflow-incident-emit-pattern.md` の両 reference に同一 bash literal で保持すると、両者が SoT を主張する状態になる。後続 PR で片方を改修したときに他方への伝播が漏れる経路は `asymmetric-fix-transcription` と同型だが、起点は **refactor 計画段階の設計不備** にある (fix 適用時の伝播漏れではなく、そもそも 2 箇所に SoT を置いたこと自体が原因)。
 
 ### 検出手段
 
 - review 段階で「同一 canonical literal が複数 reference に重複保持されている」ことを `diff -u {ref_A} {ref_B}` ベースの section-level 一致 grep で機械検証
-- test 側に `assert_not_grep` (= 「該当 literal は 1 reference にしか存在してはならない」) を pin することで将来の再混入を構造的に block (PR #936 cycle 1 fix で `sentinel-visibility-rule.test.sh` に 57 assertion 追加して実証)
+- test 側に `assert_not_grep` (= 「該当 literal は 1 reference にしか存在してはならない」) を pin することで将来の再混入を構造的に block（cycle 1 fix で `sentinel-visibility-rule.test.sh` に 57 assertion を追加して実証）
 - refactor 計画文書 (例: `docs/designs/redesign-issue-start-hybrid.md`) で各 reference の責務スコープを 1:1 で宣言する段階で「同一契約が複数の責務範囲に出現」する重複を pre-extraction 検出
 
 ### Canonical 対策
@@ -43,13 +43,13 @@ PR #936 (Issue #900 PR D、`start.md` から 3 references への抽出) で実�
 1. **Refactor 計画段階の SoT 1:1 決定**: 抽出対象の canonical contract をリストアップし、各々を 1 reference に固定する。複数 reference で参照されるものは「SoT は X、Y/Z は anchor 参照のみ」と明示する
 2. **Anchor 参照の規約化**: SoT でない reference は `> Reference:` に続けて「表示名・SoT への相対パス・`#anchor`」を記す anchor link 形式のみを記述し、literal の重複保持を禁止する
 3. **Drift guard test の同時追加**: refactor PR と同じ commit で `assert_not_grep` ベースの drift guard test を pin することで、抽出後の再混入を構造的に block する
-4. **ファイル移動時の bash コメント内 path の hygiene**: refactor のサブ作業として、bash コメント内に書かれた相対 path (例: `../../skills/...` など) は機械的に解決されないため、移動先で path が壊れる経路がある (PR #936 F-02 MEDIUM)。reviewer checklist に「bash comment 内 path 一致確認」を入れる
+4. **ファイル移動時の bash コメント内 path の hygiene**: refactor のサブ作業として、bash コメント内に書かれた相対 path (例: `../../skills/...` など) は機械的に解決されないため、移動先で path が壊れる経路がある (F-02 MEDIUM)。reviewer checklist に「bash comment 内 path 一致確認」を入れる
 
-### Sub-pattern: SoT の prose 要約参照 vs literal algorithm copy-paste (PR #1062 cycle 1-3)
+### Sub-pattern: SoT の prose 要約参照 vs literal algorithm copy-paste（cycle 1-3）
 
 SoT を参照する新規 site が「SoT と同方式」と prose で宣言するだけでは insufficient であり、SoT の具体的アルゴリズム (bash literal / pseudo-code) を copy-paste で取り込むか、SoT helper を invoke する形に統一する必要がある。PR #1062 で `references/fingerprint-cycling.md` (SoT) の `normalize` 4 ステップ仕様を新規 site `fix.md` Phase 2.1.A bash block が **prose 要約から推測して 2 ステップに勝手に simplify** した結果、fix.md persist fingerprint と review.md compare fingerprint が同一 finding に対して異なる SHA-1 hash になり AC-3 suppression contract が初日から silent failure。2 reviewer 独立検出の CRITICAL × 2 として cycle 1 で surface し、cycle 3 まで再発を引きずった。
 
-**失敗モード** (PR #1062 cycle 1-3 で実測):
+**失敗モード**（cycle 1-3 で実測）:
 
 - **Step 1**: 新規 site 実装時に SoT を「prose 要約から再実装」: `references/fingerprint-cycling.md` の「`category`, `description`, `file:line` を combine して normalize 後 SHA-1 する」散文記述を新規 bash block で 2 step に再構築 (4 step normalize を 2 step に simplify)
 - **Step 2**: review 段階で「SoT と同方式」claim を prose レベルで verify: bash literal の bit-exact 一致は verify されず、cycle 1 reviewer は SoT 参照の存在のみ確認
@@ -63,7 +63,7 @@ SoT を参照する新規 site が「SoT と同方式」と prose で宣言す�
 
 **「prose 要約に依存した『SoT と同方式』claim」を禁止形式として codebase 規範化** することで、本 sub-pattern の structural prevention が可能。Wiki 経験則 [SoT-reviewer 表現 drift](../anti-patterns/sot-reviewer-expression-drift.md) (pos/neg 表現の drift) と並ぶ **SoT 参照型 DRY 設計の 2 大典型落とし穴** として位置付ける。
 
-### Sub-pattern: Inline 要約への false claim 拡散 (PR #1155 cycle 1-2 での evidence)
+### Sub-pattern: Inline 要約への false claim 拡散（cycle 1-2 の実測）
 
 SoT を新設しつつ forward-pointer (`Reference:` link) を caller に追加した直後、forward-pointer 直後の **inline での性質再宣言** (例: 「本ファイルは strict 4 分岐 + helper 経路」のような 1 行要約) を caller 側に残すと、SoT 内容が誤りだった場合に false claim が複数 site に拡散する。
 

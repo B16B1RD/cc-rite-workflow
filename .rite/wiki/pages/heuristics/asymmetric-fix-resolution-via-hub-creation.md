@@ -24,7 +24,7 @@ confidence: medium
 
 ## 詳細
 
-### 発生状況の例 (Issue #851)
+### 発生状況の例
 
 `commands/issue/create-interview.md` の line 307 が Output rules の SoT で、line 27/247 にある bash block コメントは line 307 で定義された rule を参照する。PR #850 で line 307 に新しい test references を追加した際、line 27/247 の bash block コメントへの逆参照伝播を忘れた典型的な Asymmetric Fix Transcription pattern が発生。
 
@@ -32,7 +32,7 @@ confidence: medium
 
 | オプション | 内容 | 長期コスト |
 |---|---|---|
-| **Option A — 両側修正 (symmetric replication)** | line 27/247 の bash block コメントにも line 307 と同じ test references を追加し、3 箇所で同期維持 | 同期させる site が N 増えるごとに drift 発生確率が線形 (場合により組合せ的) に増加。N=3 でも drift で N+1 cycle の review-fix loop に膨らむ実例 (PR #548 の `21→17→2→7→3→0`) |
+| **Option A — 両側修正 (symmetric replication)** | line 27/247 の bash block コメントにも line 307 と同じ test references を追加し、3 箇所で同期維持 | 同期させる site が N 増えるごとに drift 発生確率が線形 (場合により組合せ的) に増加。N=3 でも drift で N+1 cycle の review-fix loop に膨らむ実例（`21→17→2→7→3→0` の収束軌跡） |
 | **Option B — hub 化 + 責務分離文書化** | line 307 を「両 test の hub」と明示し、bash block コメント側 (line 27/247) は責務 (bash 引数 symmetry) のみ inline 言及。HTML literal symmetry など他の test 参照は **本セクションを single source として参照する責務分離**を明示的に文書化 | 同期 site 数を 1 に削減。さらに「責務分離の文書」自体が、将来 bash block コメントへ test references を追加しようとする drift 提案を **SoT 行を通じて構造的に retract** する。drift 経路を物理的に閉塞 |
 
 ### Option B が構造的に優位な理由
@@ -41,7 +41,7 @@ confidence: medium
 2. **drift 経路の物理的閉塞**: 単に hub 化するだけでなく「bash block 側コメントは bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持」という **責務範囲の明示文書** がカギ。これにより将来「両側にも書こう」という refactor 提案は、SoT 文書を読んだ瞬間に「責務分離契約に反する」と判定可能になり、drift が proposal 段階で止まる。
 3. **minimal-diff doc PR で完結**: Option B の実装は 1 line edit (line 307 prose の hub 明示追加) で済むため、PR #858 のように 1 line minimal-diff doc PR として fast-track 可能。
 
-### Option B 採用時の落とし穴 (PR #862 で実測)
+### Option B 採用時の落とし穴（実測）
 
 Option B の hub 化は新しい SoT を作るため、**hub 自身の構造**が後続の review 対象になる。PR #858 で line 307 prose に hub 明示を 1 line 追加したところ、parenthetical 末尾の `):` が「半角 `)` + 半角 `:`」と「list 始端 colon」を兼ねる二重役割となり、style drift として LOW 推奨で再指摘された。これは hub 化の効果を否定するものではなく、**hub 行の prose 構造そのものが新たな品質ゲート対象になる**ことを示している。Option B の採用判断と並行して、hub 行の prose style (parenthetical 構造、style 統一) も style guide 対象に含めるべき。
 
@@ -53,13 +53,13 @@ Option B の hub 化は新しい SoT を作るため、**hub 自身の構造**�
 2. **責務分離が自然言語で明示記述可能**: 「A は X のみ、B は Y のみ参照」のような 1-2 文で記述できる責務分割であること。記述に複数段落必要なら hub 化のメリットは薄い (読者が責務境界を即座に理解できないため drift 防止効果が落ちる)。
 3. **caller / consumer 数が小さく追跡可能**: 数百の caller がある場合は両側修正でも管理コストは同等になり、hub 化の delta 価値が減衰する。
 
-### 実測収束 (Issue #851 → PR #858 → 関連 LOW 推奨 #859/#860/#861)
+### 実測収束（hub 化 PR → 関連 LOW 推奨 3 件）
 
 - **PR #858** (Option B 実装) — 1 line 最小差分 doc PR、両 reviewer (prompt-engineer + code-quality) で 0 blocking findings、merge 完了
-- **PR #862** (PR #858 で導入された hub 行 prose の style 統一) — `**Output rules** (...):` parenthetical を `**Output rules**:` 独立行スタイルに分解、0 findings
+- **style 統一 PR**（hub 化 PR が導入した hub 行 prose の style 統一）— `**Output rules** (...):` parenthetical を `**Output rules**:` 独立行スタイルに分解、0 findings
 - **scope 外 LOW 推奨を別 Issue 化** — prompt-engineer reviewer の 3 件の LOW 推奨は scope を超えるため #859/#860/#861 として登録。doc PR でも `rejected(scope-creep)` 判断ではなく followup-issue 化で記録する規律を維持
 
-### Sub-pattern — hub 行が 3+ test を参照したら inline 連結から bullet list へ refactor する (PR #867 / Issue #854)
+### Sub-pattern — hub 行が 3+ test を参照したら inline 連結から bullet list へ refactor する
 
 Option B の hub 化が成功した後、後続 PR で hub 行に test references が累積していくフェーズが訪れる。**inline 連結のまま 3 つ目の test reference を追加すると 1 段落が約 280 字を超えて各 test の責務境界が読み取りづらくなる**ため、PR #867 で「**3 件以上**で bullet list 化」を判断基準として明示文書化し事前 refactor を実施した。
 
@@ -80,12 +80,12 @@ Option B の hub 化が成功した後、後続 PR で hub 行に test reference
 
 **Option B → bullet list 化の 2 段階 evolution**:
 
-- Stage 1 (PR #858, Issue #851): hub 化 + 責務分離宣言 — drift 経路を SoT 文書化で構造的閉塞
-- Stage 2 (PR #867, Issue #854): hub 行が複数 test を参照する状態が 3 件以上に成長したら bullet list 化 — 可読性低下による「責務境界の誤読 → 後続 fix の drift 」を予防
+- Stage 1: hub 化 + 責務分離宣言 — drift 経路を SoT 文書化で構造的閉塞
+- Stage 2: hub 行が複数 test を参照する状態が 3 件以上に成長したら bullet list 化 — 可読性低下による「責務境界の誤読 → 後続 fix の drift 」を予防
 
 両 stage を通じて Option B は「**初期 hub 化**で symmetry 経路を閉塞」+「**bullet list 化**で hub 行自体の可読性を維持」の 2 段階で運用され、累積防御として機能する。
 
-### 適用拡張 — inline copy の cross-file 同期は委譲 (helper の新モード) で同一ファイル sibling 同期へ縮約する (PR #1203 / Issue #1195 #11)
+### 適用拡張 — inline copy の cross-file 同期は委譲 (helper の新モード) で同一ファイル sibling 同期へ縮約する
 
 Option B の「hub 化」は、test references の SoT 化だけでなく **command markdown の inline bash copy** にも適用できる。PR #1203 では `wiki/init.md` §1.3.4 が `.gitignore` negation verification の ~110 行 inline bash を持ち、その内容を `gitignore-health-check.sh` の same_branch case と「一字一句同期」する [canonical reference 文書のサンプルコード同期](../patterns/canonical-reference-sample-code-strict-sync.md) 契約下にあった。つまり **cross-file (init.md ↔ helper) の symmetric replication** が drift 経路として常駐していた。
 
@@ -122,5 +122,5 @@ Option B の「hub 化」は、test references の SoT 化だけでなく **comm
 
 - [Issue #851 close retrospective (Option B hub 化採用の判断記録)](../../raw/retrospectives/20260506T040636Z-issue-851.md)
 - [PR #858 review (1-line minimal-diff doc PR で SoT 化を実装、0 blocking findings)](../../raw/reviews/20260506T035708Z-pr-858.md)
-- [PR #867 review (Issue #854: hub 行が 3+ test 参照に成長した時点で inline 連結から bullet list 化、両 reviewer 0 findings)](../../raw/reviews/20260506T135719Z-pr-867.md)
-- [PR #1203 review (Issue #1195 #11: wiki/init.md §1.3.4 の inline copy を `gitignore-health-check.sh --verify-negation` 委譲へ縮約、cross-file 同期を同一ファイル sibling 同期化、全 5 reviewer 0 findings)](../../raw/reviews/20260530T024611Z-pr-1203.md)
+- [PR #867 review — hub 行が 3+ test 参照に成長した時点で inline 連結から bullet list 化、両 reviewer 0 findings](../../raw/reviews/20260506T135719Z-pr-867.md)
+- [PR #1203 review — wiki/init.md §1.3.4 の inline copy を `gitignore-health-check.sh --verify-negation` 委譲へ縮約、cross-file 同期を同一ファイル sibling 同期化、全 5 reviewer 0 findings](../../raw/reviews/20260530T024611Z-pr-1203.md)

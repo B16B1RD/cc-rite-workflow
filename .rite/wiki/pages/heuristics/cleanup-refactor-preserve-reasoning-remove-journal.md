@@ -62,7 +62,7 @@ charter cleanup / simplification refactor で過去の review cycle 経緯記述
 
 ## 詳細
 
-### 削除単位の 3 分類 (PR #877 で実測)
+### 削除単位の 3 分類（実測）
 
 charter で禁止されている `cycle [0-9]+|verified-review cycle` パターンの引用は、以下 3 種に分類して削除する:
 
@@ -147,7 +147,7 @@ PR #890 (`pr/cleanup.md` の Sub-skill Return Protocol セクションを 96 行
 
 ### PR #891 で構造ラベル grep 拡張が canonical 化を達成 (Phase C2 cleanup.md slim、Issue #845)
 
-PR #891 (`pr/cleanup.md` の Phase 1 / Phase 4.W から散文削除、-24 行) は連続 10 件目の sibling として、PR #890 で発見された canonical 対策の拡張 (構造ラベル grep 対象拡張) を **Phase C1 (PR #890) からの学習として実適用した最初の事例**。結果として再び **0 finding 1 cycle 着地** に回復し、PR #890 の 3 cycle 構成は「対策未適用時の限界」だったことが事後的に確認された。
+PR #891 (`pr/cleanup.md` の Phase 1 / Phase 4.W から散文削除、-24 行) は連続 10 件目の sibling として、PR #890 で発見された canonical 対策の拡張 (構造ラベル grep 対象拡張) を **Phase C1 からの学習として実適用した最初の事例**。結果として再び **0 finding 1 cycle 着地** に回復し、PR #890 の 3 cycle 構成は「対策未適用時の限界」だったことが事後的に確認された。
 
 具体的には:
 
@@ -160,12 +160,12 @@ PR #891 (`pr/cleanup.md` の Phase 1 / Phase 4.W から散文削除、-24 行) �
 
 ### PR #894 で references/ 配下適用 4 例目 (Phase D 第 1 弾、Issue #892)
 
-PR #894 (`pr/references/fact-check.md` の slim、-16 行) は連続 11 件目の sibling として references/ 配下への適用 4 例目 (PR #882 / #883 / #889 に続く) を実証した。Phase D 第 1 弾として 1 PR / 1 ファイル方針で `fact-check.md` 単独に scope を限定し、両 reviewer (prompt-engineer + code-quality) 並列起動で 0 blocking findings 1 cycle 着地。削除対象は 8 種の散文・冗長補足・表サマリー文 ((a) 統合レポートでの扱い段落 (`Verification Execution` 冒頭との重複) (b) 両 Sub-Phase 判定組合せ表のサマリー文 (c) `Internal Likelihood Verification Rules` の 4→2 bullet 圧縮 (d) `max_claims Handling` 冒頭の重複説明 (e) 「セクション名について」blockquote の inline 統合 (f) `HYPOTHETICAL 降格 finding の 2 箇所記録` の 4→1 行圧縮 (g) caller 同期説明 (h) Note / Rationale 段落の冗長部分短縮) で、reasoning prose は完全に保持された。
+PR #894 (`pr/references/fact-check.md` の slim、-16 行) は連続 11 件目の sibling として references/ 配下への適用 4 例目を実証した。Phase D 第 1 弾として 1 PR / 1 ファイル方針で `fact-check.md` 単独に scope を限定し、両 reviewer (prompt-engineer + code-quality) 並列起動で 0 blocking findings 1 cycle 着地。削除対象は 8 種の散文・冗長補足・表サマリー文 ((a) 統合レポートでの扱い段落 (`Verification Execution` 冒頭との重複) (b) 両 Sub-Phase 判定組合せ表のサマリー文 (c) `Internal Likelihood Verification Rules` の 4→2 bullet 圧縮 (d) `max_claims Handling` 冒頭の重複説明 (e) 「セクション名について」blockquote の inline 統合 (f) `HYPOTHETICAL 降格 finding の 2 箇所記録` の 4→1 行圧縮 (g) caller 同期説明 (h) Note / Rationale 段落の冗長部分短縮) で、reasoning prose は完全に保持された。
 
 本 PR で確認された追加観察:
 
 - **fact-check.md は PR #889 (5 件削除、行数 438 不変) に続く 2 度目の slim** (438→422、-16 行)。PR #889 は inline 置換中心、PR #894 は段落削除中心という異なる削除手法でも、両 reviewer 並列で 0 finding 1 cycle 着地が再現されたことが、本経験則の reproducibility を強化
-- 親 Issue #892 は **multi-PR 分割スコープ** (references/ 4 ファイルを 1 PR / 1 ファイル方針で順次 slim) で運用され、本 PR は連作の第 1 弾。Issue クローズは AC-2 達成の最終 PR で行う設計のため、cleanup 時は `Refs #892` (not `Closes`) で Issue は OPEN 継続、Status を In Progress に戻すハンドリングが必要
+- 親 Issue #892 は **multi-PR 分割スコープ** (references/ 4 ファイルを 1 PR / 1 ファイル方針で順次 slim) で運用され、本 PR は連作の第 1 弾。Issue クローズは AC-2 達成の最終 PR で行う設計のため、cleanup 時は `Refs` trailer (not `Closes`) で Issue は OPEN 継続、Status を In Progress に戻すハンドリングが必要
 - 累計 157 件削除 / 11 PR で **10 PR (1 cycle) + 1 PR (3 cycle)** の sibling 比率に更新。references/ 配下への適用は 4 例連続成功で、`pr/{review,fix,cleanup}.md` 主要 command ファイルから references/*.md への拡張が high confidence で確立した
 
 ### PR #895 で references/ 配下適用 5 例目 (Phase D 第 2 弾、Issue #892)
@@ -177,7 +177,7 @@ PR #895 (`pr/references/internal-consistency.md` の slim、-58 行で 352→294
 本 PR で確認された追加観察:
 
 - **internal-consistency.md は PR #883 (5 件削除、+5/-5 行) に続く 2 度目の slim** (352→294、-58 行)。PR #883 は charter §禁止パターン違反引用の機械的削除中心、PR #895 は冗長性整理 (前置き散文・出力例・段落構造再編) 中心という **削除対象 class が異なるケース** でも 0 finding 1 cycle 着地が再現された
-- **AC-2 (`pr/references/` 4 ファイル合計 ≤1627 行) を本 PR で達成** (1676→1618、Phase D の hard target 完遂)。連作 11 PR (PR #894) 後 1 PR で AC 完遂に到達した規模感が記録される
+- **AC-2 (`pr/references/` 4 ファイル合計 ≤1627 行) を本 PR で達成** (1676→1618、Phase D の hard target 完遂)。連作 11 PR の後 1 PR で AC 完遂に到達した規模感が記録される
 - **code-quality reviewer が pre-existing dangling reference (`#drift-detection-invariants` from `tech-writer.md:25` / `review.md:580`、PR #845 由来)** を本 PR スコープ外の調査推奨として surface したが、Issue #892「Scope 外指摘ハンドリングポリシー」により対応見送り。連作 PR でも reviewer による既存 drift の surface は継続的に発生し、scope policy で意図的に分離する運用が canonical
 - 累計 158 件削除 / 12 PR で **11 PR (1 cycle) + 1 PR (3 cycle)** の sibling 比率に更新。references/ 配下への適用は 5 例連続成功で、`pr/references/*.md` 拡張は very high confidence で確立した
 
@@ -204,7 +204,7 @@ canonical 対策の拡張: pre-commit baseline grep に「**削除対象 phrase 
 
 本経験則の主軸は「既存の journal narration を cleanup 削除する」(remediation direction) だが、PR #1066 で **逆方向の sub-pattern** が顕在化した: charter で禁止された journal phrase (`cycle N F-N で導入` 等) を、cleanup ではなく **新規 PR の本文や code comment に書いて project 自身の lint (`comment-journal-check.sh`) に self-apply で hit する self-trap** (preventive direction の missing application)。
 
-#### 失敗の構造 (PR #1066 で実測)
+#### 失敗の構造（実測）
 
 PR #1066 では post-compact.sh:195 周辺に「`cycle 11 F-01 で導入された regex を gh CLI 実出力に対応`」のような journal narration を含むコメントを新規追加した。reviewer cross-validation で project の `comment-journal-check.sh` P4 regex (`cycle [0-9]+ F-[0-9]+ で(導入|確立|集約)`) にヒットすることが LOW 検出として surface した。
 
@@ -220,7 +220,7 @@ PR #1066 では post-compact.sh:195 周辺に「`cycle 11 F-01 で導入され�
 #### Canonical 対策
 
 1. **PR pre-commit gate で comment-journal-check.sh を必ず通す**: 既存経験則 + lint rule の組み合わせは self-apply 経路で検出可能だが、PR 作者が手動で gate を実行する習慣がなければ silent regression として merge される
-2. **新規 comment の書き方範例** (PR #1066 fix で実装):
+2. **新規 comment の書き方範例**（fix で実装）:
    - **Before** (journal narration): `cycle 11 F-01 で導入された regex を gh CLI 実出力に対応` (cycle 番号 / finding ID を引用、charter 違反)
    - **After** (reasoning prose only): `gh CLI 実出力に対応するための regex` (reasoning prose のみ、cycle / finding ID 引用を削除)
 3. **fix での書き換え技法**: `cycle N F-Y で導入された X を Y のため Z` → `Y のため Z にする` (HOW IT GOT THERE = cycle 引用 を削除し、WHY = reasoning prose を残す)
@@ -231,15 +231,15 @@ PR #1066 では post-compact.sh:195 周辺に「`cycle 11 F-01 で導入され�
 
 本 sub-pattern は本ページの累積 sibling PR (cleanup direction、13 PR) と並列に **preventive direction の累積実証 1 例目** として記録され、将来 preventive direction の sibling PR が複数蓄積した時点で「`comment-journal-check.sh` pre-commit gate 必須化」を canonical 化する根拠 evidence になる。
 
-### PR #1780 で preventive direction 2 例目: 新設 canonical SoT セクション自身が自身の禁則に自己矛盾 (Issue #1777)
+### PR #1780 で preventive direction 2 例目: 新設 canonical SoT セクション自身が自身の禁則に自己矛盾
 
 PR #1066 は「新規 PR の code comment / PR description」への journal narration 混入だったのに対し、PR #1780 は **新設する canonical reference セクション本文自体** (`common-error-handling.md` の「[CONTEXT] Emit: stdout / stderr 2 系統の使い分け (canonical)」) が journal narration を含む variant。導入段落に「PR #1774 review cycle 2 (error-handling reviewer, F-01) で `fix.md` 内のコメント転記時に規約の主張範囲が誤って拡大され」という番号付き経緯参照があり、`comment-best-practices.md` 原則2 `no_journal_comment` の禁止句リスト (`PR\s*#\d+` / `cycle\s*\d+` / `F-\d+` の三重一致) に抵触した。tech-writer レビュー (Doc-Heavy mode) が cycle 1 で HIGH 検出、fix で番号を削除し Why を散文で保持する書き換え (`過去にコメント転記時に規約の主張範囲が誤って拡大され、実際の stdout emit 箇所と矛盾する記述が生まれたことがあった`) を適用、cycle 2 で両レビュアー 0 findings に到達した。
 
 **preventive direction 2 例目としての意義**: 「新規 PR で journal narration を書いてしまう self-trap」は PR #1066 (code comment) だけでなく、**「自身がまさに SoT 化・禁則明文化しようとしている当のセクション」でも起こりうる**ことが実証された — SoT 化 PR の作者は「経緯を明確に説明したい」という動機が強いため、むしろ journal narration を書き込みやすい構造的リスクがある。書き換え技法 (`cycle N F-Y で...` → `過去に...` の reasoning-only 化) は PR #1066 と完全に同型で、本ページの 3 分類 doctrine が新設ドキュメント執筆時にも preventive に機能することを再確認した。
 
-累計 preventive direction 2 例 (PR #1066: code comment / PR #1780: 新設 reference doc 本文) となり、「SoT 化・規約明文化を目的とする PR ほど journal narration 混入リスクが高い」という追加観察が得られた。canonical 対策としては、新設 canonical セクションの draft 完了時点で `comment-best-practices.md` 禁止句リスト regex に対して self-grep することが特に重要 (通常の cleanup PR よりも新設 SoT PR の方が自己言及的リスクが高いため)。
+累計 preventive direction 2 例（code comment / 新設 reference doc 本文）となり、「SoT 化・規約明文化を目的とする PR ほど journal narration 混入リスクが高い」という追加観察が得られた。canonical 対策としては、新設 canonical セクションの draft 完了時点で `comment-best-practices.md` 禁止句リスト regex に対して self-grep することが特に重要 (通常の cleanup PR よりも新設 SoT PR の方が自己言及的リスクが高いため)。
 
-### PR #1893 で preventive direction 3 例目: lint regex が未カバーの「で廃止」形が LLM レビューのみで捕捉される (Issue #1880)
+### PR #1893 で preventive direction 3 例目: lint regex が未カバーの「で廃止」形が LLM レビューのみで捕捉される
 
 PR #1780 は「新設 canonical reference セクション本文」だったのに対し、PR #1893 は **決定的な機械判定を目的文へ書き換える refactor** (fingerprint 重複判定・debate 台本・skill-suggest スコアリング・issue-implement 決定木の 4 箇所) で、書き換えた本人が「`#1880 で廃止`」のような変更イベント語り (経緯ナラティブ) を永続文書 6 箇所に埋め込んだ。`comment-journal-check.sh` の既存 regex (`cycle\s*\d+` / `F-\d+` / `PR\s*#\d+` 等) は `旧 X は Y していた` 形の日本語 journal phrase を PR #1161 (累積対策) で拡張済みだったが、**「`#N で廃止`」という「番号 + で + 動詞」の複合形は本 lint regex がカバーしておらず、LLM レビュー (prompt-engineer) のみが検出した** (cycle 1 MEDIUM)。
 
@@ -247,7 +247,7 @@ fix (cycle 1) では番号・経緯を削除し、現在形の制約文 + WHY �
 
 **preventive direction 3 例目としての意義**: 機械判定の削除・簡素化を目的とする refactor PR (「仕様を減らす」方向の変更) では、削除理由を Issue 番号付きで語りたくなる誘惑が特に強い — PR #1780 の「SoT 化・規約明文化 PR ほど journal narration 混入リスクが高い」観察に加え、「**仕様削減・簡素化を目的とする PR も同様のリスクを持つ**」ことが本 PR で追加実証された。lint regex が既知の journal phrase 変種を汎化しても、「番号+で+動詞」のような新規複合形は後追いでしか拡張されないため、**lint はセーフティネットであり LLM レビューによる semantic 検出が一次防衛線である**ことを再確認する事例でもある。
 
-累計 preventive direction 3 例 (PR #1066: code comment / PR #1780: 新設 reference doc 本文 / PR #1893: 仕様削減 refactor の複合形 journal phrase) となった。
+累計 preventive direction 3 例（code comment / 新設 reference doc 本文 / 仕様削減 refactor の複合形 journal phrase）となった。
 
 ## 関連ページ
 

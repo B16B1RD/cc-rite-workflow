@@ -102,7 +102,7 @@ LLM reviewer は invariant の logical consistency を高速に reasoning でき
 - **Prose 内の「実用上の影響はない」断定**: 「コードブロック内のリンクは行頭 ``` 慣習なので影響なし」のような prose claim は repo 内 grep で反例の有無を確認してから出す。
 - **Reviewer 評価の割れ**: 複数 reviewer の verdict が正面から割れたとき、それは多くが coverage gap (各 reviewer が異なる path をテスト) であり真の矛盾ではない。より具体的な runtime evidence を持つ finding を実機再現で確証して採否を決める。
 
-### Documentation factual claim 検証の実例 (PR #799 cycle 1-4)
+### Documentation factual claim 検証の実例（cycle 1-4）
 
 PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の factual claim を runtime / grep で 3 件反証:
 
@@ -113,7 +113,7 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 
 **学習**: canonical reference 内の factual claim (CLI 挙動 / 実観測 / repo 状態) は **必ず実機検証を伴う**。prose-only で claim を出すと連鎖的に Edge Case 表の挙動予測を誤らせ、cycle 境界で reviewer による反証 → 再 fix → 再 review の循環を生む。reviewer は「prose 内の factual claim」を rhetorical claim として受け流さず、必ず repo 内 grep / `man` / runtime invoke で裏付ける discipline を持つ。
 
-### Reviewer 評価の割れは coverage gap として runtime evidence で確証する (PR #1246 cycle 1)
+### Reviewer 評価の割れは coverage gap として runtime evidence で確証する（cycle 1）
 
 複数 reviewer の verdict が正面から割れたとき、それは多くの場合 **真の矛盾ではなく coverage gap** (各 reviewer が異なる code path をテストした結果) である。PR #1246 で error-handling reviewer が「CLEANED 経路 + 内側 mktemp 失敗で exit 1 を leak する」HIGH を runtime observation (mktemp-shim で no-arg call のみ失敗させる) で検出した一方、code-quality / security reviewer は normal path (normal CLEANED / mv-failure) のみテストして「exit 0 維持」と評価していた。
 
@@ -122,15 +122,15 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 
 → reviewer disagreement を「矛盾」と受け取って一方を棄却するのではなく、各 reviewer がカバーした path を整理し、未カバー edge を runtime evidence で埋めるのが canonical。empirical reproduction over invariant reasoning の multi-reviewer 版。exit-code leak 自体の機構は [[trailing-and-shortcircuit-exit-code-leak]] を参照。
 
-### CRITICAL cross-validation 対立を実機 revert test で決着し 5 cycle で mergeable に収束した事例 (PR #1973)
+### CRITICAL cross-validation 対立を実機 revert test で決着し 5 cycle で mergeable に収束した事例
 
-PR #1973 (Issue #1944) cycle 1 review で、既存 helper (`git-status-filtered.sh`、内部で `mktemp` に依存) への新規呼び出し経路が exit code チェックを欠く finding について、error-handling reviewer のみが CRITICAL (「TMPDIR 書込制限下で helper 自身が失敗し worktree drift axis が silent に無効化される」)、他 3 reviewer (application/prompt-engineer/security) は「raw `git status` から意図の変わらない置き換えであり non-blocking」と評価する正面対立が発生した。
+cycle 1 review で、既存 helper (`git-status-filtered.sh`、内部で `mktemp` に依存) への新規呼び出し経路が exit code チェックを欠く finding について、error-handling reviewer のみが CRITICAL (「TMPDIR 書込制限下で helper 自身が失敗し worktree drift axis が silent に無効化される」)、他 3 reviewer (application/prompt-engineer/security) は「raw `git status` から意図の変わらない置き換えであり non-blocking」と評価する正面対立が発生した。
 
 cross-validation debate の pre-debate guard (CRITICAL 指摘は自動討論せず即座にユーザーへエスカレーション) が発火し、orchestrator は両者の主張を reasoning で決着させず、TMPDIR を書込不可ディレクトリに向けた状態で `git-status-filtered.sh` を単体実行する **実機 revert test** を実施した。結果、helper は exit 1 で失敗し raw `git status` は成功する非対称を empirical に確認 — error-handling の技術的主張が正しいと実証され、ユーザーがこの評価を採用する判断を下した。「同じ意図の置き換えに見えても依存関係の増加で信頼性プロファイルが変わる」ことを reasoning だけでなく実機観測で決着させた事例。
 
 この PR はさらに cycle 2 で「cycle 1 fix 自身が pipefail dead-code バグを持つ」ことを 5 reviewer 全員が独立検出、cycle 3-4 で test coverage gap (guard logic の pin 漏れ、fixture が実装差分を observable にしていない) が段階的に発見され、severity が CRITICAL (cycle 1) → HIGH (cycle 2, 5 reviewer 一致の高確信度) → MEDIUM/LOW (cycle 3-4, test 品質) → 0 findings (cycle 5, mergeable) と単調に低下しながら 5 cycle (circuit breaker の上限直前) で収束した。CRITICAL な finding ほど早い cycle で発見され、cycle を重ねるごとに finding の性質が「機能的正しさ」から「test 品質」へと移行していくのは、reviewer が浅い層から深い層へ段階的に掘り下げていることを示す健全な収束パターン。
 
-### 全 reviewer の実測検証規律が low-noise 収束を生む positive evidence (PR #1277)
+### 全 reviewer の実測検証規律が low-noise 収束を生む positive evidence
 
 security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer (security / error-handling / test / performance / tech-writer) × 2 cycles の全員が実測検証を実施した:
 
@@ -142,7 +142,7 @@ security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer 
 
 結果、hypothetical finding が 1 件も出ず実証ベースの指摘のみで構成され、唯一の指摘は cycle 1 の MEDIUM 1 件 (コメント内コードポイント範囲ラベルと実装バイト範囲の不整合) → cycle 2 で 0 findings mergeable の low-noise 2-cycle 収束。empirical verification discipline が全 reviewer に行き渡ると、reasoning ベースの憶測 finding によるノイズと cycle 浪費が構造的に消えることを示す positive evidence (本ページが規範とする検出規範の全員適用形)。
 
-### reviewer 間の矛盾は「どちらが正しいか」ではなく「何を測ったか」で解く（PR #2017）
+### reviewer 間の矛盾は「どちらが正しいか」ではなく「何を測ったか」で解く
 
 同一現象について reviewer の結論が割れた例: 1 名が「このコメントの因果は正確」、2 名が「不正確」と結論した。両者とも実測に基づいていたが、**測った経路が違った**。
 

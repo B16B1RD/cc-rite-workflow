@@ -28,7 +28,7 @@ confidence: high
 
 ## 詳細
 
-### 実例 (PR #623)
+### 実例
 
 `commands/pr/cleanup.md` は Issue #604 契約として bare bracket 形式 (`[cleanup:completed]`) を LLM turn-boundary heuristic 誤発火源として MUST NOT 化していた。同 file 内に routing dispatcher (Item 0) を追加する際、以下の evidence 出力義務を MUST として書き込んだ:
 
@@ -84,17 +84,17 @@ evidence 義務化 / 新規 sentinel / 新規 prompt 規約を追加する PR �
 - **prompt-engineer**: 新規仕様の内部整合性 (指示の明確性 / LLM 実行可能性)
 - **tech-writer** または **既存契約熟知 reviewer**: 同 file 内既存規約との衝突 (cross-reference 整合性)
 
-### 新 Step 追加 × 既存 MUST NOT 衝突と layer 明示対策 (PR #624 での evidence)
+### 新 Step 追加 × 既存 MUST NOT 衝突と layer 明示対策（実測）
 
-PR #624 (Issue #618) で `commands/wiki/ingest.md` Phase 9.1 に新 Step 3 (`.rite-flow-state` terminal patch、bash 実行) を追加した際、既存の MUST NOT #621 reinforce (「三点セット #2/#3 間に recap 等の追加行を挿入してはならない」) と Step 3 の実行タイミング指示が衝突するように読める F1 CRITICAL が prompt-engineer × code-quality の cross-validation で検出された。
+`commands/wiki/ingest.md` Phase 9.1 に新 Step 3 (`.rite-flow-state` terminal patch、bash 実行) を追加した際、既存の MUST NOT #621 reinforce (「三点セット #2/#3 間に recap 等の追加行を挿入してはならない」) と Step 3 の実行タイミング指示が衝突するように読める F1 CRITICAL が prompt-engineer × code-quality の cross-validation で検出された。
 
 **衝突の構造**:
 
 - 既存 MUST NOT: `[CONTEXT] continuation` HTML コメント (#2) と `<!-- [ingest:completed] -->` sentinel (#3) の間に追加行を入れると、LLM turn-boundary heuristic が #2 を terminator と誤認して #3 を absolute last line として出力する前に turn を閉じる
-- 新 Step 3 (Issue #618): sentinel 出力後に flow-state を `ingest_completed` に deactivate patch する bash 実行を追加
+- 新 Step 3: sentinel 出力後に flow-state を `ingest_completed` に deactivate patch する bash 実行を追加
 - 読み取り衝突: 「sentinel 出力後に bash 実行」が「#2/#3 間の挿入禁止」と矛盾するように読める (LLM が Step 3 を sentinel 前に移動するか廃止する silent regression 誘発)
 
-**canonical 対策 (PR #624 cycle 1 fix で確立)**:
+**canonical 対策（cycle 1 fix で確立）**:
 
 bash tool output と response text の **layer 境界** を prose で明示する:
 
@@ -114,9 +114,9 @@ bash tool output と response text の **layer 境界** を prose で明示す�
 
 本 pattern を適用した PR では、Step 番号 ↔ Output ordering 対応を semantic name 参照の ANCHOR で 3 site (Step 見出しの prose / MUST NOT の "bash tool 実行 note" / 設計メモ非レンダリング注釈) に展開し、将来の編集時に「Step 3 meta-step の扱いを変更する場合は MUST NOT 本文も同時に更新すること」を grep 可能な形で contract 化する。詳細は [DRIFT-CHECK ANCHOR は semantic name 参照で記述する](../patterns/drift-check-anchor-semantic-name.md) 参照。
 
-### Remediation guidance 間の no-win 矛盾と「禁止 + escape hatch」収束 (PR #1272 での evidence)
+### Remediation guidance 間の no-win 矛盾と「禁止 + escape hatch」収束（実測）
 
-PR #1272 (Issue #1271) で本 anti-pattern の **remediation guidance variant** を実測: `cleanup-wikichain-handoff-parity.test.sh` の TC-6 fail メッセージが「同じ WIKICHAIN handoff 値を `--handoff` で再指定せよ」と remediation を指示するが、これに従うと TC-1 (handoff set の単一 SoT 強制) が count=2 で fail する。MUST NOT (TC-1: handoff set は単一 site のみ) と MUST (TC-6: 再指定せよ) が同一 test suite 内で衝突し、どちらの指示に従っても他方が fail する **no-win 矛盾**。矛盾の発見自体は前 PR #1270 の mutation 検証で latent に surface していた (mutation-testing-test-fidelity.md 適用 14 参照)。
+後続の実測で本 anti-pattern の **remediation guidance variant** を実測: `cleanup-wikichain-handoff-parity.test.sh` の TC-6 fail メッセージが「同じ WIKICHAIN handoff 値を `--handoff` で再指定せよ」と remediation を指示するが、これに従うと TC-1 (handoff set の単一 SoT 強制) が count=2 で fail する。MUST NOT (TC-1: handoff set は単一 site のみ) と MUST (TC-6: 再指定せよ) が同一 test suite 内で衝突し、どちらの指示に従っても他方が fail する **no-win 矛盾**。矛盾の発見自体は前 PR #1270 の mutation 検証で latent に surface していた (mutation-testing-test-fidelity.md 適用 14 参照)。
 
 **canonical 対策 (収束二段構成)**: 矛盾する remediation の一方 (再指定経路) を塞ぎ、両 guidance を「追加するな」という同方向に収束させる:
 
@@ -138,6 +138,6 @@ PR #1272 (Issue #1271) で本 anti-pattern の **remediation guidance variant** 
 - [PR #624 fix results (layer 明示対策の確立)](../../raw/fixes/20260420T144134Z-pr-624.md)
 - [PR #1272 review results (remediation guidance 間 no-win 矛盾の「禁止 + escape hatch」収束)](../../raw/reviews/20260604T233350Z-pr-1272.md)
 
-## 変種: 記述層の consistency 主張 vs divergence 文書化 (PR #1841)
+## 変種: 記述層の consistency 主張 vs divergence 文書化
 
 規約 (MUST/MUST NOT) だけでなく**記述層**でも同型の自己矛盾が起きる。PR #1841 では「2 つの解決方式は異なる結果を返しうる」という divergence 文書化の節を追加した際、隣接する既存文「The detection logic is intentionally consistent between the two」の絶対表現を残したため、読者がどちらを信じるべきか判断できない隣接矛盾になった (唯一の指摘)。相違を導入・文書化する変更では、同一 doc 内の consistency / 同一性主張を grep し、スコープ限定 (in approach / in shape) + 新節への cross-reference で両立させる。

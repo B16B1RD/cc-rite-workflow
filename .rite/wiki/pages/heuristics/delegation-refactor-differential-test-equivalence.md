@@ -47,7 +47,7 @@ PR #1204 (#1195 #8) は `archive-procedures.md` §3.5.2 の inline Python (~75 �
 - **強い signal**: PR #1204 では 5 レビュアー (prompt-engineer / code-quality / test / error-handling / security) のうち複数が、指示されずとも独立に「原 inline block と新実装の差分比較を byte 一致で確認する」手法を採用した。委譲リファクタの正当性検証として differential equivalence test が自然に選ばれることは、本 heuristic の有効性を裏付ける。結果は指摘 0 件 / 1 cycle 収束。
 - **適用条件**: behavior-preserving な refactor 限定 (inline → helper 委譲 / 関数抽出 / 言語間移植 等)。動作を意図的に変える refactor には不適 (差分が出るのが正しいため)。
 
-### 出力契約の verbatim 保持も差分検証の対象に含める (PR #1208)
+### 出力契約の verbatim 保持も差分検証の対象に含める
 
 PR #1208 (#1195 #10) は `wiki/lint.md` §6.2 の `all_source_refs` 集合構築 (~240 行 inline bash) を `wiki-lint-source-refs.sh` へ委譲した。本 PR の特徴は、差分検証の対象がアルゴリズム等価性だけでなく **出力契約そのもの** に及ぶ点: marker block (`---all_source_refs_begin/end---`) と 3 値 enum (`unknown` / `true` / `io_error`) を verbatim 保持することが下流 step の分岐を壊さない hard constraint であり、reviewer は (a) develop inline 実装との byte-level diff、(b) 新規 test 34/34 pass、(c) 実機 injection 検証の 3 点で確認し、5 reviewer 全員 0 blocking / 1 cycle 収束。
 
@@ -58,7 +58,7 @@ PR #1208 (#1195 #10) は `wiki/lint.md` §6.2 の `all_source_refs` 集合構築
 
 同 PR で prompt-engineer が surface した非ブロッキング推奨: §3.5.1 (完了情報 / append-eof 委譲) は「`### 完了情報` は WM 初期テンプレに存在しない新規セクション」と section-novelty を明記していたが、対称位置の §3.5.2 (進捗 merge) は「対象 `### 進捗` が v1 legacy 限定で、default v2 WM (`### 進捗サマリー` table) では merge が常に no-op になる」という適用範囲を記述していなかった。委譲リファクタでは **(a) 動作の等価性 (差分テスト) と (b) doc の適用範囲記述の対称性** の両方を verify する。(b) は [[asymmetric-fix-transcription]] の doc レイヤー版。
 
-### 抽出境界に取り残されるデッドコードも検出対象 (PR #1218)
+### 抽出境界に取り残されるデッドコードも検出対象
 
 PR #1218 (#1195 #2) は `pr/fix.md` ステップ1.2.0 Hybrid Review Source Resolution の Selection logic (~550 行) を新規 `review-source-resolve.sh` へ verbatim 抽出した。同 umbrella #1195 内 **3 例目** の faithful-port 委譲で、検証は (a) `git show develop:...fix.md` の inline block との byte-level diff、(b) 同梱 test 37 assertions pass、(c) `distributed-fix-drift-check.sh` の新規 drift 0 (stash before/after 比較で delta=0) の **3 点セットを #1204 / #1208 と同型に再現**し、cycle 2 で 0 findings 収束。
 
@@ -72,17 +72,17 @@ canonical 対策: faithful-port 委譲の review checklist に「コピーした
 
 加えて、cycle 2 で reviewer が検出した **pre-existing 事項** (severity_map fence の `norm_tmp` orphan / `json_commit_sha_err` の signal-window leak) は、いずれも develop 時点から存在し本 PR diff が原因でない (revert test FAIL) ため指摘事項から除外し、investigation 推奨 / follow-up Issue (#1219 / #1220) に再分類した。faithful-port 委譲のレビューでは **verbatim 保持スコープを尊重し pre-existing バグを current-pr 指摘に混ぜない** scope 規律が重要 ([[scope-creep-rejection-empirical-gate]] / PR #1205 #1195 #9 の verbatim 保持スコープ尊重と同型)。
 
-### caller-doc の挙動列挙は helper の全 return 経路を catch-all で網羅する (PR #1229)
+### caller-doc の挙動列挙は helper の全 return 経路を catch-all で網羅する
 
 PR #1229 (#1221 部分対応) は `commands/init.md` の inline Python (~44 行、`settings.local.json` から rite hook エントリを除去する JSON 編集) を `settings-local-rite-hook-cleanup.{py,sh}` へ委譲した。同 umbrella 外だが faithful-port 委譲の **4 例目** の独立再現で、検証は (a) 旧 inline `python3 -c` と新 helper の 5 fixture 差分比較 (出力・exit code 完全一致)、(b) `bash-heaviness-check.sh --all` の findings 8→7、(c) `/rite:lint` Phase 3.5-3.17 で新規 warning ゼロ、の 3 点セットを #1204 / #1208 / #1218 と同型に再現し、全 4 reviewer 0 blocking / 2 cycle 収束。差分テスト等価性手法が umbrella を跨いで安定再現することを示す。
 
 本 PR が新たに surface した facet は、差分テストでは「動作等価」と判定される一方で **caller-doc の挙動列挙が helper の全 return 経路を catch-all で網羅していない** drift。cycle 1 で F-01 として検出された唯一の finding は、`init.md` の Helper contract 注記が `NO_RITE_HOOKS` を返す条件を「python3 不在・file 不在・対象 hook 不在」の **閉じたリスト** で列挙していたが、helper の実挙動はそれ以外の安全側ケース (不正 JSON / mktemp・mv 失敗) も全て `NO_RITE_HOOKS` に畳み込む **catch-all** だった点。cycle 1 fix で注記を「rite hook を実際に除去したときのみ `CLEANED`、それ以外の安全側ケースは全て `NO_RITE_HOOKS`」という catch-all 表現へ補強し (helper の全 `NO_RITE_HOOKS` 経路 .sh L27/34/44/47 を網羅)、cycle 2 で 0 finding 収束。
 
-canonical 対策: 委譲リファクタの review checklist に **「caller-doc が列挙する helper の挙動が、helper の全 return 経路 (特に error/edge: 不正入力・mktemp/mv 失敗) を catch-all で網羅しているか」** を加える。閉じたリスト形式の列挙は helper の catch-all 実挙動と drift しやすく、symptom (列挙不足) でなく root-cause (注記が全 return 経路を網羅しない構造) に対処する。本 facet は #1226 / #1228 の `json_invalid` doc 精度ポリシー (実挙動を安全側表現で記述する) と同系統であり、§3.5.1 の「doc 適用範囲の対称記述」(PR #1208) が *両 site の適用範囲記述の対称性* を扱うのに対し、本 facet は *caller doc 単体の return-path 網羅性* を扱う直交軸。
+canonical 対策: 委譲リファクタの review checklist に **「caller-doc が列挙する helper の挙動が、helper の全 return 経路 (特に error/edge: 不正入力・mktemp/mv 失敗) を catch-all で網羅しているか」** を加える。閉じたリスト形式の列挙は helper の catch-all 実挙動と drift しやすく、symptom (列挙不足) でなく root-cause (注記が全 return 経路を網羅しない構造) に対処する。本 facet は #1226 / #1228 の `json_invalid` doc 精度ポリシー (実挙動を安全側表現で記述する) と同系統であり、§3.5.1 の「doc 適用範囲の対称記述」が *両 site の適用範囲記述の対称性* を扱うのに対し、本 facet は *caller doc 単体の return-path 網羅性* を扱う直交軸。
 
 副次的に surface した非ブロッキング観察 (いずれも pre-existing / follow-up 候補、revert test FAIL のため current-pr 指摘から除外): helper の自動テスト (.test.sh) 未追加 (先例 `issue-comment-wm-sync.test.sh` あり)、mv 失敗時の stderr WARNING 欠如、`CLEANED` 経路で結果 file permission が mktemp 由来 0600 に厳格化。これらは [[scope-creep-rejection-empirical-gate]] の verbatim 保持スコープ尊重に従い follow-up に再分類した。
 
-### 採用した hardening pattern に対応する sibling 回帰テストの登録対称性も差分テストの盲点 (PR #1249)
+### 採用した hardening pattern に対応する sibling 回帰テストの登録対称性も差分テストの盲点
 
 PR #1249 (#1221 部分対応) は `pr/review.md` の 6.1.c Skip Notification (~142 行 inline bash) を `review-skip-notification.sh` へ委譲した。faithful-port 委譲の **5 例目** の独立再現で、検証は (a) develop 版 inline block との byte-level diff (gate 順序 / reason 語彙 6 種 / exit code 0/1/2 / heredoc 文言が byte-identical)、(b) `bash-heaviness-check.sh --all` の findings 2→0、(c) `distributed-fix-drift-check.sh` の新規 drift 0 (6.1.c reason の table→bullet 変換に中立) の 3 点セットを #1204 / #1208 / #1218 / #1229 と同型に再現し、cycle 2 で 5 reviewer 全員 0 blocking / 2 cycle 収束。
 
@@ -90,9 +90,9 @@ PR #1249 (#1221 部分対応) は `pr/review.md` の 6.1.c Skip Notification (~1
 
 canonical 対策: 委譲リファクタの review checklist に **「新規 helper が採用した既存 hardening pattern (shift;shift 等) について、対応する sibling 回帰テストへの登録が helper 本体の実装と対称になっているか」** を加える。helper の動作正しさは回帰テスト登録の有無とは別軸であり、登録漏れは runtime 挙動を変えないため差分テスト・既存 test pass では検出されず、reviewer の sibling 照合でのみ surface する ([[asymmetric-fix-transcription]] の test レイヤー版、[[small-symmetric-pr-sibling-site-grep-review]] の sibling grep 手法と同系統)。本 facet は #1218 の「抽出境界デッドコード」・#1229 の「caller-doc return-path 網羅」と並ぶ、差分テストが捕捉しない第 3 の直交軸 (test coverage 対称性) である。
 
-### 観測捕捉は外部観測可能な挙動の全域、in-process 中間変数は契約対象外 (PR #1286)
+### 観測捕捉は外部観測可能な挙動の全域、in-process 中間変数は契約対象外
 
-PR #1286 (Issue #1196、#1193 follow-up) は `pr/fix.md` 1.2.0 severity_map build (~154 行) の `review-findings-maps.sh` 委譲を含む MEDIUM 5 + LOW 1 件の重量 inline bash を helper 委譲 / args_json 分離で解消した。faithful-port 委譲の **6 例目** の独立再現で、3 cycle (1→2→0 blocking) 収束。本 PR は差分テストの**観測範囲そのもの**について双方向の線引きを確立した:
+その follow-up PR は `pr/fix.md` 1.2.0 severity_map build (~154 行) の `review-findings-maps.sh` 委譲を含む MEDIUM 5 + LOW 1 件の重量 inline bash を helper 委譲 / args_json 分離で解消した。faithful-port 委譲の **6 例目** の独立再現で、3 cycle (1→2→0 blocking) 収束。本 PR は差分テストの**観測範囲そのもの**について双方向の線引きを確立した:
 
 - **観測捕捉範囲の穴 (捕捉拡張方向)**: cycle 1 で test reviewer が、wiki-branch-init 差分テストの dump_state が commit subject (`%s`) のみ捕捉し **commit body の drift が観測網を素通りする**ことを mutation で実証 (MEDIUM) → wiki_body/main_body の捕捉追加 + verbatim assert pin で構造的解消。差分テストは「比較している」だけでは不十分で、比較対象が外部観測可能な挙動の全域 (rc / stdout / stderr / file / commit body) を捕捉しているかが独立の検証軸になる。
 - **契約対象外の確定 (観測除外方向)**: cycle 3 で test reviewer の「helper 内部 validation 変数 (`severity_map_json`) が test で観測不能」MEDIUM が、prompt-engineer / code-quality / error-handling の「旧 inline でも stdout 非 emit の in-process validation 変数 = verbatim 契約」検証と衝突 → 討論フェーズで合意降格 (機能 regression なし、改変値は production 非消費)。**differential equivalence test の観測範囲は「外部観測可能な挙動 (rc/stdout/stderr/file)」であり、in-process 中間変数は契約対象外**という線引きを確立。
