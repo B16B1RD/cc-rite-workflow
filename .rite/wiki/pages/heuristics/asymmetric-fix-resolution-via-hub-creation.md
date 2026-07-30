@@ -26,7 +26,7 @@ confidence: medium
 
 ### 発生状況の例
 
-`commands/issue/create-interview.md` の line 307 が Output rules の SoT で、line 27/247 にある bash block コメントは line 307 で定義された rule を参照する。PR #850 で line 307 に新しい test references を追加した際、line 27/247 の bash block コメントへの逆参照伝播を忘れた典型的な Asymmetric Fix Transcription pattern が発生。
+`commands/issue/create-interview.md` の line 307 が Output rules の SoT で、line 27/247 にある bash block コメントは line 307 で定義された rule を参照する。起点の伝播漏れ PR で line 307 に新しい test references を追加した際、line 27/247 の bash block コメントへの逆参照伝播を忘れた典型的な Asymmetric Fix Transcription pattern が発生。
 
 ### 2 つの解決オプション
 
@@ -39,11 +39,11 @@ confidence: medium
 
 1. **DRY 違反の回避**: Option A は同じ意味を 3 箇所に literal copy する DRY 違反。Option B は 1 hub に集約。
 2. **drift 経路の物理的閉塞**: 単に hub 化するだけでなく「bash block 側コメントは bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持」という **責務範囲の明示文書** がカギ。これにより将来「両側にも書こう」という refactor 提案は、SoT 文書を読んだ瞬間に「責務分離契約に反する」と判定可能になり、drift が proposal 段階で止まる。
-3. **minimal-diff doc PR で完結**: Option B の実装は 1 line edit (line 307 prose の hub 明示追加) で済むため、PR #858 のように 1 line minimal-diff doc PR として fast-track 可能。
+3. **minimal-diff doc PR で完結**: Option B の実装は 1 line edit (line 307 prose の hub 明示追加) で済むため、Option B 実装 PR のように 1 line minimal-diff doc PR として fast-track 可能。
 
 ### Option B 採用時の落とし穴（実測）
 
-Option B の hub 化は新しい SoT を作るため、**hub 自身の構造**が後続の review 対象になる。PR #858 で line 307 prose に hub 明示を 1 line 追加したところ、parenthetical 末尾の `):` が「半角 `)` + 半角 `:`」と「list 始端 colon」を兼ねる二重役割となり、style drift として LOW 推奨で再指摘された。これは hub 化の効果を否定するものではなく、**hub 行の prose 構造そのものが新たな品質ゲート対象になる**ことを示している。Option B の採用判断と並行して、hub 行の prose style (parenthetical 構造、style 統一) も style guide 対象に含めるべき。
+Option B の hub 化は新しい SoT を作るため、**hub 自身の構造**が後続の review 対象になる。Option B 実装 PR で line 307 prose に hub 明示を 1 line 追加したところ、parenthetical 末尾の `):` が「半角 `)` + 半角 `:`」と「list 始端 colon」を兼ねる二重役割となり、style drift として LOW 推奨で再指摘された。これは hub 化の効果を否定するものではなく、**hub 行の prose 構造そのものが新たな品質ゲート対象になる**ことを示している。Option B の採用判断と並行して、hub 行の prose style (parenthetical 構造、style 統一) も style guide 対象に含めるべき。
 
 ### Option B 採用の判断基準
 
@@ -55,13 +55,13 @@ Option B の hub 化は新しい SoT を作るため、**hub 自身の構造**�
 
 ### 実測収束（hub 化 PR → 関連 LOW 推奨 3 件）
 
-- **PR #858** (Option B 実装) — 1 line 最小差分 doc PR、両 reviewer (prompt-engineer + code-quality) で 0 blocking findings、merge 完了
+- **Option B 実装 PR** — 1 line 最小差分 doc PR、両 reviewer (prompt-engineer + code-quality) で 0 blocking findings、merge 完了
 - **style 統一 PR**（hub 化 PR が導入した hub 行 prose の style 統一）— `**Output rules** (...):` parenthetical を `**Output rules**:` 独立行スタイルに分解、0 findings
 - **scope 外 LOW 推奨を別 Issue 化** — prompt-engineer reviewer の 3 件の LOW 推奨は scope を超えるため #859/#860/#861 として登録。doc PR でも `rejected(scope-creep)` 判断ではなく followup-issue 化で記録する規律を維持
 
 ### Sub-pattern — hub 行が 3+ test を参照したら inline 連結から bullet list へ refactor する
 
-Option B の hub 化が成功した後、後続 PR で hub 行に test references が累積していくフェーズが訪れる。**inline 連結のまま 3 つ目の test reference を追加すると 1 段落が約 280 字を超えて各 test の責務境界が読み取りづらくなる**ため、PR #867 で「**3 件以上**で bullet list 化」を判断基準として明示文書化し事前 refactor を実施した。
+Option B の hub 化が成功した後、後続 PR で hub 行に test references が累積していくフェーズが訪れる。**inline 連結のまま 3 つ目の test reference を追加すると 1 段落が約 280 字を超えて各 test の責務境界が読み取りづらくなる**ため、bullet list 化 PR で「**3 件以上**で bullet list 化」を判断基準として明示文書化し事前 refactor を実施した。
 
 **判断基準** (本 sub-heuristic の中核):
 
@@ -74,7 +74,7 @@ Option B の hub 化が成功した後、後続 PR で hub 行に test reference
 **bullet 化が drift-prevention 効果を保つ条件**:
 
 1. **判断基準の inline blockquote 文書化**: bullet list 自身に「将来 4+ test が追加された場合も bullet 維持」を blockquote で明記する。これにより hub 行が「単一 paragraph に戻す refactor 提案」を SoT を通じて構造的に retract する (Option B の元の設計原則の継承)
-2. **test 側不変条件の独立性**: hub 行の prose 構造に test が依存しないこと (各 test が grep ベースの structural assertion で書かれており、line 番号 / paragraph 構造に依存しない) を pre-refactor verify。PR #867 では 3 test (`4-site-symmetry` / `caller-html-literal-symmetry` / `responsibility-separation`) すべて bullet list 化後も PASS することを手元実行で確認
+2. **test 側不変条件の独立性**: hub 行の prose 構造に test が依存しないこと (各 test が grep ベースの structural assertion で書かれており、line 番号 / paragraph 構造に依存しない) を pre-refactor verify。bullet list 化 PR では 3 test (`4-site-symmetry` / `caller-html-literal-symmetry` / `responsibility-separation`) すべて bullet list 化後も PASS することを手元実行で確認
 3. **責務分離 test の POSITIVE check 維持**: `responsibility-separation.test.sh` は prose 内に `caller-html-literal-symmetry` 文字列が残っていることを POSITIVE check するため、bullet 化しても文字列自体は保持されることを確認
 4. **0-finding clean review**: bullet 化が「ただの可読性改善」(機能変更なし) であることを両 reviewer (prompt-engineer / code-quality) で 0 blocking findings 確認 → 1 cycle 完了
 
@@ -87,7 +87,7 @@ Option B の hub 化が成功した後、後続 PR で hub 行に test reference
 
 ### 適用拡張 — inline copy の cross-file 同期は委譲 (helper の新モード) で同一ファイル sibling 同期へ縮約する
 
-Option B の「hub 化」は、test references の SoT 化だけでなく **command markdown の inline bash copy** にも適用できる。PR #1203 では `wiki/init.md` §1.3.4 が `.gitignore` negation verification の ~110 行 inline bash を持ち、その内容を `gitignore-health-check.sh` の same_branch case と「一字一句同期」する [canonical reference 文書のサンプルコード同期](../patterns/canonical-reference-sample-code-strict-sync.md) 契約下にあった。つまり **cross-file (init.md ↔ helper) の symmetric replication** が drift 経路として常駐していた。
+Option B の「hub 化」は、test references の SoT 化だけでなく **command markdown の inline bash copy** にも適用できる。委譲縮約 PR では `wiki/init.md` §1.3.4 が `.gitignore` negation verification の ~110 行 inline bash を持ち、その内容を `gitignore-health-check.sh` の same_branch case と「一字一句同期」する [canonical reference 文書のサンプルコード同期](../patterns/canonical-reference-sample-code-strict-sync.md) 契約下にあった。つまり **cross-file (init.md ↔ helper) の symmetric replication** が drift 経路として常駐していた。
 
 | | Before (Option A 的 cross-file 同期) | After (Option B 的 hub 委譲) |
 |---|---|---|
@@ -95,12 +95,12 @@ Option B の「hub 化」は、test references の SoT 化だけでなく **comm
 | 同期 site 数 | 2 ファイル (init.md ↔ helper) を跨ぐ cross-file 同期 | helper 内 2 箇所 (verify-negation copy ↔ same_branch case) の **同一ファイル sibling 同期** |
 | drift 検出 | cross-file DRIFT-CHECK ANCHOR (片方向参照になりやすい) | 同一ファイル内 sibling ANCHOR (相互参照が 1 ファイル内に閉じる) |
 
-**縮約の効果**: 同期対象を「2 ファイル跨ぎ」から「1 ファイル内 sibling」へ移すことで、(a) reviewer が両 copy を 1 ファイル内で目視照合でき、(b) cross-file ANCHOR が片方向参照に劣化する経路を排除する。helper に新モード (`--verify-negation`) を足すコストはあるが、その分 caller (init.md) の重量 inline は構造的に消滅する。これは Issue #1195 umbrella (「#1193 残 HIGH 重量 inline bash の helper 委譲」) の設計原則そのもので、PR #1203 はその block #11 の実装。
+**縮約の効果**: 同期対象を「2 ファイル跨ぎ」から「1 ファイル内 sibling」へ移すことで、(a) reviewer が両 copy を 1 ファイル内で目視照合でき、(b) cross-file ANCHOR が片方向参照に劣化する経路を排除する。helper に新モード (`--verify-negation`) を足すコストはあるが、その分 caller (init.md) の重量 inline は構造的に消滅する。これは「残 HIGH 重量 inline bash の helper 委譲」umbrella Issue の設計原則そのもので、委譲縮約 PR はその 1 ブロックの実装。
 
 **委譲 hub 側で守るべき契約 (本実例で確認)**:
 
 1. **non-blocking 契約の caller/hub 一貫性**: caller (init.md) が「exit code を読まず stdout/stderr で分岐し次ステップへ進む」non-blocking 設計のため、hub (`--verify-negation` モード) も全分岐 exit 0 にする。失敗は silent にせず stderr WARNING + 対処案内で可視化する ([silent fallback の観測性](../patterns/silent-fallback-observability-via-debug-log.md) と同原則)。caller の散文記述 (成功時 `✅ ... OK` を stdout / 失敗時 `WARNING` を stderr) と hub の実出力の **文言・stream 振り分けを一致**させる。
-2. **共有 cleanup 関数の mode-specific 副作用ガード**: hub が既存 cleanup trap (`_rite_gitignore_cleanup`) を共有する場合、モード固有の副作用は guard する。PR #1203 は `rmdir .rite/wiki/raw .rite/wiki` を `[ "${VERIFY_NEGATION:-0}" -eq 0 ]` でガードし、委譲モードでは後続ステップが使う `.rite/wiki/raw/` を rmdir せず残す ([mkdir/rmdir cleanup 対称性](../patterns/mkdir-rmdir-cleanup-symmetry.md) の mode-aware な例外)。`set -uo pipefail` 下でも `:-0` default 置換で trap arm / 変数宣言間の race window を安全化する。
+2. **共有 cleanup 関数の mode-specific 副作用ガード**: hub が既存 cleanup trap (`_rite_gitignore_cleanup`) を共有する場合、モード固有の副作用は guard する。委譲縮約 PR は `rmdir .rite/wiki/raw .rite/wiki` を `[ "${VERIFY_NEGATION:-0}" -eq 0 ]` でガードし、委譲モードでは後続ステップが使う `.rite/wiki/raw/` を rmdir せず残す ([mkdir/rmdir cleanup 対称性](../patterns/mkdir-rmdir-cleanup-symmetry.md) の mode-aware な例外)。`set -uo pipefail` 下でも `:-0` default 置換で trap arm / 変数宣言間の race window を安全化する。
 3. **委譲先 mode の test は mutation testing で kill power を実証**: 新モードの smoke test は契約 (exit 0 / stdout ✅ / stderr WARNING / rmdir 抑止) を 4 TC でカバーし、[mutation testing で全 assertion の真正性](../patterns/mutation-testing-test-fidelity.md) を検証する。環境依存経路 (read-only fs での probe 作成失敗) は portable 再現困難として意図的 skip + ヘッダ明記。
 
 **収束**: 全 5 reviewer (prompt-engineer / code-quality / error-handling / test / security) が 0 blocking findings で mergeable。委譲リファクタが「重量 inline 削減」と「cross-file drift 経路の構造的閉塞」を同時に達成した実例。

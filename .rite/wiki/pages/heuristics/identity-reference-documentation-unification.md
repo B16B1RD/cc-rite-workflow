@@ -48,7 +48,7 @@ reference document (SKILL.md / `references/*.md` / 関連 commands) で identity
 
 ### Observed pattern（実測）
 
-PR #562 (workflow-identity reference の新規追加 + 7 commands への波及) で cycle 1-3 に渡って同じ root cause の drift が繰り返された:
+起点事例 (workflow-identity reference の新規追加 + 7 commands への波及) では cycle 1-3 に渡って同じ root cause の drift が繰り返された:
 
 - **cycle 1**: `コンテキスト残量` → `context 残量` に統一したが、reference document に限定。`SKILL.md` / `commands/pr/cleanup.md` / `commands/pr/review.md` の同一表現が未統一で残った
 - **cycle 2**: 上記 3 ファイルで `コンテキスト残量` を統一したが、同一 blockquote 内の類義語 (`コンテキスト効率` / `コンテキスト最適化` / `コンテキスト圧迫`) が手付かず
@@ -98,17 +98,17 @@ SKILL.md / reference document / PR body / 各 commands 内コメント等に cal
 
 → **Correct**: 本文階層を変更する PR では、frontmatter `description` と関連する全 SKILL.md description を同期更新する責務を明示する。grep 対象として「`description:` + `SKILL.md` の `description` フィールド」を PR 内で一括検索する。
 
-##### Successful application: PR #594 (wiki SKILL.md drift fix)
+##### Successful application 1 例目 (wiki SKILL.md drift fix)
 
-PR #594 は本 sub-heuristic を直接適用した成功例 (1 file / +4 / -3 の minimal PR、両 reviewer が 0 findings で承認)。`plugins/rite/skills/wiki/SKILL.md` の **description block L9-15** と **Auto-Activation Keywords body L27** の lint カテゴリ集合が drift していた (既存 3 日本語キーワード `矛盾チェック` / `陳腐化` / `孤児ページ` が description block に未列挙)。**frontmatter description と本文階層の両方を同時に** canonical 順 (`lint.md` SoT) へ整列させることで 1 PR で解消。
+1 例目は本 sub-heuristic を直接適用した成功例 (1 file / +4 / -3 の minimal PR、両 reviewer が 0 findings で承認)。`plugins/rite/skills/wiki/SKILL.md` の **description block L9-15** と **Auto-Activation Keywords body L27** の lint カテゴリ集合が drift していた (既存 3 日本語キーワード `矛盾チェック` / `陳腐化` / `孤児ページ` が description block に未列挙)。**frontmatter description と本文階層の両方を同時に** canonical 順 (`lint.md` SoT) へ整列させることで 1 PR で解消。
 
-##### Successful application: PR #601 (lint.md 冒頭テーブル列挙順 drift fix — 2 例目)
+##### Successful application 2 例目 (lint.md 冒頭テーブル列挙順 drift fix)
 
-PR #601 は本 sub-heuristic の **2 例目 canonical SoT 単一化成功適用** (1 file / +1 / -1 の 2 行 swap 極小 PR、両 reviewer が 0 findings で承認)。`plugins/rite/commands/wiki/lint.md` 内部で canonical SoT 自身の列挙順が 2 通り共存していた: **L2 frontmatter description** は「5 ブロッキング → 1 informational 末尾隔離」(矛盾 → 陳腐化 → 孤児 → 欠落概念 → 壊れた相互参照 → 未登録 raw)、**L11-16 本文冒頭テーブル** は「未登録 raw が中間挿入」(矛盾 → 陳腐化 → 孤児ページ → 欠落概念 → **未登録 raw** → 壊れた相互参照)。本文冒頭テーブルを frontmatter description 順に整列させることで canonical SoT を単一化。PR #594 の「frontmatter description と本文階層の同時整列」heuristic を canonical SoT **内部** (同一ファイル内 L2 description vs L11-16 body table) にも拡張適用した事例であり、drift 解消の適用範囲が「cross-file」(SKILL.md ↔ lint.md) から「intra-file」(lint.md L2 ↔ L11-16) に広がることを実証した。副次観点として、両 reviewer がサブエージェント full review で同一ファイル内の関連 drift (完了レポート UX 順序 / SKILL.md EN description) を scope 外推奨事項として並行検出し、revert test で「本 PR を revert してもこれらの drift は消えない」と判定して scope discipline を守った。
+2 例目は本 sub-heuristic の **canonical SoT 単一化成功適用** (1 file / +1 / -1 の 2 行 swap 極小 PR、両 reviewer が 0 findings で承認)。`plugins/rite/commands/wiki/lint.md` 内部で canonical SoT 自身の列挙順が 2 通り共存していた: **L2 frontmatter description** は「5 ブロッキング → 1 informational 末尾隔離」(矛盾 → 陳腐化 → 孤児 → 欠落概念 → 壊れた相互参照 → 未登録 raw)、**L11-16 本文冒頭テーブル** は「未登録 raw が中間挿入」(矛盾 → 陳腐化 → 孤児ページ → 欠落概念 → **未登録 raw** → 壊れた相互参照)。本文冒頭テーブルを frontmatter description 順に整列させることで canonical SoT を単一化。1 例目の「frontmatter description と本文階層の同時整列」heuristic を canonical SoT **内部** (同一ファイル内 L2 description vs L11-16 body table) にも拡張適用した事例であり、drift 解消の適用範囲が「cross-file」(SKILL.md ↔ lint.md) から「intra-file」(lint.md L2 ↔ L11-16) に広がることを実証した。副次観点として、両 reviewer がサブエージェント full review で同一ファイル内の関連 drift (完了レポート UX 順序 / SKILL.md EN description) を scope 外推奨事項として並行検出し、revert test で「本 PR を revert してもこれらの drift は消えない」と判定して scope discipline を守った。
 
-##### Successful application: PR #616 (SKILL.md EN description — 3 例目、同一 SKILL.md 内 3 箇所 intra-file 整列の完結)
+##### Successful application 3 例目 (SKILL.md EN description、同一 SKILL.md 内 3 箇所 intra-file 整列の完結)
 
-PR #616 は本 sub-heuristic の **3 例目 canonical SoT 単一化成功適用** (1 file / +1 / -1 の 1 行 swap 極小 PR、両 reviewer が 0 findings で承認)。PR #601 後に `plugins/rite/skills/wiki/SKILL.md` 内部で**最後の drift 源**として残存していた EN frontmatter description L7-8 (`unregistered raw sources, and broken references`) を canonical 順 (`broken references, and unregistered raw sources`) へ swap。同一 SKILL.md 内 3 箇所 (EN description L7-8 / JA Activates L12-13 / JA Auto-Activation L27) の列挙順が canonical SoT (`lint.md` 冒頭テーブル) と完全整列した。**PR #594 (cross-file: SKILL.md ↔ lint.md) → PR #601 (intra-file: lint.md L2 vs L11-16) → PR #616 (intra-file: SKILL.md L7-8 vs L12-13 vs L27) の 3 段で canonical SoT 単一化適用範囲が拡張** された連続実測例となる。PR #594 → #601 → #616 は「frontmatter description と本文階層の同時整列」heuristic が (a) cross-file、(b) canonical SoT 内部、(c) downstream reference document 内部 の 3 スコープに順次拡張されたことを示す。
+3 例目は本 sub-heuristic の **canonical SoT 単一化成功適用** (1 file / +1 / -1 の 1 行 swap 極小 PR、両 reviewer が 0 findings で承認)。2 例目の後に `plugins/rite/skills/wiki/SKILL.md` 内部で**最後の drift 源**として残存していた EN frontmatter description L7-8 (`unregistered raw sources, and broken references`) を canonical 順 (`broken references, and unregistered raw sources`) へ swap。同一 SKILL.md 内 3 箇所 (EN description L7-8 / JA Activates L12-13 / JA Auto-Activation L27) の列挙順が canonical SoT (`lint.md` 冒頭テーブル) と完全整列した。**1 例目 (cross-file: SKILL.md ↔ lint.md) → 2 例目 (intra-file: lint.md L2 vs L11-16) → 3 例目 (intra-file: SKILL.md L7-8 vs L12-13 vs L27) の 3 段で canonical SoT 単一化適用範囲が拡張** された連続実測例となる。この 3 段は「frontmatter description と本文階層の同時整列」heuristic が (a) cross-file、(b) canonical SoT 内部、(c) downstream reference document 内部 の 3 スコープに順次拡張されたことを示す。
 
 ##### Corollary: canonical SoT 内部でも列挙順序は観点により異なる
 
@@ -130,15 +130,15 @@ PR description の AC 検証行 (「N commands で参照 / N ファイル PASS�
 2. `Hint:` / `Warning:` / `Error:` / `Note:` のような prefix が標準化されている場合、prefix 後の本文も同 prefix を持つ既存メッセージと同言語に統一する
 3. user-facing メッセージ (CLI 出力 / log メッセージ) と internal documentation (commands/*.md prose / reference 文書) で言語選択が異なる場合、その分界を尊重する (両者を同一視しない)
 
-##### Successful application: PR #617 (jp/en mixed Hint message style drift)
+##### Successful application: i18n style 事例 (jp/en mixed Hint message style drift)
 
-PR #617 cycle 1 で LOW finding として、新規追加した Hint メッセージが日英混在で他の同 scope Hint が英文統一されている既存パターンと style drift を起こしていた。fix では「他同種メッセージと style drift を起こす場合、新規追加側を既存多数派に合わせて統一する」原則で英文統一に揃えて 1 cycle で解消。**i18n / multilingual style policy も identity / reference 文書の用語統一の sub-heuristic** として扱える (用語 X 単独ではなく「同 scope の言語選択全体」を canonical SoT として捉える)。
+i18n style 事例の cycle 1 で LOW finding として、新規追加した Hint メッセージが日英混在で他の同 scope Hint が英文統一されている既存パターンと style drift を起こしていた。fix では「他同種メッセージと style drift を起こす場合、新規追加側を既存多数派に合わせて統一する」原則で英文統一に揃えて 1 cycle で解消。**i18n / multilingual style policy も identity / reference 文書の用語統一の sub-heuristic** として扱える (用語 X 単独ではなく「同 scope の言語選択全体」を canonical SoT として捉える)。
 
-##### Successful application: PR #826 (i18n style sub-heuristic を context synonym group 全体に拡張適用)
+##### Successful application: i18n 拡張適用事例 (i18n style sub-heuristic を context synonym group 全体に拡張適用)
 
-PR #826 (`style(rite): #819 ready.md Phase 2.1 説明文の英語ベース統一`) は本 sub-heuristic #7 を**前段 sub-heuristic「文脈類義語群全体」スコープと組み合わせて適用**した成功例 (1 file / +7 / -7 lines、両 reviewer 0 findings で承認)。PR #818 で `pr/ready.md` Phase 2.1 を大幅書き直しした際、Phase 2.1 のみ説明文が日本語中心になり ready.md 他 phase (0.1 / 1.0 / 4.6 等) との style drift が発生していた。
+i18n 拡張適用事例 (`pr/ready.md` Phase 2.1 説明文の英語ベース統一) は本 sub-heuristic #7 を**前段 sub-heuristic「文脈類義語群全体」スコープと組み合わせて適用**した成功例 (1 file / +7 / -7 lines、両 reviewer 0 findings で承認)。先行の書き直し PR で `pr/ready.md` Phase 2.1 を大幅書き直しした際、Phase 2.1 のみ説明文が日本語中心になり ready.md 他 phase (0.1 / 1.0 / 4.6 等) との style drift が発生していた。
 
-本 PR の特徴は、PR #617 の i18n style 統一を「該当 blockquote 群」のみに限定せず、**同一 scope の context synonym group 全体** (blockquote 説明文 3 件 + bash コメント 2 箇所 + 周辺 prose の E2E flow detection 説明 + LLM routing 指示) に**一括適用**した点。これにより部分翻訳 → 残存日本語の drift を構造的に予防し、cycle 1 で 4 AC 全合格 + bash detection logic 0 行変更を達成。Cross-File Impact Check で `phase5_post_review` / `phase5_post_fix` token が phase-transition-whitelist.sh / post-tool-wm-sync.sh / resume.md / pr/review.md と整合 drift なしを確認。
+本事例の特徴は、i18n style 事例の統一を「該当 blockquote 群」のみに限定せず、**同一 scope の context synonym group 全体** (blockquote 説明文 3 件 + bash コメント 2 箇所 + 周辺 prose の E2E flow detection 説明 + LLM routing 指示) に**一括適用**した点。これにより部分翻訳 → 残存日本語の drift を構造的に予防し、cycle 1 で 4 AC 全合格 + bash detection logic 0 行変更を達成。Cross-File Impact Check で `phase5_post_review` / `phase5_post_fix` token が phase-transition-whitelist.sh / post-tool-wm-sync.sh / resume.md / pr/review.md と整合 drift なしを確認。
 
 **学び**: i18n style 統一と「文脈類義語群全体」スコープ (本ページの上位抽象) は独立した sub-heuristic ではなく、後者の **scope 決定原則を前者の適用に流用** することで「style drift 部分修正 → 残存 drift」の cycle 2 ループを構造的に防げる。新規 PR 起票時に LOW style finding が予想される場合、最初から context synonym group を grep して scope を確定させる approach が canonical。
 

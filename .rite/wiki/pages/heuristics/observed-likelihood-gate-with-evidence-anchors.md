@@ -52,9 +52,9 @@ Likelihood-Evidence: tool=Grep, pattern='if ! .*; then$', path=plugins/rite/, ma
 | anchor なし、推測のみ | — | 推奨事項（fix 対象外、discussion のみ） |
 | Hypothetical（将来の他 Phase 変更に依存する仮定的リスク） | — | 推奨事項（現状コードで発火しないため fix 対象外） |
 
-PR #540 では 2 件の finding が「Observed Likelihood Gate により推奨事項に降格」され、severity distribution は `HIGH: 0, MEDIUM: 0` に収束した。PR #589 では error-handling reviewer の HIGH 指摘 2 件が「Likelihood-Evidence anchor 欠落 + Hypothetical（Phase 5.1 将来変更に依存）」のため Phase 5.3.0 safety net で機械的降格され、同じく `HIGH: 0, MEDIUM: 0` に収束。Hypothetical 降格は anchor 欠落と独立した orthogonal な降格軸として加えるのが canonical（Claude Code の Bash tool は invocation ごとに独立 shell を生成するため、bash fenced block 終了で trap 自動 cleanup される事実が降格根拠となった）。
+初期の適用例では 2 件の finding が「Observed Likelihood Gate により推奨事項に降格」され、severity distribution は `HIGH: 0, MEDIUM: 0` に収束した。Hypothetical 降格の実測例では error-handling reviewer の HIGH 指摘 2 件が「Likelihood-Evidence anchor 欠落 + Hypothetical（Phase 5.1 将来変更に依存）」のため Phase 5.3.0 safety net で機械的降格され、同じく `HIGH: 0, MEDIUM: 0` に収束。Hypothetical 降格は anchor 欠落と独立した orthogonal な降格軸として加えるのが canonical（Claude Code の Bash tool は invocation ごとに独立 shell を生成するため、bash fenced block 終了で trap 自動 cleanup される事実が降格根拠となった）。
 
-PR #834 では charter 5 自問 #4「既に承認された判断を再確認しない」の適用 PR レビューで 11 findings (HIGH 5 / MEDIUM 4 / LOW 4) が検出されたが、Phase 5.3.0 Observed Likelihood Gate 適用後、全 finding が Likelihood-Evidence anchor 欠落で推奨事項降格 (9 件) または削除 (4 件) され `HIGH/MEDIUM/LOW: 0` に収束した。注目点は **2 reviewer による cross-validation 合意 (AskUserQuestion 4 選択肢の routing 未定義) でも literal anchor を伴わなければ降格対象になる**こと — cross-validation boost (上記 triple cross-validation 表) は anchor 提示が前提であり、cross-validation だけでは anchor 欠落を補わない。reviewer 内容の妥当性 (AskUserQuestion routing 未定義は実装上事実) と severity 判定 (anchor 欠落で降格) は orthogonal で、PR #779 で観測された literal output contract の重要性をさらに強化する empirical 証拠となった。
+charter 5 自問「既に承認された判断を再確認しない」の適用 PR レビューでは 11 findings (HIGH 5 / MEDIUM 4 / LOW 4) が検出されたが、Phase 5.3.0 Observed Likelihood Gate 適用後、全 finding が Likelihood-Evidence anchor 欠落で推奨事項降格 (9 件) または削除 (4 件) され `HIGH/MEDIUM/LOW: 0` に収束した。注目点は **2 reviewer による cross-validation 合意 (AskUserQuestion 4 選択肢の routing 未定義) でも literal anchor を伴わなければ降格対象になる**こと — cross-validation boost (上記 triple cross-validation 表) は anchor 提示が前提であり、cross-validation だけでは anchor 欠落を補わない。reviewer 内容の妥当性 (AskUserQuestion routing 未定義は実装上事実) と severity 判定 (anchor 欠落で降格) は orthogonal で、後述する literal output contract の重要性をさらに強化する empirical 証拠となった。
 
 ### Triple Cross-validation による severity boost
 
@@ -62,8 +62,8 @@ PR #834 では charter 5 自問 #4「既に承認された判断を再確認し�
 
 | 独立検出人数 | boost 条件 | 例 |
 |------------|-----------|---|
-| 2 人 (double) | MEDIUM → HIGH | PR #548 cycle 5 F-01 (error-handling HIGH + code-quality LOW → HIGH 合意) |
-| 3 人 (triple) | HIGH → HIGH (固定) / 高確度扱い | PR #548 cycle 3 F-01 (prompt-engineer + code-quality + error-handling) |
+| 2 人 (double) | MEDIUM → HIGH | cross-validation boost 実測の cycle 5 F-01 (error-handling HIGH + code-quality LOW → HIGH 合意) |
+| 3 人 (triple) | HIGH → HIGH (固定) / 高確度扱い | 同事例の cycle 3 F-01 (prompt-engineer + code-quality + error-handling) |
 
 triple 合意は recurring pattern の可能性が高いため、fix 時に「他の類似箇所が無いか」を grep で網羅確認する合図になる。
 
@@ -79,9 +79,9 @@ anchor を伴わない finding は以下のリスクを持つ:
 
 ### Reviewer literal output contract の重要性
 
-PR #779 で観測した sub-pattern: **reviewer がレビュー本文中に Likelihood-Evidence 相当の記述を持っていても、`Likelihood-Evidence:` という literal anchor を含めていなければ Phase 5.3.0 で mechanical 降格される**。
+literal anchor 欠落の実測で観測した sub-pattern: **reviewer がレビュー本文中に Likelihood-Evidence 相当の記述を持っていても、`Likelihood-Evidence:` という literal anchor を含めていなければ Phase 5.3.0 で mechanical 降格される**。
 
-PR #779 では prompt-engineer が以下のような構造を持つ MEDIUM finding を返した:
+同事例では prompt-engineer が以下のような構造を持つ MEDIUM finding を返した:
 
 - file:line に具体位置を提示 (`SKILL.md:21-28`)
 - 内容 (WHAT) と影響 (WHY) を明確に記述
@@ -105,9 +105,9 @@ reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の lite
 
 本 sub-pattern と Hypothetical 降格軸は orthogonal — reviewer 内容の構造的問題 (literal anchor 欠落) と reviewer 判定の論理的問題 (現状コード非依存の仮定的リスク) は別軸で処理されるため、両 gate を独立に通過する必要がある。
 
-### 第3の orthogonal 軸: 推奨文の self-declared 不要性 (Finding Quality Guardrail bikeshedding filter、PR #1812)
+### 第3の orthogonal 軸: 推奨文の self-declared 不要性 (Finding Quality Guardrail bikeshedding filter)
 
-PR #1812 cycle 3 で観測した sub-pattern: reviewer が finding を LOW severity・`scope: current-pr` として指摘事項テーブルに記載していても、その **推奨対応欄の文面自体が「必須ではない」「本 PR のスコープ外」と明記している** 場合、orchestrator は `_reviewer-base.md` の Finding Quality Guardrail（Category 1: Bikeshedding — 「project convention 違反を指摘できない限り filter」）を適用して non-blocking な推奨事項として扱ってよい。
+self-declared 不要性の実測 (cycle 3) で観測した sub-pattern: reviewer が finding を LOW severity・`scope: current-pr` として指摘事項テーブルに記載していても、その **推奨対応欄の文面自体が「必須ではない」「本 PR のスコープ外」と明記している** 場合、orchestrator は `_reviewer-base.md` の Finding Quality Guardrail（Category 1: Bikeshedding — 「project convention 違反を指摘できない限り filter」）を適用して non-blocking な推奨事項として扱ってよい。
 
 これは anchor 欠落 (構造的問題) でも Hypothetical (論理的問題) でもない **第3の軸**: reviewer 自身の文面が示す「対応の要否」に関する自己矛盾（severity/scope 列は blocking を示すが、推奨対応の自然言語記述は non-blocking を示す）を検出する。判定基準は機械的 grep ではなく、推奨文中の「不要」「必須ではない」「スコープ外」等のキーワードの有無。
 
@@ -115,7 +115,7 @@ PR #1812 cycle 3 で観測した sub-pattern: reviewer が finding を LOW sever
 
 ### 第4の orthogonal 軸: 独立レビュアーの非裏付け + worst-case と severity の不整合（cycle 3）
 
-PR #1847 cycle 3 で観測した sub-pattern: 単一 reviewer（error-handling）が anchor 付きで HIGH finding を提出したが、**同一箇所を独立に精査した別 reviewer（prompt-engineer）が全分岐をトレースした上で「可」（指摘なし）と明示的に判定していた**。この非裏付け（non-corroboration）自体が、Critic フェーズで severity を再検討する signal として機能する。
+非裏付けの実測 (cycle 3) で観測した sub-pattern: 単一 reviewer（error-handling）が anchor 付きで HIGH finding を提出したが、**同一箇所を独立に精査した別 reviewer（prompt-engineer）が全分岐をトレースした上で「可」（指摘なし）と明示的に判定していた**。この非裏付け（non-corroboration）自体が、Critic フェーズで severity を再検討する signal として機能する。
 
 判定の根拠は 2 点の複合:
 
@@ -126,7 +126,7 @@ PR #1847 cycle 3 で観測した sub-pattern: 単一 reviewer（error-handling�
 
 ### 再検証サイクルでの重複降格 — 既 Issue 化済み finding は再 Issue 化せず Decision Log 記録に留める
 
-PR #1852 の review-fix ループ cycle2（検証レビュー）で、tech-writer が cycle1 と同一の pre-existing finding（旧ファイル名の残存参照）を再度検出した。cycle1 では当該 finding から follow-up Issue が既に切り出し済みだったため、cycle2 での再検出は `Likelihood-Evidence:` anchor 欠落により本 gate で機械的に推奨事項へ降格され、`[review:mergeable]` に収束した。
+重複降格の実測では review-fix ループ cycle2（検証レビュー）で、tech-writer が cycle1 と同一の pre-existing finding（旧ファイル名の残存参照）を再度検出した。cycle1 では当該 finding から follow-up Issue が既に切り出し済みだったため、cycle2 での再検出は `Likelihood-Evidence:` anchor 欠落により本 gate で機械的に推奨事項へ降格され、`[review:mergeable]` に収束した。
 
 ここでの追加の運用判断は「anchor 欠落による降格」自体は既存パターンの再現だが、**降格後の後処理**として「同一 finding が既に別 Issue 化済みであることを確認し、Step 7 トリアージで重複 Issue を再作成せず作業メモリの Decision Log にのみ記録する」という点。降格 gate は fix-needed → mergeable の収束を保証するが、Issue 台帳の重複防止は呼び出し側 (Step 7 トリアージ) の責務であり、cycle をまたいで同じ finding が浮上するたびに新規 Issue を作らないための明示的な既存 Issue 確認ステップが必要になる。
 

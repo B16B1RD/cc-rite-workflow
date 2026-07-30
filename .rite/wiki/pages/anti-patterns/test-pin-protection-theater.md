@@ -40,7 +40,7 @@ confidence: high
 
 ## 概要
 
-test ファイルのコメントが「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」のように **複数 site pin** を claim していても、実際の `assert_contains` が 1 site しか pin していない (または canonical phrase が実在 site と factually 一致しない) 場合、regression 検出インフラへの信頼を破壊する false-sense-of-security。mutation test (`sed` で canonical phrase を 1 文字 drift させて test suite を再実行) で pin claim と実 catch 能力の gap を **empirical に実証**するのが canonical 検証手法。PR #655 cycle 6 F-C6-03 で実測。
+test ファイルのコメントが「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」のように **複数 site pin** を claim していても、実際の `assert_contains` が 1 site しか pin していない (または canonical phrase が実在 site と factually 一致しない) 場合、regression 検出インフラへの信頼を破壊する false-sense-of-security。mutation test (`sed` で canonical phrase を 1 文字 drift させて test suite を再実行) で pin claim と実 catch 能力の gap を **empirical に実証**するのが canonical 検証手法。起点事例の cycle 6 F-C6-03 で実測。
 
 ## 詳細
 
@@ -102,7 +102,7 @@ git checkout plugins/rite/hooks/stop-guard.sh
 - L412 drift → どの Test が catch するか
 - L415 drift → どの Test が catch するか
 
-の scenario breakdown を empirical 確認できる。pin claim の信憑性を「読者信頼」ではなく「mutation test PASS/FAIL 差分」で担保する pattern。PR #655 cycle 11 では L383/L412/L415 の 3 scenario を独立に mutation + 再実行し、factual accuracy を commit body で明示追跡した (cycle 9 の scope 拡大型 fix で F-C10-04 regression を生んだ教訓から、cycle 11 は comment-only edit の minimal fix にスコープ制限)。
+の scenario breakdown を empirical 確認できる。pin claim の信憑性を「読者信頼」ではなく「mutation test PASS/FAIL 差分」で担保する pattern。起点事例の cycle 11 では L383/L412/L415 の 3 scenario を独立に mutation + 再実行し、factual accuracy を commit body で明示追跡した (cycle 9 の scope 拡大型 fix で F-C10-04 regression を生んだ教訓から、cycle 11 は comment-only edit の minimal fix にスコープ制限)。
 
 ### 防止策
 
@@ -114,7 +114,7 @@ git checkout plugins/rite/hooks/stop-guard.sh
 
 ### 累積対策 PR の特性
 
-Protection theater は「cumulative defense」型 PR (同種 regression への累積対策) で特に顕在化する。PR #655 は Issue #652 = #604/#561 系の turn-boundary 累積対策 12 回目で、cycle 6 で初めて F-C6-03 として明文化された。[累積対策 PR の review-fix loop で fix 自体が drift を導入する](fix-induced-drift-in-cumulative-defense.md) の fractal pattern の一部として扱うべき anti-pattern。
+Protection theater は「cumulative defense」型 PR (同種 regression への累積対策) で特に顕在化する。起点事例は turn-boundary 系 regression への累積対策 12 回目で、cycle 6 で初めて F-C6-03 として明文化された。[累積対策 PR の review-fix loop で fix 自体が drift を導入する](fix-induced-drift-in-cumulative-defense.md) の fractal pattern の一部として扱うべき anti-pattern。
 
 ### Self-application: Wiki 経験則を作った PR 自身が踏むケース
 
@@ -149,7 +149,7 @@ self-application failure mode の教訓: 経験則ページを書くだけでは
 
 ### Wording-revision drift sub-pattern
 
-本 anti-pattern は「pin claim の factual accuracy gap」(coverage 角度) と「pin が一切失敗しない silent pass」(false-sense-of-security 角度) を主に扱うが、PR #848 で **対称的な失敗モード** が顕在化した: pin が壊れていなかった (`grep -q "boolean リテラル値"` は実 WARNING text に対して有効に機能していた) が、**pin される側 (本文) を改訂したときに同期が取れない asymmetric drift** によって CI red が確実発火する。
+本 anti-pattern は「pin claim の factual accuracy gap」(coverage 角度) と「pin が一切失敗しない silent pass」(false-sense-of-security 角度) を主に扱うが、wording-revision drift 事例で **対称的な失敗モード** が顕在化した: pin が壊れていなかった (`grep -q "boolean リテラル値"` は実 WARNING text に対して有効に機能していた) が、**pin される側 (本文) を改訂したときに同期が取れない asymmetric drift** によって CI red が確実発火する。
 
 具体例: `state-read.sh:246` の Mechanical guard WARNING を docstring SoT 統一 refactor で短縮した:
 
@@ -171,13 +171,13 @@ self-application failure mode の教訓: 経験則ページを書くだけでは
 
 #### 修正戦略の選択
 
-PR #848 では 3 戦略を比較し WARNING 側に「リテラル値」を復元する戦略 1 を採用:
+wording-revision drift 事例では 3 戦略を比較し WARNING 側に「リテラル値」を復元する戦略 1 を採用:
 
 | 戦略 | 内容 | 採否 | 理由 |
 |------|------|------|------|
 | 1 | WARNING に「リテラル値」を復元 (test pin 側は触らない) | **採用** | (a) 自然な日本語表現を保てる、(b) test の false-positive guard 文字列同時更新が不要、(c) mutation kill power を維持 |
 | 2 | test pin を「boolean リテラル」に短縮 | non-採用 | test 側の false-positive guard も同時更新する scope 拡大 |
-| 3 | TAG 文字列を定数化して test と本文を decouple | non-採用 | 設計改善だが Issue #842 の SoT 統一スコープ外 |
+| 3 | TAG 文字列を定数化して test と本文を decouple | non-採用 | 設計改善だが当該 Issue の SoT 統一スコープ外 |
 
 戦略 1 の妥当性は cross-validation 効果で実測される: code-quality (CRITICAL) + error-handling (HIGH) の 2 reviewer 独立検出により、CI red を確定させた状態でマージ承認される silent regression を防げた。
 
@@ -190,13 +190,13 @@ PR #848 では 3 戦略を比較し WARNING 側に「リテラル値」を復元
 
 ### Same-file 3-site sync sub-pattern
 
-PR #848 で抽出された Wording-revision drift は cross-file (helper 本体 ↔ test pin) の asymmetric drift だったが、PR #909 で **同一ファイル内の 3 site sync** に同型 pattern が発現することが実測された。`plugins/rite/hooks/tests/start-md-charter.test.sh` 内で:
+wording-revision drift 事例で抽出された drift は cross-file (helper 本体 ↔ test pin) の asymmetric drift だったが、same-file 3-site 事例で **同一ファイル内の 3 site sync** に同型 pattern が発現することが実測された。`plugins/rite/hooks/tests/start-md-charter.test.sh` 内で:
 
 - **site 1 (line 17)**: ファイル冒頭の「Assertions」一覧に `Mandatory After ≥ 30` という旧仕様の記述
 - **site 2 (line 102-106)**: 実装 (heading-anchor 限定 regex + 閾値 17)
 - **site 3 (inline comment)**: 実装直近のコメント (内訳 h3 14 + h4 3 = 17)
 
-の 3 箇所が同一 invariant (heading 数 17 件) を表現するが、cycle 1 で line 17 が旧 `≥ 30` のまま残置 → reviewer が「冒頭サマリと実装のどちらが SoT か判断不能」状態を MEDIUM finding として検出。PR #848 の cross-file asymmetric drift と surface は同一だが、scope が same-file に縮小しても **dead reference として後続 reviewer / 改修者を誤導する liability** が生じる。
+の 3 箇所が同一 invariant (heading 数 17 件) を表現するが、cycle 1 で line 17 が旧 `≥ 30` のまま残置 → reviewer が「冒頭サマリと実装のどちらが SoT か判断不能」状態を MEDIUM finding として検出。wording-revision drift 事例の cross-file asymmetric drift と surface は同一だが、scope が same-file に縮小しても **dead reference として後続 reviewer / 改修者を誤導する liability** が生じる。
 
 #### 暗黙メンテナンスルール明文化（cycle 2 で追加）
 
@@ -214,7 +214,7 @@ fi
 
 #### 副次的主張のファクト検証 (POSIX ERE empirical verification)
 
-PR #909 cycle 2 F-02 で「`After [A-Za-z]` で `### 🚨 After-Review` (hyphen) の取りこぼしも防ぐ」という副次的主張がコメントに混入していたが、`After [A-Za-z]` は POSIX ERE で **literal 空白** を要求するため hyphen 形式にはマッチしない (実証: `echo "### 🚨 After-Review" | grep -oE '...After [A-Za-z]' → NO MATCH`)。検証なしの副次的主張は将来「守れているはず」誤前提を生み、後続 reviewer / 改修者の判断を誤らせる liability。
+same-file 3-site 事例の cycle 2 F-02 で「`After [A-Za-z]` で `### 🚨 After-Review` (hyphen) の取りこぼしも防ぐ」という副次的主張がコメントに混入していたが、`After [A-Za-z]` は POSIX ERE で **literal 空白** を要求するため hyphen 形式にはマッチしない (実証: `echo "### 🚨 After-Review" | grep -oE '...After [A-Za-z]' → NO MATCH`)。検証なしの副次的主張は将来「守れているはず」誤前提を生み、後続 reviewer / 改修者の判断を誤らせる liability。
 
 canonical pattern: 「将来的な X 取りこぼし防止」型の副次的主張を test pin / 実装コメントに書く際は、必ず POSIX ERE / regex engine の literal 動作で empirical 実証する。検証できない副次的主張は削除し「必要時に `After[ -][A-Za-z]` 等への拡張を検討」と open-ended に書き換える方が dead claim を残すよりも honest。
 
@@ -229,11 +229,11 @@ canonical pattern: 「将来的な X 取りこぼし防止」型の副次的主�
 
 ### Cross-site (cross-file) drift fix の test pin coverage gap sub-pattern
 
-本 anti-pattern の既存 sub-pattern (Same-file 3-site sync) は同一ファイル内 3 site の drift をカバーするが、PR #1066 で **cross-file の N-site 対称化 fix が test pin を 1 site のみに配置する** sub-pattern が顕在化した。3 reviewer (prompt-engineer + code-quality + test) が cross-validated HIGH として独立検出した high-confidence case。
+本 anti-pattern の既存 sub-pattern (Same-file 3-site sync) は同一ファイル内 3 site の drift をカバーするが、cross-site pin gap 事例で **cross-file の N-site 対称化 fix が test pin を 1 site のみに配置する** sub-pattern が顕在化した。3 reviewer (prompt-engineer + code-quality + test) が cross-validated HIGH として独立検出した high-confidence case。
 
 #### 失敗の構造
 
-PR #1066 は post-compact.sh / start.md / start-finalize.md の 3-site cross-file に同一 regex 判別ロジック (gh CLI 実出力 `Could not resolve to a PullRequest` を `pr_deleted_or_inaccessible` で分類) を対称化する PR。初版 fix は:
+cross-site pin gap 事例は post-compact.sh / start.md / start-finalize.md の 3-site cross-file に同一 regex 判別ロジック (gh CLI 実出力 `Could not resolve to a PullRequest` を `pr_deleted_or_inaccessible` で分類) を対称化する PR。初版 fix は:
 
 - 実装: 3 site すべてに regex を追加
 - test: `post-compact-reconciliation.test.sh` の 4 case (post-compact.sh 1 site のみ pin) を追加
