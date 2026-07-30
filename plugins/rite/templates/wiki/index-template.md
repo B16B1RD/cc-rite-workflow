@@ -5,9 +5,11 @@ description: "rite Experience Wiki — プロジェクト固有の経験則 bund
 
 # Wiki Index
 
-このファイルは Wiki 全ページのカタログです。Ingest サイクルごとに OKF v0.1 予約ファイル構造（箇条書き）で自動更新されます。
+このファイルは Wiki 全ページのカタログです。Ingest サイクルごとに `## ページ一覧` の 5 列テーブルが自動更新されます。
 
-bundle-root の frontmatter で OKF（Open Knowledge Format）v0.1 への準拠を `okf_version: "0.1"` として宣言します。各ページは `* [タイトル](pages/{domain}/{slug}.md) - 説明` の箇条書きで登録されます。メタデータ（ドメイン / 確信度 / 更新日）は各ページの frontmatter を Source of Truth とし、index には重複保持しません（総ページ数は `/rite:wiki-lint` のレポート出力で確認できます。ドメイン別内訳は本 Sub のスコープ外）。
+bundle-root の frontmatter で OKF（Open Knowledge Format）v0.1 への準拠を `okf_version: "0.1"` として宣言します。各ページは `## ページ一覧` テーブルの 1 行として登録されます（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）。各値の Source of Truth はページ本体の frontmatter で、テーブルはカタログ用の写しです。`## 統計` 節を置くと ingest が総ページ数 / ドメイン別内訳 / 最終更新を同期します（節が無ければ同期はスキップされ、総ページ数は `/rite:wiki-lint` のレポート出力で確認できます）。
 
-<!-- 登録箇条書きの形式例（ingest が自動追記。このコメント行は登録ではない）:
-     * [ページタイトル](pages/{domain}/{slug}.md) - 1-2 文の説明 -->
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
