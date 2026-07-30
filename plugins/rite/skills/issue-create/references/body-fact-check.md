@@ -31,7 +31,7 @@
 | Issue の存在 / title / state | `gh issue view {N} -R {owner_repo} --json number,title,state,url`（**返った `url` のパスセグメントが `/issues/` であることを先に確認する** — 本コマンドは PR 番号でも成功するため。下記「PR 番号 / Issue 番号の混同」参照） |
 | PR の存在 / title / state | `gh pr view {N} -R {owner_repo} --json number,title,state` |
 | commit の存在 / subject | `git log --oneline -1 {sha}` |
-| 「#N で A → B に変更された」（変更方向） | `git show {sha}^:{path}`（変更前）と `git show {sha}:{path}`（変更後）を**両方**取得する |
+| 「#N で A → B に変更された」（変更方向） | 先に `gh pr view {N} -R {owner_repo} --json url,mergeCommit` で `url` が `/pull/` であることを確認し、`mergeCommit.oid` を `{sha}` に代入する（`mergeCommit` が `null` = 未マージなら `UNVERIFIED`。コマンド失敗はエラー処理表に従う）。次に `git show {sha}^:{path}`（変更前）と `git show {sha}:{path}`（変更後）を**両方**取得する。SHA が本文に直書きされている場合は代入を省略してよい |
 
 **変更方向の断定は片側だけ見てはならない**。変更後だけを見ると「元から B だった」と区別できず、方向の逆転を検出できない。
 
@@ -91,8 +91,9 @@ surface する項目は 1 項目 = 1 question とし、**最大 4 件**とする
 
 | 条件 | 挙動 |
 |------|------|
-| 参照先の番号が存在しない（`gh` の stderr が `Could not resolve to an issue or pull request` / `Could not resolve to a PullRequest` を含む非ゼロ終了。`Could not resolve` の**部分一致で判定してはならない** — 同語はリポジトリ解決失敗にも現れる。`gh` はサーバに問い合わせるため不存在を断定できる） | `CONTRADICTED`（タイポの可能性を訂正案として提示する） |
-| `git` がローカルで object を解決できない（stderr が `unknown revision` / `bad object` / `invalid object name` 等を含む非ゼロ終了）。**ローカル git は「存在しない」と「fetch されていない」を区別できない** — 浅い clone / 未 fetch ブランチ / fork 上の commit では**実在する SHA も同一の stderr** になる（本行を `CONTRADICTED` の根拠にしてはならない） | `UNVERIFIED` として「要確認」を付記し続行（タイポと断定しない）。サーバ権威で不存在を断定したい場合のみ `gh api repos/{owner_repo}/commits/{sha}` を追加実行し、**stderr が `No commit found for SHA`（HTTP 422）のときに限り** `CONTRADICTED` へ昇格してよい（HTTP 404 は SHA ではなく `{owner_repo}` 側の不在なので昇格しない） |
+| 参照先の番号が存在しない（`gh issue view` の stderr が `Could not resolve to an issue or pull request` を含む非ゼロ終了 — Issue / PR 共通番号空間での不存在を断定できる。`Could not resolve` の**部分一致で判定してはならない** — 同語はリポジトリ解決失敗にも現れる） | `CONTRADICTED`（タイポの可能性を訂正案として提示する） |
+| PR として引用した番号が PR ではない（`gh pr view` の stderr が `Could not resolve to a PullRequest` を含む非ゼロ終了 — **不存在を含意しない**。実在する Issue 番号でも同じ stderr になる） | `CONTRADICTED`。ただし訂正案はタイポと決めつけず、`gh issue view {N} -R {owner_repo} --json url` を追加実行して切り分ける: `url` が `/issues/` なら「N は Issue 番号であり PR ではない」を、そこでも `Could not resolve to an issue or pull request` なら番号不存在としてタイポの可能性を、それぞれ訂正案として提示する |
+| `git` 裏取りコマンド（`git log` / `git show`）の**非ゼロ終了すべて**（stderr の文言 — `unknown revision` / `bad object` / `invalid object name` / path 系文言 等 — **で分岐しない**。網羅で判定する）。**ローカル git は「存在しない」と「fetch されていない」を区別できない** — 浅い clone / 未 fetch ブランチ / fork 上の commit では**実在する SHA も同一の stderr** になる（本行を `CONTRADICTED` の根拠にしてはならない） | `UNVERIFIED` として「要確認」を付記し続行（タイポと断定しない）。stderr に `WARNING` を出す。サーバ権威で不存在を断定したい場合のみ `gh api repos/{owner_repo}/commits/{sha}` を追加実行し、**stderr が `No commit found for SHA`（HTTP 422）のときに限り** `CONTRADICTED` へ昇格してよい（HTTP 404 は SHA ではなく `{owner_repo}` 側の不在なので昇格しない） |
 | **上記以外**の非ゼロ終了（オフライン / `gh` 認証切れ / リポジトリ解決失敗・権限不足（stderr が `Could not resolve to a Repository` — 番号ではなく `{owner_repo}` 側の問題）等） | `UNVERIFIED` として「要確認」を付記し続行。stderr に `WARNING` を出す。Issue 作成 / 編集を**ブロックしない** |
 | Issue として引用した番号が PR として解決した（上表コマンドの `url` が `/pull/` を含む） | `CONTRADICTED`（PR 番号を Issue と誤認している。対応する Issue 番号は commit body の `refs #M` 側を確認して訂正案に載せる） |
 | 検査対象 0 件 | silent skip（追加の出力・質問を出さない） |
