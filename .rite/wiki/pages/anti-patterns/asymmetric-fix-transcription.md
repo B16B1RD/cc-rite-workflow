@@ -605,7 +605,7 @@ fix を 1 箇所に適用したとき、同じパターンを持つ「対称位�
 3. **Phase 番号書き換え時の相互参照**: 1 箇所の Phase 番号を変えると、他 doc の参照番号も連動して直す必要がある
 4. **同一 finding を 3 箇所 literal copy で維持する契約**: 例 — `pr/review.md` Phase 6.5.W.2 / `pr/fix.md` Phase 4.6.W.2 / `issue/close.md` Phase 4.4.W.2 の sentinel emit
 
-### PR #548 での実測収束軌跡
+### 実測収束軌跡
 
 6 cycle の review-fix ループで観測された findings 数: `21 → 17 → 2 → 7 → 3 → 0`
 
@@ -638,15 +638,15 @@ grep -rn "Phase {old_number}" --include='*.md' .
 
 ### Symmetric error handling への一般化（実測）
 
-PR #550 cycle 3 では `wiki-ingest-commit.sh` 内で同種の `rm -f` operation が rc=0/4 経路では WARNING surface を実装していたのに対し、rc=5 経路では silent にしていた asymmetric silent-fallback を指摘された。**同一ファイル内で同種の operation (特に rm / mktemp / rev-parse 等の失敗経路) が複数分岐にある場合、全分岐で同一の WARNING/sentinel 方針に揃えるのが canonical**。分岐ごとに方針が異なると、障害発生時に部分的な診断情報しか手に入らず root cause 特定が遅れる。
+cycle 3 では `wiki-ingest-commit.sh` 内で同種の `rm -f` operation が rc=0/4 経路では WARNING surface を実装していたのに対し、rc=5 経路では silent にしていた asymmetric silent-fallback を指摘された。**同一ファイル内で同種の operation (特に rm / mktemp / rev-parse 等の失敗経路) が複数分岐にある場合、全分岐で同一の WARNING/sentinel 方針に揃えるのが canonical**。分岐ごとに方針が異なると、障害発生時に部分的な診断情報しか手に入らず root cause 特定が遅れる。
 
 ### mktemp pattern 統一への拡張（cycle 1/2 の実測）
 
-PR #553 cycle 1 レビューで、`cleanup.md` Phase 2.5 内の mktemp 構文が `if ! var=$(mktemp ...); then` 系 (matched_files / state_file) と `var=$(mktemp ... 2>/dev/null) || { ... }` 系 (cycle_state / legacy) で混在している点を複数 reviewer が独立指摘。cycle 2 で統一実装が適用された。**隣接 reference との対称化 (cycle_state 系に揃える)** が優先されるケースでは、Phase 全体での統一を次 PR に分離するのが scope 管理上望ましいが、同一 Phase 内では canonical pattern に揃えるのがレビュー収束コストを下げる。mktemp は `${var:-fallback}` パターンと組み合わせるため、後者 (`2>/dev/null) || { ... }` 形式) の方が signal-specific trap 統合と整合する。
+cycle 1 レビューで、`cleanup.md` Phase 2.5 内の mktemp 構文が `if ! var=$(mktemp ...); then` 系 (matched_files / state_file) と `var=$(mktemp ... 2>/dev/null) || { ... }` 系 (cycle_state / legacy) で混在している点を複数 reviewer が独立指摘。cycle 2 で統一実装が適用された。**隣接 reference との対称化 (cycle_state 系に揃える)** が優先されるケースでは、Phase 全体での統一を次 PR に分離するのが scope 管理上望ましいが、同一 Phase 内では canonical pattern に揃えるのがレビュー収束コストを下げる。mktemp は `${var:-fallback}` パターンと組み合わせるため、後者 (`2>/dev/null) || { ... }` 形式) の方が signal-specific trap 統合と整合する。
 
 ### 用語統一スコープへの拡張（cycle 1-3 の実測）
 
-PR #562 (workflow identity reference 新規追加) で asymmetric fix transcription が **ファイル内コード分岐**から **同一 blockquote 内の類義語群** に拡張して観測された:
+workflow identity reference 新規追加の PR で asymmetric fix transcription が **ファイル内コード分岐**から **同一 blockquote 内の類義語群** に拡張して観測された:
 
 - cycle 1: `workflow-identity.md` で `コンテキスト残量` → `context 残量` 統一。`SKILL.md` / `commands/pr/cleanup.md` / `commands/pr/review.md` の同一表現が drift として残留
 - cycle 2: 上記 3 ファイルで `コンテキスト残量` を統一。同一 blockquote 内の類義語 (`コンテキスト効率` / `コンテキスト最適化` / `コンテキスト圧迫`) は手付かず
@@ -656,13 +656,13 @@ PR #562 (workflow identity reference 新規追加) で asymmetric fix transcript
 
 ### Iteration 方式統一への拡張（cycle 1 の実測）
 
-PR #578 cycle 1 で、`plugins/rite/commands/wiki/lint.md` Phase 6.2 の partial pollution gate 実装において、**同一 Phase 内で同じ変数を iterate する複数ループが here-string と HEREDOC に分岐**している点が reviewer により独立指摘された。同型 idiom が片方のみ新形式になると、後続実装者は「どちらが canonical か」を判断できず drift が増殖する。fix では here-string 側に統一し canonical 契約を保った。
+cycle 1 で、`plugins/rite/commands/wiki/lint.md` Phase 6.2 の partial pollution gate 実装において、**同一 Phase 内で同じ変数を iterate する複数ループが here-string と HEREDOC に分岐**している点が reviewer により独立指摘された。同型 idiom が片方のみ新形式になると、後続実装者は「どちらが canonical か」を判断できず drift が増殖する。fix では here-string 側に統一し canonical 契約を保った。
 
 **学習**: 本 anti-pattern は「エラー処理の対称性」「用語の対称性」に続いて「**iteration 方式の対称性**」にも適用される。同一 Phase / 同一 scope 内の複数ループは、bash 構文 (here-string / HEREDOC / process substitution 等) も揃えるべきで、異なる構文が混在すると「どちらに揃えるべきか」の判断自体が判断逸脱の原因になる。canonical 選択基準は「隣接 reference (lint.md Phase 8.3 等) と同一構文」を優先する。
 
 ### 同一 doc 内 propagation scan への適用（cycle 2 の実測）
 
-PR #623 cycle 1 で docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md の「PR #611」→「Issue #611」の番号取り違えを 1 箇所修正したが、同 doc の他 2 箇所に同一 invariant (PR/Issue 番号混同) が残存し、cycle 2 reviewer が独立検出した (F-01)。加えて test fixture の assertion 数が cycle 1 fix で 14→17 に変動したが、anti-pattern doc の「4 tests / 9 assertions」記述が更新されず stale 化 (F-02) も同時に検出された。
+cycle 1 で docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md の「PR #N」→「Issue #N」の番号取り違えを 1 箇所修正したが、同 doc の他 2 箇所に同一 invariant (PR/Issue 番号混同) が残存し、cycle 2 reviewer が独立検出した (F-01)。加えて test fixture の assertion 数が cycle 1 fix で 14→17 に変動したが、anti-pattern doc の「4 tests / 9 assertions」記述が更新されず stale 化 (F-02) も同時に検出された。
 
 **学習**: 本 anti-pattern は「**同一 doc 内の複数箇所に散在する同一 invariant**」にも適用される。cross-file propagation (別 file の対称位置) よりも同一 file 内の別所残存のほうが grep scope が狭く検出されにくい structural blind spot を形成する。canonical 対策:
 
@@ -682,7 +682,7 @@ PR #623 cycle 1 で docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md の�
 
 ### Pipeline 新規 step 追加時の 4 site 対称更新契約（review/fix の実測）
 
-PR #631 (`/rite:lint` への backlink-format check 追加) の cycle 1 review で 2 CRITICAL findings が 4 reviewer (prompt-engineer / code-quality / error-handling / security) により独立検出された:
+`/rite:lint` への backlink-format check 追加の PR の cycle 1 review で 2 CRITICAL findings が 4 reviewer (prompt-engineer / code-quality / error-handling / security) により独立検出された:
 
 1. **`--quiet` flag 契約 drift**: 新規 `backlink-format-check.sh` の `--quiet` 実装が summary line を suppress する一方、既存 Phase 3.8/3.9 scripts (`wiki-growth-check.sh` / `gitignore-health-check.sh`) の `--quiet` は summary を必ず emit する契約。invocation 側で `--quiet` を付けて呼び出したため、lint.md prompt の regex count 抽出が常に failure → silent 0 表示の silent failure 経路を形成。**「同じパターンで書いた」だけでは契約 drift を発見できない** — peer script の flag 実装を runtime で確認する必要がある
 2. **Phase 4.1 appendix paragraph 増設漏れ**: 既存 6 種 lint check (Drift / Bang-backtick / Doc-heavy / Wiki growth / Terminal output / Gitignore health) は Phase 4.1 に「warning/error 時に findings を appendix で表示する」段落を持つが、新規 Phase 3.10 の追加だけで Phase 4.1 への追記を忘れた。result mapping table と display は **対称的に新設すべき**
@@ -729,7 +729,7 @@ canonical 対策:
 
 ### 実測された Propagation scan pattern coverage 不足
 
-PR #661 cycle 2 で `cleanup.md:1674` の hardcoded line-number reference (`(line 1659, 1680)`) を structural reference (`wiki/ingest.md Phase 9.1 Step 3` 等) に修正したが、cycle 3 review で **同型 drift が cycle 1 で同時導入された create-interview.md:605 にも存在**することを cross-validation で発見。具体的には:
+cycle 2 で `cleanup.md:1674` の hardcoded line-number reference (`(line 1659, 1680)`) を structural reference (`wiki/ingest.md Phase 9.1 Step 3` 等) に修正したが、cycle 3 review で **同型 drift が cycle 1 で同時導入された create-interview.md:605 にも存在**することを cross-validation で発見。具体的には:
 - `本セクション直前の line 588 / 597 caller HTML inline literal も --active true を含む 4-arg symmetry に揃え済み`
 - `create.md:580 / create-interview.md:22 の DRIFT-CHECK ANCHOR と pair 同期する`
 
@@ -768,7 +768,7 @@ PR #661 cycle 2 で `cleanup.md:1674` の hardcoded line-number reference (`(lin
 
 ### Writer/Reader fallback symmetry への拡張（cycles 1-11 の実測）
 
-PR #688 (multi-state-aware flow-state read helper) で本 anti-pattern が **helper 経由 caller migration の writer/reader 非対称** に拡張されて 38+ cycle にわたり繰り返し observation:
+multi-state-aware flow-state read helper の PR で本 anti-pattern が **helper 経由 caller migration の writer/reader 非対称** に拡張されて 38+ cycle にわたり繰り返し observation:
 
 - **cycle 1**: reader (`state-read.sh`) で `set -euo pipefail` + grep no-match の silent kill を `|| v=""` で defensive 吸収。writer (`flow-state-update.sh:_resolve_schema_version`) は `local v=$(...)` の `local` builtin mask で偶然救われていた非対称 → cycle 3 で writer 側にも対称化。詳細: [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差](./bash-local-vs-toplevel-pipefail-asymmetry.md)
 - **cycle 11**: cycle 10 commit が「F-02 HIGH AC-4 caller migration」を謳いながら、**同一ファイル同一関数内 line 72 の同型 skip-check が migration から漏れていた** 自己矛盾 (partial migration の典型例)。同一関数内の同型パターンは grep で全数確認する必要がある
@@ -778,7 +778,7 @@ PR #688 (multi-state-aware flow-state read helper) で本 anti-pattern が **hel
 
 ### Writer 中核 sweep 責務 + Documentation count grep evidence 同期（cycle 42 累積 14 回目の実測）
 
-PR #688 cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の writer/reader 対称化 doctrine が、cycle 38 F-06 で reader 側 (`state-read.sh`) に確立した「mktemp 失敗時 3 行 WARNING」「helper WARNING pass-through」「signal-specific 4-line trap」の 3 pattern が writer 中核 4 箇所 (`flow-state-update.sh:269/323/385/324`, `state-read.sh:137 + flow-state-update.sh:168`) に未到達のまま merged されかけた状態が cycle 42 review で初検出された。同 cycle で multi-location undercount 再発 (`workflow-incident-emit-protocol.md` L56/L80 の「15 invocation sites」が `cleanup.md` 3 sites を見落とし → 実測 18 sites / 4 files) も同時に observed。
+cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の writer/reader 対称化 doctrine が、cycle 38 F-06 で reader 側 (`state-read.sh`) に確立した「mktemp 失敗時 3 行 WARNING」「helper WARNING pass-through」「signal-specific 4-line trap」の 3 pattern が writer 中核 4 箇所 (`flow-state-update.sh:269/323/385/324`, `state-read.sh:137 + flow-state-update.sh:168`) に未到達のまま merged されかけた状態が cycle 42 review で初検出された。同 cycle で multi-location undercount 再発 (`workflow-incident-emit-protocol.md` L56/L80 の「15 invocation sites」が `cleanup.md` 3 sites を見落とし → 実測 18 sites / 4 files) も同時に observed。
 
 **学習**: 累積対策 PR で writer/reader 対称化 doctrine を **declaration として打ち立てる cycle** で、その doctrine が writer 中核の **既存箇所** (新規追加した箇所だけでなく previously-shipped 箇所) に対しても同 PR 内で **全件 sweep される責務** がある。「reader 側に新 pattern を導入した」cycle と「writer 側で既存箇所への横展開を完遂する」cycle が分離していると、merge 後に writer 側 silent regression が残留する。canonical 対策:
 
@@ -789,7 +789,7 @@ PR #688 cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の 
 
 ### Severity 等級拡張時の同ファイル内 5 箇所 + cross-file 5 種類同期（cycle 1-2 の実測）
 
-PR #708 (`severity-levels.md` に COMMENT_QUALITY 軸 + LOW-MEDIUM 等級追加) で本 anti-pattern が **severity 等級の拡張** という運用層 invariant に拡張されて 4 cycle 観測:
+`severity-levels.md` に COMMENT_QUALITY 軸 + LOW-MEDIUM 等級追加の PR で本 anti-pattern が **severity 等級の拡張** という運用層 invariant に拡張されて 4 cycle 観測:
 
 - **cycle 1 review (HIGH 1件)**: 同一概念 (Hypothetical Exception Categories の 4 reviewer 名) が SoT (`_reviewer-base.md`) と severity-levels.md と Category 表で異なる表記 (`devops infra` vs `devops` vs `Infrastructure`) を持つ cross-file consistency drift。検出は cross-file grep で機械的に可能だが、3 ファイル間の表記等価性は手動同期が必要
 - **cycle 1 review (HIGH 1件)**: agent file (`tech-writer-reviewer.md`) に Detection step (Step 5.5) を追加した際、対応する skill checklist (`skills/reviewers/tech-writer.md`) に self-audit エントリを追加し忘れる Detection-checklist sync 漏れ。reviewer agent file (Detection Process) と skill file (Self-audit Checklist) は対応関係にあり、片側のみの追加は self-audit pass 経路を silent skip させる
@@ -806,7 +806,7 @@ PR #708 (`severity-levels.md` に COMMENT_QUALITY 軸 + LOW-MEDIUM 等級追加)
 
 ### 同一ファイル内・隣接行の enumeration drift と caller 側 strict 化 drift（cycle 1-3 の実測）
 
-PR #711 (`comment-update(scope)` action-type 追加) で本 anti-pattern が 4 cycle で段階収束し、2 種類の新 sub-pattern を実測:
+`comment-update(scope の PR` action-type 追加) で本 anti-pattern が 4 cycle で段階収束し、2 種類の新 sub-pattern を実測:
 
 - **cycle 1 review (CRITICAL 1 + HIGH 4 + MEDIUM 1)**: SoT (`contextual-commits.md` Action Types テーブル) のみ更新し、6 ファイル以上の caller 側 enumeration コピー (`recall.md` Validate / regex / コメント / サマリー、`implement.md` / `team-execute.md` / `pr/fix.md` Output rules、`i18n/{ja,en}/issue.yml` `issue_recall_invalid_action`、`contextual-commits.md` Queryability grep 例) を未同期で残した古典的 cross-file enumeration drift。発見の決定的要因は「`/rite:issue:recall` regex から `comment-update` を silent drop する」UI レベル破綻の trace
 - **cycle 2 review (HIGH 3件)**: cycle 1 fix で `Output rules` enumeration 行 (L696/L369/L3090) を是正したが、**同一ファイル内・3 行上の `Filter to 10-line limit` trim order 行** (L693/L366/L3087) は 5 要素のまま残った。「同形 enumeration が同ファイル内に複数箇所 (隣接 / 3-5 行違い) に存在する」場合、ファイル単位 grep でも見落としやすい新 sub-pattern (**same-file adjacent-line drift**)。さらに `pr/fix.md` の Phase 3.2.1 Root Cause Gate との論理矛盾を併発: trim order に root-cause が無いため LLM が 11 行超 commit body の trim 時に root-cause 行を最初に切り捨てて Gate が自己崩壊する経路
@@ -823,19 +823,19 @@ PR #711 (`comment-update(scope)` action-type 追加) で本 anti-pattern が 4 c
 
 当該 PR（LOW-MEDIUM first-class 化 cycle 4 review で発見された 9 件 cross-file impact (F-20〜F-28) を follow-up で同期した PR）で本 anti-pattern が **「累積対策 PR の cycle 4 で発見された cross-file impact が、原 PR ではなく follow-up PR で別管理される」運用層に拡張** されて 2 cycle で収束 (`3→0`):
 
-- **元 PR #708 cycle 4 の発見**: severity 等級拡張 (LOW-MEDIUM 追加) の同ファイル内 5 箇所同期は cycle 1-2 で解消したが、**cycle 4 で reviewer が cross-file 9 sites の追加 drift を発見** — review.md Phase 5.3.0 demotion_destination spec、extract-verified-review-findings.sh docstring、measure-review-findings.sh JSON 例 + reviewer_row_re regex (4→5 numeric column 拡張)、severity ordering 9 箇所 (assessment-rules / fix-relaxation-rules / fact-check / fix.md)、prompt-engineer-reviewer.md 等級 hardcode、13 reviewer skill files の particle 統一 (`Whitelist 外造語` → `Whitelist 外の造語`)、review-result-schema.md alias 検証注記。**原 PR #708 ではなく follow-up PR #713 で別 Issue (#709) として処理される運用** が観測された
-- **PR #713 cycle 1 review (HIGH×2 + MEDIUM×1)**: F-20〜F-28 のうち主要修正は適用したが、**cycle 1 fix 自身が新たな cross-file 4 値表記を遺した**。具体的には review.md の demotion_destination spec を 5 値化したが、assessment-rules.md の Priority mapping / review.md の他 2 箇所が依然 4 値表記のままで、F-20 と矛盾する状態。**累積対策 PR の follow-up cycle でも本 anti-pattern が同型再発する** ことを示す
+- **severity 等級拡張 PR の cycle 4 の発見**: severity 等級拡張 (LOW-MEDIUM 追加) の同ファイル内 5 箇所同期は cycle 1-2 で解消したが、**cycle 4 で reviewer が cross-file 9 sites の追加 drift を発見** — review.md Phase 5.3.0 demotion_destination spec、extract-verified-review-findings.sh docstring、measure-review-findings.sh JSON 例 + reviewer_row_re regex (4→5 numeric column 拡張)、severity ordering 9 箇所 (assessment-rules / fix-relaxation-rules / fact-check / fix.md)、prompt-engineer-reviewer.md 等級 hardcode、13 reviewer skill files の particle 統一 (`Whitelist 外造語` → `Whitelist 外の造語`)、review-result-schema.md alias 検証注記。**原当該 PR ではなく follow-up 当該 PR で別 Issue (#709) として処理される運用** が観測された
+- **cycle 1 review (HIGH×2 + MEDIUM×1)**: F-20〜F-28 のうち主要修正は適用したが、**cycle 1 fix 自身が新たな cross-file 4 値表記を遺した**。具体的には review.md の demotion_destination spec を 5 値化したが、assessment-rules.md の Priority mapping / review.md の他 2 箇所が依然 4 値表記のままで、F-20 と矛盾する状態。**累積対策 PR の follow-up cycle でも本 anti-pattern が同型再発する** ことを示す
 - **cycle 2 (mergeable, 0 件)**: cycle 1 指摘 + 内部一貫性 1 件すべて修正で完了。`同ファイル内 5+ 箇所 + cross-file 5 種類` の同期契約（先行 PR の learning）を 9 finding に対して再適用することで 2 cycle で収束
 
-**学習**: 累積対策 PR (例: PR #708 = LOW-MEDIUM first-class 化) の **cycle 4 以降で発見された cross-file impact** は、原 PR が既に多 cycle を経て収束済みのため、別 Issue + follow-up PR で処理されることが多い。このとき:
+**学習**: 累積対策 PR (例: LOW-MEDIUM first-class 化) の **cycle 4 以降で発見された cross-file impact** は、原 PR が既に多 cycle を経て収束済みのため、別 Issue + follow-up PR で処理されることが多い。このとき:
 
 1. **Follow-up PR でも本 anti-pattern が同型再発する**: 「累積対策」自体が cross-file 同期契約を前提とするため、follow-up PR の fix も「同ファイル内 5+ 箇所」「cross-file 5 種類」を atomic に同期しないと cycle 1 で必ず drift が surface する
-2. **3 階層 drift の細粒度化が cycle ごとに進行する**: PR #713 では (a) cross-file 同期 (9 sites)、(b) 同ファイル内多箇所 (review.md 6→9 箇所、fix.md 5→7 箇所など内部一貫性で追加箇所 surface)、(c) rationale 強度 (regex 順序 rationale の正確化、prompt-engineer-reviewer.md の hardcode 抽象化) の 3 階層 drift が **cycle 1 で同時 surface** した。原 PR の 4 cycle 観測と follow-up PR の 2 cycle 観測を合算すると、severity 等級拡張という運用 invariant に対する **6 cycle 累積観察** となる
-3. **Follow-up PR の scope 設計**: cycle 4 以降の cross-file impact を follow-up PR にまとめる際、**「9 finding すべてを 1 PR で同期」する scope 設計** が canonical。個別 PR に分割すると `Asymmetric Fix Transcription` のリスクが finding 間の境界に分散し、収束サイクル数が finding 数 × 2-3 cycle に膨張する。PR #713 は 9 finding を 1 PR に bundle して 2 cycle で収束させた
+2. **3 階層 drift の細粒度化が cycle ごとに進行する**: 当該 PR では (a) cross-file 同期 (9 sites)、(b) 同ファイル内多箇所 (review.md 6→9 箇所、fix.md 5→7 箇所など内部一貫性で追加箇所 surface)、(c) rationale 強度 (regex 順序 rationale の正確化、prompt-engineer-reviewer.md の hardcode 抽象化) の 3 階層 drift が **cycle 1 で同時 surface** した。原 PR の 4 cycle 観測と follow-up PR の 2 cycle 観測を合算すると、severity 等級拡張という運用 invariant に対する **6 cycle 累積観察** となる
+3. **Follow-up PR の scope 設計**: cycle 4 以降の cross-file impact を follow-up PR にまとめる際、**「9 finding すべてを 1 PR で同期」する scope 設計** が canonical。個別 PR に分割すると `Asymmetric Fix Transcription` のリスクが finding 間の境界に分散し、収束サイクル数が finding 数 × 2-3 cycle に膨張する。当該 PR は 9 finding を 1 PR に bundle して 2 cycle で収束させた
 
 ### Cycle 47+ writer 中核 trap 片肺残存（最終 cycle の実測）
 
-PR #688 (累積 14 回目) の cycle 47+ レビューで、error-handling reviewer / security reviewer / tech-writer reviewer が独立に「Asymmetric Fix Transcription の構造的予防が完成」「主要 attack surface 構造的に塞がれている」「fact-checkable claim 全て verify 可能」と評価する一方、code-quality reviewer が **writer 中核 (`flow-state-update.sh:_rite_flow_state_atomic_cleanup`) の signal-specific trap が TMP_STATE のみ cleanup で _mkdir_err / _jq_err は inline rm に分裂している HIGH** を依然検出した。reader 側 (`state-read.sh:_rite_state_read_cleanup`) は両 tempfile を 1 関数 cleanup する canonical pattern を確立済み。
+累積 14 回目の PR の cycle 47+ レビューで、error-handling reviewer / security reviewer / tech-writer reviewer が独立に「Asymmetric Fix Transcription の構造的予防が完成」「主要 attack surface 構造的に塞がれている」「fact-checkable claim 全て verify 可能」と評価する一方、code-quality reviewer が **writer 中核 (`flow-state-update.sh:_rite_flow_state_atomic_cleanup`) の signal-specific trap が TMP_STATE のみ cleanup で _mkdir_err / _jq_err は inline rm に分裂している HIGH** を依然検出した。reader 側 (`state-read.sh:_rite_state_read_cleanup`) は両 tempfile を 1 関数 cleanup する canonical pattern を確立済み。
 
 **学習**: 累積対策 PR で「対称化 doctrine 完成」と複数 reviewer が同意してもなお、**最後の片肺 (writer 中核 trap) が 47 cycle 後にも残存する**。これは reviewer cross-validation が「主要 surface の structural completion」を判定する一方、writer 中核の subtle な trap 構造の非対称性は code-quality reviewer 単独でしか catch できない場合があるため。canonical 対策:
 
@@ -844,7 +844,7 @@ PR #688 (累積 14 回目) の cycle 47+ レビューで、error-handling review
 
 ### Cross-component find pattern propagation（cycle 4 CRITICAL の実測）
 
-PR #747 (`.rite-flow-state` migration 機構実装) の cycle 3 で `session-start.sh` の find cleanup pattern に新規 backup 命名 (`legacy.<ts>`) との glob collision を回避する `-not -name '.rite-flow-state.legacy.*'` 例外を追加したが、cycle 4 reviewer (cross-file impact check) が **`session-end.sh` に同一 find cleanup pattern が存在し例外が伝播していない** ことを CRITICAL として検出。session-start.sh と session-end.sh は対称運用のペア (起動時 cleanup ↔ 終了時 cleanup) で、stale tempfile cleanup の find pattern は両者で完全同型に保たれていた。cycle 3 fix が片方のみ修正したため、session 終了時に新規 backup file が削除される silent regression が残留していた。
+`.rite-flow-state` migration 機構実装の PR の cycle 3 で `session-start.sh` の find cleanup pattern に新規 backup 命名 (`legacy.<ts>`) との glob collision を回避する `-not -name '.rite-flow-state.legacy.*'` 例外を追加したが、cycle 4 reviewer (cross-file impact check) が **`session-end.sh` に同一 find cleanup pattern が存在し例外が伝播していない** ことを CRITICAL として検出。session-start.sh と session-end.sh は対称運用のペア (起動時 cleanup ↔ 終了時 cleanup) で、stale tempfile cleanup の find pattern は両者で完全同型に保たれていた。cycle 3 fix が片方のみ修正したため、session 終了時に新規 backup file が削除される silent regression が残留していた。
 
 **学習**: 本 anti-pattern は「**hook lifecycle のペア (起動 ↔ 終了 / pre ↔ post / setup ↔ cleanup) を成すスクリプト群**」にも適用される。ペア hook は同型の find / grep / cleanup パターンを共有する設計が canonical で、片方のみの修正は必ず次 cycle reviewer の cross-file impact check で検出される。canonical 対策:
 
@@ -856,7 +856,7 @@ PR #747 (`.rite-flow-state` migration 機構実装) の cycle 3 で `session-sta
 
 ### 兄弟 Issue 対称適用 + caller context 差異の defense-in-depth（cycles 1-2 の実測）
 
-当該 PR（tool 系 2 hooks + session-ownership helper のマルチステート整理）は兄弟 先行 PR (lifecycle 4 hooks の自 session state 参照対応) と同型の path resolver 切替 refactor を 3 ファイル (`pre-tool-bash-guard.sh` / `post-tool-wm-sync.sh` / `session-ownership.sh`) に同形 pattern で対称適用した好例。cycle 1 reviewer は対称化自体を「適切」と評価する一方、3 HIGH を独立検出した:
+当該 PR（tool 系 2 hooks + session-ownership helper のマルチステート整理）は兄弟先行 PR (lifecycle 4 hooks の自 session state 参照対応) と同型の path resolver 切替 refactor を 3 ファイル (`pre-tool-bash-guard.sh` / `post-tool-wm-sync.sh` / `session-ownership.sh`) に同形 pattern で対称適用した好例。cycle 1 reviewer は対称化自体を「適切」と評価する一方、3 HIGH を独立検出した:
 
 1. **Silent legacy fallback observability の欠如** (HIGH x2): `var=$(helper.sh ... 2>/dev/null) || var="<legacy>"` 形式の resolver 失敗 silent fallback を 5 caller 全件で対称適用したが、deploy regression の本番 silent failure 経路を観測する手段がなかった。canonical fix は RITE_DEBUG gated WARNING を `.rite-flow-debug.log` に対称配置 (詳細は [silent-fallback-observability-via-debug-log.md](../patterns/silent-fallback-observability-via-debug-log.md))
 2. **Schema-2 fast-path API contract code-level enforcement 不在** (HIGH): 「per-session file 構造で ownership は構造的に保証」を信じる API が将来 caller 拡張で silent break するリスク。canonical fix は filename SID と hook SID 比較の defense-in-depth check を追加 (詳細は [structural-guarantee-code-level-enforcement.md](../patterns/structural-guarantee-code-level-enforcement.md))
@@ -878,13 +878,13 @@ cycle 2 で 0 finding に収束し reviewer 全員から「対称性 OK」「reg
 2. **Self-referential anti-pattern**: 本 PR が予防対象とする「`!` 隣接 backtick が parser 上で意図しない実行を trigger」というまさに同じパターンを、対策コード自身が再現する meta-self-inconsistency。5 reviewer 並列 (prompt-engineer / code-quality / devops / test / error-handling) でも初期 commit を通過した
 3. **DRIFT-CHECK ANCHOR の射程の限界**: ANCHOR は `commands/pr/create.md` ↔ `commands/pr/ready.md` の bash block 対称性のみを対象とし、`hooks/scripts/bang-backtick-edit-hook.sh` の Style B literal は射程外。3 site 同期の commit message claim と実装が乖離 (cycle 2 で code-quality F-22 として再検出 — Style B literal `'if ! cmd; then'` vs edit-hook の `'if ! cmd'` で canonical `bang-backtick-check.sh:69` から逸脱)
 
-**PR #765 cycle 1 → cycle 2 の収束軌跡**: `20 → 20 (open)`。cycle 1 で CRITICAL 3 + HIGH 6 = 9 件解消するも、fix commit `b299899` 自身が新規 4 MEDIUM + 2 LOW = 6 件導入 (cycle 2 で初検出)。**fix-induced drift の典型例として fractal pattern が再現** (詳細は [fix-induced-drift-in-cumulative-defense.md](./fix-induced-drift-in-cumulative-defense.md) PR #765 evidence 節)。
+**本節 PR の cycle 1 → cycle 2 の収束軌跡**: `20 → 20 (open)`。cycle 1 で CRITICAL 3 + HIGH 6 = 9 件解消するも、fix commit `b299899` 自身が新規 4 MEDIUM + 2 LOW = 6 件導入 (cycle 2 で初検出)。**fix-induced drift の典型例として fractal pattern が再現** (詳細は [fix-induced-drift-in-cumulative-defense.md](./fix-induced-drift-in-cumulative-defense.md) 当該 PR evidence 節)。
 
 **Canonical 対策**:
 
 1. **対称化 PR の commit 前に「予防対象パターン self-grep」を必須化**: 本 PR の場合 `bang-backtick-check.sh --all` を本 PR 自身の差分に対して run し、対策コード自身が予防対象を踏んでいないか mechanical に verify する。新 lint rule を追加する PR の self-application gate と同型 ([fix-comment-self-drift](./fix-comment-self-drift.md) と相補)
 2. **DRIFT-CHECK ANCHOR の射程拡張 + byte-equal hash 比較 test**: ANCHOR が cover する site 一覧と射程外 site (例: hook script) の Style B literal を test 側で `sha1sum` 比較で byte-equal pin する。3 site 同期の commit message claim を test で empirical 強制
-3. **Single source of truth 集約**: 例として PR #765 lessons learned で提案された `bang-backtick-check.sh --print-action-hint` flag による Style A/B サジェスト文言の 1 source of truth 集約。3 site の literal 重複自体を構造的に廃する
+3. **Single source of truth 集約**: 例として当該 PR lessons learned で提案された `bang-backtick-check.sh --print-action-hint` flag による Style A/B サジェスト文言の 1 source of truth 集約。3 site の literal 重複自体を構造的に廃する
 
 ### 設計ドキュメント FR status 変更時のメタ contract レイヤー再発（cycle 1-5 累積 18 回目の実測）
 
@@ -908,7 +908,7 @@ cycle 2 で 0 finding に収束し reviewer 全員から「対称性 OK」「reg
 
 cycle 1 で FR の status 変更 PR を出す際、上記 5 箇所すべてに propagation scan を実行することを契約として明示化する。これは「[propagation-scan-pattern-coverage](#pr-661-issue-660-で実測された-propagation-scan-pattern-coverage-不足) の設計ドキュメント版」として位置づけられる。
 
-**LOW finding を別 Issue 化する閾値の判断基準** (cycle 5 で確立、PR #792 NFR-4 stop-guard 残存参照を Issue #793 で別化):
+**LOW finding を別 Issue 化する閾値の判断基準** (cycle 5 で確立、当該 PR の NFR-4 stop-guard 残存参照を別 Issue へ分離):
 
 - 本 PR scope と直接関係する箇所 → 本 PR で修正
 - 本 PR scope 外の発見 (例: NFR-4 の stop-guard 残存参照) → 別 Issue 化
@@ -922,7 +922,7 @@ review-fix loop の cycle 数 vs finding 検出量の挙動: **設計ドキュ�
 
 1. **F-01 (HIGH) — caller ↔ template mirror 非対称化**: `commands/issue/create-register.md` Phase 1.1 を `references/complexity-gate.md` への redirect stub に置換したが、`templates/issue/default.md` L56-69 が同一 Heuristics Scoring テーブルをそのまま保持。template は Issue 作成時に bash heredoc 経由で展開される真の templating site のため、commands 側の SoT 宣言と並行 update が必須
 2. **F-02 (MEDIUM) — multi-stub marker prefix 非対称**: 同 PR 内で 2 stub (Phase 0.4.1 / Phase 1.1) を生成する際、親 stub に heavyweight marker (`> **Moved (PR 4/8 — references/ 抽出)**: ...`) を、子 stub に lightweight marker (短縮形) を使用。同型の stub 群が異なる prefix で landed すると後続 reviewer の grep anchor 信頼性が低下する
-3. **F-03 (MEDIUM) — 抽出時の概念命名衝突**: 新 reference のファイル名が既存用語の別概念と衝突 (例: `complexity-gate.md` の "gate" が既存 `*-gate.sh` hook system の concept と意味的に近い別概念)。本 cycle scope 外として Issue #795 化
+3. **F-03 (MEDIUM) — 抽出時の概念命名衝突**: 新 reference のファイル名が既存用語の別概念と衝突 (例: `complexity-gate.md` の "gate" が既存 `*-gate.sh` hook system の concept と意味的に近い別概念)。本 cycle scope 外として当該 Issue 化
 
 **Canonical 対策** — 新 reference 抽出 PR の 4 項目 propagation checklist:
 
@@ -972,20 +972,20 @@ cycle 3 でも続いて MEDIUM precision finding (cycle 2 fix の注記が perce
 
 ### Hub 化 + 責務分離による構造的解決（retrospective、累積 25 回目の resolution alternative 観測）
 
-PR #858 (1-line minimal-diff doc PR) と Issue #851 close retrospective で、本 anti-pattern の **解決手段の選択肢 (Option A vs Option B)** が初めて明示的に記録された:
+1-line minimal-diff doc PR と当該 Issue close retrospective で、本 anti-pattern の **解決手段の選択肢 (Option A vs Option B)** が初めて明示的に記録された:
 
 - **Option A — 両側修正 (symmetric replication)**: 対称位置すべてに同じ参照/fix を物理的に複製。これまでの累積データの中心戦略
 - **Option B — hub 化 + 責務分離文書化**: 一方を hub (Single Source of Truth) と宣言し、もう一方の責務範囲を narrow して「両者は別 layer の責務」と canonical 文書化することで、symmetry 自体を構造的に不要にする
 
-Issue #851 では line 27/247 の bash block コメントが line 307 SoT への逆参照を欠いた asymmetric pattern を、Option B (line 307 を「両 test の hub」と明示) で解決。**「bash block 側コメントは bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持」** という責務分離記述が、将来「両側にも書こう」という refactor 提案を SoT 行を通じて構造的に retract する drift 経路の物理的閉塞を達成。
+当該 Issue では line 27/247 の bash block コメントが line 307 SoT への逆参照を欠いた asymmetric pattern を、Option B (line 307 を「両 test の hub」と明示) で解決。**「bash block 側コメントは bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持」** という責務分離記述が、将来「両側にも書こう」という refactor 提案を SoT 行を通じて構造的に retract する drift 経路の物理的閉塞を達成。
 
-**観測された落とし穴**: Option B は新しい SoT を作るため、**hub 行の prose 構造そのもの**が後続 review の品質ゲート対象になる。PR #858 で追加した hub 明示 1 line が parenthetical 末尾の `):` で「半角 `)` + 半角 `:`」と「list 始端 colon」を兼ねる二重役割となり、style drift として PR #862 で再修正された。Option B 採用判断と並行して、hub 行の prose style (parenthetical 構造、style 統一) も style guide 対象に含めるべき。
+**観測された落とし穴**: Option B は新しい SoT を作るため、**hub 行の prose 構造そのもの**が後続 review の品質ゲート対象になる。当該 PR で追加した hub 明示 1 line が parenthetical 末尾の `):` で「半角 `)` + 半角 `:`」と「list 始端 colon」を兼ねる二重役割となり、style drift として当該 PR で再修正された。Option B 採用判断と並行して、hub 行の prose style (parenthetical 構造、style 統一) も style guide 対象に含めるべき。
 
 **選択基準と詳細な canonical 対策**は別ページで管理: [Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
 
 ### Hyphen 形 (`prompt-engineer cycle-N`) を space 形 regex が catch せず silent 残存（cycle 1 review、累積 26 回目）
 
-PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) の **cycle 1 review** で、charter test 用の `cycle [0-9]+` regex (space 区切り想定) が **hyphen 区切り形式 `cycle-N`** (例: `prompt-engineer cycle-2`, `prompt-engineer cycle-4`) を 4 箇所で silent に取りこぼした事例が surface した。元 PR は `cycle N` (space) 形を `Issue#N` / `PR#N` と並んで charter 違反として機械削除する scope だったが、reviewer (code-quality) が `git grep -nE 'cycle-[0-9]+'` で hyphen 形を独立検出して MEDIUM finding として report。
+`commands/issue/start.md` の charter 違反パターン機械削除の PR の **cycle 1 review** で、charter test 用の `cycle [0-9]+` regex (space 区切り想定) が **hyphen 区切り形式 `cycle-N`** (例: `prompt-engineer cycle-2`, `prompt-engineer cycle-4`) を 4 箇所で silent に取りこぼした事例が surface した。元 PR は `cycle N` (space) 形を `Issue#N` / `PR#N` と並んで charter 違反として機械削除する scope だったが、reviewer (code-quality) が `git grep -nE 'cycle-[0-9]+'` で hyphen 形を独立検出して MEDIUM finding として report。
 
 **Asymmetric drift の構造**:
 
@@ -993,7 +993,7 @@ PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) �
 - **実際に文書化されている書式 variants**: `cycle N` (space, dominant) と `cycle-N` (hyphen, parenthetical 内に多用) の **2 variants が共存**
 - **silent regression**: charter test pass / 削除完了の状態でも hyphen 形 4 件が「scope 外残存」として silent に保持され、後続 PR で再発を許す経路を温存
 
-**canonical 対策の拡張**: charter test / propagation scan regex は **同一概念の表記揺れ variants をすべて alternation で列挙** する。本 case では `cycle[ -][0-9]+` (空白 OR hyphen) のような character class または `cycle[[:space:]]?-?[0-9]+` の柔軟形式に統一する。 先行 PR で確立された「`(line N, M)` 形式 → `本セクション直前の line N` 散文形式の表記揺れ」cluster と同型の問題で、**同一概念の表記 variants を事前列挙する propagation scan pattern coverage の拡張**（REC-04 系列）が再現された。
+**canonical 対策の拡張**: charter test / propagation scan regex は **同一概念の表記揺れ variants をすべて alternation で列挙** する。本 case では `cycle[ -][0-9]+` (空白 OR hyphen) のような character class または `cycle[[:space:]]?-?[0-9]+` の柔軟形式に統一する。先行 PR で確立された「`(line N, M)` 形式 → `本セクション直前の line N` 散文形式の表記揺れ」cluster と同型の問題で、**同一概念の表記 variants を事前列挙する propagation scan pattern coverage の拡張**（REC-04 系列）が再現された。
 
 **累積 26 回目**（累積 21・22・24・25 回目に続く）として記録。今回の特徴は (1) **charter test 自体が enforcement 層なのに表記揺れに silent**、(2) **reviewer の grep 独立検出のみが catch source** (元 author の事前 grep に hyphen 形が含まれず)、(3) **fix cost は最小** (4 箇所 manual sweep) だが、表記揺れ列挙不全による silent regression 経路自体は character class 拡張で構造的に閉塞する必要がある。
 
@@ -1018,31 +1018,31 @@ PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) �
 
 当該 PR（`workflow-incident-detection.md` SoT に Strict-mode caller variant subsection を追加 + `sentinel-visibility-rule.test.sh` に 3 assertion を追加）は、先行 PR cycle 6 で error-handling reviewer が検出した MINOR スコープ外指摘 (`set -euo pipefail` 配下の strict-mode caller が canonical literal を copy-paste すると `tr -d '[:space:]'` の grep no-match で silent abort する経路) への **defense-in-depth PR** として実施され、4 reviewer (prompt-engineer / test / error-handling / code-quality) が **1 cycle で 0 finding 承認** で merge 完了した。
 
-**実測 evidence**: (1) **SoT (`workflow-incident-detection.md`) に新規 subsection `### Strict-mode caller variant` を追加** することで variant の存在を documentation 層で可視化 (新 subsection は canonical との 1 文字差分 `tr -d '[:space:]' || true` を明示)、(2) **test (`sentinel-visibility-rule.test.sh`) Section 1.1 に 3 assertion を追加** することで「SoT 側 variant subsection 不在 / variant に `|| true` 欠落 / implementation (`stop-create-interview-block.sh`) 側に `|| true` 欠落」の 3 通りの drift を pin、(3) **PR #973 (累積 29 回目)** で確立された「Issue 本文に対象箇所を line 番号付き明示 + 機械検証 step (grep + test PASS) を含める」設計対策と組み合わせることで cycle 1 / 0 findings convergence を再現。
+**実測 evidence**: (1) **SoT (`workflow-incident-detection.md`) に新規 subsection `### Strict-mode caller variant` を追加** することで variant の存在を documentation 層で可視化 (新 subsection は canonical との 1 文字差分 `tr -d '[:space:]' || true` を明示)、(2) **test (`sentinel-visibility-rule.test.sh`) Section 1.1 に 3 assertion を追加** することで「SoT 側 variant subsection 不在 / variant に `|| true` 欠落 / implementation (`stop-create-interview-block.sh`) 側に `|| true` 欠落」の 3 通りの drift を pin、(3) **累積 29 回目 の PR** で確立された「Issue 本文に対象箇所を line 番号付き明示 + 機械検証 step (grep + test PASS) を含める」設計対策と組み合わせることで cycle 1 / 0 findings convergence を再現。
 
-**累積 30 回目の独自観点**: (1) **「新規 subsection 追加 + test pin」は SoT ↔ implementation 2-site 対称性を保証する構造的予防の典型** であり、Option A (両側修正) / Option B (hub 化) / sibling sync 契約 (累積 27 回目) と並ぶ第 4 の選択肢として位置づけ可能、(2) **scope 外指摘 (前 PR の reviewer MINOR) を後続 Issue 化 + defense-in-depth PR として完遂する shrinking-cycle pattern** が機能していることを実測 — review-fix loop の scope 外指摘は捨てずに Issue 化することで累積 evidence pattern を成長させる、(3) **1 cycle 0 finding convergence は successful prevention pattern の典型** で、PR #973 (累積 29 回目) → PR #984 (累積 30 回目) と「Issue 本文 line 番号明示 + 機械検証 step」 design が連続 2 回 reproducibility を示した。
+**累積 30 回目の独自観点**: (1) **「新規 subsection 追加 + test pin」は SoT ↔ implementation 2-site 対称性を保証する構造的予防の典型** であり、Option A (両側修正) / Option B (hub 化) / sibling sync 契約 (累積 27 回目) と並ぶ第 4 の選択肢として位置づけ可能、(2) **scope 外指摘 (前 PR の reviewer MINOR) を後続 Issue 化 + defense-in-depth PR として完遂する shrinking-cycle pattern** が機能していることを実測 — review-fix loop の scope 外指摘は捨てずに Issue 化することで累積 evidence pattern を成長させる、(3) **1 cycle 0 finding convergence は successful prevention pattern の典型** で、累積 29 回目 の PR → 累積 30 回目 の PR と「Issue 本文 line 番号明示 + 機械検証 step」 design が連続 2 回 reproducibility を示した。
 
 ### Test 対称化の 2 cycle convergence（累積 31 回目）
 
 当該 PR（`stop-create-interview-block.test.sh` に `workflow_incident.enabled` の **truthy variant matrix** TC-11 を追加し、既存 TC-7 (falsy variant matrix) と対称化）は、cycle 1 で test-reviewer + code-quality-reviewer から 4 findings (HIGH × 1: 5 variants vs TC-7 の 7 variants gap = まさに本ページが扱う Asymmetric Fix Transcription そのもの、MEDIUM × 1: naming `TC11_TRUTHY_VARIANTS` vs `TC7_VARIANTS`、LOW × 2: hardcoded line refs / assertion message duplication) を独立検出 → cycle 1 fix で TC-11 を 5 → 7 variants 拡張 + rename to `TC11_VARIANTS` + symbol-based references + assertion message 差別化 を一括適用 → cycle 2 で 両 reviewer 独立に「7 entries 確認」「symmetry 完全」を文書化し 0 finding mergeable で 2-cycle convergence。
 
-**累積 31 回目の独自観点**: (1) **自己再現 (self-application) の典型** — 「Asymmetric Fix Transcription 予防」の経験則を蓄積した repository で test 追加 PR がまさに同 anti-pattern (片肺 5 variants) を踏み、cycle 1 review で 2 reviewer 独立検出 → cycle 2 で対称化 done と、本 anti-pattern の dominant failure mode が **wiki 経験則 application 直後にも再発する** ことを実測、(2) **review-fix loop は適用された経験則の独立検証として機能** — cycle 1 fix で「7 variants 完全対称化」を実施した後、cycle 2 で reviewer 2 名が独立に「7 entries 確認」「mutation testing perspective: case arm に inversion bug を入れれば全 variant で TC-11.3 が FAIL」を verification し、test pin の identification power を empirical 検証、(3) **「successful prevention pattern の連続再現」が PR #968 → #973 → #984 → #992 → #996 と 5 PR 連続** (累積 28 → 29 → 30 → 31 → 32) に成長し、shrinking-cycle observation の reproducibility evidence を累積。
+**累積 31 回目の独自観点**: (1) **自己再現 (self-application) の典型** — 「Asymmetric Fix Transcription 予防」の経験則を蓄積した repository で test 追加 PR がまさに同 anti-pattern (片肺 5 variants) を踏み、cycle 1 review で 2 reviewer 独立検出 → cycle 2 で対称化 done と、本 anti-pattern の dominant failure mode が **wiki 経験則 application 直後にも再発する** ことを実測、(2) **review-fix loop は適用された経験則の独立検証として機能** — cycle 1 fix で「7 variants 完全対称化」を実施した後、cycle 2 で reviewer 2 名が独立に「7 entries 確認」「mutation testing perspective: case arm に inversion bug を入れれば全 variant で TC-11.3 が FAIL」を verification し、test pin の identification power を empirical 検証、(3) **「successful prevention pattern の連続再現」が当該 PR → #973 → #984 → #992 → #996 と 5 PR 連続** (累積 28 → 29 → 30 → 31 → 32) に成長し、shrinking-cycle observation の reproducibility evidence を累積。
 
 ### TC-7 comment 4-site 完全対称化（累積 32 回目）
 
 当該 PR（先行 PR で TC-11 を 7 variants 表記で追加した際に旧 `6+ syntactic variants` 表記が TC-7 comment line 204 に残存していた asymmetric を 1 line 修正で対称化）は、test-reviewer + code-quality-reviewer 並列レビューで **0 findings / 1 cycle 即時 mergeable**。両 reviewer が独立に「4 site 対称性 (TC-7 comment / TC-7 echo / TC-11 comment / TC-11 echo) 完成」「TC7_VARIANTS 配列 7 要素とコメント数値整合」「`grep "6+ syntactic"` 0 件確認（先行 PR canonical 遵守）」を verify。code-quality reviewer は将来 8 番目 variant 追加時の 6 site 同期契約 (a) 配列要素数、(b) コメント「N syntactic variants」、(c) echo「N syntactic forms」を TC-7 / TC-11 双方で必要となる旨を counter-example として note。
 
-**累積 32 回目の独自観点**: (1) **PR #992 (累積 31 回目) で対称化 missed 1 箇所が follow-up Issue として残った self-prevention pattern** — PR #992 cycle 1 review で 「`6+ syntactic variants` (TC-7 comment) vs `7 syntactic forms` (echo / TC-11 site)」の片肺 5 site のうち PR #992 では 4 site のみ対称化し、TC-7 comment 1 site を follow-up Issue #993 として残した。本 PR #996 はその shrinking-cycle final convergence。Wiki 経験則「Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ」の異形として「累積対策 PR で full sweep せずに minor remnant を follow-up Issue 化する」が successful prevention pattern 1 例として観測、(2) **1-line minimal-diff doc PR の典型的 0 findings 収束** — PR #858 / PR #984 と並ぶ 3 件目の「minor doc-only PR は full multi-reviewer 並列でも 1 cycle 0 findings に達する」実例、(3) **連続再現 5 PR (累積 28 → 29 → 30 → 31 → 32) は shrinking-cycle observation の reproducibility evidence の最長記録** に到達、successful prevention pattern が 5 連続で再現することで「Wiki 経験則を蓄積した repository で test/docs 追加 PR が 0-1 cycle で収束する」設計の信頼性を empirical 確立。
+**累積 32 回目の独自観点**: (1) **累積 31 回目の PR で対称化 missed 1 箇所が follow-up Issue として残った self-prevention pattern** — cycle 1 review で 「`6+ syntactic variants` (TC-7 comment) vs `7 syntactic forms` (echo / TC-11 site)」の片肺 5 site のうち当該 PR では 4 site のみ対称化し、TC-7 comment 1 site を follow-up 当該 Issue として残した。本当該 PR はその shrinking-cycle final convergence。Wiki 経験則「Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ」の異形として「累積対策 PR で full sweep せずに minor remnant を follow-up Issue 化する」が successful prevention pattern 1 例として観測、(2) **1-line minimal-diff doc PR の典型的 0 findings 収束** — 当該 PR / 当該 PR と並ぶ 3 件目の「minor doc-only PR は full multi-reviewer 並列でも 1 cycle 0 findings に達する」実例、(3) **連続再現 5 PR (累積 28 → 29 → 30 → 31 → 32) は shrinking-cycle observation の reproducibility evidence の最長記録** に到達、successful prevention pattern が 5 連続で再現することで「Wiki 経験則を蓄積した repository で test/docs 追加 PR が 0-1 cycle で収束する」設計の信頼性を empirical 確立。
 
 ### Recursive recurrence と anchor/context structural separation（累積 33 回目）
 
 当該 PR（`plugins/rite/commands/pr/fix.md` Phase 1.2.0 Block 1/Block 2 の同一 Bash invocation 前提を blockquote 形式で明文化する 4-line doc-only PR）は、3 cycle review-fix loop で本 anti-pattern の **recursive recurrence (再帰的再発)** を実測した最初の事例。cycle 1 review で MEDIUM × 2 + LOW × 1 (hardcoded line refs / declarative-only contract / semantic conflation) を検出 → cycle 1 fix で 3 件一括解消する際に「`L427-1070` 等の hardcoded line ref を grep anchor citation に置換」する対策を導入したが、その fix 自体が **anchor 内に parenthetical context (`(Block 1, referenced by Block 2 continuity note)`) を含める形** で実装されたため、note 内 citation (短形) との byte 不一致 (anchor literal drift) を新規導入し cycle 2 で cross-validated MEDIUM × 1 として再検出。cycle 2 fix で reviewer 推奨案 (A) を採択し「**anchor は最短 literal、context は隣接コメント行に分離する**」structural pattern を確立した結果、cycle 3 で両 reviewer (prompt-engineer / code-quality) が独立に 0 findings 評価し収束。
 
-**累積 33 回目の独自観点**: (1) **Recursive recurrence の発火条件を実測** — cycle 1 fix で「対称化のための fix」(hardcoded line ref → grep anchor) を実装した時点で、anchor literal 自体が新たな drift surface になる経路が観測された。「fix の対称化レイヤーごと (anchor literal / citation literal) の byte 一致検証契約」が未確立だと、Asymmetric Fix Transcription が **fix サイクル内部で再帰的に発火する** mode が成立する、(2) **Structural solution: anchor/context separation** — anchor (機械的 grep される literal、最短形) を context (human-readable description、隣接コメント行) と構造的に分離することで、anchor 内に context が混入する経路を消去する。これにより anchor 改変リスクと citation との drift リスクを切り離せる。この pattern は将来の `fix.md` 内の他 anchor (例: `severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===` のような parenthetical 付き長 anchor) にも適用候補があり、Issue #1030 として **anchor 命名規約 reference の作成** を別 Issue 化した、(3) **3-cycle 収束パターンの予測可能性** — cycle 1 (3 findings: 初回検出) → cycle 2 (1 finding: fix-induced regression) → cycle 3 (0 findings: structural resolution) の収束は、Wiki 経験則「累積対策 PR の review-fix loop で fix 自体が drift を導入する」(`fix-induced-drift-in-cumulative-defense.md`) と同形であり、self-application を伴う設計改修 PR の典型的収束軌跡として再現性を持つ。
+**累積 33 回目の独自観点**: (1) **Recursive recurrence の発火条件を実測** — cycle 1 fix で「対称化のための fix」(hardcoded line ref → grep anchor) を実装した時点で、anchor literal 自体が新たな drift surface になる経路が観測された。「fix の対称化レイヤーごと (anchor literal / citation literal) の byte 一致検証契約」が未確立だと、Asymmetric Fix Transcription が **fix サイクル内部で再帰的に発火する** mode が成立する、(2) **Structural solution: anchor/context separation** — anchor (機械的 grep される literal、最短形) を context (human-readable description、隣接コメント行) と構造的に分離することで、anchor 内に context が混入する経路を消去する。これにより anchor 改変リスクと citation との drift リスクを切り離せる。この pattern は将来の `fix.md` 内の他 anchor (例: `severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===` のような parenthetical 付き長 anchor) にも適用候補があり、当該 Issue として **anchor 命名規約 reference の作成** を別 Issue 化した、(3) **3-cycle 収束パターンの予測可能性** — cycle 1 (3 findings: 初回検出) → cycle 2 (1 finding: fix-induced regression) → cycle 3 (0 findings: structural resolution) の収束は、Wiki 経験則「累積対策 PR の review-fix loop で fix 自体が drift を導入する」(`fix-induced-drift-in-cumulative-defense.md`) と同形であり、self-application を伴う設計改修 PR の典型的収束軌跡として再現性を持つ。
 
 ### Bash semantics 版 recursive recurrence chain と三層対称化義務（累積 34 回目）
 
-当該 PR（`plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路を 先行 PR で導入された新 SoT (L1147-L1150 `mktemp_failure_norm_tmp`) と format 同期する小規模 refactor）は、先行 PR (累積 33 回目) の **recursive recurrence in fix layer** doctrine の **bash semantics 版実例** を 3-cycle 連鎖で実測した事例。各 cycle で異なる drift class が surface し、cycle 4 で両 reviewer 0 findings 合意に到達:
+当該 PR（`plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路を先行 PR で導入された新 SoT (L1147-L1150 `mktemp_failure_norm_tmp`) と format 同期する小規模 refactor）は、先行 PR (累積 33 回目) の **recursive recurrence in fix layer** doctrine の **bash semantics 版実例** を 3-cycle 連鎖で実測した事例。各 cycle で異なる drift class が surface し、cycle 4 で両 reviewer 0 findings 合意に到達:
 
 - **Cycle 1 (CRITICAL — bash 言語仕様罠)**: format 同期目的の SoT-aligned refactor で `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、新 SoT (L1147-L1150) の `if cmd; then ... else $?` 構造ではなく `if ! cmd; then rc=$?` 形式で実装。bash の `!` 演算子が exit status を boolean 反転するため `then` 節内 `$?` が常に 0 となり、production sentinel emit failure 経路で operator に false `rc=0` を表示する silent regression を新規導入。reviewer 2 名 (prompt-engineer / code-quality) が cross-validation 一致で CRITICAL 検出
 - **Cycle 2 (MEDIUM — fix-introduced documentation drift + LOW — 対称化漏れ)**: cycle 1 fix で bash structural fix を適用と同時に「コメント精密化」と銘打って hardcoded absolute line-number reference (`L1147-L1150 (mktemp_failure_norm_tmp)`) を comment 内に埋め込んだ結果、実際の SoT 位置 (L1122-L1156) と乖離。両 reviewer cross-validation で MEDIUM 検出。加えて prompt-engineer が L799 mktemp invocation に `2>/dev/null` が欠落しており fix.md 内 24/25 サイトで唯一の非対称となっている点を独立検出 (LOW)
@@ -1051,7 +1051,7 @@ PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) �
 
 **累積 34 回目の独自観点**:
 
-(1) **PR #1028 doctrine の bash semantics 版実証** — 累積 33 回目で確立された「fix サイクル内部で再帰的に発火する recursive recurrence mode」が **bash 言語仕様** layer でも同形で発火することを実測。anchor literal / citation literal の byte 一致検証契約 (累積 33 回目) は doc layer の事例だったが、本 PR #1032 は同じ recursive recurrence pattern が **runtime semantics** (bash の `!` 演算子と `$?` の相互作用)、**documentation pointer** (hardcoded line-number reference)、**numeric counter** (`N/M sites` 形式の prose count) の 3 layer 横断で連続発火することを示した。
+(1) **当該 PR doctrine の bash semantics 版実証** — 累積 33 回目で確立された「fix サイクル内部で再帰的に発火する recursive recurrence mode」が **bash 言語仕様** layer でも同形で発火することを実測。anchor literal / citation literal の byte 一致検証契約 (累積 33 回目) は doc layer の事例だったが、本当該 PR は同じ recursive recurrence pattern が **runtime semantics** (bash の `!` 演算子と `$?` の相互作用)、**documentation pointer** (hardcoded line-number reference)、**numeric counter** (`N/M sites` 形式の prose count) の 3 layer 横断で連続発火することを示した。
 
 (2) **三層対称化義務 (format token symmetry / bash structure symmetry / runtime semantics symmetry) の確立** — 「SoT と semantic 同期」を comment で明示宣言した瞬間、その同期義務は (a) WARNING wording / CONTEXT emit format / quoting style 等の **format token** layer、(b) `if cmd; then ... else $?` 等の **bash 構造** layer、(c) `!` 演算子の boolean 反転による rc capture 動作等の **runtime semantics** layer の 3 layer すべてを完全対称化する責務へ拡張される。部分対称化は後続 cycle で必ず surface する (cycle 1 で format 同期したが bash 構造が非対称 → cycle 2 で documentation pointer drift → cycle 3 で numeric counter drift と段階的に surface)。本 doctrine は新 SoT を rebrand する小規模 refactor PR で特に重要 (大規模変更では cycle 1 で全層 review されるが、format 同期 claim の小規模 PR は reviewer 注意が runtime semantics 層に届きにくい)。
 
@@ -1074,7 +1074,7 @@ PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) �
 
 (1) **Helper file 内 test coverage 対称性は pre-condition gate として確立すべき contract** — 既存の Asymmetric Fix Transcription 適用範囲 (符号化、commit message、symbol enumeration、4-site sweep 等) に加え、**「test fixture / test helper の新規追加時、同 file 内 sibling 全件と test coverage 構造の対称性を持つこと」** を独立した contract layer として識別。本 contract は 3 reviewer の cross-validation で initial detection に到達した HIGH 事例として強い再現性指標を持ち、helper 追加 PR の **Issue 本文 / PR description の checklist** に「sibling helper 全件の self-test 存在を grep で verify 済」を明示要求することで構造的予防可能。
 
-(2) **「成功経路と区別不能な silent fallback」class の awk 経路への一般化** — Wiki 経験則「[mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)」が PR #548 / PR #550 で確立した「rc 失敗を silent 握り潰さず WARNING で surface する」原則は、mktemp / git rev-parse / rm に続き awk 経路にも適用可能であることを本 PR cycle 1 fix で実測。`if ! awk ... > "$tmpfile" 2>"$awk_err"; then WARNING + head awk_err + [CONTEXT]; tmpfile=""; fi` + 空 section guard の 3 点セットが canonical pattern として確立。同 class の他 silent fallback 経路 (sed / cut / sort 等) でも同じ pattern が適用可能で、helper layer での「awk/sed/cut 等の text manipulation 失敗を silent 握り潰さない」原則として一般化される。
+(2) **「成功経路と区別不能な silent fallback」class の awk 経路への一般化** — Wiki 経験則「[mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)」が当該 PR / 先行 PR で確立した「rc 失敗を silent 握り潰さず WARNING で surface する」原則は、mktemp / git rev-parse / rm に続き awk 経路にも適用可能であることを本 PR cycle 1 fix で実測。`if ! awk ... > "$tmpfile" 2>"$awk_err"; then WARNING + head awk_err + [CONTEXT]; tmpfile=""; fi` + 空 section guard の 3 点セットが canonical pattern として確立。同 class の他 silent fallback 経路 (sed / cut / sort 等) でも同じ pattern が適用可能で、helper layer での「awk/sed/cut 等の text manipulation 失敗を silent 握り潰さない」原則として一般化される。
 
 (3) **3 reviewer cross-validation での HIGH initial detection の再現性** — 累積 30 回目 で「4 reviewer 全員 0 finding 1 cycle merge」、累積 31 回目 で「test + code-quality reviewer の HIGH cross-validation」など、複数 reviewer の独立検出が高 severity finding の confidence boost を生む pattern が累積 36 回目でも再現。本 PR の HIGH は test / code-quality / error-handling の **3 reviewer 並列レビューで全員 grep evidence 付き独立検出** に到達したため、helper test coverage 対称性は仮説段階を超えて contract layer に昇格する根拠を持つ。
 
@@ -1128,7 +1128,7 @@ PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) �
 - **2 パターンに応じた修正**: routing table 参照 5 箇所 → `Phase 5.3 (Phase enum → Step mapping (SoT))` へ。legacy phase mapping 参照 2 箇所 → 「`Phase 3.5` cross-check で v3 enum へ解決 → `Phase 5.3` で step routing」の 2 段表現へ。SPEC / CHANGELOG は ja/en ペアで i18n parity を維持。
 - **収束**: 両レビュアー (prompt-engineer / tech-writer) とも **0 findings**、1 cycle で mergeable。
 
-**累積観点 — 「着手時 grep」が「fix 後 grep」より cycle 数を削減する**: 本ページの Detection Heuristic (`grep -rn "Phase {old_number}"`) は従来 **fix 直後** の取りこぼし検出として位置づけられていたが、PR #1102 → #1105 は同 grep を **着手時 (Issue scope 確定前)** に実行することで、defect class の全 site を最初の 1 commit で網羅し multi-cycle drift を構造的に予防できることを実証した (positive evidence)。canonical 対策: broken reference / 番号取り違え系 Issue は、Issue 本文の列挙 site を信頼せず **着手時に必ず repo-wide grep で defect class の全 site を棚卸し**し、scope 拡張分は同 PR 内で一括修正する (scope 拡張が大きい場合のみ別 Issue 化を検討)。関連: [Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する](../heuristics/issue-precondition-grep-survey.md)。
+**累積観点 — 「着手時 grep」が「fix 後 grep」より cycle 数を削減する**: 本ページの Detection Heuristic (`grep -rn "Phase {old_number}"`) は従来 **fix 直後** の取りこぼし検出として位置づけられていたが、当該 PR → #1105 は同 grep を **着手時 (Issue scope 確定前)** に実行することで、defect class の全 site を最初の 1 commit で網羅し multi-cycle drift を構造的に予防できることを実証した (positive evidence)。canonical 対策: broken reference / 番号取り違え系 Issue は、Issue 本文の列挙 site を信頼せず **着手時に必ず repo-wide grep で defect class の全 site を棚卸し**し、scope 拡張分は同 PR 内で一括修正する (scope 拡張が大きい場合のみ別 Issue 化を検討)。関連: [Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する](../heuristics/issue-precondition-grep-survey.md)。
 
 ### phase5_* doc drift cleanup の完結 + Issue 前提の事実誤認訂正（0 findings）
 
@@ -1147,13 +1147,13 @@ PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) �
 - **cycle 2 (同一論理コメントブロック内の非対称)**: 削除済み helper を前提とした NOTE ブロックを「廃止 helper の現実」に書き換えた際、同一コメントブロックの**見出し行**（case arm 前提の記述）を取りこぼし、ブロック内で自己矛盾が生じた。tech-writer + code-quality が cross-validation で独立検出。**学習: コメント整理時は「touched 行」だけでなく「同一論理ブロック全体」を整合対象とする**。
 - **cycle 3 (横展開チェックの semantic variant 取りこぼし)**: 削除済みコンポーネントの横展開チェックを **literal 文字列 grep のみ**（`phase-transition-whitelist.sh` の filename grep）で実施した結果、同一 helper の **case 構造を前提にした framing**（ファイル名を含まない "case branch / case arm" 記述）を検出できず、再レビューで tech-writer が検出した。**学習: 横展開チェックは literal filename だけでなく、削除済みコンポーネントの構造・概念を前提にした記述（case arm / 特定関数の挙動説明等）も対象に含める。さらに 1 箇所を修正すると姉妹箇所との非対称が顕在化するため、同一論理グループ（同一テストファイルの sibling TC 群等）を一括で整合させる**。
 
-**累積観点 — Detection Heuristic の literal grep 射程外**: 本ページの Detection Heuristic (`grep -rn "{anti-pattern-regex}"`) は literal 文字列前提だが、PR #1124 cycle 3 は **削除済みコンポーネントの semantic variant**（filename を含まない構造・概念記述）が literal grep の射程外にあることを実測した。canonical 対策: 削除済みコンポーネントの横展開は、(a) filename literal grep に加えて (b) その構造・挙動を前提にした散文記述（case arm / 関数挙動説明）も grep keyword に含め、(c) 1 箇所修正後は同一論理グループ全体を一括整合する。関連: [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](../patterns/drift-check-anchor-semantic-name.md)。
+**累積観点 — Detection Heuristic の literal grep 射程外**: 本ページの Detection Heuristic (`grep -rn "{anti-pattern-regex}"`) は literal 文字列前提だが、cycle 3 は **削除済みコンポーネントの semantic variant**（filename を含まない構造・概念記述）が literal grep の射程外にあることを実測した。canonical 対策: 削除済みコンポーネントの横展開は、(a) filename literal grep に加えて (b) その構造・挙動を前提にした散文記述（case arm / 関数挙動説明）も grep keyword に含め、(c) 1 箇所修正後は同一論理グループ全体を一括整合する。関連: [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](../patterns/drift-check-anchor-semantic-name.md)。
 
 ### dead reference 横断整理 PR の検出 grep scope（累積 40 回目）
 
 当該 PR（横展開確認から分割された後続。直前の累積 39 回目と同系譜）は削除済み `phase-transition-whitelist.sh` への dead reference を SPEC / commands / skills / test docs から整理。0 blocking findings で両 reviewer が置換先記述（`flow-state.sh` の `PHASE_ENUM_V3` / `_phase_is_valid`、`session-end.sh` の inline glob、`session-end.test.sh` TC-475-WARN-A〜D）の実装一致を grep+read で verify。本ページの dead/broken reference cleanup 系譜（着手時 repo-wide grep の先例、累積 39 回目の「横展開は削除済みコンポーネントの構造・概念記述も対象」）に 2 つの sub-pattern を追加:
 
-- **検出 grep scope の範囲漏れ**: Issue #1123 の検出 grep が `docs/ plugins/rite/{commands,skills,references,agents}` に限定されていたため、`tests/regression/issue-634-repro.md` の同種 dead rot を取りこぼした（AC-4 横展開確認で検出 → #1127 として別 Issue 化）。canonical 対策: 削除済みコンポーネントの横断整理 PR では、検出 grep の scope を **repo 全体（`tests/` を含む）** に取る。これは PR #1102→#1105 の「Detection Heuristic を fix 後 grep から着手時 grep へ前倒し」の scope coverage 軸への拡張（grep の *timing* だけでなく *breadth* も着手時に固定する）。
+- **検出 grep scope の範囲漏れ**: 当該 Issue の検出 grep が `docs/ plugins/rite/{commands,skills,references,agents}` に限定されていたため、`tests/regression/issue-634-repro.md` の同種 dead rot を取りこぼした（AC-4 横展開確認で検出 → #1127 として別 Issue 化）。canonical 対策: 削除済みコンポーネントの横断整理 PR では、検出 grep の scope を **repo 全体（`tests/` を含む）** に取る。これは PR #1102→#1105 の「Detection Heuristic を fix 後 grep から着手時 grep へ前倒し」の scope coverage 軸への拡張（grep の *timing* だけでなく *breadth* も着手時に固定する）。
 
 - **Retired 節へ書き換え > 節削除**: retired コンポーネントの doc 整理は、節を完全削除するより「Retired 節へ書き換え」が既存パターン（`Stop Guard (retired)` / `Verify Terminal Output (retired)`）と整合し、migration-guide からの参照も維持できる。完全削除は migration-guide からの参照を dangling 化させるため、retired 系譜のページ群では Retired 節保持が canonical。なお [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) は *runtime に効く field/code* の話で、本 sub-pattern は *人間向け doc の参照保全* の話 — 適用 layer が異なる（コードは完全削除で構造閉塞、doc は Retired 節で参照保全）。
 
@@ -1161,21 +1161,21 @@ PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) �
 
 当該 PR（分割された後続。直前の累積 40 回目と同系譜）は削除済み `flow-state-update.sh` / `stop-guard.sh` 系への dead reference を test docs / anti-pattern docs / regression fixtures から整理し、`stop-guard.test.md`（521 行）を削除。本ページの dead/broken reference cleanup 系譜（着手時 repo-wide grep の先例、累積 39 回目の semantic variant、累積 40 回目の grep scope breadth）に **grep の direction 軸** を追加する:
 
-- **inbound 参照の見落とし（outbound だけ検証する不全）**: cycle 1 で tech-writer + code-quality が独立検出した HIGH（cross-validation で High Confidence、cycle 2 で fix 確認 → 0 findings 収束）。`stop-guard.test.md` を削除した際、`docs/designs/multi-session-state.md:78` の **行番号付き citation**（`stop-guard.test.md:436`）が dangling 化した。原因は AC-5 grep が **変更ファイル内の outbound dead ref**（整理対象 docs → 削除ファイル）のみを検証し、**他の live doc → 削除ファイルの inbound 参照** を scope に含めなかったこと。修正は dead citation を除去し同 Note 内の既出の live な根拠（`pre-compact.test.sh` の AC-2 検証）に集約。canonical 対策: ファイル削除を含む整理 PR では、削除前に `grep -rn '<deleted-file-name>'` を repo 全体で実行し、**行番号付き citation を含む inbound 参照** を確認する手順を組み込む。PR #1128 が grep の *breadth*（repo 全体 / `tests/` 含む）を着手時固定したのに対し、本 PR は grep の *direction*（outbound だけでなく inbound）を追加する — breadth × direction の 2 軸で dead reference cleanup の検出網羅性を構成する。
+- **inbound 参照の見落とし（outbound だけ検証する不全）**: cycle 1 で tech-writer + code-quality が独立検出した HIGH（cross-validation で High Confidence、cycle 2 で fix 確認 → 0 findings 収束）。`stop-guard.test.md` を削除した際、`docs/designs/multi-session-state.md:78` の **行番号付き citation**（`stop-guard.test.md:436`）が dangling 化した。原因は AC-5 grep が **変更ファイル内の outbound dead ref**（整理対象 docs → 削除ファイル）のみを検証し、**他の live doc → 削除ファイルの inbound 参照** を scope に含めなかったこと。修正は dead citation を除去し同 Note 内の既出の live な根拠（`pre-compact.test.sh` の AC-2 検証）に集約。canonical 対策: ファイル削除を含む整理 PR では、削除前に `grep -rn '<deleted-file-name>'` を repo 全体で実行し、**行番号付き citation を含む inbound 参照** を確認する手順を組み込む。当該 PR が grep の *breadth*（repo 全体 / `tests/` 含む）を着手時固定したのに対し、本 PR は grep の *direction*（outbound だけでなく inbound）を追加する — breadth × direction の 2 軸で dead reference cleanup の検出網羅性を構成する。
 
-- **削除ファイルを「現行 SoT」として live 参照する pre-existing dead ref**: inbound grep の副産物として、design doc が削除済みファイルを現行 SoT として live 参照する pre-existing dead ref も同時に surface し、本 PR scope 外として follow-up Issue #1129 に切り出した。関連: [SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する](../heuristics/sot-path-reference-existence-check.md) / [Design doc は現 HEAD の SoT を verify してから書く](../heuristics/design-doc-current-head-verification.md)。
+- **削除ファイルを「現行 SoT」として live 参照する pre-existing dead ref**: inbound grep の副産物として、design doc が削除済みファイルを現行 SoT として live 参照する pre-existing dead ref も同時に surface し、本 PR scope 外として follow-up 別 Issue に切り出した。関連: [SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する](../heuristics/sot-path-reference-existence-check.md) / [Design doc は現 HEAD の SoT を verify してから書く](../heuristics/design-doc-current-head-verification.md)。
 
 ### 構造化要素（表セル値）更新 → 同セクション直下の散文 prose / dead ref の drift surface（0 findings）
 
 当該 PR は `docs/SPEC.md` の flow-state schema フィールド**表**を v2→v3 実態へ整理（schema_version `2→3`、phase enum 11→13、`previous_phase` 行削除、`updated_at` format `+00:00→Z`、Required 注記 `(11)→(10)`）。両 reviewer (tech-writer Doc-Heavy mode / code-quality) が 0 findings で mergeable 判定したが、**調査推奨セクション**で同セクション直下の散文に pre-existing drift を cross-validation 検出した。本ページの「同一 doc 内 propagation scan」/ dead-ref cleanup 系譜に **structured-element ↔ same-section prose** 軸を追加する:
 
 - **表セル値の更新が同セクション直下の散文の依存値を stale 化させる**: フィールド表の `schema_version` 行を `!= 3` へ更新した結果、表（`!= 3`）と直下の migration prose（`schema_version < 2`）の間に閾値表現の差が surface。表の構造化セルだけを更新スコープに含め、同セクションの散文 prose が保持する**依存値**（migration threshold）を見落とす failure mode。code-quality reviewer が「表更新で latent inconsistency が surface した」と revert test 付きで pre-existing 判定（本 PR diff 外）。
-- **同セクション散文の dead ref も同時 surface**: migration prose が参照する `migrate-flow-state.sh` が実在しない dead ref（実態は `flow-state.sh migrate` subcommand）であることも調査推奨で検出。PR #1130 の inbound grep direction 軸と同様、構造化要素の値更新時は**同セクションの散文に含まれる閾値・dead ref も確認スコープに含める**のが canonical（表更新 PR でも prose を revert test 外として放置せず、follow-up Issue #1134 に bundle して追跡）。
+- **同セクション散文の dead ref も同時 surface**: migration prose が参照する `migrate-flow-state.sh` が実在しない dead ref（実態は `flow-state.sh migrate` subcommand）であることも調査推奨で検出。当該 PR の inbound grep direction 軸と同様、構造化要素の値更新時は**同セクションの散文に含まれる閾値・dead ref も確認スコープに含める**のが canonical（表更新 PR でも prose を revert test 外として放置せず、follow-up 別 Issue に bundle して追跡）。
 - canonical 対策: 構造化要素（表 / list / enum）のセル値を更新する PR は、(a) 同セクション直下の散文が同一概念の**依存値**（閾値・version・count）を保持していないか、(b) 散文に削除済みコンポーネントへの dead ref がないか、を着手時の同セクション grep スコープに含める。値更新の波及は cross-file / same-file adjacent-lineに加え、**same-section structured-element ↔ prose** でも発火する。
 
 ### CHANGELOG `# wave` を unit of consistency として扱う（累積 42 回目、cycle 14 / 51 findings）
 
-PR #1139 (v0.5.0 リリース前ドキュメント見直し) は 14 cycle / 51 findings (CRITICAL×7, HIGH×20, MEDIUM×9, LOW-MEDIUM×6, MEDIUM-LOW×1, LOW×5) に達する超大規模 docs PR で、ほぼ全 cycle で Asymmetric Fix Transcription の variant が発火した。本系譜に **CHANGELOG `# wave` を unit of consistency として扱う** 軸を追加する:
+v0.5.0 リリース前ドキュメント見直しの PR は 14 cycle / 51 findings (CRITICAL×7, HIGH×20, MEDIUM×9, LOW-MEDIUM×6, MEDIUM-LOW×1, LOW×5) に達する超大規模 docs PR で、ほぼ全 cycle で Asymmetric Fix Transcription の variant が発火した。本系譜に **CHANGELOG `# wave` を unit of consistency として扱う** 軸を追加する:
 
 - **`# wave grep sweep`**: CHANGELOG に `removed in #N` を追記する PR は、その # で削除された **全 keys / features** を CHANGELOG 自体から再抽出し、各 key について `grep -rn '<key>' docs/` で残存 live citation を機械検出し同じ DEPRECATED 化パターンで一括更新する。cycle 1 で `separate_issue_creation.*` のみ DEPRECATED 化し他 4 keys (`observed_likelihood_gate.*` / `fail_fast_first.*` / `fix.severity_gating` / `project.type`) を live 残置した失敗が cycle 2-6 で連続再発、`# wave` (e.g. #1118) は unit of consistency と認識する必要があった。
 - **JA/EN parity grep の必須化**: cycle 3 F-06 fix が SPEC.ja.md L1454 のみ historical 注記化し EN 側 SPEC.md L1286 を取りこぼした cross-language drift を cycle 4 で再検出。fix 直後に対応する日英ペアの `grep -rn` 再走査が verification protocol に必要（先行 PR の同 file 内 propagation scan の cross-language 拡張）。
@@ -1187,7 +1187,7 @@ PR #1139 (v0.5.0 リリース前ドキュメント見直し) は 14 cycle / 51 f
 
 ### Bidirectional parity verification (SoT 集約 PR の forward + reverse 双方検証義務)（累積 43 回目、cycle 10 / 30+ findings）
 
-PR #1143 (`/rite:pr:fix` の Comment Quality Gate 強化 + 禁止句リスト SoT 集約) で 10 cycle にわたる review-fix loop の dominant pattern として **Bidirectional parity verification gap** を実測。SoT を「集約」する PR で 2 つのリスト (canonical list + Detection heuristics) を **両方向** で比較しないと、片方にのみ存在する legacy entry を見落とす failure mode:
+`/rite:pr:fix` の Comment Quality Gate 強化 + 禁止句リスト SoT 集約の PR で 10 cycle にわたる review-fix loop の dominant pattern として **Bidirectional parity verification gap** を実測。SoT を「集約」する PR で 2 つのリスト (canonical list + Detection heuristics) を **両方向** で比較しないと、片方にのみ存在する legacy entry を見落とす failure mode:
 
 - **cycle 3 — forward 方向のみ verify**: Generator-Reviewer regex parity 化を「SoT → Heuristics」方向のみで宣言。SoT (cycle 1 で新設、英語 5 行 + 日本語 2 行) と reviewer Heuristics 表 (`comment-best-practices.md:382` の regex) の forward 一致は確認したが reverse 方向の verify を怠った
 - **cycle 4 — reverse 方向で gap 顕在化**: tech-writer が「Heuristics → SoT」方向で `旧実装は` カテゴリの SoT 欠落を HIGH/current-pr で検出。Detection Heuristics 側にのみ存在していた legacy entry が、cycle 3 の forward 方向 verify では構造的に検出不可能だった
@@ -1239,7 +1239,7 @@ cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ing
 
 - **cycle 1**: review.md 冒頭 (line 62, 66) で `iterate.md ステップ 7 → ステップ 1` rename を適用したが、同一ファイル内 line 4344 / 4736 の同型 dangling reference を sanity check で取りこぼし。`references/issue-create-with-projects.md` で `Phase 3.14 → ステップ 3.14` rename を caller 側のみ適用し destination file (lint.md は `## Phase 3:` 階層維持) を変更せず片方向 rename。教訓: AC-2 `grep -rE` sanity check の実装は **reference 先 file の heading 一覧との突き合わせ** を必須化しないと同型 dangling を取りこぼす。
 - **cycle 3-5 (累積 17 回目相当)**: 新規 cleanup policy (廃止 caller は enum 削除 + Note 化) を `pr_fix` のみに適用 → cycle 4 で同 staleness class の `parent_routing` / `lint` も連鎖 finding → cycle 5 で 3 値統合 Note ブロックに拡張。教訓: **新規 policy 導入時は同 type の全 entity に同時適用する pre-condition を明示する**。
-- **cycle 6-7 (累積 18 回目)**: cycle 5 で導入した Note 内の 2 件の事実誤認 (`PR #506` → Issue/PR 区別 + #1136 / `start.md / parent-routing.md` 併記 → PR #1079 で廃止されたのは parent-routing.md のみ) を tech-writer が `gh CLI + git log -S` で fact-check。教訓: **PR/Issue 番号は `gh pr view N` / `gh issue view N` 両方で type 確認、`PR` prefix を完全削除 (`#N` のみ表記) して type 誤記リスクを構造的に排除**。
+- **cycle 6-7 (累積 18 回目)**: cycle 5 で導入した Note 内の 2 件の事実誤認 (`PR #506` → Issue/PR 区別 + #1136 / `start.md / parent-routing.md` 併記 → 当該 PR で廃止されたのは parent-routing.md のみ) を tech-writer が `gh CLI + git log -S` で fact-check。教訓: **PR/Issue 番号は `gh pr view N` / `gh issue view N` 両方で type 確認、`PR` prefix を完全削除 (`#N` のみ表記) して type 誤記リスクを構造的に排除**。
 - **cycle 8-12 (累積 19-21 回目)**: cycle 9 で `(E2E 別 Issue 化 logic)` 略称 → `(Automatic Separate Issue Creation)` literal 引用に修正、tech-writer 自身が cycle 10 / cycle 12 と **2 回連続で直前 cycle の自分の主張を訂正**。実態は `pre-deletion state 定義` を「deletion commit ^1」と「renumber commit ^1」のどちらにとるかで誤読が反復していた。教訓: **retired caller catalog では (a) deletion commit と (b) renumber commit の 2 系列を区別し、retired caller が実際に呼ばれていた最終状態 (= renumber 直前の commit ^1) を `git show` で verify**。略称ではなく **literal な section 名を引用** する。
 - **cycle 18 (累積 25 回目)**: 新規 hook (orphan-reference-check.sh) を作る際に lint.md Phase 4 integration (appendix / summary row / closing policy の 3 連動) を同時整備せず CRITICAL × 3 sites として surface。教訓: **新規 hook + documentation の 3 連動更新は canonical pattern (Phase 3.5-3.14) を踏襲する義務**。
 
@@ -1251,7 +1251,7 @@ cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ing
 - **pre-deletion state の 2 系列定義**: deletion commit と renumber commit を `git show` で verify、retired caller catalog は renumber 直前の commit ^1 を採用
 - **新規 hook + doc 3 連動 (新 site)**: lint.md / SPEC.md / canonical pattern documentation のいずれも欠落させない pre-condition gate
 
-連続再現: PR #968 → #973 → #984 → #992 → #996 (5 PR / 累積 28-32) を maximum、PR #1124 (39)・#1128 (40)・#1130 (41)・#1133 (0 findings)・#1139 (42)・#1143 (43)・#1155 (44)・**#1162 (45、28 cycle / 多軸 surface)** と continuum。本 PR は cycle 数で PR #1139 (14 cycle) を上回り **累積対策 PR で最長 cycle 数を実測**、self-application × pre-deletion 精密性 × policy 適用連鎖 × fact-check 義務 × hook 整備 incomplete の 5 軸並列発火。
+連続再現: 5 PR / 累積 28-32 の連続再現 を maximum、39 の PR・#1128 (40)・#1130 (41)・#1133 (0 findings)・#1139 (42)・#1143 (43)・#1155 (44)・**#1162 (45、28 cycle / 多軸 surface)** と continuum。本 PR は cycle 数で 14 cycle の PR を上回り **累積対策 PR で最長 cycle 数を実測**、self-application × pre-deletion 精密性 × policy 適用連鎖 × fact-check 義務 × hook 整備 incomplete の 5 軸並列発火。
 
 ### 新規 lint step 追加時の 4-site 対称更新契約の再発（累積 47 回目、2 cycle 収束）
 
@@ -1266,12 +1266,12 @@ cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ing
 #### 経験則の精緻化
 
 - **新規 lint step 追加 PR の 4-site 機械チェック**: lint pipeline に step を 1 つ足す PR は (a) Phase 手順 / (b) appendix display / (c) summary table row / (d) `[lint:success]` enum + Note 列挙 の 4 site を必ず同時更新する。直前に merge された同型 step (本件は #1162 の Orphan check) を grep で雛形にして site 一覧を導出するのが decisive な detection 経路
-- これは PR #631 (4 reviewer CRITICAL × 2) の同型再発であり、`pipeline-step-addition` tag が示す通り **新規 lint step は反復的に本 anti-pattern の trigger になる** ことを再確認 ([[drift-check-anchor-prose-code-sync]] の lint emit 順 3 重契約と同系統)
+- これは 4 reviewer CRITICAL × 2 の PR の同型再発であり、`pipeline-step-addition` tag が示す通り **新規 lint step は反復的に本 anti-pattern の trigger になる** ことを再確認 ([[drift-check-anchor-prose-code-sync]] の lint emit 順 3 重契約と同系統)
 - 本 PR が追加した検証ツール自身も別 anti-pattern (コードフェンス内 shell コメントの見出し誤認 false-negative) を内包しており [[lint-strip-code-fence-before-extraction]] として独立化
 
 ### hooks.json registration 変更時の doc hook 列挙 multi-location drift + helper fail-closed 非対称（累積 48 回目）
 
-PR #1169 (新規 `stop-loop-continuation.sh` + `flow-state.sh` の `--handoff`/`consume-handoff` 追加) で、本 anti-pattern が **2 層**で発火した。
+新規 `stop-loop-continuation.sh` + `flow-state.sh` の `--handoff`/`consume-handoff` 追加の PR で、本 anti-pattern が **2 層**で発火した。
 
 **層 1 — doc hook 列挙 multi-location drift（先行 PR 系の再演）**: `hooks.json` に `Stop` イベントを追加した (6→7 events) が、同一 doc (`docs/SPEC.md`) 内の hook を列挙する **4 箇所** (Supported Hook Types テーブル / Note / Hook Execution Order 図 / Hook list canonical SoT ブロック) を再生成し忘れ、「6 events」「Stop removed」と live registration (7 events) に矛盾する記述が残った。preamble に「registration 変更時に `jq .hooks|keys[]` から regenerate 必須」と自己宣言していたにもかかわらず未実行。同じファイルの handoff field 追記 (+1 行) は更新されたのに hook 列挙群は drift。cycle 1 で devops reviewer が hooks.json 整合性チェックで検出 (tech-writer は handoff 行のみ確認し列挙 drift を見逃した)。
 
@@ -1285,15 +1285,15 @@ PR #1169 (新規 `stop-loop-continuation.sh` + `flow-state.sh` の `--handoff`/`
 
 ### Helper consolidation による構造的回避 — intra-file 版（0 findings、防御的 refactor の successful preventive application）
 
-PR #1181 (`flow-state.sh` の 4 つの jq stderr 診断スニペット emission site = `cmd_set` / `cmd_get` ×2 / `cmd_consume_handoff` を共通 helper `_emit_jq_err_snippet()` に集約し control-char `[[:cntrl:]]`→`?` 中和を加える) は、本 anti-pattern を **発生させずに構造的に回避した positive evidence**。security / code-quality / error-handling / test の 4 reviewer 全員が「可 / 指摘 0 件」で合意し 0 findings / 即時 mergeable に到達した。
+`flow-state.sh` の 4 つの jq stderr 診断スニペット emission site = `cmd_set` / `cmd_get` ×2 / `cmd_consume_handoff` を共通 helper `_emit_jq_err_snippet( の PR` に集約し control-char `[[:cntrl:]]`→`?` 中和を加える) は、本 anti-pattern を **発生させずに構造的に回避した positive evidence**。security / code-quality / error-handling / test の 4 reviewer 全員が「可 / 指摘 0 件」で合意し 0 findings / 即時 mergeable に到達した。
 
-これまでの累積 evidence の多くは「対称位置への伝播漏れが発生 → review-fix loop で収束」という failure→resolution の軌跡だが、PR #1181 は **着手段階で散在 4 site を単一 helper に集約**することで「中和ロジックを 1 経路に集中させ、そもそも対称化義務を消す」approach を取った。これは [[asymmetric-fix-resolution-via-hub-creation]] の Option B (hub 化) の **コードレイヤー版** に相当する (doc-level SoT 集約ではなく同一ファイル内の helper 抽出)。
+これまでの累積 evidence の多くは「対称位置への伝播漏れが発生 → review-fix loop で収束」という failure→resolution の軌跡だが、当該 PR は **着手段階で散在 4 site を単一 helper に集約**することで「中和ロジックを 1 経路に集中させ、そもそも対称化義務を消す」approach を取った。これは [[asymmetric-fix-resolution-via-hub-creation]] の Option B (hub 化) の **コードレイヤー版** に相当する (doc-level SoT 集約ではなく同一ファイル内の helper 抽出)。
 
 #### 経験則の精緻化
 
 - **散在 idiom の事前 helper 集約は対称化義務そのものを消す**: 同一ファイル内に同型 idiom が N site 散在する場合、各 site を個別に修正する (= 将来の伝播漏れ経路を温存) のではなく、着手時に単一 helper へ集約すれば「N site 対称化」契約自体が不要になる。テストも helper 1 経路を pin すれば全 site をカバーできる設計になる（先行 PR では TC-23 が helper 単体を pin）
 - **集約 refactor では exit-code 等価性を実機検証する**: 旧短絡 AND 連鎖 (`[ -n ] && [ -s ] && head|sed`、空ファイルで rc=1) → 新 helper (`if ...; then head|sed || true; fi`、no-op rc=0) のような置換は、helper の rc が後続から参照されないこと・`set -e` が if/&& condition 位置で abort しないことを実機検証して挙動等価を確認する ([[bash-if-bang-rc-capture]] / [[exit-code-semantic-preservation]] と同系統の検証義務)
-- **集約は scope 規律と両立させる**: sibling hooks 約 60-80 箇所に同型の未中和 idiom が残存していたが、revert test fail (pre-existing) かつ Issue #1173 のスコープ (flow-state.sh 限定) 外として全 reviewer が「指摘」ではなく「調査推奨 / boundary 推奨」に正しく分類した。helper 集約の価値を認めつつ横展開は別 Issue に切り出す判断が CLAUDE.md「スコープを越えない」原則と整合 ([[shell-script-shared-lib-extraction]] の scope 基準判断と同系統)
+- **集約は scope 規律と両立させる**: sibling hooks 約 60-80 箇所に同型の未中和 idiom が残存していたが、revert test fail (pre-existing) かつ当該 Issue のスコープ (flow-state.sh 限定) 外として全 reviewer が「指摘」ではなく「調査推奨 / boundary 推奨」に正しく分類した。helper 集約の価値を認めつつ横展開は別 Issue に切り出す判断が CLAUDE.md「スコープを越えない」原則と整合 ([[shell-script-shared-lib-extraction]] の scope 基準判断と同系統)
 - **中和テストは revert 耐性を二重 assertion で確保する**: TC-23 は「生 ESC 不在」(空削除 revert `s///g` を catch) + 「`?` への 1:1 置換」(snippet 全 drop mutation を catch) の二重 assertion で、helper の中和ロジックを mutation testing 視点で pin した ([[mutation-testing-test-fidelity]] と同系統)
 
 ### Reference path depth drift の着手時全 scan による successful preventive application（0 blocking findings）
@@ -1309,7 +1309,7 @@ PR #1181 (`flow-state.sh` の 4 つの jq stderr 診断スニペット emission 
 
 ### inline → helper 委譲時の「メッセージ文言次元」再発と content-file 失敗モードの契約統合（累積 49 回目、3 cycle 収束）
 
-PR #1198 (重量 inline bash ブロックを helper へ委譲: `review.md` 6.1.a/6.1.b → `review-result-save.sh` / `review-comment-post.sh`、`ready.md` 3.2 → `issue-comment-wm-sync.sh`) は、inline heredoc を「Write tool で別ファイル保存 → helper が `--content-file` で読む」へ decouple する refactor で本 anti-pattern が **3 つの次元で段階的に surface** し、cycle 1 (HIGH + MEDIUM) → cycle 2 (LOW-MEDIUM、cross-validation) → cycle 3 (0 blocking) で構造的に収束した。helper 委譲リファクタの典型的な収束軌跡で、各 cycle の finding が「委譲時の契約・参照・文言の同期漏れ」に集中する。
+重量 inline bash ブロックを helper へ委譲: `review.md` 6.1.a/6.1.b → `review-result-save.sh` / `review-comment-post.sh`、`ready.md` 3.2 → `issue-comment-wm-sync.sh` の PR は、inline heredoc を「Write tool で別ファイル保存 → helper が `--content-file` で読む」へ decouple する refactor で本 anti-pattern が **3 つの次元で段階的に surface** し、cycle 1 (HIGH + MEDIUM) → cycle 2 (LOW-MEDIUM、cross-validation) → cycle 3 (0 blocking) で構造的に収束した。helper 委譲リファクタの典型的な収束軌跡で、各 cycle の finding が「委譲時の契約・参照・文言の同期漏れ」に集中する。
 
 #### 3 次元の同期漏れ
 
@@ -1323,13 +1323,13 @@ PR #1198 (重量 inline bash ブロックを helper へ委譲: `review.md` 6.1.a
 
 ### 委譲 refactor の fix が cycle 2 で片落ち (docstring 訂正・prose 残置) を起こす（累積 50 回目、3 cycle 収束）
 
-PR #1202 (#1195 #7: `archive-procedures.md` §3.5.1 の WM 完了情報追記を `issue-comment-wm-sync.sh` へ委譲) は、同一不正確記述が **prose (`archive-procedures.md`) と docstring (`issue-comment-wm-update.py`) の対称ペア** に散在する finding を、cycle 2 fix で **docstring のみ訂正し prose を残置** する片落ちを起こした。cycle 1 finding は両箇所を named していたにもかかわらず fix が 1 箇所だけに適用された、本 anti-pattern の最も基本的な失敗形 (named された 2 箇所のうち 1 箇所だけ fix)。reviewer は cross-file consistency check で「docstring 訂正済 / prose 未訂正」を cycle 2 で LOW 検出し、cycle 3 fix で `git grep '忠実に再現'` により残存が 1 箇所のみであることを確認してから prose を docstring と整合させ、対称ペアを完結 (0 findings 収束)。
+#1195 #7: `archive-procedures.md` §3.5.1 の WM 完了情報追記を `issue-comment-wm-sync.sh` へ委譲の PR は、同一不正確記述が **prose (`archive-procedures.md`) と docstring (`issue-comment-wm-update.py`) の対称ペア** に散在する finding を、cycle 2 fix で **docstring のみ訂正し prose を残置** する片落ちを起こした。cycle 1 finding は両箇所を named していたにもかかわらず fix が 1 箇所だけに適用された、本 anti-pattern の最も基本的な失敗形 (named された 2 箇所のうち 1 箇所だけ fix)。reviewer は cross-file consistency check で「docstring 訂正済 / prose 未訂正」を cycle 2 で LOW 検出し、cycle 3 fix で `git grep '忠実に再現'` により残存が 1 箇所のみであることを確認してから prose を docstring と整合させ、対称ペアを完結 (0 findings 収束)。
 
-教訓 (再確認): 同一文言 / 同一不正確記述を複数 file・箇所に持つ finding を修正する際は、**修正前に `git grep '<該当文言>'` で全出現を列挙し、全てに伝播させてから commit** する。cycle 3 fix はこの教訓に従い grep で残存箇所を確認してから修正することで再度の片落ちを防いだ。本 PR は同一 helper 委譲 refactor で **stderr-discard の sibling-caller 再演** も併発しており ([[stderr-selective-surface-over-truncate]] PR #1202 evidence)、helper 委譲 refactor が「stderr 規約の対称伝播漏れ」と「不正確記述の対称伝播漏れ」を同時に踏む典型例となった。
+教訓 (再確認): 同一文言 / 同一不正確記述を複数 file・箇所に持つ finding を修正する際は、**修正前に `git grep '<該当文言>'` で全出現を列挙し、全てに伝播させてから commit** する。cycle 3 fix はこの教訓に従い grep で残存箇所を確認してから修正することで再度の片落ちを防いだ。本 PR は同一 helper 委譲 refactor で **stderr-discard の sibling-caller 再演** も併発しており ([[stderr-selective-surface-over-truncate]] 当該 PR evidence)、helper 委譲 refactor が「stderr 規約の対称伝播漏れ」と「不正確記述の対称伝播漏れ」を同時に踏む典型例となった。
 
 ### inline 委譲 refactor における周辺 reference doc の dead-reference 化 + verbatim 保持スコープの尊重（累積 51 回目、2 cycle 収束）
 
-PR #1205 (#1195 #9: `issue/create.md` §5.3-5.5 の親+Sub-Issue 一括作成を新規 `decompose-issues.sh` へ委譲) は、本 anti-pattern の最頻形である **「委譲元コマンド (.md) を更新しても、その旧構造を SoT として記述する周辺 reference doc が同期されず dead reference 化する」** を cycle 1 で再演した (HIGH ×1)。`bulk-create-pattern.md` が create.md から既に削除済みの `{REPEAT_FOR_EACH_SUB_ISSUE}` placeholder protocol / 単一 Bash invocation 要件を依然 SoT として主張していた。修正は DELETE ではなく UPDATE を選択 — 並行 reference (`sub-issue-link-handler.md`) が同 PR 内で caller 更新された方針と対称化し、かつ `docs/designs/` からの inbound 参照を壊さないため。load-bearing な設計理由 (bash scope 連続性 = silent-skip 防止、2 種 sanity check) は保持したまま実装媒体の記述のみ追従した。cycle 2 で再発・新規 drift なしを確認し mergeable。委譲先 shell script (`decompose-issues.sh`) 自体は marker fidelity・Issue #514 non-blocking link 契約・trap cleanup・`jq --arg` による安全な変数注入が verbatim 保持され、code-quality / error-handling / security 観点の指摘は 0 件 (注入面は heredoc 撤廃で旧 inline 版より改善)。
+#1195 #9: `issue/create.md` §5.3-5.5 の親+Sub-Issue 一括作成を新規 `decompose-issues.sh` へ委譲の PR は、本 anti-pattern の最頻形である **「委譲元コマンド (.md) を更新しても、その旧構造を SoT として記述する周辺 reference doc が同期されず dead reference 化する」** を cycle 1 で再演した (HIGH ×1)。`bulk-create-pattern.md` が create.md から既に削除済みの `{REPEAT_FOR_EACH_SUB_ISSUE}` placeholder protocol / 単一 Bash invocation 要件を依然 SoT として主張していた。修正は DELETE ではなく UPDATE を選択 — 並行 reference (`sub-issue-link-handler.md`) が同 PR 内で caller 更新された方針と対称化し、かつ `docs/designs/` からの inbound 参照を壊さないため。load-bearing な設計理由 (bash scope 連続性 = silent-skip 防止、2 種 sanity check) は保持したまま実装媒体の記述のみ追従した。cycle 2 で再発・新規 drift なしを確認し mergeable。委譲先 shell script (`decompose-issues.sh`) 自体は marker fidelity・当該 Issue non-blocking link 契約・trap cleanup・`jq --arg` による安全な変数注入が verbatim 保持され、code-quality / error-handling / security 観点の指摘は 0 件 (注入面は heredoc 撤廃で旧 inline 版より改善)。
 
 #### 教訓 (2 つの副次観点)
 
@@ -1338,7 +1338,7 @@ PR #1205 (#1195 #9: `issue/create.md` §5.3-5.5 の親+Sub-Issue 一括作成を
 
 ### 横展開 hardening を着手時の grep + 個別条件照合で 0-finding 収束させる（successful preventive application）
 
-PR #1225 (`shift 2` → `shift; shift` hardening を sibling helper 5 スクリプト 18 箇所へ横展開、PR #1223 の reference fix を踏襲) は、本 anti-pattern の最頻形である **「同型脆弱性を持つ全 site のうち一部だけ修正し残りを取りこぼす asymmetric propagation」を着手時の機械検証で構造的に予防した successful preventive application**。code-quality / error-handling / test / security の 4 reviewer 全員が独立に 0 件 (可) 評価、回帰テスト 12/12 pass で 1 cycle mergeable に到達した。
+`shift 2` → `shift; shift` hardening を sibling helper 5 スクリプト 18 箇所へ横展開、当該 PR の reference fix を踏襲の PR は、本 anti-pattern の最頻形である **「同型脆弱性を持つ全 site のうち一部だけ修正し残りを取りこぼす asymmetric propagation」を着手時の機械検証で構造的に予防した successful preventive application**。code-quality / error-handling / test / security の 4 reviewer 全員が独立に 0 件 (可) 評価、回帰テスト 12/12 pass で 1 cycle mergeable に到達した。
 
 横展開 (horizontal propagation) PR は本 anti-pattern を踏みやすい構造を持つ — 元レビュー推奨 / Issue body の file glob は `hooks/scripts/*.sh` のみを named していたが、同型脆弱性は sibling ディレクトリ (`hooks/` / `scripts/`) にも存在した。named された scope だけを修正すると、列挙漏れした sibling に既知の hang が残る片肺修正になる。本 PR はこれを次の機械的網羅検証で潰した:
 
@@ -1363,7 +1363,7 @@ cycle 2 では「散文の挙動主張を実 regex に 8 ケースかける beha
 
 ### 新規コマンド spec の fix-introduced regression chain で PR 内 2 連続発現（累積 52 回目、6 cycle 収束）
 
-PR #1244 (新コマンド `/rite:learn` spec、doc-only) の review-fix loop で本 anti-pattern が **同一 PR 内の fix→新 finding 連鎖として 2 度発現**した fractal pattern。cycle 1-3 はいずれも `learn.md` の `#N`→Issue 解決ロジックに集中する gh CLI 関連の fix-introduced regression chain:
+新コマンド `/rite:learn` spec、doc-only の PR の review-fix loop で本 anti-pattern が **同一 PR 内の fix→新 finding 連鎖として 2 度発現**した fractal pattern。cycle 1-3 はいずれも `learn.md` の `#N`→Issue 解決ロジックに集中する gh CLI 関連の fix-introduced regression chain:
 
 - **cycle 1→2 (F-04)**: cycle 1 fix が導入した `gh pr list --head "*issue-N*"` が非機能 glob (`--head` は exact-match で wildcard を解釈しない) → cycle 2 で MEDIUM 検出。
 - **cycle 2→3 (F-05)**: cycle 2 fix が `--state all` を `#N` 経路 (line 54) にだけ付与し、対称な `(なし)` 経路 (line 55) への伝播を忘れた **典型的な Asymmetric Fix Transcription** → cycle 3 で LOW-MEDIUM 検出。`gh pr list --head` の既定 `--state open` は merged PR を取り逃すため、完了セッション題材の `learn` では主用途 (無引数) が機能しないギャップ。house pattern (`cleanup.md:64` / `close.md:103`) と line 54 に揃えて解消。
@@ -1372,7 +1372,7 @@ gh CLI 仕様の詳細は [関連 PR 探索は gh pr list --head (exact-match) �
 
 ### 先例からの 3 ガード byte 一致移植による pre-existing 非対称の解消（0 findings の successful symmetrization application）
 
-PR #1251 は、`commands/issue/references/fingerprint-cycling.md` §4 split ブロックが、同等処理を行う先例 `commands/pr/review.md` ステップ 7.4.2 が持つ 3 つの silent-failure guard (heredoc write-failure / empty-body / empty-result) を**欠いていた pre-existing 非対称**を、先例から byte 一致で移植して解消した PR。pipe 形式 (`result=$(jq -n ... | bash create-issue-with-projects.sh)`、pipefail なし) では jq / helper の失敗時に `result` が空となり直後の `jq -r '.issue_url'` が無言で空 URL を echo する silent failure 経路があり、先例 7.4.2 と完全対称化することでこれを遮断した。reason 文字列 / `[CONTEXT] ISSUE_CREATE_FAILED=1` marker / exit code を character-identical で揃えつつ、§4 固有要素 (`review-split:` title / `fingerprint_split` source / ✅ echo / `new_issue_url`) は保持。3 reviewer (prompt-engineer / code-quality / error-handling) 全員が「可」「指摘 0 件」で合意し 1 cycle mergeable。
+本 PR は、`commands/issue/references/fingerprint-cycling.md` §4 split ブロックが、同等処理を行う先例 `commands/pr/review.md` ステップ 7.4.2 が持つ 3 つの silent-failure guard (heredoc write-failure / empty-body / empty-result) を**欠いていた pre-existing 非対称**を、先例から byte 一致で移植して解消した PR。pipe 形式 (`result=$(jq -n ... | bash create-issue-with-projects.sh)`、pipefail なし) では jq / helper の失敗時に `result` が空となり直後の `jq -r '.issue_url'` が無言で空 URL を echo する silent failure 経路があり、先例 7.4.2 と完全対称化することでこれを遮断した。reason 文字列 / `[CONTEXT] ISSUE_CREATE_FAILED=1` marker / exit code を character-identical で揃えつつ、§4 固有要素 (`review-split:` title / `fingerprint_split` source / ✅ echo / `new_issue_url`) は保持。3 reviewer (prompt-engineer / code-quality / error-handling) 全員が「可」「指摘 0 件」で合意し 1 cycle mergeable。
 
 本ガード欠如は **pre-existing** であり、先行 PR の pipe refactor は invocation 形のみを変更し旧 nested 形にもガードは存在しなかった (両 reviewer が revert test で確認)。先行 PR は bash-heaviness 解消が目的のためガード追加をスコープ外とし、別 Issue へ正しく切り出した。これは「先行 refactor が一方の表現だけを触り対称位置のガード欠如を残す」典型ケースを、後続 PR が先例との byte 一致移植で完結させた successful symmetrization 系譜（先例からの移植 3 件）に連なる。加えて 3 reviewer は独立に同一の boundary recommendation (§4 は先例 7.4.2 が持つ post-result 処理 — project_registration / warnings[] surfacing、issue_url=="" の failed JSON ハンドリング、single-invocation 注記、placeholder source 表 — をまだ持たない) を検出したが、全て pre-existing かつ別 Issue 化済みと明記済みのため本 PR スコープ外として正しく除外した。
 
@@ -1380,34 +1380,34 @@ PR #1251 は、`commands/issue/references/fingerprint-cycling.md` §4 split ブ�
 
 本 PR は、直前の PR で 3 reviewer が boundary recommendation としてスコープ外へ切り出した **post-result error surfacing** を `commands/issue/references/fingerprint-cycling.md` §4 split に移植して完結させた直接の後続 PR。先行 PR が先例 `commands/pr/review.md` ステップ 7.4.2 の 3 silent-failure guard (heredoc write-failure / empty-body / empty-result) を移植したのに対し、本 PR はその続きの post-result 層 — `new_issue_url` 抽出直後の `issue_url==""` / `null` failed-JSON ガード (空 URL での `✅` echo を遮断し `warnings[]` を stderr surface + `[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_issue_url` emit + `exit 1`) と、成功時の `project_registration` 抽出 + `warnings[]` の `⚠️` surfacing + partial/failed 時の手動登録ヒント — を先例 7.4.2 と同等に移植した (16 add / 0 del の additive のみ、先行 PR の 3 ガードと既存 empty-result ガードは温存)。`create-issue-with-projects.sh` が失敗時も非空の failed JSON (`issue_url==""`) を emit してから exit する契約のため、既存の `[ -z "$result" ]` ガードは通過し空 URL のまま `✅` 成功メッセージを echo していた pre-existing 残差を遮断した。
 
-本 PR は **successful symmetrization の連鎖が複数 PR にまたがって完結する** 系譜パターンの実測でもある: PR #1251 が前半 (3 ガード) を移植し boundary recommendation を別 Issue 化 → PR #1254 が後半 (post-result surfacing) を移植して完結。error-handling reviewer は design_confirmation 推奨 1 件 (§4 は先例より厳格な `empty_issue_url` の明示 `exit 1` ガードを持つ — review.md 7.4.2 は複数候補ループ context のため doc-table 契約に委譲、§4 は単一 finding context のため bash fail-fast) を出したが、この非対称は context-appropriate な強化であり blind transcription ではないと両 reviewer が合意 (将来 review.md 側への逆移植は follow-up 余地、現スコープ対応不要)。2 reviewer (prompt-engineer / error-handling) が success-path bash 2 行の byte-identical (cat -A / diff)、failed-JSON 出力契約と `empty_issue_url` ガードの整合、placeholder 規約 (`{project_number}` / `{owner}`) の §4 既存規約一致、成功時 stdout / 失敗時 stderr の出力先非対称が意図的、success-path の `2>/dev/null` が well-formed JSON 保証下のため silent failure にならない、を独立 verify し 0 findings / 1 cycle mergeable。
+本 PR は **successful symmetrization の連鎖が複数 PR にまたがって完結する** 系譜パターンの実測でもある: 当該 PR が前半 (3 ガード) を移植し boundary recommendation を別 Issue 化 → 当該 PR が後半 (post-result surfacing) を移植して完結。error-handling reviewer は design_confirmation 推奨 1 件 (§4 は先例より厳格な `empty_issue_url` の明示 `exit 1` ガードを持つ — review.md 7.4.2 は複数候補ループ context のため doc-table 契約に委譲、§4 は単一 finding context のため bash fail-fast) を出したが、この非対称は context-appropriate な強化であり blind transcription ではないと両 reviewer が合意 (将来 review.md 側への逆移植は follow-up 余地、現スコープ対応不要)。2 reviewer (prompt-engineer / error-handling) が success-path bash 2 行の byte-identical (cat -A / diff)、failed-JSON 出力契約と `empty_issue_url` ガードの整合、placeholder 規約 (`{project_number}` / `{owner}`) の §4 既存規約一致、成功時 stdout / 失敗時 stderr の出力先非対称が意図的、success-path の `2>/dev/null` が well-formed JSON 保証下のため silent failure にならない、を独立 verify し 0 findings / 1 cycle mergeable。
 
 ### step-renumber refactor の 0-finding 検証 — repo-wide grep + impact test による successful preventive application（0 findings）
 
-PR #1260 は `commands/pr/merge.md` の旧 Step 1 (flow-state 前提チェック) を削除し残りの step を 1/2/3 へ繰り上げる **step-renumber refactor** (Step 1〜4 → ステップ 1〜3)。本 anti-pattern の最重要 trigger である renumber 伝播漏れ (旧番号への参照が同期されず stale 化する) を、2 reviewer (prompt-engineer / code-quality) が独立に **Grep + 全文確認** で検証し、merge.md 内・cross-file ともに同期漏れゼロを確認した (指摘 0 件 / 1 cycle mergeable)。
+本 PR は `commands/pr/merge.md` の旧 Step 1 (flow-state 前提チェック) を削除し残りの step を 1/2/3 へ繰り上げる **step-renumber refactor** (Step 1〜4 → ステップ 1〜3)。本 anti-pattern の最重要 trigger である renumber 伝播漏れ (旧番号への参照が同期されず stale 化する) を、2 reviewer (prompt-engineer / code-quality) が独立に **Grep + 全文確認** で検証し、merge.md 内・cross-file ともに同期漏れゼロを確認した (指摘 0 件 / 1 cycle mergeable)。
 
-検証手法の 3 点セットが本 anti-pattern の予防的 detection protocol として実測された: (1) merge.md 全文を `git show` / Read で旧番号 (ステップ4 / 英語 Step N) 残存ゼロ確認、(2) `grep -rn "merge.md" plugins/ docs/` で step 番号付き cross-file 参照を洗い出し、(3) 影響テスト `sentinel-disambiguator-adjacency.test.sh` を実行し PASS 10/0。これは PR #1102→#1105 で確立した「fix 後 grep」から「着手時 grep」への前倒し protocol を renumber refactor に適用し、PR #1162 の「cleanup PR 自身での再発」リスク (renumber が同一ファイル内対称位置を sanity check で取りこぼす) を repo-wide grep + impact test で構造的に閉塞した successful application。
+検証手法の 3 点セットが本 anti-pattern の予防的 detection protocol として実測された: (1) merge.md 全文を `git show` / Read で旧番号 (ステップ4 / 英語 Step N) 残存ゼロ確認、(2) `grep -rn "merge.md" plugins/ docs/` で step 番号付き cross-file 参照を洗い出し、(3) 影響テスト `sentinel-disambiguator-adjacency.test.sh` を実行し PASS 10/0。これは PR #1102→#1105 で確立した「fix 後 grep」から「着手時 grep」への前倒し protocol を renumber refactor に適用し、当該 PR の「cleanup PR 自身での再発」リスク (renumber が同一ファイル内対称位置を sanity check で取りこぼす) を repo-wide grep + impact test で構造的に閉塞した successful application。
 
 加えて 2 つの boundary 判断を併せて記録: (a) decision-record (`docs/designs/clear-per-command-flow-state-decoupling.md`) は **as-was 状態を記述する性質上、後続 renumber を追従させない** 運用が妥当という reviewer 合意（先行 PR の「表更新 PR は同セクション散文の依存値も着手時 grep scope に含める」と対をなす — design doc は意図的に renumber 射程外）。(b) flow-state 撤去後の完了通知 branch 名供給を `gh pr view --json headRefName` へ一本化する変更は、sibling コマンド `ready.md` / `cleanup.md` と同じ raw `--json` + LLM context 消費パターンで baseline 整合を確認 (新規導入する supply 経路が既存 sibling と非対称にならないことの verify)。
 
 ### 新規 enum 値追加時の全コピー site 同時同期 — handoff 3 系統 8 site の事前回避（0 findings）
 
-PR #1267 (cleanup→wiki:ingest→wiki:lint チェーンの Stop-hook 継続保証) は、handoff 値域への新系統 `WIKICHAIN:{caller}:{pr}` 追加にあたり、値域列挙が分散する **全 8 コピー site** (flow-state.sh コメント・usage / stop-loop-continuation.sh ヘッダ・case 分岐コメント / SPEC.md / SPEC.ja.md / multi-session-state.md / clear-per-command-flow-state-decoupling.md / cleanup.md / ready.md) を同一 PR 内で 3 系統 (継続 `/rite:` / 終了 `FINALIZE:` / チェーン `WIKICHAIN:`) へ同時更新し、code-quality / tech-writer の 2 reviewer が `git grep WIKICHAIN` + JA/EN parity grep で drift ゼロを独立に機械検証した (0 findings / 1 cycle mergeable)。
+cleanup→wiki:ingest→wiki:lint チェーンの Stop-hook 継続保証の PR は、handoff 値域への新系統 `WIKICHAIN:{caller}:{pr}` 追加にあたり、値域列挙が分散する **全 8 コピー site** (flow-state.sh コメント・usage / stop-loop-continuation.sh ヘッダ・case 分岐コメント / SPEC.md / SPEC.ja.md / multi-session-state.md / clear-per-command-flow-state-decoupling.md / cleanup.md / ready.md) を同一 PR 内で 3 系統 (継続 `/rite:` / 終了 `FINALIZE:` / チェーン `WIKICHAIN:`) へ同時更新し、code-quality / tech-writer の 2 reviewer が `git grep WIKICHAIN` + JA/EN parity grep で drift ゼロを独立に機械検証した (0 findings / 1 cycle mergeable)。
 
-successful preventive application としての特徴: (a) PR #1169 (hooks.json Stop 追加時に SPEC 内 4 箇所 drift) の同型シナリオを、着手時から「enum 値追加 = 全コピー site 同時更新契約」として扱うことで cycle 消費ゼロで回避、(b) iterate ループの既存機構 (#1168/#1176) の同型移植という設計方針 (新規抽象なし) が同期対象 site の予見可能性を高めた、(c) scope 的に WIKICHAIN を列挙**しない**のが正しい site (iterate.md — iterate ループ専用 scope の記述) を reviewer が boundary 判断で明示的に「正しい非対称」と確認し、過剰同期 (over-transcription) も回避した。enum/値域の追加では「同期すべき site の網羅」と「scope 的に同期すべきでない site の識別」の両方が検証対象になることを示した実測例。
+successful preventive application としての特徴: (a) hooks.json Stop 追加時に SPEC 内 4 箇所 drift の PR の同型シナリオを、着手時から「enum 値追加 = 全コピー site 同時更新契約」として扱うことで cycle 消費ゼロで回避、(b) iterate ループの既存機構 (#1168/#1176) の同型移植という設計方針 (新規抽象なし) が同期対象 site の予見可能性を高めた、(c) scope 的に WIKICHAIN を列挙**しない**のが正しい site (iterate.md — iterate ループ専用 scope の記述) を reviewer が boundary 判断で明示的に「正しい非対称」と確認し、過剰同期 (over-transcription) も回避した。enum/値域の追加では「同期すべき site の網羅」と「scope 的に同期すべきでない site の識別」の両方が検証対象になることを示した実測例。
 
 ### 意図的非対称の test scope pin 保護 — neutralize fix の 1-site 限定適用（0 findings）
 
-PR #1273 (stop-loop-continuation.sh の未知 prefix WARNING に制御文字 neutralize を適用) は、`${HANDOFF}` の埋め込み site が複数 (stderr WARNING 1 + `_reason` 再注入経路) ある中で、fix を **stderr WARNING 行 1 site のみに意図的に限定**した。一見「対称位置への伝播漏れ」に見える `_reason` 側の verbatim 維持は再注入契約 (モデルコンテキストへ handoff を verbatim で差し戻す) に基づく**意図的非対称**であり、TC-14 の scope pin assertion (`reason keeps the handoff verbatim`) がこの非対称を「将来 neutralize scope を広げる場合は deliberate に pin を更新せよ」というテスト宣言として機械的に固定した。4 reviewer 全員 0 findings / 1 cycle mergeable。
+stop-loop-continuation.sh の未知 prefix WARNING に制御文字 neutralize を適用の PR は、`${HANDOFF}` の埋め込み site が複数 (stderr WARNING 1 + `_reason` 再注入経路) ある中で、fix を **stderr WARNING 行 1 site のみに意図的に限定**した。一見「対称位置への伝播漏れ」に見える `_reason` 側の verbatim 維持は再注入契約 (モデルコンテキストへ handoff を verbatim で差し戻す) に基づく**意図的非対称**であり、TC-14 の scope pin assertion (`reason keeps the handoff verbatim`) がこの非対称を「将来 neutralize scope を広げる場合は deliberate に pin を更新せよ」というテスト宣言として機械的に固定した。4 reviewer 全員 0 findings / 1 cycle mergeable。
 
-successful preventive application としての特徴: (a) 4 reviewer (security / error-handling / test / performance) 全員が独立に `${HANDOFF}` raw sink を Grep 全数検査し、stderr への raw 出力は修正対象の 1 箇所のみ = 伝播漏れなしを確認、(b) test reviewer は worktree-only mutation pattern (`git worktree add --detach`) で neutralize fix を revert し TC-14 の 2 assert が正しく FAIL することを実機立証 (false positive 検査)、(c) security reviewer が `[[:cntrl:]]` の C1 8-bit 制御バイト (0x9b CSI) 非カバーを発見したが、これは規約全体 (`flow-state.sh` `_emit_jq_err_snippet` 含む) の pre-existing 限界であり「本 PR 単独で WARNING 行だけ C1 対応すると逆に Asymmetric Fix を生む」と判断して boundary 推奨事項 → 別 Issue (#1274 共通ヘルパー化 + C1 対応) 化した — 片肺修正を避けるために**意図的に修正しない**判断 (規約全体への対称適用を別 Issue で行う) も本 anti-pattern の防御の一形態。PR #1267 の「同期すべきでない site の識別」を **test pin で機械的に固定する手法**へ前進させた実測例 (pin の正当な活用 — 形骸化 pin の anti-pattern は [test-pin-protection-theater](./test-pin-protection-theater.md) を参照)。
+successful preventive application としての特徴: (a) 4 reviewer (security / error-handling / test / performance) 全員が独立に `${HANDOFF}` raw sink を Grep 全数検査し、stderr への raw 出力は修正対象の 1 箇所のみ = 伝播漏れなしを確認、(b) test reviewer は worktree-only mutation pattern (`git worktree add --detach`) で neutralize fix を revert し TC-14 の 2 assert が正しく FAIL することを実機立証 (false positive 検査)、(c) security reviewer が `[[:cntrl:]]` の C1 8-bit 制御バイト (0x9b CSI) 非カバーを発見したが、これは規約全体 (`flow-state.sh` `_emit_jq_err_snippet` 含む) の pre-existing 限界であり「本 PR 単独で WARNING 行だけ C1 対応すると逆に Asymmetric Fix を生む」と判断して boundary 推奨事項 → 別 Issue (#1274 共通ヘルパー化 + C1 対応) 化した — 片肺修正を避けるために**意図的に修正しない**判断 (規約全体への対称適用を別 Issue で行う) も本 anti-pattern の防御の一形態。当該 PR の「同期すべきでない site の識別」を **test pin で機械的に固定する手法**へ前進させた実測例 (pin の正当な活用 — 形骸化 pin の anti-pattern は [test-pin-protection-theater](./test-pin-protection-theater.md) を参照)。
 
 ### コメント claim 層での 3 箇所同時訂正 + 同型 site 監査の別 Issue 化（2 cycle 収束）
 
-PR #1279 (`stop-loop-continuation.sh` の JSON emit フォールバックに `neutralize_ctrl --c0-only` を適用) では、本 anti-pattern が **コメント内の設計判断 claim 層** で予防的に処理された 2 つの実測を記録:
+`stop-loop-continuation.sh` の JSON emit フォールバックに `neutralize_ctrl --c0-only` を適用の PR では、本 anti-pattern が **コメント内の設計判断 claim 層** で予防的に処理された 2 つの実測を記録:
 
 - **同一 claim の複製 site 全列挙 → 1 commit 同時訂正**: cycle 1 で検出された「C1 素通しは jq と対称」claim の Comment Rot (raw 8-bit C1 では偽 — 詳細は [sanitization 対称性 claim は入力クラス別に runtime byte-level 検証してから書く](../heuristics/symmetry-claim-input-class-runtime-verification.md)) は、同一 claim が実装 2 ファイル + テストコメント (TC-11) の 3 箇所に複製存在していた。fix では `git grep -E '(C1|c0-only).*対称'` で全 site を列挙してから 1 commit で同時訂正し、コメント claim 層での片肺訂正 (1 箇所のみ直して他 2 箇所に偽 claim が残る) を予防した。テスト assert は挙動 pin として正しいため不変 (訂正対象は claim 文言のみ)。
-- **同型 manual-escape JSON emit の対称位置監査 → スコープ外は別 Issue 化**: review cycle 1 の Asymmetric Fix Transcription 監査で、同型の手動エスケープ JSON emit が `pre-tool-bash-guard.sh:536-538` (#1278 起票済) と `wiki-ingest-trigger.sh:360-361,387-388` (pre-existing) に存在することを列挙。PR #1273 の (c) と同じく「本 PR scope 内で全対称 site を修正する」のではなく、検出した同型 site を明示列挙して別 Issue 境界で対称適用を追跡する運用を継続。
+- **同型 manual-escape JSON emit の対称位置監査 → スコープ外は別 Issue 化**: review cycle 1 の Asymmetric Fix Transcription 監査で、同型の手動エスケープ JSON emit が `pre-tool-bash-guard.sh:536-538` (#1278 起票済) と `wiki-ingest-trigger.sh:360-361,387-388` (pre-existing) に存在することを列挙。当該 PR の (c) と同じく「本 PR scope 内で全対称 site を修正する」のではなく、検出した同型 site を明示列挙して別 Issue 境界で対称適用を追跡する運用を継続。
 
 cycle 2 で前 cycle F-01 の 3 箇所同時訂正が FIXED と byte-level 再検証で確認され 0 findings 収束 (1 → 0)。共通ヘルパー SoT 規約 （先行 PR で確立した `control-char-neutralize.sh` 集約) の直接の後続 PR として、helper consolidation（先行 PR の intra-file 版 Option B と同系）が対称化義務を構造的に縮減した上で、残る claim 文言層の対称性を grep 列挙で守った実測例。
 
@@ -1417,13 +1417,13 @@ cycle 2 で前 cycle F-01 の 3 箇所同時訂正が FIXED と byte-level 再�
 
 - **vacuous test assertion (テスト強度の非対称)**: 対称転記元の TC-16 (stop-loop-continuation.test.sh) は実 ESC バイトを reason に注入して機能を exercise するのに対し、転記先の TC-116 は入力注入経路が無く静的 reason のみで fallback を発火させたため、「valid JSON」「no raw ESC byte」の 2 assertion が vacuous false positive 化 (mutation 実験: 核心 2 行を削除しても 151/0 PASS、HIGH)。fake jq パターン (test fixture 構成) は対称転記したが **テストが注入する入力の性質 (静的 vs 動的)** が非対称のまま残った。対称転記時はテスト assertion の exercise 経路も対称性監査の対象に含める。解決手法 (関数抽出 + 境界行 extract) は [入力注入経路のない静的文字列処理連鎖は関数抽出 + 境界行 extract で非 vacuous unit テスト化する](../patterns/static-input-chain-function-extraction-non-vacuous-test.md) に独立化。
 - **fail 方向の設計判断コメントの転記非対称**: Stop hook (fail-open = 停止許可で安全) から PreToolUse deny gate (fail-open = 危険コマンド実行) への対称転記で、guard なし source の fail 方向判断が undocumented になった (MEDIUM)。対称元 (stop-loop-continuation.sh L46-48) には設計根拠コメントがあるのに転記先には用途コメントしかない **コメント非対称** が root cause。討論の結果「hook 自体が ERR trap で設計上 fail-open + same-privilege boundary のため source ガード不要、ただし設計判断をコメントに記録する」で合意し、defensive code 追加ではなくコメント明文化に縮退。
-- **Propagation 不要の判断記録 (意図的非対称)**: fix で導入した関数抽出を対称元の同型インライン連鎖には伝播しない判断 (handoff 注入経路があり TC-16 が非 vacuous に pin 済み = テスト可能性の動機なし) を commit message の decision 行に記録。PR #1273 の test scope pin と同じく「同期すべきでない site の識別」の系譜。
+- **Propagation 不要の判断記録 (意図的非対称)**: fix で導入した関数抽出を対称元の同型インライン連鎖には伝播しない判断 (handoff 注入経路があり TC-16 が非 vacuous に pin 済み = テスト可能性の動機なし) を commit message の decision 行に記録。当該 PR の test scope pin と同じく「同期すべきでない site の識別」の系譜。
 
 production コード自体 (エスケープ連鎖の順序・網羅性) は 4 reviewer の独立検証で問題なし。cycle 2 で全 reviewer 0 findings 収束 (2 → 0)。
 
 ### nested cmdsub → args_json 分離形式の 2 caller 同時統一 + SoT 陳腐化 Note の事前裏取り削除（0 findings の successful symmetrization application）
 
-PR #1292 (pr/cleanup.md ステップ 3 / pr/create.md Phase 2.5.5 に残存していた nested `"$(jq -n ...)"` 呼び出しを SoT canonical の args_json 分離形式へ統一 + SoT `issue-create-with-projects.md` の「漸進移行」Note 削除) は 0 findings で初回 mergeable に到達した対称適用 refactor。3 つの検証観点が prevention に寄与:
+pr/cleanup.md ステップ 3 / pr/create.md Phase 2.5.5 に残存していた nested `"$(jq -n ... の PR"` 呼び出しを SoT canonical の args_json 分離形式へ統一 + SoT `issue-create-with-projects.md` の「漸進移行」Note 削除) は 0 findings で初回 mergeable に到達した対称適用 refactor。3 つの検証観点が prevention に寄与:
 
 - **bash semantics 検証**: bare `var=$(cmd) || { ...; exit 1; }` の exit code 伝播が正しいこと (local/declare prefix なしのため mask されない) を確認。
 - **Asymmetric Fix Transcription 監査**: nested `"$(jq -n ...)"` 残存 0 件を grep 全数確認。guard の多行/単行差は各ファイルローカル既存 style への意図的整合であり伝播漏れではないと判定（先行 PR の「同期すべきでない site の識別」系譜）。
@@ -1433,15 +1433,15 @@ PR #1292 (pr/cleanup.md ステップ 3 / pr/create.md Phase 2.5.5 に残存し�
 
 ### pre-existing doc drift の修正 PR 自身が新規 locale 非対称 drift を導入する — 完全同期 > 最小修正（2 cycle 収束）
 
-PR #1294 (docs/SPEC.md Plugin Structure に #1193 期委譲 helper 群の列挙漏れ 27 ファイル + 2 dirs を補完する Doc-Heavy PR、doc_lines_ratio=1.0) で、本 anti-pattern の **locale pair 変種** を実測: pre-existing doc drift (列挙漏れ) を直す PR が SPEC.md (en) のみを補完し、日本語訳ペア SPEC.ja.md (tree + Helper Scripts 表) を据え置いた片側更新で CFIC #6 (Documentation i18n parity) 違反の HIGH を導入した。PR 前は両版とも未列挙で**対称**だったため、非対称は本 PR が新規導入 — revert test PASS で current-pr 帰属が機械的に立証された。「drift 修正 PR 自体が新しい drift を導入する」構図は fix-induced drift 系譜の documentation locale 層への拡張。
+docs/SPEC.md Plugin Structure に #1193 期委譲 helper 群の列挙漏れ 27 ファイル + 2 dirs を補完する Doc-Heavy PR、doc_lines_ratio=1.0 の PR で、本 anti-pattern の **locale pair 変種** を実測: pre-existing doc drift (列挙漏れ) を直す PR が SPEC.md (en) のみを補完し、日本語訳ペア SPEC.ja.md (tree + Helper Scripts 表) を据え置いた片側更新で CFIC #6 (Documentation i18n parity) 違反の HIGH を導入した。PR 前は両版とも未列挙で**対称**だったため、非対称は本 PR が新規導入 — revert test PASS で current-pr 帰属が機械的に立証された。「drift 修正 PR 自体が新しい drift を導入する」構図は fix-induced drift 系譜の documentation locale 層への拡張。
 
 fix では **完全同期 > 最小修正** を採択: F-01 推奨対応 (本 PR 追加分 27 ファイル + 2 dirs / 16 表エントリ) に加え、pre-existing の #1196 期欠落 (tree 4 エントリ + 表 2 行) も同一 commit で同期した。部分同期 (本 PR 追加分のみの対称化) は CFIC #6 違反を残置し次 cycle 再指摘を招くため、locale parity の修正単位は「PR diff 分」ではなく「両版の対称性全体」になる。検証は en↔ja の tree/表エントリを sed/awk/grep で機械抽出し diff 照合 (TREE_SYNC_OK / TABLE_SYNC_OK)、修正は対称転記のみで防御コード・新規抽象の追加ゼロ。cycle 2 で en↔ja token 集合 diff により解消を機械確認し mergeable (blocking 0)。
 
 検出経路も記録に値する: tech-writer (Doc-Heavy mandatory) が CFIC #6 を初回実行漏れ → sole reviewer guard で追加された co-reviewer (code-quality) が Cross-File Impact Check で検出し、責務境界に従い boundary 推奨として申し送り → orchestrator が tech-writer に follow-up 評価を依頼 → 3 ゲート (Confidence 95 / Demonstrable / revert test PASS) 通過で HIGH 確定。検出・確定の分離 workflow は [責務境界外 finding は boundary 申し送り → 管轄 reviewer の follow-up 評価で確定する](../patterns/sole-reviewer-guard-cross-boundary-referral.md) に独立化。bilingual-sync 慣行の根拠として a4fffea7 (#1265) が SPEC 両版を同時修正しており、**SPEC.md を変更する PR は SPEC.ja.md の対称更新を必須チェックとする**（先行 PR で確立した JA/EN parity grep 必須化の SPEC ペアへの再適用）。
 
-### nested cmdsub → status_json_args 分離形式の 4 caller 統一 (projects-status-update.sh) — PR #1292 系譜の継続（0 findings の successful symmetrization application）
+### nested cmdsub → status_json_args 分離形式の 4 caller 統一 (projects-status-update.sh) — 当該 PR 系譜の継続（0 findings の successful symmetrization application）
 
-PR #1300 (projects-status-update.sh を呼ぶ command markdown caller のうち nested `"$(jq -n ...)"` 形態で残っていた 4 箇所 — close.md / ready.md / archive-procedures.md ×2 — を `status_json_args` 分離形式へ統一) は 0 findings で初回 mergeable に到達した、PR #1292 / Issue #1284 系譜の対称適用 refactor。#1292 が `create-issue-with-projects.sh` caller を統一したのに対し、本 PR は同型の nested-cmdsub 残存を `projects-status-update.sh` caller 側で解消する sibling 適用。3 つの検証観点が prevention に寄与:
+projects-status-update.sh を呼ぶ command markdown caller のうち nested `"$(jq -n ... の PR"` 形態で残っていた 4 箇所 — close.md / ready.md / archive-procedures.md ×2 — を `status_json_args` 分離形式へ統一) は 0 findings で初回 mergeable に到達した、当該 PR / 当該 Issue 系譜の対称適用 refactor。#1292 が `create-issue-with-projects.sh` caller を統一したのに対し、本 PR は同型の nested-cmdsub 残存を `projects-status-update.sh` caller 側で解消する sibling 適用。3 つの検証観点が prevention に寄与:
 
 - **全数監査**: `grep -rn 'projects-status-update.sh "\$(jq'` で nested cmdsub 残存 0 件を確認 — 対称位置の伝播漏れ (本 anti-pattern の最大リスク) を潰す。
 - **byte 等価性**: 生成 JSON の jq filter object が develop と byte 等価であることを確認 (single-quote object body は文字一致、変化点は outer-quote `}')"` → `}')` 除去のみ)。
@@ -1451,7 +1451,7 @@ PR #1300 (projects-status-update.sh を呼ぶ command markdown caller のうち 
 
 ### gh CLI 3 段階 checklist 更新パターンの Step 1 EXIT trap 削除を SoT + 複製 2 ファイルへ対称適用（0 findings の successful symmetrization application）
 
-PR #1303 (gh CLI で Issue body の checklist を更新する 3 段階安全更新パターン (Step 1: Bash → Step 2: Read/Write → Step 3: Bash) の Step 1 から `trap 'rm -f ...' EXIT` を削除し、注記コメント + 失敗パス明示 rm + Step 3 明示 rm へ置換) は、SoT (`references/gh-cli-patterns.md`) + 複製先 2 ファイル (`commands/issue/implement.md` 5.1.2.1 / `commands/issue/references/checklist-auto-check.md`) へ同型修正を対称適用した successful symmetrization application。4 reviewer (prompt-engineer / tech-writer / code-quality / error-handling) 全員が評価=可、blocking 0 件で初回 mergeable に到達。
+gh CLI で Issue body の checklist を更新する 3 段階安全更新パターン (Step 1: Bash → Step 2: Read/Write → Step 3: Bash の PR の Step 1 から `trap 'rm -f ...' EXIT` を削除し、注記コメント + 失敗パス明示 rm + Step 3 明示 rm へ置換) は、SoT (`references/gh-cli-patterns.md`) + 複製先 2 ファイル (`commands/issue/implement.md` 5.1.2.1 / `commands/issue/references/checklist-auto-check.md`) へ同型修正を対称適用した successful symmetrization application。4 reviewer (prompt-engineer / tech-writer / code-quality / error-handling) 全員が評価=可、blocking 0 件で初回 mergeable に到達。
 
 修正の技術的核心 — **EXIT trap が Bash tool プロセス境界で早期発火する**: Claude Code の Bash tool は呼び出しごとに新プロセスで実行されるため、Step 1 で `trap ... EXIT` を設定すると Step 1 の Bash 呼び出し**成功終了時**に EXIT trap が発火し tmpfile を即削除する → 別 Bash 呼び出しである Step 2 (Read tool) が「File does not exist」で失敗する（先行 PR で実測）。trap はそもそもプロセス境界を越えず Step 3 (別呼び出し) の cleanup にも効かないため「無益かつ有害」であり、削除して明示 rm に置換するのが正しい設計。これは [`trap 登録 → mktemp の順序で tempfile lifecycle を守る`](../patterns/trap-register-before-mktemp.md) の **単一プロセス内 trap 順序** とは別軸の、**cross-Bash-tool-call プロセス境界** での trap 無効化パターン。正しい helper `issue-body-safe-update.sh` は単一プロセス内で trap を安全網に設定し success path で `trap - EXIT` 解除する別設計のため対象外 (boundary 判定)。
 
@@ -1463,11 +1463,11 @@ PR #1303 (gh CLI で Issue body の checklist を更新する 3 段階安全更�
 
 ### symmetry test 自身の canonical grep anchor を 4 TC で対称統一（0 findings の self-referential successful symmetrization application）
 
-PR #1304 (`create-md-invocation-symmetry.test.sh` の canonical callsite カウント grep 2 箇所に invocation grep と同一の `bash [^|]*` anchor を付与) は、**本 anti-pattern を検出するための symmetry test それ自身を内部対称化した self-referential な successful symmetrization application**。4 reviewer (test / code-quality / error-handling / security) 全員が評価=可、blocking 0 件で初回 mergeable に到達。
+`create-md-invocation-symmetry.test.sh` の canonical callsite カウント grep 2 箇所に invocation grep と同一の `bash [^|]*` anchor を付与の PR は、**本 anti-pattern を検出するための symmetry test それ自身を内部対称化した self-referential な successful symmetrization application**。4 reviewer (test / code-quality / error-handling / security) 全員が評価=可、blocking 0 件で初回 mergeable に到達。
 
 技術的核心 — **canonical ⊆ invocation の subset 関係を構造保証**: 旧実装は canonical 側 `grep -c 'create-issue-with-projects\.sh "\$args_json"'` (anchor なし)、invocation 側 `grep -cE 'bash [^|]*create-issue-with-projects\.sh '` (anchor あり) と非対称で、canonical が invocation の真部分集合になることが構造的に保証されていなかった。`bash ` を伴わない prose 行 (例: 復旧ガイダンス) が追加されると canonical が invocation を上回り `non_canonical = invocations - canonical` が負値化、`[ "$non_canonical" -eq 0 ]` が誤 FAIL する偽陽性経路があった。canonical 側にも `bash [^|]*` anchor を付与することで両パターンが共通 prefix を持ち subset が文字列構造上保証される。`grep -c` (BRE) → `grep -cE` (ERE) 変更でも `\.` (literal dot) / `\$` (literal `$`) のエスケープ意味は保たれることを reviewer が実機検証。
 
-対称化の核心 — **TC-1/TC-2/TC-9/TC-10 を同一 commit で同時統一**: Issue #1302 が明示的に「TC-9/TC-10 (新 helper) だけ非対称に変えると symmetry test 自身の内部対称性が崩れる」と要求。本 PR は TC-1/TC-2 共用 `create_md_canonical` (L65) と TC-9/TC-10 共用 helper `assert_single_create_caller` の `canonical` (L200) の 2 callsite を同時修正し、4 TC すべてを `bash [^|]*` anchor へ統一 — 本 anti-pattern の典型 trigger (片方の TC だけ修正して対称崩れ) を構造的に回避した。
+対称化の核心 — **TC-1/TC-2/TC-9/TC-10 を同一 commit で同時統一**: 当該 Issue が明示的に「TC-9/TC-10 (新 helper) だけ非対称に変えると symmetry test 自身の内部対称性が崩れる」と要求。本 PR は TC-1/TC-2 共用 `create_md_canonical` (L65) と TC-9/TC-10 共用 helper `assert_single_create_caller` の `canonical` (L200) の 2 callsite を同時修正し、4 TC すべてを `bash [^|]*` anchor へ統一 — 本 anti-pattern の典型 trigger (片方の TC だけ修正して対称崩れ) を構造的に回避した。
 
 prevention に寄与した 2 観点:
 
@@ -1480,21 +1480,21 @@ prevention に寄与した 2 観点:
 
 ### result-pattern 不変列挙の orphan token は backing Phase 3.x チェック撤去時に残存する — 撤去方向の対称 sweep 契約（0 findings の successful symmetrization application）
 
-PR #631 / #1167 が確立した「新規 lint step 追加時の 4-site 対称更新契約」(Phase 3.X 手順 / appendix display / summary table / `[lint:success]` 列挙) は **撤去方向にも対称適用される**。`lint.md` の result-pattern 不変列挙 (`These appendices do NOT change the result pattern — ...`) に列挙された `terminal-output` トークンは、対応する Phase 3.x チェック実体 (hooks スクリプト含む) が先行 PR で撤去された際に、列挙トークンだけが sweep されず orphan 残存した。enumeration を「全 backing check の網羅列挙」として維持する契約がある場合、check entity の追加だけでなく**撤去時にも同一 commit で列挙トークンを除去**しないと、orphan token が「実体のない契約宣言」として蓄積する。
+先行 2 PR が確立した「新規 lint step 追加時の 4-site 対称更新契約」(Phase 3.X 手順 / appendix display / summary table / `[lint:success]` 列挙) は **撤去方向にも対称適用される**。`lint.md` の result-pattern 不変列挙 (`These appendices do NOT change the result pattern — ...`) に列挙された `terminal-output` トークンは、対応する Phase 3.x チェック実体 (hooks スクリプト含む) が先行 PR で撤去された際に、列挙トークンだけが sweep されず orphan 残存した。enumeration を「全 backing check の網羅列挙」として維持する契約がある場合、check entity の追加だけでなく**撤去時にも同一 commit で列挙トークンを除去**しないと、orphan token が「実体のない契約宣言」として蓄積する。
 
 検出・収束の特徴: orphan は board drift guard の PR review で prompt-engineer reviewer が scope-out 指摘として surface し follow-up Issue 化。cleanup PR は prompt-engineer / code-quality 両 reviewer とも 0 findings で、Grep ファクトチェックにより `terminal-output` 0 件・別トークン `verify-terminal-output` 非干渉・区切り構造整合・cross-ref 破損なし・残存トークンが実在 Phase 3.x チェックと整合を確認。教訓: check entity を撤去する PR は、その entity を列挙する不変 enumeration (result-pattern / appendix cross-ref 等) を旧トークン名で grep し、orphan 残存ゼロを着手時に verify する ([[prose-design-without-backing-implementation]] の逆方向 = 実装撤去後に宣言だけ残るケース)。
 
 ### symmetry test の assertion 強化を mutation 注入で non-vacuous 検証する — 転記先の入力性質 (静的/動的) 監査の実践（0 findings の successful symmetrization application）
 
-PR #1304 と同じ self-referential test (`create-md-invocation-symmetry.test.sh`) の TC-5b を、file-wide な独立 `grep -qE` 2 本の AND から TC-7b / TC-5c と同型の **awk 隣接検査** へ強化した successful symmetrization application。旧 grep-AND は「`bash "$LINK_SCRIPT"` と positional 4-arg がファイル内のどこかに両方存在する」ことしか保証せず、コメントが主張する「同一 callsite に隣接」を強制できない vacuous な弱点を持っていた (4-arg が callsite から分離しても pass)。awk は `bash "[$]LINK_SCRIPT" \`(行継続) callsite 行の直後行に 4-arg があることを pin し、コメントの主張とアサーションの精度を一致させる。
+先行 PR と同じ self-referential test (`create-md-invocation-symmetry.test.sh`) の TC-5b を、file-wide な独立 `grep -qE` 2 本の AND から TC-7b / TC-5c と同型の **awk 隣接検査** へ強化した successful symmetrization application。旧 grep-AND は「`bash "$LINK_SCRIPT"` と positional 4-arg がファイル内のどこかに両方存在する」ことしか保証せず、コメントが主張する「同一 callsite に隣接」を強制できない vacuous な弱点を持っていた (4-arg が callsite から分離しても pass)。awk は `bash "[$]LINK_SCRIPT" \`(行継続) callsite 行の直後行に 4-arg があることを pin し、コメントの主張とアサーションの精度を一致させる。
 
-本 PR が示す核心的教訓は PR #1281 で確立した「対称転記時はテストが注入する入力の性質も対称性監査対象に含める」の **mutation による non-vacuity 検証の実践例**である。test / code-quality / error-handling の複数 reviewer が独立に worktree-only mutation を実機注入 (4-arg を callsite から分離 / flag・JSON 形式へ置換 / arg 順序入替 / arg 欠落) し、新アサーションが旧 grep-AND では pass していたケースを確実に FAIL させること (= vacuous/tautological でないこと) を立証した。「TC-7b / TC-5c と構造が同型」という見た目の対称性だけを根拠にせず、mutation で「意図した回帰を実際に検出できるか」を確かめるのが symmetrization application の検証の決定打。security reviewer はデータフローを entry-to-sink で追跡し attack surface 不在を確認、4 reviewer 全員 0 件 1 cycle mergeable。PR #992 (self-application) → #1304 (test-infrastructure 自身の対称化) に連なる self-referential successful application の系譜で、今回は「対称化対象がアサーションロジック自体」である点が新しい。
+本 PR が示す核心的教訓は先行 PR で確立した「対称転記時はテストが注入する入力の性質も対称性監査対象に含める」の **mutation による non-vacuity 検証の実践例**である。test / code-quality / error-handling の複数 reviewer が独立に worktree-only mutation を実機注入 (4-arg を callsite から分離 / flag・JSON 形式へ置換 / arg 順序入替 / arg 欠落) し、新アサーションが旧 grep-AND では pass していたケースを確実に FAIL させること (= vacuous/tautological でないこと) を立証した。「TC-7b / TC-5c と構造が同型」という見た目の対称性だけを根拠にせず、mutation で「意図した回帰を実際に検出できるか」を確かめるのが symmetrization application の検証の決定打。security reviewer はデータフローを entry-to-sink で追跡し attack surface 不在を確認、4 reviewer 全員 0 件 1 cycle mergeable。self-application の PR → #1304 (test-infrastructure 自身の対称化) に連なる self-referential successful application の系譜で、今回は「対称化対象がアサーションロジック自体」である点が新しい。
 
 推奨事項 2 件 (EOF theoretical false-negative: callsite が file 最終行のとき次行不在で見逃すが `$()` 行継続構造により実ファイルでは到達不能、TC-5 の link_total 整合性 pin が二重保護 / `awk ... || true` の silent false-negative: 全失敗モードが前提ガード + 静的 awk プログラム + SIGPIPE 面なしで Hypothetical、TC-3/TC-7b 確立済みパターンのため 3 箇所一括の別 Issue が整合的) はいずれも boundary / design_confirmation 分類で、Phase 7 でユーザーが「無視」を選択 (Issue 化なし)。
 
 ### doc / deny message / case 列挙の 3 箇所 literal 重複を実測 verify した 0 findings application
 
-security hook `pre-tool-bash-guard.sh` の (Z) shell-wrapper deny メッセージ是正 PR で、wrapper 一覧 7 種 (`eval` / `bash -c` / `sh -c` / `zsh -c` / `ksh -c` / `dash -c` / `fish -c`) と read-only 代替 3 種 (直接実行 / subshell `( ... )` / `bash <script.sh>`) が doc (`_reviewer-base.md` 新節) / hook deny message / hook case 文の **3 箇所に literal 重複**する構造を prompt-engineer reviewer が実測検証し、完全一致 (伝播漏れなし) を確認して 5 reviewer 全員 0 findings / 1 cycle mergeable。将来 wrapper 追加時の 3 箇所同時更新義務を boundary 推奨事項として注記したが、SoT 化 (共有変数化) は hook が POSIX sh ベースで doc が markdown のため現実的でなく、**literal 重複維持 + レビュー時の 3 箇所突合実測が妥当**と reviewer 自身が結論 (ユーザーも「無視」を選択、Issue 化なし)。test reviewer は新規 message-content assertion (deny + 4 reason token AND) の non-vacuity を worktree-only mutation 2 種 (`BLOCKED_SUBKIND` 代入無効化 / `subshell` 文言改変 → いずれも対象 TC が FAIL) で立証 — PR #1320 の mutation 検証実践の連続再現で、message 層の対称転記 (doc ↔ deny message ↔ case 列挙) でも mutation 検証が assertion の load-bearing 性を確かめる決定打となることを示した。メッセージ/判定分離の設計面は [security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う](../patterns/security-guard-message-only-subkind-branching.md) を参照。
+security hook `pre-tool-bash-guard.sh` の (Z) shell-wrapper deny メッセージ是正 PR で、wrapper 一覧 7 種 (`eval` / `bash -c` / `sh -c` / `zsh -c` / `ksh -c` / `dash -c` / `fish -c`) と read-only 代替 3 種 (直接実行 / subshell `( ... )` / `bash <script.sh>`) が doc (`_reviewer-base.md` 新節) / hook deny message / hook case 文の **3 箇所に literal 重複**する構造を prompt-engineer reviewer が実測検証し、完全一致 (伝播漏れなし) を確認して 5 reviewer 全員 0 findings / 1 cycle mergeable。将来 wrapper 追加時の 3 箇所同時更新義務を boundary 推奨事項として注記したが、SoT 化 (共有変数化) は hook が POSIX sh ベースで doc が markdown のため現実的でなく、**literal 重複維持 + レビュー時の 3 箇所突合実測が妥当**と reviewer 自身が結論 (ユーザーも「無視」を選択、Issue 化なし)。test reviewer は新規 message-content assertion (deny + 4 reason token AND) の non-vacuity を worktree-only mutation 2 種 (`BLOCKED_SUBKIND` 代入無効化 / `subshell` 文言改変 → いずれも対象 TC が FAIL) で立証 — 当該 PR の mutation 検証実践の連続再現で、message 層の対称転記 (doc ↔ deny message ↔ case 列挙) でも mutation 検証が assertion の load-bearing 性を確かめる決定打となることを示した。メッセージ/判定分離の設計面は [security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う](../patterns/security-guard-message-only-subkind-branching.md) を参照。
 
 ### shared-state の identity (path) 変更時は全 consumer (read/write/cleanup) を grep で洗い出す — Issue Target Files の writer-only 列挙を信用しない（0 findings の successful preventive application）
 
@@ -1509,13 +1509,13 @@ security hook `pre-tool-bash-guard.sh` の (Z) shell-wrapper deny メッセー�
 stale 参照の一掃 sweep そのものが本 anti-pattern の trigger になる発現形態を 2 PR 連続で実測。**sweep 前は参照ペアの両側が揃って stale なため文書は「integrity を保ったまま古い」状態にあるが、sweep が片側だけを更新した瞬間、同一ファイル内に「新旧が正面衝突する内部矛盾」が新規に生まれる** — 変更前には存在しなかった不整合を sweep 自身が導入する点で、通常の fix transcription 漏れより検出優先度が高い。
 
 - 先行 PR（2 cycle 収束）: lint 検査対象パスの記述を skills/ に更新した consumer (lint/SKILL.md 3.17) と、その 3.17 が明示参照する被参照 SoT (coding-principles.md の Where to Apply / Mechanical enforcement 段落) の片側更新で正面矛盾が発生 (MEDIUM)。同型で grep ヒント行 (workflow-identity.md:170) の更新と直下の caller 例 (172-173 行) の取り残し (LOW-MEDIUM)。fix では **対称位置の更新 + propagation scan による同種 stale パス 5 箇所 (同一ファイル内 4 + cross-file 1) の同時追随**で cycle 2 の新規指摘ゼロ収束を達成 — 「参照ペアの対称位置 + 同種パターンの同時 sweep」が 2 cycle 収束の鍵。
-- PR #1721 (2 cycle 収束): v0.7 フロー追随修正で変更対象セクションのみ更新し、**同ファイル内で同じ機能を説明する周辺セクション (説明ボックス) の旧メンタルモデル記述**が取り残された (推奨事項からユーザー選択で finding 昇格)。教訓: フロー変更の追随修正では「変更対象セクション」だけでなく「同ファイル内で同じ機能を説明する全セクション」を点検する。cycle 2 boundary 推奨として「ガイド系ドキュメントの引数プレースホルダは対象スキルの argument-hint と突合して検証する」cross-file 検証軸も記録 (既存慣習 3 箇所を含むため別 Issue で一元 reconcile)。
+- 2 cycle 収束 の PR: v0.7 フロー追随修正で変更対象セクションのみ更新し、**同ファイル内で同じ機能を説明する周辺セクション (説明ボックス) の旧メンタルモデル記述**が取り残された (推奨事項からユーザー選択で finding 昇格)。教訓: フロー変更の追随修正では「変更対象セクション」だけでなく「同ファイル内で同じ機能を説明する全セクション」を点検する。cycle 2 boundary 推奨として「ガイド系ドキュメントの引数プレースホルダは対象スキルの argument-hint と突合して検証する」cross-file 検証軸も記録 (既存慣習 3 箇所を含むため別 Issue で一元 reconcile)。
 
 canonical 対策: stale 参照 sweep では置換対象 literal の grep hit だけでなく、**hit 行を参照する consumer / hit 行が参照する SoT / 直下の例示**を対称セットとして同 commit で更新する。意図的維持 (歴史記録/機能コード/同期 invariant) の線引きは [stale 参照一掃の『残照ゼロ』AC は意図的維持カテゴリの線引きで判定する](../heuristics/stale-sweep-intentional-retention-boundary.md) を参照。
 
 ### template active-section 昇格時の drift anchor 3-site 同期 — mechanical test が対称性を強制する successful preventive application
 
-config template のセクションを active 化 (fresh init 書き出し対象へ昇格) する変更は、同一 invariant「どのセクションが fresh init 書き出し対象か」を **3 サイトに mirror** する構造で、本 anti-pattern の典型 trigger になる。`safety` セクションを `rite-config.yml` の `--- Advanced ---` マーカーより上へ移動した PR #1732 では次の 3 site を同時更新した: (1) template のセクション位置、(2) `init/SKILL.md` の `--upgrade` drift anchor 2 箇所 (top-level sections 列挙 + sub-keys 列挙)、(3) `docs/SPEC.md` の Advanced 分類一覧 (init.md の直接ミラー)。**`init-upgrade-drift.test.sh` の T-10 / T-12 が template の Advanced マーカーより上の active セクション・サブキーを動的抽出して init.md の drift anchor に列挙されているか照合する**ため、昇格漏れ (init.md anchor 未追記) は test FAIL で機械的に surface する。2 reviewer 0 blocking findings / 1 cycle mergeable。教訓: **section 位置を SoT とし、それを参照する drift anchor / mirror doc の全 site を同 commit で更新する。mechanical test (動的抽出 → 列挙照合) が存在すれば mirror site の対称性は構造的に強制される** (wiki / multi_session / tdd の先行昇格と同型 precedent)。tech-writer は「values unchanged / position moved」コメントの厳密性 (position 移動に加え 3 キーへコメントも追加) を LOW nit で指摘したが Observed Likelihood Gate で非ブロッキング降格。
+config template のセクションを active 化 (fresh init 書き出し対象へ昇格) する変更は、同一 invariant「どのセクションが fresh init 書き出し対象か」を **3 サイトに mirror** する構造で、本 anti-pattern の典型 trigger になる。`safety` セクションを `rite-config.yml` の `--- Advanced ---` マーカーより上へ移動した当該 PR では次の 3 site を同時更新した: (1) template のセクション位置、(2) `init/SKILL.md` の `--upgrade` drift anchor 2 箇所 (top-level sections 列挙 + sub-keys 列挙)、(3) `docs/SPEC.md` の Advanced 分類一覧 (init.md の直接ミラー)。**`init-upgrade-drift.test.sh` の T-10 / T-12 が template の Advanced マーカーより上の active セクション・サブキーを動的抽出して init.md の drift anchor に列挙されているか照合する**ため、昇格漏れ (init.md anchor 未追記) は test FAIL で機械的に surface する。2 reviewer 0 blocking findings / 1 cycle mergeable。教訓: **section 位置を SoT とし、それを参照する drift anchor / mirror doc の全 site を同 commit で更新する。mechanical test (動的抽出 → 列挙照合) が存在すれば mirror site の対称性は構造的に強制される** (wiki / multi_session / tdd の先行昇格と同型 precedent)。tech-writer は「values unchanged / position moved」コメントの厳密性 (position 移動に加え 3 キーへコメントも追加) を LOW nit で指摘したが Observed Likelihood Gate で非ブロッキング降格。
 
 ### 保証文言 overclaim 修正の 3 面一貫伝播による 2 cycle 収束（successful propagation application）
 
@@ -1563,7 +1563,7 @@ reviewer registry 統合（13→9 種）の cycle 2 fix で references/ 配下�
 
 伝播漏れは実装だけでなく **test の pin** にも起きる。P0/P2 のように対称な 2 経路が別変数を使う実装では、**片方の経路しか実行しない pin はもう片方の退行を構造的に検出できない**。cleanup 登録から片側ずつ外す mutation を当てると、実行していない側だけが SURVIVE する。
 
-PR #2035 では 3 cycle 連続でこれが起きた:
+本 PR では 3 cycle 連続でこれが起きた:
 
 - cycle 2: 否定 assert の補強を P0 側に入れて P2 側に入れず、mutation が片側だけ SURVIVE
 - cycle 3: hygiene pin を P0 のみに置き、P2 側の cleanup 登録を外す mutation が SURVIVE
@@ -1577,7 +1577,7 @@ PR #2035 では 3 cycle 連続でこれが起きた:
 
 ### 限定句・注記も対称位置に同時に入れる
 
-コードだけでなく散文の限定句も同じ。PR #2035 は「この記述は形式契約であって現在の配線状況ではない」という限定句をサブフィールド表と型ガード節には入れたが、cross-field invariant と reviewer 向け自問には入れなかった。結果、同一ファイル内・同一注入プロンプト内で矛盾する 2 つの主張が併存した。**同じ主張をしている全箇所を grep して一括で処理する**。
+コードだけでなく散文の限定句も同じ。当該 PR は「この記述は形式契約であって現在の配線状況ではない」という限定句をサブフィールド表と型ガード節には入れたが、cross-field invariant と reviewer 向け自問には入れなかった。結果、同一ファイル内・同一注入プロンプト内で矛盾する 2 つの主張が併存した。**同じ主張をしている全箇所を grep して一括で処理する**。
 
 ## 関連ページ
 
@@ -1648,7 +1648,7 @@ PR #2035 では 3 cycle 連続でこれが起きた:
 - [PR #1244 review results cycle 3 (累積 52 回目: cycle 2 fix が `--state all` を `#N` 経路 line 54 にだけ付与し対称な `(なし)` 経路 line 55 への伝播を忘れた典型 Asymmetric Fix Transcription を code-quality が LOW-MEDIUM 検出。house pattern cleanup.md:64 / close.md:103 と line 54 に揃えて解消)](../../raw/reviews/20260602T031333Z-pr-1244.md)
 - [PR #1244 fix results cycle 3 (F-05: line 55 にも `--state all` を付与し house pattern と対称化。同一 PR の review-fix loop 内で本 anti-pattern が 2 連続発現 (F-04 glob → F-05 --state all 欠落) し fix が次 cycle の新 finding を生む fractal pattern を実測)](../../raw/fixes/20260602T031509Z-pr-1244.md)
 - [PR #1244 review results cycle 6 mergeable (4 reviewer 全員 mergeable・blocking 0 に収束。reviewer severity 一貫性ガードが振動収束に寄与)](../../raw/reviews/20260602T033737Z-pr-1244.md)
-- [PR #1238 review results — successful preventive application: init.md 散文の rite hook 検出基準を SoT `RITE_HOOK_RE` 参照へ統一し 先行 PR が実装 regex 側のみ修正した片肺 defect を散文側で完結。Phase 4.5 内 20 検出箇所を着手時 grep で網羅し旧 substring 基準残存ゼロを確認、0 blocking findings](../../raw/reviews/20260601T185616Z-pr-1238.md)
+- [PR #1238 review results — successful preventive application: init.md 散文の rite hook 検出基準を SoT `RITE_HOOK_RE` 参照へ統一し先行 PR が実装 regex 側のみ修正した片肺 defect を散文側で完結。Phase 4.5 内 20 検出箇所を着手時 grep で網羅し旧 substring 基準残存ゼロを確認、0 blocking findings](../../raw/reviews/20260601T185616Z-pr-1238.md)
 - [PR #1238 review results cycle 2 (behavioral test 8 ケース (dev/cache match・look-alike/segment 過多 non-match) で散文-実装整合を検証、regex literal の 3 系統独立コピー pre-existing drift を follow-up Issue 候補に boundary 分類。2 cycle 0 blocking 収束)](../../raw/reviews/20260601T191319Z-pr-1238.md)
 - [PR #1238 fix results (F-01: SoT 散文の regex 共有元帰属を `.sh` wrapper → 実体 `.py` へ訂正、wrapper/委譲先の二層構造帰属ミスを是正。review 推奨事項を AskUserQuestion 承認で current-pr scope に昇格)](../../raw/fixes/20260601T190814Z-pr-1238.md)
 - [PR #1225 review results — 0 findings の successful preventive application: `shift 2` → `shift; shift` hardening を sibling helper 5 スクリプト 18 箇所へ横展開。4 reviewer (code-quality / error-handling / test / security) 全員が独立に `Grep -rn 'shift 2' plugins/` で残存実 statement を全件 3 脆弱性条件 (set -e 不在 / `"${2:-}"` default 展開 / required-value ガード不在) に照合 + timeout revert test (修正前 exit 124 hang / 修正後 no-hang) を実機検証して横展開漏れゼロを cross-validation。faithful hardening + reference fix #1223 準拠 + 網羅性機械検証の 3 条件が揃い 1 cycle mergeable、回帰テスト 12/12 pass。recommendation は TC-6 anti-pattern guard regex 境界等 scope 外の design_confirmation に留まる](../../raw/reviews/20260601T045248Z-pr-1225.md)
@@ -1740,7 +1740,7 @@ PR #2035 では 3 cycle 連続でこれが起きた:
 - [PR #827 cycle 1 review (累積 22 回目: Helper docstring caller-extension drift HIGH + writer-side CLI flag vs reader-side bash test 表記混同 MEDIUM + sentinel sub-discriminator suffix 未付与 LOW、3 件 HIGH/MEDIUM/LOW から 1 cycle 構造的収束)](../../raw/reviews/20260504T202047Z-pr-827.md)
 - [PR #827 fix (3 finding 全件対応: helper docstring を inline コメントで design intent pin / writer-side ↔ reader-side prose 統一 / `STATE_READ_FAILED_{phase,active}` sub-discriminator suffix 導入)](../../raw/fixes/20260504T202458Z-pr-827.md)
 - [PR #827 cycle 2 review (1 件 LOW polish のみ: PR 適用前 semantics を前提とした第 1 段落の refactor 後 stale 化、formal anchor 無しで safety net demote、prose 冒頭段落 update を refactor PR で必須化する canonical を追加)](../../raw/reviews/20260504T203317Z-pr-827-cycle2.md)
-- [PR #839 review — helper-side follow-up: state-read.sh docstring の caller 列挙を最新化し 先行 PR で identified された Helper docstring caller-extension drift sub-pattern の helper / caller / prose 3 layer 同期契約を完成。0 blocking findings (CRITICAL/HIGH/MEDIUM=0) で 1 cycle 完了、両 reviewer (code-quality / error-handling) が Grep で全 caller を独立検証し ready.md:224 が唯一の boolean caller であることを確認。累積 22 回目 sub-pattern の verification cycle として実測 — sub-pattern 識別後の follow-up は構造化された review-fix loop なしに 0 findings に到達する efficiency を示す](../../raw/reviews/20260505T151316Z-pr-839.md)
+- [PR #839 review — helper-side follow-up: state-read.sh docstring の caller 列挙を最新化し先行 PR で identified された Helper docstring caller-extension drift sub-pattern の helper / caller / prose 3 layer 同期契約を完成。0 blocking findings (CRITICAL/HIGH/MEDIUM=0) で 1 cycle 完了、両 reviewer (code-quality / error-handling) が Grep で全 caller を独立検証し ready.md:224 が唯一の boolean caller であることを確認。累積 22 回目 sub-pattern の verification cycle として実測 — sub-pattern 識別後の follow-up は構造化された review-fix loop なしに 0 findings に到達する efficiency を示す](../../raw/reviews/20260505T151316Z-pr-839.md)
 - [PR #829 fix cycle 1 (design doc plan PR で Phase 0.4.x 統合範囲が 4 sibling 表 (Section 3 / 4.1 / 6.2 / 8.1) で 2 件 0.4.2 含む / 2 件欠落、Section 3.1 references 列挙が「7 ファイル」claim と 6 件のみ列挙で drift。plan layer (実コード以外) でも asymmetric fix transcription が発火する事例として実測累積)](../../raw/fixes/20260504T231559Z-pr-829.md)
 - [PR #838 review cycle 1 (Doc-Heavy retrospective PR で 6 findings: 数値表記揺れ HIGH x 1 cross-validated + AC evidence grep 結果不整合 HIGH x 1 + PR description 経由数値伝播ミス MEDIUM x 1 + 散文 phrasing ズレ MEDIUM x 1 + self-referential stale risk LOW x 2、累積 24 回目 instance の起点)](../../raw/reviews/20260505T133653Z-pr-838.md)
 - [PR #838 fix cycle 1 (6 findings 全件対応、commit message body で明示宣言した修正対象を Section 11.1 で見落とす partial fix を実施し cycle 2 で cross-validated MEDIUM として detect される pattern の起点)](../../raw/fixes/20260505T134051Z-pr-838.md)
