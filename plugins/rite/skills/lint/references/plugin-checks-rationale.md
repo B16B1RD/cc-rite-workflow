@@ -34,6 +34,8 @@ Exclusions: fenced code blocks, range form `:N-M`, backtick-quoted spans, self. 
 
 ## Comment journal narration (comment-journal-check.sh)
 
+> P5/P6（説明的番号参照）の検出設計の根拠・除外の実測値は `../../wiki-lint/references/descriptive-refs-rationale.md` が SoT。本節は P5/P6 の**検出定義**（キーワード語彙・whitelist・self-exclude 判断）を扱う。
+
 Detects high-confidence narrative comment violations **and descriptive Issue/PR number references** in `plugins/rite/**/*.{sh,md}`, repo-root `docs/**/*.md`, and `.rite/wiki/**/*.md` (ドキュメント散文・Wiki ページまでスコープ拡張 — SoT [適用スコープ](../../rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般). This is the fast-fail mechanical layer below the LLM reviewers — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments.
 
 Detected patterns:

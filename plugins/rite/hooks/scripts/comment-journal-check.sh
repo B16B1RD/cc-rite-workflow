@@ -46,6 +46,9 @@
 #                  Finding IDs are scoped to one review run; the reference
 #                  decays the moment that review is closed.
 #
+#   rationale (検出設計の根拠・除外の実測値):
+#     skills/wiki-lint/references/descriptive-refs-rationale.md
+#
 #   P5: descriptive Issue/PR reference (keyword + number, SoT 禁止句リスト由来)
 #       regex: (^|[^A-Za-z])([Ii]ssues?|[Pp][Rr]s?|[Rr]efs?|[Ss]ee|…) *#[0-9]+([^0-9]|$)
 #       語彙は大小文字を対称に受ける (`issue #12` / `pr #3` も説明的参照)。左側の

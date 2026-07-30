@@ -110,7 +110,7 @@ assert "TC-2 ソース節配下の provenance ラベルは hit しない (総数
 # ---- TC-6 語境界 -------------------------------------------------------------
 b=$(scan 'PR #2047 の語境界')
 case "$b" in
-  *"reference: PR #2047"*) pass "TC-6 報告される一致は PR #2047" ;;
+  *"reference: PR #2047") pass "TC-6 報告される一致は PR #2047 (末尾に残余なし)" ;;
   *) fail "TC-6 語境界の報告文字列が想定外 (actual: $b)" ;;
 esac
 case "$b" in
@@ -122,6 +122,14 @@ b6=$(scan '#1152 で別途対応')
 case "$b6" in
   *"(ja): #1152 で別途対応"*) pass "TC-6 P6 の報告文字列が末尾まで保たれる" ;;
   *) fail "TC-6 P6 の報告文字列が壊れている (actual: $b6)" ;;
+esac
+
+# 行中一致: 左境界のために消費した 1 文字が報告から trim されること。行頭一致の fixture だけ
+# だと左 trim が常に no-op になり、削除しても緑のまま先頭括弧が混入する。
+mid=$(scan 'ここで (refs #1150) を参照')
+case "$mid" in
+  *"reference: refs #1150") pass "TC-6 行中一致で左右とも trim される" ;;
+  *) fail "TC-6 行中一致の報告文字列が想定外 (actual: $mid)" ;;
 esac
 
 # ---- TC-9 multi-match --------------------------------------------------------
@@ -217,6 +225,11 @@ printf 'Issue #1400 の経緯
 ' > "$ALLSBX/plugins/rite/hooks/tests/comment-journal-check.test.sh"
 printf 'PR #1500 の経緯
 ' > "$ALLSBX/plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh"
+# self-exclude 対象でない違反も各 root に置く。docs だけだと plugins/rite / .rite/wiki が
+# scan_roots から落ちても positive control が充足し、除外 assert が無言で vacuous になる。
+printf 'Issue #1600 の経緯\n' > "$ALLSBX/plugins/rite/hooks/tests/other.test.sh"
+mkdir -p "$ALLSBX/.rite/wiki/pages"
+printf 'PR #1700 の経緯\n' > "$ALLSBX/.rite/wiki/pages/w.md"
 all_out=$( ( cd "$ALLSBX" && bash "$SCRIPT" --all --quiet --repo-root "$ALLSBX" ) 2>/dev/null )
 all_lines=$(printf '%s' "$all_out" | grep -c . || true)
 # positive control: --all が 1 件も出さない状況 (scan root 不在で rc=2 等) では下の assert が
@@ -226,6 +239,10 @@ if [ "${all_lines:-0}" -gt 0 ]; then
 else
   fail "TC-14 --all が 0 件 — 除外 assert が vacuous になるため判定不能"
 fi
+# 各 scan root を実際に歩いたことを測る (歩いていなければ除外 assert が何も保証しない)。
+assert "TC-14 docs root を走査した" "1" "$(printf '%s' "$all_out" | grep -c 'docs/violating' || true)"
+assert "TC-14 plugins/rite root を走査した" "1" "$(printf '%s' "$all_out" | grep -c 'tests/other' || true)"
+assert "TC-14 .rite/wiki root を走査した" "1" "$(printf '%s' "$all_out" | grep -c 'wiki/pages/w' || true)"
 excluded_hits=$(printf '%s' "$all_out" | grep -cE 'tests/(comment-journal-check|wiki-lint-descriptive-refs)\.test\.sh' || true)
 assert "TC-14 --all で検出器 test の fixture が hit しない" "0" "$excluded_hits"
 

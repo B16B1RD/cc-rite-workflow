@@ -197,6 +197,7 @@ exit 0
 | `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（raw frontmatter の `ingest_status: skipped` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
 | `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 の `wiki-lint-broken-refs.sh` が emit する `n_broken_refs=` 値を転記 (LLM 独自カウント禁止) |
+| `descriptive_refs_read_errors` | `0` | ステップ 7.5 helper の stdout から読む（LLM 独自カウント禁止）。読出または検出できなかったページ数 |
 | `n_descriptive_refs` | 0 | ステップ 7.5 の `wiki-lint-descriptive-refs.sh` が emit する `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 値を転記する（**LLM 独自カウント禁止**。ただし本カテゴリは informational のため `issues[]` へは転記しない — ステップ 7.5「検出結果の記録」節参照）。ページ本文の説明的 Issue/PR 番号参照の hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
 | `issues[]` | `[]` | 各検出結果を（**例外: ステップ 7.5 — 同ステップ「検出結果の記録」節を参照**） `{category, page, detail}` として append (helper 委譲カテゴリは marker block の行を転記) |
 
@@ -618,10 +619,10 @@ fi
 Wiki ページ本文に残った**説明目的の Issue/PR 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N は…を統一した」「Issue #N 系譜の継続」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。括弧やキーワードに包まれない裸の `PR #N` / `Issue #N` も対象で、これは SoT §C Detection Heuristics が reviewer 側 regex として既に宣言している範囲に機構を追随させたもの。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
 
 **検出対象と除外**:
-- 対象: ステップ 2 で収集した `pages_list` の各ページ**本文**
+- 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）
 - 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME を含む行（前方追跡ポインタ）
 
-検出は 2 規則の**正規化**で表現する（表層形の列挙ではない）。R1 は「参照キーワードが番号の直前に来る」形で、括弧付き `(refs #N)` / `see PR #N` / 裸の `PR #N は…` はすべてこの 1 規則に畳まれる。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は正当な文脈が多すぎるため検出しない。語境界は `([^0-9]|$)` で表現する（gawk の `\b` はバックスペース扱いで never-match になるため使用禁止）。各除外の判断根拠と副作用（その範囲内では既知の再発が見えなくなる）は helper 冒頭コメントに記録している。
+検出は 2 規則の**正規化**で表現する（表層形の列挙ではない）。R1 は「参照キーワードが番号の直前に来る」形で、括弧付き `(refs #N)` / `see PR #N` / 裸の `PR #N は…` はすべてこの 1 規則に畳まれる。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は正当な文脈が多すぎるため検出しない。語境界は `([^0-9]|$)` で表現する（gawk の `\b` はバックスペース扱いで never-match になるため使用禁止）。各除外の判断根拠と副作用（その範囲内では既知の再発が見えなくなる）は `references/descriptive-refs-rationale.md#exclusions` に記録している。
 
 **検出ロジック**は `wiki-lint-descriptive-refs.sh` に委譲する（stdin `pages_list` はステップ 6.2 helper と同型 — ステップ 6.0 helper は入力を自前で列挙し stdin を読まない。marker block + read_ok enum は 6.0 / 6.2 の双方と同型）。
 
@@ -657,7 +658,7 @@ fi
 
 **検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**で、もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録されステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。本ステップを転記すると 233 ページ分の検出詳細行（実測 736 hits）が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
 
-marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、**件数**は本 SKILL.md 内に消費者を持たない（marker block の**受信の有無**は上記 enum 判定に効くため、出力自体は削らないこと）。ページ内訳を人間が見たい場合は helper を直接実行する。
+marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、**件数**は本 SKILL.md 内に消費者を持たない（helper を直接実行したときのページ内訳がここでしか得られないため、出力自体は削らないこと）。ページ内訳を人間が見たい場合は helper を直接実行する。
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
@@ -937,7 +938,7 @@ Wiki Lint が完了しました。
 |------|------------------|
 | ステップ 7.5 未実行（ステップ 3-7 skip 経路 = 処理対象 0 件） | 空文字列 |
 | `read_ok=true` かつ `read_errors=0` | 空文字列 |
-| `read_ok=true` かつ `read_errors>0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} ページ読出失敗のため集計から除外)` |
+| `read_ok=true` かつ `read_errors>0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} ページを読出または検出できず集計から除外)` |
 | `read_ok=io_error` | ` ⚠️ (未実測: io_error — 全ページ読出失敗)` |
 | `read_ok=skipped_helper_missing` | ` ⚠️ (未実測: skipped_helper_missing — helper 不在)` |
 | marker block / enum 未受信（bash block 途中異常終了） | ` ⚠️ (未実測: skipped_helper_missing 同等 — 出力未受信)` |

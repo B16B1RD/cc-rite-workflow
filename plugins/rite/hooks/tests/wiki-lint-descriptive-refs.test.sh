@@ -30,6 +30,8 @@
 #   TC-19b separate_branch の読出に cat fallback が無い (ブランチ分離の pin)
 #   TC-22  2 検出器の R1 regex が literal 一致 (語彙 drift の検出)
 #   TC-23  検出器の破損が read_errors / io_error へ伝播する (0 件を実測済みと名乗らない)
+#   TC-24  traversal gate / 読出・検出失敗の WARNING / E1 ブロック終端
+#   TC-11b 部分読出失敗は read_ok=true のまま read_errors だけ立つ
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -121,6 +123,15 @@ assert_grep "TC-9 marker block begin" "$OUT" '^---descriptive_refs_begin---$'
 assert_grep "TC-9 marker block end" "$OUT" '^---descriptive_refs_end---$'
 assert_grep "TC-9 marker block に page=/hits= 行" "$OUT" "^page=$FIXTURE_REL; hits=[0-9]+$"
 assert_grep "TC-9 stderr に WikiDescriptiveRef 行" "$ERR" '^WikiDescriptiveRef: page=pages/anti-patterns/fixture\.md, hits=[0-9]+$'
+# 1 枚だけだと descriptive_refs_pages が「hits>0 のページ数」でも定数 1 でも同じ値になる。
+# hit する 2 枚 + clean 1 枚で識別力を出す (計上条件を -ge 0 に緩めた変異では 3 になる)。
+cp "$SBX/$FIXTURE_REL" "$SBX/.rite/wiki/pages/anti-patterns/fixture2.md"
+printf '# clean\n\n番号を含まない本文\n' > "$SBX/.rite/wiki/pages/anti-patterns/clean.md"
+out9b=$(printf '%s\n%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/pages/anti-patterns/fixture2.md" ".rite/wiki/pages/anti-patterns/clean.md" \
+  | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
+assert "TC-9 該当ページ数=2 (定数でも全件数でもない)" "2" "$(printf '%s' "$out9b" | sed -n 's/^descriptive_refs_pages=//p')"
+assert "TC-9 marker block の page= 行数=2" "2" "$(printf '%s' "$out9b" | grep -c '^page=')"
+rm -f "$SBX/.rite/wiki/pages/anti-patterns/fixture2.md" "$SBX/.rite/wiki/pages/anti-patterns/clean.md"
 
 # fixture の本文で hit すべき行は 8 行:
 #   PR #1300 / Issue #1284 / (refs #1150) / See PR #1149 / 詳細は #1151 /
@@ -394,6 +405,24 @@ fb_hits=$(printf '%s' "$fb_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=/
 assert "TC-19b worktree にページが在っても git show 失敗は io_error (cat fallback なし)" "io_error" "$fb_ok"
 assert "TC-19b cat fallback が無いので hits は 0" "0" "$fb_hits"
 
+# ---- TC-24: cycle 5 で足した診断・gate の pin --------------------------------
+# traversal gate: `.rite/wiki/pages/` prefix を持つため default arm に落ちず、専用 arm が要る。
+tv_err="$SBX/tv.err"; tmp_files+=("$tv_err")
+printf '%s\n' ".rite/wiki/pages/../../../etc/passwd" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>"$tv_err"
+assert "TC-24 traversal パスは exit 1" "1" "$?"
+assert_grep "TC-24 traversal は専用の理由を出す" "$tv_err" 'パストラバーサル遮断'
+assert_grep "TC-24 traversal 診断が違反行を出す (定数 1 でない)" "$tv_err" '検出行: \.rite/wiki/pages/\.\./'
+
+# 読出失敗 / 検出失敗の WARNING は、cycle 4 security 指摘が要求した観測性そのもの。
+rd_err="$SBX/rd.err"; tmp_files+=("$rd_err")
+printf '%s\n' ".rite/wiki/pages/anti-patterns/missing.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>"$rd_err"
+assert_grep "TC-24 読出失敗が WARNING で観測できる" "$rd_err" 'の読出に失敗しました'
+assert_not_grep "TC-24 読出失敗を検出失敗と取り違えない" "$rd_err" '検出 awk が失敗'
+
+# E1 のブロック終端: `sources:` の後ろに来るキーが走査対象へ戻ること。
+tc8_after=$(printf -- '---\nsources:\n  - ref: "raw/reviews/x.md"\nnote: "PR #1301 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
+assert "TC-24 sources ブロックの後ろのキーは走査対象へ戻る" "1" "$(single_hits "$tc8_after")"
+
 # ---- TC-22: 2 検出器の検出 regex が literal 一致すること -------------------
 # 同じ規則を 2 実装に持つため、語彙を 1 語足すたび両方の同期が要る。実装の共通化は
 # しない (読出元も計数単位も違う) 代わりに、literal のバイト一致を pin して drift を検出する。
@@ -402,7 +431,9 @@ CJC="$PLUGIN_ROOT/hooks/scripts/comment-journal-check.sh"
 # regex 全体を突き合わせるとエスケープが複雑になり、抽出側の破損と drift を混同しやすい。
 # 語彙 alternation だけを抜くと両端 (先頭への挿入・末尾への追記) の drift を取り逃がす。
 # R1 全体 (左境界 + 語彙 + 番号規則 + 右境界) を 1 単位として比較する。
-vocab_of() { grep -oE '\(\^\|\[\^A-Za-z\]\)\([^)]*\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)' "$1" | head -1; }
+# コメント行を落としてから抽出する。ヘッダコメントは語彙を `…` で省略した同形を持つため、
+# 素で grep すると 2 ファイルの**コメント同士**を比較して drift を 1 クラスも検出しなくなる。
+vocab_of() { grep -v '^[[:space:]]*#' "$1" | grep -oE '\(\^\|\[\^A-Za-z\]\)\([^)]*\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)' | head -1; }
 helper_vocab=$(vocab_of "$SCRIPT")
 cjc_vocab=$(vocab_of "$CJC")
 if [ -z "$helper_vocab" ]; then

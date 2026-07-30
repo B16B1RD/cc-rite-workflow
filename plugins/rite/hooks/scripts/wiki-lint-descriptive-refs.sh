@@ -7,7 +7,7 @@
 # so a body carrying 「PR #N は…」「詳細は #N」「(refs #N)」 is surfaced as a finding.
 #
 # rationale (why a helper, why normalization, why not `\b`, exclusion measurements):
-#   skills/wiki-lint/references/descriptive-refs-rationale.md
+#   skills/wiki-lint/references/descriptive-refs-rationale.md#exclusions
 #
 # Symmetry note: this is the ステップ 7.5 counterpart to ステップ 6.0's
 # `wiki-lint-skipped-refs.sh` and ステップ 6.2's `wiki-lint-source-refs.sh`. The stdin
@@ -75,7 +75,7 @@
 # inline `grep -c` implementation reported.
 #
 # Exit codes:
-#   0  正常 (読出失敗は descriptive_refs_read_ok=io_error で表現)
+#   0  正常 (読出失敗・検出失敗は descriptive_refs_read_errors が件数、全件失敗時のみ read_ok=io_error)
 #   1  fail-fast (placeholder residue / unknown branch_strategy)
 #   2  invocation error (引数欠落 / repo-root cd 失敗)
 #
@@ -192,17 +192,21 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root '$REPO_ROOT'" >&2; exit
 # partial pollution gate: raw_list 行の混入は検出対象を取り違えるため fail-fast
 # (ステップ 2.2 stdout の separator 以降を巻き込んだ substitute の検出)。
 if [ -n "$pages_list" ]; then
-  _polluted=""
+  _polluted=""; _pollute_reason=""
   while IFS= read -r _p; do
     [ -z "$_p" ] && continue
     case "$_p" in
-      *..*) _polluted=1 ;;
+      *..*) _polluted="$_p"; _pollute_reason=traversal; break ;;
       .rite/wiki/pages/*) ;;
       *) _polluted="$_p"; break ;;
     esac
   done <<< "$pages_list"
   if [ -n "$_polluted" ]; then
-    echo "ERROR: ステップ 7.5 の \$pages_list に '.rite/wiki/pages/' prefix を持たない行が含まれています (partial pollution 検出)" >&2
+    if [ "$_pollute_reason" = traversal ]; then
+      echo "ERROR: ステップ 7.5 の \$pages_list に '..' を含むパスがあります (パストラバーサル遮断)" >&2
+    else
+      echo "ERROR: ステップ 7.5 の \$pages_list に '.rite/wiki/pages/' prefix を持たない行が含まれています (partial pollution 検出)" >&2
+    fi
     echo "  検出行: $(printf '%s' "$_polluted" | neutralize_ctrl)" >&2
     echo "  対処: ステップ 2.2 stdout から separator より前の '.rite/wiki/pages/...' 行のみを substitute してください" >&2
     exit 1
@@ -211,13 +215,14 @@ fi
 
 # ---- 検出本体 ---------------------------------------------------------------
 
-# 本文抽出フィルタ: E1 frontmatter / E3 code fence / E2 `## ソース` 節 / E5 TODO・FIXME を落とし、
+# 本文抽出フィルタ: E1 frontmatter の sources: ブロック / E3 code fence / E2 `## ソース` 節 / E5 TODO・FIXME を落とし、
 # E4 inline code span を `_` へマスクした残りを stdout に出す。
 # 順序が契約: fence の toggle は他のどの `next` よりも先に評価する。TODO を含む行や
 # `## ソース` 行で先に打ち切ると fence 状態が desync し、以降の判定が丸ごとずれる。
 # `## ソース` は **節スコープ**で落とす (見出しから次の `##` 見出しの手前まで)。ファイル末尾まで
 # 打ち切ると、wiki-ingest が `## ソース` の後ろに追記する `## 補強:` 等の本文が丸ごと盲点になる
-# (実測: 13 ページ / 81 hits)。節の判定は fence より後に置く — フェンス内に引用された
+# (実測: 現行の接尾辞許容見出しに対して 7 ページ / 28 hits。接尾辞許容前は 13 ページ / 81 hits)。
+# 節の判定は fence より後に置く — フェンス内に引用された
 # `## ソース` で節スコープが誤発火しないようにするため。
 # 見出しは接尾辞を許容する: wiki-ingest は `## ソース（追記分）` / `## ソース（追記分 N）` を
 # 生成する (実測 13 箇所。template にもコードにも定義がない LLM 生成形)。厳密一致にすると
@@ -238,8 +243,8 @@ insrc                       { next }
 /(TODO|FIXME)/              { next }
 '
 # 終端アクション: インラインコードスパンを `_` へマスクしてから検出 regex で数える。
-# フィルタ本体と 2 変数に分けているのは、mutation test (TC-16) が本文フィルタだけを差し替え
-# られるようにするため。統合すると mutant 生成器が壊れる。
+# 「落とす行の規則」と「終端アクション」を 2 変数に分ける。読み分けができるほか、
+# mutation test (TC-16) が本文フィルタだけを差し替える seam にもなっている。
 _RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }'
 
 # R1 (keyword vocabulary + number) と R2 (keyword-less な日本語 2 構文) の 2 規則。
@@ -279,28 +284,30 @@ while IFS= read -r page; do
   fi
   if [ "$page_rc" -ne 0 ]; then
     n_read_errors=$((n_read_errors + 1))
-    echo "WARNING: ページ ${page} の読出に失敗しました (rc=$page_rc, branch_strategy=$branch_strategy)" >&2
+    page_disp=$(printf '%s' "$page" | neutralize_ctrl)
+    echo "WARNING: ページ ${page_disp} の読出に失敗しました (rc=$page_rc, branch_strategy=$branch_strategy)" >&2
     # パスは sed 式へ入れない。定数 sed でインデントし、パスは別行で中和して出す
     # (sibling helper が例外なく定数 sed なのはこのため)。
     [ -n "$page_err" ] && [ -s "$page_err" ] && \
-      head -3 "$page_err" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
+      head -3 "$page_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     continue
   fi
   # 本文抽出と計数を 1 つの awk に閉じる。終端に `grep -c` を置くと no-match の rc=1 と
   # awk の異常終了が区別できず、検出器が壊れても「0 件」として read_ok=true で通っていた
   # (検出器そのものの破損だけが未実測ゲートをすり抜ける唯一の穴だった)。
-  hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_RITE_COUNT_ACTION}"); hits_rc=$?
-  case "$hits" in ''|*[!0-9]*) hits_rc=1 ;; esac
+  hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_RITE_COUNT_ACTION}"); awk_rc=$?; hits_rc=$awk_rc
+  case "$hits" in ''|*[!0-9]*) [ "$hits_rc" -eq 0 ] && hits_rc=1 ;; esac
   if [ "$hits_rc" -ne 0 ]; then
     # 検出器が機能していないページは「0 件」ではなく読出失敗として計上する。
-    echo "WARNING: ページ ${page} の検出 awk が失敗しました (rc=$hits_rc, 出力='$hits')" >&2
+    page_disp=$(printf '%s' "$page" | neutralize_ctrl)
+    echo "WARNING: ページ ${page_disp} の検出 awk が失敗しました (rc=$hits_rc, awk_rc=$awk_rc, 出力='$hits')" >&2
     n_read_errors=$((n_read_errors + 1))
     continue
   fi
   if [ "$hits" -gt 0 ]; then
     n_descriptive_refs=$((n_descriptive_refs + hits))
     n_pages_with_hits=$((n_pages_with_hits + 1))
-    hit_lines="${hit_lines}page=${page}; hits=${hits}"$'\n'
+    hit_lines="${hit_lines}page=$(printf '%s' "$page" | neutralize_ctrl); hits=${hits}"$'\n'
     echo "WikiDescriptiveRef: page=$(printf '%s' "${page#.rite/wiki/}" | neutralize_ctrl), hits=${hits}" >&2
   fi
 done <<< "$pages_list"
@@ -316,7 +323,7 @@ case "$n_pages_total" in
     # 到達不能になり「0 件」が実測済みとして通るため、io_error 側へ寄せる。
     echo "WARNING: pages_list の件数計算に失敗しました (値: '$n_pages_total')。io_error として扱います" >&2
     n_pages_total=0
-    [ "$n_read_errors" -gt 0 ] 2>/dev/null || n_read_errors=1
+    [ "$n_read_errors" -eq 0 ] && n_read_errors=1
     ;;
 esac
 descriptive_refs_read_ok="true"
