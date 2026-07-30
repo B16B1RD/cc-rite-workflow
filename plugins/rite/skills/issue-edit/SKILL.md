@@ -264,16 +264,17 @@ Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 
 | No body change (title / Projects fields only) | **Do not run the check** — proceed to 3.2 |
 | 0 claims in the changed portion | **Silent skip** — no output, no question; proceed to 3.2 |
 | All `VERIFIED` | Proceed to 3.2 without extra output |
-| `CONTRADICTED` present | Surface it in the Phase 3.2 confirmation with the 3 options (`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`). Never auto-rewrite |
-| Self-contradiction candidates (M or above) | List them in the Phase 3.2 confirmation. Never auto-fix |
-| `UNVERIFIED` present | **Do not modify the body here.** List the claims and the proposed 「要確認」(or 「要検証」for external-spec claims) annotation in the Phase 3.2 confirmation, and apply it only after the user selects 変更を適用. If the user declines, proceed without annotating. Do not block the edit |
-| Back-verification command failed | Treat as `UNVERIFIED`, emit a `WARNING` on stderr, proceed to 3.2 |
+| `CONTRADICTED` present | Raise this check's own `AskUserQuestion` with the 3 options the reference defines (`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`). Never auto-rewrite |
+| `UNVERIFIED` present | Annotate the body with 「要確認」(or 「要検証」for external-spec claims) as the reference's three-value table specifies. Do not block the edit |
+| Back-verification command failed | Classify per the reference's error table (`Could not resolve` → `CONTRADICTED`, otherwise `UNVERIFIED` + a `WARNING` on stderr), then proceed |
 
-All findings — **including `UNVERIFIED`** — fold into the existing Phase 3.2 confirmation rather than raising a separate `AskUserQuestion`, so an edit with nothing to report keeps its current single-confirmation flow. **The body is never rewritten before that confirmation**: every annotation and correction surfaced here is applied only after the user approves, which is what keeps the diff shown in 3.1 identical to what Phase 4.1 writes.
+This check raises **its own `AskUserQuestion`** — it does not fold into the Phase 3.2 confirmation. That keeps the reference's 4-item budget and its overflow rule applicable verbatim (Phase 3.2's own question never competes for the slots), and it settles every fact-check decision before the user is asked to approve the edit.
+
+Apply the approved results to `{new_body}`, then **re-render the 3.1 diff** so that what Phase 3.2 asks the user to approve — and what Phase 4.1 subsequently writes — is the post-check body. When nothing was surfaced, skip the re-render: the flow is then identical to an edit with no fact-check findings.
+
+Self-contradiction candidates sit on an axis orthogonal to the table above. Evaluate them per the reference's クラス 3 section regardless of which row applied; that section is the single definition of when to raise them, so both consumers stay in step.
 
 Skip a claim that already carries a 「要確認」/「要検証」annotation — the `issue-create` skill annotates at ステップ 4.2.1, so an edited section can arrive here with those markers already in place, and an unguarded pass would add a second one.
-
-**Budget**: Phase 3.2's own question occupies one of the four slots an `AskUserQuestion` call allows, so surface at most **3** items here (the shared reference derives this as the remaining slots for a fold-in consumer). Beyond that, list the overflow inside the Phase 3.2 confirmation text rather than writing it into the body — the reference's default overflow rule (annotate the body directly) would break the invariant above.
 
 ### 3.2 User Confirmation
 
