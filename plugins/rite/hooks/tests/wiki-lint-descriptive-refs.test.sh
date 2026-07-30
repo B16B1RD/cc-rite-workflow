@@ -44,9 +44,11 @@ if [ ! -f "$SCRIPT" ]; then
 fi
 
 cleanup_dirs=()
+tmp_files=()
 cleanup() {
   local p
   for p in "${cleanup_dirs[@]:-}"; do [ -n "$p" ] && rm -rf "$p"; done
+  for p in "${tmp_files[@]:-}"; do [ -n "$p" ] && rm -f "$p"; done
 }
 trap cleanup EXIT
 
@@ -213,19 +215,28 @@ assert "TC-5 フェンス閉じ後は再び検出される" "1" "$(single_hits "
 # TC-6: 語境界。貪欲な `[0-9]+` により語境界の有無は件数メトリクスに現れないため、件数ベースでは
 # 原理的に検出できない (実装から `([^0-9]|$)` を消しても hits は不変)。よって helper の regex 定義を
 # 静的に pin する。行内容ベースの識別力は comment-journal-check.test.sh の TC-6 が担う。
-assert_grep "TC-6 語境界は文字クラスで表現される (gawk の \\b はバックスペース扱いのため使えない)" \
-  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\(\[\^0-9\]\|\$\)'
+# R1 側と R2 の `詳細は` 側にそれぞれ `([^0-9]|$)` があるため、単一の assert では片方だけで
+# 充足してしまう。守りたい R1 側を語彙の末尾 (`[Rr]esolves`) から続く文脈込みで pin する。
+assert_grep "TC-6 R1 の語境界が文字クラスで表現される" \
+  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[Rr\]esolves\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)'
+assert_grep "TC-6 R2 詳細は 側の語境界も文字クラス" \
+  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*詳細は \?#\[0-9\]\+\(\[\^0-9\]\|\$\)'
 assert_not_grep "TC-6 検出 regex に \\b を使っていない" "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[0-9\]\+.b'
 
-# TC-17: gawk の `\b` は語境界ではなくバックスペース。`([^0-9]|$)` を `\b` に替えた
-# mutant が沈黙することを実証する (この落とし穴を踏むと検出器が無言で 0 件になる)。
-if command -v gawk >/dev/null 2>&1 || awk --version 2>/dev/null | grep -q 'GNU Awk'; then
-  b_match=$(printf 'PR #2047\n' | awk '{ if (match($0, /#[0-9]+\b/)) print "matched"; else print "never-match" }')
-  assert "TC-17 MUTATION gawk で \\b は never-match (文字クラス必須の実証)" "never-match" "$b_match"
-  c_match=$(printf 'PR #2047\n' | awk '{ if (match($0, /#[0-9]+([^0-9]|$)/)) print "matched"; else print "never-match" }')
-  assert "TC-17 文字クラス版は一致する" "matched" "$c_match"
-else
-  skip "TC-17 gawk 非搭載環境のため \\b 挙動の実証をスキップ"
+# TC-17: 本文抽出フィルタ (_RITE_BODY_FILTER) は awk で走るため、そこに `\b` を持ち込むと
+# gawk がバックスペースとして読んで永久に一致しなくなる。フィルタの TODO/FIXME 除外を
+# `\b` 付きに変異させ、除外が沈黙する (= hits が増える) ことで危険を実証する。
+# awk 経路を実際に変異させるので、被テスト対象を実行しない always-pass にはならない。
+MUT_AWKB="$SBX/mutant-awk-backslash-b.sh"
+if make_mutant_sed() { sed "$1" "$SCRIPT" > "$2"; }; then :; fi
+sed 's%/(TODO|FIXME)%/(TODO\\b|FIXME\\b)%' "$SCRIPT" > "$MUT_AWKB"
+if assert_mutated "TC-17 MUTATION mutant 生成" "$MUT_AWKB"; then
+  awkb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_AWKB" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+  if [ "${awkb_hits:-0}" -gt "$hits" ] 2>/dev/null; then
+    pass "TC-17 MUTATION awk フィルタに \\b を持ち込むと除外が沈黙する (${hits} → ${awkb_hits}; 文字クラス必須の実証)"
+  else
+    fail "TC-17 MUTATION awk フィルタの \\b 変異で hits が変わらない (${hits} → ${awkb_hits})"
+  fi
 fi
 
 # ---- 契約・エラー経路 -------------------------------------------------------
@@ -239,6 +250,15 @@ assert "TC-10 空 pages_list → read_ok=true" "true" "$(printf '%s\n' "$empty_o
 io_out=$(printf '%s\n' ".rite/wiki/pages/does-not-exist.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
 assert "TC-11 全ページ読出失敗 → read_ok=io_error" "io_error" "$(printf '%s\n' "$io_out" | sed -n 's/^descriptive_refs_read_ok=//p')"
 assert "TC-11 全ページ読出失敗でも hits=0 を出す" "0" "$(printf '%s\n' "$io_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')"
+
+# TC-11b: 部分読出失敗 — read_ok は true を維持しつつ read_errors で件数を surface する。
+# 完了レポートの note 展開は read_ok と read_errors の 2 値で決まるため、後者だけが
+# 立つ経路に到達する assert が必要 (sibling wiki-lint-source-refs.test.sh と同じ形)。
+partial_out=$(printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/pages/does-not-exist.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
+assert "TC-11b 部分読出失敗 → read_ok=true を維持" "true" "$(printf '%s\n' "$partial_out" | sed -n 's/^descriptive_refs_read_ok=//p')"
+assert "TC-11b 部分読出失敗 → read_errors=1" "1" "$(printf '%s\n' "$partial_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert "TC-11b 読めた分の hits は計上される" "$hits" "$(printf '%s\n' "$partial_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')"
+assert "TC-9 read_errors=0 (全件読出成功時)" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$OUT")"
 
 # TC-12: placeholder residue
 printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy '{branch_strategy}' --repo-root "$SBX" ) >/dev/null 2>&1
@@ -266,6 +286,7 @@ assert_grep "TC-18 SKILL.md が helper へ委譲している" "$LINT_MD" 'wiki-l
 assert_grep "TC-18 helper 不在 fallback が marker block を出す" "$LINT_MD" '"---descriptive_refs_begin---"'
 assert_grep "TC-18 helper 不在 fallback が WIKI_DESCRIPTIVE_REFS=0 を出す" "$LINT_MD" 'WIKI_DESCRIPTIVE_REFS=0'
 assert_grep "TC-18 helper 不在 fallback の read_ok" "$LINT_MD" 'descriptive_refs_read_ok=skipped_helper_missing'
+assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD" 'descriptive_refs_read_errors=0'
 assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD" 'see PR\|See PR\) #\[0-9\]\+'
 
 # ---- TC-19: separate_branch (本番既定経路) の positive path ----------------
@@ -273,16 +294,29 @@ assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD"
 # (git show) は error 経路でしか踏まれていなかった。同じ fixture で同じ hits になることを pin する。
 GITSBX=$(make_plain_sandbox)
 cleanup_dirs+=("$GITSBX")
-(
+git_err=$(mktemp "${TMPDIR:-/tmp}/rite-tc19-git-err-XXXXXX") || git_err=""
+tmp_files+=("${git_err:-}")
+# git の rc / stderr を捨てない: 周囲の global 設定 (commit.gpgsign 等) で commit が失敗すると、
+# 捨てた場合は「検出器が壊れた」形の assert 失敗だけが出て原因が surface しない。
+# 署名の影響は `-c` で切る (git config によるファイル書き込みも不要になる)。
+if (
   cd "$GITSBX" || exit 1
-  git init -q . 2>/dev/null
-  git config user.email t@example.com; git config user.name t
+  git init -q . || exit 1
   mkdir -p .rite/wiki/pages/anti-patterns
   cp "$SBX/$FIXTURE_REL" ".rite/wiki/pages/anti-patterns/fixture.md"
-  git add -A >/dev/null 2>&1
-  git commit -qm "fixture" >/dev/null 2>&1
-  git branch -q wiki 2>/dev/null
-) || true
+  git add -A || exit 1
+  git -c commit.gpgsign=false -c user.email=t@example.com -c user.name=t commit -qm fixture || exit 1
+  git branch -q wiki || exit 1
+  # fixture を blob 限定にする: ワークツリーに残すと --repo-root 配下で cat fallback でも
+  # 同じ hits が取れてしまい、git show 経路を壊しても緑のままになる。
+  rm -f ".rite/wiki/pages/anti-patterns/fixture.md"
+) 2>"${git_err:-/dev/null}"; then
+  :
+else
+  git_rc=$?
+  fail "TC-19 git sandbox の準備に失敗 (rc=$git_rc)"
+  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /' >&2
+fi
 sb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
 assert "TC-19 separate_branch (git show) で same_branch と同じ hits" "$hits" "$sb_hits"
 sb_ok=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) 2>/dev/null | sed -n 's/^descriptive_refs_read_ok=//p')
@@ -292,6 +326,13 @@ assert "TC-19 separate_branch で read_ok=true" "true" "$sb_ok"
 # 見出し以降 EOF まで打ち切ると、wiki-ingest が後ろに追記する `## 補強:` 等の本文が盲点になる。
 post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
 assert "TC-20 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(single_hits "$post_src")"
+# wiki-ingest は `## ソース（追記分）` / `## ソース（追記分 N）` を生成する (実測 13 箇所)。
+# 見出しを厳密一致にすると、これらが節の開始として認識されないまま「次の見出し」としては
+# 認識され、直前の節の除外を打ち切って provenance ラベルを走査対象に戻す。
+appendix_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/a.md)\n\n## ソース（追記分）\n\n- [PR #1500 review results](../../raw/b.md)\n\n## ソース(追記分 2)\n\n- [PR #1600 review results](../../raw/c.md)\n')
+assert "TC-20 追記分ソース節の provenance ラベルも hit しない (全角・半角括弧)" "0" "$(single_hits "$appendix_src")"
+appendix_then=$(printf '# t\n\n## ソース（追記分）\n\n- [PR #1500 review results](../../raw/b.md)\n\n## 補強: 節\n\nPR #1700 は追記分ソース節の後の本文\n')
+assert "TC-20 追記分ソース節の後の本文は hit する" "1" "$(single_hits "$appendix_then")"
 assert "TC-20 ソース節内の provenance ラベルは hit しない" "0" \
   "$(single_hits "$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n')")"
 

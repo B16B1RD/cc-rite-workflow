@@ -96,7 +96,8 @@
 #                        は出所の監査証跡として維持対象。走査すると当該節を持つ全ページが
 #                        誤検出になる。除外は**節スコープ** (見出しから次の `##` 見出しの手前まで)
 #                        で、ファイル末尾までではない。判定はフェンス状態の更新後に行うため、
-#                        コードフェンス内に引用された `## ソース` では発火しない。
+#                        コードフェンス内に引用された `## ソース` では発火しない。見出しは
+#                        `## ソース（追記分）` 等の接尾辞を許容する (wiki-ingest の生成形)。
 #
 #   いずれの除外もその範囲内では既知アンチパターンの再発が見えなくなる。P1-P4 に広げないのは
 #   その盲点を説明的参照の検出に限定するため (既存 31 件の検出結果を変えない)。
@@ -152,7 +153,8 @@ Descriptive-ref exclusions (P5/P6 only): code fence, inline code span, "## ソ�
 
 Scan scope (--all):
   plugins/rite/**/*.{sh,md}, docs/**/*.md, .rite/wiki/**/*.md
-  (self-exclude: this script, comment-best-practices.md SoT, parity test)
+  (self-exclude: this script, comment-best-practices.md SoT, parity test,
+   検出器自身の test 2 本: comment-journal-check.test.sh / wiki-lint-descriptive-refs.test.sh)
 
 Exit codes:
   0  No journal narration detected
@@ -250,7 +252,9 @@ check_file() {
       # `## ソース` は節スコープ (見出しから次の `##` 見出しの手前まで)。ファイル末尾まで
       # 打ち切ると、当該見出しの後ろに続く本文節が丸ごと盲点になる。
       # 判定はフェンス状態の更新後に置く — フェンス内に引用された `## ソース` で誤発火しない。
-      if (!infence && line ~ /^##[[:space:]]+ソース[[:space:]]*$/) insources = 1
+      # 見出しは接尾辞を許容する (`## ソース（追記分）` 等)。厳密一致だと揺れた見出しが
+      # 節の開始として認識されないまま次の見出しとしては認識され、直前の節の除外を打ち切る。
+      if (!infence && line ~ /^##[[:space:]]+ソース([[:space:]]*$|[（(])/) insources = 1
       else if (!infence && insources && line ~ /^##[[:space:]]/) insources = 0
 
       # Whitelist: any line carrying an "example:" marker is skipped wholesale.

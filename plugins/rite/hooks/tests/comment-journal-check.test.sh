@@ -104,7 +104,9 @@ assert "TC-10 フェンス内でも P1 は従来どおり検出される" "1" "$
 # ---- TC-2 `## ソース` 節 ----------------------------------------------------
 src=$(printf '# t\n\nPR #1300 は本文の参照\n\n## ソース\n\n- [PR #1300 review results](../../raw/reviews/a.md)\n- [Issue #1284 fix results](../../raw/fixes/b.md)\n')
 assert "TC-2 ソース節より前の本文は hit する" "1" "$(pat_count "$src" '\[P5\]')"
-assert "TC-2 ソース節配下の provenance ラベルは hit しない" "0" "$(scan "$src" | grep -cE ':(7|8):' || true)"
+# 行番号ではなく総 findings 数で測る (fixture が 1 行ずれると行番号 assert は vacuous になる)。
+# ソース節の除外が外れると本文 1 件 + ラベル 2 件 = 3 件になり確実に落ちる。
+assert "TC-2 ソース節配下の provenance ラベルは hit しない (総数 1 件)" "1" "$(count "$src")"
 
 # ---- TC-6 語境界 -------------------------------------------------------------
 b=$(scan 'PR #2047 の語境界')
@@ -223,6 +225,13 @@ assert "TC-14 --all で検出器 test の fixture が hit しない" "0" "$exclu
 # `## ソース` で走査が止まると、そのファイルの以降が無言で検出対象外になる。
 post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
 assert "TC-15 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(pat_count "$post_src" '\[P5\]')"
+# wiki-ingest が生成する `## ソース（追記分）` / `## ソース(追記分 N)` も節として認識する。
+# 厳密一致だと節の開始として認識されないまま「次の見出し」としては認識され、直前の節の
+# 除外を打ち切って provenance ラベルを走査対象に戻す。
+appendix_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review](../../raw/a.md)\n\n## ソース（追記分）\n\n- [PR #1500 review](../../raw/b.md)\n\n## ソース(追記分 2)\n\n- [PR #1600 review](../../raw/c.md)\n')
+assert "TC-15 追記分ソース節の provenance ラベルも hit しない (全角・半角括弧)" "0" "$(pat_count "$appendix_src" '\[P5\]')"
+appendix_then=$(printf '# t\n\n## ソース（追記分）\n\n- [PR #1500 review](../../raw/b.md)\n\n## 補強: 節\n\nPR #1700 は追記分ソース節の後の本文\n')
+assert "TC-15 追記分ソース節の後の本文は hit する" "1" "$(pat_count "$appendix_then" '\[P5\]')"
 fenced_src=$(printf '# t\n\n```markdown\n## ソース\n```\n\nPR #1300 はフェンス後の本文\n')
 assert "TC-15 フェンス内の ## ソース では走査が止まらない" "1" "$(pat_count "$fenced_src" '\[P5\]')"
 

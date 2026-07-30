@@ -15,8 +15,9 @@
 #   SKILL.md lean and makes the detection directly testable.
 #
 # Symmetry note: this is the ステップ 7.5 counterpart to ステップ 6.0's
-# `wiki-lint-skipped-refs.sh` and ステップ 6.2's `wiki-lint-source-refs.sh`. All three
-# share the stdin `pages_list` + marker block + read_ok enum shape; keep them aligned.
+# `wiki-lint-skipped-refs.sh` and ステップ 6.2's `wiki-lint-source-refs.sh`. The stdin
+# `pages_list` contract is shared with 6.2 only (6.0 discovers its own inputs and reads
+# no stdin); the marker block + read_ok enum shape is shared with both. Keep aligned.
 #
 # Detection (2 normalized rules, NOT a list of surface forms):
 #
@@ -45,8 +46,11 @@
 #   (`#204` inside `#2047`). Greedy `[0-9]+` already reaches the end of the digit run;
 #   the explicit boundary pins that as a contract so a later narrowing of the number
 #   pattern cannot silently reintroduce prefix collision.
-#   NOTE: this must stay a character class, not `\b` — gawk reads `\b` as backspace,
-#   so `/#[0-9]+\b/` never matches and the detector would silently go quiet.
+#   NOTE: keep this a character class rather than `\b`. Here the regex is handed to
+#   `grep -E`, where `\b` would work — but the body filter below runs under awk, and
+#   gawk reads `\b` as backspace (never matching). Using one form across both keeps the
+#   two regexes readable side by side and removes the chance of copying a `\b` into the
+#   awk side, where it would make the filter silently stop matching.
 #
 # Exclusions (each is a deliberate blind spot; the trade-off is recorded per entry
 # because an exclusion also hides genuine recurrences inside its scope):
@@ -239,13 +243,18 @@ fi
 # 打ち切ると、wiki-ingest が `## ソース` の後ろに追記する `## 補強:` 等の本文が丸ごと盲点になる
 # (実測: 13 ページ / 81 hits)。節の判定は fence より後に置く — フェンス内に引用された
 # `## ソース` で節スコープが誤発火しないようにするため。
+# 見出しは接尾辞を許容する: wiki-ingest は `## ソース（追記分）` / `## ソース（追記分 N）` を
+# 生成する (実測 13 箇所。template にもコードにも定義がない LLM 生成形)。厳密一致にすると
+# これらが「節の開始」として認識されないまま「次の見出し」としては認識され、直前の節の除外を
+# 打ち切ったうえで provenance ラベルを走査対象に戻す (実測 53 hits の誤検出)。全角・半角の
+# 両括弧を受ける。
 _RITE_BODY_FILTER='
 NR==1 && /^---[[:space:]]*$/ { infm=1; next }
 infm && /^---[[:space:]]*$/  { infm=0; next }
 infm                        { next }
 /^[[:space:]]*```/          { infence = !infence; next }
 infence                     { next }
-/^##[[:space:]]+ソース[[:space:]]*$/ { insrc=1; next }
+/^##[[:space:]]+ソース([[:space:]]*$|[（(])/ { insrc=1; next }
 insrc && /^##[[:space:]]/   { insrc=0 }
 insrc                       { next }
 /(TODO|FIXME)/              { next }
