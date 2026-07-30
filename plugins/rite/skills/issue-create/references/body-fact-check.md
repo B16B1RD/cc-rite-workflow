@@ -1,6 +1,6 @@
 # Body Fact-Check — 生成した Issue 本文の断定を検証する
 
-> **SoT scope**: Issue 本文に書かれた**検証可能な断定**を、Issue 作成 / 編集を適用する前にファクトチェックする手順の SoT。consumer は `skills/issue-create/SKILL.md` ステップ 4.2.1（Single Issue path、body 生成直後）と ステップ 5.1.1（Decompose path、設計仕様書生成後）、`skills/issue-edit/SKILL.md` Phase 3.1.1（変更された本文部分）の 3 箇所。判定語彙（`VERIFIED` / `CONTRADICTED` / `UNVERIFIED`）は [`skills/pr-review/references/fact-check.md`](../../pr-review/references/fact-check.md) が SoT であり、本 reference では再定義せず転用する。
+> **SoT scope**: Issue 本文に書かれた**検証可能な断定**を、Issue 作成 / 編集を適用する前にファクトチェックする手順の SoT。consumer は `skills/issue-create/SKILL.md` ステップ 4.2.1（Single Issue path、body 生成直後）と ステップ 5.1.1（Decompose path、設計仕様書生成後）、`skills/issue-edit/SKILL.md` Phase 3.1.1（変更された本文部分）の 3 箇所。判定語彙の**ラベル**（`VERIFIED` / `CONTRADICTED` / `UNVERIFIED`）は [`skills/pr-review/references/fact-check.md`](../../pr-review/references/fact-check.md) と揃えるが、**判定根拠は異なる** — 同 SoT は外部仕様の WebSearch 検証を根拠とし、本 reference は**コマンド出力との突合**を根拠とする。各値の意味は下記「3 値の処理」を正とする（後置修飾を持たない bare `UNVERIFIED` は本 reference のローカル語彙であり、SoT 側の `UNVERIFIED:ソース未確認` / `UNVERIFIED:リソース超過` とは別値）。
 
 構造検査（AC 件数・T-xx 対応等）は [`templates/issue/default.md`](../../../templates/issue/default.md) の Output Validation Checklist の責務であり、本 reference は**記述内容の真偽**のみを見る（責務を混ぜない）。
 
@@ -27,16 +27,18 @@
 
 | 断定の種類 | 裏取りコマンド |
 |-----------|---------------|
-| Issue の存在 / title / state | `gh issue view {N} -R {owner_repo} --json number,title,state` |
+| Issue の存在 / title / state | `gh issue view {N} -R {owner_repo} --json number,title,state,url`（**返った `url` のパスセグメントが `/issues/` であることを先に確認する** — 本コマンドは PR 番号でも成功するため。下記「PR 番号 / Issue 番号の混同」参照） |
 | PR の存在 / title / state | `gh pr view {N} -R {owner_repo} --json number,title,state` |
 | commit の存在 / subject | `git log --oneline -1 {sha}` |
 | 「#N で A → B に変更された」（変更方向） | `git show {sha}^:{path}`（変更前）と `git show {sha}:{path}`（変更後）を**両方**取得する |
 
 **変更方向の断定は片側だけ見てはならない**。変更後だけを見ると「元から B だった」と区別できず、方向の逆転を検出できない。
 
-**PR 番号 / Issue 番号の混同**: squash merge した commit の subject 末尾 `(#N)` は **PR 番号**であり Issue 番号ではない（Issue 番号は commit body の `refs #M` 側にある）。`#N` を Issue として引用する断定は `gh issue view {N}` の title が文脈と一致するかまで確認する。本リポジトリの実例: commit `9fd680e4` の subject は `(#1539)`（PR 番号）で、対応する Issue は `#1519`。番号だけを見て Issue と断定すると別物を指す。
+**PR 番号 / Issue 番号の混同**: squash merge した commit の subject 末尾 `(#N)` は **PR 番号**であり Issue 番号ではない（Issue 番号は commit body の `refs #M` 側にある）。`gh issue view {N}` は **PR 番号を渡してもエラーにせず PR を返す**（対照的に `gh pr view {N}` は Issue 番号を `Could not resolve to a PullRequest` で正しく弾く。壊れているのは Issue 側だけ）。したがって `#N` を Issue として引用する断定は、**上表 `gh issue view` の出力に含まれる `url` のパスセグメントで種別を先に判定する** — `/issues/` なら Issue、`/pull/` なら PR。判定には必ず同じ 1 回の出力を使うこと（`-R {owner_repo}` を落とした二度目の呼び出しは SSH host alias 環境で別リポジトリを引く）。
 
-> この具体番号は **意図的に残している**（Simplification Charter の「経緯を番号で引かない」原則の例外）。「PR 番号と Issue 番号は別物」という抽象的な注意書きだけでは、実際に隣接した 2 つの番号が別物を指す状況を検証者が再現できず、罠を回避する判断が身につかない。番号を消す整理をする場合は、同等に検証可能な別の実例へ差し替えること（`number-reference-check.sh` の走査対象外のため lint はこの箇所を検出しない）。
+**title 照合を判別手段にしてはならない**。squash merge 運用では PR title が Issue title から派生するため両者はほぼ一致し、誤った対象のまま `VERIFIED` に倒れる。`state` も単独では使えない（open な PR は Issue と同じ `OPEN` を返す）。
+
+> 罠を手元で再現するには、squash merge された commit に対して `git log -1 --format='%s%n%b' {sha}` を実行し、subject 末尾の `(#N)`（PR）と body の `refs #M`（Issue）が別の番号を指すことを確認する。そのうえで両方の番号へ `gh issue view` を掛けると、PR 番号側でも成功して返ることが観測できる。本文に具体番号を書かないのは Simplification Charter の「禁止パターン」節（`Issue #[0-9]+` / `PR #[0-9]+` の本文引用は原則 0 件、必要でも 1 ファイル 1 件まで）に従うため。
 
 ## クラス 2: 現状断定クラス（wording lint、実測しない）
 
@@ -86,6 +88,7 @@
 |------|------|
 | 裏取りコマンドが失敗（オフライン / `gh` 認証切れ / 浅い clone に commit が無い） | `UNVERIFIED` として「要確認」を付記し続行。stderr に `WARNING` を出す。Issue 作成 / 編集を**ブロックしない** |
 | 参照先の Issue / PR が存在しない番号 | `CONTRADICTED`（タイポの可能性を訂正案として提示する） |
+| Issue として引用した番号が PR として解決した（上表コマンドの `url` が `/pull/` を含む） | `CONTRADICTED`（PR 番号を Issue と誤認している。対応する Issue 番号は commit body の `refs #M` 側を確認して訂正案に載せる） |
 | 検査対象 0 件 | silent skip（追加の出力・質問を出さない） |
 | issue-edit で本文以外（title / Projects フィールド）のみの変更 | 検査を実行しない |
 
