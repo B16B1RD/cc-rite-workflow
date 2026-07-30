@@ -31,7 +31,7 @@
 | Issue の存在 / title / state | `gh issue view {N} -R {owner_repo} --json number,title,state,url`（**返った `url` のパスセグメントが `/issues/` であることを先に確認する** — 本コマンドは PR 番号でも成功するため。下記「PR 番号 / Issue 番号の混同」参照） |
 | PR の存在 / title / state | `gh pr view {N} -R {owner_repo} --json number,title,state` |
 | commit の存在 / subject | `git log --oneline -1 {sha}` |
-| 「#N で A → B に変更された」（変更方向） | 先に `gh pr view {N} -R {owner_repo} --json url,mergeCommit` で `url` が `/pull/` であることを確認し、`mergeCommit.oid` を `{sha}` に代入する（`mergeCommit` が `null` = 未マージなら `UNVERIFIED`。コマンド失敗はエラー処理表に従う）。次に `git show {sha}^:{path}`（変更前）と `git show {sha}:{path}`（変更後）を**両方**取得する。SHA が本文に直書きされている場合は代入を省略してよい |
+| 「#N で A → B に変更された」（変更方向） | SHA が本文に直書きされていればそれを `{sha}` に使う。`#N` 形式なら、まず上表 1 行目の `gh issue view {N} -R {owner_repo} --json url` で**種別を判定してから** 2 分岐する（`#N` は PR とは限らない — 本リポジトリの commit 規約では Issue を `refs #N` で引くため Issue 番号 citation が主経路）: `url` が `/pull/` なら `gh pr view {N} -R {owner_repo} --json mergeCommit` の `mergeCommit.oid` を `{sha}` に代入（`null` = 未マージなら `UNVERIFIED`）。`/issues/` なら `git log --grep "refs #{N}" --format=%H` で実装 commit を解決して代入（0 件 / 複数件で特定できなければ `UNVERIFIED`）。**この解決段階のコマンド失敗を `CONTRADICTED` に流してはならない**（種別は 1 行目の出力で確定済み。解決失敗は `UNVERIFIED` に倒す）。`{sha}` が得られたら `git show {sha}^:{path}`（変更前）と `git show {sha}:{path}`（変更後）を**両方**取得する |
 
 **変更方向の断定は片側だけ見てはならない**。変更後だけを見ると「元から B だった」と区別できず、方向の逆転を検出できない。
 
