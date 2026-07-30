@@ -24,7 +24,7 @@ confidence: high
 
 ## 概要
 
-macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。呼び出し側の hang 検出イディオムは典型的に `[ "$rc" != "124" ] && pass` という fail-open 形なので、shim のあらゆる故障（perl 不在の rc 127、シグナル死の rc 0、`die` の rc 255）がすべて「合格」に化ける。PR #2013 では perl 製 `_timeout` shim について、exit code・整数切り捨て・シグナル範囲・拒否コードの 4 軸すべてで実問題が出た。
+macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。呼び出し側の hang 検出イディオムは典型的に `[ "$rc" != "124" ] && pass` という fail-open 形なので、shim のあらゆる故障（perl 不在の rc 127、シグナル死の rc 0、`die` の rc 255）がすべて「合格」に化ける。起点事例では perl 製 `_timeout` shim について、exit code・整数切り捨て・シグナル範囲・拒否コードの 4 軸すべてで実問題が出た。
 
 ## 詳細
 

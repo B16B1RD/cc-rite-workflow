@@ -30,7 +30,7 @@ confidence: high
 
 ### 発生事例（cycle 1）
 
-PR #756 が `lifecycle 4 hooks` に stderr pass-through 化を追加した際、`_resolve-flow-state-path.sh` の helper invocation で stderr を tempfile に退避する mktemp + filter ロジックを **inline で再実装** した。一方、PR #688 cycle 9 F-02 で同じ目的の集約 helper `_mktemp-stderr-guard.sh` が既に extract されており、4 hook 全てで helper 呼び出しに置換すれば 1 行ずつで完結する状態だった。
+起点事例が `lifecycle 4 hooks` に stderr pass-through 化を追加した際、`_resolve-flow-state-path.sh` の helper invocation で stderr を tempfile に退避する mktemp + filter ロジックを **inline で再実装** した。一方、累積 14 回目の cycle 9 F-02 で同じ目的の集約 helper `_mktemp-stderr-guard.sh` が既に extract されており、4 hook 全てで helper 呼び出しに置換すれば 1 行ずつで完結する状態だった。
 
 3 reviewer (error-handling / code-quality / test) が独立に「集約 helper bypass = cycle 43 F-09 anti-pattern の再導入」として HIGH 検出。具体的には:
 
@@ -56,7 +56,7 @@ helper bypass が起きる時、しばしば「doctrine の片側 mirror」が�
 
 ### test helper bypass sub-pattern（cycle 1）
 
-production code に限らず **test helper** でも同型に発火する。PR #989 cycle 1 で `stop-create-interview-block.test.sh` TC-10 が既存の `build_stop_payload` helper を使わず inline で `jq -n --arg cwd ... '{hook_event_name: "Stop", cwd: $cwd, ...}'` を再構築した結果、code-quality reviewer が MEDIUM finding として検出 (TC-1〜TC-9 sibling との helper symmetry 違反)。修正 cycle で `payload=$(build_stop_payload "$SBX/sub" false)` に置換し sibling と対称化。
+production code に限らず **test helper** でも同型に発火する。test helper 事例の cycle 1 で `stop-create-interview-block.test.sh` TC-10 が既存の `build_stop_payload` helper を使わず inline で `jq -n --arg cwd ... '{hook_event_name: "Stop", cwd: $cwd, ...}'` を再構築した結果、code-quality reviewer が MEDIUM finding として検出 (TC-1〜TC-9 sibling との helper symmetry 違反)。修正 cycle で `payload=$(build_stop_payload "$SBX/sub" false)` に置換し sibling と対称化。
 
 新規 TC を追加する際の必須 self-check:
 

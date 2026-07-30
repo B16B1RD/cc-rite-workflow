@@ -24,9 +24,9 @@ confidence: high
 
 YAML パースのような multi-key config 取得処理が複数 site に散在しているとき、DRY 化助手 (例: `extract_yaml_key`) として共通化する refactor で発生する。helper 内に「全 key 共通の前処理」(例: `tr '[:upper:]' '[:lower:]'`) を含めると、helper 化前は key 別に適用範囲が異なっていた前処理が一律適用される。
 
-### PR #1155 で実測した failure mode
+### 起点事例で実測した failure mode
 
-PR #1155 cycle 1 で 3 reviewer 独立 HIGH 検出された:
+起点事例の cycle 1 で 3 reviewer 独立 HIGH 検出された:
 
 ```bash
 # Before (develop): key 別に lowercase 適用の有無が異なる

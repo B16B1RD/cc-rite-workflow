@@ -62,7 +62,7 @@ grep -c '^```bash' path/to/file.md
 
 ### 入れ子は外側を 4-backtick にする
 
-テンプレート全体が 1 本の 3-backtick fence で囲われている文書に、記入例の fence を 3-backtick で追加すると、fence が閉じ位置で分割され **code と prose が反転する**。PR #2035 では追加の主目的だった記入例が prose になり、後半の推奨事項・READ-ONLY 節が code に閉じ込められた。
+テンプレート全体が 1 本の 3-backtick fence で囲われている文書に、記入例の fence を 3-backtick で追加すると、fence が閉じ位置で分割され **code と prose が反転する**。起点事例では追加の主目的だった記入例が prose になり、後半の推奨事項・READ-ONLY 節が code に閉じ込められた。
 
 **この破損は 4 cycle 気付かれなかった**。fence count は偶数のまま（追加した 4 本も偶数）なので上記の balance check を素通りし、テキストとして読む限り異常が見えない。**レンダリング結果を見ないと分からない類の欠陥は、レビューでも発見が遅れる**。
 

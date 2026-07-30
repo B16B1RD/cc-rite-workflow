@@ -36,7 +36,7 @@ cleanup.md スタイルへの「フラット化」のような flatten refactor 
 
 判別基準は **「git blame で追える過去の自己弁護か / 現在の reader が判断に必要か」** の 2 軸で評価する。
 
-### PR #1155 で実測した failure mode
+### 起点事例で実測した failure mode
 
 `wiki:* commands` を cleanup.md スタイルへ本格フラット化した cycle 1 fix で、本 anti-pattern が 3 reviewer 独立検出された:
 

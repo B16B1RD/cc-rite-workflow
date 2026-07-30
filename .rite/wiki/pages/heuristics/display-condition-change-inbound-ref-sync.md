@@ -28,7 +28,7 @@ review-fix ループで実測。cycle 1 で getting-started.md の `## Phase 4.5
 
 ### 隣接 anti-pattern (同 PR で同時実測)
 
-- **broken cross-reference (Decision Log エントリ誤参照)**: 「(design D-N)」のような Decision Log 参照を書くときは、その D-N が実際に当該主張を扱う決定エントリかを確認する。PR #1387 では dogfood deferral を「design D-9」と参照したが、D-9 は `schema_version` bump 省略の決定で dogfood とは無関係だった (F-02)。**存在するが無関係なエントリへの参照**は、存在しないエントリ参照 (hallucinated-canonical-reference) と同様に読者を誤誘導する。参照を書く前に対象エントリの内容を 1 行確認するのが安価で確実。
+- **broken cross-reference (Decision Log エントリ誤参照)**: 「(design D-N)」のような Decision Log 参照を書くときは、その D-N が実際に当該主張を扱う決定エントリかを確認する。起点事例では dogfood deferral を「design D-9」と参照したが、D-9 は `schema_version` bump 省略の決定で dogfood とは無関係だった (F-02)。**存在するが無関係なエントリへの参照**は、存在しないエントリ参照 (hallucinated-canonical-reference) と同様に読者を誤誘導する。参照を書く前に対象エントリの内容を 1 行確認するのが安価で確実。
 
 ## 関連ページ
 

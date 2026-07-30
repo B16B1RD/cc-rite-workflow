@@ -63,7 +63,7 @@ fi
 
 ### sibling 4 ブロック対称性の verify（cycle 2）
 
-cycle 2 のフルレビューは 0 findings / mergeable。fix が新規 regression を持ち込んでいないことを 6 reviewer 全員が確認した。fix-introduced finding を防ぐには、修正が既存 sibling パターンと **対称か** — すなわち `rc 捕捉` / `WARNING` / `errors++` の各要素が sibling ブロックと一致するか — を verify するのが有効。(test reviewer は per-item 失敗分岐の coverage gap を follow-up として別 Issue #1316 に切り出し。)
+cycle 2 のフルレビューは 0 findings / mergeable。fix が新規 regression を持ち込んでいないことを 6 reviewer 全員が確認した。fix-introduced finding を防ぐには、修正が既存 sibling パターンと **対称か** — すなわち `rc 捕捉` / `WARNING` / `errors++` の各要素が sibling ブロックと一致するか — を verify するのが有効。(test reviewer は per-item 失敗分岐の coverage gap を follow-up として別 Issue に切り出し。)
 
 ### process substitution が常に悪いわけではない (重要な区別)
 

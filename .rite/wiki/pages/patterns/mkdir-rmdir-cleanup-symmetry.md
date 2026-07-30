@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-### PR #585 の実例
+### 起点事例
 
 `gitignore-health-check.sh` は `.rite/wiki/raw/.rite-lint-probe` を作成して `git check-ignore` / `git add --dry-run` で `.gitignore` ルールを verify する。初版は probe file の `rm -f` のみを cleanup 関数に登録していたが、`mkdir -p "$(dirname "$probe")"` で作成した親 directory (例: `.rite/wiki/raw/`) が実行後に空 directory として残留する経路があった。
 

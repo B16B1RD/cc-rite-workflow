@@ -36,7 +36,7 @@ gate を「全 injection を 1 箇所で塞ぐ」と過大主張せず、空文�
 
 ### 3. 兄弟 script の同型注入経路を grep 監査する
 
-1 script に gate を入れたら、同じ「外部値を git/外部コマンドへ flag 位置で渡す」パターンを持つ兄弟 script を監査する。PR #1299 では `projects-items-fetch.sh` を監査し、flag 値渡し + 数値検証で surface なし (注入経路の残存ゼロ) を確認した。[[asymmetric-fix-transcription]] の「対称位置への伝播漏れ」を防ぐ着手時 grep と同系。
+1 script に gate を入れたら、同じ「外部値を git/外部コマンドへ flag 位置で渡す」パターンを持つ兄弟 script を監査する。起点事例では `projects-items-fetch.sh` を監査し、flag 値渡し + 数値検証で surface なし (注入経路の残存ゼロ) を確認した。[[asymmetric-fix-transcription]] の「対称位置への伝播漏れ」を防ぐ着手時 grep と同系。
 
 ### 4. 単一 `-*` case gate は代表 1 値で立証する (境界値網羅は不要)
 

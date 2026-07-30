@@ -67,7 +67,7 @@ v=$(grep -E '^\s+schema_version:' rite-config.yml | head -1 || true) || v=""
 
 ### sibling test 間での pattern 再利用
 
-PR #868 fix では同 directory の sibling test (`caller-html-literal-symmetry.test.sh`) が既に `mapfile -t < <(...)` pattern を採用していたため、新設 test ファイルにも同 pattern を移植することで一貫性を保った。「sibling site で確立済みの canonical pattern を grep で確認してから適用する」運用は、対称化 PR の review 効率にも寄与する ([small-symmetric-pr-sibling-site-grep-review.md](../heuristics/small-symmetric-pr-sibling-site-grep-review.md))。
+起点事例の fix では同 directory の sibling test (`caller-html-literal-symmetry.test.sh`) が既に `mapfile -t < <(...)` pattern を採用していたため、新設 test ファイルにも同 pattern を移植することで一貫性を保った。「sibling site で確立済みの canonical pattern を grep で確認してから適用する」運用は、対称化 PR の review 効率にも寄与する ([small-symmetric-pr-sibling-site-grep-review.md](../heuristics/small-symmetric-pr-sibling-site-grep-review.md))。
 
 ### 検出と命名
 

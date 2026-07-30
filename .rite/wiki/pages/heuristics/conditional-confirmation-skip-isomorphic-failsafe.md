@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-**背景**: PR #1868 で `/rite:batch-run` の「完全自律（無確認）」宣言と、open ステップ 3.4（計画承認）・pr-review ステップ 3.3（レビュアー構成確認）の AskUserQuestion の矛盾を解消した。open 3.4 には run-queue ベース batch 検出、pr-review 3.3 には flow-state phase-whitelist E2E 検出を追加した。3 レビュアー（prompt-engineer / code-quality / error-handling）が全員「マージ可・指摘 0 件」を返し、その根拠がこの 3 原則の遵守だった。
+**背景**: 起点事例で `/rite:batch-run` の「完全自律（無確認）」宣言と、open ステップ 3.4（計画承認）・pr-review ステップ 3.3（レビュアー構成確認）の AskUserQuestion の矛盾を解消した。open 3.4 には run-queue ベース batch 検出、pr-review 3.3 には flow-state phase-whitelist E2E 検出を追加した。3 レビュアー（prompt-engineer / code-quality / error-handling）が全員「マージ可・指摘 0 件」を返し、その根拠がこの 3 原則の遵守だった。
 
 **1. 判定を既存 in-flow 判定と同型にする（新シグナルを発明しない）**
 - open 3.4 の batch 検出は `iterate` ステップ 6 の run-queue batch 判定（`state-path-resolve.sh` / `flow-state.sh path` で session_id 導出 → run-queue の `active` + cursor 一致）をほぼバイト単位で複製した。

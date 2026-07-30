@@ -35,7 +35,7 @@ frontmatter ポリシー表のような分類ルールを新設・改訂する P
 - cycle 1: tech-writer と prompt-engineer の 2 名が独立に「新しい 2 区分表が `reviewers/SKILL.md`（Read 経由でのみ到達する non-user-invocable knowledge スキル）という既存のエッジケースをカバーできていない」ことを指摘し、cross-validation で High Confidence となった（HIGH 1件）。
 - cycle 1 fix: 第 3 区分をポリシー表に追記することで解消。Non-Target File（`reviewers/SKILL.md`）自体には手を触れず、ドキュメント側でギャップを埋めるアプローチを採用。
 - cycle 2: 新設した第 3 区分の記述自体に対する再検証で、レビュアーが「upstream issue の状態」「Required 列のセマンティクス」等の周辺懸念を最初は指摘しかけたが、深掘り検証の結果、実装上の欠陥ではなく `design_confirmation`（対応不要）に分類し直した。
-- cycle 3: 表面的には「指摘 0 件・mergeable」と判定されたが、実際には prompt-engineer から MEDIUM 指摘（`docs/SPEC.md:326` の第 3 区分が主張する「`reviewers` は `/rite:<name>` を持たない」という前提が、`reviewers/SKILL.md` に実際には `user-invocable: false` が設定されていないため frontmatter 上の裏付けを欠く、という論理矛盾）が出ていたが、エージェント応答の受け渡し不具合により見落とされたまま PR がマージされた（follow-up: Issue #1695）。
+- cycle 3: 表面的には「指摘 0 件・mergeable」と判定されたが、実際には prompt-engineer から MEDIUM 指摘（`docs/SPEC.md:326` の第 3 区分が主張する「`reviewers` は `/rite:<name>` を持たない」という前提が、`reviewers/SKILL.md` に実際には `user-invocable: false` が設定されていないため frontmatter 上の裏付けを欠く、という論理矛盾）が出ていたが、エージェント応答の受け渡し不具合により見落とされたまま PR がマージされた（follow-up Issue を起票）。
 
 **教訓**: 新しい分類ルールを文書化するとき、ルールが「対象外」とする既存要素についても、その要素の実際の設定値（本件では frontmatter フィールド）を Grep/Read で確認し、ルールの前提となる主張（「〜は `/rite:<name>` を持たない」等）が実態と一致しているか検証する必要がある。ドキュメント修正 PR では、この種の「ルールの記述と対象外要素の実態との整合性」チェックが、通常の「変更箇所の正確性」チェックとは独立した観点として抜けやすい。
 

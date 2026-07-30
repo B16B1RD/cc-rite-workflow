@@ -57,7 +57,7 @@ source "$_SCRIPT_DIR/lib/helpers.sh"  # 絶対 path なので CWD に依存し�
 - subshell `$( ... )` 内で cd するため caller の CWD は変わらない
 - 変数名に `_` prefix を付けて「script 内 private」であることを示す convention
 
-### PR #550 での evidence
+### 起点事例での evidence
 
 `plugins/rite/hooks/scripts/wiki-worktree-setup.sh` / `wiki-worktree-commit.sh` / `wiki-ingest-commit.sh` が `plugins/rite/hooks/scripts/lib/wiki-config.sh` と `lib/worktree-git.sh` を `source` する refactoring で、初回実装が `cd "$repo_root"` 後の `$(dirname "${BASH_SOURCE[0]}")` 経路を使って live regression を起こした。sibling 13 scripts は既に `_SCRIPT_DIR` convention を採用しており、drift を解消するため全 3 script に統一 pattern を適用した。
 

@@ -47,9 +47,9 @@ GFM の table 解析は「`|` を含む連続行ブロック」を table とみ�
 3. **Strikethrough テキスト**: 残したい場合は `| ~~Phase 2~~ | 廃止 |` で render される取り消し線セル
 4. **Comment column 追加**: 廃止 status を別 column として明示 (`| Phase | 説明 | Status |`)
 
-### PR #792 cycle 3 での実測
+### 起点事例の cycle 3 での実測
 
-PR #792 cycle 2 で SPEC-IMPL-FILES table 内の特定行を一時的にコメントアウトする目的で `<!-- removed: ... -->` を挿入したところ、cycle 3 review で「table の最終行が `<p>` 段落として脱落」が tech-writer によって検出された。npx marked で render verification すると確かに最終行が table 外で render されており、修正は HTML コメントを **table 終了直後 (空行を挟んで) の独立段落** に移動することで解消した。
+起点事例の cycle 2 で SPEC-IMPL-FILES table 内の特定行を一時的にコメントアウトする目的で `<!-- removed: ... -->` を挿入したところ、cycle 3 review で「table の最終行が `<p>` 段落として脱落」が tech-writer によって検出された。npx marked で render verification すると確かに最終行が table 外で render されており、修正は HTML コメントを **table 終了直後 (空行を挟んで) の独立段落** に移動することで解消した。
 
 ## 関連ページ
 

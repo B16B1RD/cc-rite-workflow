@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-PR #1392（`multi_session.enabled` を default off→on 化）で実測。AC は「テンプレートで `multi_session:` ブロックをコメントアウト解除し `enabled: true` にする」だったため、ブロックをその場（マーカー下）で active 化した。機械チェック・YAML・1 回目レビューはすべて通過したが、cycle 2 で code-quality reviewer が HIGH を検出: マーカー下の active ブロックは新規生成で omit され、新規プロジェクトは `multi_session:` ブロック不在 → parser の `*) ms_enabled=false` fallback で `false` に落ちる。結果「新規プロジェクトは default on を得る」という PR の中核主張が実挙動と全面矛盾していた。
+起点事例（`multi_session.enabled` を default off→on 化）で実測。AC は「テンプレートで `multi_session:` ブロックをコメントアウト解除し `enabled: true` にする」だったため、ブロックをその場（マーカー下）で active 化した。機械チェック・YAML・1 回目レビューはすべて通過したが、cycle 2 で code-quality reviewer が HIGH を検出: マーカー下の active ブロックは新規生成で omit され、新規プロジェクトは `multi_session:` ブロック不在 → parser の `*) ms_enabled=false` fallback で `false` に落ちる。結果「新規プロジェクトは default on を得る」という PR の中核主張が実挙動と全面矛盾していた。
 
 **SoT となる先例**: `wiki:` セクションは #491 でまさに同じ問題を避けるため、コメント形式・マーカー下から active・マーカー上へ移動された（`flow_state:` も同様にマーカー上の active ブロック）。default-on にしたい設定は「wiki / flow_state と同じ列」に並べる、が判断基準。
 

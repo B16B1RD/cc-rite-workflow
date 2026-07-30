@@ -65,7 +65,7 @@ cycle 2 の test reviewer は fix 側の mutation claim を鵜呑みにせず、
 
 ### detection program 抽出への拡張（0 findings で確認）
 
-本 pattern の「関数抽出」は **検出ロジック (jq filter / detection program) の抽出** にも一般化される。PR #1314 (T-7 behavioral fixture) は `projects-board-drift-check.sh` の jq 検出 program を **コピーではなく awk で実体抽出** し、`gh api graphql` 出力を模した GraphQL-shaped JSON fixture (6 分類ケース) を stdin で流して classification を検証した。これにより、jq 述語の literal を保持したまま周囲の scoping を反転させる semantic break (`$pitem != null` → `== null`、`select($st != "Done")` → `== "Done"`、`.project.number == $pn` board scoping 削除) — 静的 grep (T-5) では literal 一致のため見えない break — が behavioral assert で捕捉される。4 reviewer (test / code-quality / error-handling / security) が全員「可」、mutation 検証で検出能力を実証し 0 findings / 1 cycle mergeable。
+本 pattern の「関数抽出」は **検出ロジック (jq filter / detection program) の抽出** にも一般化される。検出ロジック抽出事例 (T-7 behavioral fixture) は `projects-board-drift-check.sh` の jq 検出 program を **コピーではなく awk で実体抽出** し、`gh api graphql` 出力を模した GraphQL-shaped JSON fixture (6 分類ケース) を stdin で流して classification を検証した。これにより、jq 述語の literal を保持したまま周囲の scoping を反転させる semantic break (`$pitem != null` → `== null`、`select($st != "Done")` → `== "Done"`、`.project.number == $pn` board scoping 削除) — 静的 grep (T-5) では literal 一致のため見えない break — が behavioral assert で捕捉される。4 reviewer (test / code-quality / error-handling / security) が全員「可」、mutation 検証で検出能力を実証し 0 findings / 1 cycle mergeable。
 
 確認された 3 つの設計点:
 

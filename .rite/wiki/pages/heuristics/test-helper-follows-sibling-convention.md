@@ -22,7 +22,7 @@ bash test スクリプトに新しい helper (`skip()` / `pass()` / `fail()` 等
 
 ### 症状
 
-PR #1318 で新規追加した `skip()` helper が echo のみの実装だった:
+起点事例で新規追加した `skip()` helper が echo のみの実装だった:
 
 ```bash
 skip() {

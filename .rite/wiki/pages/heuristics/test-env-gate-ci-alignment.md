@@ -20,7 +20,7 @@ Test 内の特定セクション (例: assertion ブロック / meta-test ブロ
 
 ### 失敗の構造
 
-PR #915 cycle 1 review で test reviewer が HIGH として検出した事例:
+起点事例の cycle 1 review で test reviewer が HIGH として検出した事例:
 
 - **PR description の主張**: 「meta-test は `STRICT_CHARTER` env gate の **外側** に配置されており、CI workflow `.github/workflows/test-hooks.yml` の `bash run-tests.sh` (STRICT_CHARTER 未設定) で **常時実行** される」
 - **実装上の事実 (cycle 1 時点)**: meta-test ブロックが `STRICT_CHARTER=1` 内側 (`if [ "${STRICT_CHARTER:-}" = "1" ]; then ... fi` 内) に配置されており、CI workflow が `STRICT_CHARTER` 未設定で起動するため、CI 上では meta-test が **silent に skip** される構造

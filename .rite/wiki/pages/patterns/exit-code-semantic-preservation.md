@@ -95,7 +95,7 @@ skip 経路では `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` のような sen
 
 caller 側の case routing だけでなく、**script 自身のすべての内部失敗経路** が header で宣言した exit-code 語彙に従う必要がある。peer script から arg-parse を copy-paste すると、peer と異なる exit-code 契約のもとで失敗経路が契約違反の code を emit する。
 
-PR #1306 の `projects-board-drift-check.sh` は `watchdog-status-mismatch.sh` から作法を踏襲したが、exit-code 契約を再設計した (watchdog: `exit 1=fatal` / 本 script: **`exit 1=drift warning` / `exit 2=invocation error`**)。arg-parse の `--limit) LIMIT="${2:-}"; shift 2` を verbatim copy-paste した結果、`--limit` に値が無いと `set -e` 下で `shift 2` が exit 1 abort → **usage error が exit 1 (=「drift 検出」warning) として誤分類** され、lint 上で実在しない drift を報告する経路が生まれた (code-quality + error-handling の cross-validated MEDIUM)。
+起点事例の `projects-board-drift-check.sh` は `watchdog-status-mismatch.sh` から作法を踏襲したが、exit-code 契約を再設計した (watchdog: `exit 1=fatal` / 本 script: **`exit 1=drift warning` / `exit 2=invocation error`**)。arg-parse の `--limit) LIMIT="${2:-}"; shift 2` を verbatim copy-paste した結果、`--limit` に値が無いと `set -e` 下で `shift 2` が exit 1 abort → **usage error が exit 1 (=「drift 検出」warning) として誤分類** され、lint 上で実在しない drift を報告する経路が生まれた (code-quality + error-handling の cross-validated MEDIUM)。
 
 - **`${2:-}` は防御にならない**: `${2:-}` は `set -u` の unset 参照だけを防ぐ。`shift 2` が引数不足で失敗する経路は防げない。
 - **canonical fix**: `[ "$#" -lt 2 ]` で値の存在を gate し、欠落時は契約どおり exit 2 (invocation error) へ統一する。

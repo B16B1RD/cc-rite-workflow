@@ -24,7 +24,7 @@ README 等の依存要件で「ツール X（例: coreutils / gdate）を入れ�
 
 ## 詳細
 
-PR #2004 で README（英日）が「`brew install coreutils` で `gdate` が入り Wiki 陳腐化検出が有効化される」と記述した。しかし実スクリプト `plugins/rite/hooks/scripts/wiki-lint-stale.sh` は `gdate` を一切呼ばず `date -d`（GNU date 拡張）のみを呼んでいた（148 行の事前検査、189 行の本走査）。
+起点事例で README（英日）が「`brew install coreutils` で `gdate` が入り Wiki 陳腐化検出が有効化される」と記述した。しかし実スクリプト `plugins/rite/hooks/scripts/wiki-lint-stale.sh` は `gdate` を一切呼ばず `date -d`（GNU date 拡張）のみを呼んでいた（148 行の事前検査、189 行の本走査）。
 
 homebrew の coreutils formula は `g` 接頭辞付きツール（`gdate` 等）を追加するだけで、システムの `date` は BSD date のまま置き換わらない。したがって `brew install coreutils` を実行しても `date -d` は依然として失敗し、陳腐化検出は `stale_check_ok=skipped_no_gnu_date` 経路のままスキップされる。有効化するには coreutils の `gnubin` ディレクトリを `PATH` の先頭に追加し、`date` を GNU 版に解決させる必要がある。
 

@@ -20,7 +20,7 @@ review-fix loop で author が `rejected(scope-creep)` として承認した tra
 
 ## 詳細
 
-### PR #688 cycle 30 → cycle 31 で実証された failure mode
+### 累積 14 回目の cycle 30 → cycle 31 で実証された failure mode
 
 cycle 30 fix で writer-side legacy fallback を実装した際、author は **cross-session takeover** (legacy.session_id != current sid で別 session metadata が silent に保持される) を `rejected(scope-creep)` として承認:
 

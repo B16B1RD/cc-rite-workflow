@@ -22,7 +22,7 @@ reviewer が「この PR が導入した regression」「revert すれば消え�
 
 ## 詳細
 
-### 背景となった PR #1240
+### 背景となった起点事例
 
 `session-start.sh` の settings.local.json 修復経路にあったインライン python3 ブロックを削除し、既存の共有スクリプト `settings-local-rite-hook-cleanup.py` への委譲 (stdin→stdout) に置き換える delegation refactor。`RITE_HOOK_RE` の実行定義を `.py` 1 箇所に単一化する目的。3 reviewer (prompt-engineer / code-quality / security) は「可」、code-quality は委譲の挙動等価性 (stdin→stdout I/O 契約・exit code 0/1/2・regex・json.dump フォーマット) を 45 契約テスト + 4 ケース実測で確認していた。
 

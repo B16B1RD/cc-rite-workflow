@@ -24,7 +24,7 @@ confidence: high
 
 ### 恒真になった実例
 
-PR #2051 の初期実装では、`dollar-zero-check.sh` が「`.sh` の実スクリプトは走査しない（対象は markdown 内の fenced bash のみ）」という除外契約を持ち、そのテストで fixture の検出対象を**コードフェンスの外**に置いていた。
+起点事例の初期実装では、`dollar-zero-check.sh` が「`.sh` の実スクリプトは走査しない（対象は markdown 内の fenced bash のみ）」という除外契約を持ち、そのテストで fixture の検出対象を**コードフェンスの外**に置いていた。
 
 ```bash
 # 恒真だった fixture

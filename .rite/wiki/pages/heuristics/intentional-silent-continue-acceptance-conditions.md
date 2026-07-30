@@ -33,7 +33,7 @@ error-handling reviewer の許容条件は「explicit comment + 期待エラー�
 
 ### 併せて成立していた前提
 
-- silent-continue の下流にある「真の失敗の surface 機構」自体が本物であること。PR #1837 では helper が失敗時も stdout JSON (warnings 付き) を出力して exit 1 する契約を全レビュアーが独立に実装確認した。顕在化ポイントが機能しない場合、silent-continue は本当の silent failure になる
+- silent-continue の下流にある「真の失敗の surface 機構」自体が本物であること。起点事例では helper が失敗時も stdout JSON (warnings 付き) を出力して exit 1 する契約を全レビュアーが独立に実装確認した。顕在化ポイントが機能しない場合、silent-continue は本当の silent failure になる
 - 観測性の修正を 1 経路に入れると、同型の未修正経路 (本件では decompose の親 Issue 失敗経路の result 破棄) がレビューで surface される。これは scope 境界 (revert test) で調査推奨に分離し、別 Issue 化判断に回すのが正しい処理
 
 ## 関連ページ

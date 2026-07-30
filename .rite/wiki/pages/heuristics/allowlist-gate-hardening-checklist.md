@@ -28,7 +28,7 @@ confidence: high
 
 ## 詳細
 
-PR #1330 (review-comment-post.sh の iso_timestamp gate denylist → ISO 8601 allowlist 化 + awk gsub → index()/substr() リテラル置換) で、cycle ごとに異なる落とし穴が surface した:
+起点事例 (review-comment-post.sh の iso_timestamp gate denylist → ISO 8601 allowlist 化 + awk gsub → index()/substr() リテラル置換) で、cycle ごとに異なる落とし穴が surface した:
 
 1. **複数行 bypass (cycle 1, MEDIUM)**: `printf '%s' "$v" | grep -qE '^...$'` は**行単位マッチ**のため、複数行値のいずれか 1 行が形状に一致すれば gate を通過する。LLM caller の literal substitute ミス (複数行貼り付け) という gate 自身の脅威モデル内の入力で破られ、不正 JSON が投稿されるところまで end-to-end 再現された。**bash 組込み `[[ =~ ]]` は `^`/`$` が文字列全体に anchor され改行込み値を構造的に reject する** — hooks/ の支配的 gate パターンでもあり、形状検証 gate の正解形。
 2. **上流 degraded 値の reject と誤診断 (cycle 3, MEDIUM ×2 reviewer 合意)**: allowlist は「不正値」と「上流が正規に emit する degraded sentinel (例: EXIT trap の `${var:-unknown}`)」を区別できない。`unknown` を「emit 値を渡せ」という読取漏れ向け診断で reject すると、caller を同一値の再投入ループへ誘導する。**gate 強化時は上流 producer が emit しうる全値 (正常形・degraded 形) を棚卸しし、degraded 値には専用診断 (再投入では解決しない / 根本原因の確認先) を出す**。fail-fast 自体は維持してよい。

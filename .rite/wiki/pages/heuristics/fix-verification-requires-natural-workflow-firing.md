@@ -20,7 +20,7 @@ confidence: high
 
 ### 背景
 
-Issue #532（Wiki 機能が実ワークフローで発火しない問題）の根本原因調査で、以下の盲点が浮き彫りになった:
+起点となった Issue（Wiki 機能が実ワークフローで発火しない問題）の根本原因調査で、以下の盲点が浮き彫りになった:
 
 - 先行修正 #528/#529（Wiki raw commit の shell script 化）は shell script 単体では正常に動作していた
 - しかし実 commit 履歴を精査すると、自然な PR ワークフローから発火した raw source は**ゼロ件**だった

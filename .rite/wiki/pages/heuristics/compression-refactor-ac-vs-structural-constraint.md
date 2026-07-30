@@ -29,7 +29,7 @@ Markdown / Code 大規模圧縮 refactor で行数 AC を野心目標で決め�
 - SPEC-OUT-OF-SCOPE: 新規 references 作成 / references 側 modify 禁止のため、本ファイル内圧縮のみが許される
 - 結果: 構造的に ≤200 達成困難 → user 承認のもと **≤350 に緩和**、331 行で着地 (-35%)
 
-兄弟 PR #803 (create.md: 734 → 334 行、-55%) は Moved blockquote 4 箇所が圧縮対象に含まれたため絶対削減量が大きかったが、本 PR は protected の比率が高く同水準は不可能だった。
+兄弟 PR (create.md: 734 → 334 行、-55%) は Moved blockquote 4 箇所が圧縮対象に含まれたため絶対削減量が大きかったが、本 PR は protected の比率が高く同水準は不可能だった。
 
 ### 失敗 mode
 

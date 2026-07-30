@@ -44,7 +44,7 @@ esac
 
 ### 既存 5 site + 新規 1 site = 6 site 対称化
 
-PR #579 時点で同型の residue gate が `rite` plugin 内の 6 site で運用されている (Phase 1.1 / 1.3 / 6.2 F-01 / 8.3 F-14 / F-04 + 新規 1 site)。canonical reference として新規 bash block を登録する際は既存同種 site と一字一句同型に揃えること。drift は silent regression の温床となる。
+起点事例の時点で同型の residue gate が `rite` plugin 内の 6 site で運用されている (Phase 1.1 / 1.3 / 6.2 F-01 / 8.3 F-14 / F-04 + 新規 1 site)。canonical reference として新規 bash block を登録する際は既存同種 site と一字一句同型に揃えること。drift は silent regression の温床となる。
 
 ### LLM 内部状態 vs shell 変数の境界
 

@@ -26,7 +26,7 @@ confidence: high
 2. ドキュメント後半で「S3/S4 は本 PR では未実施 (理由: cycle 数 risk)」と開示する (実施結果)
 3. 前半の claim には後半への前方参照がないため、前半だけ読んだ reader は施策が実施されたと誤認する
 
-PR #837 で評価レポート Section 7 (リスク緩和策) が `S3+S4 を同一 commit で実施` と claim し、Section 9.3 で `S3/S4 は未実施` と開示。tech-writer reviewer が LOW (内部矛盾) として検出した。リスク自体は実体化しなかったが、disclosure 順序として bottom-up でしか整合性が取れない構造。
+起点事例で評価レポート Section 7 (リスク緩和策) が `S3+S4 を同一 commit で実施` と claim し、Section 9.3 で `S3/S4 は未実施` と開示。tech-writer reviewer が LOW (内部矛盾) として検出した。リスク自体は実体化しなかったが、disclosure 順序として bottom-up でしか整合性が取れない構造。
 
 ### 解決パターン（cycle 1 fix）
 

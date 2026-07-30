@@ -73,7 +73,7 @@ esac
 
 bare statement だけでなく、**command-substitution を含む代入** も `set -e` 下で同じ failure mode を起こす。`out=$(cmd); rc=$?` で `cmd` が非ゼロ終了すると、代入文の exit status が非ゼロになり `set -e` がその行で abort する。直後の `rc=$?` と rc 分岐 (明示 failure 分岐) は dead code 化し、failure attribution が破壊される (silent pass ではなく harness abort)。
 
-PR #1306 の test T-6 で `out=$(...); rc=$?` が `set -euo pipefail` 下にあり、被テストスクリプトが回帰 (exit 2) した瞬間に代入行で harness が abort → 明示 FAIL 分岐に到達できず failure attribution が壊れていた (test reviewer の MEDIUM)。fix は `set +e; out=$(...); rc=$?; set -e` で囲む canonical pattern。exit 2 を返す broken script を注入する mutation test で FAIL 分岐到達を確認した。
+起点事例の test T-6 で `out=$(...); rc=$?` が `set -euo pipefail` 下にあり、被テストスクリプトが回帰 (exit 2) した瞬間に代入行で harness が abort → 明示 FAIL 分岐に到達できず failure attribution が壊れていた (test reviewer の MEDIUM)。fix は `set +e; out=$(...); rc=$?; set -e` で囲む canonical pattern。exit 2 を返す broken script を注入する mutation test で FAIL 分岐到達を確認した。
 
 bare statement 版 (上記) と root cause は同一 (`set -e` の非ゼロ abort) で、`if cmd; then rc=0; else rc=$?; fi` と `set +e; ...; rc=$?; set -e` のどちらの set -e 免除文脈に置くかは周辺コードの慣用と一致させる。test harness では `set +e`/`set -e` 囲みが慣用 (上位 if 条件にすると test の意図する rc 比較が読みにくくなるため)。
 
@@ -90,7 +90,7 @@ grep -nE '^\s*(python3|jq|grep|awk|sed|[a-zA-Z0-9_./-]+)\s+.*$' --include='*.sh'
 # より実用的には: 各 hook で `rc=$?` の直前行が if 条件 / && / || で囲まれているかを目視確認
 ```
 
-Issue #1241 subtask4 では他 hook (post-compact.sh / pre-tool-bash-guard.sh 等) を横断調査し、`session-start.sh:188` が唯一の該当箇所 (他は if/else・set +e 等で安全) と確認した。inline → delegate 委譲リファクタを行う PR では、委譲先コマンドが set -e 免除文脈に置かれているかを必ず verify すること。
+後続の subtask では他 hook (post-compact.sh / pre-tool-bash-guard.sh 等) を横断調査し、`session-start.sh:188` が唯一の該当箇所 (他は if/else・set +e 等で安全) と確認した。inline → delegate 委譲リファクタを行う PR では、委譲先コマンドが set -e 免除文脈に置かれているかを必ず verify すること。
 
 ## 関連ページ
 

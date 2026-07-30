@@ -44,7 +44,7 @@ commands/ → skills/ 移行に伴う stale 参照一掃で実測した線引き
 
 **inert / vestigial 記述への拡張**: 同じ意図的維持境界の線引きは、path 参照一掃だけでなく **inert（書いてあるが効かない）記述の掃除**（空 `## Detailed Checklist` 見出し・未実装スキャフォルディング prose・forward-looking な「将来 X を実装する計画」記述）にも適用される。各記述の処置は「削除 / reword / 変更なし」の 3 択で判定する:
 
-- **削除した見出しが umbrella ラベルとして別ファイルの散文から参照される**場合、その別ファイルが本 PR の凍結対象 (MUST NOT modify) なら片側だけ更新せず follow-up Issue へ切り出す（一部更新は N 箇所間の不整合を生む。PR #1726 では散文参照 5 箇所を #1725 へ分離）。
+- **削除した見出しが umbrella ラベルとして別ファイルの散文から参照される**場合、その別ファイルが本 PR の凍結対象 (MUST NOT modify) なら片側だけ更新せず follow-up Issue へ切り出す（一部更新は N 箇所間の不整合を生む。起点事例では散文参照 5 箇所を別 Issue へ分離）。
 - **forward-looking な「将来実装」prose が既に部分実装済み**のことがある。この場合は削除でも保持でもなく **reword** で stale claim のみ除去し、有効な運用指示は残す（例: 「enforcement 未実装 / 将来 drift-check で計画」→「自動 drift-check なし = 手動同期せよ」）。
 - 番号付きフローの中間 step 削除時は renumber と実装ノート内の全「順序 N」参照の整合を必ず検証する（[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の step-renumber 系）。
 - **死蔵に見えて実は機能している slot は「変更なし」**と判定する（実測では status enum の 1 値が read 側で実消費されており「将来予約」ではないため保持。inert 判定には consumer の grep 確認が必要）。

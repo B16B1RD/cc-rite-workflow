@@ -30,7 +30,7 @@ confidence: high
 
 ## 概要
 
-SKILL.md の散文（判定ルール・設計宣言）を契約として静的 grep で pin する設計は、pin 自体が容易に vacuous 化する。PR #2022 は同じ欠陥クラスを 2 サイクル連続で再生産したため、個別修正ではなく **pin の作り方そのもの** を変えた。
+SKILL.md の散文（判定ルール・設計宣言）を契約として静的 grep で pin する設計は、pin 自体が容易に vacuous 化する。起点事例は同じ欠陥クラスを 2 サイクル連続で再生産したため、個別修正ではなく **pin の作り方そのもの** を変えた。
 
 ```
 assert_prose_pin <text> <pattern> <weakened-probe> <label>

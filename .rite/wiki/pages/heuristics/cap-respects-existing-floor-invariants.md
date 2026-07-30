@@ -32,7 +32,7 @@ confidence: high
 
 ## 詳細
 
-PR #1729（`/rite:review` へ max_reviewers 上限と選定サマリを導入）は、この 4 者調停を巡って 4 cycle（MEDIUM 2 → 1 → 1 → 0）で構造的に収束した。cycle ごとに surface した learning:
+起点事例（`/rite:review` へ max_reviewers 上限と選定サマリを導入）は、この 4 者調停を巡って 4 cycle（MEDIUM 2 → 1 → 1 → 0）で構造的に収束した。cycle ごとに surface した learning:
 
 - **cycle 1 — 保護対象一般化の副作用と SoT 二重定義**:
   - mandatory 保護を「Security のみ hard-protect」から「全 `selection_type=mandatory`」へ一般化したが、cap 決定表に「**全員 mandatory かつ cap 超過**」の未定義分岐が生まれた（保護対象を広げると drop 対象が枯渇する副作用）。→ 保護対象の一般化は cap 決定表の**全 valid 入力被覆**を要求する（全員 mandatory かつ cap 超過なら「cap を mandatory 保証に譲る」と明示）。

@@ -32,7 +32,7 @@ confidence: high
 
 ## 概要
 
-SKILL.md の bash ブロックが `[CONTEXT] X=1` 形式の marker を stdout/stderr に出し、同ファイルの散文（完了報告の判定ルール）を LLM が読んで分岐する設計は rite の基本構造である。この emitter/consumer 契約は 4 つの条件が揃って初めて成立し、どれか 1 つでも欠けると「やっていないことを完了と報告する」false-success が成立する。PR #2022 は 11 cycle かけてこの 4 条件を 1 つずつ発見した。
+SKILL.md の bash ブロックが `[CONTEXT] X=1` 形式の marker を stdout/stderr に出し、同ファイルの散文（完了報告の判定ルール）を LLM が読んで分岐する設計は rite の基本構造である。この emitter/consumer 契約は 4 つの条件が揃って初めて成立し、どれか 1 つでも欠けると「やっていないことを完了と報告する」false-success が成立する。起点事例は 11 cycle かけてこの 4 条件を 1 つずつ発見した。
 
 ## 詳細
 

@@ -28,7 +28,7 @@ confidence: high
 
 ## 詳細
 
-PR #1933（`references/git-worktree-patterns.md` の sandbox SSH host alias ブロックに関する原因記述修正）では、3 回の review-fix cycle でこのギャップが段階的に露見した:
+起点事例（`references/git-worktree-patterns.md` の sandbox SSH host alias ブロックに関する原因記述修正）では、3 回の review-fix cycle でこのギャップが段階的に露見した:
 
 1. **cycle 1**: 著者は「`sandbox.excludedCommands` は公式サポートされた設定であり、指定コマンドを sandbox 外の通常 permission フローに乗せる」という公式ドキュメントの一般的な記述から、この設定が SSH 経由の git push/fetch ブロック問題も解消すると類推し、「恒久策」として提示した。prompt-engineer reviewer が上流の Claude Code issue（#30619, #29274, #53012、いずれも `not planned` でクローズ、2026-04 時点でも未修正）を WebFetch で直接検証した結果、Linux/WSL2 環境では `excludedCommands` は **ファイルシステムの sandbox のみバイパスし、ネットワークの sandbox はグローバルに適用され続ける** ことが判明した。SSH（port 22）はブロックされたままで、この「恒久策」は実際には機能しない。
 2. 修正の結果、実際に機能する `dangerouslyDisableSandbox` を主回避策に戻し、`excludedCommands` は「一見恒久策に見えるが機能しない設定」として上流 issue 参照付きで位置づけ直した。

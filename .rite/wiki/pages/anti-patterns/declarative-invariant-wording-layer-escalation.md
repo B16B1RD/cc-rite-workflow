@@ -34,7 +34,7 @@ SoT 集約 PR で「両者を集合等価に保つ」等の declarative invarian
 
 ## 詳細
 
-PR #1143 で 10 cycle にわたり実測。fractal pattern が cycle ごとに **異なる layer** で再発する mode を確立。
+起点事例で 10 cycle にわたり実測。fractal pattern が cycle ごとに **異なる layer** で再発する mode を確立。
 
 ### Layer 1: Invariant wording 層 (cycle 4-7)
 
@@ -59,7 +59,7 @@ cycle 9 で boundary 推奨吸収のために追加した「`\s` portability 言
 
 ### Sub-pattern: Gate-self-misrepresentation (cycle 2)
 
-declarative gate の "防御の最終層" や "post-hoc gate がある" 等の表現が実装と乖離していると、Claude が gate を skip する根拠に逆用される。PR #1143 cycle 2 で `Phase 3.1.1 が防御の最終層` 表現が `distributed-fix-drift-check.sh` の検出範囲 (構造的 drift のみ catch) と乖離していたため、コメント原則違反は実際には Phase 3.1.1 で検出されないにも関わらず "fallback あり" の誤解を生むため MEDIUM 検出。declarative gate 文言の「backstop 存在主張」は実装と一致しているか mandatory check すべき。
+declarative gate の "防御の最終層" や "post-hoc gate がある" 等の表現が実装と乖離していると、Claude が gate を skip する根拠に逆用される。起点事例の cycle 2 で `Phase 3.1.1 が防御の最終層` 表現が `distributed-fix-drift-check.sh` の検出範囲 (構造的 drift のみ catch) と乖離していたため、コメント原則違反は実際には Phase 3.1.1 で検出されないにも関わらず "fallback あり" の誤解を生むため MEDIUM 検出。declarative gate 文言の「backstop 存在主張」は実装と一致しているか mandatory check すべき。
 
 ### 教訓
 

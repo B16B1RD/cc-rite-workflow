@@ -18,7 +18,7 @@ confidence: high
 
 ## 概要
 
-bash literal block (`.md` ファイル内に埋め込まれた bash skeleton) 内で `continue` / `break` / `return` を使用する場合、enclosing 構文 (`for` / `while` / `until` loop または function 定義) を**同じ bash literal 内**に明示的に含める必要がある。enclosing loop を prose comment「タスクごとに以下を反復実行」のような外部委譲で表現すると、bash 仕様違反 (continue/break outside loop = stderr error + 次行 fall-through、rc=0) を許容する silent regression 経路となる。PR #1149 cycle 2 fix で導入された 3 `continue` site が cycle 3-5 reviewer (合計 4 cycle) で見落とされ、cycle 6 で実機 verify (rc=0、3 error path で silent regression) により初検出された。
+bash literal block (`.md` ファイル内に埋め込まれた bash skeleton) 内で `continue` / `break` / `return` を使用する場合、enclosing 構文 (`for` / `while` / `until` loop または function 定義) を**同じ bash literal 内**に明示的に含める必要がある。enclosing loop を prose comment「タスクごとに以下を反復実行」のような外部委譲で表現すると、bash 仕様違反 (continue/break outside loop = stderr error + 次行 fall-through、rc=0) を許容する silent regression 経路となる。起点事例の cycle 2 fix で導入された 3 `continue` site が cycle 3-5 reviewer (合計 4 cycle) で見落とされ、cycle 6 で実機 verify (rc=0、3 error path で silent regression) により初検出された。
 
 ## 詳細
 
@@ -48,7 +48,7 @@ bash literal 内で iteration が必要だが LLM 側で繰り返し実行する
 
 ### Cumulative-defense PR での発火条件
 
-本 anti-pattern は **inline rewrite** (peer file convention を見ずに skeleton を再構築) の文脈で頻発する。PR #1149 cycle 2 fix がまさにこの経路:
+本 anti-pattern は **inline rewrite** (peer file convention を見ずに skeleton を再構築) の文脈で頻発する。起点事例の cycle 2 fix がまさにこの経路:
 
 - cycle 1 fix で「Issue body template + bash skeleton 再 inline」を実施
 - pre-PR cleanup.md Phase 1.7.2 の original 安全機構 (`exit 1` fail-fast / mktemp 0-byte ガード / `result=$(...)` rc capture) を**すべて失った状態**で新規 skeleton を組み立て

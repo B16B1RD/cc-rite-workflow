@@ -16,7 +16,7 @@ confidence: high
 
 ## 概要
 
-fix サイクルで「canonical 参照」をコメントや commit message に書く際、Claude が実在しないファイル / 行番号 / anchor を生成する (hallucinate) リスクがある。PR #586 cycle 2 で「lint.md L1586-L1591 参照」と commit message に記載されたが実ファイルには該当行が存在せず、reviewer が `wc -l` で実在検証して cycle 3 で発覚した。行番号参照は drift しやすく、かつ LLM が「それっぽい数字」を生成する経路になるため、anchor / Phase 番号 / パス + パターン説明で参照するのが canonical。
+fix サイクルで「canonical 参照」をコメントや commit message に書く際、Claude が実在しないファイル / 行番号 / anchor を生成する (hallucinate) リスクがある。起点事例の cycle 2 で「lint.md L1586-L1591 参照」と commit message に記載されたが実ファイルには該当行が存在せず、reviewer が `wc -l` で実在検証して cycle 3 で発覚した。行番号参照は drift しやすく、かつ LLM が「それっぽい数字」を生成する経路になるため、anchor / Phase 番号 / パス + パターン説明で参照するのが canonical。
 
 ## 詳細
 
@@ -52,7 +52,7 @@ cycle 2 fix commit で「canonical reference として bash-trap-patterns.md の
 
 ### Architectural false reference (named category 不実在) への拡張（cycle 1 fix）
 
-PR #708 cycle 1 で `severity-levels.md` に COMMENT_QUALITY 軸を新設する際、説明文中で「本軸は SECURITY 軸 / CORRECTNESS 軸と orthogonal な評価次元を提供する」と記載したが、実際には `severity-levels.md` には **SECURITY 軸 / CORRECTNESS 軸という named architectural concept が存在しない**。リポジトリには SECURITY domain reviewer (`security-reviewer.md`) や CORRECTNESS reviewer (`code-quality-reviewer.md`) は存在するが、severity matrix で「軸」として宣言された名称ではない。reviewer (cycle 1) が grep で実在性を確認し HIGH finding として検出。
+severity 軸新設事例の cycle 1 で `severity-levels.md` に COMMENT_QUALITY 軸を新設する際、説明文中で「本軸は SECURITY 軸 / CORRECTNESS 軸と orthogonal な評価次元を提供する」と記載したが、実際には `severity-levels.md` には **SECURITY 軸 / CORRECTNESS 軸という named architectural concept が存在しない**。リポジトリには SECURITY domain reviewer (`security-reviewer.md`) や CORRECTNESS reviewer (`code-quality-reviewer.md`) は存在するが、severity matrix で「軸」として宣言された名称ではない。reviewer (cycle 1) が grep で実在性を確認し HIGH finding として検出。
 
 **学習**: 行番号の hallucination だけでなく、**説明文中の named architectural concept (「N 軸」「Y 経路」「Z モード」等の宣言的命名)** も同型の hallucination リスクを持つ。canonical 対策:
 

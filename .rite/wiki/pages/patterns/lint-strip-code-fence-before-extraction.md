@@ -46,7 +46,7 @@ strip_code_fences "$target_md" | grep -E '^#{1,6}[[:space:]]'
 
 ### 既知の限界 — awk in_fence toggle の nesting（cycle 2 — Hypothetical, non-blocking）
 
-`strip_code_fences` の awk in_fence トグルは ` ``` ` 行を単純にトグルするため、**4-backtick フェンス内に 3-backtick が現れる nesting** では誤トグルしうる構造的弱点を持つ。PR #1167 cycle 2 review で指摘されたが、現コーパスに発火する file が無く revert test も中立のため、Observed Likelihood Gate により Hypothetical / non-blocking に降格された ([[observed-likelihood-gate-with-evidence-anchors]])。フェンス delimiter 長を考慮した state machine が必要になるのは、実際に nested fence を含む対象が現れたときで十分。先回りで複雑化しないのが scope 判断として妥当。
+`strip_code_fences` の awk in_fence トグルは ` ``` ` 行を単純にトグルするため、**4-backtick フェンス内に 3-backtick が現れる nesting** では誤トグルしうる構造的弱点を持つ。起点事例の cycle 2 review で指摘されたが、現コーパスに発火する file が無く revert test も中立のため、Observed Likelihood Gate により Hypothetical / non-blocking に降格された ([[observed-likelihood-gate-with-evidence-anchors]])。フェンス delimiter 長を考慮した state machine が必要になるのは、実際に nested fence を含む対象が現れたときで十分。先回りで複雑化しないのが scope 判断として妥当。
 
 ### 適用範囲
 

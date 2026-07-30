@@ -24,7 +24,7 @@ confidence: high
 
 ## 概要
 
-`2>/dev/null || true` 等で無音化されていた失敗を「WARNING を stderr へ出力する」形に是正する fix は、成功パスのテストだけでは不十分。追加した WARNING 出力自体が将来 `|| true` へ再退行しても検出できないためで、PR #1970 の review-fix loop では cycle 1 で追加した WARNING を cycle 2 で error-handling reviewer と test reviewer が独立に「WARNING 自体の失敗パステストが無い」と指摘した（cross-validation で reviewer 2 名が同一箇所を指摘 = high confidence signal）。
+`2>/dev/null || true` 等で無音化されていた失敗を「WARNING を stderr へ出力する」形に是正する fix は、成功パスのテストだけでは不十分。追加した WARNING 出力自体が将来 `|| true` へ再退行しても検出できないためで、起点事例の review-fix loop では cycle 1 で追加した WARNING を cycle 2 で error-handling reviewer と test reviewer が独立に「WARNING 自体の失敗パステストが無い」と指摘した（cross-validation で reviewer 2 名が同一箇所を指摘 = high confidence signal）。
 
 ## 詳細
 

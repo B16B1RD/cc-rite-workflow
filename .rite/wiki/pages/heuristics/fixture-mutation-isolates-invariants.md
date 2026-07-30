@@ -24,7 +24,7 @@ confidence: high
 
 ## 詳細
 
-PR #1743（reviewer-registry-drift-check.test.sh、TC-1〜TC-11）の設計・レビューで実測した 3 つの配置原則。
+起点事例（reviewer-registry-drift-check.test.sh、TC-1〜TC-11）の設計・レビューで実測した 3 つの配置原則。
 
 ### 1. 行内整合の分離検証には均衡入替（双方向 swap）を使う
 

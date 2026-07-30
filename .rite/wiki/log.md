@@ -1634,3 +1634,4 @@
 | 2026-07-30T23:10:59Z | refs:prose | pages 20 件（密度 4-5 hits 帯） | バッチ 5: 起点事例 / 各 sub-pattern 事例ラベルへ置換。frontmatter description の 22 件は Issue Out of Scope として維持 |
 | 2026-07-30T23:13:44Z | refs:prose | pages 23 件（密度 3 hits 帯） | バッチ 6: 起点事例 / sub-pattern 事例ラベルへ置換 |
 | 2026-07-30T23:17:10Z | refs:prose | pages 50 件（密度 2 hits 帯の前半） | バッチ 7: 起点事例 / sub-pattern 事例ラベルへ置換 |
+| 2026-07-30T23:20:31Z | refs:prose | pages 75 件（密度 1-2 hits 帯） | バッチ 8: 起点事例ラベルへ置換 |

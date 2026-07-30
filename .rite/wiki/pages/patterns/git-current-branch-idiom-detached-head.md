@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-PR #1244 (`/rite:learn` spec) の cycle 4 で code-quality reviewer が「house pattern 逸脱」を LOW-MEDIUM 検出した。`learn.md:55` の現在ブランチ取得が `git rev-parse --abbrev-ref HEAD` を使っており、codebase の 24 箇所は `git branch --show-current` で統一されていた。
+起点事例 (`/rite:learn` spec) の cycle 4 で code-quality reviewer が「house pattern 逸脱」を LOW-MEDIUM 検出した。`learn.md:55` の現在ブランチ取得が `git rev-parse --abbrev-ref HEAD` を使っており、codebase の 24 箇所は `git branch --show-current` で統一されていた。
 
 これは単なる表記揺れではなく、具体的な副作用を持つ:
 

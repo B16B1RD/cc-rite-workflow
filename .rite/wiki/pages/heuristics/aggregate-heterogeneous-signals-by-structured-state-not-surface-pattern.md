@@ -30,7 +30,7 @@ cleanup 完了報告に非ブロッキング失敗を集約 surface する機能
 
 1. **cycle 1**: cross-Bash-tool-call 境界での値受け渡しにシェル変数を使い、既存の `{placeholder}` 規約を確認しなかった（[別ページ「SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する」](../anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md) 参照）。
 2. **cycle 2**: 複数 signal の「異常」を一律の仮定（`marker` 不在 = 異常）で判定しようとしたが、各 signal の実際の emit 条件（成功時に marker を出す設計か、失敗時のみ出す設計か）を個別確認しなかったため、成功時に marker を出さない設計のステップで常に誤検知（false positive）した。
-3. **cycle 3**: 表層的な文字列パターン（絵文字 `⚠️` prefix）を判定基準に選んだが、既存の複数ルールがその慣習に一律で従っているとは限らなかった。実際、ブランチ削除失敗の付記文（`BRANCH_DELETE_FAILED` / `BRANCH_DELETE_UNMERGED`）は絵文字 prefix を持たない bare-text だったため、絵文字ベースの判定はこのケースを取りこぼした——これはまさに Issue #1946 が守るべき「ブランチ削除失敗のような非ブロッキング失敗を見逃さない」というシナリオそのものであり、5 名中 5 名のレビュアーが独立に同一の HIGH バグとして検出した。
+3. **cycle 3**: 表層的な文字列パターン（絵文字 `⚠️` prefix）を判定基準に選んだが、既存の複数ルールがその慣習に一律で従っているとは限らなかった。実際、ブランチ削除失敗の付記文（`BRANCH_DELETE_FAILED` / `BRANCH_DELETE_UNMERGED`）は絵文字 prefix を持たない bare-text だったため、絵文字ベースの判定はこのケースを取りこぼした——これはまさに当該 Issue が守るべき「ブランチ削除失敗のような非ブロッキング失敗を見逃さない」というシナリオそのものであり、5 名中 5 名のレビュアーが独立に同一の HIGH バグとして検出した。
 
 ### 収束した根本原因と修正
 

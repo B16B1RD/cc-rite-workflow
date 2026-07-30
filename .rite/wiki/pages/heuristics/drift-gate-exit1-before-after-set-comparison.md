@@ -26,7 +26,7 @@ confidence: high
 
 ## 概要
 
-pre-commit drift gate (`distributed-fix-drift-check.sh` 等の機械的 lint) が `exit 1` で「drift 検出」を返したとき、その findings が **自分の変更が導入した drift** なのか **commit 前から存在する detector noise (pre-existing false-positive)** なのかを区別する手段が gate 自身にはない。両者を取り違えると、(a) pre-existing noise を「修正」しようとして scope を逸脱し fix ループが非収束になる、(b) あるいは自分が導入した drift を見逃す。`git stash` で自分の変更を一時退避し、**変更あり (HEAD+working) / 変更なし (HEAD only) の 2 状態で drift-check を実行して findings 集合を比較**することで、新規 drift 件数を機械的に確定する。集合が完全一致 (N=N) なら自分の変更は drift-neutral と確定し、gate の `exit 1` を pre-existing noise として push back できる。PR #1201 の 4 cycle review-fix loop で 3 回 (cycle 1/2/3 fix) 適用し、毎回 64=64 の完全一致を実測した。
+pre-commit drift gate (`distributed-fix-drift-check.sh` 等の機械的 lint) が `exit 1` で「drift 検出」を返したとき、その findings が **自分の変更が導入した drift** なのか **commit 前から存在する detector noise (pre-existing false-positive)** なのかを区別する手段が gate 自身にはない。両者を取り違えると、(a) pre-existing noise を「修正」しようとして scope を逸脱し fix ループが非収束になる、(b) あるいは自分が導入した drift を見逃す。`git stash` で自分の変更を一時退避し、**変更あり (HEAD+working) / 変更なし (HEAD only) の 2 状態で drift-check を実行して findings 集合を比較**することで、新規 drift 件数を機械的に確定する。集合が完全一致 (N=N) なら自分の変更は drift-neutral と確定し、gate の `exit 1` を pre-existing noise として push back できる。起点事例の 4 cycle review-fix loop で 3 回 (cycle 1/2/3 fix) 適用し、毎回 64=64 の完全一致を実測した。
 
 ## 詳細
 

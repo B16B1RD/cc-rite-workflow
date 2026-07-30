@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-PR #1743（reviewer-registry-drift-check.sh）の I3 slug 整合チェックで実測・対策したパターン。
+起点事例（reviewer-registry-drift-check.sh）の I3 slug 整合チェックで実測・対策したパターン。
 
 ### 失敗モード
 

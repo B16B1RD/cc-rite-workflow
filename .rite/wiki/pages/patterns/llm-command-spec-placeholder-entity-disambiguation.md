@@ -20,7 +20,7 @@ LLM が実行する command spec (`.md`) で、単一の汎用 placeholder `{num
 
 ## 詳細
 
-PR #1244 (`/rite:learn` spec) の cycle 1 で、新規コマンド spec への review 指摘 3 件が「LLM 向け実行手順書としての placeholder 解決・引数パースの曖昧さ」に集約した。
+起点事例 (`/rite:learn` spec) の cycle 1 で、新規コマンド spec への review 指摘 3 件が「LLM 向け実行手順書としての placeholder 解決・引数パースの曖昧さ」に集約した。
 
 ### 落とし穴 1: 単一 `{number}` placeholder の代入先非一意
 

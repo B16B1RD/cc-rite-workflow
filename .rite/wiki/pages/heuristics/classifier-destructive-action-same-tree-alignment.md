@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-PR #1840 の discardable 判定 (未コミット変更がマージ済み内容と diff 同一なら破棄提案) で実際に起きた不一致:
+起点事例の discardable 判定 (未コミット変更がマージ済み内容と diff 同一なら破棄提案) で実際に起きた不一致:
 
 - 判定: working tree vs origin の比較 (`git diff`)
 - 破棄: `git checkout -- :/` は **index** から復元 (tree-ish 省略時)。staged 変更がある場合、判定が見ていない index 内容が worktree へ蘇生し、破棄が意図どおり動かない

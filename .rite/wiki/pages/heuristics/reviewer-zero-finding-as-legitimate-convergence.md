@@ -24,7 +24,7 @@ confidence: high
 
 ### 観察された事象（cycle 6 → cycle 8）
 
-PR #1146 (Doc-Heavy PR の 8 cycle 収束) で reviewer が明示した文言:
+累積 44 回目相当 (Doc-Heavy PR の 8 cycle 収束) で reviewer が明示した文言:
 
 > 「fractal pattern が ほぼ収束、次 cycle で完全 0 件到達が現実的に視野」 (cycle 6 表現)
 > 「真に finding がないときに何か挙げないと bias」を抑制し、0 件 = 正常終了を恐れない姿勢が loop 永久化を回避 (cycle 8 確認)

@@ -20,7 +20,7 @@ docstring / SPEC / コメントの「例示」(e.g. 〜等) に使う語彙が�
 
 ## 詳細
 
-PR #1838 で work-memory-update.sh の新規 docstring が「local file の `## Detail` 以下に蓄積される『決定事項・メモ』を保持する」と例示したが、「決定事項・メモ」は work-memory-format.md の Basic Structure (Issue コメント replica 形式) で定義された節であり、local File Structure の `## Detail` は「自由記述」のみが定義だった。決定事項・メモ を local `## Detail` に書き込む writer は codebase に存在せず (grep 0 件で demonstrable に確定)、例示が「それらしい語彙」を別レイヤから借用した誤帰属だった。修正は例示を定義元の語彙 (「自由記述内容」) に差し替えるだけで済み、保持機構 (mechanism) の記述は正しかったため変更不要だった。
+起点事例で work-memory-update.sh の新規 docstring が「local file の `## Detail` 以下に蓄積される『決定事項・メモ』を保持する」と例示したが、「決定事項・メモ」は work-memory-format.md の Basic Structure (Issue コメント replica 形式) で定義された節であり、local File Structure の `## Detail` は「自由記述」のみが定義だった。決定事項・メモ を local `## Detail` に書き込む writer は codebase に存在せず (grep 0 件で demonstrable に確定)、例示が「それらしい語彙」を別レイヤから借用した誤帰属だった。修正は例示を定義元の語彙 (「自由記述内容」) に差し替えるだけで済み、保持機構 (mechanism) の記述は正しかったため変更不要だった。
 
 チェック手順:
 

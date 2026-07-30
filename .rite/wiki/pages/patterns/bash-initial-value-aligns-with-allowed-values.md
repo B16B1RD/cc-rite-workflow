@@ -31,7 +31,7 @@ bash の case 文で routing する文字列変数 (例: `status_update_result`)
 3. **`*)` catch-all arm が存在しない、または catch-all 内で no-op になっている**
 4. **早期 exit / continue / 条件分岐 skip 経路** が変数を上書きせずに case 文に到達する経路を持つ
 
-### PR #659 cycle 2 での実測事例
+### 起点事例の cycle 2 での実測事例
 
 `commands/issue/close.md` Phase 4.6.3 で:
 

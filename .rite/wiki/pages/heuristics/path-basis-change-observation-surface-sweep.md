@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-PR #1839 (review-result / PR-state 群の state-path-resolve 統一、4 cycles で収束) の cycle 1 指摘 7 件中 5 件、cycle 2〜3 指摘 4 件中 3 件が「実装本体は正しいが周辺の追従漏れ」だった。カテゴリ別:
+起点事例 (review-result / PR-state 群の state-path-resolve 統一、4 cycles で収束) の cycle 1 指摘 7 件中 5 件、cycle 2〜3 指摘 4 件中 3 件が「実装本体は正しいが周辺の追従漏れ」だった。カテゴリ別:
 
 1. **観測面** — パス基準の変更後も旧パスを前提に動く箇所:
    - 既存テストのパス assertion (相対形式を literal pin → FAIL)

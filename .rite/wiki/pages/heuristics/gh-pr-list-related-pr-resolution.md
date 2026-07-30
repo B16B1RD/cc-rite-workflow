@@ -24,7 +24,7 @@ confidence: high
 
 ## 詳細
 
-PR #1244 (新コマンド `/rite:learn` の spec) の review-fix loop で、`#N`→Issue 解決ロジックがこの 2 つの gh CLI 仕様の落とし穴を連続で踏んだ (cycle 2 / cycle 3)。両者とも「LLM が house pattern の形だけ真似たが実際には機能しない」失敗である。
+起点事例 (新コマンド `/rite:learn` の spec) の review-fix loop で、`#N`→Issue 解決ロジックがこの 2 つの gh CLI 仕様の落とし穴を連続で踏んだ (cycle 2 / cycle 3)。両者とも「LLM が house pattern の形だけ真似たが実際には機能しない」失敗である。
 
 ### 落とし穴 1: `--head` は exact-match のみ (glob 非対応)
 

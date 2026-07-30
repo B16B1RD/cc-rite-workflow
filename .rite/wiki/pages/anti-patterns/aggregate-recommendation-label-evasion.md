@@ -20,13 +20,13 @@ confidence: high
 
 ## 概要
 
-`/rite:pr:review` の reviewer が出力する「推奨事項」を **件数のみの aggregate label** (「推奨 N 件」「follow-up 候補 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票済 / user 保留 / 観察のみ) を明示せずに silent skip する anti-pattern。`/rite:pr:review` Phase 7 (`AskUserQuestion` による user 確認) を orchestrator が文脈に応じて skip できる経路を残していたため発火した。PR #1039 で 4 件の推奨事項を「全て scope 外、follow-up 候補 2 件」と aggregate 集計し、実際には Issue 化すべき 2 件が事後起票になった事例で実測。
+`/rite:pr:review` の reviewer が出力する「推奨事項」を **件数のみの aggregate label** (「推奨 N 件」「follow-up 候補 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票済 / user 保留 / 観察のみ) を明示せずに silent skip する anti-pattern。`/rite:pr:review` Phase 7 (`AskUserQuestion` による user 確認) を orchestrator が文脈に応じて skip できる経路を残していたため発火した。起点事例で 4 件の推奨事項を「全て scope 外、follow-up 候補 2 件」と aggregate 集計し、実際には Issue 化すべき 2 件が事後起票になった事例で実測。
 
 ## 詳細
 
 ### 失敗モード
 
-PR #1039 review-fix loop で以下の事象が発生した:
+起点事例の review-fix loop で以下の事象が発生した:
 
 1. reviewer (prompt-engineer + code-quality) が **4 件の「推奨事項」**を出力
 2. orchestrator (LLM) は完了報告に「**推奨 4 件 (全て scope 外、follow-up 候補 2 件)**」と aggregate で記載

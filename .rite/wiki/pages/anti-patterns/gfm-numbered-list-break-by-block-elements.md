@@ -37,12 +37,12 @@ cross-validation: prompt-engineer reviewer (confidence 75) と code-quality revi
 
 ### Canonical fix (cross-validated)
 
-PR #946 fix で 2 通りの解決手段が canonical として確立:
+起点事例の fix で 2 通りの解決手段が canonical として確立:
 
 1. **item を 1 行形式に圧縮**: `N. **短い見出し**: 簡潔な説明` の 1 行 bullet に保ち、補足は別 sub-heading に切り出す
 2. **補足情報を別 h4 sub-heading に独立化**: 連番リストの直後に `#### サブセクション` を配置し、table / paragraph はその下に格納する。connecting prose (例: 「以下の表は item 4 の判定基準を補足します」) を sub-heading 冒頭に置くことで連続性を視覚化
 
-PR #946 では (2) を採用し、Phase 4 overview list 直下に `#### アクション判定表 (Step 4 用)` を配置することで item 1-5 の連続性を回復した。
+起点事例では (2) を採用し、Phase 4 overview list 直下に `#### アクション判定表 (Step 4 用)` を配置することで item 1-5 の連続性を回復した。
 
 ### 検出シグナル
 

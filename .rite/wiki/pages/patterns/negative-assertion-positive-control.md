@@ -70,7 +70,7 @@ run_with_canary_disabled
 [ -f "$canary" ] && fail "canary must not be created"
 ```
 
-PR #2013 では cycle 1 で `|| true` による crash signal 破棄を潰しておきながら、**新規テストの fixture に同型の fail-open を持ち込んでいた**（cycle 2 で検出）。否定側は「潰したつもり」でも別の形で再発しやすい。
+起点事例では cycle 1 で `|| true` による crash signal 破棄を潰しておきながら、**新規テストの fixture に同型の fail-open を持ち込んでいた**（cycle 2 で検出）。否定側は「潰したつもり」でも別の形で再発しやすい。
 
 ### fixture 構築の `|| continue` も silent skip と同じ
 

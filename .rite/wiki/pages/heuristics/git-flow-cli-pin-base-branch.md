@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-`gh issue develop {issue_number} --name "{branch_name}"` は `--base` 未指定時にリポジトリのデフォルトブランチ (main) を起点に remote ブランチを作成する。一方ローカルブランチは `branch.base` (develop) から派生するため、remote (main 起点) と local (develop 起点) の base が乖離し、初回 `git push` が `! [rejected] (non-fast-forward)` で失敗する。Issue #1090 の作業中に実際に発生し、force-with-lease で都度回避していた構造的欠陥を、`--base "{base_branch}"` の明示により解消した。
+`gh issue develop {issue_number} --name "{branch_name}"` は `--base` 未指定時にリポジトリのデフォルトブランチ (main) を起点に remote ブランチを作成する。一方ローカルブランチは `branch.base` (develop) から派生するため、remote (main 起点) と local (develop 起点) の base が乖離し、初回 `git push` が `! [rejected] (non-fast-forward)` で失敗する。ある Issue の作業中に実際に発生し、force-with-lease で都度回避していた構造的欠陥を、`--base "{base_branch}"` の明示により解消した。
 
 **canonical 対策**: remote ブランチを作成する CLI には base を明示固定する。
 

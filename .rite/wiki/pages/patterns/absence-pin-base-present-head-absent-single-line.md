@@ -20,7 +20,7 @@ confidence: high
 
 ## 概要
 
-旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。(1) **空虚 pin**: 2 語を `.*` で橋渡しするパターンは、旧文面が複数行に跨っていた場合、行指向 grep が一度もマッチせず「常に pass する幻のガード」になる（狙った regression を検出できない）。(2) **ERE 可搬性**: パターン内の literal `{...}` を未エスケープで書くと、GNU grep は不正 interval を literal 扱いするが、strict ERE 実装（macOS/BSD grep・ugrep）は regcomp エラー（rc=2）で拒否し suite を偽 FAIL させる。PR #1959 cycle 3 で両方が runtime 実証つきで検出された。
+旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。(1) **空虚 pin**: 2 語を `.*` で橋渡しするパターンは、旧文面が複数行に跨っていた場合、行指向 grep が一度もマッチせず「常に pass する幻のガード」になる（狙った regression を検出できない）。(2) **ERE 可搬性**: パターン内の literal `{...}` を未エスケープで書くと、GNU grep は不正 interval を literal 扱いするが、strict ERE 実装（macOS/BSD grep・ugrep）は regcomp エラー（rc=2）で拒否し suite を偽 FAIL させる。起点事例の cycle 3 で両方が runtime 実証つきで検出された。
 
 ## 詳細
 
