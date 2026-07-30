@@ -91,8 +91,9 @@ surface する項目は 1 項目 = 1 question とし、**最大 4 件**とする
 
 | 条件 | 挙動 |
 |------|------|
-| 参照先の番号 / SHA が存在しない（`gh` の stderr が `Could not resolve to an issue or pull request` / `Could not resolve to a PullRequest` を含む、または `git` の stderr が `unknown revision` / `bad object` を含む非ゼロ終了。`Could not resolve` の**部分一致で判定してはならない** — 同語はリポジトリ解決失敗にも現れる） | `CONTRADICTED`（タイポの可能性を訂正案として提示する） |
-| **上記以外**の非ゼロ終了（オフライン / `gh` 認証切れ / リポジトリ解決失敗・権限不足（stderr が `Could not resolve to a Repository` — 番号ではなく `{owner_repo}` 側の問題）/ 浅い clone に commit が無い 等） | `UNVERIFIED` として「要確認」を付記し続行。stderr に `WARNING` を出す。Issue 作成 / 編集を**ブロックしない** |
+| 参照先の番号が存在しない（`gh` の stderr が `Could not resolve to an issue or pull request` / `Could not resolve to a PullRequest` を含む非ゼロ終了。`Could not resolve` の**部分一致で判定してはならない** — 同語はリポジトリ解決失敗にも現れる。`gh` はサーバに問い合わせるため不存在を断定できる） | `CONTRADICTED`（タイポの可能性を訂正案として提示する） |
+| `git` がローカルで object を解決できない（stderr が `unknown revision` / `bad object` / `invalid object name` 等を含む非ゼロ終了）。**ローカル git は「存在しない」と「fetch されていない」を区別できない** — 浅い clone / 未 fetch ブランチ / fork 上の commit では**実在する SHA も同一の stderr** になる（本行を `CONTRADICTED` の根拠にしてはならない） | `UNVERIFIED` として「要確認」を付記し続行（タイポと断定しない）。サーバ権威で不存在を断定したい場合のみ `gh api repos/{owner_repo}/commits/{sha}` を追加実行し、**stderr が `No commit found for SHA`（HTTP 422）のときに限り** `CONTRADICTED` へ昇格してよい（HTTP 404 は SHA ではなく `{owner_repo}` 側の不在なので昇格しない） |
+| **上記以外**の非ゼロ終了（オフライン / `gh` 認証切れ / リポジトリ解決失敗・権限不足（stderr が `Could not resolve to a Repository` — 番号ではなく `{owner_repo}` 側の問題）等） | `UNVERIFIED` として「要確認」を付記し続行。stderr に `WARNING` を出す。Issue 作成 / 編集を**ブロックしない** |
 | Issue として引用した番号が PR として解決した（上表コマンドの `url` が `/pull/` を含む） | `CONTRADICTED`（PR 番号を Issue と誤認している。対応する Issue 番号は commit body の `refs #M` 側を確認して訂正案に載せる） |
 | 検査対象 0 件 | silent skip（追加の出力・質問を出さない） |
 | issue-edit で本文以外（title / Projects フィールド）のみの変更 | 検査を実行しない |
