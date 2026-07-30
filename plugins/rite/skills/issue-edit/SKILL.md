@@ -266,15 +266,17 @@ Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 
 | All `VERIFIED` | Proceed to 3.2 without extra output |
 | `CONTRADICTED` present | Raise this check's own `AskUserQuestion` with the 3 options the reference defines (`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`). Never auto-rewrite |
 | `UNVERIFIED` present | Annotate the body with 「要確認」(or 「要検証」for external-spec claims) as the reference's three-value table specifies. Do not block the edit |
-| Back-verification command failed | Classify per the reference's error table (`Could not resolve` → `CONTRADICTED`, otherwise `UNVERIFIED` + a `WARNING` on stderr), then proceed |
+| Back-verification command failed | Classify per the reference's エラー処理 table, then proceed. **Do not restate its conditions here** — summarising them drops branches (the table splits on `gh` *and* `git` stderr signals) |
 
 This check raises **its own `AskUserQuestion`** — it does not fold into the Phase 3.2 confirmation. That keeps the reference's 4-item budget and its overflow rule applicable verbatim (Phase 3.2's own question never competes for the slots), and it settles every fact-check decision before the user is asked to approve the edit.
 
-Apply the approved results to `{new_body}`, then **re-render the 3.1 diff** so that what Phase 3.2 asks the user to approve — and what Phase 4.1 subsequently writes — is the post-check body. When nothing was surfaced, skip the re-render: the flow is then identical to an edit with no fact-check findings.
+Apply the approved results to `{new_body}`, then **re-display the 3.1 diff blocks** — re-render the display only; do not re-run this check — so that what Phase 3.2 asks the user to approve, and what Phase 4.1 subsequently writes, is the post-check body. Re-display whenever this check changed `{new_body}`, **including annotation-only changes that raised no question**; skip it only when `{new_body}` is byte-identical to what 3.1 already displayed.
 
 Self-contradiction candidates sit on an axis orthogonal to the table above. Evaluate them per the reference's クラス 3 section regardless of which row applied; that section is the single definition of when to raise them, so both consumers stay in step.
 
-Skip a claim that already carries a 「要確認」/「要検証」annotation — the `issue-create` skill annotates at ステップ 4.2.1, so an edited section can arrive here with those markers already in place, and an unguarded pass would add a second one.
+Skip a claim that already carries a 「要確認」/「要検証」annotation — the `issue-create` skill annotates at ステップ 4.2.1 and 5.1.1, so an edited section can arrive here with those markers already in place, and an unguarded pass would add a second one.
+
+Also skip any claim the user has already decided **in this session**. Carry each decision (`訂正案を採用` / `要確認を付記して続行` / `そのまま続行` / `修正して続行`) in session state rather than inferring it from the body: `そのまま続行` leaves no marker, so a body-only guard would re-ask it on every re-entry from Phase 3.2's 「変更を修正」 or Phase 5.2's 「追加の修正」, consuming the 4-question budget each time without progressing.
 
 ### 3.2 User Confirmation
 
