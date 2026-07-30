@@ -2,7 +2,7 @@
 title: "state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する"
 domain: "patterns"
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-04-20T15:15:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260419T034237Z-pr-586-cycle5.md"

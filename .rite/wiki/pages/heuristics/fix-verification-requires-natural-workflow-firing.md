@@ -2,7 +2,7 @@
 title: "Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う"
 domain: "heuristics"
 created: "2026-04-17T00:15:00+00:00"
-updated: "2026-04-17T00:15:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "retrospectives"
     ref: "raw/retrospectives/20260416T094137Z-issue-532.md"

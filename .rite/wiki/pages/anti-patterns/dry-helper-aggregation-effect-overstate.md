@@ -2,7 +2,7 @@
 title: "DRY 集約助手の効果記述は『何が集約され、何が依然分散しているか』を明示する"
 domain: "anti-patterns"
 created: "2026-04-29T02:55:00+00:00"
-updated: "2026-04-29T02:55:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260428T111028Z-pr-688.md"

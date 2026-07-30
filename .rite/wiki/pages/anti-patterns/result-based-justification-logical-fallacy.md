@@ -2,7 +2,7 @@
 title: "結果論的弁明の論理破綻: 順序逆転で結果不変なのに『悪化する』と説明する実装ノート"
 domain: "anti-patterns"
 created: "2026-04-28T18:55:00+00:00"
-updated: "2026-04-28T18:55:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260428T184201Z-pr-706.md"

@@ -2,7 +2,7 @@
 title: "structural ownership guarantee は code-level defense-in-depth で enforce する"
 domain: "patterns"
 created: "2026-04-30T08:03:08Z"
-updated: "2026-04-30T08:03:08Z"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260430T074655Z-pr-750-cycle-1.md"

@@ -2,7 +2,7 @@
 title: "fix コメント / commit message で hallucinated canonical reference を生成する"
 domain: "anti-patterns"
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-04-29T05:30:00+09:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260419T025335Z-pr-586.md"

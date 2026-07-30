@@ -2,7 +2,7 @@
 title: "新規 file 命名と既存 find glob が collision して silent 削除を起こす"
 domain: "anti-patterns"
 created: "2026-04-30T03:50:00+00:00"
-updated: "2026-04-30T03:50:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260430T031013Z-pr-747.md"

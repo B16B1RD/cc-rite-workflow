@@ -2,7 +2,7 @@
 title: "mkdir -p で作成した directory は rmdir で対称 cleanup する (probe file 単独削除は pollution 残留)"
 domain: "patterns"
 created: "2026-04-19T01:10:00+00:00"
-updated: "2026-04-19T01:10:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260419T004413Z-pr-585.md"

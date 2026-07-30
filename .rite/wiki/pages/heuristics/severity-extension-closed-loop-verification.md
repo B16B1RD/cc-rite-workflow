@@ -2,7 +2,7 @@
 title: "Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する"
 domain: "heuristics"
 created: "2026-04-29T05:30:00+09:00"
-updated: "2026-04-29T05:30:00+09:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260428T201715Z-pr-708-cycle-3.md"

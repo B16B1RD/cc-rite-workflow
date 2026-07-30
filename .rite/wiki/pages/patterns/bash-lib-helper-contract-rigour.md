@@ -2,7 +2,7 @@
 title: "Bash lib helper の contract は実装と同じ rigour で保証する"
 domain: "patterns"
 created: "2026-04-17T00:00:00+00:00"
-updated: "2026-04-17T00:00:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260416T201615Z-pr-550.md"

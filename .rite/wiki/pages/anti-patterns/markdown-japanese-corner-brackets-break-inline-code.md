@@ -2,7 +2,7 @@
 title: "Markdown inline code を Japanese corner brackets 「!」 に置換すると LLM 提示時 semantic interpretation が劣化する"
 domain: "anti-patterns"
 created: "2026-04-30T01:58:00+00:00"
-updated: "2026-04-30T01:58:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260430T013507Z-pr-688.md"

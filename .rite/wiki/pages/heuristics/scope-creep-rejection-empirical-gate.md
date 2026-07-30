@@ -2,7 +2,7 @@
 title: "`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する"
 domain: "heuristics"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-04-27T23:01:24+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260427T121800Z-pr-688.md"

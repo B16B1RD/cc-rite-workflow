@@ -2,7 +2,7 @@
 title: "SoT-reviewer 表現 drift: pos/neg 方向の差で派生記述が silent drift する"
 domain: "anti-patterns"
 created: "2026-04-28T18:55:00+00:00"
-updated: "2026-04-28T18:55:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260428T183538Z-pr-706.md"

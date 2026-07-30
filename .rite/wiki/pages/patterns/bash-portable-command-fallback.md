@@ -2,7 +2,7 @@
 title: "cross-platform bash コマンドは fallback chain で portable 化する"
 domain: "patterns"
 created: "2026-04-17T04:30:00+00:00"
-updated: "2026-04-19T01:10:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T035556Z-pr-559.md"

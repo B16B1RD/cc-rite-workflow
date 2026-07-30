@@ -2,7 +2,7 @@
 title: "前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する"
 domain: "anti-patterns"
 created: "2026-04-25T12:30:00+00:00"
-updated: "2026-04-25T17:50:00+00:00"
+updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "retrospectives"
     ref: "raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md"
