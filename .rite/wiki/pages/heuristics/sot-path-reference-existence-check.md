@@ -32,9 +32,9 @@ confidence: high
 
 ## 詳細
 
-### PR #705 で実測した 4 失敗形態
+### 起点事例で実測した 4 失敗形態
 
-PR #705 (コメントベストプラクティス SoT 新設 MVP) cycle 1 review で 6 findings (HIGH 2 + MEDIUM 3 + LOW 1) として一斉 surface した:
+起点事例 (コメントベストプラクティス SoT 新設 MVP) の cycle 1 review で 6 findings (HIGH 2 + MEDIUM 3 + LOW 1) として一斉 surface した:
 
 | # | failure mode | 具体例 | 修正方針 |
 |---|--------------|--------|---------|
@@ -80,7 +80,7 @@ SoT 文書には「適用フェーズ」概要表 (どの phase でこの原則�
 
 両方が揃わない場合、表は **dead spec** 化 (declared but unobserved) し、新規読者は「表に書いてあるのに具体化がない → 未実装の宣言」と誤読する。表と具体化セクションのいずれかを更新する PR では、必ず双方向整合を確認する。
 
-PR #705 cycle 2 では cycle 1 で broken-ref / 表記揺れ / regex の defect を一括解消した直後、内部矛盾 (適用フェーズ vs Where to Apply) が cycle 2 で初検出された。MVP スコープを尊重しつつ「未定義であることを明示する Note」で透明化する選択肢も canonical (cf. [Prose-only design](../anti-patterns/prose-design-without-backing-implementation.md))。
+起点事例の cycle 2 では cycle 1 で broken-ref / 表記揺れ / regex の defect を一括解消した直後、内部矛盾 (適用フェーズ vs Where to Apply) が cycle 2 で初検出された。MVP スコープを尊重しつつ「未定義であることを明示する Note」で透明化する選択肢も canonical (cf. [Prose-only design](../anti-patterns/prose-design-without-backing-implementation.md))。
 
 ### 3 cycle 収束パターン
 
@@ -96,15 +96,15 @@ cycle 1 (6 findings) → cycle 2 (1 finding) → cycle 3 (0 findings, mergeable)
 
 ### 逆方向: broken reference の修正 PR でも引用先実在性を事前確認する
 
-PR #1102 (累積、`phase-mapping.md` の broken cross-reference 修正 doc PR) は本経験則の **逆方向の適用** を実測した: 新規 SoT 作成時の existence check だけでなく、**既に壊れている参照を修正する PR** でも、修正後参照先 (resume.md Phase 3.5 cross-check / Phase 5.3 mapping) の実在を Read tool で事前確認することが 0 blocking finding / 1 cycle 着地に直結した。`phase-mapping.md` が `commands/resume.md` の存在しない「Phase 3.2 legacy alias 表」を SoT として参照していた broken reference を、実在する Phase 3.5 / Phase 5.3 参照に書き換えた。両 reviewer (prompt-engineer / code-quality) が修正後参照の実在を Read で independently verify。
+逆方向適用事例 (`phase-mapping.md` の broken cross-reference 修正 doc PR) は本経験則の **逆方向の適用** を実測した: 新規 SoT 作成時の existence check だけでなく、**既に壊れている参照を修正する PR** でも、修正後参照先 (resume.md Phase 3.5 cross-check / Phase 5.3 mapping) の実在を Read tool で事前確認することが 0 blocking finding / 1 cycle 着地に直結した。`phase-mapping.md` が `commands/resume.md` の存在しない「Phase 3.2 legacy alias 表」を SoT として参照していた broken reference を、実在する Phase 3.5 / Phase 5.3 参照に書き換えた。両 reviewer (prompt-engineer / code-quality) が修正後参照の実在を Read で independently verify。
 
 このケースが示すのは、本経験則の検証手順 (引用先 SoT を Read tool で verify) は「reference を新規に書く時」だけでなく「broken reference を直す時」にも同じ rigour で適用すべきという点である。修正対象が壊れている事実は、修正後の参照先まで自動的に正しいことを保証しない。
 
-加えて PR #1102 で観測された **pre-existing 同型 broken reference の残存**: 同じ「Phase 3.2 legacy table」への broken 参照が `sub-skill-return-protocol.md` / `docs/SPEC.md` / `docs/SPEC.ja.md` にも残存していることが調査で surface した (本 PR scope 外として別途調査推奨)。これは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版であり、1 箇所の broken ref を直す際に同型参照を repo 全体で `grep` して残存件数を確認する pre-flight が canonical 対策となる。
+加えて逆方向適用事例で観測された **pre-existing 同型 broken reference の残存**: 同じ「Phase 3.2 legacy table」への broken 参照が `sub-skill-return-protocol.md` / `docs/SPEC.md` / `docs/SPEC.ja.md` にも残存していることが調査で surface した (本 PR scope 外として別途調査推奨)。これは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版であり、1 箇所の broken ref を直す際に同型参照を repo 全体で `grep` して残存件数を確認する pre-flight が canonical 対策となる。
 
 ### relative reference の検証は『file 存在』だけでなく『depth-aware な相対 path 解決』まで含む
 
-PR #1190 (`commands/pr/open.md` ステップ3.5 の dangling reference `references/issue-body-checklist.md` を実在の `../../references/gh-cli-patterns.md#safe-checklist-operation-patterns` へ差し替える doc PR) は、本経験則の逆方向を再実測しつつ、**relative reference 特有の検証軸**を追加した: 0 blocking finding / 1 cycle 着地で、両 reviewer (prompt-engineer + code-quality) が以下 4 点を機械検証した:
+relative reference 事例 (`commands/pr/open.md` ステップ3.5 の dangling reference `references/issue-body-checklist.md` を実在の `../../references/gh-cli-patterns.md#safe-checklist-operation-patterns` へ差し替える doc PR) は、本経験則の逆方向を再実測しつつ、**relative reference 特有の検証軸**を追加した: 0 blocking finding / 1 cycle 着地で、両 reviewer (prompt-engineer + code-quality) が以下 4 点を機械検証した:
 
 1. **file 存在**: 差し替え先 `plugins/rite/references/gh-cli-patterns.md` の実在 (find / test -e)
 2. **anchor 一致**: `## Safe Checklist Operation Patterns` 見出しが GitHub slug 規則で `#safe-checklist-operation-patterns` に一致 (唯一見出し)
@@ -118,7 +118,7 @@ PR #1190 (`commands/pr/open.md` ステップ3.5 の dangling reference `referenc
 | `commands/{X}/foo.md` (depth-2) | `../../references/` |
 | `commands/{X}/references/foo.md` (depth-3) | `../../../references/` |
 
-bare `references/` と depth 別 relative prefix の混在が drift 源になる。reviewer は副次的に pre-existing な同型不整合を 2 件検出した: (1) `commands/pr/open.md` L137/L141 が bare `references/...`、(2) `commands/pr/references/archive-procedures.md` L260/L333 が depth-3 から `../../references/` で broken (正しくは `../../../references/`)。これらは Issue scope 外として boundary 推奨に分類され、follow-up Issue #1191 (「rite command/reference ファイルの参照パス drift を一括解消」) として切り出した — line 99 の「同型参照を repo 全体で grep して残存件数を確認する」canonical 対策 ([Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版) を実運用した実例。
+bare `references/` と depth 別 relative prefix の混在が drift 源になる。reviewer は副次的に pre-existing な同型不整合を 2 件検出した: (1) `commands/pr/open.md` L137/L141 が bare `references/...`、(2) `commands/pr/references/archive-procedures.md` L260/L333 が depth-3 から `../../references/` で broken (正しくは `../../../references/`)。これらは Issue scope 外として boundary 推奨に分類され、follow-up Issue (「rite command/reference ファイルの参照パス drift を一括解消」) として切り出した — line 99 の「同型参照を repo 全体で grep して残存件数を確認する」canonical 対策 ([Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版) を実運用した実例。
 
 教訓: relative reference を含む doc を書く / 直すときの existence check は、`git ls-tree` での file 存在確認に加えて、**参照元 file の depth から相対 prefix が正しく解決するか** (`readlink -f` / `cd $(dirname) && ls $ref`) と **anchor slug が target 見出しに実在するか** (`grep -E '^##+ '`) の 3 点をセットで verify する。
 

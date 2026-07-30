@@ -348,7 +348,7 @@ grep -qE '```[[:space:]]+$' "$M6_FIXTURE" \
 
 ### 適用 7: Regex alternation / quantifier semantic の per-branch positive coverage
 
-PR #1066 cycle 11 で 2 種の regex per-branch coverage gap が cross-validated として検出され、本 pattern を **regex alternation / quantifier semantic** 軸へ拡張する canonical 事例になった。本拡張は適用 5 の「Pattern 5-B 件数判定の片側 mutation 隠蔽」と同型構造 (per-branch coverage gap) を、対象が grep -c 閾値ではなく **regex の構造単位 (alternation の各 branch / quantifier の各 semantic)** に変えた sub-pattern。
+本適用の cycle 11 で 2 種の regex per-branch coverage gap が cross-validated として検出され、本 pattern を **regex alternation / quantifier semantic** 軸へ拡張する canonical 事例になった。本拡張は適用 5 の「Pattern 5-B 件数判定の片側 mutation 隠蔽」と同型構造 (per-branch coverage gap) を、対象が grep -c 閾値ではなく **regex の構造単位 (alternation の各 branch / quantifier の各 semantic)** に変えた sub-pattern。
 
 #### Pattern 7-A: Regex alternation の片側 positive coverage 欠落
 
@@ -389,7 +389,7 @@ regex='could not resolve.*pull\s+request'
 
 #### Canonical 対策
 
-PR #1066 fix (cycle 1) では positive 6 + negative 6 case で alternation 各 branch と quantifier 各 semantic を網羅:
+本適用の fix (cycle 1) では positive 6 + negative 6 case で alternation 各 branch と quantifier 各 semantic を網羅:
 
 | Case | Coverage |
 |------|---------|
@@ -486,7 +486,7 @@ cycle 1 fix で happy-path (handoff キー欠落の正常系) で corrupt-read W
 
 ### 適用 11: 閾値の off-by-one 境界は「測定対象シグナルを単独の結果決定要因」にして pin し mutation で実証する
 
-`nlines >= 25` のような閾値比較の off-by-one (`>=` ↔ `>` / 閾値 `25` ↔ `24`) は、fixture が閾値から離れた値 (本文 26 行以上) で overshoot していると、どの mutation も既存 TC を全 PASS のまますり抜ける。PR #1222 の `bash-heaviness-check` では全 long-block fixture が `filler 26` 以上で、ちょうど 24 / 25 行の境界が未カバーだったため、cycle 1 では「境界値テスト欠落」が推奨に留まっていたが、cycle 2 で reviewer が mutation testing を実施して off-by-one が捕捉されないことを実証し MEDIUM に昇格した。
+`nlines >= 25` のような閾値比較の off-by-one (`>=` ↔ `>` / 閾値 `25` ↔ `24`) は、fixture が閾値から離れた値 (本文 26 行以上) で overshoot していると、どの mutation も既存 TC を全 PASS のまますり抜ける。`bash-heaviness-check` の閾値事例では全 long-block fixture が `filler 26` 以上で、ちょうど 24 / 25 行の境界が未カバーだったため、cycle 1 では「境界値テスト欠落」が推奨に留まっていたが、cycle 2 で reviewer が mutation testing を実施して off-by-one が捕捉されないことを実証し MEDIUM に昇格した。
 
 canonical な解消手順:
 
@@ -674,7 +674,7 @@ canonical 対策:
 
 ### 適用 25: payload/target が「本来 allow されるもの」でないと mutation に対し vacuous
 
-`pre-tool-bash-guard.sh` の reviewer git guard に timeout bypass 対策 (総バイト長ガード + 反復上限) を追加した PR #1736 で、追加テストが「主張する不変条件を実際には検証していない」vacuous サブアサーションを 2 種、cycle をまたいで mutation で摘発した。
+`pre-tool-bash-guard.sh` の reviewer git guard に timeout bypass 対策 (総バイト長ガード + 反復上限) を追加した reviewer git guard 事例で、追加テストが「主張する不変条件を実際には検証していない」vacuous サブアサーションを 2 種、cycle をまたいで mutation で摘発した。
 
 - **独立に deny される payload は guard の mutation に対し vacuous**: cycle 2 の TC が `git <巨大パディング>checkout evil` を deny 判定していたが、`git checkout` は **guard/cap の有無に関わらず** Pattern 4 (A) で独立に deny される。よって cap 除去 mutant でも `decision=deny` のまま pass し、cap の検出力ゼロ。**検証したい guard が無ければ本来 allow されるはずの read-only verb (`git <巨大パディング>status`) に payload を変えた瞬間、cap 除去 mutant は `git status` に正規化され allow に flip し、初めて真の mutation-catcher になった** (allow→deny flip の観測が帰属の証拠)。「deny を確認する」テストは、対象の guard を外すと **allow に戻る** payload でなければ帰属が成立しない。
 - **O(n²) を突くつもりの入力が実は fast path を通る**: 別 TC が `${COMMAND%%<<*}` (heredoc 除去) の O(n²) スキップを検証すると称し `git checkout evil <<EOF\n<200KB>\nEOF` を使ったが、`<<` が文字列**先頭**にあると `%%<<*` は先頭一致で高速完了し、guard の有無で速度が変わらない (mutant でも `ms<5000` pass)。コメントが主張する「O(n²) strip skipped」を実測していなかった。**検証対象の性質 (どの入力配置が O(n²) を発火させるか) を正確に狙う**必要があり、O(n²) no-heredoc 経路は別 TC (`<<` なし巨大コマンド → mutant で rc=124 timeout) が担保する形へ役割分離した。
@@ -685,7 +685,7 @@ canonical 対策:
 
 ### 適用 26: 複数ガードが論理和を構成するとき「特定ガードを exercise する」コメントは vacuous — mutation で isolate 可否を確認し、未到達な防御的分岐は正直に文書化する
 
-PR #1718 (issue-claim の CAS `_atomic_claim_steal` 二段ガード = mismatch→10 / revive→10 + work-memory-lock の PID 再利用検出) の 4 cycle レビューで、実装ではなく **テストコメントの「カバレッジ主張の正確さ」** が dominant な指摘対象になった。並行奪取テスト TC-14 は全 contender を `mk_active` するため winner が live で、loser は 2 ガードのどちらでも abort しうる。ところが TC-16 のコメントは「mismatch→10 は TC-14 の losers で exercised され、mismatch path が double-steal guarantee を担う」と記し、**特定ガード (mismatch) を単独 isolate している**かのように読めた。
+issue-claim の CAS 二段ガード事例 (`_atomic_claim_steal` = mismatch→10 / revive→10 + work-memory-lock の PID 再利用検出) の 4 cycle レビューで、実装ではなく **テストコメントの「カバレッジ主張の正確さ」** が dominant な指摘対象になった。並行奪取テスト TC-14 は全 contender を `mk_active` するため winner が live で、loser は 2 ガードのどちらでも abort しうる。ところが TC-16 のコメントは「mismatch→10 は TC-14 の losers で exercised され、mismatch path が double-steal guarantee を担う」と記し、**特定ガード (mismatch) を単独 isolate している**かのように読めた。
 
 #### 失敗の構造 — 「行実行順序」と「mutation-isolated coverage」の混同
 
@@ -749,7 +749,7 @@ reap manifest（`branch\t<name>` 形式）の消費ロジックに対する新�
 
 ### 適用 29: 隔離 scratchpad での mutation test により、新設した WARNING 検証テストの実効性を実証
 
-PR #1970 cycle 2 で追加した TC-15（`.claude/settings.local.json` コピー失敗時の WARNING 出力を検証するテスト）に対し、cycle 3 で error-handling reviewer が実リポジトリを汚さない `scratchpad/mutation-test/` 上の隔離コピーで対象コードを cycle 1 以前の無音化パターン（`2>/dev/null || true`）に意図的に戻し、TC-15 を含むテストスイートが `32/32 PASS` → `31 PASS / 1 FAIL` に変化することを実証した。これにより「新設テストが実際に対象コードの振る舞いに依存しており、トートロジーでない」という主張に実測の裏付けが与えられた。
+settings.local.json コピー失敗の検証事例では、cycle 2 で追加した TC-15（コピー失敗時の WARNING 出力を検証するテスト）に対し、cycle 3 で error-handling reviewer が実リポジトリを汚さない `scratchpad/mutation-test/` 上の隔離コピーで対象コードを cycle 1 以前の無音化パターン（`2>/dev/null || true`）に意図的に戻し、TC-15 を含むテストスイートが `32/32 PASS` → `31 PASS / 1 FAIL` に変化することを実証した。これにより「新設テストが実際に対象コードの振る舞いに依存しており、トートロジーでない」という主張に実測の裏付けが与えられた。
 
 教訓: mutation testing を実施する際、対象コードが本番の作業ブランチ（PR の diff 対象）そのものである場合、mutation の適用先を **実リポジトリの外（一時ディレクトリ等の隔離コピー）** に限定することで、reviewer の READ-ONLY 制約（working tree を変更しない）を守りながら実効性検証ができる。適用 5〜9 で確立された「mutation で実装を kill してテストが red になるか確認する」手法を、reviewer 自身が対象 PR の branch を直接操作できない制約下でも安全に実行するための具体的な実装パターン。
 
@@ -789,7 +789,7 @@ fix では discriminator を「degrade が働いて初めて成立する肯定�
 
 ### 適用 32: mutation は「今直した箇所」ではなく「そのテストが守ると主張する全アサート」に当てる（cycle 3 で CRITICAL として実測）
 
-PR #2013 cycle 2 で「成功行のアサートが集計行にもマッチする」穴を見つけ `assert_line_matches` で塞ぎ、3 種の mutation で確認した。ところが cycle 3 で、**同じファイルの別のアサート**（失敗ファイル名を検証する側）が runner の `=== Running: X ===` 進捗行にマッチしたまま残っていることが判明した。
+進捗行マッチ事例では cycle 2 で「成功行のアサートが集計行にもマッチする」穴を見つけ `assert_line_matches` で塞ぎ、3 種の mutation で確認した。ところが cycle 3 で、**同じファイルの別のアサート**（失敗ファイル名を検証する側）が runner の `=== Running: X ===` 進捗行にマッチしたまま残っていることが判明した。
 
 ```bash
 # TC-4 のアサート（守ると宣言した軸: 「失敗リストがファイル名を出す」）
@@ -837,7 +837,7 @@ cycle 2 で新設した会計テストの初版は 42 assertions が緑だった
 
 ### 防御コードを追加したら、その防御自体に mutation を当てる
 
-「新規分岐には TC を付ける」規律が徹底されていても、新規に追加した **防御行**（1 行の無害化処理など）は分岐ではないため規律の網から漏れる。PR #2017 では他の全変更に pin がある中で防御行 1 行だけが空いており、4 名のレビュアー全員が対比でそこを指摘した。防御を足したら「消したらテストが赤くなるか」を必ず確認する。
+「新規分岐には TC を付ける」規律が徹底されていても、新規に追加した **防御行**（1 行の無害化処理など）は分岐ではないため規律の網から漏れる。防御行 pin 欠落事例では他の全変更に pin がある中で防御行 1 行だけが空いており、4 名のレビュアー全員が対比でそこを指摘した。防御を足したら「消したらテストが赤くなるか」を必ず確認する。
 
 ### 生存した変異は理由を個別に説明できて初めて完了
 

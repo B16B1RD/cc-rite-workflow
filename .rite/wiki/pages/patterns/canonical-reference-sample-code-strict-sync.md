@@ -59,7 +59,7 @@ reference 文書 (bash-trap-patterns.md / bash-cross-boundary-state-transfer.md 
 
 ### ID 採番時の grep 全件検証への拡張（実測）
 
-PR #578 cycle 1 で reviewer が F-ID 採番の推奨値 (F-16) を提示したが、既存 F-IDs との衝突を `grep` で検証していなかった。盲信して採用すると既存の F-20 と衝突する潜在リスクがあり、fix 側で全件 `grep -oE 'F-[0-9]+' | sort -u` を経て最大値 +1 (F-21) を選択する pattern に修正された。
+F-ID 採番事例の cycle 1 で reviewer が採番の推奨値 (F-16) を提示したが、既存 F-IDs との衝突を `grep` で検証していなかった。盲信して採用すると既存の F-20 と衝突する潜在リスクがあり、fix 側で全件 `grep -oE 'F-[0-9]+' | sort -u` を経て最大値 +1 (F-21) を選択する pattern に修正された。
 
 **学習**: reference 文書の「コード」同期だけでなく、**既存 ID / 識別子との衝突検証も canonical 同期の一種**である。reviewer 推奨値 × grep 検証の省略は、canonical 実装状態（既存 F-IDs の使用状況）との silent drift を生む。以下を習慣化する:
 
@@ -68,7 +68,7 @@ PR #578 cycle 1 で reviewer が F-ID 採番の推奨値 (F-16) を提示した�
 
 ### 「一字一句同期」宣言は 3 観点すべてを揃えて初めて成立する（cycle 5-7 の実測）
 
-PR #586 cycle 4 fix で「canonical reference (`gitignore-health-check.sh` L270-277) と一字一句揃える」とコメントで宣言したが、cycle 5-7 review で以下 3 観点の drift が段階的に検出された:
+一字一句同期宣言事例の cycle 4 fix で「canonical reference (`gitignore-health-check.sh` L270-277) と一字一句揃える」とコメントで宣言したが、cycle 5-7 review で以下 3 観点の drift が段階的に検出された:
 
 1. **rc capture 構造**: canonical は `if cmd; then rc=0; else rc=$?; fi` 形式の if-wrapper。fix 側は簡略な `var=$(cmd); rc=$?` パターンに留めた (cycle 5 F-01)
 2. **コマンド引数** (`--` セパレータ等): canonical は `git add --dry-run -- <path>` と `--` 引数区切りを使用。fix 側は `--` 欠落 (cycle 7 LOW-1)
@@ -88,11 +88,11 @@ PR #586 cycle 4 fix で「canonical reference (`gitignore-health-check.sh` L270-
 
 ### scope 外 drift → 別 Issue 化 → 後続 minimal PR で解消する canonical flow（実測）
 
-PR #586 cycle 7 で残った観点 (b) `-- ` 引数区切りの drift は、PR #586 の scope ではなく**別 Issue #587 として切り出され**、後続 PR #596 で +1/-1 の minimal diff (literal 1 文字 ` -- ` 追加) として解消された。review は 0 findings / 1 サイクルで mergeable 判定。
+一字一句同期宣言事例の cycle 7 で残った観点 (b) `-- ` 引数区切りの drift は、当該 PR の scope ではなく**別 Issue として切り出され**、後続の引数区切り解消 PR で +1/-1 の minimal diff (literal 1 文字 ` -- ` 追加) として解消された。review は 0 findings / 1 サイクルで mergeable 判定。
 
-同じ PR #586 で残っていた観点 (c) `dry_run_out=""` / `dry_run_rc=0` の事前宣言欠落も、**別 Issue #588 として切り出され**、後続 PR #598 で +2/-0 の minimal diff (2 行の defensive initialization 追加) として解消された。review は 0 blocking findings / 1 non-blocking (PR 本文の表記ゆれ) / 1 サイクルで mergeable 判定。canonical reference (`gitignore-health-check.sh` L270-277) との 8 行構造同期を両レビュアーが Read ツールで実測確認し、bash `if var=$(cmd); then ...` による assignment 保証を踏まえた上での defense-in-depth な事前宣言として位置付けた。
+同事例で残っていた観点 (c) `dry_run_out=""` / `dry_run_rc=0` の事前宣言欠落も、**別 Issue として切り出され**、後続の事前宣言追加 PR で +2/-0 の minimal diff (2 行の defensive initialization 追加) として解消された。review は 0 blocking findings / 1 non-blocking (PR 本文の表記ゆれ) / 1 サイクルで mergeable 判定。canonical reference (`gitignore-health-check.sh` L270-277) との 8 行構造同期を両レビュアーが Read ツールで実測確認し、bash `if var=$(cmd); then ...` による assignment 保証を踏まえた上での defense-in-depth な事前宣言として位置付けた。
 
-PR #596 / #598 の 2 連続で観点 (b)(c) が minimal PR により完全解消され、「canonical 一字一句同期 3 観点のうち scope 外残留分を個別 Issue + minimal PR で順次解消する」flow が 2 回実測された (3 観点 = (a) rc capture / (b) 引数 / (c) 事前宣言 のうち (a) は PR #586 cycle 5 本体で解消済み、(b)(c) は後続 minimal PR で解消)。
+引数区切り解消 PR / 事前宣言追加 PR の 2 連続で観点 (b)(c) が minimal PR により完全解消され、「canonical 一字一句同期 3 観点のうち scope 外残留分を個別 Issue + minimal PR で順次解消する」flow が 2 回実測された (3 観点 = (a) rc capture / (b) 引数 / (c) 事前宣言 のうち (a) は一字一句同期宣言事例の cycle 5 本体で解消済み、(b)(c) は後続 minimal PR で解消)。
 
 **学習**: canonical 一字一句同期の 3 観点のうち 1 つだけが残留した場合、同 PR 内で無理に fix を広げるより「現 PR の scope を保ち残り観点を別 Issue 化 → 後続 PR で minimal fix」の flow が以下の理由で優位:
 
@@ -100,11 +100,11 @@ PR #596 / #598 の 2 連続で観点 (b)(c) が minimal PR により完全解消
 - minimal diff (1-2 行) は sibling site grep 照合と機械検証 (`grep -n` で 1 行一致確認) で short-time / high-confidence レビューが可能
 - Issue 本文の「完了条件」として観点を個別に明文化することで、後続 PR の成否判定が決定的になる
 
-参考フロー: PR #590 (別例、+4 lines) と同型の「極小対称化 PR」パターンの appilcation。`極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる` heuristic (heuristics) と組み合わせて運用するのが canonical。
+参考フロー: 別系統の canonical 一覧同期 PR (+4 lines) と同型の「極小対称化 PR」パターンの appilcation。`極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる` heuristic (heuristics) と組み合わせて運用するのが canonical。
 
 ### canonical reference は caller の precondition 契約まで含めて完成させる（実測）
 
-PR #799 で新規 canonical reference (`broken-ref-resolution.md`) を追加し `realpath -m` ベースの相対パス解決 sample bash を載せたが、reference の sample が要求する precondition 変数 (`pages_list_normalized` / `wiki_root` / `page_path` 絶対パス) を caller (`lint.md` Phase 7.x) で生成する Phase が存在せず、両 reviewer が cycle 1 で CRITICAL 指摘した。reference 単独は「完成形」に見えるが、caller 側の bash 実行コンテキストでは実行不能な broken reference になる。
+precondition 契約事例で新規 canonical reference (`broken-ref-resolution.md`) を追加し `realpath -m` ベースの相対パス解決 sample bash を載せたが、reference の sample が要求する precondition 変数 (`pages_list_normalized` / `wiki_root` / `page_path` 絶対パス) を caller (`lint.md` Phase 7.x) で生成する Phase が存在せず、両 reviewer が cycle 1 で CRITICAL 指摘した。reference 単独は「完成形」に見えるが、caller 側の bash 実行コンテキストでは実行不能な broken reference になる。
 
 **学習**: canonical reference を新設する際は **reference 単独の完成度** ではなく **caller (= reference を呼び出す既存契約) と reference のサンプルが要求する precondition 変数の整合** までを完成条件とする。具体的には:
 

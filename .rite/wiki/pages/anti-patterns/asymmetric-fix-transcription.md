@@ -1153,7 +1153,7 @@ cycle 3 でも続いて MEDIUM precision finding (cycle 2 fix の注記が perce
 
 当該 PR（横展開確認から分割された後続。直前の累積 39 回目と同系譜）は削除済み `phase-transition-whitelist.sh` への dead reference を SPEC / commands / skills / test docs から整理。0 blocking findings で両 reviewer が置換先記述（`flow-state.sh` の `PHASE_ENUM_V3` / `_phase_is_valid`、`session-end.sh` の inline glob、`session-end.test.sh` TC-475-WARN-A〜D）の実装一致を grep+read で verify。本ページの dead/broken reference cleanup 系譜（着手時 repo-wide grep の先例、累積 39 回目の「横展開は削除済みコンポーネントの構造・概念記述も対象」）に 2 つの sub-pattern を追加:
 
-- **検出 grep scope の範囲漏れ**: 当該 Issue の検出 grep が `docs/ plugins/rite/{commands,skills,references,agents}` に限定されていたため、`tests/regression/issue-634-repro.md` の同種 dead rot を取りこぼした（AC-4 横展開確認で検出 → #1127 として別 Issue 化）。canonical 対策: 削除済みコンポーネントの横断整理 PR では、検出 grep の scope を **repo 全体（`tests/` を含む）** に取る。これは PR #1102→#1105 の「Detection Heuristic を fix 後 grep から着手時 grep へ前倒し」の scope coverage 軸への拡張（grep の *timing* だけでなく *breadth* も着手時に固定する）。
+- **検出 grep scope の範囲漏れ**: 当該 Issue の検出 grep が `docs/ plugins/rite/{commands,skills,references,agents}` に限定されていたため、`tests/regression/issue-634-repro.md` の同種 dead rot を取りこぼした（AC-4 横展開確認で検出 → 別 Issue 化）。canonical 対策: 削除済みコンポーネントの横断整理 PR では、検出 grep の scope を **repo 全体（`tests/` を含む）** に取る。これは着手時 grep protocol を確立した先行 PR 群の「Detection Heuristic を fix 後 grep から着手時 grep へ前倒し」の scope coverage 軸への拡張（grep の *timing* だけでなく *breadth* も着手時に固定する）。
 
 - **Retired 節へ書き換え > 節削除**: retired コンポーネントの doc 整理は、節を完全削除するより「Retired 節へ書き換え」が既存パターン（`Stop Guard (retired)` / `Verify Terminal Output (retired)`）と整合し、migration-guide からの参照も維持できる。完全削除は migration-guide からの参照を dangling 化させるため、retired 系譜のページ群では Retired 節保持が canonical。なお [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) は *runtime に効く field/code* の話で、本 sub-pattern は *人間向け doc の参照保全* の話 — 適用 layer が異なる（コードは完全削除で構造閉塞、doc は Retired 節で参照保全）。
 
@@ -1300,7 +1300,7 @@ cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ing
 
 当該 PR（rite command / reference / skill / template 内の相対参照パス drift を一括解消）は、本 anti-pattern の **着手時 grep (grep-at-start) detection heuristic を相対パス depth drift class に適用した successful preventive application**。0 blocking findings / 即時 mergeable に到達した (prompt-engineer / tech-writer の 2 reviewer)。
 
-全 `.md` を機械的にスキャンして相対パス解決をチェックし、PR description で named された 4 箇所に加え scan で検出した 6 箇所 = **計 10 箇所を同一 PR 内で全件修正**。PR #1102→#1105 / #1128 / #1130 で確立した「fix 後 grep ではなく着手時 grep」+「breadth × direction の 2 軸検出」を、line-number citation drift ([[drift-check-anchor-semantic-name]]) ではなく `../references/` vs `../../../references/` 等の **depth 誤りパス drift** class に転用して multi-cycle drift を構造的に予防した reproducibility evidence。
+全 `.md` を機械的にスキャンして相対パス解決をチェックし、PR description で named された 4 箇所に加え scan で検出した 6 箇所 = **計 10 箇所を同一 PR 内で全件修正**。着手時 grep protocol を確立した一連の先行 PR で得た「fix 後 grep ではなく着手時 grep」+「breadth × direction の 2 軸検出」を、line-number citation drift ([[drift-check-anchor-semantic-name]]) ではなく `../references/` vs `../../../references/` 等の **depth 誤りパス drift** class に転用して multi-cycle drift を構造的に予防した reproducibility evidence。
 
 #### 経験則の精緻化
 
@@ -1386,7 +1386,7 @@ gh CLI 仕様の詳細は [関連 PR 探索は gh pr list --head (exact-match) �
 
 本 PR は `commands/pr/merge.md` の旧 Step 1 (flow-state 前提チェック) を削除し残りの step を 1/2/3 へ繰り上げる **step-renumber refactor** (Step 1〜4 → ステップ 1〜3)。本 anti-pattern の最重要 trigger である renumber 伝播漏れ (旧番号への参照が同期されず stale 化する) を、2 reviewer (prompt-engineer / code-quality) が独立に **Grep + 全文確認** で検証し、merge.md 内・cross-file ともに同期漏れゼロを確認した (指摘 0 件 / 1 cycle mergeable)。
 
-検証手法の 3 点セットが本 anti-pattern の予防的 detection protocol として実測された: (1) merge.md 全文を `git show` / Read で旧番号 (ステップ4 / 英語 Step N) 残存ゼロ確認、(2) `grep -rn "merge.md" plugins/ docs/` で step 番号付き cross-file 参照を洗い出し、(3) 影響テスト `sentinel-disambiguator-adjacency.test.sh` を実行し PASS 10/0。これは PR #1102→#1105 で確立した「fix 後 grep」から「着手時 grep」への前倒し protocol を renumber refactor に適用し、当該 PR の「cleanup PR 自身での再発」リスク (renumber が同一ファイル内対称位置を sanity check で取りこぼす) を repo-wide grep + impact test で構造的に閉塞した successful application。
+検証手法の 3 点セットが本 anti-pattern の予防的 detection protocol として実測された: (1) merge.md 全文を `git show` / Read で旧番号 (ステップ4 / 英語 Step N) 残存ゼロ確認、(2) `grep -rn "merge.md" plugins/ docs/` で step 番号付き cross-file 参照を洗い出し、(3) 影響テスト `sentinel-disambiguator-adjacency.test.sh` を実行し PASS 10/0。これは着手時 grep protocol を確立した先行 PR 群の「fix 後 grep」から「着手時 grep」への前倒し protocol を renumber refactor に適用し、当該 PR の「cleanup PR 自身での再発」リスク (renumber が同一ファイル内対称位置を sanity check で取りこぼす) を repo-wide grep + impact test で構造的に閉塞した successful application。
 
 加えて 2 つの boundary 判断を併せて記録: (a) decision-record (`docs/designs/clear-per-command-flow-state-decoupling.md`) は **as-was 状態を記述する性質上、後続 renumber を追従させない** 運用が妥当という reviewer 合意（先行 PR の「表更新 PR は同セクション散文の依存値も着手時 grep scope に含める」と対をなす — design doc は意図的に renumber 射程外）。(b) flow-state 撤去後の完了通知 branch 名供給を `gh pr view --json headRefName` へ一本化する変更は、sibling コマンド `ready.md` / `cleanup.md` と同じ raw `--json` + LLM context 消費パターンで baseline 整合を確認 (新規導入する supply 経路が既存 sibling と非対称にならないことの verify)。
 
@@ -1447,7 +1447,7 @@ projects-status-update.sh を呼ぶ command markdown caller のうち nested `"$
 - **byte 等価性**: 生成 JSON の jq filter object が develop と byte 等価であることを確認 (single-quote object body は文字一致、変化点は outer-quote `}')"` → `}')` 除去のみ)。
 - **変数名 intra-file 一貫性**: SoT の `args_json` ではなく各ファイルの既存 skeleton が参照する `status_json_args` を採用 — 従来 nested 形では未定義だった下流参照変数が delegate 側で定義され、潜在的不整合が解消する改善方向。同一ファイル内に 2 変数名が併存する drift をあえて作らない判断 ([Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md) の intra-file 一貫性軸)。
 
-副次的に out-of-scope 判定の正当性も確認: `watchdog-status-mismatch.sh` 内の同パターンは `.sh` shell script のため SoT MUST スコープ (command markdown caller) 外と判定。intra-file arg-packing スタイル差 (close.md は複数 arg/行、ready/archive は 1 arg/行) は pre-existing かつ各ファイル内一貫のため bikeshedding filter で除外 (各ファイルの既存スタイル踏襲が正 = PR #1267/#1273/#1292 の「同期すべきでない site の識別」系譜)。
+副次的に out-of-scope 判定の正当性も確認: `watchdog-status-mismatch.sh` 内の同パターンは `.sh` shell script のため SoT MUST スコープ (command markdown caller) 外と判定。intra-file arg-packing スタイル差 (close.md は複数 arg/行、ready/archive は 1 arg/行) は pre-existing かつ各ファイル内一貫のため bikeshedding filter で除外 (各ファイルの既存スタイル踏襲が正 =「同期すべきでない site の識別」系譜)。
 
 ### gh CLI 3 段階 checklist 更新パターンの Step 1 EXIT trap 削除を SoT + 複製 2 ファイルへ対称適用（0 findings の successful symmetrization application）
 
@@ -1459,7 +1459,7 @@ gh CLI で Issue body の checklist を更新する 3 段階安全更新パタ�
 
 - **対称転記の全数監査**: `grep` で残存 raw 3 段階 trap = 0 件、旧 rationale 文 "Since trap is only effective within the same process" = repo-wide 0 件を確認。trap 削除 / 注記コメント 2 種 (「Do NOT set an EXIT trap here...」「No EXIT trap is set in Step 1...」) / 失敗パス rm / Step 3 明示 rm の **4 修正要素を 3 site すべてが備える**ことを確認 — 本 anti-pattern の最大リスク (片肺修正) を潰す。
 - **pre-existing leak の副次的修正**: `checklist-auto-check.md` の Step 2/3 ブロックに `tmpfile_read` リテラル行を新設したことで、同ブロック末尾の `rm -f "$tmpfile_read" "$tmpfile_write"` が両変数を解決できるようになった。修正前は `tmpfile_read` が unbound で `rm -f ""` の no-op となり tmpfile_read が leak していた既存バグを併せて解消。
-- **intro rationale 非対称の revert test 判定 (「同期すべきでない / pre-existing site の識別」系譜)**: tech-writer が `implement.md:899` (5.1.2.1 intro) の変数スコープ rationale 欠落を LOW/follow-up で指摘したが、revert test 適用により pre-existing と判定し推奨事項へ降格 (L899 は revert 前後とも rationale なし、旧 rationale は L746/SoT のみに存在し本 PR が非対称を新規導入したものではない)。3/4 reviewer が同領域を「回帰ではない / 意図的簡潔さ」と評価した cross-validation consensus と一致し、PR #1267/#1273/#1292/#1300 の「同期すべきでない site の識別」系譜に連なる。
+- **intro rationale 非対称の revert test 判定 (「同期すべきでない / pre-existing site の識別」系譜)**: tech-writer が `implement.md:899` (5.1.2.1 intro) の変数スコープ rationale 欠落を LOW/follow-up で指摘したが、revert test 適用により pre-existing と判定し推奨事項へ降格 (L899 は revert 前後とも rationale なし、旧 rationale は L746/SoT のみに存在し本 PR が非対称を新規導入したものではない)。3/4 reviewer が同領域を「回帰ではない / 意図的簡潔さ」と評価した cross-validation consensus と一致し、「同期すべきでない site の識別」系譜に連なる。
 
 ### symmetry test 自身の canonical grep anchor を 4 TC で対称統一（0 findings の self-referential successful symmetrization application）
 
@@ -1861,7 +1861,7 @@ sandbox 書き込みブロック用マウントの誤検出を防ぐ新規ヘル
 
 ## 変種: lib/ 一覧の複数箇所重複記載で片方だけが更新される
 
-同一 docs/SPEC.md 内で lib/ ディレクトリのファイル一覧を2箇所（227行目のディレクトリツリー表記、1326行目の機能一覧テーブル）に重複記載していた。先行する2ファイル追加（`git-remote.sh` / `git-status-filtered.sh`、PR #1913・#1937）に伴いツリー表記側は本PRで更新されたが、離れたテーブル側への伝播が漏れ、tech-writer-reviewer が cycle 1 で HIGH 指摘として検出した（Doc-Heavy PR Mode の Enumeration Completeness カテゴリでの検出）。修正は grep で当該ファイル名の全出現箇所を確認してから両箇所を同期し、伝播スキャンで他に同型の重複列挙が無いことを確認した。cycle 2 のフルレビューで 0 件指摘・mergeable に到達（2 cycle 収束）。同一 cycle 1 で error-handling-reviewer が「本PR自身が新規追加したドキュメント記述（reviewer subagent への `dangerouslyDisableSandbox` 非伝播）の実証可能性」を疑問視する non-blocking design_confirmation を出したが、cycle 2 で tech-writer / error-handling 両者が Task/Agent ツールの実パラメータスキーマ（`description`/`isolation`/`mode`/`model`/`name`/`prompt`/`run_in_background`/`subagent_type`/`team_name` のみで sandbox 関連パラメータなし）を確認し、「メインエージェントが subagent へ渡せるのは prompt のみであり、subagent 自身のツールパラメータ有無とは別問題」という整理で解消された。**教訓**: 同一ファイル内の複数箇所に同種の列挙情報を重複記載する設計自体が Asymmetric Fix Transcription を誘発しやすく、根本対策は単一ソースへの統合だが、それが難しい場合は伝播スキャンで grep によるファイル名一致箇所の全列挙を必須にする。
+同一 docs/SPEC.md 内で lib/ ディレクトリのファイル一覧を2箇所（227行目のディレクトリツリー表記、1326行目の機能一覧テーブル）に重複記載していた。先行する2ファイル追加（`git-remote.sh` / `git-status-filtered.sh`）に伴いツリー表記側は本PRで更新されたが、離れたテーブル側への伝播が漏れ、tech-writer-reviewer が cycle 1 で HIGH 指摘として検出した（Doc-Heavy PR Mode の Enumeration Completeness カテゴリでの検出）。修正は grep で当該ファイル名の全出現箇所を確認してから両箇所を同期し、伝播スキャンで他に同型の重複列挙が無いことを確認した。cycle 2 のフルレビューで 0 件指摘・mergeable に到達（2 cycle 収束）。同一 cycle 1 で error-handling-reviewer が「本PR自身が新規追加したドキュメント記述（reviewer subagent への `dangerouslyDisableSandbox` 非伝播）の実証可能性」を疑問視する non-blocking design_confirmation を出したが、cycle 2 で tech-writer / error-handling 両者が Task/Agent ツールの実パラメータスキーマ（`description`/`isolation`/`mode`/`model`/`name`/`prompt`/`run_in_background`/`subagent_type`/`team_name` のみで sandbox 関連パラメータなし）を確認し、「メインエージェントが subagent へ渡せるのは prompt のみであり、subagent 自身のツールパラメータ有無とは別問題」という整理で解消された。**教訓**: 同一ファイル内の複数箇所に同種の列挙情報を重複記載する設計自体が Asymmetric Fix Transcription を誘発しやすく、根本対策は単一ソースへの統合だが、それが難しい場合は伝播スキャンで grep によるファイル名一致箇所の全列挙を必須にする。
 
 ## 変種: 同型 gate 設置箇所一覧テーブルへの新規 gate 追加漏れ、かつ再レビューで別インスタンスを発見
 

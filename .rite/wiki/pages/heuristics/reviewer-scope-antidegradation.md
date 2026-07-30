@@ -22,13 +22,13 @@ confidence: high
 
 ## 概要
 
-re-review / verification mode (前回 review comment の検証モード) では、reviewer の scope が「前回指摘の解消確認」に偏り、初回レビューで verify すべきだった latent design issue を見落とす経路がある。PR #586 cycle 4 で初検出された dogfooding bias (anchor 配布経路) と canonical drift (既存 regulation 違反) は cycle 1-3 の re-review で全て見逃されていた。**re-review でも初回レビューと同等の網羅性を確保** するのが Anti-Degradation Guardrail 原則。
+re-review / verification mode (前回 review comment の検証モード) では、reviewer の scope が「前回指摘の解消確認」に偏り、初回レビューで verify すべきだった latent design issue を見落とす経路がある。起点事例の cycle 4 で初検出された dogfooding bias (anchor 配布経路) と canonical drift (既存 regulation 違反) は cycle 1-3 の re-review で全て見逃されていた。**re-review でも初回レビューと同等の網羅性を確保** するのが Anti-Degradation Guardrail 原則。
 
 ## 詳細
 
 ### 発生事例（cycle 4）
 
-PR #586 で以下の 2 つの design issue が cycle 1-3 で見落とされ、cycle 4 で初検出された:
+起点事例では以下の 2 つの design issue が cycle 1-3 で見落とされ、cycle 4 で初検出された:
 
 1. **自 repo 固有 anchor の consumer distribution 経路漏れ**: Edit ツール `old_string` に hardcode された `# <<< gitignore-wiki-section-end` が本 repo の `.gitignore` L131 のみに存在し、templates/inject hook のような配布経路が無いまま「本 repo で動くから OK」と判断されていた
 2. **同一ファイル内既存 regulation 違反**: init.md 内に「`2>&1` は付けない」規約のコメントが既に L536 に存在するにもかかわらず、新規 Phase 1.3.4 で `2>&1` を採用 — 同一ファイル内 regulation 違反 + canonical script (`gitignore-health-check.sh`) との drift
@@ -63,11 +63,11 @@ verification mode で「前回指摘 N 件が解消されたか」を判定す�
 
 evidence gate を通過した時点で FIXED と判定し、verification mode のサマリーに「(grep verified) / (syntax verified)」を明示する。これにより前回指摘解消の verify が「self-claim ベース」から「machine-checkable evidence ベース」に格上げされ、verification mode の信頼性が上がる。
 
-PR #617 cycle 2 では cycle 1 の HIGH (ANCHOR crossing) と LOW (jp/en mixed) の両方をこの 2 段 evidence gate で FIXED と判定し、0 findings + mergeable で 1 cycle 解消した。verification mode が「scope を狭めるモード」ではなく「より厳格な evidence gate を追加するモード」として正しく機能した実例。
+evidence gate 事例の cycle 2 では cycle 1 の HIGH (ANCHOR crossing) と LOW (jp/en mixed) の両方をこの 2 段 evidence gate で FIXED と判定し、0 findings + mergeable で 1 cycle 解消した。verification mode が「scope を狭めるモード」ではなく「より厳格な evidence gate を追加するモード」として正しく機能した実例。
 
 ### 7-cycle 自然収束と Quality Signal 1 unfired pattern（cycle 1-7 の実測）
 
-PR #747 (`.rite-flow-state` migration 機構実装) の dogfooding review で、Anti-Degradation Guardrail を厳守した結果として 7 cycle に達するまで自然収束した実測軌跡: **3 → 6 → 2 → 7 → 3 → 1 → 0** (累積 22 件 fix、cycle 7 で `[review:mergeable]`)。本軌跡は以下 2 点で従来観察と異なる healthy convergence の典型例:
+7-cycle 自然収束事例 (`.rite-flow-state` migration 機構実装) の dogfooding review で、Anti-Degradation Guardrail を厳守した結果として 7 cycle に達するまで自然収束した実測軌跡: **3 → 6 → 2 → 7 → 3 → 1 → 0** (累積 22 件 fix、cycle 7 で `[review:mergeable]`)。本軌跡は以下 2 点で従来観察と異なる healthy convergence の典型例:
 
 1. **Quality Signal 1 (fingerprint cycling) が一度も発火せず**: 同種 finding の反復ではなく、各 cycle で **異なる observation point** から問題が発見された (cycle 3: cross-component glob collision、cycle 4: 片肺更新 + 同秒 race、cycle 6: doctrine asymmetry)。reviewer の cross-file impact check が機能した結果
 2. **cycle 後半で発見された finding が trivial cosmetic ではなく structural**: cycle 4 で CRITICAL (session-end.sh propagation 漏れ) + HIGH (timestamp 秒精度 race)、cycle 5 で LOW × 3 (header doc / `${RANDOM:-0}` / soft fallback)、cycle 6 で LOW × 1 (doctrine asymmetry 自己発見)。cycle が進むごとに drift class の粒度が細かくなり、structural → conventional → cosmetic と段階的に絞られる
@@ -77,11 +77,11 @@ PR #747 (`.rite-flow-state` migration 機構実装) の dogfooding review で、
 - **healthy 軌跡**: Quality Signal 1 (fingerprint cycling) 未発火 + cycle ごとに異なる observation point + 後半 cycle が cosmetic / doctrine 領域に絞られる
 - **unhealthy 軌跡**: 同種 finding の反復 (Quality Signal 1 発火) + cycle 後半で structural HIGH 初検出 (cycle 1-3 scope drift の signal) + 累積件数が PR diff 規模に対して過剰
 
-PR #747 のような healthy 7-cycle 軌跡では `loop_count` hard limit ではなく **Quality Signal 監視 + reviewer の `mergeable` 自己評価** で loop 終了を機械的に判定するのが canonical。Anti-Degradation Guardrail を時間効率の理由で緩めると、本来 cycle 後半で初検出される latent issue が merge 後 regression として顕在化するリスクが高い (cf. [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md))。
+この事例のような healthy 7-cycle 軌跡では `loop_count` hard limit ではなく **Quality Signal 監視 + reviewer の `mergeable` 自己評価** で loop 終了を機械的に判定するのが canonical。Anti-Degradation Guardrail を時間効率の理由で緩めると、本来 cycle 後半で初検出される latent issue が merge 後 regression として顕在化するリスクが高い (cf. [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md))。
 
 ### Severity 厳格化による無限 fix-loop 回避（cycle 4 で実証）
 
-PR #800 cycle 4 で Anti-Degradation Guardrail を **maximum strict** に適用した結果、`Confidence ≥ 80` + `revert test pass` + `機能影響あり` の 3 条件を満たす finding のみを blocking とする運用で 4 cycle で `[review:mergeable]` に収束 (累計 6 finding、CRITICAL 1 + MEDIUM 2 + LOW 3、5 fixed + 1 replied-only)。
+maximum strict 事例の cycle 4 で Anti-Degradation Guardrail を **maximum strict** に適用した結果、`Confidence ≥ 80` + `revert test pass` + `機能影響あり` の 3 条件を満たす finding のみを blocking とする運用で 4 cycle で `[review:mergeable]` に収束 (累計 6 finding、CRITICAL 1 + MEDIUM 2 + LOW 3、5 fixed + 1 replied-only)。
 
 cycle 1-3 で発生していた以下のリスクを cycle 4 で decisive に回避:
 

@@ -59,11 +59,11 @@ doc に書かれた AC anchor / reasons table / Eval-order enumeration と、bas
 - **Pattern-2**: 「reasons table に書かれた reason 名」⇔「bash コード内の `reason=X` 文字列」の存在 1:1 一致 check
 - **Pattern-5**: 「Eval-order enumeration の順序」⇔「bash コード内の echo emit 順」の順序一致 check
 
-PR #553 で 9 経路 (7 reasons + 2 fallbacks: `invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure` / `mktemp_failure_rm_err_cycle_state` / `cycle_state_file_rm_failure` + legacy 2) すべてで一致を実証。`legacy_cycle_state_file_rm_failure` と `mktemp_failure_rm_err_legacy_cycle` の 2 reason 追加時に drift check で表・コメント・コード emit 順の齟齬が自動検出される設計により、LLM 生成でも検証コストが scalar (レビュアー負荷に依存しない)。
+9 経路実証事例で 9 経路 (7 reasons + 2 fallbacks: `invalid_pr_number` / `mktemp_failure_rm_err` / `rm_failure` / `mktemp_failure_rm_err_state_file` / `state_file_rm_failure` / `mktemp_failure_rm_err_cycle_state` / `cycle_state_file_rm_failure` + legacy 2) すべてで一致を実証。`legacy_cycle_state_file_rm_failure` と `mktemp_failure_rm_err_legacy_cycle` の 2 reason 追加時に drift check で表・コメント・コード emit 順の齟齬が自動検出される設計により、LLM 生成でも検証コストが scalar (レビュアー負荷に依存しない)。
 
 ### カテゴリ非対称の特別ケース — 表記単位とコード単位のずれ
 
-PR #553 cycle 3 の project wisdom: `5 カテゴリ artifacts → 4 mktemp ブロック`の非対称マッピング (review result 通常と corrupt が同一 rm 呼び出しで合流) は、prose のカテゴリ列挙数とコードブロック数が 1:1 にならないケース。このような意図的な非対称は以下で明記する:
+9 経路実証事例の cycle 3 で得た project wisdom: `5 カテゴリ artifacts → 4 mktemp ブロック`の非対称マッピング (review result 通常と corrupt が同一 rm 呼び出しで合流) は、prose のカテゴリ列挙数とコードブロック数が 1:1 にならないケース。このような意図的な非対称は以下で明記する:
 
 1. AC anchor に「N カテゴリの PR-specific local artifacts」と category 単位で記述
 2. bash 実装側コメントで「M-1 と M-2 は同一 rm 呼び出しで処理」と合流を明示
@@ -73,15 +73,15 @@ PR #553 cycle 3 の project wisdom: `5 カテゴリ artifacts → 4 mktemp ブ�
 
 3 重契約は `reason | description` 表と `# eval-order enumeration = (...)` コメントでリテラル重複するため、**マージ可** の軽量レビューでも drift を見落としやすい。機械検証 (pre-commit / CI) がないと、収束サイクル数が予期せず膨張する。distributed-fix-drift-check.sh のような専用 lint は `rite-config.yml` の `review.loop.pre_commit_drift_check: true` でデフォルト有効化しておき、fix 生成直後に必ず発火させるのが canonical。
 
-### PR #661 で実測された ANCHOR comment の prose 内 bash 引数 enumeration drift
+### 4-arg 拡張事例で実測された ANCHOR comment の prose 内 bash 引数 enumeration drift
 
-PR #661 cycle 2 で **DRIFT-CHECK ANCHOR comment の prose 内 bash 引数 enumeration** に同期漏れが検出された。具体的には:
+4-arg 拡張事例の cycle 2 で **DRIFT-CHECK ANCHOR comment の prose 内 bash 引数 enumeration** に同期漏れが検出された。具体的には:
 
 - 4-site DRIFT-CHECK ANCHOR の bash 引数 symmetry を `--phase` / `--next` / `--preserve-error-count` の 3-arg → `--phase` / `--active` / `--next` / `--preserve-error-count` の 4-arg に拡張する PR で、
 - **literal block (4 site) は完全に同期**されたが、
-- **`create-interview.md:601` の ANCHOR comment 内の Issue #651 enhancement blockquote (prose 側) のみが旧 3-arg 表記のまま残留**。
+- **`create-interview.md:601` の ANCHOR comment 内の enhancement blockquote (prose 側) のみが旧 3-arg 表記のまま残留**。
 
-これは本ページの 3 者契約 (anchor / reasons table / Eval-order enumeration) のうち、**第 4 者として ANCHOR comment 内 prose enumeration も sync 義務**を持つことの実測例。`distributed-fix-drift-check.sh` の Pattern-2 / Pattern-5 は markdown reasons table と bash echo の 1:1 対応を check するが、**ANCHOR comment 内の自然言語による引数 enumeration は scan 対象外**だった (REC-04 として PR #661 で別 Issue 候補化)。
+これは本ページの 3 者契約 (anchor / reasons table / Eval-order enumeration) のうち、**第 4 者として ANCHOR comment 内 prose enumeration も sync 義務**を持つことの実測例。`distributed-fix-drift-check.sh` の Pattern-2 / Pattern-5 は markdown reasons table と bash echo の 1:1 対応を check するが、**ANCHOR comment 内の自然言語による引数 enumeration は scan 対象外**だった (REC-04 として同事例で別 Issue 候補化)。
 
 **canonical 拡張**: ANCHOR comment の prose 内引数 enumeration も `distributed-fix-drift-check.sh` の Pattern-2 scan 対象に含める。具体的には ANCHOR section 内で:
 - ` `--<flag-name>`` (backtick で囲まれた flag 名) を抽出
@@ -92,7 +92,7 @@ PR #661 cycle 2 で **DRIFT-CHECK ANCHOR comment の prose 内 bash 引数 enume
 
 ### 実装変更と対応する prose / 既知の限界表 / Edge Case 表の同時更新義務（cycle 4 の実測）
 
-PR #799 cycle 3 で `lint.md` Phase 7.2 の bash block を新規追加したが、対応する Phase 7.2 の prose は cycle 1 時点の「呼び出し側責務」記述のまま残留した。cycle 4 reviewer が「実装は更新されたが prose は cycle 1 時点の方針を述べている」という **prose-implementation drift** として HIGH 指摘し、cycle 4 fix で prose 側を実装に合わせて改訂。同時に reference (`broken-ref-resolution.md`) の **既知の限界表** と **Edge Case 表** の factual claim も実機反証で訂正された (詳細は [`empirical-reproduction-over-invariant-reasoning`](../heuristics/empirical-reproduction-over-invariant-reasoning.md) 参照)。
+prose-implementation drift 事例の cycle 3 で `lint.md` Phase 7.2 の bash block を新規追加したが、対応する Phase 7.2 の prose は cycle 1 時点の「呼び出し側責務」記述のまま残留した。cycle 4 reviewer が「実装は更新されたが prose は cycle 1 時点の方針を述べている」という **prose-implementation drift** として HIGH 指摘し、cycle 4 fix で prose 側を実装に合わせて改訂。同時に reference (`broken-ref-resolution.md`) の **既知の限界表** と **Edge Case 表** の factual claim も実機反証で訂正された (詳細は [`empirical-reproduction-over-invariant-reasoning`](../heuristics/empirical-reproduction-over-invariant-reasoning.md) 参照)。
 
 **学習**: 実装 (bash block / Phase 番号 / 関数 invoke) を変更する際は **同 PR / 同 cycle 内で** 以下 4 site の同期を契約する:
 
