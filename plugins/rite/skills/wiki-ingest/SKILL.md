@@ -618,7 +618,7 @@ fi
 | `{concept_type}` | OKF v0.1 必須フィールド。page-template.md の frontmatter トップレベル `type:` に substitute する concept 種別。値は `{domain}` と同じ literal（`patterns` / `heuristics` / `anti-patterns`）を入れる。OKF consumer の type ベース routing 用。**⚠️ 本 placeholder は同名衝突回避のため `{concept_type}` と命名している** — ステップ 4.2 / 5.0 の `raw/{type}/{filename}` パスや `sources[].type` 追記で使う `{type}` は Raw Source type（`reviews` / `retrospectives` / `fixes`、`{source_type}` 由来）であり別物 |
 | `{title}` | ステップ 4.1 で生成したタイトル |
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
-| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。**⚠️ 読み手側は未対応**: `/rite:wiki-query` の Pass 1（`hooks/wiki-query-inject.sh`）は候補抽出が箇条書き行限定のため、テーブル形式 index ではサマリー列を消費しない（キーワード照合に使われるのは箇条書き形式で運用されている index のみ。読み手のテーブル対応は別 Issue） |
+| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。**⚠️ 読み手側は未対応**: `/rite:wiki-query` の Pass 1（`hooks/wiki-query-inject.sh`）は候補抽出が箇条書き行限定のため、テーブル形式 index ではサマリー列を消費しない（キーワード照合に使われるのは箇条書き形式で運用されている index のみ。読み手のテーブル対応は Issue #2053） |
 | `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
 | `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |
@@ -637,7 +637,7 @@ fi
 
 **セル区切り文字のエスケープ（新規追加・既存更新の両経路に適用）**: `{title}` / `{description}` に `|` が含まれる場合、index 登録行では `\|` にエスケープして substitute する。**インラインコード `` ` `` の内側も対象** — GFM はコードスパン内の生 `|` もセル区切りとして解釈するため、エスケープしないと列がずれて 5 列構造が壊れる。値を言い換えて `|` を避けるのは禁止（ステップ 4.3 の title 規約が frontmatter `title` との literal 一致を要求するため）。**エスケープは index 登録行にのみ適用し、page frontmatter の `title` / `description` は改変しない**。残る `{path}` / `{domain}` / `{updated}` / `{confidence}` は slug・enum・ISO 8601 タイムスタンプで `|` を含み得ないため対象外。
 
-**手順**（0 → 1 → 2 の順に実行する）:
+**手順**（0 → 1 → 2 → 3 の順に実行する。手順 3 も省略可の任意項目ではない）:
 
 - **0. テーブル節の用意（無条件・毎回確認する）**: `## ページ一覧` 節が無ければ見出しと下記 2 行を新設する。**挿入位置**は既存の本文・HTML コメントより後で、`## 統計` 節があればその直前、なければファイル末尾とする（位置を自分で決めない）。節が既にありヘッダ行・区切り行が欠けている場合は、見出しの直後（既存のテーブル行より前）に補う:
 
@@ -646,7 +646,7 @@ fi
   |--------|---------|---------|--------|--------|
   ```
 
-- **1. 新規ページ行の追加**: 同一 `](pages/{domain}/{slug}.md)` を含むテーブル行が既に存在する場合は追加せず「2. 既存ページ行の更新」へ回す（行の二重化防止）。存在しなければ `## ページ一覧` テーブルの末尾に次の 1 行を追加する:
+- **1. 新規ページ行の追加**: 同一 `](pages/{domain}/{slug}.md)` を含む**`## ページ一覧` 節内のテーブル行**が既に存在する場合は追加せず「2. 既存ページ行の更新」へ回す（行の二重化防止）。節の外にある旧形式の箇条書き行は本判定の対象にしない（それしか無いページは新規追加として扱い、旧行はそのまま残す）。存在しなければ `## ページ一覧` テーブルの末尾に次の 1 行を追加する:
 
   ```
   | [{title}]({path}) | {domain} | {description} | {updated} | {confidence} |
@@ -656,10 +656,27 @@ fi
   - `{path}` は `pages/{domain}/{slug}.md` 形式を維持する（孤児検出のリンク grep `](pages/...)` 生存条件、`wiki-lint-orphans.sh`）
   - `{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）
   - `{updated}` / `{confidence}` は page frontmatter の値と同じにする（ISO 8601 タイムスタンプ / `high`・`medium`・`low`）。**YAML の引用符は含めない**（frontmatter 側が `updated: "2026-..."` でも index 列は引用符なし）
-- **2. 既存ページ行の更新**: 対象行を `](pages/{domain}/{slug}.md)` のリンク一致で同定し、**その 1 行を上記「新規ページ行の追加」と同一形式で丸ごと再生成して置換する**（列位置を数えて特定のセルだけ書き換えることはしない）。値は page frontmatter + 今回のサマリーから作り、エスケープ規約を適用する。これにより、既に未エスケープの生 `|` で列がずれている既存行も当該 page の更新サイクルで正しい 5 列へ是正される。
-- **3. 統計**: `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する。総ページ数 = `pages/` 配下の **`*.md` ファイル数**（`wiki-init` が置く `.gitkeep` 等の非ページファイルを除く）、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` 各配下の `*.md` 件数、最終更新 = 今回の `{updated}` タイムスタンプ。件数は目視で数えず `ls .rite/wiki/pages/*/*.md | wc -l` 相当で算出する。**総ページ数が `## ページ一覧` テーブルのデータ行数と一致しない場合、重複行があれば本ステップで解消し、未登録ページ（登録漏れ）はステップ 8 の孤児検出に委ねて本ステップでは登録しない**（今回読んでいない page を投機的に登録すると孤児検出のシグナルが消える）。`## 統計` 節が**存在しない** index.md では統計同期をスキップする（節を新設しない）。全 Raw Source が skip されたサイクル（新規・更新ページ 0 件）も統計同期をスキップする。
+- **2. 既存ページ行の更新**: 対象行は **`## ページ一覧` 節内のテーブル行**に限り `](pages/{domain}/{slug}.md)` のリンク一致で同定する（節の外にある旧形式の箇条書き行を書き換えてはならない — テーブル行を箇条書きリストの中へ置くと GFM は箇条書きの継続行として literal text にレンダリングする）。同定したら**その 1 行を上記「新規ページ行の追加」と同一形式で丸ごと再生成して置換する**（列位置を数えて特定のセルだけ書き換えることはしない）。値はすべて更新後の page frontmatter から取り（`title` / `description` / `updated` / `confidence`、YAML の引用符は外す）、エスケープ規約を適用する。index は frontmatter の写しなので、サマリーを変えたい場合はステップ 4.2 で frontmatter `description` を更新してから本手順を実行する。これにより、既に未エスケープの生 `|` で列がずれている既存行も当該 page の更新サイクルで正しい 5 列へ是正される。
+- **3. 統計**: `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する。総ページ数 = `pages/` 配下の **`*.md` ファイル数**（`wiki-init` が置く `.gitkeep` 等の非ページファイルを除く）、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` 各配下の `*.md` 件数、最終更新 = 今回の `{updated}` タイムスタンプ。件数は目視で数えず下記で算出する（ステップ 3 の `wiki_index_path` と同じ基点解決を使う — 素の相対パスは呼び出し時の cwd がセッション worktree / main checkout のとき 0 件になり、統計を silent に 0 で上書きする）:
 
-> **読み手側の対応状況**: `wiki-lint-orphans.sh` は `](pages/...)` リンクの grep ベースで形式非依存に登録判定するため、`{path}` の形式維持だけが孤児検出の必須条件になる。一方 `/rite:wiki-query` の Pass 1 はテーブル行を parse しないため、テーブル形式 index では index 経由のキーワード照合が機能しない（ステップ 5.3 の `{description}` 注記と同じ理由。読み手のテーブル対応は別 Issue）。
+  ```bash
+  branch_strategy="{branch_strategy}"
+  wiki_wt_abs="{wiki_worktree_abs}"
+  if [ "$branch_strategy" = "separate_branch" ]; then
+    pages_root="${wiki_wt_abs:-.rite/wiki-worktree}/.rite/wiki/pages"
+  else
+    pages_root=".rite/wiki/pages"
+  fi
+  total=$(find "$pages_root" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  for d in patterns heuristics anti-patterns; do
+    printf '%s=%s\n' "$d" "$(find "$pages_root/$d" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+  done
+  echo "total=$total"
+  ```
+
+  **`total=0` が出たら統計同期を中止して WARNING を出す** — 手順 3 は新規・更新ページが 1 件以上ある前提で走るため総ページ数 0 は構造的にありえず、パス解決失敗を意味する（0 をそのまま書くと正しい値を silent に破壊する）。3 行の literal 形式は既存行に合わせる（`- 総ページ数: {n}` / `- ドメイン別: patterns={n}, heuristics={n}, anti-patterns={n}` / `- 最終更新: {updated}`）。**総ページ数がテーブルのデータ行数と一致しないときに本ステップで行うのは、同一 `](pages/{domain}/{slug}.md)` を持つテーブル行が 2 行以上ある場合に後発行を削除することだけ**。それ以外の原因（未登録ページ、節の外に旧形式の箇条書き行で登録されているページ）では何もせずステップ 8 の lint に委ねる（今回読んでいない page を投機的に登録・削除すると孤児検出のシグナルが消える）。`## 統計` 節が**存在しない** index.md では統計同期をスキップする（節を新設しない）。全 Raw Source が skip されたサイクル（新規・更新ページ 0 件）も統計同期をスキップする。
+
+> **読み手側の対応状況**: `wiki-lint-orphans.sh` は `](pages/...)` リンクの grep ベースで形式非依存に登録判定するため、`{path}` の形式維持だけが孤児検出の必須条件になる。一方 `/rite:wiki-query` の Pass 1 はテーブル行を parse しないため、テーブル形式 index では index 経由のキーワード照合が機能しない（ステップ 5.3 の `{description}` 注記と同じ理由。読み手のテーブル対応は Issue #2053）。
 
 書き込みはステップ 5 と同じブランチコンテキスト (separate_branch なら worktree、same_branch なら dev ツリー) で行う。
 
