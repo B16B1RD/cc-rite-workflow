@@ -24,7 +24,7 @@ print-then-delete は fail-open (削除失敗を無視して値を吐く)、dele
 
 ### 発生事例（Stop hook loop-continuation）
 
-`flow-state.sh` に `consume-handoff` サブコマンド (handoff マーカーを read + delete + return する one-shot consume) を追加した PR #1169 で、初版実装が **print-then-delete** 順だった:
+`flow-state.sh` に `consume-handoff` サブコマンド (handoff マーカーを read + delete + return する one-shot consume) を追加した起点事例で、初版実装が **print-then-delete** 順だった:
 
 ```bash
 # 初版 (fail-open — print-then-delete)
@@ -72,7 +72,7 @@ cycle 1 review では 4 reviewer (code-quality / error-handling / security / dev
 
 ### 回帰検出ネット
 
-correctness path を導入したら同 PR 内で「invariant を壊す mutation で FAIL する test」を必ず添える ([[mutation-testing-test-fidelity]])。PR #1169 では read-only state dir (chmod 0555) で `_atomic_write` を強制失敗させ、値 withhold / handoff 残存 / rc≠0 / 診断 ERROR emit を assert する TC-H6 を追加し、print-then-delete への mutation で実際に FAIL することを確認した。
+correctness path を導入したら同 PR 内で「invariant を壊す mutation で FAIL する test」を必ず添える ([[mutation-testing-test-fidelity]])。起点事例では read-only state dir (chmod 0555) で `_atomic_write` を強制失敗させ、値 withhold / handoff 残存 / rc≠0 / 診断 ERROR emit を assert する TC-H6 を追加し、print-then-delete への mutation で実際に FAIL することを確認した。
 
 ## 関連ページ
 

@@ -22,7 +22,7 @@ charter 違反パターンの上限・下限を機械検証する ratchet test �
 
 ### 単位混在が起こす silent regression
 
-PR #906 cycle 1 で test reviewer が以下の単位混在を独立検出 (3 reviewer 中 2 reviewer が高信頼度合意):
+起点事例の cycle 1 で test reviewer が以下の単位混在を独立検出 (3 reviewer 中 2 reviewer が高信頼度合意):
 
 ```bash
 # 上限 assert (occurrence 単位)
@@ -68,7 +68,7 @@ bell_count=$({ grep -oE '🚨' "$start_md" || true; } | wc -l | tr -d ' ')
 
 ### Mutation test での検証
 
-PR #906 cycle 1 fix では、unit 統一が ratchet test の sensitivity を上げたことを mutation test で検証:
+起点事例の cycle 1 fix では、unit 統一が ratchet test の sensitivity を上げたことを mutation test で検証:
 
 - single create で `--phase` 削除 → asymmetric=1/32 検出
 - 同一 block 内 2 creates の 2 件目で `--phase` 欠落 → asymmetric=1/2 検出

@@ -28,7 +28,7 @@ prompt-engineer + code-quality の 2 cycle 収束・0 blocking findings の実�
 
 ## 詳細
 
-### 背景となった PR #1238
+### 背景となった起点事例
 
 `commands/init.md` の rite hook 検出基準を「散文の plain substring `rite/hooks/`」から「`rite` を完全 path segment とする SoT (`RITE_HOOK_RE` = `(?:^|/)rite/(?:[^/]+/)?hooks/`)」へ統一する doc PR。散文が helper 実装の regex を要約参照するため、散文と実装の整合検証が review の中心になった。
 
@@ -46,7 +46,7 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 ### 3. behavioral test — 挙動主張を実 regex で実測する
 
-散文が主張する「look-alike 非マッチ / cache version 形マッチ / version segment 1 個許容」を、**代表ケース群に実際の regex をかけて実測確認**する。PR #1238 cycle 2 では両レビュアーが独立に 8 ケースの behavioral test を実施した:
+散文が主張する「look-alike 非マッチ / cache version 形マッチ / version segment 1 個許容」を、**代表ケース群に実際の regex をかけて実測確認**する。起点事例の cycle 2 では両レビュアーが独立に 8 ケースの behavioral test を実施した:
 
 | ケース群 | 例 | 期待 |
 |----------|-----|------|

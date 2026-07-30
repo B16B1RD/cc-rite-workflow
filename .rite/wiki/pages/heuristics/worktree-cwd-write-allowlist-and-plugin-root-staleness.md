@@ -20,7 +20,7 @@ confidence: medium
 
 ## 概要
 
-`multi_session` によるセッション worktree 運用と sandbox 環境を組み合わせたとき、cwd の位置とファイルの実体が乖離する 3 種類の罠が観測された（罠 1・2 は PR #1902 の作業中に、罠 3 は PR #1925 のレビューで実際に踏んだ）。
+`multi_session` によるセッション worktree 運用と sandbox 環境を組み合わせたとき、cwd の位置とファイルの実体が乖離する 3 種類の罠が観測された（罠 1・2 は sandbox 対応 PR の作業中に、罠 3 はその後続 PR のレビューで実際に踏んだ）。
 
 1. worktree cwd から main checkout 配下（例: `.rite/review-results/`）への書き込みは、sandbox の write-allowlist が cwd 相対の `.` として解決されるためブロックされる。
 2. `.rite-plugin-root` をセッション worktree へコピーする際、コピー元（main checkout）のブランチが worktree のブランチと異なる状態でコピーすると、コピーされた値が古い（未修正の）`plugins/rite` を指してしまう。
@@ -30,7 +30,7 @@ confidence: medium
 
 ### 罠 1: cwd 相対 write-allowlist によるブロック
 
-sandbox の書き込み許可リストは cwd（`.`）を基準に解決される。セッション worktree（`.rite/worktrees/issue-{N}` 配下）から main checkout 配下のパス（例: main checkout の `.rite/review-results/{pr}.json`）へ絶対パス・相対パスいずれで書き込もうとしても、cwd が worktree 側にある限り「cwd 相対の `.`」には含まれず拒否される。既知の Issue #1896 と同種の事象。
+sandbox の書き込み許可リストは cwd（`.`）を基準に解決される。セッション worktree（`.rite/worktrees/issue-{N}` 配下）から main checkout 配下のパス（例: main checkout の `.rite/review-results/{pr}.json`）へ絶対パス・相対パスいずれで書き込もうとしても、cwd が worktree 側にある限り「cwd 相対の `.`」には含まれず拒否される。既知の sandbox write 拒否 Issue と同種の事象。
 
 **対処**: state 書き込み先は `state-path-resolve.sh` 等の共有 root 解決 helper で解決し、cwd 依存を明示的に解消してから書き込む。単純に相対パスを組み立てるだけでは worktree/main checkout どちらの cwd から呼ばれても正しく解決されない。
 

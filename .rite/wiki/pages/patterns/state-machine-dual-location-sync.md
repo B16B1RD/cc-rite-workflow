@@ -51,11 +51,11 @@ confidence: high
 
 ### helper case 拡張 × caller WARN_MSG 連動（cycle 2 の実測）
 
-PR #624 cycle 2 で、本 pattern の適用範囲が「実装ロジック / LLM 分岐テーブル」の 2 箇所記述から **「helper 関数内の case 分岐」と「caller 側の user-facing message (WARN_MSG / error output 等)」** の 2 箇所記述に拡張されることが実測された (G3 HIGH)。
+起点事例の cycle 2 で、本 pattern の適用範囲が「実装ロジック / LLM 分岐テーブル」の 2 箇所記述から **「helper 関数内の case 分岐」と「caller 側の user-facing message (WARN_MSG / error output 等)」** の 2 箇所記述に拡張されることが実測された (G3 HIGH)。
 
 **発生事例**:
 
-PR #624 は `stop-guard.sh` の phase 別 case arm に `ingest_pre_lint` / `ingest_post_lint` を追加し、`manual_fallback_adopted` workflow_incident sentinel を emit する経路を拡張した。しかし:
+起点事例は `stop-guard.sh` の phase 別 case arm に `ingest_pre_lint` / `ingest_post_lint` を追加し、`manual_fallback_adopted` workflow_incident sentinel を emit する経路を拡張した。しかし:
 
 - helper (`stop-guard.sh`) 側: case arm 追加済み (新 phase で sentinel emit)
 - caller (`session-end.sh` lifecycle helper) 側: cleanup mid-ingest セッション終了時の WARN_MSG 文面が旧 phase 列挙 (`cleanup_pre_ingest` / `cleanup_post_ingest` のみ) のまま残存

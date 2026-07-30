@@ -26,7 +26,7 @@ confidence: medium
 
 ## 概要
 
-PR #1756 の 2 cycle レビューで、orchestrator（consolidation 担当）が単純な「指摘事項テーブルの件数 = blocking 件数」という機械的合算をせず、(1) 複数 reviewer 間の反証関係、(2) reviewer 自身の総合評価と個別指摘の矛盾、の 2 つを見て blocking findings を確定させた 2 つの実例。
+起点事例の 2 cycle レビューで、orchestrator（consolidation 担当）が単純な「指摘事項テーブルの件数 = blocking 件数」という機械的合算をせず、(1) 複数 reviewer 間の反証関係、(2) reviewer 自身の総合評価と個別指摘の矛盾、の 2 つを見て blocking findings を確定させた 2 つの実例。
 
 ## 詳細
 
@@ -56,7 +56,7 @@ fix 後の cycle 2 レビューで、prompt-engineer / tech-writer の両者が�
 
 ### 実例 5: 出力側フィルタでなく入力側プロンプトで収束させる — 「0 件は正当な結論」を明示する
 
-実例 1〜4 はいずれも **reviewer が出した指摘を orchestrator が事後にフィルタする**（出力側）解法だった。PR #2013 の cycle 4 では、**プロンプト設計で事前に**（入力側）収束させる対の手法が実証された。
+実例 1〜4 はいずれも **reviewer が出した指摘を orchestrator が事後にフィルタする**（出力側）解法だった。入力側収束事例の cycle 4 では、**プロンプト設計で事前に**（入力側）収束させる対の手法が実証された。
 
 cycle 4 のプロンプトでは各 reviewer に「ここまで 19 件が全て解消されている。マージをブロックするに値しない観察を指摘事項に格上げしないこと。**指摘 0 件は正当な結論**」と明記した。結果、**6 名中 4 名が「格上げを検討したが見送った」根拠を所見に明示して 0 件を返し**、6 名全員 0 件・評価「可」で収束した（4 cycle の推移: 4 → 8 → 7 → 0）。error-handling は `--kill-after` 未設定を「GNU との意図的パリティ」と判断し、devops は前 cycle の自分の主張を「今 cycle の調査で過大だったと判明」と自ら訂正した。
 

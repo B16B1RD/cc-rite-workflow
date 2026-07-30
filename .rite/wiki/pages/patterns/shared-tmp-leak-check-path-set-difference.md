@@ -57,7 +57,7 @@ leaked=$(comm -13 "$before_list" "$after_list")
 
 ### 検出能力の実証 — 双方向 mutation
 
-PR #1295 では方式置換の上位互換性を双方向 mutation で実証した:
+起点事例では方式置換の上位互換性を双方向 mutation で実証した:
 
 | Mutation | 期待 | 実測 |
 |----------|------|------|
@@ -68,7 +68,7 @@ count delta 方式では逆方向 mutation が FAIL する (false-fail) ため�
 
 ### 残存 limitation — add-direction ambiguity
 
-並列の**他プロセスが同じ template で新規ファイルを追加** (= 他プロセス自身の正常な mktemp 利用) した場合、自テストの leak と区別できず false-fail しうる ambiguity は残存する (helper の mktemp template が TMPDIR 非対応である限り構造的に解消不能)。PR #1295 review では reviewer がこれを認識した上で non-blocking (発生窓が狭く、根治は helper 側 template の TMPDIR 対応 = 別 scope) と判断した。完全な決定論性が必要になった時点で helper 側の mktemp template を `${TMPDIR:-/tmp}` 化する follow-up に進む。
+並列の**他プロセスが同じ template で新規ファイルを追加** (= 他プロセス自身の正常な mktemp 利用) した場合、自テストの leak と区別できず false-fail しうる ambiguity は残存する (helper の mktemp template が TMPDIR 非対応である限り構造的に解消不能)。起点事例の review では reviewer がこれを認識した上で non-blocking (発生窓が狭く、根治は helper 側 template の TMPDIR 対応 = 別 scope) と判断した。完全な決定論性が必要になった時点で helper 側の mktemp template を `${TMPDIR:-/tmp}` 化する follow-up に進む。
 
 ## 関連ページ
 

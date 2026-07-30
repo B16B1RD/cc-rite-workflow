@@ -14,13 +14,13 @@ confidence: high
 
 ## 概要
 
-charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue body に書く「違反あり」「残作業あり」前提は既に過去の関連 PR で解消済みのケースがある。Issue 起票時に `grep` ベースで前提を一通り棚卸しすれば、無駄な PR 起こしを回避できる。Issue #892 (Phase D) では起票時「違反あり」と仮定した内容が、実際は Phase A-C で全削除済みで、合計目標 (≤1627 行) も達成済みだった。`Issue #N` / `PR #N` / `cycle N` / `Drift guard` / `NFR-N` 等の項目別 grep を最初に実施することが運用 invariant として価値を持つ。
+charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue body に書く「違反あり」「残作業あり」前提は既に過去の関連 PR で解消済みのケースがある。Issue 起票時に `grep` ベースで前提を一通り棚卸しすれば、無駄な PR 起こしを回避できる。起点事例 (Phase D) では起票時「違反あり」と仮定した内容が、実際は Phase A-C で全削除済みで、合計目標 (≤1627 行) も達成済みだった。`Issue #N` / `PR #N` / `cycle N` / `Drift guard` / `NFR-N` 等の項目別 grep を最初に実施することが運用 invariant として価値を持つ。
 
 ## 詳細
 
 ### 失敗 → 学び（retrospective）
 
-Issue #892 は `/rite:pr:cleanup` Phase D の追加 slim を扱う Issue として起票された:
+起点事例は `/rite:pr:cleanup` Phase D の追加 slim を扱う Issue として起票された:
 
 - 起票時の前提: archive-procedures.md / bash-trap-patterns.md に charter §禁止パターン違反が複数残存
 - 着手時の grep 棚卸し: 両ファイルとも違反 0 件と判明

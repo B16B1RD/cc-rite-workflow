@@ -28,7 +28,7 @@ bash block 内でシェル変数として計算した値を、別の Bash tool i
 
 ### 失敗形態
 
-PR #688 cycle 49 H-1 の例: Phase 5.5.2 metrics block で `plan_deviation_count` を計算した後、success 経路で stdout/stderr に emit せず、Bash tool 境界でシェル変数が消失する構造的バグ。Claude が下流 heredoc placeholder に literal substitute する手段がないため、block 内コメントが「partial corruption 防止」を主張していても目的を達成できない (self-defeating defense)。
+累積 14 回目の cycle 49 H-1 の例: Phase 5.5.2 metrics block で `plan_deviation_count` を計算した後、success 経路で stdout/stderr に emit せず、Bash tool 境界でシェル変数が消失する構造的バグ。Claude が下流 heredoc placeholder に literal substitute する手段がないため、block 内コメントが「partial corruption 防止」を主張していても目的を達成できない (self-defeating defense)。
 
 ### Canonical pattern
 
@@ -48,7 +48,7 @@ PR #688 cycle 49 H-1 の例: Phase 5.5.2 metrics block で `plan_deviation_count
 
 ### Sub-pattern: 単一 invocation 内に detect+emit 物理統合する代替 canonical（cycle 3-4）
 
-cross-Bash-call shell var の構造的回避策には [CONTEXT] sentinel emit (canonical 1) に加えて、もう 1 つの canonical alternative がある: **同一 Bash invocation 内に「detect + emit」を物理統合する** (canonical 2)。PR #1062 cycle 3 で fix.md Phase 2.1.A の 「Step 2 で fingerprint 計算 → Step 3 で state file への append」が独立 Bash invocation として実装されていた結果、Step 2 で計算した fingerprint shell var が Step 3 invocation 境界で消失 + 各 step が per-finding loop 内で iterate していたため重複 emit を引き起こす CRITICAL を検出。cycle 4 で `per-finding loop は単一 invocation 内に閉じる` invariant に依拠して Step 2/3 を物理統合 (= 同一 Bash block 内で「fingerprint 計算 + append」を完結) することで、(1) cross-call boundary 自体を消去して shell var transport の必要性を排除し、(2) 同一 loop iteration 内で 1 append のみ発生する invariant が成立するため重複 emit も同時に構造的解消。
+cross-Bash-call shell var の構造的回避策には [CONTEXT] sentinel emit (canonical 1) に加えて、もう 1 つの canonical alternative がある: **同一 Bash invocation 内に「detect + emit」を物理統合する** (canonical 2)。物理統合事例の cycle 3 で fix.md Phase 2.1.A の 「Step 2 で fingerprint 計算 → Step 3 で state file への append」が独立 Bash invocation として実装されていた結果、Step 2 で計算した fingerprint shell var が Step 3 invocation 境界で消失 + 各 step が per-finding loop 内で iterate していたため重複 emit を引き起こす CRITICAL を検出。cycle 4 で `per-finding loop は単一 invocation 内に閉じる` invariant に依拠して Step 2/3 を物理統合 (= 同一 Bash block 内で「fingerprint 計算 + append」を完結) することで、(1) cross-call boundary 自体を消去して shell var transport の必要性を排除し、(2) 同一 loop iteration 内で 1 append のみ発生する invariant が成立するため重複 emit も同時に構造的解消。
 
 **Canonical 1 (sentinel emit) vs Canonical 2 (物理統合) の選択基準**:
 

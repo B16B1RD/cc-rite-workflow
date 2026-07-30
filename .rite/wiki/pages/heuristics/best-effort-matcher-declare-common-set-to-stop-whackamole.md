@@ -34,7 +34,7 @@ confidence: high
 
 ## 詳細
 
-PR #1865（`pre-tool-bash-guard.sh` の reviewer `.git` 書き込み遮断 sub-block）の 6 cycle + follow-up 3 cycle の実測から得た経験則。cycle 2-5 で reviewer が value-quoted `dd of=` → interior/nested quote → backslash-escaped path → 難読化 verb 名 → `sponge`/`patch` と**別の難読化ベクタを毎 cycle 発見**し、fix が allowlist に追加し続ける whack-a-mole が発生した。
+起点事例（`pre-tool-bash-guard.sh` の reviewer `.git` 書き込み遮断 sub-block）の 6 cycle + follow-up 3 cycle の実測から得た経験則。cycle 2-5 で reviewer が value-quoted `dd of=` → interior/nested quote → backslash-escaped path → 難読化 verb 名 → `sponge`/`patch` と**別の難読化ベクタを毎 cycle 発見**し、fix が allowlist に追加し続ける whack-a-mole が発生した。
 
 ### whack-a-mole を止める構造宣言
 
@@ -47,7 +47,7 @@ PR #1865（`pre-tool-bash-guard.sh` の reviewer `.git` 書き込み遮断 sub-b
 whack-a-mole を止める宣言があっても、**すべての指摘を非 blocking にしてはならない**。2 クラスを区別する:
 
 - **列挙完全性の欠落（非 blocking）**: 「allowlist に無い verb X で bypass」型。設計上 Layer-1 担保のスコープ外。finding にしない（revert test でも本 PR 由来でない）。
-- **検出機構そのものの構造欠陥（blocking）**: enumerate 済みベクタを検出する **tokenizer 機構自体**が壊れている型。PR #1865 では unquote `for _gd_tok in $_gdw` が glob 展開して (a) CWD 依存の over-DENY 誤検出、(b) glob 無制限展開→timeout→fail-open（enumerate 済みベクタもろとも素通し = 塞いだはずの経路の再開放）を起こしていた。これは列挙の穴ではなく検出器の欠陥であり blocking の HIGH（noglob 化の詳細は [security-hook-timeout-is-fail-open-bound-cost-by-input-size](./security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) 参照）。
+- **検出機構そのものの構造欠陥（blocking）**: enumerate 済みベクタを検出する **tokenizer 機構自体**が壊れている型。起点事例では unquote `for _gd_tok in $_gdw` が glob 展開して (a) CWD 依存の over-DENY 誤検出、(b) glob 無制限展開→timeout→fail-open（enumerate 済みベクタもろとも素通し = 塞いだはずの経路の再開放）を起こしていた。これは列挙の穴ではなく検出器の欠陥であり blocking の HIGH（noglob 化の詳細は [security-hook-timeout-is-fail-open-bound-cost-by-input-size](./security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) 参照）。
 - 切り分けの判定: 「列挙を 1 つ増やせば直るか（=完全性欠落）」vs「検出器の共通経路が汚染・破綻しているか（=構造欠陥）」。後者は Grep/実証で triggering を示せる実在欠陥として報告する。
 
 ### mergeable を正常出口とし doc-note polish の無限ループに入らない

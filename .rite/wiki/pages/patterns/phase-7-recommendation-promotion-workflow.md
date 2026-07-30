@@ -24,7 +24,7 @@ confidence: high
 
 ## 概要
 
-PR review で `[review:mergeable]` 到達後も reviewer recommendation (actionable / boundary / design_confirmation) が surface することがある。Phase 7 は AskUserQuestion で user judgement を取得し、user が「本 PR で対応」を選んだ recommendation を findings に escalate して fix loop に流す経路。**Phase 7 が無いと `mergeable=完了` で stylistic / readability 改善が silent に失われる**。PR #1164 で 2 回の Phase 7 (cycle 4 / cycle 6) を経て 4 件の polish 改善 (F-10/F-11/F-12 + 内部 R-02) を fix loop に取り込み 8 cycle で final convergence を達成、Phase 7 の有効性を実証した。
+PR review で `[review:mergeable]` 到達後も reviewer recommendation (actionable / boundary / design_confirmation) が surface することがある。Phase 7 は AskUserQuestion で user judgement を取得し、user が「本 PR で対応」を選んだ recommendation を findings に escalate して fix loop に流す経路。**Phase 7 が無いと `mergeable=完了` で stylistic / readability 改善が silent に失われる**。起点事例で 2 回の Phase 7 (cycle 4 / cycle 6) を経て 4 件の polish 改善 (F-10/F-11/F-12 + 内部 R-02) を fix loop に取り込み 8 cycle で final convergence を達成、Phase 7 の有効性を実証した。
 
 ## 詳細
 
@@ -37,7 +37,7 @@ PR review で `[review:mergeable]` 到達後も reviewer recommendation (actiona
 5. **`design_confirmation` は Phase 7 対象外で skip** (設計合意確認のため fix 対象ではない)
 6. **bundled fix が有効**: 独立 recommendation でも同セクション改善であれば bundled fix で 1 commit に統合可能 (cycle count 増加を抑制)
 
-### PR #1164 実測 evidence (8 cycle convergence)
+### 起点事例の実測 evidence (8 cycle convergence)
 
 | Cycle | State | Phase 7 escalation | Fix |
 |------|-------|-------------------|-----|

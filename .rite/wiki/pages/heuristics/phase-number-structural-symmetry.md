@@ -52,11 +52,11 @@ grep -rn "Phase 8.0" --include='*.md' plugins/rite/
 grep -rn "Phase 8\.0\.1" --include='*.md' plugins/rite/
 ```
 
-cross-file reference の drift は [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の典型ケース。PR #548 cycle 3 では `cleanup.md Phase 2.6` が `init.md Phase 3.5.1` を `Phase 3.5` と誤記し、review で検出された。
+cross-file reference の drift は [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の典型ケース。起点事例の cycle 3 では `cleanup.md Phase 2.6` が `init.md Phase 3.5.1` を `Phase 3.5` と誤記し、review で検出された。
 
 ### Enforcement note の事実正確性
 
-Phase 番号と併せて「この sub-phase は stop-guard hook によって enforce される」のような enforcement note を書く際は、実際の hook 実装が sentinel や marker をチェックしているかを確認する。PR #541 では `stop-guard whitelist は sentinel をチェックしない` という実装事実に反する記述が HIGH で指摘された。doc と hook の drift を防ぐため:
+Phase 番号と併せて「この sub-phase は stop-guard hook によって enforce される」のような enforcement note を書く際は、実際の hook 実装が sentinel や marker をチェックしているかを確認する。enforcement note 事例では `stop-guard whitelist は sentinel をチェックしない` という実装事実に反する記述が HIGH で指摘された。doc と hook の drift を防ぐため:
 
 1. Enforcement note は hook の実装名 (`stop-guard.sh` / `phase-transition-whitelist.sh`) を明示
 2. hook のどの関数・どの check が enforce するかを参照リンクで書く

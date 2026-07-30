@@ -24,7 +24,7 @@ confidence: medium
 
 ## 詳細
 
-PR #2029 で実測した 3 cycle の往復:
+起点事例で実測した 3 cycle の往復:
 
 - **cycle 1**: 動画が旧 owner のインストールコマンドを表示している指摘 → Demo 節に「動画内のインストールコマンドは旧 owner 表記」の注記を追加（このとき言及したのはコマンド 1 箇所のみ）。
 - **cycle 2**: tech-writer が composition ソースを Read し、動画の outro フッター URL にも旧 owner が映ることを検出。「注記の列挙が不完全」として MEDIUM/current-pr の指摘 → 注記を「インストールコマンドおよび末尾のフッター URL」の 2 箇所列挙に拡張。

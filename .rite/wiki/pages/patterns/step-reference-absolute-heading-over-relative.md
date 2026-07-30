@@ -24,7 +24,7 @@ prompt / 文書内で「Step 2/3 を skip」「次の Step」のような relati
 
 ### 失敗形態
 
-PR #688 cycle 49 H-1 の Self-defeating defense bug の root cause: cycle 49 で導入した METRICS_SKIPPED sentinel 周辺の prose に「Step 2/3 を skip」と書いた直後、別の cycle で前段に新 Step が挿入されて Step 番号が off-by-one drift。「Step 2/3」が actual heading 構造とのずれを起こし、防衛機構を導入する fix 自体が drift を含んで防衛対象だった partial corruption が再開する経路となった。
+累積 14 回目の cycle 49 H-1 の Self-defeating defense bug の root cause: cycle 49 で導入した METRICS_SKIPPED sentinel 周辺の prose に「Step 2/3 を skip」と書いた直後、別の cycle で前段に新 Step が挿入されて Step 番号が off-by-one drift。「Step 2/3」が actual heading 構造とのずれを起こし、防衛機構を導入する fix 自体が drift を含んで防衛対象だった partial corruption が再開する経路となった。
 
 ### Canonical 形式
 
@@ -47,7 +47,7 @@ PR #688 cycle 49 H-1 の Self-defeating defense bug の root cause: cycle 49 で
 
 ### Cross-file 次元への拡張
 
-同一ドキュメント内の relative 参照だけでなく、**別ドキュメントの内部 step 番号への cross-file 参照**も同じ drift class に属する。PR #1835 では新設 prose が Issue 作成 helper の内部処理を「Step 2.3 フィールド取得」と番号参照したが、参照先ドキュメントのステップは flat な Step 1/2/3 で「Step 2.3」は実在せず、読者を誤誘導する stale 参照として MEDIUM 検出された（参照先の実在を grep で確認しないまま番号アンカーを書き込んだのが根本原因）。
+同一ドキュメント内の relative 参照だけでなく、**別ドキュメントの内部 step 番号への cross-file 参照**も同じ drift class に属する。cross-file 参照事例では新設 prose が Issue 作成 helper の内部処理を「Step 2.3 フィールド取得」と番号参照したが、参照先ドキュメントのステップは flat な Step 1/2/3 で「Step 2.3」は実在せず、読者を誤誘導する stale 参照として MEDIUM 検出された（参照先の実在を grep で確認しないまま番号アンカーを書き込んだのが根本原因）。
 
 canonical fix と検証手順:
 

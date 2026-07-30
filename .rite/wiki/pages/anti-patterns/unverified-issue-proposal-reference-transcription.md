@@ -22,9 +22,9 @@ Issue body の対応案文字列を成果物にそのまま転記すると、対
 
 ## 詳細
 
-PR #1325（docs archive 注記追加、1 行変更）で実測されたサイクル:
+起点事例（docs archive 注記追加、1 行変更）で実測されたサイクル:
 
-- **発生経路**: Issue #1152 の対応案が `(PR #1088 / #1136 で削除済)` と記載しており、実装時にこの文字列を verbatim 転記した。実体は #1088 = Issue（機構撤去）、#1091 = 実装 PR（MERGED）、#1136 = Issue（start.md 削除）であり、「PR」ラベルは両番号とも誤り。stale reference を是正する PR 自体が二次的な不正確参照を導入した。
+- **発生経路**: 当該 Issue の対応案が `(PR #1088 / #1136 で削除済)` と記載しており、実装時にこの文字列を verbatim 転記した。実体は #1088 = Issue（機構撤去）、#1091 = 実装 PR（MERGED）、#1136 = Issue（start.md 削除）であり、「PR」ラベルは両番号とも誤り。stale reference を是正する PR 自体が二次的な不正確参照を導入した。
 - **検出**: tech-writer（Doc-Heavy mode）と code-quality の 2 reviewer が独立に同一 file:line で検出し High Confidence 統合（HIGH 1 件）。`gh pr view 1088` が "Could not resolve to a PullRequest" を返すことが決定打。
 - **修正**: repo 既存記法（`docs/SPEC.md`「#1088、実装: #1091」/ `references/issue-create-with-projects.md` / `SKILL.md` の 5+ 箇所と同型）に合わせ `(#1088 で機構撤去 (実装: #1091)、start.md 自体も #1136 で削除済)` へ正規化。cycle 2 で 0 findings、2 cycle で mergeable 収束。
 - **検証手法**: ① `gh issue view N` / `gh pr view N` による参照種別の実機照合、② 既存記法箇所との Grep 突合（`git grep 'PR #1088'` で対称箇所の残存ゼロ確認）。

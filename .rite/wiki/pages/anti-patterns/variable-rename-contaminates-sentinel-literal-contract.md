@@ -24,11 +24,11 @@ bash 変数 rename refactor の際、変数名の見た目と同形だが downst
 
 ### 発生事例（cycle 1）
 
-PR #1034 は `pr/fix.md` 内の exit code capture 変数を `<command>_<context>_rc` 形式 (例: `commit_rc` → `wiki_ingest_commit_rc`) に統一する symmetric mechanical rename を目的としていた。`code-quality` と `error-handling` の 2 reviewer が独立に **CRITICAL × 2 + HIGH × 3 (5 site 同根)** を検出した:
+起点事例は `pr/fix.md` 内の exit code capture 変数を `<command>_<context>_rc` 形式 (例: `commit_rc` → `wiki_ingest_commit_rc`) に統一する symmetric mechanical rename を目的としていた。`code-quality` と `error-handling` の 2 reviewer が独立に **CRITICAL × 2 + HIGH × 3 (5 site 同根)** を検出した:
 
 - 変数 `commit_rc` を `wiki_ingest_commit_rc` に rename する際、同じ block 内の `workflow-incident-emit.sh` 呼び出しに渡す `--details "reason=commit_rc_${commit_rc}"` の **literal token `commit_rc`** までも `wiki_ingest_commit_rc` に書き換えていた
 - この `reason=commit_rc_*` は `start-finalize.md` Phase 5.6.2 (Workflow Incident Detection) が cross-file で grep する **canonical aggregation token** であり、sibling sites (`pr/review.md` / `issue/close.md` / `pr/cleanup.md`) は legacy 形式を維持していた
-- 結果として PR #1034 単体での自己整合性は保たれるが、aggregation 側の grep が PR #1034 経由の workflow incident だけを silent に取りこぼす
+- 結果として当該 PR 単体での自己整合性は保たれるが、aggregation 側の grep がその PR 経由の workflow incident だけを silent に取りこぼす
 
 ### Cycle 2 で確立した教訓
 

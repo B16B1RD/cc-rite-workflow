@@ -30,7 +30,7 @@ confidence: high
 
 ## 概要
 
-PR #2022 の指摘推移は 5→5→6→6→1→1→4→6→4→7 で収束しなかった。原因は品質不足ではなく構造にある。marker 照合の規約を段階的に強化するたびに、その規約が塞げていない入力クラスが新たに可視化され、次 cycle の指摘になった。いずれの指摘も正しく runtime 実測を伴っていたが、この階段には終端がない。
+起点事例の指摘推移は 5→5→6→6→1→1→4→6→4→7 で収束しなかった。原因は品質不足ではなく構造にある。marker 照合の規約を段階的に強化するたびに、その規約が塞げていない入力クラスが新たに可視化され、次 cycle の指摘になった。いずれの指摘も正しく runtime 実測を伴っていたが、この階段には終端がない。
 
 ## 詳細
 
@@ -70,7 +70,7 @@ cycle 5 で「次サイクルはサーキットブレーカーが発火する」
 
 実測必須ゲート（`Verification:` アンカーの無い指摘を non-blocking へ降格する）を通すと、**ドキュメント精度の指摘は構造的に non-blocking へ寄る**。散文の不正確さは runtime 実測を添付できる性質のものが少なく、reviewer が誠実であるほどアンカーを捏造せず `measured=false` として報告するためである。
 
-PR #2043（散文 2 行の docs PR）は 3 cycle 連続で MEDIUM 指摘が出たが、いずれも `Likelihood-Evidence` は持ち `Verification` は持たないため毎回 non-blocking に降格され、blocking 指摘 0 件で `[review:mergeable]` に到達した。指摘の中身は cycle ごとに別（cycle 1 = 記録先の部分列挙、cycle 2 = cycle 1 の修正が落とした強度 qualifier、cycle 3 = SoT の 4 経路中 3 経路）で、内容としては本ページ冒頭の「階段」と同じ構造だった。
+散文 2 行の docs PR 事例は 3 cycle 連続で MEDIUM 指摘が出たが、いずれも `Likelihood-Evidence` は持ち `Verification` は持たないため毎回 non-blocking に降格され、blocking 指摘 0 件で `[review:mergeable]` に到達した。指摘の中身は cycle ごとに別（cycle 1 = 記録先の部分列挙、cycle 2 = cycle 1 の修正が落とした強度 qualifier、cycle 3 = SoT の 4 経路中 3 経路）で、内容としては本ページ冒頭の「階段」と同じ構造だった。
 
 **帰結**: サーキットブレーカー（`safety.max_review_cycles`）は blocking 指摘の有無を見ないため、この形の振動では発火しない。ループは毎回「正常終了」する。終端は人間が打ち切るしかない。指摘が non-blocking のまま cycle ごとに別の側面へ移り始めたら、AC 充足を確認して打ち切り、残りを non-blocking 記録に委ねる。
 

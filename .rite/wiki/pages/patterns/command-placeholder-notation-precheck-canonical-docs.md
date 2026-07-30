@@ -28,9 +28,9 @@ confidence: high
 
 ## 詳細
 
-### 背景となった PR #1721
+### 背景となった起点事例
 
-Issue #1720（`/rite:workflow` ガイド・`/rite:getting-started` を v0.7 正典フローへ追随させ、コロン誤記パス `.claude/rite:config.yml` を修正する）の対応で、新フロー（`open → iterate → ready → merge → cleanup`）の案内文言を新規に書き起こした際、複数コマンドの引数プレースホルダを大文字 `<PR>` で統一して記述した。
+当該 Issue（`/rite:workflow` ガイド・`/rite:getting-started` を v0.7 正典フローへ追随させ、コロン誤記パス `.claude/rite:config.yml` を修正する）の対応で、新フロー（`open → iterate → ready → merge → cleanup`）の案内文言を新規に書き起こした際、複数コマンドの引数プレースホルダを大文字 `<PR>` で統一して記述した。
 
 ### 3 サイクルに渡って段階的に検出された経緯
 

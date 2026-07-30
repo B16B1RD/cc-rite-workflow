@@ -26,7 +26,7 @@ SoT 集約 PR で declarative invariant note (両者の集合差を 0 にする 
 
 ### 適用 PR
 
-PR #1143 cycle 6-7 で確立:
+起点事例の cycle 6-7 で確立:
 
 - **cycle 6**: `hooks/tests/comment-best-practices-parity.test.sh` を新規作成し、SoT 22 entry 全部が Heuristics regex で match することを assert (forward subset の test 化)。declarative invariant が文書上の宣言から実行可能な test に格上げされた
 - **cycle 7**: `1 対 1 mapping` 等の cross-axis declarative mapping を **削除** し、「parity test の green が contract」に統一。wording 層の self-referential loop を構造的に閉塞
@@ -39,7 +39,7 @@ PR #1143 cycle 6-7 で確立:
 
 その follow-up PR（0 findings / 1 cycle）で **prose-only guard の follow-up 昇格 (reviewer 指摘起点の事後 test 化)** を追加:
 
-- PR #1267 が導入した WIKICHAIN handoff gate のステップ 9〜12 間 intervening set 回帰 (intervening `flow-state.sh set` が handoff を premature default-clear し gate が silent に外れる経路) は、cleanup.md ステップ 9 直下の prose「制約」note のみで守られていた。PR #1267 の test reviewer 指摘を起点に TC-6 を parity test に追加し、`--handoff` なしの executable な intervening set を機械検出する形に昇格
+- WIKICHAIN gate 事例が導入した handoff gate のステップ 9〜12 間 intervening set 回帰 (intervening `flow-state.sh set` が handoff を premature default-clear し gate が silent に外れる経路) は、cleanup.md ステップ 9 直下の prose「制約」note のみで守られていた。同事例の test reviewer 指摘を起点に TC-6 を parity test に追加し、`--handoff` なしの executable な intervening set を機械検出する形に昇格
 - TC-6 設計の要点: 既存 anchor (TC-2 `handoff_line` / TC-4 `terminal_set_line`) を再利用して新規 anchor 追加の drift コストを回避 / 行末 `\` 継続行を join してから判定 / prose の backtick 言及 (`{plugin_root}/hooks/` path literal) を除外 / `--handoff` 再指定済み intervening set は TC-6 では許容し TC-1 (単一 site assert) の fail に委譲して意識的なテスト更新を強制
 - sandbox negative test (Case A: `--handoff` なし intervening set 注入 → TC-6 FAIL / Case B: 継続行 `--handoff` 再指定 → TC-6 PASS + TC-1 FAIL) で検出力と false positive 不在を commit 前に実証 — preventive 経路と follow-up 昇格経路の両方で 0 findings / 1 cycle 収束が連続再現
 

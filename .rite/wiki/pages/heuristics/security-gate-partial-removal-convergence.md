@@ -28,7 +28,7 @@ denylist / 列挙型の機械ゲートを「一部だけ残して大半を撤去
 
 ## 詳細
 
-PR #1892 は `pre-tool-bash-guard.sh`（reviewer subagent の read-only 強制フック）の verb 列挙（working-tree 変更 verb の静的パース）を撤去し、`.git` 書き込み経路のみ機械ゲートに残す refactor。6 review cycle で以下の失敗パターンと対策が実測された。
+起点事例は `pre-tool-bash-guard.sh`（reviewer subagent の read-only 強制フック）の verb 列挙（working-tree 変更 verb の静的パース）を撤去し、`.git` 書き込み経路のみ機械ゲートに残す refactor。6 review cycle で以下の失敗パターンと対策が実測された。
 
 ### 1. 撤去集合への「維持すべきカテゴリ」の巻き添え混入
 
@@ -56,7 +56,7 @@ separate-arg global flag の列挙は git バージョン依存で本質的に�
 
 ### プロセス: 「収束済み」判断の慎重さ
 
-機械ゲートの「収束済み」は慎重に判断する。**新しい構造クラスの bypass（flag 追加ではなく判定機構そのものの欠陥）が出たら、前提が崩れた旨をユーザーに訂正・再確認する**（silent fix-and-continue しない）。PR #1892 では「(N) は authoritative で収束済み」と伝えた後に複合コマンドの masking CRITICAL が判明し、訂正のうえ「keep-and-fix」の再承認を得てから構造修正（per-occurrence FSM 化）した。CHANGELOG 更新では bilingual parity（[[bilingual-changelog-sync-conventions]]）の英日同時更新を維持する。
+機械ゲートの「収束済み」は慎重に判断する。**新しい構造クラスの bypass（flag 追加ではなく判定機構そのものの欠陥）が出たら、前提が崩れた旨をユーザーに訂正・再確認する**（silent fix-and-continue しない）。起点事例では「(N) は authoritative で収束済み」と伝えた後に複合コマンドの masking CRITICAL が判明し、訂正のうえ「keep-and-fix」の再承認を得てから構造修正（per-occurrence FSM 化）した。CHANGELOG 更新では bilingual parity（[[bilingual-changelog-sync-conventions]]）の英日同時更新を維持する。
 
 ## 関連ページ
 

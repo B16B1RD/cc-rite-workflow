@@ -20,7 +20,7 @@ Refactor で命名衝突 / semantic 混在を解消する際に「legacy field �
 
 ## 詳細
 
-### 事象 — PR #1043 cycle 1-4 の収束軌跡 (CRITICAL+HIGH のみ)
+### 事象 — 累積 35 回目相当の cycle 1-4 の収束軌跡 (CRITICAL+HIGH のみ)
 
 ```
 cycle 1 (7) → cycle 2 (3) → cycle 3 (2) → cycle 4 (0 = mergeable)
@@ -48,7 +48,7 @@ cycle 1 (7) → cycle 2 (3) → cycle 3 (2) → cycle 4 (0 = mergeable)
 
 ### Dogfooding evidence — Mechanical gate の必要性
 
-PR #1043 は「`/rite:pr:review` Phase 7 の AskUserQuestion 起動を機械的 gate 化する」meta-PR でもあった。cycle 1-3 で「deprecate + 残置」戦略により self-violation cascade を 3 回連続で踏んだ実測は、本 PR が導入する mechanical gate の前提仮定 ("prose enforcement only では silent skip が必ず発生する") を逆説的に裏付ける dogfooding 観察となった。**累積対策 PR が解決対象の anti-pattern を fix 自身で再現する経験は、その mechanical gate の必要性の最も強い証拠**。
+累積 35 回目相当は「`/rite:pr:review` Phase 7 の AskUserQuestion 起動を機械的 gate 化する」meta-PR でもあった。cycle 1-3 で「deprecate + 残置」戦略により self-violation cascade を 3 回連続で踏んだ実測は、本 PR が導入する mechanical gate の前提仮定 ("prose enforcement only では silent skip が必ず発生する") を逆説的に裏付ける dogfooding 観察となった。**累積対策 PR が解決対象の anti-pattern を fix 自身で再現する経験は、その mechanical gate の必要性の最も強い証拠**。
 
 ### Detection Heuristic
 

@@ -37,13 +37,13 @@ flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証�
 ### 是正パターン
 
 - **rc を直接 assert する**: `rc=0; cmd || rc=$?; assert "rc 0" "0" "$rc"` — locale 非依存で最も単純な discriminator
-- **「degrade が働いて初めて成立する肯定結果」を assert する**: PR #2003 では「別セッションからの liveness 判定が `held` を返す」ことを assert した。degrade が壊れて state が書けなければ holder が not-live 扱いになり `stale` が返るため、locale に依存せず破壊を検出できる（既存 TC-2/TC-4 の挙動の再利用）
+- **「degrade が働いて初めて成立する肯定結果」を assert する**: 起点事例では「別セッションからの liveness 判定が `held` を返す」ことを assert した。degrade が壊れて state が書けなければ holder が not-live 扱いになり `stale` が返るため、locale に依存せず破壊を検出できる（既存 TC-2/TC-4 の挙動の再利用）
 - **英語 grep を残す場合は `LC_ALL=C` で固定する**: メッセージ文字列の検査自体に意味がある場合（exit 127 系エラーの混入検出等）は、被検査コマンドの env に `LC_ALL=C` を付けて英語メッセージを保証する
 - **probe は専用 sid で行う**: スタブ完全性の sanity probe を「テスト本体と同じ識別子 + 依存ツールあり」で行うと、probe の書込が本体の liveness/状態判定を汚染して discriminator を無効化する。probe 専用の識別子を使う
 
 ### 検出方法
 
-修正後に必ず「実装破壊 mutation（ガード除去等）でテストが FAIL するか」を隔離 worktree で検証してから commit する（[mutation testing の empirical 検証](../patterns/mutation-testing-test-fidelity.md)）。PR #2003 では commit 前の mutation 検証で新 TC-9 が正確に 2 assert FAIL することを確認した。precedent（issue-claim TC-16）はエラーメッセージ grep を使わず肯定結果（`claimed`）を assert しており、スタブ方式だけでなく**判別メカニズムまで**先行事例に揃えることが重要だった。
+修正後に必ず「実装破壊 mutation（ガード除去等）でテストが FAIL するか」を隔離 worktree で検証してから commit する（[mutation testing の empirical 検証](../patterns/mutation-testing-test-fidelity.md)）。起点事例では commit 前の mutation 検証で新 TC-9 が正確に 2 assert FAIL することを確認した。precedent（issue-claim TC-16）はエラーメッセージ grep を使わず肯定結果（`claimed`）を assert しており、スタブ方式だけでなく**判別メカニズムまで**先行事例に揃えることが重要だった。
 
 ## 関連ページ
 

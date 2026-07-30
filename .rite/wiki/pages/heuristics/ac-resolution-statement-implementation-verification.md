@@ -22,7 +22,7 @@ PR description / commit message の Acceptance Criteria 解消 statement に「�
 
 ### 失敗の構造
 
-PR #761 の cycle 1 review で test reviewer が HIGH として検出した事例:
+起点事例の cycle 1 review で test reviewer が HIGH として検出した事例:
 
 - **AC-3 の文言**: 「PR description の TC 数 vs assertion 数 conflate を修正」
 - **修正後 PR description の核心 statement (cycle 1 時点)**: 「`run-tests.sh` の最終出力 `36/36 passed` の `36` は assertion 数の合計」と記載
@@ -43,7 +43,7 @@ AC 解消の核心 statement に数値解釈が含まれる場合、必ず実装
 
 ### Convergence Pattern (cycle 1 → cycle 2 で 5 → 0 finding 収束)
 
-PR #761 では cycle 1 で 5 findings (HIGH 1 + MEDIUM 2 + LOW 2)、cycle 2 で全件 FIXED 判定 + 新規 finding 0 という典型的な review-fix loop の正常収束パターンが観測された。これは [`fix-induced-drift-in-cumulative-defense`](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の累積対策 PR とは異なり、**通常の review-fix loop における健全な収束**として記録する価値がある (累積対策 PR の 13 cycle / 38+ cycle 軌跡と対比して、通常 PR は 2 cycle で converge する base rate の実例)。
+起点事例では cycle 1 で 5 findings (HIGH 1 + MEDIUM 2 + LOW 2)、cycle 2 で全件 FIXED 判定 + 新規 finding 0 という典型的な review-fix loop の正常収束パターンが観測された。これは [`fix-induced-drift-in-cumulative-defense`](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の累積対策 PR とは異なり、**通常の review-fix loop における健全な収束**として記録する価値がある (累積対策 PR の 13 cycle / 38+ cycle 軌跡と対比して、通常 PR は 2 cycle で converge する base rate の実例)。
 
 ### Anti-Degradation Guardrail との pair pattern
 

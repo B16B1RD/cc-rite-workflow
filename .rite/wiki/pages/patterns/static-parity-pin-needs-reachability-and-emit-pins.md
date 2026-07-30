@@ -53,7 +53,7 @@ assert_grep 'reason=<canonical-reason-value>' "<対象ファイル>"
 assert_grep '<診断メッセージの固定部分>" >&2' "<対象ファイル>"
 ```
 
-PR #2030 cycle 5 では、この 2 種を追加したうえで「死に分岐化」「emit 改変」の 2 変異を実際に当てて FAIL を実測している。
+起点事例の cycle 5 では、この 2 種を追加したうえで「死に分岐化」「emit 改変」の 2 変異を実際に当てて FAIL を実測している。
 
 ### 静的 pin の位置づけ
 
@@ -61,7 +61,7 @@ helper 抽出（bash を実ファイルに切り出して hermetic にテスト�
 
 ### 追加時に mutation を当てる
 
-静的 pin は追加時に mutation を当てないと tautology になりやすい。PR #2030 では「旧形状を検索する pin」を「旧形状を消した同じ commit」で追加したため、一度も失敗しえない状態だった（git 履歴で確定）。
+静的 pin は追加時に mutation を当てないと tautology になりやすい。起点事例では「旧形状を検索する pin」を「旧形状を消した同じ commit」で追加したため、一度も失敗しえない状態だった（git 履歴で確定）。
 
 ## 関連ページ
 

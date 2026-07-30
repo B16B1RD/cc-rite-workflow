@@ -32,7 +32,7 @@ confidence: high
 
 ### 同じ resolver が持つ軸をすべて塞ぐ
 
-PR #2044 では同型の欠陥が 3 つの異なる軸で、別々の cycle に出た。
+起点事例では同型の欠陥が 3 つの異なる軸で、別々の cycle に出た。
 
 **(1) session 軸**: コマンドが `--session` を持たず `flow-state.sh` の session 解決順に委ねていた。agent の Bash tool は env var 経路、人間の端末は env 不在で `.rite-session-id` 経路になる。さらに `session-start.sh` は env がある間 `.rite-session-id` を書かないため、**両者の不一致は drift ではなく設計上の定常状態**だった。
 

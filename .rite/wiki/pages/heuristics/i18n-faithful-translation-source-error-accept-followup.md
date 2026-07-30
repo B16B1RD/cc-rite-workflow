@@ -32,7 +32,7 @@ i18n 同期 PR (EN → JA 全面追従など) では、忠実翻訳が原本 (EN
 
 ### accept (認知のみ) 経路の初適用
 
-HIGH × follow-up の 2 findings に対し、Issue #1019 M5 の accept (認知のみ) 経路を初適用した:
+HIGH × follow-up の 2 findings に対し、M5 の accept (認知のみ) 経路を初適用した:
 
 - **コード変更ゼロ** で acknowledged 化し、fingerprint 永続化 (`.rite/state/accepted-fingerprints-{pr}.txt`、2 件) により次 cycle での同一 finding 再提示を suppression。
 - accept reason の明文化: 「EN SPEC.md 側に同一誤りが存在し JA 単独修正は parity を破壊するため、EN+JA 両側同時修正の follow-up Issue で対応」。
@@ -48,7 +48,7 @@ HIGH × follow-up の 2 findings に対し、Issue #1019 M5 の accept (認知�
 
 ### フロー完結の実証
 
-本決着パターンの後半 (follow-up Issue → 両側同時修正) が PR #1265 で完結し、フロー全体 (検出 → accept + fingerprint 永続化 → 別 Issue 切り出し → EN+JA 両側同時修正) が **PR #1263 → Issue #1264 → PR #1265 の一巡で cycle 1 / 0 findings 収束** することを実証した:
+本決着パターンの後半 (follow-up Issue → 両側同時修正) が修正 PR で完結し、フロー全体 (検出 → accept + fingerprint 永続化 → 別 Issue 切り出し → EN+JA 両側同時修正) が **検出 PR → follow-up Issue → 修正 PR の一巡で cycle 1 / 0 findings 収束** することを実証した:
 
 1. **両側同時修正の実装**: `docs/SPEC.md` / `docs/SPEC.ja.md` の 2 箇所 (Session Ownership SoT ノート / flow-state schema table `loop_count` 行) を EN+JA 対称に修正 (+5/-5)。伝播スキャンで検出した `docs/designs/multi-session-state.md` の同一 stale 列挙も同一コミットで修正。
 2. **修正 PR 側の検証も実装突合**: tech-writer (Doc-Heavy mode 5 カテゴリ) / code-quality の両レビュアーが、修正後の loop_count reader 集合 (`pre-compact.sh:233` / `post-compact.sh:128` / `session-start.sh:460` / `work-memory-update.sh:205`) と SPEC 両版列挙の byte-for-byte 一致、`pre-tool-bash-guard.sh` の `hook-preamble.sh` 単独 source を独立に grep verify し、AC 検証コマンド (grep 0 hits) も独立再実行して PASS。

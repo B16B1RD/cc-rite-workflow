@@ -18,7 +18,7 @@ confidence: high
 
 ## 概要
 
-`flow-state.sh` の session_id 解決優先順位（CLI `--session` > env `CLAUDE_CODE_SESSION_ID` > env `CLAUDE_SESSION_ID` > `.rite-session-id` ファイル、Issue #1530）は、hook を単体で叩く分にはファイルベース fixture を安全に isolate できる設計だが、テストスイート自体が **稼働中の Claude Code セッション内**（`bash "$HOOK"` を素の子プロセスとして呼ぶ形）で実行されると、そのセッション自身の環境変数がテストの各 `bash "$HOOK"` 呼び出しへ暗黙に継承され、優先順位の上位で fixture を握り潰す。
+`flow-state.sh` の session_id 解決優先順位（CLI `--session` > env `CLAUDE_CODE_SESSION_ID` > env `CLAUDE_SESSION_ID` > `.rite-session-id` ファイルの優先順）は、hook を単体で叩く分にはファイルベース fixture を安全に isolate できる設計だが、テストスイート自体が **稼働中の Claude Code セッション内**（`bash "$HOOK"` を素の子プロセスとして呼ぶ形）で実行されると、そのセッション自身の環境変数がテストの各 `bash "$HOOK"` 呼び出しへ暗黙に継承され、優先順位の上位で fixture を握り潰す。
 
 ## 詳細
 
@@ -48,7 +48,7 @@ bash "$HOOK" ...   # だが CLAUDE_CODE_SESSION_ID が親から継承され、�
 
 ### 悉皆監査の結果
 
-PR #1928 で予告された `hooks/tests/*.test.sh` 全95ファイルの横断監査を実施し、以下を実測で確定した:
+先行 PR で予告された `hooks/tests/*.test.sh` 全95ファイルの横断監査を実施し、以下を実測で確定した:
 
 - **静的解析 + 実機検証（ambient env 設定状態 vs unset 状態の挙動比較）の 2 段構えが有効**: 「`bash "$HOOK"` を呼んでいるか」の grep だけでは fixture 上書きの有無まで判定できない。両方を組み合わせることで false negative（実は安全なのに疑わしいと誤判定）と false positive（実は危険なのに見逃す）の両方を防げた。
 - **「部分ガードで未検証」という Issue 起票時点の推測が実機検証で覆るケースがある**: `issue-claim.test.sh` / `wiki-ingest-lock.test.sh` は起票時「部分的にしか env -u を持たない」と推測されていたが、実際には `--session` を省略する全呼出に inline `env -u` ガードが漏れなく掛かっており修正不要だった。推測ベースの Issue 記述は実装確認のスタート地点であり、そのまま信じて修正範囲を決めてはいけない。

@@ -22,7 +22,7 @@ owner 名・URL の一括置換 PR は、git grep で走査できるツリー内
 
 ## 詳細
 
-PR #2029（asakaguchi → B16B1RD のアカウント移管）で実測したパターン。
+起点事例（asakaguchi → B16B1RD のアカウント移管）で実測したパターン。
 
 - **盲点の構造**: README 冒頭の Demo 動画はレンダリング済み MP4 を GitHub user-attachment として別途アップロードした成果物で、リポジトリからは再導出されない（PROVENANCE.md に明記されていた）。owner rename PR は動画の composition ソース（scene-7.html）を更新したが、公開動画は旧 owner のインストールコマンドを表示し続け、README のインストール手順（更新済み）と食い違う状態が生まれた。
 - **`git grep <旧owner>` ベースの掃引の限界は 2 種類ある**: (1) リポジトリ外に出た成果物には届かない。(2)「旧 owner 名ではない誤った owner スロット」（例: 未置換の `USERNAME` プレースホルダ）を構造的に検出できない。

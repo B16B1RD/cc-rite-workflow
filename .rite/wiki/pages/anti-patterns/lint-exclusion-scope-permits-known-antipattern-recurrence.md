@@ -16,13 +16,13 @@ confidence: medium
 
 ## 概要
 
-PR #1902 で `/tmp` 直下ハードコード（sandbox 環境で書込拒否される anti-pattern）を本番コード 21 ファイルで機械的に `${TMPDIR:-/tmp}/xxx` へ統一し、再発防止のため `tmp-hardcode-check.sh` という lint チェックが導入された。しかし `hooks/tests/worktree-git-nff-retry.test.sh` はこの lint のスキャン対象（`*/tests/*` を除外）から漏れており、同じ anti-pattern（`/tmp/wtg1.err` 等の直接ハードコード）が検出されないまま存在し続け、sandbox 環境で 9 assertion 中 7 件が失敗する形で顕在化した。
+起点のスイープ PR で `/tmp` 直下ハードコード（sandbox 環境で書込拒否される anti-pattern）を本番コード 21 ファイルで機械的に `${TMPDIR:-/tmp}/xxx` へ統一し、再発防止のため `tmp-hardcode-check.sh` という lint チェックが導入された。しかし `hooks/tests/worktree-git-nff-retry.test.sh` はこの lint のスキャン対象（`*/tests/*` を除外）から漏れており、同じ anti-pattern（`/tmp/wtg1.err` 等の直接ハードコード）が検出されないまま存在し続け、sandbox 環境で 9 assertion 中 7 件が失敗する形で顕在化した。
 
 ## 詳細
 
 `tmp-hardcode-check.sh` は `*/tests/*) continue` という除外ルールを持つ。これはテストコード内の一時ファイル操作がノイズ/false-positive を生みやすいという意図的な設計判断だが、副作用として「まさにテストコードが `/tmp` を直接使いがちな箇所」を lint の保護対象外にしてしまう。
 
-本件では、PR #1902 の機械的スイープが実施された時点で `worktree-git-nff-retry.test.sh` が対象範囲（本番コード）に含まれていなかったか、あるいはスイープ後に新規追加されたためスイープの恩恵を受けなかった。以降、この 1 ファイルだけが `/tmp` 直下ハードコードを残したまま、lint では継続的に不可視のまま存在し続けた。develop ブランチ上でも常時再現する「環境依存の既存失敗」として、テストスイートの signal を劣化させていた（実質的な回帰が埋もれるリスク）。
+本件では、そのスイープが実施された時点で `worktree-git-nff-retry.test.sh` が対象範囲（本番コード）に含まれていなかったか、あるいはスイープ後に新規追加されたためスイープの恩恵を受けなかった。以降、この 1 ファイルだけが `/tmp` 直下ハードコードを残したまま、lint では継続的に不可視のまま存在し続けた。develop ブランチ上でも常時再現する「環境依存の既存失敗」として、テストスイートの signal を劣化させていた（実質的な回帰が埋もれるリスク）。
 
 **教訓**:
 

@@ -28,7 +28,7 @@ confidence: medium
 
 ### 複数ファイル対称修正の限界
 
-PR #548 では `parse_wiki_scalar` が 3 shell scripts に complete-match duplicate。cycle 4 review で発見されたが、scope を 1 PR で全面 refactor するには substantial すぎるため Issue #549 として分離した。
+起点事例では `parse_wiki_scalar` が 3 shell scripts に complete-match duplicate。cycle 4 review で発見されたが、scope を 1 PR で全面 refactor するには substantial すぎるため別 Issue として分離した。
 
 この「fix 採用タイミングを scope で分ける」判断は以下の基準で行う:
 
@@ -39,7 +39,7 @@ PR #548 では `parse_wiki_scalar` が 3 shell scripts に complete-match duplic
 
 ### DRY refactoring の canonical path
 
-PR #544 で実施された DRY fix の pattern:
+先行 DRY fix 事例で実施された pattern:
 
 ```bash
 # Before: 3 箇所で同じ git ls-tree を呼ぶ

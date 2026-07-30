@@ -73,7 +73,7 @@ confidence: high
 
 ### 単体テストが PASS していたのに本番で機能しなかった理由
 
-Issue #634 / #651 で追加された `stop-guard.test.sh` の TC-634-A〜P (60+ TC) は完璧に PASS していたが、TC は **`phase=create_post_interview` + `active=true` を pre-set** してから stop-guard を起動する設計だった。本番では `active=false` のまま hook が起動するので **case arm に到達する前に early return** する → テストが本番動作を保証していなかった。「Test pin protection theater」と同じ系列の盲点だが、本件は「テスト環境の pre-set と本番起動条件の gap」という別の角度。
+先行 Issue で追加された `stop-guard.test.sh` の TC-634-A〜P (60+ TC) は完璧に PASS していたが、TC は **`phase=create_post_interview` + `active=true` を pre-set** してから stop-guard を起動する設計だった。本番では `active=false` のまま hook が起動するので **case arm に到達する前に early return** する → テストが本番動作を保証していなかった。「Test pin protection theater」と同じ系列の盲点だが、本件は「テスト環境の pre-set と本番起動条件の gap」という別の角度。
 
 ### Anti-pattern としての症状
 
@@ -138,7 +138,7 @@ stop-guard の early return 条件を「current session が書いた flow-state 
 
 ### 実証された短期修復と invariant 強化
 
-PR #661 で 17 patch site / 12 ファイルに `--active true` を網羅追加 (terminal phase 除く)。post-fix の本番 diag log で `EXIT:2 reason=blocking` が 9 件、`EXIT:0 reason=not_active` が 3 件観測され、stop-guard が正しく blocking 動作するように回復した。重要な副次対策:
+累積 11 回目で 17 patch site / 12 ファイルに `--active true` を網羅追加 (terminal phase 除く)。post-fix の本番 diag log で `EXIT:2 reason=blocking` が 9 件、`EXIT:0 reason=not_active` が 3 件観測され、stop-guard が正しく blocking 動作するように回復した。重要な副次対策:
 
 1. **本番条件再現 TC の追加** (TC-660-A〜E): 既存 60+ TC が「pre-set + active=true」前提で書かれており、本番起動条件 (`active=false` 起動 → exit 0 → case arm 到達不能) を assert する TC が一つも無かった。`active=false` で起動したら `EXIT:0 reason=not_active` が必ず emit される negative assertion を canonical な test infrastructure として永続化することで、AND 論理 silent omit が次回 PR で再導入された場合に CI で検出可能になる。
 2. **Inverse TC の重要性**: 「`--active true` 明示時の flip」だけでなく「`--active` 省略時の preserve-existing semantics」も assert する inverse TC が必要。修正対象の `flow-state-update.sh:254` の `if [[ -n "$ACTIVE" ]]` 条件分岐 semantics が将来変更されると、AC-1 を full carpeted した修正自体が無効化される silent regression が起きるため、双方向 (active=false / active=true) の preserve assertion で固定する。

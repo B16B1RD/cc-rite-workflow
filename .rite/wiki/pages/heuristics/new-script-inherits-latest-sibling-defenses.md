@@ -22,7 +22,7 @@ confidence: medium
 
 ## 詳細
 
-PR #1909 で tmp-hardcode-check.sh を新設した際の実測:
+起点事例で tmp-hardcode-check.sh を新設した際の実測:
 
 - **wc -l 正規化の欠落**: `total=$(wc -l < file)` は BSD/macOS で先頭空白パディング付きになり、lint 側の count-line regex `findings: (\d+)` と不一致になる。兄弟の sentinel-contract-check.sh は `| tr -d '[:space:]'` で正規化済み、number-reference-check.sh は算術カウンタで回避済み — 新規スクリプトだけが罠を踏んだ。
 - **usage 契約と実装の矛盾ごと踏襲**: テンプレート元の bang-backtick-check.sh は「2 = Invocation error (bad args, missing files)」と宣言しながら missing file を WARNING + exit 0 で扱う矛盾を持っており、新規スクリプトはこの矛盾ごと複製した。修正済みの先例（sentinel-contract-check.sh の引数値ガード）が同ディレクトリに存在したのに参照しなかった。

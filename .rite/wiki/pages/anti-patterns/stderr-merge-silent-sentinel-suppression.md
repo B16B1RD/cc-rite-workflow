@@ -18,7 +18,7 @@ confidence: high
 
 ## 概要
 
-`2>&1` で stderr を stdout に merge する pattern は、(a) `2>&1 | head -N` 形式では pipeline 終端の `head` が前段の exit code を消す silent failure を生み、(b) helper の stderr 出力が caller 側で classification 文字列に混入し case arm が defensive `*)` 経路に落ちる silent sentinel suppression を生む。Issue #687 の core deliverable である `legacy_state_corrupt` / `cross_session_takeover_refused` workflow incident sentinel が、この `2>&1` で reader/writer 両方で silent suppress される **self-defeating** 構造として PR #688 cycle 35 で実測された。canonical fix は stderr を tempfile に退避して exit code と sentinel を分離 capture すること。
+`2>&1` で stderr を stdout に merge する pattern は、(a) `2>&1 | head -N` 形式では pipeline 終端の `head` が前段の exit code を消す silent failure を生み、(b) helper の stderr 出力が caller 側で classification 文字列に混入し case arm が defensive `*)` 経路に落ちる silent sentinel suppression を生む。当該 Issue の core deliverable である `legacy_state_corrupt` / `cross_session_takeover_refused` workflow incident sentinel が、この `2>&1` で reader/writer 両方で silent suppress される **self-defeating** 構造として累積 14 回目の cycle 35 で実測された。canonical fix は stderr を tempfile に退避して exit code と sentinel を分離 capture すること。
 
 ## 詳細
 
@@ -33,7 +33,7 @@ if ! bash flow-state-update.sh patch ... 2>&1 | head -3; then
 fi
 ```
 
-`set -o pipefail` 未設定の bash デフォルト評価では、pipeline の exit code は **終端コマンド (`head -3`) の exit 0** に支配される。前段の `bash ... patch` が exit 1 を返しても caller には silent。Issue #79 の resume-session variant の症状を別経路で再現。
+`set -o pipefail` 未設定の bash デフォルト評価では、pipeline の exit code は **終端コマンド (`head -3`) の exit 0** に支配される。前段の `bash ... patch` が exit 1 を返しても caller には silent。初期の resume-session variant の症状を別経路で再現。
 
 ### 症状 (b): `2>&1` sentinel suppression（cycle 35 で実測 CRITICAL × 2）
 

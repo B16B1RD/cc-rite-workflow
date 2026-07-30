@@ -26,7 +26,7 @@ reviewer rule (`tech-writer.md` / `_reviewer-base.md` 等) を編集する PR �
 
 ### 失敗モード
 
-PR #706 cycle 2 で F-03 (HIGH) として顕在化。`tech-writer.md` の Detection Checklist 6 番目で `verified-review cycle X` を「ジャーナルコメント禁止語例」として例示しつつ、同じ文書内で過去レビュー履歴を参照する `verified-review cycle N F-Y で確立` のような表現を **論理的に許容** する文脈で使用していた。reviewer がこの rule を **rule 文書自身** に適用すると、禁止語例の literal 出現を全て finding として検出する false positive 経路が成立する。
+起点事例の cycle 2 で F-03 (HIGH) として顕在化。`tech-writer.md` の Detection Checklist 6 番目で `verified-review cycle X` を「ジャーナルコメント禁止語例」として例示しつつ、同じ文書内で過去レビュー履歴を参照する `verified-review cycle N F-Y で確立` のような表現を **論理的に許容** する文脈で使用していた。reviewer がこの rule を **rule 文書自身** に適用すると、禁止語例の literal 出現を全て finding として検出する false positive 経路が成立する。
 
 self-application false positive は以下の構造で発生する:
 
@@ -50,7 +50,7 @@ self-application false positive は以下の構造で発生する:
 
 ### 拡張: 履歴解説 reference の指摘を actual code との cross-check なしに fix すると regression を誘発する（cycle 2-4 で実証）
 
-PR #800 cycle 2 で reviewer (prompt-engineer) が `regression-history.md` の「事実関係ズレ」を MEDIUM 指摘し、`informational 寄り、PR 7-8 で対応可` と recommendation を付した。ユーザー判断で本 PR 内で 1 行 fix を選択したところ、cycle 3 で 2 reviewer (prompt-engineer + code-quality) が独立に「fix が SoT-aligned だった元 wording を壊した」と検出。cycle 4 で revert して mergeable 収束 (累計 4 cycle、CRITICAL revert 1 件)。
+事実関係ズレ事例の cycle 2 で reviewer (prompt-engineer) が `regression-history.md` の「事実関係ズレ」を MEDIUM 指摘し、`informational 寄り、PR 7-8 で対応可` と recommendation を付した。ユーザー判断で本 PR 内で 1 行 fix を選択したところ、cycle 3 で 2 reviewer (prompt-engineer + code-quality) が独立に「fix が SoT-aligned だった元 wording を壊した」と検出。cycle 4 で revert して mergeable 収束 (累計 4 cycle、CRITICAL revert 1 件)。
 
 **根本原因**: reviewer 指摘の「事実関係ズレ」自体が **false positive** で、cycle 1 の元 wording は実装 code (cleanup.md / wiki/ingest.md の Phase 番号) と完全一致していた。reviewer LLM が prose 上の表現を「歴史記録としての正しさ」基準で評価し、実装 code との一致 (= SoT-aligned) を見落とした false positive 経路。
 
