@@ -20,14 +20,14 @@ confidence: medium
 
 ### 発生文脈
 
-PR #973 (Issue #970) は PR #969 (Issue #965) で確立された scope-explicit パターンへの統一を目的とする follow-up PR。修正後コメントには「create-interview workflow **専用**」「本 sub-skill は**対象外**」という、Wiki 経験則「[Scope drift fix での overclaim substitution](../anti-patterns/scope-drift-fix-overclaim-substitution.md)」が回避を求める overclaim 語彙が含まれていた。
+先行 PR で確立された scope-explicit パターンへの統一を目的とする follow-up PR の事例。修正後コメントには「create-interview workflow **専用**」「本 sub-skill は**対象外**」という、Wiki 経験則「[Scope drift fix での overclaim substitution](../anti-patterns/scope-drift-fix-overclaim-substitution.md)」が回避を求める overclaim 語彙が含まれていた。
 
 ### 判断分岐
 
 2 reviewers (prompt-engineer + code-quality) は以下の根拠で本 PR を blocking とせず**推奨事項に降格**:
 
 1. **Issue 本文の明示的目的**: 「PR #969 と同じパターンで統一する」が宣言されている
-2. **SoT との byte-level 同型**: 修正後文言が start-finalize.md (PR #969 で merge 済) と完全一致
+2. **SoT との byte-level 同型**: 修正後文言が start-finalize.md（先行 PR で merge 済）と完全一致
 3. **test SCOPE 自身の declaration**: `4-site-symmetry.test.sh` header に「create-interview workflow 専用」と明示されており、test 自身の scope 宣言と一致する事実記述である
 4. **trade-off の scope 外性**: overclaim 一括書き換えは PR #969 を含む複数 PR の同期書き換えを要し、本 PR scope を超える
 

@@ -18,7 +18,7 @@ PR シリーズで複数 references を順次抽出する場合、最初の PR �
 
 ## 詳細
 
-PR #802 (Issue #773 PR 8/8) cycle 2 で LOW 1 cosmetic 指摘として検出された pattern:
+PR シリーズ 8/8 の cycle 2 で LOW 1 cosmetic 指摘として検出された pattern:
 
 ### 適用ルール
 
@@ -30,13 +30,13 @@ PR #802 (Issue #773 PR 8/8) cycle 2 で LOW 1 cosmetic 指摘として検出さ�
 完全移管 (Full Moved):
 
 ```markdown
-> **Moved (Issue #773 PR 7/8)**: 本セクションは `references/contract-section-mapping.md` に完全移管されました。
+> **Moved (Issue #NNN PR 7/8)**: 本セクションは `references/contract-section-mapping.md` に完全移管されました。
 ```
 
 部分残置 (Partial Moved):
 
 ```markdown
-> **Partial Moved (Issue #773 PR 8/8)**: 本セクションの bash literal は `references/bulk-create-pattern.md` に移管されました。critical 警告 (single-Bash-invocation requirement / silent-skip risk) は AC-1 enforcement のため本体に維持しています。
+> **Partial Moved (Issue #NNN PR 8/8)**: 本セクションの bash literal は `references/bulk-create-pattern.md` に移管されました。critical 警告 (single-Bash-invocation requirement / silent-skip risk) は AC-1 enforcement のため本体に維持しています。
 ```
 
 ### 検証方法

@@ -26,7 +26,7 @@ bash が exit 127 で出す `command not found` のようなエラーメッセ�
 
 ## 詳細
 
-### 実例（PR #2003 / Issue #1999）
+### 実例
 
 flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証する新規テスト TC-9 が、3 重の理由で「ガード除去 mutation に対して 26/26 全 green」の false-positive test になっていた（error-handling / test 両レビュアーが隔離 worktree の mutation 実験で独立に実証）:
 
@@ -55,7 +55,7 @@ flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証�
 - [PR #2003 review cycle 1 (TC-9 false-positive を 2 レビュアーが mutation 実験で独立実証)](../../raw/reviews/20260724T070805Z-pr-2003.md)
 - [PR #2003 fix cycle 1 (locale 非依存 discriminator への置換 + probe sid 分離 + LC_ALL=C)](../../raw/fixes/20260724T071409Z-pr-2003.md)
 
-## 変種: 表示経路（assert ではなく診断そのもの）に locale 依存が漏れる (PR #2044)
+## 変種: 表示経路（assert ではなく診断そのもの）に locale 依存が漏れる
 
 同じ locale 依存が、テストの grep assert ではなく**人間に見せる診断の表示経路**でも損失を生む。helper の stderr を capture して `neutralize_ctrl --keep-newline` に通す idiom は、0x80-0x9f をバイト単位で `?` へ置換するため、**UTF-8 の多バイト日本語診断が原因語ごと判読不能になる**。「元は端末へ素通しで読めていた stderr」をフィルタ越しにする変更は観測性の退行になりうる。
 

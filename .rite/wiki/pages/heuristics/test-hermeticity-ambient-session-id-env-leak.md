@@ -24,7 +24,7 @@ confidence: high
 
 ### 症状
 
-Issue #1911（PR #1928）の `post-compact.test.sh` は、Issue 本文では「`gh`/network 依存が未 mock 化なのが原因」と推定されていたが、実際に `bash -x` でトレースした結果、原因は全く別だった: テストが `write_per_session_state()` で `.rite-session-id` ファイルに特定の session_id を書き込んだ fixture を用意していても、テストランナー自身（この対話セッション）の `CLAUDE_CODE_SESSION_ID` 環境変数が各 `bash "$HOOK"` 呼び出しに ambient に漏れ込み、優先順位に従ってファイル fixture より先に解決されてしまう。結果、hook は存在しない（または意図と異なる）flow-state ファイルを解決し、出力が silent に空になる。
+`post-compact.test.sh` は、Issue 本文では「`gh`/network 依存が未 mock 化なのが原因」と推定されていたが、実際に `bash -x` でトレースした結果、原因は全く別だった: テストが `write_per_session_state()` で `.rite-session-id` ファイルに特定の session_id を書き込んだ fixture を用意していても、テストランナー自身（この対話セッション）の `CLAUDE_CODE_SESSION_ID` 環境変数が各 `bash "$HOOK"` 呼び出しに ambient に漏れ込み、優先順位に従ってファイル fixture より先に解決されてしまう。結果、hook は存在しない（または意図と異なる）flow-state ファイルを解決し、出力が silent に空になる。
 
 ```bash
 # 反面教材 — テストランナー自身の環境変数が子プロセスに暗黙継承される
@@ -38,7 +38,7 @@ bash "$HOOK" ...   # だが CLAUDE_CODE_SESSION_ID が親から継承され、�
 
 - **CLI から直接叩くと再現しない**: 独立した非対話シェル（新しいターミナル等）から同じテストを実行すると `CLAUDE_CODE_SESSION_ID` は設定されておらず問題は顕在化しない。稼働中の Claude Code セッション内でテストスイートを実行するときのみ発現するため、開発者の実行文脈によって pass/fail が変わる non-hermetic なテストになる。
 - **Issue の推定原因が的外れになりうる**: 本件では Issue 本文が「gh/network 未 mock 化」を原因と推定していたが、これは誤りだった。ambient env var 漏洩は症状（empty output / 意図しない flow-state 参照）だけからは推測しにくく、実際に `bash -x` で「どの session_id がどこから来たか」をトレースしないと特定できない。
-- **横展開の射程が広い**: `flow-state.sh` を呼ぶ hook テストは共通してこの優先順位ロジックに依存するため、1 ファイルで顕在化した場合、同種の `bash "$HOOK"` 呼び出しパターンを持つ他のテストファイルにも同一バグが潜んでいる可能性が高い（Issue #1911 の横断調査で `hooks/tests/*.test.sh` 6+ ファイルに同一パターンを確認、Issue #1929 として追跡）。
+- **横展開の射程が広い**: `flow-state.sh` を呼ぶ hook テストは共通してこの優先順位ロジックに依存するため、1 ファイルで顕在化した場合、同種の `bash "$HOOK"` 呼び出しパターンを持つ他のテストファイルにも同一バグが潜んでいる可能性が高い（横断調査で `hooks/tests/*.test.sh` 6+ ファイルに同一パターンを確認し、follow-up Issue として追跡）。
 
 ### 対策
 
@@ -46,7 +46,7 @@ bash "$HOOK" ...   # だが CLAUDE_CODE_SESSION_ID が親から継承され、�
 2. **優先順位ロジックに依存する全テストを横断監査する**: 1 ファイルで発見したら、同じ `bash "$HOOK"` 呼び出しパターンを持つ他のテストファイルも横断的に確認する（横展開の射程がドメイン単位で広いため、issue_accountability に基づき個別 Issue へ切り出す）。
 3. **Issue 本文の推定原因を鵜呑みにしない**: 「〜が原因と思われる」という記述は仮説であり、実際に失敗を再現・トレースして検証してから修正範囲を確定する。
 
-### 悉皆監査の結果（PR #1932、Issue #1929）
+### 悉皆監査の結果
 
 PR #1928 で予告された `hooks/tests/*.test.sh` 全95ファイルの横断監査を実施し、以下を実測で確定した:
 

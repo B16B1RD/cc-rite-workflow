@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-### 失敗の構造 (PR #1337 で実測)
+### 失敗の構造（実測）
 
 PR #1337 で sweep test TC-3 を実装する際、初版の「`>&2` 同一行条件 sweep」が mutation 検証で vacuous と判明し、「全行 sweep + 明示 allowlist の fail-closed 設計」へ pivot した。TC-3 自身のコメントは pivot 後の設計を正しく説明していたが、**TC-1 側の cross-reference コメント (「TC-3 が同一行 `>&2` 条件で別途 sweep する」) が pivot 前の説明のまま commit** された:
 
@@ -42,7 +42,7 @@ review cycle 1 で code-quality reviewer が MEDIUM (current-pr) として検出
 2. **propagation scan に「説明文」も含める**: fix の伝播スキャンはコードの同型 idiom だけでなく、変更対象を説明する prose / コメントも対象にする
 3. **コメントは実装の設計判断を二重記述しない**: cross-reference コメントには「TC-3 が別途 sweep する」程度の存在参照に留め、検出方式の詳細 (同一行条件 / 全行 sweep) は TC-3 側コメントに一元化する — 詳細の重複が drift 面積を生む
 
-### helper 委譲後の cross-ref drift と reviewer 横断検出 (PR #1343 で実測)
+### helper 委譲後の cross-ref drift と reviewer 横断検出（実測）
 
 bash 実体を helper script へ委譲した後、その実体を説明する離れた箇所の「canonical 確立先」参照が**委譲前の旧 site (command 本体) を指したまま**残る、という同系統の drift が docs でも起きる。PR #1343 は `bash-trap-patterns.md` L236 の canonical 参照に「6.0 / 6.2 の case 文実体は `wiki-lint-skipped-refs.sh` / `wiki-lint-source-refs.sh` へ移設済み」という委譲注記を 1 行追記する修正で、指摘ゼロ・1 cycle で mergeable に到達した。
 

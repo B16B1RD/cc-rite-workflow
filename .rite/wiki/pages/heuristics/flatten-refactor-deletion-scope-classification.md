@@ -38,7 +38,7 @@ cleanup.md スタイルへの「フラット化」のような flatten refactor 
 
 ### PR #1155 で実測した failure mode
 
-PR #1155 cycle 1 fix (Issue #1154 — `wiki:* commands` の cleanup.md スタイル本格フラット化) で本 anti-pattern が 3 reviewer 独立検出された:
+`wiki:* commands` を cleanup.md スタイルへ本格フラット化した cycle 1 fix で、本 anti-pattern が 3 reviewer 独立検出された:
 
 #### Failure 1: 機能 statement の silent fallback への格下げ
 
@@ -60,7 +60,7 @@ flatten refactor PR では、削除前に以下の 3 ステップで分類する
 2. **grep evidence check**: 削除対象が現役の SoT / 分散実装一覧 / Pattern 規範への link を含むか (`grep -rn "Reference:" / "SoT" / 分散実装` で逆検索)
 3. **functional statement check**: 削除対象が `if ! ...; then echo "WARNING" >&2; fi` のような機能 emit を含むか (= Keep)
 
-### 孤児ファイル統合削除における CHANGELOG 突合検証 (PR #1886 cycle 1-2 での evidence)
+### 孤児ファイル統合削除における CHANGELOG 突合検証（cycle 1-2 の実測）
 
 「フラット化 (blockquote/コメント削除)」ではなく **孤児スクリプト2本 + reference ファイルの丸ごと削除**という別形態の deletion refactor でも、本ページと同型の Keep/削除可 classification が必要になることが実測された。削除ファイルの吸収対象を「明示的に固有と分かる節」（machine-readable な手順・コード片）だけで判断すると、CHANGELOG に「意図的な知見追加」として明記された institutional knowledge（本 PR では `git branch --list` の exit-0 gotcha 節）を見落とす — cycle 1 で tech-writer reviewer が MEDIUM で検出。cycle 1 fix で verbatim 移設して解消、cycle 2 で 3 reviewer（tech-writer / performance / error-handling）全員 0 findings に収束。
 

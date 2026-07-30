@@ -34,7 +34,7 @@ confidence: high
 
 ## 詳細
 
-PR #1795（Issue #1785、`/rite:init` → `/rite:setup` リネーム）の review-fix ループで、指摘パターンが段階的に狭いスコープへ収束していく現象が観測された（サーキットブレーカー `safety.max_review_cycles=5` に対し実際に5サイクル目まで到達）。
+`/rite:init` → `/rite:setup` リネームの review-fix ループで、指摘パターンが段階的に狭いスコープへ収束していく現象が観測された（サーキットブレーカー `safety.max_review_cycles=5` に対し実際に5サイクル目まで到達）。
 
 - **cycle 1**: 識別子文字数の変化（`init`=4文字 → `setup`=5文字）に伴い、固定spaces幅の ASCII メニュー列整形が1箇所ずれる LOW 指摘。trailing spaces 調整で即修正。
 - **cycle 2**: 完全コマンド文字列 `rite:init` の置換自体は徹底されていたが、ファイル名の口語的 shorthand 参照 `init.md`（旧スキルファイル名の略記）が4箇所の参照ドキュメントに取り残されていた（LOW×4）。うち1件（wiki-patterns.md）は同一ファイル内で既にファイルパス形式 `skills/init/SKILL.md`→`skills/setup/SKILL.md` は更新済みなのに、隣接する shorthand 参照だけ未更新という内部不整合も伴っていた。
@@ -55,7 +55,7 @@ PR #1795（Issue #1785、`/rite:init` → `/rite:setup` リネーム）の revie
 
 ### PR #1796（review→pr-review）での再演: fix-cycling ではなく別 Issue 化で収束させる代替戦略
 
-同シリーズの後続 PR #1796（Issue #1786、`/rite:review` → `/rite:pr-review` リネーム）で Tier 2（`{old}.md` ファイル名 shorthand、この場合は `review.md`）が再び観測された。ただし PR #1795 とは異なる収束経路をたどった:
+同シリーズの後続 PR（`/rite:review` → `/rite:pr-review` リネーム）で Tier 2（`{old}.md` ファイル名 shorthand、この場合は `review.md`）が再び観測された。ただし PR #1795 とは異なる収束経路をたどった:
 
 - 6 名のレビュアー（security / performance / tech-writer / error-handling / type-design / prompt-engineer）が並列レビューを実行した結果、tech-writer・type-design・prompt-engineer の3名が**独立に**「`review.md` という拡張子なし shorthand がリポジトリ全体で100箇所以上残存している」ことを検出した。
 - PR #1795 の cycle 2 のように「指摘事項」として blocking 化し fix loop に投入するのではなく、3名とも `分類: boundary`（推奨事項）として報告した。これは各 reviewer が独立に revert test を適用し「本 PR の diff が原因ではない pre-existing shorthand であり、本 PR の diff を revert しても shorthand 自体は残る」と判断したため。

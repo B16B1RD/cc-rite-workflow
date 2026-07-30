@@ -88,9 +88,9 @@ PR #661 cycle 2 で **DRIFT-CHECK ANCHOR comment の prose 内 bash 引数 enume
 - bash literal block の `--<flag-name>` の出現回数と一致するか check
 - mismatch なら fail-fast (drift suspected)
 
-**教訓**: drift-check-anchor lint pattern を literal block だけでなく ANCHOR comment 内の prose enumeration にも拡張する必要がある (PR #661 cycle 2 で実測)。「2 重契約」が「N 重契約」に拡張する場面では、N 番目の sync site が新規追加されるたびに lint pattern も同型拡張する義務を負う。
+**教訓**: drift-check-anchor lint pattern を literal block だけでなく ANCHOR comment 内の prose enumeration にも拡張する必要がある（cycle 2 で実測）。「2 重契約」が「N 重契約」に拡張する場面では、N 番目の sync site が新規追加されるたびに lint pattern も同型拡張する義務を負う。
 
-### 実装変更と対応する prose / 既知の限界表 / Edge Case 表の同時更新義務 (PR #799 cycle 4 での evidence)
+### 実装変更と対応する prose / 既知の限界表 / Edge Case 表の同時更新義務（cycle 4 の実測）
 
 PR #799 cycle 3 で `lint.md` Phase 7.2 の bash block を新規追加したが、対応する Phase 7.2 の prose は cycle 1 時点の「呼び出し側責務」記述のまま残留した。cycle 4 reviewer が「実装は更新されたが prose は cycle 1 時点の方針を述べている」という **prose-implementation drift** として HIGH 指摘し、cycle 4 fix で prose 側を実装に合わせて改訂。同時に reference (`broken-ref-resolution.md`) の **既知の限界表** と **Edge Case 表** の factual claim も実機反証で訂正された (詳細は [`empirical-reproduction-over-invariant-reasoning`](../heuristics/empirical-reproduction-over-invariant-reasoning.md) 参照)。
 

@@ -63,7 +63,7 @@ fi
 
 1. **本番挙動を不変に保つ**: legacy fallback への遷移は維持し、observability layer のみ追加する。これにより既存 caller の break risk なしで観測性を獲得できる
 2. **RITE_DEBUG gate で常時 enable しない**: 本番運用での log file 肥大化を防ぐ。デバッグ時のみ `RITE_DEBUG=1` で発火させる
-3. **caller 全件への対称適用 (Wiki: Asymmetric Fix Transcription)**: 1 caller のみに追加すると、別 caller の silent failure が発見できない。同 pattern を持つ全 caller (PR #750 では pre-tool-bash-guard.sh / post-tool-wm-sync.sh の 2 site) に対称適用する
+3. **caller 全件への対称適用 (Wiki: Asymmetric Fix Transcription)**: 1 caller のみに追加すると、別 caller の silent failure が発見できない。同 pattern を持つ全 caller（実測例では pre-tool-bash-guard.sh / post-tool-wm-sync.sh の 2 site）に対称適用する
 
 ### PR #1808: fallback が解決先を変える場合は RITE_DEBUG gate せず常時 WARNING にする
 
@@ -78,7 +78,7 @@ else
 fi
 ```
 
-判断基準: PR #750 のケースは fallback 後も**本番挙動が不変**（同じ実質的な state 解決結果に収束）なため、observability を `RITE_DEBUG` gate で opt-in にしても実害がなかった。一方 PR #1808 のケースは fallback が **実際に別ファイル**（schema_v2/v3 の per-session file → legacy 共有 file）を操作対象に切り替える — silent だと `/rite:cleanup` が「成功したように見えて実際には別ファイルをリセットした」という schema 不整合を誰にも気づかれず再生産する（Issue #695 の実害そのもの）。**fallback が操作対象そのものを変える場合は、opt-in の debug ログではなく常時可視の WARNING にする**（gate の要否は「fallback後も対象不変か、対象自体が変わるか」で判定する）。
+判断基準: この実測ケースは fallback 後も**本番挙動が不変**（同じ実質的な state 解決結果に収束）なため、observability を `RITE_DEBUG` gate で opt-in にしても実害がなかった。一方 PR #1808 のケースは fallback が **実際に別ファイル**（schema_v2/v3 の per-session file → legacy 共有 file）を操作対象に切り替える — silent だと `/rite:cleanup` が「成功したように見えて実際には別ファイルをリセットした」という schema 不整合を誰にも気づかれず再生産する（Issue #695 の実害そのもの）。**fallback が操作対象そのものを変える場合は、opt-in の debug ログではなく常時可視の WARNING にする**（gate の要否は「fallback後も対象不変か、対象自体が変わるか」で判定する）。
 
 ### 上位 Pattern との関係
 

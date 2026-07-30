@@ -32,7 +32,7 @@ Refactor 系 PR で `commands/issue/references/` に新規ファイルを抽出�
 
 ## 詳細
 
-PR #802 (Issue #773 PR 8/8) で 2 つの failure mode が cycle 1 で同時に検出され、いずれも root cause は「**引用先 SoT の内容を verify せず推測で関連付けた**」こと:
+PR シリーズ 8/8 で 2 つの failure mode が cycle 1 で同時に検出され、いずれも root cause は「**引用先 SoT の内容を verify せず推測で関連付けた**」こと:
 
 1. **factual divergence**: 新規 `bulk-create-pattern.md` で他 references (`regression-history.md` / `sub-skill-handoff-contract.md`) の Issue 番号を引用したが、引用先 references の実際の content と乖離していた。読者が末尾誘導された SoT 先で「言及されているはずの内容が見つからない」UX 障害を起こす。
 
@@ -42,7 +42,7 @@ PR #802 (Issue #773 PR 8/8) で 2 つの failure mode が cycle 1 で同時に�
 
 - **新規 references ファイルで Issue 番号 / AC phrase を引用する場合**、引用先 SoT (regression-history.md / sub-skill-handoff-contract.md 等) の該当箇所を Read tool で verify してから引用する
 - **理由付け文を書く場合**、引用元 (`create.md` 等の他ファイル) 由来の invariant を引用しない。対象ファイルの実 invariant のみ参照する
-- **共進化する sibling 系ファイル間の docstring / コメントで cross-reference を書く場合**、どちらが canonical reference の owner なのかを **`grep -nF` で実 invariant を確認してから** 記述する (PR #868 cycle 1: lint test の docstring が「Same policy as ...」の owner を反転して記述する Comment Rot を test reviewer が `grep -nF` で検出 → fix 側も同じ手順で修正方向を decisive に決定可能)
+- **共進化する sibling 系ファイル間の docstring / コメントで cross-reference を書く場合**、どちらが canonical reference の owner なのかを **`grep -nF` で実 invariant を確認してから** 記述する (cycle 1 の実測: lint test の docstring が「Same policy as ...」の owner を反転して記述する Comment Rot を test reviewer が `grep -nF` で検出 → fix 側も同じ手順で修正方向を decisive に決定可能)
 - 推測ベースの関連付けは silent factual divergence を生むため、Read tool / `grep -nF` による verify を必須化する
 
 ### 関連 failure mode
@@ -60,7 +60,7 @@ PR #802 (Issue #773 PR 8/8) で 2 つの failure mode が cycle 1 で同時に�
 
 ### PR #950 観測 (SoT 抽出 = canonical 整合化の opportunity)
 
-PR #950 (Issue #901 PR E、start.md Phase 5.5.2 / 5.2.1 / 2.4 を 3 references に抽出) cycle 1 review で、refactor 移管前から既に canonical (`gh-cli-patterns.md`) と乖離していた「Use Python」表現の inherited mismatch が検出された。本 heuristic の対称的な insight として:
+start.md Phase 5.5.2 / 5.2.1 / 2.4 を 3 references へ抽出した PR (シリーズ E) の cycle 1 review で、refactor 移管前から既に canonical (`gh-cli-patterns.md`) と乖離していた「Use Python」表現の inherited mismatch が検出された。本 heuristic の対称的な insight として:
 
 - **inherited mismatch detection**: 大規模 refactor で SoT を新規 reference に移管する時、本体側が canonical (gh-cli-patterns.md 等) と長期に drift していた表現を新 reference にコピーすると drift が固定化する。Read tool での verify は新規追加だけでなく **移管 content と canonical の照合** にも適用する
 - **canonical 整合化の opportunity**: SoT 抽出は単なる移管作業ではなく、本体が長期に蓄積した inherited mismatch を canonical (gh-cli-patterns.md 等) に整合させる **能動的な機会**として活用する。「移管前の状態を忠実にコピーする」ではなく「移管時に canonical との整合性を verify し乖離があれば同 cycle で修正する」を default 方針とする

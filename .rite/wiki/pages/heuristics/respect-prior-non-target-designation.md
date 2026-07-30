@@ -20,12 +20,12 @@ confidence: medium
 
 ## 詳細
 
-PR #1794（Issue #1792、`comment-best-practices.md` の裸ファイル名 `resume.md` 参照を `recover.md` に統一する 1 行修正）のレビューで、prompt-engineer と code-quality の 2 名が独立に `plugins/rite/hooks/flow-state.sh:24` の同種の裸ファイル名参照を検出し、うち code-quality は `分類: actionable` として別 Issue 化を推奨した。
+`comment-best-practices.md` の裸ファイル名 `resume.md` 参照を `recover.md` へ統一する 1 行修正のレビューで、prompt-engineer と code-quality の 2 名が独立に `plugins/rite/hooks/flow-state.sh:24` の同種の裸ファイル名参照を検出し、うち code-quality は `分類: actionable` として別 Issue 化を推奨した。
 
 ユーザーへの初回確認では「本 PR で対応」を選択したが、実装に進む前に `git log` で経緯を遡ったところ、以下の先行判断が見つかった:
 
 - 元の resume→recover リネーム Issue（#1784）の「4.2 Non-Target Files」に `plugins/rite/hooks/flow-state.sh: phase enum に resume は含まれず変更不要` と明記されていた。
-- 同種の裸ファイル名参照クリーンアップを行った先行 PR（#1790、Issue #1789）のコミットメッセージにも「flow-state.sh（Issue #1784 で明示的 non-target）...は意図的に対象外のまま維持する」と明記され、当該ファイルは同種作業でも一貫して除外されてきた。
+- 同種の裸ファイル名参照クリーンアップを行った先行 PR のコミットメッセージにも「flow-state.sh（先行 Issue で明示的 non-target）...は意図的に対象外のまま維持する」と明記され、当該ファイルは同種作業でも一貫して除外されてきた。
 
 この矛盾（reviewer 推奨 vs 文書化された先行除外判断）をユーザーに提示し直したところ、ユーザーは「本 PR では修正せず別途確認」に判断を覆した。もし先行判断を確認せずに reviewer 推奨をそのまま実行していれば、複数の先行 Issue が意図的に維持してきた除外境界を無自覚に破ることになっていた。
 

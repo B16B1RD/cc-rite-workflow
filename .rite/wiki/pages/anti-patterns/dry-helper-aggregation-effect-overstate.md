@@ -51,14 +51,14 @@ cycle 12 fix で `_validate-helpers.sh` 呼び出しに置換し 3 caller 全て
 集約助手を導入する際、コメントは「**何が集約され、何が依然分散しているか**」を両方明示する:
 
 ```bash
-# 良い例 (PR #688 cycle 12 で適用)
+# 良い例 (cycle 12 で適用)
 # _validate-helpers.sh: helper 存在チェックの validation logic (4 行 if/echo/exit) を集約
 # 注: helper 名 list (DEFAULT_HELPERS 7 entry) は依然両ファイルにハードコード重複している
 #     真の DRY (DEFAULT_HELPERS 配列内蔵) は将来 Issue で検討
 ```
 
 ```bash
-# 悪い例 (PR #688 cycle 12 で訂正済み)
+# 悪い例 (cycle 12 で訂正済み)
 # _validate-helpers.sh により helper を 1 つ追加する際に 2 箇所更新が不要になり、drift 防止になる
 # (overstate: helper 名 list の 2 箇所ハードコード重複は依然存在)
 ```
@@ -71,7 +71,7 @@ cycle 12 fix で `_validate-helpers.sh` 呼び出しに置換し 3 caller 全て
 2. **caller が 1 箇所のみ更新で済む API 設計**: caller は新 helper 追加時に 1 行 (例: `_helper_validate "new-helper.sh"`) のみで済むように
 3. **2 callsite の sed audit**: 既存 caller が 2 箇所重複を持つ場合、機械的に同期 audit する script を CI に追加
 
-これら 3 点が揃わない PR は「validation logic だけ集約しました」とコメントに正直に書く。overstate は **Asymmetric Fix Transcription (PR #548) の文書版変種** であり、「対称位置の同期更新を要するが、コメントは片肺更新で済むかのように書く」drift vector を生む。
+これら 3 点が揃わない PR は「validation logic だけ集約しました」とコメントに正直に書く。overstate は **Asymmetric Fix Transcription の文書版変種** であり、「対称位置の同期更新を要するが、コメントは片肺更新で済むかのように書く」drift vector を生む。
 
 ### 検出方法
 

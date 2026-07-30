@@ -20,7 +20,7 @@ Markdown / Code 大規模圧縮 refactor で行数 AC を野心目標で決め�
 
 ## 詳細
 
-### 観測 (PR #809 / Issue #805)
+### 観測
 
 `commands/issue/create-interview.md` の本体スリム化 PR で:
 
@@ -48,13 +48,13 @@ Markdown / Code 大規模圧縮 refactor で行数 AC を野心目標で決め�
 3. **AC = protected + (scope 内削減後の本文)** で逆算する。野心目標を立てるなら同時に「現実着地点」を併記し、cycle 中盤で構造的不能が判明した場合の緩和手順 (Issue body update / user 承認 / AC 再設定) も合意しておく
 4. **兄弟 PR の達成率は protected 比率が異なれば転用できない**: protected 区域が小さく blockquote 圧縮余地が大きい兄弟と、protected 比率が高い本 PR は別物として扱う
 
-### 追加観測 (PR #1774 / Issue #1708): AC 数値目標と原則ベース基準の乖離時は cap 達成側を採用する
+### 追加観測: AC 数値目標と原則ベース基準の乖離時は cap 達成側を採用する
 
 review/fix SKILL.md（各 4,040 行）のコンテキストダイエット PR で、AC-1（25% 削減）に対し実績 fix 8.2% / review 13.1% と未達だったが、本体の 48% が AC-2（bash 非コメント行 diff ゼロ）で不変義務のある bash フェンスであり、残余も reason 表・分岐表・sentinel 表など実行時必須情報が大半で、忠実に narration のみを退避する限り 25% は構造的に届かないことが示された。rationale 退避で削れる余地の枯渇を根拠に、数値目標側ではなく原則ベース基準（実測に基づく 4,000 行 cap）の達成側を採用する判断が承認された。逆算手順 3 の「野心目標と現実着地点の併記 + 緩和手順の合意」が protected 比率の高い skill ファイルでも再現することを追検証した事例。
 
 ### 関連する周辺観測
 
-1. **NFR-2 protected 機械検証の有効性**: `4-site-symmetry.test.sh` のような自動 test が pass する限り、reviewer は protected 区域の意味論等価性を信頼指標として扱える。test がない protected 区域は reviewer 全員に semantic 等価性チェックを要求し verification cost が膨らむ → AC 緩和議論の遅延要因にもなる。protected 区域には機械検証 test を必ず併設する (PR #803 / #809 共通)
+1. **NFR-2 protected 機械検証の有効性**: `4-site-symmetry.test.sh` のような自動 test が pass する限り、reviewer は protected 区域の意味論等価性を信頼指標として扱える。test がない protected 区域は reviewer 全員に semantic 等価性チェックを要求し verification cost が膨らむ → AC 緩和議論の遅延要因にもなる。protected 区域には機械検証 test を必ず併設する（複数 PR で共通）
 2. **Sole reviewer guard の有効性**: 1 reviewer のみの選定だった場合でも sole reviewer guard で異種 reviewer を追加すると、prompt-engineer (structure 妥当性) + code-quality (cross-file 完全性) のような相補的視点で 0 findings 確信度が向上する。AC 緩和判断の sign-off にも reviewer 多様性が寄与
 3. **Compression による narrative 弱化**: 圧縮された narrative は意味論等価性を保つが、grep target としての rule label 喪失や相対参照の曖昧化を伴う (LOW level 推奨事項として典型的に出現)。AC 緩和を許容しても narrative の grep traceability は維持する方針が必要
 

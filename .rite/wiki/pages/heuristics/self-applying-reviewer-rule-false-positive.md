@@ -46,9 +46,9 @@ self-application false positive は以下の構造で発生する:
 1. **Whitelist 適用順序の明示組み込み**: reviewer rule の Verification 手順に「Grep で検出 → Whitelist 適用順序で許容判定をパスしたトークンを除外 → 残りを finding 発行」と明示。暗黙の前提では rite plugin self-application で false positive が発生する経路が残る。
 2. **禁止語例 / 許容語例の cross-reference**: SoT 原則 (例: 原則 2 `no_journal_comment`) と Whitelist のような直交する原則を同一 reviewer rule で扱う場合、両者の cross-reference を prose で明示。
 3. **Self-apply 閉ループ test**: reviewer rule を編集する PR の test plan に「reviewer (a) を rule 文書自身に適用して false positive 件数を測定」を追加し、5 件未満を gate 条件とする。
-4. **Scope 内 / 外の分離判断**: cycle 2 で fix-introduced ではない pre-existing 見落としが検出された場合、HIGH のみ scope 内修正、MEDIUM 以下は別 Issue 化することで cycle 数を 4 に抑えて収束させる canonical pattern (PR #706 で実証)。
+4. **Scope 内 / 外の分離判断**: cycle 2 で fix-introduced ではない pre-existing 見落としが検出された場合、HIGH のみ scope 内修正、MEDIUM 以下は別 Issue 化することで cycle 数を 4 に抑えて収束させる canonical pattern（実証済み）。
 
-### 拡張: 履歴解説 reference の指摘を actual code との cross-check なしに fix すると regression を誘発する (PR #800 cycle 2-4 で実証)
+### 拡張: 履歴解説 reference の指摘を actual code との cross-check なしに fix すると regression を誘発する（cycle 2-4 で実証）
 
 PR #800 cycle 2 で reviewer (prompt-engineer) が `regression-history.md` の「事実関係ズレ」を MEDIUM 指摘し、`informational 寄り、PR 7-8 で対応可` と recommendation を付した。ユーザー判断で本 PR 内で 1 行 fix を選択したところ、cycle 3 で 2 reviewer (prompt-engineer + code-quality) が独立に「fix が SoT-aligned だった元 wording を壊した」と検出。cycle 4 で revert して mergeable 収束 (累計 4 cycle、CRITICAL revert 1 件)。
 
@@ -60,7 +60,7 @@ PR #800 cycle 2 で reviewer (prompt-engineer) が `regression-history.md` の�
 2. SoT (実装 code / 既存実装契約) との cross-reference が prompt に組み込まれていない
 3. reviewer の指摘を actual code との cross-check なしに採択 → 正しい記述を壊す regression
 
-**Canonical 対策の汎化** (PR #800 cycle 3 で確立):
+**Canonical 対策の汎化**（cycle 3 で確立）:
 
 1. **「履歴解説」「事実関係」系の MEDIUM/LOW finding は採択前に actual code grep を必須化**: reviewer 指摘の対象 prose が参照する実装 (例: `Phase 5.X` 番号、`script.sh` の rc=N、`function-name`) を grep で確認し、prose 表現と実装契約が完全一致している場合は reviewer 指摘を `[fix:replied-only]` 扱いとする
 2. **"textually fixed ≠ semantically correct"**: reviewer の literal wording 修正は意味論的整合性を保証しない。修正前後の wording が **どちらも同じ実装契約を正確に反映している** 場合、wording 改変は regression リスクの方が大きい

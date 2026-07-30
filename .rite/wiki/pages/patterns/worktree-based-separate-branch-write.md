@@ -72,13 +72,13 @@ branch refs/heads/wiki
 prunable: gitdir file points to non-existent location
 ```
 
-`wiki-worktree-setup.sh` はこの marker を解析して自動 prune するロジックを持つ (PR #548 cycle 2 で追加)。
+`wiki-worktree-setup.sh` はこの marker を解析して自動 prune するロジックを持つ（cycle 2 で追加）。
 
-### corrupt/orphaned worktree (stale gitdir) からの自己回復 (PR #1663)
+### corrupt/orphaned worktree (stale gitdir) からの自己回復
 
 prunable marker 経由の自動復旧 (上節) は `git worktree list` に登録されたまま gitdir が壊れたケースを扱う。一方 **リポジトリ自体の移動 (アカウント移管 / clone のコピー)** では、`.rite/wiki-worktree/.git` ポインタが旧パスを指したまま残り、かつ `git worktree list` にも未登録の**孤児ディレクトリ**になる。この corrupt/orphaned 状態は prunable marker を残さないため上節のロジックでは検出できない。
 
-PR #1663 (Issue #1662) の実機回帰では、この孤児 worktree により raw source が約 2 週間 silent に蓄積停止していた。破断連鎖:
+実機回帰では、この孤児 worktree により raw source が約 2 週間 silent に蓄積停止していた。破断連鎖:
 
 1. `wiki-ingest-commit.sh` の worktree fast-path が `[ -d .rite/wiki-worktree ]` を true 判定 (ディスク上には存在する)
 2. `verify_worktree_branch` の `git -C .rite/wiki-worktree rev-parse` が stale gitdir で失敗 (rc≠0)

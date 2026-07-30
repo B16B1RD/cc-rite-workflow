@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-### 検出された具体ケース (PR #747 cycle 3)
+### 検出された具体ケース（cycle 3）
 
 `migrate-flow-state.sh` の backup ファイル命名を `.rite-flow-state.legacy.<UTC_timestamp>` に決定した直後、`session-start.sh` の cleanup find pattern `.rite-flow-state.tmp.* または .rite-flow-state.??????*` に対する collision が顕在化:
 
@@ -26,7 +26,7 @@ confidence: high
 - `*` (任意文字) が `.<timestamp>` 部分を消化
 - 結果、新規生成された backup file が「tmpfile 残骸」と誤分類され、`-mmin +1` 経過後に削除される silent regression
 
-### 同パターンの cross-component 伝播 (PR #747 cycle 4 CRITICAL)
+### 同パターンの cross-component 伝播（cycle 4 CRITICAL）
 
 cycle 3 で `session-start.sh` のみに `-not -name '.rite-flow-state.legacy.*'` 例外を追加したが、**`session-end.sh` に同一の find cleanup パターンが存在**しており propagation が漏れていた。reviewer の cross-file impact check (Asymmetric Fix Transcription) で初めて検出された。
 

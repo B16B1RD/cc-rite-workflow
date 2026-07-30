@@ -30,7 +30,7 @@ frontmatter ポリシー表のような分類ルールを新設・改訂する P
 
 ## 詳細
 
-PR #1694（Issue #1693、`disable-model-invocation` frontmatter を 14 スキルから削除する PR）で、`docs/SPEC.md` の frontmatter ポリシー表を「user-invocable」「純 sub-skill」の 2 区分から、Read 経由のみ到達する `reviewers` を説明する第 3 区分を加えた 3 区分に拡張した。
+`disable-model-invocation` frontmatter を 14 スキルから削除した PR で、`docs/SPEC.md` の frontmatter ポリシー表を「user-invocable」「純 sub-skill」の 2 区分から、Read 経由のみ到達する `reviewers` を説明する第 3 区分を加えた 3 区分に拡張した。
 
 - cycle 1: tech-writer と prompt-engineer の 2 名が独立に「新しい 2 区分表が `reviewers/SKILL.md`（Read 経由でのみ到達する non-user-invocable knowledge スキル）という既存のエッジケースをカバーできていない」ことを指摘し、cross-validation で High Confidence となった（HIGH 1件）。
 - cycle 1 fix: 第 3 区分をポリシー表に追記することで解消。Non-Target File（`reviewers/SKILL.md`）自体には手を触れず、ドキュメント側でギャップを埋めるアプローチを採用。
@@ -39,9 +39,9 @@ PR #1694（Issue #1693、`disable-model-invocation` frontmatter を 14 スキル
 
 **教訓**: 新しい分類ルールを文書化するとき、ルールが「対象外」とする既存要素についても、その要素の実際の設定値（本件では frontmatter フィールド）を Grep/Read で確認し、ルールの前提となる主張（「〜は `/rite:<name>` を持たない」等）が実態と一致しているか検証する必要がある。ドキュメント修正 PR では、この種の「ルールの記述と対象外要素の実態との整合性」チェックが、通常の「変更箇所の正確性」チェックとは独立した観点として抜けやすい。
 
-### PR #1724（Issue #1713、#1694 defect の修正 PR）で追加された 2 次元
+### 先行 PR の defect を修正した PR で追加された 2 次元
 
-#1694 で follow-up 化された欠陥（Issue #1695 系）を修正する PR #1713 で、同じ「frontmatter ポリシー整合性」テーマの別次元 2 つを 3 cycle 収束で実測した:
+先行 PR で follow-up 化された欠陥を修正する PR で、同じ「frontmatter ポリシー整合性」テーマの別次元 2 つを 3 cycle 収束で実測した:
 
 - **frontmatter-body scope 不一致**: `reviewers` の frontmatter `description` をトリガー語列挙（broad）から否定形規約（narrow）へ書き換えたが、本文の見出し `## Auto-Activation` +「This skill is activated during /rite:review」を残したため frontmatter と本文が矛盾した（prompt-engineer Sub-check 6c 抵触、cycle 1 MEDIUM）。frontmatter description を編集する PR は、その broad/narrow 性に依存する **本文見出し** の整合も同時に確認する。→ 本文を `## Invocation`「loaded via Read ... does not auto-activate」へ改めて解消。
 - **同 PR 内 SPEC 自己矛盾**: 同 PR の別コミットで書いた SPEC ポリシー記述が「reviewers は **broad description** のため disable-model-invocation を併用」と説明したが、その broad description は同一 PR の cycle 1 で narrow 化済みだった。「自分が同 PR 内で変更した状態」を織り込まずにポリシー文を書くと、SPEC が実態を誤記述する（cycle 2 LOW）。ポリシー文は過去の状態でなく **同 PR 適用後の状態** を前提に書く。

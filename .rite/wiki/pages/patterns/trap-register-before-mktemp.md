@@ -148,7 +148,7 @@ norm_tmp=""                       # 4. 元変数クリア (downstream 参照保�
 
 このパターンは「tempfile を作る人」と「使う人」が同一 bash block 内に居る限り適用可能。block を跨ぐ場合は別の戦略 (caller 側で wildcard cleanup 等) が必要。
 
-### 新規 mktemp は「そのファイルの cleanup 関数の引数リスト」に載せる (PR #2035)
+### 新規 mktemp は「そのファイルの cleanup 関数の引数リスト」に載せる
 
 trap を先に張っていても、**新しい tempfile をその cleanup 関数に登録し忘れる**と成功経路でリークする。PR #2035 は型ガード用の tempfile を `elif` の条件部で mktemp し `then` ブロックでのみ `rm` する形にしたため、ガードが通る成功経路（最頻）で毎回リークした。**TMPDIR に 780 件蓄積していたのを実測で確認**、3 reviewer が独立に検出。
 
@@ -165,7 +165,7 @@ trap を先に張っていても、**新しい tempfile をその cleanup 関数
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](./mktemp-failure-surface-warning.md)
 
-> **PR #2038 (Issue #2034)**: trap の登録順だけでなく、**cleanup 関数が読む変数への代入順**にも同じ窓がある。trap は既に設置済みで `rm -f "${gh_err:-}"` を実行する形だったが、新設した一時ファイルを別変数 `_body_jq_err` に受けてから `gh_err` へ代入するのが**その一時ファイルを使う処理の後**だった。生成〜代入の間に signal を受けると cleanup は空の `gh_err` しか見ず、ファイルが残る（jq stub を sleep させ SIGTERM を送って leak を再現）。修正は代入を生成直後へ前倒しする 1 行。**trap が読む変数への代入は、そのリソースを使い始める前に済ませる。** signal-timing テストは本質的に racy なため、「代入行が使用行より前にある」ことの順序静的 pin で代替した（mutation で検出を実測）。
+> **補強**: trap の登録順だけでなく、**cleanup 関数が読む変数への代入順**にも同じ窓がある。trap は既に設置済みで `rm -f "${gh_err:-}"` を実行する形だったが、新設した一時ファイルを別変数 `_body_jq_err` に受けてから `gh_err` へ代入するのが**その一時ファイルを使う処理の後**だった。生成〜代入の間に signal を受けると cleanup は空の `gh_err` しか見ず、ファイルが残る（jq stub を sleep させ SIGTERM を送って leak を再現）。修正は代入を生成直後へ前倒しする 1 行。**trap が読む変数への代入は、そのリソースを使い始める前に済ませる。** signal-timing テストは本質的に racy なため、「代入行が使用行より前にある」ことの順序静的 pin で代替した（mutation で検出を実測）。
 
 ## ソース
 

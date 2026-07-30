@@ -34,7 +34,7 @@ umbrella Issue (Phase A/B/C 等の段階分割で 1 PR 1 Phase を順次マー�
   scope drift を防ぐため。将来必要になった時点で改めて別 Issue として再起票するか判断する
 ```
 
-### 降格経路の具体例 (PR #885 / Issue #845 Phase A)
+### 降格経路の具体例（Phase A）
 
 PR #885 (charter 適用宣言、本体修正なし、11 files / +22 / -0) のレビューで prompt-engineer から 2 件の advisory finding が出た:
 
@@ -46,7 +46,7 @@ PR #885 (charter 適用宣言、本体修正なし、11 files / +22 / -0) のレ
 - finding テーブルから recommendations に移動
 - `total_findings = 0` として `[review:mergeable]` を出力
 - follow-up Issue 起票なし (Issue 化ポリシーで明示的に禁止されているため)
-- PR は `Refs #845 (Phase A)` で merge し、umbrella Issue は OPEN 継続
+- PR は umbrella Issue への `Refs` trailer（Phase A）付きで merge し、umbrella Issue は OPEN 継続
 
 ### 関連する umbrella Issue spec drift サブパターン
 

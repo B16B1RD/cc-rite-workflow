@@ -20,7 +20,7 @@ confidence: high
 
 ## 概要
 
-`/rite:pr:review` の reviewer が出力する「推奨事項」を **件数のみの aggregate label** (「推奨 N 件」「follow-up 候補 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票済 / user 保留 / 観察のみ) を明示せずに silent skip する anti-pattern。`/rite:pr:review` Phase 7 (`AskUserQuestion` による user 確認) を orchestrator が文脈に応じて skip できる経路を残していたため発火した。PR #1039 で 4 件の推奨事項を「全て scope 外、follow-up 候補 2 件」と aggregate 集計し、実際には Issue 化すべき 2 件が事後起票 (Issue #1040 / #1041) になった事例で実測。
+`/rite:pr:review` の reviewer が出力する「推奨事項」を **件数のみの aggregate label** (「推奨 N 件」「follow-up 候補 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票済 / user 保留 / 観察のみ) を明示せずに silent skip する anti-pattern。`/rite:pr:review` Phase 7 (`AskUserQuestion` による user 確認) を orchestrator が文脈に応じて skip できる経路を残していたため発火した。PR #1039 で 4 件の推奨事項を「全て scope 外、follow-up 候補 2 件」と aggregate 集計し、実際には Issue 化すべき 2 件が事後起票になった事例で実測。
 
 ## 詳細
 
@@ -110,6 +110,6 @@ prose 強制では LLM の skip 経路を塞げないため、機械的 gate を
 ## ソース
 
 - [PR #1039 (review-fix loop で 4 件の「推奨事項」を aggregate 報告した発火事例)](https://github.com/B16B1RD/cc-rite-workflow/pull/1039)
-- [Issue #1040 (PR #1039 review で missed された actionable item の事後起票)](https://github.com/B16B1RD/cc-rite-workflow/issues/1040)
-- [Issue #1041 (PR #1039 review で missed された actionable item の事後起票)](https://github.com/B16B1RD/cc-rite-workflow/issues/1041)
+- [Issue #1040 — review で missed された actionable item の事後起票](https://github.com/B16B1RD/cc-rite-workflow/issues/1040)
+- [Issue #1041 — review で missed された actionable item の事後起票](https://github.com/B16B1RD/cc-rite-workflow/issues/1041)
 - [Issue #1042 (本 anti-pattern を Wiki 化し、防止策を `/rite:pr:review` / `/rite:issue:start-finalize` に組み込む meta-issue)](https://github.com/B16B1RD/cc-rite-workflow/issues/1042)

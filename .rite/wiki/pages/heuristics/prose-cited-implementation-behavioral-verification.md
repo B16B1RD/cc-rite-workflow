@@ -24,7 +24,7 @@ SoT 散文 / 設計ドキュメントが実装 (正規表現リテラル・helpe
 2. **帰属精度**: 散文が regex を帰属させたファイルが、実際にその regex を保持するファイルか (wrapper / 委譲先の取り違え)
 3. **behavioral test**: 散文が主張する挙動 (match / non-match) を、実際にその regex を代表ケース群にかけて実測確認したか
 
-PR #1238 (Issue #1237、prompt-engineer + code-quality、2 cycle 収束、0 blocking findings) で 3 点すべてが review/fix 技法として有効に機能し、cycle 2 まで independent cross-validation された。
+prompt-engineer + code-quality の 2 cycle 収束・0 blocking findings の実測で、3 点すべてが review/fix 技法として有効に機能し、cycle 2 まで independent cross-validation された。
 
 ## 詳細
 
@@ -40,7 +40,7 @@ PR #1238 (Issue #1237、prompt-engineer + code-quality、2 cycle 収束、0 bloc
 
 ### 2. 帰属精度 — wrapper / 委譲先の取り違えを避ける
 
-新規 SoT 定義で regex 等の実体を要約参照する際、`.sh` wrapper が `.py` へ JSON 変換 (regex 適用) を委譲する**二層構造**を `.sh` 一語で要約すると、「regex 実体ファイル」の誤帰属を生む。読者が wrapper (`.sh`) を開いても regex が見つからない誘導ミスになる (PR #1238 F-01、code-quality LOW-MEDIUM → ユーザー承認で current-pr scope に昇格して fix)。
+新規 SoT 定義で regex 等の実体を要約参照する際、`.sh` wrapper が `.py` へ JSON 変換 (regex 適用) を委譲する**二層構造**を `.sh` 一語で要約すると、「regex 実体ファイル」の誤帰属を生む。読者が wrapper (`.sh`) を開いても regex が見つからない誘導ミスになる（F-01、code-quality LOW-MEDIUM → ユーザー承認で current-pr scope に昇格して fix）。
 
 canonical: helper を散文参照するときは「regex 実体ファイル (`.py`)」と「python3 guard / atomic write の wrapper (`.sh`)」を区別するか、拡張子なし basename で両者を包含する表記にする。wrapper が regex を持たず別ファイルへ委譲する構造では、帰属先を grep で確認してから散文を書く ([Documentation review は対応する実装側の grep verify を必須 step とする](./docs-review-implementation-grep-verification.md) の帰属軸への拡張)。
 

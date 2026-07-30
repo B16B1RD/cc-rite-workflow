@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-### 観測された症状 (PR #1065)
+### 観測された症状
 
 PR #1065 で本 PR の review-fix サイクル自身が「検証項目 1-3 の live dogfooding 検証」の役割を担う設計だったため、検証結果 doc に以下のような placeholder を埋め込んだ:
 
@@ -55,7 +55,7 @@ post-hoc 観測は doc 末尾の placeholder ではなく、**PR description の
 観測結果は merge 後に follow-up Issue #{N} で集約予定 (現 PR の doc 本体には placeholder を残さない)。
 ```
 
-doc 本体は「期待値 + 設計意図」までで完結させ、observation phase は外部 (Issue / 別 doc / wiki raw source) で追跡する。Wiki Ingest を運用しているプロジェクトでは raw source 経由で自動的に経験則化される経路が確立済み (PR #1065 がまさに本 raw source 経由でこの page を生成している)。
+doc 本体は「期待値 + 設計意図」までで完結させ、observation phase は外部 (Issue / 別 doc / wiki raw source) で追跡する。Wiki Ingest を運用しているプロジェクトでは raw source 経由で自動的に経験則化される経路が確立済み（本ページ自身がその raw source 経由で生成されている）。
 
 #### Pattern 2: placeholder を残すなら CI で強制する
 
@@ -73,7 +73,7 @@ doc 本体は「期待値 + 設計意図」までで完結させ、observation p
 
 ```diff
 - 実測: _TBD_  ← post-hoc 観測予定
-+ 実測: N/A (PR #1004 reviews 不在のため、静的 trace S5/S6/S13 で代替)
++ 実測: N/A (reviews 不在のため、静的 trace S5/S6/S13 で代替)
 ```
 
 「placeholder のまま」と「N/A」は読者の解釈負荷が大きく異なる。前者は「あとで埋まる」期待を残し、後者は「ここで完結」を宣言する。

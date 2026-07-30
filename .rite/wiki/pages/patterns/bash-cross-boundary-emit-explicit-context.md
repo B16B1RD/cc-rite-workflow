@@ -44,9 +44,9 @@ PR #688 cycle 49 H-1 の例: Phase 5.5.2 metrics block で `plan_deviation_count
 
 ### Sub-pattern: sub-skill 内 bash 変数 guard は常に false
 
-PR #953 (Issue #904, /rite:issue:start sub-skill 抽出 G2) で 3 reviewer 独立検出の CRITICAL: sub-skill 内に `FINALIZE_ABORT` のような bash 変数を unset/set して abort 判定の guard とする実装は、Claude Code が sub-skill 内の Bash tool 呼び出しを別 invocation として扱うため変数が常に空 (=false 評価) となる構造的 dead code になる。caller→sub-skill→caller の往復で guard を有効化したい場合、bash 変数ではなく `[CONTEXT] KEY=VALUE` sentinel として stdout/stderr に emit し、caller 側で grep 検出する canonical pattern に従う必要がある。新規 sub-skill 抽出 refactor の review 観点として「sub-skill 境界を跨ぐ guard 変数が bash 変数か CONTEXT sentinel か」を必須項目化する。
+/rite:issue:start の sub-skill 抽出 (G2) で 3 reviewer 独立検出の CRITICAL: sub-skill 内に `FINALIZE_ABORT` のような bash 変数を unset/set して abort 判定の guard とする実装は、Claude Code が sub-skill 内の Bash tool 呼び出しを別 invocation として扱うため変数が常に空 (=false 評価) となる構造的 dead code になる。caller→sub-skill→caller の往復で guard を有効化したい場合、bash 変数ではなく `[CONTEXT] KEY=VALUE` sentinel として stdout/stderr に emit し、caller 側で grep 検出する canonical pattern に従う必要がある。新規 sub-skill 抽出 refactor の review 観点として「sub-skill 境界を跨ぐ guard 変数が bash 変数か CONTEXT sentinel か」を必須項目化する。
 
-### Sub-pattern: 単一 invocation 内に detect+emit 物理統合する代替 canonical (PR #1062 cycle 3-4)
+### Sub-pattern: 単一 invocation 内に detect+emit 物理統合する代替 canonical（cycle 3-4）
 
 cross-Bash-call shell var の構造的回避策には [CONTEXT] sentinel emit (canonical 1) に加えて、もう 1 つの canonical alternative がある: **同一 Bash invocation 内に「detect + emit」を物理統合する** (canonical 2)。PR #1062 cycle 3 で fix.md Phase 2.1.A の 「Step 2 で fingerprint 計算 → Step 3 で state file への append」が独立 Bash invocation として実装されていた結果、Step 2 で計算した fingerprint shell var が Step 3 invocation 境界で消失 + 各 step が per-finding loop 内で iterate していたため重複 emit を引き起こす CRITICAL を検出。cycle 4 で `per-finding loop は単一 invocation 内に閉じる` invariant に依拠して Step 2/3 を物理統合 (= 同一 Bash block 内で「fingerprint 計算 + append」を完結) することで、(1) cross-call boundary 自体を消去して shell var transport の必要性を排除し、(2) 同一 loop iteration 内で 1 append のみ発生する invariant が成立するため重複 emit も同時に構造的解消。
 

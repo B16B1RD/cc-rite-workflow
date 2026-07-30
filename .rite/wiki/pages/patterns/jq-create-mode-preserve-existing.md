@@ -26,7 +26,7 @@ confidence: high
 
 ## 詳細
 
-### CRITICAL Anti-pattern (PR #545 で発覚)
+### CRITICAL Anti-pattern（実測で発覚）
 
 ```bash
 # ❌ NG: create mode が既存値を毎回リセット
@@ -102,7 +102,7 @@ grep -rnE 'jq -n' --include='*.sh' --include='*.md' .
 
 その上で「既存ファイル読み取り → `--arg`/`--argjson` で値を渡す」パターンが揃っているかを人手確認する。
 
-### 型変換を伴う preserve フィールドは失敗経路が新規発生する（PR #1810/#1812）
+### 型変換を伴う preserve フィールドは失敗経路が新規発生する
 
 `worktree` / `cycle_count` / `last_synced_phase` 等の既存 preserve フィールドはいずれも文字列/整数の無変換書き戻しだったが、`wm_comment_id` を追加した際は唯一 `tonumber` による型変換を伴った。この構造的な違いが2つの新規指摘を生んだ:
 

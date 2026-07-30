@@ -34,7 +34,7 @@ sandbox の書き込み許可リストは cwd（`.`）を基準に解決され�
 
 **対処**: state 書き込み先は `state-path-resolve.sh` 等の共有 root 解決 helper で解決し、cwd 依存を明示的に解消してから書き込む。単純に相対パスを組み立てるだけでは worktree/main checkout どちらの cwd から呼ばれても正しく解決されない。
 
-**正典文書化（PR #1908、Issue #1896 対応）**: 本制約は helper 側では構造回避できない（sandbox の write-allowlist はプラグイン外の環境設定）ため、`git-worktree-patterns.md` に正典 subsection（症状/原因/対処。恒久対処 = sandbox write 許可リストへ main checkout root の**絶対パス**を追加、都度対処 = 拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行・確認不要）として文書化され、open 2.3-W / batch-run の run-queue 書込に薄いポインタが置かれた。この「正典 subsection + 入口 skill への薄いポインタ」型（#1901 SSH host alias と同型）は、アンカー整合・文体整合・配置タイミングの全レビュー観点で一発 mergeable になった実績があり、環境制約の文書化に有効。付随知見 2 点: (a) 日本語見出しの GitHub アンカーは slugger 算出値とポインタ埋め込み値の byte 一致を事前確認するとレビュー往復を防げる。(b) 密な段落末尾に追記した actionable 指示は独立 blockquote より LLM 実行時の発火確度（salience）が下がる — ポインタは blockquote 等で視覚的に分離するのが望ましい。
+**正典文書化**: 本制約は helper 側では構造回避できない（sandbox の write-allowlist はプラグイン外の環境設定）ため、`git-worktree-patterns.md` に正典 subsection（症状/原因/対処。恒久対処 = sandbox write 許可リストへ main checkout root の**絶対パス**を追加、都度対処 = 拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行・確認不要）として文書化され、open 2.3-W / batch-run の run-queue 書込に薄いポインタが置かれた。この「正典 subsection + 入口 skill への薄いポインタ」型（#1901 SSH host alias と同型）は、アンカー整合・文体整合・配置タイミングの全レビュー観点で一発 mergeable になった実績があり、環境制約の文書化に有効。付随知見 2 点: (a) 日本語見出しの GitHub アンカーは slugger 算出値とポインタ埋め込み値の byte 一致を事前確認するとレビュー往復を防げる。(b) 密な段落末尾に追記した actionable 指示は独立 blockquote より LLM 実行時の発火確度（salience）が下がる — ポインタは blockquote 等で視覚的に分離するのが望ましい。
 
 ### 罠 2: `.rite-plugin-root` のブランチ相違による自己参照
 
@@ -46,7 +46,7 @@ sandbox の書き込み許可リストは cwd（`.`）を基準に解決され�
 
 `git rev-parse --show-toplevel` は「リポジトリのルート」を返すコマンドとして直感的に見えるが、worktree cwd から実行すると**その worktree 自身の toplevel** を返し、main checkout root は返さない。multi_session 環境で「main checkout root の絶対パスを取得したい」場面（sandbox write 許可リスト案内で `{repo_root}` を求める等）でこのコマンドを使うと、worktree cwd から呼ばれた場合に誤った値（worktree 自身のパス）を返してしまう。
 
-コードベース自身の `lib/worktree-git.sh` は、この理由から `--show-toplevel` を意図的に避けている（既存コードに先例があるにもかかわらず、新規ドキュメント記述時に見落としやすい）。PR #1925（Issue #1922）で 2 名の reviewer が実機検証（worktree cwd で実際にコマンドを実行）により独立に検出した。
+コードベース自身の `lib/worktree-git.sh` は、この理由から `--show-toplevel` を意図的に避けている（既存コードに先例があるにもかかわらず、新規ドキュメント記述時に見落としやすい）。2 名の reviewer が実機検証（worktree cwd で実際にコマンドを実行）により独立に検出した。
 
 **対処**: main checkout root を得たい場合は `--show-toplevel` ではなく `state-path-resolve.sh` 等の canonical resolver（linked worktree を考慮して main checkout root を正しく解決する）に委譲する。これは罠 1 の「対処」で述べた `state-path-resolve.sh` 等の共有 root 解決 helper の使用を、より具体的な NG コマンド名で補強する知見である。
 

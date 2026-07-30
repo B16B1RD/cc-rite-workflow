@@ -16,13 +16,13 @@ confidence: high
 
 ## 概要
 
-`[ "$(cmd_a)" = "$(cmd_b)" ]` のような command substitution の等値比較は、両コマンドが cwd 破損等で失敗し共に空文字列を返した場合でも `true` と評価される。この落とし穴により、`/rite:cleanup` の base ブランチ更新ステップで `git rev-parse HEAD` / `git rev-parse origin/{base}` が cwd 破損下で共に空文字列を返し、偽の `BASE_UPDATE=ok` を報告する CRITICAL 欠陥が実発生した（PR #1280 / Issue #1278）。
+`[ "$(cmd_a)" = "$(cmd_b)" ]` のような command substitution の等値比較は、両コマンドが cwd 破損等で失敗し共に空文字列を返した場合でも `true` と評価される。この落とし穴により、`/rite:cleanup` の base ブランチ更新ステップで `git rev-parse HEAD` / `git rev-parse origin/{base}` が cwd 破損下で共に空文字列を返し、偽の `BASE_UPDATE=ok` を報告する CRITICAL 欠陥が実発生した。
 
 ## 詳細
 
 **根本原因**: worktree 自己削除後、Bash 永続シェルの cwd が削除済みディレクトリを指したまま git コマンドが実行されると、`git rev-parse` は stdout に何も出力せず（空文字列）、多くの場合非ゼロ終了する。しかし成否検証が `[ "$(git rev-parse HEAD 2>/dev/null)" = "$(git rev-parse origin/{base} 2>/dev/null)" ]` という単純な文字列等値比較だった場合、両辺が空文字列で一致してしまい `ok` と誤判定される。
 
-**修正パターン（PR #1888 で導入・実機検証済み）**:
+**修正パターン（導入時に実機検証済み）**:
 
 1. 各コマンドの exit code を明示的に capture する（`local var=$(cmd)` は `$?` を汚染するため避け、素の代入 + 直後の `$?` 参照を使う）
 2. 非空性チェック (`-n`) を追加する

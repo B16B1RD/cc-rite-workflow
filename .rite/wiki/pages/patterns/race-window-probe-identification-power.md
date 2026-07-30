@@ -154,7 +154,7 @@ fi
 
 PR #759 では atomic-write.test.sh TC-3 で Mutation testing (`mv → false`) を、TC-1/TC-4 で Outcome classification を併用する pair pattern が確立された。
 
-### Post-condition への再定義: sleep 過大による M_mid 経路 dilute (PR #761 で実測)
+### Post-condition への再定義: sleep 過大による M_mid 経路 dilute（実測）
 
 `sleep 0.05` のような race window が確実に当たるサイズに拡大した結果、production sequence (e.g. 50ms) より sleep が長すぎ場合、観測 outcome が **post=100% に偏り M_mid (= mid_or_temp) 観測が environment-dependent な best-effort になる** ケースが発生する。PR #761 cycle 1 で test reviewer が MEDIUM として検出した sub-pattern。
 
@@ -166,7 +166,7 @@ PR #759 では atomic-write.test.sh TC-3 で Mutation testing (`mv → false`) �
 
 cycle 1 では「mid_or_post 観測経路を確保」と cover letter に記載していたが、production 50ms 時間軸で sleep 50ms は M_mid 観測が偶然依存になる。
 
-**canonical 再定義** (PR #761 cycle 2 で formalize):
+**canonical 再定義**（cycle 2 で formalize）:
 
 - assert 文言を `race-window-hit` から `atomic-completion-observed` に変更し、**post-condition (atomic 正常完了経路の観測) として再定義**する
 - `mid+post >= 1` assert は「sleep 短縮による dead code 化を防ぐ post-condition」として位置付ける (mid_or_temp 単独観測は best-effort)

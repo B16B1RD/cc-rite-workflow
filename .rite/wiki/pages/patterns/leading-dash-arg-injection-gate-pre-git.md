@@ -14,7 +14,7 @@ confidence: high
 
 ## 概要
 
-shell script が外部由来の値 (branch 名等) を `git push -u origin "$v"` のような形で渡す場合、値が `-` で始まると git が option として解釈する argument injection の理論的余地が生まれる。これを塞ぐ `case "$v" in -*) fail` 形式の fail-fast gate は **(1) 引数解析直後・全 git 操作到達前に配置** し、bypass 耐性を入力クラス別に確認する。検証は **(2) 兄弟 script の同型注入経路を grep 監査** し、**(3) 単一 `-*` case の gate は値ごとの分岐を持たないため代表 1 値 (例: `--force`) で挙動立証可能** (境界値網羅は不要)、**(4) rc + ERROR substring + end state の 3 軸非 vacuous assertion で gate 発火を pin** し、**(5) 既存 differential-equivalence test とは gate 非発火値を選んで非干渉に保つ**。PR #1299 (Issue #1290、PR #1286 security follow-up) で `wiki-branch-init.sh` への leading-dash gate 追加が 5 reviewer cross-validation で指摘 0 件・cycle 1 mergeable に収束した実測。
+shell script が外部由来の値 (branch 名等) を `git push -u origin "$v"` のような形で渡す場合、値が `-` で始まると git が option として解釈する argument injection の理論的余地が生まれる。これを塞ぐ `case "$v" in -*) fail` 形式の fail-fast gate は **(1) 引数解析直後・全 git 操作到達前に配置** し、bypass 耐性を入力クラス別に確認する。検証は **(2) 兄弟 script の同型注入経路を grep 監査** し、**(3) 単一 `-*` case の gate は値ごとの分岐を持たないため代表 1 値 (例: `--force`) で挙動立証可能** (境界値網羅は不要)、**(4) rc + ERROR substring + end state の 3 軸非 vacuous assertion で gate 発火を pin** し、**(5) 既存 differential-equivalence test とは gate 非発火値を選んで非干渉に保つ**。security follow-up として `wiki-branch-init.sh` への leading-dash gate 追加が 5 reviewer cross-validation で指摘 0 件・cycle 1 mergeable に収束した実測。
 
 ## 詳細
 
@@ -44,11 +44,11 @@ gate が `case "$v" in -*)` の **単一パターンで値ごとの分岐を持�
 
 ### 5. 非 vacuous 3 軸 assertion で gate 発火を pin する
 
-gate の test (PR #1299 の TC-8) は **rc (exit 1) + ERROR substring (出力に gate のエラー文言) + end state (ブランチが作成されていないこと)** の 3 軸を assert する。rc だけ / メッセージだけの単軸 assert は、別経路で偶然同じ rc が返ると vacuous false positive 化する。「gate が発火し、かつ副作用 (ブランチ作成) が起きていない」を end state で押さえることで、gate の実効性を非 vacuous に pin する ([[static-input-chain-function-extraction-non-vacuous-test]] の非 vacuous 化と同じ動機。あちらは注入経路が無く関数抽出が必要なケース、本件は注入経路 (引数) が直接あるため関数抽出は不要で arg 経由で直接 exercise できる対照ケース)。
+gate の test (TC-8) は **rc (exit 1) + ERROR substring (出力に gate のエラー文言) + end state (ブランチが作成されていないこと)** の 3 軸を assert する。rc だけ / メッセージだけの単軸 assert は、別経路で偶然同じ rc が返ると vacuous false positive 化する。「gate が発火し、かつ副作用 (ブランチ作成) が起きていない」を end state で押さえることで、gate の実効性を非 vacuous に pin する ([[static-input-chain-function-extraction-non-vacuous-test]] の非 vacuous 化と同じ動機。あちらは注入経路が無く関数抽出が必要なケース、本件は注入経路 (引数) が直接あるため関数抽出は不要で arg 経由で直接 exercise できる対照ケース)。
 
 ### 6. 既存 differential-equivalence test とは gate 非発火値で非干渉に保つ
 
-gate 追加前から存在する differential-equivalence test (PR #1299 の TC-D — リファクタ前後の出力等価性を比較) は、**全シナリオが leading-dash 非該当値を使う** ため新 gate が不発火で、差分比較に干渉しない。新規挙動 (gate) の検証は専用 test (TC-8) に分離し、既存の等価性 test には gate を発火させる入力を混ぜない。新規 gate を differential 比較から構造的に分離する設計判断が「gate 追加が既存等価性を壊していない」ことの立証を簡潔にする ([[delegation-refactor-differential-test-equivalence]] の差分テストを既存維持したまま新挙動を別 test で足す形)。
+gate 追加前から存在する differential-equivalence test (TC-D — リファクタ前後の出力等価性を比較) は、**全シナリオが leading-dash 非該当値を使う** ため新 gate が不発火で、差分比較に干渉しない。新規挙動 (gate) の検証は専用 test (TC-8) に分離し、既存の等価性 test には gate を発火させる入力を混ぜない。新規 gate を differential 比較から構造的に分離する設計判断が「gate 追加が既存等価性を壊していない」ことの立証を簡潔にする ([[delegation-refactor-differential-test-equivalence]] の差分テストを既存維持したまま新挙動を別 test で足す形)。
 
 ## 関連ページ
 

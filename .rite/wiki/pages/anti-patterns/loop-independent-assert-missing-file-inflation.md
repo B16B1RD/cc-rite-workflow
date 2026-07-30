@@ -22,7 +22,7 @@ per-iteration ループ内で `assert_grep` / `assert_not_grep` のような fil
 
 ### PR #1046 → PR #1050 で実証された failure mode
 
-PR #1046 (Issue #1038) で T-1 (`reviewer-scope-column-symmetry.test.sh`) を `_test-helpers.sh` API ベースに refactor した際、reviewer ファイル不在時の fail message が原本の 2 倍に膨張した:
+T-1 (`reviewer-scope-column-symmetry.test.sh`) を `_test-helpers.sh` API ベースに refactor した際、reviewer ファイル不在時の fail message が原本の 2 倍に膨張した:
 
 | 状態 | per-reviewer の処理 | reviewer 不在時の fail 出力 |
 |------|------------------|------------------------|
@@ -65,7 +65,7 @@ guard を付けると assertion helper は file 存在を前提にできるた�
 | loop × file への複数 assertion (N file × M assert) — **本ケース** | loop 先頭に guard、helper 化は保留 |
 | 3+ test に同パターン再発 | shared helper への抽出を検討 (`_test-helpers.sh`) |
 
-> **後続実証 (PR #1052)**: PR #1051/#1052 で `_test-helpers.sh` に `assert_file_exists_or_fail` を抽出した時点では同パターン適用 test は T-1 のみ (1 test) で、3+ test 閾値には到達していなかった。それでも helper 化を採用したのは「将来 T-2/T-3/T-4 や他テストで同パターンが発生した際の予防策」として test-reviewer が PR #1050 review 時に**推奨事項として明示提案**したため。3+ 閾値は厳密な必須条件ではなく、reviewer の判断で 1 test 段階の **preventive extraction** も Lean と認められる経路があることが実測された。判定は (a) 該当パターンの再発予測可能性、(b) helper 化のコスト (LOC / TC 追加負荷)、(c) reviewer による明示推奨の有無、の 3 因子で行う。
+> **後続実証**: `_test-helpers.sh` に `assert_file_exists_or_fail` を抽出した時点では同パターン適用 test は T-1 のみ (1 test) で、3+ test 閾値には到達していなかった。それでも helper 化を採用したのは「将来 T-2/T-3/T-4 や他テストで同パターンが発生した際の予防策」として test-reviewer が PR #1050 review 時に**推奨事項として明示提案**したため。3+ 閾値は厳密な必須条件ではなく、reviewer の判断で 1 test 段階の **preventive extraction** も Lean と認められる経路があることが実測された。判定は (a) 該当パターンの再発予測可能性、(b) helper 化のコスト (LOC / TC 追加負荷)、(c) reviewer による明示推奨の有無、の 3 因子で行う。
 
 ### 関連 anti-pattern
 

@@ -37,7 +37,7 @@ pre-commit drift gate (`distributed-fix-drift-check.sh` 等の機械的 lint) �
 - gate の指示 (例: 「Return to ステップ 2 to fix the detected drifts」) に盲従すると、PR scope 外の pre-existing noise を「修正」しようとして scope discipline を破り、reviewer が次 cycle で新規 finding を出して fix ループが永久化する
 - 逆に「全部 noise だろう」と無検証で push すると、自分が実際に導入した drift を見逃す
 
-gate の `exit 1` は「drift がある」としか言わず、「**その drift をあなたが導入したか**」を答えない。この判定を人手の目視に委ねると、長大な findings リスト (PR #1201 では 64 件) を前に取り違えが起きる。
+gate の `exit 1` は「drift がある」としか言わず、「**その drift をあなたが導入したか**」を答えない。この判定を人手の目視に委ねると、長大な findings リスト（実測では 64 件）を前に取り違えが起きる。
 
 ### canonical 手順: git-stash before/after 集合比較
 
@@ -73,7 +73,7 @@ diff /tmp/drift-before.txt /tmp/drift-after.txt && echo "(identical: 新規 drif
 
 ### reason 完全性の独立担保
 
-drift gate の P5/P2 noise が信頼できない場合でも、reason 表の完全性 (emit される全 reason が表に存在するか) は **DoD 埋め込みの `comm -23` スクリプト**で独立に担保できる (PR #1201 では fix.md ステップ 5.1 の DoD 検証スクリプトが空出力 = WM_UPDATE_FAILED reason ⊆ 表 を保証)。「機械的 gate の exit code」と「契約の完全性」を別レイヤーで検証することで、gate の noise に判断を引きずられない。
+drift gate の P5/P2 noise が信頼できない場合でも、reason 表の完全性 (emit される全 reason が表に存在するか) は **DoD 埋め込みの `comm -23` スクリプト**で独立に担保できる（実測では fix.md ステップ 5.1 の DoD 検証スクリプトが空出力 = WM_UPDATE_FAILED reason ⊆ 表 を保証した）。「機械的 gate の exit code」と「契約の完全性」を別レイヤーで検証することで、gate の noise に判断を引きずられない。
 
 ### 関連 anti-pattern との区別
 

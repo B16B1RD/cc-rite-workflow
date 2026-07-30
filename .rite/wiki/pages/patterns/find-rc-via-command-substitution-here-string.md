@@ -22,7 +22,7 @@ cleanup/GC スクリプトで `find` の結果をループ処理する際、`whi
 
 ## 詳細
 
-### 失敗パターン (PR #1315 cycle 1, MEDIUM)
+### 失敗パターン（cycle 1, MEDIUM）
 
 `pr-cycle-cleanup.sh` に orphan workdir reaping (Step 3) を追加した際、新規ブロックが process substitution で書かれていた:
 
@@ -39,7 +39,7 @@ done < <(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'rite-pr-create-*' -mm
 
 error-handling / code-quality reviewer が独立に MEDIUM 検出。
 
-### canonical fix (PR #1315 fix)
+### canonical fix
 
 ```bash
 # 対称: command substitution で find の rc を観測し sibling と揃える
@@ -61,7 +61,7 @@ fi
 
 `$TMPDIR` を不在パスに向けて wholesale 失敗を誘発できる。script の `mktemp` が `/tmp` 直書きなら `TMPDIR` override の影響を受けないため、テストの隔離と failure 注入を両立できる。
 
-### sibling 4 ブロック対称性の verify (PR #1315 cycle 2)
+### sibling 4 ブロック対称性の verify（cycle 2）
 
 cycle 2 のフルレビューは 0 findings / mergeable。fix が新規 regression を持ち込んでいないことを 6 reviewer 全員が確認した。fix-introduced finding を防ぐには、修正が既存 sibling パターンと **対称か** — すなわち `rc 捕捉` / `WARNING` / `errors++` の各要素が sibling ブロックと一致するか — を verify するのが有効。(test reviewer は per-item 失敗分岐の coverage gap を follow-up として別 Issue #1316 に切り出し。)
 

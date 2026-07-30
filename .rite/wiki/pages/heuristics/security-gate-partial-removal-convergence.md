@@ -24,7 +24,7 @@ confidence: high
 
 ## 概要
 
-denylist / 列挙型の機械ゲートを「一部だけ残して大半を撤去する」リファクタ（例: reviewer read-only 強制の verb 列挙を撤去し .git 書き込み経路のみ機械ゲートに残す）は、単純そうに見えて review-fix ループが長期化しやすい。PR #1892（Issue #1879、6 review cycle）で収束の鍵となった 4 原則: (1) 撤去集合に維持すべきカテゴリの verb が混在していないか撤去前後の deny/allow ハーネス比較で確認し、維持部分の正規化を「撤去前コードの covered set の superset」にすると検出強度低下（regression）を構造的に防げる。(2) allow-list 判定はコマンド文字列を平坦化した substring マッチではなく per-occurrence の state machine で行い、default を deny-by-default に倒す。(3) 静的パーサの列挙は git バージョン依存で本質的に非収束なので「complete」と主張せず honest な residual として上位層（prompt / sandbox）に委ねる。(4) 機械ゲートの脅威モデル（誤操作防止か敵対的対策か）は設計判断としてユーザーに諮り、「収束済み」の判断は慎重に扱う。
+denylist / 列挙型の機械ゲートを「一部だけ残して大半を撤去する」リファクタ（例: reviewer read-only 強制の verb 列挙を撤去し .git 書き込み経路のみ機械ゲートに残す）は、単純そうに見えて review-fix ループが長期化しやすい。6 review cycle を要した実測で収束の鍵となった 4 原則: (1) 撤去集合に維持すべきカテゴリの verb が混在していないか撤去前後の deny/allow ハーネス比較で確認し、維持部分の正規化を「撤去前コードの covered set の superset」にすると検出強度低下（regression）を構造的に防げる。(2) allow-list 判定はコマンド文字列を平坦化した substring マッチではなく per-occurrence の state machine で行い、default を deny-by-default に倒す。(3) 静的パーサの列挙は git バージョン依存で本質的に非収束なので「complete」と主張せず honest な residual として上位層（prompt / sandbox）に委ねる。(4) 機械ゲートの脅威モデル（誤操作防止か敵対的対策か）は設計判断としてユーザーに諮り、「収束済み」の判断は慎重に扱う。
 
 ## 詳細
 
@@ -46,7 +46,7 @@ PR #1892 は `pre-tool-bash-guard.sh`（reviewer subagent の read-only 強制�
 
 コマンド文字列を平坦化して substring マッチする allow-list ゲートは、**複合コマンドで allow token が別の write occurrence を masking する構造的欠陥**を持つ。`git config --list; git config core.hooksPath /evil` は先頭 read 形の substring が文字列全体にマッチし、同居する実 write（RCE）ごと allow される。
 
-**対策**: per-occurrence の state machine で各 git invocation を独立評価し、read/write を「subcommand の直後トークン」で判定、fresh invocation を都度再認識する。核心は **default 方向の反転**: allow-by-default（read substring があれば行全体を exempt）は masking leak を生むので、**deny-by-default**（read allow-list 該当のみ通過、それ以外 deny）にすると想定外 form が leak せず over-block に倒れて収束する。さらに **同種の判定は fail-closed を対称に適用**する — config の read/write と remote の mutating/read で片方 fail-closed・片方 fail-open だと enumeration fragility の非対称が残り reviewer に指摘される（PR #1892 では remarg を cfgarg と対称に fail-closed 化）。関連: [[allowlist-gate-hardening-checklist]]。
+**対策**: per-occurrence の state machine で各 git invocation を独立評価し、read/write を「subcommand の直後トークン」で判定、fresh invocation を都度再認識する。核心は **default 方向の反転**: allow-by-default（read substring があれば行全体を exempt）は masking leak を生むので、**deny-by-default**（read allow-list 該当のみ通過、それ以外 deny）にすると想定外 form が leak せず over-block に倒れて収束する。さらに **同種の判定は fail-closed を対称に適用**する — config の read/write と remote の mutating/read で片方 fail-closed・片方 fail-open だと enumeration fragility の非対称が残り reviewer に指摘される（実測では remarg を cfgarg と対称に fail-closed 化した）。関連: [[allowlist-gate-hardening-checklist]]。
 
 ### 4. 静的パーサの列挙は非収束 → honest residual に bound
 

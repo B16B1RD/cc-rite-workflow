@@ -30,7 +30,7 @@ confidence: high
 
 ## 詳細
 
-### 観測 (PR #946 / Issue #944)
+### 観測
 
 `commands/wiki/ingest.md` で `{related_page_title}` / `{related_page_path}` placeholder の値生成手順が以下の 3 site に分散していた:
 
@@ -74,7 +74,7 @@ precedence rule (canonical 優先) が明文化されていると、cycle 2 revi
 
 ### PR #947 観測 (3 cycle convergence + multi-canonical-per-file scope distinction)
 
-PR #946 (1 cycle convergence) と対比して、PR #947 (Issue #945) は同じ「canonical source 宣言」テーマで **3 cycle 要した**。差分原因と新たに導出された 3 つの sub-pattern を以下に記録する。
+上記の 1 cycle convergence と対比して、後続 PR は同じ「canonical source 宣言」テーマで **3 cycle 要した**。差分原因と新たに導出された 3 つの sub-pattern を以下に記録する。
 
 #### Sub-pattern 1: Multi-canonical per file (同一ファイル内に scope の異なる canonical が共存する)
 

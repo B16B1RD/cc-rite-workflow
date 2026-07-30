@@ -22,7 +22,7 @@ i18n 同期 PR (EN → JA 全面追従など) では、忠実翻訳が原本 (EN
 
 ## 詳細
 
-### 観測された具体パターン (PR #1263 / Issue #1262)
+### 観測された具体パターン
 
 `docs/SPEC.ja.md` を英語版 `docs/SPEC.md` の per-session flow-state モデルへ全面同期する i18n parity 回復 PR で、以下が実測された:
 
@@ -46,7 +46,7 @@ HIGH × follow-up の 2 findings に対し、Issue #1019 M5 の accept (認知�
 | 原本に既存する誤りの転写 (revert test pass) | accept + EN/JA 両側同時修正の follow-up Issue 化 |
 | 原本の誤りを翻訳側単独で修正 | ❌ 禁止 — i18n parity を破壊し、次の同期 PR で再転写される |
 
-### フロー完結の実証 (PR #1265 / Issue #1264)
+### フロー完結の実証
 
 本決着パターンの後半 (follow-up Issue → 両側同時修正) が PR #1265 で完結し、フロー全体 (検出 → accept + fingerprint 永続化 → 別 Issue 切り出し → EN+JA 両側同時修正) が **PR #1263 → Issue #1264 → PR #1265 の一巡で cycle 1 / 0 findings 収束** することを実証した:
 

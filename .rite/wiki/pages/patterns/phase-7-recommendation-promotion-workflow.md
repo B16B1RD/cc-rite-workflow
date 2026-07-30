@@ -53,10 +53,10 @@ PR review で `[review:mergeable]` 到達後も reviewer recommendation (actiona
 ### Sub-Patterns
 
 1. **`design_confirmation` は Phase 7 対象外**: 設計合意確認カテゴリは fix 対象ではないため skip。`actionable` / `boundary` のみが Phase 7 escalation 対象。
-2. **Bundled fix**: 独立 recommendation でも同セクション改善であれば bundled fix で `cycle count` を増やさず効率化 (PR #1164 cycle 5 で F-10/F-11 を同 commit に統合した実測)。
+2. **Bundled fix**: 独立 recommendation でも同セクション改善であれば bundled fix で `cycle count` を増やさず効率化（cycle 5 で F-10/F-11 を同 commit に統合した実測)。
 3. **Minimum-cost convergence after structural fix**: structural / semantic fix 完了後の polish 修正は典型的に 1-line edit で完結 (cycle 7 F-12 が引用記号 `「」 → **` の 1 行修正のみ)。
 4. **Reviewer self-classification の quality signal**: reviewer 自身が「本 PR では対応不要」「stylistic preference 域」「merge 可能水準」と明示することで Phase 7 user judgement の質が上がる ([respect-reviewer-no-action-recommendation](../heuristics/respect-reviewer-no-action-recommendation.md) と sibling pattern)。
-5. **Final cycle convergence pattern**: 全 cycle の経過は (structure → clarity → boundary → readability ref → stylistic → verify) の進化的 surface 順序を取りやすく、docs PR の cycle 数は内容量に比例しない (PR #1164 = 13 行 docs PR で 8 cycle、各 cycle で異なる側面が surface)。
+5. **Final cycle convergence pattern**: 全 cycle の経過は (structure → clarity → boundary → readability ref → stylistic → verify) の進化的 surface 順序を取りやすく、docs PR の cycle 数は内容量に比例しない（13 行の docs PR で 8 cycle、各 cycle で異なる側面が surface した実測がある）。
 
 ### Canonical 対策
 

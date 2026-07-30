@@ -20,7 +20,7 @@ fix サイクルで「canonical 参照」をコメントや commit message に�
 
 ## 詳細
 
-### 発生事例 (PR #586 cycle 3)
+### 発生事例（cycle 3）
 
 cycle 2 fix commit で「canonical reference として bash-trap-patterns.md の `#signal-specific-trap-template` 節および lint.md L1586-L1591 を参照」と書いたが:
 
@@ -50,7 +50,7 @@ cycle 2 fix commit で「canonical reference として bash-trap-patterns.md の
 - LLM は「もっともらしい行番号」を過去の session 経験から合成しやすい。`L1` のようなエッジケースでなく、`L1586-L1591` のような具体的な数字を見たら逆に警戒する
 - ファイル編集を伴う PR では、commit message 内の他所参照が本 PR の変更で drift する可能性も同時にチェックする (「大量行挿入時の行番号 drift」とは異なるが同型の検出手順が有効)
 
-### Architectural false reference (named category 不実在) への拡張 (PR #708 cycle 1 fix)
+### Architectural false reference (named category 不実在) への拡張（cycle 1 fix）
 
 PR #708 cycle 1 で `severity-levels.md` に COMMENT_QUALITY 軸を新設する際、説明文中で「本軸は SECURITY 軸 / CORRECTNESS 軸と orthogonal な評価次元を提供する」と記載したが、実際には `severity-levels.md` には **SECURITY 軸 / CORRECTNESS 軸という named architectural concept が存在しない**。リポジトリには SECURITY domain reviewer (`security-reviewer.md`) や CORRECTNESS reviewer (`code-quality-reviewer.md`) は存在するが、severity matrix で「軸」として宣言された名称ではない。reviewer (cycle 1) が grep で実在性を確認し HIGH finding として検出。
 

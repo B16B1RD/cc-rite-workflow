@@ -79,9 +79,9 @@ pre-existing と判明した潜在バグは rite の scope ルール (revert tes
 - inline → delegate / wrapper 解体系の refactor PR (Asymmetric Fix Transcription の prior が確証バイアスを生みやすい)
 - 単一 reviewer の CRITICAL が他 reviewer の「可」判定と矛盾するケース (cross-validation 不成立は独立検証の trigger)
 
-### 例外: Issue acceptance criteria が明確な場合は討論フェーズで revert test を上書きできる (PR #1721)
+### 例外: Issue acceptance criteria が明確な場合は討論フェーズで revert test を上書きできる
 
-PR #1721 (Issue #1720、ドキュメント v0.7 フロー追随) の2回目レビューで、2 reviewer 間に cross-validation disagreement が発生した: getting-started/SKILL.md:131 の `/rite:cleanup <PR>` という誤記について、prompt-engineer reviewer は「本 PR が Phase 3.4 を修正した結果、同一ファイル内で新たに矛盾が顕在化した」として HIGH (current-pr scope) を主張、code-quality reviewer は「line 131 自体は本 PR の diff に含まれない pre-existing 行であり、revert test は厳密には FAIL する」として指摘事項に計上せず調査推奨に留めた。
+ドキュメントを v0.7 フローへ追随させた PR の 2 回目レビューで、2 reviewer 間に cross-validation disagreement が発生した: getting-started/SKILL.md:131 の `/rite:cleanup <PR>` という誤記について、prompt-engineer reviewer は「本 PR が Phase 3.4 を修正した結果、同一ファイル内で新たに矛盾が顕在化した」として HIGH (current-pr scope) を主張、code-quality reviewer は「line 131 自体は本 PR の diff に含まれない pre-existing 行であり、revert test は厳密には FAIL する」として指摘事項に計上せず調査推奨に留めた。
 
 討論フェーズ (debate phase) で両者の主張を検討した結果、以下の判断で合意した:
 
@@ -91,7 +91,7 @@ PR #1721 (Issue #1720、ドキュメント v0.7 フロー追随) の2回目レ�
 
 **一般化された原則**: revert test は「このバグが技術的に PR diff 由来か」を判定する厳密な gate として機能するが、**Issue の acceptance criteria が明示的にファイル全体・セクション間の相互無矛盾を要求している場合**、revert test で pre-existing と判定された箇所でも、その pre-existing な内容が本 PR の変更と直接的に矛盾する結果になった (本 PR が変更した箇所との整合性が本 PR によって初めて破れた) なら、討論フェーズを経て本 PR scope 内での修正が正当化されうる。これは revert test 原則の無効化ではなく、「PR の目的 (Issue acceptance criteria) がスコープをどう定義しているか」という別の判断軸との重み付けの問題である。
 
-### 変種: pre-existing 行が本 PR の意味論変更で「不活性でなくなった」場合は revert test が PR 由来と判定する (PR #1967)
+### 変種: pre-existing 行が本 PR の意味論変更で「不活性でなくなった」場合は revert test が PR 由来と判定する
 
 reap manifest からの branch エントリ消費処理を追加した PR で、消費処理自体より前から存在していた（本 PR の diff に含まれない）1 行が review 対象として浮上した。line 単体の `git diff` だけを見ると「この行は pre-existing で本 PR の変更ではない」と早合点しやすいが、実際に**行単位ではなく PR 全体を revert する** revert test を行うと、この pre-existing 行は本 PR が導入した新しい消費ロジックと組み合わさって初めて到達可能になっていた (revert 前は他のコードパスから到達不能な死んだ分岐で、本 PR の変更が「その分岐を活性化」した) ため、PR 全体を revert すると問題も一緒に消えた。すなわち **狭義の revert test (`git show <base>:<file>` で該当行だけを比較) は pre-existing と判定するが、広義の revert test (PR 全体の diff を revert して現象が再現しなくなるか確認) は PR 由来と判定する** — 両者が食い違うケースである。
 

@@ -79,9 +79,9 @@ grep -rn 'parse_wiki_scalar()' plugins/rite/hooks/scripts/
 
 一致する定義が 2+ ファイルにあれば shared lib 候補。`source` で取り込む共通ファイル（例: `plugins/rite/hooks/scripts/_lib.sh`）に集約する。
 
-### Owner/repo 解決 helper の重複 (PR #1921 で確認)
+### Owner/repo 解決 helper の重複
 
-PR #1921 (Issue #1914) の review で、SSH host alias 対応の owner/repo 解決パターン (`git-remote.sh resolve-owner-repo` 優先 → `gh repo view` fallback → 両失敗で degrade + WARNING) を実装する `get_owner_repo()` 型 helper が、リポジトリ内 6 ファイルに重複実装されていることが指摘された。本 PR では sibling hook (`issue-comment-wm-sync.sh`) の既存実装を忠実に踏襲する対称修正を選択し、共通化は別 Issue 候補として scope 外化した — 本ページの「同 commit / 類似 pattern の小規模 duplication は本 PR で inline 対称修正」基準に一致する判断。
+SSH host alias 対応 PR の review で、 owner/repo 解決パターン (`git-remote.sh resolve-owner-repo` 優先 → `gh repo view` fallback → 両失敗で degrade + WARNING) を実装する `get_owner_repo()` 型 helper が、リポジトリ内 6 ファイルに重複実装されていることが指摘された。本 PR では sibling hook (`issue-comment-wm-sync.sh`) の既存実装を忠実に踏襲する対称修正を選択し、共通化は別 Issue 候補として scope 外化した — 本ページの「同 commit / 類似 pattern の小規模 duplication は本 PR で inline 対称修正」基準に一致する判断。
 
 ## 関連ページ
 

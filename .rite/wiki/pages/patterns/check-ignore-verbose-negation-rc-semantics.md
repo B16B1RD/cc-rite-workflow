@@ -43,9 +43,9 @@ if [ "$ci_rc" -eq 0 ] && [ "$ci_negated" -eq 0 ]; then
 fi
 ```
 
-`:[0-9]+:!` は誤検出しても安全側 (false-positive DRIFT) に倒れ、probe パスが固定文字列なら実発火経路はない (PR #1836 で security reviewer が bypass 経路なしを実測検証)。
+`:[0-9]+:!` は誤検出しても安全側 (false-positive DRIFT) に倒れ、probe パスが固定文字列なら実発火経路はない（security reviewer が bypass 経路なしを実測検証）。
 
-### 発生事例 (PR #1836 / Issue #1828)
+### 発生事例
 
 gitignore-health-check の判定を「特定ルール表記への文字列一致」から rc ベースの実効判定へ移行した cycle 1 実装が、`-v` のこの verbose 特性を見落とし rc==0 のみを healthy 条件とした。negation-leak 構成を healthy と誤判定する回帰を導入し、cycle 1 review の security reviewer が runtime_observation + revert test で検出。修正は negated フラグ + grep の 2 行を sessions/worktrees 両ブロックへ対称適用し、negation 構成 → DRIFT exit 1 の回帰テストを両テストファイルへ追加。
 

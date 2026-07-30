@@ -22,7 +22,7 @@ cycle 1 fix で「呼び出し側責務」「caller 側で対応」「同様の�
 
 ## 詳細
 
-### 発生事例 (PR #799 cycle 1 → cycle 2)
+### 発生事例（cycle 1 → cycle 2）
 
 PR #799 cycle 1 で reviewer が「canonical reference (`broken-ref-resolution.md`) が要求する precondition 変数 (pages_list_normalized / wiki_root) を caller (`lint.md`) で生成する Phase が無い」と CRITICAL 指摘した。fix 側は cycle 1 で:
 
@@ -54,7 +54,7 @@ PR #799 cycle 1 で reviewer が「canonical reference (`broken-ref-resolution.m
 
 委譲が正当化されるのは以下 3 条件すべてを満たす場合:
 
-1. **明示的な別 Issue 化**: 委譲先の作業が別 Issue として登録され番号が prose / commit に書かれている (例: 「#587 で対応」)
+1. **明示的な別 Issue 化**: 委譲先の作業が別 Issue として登録され番号が prose / commit に書かれている（例:「#NNN で対応」の形で追跡先を明示）
 2. **scope 上の必然性**: 同 PR で完成させると review-fix loop が回りきらない大きさ (例: 5 sites 以上の sibling 修正)
 3. **完了条件の機械化**: 委譲先 Issue の completion criteria が `grep` で確定的に検証できる形で書かれている
 

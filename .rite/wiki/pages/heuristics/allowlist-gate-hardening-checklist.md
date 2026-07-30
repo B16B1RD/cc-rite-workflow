@@ -24,7 +24,7 @@ confidence: high
 
 ## 概要
 
-入力検証 gate を denylist から allowlist に強化する PR では、(1) 検証手段の行単位/文字列全体 anchor の差、(2) 上流が正規に emit する degraded sentinel 値の存在、(3) 置換機構変更に伴う同一ブロック内コメントの同期、の 3 点を着手時に棚卸しする。PR #1330 (Issue #1200) の 4 cycle 収束で 3 点すべてが独立指摘として実測された。
+入力検証 gate を denylist から allowlist に強化する PR では、(1) 検証手段の行単位/文字列全体 anchor の差、(2) 上流が正規に emit する degraded sentinel 値の存在、(3) 置換機構変更に伴う同一ブロック内コメントの同期、の 3 点を着手時に棚卸しする。4 cycle 収束の実測で 3 点すべてが独立指摘として現れた。
 
 ## 詳細
 
@@ -37,7 +37,7 @@ PR #1330 (review-comment-post.sh の iso_timestamp gate denylist → ISO 8601 al
 
 検証面では、test reviewer の worktree-only mutation (gate 無効化 / anchor 除去 / grep 復帰 / degraded 分岐除去) が 4 cycle 全てで新規テストの non-vacuity を実証しており、gate 強化 PR のテストは「旧実装に戻すと FAIL する」ことの mutation 確認が収束の決定打になる。
 
-5. **新 arm 追加時の per-arm テスト pin (PR #1909 resume cycle, MEDIUM ×2 reviewer 独立検出)**: exfiltration 境界などの allowlist gate に新しい受理 arm を追加するときは、per-arm のテスト pin — **正例 (受理) + 負例 (拒否) + fallback 経路 (realpath 失敗時の fail-closed + 診断 WARNING)** — の 3 点セットを同一 PR で追加する。実装が正しくてもテスト無しでは受理経路の drift と診断消失の回帰から守れない (test + security の 2 reviewer が独立検出)。
+5. **新 arm 追加時の per-arm テスト pin（resume cycle、MEDIUM ×2 reviewer 独立検出）**: exfiltration 境界などの allowlist gate に新しい受理 arm を追加するときは、per-arm のテスト pin — **正例 (受理) + 負例 (拒否) + fallback 経路 (realpath 失敗時の fail-closed + 診断 WARNING)** — の 3 点セットを同一 PR で追加する。実装が正しくてもテスト無しでは受理経路の drift と診断消失の回帰から守れない (test + security の 2 reviewer が独立検出)。
 
 ## 関連ページ
 

@@ -30,7 +30,7 @@ config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`
 
 ## 詳細
 
-### 観測された症状 (PR #1065)
+### 観測された症状
 
 PR #1065 の `rite-config.yml` AC-5 bump で `scope_assignment.enabled: false → true` を変更した際、同一行末尾のコメントが状態変化を反映しないまま残置:
 
@@ -101,9 +101,9 @@ reader は commit SHA から `git show 7412b2f9` で実物を確認でき、comp
 
 3 条件が揃った diff では reviewer が「値 + コメント + 状態表記の 3 site 整合性」を grep verify するチェックリスト項目を追加することで decisive に防御可能。
 
-### 委譲 refactor での 2 つの doc-drift mode (PR #1201)
+### 委譲 refactor での 2 つの doc-drift mode
 
-inline 実装を helper script へ委譲する refactor (PR #1201 — fix.md 4.5.2 を `issue-comment-wm-sync.sh` へ委譲) で、同じ「doc が現実と乖離」する failure が 2 つの異なる mode で surface した:
+inline 実装を helper script へ委譲する refactor（fix.md 4.5.2 を `issue-comment-wm-sync.sh` へ委譲）で、同じ「doc が現実と乖離」する failure が 2 つの異なる mode で surface した:
 
 **Mode A — comment rot (cycle 1): 委譲先 helper の挙動を推測で記述**
 

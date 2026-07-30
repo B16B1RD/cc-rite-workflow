@@ -39,7 +39,7 @@ fi
 
 ### 影響
 
-Issue #1241 (PR #1242) では `session-start.sh` の settings.local.json 修復経路でこの構造が発生していた。rc=2 (不正 JSON) / rc=1 (no-op) で abort すると、下流の marker 書き込み・flow-state migrate・STATE_FILE 解決・recovery 注入が **すべて skip** される。PR が主張する「不正 JSON 時に corruption を surface する」報告分岐は、dead code のため実際には一度も実行されていなかった。
+実測では `session-start.sh` の settings.local.json 修復経路でこの構造が発生していた。rc=2 (不正 JSON) / rc=1 (no-op) で abort すると、下流の marker 書き込み・flow-state migrate・STATE_FILE 解決・recovery 注入が **すべて skip** される。PR が主張する「不正 JSON 時に corruption を surface する」報告分岐は、dead code のため実際には一度も実行されていなかった。
 
 ### Canonical Fix
 
@@ -69,7 +69,7 @@ esac
 
 両者とも「`set -euo pipefail` 下で外部コマンドの実 rc を安全に捕捉する」ファミリに属するが、前者は到達不能、後者は誤値という別の壊れ方をする。canonical fix の `if cmd; then rc=0; else rc=$?; fi` は **`!` を付けない** 点が重要 (`!` を付けると姉妹 anti-pattern を踏む)。
 
-### 変種: command-substitution 代入 `out=$(...); rc=$?` も同じ dead code を生む (PR #1306 で追加)
+### 変種: command-substitution 代入 `out=$(...); rc=$?` も同じ dead code を生む
 
 bare statement だけでなく、**command-substitution を含む代入** も `set -e` 下で同じ failure mode を起こす。`out=$(cmd); rc=$?` で `cmd` が非ゼロ終了すると、代入文の exit status が非ゼロになり `set -e` がその行で abort する。直後の `rc=$?` と rc 分岐 (明示 failure 分岐) は dead code 化し、failure attribution が破壊される (silent pass ではなく harness abort)。
 
@@ -79,7 +79,7 @@ bare statement 版 (上記) と root cause は同一 (`set -e` の非ゼロ abor
 
 ### Asymmetric Fix Transcription との関係
 
-Issue #1241 の本バグは PR #1240 の **inline → delegate refactor** (RITE_HOOK_RE を python script へ委譲) の際に、`&&` 条件形式から外部コマンド呼び出しを単独文へ移動したことで guard が解体された pre-existing latent bug だった (revert test 不成立で別 Issue 化)。これは [Asymmetric Fix Transcription (対称位置への伝播漏れ)] の「inline → delegate refactor 時の wrapper guard 解体」sub-pattern (PR #659) の実例であり、本 PR #1242 はその **逆方向 (修復) の適用例**。
+本バグは先行 PR の **inline → delegate refactor** (RITE_HOOK_RE を python script へ委譲) の際に、`&&` 条件形式から外部コマンド呼び出しを単独文へ移動したことで guard が解体された pre-existing latent bug だった (revert test 不成立で別 Issue 化)。これは [Asymmetric Fix Transcription (対称位置への伝播漏れ)] の「inline → delegate refactor 時の wrapper guard 解体」sub-pattern の実例であり、本ページの事例はその **逆方向 (修復) の適用例**。
 
 ### Detection Heuristic
 

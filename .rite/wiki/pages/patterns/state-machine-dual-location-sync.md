@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-### 発生事例 (PR #586 cycle 5)
+### 発生事例（cycle 5）
 
 `/rite:wiki:init` Phase 1.3.1 の `already_negated` state について:
 
@@ -49,7 +49,7 @@ confidence: high
 - PR レビュー時に同一 state name (`already_negated` / `skip` 等) で `grep` し、全 hit で動作記述の文字列を diff で比較する
 - 分岐テーブルがあるドキュメントでは、テーブル内の「メッセージ / アクション」列を canonical 宣言と突き合わせる lint を将来的に追加する
 
-### helper case 拡張 × caller WARN_MSG 連動 (PR #624 cycle 2 での evidence)
+### helper case 拡張 × caller WARN_MSG 連動（cycle 2 の実測）
 
 PR #624 cycle 2 で、本 pattern の適用範囲が「実装ロジック / LLM 分岐テーブル」の 2 箇所記述から **「helper 関数内の case 分岐」と「caller 側の user-facing message (WARN_MSG / error output 等)」** の 2 箇所記述に拡張されることが実測された (G3 HIGH)。
 
@@ -70,7 +70,7 @@ PR #624 は `stop-guard.sh` の phase 別 case arm に `ingest_pre_lint` / `inge
 4. helper 拡張のみで merge されると、caller 側が旧 state 列挙で silent に fallback してしまう observability gap が発生
 5. 「何も起きない」とは違うが、user-facing message の情報量が不完全になる silent regression
 
-**canonical 対策 (PR #624 cycle 2 fix で確立)**:
+**canonical 対策（cycle 2 fix で確立）**:
 
 1. **state 列挙の canonical SoT を 1 箇所に宣言**: phase enum 列挙は `phase-transition-whitelist.sh` 等の共通定義ファイルに canonical 宣言し、helper / caller / WARN_MSG / documentation は全て同 SoT を参照する
 2. **ring / enum 拡張は semantic SoT helper 全件の同時更新を契約化**: 「新 phase 追加 PR」では以下 N site を必ず同時更新:

@@ -24,7 +24,7 @@ confidence: high
 
 ## 詳細
 
-### 問題の構造 (PR #906 cycle 3 で CRITICAL として実機顕在化)
+### 問題の構造（cycle 3 で CRITICAL として実機顕在化）
 
 ratchet test (charter 違反パターンの上限カウント test) で違反 occurrence を数えるために以下のように書かれていた:
 
@@ -83,7 +83,7 @@ PR #906 で同一 fingerprint が 3 cycle に渡って degenerate した:
 | [grep -c || echo 0 double-print](./grep-c-or-echo-0-double-print.md) | `grep -c` の POSIX 仕様で 0 出力 + exit 1 | `count=$(grep -c ... || true); count=${count:-0}` |
 | [bash-local-vs-toplevel-pipefail-asymmetry](./bash-local-vs-toplevel-pipefail-asymmetry.md) | function 内外の pipefail 伝播非対称 | `v=$(... || true) || v=""` |
 
-### 変種: `$(cmd | grep ...)` の no-match が「その次の行の空判定」を到達不能にする (PR #2013)
+### 変種: `$(cmd | grep ...)` の no-match が「その次の行の空判定」を到達不能にする
 
 同じ pipefail 伝播が、**assert の直前で診断を消す**形で現れた変種。テストヘルパーが以下のように書かれていた:
 

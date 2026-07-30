@@ -22,7 +22,7 @@ LLM agent が参照する calibration source (few-shot example / output template
 
 ## 詳細
 
-### 発生事例 (PR #1037/#1039 — scope 列 5 列化と few-shot example の coverage gap)
+### 発生事例（scope 列 5 列化と few-shot example の coverage gap）
 
 Issue #1016 で reviewer findings table に `scope` 列を追加 (schema 1.1.0、enum 3 値: `current-pr` / `follow-up` / `nit-noted`)。PR #1037/#1039 では `plugins/rite/skills/reviewers/references/finding-examples.md` の 6 few-shot example を 4 列→5 列に同期したが、**6 example すべてに `current-pr` scope を埋込み**、`follow-up` / `nit-noted` の使用例は導入されなかった。
 
@@ -65,7 +65,7 @@ PR #1039 code-quality reviewer 指摘 (推奨事項): 「6 つの finding 例す
 
 PR #1039 の scope では「全 enum 値の few-shot 追加」は **本 PR の scope 外** (`current-pr` への 5 列形式統一が主目的) として follow-up Issue 候補に降格された。これは「機械的同期 → 設計改善は別 PR」という scope discipline (本 PR は drift 解消のみ、calibration enhancement は別途) を保つための判断であり、本 heuristic は次回の calibration enhancement Issue 起票時に適用する。
 
-### Successful prevention case の累積実証 (PR #1041/#1056)
+### Successful prevention case の累積実証
 
 PR #1039 の follow-up として起票された Issue #1041 で、本 heuristic を直接 acceptance criteria に転記し、PR #1056 (`docs(reviewer): finding-examples.md の few-shot に follow-up / nit-noted scope の使用例を追加`) で 2 example を追加 (Example 4: MEDIUM × `follow-up`、Example 5: LOW × `nit-noted`)。0 blocking finding / 1 cycle 即時 mergeable で収束し、本 heuristic が「直前 PR で記録 → 翌 PR で適用 → 想定通り収束」という最短経路の **successful prevention case** を実測した。
 
@@ -80,7 +80,7 @@ PR #1056 review で 2 reviewer (prompt-engineer / code-quality) が独立に「E
 
 本サイクルで確認された追加観察:
 
-- **Self-referential consistency completion の最小実装単位**: calibration source 内の「style 不整合」(本件では Recommendation 列の prose vs inline-code 混在) は **1 行差分** で完全に解消可能なケースがあり、scope 列 / severity 列のような構造変更を伴わない doc PR では 1 cycle 収束が定常状態となる (PR #1056 → #1059 で連続実測)。
+- **Self-referential consistency completion の最小実装単位**: calibration source 内の「style 不整合」(本件では Recommendation 列の prose vs inline-code 混在) は **1 行差分** で完全に解消可能なケースがあり、scope 列 / severity 列のような構造変更を伴わない doc PR では 1 cycle 収束が定常状態となる（2 PR 連続で実測）。
 - **LOW × nit-noted finding を介した self-referential failure mode 検出 → 修正 → 0-finding 完了の 1 サイクル**: PR #1059 cycle 1 では 1 件の LOW × nit-noted (`src/utils/money.ts` 言及が抽出先と pattern reference で重複) が検出されたが reviewer 自身が「対応不要」「Example 2 の `task.ts:80` 重複 pattern に倣っている」と明記したため [Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない](./respect-reviewer-no-action-recommendation.md) に従い replied-only で処理、loop 再発火なし。
 - **Successful prevention case の連続再現**: PR #1037/#1039 (heuristic 記録) → PR #1056 (follow-up 適用、2 examples 追加) → PR #1059 (self-referential consistency 完成、concrete code snippet 追記) の 3 PR 連鎖は、本 heuristic が「直前 PR で記録 → 翌 PR で部分適用 → 翌々 PR で完全適用」という段階的 application path も観測可能であることを示す。各段階で 0 blocking / 1 cycle 収束。
 

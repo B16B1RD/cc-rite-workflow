@@ -20,7 +20,7 @@ Bash block 末尾に新規 statement を追加する際、既存の閉じフェ�
 
 ## 詳細
 
-### 事象 (PR #608 cycle 2)
+### 事象（cycle 2）
 
 前 fix commit で `if ! ...; then ... fi` ブロックを既存閉じフェンスの直前に挿入した際、`fi` 行の直後に独立した閉じフェンス ``` ``` ``` が必要であることを 3 箇所すべて見落とした。結果として `cleanup.md` の bash code fence count が 144 (偶数、balanced) → 153 (奇数、UNBALANCED) になり、後続の散文 + Skill 呼び出し指示が bash code として renderer / preprocessor で誤解釈される構造バグに発展した (CRITICAL × 3)。
 
@@ -60,7 +60,7 @@ grep -c '^```bash' path/to/file.md
 
 いずれも fence balance check で即検出可能。
 
-### 入れ子は外側を 4-backtick にする (PR #2035)
+### 入れ子は外側を 4-backtick にする
 
 テンプレート全体が 1 本の 3-backtick fence で囲われている文書に、記入例の fence を 3-backtick で追加すると、fence が閉じ位置で分割され **code と prose が反転する**。PR #2035 では追加の主目的だった記入例が prose になり、後半の推奨事項・READ-ONLY 節が code に閉じ込められた。
 

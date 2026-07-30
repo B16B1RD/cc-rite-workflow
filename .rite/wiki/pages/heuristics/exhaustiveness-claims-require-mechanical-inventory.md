@@ -34,7 +34,7 @@ confidence: high
 
 ## 詳細
 
-PR #1332 (Issue #1207、doc cross-ref drift 解消) で、link-sub-issue.sh の「contract 変更時に更新すべき consumer」列挙が 5 cycle にわたり発散した実測:
+doc cross-ref drift を解消した PR で、link-sub-issue.sh の「contract 変更時に更新すべき consumer」列挙が 5 cycle にわたり発散した実測:
 
 - cycle 1: 復旧手順 literal (create.md) の pointer 欠落 → 追加
 - cycle 2: runtime consumer (backfill-sub-issues.sh) の漏れ → 追加 + usage 例 (graphql-helpers.md) も追加
@@ -48,7 +48,7 @@ PR #1332 (Issue #1207、doc cross-ref drift 解消) で、link-sub-issue.sh の�
 2. **scope note には基準と棚卸し方法の両方を書く**: 「literal を持つ consumer のみ (設計ドキュメント除く)」という基準だけだと、基準に合致する未列挙ファイルの存在が次 cycle の指摘になる。「grep X で棚卸し済」と方法まで書けば、将来の更新者も同じ手順で再検証できる。
 3. **二次 drift に注意**: cross-ref drift の修正 PR 自体が、参照先の置換で「旧参照先が担っていた別役割 (復旧手順等) への pointer」を消す二次 drift を起こしやすい。置換前に旧参照先の全役割を棚卸しする。
 
-## 変種: 規約の適用対象は「構文」でなく「概念」で grep する (PR #2013)
+## 変種: 規約の適用対象は「構文」でなく「概念」で grep する
 
 規約を新設した PR が **自分でその規約に適用漏れを起こす** 事例が 4 cycle で 3 回反復した。核心は棚卸しの検索語の選び方にある。
 
