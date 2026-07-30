@@ -64,7 +64,7 @@ HINT phrase pin だけでなく、`[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fa
 
 の 2 直交軸で silent failure 経路を封鎖する。PR #623 cycle 3 fix で cleanup test fixture に両方を追加し 17 assertions を達成。
 
-### Twin site contract への拡張 (PR #636 cycle 3 での evidence)
+### Twin site contract への拡張（cycle 3 の実測）
 
 PR #636 cycle 3 fix で twin site contract verification という拡張パターンが確立された: HINT emit 側 (stop-guard.sh) と grep 参照側 (create.md の `[CONTEXT] XXX_FAILED=1; reason=...` retained flag emit) が対応する marker (`STEP_0_PATCH_FAILED` 等) について、**片側だけ test で verify する** と silent regression を許すため、**両側を同 test で同時に check** する canonical template。
 
@@ -73,15 +73,15 @@ PR #636 cycle 3 fix で twin site contract verification という拡張パター
 
 ### emit / consume / test の 3 点セット契約 (cumulative-defense PR で特に重要)
 
-累積対策 PR (PR #636 = implicit stop regression の 8 回目) では新 marker 追加時の 3 点セット契約違反が同型再発する傾向が観測された:
+implicit stop regression の 8 回目対策 PR では新 marker 追加時の 3 点セット契約違反が同型再発する傾向が観測された:
 
 1. **emit site**: bash block で `echo "[CONTEXT] ..."` する site
 2. **consume site**: stop-guard.sh HINT の grep 参照 / Pre-check list の evidence 表示 / 関連 hook の検知 logic
 3. **test assertion**: emit と consume の両方を verify する test fixture
 
-3 点のいずれかを欠く marker は「dead signal」となり、次 cycle で削除推奨される (PR #636 cycle 1 F-06 = `MANDATORY_AFTER_INTERVIEW_STEP_0`、cycle 2 F-05 = `STEP_0_PATCH_FAILED` の同型再発)。詳細は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の「Fix 側の予防契約」参照。
+3 点のいずれかを欠く marker は「dead signal」となり、次 cycle で削除推奨される（cycle 1 の F-06 = `MANDATORY_AFTER_INTERVIEW_STEP_0`、cycle 2 F-05 = `STEP_0_PATCH_FAILED` の同型再発)。詳細は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の「Fix 側の予防契約」参照。
 
-### Exit-code 経路判別への拡張 (PR #1223 で実測)
+### Exit-code 経路判別への拡張（実測）
 
 同じ構造が **同一 exit code を共有する複数経路** のテストにも当てはまる。`assert_contains "Phase:"` が複数経路で silent-pass するのと同型に、複数の path がすべて同じ exit code を返すスクリプトでは **bare な `assert <exit code>` だけでは「どの経路が発火したか」を pin できない**。exit code は fallback STOP_MSG の `Phase:` に相当する汎用シグナルで、回帰の検出はできても経路の特定はできない。
 

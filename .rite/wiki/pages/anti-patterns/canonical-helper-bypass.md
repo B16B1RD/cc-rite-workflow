@@ -28,7 +28,7 @@ confidence: high
 
 ## 詳細
 
-### 発生事例 (PR #756 cycle 1)
+### 発生事例（cycle 1）
 
 PR #756 が `lifecycle 4 hooks` に stderr pass-through 化を追加した際、`_resolve-flow-state-path.sh` の helper invocation で stderr を tempfile に退避する mktemp + filter ロジックを **inline で再実装** した。一方、PR #688 cycle 9 F-02 で同じ目的の集約 helper `_mktemp-stderr-guard.sh` が既に extract されており、4 hook 全てで helper 呼び出しに置換すれば 1 行ずつで完結する状態だった。
 
@@ -54,7 +54,7 @@ helper bypass が起きる時、しばしば「doctrine の片側 mirror」が�
 - 片側 mirror は doctrine 不完全であり「stderr pass-through 化」claim が部分的にしか実現していない
 - canonical filter literal は `state-read.sh:148` のような **named SoT site** を grep で特定し、新実装でも同じ literal を使う
 
-### test helper bypass sub-pattern (PR #989 cycle 1)
+### test helper bypass sub-pattern（cycle 1）
 
 production code に限らず **test helper** でも同型に発火する。PR #989 cycle 1 で `stop-create-interview-block.test.sh` TC-10 が既存の `build_stop_payload` helper を使わず inline で `jq -n --arg cwd ... '{hook_event_name: "Stop", cwd: $cwd, ...}'` を再構築した結果、code-quality reviewer が MEDIUM finding として検出 (TC-1〜TC-9 sibling との helper symmetry 違反)。修正 cycle で `payload=$(build_stop_payload "$SBX/sub" false)` に置換し sibling と対称化。
 
@@ -111,7 +111,7 @@ grep -nE "'\\^WARNING:|filter.*pass-through" plugins/rite/hooks/state-read.sh
 - [PR #989 cycle 1 review (test helper bypass: TC-10 inline jq vs build_stop_payload helper、code-quality MEDIUM)](../../raw/reviews/20260516T030954Z-pr-989.md)
 - [PR #989 cycle 2 review (修正検証: build_stop_payload 経由化で sibling symmetry 復元、blocking 0 件)](../../raw/reviews/20260516T032759Z-pr-989.md)
 
-## 変種: canonical パターンを「参照した」が、参照先の失敗経路まで写していない (PR #2044)
+## 変種: canonical パターンを「参照した」が、参照先の失敗経路まで写していない
 
 helper の呼び出しを bypass する形だけでなく、**canonical パターンを引用しながら参照先の分岐を落とす**形でも同じ損失が起きる。
 
@@ -120,7 +120,7 @@ helper の呼び出しを bypass する形だけでなく、**canonical パタ�
 
 > **教訓**: canonical パターンを参照するときは**参照先の失敗経路まで読む**。「正常系が同じ形」であることは同型の根拠にならない。診断出力の経路を新設するときは、同種の既存 emission site が従っている canonical idiom を先に grep する。
 
-## 変種: 人間に渡す手順で SoT helper を「同等品」に置き換える (PR #2044)
+## 変種: 人間に渡す手順で SoT helper を「同等品」に置き換える
 
 復旧手順の中で `state-path-resolve.sh` の代わりに `git rev-parse --show-toplevel` を書いた。linked worktree では前者が main checkout へ unify するのに対し後者は worktree root を返すため、復旧コマンドが rc=0・無出力で別ディレクトリに stray な state を作り、直すべき対象は手つかずで残る。
 

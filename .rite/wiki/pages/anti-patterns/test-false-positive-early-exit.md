@@ -28,7 +28,7 @@ confidence: high
 
 ## 詳細
 
-### 事象 (PR #608 cycle 5-8)
+### 事象（cycle 5-8）
 
 - **cycle 5**: TC-608-D が `active=false` early exit で抜ける構造のため、active 判定の regression を silent に pass させていた。core transition / fallback path 検証が抜け落ちた Test coverage gap パターン (3/9 findings)。
 - **cycle 6**: TC-608-D を修正した際、新規 TC-608-E/F/G を追加したが、これらも rc assertion 不足で active 判定 regression を検出できない同型構造を silent に踏襲。
@@ -54,7 +54,7 @@ confidence: high
 - 同 cycle の過去 fix コメントに「false-positive 修正」「guard で抜ける」等の self-aware 痕跡があれば parity TC も同型疑いで精査
 - `rc=0` 以外の assertion (stderr content / diag counter / state file mutation) が存在するか確認
 
-### Silent-false-pass via pre=post state の 3 条件拡張 (PR #636 cycle 5 での evidence)
+### Silent-false-pass via pre=post state の 3 条件拡張（cycle 5 の実測）
 
 PR #636 cycle 5 review で発見された別系統の silent-false-pass pattern を追加する。subshell ベース test で以下 **3 条件** が揃うとスクリプトが一切実行されなくても事後条件が PASS する false-positive を形成する:
 
@@ -84,7 +84,7 @@ PATH="$fake_bin_dir:$PATH" bash target-script.sh
 
 - `chmod -w` / `chattr +i` は root 権限や filesystem feature 依存で portable でない
 - PATH override は POSIX / BSD / GNU 問わず動作し root 不要
-- fake binary で exit code と stderr を完全制御でき、silent failure surface 化の test coverage を mechanical に取れる (PR #636 TC-634-M/N で `error_count_mv_failed` diag log と flow-state-update.sh の mv failed stderr を verify)
+- fake binary で exit code と stderr を完全制御でき、silent failure surface 化の test coverage を mechanical に取れる (TC-634-M/N で `error_count_mv_failed` diag log と flow-state-update.sh の mv failed stderr を verify)
 
 ### set -e + subshell exit-code 捕捉
 
@@ -102,7 +102,7 @@ rc を capture せずに `set -e` 下で subshell が失敗すると親 script �
 test fixture コメントで `file.sh L247-250` 形式の行番号参照を埋め込むと、refactor で silent drift する。canonical 対策:
 
 - **semantic anchor**: "error_count atomic write 後 mv 失敗 path" のような意味論的参照
-- **trailer convention**: `(line-number 参照を避ける理由は cycle 8 F-05 参照)` 形式の trailer を付記してリポジトリ内 convention を明示 (PR #636 cycle 5 で確立)
+- **trailer convention**: `(line-number 参照を避ける理由は cycle 8 F-05 参照)` 形式の trailer を付記してリポジトリ内 convention を明示（cycle 5 で確立）
 
 ## 関連ページ
 

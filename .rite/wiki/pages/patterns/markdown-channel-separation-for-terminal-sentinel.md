@@ -28,7 +28,7 @@ CommonMark HTML block (type 2) は前後に空行を要求するため、workflo
 
 ### Root Cause: CommonMark HTML block type 2 の空行要求
 
-CommonMark 仕様 (HTML block type 2, `<!--` で始まる comment) は HTML block を確定させるために **前後の空行** を要求する。renderer は独立行で `<!-- ... -->` を見つけると前後に空行を補う。これが以下の可視化につながる (Issue #652 Root Cause):
+CommonMark 仕様 (HTML block type 2, `<!--` で始まる comment) は HTML block を確定させるために **前後の空行** を要求する。renderer は独立行で `<!-- ... -->` を見つけると前後に空行を補う。これが以下の可視化につながる（Root Cause）:
 
 ```markdown
 1. /rite:issue:list で次の Issue を確認
@@ -69,18 +69,18 @@ Claude Code の実行モデル上、**bash tool stdout/stderr は assistant resp
 - Step 2 で sentinel (markdown response の absolute last line) を出力した **後** に
 - Step 3 で bash tool を呼び出して `flow-state-update.sh patch` を実行しても
 
-response text の absolute last line は sentinel のまま保たれる。bash output は response text の一部ではないため。これにより ingest.md Phase 9.1 のような「sentinel 出力 → terminal state patch」の document order と実行 order が一致し、terminal state 保証のタイミング contract を崩さずに済む (Issue #618 PR #624 で明文化)。
+response text の absolute last line は sentinel のまま保たれる。bash output は response text の一部ではないため。これにより ingest.md Phase 9.1 のような「sentinel 出力 → terminal state patch」の document order と実行 order が一致し、terminal state 保証のタイミング contract を崩さずに済む（後続 PR で明文化）。
 
 ### 前方空行要求と後方空行要求の双対
 
-markdown channel separation モデルが扱う範囲は「後方空行要求の吸収」だけでは不十分で、以下の **双対** を両方論じる必要がある (PR #655 cycle 6 F-C6-15 SUGGESTION):
+markdown channel separation モデルが扱う範囲は「後方空行要求の吸収」だけでは不十分で、以下の **双対** を両方論じる必要がある（cycle 6 の F-C6-15 SUGGESTION）:
 
 | 方向 | 要求源 | 可視化経路 | 対処 |
 |------|--------|-----------|------|
 | **前方空行要求** | list item → HTML block 境界 (HTML block 開始前) | 最終 list item 直後の独立 HTML コメントで発動 | inline HTML sentinel で回避 (本 pattern) |
 | **後方空行要求** | markdown 文書末尾 → 後続 content 境界 | sentinel 後に bash UI が続く場合に発動 | bash tool が別チャンネル (markdown 最終行を壊さない) で吸収 |
 
-cleanup.md (Issue #652) と ingest.md (Issue #618) はこの双対に対して **意図的に異なる構造** (cleanup: inline sentinel + 2 ブロック構造 / ingest: independent sentinel + 3 ブロック構造 = 三点セット規約) を採用しており、両者の **意図的 divergence** を silent unification regression から守るため `stop-guard-cleanup.test.sh` / `stop-guard-ingest.test.sh` の canonical phrase pin で cross-arm lexical consistency を pin している。
+cleanup.md と ingest.md はこの双対に対して **意図的に異なる構造** (cleanup: inline sentinel + 2 ブロック構造 / ingest: independent sentinel + 3 ブロック構造 = 三点セット規約) を採用しており、両者の **意図的 divergence** を silent unification regression から守るため `stop-guard-cleanup.test.sh` / `stop-guard-ingest.test.sh` の canonical phrase pin で cross-arm lexical consistency を pin している。
 
 ### 適用 scope
 

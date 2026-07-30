@@ -20,7 +20,7 @@ glibc (C / UTF-8 両ロケールでバイト単位実測確認) の `[[:cntrl:]]
 
 ## 詳細
 
-### 盲点の構造 (PR #1273 review → Issue #1274 → PR #1277)
+### 盲点の構造（review → follow-up Issue → 修正 PR）
 
 一部端末は 0x9b を `ESC [` 相当の CSI introducer として解釈するため、`[[:cntrl:]]` ベースの neutralize は理論上の 8-bit エスケープシーケンス注入経路を残す。「`[[:cntrl:]]` = 全制御文字」という直感が glibc の locale 分類と一致しないことが盲点の核。
 
@@ -43,13 +43,13 @@ jq の JSON 経路は生 0x9b を U+FFFD 化するため、統合テスト (JSON
 
 ### 執筆ミスパターン: CSI 代表例を範囲上限と混同する
 
-C1 範囲のコードポイントラベルを「U+0080–U+009B」と書く誤記が発生しやすい (CSI introducer の代表例 U+009B を範囲上限と混同する。正: U+0080–U+009F = 0x80–0x9f)。コメント内のコードポイント範囲ラベルと実装バイト範囲の不整合として review で検出された実例 (PR #1277 cycle 1 の唯一の MEDIUM finding)。
+C1 範囲のコードポイントラベルを「U+0080–U+009B」と書く誤記が発生しやすい (CSI introducer の代表例 U+009B を範囲上限と混同する。正: U+0080–U+009F = 0x80–0x9f)。コメント内のコードポイント範囲ラベルと実装バイト範囲の不整合として review で検出された実例（cycle 1 の唯一の MEDIUM finding）。
 
-### 検出 (reject) 用途も同じ盲点を共有する — `contains_ctrl()` で解決 (Issue #1276 → PR #1280)
+### 検出 (reject) 用途も同じ盲点を共有する — `contains_ctrl()` で解決（follow-up Issue → 修正 PR）
 
 neutralize (置換) 側を共通ヘルパー化しても、検出 (reject) 用途の `=~ [[:cntrl:]]` には同じ C1 非検出盲点が残存する。`[[:cntrl:]]` を使う全用途 (置換 / 検出) が同じ盲点を共有することに注意。PR #1280 で検出用共通関数 `contains_ctrl()` を `control-char-neutralize.sh` に追加し、3 call site (`flow-state.sh` の session_id 検証 / `wiki-ingest-trigger.sh` の SOURCE_REF・TITLE 検証) を neutralize 側と同一バイト範囲定義 (`tr '\000-\037\177\200-\237'`) で統一して解決 (4 reviewer 0 findings / 1 cycle)。
 
-検出側実装の設計判断 (PR #1280 review で検証済):
+検出側実装の設計判断（review で検証済）:
 
 - **grep でなく tr + バイト数比較**: ugrep 等の grep 実装は `LC_ALL=C` でも raw 8-bit バイト (invalid UTF-8) にリテラルパターンですらマッチせず、検出が環境依存で silent に壊れる。tr は neutralize_ctrl と同一コマンド・同一レンジ定義で「同じバイト範囲定義」という規約対称性が文字どおりになる
 - **pure-bash 代替 (`${var//[...]/}`) は等価でない**: ja_JP.UTF-8 で codepoint-aware となり locale 依存を再導入することを実測で棄却

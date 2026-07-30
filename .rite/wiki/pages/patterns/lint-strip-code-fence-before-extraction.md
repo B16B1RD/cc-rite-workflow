@@ -22,18 +22,18 @@ markdown を解析する検証ツール (lint / drift-check) が `grep -E '^#{1,
 
 ## 詳細
 
-### 失敗の構造 (PR #1167 cycle 1 — MEDIUM, code-quality reviewer)
+### 失敗の構造（cycle 1 — MEDIUM, code-quality reviewer）
 
-PR #1167 (Issue #1160) で新規追加した `sh-cross-ref-check.sh` は、`.sh` 内の echo / コメントに含まれる `<file>.md (ステップ|Phase) N` 形式の cross-file 参照を、参照先 `.md` の実見出しと突き合わせて dangling を検出する。この「参照先の見出し一覧」を取得する際:
+新規追加した `sh-cross-ref-check.sh` は、`.sh` 内の echo / コメントに含まれる `<file>.md (ステップ|Phase) N` 形式の cross-file 参照を、参照先 `.md` の実見出しと突き合わせて dangling を検出する。この「参照先の見出し一覧」を取得する際:
 
 ```bash
-# 反面教材 (PR #1167 初版)
+# 反面教材 (初版)
 grep -E '^#{1,6}[[:space:]]' "$target_md"   # ← code fence 内の `# comment` も拾う
 ```
 
 参照先 `.md` 内の ` ```bash ` ブロックにある `# 何かのコメント` 行が `#` 始まりのため markdown 見出しとして抽出される。その結果、本来存在しない見出し番号への参照でも「偽の見出し」と一致してしまい、**dangling-number チェックが false negative** になる。検証ツールが「検出できているように見えて実は検出網が緩い」状態は、ツールへの信頼を損なう最も危険な failure mode。
 
-### Fix 方針 (PR #1167 — strip_code_fences ヘルパー)
+### Fix 方針（strip_code_fences ヘルパー）
 
 見出し抽出の **前段** にコードフェンス除去を挟み、フェンス内行を見出し候補から外す:
 
@@ -44,7 +44,7 @@ strip_code_fences "$target_md" | grep -E '^#{1,6}[[:space:]]'
 
 `strip_code_fences` は awk の `in_fence` トグルで ` ``` ` 行を境にフェンス内/外を判定し、フェンス内行を出力から落とす。「検証ツールが対象を解析する際、コードフェンス内の構文要素を実コンテンツと誤認しない」という防御は、markdown を grep ベースで解析する lint 全般に適用すべき canonical step。
 
-### 既知の限界 — awk in_fence toggle の nesting (PR #1167 cycle 2 — Hypothetical, non-blocking)
+### 既知の限界 — awk in_fence toggle の nesting（cycle 2 — Hypothetical, non-blocking）
 
 `strip_code_fences` の awk in_fence トグルは ` ``` ` 行を単純にトグルするため、**4-backtick フェンス内に 3-backtick が現れる nesting** では誤トグルしうる構造的弱点を持つ。PR #1167 cycle 2 review で指摘されたが、現コーパスに発火する file が無く revert test も中立のため、Observed Likelihood Gate により Hypothetical / non-blocking に降格された ([[observed-likelihood-gate-with-evidence-anchors]])。フェンス delimiter 長を考慮した state machine が必要になるのは、実際に nested fence を含む対象が現れたときで十分。先回りで複雑化しないのが scope 判断として妥当。
 

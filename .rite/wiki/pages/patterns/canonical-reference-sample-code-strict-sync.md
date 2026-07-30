@@ -34,7 +34,7 @@ reference 文書 (bash-trap-patterns.md / bash-cross-boundary-state-transfer.md 
 
 ## 詳細
 
-### 発生事例 (PR #564)
+### 発生事例
 
 新規追加した `plugins/rite/commands/wiki/references/bash-cross-boundary-state-transfer.md` の Pattern 3 example で、canonical 実装 (lint.md Phase 6.0) が持っている `else rc=$?` を欠落させ、未定義 `$rc` を参照する模範例を残してしまった (F-07 検出)。reference 文書は後続実装者がコピペ origin として使うため、欠落したまま新しい site に複製されると silent regression が増殖する。
 
@@ -57,7 +57,7 @@ reference 文書 (bash-trap-patterns.md / bash-cross-boundary-state-transfer.md 
 - **Asymmetric Fix Transcription**: 既存 site への fix を他 site に伝播し忘れるのと同型の失敗モード。本パターンは「reference ↔ canonical site」という異なる書式間での drift に特化した sub-pattern
 - **散文で宣言した設計は対応する実装契約がなければ機能しない**: 「reference 文書は canonical 実装と同期しているはず」という prose-only 宣言だけでは drift 検出には不十分
 
-### ID 採番時の grep 全件検証への拡張 (PR #578 での evidence)
+### ID 採番時の grep 全件検証への拡張（実測）
 
 PR #578 cycle 1 で reviewer が F-ID 採番の推奨値 (F-16) を提示したが、既存 F-IDs との衝突を `grep` で検証していなかった。盲信して採用すると既存の F-20 と衝突する潜在リスクがあり、fix 側で全件 `grep -oE 'F-[0-9]+' | sort -u` を経て最大値 +1 (F-21) を選択する pattern に修正された。
 
@@ -66,7 +66,7 @@ PR #578 cycle 1 で reviewer が F-ID 採番の推奨値 (F-16) を提示した�
 - 新規 ID / 識別子を採番する際は、ファイル全体を `grep` で走査して既存最大値を確定してから +1 する
 - reviewer 推奨値が evidence anchor（grep コマンド出力 / 既存 IDs の列挙）を伴っていない場合は、Observed Likelihood Gate に準拠して降格扱いし、fix 側で再検証する
 
-### 「一字一句同期」宣言は 3 観点すべてを揃えて初めて成立する (PR #586 cycle 5-7 での evidence)
+### 「一字一句同期」宣言は 3 観点すべてを揃えて初めて成立する（cycle 5-7 の実測）
 
 PR #586 cycle 4 fix で「canonical reference (`gitignore-health-check.sh` L270-277) と一字一句揃える」とコメントで宣言したが、cycle 5-7 review で以下 3 観点の drift が段階的に検出された:
 
@@ -86,7 +86,7 @@ PR #586 cycle 4 fix で「canonical reference (`gitignore-health-check.sh` L270-
 
 3 観点の**いずれかでも drift していれば「一字一句同期」と主張してはならない**。代替として、「stderr 退避部分のみ揃える」「if-wrapper 構造だけ揃える」とスコープ限定を明示すれば silent over-claim を避けられる。
 
-### scope 外 drift → 別 Issue 化 → 後続 minimal PR で解消する canonical flow (PR #596 / PR #598 での evidence)
+### scope 外 drift → 別 Issue 化 → 後続 minimal PR で解消する canonical flow（実測）
 
 PR #586 cycle 7 で残った観点 (b) `-- ` 引数区切りの drift は、PR #586 の scope ではなく**別 Issue #587 として切り出され**、後続 PR #596 で +1/-1 の minimal diff (literal 1 文字 ` -- ` 追加) として解消された。review は 0 findings / 1 サイクルで mergeable 判定。
 
@@ -102,7 +102,7 @@ PR #596 / #598 の 2 連続で観点 (b)(c) が minimal PR により完全解消
 
 参考フロー: PR #590 (別例、+4 lines) と同型の「極小対称化 PR」パターンの appilcation。`極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる` heuristic (heuristics) と組み合わせて運用するのが canonical。
 
-### canonical reference は caller の precondition 契約まで含めて完成させる (PR #799 での evidence)
+### canonical reference は caller の precondition 契約まで含めて完成させる（実測）
 
 PR #799 で新規 canonical reference (`broken-ref-resolution.md`) を追加し `realpath -m` ベースの相対パス解決 sample bash を載せたが、reference の sample が要求する precondition 変数 (`pages_list_normalized` / `wiki_root` / `page_path` 絶対パス) を caller (`lint.md` Phase 7.x) で生成する Phase が存在せず、両 reviewer が cycle 1 で CRITICAL 指摘した。reference 単独は「完成形」に見えるが、caller 側の bash 実行コンテキストでは実行不能な broken reference になる。
 

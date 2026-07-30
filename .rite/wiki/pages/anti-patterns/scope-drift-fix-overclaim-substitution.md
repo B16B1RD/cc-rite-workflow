@@ -56,9 +56,9 @@ scope を限定する fix を書く際の語彙選択:
 | 否定形による scope 限定 | `... は本 sub-skill **は対象外**` | `... は本 sub-skill **でのみ** 該当` |
 | 並列性の明示 | `(同 pattern は他 sub-skill / X workflow でも使用される共有 pattern)` | (補足なし) — 後段の reviewer が overclaim を疑う材料を与えない |
 
-### PR #969 (Issue #965) での具体事例
+### 具体事例
 
-- **cycle 0 (Issue #965 起票時)**: `start-finalize.md:36` に「4 引数 symmetry は `4-site-symmetry.test.sh` で test 担保」(virtual claim — test SITES には start-finalize.md は含まれていない)
+- **cycle 0（起票時）**: `start-finalize.md:36` に「4 引数 symmetry は `4-site-symmetry.test.sh` で test 担保」(virtual claim — test SITES には start-finalize.md は含まれていない)
 - **cycle 1 fix**: 「`本 sub-skill 固有の` Pre-flight pattern。`4-site-symmetry.test.sh` は create-interview workflow 専用で本 sub-skill は対象外」に置換 (virtual claim は解消されたが「固有」が新 overclaim)
 - **cycle 1 review (code-quality, Confidence 80)**: 「4 引数 pattern は実際は他 sub-skill でも使用される共有 pattern なので「固有」は事実誤認」と指摘
 - **cycle 2 fix**: 「本 sub-skill **での** Pre-flight pattern (同 pattern は他 sub-skill / create-interview workflow でも使用される共有 pattern)」に再置換 (所有格のみ、並列性も明示)
@@ -78,19 +78,19 @@ scope を限定する fix を書く際の語彙選択:
 - [PR #969 fix results](../../raw/fixes/20260515T005734Z-pr-969.md)
 - [PR #969 cycle 2 review (mergeable convergence)](../../raw/reviews/20260515T010126Z-pr-969.md)
 
-## 変種: 「窓を狭めた」を「窓を閉じた」と書く (PR #2044)
+## 変種: 「窓を狭めた」を「窓を閉じた」と書く
 
 中断窓を「review invoke + ステップ 6 全体」から「共有前段 → sentinel 出力」へ**縮める**修正をしたのに、散文 5 箇所で「そういう経路を持たない」と無条件に断定した（2 レビュアーが独立検出）。
 
 > **教訓**: 窓を狭める修正をしたら、**残った窓の大きさを書く**。「閉じた」と書けるのは、残存窓がゼロであることを示せるときだけ。縮小と消滅を書き分けないと、後続の実装者は「ここはもう安全」と読んで別の変更で窓を広げる。あわせて「完全な閉塞には何が必要で、なぜ今やらないか」まで書くと、別 Issue 化の判断材料が残る。
 
-## 変種: 同一 API の default 挙動を、呼び出しごとに書き下さない (PR #2044)
+## 変種: 同一 API の default 挙動を、呼び出しごとに書き下さない
 
 `flow-state.sh set` は `--handoff` を伴わないと handoff を default-clear する。fire 分岐についてはこれを正しくモデル化していたのに、同じ commit で新設した共有前段の set については「再セットしない」（受動）としか書かず、「クリアする」（能動）に踏み込まなかった。結果、停止通知が「counter reset に失敗＝handoff クリアにも失敗」という**成立しない連言**を人間に断定した（3 レビュアーが同一 file:line を検出）。
 
 > **教訓**: default 挙動を持つ API を複数箇所で呼ぶなら、**各呼び出しについて default が何をするかを個別に書き下す**。1 箇所で正しく書けたことは、他の箇所で正しく書けている保証にならない。副産物として、consumer を持たなかった marker に条件分岐という consumer が付いた — **未消費 marker は「まだ書かれていない条件がある」ことの兆候として使える**。
 
-## 変種: 部分的な留保は、無留保より誤解を生む (PR #2044)
+## 変種: 部分的な留保は、無留保より誤解を生む
 
 実装が best-effort（2 つの write のいずれか成功に依存）なのに canonical spec が「〜が必要」と無条件に書き、**片方の caveat だけ**を添えた。読者は「留保は列挙し尽くされている」と合理的に推論するため、部分的な留保は無留保より誤解を生む。留保が 2 つあるなら両方書くか、委譲先へ導線を張る。
 

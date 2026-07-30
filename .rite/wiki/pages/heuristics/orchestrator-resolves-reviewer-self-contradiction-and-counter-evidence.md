@@ -42,19 +42,19 @@ fix 後の cycle 2 レビューで、prompt-engineer / tech-writer の両者が�
 
 **教訓**: 「指摘事項テーブルに載っている = 自動的に blocking」という機械的解釈をしない。reviewer 自身の overall assessment（Approve/mergeable）と個別指摘の文言（「任意」「対応不要」）が一致している場合、その指摘は Finding Quality Guardrail の対象として orchestrator が自身の判断で blocking から除外してよい。逆に、reviewer が overall assessment で懸念を示しているのに個別指摘が軽微に見える場合は、機械的に除外せず再確認する（非対称的な適用— bikeshedding filter は「reviewer 自身が要求していない追加対応をしない」ためのものであり、reviewer の総合判断を覆すためのものではない）。
 
-### 実例 3: 全く別の PR・reviewer 組み合わせでの再現（PR #1757）
+### 実例 3: 全く別の PR・reviewer 組み合わせでの再現
 
 1 行のドキュメント修正 PR（Doc-Heavy PR、tech-writer + code-quality の2reviewer構成）でも同一パターンが再現した。両 reviewer が独立に計 5 件（Low 2件 + nit 3件）を指摘したが、いずれも各 reviewer 自身が「任意の改善」「マージをブロックしません」「対応不要」と明記し、overall assessment はいずれも「承認（mergeable）」だった。orchestrator は同じ Finding Quality Guardrail を適用し blocking findings 0 件で mergeable 確定した。
 
 **教訓**: この解決パターンは特定の PR やレビュアー組み合わせに依存しない汎用的な orchestrator 責務である。「reviewer 自身の overall assessment ＋ 個別指摘文言の両方が非ブロッキングを明示している」という条件が揃えば、PR の性質（コード変更 / ドキュメント変更）や reviewer の専門領域に関わらず適用してよい。
 
-### 実例 4: docs整合修正PRでの再現（PR #1758）
+### 実例 4: docs 整合修正 PR での再現
 
 2ファイル（+8/-1）のドキュメント参照不整合修正PRで、prompt-engineer（必須）+ code-quality（sole-reviewer guard co-reviewer）の2reviewer構成でも同一パターンが再現した。両reviewerが独立に計3件（すべてLow）を指摘したが、いずれも各reviewer自身が「対応不要」「任意」「現状維持が妥当」と明記し、overall assessmentはいずれも「承認（mergeable）」だった。orchestratorは同じFinding Quality Guardrailを適用しblocking findings 0件でmergeable確定した。
 
 **教訓**: sole-reviewer guardによる2人目co-reviewer追加時にも同じ判定パターンが安定して機能する。co-reviewerが独自の観点（本例ではテンプレート内表記形式の混在）を追加指摘しても、reviewer自身が非blockingと明記していれば同一のguardrailで扱える。
 
-### 実例 5: 出力側フィルタでなく入力側プロンプトで収束させる — 「0 件は正当な結論」を明示する (PR #2013)
+### 実例 5: 出力側フィルタでなく入力側プロンプトで収束させる — 「0 件は正当な結論」を明示する
 
 実例 1〜4 はいずれも **reviewer が出した指摘を orchestrator が事後にフィルタする**（出力側）解法だった。PR #2013 の cycle 4 では、**プロンプト設計で事前に**（入力側）収束させる対の手法が実証された。
 
@@ -64,7 +64,7 @@ cycle 4 のプロンプトでは各 reviewer に「ここまで 19 件が全て�
 
 **あわせて、収束の決め手は「実測で潰した」記録が reviewer 側に残ること**だった。最終 cycle が 0 件になったのは reviewer が懸念を持たなかったからではなく、懸念を実機で潰したから — security は `kill "TERM", -$pid` について「呼び出し元シェルのグループを撃つか」を sibling プロセスの生存確認で否定し、test は 6 種の mutation で新テストの load-bearing を確認し、devops は CI 実行時間を実測した（両スイート 81s / 予算 15 分の 9%）。前 cycle の指摘への対応内容と検証手順を具体的に渡すと、reviewer は再現から入れる。
 
-### 実例 6: reviewer の数値主張が誤っていても、中核の欠陥は実在しうる (PR #2013 cycle 3)
+### 実例 6: reviewer の数値主張が誤っていても、中核の欠陥は実在しうる（cycle 3）
 
 application reviewer が `_timeout` の perl シムについて「GNU timeout 2s vs シム 27s」と報告したが、orchestrator が再現したところ **GNU timeout も 27s**（trap TERM を持つ子は、グループ送信でも TERM を無視すれば待つ）で数値は不正確だった。しかし **別のケース（孤児が stdout を保持）では GNU 3s vs シム 30s** となり、中核の主張（deadline がプロセスグループに効かない）は実在を確認できた。
 

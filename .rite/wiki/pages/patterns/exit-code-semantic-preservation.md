@@ -91,7 +91,7 @@ skip 経路では `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` のような sen
 
 本パターンは「独自定義 exit code を持つスクリプト」を対象とする。`git diff --quiet` のような標準コマンドの 3 値 exit code (0/1/>1) も case で扱うが、そちらは [`if ! cmd` anti-pattern](../anti-patterns/bash-if-bang-rc-capture.md) が別軸で混在するので区別して扱うこと。
 
-### script 自身の失敗経路も宣言した exit-code 契約に従う (PR #1306 で追加)
+### script 自身の失敗経路も宣言した exit-code 契約に従う
 
 caller 側の case routing だけでなく、**script 自身のすべての内部失敗経路** が header で宣言した exit-code 語彙に従う必要がある。peer script から arg-parse を copy-paste すると、peer と異なる exit-code 契約のもとで失敗経路が契約違反の code を emit する。
 
@@ -99,10 +99,10 @@ PR #1306 の `projects-board-drift-check.sh` は `watchdog-status-mismatch.sh` �
 
 - **`${2:-}` は防御にならない**: `${2:-}` は `set -u` の unset 参照だけを防ぐ。`shift 2` が引数不足で失敗する経路は防げない。
 - **canonical fix**: `[ "$#" -lt 2 ]` で値の存在を gate し、欠落時は契約どおり exit 2 (invocation error) へ統一する。
-- **教訓**: 独自 exit-code 契約を持つ script では「全失敗経路 (arg-parse 含む) が契約の code を emit するか」を runtime で検証する。peer からの copy-paste 同形性は exit-code 契約一致を保証しない (Asymmetric Fix Transcription の peer script flag 契約 runtime 検証 sub-pattern (PR #631) の再演)。新規 lint step 追加 PR では exit-code 契約が反復 trigger になる (PR #1306 は cycle 1 の dominant finding として検出、4 cycle で mergeable)。
-- **successful preventive application (PR #1743)**: 新規 drift-check スクリプトが `--repo-root) [ $# -ge 2 ] || { echo "ERROR: ..." >&2; usage >&2; exit 2; }` の consume-before-validate ガードを「set -u の unbound $2 が exit 1 = drift 誤分類になるのを防ぐ」rationale コメント付きで最初から適用し、回帰 TC（`--repo-root` 値欠落 → rc=2）で pin した。sibling スクリプト（doc-heavy-patterns-drift-check.sh）に同パターンが pre-existing で残る点は scope 外として別 Issue 追跡 — 本 pattern の事前適用 + TC pin が cycle 収束を阻害しない実例。
+- **教訓**: 独自 exit-code 契約を持つ script では「全失敗経路 (arg-parse 含む) が契約の code を emit するか」を runtime で検証する。peer からの copy-paste 同形性は exit-code 契約一致を保証しない (Asymmetric Fix Transcription の peer script flag 契約 runtime 検証 sub-pattern の再演)。新規 lint step 追加 PR では exit-code 契約が反復 trigger になる（cycle 1 の dominant finding として検出され 4 cycle で mergeable に到達した実測がある）。
+- **successful preventive application**: 新規 drift-check スクリプトが `--repo-root) [ $# -ge 2 ] || { echo "ERROR: ..." >&2; usage >&2; exit 2; }` の consume-before-validate ガードを「set -u の unbound $2 が exit 1 = drift 誤分類になるのを防ぐ」rationale コメント付きで最初から適用し、回帰 TC（`--repo-root` 値欠落 → rc=2）で pin した。sibling スクリプト（doc-heavy-patterns-drift-check.sh）に同パターンが pre-existing で残る点は scope 外として別 Issue 追跡 — 本 pattern の事前適用 + TC pin が cycle 収束を阻害しない実例。
 
-### markdown SKILL.md の表示ロジックでも同じ語彙保持が要る (PR #1847 で追加)
+### markdown SKILL.md の表示ロジックでも同じ語彙保持が要る
 
 本パターンはこれまで bash script の `exit code` 語彙を対象としてきたが、同じ「legitimate skip と genuine failure を区別しないと false-positive を生む」構造は、**SKILL.md 内の完了レポート表示ロジック**（`[CONTEXT] KEY=value` sentinel の有無で分岐する markdown 記述）でも再演する。
 

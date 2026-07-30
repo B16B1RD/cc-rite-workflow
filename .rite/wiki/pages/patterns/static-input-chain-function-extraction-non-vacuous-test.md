@@ -24,7 +24,7 @@ hook 内の文字列処理連鎖 (エスケープ等) が **静的入力 (litera
 
 ## 詳細
 
-### 失敗の構造 (PR #1281 cycle 1 で実測)
+### 失敗の構造（cycle 1 で実測）
 
 `pre-tool-bash-guard.sh` の deny フォールバック JSON エスケープ連鎖 (`\\` → `\"` → `\n` → `neutralize_ctrl --c0-only`) は静的な deny reason のみに適用される。対称転記元 (stop-loop-continuation.sh) の TC-16 は handoff 注入経路があるため実 ESC バイトを reason に流して機能を exercise できたが、転記先の TC-116 は注入経路が無く静的 reason のみで fallback を発火させたため、「valid JSON」「no raw ESC byte」の 2 assertion が vacuous 化した:
 
@@ -36,7 +36,7 @@ hook 内の文字列処理連鎖 (エスケープ等) が **静的入力 (litera
 
 これは [[asymmetric-fix-transcription]] が **テスト assertion レベル** で発生した形態 — 対称転記時は「テストが注入する入力の性質 (静的 vs 動的)」も対称性監査の対象に含める必要がある。
 
-### Canonical 解決手順 (PR #1281 fix で確立)
+### Canonical 解決手順（fix で確立）
 
 1. **連鎖を関数に抽出する**: エスケープ連鎖を `_bash_guard_escape_deny_reason()` のような名前付き関数に抽出する。production 側の挙動は不変 (呼び出し形のみ変化)。
 2. **テスト側で境界行 extract + eval**: hook ファイル全体を source すると副作用 (trap / main 実行) が走るため、awk の範囲指定で関数定義行だけを抽出して eval する:
@@ -49,11 +49,11 @@ hook 内の文字列処理連鎖 (エスケープ等) が **静的入力 (litera
 
    `declare -f` gate で「抽出に失敗して関数が未定義のまま assertion が空振りする」silent miss を防ぐ。
 3. **実入力を直接注入する**: 抽出した関数に実 C0 制御バイト (raw ESC 0x1b、改行、`"` / `\` 等) を含む入力を流し、出力が valid JSON 文字列リテラルとして escape 済みであることを assert する。
-4. **mutation 検証を commit 前に実施する**: 隔離 worktree で連鎖の核心行を削除し、追加した assertion が FAIL することを確認してから commit する (PR #1281 では核心行削除で 2 assertion fail を実測)。
+4. **mutation 検証を commit 前に実施する**: 隔離 worktree で連鎖の核心行を削除し、追加した assertion が FAIL することを確認してから commit する（核心行削除で 2 assertion fail を実測）。
 
 ### Propagation 判断 — テスト可能性の動機が無い側には関数化を伝播しない
 
-stop-loop-continuation.sh の同型インライン連鎖には関数化を **伝播しなかった**: handoff 注入経路があり TC-16 が既に非 vacuous に pin 済み = テスト可能性のための関数抽出という動機が存在しない。構造の非対称 (片方は関数、片方はインライン) が生まれるが機能は同一であり、判断根拠を commit message の decision 行に記録した。[[asymmetric-fix-transcription]] の「同期すべきでない site の識別」(PR #1273 の test scope pin 保護と同系) にあたる意図的非対称。
+stop-loop-continuation.sh の同型インライン連鎖には関数化を **伝播しなかった**: handoff 注入経路があり TC-16 が既に非 vacuous に pin 済み = テスト可能性のための関数抽出という動機が存在しない。構造の非対称 (片方は関数、片方はインライン) が生まれるが機能は同一であり、判断根拠を commit message の decision 行に記録した。[[asymmetric-fix-transcription]] の「同期すべきでない site の識別」（test scope pin 保護と同系）にあたる意図的非対称。
 
 ### 討論合意の fix への反映はコメント記録に縮退させる
 
@@ -63,7 +63,7 @@ cycle 1 の「source ガード追加 (fail-closed 化)」という defensive cod
 
 cycle 2 の test reviewer は fix 側の mutation claim を鵜呑みにせず、独立に 4 種の mutation 実験 (各エスケープ行の個別削除 + neutralize→cat 置換) を worktree-only pattern で再実施し、4 段連鎖のどの 1 行を壊しても assertion が落ちることを再実証した。fix 側 claim (2 assertion fail) と観測数は異なったが「非 vacuous」という核心の一致を確認して合意 — 詳細は [[mutation-testing-test-fidelity]] を参照。
 
-### detection program 抽出への拡張 (PR #1314 で確認, 0 findings)
+### detection program 抽出への拡張（0 findings で確認）
 
 本 pattern の「関数抽出」は **検出ロジック (jq filter / detection program) の抽出** にも一般化される。PR #1314 (T-7 behavioral fixture) は `projects-board-drift-check.sh` の jq 検出 program を **コピーではなく awk で実体抽出** し、`gh api graphql` 出力を模した GraphQL-shaped JSON fixture (6 分類ケース) を stdin で流して classification を検証した。これにより、jq 述語の literal を保持したまま周囲の scoping を反転させる semantic break (`$pitem != null` → `== null`、`select($st != "Done")` → `== "Done"`、`.project.number == $pn` board scoping 削除) — 静的 grep (T-5) では literal 一致のため見えない break — が behavioral assert で捕捉される。4 reviewer (test / code-quality / error-handling / security) が全員「可」、mutation 検証で検出能力を実証し 0 findings / 1 cycle mergeable。
 

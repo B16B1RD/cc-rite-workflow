@@ -24,7 +24,7 @@ confidence: high
 
 ### 観測された一次情報
 
-`f0d8791d` セッション (PR #654 4-site 対称化マージ 9 時間後) の `.jsonl` line 65:
+`f0d8791d` セッション（4-site 対称化マージの 9 時間後）の `.jsonl` line 65:
 
 ```json
 {
@@ -38,7 +38,7 @@ confidence: high
 
 LLM はこのテキストを **emit した上で** turn を閉じている。content には `IMMEDIATELY`, `DO NOT stop`, `SAME response turn`, `Step 0 Immediate Bash Action` という最強の declarative enforcement 句が **すべて含まれている** にもかかわらず `stop_reason: end_turn` が選択された。
 
-`f7afee09` セッション (PR #636 マージ前 10 時間) でも同様の構造で 7 分間隔で 2 回連続 end_turn が観測されており、最新の対策 (4-site 対称化 #654) を全部入れても LLM の選択は変わらない。
+`f7afee09` セッション（8 回目対策のマージ前 10 時間）でも同様の構造で 7 分間隔で 2 回連続 end_turn が観測されており、最新の対策 (4-site 対称化 #654) を全部入れても LLM の選択は変わらない。
 
 ### 過去 9 件の対策の効果検証
 
@@ -63,7 +63,7 @@ LLM の `stop_reason` は **モデル内部の確率的選択**で決まる。RL
 
 ### Anti-pattern としての症状
 
-declarative enforcement が効かないと知らずに「直前の対策が効かない → さらに declarative 層を積む」という反応をすると、N+1 件目の regression が必然的に発生する周期サイクルに陥る。本リポジトリでは過去 2 ヶ月で 9 件 (Issue #3 → #651) の累積を経験した。
+declarative enforcement が効かないと知らずに「直前の対策が効かない → さらに declarative 層を積む」という反応をすると、N+1 件目の regression が必然的に発生する周期サイクルに陥る。本リポジトリでは過去 2 ヶ月で 9 件の累積を経験した。
 
 ### 代替手段 (proactive な構造改訂)
 
@@ -79,7 +79,7 @@ declarative では足りないと判明した場合の選択肢:
 
 A/B はそれぞれトレードオフ (modular 性 / hook 仕様の調査コスト) があるため、対策決定前に **必ず一次情報で根本仮説検証**を行うこと。
 
-### 解決アプローチの実証 (PR #1165 / #1166): terminal vocabulary 撤廃
+### 解決アプローチの実証: terminal vocabulary 撤廃
 
 本 anti-pattern の延長として、cleanup → wiki:ingest → wiki:lint の 3 段ネストで lint の sentinel が LLM 発話の最終行になると、literal `completed` が turn-boundary heuristic を発火させ caller の残 step が skip される事象が #604 / #618 / #923 / #1144 / #1163 と繰り返し再発した。これらはすべて passive な multi-layer defense (HTML コメント化 / disambiguation marker 追加 / 「TaskCreate + return 時 TaskList 確認」SKILL.md ルール) であり `completed` semantic 自体は保持していた。
 

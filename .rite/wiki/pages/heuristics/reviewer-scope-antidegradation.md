@@ -26,7 +26,7 @@ re-review / verification mode (前回 review comment の検証モード) では�
 
 ## 詳細
 
-### 発生事例 (PR #586 cycle 4)
+### 発生事例（cycle 4）
 
 PR #586 で以下の 2 つの design issue が cycle 1-3 で見落とされ、cycle 4 で初検出された:
 
@@ -54,7 +54,7 @@ PR #586 で以下の 2 つの design issue が cycle 1-3 で見落とされ、cy
 - cycle N で初検出された finding が「cycle 1 で検出可能だった latent issue」に該当する場合、reviewer scope の網羅性を retrospective で見直すシグナルとする
 - 特に structural / design issue (API shape / distribution / 責務分界) は review cycle の early で検出されるのが健全。cycle 4+ で初検出されるケースは scope drift の warning sign
 
-### Verification mode FIXED 判定の evidence gate (PR #617 cycle 2 で追加)
+### Verification mode FIXED 判定の evidence gate（cycle 2 で追加）
 
 verification mode で「前回指摘 N 件が解消されたか」を判定する際、目視確認や PR description 上の self-claim だけで FIXED と認定する経路は false-positive リスクが高い。`PR #617 cycle 2` で確立された canonical evidence gate は **「実ファイルの grep 確認 + bash -n syntax 検証」** の 2 段:
 
@@ -65,7 +65,7 @@ evidence gate を通過した時点で FIXED と判定し、verification mode �
 
 PR #617 cycle 2 では cycle 1 の HIGH (ANCHOR crossing) と LOW (jp/en mixed) の両方をこの 2 段 evidence gate で FIXED と判定し、0 findings + mergeable で 1 cycle 解消した。verification mode が「scope を狭めるモード」ではなく「より厳格な evidence gate を追加するモード」として正しく機能した実例。
 
-### 7-cycle 自然収束と Quality Signal 1 unfired pattern (PR #747 cycle 1-7 での evidence)
+### 7-cycle 自然収束と Quality Signal 1 unfired pattern（cycle 1-7 の実測）
 
 PR #747 (`.rite-flow-state` migration 機構実装) の dogfooding review で、Anti-Degradation Guardrail を厳守した結果として 7 cycle に達するまで自然収束した実測軌跡: **3 → 6 → 2 → 7 → 3 → 1 → 0** (累積 22 件 fix、cycle 7 で `[review:mergeable]`)。本軌跡は以下 2 点で従来観察と異なる healthy convergence の典型例:
 
@@ -79,7 +79,7 @@ PR #747 (`.rite-flow-state` migration 機構実装) の dogfooding review で、
 
 PR #747 のような healthy 7-cycle 軌跡では `loop_count` hard limit ではなく **Quality Signal 監視 + reviewer の `mergeable` 自己評価** で loop 終了を機械的に判定するのが canonical。Anti-Degradation Guardrail を時間効率の理由で緩めると、本来 cycle 後半で初検出される latent issue が merge 後 regression として顕在化するリスクが高い (cf. [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md))。
 
-### Severity 厳格化による無限 fix-loop 回避 (PR #800 cycle 4 で実証)
+### Severity 厳格化による無限 fix-loop 回避（cycle 4 で実証）
 
 PR #800 cycle 4 で Anti-Degradation Guardrail を **maximum strict** に適用した結果、`Confidence ≥ 80` + `revert test pass` + `機能影響あり` の 3 条件を満たす finding のみを blocking とする運用で 4 cycle で `[review:mergeable]` に収束 (累計 6 finding、CRITICAL 1 + MEDIUM 2 + LOW 3、5 fixed + 1 replied-only)。
 
@@ -94,7 +94,7 @@ cycle 1-3 で発生していた以下のリスクを cycle 4 で decisive に回
 2. **revert test pass**: 修正前後の wording をそれぞれ「実装 code との一致度」で機械検証し、両方とも SoT-aligned な場合は wording 改変を行わない
 3. **機能影響あり**: 修正対象が実装 code の挙動 / API contract / user-visible behavior に影響を与えるかを判定。pure prose 改変で機能影響なしの場合は LOW 以下に降格
 
-3 条件すべて満たす finding のみが blocking として fix される。informational / hypothetical / nitpick / pre-existing drift / scope 外は本 gate で自動降格され、loop 数を 4 以下に抑える効果が実証された (PR #800 4 cycle 6 finding 累計、healthy convergence)。
+3 条件すべて満たす finding のみが blocking として fix される。informational / hypothetical / nitpick / pre-existing drift / scope 外は本 gate で自動降格され、loop 数を 4 以下に抑える効果が実証された（4 cycle・6 finding 累計の healthy convergence）。
 
 ## 関連ページ
 

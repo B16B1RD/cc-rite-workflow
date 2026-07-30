@@ -106,9 +106,9 @@ repo=$(gh repo view --json name --jq '.name') || {
 
 これにより orchestrator state dependency を排除し、bash invocation の独立性を担保する。
 
-### 変種: 明示的な exit code チェックすら dead code 化する capture-first の必要性 (PR #1973)
+### 変種: 明示的な exit code チェックすら dead code 化する capture-first の必要性
 
-要素 (1) `set -o pipefail` 宣言の欠如は、`if cmd | jq` のような **暗黙の** silent suppression だけでなく、開発者が明示的に書いた exit code チェックすら dead code 化する、より insidious な変種を生む。PR #1973 (Issue #1944) では、開発者が「pipefail 対策のつもり」で以下を書いていた:
+要素 (1) `set -o pipefail` 宣言の欠如は、`if cmd | jq` のような **暗黙の** silent suppression だけでなく、開発者が明示的に書いた exit code チェックすら dead code 化する、より insidious な変種を生む。実測では、開発者が「pipefail 対策のつもり」で以下を書いていた:
 
 ```bash
 # ❌ NG: 明示的にチェックしているつもりが dead code
@@ -141,7 +141,7 @@ fi
 
 ### 累積観測
 
-PR #1004 (Issue #1003 = Projects Status In Review 遷移漏れ修正) の review-fix loop で 3 要素の同時欠落が 3 site (start.md / start-finalize.md / post-compact.sh) で同時 surface し、cycle 3 fix で全 site 揃って canonical 実装に統一。これは Wiki 経験則 [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の sibling site 対称化と組み合わせて適用すべき canonical 規範。
+Projects Status In Review 遷移漏れを修正した PR の review-fix loop で 3 要素の同時欠落が 3 site (start.md / start-finalize.md / post-compact.sh) で同時 surface し、cycle 3 fix で全 site 揃って canonical 実装に統一。これは Wiki 経験則 [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の sibling site 対称化と組み合わせて適用すべき canonical 規範。
 
 ## 関連ページ
 
@@ -154,5 +154,5 @@ PR #1004 (Issue #1003 = Projects Status In Review 遷移漏れ修正) の review
 - [PR #1004 cycle 2 review (3 reviewer 独立検出 / F-01 syntax error + pipefail / dangling references)](../../raw/reviews/20260517T000446Z-pr-1004.md)
 - [PR #1004 cycle 3 review (Self-violation cascade / DRY 4-site / Observability gap F-08/F-09/F-10)](../../raw/reviews/20260517T004634Z-pr-1004.md)
 - [PR #1004 cycle 3 fix (stderr stage separation / sub-shell scope-internal retrieval / state_root_inaccessible emit)](../../raw/fixes/20260517T020335Z-pr-1004.md)
-- [PR #1973 cycle 3 review (Issue #1944、5 reviewer 独立検出 — 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化)](../../raw/reviews/20260722T221143Z-pr-1973.md)
+- [PR #1973 cycle 3 review — 5 reviewer 独立検出: 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化)](../../raw/reviews/20260722T221143Z-pr-1973.md)
 - [PR #1973 cycle 3 fix (capture-first pattern で pipefail 非依存の exit code チェックに修正)](../../raw/fixes/20260722T221542Z-pr-1973.md)

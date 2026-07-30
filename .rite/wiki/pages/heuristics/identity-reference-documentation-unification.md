@@ -46,7 +46,7 @@ reference document (SKILL.md / `references/*.md` / 関連 commands) で identity
 
 ## 詳細
 
-### Observed pattern (PR #562 で実測)
+### Observed pattern（実測）
 
 PR #562 (workflow-identity reference の新規追加 + 7 commands への波及) で cycle 1-3 に渡って同じ root cause の drift が繰り返された:
 
@@ -92,7 +92,7 @@ SKILL.md / reference document / PR body / 各 commands 内コメント等に cal
 - 短期: drift 検出時は**全箇所を単一コミットで一括同期**する (cycle 2 で create が追加されたら SKILL.md / workflow-identity.md / PR body の全 enumeration を同じコミットで更新)
 - 長期: `grep -l <reference-marker> plugins/rite/commands/**/*.md` ベースで自動抽出する pattern に置き換える (drift-resistant)
 
-#### 6. YAML frontmatter description と本文階層 drift (PR #564 で追加)
+#### 6. YAML frontmatter description と本文階層 drift
 
 本文側で階層構造 (例: 「5 ブロッキング + 1 informational」の 2 層分類) に変更しても、YAML frontmatter `description:` / `SKILL.md` の一覧説明は flat 列挙 (`5 項目`) のまま残存しやすい。description は Skill 一覧で最初に表示される文字列なので、ユーザの期待値ずれを直接生む。
 
@@ -112,7 +112,7 @@ PR #616 は本 sub-heuristic の **3 例目 canonical SoT 単一化成功適用*
 
 ##### Corollary: canonical SoT 内部でも列挙順序は観点により異なる
 
-drift 判定では「どの canonical 順を採用するか」を明示する必要がある。例: `lint.md` L2 description は blocking → informational 順、L11-16 テーブルは blocking 列 Yes/No グループ順で、未登録 raw の位置が異なる。canonical SoT 内部の順序差は drift ではなく観点の差であり、downstream (SKILL.md / ingest.md 等) が参照する際はどちらを canonical とするかを明示することで pair 順一貫性を担保する (PR #594 では「`lint.md` canonical 順」と明示)。
+drift 判定では「どの canonical 順を採用するか」を明示する必要がある。例: `lint.md` L2 description は blocking → informational 順、L11-16 テーブルは blocking 列 Yes/No グループ順で、未登録 raw の位置が異なる。canonical SoT 内部の順序差は drift ではなく観点の差であり、downstream (SKILL.md / ingest.md 等) が参照する際はどちらを canonical とするかを明示することで pair 順一貫性を担保する（実測では「`lint.md` canonical 順」と明示した）。
 
 #### 5. PR body AC metadata の cross-cycle 更新責務
 
@@ -120,7 +120,7 @@ PR description の AC 検証行 (「N commands で参照 / N ファイル PASS�
 
 → **Correct**: AC-N 検証側 (reviewer / author) は PR description metadata の数値も再検証する責務を持つ。LLM に AC verification を依頼する際「PR body の数値も含めて」と明示する。
 
-#### 7. UI メッセージの多言語混在 style drift (PR #617 で追加)
+#### 7. UI メッセージの多言語混在 style drift
 
 同一 scope (同一コマンド出力 / 同一 Phase の Hint メッセージ群 / 同一 reference 文書の警告群) において、既存メッセージが英文統一されているのに新規追加メッセージで日英混在 (例: `Hint: 詳細は spec を確認してください`) を使うと、style drift として検出される。canonical SoT は「同 scope 多数派の言語選択」であり、新規追加側を既存多数派に合わせる。
 
@@ -140,7 +140,7 @@ PR #826 (`style(rite): #819 ready.md Phase 2.1 説明文の英語ベース統一
 
 本 PR の特徴は、PR #617 の i18n style 統一を「該当 blockquote 群」のみに限定せず、**同一 scope の context synonym group 全体** (blockquote 説明文 3 件 + bash コメント 2 箇所 + 周辺 prose の E2E flow detection 説明 + LLM routing 指示) に**一括適用**した点。これにより部分翻訳 → 残存日本語の drift を構造的に予防し、cycle 1 で 4 AC 全合格 + bash detection logic 0 行変更を達成。Cross-File Impact Check で `phase5_post_review` / `phase5_post_fix` token が phase-transition-whitelist.sh / post-tool-wm-sync.sh / resume.md / pr/review.md と整合 drift なしを確認。
 
-**学び**: i18n style 統一 (PR #617) と「文脈類義語群全体」スコープ (本ページの上位抽象) は独立した sub-heuristic ではなく、後者の **scope 決定原則を前者の適用に流用** することで「style drift 部分修正 → 残存 drift」の cycle 2 ループを構造的に防げる。新規 PR 起票時に LOW style finding が予想される場合、最初から context synonym group を grep して scope を確定させる approach が canonical。
+**学び**: i18n style 統一と「文脈類義語群全体」スコープ (本ページの上位抽象) は独立した sub-heuristic ではなく、後者の **scope 決定原則を前者の適用に流用** することで「style drift 部分修正 → 残存 drift」の cycle 2 ループを構造的に防げる。新規 PR 起票時に LOW style finding が予想される場合、最初から context synonym group を grep して scope を確定させる approach が canonical。
 
 ### Identity scope の厳守 (AC-10 Non-regression)
 

@@ -77,7 +77,7 @@ anchor を伴わない finding は以下のリスクを持つ:
 
 このため evidence anchor を「findings 提出の必須フォーマット」として明示化する設計が有効。
 
-### Reviewer literal output contract の重要性 (PR #779)
+### Reviewer literal output contract の重要性
 
 PR #779 で観測した sub-pattern: **reviewer がレビュー本文中に Likelihood-Evidence 相当の記述を持っていても、`Likelihood-Evidence:` という literal anchor を含めていなければ Phase 5.3.0 で mechanical 降格される**。
 
@@ -103,7 +103,7 @@ reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の lite
 
 #### 影響の orthogonality
 
-本 sub-pattern と Hypothetical 降格軸 (PR #589) は orthogonal — reviewer 内容の構造的問題 (literal anchor 欠落) と reviewer 判定の論理的問題 (現状コード非依存の仮定的リスク) は別軸で処理されるため、両 gate を独立に通過する必要がある。
+本 sub-pattern と Hypothetical 降格軸は orthogonal — reviewer 内容の構造的問題 (literal anchor 欠落) と reviewer 判定の論理的問題 (現状コード非依存の仮定的リスク) は別軸で処理されるため、両 gate を独立に通過する必要がある。
 
 ### 第3の orthogonal 軸: 推奨文の self-declared 不要性 (Finding Quality Guardrail bikeshedding filter、PR #1812)
 
@@ -113,7 +113,7 @@ PR #1812 cycle 3 で観測した sub-pattern: reviewer が finding を LOW sever
 
 適用時の注意: この軸は severity が LOW（またはそれに準じる低確信度）の場合にのみ適用し、CRITICAL/HIGH の finding を推奨文の言い回しだけで降格させてはならない（severity 自体は reviewer の技術判断であり、本軸はあくまで「reviewer 自身が non-blocking と結論している」ことの明示的シグナルを拾うものであるため）。
 
-### 第4の orthogonal 軸: 独立レビュアーの非裏付け + worst-case と severity の不整合 (PR #1847 cycle 3)
+### 第4の orthogonal 軸: 独立レビュアーの非裏付け + worst-case と severity の不整合（cycle 3）
 
 PR #1847 cycle 3 で観測した sub-pattern: 単一 reviewer（error-handling）が anchor 付きで HIGH finding を提出したが、**同一箇所を独立に精査した別 reviewer（prompt-engineer）が全分岐をトレースした上で「可」（指摘なし）と明示的に判定していた**。この非裏付け（non-corroboration）自体が、Critic フェーズで severity を再検討する signal として機能する。
 
@@ -124,7 +124,7 @@ PR #1847 cycle 3 で観測した sub-pattern: 単一 reviewer（error-handling�
 
 適用条件（濫用防止）: 本軸は「他 reviewer の非裏付け」単独では発動しない。**worst-case のブラスト半径が small/non-blocking であることの独立確認**とセットで初めて Critic 判断の根拠として十分になる。CRITICAL/HIGH の finding を単に「他が見つけなかったから」だけで降格させてはならない（false negative の見逃しリスクがあるため、severity 自体は reviewer 個々の技術判断を尊重しつつ、対比評価の記録を残す）。
 
-### 再検証サイクルでの重複降格 — 既 Issue 化済み finding は再 Issue 化せず Decision Log 記録に留める (PR #1852)
+### 再検証サイクルでの重複降格 — 既 Issue 化済み finding は再 Issue 化せず Decision Log 記録に留める
 
 PR #1852 の review-fix ループ cycle2（検証レビュー）で、tech-writer が cycle1 と同一の pre-existing finding（旧ファイル名の残存参照）を再度検出した。cycle1 では当該 finding から follow-up Issue が既に切り出し済みだったため、cycle2 での再検出は `Likelihood-Evidence:` anchor 欠落により本 gate で機械的に推奨事項へ降格され、`[review:mergeable]` に収束した。
 

@@ -26,7 +26,7 @@ confidence: medium
 
 ## 詳細
 
-PR #1722 (Issue #1715、commands/ → skills/ 移行の stale 参照一掃) で実測した線引き:
+commands/ → skills/ 移行に伴う stale 参照一掃で実測した線引き:
 
 **意図的維持と判定するカテゴリ (grep hit が残ってよい)**:
 
@@ -40,14 +40,14 @@ PR #1722 (Issue #1715、commands/ → skills/ 移行の stale 参照一掃) で�
 - 「意図的維持」の帰属が曖昧な hit (機能コードだが AC の除外宣言がない等) は reviewer 単独で判定せず boundary 分類でユーザー判断に回す。
 - AC 達成報告では「残存 N 件はすべて除外カテゴリ該当 (内訳付き)」の形で grep 結果と線引きを同時に示す。
 
-**参照更新時の派生原則**: 旧パスを新パスへ置換する際、旧ファイル固有の識別子 (Phase 番号・行番号) を機械的に持ち込まず、**現行ファイルで実在確認したパターン名・セクション名へ言い換える**。実在しない識別子の転記は新規 drift の即時導入になる (PR #1722 fix では旧 `pr/create.md Phase 3.4` を、現行ファイルで実在確認した `pr_title.txt 変数経由パターン` に言い換えて新規 drift を回避)。
+**参照更新時の派生原則**: 旧パスを新パスへ置換する際、旧ファイル固有の識別子 (Phase 番号・行番号) を機械的に持ち込まず、**現行ファイルで実在確認したパターン名・セクション名へ言い換える**。実在しない識別子の転記は新規 drift の即時導入になる（fix では旧 `pr/create.md Phase 3.4` を、現行ファイルで実在確認した `pr_title.txt 変数経由パターン` へ言い換えて新規 drift を回避した）。
 
-**inert / vestigial 記述への拡張 (PR #1726、Issue #1714)**: 同じ意図的維持境界の線引きは、path 参照一掃だけでなく **inert（書いてあるが効かない）記述の掃除**（空 `## Detailed Checklist` 見出し・未実装スキャフォルディング prose・forward-looking な「将来 X を実装する計画」記述）にも適用される。各記述の処置は「削除 / reword / 変更なし」の 3 択で判定する:
+**inert / vestigial 記述への拡張**: 同じ意図的維持境界の線引きは、path 参照一掃だけでなく **inert（書いてあるが効かない）記述の掃除**（空 `## Detailed Checklist` 見出し・未実装スキャフォルディング prose・forward-looking な「将来 X を実装する計画」記述）にも適用される。各記述の処置は「削除 / reword / 変更なし」の 3 択で判定する:
 
 - **削除した見出しが umbrella ラベルとして別ファイルの散文から参照される**場合、その別ファイルが本 PR の凍結対象 (MUST NOT modify) なら片側だけ更新せず follow-up Issue へ切り出す（一部更新は N 箇所間の不整合を生む。PR #1726 では散文参照 5 箇所を #1725 へ分離）。
 - **forward-looking な「将来実装」prose が既に部分実装済み**のことがある。この場合は削除でも保持でもなく **reword** で stale claim のみ除去し、有効な運用指示は残す（例: 「enforcement 未実装 / 将来 drift-check で計画」→「自動 drift-check なし = 手動同期せよ」）。
 - 番号付きフローの中間 step 削除時は renumber と実装ノート内の全「順序 N」参照の整合を必ず検証する（[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の step-renumber 系）。
-- **死蔵に見えて実は機能している slot は「変更なし」**と判定する（PR #1726 では status enum の 1 値が read 側で実消費されており「将来予約」ではないため保持。inert 判定には consumer の grep 確認が必要）。
+- **死蔵に見えて実は機能している slot は「変更なし」**と判定する（実測では status enum の 1 値が read 側で実消費されており「将来予約」ではないため保持。inert 判定には consumer の grep 確認が必要）。
 
 ## 関連ページ
 
@@ -60,4 +60,4 @@ PR #1722 (Issue #1715、commands/ → skills/ 移行の stale 参照一掃) で�
 - [PR #1722 review results (cycle 1: AC-1 残照ゼロ型 AC の境界判定が boundary 分類でユーザー判断へ回された実測)](../../raw/reviews/20260702T015417Z-pr-1722.md)
 - [PR #1722 fix results (過去形 incident 記述の意図的残置判断 + 実在確認済みパターン名への言い換え)](../../raw/fixes/20260702T020209Z-pr-1722.md)
 - [PR #1722 review results cycle 2 (pre-existing ドリフトの revert test による boundary/調査推奨への正分流)](../../raw/reviews/20260702T032816Z-pr-1722.md)
-- [PR #1726 review results (Issue #1714、reviewer agent 定義の inert 記述掃除。空 Detailed Checklist 削除 + 未実装スキャフォルディング prose の削除/reword、0 findings で 1 cycle mergeable)](../../raw/reviews/20260702T100548Z-pr-1726.md)
+- [PR #1726 review results — reviewer agent 定義の inert 記述掃除。空 Detailed Checklist 削除 + 未実装スキャフォルディング prose の削除/reword、0 findings で 1 cycle mergeable)](../../raw/reviews/20260702T100548Z-pr-1726.md)

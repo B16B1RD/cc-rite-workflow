@@ -24,7 +24,7 @@ path 内の固定セグメント名 (`rite` 等) を `rite.*?/hooks/` のよう�
 
 ## 詳細
 
-### 検出された具体ケース (PR #1236)
+### 検出された具体ケース
 
 `settings.local.json` から rite hook エントリを除去する cleanup の正規表現が `rite.*?/hooks/` だった。`rite` を path segment 境界に固定していないため、`favorite/hooks/` 等のユーザー定義の非 rite hook を誤マッチし silent 除去しうる。これは **user-controlled security config の integrity リスク** (ユーザーが意図した hook が黙って消える)。
 
@@ -45,11 +45,11 @@ Issue が素朴に例示した anchor `(?:^|/)rite/hooks/` は cache 形の中�
 
 over-match (false-positive) を直すために pattern を厳格化するときは、**実在する全 path 形状を列挙してから** anchor を設計する。さもないと「look-alike を誤除去する」バグを「本物を除去し残す」バグに変えるだけで、どちらも silent regression として残る。anchor の妥当性は must-match 群 (cache/dev/相対) と must-not-match 群 (look-alike) の双方で verify する。
 
-### 散文側への波及と完結 (PR #1238)
+### 散文側への波及と完結
 
-PR #1236 (Issue #1231) が修正したのは regex 実装側 (`settings-local-rite-hook-cleanup.py:33` / `session-start.sh:201`) のみで、`commands/init.md` の**散文の検出基準**は plain substring `rite/hooks/` を記述として残していた。同一 defect class が同一 invariant の別表現 (実装 regex / 散文) に分散して存在し、片側のみ修正された [Asymmetric Fix Transcription](./asymmetric-fix-transcription.md) の典型。
+先行 PR が修正したのは regex 実装側 (`settings-local-rite-hook-cleanup.py:33` / `session-start.sh:201`) のみで、`commands/init.md` の**散文の検出基準**は plain substring `rite/hooks/` を記述として残していた。同一 defect class が同一 invariant の別表現 (実装 regex / 散文) に分散して存在し、片側のみ修正された [Asymmetric Fix Transcription](./asymmetric-fix-transcription.md) の典型。
 
-PR #1238 (Issue #1237) は init.md の散文 6 箇所を SoT 定義 (`RITE_HOOK_RE`) 参照へ統一して defect class を完結させた。Phase 4.5 内の全 `rite/hooks/` / `rite hook` 検出箇所 20 箇所を着手時 grep で網羅抽出し、旧 substring 基準の残存ゼロを確認 → 0 blocking findings / 2 cycle 収束。
+後続 PR は init.md の散文 6 箇所を SoT 定義 (`RITE_HOOK_RE`) 参照へ統一して defect class を完結させた。Phase 4.5 内の全 `rite/hooks/` / `rite hook` 検出箇所 20 箇所を着手時 grep で網羅抽出し、旧 substring 基準の残存ゼロを確認 → 0 blocking findings / 2 cycle 収束。
 
 検証では、散文が主張する「look-alike 非マッチ / cache version 形マッチ」を実 regex に 8 ケースかける **behavioral test** が両レビュアーで有効だった (詳細は [散文が引用する実装は文字一致・帰属・behavioral test の 3 点で裏取りする](../heuristics/prose-cited-implementation-behavioral-verification.md))。教訓: **substring over-match の修正は「実装 regex」と「散文の検出基準」の双方を着手時 grep の scope に含める** — 実装だけ直すと散文が古い over-match 基準を LLM への指示として残し、LEGACY 経路で同型の誤判定を再現しうる。
 
