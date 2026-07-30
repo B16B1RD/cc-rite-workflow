@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-PR #1143 cycle 1 で実測: `/rite:pr:fix` の Phase 2.3 に追加した Comment Quality Gate blockquote 本文に `line ~3370 周辺の Pre-Commit Drift Lint Gate` という same-file line 番号参照が含まれていた。
+起点事例の cycle 1 で実測: `/rite:pr:fix` の Phase 2.3 に追加した Comment Quality Gate blockquote 本文に `line ~3370 周辺の Pre-Commit Drift Lint Gate` という same-file line 番号参照が含まれていた。
 
 - 実 line は 3409 で **40 行 drift**
 - 当該 gate がまさに禁止しようとしている `no_line_or_cycle_reference` 原則違反を gate 自身が踏んでいる

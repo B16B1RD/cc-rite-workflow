@@ -47,7 +47,7 @@ C1 範囲のコードポイントラベルを「U+0080–U+009B」と書く誤�
 
 ### 検出 (reject) 用途も同じ盲点を共有する — `contains_ctrl()` で解決（follow-up Issue → 修正 PR）
 
-neutralize (置換) 側を共通ヘルパー化しても、検出 (reject) 用途の `=~ [[:cntrl:]]` には同じ C1 非検出盲点が残存する。`[[:cntrl:]]` を使う全用途 (置換 / 検出) が同じ盲点を共有することに注意。PR #1280 で検出用共通関数 `contains_ctrl()` を `control-char-neutralize.sh` に追加し、3 call site (`flow-state.sh` の session_id 検証 / `wiki-ingest-trigger.sh` の SOURCE_REF・TITLE 検証) を neutralize 側と同一バイト範囲定義 (`tr '\000-\037\177\200-\237'`) で統一して解決 (4 reviewer 0 findings / 1 cycle)。
+neutralize (置換) 側を共通ヘルパー化しても、検出 (reject) 用途の `=~ [[:cntrl:]]` には同じ C1 非検出盲点が残存する。`[[:cntrl:]]` を使う全用途 (置換 / 検出) が同じ盲点を共有することに注意。起点事例で検出用共通関数 `contains_ctrl()` を `control-char-neutralize.sh` に追加し、3 call site (`flow-state.sh` の session_id 検証 / `wiki-ingest-trigger.sh` の SOURCE_REF・TITLE 検証) を neutralize 側と同一バイト範囲定義 (`tr '\000-\037\177\200-\237'`) で統一して解決 (4 reviewer 0 findings / 1 cycle)。
 
 検出側実装の設計判断（review で検証済）:
 

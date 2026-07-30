@@ -1635,3 +1635,4 @@
 | 2026-07-30T23:13:44Z | refs:prose | pages 23 件（密度 3 hits 帯） | バッチ 6: 起点事例 / sub-pattern 事例ラベルへ置換 |
 | 2026-07-30T23:17:10Z | refs:prose | pages 50 件（密度 2 hits 帯の前半） | バッチ 7: 起点事例 / sub-pattern 事例ラベルへ置換 |
 | 2026-07-30T23:20:31Z | refs:prose | pages 75 件（密度 1-2 hits 帯） | バッチ 8: 起点事例ラベルへ置換 |
+| 2026-07-30T23:22:05Z | refs:prose | pages 39 件（最終バッチ） | バッチ 9: 本文の裸番号参照を 0 に。hits 657 → 22（残 22 は frontmatter description = Issue Out of Scope） |

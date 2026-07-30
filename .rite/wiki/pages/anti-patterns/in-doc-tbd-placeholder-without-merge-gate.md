@@ -22,7 +22,7 @@ confidence: high
 
 ### 観測された症状
 
-PR #1065 で本 PR の review-fix サイクル自身が「検証項目 1-3 の live dogfooding 検証」の役割を担う設計だったため、検証結果 doc に以下のような placeholder を埋め込んだ:
+起点事例で当該 PR の review-fix サイクル自身が「検証項目 1-3 の live dogfooding 検証」の役割を担う設計だったため、検証結果 doc に以下のような placeholder を埋め込んだ:
 
 ```markdown
 ### 項目 1: 合成 nit-only PR (3 cycle)

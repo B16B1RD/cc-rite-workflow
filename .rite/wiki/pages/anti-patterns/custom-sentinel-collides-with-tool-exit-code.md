@@ -24,7 +24,7 @@ awk プログラムなどに「この状態を呼び出し側へ伝えたい」�
 
 ### 実測された衝突
 
-PR #2051 の `dollar-zero-check.sh` は、fence が閉じていないファイルを「解析できないので走査不能として数える」ために awk 側で `exit 2` を返していた。
+起点事例の `dollar-zero-check.sh` は、fence が閉じていないファイルを「解析できないので走査不能として数える」ために awk 側で `exit 2` を返していた。
 
 ```awk
 END { if (in_fence) exit 2 }   # unbalanced fence sentinel

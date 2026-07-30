@@ -61,7 +61,7 @@ cycle_count=$({ grep -oE 'cycle [0-9]+' "$start_md" || true; } | wc -l | tr -d '
 
 ### Cycle Degeneration として実測された経緯
 
-PR #906 で同一 fingerprint が 3 cycle に渡って degenerate した:
+起点事例で同一 fingerprint が 3 cycle に渡って degenerate した:
 
 - **cycle 1**: 下限 assert を `grep -c` (line 単位) → `grep -oE | wc -l` (occurrence 単位) に変更、ただし `|| true` 防御を失った
 - **cycle 2**: 上限 🚨 を同パターンに変更、同じく `|| true` を持たない (修正スコープ漏れの完了でしたが pipefail 防御は未遂)

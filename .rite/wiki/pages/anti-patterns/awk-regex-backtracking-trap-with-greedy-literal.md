@@ -62,7 +62,7 @@ in_block && !/^[[:space:]]*#/ && /flow-state-update\.sh create/ { ... }
 
 ### Cross-validation の威力と限界
 
-PR #911 では reviewer 構成 `test + code-quality + error-handling` を全 3 cycle で固定したが、検出能力は cycle ごとに非対称だった:
+起点事例では reviewer 構成 `test + code-quality + error-handling` を全 3 cycle で固定したが、検出能力は cycle ごとに非対称だった:
 
 | Cycle | CRITICAL 検出 reviewer | 見逃し reviewer |
 |-------|----------------------|---------------|

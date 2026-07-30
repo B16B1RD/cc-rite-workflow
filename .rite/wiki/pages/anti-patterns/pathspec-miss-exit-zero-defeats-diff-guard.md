@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-PR #1840 (cleanup の discardable 判定) で同じ機序のデータ喪失経路を 3 回別形で作った:
+起点事例 (cleanup の discardable 判定) で同じ機序のデータ喪失経路を 3 回別形で作った:
 
 1. **cwd 相対解決** — producer (`git diff --name-only HEAD`) は root 相対パスを出力するが、consumer の pathspec は cwd 相対に解決される。サブディレクトリ cwd では全 pathspec が不一致 → exit 0 → 相違変更が「diff 同一」扱い。修正: consumer を `git -C <root>` で固定。
 2. **空 pathspec** — `xargs -r` は空入力で何も実行せず rc 0。「比較していない」が「差分なし」に化ける。修正: 非空 guard を独立に置く。

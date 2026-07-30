@@ -56,7 +56,7 @@ confidence: high
 
 ### Silent-false-pass via pre=post state の 3 条件拡張（cycle 5 の実測）
 
-PR #636 cycle 5 review で発見された別系統の silent-false-pass pattern を追加する。subshell ベース test で以下 **3 条件** が揃うとスクリプトが一切実行されなくても事後条件が PASS する false-positive を形成する:
+8 件目の累積対策 PR の cycle 5 review で発見された別系統の silent-false-pass pattern を追加する。subshell ベース test で以下 **3 条件** が揃うとスクリプトが一切実行されなくても事後条件が PASS する false-positive を形成する:
 
 1. **stderr suppress**: `2>/dev/null` で subshell の stderr を握り潰している
 2. **exit code 未検査**: `( ... ) || fail` を付けず subshell の非 0 exit を無視している

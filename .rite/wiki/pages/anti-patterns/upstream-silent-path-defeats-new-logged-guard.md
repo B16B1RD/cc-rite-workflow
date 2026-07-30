@@ -20,7 +20,7 @@ confidence: high
 
 ## 概要
 
-「silent skip 禁止 — スキップは WARNING で可視化する」という MUST 要件に対して logged ガードを新設しても、**同じ判定条件（例: 24h age guard）を持つ既存の silent continue が制御フロー上流に残っている**と、実運用で最も起きやすい入力がそちらに先に吸われ、新設ガードは到達不能になる。PR #1959 で corpse 用 logged age guard を Gate 2 の後段に置いたところ、Gate 2 free 経路の既存 silent continue（同一 24h 判定）が claim-free の fresh corpse（cleanup が claim を無条件 release するため実運用の支配形）を先に握り潰し、2 reviewer が独立に runtime 再現で検出した。
+「silent skip 禁止 — スキップは WARNING で可視化する」という MUST 要件に対して logged ガードを新設しても、**同じ判定条件（例: 24h age guard）を持つ既存の silent continue が制御フロー上流に残っている**と、実運用で最も起きやすい入力がそちらに先に吸われ、新設ガードは到達不能になる。起点事例で corpse 用 logged age guard を Gate 2 の後段に置いたところ、Gate 2 free 経路の既存 silent continue（同一 24h 判定）が claim-free の fresh corpse（cleanup が claim を無条件 release するため実運用の支配形）を先に握り潰し、2 reviewer が独立に runtime 再現で検出した。
 
 ## 詳細
 

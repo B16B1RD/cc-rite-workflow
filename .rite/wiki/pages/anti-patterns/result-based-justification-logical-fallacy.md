@@ -22,7 +22,7 @@ confidence: high
 
 ### 失敗モード
 
-PR #706 cycle 1 (MEDIUM F-02) で実測。`_reviewer-base.md` の Whitelist 適用順序の実装ノートで「順序逆転で false positive 増加」と説明していた。順序は以下の 4 段階:
+起点事例の cycle 1 (MEDIUM F-02) で実測。`_reviewer-base.md` の Whitelist 適用順序の実装ノートで「順序逆転で false positive 増加」と説明していた。順序は以下の 4 段階:
 
 1. SoT Whitelist
 2. rite-config.yml 拡張

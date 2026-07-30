@@ -22,7 +22,7 @@ SoT (Single Source of Truth) 側で「期待値 X 以上」(pos 表現)、review
 
 ### 失敗モード
 
-PR #706 cycle 1 (HIGH F-01) で実測。`comment-best-practices.md` (SoT) の D セクションが「期待値: 公開 API の WHY 密度は内部 helper の 1.5 倍以上」と pos 表現で記述する一方、`tech-writer.md` の Detection Checklist (e) は「公開 API と内部で密度差なし (< 1.5 倍未満) で finding 発行」と neg 表現で記述。同じ 1.5x 閾値を SoT で「以上 = OK」、reviewer で「未満 = finding」と書くと、severity table のような派生記述では:
+起点事例の cycle 1 (HIGH F-01) で実測。`comment-best-practices.md` (SoT) の D セクションが「期待値: 公開 API の WHY 密度は内部 helper の 1.5 倍以上」と pos 表現で記述する一方、`tech-writer.md` の Detection Checklist (e) は「公開 API と内部で密度差なし (< 1.5 倍未満) で finding 発行」と neg 表現で記述。同じ 1.5x 閾値を SoT で「以上 = OK」、reviewer で「未満 = finding」と書くと、severity table のような派生記述では:
 
 - 派生 1: `MEDIUM` 行に「公開 API の WHY 密度が内部より低い場合 (= SoT pos 表現の補集合)」と書きうる
 - 派生 2: `MEDIUM` 行に「公開 API と内部で密度差なし (= reviewer neg 表現を踏襲)」と書きうる

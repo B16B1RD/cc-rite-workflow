@@ -26,7 +26,7 @@ confidence: medium
 
 起点事例 (fingerprint-cycling §4 split に single-invocation 注記と placeholder 表を追加) は §4 ↔ pr/review.md 7.4.2 の対称化シリーズの一環。§4 注記が先行 PR のガード移植履歴を要約する際、以下の LOW finding が cycle 1 で surface した:
 
-- 注記 (L173) が「write/empty/empty-result/empty-url の各 exit 1 ガード (**PR #1251 で追加**)」と記載し、**4 ガードすべてを #1251 に帰属**させていた
+- 注記 (L173) が `write/empty/empty-result/empty-url の各 exit 1 ガード (PR #1251 で追加)` (違反文の verbatim 引用) と記載し、**4 ガードすべてを単一 PR に帰属**させていた
 - しかし git 履歴上、#1251 (`ad0d85cf`) が追加したのは **3 ガードのみ**。4 つ目の empty-url ガード (`empty_issue_url`) は **#1252 (`0fab5174`) 由来**
 - 同一ファイルの L247 が `refs #1252` と **正しく帰属**しており、L173 の誤集約と **intra-file contradiction** を形成していた
 

@@ -27,7 +27,7 @@ sandbox 有効環境かつ multi_session 環境向けの案内メッセージに
 
 `allowWithinDeny` は read 側専用のキーであり、write 側には存在しない。2 名の reviewer が独立に「本セッションの Bash tool 定義」という一次証拠を根拠にこの誤りを検出した。
 
-一方、この案内が参照する Source of Truth（`git-worktree-patterns.md` の Issue #1896 対処節）は、具体的なキー名を挙げず「`/sandbox` コマンド、または settings の sandbox 設定」という抽象的な表現に留めていた。本 PR のメッセージはこの抽象表現から逸脱し、`/sandbox` コマンドへの言及も落として誤った raw key を名指ししてしまっていた。
+一方、この案内が参照する Source of Truth（`git-worktree-patterns.md` の sandbox write 拒否への対処節）は、具体的なキー名を挙げず「`/sandbox` コマンド、または settings の sandbox 設定」という抽象的な表現に留めていた。本 PR のメッセージはこの抽象表現から逸脱し、`/sandbox` コマンドへの言及も落として誤った raw key を名指ししてしまっていた。
 
 **教訓**: 設定値の具体例をドキュメントに書く際、SoT が抽象的な表現に留めている場合はそれに倣うべきである。あえて具体キーを書きたい場合は、記憶や類推に頼らず実機の構造（本ケースではエージェント自身が実行されているツール定義）を確認してから書く。read/write で対称に見えて非対称な構造を持つ設定は特に誤りやすい。
 

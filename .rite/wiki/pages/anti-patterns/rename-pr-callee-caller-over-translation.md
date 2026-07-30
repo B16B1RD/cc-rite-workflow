@@ -31,7 +31,7 @@ confidence: high
 
 結果: callee 側 prose が「ステップ X.Y.W.2」と書く一方、caller 側はまだ「Phase X.Y.W.2」のため、cross-reference が解決できない silent broken link が landed する。
 
-### PR #1151 での実測
+### 大規模 rename 事例での実測
 
 cycle 1 で 3 reviewer (prompt-engineer / code-quality / tech-writer) が独立検出した HIGH 級 finding として 4 site で発火:
 

@@ -24,7 +24,7 @@ confidence: high
 
 ### 実測された経路
 
-PR #2051 で新設した `dollar-zero-check.sh` は当初、以下の 3 つをすべて `Total: 0 findings` + `rc=0` に畳んでいた。
+起点事例で新設した `dollar-zero-check.sh` は当初、以下の 3 つをすべて `Total: 0 findings` + `rc=0` に畳んでいた。
 
 - fence 不整合でファイルを解析しきれなかった
 - awk が fatal error で落ちた（ファイル権限 / バイナリ異常）

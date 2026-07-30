@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-PR #1839 F-12 の実測例: `review-schema-version-check.sh` の REPO_ROOT 解決を `state-path-resolve.sh` に委譲したところ、この resolver は**非 git cwd でも cwd を正常出力 (exit 0) として返す**設計 (hook の non-blocking 契約由来) のため、
+起点事例の F-12 の実測例: `review-schema-version-check.sh` の REPO_ROOT 解決を `state-path-resolve.sh` に委譲したところ、この resolver は**非 git cwd でも cwd を正常出力 (exit 0) として返す**設計 (hook の non-blocking 契約由来) のため、
 
 - 旧: `git rev-parse --show-toplevel` 失敗 → REPO_ROOT 空 → `ERROR ... exit 2` (fail-fast)
 - 新: resolver が cwd を返す → 空チェック通過 → `.rite/review-results` 不在 → `exit 0` clean

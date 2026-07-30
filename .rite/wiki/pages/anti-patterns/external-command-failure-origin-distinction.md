@@ -32,7 +32,7 @@ confidence: high
 
 ## 詳細
 
-PR #1244 (`/rite:learn` spec) の cycle 5 で error-handling reviewer が MEDIUM 検出した。`learn.md:54` が `gh pr view N` 失敗時に PR 404 と一時障害を区別せず無条件に「N を Issue とみなす」へ分岐していた。これは「gh 失敗 → 別番号空間へ再分類」を silent failure 禁止 anti-pattern として明示する repo の house rule (`pr/fix.md:236`) に反する。
+起点事例 (`/rite:learn` spec) の cycle 5 で error-handling reviewer が MEDIUM 検出した。`learn.md:54` が `gh pr view N` 失敗時に PR 404 と一時障害を区別せず無条件に「N を Issue とみなす」へ分岐していた。これは「gh 失敗 → 別番号空間へ再分類」を silent failure 禁止 anti-pattern として明示する repo の house rule (`pr/fix.md:236`) に反する。
 
 ### canonical 対策
 

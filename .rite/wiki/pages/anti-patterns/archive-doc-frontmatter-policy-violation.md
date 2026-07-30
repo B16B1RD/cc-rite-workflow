@@ -43,7 +43,7 @@ confidence: high
 
 結果: cycle 1 で fix → cycle 2 で revert → cycle 3 で revert 漏れの tail residue 発覚、という往復が発生する。
 
-### PR #1151 での実測
+### 大規模 rename 事例での実測
 
 `docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md` (front-matter L14-18 で archive policy 宣言) で以下の経過:
 

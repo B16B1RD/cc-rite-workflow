@@ -24,7 +24,7 @@ confidence: high
 
 ### 実測された経路
 
-PR #2051 の `dollar-zero-check.sh` は、ファイルごとの中間結果を書くパスを次のように derive していた。
+起点事例の `dollar-zero-check.sh` は、ファイルごとの中間結果を書くパスを次のように derive していた。
 
 ```bash
 FINDINGS_FILE="$(mktemp)"

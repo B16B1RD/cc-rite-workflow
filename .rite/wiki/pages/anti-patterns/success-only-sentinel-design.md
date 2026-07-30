@@ -22,7 +22,7 @@ sub-skill 切出し時に success path 用 HTML sentinel (`<!-- [skill:phase:com
 
 ### 観測
 
-PR #951 (`/rite:issue:start` 再設計の PR F、Phase 5.0-5.2.1 を `start-execute.md` sub-skill に抽出) の cycle 1 で CRITICAL として検出。新規 HTML sentinel `<!-- [start:execute:completed] -->` が **success path のみ** に定義され、Phase 5.0 (Stop Hook) / Phase 5.2 (Lint) の **abort 経路に sentinel が無かった**。caller (本体 `start.md`) は sub-skill return 後に sentinel を grep して routing するため、abort 時に「sub-skill が完了したのか途中で止まったのか」を判別できず、orchestrator が implicit stop する経路が開く。
+起点事例 (`/rite:issue:start` 再設計の一部、Phase 5.0-5.2.1 を `start-execute.md` sub-skill に抽出) の cycle 1 で CRITICAL として検出。新規 HTML sentinel `<!-- [start:execute:completed] -->` が **success path のみ** に定義され、Phase 5.0 (Stop Hook) / Phase 5.2 (Lint) の **abort 経路に sentinel が無かった**。caller (本体 `start.md`) は sub-skill return 後に sentinel を grep して routing するため、abort 時に「sub-skill が完了したのか途中で止まったのか」を判別できず、orchestrator が implicit stop する経路が開く。
 
 ### 失敗モード
 

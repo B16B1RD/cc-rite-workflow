@@ -16,7 +16,7 @@ confidence: high
 
 ## 概要
 
-PR #2036 cycle 2 で HIGH（repro 付き）として検出。新規追加した前置きガードが `git status --porcelain` を直接呼んでいたため、sandbox の write-block bind mount が `??` エントリとして必ず現れ、結果は恒に非空。「working tree が clean なら skip」という条件が**一度も真にならない** dead branch になっていた。
+起点事例の cycle 2 で HIGH（repro 付き）として検出。新規追加した前置きガードが `git status --porcelain` を直接呼んでいたため、sandbox の write-block bind mount が `??` エントリとして必ず現れ、結果は恒に非空。「working tree が clean なら skip」という条件が**一度も真にならない** dead branch になっていた。
 
 ## 詳細
 

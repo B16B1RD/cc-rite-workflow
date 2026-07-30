@@ -24,7 +24,7 @@ cycle 1 fix で「呼び出し側責務」「caller 側で対応」「同様の�
 
 ### 発生事例（cycle 1 → cycle 2）
 
-PR #799 cycle 1 で reviewer が「canonical reference (`broken-ref-resolution.md`) が要求する precondition 変数 (pages_list_normalized / wiki_root) を caller (`lint.md`) で生成する Phase が無い」と CRITICAL 指摘した。fix 側は cycle 1 で:
+起点事例の cycle 1 で reviewer が「canonical reference (`broken-ref-resolution.md`) が要求する precondition 変数 (pages_list_normalized / wiki_root) を caller (`lint.md`) で生成する Phase が無い」と CRITICAL 指摘した。fix 側は cycle 1 で:
 
 - reference 側に「呼び出し側責務として ... を生成する」という prose を追加
 - caller (lint.md) 側の Phase 7.x には実装を入れない (同 PR の scope 外と判断)

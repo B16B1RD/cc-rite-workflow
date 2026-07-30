@@ -20,7 +20,7 @@ confidence: medium
 
 ## 詳細
 
-PR #1185 (`/rite:issue:list` Phase 4.2 の GraphQL cursor paging 化) の review-fix loop で、`gh api graphql` を扱う埋め込み bash スクリプトに対し HIGH 2 件を含む 4 件の finding が surface した。中核は `gh api graphql` 特有の 2 つの落とし穴である。
+起点事例 (`/rite:issue:list` Phase 4.2 の GraphQL cursor paging 化) の review-fix loop で、`gh api graphql` を扱う埋め込み bash スクリプトに対し HIGH 2 件を含む 4 件の finding が surface した。中核は `gh api graphql` 特有の 2 つの落とし穴である。
 
 ### 落とし穴 1: `.errors[]` 非検査による partial response の握り潰し (HIGH)
 

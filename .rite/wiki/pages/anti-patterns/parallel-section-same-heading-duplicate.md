@@ -26,7 +26,7 @@ confidence: high
 2. 各リストを独立した Section heading で展開する (例: Section 8: `残課題と次 PR 候補` / Section 10: 同じ heading)
 3. 同一ファイル内に同名 heading が 2 箇所存在し、reader が top-down に読むと「先のセクションが上書きされた?」と誤認する
 
-PR #837 で評価レポート `docs/designs/issue-create-sub-skill-consolidation-evaluation.md` の Section 8 と Section 10 に `残課題と次 PR 候補` が重複し、prompt-engineer reviewer が HIGH として検出した。
+起点事例で評価レポート `docs/designs/issue-create-sub-skill-consolidation-evaluation.md` の Section 8 と Section 10 に `残課題と次 PR 候補` が重複し、prompt-engineer reviewer が HIGH として検出した。
 
 ### 解決パターン（cycle 1 fix）
 

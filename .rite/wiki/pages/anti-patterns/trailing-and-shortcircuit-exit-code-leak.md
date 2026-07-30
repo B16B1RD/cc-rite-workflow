@@ -24,7 +24,7 @@ confidence: high
 
 `set -e` なしの helper は、最終コマンドの rc がそのまま script の exit code になる。error-surfacing や cleanup の目的で `[ -n "$x" ] && rm -f "$x"` のような短絡文を末尾に追加すると、それまで末尾が `echo` (常に rc=0) で偶然守られていた暗黙の exit 0 契約が崩れる。
 
-PR #1246 で実測した経路:
+起点事例で実測した経路:
 
 ```bash
 # settings-local-rite-hook-cleanup.sh (set -uo pipefail のみ、-e なし)

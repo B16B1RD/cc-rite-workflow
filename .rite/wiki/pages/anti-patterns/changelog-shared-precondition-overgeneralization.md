@@ -24,7 +24,7 @@ CHANGELOG 等のドキュメントで、複数の環境制約や事象を1つの
 
 ## 詳細
 
-PR #1948（CHANGELOG の `[Unreleased]` を `[0.8.4]` へ回収する PR）で、新規追加した Known Limitations エントリが「2つの sandbox 環境制約はいずれも `multi_session` 機能の有効化を前提とする」という総称で書かれていたが、実装（`setup/SKILL.md` の Phase 4.8 / 4.9）を確認すると、Phase 4.8（セッション worktree の state 書込拒否検出）は `multi_session` 有効時のみ発火するのに対し、Phase 4.9（SSH host alias 経由の git push/fetch ブロック検出）は `multi_session` の有効/無効に関わらず独立して発生する制約だった。tech-writer-reviewer が cross-reference 検証（Doc-Heavy PR Mode の Implementation Coverage カテゴリ）でこの不一致を MEDIUM として検出した。
+起点事例（CHANGELOG の `[Unreleased]` を `[0.8.4]` へ回収する PR）で、新規追加した Known Limitations エントリが「2つの sandbox 環境制約はいずれも `multi_session` 機能の有効化を前提とする」という総称で書かれていたが、実装（`setup/SKILL.md` の Phase 4.8 / 4.9）を確認すると、Phase 4.8（セッション worktree の state 書込拒否検出）は `multi_session` 有効時のみ発火するのに対し、Phase 4.9（SSH host alias 経由の git push/fetch ブロック検出）は `multi_session` の有効/無効に関わらず独立して発生する制約だった。tech-writer-reviewer が cross-reference 検証（Doc-Heavy PR Mode の Implementation Coverage カテゴリ）でこの不一致を MEDIUM として検出した。
 
 修正は総称を解体し、各項目に前提条件の有無を括弧書きで個別に明示するパターンを採用した:
 - `(1) Phase 4.8（multi_session 有効時が前提）: ...`

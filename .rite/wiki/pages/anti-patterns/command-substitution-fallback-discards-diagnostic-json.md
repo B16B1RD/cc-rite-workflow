@@ -69,7 +69,7 @@ esac
 
 ### 残存 site の一掃と除去正当性の検証パターン
 
-PR #1847 が 2 箇所を修正した後、同パターンは skill markdown 内に 4 箇所残存していた (ready skeleton / issue-close Phase 4.6.3 / archive-procedures 本文 + skeleton)。PR #1851 で全 call site (6 箇所) が no-fallback に統一され、各 site に「付けない」根拠コメントが置かれた。レビューで確立された検証パターン:
+起点事例が 2 箇所を修正した後、同パターンは skill markdown 内に 4 箇所残存していた (ready skeleton / issue-close Phase 4.6.3 / archive-procedures 本文 + skeleton)。後続 PR で全 call site (6 箇所) が no-fallback に統一され、各 site に「付けない」根拠コメントが置かれた。レビューで確立された検証パターン:
 
 - **除去の正当性は被委譲 script 側の契約で裏取りする**: 「fallback を消して安全」の根拠は diff 内では完結しない。被委譲 script (projects-status-update.sh) が「全失敗経路で stdout に失敗理由入り JSON を emit してから exit する」契約を Read で実確認して初めて、非ゼロ終了 = 診断 JSON あり、が保証される。
 - **fallback が下流の check を殺していた実害の特定**: issue-close の site では、fallback が「JSON emit + exit 1」経路の JSON を破棄した結果、後続の `-z "$status_json"` check（JSON-emit 前死亡の補足用）が誤発火し、かつ stderr は空のため診断が完全喪失していた。除去により `-z` check は本来の「emit 前死亡」ケースのみに正しく限定される — fallback 除去が周辺の error handling をむしろ修復する例。

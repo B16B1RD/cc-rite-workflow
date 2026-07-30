@@ -31,7 +31,7 @@ command 指示書 (`commands/**/*.md`) が Edit ツールの `old_string` に「
 3. 発動条件 (検出フェーズ) は anchor の存在ではなく、関連キーワード (例: `.rite/wiki/` 行の有無) だけを check する
 4. consumer project (anchor 不在) で Edit が走り、`old_string not found` で hard fail する
 
-PR #586 で `.gitignore` への negation 自動注入 (`/rite:wiki:init` Phase 1.3) が `# <<< gitignore-wiki-section-end (anchor / F-09 対応)` コメントを `old_string` に hardcode していたが、このコメントは本プラグイン repo の `.gitignore` L131 のみに存在し、consumer 経路 (templates 配布 / `/rite:init` の inject) が存在しなかったため、consumer が手動で `.rite/wiki/` を `.gitignore` に追加した repo では Phase 1.3.3 Edit が実行時 hard fail する経路があった。
+起点事例で `.gitignore` への negation 自動注入 (`/rite:wiki:init` Phase 1.3) が `# <<< gitignore-wiki-section-end (anchor / F-09 対応)` コメントを `old_string` に hardcode していたが、このコメントは本プラグイン repo の `.gitignore` L131 のみに存在し、consumer 経路 (templates 配布 / `/rite:init` の inject) が存在しなかったため、consumer が手動で `.rite/wiki/` を `.gitignore` に追加した repo では Phase 1.3.3 Edit が実行時 hard fail する経路があった。
 
 ### 対処 pattern (cycle 4 fix)
 

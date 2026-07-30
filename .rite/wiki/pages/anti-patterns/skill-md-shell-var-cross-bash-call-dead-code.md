@@ -26,7 +26,7 @@ SKILL.md（プロンプト実行体）の新規セクションで、別 Bash too
 
 `/rite:recover` に「未完了事項の検出」セクションを新規追加した際、検出条件のゲートを `[ "$resolved_phase" = "cleanup" ]` のようにシェル変数参照で書いてしまった。しかし `resolved_phase` は先行する別の Bash tool 呼び出しの中で確定した値であり、Claude Code の Bash ツールは呼び出しごとに独立したシェルプロセスを起動するため、次のブロックでは `$resolved_phase` は常に未定義（空文字）になる。結果として `[ "" = "cleanup" ]` は常に偽となり、検出ロジック全体が実行されない dead code になっていた。
 
-このバグは PR #1975 の review cycle 1 で 3 名のレビュアーが独立に検出した（CRITICAL）。当該 `recover.md` ファイル自身が他のセクションで「Claude Code の Bash ツール間でシェル変数は保持されない。値を跨いで渡す唯一の正規経路は、LLM が前の Bash tool 出力の `[CONTEXT] KEY=value` marker を読み取り、後続の bash ブロックへ `{placeholder}` 形式で literal 置換することである」という規約を明記していたにもかかわらず、新規セクションだけがこれを踏襲していなかった。
+このバグは起点事例の review cycle 1 で 3 名のレビュアーが独立に検出した（CRITICAL）。当該 `recover.md` ファイル自身が他のセクションで「Claude Code の Bash ツール間でシェル変数は保持されない。値を跨いで渡す唯一の正規経路は、LLM が前の Bash tool 出力の `[CONTEXT] KEY=value` marker を読み取り、後続の bash ブロックへ `{placeholder}` 形式で literal 置換することである」という規約を明記していたにもかかわらず、新規セクションだけがこれを踏襲していなかった。
 
 ### 根本原因
 

@@ -24,7 +24,7 @@ confidence: high
 
 ### 実測された経路
 
-PR #2051 で新設した `fix-reason-coverage-check.sh` は、「skill 本文が emit する `WM_UPDATE_FAILED` の reason 値が、すべて reason 表に文書化されているか」を次の形で検証していた。
+起点事例で新設した `fix-reason-coverage-check.sh` は、「skill 本文が emit する `WM_UPDATE_FAILED` の reason 値が、すべて reason 表に文書化されているか」を次の形で検証していた。
 
 ```bash
 # emitted: skill 本文から reason 値を正規表現で抽出

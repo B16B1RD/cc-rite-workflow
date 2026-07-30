@@ -64,7 +64,7 @@ Hypothetical Exception Categories は `security` / `database` / `devops` / `depe
 
 ### 関連する failure mode
 
-- **Self-violation cascade** ([asymmetric-fix-transcription.md](./asymmetric-fix-transcription.md) PR #765 / PR #1043): 予防対象の anti-pattern を文書化する self-referential 経路で、当該 anti-pattern を文書自身が踏む同型再発。本 anti-pattern も「reviewer が出力契約を満たすべき設計の文書が、reviewer の output 契約違反を mechanical で吸収する設計と共存している」という self-referential 構造を持つ
+- **Self-violation cascade** ([asymmetric-fix-transcription.md](./asymmetric-fix-transcription.md) の self-referential 事例): 予防対象の anti-pattern を文書化する self-referential 経路で、当該 anti-pattern を文書自身が踏む同型再発。本 anti-pattern も「reviewer が出力契約を満たすべき設計の文書が、reviewer の output 契約違反を mechanical で吸収する設計と共存している」という self-referential 構造を持つ
 - **Silent demote chain**: Phase 5.3.0 → Phase 7.1 candidate filter → Phase 7.7 post-condition gate の連鎖で、降格された finding が actionable/boundary 分類を持たず `design_confirmation` (no action) として扱われる経路。本 anti-pattern と組み合わさると、blocking-worthy 指摘が completion report の disposition table で件数のみ表示される
 
 ## 関連ページ

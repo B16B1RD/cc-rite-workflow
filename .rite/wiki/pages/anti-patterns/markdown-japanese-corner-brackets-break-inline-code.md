@@ -20,7 +20,7 @@ Markdown 文書内で本来 backtick inline code (`` `!` ``) で囲うべき記�
 
 ### 失敗形態
 
-PR #688 cycle 13 self-dogfood レビューで F-01 (`tech-writer.md:43`) と F-02 (`wiki/lint.md:1294`) として検出: 本来 `` `!` `` / `` `//!` `` と書くべき記号が `「!」` / `「//!」` に置換されていた。Markdown としては valid だが、(1) 表示 layer で inline code の monospace 表示が消失、(2) LLM が prompt token 上で「これはコード片」という semantic 境界を認識できない。
+累積 14 回目の cycle 13 self-dogfood レビューで F-01 (`tech-writer.md:43`) と F-02 (`wiki/lint.md:1294`) として検出: 本来 `` `!` `` / `` `//!` `` と書くべき記号が `「!」` / `「//!」` に置換されていた。Markdown としては valid だが、(1) 表示 layer で inline code の monospace 表示が消失、(2) LLM が prompt token 上で「これはコード片」という semantic 境界を認識できない。
 
 ### Canonical 表記
 

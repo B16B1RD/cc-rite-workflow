@@ -83,7 +83,7 @@ A/B はそれぞれトレードオフ (modular 性 / hook 仕様の調査コス�
 
 本 anti-pattern の延長として、cleanup → wiki:ingest → wiki:lint の 3 段ネストで lint の sentinel が LLM 発話の最終行になると、literal `completed` が turn-boundary heuristic を発火させ caller の残 step が skip される事象が #604 / #618 / #923 / #1144 / #1163 と繰り返し再発した。これらはすべて passive な multi-layer defense (HTML コメント化 / disambiguation marker 追加 / 「TaskCreate + return 時 TaskList 確認」SKILL.md ルール) であり `completed` semantic 自体は保持していた。
 
-PR #1166 (#1165) は上表 **案 E** を採り、sentinel 命名規約から `completed` literal を **vocabulary レベルで撤廃** した (`[lint:completed:auto]` → `[lint:returned-to-caller:auto]` 等 24 site rename)。さらに各 emit site で sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記し active disambiguation marker とした。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」ネスト構造を semantic に内包するため、turn-end heuristic を誘発する terminal vocabulary が構造的に存在しなくなる。
+sentinel rename 事例は上表 **案 E** を採り、sentinel 命名規約から `completed` literal を **vocabulary レベルで撤廃** した (`[lint:completed:auto]` → `[lint:returned-to-caller:auto]` 等 24 site rename)。さらに各 emit site で sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記し active disambiguation marker とした。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」ネスト構造を semantic に内包するため、turn-end heuristic を誘発する terminal vocabulary が構造的に存在しなくなる。
 
 教訓: declarative 層を *積み増す* (案の外) のではなく、誤発火の **トリガ語彙そのもの** を rename で除去する方が active enforcement に近い。ただしこれも「周辺 context の完了感」までは消せないため、案 A (inline 化) のような構造保証とは確実性が異なる (上表で中〜高)。なお rename を行う際は literal 機械置換に留め、prose semantic の再定義 (role の拡大解釈) を混ぜると相互参照 SoT 間で定義が割れる ([[variable-rename-contaminates-sentinel-literal-contract]] / [[rename-pr-callee-caller-over-translation]] 参照)。
 
