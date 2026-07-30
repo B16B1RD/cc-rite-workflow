@@ -1635,7 +1635,7 @@ The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.1](http
 | Element | Conformance | Implementation SoT |
 |---------|-------------|--------------------|
 | Page frontmatter | Declares concept `type:` (`patterns` / `heuristics` / `anti-patterns`) and `description:` | `templates/wiki/page-template.md` |
-| `index.md` | Carries `okf_version: "0.1"`; page catalog as OKF bullets `* [title](path) - desc` | `templates/wiki/index-template.md` |
+| `index.md` | Carries `okf_version: "0.1"`; page catalog as a 5-column table under `## ページ一覧` (page / domain / summary / updated / confidence) | `templates/wiki/index-template.md` |
 | `log.md` | Change history in OKF reserved structure (`## YYYY-MM-DD` headings + prose bullets, newest-first, append-only, human-facing) | `templates/wiki/log-template.md` |
 | Raw frontmatter | Ingest skip state held as `ingest_status: skipped` + `skip_reason:` (skip SoT; not kept in `log.md`) | `skills/wiki-ingest/SKILL.md` step 5 |
 

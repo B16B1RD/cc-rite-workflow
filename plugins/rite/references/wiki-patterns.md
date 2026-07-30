@@ -241,7 +241,7 @@ rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https:
 | 要素 | OKF 準拠内容 | 実装 SoT |
 |------|-------------|---------|
 | **page frontmatter** | concept 種別を `type:`（`patterns` / `heuristics` / `anti-patterns`）で宣言し、`description:` を持つ | `templates/wiki/page-template.md`（Issue #1518） |
-| **index.md** | frontmatter に `okf_version: "0.1"` を持ち、ページカタログを OKF 箇条書き `* [title](path) - desc` で表現 | `templates/wiki/index-template.md`（Issue #1519） |
+| **index.md** | frontmatter に `okf_version: "0.1"` を持ち、ページカタログを `## ページ一覧` の 5 列テーブル（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）で表現 | `templates/wiki/index-template.md`（Issue #1519 でテーブル化、#2047 で ingest 指示と整合） |
 | **log.md** | 変更履歴を OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、新しい順、append-only、人間向け）で記録 | `templates/wiki/log-template.md`（Issue #1520） |
 | **raw frontmatter** | ingest skip 状態を `ingest_status: skipped` + `skip_reason:` で保持（skip の Source of Truth。log.md には保持しない） | `skills/wiki-ingest/SKILL.md` ステップ 5（Issue #1520） |
 | **SCHEMA.md** | 蓄積規約（人間 + LLM 共同管理）。OKF 予約ファイルとして bundle ルートに常駐 | `templates/wiki/schema-template.md` |
