@@ -55,9 +55,14 @@
 # Exclusions (each is a deliberate blind spot; the trade-off is recorded per entry
 # because an exclusion also hides genuine recurrences inside its scope):
 #
-#   E1 frontmatter          — `sources[].ref` is provenance (a file path), not a
-#                             descriptive reference. Blind spot: a descriptive ref
-#                             written into frontmatter prose is never seen.
+#   E1 frontmatter `sources:` — the `ref` values are provenance file paths, not
+#                             descriptive references. Scoped to the `sources:` block alone
+#                             (key → next top-level key), NOT the whole frontmatter: the
+#                             `description:` / `title:` fields carry real prose, and dropping
+#                             the block wholesale hid 22 genuine refs across the live wiki.
+#                             Blind spot: a descriptive ref written inside `sources:` itself
+#                             (a path value cannot match the number rules, so this is empty
+#                             in practice — the exclusion is defensive only).
 #   E2 `## ソース` section   — the provenance link labels (`- [PR #N review results](...)`)
 #                             are the audit trail for where the page came from and are
 #                             maintained by design. Scanning them would report all 306
@@ -106,12 +111,14 @@
 #   1  fail-fast (placeholder residue / unknown branch_strategy)
 #   2  invocation error (引数欠落 / repo-root cd 失敗)
 #
-# NOTE on shell flags: the per-page read captures `$?` explicitly (`page_rc`) so a read
-# failure is isolated as a skipped page and never fatal; a global `set -e` would abort on
-# that rc instead, so it is intentionally not set. `set -o pipefail` is likewise unused:
-# the detection pipeline's rc is not consumed — `grep -c` returns 1 on zero matches and the
-# count is read from its stdout. `set -u` is not set either; every variable is assigned
-# before first use (the reads above included), so it would add nothing.
+# NOTE on shell flags: the per-page read and the per-page detection both capture `$?`
+# explicitly (`page_rc` / `hits_rc`) so either failure is isolated as a skipped page and
+# counted into `descriptive_refs_read_errors`; a global `set -e` would abort on those rc
+# values instead, so it is intentionally not set. `set -o pipefail` is unnecessary because
+# detection runs as a single awk rather than a pipeline — that is also why the awk rc is
+# meaningful here, where a trailing `grep -c` would have returned 1 on zero matches and made
+# a broken detector indistinguishable from a clean page. `set -u` is not set either; every
+# variable is assigned before first use, so it would add nothing.
 
 # shellcheck source=../control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
@@ -250,16 +257,21 @@ fi
 # 両括弧を受ける。
 _RITE_BODY_FILTER='
 NR==1 && /^---[[:space:]]*$/ { infm=1; next }
-infm && /^---[[:space:]]*$/  { infm=0; next }
-infm                        { next }
+infm && /^---[[:space:]]*$/  { infm=0; insrcblk=0; next }
+infm && /^sources:[[:space:]]*$/ { insrcblk=1; next }
+infm && insrcblk && /^[^[:space:]]/ { insrcblk=0 }
+infm && insrcblk            { next }
 /^[[:space:]]*```/          { infence = !infence; next }
 infence                     { next }
 /^##[[:space:]]+ソース([[:space:]]*$|[（(])/ { insrc=1; next }
 insrc && /^##[[:space:]]/   { insrc=0 }
 insrc                       { next }
 /(TODO|FIXME)/              { next }
-{ gsub(/`[^`]*`/, "_"); print }
 '
+# 終端アクション: インラインコードスパンを `_` へマスクしてから検出 regex で数える。
+# フィルタ本体と分けているのは、計数を同じ awk 内で完結させるため (pipeline にすると
+# 終端 `grep -c` が no-match で rc=1 を返し、awk の異常終了と 0 件が区別できなくなる)。
+_RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }'
 
 # R1 (keyword vocabulary + number) と R2 (keyword-less な日本語 2 構文) の 2 規則。
 # 語境界は `\b` ではなく `([^0-9]|$)` — gawk の `\b` はバックスペース扱いで never-match。
@@ -272,22 +284,46 @@ n_pages_with_hits=0
 n_read_errors=0
 hit_lines=""
 
+# per-page 読出の stderr 退避先。捨てると `descriptive_refs_read_errors=3` と出ても
+# 運用者が「なぜ読めなかったか」を得られない (sibling helper と同じ理由で captures する)。
+# signal-specific trap: references/bash-trap-patterns.md#signal-specific-trap-template
+page_err=""
+_rite_wldr_cleanup() { [ -n "${page_err:-}" ] && rm -f "$page_err"; return 0; }
+trap 'rc=$?; _rite_wldr_cleanup; exit $rc' EXIT
+trap '_rite_wldr_cleanup; exit 130' INT
+trap '_rite_wldr_cleanup; exit 143' TERM
+trap '_rite_wldr_cleanup; exit 129' HUP
+page_err=$(mktemp "${TMPDIR:-/tmp}/rite-wldr-page-err-XXXXXX" 2>/dev/null) || {
+  echo "WARNING: stderr 退避 tempfile の mktemp に失敗しました。ページ読出失敗の詳細は失われます" >&2
+  page_err=""
+}
+
 while IFS= read -r page; do
   [ -z "$page" ] && continue
   # 読出コマンドの rc で「読めなかった」を判定する。空文字判定に頼ると 0 バイト / 改行のみの
   # 正当な空ページが読出失敗として数えられ、逆に読出失敗が空ページと同じ扱いになる
   # (sibling の wiki-lint-source-refs.sh は rc で切り分けており、その parity を満たすため)。
   if [ "$branch_strategy" = "separate_branch" ]; then
-    page_content=$(LC_ALL=C git show "${wiki_branch}:${page}" 2>/dev/null); page_rc=$?
+    page_content=$(LC_ALL=C git show "${wiki_branch}:${page}" 2>"${page_err:-/dev/null}"); page_rc=$?
   else
-    page_content=$(LC_ALL=C cat "$page" 2>/dev/null); page_rc=$?
+    page_content=$(LC_ALL=C cat "$page" 2>"${page_err:-/dev/null}"); page_rc=$?
   fi
   if [ "$page_rc" -ne 0 ]; then
     n_read_errors=$((n_read_errors + 1))
+    [ -n "$page_err" ] && [ -s "$page_err" ] && \
+      head -3 "$page_err" | neutralize_ctrl --keep-newline | sed "s|^|  ${page}: |" >&2
     continue
   fi
-  hits=$(printf '%s\n' "$page_content" | awk "$_RITE_BODY_FILTER" | grep -cE "$_RITE_DESCRIPTIVE_RE")
-  case "$hits" in ''|*[!0-9]*) hits=0 ;; esac
+  # 本文抽出と計数を 1 つの awk に閉じる。`grep -c` は no-match で rc=1 を返すため rc を
+  # 検査対象にできず、awk が落ちても「0 件」と区別がつかないまま read_ok=true で通っていた
+  # (検出器そのものの破損だけが未実測ゲートをすり抜ける唯一の穴だった)。
+  hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_RITE_COUNT_ACTION}"); hits_rc=$?
+  if [ "$hits_rc" -ne 0 ] || case "$hits" in ''|*[!0-9]*) true ;; *) false ;; esac; then
+    # 検出器が機能していないページは「0 件」ではなく読出失敗として計上する。
+    echo "WARNING: ページ ${page} の検出 awk が失敗しました (rc=$hits_rc, 出力='$hits')" >&2
+    n_read_errors=$((n_read_errors + 1))
+    continue
+  fi
   if [ "$hits" -gt 0 ]; then
     n_descriptive_refs=$((n_descriptive_refs + hits))
     n_pages_with_hits=$((n_pages_with_hits + 1))
@@ -301,8 +337,16 @@ done <<< "$pages_list"
 # として stdout に出す — WARNING は stderr にしか出ず、完了レポートの併記条件が read_ok だけだと
 # 部分欠損した集計が注記なしで「実測済み」として載るため (sibling の all_source_refs_read_errors と同型)。
 n_pages_total=$(printf '%s\n' "$pages_list" | awk 'NF>0 {n++} END {print n+0}')
+case "$n_pages_total" in
+  ''|*[!0-9]*)
+    # ページ数を数える awk まで落ちている = 実行環境の異常。0 に倒すと io_error 分岐が
+    # 到達不能になり「0 件」が実測済みとして通るため、io_error 側へ寄せる。
+    echo "WARNING: pages_list の件数計算に失敗しました (値: '$n_pages_total')。io_error として扱います" >&2
+    n_pages_total=0; n_read_errors=1
+    ;;
+esac
 descriptive_refs_read_ok="true"
-if [ "$n_pages_total" -gt 0 ] && [ "$n_read_errors" -eq "$n_pages_total" ]; then
+if { [ "$n_pages_total" -gt 0 ] && [ "$n_read_errors" -eq "$n_pages_total" ]; } || { [ "$n_pages_total" -eq 0 ] && [ "$n_read_errors" -gt 0 ]; }; then
   descriptive_refs_read_ok="io_error"
   echo "WARNING: pages_list の全 ${n_pages_total} ページを読み出せませんでした (branch_strategy=$branch_strategy)" >&2
   echo "  影響: 説明的番号参照 0 件は実体を反映していません (informational 指標のため lint は継続します)" >&2

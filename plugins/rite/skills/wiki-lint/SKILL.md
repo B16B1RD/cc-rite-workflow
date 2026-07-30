@@ -198,7 +198,7 @@ exit 0
 | `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 の `wiki-lint-broken-refs.sh` が emit する `n_broken_refs=` 値を転記 (LLM 独自カウント禁止) |
 | `n_descriptive_refs` | 0 | ステップ 7.5 の `wiki-lint-descriptive-refs.sh` が emit する `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 値を転記する（**LLM 独自カウント禁止**。ただし本カテゴリは informational のため `issues[]` へは転記しない — ステップ 7.5「検出結果の記録」節参照）。ページ本文の説明的 Issue/PR 番号参照の hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
-| `issues[]` | `[]` | 各検出結果を `{category, page, detail}` として append (helper 委譲カテゴリは marker block の行を転記) |
+| `issues[]` | `[]` | 各検出結果を（**例外: ステップ 7.5 — 同ステップ「検出結果の記録」節を参照**） `{category, page, detail}` として append (helper 委譲カテゴリは marker block の行を転記) |
 
 ---
 
@@ -653,9 +653,9 @@ PAGES_LIST_EOF
 fi
 ```
 
-**`descriptive_refs_read_ok` enum**: `true`（全ページ読出成功）/ `io_error`（ページが存在するのに全件読出失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う（兄弟ステップ 7 の enum と同規約）。`descriptive_refs_read_errors` は読み出せなかったページ数で、`read_ok=true` でも部分欠損があれば正の値を取る。ステップ 9 完了レポートの note 展開はこの 2 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
+**`descriptive_refs_read_ok` enum**: `true`（1 ページ以上の読出に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（全件読出失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う（兄弟ステップ 7 の enum と同規約）。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は読み出せなかったページ数で、`read_ok=true` でも部分欠損があれば正の値を取る。ステップ 9 完了レポートの note 展開はこの 2 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
 
-**検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**で、もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録されステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。本ステップを転記すると 700 件超の検出詳細が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
+**検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**で、もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録されステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。本ステップを転記すると 233 ページ分の検出詳細行（実測 736 hits）が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
 
 marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、本 SKILL.md 内に消費者を持たない。ページ内訳を人間が見たい場合は helper を直接実行する。
 
@@ -1023,7 +1023,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
   - `lib/wiki-config.sh` の source 失敗 (ステップ 1.1、`WIKI_CONFIG_HELPER_UNAVAILABLE`。設定を判定できないまま「Wiki 無効」へ倒す silent default の防止)
   - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5) で同型。設定ミスの silent 通過防止)
   - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 / 8.3)
-  - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 の partial pollution gate、LLM substitute 忘れによる silent 誤分類防止。各 helper 内で検知)
+  - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution gate、LLM substitute 忘れによる silent 誤分類防止。各 helper 内で検知)
   - ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数検知 (silent `lint:clean` 誤 emit 防止)
   - ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種、literal 残留 commit landed 防止)
   - GNU realpath (-m -s) 不在 (全 link silent broken 判定の防止、ステップ 7 helper 内)

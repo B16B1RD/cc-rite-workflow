@@ -27,6 +27,7 @@
 #   TC-19  separate_branch (本番既定経路、git show) の positive path
 #   TC-20  `## ソース` 除外が節スコープ (見出し以降 EOF まで打ち切らない)
 #   TC-21  informational 契約の非回帰 (T-06 / T-07: n_warnings 不加算 / canonical Lint: 行不変)
+#   TC-22  2 検出器の R1 regex が literal 一致 (語彙 drift の検出)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -52,8 +53,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-SBX=$(make_plain_sandbox)
-cleanup_dirs+=("$SBX")
+SBX=$(make_plain_sandbox) && cleanup_dirs+=("$SBX") || { echo "ERROR: make_plain_sandbox failed, aborting" >&2; exit 1; }
 
 # ---- fixture ---------------------------------------------------------------
 # 1 ページに全 AC の対象・非対象を同居させる。除外が効かないと非対象側が hit に混ざるため、
@@ -144,13 +144,14 @@ assert_mutated() {
 # E1 の識別力は TC-8 の fixture (frontmatter 散文に番号参照を置く) が担う。mutant を拡張する際は
 # 「どの除外がその mutant で到達不能か」を先に列挙すること。
 MUT_NOFILTER="$SBX/mutant-nofilter.sh"
-# フィルタ本体 (_RITE_BODY_FILTER) を「frontmatter 除去のみ」に差し替える
+# フィルタ本体 (_RITE_BODY_FILTER) を「frontmatter 除去のみ」に差し替える。
+# 終端アクション (マスク + 計数) は _RITE_COUNT_ACTION が別に持つため、ここでは
+# 落とす行の規則だけを置く (末尾に print を足すと計数用 awk の出力に混ざる)。
 awk '
   /^_RITE_BODY_FILTER=.$/ { print "_RITE_BODY_FILTER='"'"'"; infilter=1; next }
   infilter && /^.$/ { print "NR==1 && /^---[[:space:]]*$/ { infm=1; next }"
                       print "infm && /^---[[:space:]]*$/  { infm=0; next }"
                       print "infm                        { next }"
-                      print "{ print }"
                       print "'"'"'"; infilter=0; next }
   infilter { next }
   { print }
@@ -198,9 +199,17 @@ assert "TC-7 #N で別途対応 が hit"          "1" "$(single_hits '#1152 で�
 assert "TC-3 TODO 行は hit しない"          "0" "$(single_hits 'TODO: #9999 で対応予定')"
 assert "TC-3 FIXME 行は hit しない"         "0" "$(single_hits 'FIXME PR #9998 を追う')"
 assert "TC-4 コードスパン内は hit しない"    "0" "$(single_hits '`refs #204` が `refs #2047` に一致する')"
+# span マスクは削除ではなく `_` 置換。削除するとキーワードと番号が隣接して**誤検出を製造する**
+# 方向に倒れる (comment-journal-check.test.sh TC-4 と対称)。
+assert "TC-4 span マスクがキーワードと番号を連結しない" "0" "$(single_hits 'PR `x` #1234')"
 assert "TC-1 キーワードなし裸 #N は hit しない" "0" "$(single_hits '#1234 の単独形は対象外')"
-tc8_fm=$(printf -- '---\nnote: "PR #1300 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
-assert "TC-8 frontmatter 散文の番号参照は hit しない" "0" "$(single_hits "$tc8_fm")"
+# E1 は frontmatter 全体ではなく `sources:` ブロックのみを落とす。ref 値はファイルパスで
+# 番号規則に一致しないため除外は防御的だが、`description:` / `title:` の散文は本物の
+# 説明的参照を含む (実 wiki で 22 件)。両方を 1 つの fixture で測る。
+tc8_fm=$(printf -- '---\ndescription: "PR #1300 の経緯"\nsources:\n  - type: "reviews"\n    ref: "raw/reviews/x-pr-1300.md"\ntags: ["a"]\n---\n\n# t\n\n本文に番号なし\n')
+assert "TC-8 frontmatter description の番号参照は hit する" "1" "$(single_hits "$tc8_fm")"
+tc8_src=$(printf -- '---\ntitle: "t"\nsources:\n  - type: "reviews"\n    ref: "raw/reviews/x.md"\n---\n\n# t\n\n本文に番号なし\n')
+assert "TC-8 frontmatter sources ブロックは hit しない" "0" "$(single_hits "$tc8_src")"
 
 # TC-2: `## ソース` 節のみを持つページ (本文に対象なし) は 0 件
 src_only=$(printf '# t\n\n## ソース\n\n- [PR #1300 review results](../../raw/reviews/a.md)\n- [Issue #1284 fix results](../../raw/fixes/b.md)\n')
@@ -228,7 +237,6 @@ assert_not_grep "TC-6 検出 regex に \\b を使っていない" "$SCRIPT" '_RI
 # `\b` 付きに変異させ、除外が沈黙する (= hits が増える) ことで危険を実証する。
 # awk 経路を実際に変異させるので、被テスト対象を実行しない always-pass にはならない。
 MUT_AWKB="$SBX/mutant-awk-backslash-b.sh"
-if make_mutant_sed() { sed "$1" "$SCRIPT" > "$2"; }; then :; fi
 sed 's%/(TODO|FIXME)%/(TODO\\b|FIXME\\b)%' "$SCRIPT" > "$MUT_AWKB"
 if assert_mutated "TC-17 MUTATION mutant 生成" "$MUT_AWKB"; then
   awkb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_AWKB" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
@@ -261,12 +269,20 @@ assert "TC-11b 読めた分の hits は計上される" "$hits" "$(printf '%s\n'
 assert "TC-9 read_errors=0 (全件読出成功時)" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$OUT")"
 
 # TC-12: placeholder residue
-printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy '{branch_strategy}' --repo-root "$SBX" ) >/dev/null 2>&1
+# exit 1 だけを見ると、後段の「unknown branch_strategy」分岐や partial pollution gate も
+# 同じ rc を返すため、当の gate を削除しても緑のままになる。sibling (wiki-lint-source-refs.test.sh)
+# と同じく gate 固有の marker まで assert して、どの gate が発火したかを pin する。
+p12_err="$SBX/p12.err"
+tmp_files+=("$p12_err")
+printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy '{branch_strategy}' --repo-root "$SBX" ) >/dev/null 2>"$p12_err"
 assert "TC-12 {branch_strategy} 残留 → exit 1" "1" "$?"
-printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch '{wiki_branch}' --repo-root "$SBX" ) >/dev/null 2>&1
+assert_grep "TC-12 {branch_strategy} 残留 → gate 固有 marker" "$p12_err" 'LINT_PHASE_7_5_PLACEHOLDER_RESIDUE=1; reason=branch_strategy_unsubstituted'
+printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch '{wiki_branch}' --repo-root "$SBX" ) >/dev/null 2>"$p12_err"
 assert "TC-12 {wiki_branch} 残留 → exit 1" "1" "$?"
-printf '%s\n' "{pages_list}" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
+assert_grep "TC-12 {wiki_branch} 残留 → gate 固有 marker" "$p12_err" 'LINT_PHASE_7_5_PLACEHOLDER_RESIDUE=1; reason=wiki_branch_unsubstituted'
+printf '%s\n' "{pages_list}" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>"$p12_err"
 assert "TC-12 {pages_list} 残留 → exit 1" "1" "$?"
+assert_grep "TC-12 {pages_list} 残留 → gate 固有 marker" "$p12_err" 'LINT_PHASE_7_5_PLACEHOLDER_RESIDUE=1; reason=pages_list_unsubstituted'
 
 # TC-13: partial pollution
 printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/raw/reviews/x.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
@@ -292,23 +308,23 @@ assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD"
 # ---- TC-19: separate_branch (本番既定経路) の positive path ----------------
 # 44 assertion が same_branch (cat) に偏っており、rite-config.yml の既定 separate_branch
 # (git show) は error 経路でしか踏まれていなかった。同じ fixture で同じ hits になることを pin する。
-GITSBX=$(make_plain_sandbox)
-cleanup_dirs+=("$GITSBX")
-git_err=$(mktemp "${TMPDIR:-/tmp}/rite-tc19-git-err-XXXXXX") || git_err=""
+GITSBX=$(make_plain_sandbox) && cleanup_dirs+=("$GITSBX") || { echo "ERROR: make_plain_sandbox failed, aborting" >&2; exit 1; }
+git_err=$(mktemp "${TMPDIR:-/tmp}/rite-tc19-git-err-XXXXXX") || { echo "WARNING: TC-19: git stderr 捕捉用 mktemp に失敗しました。sandbox 準備失敗時に git の stderr は surface されません" >&2; git_err=""; }
 tmp_files+=("${git_err:-}")
 # git の rc / stderr を捨てない: 周囲の global 設定 (commit.gpgsign 等) で commit が失敗すると、
 # 捨てた場合は「検出器が壊れた」形の assert 失敗だけが出て原因が surface しない。
 # 署名の影響は `-c` で切る (git config によるファイル書き込みも不要になる)。
 if (
-  cd "$GITSBX" || exit 1
+  cd "${GITSBX:?GITSBX unset}" || exit 1
   git init -q . || exit 1
   mkdir -p .rite/wiki/pages/anti-patterns
   cp "$SBX/$FIXTURE_REL" ".rite/wiki/pages/anti-patterns/fixture.md"
   git add -A || exit 1
   git -c commit.gpgsign=false -c user.email=t@example.com -c user.name=t commit -qm fixture || exit 1
   git branch -q wiki || exit 1
-  # fixture を blob 限定にする: ワークツリーに残すと --repo-root 配下で cat fallback でも
-  # 同じ hits が取れてしまい、git show 経路を壊しても緑のままになる。
+  # fixture を blob 限定にする: separate_branch の読出経路が git show 単独であることを
+  # fixture 配置の側でも担保する (旧 inline 実装が持っていた `git show || cat` の fallback が
+  # 将来再導入されても、この TC が緑にならないようにする)。
   rm -f ".rite/wiki/pages/anti-patterns/fixture.md"
 ) 2>"${git_err:-/dev/null}"; then
   :
@@ -344,6 +360,27 @@ assert_grep "TC-21 (T-07) canonical Lint: summary 行の形式が不変" "$LINT_
   '^Lint: contradictions=\{n_contradictions\}, stale=\{n_stale\}, orphans=\{n_orphans\}, missing_concept=\{n_missing_concept\}, unregistered_raw=\{n_unregistered_raw\}, broken_refs=\{n_broken_refs\}$'
 assert_not_grep "TC-21 (T-07) Lint: 行に descriptive フィールドが混入していない" "$LINT_MD" \
   '^Lint: .*descriptive'
+
+# ---- TC-22: 2 検出器の検出 regex が literal 一致すること -------------------
+# 同じ規則を 2 実装に持つため、語彙を 1 語足すたび両方の同期が要る。実装の共通化は
+# しない (読出元も計数単位も違う) 代わりに、literal のバイト一致を pin して drift を検出する。
+CJC="$PLUGIN_ROOT/hooks/scripts/comment-journal-check.sh"
+# 語彙の alternation (`[Ii]ssues?|…|[Rr]esolves`) だけを両ファイルから抜き、一致を見る。
+# regex 全体を突き合わせるとエスケープが複雑になり、抽出側の破損と drift を混同しやすい。
+vocab_of() { grep -oE '\[Ii\]ssues\?\|[^)]*\[Rr\]esolves' "$1" | head -1; }
+helper_vocab=$(vocab_of "$SCRIPT")
+cjc_vocab=$(vocab_of "$CJC")
+if [ -z "$helper_vocab" ]; then
+  fail "TC-22 helper から語彙を抽出できなかった (実装構造が変わった可能性)"
+elif [ -z "$cjc_vocab" ]; then
+  fail "TC-22 comment-journal-check.sh から語彙を抽出できなかった"
+elif [ "$helper_vocab" = "$cjc_vocab" ]; then
+  pass "TC-22 2 検出器の語彙が一致 (drift なし)"
+else
+  fail "TC-22 2 検出器の語彙が drift している
+    helper: $helper_vocab
+    cjc   : $cjc_vocab"
+fi
 
 if ! print_summary "$(basename "$0")" \
   "drift: wiki-lint-descriptive-refs.sh の検出 / 除外が変わった可能性。SKILL.md ステップ 7.5 の委譲契約と helper 冒頭の検出 2 規則・除外 E1-E5 の記述を参照。"; then

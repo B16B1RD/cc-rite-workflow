@@ -45,8 +45,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-SBX=$(make_plain_sandbox)
-cleanup_dirs+=("$SBX")
+SBX=$(make_plain_sandbox) && cleanup_dirs+=("$SBX") || { echo "ERROR: make_plain_sandbox failed, aborting" >&2; exit 1; }
 mkdir -p "$SBX/docs"
 
 # scan: write $1 as docs/t.md and return the findings for it (one per line).
