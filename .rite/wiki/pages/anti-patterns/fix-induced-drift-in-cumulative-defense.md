@@ -587,7 +587,7 @@ cycle 1 (0 findings, 2 reviewer 全員「マージ可」合意) → mergeable
 
 #### Pattern doctrine の連続再現データ
 
-「構造的予防 PR の successful prevention pattern」が **累積 27 回目以降の 5 PR 連続で empirical 確認**。これは累積 17 回目で観測された「Self-violation cascade と Doc precision regression chain」(2 cycle 20→20 open) と対照的で、**section-relative reference replacement / contract addition / minimal-scope assertion 統合 declare / Issue 本文 line 番号明示 + 機械検証 step / 新規 subsection + test pin / 兄弟 test 対称化 (TC-7 ↔ TC-11)** といった構造的予防策が累積対策 PR の review-fix loop fractal pattern から構造的に離脱する条件を示唆。
+「構造的予防 PR の successful prevention pattern」が **累積 27 回目以降の 5 PR 連続で empirical 確認**。これは bang-backtick 二段ガード昇格 PR で観測された「Self-violation cascade と Doc precision regression chain」(2 cycle 20→20 open) と対照的で、**section-relative reference replacement / contract addition / minimal-scope assertion 統合 declare / Issue 本文 line 番号明示 + 機械検証 step / 新規 subsection + test pin / 兄弟 test 対称化 (TC-7 ↔ TC-11)** といった構造的予防策が累積対策 PR の review-fix loop fractal pattern から構造的に離脱する条件を示唆。
 
 #### Successful prevention case の signal 拡張
 
@@ -640,7 +640,7 @@ cycle 3 fix で start.md Step 1.5 / start-finalize.md Step 0 が `gh` と `jq` �
 
 ### 累積 35 回目相当 — Self-violation cascade 連続 3 回再発 と「完全削除」戦略への転換
 
-当該 PR は aggregate-recommendation-label-evasion anti-pattern を解消する meta-PR でありながら、対策コード自身が Self-violation cascade を **連続 3 回再発** させた 4 cycle 構造的収束事例。本ページの累積 17 回目 Self-violation cascade 観察の延長線上で「累積対策 PR が解決対象の anti-pattern を fix 自身で再現する」cascade chain の最長記録更新。
+当該 PR は aggregate-recommendation-label-evasion anti-pattern を解消する meta-PR でありながら、対策コード自身が Self-violation cascade を **連続 3 回再発** させた 4 cycle 構造的収束事例。本ページの bang-backtick 二段ガード昇格 PR における Self-violation cascade 観察の延長線上で「累積対策 PR が解決対象の anti-pattern を fix 自身で再現する」cascade chain の最長記録更新。
 
 #### Convergence pattern (shrinking-cycle)
 
