@@ -22,7 +22,7 @@ confidence: high
 
 ## 概要
 
-command / skill ファイル (`.md`) に埋め込まれた bash block は、(1) `set -o pipefail` 宣言、(2) pipeline 各 stage の stderr を独立 tempfile に退避、(3) `cd` / `[ -d ]` 失敗の明示可視化、の 3 要素を揃えないと、上流コマンド (gh / jq / git) の失敗が pipefail dominant exit や stderr 握り潰しで silent suppression される。PR #1004 review cycle 2/3 で同型の observability gap が 3 site で同時 surface し、cycle 3 fix で 3 要素揃いの canonical 実装に統一された。
+command / skill ファイル (`.md`) に埋め込まれた bash block は、(1) `set -o pipefail` 宣言、(2) pipeline 各 stage の stderr を独立 tempfile に退避、(3) `cd` / `[ -d ]` 失敗の明示可視化、の 3 要素を揃えないと、上流コマンド (gh / jq / git) の失敗が pipefail dominant exit や stderr 握り潰しで silent suppression される。累積 32 回目の review cycle 2/3 で同型の observability gap が 3 site で同時 surface し、cycle 3 fix で 3 要素揃いの canonical 実装に統一された。
 
 ## 詳細
 
@@ -38,7 +38,7 @@ if cmd | jq '.field'; then
 fi
 ```
 
-`set -o pipefail` を宣言していない場合、最終 stage (`jq`) の exit code が pipeline 全体の exit code となり、`cmd` (例: `gh repo view`) が失敗しても pipeline は exit 0 で「成功」扱いになる。PR #1004 cycle 2 で start.md / start-finalize.md / post-compact.sh の embedded bash が同型の `if gh ... | jq` を持ち、gh failure が silent に jq 出力 (null) で吸収される経路を 3 reviewer 独立検出。
+`set -o pipefail` を宣言していない場合、最終 stage (`jq`) の exit code が pipeline 全体の exit code となり、`cmd` (例: `gh repo view`) が失敗しても pipeline は exit 0 で「成功」扱いになる。累積 32 回目の cycle 2 で start.md / start-finalize.md / post-compact.sh の embedded bash が同型の `if gh ... | jq` を持ち、gh failure が silent に jq 出力 (null) で吸収される経路を 3 reviewer 独立検出。
 
 **canonical 対策**: bash block 冒頭で `set -euo pipefail` を宣言する。`set -e` 単独では pipeline の中間段失敗を捕捉しないため、`-o pipefail` の併用が必須。
 
@@ -63,7 +63,7 @@ fi
 
 #### 3. cd / directory existence failure の明示可視化
 
-`cd "$STATE_ROOT" && ...` 形式の `&&` chain や `[ -d "$STATE_ROOT" ]` 不在は、ディレクトリ未作成 / permission denied を silent skip する経路を作る。PR #1004 cycle 3 F-10 で post-compact.sh が `cd "$STATE_ROOT"` の失敗を silent fall-through していた経路を別 incident sentinel (`state_root_inaccessible`) として emit する fix で解消。
+`cd "$STATE_ROOT" && ...` 形式の `&&` chain や `[ -d "$STATE_ROOT" ]` 不在は、ディレクトリ未作成 / permission denied を silent skip する経路を作る。累積 32 回目の cycle 3 F-10 で post-compact.sh が `cd "$STATE_ROOT"` の失敗を silent fall-through していた経路を別 incident sentinel (`state_root_inaccessible`) として emit する fix で解消。
 
 **canonical 対策**: directory access の前後で explicit guard と incident emit:
 
@@ -90,7 +90,7 @@ cd "$STATE_ROOT" || {
 
 ### sub-shell scope-internal context retrieval (関連 sub-pattern)
 
-PR #1004 F-01 で観測された関連パターン: embedded bash block が `{owner}` / `{repo}` を消費する場合、orchestrator (caller markdown) からの substitute に依存すると、別 bash invocation で値が失われる Claude Code Bash tool の挙動と衝突する。解決策は **sub-shell scope 内で `gh repo view` を再実行して context retrieval を内製化する**:
+累積 32 回目の F-01 で観測された関連パターン: embedded bash block が `{owner}` / `{repo}` を消費する場合、orchestrator (caller markdown) からの substitute に依存すると、別 bash invocation で値が失われる Claude Code Bash tool の挙動と衝突する。解決策は **sub-shell scope 内で `gh repo view` を再実行して context retrieval を内製化する**:
 
 ```bash
 owner=$(gh repo view --json owner --jq '.owner.login') || {

@@ -34,7 +34,7 @@ confidence: high
 
 ## 概要
 
-既存コンポーネントを参照する design doc は記憶ベースで書かず、現 develop HEAD の registration ファイル (hooks.json 等) や writer/reader を grep evidence として確認してから書く。記憶に頼った参照は「component が既に取り除かれている」「field が現 schema に存在しない」「hook list が drift している」といった stale code reference を生み、 multi-cycle review-fix loop の dominant 原因となる。PR #677 で stale code reference (4 HIGH on single root cause) と hooks.json SoT misalignment (cycle 4 で 5 finding 再 surface) として実測。
+既存コンポーネントを参照する design doc は記憶ベースで書かず、現 develop HEAD の registration ファイル (hooks.json 等) や writer/reader を grep evidence として確認してから書く。記憶に頼った参照は「component が既に取り除かれている」「field が現 schema に存在しない」「hook list が drift している」といった stale code reference を生み、 multi-cycle review-fix loop の dominant 原因となる。起点事例で stale code reference (4 HIGH on single root cause) と hooks.json SoT misalignment (cycle 4 で 5 finding 再 surface) として実測。
 
 ## 詳細
 
@@ -87,7 +87,7 @@ cycle 4 で確立された fix:
 
 ### Doc mechanism scope claim の grep verify
 
-「doc が記述するメカニズムの scope」が「実装の scope」より広い drift も本 heuristic の subset として捉える。PR #1065 で `auto_demote_low` の scope を doc が「LOW or MEDIUM」と曖昧表現していたが、実装は `severity == LOW` のみが降格対象で、reviewer 直接 assign 経路で MEDIUM が flag されるのは別系統という 2 経路混合だった。
+「doc が記述するメカニズムの scope」が「実装の scope」より広い drift も本 heuristic の subset として捉える。scope 曖昧表現事例で `auto_demote_low` の scope を doc が「LOW or MEDIUM」と曖昧表現していたが、実装は `severity == LOW` のみが降格対象で、reviewer 直接 assign 経路で MEDIUM が flag されるのは別系統という 2 経路混合だった。
 
 | 観測 | doc 表記 | 実装事実 |
 |------|---------|----------|
@@ -116,7 +116,7 @@ MEDIUM × current-pr は reviewer 直接 assign 経路 (本 mechanism と別系�
 
 本 heuristic は「design 時に書き手が verify する」だけでなく、**review 時に reviewer が文書の code-state claim を grep verify する** review-side mirror としても機能する。positive evidence を実測済み。
 
-PR #1111 は `metrics-recording.md` の注記を強化し、3 marker (`phase5_post_metrics` / `phase5_post_status_in_review` / `phase5_5_2_metrics`) が **orphan (live writer/reader 不在・PHASE_ENUM_V3 に非在・pre-condition-gate.md で retired)** であり legacy `phase5_*` drift とは別語彙だと明示する doc-only PR。central factual claim が「これらの marker はコード上 orphan である」という code-state assertion であった。
+orphan marker 注記事例は `metrics-recording.md` の注記を強化し、3 marker (`phase5_post_metrics` / `phase5_post_status_in_review` / `phase5_5_2_metrics`) が **orphan (live writer/reader 不在・PHASE_ENUM_V3 に非在・pre-condition-gate.md で retired)** であり legacy `phase5_*` drift とは別語彙だと明示する doc-only PR。central factual claim が「これらの marker はコード上 orphan である」という code-state assertion であった。
 
 | 観測 | 内容 |
 |------|------|
@@ -130,7 +130,7 @@ documentation が「X は orphan / no live reader / retired」のような code-
 
 ### Cycle 4 spike pattern が示す cumulative-defense 教訓
 
-PR #677 の収束軌跡 (9 → 5 → 3 → 5 → 1 → 1 → 0) で **cycle 4 で finding 数が再 spike** したのは、cycle 1-3 では reviewer も同じ「記憶ベース hook list」を信じていたため、cycle 4 で初めて hooks.json grep evidence による検証 layer が活性化したことが原因。これは [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の fractal pattern とは別系統 — fix-induced drift ではなく **「reviewer 自身の SoT layer が cycle 進行で深化する」現象**。design doc PR では reviewer scope の cycle-progressive deepening を前提に、初回 cycle から registration ファイル grep を mandatory 化することで cycle 4 spike を回避できる。
+起点事例の収束軌跡 (9 → 5 → 3 → 5 → 1 → 1 → 0) で **cycle 4 で finding 数が再 spike** したのは、cycle 1-3 では reviewer も同じ「記憶ベース hook list」を信じていたため、cycle 4 で初めて hooks.json grep evidence による検証 layer が活性化したことが原因。これは [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の fractal pattern とは別系統 — fix-induced drift ではなく **「reviewer 自身の SoT layer が cycle 進行で深化する」現象**。design doc PR では reviewer scope の cycle-progressive deepening を前提に、初回 cycle から registration ファイル grep を mandatory 化することで cycle 4 spike を回避できる。
 
 ### SoT 新設時の verify 義務（cycle 1-2 の実測）
 
@@ -158,7 +158,7 @@ canonical helper (`wiki-config.sh` の `parse_wiki_scalar`) ではなく、別�
 
 #### 「最低 2 reviewer 独立検証」契約
 
-PR #1155 では 3 reviewer が独立に同 cluster を指摘した cycle 2 経緯から、**SoT 新設 PR では最低 2 reviewer の独立 grep-confirm を mandatory acceptance criteria に含める** ことを経験則化。本 page で既述の review-side grep verify を SoT 作成 PR へ一般化したもの。
+SoT 新設事例では 3 reviewer が独立に同 cluster を指摘した cycle 2 経緯から、**SoT 新設 PR では最低 2 reviewer の独立 grep-confirm を mandatory acceptance criteria に含める** ことを経験則化。本 page で既述の review-side grep verify を SoT 作成 PR へ一般化したもの。
 
 「実装に対するリンク」と「実装の semantic 要約」の 2 役割分離が drift-free 経路: semantic 要約を SoT に書かず anchor link のみとし、実装側の case 文を一次 SoT とする ([[single-sot-on-references-extract]] 参照)。
 

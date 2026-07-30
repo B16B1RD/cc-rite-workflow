@@ -53,15 +53,15 @@ confidence: high
 
 なお、置換スコープの厳密な線引き（`rite:init` という完全文字列のみを対象とし、裸の "init" という一般語や `init.md` のような pre-existing shorthand 参照はスコープ外、という revert-test 判断）自体は正しい設計判断であり、本ヒューリスティックは「スコープを広げよ」ではなく「意図したスコープ内の3階層を最初から漏れなく洗い出せ」という趣旨である。
 
-### PR #1796（review→pr-review）での再演: fix-cycling ではなく別 Issue 化で収束させる代替戦略
+### 再演事例（review→pr-review）: fix-cycling ではなく別 Issue 化で収束させる代替戦略
 
-同シリーズの後続 PR（`/rite:review` → `/rite:pr-review` リネーム）で Tier 2（`{old}.md` ファイル名 shorthand、この場合は `review.md`）が再び観測された。ただし PR #1795 とは異なる収束経路をたどった:
+同シリーズの後続 PR（`/rite:review` → `/rite:pr-review` リネーム）で Tier 2（`{old}.md` ファイル名 shorthand、この場合は `review.md`）が再び観測された。ただし先行事例とは異なる収束経路をたどった:
 
 - 6 名のレビュアー（security / performance / tech-writer / error-handling / type-design / prompt-engineer）が並列レビューを実行した結果、tech-writer・type-design・prompt-engineer の3名が**独立に**「`review.md` という拡張子なし shorthand がリポジトリ全体で100箇所以上残存している」ことを検出した。
-- PR #1795 の cycle 2 のように「指摘事項」として blocking 化し fix loop に投入するのではなく、3名とも `分類: boundary`（推奨事項）として報告した。これは各 reviewer が独立に revert test を適用し「本 PR の diff が原因ではない pre-existing shorthand であり、本 PR の diff を revert しても shorthand 自体は残る」と判断したため。
+- 先行事例の cycle 2 のように「指摘事項」として blocking 化し fix loop に投入するのではなく、3名とも `分類: boundary`（推奨事項）として報告した。これは各 reviewer が独立に revert test を適用し「本 PR の diff が原因ではない pre-existing shorthand であり、本 PR の diff を revert しても shorthand 自体は残る」と判断したため。
 - orchestrator（ステップ7 自動 Issue 化）はこの3件を集約して1件の follow-up Issue（#1797）として切り出し、review 自体は 1 cycle・0 blocking findings で mergeable に到達した。
 
-**教訓の追加**: Tier 2/3 の残存パターンを検出した場合、必ずしも同一 PR の fix loop で解消する必要はない。revert test で「本 PR 由来か pre-existing か」を判定し、pre-existing であれば `分類: boundary` として推奨事項に回し、別 Issue（本例では #1797）に切り出す方が、PR #1795（5 cycle 消費）より収束コストが低い。ただし本 PR 自体は「`rite:review` という完全文字列」の Tier 1 置換に限定されており、Tier 2 の shorthand 自体は最初から Issue #1786 の Out of Scope として明示されていた点が PR #1795（Tier 2 が当初スコープ内と誤認されていた）との違いであり、「着手前に Tier 2/3 をスコープ内/外どちらとして扱うかを Issue 段階で明示しておく」ことが cycle 数を左右する一次要因である。
+**教訓の追加**: Tier 2/3 の残存パターンを検出した場合、必ずしも同一 PR の fix loop で解消する必要はない。revert test で「本 PR 由来か pre-existing か」を判定し、pre-existing であれば `分類: boundary` として推奨事項に回し、別 Issue に切り出す方が、先行事例（5 cycle 消費）より収束コストが低い。ただし本 PR 自体は「`rite:review` という完全文字列」の Tier 1 置換に限定されており、Tier 2 の shorthand 自体は最初から当該 Issue の Out of Scope として明示されていた点が先行事例（Tier 2 が当初スコープ内と誤認されていた）との違いであり、「着手前に Tier 2/3 をスコープ内/外どちらとして扱うかを Issue 段階で明示しておく」ことが cycle 数を左右する一次要因である。
 
 ## 関連ページ
 

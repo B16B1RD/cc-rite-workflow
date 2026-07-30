@@ -48,7 +48,7 @@ Documentation の prose が言及する実装側 (commands/, scripts/, templates
 
 ### 観測された具体パターン
 
-PR #1139 cycle 1-14 で 51 件の findings が出た root cause は、ほぼ全件が「documentation の prose が implementation の現状を verify せずに整合性のみ追っていた」点に集約される。本 PR の場合 documentation 側だけで内的整合は cycle 1+2 でほぼ取れていたが、実装側との照合が cycle 5 まで実施されなかったため latent な dead reference / factually-wrong claim が cycle 後半まで蓄積した。
+起点事例の cycle 1-14 で 51 件の findings が出た root cause は、ほぼ全件が「documentation の prose が implementation の現状を verify せずに整合性のみ追っていた」点に集約される。本 PR の場合 documentation 側だけで内的整合は cycle 1+2 でほぼ取れていたが、実装側との照合が cycle 5 まで実施されなかったため latent な dead reference / factually-wrong claim が cycle 後半まで蓄積した。
 
 具体的な失敗形態:
 
@@ -62,7 +62,7 @@ PR #1139 cycle 1-14 で 51 件の findings が出た root cause は、ほぼ全�
 
 ### 確立された verification protocol
 
-PR #1139 から導かれた「documentation review verification protocol」の必須 step:
+起点事例から導かれた「documentation review verification protocol」の必須 step:
 
 1. **CHANGELOG fact-check**: `removed in #N` / `migrated in #N` 等の claim には対応 path に対して `ls path/` / `git show {sha}:{path}` で actual state を verify する。
 2. **`# wave` grep sweep**: CHANGELOG に `# N` 言及がある場合、その PR で削除された全 keys / features を `git show {sha}` で enumerate し、各 key について `grep -rn '<key>' docs/` で残存 live citation を一括検出する。`# wave` は unit of consistency。
@@ -76,11 +76,11 @@ PR #1139 から導かれた「documentation review verification protocol」の�
 
 ### Root cause summary
 
-documentation review の verification protocol が **「内的整合 (CHANGELOG ↔ CONFIGURATION の言及対応など)」のみに focus し「documentation ↔ implementation の cross-reference 検証」を欠いていた** ことが PR #1139 の 51 findings / 14 cycle convergence の本質。release-prep docs PR は特に「latest implementation の grep が SoT」と認識し、prose 内のあらゆる factual claim (file 存在・key live・sentinel emit・phase 経路) を implementation grep で裏取りする protocol を必須にすべき。
+documentation review の verification protocol が **「内的整合 (CHANGELOG ↔ CONFIGURATION の言及対応など)」のみに focus し「documentation ↔ implementation の cross-reference 検証」を欠いていた** ことが起点事例の 51 findings / 14 cycle convergence の本質。release-prep docs PR は特に「latest implementation の grep が SoT」と認識し、prose 内のあらゆる factual claim (file 存在・key live・sentinel emit・phase 経路) を implementation grep で裏取りする protocol を必須にすべき。
 
 ### 適用範囲
 
-- リリース直前の大規模 docs 整備 PR (本 PR #1139 のような pre-release docs review)
+- リリース直前の大規模 docs 整備 PR (起点事例のような pre-release docs review)
 - 大型 retire/decompose 系 PR (`#1117` i18n 廃止、`#1118` scaffolding 削除、`#1136` /rite:issue:start 4 分解 など) の事後 docs 整備
 - migration-guide 更新 PR (旧 → 新 phase mapping を含むため特に implementation grep が critical)
 - CONFIGURATION.md / SPEC.md / CHANGELOG.md / README.md の cross-doc 整合 PR

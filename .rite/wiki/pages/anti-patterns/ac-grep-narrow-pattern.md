@@ -39,7 +39,7 @@ grep -rnE "Phase [0-9]+(\.[0-9]+)?" plugins/rite/commands/wiki/
 3. **命名規約 prose**: `function 名 token は規約確立 history を保持するため phase を維持` のような meta 説明
 4. **副詞句**: `現 Phase は set -e なし` (Phase の後に番号がない名詞句)
 
-### PR #1151 での実測
+### 大規模 rename 事例での実測
 
 AC-3 strict (`grep "Phase [0-9]+(\.[0-9]+)?"` = 0 件) を満たしたにも関わらず、wiki/ingest.md (L197, 823, 941) / wiki/init.md (L68, 106) / wiki/lint.md (L459, 896, 973, 1052-1053, 1383, 1786) に **13+ 件の bare `Phase` 残留** が判明 (review cycle 0 の HIGH/MEDIUM finding として検出)。AC grep が `Phase + 数字` のみを対象とするため、文中 bare `Phase` を捕捉できないことが構造的盲点として表面化。
 
@@ -66,9 +66,9 @@ grep -rnE "Phase\b" {target_dirs}/
 | 命名規約の `phase` token | コメントで「規約確立 history のため `phase` を保持」と明示 |
 | Archive doc の historical reference | front-matter で preservation policy を declare し、AC から除外 |
 
-### PR #1166: 固定文字列 grep と suffix-bearing sentinel の衝突ジレンマ
+### sentinel rename 事例: 固定文字列 grep と suffix-bearing sentinel の衝突ジレンマ
 
-同じ盲点は **固定文字列 (`grep -F`)** を AC に採った場合にも別形で現れる。sentinel rename PR #1166 (`:completed` → `:returned-to-caller`) の AC-1 は `grep -rnF ':completed]'` を残存チェックに使ったが、固定文字列 `':completed]'` は **bracket 終端形** (`[lint:completed]`) しか捕捉できず、**suffix を持つ形** (`[create:completed:{N}]` / `[lint:completed:auto]`) を取り逃す。AC が「0 件」を満たしても colon 終端形が残留する silent coverage gap が生じる。
+同じ盲点は **固定文字列 (`grep -F`)** を AC に採った場合にも別形で現れる。sentinel rename 事例 (`:completed` → `:returned-to-caller`) の AC-1 は `grep -rnF ':completed]'` を残存チェックに使ったが、固定文字列 `':completed]'` は **bracket 終端形** (`[lint:completed]`) しか捕捉できず、**suffix を持つ形** (`[create:completed:{N}]` / `[lint:completed:auto]`) を取り逃す。AC が「0 件」を満たしても colon 終端形が残留する silent coverage gap が生じる。
 
 ここで難しいのは、両形を catch する regex (`\[[a-z]+:completed(:[^]]*)?\]`) に切り替えると、今度は historical preservation prose (`旧 create:completed:{N} を…`) を過剰マッチしてしまう点。**「functional sentinel と historical prose の literal 形が衝突する」設計的ジレンマ**であり、単一の残存 grep では両立しない。
 
@@ -76,7 +76,7 @@ clean な解は negative grep 単独に頼らず、**positive check (新形式 `
 
 ### 派生する命名規約の semantic mismatch
 
-PR #1151 の fix cycle 1 で関連する別 anti-pattern も発見された: bash function 命名規約 (`_rite_<scope>_<phase>_cleanup` の `<phase>` token) が「ステップ番号の小数点除外連結形式 → `phase22`」という semantic mismatch を含む。`<phase>` token を「Step N.M の concat」として残すか「規約由来の固定 token」として扱うかを規約 prose で明示しないと、LLM が「ステップ 2.2 → step22」と誤読する経路を生む。
+大規模 rename 事例の fix cycle 1 で関連する別 anti-pattern も発見された: bash function 命名規約 (`_rite_<scope>_<phase>_cleanup` の `<phase>` token) が「ステップ番号の小数点除外連結形式 → `phase22`」という semantic mismatch を含む。`<phase>` token を「Step N.M の concat」として残すか「規約由来の固定 token」として扱うかを規約 prose で明示しないと、LLM が「ステップ 2.2 → step22」と誤読する経路を生む。
 
 ## 関連ページ
 

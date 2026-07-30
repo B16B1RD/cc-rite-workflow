@@ -38,7 +38,7 @@ review-fix loop が累積 28+ cycle に達した時点でも、「invariant は 
 
 ## 詳細
 
-### PR #688 cycle 29 で初顕現した non-trivial silent regression
+### 累積 14 回目の cycle 29 で初顕現した non-trivial silent regression
 
 cycle 28 まで「invariant は logic 上成立」と判断されていた `_resolve_session_state_path` の writer-side fallback が、cycle 29 reviewer が **/tmp 内に AC-4 reproduction scenario を構築** して helper の silent no-op を直接観測することで CRITICAL 認定された:
 
@@ -69,7 +69,7 @@ invariant が logic 上成立すると思っても empirical 結果が異なれ�
 
 ### Test 規範: AC reproduction scenario を test suite で直接 pin
 
-PR #688 cycle 29 までの failure mode は AC-4 reproduction scenario が test suite で直接 pin されていなかったため発生。canonical fix: scenario を 6 sub-assertions の test として永続化し future regression を機械的に捕捉:
+累積 14 回目の cycle 29 までの failure mode は AC-4 reproduction scenario が test suite で直接 pin されていなかったため発生。canonical fix: scenario を 6 sub-assertions の test として永続化し future regression を機械的に捕捉:
 
 ```bash
 # TC-AC-4-WRITER-FALLBACK
@@ -104,7 +104,7 @@ LLM reviewer は invariant の logical consistency を高速に reasoning でき
 
 ### Documentation factual claim 検証の実例（cycle 1-4）
 
-PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の factual claim を runtime / grep で 3 件反証:
+canonical reference 反証事例で reviewer が canonical reference (`broken-ref-resolution.md`) の factual claim を runtime / grep で 3 件反証:
 
 1. **`realpath -m` の symlink 挙動 (cycle 1 で訂正)**: reference が「`-m` で symlink 解決しない」と書いていたが、prompt-engineer reviewer が GNU coreutils 公式 man page (`man realpath`) で「`-m` は missing components を許容するのみ、symlink は default で resolve される。symlink 非解決には `-s` が必要」と確認。reference を訂正。
 2. **「実用上の影響はない」断定の反証 (cycle 1 で訂正)**: reference が「コードブロック内のリンクは行頭 ``` 慣習なので false positive 発生せず」と書いていたが、reviewer が `grep -rE '^[[:space:]]+\`\`\`' .rite/wiki-worktree/.rite/wiki/pages/` で **インデント付き code fence の実在** を立証。prose claim は repo 内検証で裏付ける必要がある (prose-only claim 禁止)。
@@ -115,7 +115,7 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 
 ### Reviewer 評価の割れは coverage gap として runtime evidence で確証する（cycle 1）
 
-複数 reviewer の verdict が正面から割れたとき、それは多くの場合 **真の矛盾ではなく coverage gap** (各 reviewer が異なる code path をテストした結果) である。PR #1246 で error-handling reviewer が「CLEANED 経路 + 内側 mktemp 失敗で exit 1 を leak する」HIGH を runtime observation (mktemp-shim で no-arg call のみ失敗させる) で検出した一方、code-quality / security reviewer は normal path (normal CLEANED / mv-failure) のみテストして「exit 0 維持」と評価していた。
+複数 reviewer の verdict が正面から割れたとき、それは多くの場合 **真の矛盾ではなく coverage gap** (各 reviewer が異なる code path をテストした結果) である。coverage gap 事例で error-handling reviewer が「CLEANED 経路 + 内側 mktemp 失敗で exit 1 を leak する」HIGH を runtime observation (mktemp-shim で no-arg call のみ失敗させる) で検出した一方、code-quality / security reviewer は normal path (normal CLEANED / mv-failure) のみテストして「exit 0 維持」と評価していた。
 
 - 後者の評価は **彼らがテストした path では正しい**。特定 edge case (CLEANED + 内側 mktemp 失敗) が未カバーだっただけで、真の contradiction ではない。
 - 解決は「どちらの reviewer が正しいか」を reasoning で決めるのではなく、**より具体的な runtime evidence を持つ finding を実機再現で確証**し採否を決める。reasoning ベースで「exit 0 は維持される」と早合点せず、reviewer が指摘した specific scenario を実機で reproduce して観測する。
@@ -157,7 +157,7 @@ orchestrator が両経路を同一ハーネスで測ると、どちらの測定�
 
 ### ハーネス自身の false-negative を control ケースで先に潰す
 
-revert test で新旧を比較するとき、ハーネスの構成ミスで **両方とも「問題なし」に揃う** ことがある。PR #2017 では検証用の親リポジトリを `rite-review-mutation-*` 配下の一時ディレクトリに作ったため、ガードがそれを sanctioned な隔離ワークツリーと判定して全許可になり、control ケースまで通ってしまった。
+revert test で新旧を比較するとき、ハーネスの構成ミスで **両方とも「問題なし」に揃う** ことがある。revert test 構成ミス事例では検証用の親リポジトリを `rite-review-mutation-*` 配下の一時ディレクトリに作ったため、ガードがそれを sanctioned な隔離ワークツリーと判定して全許可になり、control ケースまで通ってしまった。
 
 比較を始める前に、**確実に deny になるはずの control 入力で期待どおり deny すること**を確認する。control が期待どおりでないなら、その後の差分測定はすべて無意味。
 

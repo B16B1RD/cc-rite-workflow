@@ -99,7 +99,7 @@ grep -nE 'mktemp[^|]*\|\|[[:space:]]*[a-z_]+=""' --include='*.sh' -r .
 - `git rev-parse HEAD || echo unknown` — corrupt 状態を `head=unknown; push=ok` として success 同等に見せる
 - `rm -f` の非対称握り潰し — 同一ファイル内で rc=0 path では rm 失敗を surface するが rc=5 path で silent にすると、asymmetric silent fallback で障害箇所が部分的にしか見えない
 
-いずれも **「低頻度だが起きたとき成功経路と区別不能」** という共通構造を持ち、`if ! ...; then WARNING; [CONTEXT]; var=""; fi` 形式で可視化する。PR #550 では `worktree_commit_push()` の head SHA capture と `wiki-ingest-commit.sh` の rm failure surfacing で同じ pattern を適用した (asymmetric 発火経路も同一方針で揃えるのが要点 — [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) 参照)。
+いずれも **「低頻度だが起きたとき成功経路と区別不能」** という共通構造を持ち、`if ! ...; then WARNING; [CONTEXT]; var=""; fi` 形式で可視化する。起点事例では `worktree_commit_push()` の head SHA capture と `wiki-ingest-commit.sh` の rm failure surfacing で同じ pattern を適用した (asymmetric 発火経路も同一方針で揃えるのが要点 — [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) 参照)。
 
 ### awk text manipulation 経路への一般化と 3 点セット canonical pattern（cycle 1 fix の実測）
 
@@ -123,7 +123,7 @@ awk の exit code を捕捉しない経路は、上記 mktemp / git rev-parse �
 | empty-section | start_pattern 〜 end_pattern が source に存在せず空抽出 | source layout の事前 grep 確認 |
 | pattern-not-found | section 内に grep target が不在 (本来の検出意図) | 通常の test failure |
 
-これら 5 mode を診断レベルで区別可能化する canonical fix は、PR #1049 cycle 1 fix で確立した **3 点セット**:
+これら 5 mode を診断レベルで区別可能化する canonical fix は、awk silent swallow 事例の cycle 1 fix で確立した **3 点セット**:
 
 ```bash
 # ✅ OK: awk 経路の 5 failure mode 区別 (cycle 1 fix で確立)
@@ -157,7 +157,7 @@ fi
 
 **3 点セットの意義**: (1) `if !` awk wrap で awk-fail を pattern-not-found から分離、(2) stderr tempfile 退避で awk 内部エラーの根本原因を surface、(3) 空 section guard で empty-section と pattern-not-found を分離 — の組み合わせで 5 mode 区別が成立。**「text manipulation 失敗を silent 握り潰さない」原則は awk / sed / cut / sort 等の helper layer 全般に適用可能** で、特に test helper のような **caller から 5 mode の使い分けができない layer** で重要 (caller test ファイルは「pattern matches or not」しか受け取れず、根本原因の WARNING が出ないと debug が不可能)。
 
-PR #1049 の cycle 1 で test / code-quality / error-handling の 3 reviewer が独立に「awk silent swallow → 5 failure mode 混同」を MEDIUM 指摘し、cycle 1 fix の 3 点セットで cycle 2 では同 reviewer 自身が「5 mode が診断レベルで区別可能化された」と FIXED verification、1-cycle 収束に至った。本 evidence は「成功経路と区別不能な silent fallback」class が awk 経路を含む helper layer 全般で発火しうることを示し、本 pattern の適用範囲を mktemp / git semantics から **text manipulation primitive 全般 (awk / sed / cut / sort 等)** へ一般化する。
+awk silent swallow 事例の cycle 1 で test / code-quality / error-handling の 3 reviewer が独立に「awk silent swallow → 5 failure mode 混同」を MEDIUM 指摘し、cycle 1 fix の 3 点セットで cycle 2 では同 reviewer 自身が「5 mode が診断レベルで区別可能化された」と FIXED verification、1-cycle 収束に至った。本 evidence は「成功経路と区別不能な silent fallback」class が awk 経路を含む helper layer 全般で発火しうることを示し、本 pattern の適用範囲を mktemp / git semantics から **text manipulation primitive 全般 (awk / sed / cut / sort 等)** へ一般化する。
 
 ### Flatten refactor 経由の格下げ regression（実測）
 
@@ -183,7 +183,7 @@ cycle 1 で `ingest.md` L248 (cat_err) / L535 (_reset_err) の 2 site が格下�
 #### 一般化された経験則
 
 - **「フラット化 PR」での非対称な statement 削除リスク**: blockquote 削除と同時に「コメント外観に見える」mktemp WARNING block が削除されやすい。Pattern 3 規範の WARNING block は **機能を持つ statement** であり、blockquote 削除スコープに含めてはならない ([[flatten-refactor-deletion-scope-classification]] の Keep カテゴリ判定基準を参照)
-- **同 PR 内対称性 grep 検査による detection**: refactor 中 `grep -rn 'mktemp.*|| .*=""'` で同型 anti-pattern を網羅検査することが silent regression 検出の決定打。1 site だけ修正して「対称性が達成された」と評価しない ([[asymmetric-fix-transcription]] PR #1155 補強事例参照)
+- **同 PR 内対称性 grep 検査による detection**: refactor 中 `grep -rn 'mktemp.*|| .*=""'` で同型 anti-pattern を網羅検査することが silent regression 検出の決定打。1 site だけ修正して「対称性が達成された」と評価しない ([[asymmetric-fix-transcription]] の補強事例参照)
 - **PR description の自己宣言と機能 statement 削除の乖離**: 「behavior-preserving refactor」「コメント削除のみ許容」を謳う PR でも、Pattern 3 規範 WARNING の格下げが silent 混入し得る。description だけで判断せず、機能 statement の existence-check を grep で実測する
 
 ### grep 経路への一般化: no-match (exit 1) と実エラー (exit 2+) の区別（cycle 1 review の実測）
@@ -213,7 +213,7 @@ if [ "$scan_rc" -gt 1 ]; then
 fi
 ```
 
-**「同じスクリプト内の複数の同種検証ロジック (I1/I2/I3) で 1 つだけガードが非対称に欠落する」** のは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の一種でもあり、本 pattern (silent-fallback-indistinguishable-from-success) と対称性欠落の 2 軸が重なって発火した事例。**「検証ツール自身が、検証しようとしている性質 (silent failure) を内部に持つ」self-referential 発火**は、PR #765 (bang-backtick self-reference)・PR #1043 (aggregate-label self-violation)・PR #1167 (wiki-lint self-application)・PR #1328 (parity test self-referential)・PR #1764 (drift-check family self-application) に続く累積事例であり、**新設の検証・lint ツールは自身の実装が検証対象の failure mode を含んでいないか個別レビューする**ことが必要。
+**「同じスクリプト内の複数の同種検証ロジック (I1/I2/I3) で 1 つだけガードが非対称に欠落する」** のは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の一種でもあり、本 pattern (silent-fallback-indistinguishable-from-success) と対称性欠落の 2 軸が重なって発火した事例。**「検証ツール自身が、検証しようとしている性質 (silent failure) を内部に持つ」self-referential 発火**は、bang-backtick self-reference・aggregate-label self-violation・wiki-lint self-application・parity test self-referential・drift-check family self-application に続く累積事例であり、**新設の検証・lint ツールは自身の実装が検証対象の failure mode を含んでいないか個別レビューする**ことが必要。
 
 ### 既存 helper への新規呼び出し追加は helper 自身の呼び出し規約を継承する義務を負う
 

@@ -72,7 +72,7 @@ precedence rule (canonical 優先) が明文化されていると、cycle 2 revi
 - summary site / cross-reference site には「canonical: §X.Y 参照」を明記し、独自詳細を書かない
 - 変更時は canonical を先に更新し、他 site の summary をそれに従わせる契約を本文 / DRIFT-CHECK ANCHOR に書く
 
-### PR #947 観測 (3 cycle convergence + multi-canonical-per-file scope distinction)
+### 3 cycle 事例の観測 (3 cycle convergence + multi-canonical-per-file scope distinction)
 
 上記の 1 cycle convergence と対比して、後続 PR は同じ「canonical source 宣言」テーマで **3 cycle 要した**。差分原因と新たに導出された 3 つの sub-pattern を以下に記録する。
 
@@ -93,9 +93,9 @@ precedence rule (canonical 優先) が明文化されていると、cycle 2 revi
 
 #### Sub-pattern 2: Citation 3 段階分離 (宣言場所 / 実体行 / 概念階層)
 
-PR #947 cycle 2 で「canonical **宣言場所**」と「canonical **実体行**」を混同した citation 誤りが新たに検出された (cycle 1 で書いた「ingest.md L559 / L569」が事実誤り — 実体行は L821)。cycle 2 fix は citation を **3 種に分離** する構造化解決を採用した:
+3 cycle 事例の cycle 2 で「canonical **宣言場所**」と「canonical **実体行**」を混同した citation 誤りが新たに検出された (cycle 1 で書いた「ingest.md L559 / L569」が事実誤り — 実体行は L821)。cycle 2 fix は citation を **3 種に分離** する構造化解決を採用した:
 
-| Citation 概念 | 説明 | PR #947 例 |
+| Citation 概念 | 説明 | 3 cycle 事例での例 |
 |--------------|------|-----------|
 | 宣言場所 | 「X が canonical である」と宣言されている行 | L530: Phase 4.3 = 値決定手順 canonical の宣言場所 |
 | 概念階層宣言 | 同一ファイル内に複数 canonical が共存することを宣言する場所 | L559: Phase 4.3 内で Phase 5.3 を F-14 fix 動作契約 canonical と明示 |
@@ -105,13 +105,13 @@ canonical 参照を 1 文に詰め込まず NOTE を意味的に分離するこ�
 
 #### Sub-pattern 3: 3 cycle 着地パターンの収束条件
 
-PR #946 (1 cycle) と PR #947 (3 cycle) の差分から、**cycle 2 で「症状を治す」ではなく「構造で root cause を恒久的に消す」修正を入れる必要がある** ことを導出。
+1 cycle 事例と 3 cycle 事例の差分から、**cycle 2 で「症状を治す」ではなく「構造で root cause を恒久的に消す」修正を入れる必要がある** ことを導出。
 
 - **Cycle 1**: 元 root cause (canonical 参照方向) を修正 → 修正自体が引き起こす派生 factual error が cycle 2 で surface
 - **Cycle 2**: cycle 1 で introduced された factual error (citation 行番号誤り) + 残存メタ議論を **構造化** (3 段 NOTE 分離 + 4 行 citation) で恒久解消
 - **Cycle 3**: 構造化により reviewer の確信ある指摘なし → 0 findings 着地
 
-PR #946 が 1 cycle で済んだのは `ingest.md` L530 **単独** で canonical 宣言を完結させたため。PR #947 は references → ingest.md の **cross-file 参照** に複数の canonical (Phase 4.3 値決定手順 / Phase 5.3 動作契約) を扱う必要があり、概念階層を NOTE 内で解きほぐすコストが余分にかかった。Cross-file + multi-canonical の組み合わせは収束 cycle 数が増えると認識する。
+1 cycle 事例が 1 cycle で済んだのは `ingest.md` L530 **単独** で canonical 宣言を完結させたため。3 cycle 事例は references → ingest.md の **cross-file 参照** に複数の canonical (Phase 4.3 値決定手順 / Phase 5.3 動作契約) を扱う必要があり、概念階層を NOTE 内で解きほぐすコストが余分にかかった。Cross-file + multi-canonical の組み合わせは収束 cycle 数が増えると認識する。
 
 ## 関連ページ
 

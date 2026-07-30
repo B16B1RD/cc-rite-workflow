@@ -22,9 +22,9 @@ confidence: medium
 
 ## 詳細
 
-### 背景となった PR #1255
+### 背景となった起点事例
 
-PR #1255 (docs(issue): fingerprint-cycling §4 split に single-invocation 注記と placeholder 表を追加) は §4 ↔ pr/review.md 7.4.2 の対称化シリーズの一環。§4 注記が先行 PR のガード移植履歴を要約する際、以下の LOW finding が cycle 1 で surface した:
+起点事例 (fingerprint-cycling §4 split に single-invocation 注記と placeholder 表を追加) は §4 ↔ pr/review.md 7.4.2 の対称化シリーズの一環。§4 注記が先行 PR のガード移植履歴を要約する際、以下の LOW finding が cycle 1 で surface した:
 
 - 注記 (L173) が「write/empty/empty-result/empty-url の各 exit 1 ガード (**PR #1251 で追加**)」と記載し、**4 ガードすべてを #1251 に帰属**させていた
 - しかし git 履歴上、#1251 (`ad0d85cf`) が追加したのは **3 ガードのみ**。4 つ目の empty-url ガード (`empty_issue_url`) は **#1252 (`0fab5174`) 由来**
@@ -38,7 +38,7 @@ cycle 1 fix で帰属を #1251 (3 ガード) / #1252 (empty-url ガード) に�
 
 1. **git pickaxe で実 provenance を特定**: `git log -S '<guard literal>'` で各ガード (例: `empty_issue_url`) を導入した実 commit を特定する。コミット SHA (`ad0d85cf` = #1251 / `0fab5174` = #1252) と PR 番号を対応づけて、散文の帰属主張を裏取りする
 2. **同一ファイル内 cross-reference との突合**: 同じ PR 番号を参照する他の箇所 (L247 の `refs #1252`) が散文の帰属と矛盾しないか確認する。intra-file contradiction は誤集約の決定的な検出シグナル
-3. **propagation scan で伝播範囲を確定**: `git grep 'PR #1251'` / `git grep 'PR #1252'` で同種の誤帰属が他箇所に伝播していないかを確認する。PR #1255 では誤集約が L173 のみに限定され、伝播なしを確認した
+3. **propagation scan で伝播範囲を確定**: `git grep 'PR #1251'` / `git grep 'PR #1252'` で同種の誤帰属が他箇所に伝播していないかを確認する。起点事例では誤集約が L173 のみに限定され、伝播なしを確認した
 
 cycle 2 の再レビューで両 reviewer (prompt-engineer / code-quality) が git 履歴 (`ad0d85cf` = #1251 / `0fab5174` = #1252) で修正を独立実証検証し、placeholder 表 7 個と §4 bash 実態の完全一致・伝播漏れなしを機械検証して指摘ゼロ・mergeable 到達。multi-PR provenance 誤集約の修正は git pickaxe (`git log -S`) と同一ファイル内 cross-reference の双方で検証可能であることが実測された。
 

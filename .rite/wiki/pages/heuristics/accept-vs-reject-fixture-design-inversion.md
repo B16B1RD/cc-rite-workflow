@@ -26,7 +26,7 @@ confidence: high
 
 ### 観測された失敗
 
-PR #2035 は型ガードを cross-field invariant の前段に挿入した。テストは 9 fixture・107 assertion を持ち、述語軸の mutation（存在必須化 / `all()`→`any()` / 型検査の削除）はすべて KILL された。しかし**配置軸**（ガードを invariant の後段へ移動）の mutation だけが 107 passed のまま生存した。
+起点事例は型ガードを cross-field invariant の前段に挿入した。テストは 9 fixture・107 assertion を持ち、述語軸の mutation（存在必須化 / `all()`→`any()` / 型検査の削除）はすべて KILL された。しかし**配置軸**（ガードを invariant の後段へ移動）の mutation だけが 107 passed のまま生存した。
 
 原因は全 fixture が `overall_assessment: "fix-needed"` だったこと。この値では先行する invariant が短絡してしまい、ガードと invariant のどちらが先に発火したかが出力に現れない。
 
@@ -37,11 +37,11 @@ PR #2035 は型ガードを cross-field invariant の前段に挿入した。テ
 | accept（ガードを通過すべき入力） | ガードが**受理**したことを観測する | 先行分岐が短絡する形状に倒す。そうしないと先行分岐が先に受理して、ガードが評価されたかどうかが分からない（vacuous pass） |
 | reject（ガードが弾くべき入力） | ガードが**先に**発火したことを観測する | 先行分岐も発火しうる形状にする。両方が鳴る状態で「どちらの reason が出たか」を見て precedence を判定する |
 
-PR #2035 では accept 側に `"fix-needed"`（invariant を短絡させる）、reject 側と順序 fixture に `"mergeable"`（invariant も発火しうる）を割り当てることで、両側の目的が満たされた。
+起点事例では accept 側に `"fix-needed"`（invariant を短絡させる）、reject 側と順序 fixture に `"mergeable"`（invariant も発火しうる）を割り当てることで、両側の目的が満たされた。
 
 ### 区間制約は両端を pin する
 
-「A と B の間に挿入」という要求に対して、下側（B より前）だけを pin して上側（A より後）を pin しないと、上側へ移す mutation が生存する。PR #2035 では上側退行が「required-fields で弾かれるはずのファイルが型ガードで弾かれ、rename されなくなる」という**副作用の消失**として観測できたが、既存 fixture では両者の差が出ない形状（`findings` キー自体が無い）だったため検出できなかった。
+「A と B の間に挿入」という要求に対して、下側（B より前）だけを pin して上側（A より後）を pin しないと、上側へ移す mutation が生存する。起点事例では上側退行が「required-fields で弾かれるはずのファイルが型ガードで弾かれ、rename されなくなる」という**副作用の消失**として観測できたが、既存 fixture では両者の差が出ない形状（`findings` キー自体が無い）だったため検出できなかった。
 
 **処方**: 区間制約には「下限を破る fixture」と「上限を破る fixture」を別々に用意する。
 

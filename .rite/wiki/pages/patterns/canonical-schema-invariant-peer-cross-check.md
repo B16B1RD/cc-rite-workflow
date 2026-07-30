@@ -14,7 +14,7 @@ confidence: high
 
 ## 概要
 
-reviewer が「neighbor pattern と drift している」と指摘した際、neighbor 自身が drift 元である可能性があるため、`canonical schema` の不変条件 (例: `WORKFLOW_INCIDENT=1` family の `sep_count=3` semicolon-separated key=value invariant) で direction を機械検証してから fix する。隣接パターンの**方向**だけを真とすると逆方向に振ってしまう silent regression を招く。PR #1035 fix cycle 2 で実測 (cycle 1 fix が parenthetical `(rc=$var)` 形式に揃えたが、canonical schema 側は semicolon-separated `; rc=$var` で `sep_count=3` 不変条件を持っており、cycle 1 fix の方向が逆だった)。
+reviewer が「neighbor pattern と drift している」と指摘した際、neighbor 自身が drift 元である可能性があるため、`canonical schema` の不変条件 (例: `WORKFLOW_INCIDENT=1` family の `sep_count=3` semicolon-separated key=value invariant) で direction を機械検証してから fix する。隣接パターンの**方向**だけを真とすると逆方向に振ってしまう silent regression を招く。sentinel format drift 事例の fix cycle 2 で実測 (cycle 1 fix が parenthetical `(rc=$var)` 形式に揃えたが、canonical schema 側は semicolon-separated `; rc=$var` で `sep_count=3` 不変条件を持っており、cycle 1 fix の方向が逆だった)。
 
 ## 詳細
 
@@ -22,14 +22,14 @@ reviewer が「neighbor pattern と drift している」と指摘した際、ne
 
 review fix サイクルで「site X が site Y と非対称」と指摘されたとき、典型的な fix は「site Y に合わせて site X を書き換える」だが、neighbor pattern Y 自身が past の partial fix で drift している可能性がある。両者を比較するだけでは「どちらが正しい方向か」を判定できないため、第 3 の参照点 = **canonical schema の不変条件**で direction を機械検証する必要がある。
 
-### 実例: PR #1035 sentinel format drift (cycle 2)
+### 実例: sentinel format drift 事例 (cycle 2)
 
 `commit_err` mktemp failure の WARNING 文字列と fallback sentinel `details=` 値の format で 2 通り存在:
 
 - A: `(rc=$mktemp_commit_err_rc)` (parenthetical)
 - B: `; rc=$mktemp_commit_err_rc` (semicolon-separated key=value pair)
 
-PR #1035 cycle 1 fix では「neighbor pattern (L797 find_err) が A 形式」を根拠に A 方向に揃えた。cycle 2 review で「`WORKFLOW_INCIDENT=1; type=...; details=...; rc=...` の canonical schema は `sep_count=3` semicolon-separated invariant で、A 形式は schema 違反」と CRITICAL 指摘。cycle 1 fix が逆方向に振った fix 自体が drift 源になっていた。
+同事例の cycle 1 fix では「neighbor pattern (L797 find_err) が A 形式」を根拠に A 方向に揃えた。cycle 2 review で「`WORKFLOW_INCIDENT=1; type=...; details=...; rc=...` の canonical schema は `sep_count=3` semicolon-separated invariant で、A 形式は schema 違反」と CRITICAL 指摘。cycle 1 fix が逆方向に振った fix 自体が drift 源になっていた。
 
 ### Canonical schema 不変条件の cross-check 手順
 
@@ -58,7 +58,7 @@ family を識別する手順:
 
 ### 関連: 4-cycle convergence pattern
 
-PR #1035 は cycle 1 で line anchor → cycle 2 で canonical schema 違反 → cycle 3 で line drift 再発 → cycle 4 で symbolic anchor 化により 0 findings に収束した 4 cycle 履歴を持つ。canonical schema cross-check が cycle 2 で発火していたのは、partial fix が cycle 1 で逆方向に振ったことを cycle 2 reviewer が canonical SoT との比較で気づいたため。**fix 前に canonical schema cross-check を行えば cycle 2 は scope 削減できた可能性**がある。
+同事例は cycle 1 で line anchor → cycle 2 で canonical schema 違反 → cycle 3 で line drift 再発 → cycle 4 で symbolic anchor 化により 0 findings に収束した 4 cycle 履歴を持つ。canonical schema cross-check が cycle 2 で発火していたのは、partial fix が cycle 1 で逆方向に振ったことを cycle 2 reviewer が canonical SoT との比較で気づいたため。**fix 前に canonical schema cross-check を行えば cycle 2 は scope 削減できた可能性**がある。
 
 ## 関連ページ
 

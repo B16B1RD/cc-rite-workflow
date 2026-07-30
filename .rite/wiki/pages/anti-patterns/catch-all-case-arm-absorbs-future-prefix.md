@@ -28,7 +28,7 @@ confidence: high
 
 ## 詳細
 
-PR #1177 (`/rite:pr:iterate` 終了点の FINALIZE handoff backstop) で、Stop hook `stop-loop-continuation.sh` が handoff 値の prefix で reason を分岐する `case "$HANDOFF" in FINALIZE:*) ;; *) ;; esac` を実装した。`*)` arm は継続 handoff (`/rite:...`) を「次コマンド再注入」として扱う既定動作を持つ。
+起点事例 (`/rite:pr:iterate` 終了点の FINALIZE handoff backstop) で、Stop hook `stop-loop-continuation.sh` が handoff 値の prefix で reason を分岐する `case "$HANDOFF" in FINALIZE:*) ;; *) ;; esac` を実装した。`*)` arm は継続 handoff (`/rite:...`) を「次コマンド再注入」として扱う既定動作を持つ。
 
 このとき **code-quality reviewer と error-handling reviewer が独立に同じ脆さを指摘** (high-confidence consensus): handoff prefix が将来 3 種類目に拡張されたとき、新 prefix は `FINALIZE:*` に一致せず `*)` へ落ちるため、意図せず「継続」として処理される。catch-all が error/fallback ではなく**正規の動作**を担っているため、分岐漏れが検出されない。
 
@@ -44,9 +44,9 @@ PR #1177 (`/rite:pr:iterate` 終了点の FINALIZE handoff backstop) で、Stop 
 
 ### Successful application — prefix 名前空間拡張時の canonical 対策実装（0 findings）
 
-PR #1177 が予見した「handoff prefix の 3 種類目拡張」が PR #1267 (cleanup→wiki:ingest→wiki:lint チェーンの Stop-hook 継続保証) で実際に発生し、本 canonical 対策がそのまま実装された: `WIKICHAIN:*` prefix 追加と**同時に**既知 prefix (`FINALIZE:*` / `WIKICHAIN:*` / `/rite:*`) を明示列挙し、`*)` catch-all から正規動作 (旧: 継続再注入文面) を排除して「WARNING (stderr) + verbatim 再注入」の fail-loud 経路へ変更した。block 自体は「handoff 非空」軸で維持され、未知 prefix も block はするが review↔fix loop の identity を僭称しない。runtime TC-13 が未知 prefix の WARNING surface + verbatim 再注入 + one-shot consume を機械検証する。
+起点事例が予見した「handoff prefix の 3 種類目拡張」が 3 種類目拡張事例 (cleanup→wiki:ingest→wiki:lint チェーンの Stop-hook 継続保証) で実際に発生し、本 canonical 対策がそのまま実装された: `WIKICHAIN:*` prefix 追加と**同時に**既知 prefix (`FINALIZE:*` / `WIKICHAIN:*` / `/rite:*`) を明示列挙し、`*)` catch-all から正規動作 (旧: 継続再注入文面) を排除して「WARNING (stderr) + verbatim 再注入」の fail-loud 経路へ変更した。block 自体は「handoff 非空」軸で維持され、未知 prefix も block はするが review↔fix loop の identity を僭称しない。runtime TC-13 が未知 prefix の WARNING surface + verbatim 再注入 + one-shot consume を機械検証する。
 
-PR #1267 review では error-handling / code-quality / security の 3 reviewer が独立に canonical 準拠 (直交 2 軸責務分離の維持を含む) を検証し、0 findings / 1 cycle mergeable で landing。anti-pattern 記録から 1 週間以内に同一 hook の名前空間拡張で対策が再現適用された positive evidence であり、「拡張と同時に明示 arm を追加する」運用が catch-all 縮退を構造的に防ぐことを実証した。
+3 種類目拡張事例の review では error-handling / code-quality / security の 3 reviewer が独立に canonical 準拠 (直交 2 軸責務分離の維持を含む) を検証し、0 findings / 1 cycle mergeable で landing。anti-pattern 記録から 1 週間以内に同一 hook の名前空間拡張で対策が再現適用された positive evidence であり、「拡張と同時に明示 arm を追加する」運用が catch-all 縮退を構造的に防ぐことを実証した。
 
 ## 関連ページ
 
@@ -60,7 +60,7 @@ PR #1267 review では error-handling / code-quality / security の 3 reviewer �
 
 ## 補強: enum の設計は「消費側の分岐数」と「相互非接頭辞」の 2 条件で決める
 
-prefix 関係が `case` の catch-all を騙る問題は、**enum を設計する時点**で塞げる。PR #2044 は 2 つの条件を導出した。
+prefix 関係が `case` の catch-all を騙る問題は、**enum を設計する時点**で塞げる。enum 設計事例は 2 つの条件を導出した。
 
 ### (1) 値は消費側の分岐数と 1:1 に対応させる
 

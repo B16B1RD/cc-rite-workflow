@@ -50,21 +50,21 @@ PR シリーズ 8/8 で 2 つの failure mode が cycle 1 で同時に検出さ�
 - 引用先 SoT の path 存在のみ check する `sot-path-reference-existence-check.md` heuristic は **存在チェックのみ** で content fidelity は保証しない。本 heuristic は content の verify まで踏み込む補完的な原則。
 - **test docstring の sibling cross-reference 反転** は同じ「Read tool / grep verify 不在」の root cause を共有する。lint test ファイルが pair で sibling 関係にある場合 (例: `caller-html-literal-symmetry.test.sh` ↔ `caller-html-literal-symmetry-decompose-register.test.sh`)、片方が「Same policy as the other」と記述した時にどちらが policy owner なのか docstring 上で反転しやすい。reviewer の Likelihood-Evidence (`grep -nF`) anchor を信頼して即座に修正方向を決定できる。
 
-### PR #947 観測 (canonical-reference NOTE 生成への再帰適用)
+### canonical NOTE 事例の観測 (canonical-reference NOTE 生成への再帰適用)
 
-`references/wiki-patterns.md` に F-14 fix 操作契約への参照 NOTE を追加した PR #947 で本 heuristic の典型的な適用漏れが cycle 1 で再発した:
+`references/wiki-patterns.md` に F-14 fix 操作契約への参照 NOTE を追加した canonical NOTE 事例で本 heuristic の典型的な適用漏れが cycle 1 で再発した:
 
-- **誤参照**: NOTE 内で「canonical source = `ingest.md` Phase 4.3」と記述したが、引用先 `ingest.md` 内には複数の canonical 宣言が共存しており (Phase 4.3 = 値決定手順 canonical / Phase 5.3 = F-14 fix fallback 動作 canonical / L569 = dual-site 維持備考)、Issue #945 Option 3 提案が示していた canonical は **Phase 5.3** だった。
+- **誤参照**: NOTE 内で「canonical source = `ingest.md` Phase 4.3」と記述したが、引用先 `ingest.md` 内には複数の canonical 宣言が共存しており (Phase 4.3 = 値決定手順 canonical / Phase 5.3 = F-14 fix fallback 動作 canonical / L569 = dual-site 維持備考)、当該 Issue の Option 3 提案が示していた canonical は **Phase 5.3** だった。
 - **2 reviewer cross-validation**: tech-writer (Doc-Heavy 昇格) + code-quality (sole reviewer guard) が独立に同一の canonical-source mismatch を検出し、HIGH 1 件で cross-validate。Doc-Heavy mode + sole reviewer guard のペアが極小 docs PR (元は 2 行追加) でも有効に機能した実証例。
 - **適用拡張**: 本 heuristic は references 抽出 refactor だけでなく **canonical-reference NOTE 生成全般** に適用される。NOTE 内で「X が canonical」と書く前に、引用先ファイルの canonical 宣言箇所を Read tool で verify し、自分が指したい semantic に対応する canonical はどれかを必ず確認する。同一ファイル内に複数の canonical 宣言が共存しうる構造的曖昧性を考慮すること。
 
-### PR #950 観測 (SoT 抽出 = canonical 整合化の opportunity)
+### SoT 抽出事例の観測 (SoT 抽出 = canonical 整合化の opportunity)
 
 start.md Phase 5.5.2 / 5.2.1 / 2.4 を 3 references へ抽出した PR (シリーズ E) の cycle 1 review で、refactor 移管前から既に canonical (`gh-cli-patterns.md`) と乖離していた「Use Python」表現の inherited mismatch が検出された。本 heuristic の対称的な insight として:
 
 - **inherited mismatch detection**: 大規模 refactor で SoT を新規 reference に移管する時、本体側が canonical (gh-cli-patterns.md 等) と長期に drift していた表現を新 reference にコピーすると drift が固定化する。Read tool での verify は新規追加だけでなく **移管 content と canonical の照合** にも適用する
 - **canonical 整合化の opportunity**: SoT 抽出は単なる移管作業ではなく、本体が長期に蓄積した inherited mismatch を canonical (gh-cli-patterns.md 等) に整合させる **能動的な機会**として活用する。「移管前の状態を忠実にコピーする」ではなく「移管時に canonical との整合性を verify し乖離があれば同 cycle で修正する」を default 方針とする
-- **review-fix loop efficiency**: PR #950 では本対応により cycle 1 で 3 finding (2 MEDIUM + 1 LOW) → cycle 2 で 0 blocking finding という収束を達成。inherited mismatch を別 Issue 化せず本 PR scope 内で fix することで loop 効率を最大化
+- **review-fix loop efficiency**: SoT 抽出事例では本対応により cycle 1 で 3 finding (2 MEDIUM + 1 LOW) → cycle 2 で 0 blocking finding という収束を達成。inherited mismatch を別 Issue 化せず本 PR scope 内で fix することで loop 効率を最大化
 
 ## 関連ページ
 

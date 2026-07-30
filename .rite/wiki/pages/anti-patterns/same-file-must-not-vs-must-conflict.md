@@ -30,7 +30,7 @@ confidence: high
 
 ### 実例
 
-`commands/pr/cleanup.md` は Issue #604 契約として bare bracket 形式 (`[cleanup:completed]`) を LLM turn-boundary heuristic 誤発火源として MUST NOT 化していた。同 file 内に routing dispatcher (Item 0) を追加する際、以下の evidence 出力義務を MUST として書き込んだ:
+`commands/pr/cleanup.md` は既存契約として bare bracket 形式 (`[cleanup:completed]`) を LLM turn-boundary heuristic 誤発火源として MUST NOT 化していた。同 file 内に routing dispatcher (Item 0) を追加する際、以下の evidence 出力義務を MUST として書き込んだ:
 
 ```
 [routing-check] ingest=matched
@@ -40,7 +40,7 @@ confidence: high
 
 ### 検出困難性
 
-single-reviewer (特に prompt-engineer 単独) では、自分が追加する新規 evidence 義務化仕様に集中するあまり、同 file 内の既存 MUST NOT 規約との衝突に気づきにくい。PR #623 cycle 1 では以下の cross-validation で初検出された:
+single-reviewer (特に prompt-engineer 単独) では、自分が追加する新規 evidence 義務化仕様に集中するあまり、同 file 内の既存 MUST NOT 規約との衝突に気づきにくい。起点事例の cycle 1 では以下の cross-validation で初検出された:
 
 - **prompt-engineer**: evidence 出力義務化の prompt 文言を評価
 - **tech-writer**: 既存 MUST NOT 契約との整合性を評価 (別観点)
@@ -116,14 +116,14 @@ bash tool output と response text の **layer 境界** を prose で明示す�
 
 ### Remediation guidance 間の no-win 矛盾と「禁止 + escape hatch」収束（実測）
 
-後続の実測で本 anti-pattern の **remediation guidance variant** を実測: `cleanup-wikichain-handoff-parity.test.sh` の TC-6 fail メッセージが「同じ WIKICHAIN handoff 値を `--handoff` で再指定せよ」と remediation を指示するが、これに従うと TC-1 (handoff set の単一 SoT 強制) が count=2 で fail する。MUST NOT (TC-1: handoff set は単一 site のみ) と MUST (TC-6: 再指定せよ) が同一 test suite 内で衝突し、どちらの指示に従っても他方が fail する **no-win 矛盾**。矛盾の発見自体は前 PR #1270 の mutation 検証で latent に surface していた (mutation-testing-test-fidelity.md 適用 14 参照)。
+後続の実測で本 anti-pattern の **remediation guidance variant** を実測: `cleanup-wikichain-handoff-parity.test.sh` の TC-6 fail メッセージが「同じ WIKICHAIN handoff 値を `--handoff` で再指定せよ」と remediation を指示するが、これに従うと TC-1 (handoff set の単一 SoT 強制) が count=2 で fail する。MUST NOT (TC-1: handoff set は単一 site のみ) と MUST (TC-6: 再指定せよ) が同一 test suite 内で衝突し、どちらの指示に従っても他方が fail する **no-win 矛盾**。矛盾の発見自体は先行 PR の mutation 検証で latent に surface していた (mutation-testing-test-fidelity.md 適用 14 参照)。
 
 **canonical 対策 (収束二段構成)**: 矛盾する remediation の一方 (再指定経路) を塞ぎ、両 guidance を「追加するな」という同方向に収束させる:
 
 1. **禁止**: 「intervening set の追加自体を禁止 (`--handoff` 再指定での回避は TC-1 の単一 SoT 制約と矛盾するため不可)」
 2. **escape hatch**: 「intervening set が必要になる設計変更では、制約 note と TC-1/TC-6 を含む handoff lifecycle 全体を同時に見直す」
 
-3 site (cleanup.md ステップ 9 制約 note / TC-6 fail メッセージ / print_summary drift hint) を対称同期し、mutation A (`--handoff` なし intervening set → TC-6 が新メッセージで fail) / mutation B (`--handoff` 付き → TC-1 count=2 fail) の両方で fail メッセージが同方向 guidance になることを複数 reviewer が隔離 worktree で独立再現して矛盾解消を実証 (0 findings / 1 cycle mergeable)。検出ロジック byte 不変 (文言のみの変更) で guidance layer の矛盾を解消できる点が、PR #623 (別 form 採用) / PR #624 (layer 境界明示) と異なる **第 3 の解消形態**。旧 guidance「で再指定すること」残存 0 件を repo 全体 grep で検証する [[asymmetric-fix-transcription]] guard の successful application でもある。
+3 site (cleanup.md ステップ 9 制約 note / TC-6 fail メッセージ / print_summary drift hint) を対称同期し、mutation A (`--handoff` なし intervening set → TC-6 が新メッセージで fail) / mutation B (`--handoff` 付き → TC-1 count=2 fail) の両方で fail メッセージが同方向 guidance になることを複数 reviewer が隔離 worktree で独立再現して矛盾解消を実証 (0 findings / 1 cycle mergeable)。検出ロジック byte 不変 (文言のみの変更) で guidance layer の矛盾を解消できる点が、起点事例 (別 form 採用) / layer 境界明示 PR と異なる **第 3 の解消形態**。旧 guidance「で再指定すること」残存 0 件を repo 全体 grep で検証する [[asymmetric-fix-transcription]] guard の successful application でもある。
 
 ## 関連ページ
 
@@ -140,4 +140,4 @@ bash tool output と response text の **layer 境界** を prose で明示す�
 
 ## 変種: 記述層の consistency 主張 vs divergence 文書化
 
-規約 (MUST/MUST NOT) だけでなく**記述層**でも同型の自己矛盾が起きる。PR #1841 では「2 つの解決方式は異なる結果を返しうる」という divergence 文書化の節を追加した際、隣接する既存文「The detection logic is intentionally consistent between the two」の絶対表現を残したため、読者がどちらを信じるべきか判断できない隣接矛盾になった (唯一の指摘)。相違を導入・文書化する変更では、同一 doc 内の consistency / 同一性主張を grep し、スコープ限定 (in approach / in shape) + 新節への cross-reference で両立させる。
+規約 (MUST/MUST NOT) だけでなく**記述層**でも同型の自己矛盾が起きる。記述層自己矛盾事例では「2 つの解決方式は異なる結果を返しうる」という divergence 文書化の節を追加した際、隣接する既存文「The detection logic is intentionally consistent between the two」の絶対表現を残したため、読者がどちらを信じるべきか判断できない隣接矛盾になった (唯一の指摘)。相違を導入・文書化する変更では、同一 doc 内の consistency / 同一性主張を grep し、スコープ限定 (in approach / in shape) + 新節への cross-reference で両立させる。

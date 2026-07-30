@@ -47,18 +47,18 @@ Markdown 文書を大幅圧縮 (例: 734 → 334 行、-55%) する refactor で
 
 ### Self-application 実証
 
-PR #808 で確立された本経験則の **直後の同種 refactor PR (#809: create-interview.md 511→331 行 -35% スリム化) で、自己 review が予防対象を実測した**:
+確立 PR で得た本経験則の **直後の同種 refactor PR (create-interview.md 511→331 行 -35% スリム化) で、自己 review が予防対象を実測した**:
 
 - Phase 0.5 直下の `EDGE-5` および Interview Flow 直下の `EDGE-2` が h4 で記述されており、h2→h4 skip が 1 箇所発生していた (元から存在した skip だが、大規模圧縮 refactor の機を捉えて修正)
-- 本 PR の Self-Review Phase で reviewer (prompt-engineer / code-quality) が PR #808 の経験則を適用し、`h4 → h3` 格上げで連続性を復元
-- **大規模圧縮 PR 自身が PR #808 経験則の予防対象であること** を実証 — 経験則 wiki の self-application が次 PR cycle で再現可能な防御層として機能した最初の事例
+- 本 PR の Self-Review Phase で reviewer (prompt-engineer / code-quality) が確立 PR の経験則を適用し、`h4 → h3` 格上げで連続性を復元
+- **大規模圧縮 PR 自身が確立 PR の経験則の予防対象であること** を実証 — 経験則 wiki の self-application が次 PR cycle で再現可能な防御層として機能した最初の事例
 
 ### Implication: 経験則の累積 self-application 効果
 
 | 段階 | 内容 |
 |------|------|
-| PR #808 (確立) | 圧縮 refactor で 3 箇所の h2→h4 skip を実測、経験則化 |
-| PR #809 (self-apply) | 同 series の sibling refactor で 1 箇所の既存 skip を検出・修正 |
+| 確立 PR | 圧縮 refactor で 3 箇所の h2→h4 skip を実測、経験則化 |
+| self-apply PR | 同 series の sibling refactor で 1 箇所の既存 skip を検出・修正 |
 | 一般化 | 大規模 refactor を含む PR series では、後続 PR で sibling file 全体を heading hierarchy 検査の対象に含めると、既存の latent skip も併せて修正できる |
 
 **canonical 防御 (累積)**:

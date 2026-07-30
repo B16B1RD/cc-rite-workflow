@@ -134,17 +134,17 @@ if [ "$state" != "success" ] && [ "$reason" != "no_comment" ]; then
 fi
 ```
 
-実装時は **対称 counterpart (review.md 6.2 = fix.md 4.5) が既に確立した stderr-capture + head -5 surface パターン**を Read してそれに揃える (独自実装の逸脱を避ける)。PR #1201 cycle 2 fix は WM_UPDATE_FAILED routing と reason 語彙を一切変えず、trap に stderr tempfile を追加する形で「追加のみ」で適用した。
+実装時は **対称 counterpart (review.md 6.2 = fix.md 4.5) が既に確立した stderr-capture + head -5 surface パターン**を Read してそれに揃える (独自実装の逸脱を避ける)。WM sync 委譲事例の cycle 2 fix は WM_UPDATE_FAILED routing と reason 語彙を一切変えず、trap に stderr tempfile を追加する形で「追加のみ」で適用した。
 
 ### 同一 helper の別 caller で同 anti-pattern が再発する（実測）
 
-PR #1201 で確立した本拡張は、**直後の sibling PR #1202 (#1195 #7) で同一 helper (`issue-comment-wm-sync.sh`) の別 caller (`archive-procedures.md` §3.5.1 の WM 完了情報追記委譲) が同じ `2>/dev/null` 破棄を再演**した。委譲 shim が helper status を制御フローに consume しつつ helper stderr を握り潰す構造で、prompt-engineer + error-handling の 2 reviewer が cycle 1 で独立検出 (MEDIUM)。cycle 1 fix で canonical caller `fix.md 4.5.2` / `review.md 6.2` の **tempfile capture + `*)` arm で `head -5` surface** パターンに揃え、status 行による非ブロッキング判定 (`append-eof` への委譲) は不変のまま「追加のみ」で修正した。
+WM sync 委譲事例で確立した本拡張は、**直後の sibling 委譲 PR で同一 helper (`issue-comment-wm-sync.sh`) の別 caller (`archive-procedures.md` §3.5.1 の WM 完了情報追記委譲) が同じ `2>/dev/null` 破棄を再演**した。委譲 shim が helper status を制御フローに consume しつつ helper stderr を握り潰す構造で、prompt-engineer + error-handling の 2 reviewer が cycle 1 で独立検出 (MEDIUM)。cycle 1 fix で canonical caller `fix.md 4.5.2` / `review.md 6.2` の **tempfile capture + `*)` arm で `head -5` surface** パターンに揃え、status 行による非ブロッキング判定 (`append-eof` への委譲) は不変のまま「追加のみ」で修正した。
 
 教訓: **canonical caller が既に修正済みでも、同一 helper の新規 caller を追加するたびに stderr-discard が再導入される** ([[asymmetric-fix-transcription]] の「canonical pattern の対称伝播漏れ」と同根)。helper への新規委譲を書くときは、先に同 helper の既存 caller を grep して stderr-capture 規約の有無を確認し、それに揃えてから commit する。
 
 ### delegation-shim 以外の新規 git フォールバックコードでも同 anti-pattern が発生する（実測）
 
-PR #529 以降の evidence はいずれも「既存 helper の委譲 shim」文脈だったが、後続の実測では **委譲 shim ではない、テストスクリプト内の素の `git fetch` フォールバック**が新規実装され、そこでも同一 anti-pattern (全 truncate) が再演された:
+起点事例以降の evidence はいずれも「既存 helper の委譲 shim」文脈だったが、後続の実測では **委譲 shim ではない、テストスクリプト内の素の `git fetch` フォールバック**が新規実装され、そこでも同一 anti-pattern (全 truncate) が再演された:
 
 ```bash
 # ❌ NG: PR #1741 cycle 1 の初期実装
@@ -172,7 +172,7 @@ single-step の単純ケースのため per-step tempfile 分離や status/stder
 
 ### fail-safe fallback 追加が「安全側に倒す」ことと「失敗理由を可視化する」ことを混同する（実測）
 
-helper 呼び出しに `cmd || fallback="非空文字列"` 形式の fail-safe を追加する修正は、分岐そのもの（helper 失敗時に安全側の非空値へ倒す）は正しくても、`2>/dev/null` を temporarily 残したままだと **helper 自身の診断 WARNING が呼び出し元の判断根拠として一切表示されない** という別の問題を生む。PR #1937 cycle 1 で CRITICAL 指摘（exit code 未検査）を修正した際、4 箇所の同型呼び出しのうち 3 箇所は `2>/dev/null` を残したまま、1 箇所だけ `2>/dev/null` を持たない非対称な状態で commit された。cycle 2 で error-handling reviewer がこの非対称を MEDIUM として検出した。
+helper 呼び出しに `cmd || fallback="非空文字列"` 形式の fail-safe を追加する修正は、分岐そのもの（helper 失敗時に安全側の非空値へ倒す）は正しくても、`2>/dev/null` を temporarily 残したままだと **helper 自身の診断 WARNING が呼び出し元の判断根拠として一切表示されない** という別の問題を生む。exit code 未検査事例の cycle 1 で CRITICAL 指摘（exit code 未検査）を修正した際、4 箇所の同型呼び出しのうち 3 箇所は `2>/dev/null` を残したまま、1 箇所だけ `2>/dev/null` を持たない非対称な状態で commit された。cycle 2 で error-handling reviewer がこの非対称を MEDIUM として検出した。
 
 ```bash
 # ❌ NG: 分岐は安全だが診断情報が消える (cycle 1 修正直後の状態)
@@ -187,7 +187,7 @@ dirty=$(bash lib/git-status-filtered.sh) || dirty="?? (dirty-check failed — as
 
 ### テストの captured-stderr は assert 失敗時に surface してから削除する（拡張）
 
-テストが被検査コマンドの stderr を tempfile (`2>>"$nf_err"`) に捕捉しながら、**assert 失敗時にも内容を表示せず無条件 `rm -f` する**構成は、本 anti-pattern のテスト版。ガード退行時の CI トリアージで「expected/actual の不一致」しか見えず、根本原因行 (`flock: command not found` → `ERROR: flock timeout` 等) が失われる。PR #2003 cycle 2 で error-handling レビュアーが mutation 実験中に「FAIL 2 件が出るのに stderr 詳細がゼロ表示」を実測して検出した (同一 PR 内の別テストは失敗時 `head -5` 表示済みで非対称)。
+テストが被検査コマンドの stderr を tempfile (`2>>"$nf_err"`) に捕捉しながら、**assert 失敗時にも内容を表示せず無条件 `rm -f` する**構成は、本 anti-pattern のテスト版。ガード退行時の CI トリアージで「expected/actual の不一致」しか見えず、根本原因行 (`flock: command not found` → `ERROR: flock timeout` 等) が失われる。flock 診断事例の cycle 2 で error-handling レビュアーが mutation 実験中に「FAIL 2 件が出るのに stderr 詳細がゼロ表示」を実測して検出した (同一 PR 内の別テストは失敗時 `head -5` 表示済みで非対称)。
 
 canonical 形は「失敗時のみ selective surface」— 成功時はノイズゼロを保ちながら診断を失わない:
 

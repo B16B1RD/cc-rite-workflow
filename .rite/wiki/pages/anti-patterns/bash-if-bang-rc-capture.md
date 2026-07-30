@@ -86,9 +86,9 @@ grep -nE 'if ! .*; then' --include='*.md' --include='*.sh' -r .
 
 ### Asymmetric Transcription との複合悪化
 
-同型 pattern が複数箇所にある場合、片方だけ fix すると Asymmetric Fix Transcription の温床となる。PR #548 では `ingest.md Phase 1.3` と `init.md Phase 3.5` の両方に本 anti-pattern があり、cycle 2 fix は前者のみ修正し cycle 3 で後者が triple cross-validation で検出された。fix 時は関連する全スクリプト・全 phase を grep で網羅的に確認すること。
+同型 pattern が複数箇所にある場合、片方だけ fix すると Asymmetric Fix Transcription の温床となる。2 site 同時事例では `ingest.md Phase 1.3` と `init.md Phase 3.5` の両方に本 anti-pattern があり、cycle 2 fix は前者のみ修正し cycle 3 で後者が triple cross-validation で検出された。fix 時は関連する全スクリプト・全 phase を grep で網羅的に確認すること。
 
-### PR #688 cycle 35: 同 commit 内 4 site 同時播種 (累積 13 回目 + self-referential)
+### 累積 14 回目の cycle 35: 同 commit 内 4 site 同時播種 (累積 13 回目 + self-referential)
 
 cycle 35 commit message が learned 節で「累積 12 回目の Asymmetric Fix Transcription」を **明記しながら**、同じ commit 内の F-07 修正で同型 `if !` anti-pattern を新規 4 site (`state-read.sh:139-145, 155-161` / `flow-state-update.sh:170-176, 185-191`) に同時播種した self-referential failure mode が cycle 36 で実測された。実機検証:
 
@@ -101,7 +101,7 @@ production の sentinel emit failure 経路で operator に false `rc=0` を表�
 
 → 「learned 節で言及した直後の同 commit で再演する」特殊 self-referential pattern は累積 35+ cycle 越えで初観測 ([`fix-induced-drift-in-cumulative-defense.md`](fix-induced-drift-in-cumulative-defense.md) に詳述)。
 
-### PR #1032 cycle 1: format 同期 refactor で新 SoT の bash 構造を見落とした再発
+### bash semantics 版の cycle 1: format 同期 refactor で新 SoT の bash 構造を見落とした再発
 
 ある PR は `plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路を、先行 PR が導入した新 SoT (L1147-L1150 `mktemp_failure_norm_tmp`) と format 同期する小規模 refactor。元の `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、**新 SoT は `if cmd; then ... else rc=$?` 形式**で実装されていたにもかかわらず、本 PR cycle 1 では `if ! cmd; then rc=$?; ...; fi` 形式で実装し本 anti-pattern を新規導入。reviewer 2 名 (prompt-engineer / code-quality) が cross-validation 一致で CRITICAL 検出。
 
@@ -111,7 +111,7 @@ production の sentinel emit failure 経路で operator に false `rc=0` を表�
 
 ### 姉妹型: `set -e` 下の裸 `$?` 読み `var=$(cmd); rc=$?` は rc 行に到達しない
 
-`if !` 反転とは別の同族罠として、`set -euo pipefail` 下で `var=$(失敗コマンド); rc=$?` と書くと、**代入コマンド自体が errexit を発火してスクリプト（またはループ）全体が abort し、`rc=$?` 行は dead code になる**。PR #1959 の Gate 3（`_st_out=$(git status ...); _st_rc=$?`）では、この形が「status rc≠0 → conservative skip」分岐を実質到達不能にしており、broken worktree 入力（このゲートが守るべきまさにその入力）で reap ループごと停止していた。正しい形は既存 canonical fix と同型:
+`if !` 反転とは別の同族罠として、`set -euo pipefail` 下で `var=$(失敗コマンド); rc=$?` と書くと、**代入コマンド自体が errexit を発火してスクリプト（またはループ）全体が abort し、`rc=$?` 行は dead code になる**。errexit 事例の Gate 3（`_st_out=$(git status ...); _st_rc=$?`）では、この形が「status rc≠0 → conservative skip」分岐を実質到達不能にしており、broken worktree 入力（このゲートが守るべきまさにその入力）で reap ループごと停止していた。正しい形は既存 canonical fix と同型:
 
 ```bash
 # ✅ OK: 代入の失敗を || で吸収して rc を捕捉（set -e 下でも abort しない）
