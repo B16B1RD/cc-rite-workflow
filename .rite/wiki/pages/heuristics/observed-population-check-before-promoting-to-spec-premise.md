@@ -57,7 +57,7 @@ Issue の Non-goal 文の主節と括弧が逆向きを指していた（「テ�
 ## 関連ページ
 
 - [網羅性の主張は機械的な棚卸しを要求する](./exhaustiveness-claims-require-mechanical-inventory.md)
-- [新しいパスの追加で普遍的主張の散文が無効化される](../anti-patterns/universal-claim-prose-invalidated-by-path-addition.md)
+- [新しいパスの追加で普遍的主張の散文が無効化される](./universal-claim-prose-invalidated-by-path-addition.md)
 
 ## ソース
 

@@ -12,6 +12,8 @@ sources:
     ref: "raw/fixes/20260730T050205Z-pr-2056.md"
   - type: "fixes"
     ref: "raw/fixes/20260730T084017Z-pr-2056.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260730T083745Z-pr-2056.md"
 tags: ["gh-cli", "verification", "prose-procedure", "discriminator"]
 confidence: high
 ---
@@ -63,3 +65,4 @@ confidence: high
 - [PR #2056 review results — 処方コマンドの判別能力](../../raw/reviews/20260730T045358Z-pr-2056.md)
 - [PR #2056 fix results — url パスセグメントが唯一の判別子](../../raw/fixes/20260730T050205Z-pr-2056.md)
 - [PR #2056 fix results (cycle 4) — 恒真の確認が盲点を作る](../../raw/fixes/20260730T084017Z-pr-2056.md)
+- [PR #2056 review results (cycle 4) — 入力種別の前提漏れ](../../raw/reviews/20260730T083745Z-pr-2056.md)

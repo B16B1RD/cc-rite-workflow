@@ -14,6 +14,8 @@ sources:
     ref: "raw/reviews/20260730T093514Z-pr-2056.md"
   - type: "reviews"
     ref: "raw/reviews/20260730T073356Z-pr-2056.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260730T114443Z-pr-2056.md"
 tags: ["review", "measurement", "prose-procedure", "verification", "convergence"]
 confidence: high
 ---
@@ -65,3 +67,4 @@ cycle 1〜3 は規則の欠落、cycle 4 は規則の適用範囲、cycle 5 は�
 - [PR #2056 review results (cycle 3) — 実測アンカー付与率と収束](../../raw/reviews/20260730T055209Z-pr-2056.md)
 - [PR #2056 review results — reviewer 側の裏取り指示が機能した](../../raw/reviews/20260730T093514Z-pr-2056.md)
 - [PR #2056 review results (cycle 1) — 仕様疑問の実測検証](../../raw/reviews/20260730T073356Z-pr-2056.md)
+- [PR #2056 review results (cycle 5, mergeable) — 収束は指摘の種類が変わる形で来る / 上限 cycle の判断基準固定](../../raw/reviews/20260730T114443Z-pr-2056.md)
