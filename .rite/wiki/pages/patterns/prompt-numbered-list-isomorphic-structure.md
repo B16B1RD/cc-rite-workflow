@@ -20,7 +20,7 @@ LLM が prompt / skill / command 定義を実装する際、numbered list は各
 
 ## 詳細
 
-### 発生事例 (PR #564)
+### 発生事例
 
 `plugins/rite/commands/wiki/ingest.md` Phase 8.3 の step 1-4 は、Lint 実行結果のパース順序を表す numbered list。修正前、step 2 / step 3 / step 4 には「detection 時の処理」として 3 bullet (warning 加算 / 変数 fallback / stderr 出力) が揃っていたが、step 1 だけ bullet が欠落しており、LLM が「error 検出時に何をすべきか」を推測で埋める経路になっていた (F-01 検出)。
 

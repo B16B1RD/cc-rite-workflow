@@ -47,7 +47,7 @@ PR #936 で 3 件 MEDIUM (F-03/F-04/F-05) として実測。具体的には:
 3. **件数 assert**: 「N 行存在する」を claim するなら `[ "$(awk ... | grep -cE '...')" = "N" ]` で件数も pin する (substring の有無だけでなく)
 4. **Mutation test の併設**: assertion 強度の empirical 検証として、契約 row を意図的に 1 行削除した mutation で test が FAIL することを CI で確認する (test fidelity の正味)
 
-### 変種: source-code を grep する静的 test は header comment でなく load-bearing logic 行に anchor する (PR #1306 で追加)
+### 変種: source-code を grep する静的 test は header comment でなく load-bearing logic 行に anchor する
 
 被テストスクリプトを実行せず source を grep して「特定ロジックが存在する」ことを確認する**静的 test** も同じ false negative を起こす。grep が **header comment にマッチする** と「文字列の存在」を検証しているだけになり、肝心の検出ロジックが消えても test が pass する。
 

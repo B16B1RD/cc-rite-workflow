@@ -24,7 +24,7 @@ confidence: high
 
 ## 詳細
 
-PR #1743（Issue #1711、reviewer registry の 3-way 同期検証）で実測。
+reviewer registry の 3-way 同期検証で実測。
 
 ### 失敗モード（cycle 1 で MEDIUM 検出）
 

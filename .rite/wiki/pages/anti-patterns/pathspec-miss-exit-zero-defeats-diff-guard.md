@@ -32,5 +32,5 @@ PR #1840 (cleanup の discardable 判定) で同じ機序のデータ喪失経�
 
 ## 関連
 
-- [[path-basis-change-observation-surface-sweep]] — 基準不一致の一般形 (PR #1839)
+- [[path-basis-change-observation-surface-sweep]] — 基準不一致の一般形
 - [[classifier-destructive-action-same-tree-alignment]] — 同 PR の姉妹 heuristic

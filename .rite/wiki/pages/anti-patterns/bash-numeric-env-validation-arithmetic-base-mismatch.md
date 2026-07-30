@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-PR #1924（Issue #1923: worktree liveness guard への TTL 導入）で、`RITE_SESSION_LIVENESS_TTL_HOURS` の検証が `^[0-9]+$ && -gt 0` だった時点で、code-quality-reviewer と error-handling-reviewer が cycle 3 で**独立に**同一バグを実機検証で発見した:
+worktree liveness guard へ TTL を導入した際、`RITE_SESSION_LIVENESS_TTL_HOURS` の検証が `^[0-9]+$ && -gt 0` だった時点で、code-quality-reviewer と error-handling-reviewer が cycle 3 で**独立に**同一バグを実機検証で発見した:
 
 - `RITE_SESSION_LIVENESS_TTL_HOURS="010"`（運用者は10hのつもり）→ 検証は通過 → `$(( 010 * 3600 ))` は bash 算術で `010` を8進数として解釈し `8 * 3600` = 8h相当に silent 変換。9h前の生存 holder が誤って reap される（本 Issue が防ごうとしていた誤 reap をまさに再導入する）。
 - `RITE_SESSION_LIVENESS_TTL_HOURS="08"` / `"09"`（8進として無効な桁）→ 検証は通過 → `$(( 08 * 3600 ))` は `08: 基底の値が大きすぎます` という生の bash エラーで即死。検証コメントが明言する「an invalid value must not silently corrupt the arithmetic with a raw bash error」という契約自体を破る。

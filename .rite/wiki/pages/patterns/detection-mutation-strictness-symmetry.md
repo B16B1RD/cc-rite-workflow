@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-### 発生事例 (PR #586 cycle 5)
+### 発生事例（cycle 5）
 
 `/rite:wiki:init` Phase 1.3:
 

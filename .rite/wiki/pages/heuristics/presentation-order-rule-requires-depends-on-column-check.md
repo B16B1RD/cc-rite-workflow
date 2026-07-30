@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-PR #1752（Issue #1747）は `/rite:open` の実装計画テンプレートに volatile-first 提示順ルールを追加する変更だった。
+`/rite:open` の実装計画テンプレートに volatile-first 提示順ルールを追加する変更だった。
 
 cycle 1 レビューで、code-quality-reviewer が以下の構造的な結合を検出した: 対象テンプレート（`plugins/rite/skills/open/SKILL.md` ステップ3.3 の「実装ステップ」リスト）は `depends_on` 列を持たないプレーン番号リスト形式であり、そのリストはステップ3.5で Issue body のチェックリストへそのまま転写される。`issue-implement.md` の Basic implementation flow (`Repeat following plan order`) はプレーン番号リスト形式ではその順序をそのまま実行順として辿り、`depends_on` 列を持つ計画にのみ適用される Adaptive Re-evaluation は明示的にスキップされる。
 

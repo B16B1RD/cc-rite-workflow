@@ -35,7 +35,7 @@ fi
 
 `set -o pipefail` 未設定の bash デフォルト評価では、pipeline の exit code は **終端コマンド (`head -3`) の exit 0** に支配される。前段の `bash ... patch` が exit 1 を返しても caller には silent。Issue #79 の resume-session variant の症状を別経路で再現。
 
-### 症状 (b): `2>&1` sentinel suppression (PR #688 cycle 35 で実測 CRITICAL × 2)
+### 症状 (b): `2>&1` sentinel suppression（cycle 35 で実測 CRITICAL × 2）
 
 ```bash
 # anti-pattern: helper stderr が classification 文字列に混入

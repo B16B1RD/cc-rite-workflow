@@ -59,7 +59,7 @@ source "$_SCRIPT_DIR/lib/helpers.sh"  # 絶対 path なので CWD に依存し�
 
 ### PR #550 での evidence
 
-PR #550 (Issue #549) で `plugins/rite/hooks/scripts/wiki-worktree-setup.sh` / `wiki-worktree-commit.sh` / `wiki-ingest-commit.sh` が `plugins/rite/hooks/scripts/lib/wiki-config.sh` と `lib/worktree-git.sh` を `source` する refactoring で、初回実装が `cd "$repo_root"` 後の `$(dirname "${BASH_SOURCE[0]}")` 経路を使って live regression を起こした。sibling 13 scripts は既に `_SCRIPT_DIR` convention を採用しており、drift を解消するため全 3 script に統一 pattern を適用した。
+`plugins/rite/hooks/scripts/wiki-worktree-setup.sh` / `wiki-worktree-commit.sh` / `wiki-ingest-commit.sh` が `plugins/rite/hooks/scripts/lib/wiki-config.sh` と `lib/worktree-git.sh` を `source` する refactoring で、初回実装が `cd "$repo_root"` 後の `$(dirname "${BASH_SOURCE[0]}")` 経路を使って live regression を起こした。sibling 13 scripts は既に `_SCRIPT_DIR` convention を採用しており、drift を解消するため全 3 script に統一 pattern を適用した。
 
 **検証方法**: 相対 path invocation で回帰テスト:
 

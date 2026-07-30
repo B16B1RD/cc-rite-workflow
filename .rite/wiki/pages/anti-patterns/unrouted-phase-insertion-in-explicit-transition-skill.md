@@ -20,7 +20,7 @@ confidence: medium
 
 ## 詳細
 
-PR #1925（Issue #1922）で、`skills/setup/SKILL.md` に新規 Phase 4.8（sandbox write-allowlist 事前案内）を追加した際、この Phase 自体はどこからも "proceed to" されておらず、実行時に到達不能だった。とりわけ `--upgrade` 経路（Step 7b が Phase 4.7 完了後に status 表示して即 exit するのみ）は絶対に到達しない構造になっていた。皮肉なことに、直前の cycle で対処した唯一のシナリオ（`EnterWorktree` 後の `--upgrade` 手動実行）こそが、この到達不能経路そのものだった。
+`skills/setup/SKILL.md` に新規 Phase 4.8（sandbox write-allowlist 事前案内）を追加した際、この Phase 自体はどこからも "proceed to" されておらず、実行時に到達不能だった。とりわけ `--upgrade` 経路（Step 7b が Phase 4.7 完了後に status 表示して即 exit するのみ）は絶対に到達しない構造になっていた。皮肉なことに、直前の cycle で対処した唯一のシナリオ（`EnterWorktree` 後の `--upgrade` 手動実行）こそが、この到達不能経路そのものだった。
 
 reviewer は grep + 実行フロー追跡（「新規 Phase への参照が見出し自身にしかない」ことの確認、および各既存終端の遷移先名指しの追跡）によって到達不能性を実証した。
 

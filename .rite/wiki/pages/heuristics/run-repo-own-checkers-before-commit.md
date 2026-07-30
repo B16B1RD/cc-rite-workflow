@@ -28,7 +28,7 @@ confidence: high
 
 ## 詳細
 
-### 実例（PR #2038 cycle 5）
+### 実例（cycle 5）
 
 指摘 14 件のうち 2 件（HIGH ×2）が repo 自身の checker で検出可能だった。
 

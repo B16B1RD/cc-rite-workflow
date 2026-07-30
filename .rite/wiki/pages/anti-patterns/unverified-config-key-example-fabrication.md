@@ -20,7 +20,7 @@ sandbox の read/write 許可リストのように、似た形だが read 側と
 
 ## 詳細
 
-PR #1925（Issue #1922）で、sandbox 有効環境かつ multi_session 環境向けの案内メッセージに、恒久対処の例として `sandbox.filesystem.write.allowWithinDeny` という設定キーを記載していた。しかし実際の sandbox 構造（本セッションの Bash tool 定義で実証）は以下のように read 側と write 側で異なるフィールド名を持つ:
+sandbox 有効環境かつ multi_session 環境向けの案内メッセージに、恒久対処の例として `sandbox.filesystem.write.allowWithinDeny` という設定キーを記載していた。しかし実際の sandbox 構造（本セッションの Bash tool 定義で実証）は以下のように read 側と write 側で異なるフィールド名を持つ:
 
 - read 側: `{denyOnly, allowWithinDeny}`
 - write 側: `{allowOnly, denyWithinAllow}`

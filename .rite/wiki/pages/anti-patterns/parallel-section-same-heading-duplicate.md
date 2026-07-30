@@ -28,7 +28,7 @@ confidence: high
 
 PR #837 で評価レポート `docs/designs/issue-create-sub-skill-consolidation-evaluation.md` の Section 8 と Section 10 に `残課題と次 PR 候補` が重複し、prompt-engineer reviewer が HIGH として検出した。
 
-### 解決パターン (PR #837 cycle 1 fix)
+### 解決パターン（cycle 1 fix）
 
 - **1 Section に集約**: 性質が近いリストは独立 Section に分割せず、1 つの Section 内で副見出し (`### scope 内` / `### scope 外`) や表形式で区分する
 - **heading の uniqueness を保つ**: 同一ファイル内の Section heading は文字列レベルで重複しない命名規約を採用する (例: `残課題` / `次 PR 候補` で分離するか、scope 修飾子を heading に含める)

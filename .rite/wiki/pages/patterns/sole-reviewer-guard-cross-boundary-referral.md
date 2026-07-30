@@ -18,7 +18,7 @@ sole reviewer guard で追加された co-reviewer が、他 reviewer 管轄の 
 
 ## 詳細
 
-**実測経緯 (PR #1294 — Issue #1285、Doc-Heavy 列挙補完 PR)**:
+**実測経緯（Doc-Heavy 列挙補完 PR）**:
 
 1. tech-writer (Doc-Heavy mandatory reviewer) が初回レビューで CFIC #6 (Documentation i18n parity) を実行漏れ — SPEC.md (en) のみ列挙補完し SPEC.ja.md が未同期のまま残る片側更新を見逃した。
 2. sole reviewer guard で追加された co-reviewer (code-quality) が Cross-File Impact Check で SPEC.ja.md の drift を検出。

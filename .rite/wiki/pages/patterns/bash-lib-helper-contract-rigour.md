@@ -92,7 +92,7 @@ my_helper() {
 
 ### PR #550 での evidence
 
-PR #550 (Issue #549) で `worktree_commit_push()` が初回実装で `set -e` 強制と `trap - EXIT` 消去をしており、caller 側で signal-safe cleanup を想定していた rollback 経路が silent に壊れる設計欠陥があった。cycle 1 fix で `$-` + `trap -p`/`eval` pattern に書き直し、cycle 2 で signal override limitation と nested function leak を docstring 化、cycle 3 で naming convention drift を comment 補強した。最終形 (`plugins/rite/hooks/scripts/lib/worktree-git.sh`) は 4 cycle を経て完成したが、初回から contract docstring の rigour を実装と揃えていれば 2-3 cycle 分の直行で済んだ。
+`worktree_commit_push()` が初回実装で `set -e` 強制と `trap - EXIT` 消去をしており、caller 側で signal-safe cleanup を想定していた rollback 経路が silent に壊れる設計欠陥があった。cycle 1 fix で `$-` + `trap -p`/`eval` pattern に書き直し、cycle 2 で signal override limitation と nested function leak を docstring 化、cycle 3 で naming convention drift を comment 補強した。最終形 (`plugins/rite/hooks/scripts/lib/worktree-git.sh`) は 4 cycle を経て完成したが、初回から contract docstring の rigour を実装と揃えていれば 2-3 cycle 分の直行で済んだ。
 
 ## 関連ページ
 

@@ -29,7 +29,7 @@ Hypothetical Exception Categories (security/database/devops/dependencies) 外の
 
 Hypothetical Exception Categories は `security` / `database` / `devops` / `dependencies` の 4 reviewer のみ。それ以外の reviewer (prompt-engineer / code-quality / tech-writer / api / frontend / test / type-design / error-handling / performance) は **必ず anchor を出力しなければ** すべての finding が機械的降格対象となる。
 
-### 観測事例 (PR #1045 review)
+### 観測事例（review）
 
 `pr-review-toolkit:prompt-engineer-reviewer` agent が `commands/pr/references/anchor-naming-convention.md` に対し以下 2 件の確信度 80 以上 finding を出力した:
 

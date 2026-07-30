@@ -22,7 +22,7 @@ awk POSIX ERE で「行頭が `#` 以外で、行内に literal `X` を含む」
 
 ## 詳細
 
-### 失敗パターン (PR #911 で 2 cycle 連続発生)
+### 失敗パターン（2 cycle 連続発生）
 
 bash code block 内の shell コメント (`# ... flow-state-update.sh create ...`) を false positive 検出から除外する目的で、awk で以下のパターンを試みた:
 

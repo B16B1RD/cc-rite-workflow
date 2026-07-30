@@ -22,7 +22,7 @@ owner/repo 解決ロジック (`git-remote.sh resolve-owner-repo` / `gh repo vie
 
 ### 症状
 
-PR #1921 (Issue #1914 — `issue-body-safe-update.sh` の owner/repo 解決を SSH host alias 対応にする) の review で、TC-15b / TC-30b の 2 テストケースが ambient な origin remote (テスト実行時にその環境に実際に設定されている remote の値) に依存していることを **3 reviewer が独立に指摘**した。テストが「今この環境の origin が指す値」を暗黙の前提にしていたため、origin 未設定環境や別 URL 形式 (HTTPS vs SSH host alias) の環境ではテストの意味が変わる、あるいは failure しうる構造だった。
+`issue-body-safe-update.sh` の owner/repo 解決を SSH host alias 対応にした PR の review で、TC-15b / TC-30b の 2 テストケースが ambient な origin remote (テスト実行時にその環境に実際に設定されている remote の値) に依存していることを **3 reviewer が独立に指摘**した。テストが「今この環境の origin が指す値」を暗黙の前提にしていたため、origin 未設定環境や別 URL 形式 (HTTPS vs SSH host alias) の環境ではテストの意味が変わる、あるいは failure しうる構造だった。
 
 ```bash
 # 反面教材 — ambient な origin remote に暗黙依存

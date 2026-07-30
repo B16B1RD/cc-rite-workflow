@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-### 観察された事象 (PR #1146 cycle 6 → cycle 8)
+### 観察された事象（cycle 6 → cycle 8）
 
 PR #1146 (Doc-Heavy PR の 8 cycle 収束) で reviewer が明示した文言:
 

@@ -27,7 +27,7 @@ confidence: high
 
 ## 詳細
 
-### 実例（PR #2038）
+### 実例
 
 gate の ERROR ACTION が、caller 契約違反を判別する述語として glob を使っていた。
 

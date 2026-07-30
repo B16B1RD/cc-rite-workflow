@@ -20,7 +20,7 @@ Issue body などの specification 入力と schema doc などの canonical SoT 
 
 ## 詳細
 
-### 観測された矛盾 (PR #1064 / Issue #1021)
+### 観測された矛盾
 
 - **Issue body** (`feat(artifacts): migration script + schema-version hook + bats test`): `findings[].pre_existing` を migration スクリプトで `false` 初期化する仕様を記載
 - **canonical SoT** (`docs/SPEC.md` または `references/review-result-schema.md` §後方互換性): 同 PR で schema 1.1.0 化が完了する場面において `pre_existing` フィールド自体を schema から削除し、scope=`nit-noted` × pre_existing 自動降格の代替経路へ移行する canonical 表記

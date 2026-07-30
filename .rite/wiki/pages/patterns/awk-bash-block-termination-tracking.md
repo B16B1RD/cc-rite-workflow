@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-### 失敗パターン (PR #906 cycle 1 で test-reviewer / code-quality reviewer が独立検出)
+### 失敗パターン（cycle 1 で test-reviewer / code-quality reviewer が独立検出）
 
 charter 違反検出 test で「`flow-state-update.sh create` を含む bash block 内で `--phase` / `--issue` 等の引数が揃っているか」を symmetry assertion として実装していた:
 

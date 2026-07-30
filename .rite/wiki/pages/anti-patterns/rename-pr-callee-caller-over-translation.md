@@ -62,7 +62,7 @@ for caller in {out_of_scope_callers}; do
 done
 ```
 
-cycle N で 1 件の callee→caller drift を発見したら、同 PR 内の **全 callee × 全 Phase-maintaining caller の cross-product grep** を実行する。partial scan は同型 finding を残す経路を生む (PR #1151 cycle 1 → cycle 2 の tail residue で実測)。
+cycle N で 1 件の callee→caller drift を発見したら、同 PR 内の **全 callee × 全 Phase-maintaining caller の cross-product grep** を実行する。partial scan は同型 finding を残す経路を生む（cycle 1 → cycle 2 の tail residue で実測）。
 
 ### 派生的観察: canonical regex の silent coverage loss
 

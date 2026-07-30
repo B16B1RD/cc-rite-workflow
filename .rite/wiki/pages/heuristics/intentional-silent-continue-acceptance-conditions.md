@@ -20,7 +20,7 @@ confidence: medium
 
 ## 詳細
 
-### 成立条件 (PR #1837 で実測)
+### 成立条件（実測）
 
 `gh label create "$label" --description ... --color ... 2>/dev/null || true` によるラベル冪等事前作成が cycle 1 / 0 findings で mergeable になった。成立した条件:
 

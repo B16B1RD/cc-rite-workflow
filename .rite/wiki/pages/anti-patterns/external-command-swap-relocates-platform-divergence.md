@@ -22,7 +22,7 @@ GNU/BSD で挙動が割れるコマンドを別コマンドへ置き換えると
 
 ## 詳細
 
-### 実例: realpath → readlink（PR #2017 / Issue #2014）
+### 実例: realpath → readlink
 
 `pre-tool-edit-guard.sh` は最終要素 symlink を解決してから scope 判定する。当初の実装は `realpath` を使っていたが、GNU realpath は dangling な最終要素を許容し、BSD/macOS realpath はエラーにする。攻撃形の target（`.git/hooks/pre-commit` 等）は通常まだ存在しないため、**macOS では解決が常に空を返し、ガード全体が silent に no-op** していた。
 

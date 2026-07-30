@@ -20,7 +20,7 @@ confidence: medium
 
 ## 詳細
 
-PR #1793（Issue #1791）で `resume` → `recover` の裸スキル名参照を横断修正した際、以下の6種類の「置換すべきでない」出現形態が確認された:
+`resume` → `recover` の裸スキル名参照を横断修正した際、以下の6種類の「置換すべきでない」出現形態が確認された:
 
 1. **enum/marker値・変数名**: `RESUME_DISPATCH`、`RUN_QUEUE=resume_match`、`resume_phase`（シェル変数）など。これらは識別子として `resume` という文字列を含むだけで、スキル名そのものへの言及ではない。
 2. **ファイル名・スクリプト名**: `resume-active-flag-restore.sh` のような、リネーム後もそのままの名前で存在し続けるファイル。歴史的な変更ログ（design-rationale 系ドキュメント）内でこれらのファイル名を参照する記述は、当時の実装を正確に記録しているため書き換えてはならない。

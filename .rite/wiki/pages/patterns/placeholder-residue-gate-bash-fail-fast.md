@@ -28,7 +28,7 @@ bash block で `[ "{placeholder}" -gt 0 ]` のような比較を行う場合、L
 - `set -o pipefail` のみでは検知されず silent に `else` 分岐に落ちる
 - 結果として `lint:clean` / `lint:warning` 判定が誤値で emit され downstream が汚染される
 
-### Canonical fix (PR #579 cycle 1 で導入)
+### Canonical fix（cycle 1 で導入）
 
 placeholder を含む変数を使う bash block の冒頭で、以下の gate を同型に配置する:
 

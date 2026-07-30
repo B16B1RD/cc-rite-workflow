@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-### 問題 (PR #1222)
+### 問題
 
 新規 `bash-heaviness-check.sh` の summary 行が `echo "==> Total bash-heaviness findings: ${total}"` (stdout) で実装されていた。先行 helper の多数派は同じ summary を `log()` (stderr、`QUIET=1` で抑制) で出力する。lint.md の Phase 3.x は全 helper を `--all 2>&1` で呼び出し regex で finding 数を抽出するため機能差は出ないが、以下の非対称が残る:
 

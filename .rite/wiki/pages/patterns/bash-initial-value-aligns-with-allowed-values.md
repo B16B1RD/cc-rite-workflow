@@ -133,7 +133,7 @@ silent fall-through 系の bash defensive programming gap は、本 pattern と�
 
 - [PR #659 cycle 2 review (initial value silent fall-through risk、HIGH 1 件)](../../raw/reviews/20260425T081422Z-pr-659-cycle2.md)
 
-## 補強: marker / placeholder で値を運ぶ経路も同じ設計を要る (PR #2044)
+## 補強: marker / placeholder で値を運ぶ経路も同じ設計を要る
 
 同じ原理が、変数の初期値だけでなく **`[CONTEXT] KEY=value` marker やテンプレート placeholder で値を運ぶ経路**にも効く。
 

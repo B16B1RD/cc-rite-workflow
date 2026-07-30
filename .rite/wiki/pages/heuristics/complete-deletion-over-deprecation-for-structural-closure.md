@@ -16,7 +16,7 @@ confidence: high
 
 ## 概要
 
-Refactor で命名衝突 / semantic 混在を解消する際に「legacy field を deprecate ラベル付きで残置」する戦略は、definition の二重化が解消されないため [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) を review-fix loop 内で再生産する。逆に「legacy field を完全削除 + disambiguation note も同時に簡素化」する構造的戦略は、対称化責務そのものを消滅させ収束を実現する。PR #1043 (Issue #1042) の cycle 1-4 で実測 — cycle 1-3 で「deprecate + 残置」を採用したことで textual contradiction が連続 3 回再発し、cycle 4 で「完全削除」に転換した瞬間に 0 findings へ収束した。
+Refactor で命名衝突 / semantic 混在を解消する際に「legacy field を deprecate ラベル付きで残置」する戦略は、definition の二重化が解消されないため [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) を review-fix loop 内で再生産する。逆に「legacy field を完全削除 + disambiguation note も同時に簡素化」する構造的戦略は、対称化責務そのものを消滅させ収束を実現する。cycle 1-4 で実測 — cycle 1-3 で「deprecate + 残置」を採用したことで textual contradiction が連続 3 回再発し、cycle 4 で「完全削除」に転換した瞬間に 0 findings へ収束した。
 
 ## 詳細
 

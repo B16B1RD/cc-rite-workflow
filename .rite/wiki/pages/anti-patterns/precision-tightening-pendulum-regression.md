@@ -22,7 +22,7 @@ reviewer の false-positive 指摘 (「この記述は無関係な対象まで�
 
 ## 詳細
 
-### 発見経緯 (PR #1773 cycle 1→2, Issue #1706)
+### 発見経緯（cycle 1→2）
 
 cycle 1 のレビューで、アンインストール手順ドキュメント内のレガシー hook 削除ガイダンスが「`rite/hooks/` という文字列を含むパスを削除対象とする」という緩い記述になっており、`favorite/hooks/foo.sh` のような無関係なパスまで誤って対象に含めてしまう false-positive リスクを指摘された (MEDIUM)。cycle 1 の fix はこれを「command パスに `rite/hooks/` を**完全な path segment**として含む」という、より厳密な記述に書き換えて対処した。
 

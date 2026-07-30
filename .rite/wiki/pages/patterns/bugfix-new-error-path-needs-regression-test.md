@@ -24,7 +24,7 @@ confidence: high
 
 ### 問題の構造
 
-PR #1808 は `cleanup-work-memory.sh` の resolver 呼び出し失敗を検出できていなかったバグ (Issue #695) を修正した。cycle 1 の fix で `flow-state.sh path` 呼び出しの失敗経路 (else 節、WARNING 出力 + legacy フォールバック) を新規追加したが、その **新規追加した else 節自体の回帰テスト** は cycle 1 では追加されなかった。既存 TC (TC-001/002/003/008) は全て有効な session-id を事前に seed しており、resolver が成功するケースしか通過しない。結果として、新設した else 節の WARNING 文言やフォールバック挙動が壊れても既存テストスイートは 100% パスし続ける。
+`cleanup-work-memory.sh` の resolver 呼び出し失敗を検出できていなかったバグを修正した PR の事例。cycle 1 の fix で `flow-state.sh path` 呼び出しの失敗経路 (else 節、WARNING 出力 + legacy フォールバック) を新規追加したが、その **新規追加した else 節自体の回帰テスト** は cycle 1 では追加されなかった。既存 TC (TC-001/002/003/008) は全て有効な session-id を事前に seed しており、resolver が成功するケースしか通過しない。結果として、新設した else 節の WARNING 文言やフォールバック挙動が壊れても既存テストスイートは 100% パスし続ける。
 
 cycle 2 review で test-reviewer が HIGH として、error-handling-reviewer が (severity は異なるが) 推奨事項として、独立に同一のギャップを指摘した。**重要度の食い違いは指摘の妥当性を減じない** — 複数 reviewer が同一根本原因を別の重要度で報告した場合、いずれか一方でも指摘があれば対応すべきという運用判断で修正した ([Observed Likelihood Gate](../heuristics/observed-likelihood-gate-with-evidence-anchors.md) の cross-validation 原則と対称)。
 

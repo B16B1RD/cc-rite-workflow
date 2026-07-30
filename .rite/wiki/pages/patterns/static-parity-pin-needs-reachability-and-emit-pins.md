@@ -22,7 +22,7 @@ confidence: high
 
 ## 概要
 
-SKILL.md 内の markdown 埋め込み bash は実行テストできないため、grep ベースの静的 parity テスト（述語文字列の出現数 + 行の並び）で drift を pin する運用がある。これは **site 間の不一致は検出するが semantics は守らない**。3 site を一貫して改修する mutation では素通りする（PR #2030 で実測: 112 pass のまま正準形状が fallback に落ちた）。到達性と emit 内容を pin する 2 種を対で追加して初めて実用になる。
+SKILL.md 内の markdown 埋め込み bash は実行テストできないため、grep ベースの静的 parity テスト（述語文字列の出現数 + 行の並び）で drift を pin する運用がある。これは **site 間の不一致は検出するが semantics は守らない**。3 site を一貫して改修する mutation では素通りする（実測: 112 pass のまま正準形状が fallback に落ちた）。到達性と emit 内容を pin する 2 種を対で追加して初めて実用になる。
 
 ## 詳細
 

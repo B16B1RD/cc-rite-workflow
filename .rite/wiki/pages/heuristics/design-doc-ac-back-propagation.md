@@ -39,7 +39,7 @@ Umbrella Issue 配下の Sub-Issue series で各 PR の AC (例: 行数目標) �
 2. **Design doc** (`docs/designs/<topic>.md`): 「目標行数」「ゴール」セクションを実着地値 + AC 緩和の経緯 (protected 区域比率 / scope 制約 / 兄弟 PR 達成率を転用できない理由) に更新する
 3. **後続 Sub-Issue body**: 同 series の次の Sub-Issue body にも「PR #N (1 つ目) で AC を ≤X に緩和、本 Sub-Issue も同方針で着工」を明記する
 
-**最も効果的なタイミング**: 1 つ目の Sub-Issue PR の cycle 1 fix で AC 緩和が確定した直後。merge 後の次 Sub-Issue 着工までに back-propagation を完了させると、reviewer が「目標未達」として再検出するコストが消滅する (PR #813 では merge 直前まで未更新で reviewer 1 人が MEDIUM 検出した実測)。
+**最も効果的なタイミング**: 1 つ目の Sub-Issue PR の cycle 1 fix で AC 緩和が確定した直後。merge 後の次 Sub-Issue 着工までに back-propagation を完了させると、reviewer が「目標未達」として再検出するコストが消滅する（merge 直前まで未更新で reviewer 1 人が MEDIUM 検出した実測がある）。
 
 ### 検出 heuristic
 

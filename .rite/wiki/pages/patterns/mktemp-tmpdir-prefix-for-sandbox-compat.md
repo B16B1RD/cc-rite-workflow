@@ -36,7 +36,7 @@ tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-foo-XXXXXX")
 
 ### 背景
 
-rite リポジトリでは既存の canonical helper（`_mktemp-stderr-guard.sh`）がこの形式を既に使っていたが、それ以外の本番コード 21 ファイルが `/tmp` 直下ハードコードのままだった（PR #1902、Issue #1900）。修正はテンプレート文字列を canonical helper と揃えるだけの機械的な変更で、レビュアー 4 名（security / application / error-handling / test）全員が指摘事項 0 件・可判定。この機械性の高さは、ハードコードパターンが「動くが環境依存」という気付きにくい形で埋め込まれやすいことの裏返しでもある。
+rite リポジトリでは既存の canonical helper（`_mktemp-stderr-guard.sh`）がこの形式を既に使っていたが、それ以外の本番コード 21 ファイルが `/tmp` 直下ハードコードのままだった。修正はテンプレート文字列を canonical helper と揃えるだけの機械的な変更で、レビュアー 4 名（security / application / error-handling / test）全員が指摘事項 0 件・可判定。この機械性の高さは、ハードコードパターンが「動くが環境依存」という気付きにくい形で埋め込まれやすいことの裏返しでもある。
 
 ### スコープ境界の判断
 

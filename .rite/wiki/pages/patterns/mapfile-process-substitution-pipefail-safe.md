@@ -20,7 +20,7 @@ confidence: high
 
 ## 詳細
 
-### 失敗パターン (PR #868 cycle 1, F-02)
+### 失敗パターン（cycle 1, F-02）
 
 `set -euo pipefail` 配下の test runner で、固定文字列マッチを集める iteration が以下のように書かれていた:
 

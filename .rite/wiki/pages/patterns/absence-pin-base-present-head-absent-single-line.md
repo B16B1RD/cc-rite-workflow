@@ -53,7 +53,7 @@ pin の非空虚性は「守っている行をストリーム上で削除（ま�
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](../heuristics/universal-claim-prose-invalidated-by-path-addition.md)
 
-> **PR #2038 (Issue #2034)**: 空虚 pin には**第 3 の軸**がある — 本ページが扱う「複数行に跨る旧文面」「ERE 未エスケープ」に加え、**その run の fixture に対象が存在しない**ケース。直前の run のログを読む形の `assert_not_grep` は、間に別のテストを挿入した瞬間に fixture がずれて恒真化する。対処（自前 run + positive control）は [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) を参照。
+> **補強**: 空虚 pin には**第 3 の軸**がある — 本ページが扱う「複数行に跨る旧文面」「ERE 未エスケープ」に加え、**その run の fixture に対象が存在しない**ケース。直前の run のログを読む形の `assert_not_grep` は、間に別のテストを挿入した瞬間に fixture がずれて恒真化する。対処（自前 run + positive control）は [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) を参照。
 
 ## ソース
 

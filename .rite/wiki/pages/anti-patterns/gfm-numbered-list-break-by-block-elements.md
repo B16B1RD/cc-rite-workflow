@@ -20,7 +20,7 @@ GFM (GitHub Flavored Markdown) で `1. ... N.` の連番リストを書く際、
 
 ## 詳細
 
-### 観測 (PR #946 / Issue #944)
+### 観測
 
 `commands/wiki/ingest.md` Phase 4 overview の番号付きリスト (items 1-4) と、新規追加した item 5 「関連ページの特定」の間に、(a) `#### アクション判定表` table と (b) `**注意**: ...` paragraph が挟まれていた。GFM render 上、item 5 が新規リスト (`1. ` から再採番) として表示され、items 1-4 と論理的に連続している意図が破断していた。
 

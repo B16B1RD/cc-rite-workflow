@@ -45,7 +45,7 @@ new_repo() { repo="$(mktemp -d)"; ...; printf '%s' "$repo"; }
 disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 ```
 
-これは共有ヘルパー `_test-helpers.sh` の `make_sandbox` / `make_plain_sandbox` が「Callers MUST push to cleanup_dirs from the parent shell … not inside the wrapper」として既に文書化している罠であり、**文書化済みでも新規テストファイルで再発する**（PR #1735 で HIGH として検出、code-quality + error-handling の 2 reviewer 独立合意）。新規 fixture ヘルパーを書くときは既存の共有ヘルパーと同じ「echo するだけ、登録は親」パターンに揃える。
+これは共有ヘルパー `_test-helpers.sh` の `make_sandbox` / `make_plain_sandbox` が「Callers MUST push to cleanup_dirs from the parent shell … not inside the wrapper」として既に文書化している罠であり、**文書化済みでも新規テストファイルで再発する**（HIGH として検出、code-quality + error-handling の 2 reviewer 独立合意）。新規 fixture ヘルパーを書くときは既存の共有ヘルパーと同じ「echo するだけ、登録は親」パターンに揃える。
 
 ### 併発する fixture-quality の落とし穴（同 PR で cross-validation）
 

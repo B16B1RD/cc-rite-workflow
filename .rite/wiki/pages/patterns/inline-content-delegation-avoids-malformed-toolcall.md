@@ -22,7 +22,7 @@ command spec (`.md`) 内で gh CLI に渡す title / body をインライン展�
 
 ## 詳細
 
-PR #1310 (Issue #1307) は `/rite:pr:create` が pr:open 経由で停止する問題を、原因を 2 系統に分けて対処した:
+`/rite:pr:create` が pr:open 経由で停止する問題を、原因を 2 系統に分けて対処した:
 
 - **Cause B (構造的に除去可能)**: インライン特殊文字 title / heredoc body が LLM の tool-call 生成を malform させる経路。修正は 3 段プロトコル:
   1. `workdir=$(mktemp -d)` で作業ディレクトリを確保 (workdir は literal placeholder ではなく shell 変数 `pr_workdir` に束縛し、`[ -d "$pr_workdir" ]` guard 付き cleanup にすることで placeholder 置換漏れ時の `rm -rf` 誤動作も同時に防ぐ)。

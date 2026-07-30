@@ -18,7 +18,7 @@ security hook の over-broad block 体験 (中身が無害でも一律 block さ
 
 ## 詳細
 
-PR #1323 (Issue #1322) で確立。reviewer subagent の read-only な `bash -c` 挙動プローブが `pre-tool-bash-guard.sh` の (Z) shell-wrapper guard で一律 block される over-broad 体験に対し、以下の手順でメッセージのみを是正した:
+確立の経緯: reviewer subagent の read-only な `bash -c` 挙動プローブが `pre-tool-bash-guard.sh` の (Z) shell-wrapper guard で一律 block される over-broad 体験に対し、以下の手順でメッセージのみを是正した:
 
 1. **緩和しない判断を先に確定する**: `bash -c` の quote 内パースで「無害なら許可」を実装するのは fragile な bypass 面 (`bash -c 'git reset --hard'` の隠蔽) を security hook に再導入する。wrapper 一律 block は PR #997 / Issue #995 の実インシデントへの意図的な構造的防御であり、reviewer は subshell `( ... )` / 直接実行 / `bash <script.sh>` で検証強度を落とさず代替できるため実害はほぼゼロ。over-broad 体験の実害は **deny メッセージの乖離** (中身が git でない probe にも "State-changing git commands ... forbidden" と表示) に局在する。
 2. **subkind タグでメッセージのみ分岐**: `BLOCKED_SUBKIND=""` を判定ブロック前に無条件初期化し、(Z) shell-wrapper の case arm でのみ `BLOCKED_SUBKIND="shell-wrapper"` を設定。deny メッセージ組立部 (`[ -n "$BLOCKED_PATTERN" ]` 内側) で subkind を見て wrapper 専用の理由 (quote 内が word-boundary マッチに opaque) と代替 (直接実行 / subshell / `bash <script.sh>`) を既存メッセージに**前置**する。deny 決定の gate は `BLOCKED_PATTERN` 単独のまま、subkind は決定に一切関与しない。

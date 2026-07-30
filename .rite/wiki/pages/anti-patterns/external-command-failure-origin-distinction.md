@@ -44,7 +44,7 @@ PR #1244 (`/rite:learn` spec) の cycle 5 で error-handling reviewer が MEDIUM
 
 同 reviewer が cycle 4 ではこの論点を design_confirmation (任意) と判定し、cycle 5 で MEDIUM blocking に格上げした。reviewer の severity 判定は「read-only / 副作用なし」という緩和要因の重み付けで cycle 間に振動しうる。iterate ループは指摘ゼロまで継続する設計のため、振動する指摘も一度 blocking に出れば修正する (修正は codebase 規約との整合を高めるため正味プラス)。cycle 6 では「対応済み・severity 一貫性のため再指摘せず」と確認され収束した — reviewer prompt に「前 cycle で任意と判断した論点を理由なく blocking に格上げしない」severity 一貫性ガードを入れると収束が早まる。
 
-### 分類軸は文言の固有化ではなく情報源の権威性に引き上げる (PR #2056)
+### 分類軸は文言の固有化ではなく情報源の権威性に引き上げる
 
 エラー文言を機械固有の literal へ狭めるだけでは、同じ表に並ぶ**別のコマンドの失敗**に同種欠陥が残る。実測で有効だったのは、分類軸を「文言」から**情報源の権威性**へ引き上げることだった。
 

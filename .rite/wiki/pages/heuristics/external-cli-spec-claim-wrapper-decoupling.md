@@ -20,7 +20,7 @@ confidence: medium
 
 ## 詳細
 
-### 背景（PR #1835 cycle 2）
+### 背景（cycle 2）
 
 setup スキルに `gh project link` の冪等実行を追加した PR で、コメント「冪等: 既にリンク済みでも成功する」が gh CLI の外部仕様主張であることを 2 reviewer が独立に特定した。gh manual は re-link 時挙動を記載しておらず、reviewer は READ-ONLY 制約下で実行検証できない。
 

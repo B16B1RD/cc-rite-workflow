@@ -18,7 +18,7 @@ bash の fail-fast 構造をドキュメントで記述するときは「構文�
 
 ## 詳細
 
-PR #1327（Issue #1189、wiki-patterns.md の ingest.md branch_strategy fail-fast 記述修正）で実測:
+wiki-patterns.md の ingest.md branch_strategy fail-fast 記述を修正した際に実測:
 
 - **3 軸の同時誤り**: 旧記述は (a) 構文軸 — 実体は if/elif/else の `else` 分岐なのに `case *)` arm と記述、(b) 場所軸 — ステップ 5.2 には branch_strategy の fail-fast 分岐が存在しない（`if same_branch` 単独分岐、未知値は先行する 5.1 の else が catch）のに「5.1 / 5.2 で」と記述、の二重の不正確を含んでいた。検証対象軸でも、5.1 内に実在する `case *)` fail-fast は `commit_rc` / `commit_msg` gate 用であり branch_strategy 検証ではなかった。
 - **case arm の 2 種別**: bash の case arm には「bare `*)` catch-all arm」と「glob パターン arm（例: `*"{placeholder}"*|...`）」があり、「`case *)` fail-fast」と一括ラベルすると後者を誤記述する。cycle 1 で prompt-engineer / tech-writer が独立に同一の精度指摘を出し、arm 種別を分離記述（`commit_msg` gate は placeholder パターン arm、`commit_rc` は `*)` arm）して解消した。

@@ -50,7 +50,7 @@ revert を選んだ根拠は 3 つ:
 
 - [PR #2036 fix results](../../raw/fixes/20260727T042311Z-pr-2036.md)
 
-## 補強: 「同じ箇所が N cycle 連続で壊れた」は記述精度ではなく重複そのものを疑う signal (PR #2044)
+## 補強: 「同じ箇所が N cycle 連続で壊れた」は記述精度ではなく重複そのものを疑う signal
 
 `docs/CONFIGURATION.md` の handoff 残存条件は cycle 1（片側だけの失敗記述）→ cycle 3（"one cycle" の量化）→ cycle 4（先行詞の崩壊）と **3 回連続で defect を出した**。毎回 fresh な散文で同じ条件を書き直し、そのたびに新しい欠陥を持ち込んでいる。
 

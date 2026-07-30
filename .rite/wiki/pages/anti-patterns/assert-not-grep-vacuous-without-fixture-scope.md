@@ -24,7 +24,7 @@ confidence: high
 
 ## 詳細
 
-### 実例（PR #2038）
+### 実例
 
 「引用付き末尾 sentinel を持つ人間コメント（id=96）を PATCH しない」ことを固定する assertion があった。
 

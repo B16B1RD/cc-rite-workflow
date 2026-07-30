@@ -22,7 +22,7 @@ PR #1392（`multi_session.enabled` を default off→on 化）で実測。AC は
 
 **SoT となる先例**: `wiki:` セクションは #491 でまさに同じ問題を避けるため、コメント形式・マーカー下から active・マーカー上へ移動された（`flow_state:` も同様にマーカー上の active ブロック）。default-on にしたい設定は「wiki / flow_state と同じ列」に並べる、が判断基準。
 
-**修正の全体像**（PR #1392 cycle 2）:
+**修正の全体像**（cycle 2）:
 1. テンプレート: active ブロックをマーカー上（`flow_state:` 直後）へ移動。マーカー下の重複は削除。
 2. `init.md` Step 4 の `--upgrade` 分類: 既存プロジェクトの後方互換（「既存 config は不変」）を保つため、当該キーを generic な "Missing section → Add active" から **除外** する専用行を追加（wiki は upgrade で back-add するが、このケースは back-add しない＝非対称。両者を分類表に明示）。
 

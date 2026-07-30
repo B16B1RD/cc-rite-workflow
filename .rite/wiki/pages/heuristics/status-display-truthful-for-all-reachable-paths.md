@@ -22,7 +22,7 @@ confidence: medium
 
 ## 詳細
 
-**発生源**: PR #1733 (Issue #1703) の `/rite:run` 着手前サマリ機能。バッチのキュー cursor を前進させる共有 bash（`RUN_ADVANCE` marker を emit する箇所）の直後に「各 Issue 完了時の進捗表示」として `✅ {new_cursor}/{total} 件完了` を追加した。
+**発生源**: `/rite:run` の着手前サマリ機能。バッチのキュー cursor を前進させる共有 bash（`RUN_ADVANCE` marker を emit する箇所）の直後に「各 Issue 完了時の進捗表示」として `✅ {new_cursor}/{total} 件完了` を追加した。
 
 この cursor 前進 bash は複数の終了経路から合流する:
 - 正常収束（`[review:mergeable]`）

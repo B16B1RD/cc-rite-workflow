@@ -26,7 +26,7 @@ bullet (numbered list / unordered list) 内で MUST-DO 命令と META / rational
 
 ## 詳細
 
-### 観測 (PR #1044 / Issue #1029)
+### 観測
 
 `commands/pr/fix.md` Phase 1.2.0 Block 2 冒頭の block continuity note (~700 chars の単一 blockquote) を 7 項目 bullet list へ refactor した PR で、cycle 1-3 にわたって以下の階段的な emphasis 配分問題が surface した:
 

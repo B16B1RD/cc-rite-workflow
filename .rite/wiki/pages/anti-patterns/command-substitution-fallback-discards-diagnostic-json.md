@@ -67,7 +67,7 @@ esac
 
 この 2 条件のどちらも満たさない通常の「JSON を jq でパースし catch-all で処理する」設計では、fallback は診断情報を握りつぶすだけの有害コードである。
 
-### 残存 site の一掃と除去正当性の検証パターン (PR #1851)
+### 残存 site の一掃と除去正当性の検証パターン
 
 PR #1847 が 2 箇所を修正した後、同パターンは skill markdown 内に 4 箇所残存していた (ready skeleton / issue-close Phase 4.6.3 / archive-procedures 本文 + skeleton)。PR #1851 で全 call site (6 箇所) が no-fallback に統一され、各 site に「付けない」根拠コメントが置かれた。レビューで確立された検証パターン:
 

@@ -24,7 +24,7 @@ confidence: medium
 
 ## 詳細
 
-PR #1770 (Issue #1712) で `docs/SPEC.md` に新設した "Schema Version Overview" セクションが、severity 語彙・schema バージョンの crosswalk を 3 系統に整理する内容だったため、要約文で「rite workflow has 3 independently-versioned schemas」と無限定に断言した。tech-writer reviewer が Doc-Heavy PR Mode の Enumeration Completeness 検証で、リポジトリ全体を grep し、他にも `schema_version` フィールドを持つ構造（work-memory local file の `schema_version: 1`、issue-claim JSON の `schema_version: 1`）が存在することを検出し、MEDIUM 指摘とした。
+`docs/SPEC.md` に新設した "Schema Version Overview" セクションが、severity 語彙・schema バージョンの crosswalk を 3 系統に整理する内容だったため、要約文で「rite workflow has 3 independently-versioned schemas」と無限定に断言した。tech-writer reviewer が Doc-Heavy PR Mode の Enumeration Completeness 検証で、リポジトリ全体を grep し、他にも `schema_version` フィールドを持つ構造（work-memory local file の `schema_version: 1`、issue-claim JSON の `schema_version: 1`）が存在することを検出し、MEDIUM 指摘とした。
 
 修正は「3 independently-versioned schemas」を排他的リストと誤読されないよう、"that are commonly conflated"（取り違えやすい）という限定修飾語を追加し、さらに対象外の類似構造の存在を括弧書きで明示した:
 

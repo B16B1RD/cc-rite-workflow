@@ -27,7 +27,7 @@ confidence: high
 
 ## 詳細
 
-### 実例（PR #2038 cycle 5）
+### 実例（cycle 5）
 
 診断行の文字化けを直した（`neutralize_ctrl` を `--c0-only` へ変更）。この時点で mutation を当てた。
 

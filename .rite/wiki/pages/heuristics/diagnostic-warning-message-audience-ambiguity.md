@@ -20,7 +20,7 @@ skill やスクリプトが出す診断 WARNING（例:「sandbox の read-only b
 
 ## 詳細
 
-PR #1924（Issue #1923: worktree/branch 遅延回収の dead-lock 解消）で追加された busy(EBUSY) WARNING は、「Claude Code の sandbox が read-only bind mount を張っている環境では git worktree remove は構造的に失敗する」ことを明示的に述べ、手動復旧コマンドを提示していた。cycle 4 の prompt-engineer-reviewer が指摘したのは、この WARNING 自身が「sandbox 起因の失敗の明示的証拠」を含むため、この skill を実行している Claude Code エージェント自身が持つ harness レベルのルール（「sandbox 制約が失敗原因だと分かったら dangerouslyDisableSandbox で即座に再試行する」）を、意図せず起動しうるという点だった。
+worktree/branch 遅延回収の dead-lock を解消した PR で追加された busy(EBUSY) WARNING は、「Claude Code の sandbox が read-only bind mount を張っている環境では git worktree remove は構造的に失敗する」ことを明示的に述べ、手動復旧コマンドを提示していた。cycle 4 の prompt-engineer-reviewer が指摘したのは、この WARNING 自身が「sandbox 起因の失敗の明示的証拠」を含むため、この skill を実行している Claude Code エージェント自身が持つ harness レベルのルール（「sandbox 制約が失敗原因だと分かったら dangerouslyDisableSandbox で即座に再試行する」）を、意図せず起動しうるという点だった。
 
 本来この busy 失敗は「non-blocking として遅延 reap（別プロセスである SessionStart hook 経由）へ委譲する」設計だったが、WARNING の文言だけでは「復旧コマンドは誰が実行すべきか」が曖昧で、実行エージェントがその場で dangerouslyDisableSandbox 付きで再試行してしまう余地があった（実害は軽微〔うまくいけば即時解決、失敗しても同じ busy で委譲に戻るだけ〕だが、設計意図とは異なる経路）。
 

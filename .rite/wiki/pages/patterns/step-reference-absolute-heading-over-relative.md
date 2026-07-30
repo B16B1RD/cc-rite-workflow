@@ -45,7 +45,7 @@ PR #688 cycle 49 H-1 の Self-defeating defense bug の root cause: cycle 49 で
 - pre-commit lint で `次の Step` / `上記 Step` / `Step [0-9]+/[0-9]+` のような relative 形式を検出して absolute 形式への書き換えを提案
 - review feedback の Step 参照は heading title を併記する規約
 
-### Cross-file 次元への拡張（PR #1835）
+### Cross-file 次元への拡張
 
 同一ドキュメント内の relative 参照だけでなく、**別ドキュメントの内部 step 番号への cross-file 参照**も同じ drift class に属する。PR #1835 では新設 prose が Issue 作成 helper の内部処理を「Step 2.3 フィールド取得」と番号参照したが、参照先ドキュメントのステップは flat な Step 1/2/3 で「Step 2.3」は実在せず、読者を誤誘導する stale 参照として MEDIUM 検出された（参照先の実在を grep で確認しないまま番号アンカーを書き込んだのが根本原因）。
 

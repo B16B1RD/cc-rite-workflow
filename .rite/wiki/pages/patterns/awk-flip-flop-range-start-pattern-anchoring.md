@@ -16,7 +16,7 @@ confidence: high
 
 ## 概要
 
-`assert_grep_in_section` のようなテストヘルパーが awk flip-flop レンジ (`$0 ~ start, $0 ~ end`) で SKILL.md 内の特定セクションを抽出する場合、start pattern が生の marker 名（例: `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1`）だけだと、その marker 名を引用する散文の説明行にも一致してしまう。文書内で同一文字列が複数回出現すると、awk flip-flop レンジは最初の end 一致後に散文行で再起動し、意図せず EOF までレンジが伸びる。PR #1974 (Issue #1945) cycle 3 で application / error-handling reviewer が独立に検出し、mutation test（section 抽出範囲の実測 127/118 行 vs 意図した 20/16 行）で過検出を実証した。
+`assert_grep_in_section` のようなテストヘルパーが awk flip-flop レンジ (`$0 ~ start, $0 ~ end`) で SKILL.md 内の特定セクションを抽出する場合、start pattern が生の marker 名（例: `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1`）だけだと、その marker 名を引用する散文の説明行にも一致してしまう。文書内で同一文字列が複数回出現すると、awk flip-flop レンジは最初の end 一致後に散文行で再起動し、意図せず EOF までレンジが伸びる。cycle 3 で application / error-handling reviewer が独立に検出し、mutation test（section 抽出範囲の実測 127/118 行 vs 意図した 20/16 行）で過検出を実証した。
 
 ## 詳細
 

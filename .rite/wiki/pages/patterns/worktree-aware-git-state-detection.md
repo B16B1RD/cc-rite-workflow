@@ -20,7 +20,7 @@ worktree では merge/rebase の中断状態を示す `MERGE_HEAD` / `rebase-mer
 
 ## 詳細
 
-PR #1734 (Issue #1705) で `/rite:resume` のクロスチェックにマージコンフリクト / rebase 中断の検出を追加した際、以下の実装を採用した:
+`/rite:resume` のクロスチェックにマージコンフリクト / rebase 中断の検出を追加した際、以下の実装を採用した:
 
 ```bash
 [ -f "$(git rev-parse --git-path MERGE_HEAD 2>/dev/null)" ] && git_in_merge=yes || git_in_merge=no

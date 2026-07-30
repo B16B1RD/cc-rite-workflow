@@ -28,7 +28,7 @@ confidence: high
 
 PR #837 で評価レポート Section 7 (リスク緩和策) が `S3+S4 を同一 commit で実施` と claim し、Section 9.3 で `S3/S4 は未実施` と開示。tech-writer reviewer が LOW (内部矛盾) として検出した。リスク自体は実体化しなかったが、disclosure 順序として bottom-up でしか整合性が取れない構造。
 
-### 解決パターン (PR #837 cycle 1 fix)
+### 解決パターン（cycle 1 fix）
 
 - **計画逸脱発生時はリスク表 / 計画表に前方参照を追加**: 例 `(注: 本 PR では未実施。理由は Section 9.3 を参照)`
 - **計画変更時の前方参照契約を canonical 化**: 設計ドキュメントテンプレート / レビュー基準に「計画 vs 実施が divergence した場合、計画側 Section に前方参照を入れる」を明文化する

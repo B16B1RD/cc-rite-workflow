@@ -76,7 +76,7 @@ assert_file_exists_or_fail "$r.md" "$f" || continue
 
 ### excluded-with-rationale checkmark pattern
 
-受入条件 checklist の「他テストへの横展開」項目を `[x]` でマークしつつ「該当しない理由」を本文 / PR description で明示する形態 (PR #1052 の運用例):
+受入条件 checklist の「他テストへの横展開」項目を `[x]` でマークしつつ「該当しない理由」を本文 / PR description で明示する形態（運用例）:
 
 > - [x] 他テスト (T-2/T-3/T-4 / sentinel-visibility-rule.test.sh 等) で同様 inflation が起きうるパターンがあれば、それも新ヘルパーに統一 — 調査の結果、T-2/T-3/T-4 は単一固定ファイル (`_reviewer-base.md` / `severity-levels.md`) への assertion で loop iteration を持たないため inflation 構造に該当しない。
 

@@ -22,7 +22,7 @@ bash 変数 rename refactor の際、変数名の見た目と同形だが downst
 
 ## 詳細
 
-### 発生事例 (PR #1034 cycle 1)
+### 発生事例（cycle 1）
 
 PR #1034 は `pr/fix.md` 内の exit code capture 変数を `<command>_<context>_rc` 形式 (例: `commit_rc` → `wiki_ingest_commit_rc`) に統一する symmetric mechanical rename を目的としていた。`code-quality` と `error-handling` の 2 reviewer が独立に **CRITICAL × 2 + HIGH × 3 (5 site 同根)** を検出した:
 

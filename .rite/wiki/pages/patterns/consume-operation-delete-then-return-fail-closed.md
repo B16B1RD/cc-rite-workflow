@@ -22,7 +22,7 @@ print-then-delete は fail-open (削除失敗を無視して値を吐く)、dele
 
 ## 詳細
 
-### 発生事例 (PR #1169 — Stop hook loop-continuation)
+### 発生事例（Stop hook loop-continuation）
 
 `flow-state.sh` に `consume-handoff` サブコマンド (handoff マーカーを read + delete + return する one-shot consume) を追加した PR #1169 で、初版実装が **print-then-delete** 順だった:
 

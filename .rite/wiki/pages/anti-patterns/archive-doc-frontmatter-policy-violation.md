@@ -62,7 +62,7 @@ L35 の `ステップ 8` は同 doc L114 の `Phase 8` と intra-document contra
 
 ### Detection Heuristic / 対策
 
-1. **archive doc の front-matter で preservation policy を明示宣言する** (PR #1151 後の現 anti-pattern doc が既に採用)
+1. **archive doc の front-matter で preservation policy を明示宣言する**（現 anti-pattern doc が既に採用）
 
    ```yaml
    ---

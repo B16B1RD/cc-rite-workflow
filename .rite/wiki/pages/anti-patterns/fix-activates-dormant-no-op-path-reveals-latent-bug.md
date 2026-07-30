@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-### 発生した事例（PR #1809 / Issue #1807）
+### 発生した事例
 
 - 元修正: `issue-comment-wm-sync.sh` の `FLOW_STATE` 解決を、常に存在しない legacy 共有ファイル (`.rite-flow-state`) 決め打ちから、`flow-state.sh path`（実在するセッション別ファイルを返す canonical resolver）経由に変更した。
 - 副次的に有効化された経路: 同ファイル内の `cache_comment_id()` が `wm_comment_id` を `$FLOW_STATE` に書き込む処理。修正前は `$FLOW_STATE` が指す先が実在しない legacy ファイルだったため、この書き込みは常に no-op だった。

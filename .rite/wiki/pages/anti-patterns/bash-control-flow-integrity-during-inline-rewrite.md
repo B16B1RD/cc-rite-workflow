@@ -42,7 +42,7 @@ bash の `continue` / `break` は POSIX 仕様で enclosing loop の存在を要
 
 bash literal 内で iteration が必要だが LLM 側で繰り返し実行する設計の場合、以下のいずれかを採用する:
 
-1. **fail-fast 化**: `continue` を `exit 1` に置換し、各 iteration を独立 invocation で実行する設計に restructure。peer file `commands/issue/create.md` の if/else + fail-fast pattern が canonical (PR #1149 cycle 6 で対称化)。
+1. **fail-fast 化**: `continue` を `exit 1` に置換し、各 iteration を独立 invocation で実行する設計に restructure。peer file `commands/issue/create.md` の if/else + fail-fast pattern が canonical（cycle 6 で対称化）。
 2. **enclosing 構文の明示**: bash literal 内に `for task in "${tasks[@]}"; do ... done` のような explicit loop を含め、`continue` が legal な context を保証する。
 3. **`{REPEAT_FOR_EACH_X}` macro**: LLM への指示として明示的に「以下を各 task について繰り返す」macro 記法を使い、bash literal は単一 iteration の skeleton として記述する。
 

@@ -103,7 +103,7 @@ production の sentinel emit failure 経路で operator に false `rc=0` を表�
 
 ### PR #1032 cycle 1: format 同期 refactor で新 SoT の bash 構造を見落とした再発
 
-PR #1032 (Issue #1025) は `plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路を PR #1023 で導入された新 SoT (L1147-L1150 `mktemp_failure_norm_tmp`) と format 同期する小規模 refactor。元の `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、**新 SoT は `if cmd; then ... else rc=$?` 形式**で実装されていたにもかかわらず、本 PR cycle 1 では `if ! cmd; then rc=$?; ...; fi` 形式で実装し本 anti-pattern を新規導入。reviewer 2 名 (prompt-engineer / code-quality) が cross-validation 一致で CRITICAL 検出。
+ある PR は `plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路を、先行 PR が導入した新 SoT (L1147-L1150 `mktemp_failure_norm_tmp`) と format 同期する小規模 refactor。元の `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、**新 SoT は `if cmd; then ... else rc=$?` 形式**で実装されていたにもかかわらず、本 PR cycle 1 では `if ! cmd; then rc=$?; ...; fi` 形式で実装し本 anti-pattern を新規導入。reviewer 2 名 (prompt-engineer / code-quality) が cross-validation 一致で CRITICAL 検出。
 
 **累積再発要因の独自観点**: 「**format 同期 (WARNING wording / CONTEXT emit token 一致)**」と「**structural / runtime semantics 同期 (bash の if-else 構造そのものを SoT と完全一致)**」を区別する責務が confused。同じ wording を異なる bash 構造で実装すると、`if !` boolean 反転による rc 常時 0 化 silent regression を新規 introduce する。本 PR は累積 34 回目 Asymmetric Fix Transcription (`asymmetric-fix-transcription.md` 累積 34 回目セクション参照) の起点となり、「**format token symmetry / bash structure symmetry / runtime semantics symmetry の三層対称化義務**」doctrine を Wiki に確立した。
 

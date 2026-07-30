@@ -20,7 +20,7 @@ lint / 静的解析ジョブを informational（常時 exit 0）から blocking 
 
 ## 詳細
 
-- **背景（PR #2009 / shellcheck の blocking 化）**: shellcheck ジョブを informational（`report` を jq でパースし件数を summary に出して常に `exit 0`）から error severity の blocking gate へ昇格した。gate は `report=$(shellcheck --severity=style --format=json ... 2>/dev/null || true)` を件数集計に使う従来経路は report 用途に残しつつ、判定は別途 `if shellcheck --severity=error "${files[@]}"; then … else exit 1; fi` と**ツールを exit code 目的で再実行**する形にした。`report` 側は `2>/dev/null || true` で握りつぶすが、それは非致命な集計であり、権威判定は suppression の無い gate scan が別に担うため silent failure 化しない（責務分離: report=best-effort / gate=authoritative）。
+- **背景（shellcheck の blocking 化）**: shellcheck ジョブを informational（`report` を jq でパースし件数を summary に出して常に `exit 0`）から error severity の blocking gate へ昇格した。gate は `report=$(shellcheck --severity=style --format=json ... 2>/dev/null || true)` を件数集計に使う従来経路は report 用途に残しつつ、判定は別途 `if shellcheck --severity=error "${files[@]}"; then … else exit 1; fi` と**ツールを exit code 目的で再実行**する形にした。`report` 側は `2>/dev/null || true` で握りつぶすが、それは非致命な集計であり、権威判定は suppression の無い gate scan が別に担うため silent failure 化しない（責務分離: report=best-effort / gate=authoritative）。
 
 - **なぜ exit code か**: jq パース方式は「ツールが動いて 0 件」と「ツールが動かず空レポート」を区別できない。前者だけが pass すべきで後者は fail すべきだが、件数比較では両方 0 件になる。exit code は「ツールが動いて 0 件 = 0」「findings あり = 非ゼロ」「実行不能 = 非ゼロ」を構造的に区別する。error-handling reviewer はこの「空レポートで silent pass」を典型的な silent failure として指摘するため、gate は count ではなく exit code に寄せる。
 

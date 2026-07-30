@@ -33,7 +33,7 @@ confidence: high
 
 ## 詳細
 
-### 具体例（PR #2038）
+### 具体例
 
 本文の最終非空行を jq で算出する経路で `2>/dev/null` + `|| _body_last_line=""` を使っていた。
 

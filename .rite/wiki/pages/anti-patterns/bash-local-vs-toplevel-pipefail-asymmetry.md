@@ -86,7 +86,7 @@ assert_eq "$output" ""  # default 値が返る
 - ただし scope が膨張するため別 Issue 推奨 (security reviewer が「writer 側にも同形 guard を追加する別 Issue」として記録)。
 - reader 側だけ explicit guard で対称化する fix が当該 PR の scope に最適。
 
-### 追加事例: guard dead-code + 誤コメント (PR #1318)
+### 追加事例: guard dead-code + 誤コメント
 
 同原理が **「後続 guard を dead code 化する」** 別の発現形として再観測された。bash test スクリプト (`set -euo pipefail`) で mktemp 失敗をハンドリングするつもりの guard:
 

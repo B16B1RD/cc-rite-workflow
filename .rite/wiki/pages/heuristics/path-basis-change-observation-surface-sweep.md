@@ -25,7 +25,7 @@ PR #1839 (review-result / PR-state 群の state-path-resolve 統一、4 cycles �
    - lint / drift check 等の「第 4 の読取者」(writer と別の root 解決で silent no-op 化)
    - 通知・エラーメッセージの表示パス (実在しないパスをユーザーに提示)
    - canonical spec / 設計 doc の Decision Log (旧設計の記述が現行決定として残存)
-2. **caller の明示引数** — 新しい既定を導入しても、唯一の本番 caller が旧来の値を明示引数で渡していると既定は一度も発動しない (PR #1839 F-08: `--repo-root "$(git rev-parse --show-toplevel)"` の明示渡しが state-root 既定を bypass)。既定を変えたら `grep` で全 caller の引数渡しを確認する。
+2. **caller の明示引数** — 新しい既定を導入しても、唯一の本番 caller が旧来の値を明示引数で渡していると既定は一度も発動しない（F-08 の実測: `--repo-root "$(git rev-parse --show-toplevel)"` の明示渡しが state-root 既定を bypass)。既定を変えたら `grep` で全 caller の引数渡しを確認する。
 3. **standalone 保守ツール** — 主要フローの reader/writer を揃えても、one-off の migration / 保守スクリプトが旧解決のまま残る (F-13)。「このパスを読む・書く・消す・表示する・検査する」の 5 動詞で全域 grep する。
 
 ## 適用条件

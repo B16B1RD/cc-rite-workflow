@@ -22,7 +22,7 @@ state ファイル等の corrupt/改竄された値を診断メッセージに�
 
 ## 詳細
 
-### 発生条件（PR #1812 cycle 1→2 で実測）
+### 発生条件（cycle 1→2 で実測）
 
 `flow-state.sh` の `cmd_set()` は既に READ 側で `_cur_jq_err`（mktemp によるstderr 捕捉）→ `_emit_jq_err_snippet()` → `neutralize_ctrl --keep-newline` という中和経路を持っていた。cycle 1 で `wm_comment_id` フィールドの `tonumber` 失敗時にエラーメッセージへフィールド名を含める改善を行った際、jq の `error(...)` ビルトインで独自メッセージを組み立てた:
 

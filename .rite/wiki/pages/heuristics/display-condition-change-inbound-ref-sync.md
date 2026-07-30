@@ -18,7 +18,7 @@ confidence: high
 
 ## 詳細
 
-PR #1387 (Issue #1370) の review-fix ループで実測。cycle 1 で getting-started.md の `## Phase 4.5` を `(On Demand)` 化し冒頭「run phases in order」契約に on-demand 例外を明記した (F-01 修正)。ところが cycle 2 で、**常時表示される** Troubleshooting 項目8 が「See the "Multiple sessions at once" FAQ **below** for the operating rules」と案内していたため、on-demand 化で通常 sweep では表示されない FAQ を「below」で指す dangling reference になった (F-03)。F-01 の修正自体が F-03 を誘発した形で、レビュアーがこれを正しく検出した。
+review-fix ループで実測。cycle 1 で getting-started.md の `## Phase 4.5` を `(On Demand)` 化し冒頭「run phases in order」契約に on-demand 例外を明記した (F-01 修正)。ところが cycle 2 で、**常時表示される** Troubleshooting 項目8 が「See the "Multiple sessions at once" FAQ **below** for the operating rules」と案内していたため、on-demand 化で通常 sweep では表示されない FAQ を「below」で指す dangling reference になった (F-03)。F-01 の修正自体が F-03 を誘発した形で、レビュアーがこれを正しく検出した。
 
 ### canonical 対策
 

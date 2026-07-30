@@ -18,7 +18,7 @@ charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue
 
 ## 詳細
 
-### 失敗 → 学び (Issue #892 retrospective)
+### 失敗 → 学び（retrospective）
 
 Issue #892 は `/rite:pr:cleanup` Phase D の追加 slim を扱う Issue として起票された:
 

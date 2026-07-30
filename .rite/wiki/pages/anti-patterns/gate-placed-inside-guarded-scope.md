@@ -47,7 +47,7 @@ review⇄fix ループのように同じ skill が同一 conversation 内で複�
 
 同ファイルの既存 gate（ステップ 7.7）は既にこの failure mode を認識して `iteration_id` + 「最大値を採用」規約を canonical 化していたが、新設 gate がその規約を踏襲しなかった。
 
-**新設 gate の 3 点セット**（PR #2030 cycle 3 で確立）:
+**新設 gate の 3 点セット**（cycle 3 で確立）:
 
 1. **順序規定** — gate をどの step の後に評価するか、pass したらどこへ routing するか（前段 gate の pass routing を更新し忘れると新 gate が到達不能になる）
 2. **検証対象 sentinel** — 動作**後**に emit される marker を見る（動作**前**の lookup marker では step の実行を検証できない）

@@ -48,7 +48,7 @@ confidence: high
 
 ### 静的 parity テストの限界
 
-述語テキストの出現数 + 行順を pin する静的 parity テストは、**3 site を一貫改修する mutation では素通りする**（PR #2030 で実測: 112 pass のまま正準形状が fallback に落ちた）。静的 pin は drift（site 間の不一致）を検出するが semantics は守らない。到達性 pin（直前行が live な `elif` であること）と emit pin（reason + `>&2` の固定文字列）を**対で**追加して初めて、死に分岐化と emit 改変の 2 軸が守れる。
+述語テキストの出現数 + 行順を pin する静的 parity テストは、**3 site を一貫改修する mutation では素通りする**（実測: 112 pass のまま正準形状が fallback に落ちた）。静的 pin は drift（site 間の不一致）を検出するが semantics は守らない。到達性 pin（直前行が live な `elif` であること）と emit pin（reason + `>&2` の固定文字列）を**対で**追加して初めて、死に分岐化と emit 改変の 2 軸が守れる。
 
 ### 運用
 

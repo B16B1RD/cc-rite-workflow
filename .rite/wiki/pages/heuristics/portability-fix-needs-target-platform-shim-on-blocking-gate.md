@@ -25,7 +25,7 @@ confidence: high
 
 ## 詳細
 
-### 実例（PR #2017）
+### 実例
 
 `realpath` の GNU/BSD 差（dangling な最終要素を解決できるか）を除去する修正で、退行 pin を次の shim で置いた:
 

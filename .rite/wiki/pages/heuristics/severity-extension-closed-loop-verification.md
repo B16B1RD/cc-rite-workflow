@@ -20,7 +20,7 @@ severity 等級 (CRITICAL / HIGH / MEDIUM / LOW など) を**拡張する**よ�
 
 ## 詳細
 
-### 発生事例 (PR #708 — `LOW-MEDIUM` severity 等級追加)
+### 発生事例（`LOW-MEDIUM` severity 等級追加）
 
 PR #708 は `severity-levels.md` に COMMENT_QUALITY 軸を追加し、cycle 1 では「同ファイル内の概要表に LOW-MEDIUM を導入」の +56 lines minimum diff だった。cycle 3 review-fix で「4 値運用層が 5 値拡張に追従していない silent fallback 経路」が初検出され、scope は 18 file → cycle 4 で 21 files / +132 lines に 4 倍化した。
 

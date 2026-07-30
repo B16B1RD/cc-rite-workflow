@@ -16,7 +16,7 @@ confidence: medium
 
 ## 概要
 
-PR #1902 で `/tmp` 直下ハードコード（sandbox 環境で書込拒否される anti-pattern）を本番コード 21 ファイルで機械的に `${TMPDIR:-/tmp}/xxx` へ統一し、再発防止のため `tmp-hardcode-check.sh` という lint チェックが導入された。しかし `hooks/tests/worktree-git-nff-retry.test.sh` はこの lint のスキャン対象（`*/tests/*` を除外）から漏れており、同じ anti-pattern（`/tmp/wtg1.err` 等の直接ハードコード）が検出されないまま存在し続け、sandbox 環境で 9 assertion 中 7 件が失敗する形で顕在化した（Issue #1915）。
+PR #1902 で `/tmp` 直下ハードコード（sandbox 環境で書込拒否される anti-pattern）を本番コード 21 ファイルで機械的に `${TMPDIR:-/tmp}/xxx` へ統一し、再発防止のため `tmp-hardcode-check.sh` という lint チェックが導入された。しかし `hooks/tests/worktree-git-nff-retry.test.sh` はこの lint のスキャン対象（`*/tests/*` を除外）から漏れており、同じ anti-pattern（`/tmp/wtg1.err` 等の直接ハードコード）が検出されないまま存在し続け、sandbox 環境で 9 assertion 中 7 件が失敗する形で顕在化した。
 
 ## 詳細
 

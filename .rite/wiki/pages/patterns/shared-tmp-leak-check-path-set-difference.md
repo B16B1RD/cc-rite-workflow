@@ -53,7 +53,7 @@ leaked=$(comm -13 "$before_list" "$after_list")
 
 ### 適用条件 — TMPDIR 隔離が使えない場合の次善策
 
-第一選択は `TMPDIR` 隔離 (test ごとに専用 tmpdir を払い出す ISOLATED_TMP 方式) だが、検査対象 helper の mktemp template が `/tmp/rite-fix-normalized-XXXXXX` のような**絶対 path 固定**だと `TMPDIR` が無視され隔離が効かない。helper 本体を変更せずテストのみで leak 検査を成立させる必要がある場合に、本 path 集合差分方式を採用する (PR #1295 では Issue 提示の 2 択から helper 無変更を理由に差分方式を採用)。
+第一選択は `TMPDIR` 隔離 (test ごとに専用 tmpdir を払い出す ISOLATED_TMP 方式) だが、検査対象 helper の mktemp template が `/tmp/rite-fix-normalized-XXXXXX` のような**絶対 path 固定**だと `TMPDIR` が無視され隔離が効かない。helper 本体を変更せずテストのみで leak 検査を成立させる必要がある場合に、本 path 集合差分方式を採用する（採用時は Issue 提示の 2 択から helper 無変更を理由に差分方式を選んだ）。
 
 ### 検出能力の実証 — 双方向 mutation
 

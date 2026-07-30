@@ -28,7 +28,7 @@ rationale（設計理由・背景解説）を SKILL.md 本体から references/ 
 
 ## 詳細
 
-### 観測 (PR #1774 / Issue #1708)
+### 観測
 
 review/fix SKILL.md（各 4,040 行）の rationale を references へ退避するコンテキストダイエット PR で、同一クラスの指摘が場所を変えて 2 回発生した:
 

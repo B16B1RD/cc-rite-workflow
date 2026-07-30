@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-### 発見経緯 (PR #1773, Issue #1706)
+### 発見経緯
 
 プラグインのアンインストール手順ドキュメント (README の Uninstallation 節) の初稿は、`.rite/` 配下の gitignore 済みディレクトリをまとめて `rm -rf .rite` で削除するよう推奨していた。tech-writer / code-quality の両レビュアーが独立に、この対象範囲に `.rite/wiki-worktree/` (Wiki `separate_branch` 戦略の永続 worktree) と `.rite/worktrees/issue-*` (multi_session 有効時のセッション worktree) が含まれることを検出し、HIGH として指摘した。
 
