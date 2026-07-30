@@ -397,9 +397,9 @@ fi
 
 ### 5.1.1 仕様書の断定のファクトチェック
 
-5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する。**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2.1 と同じ共通参照。裏取りコマンド表は同 reference にのみ存在するため、読込を省くと検査が実行できない）。分解パスは見込み Complexity が L/XL のため **3 クラスすべて**を検査範囲とする。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・`UNVERIFIED` の「要確認」付記・裏取り失敗時の non-blocking 続行はいずれも 4.2.1 と同一。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。
+5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する。**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2.1 と同じ共通参照。裏取りコマンド表は同 reference にのみ存在するため、読込を省くと検査が実行できない）。分解パスは ステップ 4.1 を通らないため確定 Complexity を持たないが、親仕様書は親 Complexity が `XL` 固定（5.5 Step 1 の helper 契約）のため **3 クラスすべて**を検査範囲とする（ステップ 3.1 の分解判定は Complexity 以外の条件でも成立しうるため、見込み値を根拠にしない）。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・`UNVERIFIED` の「要確認」付記・裏取り失敗時の non-blocking 続行はいずれも 4.2.1 と同一。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。
 
-5.5 (B) で生成する各 Sub-Issue body は Step 4.2 の Implementation Contract フォーマットに従うため、4.2.1 の検査対象と同じ性質の断定を含みうる。各 Sub-Issue の確定 Complexity に応じた検査範囲で同一 reference を適用する。
+検査対象は 5.1 の設計仕様書に閉じる。5.5 で生成する Sub-Issue body は本ステップの対象外とする（本機能の Scope は 4.2 直後と 5.1 後に限定されており、検査を生成地点である 5.5 まで広げるのは別 Issue の範囲）。
 
 ### 5.2 ユーザー確認
 

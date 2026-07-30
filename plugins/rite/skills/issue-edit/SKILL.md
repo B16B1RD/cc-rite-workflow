@@ -251,7 +251,7 @@ Display the pending changes in diff format:
 - Complexity: {old_complexity} → {new_complexity}
 ```
 
-### 3.1.1 Fact-Check the Changed Body
+#### 3.1.1 Fact-Check the Changed Body
 
 Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 to the **changed body portion only** — the sections shown in the 3.1 diff, not the whole body.
 
@@ -266,10 +266,12 @@ Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 
 | All `VERIFIED` | Proceed to 3.2 without extra output |
 | `CONTRADICTED` present | Surface it in the Phase 3.2 confirmation with the 3 options (`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`). Never auto-rewrite |
 | Self-contradiction candidates (M or above) | List them in the Phase 3.2 confirmation. Never auto-fix |
-| `UNVERIFIED` present | Annotate the body with 「要確認」(or 「要検証」for external-spec claims) and proceed to 3.2. Do not block the edit |
+| `UNVERIFIED` present | **Do not modify the body here.** List the claims and the proposed 「要確認」(or 「要検証」for external-spec claims) annotation in the Phase 3.2 confirmation, and apply it only after the user selects 変更を適用. If the user declines, proceed without annotating. Do not block the edit |
 | Back-verification command failed | Treat as `UNVERIFIED`, emit a `WARNING` on stderr, proceed to 3.2 |
 
-Findings fold into the existing Phase 3.2 confirmation rather than raising a separate `AskUserQuestion`, so an edit with nothing to report keeps its current single-confirmation flow.
+All findings — **including `UNVERIFIED`** — fold into the existing Phase 3.2 confirmation rather than raising a separate `AskUserQuestion`, so an edit with nothing to report keeps its current single-confirmation flow. **The body is never rewritten before that confirmation**: every annotation and correction surfaced here is applied only after the user approves, which is what keeps the diff shown in 3.1 identical to what Phase 4.1 writes.
+
+Skip a claim that already carries a 「要確認」/「要検証」annotation — Phase 3.2's 「変更を修正」branch returns to Phase 2.1 with the applied changes retained, so an unguarded re-entry would annotate the same claim twice.
 
 ### 3.2 User Confirmation
 
