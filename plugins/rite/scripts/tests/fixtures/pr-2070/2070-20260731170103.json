@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T17:01:03+09:00",
+  "commit_sha": "c7d36f77caf3160ab513ef7ede94bd51b6bfecab",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "error-handling-reviewer",
+      "category": "error_handling",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "sandbox の .rite/wiki/index.md を「行頭 <!-- 廃止メモ (閉じなし) + 実エントリ 2 件」にして printf '' ¦ bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root $SB => WIKI_DESCRIPTIVE_REFS=0 / descriptive_refs_read_errors=0 / descriptive_refs_skipped_rows=0 / descriptive_refs_read_ok=true / stderr 空。同 fixture の <!-- に --> を足すと 2 に戻る。cycle 1 (8eeeec11) の helper では同 fixture が 2 を返していたため本 cycle の回帰。部分欠損形 (エントリ 1 件の後に未閉鎖) は entries>=1 のためガードが構造的に発火せず hits=1 で B が無言消失。閉じ --> がコードフェンス内にある形も同じく 0 件無音。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 374,
+      "description": "cycle 2 で新設した HTML コメント skip の in_comment ラッチに終端検査が無いため、--> に到達しないまま EOF になると以降の全行が無言で落ち、entries / linkrows / skipped のいずれにも現れない。entries == 0 && linkrows > 0 の検出失敗ガードは linkrows も 0 になるため前提条件が成立せず発火不能。結果 hits=0 / read_errors=0 / skipped_rows=0 / read_ok=true / stderr 空となり、実在する参照が丸ごと落ちても「0 件 (実測済み)」として完了レポートに載る — 本 helper が塞ぐと宣言している silent-0 そのものを、それを塞ぐための追加が反対側から再導入している。到達経路は 3 系統: (a) 行頭 <!-- が閉じないまま EOF、(b) 閉じ --> がコードフェンス内にあり _RITE_BODY_FILTER に先に食われて解除行が状態機械に届かない、(c) エントリ 1 件以降に未閉鎖コメントが入る部分欠損 (entries>=1 のためガードが構造的に発火不能で、latch 以下の全エントリが skipped_rows=0 / read_errors=0 のまま脱落)。**(c) があるため entries==0 を条件にした修正では取り逃す — in_comment 自体を END で見る必要がある**。【クロスバリデーション】error-handling (HIGH) / test (HIGH) / security (MEDIUM) が独立に同一 file:line を検出したため High Confidence として HIGH に統合。Likelihood-Evidence: runtime_observation index.md の producer は LLM の Edit (wiki-ingest ステップ 6)。本 repo の wiki ページ anti-patterns/html-comment-breaks-gfm-table-boundary.md が「Edit ツールでの行の論理的削除コメント化で table に HTML コメントを挿入した」実例を記録しており、閉じ忘れは仮想の入力ではない",
+      "suggestion": "_RITE_INDEX_COUNT_ACTION の END で in_comment (および infence) が立ったままなら stderr へ WARNING を出し、既存の検出失敗経路へ倒す。**entries==0 を条件にしないこと** — 部分欠損形 (c) を取り逃す。既存ガードに合流させるため entries=0 / linkrows=1 相当を返す形にし、stdout の 4 値 arity は維持する (TC-48 が pin しており 5 値化すると _arity != 4 経路へ倒れて別の失敗になる)。_RITE_COUNT_ACTION は独立した END を持つためページ側経路には波及しない。回帰テストは (a) 未閉鎖が全エントリより前 (b) エントリ 1 件の後ろに未閉鎖 (c) 閉じ --> がフェンス内 の 3 形状と、対照として閉じた版を pin すること。",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "git show wiki:.rite/wiki/index.md ¦ grep -c okf_version => 0 (rc=1)、head -1 ¦ cat -A => `# Wiki Index$` で '---' frontmatter なし。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "docs/SPEC.md",
+      "line": 1640,
+      "description": "同一セル内の 2 つの conformance 主張のうち、後半 (bullets) だけを「instruction であって observed behaviour ではない」と明示修飾し、前半の `Carries okf_version: \"0.1\"` を無修飾のまま残している。develop では両者とも無修飾で一様に「conformance 要件」と読めたが、本 PR が片方だけを not observed と名指したことで、読み手は残る無修飾の主張を observed fact と推論する。実測では live wiki branch の index.md は frontmatter を 1 行も持たず okf_version も無い。すなわち observed と推論させる側が事実に反する。L1644 が「consumers (/rite:wiki-query, /rite:wiki-lint) read it」と述べている以上、frontmatter を読む consumer を書いた読み手は本 PR が他所で塞いでいるのと同型の silent-0 に落ちる。Likelihood-Evidence: new_call_site docs/SPEC.md:1640 (本 PR diff の + 行で追加。develop 側は無修飾の 1 文)",
+      "suggestion": "修飾を両主張に均等にかける。live index が frontmatter を一切持たないことを明示する (「okf_version を持たない」より強く、frontmatter を読む consumer を書く読み手にとって直接有用)。",
+      "status": "open"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "grep -n 'format migration' plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md docs/SPEC.md => helper:60 のみ旧前提「after the format migration」を保持、rationale:40 と SPEC.md:1640 は訂正済み",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 60,
+      "description": "本 PR は「テーブル形式は形式移行で自然解消する一時状態ではない」という訂正を 3 箇所のうち 2 箇所にしか適用していない。docs/SPEC.md:1640 と descriptive-refs-rationale.md:40 は訂正済みだが、同 commit で追加された helper docstring L58-60 は「the current table-form index yields no Pass 1 candidates — that path takes effect after the format migration」と旧前提のまま残る。helper docstring は L9-10 でその rationale を参照先として指しており、参照元と参照先が正反対の結論を述べる状態。rationale が警告する失敗モード (どちらか一方専用にすると検出が無言で 0 件へ倒れる) は、まさに docstring だけを読んだ保守者が「移行後に片方でよくなる」と読むことで招かれる。Likelihood-Evidence: new_call_site plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh:60 (本 PR diff の + 行で追加)",
+      "suggestion": "L58-60 を rationale:40 / SPEC:1640 と同じ結論に揃える。併せて同 commit で追加された L338 の「形式移行の時点で検出が無言で 0 件へ倒れる。ファイル単位で形式を判定しないのは移行途中の混在に耐えるため」も rationale:65 の訂正後表現に寄せると 3 箇所の語り口が揃う。",
+      "status": "open"
+    },
+    {
+      "id": "F-04",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "prompt_quality",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "printf '%s\\n' .rite/wiki/pages/patterns/a.md ¦ bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root $SP => descriptive_refs_read_errors=1 / descriptive_refs_read_ok=true。index.md は cat 成功しており「読み出せなかった」に該当しない。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 668,
+      "description": "本 PR が + 行として書き換えた enum 説明が「descriptive_refs_read_errors は読み出せなかった対象ファイル数」「true (… 1 対象ファイル以上の読出に成功)」のままで、同じ PR の :200「読出または検出できなかった対象ファイル数」・:954/:955「読出または検出できず」と矛盾する。本 PR が新設した entries==0 && linkrows>0 ガードは index.md を読み出せたうえで検出失敗として read_errors を +1 するため、:668 だけが cycle 2 で :956 を直した理由と同じ「原因の誤指名」を残している。ステップ 7.5 の enum を読んで診断する LLM / 運用者は read_errors>0 の原因を branch ref / パス整合に限定して探し、実際の原因である index.md のエントリ記法 drift に到達できない。Likelihood-Evidence: entrypoint_connection plugins/rite/skills/wiki-lint/SKILL.md:668 → plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh:531-537 (read 成功後に read_errors を +1 する経路)",
+      "suggestion": ":668 の 2 箇所を :200 / :954 と同一語彙に揃える。「読出または検出できなかった対象ファイル数」「read_ok=true でも部分欠損があれば正の値を取る」。",
+      "status": "open"
+    },
+    {
+      "id": "F-05",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "prompt_quality",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "printf '' ¦ bash plugins/rite/hooks/scripts/wiki-lint-source-refs.sh --branch-strategy separate_branch --wiki-branch wiki => all_source_refs_read_ok=true / all_source_refs_read_errors=0 / exit 0。ステップ 6.2 helper も空 HEREDOC を正常入力として受理する。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 641,
+      "description": "本 PR が追加した「本ステップは両 list が空でも実行されるため、空 HEREDOC を実際に渡す唯一のステップである」が事実に反する。ステップ 2.2 の skip 条件は「両方空」(:273) で、pages_list / raw_list は独立した grep (:241-242) で構築されるため、pages_list 空 かつ raw_list 非空 (wiki-init 直後にレビューだけ回して未 ingest の状態) ではステップ 3-7 が実行され、ステップ 4 / 5 / 6.2 / 7 が空 HEREDOC を受け取る。同ファイルの :335「空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate」・:505 同旨と直接矛盾し、それらを死文化させる。この状態に入った LLM が「7.5 以外は空 HEREDOC を渡してはならない」と解釈すると、ステップ 4/5/6.2/7 を skip するか `(なし)` 等のリテラルを埋め (:641 自身が exit 1 になると警告している形)、走査が丸ごと落ちる。Likelihood-Evidence: existing_call_site plugins/rite/skills/wiki-lint/SKILL.md:335 および :505 (同ファイルが空 HEREDOC を legitimate と明記する 2 サイト)",
+      "suggestion": "「唯一のステップ」の断定を削り、実際の差分だけを述べる。例: 「両 list が空の経路でも実行される唯一のステップであるため、ステップ 4 / 5 / 6.2 / 7 が skip される状況でも空 HEREDOC を渡す」。:335 / :505 の「空 HEREDOC は legitimate」と整合させること。",
+      "status": "open"
+    },
+    {
+      "id": "F-06",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "error_handling",
+      "severity": "LOW-MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "printf '%s\\n' .rite/wiki/pages/patterns/a.md ¦ bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root $SP => WARNING: 1/2 ファイルを読み出せず集計から除外しました (index.md は読出成功、drift ガード由来)。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 572,
+      "description": "cycle 2 は io_error 側の WARNING (L568) を「読み出せない、または検出できませんでした」に、対処 (L570) に「index.md のエントリ記法が想定どおりか」を追加したが、部分失敗の elif 側 (L572) は「読み出せず集計から除外しました」のままで、対処行も出ない。本 PR で「ページ」→「ファイル」に書き換えた + 行でありながら原因語彙だけ取り残されており、SKILL.md 側 :954/:955 (読出または検出できず) とも食い違う。index.md の記法 drift が唯一の失敗要因である典型ケース (pages が読めて index だけガード発火) で、運用者に提示される唯一の要約行が原因を誤って名指しし、L570 が新たに得た記法確認の導線も届かない。Likelihood-Evidence: new_call_site plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh:534 (本 PR の + 行。読出成功でも read_errors を +1 して elif 側へ合流する)",
+      "suggestion": "L572 を L568 と同一語彙に揃え、対処導線も併記する。「N/M ファイルを読み出せない、または検出できず集計から除外しました」+ 「対処: wiki branch ref / ページパスの整合、および index.md のエントリ記法が想定どおりかを確認してください」。",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": []
+}

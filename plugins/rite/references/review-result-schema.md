@@ -207,7 +207,7 @@
 
 `findings[].verification` オブジェクトのサブフィールド定義。「実測」の記録形式を LLM の自由裁量に委ねると後段で機械処理できないため、**write 側が `verification` を出力する際に守るべき形式を本表で固定する**。
 
-**本表は形式契約であって、write 側の配線状況の記述ではない**: 現時点で `pr-review.md` ステップ 6.1.a の per-finding 必須フィールド列挙に `verification` は含まれず、reviewer が `内容` 列に書いた `Verification:` アンカーを `findings[].verification` へ写す手順も存在しない。write 側への配線は後続スコープで行う。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理する。記録・表示経路では default mapping で `measured=false` に畳み、**判定 consumer では「未判定」= blocking として扱う** — [3 値モデルへの上書き](#3値モデルへの上書き)):
+**write 側の配線** (Issue #2072): `pr-review.md` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、`findings[].description` の `Verification:` アンカーから本表の形式で `verification` を設定する**唯一の書き手**である。同ステップの生成規約は Claude が `verification` を書くことを禁じており (先に書かれた boolean を helper が既存値として尊重してしまい、アンカー検出を経ない値が blocking 判定へ入るため)、本表は helper が満たす形式契約として読む。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理する。記録・表示経路では default mapping で `measured=false` に畳み、**判定 consumer では「未判定」= blocking として扱う** — [3 値モデルへの上書き](#3値モデルへの上書き)):
 
 | フィールド | 型 | 必須 (write 側が出力する場合) | read 側の受理 | 説明 |
 |-----------|-----|------|------|------|

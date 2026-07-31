@@ -79,10 +79,17 @@ These categories inherit [Hypothetical Exception Categories](../../../references
 
 5.3.0 の後・5.3.1 の前に適用する **mechanical** な分類ゲート (Issue #2024)。ゲート定義の SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。5.3.0 と同じく deterministic rule であり、AI judgment は関与しない (5.3.7 の禁止対象外 — mechanical rule = allowed)。
 
+**実行主体は `scripts/review-measured-gate.sh`** (Issue #2072)。本節の疑似コード・regex・WARNING 発火条件は helper の実装契約を定義する SoT であり、**LLM が手で適用する手順ではない**。`/rite:pr-review` ステップ 5.3.0.M は helper を 1 回呼び、その `[CONTEXT] MEASURED_GATE=` marker と書き換え後 JSON を 5.3.1 以降の入力にする。helper が非ゼロ終了した場合、caller は LLM 分類へ fallback せず `[review:error]` で停止する — fallback は本ゲートが閉じた不発 (PR #2070 で 9 サイクル分類が一度も実行されなかった事象) の再生産になる。
+
 **Mechanical detection + demotion**:
 
 ```
 For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, follow-up}:
+  # verification.measured が boolean で既に入っている場合は既存値を正とし、description の
+  # アンカー判定で上書きしない (矛盾は WARNING で surface する)。`verification: {}` /
+  # `measured: null` は read 側型ガードが受理する「未判定」形であり、既存値とはみなさず算出する。
+  # 本則は再実行の冪等性のためにあり、write 側が verification を先に書くことを許す趣旨ではない
+  # (pr-review ステップ 5.3.0.M step 1 の生成規約が「verification は書かない」を課している)。
   # match subject は当該 finding の **内容セルの文字列単体** (行全体でも表全体でもない)。
   # 後続セル・次行・次 finding の文字は subject に含めない。
   if finding's 内容 column matches the full Anchor detection regex below
@@ -109,7 +116,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 (1) が真かつ (2) が偽の finding が対象。
 
-> **stage 1 は「列挙」ではなく「正規化」で書く**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`\*{0,2}` のように**特定の装飾だけを列挙**すると、列挙から漏れた形 (バッククォート `` `Verification`: ``、全角コロン `Verification：`、三重アスタリスク `***Verification***:`、underscore `_Verification_:`、種別欠落 `Verification: bash x.sh => ERROR`、ラベル取り違え `Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。装飾を 1 つ足すたびに regex を直す設計にせず、装飾文字クラスと全角コロンを吸収する形にする。トレードオフは「散文中の `verification :` 等を拾う無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。5.3.0.M は bash を実行しない推論ステップのため「WARNING を出す」だけでは構造的に達成できない — 対象が 1 件以上なら以下を**明示的に実行**する:
+> **stage 1 は「列挙」ではなく「正規化」で書く**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`\*{0,2}` のように**特定の装飾だけを列挙**すると、列挙から漏れた形 (バッククォート `` `Verification`: ``、全角コロン `Verification：`、三重アスタリスク `***Verification***:`、underscore `_Verification_:`、種別欠落 `Verification: bash x.sh => ERROR`、ラベル取り違え `Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。装飾を 1 つ足すたびに regex を直す設計にせず、装飾文字クラスと全角コロンを吸収する形にする。トレードオフは「散文中の `verification :` 等を拾う無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。対象が 1 件以上なら `review-measured-gate.sh` が以下を emit する (helper の実装契約であり、省略は許されない):
 
 ```bash
 echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を measured=false に降格しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 形式崩れ)。パイプを含むコマンドは ¦ で代替表記してください" >&2
@@ -165,7 +172,7 @@ Use **only findings remaining in the post-5.3.0.M `全指摘事項` with `scope 
 
 **`total_findings` definition**: `total_findings = |post-5.3.0.M の 全指摘事項 ∩ {scope ∈ {current-pr, follow-up}}|` — すなわち §5.3.0.M の `Verification:` アンカー検出で measured=true と判定され `全指摘事項` に残った finding の件数。
 
-> **判定媒体に注意**: 本判定が走る `/rite:pr-review` ステップ 5.3 の時点では レビュー結果 JSON はまだ生成されていない (生成は ステップ 6.1.a) ため、`findings[].verification.measured` フィールドは**存在しない**。5.3.3 が評価できるのは 5.3.0.M が `内容` 列のアンカーから機械的に決めた集合だけである。`verification.measured == true` は同一述語を **JSON 側でエンコードした形**であり、`/rite:fix` が JSON を読むときの表現 (fix/SKILL.md ステップ 1.3 measured lookup)。両者を取り違えて 5.3.3 で存在しないフィールドを評価すると `total_findings` が壊れる。
+> **判定媒体に注意**: `/rite:pr-review` ステップ 5.3.0.M step 1 でレビュー結果 JSON が生成され、step 2 の `review-measured-gate.sh` が `findings[].verification.measured` を設定する (Issue #2072 で配線。ステップ 6.1.a はこのファイルを**保存するだけ**で再生成しない)。したがって 5.3.3 が評価する集合は「helper がゲート適用後の JSON に残した `findings[]` ∩ `scope ∈ {current-pr, follow-up}`」であり、その件数は helper の `[CONTEXT] MEASURED_GATE=...; blocking=` が報告する。**Claude が `内容` 列やアンカーを読み直して数え直すことは禁止** — 分類を機械層に閉じた意味が失われる。`/rite:fix` ステップ 1.3 の measured lookup は同じフィールドを次サイクルで読む read 側であり、両者は同一の JSON 表現を共有する。
 
 `acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。`non_blocking_count = count(non_blocking_findings)` (5.3.0.M で分類) も独立 metric で、5.3.5 サマリと 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section に使う (`overall_assessment` 評価には使われない)。**本定義は `/rite:pr-review` 側の変数**であり、`/rite:fix` ステップ 4.6 の同名 placeholder は母集団も値も異なる別定義 (`measured_map` の false のうち nit-noted を除く件数 — fix/SKILL.md ステップ 1.2.1 step 6 が SoT。JSON 経路では常に 0)。`total_findings` と同じく **pr-review 側と fix 側で別概念**として扱うこと。
 

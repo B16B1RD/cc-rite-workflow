@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T13:39:41+09:00",
+  "commit_sha": "f97197ebef001e778681cd95f4bdc682ed298390",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "error-handling-reviewer",
+      "category": "error_handling",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "printf '' | bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root SBX (SBX の index.md はエントリを持つがリンク形式が drift) => read_errors=0 / skipped_rows=0 / read_ok=true / WIKI_DESCRIPTIVE_REFS=0 かつ stderr 完全空。同じ SBX に pages_list を 1 行渡すと「エントリ行を 1 件も認識できませんでした」WARNING + read_errors=1 が出る",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 495,
+      "description": "前 cycle で追加した「index.md を読めたのにエントリ行を 1 件も認識できない = 検出失敗」ガードの発火条件が、走査対象の実体ではなく stdin の pages_list が非空かどうかに依存している。ところが SKILL.md:273 は「skip すると wiki 初期化直後や git ls-tree 失敗時に index.md の指摘が無言で 0 件になる」ことを理由にステップ 7.5 を skip しないと規定しており、ガードが無効化される経路 (pages_list 空) と、ガードを必要とする経路が完全に一致している。この状態で index.md のリンク形式が drift すると WARNING も read_errors も skipped_rows も立たず、ステップ 9 の note 展開表は「read_ok=true かつ read_errors=0 かつ skipped_rows=0 → 空文字列」に落ちるため、「説明的番号参照: 0 件」が注記なしの実測値としてレポートに載る。本 PR が塞ごうとしている silent-0 と同型の残穴であり、本 helper の他の失敗経路が例外なく stderr に WARNING を出すのに対しこの 1 経路だけが完全な無音になる。precondition の根拠とされる「Wiki 初期化直後の空 index は正当」も、配布テンプレート index-template.md の前文が箇条書き記法例を含み 1 件 parse される (entries=1) ため documented な init 経路では該当しない。Likelihood-Evidence: entrypoint_connection plugins/rite/skills/wiki-lint/SKILL.md:273 (「両方空ならステップ 3-7.4 を skip し、ステップ 7.5 → ステップ 9 に進む」= 空 pages_list で 7.5 を実行する唯一の呼び出し site) → wiki-lint-descriptive-refs.sh:495。【クロスバリデーション】application (MEDIUM) と error-handling (MEDIUM) が独立に同一 file:line を検出したため High Confidence として severity を HIGH へ boost した。",
+      "suggestion": "precondition を stdin ではなく index.md 自身の内容に置き換える。本文フィルタ通過後に構造行 (テーブル行 ^[[:space:]]*\\| または箇条書き行 ^[[:space:]]*[-*]、あるいは `](` を含む行) を 1 行でも観測したのに entries==0 のときだけ発火させ、構造行が 1 行も無い真に空のカタログは従来どおり静かに落とす。これで「形式 drift」と「正当に空の index」をファイル自身で区別でき、D-06 (index.md は helper が自力で読む = 非回帰を測定ではなく構成で保証する) とも整合する。実装は index 終端アクションの END に structrows を 1 変数足して 4 値へ拡張するか hasstruct フラグを返す形で足り、arity 検査の期待値も併せて更新する。fallback で握り潰さず既存の read_errors 計上経路 (= 呼び出し元の note 展開表という error boundary) へ確実に到達させること。TC-47 の否定側 assert (tests/wiki-lint-descriptive-refs.test.sh) が現行の沈黙を pin しているため同時更新が必要 — Fail-Fast First の「throw が起きないことを assert するテストがあれば、テストの方が間違っている」に該当する。併せて現行コメントの「Wiki 初期化直後の空 index は正当」という根拠も実体 (守っているのは手書きの構造なし index のみ) に合わせて訂正する。",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "grep -n \"テーブル\" docs/SPEC.md => 185 行 (reviewer 一覧) と 1323 行 (本 PR の + 行) の 2 件のみで、index.md の table 形式を認める記述は SPEC 内に存在しない",
+        "failing_test": null
+      },
+      "file": "docs/SPEC.md",
+      "line": 1323,
+      "description": "本 PR が追加した「テーブル / OKF 箇条書きを行単位で判別」は index.md にテーブル形式が存在することを前提にしているが、同じ docs/SPEC.md の 1640 行は index.md を「page catalog as OKF bullets `* [title](path) - desc`」と定義したままで、SPEC.md 内にテーブル形式を認める記述が 1 行も存在しない。develop 版の 1323 行にはテーブルへの言及が無く、この矛盾は本 PR の + 行で新規に発生している (pre-existing の陳腐化ではない)。SPEC.md 単体を読む読者は「bullets と定義されたファイルになぜテーブル判別が要るのか」を解決できない。実体側は wiki ブランチの index.md が 310 行すべてテーブル行・bullet 行 0 件で、テーブルが現行形式である。skills/wiki-lint/SKILL.md は両形式併存を既に明記しているが SPEC には無い。Likelihood-Evidence: new_call_site docs/SPEC.md:1323 (本 PR diff の + 行で追加)",
+      "suggestion": "SPEC.md:1640 の index.md 行に 1 節足す。例:「実運用の wiki ブランチは 5 列テーブル形式で箇条書きへの移行途上。両形式の扱いは skills/wiki-lint/references/descriptive-refs-rationale.md の『index.md のサマリー抽出』節」。あるいは 1323 側を「テーブル (現行の wiki ブランチ) / OKF 箇条書き (テンプレートと移行先)」と書き分ける。どちらも 1 節の追記で完了し実装変更は不要。",
+      "status": "open"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "code_quality",
+      "severity": "LOW-MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "original_severity": "LOW-MEDIUM",
+      "verification": {
+        "measured": true,
+        "repro": "grep -c 'index.md 自身が未登録として孤児 +1 になる' plugins/rite/skills/wiki-lint/SKILL.md plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md => 両ファイルとも 1 (「updated フィールドが存在しません」も同様に両方 1)",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 629,
+      "description": "新規追加した「index.md の扱い」段落のうち、実行時に不要な設計根拠 (pages_list に足すと孤児 +1 / ステップ 4 で updated 欠落 WARNING +1 になる理由) が references/descriptive-refs-rationale.md の「ステップ 2.2 の pages_list を変えない理由」節とほぼ逐語で二重化している。CLAUDE.md「実行手順書スキルの rationale は SKILL.md 本体に書かず references/ へ退避し、該当箇所に 1 行ポインタ (rationale: references/<file>.md#<anchor>) を残す」に反する。同一趣旨の 2 コピーは片側だけ更新される drift 面を作り、この規約が防ごうとしている失敗形そのもの。実行時に必要なのは「helper が自力で読む / stdin に足す必要はない / ステップ 2.2 は変更しない / 不在は静かに落とす」の 4 点のみ。同段落および 624 行の rationale 系ポインタは #<anchor> を伴っておらず規約の形式にも合っていない。Likelihood-Evidence: entrypoint_connection skills/wiki-lint/SKILL.md ステップ 7.5 → Skill ツール経由で /rite:wiki-lint 起動のたびに本文全体がコンテキストへロードされる。【スコープ補正】reviewer は nit-noted を割り当てたが、対象は本 PR が追加した行 (pre_existing=false) であり schema cross-field invariant #5 (pre_existing==false かつ scope==nit-noted は禁止) に該当するため current-pr へ補正した。",
+      "suggestion": "629 行の後半 (「— pages_list はステップ 3 / 4 / 5 / 6.2 / 7 が共有する入力で…」以降の理由説明) を削除し、rationale: references/descriptive-refs-rationale.md#<anchor> の 1 行ポインタへ置換する。残す本文は「helper が自力で読み出す (stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない)。ステップ 2.2 の pages_list 構築は変更しない。index.md が存在しない場合は静かに対象から落とし、descriptive_refs_read_errors にも走査母数にも数えない」の 3 文。同時に 624 行のポインタにもアンカーを付す (rationale 側に対応する <a id> を置く)。",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": []
+}

@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T16:21:35+09:00",
+  "commit_sha": "8eeeec11eb4abe45124684b91966c55381d55071",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "error-handling-reviewer",
+      "category": "error_handling",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "SB=$TMPDIR/x; mkdir -p $SB/.rite/wiki/pages; cp plugins/rite/templates/wiki/index-template.md $SB/.rite/wiki/index.md; printf '\\n* [A](patterns/a.md) - 詳細は #1151\\n* [B](patterns/b.md) - PR #1300 で確立した\\n' >> $SB/.rite/wiki/index.md; printf '' ¦ bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root $SB => WIKI_DESCRIPTIVE_REFS=0, descriptive_refs_read_errors=0, descriptive_refs_skipped_rows=0, descriptive_refs_read_ok=true, stderr 出力なし (index 側の実 2 件が無言で消失)。同じ index.md から template 前文 (先頭 13 行) を除くと read_errors=1 と「エントリ行を 1 件も認識できませんでした」WARNING が出るため、差分要因は template のコメント記法例行に特定できる。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 509,
+      "description": "本 PR が新設した「エントリ 0 件 = 検出失敗」ガード (509-515) が、/rite:wiki-init の生成する canonical な OKF 箇条書き index.md では構造的に発火しない。templates/wiki/index-template.md:15-16 の HTML コメント記法例 `* [ページタイトル](pages/{domain}/{slug}.md) - 1-2 文の説明 -->` が entries 判定の `](pages/…)` に一致し、entries が恒久的に 1 以上になるため。結果、実エントリのリンク形式が drift すると hits=0 / read_errors=0 / skipped_rows=0 / read_ok=true が WARNING 無しで出力され、本 PR が塞ぐ対象だった silent-0 がそのまま残る。コード内 rationale (347-348 行) と descriptive-refs-rationale.md#entries-zero-guard は同じ記法例行を根拠に「全行 skip」条件を退けているが、採用した entries==0 条件が同一の行で同じように無効化される点が見落とされている。守れていないのは live wiki ブランチの旧 table 形式 (前文なしなので発火する) ではなく、template と wiki-ingest が生成する側の形式であり、docs/SPEC.md の diff 自身がそちらを canonical と宣言している。TC-47 の fixture は template 前文を持たない手書き index のため suite は緑のまま通る。Likelihood-Evidence: entrypoint_connection skills/wiki-init/SKILL.md:333-334 (index-template.md を sed で literal コピーして .rite/wiki/index.md を生成) → templates/wiki/index-template.md:15-16 → wiki-lint-descriptive-refs.sh:509",
+      "suggestion": "_RITE_INDEX_COUNT_ACTION の中だけで HTML コメント状態を追跡し、コメント内の行を linkrows / entries の分類より前に落とす。template のコメントは 2 行にまたがるので単一行 regex では不可で、`/<!--/ { incomment=1 } incomment { if ($0 ~ /-->/) incomment=0; next }` 相当の状態変数が要る。共有の _RITE_BODY_FILTER には足さないこと — 全ページ本文の検出規則が変わり、新たな除外 E6 として独自の rationale と実測が必要になり本 PR のスコープを超える。回帰テストは TC-47 に「template 前文を持つ index.md + drift したエントリ」の fixture を 1 本足して pin する (現 fixture は前文なしのため今回の欠陥を通す)。",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "prompt_quality",
+      "severity": "LOW-MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root $D < /dev/null => descriptive_refs_read_ok=io_error ($D/.rite/wiki/index.md は読出成功。entries==0 の形式 drift なのに note は「全対象ファイル読出失敗」を表示する)",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 956,
+      "description": "ステップ 9 note 表の read_ok=io_error 行が「⚠️ (未実測: io_error — 全対象ファイル読出失敗)」と展開されるが、本 PR が新設した「エントリ 0 件 = 形式 drift」検出失敗ガードを通った場合、index.md の読出は成功していて検出だけが失敗しているため、この文言は原因を誤って名指しする。同じ表の 1 行上 (:954) は既に「読出または検出できず」と正しく書き分けられており、SKILL.md:200 のカウンタ定義も「読出または検出できなかった対象ファイル数」なので、:956 だけが取り残された不整合である。実害は、運用者が helper の「対処: wiki branch ref / ページパスの整合を確認してください」に誘導され、実際の原因 (index.md の形式 drift) から遠ざかること。発火条件は pages_list 空 (wiki 初期化直後 / git ls-tree 失敗) + index drift で、これはまさに SKILL.md:273 が「7.5 を skip してはならない」根拠に挙げている経路そのもの。Likelihood-Evidence: runtime_observation 隔離 sandbox に `](docs/other.md)` だけを持つ index.md を置き stdin 空で helper を実行 => descriptive_refs_read_ok=io_error かつ descriptive_refs_read_errors=1 (読出は成功、entries==0 で検出失敗)",
+      "suggestion": ":956 の note 文言を :954 と同じ語彙に揃える。例: 「⚠️ (未実測: io_error — 全対象ファイルを読出または検出できず)」。あわせて helper 側 WARNING (wiki-lint-descriptive-refs.sh:546 の「走査対象の全 N ファイルを読み出せませんでした」) も同じ語彙にすると、レポートと stderr の説明が一致する。",
+      "status": "open"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "cp -r plugins $LAB/ ; sed -i 's%^ *git cat-file -e .*index_present=no$%    index_present=yes%' $LAB/plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh ; bash $LAB/plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh => PASS: 148 FAIL: 0 (存在プローブを丸ごと削除しても全 assertion 緑。同 sandbox でのベースラインも 148/148 で取得済み)",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 391,
+      "description": "本 PR が新規追加した index.md 存在プローブのうち separate_branch 側の「不在」方向を検証する assertion が 1 つも無い。wiki-lint-descriptive-refs.sh:268-273 の git rev-parse + git cat-file -e を丸ごと index_present=yes に潰しても 148 assertion が全緑で通る。TC-19 は同じ index なし wiki ref を使いながら hits と read_ok しか assert せず、部分失敗では read_ok=true が維持されるため両方とも不変になる。TC-25 が pin しているのは [ -f ] 側 (same_branch) で、実装が別物なので separate_branch を担保しない。TC-36 は index.md が存在するケース、TC-41 / TC-44 は ref 自体が引けず index_present=yes が正解になるアームで、いずれもこの経路に到達しない。separate_branch は rite-config.yml:163 と配布テンプレート templates/config/rite-config.yml:124 の既定かつ推奨であり、Issue #2069 T-06 が既定構成で無検証のまま残る。実害としては、index.md を持たない wiki ブランチで descriptive_refs_read_errors=1 と偽の読出失敗 WARNING が出て、SKILL.md ステップ 9 の note 展開が「部分欠損」表示へ倒れる。Likelihood-Evidence: runtime_observation 隔離コピー上でプローブを削除 → 148 assertion 全緑。同変異を index なし separate_branch sandbox に適用すると descriptive_refs_read_errors=1 + WARNING を出すが原本は read_errors=0",
+      "suggestion": "TC-19 の直後に separate_branch + index.md 不在の TC を足す。GITSBX の wiki ブランチは TC-36 が意図的に index なしのまま残しているため追加の sandbox 準備は不要。assert は (a) descriptive_refs_read_errors=0、(b) marker block に index 行が出ない、(c) stderr に「index.md の読出に失敗」が出ない、の 3 点。stderr 退避用の変数は宣言と tmp_files 登録を忘れないこと (テストは set -uo pipefail 下で走るため未宣言変数は hard failure になる)。",
+      "status": "open"
+    },
+    {
+      "id": "F-04",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "git show 32488e06 -- .rite/wiki/index.md ¦ grep -c '^+| \\[' => 14 (テーブル行の追加数)、同 commit の箇条書き行追加数は 0。git log -1 --format='%ci' 32488e06 => 2026-07-31 00:51:00 +0900 (本日)。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "docs/SPEC.md",
+      "line": 1640,
+      "description": "本 PR が新規追加した「The template and /rite:wiki-ingest emit bullets, but a live wiki branch may still hold the older 5-column table form」が live wiki ブランチの実測と矛盾する。(a) 最新の ingest commit 32488e06 (2026-07-31 00:51 = 本日) は .rite/wiki/index.md に table 行を 14 行追加し、箇条書き行は 0 行。(b) OKF 箇条書き reshape の Issue #1519 は 2026-06-15 close 済で、その 6 週間後の ingest が依然 table 行を書いている。(c) wiki-ingest/SKILL.md:640 のステップ 6 には table 分岐が存在せず箇条書きしか指示していないため、SPEC の記述は「指示」であって「挙動」ではない — この乖離は Issue #2047 (OPEN) が既に追跡している。テーブル形式を「古い (older)」「まだ保持している (may still hold)」と書くと、読み手は残滓であり形式移行で自然消滅すると解釈する。その結果、同じセルが直後に警告する /rite:wiki-query の 0 候補を一時的な移行アーティファクトと誤読し、恒久的な no-op (Issue #2053 で OPEN 追跡中) であることを見落とす。Likelihood-Evidence: new_call_site docs/SPEC.md:1640 (本 PR diff の + 行で追加、develop 側には該当文なし)",
+      "suggestion": "producer の「指示」と「実挙動」を分離し、テーブルを残滓ではなく現行形式として記述する。older / may still hold を落とし、ingest が今も table 行を追記している事実と Issue #2047 での追跡を明記する。Cross-file: 同一 PR で追加された plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md の 2 箇所 (index.md 走査範囲表の「この経路は形式移行後に効く」/ サマリー抽出節の「wiki-ingest ステップ 6 が生成するのは箇条書きで」) も同じ前提に立つため、SPEC と同時に文言を揃えること。",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": []
+}

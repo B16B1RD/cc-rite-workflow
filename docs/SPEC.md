@@ -253,6 +253,7 @@ rite-workflow/
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
 │ ├── projects-status-update.sh / projects-items-fetch.sh
 │ ├── review-findings-maps.sh # fix.md severity_map build 委譲
+│ ├── review-measured-gate.sh # pr-review 5.3.0.M 実測必須ゲートの決定論的分類
 │ ├── review-source-resolve.sh # fix.md 1.2.0 review source Priority chain 解決
 │ ├── migrate-review-state-to-1.1.sh # review-result schema 1.1.0 移行
 │ ├── watchdog-status-mismatch.sh # Projects Status 不整合 watchdog
