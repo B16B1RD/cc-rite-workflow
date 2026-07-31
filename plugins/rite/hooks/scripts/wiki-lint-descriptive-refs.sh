@@ -49,11 +49,30 @@
 #      to a following number and manufacture a match)
 #   E5 TODO / FIXME lines (forward-tracking numbers are kept by the 廃止判定ルール)
 #
+# Scan scope — what is scanned, and what is deliberately left out:
+#
+#   scanned   `.rite/wiki/pages/**` (stdin `pages_list`) — Why prose, the metric's core
+#   scanned   `.rite/wiki/index.md` — auto-discovered by this helper, not required on stdin.
+#             Only the per-entry summary is scanned (see `_RITE_INDEX_COUNT_ACTION`): the
+#             summary shares its source with the page frontmatter `description`, and
+#             `/rite:wiki-query` Pass 1 matches keywords against it, so it is part of the
+#             surface a reader goes to for Why.
+#
+#   NOT scanned — each is a deliberate exclusion, not an unfinished area:
+#     `.rite/wiki/log.md`   append-only ingest / lint 台帳。SoT が commit message と
+#                           PR description を「番号の正しい受け皿」として対象外にしているのと
+#                           同じ性質で、散文化すると監査証跡の追跡可能性を失う (実測 987 hits)。
+#     `.rite/wiki/raw/**`   レビュー / fix の生ログ = provenance 資料。番号は出典そのもので
+#                           あって説明的参照ではない (実測 1458 ファイル)。
+#     `.rite/wiki/SCHEMA.md` スキーマ定義。散文を持たず実測 0 hits のため対象化する利得がない。
+#
 # Inputs:
 #   --branch-strategy {separate_branch|same_branch}  (required)
 #   --wiki-branch BRANCH                              (required for separate_branch)
 #   --repo-root DIR                                   (default: git rev-parse --show-toplevel)
-#   pages_list                                        (stdin; one `.rite/wiki/pages/...` path per line)
+#   pages_list                                        (stdin; one `.rite/wiki/pages/...` path per line.
+#                                                      `.rite/wiki/index.md` is accepted too, but need not
+#                                                      be passed — the helper discovers it either way.)
 #
 # stdout contract:
 #   ---descriptive_refs_begin---
@@ -102,6 +121,11 @@ Usage: wiki-lint-descriptive-refs.sh --branch-strategy STRATEGY [--wiki-branch B
 Reads pages_list from stdin (one `.rite/wiki/pages/...` path per line) and emits the
 per-page descriptive-reference hit counts as a marker block plus the
 WIKI_DESCRIPTIVE_REFS total and a read_ok enum on stdout.
+
+`.rite/wiki/index.md` is scanned as well (per-entry summary only) and is discovered by
+this helper, so it need not appear on stdin; passing it is accepted and not double-counted.
+`.rite/wiki/log.md` and `.rite/wiki/raw/**` are deliberately excluded — see the exclusion
+rationale in the header comment of this script.
 
 Options:
   --branch-strategy STRATEGY  separate_branch | same_branch (required)
@@ -189,14 +213,19 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root '$REPO_ROOT'" >&2; exit 2; }
 
+_RITE_INDEX_PATH=".rite/wiki/index.md"
+
 # partial pollution gate: raw_list 行の混入は検出対象を取り違えるため fail-fast
 # (ステップ 2.2 stdout の separator 以降を巻き込んだ substitute の検出)。
+# index.md だけは **完全一致** で許容する。prefix (`.rite/wiki/*`) へ緩めると raw_list 行も
+# 通ってしまい、gate 本来の目的 (取り違えの検出) を失う。
 if [ -n "$pages_list" ]; then
   _polluted=""; _pollute_reason=""
   while IFS= read -r _p; do
     [ -z "$_p" ] && continue
     case "$_p" in
       *..*) _polluted="$_p"; _pollute_reason=traversal; break ;;
+      "$_RITE_INDEX_PATH") ;;
       .rite/wiki/pages/*) ;;
       *) _polluted="$_p"; break ;;
     esac
@@ -205,13 +234,34 @@ if [ -n "$pages_list" ]; then
     if [ "$_pollute_reason" = traversal ]; then
       echo "ERROR: ステップ 7.5 の \$pages_list に '..' を含むパスがあります (パストラバーサル遮断)" >&2
     else
-      echo "ERROR: ステップ 7.5 の \$pages_list に '.rite/wiki/pages/' prefix を持たない行が含まれています (partial pollution 検出)" >&2
+      echo "ERROR: ステップ 7.5 の \$pages_list に '.rite/wiki/pages/' prefix も index.md 完全一致も持たない行が含まれています (partial pollution 検出)" >&2
     fi
     echo "  検出行: $(printf '%s' "$_polluted" | neutralize_ctrl)" >&2
     echo "  対処: ステップ 2.2 stdout から separator より前の '.rite/wiki/pages/...' 行のみを substitute してください" >&2
     exit 1
   fi
 fi
+
+# ---- 走査対象の確定: pages_list + index.md ----------------------------------
+# index.md は stdin で渡してもよい (上の gate が完全一致で許容する) が、渡されなくても helper が
+# 自力で拾う。stdin 経由だけに依存すると、LLM の substitute 忘れが「index.md を走査しなかった」
+# ではなく「index.md に指摘が無かった」として通過し、本 helper が塞ごうとしている盲点そのものを
+# 再導入するため。自力読出は sibling の `wiki-lint-orphans.sh` が index.md に対して行っているのと同型。
+#
+# 存在プローブを read より前に置くのは、**不在と読出失敗を別の結果に落とす**ため。
+# `git show` / `cat` はどちらの場合も非ゼロを返すので、読出 rc だけでは区別できない:
+#   不在 (Wiki 初期化直後)   → 静かに落とす。read_errors にも走査母数にも数えない
+#   存在するが読めない (IO)  → 走査対象に入れ、per-page 失敗として read_errors に計上する
+if [ "$branch_strategy" = "separate_branch" ]; then
+  git cat-file -e "${wiki_branch}:${_RITE_INDEX_PATH}" 2>/dev/null && index_present=yes || index_present=no
+else
+  [ -f "$_RITE_INDEX_PATH" ] && index_present=yes || index_present=no
+fi
+
+# stdin 由来の index.md 行を一度落としてから付け直すことで、入力経路によらず
+# 「存在プローブを通った 1 行だけ」に正規化する (重複計上の防止も兼ねる)。
+scan_list=$(printf '%s\n' "$pages_list" | grep -vxF "$_RITE_INDEX_PATH" | awk 'NF>0')
+[ "$index_present" = yes ] && scan_list="${scan_list}${scan_list:+$'\n'}${_RITE_INDEX_PATH}"
 
 # ---- 検出本体 ---------------------------------------------------------------
 
@@ -246,6 +296,54 @@ insrc                       { next }
 # 「落とす行の規則」と「終端アクション」を 2 変数に分ける。読み分けができるほか、
 # mutation test (TC-16) が本文フィルタだけを差し替える seam にもなっている。
 _RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }'
+
+# index.md 専用の終端アクション。index.md は散文ページではなくページ一覧のカタログで、
+# 検出対象は **エントリ 1 件あたりのサマリー (説明文) だけ**。リンクテキスト・ドメイン・更新日・
+# 確信度の各列は対象外にする (ページタイトル由来の番号は本文側の維持判断と同じ扱いのため)。
+#
+# エントリ行の判定は `](pages/` リンクの有無で行い、テーブル行と OKF 箇条書きの両方を **行単位**で
+# 受ける。現行の wiki ブランチは 5 列テーブルだが、`templates/wiki/index-template.md` と wiki-ingest
+# ステップ 6 が生成するのは箇条書き `* [title](pages/...) - desc` であり、テーブル専用にすると
+# 形式移行の時点で検出が無言で 0 件へ倒れる。ファイル単位で形式を判定しないのは移行途中の混在に耐えるため。
+#
+# サマリー列の位置はヘッダー行 (`| ページ | ドメイン | サマリー | 更新日 | 確信度 |`) から決める。
+# 位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、ヘッダー由来の位置決めと
+# END の行数ガードを対にする (wiki: anti-patterns/positional-parse-row-count-guard)。
+_RITE_INDEX_COUNT_ACTION='
+/^[[:space:]]*\|/ && /サマリー/ && sumcol == 0 {
+  hn = split($0, hc, "|")
+  for (i = 1; i <= hn; i++) if (hc[i] ~ /サマリー/) { sumcol = i; sumncol = hn; break }
+  next
+}
+$0 !~ /\]\(pages\// { next }
+{
+  s = $0
+  gsub(/`[^`]*`/, "_", s)
+  gsub(/\\\|/, "_", s)
+  entries++
+  if (s ~ /^[[:space:]]*\|/) {
+    fn = split(s, fc, "|")
+    col = (sumcol > 0 ? sumcol : 4)
+    want = (sumncol > 0 ? sumncol : 0)
+    if (fn <= col || (want > 0 && fn != want)) {
+      printf "WARNING: index.md %d 行目: テーブルの列数が想定と異なるため行をスキップしました (列数=%d, 期待=%d)\n", NR, fn, (want > 0 ? want : col + 1) > "/dev/stderr"
+      next
+    }
+    summary = fc[col]
+  } else {
+    if (match(s, /\]\(pages\/[^)]*\)/) == 0) next
+    summary = substr(s, RSTART + RLENGTH)
+    sub(/^[[:space:]]*(-|—|–)[[:space:]]*/, "", summary)
+  }
+  parsed++
+  if (summary ~ re) n++
+}
+END {
+  if (entries > 0 && parsed == 0)
+    printf "WARNING: index.md のエントリ行 %d 件からサマリーを 1 件も抽出できませんでした (形式変更の可能性)。検出が無言で 0 件へ倒れるのを防ぐため通知します\n", entries > "/dev/stderr"
+  print n+0
+}
+'
 
 # R1 (keyword vocabulary + number) と R2 (keyword-less な日本語 2 構文) の 2 規則。
 # 語境界は `\b` ではなく `([^0-9]|$)` — gawk の `\b` はバックスペース扱いで never-match。
@@ -295,7 +393,9 @@ while IFS= read -r page; do
   # 本文抽出と計数を 1 つの awk に閉じる。終端に `grep -c` を置くと no-match の rc=1 と
   # awk の異常終了が区別できず、検出器が壊れても「0 件」として read_ok=true で通っていた
   # (検出器そのものの破損だけが未実測ゲートをすり抜ける唯一の穴だった)。
-  hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_RITE_COUNT_ACTION}"); awk_rc=$?; hits_rc=$awk_rc
+  # 除外規則 (_RITE_BODY_FILTER) は index.md にも一貫適用し、終端アクションだけを差し替える。
+  if [ "$page" = "$_RITE_INDEX_PATH" ]; then _action="$_RITE_INDEX_COUNT_ACTION"; else _action="$_RITE_COUNT_ACTION"; fi
+  hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_action}"); awk_rc=$?; hits_rc=$awk_rc
   case "$hits" in ''|*[!0-9]*) [ "$hits_rc" -eq 0 ] && hits_rc=1 ;; esac
   if [ "$hits_rc" -ne 0 ]; then
     # 検出器が機能していないページは「0 件」ではなく読出失敗として計上する。
@@ -310,18 +410,18 @@ while IFS= read -r page; do
     hit_lines="${hit_lines}page=$(printf '%s' "$page" | neutralize_ctrl); hits=${hits}"$'\n'
     echo "WikiDescriptiveRef: page=$(printf '%s' "${page#.rite/wiki/}" | neutralize_ctrl), hits=${hits}" >&2
   fi
-done <<< "$pages_list"
+done <<< "$scan_list"
 
 # read_ok: ページが 1 件以上あるのに全件読めなかった場合のみ io_error。
 # 一部読めなかった場合は残りの集計が有効なため true を維持するが、件数を `descriptive_refs_read_errors`
 # として stdout に出す — WARNING は stderr にしか出ず、完了レポートの併記条件が read_ok だけだと
 # 部分欠損した集計が注記なしで「実測済み」として載るため (sibling の all_source_refs_read_errors と同型)。
-n_pages_total=$(printf '%s\n' "$pages_list" | awk 'NF>0 {n++} END {print n+0}')
+n_pages_total=$(printf '%s\n' "$scan_list" | awk 'NF>0 {n++} END {print n+0}')
 case "$n_pages_total" in
   ''|*[!0-9]*)
     # ページ数を数える awk まで落ちている = 実行環境の異常。0 に倒すと io_error 分岐が
     # 到達不能になり「0 件」が実測済みとして通るため、io_error 側へ寄せる。
-    echo "WARNING: pages_list の件数計算に失敗しました (値: '$n_pages_total')。io_error として扱います" >&2
+    echo "WARNING: 走査対象リストの件数計算に失敗しました (値: '$n_pages_total')。io_error として扱います" >&2
     n_pages_total=0
     [ "$n_read_errors" -eq 0 ] && n_read_errors=1
     ;;
@@ -329,11 +429,11 @@ esac
 descriptive_refs_read_ok="true"
 if { [ "$n_pages_total" -gt 0 ] && [ "$n_read_errors" -eq "$n_pages_total" ]; } || { [ "$n_pages_total" -eq 0 ] && [ "$n_read_errors" -gt 0 ]; }; then
   descriptive_refs_read_ok="io_error"
-  echo "WARNING: pages_list の全 ${n_pages_total} ページを読み出せませんでした (branch_strategy=$branch_strategy)" >&2
+  echo "WARNING: 走査対象の全 ${n_pages_total} ファイルを読み出せませんでした (branch_strategy=$branch_strategy)" >&2
   echo "  影響: 説明的番号参照 0 件は実体を反映していません (informational 指標のため lint は継続します)" >&2
   echo "  対処: wiki branch ref / ページパスの整合を確認してください" >&2
 elif [ "$n_read_errors" -gt 0 ]; then
-  echo "WARNING: ${n_read_errors}/${n_pages_total} ページを読み出せず集計から除外しました" >&2
+  echo "WARNING: ${n_read_errors}/${n_pages_total} ファイルを読み出せず集計から除外しました" >&2
 fi
 
 echo "---descriptive_refs_begin---"

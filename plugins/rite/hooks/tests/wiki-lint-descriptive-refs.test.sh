@@ -32,6 +32,13 @@
 #   TC-23  検出器の破損が read_errors / io_error へ伝播する (0 件を実測済みと名乗らない)
 #   TC-24  traversal gate / 読出・検出失敗の WARNING / E1 ブロック終端
 #   TC-11b 部分読出失敗は read_ok=true のまま read_errors だけ立つ
+#   TC-25..TC-26 index.md 不在時は従来どおり (read_errors 不加算 / stdout に index 行なし)
+#   TC-27..TC-29 index.md のサマリー列だけを検出する (リンクテキスト列は対象外)
+#   TC-30  OKF 箇条書き形式の index.md でも検出できる (形式移行で 0 件へ倒れない)
+#   TC-31  列数が壊れた行は行全体へフォールバックせず行番号つき WARNING でスキップ
+#   TC-32  エントリ行はあるのに全行の抽出に失敗したら行数ガードが WARNING を出す
+#   TC-33..TC-34 gate の非回帰 (raw/ と `..` は fail-fast のまま、index.md は完全一致で受理・重複計上なし)
+#   TC-35  ステップ 2.2 の pages_list に index.md を混ぜていない (他カテゴリの入力不変)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -422,6 +429,92 @@ assert_not_grep "TC-24 読出失敗を検出失敗と取り違えない" "$rd_er
 # E1 のブロック終端: `sources:` の後ろに来るキーが走査対象へ戻ること。
 tc8_after=$(printf -- '---\nsources:\n  - ref: "raw/reviews/x.md"\nnote: "PR #1301 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-24 sources ブロックの後ろのキーは走査対象へ戻る" "1" "$(single_hits "$tc8_after")"
+
+# ---- TC-25..TC-33: index.md 走査 (AC-1..AC-6) ------------------------------
+# 既存 TC はすべて index.md を持たない sandbox で走るため、そのままでは新経路を 1 行も通らない。
+# index.md を持つ専用 sandbox を立て、対象列・除外・不在時の縮退・gate の非回帰を測る。
+IDXSBX=$(make_plain_sandbox) && cleanup_dirs+=("$IDXSBX") || { echo "ERROR: make_plain_sandbox failed" >&2; exit 1; }
+mkdir -p "$IDXSBX/.rite/wiki/pages/patterns"
+IDX_PAGE_REL=".rite/wiki/pages/patterns/p.md"
+printf '# p\n\nPR #1300 は本文側の 1 件\n' > "$IDXSBX/$IDX_PAGE_REL"
+
+idx_run() { ( cd "$IDXSBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$IDXSBX" "$@" ); }
+idx_hits() { printf '%s' "$1" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p'; }
+
+# T-06 / T-08: index.md 不在時は従来どおり。read_errors を増やさず、stdout に index 行も出さない。
+# 走査対象へ入れる前に存在を確かめないと、不在 (Wiki 初期化直後の legitimate な状態) が
+# 読出失敗と同じ非ゼロ rc に潰れ、TC-10 の「空 pages_list → read_ok=true」まで io_error に倒れる。
+noidx_out="$IDXSBX/noidx.out"; tmp_files+=("$noidx_out")
+printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$noidx_out" 2>/dev/null
+assert "TC-25 (T-06) index.md 不在で read_errors=0" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$noidx_out")"
+assert "TC-25 (T-06) index.md 不在で read_ok=true" "true" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$noidx_out")"
+assert "TC-26 (T-08) index.md 不在なら本文のみの hits" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$noidx_out")"
+assert_not_grep "TC-26 (T-08) index.md 不在なら marker block に index 行が出ない" "$noidx_out" 'index\.md'
+
+# T-01 / T-02 / T-03: テーブル形式。サマリー列だけを対象にし、リンクテキスト列は対象外。
+cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
+# Wiki Index
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |
+| [番号なし](pages/patterns/b.md) | patterns | Issue #88 系譜の継続 | 2026-01-01 | high |
+IDXEOF
+tbl_out="$IDXSBX/tbl.out"; tmp_files+=("$tbl_out")
+printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$tbl_out" 2>/dev/null
+assert "TC-27 (T-01) index.md の hits が合計に載る (本文 1 + index 1)" "2" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$tbl_out")"
+assert_grep "TC-27 (T-01) marker block に page=.rite/wiki/index.md 行が出る" "$tbl_out" '^page=\.rite/wiki/index\.md; hits=1$'
+assert "TC-27 (T-01) descriptive_refs_pages は hits を持つ対象ファイル数のまま" "2" "$(sed -n 's/^descriptive_refs_pages=//p' "$tbl_out")"
+# TC-28/29 は同じ 2 行の表で「拾う列」と「拾わない列」を同時に測る。片方だけの fixture だと
+# 「全列を走査している」変異と「サマリー列だけ走査している」実装を区別できない。
+assert "TC-28 (T-03) サマリー列の番号は 1 hit として数える" "1" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$tbl_out")"
+onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |\n')
+printf '%s' "$onlylink" > "$IDXSBX/.rite/wiki/index.md"
+assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数えない" "1" "$(idx_hits "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)")"
+
+# OKF 箇条書き形式。テーブル専用にすると、template と wiki-ingest が生成するこの形式へ
+# 移行した時点で検出が無言で 0 件へ倒れる (本 helper が塞ごうとしている盲点と同型)。
+printf '# Wiki Index\n\n* [Issue #99 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "1" "$(printf '%s' "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"
+
+# T-07: 列数が壊れた行は「行全体を対象にする」のではなくスキップし、行番号つき WARNING を出す。
+# 行全体へフォールバックするとリンクテキスト由来の番号が混ざり、誤検出で件数が膨らむ。
+printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号なし | broken |\n' > "$IDXSBX/.rite/wiki/index.md"
+brk_err="$IDXSBX/brk.err"; tmp_files+=("$brk_err")
+brk_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$brk_err")
+assert "TC-31 (T-07) 列数が壊れた行は hits に数えない" "1" "$(idx_hits "$brk_out")"
+assert_grep "TC-31 (T-07) 列崩れは行番号つき WARNING で観測できる" "$brk_err" 'index\.md [0-9]+ 行目: テーブルの列数'
+
+# 行数ガード: エントリ行はあるのに 1 件も抽出できない = 形式変更。無言の 0 件にせず WARNING を出す
+# (位置依存の列パースが列の増減で全行 skip へ倒れる既知の失敗形。wiki: positional-parse-row-count-guard)。
+printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [a](pages/patterns/a.md) | x |\n| [b](pages/patterns/b.md) | y |\n' > "$IDXSBX/.rite/wiki/index.md"
+guard_err="$IDXSBX/guard.err"; tmp_files+=("$guard_err")
+printf '%s\n' "$IDX_PAGE_REL" | idx_run >/dev/null 2>"$guard_err"
+assert_grep "TC-32 全行の抽出に失敗したら行数ガードが WARNING を出す" "$guard_err" 'サマリーを 1 件も抽出できませんでした'
+
+# T-04 / T-05: gate の非回帰。index.md を完全一致で許容しても raw/ と `..` は fail-fast のまま。
+# prefix (`.rite/wiki/*`) へ緩めると raw_list 取り違えの検出という gate 本来の目的が消える。
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+printf '%s\n%s\n' "$IDX_PAGE_REL" ".rite/wiki/raw/reviews/x.md" | idx_run >/dev/null 2>&1
+assert "TC-33 (T-04) index.md 許容後も raw/ 行の混入は exit 1" "1" "$?"
+printf '%s\n' ".rite/wiki/pages/../raw/x.md" | idx_run >/dev/null 2>&1
+assert "TC-33 (T-05) index.md 許容後も traversal は exit 1" "1" "$?"
+# stdin 経由の index.md は受理し、自力発見分と二重計上しない。
+stdin_out=$(printf '%s\n%s\n' "$IDX_PAGE_REL" ".rite/wiki/index.md" | idx_run 2>/dev/null); stdin_rc=$?
+assert "TC-34 stdin の index.md は gate を通る" "0" "$stdin_rc"
+assert "TC-34 stdin 経由でも二重計上しない" "$(idx_hits "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)")" "$(idx_hits "$stdin_out")"
+
+# T-09: 他カテゴリの非回帰は測定ではなく構成で担保する。ステップ 2.2 の pages_list は
+# `pages/` 配下だけを拾ったままでなければならない。ここに index.md を混ぜると孤児検出
+# (index 登録ページ ∖ pages_list) が index.md 自身を孤児として数え、AC-6 が即座に崩れる。
+step22_re=$(grep -oE "grep -E '\^\\\\\.rite/wiki/pages/[^']*'" "$LINT_MD" | head -1)
+if [ -z "$step22_re" ]; then
+  fail "TC-35 (T-09) SKILL.md ステップ 2.2 の pages_list 抽出 regex を特定できなかった"
+elif printf '%s' "$step22_re" | grep -q 'index'; then
+  fail "TC-35 (T-09) ステップ 2.2 の pages_list に index.md が混ざっている (孤児 / 陳腐化の件数が変わる)"
+else
+  pass "TC-35 (T-09) ステップ 2.2 の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
+fi
 
 # ---- TC-22: 2 検出器の検出 regex が literal 一致すること -------------------
 # 同じ規則を 2 実装に持つため、語彙を 1 語足すたび両方の同期が要る。実装の共通化は

@@ -11,6 +11,18 @@
 # に従い、説明的参照のみを検出し、TODO/FIXME 追跡番号 (前方ポインタ=維持) と
 # ファイル名アンカー (xxx.test.sh 等、番号ではない) は検出から除外する。
 #
+# `.rite/wiki/**` に届く条件 (wiki.branch_strategy 依存):
+#   same_branch     Wiki の実体が dev ブランチのワークツリーにあるため到達する。
+#   separate_branch 到達しない。dev checkout 側の `.rite/wiki/` は gitignore された
+#                   ローカル成果物置き場 (通常は不在) で、Wiki の実体は wiki ブランチにある。
+#                   この構成では Wiki ページの走査は `/rite:wiki-lint` ステップ 7.5
+#                   (`wiki-lint-descriptive-refs.sh`) が担う — そちらは `git show` で
+#                   wiki ブランチを直接読むため実体に届く。
+#   ここでは wiki ブランチを読みに行かない。本スクリプトはワークツリー上のファイルを
+#   走査する CI 向けの高速レイヤであり、ブランチ解決を持ち込むと wiki-lint と検出責務が
+#   二重化する。separate_branch で Wiki 分の指摘が 0 件でも「Wiki が clean」ではなく
+#   「本スクリプトの走査範囲外」である点に注意する。
+#
 # Layered defense:
 #   This script is the fast-fail layer below the LLM reviewers. The reviewers
 #   focus on WHY > WHAT semantic judgments; mechanical 100%-confidence patterns
@@ -158,6 +170,9 @@ Scan scope (--all):
   plugins/rite/**/*.{sh,md}, docs/**/*.md, .rite/wiki/**/*.md
   (self-exclude: this script, comment-best-practices.md SoT, parity test,
    検出器自身の test 2 本: comment-journal-check.test.sh / wiki-lint-descriptive-refs.test.sh)
+  .rite/wiki/ はワークツリー上に実体がある構成 (wiki.branch_strategy: same_branch) でのみ
+  到達する。separate_branch では Wiki は wiki ブランチにあり本スクリプトは走査しない
+  (その構成の Wiki 走査は /rite:wiki-lint ステップ 7.5 が担当)。
 
 Exit codes:
   0  No journal narration detected
@@ -195,6 +210,9 @@ if [ "$USE_ALL" -eq 1 ]; then
   # 説明的番号参照は永続成果物全般 (in-source コメント + ドキュメント散文 + Wiki ページ) が対象であり、
   # plugins/rite に加えて repo-root の docs/ と .rite/wiki/ も走査する。後二者は存在するときのみ加える
   # (marketplace install や Wiki 無効プロジェクトでは plugins/rite のみで走査が成立する)。
+  # `.rite/wiki/` に実体があるのは wiki.branch_strategy: same_branch のときだけで、separate_branch では
+  # ここは不在か空のローカル置き場になり、この scan_root は加わらない (= Wiki 分は 0 件になる)。
+  # これは未実装の残債ではなく責務分割で、その構成の Wiki 走査は wiki-lint ステップ 7.5 が担う (冒頭コメント参照)。
   scan_roots=("$base")
   [ -d "docs" ] && scan_roots+=("docs")
   [ -d ".rite/wiki" ] && scan_roots+=(".rite/wiki")

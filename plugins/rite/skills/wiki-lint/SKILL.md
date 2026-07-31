@@ -33,7 +33,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
-| **説明的番号参照 (descriptive_number_ref)** | ページ本文に残った説明目的の Issue/PR 番号参照（裸の「PR #N は…」「Issue #N」、括弧付き「(refs #N)」、日本語の「#N で対応」「詳細は #N」）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter の `sources:` ブロック・`## ソース` 節・コードフェンス / スパン・TODO/FIXME は除外 | **No** (`n_warnings` 不加算、ステップ 7.5) |
+| **説明的番号参照 (descriptive_number_ref)** | ページ本文と `index.md` のエントリサマリーに残った説明目的の Issue/PR 番号参照（裸の「PR #N は…」「Issue #N」、括弧付き「(refs #N)」、日本語の「#N で対応」「詳細は #N」）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter の `sources:` ブロック・`## ソース` 節・コードフェンス / スパン・TODO/FIXME は除外。`log.md` / `raw/**` / `SCHEMA.md` は走査しない（意図的除外） | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
 **設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
 
@@ -197,7 +197,7 @@ exit 0
 | `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（raw frontmatter の `ingest_status: skipped` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
 | `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 の `wiki-lint-broken-refs.sh` が emit する `n_broken_refs=` 値を転記 (LLM 独自カウント禁止) |
-| `descriptive_refs_read_errors` | `0` | ステップ 7.5 helper の stdout から読む（LLM 独自カウント禁止）。読出または検出できなかったページ数 |
+| `descriptive_refs_read_errors` | `0` | ステップ 7.5 helper の stdout から読む（LLM 独自カウント禁止）。読出または検出できなかった対象ファイル数（`index.md` 不在は数えない） |
 | `n_descriptive_refs` | 0 | ステップ 7.5 の `wiki-lint-descriptive-refs.sh` が emit する `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 値を転記する（**LLM 独自カウント禁止**。ただし本カテゴリは informational のため `issues[]` へは転記しない — ステップ 7.5「検出結果の記録」節参照）。ページ本文の説明的 Issue/PR 番号参照の hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
 | `issues[]` | `[]` | 各検出結果を（**例外: ステップ 7.5 — 同ステップ「検出結果の記録」節を参照**） `{category, page, detail}` として append (helper 委譲カテゴリは marker block の行を転記) |
 
@@ -619,16 +619,21 @@ fi
 Wiki ページ本文に残った**説明目的の Issue/PR 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N は…を統一した」「Issue #N 系譜の継続」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。括弧やキーワードに包まれない裸の `PR #N` / `Issue #N` も対象で、これは SoT §C Detection Heuristics が reviewer 側 regex として既に宣言している範囲に機構を追随させたもの。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
 
 **検出対象と除外**:
-- 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）
-- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME を含む行（前方追跡ポインタ）
+- 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）と、`index.md` の**エントリごとのサマリーのみ**
+- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME を含む行（前方追跡ポインタ）。除外規則は `index.md` にも一貫適用する
+- 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。根拠は `references/descriptive-refs-rationale.md` の「走査範囲」節
+
+**`index.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない** — `pages_list` はステップ 3 / 4 / 5 / 6.2 / 7 が共有する入力で、ステップ 5（孤児検出）は「index 登録ページ ∖ `pages_list`」の差分を取るため `index.md` を混ぜると孤児が +1 になる（ステップ 4 も frontmatter `updated` を要求するため読出エラーになる）。helper 側で完結させることで他カテゴリの入力がバイト同一のまま保たれる。`index.md` が存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
 
 検出は 2 規則の**正規化**で表現する（表層形の列挙ではない）。R1 は「参照キーワードが番号の直前に来る」形で、括弧付き `(refs #N)` / `see PR #N` / 裸の `PR #N は…` はすべてこの 1 規則に畳まれる。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は正当な文脈が多すぎるため検出しない。語境界は `([^0-9]|$)` で表現する（gawk の `\b` はバックスペース扱いで never-match になるため使用禁止）。各除外の判断根拠と副作用（その範囲内では既知の再発が見えなくなる）は `references/descriptive-refs-rationale.md#exclusions` に記録している。
 
 **検出ロジック**は `wiki-lint-descriptive-refs.sh` に委譲する（stdin `pages_list` はステップ 6.2 helper と同型 — ステップ 6.0 helper は入力を自前で列挙し stdin を読まない。marker block + read_ok enum は 6.0 / 6.2 の双方と同型）。
 
-> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・本文抽出フィルタ（frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME）・2 規則の検出・placeholder residue gate / partial pollution gate をすべて内包する。
+> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・`index.md` の存在プローブ付き読出とエントリ単位のサマリー抽出（5 列テーブル / OKF 箇条書きを行単位で判別）・本文抽出フィルタ（frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME）・2 規則の検出・placeholder residue gate / partial pollution gate（`index.md` は完全一致で許容、`raw/` 行と `..` は従来どおり fail-fast）をすべて内包する。
 
 **Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約）。
+
+`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。
 
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
