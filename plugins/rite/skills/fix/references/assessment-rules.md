@@ -111,7 +111,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 母集団を gate 対象 scope に限るのは、`nit-noted` が `gated` 偽で**降格され得ない**ため。含めると「降格していないものを降格と申告する」ことになり、WARNING の件数が実際の降格件数と食い違う。
 
-**集約的な hard fail は持たない**: 「blocking 候補が全件形式崩れなら停止する」形の hard fail は一度導入したが撤去した。判定に使える量 (`anchor_unparseable`) は stage 1 の意図的に緩い存在判定に由来し、上記トレードオフのとおり散文中の `Verification:` を拾う。その件数を停止条件へ昇格させると、(a) 正常な指摘集合で停止する誤発火と、(b) 形式崩れ以外の降格が混ざったときに素通りする見逃しを同時に持ち、条件をどちらへ寄せても片方が残る。**本筋の是正は「形式崩れアンカーを `measured=false` ではなく未判定 (= blocking のまま) として扱う」という per-finding の変更**だが、これは 3 値モデル (severity-levels.md §適用範囲) への設計変更なので別 Issue で扱う。現状は WARNING + `MEASURED_DEMOTED_ON_ANCHOR` marker による可視化に留める。
+**集約的な hard fail は持たない**: 「blocking 候補が全件形式崩れなら停止する」形の hard fail は一度導入したが撤去した。判定に使える量 (`anchor_unparseable`) は stage 1 の意図的に緩い存在判定に由来し、上記トレードオフのとおり散文中の `Verification:` を拾う。その件数を停止条件へ昇格させると、(a) 正常な指摘集合で停止する誤発火と、(b) 形式崩れ以外の降格が混ざったときに素通りする見逃しを同時に持ち、条件をどちらへ寄せても片方が残る。**本筋の是正は「形式崩れアンカーを `measured=false` ではなく未判定 (= blocking のまま) として扱う」という per-finding の変更**だが、これは 3 値モデル (severity-levels.md §適用範囲) への設計変更なので別 Issue (#2075) で扱う。現状は WARNING + `MEASURED_DEMOTED_ON_ANCHOR` marker による可視化に留める。
 
 判定は 2 段で機械的に書ける:
 

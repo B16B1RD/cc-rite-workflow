@@ -128,8 +128,8 @@ mk_json "$f" \
 run_gate "$f"
 if [ "$(jq -r '.overall_assessment' "$f")" = "mergeable" ]; then pass "overall_assessment=mergeable"; else fail "assessment=$(jq -r '.overall_assessment' "$f")"; fi
 if [ "$(jq '.findings | length' "$f")" = "0" ]; then pass "findings[] が空"; else fail "findings が空でない"; fi
-if grep -q 'MEASURED_GATE=applied; blocking=0; demoted=2;' <<<"$GATE_STDERR"; then
-  pass "[CONTEXT] MEASURED_GATE marker が blocking=0 / demoted=2 を報告"
+if grep -q 'MEASURED_GATE=applied; blocking=0; demoted=2; non_blocking_total=2; assessment=mergeable' <<<"$GATE_STDERR"; then
+  pass "[CONTEXT] MEASURED_GATE marker の 4 値すべて (blocking/demoted/non_blocking_total/assessment) を報告"
 else fail "marker 不一致: $GATE_STDERR"; fi
 
 # nit-noted は本ゲートの対象外 (D-03: mergeable 判定は blocking 部分集合の空で行う)
@@ -176,6 +176,13 @@ run_gate "$f"
 if [ "$GATE_RC" -eq 0 ] && [ "$(jq -r '.overall_assessment' "$f")" = "mergeable" ] && [ "$(jq '.non_blocking_findings|length' "$f")" = "0" ]; then
   pass "findings[] 空入力は移送 0 件で mergeable"
 else fail "空入力の挙動が不正: rc=$GATE_RC assess=$(jq -r '.overall_assessment' "$f")"; fi
+# フラグ指定下 (= 本番で最頻出の成功形) でも同じこと。hard fail の閾値が `-gt 0` から
+# `-ge 0` へ倒れると、指摘ゼロのクリーンなレビューが全件停止する形になるのでここで pin する。
+mk_json "$f"
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 0 ] && [ "$(jq -r '.overall_assessment' "$f")" = "mergeable" ]; then
+  pass "フラグ指定下でも findings[] 空入力は rc=0 かつ mergeable (最頻出の成功形)"
+else fail "フラグ指定下の空入力が通らない: rc=$GATE_RC"; fi
 
 f="$TEST_DIR/tc05-append.json"
 mk_json "$f" "$(mk_finding F-02 HIGH current-pr 'アンカーなし')"
@@ -465,7 +472,9 @@ else fail "末尾空白付き scope が通ってしまった: rc=$GATE_RC"; fi
 # ---------------------------------------------------------------------------
 echo "--- TC-08d: observability marker ---"
 f="$TEST_DIR/tc08d-runtimeobs.json"
-mk_json "$f" "$(mk_finding F-01 HIGH current-pr 'Likelihood-Evidence: runtime_observation で観測<br>アンカーは無い')"
+mk_json "$f" \
+  "$(mk_finding F-01 HIGH current-pr 'Likelihood-Evidence: runtime_observation で観測<br>アンカーは無い')" \
+  "$(mk_finding F-02 LOW nit-noted 'Likelihood-Evidence: runtime_observation で観測<br>アンカーは無い (nit なので母集団外)')"
 run_gate "$f" --reject-preset-verification
 if grep -q 'MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count=1' <<<"$GATE_STDERR"; then
   pass "runtime_observation ∧ アンカー欠如で MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR marker を emit"
@@ -502,17 +511,11 @@ mk_json "$f" \
   "$(mk_finding F-01 CRITICAL current-pr '境界なし。Verification: repro bash a.sh => boom')" \
   "$(mk_finding F-02 HIGH current-pr '境界なし。Verification: repro bash b.sh => bang')"
 run_gate "$f" --reject-preset-verification
-if [ "$GATE_RC" -eq 0 ] && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=2' <<<"$GATE_STDERR"; then
-  pass "gated 全件が形式崩れでも停止せず marker で件数を可視化する"
+if [ "$GATE_RC" -eq 0 ] && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=2' <<<"$GATE_STDERR" \
+  && [ "$(jq -r '.overall_assessment' "$f")" = "mergeable" ] \
+  && [ "$(jq '.findings | length' "$f")" = "0" ]; then
+  pass "gated 全件が形式崩れでも停止せず marker で可視化し、帰結 (findings 空 / mergeable) まで確定する"
 else fail "形式崩れの可視化が期待通りでない: rc=$GATE_RC / $(grep -o 'MEASURED_GATE=.*' <<<"$GATE_STDERR")"; fi
-
-# 散文中の Verification: だけで停止しない (撤去した集約 hard fail の誤発火面)
-f="$TEST_DIR/tc08f-prose.json"
-mk_json "$f" "$(mk_finding F-01 HIGH current-pr 'verification: フィールドの扱いを論じた散文。アンカーではない')"
-run_gate "$f" --reject-preset-verification
-if [ "$GATE_RC" -eq 0 ]; then
-  pass "description に散文で verification: を含むだけの指摘で停止しない"
-else fail "散文の verification: で停止した (撤去した集約 hard fail の誤発火面が復活): rc=$GATE_RC"; fi
 
 # アンカー無しの正常系 (AC-3 主経路) では marker を出さない
 f="$TEST_DIR/tc08f-normal.json"
@@ -535,13 +538,6 @@ if [ "$GATE_RC" -eq 0 ] && ! grep -q 'MEASURED_DEMOTED_ON_ANCHOR' <<<"$GATE_STDE
   pass "nit-noted の形式崩れは anchor_unparseable に計上しない"
 else fail "nit-noted の形式崩れが計上された: rc=$GATE_RC"; fi
 
-# 指摘ゼロのクリーンなレビュー (本番で最頻出の成功形) が通ること
-f="$TEST_DIR/tc08f-empty.json"
-printf '%s' '{"schema_version":"1.0.0","pr_number":99,"timestamp":"T","commit_sha":"c","overall_assessment":"fix-needed","findings":[],"non_blocking_findings":[]}' > "$f"
-run_gate "$f" --reject-preset-verification
-if [ "$GATE_RC" -eq 0 ] && [ "$(jq -r '.overall_assessment' "$f")" = "mergeable" ]; then
-  pass "findings 0 件 + フラグ指定で rc=0 かつ mergeable (最頻出の成功形)"
-else fail "指摘ゼロのレビューが通らない: rc=$GATE_RC"; fi
 
 # ---------------------------------------------------------------------------
 # TC-08g: 診断出力の制御文字混入 ([CONTEXT] marker 偽造の遮断)
@@ -597,8 +593,8 @@ else
   fail "変異 helper の生成に失敗 (stats の書式が想定と異なる)"
 fi
 
-# scope 欠落の補完を無通知にしない
-f="$TEST_DIR/tc08d-scopedefault.json"
+# scope キー欠落も enum 外と同じく hard fail する (互換モードは持たない)
+f="$TEST_DIR/tc08d-scopemissing.json"
 cat > "$f" <<'EOF'
 {"schema_version":"1.0.0","pr_number":1,"timestamp":"T","commit_sha":"c",
  "overall_assessment":"fix-needed",
@@ -607,15 +603,16 @@ cat > "$f" <<'EOF'
  "non_blocking_findings":[]}
 EOF
 cp "$f" "$f.orig"
-run_gate "$f"
-if [ "$GATE_RC" -eq 0 ] && grep -q 'MEASURED_GATE_SCOPE_DEFAULTED=1; count=1' <<<"$GATE_STDERR"; then
-  pass "フラグなしでは scope 欠落を MEASURED_GATE_SCOPE_DEFAULTED marker + default 補完で続行 (後方互換)"
-else fail "フラグなしの scope 補完が期待通りでない: rc=$GATE_RC"; fi
-cp "$f.orig" "$f"
 run_gate "$f" --reject-preset-verification
-if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=scope_missing' <<<"$GATE_STDERR" && cmp -s "$f" "$f.orig"; then
-  pass "フラグ指定下では scope 欠落を exit 1 + reason=scope_missing で hard fail し JSON を書き換えない"
-else fail "フラグ指定下の scope 欠落が hard fail にならない: rc=$GATE_RC"; fi
+if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=scope_enum_violation' <<<"$GATE_STDERR" && cmp -s "$f" "$f.orig"; then
+  pass "scope キー欠落も exit 1 + reason=scope_enum_violation かつ JSON 不変"
+else fail "scope 欠落が hard fail にならない: rc=$GATE_RC"; fi
+# フラグなしでも同じ (フラグ依存の互換分岐を持たない)
+cp "$f.orig" "$f"
+run_gate "$f"
+if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=scope_enum_violation' <<<"$GATE_STDERR"; then
+  pass "フラグなしでも scope 欠落は hard fail (互換モードの分岐を持たない)"
+else fail "フラグなしで scope 欠落が通った: rc=$GATE_RC"; fi
 
 # ---------------------------------------------------------------------------
 # TC-09: 検出 regex と抽出 regex の等価性

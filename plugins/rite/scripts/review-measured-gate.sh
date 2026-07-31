@@ -72,7 +72,6 @@
 #   [CONTEXT] MEASURED_GATE=applied; blocking={n}; demoted={n}; non_blocking_total={n}; assessment={v}
 #   [CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable
 #   [CONTEXT] MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count={n}
-#   [CONTEXT] MEASURED_GATE_SCOPE_DEFAULTED=1; count={n}
 #   [CONTEXT] MEASURED_GATE_FAILED=1; reason=...
 #
 # 失敗経路では外部コマンド (jq / mktemp / mv) の stderr 先頭 5 行を ERROR 行の直後に転記する。
@@ -91,7 +90,8 @@
 #   stats_read_failed           — .stats.* の読み出し jq が失敗、または値が数値でない (exit 1)。
 #                                 握り潰すと後続の `[ "$x" -gt 0 ]` が空文字で偽になり、
 #                                 hard fail ゲート自体が無音で skip される (fail-open)
-#   scope_enum_violation        — findings[].scope が enum (current-pr / follow-up / nit-noted) 外
+#   scope_enum_violation        — findings[].scope が enum (current-pr / follow-up / nit-noted) 外、
+#                                 またはキー自体が欠落 (フラグ有無に依らず発火)
 #                                 (exit 1、書き換えはしない)。**fail-closed が必須** — 未知 scope は
 #                                 gated 判定 (== 完全一致) から外れて blocking 件数にも
 #                                 non_blocking_findings[] への移送対象にも入らず、実測済み CRITICAL が
@@ -99,10 +99,6 @@
 #                                 (review-result-schema.md cross-field invariant #2 違反)。
 #                                 ascii_downcase 正規化や current-pr への default 補完は採らない —
 #                                 不正入力を黙って受理する fallback は本 script の設計前提と衝突する
-#   scope_missing               — --reject-preset-verification 指定下で findings[].scope が欠落
-#                                 (exit 1、書き換えはしない)。帰結は enum 違反と同一 (default mapping に
-#                                 倒れた LOW / LOW-MEDIUM が gated から外れる) ため扱いを揃える。
-#                                 フラグなしの互換モードでは WARNING + default で続行する
 #   verification_preset_by_caller — --reject-preset-verification 指定下で、description のアンカー有無と
 #                                  矛盾する既存 verification.measured を検出 (exit 1、書き換えはしない)
 #   mktemp_failure              — 出力 tempfile の mktemp 失敗 (exit 1)
@@ -112,7 +108,7 @@
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
 # emit reasons sequence = (`jq_missing` / `input_missing` / `input_unreadable` / `json_invalid` /
 #   `findings_not_array` / `non_blocking_not_array` / `jq_transform_failed` / `stats_read_failed` /
-#   `scope_enum_violation` / `scope_missing` / `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure`)
+#   `scope_enum_violation` / `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure`)
 # `signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する
 # (hooks/review-nonblocking-record.sh と同じ慣行)。reason 表には下記のとおり載せる。
 #   signal_aborted              — INT / TERM / HUP で中断 (rc= / signal= を併記)。marker ゼロで
@@ -242,18 +238,7 @@ fi
 # 受理集合を変えない)。この等価性は scripts/tests/review-measured-gate.test.sh の
 # 「SoT regex との等価性」ケースが入力マトリクスで機械的に固定する。
 read -r -d '' JQ_PROG <<'JQEOF'
-def scope_effective:
-  # scope 欠落時は severity-levels.md §自動 default mapping (schema 1.0 後方互換) を使う。
-  # 判定用の内部値のみで、JSON へ scope を書き戻すことはしない。
-  # NOTE: 既存の scripts/review-findings-maps.sh の同 default は else 分岐の向きが逆で
-  # (CRITICAL/HIGH/MEDIUM に完全一致した場合のみ current-pr、それ以外すべて nit-noted)、
-  # canonical な大文字 5 値以外では判定が正反対になる。本実装は review-result-schema.md の
-  # 「severity の比較は必ず case-insensitive」に準拠する側であり、ズレの実体は既存 helper にある。
-  # 是正は別 Issue (本 PR は Non-Target)。
-  (.scope // "") as $sc
-  | if $sc != "" then $sc
-    elif (((.severity // "") | ascii_upcase) | (. == "LOW" or . == "LOW-MEDIUM")) then "nit-noted"
-    else "current-pr" end;
+def scope_effective: (.scope // "");
 
 def gated: (scope_effective | (. == "current-pr" or . == "follow-up"));
 
@@ -309,9 +294,6 @@ def with_verification:
       assessment: (if $blocking == 0 then "mergeable" else "fix-needed" end),
       # enum 外 scope の件数 (0 でなければ caller 契約違反として hard fail する)。
       scope_unknown: ([$orig[] | select(scope_known | not)] | length),
-      # scope キー欠落で severity ベース default mapping に倒れた件数。
-      # フラグ指定下では hard fail の入力、フラグなしでは後方互換のため WARNING のみ。
-      scope_defaulted: ([$orig[] | select((.scope // "") == "")] | length),
       # stage 1 真 かつ stage 2 偽 = 「アンカーはあるが形式崩れ」。
       # **既存 boolean の有無で除外してはならない** — `measured: false` の preset を持つ finding は
       # verification_conflict にも該当しない (false == anchored(false)) ため、除外すると
@@ -364,15 +346,15 @@ fi
 if ! stats_tsv=$(printf '%s\n' "$result" | jq -r '
   [ .stats.blocking, .stats.demoted, .stats.non_blocking_total,
     .stats.anchor_unparseable, .stats.runtime_obs_without_anchor,
-    .stats.scope_unknown, .stats.scope_defaulted, .stats.verification_conflict,
+    .stats.scope_unknown, .stats.verification_conflict,
     .stats.assessment ] | map(tostring) | @tsv' 2>"${diag_file:-/dev/null}"); then
   _fail stats_read_failed "ゲート統計の読み出し jq が失敗しました"
 fi
 IFS=$'\t' read -r blocking demoted non_blocking_total anchor_unparseable \
-  runtime_obs_without_anchor scope_unknown scope_defaulted verification_conflict assessment \
+  runtime_obs_without_anchor scope_unknown verification_conflict assessment \
   <<< "$stats_tsv"
 for _stat_name in blocking demoted non_blocking_total anchor_unparseable \
-  runtime_obs_without_anchor scope_unknown scope_defaulted verification_conflict; do
+  runtime_obs_without_anchor scope_unknown verification_conflict; do
   _stat_val="${!_stat_name-}"
   case "$_stat_val" in
     ''|*[!0-9]*) _fail stats_read_failed "ゲート統計 $_stat_name が数値ではありません: '$_stat_val'" ;;
@@ -397,16 +379,6 @@ if [ "$scope_unknown" -gt 0 ]; then
     echo "  ... (残り $((scope_unknown - 10)) 件は省略)" >&2
   fi
   _fail scope_enum_violation "scope enum 違反のため、ゲートを適用せず停止しました: $input"
-fi
-
-# scope キー欠落も、フラグ指定下 (= caller 契約の機械的強制モード) では hard fail させる。
-# 帰結は enum 違反と同一 — default mapping に倒れた LOW / LOW-MEDIUM は gated から外れ、
-# reviewer が current-pr を割り当てた指摘が blocking から脱落する。検出形が「値が変」か
-# 「キーが無い」かの違いだけで扱いを割るのは、cycle 1 で enum 違反を fail-closed にした
-# 根拠と矛盾する。フラグなしの互換モードでは従来どおり WARNING + default で続行する。
-if [ "$reject_preset" -eq 1 ] && [ "$scope_defaulted" -gt 0 ]; then
-  echo "ERROR: findings[].scope を持たない finding が ${scope_defaulted} 件あります。severity ベースの default mapping に倒れると、reviewer が current-pr を割り当てた LOW / LOW-MEDIUM が blocking から脱落します (enum 違反と同じ帰結)" >&2
-  _fail scope_missing "scope 欠落のため、ゲートを適用せず停止しました: $input"
 fi
 
 if [ "$reject_preset" -eq 1 ] && [ "$verification_conflict" -gt 0 ]; then
@@ -440,11 +412,6 @@ fi
 if [ "$runtime_obs_without_anchor" -gt 0 ]; then
   echo "WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: アンカーを欠く finding ${runtime_obs_without_anchor} 件を measured=false として降格しました (実測済み指摘は両方の添付が契約)" >&2
   echo "[CONTEXT] MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count=${runtime_obs_without_anchor}" >&2
-fi
-
-if [ "$scope_defaulted" -gt 0 ]; then
-  echo "WARNING: findings[].scope を持たない finding ${scope_defaulted} 件を severity ベースの default mapping で補完しました (schema 1.0 後方互換)。scope は blocking 判定の入力そのものなので、生成側で明示することを推奨します" >&2
-  echo "[CONTEXT] MEASURED_GATE_SCOPE_DEFAULTED=1; count=${scope_defaulted}" >&2
 fi
 
 if [ "$verification_conflict" -gt 0 ]; then
