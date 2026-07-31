@@ -324,21 +324,32 @@ if ! result=$(jq \
   _fail jq_transform_failed "実測必須ゲートの変換 jq が失敗しました: $input"
 fi
 
-# stats の読み出しは rc を検査する。失敗を握り潰すと、後続の `[ "$x" -gt 0 ] 2>/dev/null` が
-# 空文字で rc=2 (偽) となり、hard fail ゲートそのものが無音で skip される (fail-open)。
-stat_of() {
-  local _v
-  if ! _v=$(printf '%s\n' "$result" | jq -r ".stats.$1" 2>"${diag_file:-/dev/null}"); then
-    _fail stats_read_failed "ゲート統計 .stats.$1 の読み出しに失敗しました"
-  fi
-  case "$_v" in
-    ''|*[!0-9]*) _fail stats_read_failed "ゲート統計 .stats.$1 が数値ではありません: '$_v'" ;;
+# stats は **1 回の jq で全件まとめて読み、検証も main shell で行う**。
+# 個別に `x=$(stat_of ...)` の形にすると、`stat_of` 内の `_fail` (= exit 1) が**コマンド置換の
+# サブシェルだけ**を終わらせ script は続行する。その結果 x="" となり後続の `[ "$x" -gt 0 ]` が
+# rc=2 (偽) に倒れて、hard fail ゲート自体が無音で skip され JSON が書き込まれる — 塞いだはずの
+# fail-open をゲートの内部で再生産する形になる (実測で確認済み)。
+if ! stats_tsv=$(printf '%s\n' "$result" | jq -r '
+  [ .stats.blocking, .stats.demoted, .stats.non_blocking_total,
+    .stats.anchor_unparseable, .stats.runtime_obs_without_anchor,
+    .stats.scope_unknown, .stats.scope_defaulted, .stats.verification_conflict,
+    .stats.assessment ] | @tsv' 2>"${diag_file:-/dev/null}"); then
+  _fail stats_read_failed "ゲート統計の読み出し jq が失敗しました"
+fi
+IFS=$'\t' read -r blocking demoted non_blocking_total anchor_unparseable \
+  runtime_obs_without_anchor scope_unknown scope_defaulted verification_conflict assessment \
+  <<< "$stats_tsv"
+for _stat_name in blocking demoted non_blocking_total anchor_unparseable \
+  runtime_obs_without_anchor scope_unknown scope_defaulted verification_conflict; do
+  _stat_val="${!_stat_name-}"
+  case "$_stat_val" in
+    ''|*[!0-9]*) _fail stats_read_failed "ゲート統計 $_stat_name が数値ではありません: '$_stat_val'" ;;
   esac
-  printf '%s' "$_v"
-}
-
-scope_unknown=$(stat_of scope_unknown)
-verification_conflict=$(stat_of verification_conflict)
+done
+case "$assessment" in
+  mergeable|fix-needed) ;;
+  *) _fail stats_read_failed "ゲート統計 assessment が enum 外です: '$assessment'" ;;
+esac
 
 # caller 契約の強制は **書き換えより前** に評価する — 迂回された分類を含む JSON を
 # 一度でも書いてしまうと、caller が停止しても後段 (6.1.a 保存 / 6.1.b Raw JSON) が
@@ -367,16 +378,7 @@ if ! mv "$out_tmp" "$input" 2>"${diag_file:-/dev/null}"; then
 fi
 out_tmp=""
 
-blocking=$(stat_of blocking)
-demoted=$(stat_of demoted)
-non_blocking_total=$(stat_of non_blocking_total)
-anchor_unparseable=$(stat_of anchor_unparseable)
-runtime_obs_without_anchor=$(stat_of runtime_obs_without_anchor)
-scope_defaulted=$(stat_of scope_defaulted)
-# assessment のみ非数値 (mergeable / fix-needed) のため stat_of の numeric gate を通さない
-if ! assessment=$(printf '%s\n' "$result" | jq -r '.stats.assessment' 2>"${diag_file:-/dev/null}"); then
-  _fail stats_read_failed "ゲート統計 .stats.assessment の読み出しに失敗しました"
-fi
+# 以降で使う統計値はすべて書き換え前の一括読み出し + 検証済み (上記 stats_tsv)。
 
 # アンカー文字列があるのに正規形で書けていない finding は silent に降格させない
 # (アンカー文字列そのものが無い正常系 = 非実測指摘 では WARNING を出さない — 形式違反と

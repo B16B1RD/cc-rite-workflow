@@ -472,6 +472,35 @@ if grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=1' <<<"$GATE_STDERR"; then
   pass "measured:false の preset を持つ形式崩れアンカーも anchor_unparseable に計上する (検出層の穴を塞ぐ)"
 else fail "preset 持ちが anchor_unparseable から漏れる (silent 降格の穴)"; fi
 
+# ---------------------------------------------------------------------------
+# TC-08e: hard fail ゲートが「サブシェルで exit して素通り」しないこと
+#
+# stats 読み出しを `x=$(stat_of ...)` の形で書くと、内部の exit がコマンド置換の
+# サブシェルだけを終わらせ script は続行する。x="" となり後続の `[ "$x" -gt 0 ]` が
+# rc=2 (偽) に倒れて hard fail ゲート自体が無音で skip され、JSON が書き込まれる。
+# 実際に一度この形で入り込んだため、統計が読めない状況を helper の変異で作って
+# **停止すること + 入力が不変であること**を機械的に固定する。
+# ---------------------------------------------------------------------------
+echo "--- TC-08e: 統計読み出し失敗時の fail-closed ---"
+mut_gate="$TEST_DIR/mutated-gate.sh"
+sed 's/^      scope_unknown: (\[\$orig\[\] | select(scope_known | not)\] | length),$//' "$TARGET" > "$mut_gate"
+if ! cmp -s "$mut_gate" "$TARGET"; then
+  pass "変異 helper の生成に成功 (scope_unknown 統計を除去)"
+  f="$TEST_DIR/tc08e.json"
+  mk_json "$f" "$(mk_finding F-01 CRITICAL current-pr 'x<br>Verification: repro bash a.sh => boom')"
+  cp "$f" "$f.orig"
+  mut_stderr=$(bash "$mut_gate" --input "$f" --reject-preset-verification 2>&1 >/dev/null)
+  mut_rc=$?
+  if [ "$mut_rc" -eq 1 ] && grep -q 'reason=stats_read_failed' <<<"$mut_stderr"; then
+    pass "統計が読めないとき exit 1 + reason=stats_read_failed (サブシェル exit で素通りしない)"
+  else fail "統計読み出し失敗が fail-closed にならない: rc=$mut_rc / $(head -2 <<<"$mut_stderr")"; fi
+  if cmp -s "$f" "$f.orig"; then
+    pass "統計読み出し失敗時は JSON を書き換えない"
+  else fail "統計読み出し失敗なのに JSON が書き換わった (fail-open)"; fi
+else
+  fail "変異 helper の生成に失敗 (stats の書式が想定と異なる)"
+fi
+
 # scope 欠落の補完を無通知にしない
 f="$TEST_DIR/tc08d-scopedefault.json"
 cat > "$f" <<'EOF'
