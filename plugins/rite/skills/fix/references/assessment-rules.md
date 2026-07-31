@@ -109,9 +109,9 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 **WARNING emit (AC-5 主経路)**: **gate 対象 scope (`current-pr` / `follow-up`) の finding のうち、`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て**を、正常系 (アンカー文字列そのものが無い = 非実測指摘) とは区別して stderr に WARNING で報告する。発火条件を「`=>` 右辺空」だけに絞ってはならない — **raw `|` を含む repro も、アンカー直前の境界を欠いた repro も no-match で降格される**ため、絞ると「実測済みの指摘が無音で non-blocking に落ちる」という silent failure が検出層自身に残る (本リポジトリは bash/jq 中心で repro にパイプが入るのが常態)。
 
-母集団を gate 対象 scope に限るのは、`nit-noted` が `gated` 偽で**降格され得ない**ため。含めると「降格していないものを降格と申告する」ことになり、その件数を入力に持つ下記 `all_demoted_on_anchor` の hard fail が、分類上まったく正常な run で誤発火する。
+母集団を gate 対象 scope に限るのは、`nit-noted` が `gated` 偽で**降格され得ない**ため。含めると「降格していないものを降格と申告する」ことになり、WARNING の件数が実際の降格件数と食い違う。
 
-**全件形式崩れの hard fail**: 上記 WARNING 対象が blocking 候補の**全件**を占め、その結果 `assessment` が mergeable へ反転した場合 — 判定式は `blocking == 0 ∧ anchor_unparseable > 0 ∧ demoted == anchor_unparseable` — helper は JSON を書かずに `reason=all_demoted_on_anchor` で非ゼロ終了する。「本来 blocking だったものが書式ミスだけで mergeable になる」形は caller が JSON を作り直せば同 cycle 内で収束する契約違反であり、**判定を caller 側の散文 routing に置くと Issue #2072 が排除対象にした「LLM が読んで止める」依存が強制層の中に戻る**ため helper 側に置く。アンカー文字列そのものが無い正常系 (`anchor_unparseable == 0`) は該当しない。
+**集約的な hard fail は持たない**: 「blocking 候補が全件形式崩れなら停止する」形の hard fail は一度導入したが撤去した。判定に使える量 (`anchor_unparseable`) は stage 1 の意図的に緩い存在判定に由来し、上記トレードオフのとおり散文中の `Verification:` を拾う。その件数を停止条件へ昇格させると、(a) 正常な指摘集合で停止する誤発火と、(b) 形式崩れ以外の降格が混ざったときに素通りする見逃しを同時に持ち、条件をどちらへ寄せても片方が残る。**本筋の是正は「形式崩れアンカーを `measured=false` ではなく未判定 (= blocking のまま) として扱う」という per-finding の変更**だが、これは 3 値モデル (severity-levels.md §適用範囲) への設計変更なので別 Issue で扱う。現状は WARNING + `MEASURED_DEMOTED_ON_ANCHOR` marker による可視化に留める。
 
 判定は 2 段で機械的に書ける:
 

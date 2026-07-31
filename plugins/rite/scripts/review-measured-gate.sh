@@ -103,13 +103,6 @@
 #                                 (exit 1、書き換えはしない)。帰結は enum 違反と同一 (default mapping に
 #                                 倒れた LOW / LOW-MEDIUM が gated から外れる) ため扱いを揃える。
 #                                 フラグなしの互換モードでは WARNING + default で続行する
-#   all_demoted_on_anchor       — --reject-preset-verification 指定下で、blocking 候補の**全件**が
-#                                 アンカー形式崩れで降格し assessment が mergeable へ反転した
-#                                 (exit 1、書き換えはしない)。判定は
-#                                 `blocking == 0 ∧ anchor_unparseable > 0 ∧ demoted == anchor_unparseable`。
-#                                 **判定を helper 側に置くのは意図的** — caller 側の散文 routing に
-#                                 置くと Issue #2072 が排除対象にした「LLM が読んで止める」依存が
-#                                 強制層の中に残る
 #   verification_preset_by_caller — --reject-preset-verification 指定下で、description のアンカー有無と
 #                                  矛盾する既存 verification.measured を検出 (exit 1、書き換えはしない)
 #   mktemp_failure              — 出力 tempfile の mktemp 失敗 (exit 1)
@@ -119,8 +112,7 @@
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
 # emit reasons sequence = (`jq_missing` / `input_missing` / `input_unreadable` / `json_invalid` /
 #   `findings_not_array` / `non_blocking_not_array` / `jq_transform_failed` / `stats_read_failed` /
-#   `scope_enum_violation` / `scope_missing` / `all_demoted_on_anchor` /
-#   `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure`)
+#   `scope_enum_violation` / `scope_missing` / `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure`)
 # `signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する
 # (hooks/review-nonblocking-record.sh と同じ慣行)。reason 表には下記のとおり載せる。
 #   signal_aborted              — INT / TERM / HUP で中断 (rc= / signal= を併記)。marker ゼロで
@@ -327,8 +319,8 @@ def with_verification:
       # (docstring が「silent 降格の唯一の検出層」と称する層の穴)。
       #
       # **母集団は gate 対象 scope に限る**。nit-noted は `gated` が偽で降格され得ないため、
-      # 含めると「降格していないものを降格と申告する」ことになり、その count を入力に持つ
-      # all_demoted_on_anchor の hard fail が、分類上まったく正常な run で誤発火する。
+      # 含めると「降格していないものを降格と申告する」ことになり、WARNING の件数が
+      # 実際の降格件数と食い違う。
       anchor_unparseable: (
         [$orig[] | select(gated and marker_present and (anchored | not))] | length
       ),
@@ -415,18 +407,6 @@ fi
 if [ "$reject_preset" -eq 1 ] && [ "$scope_defaulted" -gt 0 ]; then
   echo "ERROR: findings[].scope を持たない finding が ${scope_defaulted} 件あります。severity ベースの default mapping に倒れると、reviewer が current-pr を割り当てた LOW / LOW-MEDIUM が blocking から脱落します (enum 違反と同じ帰結)" >&2
   _fail scope_missing "scope 欠落のため、ゲートを適用せず停止しました: $input"
-fi
-
-# **全 blocking 候補がアンカー形式崩れで降格した** ケースは caller 契約違反として停止する。
-# `demoted == anchor_unparseable` は「降格した finding が全て形式崩れ由来」を意味し、
-# `blocking == 0` と合わせて「本来 blocking だったものが書式ミスだけで mergeable へ反転した」
-# 形を一意に指す (アンカー文字列そのものが無い正常系は anchor_unparseable=0 なので該当しない)。
-# **判定を helper 側に置くのは意図的** — caller 側の散文 routing に置くと、Issue #2072 が
-# 排除対象にした「LLM が読んで止める」依存が強制層の中に残る。
-if [ "$reject_preset" -eq 1 ] && [ "$blocking" -eq 0 ] && [ "$anchor_unparseable" -gt 0 ] \
-   && [ "$demoted" -eq "$anchor_unparseable" ]; then
-  echo "ERROR: blocking 候補 ${demoted} 件すべてが Verification: アンカーの形式崩れで降格し、assessment が mergeable へ反転しました。アンカーの直前は行頭・改行タグ・空白のいずれかにし、repro 本文に raw pipe と改行タグを含めないでください (パイプは ¦ で代替表記)" >&2
-  _fail all_demoted_on_anchor "全 blocking 候補が形式崩れアンカーで降格したため、ゲートを適用せず停止しました: $input"
 fi
 
 if [ "$reject_preset" -eq 1 ] && [ "$verification_conflict" -gt 0 ]; then
