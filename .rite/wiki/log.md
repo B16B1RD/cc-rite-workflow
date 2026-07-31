@@ -20,6 +20,7 @@
 * **Update**: [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) — PR #2070 / #2074 の raw source 4 件を統合（OR 短絡・SoT regex の自前コピー・部分一致 glob・chmod 対象の取り違えなど「書いてあるが落ちない」7 形 / self-censorship 禁止と水増し禁止は対で書く / sed 変異は silent に失敗しうるため適用を確認してから回す）
 * **Update**: [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) — PR #2070 の raw source 1 件を統合（ガードに到達しない 3 経路 / 除外規則の適用位置が意味を変える / 上流ガードと同一 regex の下流再判定は到達不能）
 * **Update**: [`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort](pages/anti-patterns/grep-oe-wc-pipefail-silent-abort.md) — PR #2066 の raw source 1 件を統合（終端 grep -c が「0 件」と「検出器の破損」を畳む / cd "" は rc=0 を返す / 同じ exit code を返す gate が複数あると exit code だけの assert は当の gate を pin しない）
+* **lint:warning** — contradictions=0, stale=1, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-07-31
 
