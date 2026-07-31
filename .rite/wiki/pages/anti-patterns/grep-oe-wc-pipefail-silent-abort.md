@@ -115,11 +115,11 @@ line=$({ printf '%s\n' "$OUT" | grep -F "$needle" || true; } | tail -1)
 - [Mutation Testing Test Fidelity](../patterns/mutation-testing-test-fidelity.md)
 - [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](./bare-statement-under-set-e-dead-code-rc-branch.md)
 
-## 追記: 終端 `grep -c` は「0 件」と「検出器の破損」を畳む（PR #2066）
+## 追記: 終端 `grep -c` は「0 件」と「検出器の破損」を畳む
 
-`grep -c` を pipeline の終端に置くと、no-match で rc=1 を返すため pipeline の rc では「0 件」と「途中の異常終了」が区別できない。PR #2066 では結果として、**検出器そのものが壊れたときだけが「実測済みの 0 件」として未実測ゲートをすり抜けた**。計数を同じ awk 内に閉じると rc が意味を持つ。「0 件が実体を反映しているか」を surface する enum を設けるなら、検出器自身の破損もその enum に載る形にする。
+`grep -c` を pipeline の終端に置くと、no-match で rc=1 を返すため pipeline の rc では「0 件」と「途中の異常終了」が区別できない。説明的番号参照の検出範囲を広げた作業では結果として、**検出器そのものが壊れたときだけが「実測済みの 0 件」として未実測ゲートをすり抜けた**。計数を同じ awk 内に閉じると rc が意味を持つ。「0 件が実体を反映しているか」を surface する enum を設けるなら、検出器自身の破損もその enum に載る形にする。
 
-同 PR で観測された姉妹形が 2 つある。**`cd ""` は rc=0 を返す** — sandbox 生成の rc を検査していないと、失敗時に空文字列が返り `cd "$SBX" || exit 1` のガードが素通りし、以降の相対パス操作（`git add -A` / `commit` / `rm -f`）がテストプロセスの cwd = リポジトリに対して走る。command substitution で作ったパスは、使う前に rc または非空を検査する。そして**同じ exit code を返す gate が複数あると、exit code だけの assert は当の gate を pin しない** — placeholder residue gate を削除しても後段の別 gate が同じ exit 1 を返すため、テストは緑のまま通った。gate を pin するなら、その gate 固有の診断 marker まで assert する。
+同じ作業で観測された姉妹形が 2 つある。**`cd ""` は rc=0 を返す** — sandbox 生成の rc を検査していないと、失敗時に空文字列が返り `cd "$SBX" || exit 1` のガードが素通りし、以降の相対パス操作（`git add -A` / `commit` / `rm -f`）がテストプロセスの cwd = リポジトリに対して走る。command substitution で作ったパスは、使う前に rc または非空を検査する。そして**同じ exit code を返す gate が複数あると、exit code だけの assert は当の gate を pin しない** — placeholder residue gate を削除しても後段の別 gate が同じ exit 1 を返すため、テストは緑のまま通った。gate を pin するなら、その gate 固有の診断 marker まで assert する。
 
 ## ソース
 

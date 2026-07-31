@@ -4,12 +4,16 @@ title: "却下理由が採用案にも等しく当てはまる — differentiato
 domain: "anti-patterns"
 description: "「A を却下して B を採用した」とコメントに書くとき、却下理由が B にも成立するなら、それは differentiator ではない。PR #2013 では `| tee` の却下理由（背景プロセスが残るとパイプが EOF を待つ）が採用した `$(...)` にもそのまま当てはまり、実測すると変更前の direct 継承だけが唯一ハングしない形だった。誤った安心を与えるコメントは、将来の停止調査を逆方向へ誘導する。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
+updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T024207Z-pr-2013.md"
   - type: "fixes"
     ref: "raw/fixes/20260725T025323Z-pr-2013.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260731T072309Z-pr-2070.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260731T073514Z-pr-2070.md"
 tags: ["rationale", "comment-drift", "design-decision", "empirical-verification"]
 confidence: high
 ---
@@ -57,13 +61,25 @@ confidence: high
 
 設計判断コメントをレビューするときは、却下理由を 1 つずつ採用案に当てはめてみる。当てはまる可能性があるなら実測する — この例では 3 方式の経過秒数を計測するだけで判明した。
 
+### 第 2 の現れ方: 採用案が却下案と同じ理由で機能しない
+
+誤誘導コメントが残るだけでなく、**採用案そのものが却下理由によって無効化される**形もある。検出失敗ガードの設計で「配布テンプレートの前文が 1 件 parse されるため『全行 skip』条件は構造的に発火しない」と正しく気づいて当該条件を棄却したのに、代わりに採用した `entries == 0` も同じ前文行によって恒久的に無効化されていた。棄却の記述が残っていると読み手には「検討済み」に見えるため、レビューでも見落とされやすい。**棄却理由を書き終えた直後に、同じ理由を採用案へ当てて再検査する。**
+
+同じ判断で姉妹形の失敗も起きる。**「無害な除外」を足すときは、その除外が実データで何件落とすかを必ず実測する** — HTML コメント skip を既存 helper の 2 行パターンからそのまま写したところ、サマリー本文中に `<!-- -->` を引用している実エントリ行まで落ち、実 wiki の hits が 230 → 228 に減った。開始側に行頭 anchor を付けて解決している。「コメントを落とす」と「コメントに言及している行を落とす」は別物である。写経元にも同じ盲点があったが、そちらは別形式しか読まないため露見していなかった。**パターンを流用するときは、流用元でその盲点が露見していない理由を確かめる。**
+
+Decision Log に棄却理由を残す場合も同様で、Decision Log の断定自体が実測で裏取りする対象である（起点事例の後続 PR では、裁定の根拠となった Decision Log の記述に誤りがあり、reviewer が実コードで裏取りして訂正した）。
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](./prose-design-without-backing-implementation.md)
 - [Fix 修正コメント自身が canonical convention を破る self-drift](./fix-comment-self-drift.md)
 - [新設した検証機構が、その機構自身の目的を局所的に打ち消す](./self-defeating-guard-local-purpose-negation.md)
+- [ガードの precondition に代理値を使うと、守るべき経路でだけ無効化される](./guard-precondition-proxy-value-silent-where-needed.md)
+- [全滅形だけを想定したガード条件は部分欠損形を必ず取り逃す](./total-failure-only-guard-misses-partial-loss.md)
 
 ## ソース
 
 - [PR #2013 review cycle 2 — 却下理由が採用案にも当てはまる（3 レビュアーが独立検出）](../../raw/reviews/20260725T024207Z-pr-2013.md)
 - [PR #2013 fix results (cycle 2) — 3 方式の経過秒数を実測して理由を差し替え](../../raw/fixes/20260725T025323Z-pr-2013.md)
+- [PR #2070 review results (cycle 2) — 棄却理由が採用条件にも当てはまりガードが発火不能だった](../../raw/reviews/20260731T072309Z-pr-2070.md)
+- [PR #2070 fix results (cycle 2) — 無害な除外の実データ実測で hits が 230→228 に動いた](../../raw/fixes/20260731T073514Z-pr-2070.md)
