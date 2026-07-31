@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T18:02:13+09:00",
+  "commit_sha": "b3d9e9f7c49a26542cdf8f13291fd8b81e4588c8",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "error-handling-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": ".rite/wiki/index.md を 未閉鎖 sources: ブロック + 字下げ `  * [a](pages/patterns/a.md) - 詳細は #1151` にして bash wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root $SBX </dev/null => descriptive_refs_read_errors=0 / descriptive_refs_read_ok=true / WIKI_DESCRIPTIVE_REFS=0、WARNING 出力なし。同様に pages 側の未閉鎖フェンスページも read_errors=0 / read_ok=true / hits=0 で無音",
+        "failing_test": null
+      },
+      "file": "docs/SPEC.md",
+      "line": 1323,
+      "description": "cycle 4 で追記した「除外ブロックが未閉鎖のまま EOF に達した場合は検出失敗として descriptive_refs_read_errors に載せる」が一般化されすぎている。実装の END 検査 (wiki-lint-descriptive-refs.sh:434) は in_comment / infence の 2 ラッチ限定で、(a) 同じ文が直前で除外対象として列挙している frontmatter sources: ブロックと `## ソース` 節は検査対象外、(b) `index.md` へのスコープも付いていないため pages/** にも効くと読めるが、pages 側の END は `print n+0` のみで未閉鎖フェンス以降が無言で落ちる。どちらも本 helper が塞ぐ対象の silent-0 そのものが、散文上は塞がれたことになっている。同一 PR 内の wiki-lint/SKILL.md:1076 (分岐表) は「（HTML コメント / コードフェンス）」と正しく限定しており in-repo の先例が既に存在する。【クロスバリデーション】error-handling / tech-writer が独立に同一 file:line を検出 (High Confidence)。Likelihood-Evidence: new_call_site docs/SPEC.md:1323 (本 PR diff の + 行で追加)",
+      "suggestion": "SKILL.md:1076 と同じ限定語へ揃える。「**`index.md` の** HTML コメントブロック / コードフェンスが未閉鎖のまま EOF に達した場合」へ書き換える。合わせて「frontmatter sources: ブロックと `## ソース` 節はラッチ検査の対象外（producer 不在のため意図的に据え置き）」の 1 文を descriptive-refs-rationale.md へ追記し、見送り根拠を in-repo に固定する。",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "prompt_quality",
+      "severity": "LOW-MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "printf '' ¦ bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root FIX (FIX/.rite/wiki/index.md = 未閉鎖の `## ソース` 見出しの後ろに hits を持つエントリ行 2 件) => descriptive_refs_read_errors=0 / descriptive_refs_read_ok=true / WIKI_DESCRIPTIVE_REFS=0 かつ stderr WARNING 皆無。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 668,
+      "description": "descriptive_refs_read_ok enum 段落が「除外ブロックが未閉鎖のまま EOF に達した場合は『検出失敗』として本カウンタに載る」と無限定に書いているが、helper の END 検査は in_comment / infence の 2 ラッチのみ。同ステップ :624 の除外列挙は frontmatter sources: ブロックと `## ソース` 節も含み、この 2 つは EOF まで latch したままでも検査されない。実エントリを未閉鎖 `## ソース` 節の後ろに置いた index.md は全行が本文フィルタで落ち、entries=0 / linkrows=0 となって「まだ登録が無いカタログ」経路へ合流し stderr 無言で 0 件が実測済みとして通る。分岐表側も :1077 が「除外ブロックが**すべて**閉じている」を静音 0 の条件としているため、この状態に該当する行が 1 つも無い（カバレッジ欠落）。見送り判断（insrc / infm+insrcblk を意図的に対象外とする）はどのファイルにも記録がなく、次 cycle で同じ指摘が再生成される。Likelihood-Evidence: entrypoint_connection plugins/rite/skills/wiki-lint/SKILL.md ステップ 7.5 enum 段落 → hooks/scripts/wiki-lint-descriptive-refs.sh:434 END 検査",
+      "suggestion": ":668 の「除外ブロックが未閉鎖のまま EOF」を :1076 と同じ粒度（HTML コメント / コードフェンス）へ揃え、:1077 の「除外ブロックがすべて閉じている」も同じ 2 種へ限定する。あわせて descriptive-refs-rationale.md#entries-zero-guard に見送り判断を 1 行記録する。",
+      "status": "open"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "sed -n '1635p;1644p' docs/SPEC.md => \"is stored as an OKF v0.1-conformant structure\" と \"Producing the conformant structure is the responsibility of /rite:wiki-init and /rite:wiki-ingest\" を出力。同節 L1640 の \"ingest keeps appending table rows to it\" と併存",
+        "failing_test": null
+      },
+      "file": "docs/SPEC.md",
+      "line": 1635,
+      "description": "cycle 4 が L1640 のセルを「カタログ形式は real gap、ingest はテーブル行を追記し続けている」と是正した結果、同じ節の導入文 L1635「The .rite/wiki/ bundle is stored as an OKF v0.1-conformant structure …」と締めの L1644「Producing the conformant structure is the responsibility of /rite:wiki-init and /rite:wiki-ingest」が同節内で正面から矛盾する状態になった。OKF §9 rule 3 により index.md が §6 構造に従わない live bundle は non-conformant であり、L1635 / L1644 は live 実体について偽。L1644 に従って visualizer を配線しようとする読者は、テーブル形式の index が読めない状態に突き当たる（L1640 自身が wiki-query Pass 1 で同じ失敗を報告している）。是正が 1 セルに留まったことによる節内 drift。Likelihood-Evidence: new_call_site docs/SPEC.md:1640 (本 PR diff の + 行で追加され、L1635 / L1644 が未追随になった)",
+      "suggestion": "2 文に限定句を足す。L1635 に「except for the index catalog form (see the index.md row below)」、L1644 に「(the index catalog form is a known deviation — see the index.md row)」。節の再構成は不要。",
+      "status": "open"
+    },
+    {
+      "id": "F-04",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "git show 32488e06 -- .rite/wiki/index.md => index.md への追記が 5 列テーブル行であり OKF 箇条書きではないことを確認（producer 責務注記の「wiki-ingest が上表の構造を書き込む」と不一致）",
+        "failing_test": null
+      },
+      "file": "plugins/rite/references/wiki-patterns.md",
+      "line": 249,
+      "description": "docs/SPEC.md:1644 が読者を誘導する先の wiki-patterns.md で、OKF 準拠表直下の producer 責務注記「上表の frontmatter / 構造はすべて /rite:wiki-init（テンプレート展開）と /rite:wiki-ingest（ページ生成・更新）が producer として書き込む」が、本 PR が SPEC.md:1640 で是正した内容と矛盾したまま残っている。/rite:wiki-ingest は index.md のカタログ形式について OKF 箇条書きを produce していない（実体は 5 列テーブル行の追記）。SPEC.md が「visualizer 配線手順は wiki-patterns.md を参照」と明示的に転送するため、読者は是正済みの SPEC.md から未是正の記述へ流れ込む。同表 244 行の index.md 行は実装 SoT 列が templates/wiki/index-template.md でありテンプレートの記述としては真なので対象外。Likelihood-Evidence: new_call_site docs/SPEC.md:1640 (本 PR diff の + 行で SPEC 側のみ是正され、同一主張を持つ wiki-patterns.md:249 が未追随になった)",
+      "suggestion": "注記に 1 句を足す。「（ただし index.md のカタログ形式は現在テーブル形式で追記されており、上表の箇条書きは未達 — docs/SPEC.md の OKF v0.1 Conformance 節の index.md 行を参照）」。表 244 行は SoT がテンプレートのため変更不要。",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": []
+}

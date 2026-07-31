@@ -201,7 +201,7 @@ Verification: failing_test <テストパス> => <失敗出力>
 **Rules**:
 
 - **アンカーの有無は、指摘を報告してよいかどうかを変えない。** 実測できない懸念も、3 ゲートを満たすなら従来どおり報告する。ただし**アンカー無しの指摘は merge を止めない** (non-blocking として記録される (永続 JSON の `non_blocking_findings[]` / ステップ 6.1.d の PR 記録コメント / ステップ 5.4 統合レポートの「実測なし指摘」section)、人間レビューに委ねられる)。実測できるなら必ずアンカーを添えること。
-- **アンカーは判定入力として消費される。** `/rite:pr-review` ステップ 5.3.0.M が reviewer 出力 (統合レポートの `内容` 列) のアンカーを直接読み、blocking / non-blocking を分類する。`findings[].verification` へ写す JSON 配線は現時点の `pr-review.md` ステップ 6.1.a に存在しないため、レビュー結果 JSON にはまだ `measured` / `repro` / `failing_test` として保存されない (配線は後続スコープ)。
+- **アンカーは判定入力として消費される。** `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、reviewer 出力を写したレビュー結果 JSON の `findings[].description` からアンカーを機械的に読み、`findings[].verification` (`measured` / `repro` / `failing_test`) を設定した上で blocking / non-blocking を分類する (Issue #2072 で配線完了)。したがって **アンカーは `内容` 列に書いた形のまま `description` へ引き継ぐ必要がある** — 要約・整形・装飾を加えると helper が検出できず、実測済みの指摘が non-blocking へ降格する。これは検出層が満たせない要件で、reviewer と統合ステップ側の責務として残る (降格自体は fail-safe に倒れるが、形式崩れは `MEASURED_DEMOTED_ON_ANCHOR` の WARNING で必ず可視化される)。
 - `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われ、**non-blocking に分類される** (報告してはならないという意味ではない — 上記のとおり掲載可否は変わらない)。
 - `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は掲載可否 (Observed Likelihood Gate) を担い、`Verification:` は実測の記録を担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` の形式でも添付すること (両方を書く)。
 - 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。

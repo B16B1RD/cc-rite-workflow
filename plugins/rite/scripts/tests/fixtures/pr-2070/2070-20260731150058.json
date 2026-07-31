@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T15:00:58+09:00",
+  "commit_sha": "056720f5bc5a62ad60f27e6bd899a5861df41782",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "prompt_quality",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "printf '(なし)\\n' ¦ bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy separate_branch --wiki-branch wiki => rc=1 partial pollution 検出 ERROR (¦ は raw pipe の表記代替)"
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 641,
+      "description": "本 PR は「pages_list が両方空でもステップ 7.5 を実行する」を新たに保証した (SKILL.md:273 / :627 とも + 行) が、その 7.5 の {pages_list} substitute 契約は「ステップ 4 / 5 / 6.2 と同一」と委譲するだけで、兄弟が明記している「空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate」の一文を持たない。ステップ 4 (:335) とステップ 6.2 (:505) はどちらもこの一文を持つが、両者は list が空なら skip される側で、空 HEREDOC を実際に渡す経路が本 PR で保証されたのは 7.5 だけ。空の指示が無い状態で LLM が「0 件」等のリテラルを埋めると partial pollution gate が exit 1 を返し、設計契約「原則 exit 0」(:21) の非ブロッキング保証が崩れる。Likelihood-Evidence: entrypoint_connection plugins/rite/skills/wiki-lint/SKILL.md:273 (両方空 → 7.5 実行) から :663 の {pages_list} HEREDOC へ。",
+      "suggestion": ":641 の末尾に兄弟と同じ一文を足す。例: 「pages_list が空の場合は HEREDOC 本文を空のまま substitute する (空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると partial pollution gate が exit 1 する)」",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "git show wiki:.rite/wiki/index.md ¦ awk '/^[[:space:]]*[*-][[:space:]]+\\[/ { n++ } END { print \"candidates=\" n+0 }' => candidates=0 (¦ は raw pipe の表記代替。live table-form index で Pass 1 の候補抽出が 0 件。同入力のテーブル形式エントリ行は 310 行)"
+      },
+      "file": "docs/SPEC.md",
+      "line": 1640,
+      "description": "追加された規範文「consumers that parse entries must accept both per line」に対し、既存 consumer である plugins/rite/hooks/wiki-query-inject.sh:349 の Pass 1 は bullet 専用パターンで行を拾うため、live wiki ブランチの 5 列テーブル形式 index では候補 0 件になる。しかも本 PR が同時に追加した plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md:40 は「現行のテーブル形式 index では Pass 1 が候補を抽出しない」と例外の存在を明記しており、同一 PR 内の 2 つの + 行が矛盾している。SPEC.md は構造仕様の最上位ドキュメントであるため、読み手は「全 consumer が両形式に対応済み」と誤読し、この PR が塞ごうとしている「無言の 0 件」と同型の盲点を別レイヤに残す。tech-writer も同一箇所を独立に検出しており (推奨事項として)、討論フェーズで同一の修正案に合意した上で高い方の disposition (current-pr) を採用した。Likelihood-Evidence: existing_call_site plugins/rite/hooks/wiki-query-inject.sh:349。",
+      "suggestion": "規範文に既知の例外を併記する。例: 「consumers that parse entries must accept both per line — wiki-query-inject.sh Pass 1 は現時点で bullets のみを受理し table-form index では候補 0 件になる既知の例外 (skills/wiki-lint/references/descriptive-refs-rationale.md#scan-scope 参照)」",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "F-04",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": false
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 510,
+      "description": "Decision Log D-07 が「行単位で形式を判別して移行途中の混在にも耐える」と宣言しているが、テーブル行と箇条書き行が同一 index.md に混在する fixture が 1 本も無い (TC-27/28 はテーブル専用、TC-30/39/40/43/45/47 は箇条書き専用)。混在は仮定の状態ではなく移行中に必ず通る既定状態である — 現行 wiki ブランチの index はテーブル形式 (実測 310 エントリ行 / bullet 0 行)、templates/wiki/index-template.md と wiki-ingest ステップ 6 が生成するのは箇条書きで、行単位判別はまさにその窓のために入れられた。行単位判別を「一度テーブルヘッダーを見たら以降そのファイルは全てテーブル扱い」へ弱める変異は、既存 144 assert を 1 つも落とさずに生き残る。本 PR が塞ごうとした「無言で 0 件へ倒れる」盲点が D-07 経路にだけ再導入されうる。Likelihood-Evidence: new_call_site plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh:374 (本 PR で追加した行単位分岐)。【measured=false 降格理由】reviewer が添付した Verification アンカーの repro 内に raw pipe が含まれており、実測必須ゲートの Anchor detection regex に full match しなかった (MEASURED_DEMOTED_ON_ANCHOR)。reviewer 自身は変異注入で baseline hits=2 / skipped_rows=0 に対し mutant hits=1 / skipped_rows=2 の縮退を観測しつつ 144 PASS が維持されることを実測済みと報告している。",
+      "suggestion": "TC-30 の直後に混在 fixture を 1 本追加し絶対値で pin する。テーブル 1 行 + 箇条書き 2 行を持つ index.md に対し WIKI_DESCRIPTIVE_REFS=2 と descriptive_refs_skipped_rows=0 の 2 本を assert すれば、行単位判別を弱める変異が kill される。あわせて Verification アンカーの repro に含まれる raw pipe を ¦ (U+00A6) へ置換すれば次 cycle で blocking として扱われる。",
+      "status": "open"
+    }
+  ]
+}
