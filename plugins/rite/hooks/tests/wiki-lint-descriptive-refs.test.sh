@@ -55,6 +55,7 @@
 #   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
 #   TC-19c separate_branch (既定) でも index.md 不在は read_errors に数えない (#2069 T-06)
 #   TC-50  index-template.md 前文 (記法例コメント) を entries に数えず、検出失敗ガードを殺さない
+#   TC-51  除外ブロック (コメント / フェンス) の未閉鎖を END で検出失敗へ倒す (部分欠損形も含む)
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
@@ -836,6 +837,71 @@ assert "TC-50 記法例コメントのサマリーは hits に数えない (本�
 printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [t](pages/patterns/a.md) | x | `<!-- c -->` 挿入は PR #792 で禁忌と判明 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
 quoted_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 assert "TC-50 サマリーが <!-- --> を引用する実エントリ行は落とさない" "1" "$(printf '%s' "$quoted_out" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"
+
+# TC-51: 除外ブロック (HTML コメント / コードフェンス) が閉じないまま EOF に達すると、ラッチが
+# 立ったまま以降の全行が落ちる。この状態は entries / linkrows / skipped のどれにも現れないため、
+# END で検査しないと「実在する参照が丸ごと落ちたのに 0 件 (実測済み)」で通る。
+# **判定を `entries == 0` にしてはならない** — 形状 (c) はエントリを 1 件数えた後にラッチが立つため
+# entries >= 1 になり、entries を条件にした実装では取り逃す。この 3 形状 + 対照で、
+# 「ラッチ変数自身を見る実装」と「entries を見る実装」を識別する。
+unc_err="$IDXSBX/unc.err"; tmp_files+=("$unc_err")
+unc_run() { printf '%s' "$1" > "$IDXSBX/.rite/wiki/index.md"; printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$unc_err"; }
+
+# (a) 未閉鎖 <!-- が全エントリより前 → 全滅形
+unc_a=$(unc_run '# Wiki Index
+
+<!-- 廃止メモ
+
+* [A](pages/patterns/a.md) - 詳細は #1151
+* [B](pages/patterns/b.md) - PR #1300 で確立
+')
+assert "TC-51 (a) 未閉鎖 HTML コメントは検出失敗として read_errors に計上する" "1" "$(printf '%s' "$unc_a" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert_grep "TC-51 (a) 未閉鎖は専用 WARNING で原因を名指しする" "$unc_err" 'HTML コメントが閉じられないままファイル終端'
+assert "TC-51 (a) 落ちた index.md 分は hits に混ぜない (本文側の 1 件のみ)" "1" "$(idx_hits "$unc_a")"
+
+# (b) 対照: 閉じていれば通常どおり数える (ラッチ検査が過剰発火していないこと)
+unc_b=$(unc_run '# Wiki Index
+
+<!-- 廃止メモ -->
+
+* [A](pages/patterns/a.md) - 詳細は #1151
+* [B](pages/patterns/b.md) - PR #1300 で確立
+')
+assert "TC-51 (b) 対照: 閉じたコメントなら index の 2 件を数える" "2" "$(printf '%s' "$unc_b" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"
+assert "TC-51 (b) 対照: read_errors は増えない" "0" "$(printf '%s' "$unc_b" | sed -n 's/^descriptive_refs_read_errors=//p')"
+
+# (c) 部分欠損: エントリ 1 件の後に未閉鎖 → entries>=1 のため entries 条件の実装は取り逃す
+unc_c=$(unc_run '# Wiki Index
+
+* [A](pages/patterns/a.md) - 詳細は #1151
+<!-- 廃止メモ
+* [B](pages/patterns/b.md) - PR #1300 で確立
+')
+assert "TC-51 (c) 部分欠損 (entries>=1) でも検出失敗として計上する" "1" "$(printf '%s' "$unc_c" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert "TC-51 (c) 部分的に数えた hits は実測済みとして計上しない" "1" "$(idx_hits "$unc_c")"
+
+# (d) 閉じ --> がコードフェンス内 → 本文フィルタに先に食われて解除行が状態機械に届かない
+unc_d=$(unc_run '# Wiki Index
+
+<!-- 廃止メモ
+```
+-->
+```
+
+* [A](pages/patterns/a.md) - 詳細は #1151
+')
+assert "TC-51 (d) 閉じ --> がフェンス内でも検出失敗として計上する" "1" "$(printf '%s' "$unc_d" | sed -n 's/^descriptive_refs_read_errors=//p')"
+
+# (e) 未閉鎖コードフェンス → 同じラッチ問題を別の除外ブロックで起こす
+unc_e=$(unc_run '# Wiki Index
+
+```
+未閉鎖フェンス
+
+* [A](pages/patterns/a.md) - 詳細は #1151
+')
+assert "TC-51 (e) 未閉鎖コードフェンスも検出失敗として計上する" "1" "$(printf '%s' "$unc_e" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert_grep "TC-51 (e) フェンス側は原因をフェンスと名指しする" "$unc_err" 'コードフェンスが閉じられないままファイル終端'
 
 # ---- TC-48: index.md 終端アクションの戻り値 arity (4 値) を pin する ---------
 # 終端アクションのフィールドを減らす変異は、フィールド数がずれたまま個別値の case サニタイザが

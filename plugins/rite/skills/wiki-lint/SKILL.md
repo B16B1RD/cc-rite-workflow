@@ -638,7 +638,7 @@ rationale: [references/descriptive-refs-rationale.md#pages-list-unchanged](refer
 
 **Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約）。
 
-`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。`pages_list` が空の場合は HEREDOC 本文を空のまま substitute する（空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると helper の partial pollution gate が exit 1 する）。本ステップは両 list が空でも実行されるため、空 HEREDOC を実際に渡す唯一のステップである。
+`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。`pages_list` が空の場合は HEREDOC 本文を空のまま substitute する（空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると helper の partial pollution gate が exit 1 する）。本ステップは**両 list が空の経路でも実行される唯一のステップ**であるため、ステップ 4 / 5 / 6.2 / 7 が skip される状況でも空 HEREDOC を渡す（`pages_list` 空・`raw_list` 非空の経路ではそれらのステップも実行され、同じく空 HEREDOC を受け取る — ステップ 4 / 6.2 の同旨の記述を参照）。
 
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
@@ -665,7 +665,7 @@ PAGES_LIST_EOF
 fi
 ```
 
-**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 対象ファイル以上の読出に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う（未受信を劣化値へ倒す点のみステップ 7 と同型。倒す先は異なる）。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は読み出せなかった対象ファイル数で、`read_ok=true` でも部分欠損があれば正の値を取る。`descriptive_refs_skipped_rows` は `index.md` 内でサマリーを抽出できなかった**行数**（ファイル単位ではない）。ステップ 9 完了レポートの note 展開はこの 3 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
+**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 対象ファイル以上の**読出と検出**に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う（未受信を劣化値へ倒す点のみステップ 7 と同型。倒す先は異なる）。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は**読出または検出できなかった**対象ファイル数で、`read_ok=true` でも部分欠損があれば正の値を取る（`index.md` を読み出せてもエントリ形式を認識できない / 除外ブロックが未閉鎖のまま EOF に達した場合は「検出失敗」として本カウンタに載る）。`descriptive_refs_skipped_rows` は `index.md` 内でサマリーを抽出できなかった**行数**（ファイル単位ではない）。ステップ 9 完了レポートの note 展開はこの 3 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
 
 **検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**で、もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録されステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。本ステップを転記すると 233 ページ分の検出詳細行（実測 736 hits）が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
 

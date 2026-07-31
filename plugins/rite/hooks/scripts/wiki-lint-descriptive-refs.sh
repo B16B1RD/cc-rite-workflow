@@ -55,9 +55,11 @@
 #   scanned   `.rite/wiki/index.md` — auto-discovered by this helper, not required on stdin.
 #             Only the per-entry summary is scanned (see `_RITE_INDEX_COUNT_ACTION`): the
 #             summary shares its source with the page frontmatter `description`. In OKF
-#             bullet form `/rite:wiki-query` Pass 1 also matches keywords against it (the
-#             current table-form index yields no Pass 1 candidates — that path takes effect
-#             after the format migration). Either way it is the surface a reader goes to for Why.
+#             bullet form `/rite:wiki-query` Pass 1 also matches keywords against it; the
+#             current table-form index yields no Pass 1 candidates, and ingest keeps
+#             appending table rows — so that is a standing non-conformance until Pass 1
+#             accepts tables, not a state a format migration clears on its own.
+#             Either way it is the surface a reader goes to for Why.
 #
 #   NOT scanned — each is a deliberate exclusion, not an unfinished area:
 #     `.rite/wiki/log.md`   append-only ingest / lint 台帳。SoT が commit message と
@@ -335,7 +337,9 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # エントリ行の判定は `](pages/...)` リンクの有無で行い、テーブル行と OKF 箇条書きの両方を **行単位**で
 # 受ける。現行の wiki ブランチは 5 列テーブルだが、`templates/wiki/index-template.md` と wiki-ingest
 # ステップ 6 が生成するのは箇条書き `* [title](pages/...) - desc` であり、テーブル専用にすると
-# 形式移行の時点で検出が無言で 0 件へ倒れる。ファイル単位で形式を判定しないのは移行途中の混在に耐えるため。
+# どちらか一方専用にすると、指示と実挙動の乖離が解消された時点、あるいはその過程で検出が無言で
+# 0 件へ倒れる。ファイル単位で形式を判定しないのは、混在が「起きうる」ではなく乖離が解消される
+# 過程で必ず通る状態だから。
 # リンクの regex は同じ index.md を読む `wiki-lint-orphans.sh` と同一定義にする (`./pages/` /
 # `../pages/` 形式も受ける)。片方だけ狭いと、その形式の index で本 helper だけが無言で 0 件に倒れる。
 #
@@ -419,6 +423,19 @@ in_comment { if (index($0, "-->") > 0) in_comment=0; next }
   if (summary ~ re) n++
 }
 END {
+  # 除外ブロック (HTML コメント / コードフェンス) が閉じないまま EOF に達した = ラッチが立ったまま
+  # 以降の全行を落としている。この状態は entries / linkrows / skipped のどれにも現れないため、
+  # 検査しないと「実在する参照が丸ごと落ちたのに 0 件 (実測済み)」で通る — 本 helper が塞ぐ対象の
+  # silent-0 そのものになる。**判定は `entries == 0` ではなくラッチ変数自身で行う**: エントリを
+  # 数え終えた後にラッチが立つ部分欠損では entries >= 1 のため、entries を条件にすると取り逃す。
+  # 検出したら entries=0 / linkrows=1 を返して呼出側の既存の検出失敗ガードへ合流させる
+  # (新しい stdout フィールドを増やさない = TC-48 が pin する 4 値 arity 契約を維持する)。
+  # hits (n) は破棄される — 一部しか読めていない値を実測済みとして計上しないため。
+  if (in_comment || infence) {
+    printf "WARNING: index.md: %sが閉じられないままファイル終端に達しました (以降の行が全て走査対象から落ちています)。検出失敗として計上します\n", (in_comment ? "HTML コメント" : "コードフェンス") > "/dev/stderr"
+    print 0, 0, 0, 1
+    exit
+  }
   if (skipped > 0) {
     rest = skipped - 3
     if (rest > 0)
@@ -531,7 +548,7 @@ while IFS= read -r page; do
   if [ "$page" = "$_RITE_INDEX_PATH" ] && [ "${n_index_entries:--1}" -eq 0 ] 2>/dev/null \
      && [ "${n_index_linkrows:-0}" -gt 0 ] 2>/dev/null; then
     page_disp=$(printf '%s' "$page" | neutralize_ctrl)
-    echo "WARNING: ページ ${page_disp} からエントリ行を 1 件も認識できませんでした (リンク形式または本文フィルタの想定と不一致)。検出失敗として計上します" >&2
+    echo "WARNING: ページ ${page_disp} からエントリ行を 1 件も認識できませんでした (リンク形式 / 本文フィルタの想定と不一致、または除外ブロックの未閉鎖。原因は直上の WARNING を参照)。検出失敗として計上します" >&2
     n_read_errors=$((n_read_errors + 1))
     continue
   fi
@@ -569,7 +586,8 @@ if { [ "$n_pages_total" -gt 0 ] && [ "$n_read_errors" -eq "$n_pages_total" ]; } 
   echo "  影響: 説明的番号参照 0 件は実体を反映していません (informational 指標のため lint は継続します)" >&2
   echo "  対処: wiki branch ref / ページパスの整合、および index.md のエントリ記法が想定どおりかを確認してください" >&2
 elif [ "$n_read_errors" -gt 0 ]; then
-  echo "WARNING: ${n_read_errors}/${n_pages_total} ファイルを読み出せず集計から除外しました" >&2
+  echo "WARNING: ${n_read_errors}/${n_pages_total} ファイルを読み出せない、または検出できず集計から除外しました" >&2
+  echo "  対処: wiki branch ref / ページパスの整合、および index.md のエントリ記法が想定どおりかを確認してください" >&2
 fi
 
 echo "---descriptive_refs_begin---"
