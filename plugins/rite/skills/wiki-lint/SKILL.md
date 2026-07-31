@@ -19,7 +19,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 5. 孤児ページ検出 (`index.md` 未登録、`wiki-lint-orphans.sh` 委譲)
 6. 欠落概念検出 (`missing_concept` + `unregistered_raw` の 3 分岐)
 7. 壊れた相互参照検出 (Markdown link 解決失敗、`wiki-lint-broken-refs.sh` 委譲)
-7.5. 説明的番号参照検出 (ページ本文の Issue/PR 番号参照、informational)
+7.5. 説明的番号参照検出 (ページ本文と `index.md` エントリサマリーの Issue/PR 番号参照、informational)
 8. log.md 追記 (`lint:clean` / `lint:warning`)
 9. 完了レポート (通常モード / `--auto` モード)
 

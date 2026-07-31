@@ -318,8 +318,11 @@ insrc && /^##[[:space:]]/   { insrc=0 }
 insrc                       { next }
 '
 # E5 (TODO / FIXME) は本文フィルタではなく終端アクション側で落とす。フィルタ段で next すると
-# index.md ではエントリ行が entries にも skipped にも計上されないまま消え、新設した
-# descriptive_refs_skipped_rows が構造的に観測できない唯一の欠落経路になる。
+# index.md のエントリ行が END の分母 (entries = エントリ行数) に載らないまま消え、
+# 「エントリを 1 件も認識できない = 検出失敗」ガードの判定が実体からずれる。
+# E5 行は終端アクション側で落としても skipped には載らない (entries++ の後に next するため) —
+# 意図的除外であって抽出失敗ではないので、これは設計どおり。フェンス内行 (E3) も同様に
+# entries へ載らないが、そちらはエントリ記法の例示であって実エントリではないため意図どおり。
 # 終端アクション: インラインコードスパンを `_` へマスクしてから検出 regex で数える。
 # 「落とす行の規則」と「終端アクション」を 2 変数に分ける。読み分けができるほか、
 # mutation test (TC-16) が本文フィルタだけを差し替える seam にもなっている。
@@ -450,21 +453,31 @@ while IFS= read -r page; do
   # awk の異常終了が区別できず、検出器が壊れても「0 件」として read_ok=true で通っていた
   # (検出器そのものの破損だけが未実測ゲートをすり抜ける唯一の穴だった)。
   # 除外規則 (_RITE_BODY_FILTER) は index.md にも一貫適用し、終端アクションだけを差し替える。
-  # index.md の終端アクションは `hits skipped` の 2 値を返す (skipped = エントリ行と判定したが
-  # サマリーを抽出できなかった行数。部分欠損を stdout 契約へ載せるため — 行単位の値なので
-  # ファイル単位の算術で io_error を決める n_read_errors には混ぜない)。
+  # index.md の終端アクションだけは複数値を返す (内訳と arity 検査は下の分岐を参照)。
   if [ "$page" = "$_RITE_INDEX_PATH" ]; then _action="$_RITE_INDEX_COUNT_ACTION"; else _action="$_RITE_COUNT_ACTION"; fi
   hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_action}"); awk_rc=$?; hits_rc=$awk_rc
   if [ "$page" = "$_RITE_INDEX_PATH" ]; then
-    # index.md の終端アクションは `hits skipped entries` の 3 値を返す。read で分解すると
-    # フィールド数が変わったときに未束縛が残り、下の数値検証が拾える (パラメータ展開だと
-    # 単一値のとき hits がそのまま skipped として採られる)
-    read -r _hits_field _skipped_field _entries_field <<< "$hits"
-    hits=$_hits_field
-    case "$_skipped_field" in ''|*[!0-9]*) _skipped_field=0 ;; esac
-    case "$_entries_field" in ''|*[!0-9]*) _entries_field=-1 ;; esac
-    n_index_skipped_rows=$_skipped_field
-    n_index_entries=$_entries_field
+    # index.md の終端アクションは `hits skipped entries` の 3 値を返す
+    # (skipped = エントリ行と判定したがサマリーを抽出できなかった行数。部分欠損を stdout 契約へ
+    # 載せるため — 行単位の値なので、ファイル単位の算術で io_error を決める n_read_errors には
+    # 混ぜない。entries = エントリ行と認識できた行数 = 下の検出失敗ガードの分母)。
+    # arity は個別値の数値検証より **先に** 検査する。フィールド数がずれた状態で下の case だけに
+    # 頼ると、未束縛が 0 / -1 へ無言で正規化され entries==0 の検出失敗ガードが沈黙する
+    # (終端アクションを 2 値へ戻す変異がそれで素通りしていた)。既存の hits_rc 経路へ倒して
+    # read_errors 計上 + continue に合流させる。
+    _arity=$(printf '%s' "$hits" | wc -w | tr -d '[:space:]')
+    if [ "$_arity" != "3" ]; then
+      page_disp=$(printf '%s' "$page" | neutralize_ctrl)
+      echo "WARNING: ページ ${page_disp} の検出アクションが 3 値を返しませんでした (フィールド数=${_arity}, 出力='$hits')" >&2
+      hits_rc=1
+    else
+      read -r _hits_field _skipped_field _entries_field <<< "$hits"
+      hits=$_hits_field
+      case "$_skipped_field" in ''|*[!0-9]*) _skipped_field=0 ;; esac
+      case "$_entries_field" in ''|*[!0-9]*) _entries_field=-1 ;; esac
+      n_index_skipped_rows=$_skipped_field
+      n_index_entries=$_entries_field
+    fi
   fi
   case "$hits" in ''|*[!0-9]*) [ "$hits_rc" -eq 0 ] && hits_rc=1 ;; esac
   if [ "$hits_rc" -ne 0 ]; then

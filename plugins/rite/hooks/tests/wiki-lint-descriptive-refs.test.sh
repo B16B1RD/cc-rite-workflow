@@ -33,10 +33,10 @@
 #   TC-23  検出器の破損が read_errors / io_error へ伝播する (0 件を実測済みと名乗らない)
 #   TC-24  traversal gate / 読出・検出失敗の WARNING / E1 ブロック終端
 #   TC-11b 部分読出失敗は read_ok=true のまま read_errors だけ立つ
-#   TC-25..TC-26 index.md 不在時は従来どおり (read_errors 不加算 / stdout に index 行なし)
+#   TC-25..TC-26 index.md 不在時は従来どおり (#2069 T-06: read_errors 不加算 / stdout に index 行なし)
 #   TC-27..TC-29 index.md のサマリー列だけを検出する (リンクテキスト列は対象外)
 #   TC-30  OKF 箇条書き形式の index.md でも検出できる (形式移行で 0 件へ倒れない)
-#   TC-31  列数が壊れた行は行全体へフォールバックせず行番号つき WARNING でスキップ
+#   TC-31  列数が壊れた行は行全体へフォールバックせず行番号つき WARNING でスキップ (#2069 T-07)
 #   TC-32  一部行のみ抽出失敗でも欠損ガードが発火し、欠損行数が stdout に載る (read_errors に混ぜない)
 #   TC-33..TC-34 gate の非回帰 (raw/ と `..` は fail-fast のまま、index.md は完全一致で受理・重複計上なし)
 #   TC-35  ステップ 2.2 の pages_list に index.md を混ぜていない (他カテゴリの入力不変)
@@ -51,6 +51,8 @@
 #   TC-44  診断に外部入力 (--wiki-branch) の制御文字を素通ししない
 #   TC-45  本文フィルタ (E3 コードフェンス等) が index.md にも適用される
 #   TC-46  index.md が読めれば pages 全件失敗でも io_error ではなく部分失敗になる
+#   TC-47  エントリ行を 1 件も認識できない index.md は検出失敗として計上する (0 件を実測済みと名乗らない)
+#   TC-48  index.md 終端アクションの戻り値 arity (3 値) を pin する (2 値へ戻す変異を弾く)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -347,6 +349,12 @@ assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD
 # 「helper 経由か縮退経路かで stdout の形が変わる」状態になる
 assert_grep "TC-18 helper 不在 fallback が skipped_rows=0 を出す" "$LINT_MD" 'descriptive_refs_skipped_rows=0'
 assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD" 'see PR\|See PR\) #\[0-9\]\+'
+# ステップ 2.2 末尾の分岐契約。ページ / raw が 0 件でもステップ 7.5 だけは走らせる
+# (index.md が単独で走査対象になりうるため)。develop 版の「ステップ 3-7 を skip し ステップ 9 に進む」
+# へ戻ると index.md 走査そのものが起動せず、本 PR が塞いだ盲点が無言で再発する。
+# 走査範囲を広げた helper 側だけをテストしても、この分岐が消えれば helper は呼ばれない。
+assert_grep "TC-18 ページ/raw 0 件でもステップ 7.5 は skip しない" "$LINT_MD" 'ステップ 7\.5 → ステップ 9'
+assert_not_grep "TC-18 旧 skip 範囲 (3-7) が残っていない" "$LINT_MD" 'ステップ 3-7 を skip'
 
 # ---- TC-19: separate_branch (本番既定経路) の positive path ----------------
 # 44 assertion が same_branch (cat) に偏っており、rite-config.yml の既定 separate_branch
@@ -464,8 +472,8 @@ idx_hits() { printf '%s' "$1" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p
 # 読出失敗と同じ非ゼロ rc に潰れ、TC-10 の「空 pages_list → read_ok=true」まで io_error に倒れる。
 noidx_out="$IDXSBX/noidx.out"; tmp_files+=("$noidx_out")
 printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$noidx_out" 2>/dev/null
-assert "TC-25 (T-06) index.md 不在で read_errors=0" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$noidx_out")"
-assert "TC-25 (T-06) index.md 不在で read_ok=true" "true" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$noidx_out")"
+assert "TC-25 (#2069 T-06) index.md 不在で read_errors=0" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$noidx_out")"
+assert "TC-25 (#2069 T-06) index.md 不在で read_ok=true" "true" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$noidx_out")"
 assert "TC-26 (T-08) index.md 不在なら本文のみの hits" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$noidx_out")"
 assert_not_grep "TC-26 (T-08) index.md 不在なら marker block に index 行が出ない" "$noidx_out" 'index\.md'
 
@@ -509,8 +517,8 @@ assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "1"
 printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [番号なし](pages/patterns/a.md) | patterns | 番号なし | 詳細は #1151 |\n' > "$IDXSBX/.rite/wiki/index.md"
 brk_err="$IDXSBX/brk.err"; tmp_files+=("$brk_err")
 brk_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$brk_err")
-assert "TC-31 (T-07) 列数が壊れた行は hits に数えない" "1" "$(idx_hits "$brk_out")"
-assert_grep "TC-31 (T-07) 列崩れは行番号つき WARNING で観測できる" "$brk_err" 'index\.md [0-9]+ 行目: テーブルの列数'
+assert "TC-31 (#2069 T-07) 列数が壊れた行は hits に数えない" "1" "$(idx_hits "$brk_out")"
+assert_grep "TC-31 (#2069 T-07) 列崩れは行番号つき WARNING で観測できる" "$brk_err" 'index\.md [0-9]+ 行目: テーブルの列数'
 
 # 欠損ガード: エントリ行はあるのに抽出できない行がある = 形式変更。無言の過少集計にせず
 # WARNING + stdout の descriptive_refs_skipped_rows で surface する
@@ -720,6 +728,43 @@ else
   fail "TC-22 2 検出器の R1 regex が drift している
     helper: $helper_vocab
     cjc   : $cjc_vocab"
+fi
+
+# ---- TC-47: index.md を読めたのにエントリ行を 1 件も認識できない = 検出失敗 --
+# skipped は「エントリと認識できた行の抽出失敗」しか数えないため、リンク形式が想定と
+# 食い違うと entries=0 / skipped=0 / hits=0 になり、実測 230 hits が丸ごと落ちても
+# 「0 件 (実測済み)」として read_ok=true で通る。TC-25..TC-46 の index fixture は
+# どれもフェンス外に最低 1 本の `](pages/...)` を含むため、この経路へ到達しなかった。
+printf '# Wiki Index\n\nエントリのない index。詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+noent_err="$IDXSBX/noent.err"; tmp_files+=("$noent_err")
+noent_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$noent_err")
+assert "TC-47 エントリ 0 件は検出失敗として read_errors に計上する" "1" "$(printf '%s' "$noent_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert_grep "TC-47 検出失敗は WARNING で観測できる" "$noent_err" 'エントリ行を 1 件も認識できませんでした'
+assert "TC-47 検出失敗した index.md 分は hits に混ぜない (本文側の 1 件のみ)" "1" "$(idx_hits "$noent_out")"
+
+# 否定側: pages_list が空なら計上しない (Wiki 初期化直後の空 index は正当)。
+# この 1 本が無いと「ガード削除」と「pages_list 条件の削除」のうち後者が生き残る。
+noent_empty_out=$(printf '' | idx_run 2>/dev/null)
+assert "TC-47 pages_list 空なら検出失敗に計上しない (初期化直後の空 index は正当)" "0" "$(printf '%s' "$noent_empty_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+
+# ---- TC-48: index.md 終端アクションの戻り値 arity (3 値) を pin する ---------
+# 終端アクションを 2 値へ戻す変異は、フィールド数がずれたまま個別値の case サニタイザが
+# 未束縛を 0 / -1 へ正規化するため、TC-47 の検出失敗ガードを無言で殺す。
+# 位置依存パースの規約 (`/rite:wiki-query positional-parse-row-count-guard`) が要求する
+# 「回帰 TC で pin する」の充足。mutant は helper の `source ../control-char-neutralize.sh` が
+# 解決するよう 1 階層下に置き、依存を同じ相対位置へ複製する。
+mkdir -p "$IDXSBX/mut"
+cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$IDXSBX/control-char-neutralize.sh"
+MUT_ARITY="$IDXSBX/mut/mutant-arity.sh"
+sed 's/print n+0, skipped+0, entries+0/print n+0, skipped+0/' "$SCRIPT" > "$MUT_ARITY"
+if assert_mutated "TC-48 MUTATION mutant 生成" "$MUT_ARITY"; then
+  printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+  arity_err="$IDXSBX/arity.err"; tmp_files+=("$arity_err")
+  arity_out=$(printf '%s\n' "$IDX_PAGE_REL" \
+    | ( cd "$IDXSBX" && bash "$MUT_ARITY" --branch-strategy same_branch --repo-root "$IDXSBX" ) 2>"$arity_err")
+  assert "TC-48 戻り値が 3 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+  assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 3 値を返しませんでした'
+  assert "TC-48 arity 不一致の index.md 分は hits に混ぜない" "1" "$(idx_hits "$arity_out")"
 fi
 
 if ! print_summary "$(basename "$0")" \
