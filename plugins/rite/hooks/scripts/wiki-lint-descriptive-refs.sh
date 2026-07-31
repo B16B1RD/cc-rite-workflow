@@ -80,12 +80,15 @@
 #   ---descriptive_refs_end---
 #   descriptive_refs_pages={n}
 #   descriptive_refs_read_errors={n}
+#   descriptive_refs_skipped_rows={n}   # index.md でサマリーを抽出できなかったエントリ行数
 #   [CONTEXT] WIKI_DESCRIPTIVE_REFS={n}
 #   descriptive_refs_read_ok={true|io_error}
 #
 # Who reads what: wiki-lint/SKILL.md ステップ 7.5 / ステップ 9 完了レポートが消費するのは
-# `WIKI_DESCRIPTIVE_REFS` (件数) と `descriptive_refs_read_ok` / `descriptive_refs_read_errors`
-# (未実測の併記条件) の 3 つ。marker block と `descriptive_refs_pages` は sibling helper
+# `WIKI_DESCRIPTIVE_REFS` (件数) と `descriptive_refs_read_ok` / `descriptive_refs_read_errors` /
+# `descriptive_refs_skipped_rows` (未実測・部分欠損の併記条件) の 4 つ。`descriptive_refs_pages` は
+# 「hits を持つ対象ファイル数」で index.md を含むが、フィールド名は sibling helper との出力形状
+# parity のため据え置く (実体に合わせて改名すると parity が崩れる)。marker block と併せて sibling helper
 # (`wiki-lint-source-refs.sh` / `wiki-lint-skipped-refs.sh`) との出力形状 parity のために出しており、
 # ステップ 9 の検出詳細一覧には転記されない (informational 指標のため — SKILL.md ステップ 7.5 の
 # 「検出結果の記録」節が転記しない旨を明示している)。
@@ -308,30 +311,40 @@ _RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }
 #
 # サマリー列の位置はヘッダー行 (`| ページ | ドメイン | サマリー | 更新日 | 確信度 |`) から決める。
 # 位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、ヘッダー由来の位置決めと
-# END の行数ガードを対にする (wiki: anti-patterns/positional-parse-row-count-guard)。
+# **スキップ行数の stdout 露出** を対にする (`/rite:wiki-query positional-parse-row-count-guard` で参照)。
+# ガードを「全行 skip」条件にしないのは、`templates/wiki/index-template.md` の前文が箇条書きの記法例を
+# 含みエントリ行として 1 件 parse されるため、全滅条件では構造的に発火しないことによる。
+#
+# split の前にリンクスパンをマスクする: リンクテキストに素のパイプを含むページタイトル
+# (`grep -c || echo 0` 等) があると列数が合わず実エントリが無言で落ちる。bullet 分岐の match() を
+# 壊さないため `s` 自体は書き換えず作業変数 `t` を使う。
 _RITE_INDEX_COUNT_ACTION='
 /^[[:space:]]*\|/ && /サマリー/ && sumcol == 0 {
   hn = split($0, hc, "|")
   for (i = 1; i <= hn; i++) if (hc[i] ~ /サマリー/) { sumcol = i; sumncol = hn; break }
   next
 }
-$0 !~ /\]\(pages\// { next }
 {
   s = $0
   gsub(/`[^`]*`/, "_", s)
   gsub(/\\\|/, "_", s)
+  if (s !~ /\]\(pages\//) next
   entries++
   if (s ~ /^[[:space:]]*\|/) {
-    fn = split(s, fc, "|")
+    t = s
+    gsub(/\[[^]]*\]\(pages\/[^)]*\)/, "_", t)
+    fn = split(t, fc, "|")
     col = (sumcol > 0 ? sumcol : 4)
     want = (sumncol > 0 ? sumncol : 0)
     if (fn <= col || (want > 0 && fn != want)) {
-      printf "WARNING: index.md %d 行目: テーブルの列数が想定と異なるため行をスキップしました (列数=%d, 期待=%d)\n", NR, fn, (want > 0 ? want : col + 1) > "/dev/stderr"
+      skipped++
+      if (skipped <= 3)
+        printf "WARNING: index.md %d 行目: テーブルの列数が想定と異なるため行をスキップしました (列数=%d, 期待=%s)\n", NR, fn - 2, (want > 0 ? want - 2 : "不明 — サマリー列ヘッダーを検出できず既定列 " col - 1 " を仮定") > "/dev/stderr"
       next
     }
     summary = fc[col]
   } else {
-    if (match(s, /\]\(pages\/[^)]*\)/) == 0) next
+    if (match(s, /\]\(pages\/[^)]*\)/) == 0) { skipped++; next }
     summary = substr(s, RSTART + RLENGTH)
     sub(/^[[:space:]]*(-|—|–)[[:space:]]*/, "", summary)
   }
@@ -339,9 +352,9 @@ $0 !~ /\]\(pages\// { next }
   if (summary ~ re) n++
 }
 END {
-  if (entries > 0 && parsed == 0)
-    printf "WARNING: index.md のエントリ行 %d 件からサマリーを 1 件も抽出できませんでした (形式変更の可能性)。検出が無言で 0 件へ倒れるのを防ぐため通知します\n", entries > "/dev/stderr"
-  print n+0
+  if (skipped > 0)
+    printf "WARNING: index.md のエントリ行 %d 件中 %d 件からサマリーを抽出できませんでした (形式変更の可能性)。欠損は descriptive_refs_skipped_rows として stdout に出ます\n", entries, skipped > "/dev/stderr"
+  print n+0, skipped+0
 }
 '
 
@@ -354,6 +367,7 @@ _RITE_DESCRIPTIVE_RE='(^|[^A-Za-z])([Ii]ssues?|[Pp][Rr]s?|[Rr]efs?|[Ss]ee|[Rr]el
 n_descriptive_refs=0
 n_pages_with_hits=0
 n_read_errors=0
+n_index_skipped_rows=0
 hit_lines=""
 
 # per-page 読出の stderr 退避先。捨てると `descriptive_refs_read_errors=3` と出ても
@@ -394,8 +408,16 @@ while IFS= read -r page; do
   # awk の異常終了が区別できず、検出器が壊れても「0 件」として read_ok=true で通っていた
   # (検出器そのものの破損だけが未実測ゲートをすり抜ける唯一の穴だった)。
   # 除外規則 (_RITE_BODY_FILTER) は index.md にも一貫適用し、終端アクションだけを差し替える。
+  # index.md の終端アクションは `hits skipped` の 2 値を返す (skipped = エントリ行と判定したが
+  # サマリーを抽出できなかった行数。部分欠損を stdout 契約へ載せるため — 行単位の値なので
+  # ファイル単位の算術で io_error を決める n_read_errors には混ぜない)。
   if [ "$page" = "$_RITE_INDEX_PATH" ]; then _action="$_RITE_INDEX_COUNT_ACTION"; else _action="$_RITE_COUNT_ACTION"; fi
   hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_action}"); awk_rc=$?; hits_rc=$awk_rc
+  if [ "$page" = "$_RITE_INDEX_PATH" ]; then
+    _skipped_field=${hits#* }; hits=${hits%% *}
+    case "$_skipped_field" in ''|*[!0-9]*) _skipped_field=0 ;; esac
+    n_index_skipped_rows=$_skipped_field
+  fi
   case "$hits" in ''|*[!0-9]*) [ "$hits_rc" -eq 0 ] && hits_rc=1 ;; esac
   if [ "$hits_rc" -ne 0 ]; then
     # 検出器が機能していないページは「0 件」ではなく読出失敗として計上する。
@@ -441,5 +463,6 @@ echo "---descriptive_refs_begin---"
 echo "---descriptive_refs_end---"
 echo "descriptive_refs_pages=$n_pages_with_hits"
 echo "descriptive_refs_read_errors=$n_read_errors"
+echo "descriptive_refs_skipped_rows=$n_index_skipped_rows"
 echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
 echo "descriptive_refs_read_ok=$descriptive_refs_read_ok"

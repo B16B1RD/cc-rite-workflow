@@ -210,8 +210,9 @@ if [ "$USE_ALL" -eq 1 ]; then
   # 説明的番号参照は永続成果物全般 (in-source コメント + ドキュメント散文 + Wiki ページ) が対象であり、
   # plugins/rite に加えて repo-root の docs/ と .rite/wiki/ も走査する。後二者は存在するときのみ加える
   # (marketplace install や Wiki 無効プロジェクトでは plugins/rite のみで走査が成立する)。
-  # `.rite/wiki/` に実体があるのは wiki.branch_strategy: same_branch のときだけで、separate_branch では
-  # ここは不在か空のローカル置き場になり、この scan_root は加わらない (= Wiki 分は 0 件になる)。
+  # `.rite/wiki/` に実体があるのは wiki.branch_strategy: same_branch のときだけ。separate_branch では
+  # 不在なら scan_root に加わらず、空ディレクトリとして存在する場合は加わるが対象ファイルが 0 件になる。
+  # いずれの経路でも Wiki 分の検出は 0 件になる。
   # これは未実装の残債ではなく責務分割で、その構成の Wiki 走査は wiki-lint ステップ 7.5 が担う (冒頭コメント参照)。
   scan_roots=("$base")
   [ -d "docs" ] && scan_roots+=("docs")

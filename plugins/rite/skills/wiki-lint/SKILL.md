@@ -198,7 +198,8 @@ exit 0
 | `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 の `wiki-lint-broken-refs.sh` が emit する `n_broken_refs=` 値を転記 (LLM 独自カウント禁止) |
 | `descriptive_refs_read_errors` | `0` | ステップ 7.5 helper の stdout から読む（LLM 独自カウント禁止）。読出または検出できなかった対象ファイル数（`index.md` 不在は数えない） |
-| `n_descriptive_refs` | 0 | ステップ 7.5 の `wiki-lint-descriptive-refs.sh` が emit する `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 値を転記する（**LLM 独自カウント禁止**。ただし本カテゴリは informational のため `issues[]` へは転記しない — ステップ 7.5「検出結果の記録」節参照）。ページ本文の説明的 Issue/PR 番号参照の hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
+| `descriptive_refs_skipped_rows` | `0` | ステップ 7.5 helper の stdout から読む（LLM 独自カウント禁止）。`index.md` でエントリ行と判定したがサマリーを抽出できなかった**行数**。ファイル単位の `descriptive_refs_read_errors` とは別軸で、部分欠損を完了レポートの note に載せるために使う |
+| `n_descriptive_refs` | 0 | ステップ 7.5 の `wiki-lint-descriptive-refs.sh` が emit する `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 値を転記する（**LLM 独自カウント禁止**。ただし本カテゴリは informational のため `issues[]` へは転記しない — ステップ 7.5「検出結果の記録」節参照）。ページ本文と `index.md` エントリサマリーの説明的 Issue/PR 番号参照の hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
 | `issues[]` | `[]` | 各検出結果を（**例外: ステップ 7.5 — 同ステップ「検出結果の記録」節を参照**） `{category, page, detail}` として append (helper 委譲カテゴリは marker block の行を転記) |
 
 ---
@@ -271,7 +272,7 @@ echo "---"
 
 LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。両方空ならステップ 3-7 を skip し ステップ 9 に進む (検出結果なしの完了レポート)。
 
-`index.md` の読み込みは ステップ 5 の `wiki-lint-orphans.sh` が内包する (孤児検出でのみ使用するため、本ステップでの事前読出は不要)。
+`index.md` は ステップ 5 の `wiki-lint-orphans.sh` と ステップ 7.5 の `wiki-lint-descriptive-refs.sh` がそれぞれ自力で読み出すため、本ステップでの事前読出は不要。
 
 ---
 
@@ -659,7 +660,7 @@ PAGES_LIST_EOF
 fi
 ```
 
-**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 ページ以上の読出に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う（未受信を劣化値へ倒す点のみステップ 7 と同型。倒す先は異なる）。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は読み出せなかったページ数で、`read_ok=true` でも部分欠損があれば正の値を取る。ステップ 9 完了レポートの note 展開はこの 2 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
+**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 ページ以上の読出に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う（未受信を劣化値へ倒す点のみステップ 7 と同型。倒す先は異なる）。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は読み出せなかった対象ファイル数で、`read_ok=true` でも部分欠損があれば正の値を取る。`descriptive_refs_skipped_rows` は `index.md` 内でサマリーを抽出できなかった**行数**（ファイル単位ではない）。ステップ 9 完了レポートの note 展開はこの 3 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
 
 **検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**で、もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録されステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。本ステップを転記すると 233 ページ分の検出詳細行（実測 736 hits）が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
 
@@ -667,7 +668,7 @@ marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling h
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
-> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.5（generic loop の `comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。本ステップは `/rite:wiki-lint` 単体実行時にも Wiki ページの番号参照を可視化するための Wiki レイヤ固有のチェックである。
+> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.5（generic loop の `comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。ただし `comment-journal-check.sh` の `.rite/wiki` 走査が実体に届くのは `wiki.branch_strategy: same_branch` のときだけで、`separate_branch` では Wiki が wiki ブランチにあるため走査範囲外になる。本ステップは `git show` で wiki ブランチを直接読むため、`separate_branch` では Wiki ページの番号参照を見る唯一の経路である。
 
 ---
 
@@ -918,7 +919,7 @@ Wiki Lint が完了しました。
 - 欠落概念: {n_missing_concept} 件{log_read_ok_note}{all_source_refs_read_ok_note}
 - 壊れた相互参照: {n_broken_refs} 件{broken_refs_read_ok_note}
 - 未登録 raw（skip 済）: {n_unregistered_raw} 件（informational、`n_warnings` 不加算）
-- 説明的番号参照: {n_descriptive_refs} 件{descriptive_refs_read_ok_note}（informational、`n_warnings` 不加算。ページ本文の Issue/PR 番号参照。ステップ 7.5）
+- 説明的番号参照: {n_descriptive_refs} 件{descriptive_refs_read_ok_note}（informational、`n_warnings` 不加算。ページ本文と `index.md` エントリサマリーの Issue/PR 番号参照。ステップ 7.5）
 
 {log_read_ok_warning}{all_source_refs_read_ok_warning}
 
@@ -932,19 +933,22 @@ Wiki Lint が完了しました。
 - 欠落概念は /rite:wiki-ingest で該当 Raw Source を再処理してください
 - 壊れた相互参照は該当ページを手動で修正してください
 - 未登録 raw（skip 済）は意図的な skip (`ingest_status: skipped`) なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki-ingest で再処理してください
-- 説明的番号参照は該当ページ本文の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
+- 説明的番号参照はページ本文由来と `index.md` 由来で直し方が異なります
+  - ページ本文: 該当箇所の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
+  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が各ページの frontmatter `description` から生成するため、**index.md を直接編集しても次回 ingest で上書きされます**。リンク先ページの `description` を書き換えてから `/rite:wiki-ingest` で再生成してください
 ```
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
 
-**`{n_descriptive_refs}` / `{descriptive_refs_read_ok_note}` 展開ルール**: LLM は ステップ 7.5 の helper stdout から `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` を読み取り `{n_descriptive_refs}` に展開する（ステップ 7.5 が skip された（`pages_list` 空）場合は `0`）。note は兄弟 enum（`{stale_check_ok_note}` 等）と同じく件数の直後に置き、`descriptive_refs_read_ok` と `descriptive_refs_read_errors` の 2 値から下表で決める — 読出失敗由来の `0` や部分欠損した集計を「解消済み」と読ませないため:
+**`{n_descriptive_refs}` / `{descriptive_refs_read_ok_note}` 展開ルール**: LLM は ステップ 7.5 の helper stdout から `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` を読み取り `{n_descriptive_refs}` に展開する。**`pages_list` が空でもステップ 7.5 は実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。真に skip されるのは helper 不在時のみで、その場合は `0`。note は兄弟 enum（`{stale_check_ok_note}` 等）と同じく件数の直後に置き、`descriptive_refs_read_ok` と `descriptive_refs_read_errors` の 2 値から下表で決める — 読出失敗由来の `0` や部分欠損した集計を「解消済み」と読ませないため:
 
 | 条件 | note（件数の直後） |
 |------|------------------|
-| ステップ 7.5 未実行（ステップ 3-7 skip 経路 = 処理対象 0 件） | 空文字列 |
+| ステップ 7.5 未実行（helper 不在 / bash block 未実行） | 空文字列 |
 | `read_ok=true` かつ `read_errors=0` | 空文字列 |
-| `read_ok=true` かつ `read_errors>0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} ページを読出または検出できず集計から除外)` |
-| `read_ok=io_error` | ` ⚠️ (未実測: io_error — 全ページ読出失敗)` |
+| `read_ok=true` かつ `read_errors>0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} 対象ファイルを読出または検出できず集計から除外)` |
+| `read_ok=true` かつ `read_errors=0` かつ `skipped_rows>0` | ` ⚠️ (部分欠損: index.md の {descriptive_refs_skipped_rows} 行からサマリーを抽出できず集計から除外)` |
+| `read_ok=io_error` | ` ⚠️ (未実測: io_error — 全対象ファイル読出失敗)` |
 | `read_ok=skipped_helper_missing` | ` ⚠️ (未実測: skipped_helper_missing — helper 不在)` |
 | marker block / enum 未受信（bash block 途中異常終了） | ` ⚠️ (未実測: skipped_helper_missing 同等 — 出力未受信)` |
 

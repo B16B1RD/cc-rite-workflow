@@ -45,9 +45,10 @@ gawk は `\b` を**バックスペース**として読むため `/#[0-9]+\b/` �
 stdin から渡す経路も完全一致で受理するが（重複は畳む）、届くかどうかを stdin に依存させない。
 
 **ステップ 2.2 の `pages_list` を変えない理由**: `pages_list` はステップ 3 / 4 / 5 / 6.2 / 7 が共有する入力で、
-ステップ 5（孤児検出）は「index 登録ページ ∖ `pages_list`」の集合差分を取る。`index.md` は自分自身に登録されないため、
-`pages_list` に足すと即座に孤児 +1 になる。ステップ 4（陳腐化）も frontmatter `updated` を要求するため読出エラーになる。
-helper 側で完結させれば他カテゴリの入力はバイト同一のまま保たれ、非回帰が測定ではなく**構成**で保証される。
+ステップ 5（孤児検出）は `pages_list` の各ページが index 登録集合に含まれるかを見る（`pages_list ∖ index 登録ページ`）。
+`index.md` は自分自身に登録されないため、`pages_list` に足すと index.md 自身が未登録として孤児 +1 になる。
+ステップ 4（陳腐化）は frontmatter `updated` を要求するが、index.md はそれを持たないため「updated フィールドが存在しません」の
+WARNING skip が 1 件増える。helper 側で完結させれば他カテゴリの入力はバイト同一のまま保たれ、非回帰が測定ではなく**構成**で保証される。
 
 ### `index.md` のサマリー抽出
 
@@ -55,10 +56,25 @@ helper 側で完結させれば他カテゴリの入力はバイト同一のま�
 両方を受ける。現行の wiki ブランチはテーブルだが、`templates/wiki/index-template.md` と wiki-ingest ステップ 6 が生成するのは箇条書きで、
 テーブル専用にすると形式移行の時点で検出が無言で 0 件へ倒れる。ファイル単位で形式を判定しないのは移行途中の混在に耐えるため。
 
+`|` で split する前にリンクスパンをマスクする。リンクテキストに**素のパイプ**を含むページタイトル
+（`grep -c || echo 0` を題材にしたページ等）があると列数が合わず、実エントリが 1 件無言で落ちる（実測 1 行）。
+マスクを入れると現行 index.md の列数不一致は 0 件になる。
+
 サマリー列の位置はヘッダー行から決め、END でエントリ行数と抽出成功数を突き合わせる。
-位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、位置決めと行数ガードを対にする
-（[[位置依存の表パースには検査行数ガードを対にする]]）。列数が想定と異なる行は行全体を対象にせず、行番号つき WARNING を出してスキップする
-（誤検出で件数を膨らませない。実測では現行 index.md に 1 行だけ該当する）。
+位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、位置決めと欠損の露出を対にする
+（`/rite:wiki-query positional-parse-row-count-guard` で参照）。列数が想定と異なる行は行全体を対象にせずスキップする
+（誤検出で件数を膨らませない）。
+
+**スキップした行は stdout の `descriptive_refs_skipped_rows` に載せる**。stderr の WARNING だけでは
+ステップ 9 の note 条件（`descriptive_refs_read_errors > 0`）を通らず、部分欠損した集計が注記なしで
+「実測済み」としてレポートに載ってしまう。helper が pages 側で明示的に閉じている失敗モードと同じ穴を
+index 経路にだけ残さないための措置。**行単位の値を `descriptive_refs_read_errors` へ混ぜてはならない** —
+`read_ok=io_error` の判定は「読めなかったファイル数 == 走査母数」というファイル単位の算術で、
+行単位の値を足すと 1 行のスキップが index.md 全体の読出失敗として扱われ 229 hits が丸ごと落ちる。
+
+ガードの発火条件を「全行 skip（`parsed == 0`）」にしないのは、`templates/wiki/index-template.md` の前文が
+箇条書きの記法例を含み、それがエントリ行として 1 件 parse されるため。全滅条件では Wiki 初期化テンプレートの
+前文を残したプロジェクトで構造的に発火しない。
 
 `comment-journal-check.sh` の `.rite/wiki` scan_root は `wiki.branch_strategy: same_branch` のときだけ実体に届く。
 `separate_branch` では Wiki は wiki ブランチにあり、dev checkout の `.rite/wiki/` は gitignore されたローカル置き場（通常は不在）になる。
