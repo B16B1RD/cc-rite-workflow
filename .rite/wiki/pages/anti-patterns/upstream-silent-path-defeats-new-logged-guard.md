@@ -4,7 +4,7 @@ title: "新設 logged ガードの上流に同一判定の silent 経路が残�
 domain: "anti-patterns"
 description: "可視化 (WARNING 付き skip) ガードを新設しても、同じ判定条件を持つ既存 silent 経路が制御フロー上流にあると、実運用の支配的入力が silent 側に先に吸われて可視化 MUST が破れる。ガード新設時は同一条件の全経路 (case 全 arm) を列挙し、silent 側を新カテゴリ除外で絞る。"
 created: "2026-07-21T18:30:00Z"
-updated: "2026-07-21T18:30:00Z"
+updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260721T171603Z-pr-1959.md"
@@ -12,6 +12,8 @@ sources:
     ref: "raw/fixes/20260721T172102Z-pr-1959.md"
   - type: "fixes"
     ref: "raw/fixes/20260721T173955Z-pr-1959.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260731T021333Z-pr-2070.md"
 tags: ["silent-skip", "guard-ordering", "visibility", "case-arm-enumeration"]
 confidence: high
 ---
@@ -45,9 +47,17 @@ confidence: high
 
 - [前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](../anti-patterns/silent-precondition-omit-disables-and-defense-chain.md)
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
+- [位置決めを外部データから取る設計で「取れなかったら既定値を仮定する」と、無言の縮退になる](./guessed-default-position-creates-silent-degradation.md)
+
+## 追記: 「ガードに到達しない入口」を別途たどる（PR #2070）
+
+PR #2070 では、欠損を露出する仕組みを作っても**その仕組みに到達しない経路**が 3 つ残っていた。いずれも「ガードの外側で件数が減る」形である — 除外フィルタが判定より前段にあって落とした行が計数にも欠損報告にも現れない、ヘッダー判定がデータ行を飲み込む、母数を作る多段パイプが無検査。**ガードを足したら「そのガードに到達しない入口が残っていないか」を別途たどる**必要がある。
+
+同時に観測された 2 点。**除外規則の適用位置は意味を変える** — TODO/FIXME 除外を行単位の前段で行うと、コードスパン内に引用されただけの TODO でも行ごと落ちる。コードスパンのマスク（引用は主張ではない）より後に判定すると引用が救われる。前段の除外は「安い」が、後段のマスクと組み合わせたときの順序が結果を決める。そして**上流ガードと同一の regex を下流で再判定する分岐は到達不能になる** — `match()` を副作用（RSTART 設定）目的で呼ぶ場合は、rc 判定を残さず呼び出しだけにする。
 
 ## ソース
 
 - [PR #1959 review cycle 1 (free-claim fresh corpse の silent skip 検出)](../../raw/reviews/20260721T171603Z-pr-1959.md)
 - [PR #1959 fix cycle 1 (silent continue の非 corpse 限定化)](../../raw/fixes/20260721T172102Z-pr-1959.md)
 - [PR #1959 fix cycle 2 (Gate 2 全 arm の可視化完遂)](../../raw/fixes/20260721T173955Z-pr-1959.md)
+- [PR #2070 fix results — ガードに到達しない 3 経路](../../raw/fixes/20260731T021333Z-pr-2070.md)

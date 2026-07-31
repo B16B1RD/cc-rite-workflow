@@ -2,7 +2,7 @@
 title: "`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort"
 domain: "anti-patterns"
 created: "2026-05-08T17:43:55+00:00"
-updated: "2026-07-25T07:05:21Z"
+updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260508T174355Z-pr-906.md"
@@ -12,6 +12,8 @@ sources:
     ref: "raw/reviews/20260725T032345Z-pr-2013.md"
   - type: "fixes"
     ref: "raw/fixes/20260725T033607Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260730T195300Z-pr-2066.md"
 tags: ["bash", "pipefail", "set-euo-pipefail", "grep", "ratchet-test", "silent-abort"]
 confidence: high
 ---
@@ -113,9 +115,16 @@ line=$({ printf '%s\n' "$OUT" | grep -F "$needle" || true; } | tail -1)
 - [Mutation Testing Test Fidelity](../patterns/mutation-testing-test-fidelity.md)
 - [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](./bare-statement-under-set-e-dead-code-rc-branch.md)
 
+## 追記: 終端 `grep -c` は「0 件」と「検出器の破損」を畳む（PR #2066）
+
+`grep -c` を pipeline の終端に置くと、no-match で rc=1 を返すため pipeline の rc では「0 件」と「途中の異常終了」が区別できない。PR #2066 では結果として、**検出器そのものが壊れたときだけが「実測済みの 0 件」として未実測ゲートをすり抜けた**。計数を同じ awk 内に閉じると rc が意味を持つ。「0 件が実体を反映しているか」を surface する enum を設けるなら、検出器自身の破損もその enum に載る形にする。
+
+同 PR で観測された姉妹形が 2 つある。**`cd ""` は rc=0 を返す** — sandbox 生成の rc を検査していないと、失敗時に空文字列が返り `cd "$SBX" || exit 1` のガードが素通りし、以降の相対パス操作（`git add -A` / `commit` / `rm -f`）がテストプロセスの cwd = リポジトリに対して走る。command substitution で作ったパスは、使う前に rc または非空を検査する。そして**同じ exit code を返す gate が複数あると、exit code だけの assert は当の gate を pin しない** — placeholder residue gate を削除しても後段の別 gate が同じ exit 1 を返すため、テストは緑のまま通った。gate を pin するなら、その gate 固有の診断 marker まで assert する。
+
 ## ソース
 
 - [PR #906 fix results (cycle 3)](../../raw/fixes/20260508T174355Z-pr-906.md)
 - [PR #906 review results (cycle 4 final)](../../raw/reviews/20260508T175233Z-pr-906.md)
 - [PR #2013 review cycle 3 — `$(cmd | grep)` の no-match が直後の空判定を dead branch にする](../../raw/reviews/20260725T032345Z-pr-2013.md)
 - [PR #2013 fix results (cycle 3) — grep だけを局所無害化する canonical fix](../../raw/fixes/20260725T033607Z-pr-2013.md)
+- [PR #2066 fix results (cycle 3) — 終端 `grep -c` が検出器破損を 0 件に畳む](../../raw/fixes/20260730T195300Z-pr-2066.md)

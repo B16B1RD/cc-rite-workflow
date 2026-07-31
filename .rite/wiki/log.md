@@ -1,3 +1,26 @@
+## 2026-08-01
+
+* **Create**: [開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす](pages/anti-patterns/latch-exclusion-without-eof-termination-check.md) — PR #2070 の raw source 2 件を統合（silent-0 を塞ぐ機構が反対側から silent-0 を再導入 / 3 レビュアーが別々の攻撃面から同一行に到達 / 特例でなく「未閉鎖の除外開始トークン」クラスを 1 述語で閉じる）
+* **Create**: [ガードの precondition に代理値を使うと、守るべき経路でだけ無効化される](pages/anti-patterns/guard-precondition-proxy-value-silent-where-needed.md) — PR #2070 の raw source 2 件を統合（ガードが無効化される経路とガードを必要とする経路が完全一致 / 代理値は相関が切れる場所＝守るべき場所で沈黙 / 「元へ戻す変異」は修正が回帰テストで守られているかを直接測る唯一の手段）
+* **Create**: [全滅形だけを想定したガード条件は部分欠損形を必ず取り逃す](pages/anti-patterns/total-failure-only-guard-misses-partial-loss.md) — PR #2070 の raw source 4 件を統合（同じガードが 2 度作り直された / 配布テンプレの前文が述語に一致して全滅条件が恒久的に発火不能 / 部分欠損の値をファイル単位カウンタへ足すと io_error 判定が壊れる）
+* **Create**: [緩い検出述語の出力を停止条件へ昇格させてはならない](pages/anti-patterns/loose-detector-predicate-promoted-to-stop-condition.md) — PR #2074 の raw source 1 件を統合（緩い述語は「無害な false-positive WARNING」を前提に選ばれている / 停止条件へ昇格させると誤発火と見逃しを同時に持つ / 検出層と停止層は入力を共有しない）
+* **Create**: [同一主張を複数言語で持つ記述は grep の盲点になる](pages/anti-patterns/same-claim-in-multiple-languages-evades-grep.md) — PR #2074 の raw source 2 件を統合（日本語で全消しした主張が英語の docs/SPEC.md に残る / 上位文書ほど例外の併記が要る）
+* **Create**: [「規約を守っている印」を除外条件にすると、印を持つ違反が検査から消える](pages/anti-patterns/convention-compliance-marker-as-exclusion-blinds-checker.md) — PR #2066 の raw source 2 件を統合（遵守の印を grep -v で落とすと印を持つ違反が不可視 / 変数を sed の式側へ入れると GNU sed の e コマンドでシェルへ渡る / 診断本文を運ぶ変数にセンチネル値を入れない）
+* **Create**: [位置決めを外部データから取る設計で「取れなかったら既定値を仮定する」と、無言の縮退になる](pages/anti-patterns/guessed-default-position-creates-silent-degradation.md) — PR #2070 の raw source 1 件を統合（ヘッダー不検出時の既定列 fallback が別列を黙って走査 / git cat-file -e は ref 不在と path 不在をどちらも rc=128 で返す / 複数検出器の regex 共有）
+* **Create**: [強制層の機械化は裁量を消すが依存を消さない — 依存先が移った先に検出と復旧を同時に設計する](pages/heuristics/mechanization-moves-dependency-not-removes-it.md) — PR #2074 の raw source 3 件を統合（依存先が裁量から記述忠実性へ移る / Markdown セルの <br> を句点へ潰すだけで実測 13 件が non-blocking 化し mergeable へ反転 / severity だけ正規化されている非対称は見落としの signal）
+* **Create**: [修正案が「一方の失敗モードを他方と交換する」形に割れたら、その機構は測るべき量を測っていない](pages/heuristics/split-reviewer-recommendations-signal-removal.md) — PR #2074 / #2070 の raw source 2 件を統合（推奨が 3 案に割れたことが撤去の決め手 / 前 cycle の fix が指摘されたら追加パッチを既定選択にしない / 撤去しても本筋の是正は別 Issue へ残す）
+* **Create**: [散文修正の完了検査は「削除した旧表現」ではなく「主張した概念」で走査する（逆引き検査）](pages/heuristics/reverse-lookup-concept-sweep-for-prose-fixes.md) — PR #2070 の raw source 3 件を統合（旧語彙 grep が構造的に取り逃す 4 クラス / 概念で走査して各サイトを読むと自力で 3 サイト追加検出 / 逆引きでも届かない隣接記述には上下 5 行と転送先の物理検査を対にする）
+* **Create**: [棄却した条件の根拠は、採用した条件にも当て直す](pages/heuristics/rejection-rationale-reapplied-to-adopted-option.md) — PR #2070 の raw source 2 件を統合（棄却理由がそのまま採用案にも当てはまっていた / 棄却の記述が残ると「検討済み」に見えてレビューでも見落とされる / 無害な除外の実データ実測で hits が 230→228 に動いた）
+* **Create**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — PR #2070 の raw source 4 件を統合（抜けるのは非既定側でなく既定側 / 構成で保証すると決めた瞬間に担保の根拠は構成 pin の網羅性へ移る / 混在 fixture が無いとファイル単位判定への変異が生き残る）
+* **Create**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — PR #2070 の raw source 3 件を統合（片方だけ修飾すると残りが検証済みと読まれる / ただし対称化の前に同格かを検証する — 引用元が MAY なら正しい修正は分離 / 規範語は引用元の該当行で確認する）
+* **Create**: [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) — PR #2070 の raw source 1 件を統合（同じ契約を書く複数サイトは最も限定的な表現に揃える / 見送り判断は結論でなく根拠を残す — 根拠が誤ると 2 名が独立に同じ論点を再提起した）
+* **Create**: [意図的除外と失敗を同じカウンタに載せると、そのカウンタの存在理由が消える](pages/heuristics/intentional-exclusion-not-counted-as-failure.md) — PR #2070 の raw source 2 件を統合（除外は分母にだけ計上する / 複数経路が合流したカウンタで原因を断定すると存在しない調査へ誘導する / 認識件数そのものも 0 件チェックの対象にする）
+* **Create**: [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) — PR #2066 の raw source 4 件を統合（テンプレでは当該見出しが最終節のため誤実装と正実装が同結果になり 13 ページ 81 hits の盲点に / 生成器由来の見出し表記揺れ / 同一除外の 2 実装は判定順序まで揃える）
+* **Create**: [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) — PR #2070 の raw source 2 件を統合（repro の raw pipe が検出側 [^\|] を通らず実測済み指摘が無音降格 / markdown エスケープでも通らないため U+00A6 へ置換する）
+* **Update**: [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) — PR #2070 / #2074 の raw source 4 件を統合（OR 短絡・SoT regex の自前コピー・部分一致 glob・chmod 対象の取り違えなど「書いてあるが落ちない」7 形 / self-censorship 禁止と水増し禁止は対で書く / sed 変異は silent に失敗しうるため適用を確認してから回す）
+* **Update**: [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) — PR #2070 の raw source 1 件を統合（ガードに到達しない 3 経路 / 除外規則の適用位置が意味を変える / 上流ガードと同一 regex の下流再判定は到達不能）
+* **Update**: [`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort](pages/anti-patterns/grep-oe-wc-pipefail-silent-abort.md) — PR #2066 の raw source 1 件を統合（終端 grep -c が「0 件」と「検出器の破損」を畳む / cd "" は rc=0 を返す / 同じ exit code を返す gate が複数あると exit code だけの assert は当の gate を pin しない）
+
 ## 2026-07-31
 
 * **Create**: [検証手順を書くときは処方するコマンドの判別能力そのものを実測する](pages/heuristics/prescribed-command-discriminating-power-measured.md) — PR #2056 の raw source 3 件を統合（gh issue view は PR 番号でも成功して PR を返す / 判別子は url のパスセグメントのみ、title と state は使えない / 恒真の確認は盲点を作る）
