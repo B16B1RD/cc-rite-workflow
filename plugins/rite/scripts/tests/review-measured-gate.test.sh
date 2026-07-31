@@ -499,6 +499,27 @@ if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=all_demoted_on_anchor' <<<"$GATE_STDE
   pass "blocking 候補が全件形式崩れで降格したら exit 1 + reason=all_demoted_on_anchor かつ JSON 不変"
 else fail "全件形式崩れ降格が hard fail にならない: rc=$GATE_RC / $(grep -o 'MEASURED_GATE=.*' <<<"$GATE_STDERR")"; fi
 
+# 単一 finding でも発火する (「blocking 候補の全件」= 1 件でも成立する境界)
+f="$TEST_DIR/tc08f-single.json"
+mk_json "$f" "$(mk_finding F-01 CRITICAL current-pr '境界なし。Verification: repro bash a.sh => boom')"
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=all_demoted_on_anchor' <<<"$GATE_STDERR"; then
+  pass "blocking 候補が 1 件だけでも全件形式崩れなら発火する"
+else fail "単一 finding で発火しない: rc=$GATE_RC"; fi
+
+# 誤発火しないこと 0: nit の形式崩れ 1 件 + gated アンカーなし 2 件
+# (nit を母集団に入れていた cycle 2 以前は anchor_unparseable=1 / demoted=2 で不一致のため
+#  偶然発火しないが、blocking=0 単独条件だった routing 行はここで誤発火していた)
+f="$TEST_DIR/tc08f-nitmix.json"
+mk_json "$f" \
+  "$(mk_finding F-01 LOW nit-noted 'nit。Verification: repro bash a.sh => x')" \
+  "$(mk_finding F-02 HIGH current-pr 'アンカーなし')" \
+  "$(mk_finding F-03 MEDIUM current-pr 'アンカーなし')"
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 0 ] && ! grep -q 'MEASURED_DEMOTED_ON_ANCHOR' <<<"$GATE_STDERR"; then
+  pass "nit の形式崩れは gated 母集団に入らず、gated 側の正常な全件降格を妨げない"
+else fail "nit 混在で誤発火した: rc=$GATE_RC"; fi
+
 # 誤発火しないこと 1: アンカー文字列そのものが無い正常系 (AC-3 の主経路)
 f="$TEST_DIR/tc08f-normal.json"
 mk_json "$f" \
