@@ -1843,6 +1843,22 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 これらに該当しない修正を採用する場合、Wiki (`/rite:wiki-query`) で project-specific な許容パターンを事前確認すること。本原則は fix.md の手順として常時適用される（config での opt-out は不可）。
 
+### Simplification-First Response Principle（追加より削除を先に検討）
+
+指摘に対する修正方針を決定する前に、以下のチェックリストを必ず通過させること（Fail-Fast Response Principle と同様、config での opt-out は不可）:
+
+- [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか
+- [ ] 追加しようとしている分岐 / ガード / 規約は、指摘された 1 ケース専用になっていないか（1 ケース対応の追加は、次 cycle でその追加自体が新たなレビュー対象面となり指摘を再生産する）
+- [ ] 修正 diff は指摘の解消に必要な最小か。指摘されていない「ついで」の防御・柔軟性・将来対応を含んでいないか
+
+本原則の対象は**機構の追加**（分岐・ガード・規約・注記・例外条項）である。テストケースの追加や既存複製の同期更新は対象外（それらは通常それ自体が正しい修正であり、削除で代替しない）。
+
+**Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加パッチを選択 — 理由: {reason}`）。
+
+**追加で修正する場合**、commit message に「なぜ削除・単純化ではなく追加を選んだか」を明示すること（Fail-Fast の fallback 明示義務と同型）。
+
+rationale: references/design-rationale.md#simplification-first-rationale
+
 ### 2.1 Confirm Fix Approach
 
 **Entry routing — scope=nit-noted skip**:
