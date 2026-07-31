@@ -105,9 +105,13 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 > `pr-review/SKILL.md` ステップ 5.3 実行順 step 2 から「集合演算の SoT」として参照されるため。
 > nit-noted 除外は散文 (下記「scope=nit-noted との関係」) と helper `scripts/review-measured-gate.sh`
 > の `gated` 述語 (`scope_effective` が `current-pr` / `follow-up` のときだけ真) にも現れるが、
-> SoT の疑似コード単独で二者整合が読み取れる状態を保つ。
+> SoT の疑似コード単独で三者整合が読み取れる状態を保つ。
 
-**WARNING emit (AC-5 主経路)**: 降格した finding のうち **`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て**を、正常系 (アンカー文字列そのものが無い = 非実測指摘) とは区別して stderr に WARNING で報告する。発火条件を「`=>` 右辺空」だけに絞ってはならない — **raw `|` を含む repro も no-match で降格される**ため、絞ると「実測済みの指摘が無音で non-blocking に落ちる」という silent failure が検出層自身に残る (本リポジトリは bash/jq 中心で repro にパイプが入るのが常態)。
+**WARNING emit (AC-5 主経路)**: **gate 対象 scope (`current-pr` / `follow-up`) の finding のうち、`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て**を、正常系 (アンカー文字列そのものが無い = 非実測指摘) とは区別して stderr に WARNING で報告する。発火条件を「`=>` 右辺空」だけに絞ってはならない — **raw `|` を含む repro も、アンカー直前の境界を欠いた repro も no-match で降格される**ため、絞ると「実測済みの指摘が無音で non-blocking に落ちる」という silent failure が検出層自身に残る (本リポジトリは bash/jq 中心で repro にパイプが入るのが常態)。
+
+母集団を gate 対象 scope に限るのは、`nit-noted` が `gated` 偽で**降格され得ない**ため。含めると「降格していないものを降格と申告する」ことになり、その件数を入力に持つ下記 `all_demoted_on_anchor` の hard fail が、分類上まったく正常な run で誤発火する。
+
+**全件形式崩れの hard fail**: 上記 WARNING 対象が blocking 候補の**全件**を占め、その結果 `assessment` が mergeable へ反転した場合 — 判定式は `blocking == 0 ∧ anchor_unparseable > 0 ∧ demoted == anchor_unparseable` — helper は JSON を書かずに `reason=all_demoted_on_anchor` で非ゼロ終了する。「本来 blocking だったものが書式ミスだけで mergeable になる」形は caller が JSON を作り直せば同 cycle 内で収束する契約違反であり、**判定を caller 側の散文 routing に置くと Issue #2072 が排除対象にした「LLM が読んで止める」依存が強制層の中に戻る**ため helper 側に置く。アンカー文字列そのものが無い正常系 (`anchor_unparseable == 0`) は該当しない。
 
 判定は 2 段で機械的に書ける:
 
@@ -119,7 +123,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 > **stage 1 は「列挙」ではなく「正規化」で書く**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`\*{0,2}` のように**特定の装飾だけを列挙**すると、列挙から漏れた形 (バッククォート `` `Verification`: ``、全角コロン `Verification：`、三重アスタリスク `***Verification***:`、underscore `_Verification_:`、種別欠落 `Verification: bash x.sh => ERROR`、ラベル取り違え `Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。装飾を 1 つ足すたびに regex を直す設計にせず、装飾文字クラスと全角コロンを吸収する形にする。トレードオフは「散文中の `verification :` 等を拾う無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。対象が 1 件以上なら `review-measured-gate.sh` が以下を emit する (helper の実装契約であり、省略は許されない):
 
 ```bash
-echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を measured=false に降格しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 形式崩れ)。パイプを含むコマンドは ¦ で代替表記してください" >&2
+echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を検出しました (raw pipe / 改行タグ / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / アンカー直前の境界欠落)。アンカーの直前は行頭・改行タグ・空白のいずれかにし、パイプを含むコマンドは ¦ で代替表記してください" >&2
 echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
 ```
 

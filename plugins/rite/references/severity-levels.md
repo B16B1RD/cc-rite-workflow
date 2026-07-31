@@ -158,12 +158,14 @@ blocking = CONFIRMED (全指摘事項に残存)
 
 **強制層**: 本ゲートの分類は `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が JSON 後処理として決定論的に実行する。アンカー検出 (2 段判定)・`verification` の設定・`non_blocking_findings[]` への移送・`overall_assessment` の確定はすべて helper 側にあり、LLM は結果の marker を読むだけで分類を行わない。**LLM 裁量に置いた旧設計では、PR #2070 の全 9 サイクルで一度も降格が実行されなかった** — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい (Issue #2072)。
 
-**強制層が依存するもの (裁量を消しても依存は消えない)**: 分類の入力は JSON の `findings[].scope` と `findings[].description` であり、どちらも LLM が書く。したがって強制層は「LLM の裁量」への依存を「LLM の**記述忠実性**」への依存に置き換えたにすぎない。helper はその依存を 2 つの機械的検査で守る:
+**強制層が依存するもの (裁量を消しても依存は消えない)**: 分類の入力は JSON の `findings[].scope` と `findings[].description` であり、どちらも LLM が書く。したがって強制層は「LLM の裁量」への依存を「LLM の**記述忠実性**」への依存に置き換えたにすぎない。helper はその依存を 3 つの hard fail で守る (いずれも JSON を書かずに非ゼロ終了する = fail-closed。`--reject-preset-verification` 指定下、すなわち `/rite:pr-review` の配線済み経路が該当する):
 
-- **`scope` は 3 値 enum を要求し、外れたら `reason=scope_enum_violation` で hard fail する** (fail-closed)。gated 判定は完全一致のため、未知 scope は blocking 件数からも `non_blocking_findings[]` への移送対象からも**同時に**外れ、実測済み CRITICAL を `findings[]` に残したまま `assessment=mergeable` を確定させる (`blocking=0; demoted=0` は「指摘ゼロの正常終了」と区別できない)。正規化や default 補完で黙って受理する経路は持たない。
-- **アンカーは直前の境界 (行頭 / `<br>` / 空白) を要求する。** 境界を落とした転記 (Markdown セルの `<br>` を日本語句点へ潰す等) は全 finding を一斉に `anchor_unparseable` へ落とし mergeable に反転させうるため、`MEASURED_DEMOTED_ON_ANCHOR` marker と `blocking` 件数を突き合わせて「全件降格」を異常として扱う (routing は `pr-review/SKILL.md` ステップ 5.3.0.M step 3 の表)。
+- **`scope` は 3 値 enum を要求する** — 外れれば `reason=scope_enum_violation`、キーが無ければ `reason=scope_missing`。gated 判定は完全一致のため、未知 scope は blocking 件数からも `non_blocking_findings[]` への移送対象からも**同時に**外れ、実測済み CRITICAL を `findings[]` に残したまま `assessment=mergeable` を確定させる (`blocking=0; demoted=0` は「指摘ゼロの正常終了」と区別できない)。欠落を severity ベースの default mapping に倒す経路も帰結は同じ (`current-pr` の LOW / LOW-MEDIUM が gated から脱落する) ため、検出形が「値が変」か「キーが無い」かで扱いを割らない。
+- **アンカーは直前の境界 (行頭 / `<br>` / 空白) を要求する** — blocking 候補の**全件**が境界欠落等の形式崩れで降格し `assessment` が mergeable へ反転した場合は `reason=all_demoted_on_anchor` で停止する。判定は `blocking == 0 ∧ anchor_unparseable > 0 ∧ demoted == anchor_unparseable` で、アンカー文字列そのものが無い正常系 (`anchor_unparseable == 0`) には該当しない。
 
-いずれも「WARNING は出るが分類は進む」形にしない — 無音の縮退と、縮退したまま mergeable へ到達する経路の両方を塞ぐのが本ゲートの目的であるため。
+**判定はいずれも helper 側に置く。** caller 側の散文 routing に置くと、本 Issue が排除対象にした「LLM が marker を読んで止める」依存が強制層の中に残るため。caller が観測するのは非ゼロ終了と `reason` だけで、そこに裁量の余地はない (routing は `pr-review/SKILL.md` ステップ 5.3.0.M step 3 の表)。
+
+**なお強制は全域には及ばない。** `--reject-preset-verification` が弾くのは「既存 `verification.measured` が description のアンカー有無と**矛盾する**」形だけで、アンカーと一致する preset は素通りし、その `repro` / `failing_test` は helper の抽出を経ず LLM が書いた文字列のまま永続 JSON に残る。preset の存在自体を弾く形にはできない — ゲート適用後の JSON は全件が `verification` を持つため、再実行が必ず失敗し冪等性 (AC-5) が壊れる。したがって「実測していないのに正規形アンカーと整合する `verification` を書けば通る」経路は残依存として残る。
 
 ## Severity × Scope Matrix
 

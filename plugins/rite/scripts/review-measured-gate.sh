@@ -99,6 +99,17 @@
 #                                 (review-result-schema.md cross-field invariant #2 違反)。
 #                                 ascii_downcase 正規化や current-pr への default 補完は採らない —
 #                                 不正入力を黙って受理する fallback は本 script の設計前提と衝突する
+#   scope_missing               — --reject-preset-verification 指定下で findings[].scope が欠落
+#                                 (exit 1、書き換えはしない)。帰結は enum 違反と同一 (default mapping に
+#                                 倒れた LOW / LOW-MEDIUM が gated から外れる) ため扱いを揃える。
+#                                 フラグなしの互換モードでは WARNING + default で続行する
+#   all_demoted_on_anchor       — --reject-preset-verification 指定下で、blocking 候補の**全件**が
+#                                 アンカー形式崩れで降格し assessment が mergeable へ反転した
+#                                 (exit 1、書き換えはしない)。判定は
+#                                 `blocking == 0 ∧ anchor_unparseable > 0 ∧ demoted == anchor_unparseable`。
+#                                 **判定を helper 側に置くのは意図的** — caller 側の散文 routing に
+#                                 置くと Issue #2072 が排除対象にした「LLM が読んで止める」依存が
+#                                 強制層の中に残る
 #   verification_preset_by_caller — --reject-preset-verification 指定下で、description のアンカー有無と
 #                                  矛盾する既存 verification.measured を検出 (exit 1、書き換えはしない)
 #   mktemp_failure              — 出力 tempfile の mktemp 失敗 (exit 1)
@@ -108,8 +119,12 @@
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
 # emit reasons sequence = (`jq_missing` / `input_missing` / `input_unreadable` / `json_invalid` /
 #   `findings_not_array` / `non_blocking_not_array` / `jq_transform_failed` / `stats_read_failed` /
-#   `scope_enum_violation` / `verification_preset_by_caller` / `mktemp_failure` /
-#   `write_failure` / `mv_failure`)
+#   `scope_enum_violation` / `scope_missing` / `all_demoted_on_anchor` /
+#   `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure`)
+# `signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する
+# (hooks/review-nonblocking-record.sh と同じ慣行)。reason 表には下記のとおり載せる。
+#   signal_aborted              — INT / TERM / HUP で中断 (rc= / signal= を併記)。marker ゼロで
+#                                 終わると caller が「失敗していない」と読む余地が残るため emit する
 #
 # Exit codes:
 #   0  ゲート適用成功 (WARNING のみを含む)
@@ -160,15 +175,13 @@ fi
 # rite-config.yml 等の repo-relative なファイルを読まないため (sibling の review-findings-maps.sh は
 # config 読込のために cd するが、本 script にその依存はない)。
 
-diag_file=""
-
 _fail() {
   # $1 = reason, $2 = 人間向け説明
   # 直前の外部コマンドが stderr を $diag_file へ退避していれば先頭 5 行を転記する
   # (sibling の scripts/review-findings-maps.sh と同型。stderr を捨てると本 script 唯一の
   #  hard-stop 経路で原因が消える)。
   echo "ERROR: $2" >&2
-  if [ -n "$diag_file" ] && [ -s "$diag_file" ]; then
+  if [ -n "${diag_file:-}" ] && [ -s "${diag_file:-}" ]; then
     head -5 "$diag_file" | sed 's/^/  /' >&2
   fi
   echo "[CONTEXT] MEASURED_GATE_FAILED=1; reason=$1" >&2
@@ -182,33 +195,53 @@ if ! command -v jq >/dev/null 2>&1; then
   _fail jq_missing "jq が見つかりません (PATH を確認してください)"
 fi
 
+# 診断用 tempfile と trap は **最初の jq 呼び出しより前**に用意する。後ろに置くと
+# `json_invalid` / `findings_not_array` / `non_blocking_not_array` の 3 経路で退避先が存在せず、
+# docstring と caller routing が約束している「ERROR 行の直後に stderr 先頭 5 行を転記する」が
+# 破れる。step 1 は Claude が JSON を Write する工程なので、不正 JSON は本ゲートの最有力
+# failure mode であり、そこで jq の line/column が消えるのは最も痛い。
+out_tmp=""
+diag_file=""
+_cleanup() {
+  [ -n "${out_tmp:-}" ] && rm -f "$out_tmp"
+  [ -n "${diag_file:-}" ] && rm -f "$diag_file"
+  return 0
+}
+# signal 中断でも marker を残す。caller (pr-review step 3) の routing 表は観測 marker のみを
+# 入力にするため、marker ゼロで終わると「失敗していない」と読む余地が残る
+# (sibling の hooks/review-nonblocking-record.sh と同じ理由・同じ形)。
+_signal_abort() {
+  echo "ERROR: 実測必須ゲートが signal で中断されました (signal=$2)" >&2
+  echo "[CONTEXT] MEASURED_GATE_FAILED=1; reason=signal_aborted; rc=$1; signal=$2" >&2
+  _cleanup
+  exit "$1"
+}
+trap 'rc=$?; _cleanup; exit $rc' EXIT
+trap '_signal_abort 130 INT' INT
+trap '_signal_abort 143 TERM' TERM
+trap '_signal_abort 129 HUP' HUP
+
+if ! diag_file=$(mktemp "${TMPDIR:-/tmp}/rite-measured-gate-err-XXXXXX" 2>/dev/null); then
+  diag_file=""
+  echo "WARNING: 診断用 tempfile を作成できませんでした。失敗時の外部コマンド stderr は表示されません" >&2
+fi
+
 if [ ! -f "$input" ]; then
   _fail input_missing "実測必須ゲートの入力 JSON が見つかりません: $input"
 fi
 if [ ! -r "$input" ]; then
   _fail input_unreadable "実測必須ゲートの入力 JSON を読み取れません (権限): $input"
 fi
-if ! jq empty "$input" 2>/dev/null; then
+if ! jq empty "$input" 2>"${diag_file:-/dev/null}"; then
   _fail json_invalid "実測必須ゲートの入力 JSON が parse できません: $input"
 fi
-if [ "$(jq -r '.findings | type' "$input" 2>/dev/null)" != "array" ]; then
+if [ "$(jq -r '.findings | type' "$input" 2>"${diag_file:-/dev/null}")" != "array" ]; then
   _fail findings_not_array ".findings が配列ではありません: $input"
 fi
-non_blocking_type=$(jq -r 'if has("non_blocking_findings") then (.non_blocking_findings | type) else "absent" end' "$input" 2>/dev/null)
+non_blocking_type=$(jq -r 'if has("non_blocking_findings") then (.non_blocking_findings | type) else "absent" end' "$input" 2>"${diag_file:-/dev/null}")
 if [ "$non_blocking_type" != "array" ] && [ "$non_blocking_type" != "absent" ]; then
   _fail non_blocking_not_array ".non_blocking_findings がキー存在かつ配列ではありません (type=$non_blocking_type): $input"
 fi
-
-out_tmp=""
-_cleanup() {
-  [ -n "${out_tmp:-}" ] && rm -f "$out_tmp"
-  [ -n "${diag_file:-}" ] && rm -f "$diag_file"
-  return 0
-}
-trap 'rc=$?; _cleanup; exit $rc' EXIT
-trap '_cleanup; exit 130' INT
-trap '_cleanup; exit 143' TERM
-trap '_cleanup; exit 129' HUP
 
 # ---- ゲート変換 ----
 # 3 つの regex はいずれも assessment-rules.md §5.3.0.M / _reviewer-base.md §Verification の SoT 由来。
@@ -284,36 +317,39 @@ def with_verification:
       assessment: (if $blocking == 0 then "mergeable" else "fix-needed" end),
       # enum 外 scope の件数 (0 でなければ caller 契約違反として hard fail する)。
       scope_unknown: ([$orig[] | select(scope_known | not)] | length),
-      # scope キー欠落で severity ベース default mapping に倒れた件数 (observability。
-      # 補完自体は後方互換のため許容するが無通知にはしない)。
+      # scope キー欠落で severity ベース default mapping に倒れた件数。
+      # フラグ指定下では hard fail の入力、フラグなしでは後方互換のため WARNING のみ。
       scope_defaulted: ([$orig[] | select((.scope // "") == "")] | length),
       # stage 1 真 かつ stage 2 偽 = 「アンカーはあるが形式崩れ」。
       # **既存 boolean の有無で除外してはならない** — `measured: false` の preset を持つ finding は
       # verification_conflict にも該当しない (false == anchored(false)) ため、除外すると
       # 「アンカーはあるが形式崩れ」が hard fail にも WARNING にも載らず無音で通り抜ける
       # (docstring が「silent 降格の唯一の検出層」と称する層の穴)。
+      #
+      # **母集団は gate 対象 scope に限る**。nit-noted は `gated` が偽で降格され得ないため、
+      # 含めると「降格していないものを降格と申告する」ことになり、その count を入力に持つ
+      # all_demoted_on_anchor の hard fail が、分類上まったく正常な run で誤発火する。
       anchor_unparseable: (
-        [$orig[] | select(marker_present and (anchored | not))] | length
+        [$orig[] | select(gated and marker_present and (anchored | not))] | length
       ),
       # 実測済みを主張する Likelihood-Evidence があるのに Verification アンカーが無い不整合
-      # (§4.4 SHOULD: 両方添付が契約)。除外しない理由は anchor_unparseable と同じ。
+      # (§4.4 SHOULD: 両方添付が契約)。母集団を gated に限る理由は anchor_unparseable と同じ。
       runtime_obs_without_anchor: (
-        [$orig[] | select((desc | test($re_runtime_obs)) and (anchored | not))] | length
+        [$orig[] | select(gated and (desc | test($re_runtime_obs)) and (anchored | not))] | length
       ),
       # 既存 boolean と description のアンカー有無が食い違う件数 (既存値を正とするため WARNING のみ)。
       verification_conflict: (
         [$orig[] | select(has_measured_bool) | select(.verification.measured != anchored)] | length
+      ),
+      # enum 外 scope の診断行。値は tojson で 1 行の JSON literal に畳む (raw 改行による
+      # [CONTEXT] marker 偽造と ANSI/OSC の素通しを同時に塞ぐ)。
+      scope_unknown_list: (
+        [$orig[] | select(scope_known | not)
+         | "  - \(.id // "?" | tojson) \(.file // "?" | tojson): scope=\(.scope | tojson)"]
       )
     }
   }
 JQEOF
-
-# 外部コマンドの stderr 退避先。mktemp 失敗時は /dev/null に縮退させるが、その場合でも
-# _fail は ERROR + reason を出すため停止理由自体は失われない。
-if ! diag_file=$(mktemp "${TMPDIR:-/tmp}/rite-measured-gate-err-XXXXXX" 2>/dev/null); then
-  diag_file=""
-  echo "WARNING: 診断用 tempfile を作成できませんでした。失敗時の外部コマンド stderr は表示されません" >&2
-fi
 
 if ! result=$(jq \
   --arg re_stage1 '(?i)verification[*_`[:space:]]*[:：]' \
@@ -329,11 +365,15 @@ fi
 # サブシェルだけ**を終わらせ script は続行する。その結果 x="" となり後続の `[ "$x" -gt 0 ]` が
 # rc=2 (偽) に倒れて、hard fail ゲート自体が無音で skip され JSON が書き込まれる — 塞いだはずの
 # fail-open をゲートの内部で再生産する形になる (実測で確認済み)。
+# `map(tostring)` は必須。キーが欠けると `@tsv` がそこを空文字にし、tab は IFS whitespace のため
+# 連続 tab が圧縮されてフィールドが左シフトする。fail-closed 自体は保たれる (どこかの数値枠に
+# enum 文字列が落ちる) が、**診断が実際に欠けたものと別の統計名を名指しする**。
+# `tostring` を通すと欠落キーが "null" という非空文字列になり、シフトが消えて名前が正しくなる。
 if ! stats_tsv=$(printf '%s\n' "$result" | jq -r '
   [ .stats.blocking, .stats.demoted, .stats.non_blocking_total,
     .stats.anchor_unparseable, .stats.runtime_obs_without_anchor,
     .stats.scope_unknown, .stats.scope_defaulted, .stats.verification_conflict,
-    .stats.assessment ] | @tsv' 2>"${diag_file:-/dev/null}"); then
+    .stats.assessment ] | map(tostring) | @tsv' 2>"${diag_file:-/dev/null}"); then
   _fail stats_read_failed "ゲート統計の読み出し jq が失敗しました"
 fi
 IFS=$'\t' read -r blocking demoted non_blocking_total anchor_unparseable \
@@ -356,8 +396,37 @@ esac
 # その内容を拾える状態が残る。
 if [ "$scope_unknown" -gt 0 ]; then
   echo "ERROR: findings[].scope が enum (current-pr / follow-up / nit-noted) 外の finding が ${scope_unknown} 件あります。未知 scope は gated 判定から外れて blocking 件数にも non_blocking_findings[] への移送対象にも入らず、実測済み指摘を findings[] に残したまま assessment=mergeable を確定させます (fail-open)" >&2
-  jq -r '.findings[] | select((.scope // "") != "" and .scope != "current-pr" and .scope != "follow-up" and .scope != "nit-noted") | "  - \(.id // "?") \(.file // "?"): scope=\"\(.scope)\""' "$input" 2>/dev/null | head -10 >&2
+  # 列挙は変換 jq が算出済みの集合を読む (述語を 2 箇所に持たない)。値は `tojson` で必ず
+  # 1 行の JSON literal に畳む — id / file / scope は LLM 生成の自由記述で、raw 改行を
+  # 埋めれば本 script 自身の `[CONTEXT]` marker とバイト同一の行を偽造でき、その marker は
+  # caller (pr-review step 3) の routing 入力そのものになる。ANSI/OSC も同時に潰れる。
+  printf '%s\n' "$result" | jq -r '.stats.scope_unknown_list[]' 2>"${diag_file:-/dev/null}" | head -10 >&2
+  if [ "$scope_unknown" -gt 10 ]; then
+    echo "  ... (残り $((scope_unknown - 10)) 件は省略)" >&2
+  fi
   _fail scope_enum_violation "scope enum 違反のため、ゲートを適用せず停止しました: $input"
+fi
+
+# scope キー欠落も、フラグ指定下 (= caller 契約の機械的強制モード) では hard fail させる。
+# 帰結は enum 違反と同一 — default mapping に倒れた LOW / LOW-MEDIUM は gated から外れ、
+# reviewer が current-pr を割り当てた指摘が blocking から脱落する。検出形が「値が変」か
+# 「キーが無い」かの違いだけで扱いを割るのは、cycle 1 で enum 違反を fail-closed にした
+# 根拠と矛盾する。フラグなしの互換モードでは従来どおり WARNING + default で続行する。
+if [ "$reject_preset" -eq 1 ] && [ "$scope_defaulted" -gt 0 ]; then
+  echo "ERROR: findings[].scope を持たない finding が ${scope_defaulted} 件あります。severity ベースの default mapping に倒れると、reviewer が current-pr を割り当てた LOW / LOW-MEDIUM が blocking から脱落します (enum 違反と同じ帰結)" >&2
+  _fail scope_missing "scope 欠落のため、ゲートを適用せず停止しました: $input"
+fi
+
+# **全 blocking 候補がアンカー形式崩れで降格した** ケースは caller 契約違反として停止する。
+# `demoted == anchor_unparseable` は「降格した finding が全て形式崩れ由来」を意味し、
+# `blocking == 0` と合わせて「本来 blocking だったものが書式ミスだけで mergeable へ反転した」
+# 形を一意に指す (アンカー文字列そのものが無い正常系は anchor_unparseable=0 なので該当しない)。
+# **判定を helper 側に置くのは意図的** — caller 側の散文 routing に置くと、Issue #2072 が
+# 排除対象にした「LLM が読んで止める」依存が強制層の中に残る。
+if [ "$reject_preset" -eq 1 ] && [ "$blocking" -eq 0 ] && [ "$anchor_unparseable" -gt 0 ] \
+   && [ "$demoted" -eq "$anchor_unparseable" ]; then
+  echo "ERROR: blocking 候補 ${demoted} 件すべてが Verification: アンカーの形式崩れで降格し、assessment が mergeable へ反転しました。アンカーの直前は行頭・改行タグ・空白のいずれかにし、repro 本文に raw pipe と改行タグを含めないでください (パイプは ¦ で代替表記)" >&2
+  _fail all_demoted_on_anchor "全 blocking 候補が形式崩れアンカーで降格したため、ゲートを適用せず停止しました: $input"
 fi
 
 if [ "$reject_preset" -eq 1 ] && [ "$verification_conflict" -gt 0 ]; then
