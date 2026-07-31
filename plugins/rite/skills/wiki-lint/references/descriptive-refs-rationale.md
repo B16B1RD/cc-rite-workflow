@@ -60,10 +60,14 @@ WARNING skip が 1 件増える。helper 側で完結させれば他カテゴリ
 （`grep -c || echo 0` を題材にしたページ等）があると列数が合わず、実エントリが 1 件無言で落ちる（実測 1 行）。
 マスクを入れると現行 index.md の列数不一致は 0 件になる。
 
-サマリー列の位置はヘッダー行から決め、END でエントリ行数と抽出成功数を突き合わせる。
-位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、位置決めと欠損の露出を対にする
-（`/rite:wiki-query positional-parse-row-count-guard` で参照）。列数が想定と異なる行は行全体を対象にせずスキップする
-（誤検出で件数を膨らませない）。
+サマリー列の位置はヘッダー行から決め、ヘッダーを検出できないテーブル行は**既定列を当てずっぽうで読まずスキップする**。
+既定列を当てると、見出し語が `サマリー` から drift しただけで別列を黙って走査し hits が無言で 0 に倒れる
+（位置固定の列パースが列の増減で silent no-op に倒れるのと同じ失敗形。`/rite:wiki-query positional-parse-row-count-guard` で参照）。
+列数がヘッダーと異なる行も同様にスキップする（誤検出で件数を膨らませない）。箇条書き形式は列を持たないためヘッダー不在の影響を受けない。
+
+エントリ行を判定するリンク regex は、同じ `index.md` を読む `wiki-lint-orphans.sh` と**同一定義**にする
+（`./pages/` / `../pages/` 形式も受ける）。片方だけ狭いと、その形式の index で本 helper だけが無言で 0 件に倒れ、
+orphans 側は正常に処理し続けるため他カテゴリからも異常が見えない。
 
 **スキップした行は stdout の `descriptive_refs_skipped_rows` に載せる**。stderr の WARNING だけでは
 ステップ 9 の note 条件（`descriptive_refs_read_errors > 0`）を通らず、部分欠損した集計が注記なしで
@@ -77,8 +81,13 @@ index 経路にだけ残さないための措置。**行単位の値を `descrip
 前文を残したプロジェクトで構造的に発火しない。
 
 `comment-journal-check.sh` の `.rite/wiki` scan_root は `wiki.branch_strategy: same_branch` のときだけ実体に届く。
-`separate_branch` では Wiki は wiki ブランチにあり、dev checkout の `.rite/wiki/` は gitignore されたローカル置き場（通常は不在）になる。
-その構成の Wiki 走査は本 helper が `git show` で担うため二重化させない。
+`separate_branch` では Wiki ページの実体は wiki ブランチにあり、dev checkout の `.rite/wiki/` は gitignore されたローカル置き場になる。
+ただし ingest 待ちの Raw Source は一時的に dev checkout の `.rite/wiki/raw/` に実在するため、その窓では raw 由来の検出が出うる。
+ページ分の走査は本 helper が `git show` で担うため二重化させない（本 helper は `raw/` を意図的に除外するので、両検出器の対象集合は一致しない）。
+
+`separate_branch` で wiki ブランチの ref 自体が解決できない場合は、`index.md` を「不在」ではなく**読出失敗**として扱う。
+`git cat-file -e` は「ref が無い」と「ref 内に path が無い」をどちらも rc=128 で返すため、畳むと壊れた ref が
+静かな 0 件になり、`pages_list` も空だと stderr すら出ないまま「実測済みの 0 件」として通る。
 
 ## 除外の実測根拠
 

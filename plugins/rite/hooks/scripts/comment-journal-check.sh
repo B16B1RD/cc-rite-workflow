@@ -12,15 +12,19 @@
 # ファイル名アンカー (xxx.test.sh 等、番号ではない) は検出から除外する。
 #
 # `.rite/wiki/**` に届く条件 (wiki.branch_strategy 依存):
-#   same_branch     Wiki の実体が dev ブランチのワークツリーにあるため到達する。
-#   separate_branch 到達しない。dev checkout 側の `.rite/wiki/` は gitignore された
-#                   ローカル成果物置き場 (通常は不在) で、Wiki の実体は wiki ブランチにある。
-#                   この構成では Wiki ページの走査は `/rite:wiki-lint` ステップ 7.5
+#   same_branch     Wiki の実体が dev ブランチのワークツリーにあるため、pages / index.md /
+#                   log.md / raw のすべてに到達する。
+#   separate_branch Wiki ページ (pages/ / index.md) の実体は wiki ブランチにあり到達しない。
+#                   ただし dev checkout の `.rite/wiki/raw/` には ingest 待ちの Raw Source が
+#                   一時的に実在する (wiki-ingest-trigger が書き、wiki-ingest-commit が wiki
+#                   ブランチへ移すまでの窓) ため、その間は raw 由来の検出が出うる。
+#                   ページ分の走査は `/rite:wiki-lint` ステップ 7.5
 #                   (`wiki-lint-descriptive-refs.sh`) が担う — そちらは `git show` で
-#                   wiki ブランチを直接読むため実体に届く。
+#                   wiki ブランチを直接読むため実体に届く。ただし 7.5 は log.md / raw/ /
+#                   SCHEMA.md を意図的に除外するため、両検出器の対象集合は一致しない。
 #   ここでは wiki ブランチを読みに行かない。本スクリプトはワークツリー上のファイルを
 #   走査する CI 向けの高速レイヤであり、ブランチ解決を持ち込むと wiki-lint と検出責務が
-#   二重化する。separate_branch で Wiki 分の指摘が 0 件でも「Wiki が clean」ではなく
+#   二重化する。separate_branch で Wiki ページ分の指摘が 0 件でも「Wiki が clean」ではなく
 #   「本スクリプトの走査範囲外」である点に注意する。
 #
 # Layered defense:
@@ -170,9 +174,10 @@ Scan scope (--all):
   plugins/rite/**/*.{sh,md}, docs/**/*.md, .rite/wiki/**/*.md
   (self-exclude: this script, comment-best-practices.md SoT, parity test,
    検出器自身の test 2 本: comment-journal-check.test.sh / wiki-lint-descriptive-refs.test.sh)
-  .rite/wiki/ はワークツリー上に実体がある構成 (wiki.branch_strategy: same_branch) でのみ
-  到達する。separate_branch では Wiki は wiki ブランチにあり本スクリプトは走査しない
-  (その構成の Wiki 走査は /rite:wiki-lint ステップ 7.5 が担当)。
+  .rite/wiki/ の Wiki ページ (pages/ / index.md) に到達するのは same_branch 構成のみ。
+  separate_branch では wiki ブランチにあるため走査しないが、ingest 待ちの Raw Source が
+  .rite/wiki/raw/ に一時的に実在する窓では raw 由来の検出が出うる
+  (ページ分の走査は /rite:wiki-lint ステップ 7.5 が担当。ただし 7.5 は raw/ を除外する)。
 
 Exit codes:
   0  No journal narration detected
@@ -210,9 +215,9 @@ if [ "$USE_ALL" -eq 1 ]; then
   # 説明的番号参照は永続成果物全般 (in-source コメント + ドキュメント散文 + Wiki ページ) が対象であり、
   # plugins/rite に加えて repo-root の docs/ と .rite/wiki/ も走査する。後二者は存在するときのみ加える
   # (marketplace install や Wiki 無効プロジェクトでは plugins/rite のみで走査が成立する)。
-  # `.rite/wiki/` に実体があるのは wiki.branch_strategy: same_branch のときだけ。separate_branch では
-  # 不在なら scan_root に加わらず、空ディレクトリとして存在する場合は加わるが対象ファイルが 0 件になる。
-  # いずれの経路でも Wiki 分の検出は 0 件になる。
+  # `.rite/wiki/` に Wiki ページの実体があるのは wiki.branch_strategy: same_branch のときだけ。
+  # separate_branch では不在なら scan_root に加わらず、空ディレクトリなら加わるが対象は 0 件になる。
+  # ただし ingest 待ちの Raw Source が `.rite/wiki/raw/` に一時的に置かれる窓ではそれが走査対象に入る。
   # これは未実装の残債ではなく責務分割で、その構成の Wiki 走査は wiki-lint ステップ 7.5 が担う (冒頭コメント参照)。
   scan_roots=("$base")
   [ -d "docs" ] && scan_roots+=("docs")

@@ -270,7 +270,7 @@ echo "---"
 [ -n "$raw_list" ] && printf '%s\n' "$raw_list"
 ```
 
-LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。両方空ならステップ 3-7 を skip し ステップ 9 に進む (検出結果なしの完了レポート)。
+LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。両方空なら **ステップ 3-7.4 を skip し、ステップ 7.5 → ステップ 9 に進む**。ステップ 7.5 だけは skip しない — `index.md` が単独で走査対象になりうるためで、skip すると wiki 初期化直後や `git ls-tree` 失敗時に index.md の指摘が無言で 0 件になる。
 
 `index.md` は ステップ 5 の `wiki-lint-orphans.sh` と ステップ 7.5 の `wiki-lint-descriptive-refs.sh` がそれぞれ自力で読み出すため、本ステップでの事前読出は不要。
 
@@ -624,7 +624,9 @@ Wiki ページ本文に残った**説明目的の Issue/PR 番号参照**を検�
 - 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME を含む行（前方追跡ポインタ）。除外規則は `index.md` にも一貫適用する
 - 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。根拠は `references/descriptive-refs-rationale.md` の「走査範囲」節
 
-**`index.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない** — `pages_list` はステップ 3 / 4 / 5 / 6.2 / 7 が共有する入力で、ステップ 5（孤児検出）は「index 登録ページ ∖ `pages_list`」の差分を取るため `index.md` を混ぜると孤児が +1 になる（ステップ 4 も frontmatter `updated` を要求するため読出エラーになる）。helper 側で完結させることで他カテゴリの入力がバイト同一のまま保たれる。`index.md` が存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
+**本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は 3-7.4 が対象で、本ステップは含まない。
+
+**`index.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない** — `pages_list` はステップ 3 / 4 / 5 / 6.2 / 7 が共有する入力で、ステップ 5（孤児検出）は `pages_list` の各ページが index 登録集合に含まれるかを見る（`pages_list ∖ index 登録ページ`）。`index.md` は自分自身に登録されないため、混ぜると index.md 自身が未登録として孤児 +1 になる（ステップ 4 は frontmatter `updated` を要求するため、index.md では「updated フィールドが存在しません」の WARNING skip が 1 件増える）。helper 側で完結させることで他カテゴリの入力がバイト同一のまま保たれる。`index.md` が存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
 
 検出は 2 規則の**正規化**で表現する（表層形の列挙ではない）。R1 は「参照キーワードが番号の直前に来る」形で、括弧付き `(refs #N)` / `see PR #N` / 裸の `PR #N は…` はすべてこの 1 規則に畳まれる。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は正当な文脈が多すぎるため検出しない。語境界は `([^0-9]|$)` で表現する（gawk の `\b` はバックスペース扱いで never-match になるため使用禁止）。各除外の判断根拠と副作用（その範囲内では既知の再発が見えなくなる）は `references/descriptive-refs-rationale.md#exclusions` に記録している。
 
@@ -650,6 +652,7 @@ if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-descrip
   echo "---descriptive_refs_end---"
   echo "descriptive_refs_pages=0"
   echo "descriptive_refs_read_errors=0"
+  echo "descriptive_refs_skipped_rows=0"
   echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=0"
   echo "descriptive_refs_read_ok=skipped_helper_missing"
 else
@@ -935,19 +938,19 @@ Wiki Lint が完了しました。
 - 未登録 raw（skip 済）は意図的な skip (`ingest_status: skipped`) なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki-ingest で再処理してください
 - 説明的番号参照はページ本文由来と `index.md` 由来で直し方が異なります
   - ページ本文: 該当箇所の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
-  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が各ページの frontmatter `description` から生成するため、**index.md を直接編集しても次回 ingest で上書きされます**。リンク先ページの `description` を書き換えてから `/rite:wiki-ingest` で再生成してください
+  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が書き込みます（各ページ frontmatter の `description` と**同源**の散文であって、`description` を入力に取るわけではありません）。ステップ 6 が上書きするのは**その実行で統合した Raw Source に対応する行だけ**で、未処理 raw が 0 件なら `/rite:wiki-ingest` は早期 return します。したがって: 該当ページを再 ingest する予定があるならページ側の記述を Why 散文へ直せば次回の生成物にも反映されます。予定がない行は `index.md` を直接編集してください（その行は上書きされません）
 ```
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
 
-**`{n_descriptive_refs}` / `{descriptive_refs_read_ok_note}` 展開ルール**: LLM は ステップ 7.5 の helper stdout から `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` を読み取り `{n_descriptive_refs}` に展開する。**`pages_list` が空でもステップ 7.5 は実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。真に skip されるのは helper 不在時のみで、その場合は `0`。note は兄弟 enum（`{stale_check_ok_note}` 等）と同じく件数の直後に置き、`descriptive_refs_read_ok` と `descriptive_refs_read_errors` の 2 値から下表で決める — 読出失敗由来の `0` や部分欠損した集計を「解消済み」と読ませないため:
+**`{n_descriptive_refs}` / `{descriptive_refs_read_ok_note}` 展開ルール**: LLM は ステップ 7.5 の helper stdout から `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` を読み取り `{n_descriptive_refs}` に展開する。**`pages_list` が空でもステップ 7.5 は実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。note は兄弟 enum（`{stale_check_ok_note}` 等）と同じく件数の直後に置き、`descriptive_refs_read_ok` / `descriptive_refs_read_errors` / `descriptive_refs_skipped_rows` の 3 値から下表で決める — 読出失敗由来の `0` や部分欠損した集計を「解消済み」と読ませないため。**下表の条件は排他で、一致する行はちょうど 1 つ**（優先順位規約に依存しない）:
 
 | 条件 | note（件数の直後） |
 |------|------------------|
-| ステップ 7.5 未実行（helper 不在 / bash block 未実行） | 空文字列 |
-| `read_ok=true` かつ `read_errors=0` | 空文字列 |
-| `read_ok=true` かつ `read_errors>0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} 対象ファイルを読出または検出できず集計から除外)` |
+| `read_ok=true` かつ `read_errors=0` かつ `skipped_rows=0` | 空文字列 |
 | `read_ok=true` かつ `read_errors=0` かつ `skipped_rows>0` | ` ⚠️ (部分欠損: index.md の {descriptive_refs_skipped_rows} 行からサマリーを抽出できず集計から除外)` |
+| `read_ok=true` かつ `read_errors>0` かつ `skipped_rows=0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} 件の対象ファイルを読出または検出できず集計から除外)` |
+| `read_ok=true` かつ `read_errors>0` かつ `skipped_rows>0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} 件の対象ファイルを読出または検出できず集計から除外 / 部分欠損: index.md の {descriptive_refs_skipped_rows} 行からサマリーを抽出できず集計から除外)` |
 | `read_ok=io_error` | ` ⚠️ (未実測: io_error — 全対象ファイル読出失敗)` |
 | `read_ok=skipped_helper_missing` | ` ⚠️ (未実測: skipped_helper_missing — helper 不在)` |
 | marker block / enum 未受信（bash block 途中異常終了） | ` ⚠️ (未実測: skipped_helper_missing 同等 — 出力未受信)` |
@@ -1065,5 +1068,5 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | GNU realpath (-m -s) 不在 | **exit 1 で fail-fast** (全 link silent broken 判定の防止) | ステップ 7 (helper 内) |
 | helper script 不在 | WARNING + 該当カテゴリ skip（`*_check_ok=skipped_helper_missing` を明示 emit、exit 0） | ステップ 4 / 5 / 7 / 7.5 |
 | ページ読出・検出失敗（説明的番号参照の走査中） | WARNING + `descriptive_refs_read_ok=io_error`（全件失敗）または `descriptive_refs_read_errors>0`（部分失敗、`read_ok=true` 維持）、exit 0 | ステップ 7.5 |
-| 処理対象 0 件 | ステップ 3-7 を skip し ステップ 9 で「検査対象なし」表示 | ステップ 2.2 末尾 |
+| 処理対象 0 件 | ステップ 3-7.4 を skip し ステップ 7.5 → ステップ 9 で「検査対象なし」表示（**ステップ 7.5 は skip しない** — index.md が単独で走査対象になりうるため） | ステップ 2.2 末尾 |
 | log.md 追記失敗 | WARNING + exit 0 で継続（検出結果は stdout に表示済み） | ステップ 8 |

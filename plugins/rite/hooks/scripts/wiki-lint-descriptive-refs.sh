@@ -256,7 +256,16 @@ fi
 #   不在 (Wiki 初期化直後)   → 静かに落とす。read_errors にも走査母数にも数えない
 #   存在するが読めない (IO)  → 走査対象に入れ、per-page 失敗として read_errors に計上する
 if [ "$branch_strategy" = "separate_branch" ]; then
-  git cat-file -e "${wiki_branch}:${_RITE_INDEX_PATH}" 2>/dev/null && index_present=yes || index_present=no
+  # ref 自体の存在を先に確かめる。`git cat-file -e` は「ref が無い」と「ref 内に path が無い」を
+  # どちらも rc=128 で返すため、これを畳むと壊れた wiki ref が「index.md 不在」と同じ静かな
+  # 縮退になる (pages_list も空だと stderr すら出ないまま 0 件が実測済みとして通る)。
+  # ref が引けない場合は不在ではなく読出失敗として扱い、走査対象に入れて read_errors へ載せる。
+  if git rev-parse --verify -q "${wiki_branch}^{commit}" >/dev/null 2>&1; then
+    git cat-file -e "${wiki_branch}:${_RITE_INDEX_PATH}" 2>/dev/null && index_present=yes || index_present=no
+  else
+    echo "WARNING: wiki ブランチ ref '${wiki_branch}' を解決できません。index.md の存在を判定できないため読出失敗として計上します" >&2
+    index_present=yes
+  fi
 else
   [ -f "$_RITE_INDEX_PATH" ] && index_present=yes || index_present=no
 fi
@@ -304,12 +313,16 @@ _RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }
 # 検出対象は **エントリ 1 件あたりのサマリー (説明文) だけ**。リンクテキスト・ドメイン・更新日・
 # 確信度の各列は対象外にする (ページタイトル由来の番号は本文側の維持判断と同じ扱いのため)。
 #
-# エントリ行の判定は `](pages/` リンクの有無で行い、テーブル行と OKF 箇条書きの両方を **行単位**で
+# エントリ行の判定は `](pages/...)` リンクの有無で行い、テーブル行と OKF 箇条書きの両方を **行単位**で
 # 受ける。現行の wiki ブランチは 5 列テーブルだが、`templates/wiki/index-template.md` と wiki-ingest
 # ステップ 6 が生成するのは箇条書き `* [title](pages/...) - desc` であり、テーブル専用にすると
 # 形式移行の時点で検出が無言で 0 件へ倒れる。ファイル単位で形式を判定しないのは移行途中の混在に耐えるため。
+# リンクの regex は同じ index.md を読む `wiki-lint-orphans.sh` と同一定義にする (`./pages/` /
+# `../pages/` 形式も受ける)。片方だけ狭いと、その形式の index で本 helper だけが無言で 0 件に倒れる。
 #
 # サマリー列の位置はヘッダー行 (`| ページ | ドメイン | サマリー | 更新日 | 確信度 |`) から決める。
+# ヘッダーを検出できないテーブル行は既定列を当てずっぽうで読まずスキップする — 当てると
+# 見出し語が drift しただけで別列を黙って走査し、hits が無言で 0 に倒れる。
 # 位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、ヘッダー由来の位置決めと
 # **スキップ行数の stdout 露出** を対にする (`/rite:wiki-query positional-parse-row-count-guard` で参照)。
 # ガードを「全行 skip」条件にしないのは、`templates/wiki/index-template.md` の前文が箇条書きの記法例を
@@ -328,27 +341,30 @@ _RITE_INDEX_COUNT_ACTION='
   s = $0
   gsub(/`[^`]*`/, "_", s)
   gsub(/\\\|/, "_", s)
-  if (s !~ /\]\(pages\//) next
+  if (s !~ /\]\((\.{0,2}\/?pages\/[^)]+)\)/) next
   entries++
   if (s ~ /^[[:space:]]*\|/) {
     t = s
-    gsub(/\[[^]]*\]\(pages\/[^)]*\)/, "_", t)
-    fn = split(t, fc, "|")
-    col = (sumcol > 0 ? sumcol : 4)
-    want = (sumncol > 0 ? sumncol : 0)
-    if (fn <= col || (want > 0 && fn != want)) {
+    gsub(/\[[^]]*\]\((\.{0,2}\/?pages\/[^)]+)\)/, "_", t)
+    if (sumcol == 0) {
       skipped++
       if (skipped <= 3)
-        printf "WARNING: index.md %d 行目: テーブルの列数が想定と異なるため行をスキップしました (列数=%d, 期待=%s)\n", NR, fn - 2, (want > 0 ? want - 2 : "不明 — サマリー列ヘッダーを検出できず既定列 " col - 1 " を仮定") > "/dev/stderr"
+        printf "WARNING: index.md %d 行目: サマリー列ヘッダーを検出できないため行をスキップしました (既定列を当てずっぽうで読むと別列を黙って走査するため)\n", NR > "/dev/stderr"
       next
     }
-    summary = fc[col]
+    fn = split(t, fc, "|")
+    if (fn != sumncol) {
+      skipped++
+      if (skipped <= 3)
+        printf "WARNING: index.md %d 行目: テーブルの列数がヘッダーと異なるため行をスキップしました (列数=%d, ヘッダー=%d)\n", NR, fn - 2, sumncol - 2 > "/dev/stderr"
+      next
+    }
+    summary = fc[sumcol]
   } else {
-    if (match(s, /\]\(pages\/[^)]*\)/) == 0) { skipped++; next }
+    if (match(s, /\]\((\.{0,2}\/?pages\/[^)]+)\)/) == 0) { skipped++; next }
     summary = substr(s, RSTART + RLENGTH)
     sub(/^[[:space:]]*(-|—|–)[[:space:]]*/, "", summary)
   }
-  parsed++
   if (summary ~ re) n++
 }
 END {

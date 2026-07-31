@@ -42,6 +42,9 @@
 #   TC-36  separate_branch (本番既定経路) でも index.md を走査する (存在プローブ + git show)
 #   TC-37  サマリー列の位置をヘッダー行から決めている (位置固定 fallback への変異を弾く)
 #   TC-38  index.md が存在するのに読めない場合は read_errors に計上する (不在との分離)
+#   TC-39  サマリー列ヘッダー不検出のテーブル行は当てずっぽうで読まず skipped_rows で surface する
+#   TC-40  `./pages/` / `../pages/` 形式のエントリも拾う (orphans.sh と同一定義)
+#   TC-41  壊れた wiki ref は「index.md 不在」に畳まず io_error に倒れる
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -331,6 +334,9 @@ assert_grep "TC-18 helper 不在 fallback が marker block を出す" "$LINT_MD"
 assert_grep "TC-18 helper 不在 fallback が WIKI_DESCRIPTIVE_REFS=0 を出す" "$LINT_MD" 'WIKI_DESCRIPTIVE_REFS=0'
 assert_grep "TC-18 helper 不在 fallback の read_ok" "$LINT_MD" 'descriptive_refs_read_ok=skipped_helper_missing'
 assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD" 'descriptive_refs_read_errors=0'
+# stdout 契約は本 PR で 5 フィールドになった。fallback が片方だけ追随しないと
+# 「helper 経由か縮退経路かで stdout の形が変わる」状態になる
+assert_grep "TC-18 helper 不在 fallback が skipped_rows=0 を出す" "$LINT_MD" 'descriptive_refs_skipped_rows=0'
 assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD" 'see PR\|See PR\) #\[0-9\]\+'
 
 # ---- TC-19: separate_branch (本番既定経路) の positive path ----------------
@@ -433,7 +439,7 @@ assert_not_grep "TC-24 読出失敗を検出失敗と取り違えない" "$rd_er
 tc8_after=$(printf -- '---\nsources:\n  - ref: "raw/reviews/x.md"\nnote: "PR #1301 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-24 sources ブロックの後ろのキーは走査対象へ戻る" "1" "$(single_hits "$tc8_after")"
 
-# ---- TC-25..TC-38: index.md 走査 (AC-1..AC-6) ------------------------------
+# ---- TC-25..TC-41: index.md 走査 (AC-1..AC-6) ------------------------------
 # 既存 TC はすべて index.md を持たない sandbox で走るため、そのままでは新経路を 1 行も通らない。
 # index.md を持つ専用 sandbox を立て、対象列・除外・不在時の縮退・gate の非回帰を測る。
 IDXSBX=$(make_plain_sandbox) && cleanup_dirs+=("$IDXSBX") || { echo "ERROR: make_plain_sandbox failed" >&2; exit 1; }
@@ -455,6 +461,9 @@ assert "TC-26 (T-08) index.md 不在なら本文のみの hits" "1" "$(sed -n 's
 assert_not_grep "TC-26 (T-08) index.md 不在なら marker block に index 行が出ない" "$noidx_out" 'index\.md'
 
 # T-01 / T-02 / T-03: テーブル形式。サマリー列だけを対象にし、リンクテキスト列は対象外。
+# 3-4 行目はリンクテキスト内の素のパイプ / サマリー内のエスケープ済みパイプで、awk の
+# 2 種のマスク (リンクスパン / `\|`) に識別力を持たせる fixture。どちらのマスクを外しても
+# 列数が合わなくなり hits が減って skipped_rows が立つ
 cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
 # Wiki Index
 
@@ -462,15 +471,19 @@ cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
 |--------|---------|---------|--------|--------|
 | [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |
 | [番号なし](pages/patterns/b.md) | patterns | Issue #88 系譜の継続 | 2026-01-01 | high |
+| [grep -c || echo 0 の罠](pages/patterns/c.md) | patterns | 詳細は #1151 | 2026-01-01 | high |
+| [番号なし](pages/patterns/d.md) | patterns | 詳細は #1152 \| 補足あり | 2026-01-01 | high |
 IDXEOF
 tbl_out="$IDXSBX/tbl.out"; tmp_files+=("$tbl_out")
 printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$tbl_out" 2>/dev/null
-assert "TC-27 (T-01) index.md の hits が合計に載る (本文 1 + index 1)" "2" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$tbl_out")"
-assert_grep "TC-27 (T-01) marker block に page=.rite/wiki/index.md 行が出る" "$tbl_out" '^page=\.rite/wiki/index\.md; hits=1$'
+assert "TC-27 (T-01) index.md の hits が合計に載る (本文 1 + index 3)" "4" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$tbl_out")"
+assert_grep "TC-27 (T-01) marker block に page=.rite/wiki/index.md 行が出る" "$tbl_out" '^page=\.rite/wiki/index\.md; hits=3$'
 assert "TC-27 (T-01) descriptive_refs_pages は hits を持つ対象ファイル数のまま" "2" "$(sed -n 's/^descriptive_refs_pages=//p' "$tbl_out")"
 # TC-28/29 は同じ 2 行の表で「拾う列」と「拾わない列」を同時に測る。片方だけの fixture だと
 # 「全列を走査している」変異と「サマリー列だけ走査している」実装を区別できない。
-assert "TC-28 (T-03) サマリー列の番号は 1 hit として数える" "1" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$tbl_out")"
+assert "TC-28 (T-03) サマリー列の番号を数える (通常 1 + 素パイプ行 1 + エスケープ行 1)" "3" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$tbl_out")"
+# マスクが効いていれば列崩れは 0 件。どちらかを外すと該当行が skip されて値が立つ
+assert "TC-28 2 種のマスクが効いて列崩れ 0 件" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$tbl_out")"
 onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |\n')
 printf '%s' "$onlylink" > "$IDXSBX/.rite/wiki/index.md"
 assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数えない" "1" "$(idx_hits "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)")"
@@ -525,6 +538,9 @@ assert "TC-34 stdin 経由でも二重計上しない (本文 1 + index 1)" "2" 
 # 既存 `wiki` ブランチは index なしのまま残す (TC-19 の等値 assert が壊れるため)。
 if (
   cd "${GITSBX:?GITSBX unset}" || exit 1
+  # fixture を自分で置き直す: TC-19 が意図的に rm し TC-19b が診断目的で cp し戻す副作用へ
+  # 暗黙依存すると、TC-19b を触っただけで TC-36 が原因の読めない形で落ちる
+  cp "$SBX/$FIXTURE_REL" ".rite/wiki/pages/anti-patterns/fixture.md" || exit 1
   printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [番号なし](pages/patterns/x.md) | patterns | 詳細は #1151 | 2026-01-01 | high |\n' > .rite/wiki/index.md
   git add -A || exit 1
   git -c commit.gpgsign=false -c user.email=t@example.com -c user.name=t commit -qm index || exit 1
@@ -535,6 +551,8 @@ if (
   printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki-with-index --repo-root "$GITSBX" ) > "$wi_out" 2>/dev/null
   assert "TC-36 separate_branch で index.md の hits が合計に載る (本文 $hits + index 1)" "$((hits + 1))" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$wi_out")"
   assert_grep "TC-36 separate_branch でも marker block に page=.rite/wiki/index.md" "$wi_out" '^page=\.rite/wiki/index\.md; hits=1$'
+  # 準備失敗を「合計が合わない」ではなく「読出に失敗した」として localize する
+  assert "TC-36 separate_branch で read_errors=0 (準備失敗の localize)" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$wi_out")"
 else
   git_rc=$?
   fail "TC-36 git sandbox (wiki-with-index) の準備に失敗 (rc=$git_rc)"
@@ -570,9 +588,43 @@ else
   assert_grep "TC-38 読出失敗が WARNING で観測できる" "$unread_err" 'の読出に失敗しました'
 fi
 
+# ---- TC-39: サマリー列ヘッダーを検出できない場合の縮退 ----------------------
+# 見出し語が `サマリー` から drift すると列位置が確定できない。既定列を当てずっぽうで読むと
+# 「別列を黙って走査して hits が 0 になる」無言の縮退になるため、スキップして surface する。
+printf '# Wiki Index\n\n| ページ | ドメイン | 説明 | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [t](pages/patterns/a.md) | patterns | 詳細は #1151 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
+hdrfb_out="$IDXSBX/hdrfb.out"; tmp_files+=("$hdrfb_out")
+hdrfb_err="$IDXSBX/hdrfb.err"; tmp_files+=("$hdrfb_err")
+printf '' | idx_run > "$hdrfb_out" 2>"$hdrfb_err"
+assert "TC-39 ヘッダー不検出のテーブル行は別列を当てずっぽうで読まない" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$hdrfb_out")"
+assert "TC-39 スキップは skipped_rows として surface される (無言の縮退にしない)" "1" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$hdrfb_out")"
+assert_grep "TC-39 ヘッダー不検出を WARNING で明示する" "$hdrfb_err" 'サマリー列ヘッダーを検出できない'
+# 箇条書き形式は列を持たないためヘッダー不在の影響を受けない
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+hdrbul_out="$IDXSBX/hdrbul.out"; tmp_files+=("$hdrbul_out")
+printf '' | idx_run > "$hdrbul_out" 2>/dev/null
+assert "TC-39 箇条書きはヘッダー不在でも従来どおり拾う" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$hdrbul_out")"
+
+# ---- TC-40: `./pages/` / `../pages/` 形式のエントリも拾う ---------------------
+# 同じ index.md を読む wiki-lint-orphans.sh は相対形式に対応済み。本 helper だけが
+# bare `pages/` に限ると、その形式の index で本 helper だけが無言で 0 件へ倒れる。
+printf '# Wiki Index\n\n* [A](./pages/patterns/a.md) - 詳細は #1151\n* [B](../pages/patterns/b.md) - 詳細は #1152\n' > "$IDXSBX/.rite/wiki/index.md"
+rel_out="$IDXSBX/rel.out"; tmp_files+=("$rel_out")
+printf '' | idx_run > "$rel_out" 2>/dev/null
+assert "TC-40 ./pages/ と ../pages/ 形式のエントリを拾う (orphans.sh と同一定義)" "2" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$rel_out")"
+
+# ---- TC-41: 壊れた wiki ref は「index.md 不在」に畳まない ---------------------
+# git cat-file -e は「ref が無い」と「ref 内に path が無い」をどちらも rc=128 で返す。
+# 畳むと壊れた ref が静かな 0 件になり、pages_list が空だと stderr すら出ない。
+badref_out="$IDXSBX/badref.out"; tmp_files+=("$badref_out")
+badref_err="$IDXSBX/badref.err"; tmp_files+=("$badref_err")
+printf '' | ( cd "$IDXSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch no-such-branch-xyz --repo-root "$IDXSBX" ) > "$badref_out" 2>"$badref_err"
+assert "TC-41 壊れた wiki ref は io_error に倒れる (静かな 0 件にしない)" "io_error" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$badref_out")"
+assert "TC-41 壊れた wiki ref は read_errors に計上される" "1" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$badref_out")"
+assert_grep "TC-41 ref 解決失敗を WARNING で明示する" "$badref_err" 'wiki ブランチ ref .* を解決できません'
+
 # T-09: 他カテゴリの非回帰は測定ではなく構成で担保する。ステップ 2.2 の pages_list は
 # `pages/` 配下だけを拾ったままでなければならない。ここに index.md を混ぜると孤児検出
-# (index 登録ページ ∖ pages_list) が index.md 自身を孤児として数え、AC-6 が即座に崩れる。
+# (pages_list ∖ index 登録ページ) が index.md 自身を未登録の孤児として数え、AC-6 が即座に崩れる。
 step22_re=$(grep -oE "grep -E '\^\\\\\.rite/wiki/pages/[^']*'" "$LINT_MD" | head -1)
 if [ -z "$step22_re" ]; then
   fail "TC-35 (T-09) SKILL.md ステップ 2.2 の pages_list 抽出 regex を特定できなかった"
