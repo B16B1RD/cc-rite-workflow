@@ -51,8 +51,8 @@
 #   TC-44  診断に外部入力 (--wiki-branch) の制御文字を素通ししない
 #   TC-45  本文フィルタ (E3 コードフェンス等) が index.md にも適用される
 #   TC-46  index.md が読めれば pages 全件失敗でも io_error ではなく部分失敗になる
-#   TC-47  エントリ行を 1 件も認識できない index.md は検出失敗として計上する (0 件を実測済みと名乗らない)
-#   TC-48  index.md 終端アクションの戻り値 arity (3 値) を pin する (2 値へ戻す変異を弾く)
+#   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
+#   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -735,35 +735,49 @@ fi
 # 食い違うと entries=0 / skipped=0 / hits=0 になり、実測 230 hits が丸ごと落ちても
 # 「0 件 (実測済み)」として read_ok=true で通る。TC-25..TC-46 の index fixture は
 # どれもフェンス外に最低 1 本の `](pages/...)` を含むため、この経路へ到達しなかった。
-printf '# Wiki Index\n\nエントリのない index。詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+# fixture はリンク形状の行を持つがリンク先が pages/ と認識できない形 (`](../../pages/…)`) =
+# 「形式 drift」。ガードの発火条件はこれであって、stdin (pages_list) の非空性ではない。
+printf '# Wiki Index\n\n* [t](../../pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
 noent_err="$IDXSBX/noent.err"; tmp_files+=("$noent_err")
 noent_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$noent_err")
-assert "TC-47 エントリ 0 件は検出失敗として read_errors に計上する" "1" "$(printf '%s' "$noent_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert "TC-47 リンク行はあるが entries 0 件なら検出失敗として read_errors に計上する" "1" "$(printf '%s' "$noent_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert_grep "TC-47 検出失敗は WARNING で観測できる" "$noent_err" 'エントリ行を 1 件も認識できませんでした'
 assert "TC-47 検出失敗した index.md 分は hits に混ぜない (本文側の 1 件のみ)" "1" "$(idx_hits "$noent_out")"
 
-# 否定側: pages_list が空なら計上しない (Wiki 初期化直後の空 index は正当)。
-# この 1 本が無いと「ガード削除」と「pages_list 条件の削除」のうち後者が生き残る。
-noent_empty_out=$(printf '' | idx_run 2>/dev/null)
-assert "TC-47 pages_list 空なら検出失敗に計上しない (初期化直後の空 index は正当)" "0" "$(printf '%s' "$noent_empty_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+# 発火条件が index.md 自身の内容であることの pin (本 TC 群の核)。
+# stdin が空でも同じ drift は同じく検出失敗になる — ステップ 2.2 は pages_list が空でも
+# ステップ 7.5 を実行する契約なので、そこを条件にするとガードが必要な経路でだけ無効化される。
+noent_nostdin_err="$IDXSBX/noent-nostdin.err"; tmp_files+=("$noent_nostdin_err")
+noent_nostdin_out=$(printf '' | idx_run 2>"$noent_nostdin_err")
+assert "TC-47 pages_list 空でも drift は検出失敗として計上する (stdin に依存しない)" "1" "$(printf '%s' "$noent_nostdin_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert_grep "TC-47 pages_list 空でも WARNING は出る" "$noent_nostdin_err" 'エントリ行を 1 件も認識できませんでした'
 
-# ---- TC-48: index.md 終端アクションの戻り値 arity (3 値) を pin する ---------
-# 終端アクションを 2 値へ戻す変異は、フィールド数がずれたまま個別値の case サニタイザが
+# 否定側: リンク形状の行が 1 行も無い index は「まだ登録が無いカタログ」であって drift ではない。
+# この 1 本が無いと「linkrows 条件の削除」(= 全ての空 index を検出失敗にする変異) が生き残る。
+printf '# Wiki Index\n\nまだ登録がありません。方針は #1151 を参照。\n' > "$IDXSBX/.rite/wiki/index.md"
+nolink_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
+assert "TC-47 リンク行が 0 なら検出失敗に計上しない (登録前のカタログは正当)" "0" "$(printf '%s' "$nolink_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+
+# ---- TC-48: index.md 終端アクションの戻り値 arity (4 値) を pin する ---------
+# 終端アクションのフィールドを減らす変異は、フィールド数がずれたまま個別値の case サニタイザが
 # 未束縛を 0 / -1 へ正規化するため、TC-47 の検出失敗ガードを無言で殺す。
 # 位置依存パースの規約 (`/rite:wiki-query positional-parse-row-count-guard`) が要求する
 # 「回帰 TC で pin する」の充足。mutant は helper の `source ../control-char-neutralize.sh` が
-# 解決するよう 1 階層下に置き、依存を同じ相対位置へ複製する。
+# 解決するよう 1 階層下に置き、依存を同じ相対位置へ複製する (既存 TC-15/16/17/23 は sandbox
+# 直下に置いており source が silent に失敗する。そちらへ揃えると欠陥を伝播させるため逸脱する)。
 mkdir -p "$IDXSBX/mut"
-cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$IDXSBX/control-char-neutralize.sh"
+cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$IDXSBX/control-char-neutralize.sh" || {
+  fail "TC-48 control-char-neutralize.sh の複製に失敗 (mutant の source が解決できず assert が無効化される)"
+}
 MUT_ARITY="$IDXSBX/mut/mutant-arity.sh"
-sed 's/print n+0, skipped+0, entries+0/print n+0, skipped+0/' "$SCRIPT" > "$MUT_ARITY"
+sed 's/print n+0, skipped+0, entries+0, linkrows+0/print n+0, skipped+0, entries+0/' "$SCRIPT" > "$MUT_ARITY"
 if assert_mutated "TC-48 MUTATION mutant 生成" "$MUT_ARITY"; then
   printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
   arity_err="$IDXSBX/arity.err"; tmp_files+=("$arity_err")
   arity_out=$(printf '%s\n' "$IDX_PAGE_REL" \
     | ( cd "$IDXSBX" && bash "$MUT_ARITY" --branch-strategy same_branch --repo-root "$IDXSBX" ) 2>"$arity_err")
-  assert "TC-48 戻り値が 3 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
-  assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 3 値を返しませんでした'
+  assert "TC-48 戻り値が 4 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+  assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 4 値を返しませんでした'
   assert "TC-48 arity 不一致の index.md 分は hits に混ぜない" "1" "$(idx_hits "$arity_out")"
 fi
 

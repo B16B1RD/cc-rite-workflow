@@ -363,6 +363,12 @@ _RITE_INDEX_COUNT_ACTION='
   s = $0
   gsub(/`[^`]*`/, "_", s)
   gsub(/\\\|/, "_", s)
+  # linkrows = インラインリンクを持つ行数。entries (リンク先が pages/ の行) の上位集合で、
+  # 下の検出失敗ガードが「リンク先だけが想定と食い違う drift」と「そもそもカタログが空」を
+  # 区別するために使う。コードスパンは上でマスク済みなので記法例は数えない。
+  # 判定材料に散文の箇条書き / テーブル行を含めない理由: 実エントリを持たない手書き index
+  # (「- 準備中」等) を検出失敗として誤計上しないため。
+  if (s ~ /\]\(/) linkrows++
   if (s !~ /\]\((\.{0,2}\/?pages\/[^)]+)\)/) next
   entries++
   if (s ~ /^[[:space:]]*\|/) {
@@ -398,7 +404,7 @@ END {
     else
       printf "WARNING: index.md のエントリ行 %d 件中 %d 件からサマリーを抽出できませんでした (列位置不明 / 列数不一致。行番号は上の WARNING を参照)。欠損は descriptive_refs_skipped_rows として stdout に出ます\n", entries, skipped > "/dev/stderr"
   }
-  print n+0, skipped+0, entries+0
+  print n+0, skipped+0, entries+0, linkrows+0
 }
 '
 
@@ -413,6 +419,7 @@ n_pages_with_hits=0
 n_read_errors=0
 n_index_skipped_rows=0
 n_index_entries=-1
+n_index_linkrows=0
 hit_lines=""
 
 # per-page 読出の stderr 退避先。捨てると `descriptive_refs_read_errors=3` と出ても
@@ -457,26 +464,29 @@ while IFS= read -r page; do
   if [ "$page" = "$_RITE_INDEX_PATH" ]; then _action="$_RITE_INDEX_COUNT_ACTION"; else _action="$_RITE_COUNT_ACTION"; fi
   hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_action}"); awk_rc=$?; hits_rc=$awk_rc
   if [ "$page" = "$_RITE_INDEX_PATH" ]; then
-    # index.md の終端アクションは `hits skipped entries` の 3 値を返す
+    # index.md の終端アクションは `hits skipped entries linkrows` の 4 値を返す
     # (skipped = エントリ行と判定したがサマリーを抽出できなかった行数。部分欠損を stdout 契約へ
     # 載せるため — 行単位の値なので、ファイル単位の算術で io_error を決める n_read_errors には
-    # 混ぜない。entries = エントリ行と認識できた行数 = 下の検出失敗ガードの分母)。
+    # 混ぜない。entries = エントリ行と認識できた行数 = 下の検出失敗ガードの分母。
+    # linkrows = インラインリンクを持つ行数 = 同ガードが「drift」と「空カタログ」を分ける材料)。
     # arity は個別値の数値検証より **先に** 検査する。フィールド数がずれた状態で下の case だけに
     # 頼ると、未束縛が 0 / -1 へ無言で正規化され entries==0 の検出失敗ガードが沈黙する
-    # (終端アクションを 2 値へ戻す変異がそれで素通りしていた)。既存の hits_rc 経路へ倒して
+    # (終端アクションのフィールドを減らす変異がそれで素通りしていた)。既存の hits_rc 経路へ倒して
     # read_errors 計上 + continue に合流させる。
     _arity=$(printf '%s' "$hits" | wc -w | tr -d '[:space:]')
-    if [ "$_arity" != "3" ]; then
+    if [ "$_arity" != "4" ]; then
       page_disp=$(printf '%s' "$page" | neutralize_ctrl)
-      echo "WARNING: ページ ${page_disp} の検出アクションが 3 値を返しませんでした (フィールド数=${_arity}, 出力='$hits')" >&2
+      echo "WARNING: ページ ${page_disp} の検出アクションが 4 値を返しませんでした (フィールド数=${_arity}, 出力='$hits')" >&2
       hits_rc=1
     else
-      read -r _hits_field _skipped_field _entries_field <<< "$hits"
+      read -r _hits_field _skipped_field _entries_field _linkrows_field <<< "$hits"
       hits=$_hits_field
       case "$_skipped_field" in ''|*[!0-9]*) _skipped_field=0 ;; esac
       case "$_entries_field" in ''|*[!0-9]*) _entries_field=-1 ;; esac
+      case "$_linkrows_field" in ''|*[!0-9]*) _linkrows_field=0 ;; esac
       n_index_skipped_rows=$_skipped_field
       n_index_entries=$_entries_field
+      n_index_linkrows=$_linkrows_field
     fi
   fi
   case "$hits" in ''|*[!0-9]*) [ "$hits_rc" -eq 0 ] && hits_rc=1 ;; esac
@@ -490,9 +500,14 @@ while IFS= read -r page; do
   # index.md を読めたのにエントリ行を 1 件も認識できなかった = 形式が判定不能。
   # skipped は「エントリと認識できた行の抽出失敗」しか数えないため、この状態は
   # どのカウンタにも現れず 0 件が「実測済み」として通ってしまう (実測 230 hits が丸ごと落ちる)。
-  # pages_list が非空のときだけ検出失敗として計上する (Wiki 初期化直後の空 index は正当)。
+  # 発火条件は index.md 自身の内容で決める — リンク形状の行 (linkrows) はあるのに、その
+  # リンク先が pages/ と認識できない (entries==0) 状態だけを検出失敗とする。リンク行が
+  # 1 行も無い index は「まだ登録が無いカタログ」であって drift ではないので静かに落とす。
+  # **stdin (pages_list) を条件にしてはならない** — ステップ 2.2 は pages_list が空でも
+  # 本ステップを実行する契約 (wiki 初期化直後 / git ls-tree 失敗時に index.md の指摘を
+  # 落とさないため) であり、そこを条件にするとガードが必要な経路でだけ無効化される。
   if [ "$page" = "$_RITE_INDEX_PATH" ] && [ "${n_index_entries:--1}" -eq 0 ] 2>/dev/null \
-     && [ -n "$(printf '%s\n' "$pages_list" | awk 'NF>0 {print; exit}')" ]; then
+     && [ "${n_index_linkrows:-0}" -gt 0 ] 2>/dev/null; then
     page_disp=$(printf '%s' "$page" | neutralize_ctrl)
     echo "WARNING: ページ ${page_disp} からエントリ行を 1 件も認識できませんでした (リンク形式または本文フィルタの想定と不一致)。検出失敗として計上します" >&2
     n_read_errors=$((n_read_errors + 1))

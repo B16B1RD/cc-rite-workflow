@@ -621,12 +621,14 @@ Wiki ページ本文と `index.md` のエントリサマリーに残った**説�
 
 **検出対象と除外**:
 - 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）と、`index.md` の**エントリごとのサマリーのみ**
-- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、**E5（TODO/FIXME）の適用単位だけが異なる** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。rationale: `references/descriptive-refs-rationale.md`
-- 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。根拠は `references/descriptive-refs-rationale.md` の「走査範囲」節
+- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、**E5（TODO/FIXME）の適用単位だけが異なる** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。rationale: [references/descriptive-refs-rationale.md#index-summary-extraction](references/descriptive-refs-rationale.md#index-summary-extraction)
+- 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。rationale: [references/descriptive-refs-rationale.md#scan-scope](references/descriptive-refs-rationale.md#scan-scope)
 
-**本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は 3-7.4 が対象で、本ステップは含まない。
+**本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は 3-7.4 が対象で、本ステップは含まない。helper の検出失敗ガードもこの契約に合わせて `pages_list` ではなく `index.md` 自身の内容で発火する。
+rationale: [references/descriptive-refs-rationale.md#entries-zero-guard](references/descriptive-refs-rationale.md#entries-zero-guard)
 
-**`index.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない** — `pages_list` はステップ 3 / 4 / 5 / 6.2 / 7 が共有する入力で、ステップ 5（孤児検出）は `pages_list` の各ページが index 登録集合に含まれるかを見る（`pages_list ∖ index 登録ページ`）。`index.md` は自分自身に登録されないため、混ぜると index.md 自身が未登録として孤児 +1 になる（ステップ 4 は frontmatter `updated` を要求するため、index.md では「updated フィールドが存在しません」の WARNING skip が 1 件増える）。helper 側で完結させることで他カテゴリの入力がバイト同一のまま保たれる。`index.md` が存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
+**`index.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない**。`index.md` が存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
+rationale: [references/descriptive-refs-rationale.md#pages-list-unchanged](references/descriptive-refs-rationale.md#pages-list-unchanged)
 
 検出は 2 規則の**正規化**で表現する（表層形の列挙ではない）。R1 は「参照キーワードが番号の直前に来る」形で、括弧付き `(refs #N)` / `see PR #N` / 裸の `PR #N は…` はすべてこの 1 規則に畳まれる。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は正当な文脈が多すぎるため検出しない。語境界は `([^0-9]|$)` で表現する（gawk の `\b` はバックスペース扱いで never-match になるため使用禁止）。各除外の判断根拠と副作用（その範囲内では既知の再発が見えなくなる）は `references/descriptive-refs-rationale.md#exclusions` に記録している。
 
@@ -1070,6 +1072,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | ページ読出・検出失敗（説明的番号参照の走査中） | WARNING + `descriptive_refs_read_ok=io_error`（全件失敗）または `descriptive_refs_read_errors>0`（部分失敗、`read_ok=true` 維持）、exit 0 | ステップ 7.5 |
 | wiki ブランチ ref 解決失敗（説明的番号参照の走査中） | WARNING + `index.md` を読出失敗として計上（`read_errors` +1）。`separate_branch` ではページ側も同じ ref を読むため実質的に常に `read_ok=io_error`、exit 0 | ステップ 7.5 (helper 内) |
 | `index.md` のサマリー抽出失敗（列位置不明 / 列数不一致） | WARNING + 該当行 skip + `descriptive_refs_skipped_rows>0`（`read_ok=true` / `read_errors` は不変）、exit 0 | ステップ 7.5 (helper 内) |
-| `index.md` からエントリ行を 1 件も認識できない（リンク形式 / 本文フィルタとの不一致。`pages_list` 非空時のみ） | WARNING + 検出失敗として `read_errors` +1（0 件が「実測済み」として通るのを防ぐ）、exit 0 | ステップ 7.5 (helper 内) |
+| `index.md` からエントリ行を 1 件も認識できない（リンク形状の行はあるがリンク先が `pages/` と認識できない = 形式 drift） | WARNING + 検出失敗として `read_errors` +1（0 件が「実測済み」として通るのを防ぐ）、exit 0 | ステップ 7.5 (helper 内) |
+| `index.md` にリンク形状の行が 1 行もない（まだ登録が無いカタログ） | 静かに 0 件として扱う（drift ではないため `read_errors` に数えない）、exit 0 | ステップ 7.5 (helper 内) |
 | 処理対象 0 件（ページ / raw） | ステップ 3-7.4 を skip し ステップ 7.5 → ステップ 9 へ進む（**ステップ 7.5 は skip しない** — index.md が単独で走査対象になりうるため、ページ / raw が 0 件でも説明的番号参照は 0 件とは限らない） | ステップ 2.2 末尾 |
 | log.md 追記失敗 | WARNING + exit 0 で継続（検出結果は stdout に表示済み） | ステップ 8 |
