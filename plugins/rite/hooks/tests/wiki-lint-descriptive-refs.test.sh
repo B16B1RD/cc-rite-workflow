@@ -45,6 +45,9 @@
 #   TC-39  サマリー列ヘッダー不検出のテーブル行は当てずっぽうで読まず skipped_rows で surface する
 #   TC-40  `./pages/` / `../pages/` 形式のエントリも拾う (orphans.sh と同一定義)
 #   TC-41  壊れた wiki ref は「index.md 不在」に畳まず io_error に倒れる
+#   TC-42  ヘッダー判定がエントリ行を飲み込まない (サマリーに「サマリー」を含む行)
+#   TC-43  E5 の欠落が skipped_rows に載る / コードスパン内引用は E4 で無効化される
+#   TC-44  診断に外部入力 (--wiki-branch) の制御文字を素通ししない
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -439,7 +442,7 @@ assert_not_grep "TC-24 読出失敗を検出失敗と取り違えない" "$rd_er
 tc8_after=$(printf -- '---\nsources:\n  - ref: "raw/reviews/x.md"\nnote: "PR #1301 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-24 sources ブロックの後ろのキーは走査対象へ戻る" "1" "$(single_hits "$tc8_after")"
 
-# ---- TC-25..TC-41: index.md 走査 (AC-1..AC-6) ------------------------------
+# ---- TC-25..TC-44: index.md 走査 (AC-1..AC-6) ------------------------------
 # 既存 TC はすべて index.md を持たない sandbox で走るため、そのままでは新経路を 1 行も通らない。
 # index.md を持つ専用 sandbox を立て、対象列・除外・不在時の縮退・gate の非回帰を測る。
 IDXSBX=$(make_plain_sandbox) && cleanup_dirs+=("$IDXSBX") || { echo "ERROR: make_plain_sandbox failed" >&2; exit 1; }
@@ -568,7 +571,7 @@ hdr_out="$IDXSBX/hdr.out"; tmp_files+=("$hdr_out")
 printf '' | idx_run > "$hdr_out" 2>"$hdr_err"
 assert "TC-37 6 列テーブルでもヘッダー由来の列位置でサマリーを拾う" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$hdr_out")"
 assert "TC-37 6 列テーブルで skipped_rows=0 (列崩れ扱いしない)" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$hdr_out")"
-assert_not_grep "TC-37 6 列テーブルで列崩れ WARNING を出さない" "$hdr_err" '列数が想定と異なる'
+assert_not_grep "TC-37 6 列テーブルで列崩れ WARNING を出さない" "$hdr_err" 'index\.md [0-9]+ 行目: テーブルの列数'
 
 # ---- TC-38: index.md が存在するのに読めない場合は read_errors に計上する -----
 # 存在プローブを読出より前に置く設計判断 (不在 = 静かに落とす / 読出失敗 = read_errors) の
@@ -621,6 +624,33 @@ printf '' | ( cd "$IDXSBX" && bash "$SCRIPT" --branch-strategy separate_branch -
 assert "TC-41 壊れた wiki ref は io_error に倒れる (静かな 0 件にしない)" "io_error" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$badref_out")"
 assert "TC-41 壊れた wiki ref は read_errors に計上される" "1" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$badref_out")"
 assert_grep "TC-41 ref 解決失敗を WARNING で明示する" "$badref_err" 'wiki ブランチ ref .* を解決できません'
+
+# ---- TC-42: ヘッダー判定がエントリ行を飲み込まない ---------------------------
+# ヘッダー語が drift した表で、あるデータ行のサマリー本文に「サマリー」の語が含まれると、
+# その行自身がヘッダーとして消費され hits にも skipped_rows にも計上されず WARNING も出ない
+# (TC-39 が守るはずの契約が破れるのに全 TC が緑になる経路)。
+printf '# Wiki Index\n\n| ページ | ドメイン | 説明 | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [a](pages/patterns/a.md) | patterns | サマリーの書き方は 詳細は #1151 | 2026-01-01 | high |\n| [b](pages/patterns/b.md) | patterns | 詳細は #1152 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
+hdreat_out="$IDXSBX/hdreat.out"; tmp_files+=("$hdreat_out")
+printf '' | idx_run > "$hdreat_out" 2>/dev/null
+assert "TC-42 エントリ行はヘッダーとして消費されない (2 行とも skip される)" "2" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$hdreat_out")"
+
+# ---- TC-43: E5 (TODO/FIXME) の欠落が skipped_rows に載る ---------------------
+# 本文フィルタ段で TODO 行を落とすと、index.md ではエントリ行が entries にも skipped にも
+# 計上されないまま消え、新設した skipped_rows が構造的に観測できない唯一の穴になる。
+# コードスパン内に引用された TODO は E4 のマスクで無効化されるため hit として残る (下の 2 行目)。
+printf '# Wiki Index\n\n* [a](pages/patterns/a.md) - TODO: 詳細は #1151\n* [b](pages/patterns/b.md) - `TODO` を引用しただけ 詳細は #1152\n' > "$IDXSBX/.rite/wiki/index.md"
+e5_out="$IDXSBX/e5.out"; tmp_files+=("$e5_out")
+printf '' | idx_run > "$e5_out" 2>/dev/null
+assert "TC-43 生の TODO を含むサマリーは skipped_rows に載る" "1" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$e5_out")"
+assert "TC-43 コードスパン内に引用された TODO は E4 で無効化され hit として残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e5_out")"
+
+# ---- TC-44: 診断に外部入力の制御文字を素通ししない --------------------------
+# ref 解決失敗 WARNING は外部入力 (--wiki-branch) を埋め込む。中和しないと
+# rite-config.yml の wiki.branch_name に置かれた ESC が operator 端末へそのまま届く。
+esc_err="$IDXSBX/esc.err"; tmp_files+=("$esc_err")
+printf '' | ( cd "$IDXSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch "$(printf 'bad\033[2Kbranch')" --repo-root "$IDXSBX" ) >/dev/null 2>"$esc_err"
+assert_not_grep "TC-44 診断に生の ESC を素通ししない" "$esc_err" "$(printf '\033')"
+assert_grep "TC-44 中和後も ref 解決失敗は WARNING で観測できる" "$esc_err" 'wiki ブランチ ref .* を解決できません'
 
 # T-09: 他カテゴリの非回帰は測定ではなく構成で担保する。ステップ 2.2 の pages_list は
 # `pages/` 配下だけを拾ったままでなければならない。ここに index.md を混ぜると孤児検出

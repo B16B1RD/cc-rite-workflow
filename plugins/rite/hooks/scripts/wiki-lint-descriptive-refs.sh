@@ -263,7 +263,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   if git rev-parse --verify -q "${wiki_branch}^{commit}" >/dev/null 2>&1; then
     git cat-file -e "${wiki_branch}:${_RITE_INDEX_PATH}" 2>/dev/null && index_present=yes || index_present=no
   else
-    echo "WARNING: wiki ブランチ ref '${wiki_branch}' を解決できません。index.md の存在を判定できないため読出失敗として計上します" >&2
+    echo "WARNING: wiki ブランチ ref '$(printf '%s' "$wiki_branch" | neutralize_ctrl)' を解決できません。index.md の存在を判定できないため読出失敗として計上します" >&2
     index_present=yes
   fi
 else
@@ -272,7 +272,15 @@ fi
 
 # stdin 由来の index.md 行を一度落としてから付け直すことで、入力経路によらず
 # 「存在プローブを通った 1 行だけ」に正規化する (重複計上の防止も兼ねる)。
-scan_list=$(printf '%s\n' "$pages_list" | grep -vxF "$_RITE_INDEX_PATH" | awk 'NF>0')
+# grep を挟まず awk 1 本に畳んで rc を 1 箇所で捕捉する。多段パイプにすると各段の実行失敗と
+# 「filter 後に 0 行」が同じ空文字列に潰れ、走査母数が丸ごと消えても read_errors=0 /
+# read_ok=true のまま「全件実測済み」を宣言してしまう (本 helper が繰り返し塞いでいる silent-0)。
+scan_list=$(printf '%s\n' "$pages_list" | awk -v idx="$_RITE_INDEX_PATH" 'NF>0 && $0 != idx'); _scan_rc=$?
+_scan_build_failed=0
+if [ "$_scan_rc" -ne 0 ]; then
+  echo "WARNING: 走査対象リストの構築に失敗しました (rc=$_scan_rc)。io_error として扱います" >&2
+  scan_list=""; _scan_build_failed=1
+fi
 [ "$index_present" = yes ] && scan_list="${scan_list}${scan_list:+$'\n'}${_RITE_INDEX_PATH}"
 
 # ---- 検出本体 ---------------------------------------------------------------
@@ -302,12 +310,14 @@ infence                     { next }
 /^##[[:space:]]+ソース([[:space:]]*$|[（(])/ { insrc=1; next }
 insrc && /^##[[:space:]]/   { insrc=0 }
 insrc                       { next }
-/(TODO|FIXME)/              { next }
 '
+# E5 (TODO / FIXME) は本文フィルタではなく終端アクション側で落とす。フィルタ段で next すると
+# index.md ではエントリ行が entries にも skipped にも計上されないまま消え、新設した
+# descriptive_refs_skipped_rows が構造的に観測できない唯一の欠落経路になる。
 # 終端アクション: インラインコードスパンを `_` へマスクしてから検出 regex で数える。
 # 「落とす行の規則」と「終端アクション」を 2 変数に分ける。読み分けができるほか、
 # mutation test (TC-16) が本文フィルタだけを差し替える seam にもなっている。
-_RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }'
+_RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }'
 
 # index.md 専用の終端アクション。index.md は散文ページではなくページ一覧のカタログで、
 # 検出対象は **エントリ 1 件あたりのサマリー (説明文) だけ**。リンクテキスト・ドメイン・更新日・
@@ -332,8 +342,11 @@ _RITE_COUNT_ACTION='{ gsub(/`[^`]*`/, "_"); if ($0 ~ re) n++ } END { print n+0 }
 # (`grep -c || echo 0` 等) があると列数が合わず実エントリが無言で落ちる。bullet 分岐の match() を
 # 壊さないため `s` 自体は書き換えず作業変数 `t` を使う。
 _RITE_INDEX_COUNT_ACTION='
-/^[[:space:]]*\|/ && /サマリー/ && sumcol == 0 {
-  hn = split($0, hc, "|")
+/^[[:space:]]*\|/ && /サマリー/ && sumcol == 0 && $0 !~ /\]\((\.{0,2}\/?pages\/[^)]+)\)/ {
+  h = $0
+  gsub(/`[^`]*`/, "_", h)
+  gsub(/\\\|/, "_", h)
+  hn = split(h, hc, "|")
   for (i = 1; i <= hn; i++) if (hc[i] ~ /サマリー/) { sumcol = i; sumncol = hn; break }
   next
 }
@@ -361,10 +374,11 @@ _RITE_INDEX_COUNT_ACTION='
     }
     summary = fc[sumcol]
   } else {
-    if (match(s, /\]\((\.{0,2}\/?pages\/[^)]+)\)/) == 0) { skipped++; next }
+    match(s, /\]\((\.{0,2}\/?pages\/[^)]+)\)/)
     summary = substr(s, RSTART + RLENGTH)
     sub(/^[[:space:]]*(-|—|–)[[:space:]]*/, "", summary)
   }
+  if (summary ~ /(TODO|FIXME)/) { skipped++; next }
   if (summary ~ re) n++
 }
 END {
@@ -455,6 +469,11 @@ done <<< "$scan_list"
 # として stdout に出す — WARNING は stderr にしか出ず、完了レポートの併記条件が read_ok だけだと
 # 部分欠損した集計が注記なしで「実測済み」として載るため (sibling の all_source_refs_read_errors と同型)。
 n_pages_total=$(printf '%s\n' "$scan_list" | awk 'NF>0 {n++} END {print n+0}')
+# 走査母数の構築自体が失敗していた場合は「対象 0 件」ではなく io_error へ寄せる
+if [ "${_scan_build_failed:-0}" -eq 1 ]; then
+  n_pages_total=0
+  [ "$n_read_errors" -eq 0 ] && n_read_errors=1
+fi
 case "$n_pages_total" in
   ''|*[!0-9]*)
     # ページ数を数える awk まで落ちている = 実行環境の異常。0 に倒すと io_error 分岐が

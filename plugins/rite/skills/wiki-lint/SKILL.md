@@ -245,7 +245,7 @@ case "$branch_strategy" in
       echo "WARNING: git ls-tree '$wiki_branch' に失敗しました (rc=$rc)" >&2
       [ -n "$ls_err" ] && [ -s "$ls_err" ] && head -3 "$ls_err" | sed 's/^/  /' >&2
       echo "  対処: wiki ブランチが存在するか確認してください (git rev-parse --verify $wiki_branch)" >&2
-      echo "  影響: 検査対象を 0 件として扱い、ステップ 9 で「検査対象なし」を表示します（非ブロッキング）" >&2
+      echo "  影響: ページ / raw の検査対象を 0 件として扱います（ステップ 7.5 の index.md 走査は継続します）" >&2
     fi
     ;;
   same_branch)
@@ -632,7 +632,7 @@ Wiki ページ本文に残った**説明目的の Issue/PR 番号参照**を検�
 
 **検出ロジック**は `wiki-lint-descriptive-refs.sh` に委譲する（stdin `pages_list` はステップ 6.2 helper と同型 — ステップ 6.0 helper は入力を自前で列挙し stdin を読まない。marker block + read_ok enum は 6.0 / 6.2 の双方と同型）。
 
-> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・`index.md` の存在プローブ付き読出とエントリ単位のサマリー抽出（5 列テーブル / OKF 箇条書きを行単位で判別）・本文抽出フィルタ（frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME）・2 規則の検出・placeholder residue gate / partial pollution gate（`index.md` は完全一致で許容、`raw/` 行と `..` は従来どおり fail-fast）をすべて内包する。
+> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・`index.md` の存在プローブ付き読出とエントリ単位のサマリー抽出（テーブル / OKF 箇条書きを行単位で判別。テーブルのサマリー列位置と列数はヘッダー行から導出するため列数不問）・本文抽出フィルタ（frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME）・2 規則の検出・placeholder residue gate / partial pollution gate（`index.md` は完全一致で許容、`raw/` 行と `..` は従来どおり fail-fast）をすべて内包する。
 
 **Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約）。
 
@@ -667,7 +667,7 @@ fi
 
 **検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**で、もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録されステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。本ステップを転記すると 233 ページ分の検出詳細行（実測 736 hits）が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
 
-marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、**件数**は本 SKILL.md 内に消費者を持たない（helper を直接実行したときのページ内訳がここでしか得られないため、出力自体は削らないこと）。ページ内訳を人間が見たい場合は helper を直接実行する。
+marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、**件数**は本 SKILL.md 内に消費者を持たない（helper を直接実行したときの対象ファイル内訳がここでしか得られないため、出力自体は削らないこと）。対象ファイル内訳を人間が見たい場合は helper を直接実行する。
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
@@ -912,7 +912,7 @@ esac
 Wiki Lint が完了しました。
 
 検査サマリー:
-- 検査した Wiki ページ: {n_pages} 件
+- 検査した Wiki ページ: {n_pages} 件（`index.md` はステップ 7.5 が別途走査するため本件数に含まない）
 - 検査した Raw Source: {n_raw} 件
 
 検出結果:
@@ -938,7 +938,7 @@ Wiki Lint が完了しました。
 - 未登録 raw（skip 済）は意図的な skip (`ingest_status: skipped`) なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki-ingest で再処理してください
 - 説明的番号参照はページ本文由来と `index.md` 由来で直し方が異なります
   - ページ本文: 該当箇所の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
-  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が書き込みます（各ページ frontmatter の `description` と**同源**の散文であって、`description` を入力に取るわけではありません）。ステップ 6 が上書きするのは**その実行で統合した Raw Source に対応する行だけ**で、未処理 raw が 0 件なら `/rite:wiki-ingest` は早期 return します。したがって: 該当ページを再 ingest する予定があるならページ側の記述を Why 散文へ直せば次回の生成物にも反映されます。予定がない行は `index.md` を直接編集してください（その行は上書きされません）
+  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が書き込みます（各ページ frontmatter の `description` と**同源**の散文であって、`description` を入力に取るわけではありません）。ステップ 6 が上書きするのは**その実行で統合した Raw Source に対応する行だけ**で、上書き値はステップ 4.1 が Raw Source から新規生成するサマリーです（ページ本文もページ frontmatter も入力に取りません）。未処理 raw が 0 件なら `/rite:wiki-ingest` は早期 return します。したがって **`index.md` の番号は該当行を直接編集して消すのが確実な手段**で、ページ側を直しても index の行には伝播しません。該当 Raw Source を再処理する場合は、生成後にもう一度 `/rite:wiki-lint` で残存を確認してください
 ```
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
@@ -955,7 +955,7 @@ Wiki Lint が完了しました。
 | `read_ok=skipped_helper_missing` | ` ⚠️ (未実測: skipped_helper_missing — helper 不在)` |
 | marker block / enum 未受信（bash block 途中異常終了） | ` ⚠️ (未実測: skipped_helper_missing 同等 — 出力未受信)` |
 
-**`{stale_check_ok_note}` / `{orphan_check_ok_note}` / `{broken_refs_read_ok_note}` 展開ルール**: LLM は ステップ 4 / 5 / 7 の helper stdout から `stale_check_ok=` / `orphan_check_ok=` / `broken_refs_read_ok=` を読み取り、それぞれ独立に展開する。ステップ 3-7 skip 経路 (処理対象 0 件) では空文字列:
+**`{stale_check_ok_note}` / `{orphan_check_ok_note}` / `{broken_refs_read_ok_note}` 展開ルール**: LLM は ステップ 4 / 5 / 7 の helper stdout から `stale_check_ok=` / `orphan_check_ok=` / `broken_refs_read_ok=` を読み取り、それぞれ独立に展開する。ステップ 3-7.4 skip 経路 (処理対象 0 件) では空文字列:
 
 | enum 値 | note (行末) |
 |--------|------------|
@@ -969,7 +969,7 @@ Wiki Lint が完了しました。
 
 **`{log_read_ok_note}` / `{log_read_ok_warning}` / `{all_source_refs_read_ok_note}` / `{all_source_refs_read_ok_warning}` 展開ルール**:
 
-LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 stdout から `all_source_refs_read_ok={value}` を読み取り、それぞれ独立に展開する。ステップ 6.0 / 6.2 が実行されなかった場合 (`pages_list` と `raw_list` が両方空でステップ 3-7 が skip された経路) は両 placeholder を空文字列として展開する:
+LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 stdout から `all_source_refs_read_ok={value}` を読み取り、それぞれ独立に展開する。ステップ 6.0 / 6.2 が実行されなかった場合 (`pages_list` と `raw_list` が両方空でステップ 3-7.4 が skip された経路) は両 placeholder を空文字列として展開する:
 
 | enum 値 | `{..._note}` (行末 note) | `{..._warning}` (block warning) |
 |--------|------------------------|--------------------------------|
@@ -1068,5 +1068,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | GNU realpath (-m -s) 不在 | **exit 1 で fail-fast** (全 link silent broken 判定の防止) | ステップ 7 (helper 内) |
 | helper script 不在 | WARNING + 該当カテゴリ skip（`*_check_ok=skipped_helper_missing` を明示 emit、exit 0） | ステップ 4 / 5 / 7 / 7.5 |
 | ページ読出・検出失敗（説明的番号参照の走査中） | WARNING + `descriptive_refs_read_ok=io_error`（全件失敗）または `descriptive_refs_read_errors>0`（部分失敗、`read_ok=true` 維持）、exit 0 | ステップ 7.5 |
+| wiki ブランチ ref 解決失敗（説明的番号参照の走査中） | WARNING + `index.md` を読出失敗として計上（`read_errors` +1。index.md 単独走査時は `read_ok=io_error`）、exit 0 | ステップ 7.5 (helper 内) |
+| `index.md` のサマリー抽出失敗（形式変更 / 列位置不明 / 列数不一致 / TODO・FIXME） | WARNING + 該当行 skip + `descriptive_refs_skipped_rows>0`（`read_ok=true` / `read_errors` は不変）、exit 0 | ステップ 7.5 (helper 内) |
 | 処理対象 0 件 | ステップ 3-7.4 を skip し ステップ 7.5 → ステップ 9 で「検査対象なし」表示（**ステップ 7.5 は skip しない** — index.md が単独で走査対象になりうるため） | ステップ 2.2 末尾 |
 | log.md 追記失敗 | WARNING + exit 0 で継続（検出結果は stdout に表示済み） | ステップ 8 |
