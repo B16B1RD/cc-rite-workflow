@@ -35,7 +35,7 @@
 #   TC-11b 部分読出失敗は read_ok=true のまま read_errors だけ立つ
 #   TC-25..TC-26 index.md 不在時は従来どおり (#2069 T-06: read_errors 不加算 / stdout に index 行なし)
 #   TC-27..TC-29 index.md のサマリー列だけを検出する (リンクテキスト列は対象外)
-#   TC-30  OKF 箇条書き形式の index.md でも検出できる (形式移行で 0 件へ倒れない)
+#   TC-30  OKF 箇条書き形式の index.md でも検出できる (どちらか一方専用にしない)
 #   TC-31  列数が壊れた行は行全体へフォールバックせず行番号つき WARNING でスキップ (#2069 T-07)
 #   TC-32  一部行のみ抽出失敗でも欠損ガードが発火し、欠損行数が stdout に載る (read_errors に混ぜない)
 #   TC-33..TC-34 gate の非回帰 (raw/ と `..` は fail-fast のまま、index.md は完全一致で受理・重複計上なし)
@@ -522,8 +522,8 @@ onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | �
 printf '%s' "$onlylink" > "$IDXSBX/.rite/wiki/index.md"
 assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数えない" "1" "$(idx_hits "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)")"
 
-# OKF 箇条書き形式。テーブル専用にすると、template と wiki-ingest が生成するこの形式へ
-# 移行した時点で検出が無言で 0 件へ倒れる (本 helper が塞ごうとしている盲点と同型)。
+# OKF 箇条書き形式。テーブル専用にすると、template と wiki-ingest が**指示**しているこの形式と
+# 実挙動の乖離が解消された時点で検出が無言で 0 件へ倒れる (本 helper が塞ごうとしている盲点と同型)。
 printf '# Wiki Index\n\n* [Issue #99 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
 assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "1" "$(printf '%s' "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"
 
@@ -557,13 +557,23 @@ brk_err="$IDXSBX/brk.err"; tmp_files+=("$brk_err")
 brk_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$brk_err")
 assert "TC-31 (#2069 T-07) 列数が壊れた行は hits に数えない" "1" "$(idx_hits "$brk_out")"
 assert_grep "TC-31 (#2069 T-07) 列崩れは行番号つき WARNING で観測できる" "$brk_err" 'index\.md [0-9]+ 行目: テーブルの列数'
+# T-07 の「列数が壊れた行」は両方向。上の fixture は列数 < ヘッダー だけなので、判定を
+# `fn != sumncol` から `fn < sumncol` へ緩める変異が生き残る。over-column 方向 (サマリー本文に
+# コードスパンで包まない生パイプがある行) を 1 本足して方向を分離する。緩めた実装ではこの行が
+# skip されずヘッダー由来の位置で別列を黙って読み、skipped_rows が 1 → 0 に落ちて WARNING も消える。
+printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [番号なし](pages/patterns/a.md) | patterns | 生パイプ | 二本 | を含む 詳細は #1151 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
+over_err="$IDXSBX/over.err"; tmp_files+=("$over_err")
+over_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$over_err")
+assert "TC-31 (#2069 T-07) 列数がヘッダーより多い行も skip する (over-column 方向)" "1" "$(printf '%s' "$over_out" | sed -n 's/^descriptive_refs_skipped_rows=//p')"
+assert_grep "TC-31 (#2069 T-07) over-column も列数つき WARNING で観測できる" "$over_err" '列数=7, ヘッダー=5'
 
 # 欠損ガード: エントリ行はあるのに抽出できない行がある = 形式変更。無言の過少集計にせず
 # WARNING + stdout の descriptive_refs_skipped_rows で surface する
 # (`/rite:wiki-query positional-parse-row-count-guard`)。
-# 発火条件を「全行 skip」にしないのは、配布テンプレート index-template.md の前文が箇条書きの
-# 記法例を含み 1 件 parse されるため全滅条件では構造的に発火しないから。**一部行のみ失敗**する
-# fixture で pin し、ガードを `parsed == 0` へ弱める変異を kill できるようにする。
+# 発火条件を「全行 skip」にしないのは、`parsed == 0` では「形式 drift」と「まだ登録が無い
+# カタログ」を区別できないから (記法例コメントは entries に数えないため、テンプレ前文だけの
+# index も parsed == 0 になる)。**一部行のみ失敗**する fixture で pin し、ガードを
+# `parsed == 0` へ弱める変異を kill できるようにする。
 printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [a](pages/patterns/a.md) | x |\n| [b](pages/patterns/b.md) | patterns | 詳細は #1151 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
 guard_err="$IDXSBX/guard.err"; tmp_files+=("$guard_err")
 guard_out="$IDXSBX/guard.out"; tmp_files+=("$guard_out")
@@ -858,6 +868,13 @@ unc_a=$(unc_run '# Wiki Index
 assert "TC-51 (a) 未閉鎖 HTML コメントは検出失敗として read_errors に計上する" "1" "$(printf '%s' "$unc_a" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert_grep "TC-51 (a) 未閉鎖は専用 WARNING で原因を名指しする" "$unc_err" 'HTML コメントが閉じられないままファイル終端'
 assert "TC-51 (a) 落ちた index.md 分は hits に混ぜない (本文側の 1 件のみ)" "1" "$(idx_hits "$unc_a")"
+# END の `exit` を pin する。`exit` を外すと 4 値 print が 2 回走って awk が 8 フィールドを返し、
+# 呼出側は arity 検査に捕まる。stdout も read_errors も同値のままなので上の 3 assert は緑を維持し、
+# 変わるのは診断だけ — 検出失敗ガードの WARNING が消え、作者が破っていない arity 契約を名指しする
+# 2 行に化ける。原因を名指しする WARNING を価値として掲げる本 TC 群としては、その診断連鎖の後半も
+# pin する必要がある。
+assert_grep "TC-51 (a) 検出失敗ガードの WARNING まで到達する (END の exit を pin)" "$unc_err" 'エントリ行を 1 件も認識できませんでした'
+assert_not_grep "TC-51 (a) arity 契約違反として誤診されない" "$unc_err" '4 値を返しませんでした'
 
 # (b) 対照: 閉じていれば通常どおり数える (ラッチ検査が過剰発火していないこと)
 unc_b=$(unc_run '# Wiki Index
