@@ -103,9 +103,9 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 > 疑似コードのループ条件に `where scope ∈ {current-pr, follow-up}` を明示するのは、本節が
 > `pr-review/SKILL.md` ステップ 5.3 実行順 step 2 から「集合演算の SoT」として参照されるため。
-> nit-noted 除外は散文 (下記「scope=nit-noted との関係」) と `pr-review/SKILL.md` ステップ 5.1 の
-> `non_measured_findings` 収集段落にも書かれているが、SoT の疑似コード単独で三者整合が読み取れる
-> 状態を保つ。
+> nit-noted 除外は散文 (下記「scope=nit-noted との関係」) と helper `scripts/review-measured-gate.sh`
+> の `gated` 述語 (`scope_effective` が `current-pr` / `follow-up` のときだけ真) にも現れるが、
+> SoT の疑似コード単独で二者整合が読み取れる状態を保つ。
 
 **WARNING emit (AC-5 主経路)**: 降格した finding のうち **`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て**を、正常系 (アンカー文字列そのものが無い = 非実測指摘) とは区別して stderr に WARNING で報告する。発火条件を「`=>` 右辺空」だけに絞ってはならない — **raw `|` を含む repro も no-match で降格される**ため、絞ると「実測済みの指摘が無音で non-blocking に落ちる」という silent failure が検出層自身に残る (本リポジトリは bash/jq 中心で repro にパイプが入るのが常態)。
 

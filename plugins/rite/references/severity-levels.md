@@ -158,6 +158,13 @@ blocking = CONFIRMED (全指摘事項に残存)
 
 **強制層**: 本ゲートの分類は `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が JSON 後処理として決定論的に実行する。アンカー検出 (2 段判定)・`verification` の設定・`non_blocking_findings[]` への移送・`overall_assessment` の確定はすべて helper 側にあり、LLM は結果の marker を読むだけで分類を行わない。**LLM 裁量に置いた旧設計では、PR #2070 の全 9 サイクルで一度も降格が実行されなかった** — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい (Issue #2072)。
 
+**強制層が依存するもの (裁量を消しても依存は消えない)**: 分類の入力は JSON の `findings[].scope` と `findings[].description` であり、どちらも LLM が書く。したがって強制層は「LLM の裁量」への依存を「LLM の**記述忠実性**」への依存に置き換えたにすぎない。helper はその依存を 2 つの機械的検査で守る:
+
+- **`scope` は 3 値 enum を要求し、外れたら `reason=scope_enum_violation` で hard fail する** (fail-closed)。gated 判定は完全一致のため、未知 scope は blocking 件数からも `non_blocking_findings[]` への移送対象からも**同時に**外れ、実測済み CRITICAL を `findings[]` に残したまま `assessment=mergeable` を確定させる (`blocking=0; demoted=0` は「指摘ゼロの正常終了」と区別できない)。正規化や default 補完で黙って受理する経路は持たない。
+- **アンカーは直前の境界 (行頭 / `<br>` / 空白) を要求する。** 境界を落とした転記 (Markdown セルの `<br>` を日本語句点へ潰す等) は全 finding を一斉に `anchor_unparseable` へ落とし mergeable に反転させうるため、`MEASURED_DEMOTED_ON_ANCHOR` marker と `blocking` 件数を突き合わせて「全件降格」を異常として扱う (routing は `pr-review/SKILL.md` ステップ 5.3.0.M step 3 の表)。
+
+いずれも「WARNING は出るが分類は進む」形にしない — 無音の縮退と、縮退したまま mergeable へ到達する経路の両方を塞ぐのが本ゲートの目的であるため。
+
 ## Severity × Scope Matrix
 
 > **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](./review-result-schema.md) を参照。scope assign 手順の SoT は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#scope-assignment-flowchart)。

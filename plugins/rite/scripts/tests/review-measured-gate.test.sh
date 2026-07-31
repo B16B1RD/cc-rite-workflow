@@ -370,15 +370,121 @@ if [ "$GATE_RC" -eq 0 ] && cmp -s "$f" "$f.once"; then
   pass "フラグ指定下でも再実行が rc=0 かつバイト一致 (冪等性を壊さない)"
 else fail "フラグ指定下で冪等性が壊れた: rc=$GATE_RC"; fi
 
-f="$TEST_DIR/tc08-preserve.json"
+# 書き込み失敗経路の atomic write 検証。
+# `chmod 444 "$f"` はファイルのモードしか落とさず、tempfile は親ディレクトリに作られ mv は
+# rename(2) なので書き込みが通ってしまう (= 失敗経路に入らない)。判定も `rc -eq 0 || cmp` の
+# OR にすると第 1 項が真で短絡し cmp が評価されない = 構造的に落ちないアサーションになる。
+# 実際に失敗させるため **親ディレクトリ**の書き込み権限を落とし、rc と reason と入力不変を
+# AND で固定する。
+preserve_dir="$TEST_DIR/tc08-preserve-dir"
+mkdir -p "$preserve_dir"
+f="$preserve_dir/input.json"
+mk_json "$f" "$(mk_finding F-01 HIGH current-pr 'アンカーなし')"
+cp "$f" "$TEST_DIR/tc08-preserve.orig"
+chmod 555 "$preserve_dir"
+run_gate "$f"
+chmod 755 "$preserve_dir"
+if [ "$GATE_RC" -eq 1 ] \
+  && grep -q 'reason=mktemp_failure' <<<"$GATE_STDERR" \
+  && cmp -s "$f" "$TEST_DIR/tc08-preserve.orig"; then
+  pass "tempfile 作成不能でも exit 1 + reason=mktemp_failure かつ入力をバイト保存する (atomic write)"
+else fail "書き込み失敗経路が期待通りでない: rc=$GATE_RC / stderr=$(head -2 <<<"$GATE_STDERR")"; fi
+
+# 読み取り権限なし → input_unreadable (docstring の reason が到達可能であることを固定)
+f="$TEST_DIR/tc08-unreadable.json"
 mk_json "$f" "$(mk_finding F-01 HIGH current-pr 'アンカーなし')"
 cp "$f" "$f.orig"
-chmod 444 "$f"
+chmod 000 "$f"
 run_gate "$f"
 chmod 644 "$f"
-if [ "$GATE_RC" -eq 0 ] || cmp -s "$f" "$f.orig"; then
-  pass "書き込み失敗経路でも入力を破壊しない (atomic write)"
-else fail "書き込み失敗で入力が破壊された"; fi
+if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=input_unreadable' <<<"$GATE_STDERR" && cmp -s "$f" "$f.orig"; then
+  pass "読み取り権限なしで exit 1 + reason=input_unreadable かつ入力不変"
+else fail "input_unreadable 経路が期待通りでない: rc=$GATE_RC"; fi
+
+# jq 不在は json_invalid ではなく jq_missing として報告される (誤ラベル防止)
+nojq_dir="$TEST_DIR/nojq-bin"
+mkdir -p "$nojq_dir"
+for _b in bash mktemp mv head sed cat printf dirname command; do
+  _p=$(command -v "$_b" 2>/dev/null) && ln -sf "$_p" "$nojq_dir/$_b" 2>/dev/null
+done
+f="$TEST_DIR/tc08-nojq.json"
+mk_json "$f" "$(mk_finding F-01 HIGH current-pr 'アンカーなし')"
+nojq_stderr=$(env -i PATH="$nojq_dir" HOME="$HOME" bash "$TARGET" --input "$f" 2>&1 >/dev/null)
+nojq_rc=$?
+if [ "$nojq_rc" -eq 1 ] && grep -q 'reason=jq_missing' <<<"$nojq_stderr"; then
+  pass "jq 不在で exit 1 + reason=jq_missing (json_invalid と誤ラベルしない)"
+else fail "jq 不在が jq_missing にならない: rc=$nojq_rc / stderr=$(head -2 <<<"$nojq_stderr")"; fi
+
+# ---------------------------------------------------------------------------
+# TC-08c: scope enum 違反の fail-closed (fail-open で mergeable が確定するのを防ぐ)
+# ---------------------------------------------------------------------------
+echo "--- TC-08c: scope enum 違反の fail-closed ---"
+f="$TEST_DIR/tc08c-scope.json"
+mk_json "$f" "$(mk_finding F-01 CRITICAL Current-PR 'あり<br>Verification: repro bash x.sh => boom')"
+cp "$f" "$f.orig"
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=scope_enum_violation' <<<"$GATE_STDERR"; then
+  pass "enum 外 scope (大文字ゆれ) で exit 1 + reason=scope_enum_violation"
+else fail "enum 外 scope が fail-closed にならない: rc=$GATE_RC / $(grep -o 'MEASURED_GATE=[^;]*' <<<"$GATE_STDERR")"; fi
+if cmp -s "$f" "$f.orig"; then
+  pass "scope enum 違反時は JSON を書き換えない"
+else fail "scope enum 違反なのに JSON が書き換わった"; fi
+
+# 対照: 正しい scope なら blocking=1 / fix-needed
+f="$TEST_DIR/tc08c-control.json"
+mk_json "$f" "$(mk_finding F-01 CRITICAL current-pr 'あり<br>Verification: repro bash x.sh => boom')"
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 0 ] && grep -q 'blocking=1' <<<"$GATE_STDERR" && grep -q 'assessment=fix-needed' <<<"$GATE_STDERR"; then
+  pass "対照: 正規 scope では blocking=1 / fix-needed (enum 検査が正常系を壊さない)"
+else fail "正規 scope の対照が期待通りでない: $(grep -o 'MEASURED_GATE=.*' <<<"$GATE_STDERR")"; fi
+
+# 末尾空白付き scope も同じく fail-closed (「見た目は正しい」形を通さない)
+f="$TEST_DIR/tc08c-space.json"
+mk_json "$f" "$(mk_finding F-01 HIGH 'current-pr ' 'あり<br>Verification: repro bash x.sh => boom')"
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=scope_enum_violation' <<<"$GATE_STDERR"; then
+  pass "末尾空白付き scope も fail-closed"
+else fail "末尾空白付き scope が通ってしまった: rc=$GATE_RC"; fi
+
+# ---------------------------------------------------------------------------
+# TC-08d: observability marker (runtime_obs / scope 補完) — Issue §4.4 SHOULD の実装保護
+# ---------------------------------------------------------------------------
+echo "--- TC-08d: observability marker ---"
+f="$TEST_DIR/tc08d-runtimeobs.json"
+mk_json "$f" "$(mk_finding F-01 HIGH current-pr 'Likelihood-Evidence: runtime_observation で観測<br>アンカーは無い')"
+run_gate "$f" --reject-preset-verification
+if grep -q 'MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count=1' <<<"$GATE_STDERR"; then
+  pass "runtime_observation ∧ アンカー欠如で MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR marker を emit"
+else fail "runtime_obs marker が出ない: $(grep -c CONTEXT <<<"$GATE_STDERR") markers"; fi
+
+# 既存 boolean を持つ finding も除外しない (preset 持ちを除外すると検出層に穴が空く)
+f="$TEST_DIR/tc08d-preset-anchor.json"
+cat > "$f" <<'EOF'
+{"schema_version":"1.1.0","pr_number":1,"timestamp":"T","commit_sha":"c",
+ "overall_assessment":"fix-needed",
+ "findings":[{"id":"F-01","reviewer":"r","category":"c","severity":"LOW","scope":"nit-noted",
+   "file":"f","line":1,"description":"nit<br>**Verification:** repro bash x.sh => boom",
+   "suggestion":"s","status":"open","verification":{"measured":false}}],
+ "non_blocking_findings":[]}
+EOF
+run_gate "$f"
+if grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=1' <<<"$GATE_STDERR"; then
+  pass "measured:false の preset を持つ形式崩れアンカーも anchor_unparseable に計上する (検出層の穴を塞ぐ)"
+else fail "preset 持ちが anchor_unparseable から漏れる (silent 降格の穴)"; fi
+
+# scope 欠落の補完を無通知にしない
+f="$TEST_DIR/tc08d-scopedefault.json"
+cat > "$f" <<'EOF'
+{"schema_version":"1.0.0","pr_number":1,"timestamp":"T","commit_sha":"c",
+ "overall_assessment":"fix-needed",
+ "findings":[{"id":"F-01","reviewer":"r","category":"c","severity":"HIGH",
+   "file":"f","line":1,"description":"アンカーなし","suggestion":"s","status":"open"}],
+ "non_blocking_findings":[]}
+EOF
+run_gate "$f" --reject-preset-verification
+if grep -q 'MEASURED_GATE_SCOPE_DEFAULTED=1; count=1' <<<"$GATE_STDERR"; then
+  pass "scope 欠落の default 補完を MEASURED_GATE_SCOPE_DEFAULTED marker で可視化する"
+else fail "scope 補完が無通知のまま"; fi
 
 # ---------------------------------------------------------------------------
 # TC-09: 検出 regex と抽出 regex の等価性
@@ -389,8 +495,30 @@ else fail "書き込み失敗で入力が破壊された"; fi
 # 正しいと信じた形が helper では no-match になる (逆も然り) 状態が無検出で入り込む。
 # ---------------------------------------------------------------------------
 echo "--- TC-09: SoT 検出 regex との等価性 ---"
-re_detect='(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[ \t]*(?!<br)[^|[:space:]]'
-re_extract='(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(?<label>repro|failing_test)[[:space:]]+(?<lhs>(?:(?!=>|<br)[^|])+)=>[ \t]*(?<rhs>(?!<br)[^|[:space:]](?:(?!<br)[^|])*)'
+# regex はテスト内で再宣言せず **helper 本体から実行時に抽出する**。自前コピーを比較すると
+# 「テストと helper が同時に変わらない限り落ちない」構造になり、等価性を固定できない
+# (helper 側だけを 1 トークン変えても suite が green のまま無警告降格へ倒れる形を許す)。
+extract_re_arg() {
+  # $1 = --arg 名。helper 内の `--arg <name> '<regex>' \` 行から single-quote 内をそのまま取り出す。
+  sed -n "s/^[[:space:]]*--arg $1 '\\(.*\\)' \\\\\$/\\1/p" "$TARGET" | head -1
+}
+re_detect=$(extract_re_arg re_detect)
+re_extract=$(extract_re_arg re_extract)
+if [ -n "$re_detect" ] && [ -n "$re_extract" ]; then
+  pass "helper 本体から re_detect / re_extract を実行時抽出できる (自前コピーを持たない)"
+else
+  fail "helper からの regex 抽出に失敗 (--arg 行の書式が変わった可能性): detect='${re_detect}' extract='${re_extract}'"
+fi
+
+# SoT (assessment-rules.md §5.3.0.M) の Anchor detection regex とも突き合わせる。
+# helper と SoT が独立に drift した場合、上記の抽出だけでは検出できない。
+sot_doc="$SCRIPT_DIR/../../skills/fix/references/assessment-rules.md"
+if [ -f "$sot_doc" ] && grep -qF "$re_detect" "$sot_doc"; then
+  pass "helper の re_detect が SoT (assessment-rules.md) の Anchor detection regex と literal 一致"
+else
+  fail "helper の re_detect が SoT に literal で見つからない (drift の可能性): $sot_doc"
+fi
+
 cat > "$TEST_DIR/matrix.json" <<'EOF'
 [
   "Verification: repro bash x.sh => boom",
@@ -407,14 +535,37 @@ cat > "$TEST_DIR/matrix.json" <<'EOF'
   "Verification: runtime_observation bash x.sh => ERROR",
   "cell | Verification: repro bash x.sh => boom",
   "no anchor at all",
-  "verification : repro bash x.sh => boom"
+  "verification : repro bash x.sh => boom",
+  "Verification:repro bash x.sh => boom",
+  "Verification:  repro bash x.sh => boom",
+  "prose。Verification: repro bash x.sh => boom",
+  "Verification: repro bash x.sh =>   boom",
+  "Verification: repro bash x.sh => a<br>b"
 ]
 EOF
+# `Verification:repro`（コロン直後に空白なし）を含めるのは、現行 15 入力がすべてコロン後に
+# 空白を持ち `[[:space:]]*` と `[[:space:]]+` が全入力で同値になるため。判別力のある入力が
+# ないと、detect / extract のどちらか一方だけを `*` → `+` に変えても行列が素通りする。
+matrix_len=$(jq 'length' "$TEST_DIR/matrix.json")
 mismatch=$(jq -r --arg d "$re_detect" --arg e "$re_extract" \
   '[.[] | select((test($d)) != ((capture($e) | true) // false))] | length' "$TEST_DIR/matrix.json" 2>/dev/null)
 if [ "$mismatch" = "0" ]; then
-  pass "入力 15 種で SoT 検出 regex と抽出 regex の判定が一致"
+  pass "入力 ${matrix_len} 種で SoT 検出 regex と抽出 regex の判定が一致"
 else fail "SoT 形と capture 形で判定が食い違う入力が $mismatch 件ある"; fi
+
+# 行列の判別力そのものを固定する: detect 側の `[[:space:]]*` を `[[:space:]]+` に変えた
+# 変異 regex は、少なくとも 1 入力で本物と判定が食い違わなければならない。
+# (食い違わない = 行列に判別力がない = 上の等価性テストが変異を検出できない)
+re_detect_mutant=${re_detect/Verification:\[\[:space:\]\]\*/Verification:[[:space:]]+}
+if [ "$re_detect_mutant" = "$re_detect" ]; then
+  fail "変異 regex の生成に失敗 (re_detect の書式が想定と異なる)"
+else
+  mutant_diff=$(jq -r --arg a "$re_detect" --arg b "$re_detect_mutant" \
+    '[.[] | select((test($a)) != (test($b)))] | length' "$TEST_DIR/matrix.json" 2>/dev/null)
+  if [ "${mutant_diff:-0}" -ge 1 ]; then
+    pass "入力行列が空白量の変異を判別できる (等価性テストに検出力がある)"
+  else fail "行列が空白量の変異を判別できない (等価性テストが変異を素通りさせる)"; fi
+fi
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
