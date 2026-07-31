@@ -617,11 +617,11 @@ fi
 
 ## ステップ 7.5: 説明的番号参照検出 (informational)
 
-Wiki ページ本文に残った**説明目的の Issue/PR 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N は…を統一した」「Issue #N 系譜の継続」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。括弧やキーワードに包まれない裸の `PR #N` / `Issue #N` も対象で、これは SoT §C Detection Heuristics が reviewer 側 regex として既に宣言している範囲に機構を追随させたもの。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
+Wiki ページ本文と `index.md` のエントリサマリーに残った**説明目的の Issue/PR 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N は…を統一した」「Issue #N 系譜の継続」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。括弧やキーワードに包まれない裸の `PR #N` / `Issue #N` も対象で、これは SoT §C Detection Heuristics が reviewer 側 regex として既に宣言している範囲に機構を追随させたもの。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
 
 **検出対象と除外**:
 - 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）と、`index.md` の**エントリごとのサマリーのみ**
-- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME を含む行（前方追跡ポインタ）。除外規則は `index.md` にも一貫適用する
+- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、**E5（TODO/FIXME）の適用単位だけが異なる** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。rationale: `references/descriptive-refs-rationale.md`
 - 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。根拠は `references/descriptive-refs-rationale.md` の「走査範囲」節
 
 **本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は 3-7.4 が対象で、本ステップは含まない。
@@ -1069,6 +1069,6 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | helper script 不在 | WARNING + 該当カテゴリ skip（`*_check_ok=skipped_helper_missing` を明示 emit、exit 0） | ステップ 4 / 5 / 7 / 7.5 |
 | ページ読出・検出失敗（説明的番号参照の走査中） | WARNING + `descriptive_refs_read_ok=io_error`（全件失敗）または `descriptive_refs_read_errors>0`（部分失敗、`read_ok=true` 維持）、exit 0 | ステップ 7.5 |
 | wiki ブランチ ref 解決失敗（説明的番号参照の走査中） | WARNING + `index.md` を読出失敗として計上（`read_errors` +1。index.md 単独走査時は `read_ok=io_error`）、exit 0 | ステップ 7.5 (helper 内) |
-| `index.md` のサマリー抽出失敗（形式変更 / 列位置不明 / 列数不一致 / TODO・FIXME） | WARNING + 該当行 skip + `descriptive_refs_skipped_rows>0`（`read_ok=true` / `read_errors` は不変）、exit 0 | ステップ 7.5 (helper 内) |
-| 処理対象 0 件 | ステップ 3-7.4 を skip し ステップ 7.5 → ステップ 9 で「検査対象なし」表示（**ステップ 7.5 は skip しない** — index.md が単独で走査対象になりうるため） | ステップ 2.2 末尾 |
+| `index.md` のサマリー抽出失敗（列位置不明 / 列数不一致） | WARNING + 該当行 skip + `descriptive_refs_skipped_rows>0`（`read_ok=true` / `read_errors` は不変）、exit 0 | ステップ 7.5 (helper 内) |
+| 処理対象 0 件（ページ / raw） | ステップ 3-7.4 を skip し ステップ 7.5 → ステップ 9 へ進む（**ステップ 7.5 は skip しない** — index.md が単独で走査対象になりうるため、ページ / raw が 0 件でも説明的番号参照は 0 件とは限らない） | ステップ 2.2 末尾 |
 | log.md 追記失敗 | WARNING + exit 0 で継続（検出結果は stdout に表示済み） | ステップ 8 |

@@ -63,7 +63,8 @@
 #                           PR description を「番号の正しい受け皿」として対象外にしているのと
 #                           同じ性質で、散文化すると監査証跡の追跡可能性を失う (実測 987 hits)。
 #     `.rite/wiki/raw/**`   レビュー / fix の生ログ = provenance 資料。番号は出典そのもので
-#                           あって説明的参照ではない (実測 1458 ファイル)。
+#                           あって説明的参照ではない (実測 1,400 ファイル超。review / fix
+#                           サイクルごとに増えるため厳密値は持たない)。
 #     `.rite/wiki/SCHEMA.md` スキーマ定義。散文を持たず実測 0 hits のため対象化する利得がない。
 #
 # Inputs:
@@ -272,9 +273,10 @@ fi
 
 # stdin 由来の index.md 行を一度落としてから付け直すことで、入力経路によらず
 # 「存在プローブを通った 1 行だけ」に正規化する (重複計上の防止も兼ねる)。
-# grep を挟まず awk 1 本に畳んで rc を 1 箇所で捕捉する。多段パイプにすると各段の実行失敗と
-# 「filter 後に 0 行」が同じ空文字列に潰れ、走査母数が丸ごと消えても read_errors=0 /
-# read_ok=true のまま「全件実測済み」を宣言してしまう (本 helper が繰り返し塞いでいる silent-0)。
+# grep を挟まず awk 1 本に畳む。多段パイプでは `$?` が最終段しか見えず、前段の実行失敗と
+# 「filter 後に 0 行」が同じ空文字列に潰れる。1 段にすれば空文字列の意味が「対象 0 件」に一意化し、
+# rc が走査母数構築の成否を表す唯一の値になる (走査母数が丸ごと消えても read_errors=0 /
+# read_ok=true のまま「全件実測済み」を宣言する silent-0 を塞ぐ)。
 scan_list=$(printf '%s\n' "$pages_list" | awk -v idx="$_RITE_INDEX_PATH" 'NF>0 && $0 != idx'); _scan_rc=$?
 _scan_build_failed=0
 if [ "$_scan_rc" -ne 0 ]; then
@@ -378,12 +380,12 @@ _RITE_INDEX_COUNT_ACTION='
     summary = substr(s, RSTART + RLENGTH)
     sub(/^[[:space:]]*(-|—|–)[[:space:]]*/, "", summary)
   }
-  if (summary ~ /(TODO|FIXME)/) { skipped++; next }
+  if (summary ~ /(TODO|FIXME)/) next
   if (summary ~ re) n++
 }
 END {
   if (skipped > 0)
-    printf "WARNING: index.md のエントリ行 %d 件中 %d 件からサマリーを抽出できませんでした (形式変更の可能性)。欠損は descriptive_refs_skipped_rows として stdout に出ます\n", entries, skipped > "/dev/stderr"
+    printf "WARNING: index.md のエントリ行 %d 件中 %d 件からサマリーを抽出できませんでした (列位置不明 / 列数不一致。行番号は上の WARNING を参照)。欠損は descriptive_refs_skipped_rows として stdout に出ます\n", entries, skipped > "/dev/stderr"
   print n+0, skipped+0
 }
 '

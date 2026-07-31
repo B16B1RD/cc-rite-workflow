@@ -21,7 +21,8 @@
 #   TC-13  partial pollution (.rite/wiki/raw/ 行混入) → exit 1
 #   TC-14  unknown branch_strategy → exit 1 / separate_branch + 空 --wiki-branch → exit 2
 #   TC-15  MUTATION 拡張 regex を旧 4 形へ戻すと TC-1 が落ちる (拡張の識別力)
-#   TC-16  MUTATION 除外フィルタを外すと TC-2..TC-5 が落ちる (除外の識別力)
+#   TC-16  MUTATION 本文フィルタを外すと TC-2 / TC-5 が落ちる (除外の識別力。E1 は TC-8、
+#          E4 / E5 は終端アクション側にあり本 mutant の到達範囲外で TC-3 / TC-4 / TC-17 が pin)
 #   TC-17  MUTATION 語境界を `\b` にすると gawk では never-match になる (silent 沈黙の実証)
 #   TC-18  SKILL.md ステップ 7.5 が helper 委譲 + helper 不在 fallback を持つ (静的回帰)
 #   TC-19  separate_branch (本番既定経路、git show) の positive path
@@ -48,6 +49,8 @@
 #   TC-42  ヘッダー判定がエントリ行を飲み込まない (サマリーに「サマリー」を含む行)
 #   TC-43  E5 の欠落が skipped_rows に載る / コードスパン内引用は E4 で無効化される
 #   TC-44  診断に外部入力 (--wiki-branch) の制御文字を素通ししない
+#   TC-45  本文フィルタ (E3 コードフェンス等) が index.md にも適用される
+#   TC-46  index.md が読めれば pages 全件失敗でも io_error ではなく部分失敗になる
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -169,9 +172,11 @@ assert_mutated() {
 
 # ---- 除外の識別力を「フィルタを外した版」との差で測る (TC-16 の測定基盤) -------
 # helper 内のフィルタを外した mutant を作り、除外が無いと hits が跳ね上がることを実証する。
-# **E1 (frontmatter 除去) は本 mutant では測れない** — mutant が frontmatter 除去を残す設計のため。
-# E1 の識別力は TC-8 の fixture (description 散文 / sources ブロックの両方) が担う。mutant を拡張する際は
-# 「どの除外がその mutant で到達不能か」を先に列挙すること。
+# **本 mutant で到達不能な除外**: E1 (frontmatter 除去) は mutant が残す設計のため測れず、TC-8 の
+# fixture (description 散文 / sources ブロックの両方) が担う。E4 (コードスパン) と E5 (TODO/FIXME) は
+# 終端アクション側にあり本 mutant が差し替える本文フィルタに含まれないため測れず、E4 は TC-4、
+# E5 は TC-3 / TC-17 が pin する。mutant を拡張する際は「どの除外がその mutant で到達不能か」を
+# 先に列挙すること。
 MUT_NOFILTER="$SBX/mutant-nofilter.sh"
 # フィルタ本体 (_RITE_BODY_FILTER) を「frontmatter 除去のみ」に差し替える。
 # 終端アクション (マスク + 計数) は _RITE_COUNT_ACTION が別に持つため、ここでは
@@ -442,7 +447,7 @@ assert_not_grep "TC-24 読出失敗を検出失敗と取り違えない" "$rd_er
 tc8_after=$(printf -- '---\nsources:\n  - ref: "raw/reviews/x.md"\nnote: "PR #1301 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-24 sources ブロックの後ろのキーは走査対象へ戻る" "1" "$(single_hits "$tc8_after")"
 
-# ---- TC-25..TC-44: index.md 走査 (AC-1..AC-6) ------------------------------
+# ---- TC-25..TC-46: index.md 走査 (AC-1..AC-6) ------------------------------
 # 既存 TC はすべて index.md を持たない sandbox で走るため、そのままでは新経路を 1 行も通らない。
 # index.md を持つ専用 sandbox を立て、対象列・除外・不在時の縮退・gate の非回帰を測る。
 IDXSBX=$(make_plain_sandbox) && cleanup_dirs+=("$IDXSBX") || { echo "ERROR: make_plain_sandbox failed" >&2; exit 1; }
@@ -633,6 +638,7 @@ printf '# Wiki Index\n\n| ページ | ドメイン | 説明 | 更新日 | 確信
 hdreat_out="$IDXSBX/hdreat.out"; tmp_files+=("$hdreat_out")
 printf '' | idx_run > "$hdreat_out" 2>/dev/null
 assert "TC-42 エントリ行はヘッダーとして消費されない (2 行とも skip される)" "2" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$hdreat_out")"
+assert "TC-42 skip した行から hit を拾わない" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$hdreat_out")"
 
 # ---- TC-43: E5 (TODO/FIXME) の欠落が skipped_rows に載る ---------------------
 # 本文フィルタ段で TODO 行を落とすと、index.md ではエントリ行が entries にも skipped にも
@@ -641,7 +647,9 @@ assert "TC-42 エントリ行はヘッダーとして消費されない (2 行�
 printf '# Wiki Index\n\n* [a](pages/patterns/a.md) - TODO: 詳細は #1151\n* [b](pages/patterns/b.md) - `TODO` を引用しただけ 詳細は #1152\n' > "$IDXSBX/.rite/wiki/index.md"
 e5_out="$IDXSBX/e5.out"; tmp_files+=("$e5_out")
 printf '' | idx_run > "$e5_out" 2>/dev/null
-assert "TC-43 生の TODO を含むサマリーは skipped_rows に載る" "1" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$e5_out")"
+# E5 は意図的除外 (前方追跡ポインタの維持) であって抽出失敗ではないため skipped_rows には載せない。
+# entries には計上されるので END の分母には含まれる
+assert "TC-43 E5 は意図的除外なので skipped_rows (抽出失敗) に載せない" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$e5_out")"
 assert "TC-43 コードスパン内に引用された TODO は E4 で無効化され hit として残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e5_out")"
 
 # ---- TC-44: 診断に外部入力の制御文字を素通ししない --------------------------
@@ -651,6 +659,25 @@ esc_err="$IDXSBX/esc.err"; tmp_files+=("$esc_err")
 printf '' | ( cd "$IDXSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch "$(printf 'bad\033[2Kbranch')" --repo-root "$IDXSBX" ) >/dev/null 2>"$esc_err"
 assert_not_grep "TC-44 診断に生の ESC を素通ししない" "$esc_err" "$(printf '\033')"
 assert_grep "TC-44 中和後も ref 解決失敗は WARNING で観測できる" "$esc_err" 'wiki ブランチ ref .* を解決できません'
+
+# ---- TC-45: 除外規則 (本文フィルタ) が index.md にも適用される -------------
+# TC-25..TC-44 の index fixture はどれも frontmatter / コードフェンス / `## ソース` 節を
+# 持たないため、index 経路から本文フィルタを外す変異が全 assert を素通りしていた。
+printf '# Wiki Index\n\n```\n* [例](pages/patterns/x.md) - 詳細は #9999\n```\n\n* [t](pages/patterns/a.md) - 番号なし\n' > "$IDXSBX/.rite/wiki/index.md"
+fence_out="$IDXSBX/fence.out"; tmp_files+=("$fence_out")
+printf '' | idx_run > "$fence_out" 2>/dev/null
+assert "TC-45 コードフェンス内のエントリ記法例は hit に数えない (E3 が index にも適用される)" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$fence_out")"
+assert "TC-45 フェンス内行はエントリ判定に到達しないため skipped_rows にも載らない" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$fence_out")"
+
+# ---- TC-46: index.md が読める限り pages 全件失敗でも io_error にしない ------
+# index.md が走査母数に入ったことで io_error (全対象ファイル読出失敗) の発火条件が変わった。
+# 本番構成では wiki-init が index.md を無条件生成するため、この形状が既定になる。
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+allfail_out="$IDXSBX/allfail.out"; tmp_files+=("$allfail_out")
+printf '%s\n%s\n' ".rite/wiki/pages/patterns/gone1.md" ".rite/wiki/pages/patterns/gone2.md" | idx_run > "$allfail_out" 2>/dev/null
+assert "TC-46 index.md が読めれば pages 全件失敗でも read_ok=true (部分失敗)" "true" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$allfail_out")"
+assert "TC-46 失敗した pages は read_errors に計上される" "2" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$allfail_out")"
+assert "TC-46 index.md 分の hits は残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$allfail_out")"
 
 # T-09: 他カテゴリの非回帰は測定ではなく構成で担保する。ステップ 2.2 の pages_list は
 # `pages/` 配下だけを拾ったままでなければならない。ここに index.md を混ぜると孤児検出
