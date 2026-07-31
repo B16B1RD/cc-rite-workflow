@@ -86,7 +86,23 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 **選択規則も述語の一部**: 8.0.3 の Pre-Check が置換する `{pending_marker}` は、`**Check**` の `REVIEW_CYCLE_ID` と**同じ選択規則**（会話に複数ある場合は末尾 `-{epoch}` が最大のもの＝本 cycle のもの）で採る。ただし本 cycle の marker が作れず空文字で emit された場合は、epoch で順序付けできないため空文字を優先する（過去 cycle の実パスは helper が削除済で、採ると `pending_marker_absent` の誤 pass になる。後述の「限界」＝ステップ 6 全体が skip されたケースとは別の経路）。二層は「6.1.d が本 cycle で完走したか」という同一の問いを異なる位置で評価するものなので、片側にだけ選択規則を置くと層ごとに別 cycle の値を見ることになる。
 
-**限界**: 本機構が保証するのは「6.1.d が完走した」ことまで。ステップ 6 を丸ごと skip した cycle では本 cycle の marker がそもそも作られず、会話に残る前 cycle の**実パス**（前 cycle の helper が削除済）を採ると `pending_marker_absent` として **pass** する（`degraded` にはならない — `degraded` に倒れるのは置換値が空文字か `{...}` 形状のときだけ）。ステップ 6 全体の skip を塞ぐには別 gate が要る（[#gate-order](#gate-order) の議論と同様に、守る対象の外へもう一段置く必要がある）。
+**限界**: 本機構が保証するのは「6.1.d が完走した」ことまで。ステップ 6 を丸ごと skip した cycle では本 cycle の marker がそもそも作られず、会話に残る前 cycle の**実パス**（前 cycle の helper が削除済）を採ると `pending_marker_absent` として **pass** する（`degraded` にはならない — `degraded` に倒れるのは置換値が空文字か `{...}` 形状のときだけ）。この限界は ステップ 8.0.4 が塞ぐ（下記 [#save-pending-marker](#save-pending-marker)）。
+
+<a id="save-pending-marker"></a>
+## 8.0.4 の anchor を ステップ 6 の外（5.3.0.M step 2）へ置いた理由
+
+Issue #2076 の退行は「ステップ 6 全体の skip」が全 gate をすり抜ける、上記「限界」がそのまま顕在化したものだった。PR #2074 は 5 レビューサイクルを回しながら永続 JSON が 2 本しか残らず、6.1.d の記録コメントは cycle 1 の `reviewed_commit: bc88108b` のまま `created == updated`（一度も PATCH されていない）で、どの gate も一度も発火していない。
+
+**なぜ #2072 の配線後に顕在化したか**: 6.1.a はかつて JSON 本文を生成する（＝内容を作る）ステップだった。#2072 が生成を 5.3.0.M step 1 へ移した結果、6.1.a は「bash を 1 行打つだけ」の低顕著性ステップに変質し、E2E 出力最小化下の中間 cycle で落ちるようになった。
+
+**anchor 配置が設計の核心**: 実行保証の marker は、守る対象（ステップ 6）の**外側**で、かつ**毎 cycle 再生成される**位置に張らなければならない。候補は 2 つあったが等価ではない。
+
+- **5.3.0.M step 1**（不採用）— この block の出力は `REVIEW_TMP_DIR=${TMPDIR:-/tmp}` だけで、値はセッション不変。stale な値を再利用しても Write 先は正しく解決するため、block を skip しても下流に何の齟齬も出ない。6.1.a step 0 が skip された理由（唯一の出力の消費者が、それ自身 skip 可能なステップだけ）と構造的に同一で、anchor 自身が同じ失敗をする。
+- **5.3.0.M step 2**（採用）— `review-measured-gate.sh` の `blocking={n}` は毎 cycle 変わり、`total_findings` を経て `[review:fix-needed:{n}]` に直結する。stale 値を使えば result pattern が目に見えて壊れるため、この block だけは構造的に skip できない。
+
+**marker の意味は「実行された」であって「成功した」ではない**: `review-result-save.sh` は保存失敗（`LOCAL_SAVE_FAILED`）でも EXIT trap で marker を削除する。成功時のみ削除する設計にすると、D-04 非ブロッキング契約（保存失敗は WARNING のみ）が 8.0.4 経由で blocking gate に化ける。保存失敗の可視化は既存の `LOCAL_SAVE_FAILED` と ステップ 6.1.c ケース 2（`post_comment=false` との組み合わせで `exit 2`）が既に担っており、二重化する必要がない。trap 設置**前**の `exit 1`（引数欠落 / unknown option）だけは marker を残す — 8.0.3 の引数 gate 群と同じ「caller 契約違反は差し戻せば収束する」境界。
+
+**差し戻し先が 6.1.a step 0 であること自体が不変条件**: 8.0.4 の ACTION が step 2（保存 helper）だけを名指しすると、step 0 が emit する `REVIEW_CYCLE_ID` と `NONBLOCKING_PENDING_MARKER` が前 cycle の値のまま残り、8.0.3 が再び自己整合で誤 pass する。step 0 → step 2 の順で差し戻すことで、8.0.4 の発火が 8.0.3 の anchor 再生成を連鎖的に引き起こし、ステップ 6 全体の実行が回復する。この推移的性質があるため、`REVIEW_CYCLE_ID` の生成位置そのものを 5.3.0.M へ移す（6.1.d に同じ per-cycle anchor を直接与える）改修は本 Issue では不要と判断した。
 
 <a id="startswith"></a>
 ## lookup と本文検査の設計理由（PATCH 先の同定）

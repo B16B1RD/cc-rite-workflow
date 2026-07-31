@@ -509,6 +509,85 @@ run_save --pr 123 --content-file "$JSON_INV4" --results-dir "$TMP_ROOT/results-t
 assert "TC-3.10 CRITICAL×nit-noted: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-3.10 reason=critical_high_scope_nit_noted_invariant emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=critical_high_scope_nit_noted_invariant'
 
+# --- TC-3.11 save-pending marker のライフサイクル (ステップ 8.0.4 の機械強制の土台) ---
+# marker が意味するのは「本 helper が完走した」であって「保存に成功した」ではない。
+# 成功時のみ削除する実装にすると、D-04 非ブロッキング契約 (保存失敗は WARNING のみ) が
+# 8.0.4 経由で blocking gate に化ける (AC-3 違反)。よって失敗経路でも削除を要求する。
+# trap 設置**前**の exit 1 (caller 契約違反) だけは残す — 8.0.3 の引数 gate 群と同じ境界。
+
+# TC-3.11a 保存成功: marker を削除し REVIEW_SAVE_DONE に saved=true を載せる
+MARKER_OK="$TMP_ROOT/marker-tc311a"
+: > "$MARKER_OK"
+run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311a" --pending-marker "$MARKER_OK"
+assert "TC-3.11a 保存成功: exit 0" "0" "$RC"
+assert_grep "TC-3.11a REVIEW_SAVE_DONE に saved=true を載せる" "$ERR" 'REVIEW_SAVE_DONE=1; pr=123; marker=.*; saved=true'
+if [ -e "$MARKER_OK" ]; then
+  fail "TC-3.11a 保存成功時に save-pending marker が削除される (残存 = 8.0.4 が誤って差し戻す)"
+else
+  pass "TC-3.11a 保存成功時に save-pending marker が削除される"
+fi
+
+# TC-3.11b 非ブロッキング失敗 (content-file 不在) でも marker を削除する
+#          — ここが残ると 8.0.4 が exit 1 を返し続け、保存失敗が blocking 化する (AC-3 の中核)
+MARKER_FAIL="$TMP_ROOT/marker-tc311b"
+: > "$MARKER_FAIL"
+run_save --pr 123 --content-file "$TMP_ROOT/no-such.json" --results-dir "$TMP_ROOT/results-tc311b" --pending-marker "$MARKER_FAIL"
+assert "TC-3.11b 非ブロッキング失敗: exit 0 (D-04 維持)" "0" "$RC"
+assert_grep "TC-3.11b LOCAL_SAVE_FAILED は従来どおり emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=write_failure'
+assert_grep "TC-3.11b REVIEW_SAVE_DONE に saved=false を載せる" "$ERR" 'REVIEW_SAVE_DONE=1; pr=123; marker=.*; saved=false'
+if [ -e "$MARKER_FAIL" ]; then
+  fail "TC-3.11b 保存失敗でも save-pending marker が削除される (残存 = 非ブロッキング契約が blocking gate に化ける)"
+else
+  pass "TC-3.11b 保存失敗でも save-pending marker が削除される"
+fi
+
+# TC-3.11c trap 設置前の exit 1 (--content-file 引数欠落 = caller 契約違反) では marker を残す
+MARKER_RETAIN="$TMP_ROOT/marker-tc311c"
+: > "$MARKER_RETAIN"
+run_save --pr 123 --pending-marker "$MARKER_RETAIN"
+assert "TC-3.11c caller 契約違反: exit 1" "1" "$RC"
+if [ -e "$MARKER_RETAIN" ]; then
+  pass "TC-3.11c caller 契約違反では save-pending marker を残す (8.0.4 が差し戻す)"
+else
+  fail "TC-3.11c caller 契約違反では save-pending marker を残す (削除された = 未実行が silent に通る)"
+fi
+
+# TC-3.11d --pending-marker 未指定でも従来どおり動作する (後方互換 / marker 機構は opt-in)
+run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311d"
+assert "TC-3.11d --pending-marker 未指定: exit 0" "0" "$RC"
+assert_grep "TC-3.11d marker 空でも REVIEW_SAVE_DONE を emit" "$ERR" 'REVIEW_SAVE_DONE=1; pr=123; marker=; saved=true'
+
+# TC-3.11e 再レビューサイクル経路 (loop_count >= 1 相当) の pin: cycle ごとに別 marker を渡すと
+#          cycle ごとに 1 本の JSON が永続化され、各 cycle の marker が個別に consume される。
+#          Issue #2076 の As-Is (5 cycle 実行で 2 本しか残らない) を assertion で固定する。
+RESULTS_CYCLES="$TMP_ROOT/results-tc311e"
+for _cyc in 1 2 3; do
+  _m="$TMP_ROOT/marker-tc311e-$_cyc"
+  : > "$_m"
+  cat > "$TMP_ROOT/json-cycle-$_cyc.json" <<EOF
+{
+  "schema_version": "1.1.0",
+  "pr_number": 123,
+  "timestamp": "$SENTINEL",
+  "commit_sha": "sha-cycle-$_cyc",
+  "findings": [],
+  "non_blocking_findings": []
+}
+EOF
+  run_save --pr 123 --content-file "$TMP_ROOT/json-cycle-$_cyc.json" --results-dir "$RESULTS_CYCLES" --pending-marker "$_m"
+  if [ -e "$_m" ]; then
+    fail "TC-3.11e cycle $_cyc の marker が consume される"
+  else
+    pass "TC-3.11e cycle $_cyc の marker が consume される"
+  fi
+  # 同秒衝突を跨いでも保存が skip されないこと (collision suffix 経路) を確認するため 1 秒空ける
+  sleep 1
+done
+_cycle_files=$(find "$RESULTS_CYCLES" -name '123-*.json' 2>/dev/null | grep -c . || true)
+assert "TC-3.11e 3 サイクル実行で 3 本の JSON が永続化される (1 cycle = 1 JSON)" "3" "$_cycle_files"
+_cycle_shas=$(cat "$RESULTS_CYCLES"/123-*.json 2>/dev/null | grep -c 'sha-cycle-' || true)
+assert "TC-3.11e 各 JSON が自 cycle の commit_sha を保持する (上書きされていない)" "3" "$_cycle_shas"
+
 # =====================================================================
 echo "=== TC-4: review-nonblocking-record.sh (6.1.d) ==="
 # =====================================================================
@@ -1818,13 +1897,124 @@ else
     fi
   fi
 
+  # (h) 8.0.4 (ステップ 6.1.a JSON 保存の実行保証) の三者 coupling を固定する。
+  #     Issue #2076: ステップ 6 を丸ごと skip した cycle は 8.0.3 の anchor (REVIEW_CYCLE_ID /
+  #     pending marker) がどちらも 6.1.a step 0 = ステップ 6 の内側で作られるため自己整合し、
+  #     全 gate が誤 pass した (実測: PR #2074 は 5 cycle で永続 JSON 2 本 / 記録コメント未 PATCH)。
+  #     8.0.4 の anchor は 5.3.0.M step 2 = ステップ 6 の**外側**に置くことが設計の核心なので、
+  #     生成位置・consume 位置・検査位置の 3 点をそれぞれ pin する。
+  SAVE_SH="$PLUGIN_ROOT/hooks/review-result-save.sh"
+  _sec_804() { _section_of '^### 8\.0\.4 ' '^### '; }
+  _sec_804_lines=$(_sec_804 | grep -c . || true)
+  if [ "$_sec_804_lines" -ge 10 ] && [ "$_sec_804_lines" -le 200 ] 2>/dev/null; then
+    pass "TC-5h 区間解決: 8.0.4 が妥当な行数で閉じる ($_sec_804_lines 行)"
+  else
+    fail "TC-5h 区間解決: 8.0.4 の行数が想定外 ($_sec_804_lines) — 開始 anchor 消失か終端の閉じ損ね"
+  fi
+
+  # (h-1) 生成側: marker を作るのは 5.3.0.M step 2 の bash block (= ゲート helper 呼び出しと同じ
+  #       block) でなければならない。step 1 (REVIEW_TMP_DIR emit だけの block) へ移すと、その値は
+  #       セッション不変で stale でも下流が壊れないため anchor 自身が skip されうる (6.1.a step 0 が
+  #       skip された理由と構造的に同一)。step 2 の blocking={n} は result pattern に直結するため
+  #       skip できない。**区間は「helper 呼び出し行の直後から step 3 見出しまで」で取る**。
+  _sec_530m_step2() { _section_of '^bash \{plugin_root\}/scripts/review-measured-gate\.sh' '^\*\*step 3:'; }
+  assert "TC-5h 5.3.0.M step 2 区間に save-pending marker パス**代入**行が 1 本 (行頭 anchor)" "1" \
+    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_marker="\$\{TMPDIR:-/tmp\}/rite-p61a-pending-' || true)"
+  assert "TC-5h 5.3.0.M step 2 区間に save-pending marker **生成文** が 1 本 (noclobber 付き)" "1" \
+    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*if \( set -C; : > "\$save_pending_marker" \)' || true)"
+  assert "TC-5h 5.3.0.M step 2 区間に REVIEW_SAVE_PENDING_MARKER emit が 1 本 (行頭 anchor)" "1" \
+    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*echo "\[CONTEXT\] REVIEW_SAVE_PENDING_MARKER=\$save_pending_marker"' || true)"
+  # ゲート helper が非ゼロ終了した cycle では marker を張らない (step 3 の再試行経路で orphan を
+  # 残さない)。この条件を落とすと、再試行で JSON を作り直した cycle に marker が 2 本生まれる。
+  assert "TC-5h 5.3.0.M step 2 の marker 生成が gate 成功 (rc=0) に条件付けられている" "1" \
+    "$(_sec_530m_step2 | grep -cE '^if \[ "\$_gate_rc" -eq 0 \]; then' || true)"
+  # marker 生成の `if`/`fi` を挟んだことで block 全体の終了コードが 0 に化ける。step 3 の routing は
+  # 「rc が最終的な権威」(marker は stderr の自由記述と同居するため) と規定しているので、helper の
+  # rc を再送出しないと MEASURED_GATE_FAILED の routing が丸ごと観測不能になる。
+  assert "TC-5h 5.3.0.M step 2 が helper の rc を block 終了コードとして再送出する" "1" \
+    "$(_sec_530m_step2 | grep -cE '^exit "\$_gate_rc"$' || true)"
+  # 実測: 抽出した block を bash に食わせ、helper 失敗時に非ゼロで終わることを確認する
+  # (静的 pin だけでは `exit "$_gate_rc"` が生成 if の**内側**へ移動した変異を検出できない)。
+  _gate_block_probe=$(_sec_530m_step2 | sed \
+    -e 's#^bash {plugin_root}/scripts/review-measured-gate\.sh.*#( exit 3 )#' \
+    -e '/^  --input /d' -e '/^  --reject-preset-verification$/d' \
+    -e 's#^\(.*\)$#\1#')
+  _probe_rc=0
+  printf '%s\n' "$_gate_block_probe" | TMPDIR="$TMP_ROOT" bash >/dev/null 2>&1 || _probe_rc=$?
+  assert "TC-5h [実測] helper 非ゼロ終了時に step 2 block が同じ rc で終わる" "3" "$_probe_rc"
+  # positive control: helper 成功時は rc=0 で終わり marker が生成される
+  _probe_ok_rc=0
+  _probe_marker_dir=$(mktemp -d "$TMP_ROOT/gate-probe-XXXXXX")
+  _probe_err=$(printf '%s\n' "$_gate_block_probe" | sed 's#^( exit 3 )$#( exit 0 )#' \
+    | TMPDIR="$_probe_marker_dir" bash 2>&1 >/dev/null) || _probe_ok_rc=$?
+  assert "TC-5h [実測] helper 成功時に step 2 block が rc=0 で終わる" "0" "$_probe_ok_rc"
+  assert "TC-5h [実測] helper 成功時に marker が実際に生成され path が emit される" "1" \
+    "$(printf '%s\n' "$_probe_err" | grep -cE '^\[CONTEXT\] REVIEW_SAVE_PENDING_MARKER=.+/rite-p61a-pending-' || true)"
+  assert "TC-5h [実測] 生成された marker ファイルが実在する" "1" \
+    "$(find "$_probe_marker_dir" -name 'rite-p61a-pending-*' 2>/dev/null | grep -c . || true)"
+
+  # (h-2) consume 側: 削除文は helper の EXIT trap 関数**内**に 1 本、関数外に 0 本。
+  #       関数外 (末尾 exit 0 の直前) へ移すと、trap 到達前に exit する非ブロッキング失敗経路
+  #       (LOCAL_SAVE_FAILED 全 14 種) で marker が残り、8.0.4 が毎 cycle exit 1 を返して
+  #       保存失敗が blocking 化する (D-04 / AC-3 の破壊)。件数 pin では移動を検出できないため配置で固定する。
+  _sec_p61a_cleanup() {
+    awk '
+      !inside && /^_rite_review_p61a_cleanup\(\) \{/ { inside = 1; print; next }
+      inside && /^\}/ { print; exit }
+      inside { print }
+    ' "$SAVE_SH"
+  }
+  _sec_p61a_cleanup_lines=$(_sec_p61a_cleanup | grep -c . || true)
+  if [ "$_sec_p61a_cleanup_lines" -ge 5 ] && [ "$_sec_p61a_cleanup_lines" -le 60 ] 2>/dev/null; then
+    pass "TC-5h 区間解決: _rite_review_p61a_cleanup が妥当な行数で閉じる ($_sec_p61a_cleanup_lines 行)"
+  else
+    fail "TC-5h 区間解決: _rite_review_p61a_cleanup の行数が想定外 ($_sec_p61a_cleanup_lines)"
+  fi
+  _pm_rm_total=$(grep -cE 'rm -f "\$PENDING_MARKER"' "$SAVE_SH" || true)
+  _pm_rm_in_cleanup=$(_sec_p61a_cleanup | grep -cE 'rm -f "\$PENDING_MARKER"' || true)
+  assert "TC-5h helper の cleanup **区間内** に save-pending marker 削除が 1 本" "1" "$_pm_rm_in_cleanup"
+  assert "TC-5h helper の cleanup **区間外** に save-pending marker 削除が 0 本" "0" "$(( _pm_rm_total - _pm_rm_in_cleanup ))"
+  # terminal sentinel も同じ trap 内で emit する (8.0.4 の prose Check の唯一の入力)。
+  assert "TC-5h helper の cleanup 区間内に REVIEW_SAVE_DONE emit が 1 本" "1" \
+    "$(_sec_p61a_cleanup | grep -cE 'REVIEW_SAVE_DONE=1; pr=' || true)"
+
+  # (h-3) 検査側: 8.0.4 が marker を `[ -e ]` で見て exit 1 し、marker を削除しない。
+  #       gate 側で削除すると 6.1.a を実行せず再評価だけで通せてしまい機械強制の意味が消える
+  #       (8.0.3 の同名 pin と同型)。
+  assert "TC-5h 8.0.4 区間に save-pending marker 判定式が 1 箇所" "1" \
+    "$(_sec_804 | grep -cE '^[[:space:]]*if \[ -e "\$save_pending_marker" \]; then' || true)"
+  assert "TC-5h 8.0.4 区間に marker 残存時の retained flag が 1 本" "1" \
+    "$(_sec_804 | grep -cF 'REVIEW_SAVE_GATE_FAILED=1; reason=save_pending_marker_present' || true)"
+  assert "TC-5h 8.0.4 区間に marker 残存時の exit 1 が 1 本" "1" \
+    "$(_sec_804 | grep -cE '^[[:space:]]*exit 1$' || true)"
+  assert "TC-5h 8.0.4 は save-pending marker を削除しない" "0" \
+    "$(_sec_804 | grep -cE 'rm -f .*save_pending_marker' || true)"
+  # 差し戻し先が **step 0** であること自体が不変条件 — step 2 だけを名指しすると 8.0.3 の anchor
+  # (REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER) が前 cycle のまま残り、8.0.3 が再び誤 pass する。
+  # 8.0.4 の発火が 8.0.3 の anchor 再生成を連鎖させる推移的性質が、ステップ 6 全体の回復を担保する。
+  # 差し戻し先の指示は Pre-Check の ERROR echo と On ERROR ブロックの 2 箇所にあり、両方に
+  # 現れることを要求する (片方だけに残すと、もう一方の経路で step 2 単独実行へ誘導される)。
+  assert "TC-5h 8.0.4 の ACTION が 2 経路とも 6.1.a **step 0** からの再実行を指示している" "2" \
+    "$(_sec_804 | grep -c 'step 0 から' || true)"
+
+  # (h-4) 生成側と consume 側で marker のパス prefix が一致する (TC-5b の 3 者 coupling pin と同型)。
+  #       片側だけ prefix を変えると marker が永久に残り 8.0.4 が全 cycle で exit 1 を返す。
+  _spm_prefix_skill=$(_sec_530m_step2 \
+    | sed -n 's/^[[:space:]]*save_pending_marker="\(\${TMPDIR:-\/tmp}\/rite-p61a-pending-\).*$/\1/p' | head -1)
+  _spm_prefix_gate=$(_sec_804 | grep -cF 'rite-p61a-pending' || true)
+  if [ -n "$_spm_prefix_skill" ]; then
+    pass "TC-5h save-pending marker のパス prefix を 5.3.0.M step 2 から抽出できる ($_spm_prefix_skill)"
+  else
+    fail "TC-5h save-pending marker のパス prefix を 5.3.0.M step 2 から抽出できない — 代入行の形が drift した"
+  fi
+
   # (d) 8.0 の gate 評価順序規定が 1 箇所存在する (8.0.4 追加時に全 pass 行を書き換えない構造)
-  order_rule_count=$(count_lit '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1' '8.0 順序規定')
+  order_rule_count=$(count_lit '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → 8.0.4 (ステップ 6.1.a JSON 保存) → ステップ 8.1' '8.0 順序規定')
   assert "TC-5d 8.0 の gate 評価順序規定が 1 箇所" "1" "$order_rule_count"
   # [伝播修正, cycle 2 F-04 と同型]: count_lit はファイル全体を数えるため、順序規定を 8.0 の外へ
   # 移しても通る。8.0 冒頭に置くこと自体が「gate 追加時に既存 pass 行を書き換えない」設計の要
   # (各 pass 行は「次の gate へ」としか書かず、順序は 1 箇所の規定が担う) なので区間で固定する。
-  order_rule_in_section=$(_section_of '^### 8\.0 ' '^### 8\.0\.' | grep -cF '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1' || true)
+  order_rule_in_section=$(_section_of '^### 8\.0 ' '^### 8\.0\.' | grep -cF '8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → 8.0.4 (ステップ 6.1.a JSON 保存) → ステップ 8.1' || true)
   assert "TC-5d 8.0 区間に gate 評価順序規定が 1 箇所" "1" "$order_rule_in_section"
 
   # (e) 8.0.x の gate 表が終端 (ステップ 8.1) を名指ししない。名指しすると、後から 8.0.4 を足した
@@ -1885,7 +2075,8 @@ else
     #   - 8.0.2 = 4:2:2  (pass 2 / ERROR 2)
     #   - 8.0.3 = 4:1:2  (pass 1 / ERROR 2)。pass が 1 本なのは legitimate-skip 行 (ステップ 6 hard fail) が
     #     hand-off を持たない片方向の終端行だから。この行は ERROR でも pass でもないため 1+2 < 4 になる。
-    for _g_spec in '8.0.1:3:2:1' '8.0.2:4:2:2' '8.0.3:4:1:2'; do
+    #   - 8.0.4 = 4:1:2  (pass 1 / ERROR 2)。8.0.3 と同型の 4 行構成 (legitimate-skip 1 / pass 1 / ERROR 2)。
+    for _g_spec in '8.0.1:3:2:1' '8.0.2:4:2:2' '8.0.3:4:1:2' '8.0.4:4:1:2'; do
       _g=${_g_spec%%:*}
       _g_rest=${_g_spec#*:}
       _g_rows_exp=${_g_rest%%:*}

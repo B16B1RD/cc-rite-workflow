@@ -9,6 +9,7 @@
 #
 # Usage:
 #   bash review-result-save.sh --pr <number> --content-file <path> [--results-dir <dir>]
+#                              [--pending-marker <path>]
 #
 #   caller (pr-review.md ステップ 6.1.a) は以下を行う:
 #     1. review-result-schema.md に従う JSON body を生成し、`"timestamp"` フィールドに
@@ -25,6 +26,11 @@
 #   --results-dir   保存先ディレクトリ (default: $(state-path-resolve.sh)/.rite/review-results —
 #                   セッション worktree からも main checkout と同一パスに解決。解決失敗時は
 #                   cwd 相対 .rite/review-results へフォールバック)
+#   --pending-marker  本 review cycle の save-pending marker path (任意)。pr-review.md
+#                   ステップ 5.3.0.M step 2 が実測必須ゲート適用の直後に生成し、本 helper が
+#                   EXIT trap で削除する。ステップ 8.0.4 は残存 = 「6.1.a が本 cycle で走って
+#                   いない」の機械的証拠として result pattern の emit を差し戻す。
+#                   未指定時は no-op (marker 機構を持たない caller との後方互換)。
 #
 # 契約 (pr-review.md ステップ 6.1.a / D-04 と verbatim 一致):
 #   - 非ブロッキング: 全失敗経路で `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit し
@@ -38,6 +44,12 @@
 #     collision-resolved 版が先頭に来る)。再衝突は collision_resolution_exhausted で skip。
 #   - EXIT trap で `[CONTEXT] FILE_TIMESTAMP=` / `ISO_TIMESTAMP=` / `JSON_SAVED=` を必ず emit
 #     (normal/abnormal 両経路、ステップ 6.1.c が emit 前提で動作)。
+#   - 同 trap で save-pending marker を削除し `[CONTEXT] REVIEW_SAVE_DONE=1; pr=; marker=; saved=`
+#     を emit する。marker が意味するのは「本 helper が完走した」であって「保存に成功した」では
+#     ない — 保存失敗 (LOCAL_SAVE_FAILED) で marker を残すと D-04 非ブロッキング契約が
+#     ステップ 8.0.4 経由で blocking gate に化けるため。保存の成否は `saved=` / `JSON_SAVED=` /
+#     `LOCAL_SAVE_FAILED=` が担う。trap 設置前の `exit 1` (引数欠落 / unknown option) は
+#     caller 契約違反として marker を残す (review-nonblocking-record.sh の exit-1 群と同じ扱い)。
 #   - [CONTEXT] / WARNING は全て stderr。stdout は使わない (observability とデータの境界保持)。
 #
 # Exit codes:
@@ -50,6 +62,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # --- Argument parsing ---
 PR_NUMBER=""
 CONTENT_FILE=""
+PENDING_MARKER=""
 # 保存先の既定はリポジトリ共通の state ルート (state-path-resolve.sh)。セッション worktree 内から
 # 実行しても main checkout と同一パスに解決され、書込 (本 helper) / 読取 (review-source-resolve.sh
 # Priority 2) / 削除 (cleanup ステップ 6) が一貫する。wiki-ingest-trigger.sh の STATE_ROOT anchor と
@@ -71,6 +84,7 @@ while [[ $# -gt 0 ]]; do
     --pr)           PR_NUMBER="${2:-}"; shift; shift ;;
     --content-file) CONTENT_FILE="${2:-}"; shift; shift ;;
     --results-dir)  REVIEW_RESULTS_DIR="${2:-}"; shift; shift ;;
+    --pending-marker) PENDING_MARKER="${2:-}"; shift; shift ;;
     *) echo "ERROR: review-result-save: unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -100,6 +114,13 @@ _rite_review_p61a_cleanup() {
     echo "[CONTEXT] FILE_TIMESTAMP=${file_timestamp:-unknown}" >&2
     echo "[CONTEXT] ISO_TIMESTAMP=${iso_timestamp:-unknown}" >&2
     echo "[CONTEXT] JSON_SAVED=${json_saved:-false}" >&2
+    # save-pending marker の consume。本 trap に到達した = 本 helper が完走した、が marker の意味。
+    # 削除失敗は WARNING に留める (ステップ 8.0.4 が誤って差し戻すが、保存自体は済んでいるため
+    # 再実行は冪等に収束する。ここで exit code を変えると D-04 非ブロッキング契約を破る)。
+    if [ -n "${PENDING_MARKER:-}" ] && [ -e "${PENDING_MARKER:-}" ] && ! rm -f "$PENDING_MARKER" 2>/dev/null; then
+      echo "WARNING: save-pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.4 が本 cycle の 6.1.a を未実行と誤判定します" >&2
+    fi
+    echo "[CONTEXT] REVIEW_SAVE_DONE=1; pr=${PR_NUMBER:-}; marker=${PENDING_MARKER:-}; saved=${json_saved:-false}" >&2
     file_timestamp_emitted="true"
   fi
 }
