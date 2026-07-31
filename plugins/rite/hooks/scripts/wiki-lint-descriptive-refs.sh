@@ -344,13 +344,35 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # 見出し語が drift しただけで別列を黙って走査し、hits が無言で 0 に倒れる。
 # 位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、ヘッダー由来の位置決めと
 # **スキップ行数の stdout 露出** を対にする (`/rite:wiki-query positional-parse-row-count-guard` で参照)。
-# ガードを「全行 skip」条件にしないのは、`templates/wiki/index-template.md` の前文が箇条書きの記法例を
-# 含みエントリ行として 1 件 parse されるため、全滅条件では構造的に発火しないことによる。
+#
+# HTML コメントブロック (`<!-- ... -->`) は行の分類より前に落とす。`templates/wiki/index-template.md`
+# の前文はコメント内に箇条書きの記法例 `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含み、
+# 落とさないと **記法例が実エントリとして数えられる**。そうなると下の検出失敗ガード
+# (`entries == 0 && linkrows > 0`) は `entries` が恒久的に 1 以上へ押し上げられて発火せず、
+# `/rite:wiki-init` が生成する canonical な index.md では **リンク形式が drift しても無言で 0 件**
+# に倒れる (本 helper が塞ごうとしている silent-0 そのもの)。コメント行を数えないことは
+# `entries` / `linkrows` の定義 (実カタログのエントリ数 / リンク行数) を回復するものであって、
+# ガード専用の特例ではない。同じ `index.md` を読む `hooks/wiki-query-inject.sh` の Pass 1 も
+# 記法例を落とす同種の規則を持つ。
+# **共有の `_RITE_BODY_FILTER` には足さない** — 足すと全ページ本文の検出規則が変わり、新たな
+# 除外規則として独自の rationale と実測が要る。本ファイル固有の事情なので終端アクション側に置く。
+#
+# **開始は行頭 anchor (`^[[:space:]]*<!--`) で判定する**。素の `/<!--/` にすると、サマリー本文中に
+# `<!-- comment -->` を**引用している実エントリ行**まで落ちる。実測: 現行 wiki の index.md には
+# 該当行が 2 件あり (`html-comment-breaks-gfm-table-boundary` / `in-doc-tbd-placeholder-without-merge-gate`)、
+# anchor 無しだと hits が 230 → 228 に減る。落としたいのは「行そのものがコメント」であって
+# 「コメントに言及している行」ではない。`wiki-query-inject.sh` の同種規則は anchor を持たないが、
+# あちらは箇条書き行しか候補にしないため table 形式の現行 index では露見していない (同型の盲点)。
+# 終了は anchor を付けない — template のコメントは 2 行目末尾の `-->` で閉じるため。
+# 境界: 閉じ `-->` を含む行は行全体を落とす (コメント閉じ後に実エントリが続く 1 行は拾えない)。
+# producer (ingest / template) はその形を生成しない。
 #
 # split の前にリンクスパンをマスクする: リンクテキストに素のパイプを含むページタイトル
 # (`grep -c || echo 0` 等) があると列数が合わず実エントリが無言で落ちる。bullet 分岐の match() を
 # 壊さないため `s` 自体は書き換えず作業変数 `t` を使う。
 _RITE_INDEX_COUNT_ACTION='
+/^[[:space:]]*<!--/ { in_comment=1 }
+in_comment { if (index($0, "-->") > 0) in_comment=0; next }
 /^[[:space:]]*\|/ && /サマリー/ && sumcol == 0 && $0 !~ /\]\((\.{0,2}\/?pages\/[^)]+)\)/ {
   h = $0
   gsub(/`[^`]*`/, "_", h)
@@ -543,9 +565,9 @@ esac
 descriptive_refs_read_ok="true"
 if { [ "$n_pages_total" -gt 0 ] && [ "$n_read_errors" -eq "$n_pages_total" ]; } || { [ "$n_pages_total" -eq 0 ] && [ "$n_read_errors" -gt 0 ]; }; then
   descriptive_refs_read_ok="io_error"
-  echo "WARNING: 走査対象の全 ${n_pages_total} ファイルを読み出せませんでした (branch_strategy=$branch_strategy)" >&2
+  echo "WARNING: 走査対象の全 ${n_pages_total} ファイルを読み出せない、または検出できませんでした (branch_strategy=$branch_strategy)" >&2
   echo "  影響: 説明的番号参照 0 件は実体を反映していません (informational 指標のため lint は継続します)" >&2
-  echo "  対処: wiki branch ref / ページパスの整合を確認してください" >&2
+  echo "  対処: wiki branch ref / ページパスの整合、および index.md のエントリ記法が想定どおりかを確認してください" >&2
 elif [ "$n_read_errors" -gt 0 ]; then
   echo "WARNING: ${n_read_errors}/${n_pages_total} ファイルを読み出せず集計から除外しました" >&2
 fi

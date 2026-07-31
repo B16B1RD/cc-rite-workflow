@@ -53,6 +53,8 @@
 #   TC-46  index.md が読めれば pages 全件失敗でも io_error ではなく部分失敗になる
 #   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
 #   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
+#   TC-19c separate_branch (既定) でも index.md 不在は read_errors に数えない (#2069 T-06)
+#   TC-50  index-template.md 前文 (記法例コメント) を entries に数えず、検出失敗ガードを殺さない
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
@@ -389,6 +391,19 @@ sb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --bran
 assert "TC-19 separate_branch (git show) で same_branch と同じ hits" "$hits" "$sb_hits"
 sb_ok=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) 2>/dev/null | sed -n 's/^descriptive_refs_read_ok=//p')
 assert "TC-19 separate_branch で read_ok=true" "true" "$sb_ok"
+
+# TC-19c: index.md 不在の検証は same_branch (TC-25 の `[ -f ]`) だけでは足りない。存在プローブは
+# branch_strategy ごとに別実装 (`git cat-file -e` と `[ -f ]`) で、separate_branch が既定かつ推奨
+# (rite-config.yml / templates/config/rite-config.yml) のため、既定経路が無検証のまま残っていた。
+# GITSBX の wiki ブランチは index.md を持たないまま TC-36 が意図的に残しているので追加準備は不要。
+# 「不在を読出失敗として計上しない」ことまで見る (件数だけだと部分失敗で read_ok=true が維持され
+# プローブを潰しても緑のままになる)。
+sb_noidx_out="$GITSBX/sb-noidx.out"; tmp_files+=("$sb_noidx_out")
+sb_noidx_err="$GITSBX/sb-noidx.err"; tmp_files+=("$sb_noidx_err")
+printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) > "$sb_noidx_out" 2> "$sb_noidx_err"
+assert "TC-19c (#2069 T-06) separate_branch で index.md 不在なら read_errors=0" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$sb_noidx_out")"
+assert_not_grep "TC-19c index.md 不在なら marker block に index 行が出ない" "$sb_noidx_out" 'index\.md'
+assert_not_grep "TC-19c index.md 不在を読出失敗として WARNING しない" "$sb_noidx_err" 'index\.md の読出に失敗'
 
 # ---- TC-20: `## ソース` 除外の節スコープ ------------------------------------
 # 見出し以降 EOF まで打ち切ると、wiki-ingest が後ろに追記する `## 補強:` 等の本文が盲点になる。
@@ -795,6 +810,32 @@ assert_grep "TC-47 pages_list 空でも WARNING は出る" "$noent_nostdin_err" 
 printf '# Wiki Index\n\nまだ登録がありません。方針は #1151 を参照。\n' > "$IDXSBX/.rite/wiki/index.md"
 nolink_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 assert "TC-47 リンク行が 0 なら検出失敗に計上しない (登録前のカタログは正当)" "0" "$(printf '%s' "$nolink_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+
+# TC-50: 上の TC-47 fixture はどれも手書きの index で、`/rite:wiki-init` が配る
+# index-template.md の**前文を持たない**。前文はコメント内に箇条書きの記法例
+# `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含むため、コメントを落とさない実装では
+# その記法例が実エントリとして数えられ entries>=1 が恒久化し、canonical な index.md では
+# 検出失敗ガードが**構造的に発火しなくなる**。TC-47 の fixture では通ってしまう経路なので、
+# template を実際にコピーした fixture で pin する (テンプレの記法例が変わっても追随するよう
+# literal 複製ではなく実ファイルを cp する)。
+cp "$PLUGIN_ROOT/templates/wiki/index-template.md" "$IDXSBX/.rite/wiki/index.md"
+printf '\n* [A](../../pages/patterns/a.md) - 詳細は #1151\n' >> "$IDXSBX/.rite/wiki/index.md"
+tmpl_err="$IDXSBX/tmpl.err"; tmp_files+=("$tmpl_err")
+tmpl_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$tmpl_err")
+assert "TC-50 template 前文つき index.md でも drift は検出失敗として計上する" "1" "$(printf '%s' "$tmpl_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert_grep "TC-50 template 前文つきでも検出失敗 WARNING が出る" "$tmpl_err" 'エントリ行を 1 件も認識できませんでした'
+# 前文だけ (エントリ 0 本) は「登録前のカタログ」であって drift ではない。記法例を entries に
+# 数えない = linkrows にも数えない、の両方が効いていることをここで押さえる。
+cp "$PLUGIN_ROOT/templates/wiki/index-template.md" "$IDXSBX/.rite/wiki/index.md"
+tmpl_only_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
+assert "TC-50 template 前文のみ (未登録) は検出失敗に計上しない" "0" "$(printf '%s' "$tmpl_only_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert "TC-50 記法例コメントのサマリーは hits に数えない (本文側の 1 件のみ)" "1" "$(idx_hits "$tmpl_only_out")"
+# 逆方向の pin: サマリー本文中に `<!-- -->` を**引用している実エントリ行**は落とさない。
+# コメント開始の行頭 anchor を外す変異 (`/<!--/`) を kill する。実測で現行 wiki の index.md に
+# 該当行が 2 件あり、anchor を外すと hits が 230 → 228 に減る。
+printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [t](pages/patterns/a.md) | x | `<!-- c -->` 挿入は PR #792 で禁忌と判明 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
+quoted_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
+assert "TC-50 サマリーが <!-- --> を引用する実エントリ行は落とさない" "1" "$(printf '%s' "$quoted_out" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"
 
 # ---- TC-48: index.md 終端アクションの戻り値 arity (4 値) を pin する ---------
 # 終端アクションのフィールドを減らす変異は、フィールド数がずれたまま個別値の case サニタイザが

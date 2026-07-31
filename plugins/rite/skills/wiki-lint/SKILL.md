@@ -953,7 +953,7 @@ Wiki Lint が完了しました。
 | `read_ok=true` かつ `read_errors=0` かつ `skipped_rows>0` | ` ⚠️ (部分欠損: index.md の {descriptive_refs_skipped_rows} 行からサマリーを抽出できず集計から除外)` |
 | `read_ok=true` かつ `read_errors>0` かつ `skipped_rows=0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} 件の対象ファイルを読出または検出できず集計から除外)` |
 | `read_ok=true` かつ `read_errors>0` かつ `skipped_rows>0` | ` ⚠️ (未実測: {descriptive_refs_read_errors} 件の対象ファイルを読出または検出できず集計から除外 / 部分欠損: index.md の {descriptive_refs_skipped_rows} 行からサマリーを抽出できず集計から除外)` |
-| `read_ok=io_error` | ` ⚠️ (未実測: io_error — 全対象ファイル読出失敗)` |
+| `read_ok=io_error` | ` ⚠️ (未実測: io_error — 全対象ファイルを読出または検出できず)` |
 | `read_ok=skipped_helper_missing` | ` ⚠️ (未実測: skipped_helper_missing — helper 不在)` |
 | marker block / enum 未受信（bash block 途中異常終了） | ` ⚠️ (未実測: skipped_helper_missing 同等 — 出力未受信)` |
 
