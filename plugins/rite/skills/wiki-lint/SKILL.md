@@ -638,7 +638,7 @@ rationale: [references/descriptive-refs-rationale.md#pages-list-unchanged](refer
 
 **Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約）。
 
-`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。
+`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。`pages_list` が空の場合は HEREDOC 本文を空のまま substitute する（空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると helper の partial pollution gate が exit 1 する）。本ステップは両 list が空でも実行されるため、空 HEREDOC を実際に渡す唯一のステップである。
 
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。

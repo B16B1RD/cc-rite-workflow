@@ -1637,7 +1637,7 @@ The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.1](http
 | Element | Conformance | Implementation SoT |
 |---------|-------------|--------------------|
 | Page frontmatter | Declares concept `type:` (`patterns` / `heuristics` / `anti-patterns`) and `description:` | `templates/wiki/page-template.md` |
-| `index.md` | Carries `okf_version: "0.1"`; page catalog as OKF bullets `* [title](path) - desc`. **The template and `/rite:wiki-ingest` emit bullets, but a live `wiki` branch may still hold the older 5-column table form** — consumers that parse entries must accept both per line (see `skills/wiki-lint/references/descriptive-refs-rationale.md`) | `templates/wiki/index-template.md` |
+| `index.md` | Carries `okf_version: "0.1"`; page catalog as OKF bullets `* [title](path) - desc`. **The template and `/rite:wiki-ingest` emit bullets, but a live `wiki` branch may still hold the older 5-column table form** — consumers that parse entries must accept both per line. **Known non-conformer: `/rite:wiki-query` Pass 1 accepts bullets only, so a table-form index yields 0 candidates** (see `skills/wiki-lint/references/descriptive-refs-rationale.md`) | `templates/wiki/index-template.md` |
 | `log.md` | Change history in OKF reserved structure (`## YYYY-MM-DD` headings + prose bullets, newest-first, append-only, human-facing) | `templates/wiki/log-template.md` |
 | Raw frontmatter | Ingest skip state held as `ingest_status: skipped` + `skip_reason:` (skip SoT; not kept in `log.md`) | `skills/wiki-ingest/SKILL.md` step 5 |
 
