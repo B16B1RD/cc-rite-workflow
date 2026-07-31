@@ -39,7 +39,7 @@
 #   TC-31  列数が壊れた行は行全体へフォールバックせず行番号つき WARNING でスキップ (#2069 T-07)
 #   TC-32  一部行のみ抽出失敗でも欠損ガードが発火し、欠損行数が stdout に載る (read_errors に混ぜない)
 #   TC-33..TC-34 gate の非回帰 (raw/ と `..` は fail-fast のまま、index.md は完全一致で受理・重複計上なし)
-#   TC-35  ステップ 2.2 の pages_list に index.md を混ぜていない (他カテゴリの入力不変)
+#   TC-35  ステップ 2.2 の pages_list に index.md を混ぜていない (separate_branch / same_branch の両経路)
 #   TC-36  separate_branch (本番既定経路) でも index.md を走査する (存在プローブ + git show)
 #   TC-37  サマリー列の位置をヘッダー行から決めている (位置固定 fallback への変異を弾く)
 #   TC-38  index.md が存在するのに読めない場合は read_errors に計上する (不在との分離)
@@ -53,6 +53,7 @@
 #   TC-46  index.md が読めれば pages 全件失敗でも io_error ではなく部分失敗になる
 #   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
 #   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
+#   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -510,6 +511,27 @@ assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数え�
 printf '# Wiki Index\n\n* [Issue #99 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
 assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "1" "$(printf '%s' "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"
 
+# 形式判別は **行単位** で行う (ファイル単位で先頭一致から決め打ちしない)。稼働中の wiki は
+# テーブル、template と wiki-ingest ステップ 6 が生成するのは箇条書きのため、移行期には
+# 1 ファイル内に両形式が必ず混在する。単一形式の fixture しか無いと、判別をファイル単位へ
+# 寄せる変異が全 assertion 緑のまま生き残る。表 1 行 + 箇条書き 1 行を同居させ、両方の
+# サマリーが数えられること (合計 = 本文 1 + index 2) を pin する。箇条書き側はリンクテキストにも
+# 番号を置き、混在時も AC-2 (リンクテキスト列は対象外) が保たれることを同時に測る。
+cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
+# Wiki Index
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|---|---|---|---|---|
+| [番号なし](pages/patterns/a.md) | patterns | 詳細は #1151 | 2026-01-01 | high |
+
+* [PR #77 のタイトル](pages/patterns/b.md) - Issue #88 系譜の継続
+IDXEOF
+mix_out="$IDXSBX/mix.out"; tmp_files+=("$mix_out")
+printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$mix_out" 2>/dev/null
+assert "TC-49 表と箇条書きが混在しても両形式のサマリーを数える (本文 1 + index 2)" "3" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$mix_out")"
+assert "TC-49 混在 index.md の hits は表 1 + 箇条書き 1 (リンクテキストの番号は非計上)" "2" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$mix_out")"
+assert "TC-49 混在形式でも列崩れ扱いにならない" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$mix_out")"
+
 # T-07: 列数が壊れた行は「行全体を対象にする」のではなくスキップし、行番号つき WARNING を出す。
 # 行全体へフォールバックするとリンクテキスト由来の番号が混ざり、誤検出で件数が膨らむ。
 # ズレた位置 (4 列目 = 通常はサマリー列) に番号を置く: 「行全体へフォールバックする変異」と
@@ -696,13 +718,29 @@ assert "TC-46 index.md 分の hits は残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI
 # T-09: 他カテゴリの非回帰は測定ではなく構成で担保する。ステップ 2.2 の pages_list は
 # `pages/` 配下だけを拾ったままでなければならない。ここに index.md を混ぜると孤児検出
 # (pages_list ∖ index 登録ページ) が index.md 自身を未登録の孤児として数え、AC-6 が即座に崩れる。
+# pages_list は branch_strategy ごとに **2 経路** で組み立てられる (separate_branch は git
+# ls-tree + grep、same_branch は find)。片方だけを pin すると、pin していない側に index.md を
+# 混ぜる変異が緑のまま通り、構成による担保という前提そのものが崩れる。両経路を独立に検査する。
 step22_re=$(grep -oE "grep -E '\^\\\\\.rite/wiki/pages/[^']*'" "$LINT_MD" | head -1)
 if [ -z "$step22_re" ]; then
-  fail "TC-35 (T-09) SKILL.md ステップ 2.2 の pages_list 抽出 regex を特定できなかった"
+  fail "TC-35 (T-09) SKILL.md ステップ 2.2 separate_branch の pages_list 抽出 regex を特定できなかった"
 elif printf '%s' "$step22_re" | grep -q 'index'; then
-  fail "TC-35 (T-09) ステップ 2.2 の pages_list に index.md が混ざっている (孤児 / 陳腐化の件数が変わる)"
+  fail "TC-35 (T-09) separate_branch の pages_list に index.md が混ざっている (孤児 / 陳腐化の件数が変わる)"
 else
-  pass "TC-35 (T-09) ステップ 2.2 の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
+  pass "TC-35 (T-09) separate_branch の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
+fi
+
+# same_branch 側 (find 経路)。探索根が `pages/` より上へ広がる変異も、抽出が
+# `find .rite/wiki/pages` に anchor しているため空抽出として弾かれる。
+step22_find=$(grep -oE 'pages_list=\$\(find [^)]*' "$LINT_MD" | head -1)
+if [ -z "$step22_find" ]; then
+  fail "TC-35 (T-09) SKILL.md ステップ 2.2 same_branch の pages_list find 式を特定できなかった"
+elif printf '%s' "$step22_find" | grep -q 'index'; then
+  fail "TC-35 (T-09) same_branch の pages_list に index.md が混ざっている (孤児 / 陳腐化の件数が変わる)"
+elif ! printf '%s' "$step22_find" | grep -q '\.rite/wiki/pages'; then
+  fail "TC-35 (T-09) same_branch の pages_list の探索根が pages/ 配下ではない (他カテゴリの入力が変わる)"
+else
+  pass "TC-35 (T-09) same_branch の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
 fi
 
 # ---- TC-22: 2 検出器の検出 regex が literal 一致すること -------------------
