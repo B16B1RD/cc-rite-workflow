@@ -271,9 +271,10 @@ assert_grep "TC-6 R2 詳細は 側の語境界も文字クラス" \
   "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*詳細は \?#\[0-9\]\+\(\[\^0-9\]\|\$\)'
 assert_not_grep "TC-6 検出 regex に \\b を使っていない" "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[0-9\]\+.b'
 
-# TC-17: 本文抽出フィルタ (_RITE_BODY_FILTER) は awk で走るため、そこに `\b` を持ち込むと
-# gawk がバックスペースとして読んで永久に一致しなくなる。フィルタの TODO/FIXME 除外を
-# `\b` 付きに変異させ、除外が沈黙する (= hits が増える) ことで危険を実証する。
+# TC-17: 終端アクション (_RITE_COUNT_ACTION / _RITE_INDEX_COUNT_ACTION) は awk で走るため、
+# そこに `\b` を持ち込むと gawk がバックスペースとして読んで永久に一致しなくなる。
+# 終端アクションの TODO/FIXME 除外を `\b` 付きに変異させ (sed が 2 箇所を同時に叩く)、
+# 除外が沈黙する (= hits が増える) ことで危険を実証する。
 # awk 経路を実際に変異させるので、被テスト対象を実行しない always-pass にはならない。
 MUT_AWKB="$SBX/mutant-awk-backslash-b.sh"
 sed 's%/(TODO|FIXME)%/(TODO\\b|FIXME\\b)%' "$SCRIPT" > "$MUT_AWKB"
@@ -522,6 +523,8 @@ guard_err="$IDXSBX/guard.err"; tmp_files+=("$guard_err")
 guard_out="$IDXSBX/guard.out"; tmp_files+=("$guard_out")
 printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$guard_out" 2>"$guard_err"
 assert_grep "TC-32 一部行のみ抽出失敗でも欠損ガードが WARNING を出す" "$guard_err" 'からサマリーを抽出できませんでした'
+# 分母が「エントリ行数」であることまで pin する (NR 等へ化ける変異を kill)
+assert_grep "TC-32 欠損ガードの分母が実エントリ数" "$guard_err" 'エントリ行 2 件中 1 件'
 assert "TC-32 欠損行数が stdout に載る (stderr だけに閉じない)" "1" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$guard_out")"
 assert "TC-32 抽出できた行の hits は残る (本文 1 + index 1)" "2" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$guard_out")"
 assert "TC-32 行単位の欠損は read_errors (ファイル単位) に混ぜない" "0" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$guard_out")"
@@ -651,6 +654,9 @@ printf '' | idx_run > "$e5_out" 2>/dev/null
 # entries には計上されるので END の分母には含まれる
 assert "TC-43 E5 は意図的除外なので skipped_rows (抽出失敗) に載せない" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$e5_out")"
 assert "TC-43 コードスパン内に引用された TODO は E4 で無効化され hit として残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e5_out")"
+# pages 側は E5 を行単位 (マスク前) で判定するため同じテキストでも行ごと落ちる。
+# 非対称は意図であり、両経路の判定順序を揃える変更が無検出で通らないよう pin する
+assert "TC-43 pages 側はコードスパン内 TODO でも行ごと落とす (index と非対称)" "0" "$(single_hits "$(printf '\140TODO\140 の扱いは 詳細は #1152\n')")"
 
 # ---- TC-44: 診断に外部入力の制御文字を素通ししない --------------------------
 # ref 解決失敗 WARNING は外部入力 (--wiki-branch) を埋め込む。中和しないと

@@ -54,14 +54,16 @@
 #   scanned   `.rite/wiki/pages/**` (stdin `pages_list`) — Why prose, the metric's core
 #   scanned   `.rite/wiki/index.md` — auto-discovered by this helper, not required on stdin.
 #             Only the per-entry summary is scanned (see `_RITE_INDEX_COUNT_ACTION`): the
-#             summary shares its source with the page frontmatter `description`, and
-#             `/rite:wiki-query` Pass 1 matches keywords against it, so it is part of the
-#             surface a reader goes to for Why.
+#             summary shares its source with the page frontmatter `description`. In OKF
+#             bullet form `/rite:wiki-query` Pass 1 also matches keywords against it (the
+#             current table-form index yields no Pass 1 candidates — that path takes effect
+#             after the format migration). Either way it is the surface a reader goes to for Why.
 #
 #   NOT scanned — each is a deliberate exclusion, not an unfinished area:
 #     `.rite/wiki/log.md`   append-only ingest / lint 台帳。SoT が commit message と
 #                           PR description を「番号の正しい受け皿」として対象外にしているのと
-#                           同じ性質で、散文化すると監査証跡の追跡可能性を失う (実測 987 hits)。
+#                           同じ性質で、散文化すると監査証跡の追跡可能性を失う (実測 約 1,000 hits。
+#                           ingest / lint サイクルごとに増えるため厳密値は持たない)。
 #     `.rite/wiki/raw/**`   レビュー / fix の生ログ = provenance 資料。番号は出典そのもので
 #                           あって説明的参照ではない (実測 1,400 ファイル超。review / fix
 #                           サイクルごとに増えるため厳密値は持たない)。
@@ -82,6 +84,8 @@
 #   descriptive_refs_pages={n}
 #   descriptive_refs_read_errors={n}
 #   descriptive_refs_skipped_rows={n}   # index.md でサマリーを抽出できなかったエントリ行数
+#                                       # (エントリ行数そのものは stdout 契約に出さない —
+#                                       #  entries==0 は read_errors へ寄せて既存の enum で表す)
 #   [CONTEXT] WIKI_DESCRIPTIVE_REFS={n}
 #   descriptive_refs_read_ok={true|io_error}
 #
@@ -384,9 +388,14 @@ _RITE_INDEX_COUNT_ACTION='
   if (summary ~ re) n++
 }
 END {
-  if (skipped > 0)
-    printf "WARNING: index.md のエントリ行 %d 件中 %d 件からサマリーを抽出できませんでした (列位置不明 / 列数不一致。行番号は上の WARNING を参照)。欠損は descriptive_refs_skipped_rows として stdout に出ます\n", entries, skipped > "/dev/stderr"
-  print n+0, skipped+0
+  if (skipped > 0) {
+    rest = skipped - 3
+    if (rest > 0)
+      printf "WARNING: index.md のエントリ行 %d 件中 %d 件からサマリーを抽出できませんでした (列位置不明 / 列数不一致。行番号は上の WARNING を参照 — 先頭 3 件のみ表示、残り %d 件は行番号未表示)。欠損は descriptive_refs_skipped_rows として stdout に出ます\n", entries, skipped, rest > "/dev/stderr"
+    else
+      printf "WARNING: index.md のエントリ行 %d 件中 %d 件からサマリーを抽出できませんでした (列位置不明 / 列数不一致。行番号は上の WARNING を参照)。欠損は descriptive_refs_skipped_rows として stdout に出ます\n", entries, skipped > "/dev/stderr"
+  }
+  print n+0, skipped+0, entries+0
 }
 '
 
@@ -400,6 +409,7 @@ n_descriptive_refs=0
 n_pages_with_hits=0
 n_read_errors=0
 n_index_skipped_rows=0
+n_index_entries=-1
 hit_lines=""
 
 # per-page 読出の stderr 退避先。捨てると `descriptive_refs_read_errors=3` と出ても
@@ -446,15 +456,32 @@ while IFS= read -r page; do
   if [ "$page" = "$_RITE_INDEX_PATH" ]; then _action="$_RITE_INDEX_COUNT_ACTION"; else _action="$_RITE_COUNT_ACTION"; fi
   hits=$(printf '%s\n' "$page_content" | awk -v re="$_RITE_DESCRIPTIVE_RE" "${_RITE_BODY_FILTER}${_action}"); awk_rc=$?; hits_rc=$awk_rc
   if [ "$page" = "$_RITE_INDEX_PATH" ]; then
-    _skipped_field=${hits#* }; hits=${hits%% *}
+    # index.md の終端アクションは `hits skipped entries` の 3 値を返す。read で分解すると
+    # フィールド数が変わったときに未束縛が残り、下の数値検証が拾える (パラメータ展開だと
+    # 単一値のとき hits がそのまま skipped として採られる)
+    read -r _hits_field _skipped_field _entries_field <<< "$hits"
+    hits=$_hits_field
     case "$_skipped_field" in ''|*[!0-9]*) _skipped_field=0 ;; esac
+    case "$_entries_field" in ''|*[!0-9]*) _entries_field=-1 ;; esac
     n_index_skipped_rows=$_skipped_field
+    n_index_entries=$_entries_field
   fi
   case "$hits" in ''|*[!0-9]*) [ "$hits_rc" -eq 0 ] && hits_rc=1 ;; esac
   if [ "$hits_rc" -ne 0 ]; then
     # 検出器が機能していないページは「0 件」ではなく読出失敗として計上する。
     page_disp=$(printf '%s' "$page" | neutralize_ctrl)
     echo "WARNING: ページ ${page_disp} の検出 awk が失敗しました (rc=$hits_rc, awk_rc=$awk_rc, 出力='$hits')" >&2
+    n_read_errors=$((n_read_errors + 1))
+    continue
+  fi
+  # index.md を読めたのにエントリ行を 1 件も認識できなかった = 形式が判定不能。
+  # skipped は「エントリと認識できた行の抽出失敗」しか数えないため、この状態は
+  # どのカウンタにも現れず 0 件が「実測済み」として通ってしまう (実測 230 hits が丸ごと落ちる)。
+  # pages_list が非空のときだけ検出失敗として計上する (Wiki 初期化直後の空 index は正当)。
+  if [ "$page" = "$_RITE_INDEX_PATH" ] && [ "${n_index_entries:--1}" -eq 0 ] 2>/dev/null \
+     && [ -n "$(printf '%s\n' "$pages_list" | awk 'NF>0 {print; exit}')" ]; then
+    page_disp=$(printf '%s' "$page" | neutralize_ctrl)
+    echo "WARNING: ページ ${page_disp} からエントリ行を 1 件も認識できませんでした (リンク形式または本文フィルタの想定と不一致)。検出失敗として計上します" >&2
     n_read_errors=$((n_read_errors + 1))
     continue
   fi
