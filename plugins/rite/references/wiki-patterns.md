@@ -234,7 +234,7 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 ## OKF v0.1 準拠
 
-rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) に準拠した構造で蓄積します。準拠により、上流の OKF 静的 visualizer で経験則を概念グラフとして閲覧できます（[Visualizer 連携](#okf-visualizer-連携)参照）。
+rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) に準拠した構造で蓄積します（**`index.md` のカタログ形式のみ未達** — 下記 producer 責務の注記を参照）。準拠により、上流の OKF 静的 visualizer で経験則を概念グラフとして閲覧できます（[Visualizer 連携](#okf-visualizer-連携)参照）。
 
 ### 準拠規約（SoT は各テンプレート / コマンド）
 
@@ -246,7 +246,7 @@ rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https:
 | **raw frontmatter** | ingest skip 状態を `ingest_status: skipped` + `skip_reason:` で保持（skip の Source of Truth。log.md には保持しない） | `skills/wiki-ingest/SKILL.md` ステップ 5（Issue #1520） |
 | **SCHEMA.md** | 蓄積規約（人間 + LLM 共同管理）。OKF 予約ファイルとして bundle ルートに常駐 | `templates/wiki/schema-template.md` |
 
-> **producer 責務**: 上表の frontmatter / 構造はすべて `/rite:wiki-init`（テンプレート展開）と `/rite:wiki-ingest`（ページ生成・更新）が producer として書き込む。consumer（`/rite:wiki-query` / `/rite:wiki-lint`）はこの構造を前提に読む。準拠仕様を変更する場合は各テンプレート / コマンドを SoT として同期する。
+> **producer 責務**: 上表の frontmatter / 構造はすべて `/rite:wiki-init`（テンプレート展開）と `/rite:wiki-ingest`（ページ生成・更新）が producer として書き込む。consumer（`/rite:wiki-query` / `/rite:wiki-lint`）はこの構造を前提に読む。準拠仕様を変更する場合は各テンプレート / コマンドを SoT として同期する。**ただし `index.md` のカタログ形式は現在テーブル形式で追記されており、上表の OKF 箇条書きは未達**（`docs/SPEC.md` の OKF v0.1 Conformance 節の `index.md` 行を参照）。
 
 ## OKF Visualizer 連携
 

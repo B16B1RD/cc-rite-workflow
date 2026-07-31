@@ -114,6 +114,16 @@ HTML コメントブロック除去の段落を参照。
 **ガードが無効化される経路とガードを必要とする経路が完全に一致する**。precondition は守りたい対象と同じものを
 測る必要があり、相関しているだけの代理値を使うと「相関が切れる場所＝守るべき場所」で沈黙する。
 
+**END の未閉鎖検査を `in_comment` / `infence` の 2 ラッチに限る理由**: 本文フィルタは他に 2 つのラッチを持つが
+（`infm && insrcblk` = frontmatter の `sources:` ブロック、`insrc` = `## ソース` 節）、どちらも `index.md` では
+**ラッチを立てる producer が存在しない**。実測: `index-template.md` と live `index.md` のいずれにも `sources:` /
+`## ソース` は 0 件で、live 側はそもそも frontmatter を持たない（`infm` が立たないので `insrcblk` に到達しない）。
+ingest の index 更新もこの 2 つを書かない。この 2 ラッチはページ本文と共有しているフィルタの一部であって、
+index 側の入力形状ではない。一方 HTML コメントとコードフェンスは `index-template.md` の前文とサマリー列の
+記法例という**実在する producer** を持ち、閉じ忘れが実際に到達しうる。到達しない状態に検査を足すと、
+正常形（末尾がソース節の手書き index）を検出失敗として誤計上する側のリスクだけが増える。
+`index.md` にこれらを書く producer が生まれたときに検査を足す。
+
 `comment-journal-check.sh` の `.rite/wiki` scan_root は `wiki.branch_strategy: same_branch` のときだけ実体に届く。
 `separate_branch` では Wiki ページの実体は wiki ブランチにあり、dev checkout の `.rite/wiki/` は gitignore されたローカル置き場になる。
 ただし ingest 待ちの Raw Source は一時的に dev checkout の `.rite/wiki/raw/` に実在するため、その窓では raw 由来の検出が出うる。

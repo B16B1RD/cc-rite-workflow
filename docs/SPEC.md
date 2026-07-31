@@ -1320,7 +1320,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `wiki-lint-stale.sh` | `/rite:wiki-lint` ステップ 4 — frontmatter `updated` と cutoff 比較で陳腐化集合を marker block + `stale_check_ok` enum で構築 (GNU date 検査内包) | — |
 | `wiki-lint-orphans.sh` | `/rite:wiki-lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | — |
 | `wiki-lint-broken-refs.sh` | `/rite:wiki-lint` ステップ 7 — Markdown link の page-dir 起点 `realpath -m -s` 解決で壊れた相互参照集合を構築 (awk indent 不問 fence tracking) | — |
-| `wiki-lint-descriptive-refs.sh` | `/rite:wiki-lint` ステップ 7.5 — ページ本文と `index.md` のエントリサマリーに残った説明的 Issue/PR 番号参照 (裸の `PR #N` / `Issue #N` を含む) を検出し marker block + `WIKI_DESCRIPTIVE_REFS` 合計 + `descriptive_refs_read_ok` enum で構築。`index.md` は helper が自力で読み出す (stdin 不要、エントリごとのサマリーのみ — テーブル / OKF 箇条書きを行単位で判別)。frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME を除外し、`index.md` に限り行頭 `<!--` の HTML コメントブロックも落とす（配布テンプレート前文の記法例を実エントリと数えないため）。サマリーを抽出できなかった行数（列位置不明 / 列数不一致）は `descriptive_refs_skipped_rows` で surface し、除外ブロックが未閉鎖のまま EOF に達した場合は検出失敗として `descriptive_refs_read_errors` に載せる。`log.md` / `raw/**` / `SCHEMA.md` は意図的に走査しない (informational 指標、`n_warnings` 不加算) | — |
+| `wiki-lint-descriptive-refs.sh` | `/rite:wiki-lint` ステップ 7.5 — ページ本文と `index.md` のエントリサマリーに残った説明的 Issue/PR 番号参照 (裸の `PR #N` / `Issue #N` を含む) を検出し marker block + `WIKI_DESCRIPTIVE_REFS` 合計 + `descriptive_refs_read_ok` enum で構築。`index.md` は helper が自力で読み出す (stdin 不要、エントリごとのサマリーのみ — テーブル / OKF 箇条書きを行単位で判別)。frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME を除外し、`index.md` に限り行頭 `<!--` の HTML コメントブロックも落とす（配布テンプレート前文の記法例を実エントリと数えないため）。サマリーを抽出できなかった行数（列位置不明 / 列数不一致）は `descriptive_refs_skipped_rows` で surface し、**`index.md` の HTML コメントブロック / コードフェンス**が未閉鎖のまま EOF に達した場合は検出失敗として `descriptive_refs_read_errors` に載せる（frontmatter の `sources:` ブロックと `## ソース` 節、およびページ本文側は検査対象外）。`log.md` / `raw/**` / `SCHEMA.md` は意図的に走査しない (informational 指標、`n_warnings` 不加算) | — |
 | `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | — |
 | `bash-heaviness-check.sh` | `skills/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | — |
 | `hardcoded-line-number-check.sh` | procedural markdown (`skills/**/*.md`) 内のハードコード行番号参照を検出 | — |
@@ -1632,7 +1632,7 @@ Wiki data is stored in a dedicated branch (default: `wiki`) or inline on the wor
 
 ### OKF v0.1 Conformance
 
-The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant structure so the accumulated heuristics can be browsed as a concept graph with the upstream OKF static visualizer:
+The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant structure **except for the index catalog form (see the `index.md` row below)** so the accumulated heuristics can be browsed as a concept graph with the upstream OKF static visualizer:
 
 | Element | Conformance | Implementation SoT |
 |---------|-------------|--------------------|
@@ -1641,7 +1641,7 @@ The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.1](http
 | `log.md` | Change history in OKF reserved structure (`## YYYY-MM-DD` headings + prose bullets, newest-first, append-only, human-facing) | `templates/wiki/log-template.md` |
 | Raw frontmatter | Ingest skip state held as `ingest_status: skipped` + `skip_reason:` (skip SoT; not kept in `log.md`) | `skills/wiki-ingest/SKILL.md` step 5 |
 
-**Visualizer integration (not vendored)**: the upstream OKF static HTML visualizer (`GoogleCloudPlatform/knowledge-catalog`, Apache-2.0) is **not bundled** in this repo. `plugins/rite/references/wiki-patterns.md` documents the procedure to materialize the bundle (reusing `wiki-worktree-setup.sh` for `separate_branch`) and point the upstream visualizer at it, plus the license-confirmation step. Producing the conformant structure is the responsibility of `/rite:wiki-init` and `/rite:wiki-ingest`; consumers (`/rite:wiki-query`, `/rite:wiki-lint`) read it.
+**Visualizer integration (not vendored)**: the upstream OKF static HTML visualizer (`GoogleCloudPlatform/knowledge-catalog`, Apache-2.0) is **not bundled** in this repo. `plugins/rite/references/wiki-patterns.md` documents the procedure to materialize the bundle (reusing `wiki-worktree-setup.sh` for `separate_branch`) and point the upstream visualizer at it, plus the license-confirmation step. Producing the conformant structure is the responsibility of `/rite:wiki-init` and `/rite:wiki-ingest`; consumers (`/rite:wiki-query`, `/rite:wiki-lint`) read it (the index catalog form is a known deviation — see the `index.md` row above).
 
 ### Commands
 
