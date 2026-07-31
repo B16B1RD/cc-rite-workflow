@@ -117,9 +117,24 @@ _rite_review_p61a_cleanup() {
     # save-pending marker の consume。本 trap に到達した = 本 helper が完走した、が marker の意味。
     # 削除失敗は WARNING に留める (ステップ 8.0.4 が誤って差し戻すが、保存自体は済んでいるため
     # 再実行は冪等に収束する。ここで exit code を変えると D-04 非ブロッキング契約を破る)。
-    if [ -n "${PENDING_MARKER:-}" ] && [ -e "${PENDING_MARKER:-}" ] && ! rm -f "$PENDING_MARKER" 2>/dev/null; then
-      echo "WARNING: save-pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.4 が本 cycle の 6.1.a を未実行と誤判定します" >&2
-    fi
+    #
+    # **prefix guard**: 削除対象は 5.3.0.M step 2 が張る `rite-p61a-pending-*` に限る。本 helper は
+    # sibling の review-nonblocking-record.sh (marker path を内部導出する) と違い caller から
+    # full path を受け取るため、置換漏れ / 誤配線で無関係なパスを渡されうる。guard 外のパスは
+    # 削除せず WARNING に倒す — 消さなければ 8.0.4 が本物の marker 残存を見て差し戻し、
+    # step 0 からの再実行で収束する (誤削除すると gate が無音で pass し本 Issue の退行が復活する)。
+    case "${PENDING_MARKER:-}" in
+      '') ;;  # 未指定 = marker 機構 opt-out (後方互換)
+      */rite-p61a-pending-*)
+        if [ -e "$PENDING_MARKER" ] && ! rm -f "$PENDING_MARKER" 2>/dev/null; then
+          echo "WARNING: save-pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.4 が本 cycle の 6.1.a を未実行と誤判定します" >&2
+        fi
+        ;;
+      *)
+        echo "WARNING: --pending-marker が想定 prefix (rite-p61a-pending-) を満たさないため削除しません: $PENDING_MARKER" >&2
+        echo "  caller (ステップ 6.1.a) の {save_pending_marker} 置換漏れ / 誤配線の可能性があります" >&2
+        ;;
+    esac
     echo "[CONTEXT] REVIEW_SAVE_DONE=1; pr=${PR_NUMBER:-}; marker=${PENDING_MARKER:-}; saved=${json_saved:-false}" >&2
     file_timestamp_emitted="true"
   fi

@@ -3847,6 +3847,7 @@ case "$save_pending_marker" in
       echo "ERROR: ステップ 8.0.4 gate failed (機械強制)。save-pending marker が残存しています: $save_pending_marker" >&2
       echo "  これは ステップ 6.1.a (レビュー結果 JSON のローカル保存) が本 cycle で走っていないことの機械的証拠です" >&2
       echo "  (marker を消すのは 6.1.a の helper だけで、保存に失敗した場合も消します — 残存 = 未実行)。" >&2
+      echo "  ただし 6.1.a を実行済みなら --pending-marker の置換漏れを疑ってください: helper は想定 prefix (rite-p61a-pending-) 外のパスを削除せず WARNING を出すため、実行済みでも本 gate は残存を観測します。" >&2
       echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 は 8.0.3 が使う REVIEW_CYCLE_ID と pending marker を生成する唯一の場所で、飛ばすと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
       echo "    step 0 (REVIEW_TMP_DIR / REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER の emit) → step 2 (review-result-save.sh 実行) の順で実行し、そのうえで ステップ 8.0 を再評価してください。" >&2
       echo "  marker はここでは削除しません — 削除すると 6.1.a を実行せずに再評価だけで gate を通せてしまい、本検査の意味が失われます。" >&2
@@ -3881,7 +3882,8 @@ esac
 ```
 ERROR: ステップ 8.0.4 ステップ 6.1.a Post-condition Gate failed.
 No current-cycle [CONTEXT] REVIEW_SAVE_DONE=1 sentinel found (absent, or marker != REVIEW_SAVE_PENDING_MARKER).
-This means ステップ 6.1.a (レビュー結果 JSON のローカル保存) was NOT executed in the current cycle.
+This means ステップ 6.1.a (レビュー結果 JSON のローカル保存) was NOT executed in the current cycle,
+または `--pending-marker` の literal substitute 漏れ (helper は想定 prefix 外のパスを削除せず WARNING を出す)。
 保存が落ちた cycle の指摘は `.rite/review-results/` に残らず、/rite:fix の JSON 経路も
 マージ後の監査証跡も同時に失われる (Issue #2024 D-01 の無音喪失)。
 ACTION: ステップ 6.1.a を **step 0 から** 実行する (step 2 単独の実行は禁止 — step 0 が emit する

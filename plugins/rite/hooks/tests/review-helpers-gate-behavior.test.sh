@@ -516,7 +516,9 @@ assert_grep "TC-3.10 reason=critical_high_scope_nit_noted_invariant emit" "$ERR"
 # trap 設置**前**の exit 1 (caller 契約違反) だけは残す — 8.0.3 の引数 gate 群と同じ境界。
 
 # TC-3.11a 保存成功: marker を削除し REVIEW_SAVE_DONE に saved=true を載せる
-MARKER_OK="$TMP_ROOT/marker-tc311a"
+#          fixture 名は helper の prefix guard (rite-p61a-pending-*) を通る実パス形状にする —
+#          任意名にすると guard に弾かれ、テストが「削除されない」を誤って退行として報告する。
+MARKER_OK="$TMP_ROOT/rite-p61a-pending-123-1700000010"
 : > "$MARKER_OK"
 run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311a" --pending-marker "$MARKER_OK"
 assert "TC-3.11a 保存成功: exit 0" "0" "$RC"
@@ -529,7 +531,7 @@ fi
 
 # TC-3.11b 非ブロッキング失敗 (content-file 不在) でも marker を削除する
 #          — ここが残ると 8.0.4 が exit 1 を返し続け、保存失敗が blocking 化する (AC-3 の中核)
-MARKER_FAIL="$TMP_ROOT/marker-tc311b"
+MARKER_FAIL="$TMP_ROOT/rite-p61a-pending-123-1700000011"
 : > "$MARKER_FAIL"
 run_save --pr 123 --content-file "$TMP_ROOT/no-such.json" --results-dir "$TMP_ROOT/results-tc311b" --pending-marker "$MARKER_FAIL"
 assert "TC-3.11b 非ブロッキング失敗: exit 0 (D-04 維持)" "0" "$RC"
@@ -542,7 +544,7 @@ else
 fi
 
 # TC-3.11c trap 設置前の exit 1 (--content-file 引数欠落 = caller 契約違反) では marker を残す
-MARKER_RETAIN="$TMP_ROOT/marker-tc311c"
+MARKER_RETAIN="$TMP_ROOT/rite-p61a-pending-123-1700000012"
 : > "$MARKER_RETAIN"
 run_save --pr 123 --pending-marker "$MARKER_RETAIN"
 assert "TC-3.11c caller 契約違反: exit 1" "1" "$RC"
@@ -562,7 +564,7 @@ assert_grep "TC-3.11d marker 空でも REVIEW_SAVE_DONE を emit" "$ERR" 'REVIEW
 #          Issue #2076 の As-Is (5 cycle 実行で 2 本しか残らない) を assertion で固定する。
 RESULTS_CYCLES="$TMP_ROOT/results-tc311e"
 for _cyc in 1 2 3; do
-  _m="$TMP_ROOT/marker-tc311e-$_cyc"
+  _m="$TMP_ROOT/rite-p61a-pending-123-170000002$_cyc"
   : > "$_m"
   cat > "$TMP_ROOT/json-cycle-$_cyc.json" <<EOF
 {
@@ -1996,6 +1998,71 @@ else
   # 現れることを要求する (片方だけに残すと、もう一方の経路で step 2 単独実行へ誘導される)。
   assert "TC-5h 8.0.4 の ACTION が 2 経路とも 6.1.a **step 0** からの再実行を指示している" "2" \
     "$(_sec_804 | grep -c 'step 0 から' || true)"
+
+  # (h-3') 検査側の **実測**: 8.0.4 Pre-Check の bash を 4 arm すべて実行する。上の静的 pin は
+  #        「判定式が存在する」ことしか言えず、pass / degraded の emit 入れ替えや、到達しない
+  #        case arm を検出できない。本 gate は AC-1 / AC-2 が依存する load-bearing 層なので、
+  #        生成側 (h-1 の probe) と同じ強度で実行して固定する。
+  _sec_804_precheck() { _sec_804 | awk '/^save_pending_marker="/{f=1} f{print} f&&/^esac$/{exit}'; }
+  _run_804_arm() {  # $1=marker 値 → "rc|stderr" を返す
+    local _m="$1" _rc=0 _err
+    _err=$(printf '%s\n' "$(_sec_804_precheck)" \
+      | sed "1s#^save_pending_marker=.*#save_pending_marker='$_m'#" \
+      | bash 2>&1 >/dev/null) || _rc=$?
+    printf '%s|%s' "$_rc" "$_err"
+  }
+  _804_probe_dir=$(mktemp -d "$TMP_ROOT/gate804-XXXXXX")
+  _804_precheck_lines=$(_sec_804_precheck | grep -c . || true)
+  if [ "$_804_precheck_lines" -ge 10 ] 2>/dev/null; then
+    pass "TC-5h 区間解決: 8.0.4 Pre-Check の bash を抽出できる ($_804_precheck_lines 行)"
+  else
+    fail "TC-5h 区間解決: 8.0.4 Pre-Check の bash 抽出に失敗 ($_804_precheck_lines 行) — case 構造の drift"
+  fi
+
+  # arm 1: marker 残存 → rc=1 + REVIEW_SAVE_GATE_FAILED。**かつ marker を削除しない**
+  #        (gate 側削除は「6.1.a を実行せず再評価だけで通せる」抜け道になる。今までは grep -c 頼りだった)
+  _804_present="$_804_probe_dir/rite-p61a-pending-123-1700000000"
+  : > "$_804_present"
+  _r=$(_run_804_arm "$_804_present")
+  assert "TC-5h [実測] 8.0.4 arm=marker 残存: rc=1 (差し戻し)" "1" "${_r%%|*}"
+  assert "TC-5h [実測] 8.0.4 arm=marker 残存: REVIEW_SAVE_GATE_FAILED を emit" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE_FAILED=1; reason=save_pending_marker_present' || true)"
+  if [ -e "$_804_present" ]; then
+    pass "TC-5h [実測] 8.0.4 は marker を削除しない (再評価だけで通せない)"
+  else
+    fail "TC-5h [実測] 8.0.4 は marker を削除しない — 削除された = 機械強制が再評価で迂回可能になる"
+  fi
+
+  # arm 2: marker 不在 → rc=0 + pass
+  _r=$(_run_804_arm "$_804_probe_dir/rite-p61a-pending-123-1700000001")
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在: rc=0" "0" "${_r%%|*}"
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在: GATE=pass; reason=..._absent" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=pass; reason=save_pending_marker_absent' || true)"
+
+  # arm 3: placeholder 残留 → rc=0 + degraded (機械強制を skip し prose 判定へ縮退)
+  _r=$(_run_804_arm '{save_pending_marker}')
+  assert "TC-5h [実測] 8.0.4 arm=placeholder 残留: rc=0 (非致命)" "0" "${_r%%|*}"
+  assert "TC-5h [実測] 8.0.4 arm=placeholder 残留: GATE=degraded; reason=..._placeholder_residue" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=degraded; reason=save_pending_marker_placeholder_residue' || true)"
+
+  # arm 4: 空文字 (5.3.0.M step 2 が marker を作れなかった degraded cycle) → rc=0 + degraded
+  _r=$(_run_804_arm '')
+  assert "TC-5h [実測] 8.0.4 arm=空文字: rc=0 (非致命)" "0" "${_r%%|*}"
+  assert "TC-5h [実測] 8.0.4 arm=空文字: GATE=degraded; reason=..._unavailable" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=degraded; reason=save_pending_marker_unavailable' || true)"
+
+  # (h-5) helper の prefix guard: 想定 prefix 外のパスは削除しない (sibling は path を内部導出するが
+  #       本 helper は caller から受け取るため、置換漏れ時の誤削除で gate が無音 pass するのを防ぐ)。
+  _guard_foreign="$_804_probe_dir/not-a-rite-marker"
+  : > "$_guard_foreign"
+  run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-guard" --pending-marker "$_guard_foreign"
+  assert "TC-5h prefix guard: 保存自体は成功する (exit 0)" "0" "$RC"
+  if [ -e "$_guard_foreign" ]; then
+    pass "TC-5h prefix guard: 想定 prefix 外のパスを削除しない"
+  else
+    fail "TC-5h prefix guard: 想定 prefix 外のパスを削除した — 置換漏れ時に無関係ファイルを消す"
+  fi
+  assert_grep "TC-5h prefix guard: 削除しない旨を WARNING で可視化する" "$ERR" 'rite-p61a-pending-\) を満たさないため削除しません'
 
   # (h-4) 生成側と consume 側で marker のパス prefix が一致する (TC-5b の 3 者 coupling pin と同型)。
   #       片側だけ prefix を変えると marker が永久に残り 8.0.4 が全 cycle で exit 1 を返す。
