@@ -2519,7 +2519,8 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 
 ```bash
 # ステップ 6.1.a: ローカルファイル保存 (JSON、非ブロッキング) — hooks/review-result-save.sh へ委譲済。
-# helper 契約: D-04 非ブロッキング (全失敗経路で exit 0) / 15 種 LOCAL_SAVE_FAILED reason 語彙 (上記
+# helper 契約: D-04 非ブロッキング (15 種の LOCAL_SAVE_FAILED reason のうち 14 種は exit 0。
+# signal_aborted のみ rc=130/143/129 で、ステップ 6 の exit code は 6.1.c が決める) / reason 語彙 (上記
 # bullet と一致) / 同秒衝突回避 / trap での FILE_TIMESTAMP= ・ISO_TIMESTAMP= ・JSON_SAVED= emit
 # (normal/abnormal 両経路、ステップ 6.1.c が前提) / 同 trap での save-pending marker 削除 +
 # REVIEW_SAVE_DONE= emit (ステップ 8.0.4 が前提)。SoT は helper docstring。
@@ -3856,13 +3857,17 @@ case "$save_pending_marker" in
   *)
     # `-e` だけでは dangling symlink を「不在」と判定して fail-open する (6.1.a 未実行でも pass)。
     # marker は「存在そのものが判定値」なので symlink 自体の存在も残存として扱う。
-    # 注: 8.0.3 の同判定は develop 既存 (本 PR の Non-Target 隣接) のため揃えていない —
-    # 両 marker の対称化は security reviewer 推奨の follow-up Issue で扱う。
+    # 注: ステップ 8.0.3 の同判定は develop 既存で、本 Issue のスコープ (6.1.a の実行保証) 外のため
+    # 本 PR では揃えていない — 両 marker の対称化は follow-up で扱う。
     if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
       echo "ERROR: ステップ 8.0.4 gate failed (機械強制)。save-pending marker が残存しています: $save_pending_marker" >&2
       echo "  これは ステップ 6.1.a (レビュー結果 JSON のローカル保存) が本 cycle で走っていないことの機械的証拠です" >&2
       echo "  (marker を消すのは 6.1.a の helper だけで、保存に失敗した場合も消します — 残存 = 未実行)。" >&2
-      echo "  ただし 6.1.a を実行済みなら --pending-marker の置換漏れを疑ってください: helper は想定 prefix (rite-p61a-pending-) 外のパスを削除せず WARNING を出すため、実行済みでも本 gate は残存を観測します。" >&2
+      echo "  6.1.a を実行済みでも marker が残る原因は 2 つです。会話の WARNING で切り分けてください:" >&2
+      echo "    (1) --pending-id の形状違反 — helper が「marker path を導出できないため削除しません」を出している場合。" >&2
+      echo "        5.3.0.M step 2 の REVIEW_SAVE_PENDING_ID= 自体が {...} 形状なら、6.1.a ではなく 5.3.0.M step 2 から再実行します。" >&2
+      echo "    (2) rm 失敗 — helper が「削除失敗は決定論的」を出している場合。**下記の再実行では収束しません** —" >&2
+      echo "        marker を手動で rm してから ステップ 8.0 を再評価してください。" >&2
       echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 は 8.0.3 が使う REVIEW_CYCLE_ID と pending marker を生成する唯一の場所で、飛ばすと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
       echo "    step 0 (REVIEW_TMP_DIR / REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER の emit) → step 2 (review-result-save.sh 実行) の順で実行し、続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してください。" >&2
       echo "    (本 gate は「ステップ 6 全体の skip」を catch するため 6.1.c も未実行でありうる。6.1.c を飛ばすと、再実行した保存が失敗したときに silent data loss を hard fail させる唯一の機構 = ケース 2 の exit 2 が発火しない)。そのうえで ステップ 8.0 を再評価してください。" >&2
@@ -3899,7 +3904,9 @@ esac
 ERROR: ステップ 8.0.4 ステップ 6.1.a Post-condition Gate failed.
 No current-cycle [CONTEXT] REVIEW_SAVE_DONE=1 sentinel found (absent, or marker != REVIEW_SAVE_PENDING_MARKER).
 This means ステップ 6.1.a (レビュー結果 JSON のローカル保存) was NOT executed in the current cycle,
-または `--pending-marker` の literal substitute 漏れ (helper は想定 prefix 外のパスを削除せず WARNING を出す)。
+または `--pending-id` の literal substitute 漏れ (helper は形状違反の id から marker path を導出せず WARNING を出す)。
+helper が「削除失敗は決定論的」の WARNING を出している場合は環境起因で、本 ACTION の再実行では収束しない —
+marker を手動で rm してから ステップ 8.0 を再評価すること。
 保存が落ちた cycle の指摘は `.rite/review-results/` に残らず、/rite:fix の JSON 経路も
 マージ後の監査証跡も同時に失われる (Issue #2024 D-01 の無音喪失)。
 ACTION: ステップ 6.1.a を **step 0 から** 実行する (step 2 単独の実行は禁止 — step 0 が emit する
