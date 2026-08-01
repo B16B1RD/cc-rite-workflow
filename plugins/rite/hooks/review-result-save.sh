@@ -199,14 +199,15 @@ _rite_review_p61a_cleanup() {
 # 停止しない」より強い違反)。sibling の review-nonblocking-record.sh が signal 中断について
 # 「投稿されたか否かは不明として扱う」と設計しているのと同じ、断定を避ける分類。
 _rite_review_p61a_signal() {
-  # 「保存済み」の証拠は 3 条件の AND だが、判定を担うのは前 2 条件:
+  # 「保存済み」の証拠は 3 条件の AND。それぞれが別方向の誤判定を塞ぐ:
   #   (a) `mv_attempted` — `collision_resolution_exhausted` 経路では mv せずに json_path が実在しうる。
-  #   (b) `[ ! -e "$json_tmp" ]` — **完了した mv だけが source を消す** (rename でも copy+unlink でも
+  #   (b) `[ -e "$json_path" ]` — 宛先が無いなら決して「保存済み」と言わない (source だけが消えた
+  #       状態を成功と読むと、JSON が実在しないのに 8.0.4 が saved=true を通す silent data loss)。
+  #   (c) `[ ! -e "$json_tmp" ]` — **完了した mv だけが source を消す** (rename でも copy+unlink でも
   #       成立し、殺された copy では source が残る)。中断された cross-device mv は宛先に壊れた断片を
-  #       残すため、宛先 inode の存在は「始まった」ことしか示さない。
-  # tests の TC-3.11k / TC-3.11l がそれぞれを mutation で固定している。第 3 条件 `[ -e "$json_path" ]`
-  # は判定を担わない保守側の冗長条件 (source と宛先の両方を失わせる mv 実装は現存しないが、その状態で
-  # 「保存済み」と言わないためのもの)。外しても全 test が green である点は承知の上で残す。
+  #       残すため、宛先 inode の存在だけでは「始まった」ことしか示さない。
+  # tests の TC-3.11k / TC-3.11m / TC-3.11l が (a)/(b)/(c) をそれぞれ mutation で固定している
+  # (どの項を外しても red)。
   if [ "$json_saved" != "true" ] \
      && ! { [ "$mv_attempted" = "true" ] && [ -e "$json_path" ] && [ ! -e "${json_tmp:-}" ]; }; then
     echo "WARNING: review-result-save: $2 で中断されました。レビュー結果 JSON は保存されていません" >&2

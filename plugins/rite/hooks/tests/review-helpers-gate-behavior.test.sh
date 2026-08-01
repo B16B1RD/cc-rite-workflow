@@ -825,6 +825,46 @@ else
   fail "TC-3.11l 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
 fi
 
+# TC-3.11m source が消えたのに宛先が無い状態では「保存済み」と宣言しない。
+#   不変条件は「宛先が存在しないなら決して保存済みと言わない」。source 消滅 (TC-3.11l が固定する
+#   完了判定) だけを根拠にすると、source を先に unlink して宛先を作れなかった mv が「保存済み」に
+#   化け、JSON が実在しないのに 8.0.4 が saved=true を読んで通る (silent data loss)。
+_sig6_id="123-1700000055"
+_sig6_marker="${TMPDIR:-/tmp}/rite-p61a-pending-$_sig6_id"
+: > "$_sig6_marker"
+_sig6_res="$TMP_ROOT/results-tc311m"
+_slow6=$(mktemp -d "$TMP_ROOT/lostmv-XXXXXX")
+_sig6_ready="$TMP_ROOT/sig6-ready"
+# source だけを消して宛先を作らずに終了する (= 宛先も source も失われた状態)
+cat > "$_slow6/mv" <<MVEOF
+#!/bin/bash
+_dst="\${!#}"
+case "\$_dst" in
+  $_sig6_res/*) /bin/rm -f "\$1"; : > "$_sig6_ready"; sleep 3; exit 1 ;;
+esac
+exec /bin/mv "\$@"
+MVEOF
+chmod +x "$_slow6/mv"
+_sig6_err="$TMP_ROOT/sig6-err.txt"
+PATH="$_slow6:$PATH" bash "$PLUGIN_ROOT/hooks/review-result-save.sh" \
+  --pr 123 --content-file "$JSON_OK" --results-dir "$_sig6_res" \
+  --pending-id "$_sig6_id" >/dev/null 2>"$_sig6_err" &
+_sig6_pid=$!
+_sig6_wait=0
+while [ ! -e "$_sig6_ready" ] && [ "$_sig6_wait" -lt 100 ]; do sleep 0.05; _sig6_wait=$((_sig6_wait + 1)); done
+kill -TERM "$_sig6_pid" 2>/dev/null
+wait "$_sig6_pid" 2>/dev/null || true
+if [ -e "$_sig6_ready" ]; then
+  _sig6_json=$(find "$_sig6_res" -name '123-*.json' 2>/dev/null | grep -c . || true)
+  assert "TC-3.11m 前提: 宛先 JSON は実在しない" "0" "$_sig6_json"
+  assert_grep "TC-3.11m 宛先不在なら source が消えていても signal_aborted を宣言する" "$_sig6_err" \
+    'LOCAL_SAVE_FAILED=1; reason=signal_aborted'
+  assert "TC-3.11m 実在しない JSON を「保存済み」と誤報告しない" "0" \
+    "$(grep -c 'JSON は保存済みです' "$_sig6_err" || true)"
+else
+  fail "TC-3.11m 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
+fi
+
 # =====================================================================
 echo "=== TC-4: review-nonblocking-record.sh (6.1.d) ==="
 # =====================================================================
@@ -2159,7 +2199,11 @@ else
   assert "TC-5h 5.3.0.M step 2 区間に save-pending marker パス**代入**行が 1 本 (行頭 anchor)" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_marker="\$\{TMPDIR:-/tmp\}/rite-p61a-pending-' || true)"
   assert "TC-5h 5.3.0.M step 2 区間に save-pending marker **生成文** が 1 本 (noclobber 付き)" "1" \
-    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*if \( set -C; : > "\$save_pending_marker" \)' || true)"
+    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*(el)?if \( set -C; : > "\$save_pending_marker" \)' || true)"
+  # squat 先置き検査。noclobber は FIFO を拒否しないため、この 1 行を落とすと生成文の open(2) が
+  # 無期限ブロックする (下の [実測] arm が rc=124 で red になる)。静的 pin は行の所在を固定する。
+  assert "TC-5h 5.3.0.M step 2 が生成前に既存エントリを検査する (FIFO squat のハング回避)" "1" \
+    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*if \[ -e "\$save_pending_marker" \] \|\| \[ -L "\$save_pending_marker" \]; then' || true)"
   assert "TC-5h 5.3.0.M step 2 区間に REVIEW_SAVE_PENDING_MARKER emit が 1 本 (行頭 anchor)" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*echo "\[CONTEXT\] REVIEW_SAVE_PENDING_MARKER=\$save_pending_marker"' || true)"
   assert "TC-5h 5.3.0.M step 2 区間に REVIEW_SAVE_PENDING_ID emit が 1 本 (6.1.a へ渡す値)" "1" \
@@ -2203,6 +2247,26 @@ else
     "$(printf '%s\n' "$_probe_err" | grep -cE '^\[CONTEXT\] REVIEW_SAVE_PENDING_MARKER=.+/rite-p61a-pending-' || true)"
   assert "TC-5h [実測] 生成された marker ファイルが実在する" "1" \
     "$(find "$_probe_marker_dir" -name 'rite-p61a-pending-*' 2>/dev/null | grep -c . || true)"
+
+  # (h-1c) [実測] marker path に FIFO を先置きされてもハングせず degraded へ倒れること。
+  #        `set -C` が拒否するのは既存**通常ファイル**だけなので、FIFO では `: >` の open(2) が
+  #        reader を待って無期限にブロックし、review が 5.3.0.M step 2 で止まる (rc=124)。
+  #        epoch を固定するため date を shim して path を予測可能にする。
+  _squat_dir=$(mktemp -d "$TMP_ROOT/squat-XXXXXX")
+  _squat_bin=$(mktemp -d "$TMP_ROOT/squatbin-XXXXXX")
+  printf '#!/bin/bash\nprintf "%%s\\n" "1700000099"\n' > "$_squat_bin/date"
+  chmod +x "$_squat_bin/date"
+  if mkfifo "$_squat_dir/rite-p61a-pending-{pr_number}-1700000099" 2>/dev/null; then
+    _squat_rc=0
+    _squat_err=$(printf '%s\n' "$_gate_block_probe" | sed 's#^( exit 3 )$#( exit 0 )#' \
+      | PATH="$_squat_bin:$PATH" TMPDIR="$_squat_dir" timeout 5 bash 2>&1 >/dev/null) || _squat_rc=$?
+    assert "TC-5h [実測] FIFO 先置きでも step 2 block がハングしない (rc!=124)" "0" \
+      "$([ "$_squat_rc" = "124" ] && echo 1 || echo 0)"
+    assert "TC-5h [実測] FIFO 先置き時は空 marker を emit して degraded へ倒す" "1" \
+      "$(printf '%s\n' "$_squat_err" | grep -cE '^\[CONTEXT\] REVIEW_SAVE_PENDING_MARKER=$' || true)"
+  else
+    fail "TC-5h [実測] 前提未成立: mkfifo に失敗した (FIFO 未対応 FS?)"
+  fi
 
   # 生成側が emit する id が **消費側 helper の allowlist を通り、実際に marker を consume できるか**
   # を end-to-end で固定する。probe の id は `{pr_number}` が未置換のままなので、そのままでは

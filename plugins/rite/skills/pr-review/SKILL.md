@@ -2200,7 +2200,17 @@ if [ "$_gate_rc" -eq 0 ]; then
   save_pending_marker="${TMPDIR:-/tmp}/rite-p61a-pending-${save_pending_id}"
   # `set -C` (noclobber) で O_CREAT|O_EXCL 相当にする (6.1.a step 0 の pending marker と同じ理由:
   # パスが予測可能で、ファイルの存在/不在そのものが gate の判定値であるため)。
-  if ( set -C; : > "$save_pending_marker" ) 2>/dev/null; then
+  # ただし noclobber が拒否するのは既存**通常ファイル**だけで、path に FIFO を先置きされると
+  # `: >` の open(2) が reader を待って**無期限にブロック**する (共有 TMPDIR のマルチユーザー
+  # ホスト / CI runner。path は予測可能で epoch も列挙できる)。書きに行く前に存在検査し、何か
+  # あれば作成せず degraded へ倒す。TOCTOU を塞ぐのは引き続き `set -C` で、本検査が足すのは
+  # 「ハングしないこと」だけ。epoch 付き path なので正規の運用では発火しない。
+  if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
+    echo "WARNING: save-pending marker path に既存エントリがあります ($save_pending_marker)。作成せず ステップ 8.0.4 を degraded に倒します" >&2
+    echo "  原因候補: 同一秒の並行 review / 共有 TMPDIR での先置き (squat)" >&2
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_ID=" >&2
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_MARKER=" >&2
+  elif ( set -C; : > "$save_pending_marker" ) 2>/dev/null; then
     echo "[CONTEXT] REVIEW_SAVE_PENDING_ID=$save_pending_id" >&2
     echo "[CONTEXT] REVIEW_SAVE_PENDING_MARKER=$save_pending_marker" >&2
   else
