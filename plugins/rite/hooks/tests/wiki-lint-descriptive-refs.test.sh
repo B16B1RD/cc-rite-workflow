@@ -356,8 +356,14 @@ assert_grep "TC-18 helper 不在 fallback が skipped_rows=0 を出す" "$LINT_M
 # producer (上の emit) だけでなく **消費者** も pin する。新設フィールドは ステップ 9 note 展開表
 # だけが読むため、展開表から skipped_rows 条件が消えると「index.md の行欠損があっても注記なしの
 # N 件」を出す状態へ静かに戻る。emit 側の assert はその変更を 1 つも検出しない。
-assert_grep "TC-18 ステップ 9 note 展開が skipped_rows を条件に含む" "$LINT_MD" 'read_errors=0` かつ `skipped_rows>0'
-assert_grep "TC-18 部分欠損 note の本文が存在する" "$LINT_MD" '部分欠損: index\.md の {descriptive_refs_skipped_rows} 行'
+# 表を pin するときは「表が存在する」ではなく「各行が存在する」を測る。本 PR は展開表を 2 行から
+# 4 行へ広げており、片方だけ pin すると新設したもう 1 行 (両欠損の共起) を削っても全緑を通る。
+# 波括弧は ERE の interval 構文なのでエスケープする (GNU grep はリテラル扱いするが POSIX 未定義で、
+# 実装によっては空 (sub)expression エラーで異常終了する)。
+assert_grep "TC-18 note 展開に read_errors=0 かつ skipped_rows>0 の行がある" "$LINT_MD" 'read_errors=0` かつ `skipped_rows>0'
+assert_grep "TC-18 note 展開に read_errors>0 かつ skipped_rows>0 の共起行がある" "$LINT_MD" 'read_errors>0` かつ `skipped_rows>0'
+assert_grep "TC-18 部分欠損 note の本文が存在する" "$LINT_MD" '部分欠損: index\.md の \{descriptive_refs_skipped_rows\} 行'
+assert_grep "TC-18 共起 note が未実測と部分欠損の両方を述べる" "$LINT_MD" '件の対象ファイルを読出または検出できず集計から除外 / 部分欠損'
 assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD" 'see PR\|See PR\) #\[0-9\]\+'
 # ステップ 2.2 末尾の分岐契約。ページ / raw が 0 件でもステップ 7.5 だけは走らせる
 # (index.md が単独で走査対象になりうるため)。develop 版の「ステップ 3-7 を skip し ステップ 9 に進む」
@@ -867,7 +873,7 @@ fi
 
 # ---- TC-47: index.md を読めたのにエントリ行を 1 件も認識できない = 検出失敗 --
 # skipped は「エントリと認識できた行の抽出失敗」しか数えないため、リンク形式が想定と
-# 食い違うと entries=0 / skipped=0 / hits=0 になり、実測 230 hits が丸ごと落ちても
+# 食い違うと entries=0 / skipped=0 / hits=0 になり、実測 230 hits 以上が丸ごと落ちても
 # 「0 件 (実測済み)」として read_ok=true で通る。TC-25..TC-46 の index fixture は
 # どれもフェンス外に最低 1 本の `](pages/...)` を含むため、この経路へ到達しなかった。
 # fixture はリンク形状の行を持つがリンク先が pages/ と認識できない形 (`](../../pages/…)`) =
@@ -914,7 +920,7 @@ assert "TC-50 template 前文のみ (未登録) は検出失敗に計上しな�
 assert "TC-50 記法例コメントのサマリーは hits に数えない (本文側の 1 件のみ)" "1" "$(idx_hits "$tmpl_only_out")"
 # 逆方向の pin: サマリー本文中に `<!-- -->` を**引用している実エントリ行**は落とさない。
 # コメント開始の行頭 anchor を外す変異 (`/<!--/`) を kill する。実測で現行 wiki の index.md に
-# 該当行が 2 件あり、anchor を外すと hits が 230 → 228 に減る。
+# 該当行が 2 件あり、anchor を外すと該当 2 行分 hits が減る（実測時 230 → 228。絶対値はスナップショット）。
 printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [t](pages/patterns/a.md) | x | `<!-- c -->` 挿入は PR #792 で禁忌と判明 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
 quoted_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 assert "TC-50 サマリーが <!-- --> を引用する実エントリ行は落とさない" "1" "$(printf '%s' "$quoted_out" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"

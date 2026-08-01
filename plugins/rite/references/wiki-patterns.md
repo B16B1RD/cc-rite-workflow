@@ -252,7 +252,9 @@ rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https:
 
 `.rite/wiki/` bundle は、上流の OKF 静的 HTML visualizer（[`GoogleCloudPlatform/knowledge-catalog`](https://github.com/GoogleCloudPlatform/knowledge-catalog)）で概念グラフとして閲覧することを想定した構造です。**visualizer 本体は rite リポジトリに同梱しません**（vendoring せず、起動手順のみ提供）。
 
-> **カタログ形式は visualizer の描画に影響しません**: 上記「準拠規約」節のとおり `index.md` のカタログ形式は現在テーブル形式で OKF v0.1 箇条書きに未達ですが、上流 visualizer は概念グラフ構築時に `index.md` を走査対象から除外し、page frontmatter と本文の相互参照からグラフを構築します（「visualizer の起動」節末尾の「page 間の関連リンクが概念グラフの辺として描画される」と同じモデル）。したがってカタログ形式の未達は閲覧可否に関係しません。
+> **カタログ形式は visualizer の描画に影響しません**: 上記「準拠規約」節のとおり `index.md` のカタログ形式は現在テーブル形式で OKF v0.1 箇条書きに未達ですが、上流 visualizer は概念グラフ構築時に `index.md` を走査対象から除外します。ノードは各 page の frontmatter から、辺は**本文の Markdown リンクのみ**から構築されます（frontmatter の `sources` はノードに添付されるデータで、辺にはなりません）。したがってカタログ形式の未達は閲覧可否に関係しません。
+>
+> 出典: 上流 `okf/src/reference_agent/viewer/generator.py` の `_walk_concepts`（`index.md` を skip）と `_build_graph`（`links_to` のみを辺にする）。2026-08 時点、上流 main で確認。再検証: `gh api repos/GoogleCloudPlatform/knowledge-catalog/contents/okf/src/reference_agent/viewer/generator.py --jq .content | base64 -d`
 
 ### ライセンス確認
 
@@ -294,7 +296,7 @@ git clone https://github.com/GoogleCloudPlatform/knowledge-catalog /tmp/okf-visu
 # 上流 README の手順に従い、bundle パス（上記 materialize 結果）を visualizer に渡す
 ```
 
-準拠 bundle では、page 間の関連リンク（frontmatter `sources` / 本文の相互参照）が概念グラフの辺として描画されます。
+準拠 bundle では、page 本文の Markdown リンク（page 間の相互参照）が概念グラフの辺として描画されます。frontmatter の `sources` は辺ではなくノードに添付されるデータです（上記「カタログ形式は visualizer の描画に影響しません」の出典を参照）。
 
 ## Wiki 有効判定パターン
 
