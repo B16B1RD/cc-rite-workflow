@@ -93,6 +93,21 @@ if [ "$FAIL" -ne 0 ]; then
   exit 1
 fi
 
+# _dump_precondition_stderr <errfile> — 「前提未成立」で fail したケースの診断出力。
+#   signal 窓を開く shim 系 (TC-3.11h/i/l/m) は、窓を作れなかった事実だけを報告しても
+#   原因 (shim 不発 / helper が別経路で早期 return / 環境差) が判別できない。これらは
+#   author の Linux では再現せず CI でしか観測できないため、1 往復あたりのコストが高い。
+#   fail 行の直後に helper の stderr 先頭を添えて、次の CI 実行が自己診断になるようにする。
+_dump_precondition_stderr() {
+  local _f="${1:-}"
+  if [ -n "$_f" ] && [ -s "$_f" ]; then
+    echo "     ↳ helper stderr (先頭 20 行):"
+    head -20 "$_f" | sed 's/^/       /'
+  else
+    echo "     ↳ helper stderr: (空 — helper が何も出力せずに終了した)"
+  fi
+}
+
 # --- stub gh (network 遮断 + 呼び出し観測) ---
 # GH_STUB_LOG   : 呼び出し有無の観測 (silent skip 契約「gh pr comment を絶対に実行しない」の検証、
 #                 および TC-4 の「outcome=created|updated ⇒ 投稿呼び出しが実在する」検証)
@@ -671,7 +686,10 @@ _slow2=$(mktemp -d "$TMP_ROOT/slowrm-XXXXXX")
 # テストはその出現を待ってから TERM を送る。固定 sleep だと実行速度で窓を外し、しかも外れた run が
 # 「検証済み」と同じ見え方をするため退行注入時も green のまま通る。
 _sig2_ready="$TMP_ROOT/sig2-ready"
-printf '#!/bin/bash\nfor a in "$@"; do case "$a" in *rite-review-p61a-mv-err-*) : > "%s"; sleep 3; esac; done\nexec /bin/rm "$@"\n' "$_sig2_ready" > "$_slow2/rm"
+# shim の shebang は `#!/usr/bin/env bash` — macOS の `/bin/bash` は 3.2 だが rite は bash 4+ を
+# 要求し、CI もそのために Homebrew bash 5 を入れている (.github/workflows/ci.yml 冒頭)。
+# `#!/bin/bash` 固定だと shim だけが 3.2 に落ち、スイート本体と別の bash で動く。
+printf '#!/usr/bin/env bash\nfor a in "$@"; do case "$a" in *rite-review-p61a-mv-err-*) : > "%s"; sleep 3 ;; esac; done\nexec /bin/rm "$@"\n' "$_sig2_ready" > "$_slow2/rm"
 chmod +x "$_slow2/rm"
 _sig2_err="$TMP_ROOT/sig2-err.txt"
 PATH="$_slow2:$PATH" bash "$PLUGIN_ROOT/hooks/review-result-save.sh" \
@@ -688,8 +706,11 @@ if [ -e "$_sig2_ready" ]; then
     "$(grep -c 'LOCAL_SAVE_FAILED' "$_sig2_err" || true)"
   assert_grep "TC-3.11h 保存済みである旨を WARNING で伝える" "$_sig2_err" 'JSON は保存済みです'
 else
-  # 前提を満たせなかった run は pass で埋めない — 埋めると退行注入時も green で通る
+  # 前提を満たせなかった run は pass で埋めない — 埋めると退行注入時も green で通る。
+  # 併せて helper の stderr を出す: 「窓を作れなかった」だけでは原因 (shim 不発 / 別経路で
+  # 早期 return / 環境差) が読めず、再現できない CI 上では診断が 1 往復ぶん遅れる。
   fail "TC-3.11h 前提未成立: shim が mv-err の削除に到達しなかった (窓を作れていない)"
+  _dump_precondition_stderr "$_sig2_err"
 fi
 
 # TC-3.11j dangling symlink の marker も consume する。
@@ -720,9 +741,11 @@ _slow3=$(mktemp -d "$TMP_ROOT/slowmv-XXXXXX")
 _sig3_ready="$TMP_ROOT/sig3-ready"
 # 実 mv を先に済ませ、宛先が results-dir 配下のときだけ ready を立てて sleep する
 # (= mv 完了後・json_saved 代入前の窓を決定論的に開く)
+# shebang / 最終引数の取り方は TC-3.11h の shim と同じ理由で可搬形にする
+# (`#!/usr/bin/env bash` = bash 4+ を要求する本体と同じ bash、`${!#}` を使わない)。
 cat > "$_slow3/mv" <<MVEOF
-#!/bin/bash
-_dst="\${!#}"
+#!/usr/bin/env bash
+_dst=""; for _a in "\$@"; do _dst="\$_a"; done
 /bin/mv "\$@"; _rc=\$?
 case "\$_dst" in
   $_sig3_res/*) : > "$_sig3_ready"; sleep 3 ;;
@@ -751,6 +774,7 @@ if [ -e "$_sig3_ready" ]; then
   assert_grep "TC-3.11i 保存済み判定と terminal sentinel の saved= が一致する" "$_sig3_err" 'REVIEW_SAVE_DONE=1;.*saved=true' 
 else
   fail "TC-3.11i 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
+  _dump_precondition_stderr "$_sig3_err"
 fi
 
 # TC-3.11k mv を 1 度も実行していない窓での TERM は、宛先が既に実在していても保存失敗を宣言する。
@@ -802,8 +826,8 @@ _slow5=$(mktemp -d "$TMP_ROOT/partialmv-XXXXXX")
 _sig5_ready="$TMP_ROOT/sig5-ready"
 # 宛先へ断片だけを書いて source を残したまま停止する (= 中断された cross-device copy の状態)
 cat > "$_slow5/mv" <<MVEOF
-#!/bin/bash
-_dst="\${!#}"
+#!/usr/bin/env bash
+_dst=""; for _a in "\$@"; do _dst="\$_a"; done
 case "\$_dst" in
   # 断片を書いたら実 mv は**実行しない**まま終了する (実行すると source が消え、それは
   # 「完了した mv」= TC-3.11i と同じ状態になってしまい本ケースを踏めない)
@@ -828,6 +852,7 @@ if [ -e "$_sig5_ready" ]; then
     "$(grep -c 'JSON は保存済みです' "$_sig5_err" || true)"
 else
   fail "TC-3.11l 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
+  _dump_precondition_stderr "$_sig5_err"
 fi
 
 # TC-3.11m source が消えたのに宛先が無い状態では「保存済み」と宣言しない。
@@ -842,8 +867,8 @@ _slow6=$(mktemp -d "$TMP_ROOT/lostmv-XXXXXX")
 _sig6_ready="$TMP_ROOT/sig6-ready"
 # source だけを消して宛先を作らずに終了する (= 宛先も source も失われた状態)
 cat > "$_slow6/mv" <<MVEOF
-#!/bin/bash
-_dst="\${!#}"
+#!/usr/bin/env bash
+_dst=""; for _a in "\$@"; do _dst="\$_a"; done
 case "\$_dst" in
   $_sig6_res/*) /bin/rm -f "\$1"; : > "$_sig6_ready"; sleep 3; exit 1 ;;
 esac
@@ -868,6 +893,7 @@ if [ -e "$_sig6_ready" ]; then
     "$(grep -c 'JSON は保存済みです' "$_sig6_err" || true)"
 else
   fail "TC-3.11m 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
+  _dump_precondition_stderr "$_sig6_err"
 fi
 
 # =====================================================================
@@ -2266,8 +2292,14 @@ else
   chmod +x "$_squat_bin/date"
   if mkfifo "$_squat_dir/rite-p61a-pending-{pr_number}-1700000099" 2>/dev/null; then
     _squat_rc=0
+    # `timeout` は macOS CI (BSD / coreutils なし) に存在しないため `_timeout` を使う。bare
+    # `timeout` だと rc=127 (command not found) で block 自体が走らず、下の marker assertion が
+    # 「degraded に倒れなかった」と誤検出する一方、兄弟の rc!=124 assertion は 127≠124 で
+    # 素通りするため、失敗が片側にしか出ず原因が読めなくなる。
+    # 代入前置き (`VAR=x _timeout ...`) は **関数呼び出し**では代入がシェルに残りうるので使わない —
+    # `env` に渡して起動対象の環境だけに閉じる。
     _squat_err=$(printf '%s\n' "$_gate_block_probe" | sed 's#^( exit 3 )$#( exit 0 )#' \
-      | PATH="$_squat_bin:$PATH" TMPDIR="$_squat_dir" timeout 5 bash 2>&1 >/dev/null) || _squat_rc=$?
+      | _timeout 5 env PATH="$_squat_bin:$PATH" TMPDIR="$_squat_dir" bash 2>&1 >/dev/null) || _squat_rc=$?
     assert "TC-5h [実測] FIFO 先置きでも step 2 block がハングしない (rc!=124)" "0" \
       "$([ "$_squat_rc" = "124" ] && echo 1 || echo 0)"
     assert "TC-5h [実測] FIFO 先置き時は空 marker を emit して degraded へ倒す" "1" \
