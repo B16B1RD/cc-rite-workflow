@@ -66,9 +66,9 @@ pin を追加したら、その場で以下を順に当てる:
 
 生存した軸があれば、それは fixture 形状か assert 形式の問題であり、pin を足すのではなく既存 pin の観測窓を開ける方向で直す。
 
-### 6 つ目の軸: 機械経路 / 人間向け経路の非対称（PR #2081）
+### 6 つ目の軸: 機械経路 / 人間向け経路の非対称
 
-survivor が「機械経路は pin されているが**人間向け経路が未 pin**」という同一クラスに集中する現象が観測された。PR #2081 では 56 変異中 47 kill で、残った survivor 2 件は `gated` 修飾の無保護と RUNTIME_OBS WARNING の未 pin。別 cycle でも survivor 1 件が marker の `cause=` フィールドの pin 欠落だった（前 cycle の編集で assertion を別 TC へ移した際に literal の一部が落ちていた）。
+survivor が「機械経路は pin されているが**人間向け経路が未 pin**」という同一クラスに集中する現象が観測された。判別を 3 値化した事例では 56 変異中 47 kill で、残った survivor 2 件は `gated` 修飾の無保護と RUNTIME_OBS WARNING の未 pin。別 cycle でも survivor 1 件が marker の `cause=` フィールドの pin 欠落だった（前 cycle の編集で assertion を別 TC へ移した際に literal の一部が落ちていた）。
 
 **同じ判定結果を機械可読 marker と人間向け WARNING の 2 経路で出しているとき、pin が marker 側だけに付くことが多い。** 人間向け文言は「表示だけだから」と pin の対象外に見えるが、operator が受け取る唯一の診断であることが多く、実装との乖離は無検出で進行する。**pin の非対称は変異でしか見えない。**
 

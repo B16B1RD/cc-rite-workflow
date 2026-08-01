@@ -344,6 +344,6 @@
 
 ## 統計
 
-- 総ページ数: 331
-- ドメイン別: patterns=88, heuristics=129, anti-patterns=114
+- 総ページ数: 333
+- ドメイン別: patterns=88, heuristics=131, anti-patterns=114
 - 最終更新: 2026-08-01T23:12:28+09:00
