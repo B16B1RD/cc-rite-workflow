@@ -49,7 +49,7 @@ Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existi
 ## 8.0 の gate 評価順序を規定した理由
 gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1」のままだと**新設 gate が到達不能**になる。個々の gate が終端（8.1）を直接名指しする書き方は、gate を 1 本足すたびに既存の全 pass 行を書き換える必要があり、書き換え漏れが即座に到達不能を生む。
 
-そこで 8.0 冒頭に **gate 評価順序の規定**を 1 箇所だけ置き、各 gate の pass 行は「次の gate へ進む」とだけ書く（実リテラルは `the next gate in the 8.0 evaluation order`）。終端（8.1 へ抜ける条件）は順序規定側が持つ。8.0.4 を将来追加する場合、**既存 gate の pass 行は不変**。ただし静的 pin 側は連動更新が要る — TC-5d の期待リテラル（順序規定の全文を `grep -cF` する。ファイル全体を数える assertion と 8.0 区間に限定する assertion の **2 本**があり、両方を書き換える）と TC-5e の `_g_spec` list（gate ごとのデータ行数 / pass 行数 / ERROR 行数）の 2 pin。後者を忘れると新 gate だけ per-gate 検査が走らず、部分削除・意味反転の穴がその gate に対して再び開く。
+そこで 8.0 冒頭に **gate 評価順序の規定**を 1 箇所だけ置き、各 gate の pass 行は「次の gate へ進む」とだけ書く（実リテラルは `the next gate in the 8.0 evaluation order`）。終端（8.1 へ抜ける条件）は順序規定側が持つ。8.0.5 以降を追加する場合、**既存 gate の pass 行は不変**。ただし静的 pin 側は連動更新が要る — TC-5d の期待リテラル（順序規定の全文を `grep -cF` する。ファイル全体を数える assertion と 8.0 区間に限定する assertion の **2 本**があり、両方を書き換える）と TC-5e の `_g_spec` list（gate ごとのデータ行数 / pass 行数 / ERROR 行数）の 2 pin。後者を忘れると新 gate だけ per-gate 検査が走らず、部分削除・意味反転の穴がその gate に対して再び開く。
 
 この不変条件は静的 pin で 3 層に固定する（`hooks/tests/review-helpers-gate-behavior.test.sh` TC-5e）。単層では塞げないため 3 つとも要る:
 
@@ -91,7 +91,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 <a id="save-pending-marker"></a>
 ## 8.0.4 の anchor を ステップ 6 の外（5.3.0.M step 2）へ置いた理由
 
-Issue #2076 の退行は「ステップ 6 全体の skip」が全 gate をすり抜ける、上記「限界」がそのまま顕在化したものだった。PR #2074 は 5 レビューサイクルを回しながら永続 JSON が 2 本しか残らず、6.1.d の記録コメントは cycle 1 の `reviewed_commit: bc88108b` のまま `created == updated`（一度も PATCH されていない）で、どの gate も一度も発火していない。
+Issue #2076 の退行は「ステップ 6 全体の skip」が全 gate をすり抜ける、上記「限界」がそのまま顕在化したものだった。先行 PR では複数のレビューサイクルを回しながら永続 JSON が一部しか残らず、6.1.d の記録コメントは初回サイクルのまま一度も PATCH されず、どの gate も発火しなかった。
 
 **なぜ #2072 の配線後に顕在化したか**: 6.1.a はかつて JSON 本文を生成する（＝内容を作る）ステップだった。#2072 が生成を 5.3.0.M step 1 へ移した結果、6.1.a は「bash を 1 行打つだけ」の低顕著性ステップに変質し、E2E 出力最小化下の中間 cycle で落ちるようになった。
 
