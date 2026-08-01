@@ -141,10 +141,15 @@ case "${PENDING_ID:-}" in
 esac
 
 # --- trap 保護対象 + observability emit ---
-# json_tmp / mktemp_err / jq_val_err_r は trap 保護 (orphan 防止)。file_timestamp /
-# json_saved emit を EXIT trap 内に移動し normal/abnormal 両経路で必ず emit する
+# json_tmp / mktemp_err / jq_val_err_r / json_ts_injected / jq_ts_err は trap 保護 (orphan 防止)。
+# file_timestamp / json_saved emit を EXIT trap 内に移動し normal/abnormal 両経路で必ず emit する
 # (ステップ 6.1.c が前提)。
+# json_ts_injected / jq_ts_err は timestamp 注入区間 (316-340 行) でしか生きないが、その区間は
+# signal 中断の窓と重なるため trap 保護が要る。各消費点で `""` へ戻すのは json_tmp と同じ理由
+# (消費済みパスを trap が再度 rm しないようにする)。
 json_tmp=""
+json_ts_injected=""
+jq_ts_err=""
 mktemp_err=""
 iso_timestamp=""
 file_timestamp=""
@@ -158,7 +163,7 @@ json_path=""   # signal handler が順序に依らず参照できるよう init 
 mv_attempted="false"
 jq_val_err_r=""
 _rite_review_p61a_cleanup() {
-  rm -f "${json_tmp:-}" "${mktemp_err:-}" "${jq_val_err_r:-}"
+  rm -f "${json_tmp:-}" "${mktemp_err:-}" "${jq_val_err_r:-}" "${json_ts_injected:-}" "${jq_ts_err:-}"
   if [ "$file_timestamp_emitted" = "false" ]; then
     echo "[CONTEXT] FILE_TIMESTAMP=${file_timestamp:-unknown}" >&2
     echo "[CONTEXT] ISO_TIMESTAMP=${iso_timestamp:-unknown}" >&2
@@ -288,7 +293,12 @@ if ! mktemp_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-mktemp-err-XXXXXX" 2>
   mktemp_err=""
 fi
 
-if ! json_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-json-XXXXXX.json" 2>"${mktemp_err:-/dev/null}"); then
+# テンプレートの `X` は**末尾**に置く。BSD/macOS の mktemp(1) は "trailing Xs" しか置換しない
+# ため、`-XXXXXX.json` のように suffix が続く形では X が展開されず literal 名がそのまま使われる。
+# その場合 O_CREAT|O_EXCL は初回だけ成功し、同名ファイルが 1 つでも残っていると以降の全 save が
+# EEXIST で失敗する (= 本 helper が塞ごうとしている「無音で保存されない cycle」そのもの)。
+# 拡張子は tempfile には不要 — 最終ファイル名は $json_path が持つ。
+if ! json_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-json-XXXXXX" 2>"${mktemp_err:-/dev/null}"); then
   echo "WARNING: JSON 一時ファイルの作成に失敗しました" >&2
   [ -n "$mktemp_err" ] && [ -s "$mktemp_err" ] && { echo "  詳細 (mktemp stderr):" >&2; head -5 "$mktemp_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
   echo "  対処: /tmp の容量 / permission / readonly filesystem を確認してください" >&2
@@ -313,7 +323,10 @@ fi
 # Approach C: bash-internal jq timestamp injection。
 # caller が `"timestamp": "__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込み、ここで $iso_timestamp に
 # 置換する。JSON body / ファイル名 / [CONTEXT] emit の 3 値が helper 内で完全同期する。
-json_ts_injected=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-json-ts-XXXXXX.json" 2>/dev/null) || json_ts_injected=""
+# `X` を末尾に置く理由は json_tmp 側と同じ (BSD mktemp は trailing Xs しか置換しない)。
+# 本行は signal 中断で orphan しうる位置にあるため、literal 名だと 1 度の中断以降
+# macOS 上の全 save が reason=write_failure で落ち続けていた。
+json_ts_injected=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-json-ts-XXXXXX" 2>/dev/null) || json_ts_injected=""
 jq_ts_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-jq-ts-err-XXXXXX" 2>/dev/null) || jq_ts_err=""
 if [ -z "$json_ts_injected" ]; then
   echo "WARNING: timestamp 注入用 tempfile の mktemp に失敗しました" >&2
@@ -324,20 +337,23 @@ elif jq --arg ts "$iso_timestamp" '.timestamp = $ts' "$json_tmp" > "$json_ts_inj
   if ! mv "$json_ts_injected" "$json_tmp" 2>/dev/null; then
     echo "WARNING: timestamp 注入済み tmpfile の mv に失敗しました (cross-fs / permission / TOCTOU)" >&2
     echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=timestamp_injection_mv_failure" >&2
-    rm -f "$json_ts_injected"
-    [ -n "$jq_ts_err" ] && rm -f "$jq_ts_err"
+    rm -f "$json_ts_injected"; json_ts_injected=""
+    [ -n "$jq_ts_err" ] && { rm -f "$jq_ts_err"; jq_ts_err=""; }
     exit 0
   fi
+  # mv 成功 = source は消費済み。trap が消費済みパスを再度 rm しないよう空へ戻す
+  # (json_tmp が mv 成功後に空へ戻るのと同じ理由)。
+  json_ts_injected=""
 else
   echo "WARNING: jq による timestamp 注入に失敗しました (sentinel 置換不可)" >&2
   [ -n "$jq_ts_err" ] && [ -s "$jq_ts_err" ] && head -3 "$jq_ts_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: --content-file で渡した JSON body ($CONTENT_FILE) が valid JSON で、.timestamp フィールド (sentinel __RITE_TS_PLACEHOLDER_7f3a9b2c__) を持つか確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
-  rm -f "$json_ts_injected"
-  [ -n "$jq_ts_err" ] && rm -f "$jq_ts_err"
+  rm -f "$json_ts_injected"; json_ts_injected=""
+  [ -n "$jq_ts_err" ] && { rm -f "$jq_ts_err"; jq_ts_err=""; }
   exit 0
 fi
-[ -n "$jq_ts_err" ] && rm -f "$jq_ts_err"
+[ -n "$jq_ts_err" ] && { rm -f "$jq_ts_err"; jq_ts_err=""; }
 
 # --- Validation chain (全て非ブロッキング: WARNING + reason emit + exit 0) ---
 # 直前の jq timestamp 注入が入力 JSON を parse・再シリアライズして valid JSON を保証するため、
