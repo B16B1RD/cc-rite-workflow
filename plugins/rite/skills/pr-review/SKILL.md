@@ -2181,6 +2181,53 @@ echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
 bash {plugin_root}/scripts/review-measured-gate.sh \
   --input {review_tmp_dir}/rite-review-result-{pr_number}.json \
   --reject-preset-verification
+_gate_rc=$?
+
+# ステップ 8.0.4 の機械強制用 save-pending marker。ゲート適用に成功した = 本 cycle のレビュー結果
+# JSON が確定した時点で張り、ステップ 6.1.a の helper が完走すると EXIT trap で削除する。
+# 8.0.4 到達時点で残存していれば「6.1.a が本 cycle で走っていない」ことの機械的証拠になる。
+# **本ブロックに置く理由**: 鮮度 anchor はステップ 6 の外側で毎 cycle 再生成されなければならず、
+# かつ stale 値が無害な block に置くと anchor 自身が skip される (rationale:
+# references/measured-gate-record.md#save-pending-marker)。
+# 非ゼロ終了時は marker を張らない — step 3 の再試行経路で orphan marker が残らないようにする。
+if [ "$_gate_rc" -eq 0 ]; then
+  # id と path を分けて持つ。6.1.a には **id だけ**を渡し (`--pending-id`)、path は helper が
+  # 内部導出する — caller から full path を受け取る形は、任意文字列が削除対象と機械可読 sentinel の
+  # 両方へ流れるため guard が要り、その guard が `${TMPDIR}` の文字種と食い違うと非収束になる
+  # (rationale: references/measured-gate-record.md#save-pending-marker)。path 側は 8.0.4 の
+  # `[ -e ]` 検査にのみ使う。
+  save_pending_id="{pr_number}-$(date +%s)"
+  save_pending_marker="${TMPDIR:-/tmp}/rite-p61a-pending-${save_pending_id}"
+  # `set -C` (noclobber) で O_CREAT|O_EXCL 相当にする (6.1.a step 0 の pending marker と同じ理由:
+  # パスが予測可能で、ファイルの存在/不在そのものが gate の判定値であるため)。
+  # ただし noclobber が拒否するのは既存**通常ファイル**だけで、path に FIFO を先置きされると
+  # `: >` の open(2) が reader を待って**無期限にブロック**する (共有 TMPDIR のマルチユーザー
+  # ホスト / CI runner。path は予測可能で epoch も列挙できる)。書きに行く前に存在検査し、何か
+  # あれば作成せず degraded へ倒す。**本検査が消すのは「先置き」ケースのハングだけ** —
+  # 検査から生成までの窓に FIFO を置かれた場合、`set -C` は非通常ファイルを拒否しないため
+  # 依然ブロックする (実測: squatter と 300 回並走で 18/300 が rc=124)。同じ予測可能性から、
+  # エントリを置き続けるだけで 8.0.4 の機械強制を degraded (prose 判定のみ) へ落とすこともできる。
+  # 窓ごと消すには marker 名の mktemp 化が要るが、8.0.4 の「末尾 -{epoch} が最大のもの」選択規則の
+  # 変更を伴うため本 Issue では採らない。epoch 付き path なので正規の運用では発火しない。
+  if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
+    echo "WARNING: save-pending marker path に既存エントリがあります ($save_pending_marker)。作成せず ステップ 8.0.4 を degraded に倒します" >&2
+    echo "  原因候補: 同一秒の並行 review / 共有 TMPDIR での先置き (squat)" >&2
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_ID=" >&2
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_MARKER=" >&2
+  elif ( set -C; : > "$save_pending_marker" ) 2>/dev/null; then
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_ID=$save_pending_id" >&2
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_MARKER=$save_pending_marker" >&2
+  else
+    echo "WARNING: save-pending marker を作成できませんでした ($save_pending_marker)。ステップ 8.0.4 の機械強制は skip され Check の prose 判定のみになります" >&2
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_ID=" >&2
+    echo "[CONTEXT] REVIEW_SAVE_PENDING_MARKER=" >&2
+  fi
+fi
+
+# helper の rc を本 block の終了コードとして再送出する。**必須** — 落とすと直前の `if`/`fi` の
+# rc=0 が block 全体の終了コードになり、step 3 が「rc が最終的な権威」として使う helper の
+# 非ゼロ終了が観測不能になる (MEASURED_GATE_FAILED の routing が丸ごと死ぬ)。
+exit "$_gate_rc"
 ```
 
 **step 3: marker の読み取りと routing**
@@ -2338,7 +2385,7 @@ This phase now performs **three independent outputs**:
 
 > **Note**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
 
-**ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit、全て **WARNING only / 非ブロッキング**):
+**ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit。**15 種のうち 14 種は WARNING only / exit 0**。`signal_aborted` のみ signal trap 由来で rc=130/143/129 を返すが、`overall_assessment` は変えずステップ 6 の exit code は 6.1.c が決める — helper が非ゼロ rc で返っても停止せず `LOCAL_SAVE_FAILED` の有無に従って 6.1.b / 6.1.c へ進む):
 - `pr_number_placeholder_residue`: `--pr` が数値以外 (空文字 / placeholder 残留) のまま渡された (cleanup.md ステップ 6 の numeric gate と対称化し永久 orphan 化を防ぐ)
 - `date_command_failure`: `TZ='Asia/Tokyo' date` の実行が失敗 (空 timestamp による file 上書きを防止)
 - `mkdir_failure`: `.rite/review-results/` directory creation failed
@@ -2353,6 +2400,7 @@ This phase now performs **three independent outputs**:
 - `collision_resolution_exhausted`: 同一秒衝突回避 `~<4桁hex>` suffix を付与しても再衝突を検出 (同秒 3 回目以上 / `$RANDOM` fallback `0` / parallel race、後続 mv を skip して silent overwrite を防ぐ)
 - `mktemp_failure_mv_err`: mv stderr 退避用 tempfile の mktemp が失敗 (mv 失敗時の stderr 詳細が失われるため explicit に通知)
 - `mv_failure`: Atomic move of JSON tmpfile to final path failed
+- `signal_aborted`: INT / TERM / HUP で中断された (`signal=` を併記)。cleanup だけを呼ぶと marker は消え `saved=false` は出るが reason が 1 件も出ず、ステップ 8.0.4 Routing の「`saved=false` なら reason を転記」が入力を持たないまま、既定 `post_comment: false` では ステップ 6.1.c が `--local-save-failed` だけを見てケース 1 に落ち**存在しないパスを「保存済み」として提示する**。sibling の `review-nonblocking-record.sh` が同 phase で同名 reason を持つのと同じ理由。signal trap 由来のため下記 Eval-order enumeration には載らない
 
 **ステップ 6.1.b reasons** (`review-comment-post.sh` が `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=...` を emit、**hard error として ステップ 6 を fail**。例外: `post_comment_mode=false` 誤呼出は silent skip exit 0):
 - `p61b_post_comment_mode_invalid`: `--post-comment-mode` が `true`/`false` 以外
@@ -2397,21 +2445,31 @@ This phase now performs **three independent outputs**:
 | `pending_marker_placeholder_residue` | `NONBLOCKING_GATE=degraded` | `{pending_marker}` が literal substitute されず `{...}` 形状のまま到達。機械強制を skip し `**Check**` の prose 判定のみで続行 |
 | `pending_marker_unavailable` | `NONBLOCKING_GATE=degraded` | ステップ 6.1.a step 0 が marker を作成できなかった (read-only な `${TMPDIR}` 等、同 step で WARNING 済)。同上 |
 
-**Non-blocking contract**: ステップ 6.1.a の全 14 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`) are all logged as WARNING and MUST NOT cause ステップ 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
+**ステップ 8.0.4 reasons** (機械強制 = save-pending marker 検査。emit 元は **SKILL.md ステップ 8.0.4 の bash block 自身**。8.0.3 と同一形状で、gate の可否のみを決め `overall_assessment` は変えない):
+
+| reason | flag | Description |
+|--------|------|-------------|
+| `save_pending_marker_absent` | `REVIEW_SAVE_GATE=pass` | marker が不在 = ステップ 6.1.a の helper が本 cycle で完走し EXIT trap で削除した。機械強制を通過 |
+| `save_pending_marker_present` | `REVIEW_SAVE_GATE_FAILED=1` | marker が残存 = 6.1.a が本 cycle で走っていない。**`exit 1`** で落とし ステップ 6.1.a **step 0** へ戻す。marker はここでは削除しない (削除すると 6.1.a を実行せず再評価だけで通せる)。**保存失敗では発火しない** — helper は `LOCAL_SAVE_FAILED` でも marker を削除するため (D-04 非ブロッキング契約の維持) |
+| `save_pending_marker_placeholder_residue` | `REVIEW_SAVE_GATE=degraded` | `{save_pending_marker}` が literal substitute されず `{...}` 形状のまま到達。機械強制を skip し `**Check**` の prose 判定のみで続行 |
+| `save_pending_marker_unavailable` | `REVIEW_SAVE_GATE=degraded` | ステップ 5.3.0.M step 2 が marker を作成できなかった (read-only な `${TMPDIR}` 等、同 step で WARNING 済)。同上 |
+
+**Non-blocking contract**: ステップ 6.1.a の全 15 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted` / `signal_aborted`) are all logged as WARNING and MUST NOT cause ステップ 6 to fail — **ただし `signal_aborted` のみ helper が rc=130/143/129 で終了する** (canonical: 下記リンク先の carve-out)。非ゼロ rc を観測しても ステップ 6 は止めず 6.1.b / 6.1.c へ進む。 Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**:
 
-- **ステップ 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 14 種のいずれか: `pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`。この flag は ステップ 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。ステップ 6 全体の exit code には影響しない (非ブロッキング契約)。
+- **ステップ 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 15 種のいずれか (末尾の `signal_aborted` のみ signal trap 由来): `pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted` / `signal_aborted`。この flag は ステップ 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。ステップ 6 全体の exit code には影響しない (非ブロッキング契約)。
 - **ステップ 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` / `p61b_post_comment_mode_invalid` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として ステップ 6 を fail させる (ステップ 6.1.a の非ブロッキング契約とは対照的)。なお `post_comment_mode=false` で 6.1.b に誤呼出された場合は gate が **silent skip (exit 0)** するため、caller branch selection ミスは retained flag emit せずに吸収される (データ破壊なし、gh pr comment も実行されない)。
 - **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
-- **ステップ 6.1.a** は `non_blocking_findings[]` の欠陥を 2 種の observability marker で報告する (`review-result-save.sh` が emit。**いずれも非ブロッキング** — 保存は続行し `JSON_SAVED=true` のまま。`LOCAL_SAVE_FAILED` reason ではないため 14 種の reason 表 / Eval-order enumeration には登録しない): キー欠落 / 非配列 → `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` / 和集合での id 重複・書式違反 → `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}`。hard fail するのは `findings[]` 側の id 欠陥のみ (`reason=finding_id_format_or_uniqueness_violation`)。
+- **ステップ 6.1.a** は `non_blocking_findings[]` の欠陥を 2 種の observability marker で報告する (`review-result-save.sh` が emit。**いずれも非ブロッキング** — 保存は続行し `JSON_SAVED=true` のまま。`LOCAL_SAVE_FAILED` reason ではないため 15 種の reason 表 / Eval-order enumeration には登録しない): キー欠落 / 非配列 → `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` / 和集合での id 重複・書式違反 → `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}`。hard fail するのは `findings[]` 側の id 欠陥のみ (`reason=finding_id_format_or_uniqueness_violation`)。
 - **ステップ 6.1.d** は terminal sentinel `[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr={n}; outcome=created|updated|skipped|failed|aborted; count={k}; iteration_id={id}; comment_id={id または空}; degraded=0|1` を **1 種だけ** emit する (`review-nonblocking-record.sh` の EXIT trap)。**6.1.d step 3 / ステップ 8.0.3 の gate が pass 条件として参照するのは本 sentinel のみ**であり、成功 / skip / 失敗の区別は `outcome=` フィールドが担う (別 marker を増やさない — consumer ゼロ marker を作らないため)。失敗時は加えて `[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=...` (上記 6.1.d reasons 表の全 reason) を emit するが、これは reason 語彙の observability 用で gate の入力ではない。**`outcome=failed` / `aborted`、および `degraded=1`（`outcome` を問わない — `updated ∧ degraded=1` は `existing_id=""` を伴うため構造的に到達不能で、実質 `skipped` / `created` の両方をカバーする）を観測したときは、6.1.d step 3 / ステップ 8.0.3 のいずれで観測した場合も、helper の WARNING / 対応する reason を completion report に転記してから次へ進む** (転記しないと記録が落ちた / stale が残った事実がどこにも残らない。`created ∧ degraded=1` は既存記録コメントを検出できないまま新規作成した縮退で、古い記録が PR 上に stale で残りうる — `skipped ∧ degraded=1` と同じ結末のため同一の転記対象とする)。**加えて `[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1` / `NONBLOCKING_DUPLICATE_RECORD=1` を観測したときも、helper の WARNING (件数と手動削除の案内) を completion report に転記してから次へ進む** — どちらも人間の手作業を要求する指示を含むため、転記しないと PR 上に孤児 / 重複が残った事実がどこにも残らない (`outcome=updated ∧ degraded=0` で発火しうるため、既存 3 条件のいずれにも該当しない)。**この 2 marker 自体は純粋な observability marker であり、gate の入力ではない — result pattern の emit 可否にも `overall_assessment` にも一切影響しない** (AC-3。直前の `outcome=failed` の帰結とは独立)。
 - **ステップ 6.1.d の観測 marker (2 種)**: lookup が候補を落とした事実を可視化する。`[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1; pr={n}; count={m}` (author ∧ marker 前方一致は満たすが最終非空行が sentinel でない件数。sentinel 導入前の記録コメント、または marker で始まる手書きコメントが update-in-place の対象外になったこと) / `[CONTEXT] NONBLOCKING_DUPLICATE_RECORD=1; pr={n}; count={m}` (sentinel を持つ自分の記録コメントが 2 件以上 = 過去の degraded 縮退が生んだ重複。`last` を採るため古い方は stale で残る)。**いずれも純粋な observability marker であり、gate の入力ではない — result pattern の emit 可否にも `overall_assessment` にも一切影響しない** (AC-3)。`*_FAILED` reason ではないため reason 表 / Eval-order enumeration には登録しない (`NON_BLOCKING_FINDINGS_KEY_MISSING` と同じ扱い)。ただし**どちらも人間の手作業 (古いコメントの手動削除) を要求する**ため、下記 6.1.d step 3 / ステップ 8.0.3 の転記条件に含める。
+- **ステップ 5.3.0.M step 2 / ステップ 6.1.a / ステップ 8.0.4** は 8.0.4 の機械強制 (save-pending marker) 用に 5 種の marker を emit する。`[CONTEXT] REVIEW_SAVE_PENDING_ID={id または空}` (5.3.0.M step 2、6.1.a の `--pending-id` へ渡す値) / `[CONTEXT] REVIEW_SAVE_PENDING_MARKER={path または空}` (同 step、8.0.4 の `[ -e ]` 検査用。作成失敗時は両方とも空) / `[CONTEXT] REVIEW_SAVE_DONE=1; pr={n}; marker={path}; saved={true|false}` (`review-result-save.sh` の EXIT trap、**6.1.a helper が完走した**ことの terminal sentinel。`saved=` は保存の成否で、`JSON_SAVED=` と同値) / `[CONTEXT] REVIEW_SAVE_GATE=pass|degraded; reason=...` ・ `REVIEW_SAVE_GATE_FAILED=1; reason=save_pending_marker_present; marker={path}` (8.0.4、後者は **gate 失敗として `exit 1`**)。**marker が意味するのは「6.1.a が実行された」であって「保存に成功した」ではない** — 保存失敗 (`LOCAL_SAVE_FAILED`) でも helper は marker を削除する。そうしないと D-04 非ブロッキング契約が本 gate 経由で blocking gate に化ける (保存失敗の可視化は既存の `LOCAL_SAVE_FAILED` + ステップ 6.1.c ケース 2 が担う)。`overall_assessment` は変えず、変えるのは「result pattern を emit してよいか」の可否のみ (8.0.3 と同じ namespace 分離)。
 - **ステップ 6.1.a step 0 / ステップ 8.0.3** は 8.0.3 の機械強制 (pending marker) 用に 3 種の marker を emit する。`[CONTEXT] NONBLOCKING_PENDING_MARKER={path または空}` (6.1.a step 0、marker のパスを 8.0.3 へ渡す。作成失敗時は空) / `[CONTEXT] NONBLOCKING_GATE=pass|degraded; reason=...` (8.0.3、`reason` は `pending_marker_absent` / `pending_marker_placeholder_residue` / `pending_marker_unavailable`) / `[CONTEXT] NONBLOCKING_GATE_FAILED=1; reason=pending_marker_present; marker={path}` (8.0.3、**gate 失敗として `exit 1`**。6.1.d へ戻さずに ステップ 8.1 へ進むことを禁じる唯一の機械的層)。`NONBLOCKING_RECORD_*` とは別 namespace で、`overall_assessment` そのものは変えない — 変えるのは「result pattern を emit してよいか」の可否のみ。**marker が残る (= 8.0.3 が差し戻す) 経路は「原因」で決まる**: 引数 gate 群 (placeholder residue 5 種 / `content_file_missing`、trap 設置前の `exit 1`) と本文検査 4 段 (`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`、trap 設置後の `retain_pending_marker=1`) — いずれも caller (LLM) 契約違反で、本文 / `--count` を作り直せば 1 iteration で収束する。gh / network / rate-limit / IO 起因 (`patch_failed` / `create_failed` / lookup degraded / `body_check_unavailable`) と signal 中断 (`signal_aborted`) は差し戻しても同 cycle 内で収束しないため従来どおり無条件削除する。`body_check_unavailable` は本文検査 4 段と同じ位置で起きるが、**述語を評価できなかった**環境起因の失敗であり caller が本文を作り直しても解消しないため本群に属する。境界を exit code (trap の前後) で引くと、同種の契約違反が検出位置の違いだけで機械強制から外れる。rationale: [references/measured-gate-record.md#pending-marker](references/measured-gate-record.md#pending-marker)
 - **ステップ 5.3.0.M** は実測必須ゲートの anchor 検出 regex 層での降格時に `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` を emit する (**`scripts/review-measured-gate.sh` が emit**、Issue #2072 で LLM 直接 emit から委譲)。対象は **`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て** (raw pipe / 改行タグ / `=>` 右辺空 / 種別ラベル誤記 / アンカー直前の境界欠落) であり、アンカー文字列そのものが無い正常系 (非実測指摘) では出さない。**存在判定は正規化 marker (`(?i)verification[*_`[:space:]]*[:：]`) で行い、種別キーワードも colon 直後の空白も条件に含めず、装飾文字と全角コロンを吸収する。発火条件を「`=>` 右辺空」だけに絞ってもならない** — 定義の SoT は [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md) の WARNING emit 節で、helper の実装はその写しとして同一語彙を保つ。observability marker であり `*_FAILED` reason ではないため、上記 ステップ 6 failure reasons 表 / 後述 Eval-order enumeration には登録しない (それらは reason 専用の列挙)。
 - **ステップ 5.3.0.M** は同 helper から `[CONTEXT] MEASURED_GATE=applied; blocking={n}; demoted={d}; non_blocking_total={t}; assessment={a}` を必ず emit する (ゲート適用の成功と `total_findings` / `non_blocking_count` / `overall_assessment` の値を 5.3.1 以降へ渡す唯一の経路)。加えて観測 marker `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` / `MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count={n}` を条件付きで emit する (いずれも WARNING と対で、分類は変えない)。失敗時は `[CONTEXT] MEASURED_GATE_FAILED=1; reason=...` を emit して非ゼロ終了する — reason 語彙 (`jq_missing` / `input_missing` / `input_unreadable` / `json_invalid` / `findings_not_array` / `non_blocking_not_array` / `jq_transform_failed` / `stats_read_failed` / `scope_enum_violation` / `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure` / `signal_aborted`) の SoT は helper docstring。**本 reason は ステップ 6 の非ブロッキング reason 群とは別 namespace で、唯一 `[review:error]` 停止を伴う** (LLM 分類への fallback は禁止)。ただし `verification_preset_by_caller` / `scope_enum_violation` の 2 種だけは **caller (step 1) が JSON を作り直せば同 cycle 内で収束する契約違反**であり、即 `[review:error]` ではなく step 1 の再 Write + step 2 の再実行 (本 step 全体で 1 回まで) を先に行う (routing の詳細は ステップ 5.3.0.M step 3 の表)。
 
-**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称); ステップ 6.1.d emit = (`unknown_option` / `pr_number_placeholder_residue` / `owner_repo_placeholder_residue` / `non_blocking_count_placeholder_residue` / `iteration_id_placeholder_residue` / `content_file_placeholder_residue` / `content_file_missing` / `body_file_empty` / `body_marker_missing` / `body_check_unavailable` / `body_sentinel_missing` / `count_body_mismatch` / `patch_failed` / `create_failed`) — 14 件、helper 内の実 emit 順 (引数解析ループ内の `unknown_option` → placeholder residue 5 種 + content_file 存在検査を引数 parse 直後にまとめて評価 → lookup → 本文の非空検査 → 1 行目 marker 検査 → 機械専用 sentinel 検査 (述語の評価自体が失敗した場合は `body_check_unavailable`) → 件数整合検査 → PATCH / create の分岐)。`patch_failed` と `create_failed` は排他分岐のため同一 run で両方は出ない。`signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する (ステップ 6.1.a が observability marker を除外する慣行と同じ); ステップ 8.0.3 (機械強制) emit = (`pending_marker_placeholder_residue` / `pending_marker_unavailable` / `pending_marker_present` / `pending_marker_absent`) — 4 件、bash の `case` 分岐順 (placeholder 残留 → marker 未作成 → 残存 (`exit 1`) → 不在 (pass))。前 2 者は `NONBLOCKING_GATE=degraded`、`pending_marker_present` は `NONBLOCKING_GATE_FAILED=1`、`pending_marker_absent` は `NONBLOCKING_GATE=pass` に載る。
+**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`signal_aborted` は signal trap 由来で線形の emit 順に載らないため除外) (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称); ステップ 6.1.d emit = (`unknown_option` / `pr_number_placeholder_residue` / `owner_repo_placeholder_residue` / `non_blocking_count_placeholder_residue` / `iteration_id_placeholder_residue` / `content_file_placeholder_residue` / `content_file_missing` / `body_file_empty` / `body_marker_missing` / `body_check_unavailable` / `body_sentinel_missing` / `count_body_mismatch` / `patch_failed` / `create_failed`) — 14 件、helper 内の実 emit 順 (引数解析ループ内の `unknown_option` → placeholder residue 5 種 + content_file 存在検査を引数 parse 直後にまとめて評価 → lookup → 本文の非空検査 → 1 行目 marker 検査 → 機械専用 sentinel 検査 (述語の評価自体が失敗した場合は `body_check_unavailable`) → 件数整合検査 → PATCH / create の分岐)。`patch_failed` と `create_failed` は排他分岐のため同一 run で両方は出ない。`signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する (ステップ 6.1.a が observability marker を除外する慣行と同じ); ステップ 8.0.3 (機械強制) emit = (`pending_marker_placeholder_residue` / `pending_marker_unavailable` / `pending_marker_present` / `pending_marker_absent`) — 4 件、bash の `case` 分岐順 (placeholder 残留 → marker 未作成 → 残存 (`exit 1`) → 不在 (pass))。前 2 者は `NONBLOCKING_GATE=degraded`、`pending_marker_present` は `NONBLOCKING_GATE_FAILED=1`、`pending_marker_absent` は `NONBLOCKING_GATE=pass` に載る; ステップ 8.0.4 (機械強制) emit = (`save_pending_marker_placeholder_residue` / `save_pending_marker_unavailable` / `save_pending_marker_present` / `save_pending_marker_absent`) — 4 件、8.0.3 と同一の `case` 分岐順。前 2 者は `REVIEW_SAVE_GATE=degraded`、`save_pending_marker_present` は `REVIEW_SAVE_GATE_FAILED=1`、`save_pending_marker_absent` は `REVIEW_SAVE_GATE=pass` に載る。
 
 #### 6.1.a Local JSON File Save (Always Executed) <!-- AC-1 / D-01 / D-02 / D-04 -->
 
@@ -2475,12 +2533,21 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 
 ```bash
 # ステップ 6.1.a: ローカルファイル保存 (JSON、非ブロッキング) — hooks/review-result-save.sh へ委譲済。
-# helper 契約: D-04 非ブロッキング (全失敗経路で exit 0) / 14 種 LOCAL_SAVE_FAILED reason 語彙 (上記
+# helper 契約: D-04 非ブロッキング (15 種の LOCAL_SAVE_FAILED reason のうち 14 種は exit 0。
+# signal_aborted のみ rc=130/143/129 で、ステップ 6 の exit code は 6.1.c が決める) / reason 語彙 (上記
 # bullet と一致) / 同秒衝突回避 / trap での FILE_TIMESTAMP= ・ISO_TIMESTAMP= ・JSON_SAVED= emit
-# (normal/abnormal 両経路、ステップ 6.1.c が前提)。SoT は helper docstring。
+# (normal/abnormal 両経路、ステップ 6.1.c が前提) / 同 trap での save-pending marker 削除 +
+# REVIEW_SAVE_DONE= emit (ステップ 8.0.4 が前提)。SoT は helper docstring。
+# --pending-id: ステップ 5.3.0.M step 2 の [CONTEXT] REVIEW_SAVE_PENDING_ID= 値をリテラル置換する
+# (本 cycle のもの = 末尾 -{epoch} が最大のもの。**ただし本 cycle の 5.3.0.M step 2 が空文字で
+# emit している場合に限り**空文字を渡す — 空文字は epoch を持たず最大値規則で順序付けできないため、
+# 過去 cycle の空 emit を採ってはならない。8.0.4 Pre-Check の選択規則と同一)。
+# marker の **path** は渡さない — helper が id から内部導出する (8.0.4 の Pre-Check だけが
+# REVIEW_SAVE_PENDING_MARKER= の path を使う)。
 bash {plugin_root}/hooks/review-result-save.sh \
   --pr {pr_number} \
-  --content-file {review_tmp_dir}/rite-review-result-{pr_number}.json
+  --content-file {review_tmp_dir}/rite-review-result-{pr_number}.json \
+  --pending-id "{save_pending_id}"
 ```
 
 **Non-blocking contract** (ステップ 6.1.a Non-blocking Contract / D-04 compliance): when any step in this sub-phase fails (mkdir, mktemp, write, jq validation, or mv), the failure is recorded via `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` emission but ステップ 6 is NOT failed — it logs a WARNING and proceeds. The review results remain available via conversation context for immediate `/rite:fix` invocation.
@@ -3634,10 +3701,10 @@ Replace `{next_action_value}` with the value from the table above based on the r
 **Gate evaluation order (SoT)**: 状態更新の後、result pattern を emit する前に、以下の post-condition gate を **記載順に評価する**。**すべての gate が pass した場合にのみ ステップ 8.1 (result pattern emit) へ進む**。いずれかが ERROR を出した場合は、その gate の ACTION に従って該当ステップへ戻り、再度 ステップ 8.0 から評価し直す。
 
 ```
-8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → ステップ 8.1
+8.0.1 (W Phase / Wiki ingest) → 8.0.2 (ステップ 7 disposition) → 8.0.3 (ステップ 6.1.d 非実測記録) → 8.0.4 (ステップ 6.1.a JSON 保存) → ステップ 8.1
 ```
 
-各 gate の Routing 表は「pass したら**次の gate へ**進む」とだけ書き、終端 (ステップ 8.1) を名指ししない。8.0.4 以降を追加する場合は、(1) 本順序規定の 1 行に新 gate を挿入し、(2) `hooks/tests/review-helpers-gate-behavior.test.sh` TC-5d の期待リテラル **2 箇所**（ファイル全体を数える `count_lit` と、8.0 区間に限定する `_section_of` + `grep -cF`）を同じ文字列へ更新し、(3) 同 TC-5e の `_g_spec` list に `'8.0.4:{データ行数}:{pass 行数}:{ERROR 行数}'` を追加する。**既存 gate の pass 行は変更不要**（順序規定が終端を持つため）。rationale: [references/measured-gate-record.md#gate-order](references/measured-gate-record.md#gate-order)
+各 gate の Routing 表は「pass したら**次の gate へ**進む」とだけ書き、終端 (ステップ 8.1) を名指ししない。8.0.5 以降を追加する場合は、(1) 本順序規定の 1 行に新 gate を挿入し、(2) `hooks/tests/review-helpers-gate-behavior.test.sh` TC-5d の期待リテラル **2 箇所**（ファイル全体を数える `count_lit` と、8.0 区間に限定する `_section_of` + `grep -cF`）を同じ文字列へ更新し、(3) 同 TC-5e の `_g_spec` list に `'8.0.5:{データ行数}:{pass 行数}:{ERROR 行数}'` を追加する。**既存 gate の pass 行は変更不要**（順序規定が終端を持つため）。rationale: [references/measured-gate-record.md#gate-order](references/measured-gate-record.md#gate-order)
 
 ### 8.0.1 W Phase Completion Gate (Defense-in-Depth)
 
@@ -3705,7 +3772,7 @@ ACTION: Return to ステップ 7.1, extract candidates, invoke AskUserQuestion (
 
 本 gate は ステップ 6.1.d (非実測指摘の PR コメント記録) の **全体 skip** に対する最終防波堤で、8.0.1 (ステップ 6.5.W) / 8.0.2 (ステップ 7) と同型の sentinel-presence based defense-in-depth。6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため 6.1.d を丸ごと skip すると gate 自身も skip される — その failure mode を本 gate が result-emit boundary の**外側**で catch する (ステップ 7.7 ⇄ 8.0.2 の二層構成と同型)。既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録 (`.rite/review-results/` は gitignore 対象) であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
 
-**catch できる範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり本 gate が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る (前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel) の組が互いに整合するため本 gate は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、「6.1.d 単独の skip」は catch できるが「ステップ 6 全体の skip」は catch できない。後者を塞ぐには ステップ 6 の実行自体を検証する gate (例: `JSON_SAVED` に cycle 識別子を載せる) が別途必要で、本 PR のスコープ外。
+**catch できる範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり本 gate が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る (前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel) の組が互いに整合するため本 gate は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、本 gate 単独では「6.1.d 単独の skip」しか catch できない。「ステップ 6 全体の skip」は **ステップ 8.0.4** が塞ぐ — 同 gate の anchor はステップ 6 の外側 (5.3.0.M step 2) で毎 cycle 再生成されるため自己整合が成立せず、差し戻し先が 6.1.a **step 0** であることにより本 gate の anchor と marker も再生成される。
 
 **Condition**: Always execute (6.1.d は `{post_comment_mode}` に依存せず常に評価される) — ただし **ステップ 6 が hard fail した場合を除く** (下記 Routing の 1 行目。8.0.1 の `wiki.enabled: false` 行 / 8.0.2 の `candidate_count == 0` 行と同じ legitimate skip)。
 
@@ -3783,6 +3850,96 @@ reason=iteration_id_placeholder_residue のときは 6.1.a step 0 の REVIEW_CYC
 ```
 
 ステップ 6.1.d step 3 (サブステップ内部の integrity check) と ステップ 8.0.3 (全体 skip の最終 fallback) は catch する failure mode が異なる (7.7 ⇄ 8.0.2 と同じ dual placement)。rationale: [references/measured-gate-record.md#dual-gate](references/measured-gate-record.md#dual-gate)
+
+### 8.0.4 ステップ 6.1.a Post-condition Gate Reference
+
+本 gate は ステップ 6.1.a (レビュー結果 JSON のローカル保存) の skip に対する最終防波堤で、8.0.3 と同型の二層 (機械強制 Pre-Check + prose Check) 構成。**8.0.3 が catch できない「ステップ 6 全体の skip」を本 gate が catch する** — 8.0.3 の鮮度 anchor (`REVIEW_CYCLE_ID`) と機械強制 marker はどちらも 6.1.a step 0 = ステップ 6 の内側で生成されるため、ステップ 6 を丸ごと skip した cycle では前 cycle の値どうしが自己整合して誤 pass する。本 gate の anchor はステップ 6 の**外側** (5.3.0.M step 2) で毎 cycle 再生成されるため、この自己整合が成立しない。skip されると「1 レビューサイクル = 1 永続 JSON」が破れ、実測必須ゲートが `non_blocking_findings[]` へ移送した指摘の永続記録と `/rite:fix` の JSON 経路が同時に失われる。rationale: [references/measured-gate-record.md#save-pending-marker](references/measured-gate-record.md#save-pending-marker)
+
+**Condition**: Always execute — ただし **ステップ 6 が hard fail した場合を除く** (下記 Routing の 1 行目。8.0.3 の同名行と同じ legitimate skip)。
+
+**Pre-Check (機械強制: save-pending marker の残存検査)**: 下記 bash を実行する。`{save_pending_marker}` は ステップ 5.3.0.M step 2 の `[CONTEXT] REVIEW_SAVE_PENDING_MARKER=` marker 値をリテラル置換する。**選択規則は 8.0.3 Pre-Check と同一** — cycle 2+ では同 marker が会話に複数残るため **本 cycle のもの (末尾 `-{epoch}` が最大のもの) を採る**。**ただし本 cycle の 5.3.0.M step 2 が空文字で emit している場合は、epoch を持つ過去 cycle の値より空文字を優先して採る** (空文字は本 cycle で marker を作れなかったことを示し epoch で順序付けできない)。過去 cycle の実パスを採ると既に helper が削除済のため誤 pass する。
+
+```bash
+save_pending_marker="{save_pending_marker}"
+case "$save_pending_marker" in
+  "{"*"}")
+    echo "WARNING: ステップ 8.0.4 の {save_pending_marker} が literal substitute されていません (値: '$save_pending_marker')。機械強制を skip し Check の prose 判定のみで続行します" >&2
+    echo "[CONTEXT] REVIEW_SAVE_GATE=degraded; reason=save_pending_marker_placeholder_residue" >&2
+    ;;
+  "")
+    # 5.3.0.M step 2 が marker を作れなかった (read-only ${TMPDIR} 等)。同 step で WARNING 済。
+    echo "[CONTEXT] REVIEW_SAVE_GATE=degraded; reason=save_pending_marker_unavailable" >&2
+    ;;
+  *)
+    # `-e` だけでは dangling symlink を「不在」と判定して fail-open する (6.1.a 未実行でも pass)。
+    # marker は「存在そのものが判定値」なので symlink 自体の存在も残存として扱う。
+    # 注: ステップ 8.0.3 の同判定は `-e` のみで、dangling symlink の marker を fail-open する (非対称)。
+    if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
+      echo "ERROR: ステップ 8.0.4 gate failed (機械強制)。save-pending marker が残存しています: $save_pending_marker" >&2
+      echo "  これは ステップ 6.1.a (レビュー結果 JSON のローカル保存) が本 cycle で走っていないことの機械的証拠です" >&2
+      echo "  (marker を消すのは 6.1.a の helper だけで、保存に失敗した場合も消します — 残存 = 未実行)。" >&2
+      echo "  6.1.a を実行済みでも marker が残ることがあります。会話の WARNING で切り分けてください (既知の経路。網羅ではありません):" >&2
+      echo "    (1) --pending-id の形状違反 — helper が「marker path を導出できないため削除しません」を出している場合。" >&2
+      echo "        5.3.0.M step 2 の REVIEW_SAVE_PENDING_ID= 自体が {...} 形状なら、6.1.a ではなく 5.3.0.M step 2 から再実行します。" >&2
+      echo "    (2) rm 失敗 — helper が「削除失敗は決定論的」を出している場合。**下記の再実行では収束しません** —" >&2
+      echo "        marker を手動で rm してから ステップ 8.0 を再評価してください。" >&2
+      echo "    (3) 別 cycle の id を渡した — helper が「導出した save-pending marker path に marker が存在しません」を出している場合。" >&2
+      echo "        helper は別 cycle 分を消しており本 cycle の marker は未 consume です。**5.3.0.M step 2 から id を採り直して** 6.1.a を再実行します。" >&2
+      echo "    (4) helper が trap 設置前に exit 1 した — 会話に「ERROR: review-result-save:」で始まる行がある場合 (--content-file 欠落 / 未知オプション = caller 契約違反)。" >&2
+      echo "        引数を修正してから下記 ACTION を実行します。" >&2
+      echo "    (5) helper が起動していない — helper 由来の行 (WARNING / [CONTEXT] REVIEW_SAVE_DONE) が 1 行も無い場合。下記 ACTION がそのまま対処です。" >&2
+      echo "    (6) --pending-id に空文字を渡した — helper 由来の行はあるが marker 関連の WARNING が 1 本も無く、REVIEW_SAVE_DONE の marker= が空の場合 (空 id は helper が無言で marker 機構を opt-out します)。" >&2
+      echo "        本 cycle の REVIEW_SAVE_PENDING_ID= が非空なら、その値を渡して 6.1.a を再実行します。" >&2
+      echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 は 8.0.3 が使う REVIEW_CYCLE_ID と pending marker を生成する唯一の場所で、飛ばすと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
+      echo "    step 0 (REVIEW_TMP_DIR / REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER の emit) → step 2 (review-result-save.sh 実行) の順で実行し、続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してください。" >&2
+      echo "    再実行時は --pending-id が非空かつ本 cycle の REVIEW_SAVE_PENDING_ID= と一致することを確認してください (不一致・空のままでは本 gate は再び残存を観測します)。" >&2
+      echo "    (本 gate は「ステップ 6 全体の skip」を catch するため 6.1.c も未実行でありうる。6.1.c を飛ばすと、再実行した保存が失敗したときに silent data loss を hard fail させる唯一の機構 = ケース 2 の exit 2 が発火しない)。そのうえで ステップ 8.0 を再評価してください。" >&2
+      echo "  marker はここでは削除しません — 削除すると 6.1.a を実行せずに再評価だけで gate を通せてしまい、本検査の意味が失われます。" >&2
+      echo "  ⚠️ 本 gate を pass せずに ステップ 8.1 の result pattern を emit してはなりません。" >&2
+      echo "[CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_pending_marker_present; marker=$save_pending_marker" >&2
+      exit 1
+    fi
+    echo "[CONTEXT] REVIEW_SAVE_GATE=pass; reason=save_pending_marker_absent" >&2
+    ;;
+esac
+```
+
+`REVIEW_SAVE_GATE` marker の分岐（8.0.3 と同じ理由で表にしない）:
+
+- `pass` → 機械強制を通過。下記 `**Check**` へ。
+- `degraded` → marker が使えない環境。機械強制を skip し `**Check**` の prose 判定のみで続行。
+- bash が `exit 1`（`REVIEW_SAVE_GATE_FAILED=1`）→ ステップ 6.1.a へ戻る。**ステップ 8.1 へ進んではならない**。
+
+**Check**: 会話コンテキストから `[CONTEXT] REVIEW_SAVE_DONE=1; pr={N}; marker={path}; saved={true|false}` sentinel を探し、その `marker=` が **本 cycle の `REVIEW_SAVE_PENDING_MARKER`** と一致するかを見る (選択規則は上記 Pre-Check と同一)。marker が空文字の degraded cycle では `marker=` も空文字になるため、その場合は **本 cycle の 5.3.0.M step 2 より後ろに現れた `REVIEW_SAVE_DONE` 行**を本 cycle のものとして採る。Pre-Check が `pass` でも本検査は省略しない (`saved=false` の転記義務は sentinel 側が持つ)。
+
+**Routing** (ステップ 8.0.1 / 8.0.2 / 8.0.3 と完全に対称):
+
+| Condition | Action |
+|-----------|--------|
+| ステップ 6 が 6.1.b hard error / 6.1.c ケース 2 (`exit 2`) で fail している | Gate は legitimately skipped — ステップ 6 の失敗として扱う (6.1.c ケース 2 は保存失敗そのものを既に loud に報告しており、本 gate で二重に差し戻さない) |
+| sentinel found AND `marker` == 本 cycle の `REVIEW_SAVE_PENDING_MARKER` | Gate passes — ただし `saved=false` を観測したときは **LLM が `LOCAL_SAVE_FAILED` の reason を completion report に転記してから** the next gate in the 8.0 evaluation order へ進む (非ブロッキング契約により判定は不変) |
+| sentinel NOT found (ステップ 6 は正常完了している) | **ERROR**: ステップ 6.1.a was skipped in current cycle. Execute ACTION below |
+| sentinel found but `marker` != 本 cycle の `REVIEW_SAVE_PENDING_MARKER` (cycle N-1 のもの) | **ERROR**: ステップ 6.1.a was skipped in current cycle. Execute ACTION below |
+
+**On ERROR** (sentinel absent or stale):
+
+```
+ERROR: ステップ 8.0.4 ステップ 6.1.a Post-condition Gate failed.
+No current-cycle [CONTEXT] REVIEW_SAVE_DONE=1 sentinel found (absent, or marker != REVIEW_SAVE_PENDING_MARKER).
+This means ステップ 6.1.a (レビュー結果 JSON のローカル保存) was NOT executed in the current cycle,
+または `--pending-id` の literal substitute 漏れ (helper は形状違反の id から marker path を導出せず WARNING を出す)。
+helper が「削除失敗は決定論的」の WARNING を出している場合は環境起因で、本 ACTION の再実行では収束しない —
+marker を手動で rm してから ステップ 8.0 を再評価すること。
+保存が落ちた cycle の指摘は `.rite/review-results/` に残らず、/rite:fix の JSON 経路も
+マージ後の監査証跡も同時に失われる (実測必須ゲートが移送した非実測指摘の永続経路が断たれるため)。
+ACTION: ステップ 6.1.a を **step 0 から** 実行する (step 2 単独の実行は禁止 — step 0 が emit する
+REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER を欠くと 8.0.3 が前 cycle の値で誤 pass する)。
+step 0 → step 2 の順に実行し、続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行する
+(本 gate は「ステップ 6 全体の skip」を catch するため 6.1.c も未実行でありうる。6.1.c を飛ばすと、
+再実行した保存が失敗したときに silent data loss を hard fail させる唯一の機構 = ケース 2 の exit 2 が
+発火しないまま result pattern が emit される)。then re-enter ステップ 8.0.
+⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 6.1.a has been executed for the current cycle.
+```
 
 ### 8.1 Output Pattern (Return Control to Caller)
 
