@@ -654,6 +654,11 @@ run_gate "$f" --reject-preset-verification
 if grep -q 'MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count=1' <<<"$GATE_STDERR"; then
   pass "runtime_observation ∧ アンカー欠如で MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR marker を emit"
 else fail "runtime_obs marker が出ない: $(grep -c CONTEXT <<<"$GATE_STDERR") markers"; fi
+# marker は count しか運ばないため、帰結を説明する WARNING 本文が唯一の人間向け経路になる。
+# marker だけを pin すると echo の消失や文言の陳腐化が機械検査に載らない (TC-04b の降格側と対称)。
+if grep -q 'WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: の正規形アンカーを欠く' <<<"$GATE_STDERR"; then
+  pass "runtime_obs の WARNING 本文を emit する (marker と対)"
+else fail "runtime_obs WARNING 不在"; fi
 
 # 既存 boolean を持つ finding も除外しない (preset 持ちを除外すると検出層に穴が空く)
 f="$TEST_DIR/tc08d-preset-anchor.json"
@@ -735,6 +740,16 @@ else fail "nit-noted の形式崩れが計上された: rc=$GATE_RC"; fi
 if [ "$(jq -r '.findings[0].verification.measured' "$f")" = "false" ]; then
   pass "nit-noted の形式崩れは未判定にせず measured=false を算出する (gated 母集団外)"
 else fail "nit-noted が未判定化された: $(jq -c '.findings[0].verification // "ABSENT"' "$f")"; fi
+
+# ゲート出力の再適用が hard fail しないこと (AC-5)。verification_conflict の未判定節は
+# gated 修飾を持ち、これが外れると nit-noted の形式崩れが偽の caller 契約違反として
+# 検出され再実行が rc=1 で止まる。和不変条件ガードの外側にある唯一の gated 参照のため
+# 本 assert が単独の保護層になる。
+cp "$f" "$f.again"
+run_gate "$f.again" --reject-preset-verification
+if [ "$GATE_RC" -eq 0 ] && cmp -s "$f" "$f.again"; then
+  pass "nit-noted を含むゲート出力の再適用が rc=0 かつバイト一致 (冪等)"
+else fail "再適用が冪等でない: rc=$GATE_RC"; fi
 
 
 # ---------------------------------------------------------------------------
