@@ -66,7 +66,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 さらに、掲載可否とは独立に次を自問してください（**No でも報告可**。掲載可否は上の 4 自問だけが決めます）:
 
-5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → `Verification:` アンカーを `内容` 列に添付する。No → アンカーを付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。実測できるなら必ずアンカーを添えること。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、実測済みでも non-blocking に降格する)。
+5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → `Verification:` アンカーを `内容` 列に添付する。No → アンカーを付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。実測できるなら必ずアンカーを添えること。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、**未判定 (blocking のまま) として扱われる** — 実測済みでも non-blocking にはならないが、判定不能な指摘として merge を止め続ける)。**marker と `=>` の間に `<br>` を入れないこと** (`<br>` は正規形の検出自体を破るため単独で `measured=false` へ降格し、実測済みの指摘が merge を止めなくなる)。句点・改行は正規形アンカーなら無害だが、装飾等の書式崩れと重なると未判定ではなく降格へ落ちるので、LHS に入れないのが安全。
 
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
@@ -74,7 +74,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 **`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は実測の記録を担う直交アンカー。実測できた指摘は両方を末尾に付けること）:
 
-> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊し、アンカーも機械抽出できず記録が失われます。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
+> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合、アンカーは検出 regex に match せず原則として**未判定 (blocking のまま)** になり、判定不能な指摘が merge を止め続けます。ただし marker から `=>` までの間に改行 / `<br>` / 句点があるとその手前で判定が切れ `measured=false` へ降格します (実測済みでも merge を止めません)。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
 
 ```
 {WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined

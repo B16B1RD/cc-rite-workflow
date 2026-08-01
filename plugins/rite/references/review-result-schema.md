@@ -207,7 +207,7 @@
 
 `findings[].verification` オブジェクトのサブフィールド定義。「実測」の記録形式を LLM の自由裁量に委ねると後段で機械処理できないため、**write 側が `verification` を出力する際に守るべき形式を本表で固定する**。
 
-**write 側の配線** (Issue #2072): `pr-review.md` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、`findings[].description` の `Verification:` アンカーから本表の形式で `verification` を設定する**唯一の書き手**である。同ステップの生成規約は Claude が `verification` を書くことを禁じており (先に書かれた boolean を helper が既存値として尊重してしまい、アンカー検出を経ない値が blocking 判定へ入るため)、本表は helper が満たす形式契約として読む。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理する。記録・表示経路では default mapping で `measured=false` に畳み、**判定 consumer では「未判定」= blocking として扱う** — [3 値モデルへの上書き](#3値モデルへの上書き)):
+**write 側の配線** (Issue #2072): `pr-review.md` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、`findings[].description` の `Verification:` アンカーから本表の形式で `verification` を設定する**唯一の書き手**である。**ただし全 finding に設定するとは限らない** — gate 対象 scope (`current-pr` / `follow-up`) の finding のうち、アンカー文字列と `=>` が**同一セグメント内**にあるのに検出 regex に match しない形式崩れのものには、`measured=false` と確定させずに **`verification` を設定しない**ことで「未判定」を表現する。したがってゲート適用後の JSON でも `verification` は欠落しうる ([3 値モデルへの上書き](#3値モデルへの上書き) の判定 consumer 側規定がそのまま効く)。同ステップの生成規約は Claude が `verification` を書くことを禁じており (先に書かれた boolean を helper が既存値として尊重してしまい、アンカー検出を経ない値が blocking 判定へ入るため)、本表は helper が満たす形式契約として読む。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理する。記録・表示経路では default mapping で `measured=false` に畳み、**判定 consumer では「未判定」= blocking として扱う** — [3 値モデルへの上書き](#3値モデルへの上書き)):
 
 | フィールド | 型 | 必須 (write 側が出力する場合) | read 側の受理 | 説明 |
 |-----------|-----|------|------|------|
@@ -290,7 +290,7 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 
 **適用範囲**: 本節の default mapping が有効なのは **記録・表示・後方互換の非エラー化** を目的とする読取経路に限る。`measured` を **blocking 判定の入力として消費する層** には適用しない (下記「3 値モデルへの上書き」参照)。
 
-`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、および verification 導入前に生成された 1.1.0 JSON)、記録・表示経路は当該 finding を **`measured=false` (実測なし)** として扱う。フィールドの物理的な補完は不要で、値を参照する側が `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない:
+`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、verification 導入前に生成された 1.1.0 JSON、および実測必須ゲートが形式崩れアンカーを未判定として残した現行世代 JSON)、記録・表示経路は当該 finding を **`measured=false` (実測なし)** として扱う。フィールドの物理的な補完は不要で、値を参照する側が `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない:
 
 ```
 (.verification.measured // false) == true   # 記録・表示経路の評価式 (欠落 = false)。判定経路では使用禁止 — 下記「3 値モデルへの上書き」参照
