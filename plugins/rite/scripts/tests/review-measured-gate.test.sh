@@ -168,9 +168,11 @@ else fail "未判定が降格した: findings=$(jq -c '[.findings[].id]' "$f") n
 if [ "$(jq '[.findings[] | select(has("verification") | not)] | length' "$f")" = "7" ]; then
   pass "7 件とも verification キーを持たない (= 未判定の表現)"
 else fail "verification が設定された: $(jq -c '[.findings[] | {id, v: (.verification // "ABSENT")}]' "$f")"; fi
-if [ "$(jq -r '.overall_assessment' "$f")" = "fix-needed" ]; then
-  pass "未判定 7 件が blocking として算入され fix-needed"
-else fail "assessment=$(jq -r '.overall_assessment' "$f") (期待 fix-needed。未判定が blocking から漏れている)"; fi
+# assessment だけでは blocking >= 1 しか区別できない (7 件のうち 1 件だけ算入される退行を
+# 見逃す)。TC-03 と同じく marker の 4 値で pin する。
+if grep -q 'MEASURED_GATE=applied; blocking=7; demoted=0; non_blocking_total=0; assessment=fix-needed' <<<"$GATE_STDERR"; then
+  pass "未判定 7 件が blocking として算入され fix-needed (marker の 4 値で pin)"
+else fail "marker 不一致: $(grep -o 'MEASURED_GATE=.*' <<<"$GATE_STDERR")"; fi
 if grep -q '\[CONTEXT\] MEASURED_UNDETERMINED_ON_ANCHOR=1; count=7; cause=anchor_unparseable' <<<"$GATE_STDERR"; then
   pass "MEASURED_UNDETERMINED_ON_ANCHOR=1; count=7 を emit"
 else fail "MEASURED_UNDETERMINED_ON_ANCHOR の count が 7 でない: $GATE_STDERR"; fi
@@ -192,27 +194,68 @@ else fail "未判定の冪等性が壊れた: rc=$GATE_RC / $(diff "$f.once" "$f
 # TC-04b: stage 1 の over-match を未判定へ昇格させない
 #
 # stage 1 は装飾・全角コロンを吸収する意図的に緩い存在判定なので、散文中の `Verification:`
-# 言及を拾う。アンカーは `<LHS> => <RHS>` を必須とするため、`=>` を欠く形は「書き損じた
-# アンカー」ではなく散文である。ここを未判定 (blocking) へ倒すと /rite:fix には直す対象が
-# 無いまま max_review_cycles まで空転するため、降格側に残すことを固定する。
+# 言及を拾う。アンカーは `<LHS> => <RHS>` を必須とするため、marker から同一セグメント内に
+# `=>` が続かない形は「書き損じたアンカー」ではなく散文である。ここを未判定 (blocking) へ
+# 倒すと /rite:fix には直す対象が無いまま max_review_cycles まで空転するため、降格側に
+# 残すことを固定する。
+#
+# 判別子は「marker から改行 / <br> / 句点 までの間に => があるか」。F-04 が buy する範囲
+# (文境界で隔たった散文が降格側へ戻る) と、F-05 が固定する残存限界 (同一セグメント内で
+# アンカー正規形をインライン引用した散文は分離できない) の両方を明示的に pin する。
 # ---------------------------------------------------------------------------
-echo "--- TC-04b: => を欠く marker は降格側に残る (over-match の遮断) ---"
+echo "--- TC-04b: 同一セグメント内に => が続かない marker は降格側に残る (over-match の遮断) ---"
 f="$TEST_DIR/tc04b.json"
 mk_json "$f" \
   "$(mk_finding F-01 HIGH current-pr 'severity-levels.md の Verification: アンカー節の記述が実装と食い違う')" \
   "$(mk_finding F-02 MEDIUM current-pr '**Verification:** という marker 名の由来を追記すべき')" \
-  "$(mk_finding F-03 HIGH current-pr '形式崩れだがアンカー<br>Verification: repro printf x | jq . => false')"
+  "$(mk_finding F-03 HIGH current-pr '形式崩れだがアンカー<br>Verification: repro printf x | jq . => false')" \
+  "$(mk_finding F-04 MEDIUM current-pr 'Verification: 節の記述が実装とずれている。assessment が mergeable => fix-needed へ反転する条件が本文にない')"
 run_gate "$f" --reject-preset-verification
-if [ "$(jq -r '[.non_blocking_findings[].id] | join(",")' "$f")" = "F-01,F-02" ]; then
-  pass "=> を欠く散文中の Verification: 言及は降格される (恒久 blocking 化しない)"
+if [ "$(jq -r '[.non_blocking_findings[].id] | join(",")' "$f")" = "F-01,F-02,F-04" ]; then
+  pass "同一セグメント内に => が続かない Verification: 言及は降格される (恒久 blocking 化しない)"
 else fail "散文が未判定へ昇格した: findings=$(jq -c '[.findings[].id]' "$f")"; fi
 if [ "$(jq -r '[.findings[].id] | join(",")' "$f")" = "F-03" ]; then
-  pass "=> を持つ形式崩れアンカーだけが未判定として残る"
+  pass "marker と同一セグメントに => を持つ形式崩れアンカーだけが未判定として残る"
 else fail "未判定の母集団が不正: $(jq -c '[.findings[].id]' "$f")"; fi
 if grep -q 'MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1' <<<"$GATE_STDERR" \
-  && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=2' <<<"$GATE_STDERR"; then
-  pass "2 marker の count が排他に分割される (1 + 2 = anchor_unparseable 3)"
+  && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=3' <<<"$GATE_STDERR"; then
+  pass "2 marker の count が排他に分割される (1 + 3 = anchor_unparseable 4)"
 else fail "marker の分割が不正: $(grep -o 'MEASURED_[A-Z_]*ON_ANCHOR=1; count=[0-9]*' <<<"$GATE_STDERR" | tr '\n' ' ')"; fi
+
+# 残存限界の明示的 pin: 同一セグメント内でアンカー正規形をインライン引用した散文は分離できず
+# 未判定へ倒れる。`=>` の位置だけでは「アンカーの書き損じ」と「アンカーを論じる散文」が
+# 字句的に同一になるため (本リポジトリではアンカー仕様自体が指摘対象になるので現実に起きる)。
+# 挙動を明文化しておくことで、後続の判別子変更が本ケースを意図せず動かしたときに気付ける。
+# 未判定分岐は `del(.verification)` でキーを落とす。裸の `.` で返すと型崩れ preset が
+# 正規化を経ずゲート出力へ残り、read 側の型ガードが当該 review-result を reject して
+# 永続 artifact を corrupt 扱いで rename する。
+echo "--- TC-04d: 未判定分岐は型崩れ preset を出力に残さない ---"
+f="$TEST_DIR/tc04d.json"
+cat > "$f" <<'EOF'
+{"schema_version":"1.0.0","pr_number":1,"timestamp":"T","commit_sha":"c",
+ "overall_assessment":"fix-needed",
+ "findings":[{"id":"F-01","reviewer":"r","category":"c","severity":"HIGH","scope":"current-pr",
+   "file":"f","line":1,"description":"形式崩れ<br>Verification: repro printf x | jq . => false",
+   "suggestion":"s","status":"open","verification":{"measured":"true","repro":"forged"}}],
+ "non_blocking_findings":[]}
+EOF
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 0 ] && [ "$(jq '.findings[0] | has("verification") | not' "$f")" = "true" ]; then
+  pass "型崩れ preset は未判定分岐で削除される (read 側型ガードの corrupt rename を誘発しない)"
+else fail "型崩れ preset が出力に残存: rc=$GATE_RC $(jq -c '.findings[0].verification // "ABSENT"' "$f")"; fi
+# read 側の canonical 型ガード (review-source-resolve.sh と同一述語) を通ることまで確認する
+if jq -e 'all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))' "$f" >/dev/null 2>&1; then
+  pass "ゲート出力が read 側 verification 型ガードを通過する"
+else fail "ゲート出力が read 側型ガードで reject される"; fi
+
+echo "--- TC-04b-2: インライン引用散文は分離できない (残存限界の pin) ---"
+f="$TEST_DIR/tc04b2.json"
+mk_json "$f" \
+  "$(mk_finding F-01 MEDIUM current-pr 'Verification: 節が <LHS> => <RHS> を必須と定めていることが本文から読めない (実測なし)')"
+run_gate "$f" --reject-preset-verification
+if [ "$(jq '.findings | length' "$f")" = "1" ] && [ "$(jq '.findings[0] | has("verification") | not' "$f")" = "true" ]; then
+  pass "インライン引用散文は未判定へ倒れる (既知の残存限界。上限は iterate のサーキットブレーカー)"
+else fail "残存限界の挙動が変化した — 判別子を変えたなら本 TC の期待値も更新すること: $(jq -c '[.findings[].id]' "$f") nb=$(jq -c '[.non_blocking_findings[].id]' "$f")"; fi
 
 # ---------------------------------------------------------------------------
 # TC-04c: 内訳が母集団を覆えていないとき fail-closed で停止する

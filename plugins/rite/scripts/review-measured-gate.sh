@@ -31,7 +31,8 @@
 #   有無と矛盾する」場合だけで、アンカーと一致する preset は rc=0 で素通りし、その repro /
 #   failing_test は computed_verification を経ずに caller が書いた文字列のまま残る。
 #   「preset の存在自体を hard fail させる」形には**できない** — ゲート適用後の findings[] は
-#   全件が verification を持つため、同じ JSON への再実行が必ず hard fail し AC-5 (冪等性) が壊れる。
+#   未判定を除き verification を持つため、同じ JSON への再実行が必ず hard fail し AC-5 (冪等性) が
+#   壊れる (未判定はキー自体を持たないので再実行でも preset とみなされない)。
 #   preset の中身まで強制したい場合は、ゲートが書いた値と caller が書いた値を区別する marker が
 #   別途必要になる (本 script のスコープ外)。
 #
@@ -277,12 +278,21 @@ def has_measured_bool:
 def anchored: (desc | test($re_detect));
 def marker_present: (desc | test($re_stage1));
 
-# アンカーは `<LHS> => <RHS>` を必須とする (_reviewer-base.md §Verification)。したがって `=>` を
-# 全く含まない `Verification:` は「書き損じたアンカー」ではなく散文中の言及である。stage 1 は
-# 意図的に緩い存在判定で散文を拾うため、未判定 (= blocking のまま) へ倒す母集団は本述語で絞る。
-# 絞らないと、`Verification:` に言及するだけの doc 指摘が恒久 blocking になり、/rite:fix には
-# 直す対象が無いまま max_review_cycles まで空転する。
-def has_arrow: (desc | test("=>"));
+# アンカーは `<LHS> => <RHS>` を必須とする (_reviewer-base.md §Verification)。したがって marker から
+# 同一セグメント内に `=>` が続かない `Verification:` は「書き損じたアンカー」ではなく散文中の言及で
+# ある。stage 1 は意図的に緩い存在判定で散文を拾うため、未判定 (= blocking のまま) へ倒す母集団は
+# 本述語で絞る。絞らないと `Verification:` に言及するだけの doc 指摘が恒久 blocking になり、
+# /rite:fix には直す対象が無いまま max_review_cycles まで空転する。
+#
+# セグメントの終端は改行 / `<br>` / 句点 (`。`) — アンカーは 1 セグメントに収まる形で書かれるため、
+# marker と `=>` の間に文の切れ目があれば別の話題であり、アンカーの書き損じではない。
+#
+# **残存する限界 (意図的に受容)**: 同一セグメント内でアンカー正規形をインライン引用した散文
+# (例:「Verification: 節は <LHS> => <RHS> と定めている」) は本述語で分離できず未判定へ倒れる。
+# `=>` の位置だけでは「アンカーの書き損じ」と「アンカーを論じる散文」を字句的に区別できないため
+# (本リポジトリでは両者のテキストがほぼ同一になる)。この場合の恒久 blocking 化は iterate の
+# サーキットブレーカー (safety.max_review_cycles) が上限で止める。
+def has_arrow: (desc | test("(?i)verification[*_`[:space:]]*[:：](?:(?!<br)[^\n。])*=>"));
 
 # 形式崩れアンカー = 「実測の有無を判定する構造が読めない」状態。measured=false (実測が無いと
 # 確定) ではなく **未判定** として扱い、verification キー自体を生やさない。read 側の 3 値モデル
@@ -308,9 +318,13 @@ def computed_verification:
 # 定義しており、nit-noted は降格され得ないので未判定にする意味がない。ここで gated を外すと
 # nit-noted も verification を失う一方、下の anchor_undetermined 統計 (gated 限定) には載らず、
 # 「marker ゼロで表現だけが変わる」観測不能な差分になる。
+# 未判定分岐は `del` で明示的にキーを落とす。裸の `.` で返すと、`measured` が boolean でない
+# 既存 verification (型崩れ preset) が正規化を経ずゲート出力へ残り、read 側の型ガードが当該
+# review-result を reject して永続 artifact を corrupt 扱いで rename する。「未判定 = キー欠落」を
+# 出力形として literal に満たすことで、この経路を塞ぐ (キー不在時は no-op のため冪等)。
 def with_verification:
   if has_measured_bool then .
-  elif (gated and undetermined_on_anchor) then .
+  elif (gated and undetermined_on_anchor) then del(.verification)
   else .verification = computed_verification end;
 
 # $orig は verification 代入**前**の findings[]。「元から boolean が入っていたか」を問う統計は
@@ -473,12 +487,12 @@ if [ "$anchor_undetermined" -gt 0 ]; then
 fi
 
 if [ "$anchor_demoted_marker" -gt 0 ]; then
-  echo "WARNING: Verification: marker はあるが => を欠く (= アンカーではなく散文中の言及) か、既存 verification.measured=false を保持したまま降格した finding ${anchor_demoted_marker} 件を検出しました。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを添えてください" >&2
+  echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かない (= アンカーではなく散文中の言及) か、既存 verification.measured を保持したため本ゲートが verification を算出しなかった finding ${anchor_demoted_marker} 件を検出しました。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを添えてください" >&2
   echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count=${anchor_demoted_marker}; cause=anchor_unparseable" >&2
 fi
 
 if [ "$runtime_obs_without_anchor" -gt 0 ]; then
-  echo "WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: アンカーを欠く finding ${runtime_obs_without_anchor} 件を measured=false として降格しました (実測済み指摘は両方の添付が契約)" >&2
+  echo "WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: の正規形アンカーを欠く finding ${runtime_obs_without_anchor} 件を検出しました (実測済み指摘は両方の添付が契約)。帰結は併記される MEASURED_UNDETERMINED_ON_ANCHOR / MEASURED_DEMOTED_ON_ANCHOR marker を参照してください (形式崩れは未判定として blocking に据え置き、アンカー欠如は measured=false へ降格)" >&2
   echo "[CONTEXT] MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count=${runtime_obs_without_anchor}" >&2
 fi
 

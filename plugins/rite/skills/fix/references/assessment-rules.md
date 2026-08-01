@@ -96,8 +96,9 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
      (`Verification: repro|failing_test <LHS> => <RHS>`、_reviewer-base.md §Verification: runtime 実測の添付 で定義。
       LHS/RHS とも cell separator `|` と `<br>` を跨がず、RHS は非空):
     keep (measured=true、blocking 候補として 5.3.1 以降へ)
-  elif stage 1 marker があり、かつ `=>` を含む (= アンカーを書こうとして形式が崩れている):
-    keep (**verification を設定しない** = 未判定。blocking のまま 5.3.1 以降へ)
+  elif stage 1 marker があり、かつ marker から**同一セグメント内**に `=>` が続く
+       (= アンカーを書こうとして形式が崩れている。セグメント終端は改行 / `<br>` / 句点):
+    keep (**verification を削除** = 未判定。blocking のまま 5.3.1 以降へ)
     (「実測の有無を判定する構造が読めない」状態を measured=false へ潰さない)
   else:
     move to non_blocking_findings
@@ -109,7 +110,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 > **散文中の言及**であり、未判定へ昇格させる対象ではない。stage 1 は下記のとおり意図的に緩い
 > 存在判定なので、この絞り込みが無いと散文がそのまま恒久 blocking になる — `/rite:fix` は
 > コードを直す機構でありレビュアー出力の書式は直せないため、`max_review_cycles` まで空転する。
-> 一方で **WARNING の母集団は絞らない** (下記「WARNING emit」)。`=>` を欠く形も降格側の帰結として
+> 一方で **WARNING の母集団は絞らない** (下記「WARNING emit」)。同一セグメントに `=>` が続かない形も降格側の帰結として
 > 必ず報告されるため、検出層に穴は空かない。
 
 > 疑似コードのループ条件に `where scope ∈ {current-pr, follow-up}` を明示するのは、本節が
@@ -124,8 +125,8 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 | subset | 帰結 | marker |
 |---|---|---|
-| `=>` あり (アンカーの書き損じ) | **未判定** = blocking のまま | `MEASURED_UNDETERMINED_ON_ANCHOR` |
-| `=>` なし、または既存 `verification.measured=false` を保持 | `measured=false` で降格 | `MEASURED_DEMOTED_ON_ANCHOR` |
+| marker と同一セグメントに `=>` あり (アンカーの書き損じ) ∧ 既存 boolean なし | **未判定** = blocking のまま | `MEASURED_UNDETERMINED_ON_ANCHOR` |
+| 同一セグメントに `=>` なし (= 散文中の言及)、または既存 `verification.measured` (`true` / `false` 問わず) を保持 | 本ゲートは `verification` を算出しない (前者は `measured=false` を算出して降格、後者は既存値のまま) | `MEASURED_DEMOTED_ON_ANCHOR` |
 
 母集団を gate 対象 scope に限るのは、`nit-noted` が `gated` 偽で**降格され得ない**ため。含めると「降格していないものを降格と申告する」ことになり、WARNING の件数が実際の帰結と食い違う。
 
@@ -156,7 +157,9 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 >
 > **降格を permissive 側に倒すのは「実測が無いと確定できた」finding に限る**: 本ゲートは rite 全体で唯一「判定結果を permissive 側 (non-blocking) に倒す」箇所で、それが許されるのは (a) 降格が必ず WARNING で報告され、(b) 降格した指摘が **永続 JSON (`non_blocking_findings[]`) に必ず残り、ステップ 6.1.d の PR 記録コメントに best-effort で残る**ため (後者は非ブロッキング契約により gh 失敗 / 本文不備で落ちうる。落ちた場合は WARNING と `outcome=failed` が出る)。5.4 section と E2E output line suffix は補助経路で、実行モード (standalone は ステップ 8 を実行しない) と件数 (0 件なら省略) に依存する。後続の変更で (a) か (b) を緩めるなら、本例外の前提が崩れるので同時に見直すこと。
 >
-> **判定不能 (未判定) は permissive 側に倒さない**: 形式崩れアンカーは「実測が無い」ではなく「実測の有無を判定できない」状態であり、`measured=false` へ潰すと**実測済みの指摘が書式ミスだけで blocking から消える**。3 値モデル (severity-levels.md §適用範囲) の「未判定 = ゲート対象外 = 従来どおり blocking」に従って blocking のまま残す。収束性 (AC-2) は次の 2 点で担保される: (i) 未判定に昇格するのは `=>` を含む形だけで、散文中の `Verification:` 言及は降格側に残るため恒久 blocking が生まれない。(ii) blocking として `/rite:fix` に渡った未判定 finding は指摘本体 (コード側) の修正対象になり、次 cycle は reviewer が finding を作り直すため「レビュアー出力の書式が直らないから永久に残る」状態にはならない。
+> **判定不能 (未判定) は permissive 側に倒さない**: 形式崩れアンカーは「実測が無い」ではなく「実測の有無を判定できない」状態であり、`measured=false` へ潰すと**実測済みの指摘が書式ミスだけで blocking から消える**。3 値モデル (severity-levels.md §適用範囲) の「未判定 = ゲート対象外 = 従来どおり blocking」に従って blocking のまま残す。収束性 (AC-2) は次の 2 点で担保される: (i) 未判定に昇格するのは marker から**同一セグメント内** (改行 / `<br>` / 句点まで) に `=>` が続く形だけで、文境界で隔たった `Verification:` 言及は降格側に残る。(ii) blocking として `/rite:fix` に渡った未判定 finding は指摘本体 (コード側) の修正対象になり、次 cycle は reviewer が finding を作り直すため「レビュアー出力の書式が直らないから永久に残る」状態にはならない。
+
+> **(i) は完全な分離ではない (既知の残存限界)**: 同一セグメント内でアンカー正規形をインライン引用した散文 (例:「`Verification:` 節は `<LHS> => <RHS>` と定めている」) は本判別子で分離できず未判定へ倒れる。`=>` の位置だけでは「アンカーの書き損じ」と「アンカーを論じる散文」を字句的に区別できないため — 本リポジトリではアンカー仕様そのものが指摘対象になるので、両者のテキストはしばしば同一になる。この場合の恒久 blocking 化は iterate のサーキットブレーカー (`safety.max_review_cycles`) が上限で止める。判別子を変更する際は `scripts/tests/review-measured-gate.test.sh` の TC-04b / TC-04b-2 が buy する範囲と残存限界の両方を pin しているので、期待値ごと更新すること。
 
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
@@ -164,7 +167,7 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 (?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[ \t]*(?!<br)[^|[:space:]]
 ```
 
-**match subject は疑似コードと同じく `内容` セルの文字列単体**であり、後続セル・次行を含めない (subject 定義がずれると同じアンカーが配置次第で逆判定になる)。LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。`=>` 直後を `[ \t]*` (水平空白のみ) に狭めているのも同じ理由で、subject を誤って行/レポート単位に取った場合でも RHS 検査が改行を跨がず、`=>` 右辺空アンカーが次行の文字を RHS と誤認して false-pass することを防ぐ (二重の防御)。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。**この制約は authoring 側 SoT (`_reviewer-base.md` §Verification の Rules / `reviewer-prompt-generator.md` の記入例) にも明記済み** — detection 側にだけ書くと、reviewer が最も自然に書くパイプ入り repro が no-match で降格する。マッチしない場合は安全側 (non-blocking 降格) に倒れるが、**無音では倒れない** — アンカー文字列があるのに no-match だったケースは上記 **WARNING emit** 節の 2 段判定で必ず報告される (正常系 = アンカー文字列なし のみが無音)。
+**match subject は疑似コードと同じく `内容` セルの文字列単体**であり、後続セル・次行を含めない (subject 定義がずれると同じアンカーが配置次第で逆判定になる)。LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。`=>` 直後を `[ \t]*` (水平空白のみ) に狭めているのも同じ理由で、subject を誤って行/レポート単位に取った場合でも RHS 検査が改行を跨がず、`=>` 右辺空アンカーが次行の文字を RHS と誤認して false-pass することを防ぐ (二重の防御)。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。**この制約は authoring 側 SoT (`_reviewer-base.md` §Verification の Rules / `reviewer-prompt-generator.md` の記入例) にも明記済み** — detection 側にだけ書くと、reviewer が最も自然に書くパイプ入り repro が no-match で降格する。マッチしない場合の帰結は marker と同一セグメント内の `=>` の有無で分岐する — **あり**は未判定 (blocking のまま)、**なし**は安全側 (non-blocking 降格)。いずれも**無音では倒れない** — アンカー文字列があるのに no-match だったケースは上記 **WARNING emit** 節の 2 段判定で必ず報告される (正常系 = アンカー文字列なし のみが無音)。
 
 **non_blocking_findings の扱い**:
 
