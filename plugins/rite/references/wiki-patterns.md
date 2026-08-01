@@ -250,7 +250,9 @@ rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https:
 
 ## OKF Visualizer 連携
 
-完全準拠した `.rite/wiki/` bundle は、上流の OKF 静的 HTML visualizer（[`GoogleCloudPlatform/knowledge-catalog`](https://github.com/GoogleCloudPlatform/knowledge-catalog)）で概念グラフとして閲覧できます。**visualizer 本体は rite リポジトリに同梱しません**（vendoring せず、起動手順のみ提供）。
+`.rite/wiki/` bundle は、上流の OKF 静的 HTML visualizer（[`GoogleCloudPlatform/knowledge-catalog`](https://github.com/GoogleCloudPlatform/knowledge-catalog)）で概念グラフとして閲覧することを想定した構造です。**visualizer 本体は rite リポジトリに同梱しません**（vendoring せず、起動手順のみ提供）。
+
+> **要検証**: 上記「準拠規約」節のとおり `index.md` のカタログ形式は現在テーブル形式で、OKF v0.1 箇条書きに未達です。visualizer がこの形式の `index.md` を受理するかは**未確認**（visualizer 非同梱のため本リポジトリでは実測していない）。閲覧できない場合は `index.md` を箇条書き形式へ変換してから読み込ませてください。
 
 ### ライセンス確認
 

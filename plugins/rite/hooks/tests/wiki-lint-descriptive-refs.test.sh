@@ -363,7 +363,9 @@ assert_not_grep "TC-18 旧 skip 範囲 (3-7) が残っていない" "$LINT_MD" '
 # 上の anti-pattern を避ける過程で、実在しない見出しへの範囲参照 (`ステップ 3-7.4` = `## ステップ 7.4`
 # は本ファイルに存在しない) を作らないこと。7.5 の除外は実在見出しだけを使って表現する
 # (例: `ステップ 3-7 (7.5 を除く)`)。読み手が「7.4 という段階が別にあるのか」を推測で解く余地を残さない。
-assert_not_grep "TC-18 実在しない見出し (ステップ 7.4) への範囲参照がない" "$LINT_MD" 'ステップ 3-7\.4\|ステップ 7\.4'
+# 選択子は生の `|` で書く。assert_not_grep は grep -qE (ERE) なので `\|` は選択子ではなく
+# literal のパイプ文字になり、「2 語をパイプで連結した 1 本の文字列」を探す常時緑の assertion に化ける。
+assert_not_grep "TC-18 実在しない見出し (ステップ 7.4) への範囲参照がない" "$LINT_MD" 'ステップ 3-7\.4|ステップ 7\.4'
 
 # ---- TC-19: separate_branch (本番既定経路) の positive path ----------------
 # 44 assertion が same_branch (cat) に偏っており、rite-config.yml の既定 separate_branch
@@ -529,8 +531,19 @@ assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数え�
 
 # OKF 箇条書き形式。テーブル専用にすると、template と wiki-ingest が**指示**しているこの形式と
 # 実挙動の乖離が解消された時点で検出が無言で 0 件へ倒れる (本 helper が塞ごうとしている盲点と同型)。
-printf '# Wiki Index\n\n* [Issue #99 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
-assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "1" "$(printf '%s' "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)" | sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p')"
+#
+# fixture の「意地悪さ」をテーブル経路と揃える。テーブル側は生パイプ入りタイトル (TC-27) と
+# コードスパン入りサマリー (TC-50) でマスク相互作用を pin しているのに、箇条書き側が素朴な形しか
+# 持たないと以下 2 つの変異が全 assertion 緑のまま生き残る:
+#   3 行目 (サマリーに生パイプ): 形式 dispatch の行頭 anchor を外す変異。anchor が無いと
+#     「パイプを含む行」= テーブル行と誤判定され、ヘッダー不在で skipped へ倒れる (hits が無言で減る)
+#   4 行目 (リンクテキストにコードスパン): summary 抽出の match をマスク前の行へ向ける変異。
+#     マスクで行長が縮むため RSTART がずれ、substr の切り出し位置が後ろへ飛んで番号を取り落とす
+printf '# Wiki Index\n\n* [Issue #99 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n* [番号なし2](pages/patterns/c.md) - 詳細は #1234 | 補足あり\n* [`grep -c` の罠](pages/patterns/d.md) - 詳細は #1789\n' > "$IDXSBX/.rite/wiki/index.md"
+bul_out="$IDXSBX/bul.out"; tmp_files+=("$bul_out")
+printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$bul_out" 2>/dev/null
+assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "3" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$bul_out")"
+assert "TC-30 箇条書きは生パイプを含む行でもテーブル扱いにならない (列崩れ 0 件)" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$bul_out")"
 
 # 形式判別は **行単位** で行う (ファイル単位で先頭一致から決め打ちしない)。稼働中の wiki は
 # テーブル、template と wiki-ingest ステップ 6 が生成するのは箇条書きのため、移行期には
