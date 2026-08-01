@@ -1,4 +1,5 @@
 ## 2026-08-01
+* **lint:warning** — contradictions=0, stale=3, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 * **Create**: [開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす](pages/anti-patterns/latch-exclusion-without-eof-termination-check.md) — PR #2070 の raw source 2 件を統合（silent-0 を塞ぐ機構が反対側から silent-0 を再導入 / 3 レビュアーが別々の攻撃面から同一行に到達 / 特例でなく「未閉鎖の除外開始トークン」クラスを 1 述語で閉じる）
 * **Create**: [ガードの precondition に代理値を使うと、守るべき経路でだけ無効化される](pages/anti-patterns/guard-precondition-proxy-value-silent-where-needed.md) — PR #2070 の raw source 2 件を統合（ガードが無効化される経路とガードを必要とする経路が完全一致 / 代理値は相関が切れる場所＝守るべき場所で沈黙 / 「元へ戻す変異」は修正が回帰テストで守られているかを直接測る唯一の手段）
