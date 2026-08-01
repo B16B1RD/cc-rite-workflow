@@ -53,7 +53,7 @@
 #        (本ゲートの算出結果と食い違う場合は WARNING のみ。§4.5 の契約)
 #        `verification: {}` / `measured: null` は read 側型ガードが「未判定」として受理する形であり
 #        「設定済み」とはみなさない — 本 script が算出する
-#      - `--reject-preset-verification` 指定時は、上記「既存値かつ description と矛盾」を
+#      - `--reject-preset-verification` 指定時は、上記「既存値かつ本ゲートの算出結果と食い違う」を
 #        **caller 契約違反として hard fail** させる (下記 Why 参照)
 #      - 形式崩れアンカー (stage 1 真 ∧ `=>` あり ∧ stage 2 偽) → **verification を設定しない**。
 #        「実測の有無を判定する構造が読めない」状態を measured=false (実測が無いと確定) へ潰さず
@@ -153,8 +153,9 @@ Usage: review-measured-gate.sh --input PATH [--reject-preset-verification]
 
 Options:
   --input PATH                    実測必須ゲートを適用する review-result JSON (in-place 書き換え)
-  --reject-preset-verification    description のアンカーと矛盾する既存 verification.measured を
-                                  caller 契約違反として hard fail させる (pr-review step 2 から常時指定)
+  --reject-preset-verification    本ゲートの算出結果 (実測あり / 実測なし / 未判定) と食い違う既存
+                                  verification.measured を caller 契約違反として hard fail させる
+                                  (pr-review step 2 から常時指定)
   -h, --help                      Show this help
 
 Exit codes:
@@ -494,7 +495,7 @@ if [ "$anchor_undetermined" -gt 0 ]; then
 fi
 
 if [ "$anchor_demoted_marker" -gt 0 ]; then
-  echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かないため本ゲートが未判定にしなかった finding ${anchor_demoted_marker} 件を検出しました (marker と => の間に改行タグが挟まった折り返しアンカー / 文境界を挟んだ散文中の言及 / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
+  echo "WARNING: Verification: marker はあるが正規形アンカーとして検出できず本ゲートが未判定にしなかった finding ${anchor_demoted_marker} 件を検出しました (marker と => の間に改行 / <br> / 句点が挟まる / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
   echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count=${anchor_demoted_marker}; cause=anchor_unparseable" >&2
 fi
 

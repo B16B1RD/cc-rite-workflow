@@ -222,12 +222,12 @@ if [ "$(jq -r '[.findings[].id] | join(",")' "$f")" = "F-03" ]; then
   pass "marker と同一セグメントに => を持つ形式崩れアンカーだけが未判定として残る"
 else fail "未判定の母集団が不正: $(jq -c '[.findings[].id]' "$f")"; fi
 if grep -q 'MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1' <<<"$GATE_STDERR" \
-  && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=5' <<<"$GATE_STDERR"; then
+  && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=5; cause=anchor_unparseable' <<<"$GATE_STDERR"; then
   pass "2 marker の count が排他に分割される (1 + 5 = anchor_unparseable 6)"
 else fail "marker の分割が不正: $(grep -o 'MEASURED_[A-Z_]*ON_ANCHOR=1; count=[0-9]*' <<<"$GATE_STDERR" | tr '\n' ' ')"; fi
 # marker は機械経路、WARNING は reviewer が書式を直すための唯一の人間向け経路。marker だけを
 # pin すると WARNING の echo が消えても機械検査に載らない (TC-04 が subset A で持つ形と対称)。
-if grep -q 'WARNING: Verification: marker はあるが同一セグメント内に => が続かない' <<<"$GATE_STDERR"; then
+if grep -q 'WARNING: Verification: marker はあるが正規形アンカーとして検出できず' <<<"$GATE_STDERR"; then
   pass "降格側の WARNING を emit する (marker と対)"
 else fail "降格側 WARNING 不在"; fi
 

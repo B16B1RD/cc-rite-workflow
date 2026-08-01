@@ -105,11 +105,12 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
     (severity / scope は維持したまま blocking 集合から除外。破棄しない)
 ```
 
-> **なぜ `=>` の有無で分けるか**: アンカーは `<LHS> => <RHS>` を必須形とする (_reviewer-base.md
-> §Verification)。したがって `=>` を全く含まない `Verification:` は「書き損じたアンカー」ではなく
-> **散文中の言及**であり、未判定へ昇格させる対象ではない。stage 1 は下記のとおり意図的に緩い
-> 存在判定なので、この絞り込みが無いと散文がそのまま恒久 blocking になる — `/rite:fix` は
-> コードを直す機構でありレビュアー出力の書式は直せないため、`max_review_cycles` まで空転する。
+> **なぜ marker と同一セグメント内の `=>` で分けるか**: アンカーは `<LHS> => <RHS>` を必須形と
+> する (_reviewer-base.md §Verification)。したがって **marker と同一セグメント内に `=>` が続かない**
+> `Verification:` は未判定へ昇格させない。stage 1 は下記のとおり意図的に緩い存在判定なので、この
+> 絞り込みが無いと散文がそのまま恒久 blocking になる — `/rite:fix` はコードを直す機構であり
+> レビュアー出力の書式は直せないため、`max_review_cycles` まで空転する。**判別子は字句的であり、
+> 「書き損じたアンカー」と「アンカーを論じる散文」を意図では区別しない** (残存限界は下記 (i) を参照)。
 > 一方で **WARNING の母集団は絞らない** (下記「WARNING emit」)。同一セグメントに `=>` が続かない形も降格側の帰結として
 > 必ず報告されるため、検出層に穴は空かない。
 
@@ -125,8 +126,8 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 | ケース | 帰結 | subset (marker) |
 |---|---|---|
-| marker と同一セグメントに `=>` あり (アンカーの書き損じ) ∧ 既存 boolean なし | **未判定** = blocking のまま | `MEASURED_UNDETERMINED_ON_ANCHOR` |
-| 同一セグメントに `=>` が続かない (折り返しアンカー / 文境界を挟んだ言及) ∧ 既存 boolean なし | `measured=false` を算出して降格 | `MEASURED_DEMOTED_ON_ANCHOR` |
+| marker と同一セグメントに `=>` あり ∧ 既存 boolean なし | **未判定** = blocking のまま | `MEASURED_UNDETERMINED_ON_ANCHOR` |
+| marker から `=>` までに改行 / `<br>` / 句点が挟まる、または上限超過 ∧ 既存 boolean なし | `measured=false` を算出して降格 | `MEASURED_DEMOTED_ON_ANCHOR` |
 | 既存 `verification.measured` (`true` / `false` 問わず) を保持 | 本ゲートは算出しない (既存値のまま。`false` なら降格、`true` なら blocking 継続) | `MEASURED_DEMOTED_ON_ANCHOR` |
 
 ケースは 3 つだが subset は 2 つ (下 2 ケースは同じ marker に集約される)。
@@ -156,7 +157,7 @@ echo "WARNING: Verification: アンカーはあるが検出 regex に match し�
 echo "[CONTEXT] MEASURED_UNDETERMINED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
 
 # subset B: 同一セグメントに => が続かない (折り返し / 文境界越しの言及) / 既存 boolean 保持
-echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かないため本ゲートが未判定にしなかった finding {n} 件を検出しました (marker と => の間に改行タグが挟まった折り返しアンカー / 文境界を挟んだ散文中の言及 / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
+echo "WARNING: Verification: marker はあるが正規形アンカーとして検出できず本ゲートが未判定にしなかった finding {n} 件を検出しました (marker と => の間に改行 / <br> / 句点が挟まる / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
 echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
 ```
 
