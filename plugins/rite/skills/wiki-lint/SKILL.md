@@ -638,7 +638,7 @@ rationale: [references/descriptive-refs-rationale.md#pages-list-unchanged](refer
 
 **Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約）。
 
-`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。`pages_list` が空の場合は HEREDOC 本文を空のまま substitute する（空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると helper の partial pollution gate が exit 1 する）。本ステップは**両 list が空の経路でも実行される唯一のステップ**であるため、ステップ 4 / 5 / 6.2 / 7 が skip される状況でも空 HEREDOC を渡す（`pages_list` 空・`raw_list` 非空の経路ではそれらのステップも実行され、同じく空 HEREDOC を受け取る — ステップ 4 / 6.2 の同旨の記述を参照）。
+`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。`pages_list` が空の場合は HEREDOC 本文を空のまま substitute する（空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると helper の partial pollution gate が exit 1 する）。本ステップは**両 list が空の経路でも実行される唯一のステップ**であるため、ステップ 4 / 5 / 6.2 / 7 が skip される状況でも空 HEREDOC を渡す（`pages_list` 空・`raw_list` 非空の経路では**ステップ 4 / 5 / 6.2** も実行され、同じく空 HEREDOC を受け取る — ステップ 4 / 6.2 の同旨の記述を参照。**ステップ 7 だけは別**で、HEREDOC が `pages_list` + separator + `raw_list` の 3 部構成のため `raw_list` が非空なら空にならない）。
 
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。

@@ -353,6 +353,11 @@ assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD
 # stdout 契約は本 PR で 5 フィールドになった。fallback が片方だけ追随しないと
 # 「helper 経由か縮退経路かで stdout の形が変わる」状態になる
 assert_grep "TC-18 helper 不在 fallback が skipped_rows=0 を出す" "$LINT_MD" 'descriptive_refs_skipped_rows=0'
+# producer (上の emit) だけでなく **消費者** も pin する。新設フィールドは ステップ 9 note 展開表
+# だけが読むため、展開表から skipped_rows 条件が消えると「index.md の行欠損があっても注記なしの
+# N 件」を出す状態へ静かに戻る。emit 側の assert はその変更を 1 つも検出しない。
+assert_grep "TC-18 ステップ 9 note 展開が skipped_rows を条件に含む" "$LINT_MD" 'read_errors=0` かつ `skipped_rows>0'
+assert_grep "TC-18 部分欠損 note の本文が存在する" "$LINT_MD" '部分欠損: index\.md の {descriptive_refs_skipped_rows} 行'
 assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD" 'see PR\|See PR\) #\[0-9\]\+'
 # ステップ 2.2 末尾の分岐契約。ページ / raw が 0 件でもステップ 7.5 だけは走らせる
 # (index.md が単独で走査対象になりうるため)。develop 版の「ステップ 3-7 を skip し ステップ 9 に進む」
@@ -731,6 +736,24 @@ assert "TC-43 コードスパン内に引用された TODO は E4 で無効化�
 # pages 側は E5 を行単位 (マスク前) で判定するため同じテキストでも行ごと落ちる。
 # 非対称は意図であり、両経路の判定順序を揃える変更が無検出で通らないよう pin する
 assert "TC-43 pages 側はコードスパン内 TODO でも行ごと落とす (index と非対称)" "0" "$(single_hits "$(printf '\140TODO\140 の扱いは 詳細は #1152\n')")"
+
+# index 側の E5 判定単位が「エントリのサマリー」であることを pin する (helper の `summary ~ /TODO/`)。
+# 上の 2 行目 fixture は TODO がサマリー内にあるため、判定対象を行全体へ揃える変異でも同じ結果に
+# なり単位の違いが現れない。リンクテキスト側にだけ TODO を置くと、行全体判定では hit が消え
+# サマリー判定では残る — かつ消えても entries には計上済みで skipped_rows も WARNING も立たない
+# ため、本 PR が塞ごうとしている無言の過少集計そのものになる。
+printf '# Wiki Index\n\n* [TODO 管理の教訓](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
+e5unit_out="$IDXSBX/e5unit.out"; tmp_files+=("$e5unit_out")
+printf '' | idx_run > "$e5unit_out" 2>/dev/null
+assert "TC-43 index 側の E5 はサマリー単位で判定する (リンクテキストの TODO で行を落とさない)" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e5unit_out")"
+assert "TC-43 リンクテキスト TODO の行は抽出失敗でもない (skipped_rows 0)" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$e5unit_out")"
+
+# index 側の E4 マスクが「削除ではなく `_` 置換」であることを pin する (ページ側 TC-4 と対称)。
+# 削除するとキーワードと番号が隣接し、R1 が許容する空白 2 個以内に収まって**誤検出を製造する**。
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - PR `x` #1234 で導入\n' > "$IDXSBX/.rite/wiki/index.md"
+e4mask_out="$IDXSBX/e4mask.out"; tmp_files+=("$e4mask_out")
+printf '' | idx_run > "$e4mask_out" 2>/dev/null
+assert "TC-43 index 側の span マスクがキーワードと番号を連結しない" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e4mask_out")"
 
 # ---- TC-44: 診断に外部入力の制御文字を素通ししない --------------------------
 # ref 解決失敗 WARNING は外部入力 (--wiki-branch) を埋め込む。中和しないと
