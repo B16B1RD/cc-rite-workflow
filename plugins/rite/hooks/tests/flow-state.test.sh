@@ -441,9 +441,12 @@ echo "=== TC-8b-i: every mktemp template in plugins/rite shell scripts ends in t
 #     suite red until that site is fixed, so the two belong in one follow-up change rather than
 #     here. Until then, a green TC-8b-i means "no suffixed template in *.sh", not "the class is
 #     extinct".
-#   - The detector only sees `mktemp` and its template on the SAME line. A template assembled
-#     into a variable first (`tpl="foo-XXXXXX.md"; mktemp "$tpl"`) or split across a line
-#     continuation slips through. No such call exists in the repo today.
+#   - The detector only sees `mktemp` and its template on the SAME line. A template built on one
+#     line and passed on the next (`tpl=...` then `mktemp "$tpl"`), or split across a line
+#     continuation, slips through. Writing both on one line does NOT slip through — the template
+#     is still on the `mktemp` line, so the scan catches it. No such call exists in the repo today.
+#   - Only leading-`#` comment LINES are exempt, same as TC-8b-h. A trailing comment that quotes a
+#     suffixed template is still reported.
 _tc8bi_detect() {
   LC_ALL=C awk -v x=X '!/^[[:space:]]*#/ && /mktemp/ && $0 ~ (x x x "[^X[:space:]\"'"'"'`)]") { print FILENAME ":" NR ": " $0 }' "$1"
 }
