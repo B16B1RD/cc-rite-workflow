@@ -1,0 +1,100 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T12:53:41+09:00",
+  "commit_sha": "ee77b376c9247416b07c8e1497df63613c841f17",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "CRITICAL",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "git ls-tree -r --name-only wiki | grep pages/ | bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy separate_branch --wiki-branch wiki => page=.rite/wiki/index.md; hits=230 / WIKI_DESCRIPTIVE_REFS=252 が出力され、SKILL.md:22 の「ページ本文の」という範囲記述は 252 件中 230 件 (91%) を範囲外に置く",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 22,
+      "description": "skill 冒頭のタスク列 22 行目が `7.5. 説明的番号参照検出 (ページ本文の Issue/PR 番号参照、informational)` のまま取り残され、本 PR が拡張した index.md エントリサマリーを含まない。同一ファイルの 36 行目 / 620 行目 / 925 行目と docs/SPEC.md:1323 はすべて「ページ本文と index.md のエントリサマリー」へ更新済みで、22 行目だけが旧スコープを主張する。git show develop: で確認したところ本行は PR 前は正確であり、本 PR の意味変更が陳腐化させた comment rot。rite ではスキル markdown が LLM の実行仕様書であり、ステップ列を最初に読む実行主体が 7.5 の走査範囲をページ本文のみと解釈しうる。実測では 252 hits 中 230 件 (91%) が 22 行目の記述の範囲外に置かれる。Likelihood-Evidence: new_call_site plugins/rite/skills/wiki-lint/SKILL.md:36 (本 PR diff の + 行で更新され 22 行目が取り残された)。【クロスバリデーション】tech-writer (HIGH) と prompt-engineer (MEDIUM) が独立に同一 file:line を検出したため High Confidence として severity を CRITICAL へ boost した。",
+      "suggestion": "22 行目を 36 行目・925 行目と同じ語彙に揃える。例: `7.5. 説明的番号参照検出 (ページ本文と index.md エントリサマリーの Issue/PR 番号参照、informational)`。1 行修正で完了する。",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "error-handling-reviewer",
+      "category": "error_handling",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "隔離 worktree で wiki-lint-descriptive-refs.sh:398 を `print n+0, skipped+0` へ変更し entries=0 fixture へ pages_list 1 件を投入 => 未変更版が出す「WARNING: エントリ行を 1 件も認識できませんでした」+ read_errors=1 が消え、read_errors=0 / read_ok=true / 無警告で通過。同変更のまま wiki-lint-descriptive-refs.test.sh は 133/133 PASS",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 453,
+      "description": "本 PR が追加したコメントが helper 内部の戻り値契約を 2 値と記述しているが、実装 (:398 の `print n+0, skipped+0, entries+0`) と 6 行下の同 PR 追加コメント (:459「hits skipped entries の 3 値を返す」) はいずれも 3 値であり、同一ブロック内で自己矛盾している。さらに :459-461 は「read で分解するとフィールド数が変わったとき未束縛が残り、下の数値検証が拾える」と fail-loud を主張するが、直下の :464-465 の case サニタイザが未束縛値を 0 / -1 へ無言で正規化するため、その検出機構は存在しない。:453 の記述どおり実装を 2 値へ戻すと _entries_field が -1 に落ち、:481 の「エントリ行を 1 件も認識できない = 検出失敗」ガード (本 PR の最終コミットが追加した、実測 230 hits の丸ごと欠落を塞ぐためのガード) が rc も WARNING も出さずに消える。本リポジトリはワークフロー定義を LLM エージェントが編集するため (CLAUDE.md)、誤った arity 記述は実際に追随編集を誘導する。Likelihood-Evidence: new_call_site plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh:453 (本 PR diff の + 行で追加。矛盾する相手の :459 も同 PR の + 行)",
+      "suggestion": "3 点を 1 つの修正として実施する。(1) :453 を「hits skipped entries の 3 値を返す」へ訂正し :459 と一致させる (重複説明なら片方へ集約する)。(2) :459-461 の「下の数値検証が拾える」主張を削除するか、実体に合わせて fail-loud 化する — Fail-Fast First に従い case の無言 default ではなく検出失敗へ倒す。例: read の直後に arity を検査し 3 値でなければ WARNING を出して既存の hits_rc != 0 経路 (read_errors 計上 + continue) へ合流させる。(3) 3 値 arity を pin する回帰 TC を追加する — 本 helper 自身が :343 で参照する経験則 positional-parse-row-count-guard が「回帰 TC (列挿入 → rc=2) で pin する」を要求しており、現状 mutation で 133/133 が green のまま通るのは同経験則の未充足にあたる。",
+      "status": "open"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "隔離 worktree で wiki-lint-descriptive-refs.sh:481-487 を削除して bash plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh => PASS 133 / FAIL 0 (変異が素通り)",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 451,
+      "description": "本 PR の最終コミットが追加した「index.md を読めたのにエントリ行を 1 件も認識できない = 検出失敗」ガード (wiki-lint-descriptive-refs.sh:481-487) に対応する TC が 1 件も無い。TC-25〜TC-46 の index fixture はすべてフェンス外に最低 1 本の pages リンクを含むため entries が 0 になる経路へ到達せず、ガードの肯定側 (pages_list 非空 → read_errors +1) も否定側 (pages_list 空 → 計上しない) も未検証。本 PR は「0 件が実測済みとして通る silent-0 を塞ぐ」ことが目的であり、その最後の防波堤が退行しても CI が沈黙する。Issue #2069 §7 の MUST「検出器の変更には対応する回帰テストを同一 PR で追加する」に直接抵触する (ガード自体は手動実測で正しく動作することを確認済み — 欠けているのはテストのみ)。Likelihood-Evidence: entrypoint_connection plugins/rite/skills/wiki-lint/SKILL.md:1074 のエラー処理表が本ガードを契約として宣言 → wiki-lint-descriptive-refs.sh:481-487",
+      "suggestion": "TC を 1 件追加する。fixture はエントリ行を持たない index.md (例: 見出しと「詳細は #1151」の散文のみ) + pages_list に実ページ 1 件。assert は 3 本: descriptive_refs_read_errors=1 / stderr に「エントリ行を 1 件も認識できませんでした」/ index 分の hits が合計に入らないこと。否定側も同 fixture で pages_list を空にして read_errors=0 を pin する (この 2 本が無いと「ガード削除」と「条件削除」の両変異が生き残る — 後者も実測で 133/0 のまま)。",
+      "status": "open"
+    },
+    {
+      "id": "F-04",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "plugins/rite/skills/wiki-lint/SKILL.md:273 と :1074 を develop 版の文面へ戻して bash plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh => PASS 133 / FAIL 0 (変異が素通り)",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 339,
+      "description": "本 PR が SKILL.md に新設したオーケストレーション契約「ページ / raw が 0 件でも ステップ 7.5 は skip しない」(SKILL.md:273 と :1074、いずれも本 PR の追加行) に静的 pin が無い。本テストは TC-18 / TC-21 / TC-35 で SKILL.md の契約文字列を 3 種 pin する規約を確立しているのに、AC-1 を「wiki 初期化直後 / git ls-tree 失敗」ケースで成立させる唯一の分岐だけが対象外。この記述が develop 版の「ステップ 3-7 を skip し ステップ 9 に進む」へ戻ると、index.md 走査そのものが起動しなくなり本 PR が塞いだ盲点が無言で再発する。Likelihood-Evidence: entrypoint_connection plugins/rite/skills/wiki-lint/SKILL.md:273 (ステップ 2.2 末尾の分岐指示) → ステップ 7.5 の helper 起動",
+      "suggestion": "TC-18 のブロックに assert を 2 本足す。SKILL.md に「ステップ 7.5 → ステップ 9」が存在することを assert_grep で pin し、旧 skip 範囲の文字列「ステップ 3-7 を skip」が残っていないことを assert_not_grep で pin する。",
+      "status": "open"
+    },
+    {
+      "id": "F-05",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "LOW-MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "git show develop:plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh で T-06 / T-07 を検索 => ヒットは TC-21 のみで、本 PR が新規追加した TC-25 / TC-31 が同一 T-ID を再利用していることを確認",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 467,
+      "description": "新規 TC-25 に (T-06)、TC-31 に (T-07) のラベルを付けているが、(T-06) / (T-07) は develop 時点の TC-21 が別仕様 (n_warnings 不加算 / canonical Lint 行不変、test.sh:400-405) に対して既に使用している。同一ファイル内で 1 つの T-ID が 2 つの異なる仕様を指し、AC トレーサビリティが破れる (「T-07 を検証しているテスト」を追うと矛盾する 2 箇所に着地する)。Likelihood-Evidence: new_call_site plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh:467 と :512 が本 PR diff の + 行、test.sh:400 の同 ID は develop に既存 (git show develop: で確認)",
+      "suggestion": "新規側の ID に Issue 番号を付けて曖昧性を消す。TC-25 (#2069 T-06) / TC-31 (#2069 T-07) とし、冒頭 Coverage 一覧 (test.sh:36, :39) の記述も揃える。",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": []
+}

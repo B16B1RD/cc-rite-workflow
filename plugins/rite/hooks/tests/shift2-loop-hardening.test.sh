@@ -12,10 +12,10 @@
 #   3. `shift 2` 到達前に required-value ガードがない
 # (1つでも欠ければ安全: set -u+bare $2 は nounset で fail-fast / set -e は即 exit / 明示ガードは exit)
 #
-# Coverage (hardening した脆弱だった 5 スクリプト 計 18 箇所 + 新規 helper 2 件 計 9 箇所):
+# Coverage (hardening した脆弱だった 5 スクリプト 計 19 箇所 + 新規 helper 2 件 計 9 箇所):
 #   TC-1 post-review-state-verify.sh (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-2 review-comment-post.sh      (hooks/,         5 箇所) — 値なしフラグ末尾 → no-hang
-#   TC-3 review-result-save.sh       (hooks/,         3 箇所) — 値なしフラグ末尾 → no-hang
+#   TC-3 review-result-save.sh       (hooks/,         4 箇所) — 値なしフラグ末尾 → no-hang
 #   TC-4 review-source-resolve.sh    (scripts/,       5 箇所) — 値なしフラグ末尾 → no-hang
 #   TC-5 decompose-issues.sh         (scripts/,       1 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6 review-skip-notification.sh (hooks/,         4 箇所) — 値なしフラグ末尾 → no-hang (新規 helper、当初から shift; shift 採用)

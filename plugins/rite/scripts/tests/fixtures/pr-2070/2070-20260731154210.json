@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T15:42:10+09:00",
+  "commit_sha": "f6861e7f97dd936d28f38d0bcb16ffc80b0a0960",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "grep -nE \"pages_list=\" plugins/rite/skills/wiki-lint/SKILL.md => 230 / 241 / 252 の 3 箇所 (241=separate_branch の grep -E, 252=same_branch の find)。bash plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh => PASS: 144 FAIL: 0 のまま 252 行は一度も検査されない",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 699,
+      "description": "T-09 / AC-6 を担保する唯一のテスト TC-35 が、pages_list 構築 2 経路のうち separate_branch 側 (SKILL.md:241 の grep -E 行) しか検査していない。抽出式は grep 由来の literal しか掴まないため、same_branch 側 (SKILL.md:252 の `find .rite/wiki/pages -type f -name '*.md'`) は一度も評価されない。ここに index.md が混ざる変更を入れると孤児検出が index.md 自身を未登録の孤児として数え AC-6 が崩れるが、TC-35 は緑のまま。テスト自身のコメント (L696-698) は「ステップ 2.2 の pages_list は pages/ 配下だけを拾ったままでなければならない」と経路を限定せず宣言しており、宣言と検証範囲が食い違っている。D-06 が「AC-6 は測定ではなく構成で保証する」と主張する以上、その構成 pin の網羅性が AC-6 の担保そのものになる。Likelihood-Evidence: existing_call_site plugins/rite/skills/wiki-lint/SKILL.md:252 (same_branch の pages_list 構築。TC-35 の抽出式が到達しない)",
+      "suggestion": "TC-35 に same_branch 側の抽出と検査を足す。例: `step22_find=$(grep -oE \"find \\.rite/wiki/pages [^\\n]*\" \"$LINT_MD\" ¦ head -1)` を取り (¦ は raw pipe の表記代替)、空なら fail、`index` を含むなら fail、加えて `find .rite/wiki ` のように探索根が pages/ より上へ広がっていないことも assert する。抽出できない場合に fail する現行の構造 (L700-701) はそのまま踏襲する。",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "表行と箇条書き行を同一 index.md に持たせて helper を same_branch 実行 => WIKI_DESCRIPTIVE_REFS=2 / skipped_rows=0 で両形式とも数えられる (実装は正しい)。bash plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh => PASS: 144 FAIL: 0 — この形状を通す assert が存在しない",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 484,
+      "description": "D-07 と helper のコメント (wiki-lint-descriptive-refs.sh:336-338「ファイル単位で形式を判定しないのは移行途中の混在に耐えるため」) が明示する行単位の形式判別に、fixture が 1 本もない。index.md fixture は 19 本すべてが表のみ・箇条書きのみ・リンクなしのいずれかで (L484/505/510/517/529/542/563/584/595/613/621/629/648/658/680/689/740/757/775)、同一ファイルに表行と箇条書き行を併存させたものは 0 本。したがって形式判定をファイル単位 (先頭一致で表 or 箇条書きを決め打ち) へ変異させても 144 assertion すべてが緑のまま生き残る。混在は仮定の状態ではなく、現行 wiki ブランチが表形式・templates/wiki/index-template.md と wiki-ingest ステップ 6 が箇条書きを生成するため、移行期に必ず発生する形状。Issue #2069 §7 の MUST「検出器の変更には対応する回帰テストを同一 PR で追加する」に対して、本 PR が追加した行単位分岐 (wiki-lint-descriptive-refs.sh:374 の行頭パイプ判定) だけが未 pin。Likelihood-Evidence: new_call_site plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh:374 (本 PR で追加した行単位の形式分岐)",
+      "suggestion": "TC-30 の近傍に混在 fixture を 1 本足す。ヘッダー行と表データ行 1 本 (サマリーに `詳細は #1151`) の後ろに箇条書き 1 本 (サマリーに `Issue #88`、リンクテキストにも番号を置いて AC-2 を同時に測る) を並べ、WIKI_DESCRIPTIVE_REFS が両方の合計になること・descriptive_refs_skipped_rows=0 であることの 2 点を assert する。片方だけの期待値だとファイル単位判定の変異が生き残る。",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": []
+}

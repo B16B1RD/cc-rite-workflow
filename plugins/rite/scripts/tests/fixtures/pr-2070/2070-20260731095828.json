@@ -1,0 +1,203 @@
+{
+  "schema_version": "1.0.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T09:58:28+09:00",
+  "commit_sha": "40be58ccf25221668eb140c8290ed2228017dc51",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "HIGH",
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 921,
+      "description": "完了レポート行が「ページ本文の Issue/PR 番号参照」と述べ、次のステップ (:935) が「該当ページ本文の番号を削除し…出所は frontmatter sources.ref で辿れます」と案内する。本 PR 適用後は 250 hits のうち 228 件 (91%) が index.md のエントリサマリー由来で、ページ本文にも sources.ref にも存在しない。本カテゴリは issues[] へ転記しない設計のため運用者に内訳が出ず、250 件を告げられてページ本文を探すと 22 件しか見つからない。index.md のサマリーは wiki-ingest ステップ 6 が description から生成するため直接編集しても次回 ingest で戻る。prompt-engineer / tech-writer の 2 レビュアーが独立に指摘 (High Confidence)。",
+      "suggestion": ":921 を「ページ本文と index.md エントリサマリーの Issue/PR 番号参照」へ更新。:935 に index 由来 hits の是正経路を追記する (該当エントリのリンク先ページの frontmatter description を書き換えて /rite:wiki-ingest で再生成する。index.md を直接編集してもステップ 6 で上書きされる)。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "HIGH",
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 433,
+      "description": "本番既定経路である separate_branch の index.md 走査に TC が 1 本もない。TC-25〜TC-35 は全て --branch-strategy same_branch で、既存の git sandbox (GITSBX) には index.md が存在しないため git cat-file -e プローブと git show 経由の index 読出は 1 行も実行されない。rite-config.yml の既定 branch_strategy=separate_branch でこの盲点が再導入されてもスイートは緑のまま通過する。mutation (separate_branch の存在プローブを index_present=no へ置換) で PASS: 97 / FAIL: 0 のまま無検出を実測。",
+      "suggestion": "既存 GITSBX に 2 本目のコミットとブランチを足す (wiki は index なしのまま残す — TC-19 の sb_hits == hits 等値 assert が壊れるため)。fixture コミット後に .rite/wiki/index.md を書いて git add -A && git commit && git branch -q wiki-with-index、--wiki-branch wiki-with-index で走らせ、総数と page=.rite/wiki/index.md marker 行の 2 本を assert する。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "code-quality-reviewer",
+      "category": "correctness",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 322,
+      "description": "テーブル分岐の列数ガードが、リンクテキスト内の素のパイプ文字 (バックスラッシュでエスケープされていないもの) で誤発火し、本番 index.md の実エントリ 1 行を無言スキップして集計を 1 件過少にする。gsub チェーンはインラインコードスパンとエスケープ済みパイプは処理するが、コードスパン外の素のパイプは列区切りとして数えられ fn=8 が want=7 と不一致になる。スキップ行のサマリーには R1 該当の説明的参照が含まれており、本 PR が可視化しようとしている当の指摘が落ちる。",
+      "suggestion": "split の前にリンクスパンをマスクして列数を安定させる。既存の 2 つの gsub は残したまま、テーブル分岐専用の作業変数へ 3 段目を足す (bullet 分岐の match(s, ...) を壊さないため s 自体は書き換えない): t = s; gsub(/\\[[^]]*\\]\\(pages\\/[^)]*\\)/, \"_\", t); fn = split(t, fc, \"|\")。本番 index.md 310 行で列数不一致 0 件・hits 229 を実測済み。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-04",
+      "reviewer": "error-handling-reviewer",
+      "category": "error_handling",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 341,
+      "description": "index.md のサマリー抽出が全滅または部分欠損しても WARNING が stderr にしか出ず descriptive_refs_read_errors に載らないため、未実測の 0 件が「実測済み」として完了レポートに出る。同一ループ内の hits_rc != 0 経路 (検出器が機能していないページは 0 件ではなく読出失敗として計上する) と非対称。加えて END の行数ガードは entries > 0 && parsed == 0 の全滅条件でしか発火せず、rite 自身が配布する index-template.md の 10/13 行目が entry 述語 ](pages/ に一致して parsed >= 1 が恒久化するため、Wiki 初期化テンプレートの前文を残したプロジェクトでは構造的に発火不能。code-quality / error-handling の 2 レビュアーが独立に指摘 (High Confidence)。",
+      "suggestion": "既存の hits_rc 経路へ合流させる。_RITE_INDEX_COUNT_ACTION の END で件数を出したうえで非ゼロ終了する (print n+0 を先に出してから exit 3)。行スキップ時に skipped++ し END で skipped > 0 も同様に扱う。entry 述語をマスク後の値で判定して entries の分母を正す。n_read_errors はファイル単位の算術 (io_error 判定) なので行単位の値を直接混ぜないこと。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-05",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 940,
+      "description": "{n_descriptive_refs} 展開ルールが「ステップ 7.5 が skip された (pages_list 空) 場合は 0」、note 表 (:944) が「ステップ 7.5 未実行 (ステップ 3-7 skip 経路) → 空文字列」と定めているため、pages_list が空で index.md が存在する状態では 7.5 自体が実行されず note なしの「0 件」が出る。本 PR が導入した invariant (helper が自力で拾うため走査から落ちない) と同一ファイル内で矛盾する。pages_list 空は git ls-tree 失敗時にも発生する経路で、その状態の wiki には index.md の実体が残っている。",
+      "suggestion": ":940 の括弧書きを「pages_list が空でもステップ 7.5 は実行する (index.md 単独で走査対象になりうるため)。真に skip されるのは helper 不在時のみ」に改め、:944 の条件行を「helper 不在 / bash block 未実行」に限定する。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-06",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md",
+      "line": 61,
+      "description": "「列数が想定と異なる行は…行番号つき WARNING を出してスキップする」と書かれているが、スキップされた行は hits にも descriptive_refs_read_errors にも計上されない。WARNING は stderr のみでステップ 9 の note 条件 (read_errors>0) を通らないため、部分欠損した集計が注記なしで「実測済み」としてレポートに載る。helper 自身が pages 側で明示的に閉じた失敗モードと非対称で、本 PR が index 経路にだけ同じ穴を新設している。実測での該当行はテーブル崩れではなくページタイトル内の未エスケープ縦棒が原因。",
+      "suggestion": "F-03 / F-04 の実装修正を先に行い、その結果に合わせて rationale を更新する。実装を変えない方針なら :61 に「実測 1 行の原因はタイトル内の未エスケープ縦棒であり、同種タイトルは恒久的に走査対象から落ちる。この欠損は descriptive_refs_read_errors に出ないため完了レポートには現れない」と副作用まで書き切る。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-07",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 311,
+      "description": "同一 wiki ページへの参照が本 PR で 2 形式追加され、どちらも辿れない。(a) .sh:311 の (wiki: anti-patterns/positional-parse-row-count-guard) はディレクトリが誤りで、実体は .rite/wiki/pages/patterns/positional-parse-row-count-guard.md (frontmatter も domain: patterns)。(b) descriptive-refs-rationale.md:60 の [[位置依存の表パースには検査行数ガードを対にする]] は、wiki ページ内の wikilink が全て ASCII slug 形式なのに対し title 形式で、しかも実タイトルの接尾辞「（silent false-pass 遮断）」を欠く。設計判断の根拠へ導く参照が 2 つとも解決不能。本リポジトリは hallucinated-canonical-reference を documented anti-pattern に登録済み。3 レビュアーが独立に指摘 (High Confidence)。",
+      "suggestion": "(a) を (wiki: patterns/positional-parse-row-count-guard) へ修正。(b) は anchor-naming-convention.md:117 の規約 (develop 側ドキュメントからの wiki 参照は /rite:wiki-query 経由のキーワード検索とする) に従い「（/rite:wiki-query positional-parse-row-count-guard で参照）」形式へ変更する。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-08",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 670,
+      "description": "本 PR は「comment-journal-check.sh の .rite/wiki 走査は same_branch でのみ実体に届く」を 4 箇所に新設したが、同じステップ 7.5 末尾の「検出機構との関係」note は「同じ説明的参照は /rite:lint Phase 3.5 (comment-journal-check.sh、.rite/wiki/**/*.md をスコープに含む) でも検出される」と無条件に述べたまま。本リポジトリの設定は separate_branch で dev checkout に Wiki 実体はない。ステップ 7.5 の読み手が同一ステップ内で相反する 2 記述に当たり「7.5 は lint と冗長」という誤読へ倒れる。",
+      "suggestion": "note に条件を 1 文追記する。plugin-checks-rationale.md:39 で既に書いた表現をそのまま流用すれば新規の言い回しを増やさずに済む。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-09",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 455,
+      "description": "ヘッダー由来のサマリー列位置決定が pin されていない。新規 fixture は TC-27〜TC-32 まですべて サマリー が 4 番目に来る 5 列テーブルで、実装のハードコード fallback col = (sumcol > 0 ? sumcol : 4) と同値。実装コメントが「位置固定の列パースは silent no-op に倒れる」として対にしたヘッダー由来の位置決めと行数ガードのうち、行数ガード (TC-32) だけが測られている。sumcol を 4 固定へ変異させた複製で PASS: 97 / FAIL: 0 のまま無検出を実測。",
+      "suggestion": "サマリー が 4 番目に来ない fixture を 1 本足す。ヘッダー | ページ | 種別 | ドメイン | サマリー | 更新日 | 確信度 | でデータ行のサマリー位置に 詳細は #1151 を置き、index hits=1 を assert する。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-10",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 444,
+      "description": "「index.md が存在するのに読めない場合は read error として計上する」という新規契約に TC がない。本 PR は SKILL.md と helper ヘッダーの両方でこの分岐を明文化し存在プローブを読出より前に置く設計判断の根拠にしているが、測られているのは不在側 (TC-25) だけ。存在プローブを [ -f ] && [ -r ] へ変異させた複製で PASS: 97 / FAIL: 0 のまま契約破壊が無検出。",
+      "suggestion": "chmod 000 \"$IDXSBX/.rite/wiki/index.md\" して descriptive_refs_read_errors=1 / read_ok=true / 本文分の hits が残ることを assert し、末尾で chmod 644 に戻す。root ガードを必須にすること ([ \"$(id -u)\" -eq 0 ] && skip ...) — root では chmod 000 が read を阻めず assert が常に緑になる。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-11",
+      "reviewer": "error-handling-reviewer",
+      "category": "error_handling",
+      "severity": "LOW-MEDIUM",
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 329,
+      "description": "列崩れ WARNING が出す 列数 / 期待 が awk の split() フィールド数 (先頭・末尾の空フィールドを含む = 実列数 + 2) であり、人間が数えるテーブルの列数と一致しない。5 列テーブルに 4 列の壊れ行があるとき「列数=6, 期待=7」と表示され、運用者は 7 列のテーブルを探すことになる。さらにヘッダー未検出時 (want == 0) は col + 1 = 5 を「期待」として出すが、この 5 はハードコード fallback から導いた値でファイルの実体に根拠がない。TC-31 の assert は regex のみを pin し数値を検証しないためテストでは捕捉されない。",
+      "suggestion": "表示前にフィールド数を列数へ戻す (fn - 2 / want - 2)。want == 0 のときは捏造した期待値を出さず「サマリー列ヘッダーを検出できず既定列 N を仮定しましたが列数が不足するため行をスキップしました (列数=%d)」の形にする。あわせて TC-31 の assert に数値を含めて pin する。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-12",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "LOW-MEDIUM",
+      "file": "plugins/rite/hooks/scripts/comment-journal-check.sh",
+      "line": 214,
+      "description": "「separate_branch では ここは不在か空のローカル置き場になり、この scan_root は加わらない」と述べるが、「空」の場合は [ -d \".rite/wiki\" ] が真になり scan_root は加わる。本リポジトリ (separate_branch) の main checkout には実際に空の .rite/wiki/ が存在する。結論 (Wiki 分 0 件) は正しいが理由づけが誤っており、scan_roots をデバッグする読み手が配列の実際の中身と記述の食い違いに当たる。",
+      "suggestion": "結果と理由を分けて書く。例:「不在なら scan_root に加わらず、空で存在する場合は加わるが対象ファイルが 0 件になる。いずれの経路でも Wiki 分は 0 件」",
+      "status": "open",
+      "scope": "current-pr"
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "F-13",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md",
+      "line": 48,
+      "description": "「ステップ 5 (孤児検出) は『index 登録ページ ∖ pages_list』の集合差分を取る」が実装と逆。wiki-lint-orphans.sh:208-216 は pages_list を回して index 登録集合に無いものを orphan として数える (pages_list ∖ index 登録ページ)。書かれた向きのままだと「pages_list に足すと即座に孤児 +1」という次の文が導けず根拠段落が自己矛盾する。同じ文の「ステップ 4 も frontmatter updated を要求するため読出エラーになる」も不正確で、wiki-lint-stale.sh は読出失敗と updated 欠落を別扱いする。同じ誤りが SKILL.md:626 にも伝播している。",
+      "suggestion": "両ファイルの当該文を「ステップ 5 は pages_list の各ページが index 登録集合に含まれるかを見る (pages_list ∖ index 登録ページ) ため、index.md を混ぜると index.md 自身が未登録として孤児 +1 になる」に修正。ステップ 4 側は「読出エラーになる」を「frontmatter updated を持たないため updated フィールドが存在しません の WARNING skip が増える」に置き換える。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-14",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 274,
+      "description": "ステップ 2.2 末尾の「index.md の読み込みは ステップ 5 の wiki-lint-orphans.sh が内包する (孤児検出でのみ使用するため、本ステップでの事前読出は不要)」が本 PR で偽になった。ステップ 7.5 の helper も index.md を読むようになったため同一ファイル内で矛盾する。index.md の読み手を探す保守者がステップ 2.2 の記述を信じると 7.5 の経路を見落とす。",
+      "suggestion": "「index.md はステップ 5 の wiki-lint-orphans.sh とステップ 7.5 の wiki-lint-descriptive-refs.sh がそれぞれ自力で読み出すため、本ステップでの事前読出は不要」に更新する。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-15",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 201,
+      "description": "ステップ 1.4 カウンタ表の n_descriptive_refs 行が「ページ本文の説明的 Issue/PR 番号参照の hits 合計」のまま。隣接する descriptive_refs_read_errors 行 (:200) だけが本 PR で「対象ファイル数」へ更新されており、同じ helper 出力を説明する 2 行が非対称になっている。定義 (ページ本文のみ) と実体 (250 中 228 が index.md) が乖離していると転記時に自己修正を誘発する。",
+      "suggestion": "「ページ本文と index.md エントリサマリーの説明的 Issue/PR 番号参照の hits 合計」へ更新し、:200 の語 (対象ファイル) と揃える。",
+      "status": "open",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-16",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "LOW-MEDIUM",
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 662,
+      "description": "本 PR は descriptive_refs_read_errors の単位をカウンタ表 (:200) で「対象ファイル数」へ改め、helper の WARNING も「ページ」→「ファイル」へ改めた。しかしステップ 7.5 の enum 説明 (:662) は「読み出せなかったページ数」、完了レポートの note テンプレート (:946) は「{descriptive_refs_read_errors} ページを読出または検出できず」のまま。index.md はページではないため、index.md の読出失敗時に運用者向け出力が「1 ページ」と表示され、どのファイルが欠損したのか判断できない。",
+      "suggestion": ":662 と :946 の「ページ」を :200 と同じ「対象ファイル」へ統一する。",
+      "status": "open",
+      "scope": "current-pr"
+    }
+  ]
+}

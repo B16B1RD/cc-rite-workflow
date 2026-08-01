@@ -149,7 +149,13 @@ trap '_rite_review_p61b_cleanup; exit 130' INT
 trap '_rite_review_p61b_cleanup; exit 143' TERM
 trap '_rite_review_p61b_cleanup; exit 129' HUP
 
-tmpfile_patched=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61b-comment-patched-XXXXXX.md") || {
+# テンプレートの `X` は**末尾**に置く。BSD/macOS の mktemp(1) は "trailing Xs" しか置換しない
+# ため、`-XXXXXX.md` のように suffix が続く形では X が展開されず literal 名がそのまま使われる。
+# その場合 O_CREAT|O_EXCL は初回だけ成功し、同名ファイルが 1 つでも残っていると以降の全実行が
+# EEXIST で失敗する (上記の trap は SIGKILL では動かないため、残留は起こりうる)。
+# 拡張子は不要 — 本 tempfile は awk の入出力先 (置換の出力先と 2 つの post-condition の入力) と
+# `gh pr comment --body-file` の引数として使うだけで、いずれも拡張子を見ない。
+tmpfile_patched=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61b-comment-patched-XXXXXX") || {
   echo "ERROR: timestamp 置換用 tmpfile 作成失敗" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=tmpfile_write_failure" >&2
   exit 1
