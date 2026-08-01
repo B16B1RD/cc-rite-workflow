@@ -574,7 +574,7 @@ assert_grep "TC-3.11d marker 空でも REVIEW_SAVE_DONE を emit" "$ERR" 'REVIEW
 
 # TC-3.11e 再レビューサイクル経路 (loop_count >= 1 相当) の pin: cycle ごとに別 marker を渡すと
 #          cycle ごとに 1 本の JSON が永続化され、各 cycle の marker が個別に consume される。
-#          Issue #2076 の As-Is (5 cycle 実行で 2 本しか残らない) を assertion で固定する。
+#          ステップ 6 全体が skip された cycle では複数サイクル実行でも一部しか残らない As-Is を assertion で固定する。
 RESULTS_CYCLES="$TMP_ROOT/results-tc311e"
 for _cyc in 1 2 3; do
   _mid="123-170000002$_cyc"
@@ -687,6 +687,10 @@ if [ -e "$_sig2_ready" ]; then
   assert "TC-3.11h mv 成功後の TERM では LOCAL_SAVE_FAILED を emit しない" "0" \
     "$(grep -c 'LOCAL_SAVE_FAILED' "$_sig2_err" || true)"
   assert_grep "TC-3.11h 保存済みである旨を WARNING で伝える" "$_sig2_err" 'JSON は保存済みです'
+else
+  # 前提を満たせなかった run は pass で埋めない — 埋めると退行注入時も green で通る
+  fail "TC-3.11h 前提未成立: shim が mv-err の削除に到達しなかった (窓を作れていない)"
+fi
 
 # TC-3.11j dangling symlink の marker も consume する。
 #   `[ -e ]` は dangling symlink を偽と返すため単独では消し残す。8.0.4 側の同判定は (h-3) が
@@ -702,7 +706,6 @@ if [ -L "$_dang_marker" ]; then
 else
   pass "TC-3.11j dangling symlink の marker を consume する"
 fi
-assert_grep "TC-3.11j consume 結果を sentinel に載せる" "$ERR" 'REVIEW_SAVE_DONE=1;.*consumed=deleted'
 
 # TC-3.11i mv 完了直後・json_saved 代入**前**の窓で TERM を受けても保存失敗を宣言しない。
 #   bash は foreground コマンドの完了まで trap を遅延させるため、mv が成功して戻った直後に
@@ -744,9 +747,82 @@ if [ -e "$_sig3_ready" ]; then
 else
   fail "TC-3.11i 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
 fi
+
+# TC-3.11k mv を 1 度も実行していない窓での TERM は、宛先が既に実在していても保存失敗を宣言する。
+#   signal handler の「保存済み」判定は 3 条件の AND。`mv_attempted` 項を落とすと、同一秒衝突で
+#   宛先が先に実在する cycle は「JSON は保存済み」と誤報告し LOCAL_SAVE_FAILED を 1 件も出さない
+#   → 8.0.4 の「saved=false なら reason を転記」が入力を失い、保存されなかった cycle が silent に通る。
+#   TC-3.11h/i は mv 完了**後**の窓しか踏まないので本ケースが要る。
+_sig4_id="123-1700000053"
+_sig4_marker="${TMPDIR:-/tmp}/rite-p61a-pending-$_sig4_id"
+: > "$_sig4_marker"
+_sig4_res="$TMP_ROOT/results-tc311k"
+mkdir -p "$_sig4_res"
+# date を固定して json_path を予測可能にし、宛先を先に実在させる (同一秒衝突と同じ状態)
+: > "$_sig4_res/123-20260101000000.json"
+_slow4=$(mktemp -d "$TMP_ROOT/slowmkdir-XXXXXX")
+_sig4_ready="$TMP_ROOT/sig4-ready"
+printf '#!/bin/bash\nprintf "%%s\\n" "2026-01-01T00:00:00+09:00|20260101000000"\n' > "$_slow4/date"
+# json_path 確定**後**・json_tmp 作成**前**の窓を決定論的に開く (mv は未実行)
+printf '#!/bin/bash\n/bin/mkdir "$@"; : > "%s"; sleep 3\n' "$_sig4_ready" > "$_slow4/mkdir"
+chmod +x "$_slow4/date" "$_slow4/mkdir"
+_sig4_err="$TMP_ROOT/sig4-err.txt"
+PATH="$_slow4:$PATH" bash "$PLUGIN_ROOT/hooks/review-result-save.sh" \
+  --pr 123 --content-file "$JSON_OK" --results-dir "$_sig4_res" \
+  --pending-id "$_sig4_id" >/dev/null 2>"$_sig4_err" &
+_sig4_pid=$!
+_sig4_wait=0
+while [ ! -e "$_sig4_ready" ] && [ "$_sig4_wait" -lt 100 ]; do sleep 0.05; _sig4_wait=$((_sig4_wait + 1)); done
+kill -TERM "$_sig4_pid" 2>/dev/null
+wait "$_sig4_pid" 2>/dev/null || true
+if [ -e "$_sig4_ready" ]; then
+  assert_grep "TC-3.11k mv 未実行 + 宛先実在の TERM でも signal_aborted を宣言する" "$_sig4_err" \
+    'LOCAL_SAVE_FAILED=1; reason=signal_aborted'
+  assert "TC-3.11k 「保存済み」の誤報告を出さない" "0" \
+    "$(grep -c 'JSON は保存済みです' "$_sig4_err" || true)"
 else
-  # 前提を満たせなかった run は pass で埋めない — 埋めると退行注入時も green で通る
-  fail "TC-3.11h 前提未成立: shim が mv-err の削除に到達しなかった (窓を作れていない)"
+  fail "TC-3.11k 前提未成立: mkdir shim が json_path 確定後の窓を開けなかった"
+fi
+
+# TC-3.11l mv が**中断**された窓 (宛先に部分ファイル / source は健在) では保存失敗を宣言する。
+#   cross-device mv は copy+unlink なので、殺されると宛先に壊れた断片が残る。宛先 inode の存在を
+#   「保存済み」の証拠に使うと、この断片を完成品と読んで LOCAL_SAVE_FAILED を出さない
+#   → 壊れた JSON が「保存済み」として 8.0.4 を通る。**完了した mv だけが source を消す**という
+#   性質 (`[ ! -e "$json_tmp" ]`) が両者を分ける唯一の観測点なので behavioral に固定する。
+_sig5_id="123-1700000054"
+_sig5_marker="${TMPDIR:-/tmp}/rite-p61a-pending-$_sig5_id"
+: > "$_sig5_marker"
+_sig5_res="$TMP_ROOT/results-tc311l"
+_slow5=$(mktemp -d "$TMP_ROOT/partialmv-XXXXXX")
+_sig5_ready="$TMP_ROOT/sig5-ready"
+# 宛先へ断片だけを書いて source を残したまま停止する (= 中断された cross-device copy の状態)
+cat > "$_slow5/mv" <<MVEOF
+#!/bin/bash
+_dst="\${!#}"
+case "\$_dst" in
+  # 断片を書いたら実 mv は**実行しない**まま終了する (実行すると source が消え、それは
+  # 「完了した mv」= TC-3.11i と同じ状態になってしまい本ケースを踏めない)
+  $_sig5_res/*) head -c 10 "\$1" > "\$_dst"; : > "$_sig5_ready"; sleep 3; exit 1 ;;
+esac
+exec /bin/mv "\$@"
+MVEOF
+chmod +x "$_slow5/mv"
+_sig5_err="$TMP_ROOT/sig5-err.txt"
+PATH="$_slow5:$PATH" bash "$PLUGIN_ROOT/hooks/review-result-save.sh" \
+  --pr 123 --content-file "$JSON_OK" --results-dir "$_sig5_res" \
+  --pending-id "$_sig5_id" >/dev/null 2>"$_sig5_err" &
+_sig5_pid=$!
+_sig5_wait=0
+while [ ! -e "$_sig5_ready" ] && [ "$_sig5_wait" -lt 100 ]; do sleep 0.05; _sig5_wait=$((_sig5_wait + 1)); done
+kill -TERM "$_sig5_pid" 2>/dev/null
+wait "$_sig5_pid" 2>/dev/null || true
+if [ -e "$_sig5_ready" ]; then
+  assert_grep "TC-3.11l mv 中断 (宛先に断片) では signal_aborted を宣言する" "$_sig5_err" \
+    'LOCAL_SAVE_FAILED=1; reason=signal_aborted'
+  assert "TC-3.11l 断片を完成品と読んで「保存済み」と誤報告しない" "0" \
+    "$(grep -c 'JSON は保存済みです' "$_sig5_err" || true)"
+else
+  fail "TC-3.11l 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
 fi
 
 # =====================================================================
@@ -2060,9 +2136,9 @@ else
   fi
 
   # (h) 8.0.4 (ステップ 6.1.a JSON 保存の実行保証) の三者 coupling を固定する。
-  #     Issue #2076: ステップ 6 を丸ごと skip した cycle は 8.0.3 の anchor (REVIEW_CYCLE_ID /
+  #     ステップ 6 を丸ごと skip した cycle は 8.0.3 の anchor (REVIEW_CYCLE_ID /
   #     pending marker) がどちらも 6.1.a step 0 = ステップ 6 の内側で作られるため自己整合し、
-  #     全 gate が誤 pass した (実測: PR #2074 は 5 cycle で永続 JSON 2 本 / 記録コメント未 PATCH)。
+  #     全 gate が誤 pass した (実測: 5 cycle で永続 JSON 2 本 / 記録コメント未 PATCH)。
   #     8.0.4 の anchor は 5.3.0.M step 2 = ステップ 6 の**外側**に置くことが設計の核心なので、
   #     生成位置・consume 位置・検査位置の 3 点をそれぞれ pin する。
   SAVE_SH="$PLUGIN_ROOT/hooks/review-result-save.sh"

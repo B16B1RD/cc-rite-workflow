@@ -150,6 +150,7 @@ iso_timestamp=""
 file_timestamp=""
 file_timestamp_emitted="false"
 json_saved="false"
+json_path=""   # signal handler が順序に依らず参照できるよう init しておく
 # mv を実行したという事実。signal handler が「保存済みか」を判定するのに使う。
 # `json_saved` だけでは足りない — bash は foreground コマンドの完了まで trap を遅延させるため、
 # mv が成功して戻った直後・`json_saved="true"` の代入**前**に handler が走る窓がある。
@@ -167,27 +168,23 @@ _rite_review_p61a_cleanup() {
     # 削除失敗は決定論的で 6.1.a の再実行では収束しないため、errno がそのまま見えている必要がある。
     # `-e` は dangling symlink を偽と判定するため `-L` も見る (8.0.4 Pre-Check と同条件)。
     # `rm -f` は symlink を追随しないので誤削除にはならない。
-    # consume 結果を 3 状態で持つ。`deleted` と `absent` を同じ出力にすると、8.0.4 が exit 1 を
-    # 返したときに「6.1.a が消した」のか「そもそも導出 path に無かった (id と path の食い違い)」
-    # のかを下流のどの層も名指しできない — 前者は正常、後者は caller の配線ミスで対処が異なる。
-    _pm_consumed="none"   # --pending-id 未指定 / 形状違反 = marker 機構を使っていない
+    # consume の結果は WARNING の有無で読む。sentinel に状態フィールドを足す設計は採らない —
+    # 4 状態すべてが既存の出力から導出でき (marker= が空 = 機構未使用 / WARNING なし = 削除済 /
+    # 「存在しません」= 導出先に無い / 「削除に失敗」= 環境起因)、consumer を持たない marker を
+    # 増やさないという本 skill の原則にも反するため。
     if [ -n "$PENDING_MARKER" ]; then
       if [ -e "$PENDING_MARKER" ] || [ -L "$PENDING_MARKER" ]; then
-        if LC_ALL=C rm -f "$PENDING_MARKER"; then
-          _pm_consumed="deleted"
-        else
-          _pm_consumed="rm_failed"
+        if ! LC_ALL=C rm -f "$PENDING_MARKER"; then
           echo "WARNING: save-pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.4 は本 cycle の 6.1.a を未実行と誤判定します" >&2
           echo "  対処: 削除失敗は決定論的なため 6.1.a の再実行では収束しません。marker を手動で rm してから ステップ 8.0 を再評価してください" >&2
         fi
       else
-        _pm_consumed="absent"
         echo "WARNING: 導出した save-pending marker path に marker が存在しません ($PENDING_MARKER)" >&2
-        echo "  --pending-id と ステップ 8.0.4 が見る REVIEW_SAVE_PENDING_MARKER が別 cycle の値になっている可能性があります" >&2
-        echo "  どちらも本 cycle のもの (末尾 -{epoch} が最大のもの) を渡してください" >&2
+        echo "  本 cycle 内で helper が既に完走している場合 (signal 中断後の再実行等) も本状態になります" >&2
+        echo "  そうでなければ --pending-id と ステップ 8.0.4 が見る REVIEW_SAVE_PENDING_MARKER が別 cycle の値です — どちらも本 cycle のもの (末尾 -{epoch} が最大のもの) を渡してください" >&2
       fi
     fi
-    echo "[CONTEXT] REVIEW_SAVE_DONE=1; pr=${PR_NUMBER:-}; marker=${PENDING_MARKER:-}; saved=${json_saved:-false}; consumed=$_pm_consumed" >&2
+    echo "[CONTEXT] REVIEW_SAVE_DONE=1; pr=${PR_NUMBER:-}; marker=${PENDING_MARKER:-}; saved=${json_saved:-false}" >&2
     file_timestamp_emitted="true"
   fi
 }
@@ -202,10 +199,16 @@ _rite_review_p61a_cleanup() {
 # 停止しない」より強い違反)。sibling の review-nonblocking-record.sh が signal 中断について
 # 「投稿されたか否かは不明として扱う」と設計しているのと同じ、断定を避ける分類。
 _rite_review_p61a_signal() {
-  # `json_saved` に加えて「mv を試み、かつ final path に成果物が実在する」ことも保存済みとみなす。
-  # `collision_resolution_exhausted` 経路では mv せずに json_path が実在しうるため、素の
-  # `[ -e "$json_path" ]` 単独では「未保存を保存済み」へ誤判定する — flag との AND が必須。
-  if [ "$json_saved" != "true" ] && ! { [ "$mv_attempted" = "true" ] && [ -e "$json_path" ]; }; then
+  # 「保存済み」の証拠は 3 条件の AND だが、判定を担うのは前 2 条件:
+  #   (a) `mv_attempted` — `collision_resolution_exhausted` 経路では mv せずに json_path が実在しうる。
+  #   (b) `[ ! -e "$json_tmp" ]` — **完了した mv だけが source を消す** (rename でも copy+unlink でも
+  #       成立し、殺された copy では source が残る)。中断された cross-device mv は宛先に壊れた断片を
+  #       残すため、宛先 inode の存在は「始まった」ことしか示さない。
+  # tests の TC-3.11k / TC-3.11l がそれぞれを mutation で固定している。第 3 条件 `[ -e "$json_path" ]`
+  # は判定を担わない保守側の冗長条件 (source と宛先の両方を失わせる mv 実装は現存しないが、その状態で
+  # 「保存済み」と言わないためのもの)。外しても全 test が green である点は承知の上で残す。
+  if [ "$json_saved" != "true" ] \
+     && ! { [ "$mv_attempted" = "true" ] && [ -e "$json_path" ] && [ ! -e "${json_tmp:-}" ]; }; then
     echo "WARNING: review-result-save: $2 で中断されました。レビュー結果 JSON は保存されていません" >&2
     echo "  対処: 中断原因 (Bash tool timeout / 手動 Ctrl-C) を取り除き ステップ 6.1.a を step 0 から再実行してください" >&2
     echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=signal_aborted; signal=$2" >&2

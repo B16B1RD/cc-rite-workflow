@@ -89,7 +89,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 **限界**: 本機構が保証するのは「6.1.d が完走した」ことまで。ステップ 6 を丸ごと skip した cycle では本 cycle の marker がそもそも作られず、会話に残る前 cycle の**実パス**（前 cycle の helper が削除済）を採ると `pending_marker_absent` として **pass** する（`degraded` にはならない — `degraded` に倒れるのは置換値が空文字か `{...}` 形状のときだけ）。この限界は ステップ 8.0.4 が塞ぐ（下記 [#save-pending-marker](#save-pending-marker)）。
 
 <a id="save-pending-marker"></a>
-## 8.0.4 の anchor を ステップ 6 の外（5.3.0.M step 2）へ置いた理由
+## save-pending marker（8.0.4）の設計理由 — anchor 配置 / id 受け渡し / marker の意味 / 差し戻し先
 
 本 gate が塞ぐのは「ステップ 6 全体の skip」で、上記「限界」がそのまま顕在化した形になる。この状態では中間サイクルの永続 JSON が残らず、6.1.d の記録コメントも PATCH されないまま、どの gate も発火しない。
 
@@ -102,7 +102,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 **なぜ helper は path ではなく id を受け取るのか**: caller から full path を受け取る形にすると、caller 由来の任意文字列が「削除対象」と「機械可読 sentinel の `marker=` フィールド」の両方へ同時に流れる。この形では traversal（`<dir>/rite-p61a-pending-x/../victim`）・sentinel 偽造（改行で 2 行目に完全な形の `[CONTEXT]` 行を綴る）・制御文字の 3 方向を個別に塞ぐ guard が要り、しかもその guard の受理値域が**生成側の値域**（`${TMPDIR}` の文字種）と食い違った瞬間に「保存は成功しているのに marker が消えず 8.0.4 が恒久的に落ちる」非収束を生む。id だけを受け取り path を helper 内で組み立てれば、この失敗クラスは構造的に存在しない（sibling の 6.1.d helper が `--iteration-id` で同じ形を採っているのと同型）。8.0.4 が使うのは path 側だけで、両者は同じ block から対で emit される。
 
-**marker の意味は「実行された」であって「成功した」ではない**: `review-result-save.sh` は保存失敗（`LOCAL_SAVE_FAILED`）でも EXIT trap で marker を削除する。成功時のみ削除する設計にすると、D-04 非ブロッキング契約（保存失敗は WARNING のみ）が 8.0.4 経由で blocking gate に化ける。保存失敗の可視化は既存の `LOCAL_SAVE_FAILED` と ステップ 6.1.c ケース 2（`post_comment=false` との組み合わせで `exit 2`）が既に担っており、二重化する必要がない。marker が残るのは (i) trap 設置**前**の `exit 1`（`--content-file` 未指定 / unknown option）と `--pending-id` の形状違反で path を導出できなかった場合、(ii) `rm` 自体が失敗した場合の 2 群。(i) は 8.0.3 の引数 gate 群と同じ「caller 契約違反は差し戻せば収束する」境界だが、(ii) は環境起因で再実行では収束せず手動削除を要する。`--pr` 欠落 / 非数値は trap 設置**後**の `exit 0` かつ marker path が `--pending-id` から独立に導出されるため marker は削除される。
+**marker の意味は「実行された」であって「成功した」ではない**: `review-result-save.sh` は保存失敗（`LOCAL_SAVE_FAILED`）でも EXIT trap で marker を削除する。成功時のみ削除する設計にすると、D-04 非ブロッキング契約（保存失敗は WARNING のみ）が 8.0.4 経由で blocking gate に化ける。保存失敗の可視化は既存の `LOCAL_SAVE_FAILED` と ステップ 6.1.c ケース 2（`post_comment=false` との組み合わせで `exit 2`）が既に担っており、二重化する必要がない。helper が起動した cycle で marker が残るのは (i) trap 設置**前**の `exit 1`（`--content-file` 未指定 / unknown option）と `--pending-id` の形状違反で path を導出できなかった場合、(ii) `rm` 自体が失敗した場合の 2 群。(i) は 8.0.3 の引数 gate 群と同じ「caller 契約違反は差し戻せば収束する」境界だが、(ii) は環境起因で再実行では収束せず手動削除を要する。`--pr` 欠落 / 非数値は trap 設置**後**の `exit 0` かつ marker path が `--pending-id` から独立に導出されるため marker は削除される。
 
 **差し戻し先が 6.1.a step 0 であること自体が不変条件**: 8.0.4 の ACTION が step 2（保存 helper）だけを名指しすると、step 0 が emit する `REVIEW_CYCLE_ID` と `NONBLOCKING_PENDING_MARKER` が前 cycle の値のまま残り、8.0.3 が再び自己整合で誤 pass する。step 0 → step 2 の順で差し戻すことで、8.0.4 の発火が 8.0.3 の anchor 再生成を連鎖的に引き起こし、ステップ 6 全体の実行が回復する。この推移的性質があるため、`REVIEW_CYCLE_ID` の生成位置そのものを 5.3.0.M へ移す（6.1.d に同じ per-cycle anchor を直接与える）改修は本 Issue では不要と判断した。
 

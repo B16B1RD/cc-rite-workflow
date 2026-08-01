@@ -3857,17 +3857,21 @@ case "$save_pending_marker" in
   *)
     # `-e` だけでは dangling symlink を「不在」と判定して fail-open する (6.1.a 未実行でも pass)。
     # marker は「存在そのものが判定値」なので symlink 自体の存在も残存として扱う。
-    # 注: ステップ 8.0.3 の同判定は develop 既存で、本 Issue のスコープ (6.1.a の実行保証) 外のため
-    # 本 PR では揃えていない — 両 marker の対称化は follow-up で扱う。
+    # 注: ステップ 8.0.3 の同判定は `-e` のみで、dangling symlink の marker を fail-open する (非対称)。
     if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
       echo "ERROR: ステップ 8.0.4 gate failed (機械強制)。save-pending marker が残存しています: $save_pending_marker" >&2
       echo "  これは ステップ 6.1.a (レビュー結果 JSON のローカル保存) が本 cycle で走っていないことの機械的証拠です" >&2
       echo "  (marker を消すのは 6.1.a の helper だけで、保存に失敗した場合も消します — 残存 = 未実行)。" >&2
-      echo "  6.1.a を実行済みでも marker が残る原因は 2 つです。会話の WARNING で切り分けてください:" >&2
+      echo "  6.1.a を実行済みでも marker が残ることがあります。会話の WARNING で切り分けてください (既知の経路。網羅ではありません):" >&2
       echo "    (1) --pending-id の形状違反 — helper が「marker path を導出できないため削除しません」を出している場合。" >&2
       echo "        5.3.0.M step 2 の REVIEW_SAVE_PENDING_ID= 自体が {...} 形状なら、6.1.a ではなく 5.3.0.M step 2 から再実行します。" >&2
       echo "    (2) rm 失敗 — helper が「削除失敗は決定論的」を出している場合。**下記の再実行では収束しません** —" >&2
       echo "        marker を手動で rm してから ステップ 8.0 を再評価してください。" >&2
+      echo "    (3) 別 cycle の id を渡した — helper が「導出した save-pending marker path に marker が存在しません」を出している場合。" >&2
+      echo "        helper は別 cycle 分を消しており本 cycle の marker は未 consume です。**5.3.0.M step 2 から id を採り直して** 6.1.a を再実行します。" >&2
+      echo "    (4) helper が trap 設置前に exit 1 した — 会話に「ERROR: review-result-save:」で始まる行がある場合 (--content-file 欠落 / 未知オプション = caller 契約違反)。" >&2
+      echo "        引数を修正してから下記 ACTION を実行します。" >&2
+      echo "    (5) helper が起動していない — helper 由来の行 (WARNING / [CONTEXT] REVIEW_SAVE_DONE) が 1 行も無い場合。下記 ACTION がそのまま対処です。" >&2
       echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 は 8.0.3 が使う REVIEW_CYCLE_ID と pending marker を生成する唯一の場所で、飛ばすと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
       echo "    step 0 (REVIEW_TMP_DIR / REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER の emit) → step 2 (review-result-save.sh 実行) の順で実行し、続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してください。" >&2
       echo "    (本 gate は「ステップ 6 全体の skip」を catch するため 6.1.c も未実行でありうる。6.1.c を飛ばすと、再実行した保存が失敗したときに silent data loss を hard fail させる唯一の機構 = ケース 2 の exit 2 が発火しない)。そのうえで ステップ 8.0 を再評価してください。" >&2
