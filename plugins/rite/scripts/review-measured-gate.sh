@@ -489,7 +489,7 @@ out_tmp=""
 #  正常系が区別できなくなるため)。母集団 anchor_unparseable は 2 つの排他な帰結に分かれ、
 # それぞれを対の WARNING + marker で報告する (和は常に anchor_unparseable = 検出層に穴なし)。
 if [ "$anchor_undetermined" -gt 0 ]; then
-  echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding ${anchor_undetermined} 件を **未判定** として blocking のまま残しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / アンカー直前の境界欠落)。実測の有無を判定できないため non-blocking へ降格させません。アンカーの直前は行頭・改行タグ・空白のいずれかにし、パイプを含むコマンドは ¦ で代替表記してください" >&2
+  echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding ${anchor_undetermined} 件を **未判定** として blocking のまま残しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 装飾 marker (**Verification:** / 全角コロン) / アンカー直前の境界欠落)。実測の有無を判定できないため non-blocking へ降格させません。アンカーの直前は行頭・改行タグ・空白のいずれかにし、パイプを含むコマンドは ¦ で代替表記してください" >&2
   echo "[CONTEXT] MEASURED_UNDETERMINED_ON_ANCHOR=1; count=${anchor_undetermined}; cause=anchor_unparseable" >&2
 fi
 
