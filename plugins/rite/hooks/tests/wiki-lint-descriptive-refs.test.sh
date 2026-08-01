@@ -57,6 +57,7 @@
 #   TC-50  index-template.md 前文 (記法例コメント) を entries に数えず、検出失敗ガードを殺さない
 #   TC-51  除外ブロック (コメント / フェンス) の未閉鎖を END で検出失敗へ倒す (部分欠損形も含む)
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
+#   TC-52  index.md のリンク regex が orphans.sh と literal 一致 (共有定義の drift 検出)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -359,6 +360,10 @@ assert_not_grep "TC-18 旧 inline 検出 regex が残っていない" "$LINT_MD"
 # 走査範囲を広げた helper 側だけをテストしても、この分岐が消えれば helper は呼ばれない。
 assert_grep "TC-18 ページ/raw 0 件でもステップ 7.5 は skip しない" "$LINT_MD" 'ステップ 7\.5 → ステップ 9'
 assert_not_grep "TC-18 旧 skip 範囲 (3-7) が残っていない" "$LINT_MD" 'ステップ 3-7 を skip'
+# 上の anti-pattern を避ける過程で、実在しない見出しへの範囲参照 (`ステップ 3-7.4` = `## ステップ 7.4`
+# は本ファイルに存在しない) を作らないこと。7.5 の除外は実在見出しだけを使って表現する
+# (例: `ステップ 3-7 (7.5 を除く)`)。読み手が「7.4 という段階が別にあるのか」を推測で解く余地を残さない。
+assert_not_grep "TC-18 実在しない見出し (ステップ 7.4) への範囲参照がない" "$LINT_MD" 'ステップ 3-7\.4\|ステップ 7\.4'
 
 # ---- TC-19: separate_branch (本番既定経路) の positive path ----------------
 # 44 assertion が same_branch (cat) に偏っており、rite-config.yml の既定 separate_branch
@@ -792,6 +797,36 @@ else
   fail "TC-22 2 検出器の R1 regex が drift している
     helper: $helper_vocab
     cjc   : $cjc_vocab"
+fi
+
+# ---- TC-52: index.md のリンク regex が orphans.sh と literal 一致すること ----
+# helper のコメントが「`wiki-lint-orphans.sh` と同一定義にする」と宣言している共有 regex を
+# TC-22 と同型に pin する。TC-40 は本 helper 側で `./pages/` / `../pages/` を拾えることしか
+# 測らないため、広げる方向 (例: `(wiki\/)?` セグメント追加) と orphans.sh 側の drift を
+# 1 件も検出しない。片側だけ drift すると entries が部分的にしか減らず entries>=1 が保たれ、
+# 検出失敗ガード (entries==0 && linkrows>0) も skipped_rows も発火しないまま hits が
+# 無言で過少集計になる — 本 helper が塞ぐ silent-0 と同型。
+# 正規化: 本 helper の regex は awk プログラム内リテラルのため `pages\/`、orphans.sh は
+# grep -oE のため `pages/` と表記が違う。バイト比較の前に `\/` を `/` へ畳む。
+ORPHANS="$PLUGIN_ROOT/hooks/scripts/wiki-lint-orphans.sh"
+linkre_of() {
+  grep -v '^[[:space:]]*#' "$1" \
+    | grep -oE '\(\\\.\{0,2\}\\/\?pages\\?/\[\^\)\]\+\)' \
+    | head -1 \
+    | sed 's|\\/|/|g'
+}
+helper_linkre=$(linkre_of "$SCRIPT")
+orphans_linkre=$(linkre_of "$ORPHANS")
+if [ -z "$helper_linkre" ]; then
+  fail "TC-52 helper からリンク regex を抽出できなかった (共有 regex の形状が変わった可能性)"
+elif [ -z "$orphans_linkre" ]; then
+  fail "TC-52 wiki-lint-orphans.sh からリンク regex を抽出できなかった (共有 regex の形状が変わった可能性)"
+elif [ "$helper_linkre" = "$orphans_linkre" ]; then
+  pass "TC-52 index.md のリンク regex が orphans.sh と一致 (drift なし)"
+else
+  fail "TC-52 index.md のリンク regex が orphans.sh と drift している
+    helper : $helper_linkre
+    orphans: $orphans_linkre"
 fi
 
 # ---- TC-47: index.md を読めたのにエントリ行を 1 件も認識できない = 検出失敗 --

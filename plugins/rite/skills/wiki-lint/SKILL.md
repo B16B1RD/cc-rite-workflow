@@ -270,7 +270,7 @@ echo "---"
 [ -n "$raw_list" ] && printf '%s\n' "$raw_list"
 ```
 
-LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。両方空なら **ステップ 3-7.4 を skip し、ステップ 7.5 → ステップ 9 に進む**。ステップ 7.5 だけは skip しない — `index.md` が単独で走査対象になりうるためで、skip すると wiki 初期化直後や `git ls-tree` 失敗時に index.md の指摘が無言で 0 件になる。
+LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。両方空なら **ステップ 3-7 (7.5 を除く) を skip し、ステップ 7.5 → ステップ 9 に進む**。ステップ 7.5 だけは skip しない — `index.md` が単独で走査対象になりうるためで、skip すると wiki 初期化直後や `git ls-tree` 失敗時に index.md の指摘が無言で 0 件になる。
 
 `index.md` は ステップ 5 の `wiki-lint-orphans.sh` と ステップ 7.5 の `wiki-lint-descriptive-refs.sh` がそれぞれ自力で読み出すため、本ステップでの事前読出は不要。
 
@@ -624,7 +624,7 @@ Wiki ページ本文と `index.md` のエントリサマリーに残った**説�
 - 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、2 点だけ異なる。(1) **E5（TODO/FIXME）の適用単位** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。(2) **`index.md` 固有の除外** — 行頭 `<!--` で始まる HTML コメントブロックを行の分類より前に落とすため、コメント内の番号は数えない（ページ本文では数える）。配布テンプレートの前文が記法例をコメントで持つためで、落とさないと記法例が実エントリとして数えられ検出失敗ガードが恒久的に発火しなくなる。rationale: [references/descriptive-refs-rationale.md#index-summary-extraction](references/descriptive-refs-rationale.md#index-summary-extraction)
 - 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。rationale: [references/descriptive-refs-rationale.md#scan-scope](references/descriptive-refs-rationale.md#scan-scope)
 
-**本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は 3-7.4 が対象で、本ステップは含まない。helper の検出失敗ガードもこの契約に合わせて `pages_list` ではなく `index.md` 自身の内容で発火する。
+**本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は ステップ 3-7 (7.5 を除く) が対象で、本ステップは含まない。helper の検出失敗ガードもこの契約に合わせて `pages_list` ではなく `index.md` 自身の内容で発火する。
 rationale: [references/descriptive-refs-rationale.md#entries-zero-guard](references/descriptive-refs-rationale.md#entries-zero-guard)
 
 **`index.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない**。`index.md` が存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
@@ -957,7 +957,7 @@ Wiki Lint が完了しました。
 | `read_ok=skipped_helper_missing` | ` ⚠️ (未実測: skipped_helper_missing — helper 不在)` |
 | marker block / enum 未受信（bash block 途中異常終了） | ` ⚠️ (未実測: skipped_helper_missing 同等 — 出力未受信)` |
 
-**`{stale_check_ok_note}` / `{orphan_check_ok_note}` / `{broken_refs_read_ok_note}` 展開ルール**: LLM は ステップ 4 / 5 / 7 の helper stdout から `stale_check_ok=` / `orphan_check_ok=` / `broken_refs_read_ok=` を読み取り、それぞれ独立に展開する。ステップ 3-7.4 skip 経路 (処理対象 0 件) では空文字列:
+**`{stale_check_ok_note}` / `{orphan_check_ok_note}` / `{broken_refs_read_ok_note}` 展開ルール**: LLM は ステップ 4 / 5 / 7 の helper stdout から `stale_check_ok=` / `orphan_check_ok=` / `broken_refs_read_ok=` を読み取り、それぞれ独立に展開する。ステップ 3-7 (7.5 を除く) の skip 経路 (処理対象 0 件) では空文字列:
 
 | enum 値 | note (行末) |
 |--------|------------|
@@ -971,7 +971,7 @@ Wiki Lint が完了しました。
 
 **`{log_read_ok_note}` / `{log_read_ok_warning}` / `{all_source_refs_read_ok_note}` / `{all_source_refs_read_ok_warning}` 展開ルール**:
 
-LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 stdout から `all_source_refs_read_ok={value}` を読み取り、それぞれ独立に展開する。ステップ 6.0 / 6.2 が実行されなかった場合 (`pages_list` と `raw_list` が両方空でステップ 3-7.4 が skip された経路) は両 placeholder を空文字列として展開する:
+LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 stdout から `all_source_refs_read_ok={value}` を読み取り、それぞれ独立に展開する。ステップ 6.0 / 6.2 が実行されなかった場合 (`pages_list` と `raw_list` が両方空でステップ 3-7 (7.5 を除く) が skip された経路) は両 placeholder を空文字列として展開する:
 
 | enum 値 | `{..._note}` (行末 note) | `{..._warning}` (block warning) |
 |--------|------------------------|--------------------------------|
@@ -1075,5 +1075,5 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | `index.md` からエントリ行を 1 件も認識できない（リンク形状の行はあるがリンク先が `pages/` と認識できない = 形式 drift） | WARNING + 検出失敗として `read_errors` +1（0 件が「実測済み」として通るのを防ぐ）、exit 0 | ステップ 7.5 (helper 内) |
 | `index.md` の除外ブロック（HTML コメント / コードフェンス）が閉じないまま EOF | WARNING + 検出失敗として `read_errors` +1（以降の全行が走査から落ちるため、0 件を「実測済み」として通さない。**リンク形状の行の有無に依らず発火する**）、exit 0 | ステップ 7.5 (helper 内) |
 | `index.md` にリンク形状の行が 1 行もなく、かつ HTML コメントブロック / コードフェンスがすべて閉じている（まだ登録が無いカタログ） | 静かに 0 件として扱う（drift ではないため `read_errors` に数えない）、exit 0 | ステップ 7.5 (helper 内) |
-| 処理対象 0 件（ページ / raw） | ステップ 3-7.4 を skip し ステップ 7.5 → ステップ 9 へ進む（**ステップ 7.5 は skip しない** — index.md が単独で走査対象になりうるため、ページ / raw が 0 件でも説明的番号参照は 0 件とは限らない） | ステップ 2.2 末尾 |
+| 処理対象 0 件（ページ / raw） | ステップ 3-7 (7.5 を除く) を skip し ステップ 7.5 → ステップ 9 へ進む（**ステップ 7.5 は skip しない** — index.md が単独で走査対象になりうるため、ページ / raw が 0 件でも説明的番号参照は 0 件とは限らない） | ステップ 2.2 末尾 |
 | log.md 追記失敗 | WARNING + exit 0 で継続（検出結果は stdout に表示済み） | ステップ 8 |
