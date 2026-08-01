@@ -28,7 +28,7 @@ confidence: high
 
 ### 実測した非収束の形
 
-PR #2078 で、helper が caller から受け取る marker path に「安全な文字だけ」の allowlist を追加した。生成側は `${TMPDIR:-/tmp}` を基点に path を組み立てるが、実行環境の `TMPDIR` に空白や非 ASCII が含まれると allowlist を通らない。
+実測例では、helper が caller から受け取る marker path に「安全な文字だけ」の allowlist を追加した。生成側は `${TMPDIR:-/tmp}` を基点に path を組み立てるが、実行環境の `TMPDIR` に空白や非 ASCII が含まれると allowlist を通らない。
 
 拒否時の挙動は「marker を削除せずに戻る」だった。一方、後段の実行保証 gate は「marker が残存 = ステップが実行されなかった」と判定する。合成結果:
 

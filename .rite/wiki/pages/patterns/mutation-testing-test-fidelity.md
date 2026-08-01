@@ -849,7 +849,7 @@ cycle 2 で新設した会計テストの初版は 42 assertions が緑だった
 
 最終サイクルの mutation matrix は 16 変異中 13 kill、生存 3 件だった。生存 = カバレッジ欠落ではないが、その判断には到達経路の実証が要る。3 件はそれぞれ (a) production の判定を変えない診断経路、(b) 既存 TC の意味を変えない cleanup、(c) Linux では空ターゲット symlink を作成できず到達不能、と個別に実測で結論づけた。**生存を一括で「問題なし」と扱わない。**
 
-### case 分岐は「先に別の節で捕まる」ため assertion が届かない節を無検査で残す (PR #2078)
+### case 分岐は「先に別の節で捕まる」ため assertion が届かない節を無検査で残す
 
 `--pending-id` の allowlist と制御文字中和は、**どちらを削除しても全 assertion が green のまま**通った。原因は case 文の構造で、既存 arm が brace 節で先に入力を捕捉するため、allowlist 本体に到達するテストが 1 本も無かった。
 
@@ -866,7 +866,7 @@ esac
 
 ### reviewer への明示的な mutation 依頼が静的 pin の抜けを定量化する
 
-PR #2078 では reviewer に mutation 実測を明示的に依頼した結果、静的 pin では見えなかった「assertion が届いていない防御」が 2 件（allowlist / 制御文字中和）定量的に surface した。実装側の 1 行を直す規模の指摘でも有効。
+reviewer に mutation 実測を明示的に依頼した結果、静的 pin では見えなかった「assertion が届いていない防御」が 2 件（allowlist / 制御文字中和）定量的に surface した。実装側の 1 行を直す規模の指摘でも有効。
 
 ### 保証を実測より広く書かない
 

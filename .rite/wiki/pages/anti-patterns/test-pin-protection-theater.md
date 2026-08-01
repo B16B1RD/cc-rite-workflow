@@ -348,7 +348,7 @@ wth5=$(snapshot_hash "$sbx5")  # capture-first と direct-pipe で異なる hash
 | **Guard-logic-not-just-routing pin gap** | 1 site 内の複数要素 (ルーティング vs ガードロジック) | ルーティングの pin とガードロジックの pin を別 assertion に分離配置し、partial revert を独立検出可能にする |
 | **Non-exercising fixture** | fixture 設計 | 実装方式の違いが observable になる非空/非デフォルト入力を fixture に最低 1 つ含める |
 
-### 期待値の `.*` ワイルドカードと、assert に使われない診断変数 (PR #2078)
+### 期待値の `.*` ワイルドカードと、assert に使われない診断変数
 
 pin を「張ったつもり」にする 2 つの具体形。どちらも同 PR で新設 gate に対して同時に発生した。
 

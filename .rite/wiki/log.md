@@ -26,6 +26,7 @@
 * **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — PR #2078 の raw source 4 件を統合（防御追加が 3 cycle 連続で退行を生む / guard 追加→インタフェース差し替え→削除方向の 2 度の方針転換 / Simplification-First は「追加を我慢する」ではなく「原因の粒度で束ねる」）
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — PR #2078 の raw source 3 件を統合（case 分岐が先に捕捉して allowlist 本体に assertion が届かない / 「N pass / 0 fail」は防御が測られている証拠にならない / 塞いだ範囲を実測より広く書かない）
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — PR #2078 の raw source 2 件を統合（期待値の `.*` は「そのフィールドは未検証」と同義 / assert 未使用の診断変数は shellcheck warning 帯で CI を通過する / fixture は実装が実際に触る場所に置く）
+* **lint:warning** — contradictions=0, stale=3, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-07-31
 
