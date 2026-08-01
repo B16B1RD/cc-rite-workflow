@@ -292,7 +292,7 @@ def marker_present: (desc | test($re_stage1));
 # ままなので下の fail-closed ガードでは検出できない)。suffix を jq 文字列リテラルに埋めると
 # `extract_re_arg` の抽出経路から外れ、SoT との literal 一致を機械的に pin できない。
 # 走査長を有界にするのは、無界の `*` が marker 出現数 × セグメント長で二次的に増大するため
-# (実測: 8000 marker で 12.3s → 有界化で 0.20s)。
+# (実測値と上限の根拠は SoT 側に置く: skills/fix/references/assessment-rules.md §5.3.0.M)。
 def has_arrow: (desc | test($re_stage1 + $re_arrow));
 
 # 形式崩れアンカー = 「実測の有無を判定する構造が読めない」状態。measured=false (実測が無いと
